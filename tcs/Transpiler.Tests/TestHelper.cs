@@ -4,20 +4,48 @@ namespace TinyCs.Tests;
 
 public static class TestHelper
 {
+    private static readonly string ProjectRoot = FindProjectRoot();
     private static readonly string LuaPath = FindLua();
+
+    private static string FindProjectRoot()
+    {
+        // Try multiple starting points
+        string?[] starts = [
+            AppContext.BaseDirectory,
+            Path.GetDirectoryName(typeof(TestHelper).Assembly.Location),
+            Environment.CurrentDirectory
+        ];
+
+        foreach (var start in starts)
+        {
+            if (string.IsNullOrEmpty(start)) continue;
+            string? dir = start;
+            while (!string.IsNullOrEmpty(dir))
+            {
+                if (File.Exists(Path.Combine(dir, "tcs.slnx"))) return dir;
+                var parent = Path.GetDirectoryName(dir);
+                if (parent == dir) break;
+                dir = parent;
+            }
+        }
+        return Environment.CurrentDirectory;
+    }
 
     private static string FindLua()
     {
-        // Look for deps/lua/lua relative to the solution root
-        var dir = AppContext.BaseDirectory;
-        while (dir != null)
-        {
-            var candidate = Path.Combine(dir, "deps", "lua", "lua");
-            if (File.Exists(candidate)) return candidate;
-            dir = Path.GetDirectoryName(dir);
-        }
-        // Fallback: assume it's on PATH
-        return "lua";
+        var candidate = Path.Combine(ProjectRoot, "deps", "lua", "lua");
+        return File.Exists(candidate) ? candidate : "lua";
+    }
+
+    /// <summary>
+    /// Resolve a path relative to the project root.
+    /// </summary>
+    public static string FindProjectFile(string relativePath)
+    {
+        var path = Path.Combine(ProjectRoot, relativePath);
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Project file not found: {path}");
+        return path.Replace("\\", "/"); // Lua needs forward slashes
     }
 
     /// <summary>
