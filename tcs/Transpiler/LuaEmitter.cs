@@ -34,6 +34,9 @@ public partial class LuaEmitter
             case EnumDeclarationSyntax enumDecl:
                 VisitEnum(model, enumDecl);
                 break;
+            case InterfaceDeclarationSyntax:
+                // Interfaces are type-only; no Lua output
+                break;
         }
     }
 

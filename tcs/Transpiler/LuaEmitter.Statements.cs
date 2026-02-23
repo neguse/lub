@@ -48,6 +48,9 @@ public partial class LuaEmitter
             case BreakStatementSyntax:
                 AppendLine("break");
                 break;
+            case SwitchStatementSyntax switchStmt:
+                VisitSwitch(model, switchStmt);
+                break;
         }
     }
 
@@ -173,6 +176,38 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         return true;
+    }
+
+    private void VisitSwitch(SemanticModel model, SwitchStatementSyntax switchStmt)
+    {
+        var governing = VisitExpression(model, switchStmt.Expression);
+        bool first = true;
+        foreach (var section in switchStmt.Sections)
+        {
+            bool isDefault = section.Labels.Any(l => l is DefaultSwitchLabelSyntax);
+            if (isDefault)
+            {
+                AppendLine(first ? "do" : "else");
+            }
+            else
+            {
+                var conditions = section.Labels
+                    .OfType<CaseSwitchLabelSyntax>()
+                    .Select(l => $"{governing} == {VisitExpression(model, l.Value)}");
+                var cond = string.Join(" or ", conditions);
+                AppendLine($"{(first ? "if" : "elseif")} {cond} then");
+            }
+            _indent++;
+            foreach (var stmt in section.Statements)
+            {
+                // Skip break statements in switch (they're implicit in Lua if-elseif)
+                if (stmt is BreakStatementSyntax) continue;
+                VisitStatement(model, stmt);
+            }
+            _indent--;
+            first = false;
+        }
+        AppendLine("end");
     }
 
     private void VisitForEach(SemanticModel model, ForEachStatementSyntax foreachStmt)

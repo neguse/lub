@@ -182,6 +182,71 @@ function Dict.Values(dict)
   return vals
 end
 
+-- String operations
+local String = {}
+TinySystem.String = String
+
+function String.Contains(str, substr)
+  return string.find(str, substr, 1, true) ~= nil
+end
+
+function String.Replace(str, old, new_str)
+  local result = {}
+  local pos = 1
+  while true do
+    local start, stop = string.find(str, old, pos, true)
+    if not start then
+      result[#result + 1] = string.sub(str, pos)
+      break
+    end
+    result[#result + 1] = string.sub(str, pos, start - 1)
+    result[#result + 1] = new_str
+    pos = stop + 1
+  end
+  return table.concat(result)
+end
+
+function String.StartsWith(str, prefix)
+  return string.sub(str, 1, #prefix) == prefix
+end
+
+function String.EndsWith(str, suffix)
+  return string.sub(str, -#suffix) == suffix
+end
+
+function String.Trim(str)
+  return string.match(str, "^%s*(.-)%s*$")
+end
+
+function String.Substring(str, start, length)
+  if length then
+    return string.sub(str, start + 1, start + length)
+  else
+    return string.sub(str, start + 1)
+  end
+end
+
+function String.Split(str, sep)
+  local result = {}
+  if not sep or sep == "" then
+    for i = 1, #str do
+      result[i] = string.sub(str, i, i)
+    end
+    return result
+  end
+  local pos = 1
+  while true do
+    local start, stop = string.find(str, sep, pos, true)
+    if not start then
+      result[#result + 1] = string.sub(str, pos)
+      break
+    end
+    result[#result + 1] = string.sub(str, pos, start - 1)
+    pos = stop + 1
+  end
+  return result
+end
+
 -- Math
 local Math = {}
 TinySystem.Math = Math

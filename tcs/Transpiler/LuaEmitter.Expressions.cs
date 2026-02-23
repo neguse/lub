@@ -31,6 +31,12 @@ public partial class LuaEmitter
             ThisExpressionSyntax => "self",
             BaseExpressionSyntax => "self",
             CastExpressionSyntax cast => VisitExpression(model, cast.Expression),
+            SwitchExpressionSyntax switchExpr => VisitSwitchExpression(model, switchExpr),
+            IsPatternExpressionSyntax isPattern => VisitIsPattern(model, isPattern),
+            ConditionalAccessExpressionSyntax condAccess =>
+                VisitConditionalAccess(model, condAccess),
+            MemberBindingExpressionSyntax memberBinding =>
+                $"__tcs_ca.{memberBinding.Name.Identifier.Text}",
             ConditionalExpressionSyntax ternary => VisitTernary(model, ternary),
             InterpolatedStringExpressionSyntax interp =>
                 VisitInterpolatedString(model, interp),
@@ -71,9 +77,13 @@ public partial class LuaEmitter
     {
         var left = VisitExpression(model, bin.Left);
         var right = VisitExpression(model, bin.Right);
+        var isStringConcat = bin.Kind() == SyntaxKind.AddExpression &&
+            (model.GetTypeInfo(bin.Left).Type?.SpecialType == SpecialType.System_String ||
+             model.GetTypeInfo(bin.Right).Type?.SpecialType == SpecialType.System_String ||
+             model.GetTypeInfo(bin).Type?.SpecialType == SpecialType.System_String);
         var op = bin.Kind() switch
         {
-            SyntaxKind.AddExpression => "+",
+            SyntaxKind.AddExpression => isStringConcat ? ".." : "+",
             SyntaxKind.SubtractExpression => "-",
             SyntaxKind.MultiplyExpression => "*",
             SyntaxKind.DivideExpression => "/",
@@ -132,6 +142,14 @@ public partial class LuaEmitter
             if (symbol is IMethodSymbol methodSym && TryMapCollectionMethod(
                     model, ma, methodSym, methodName, args, out var result))
                 return result;
+
+            // String method calls → String.Method(str, args)
+            if (TryMapStringMethod(model, ma, methodName, args, out var strResult))
+                return strResult;
+
+            // ToString() on any type → tostring(obj)
+            if (TryMapToString(model, ma, methodName, out var toStrResult))
+                return toStrResult;
 
             // Regular instance method
             if (symbol is IMethodSymbol { IsStatic: false })
@@ -231,7 +249,7 @@ public partial class LuaEmitter
         var obj = VisitExpression(model, memberAccess.Expression);
         var member = memberAccess.Name.Identifier.Text;
 
-        // Check for .Count on List<T> → #list
+        // Check for .Count on List<T> → #list, .Length on string → #str
         var symbol = model.GetSymbolInfo(memberAccess).Symbol;
         if (symbol is IPropertySymbol propSym)
         {
@@ -247,6 +265,8 @@ public partial class LuaEmitter
                 return $"Dict.Keys({obj})";
             if (member == "Values" && IsDictType(typeDef))
                 return $"Dict.Values({obj})";
+            if (member == "Length" && receiverType?.SpecialType == SpecialType.System_String)
+                return $"#{obj}";
         }
 
         return $"{obj}.{member}";
@@ -408,5 +428,166 @@ public partial class LuaEmitter
         _sb.Append(savedSb);
         _indent = savedIndent;
         return body;
+    }
+
+    private string VisitSwitchExpression(SemanticModel model,
+        SwitchExpressionSyntax switchExpr)
+    {
+        var governing = VisitExpression(model, switchExpr.GoverningExpression);
+        var parts = new List<string>();
+
+        foreach (var arm in switchExpr.Arms)
+        {
+            var value = VisitExpression(model, arm.Expression);
+            if (arm.Pattern is DiscardPatternSyntax)
+            {
+                parts.Add($"else return {value}");
+            }
+            else
+            {
+                var pattern = VisitPattern(model, arm.Pattern, governing);
+                var whenClause = arm.WhenClause != null
+                    ? $" and {VisitExpression(model, arm.WhenClause.Condition)}" : "";
+                var keyword = parts.Count == 0 ? "if" : "elseif";
+                parts.Add($"{keyword} {pattern}{whenClause} then return {value}");
+            }
+        }
+
+        return $"(function() {string.Join(" ", parts)} end end)()";
+    }
+
+    private string VisitPattern(SemanticModel model, PatternSyntax pattern,
+        string governing)
+    {
+        return pattern switch
+        {
+            ConstantPatternSyntax cp =>
+                $"{governing} == {VisitExpression(model, cp.Expression)}",
+            DiscardPatternSyntax => "true",
+            DeclarationPatternSyntax dp =>
+                $"getmetatable({governing}) == {dp.Type}",
+            _ => $"--[[ TODO pattern: {pattern.Kind()} ]] true"
+        };
+    }
+
+    private string VisitIsPattern(SemanticModel model,
+        IsPatternExpressionSyntax isPattern)
+    {
+        var expr = VisitExpression(model, isPattern.Expression);
+        return isPattern.Pattern switch
+        {
+            ConstantPatternSyntax cp =>
+                $"({expr} == {VisitExpression(model, cp.Expression)})",
+            TypePatternSyntax tp =>
+                $"(getmetatable({expr}) == {tp.Type})",
+            DeclarationPatternSyntax dp =>
+                $"(getmetatable({expr}) == {dp.Type})",
+            UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
+                $"(not ({VisitIsSubPattern(model, expr, notPat.Pattern)}))",
+            _ => $"--[[ TODO is pattern: {isPattern.Pattern.Kind()} ]] true"
+        };
+    }
+
+    private string VisitIsSubPattern(SemanticModel model, string expr,
+        PatternSyntax pattern)
+    {
+        return pattern switch
+        {
+            ConstantPatternSyntax cp =>
+                $"{expr} == {VisitExpression(model, cp.Expression)}",
+            TypePatternSyntax tp => $"getmetatable({expr}) == {tp.Type}",
+            _ => "true"
+        };
+    }
+
+    private string VisitConditionalAccess(SemanticModel model,
+        ConditionalAccessExpressionSyntax condAccess)
+    {
+        var obj = VisitExpression(model, condAccess.Expression);
+        // Use IIFE for safe nil propagation
+        var savedObj = obj;
+        // Visit the when-not-null part, which may contain MemberBindingExpression
+        var whenNotNull = VisitConditionalWhenNotNull(model, condAccess.WhenNotNull, savedObj);
+        return $"(function() if {savedObj} ~= nil then return {whenNotNull} end end)()";
+    }
+
+    private string VisitConditionalWhenNotNull(SemanticModel model,
+        ExpressionSyntax expr, string obj)
+    {
+        return expr switch
+        {
+            MemberBindingExpressionSyntax mb => $"{obj}.{mb.Name.Identifier.Text}",
+            InvocationExpressionSyntax inv when inv.Expression is MemberBindingExpressionSyntax mb2 =>
+                VisitConditionalInvocation(model, mb2, inv.ArgumentList, obj),
+            _ => VisitExpression(model, expr)
+        };
+    }
+
+    private string VisitConditionalInvocation(SemanticModel model,
+        MemberBindingExpressionSyntax mb, ArgumentListSyntax argList, string obj)
+    {
+        var methodName = mb.Name.Identifier.Text;
+        var args = argList.Arguments
+            .Select(a => VisitExpression(model, a.Expression)).ToList();
+        // Check if it's a string method
+        // For now, use instance call syntax
+        return $"{obj}:{methodName}({string.Join(", ", args)})";
+    }
+
+    // String method mapping
+    private bool TryMapStringMethod(SemanticModel model,
+        MemberAccessExpressionSyntax ma, string methodName, List<string> args,
+        out string result)
+    {
+        result = "";
+        var receiverType = model.GetTypeInfo(ma.Expression).Type;
+        if (receiverType?.SpecialType != SpecialType.System_String) return false;
+
+        var obj = VisitExpression(model, ma.Expression);
+        switch (methodName)
+        {
+            case "Contains":
+                result = $"String.Contains({obj}, {string.Join(", ", args)})";
+                return true;
+            case "Replace":
+                result = $"String.Replace({obj}, {string.Join(", ", args)})";
+                return true;
+            case "StartsWith":
+                result = $"String.StartsWith({obj}, {args[0]})";
+                return true;
+            case "EndsWith":
+                result = $"String.EndsWith({obj}, {args[0]})";
+                return true;
+            case "Trim":
+                result = $"String.Trim({obj})";
+                return true;
+            case "Substring":
+                result = $"String.Substring({obj}, {string.Join(", ", args)})";
+                return true;
+            case "ToUpper":
+                result = $"string.upper({obj})";
+                return true;
+            case "ToLower":
+                result = $"string.lower({obj})";
+                return true;
+            case "Split":
+                result = $"String.Split({obj}, {string.Join(", ", args)})";
+                return true;
+            case "ToString":
+                result = $"tostring({obj})";
+                return true;
+        }
+        return false;
+    }
+
+    // Handle ToString() on any type
+    private bool TryMapToString(SemanticModel model,
+        MemberAccessExpressionSyntax ma, string methodName, out string result)
+    {
+        result = "";
+        if (methodName != "ToString") return false;
+        var obj = VisitExpression(model, ma.Expression);
+        result = $"tostring({obj})";
+        return true;
     }
 }
