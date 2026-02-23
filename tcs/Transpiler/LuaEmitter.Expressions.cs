@@ -45,7 +45,7 @@ public partial class LuaEmitter
                 VisitParenthesizedLambda(model, lambda),
             ElementAccessExpressionSyntax elemAccess =>
                 VisitElementAccess(model, elemAccess),
-            _ => $"--[[ TODO: {expr.Kind()} ]]"
+            _ => WarnUnsupported(expr, $"expression: {expr.Kind()}")
         };
     }
 
@@ -70,7 +70,7 @@ public partial class LuaEmitter
         SyntaxKind.TrueLiteralExpression => "true",
         SyntaxKind.FalseLiteralExpression => "false",
         SyntaxKind.NullLiteralExpression => "nil",
-        _ => $"--[[ TODO literal: {lit.Kind()} ]]"
+        _ => $"--[[ unsupported literal: {lit.Kind()} ]]"
     };
 
     private static string StripNumericSuffix(string text)
@@ -113,7 +113,7 @@ public partial class LuaEmitter
             SyntaxKind.LogicalAndExpression => "and",
             SyntaxKind.LogicalOrExpression => "or",
             SyntaxKind.CoalesceExpression => "or",
-            _ => $"--[[{bin.Kind()}]]"
+            _ => $"--[[ unsupported binary: {bin.Kind()} ]]"
         };
         return $"{left} {op} {right}";
     }
@@ -127,7 +127,7 @@ public partial class LuaEmitter
             SyntaxKind.LogicalNotExpression => $"not {operand}",
             SyntaxKind.PreIncrementExpression => $"({operand} + 1)",
             SyntaxKind.PreDecrementExpression => $"({operand} - 1)",
-            _ => $"--[[ TODO unary: {prefix.Kind()} ]]"
+            _ => $"--[[ unsupported unary: {prefix.Kind()} ]]"
         };
     }
 
@@ -139,7 +139,7 @@ public partial class LuaEmitter
         {
             SyntaxKind.PostIncrementExpression => $"{operand} + 1",
             SyntaxKind.PostDecrementExpression => $"{operand} - 1",
-            _ => $"--[[ TODO postfix: {postfix.Kind()} ]]"
+            _ => $"--[[ unsupported postfix: {postfix.Kind()} ]]"
         };
     }
 
@@ -316,7 +316,7 @@ public partial class LuaEmitter
             SyntaxKind.MultiplyAssignmentExpression => $"{left} = {left} * {right}",
             SyntaxKind.DivideAssignmentExpression => $"{left} = {left} / {right}",
             SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
-            _ => $"--[[ TODO assign: {assign.Kind()} ]]"
+            _ => $"--[[ unsupported assign: {assign.Kind()} ]]"
         };
     }
 

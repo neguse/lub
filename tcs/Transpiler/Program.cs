@@ -44,8 +44,19 @@ public class Program
         try
         {
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
-            var lua = Transpiler.Transpile(sources);
+            var result = Transpiler.TranspileWithDiagnostics(sources);
 
+            if (!result.Success)
+            {
+                foreach (var err in result.Errors)
+                    Console.Error.WriteLine(err);
+                return 1;
+            }
+
+            foreach (var warn in result.Warnings)
+                Console.Error.WriteLine($"warning: {warn}");
+
+            var lua = result.Lua;
             if (outputPath != null)
             {
                 var dir = Path.GetDirectoryName(outputPath);

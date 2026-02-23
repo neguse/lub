@@ -10,6 +10,7 @@ public partial class LuaEmitter
     private readonly StringBuilder _sb = new();
     private int _indent;
     private bool _headerEmitted;
+    public List<string> Warnings { get; } = [];
 
     public void Visit(CSharpCompilation compilation, SemanticModel model, SyntaxTree tree)
     {
@@ -226,6 +227,15 @@ public partial class LuaEmitter
             _sb.AppendLine();
         else
             _sb.AppendLine($"{new string(' ', _indent * 2)}{line}");
+    }
+
+    private string WarnUnsupported(SyntaxNode node, string description)
+    {
+        var loc = node.GetLocation().GetLineSpan();
+        var line = loc.StartLinePosition.Line + 1;
+        var col = loc.StartLinePosition.Character + 1;
+        Warnings.Add($"({line},{col}): unsupported {description}");
+        return $"--[[ unsupported: {description} ]]";
     }
 
     public override string ToString() => _sb.ToString().TrimEnd() + "\n";
