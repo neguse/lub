@@ -1,36 +1,57 @@
 # 現在の状態
 
-## フェーズ: Phase 2-4 完了 → Phase 6-7 (TinySystem + コレクション) へ
+## フェーズ: Phase 0-6, T48 完了
 
-### 完了済み
-- T1-T6: プロジェクトセットアップ
-- T12-T34: トランスパイラ中核機能
-  - リテラル、演算子、変数、if/else/elseif、while、for、foreach
-  - クラス、コンストラクタ、継承、enum、プロパティ
-  - ラムダ、三項演算子、文字列補間
-  - instance/static メソッド自動判定
-- テスト 40件パス
-- LuaEmitter 3ファイル分割済み
+### 完了済み (53テスト全パス)
+
+**Phase 0**: プロジェクトセットアップ (T1-T6)
+**Phase 2-4**: トランスパイラ中核 (T12-T34)
+**Phase 5**: ラムダ (T33-T34)
+**Phase 6**: TinySystem Luaランタイム (T35-T40)
+**Phase 9部分**: CLI (T48)
 
 ### 実装済みの C# → Lua マッピング
-| C# 構文 | Lua 出力 | テスト |
-|---------|---------|-------|
-| class + new | table + metatable + .new() | ✓ |
-| inheritance + base() | metatable チェーン | ✓ |
-| static method | Class.Method() | ✓ |
-| instance method | obj:Method() | ✓ |
-| field / auto property | table field | ✓ |
-| enum | 定数テーブル | ✓ |
-| if/else/elseif | if/elseif/else | ✓ |
-| for (i=0; i<n; i++) | for i=0,n-1 | ✓ |
-| foreach | ipairs/pairs | ✓ |
-| while | while do end | ✓ |
-| lambda | function() end | ✓ |
-| ternary | IIFE | ✓ |
-| string interpolation | tostring + .. | ✓ |
-| ?? | or | ✓ |
+| C# 構文 | Lua 出力 |
+|---------|---------|
+| class + new | table + metatable + .new() |
+| inheritance + base() | metatable チェーン |
+| static method | Class.Method() |
+| instance method | obj:Method() |
+| field / auto property | table field |
+| custom property | get_/set_ メソッド |
+| enum | 定数テーブル |
+| if/else/elseif | if/elseif/else |
+| for (i=0; i<n; i++) | for i=0,n-1 |
+| foreach | ipairs/pairs |
+| while | while do end |
+| lambda | function() end |
+| ternary | IIFE |
+| string interpolation | tostring + .. |
+| ?? | or |
+| i++ (statement) | i = i + 1 |
+| cast | 透過 (型消去) |
+
+### TinySystem ランタイム (runtime/tinysystem.lua)
+- List: new, Add, Remove, Count, Contains, IndexOf
+- LINQ: Where, Select, Any, All, First, FirstOrDefault, OrderBy, Min, Max, Sum, ToList
+- Dict: new, Add, Remove, ContainsKey, Count, Keys, Values
+- Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, PI
+- Random: Next, NextFloat, Range
+
+### CLI
+- `dotnet run --project Transpiler -- input.cs [-o output.lua]`
 
 ### 次のタスク
-- T35-T40: TinySystem 標準ライブラリ
-- T41-T43: コレクション・LINQ トランスパイル
-- T48: CLI エントリポイント
+- T41-T43: List/Dictionary/LINQ のトランスパイル統合 (C# の .Where().Select() をランタイム関数呼び出しに変換)
+- T49: 複数ファイル・名前空間解決
+- T50: エラーメッセージ改善
+- T51+: lub3d Generator 統合 (TinyCSharpGen)
+
+### コミット履歴
+1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ
+2. `c0f2213` feat: T12-T34 トランスパイラ大幅拡充
+3. `855ca0b` feat: T31 継承・base()コンストラクタ + ゲームスクリプト統合テスト
+4. `5e897bb` refactor: LuaEmitter を3ファイルに分割
+5. `b27515b` docs: Phase 2-4 完了ログ・進捗更新
+6. `c4c12dd` feat: T35-T40 TinySystem Luaランタイム + テスト13件
+7. `ef8f0c0` feat: T48 CLI エントリポイント + グローバルスコープ出力
