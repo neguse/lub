@@ -46,7 +46,7 @@ public partial class LuaEmitter
             .FirstOrDefault(t => t is { TypeKind: TypeKind.Class }
                 and not { SpecialType: SpecialType.System_Object });
 
-        AppendLine($"local {name} = {{}}");
+        AppendLine($"{name} = {{}}");
         AppendLine($"{name}.__index = {name}");
         if (baseClass != null)
             AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
@@ -172,7 +172,7 @@ public partial class LuaEmitter
     private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)
     {
         var name = enumDecl.Identifier.Text;
-        AppendLine($"local {name} = {{}}");
+        AppendLine($"{name} = {{}}");
         int value = 0;
         foreach (var member in enumDecl.Members)
         {
