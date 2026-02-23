@@ -51,3 +51,17 @@
 - よかったこと: SemanticModel の SpecialType.System_String で文字列結合の + を正確に検出
 - 判断: switch式はIIFE+if-elseifで実装。パターンマッチングは定数パターンのみ
 - 残課題: switch式の when ガード、型パターン
+
+### T49: 複数ファイル・名前空間解決 ✓ (2026-02-23)
+- Transpile(string[]) で複数ソースを共有 CSharpCompilation でコンパイル
+- クロスファイル参照（クラス、enum、継承）が解決される
+- namespace / file-scoped namespace は透過
+- float リテラル suffix (f, d, L等) の自動除去
+- MultiFileTests 5件追加
+
+### T50: エラーメッセージ改善 ✓ (2026-02-23)
+- TranspileResult + TranspileWithDiagnostics() API
+- C# コンパイルエラーをソース位置付きで報告
+- enum↔int 変換/比較エラーは TinyC# では許容 (CS0029,CS0266,CS0019)
+- interface 未実装エラーも許容 (CS0535)
+- DiagnosticTests 3件追加、全96テストパス

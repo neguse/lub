@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-8, T48 完了
+## フェーズ: Phase 0-9 完了
 
-### 完了済み (88テスト全パス)
+### 完了済み (96テスト全パス)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -10,7 +10,7 @@
 **Phase 6**: TinySystem Luaランタイム (T35-T40)
 **Phase 7**: コレクション/LINQ トランスパイル統合 (T41-T43)
 **Phase 8**: switch/interface/string/null条件/is (T23,T32,T38,T46,T47)
-**Phase 9部分**: CLI (T48)
+**Phase 9**: CLI + 複数ファイル + エラーメッセージ (T48,T49,T50)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -54,14 +54,18 @@
 - Dict: new, Add, Remove, ContainsKey, Count, Keys, Values
 - Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, PI
 - Random: Next, NextFloat, Range
+- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split
 
 ### CLI
-- `dotnet run --project Transpiler -- input.cs [-o output.lua]`
+- `dotnet run --project Transpiler -- input1.cs [input2.cs ...] [-o output.lua]`
+- エラー時: ソース位置付きでエラーメッセージを stderr に出力
+- 警告時: 未対応構文を stderr に出力
 
 ### 次のタスク
-- T49: 複数ファイル・名前空間解決
-- T50: エラーメッセージ改善
 - T51+: lub3d Generator 統合 (TinyCSharpGen)
+- record 型対応
+- extension methods
+- Lua出力最適化
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ
@@ -71,3 +75,8 @@
 5. `b27515b` docs: Phase 2-4 完了ログ・進捗更新
 6. `c4c12dd` feat: T35-T40 TinySystem Luaランタイム + テスト13件
 7. `ef8f0c0` feat: T48 CLI エントリポイント + グローバルスコープ出力
+8. `9c7f3ca` docs: 全フェーズ完了ログ・進捗更新
+9. `6d563b6` feat: T41-T43 List/Dictionary/LINQ トランスパイル統合
+10. `6b46c0f` feat: T23,T32,T38,T46,T47 switch/interface/string/null条件/is演算子
+11. `c02b3c8` feat: T49 複数ファイル・名前空間解決 + float リテラル suffix 除去
+12. `440c31e` feat: T50 エラーメッセージ改善 + TranspileResult 診断API
