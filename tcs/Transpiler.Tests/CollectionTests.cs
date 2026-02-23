@@ -286,4 +286,54 @@ public class CollectionTests
             "T.Test()");
         Assert.Equal("123", result);
     }
+
+    // ===== Array creation =====
+
+    [Fact]
+    public void Array_Explicit()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int[] arr = new int[] { 10, 20, 30 };
+                    return arr[0] + arr[2];
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("40", result);
+    }
+
+    [Fact]
+    public void Array_Implicit()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Test()
+                {
+                    var names = new[] { "Alice", "Bob" };
+                    return names[0] + "+" + names[1];
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("Alice+Bob", result);
+    }
+
+    [Fact]
+    public void Array_Empty()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int[] arr = new int[] {};
+                    return arr.Length;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("0", result);
+    }
 }

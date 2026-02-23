@@ -6,12 +6,14 @@ public class Program
     {
         if (args.Length == 0)
         {
-            Console.Error.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [-o <output.lua>] [--sourcemap] [--watch]");
+            Console.Error.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--sourcemap] [--watch]");
             Console.Error.WriteLine("       tcs <input.cs>              # prints to stdout");
+            Console.Error.WriteLine("       --ref <file.cs>             # type-check only (no Lua output)");
             return 1;
         }
 
         var inputPaths = new List<string>();
+        var refPaths = new List<string>();
         string? outputPath = null;
         bool emitSourceMap = false;
         bool watchMode = false;
@@ -21,6 +23,10 @@ public class Program
             if (args[i] == "-o" && i + 1 < args.Length)
             {
                 outputPath = args[++i];
+            }
+            else if (args[i] == "--ref" && i + 1 < args.Length)
+            {
+                refPaths.Add(args[++i]);
             }
             else if (args[i] == "--sourcemap")
             {
@@ -58,18 +64,21 @@ public class Program
                 Console.Error.WriteLine("Error: --watch requires -o <output.lua>");
                 return 1;
             }
-            return RunWatch(inputPaths, outputPath, emitSourceMap);
+            return RunWatch(inputPaths, refPaths, outputPath, emitSourceMap);
         }
 
-        return RunOnce(inputPaths, outputPath, emitSourceMap);
+        return RunOnce(inputPaths, refPaths, outputPath, emitSourceMap);
     }
 
-    private static int RunOnce(List<string> inputPaths, string? outputPath, bool emitSourceMap)
+    private static int RunOnce(List<string> inputPaths, List<string> refPaths, string? outputPath, bool emitSourceMap)
     {
         try
         {
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
-            var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray());
+            var refSources = refPaths.Count > 0
+                ? refPaths.Select(File.ReadAllText).ToArray() : null;
+            var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
+                refSources);
 
             if (!result.Success)
             {
@@ -115,12 +124,12 @@ public class Program
         }
     }
 
-    private static int RunWatch(List<string> inputPaths, string outputPath, bool emitSourceMap)
+    private static int RunWatch(List<string> inputPaths, List<string> refPaths, string outputPath, bool emitSourceMap)
     {
         Console.Error.WriteLine($"Watching {inputPaths.Count} file(s)... (Ctrl+C to stop)");
 
         // Initial build
-        Rebuild(inputPaths, outputPath, emitSourceMap);
+        Rebuild(inputPaths, refPaths, outputPath, emitSourceMap);
 
         // Set up file watchers for each unique directory
         var watchers = new List<FileSystemWatcher>();
@@ -167,7 +176,7 @@ public class Program
                 Thread.Sleep(100);
                 pending.Reset();
 
-                Rebuild(inputPaths, outputPath, emitSourceMap);
+                Rebuild(inputPaths, refPaths, outputPath, emitSourceMap);
             }
         }
         catch (OperationCanceledException) { }
@@ -180,12 +189,15 @@ public class Program
         return 0;
     }
 
-    private static void Rebuild(List<string> inputPaths, string outputPath, bool emitSourceMap)
+    private static void Rebuild(List<string> inputPaths, List<string> refPaths, string outputPath, bool emitSourceMap)
     {
         try
         {
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
-            var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray());
+            var refSources = refPaths.Count > 0
+                ? refPaths.Select(File.ReadAllText).ToArray() : null;
+            var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
+                refSources);
 
             if (!result.Success)
             {

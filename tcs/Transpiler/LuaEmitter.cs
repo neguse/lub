@@ -12,6 +12,8 @@ public partial class LuaEmitter
     private bool _headerEmitted;
     private int _luaLine = 1;
     private (string File, int Line)? _currentSource;
+    private int _continueCounter;
+    private readonly Stack<int> _continueStack = new();
     public List<string> Warnings { get; } = [];
     public SourceMap SourceMap { get; } = new();
 
@@ -69,6 +71,7 @@ public partial class LuaEmitter
         AppendLine();
 
         var fieldInits = new List<(string Name, ExpressionSyntax? Init)>();
+        var staticFieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
         ConstructorDeclarationSyntax? ctor = null;
 
         foreach (var member in cls.Members)
@@ -76,8 +79,19 @@ public partial class LuaEmitter
             switch (member)
             {
                 case FieldDeclarationSyntax field:
+                    var isStatic = field.Modifiers.Any(SyntaxKind.StaticKeyword)
+                        || field.Modifiers.Any(SyntaxKind.ConstKeyword);
                     foreach (var v in field.Declaration.Variables)
-                        fieldInits.Add((v.Identifier.Text, v.Initializer?.Value));
+                    {
+                        if (isStatic)
+                        {
+                            var typeInfo = model.GetTypeInfo(field.Declaration.Type);
+                            staticFieldInits.Add((v.Identifier.Text, v.Initializer?.Value,
+                                typeInfo.Type));
+                        }
+                        else
+                            fieldInits.Add((v.Identifier.Text, v.Initializer?.Value));
+                    }
                     break;
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
                     fieldInits.Add((prop.Identifier.Text, prop.Initializer?.Value));
@@ -87,6 +101,16 @@ public partial class LuaEmitter
                     break;
             }
         }
+
+        // Emit static fields on the class table
+        foreach (var (fieldName, init, type) in staticFieldInits)
+        {
+            if (init != null)
+                AppendLine($"{name}.{fieldName} = {VisitExpression(model, init)}");
+            else
+                AppendLine($"{name}.{fieldName} = {GetDefaultValueForType(type!)}");
+        }
+        if (staticFieldInits.Count > 0) AppendLine();
 
         EmitConstructor(model, name, ctor, fieldInits);
 
@@ -207,6 +231,18 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
+
+        // __eq: value-based equality for record types
+        if (paramNames.Count > 0)
+        {
+            var eqParts = paramNames.Select(p => $"a.{p} == b.{p}");
+            AppendLine($"function {name}.__eq(a, b)");
+            _indent++;
+            AppendLine($"return {string.Join(" and ", eqParts)}");
+            _indent--;
+            AppendLine("end");
+            AppendLine();
+        }
 
         // Emit any explicitly defined methods
         foreach (var member in rec.Members)

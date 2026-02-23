@@ -15,6 +15,16 @@ public partial class LuaEmitter
                 AppendLine(ret.Expression != null
                     ? $"return {VisitExpression(model, ret.Expression)}" : "return");
                 break;
+            case LocalDeclarationStatementSyntax decon
+                when decon.Declaration.Variables.Count == 1
+                && decon.Declaration.Variables[0].Initializer?.Value
+                    is AssignmentExpressionSyntax
+                    {
+                        Left: DeclarationExpressionSyntax declExpr,
+                        Right: var rhs
+                    }:
+                VisitDeconstruction(model, declExpr, rhs);
+                break;
             case LocalDeclarationStatementSyntax local:
                 foreach (var v in local.Declaration.Variables)
                 {
@@ -23,6 +33,14 @@ public partial class LuaEmitter
                     AppendLine($"local {v.Identifier.Text}{init}");
                 }
                 break;
+            case ExpressionStatementSyntax exprStmt
+                when exprStmt.Expression is AssignmentExpressionSyntax
+                {
+                    Left: DeclarationExpressionSyntax declExpr2,
+                    Right: var rhs2
+                }:
+                VisitDeconstruction(model, declExpr2, rhs2);
+                break;
             case ExpressionStatementSyntax exprStmt:
                 VisitExpressionStatement(model, exprStmt);
                 break;
@@ -30,11 +48,7 @@ public partial class LuaEmitter
                 VisitIf(model, ifStmt, isRoot: true);
                 break;
             case WhileStatementSyntax whileStmt:
-                AppendLine($"while {VisitExpression(model, whileStmt.Condition)} do");
-                _indent++;
-                VisitBlock(model, whileStmt.Statement);
-                _indent--;
-                AppendLine("end");
+                VisitWhile(model, whileStmt);
                 break;
             case ForStatementSyntax forStmt:
                 VisitFor(model, forStmt);
@@ -48,6 +62,17 @@ public partial class LuaEmitter
                 break;
             case BreakStatementSyntax:
                 AppendLine("break");
+                break;
+            case ContinueStatementSyntax:
+                if (_continueStack.Count > 0)
+                {
+                    var lbl = _continueStack.Peek();
+                    _usedContinueLabels.Add(lbl);
+                    AppendLine($"goto _continue_{lbl}");
+                }
+                break;
+            case DoStatementSyntax doStmt:
+                VisitDoWhile(model, doStmt);
                 break;
             case SwitchStatementSyntax switchStmt:
                 VisitSwitch(model, switchStmt);
@@ -139,6 +164,52 @@ public partial class LuaEmitter
         }
     }
 
+    private void VisitWhile(SemanticModel model, WhileStatementSyntax whileStmt)
+    {
+        var label = PushContinueLabel();
+        AppendLine($"while {VisitExpression(model, whileStmt.Condition)} do");
+        _indent++;
+        VisitBlock(model, whileStmt.Statement);
+        EmitContinueLabel(label);
+        _indent--;
+        AppendLine("end");
+        PopContinueLabel();
+    }
+
+    private void VisitDoWhile(SemanticModel model, DoStatementSyntax doStmt)
+    {
+        var label = PushContinueLabel();
+        AppendLine("repeat");
+        _indent++;
+        VisitBlock(model, doStmt.Statement);
+        EmitContinueLabel(label);
+        _indent--;
+        AppendLine($"until not ({VisitExpression(model, doStmt.Condition)})");
+        PopContinueLabel();
+    }
+
+    private int PushContinueLabel()
+    {
+        var label = ++_continueCounter;
+        _continueStack.Push(label);
+        return label;
+    }
+
+    private void PopContinueLabel() => _continueStack.Pop();
+
+    private void EmitContinueLabel(int label)
+    {
+        if (_usedContinueLabels.Contains(label))
+            AppendLine($"::_continue_{label}::");
+    }
+
+    private readonly HashSet<int> _usedContinueLabels = [];
+
+    private static bool ContainsContinue(StatementSyntax stmt) => stmt
+        .DescendantNodes()
+        .OfType<ContinueStatementSyntax>()
+        .Any();
+
     private void VisitFor(SemanticModel model, ForStatementSyntax forStmt)
     {
         if (TryEmitSimpleFor(model, forStmt)) return;
@@ -152,15 +223,18 @@ public partial class LuaEmitter
                 AppendLine($"local {v.Identifier.Text}{init}");
             }
 
+        var label = PushContinueLabel();
         var cond = forStmt.Condition != null
             ? VisitExpression(model, forStmt.Condition) : "true";
         AppendLine($"while {cond} do");
         _indent++;
         VisitBlock(model, forStmt.Statement);
+        EmitContinueLabel(label);
         foreach (var inc in forStmt.Incrementors)
             AppendLine(VisitExpression(model, inc));
         _indent--;
         AppendLine("end");
+        PopContinueLabel();
     }
 
     private bool TryEmitSimpleFor(SemanticModel model, ForStatementSyntax forStmt)
@@ -193,11 +267,14 @@ public partial class LuaEmitter
         };
         if (limit == null) return false;
 
+        var label = PushContinueLabel();
         AppendLine($"for {varName} = {start}, {limit} do");
         _indent++;
         VisitBlock(model, forStmt.Statement);
+        EmitContinueLabel(label);
         _indent--;
         AppendLine("end");
+        PopContinueLabel();
         return true;
     }
 
@@ -233,6 +310,43 @@ public partial class LuaEmitter
         AppendLine("end");
     }
 
+    private void VisitDeconstruction(SemanticModel model,
+        DeclarationExpressionSyntax declExpr, ExpressionSyntax rhs)
+    {
+        var obj = VisitExpression(model, rhs);
+        if (declExpr.Designation is ParenthesizedVariableDesignationSyntax pvd)
+        {
+            var names = pvd.Variables
+                .Select(v => v is SingleVariableDesignationSyntax sv
+                    ? sv.Identifier.Text : "_").ToList();
+            // Get type of rhs to find property/parameter names
+            var typeSymbol = model.GetTypeInfo(rhs).Type;
+            var propNames = GetDeconstructPropertyNames(typeSymbol, names.Count);
+
+            if (propNames != null)
+            {
+                var values = propNames.Select(p => $"{obj}.{p}");
+                AppendLine($"local {string.Join(", ", names)} = {string.Join(", ", values)}");
+            }
+            else
+            {
+                AppendLine($"local {string.Join(", ", names)} = {obj}");
+            }
+        }
+    }
+
+    private static List<string>? GetDeconstructPropertyNames(ITypeSymbol? type, int count)
+    {
+        if (type is not INamedTypeSymbol named) return null;
+        // Record positional parameters → properties with matching names
+        var props = named.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public)
+            .Select(p => p.Name).ToList();
+        if (props.Count >= count) return props.Take(count).ToList();
+        return null;
+    }
+
     private void VisitForEach(SemanticModel model, ForEachStatementSyntax foreachStmt)
     {
         var varName = foreachStmt.Identifier.Text;
@@ -240,12 +354,14 @@ public partial class LuaEmitter
         var typeInfo = model.GetTypeInfo(foreachStmt.Expression);
         var typeName = typeInfo.Type?.OriginalDefinition.ToDisplayString() ?? "";
 
+        var label = PushContinueLabel();
         if (typeName.StartsWith("System.Collections.Generic.Dictionary"))
         {
             AppendLine($"for {varName}_key, {varName}_value in pairs({collection}) do");
             _indent++;
             AppendLine($"local {varName} = {{Key = {varName}_key, Value = {varName}_value}}");
             VisitBlock(model, foreachStmt.Statement);
+            EmitContinueLabel(label);
             _indent--;
             AppendLine("end");
         }
@@ -254,8 +370,10 @@ public partial class LuaEmitter
             AppendLine($"for _, {varName} in ipairs({collection}) do");
             _indent++;
             VisitBlock(model, foreachStmt.Statement);
+            EmitContinueLabel(label);
             _indent--;
             AppendLine("end");
         }
+        PopContinueLabel();
     }
 }

@@ -71,8 +71,9 @@ bash run-tests.sh
 4. 実装する
 5. `dotnet test` で全テスト通過を確認
 6. `doc/done.md` に完了ログを記録
-7. `doc/current.md` を更新
-8. コミット（1タスク = 1コミット）
+7. `doc/tasks.md` から完了したタスクを削除（done.md に移動済みなので tasks.md には残さない）
+8. `doc/current.md` を更新
+9. コミット（1タスク = 1コミット）
 
 ### 完了ログ形式（done.md）
 

@@ -121,6 +121,63 @@ public class MultiFileTests
         Assert.Equal("100", result);
     }
 
+    // ===== Reference sources (--ref) =====
+
+    [Fact]
+    public void Ref_TypeCheckOnly_NoLuaOutput()
+    {
+        // Reference source provides type info but no Lua output
+        var refSource = """
+            namespace Engine;
+            public static class Gfx
+            {
+                public static int Width() => default!;
+                public static int Height() => default!;
+            }
+            """;
+        var mainSource = """
+            using Engine;
+            public class T
+            {
+                public static int Test()
+                {
+                    return Gfx.Width() + Gfx.Height();
+                }
+            }
+            """;
+        var result = Transpiler.TranspileWithDiagnostics(
+            [mainSource], null, [refSource]);
+        Assert.True(result.Success);
+        // Only main source generates Lua — ref source does NOT
+        Assert.Contains("T", result.Lua);
+        Assert.DoesNotContain("Gfx = {}", result.Lua);
+        Assert.DoesNotContain("Gfx.__index", result.Lua);
+    }
+
+    [Fact]
+    public void Ref_EnumFromRefSource()
+    {
+        var refSource = """
+            public enum LoadAction { DONT_CARE = 0, CLEAR = 1, LOAD = 2 }
+            """;
+        var mainSource = """
+            public class T
+            {
+                public static int Test()
+                {
+                    return (int)LoadAction.CLEAR;
+                }
+            }
+            """;
+        var result = Transpiler.TranspileWithDiagnostics(
+            [mainSource], null, [refSource]);
+        Assert.True(result.Success);
+        // Enum value should resolve correctly
+        Assert.Contains("LoadAction.CLEAR", result.Lua);
+        // But enum definition should NOT be emitted (from ref source)
+        Assert.DoesNotContain("LoadAction = {", result.Lua);
+    }
+
     [Fact]
     public void Namespace_ClassicNamespace()
     {

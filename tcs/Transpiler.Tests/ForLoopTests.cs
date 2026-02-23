@@ -87,4 +87,115 @@ public class ForLoopTests
             "Loop.Multiply(3, 4)");
         Assert.Equal("12", result);
     }
+
+    // ===== continue =====
+
+    [Fact]
+    public void Continue_ForLoop()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int sum = 0;
+                    for (int i = 0; i < 10; i++)
+                    {
+                        if (i % 2 == 0) continue;
+                        sum = sum + i;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("25", result); // 1+3+5+7+9
+    }
+
+    [Fact]
+    public void Continue_WhileLoop()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int sum = 0;
+                    int i = 0;
+                    while (i < 5)
+                    {
+                        i = i + 1;
+                        if (i == 3) continue;
+                        sum = sum + i;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("12", result); // 1+2+4+5
+    }
+
+    [Fact]
+    public void Continue_ForEach()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2, 3, 4, 5 };
+                    int sum = 0;
+                    foreach (var x in list)
+                    {
+                        if (x == 3) continue;
+                        sum = sum + x;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("12", result); // 1+2+4+5
+    }
+
+    // ===== do-while =====
+
+    [Fact]
+    public void DoWhile_Basic()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int i = 0;
+                    do
+                    {
+                        i = i + 1;
+                    } while (i < 5);
+                    return i;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("5", result);
+    }
+
+    [Fact]
+    public void DoWhile_ExecutesAtLeastOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int i = 10;
+                    do
+                    {
+                        i = i + 1;
+                    } while (i < 5);
+                    return i;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("11", result); // Executes once even though 10 >= 5
+    }
 }

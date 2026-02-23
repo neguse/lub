@@ -145,4 +145,96 @@ public class ClassTests
             """);
         Assert.Equal("25", result);
     }
+
+    // ===== Static fields =====
+
+    [Fact]
+    public void StaticField_DefaultValue()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Game
+            {
+                private static int counter;
+
+                public static int GetCounter() { return counter; }
+            }
+            """,
+            "Game.GetCounter()");
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void StaticField_WithInitializer()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Game
+            {
+                private static int counter = 42;
+
+                public static int GetCounter() { return counter; }
+            }
+            """,
+            "Game.GetCounter()");
+        Assert.Equal("42", result);
+    }
+
+    [Fact]
+    public void StaticField_ReadWrite()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Game
+            {
+                private static float timer;
+
+                public static void Update(float dt)
+                {
+                    timer = timer + dt;
+                }
+
+                public static float GetTimer() { return timer; }
+            }
+            """, """
+            (function() Game.Update(1.5); Game.Update(2.5); return Game.GetTimer() end)()
+            """);
+        Assert.Equal("4.0", result);
+    }
+
+    [Fact]
+    public void StaticField_Const()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Config
+            {
+                public const int MaxHP = 100;
+                public const float Speed = 5.5f;
+
+                public static float GetMaxSpeed() { return Speed; }
+            }
+            """,
+            "Config.MaxHP + Config.GetMaxSpeed()");
+        Assert.Equal("105.5", result);
+    }
+
+    [Fact]
+    public void StaticField_MixedWithInstanceFields()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Entity
+            {
+                private static int nextId;
+                public int Id;
+                public string Name;
+
+                public Entity(string name)
+                {
+                    nextId = nextId + 1;
+                    Id = nextId;
+                    Name = name;
+                }
+            }
+            """, """
+            (function() local a = Entity.new("Alice"); local b = Entity.new("Bob"); return tostring(a.Id) .. "," .. tostring(b.Id) end)()
+            """);
+        Assert.Equal("1,2", result);
+    }
 }

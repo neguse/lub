@@ -41,13 +41,16 @@ public static class Transpiler
     }
 
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
-        string[]? filePaths = null)
+        string[]? filePaths = null, string[]? referenceSources = null)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
                 ? filePaths[i] : "")).ToArray();
+        var refTrees = referenceSources?.Select(s =>
+            CSharpSyntaxTree.ParseText(s)).ToArray() ?? [];
+        var allTrees = trees.Concat(refTrees).ToArray();
         var compilation = CSharpCompilation.Create("TinyCs",
-            trees,
+            allTrees,
             DefaultReferences,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 

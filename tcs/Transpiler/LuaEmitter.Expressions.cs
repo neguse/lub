@@ -48,6 +48,12 @@ public partial class LuaEmitter
             ElementAccessExpressionSyntax elemAccess =>
                 VisitElementAccess(model, elemAccess),
             DefaultExpressionSyntax def => VisitDefault(model, def),
+            ArrayCreationExpressionSyntax arrCreate =>
+                VisitArrayCreation(model, arrCreate),
+            ImplicitArrayCreationExpressionSyntax implArr =>
+                VisitImplicitArrayCreation(model, implArr),
+            WithExpressionSyntax withExpr => VisitWithExpression(model, withExpr),
+            PredefinedTypeSyntax predefined => ResolvePredefinedType(predefined),
             _ => WarnUnsupported(expr, $"expression: {expr.Kind()}")
         };
     }
@@ -65,6 +71,10 @@ public partial class LuaEmitter
         if (symbol is IFieldSymbol { IsStatic: false }
             or IPropertySymbol { IsStatic: false })
             return $"self.{id.Identifier.Text}";
+        if (symbol is IFieldSymbol { IsStatic: true } sf && sf.ContainingType != null)
+            return $"{sf.ContainingType.Name}.{id.Identifier.Text}";
+        if (symbol is IPropertySymbol { IsStatic: true } sp && sp.ContainingType != null)
+            return $"{sp.ContainingType.Name}.{id.Identifier.Text}";
         return id.Identifier.Text;
     }
 
@@ -244,6 +254,16 @@ public partial class LuaEmitter
             // ToString() on any type → tostring(obj)
             if (TryMapToString(model, ma, methodName, out var toStrResult))
                 return toStrResult;
+
+            // Extension method: obj.ExtMethod(args) → ExtClass.ExtMethod(obj, args)
+            if (symbol is IMethodSymbol { IsExtensionMethod: true, ReducedFrom: not null } extMethod)
+            {
+                var obj = VisitExpression(model, ma.Expression);
+                var extClass = extMethod.ReducedFrom!.ContainingType.Name;
+                var allArgs = new List<string> { obj };
+                allArgs.AddRange(args);
+                return $"{extClass}.{methodName}({string.Join(", ", allArgs)})";
+            }
 
             // Regular instance method
             if (symbol is IMethodSymbol { IsStatic: false })
@@ -451,7 +471,10 @@ public partial class LuaEmitter
             }
             else if (expr is AssignmentExpressionSyntax assignExpr)
             {
-                var key = VisitExpression(model, assignExpr.Left);
+                // Indexer initializer: { ["key"] = value }
+                var key = assignExpr.Left is ImplicitElementAccessSyntax iea
+                    ? VisitExpression(model, iea.ArgumentList.Arguments[0].Expression)
+                    : VisitExpression(model, assignExpr.Left);
                 var value = VisitExpression(model, assignExpr.Right);
                 entries.Add($"[{key}] = {value}");
             }
@@ -489,11 +512,38 @@ public partial class LuaEmitter
                     parts.Add($"\"{text.TextToken.Text}\"");
                     break;
                 case InterpolationSyntax hole:
-                    parts.Add($"tostring({VisitExpression(model, hole.Expression)})");
+                    if (hole.FormatClause != null)
+                    {
+                        var fmt = hole.FormatClause.FormatStringToken.Text;
+                        var luaFmt = ConvertFormatSpecifier(fmt);
+                        var expr = VisitExpression(model, hole.Expression);
+                        parts.Add($"string.format(\"{luaFmt}\", {expr})");
+                    }
+                    else
+                    {
+                        parts.Add($"tostring({VisitExpression(model, hole.Expression)})");
+                    }
                     break;
             }
         }
         return string.Join(" .. ", parts);
+    }
+
+    private static string ConvertFormatSpecifier(string fmt)
+    {
+        if (string.IsNullOrEmpty(fmt)) return "%s";
+        var c = char.ToUpper(fmt[0]);
+        var precision = fmt.Length > 1 ? fmt[1..] : "";
+        return c switch
+        {
+            'F' => string.IsNullOrEmpty(precision) ? "%.6f" : $"%.{precision}f",
+            'N' => string.IsNullOrEmpty(precision) ? "%.2f" : $"%.{precision}f",
+            'D' => string.IsNullOrEmpty(precision) ? "%d" : $"%0{precision}d",
+            'X' => string.IsNullOrEmpty(precision) ? "%x" : $"%0{precision}x",
+            'E' => string.IsNullOrEmpty(precision) ? "%e" : $"%.{precision}e",
+            'G' => string.IsNullOrEmpty(precision) ? "%g" : $"%.{precision}g",
+            _ => "%s"
+        };
     }
 
     private string VisitSimpleLambda(SemanticModel model,
@@ -570,6 +620,13 @@ public partial class LuaEmitter
             DiscardPatternSyntax => "true",
             DeclarationPatternSyntax dp =>
                 $"getmetatable({governing}) == {dp.Type}",
+            RecursivePatternSyntax rp => VisitRecursivePattern(model, governing, rp),
+            RelationalPatternSyntax rel =>
+                $"{governing} {RelationalOp(rel)} {VisitExpression(model, rel.Expression)}",
+            BinaryPatternSyntax bp =>
+                $"({VisitPattern(model, bp.Left, governing)} " +
+                $"{(bp.IsKind(SyntaxKind.AndPattern) ? "and" : "or")} " +
+                $"{VisitPattern(model, bp.Right, governing)})",
             _ => $"--[[ TODO pattern: {pattern.Kind()} ]] true"
         };
     }
@@ -599,8 +656,36 @@ public partial class LuaEmitter
                 $"({VisitIsSubPattern(model, expr, bp.Left)} " +
                 $"{(bp.IsKind(SyntaxKind.AndPattern) ? "and" : "or")} " +
                 $"{VisitIsSubPattern(model, expr, bp.Right)})",
+            RecursivePatternSyntax rp => VisitRecursivePattern(model, expr, rp),
             _ => $"--[[ TODO pattern: {pattern.Kind()} ]] true"
         };
+    }
+
+    private string VisitRecursivePattern(SemanticModel model, string expr,
+        RecursivePatternSyntax rp)
+    {
+        var conditions = new List<string>();
+
+        // Type check: is MyType { ... }
+        if (rp.Type != null)
+            conditions.Add($"getmetatable({expr}) == {rp.Type}");
+
+        // Property pattern: { X: > 0, Y: < 10 }
+        if (rp.PropertyPatternClause != null)
+        {
+            foreach (var sub in rp.PropertyPatternClause.Subpatterns)
+            {
+                if (sub.NameColon != null)
+                {
+                    var propName = sub.NameColon.Name.Identifier.Text;
+                    var propExpr = $"{expr}.{propName}";
+                    conditions.Add(VisitIsSubPattern(model, propExpr, sub.Pattern));
+                }
+            }
+        }
+
+        if (conditions.Count == 0) return "true";
+        return string.Join(" and ", conditions);
     }
 
     private static string RelationalOp(RelationalPatternSyntax rp) =>
@@ -707,6 +792,26 @@ public partial class LuaEmitter
         return false;
     }
 
+    private string VisitWithExpression(SemanticModel model, WithExpressionSyntax withExpr)
+    {
+        var obj = VisitExpression(model, withExpr.Expression);
+        var overrides = new List<string>();
+        foreach (var assign in withExpr.Initializer.Expressions)
+        {
+            if (assign is AssignmentExpressionSyntax a
+                && a.Left is IdentifierNameSyntax id)
+            {
+                var value = VisitExpression(model, a.Right);
+                overrides.Add($"__tcs_copy.{id.Identifier.Text} = {value}");
+            }
+        }
+        return $"(function() local __tcs_copy = {{}}; " +
+               $"for k,v in pairs({obj}) do __tcs_copy[k] = v end; " +
+               $"setmetatable(__tcs_copy, getmetatable({obj})); " +
+               $"{string.Join("; ", overrides)}; " +
+               $"return __tcs_copy end)()";
+    }
+
     private string VisitDefault(SemanticModel model, DefaultExpressionSyntax def)
     {
         var type = model.GetTypeInfo(def).Type;
@@ -721,6 +826,35 @@ public partial class LuaEmitter
             or SpecialType.System_Double => "0",
         _ => "nil"
     };
+
+    private string VisitArrayCreation(SemanticModel model, ArrayCreationExpressionSyntax arr)
+    {
+        if (arr.Initializer != null)
+        {
+            var items = arr.Initializer.Expressions
+                .Select(e => VisitExpression(model, e));
+            return $"{{{string.Join(", ", items)}}}";
+        }
+        return "{}";
+    }
+
+    private string VisitImplicitArrayCreation(SemanticModel model,
+        ImplicitArrayCreationExpressionSyntax arr)
+    {
+        var items = arr.Initializer.Expressions
+            .Select(e => VisitExpression(model, e));
+        return $"{{{string.Join(", ", items)}}}";
+    }
+
+    private static string ResolvePredefinedType(PredefinedTypeSyntax predefined) =>
+        predefined.Keyword.Text switch
+        {
+            "string" => "string",
+            "int" => "math",
+            "float" => "math",
+            "double" => "math",
+            _ => predefined.Keyword.Text
+        };
 
     // Handle ToString() on any type
     private bool TryMapToString(SemanticModel model,

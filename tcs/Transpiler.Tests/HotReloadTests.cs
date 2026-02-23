@@ -194,4 +194,103 @@ public class HotReloadTests
             """);
         Assert.Equal("A_v2|B_v2", result);
     }
+
+    // ===== E2E: C# transpile → Lua HotReload =====
+
+    [Fact]
+    public void E2E_TranspiledClass_HotReload()
+    {
+        // V1: Greeter.Greet() returns "Hello"
+        var luaV1 = Transpiler.Transpile("""
+            public class Greeter
+            {
+                public string Greet() { return "Hello"; }
+            }
+            """);
+
+        // V2: Greeter.Greet() returns "Hi there"
+        var luaV2 = Transpiler.Transpile("""
+            public class Greeter
+            {
+                public string Greet() { return "Hi there"; }
+            }
+            """);
+
+        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
+        var script = $"""
+            local TinySystem = dofile("{runtimePath}")
+            local HotReload = TinySystem.HotReload
+
+            -- Load V1
+            {luaV1}
+            local g = Greeter.new()
+            local before = g:Greet()
+
+            -- Write V2 to temp file and hot reload
+            local tmp = os.tmpname()
+            local f = io.open(tmp, "w")
+            f:write([[{luaV2}]])
+            f:close()
+
+            HotReload.swap(tmp)
+            os.remove(tmp)
+
+            local after = g:Greet()
+            print(before .. "|" .. after)
+            """;
+        var result = TestHelper.RunLua(script).Trim();
+        Assert.Equal("Hello|Hi there", result);
+    }
+
+    [Fact]
+    public void E2E_TranspiledClass_StatePreserved()
+    {
+        // V1: Counter with Inc() adding 1
+        var luaV1 = Transpiler.Transpile("""
+            public class Counter
+            {
+                public int Value;
+                public Counter() { Value = 0; }
+                public void Inc() { Value = Value + 1; }
+                public int Get() { return Value; }
+            }
+            """);
+
+        // V2: Counter with Inc() adding 10
+        var luaV2 = Transpiler.Transpile("""
+            public class Counter
+            {
+                public int Value;
+                public Counter() { Value = 0; }
+                public void Inc() { Value = Value + 10; }
+                public int Get() { return Value; }
+            }
+            """);
+
+        var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");
+        var script = $"""
+            local TinySystem = dofile("{runtimePath}")
+            local HotReload = TinySystem.HotReload
+
+            {luaV1}
+            local c = Counter.new()
+            c:Inc()
+            c:Inc()
+            c:Inc()
+
+            local tmp = os.tmpname()
+            local f = io.open(tmp, "w")
+            f:write([[{luaV2}]])
+            f:close()
+
+            HotReload.swap(tmp)
+            os.remove(tmp)
+
+            -- State preserved (Value=3), new Inc adds 10
+            c:Inc()
+            print(c:Get())
+            """;
+        var result = TestHelper.RunLua(script).Trim();
+        Assert.Equal("13", result);
+    }
 }
