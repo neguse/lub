@@ -15,6 +15,8 @@ public partial class LuaEmitter
     {
         return expr switch
         {
+            LiteralExpressionSyntax { RawKind: (int)SyntaxKind.DefaultLiteralExpression } defLit =>
+                GetDefaultValueForType(model.GetTypeInfo(defLit).ConvertedType!),
             LiteralExpressionSyntax lit => VisitLiteral(lit),
             IdentifierNameSyntax id => ResolveIdentifier(model, id),
             BinaryExpressionSyntax bin => VisitBinary(model, bin),
@@ -45,6 +47,7 @@ public partial class LuaEmitter
                 VisitParenthesizedLambda(model, lambda),
             ElementAccessExpressionSyntax elemAccess =>
                 VisitElementAccess(model, elemAccess),
+            DefaultExpressionSyntax def => VisitDefault(model, def),
             _ => WarnUnsupported(expr, $"expression: {expr.Kind()}")
         };
     }
@@ -67,13 +70,59 @@ public partial class LuaEmitter
 
     private static string VisitLiteral(LiteralExpressionSyntax lit) => lit.Kind() switch
     {
-        SyntaxKind.NumericLiteralExpression => StripNumericSuffix(lit.Token.Text),
-        SyntaxKind.StringLiteralExpression => lit.Token.Text,
+        SyntaxKind.NumericLiteralExpression => ConvertNumericLiteral(lit),
+        SyntaxKind.StringLiteralExpression => ConvertStringLiteral(lit),
+        SyntaxKind.Utf8StringLiteralExpression => ConvertStringLiteral(lit),
+        SyntaxKind.CharacterLiteralExpression => EscapeLuaString(lit.Token.ValueText),
         SyntaxKind.TrueLiteralExpression => "true",
         SyntaxKind.FalseLiteralExpression => "false",
         SyntaxKind.NullLiteralExpression => "nil",
+        SyntaxKind.DefaultLiteralExpression => "nil", // handled by VisitExpression context
         _ => $"--[[ unsupported literal: {lit.Kind()} ]]"
     };
+
+    private static string ConvertNumericLiteral(LiteralExpressionSyntax lit)
+    {
+        var text = lit.Token.Text;
+        // Binary literals (0b...) → convert to decimal (Lua doesn't support 0b)
+        if (text.StartsWith("0b", StringComparison.OrdinalIgnoreCase))
+            return lit.Token.Value?.ToString() ?? text;
+        // Hex literals: strip separators but DON'T strip suffixes (F is a hex digit)
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return text.Replace("_", "");
+        // Strip digit separators and numeric suffixes
+        var result = StripNumericSuffix(text).Replace("_", "");
+        return result;
+    }
+
+    private static string ConvertStringLiteral(LiteralExpressionSyntax lit)
+    {
+        // For verbatim (@"...") and raw ("""...""") strings, use ValueText to get resolved value
+        if (lit.Token.Text.StartsWith('@') || lit.Token.Text.StartsWith('"') &&
+            lit.Token.Text.Length >= 6 && lit.Token.Text.StartsWith("\"\"\""))
+            return EscapeLuaString(lit.Token.ValueText);
+        return lit.Token.Text;
+    }
+
+    private static string EscapeLuaString(string value)
+    {
+        var sb = new System.Text.StringBuilder("\"");
+        foreach (var c in value)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\0': sb.Append("\\0"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
+    }
 
     private static string StripNumericSuffix(string text)
     {
@@ -656,6 +705,12 @@ public partial class LuaEmitter
                 return true;
         }
         return false;
+    }
+
+    private string VisitDefault(SemanticModel model, DefaultExpressionSyntax def)
+    {
+        var type = model.GetTypeInfo(def).Type;
+        return type != null ? GetDefaultValueForType(type) : "nil";
     }
 
     private static string GetDefaultValueForType(ITypeSymbol type) => type.SpecialType switch
