@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Transpiler/Transpiler.csproj" />
+  <Project Path="Transpiler.Tests/Transpiler.Tests.csproj" />
+  <Project Path="TinySystem/TinySystem.csproj" />
+</Solution>
