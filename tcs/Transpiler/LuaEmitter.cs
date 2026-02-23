@@ -109,7 +109,27 @@ public class LuaEmitter
 
         AppendLine($"function {className}.new({string.Join(", ", ctorParams)})");
         _indent++;
-        AppendLine($"local self = setmetatable({{}}, {className})");
+
+        // base() constructor initializer — create via base, then override metatable
+        if (ctor?.Initializer != null)
+        {
+            var baseArgs = ctor.Initializer.ArgumentList.Arguments
+                .Select(a => VisitExpression(model, a.Expression));
+            var baseType = model.GetDeclaredSymbol(ctor)?.ContainingType?.BaseType;
+            if (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+            {
+                AppendLine($"local self = {baseType.Name}.new({string.Join(", ", baseArgs)})");
+                AppendLine($"setmetatable(self, {className})");
+            }
+            else
+            {
+                AppendLine($"local self = setmetatable({{}}, {className})");
+            }
+        }
+        else
+        {
+            AppendLine($"local self = setmetatable({{}}, {className})");
+        }
 
         // Field initializers
         foreach (var (fieldName, init) in fieldInits)
