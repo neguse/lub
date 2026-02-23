@@ -62,6 +62,23 @@ public static class TestHelper
     }
 
     /// <summary>
+    /// Transpile C# source with runtime loaded, wrap with a Lua expression to evaluate, run in Lua VM.
+    /// </summary>
+    public static string TranspileAndRunWithRuntime(string csharpSource, string luaExpr)
+    {
+        var lua = Transpiler.Transpile(csharpSource);
+        var runtimePath = FindProjectFile("runtime/tinysystem.lua");
+        var script = $"local TinySystem = dofile(\"{runtimePath}\")\n" +
+                     "List = TinySystem.List\n" +
+                     "Dict = TinySystem.Dict\n" +
+                     "Math = TinySystem.Math\n" +
+                     "String = TinySystem.String\n" +
+                     "Random = TinySystem.Random\n" +
+                     $"{lua}\nprint({luaExpr})";
+        return RunLua(script).Trim();
+    }
+
+    /// <summary>
     /// Transpile C# source, wrap with a Lua expression to evaluate, run in Lua VM, return stdout.
     /// </summary>
     public static string TranspileAndRun(string csharpSource, string luaExpr)

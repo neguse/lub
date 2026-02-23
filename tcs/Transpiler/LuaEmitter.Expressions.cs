@@ -171,6 +171,23 @@ public partial class LuaEmitter
                 return $"({obj} or {defaultVal})";
             }
 
+            // Console.WriteLine → print
+            if (methodName == "WriteLine" && symbol is IMethodSymbol consoleMethod
+                && consoleMethod.ContainingType.ToDisplayString() == "System.Console")
+                return $"print({string.Join(", ", args)})";
+
+            // Math method name mapping (C# → Lua runtime)
+            if (symbol is IMethodSymbol mathMethod
+                && mathMethod.ContainingType.ToDisplayString() == "System.Math")
+            {
+                var luaName = methodName switch
+                {
+                    "Ceiling" => "Ceil",
+                    _ => methodName
+                };
+                return $"Math.{luaName}({string.Join(", ", args)})";
+            }
+
             // String method calls → String.Method(str, args)
             if (TryMapStringMethod(model, ma, methodName, args, out var strResult))
                 return strResult;
@@ -300,7 +317,8 @@ public partial class LuaEmitter
                 return $"Dict.Keys({obj})";
             if (member == "Values" && IsDictType(typeDef))
                 return $"Dict.Values({obj})";
-            if (member == "Length" && receiverType?.SpecialType == SpecialType.System_String)
+            if (member == "Length" && (receiverType?.SpecialType == SpecialType.System_String
+                || receiverType is IArrayTypeSymbol))
                 return $"#{obj}";
         }
 
@@ -315,8 +333,8 @@ public partial class LuaEmitter
         var receiverType = model.GetTypeInfo(elemAccess.Expression).Type;
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
-        // List<T> indexer: 0-indexed → 1-indexed
-        if (IsListType(typeDef))
+        // List<T> / array indexer: 0-indexed → 1-indexed
+        if (IsListType(typeDef) || receiverType is IArrayTypeSymbol)
             return $"{obj}[{index} + 1]";
 
         // Dictionary<K,V> indexer

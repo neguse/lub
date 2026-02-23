@@ -25,6 +25,7 @@ public static class Transpiler
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Runtime.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Collections.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Linq.dll")),
+            MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Console.dll")),
         ];
     }
 
