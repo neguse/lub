@@ -291,4 +291,63 @@ function Random.Range(min, max)
   return math.random(min, max)
 end
 
+-- HotReload (lume.hotswap-style in-place update for dofile)
+local HotReload = {}
+TinySystem.HotReload = HotReload
+
+-- Recursively update old table in-place with new values,
+-- keeping the old table identity so existing references survive.
+local function deepUpdate(old, new, visited)
+  if old == nil or new == nil then return end
+  if visited[old] then return end
+  visited[old] = true
+  -- Update metatables
+  local oldmt, newmt = getmetatable(old), getmetatable(new)
+  if oldmt and newmt then deepUpdate(oldmt, newmt, visited) end
+  -- Copy new keys/values into old table
+  for k, v in pairs(new) do
+    if type(v) == "table" and type(old[k]) == "table" then
+      deepUpdate(old[k], v, visited)
+    else
+      old[k] = v
+    end
+  end
+end
+
+-- Swap a dofile'd script in-place.
+-- All globals that were tables before reload get updated in-place,
+-- so existing instances (whose metatables point to them) pick up new methods.
+-- Returns true on success, or nil + error message on failure.
+function HotReload.swap(filepath)
+  -- Snapshot current globals (shallow clone)
+  local oldglobals = {}
+  for k, v in pairs(_G) do oldglobals[k] = v end
+
+  local ok, err = xpcall(function()
+    dofile(filepath)
+  end, function(e) return tostring(e) end)
+
+  if not ok then
+    -- Rollback: restore globals
+    for k in pairs(_G) do
+      if oldglobals[k] == nil then _G[k] = nil end
+    end
+    for k, v in pairs(oldglobals) do _G[k] = v end
+    return nil, err
+  end
+
+  -- For each global that was a table before AND got replaced with a new table:
+  -- update the old table in-place, then put the old table back as the global.
+  local visited = {}
+  for k, oldval in pairs(oldglobals) do
+    local newval = _G[k]
+    if type(oldval) == "table" and type(newval) == "table" and oldval ~= newval then
+      deepUpdate(oldval, newval, visited)
+      _G[k] = oldval  -- restore old identity
+    end
+  end
+
+  return true
+end
+
 return TinySystem
