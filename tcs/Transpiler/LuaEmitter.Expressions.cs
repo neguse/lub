@@ -529,18 +529,7 @@ public partial class LuaEmitter
         IsPatternExpressionSyntax isPattern)
     {
         var expr = VisitExpression(model, isPattern.Expression);
-        return isPattern.Pattern switch
-        {
-            ConstantPatternSyntax cp =>
-                $"({expr} == {VisitExpression(model, cp.Expression)})",
-            TypePatternSyntax tp =>
-                $"(getmetatable({expr}) == {tp.Type})",
-            DeclarationPatternSyntax dp =>
-                $"(getmetatable({expr}) == {dp.Type})",
-            UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
-                $"(not ({VisitIsSubPattern(model, expr, notPat.Pattern)}))",
-            _ => $"--[[ TODO is pattern: {isPattern.Pattern.Kind()} ]] true"
-        };
+        return $"({VisitIsSubPattern(model, expr, isPattern.Pattern)})";
     }
 
     private string VisitIsSubPattern(SemanticModel model, string expr,
@@ -551,9 +540,29 @@ public partial class LuaEmitter
             ConstantPatternSyntax cp =>
                 $"{expr} == {VisitExpression(model, cp.Expression)}",
             TypePatternSyntax tp => $"getmetatable({expr}) == {tp.Type}",
-            _ => "true"
+            DeclarationPatternSyntax dp =>
+                $"getmetatable({expr}) == {dp.Type}",
+            UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
+                $"not ({VisitIsSubPattern(model, expr, notPat.Pattern)})",
+            RelationalPatternSyntax rp =>
+                $"{expr} {RelationalOp(rp)} {VisitExpression(model, rp.Expression)}",
+            BinaryPatternSyntax bp =>
+                $"({VisitIsSubPattern(model, expr, bp.Left)} " +
+                $"{(bp.IsKind(SyntaxKind.AndPattern) ? "and" : "or")} " +
+                $"{VisitIsSubPattern(model, expr, bp.Right)})",
+            _ => $"--[[ TODO pattern: {pattern.Kind()} ]] true"
         };
     }
+
+    private static string RelationalOp(RelationalPatternSyntax rp) =>
+        rp.OperatorToken.Kind() switch
+        {
+            SyntaxKind.GreaterThanToken => ">",
+            SyntaxKind.GreaterThanEqualsToken => ">=",
+            SyntaxKind.LessThanToken => "<",
+            SyntaxKind.LessThanEqualsToken => "<=",
+            _ => "=="
+        };
 
     private string VisitConditionalAccess(SemanticModel model,
         ConditionalAccessExpressionSyntax condAccess)

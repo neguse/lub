@@ -40,6 +40,9 @@ public partial class LuaEmitter
             case ClassDeclarationSyntax cls:
                 VisitClass(model, cls);
                 break;
+            case RecordDeclarationSyntax rec:
+                VisitRecord(model, rec);
+                break;
             case EnumDeclarationSyntax enumDecl:
                 VisitEnum(model, enumDecl);
                 break;
@@ -179,6 +182,37 @@ public partial class LuaEmitter
             _indent--;
             AppendLine("end");
             AppendLine();
+        }
+    }
+
+    private void VisitRecord(SemanticModel model, RecordDeclarationSyntax rec)
+    {
+        SetSource(rec);
+        var name = rec.Identifier.Text;
+
+        AppendLine($"{name} = {{}}");
+        AppendLine($"{name}.__index = {name}");
+        AppendLine();
+
+        // Positional record: parameter list → constructor + properties
+        var paramNames = rec.ParameterList?.Parameters
+            .Select(p => p.Identifier.Text).ToList() ?? [];
+
+        AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
+        _indent++;
+        AppendLine($"local self = setmetatable({{}}, {name})");
+        foreach (var param in paramNames)
+            AppendLine($"self.{param} = {param}");
+        AppendLine("return self");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
+
+        // Emit any explicitly defined methods
+        foreach (var member in rec.Members)
+        {
+            if (member is MethodDeclarationSyntax method)
+                VisitMethod(model, name, method);
         }
     }
 

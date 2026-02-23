@@ -106,6 +106,15 @@ public partial class LuaEmitter
 
     private void VisitIf(SemanticModel model, IfStatementSyntax ifStmt, bool isRoot)
     {
+        // Declaration pattern: emit local variable binding before the if
+        if (isRoot && ifStmt.Condition is IsPatternExpressionSyntax
+            { Pattern: DeclarationPatternSyntax dp } isPat)
+        {
+            var expr = VisitExpression(model, isPat.Expression);
+            var varName = dp.Designation is SingleVariableDesignationSyntax sv
+                ? sv.Identifier.Text : "_";
+            AppendLine($"local {varName} = {expr}");
+        }
         AppendLine($"{(isRoot ? "if" : "elseif")} {VisitExpression(model, ifStmt.Condition)} then");
         _indent++;
         VisitBlock(model, ifStmt.Statement);
