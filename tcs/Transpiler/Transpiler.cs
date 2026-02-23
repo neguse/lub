@@ -75,6 +75,10 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors };
 
+        // Naming convention analysis
+        foreach (var tree in trees)
+            warnings.AddRange(NamingAnalyzer.Analyze(tree));
+
         var emitter = new LuaEmitter();
         foreach (var tree in trees)
         {
