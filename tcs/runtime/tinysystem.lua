@@ -292,8 +292,42 @@ function Random.Range(min, max)
 end
 
 -- HotReload (lume.hotswap-style in-place update for dofile)
+-- Modeled after lub3d's hotreload.lua + lume.hotswap pattern.
 local HotReload = {}
 TinySystem.HotReload = HotReload
+
+-- Configuration
+HotReload.interval = 0.5  -- seconds between mtime checks
+HotReload.enabled = true
+
+-- Internal state
+local watched = {}     -- { [filepath] = { mtime=number, on_reload=func? } }
+local last_check = 0
+
+-- Get file modification time (cross-platform, pure Lua)
+-- Returns a number that changes when the file is modified, or nil.
+local function getmtime(filepath)
+  local f = io.open(filepath, "rb")
+  if not f then return nil end
+  local size = f:seek("end")
+  f:close()
+  -- Lua 5.5 doesn't have lfs; use os.execute + temp file for real mtime
+  -- Fallback: file size as cheap change indicator (works for transpiler output)
+  -- For production, lub3d provides fs.mtime() via C module.
+  local ok, _, _, mtime = pcall(os.execute, "")  -- test if os.execute works
+  -- Try stat-based mtime
+  local handle = io.popen('stat -c %Y "' .. filepath .. '" 2>/dev/null || stat -f %m "' .. filepath .. '" 2>/dev/null', "r")
+  if handle then
+    local result = handle:read("*l")
+    handle:close()
+    if result then return tonumber(result) end
+  end
+  -- Fallback: size-based (sufficient for tcs --watch which always rewrites)
+  return size
+end
+
+-- Allow injecting a custom mtime function (e.g., lub3d's fs.mtime)
+HotReload.mtime = getmtime
 
 -- Recursively update old table in-place with new values,
 -- keeping the old table identity so existing references survive.
@@ -301,10 +335,8 @@ local function deepUpdate(old, new, visited)
   if old == nil or new == nil then return end
   if visited[old] then return end
   visited[old] = true
-  -- Update metatables
   local oldmt, newmt = getmetatable(old), getmetatable(new)
   if oldmt and newmt then deepUpdate(oldmt, newmt, visited) end
-  -- Copy new keys/values into old table
   for k, v in pairs(new) do
     if type(v) == "table" and type(old[k]) == "table" then
       deepUpdate(old[k], v, visited)
@@ -315,11 +347,8 @@ local function deepUpdate(old, new, visited)
 end
 
 -- Swap a dofile'd script in-place.
--- All globals that were tables before reload get updated in-place,
--- so existing instances (whose metatables point to them) pick up new methods.
 -- Returns true on success, or nil + error message on failure.
 function HotReload.swap(filepath)
-  -- Snapshot current globals (shallow clone)
   local oldglobals = {}
   for k, v in pairs(_G) do oldglobals[k] = v end
 
@@ -328,7 +357,6 @@ function HotReload.swap(filepath)
   end, function(e) return tostring(e) end)
 
   if not ok then
-    -- Rollback: restore globals
     for k in pairs(_G) do
       if oldglobals[k] == nil then _G[k] = nil end
     end
@@ -336,18 +364,52 @@ function HotReload.swap(filepath)
     return nil, err
   end
 
-  -- For each global that was a table before AND got replaced with a new table:
-  -- update the old table in-place, then put the old table back as the global.
   local visited = {}
   for k, oldval in pairs(oldglobals) do
     local newval = _G[k]
     if type(oldval) == "table" and type(newval) == "table" and oldval ~= newval then
       deepUpdate(oldval, newval, visited)
-      _G[k] = oldval  -- restore old identity
+      _G[k] = oldval
     end
   end
 
   return true
+end
+
+-- Watch a file for hot reload.
+-- on_reload: optional callback called after successful reload.
+function HotReload.watch(filepath, on_reload)
+  local mtime = HotReload.mtime(filepath)
+  watched[filepath] = { mtime = mtime, on_reload = on_reload }
+end
+
+-- Call this once per frame (at a safe point, e.g., start of frame).
+-- Checks watched files for changes and reloads if needed.
+function HotReload.update()
+  if not HotReload.enabled then return end
+
+  local now = os.time()
+  if now - last_check < HotReload.interval then return end
+  last_check = now
+
+  for filepath, info in pairs(watched) do
+    local new_mtime = HotReload.mtime(filepath)
+    if new_mtime and new_mtime ~= info.mtime then
+      local ok, err = HotReload.swap(filepath)
+      if ok then
+        print(string.format("[hotreload] Reloaded: %s", filepath))
+        if info.on_reload then
+          local hook_ok, hook_err = pcall(info.on_reload)
+          if not hook_ok then
+            print(string.format("[hotreload] on_reload error: %s", hook_err))
+          end
+        end
+      else
+        print(string.format("[hotreload] Error: %s", err))
+      end
+      info.mtime = new_mtime
+    end
+  end
 end
 
 return TinySystem
