@@ -54,8 +54,10 @@ public partial class LuaEmitter
         var symbol = model.GetSymbolInfo(id).Symbol;
         if (symbol is IMethodSymbol method && method.ContainingType != null)
         {
-            var sep = method.IsStatic ? "." : ":";
-            return $"{method.ContainingType.Name}{sep}{method.Name}";
+            if (method.IsStatic)
+                return $"{method.ContainingType.Name}.{method.Name}";
+            // Instance method without explicit receiver → implicit this (self)
+            return $"self:{method.Name}";
         }
         if (symbol is IFieldSymbol { IsStatic: false }
             or IPropertySymbol { IsStatic: false })
