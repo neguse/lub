@@ -80,6 +80,19 @@ public partial class LuaEmitter
             };
             if (op != null) { AppendLine($"{operand} = {operand} {op} 1"); return; }
         }
+        // ??= as statement: emit as if-then block
+        if (exprStmt.Expression is AssignmentExpressionSyntax
+            { RawKind: (int)SyntaxKind.CoalesceAssignmentExpression } coalesce)
+        {
+            var left = VisitExpression(model, coalesce.Left);
+            var right = VisitExpression(model, coalesce.Right);
+            AppendLine($"if {left} == nil then");
+            _indent++;
+            AppendLine($"{left} = {right}");
+            _indent--;
+            AppendLine("end");
+            return;
+        }
         AppendLine(VisitExpression(model, exprStmt.Expression));
     }
 

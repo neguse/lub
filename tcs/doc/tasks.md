@@ -360,9 +360,158 @@ lub3d の Generator パイプライン (`ModuleSpec` → 出力) に C# interfac
 
 ---
 
+## Phase 10.5: 標準ライブラリ セマンティックテスト補完
+
+support-matrix.md で Y (対応済み) とした機能のうち、C# → トランスパイル → Lua 実行のセマンティックテストが欠けている 29 項目を補完する。
+
+### T62: Math セマンティックテスト追加
+- 対象: Math.Min, Math.Max, Math.Abs, Math.Floor, Math.Ceiling, Math.Sin, Math.Cos, Math.Atan2, Math.PI
+- TranspileAndRun で C# コード → Lua 実行 → 結果検証
+- Math.Sqrt, Math.Clamp は既存テストあり（拡充は任意）
+- テスト: 各メソッドの基本ケース
+
+### T63: Random セマンティックテスト追加
+- 対象: Random.Next(), Random.NextFloat(), Random.Range(min, max)
+- 乱数なので値の範囲チェックで検証
+- テスト: 戻り値が期待範囲内であること
+
+### T64: String.Split セマンティックテスト追加
+- 対象: str.Split(",")
+- テスト: 分割後の要素数・内容を検証
+
+### T65: List\<T\> 残りメソッドのセマンティックテスト追加
+- 対象: Remove(item), RemoveAt(index), Clear(), Contains(item), IndexOf(item)
+- テスト: 各メソッドの基本ケース（要素数変化、戻り値検証）
+
+### T66: Dictionary\<K,V\> 残りメソッドのセマンティックテスト追加
+- 対象: .Count, .Remove(key), .Keys, .Values
+- テスト: 各メソッドの基本ケース
+
+### T67: LINQ 残りメソッドのセマンティックテスト追加
+- 対象: All(predicate), FirstOrDefault(), Min() (LINQ版), Max() (LINQ版)
+- テスト: 各メソッドの基本ケース + チェーン組み合わせ
+
+### T68: Console.WriteLine セマンティックテスト追加
+- 対象: Console.WriteLine(string) → print マッピング
+- テスト: Lua 実行の stdout で出力検証
+
+### T69: Action デリゲートのセマンティックテスト追加
+- 対象: Action (引数なし), Action\<T\> (コールバック渡し)
+- Func\<T,R\> は既存テストあり、Action 系のみ
+- テスト: 変数代入・呼び出し・引数渡し
+
+---
+
+## Phase 11: record 型 + パターンマッチング拡充
+
+### T70: positional record のトランスパイル
+- `record Point(int X, int Y);` → 既存 class 出力パターンに乗せる
+- `RecordDeclarationSyntax` を `VisitMember()` で検知
+- パラメータリスト → auto プロパティ + コンストラクタ自動生成
+- Lua 出力: 既存の table + metatable + `.new()` と同じ形
+- テスト: positional record 定義、new、プロパティアクセス
+
+### T71: 宣言パターン (`is Type name`)
+- `if (obj is Dog d)` → `local d = obj` + `getmetatable(obj) == Dog` チェック
+- `VisitIsPattern()` の `DeclarationPatternSyntax` 分岐で変数束縛を追加
+- 式中での使用は IIFE + local 変数で対応
+- switch 式/文の case でも変数束縛
+- テスト: if 内での型チェック+変数使用、switch での宣言パターン
+
+### T72: 関係パターン (`is > 0`, `is >= 10`)
+- `RelationalPatternSyntax` → 単純な比較式に展開
+- `x is > 0` → `(x > 0)`
+- `VisitPattern()` と `VisitIsPattern()` の両方に分岐追加
+- テスト: `>`, `>=`, `<`, `<=` の各パターン
+
+### T73: and/or パターン (`is > 0 and < 100`, `is 1 or 2`)
+- `BinaryPatternSyntax` → `and`/`or` で結合
+- `x is > 0 and < 100` → `(x > 0 and x < 100)`
+- `x is 1 or 2` → `(x == 1 or x == 2)`
+- 再帰的にサブパターンを展開
+- テスト: and 結合、or 結合、ネスト
+
+---
+
+## Phase 12: リテラル対応拡充
+
+### T74: 16進数リテラル (`0xFF`)
+- Lua 5.5 も `0xFF` をサポートしているので Token.Text をそのまま出力で動くはず
+- `StripNumericSuffix` が壊さないことを確認
+- テスト: `0xFF` → 255、`0x1A` → 26
+
+### T75: 桁区切りリテラル (`1_000_000`)
+- `StripNumericSuffix` の後に `_` を除去する処理を追加
+- Lua は `_` 入り数値をサポートしていない
+- テスト: `1_000_000` → 1000000、`0xFF_FF` → 65535
+
+### T76: 文字リテラル (`'A'`)
+- `CharacterLiteralExpression` を `VisitLiteral` に追加
+- `'A'` → `"A"` (Lua は char 型なし、1文字 string で代替)
+- エスケープ文字 (`'\n'`, `'\t'`, `'\\'` 等) の変換
+- テスト: 基本文字、エスケープ文字
+
+### T77: verbatim 文字列リテラル (`@"..."`)
+- 現在 `lit.Token.Text` をそのまま出力しており `@"..."` は Lua で不正
+- `lit.Token.ValueText` で解決済みの値を取得し、Lua 文字列として再エスケープ
+- `\` → `\\`、`"` → `\"` 等
+- テスト: パス文字列 `@"C:\Users\test"`、改行含み
+
+### T78: raw 文字列リテラル (`"""..."""`)
+- C# 11 の raw string。T77 と同じアプローチ: `Token.ValueText` → Lua 文字列
+- 複数行の場合は Lua の `[[ ]]` で出力するか、エスケープするか選択
+- テスト: 単一行、複数行
+
+### T79: 2進数リテラル (`0b1010`)
+- Lua 5.5 は 2進数リテラル非対応
+- `Token.Value` (int/long) を取得して10進数文字列に変換
+- テスト: `0b1010` → 10、`0b1111_0000` → 240
+
+### T80: `default` / `default(T)` 式
+- `DefaultExpressionSyntax` / `LiteralExpressionSyntax(DefaultLiteralExpression)` を処理
+- 型に応じたデフォルト値: 参照型 → `nil`、int/float → `0`、bool → `false`
+- SemanticModel で型を解決
+- テスト: `default(int)` → 0、`default(string)` → nil、`default(bool)` → false
+
+---
+
+## Phase 13: Null Safety 強化
+
+### T81: `??=` (null coalescing assignment)
+- `obj ??= new Foo();` → `if obj == nil then obj = Foo.new() end`
+- `ICoalesceAssignmentOperation` を `VisitStatement` / `VisitExpression` で処理
+- 既存の `??` → `or` 実装を参考に、代入文として展開
+- テスト: null時に代入される、non-null時にスキップ、複雑な右辺式
+
+### T82: `?[]` (null conditional indexer)
+- `list?[i]` → `(function() if list ~= nil then return list[i+1] end end)()`
+- `VisitConditionalAccess` の `?.` IIFE パターンを流用
+- `ElementAccessExpression` が `ConditionalAccessExpression` 配下にあるケースを処理
+- テスト: null時にnil返却、non-null時にインデックスアクセス、List・Dictionary両方
+
+### T83: `default` / `default(T)` 式 → T80 に統合
+- T80 と同一。Phase 12 の T80 で実施する
+
+### T84: `Nullable<T>` 値型の nil 透過サポート
+- テーブルラップせず nil をそのまま使う軽量方式
+- `int? x = null` → `local x = nil`
+- `int? x = 42` → `local x = 42`
+- `x.HasValue` → `(x ~= nil)`
+- `x.Value` → `x`（そのまま）
+- `x.GetValueOrDefault()` → `x or 0`（型に応じたデフォルト値、T80 に依存）
+- Roslyn の `NullableAnnotation` で `Nullable<T>` を検出
+- `HasValue` / `Value` プロパティアクセスを特殊変換
+- `GetValueOrDefault()` メソッド呼び出しを特殊変換
+- テスト: null代入・値代入、HasValue判定、Value取得、GetValueOrDefault
+
+---
+
 ## 未割り当て（必要に応じて追加）
 
-- record 型対応
+- プロパティパターン (`is { X: > 0 }`) — record と組み合わせると強力、中コスト
+- `with` 式 (`p with { X = 10 }`) — テーブル shallow copy、中コスト
+- Deconstruct (`var (x, y) = point`) — 多値返却で自然だが構文対応が必要
+- value-based Equals (record) — `__eq` メタメソッド、高コスト
 - コレクション初期化構文の完全対応
 - extension methods
 - string interpolation の高度なケース

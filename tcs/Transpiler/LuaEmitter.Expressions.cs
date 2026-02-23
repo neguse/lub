@@ -161,6 +161,16 @@ public partial class LuaEmitter
                     model, ma, methodSym, methodName, args, out var result))
                 return result;
 
+            // Nullable<T>.GetValueOrDefault() → x or <default>
+            if (methodName == "GetValueOrDefault" && symbol is IMethodSymbol nullableMethod
+                && nullableMethod.ContainingType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            {
+                var obj = VisitExpression(model, ma.Expression);
+                var underlyingType = ((INamedTypeSymbol)nullableMethod.ContainingType).TypeArguments[0];
+                var defaultVal = GetDefaultValueForType(underlyingType);
+                return $"({obj} or {defaultVal})";
+            }
+
             // String method calls → String.Method(str, args)
             if (TryMapStringMethod(model, ma, methodName, args, out var strResult))
                 return strResult;
@@ -273,6 +283,13 @@ public partial class LuaEmitter
         {
             var receiverType = model.GetTypeInfo(memberAccess.Expression).Type;
             var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+
+            // Nullable<T>.HasValue → (x ~= nil), Nullable<T>.Value → x
+            if (receiverType?.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            {
+                if (member == "HasValue") return $"({obj} ~= nil)";
+                if (member == "Value") return obj;
+            }
             if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)))
             {
                 return IsDictType(typeDef)
@@ -318,6 +335,8 @@ public partial class LuaEmitter
             SyntaxKind.MultiplyAssignmentExpression => $"{left} = {left} * {right}",
             SyntaxKind.DivideAssignmentExpression => $"{left} = {left} / {right}",
             SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
+            SyntaxKind.CoalesceAssignmentExpression =>
+                $"(function() if {left} == nil then {left} = {right} end return {left} end)()",
             _ => $"--[[ unsupported assign: {assign.Kind()} ]]"
         };
     }
@@ -525,20 +544,34 @@ public partial class LuaEmitter
         // Use IIFE for safe nil propagation
         var savedObj = obj;
         // Visit the when-not-null part, which may contain MemberBindingExpression
-        var whenNotNull = VisitConditionalWhenNotNull(model, condAccess.WhenNotNull, savedObj);
+        var receiverType = model.GetTypeInfo(condAccess.Expression).Type;
+        var whenNotNull = VisitConditionalWhenNotNull(model, condAccess.WhenNotNull, savedObj, receiverType);
         return $"(function() if {savedObj} ~= nil then return {whenNotNull} end end)()";
     }
 
     private string VisitConditionalWhenNotNull(SemanticModel model,
-        ExpressionSyntax expr, string obj)
+        ExpressionSyntax expr, string obj, ITypeSymbol? receiverType)
     {
         return expr switch
         {
             MemberBindingExpressionSyntax mb => $"{obj}.{mb.Name.Identifier.Text}",
             InvocationExpressionSyntax inv when inv.Expression is MemberBindingExpressionSyntax mb2 =>
                 VisitConditionalInvocation(model, mb2, inv.ArgumentList, obj),
+            ElementBindingExpressionSyntax eb =>
+                VisitConditionalElementAccess(model, eb, obj, receiverType),
             _ => VisitExpression(model, expr)
         };
+    }
+
+    private string VisitConditionalElementAccess(SemanticModel model,
+        ElementBindingExpressionSyntax eb, string obj, ITypeSymbol? receiverType)
+    {
+        var index = VisitExpression(model, eb.ArgumentList.Arguments[0].Expression);
+        var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+        // List<T>: 0-indexed → 1-indexed
+        if (IsListType(typeDef))
+            return $"{obj}[{index} + 1]";
+        return $"{obj}[{index}]";
     }
 
     private string VisitConditionalInvocation(SemanticModel model,
@@ -597,6 +630,15 @@ public partial class LuaEmitter
         }
         return false;
     }
+
+    private static string GetDefaultValueForType(ITypeSymbol type) => type.SpecialType switch
+    {
+        SpecialType.System_Boolean => "false",
+        SpecialType.System_Int32 or SpecialType.System_Int64
+            or SpecialType.System_UInt32 or SpecialType.System_Single
+            or SpecialType.System_Double => "0",
+        _ => "nil"
+    };
 
     // Handle ToString() on any type
     private bool TryMapToString(SemanticModel model,
