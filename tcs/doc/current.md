@@ -1,15 +1,36 @@
 # 現在の状態
 
-## フェーズ: Phase 0 完了 → Phase 1 (ユースケース検証) 待ち
+## フェーズ: Phase 2-4 完了 → Phase 6-7 (TinySystem + コレクション) へ
 
 ### 完了済み
-- T1-T6: プロジェクトセットアップ完了
-- .NET 10 / C# 14 ソリューション構築済み
-- Lua 5.5 サブモジュール追加・ビルド済み
-- 最小トランスパイラ: class, static method, literals, operators, if/else, while, local vars
-- セマンティックテスト 10件パス
-- run-tests.sh + pre-commit hook 動作確認済み
+- T1-T6: プロジェクトセットアップ
+- T12-T34: トランスパイラ中核機能
+  - リテラル、演算子、変数、if/else/elseif、while、for、foreach
+  - クラス、コンストラクタ、継承、enum、プロパティ
+  - ラムダ、三項演算子、文字列補間
+  - instance/static メソッド自動判定
+- テスト 40件パス
+- LuaEmitter 3ファイル分割済み
+
+### 実装済みの C# → Lua マッピング
+| C# 構文 | Lua 出力 | テスト |
+|---------|---------|-------|
+| class + new | table + metatable + .new() | ✓ |
+| inheritance + base() | metatable チェーン | ✓ |
+| static method | Class.Method() | ✓ |
+| instance method | obj:Method() | ✓ |
+| field / auto property | table field | ✓ |
+| enum | 定数テーブル | ✓ |
+| if/else/elseif | if/elseif/else | ✓ |
+| for (i=0; i<n; i++) | for i=0,n-1 | ✓ |
+| foreach | ipairs/pairs | ✓ |
+| while | while do end | ✓ |
+| lambda | function() end | ✓ |
+| ternary | IIFE | ✓ |
+| string interpolation | tostring + .. | ✓ |
+| ?? | or | ✓ |
 
 ### 次のタスク
-- T7-T11: サンプルコードによるユースケース検証
-- または T12 以降でトランスパイラ機能を拡充
+- T35-T40: TinySystem 標準ライブラリ
+- T41-T43: コレクション・LINQ トランスパイル
+- T48: CLI エントリポイント
