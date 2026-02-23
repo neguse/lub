@@ -9,6 +9,7 @@ public class LuaEmitter
 {
     private readonly StringBuilder _sb = new();
     private int _indent;
+    private readonly List<string> _classOrder = [];
 
     public void Visit(CSharpCompilation compilation, SemanticModel model, SyntaxTree tree)
     {
@@ -33,16 +34,58 @@ public class LuaEmitter
             case ClassDeclarationSyntax cls:
                 VisitClass(model, cls);
                 break;
+            case EnumDeclarationSyntax enumDecl:
+                VisitEnum(model, enumDecl);
+                break;
         }
     }
 
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
         var name = cls.Identifier.Text;
+        _classOrder.Add(name);
+
+        // Base class handling
+        var baseClass = cls.BaseList?.Types
+            .Select(t => model.GetTypeInfo(t.Type).Type)
+            .FirstOrDefault(t => t is { TypeKind: TypeKind.Class } and not { SpecialType: SpecialType.System_Object });
+        var baseName = baseClass?.Name;
+
         AppendLine($"local {name} = {{}}");
         AppendLine($"{name}.__index = {name}");
+        if (baseName != null)
+        {
+            AppendLine($"setmetatable({name}, {{__index = {baseName}}})");
+        }
         AppendLine();
 
+        // Gather fields with initializers and constructor
+        var fieldInits = new List<(string Name, ExpressionSyntax? Init)>();
+        ConstructorDeclarationSyntax? ctor = null;
+
+        foreach (var member in cls.Members)
+        {
+            switch (member)
+            {
+                case FieldDeclarationSyntax field:
+                    foreach (var v in field.Declaration.Variables)
+                        fieldInits.Add((v.Identifier.Text, v.Initializer?.Value));
+                    break;
+                case PropertyDeclarationSyntax prop when prop.AccessorList != null
+                    && prop.AccessorList.Accessors.All(a => a.Body == null && a.ExpressionBody == null):
+                    // Auto property — treat as field
+                    fieldInits.Add((prop.Identifier.Text, prop.Initializer?.Value));
+                    break;
+                case ConstructorDeclarationSyntax c:
+                    ctor = c;
+                    break;
+            }
+        }
+
+        // Generate constructor (new)
+        EmitConstructor(model, name, ctor, fieldInits);
+
+        // Methods and custom properties
         foreach (var member in cls.Members)
         {
             switch (member)
@@ -50,8 +93,97 @@ public class LuaEmitter
                 case MethodDeclarationSyntax method:
                     VisitMethod(model, name, method);
                     break;
+                case PropertyDeclarationSyntax prop when prop.AccessorList != null
+                    && prop.AccessorList.Accessors.Any(a => a.Body != null || a.ExpressionBody != null):
+                    VisitCustomProperty(model, name, prop);
+                    break;
             }
         }
+    }
+
+    private void EmitConstructor(SemanticModel model, string className,
+        ConstructorDeclarationSyntax? ctor, List<(string Name, ExpressionSyntax? Init)> fieldInits)
+    {
+        var ctorParams = ctor?.ParameterList.Parameters
+            .Select(p => p.Identifier.Text).ToList() ?? [];
+
+        AppendLine($"function {className}.new({string.Join(", ", ctorParams)})");
+        _indent++;
+        AppendLine($"local self = setmetatable({{}}, {className})");
+
+        // Field initializers
+        foreach (var (fieldName, init) in fieldInits)
+        {
+            if (init != null)
+                AppendLine($"self.{fieldName} = {VisitExpression(model, init)}");
+        }
+
+        // Constructor body
+        if (ctor?.Body != null)
+        {
+            foreach (var stmt in ctor.Body.Statements)
+                VisitStatement(model, stmt);
+        }
+        else if (ctor?.ExpressionBody != null)
+        {
+            AppendLine(VisitExpression(model, ctor.ExpressionBody.Expression));
+        }
+
+        AppendLine("return self");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
+    }
+
+    private void VisitCustomProperty(SemanticModel model, string className, PropertyDeclarationSyntax prop)
+    {
+        var propName = prop.Identifier.Text;
+        foreach (var accessor in prop.AccessorList!.Accessors)
+        {
+            if (accessor.IsKind(SyntaxKind.GetAccessorDeclaration))
+            {
+                AppendLine($"function {className}:get_{propName}()");
+                _indent++;
+                if (accessor.Body != null)
+                    foreach (var s in accessor.Body.Statements) VisitStatement(model, s);
+                else if (accessor.ExpressionBody != null)
+                    AppendLine($"return {VisitExpression(model, accessor.ExpressionBody.Expression)}");
+                _indent--;
+                AppendLine("end");
+                AppendLine();
+            }
+            else if (accessor.IsKind(SyntaxKind.SetAccessorDeclaration))
+            {
+                AppendLine($"function {className}:set_{propName}(value)");
+                _indent++;
+                if (accessor.Body != null)
+                    foreach (var s in accessor.Body.Statements) VisitStatement(model, s);
+                else if (accessor.ExpressionBody != null)
+                    AppendLine(VisitExpression(model, accessor.ExpressionBody.Expression));
+                _indent--;
+                AppendLine("end");
+                AppendLine();
+            }
+        }
+    }
+
+    private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)
+    {
+        var name = enumDecl.Identifier.Text;
+        AppendLine($"local {name} = {{}}");
+        int value = 0;
+        foreach (var member in enumDecl.Members)
+        {
+            if (member.EqualsValue != null)
+            {
+                var constVal = model.GetConstantValue(member.EqualsValue.Value);
+                if (constVal.HasValue && constVal.Value is int v)
+                    value = v;
+            }
+            AppendLine($"{name}.{member.Identifier.Text} = {value}");
+            value++;
+        }
+        AppendLine();
     }
 
     private void VisitMethod(SemanticModel model, string className, MethodDeclarationSyntax method)
@@ -60,20 +192,15 @@ public class LuaEmitter
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
         var parameters = method.ParameterList.Parameters;
 
-        var paramNames = new List<string>();
-        if (!isStatic) paramNames.Add("self");
-        foreach (var p in parameters) paramNames.Add(p.Identifier.Text);
-
+        var paramNames = parameters.Select(p => p.Identifier.Text).ToList();
         var sep = isStatic ? "." : ":";
-        AppendLine($"function {className}{sep}{methodName}({string.Join(", ", isStatic ? paramNames : paramNames.Skip(1))})");
+        AppendLine($"function {className}{sep}{methodName}({string.Join(", ", paramNames)})");
         _indent++;
 
         if (method.Body != null)
         {
             foreach (var stmt in method.Body.Statements)
-            {
                 VisitStatement(model, stmt);
-            }
         }
         else if (method.ExpressionBody != null)
         {
@@ -98,7 +225,8 @@ public class LuaEmitter
             case LocalDeclarationStatementSyntax local:
                 foreach (var v in local.Declaration.Variables)
                 {
-                    var init = v.Initializer != null ? $" = {VisitExpression(model, v.Initializer.Value)}" : "";
+                    var init = v.Initializer != null
+                        ? $" = {VisitExpression(model, v.Initializer.Value)}" : "";
                     AppendLine($"local {v.Identifier.Text}{init}");
                 }
                 break;
@@ -106,14 +234,20 @@ public class LuaEmitter
                 AppendLine(VisitExpression(model, exprStmt.Expression));
                 break;
             case IfStatementSyntax ifStmt:
-                VisitIf(model, ifStmt);
+                VisitIf(model, ifStmt, isRoot: true);
                 break;
             case WhileStatementSyntax whileStmt:
                 AppendLine($"while {VisitExpression(model, whileStmt.Condition)} do");
                 _indent++;
-                VisitStatement(model, whileStmt.Statement);
+                VisitBlock(model, whileStmt.Statement);
                 _indent--;
                 AppendLine("end");
+                break;
+            case ForStatementSyntax forStmt:
+                VisitFor(model, forStmt);
+                break;
+            case ForEachStatementSyntax foreachStmt:
+                VisitForEach(model, foreachStmt);
                 break;
             case BlockSyntax block:
                 foreach (var s in block.Statements)
@@ -122,28 +256,40 @@ public class LuaEmitter
             case BreakStatementSyntax:
                 AppendLine("break");
                 break;
+            case ContinueStatementSyntax:
+                AppendLine("goto continue_label");
+                break;
         }
     }
 
-    private void VisitIf(SemanticModel model, IfStatementSyntax ifStmt)
+    private void VisitBlock(SemanticModel model, StatementSyntax stmt)
     {
-        AppendLine($"if {VisitExpression(model, ifStmt.Condition)} then");
+        if (stmt is BlockSyntax block)
+            foreach (var s in block.Statements)
+                VisitStatement(model, s);
+        else
+            VisitStatement(model, stmt);
+    }
+
+    private void VisitIf(SemanticModel model, IfStatementSyntax ifStmt, bool isRoot)
+    {
+        var keyword = isRoot ? "if" : "elseif";
+        AppendLine($"{keyword} {VisitExpression(model, ifStmt.Condition)} then");
         _indent++;
-        VisitStatement(model, ifStmt.Statement);
+        VisitBlock(model, ifStmt.Statement);
         _indent--;
 
         if (ifStmt.Else != null)
         {
             if (ifStmt.Else.Statement is IfStatementSyntax elseIf)
             {
-                Append("elseif ");
-                VisitElseIf(model, elseIf);
+                VisitIf(model, elseIf, isRoot: false);
             }
             else
             {
                 AppendLine("else");
                 _indent++;
-                VisitStatement(model, ifStmt.Else.Statement);
+                VisitBlock(model, ifStmt.Else.Statement);
                 _indent--;
                 AppendLine("end");
             }
@@ -154,31 +300,95 @@ public class LuaEmitter
         }
     }
 
-    private void VisitElseIf(SemanticModel model, IfStatementSyntax ifStmt)
+    private void VisitFor(SemanticModel model, ForStatementSyntax forStmt)
     {
-        _sb.AppendLine($"{VisitExpression(model, ifStmt.Condition)} then");
-        _indent++;
-        VisitStatement(model, ifStmt.Statement);
-        _indent--;
+        // Try to detect simple `for (int i = a; i < b; i++)` → `for i = a, b-1`
+        if (TryEmitSimpleFor(model, forStmt))
+            return;
 
-        if (ifStmt.Else != null)
+        // General case: while loop
+        if (forStmt.Declaration != null)
         {
-            if (ifStmt.Else.Statement is IfStatementSyntax elseIf)
+            foreach (var v in forStmt.Declaration.Variables)
             {
-                Append("elseif ");
-                VisitElseIf(model, elseIf);
+                var init = v.Initializer != null
+                    ? $" = {VisitExpression(model, v.Initializer.Value)}" : "";
+                AppendLine($"local {v.Identifier.Text}{init}");
             }
-            else
-            {
-                AppendLine("else");
-                _indent++;
-                VisitStatement(model, ifStmt.Else.Statement);
-                _indent--;
-                AppendLine("end");
-            }
+        }
+
+        var cond = forStmt.Condition != null ? VisitExpression(model, forStmt.Condition) : "true";
+        AppendLine($"while {cond} do");
+        _indent++;
+        VisitBlock(model, forStmt.Statement);
+        foreach (var inc in forStmt.Incrementors)
+            AppendLine(VisitExpression(model, inc));
+        _indent--;
+        AppendLine("end");
+    }
+
+    private bool TryEmitSimpleFor(SemanticModel model, ForStatementSyntax forStmt)
+    {
+        // Match: for (int i = start; i < end; i++) or (i <= end; i++)
+        if (forStmt.Declaration?.Variables.Count != 1) return false;
+        var decl = forStmt.Declaration.Variables[0];
+        if (decl.Initializer == null) return false;
+        var varName = decl.Identifier.Text;
+        var start = VisitExpression(model, decl.Initializer.Value);
+
+        if (forStmt.Condition is not BinaryExpressionSyntax cond) return false;
+        if (cond.Left is not IdentifierNameSyntax condId || condId.Identifier.Text != varName)
+            return false;
+
+        if (forStmt.Incrementors.Count != 1) return false;
+        var inc = forStmt.Incrementors[0];
+        // i++ or i += 1
+        bool isIncByOne = inc is PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PostIncrementExpression }
+            || (inc is AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.AddAssignmentExpression } addAssign
+                && addAssign.Right is LiteralExpressionSyntax { Token.Text: "1" });
+        if (!isIncByOne) return false;
+
+        var end = VisitExpression(model, cond.Right);
+        var limit = cond.Kind() switch
+        {
+            SyntaxKind.LessThanExpression => $"{end} - 1",
+            SyntaxKind.LessThanOrEqualExpression => end,
+            _ => null
+        };
+        if (limit == null) return false;
+
+        AppendLine($"for {varName} = {start}, {limit} do");
+        _indent++;
+        VisitBlock(model, forStmt.Statement);
+        _indent--;
+        AppendLine("end");
+        return true;
+    }
+
+    private void VisitForEach(SemanticModel model, ForEachStatementSyntax foreachStmt)
+    {
+        var varName = foreachStmt.Identifier.Text;
+        var collection = VisitExpression(model, foreachStmt.Expression);
+
+        // Check if iterating a Dictionary via type info
+        var typeInfo = model.GetTypeInfo(foreachStmt.Expression);
+        var typeName = typeInfo.Type?.OriginalDefinition.ToDisplayString() ?? "";
+        if (typeName.StartsWith("System.Collections.Generic.Dictionary"))
+        {
+            AppendLine($"for {varName}_key, {varName}_value in pairs({collection}) do");
+            _indent++;
+            // Create a KeyValuePair-like table
+            AppendLine($"local {varName} = {{Key = {varName}_key, Value = {varName}_value}}");
+            VisitBlock(model, foreachStmt.Statement);
+            _indent--;
+            AppendLine("end");
         }
         else
         {
+            AppendLine($"for _, {varName} in ipairs({collection}) do");
+            _indent++;
+            VisitBlock(model, foreachStmt.Statement);
+            _indent--;
             AppendLine("end");
         }
     }
@@ -188,15 +398,45 @@ public class LuaEmitter
         return expr switch
         {
             LiteralExpressionSyntax lit => VisitLiteral(lit),
-            IdentifierNameSyntax id => id.Identifier.Text,
+            IdentifierNameSyntax id => ResolveIdentifier(model, id),
             BinaryExpressionSyntax bin => VisitBinary(model, bin),
             PrefixUnaryExpressionSyntax prefix => VisitPrefixUnary(model, prefix),
-            ParenthesizedExpressionSyntax paren => $"({VisitExpression(model, paren.Expression)})",
+            PostfixUnaryExpressionSyntax postfix => VisitPostfixUnary(model, postfix),
+            ParenthesizedExpressionSyntax paren =>
+                $"({VisitExpression(model, paren.Expression)})",
             InvocationExpressionSyntax invocation => VisitInvocation(model, invocation),
             MemberAccessExpressionSyntax memberAccess => VisitMemberAccess(model, memberAccess),
             AssignmentExpressionSyntax assignment => VisitAssignment(model, assignment),
+            ObjectCreationExpressionSyntax creation => VisitObjectCreation(model, creation),
+            ImplicitObjectCreationExpressionSyntax implicitCreation =>
+                VisitImplicitObjectCreation(model, implicitCreation),
+            ThisExpressionSyntax => "self",
+            BaseExpressionSyntax => "self",
+            CastExpressionSyntax cast => VisitExpression(model, cast.Expression),
+            ConditionalExpressionSyntax ternary => VisitTernary(model, ternary),
+            InterpolatedStringExpressionSyntax interp => VisitInterpolatedString(model, interp),
+            SimpleLambdaExpressionSyntax lambda => VisitSimpleLambda(model, lambda),
+            ParenthesizedLambdaExpressionSyntax lambda => VisitParenthesizedLambda(model, lambda),
             _ => $"--[[ TODO: {expr.Kind()} ]]"
         };
+    }
+
+    private string ResolveIdentifier(SemanticModel model, IdentifierNameSyntax id)
+    {
+        var symbol = model.GetSymbolInfo(id).Symbol;
+        if (symbol is IMethodSymbol method && method.ContainingType != null)
+        {
+            var className = method.ContainingType.Name;
+            var sep = method.IsStatic ? "." : ":";
+            return $"{className}{sep}{method.Name}";
+        }
+        if (symbol is IFieldSymbol or IPropertySymbol)
+        {
+            // Could be an instance member accessed without `this.`
+            if (symbol is IFieldSymbol { IsStatic: false } || symbol is IPropertySymbol { IsStatic: false })
+                return $"self.{id.Identifier.Text}";
+        }
+        return id.Identifier.Text;
     }
 
     private string VisitLiteral(LiteralExpressionSyntax lit)
@@ -231,6 +471,7 @@ public class LuaEmitter
             SyntaxKind.GreaterThanOrEqualExpression => ">=",
             SyntaxKind.LogicalAndExpression => "and",
             SyntaxKind.LogicalOrExpression => "or",
+            SyntaxKind.CoalesceExpression => "or",  // a ?? b → a or b
             _ => $"--[[{bin.Kind()}]]"
         };
         return $"{left} {op} {right}";
@@ -243,15 +484,47 @@ public class LuaEmitter
         {
             SyntaxKind.UnaryMinusExpression => $"-{operand}",
             SyntaxKind.LogicalNotExpression => $"not {operand}",
+            SyntaxKind.PreIncrementExpression => $"({operand} + 1)",
+            SyntaxKind.PreDecrementExpression => $"({operand} - 1)",
             _ => $"--[[ TODO unary: {prefix.Kind()} ]]"
+        };
+    }
+
+    private string VisitPostfixUnary(SemanticModel model, PostfixUnaryExpressionSyntax postfix)
+    {
+        var operand = VisitExpression(model, postfix.Operand);
+        // As a statement, i++ is handled in VisitFor. As expression it's trickier.
+        return postfix.Kind() switch
+        {
+            SyntaxKind.PostIncrementExpression => $"{operand} + 1",
+            SyntaxKind.PostDecrementExpression => $"{operand} - 1",
+            _ => $"--[[ TODO postfix: {postfix.Kind()} ]]"
         };
     }
 
     private string VisitInvocation(SemanticModel model, InvocationExpressionSyntax invocation)
     {
-        var args = string.Join(", ", invocation.ArgumentList.Arguments.Select(a => VisitExpression(model, a.Expression)));
-        var target = VisitExpression(model, invocation.Expression);
-        return $"{target}({args})";
+        var args = invocation.ArgumentList.Arguments
+            .Select(a => VisitExpression(model, a.Expression)).ToList();
+
+        // Detect instance method calls: obj.Method(args) → obj:Method(args)
+        if (invocation.Expression is MemberAccessExpressionSyntax ma)
+        {
+            var symbol = model.GetSymbolInfo(ma).Symbol;
+            if (symbol is IMethodSymbol methodSym && !methodSym.IsStatic)
+            {
+                var obj = VisitExpression(model, ma.Expression);
+                var methodName = ma.Name.Identifier.Text;
+                return $"{obj}:{methodName}({string.Join(", ", args)})";
+            }
+
+            // Static call
+            var target = VisitExpression(model, invocation.Expression);
+            return $"{target}({string.Join(", ", args)})";
+        }
+
+        var targetExpr = VisitExpression(model, invocation.Expression);
+        return $"{targetExpr}({string.Join(", ", args)})";
     }
 
     private string VisitMemberAccess(SemanticModel model, MemberAccessExpressionSyntax memberAccess)
@@ -272,8 +545,95 @@ public class LuaEmitter
             SyntaxKind.SubtractAssignmentExpression => $"{left} = {left} - {right}",
             SyntaxKind.MultiplyAssignmentExpression => $"{left} = {left} * {right}",
             SyntaxKind.DivideAssignmentExpression => $"{left} = {left} / {right}",
+            SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
             _ => $"--[[ TODO assign: {assignment.Kind()} ]]"
         };
+    }
+
+    private string VisitObjectCreation(SemanticModel model, ObjectCreationExpressionSyntax creation)
+    {
+        var typeSymbol = model.GetTypeInfo(creation).Type;
+        var typeName = typeSymbol?.Name ?? creation.Type.ToString();
+        var args = creation.ArgumentList?.Arguments
+            .Select(a => VisitExpression(model, a.Expression)).ToList() ?? [];
+        return $"{typeName}.new({string.Join(", ", args)})";
+    }
+
+    private string VisitImplicitObjectCreation(SemanticModel model,
+        ImplicitObjectCreationExpressionSyntax creation)
+    {
+        var typeSymbol = model.GetTypeInfo(creation).ConvertedType;
+        var typeName = typeSymbol?.Name ?? "UNKNOWN";
+        var args = creation.ArgumentList.Arguments
+            .Select(a => VisitExpression(model, a.Expression)).ToList();
+        return $"{typeName}.new({string.Join(", ", args)})";
+    }
+
+    private string VisitTernary(SemanticModel model, ConditionalExpressionSyntax ternary)
+    {
+        var cond = VisitExpression(model, ternary.Condition);
+        var trueExpr = VisitExpression(model, ternary.WhenTrue);
+        var falseExpr = VisitExpression(model, ternary.WhenFalse);
+        // Safe ternary using immediate function to handle falsy true-branch
+        return $"(function() if {cond} then return {trueExpr} else return {falseExpr} end end)()";
+    }
+
+    private string VisitInterpolatedString(SemanticModel model,
+        InterpolatedStringExpressionSyntax interp)
+    {
+        var parts = new List<string>();
+        foreach (var content in interp.Contents)
+        {
+            switch (content)
+            {
+                case InterpolatedStringTextSyntax text:
+                    parts.Add($"\"{text.TextToken.Text}\"");
+                    break;
+                case InterpolationSyntax hole:
+                    parts.Add($"tostring({VisitExpression(model, hole.Expression)})");
+                    break;
+            }
+        }
+        return string.Join(" .. ", parts);
+    }
+
+    private string VisitSimpleLambda(SemanticModel model, SimpleLambdaExpressionSyntax lambda)
+    {
+        var param = lambda.Parameter.Identifier.Text;
+        if (lambda.ExpressionBody != null)
+            return $"function({param}) return {VisitExpression(model, lambda.ExpressionBody)} end";
+        // Block body
+        var saved = _sb.Length;
+        // For block lambdas we need inline generation
+        return $"function({param}) {VisitLambdaBlock(model, lambda.Block!)} end";
+    }
+
+    private string VisitParenthesizedLambda(SemanticModel model,
+        ParenthesizedLambdaExpressionSyntax lambda)
+    {
+        var parameters = string.Join(", ",
+            lambda.ParameterList.Parameters.Select(p => p.Identifier.Text));
+        if (lambda.ExpressionBody != null)
+            return $"function({parameters}) return {VisitExpression(model, lambda.ExpressionBody)} end";
+        return $"function({parameters}) {VisitLambdaBlock(model, lambda.Block!)} end";
+    }
+
+    private string VisitLambdaBlock(SemanticModel model, BlockSyntax block)
+    {
+        var savedSb = _sb.ToString();
+        var savedLen = _sb.Length;
+        var savedIndent = _indent;
+        _sb.Clear();
+        _indent = 0;
+
+        foreach (var s in block.Statements)
+            VisitStatement(model, s);
+
+        var body = _sb.ToString().Trim();
+        _sb.Clear();
+        _sb.Append(savedSb);
+        _indent = savedIndent;
+        return body;
     }
 
     private void AppendLine(string line = "")

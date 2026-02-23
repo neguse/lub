@@ -1,0 +1,148 @@
+namespace TinyCs.Tests;
+
+public class ClassTests
+{
+    [Fact]
+    public void Constructor_NoArgs()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Counter
+            {
+                public int Count = 0;
+
+                public int GetCount() { return this.Count; }
+            }
+            """,
+            "Counter.new():GetCount()");
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void Constructor_WithArgs()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Point
+            {
+                public int X;
+                public int Y;
+
+                public Point(int x, int y)
+                {
+                    this.X = x;
+                    this.Y = y;
+                }
+
+                public int Sum() { return this.X + this.Y; }
+            }
+            """,
+            "Point.new(3, 4):Sum()");
+        Assert.Equal("7", result);
+    }
+
+    [Fact]
+    public void InstanceMethod_ModifiesState()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Counter
+            {
+                public int Count = 0;
+
+                public void Increment()
+                {
+                    this.Count = this.Count + 1;
+                }
+
+                public int GetCount() { return this.Count; }
+            }
+            """, """
+            (function()
+              local c = Counter.new()
+              c:Increment()
+              c:Increment()
+              c:Increment()
+              return c:GetCount()
+            end)()
+            """);
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void AutoProperty_AsField()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Item
+            {
+                public string Name { get; set; }
+                public int Value { get; set; }
+
+                public Item(string name, int value)
+                {
+                    this.Name = name;
+                    this.Value = value;
+                }
+
+                public string Describe()
+                {
+                    return this.Name;
+                }
+            }
+            """,
+            "Item.new('sword', 100):Describe()");
+        Assert.Equal("sword", result);
+    }
+
+    [Fact]
+    public void FieldInitializer()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Config
+            {
+                public int MaxHP = 100;
+                public int Speed = 5;
+
+                public int Total() { return this.MaxHP + this.Speed; }
+            }
+            """,
+            "Config.new():Total()");
+        Assert.Equal("105", result);
+    }
+
+    [Fact]
+    public void ExpressionBodiedMethod()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Calc
+            {
+                public static int Square(int x) => x * x;
+            }
+            """,
+            "Calc.Square(7)");
+        Assert.Equal("49", result);
+    }
+
+    [Fact]
+    public void MultipleClasses()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Vec2
+            {
+                public int X;
+                public int Y;
+                public Vec2(int x, int y) { this.X = x; this.Y = y; }
+            }
+
+            public class Physics
+            {
+                public static int Distance(Vec2 a, Vec2 b)
+                {
+                    var dx = a.X - b.X;
+                    var dy = a.Y - b.Y;
+                    return dx * dx + dy * dy;
+                }
+            }
+            """, """
+            Physics.Distance(Vec2.new(1, 2), Vec2.new(4, 6))
+            """);
+        Assert.Equal("25", result);
+    }
+}
