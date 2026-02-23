@@ -8,6 +8,7 @@ public partial class LuaEmitter
 {
     private void VisitStatement(SemanticModel model, StatementSyntax stmt)
     {
+        SetSource(stmt);
         switch (stmt)
         {
             case ReturnStatementSyntax ret:

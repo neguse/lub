@@ -33,8 +33,21 @@ public static class TestHelper
 
     private static string FindLua()
     {
-        var candidate = Path.Combine(ProjectRoot, "deps", "lua", "lua");
-        return File.Exists(candidate) ? candidate : "lua";
+        // Try platform-specific binary names
+        var isWindows = OperatingSystem.IsWindows();
+        var names = isWindows
+            ? new[] { "lua.exe", "lua" }
+            : new[] { "lua", "lua5.5" };
+
+        // Check local build first
+        foreach (var name in names)
+        {
+            var candidate = Path.Combine(ProjectRoot, "deps", "lua", name);
+            if (File.Exists(candidate)) return candidate;
+        }
+
+        // Fallback to system PATH
+        return isWindows ? "lua.exe" : "lua";
     }
 
     /// <summary>

@@ -219,9 +219,9 @@
 | 未対応構文の警告 | ✓ | Warnings コレクション |
 | 複数ファイル入力 | ✓ | 共有 Compilation でクロスファイル参照解決 |
 | namespace 解決 | ✓ | 透過 (Lua 出力に影響なし) |
-| CLI | ✓ | `tcs a.cs b.cs [-o out.lua]` |
-| ソースマップ | ✗ | 将来実装予定 |
-| watch モード | ✗ | 将来実装予定 |
+| CLI | ✓ | `tcs a.cs b.cs [-o out.lua] [--sourcemap] [--watch]` |
+| ソースマップ | ✓ | `--sourcemap` で `.lua.map` 出力 (Lua行→C#行) |
+| watch モード | ✓ | `--watch` でファイル監視+自動再トランスパイル |
 
 ## 数値 (暗黙の変換)
 

@@ -9,4 +9,8 @@ obj/
 
 # Lua build artifacts
 deps/lua/lua
+deps/lua/lua.exe
 deps/lua/*.o
+
+# CMake build directory
+build/

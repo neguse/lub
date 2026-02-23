@@ -6,6 +6,7 @@ namespace TinyCs;
 public class TranspileResult
 {
     public string Lua { get; init; } = "";
+    public SourceMap? SourceMap { get; init; }
     public List<string> Errors { get; init; } = [];
     public List<string> Warnings { get; init; } = [];
     public bool Success => Errors.Count == 0;
@@ -38,9 +39,12 @@ public static class Transpiler
         return result.Lua;
     }
 
-    public static TranspileResult TranspileWithDiagnostics(string[] csharpSources)
+    public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
+        string[]? filePaths = null)
     {
-        var trees = csharpSources.Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
+        var trees = csharpSources.Select((s, i) =>
+            CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
+                ? filePaths[i] : "")).ToArray();
         var compilation = CSharpCompilation.Create("TinyCs",
             trees,
             DefaultReferences,
@@ -83,6 +87,7 @@ public static class Transpiler
         return new TranspileResult
         {
             Lua = emitter.ToString(),
+            SourceMap = emitter.SourceMap,
             Warnings = warnings
         };
     }
