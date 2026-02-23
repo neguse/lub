@@ -6,12 +6,12 @@ public class Program
     {
         if (args.Length == 0)
         {
-            Console.Error.WriteLine("Usage: tcs <input.cs> [-o <output.lua>]");
+            Console.Error.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [-o <output.lua>]");
             Console.Error.WriteLine("       tcs <input.cs>              # prints to stdout");
             return 1;
         }
 
-        string? inputPath = null;
+        var inputPaths = new List<string>();
         string? outputPath = null;
 
         for (int i = 0; i < args.Length; i++)
@@ -22,26 +22,29 @@ public class Program
             }
             else if (!args[i].StartsWith('-'))
             {
-                inputPath = args[i];
+                inputPaths.Add(args[i]);
             }
         }
 
-        if (inputPath == null)
+        if (inputPaths.Count == 0)
         {
             Console.Error.WriteLine("Error: no input file specified");
             return 1;
         }
 
-        if (!File.Exists(inputPath))
+        foreach (var path in inputPaths)
         {
-            Console.Error.WriteLine($"Error: file not found: {inputPath}");
-            return 1;
+            if (!File.Exists(path))
+            {
+                Console.Error.WriteLine($"Error: file not found: {path}");
+                return 1;
+            }
         }
 
         try
         {
-            var source = File.ReadAllText(inputPath);
-            var lua = Transpiler.Transpile(source);
+            var sources = inputPaths.Select(File.ReadAllText).ToArray();
+            var lua = Transpiler.Transpile(sources);
 
             if (outputPath != null)
             {

@@ -1,14 +1,15 @@
 # 現在の状態
 
-## フェーズ: Phase 0-7, T48 完了
+## フェーズ: Phase 0-8, T48 完了
 
-### 完了済み (67テスト全パス)
+### 完了済み (88テスト全パス)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
 **Phase 5**: ラムダ (T33-T34)
 **Phase 6**: TinySystem Luaランタイム (T35-T40)
 **Phase 7**: コレクション/LINQ トランスパイル統合 (T41-T43)
+**Phase 8**: switch/interface/string/null条件/is (T23,T32,T38,T46,T47)
 **Phase 9部分**: CLI (T48)
 
 ### 実装済みの C# → Lua マッピング
@@ -38,6 +39,14 @@
 | new Dictionary<K,V>{...} | {…} (hash table) |
 | dict[key] | dict[key] |
 | dict.ContainsKey(k) | (dict[k] ~= nil) |
+| switch statement | if-elseif-else end |
+| switch expression | IIFE if-elseif-else |
+| interface | 透過 (出力なし) |
+| string + string | .. (連結演算子) |
+| str.Length | #str |
+| str.Method() | String.Method(str) |
+| ?. | IIFE nil チェック |
+| is null / is not null | == nil / ~= nil |
 
 ### TinySystem ランタイム (runtime/tinysystem.lua)
 - List: new, Add, Remove, Count, Contains, IndexOf

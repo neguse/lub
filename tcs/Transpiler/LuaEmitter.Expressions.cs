@@ -65,13 +65,29 @@ public partial class LuaEmitter
 
     private static string VisitLiteral(LiteralExpressionSyntax lit) => lit.Kind() switch
     {
-        SyntaxKind.NumericLiteralExpression => lit.Token.Text,
+        SyntaxKind.NumericLiteralExpression => StripNumericSuffix(lit.Token.Text),
         SyntaxKind.StringLiteralExpression => lit.Token.Text,
         SyntaxKind.TrueLiteralExpression => "true",
         SyntaxKind.FalseLiteralExpression => "false",
         SyntaxKind.NullLiteralExpression => "nil",
         _ => $"--[[ TODO literal: {lit.Kind()} ]]"
     };
+
+    private static string StripNumericSuffix(string text)
+    {
+        // Remove C# numeric suffixes (f, F, d, D, m, M, L, l, u, U, ul, UL)
+        if (text.Length > 1)
+        {
+            char last = text[^1];
+            if (last is 'f' or 'F' or 'd' or 'D' or 'm' or 'M' or 'L' or 'l')
+                return text[..^1];
+            if (text.Length > 2 && text[^2..] is "ul" or "UL" or "Ul" or "uL")
+                return text[..^2];
+            if (last is 'u' or 'U')
+                return text[..^1];
+        }
+        return text;
+    }
 
     private string VisitBinary(SemanticModel model, BinaryExpressionSyntax bin)
     {

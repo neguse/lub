@@ -19,17 +19,22 @@ public static class Transpiler
         ];
     }
 
-    public static string Transpile(string csharpSource)
+    public static string Transpile(string csharpSource) => Transpile([csharpSource]);
+
+    public static string Transpile(string[] csharpSources)
     {
-        var tree = CSharpSyntaxTree.ParseText(csharpSource);
+        var trees = csharpSources.Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
         var compilation = CSharpCompilation.Create("TinyCs",
-            [tree],
+            trees,
             DefaultReferences,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        var model = compilation.GetSemanticModel(tree);
         var emitter = new LuaEmitter();
-        emitter.Visit(compilation, model, tree);
+        foreach (var tree in trees)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            emitter.Visit(compilation, model, tree);
+        }
         return emitter.ToString();
     }
 }

@@ -42,3 +42,12 @@
 - よかったこと: SemanticModel の型情報でコレクション型を正確に検出、メソッドチェーンは再帰的にネスト変換
 - 判断: List indexer は 0→1 変換を自動で行う。Count は `#` 演算子に直接マップ
 - 残課題: なし
+
+### T23,T32,T38,T46,T47: switch/interface/string/null条件/is ✓ (2026-02-23)
+- switch文/式、interface透過、String メソッド群、?.演算子、is パターン
+- String ランタイム追加 (Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split)
+- string + string → `..` 演算子への自動変換
+- テスト21件追加、全88テストパス
+- よかったこと: SemanticModel の SpecialType.System_String で文字列結合の + を正確に検出
+- 判断: switch式はIIFE+if-elseifで実装。パターンマッチングは定数パターンのみ
+- 残課題: switch式の when ガード、型パターン
