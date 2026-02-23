@@ -23,24 +23,54 @@ set(LUA_LIB
     ${LUA_SRC}/lutf8lib.c
 )
 
-# Lua interpreter entry point
-set(LUA_EXE ${LUA_SRC}/lua.c)
-
-add_executable(lua ${LUA_CORE} ${LUA_LIB} ${LUA_EXE})
-target_include_directories(lua PRIVATE ${LUA_SRC})
-
+# --- liblua (static library, shared by lua and lua_b2) ---
+add_library(liblua STATIC ${LUA_CORE} ${LUA_LIB})
+target_include_directories(liblua PUBLIC ${LUA_SRC})
 if(WIN32)
-    # Windows: no special platform defines needed for basic Lua
-    target_compile_definitions(lua PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(liblua PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
-    # Linux/macOS: enable POSIX features
-    target_compile_definitions(lua PRIVATE LUA_USE_LINUX)
-    target_link_libraries(lua m dl)
+    target_compile_definitions(liblua PRIVATE LUA_USE_LINUX)
+    target_link_libraries(liblua m dl)
 endif()
 
-# Output the binary into deps/lua/ so TestHelper can find it
+# --- lua (standard interpreter) ---
+add_executable(lua ${LUA_SRC}/lua.c)
+target_link_libraries(lua liblua)
+if(WIN32)
+    target_compile_definitions(lua PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 set_target_properties(lua PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${LUA_SRC}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${LUA_SRC}
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${LUA_SRC}
 )
+
+# --- lua_b2 (Lua + Box2D demo, optional) ---
+set(B2D_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/box2d)
+set(B2D_LIB ${B2D_DIR}/build/src/box2d.lib)
+
+if(EXISTS ${B2D_DIR}/include/box2d/box2d.h)
+    # Collect all Box2D source files
+    file(GLOB B2D_SOURCES ${B2D_DIR}/src/*.c)
+
+    add_executable(lua_b2
+        ${CMAKE_CURRENT_SOURCE_DIR}/demos/box2d/lua_b2_main.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/demos/box2d/b2lua.c
+        ${B2D_SOURCES}
+    )
+    target_include_directories(lua_b2 PRIVATE ${B2D_DIR}/include ${B2D_DIR}/src)
+    target_link_libraries(lua_b2 liblua)
+    target_compile_definitions(lua_b2 PRIVATE NDEBUG)
+    if(WIN32)
+        target_compile_definitions(lua_b2 PRIVATE _CRT_SECURE_NO_WARNINGS)
+    else()
+        target_link_libraries(lua_b2 m dl)
+        target_compile_definitions(lua_b2 PRIVATE _POSIX_C_SOURCE=199309L)
+    endif()
+
+    set_target_properties(lua_b2 PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/demos/box2d
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_SOURCE_DIR}/demos/box2d
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/demos/box2d
+    )
+endif()
