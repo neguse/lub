@@ -31,3 +31,14 @@
 - よかったこと: ファイル → ファイルの基本フローが動く
 - 判断: System.CommandLine は使わずシンプルな args パースで十分
 - 残課題: 複数ファイル、watch モード、エラーメッセージ改善
+
+### T41-T43: List/Dictionary/LINQ トランスパイル統合 ✓ (2026-02-23)
+- C# の List<T>/Dictionary<K,V> 生成・操作・LINQ チェーンをランタイム関数呼び出しに変換
+- LuaEmitter.Expressions.cs に TryMapCollectionMethod() 追加
+- `new List<int>{1,2,3}` → `{1,2,3}`, `list[i]` → `list[i+1]` (0→1 indexed)
+- `list.Where(f).Select(g).ToList()` → `List.ToList(List.Select(List.Where(list, f), g))`
+- `dict["key"]` → `dict["key"]`, `dict.ContainsKey(k)` → `(dict[k] ~= nil)`
+- CollectionTests 14件追加、全67テストパス
+- よかったこと: SemanticModel の型情報でコレクション型を正確に検出、メソッドチェーンは再帰的にネスト変換
+- 判断: List indexer は 0→1 変換を自動で行う。Count は `#` 演算子に直接マップ
+- 残課題: なし

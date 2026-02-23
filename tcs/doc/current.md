@@ -1,13 +1,14 @@
 # 現在の状態
 
-## フェーズ: Phase 0-6, T48 完了
+## フェーズ: Phase 0-7, T48 完了
 
-### 完了済み (53テスト全パス)
+### 完了済み (67テスト全パス)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
 **Phase 5**: ラムダ (T33-T34)
 **Phase 6**: TinySystem Luaランタイム (T35-T40)
+**Phase 7**: コレクション/LINQ トランスパイル統合 (T41-T43)
 **Phase 9部分**: CLI (T48)
 
 ### 実装済みの C# → Lua マッピング
@@ -30,6 +31,13 @@
 | ?? | or |
 | i++ (statement) | i = i + 1 |
 | cast | 透過 (型消去) |
+| new List<T>{...} | {…} (sequence table) |
+| list[i] | list[i+1] (0→1 indexed) |
+| list.Count | #list |
+| list.Where/Select/... | List.Method(list, fn) |
+| new Dictionary<K,V>{...} | {…} (hash table) |
+| dict[key] | dict[key] |
+| dict.ContainsKey(k) | (dict[k] ~= nil) |
 
 ### TinySystem ランタイム (runtime/tinysystem.lua)
 - List: new, Add, Remove, Count, Contains, IndexOf
@@ -42,7 +50,6 @@
 - `dotnet run --project Transpiler -- input.cs [-o output.lua]`
 
 ### 次のタスク
-- T41-T43: List/Dictionary/LINQ のトランスパイル統合 (C# の .Where().Select() をランタイム関数呼び出しに変換)
 - T49: 複数ファイル・名前空間解決
 - T50: エラーメッセージ改善
 - T51+: lub3d Generator 統合 (TinyCSharpGen)

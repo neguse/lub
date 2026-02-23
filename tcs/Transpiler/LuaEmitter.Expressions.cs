@@ -6,6 +6,11 @@ namespace TinyCs;
 
 public partial class LuaEmitter
 {
+    // List/Dict method names that map to runtime library calls
+    private static readonly HashSet<string> ListRuntimeMethods =
+        ["Where", "Select", "Any", "All", "First", "FirstOrDefault",
+         "OrderBy", "Min", "Max", "Sum", "ToList", "Contains", "IndexOf"];
+
     private string VisitExpression(SemanticModel model, ExpressionSyntax expr)
     {
         return expr switch
@@ -21,15 +26,19 @@ public partial class LuaEmitter
             MemberAccessExpressionSyntax ma => VisitMemberAccess(model, ma),
             AssignmentExpressionSyntax assignment => VisitAssignment(model, assignment),
             ObjectCreationExpressionSyntax creation => VisitObjectCreation(model, creation),
-            ImplicitObjectCreationExpressionSyntax ic => VisitImplicitObjectCreation(model, ic),
+            ImplicitObjectCreationExpressionSyntax ic =>
+                VisitImplicitObjectCreation(model, ic),
             ThisExpressionSyntax => "self",
             BaseExpressionSyntax => "self",
             CastExpressionSyntax cast => VisitExpression(model, cast.Expression),
             ConditionalExpressionSyntax ternary => VisitTernary(model, ternary),
-            InterpolatedStringExpressionSyntax interp => VisitInterpolatedString(model, interp),
+            InterpolatedStringExpressionSyntax interp =>
+                VisitInterpolatedString(model, interp),
             SimpleLambdaExpressionSyntax lambda => VisitSimpleLambda(model, lambda),
             ParenthesizedLambdaExpressionSyntax lambda =>
                 VisitParenthesizedLambda(model, lambda),
+            ElementAccessExpressionSyntax elemAccess =>
+                VisitElementAccess(model, elemAccess),
             _ => $"--[[ TODO: {expr.Kind()} ]]"
         };
     }
@@ -96,7 +105,8 @@ public partial class LuaEmitter
         };
     }
 
-    private string VisitPostfixUnary(SemanticModel model, PostfixUnaryExpressionSyntax postfix)
+    private string VisitPostfixUnary(SemanticModel model,
+        PostfixUnaryExpressionSyntax postfix)
     {
         var operand = VisitExpression(model, postfix.Operand);
         return postfix.Kind() switch
@@ -107,7 +117,8 @@ public partial class LuaEmitter
         };
     }
 
-    private string VisitInvocation(SemanticModel model, InvocationExpressionSyntax invocation)
+    private string VisitInvocation(SemanticModel model,
+        InvocationExpressionSyntax invocation)
     {
         var args = invocation.ArgumentList.Arguments
             .Select(a => VisitExpression(model, a.Expression)).ToList();
@@ -115,11 +126,20 @@ public partial class LuaEmitter
         if (invocation.Expression is MemberAccessExpressionSyntax ma)
         {
             var symbol = model.GetSymbolInfo(ma).Symbol;
+            var methodName = ma.Name.Identifier.Text;
+
+            // Check for List<T>/IEnumerable<T> method calls → runtime library
+            if (symbol is IMethodSymbol methodSym && TryMapCollectionMethod(
+                    model, ma, methodSym, methodName, args, out var result))
+                return result;
+
+            // Regular instance method
             if (symbol is IMethodSymbol { IsStatic: false })
             {
                 var obj = VisitExpression(model, ma.Expression);
-                return $"{obj}:{ma.Name.Identifier.Text}({string.Join(", ", args)})";
+                return $"{obj}:{methodName}({string.Join(", ", args)})";
             }
+
             var target = VisitExpression(model, invocation.Expression);
             return $"{target}({string.Join(", ", args)})";
         }
@@ -128,19 +148,131 @@ public partial class LuaEmitter
         return $"{targetExpr}({string.Join(", ", args)})";
     }
 
+    private bool TryMapCollectionMethod(SemanticModel model,
+        MemberAccessExpressionSyntax ma, IMethodSymbol methodSym,
+        string methodName, List<string> args, out string result)
+    {
+        result = "";
+        var receiverType = model.GetTypeInfo(ma.Expression).Type;
+        if (receiverType == null) return false;
+
+        var typeDef = receiverType.OriginalDefinition.ToDisplayString();
+        var obj = VisitExpression(model, ma.Expression);
+
+        // List<T> instance methods → List.Method(list, args)
+        if (IsListType(typeDef))
+        {
+            switch (methodName)
+            {
+                case "Add":
+                    result = $"table.insert({obj}, {string.Join(", ", args)})";
+                    return true;
+                case "Remove":
+                    result = $"List.Remove({obj}, {string.Join(", ", args)})";
+                    return true;
+                case "RemoveAt":
+                    result = $"table.remove({obj}, {args[0]} + 1)";
+                    return true;
+                case "Clear":
+                    result = $"(function() for k in pairs({obj}) do {obj}[k] = nil end end)()";
+                    return true;
+            }
+            if (ListRuntimeMethods.Contains(methodName))
+            {
+                var allArgs = new List<string> { obj };
+                allArgs.AddRange(args);
+                result = $"List.{methodName}({string.Join(", ", allArgs)})";
+                return true;
+            }
+        }
+
+        // Dictionary<K,V> methods
+        if (IsDictType(typeDef))
+        {
+            switch (methodName)
+            {
+                case "Add":
+                    result = $"{obj}[{args[0]}] = {args[1]}";
+                    return true;
+                case "Remove":
+                    result = $"Dict.Remove({obj}, {args[0]})";
+                    return true;
+                case "ContainsKey":
+                    result = $"({obj}[{args[0]}] ~= nil)";
+                    return true;
+                case "TryGetValue":
+                    // Simplified: just check and assign
+                    result = $"({obj}[{args[0]}] ~= nil)";
+                    return true;
+            }
+        }
+
+        // LINQ extension methods on IEnumerable<T>
+        if (methodSym.IsExtensionMethod && ListRuntimeMethods.Contains(methodName))
+        {
+            var allArgs = new List<string> { obj };
+            allArgs.AddRange(args);
+            result = $"List.{methodName}({string.Join(", ", allArgs)})";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsListType(string typeDef) =>
+        typeDef.StartsWith("System.Collections.Generic.List<");
+
+    private static bool IsDictType(string typeDef) =>
+        typeDef.StartsWith("System.Collections.Generic.Dictionary<");
+
     private string VisitMemberAccess(SemanticModel model,
         MemberAccessExpressionSyntax memberAccess)
     {
         var obj = VisitExpression(model, memberAccess.Expression);
         var member = memberAccess.Name.Identifier.Text;
+
+        // Check for .Count on List<T> → #list
+        var symbol = model.GetSymbolInfo(memberAccess).Symbol;
+        if (symbol is IPropertySymbol propSym)
+        {
+            var receiverType = model.GetTypeInfo(memberAccess.Expression).Type;
+            var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+            if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)))
+            {
+                return IsDictType(typeDef)
+                    ? $"Dict.Count({obj})"
+                    : $"#{obj}";
+            }
+            if (member == "Keys" && IsDictType(typeDef))
+                return $"Dict.Keys({obj})";
+            if (member == "Values" && IsDictType(typeDef))
+                return $"Dict.Values({obj})";
+        }
+
         return $"{obj}.{member}";
     }
 
-    private string VisitAssignment(SemanticModel model, AssignmentExpressionSyntax assignment)
+    private string VisitElementAccess(SemanticModel model,
+        ElementAccessExpressionSyntax elemAccess)
     {
-        var left = VisitExpression(model, assignment.Left);
-        var right = VisitExpression(model, assignment.Right);
-        return assignment.Kind() switch
+        var obj = VisitExpression(model, elemAccess.Expression);
+        var index = VisitExpression(model, elemAccess.ArgumentList.Arguments[0].Expression);
+        var receiverType = model.GetTypeInfo(elemAccess.Expression).Type;
+        var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+
+        // List<T> indexer: 0-indexed → 1-indexed
+        if (IsListType(typeDef))
+            return $"{obj}[{index} + 1]";
+
+        // Dictionary<K,V> indexer
+        return $"{obj}[{index}]";
+    }
+
+    private string VisitAssignment(SemanticModel model, AssignmentExpressionSyntax assign)
+    {
+        var left = VisitExpression(model, assign.Left);
+        var right = VisitExpression(model, assign.Right);
+        return assign.Kind() switch
         {
             SyntaxKind.SimpleAssignmentExpression => $"{left} = {right}",
             SyntaxKind.AddAssignmentExpression => $"{left} = {left} + {right}",
@@ -148,7 +280,7 @@ public partial class LuaEmitter
             SyntaxKind.MultiplyAssignmentExpression => $"{left} = {left} * {right}",
             SyntaxKind.DivideAssignmentExpression => $"{left} = {left} / {right}",
             SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
-            _ => $"--[[ TODO assign: {assignment.Kind()} ]]"
+            _ => $"--[[ TODO assign: {assign.Kind()} ]]"
         };
     }
 
@@ -157,9 +289,50 @@ public partial class LuaEmitter
     {
         var typeSymbol = model.GetTypeInfo(creation).Type;
         var typeName = typeSymbol?.Name ?? creation.Type.ToString();
+        var typeDef = typeSymbol?.OriginalDefinition.ToDisplayString() ?? "";
+
+        // new List<T> { ... } → { items }
+        if (IsListType(typeDef))
+            return VisitListInitializer(model, creation);
+        // new Dictionary<K,V> { ... } → { [k]=v, ... }
+        if (IsDictType(typeDef))
+            return VisitDictInitializer(model, creation);
+
         var args = creation.ArgumentList?.Arguments
             .Select(a => VisitExpression(model, a.Expression)).ToList() ?? [];
         return $"{typeName}.new({string.Join(", ", args)})";
+    }
+
+    private string VisitListInitializer(SemanticModel model,
+        ObjectCreationExpressionSyntax creation)
+    {
+        if (creation.Initializer == null) return "{}";
+        var items = creation.Initializer.Expressions
+            .Select(e => VisitExpression(model, e));
+        return $"{{{string.Join(", ", items)}}}";
+    }
+
+    private string VisitDictInitializer(SemanticModel model,
+        ObjectCreationExpressionSyntax creation)
+    {
+        if (creation.Initializer == null) return "{}";
+        var entries = new List<string>();
+        foreach (var expr in creation.Initializer.Expressions)
+        {
+            if (expr is InitializerExpressionSyntax kvInit && kvInit.Expressions.Count == 2)
+            {
+                var key = VisitExpression(model, kvInit.Expressions[0]);
+                var value = VisitExpression(model, kvInit.Expressions[1]);
+                entries.Add($"[{key}] = {value}");
+            }
+            else if (expr is AssignmentExpressionSyntax assignExpr)
+            {
+                var key = VisitExpression(model, assignExpr.Left);
+                var value = VisitExpression(model, assignExpr.Right);
+                entries.Add($"[{key}] = {value}");
+            }
+        }
+        return $"{{{string.Join(", ", entries)}}}";
     }
 
     private string VisitImplicitObjectCreation(SemanticModel model,
@@ -175,9 +348,9 @@ public partial class LuaEmitter
     private string VisitTernary(SemanticModel model, ConditionalExpressionSyntax ternary)
     {
         var cond = VisitExpression(model, ternary.Condition);
-        var trueExpr = VisitExpression(model, ternary.WhenTrue);
-        var falseExpr = VisitExpression(model, ternary.WhenFalse);
-        return $"(function() if {cond} then return {trueExpr} else return {falseExpr} end end)()";
+        var t = VisitExpression(model, ternary.WhenTrue);
+        var f = VisitExpression(model, ternary.WhenFalse);
+        return $"(function() if {cond} then return {t} else return {f} end end)()";
     }
 
     private string VisitInterpolatedString(SemanticModel model,
@@ -199,11 +372,13 @@ public partial class LuaEmitter
         return string.Join(" .. ", parts);
     }
 
-    private string VisitSimpleLambda(SemanticModel model, SimpleLambdaExpressionSyntax lambda)
+    private string VisitSimpleLambda(SemanticModel model,
+        SimpleLambdaExpressionSyntax lambda)
     {
         var param = lambda.Parameter.Identifier.Text;
         if (lambda.ExpressionBody != null)
-            return $"function({param}) return {VisitExpression(model, lambda.ExpressionBody)} end";
+            return $"function({param}) return " +
+                   $"{VisitExpression(model, lambda.ExpressionBody)} end";
         return $"function({param}) {VisitLambdaBlock(model, lambda.Block!)} end";
     }
 
@@ -213,7 +388,8 @@ public partial class LuaEmitter
         var parameters = string.Join(", ",
             lambda.ParameterList.Parameters.Select(p => p.Identifier.Text));
         if (lambda.ExpressionBody != null)
-            return $"function({parameters}) return {VisitExpression(model, lambda.ExpressionBody)} end";
+            return $"function({parameters}) return " +
+                   $"{VisitExpression(model, lambda.ExpressionBody)} end";
         return $"function({parameters}) {VisitLambdaBlock(model, lambda.Block!)} end";
     }
 
