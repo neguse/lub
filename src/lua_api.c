@@ -1,8 +1,18 @@
 #include "lua_api.h"
+#include "enums_lua.h"
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
 #include <SDL3/SDL.h>
+
+void lua_api_register(lua_State *L) {
+    enums_register(L);
+    // main_tex は { __sgl_kind = "main_tex" } という sentinel テーブル
+    lua_newtable(L);
+    lua_pushstring(L, "main_tex");
+    lua_setfield(L, -2, "__sgl_kind");
+    lua_setglobal(L, "main_tex");
+}
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
     lua_newtable(L);
@@ -33,6 +43,7 @@ bool lua_ctx_init(LuaCtx *ctx, const char *script_path) {
         return false;
     }
     luaL_openlibs(ctx->L);
+    lua_api_register(ctx->L);
     if (luaL_dofile(ctx->L, script_path) != LUA_OK) {
         SDL_Log("lua load error: %s", lua_tostring(ctx->L, -1));
         lua_close(ctx->L);

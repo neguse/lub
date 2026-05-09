@@ -35,6 +35,7 @@ add_executable(sglua
   src/main.c
   src/app.c
   src/lua_api.c
+  src/enums_lua.c
 )
 target_include_directories(sglua PRIVATE
   third_party/sokol
