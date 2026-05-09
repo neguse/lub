@@ -30,6 +30,7 @@ bool app_init(App *app) {
         }},
         .logger.func = NULL,
     });
+    pass_state_init(&app->pass);
     app->frame_index = 0;
     return true;
 }
@@ -37,6 +38,7 @@ bool app_init(App *app) {
 void app_frame_begin(App *app, int *out_w, int *out_h) {
     int w, h;
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
+    pass_state_set_swapchain_size(&app->pass, w, h);
     if (out_w) *out_w = w;
     if (out_h) *out_h = h;
 }

@@ -2,11 +2,13 @@
 #include <lua.h>
 #include <SDL3/SDL.h>
 
+struct App;  // forward declaration
+
 typedef struct LuaCtx {
     lua_State *L;
 } LuaCtx;
 
-bool lua_ctx_init(LuaCtx *ctx, const char *script_path);
+bool lua_ctx_init(LuaCtx *ctx, const char *script_path, struct App *app);
 void lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e);
 void lua_ctx_call_frame(LuaCtx *ctx);

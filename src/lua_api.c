@@ -1,9 +1,47 @@
 #include "lua_api.h"
 #include "enums_lua.h"
+#include "app.h"
+#include "pass.h"
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
 #include <SDL3/SDL.h>
+#include <string.h>
+
+static App *g_app_for_lua = NULL;
+
+static int l_begin_pass(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TTABLE);
+    lua_getfield(L, 1, "target");
+    if (lua_isnil(L, -1)) return luaL_error(L, "begin_pass: target required");
+    int is_main = 0;
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "__sgl_kind");
+        if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "main_tex") == 0) is_main = 1;
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    if (!is_main) return luaL_error(L, "begin_pass: only main_tex supported in PoC");
+
+    float r = 0, g = 0, b = 0, a = 1;
+    lua_getfield(L, 1, "clear_color");
+    if (lua_istable(L, -1)) {
+        lua_geti(L, -1, 1); r = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_geti(L, -1, 2); g = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_geti(L, -1, 3); b = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_geti(L, -1, 4); a = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+
+    pass_state_begin_main(&g_app_for_lua->pass, r, g, b, a);
+    return 0;
+}
+
+static int l_end_pass(lua_State *L) {
+    (void)L;
+    pass_state_end(&g_app_for_lua->pass);
+    return 0;
+}
 
 void lua_api_register(lua_State *L) {
     enums_register(L);
@@ -12,6 +50,11 @@ void lua_api_register(lua_State *L) {
     lua_pushstring(L, "main_tex");
     lua_setfield(L, -2, "__sgl_kind");
     lua_setglobal(L, "main_tex");
+
+    lua_pushcfunction(L, l_begin_pass);
+    lua_setglobal(L, "begin_pass");
+    lua_pushcfunction(L, l_end_pass);
+    lua_setglobal(L, "end_pass");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
@@ -36,7 +79,8 @@ static void call_global_if_present(lua_State *L, const char *name, int nargs) {
     }
 }
 
-bool lua_ctx_init(LuaCtx *ctx, const char *script_path) {
+bool lua_ctx_init(LuaCtx *ctx, const char *script_path, App *app) {
+    g_app_for_lua = app;
     ctx->L = luaL_newstate();
     if (!ctx->L) {
         SDL_Log("luaL_newstate failed (out of memory)");

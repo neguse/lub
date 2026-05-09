@@ -3,11 +3,13 @@
 #include <SDL3/SDL.h>
 #include "sokol_gfx.h"
 #include "lua_api.h"
+#include "pass.h"
 
 typedef struct App {
     SDL_Window *window;
     SDL_GLContext gl_ctx;
     LuaCtx lua;
+    PassState pass;
     uint64_t frame_index;
 } App;
 
