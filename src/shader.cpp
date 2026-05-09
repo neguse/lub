@@ -78,7 +78,13 @@ std::string downversion_glsl(const char *src, size_t n) {
     const char *needle = "#version 450";
     size_t pos = s.find(needle);
     if (pos != std::string::npos) {
-        s.replace(pos, strlen(needle), "#version 330");
+        // Replace `#version 450` with `#version 330` plus an extension enable.
+        // Slang emits explicit `layout(location = N)` qualifiers on inter-stage
+        // varyings (vertex `out` / fragment `in`), which require either GLSL
+        // 4.20+ or the GL_ARB_separate_shader_objects extension. Enabling the
+        // extension keeps us on GLSL 3.30 (matching the GL 3.3 core context).
+        const char *replacement = "#version 330\n#extension GL_ARB_separate_shader_objects : enable";
+        s.replace(pos, strlen(needle), replacement);
     }
     const char *buf_needle = "layout(column_major) buffer;";
     size_t bpos = s.find(buf_needle);
