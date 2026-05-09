@@ -1,15 +1,16 @@
 #pragma once
 #include <stdint.h>
 #include <SDL3/SDL.h>
-#include "sokol_gfx.h"
 #include "lua_api.h"
 #include "pass.h"
+#include "resources.h"
 
 typedef struct App {
     SDL_Window *window;
     SDL_GLContext gl_ctx;
     LuaCtx lua;
     PassState pass;
+    ResTable res;
     uint64_t frame_index;
 } App;
 

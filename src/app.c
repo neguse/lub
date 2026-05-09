@@ -31,6 +31,7 @@ bool app_init(App *app) {
         .logger.func = NULL,
     });
     pass_state_init(&app->pass);
+    res_table_init(&app->res);
     app->frame_index = 0;
     return true;
 }
@@ -50,6 +51,7 @@ void app_frame_end(App *app) {
 }
 
 void app_shutdown(App *app) {
+    res_table_shutdown(&app->res);
     sg_shutdown();
     if (app->gl_ctx) SDL_GL_DestroyContext(app->gl_ctx);
     if (app->window) SDL_DestroyWindow(app->window);

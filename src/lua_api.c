@@ -2,39 +2,114 @@
 #include "enums_lua.h"
 #include "app.h"
 #include "pass.h"
+#include "resources.h"
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
 #include <SDL3/SDL.h>
 #include <string.h>
+#include <stdlib.h>
 
 static App *g_app_for_lua = NULL;
+
+// Helper: read a vec4 (rgba) from table at idx field name `key`. Defaults
+// for missing fields go to `defaults[]`. Caller pops nothing — the helper
+// pushes/pops internally and returns with stack unchanged.
+static void desc_get_float4(lua_State *L, int idx, const char *key,
+                            float out[4], const float defaults[4]) {
+    out[0] = defaults[0]; out[1] = defaults[1];
+    out[2] = defaults[2]; out[3] = defaults[3];
+    lua_getfield(L, idx, key);
+    if (lua_istable(L, -1)) {
+        for (int i = 0; i < 4; ++i) {
+            lua_rawgeti(L, -1, i + 1);
+            if (lua_isnumber(L, -1)) out[i] = (float)lua_tonumber(L, -1);
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+}
+
+// Helper: check if value at stack index is a sentinel table with __sgl_kind == kind
+static int is_sentinel(lua_State *L, int idx, const char *kind) {
+    if (!lua_istable(L, idx)) return 0;
+    lua_getfield(L, idx, "__sgl_kind");
+    int ok = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), kind) == 0;
+    lua_pop(L, 1);
+    return ok;
+}
+
+// Helper: push a BufferRef sentinel table { __sgl_kind = "buffer", key = key }
+static void push_buffer_ref(lua_State *L, const char *key) {
+    lua_newtable(L);
+    lua_pushstring(L, "buffer"); lua_setfield(L, -2, "__sgl_kind");
+    lua_pushstring(L, key);      lua_setfield(L, -2, "key");
+}
 
 static int l_begin_pass(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_getfield(L, 1, "target");
-    if (lua_isnil(L, -1)) return luaL_error(L, "begin_pass: target required");
-    int is_main = 0;
-    if (lua_istable(L, -1)) {
-        lua_getfield(L, -1, "__sgl_kind");
-        if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "main_tex") == 0) is_main = 1;
+    int is_main = is_sentinel(L, -1, "main_tex");
+    lua_pop(L, 1);
+    if (!is_main) return luaL_error(L, "begin_pass: target must be main_tex");
+
+    static const float defaults[4] = {0, 0, 0, 1};
+    float c[4];
+    desc_get_float4(L, 1, "clear_color", c, defaults);
+
+    pass_state_begin_main(&g_app_for_lua->pass, c[0], c[1], c[2], c[3]);
+    return 0;
+}
+
+static int l_use_buffer(lua_State *L) {
+    const char *key = luaL_checkstring(L, 1);
+    int type = (int)luaL_checkinteger(L, 2);
+    luaL_checktype(L, 3, LUA_TTABLE);
+    int version = (int)luaL_checkinteger(L, 4);
+
+    if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX) {
+        return luaL_error(L, "use_buffer: only VERTEX/INDEX supported in PoC");
+    }
+
+    ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_BUFFER);
+    if (!e) return luaL_error(L, "use_buffer: key '%s' already used as different kind", key);
+
+    res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
+
+    if (e->version == version && e->u.buf.h.id != 0) {
+        // Skip upload — return existing BufferRef
+        push_buffer_ref(L, key);
+        return 1;
+    }
+
+    // Read Lua table of numbers into a float buffer
+    int n = (int)lua_rawlen(L, 3);
+    if (n <= 0) return luaL_error(L, "use_buffer: empty data");
+    float *data = (float*)malloc((size_t)n * sizeof(float));
+    if (!data) return luaL_error(L, "use_buffer: out of memory");
+    for (int i = 0; i < n; ++i) {
+        lua_rawgeti(L, 3, i + 1);
+        data[i] = (float)lua_tonumber(L, -1);
         lua_pop(L, 1);
     }
-    lua_pop(L, 1);
-    if (!is_main) return luaL_error(L, "begin_pass: only main_tex supported in PoC");
 
-    float r = 0, g = 0, b = 0, a = 1;
-    lua_getfield(L, 1, "clear_color");
-    if (lua_istable(L, -1)) {
-        lua_geti(L, -1, 1); r = (float)lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_geti(L, -1, 2); g = (float)lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_geti(L, -1, 3); b = (float)lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_geti(L, -1, 4); a = (float)lua_tonumber(L, -1); lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
+    if (e->u.buf.h.id != 0) sg_destroy_buffer(e->u.buf.h);
+    e->u.buf.h = sg_make_buffer(&(sg_buffer_desc){
+        .size = (size_t)n * sizeof(float),
+        .usage = {
+            .vertex_buffer = (type == SGL_BUFFER_VERTEX),
+            .index_buffer  = (type == SGL_BUFFER_INDEX),
+            .immutable     = true,
+        },
+        .data = { .ptr = data, .size = (size_t)n * sizeof(float) },
+    });
+    e->u.buf.type = (SglBufferType)type;
+    e->u.buf.size_bytes = (size_t)n * sizeof(float);
+    e->version = version;
+    free(data);
 
-    pass_state_begin_main(&g_app_for_lua->pass, r, g, b, a);
-    return 0;
+    push_buffer_ref(L, key);
+    return 1;
 }
 
 static int l_end_pass(lua_State *L) {
@@ -55,6 +130,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "begin_pass");
     lua_pushcfunction(L, l_end_pass);
     lua_setglobal(L, "end_pass");
+    lua_pushcfunction(L, l_use_buffer);
+    lua_setglobal(L, "use_buffer");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
