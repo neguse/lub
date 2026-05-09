@@ -2,10 +2,12 @@
 #include <stdint.h>
 #include <SDL3/SDL.h>
 #include "sokol_gfx.h"
+#include "lua_api.h"
 
 typedef struct App {
     SDL_Window *window;
     SDL_GLContext gl_ctx;
+    LuaCtx lua;
     uint64_t frame_index;
 } App;
 

@@ -34,6 +34,7 @@ find_package(OpenGL REQUIRED)
 add_executable(sglua
   src/main.c
   src/app.c
+  src/lua_api.c
 )
 target_include_directories(sglua PRIVATE
   third_party/sokol
