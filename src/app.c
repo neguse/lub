@@ -1,4 +1,3 @@
-#define SOKOL_GFX_IMPL
 #include "app.h"
 #include <SDL3/SDL.h>
 

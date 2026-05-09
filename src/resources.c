@@ -29,7 +29,6 @@ void res_table_shutdown(ResTable *t) {
                     break;
                 case RES_SHADER:
                     if (e->u.sh.h.id != 0) sg_destroy_shader(e->u.sh.h);
-                    free(e->u.sh.reflection);
                     break;
                 default: break;
             }

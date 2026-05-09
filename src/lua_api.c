@@ -3,6 +3,7 @@
 #include "app.h"
 #include "pass.h"
 #include "resources.h"
+#include "shader.h"
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -43,6 +44,13 @@ static int is_sentinel(lua_State *L, int idx, const char *kind) {
 static void push_buffer_ref(lua_State *L, const char *key) {
     lua_newtable(L);
     lua_pushstring(L, "buffer"); lua_setfield(L, -2, "__sgl_kind");
+    lua_pushstring(L, key);      lua_setfield(L, -2, "key");
+}
+
+// Helper: push a ShaderRef sentinel table { __sgl_kind = "shader", key = key }
+static void push_shader_ref(lua_State *L, const char *key) {
+    lua_newtable(L);
+    lua_pushstring(L, "shader"); lua_setfield(L, -2, "__sgl_kind");
     lua_pushstring(L, key);      lua_setfield(L, -2, "key");
 }
 
@@ -112,6 +120,36 @@ static int l_use_buffer(lua_State *L) {
     return 1;
 }
 
+static int l_use_shader(lua_State *L) {
+    const char *key = luaL_checkstring(L, 1);
+    const char *vs  = luaL_checkstring(L, 2);
+    const char *fs  = luaL_checkstring(L, 3);
+    int version = (int)luaL_checkinteger(L, 4);
+
+    ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_SHADER);
+    if (!e) return luaL_error(L, "use_shader: key '%s' already used as different kind", key);
+    res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
+
+    if (e->version == version && e->u.sh.h.id != 0) {
+        push_shader_ref(L, key);
+        return 1;
+    }
+
+    char err[1024];
+    sg_shader sh;
+    ShaderReflection refl;
+    if (!shader_compile_and_create(vs, fs, &sh, &refl, err, sizeof(err))) {
+        return luaL_error(L, "shader compile error: %s", err);
+    }
+    if (e->u.sh.h.id != 0) sg_destroy_shader(e->u.sh.h);
+    e->u.sh.h = sh;
+    e->u.sh.refl = refl;
+    e->version = version;
+
+    push_shader_ref(L, key);
+    return 1;
+}
+
 static int l_end_pass(lua_State *L) {
     (void)L;
     pass_state_end(&g_app_for_lua->pass);
@@ -132,6 +170,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "end_pass");
     lua_pushcfunction(L, l_use_buffer);
     lua_setglobal(L, "use_buffer");
+    lua_pushcfunction(L, l_use_shader);
+    lua_setglobal(L, "use_shader");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
