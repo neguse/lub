@@ -29,8 +29,11 @@ list(REMOVE_ITEM LUA_SRC
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR}/src)
 
+find_package(OpenGL REQUIRED)
+
 add_executable(sglua
   src/main.c
+  src/app.c
 )
 target_include_directories(sglua PRIVATE
   third_party/sokol
@@ -42,6 +45,7 @@ target_link_libraries(sglua PRIVATE
   SDL3::SDL3
   lua_static
   slang
+  OpenGL::GL
   # Linux-only PoC; libdl required by Lua dynamic loading, libm by sokol/Lua math
   m dl
 )
