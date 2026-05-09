@@ -56,6 +56,13 @@ static void push_shader_ref(lua_State *L, const char *key) {
     lua_pushstring(L, key);      lua_setfield(L, -2, "key");
 }
 
+// Helper: push a TextureRef sentinel table { __sgl_kind = "texture", key = key }
+static void push_texture_ref(lua_State *L, const char *key) {
+    lua_newtable(L);
+    lua_pushstring(L, "texture"); lua_setfield(L, -2, "__sgl_kind");
+    lua_pushstring(L, key);       lua_setfield(L, -2, "key");
+}
+
 static int l_begin_pass(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_getfield(L, 1, "target");
@@ -119,6 +126,94 @@ static int l_use_buffer(lua_State *L) {
     free(data);
 
     push_buffer_ref(L, key);
+    return 1;
+}
+
+static int l_use_texture(lua_State *L) {
+    const char *key = luaL_checkstring(L, 1);
+    int w = (int)luaL_checkinteger(L, 2);
+    int h = (int)luaL_checkinteger(L, 3);
+    int fmt = (int)luaL_checkinteger(L, 4);
+    int has_data = !lua_isnoneornil(L, 5);
+    if (has_data) luaL_checktype(L, 5, LUA_TTABLE);
+    int version = (int)luaL_checkinteger(L, 6);
+
+    if (w <= 0 || h <= 0) return luaL_error(L, "use_texture: invalid size %dx%d", w, h);
+
+    ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_TEXTURE);
+    if (!e) return luaL_error(L, "use_texture: key '%s' already used as different kind", key);
+    res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
+
+    if (e->version == version && e->u.tex.h.id != 0) {
+        push_texture_ref(L, key);
+        return 1;
+    }
+
+    sg_pixel_format pf;
+    int bpp;
+    switch (fmt) {
+        case SGL_PF_RGBA8: pf = SG_PIXELFORMAT_RGBA8; bpp = 4; break;
+        case SGL_PF_R8:    pf = SG_PIXELFORMAT_R8;    bpp = 1; break;
+        default: return luaL_error(L, "use_texture: format not supported in PoC (only RGBA8/R8)");
+    }
+
+    uint8_t *pixels = NULL;
+    if (has_data) {
+        int n = (int)lua_rawlen(L, 5);
+        if (n != w * h * bpp) {
+            return luaL_error(L, "use_texture: data size mismatch: got %d, expected %d", n, w * h * bpp);
+        }
+        pixels = (uint8_t*)malloc((size_t)n);
+        if (!pixels) return luaL_error(L, "use_texture: out of memory");
+        for (int i = 0; i < n; ++i) {
+            lua_rawgeti(L, 5, i + 1);
+            int v = (int)lua_tointeger(L, -1);
+            if (v < 0) v = 0; else if (v > 255) v = 255;
+            pixels[i] = (uint8_t)v;
+            lua_pop(L, 1);
+        }
+    }
+
+    if (e->u.tex.view.id != 0) sg_destroy_view(e->u.tex.view);
+    if (e->u.tex.h.id != 0)    sg_destroy_image(e->u.tex.h);
+    if (e->u.tex.smp.id != 0)  sg_destroy_sampler(e->u.tex.smp);
+    e->u.tex.view.id = 0;
+    e->u.tex.h.id    = 0;
+    e->u.tex.smp.id  = 0;
+
+    sg_image_desc img_desc = {
+        .width = w,
+        .height = h,
+        .pixel_format = pf,
+        .usage = { .immutable = true },
+    };
+    if (has_data) {
+        img_desc.data.mip_levels[0].ptr  = pixels;
+        img_desc.data.mip_levels[0].size = (size_t)w * (size_t)h * (size_t)bpp;
+    }
+    e->u.tex.h = sg_make_image(&img_desc);
+
+    e->u.tex.smp = sg_make_sampler(&(sg_sampler_desc){
+        .min_filter = SG_FILTER_LINEAR,
+        .mag_filter = SG_FILTER_LINEAR,
+        .wrap_u = SG_WRAP_REPEAT,
+        .wrap_v = SG_WRAP_REPEAT,
+    });
+
+    // Bind-time bindings need an sg_view wrapping the image. Create one here so
+    // l_draw can drop it straight into bind.views[].
+    e->u.tex.view = sg_make_view(&(sg_view_desc){
+        .texture = { .image = e->u.tex.h },
+    });
+
+    e->u.tex.w   = w;
+    e->u.tex.h_  = h;
+    e->u.tex.fmt = (SglPixelFormat)fmt;
+    e->version   = version;
+
+    if (pixels) free(pixels);
+
+    push_texture_ref(L, key);
     return 1;
 }
 
@@ -234,8 +329,33 @@ static int l_draw(lua_State *L) {
                 if (be && be->kind == RES_BUFFER && be->u.buf.type == SGL_BUFFER_VERTEX) {
                     bind.vertex_buffers[0] = be->u.buf.h;
                 }
+            } else if (strcmp(kind_buf, "texture") == 0) {
+                // resource_name (the Lua key, like "diffuse") is on the stack at index -2.
+                // Use lua_type rather than lua_isstring — the latter returns true for
+                // numbers and lua_tostring would coerce the value in place, which corrupts
+                // lua_next iteration.
+                const char *res_name = lua_type(L, -2) == LUA_TSTRING ? lua_tostring(L, -2) : NULL;
+                lua_getfield(L, -1, "key");
+                const char *tk = lua_tostring(L, -1);
+                ResEntry *te = tk ? res_table_get(&g_app_for_lua->res, tk) : NULL;
+                lua_pop(L, 1);
+                if (te && te->kind == RES_TEXTURE && res_name) {
+                    // Find matching ShaderTexture by name in reflection.
+                    // sokol's new API binds textures via sg_view objects (in
+                    // bind.views[img_slot]) plus the sampler in bind.samplers[smp_slot].
+                    const ShaderReflection *refl = &sh_e->u.sh.refl;
+                    for (int i = 0; i < refl->tex_count; ++i) {
+                        if (strcmp(refl->texs[i].name, res_name) == 0) {
+                            int img_slot = refl->texs[i].img_slot;
+                            int smp_slot = refl->texs[i].smp_slot;
+                            if (img_slot >= 0) bind.views[img_slot] = te->u.tex.view;
+                            if (smp_slot >= 0) bind.samplers[smp_slot] = te->u.tex.smp;
+                            break;
+                        }
+                    }
+                }
             }
-            // texture / uniforms processing added in Task 10 / Task 11
+            // uniforms processing added in Task 11
         }
         lua_pop(L, 1); // value, key stays for lua_next
     }
@@ -264,6 +384,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "end_pass");
     lua_pushcfunction(L, l_use_buffer);
     lua_setglobal(L, "use_buffer");
+    lua_pushcfunction(L, l_use_texture);
+    lua_setglobal(L, "use_texture");
     lua_pushcfunction(L, l_use_shader);
     lua_setglobal(L, "use_shader");
     lua_pushcfunction(L, l_draw);

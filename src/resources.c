@@ -24,6 +24,7 @@ void res_table_shutdown(ResTable *t) {
                     if (e->u.buf.h.id != 0) sg_destroy_buffer(e->u.buf.h);
                     break;
                 case RES_TEXTURE:
+                    if (e->u.tex.view.id != 0) sg_destroy_view(e->u.tex.view);
                     if (e->u.tex.h.id != 0) sg_destroy_image(e->u.tex.h);
                     if (e->u.tex.smp.id != 0) sg_destroy_sampler(e->u.tex.smp);
                     break;

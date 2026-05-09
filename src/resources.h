@@ -17,7 +17,7 @@ typedef struct ResEntry {
     int64_t last_seen_frame;
     union {
         struct { sg_buffer h; SglBufferType type; size_t size_bytes; } buf;
-        struct { sg_image h; sg_sampler smp; int w, h_; SglPixelFormat fmt; } tex;
+        struct { sg_image h; sg_sampler smp; sg_view view; int w, h_; SglPixelFormat fmt; } tex;
         struct { sg_shader h; ShaderReflection refl; } sh;
     } u;
     struct ResEntry *next;

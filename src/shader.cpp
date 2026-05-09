@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <regex>
 
 using slang::IGlobalSession;
 using slang::ISession;
@@ -78,12 +79,16 @@ std::string downversion_glsl(const char *src, size_t n) {
     const char *needle = "#version 450";
     size_t pos = s.find(needle);
     if (pos != std::string::npos) {
-        // Replace `#version 450` with `#version 330` plus an extension enable.
-        // Slang emits explicit `layout(location = N)` qualifiers on inter-stage
-        // varyings (vertex `out` / fragment `in`), which require either GLSL
-        // 4.20+ or the GL_ARB_separate_shader_objects extension. Enabling the
-        // extension keeps us on GLSL 3.30 (matching the GL 3.3 core context).
-        const char *replacement = "#version 330\n#extension GL_ARB_separate_shader_objects : enable";
+        // Replace `#version 450` with `#version 330` plus extension enables.
+        // Slang emits:
+        //  - `layout(location = N)` on inter-stage varyings, which requires
+        //    GL_ARB_separate_shader_objects on GLSL 3.30.
+        //  - `layout(binding = N)` on samplers/UBOs, which requires
+        //    GL_ARB_shading_language_420pack on GLSL 3.30.
+        const char *replacement =
+            "#version 330\n"
+            "#extension GL_ARB_separate_shader_objects : enable\n"
+            "#extension GL_ARB_shading_language_420pack : enable";
         s.replace(pos, strlen(needle), replacement);
     }
     const char *buf_needle = "layout(column_major) buffer;";
@@ -93,6 +98,30 @@ std::string downversion_glsl(const char *src, size_t n) {
         // in driver diagnostics still line up.
         s.replace(bpos, strlen(buf_needle), std::string(strlen(buf_needle), ' '));
     }
+
+    // GLSL 3.30 doesn't support separate texture / sampler opaque types
+    // (`texture2D` / `sampler`) — those came in 4.20 + Vulkan-flavored GLSL.
+    // Slang emits Vulkan-style separate textures + `sampler2D(tex, smp)`
+    // construction. Rewrite the pattern back to traditional combined samplers
+    // so GL 3.3 accepts the source:
+    //
+    //   uniform texture2D NAME;            ->  uniform sampler2D NAME;
+    //   uniform sampler  NAME;             ->  (stripped to whitespace)
+    //   sampler2D(<texname>, <smpname>)    ->  <texname>
+    //
+    // The drop of the standalone sampler is safe because every sampler usage
+    // is wrapped in a `sampler2D(tex, smp)` call (which we collapse to just
+    // the texture), so nothing else references the standalone sampler.
+    s = std::regex_replace(s, std::regex(R"(\buniform\s+texture2D\b)"), "uniform sampler2D");
+    // Strip the standalone sampler declaration. Slang emits it across two
+    // lines in the form `layout(binding = N)\nuniform sampler NAME;`. Match
+    // and drop both lines (replaced with empty lines so #line directives the
+    // driver sees still resolve correctly).
+    s = std::regex_replace(
+        s,
+        std::regex(R"(layout\s*\(\s*binding\s*=\s*\d+\s*\)\s*\n\s*uniform\s+sampler\s+\w+_\d+\s*;)"),
+        "");
+    s = std::regex_replace(s, std::regex(R"(sampler2D\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*[A-Za-z_][A-Za-z0-9_]*\s*\))"), "$1");
     return s;
 }
 
@@ -460,7 +489,13 @@ extern "C" bool shader_compile_and_create(
             pair->stage = SG_SHADERSTAGE_FRAGMENT;
             pair->view_slot = (uint8_t)img_slot;
             pair->sampler_slot = (uint8_t)(smp_slot >= 0 ? smp_slot : 0);
-            tex_pair_names[i] = tx->name;
+            // Slang's GLSL emitter appends `_0` to texture names (same as
+            // vertex inputs), so the GLSL identifier is `<name>_0`. sokol_gfx
+            // looks this up in the linked program when binding image-samplers
+            // via the GL backend.
+            char tmp[64];
+            snprintf(tmp, sizeof(tmp), "%s_0", tx->name);
+            tex_pair_names[i] = tmp;
             pair->glsl_name = tex_pair_names[i].c_str();
         }
     }
