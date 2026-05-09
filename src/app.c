@@ -1,6 +1,16 @@
 #include "app.h"
 #include <SDL3/SDL.h>
 
+static void sglua_sokol_logger(const char *tag, uint32_t log_level, uint32_t log_item_id,
+                               const char *message_or_null, uint32_t line_nr,
+                               const char *filename_or_null, void *user_data) {
+    (void)user_data;
+    SDL_Log("sokol[%s] level=%u item=%u %s:%u: %s",
+            tag ? tag : "", log_level, log_item_id,
+            filename_or_null ? filename_or_null : "(no file)",
+            line_nr, message_or_null ? message_or_null : "(no msg)");
+}
+
 bool app_init(App *app) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -27,10 +37,11 @@ bool app_init(App *app) {
             .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
             .sample_count = 1,
         }},
-        .logger.func = NULL,
+        .logger.func = sglua_sokol_logger,
     });
     pass_state_init(&app->pass);
     res_table_init(&app->res);
+    pipeline_cache_init(&app->pip_cache);
     app->frame_index = 0;
     return true;
 }
@@ -50,6 +61,8 @@ void app_frame_end(App *app) {
 }
 
 void app_shutdown(App *app) {
+    // Pipelines reference shaders, so destroy pipelines before resources.
+    pipeline_cache_shutdown(&app->pip_cache);
     res_table_shutdown(&app->res);
     sg_shutdown();
     if (app->gl_ctx) SDL_GL_DestroyContext(app->gl_ctx);

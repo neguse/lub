@@ -42,6 +42,7 @@ add_executable(sglua
   src/pass.c
   src/resources.c
   src/shader.cpp
+  src/pipeline.c
 )
 target_include_directories(sglua PRIVATE
   third_party/sokol

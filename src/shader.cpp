@@ -66,12 +66,26 @@ void copy_diag(IBlob *diag, char *err_buf, size_t err_buf_size) {
 // requested. Rewrite that to `#version 330` so sokol_gfx's GL 3.3 backend
 // accepts the source. The PoC shaders only use features common to both
 // versions (layout qualifiers, basic types, std140 uniform blocks).
+//
+// Slang also unconditionally emits `layout(column_major) buffer;` which is a
+// GLSL 4.30+ construct (SSBO declarations didn't exist before that). The PoC
+// doesn't use SSBOs, so we strip that line entirely. Without this strip, the
+// driver's GLSL frontend rejects the shader at GL_SHADER_COMPILATION_FAILED on
+// first use (sg_make_shader defers compilation, so the failure surfaces on
+// sg_apply_pipeline rather than at create time).
 std::string downversion_glsl(const char *src, size_t n) {
     std::string s(src, n);
     const char *needle = "#version 450";
     size_t pos = s.find(needle);
     if (pos != std::string::npos) {
         s.replace(pos, strlen(needle), "#version 330");
+    }
+    const char *buf_needle = "layout(column_major) buffer;";
+    size_t bpos = s.find(buf_needle);
+    if (bpos != std::string::npos) {
+        // Replace with whitespace of the same length so reported line numbers
+        // in driver diagnostics still line up.
+        s.replace(bpos, strlen(buf_needle), std::string(strlen(buf_needle), ' '));
     }
     return s;
 }

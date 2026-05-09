@@ -4,6 +4,7 @@
 #include "lua_api.h"
 #include "pass.h"
 #include "resources.h"
+#include "pipeline.h"
 
 typedef struct App {
     SDL_Window *window;
@@ -11,6 +12,7 @@ typedef struct App {
     LuaCtx lua;
     PassState pass;
     ResTable res;
+    PipelineCache pip_cache;
     uint64_t frame_index;
 } App;
 

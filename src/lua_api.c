@@ -4,6 +4,8 @@
 #include "pass.h"
 #include "resources.h"
 #include "shader.h"
+#include "pipeline.h"
+#include "enums.h"
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -150,6 +152,98 @@ static int l_use_shader(lua_State *L) {
     return 1;
 }
 
+static int l_draw(lua_State *L) {
+    if (!pass_state_in_pass(&g_app_for_lua->pass)) {
+        return luaL_error(L, "draw: must be called inside begin_pass/end_pass");
+    }
+    int count = (int)luaL_checkinteger(L, 1);
+    luaL_checktype(L, 2, LUA_TTABLE); // resources
+    luaL_checktype(L, 3, LUA_TTABLE); // options
+
+    // options.shader is required and must be a ShaderRef
+    lua_getfield(L, 3, "shader");
+    if (!is_sentinel(L, -1, "shader")) {
+        lua_pop(L, 1);
+        return luaL_error(L, "draw: options.shader required (ShaderRef)");
+    }
+    lua_getfield(L, -1, "key");
+    const char *shader_key = lua_tostring(L, -1);
+    char shader_key_buf[128];
+    if (shader_key) {
+        strncpy(shader_key_buf, shader_key, sizeof(shader_key_buf) - 1);
+        shader_key_buf[sizeof(shader_key_buf) - 1] = '\0';
+    } else {
+        shader_key_buf[0] = '\0';
+    }
+    lua_pop(L, 2); // pop "key" string and the shader ref
+
+    ResEntry *sh_e = res_table_get(&g_app_for_lua->res, shader_key_buf);
+    if (!sh_e || sh_e->kind != RES_SHADER) {
+        return luaL_error(L, "draw: shader not found: %s", shader_key_buf);
+    }
+
+    // pipeline state options (with defaults)
+    int blend = SGL_BLEND_NONE;
+    int cull  = SGL_CULL_BACK;
+    int prim  = SGL_PRIM_TRIANGLES;
+    bool depth_test = true;
+    bool depth_write = true;
+
+    lua_getfield(L, 3, "blend");
+    if (lua_isinteger(L, -1)) blend = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_getfield(L, 3, "cull");
+    if (lua_isinteger(L, -1)) cull = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_getfield(L, 3, "primitive");
+    if (lua_isinteger(L, -1)) prim = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_getfield(L, 3, "depth");
+    if (!lua_isnoneornil(L, -1)) depth_test = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    lua_getfield(L, 3, "depth_write");
+    if (!lua_isnoneornil(L, -1)) depth_write = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+
+    sg_pipeline pip = pipeline_cache_get(
+        &g_app_for_lua->pip_cache,
+        sh_e->u.sh.h, &sh_e->u.sh.refl,
+        (SglBlend)blend, depth_test, depth_write,
+        (SglCull)cull, (SglPrimitive)prim,
+        SG_PIXELFORMAT_RGBA8, SG_PIXELFORMAT_DEPTH_STENCIL);
+    sg_apply_pipeline(pip);
+
+    // bindings: walk resources table and resolve by kind
+    sg_bindings bind = {0};
+    lua_pushnil(L);
+    while (lua_next(L, 2) != 0) {
+        // stack: -2 = key, -1 = value
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "__sgl_kind");
+            const char *kind = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+            char kind_buf[16];
+            strncpy(kind_buf, kind, sizeof(kind_buf) - 1);
+            kind_buf[sizeof(kind_buf) - 1] = '\0';
+            lua_pop(L, 1);
+
+            if (strcmp(kind_buf, "buffer") == 0) {
+                lua_getfield(L, -1, "key");
+                const char *bk = lua_tostring(L, -1);
+                ResEntry *be = bk ? res_table_get(&g_app_for_lua->res, bk) : NULL;
+                lua_pop(L, 1);
+                if (be && be->kind == RES_BUFFER && be->u.buf.type == SGL_BUFFER_VERTEX) {
+                    bind.vertex_buffers[0] = be->u.buf.h;
+                }
+            }
+            // texture / uniforms processing added in Task 10 / Task 11
+        }
+        lua_pop(L, 1); // value, key stays for lua_next
+    }
+    sg_apply_bindings(&bind);
+    sg_draw(0, count, 1);
+    return 0;
+}
+
 static int l_end_pass(lua_State *L) {
     (void)L;
     pass_state_end(&g_app_for_lua->pass);
@@ -172,6 +266,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "use_buffer");
     lua_pushcfunction(L, l_use_shader);
     lua_setglobal(L, "use_shader");
+    lua_pushcfunction(L, l_draw);
+    lua_setglobal(L, "draw");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
