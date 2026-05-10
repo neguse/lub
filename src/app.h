@@ -48,3 +48,18 @@ bool app_init(App *app);
 void app_frame_begin(App *app, int *out_w, int *out_h);
 void app_frame_end(App *app);
 void app_shutdown(App *app);
+
+// Returns the sg_pixel_format matching the active Vulkan swapchain image format.
+// Inline so multiple TUs can call it without linker fuss. Used by both pipeline
+// creation (lua_api.c) and the swapchain pass description (pass.c) so the two
+// stay in lock-step — sokol validation rejects pipelines whose color_format
+// doesn't match the active pass.
+static inline sg_pixel_format app_swapchain_color_format(const App *app) {
+    switch (app->vk_swapchain_format) {
+        case VK_FORMAT_B8G8R8A8_UNORM: return SG_PIXELFORMAT_BGRA8;
+        case VK_FORMAT_R8G8B8A8_UNORM: return SG_PIXELFORMAT_RGBA8;
+        case VK_FORMAT_B8G8R8A8_SRGB:  return SG_PIXELFORMAT_BGRA8;  // close enough for PoC
+        case VK_FORMAT_R8G8B8A8_SRGB:  return SG_PIXELFORMAT_RGBA8;
+        default:                       return SG_PIXELFORMAT_BGRA8;
+    }
+}

@@ -37,7 +37,7 @@ void pass_state_begin_main(PassState *p, float r, float g, float b, float a) {
         .swapchain = {
             .width = p->swapchain_w,
             .height = p->swapchain_h,
-            .color_format = SG_PIXELFORMAT_BGRA8,
+            .color_format = app_swapchain_color_format(app),
             .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
             .sample_count = 1,
             .vulkan = {

@@ -305,7 +305,8 @@ static int l_draw(lua_State *L) {
         sh_e->u.sh.h, &sh_e->u.sh.refl,
         (SglBlend)blend, depth_test, depth_write,
         (SglCull)cull, (SglPrimitive)prim,
-        SG_PIXELFORMAT_RGBA8, SG_PIXELFORMAT_DEPTH_STENCIL);
+        app_swapchain_color_format(g_app_for_lua),
+        SG_PIXELFORMAT_DEPTH_STENCIL);
     sg_apply_pipeline(pip);
 
     // bindings: walk resources table and resolve by kind
