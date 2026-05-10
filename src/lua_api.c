@@ -206,7 +206,13 @@ static int l_use_shader(lua_State *L) {
     char err[1024];
     ShaderBlob vsb = {0}, fsb = {0};
     ShaderReflection refl;
-    if (!shader_compile(vs, fs, &vsb, &fsb, &refl, err, sizeof(err))) {
+    // Patch SPIR-V descriptor sets for the active backend (sokol vs SDL_GPU
+    // require different layouts).
+    ShaderTargetBackend tgt = (g_backend && g_backend->name &&
+                                strcmp(g_backend->name, "sdlgpu") == 0)
+                              ? SHADER_TARGET_SDLGPU
+                              : SHADER_TARGET_SOKOL;
+    if (!shader_compile(vs, fs, tgt, &vsb, &fsb, &refl, err, sizeof(err))) {
         shader_blob_free(&vsb);
         shader_blob_free(&fsb);
         return luaL_error(L, "shader compile error: %s", err);

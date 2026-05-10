@@ -239,23 +239,35 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
     return true;
 }
 
-// Rewrite descriptor-set decorations in a SPIR-V module to match sokol's
-// Vulkan backend layout: uniform buffers stay on set 0, but every other
-// resource (textures, samplers, storage buffers, storage images, etc.) is
-// moved to set 1. Slang emits all globals on set 0 by default, which causes
-// VkPipelineLayout / SPIR-V mismatch panics on strict drivers (e.g. lavapipe
-// SIGSEGV in samples/03_texture before this patch).
+// Rewrite descriptor-set decorations in a SPIR-V module to match the target
+// backend's expected Vulkan descriptor-set layout. Slang emits everything on
+// set 0 by default, which causes VkPipelineLayout / SPIR-V mismatch panics on
+// strict drivers. The two backends have different conventions:
 //
-// SPIR-V layout reference:
-//   header = 5 words, then a stream of instructions where word0 = (wc<<16)|op.
-// We do two passes:
-//   1. Collect IDs of OpVariable %T %ID UniformConstant or StorageBuffer.
-//      These are the resources that belong on set 1.
-//   2. For each OpDecorate %ID DescriptorSet 0 referring to one of those IDs,
-//      rewrite the literal 0 to 1 in place.
-// All other decorations (UB on set 0, bindings, locations, ...) are left
-// untouched.
-void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
+//   sokol (single layout shared by VS+FS):
+//     set 0: uniform buffers
+//     set 1: textures, samplers, storage buffers
+//
+//   SDL_GPU (per-stage layout, see SDL_gpu.h CreateGPUShader docs):
+//     vertex stage    -> set 0: textures/storage; set 1: uniform buffers
+//     fragment stage  -> set 2: textures/samplers/storage; set 3: uniform buffers
+//
+// SPIR-V structure: header = 5 words, then instructions where
+// word0 = (wc<<16)|op. We do two passes:
+//   1. Walk OpVariable to classify each resource ID by storage class.
+//      - UniformConstant / StorageBuffer -> "image-ish" (texture/sampler/SSBO)
+//      - Uniform                          -> "uniform-block"
+//   2. For each OpDecorate %id DescriptorSet <n> we encounter, look up the
+//      resource class and the desired set per the table above, then rewrite
+//      the literal in place.
+// Bindings, locations and other decorations are left untouched.
+//
+// The patch is split per-stage and per-backend because both blobs are passed
+// in independently (one is VS-only, the other FS-only).
+enum class SpvStage { Vertex, Fragment };
+
+void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
+                                 ShaderTargetBackend target, SpvStage stage) {
     if (!spv || size_bytes < 20) return; // too small to be valid
     uint32_t *words = (uint32_t*)spv;
     size_t nwords = size_bytes / 4;
@@ -266,12 +278,15 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
     constexpr uint32_t kOpDecorate     = 71;
     constexpr uint32_t kDecDescriptorSet = 34;
     constexpr uint32_t kStorageUniformConstant = 0;
+    constexpr uint32_t kStorageUniform         = 2;
     constexpr uint32_t kStorageStorageBuffer   = 12;
 
-    std::vector<uint32_t> set1_ids;
-    set1_ids.reserve(8);
+    // Map each resource OpVariable's ID to its descriptor-set destination.
+    // "kind 0" = texture/sampler/SSBO (UniformConstant or StorageBuffer)
+    // "kind 1" = uniform block (Uniform)
+    std::vector<std::pair<uint32_t, int>> id_to_kind;
+    id_to_kind.reserve(8);
 
-    // Pass 1: collect IDs that should live on set 1.
     size_t i = 5; // skip header
     while (i < nwords) {
         uint32_t w0 = words[i];
@@ -279,24 +294,39 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
         uint32_t op = w0 & 0xffff;
         if (wc == 0 || i + wc > nwords) break;
         if (op == kOpVariable && wc >= 4) {
-            // OpVariable: words[i+1]=ResultType, [i+2]=ResultId, [i+3]=StorageClass
             uint32_t storage = words[i + 3];
+            uint32_t id      = words[i + 2];
             if (storage == kStorageUniformConstant ||
                 storage == kStorageStorageBuffer)
             {
-                set1_ids.push_back(words[i + 2]);
+                id_to_kind.push_back({id, 0});
+            } else if (storage == kStorageUniform) {
+                id_to_kind.push_back({id, 1});
             }
         }
         i += wc;
     }
-    if (set1_ids.empty()) return;
+    if (id_to_kind.empty()) return;
 
-    auto is_set1 = [&](uint32_t id) {
-        for (uint32_t v : set1_ids) if (v == id) return true;
-        return false;
+    auto kind_of = [&](uint32_t id) -> int {
+        for (auto &p : id_to_kind) if (p.first == id) return p.second;
+        return -1;
     };
 
-    // Pass 2: bump DescriptorSet decorations for collected IDs.
+    // Resolve target set for (kind, target, stage).
+    auto target_set = [&](int kind) -> int {
+        if (target == SHADER_TARGET_SOKOL) {
+            return (kind == 0) ? 1 : 0;  // image=set1, ub=set0
+        }
+        // SDL_GPU per-stage table:
+        if (stage == SpvStage::Vertex) {
+            return (kind == 0) ? 0 : 1;  // image=set0, ub=set1
+        } else {
+            return (kind == 0) ? 2 : 3;  // image=set2, ub=set3
+        }
+    };
+
+    // Pass 2: rewrite DescriptorSet decorations.
     i = 5;
     while (i < nwords) {
         uint32_t w0 = words[i];
@@ -304,11 +334,14 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
         uint32_t op = w0 & 0xffff;
         if (wc == 0 || i + wc > nwords) break;
         if (op == kOpDecorate && wc >= 4) {
-            // OpDecorate: words[i+1]=Target, [i+2]=Decoration, [i+3]=Operand0
-            uint32_t target = words[i + 1];
-            uint32_t deco   = words[i + 2];
-            if (deco == kDecDescriptorSet && is_set1(target)) {
-                words[i + 3] = 1;
+            uint32_t tgt  = words[i + 1];
+            uint32_t deco = words[i + 2];
+            if (deco == kDecDescriptorSet) {
+                int k = kind_of(tgt);
+                if (k >= 0) {
+                    int s = target_set(k);
+                    if (s >= 0) words[i + 3] = (uint32_t)s;
+                }
             }
         }
         i += wc;
@@ -319,6 +352,7 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
 
 extern "C" bool shader_compile(
     const char *vs_src, const char *fs_src,
+    ShaderTargetBackend target,
     ShaderBlob *out_vs, ShaderBlob *out_fs,
     ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size)
@@ -332,12 +366,12 @@ extern "C" bool shader_compile(
         return false;
     }
 
-    TargetDesc target = {};
-    target.format = SLANG_SPIRV;
-    target.profile = g_slang.spirv_profile;
+    TargetDesc slang_target = {};
+    slang_target.format = SLANG_SPIRV;
+    slang_target.profile = g_slang.spirv_profile;
 
     SessionDesc sd = {};
-    sd.targets = &target;
+    sd.targets = &slang_target;
     sd.targetCount = 1;
     sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
 
@@ -444,8 +478,8 @@ extern "C" bool shader_compile(
     memcpy(out_fs->spirv, fsBlob->getBufferPointer(), fs_size);
     out_fs->bytes = fs_size;
 
-    patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes);
-    patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes);
+    patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes, target, SpvStage::Vertex);
+    patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes, target, SpvStage::Fragment);
     return true;
 }
 

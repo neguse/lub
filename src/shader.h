@@ -55,8 +55,18 @@ typedef struct ShaderBlob {
     size_t bytes;
 } ShaderBlob;
 
+// Target backend for SPIR-V descriptor-set patching. The two backends use
+// different Vulkan descriptor-set layouts (sokol: UB on set 0, samplers on
+// set 1; SDL_GPU: per stage, vs textures=0/UB=1, fs textures=2/UB=3) so the
+// SPIR-V emitted by Slang has to be rewritten differently for each.
+typedef enum ShaderTargetBackend {
+    SHADER_TARGET_SOKOL  = 0,
+    SHADER_TARGET_SDLGPU = 1,
+} ShaderTargetBackend;
+
 bool shader_compile(
     const char *vs_src, const char *fs_src,
+    ShaderTargetBackend target,
     ShaderBlob *out_vs, ShaderBlob *out_fs,
     ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size);

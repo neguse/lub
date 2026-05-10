@@ -53,6 +53,13 @@ typedef struct SgPipeline {
     ShaderReflection refl;
 } SgPipeline;
 
+typedef struct SgImage {
+    SDL_GPUTexture *tex;
+    SDL_GPUSampler *smp;
+    int w, h;
+    SglPixelFormat fmt;
+} SgImage;
+
 // --- backend lifecycle ----------------------------------------------------
 
 static bool sg_init(App *app) {
@@ -202,10 +209,89 @@ static void sg_destroy_buffer(BackendBuffer h) {
 }
 
 static BackendImage sg_make_image(const ImageDesc *d) {
-    (void)d;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: make_image not yet implemented (Task 6)"); warned = true; }
-    return 0;
+    if (!g_app || !g_app->gpu_device) {
+        SDL_Log("sg_make_image: no GPU device");
+        return 0;
+    }
+    SgImage *im = (SgImage*)calloc(1, sizeof(SgImage));
+    if (!im) return 0;
+    im->w = d->w; im->h = d->h; im->fmt = d->fmt;
+
+    SDL_GPUTextureFormat tfmt = (d->fmt == SGL_PF_R8) ? SDL_GPU_TEXTUREFORMAT_R8_UNORM
+                                                       : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    im->tex = SDL_CreateGPUTexture(g_app->gpu_device,
+        &(SDL_GPUTextureCreateInfo){
+            .type = SDL_GPU_TEXTURETYPE_2D,
+            .format = tfmt,
+            .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            .width = (Uint32)d->w, .height = (Uint32)d->h,
+            .layer_count_or_depth = 1, .num_levels = 1,
+        });
+    if (!im->tex) {
+        SDL_Log("sg_make_image: SDL_CreateGPUTexture failed: %s", SDL_GetError());
+        free(im);
+        return 0;
+    }
+
+    if (d->data && d->data_bytes > 0) {
+        SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g_app->gpu_device,
+            &(SDL_GPUTransferBufferCreateInfo){
+                .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                .size = (Uint32)d->data_bytes,
+            });
+        if (!tb) {
+            SDL_Log("sg_make_image: SDL_CreateGPUTransferBuffer failed: %s", SDL_GetError());
+            SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+            free(im);
+            return 0;
+        }
+        void *dst = SDL_MapGPUTransferBuffer(g_app->gpu_device, tb, false);
+        if (!dst) {
+            SDL_Log("sg_make_image: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
+            SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
+            SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+            free(im);
+            return 0;
+        }
+        memcpy(dst, d->data, d->data_bytes);
+        SDL_UnmapGPUTransferBuffer(g_app->gpu_device, tb);
+
+        SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g_app->gpu_device);
+        if (!cmd) {
+            SDL_Log("sg_make_image: SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+            SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
+            SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+            free(im);
+            return 0;
+        }
+        SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+        SDL_UploadToGPUTexture(cp,
+            &(SDL_GPUTextureTransferInfo){ .transfer_buffer = tb, .offset = 0 },
+            &(SDL_GPUTextureRegion){
+                .texture = im->tex,
+                .w = (Uint32)d->w, .h = (Uint32)d->h, .d = 1,
+            },
+            false);
+        SDL_EndGPUCopyPass(cp);
+        SDL_SubmitGPUCommandBuffer(cmd);
+        SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
+    }
+
+    im->smp = SDL_CreateGPUSampler(g_app->gpu_device,
+        &(SDL_GPUSamplerCreateInfo){
+            .min_filter = SDL_GPU_FILTER_LINEAR,
+            .mag_filter = SDL_GPU_FILTER_LINEAR,
+            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        });
+    if (!im->smp) {
+        SDL_Log("sg_make_image: SDL_CreateGPUSampler failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+        free(im);
+        return 0;
+    }
+    return (uintptr_t)im;
 }
 
 static BackendShader sg_make_shader(const ShaderDesc *d) {
@@ -366,7 +452,15 @@ static void sg_destroy_pipeline(BackendPipeline h) {
     free(p);
 }
 
-static void sg_destroy_image(BackendImage h) { (void)h; }
+static void sg_destroy_image(BackendImage h) {
+    SgImage *im = (SgImage*)h;
+    if (!im) return;
+    if (g_app && g_app->gpu_device) {
+        if (im->tex) SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
+        if (im->smp) SDL_ReleaseGPUSampler(g_app->gpu_device, im->smp);
+    }
+    free(im);
+}
 
 // --- draw -----------------------------------------------------------------
 
@@ -386,7 +480,31 @@ static void sg_apply_bindings(const BindingsDesc *b) {
                 &(SDL_GPUBufferBinding){ .buffer = vb->gpu, .offset = 0 }, 1);
         }
     }
-    // Texture binding: deferred to Task 6.
+    // Fragment-stage texture+sampler binding: resolve name->slot via reflection,
+    // then issue a single SDL_BindGPUFragmentSamplers covering [0..max_slot].
+    if (b->texture_count > 0 && b->refl) {
+        SDL_GPUTextureSamplerBinding tsb[8] = {0};
+        int max_slot = -1;
+        for (int i = 0; i < b->texture_count; ++i) {
+            if (!b->textures[i].name) continue;
+            for (int j = 0; j < b->refl->tex_count; ++j) {
+                if (strcmp(b->refl->texs[j].name, b->textures[i].name) != 0) continue;
+                SgImage *im = (SgImage*)b->textures[i].image;
+                if (!im || !im->tex || !im->smp) break;
+                int slot = b->refl->texs[j].smp_slot;
+                if (slot < 0 || slot >= 8) break;
+                tsb[slot] = (SDL_GPUTextureSamplerBinding){
+                    .texture = im->tex,
+                    .sampler = im->smp,
+                };
+                if (slot > max_slot) max_slot = slot;
+                break;
+            }
+        }
+        if (max_slot >= 0) {
+            SDL_BindGPUFragmentSamplers(g_render_pass, 0, tsb, (Uint32)(max_slot + 1));
+        }
+    }
 }
 
 static void sg_apply_uniforms(int slot, const void *d, size_t b) {
