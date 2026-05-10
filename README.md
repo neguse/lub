@@ -1,13 +1,14 @@
 # sglua (PoC)
 
-Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx + Slang + Lua 5.4。
+Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx (Vulkan) + Slang + Lua 5.4。
 
 ## ビルド
 
 依存:
 - CMake 3.20+
-- C11 / C++ 対応コンパイラ (GCC / Clang)
-- Linux x86_64 (現状 GL 3.3 backend のみ)
+- C11 / C++17 対応コンパイラ (GCC / Clang)
+- Vulkan loader (`libvulkan.so` — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`)
+- Linux x86_64 (現状)
 
 ```sh
 # Slang prebuilt は third_party/slang/lib に配置済み (gitignore 対象)
@@ -17,6 +18,8 @@ cmake --build build -j
 
 ## 実行
 
+通常 (実 GPU 経由):
+
 ```sh
 ./build/sglua samples/01_triangle.lua
 ./build/sglua samples/02_vertex_color.lua
@@ -24,7 +27,17 @@ cmake --build build -j
 ./build/sglua samples/04_mvp.lua
 ```
 
-ヘッドレス環境では `SDL_VIDEODRIVER=offscreen` を付ける。
+ヘッドレス (Mesa lavapipe = CPU Vulkan):
+
+```sh
+# 事前: sudo pacman -S vulkan-swrast (Arch) / sudo apt install mesa-vulkan-drivers (Debian)
+scripts/run-headless.sh samples/01_triangle.lua
+```
+
+`scripts/run-headless.sh` は `VK_ICD_FILENAMES` で lavapipe ICD を強制し、
+`DISPLAY` / `WAYLAND_DISPLAY` が無ければ自動で `xvfb-run` でラップする。
+CI / SSH / コンテナ環境でも動くことを確認している (Mesa lavapipe + AMD radv の両方で
+sample 01〜04 が pass)。
 
 ## サンプル
 
@@ -39,7 +52,7 @@ cmake --build build -j
 
 - `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX`。`data` は float の Lua table。同 `version` なら再アップロードしない。
 - `use_texture(key, w, h, format, data, version)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可)。sampler は LINEAR / REPEAT 固定。
-- `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。GLSL 3.30 へ降格してリフレクションする。
+- `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
 - `begin_pass({ target = main_tex, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は今のところ `main_tex` のみ。
 - `draw(count, resources, options)` — 描画コマンド。
   - `resources` は名前付き table: `{ verts = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。テクスチャの名前はシェーダ側のリフレクションに突き合わせる。uniform は uniform block の最初のものに pack される。
@@ -63,22 +76,45 @@ cmake --build build -j
 ```
 src/
 ├── main.c            SDL3 main callbacks エントリ
-├── app.{h,c}         App 状態 (window, GL ctx, sokol env, lifecycle)
+├── app.{h,c}         App 状態 (SDL_Vulkan window + Vulkan instance/device/swapchain, sokol env, lifecycle)
 ├── lua_api.{h,c}     Lua bindings (use_*, begin_pass, end_pass, draw)
 ├── enums.h           SglBufferType / SglPixelFormat / ... の C-side enum
 ├── enums_lua.{h,c}   それらを Lua グローバルに登録
 ├── pass.{h,c}        現フレームの pass state
 ├── resources.{h,c}   key → ResEntry のハッシュマップ (buffer/texture/shader)
-├── shader.h, shader.cpp   Slang compile + GLSL 3.30 downversion + reflection
+├── shader.h, shader.cpp   Slang compile (target = SPIR-V) + reflection
 ├── pipeline.{h,c}    pipeline state hash → sg_pipeline cache
-└── sokol_impl.c      SOKOL_GFX_IMPL の TU
+└── sokol_impl.c      SOKOL_GFX_IMPL の TU (SOKOL_VULKAN backend)
 ```
 
 依存:
-- `third_party/sokol/sokol_gfx.h` — single-header (vendored)
-- `third_party/slang/` — Slang 2026.x prebuilt (`include/`, `lib/`)
-- SDL3 — CMake FetchContent
+- `third_party/sokol/sokol_gfx.h` — single-header (vendored)、`SOKOL_VULKAN` backend
+- `third_party/slang/` — Slang 2026.x prebuilt (`include/`, `lib/`)、SPIR-V を target
+- SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
+- Vulkan loader (`libvulkan.so`) — system 提供
 - Lua 5.4 — CMake FetchContent (static lib build)
+
+## Known issues
+
+Phase 2 (Vulkan 移行) で残っている既知の Vulkan validation warning / 制限:
+
+- **Depth/stencil format mismatch** (`VUID-vkCmdDraw-dynamicRenderingUnusedAttachments-08914` /
+  `08917`): `src/app.c` で D24_UNORM_S8_UINT を depth attachment に選んでいるが
+  sokol 内部は `SG_PIXELFORMAT_DEPTH_STENCIL` を D32_SFLOAT_S8_UINT に解決する。
+  validation 警告は出るが描画自体は通る。fix は `app.c` 側で `D32_SFLOAT_S8_UINT` を
+  選ぶか pipeline.c に depth format を渡す方向。
+- **Single-pair semaphore reuse** (`VUID-vkAcquireNextImageKHR-semaphore-01779`,
+  `VUID-vkQueueSubmit-pSignalSemaphores-00067`): `src/app.c` の `vk_acquire_sem` /
+  `vk_present_sem` を全フレームで再利用しているため、複数フレーム並列対応の前提では
+  推奨されない。fix は per-image semaphore array か `VK_KHR_swapchain_maintenance1`
+  の利用。
+- **Window resize 未対応**: swapchain recreate (`VK_ERROR_OUT_OF_DATE_KHR`) を
+  キャッチしていない。リサイズすると以後のフレームが broken になる可能性。
+- **lavapipe での 03_texture**: 解決済み (Phase 2 Task 18 で SPIR-V descriptor set
+  patch 適用)。両 driver で動作。
+
+これらはいずれも実用上の致命的問題ではなく、Phase 2 のスコープ外として残置。
+将来 Phase 3 (SDL3 GPU backend / multi-platform) と合わせて整理する。
 
 ## ライセンス
 
