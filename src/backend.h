@@ -75,6 +75,9 @@ typedef struct RenderBackend {
     void (*destroy_shader)(BackendShader);
     void (*destroy_pipeline)(BackendPipeline);
 
+    void (*update_buffer)(BackendBuffer h, const void *data, size_t bytes);
+    void (*update_image)(BackendImage h, const void *data, size_t bytes);
+
     void (*begin_pass)(struct App *app, const PassBeginDesc *);
     void (*end_pass)(struct App *app);
 

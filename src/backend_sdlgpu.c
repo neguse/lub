@@ -459,6 +459,17 @@ static void sg_destroy_pipeline(BackendPipeline h) {
     free(p);
 }
 
+static void sg_update_buffer_be(BackendBuffer h, const void *data, size_t bytes) {
+    (void)h; (void)data; (void)bytes;
+    SDL_Log("sg_update_buffer_be: not yet implemented");
+    SDL_assert(0);
+}
+static void sg_update_image_be(BackendImage h, const void *data, size_t bytes) {
+    (void)h; (void)data; (void)bytes;
+    SDL_Log("sg_update_image_be: not yet implemented");
+    SDL_assert(0);
+}
+
 static void sg_destroy_image(BackendImage h) {
     SgImage *im = (SgImage*)h;
     if (!im) return;
@@ -672,6 +683,8 @@ const RenderBackend g_backend_sdlgpu = {
     .destroy_image = sg_destroy_image,
     .destroy_shader = sg_destroy_shader,
     .destroy_pipeline = sg_destroy_pipeline,
+    .update_buffer = sg_update_buffer_be,
+    .update_image  = sg_update_image_be,
     .begin_pass = sg_begin_pass,
     .end_pass = sg_end_pass,
     .apply_pipeline = sg_apply_pipeline,

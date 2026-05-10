@@ -615,6 +615,17 @@ static void sk_destroy_pipeline(BackendPipeline h) {
     sg_destroy_pipeline((sg_pipeline){ .id = (uint32_t)h });
 }
 
+static void sk_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
+    (void)h; (void)data; (void)bytes;
+    SDL_Log("sk_update_buffer: not yet implemented");
+    SDL_assert(0);
+}
+static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
+    (void)h; (void)data; (void)bytes;
+    SDL_Log("sk_update_image: not yet implemented");
+    SDL_assert(0);
+}
+
 static void sk_begin_pass(App *app, const PassBeginDesc *d) {
     sg_pass pass = {
         .action.colors[0] = {
@@ -950,6 +961,8 @@ const RenderBackend g_backend_sokol = {
     .destroy_image = sk_destroy_image,
     .destroy_shader = sk_destroy_shader,
     .destroy_pipeline = sk_destroy_pipeline,
+    .update_buffer = sk_update_buffer,
+    .update_image  = sk_update_image,
     .begin_pass = sk_begin_pass,
     .end_pass = sk_end_pass,
     .apply_pipeline = sk_apply_pipeline,
