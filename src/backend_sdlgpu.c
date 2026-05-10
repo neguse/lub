@@ -550,6 +550,10 @@ static bool sg_capture(App *app, const char *path) {
         SDL_Log("sg_capture: invalid size %dx%d", w, h);
         return false;
     }
+    if (!app->gpu_device || !app->window) {
+        SDL_Log("sg_capture: backend not initialized");
+        return false;
+    }
     Uint32 stride = (Uint32)w * 4;
     Uint32 bytes  = stride * (Uint32)h;
 
@@ -570,6 +574,14 @@ static bool sg_capture(App *app, const char *path) {
         return false;
     }
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    if (!cp) {
+        SDL_Log("sg_capture: SDL_BeginGPUCopyPass failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+        // cmd buffer ownership is unclear after BeginGPUCopyPass failure; submit it
+        // empty rather than leaking. Fence is not used since download didn't run.
+        SDL_SubmitGPUCommandBuffer(cmd);
+        return false;
+    }
     SDL_DownloadFromGPUTexture(cp,
         &(SDL_GPUTextureRegion){
             .texture = src_tex,
@@ -589,7 +601,12 @@ static bool sg_capture(App *app, const char *path) {
         SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
         return false;
     }
-    SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1);
+    if (!SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1)) {
+        SDL_Log("sg_capture: SDL_WaitForGPUFences failed: %s", SDL_GetError());
+        SDL_ReleaseGPUFence(app->gpu_device, fence);
+        SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+        return false;
+    }
     SDL_ReleaseGPUFence(app->gpu_device, fence);
 
     void *src = SDL_MapGPUTransferBuffer(app->gpu_device, tb, false);
@@ -600,6 +617,7 @@ static bool sg_capture(App *app, const char *path) {
     }
     uint8_t *rgba = (uint8_t*)malloc(bytes);
     if (!rgba) {
+        SDL_Log("sg_capture: out of memory (%u bytes)", bytes);
         SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
         SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
         return false;
