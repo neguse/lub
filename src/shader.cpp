@@ -1,10 +1,11 @@
-// Slang shader compile + reflection -> sg_shader
+// Slang shader compile + reflection -> SPIR-V blob + ShaderReflection
 //
 // Compiles two source strings (vertex and fragment) written in Slang to
-// SPIR-V, builds an sg_shader_desc with attribute/uniform/texture reflection,
-// and hands the resulting sg_shader handle plus a small ShaderReflection
-// struct back to the caller. This file is C++ because the Slang public API
-// uses COM-like C++ interfaces; the exposed interface (shader.h) is pure C.
+// SPIR-V, and returns the SPIR-V byte blobs plus a small ShaderReflection
+// struct to the caller. The actual GPU shader object construction
+// (sg_make_shader / SDL_CreateGPUShader / etc.) lives in the backend.
+// This file is C++ because the Slang public API uses COM-like C++
+// interfaces; the exposed interface (shader.h) is pure C.
 #include "shader.h"
 
 #include <slang.h>
@@ -316,12 +317,14 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
 
 } // anonymous namespace
 
-extern "C" bool shader_compile_and_create(
+extern "C" bool shader_compile(
     const char *vs_src, const char *fs_src,
-    sg_shader *out_shader, ShaderReflection *out_refl,
+    ShaderBlob *out_vs, ShaderBlob *out_fs,
+    ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size)
 {
-    if (out_shader) out_shader->id = 0;
+    if (out_vs) { out_vs->spirv = nullptr; out_vs->bytes = 0; }
+    if (out_fs) { out_fs->spirv = nullptr; out_fs->bytes = 0; }
     if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
 
     if (!ensure_global_session()) {
@@ -388,9 +391,7 @@ extern "C" bool shader_compile_and_create(
 
     // Get target code: entry 0 is vs (declared first in `components`),
     // entry 1 is fs. With target.format == SLANG_SPIRV the blobs hold
-    // SPIR-V binary, not GLSL source. The blobs (and the COM objects that
-    // own them) must remain alive until sg_make_shader returns, since
-    // sg_shader_desc holds raw pointers into the blob memory.
+    // SPIR-V binary, not GLSL source.
     ComPtr<IBlob> vsBlob, fsBlob;
     if (SLANG_FAILED(linked->getEntryPointCode(0, 0, vsBlob.writeRef(), diag.writeRef()))) {
         copy_diag(diag.get(), err_buf, err_buf_size);
@@ -400,23 +401,6 @@ extern "C" bool shader_compile_and_create(
         copy_diag(diag.get(), err_buf, err_buf_size);
         return false;
     }
-
-    // Copy the SPIR-V blobs into mutable buffers so we can patch descriptor
-    // sets in place (see patch_spirv_descriptor_sets above for why). The
-    // copies live on the stack-allocated std::vector and are kept alive
-    // until sg_make_shader returns; sokol reads/copies the bytecode there.
-    std::vector<uint8_t> vs_spv_buf(
-        (const uint8_t*)vsBlob->getBufferPointer(),
-        (const uint8_t*)vsBlob->getBufferPointer() + vsBlob->getBufferSize());
-    std::vector<uint8_t> fs_spv_buf(
-        (const uint8_t*)fsBlob->getBufferPointer(),
-        (const uint8_t*)fsBlob->getBufferPointer() + fsBlob->getBufferSize());
-    patch_spirv_descriptor_sets(vs_spv_buf.data(), vs_spv_buf.size());
-    patch_spirv_descriptor_sets(fs_spv_buf.data(), fs_spv_buf.size());
-    const void *vs_spv      = vs_spv_buf.data();
-    const size_t vs_spv_size = vs_spv_buf.size();
-    const void *fs_spv      = fs_spv_buf.data();
-    const size_t fs_spv_size = fs_spv_buf.size();
 
     // Reflection
     ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
@@ -439,80 +423,37 @@ extern "C" bool shader_compile_and_create(
     }
     fill_global_reflection(programLayout, out_refl);
 
-    // Build sg_shader_desc.
-    //
-    // Lifetime contract: vsBlob/fsBlob own the SPIR-V byte buffers referenced
-    // by desc.vertex_func.bytecode / desc.fragment_func.bytecode. sg_make_shader
-    // copies the bytecode into VkShaderModule on its way through the Vulkan
-    // backend, so the blobs can be released after that call returns.
-    sg_shader_desc desc = {};
-    // Slang's SPIR-V emitter renames the entry-point function to "main"
-    // (regardless of the source-level name `vs_main`/`fs_main`) so that
-    // generated SPIR-V matches the GLSL convention. Vulkan validation
-    // confirms this — we must pass "main" here, not "vs_main"/"fs_main".
-    desc.vertex_func.entry            = "main";
-    desc.vertex_func.bytecode.ptr     = vs_spv;
-    desc.vertex_func.bytecode.size    = vs_spv_size;
-    desc.fragment_func.entry          = "main";
-    desc.fragment_func.bytecode.ptr   = fs_spv;
-    desc.fragment_func.bytecode.size  = fs_spv_size;
-
-    // Vertex attributes — SPIR-V identifies inputs by location number, which
-    // sokol's Vulkan backend reads from the SPIR-V module directly; the desc
-    // only needs base_type set for validation.
-    for (int i = 0; i < out_refl->attr_count && i < SG_MAX_VERTEX_ATTRIBUTES; ++i) {
-        desc.attrs[i].base_type = SG_SHADERATTRBASETYPE_FLOAT;
-    }
-
-    // Uniform blocks. Vulkan backend reads spirv_set0_binding_n to map sokol's
-    // uniform-block bind slot to a (set=0, binding=N) descriptor.
-    for (int b = 0; b < out_refl->ub_count && b < SGL_MAX_UNIFORM_BLOCKS; ++b) {
-        ShaderUniformBlock *u = &out_refl->ubs[b];
-        int slot = u->slot;
-        if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS) continue;
-        sg_shader_uniform_block *dst = &desc.uniform_blocks[slot];
-        // TODO(Task 11+): determine UB stage per parameter via Slang reflection.
-        // PoC assumption: vertex shader is the only stage that uses uniform blocks.
-        // This will break the moment a fragment-stage UB is introduced.
-        dst->stage = SG_SHADERSTAGE_VERTEX;
-        dst->size = (uint32_t)(u->size_floats * 4);
-        dst->layout = SG_UNIFORMLAYOUT_STD140;
-        dst->spirv_set0_binding_n = (uint8_t)slot;
-    }
-
-    // Textures + samplers + texture-sampler pairs (PoC: stage=FRAGMENT).
-    for (int i = 0; i < out_refl->tex_count && i < SGL_MAX_TEXTURES; ++i) {
-        ShaderTexture *tx = &out_refl->texs[i];
-        int img_slot = tx->img_slot;
-        int smp_slot = tx->smp_slot;
-        if (img_slot < 0 || img_slot >= SG_MAX_VIEW_BINDSLOTS) continue;
-
-        sg_shader_view *view = &desc.views[img_slot];
-        view->texture.stage = SG_SHADERSTAGE_FRAGMENT;
-        view->texture.image_type = SG_IMAGETYPE_2D;
-        view->texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
-        view->texture.spirv_set1_binding_n = (uint8_t)img_slot;
-
-        if (smp_slot >= 0 && smp_slot < SG_MAX_SAMPLER_BINDSLOTS) {
-            sg_shader_sampler *smp = &desc.samplers[smp_slot];
-            smp->stage = SG_SHADERSTAGE_FRAGMENT;
-            smp->sampler_type = SG_SAMPLERTYPE_FILTERING;
-            smp->spirv_set1_binding_n = (uint8_t)smp_slot;
-        }
-        if (i < SG_MAX_TEXTURE_SAMPLER_PAIRS) {
-            sg_shader_texture_sampler_pair *pair = &desc.texture_sampler_pairs[i];
-            pair->stage = SG_SHADERSTAGE_FRAGMENT;
-            pair->view_slot = (uint8_t)img_slot;
-            pair->sampler_slot = (uint8_t)(smp_slot >= 0 ? smp_slot : 0);
-        }
-    }
-
-    sg_shader sh = sg_make_shader(&desc);
-    if (sh.id == 0) {
-        if (err_buf && err_buf_size)
-            snprintf(err_buf, err_buf_size, "sg_make_shader failed (see sokol log)");
+    // Copy the SPIR-V bytes into caller-owned mutable malloc'd buffers and
+    // patch descriptor sets in place.
+    size_t vs_size = vsBlob->getBufferSize();
+    size_t fs_size = fsBlob->getBufferSize();
+    out_vs->spirv = (uint32_t*)malloc(vs_size);
+    if (!out_vs->spirv) {
+        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "OOM (vs blob)");
         return false;
     }
-    *out_shader = sh;
+    memcpy(out_vs->spirv, vsBlob->getBufferPointer(), vs_size);
+    out_vs->bytes = vs_size;
+
+    out_fs->spirv = (uint32_t*)malloc(fs_size);
+    if (!out_fs->spirv) {
+        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
+        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "OOM (fs blob)");
+        return false;
+    }
+    memcpy(out_fs->spirv, fsBlob->getBufferPointer(), fs_size);
+    out_fs->bytes = fs_size;
+
+    patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes);
+    patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes);
     return true;
+}
+
+extern "C" void shader_blob_free(ShaderBlob *b) {
+    if (!b) return;
+    if (b->spirv) {
+        free(b->spirv);
+        b->spirv = nullptr;
+    }
+    b->bytes = 0;
 }

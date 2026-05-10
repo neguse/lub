@@ -1,5 +1,4 @@
 #pragma once
-#include "sokol_gfx.h"
 #include "enums.h"
 #include "shader.h"
 #include <stdbool.h>
@@ -16,9 +15,9 @@ typedef struct ResEntry {
     int version;
     int64_t last_seen_frame;
     union {
-        struct { sg_buffer h; SglBufferType type; size_t size_bytes; } buf;
-        struct { sg_image h; sg_sampler smp; sg_view view; int w, h_; SglPixelFormat fmt; } tex;
-        struct { sg_shader h; ShaderReflection refl; } sh;
+        struct { uintptr_t h; SglBufferType type; size_t size_bytes; } buf;
+        struct { uintptr_t h; int w, h_; SglPixelFormat fmt; } tex;
+        struct { uintptr_t h; ShaderReflection refl; } sh;
     } u;
     struct ResEntry *next;
 } ResEntry;

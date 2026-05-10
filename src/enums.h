@@ -16,6 +16,7 @@ typedef enum {
     SGL_PF_DEPTH16,
     SGL_PF_DEPTH24_STENCIL8,
     SGL_PF_DEPTH32F,
+    SGL_PF_BGRA8,
 } SglPixelFormat;
 
 typedef enum { SGL_LOAD_CLEAR = 1, SGL_LOAD_LOAD, SGL_LOAD_DONTCARE } SglLoadAction;

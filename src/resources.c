@@ -1,4 +1,5 @@
 #include "resources.h"
+#include "backend.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -14,27 +15,29 @@ void res_table_init(ResTable *t) {
     memset(t, 0, sizeof(*t));
 }
 
+static void res_entry_release(ResEntry *e) {
+    switch (e->kind) {
+        case RES_BUFFER:
+            if (e->u.buf.h) g_backend->destroy_buffer(e->u.buf.h);
+            break;
+        case RES_TEXTURE:
+            if (e->u.tex.h) g_backend->destroy_image(e->u.tex.h);
+            break;
+        case RES_SHADER:
+            if (e->u.sh.h) g_backend->destroy_shader(e->u.sh.h);
+            break;
+        default: break;
+    }
+    free(e->key);
+    free(e);
+}
+
 void res_table_shutdown(ResTable *t) {
     for (int i = 0; i < RES_BUCKETS; ++i) {
         ResEntry *e = t->buckets[i];
         while (e) {
             ResEntry *n = e->next;
-            switch (e->kind) {
-                case RES_BUFFER:
-                    if (e->u.buf.h.id != 0) sg_destroy_buffer(e->u.buf.h);
-                    break;
-                case RES_TEXTURE:
-                    if (e->u.tex.view.id != 0) sg_destroy_view(e->u.tex.view);
-                    if (e->u.tex.h.id != 0) sg_destroy_image(e->u.tex.h);
-                    if (e->u.tex.smp.id != 0) sg_destroy_sampler(e->u.tex.smp);
-                    break;
-                case RES_SHADER:
-                    if (e->u.sh.h.id != 0) sg_destroy_shader(e->u.sh.h);
-                    break;
-                default: break;
-            }
-            free(e->key);
-            free(e);
+            res_entry_release(e);
             e = n;
         }
         t->buckets[i] = NULL;

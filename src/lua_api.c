@@ -1,6 +1,7 @@
 #include "lua_api.h"
 #include "enums_lua.h"
 #include "app.h"
+#include "backend.h"
 #include "pass.h"
 #include "resources.h"
 #include "shader.h"
@@ -94,7 +95,7 @@ static int l_use_buffer(lua_State *L) {
 
     res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-    if (e->version == version && e->u.buf.h.id != 0) {
+    if (e->version == version && e->u.buf.h != 0) {
         // Skip upload — return existing BufferRef
         push_buffer_ref(L, key);
         return 1;
@@ -111,16 +112,8 @@ static int l_use_buffer(lua_State *L) {
         lua_pop(L, 1);
     }
 
-    if (e->u.buf.h.id != 0) sg_destroy_buffer(e->u.buf.h);
-    e->u.buf.h = sg_make_buffer(&(sg_buffer_desc){
-        .size = (size_t)n * sizeof(float),
-        .usage = {
-            .vertex_buffer = (type == SGL_BUFFER_VERTEX),
-            .index_buffer  = (type == SGL_BUFFER_INDEX),
-            .immutable     = true,
-        },
-        .data = { .ptr = data, .size = (size_t)n * sizeof(float) },
-    });
+    if (e->u.buf.h != 0) g_backend->destroy_buffer(e->u.buf.h);
+    e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, (size_t)n * sizeof(float));
     e->u.buf.type = (SglBufferType)type;
     e->u.buf.size_bytes = (size_t)n * sizeof(float);
     e->version = version;
@@ -145,16 +138,15 @@ static int l_use_texture(lua_State *L) {
     if (!e) return luaL_error(L, "use_texture: key '%s' already used as different kind", key);
     res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-    if (e->version == version && e->u.tex.h.id != 0) {
+    if (e->version == version && e->u.tex.h != 0) {
         push_texture_ref(L, key);
         return 1;
     }
 
-    sg_pixel_format pf;
     int bpp;
     switch (fmt) {
-        case SGL_PF_RGBA8: pf = SG_PIXELFORMAT_RGBA8; bpp = 4; break;
-        case SGL_PF_R8:    pf = SG_PIXELFORMAT_R8;    bpp = 1; break;
+        case SGL_PF_RGBA8: bpp = 4; break;
+        case SGL_PF_R8:    bpp = 1; break;
         default: return luaL_error(L, "use_texture: format not supported in PoC (only RGBA8/R8)");
     }
 
@@ -175,38 +167,16 @@ static int l_use_texture(lua_State *L) {
         }
     }
 
-    if (e->u.tex.view.id != 0) sg_destroy_view(e->u.tex.view);
-    if (e->u.tex.h.id != 0)    sg_destroy_image(e->u.tex.h);
-    if (e->u.tex.smp.id != 0)  sg_destroy_sampler(e->u.tex.smp);
-    e->u.tex.view.id = 0;
-    e->u.tex.h.id    = 0;
-    e->u.tex.smp.id  = 0;
+    if (e->u.tex.h != 0) g_backend->destroy_image(e->u.tex.h);
+    e->u.tex.h = 0;
 
-    sg_image_desc img_desc = {
-        .width = w,
-        .height = h,
-        .pixel_format = pf,
-        .usage = { .immutable = true },
+    ImageDesc d = {
+        .fmt = (SglPixelFormat)fmt,
+        .w = w, .h = h,
+        .data = pixels,
+        .data_bytes = pixels ? (size_t)w * (size_t)h * (size_t)bpp : 0,
     };
-    if (has_data) {
-        img_desc.data.mip_levels[0].ptr  = pixels;
-        img_desc.data.mip_levels[0].size = (size_t)w * (size_t)h * (size_t)bpp;
-    }
-    e->u.tex.h = sg_make_image(&img_desc);
-
-    e->u.tex.smp = sg_make_sampler(&(sg_sampler_desc){
-        .min_filter = SG_FILTER_LINEAR,
-        .mag_filter = SG_FILTER_LINEAR,
-        .wrap_u = SG_WRAP_REPEAT,
-        .wrap_v = SG_WRAP_REPEAT,
-    });
-
-    // Bind-time bindings need an sg_view wrapping the image. Create one here so
-    // l_draw can drop it straight into bind.views[].
-    e->u.tex.view = sg_make_view(&(sg_view_desc){
-        .texture = { .image = e->u.tex.h },
-    });
-
+    e->u.tex.h = g_backend->make_image(&d);
     e->u.tex.w   = w;
     e->u.tex.h_  = h;
     e->u.tex.fmt = (SglPixelFormat)fmt;
@@ -228,21 +198,32 @@ static int l_use_shader(lua_State *L) {
     if (!e) return luaL_error(L, "use_shader: key '%s' already used as different kind", key);
     res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-    if (e->version == version && e->u.sh.h.id != 0) {
+    if (e->version == version && e->u.sh.h != 0) {
         push_shader_ref(L, key);
         return 1;
     }
 
     char err[1024];
-    sg_shader sh;
+    ShaderBlob vsb = {0}, fsb = {0};
     ShaderReflection refl;
-    if (!shader_compile_and_create(vs, fs, &sh, &refl, err, sizeof(err))) {
+    if (!shader_compile(vs, fs, &vsb, &fsb, &refl, err, sizeof(err))) {
+        shader_blob_free(&vsb);
+        shader_blob_free(&fsb);
         return luaL_error(L, "shader compile error: %s", err);
     }
-    if (e->u.sh.h.id != 0) sg_destroy_shader(e->u.sh.h);
-    e->u.sh.h = sh;
+
+    ShaderDesc sd = {
+        .vs_spirv = vsb.spirv, .vs_bytes = vsb.bytes,
+        .fs_spirv = fsb.spirv, .fs_bytes = fsb.bytes,
+        .refl = &refl,
+    };
+    if (e->u.sh.h != 0) g_backend->destroy_shader(e->u.sh.h);
+    e->u.sh.h = g_backend->make_shader(&sd);
     e->u.sh.refl = refl;
     e->version = version;
+
+    shader_blob_free(&vsb);
+    shader_blob_free(&fsb);
 
     push_shader_ref(L, key);
     return 1;
@@ -301,17 +282,18 @@ static int l_draw(lua_State *L) {
     if (!lua_isnoneornil(L, -1)) depth_write = lua_toboolean(L, -1);
     lua_pop(L, 1);
 
-    sg_pipeline pip = pipeline_cache_get(
+    BackendPipeline pip = pipeline_cache_get(
         &g_app_for_lua->pip_cache,
         sh_e->u.sh.h, &sh_e->u.sh.refl,
         (SglBlend)blend, depth_test, depth_write,
         (SglCull)cull, (SglPrimitive)prim,
-        app_swapchain_color_format(g_app_for_lua),
-        SG_PIXELFORMAT_DEPTH_STENCIL);
-    sg_apply_pipeline(pip);
+        g_backend->swapchain_color_format(g_app_for_lua));
+    g_backend->apply_pipeline(pip);
 
-    // bindings: walk resources table and resolve by kind
-    sg_bindings bind = {0};
+    // bindings: walk resources table, populate BindingsDesc.
+    BindingsDesc bind = {0};
+    bind.refl = &sh_e->u.sh.refl;
+
     lua_pushnil(L);
     while (lua_next(L, 2) != 0) {
         // stack: -2 = key, -1 = value
@@ -329,7 +311,7 @@ static int l_draw(lua_State *L) {
                 ResEntry *be = bk ? res_table_get(&g_app_for_lua->res, bk) : NULL;
                 lua_pop(L, 1);
                 if (be && be->kind == RES_BUFFER && be->u.buf.type == SGL_BUFFER_VERTEX) {
-                    bind.vertex_buffers[0] = be->u.buf.h;
+                    bind.vbuf = be->u.buf.h;
                 }
             } else if (strcmp(kind_buf, "texture") == 0) {
                 // resource_name (the Lua key, like "diffuse") is on the stack at index -2.
@@ -341,27 +323,19 @@ static int l_draw(lua_State *L) {
                 const char *tk = lua_tostring(L, -1);
                 ResEntry *te = tk ? res_table_get(&g_app_for_lua->res, tk) : NULL;
                 lua_pop(L, 1);
-                if (te && te->kind == RES_TEXTURE && res_name) {
-                    // Find matching ShaderTexture by name in reflection.
-                    // sokol's new API binds textures via sg_view objects (in
-                    // bind.views[img_slot]) plus the sampler in bind.samplers[smp_slot].
-                    const ShaderReflection *refl = &sh_e->u.sh.refl;
-                    for (int i = 0; i < refl->tex_count; ++i) {
-                        if (strcmp(refl->texs[i].name, res_name) == 0) {
-                            int img_slot = refl->texs[i].img_slot;
-                            int smp_slot = refl->texs[i].smp_slot;
-                            if (img_slot >= 0) bind.views[img_slot] = te->u.tex.view;
-                            if (smp_slot >= 0) bind.samplers[smp_slot] = te->u.tex.smp;
-                            break;
-                        }
-                    }
+                if (te && te->kind == RES_TEXTURE && res_name &&
+                    bind.texture_count < (int)(sizeof(bind.textures)/sizeof(bind.textures[0])))
+                {
+                    bind.textures[bind.texture_count].name = res_name;
+                    bind.textures[bind.texture_count].image = te->u.tex.h;
+                    bind.texture_count++;
                 }
             }
             // uniforms processing handled separately below (resources.uniforms key)
         }
         lua_pop(L, 1); // value, key stays for lua_next
     }
-    sg_apply_bindings(&bind);
+    g_backend->apply_bindings(&bind);
 
     // uniforms: read resources.uniforms = { ub_member_name = {floats...} } and pack
     // into the shader's first uniform block. PoC: only ub[0] supported.
@@ -394,14 +368,12 @@ static int l_draw(lua_State *L) {
             }
             lua_pop(L, 1); // pop the field (or nil)
         }
-        sg_apply_uniforms(ub->slot, &(sg_range){
-            .ptr = buf,
-            .size = (size_t)total_floats * sizeof(float),
-        });
+        g_backend->apply_uniforms(ub->slot, buf,
+                                  (size_t)total_floats * sizeof(float));
     }
     lua_pop(L, 1); // pop "uniforms" field (or nil)
 
-    sg_draw(0, count, 1);
+    g_backend->draw(0, count);
     return 0;
 }
 

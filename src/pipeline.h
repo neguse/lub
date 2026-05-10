@@ -1,24 +1,23 @@
 #pragma once
-#include "sokol_gfx.h"
+#include "backend.h"
 #include "shader.h"
 #include "enums.h"
 #include <stdint.h>
 #include <stdbool.h>
 
+#define PIPELINE_BUCKETS 64
+
 typedef struct PipelineKey {
-    uint32_t shader_id;
-    uint8_t blend, depth_test, depth_write, cull, primitive;
-    uint8_t color_fmt;
-    uint8_t depth_fmt;
+    uintptr_t shader_handle;
+    uint8_t blend, depth_test, depth_write, cull, primitive, color_fmt;
+    uint8_t _pad[2];
 } PipelineKey;
 
 typedef struct PipelineEntry {
     PipelineKey key;
-    sg_pipeline pip;
+    BackendPipeline pip;
     struct PipelineEntry *next;
 } PipelineEntry;
-
-#define PIPELINE_BUCKETS 64
 
 typedef struct PipelineCache {
     PipelineEntry *buckets[PIPELINE_BUCKETS];
@@ -27,9 +26,9 @@ typedef struct PipelineCache {
 void pipeline_cache_init(PipelineCache *c);
 void pipeline_cache_shutdown(PipelineCache *c);
 
-sg_pipeline pipeline_cache_get(
+BackendPipeline pipeline_cache_get(
     PipelineCache *c,
-    sg_shader sh, const ShaderReflection *refl,
+    BackendShader sh, const ShaderReflection *refl,
     SglBlend blend, bool depth_test, bool depth_write,
     SglCull cull, SglPrimitive prim,
-    sg_pixel_format color_fmt, sg_pixel_format depth_fmt);
+    SglPixelFormat color_fmt);

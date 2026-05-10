@@ -33,6 +33,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     if (!lua_ctx_init(&g_app.lua, script, &g_app)) return SDL_APP_FAILURE;
     lua_ctx_call_init(&g_app.lua);
+    app_backend_init(&g_app);   // initialize GPU backend after Lua on_init
 
     if (capture_path) {
         capture_schedule(&g_app.capture, capture_path, capture_frame);

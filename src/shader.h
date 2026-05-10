@@ -1,6 +1,6 @@
 #pragma once
-#include "sokol_gfx.h"
 #include <stddef.h>
+#include <stdint.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -49,10 +49,19 @@ typedef struct ShaderReflection {
     int vertex_stride_floats;
 } ShaderReflection;
 
-bool shader_compile_and_create(
+// SPIR-V byte blob, owner = caller (free with shader_blob_free).
+typedef struct ShaderBlob {
+    uint32_t *spirv;
+    size_t bytes;
+} ShaderBlob;
+
+bool shader_compile(
     const char *vs_src, const char *fs_src,
-    sg_shader *out_shader, ShaderReflection *out_refl,
+    ShaderBlob *out_vs, ShaderBlob *out_fs,
+    ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size);
+
+void shader_blob_free(ShaderBlob *b);
 
 #ifdef __cplusplus
 }

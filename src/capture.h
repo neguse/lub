@@ -1,7 +1,8 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
-#include <vulkan/vulkan.h>
+
+struct App;
 
 // Capture state attached to App.
 typedef struct CaptureState {
@@ -17,22 +18,7 @@ void capture_state_shutdown(CaptureState *c);
 // `at_frame` 0 means "capture as soon as possible (next frame)".
 void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame);
 
-// Called from app_frame_end AFTER vkQueuePresentKHR. Reads back the just-rendered
-// swapchain image and writes PNG.
-// Returns true if a capture was performed (caller should arrange app exit).
-// `swapchain_image`: the VkImage that was just rendered to.
-// `width`/`height`: extent.
-// `format`: VkFormat of the swapchain (BGRA8/RGBA8 only supported in PoC).
-bool capture_run_if_pending(
-    CaptureState    *c,
-    uint64_t         current_frame,
-    VkInstance       inst,
-    VkPhysicalDevice phys,
-    VkDevice         dev,
-    VkQueue          queue,
-    uint32_t         queue_family,
-    VkImage          swapchain_image,
-    uint32_t         width,
-    uint32_t         height,
-    VkFormat         format,
-    const char     **out_err);
+// Called from app_frame_end. If a capture is pending and the current frame
+// is at/after target_frame, dispatch g_backend->capture(app, path) and clear
+// the pending flag. Returns true if capture was performed.
+bool capture_state_drain(CaptureState *c, struct App *app);

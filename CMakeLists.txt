@@ -44,6 +44,7 @@ add_executable(sglua
   src/shader.cpp
   src/pipeline.c
   src/capture.c
+  src/backend_sokol.c
 )
 target_include_directories(sglua PRIVATE
   third_party/sokol
