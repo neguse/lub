@@ -39,6 +39,17 @@ scripts/run-headless.sh samples/01_triangle.lua
 CI / SSH / コンテナ環境でも動くことを確認している (Mesa lavapipe + AMD radv の両方で
 sample 01〜04 が pass)。
 
+スクリーンショット capture (PNG 出力):
+
+```sh
+# 30 フレーム描画後にキャプチャして即終了
+scripts/run-headless.sh samples/01_triangle.lua --capture out.png --capture-frame 30
+```
+
+実 GPU でも `--capture` フラグはそのまま使える。Lua 側からも `capture("path.png")`
+でスケジュール可能 (次フレームで実行)。BGRA8/RGBA8 のスワップチェインから RGBA に
+swizzle して `stb_image_write` で PNG 出力する。
+
 ## サンプル
 
 | # | スクリプト              | 内容                                            |
@@ -57,6 +68,7 @@ sample 01〜04 が pass)。
 - `draw(count, resources, options)` — 描画コマンド。
   - `resources` は名前付き table: `{ verts = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。テクスチャの名前はシェーダ側のリフレクションに突き合わせる。uniform は uniform block の最初のものに pack される。
   - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
+- `capture(path)` — 次フレーム終了時に swapchain image を PNG として `path` に書き出してアプリを終了する。CLI フラグ `--capture <path>` (任意で `--capture-frame N`、デフォルト 30) でも同等。
 
 エントリポイント: Lua 側で `on_init` / `on_frame` / `on_event` / `on_quit` の global 関数を定義すると呼ばれる。
 
@@ -64,10 +76,13 @@ sample 01〜04 が pass)。
 
 ## 未実装 (将来)
 
-- post process / MRT / deferred shading (Sample 5–7)
-- ホットリロード版 (use_* の version 引数は対応済みだが Lua 側ファイル監視は未実装)
+- Sample 5: post process (offscreen render target を渡せるように `use_texture(..., data=nil)` を render target にする)
+- Sample 6: deferred shading (MRT、複数 color attachment)
+- Sample 7: ホットリロード (use_* の version 引数は対応済み、Lua 側ファイル監視は未実装)
+- Golden image diff 回帰テスト (`capture` 機能を活かした自動 visual 比較)
 - リソース sweep (フレーム未参照の自動破棄)
-- SDL3 GPU backend
+- SDL3 GPU backend (Phase 3、cross-platform)
+- macOS / Windows 対応 (MoltenVK / dxvk 経由 or SDL3 GPU 経由)
 - compute shader / VR / マルチスレッド描画
 - Lua 側からの sampler 設定 (filter / wrap)
 
@@ -75,21 +90,28 @@ sample 01〜04 が pass)。
 
 ```
 src/
-├── main.c            SDL3 main callbacks エントリ
+├── main.c            SDL3 main callbacks エントリ + argv (--capture)
 ├── app.{h,c}         App 状態 (SDL_Vulkan window + Vulkan instance/device/swapchain, sokol env, lifecycle)
-├── lua_api.{h,c}     Lua bindings (use_*, begin_pass, end_pass, draw)
+├── lua_api.{h,c}     Lua bindings (use_*, begin_pass, end_pass, draw, capture)
 ├── enums.h           SglBufferType / SglPixelFormat / ... の C-side enum
 ├── enums_lua.{h,c}   それらを Lua グローバルに登録
 ├── pass.{h,c}        現フレームの pass state
 ├── resources.{h,c}   key → ResEntry のハッシュマップ (buffer/texture/shader)
 ├── shader.h, shader.cpp   Slang compile (target = SPIR-V) + reflection
 ├── pipeline.{h,c}    pipeline state hash → sg_pipeline cache
+├── capture.{h,c}     swapchain image を PNG として書き出す (vkCmdCopyImageToBuffer)
 └── sokol_impl.c      SOKOL_GFX_IMPL の TU (SOKOL_VULKAN backend)
+```
+
+```
+scripts/
+└── run-headless.sh   VK_ICD_FILENAMES=lavapipe + xvfb-run wrapper
 ```
 
 依存:
 - `third_party/sokol/sokol_gfx.h` — single-header (vendored)、`SOKOL_VULKAN` backend
 - `third_party/slang/` — Slang 2026.x prebuilt (`include/`, `lib/`)、SPIR-V を target
+- `third_party/stb/stb_image_write.h` — single-header (vendored)、PNG 出力
 - SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
 - Vulkan loader (`libvulkan.so`) — system 提供
 - Lua 5.5 — CMake FetchContent (static lib build)
