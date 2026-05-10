@@ -219,33 +219,46 @@ static int l_use_shader(lua_State *L) {
         return 1;
     }
 
+    // version mismatch path. Compile into LOCAL temporaries first; only swap on success.
     char err[1024];
     ShaderBlob vsb = {0}, fsb = {0};
-    ShaderReflection refl;
-    // Patch SPIR-V descriptor sets for the active backend (sokol vs SDL_GPU
-    // require different layouts).
+    ShaderReflection new_refl;
+    // Patch SPIR-V descriptor sets for the active backend.
     ShaderTargetBackend tgt = (g_backend && g_backend->name &&
                                 strcmp(g_backend->name, "sdlgpu") == 0)
                               ? SHADER_TARGET_SDLGPU
                               : SHADER_TARGET_SOKOL;
-    if (!shader_compile(vs, fs, tgt, &vsb, &fsb, &refl, err, sizeof(err))) {
+    if (!shader_compile(vs, fs, tgt, &vsb, &fsb, &new_refl, err, sizeof(err))) {
         shader_blob_free(&vsb);
         shader_blob_free(&fsb);
-        return luaL_error(L, "shader compile error: %s", err);
+        SDL_Log("use_shader: recompile failed for key '%s': %s (keeping old)", key, err);
+        // 旧 handle 維持、version 据え置き。次回 version 違いで再試行。
+        push_shader_ref(L, key);
+        return 1;
     }
-
     ShaderDesc sd = {
         .vs_spirv = vsb.spirv, .vs_bytes = vsb.bytes,
         .fs_spirv = fsb.spirv, .fs_bytes = fsb.bytes,
-        .refl = &refl,
+        .refl = &new_refl,
     };
-    if (e->u.sh.h != 0) g_backend->destroy_shader(e->u.sh.h);
-    e->u.sh.h = g_backend->make_shader(&sd);
-    e->u.sh.refl = refl;
-    e->version = version;
-
+    BackendShader new_h = g_backend->make_shader(&sd);
     shader_blob_free(&vsb);
     shader_blob_free(&fsb);
+    if (!new_h) {
+        SDL_Log("use_shader: make_shader failed for key '%s' (keeping old)", key);
+        push_shader_ref(L, key);
+        return 1;
+    }
+
+    // success: sweep pipeline cache for old shader, then destroy.
+    BackendShader old_h = e->u.sh.h;
+    if (old_h) {
+        pipeline_cache_invalidate_shader(&g_app_for_lua->pip_cache, (uintptr_t)old_h);
+        g_backend->destroy_shader(old_h);
+    }
+    e->u.sh.h    = new_h;
+    e->u.sh.refl = new_refl;
+    e->version   = version;
 
     push_shader_ref(L, key);
     return 1;
