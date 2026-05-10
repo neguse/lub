@@ -1,6 +1,8 @@
 # sglua (PoC)
 
-Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx (Vulkan) + Slang + Lua 5.5。
+Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + Slang + Lua 5.5。
+GPU backend は **sokol_gfx (Vulkan)** と **SDL3 GPU API** の 2 系統を持ち、
+Lua の `config()` で切り替えられる (詳細は後述)。
 
 ## ビルド
 
@@ -50,6 +52,36 @@ scripts/run-headless.sh samples/01_triangle.lua --capture out.png --capture-fram
 でスケジュール可能 (次フレームで実行)。BGRA8/RGBA8 のスワップチェインから RGBA に
 swizzle して `stb_image_write` で PNG 出力する。
 
+## Backend 切替
+
+sglua は内部に 2 つの GPU backend を持つ:
+
+- `sokol` (default) — sokol_gfx (Vulkan)
+- `sdlgpu` — SDL3 GPU API (現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
+
+切替は Lua の `on_init` 内で `config({ backend = "sdlgpu" })` を呼ぶ。
+サンプルでは `arg[1]` または環境変数 `SGLUA_BACKEND` を見るパターン:
+
+```lua
+function on_init()
+    config({ backend = arg and arg[1] or os.getenv("SGLUA_BACKEND") or "sokol" })
+end
+```
+
+```sh
+# default = sokol
+./build/sglua samples/01_triangle.lua
+
+# SDL3 GPU 経路
+SGLUA_BACKEND=sdlgpu ./build/sglua samples/01_triangle.lua
+
+# headless でも同じ
+SGLUA_BACKEND=sdlgpu scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
+```
+
+両 backend で 4 サンプル + capture が動作することを確認済み。
+capture 出力は両 backend で **byte-identical** (lavapipe + xvfb 上で検証)。
+
 ## サンプル
 
 | # | スクリプト              | 内容                                            |
@@ -81,25 +113,31 @@ swizzle して `stb_image_write` で PNG 出力する。
 - Sample 7: ホットリロード (use_* の version 引数は対応済み、Lua 側ファイル監視は未実装)
 - Golden image diff 回帰テスト (`capture` 機能を活かした自動 visual 比較)
 - リソース sweep (フレーム未参照の自動破棄)
-- SDL3 GPU backend (Phase 3、cross-platform)
-- macOS / Windows 対応 (MoltenVK / dxvk 経由 or SDL3 GPU 経由)
+- macOS / Windows 対応 (MoltenVK / dxvk 経由 or SDL3 GPU の Metal / D3D12 backend 経由)
 - compute shader / VR / マルチスレッド描画
 - Lua 側からの sampler 設定 (filter / wrap)
 
 ## アーキテクチャ
 
+GPU 操作は `RenderBackend` vtable に集約され、`backend_sokol` / `backend_sdlgpu` の
+2 実装を切替えて使う。`pass.c` / `pipeline.c` / `resources.c` / `capture.c` は
+backend を呼び出す薄い glue になっている。
+
 ```
 src/
 ├── main.c            SDL3 main callbacks エントリ + argv (--capture)
-├── app.{h,c}         App 状態 (SDL_Vulkan window + Vulkan instance/device/swapchain, sokol env, lifecycle)
-├── lua_api.{h,c}     Lua bindings (use_*, begin_pass, end_pass, draw, capture)
+├── app.{h,c}         App 状態 (SDL window + 選択 backend、lifecycle)
+├── lua_api.{h,c}     Lua bindings (config, use_*, begin_pass, end_pass, draw, capture)
 ├── enums.h           SglBufferType / SglPixelFormat / ... の C-side enum
 ├── enums_lua.{h,c}   それらを Lua グローバルに登録
-├── pass.{h,c}        現フレームの pass state
+├── backend.h         RenderBackend interface (vtable + opaque handles)
+├── backend_sokol.c   sokol_gfx (Vulkan) + 直叩き Vulkan 実装 (instance/device/swapchain も保持)
+├── backend_sdlgpu.c  SDL3 GPU API (SDL_GPUDevice / SDL_GPUBuffer / ...) 実装
+├── pass.{h,c}        現フレームの pass state (backend に begin/end を委譲)
 ├── resources.{h,c}   key → ResEntry のハッシュマップ (buffer/texture/shader)
-├── shader.h, shader.cpp   Slang compile (target = SPIR-V) + reflection
-├── pipeline.{h,c}    pipeline state hash → sg_pipeline cache
-├── capture.{h,c}     swapchain image を PNG として書き出す (vkCmdCopyImageToBuffer)
+├── shader.h, shader.cpp   Slang compile (SPIR-V) + reflection + sdlgpu 用 combined-sampler patcher
+├── pipeline.{h,c}    pipeline state hash → backend pipeline cache
+├── capture.{h,c}     swapchain texture を PNG として書き出す (backend ごとの read-back)
 └── sokol_impl.c      SOKOL_GFX_IMPL の TU (SOKOL_VULKAN backend)
 ```
 
@@ -118,25 +156,39 @@ scripts/
 
 ## Known issues
 
-Phase 2 (Vulkan 移行) で残っている既知の Vulkan validation warning / 制限:
+### sokol backend (Phase 2 で残った Vulkan validation warning / 制限)
 
 - **Depth/stencil format mismatch** (`VUID-vkCmdDraw-dynamicRenderingUnusedAttachments-08914` /
-  `08917`): `src/app.c` で D24_UNORM_S8_UINT を depth attachment に選んでいるが
+  `08917`): `src/backend_sokol.c` で D24_UNORM_S8_UINT を depth attachment に選んでいるが
   sokol 内部は `SG_PIXELFORMAT_DEPTH_STENCIL` を D32_SFLOAT_S8_UINT に解決する。
-  validation 警告は出るが描画自体は通る。fix は `app.c` 側で `D32_SFLOAT_S8_UINT` を
+  validation 警告は出るが描画自体は通る。fix は backend 側で `D32_SFLOAT_S8_UINT` を
   選ぶか pipeline.c に depth format を渡す方向。
 - **Single-pair semaphore reuse** (`VUID-vkAcquireNextImageKHR-semaphore-01779`,
-  `VUID-vkQueueSubmit-pSignalSemaphores-00067`): `src/app.c` の `vk_acquire_sem` /
-  `vk_present_sem` を全フレームで再利用しているため、複数フレーム並列対応の前提では
-  推奨されない。fix は per-image semaphore array か `VK_KHR_swapchain_maintenance1`
-  の利用。
+  `VUID-vkQueueSubmit-pSignalSemaphores-00067`): `vk_acquire_sem` / `vk_present_sem` を
+  全フレームで再利用しているため、複数フレーム並列対応の前提では推奨されない。
+  fix は per-image semaphore array か `VK_KHR_swapchain_maintenance1` の利用。
 - **Window resize 未対応**: swapchain recreate (`VK_ERROR_OUT_OF_DATE_KHR`) を
   キャッチしていない。リサイズすると以後のフレームが broken になる可能性。
 - **lavapipe での 03_texture**: 解決済み (Phase 2 Task 18 で SPIR-V descriptor set
   patch 適用)。両 driver で動作。
 
-これらはいずれも実用上の致命的問題ではなく、Phase 2 のスコープ外として残置。
-将来 Phase 3 (SDL3 GPU backend / multi-platform) と合わせて整理する。
+### sdlgpu backend
+
+- **`VUID-VkShaderModuleCreateInfo-pCode-08737`** (SPIR-V 1.5 vs Vulkan 1.0 target-env):
+  Slang が SPIR-V 1.5 を吐くが SDL_GPU の内部 Vulkan device は 1.0 target で validate
+  するため warning が出る。lavapipe / 実 GPU 双方で機能上問題なし。Slang 側の
+  target-env オプション or 後処理で SPIR-V version を 1.0 に下げる対応が将来課題。
+- **`VUID-vkCmdCopyImageToBuffer-srcImage-00186`** など SDL_GPU + lavapipe での
+  capture 時 validation warning: SDL_GPU swapchain texture に
+  `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` が立っていないため。capture 自体は機能して
+  PNG は両 backend で byte-identical。SDL3 upstream の対応待ち。
+- **Combined image sampler の単一ペア制約**: sokol path は分離 `SAMPLED_IMAGE` +
+  `SAMPLER` で受けるが、SDL_GPU は `COMBINED_IMAGE_SAMPLER` を要求するため、
+  `src/shader.cpp` に sdlgpu 限定の SPIR-V combined-sampler 合成 patcher が入っている。
+  現状は単一の texture+sampler ペアのみサポート (multi-pair fragment shader は
+  patcher が bail)。将来 multi-pair / 配列 / `OpImageGather` 等への対応は拡張課題。
+
+これらはいずれも実用上の致命的問題ではなく、PoC スコープ外として残置している。
 
 ## ライセンス
 
