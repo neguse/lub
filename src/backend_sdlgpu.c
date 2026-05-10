@@ -146,6 +146,84 @@ static void sg_end_pass(App *app) {
 
 // --- resources ------------------------------------------------------------
 
+// Upload helper: copies `bytes` bytes from `data` into `dst` GPU buffer.
+// `cycle` should be false on first upload (make_buffer) and true on subsequent
+// updates (update_buffer) to avoid in-flight resource conflicts.
+static bool sg_upload_to_buffer(SDL_GPUBuffer *dst, const void *data, size_t bytes, bool cycle) {
+    SDL_GPUDevice *dev = g_app->gpu_device;
+    SDL_GPUTransferBuffer *tbuf = SDL_CreateGPUTransferBuffer(dev,
+        &(SDL_GPUTransferBufferCreateInfo){
+            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+            .size  = (Uint32)bytes,
+        });
+    if (!tbuf) { SDL_Log("sg_upload_to_buffer: tbuf: %s", SDL_GetError()); return false; }
+
+    void *map = SDL_MapGPUTransferBuffer(dev, tbuf, false);
+    if (!map) {
+        SDL_Log("sg_upload_to_buffer: map: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(dev, tbuf);
+        return false;
+    }
+    memcpy(map, data, bytes);
+    SDL_UnmapGPUTransferBuffer(dev, tbuf);
+
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(dev);
+    if (!cmd) {
+        SDL_Log("sg_upload_to_buffer: cmd: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(dev, tbuf);
+        return false;
+    }
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_UploadToGPUBuffer(cp,
+        &(SDL_GPUTransferBufferLocation){ .transfer_buffer = tbuf, .offset = 0 },
+        &(SDL_GPUBufferRegion){ .buffer = dst, .offset = 0, .size = (Uint32)bytes },
+        cycle);
+    SDL_EndGPUCopyPass(cp);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(dev, tbuf);
+    return true;
+}
+
+// Upload helper: copies `bytes` bytes from `data` into `dst` GPU texture (w x h).
+// `cycle` should be false on first upload (make_image) and true on updates.
+static bool sg_upload_to_image(SDL_GPUTexture *dst, int w, int h,
+                               const void *data, size_t bytes, bool cycle) {
+    SDL_GPUDevice *dev = g_app->gpu_device;
+    SDL_GPUTransferBuffer *tbuf = SDL_CreateGPUTransferBuffer(dev,
+        &(SDL_GPUTransferBufferCreateInfo){
+            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+            .size  = (Uint32)bytes,
+        });
+    if (!tbuf) { SDL_Log("sg_upload_to_image: tbuf: %s", SDL_GetError()); return false; }
+    void *map = SDL_MapGPUTransferBuffer(dev, tbuf, false);
+    if (!map) {
+        SDL_Log("sg_upload_to_image: map: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(dev, tbuf);
+        return false;
+    }
+    memcpy(map, data, bytes);
+    SDL_UnmapGPUTransferBuffer(dev, tbuf);
+
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(dev);
+    if (!cmd) {
+        SDL_Log("sg_upload_to_image: cmd: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(dev, tbuf);
+        return false;
+    }
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_UploadToGPUTexture(cp,
+        &(SDL_GPUTextureTransferInfo){ .transfer_buffer = tbuf, .offset = 0 },
+        &(SDL_GPUTextureRegion){
+            .texture = dst,
+            .w = (Uint32)w, .h = (Uint32)h, .d = 1,
+        },
+        cycle);
+    SDL_EndGPUCopyPass(cp);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(dev, tbuf);
+    return true;
+}
+
 static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_t bytes) {
     if (!g_app || !g_app->gpu_device) {
         SDL_Log("sg_make_buffer: no GPU device");
@@ -165,44 +243,11 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_
         free(b);
         return 0;
     }
-    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g_app->gpu_device,
-        &(SDL_GPUTransferBufferCreateInfo){
-            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            .size = (Uint32)bytes,
-        });
-    if (!tb) {
-        SDL_Log("SDL_CreateGPUTransferBuffer failed: %s", SDL_GetError());
+    if (!sg_upload_to_buffer(b->gpu, data, bytes, false)) {
         SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
         free(b);
         return 0;
     }
-    void *dst = SDL_MapGPUTransferBuffer(g_app->gpu_device, tb, false);
-    if (!dst) {
-        SDL_Log("sg_make_buffer: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
-        SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
-        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
-        free(b);
-        return 0;
-    }
-    memcpy(dst, data, bytes);
-    SDL_UnmapGPUTransferBuffer(g_app->gpu_device, tb);
-
-    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g_app->gpu_device);
-    if (!cmd) {
-        SDL_Log("sg_make_buffer: SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
-        SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
-        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
-        free(b);
-        return 0;
-    }
-    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
-    SDL_UploadToGPUBuffer(cp,
-        &(SDL_GPUTransferBufferLocation){ .transfer_buffer = tb, .offset = 0 },
-        &(SDL_GPUBufferRegion){ .buffer = b->gpu, .offset = 0, .size = (Uint32)bytes },
-        false);
-    SDL_EndGPUCopyPass(cp);
-    SDL_SubmitGPUCommandBuffer(cmd);
-    SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
     return (uintptr_t)b;
 }
 
@@ -241,47 +286,11 @@ static BackendImage sg_make_image(const ImageDesc *d) {
     }
 
     if (d->data && d->data_bytes > 0) {
-        SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g_app->gpu_device,
-            &(SDL_GPUTransferBufferCreateInfo){
-                .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                .size = (Uint32)d->data_bytes,
-            });
-        if (!tb) {
-            SDL_Log("sg_make_image: SDL_CreateGPUTransferBuffer failed: %s", SDL_GetError());
+        if (!sg_upload_to_image(im->tex, d->w, d->h, d->data, d->data_bytes, false)) {
             SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
             free(im);
             return 0;
         }
-        void *dst = SDL_MapGPUTransferBuffer(g_app->gpu_device, tb, false);
-        if (!dst) {
-            SDL_Log("sg_make_image: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
-            SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
-            SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
-            free(im);
-            return 0;
-        }
-        memcpy(dst, d->data, d->data_bytes);
-        SDL_UnmapGPUTransferBuffer(g_app->gpu_device, tb);
-
-        SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g_app->gpu_device);
-        if (!cmd) {
-            SDL_Log("sg_make_image: SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
-            SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
-            SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
-            free(im);
-            return 0;
-        }
-        SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
-        SDL_UploadToGPUTexture(cp,
-            &(SDL_GPUTextureTransferInfo){ .transfer_buffer = tb, .offset = 0 },
-            &(SDL_GPUTextureRegion){
-                .texture = im->tex,
-                .w = (Uint32)d->w, .h = (Uint32)d->h, .d = 1,
-            },
-            false);
-        SDL_EndGPUCopyPass(cp);
-        SDL_SubmitGPUCommandBuffer(cmd);
-        SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
     }
 
     im->smp = SDL_CreateGPUSampler(g_app->gpu_device,
@@ -460,14 +469,15 @@ static void sg_destroy_pipeline(BackendPipeline h) {
 }
 
 static void sg_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
-    (void)h; (void)data; (void)bytes;
-    SDL_Log("sg_update_buffer: not yet implemented");
-    SDL_assert(0);
+    if (!h || !data || bytes == 0) return;
+    SgBuffer *b = (SgBuffer*)h;
+    sg_upload_to_buffer(b->gpu, data, bytes, /*cycle=*/true);
 }
+
 static void sg_update_image(BackendImage h, const void *data, size_t bytes) {
-    (void)h; (void)data; (void)bytes;
-    SDL_Log("sg_update_image: not yet implemented");
-    SDL_assert(0);
+    if (!h || !data || bytes == 0) return;
+    SgImage *si = (SgImage*)h;
+    sg_upload_to_image(si->tex, si->w, si->h, data, bytes, /*cycle=*/true);
 }
 
 static void sg_destroy_image(BackendImage h) {
