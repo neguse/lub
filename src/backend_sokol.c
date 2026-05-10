@@ -405,12 +405,16 @@ static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_
     sg_buffer h = sg_make_buffer(&(sg_buffer_desc){
         .size = bytes,
         .usage = {
-            .vertex_buffer = (type == SGL_BUFFER_VERTEX),
-            .index_buffer  = (type == SGL_BUFFER_INDEX),
-            .immutable     = true,
+            .vertex_buffer  = (type == SGL_BUFFER_VERTEX),
+            .index_buffer   = (type == SGL_BUFFER_INDEX),
+            .dynamic_update = true,
         },
-        .data = { .ptr = data, .size = bytes },
+        // dynamic_update: initial data はここで渡せないので make 後に update
     });
+    if (h.id == SG_INVALID_ID) return 0;
+    if (data && bytes > 0) {
+        sg_update_buffer(h, &(sg_range){ .ptr = data, .size = bytes });
+    }
     return (uintptr_t)h.id;
 }
 
@@ -427,13 +431,15 @@ static BackendImage sk_make_image(const ImageDesc *d) {
         .width = d->w,
         .height = d->h,
         .pixel_format = pf,
-        .usage = { .immutable = true },
+        .usage = { .dynamic_update = true },
     };
-    if (d->data) {
-        img_desc.data.mip_levels[0].ptr  = d->data;
-        img_desc.data.mip_levels[0].size = d->data_bytes;
-    }
     si->img = sg_make_image(&img_desc);
+    if (si->img.id == SG_INVALID_ID) { free(si); return 0; }
+    if (d->data && d->data_bytes > 0) {
+        sg_update_image(si->img, &(sg_image_data){
+            .mip_levels[0] = { .ptr = d->data, .size = d->data_bytes },
+        });
+    }
     si->smp = sg_make_sampler(&(sg_sampler_desc){
         .min_filter = SG_FILTER_LINEAR,
         .mag_filter = SG_FILTER_LINEAR,
@@ -616,14 +622,17 @@ static void sk_destroy_pipeline(BackendPipeline h) {
 }
 
 static void sk_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
-    (void)h; (void)data; (void)bytes;
-    SDL_Log("sk_update_buffer: not yet implemented");
-    SDL_assert(0);
+    if (!h || !data || bytes == 0) return;
+    sg_update_buffer((sg_buffer){ .id = (uint32_t)h },
+                     &(sg_range){ .ptr = data, .size = bytes });
 }
+
 static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
-    (void)h; (void)data; (void)bytes;
-    SDL_Log("sk_update_image: not yet implemented");
-    SDL_assert(0);
+    if (!h || !data || bytes == 0) return;
+    SkImage *si = (SkImage*)h;
+    sg_update_image(si->img, &(sg_image_data){
+        .mip_levels[0] = { .ptr = data, .size = bytes },
+    });
 }
 
 static void sk_begin_pass(App *app, const PassBeginDesc *d) {
