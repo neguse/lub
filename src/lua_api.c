@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include "stb_image.h"
 
 static App *g_app_for_lua = NULL;
 
@@ -437,6 +438,28 @@ static int l_fnv1a64(lua_State *L) {
     return 1;
 }
 
+static int l_load_png(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    int w, h, ch;
+    unsigned char *pixels = stbi_load(path, &w, &h, &ch, 4);  // force RGBA
+    if (!pixels) {
+        SDL_Log("load_png: %s: %s", path, stbi_failure_reason());
+        lua_pushnil(L);
+        return 1;
+    }
+    int n = w * h * 4;
+    lua_createtable(L, n, 0);
+    for (int i = 0; i < n; ++i) {
+        lua_pushinteger(L, pixels[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    stbi_image_free(pixels);
+    lua_pushinteger(L, w);
+    lua_pushinteger(L, h);
+    lua_pushinteger(L, SGL_PF_RGBA8);
+    return 4;  // (table, w, h, fmt)
+}
+
 void lua_api_register(lua_State *L) {
     enums_register(L);
     // main_tex は { __sgl_kind = "main_tex" } という sentinel テーブル
@@ -463,6 +486,7 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "config");
     lua_pushcfunction(L, l_file_mtime); lua_setglobal(L, "file_mtime");
     lua_pushcfunction(L, l_fnv1a64);    lua_setglobal(L, "fnv1a64");
+    lua_pushcfunction(L, l_load_png);   lua_setglobal(L, "load_png");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
