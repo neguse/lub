@@ -15,7 +15,9 @@ local fs = [[
 float4 fs_main() : SV_Target { return float4(1.0, 0.5, 0.0, 1.0); }
 ]]
 
-function on_init() end
+function on_init()
+    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+end
 function on_event(e) end
 function on_quit() end
 

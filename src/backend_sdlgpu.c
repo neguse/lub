@@ -1,8 +1,9 @@
-// SDL3 GPU backend skeleton (Task 3).
+// SDL3 GPU backend (Tasks 3-4).
 //
-// Implements the minimum needed for sample 00b_clear to render a clear-only
-// frame via SDL_GPU. Buffer/shader/pipeline/draw/capture stubs return zero
-// or log a "not yet implemented" message — those are filled in by Task 4-8.
+// Task 3 implemented init/shutdown + frame/pass clear-only flow.
+// Task 4 fills in make_buffer/make_shader/make_pipeline + apply_pipeline /
+// apply_bindings / draw so sample 01_triangle (no uniforms, no textures)
+// renders end-to-end.
 //
 // Sequence per frame:
 //   begin_frame: AcquireGPUCommandBuffer -> AcquireGPUSwapchainTexture
@@ -20,6 +21,40 @@
 // because the vtable's begin_pass/end_pass don't take a backend cookie.
 static SDL_GPURenderPass *g_render_pass = NULL;
 
+// Cached App* for use by resource-creation vtable functions that don't
+// receive App* as an argument (make_buffer/make_shader/make_pipeline).
+// PoC concession: there is exactly one App per process. Set in sg_init
+// (and re-confirmed each begin_frame as a paranoia measure).
+static App *g_app = NULL;
+
+// Most-recently bound pipeline. Tracked here because SDL_GPU's pipeline
+// binding is per-render-pass and we need to (re)issue it after begin_pass
+// if the user calls apply_pipeline before begin_pass — but for sample 01
+// the order is begin_pass -> apply_pipeline -> apply_bindings -> draw, so
+// this just records the current pipeline for future use.
+static struct SgPipeline *g_current_pip = NULL;
+
+// --- per-resource backend objects ----------------------------------------
+
+typedef struct SgBuffer {
+    SDL_GPUBuffer *gpu;
+    Uint32 bytes;
+    SglBufferType type;
+} SgBuffer;
+
+typedef struct SgShader {
+    SDL_GPUShader *vs;
+    SDL_GPUShader *fs;
+    ShaderReflection refl;
+} SgShader;
+
+typedef struct SgPipeline {
+    SDL_GPUGraphicsPipeline *gpu;
+    ShaderReflection refl;
+} SgPipeline;
+
+// --- backend lifecycle ----------------------------------------------------
+
 static bool sg_init(App *app) {
     app->gpu_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
     if (!app->gpu_device) {
@@ -32,6 +67,7 @@ static bool sg_init(App *app) {
         app->gpu_device = NULL;
         return false;
     }
+    g_app = app;
     return true;
 }
 
@@ -41,9 +77,11 @@ static void sg_shutdown(App *app) {
         SDL_DestroyGPUDevice(app->gpu_device);
         app->gpu_device = NULL;
     }
+    g_app = NULL;
 }
 
 static void sg_begin_frame(App *app, int *out_w, int *out_h) {
+    g_app = app;
     app->gpu_cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
     if (!app->gpu_cmd) {
         SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
@@ -89,57 +127,259 @@ static void sg_end_pass(App *app) {
         SDL_EndGPURenderPass(g_render_pass);
         g_render_pass = NULL;
     }
+    g_current_pip = NULL;
 }
 
-// --- Stubs for Task 4-8 ---------------------------------------------------
+// --- resources ------------------------------------------------------------
 
-static BackendBuffer sg_make_buffer(SglBufferType t, const float *d, size_t b) {
-    (void)t; (void)d; (void)b;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: make_buffer not yet implemented (Task 4)"); warned = true; }
-    return 0;
+static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_t bytes) {
+    if (!g_app || !g_app->gpu_device) {
+        SDL_Log("sg_make_buffer: no GPU device");
+        return 0;
+    }
+    SgBuffer *b = (SgBuffer*)calloc(1, sizeof(SgBuffer));
+    if (!b) return 0;
+    b->bytes = (Uint32)bytes;
+    b->type = type;
+    b->gpu = SDL_CreateGPUBuffer(g_app->gpu_device, &(SDL_GPUBufferCreateInfo){
+        .usage = (type == SGL_BUFFER_VERTEX) ? SDL_GPU_BUFFERUSAGE_VERTEX
+                                              : SDL_GPU_BUFFERUSAGE_INDEX,
+        .size  = (Uint32)bytes,
+    });
+    if (!b->gpu) {
+        SDL_Log("SDL_CreateGPUBuffer failed: %s", SDL_GetError());
+        free(b);
+        return 0;
+    }
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g_app->gpu_device,
+        &(SDL_GPUTransferBufferCreateInfo){
+            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+            .size = (Uint32)bytes,
+        });
+    if (!tb) {
+        SDL_Log("SDL_CreateGPUTransferBuffer failed: %s", SDL_GetError());
+        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+        free(b);
+        return 0;
+    }
+    void *dst = SDL_MapGPUTransferBuffer(g_app->gpu_device, tb, false);
+    memcpy(dst, data, bytes);
+    SDL_UnmapGPUTransferBuffer(g_app->gpu_device, tb);
+
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g_app->gpu_device);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_UploadToGPUBuffer(cp,
+        &(SDL_GPUTransferBufferLocation){ .transfer_buffer = tb, .offset = 0 },
+        &(SDL_GPUBufferRegion){ .buffer = b->gpu, .offset = 0, .size = (Uint32)bytes },
+        false);
+    SDL_EndGPUCopyPass(cp);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
+    return (uintptr_t)b;
 }
+
+static void sg_destroy_buffer(BackendBuffer h) {
+    SgBuffer *b = (SgBuffer*)h;
+    if (!b) return;
+    if (g_app && g_app->gpu_device && b->gpu) {
+        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+    }
+    free(b);
+}
+
 static BackendImage sg_make_image(const ImageDesc *d) {
     (void)d;
     static bool warned = false;
     if (!warned) { SDL_Log("sdlgpu: make_image not yet implemented (Task 6)"); warned = true; }
     return 0;
 }
+
 static BackendShader sg_make_shader(const ShaderDesc *d) {
-    (void)d;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: make_shader not yet implemented (Task 4)"); warned = true; }
-    return 0;
+    if (!g_app || !g_app->gpu_device) {
+        SDL_Log("sg_make_shader: no GPU device");
+        return 0;
+    }
+    SgShader *s = (SgShader*)calloc(1, sizeof(SgShader));
+    if (!s) return 0;
+    if (d->refl) s->refl = *d->refl;
+    // Slang's SPIR-V emitter renames the entry-point function to "main"
+    // (same convention used by the sokol backend). Both vs and fs blobs
+    // each have a single "main" entry point.
+    s->vs = SDL_CreateGPUShader(g_app->gpu_device, &(SDL_GPUShaderCreateInfo){
+        .code = (const Uint8*)d->vs_spirv,
+        .code_size = d->vs_bytes,
+        .entrypoint = "main",
+        .format = SDL_GPU_SHADERFORMAT_SPIRV,
+        .stage = SDL_GPU_SHADERSTAGE_VERTEX,
+        .num_uniform_buffers = (Uint32)(d->refl ? d->refl->ub_count : 0),
+        .num_storage_buffers = 0,
+        .num_storage_textures = 0,
+        .num_samplers = 0,
+    });
+    if (!s->vs) {
+        SDL_Log("SDL_CreateGPUShader (vs) failed: %s", SDL_GetError());
+    }
+    s->fs = SDL_CreateGPUShader(g_app->gpu_device, &(SDL_GPUShaderCreateInfo){
+        .code = (const Uint8*)d->fs_spirv,
+        .code_size = d->fs_bytes,
+        .entrypoint = "main",
+        .format = SDL_GPU_SHADERFORMAT_SPIRV,
+        .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .num_uniform_buffers = 0,
+        .num_storage_buffers = 0,
+        .num_storage_textures = 0,
+        .num_samplers = (Uint32)(d->refl ? d->refl->tex_count : 0),
+    });
+    if (!s->fs) {
+        SDL_Log("SDL_CreateGPUShader (fs) failed: %s", SDL_GetError());
+    }
+    return (uintptr_t)s;
 }
+
+static void sg_destroy_shader(BackendShader h) {
+    SgShader *s = (SgShader*)h;
+    if (!s) return;
+    if (g_app && g_app->gpu_device) {
+        if (s->vs) SDL_ReleaseGPUShader(g_app->gpu_device, s->vs);
+        if (s->fs) SDL_ReleaseGPUShader(g_app->gpu_device, s->fs);
+    }
+    free(s);
+}
+
 static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
-    (void)d;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: make_pipeline not yet implemented (Task 4)"); warned = true; }
-    return 0;
+    if (!g_app || !g_app->gpu_device) {
+        SDL_Log("sg_make_pipeline: no GPU device");
+        return 0;
+    }
+    SgShader *sh = (SgShader*)d->shader;
+    if (!sh || !sh->vs || !sh->fs) {
+        SDL_Log("sg_make_pipeline: invalid shader");
+        return 0;
+    }
+    SgPipeline *p = (SgPipeline*)calloc(1, sizeof(SgPipeline));
+    if (!p) return 0;
+    if (d->refl) p->refl = *d->refl;
+
+    SDL_GPUVertexAttribute attrs[SGL_MAX_ATTRS];
+    int attr_count = d->refl ? d->refl->attr_count : 0;
+    for (int i = 0; i < attr_count; ++i) {
+        SDL_GPUVertexElementFormat fmt;
+        switch (d->refl->attrs[i].comp_count) {
+            case 1: fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;  break;
+            case 2: fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2; break;
+            case 3: fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3; break;
+            default: fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4;
+        }
+        attrs[i] = (SDL_GPUVertexAttribute){
+            .location = (Uint32)d->refl->attrs[i].slot,
+            .buffer_slot = 0,
+            .format = fmt,
+            .offset = (Uint32)(d->refl->attrs[i].offset_floats * sizeof(float)),
+        };
+    }
+    SDL_GPUVertexBufferDescription vbd = {
+        .slot = 0,
+        .pitch = (Uint32)((d->refl ? d->refl->vertex_stride_floats : 0) * sizeof(float)),
+        .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
+        .instance_step_rate = 0,
+    };
+    SDL_GPUColorTargetDescription ctd = {
+        .format = SDL_GetGPUSwapchainTextureFormat(g_app->gpu_device, g_app->window),
+        // PoC: blend off (sample 01 uses SGL_BLEND_NONE).
+    };
+
+    SDL_GPUPrimitiveType prim;
+    switch (d->primitive) {
+        case SGL_PRIM_LINES:          prim = SDL_GPU_PRIMITIVETYPE_LINELIST; break;
+        case SGL_PRIM_LINE_STRIP:     prim = SDL_GPU_PRIMITIVETYPE_LINESTRIP; break;
+        case SGL_PRIM_POINTS:         prim = SDL_GPU_PRIMITIVETYPE_POINTLIST; break;
+        case SGL_PRIM_TRIANGLE_STRIP: prim = SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP; break;
+        case SGL_PRIM_TRIANGLES:
+        default:                       prim = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST; break;
+    }
+
+    SDL_GPUCullMode cull =
+        (d->cull == SGL_CULL_BACK)  ? SDL_GPU_CULLMODE_BACK :
+        (d->cull == SGL_CULL_FRONT) ? SDL_GPU_CULLMODE_FRONT :
+                                       SDL_GPU_CULLMODE_NONE;
+
+    p->gpu = SDL_CreateGPUGraphicsPipeline(g_app->gpu_device,
+        &(SDL_GPUGraphicsPipelineCreateInfo){
+            .vertex_shader = sh->vs,
+            .fragment_shader = sh->fs,
+            .vertex_input_state = {
+                .vertex_buffer_descriptions = &vbd,
+                .num_vertex_buffers = 1,
+                .vertex_attributes = attrs,
+                .num_vertex_attributes = (Uint32)attr_count,
+            },
+            .primitive_type = prim,
+            .rasterizer_state = {
+                .fill_mode = SDL_GPU_FILLMODE_FILL,
+                .cull_mode = cull,
+                .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+            },
+            .multisample_state = {
+                .sample_count = SDL_GPU_SAMPLECOUNT_1,
+            },
+            .depth_stencil_state = {
+                // PoC: depth disabled (no depth attachment in our render pass).
+                .enable_depth_test = false,
+                .enable_depth_write = false,
+            },
+            .target_info = {
+                .color_target_descriptions = &ctd,
+                .num_color_targets = 1,
+                .has_depth_stencil_target = false,
+            },
+        });
+    if (!p->gpu) {
+        SDL_Log("SDL_CreateGPUGraphicsPipeline failed: %s", SDL_GetError());
+    }
+    return (uintptr_t)p;
 }
-static void sg_destroy_buffer(BackendBuffer h)   { (void)h; }
-static void sg_destroy_image(BackendImage h)     { (void)h; }
-static void sg_destroy_shader(BackendShader h)   { (void)h; }
-static void sg_destroy_pipeline(BackendPipeline h){ (void)h; }
+
+static void sg_destroy_pipeline(BackendPipeline h) {
+    SgPipeline *p = (SgPipeline*)h;
+    if (!p) return;
+    if (g_app && g_app->gpu_device && p->gpu) {
+        SDL_ReleaseGPUGraphicsPipeline(g_app->gpu_device, p->gpu);
+    }
+    free(p);
+}
+
+static void sg_destroy_image(BackendImage h) { (void)h; }
+
+// --- draw -----------------------------------------------------------------
+
 static void sg_apply_pipeline(BackendPipeline h) {
-    (void)h;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: apply_pipeline not yet implemented (Task 4)"); warned = true; }
+    g_current_pip = (SgPipeline*)h;
+    if (g_current_pip && g_current_pip->gpu && g_render_pass) {
+        SDL_BindGPUGraphicsPipeline(g_render_pass, g_current_pip->gpu);
+    }
 }
+
 static void sg_apply_bindings(const BindingsDesc *b) {
-    (void)b;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: apply_bindings not yet implemented (Task 4 / Task 6)"); warned = true; }
+    if (!g_render_pass) return;
+    if (b->vbuf) {
+        SgBuffer *vb = (SgBuffer*)b->vbuf;
+        if (vb && vb->gpu) {
+            SDL_BindGPUVertexBuffers(g_render_pass, 0,
+                &(SDL_GPUBufferBinding){ .buffer = vb->gpu, .offset = 0 }, 1);
+        }
+    }
+    // Texture binding: deferred to Task 6.
 }
+
 static void sg_apply_uniforms(int slot, const void *d, size_t b) {
     (void)slot; (void)d; (void)b;
     static bool warned = false;
     if (!warned) { SDL_Log("sdlgpu: apply_uniforms not yet implemented (Task 7)"); warned = true; }
 }
+
 static void sg_draw(int base, int count) {
-    (void)base; (void)count;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: draw not yet implemented (Task 4)"); warned = true; }
+    if (!g_render_pass) return;
+    SDL_DrawGPUPrimitives(g_render_pass, (Uint32)count, 1, (Uint32)base, 0);
 }
 
 static bool sg_capture(App *app, const char *path) {
@@ -149,10 +389,17 @@ static bool sg_capture(App *app, const char *path) {
 }
 
 static SglPixelFormat sg_swapchain_color_format(App *app) {
-    (void)app;
-    // PoC: assume RGBA8. Task 4+ may need to query the actual swapchain
-    // format via SDL_GetGPUSwapchainTextureFormat for accurate pipeline keying.
-    return SGL_PF_RGBA8;
+    SDL_GPUTextureFormat fmt = SDL_GetGPUSwapchainTextureFormat(app->gpu_device, app->window);
+    switch (fmt) {
+        case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB:
+            return SGL_PF_RGBA8;
+        case SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB:
+            return SGL_PF_BGRA8;
+        default:
+            return SGL_PF_BGRA8;
+    }
 }
 
 const RenderBackend g_backend_sdlgpu = {
