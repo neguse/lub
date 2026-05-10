@@ -395,7 +395,7 @@ static int l_config(lua_State *L) {
     }
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_getfield(L, 1, "backend");
-    const char *name = lua_isstring(L, -1) ? lua_tostring(L, -1) : "sokol";
+    const char *name = (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : "sokol";
     if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0) {
         return luaL_error(L, "config: backend must be 'sokol' or 'sdlgpu', got '%s'", name);
     }
