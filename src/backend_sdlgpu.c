@@ -163,10 +163,24 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_
         return 0;
     }
     void *dst = SDL_MapGPUTransferBuffer(g_app->gpu_device, tb, false);
+    if (!dst) {
+        SDL_Log("sg_make_buffer: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
+        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+        free(b);
+        return 0;
+    }
     memcpy(dst, data, bytes);
     SDL_UnmapGPUTransferBuffer(g_app->gpu_device, tb);
 
     SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g_app->gpu_device);
+    if (!cmd) {
+        SDL_Log("sg_make_buffer: SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(g_app->gpu_device, tb);
+        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+        free(b);
+        return 0;
+    }
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
     SDL_UploadToGPUBuffer(cp,
         &(SDL_GPUTransferBufferLocation){ .transfer_buffer = tb, .offset = 0 },
@@ -216,9 +230,6 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
         .num_storage_textures = 0,
         .num_samplers = 0,
     });
-    if (!s->vs) {
-        SDL_Log("SDL_CreateGPUShader (vs) failed: %s", SDL_GetError());
-    }
     s->fs = SDL_CreateGPUShader(g_app->gpu_device, &(SDL_GPUShaderCreateInfo){
         .code = (const Uint8*)d->fs_spirv,
         .code_size = d->fs_bytes,
@@ -230,8 +241,13 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
         .num_storage_textures = 0,
         .num_samplers = (Uint32)(d->refl ? d->refl->tex_count : 0),
     });
-    if (!s->fs) {
-        SDL_Log("SDL_CreateGPUShader (fs) failed: %s", SDL_GetError());
+    if (!s->vs || !s->fs) {
+        SDL_Log("sg_make_shader: shader create failed (vs=%p fs=%p): %s",
+                (void*)s->vs, (void*)s->fs, SDL_GetError());
+        if (s->vs) SDL_ReleaseGPUShader(g_app->gpu_device, s->vs);
+        if (s->fs) SDL_ReleaseGPUShader(g_app->gpu_device, s->fs);
+        free(s);
+        return 0;
     }
     return (uintptr_t)s;
 }
@@ -334,7 +350,9 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
             },
         });
     if (!p->gpu) {
-        SDL_Log("SDL_CreateGPUGraphicsPipeline failed: %s", SDL_GetError());
+        SDL_Log("sg_make_pipeline: SDL_CreateGPUGraphicsPipeline failed: %s", SDL_GetError());
+        free(p);
+        return 0;
     }
     return (uintptr_t)p;
 }
