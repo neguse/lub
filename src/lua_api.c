@@ -114,10 +114,16 @@ static int l_use_buffer(lua_State *L) {
         lua_pop(L, 1);
     }
 
-    if (e->u.buf.h != 0) g_backend->destroy_buffer(e->u.buf.h);
-    e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, (size_t)n * sizeof(float));
-    e->u.buf.type = (SglBufferType)type;
-    e->u.buf.size_bytes = (size_t)n * sizeof(float);
+    size_t new_bytes = (size_t)n * sizeof(float);
+    if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes && e->u.buf.type == (SglBufferType)type) {
+        // in-place update
+        g_backend->update_buffer(e->u.buf.h, data, new_bytes);
+    } else {
+        if (e->u.buf.h != 0) g_backend->destroy_buffer(e->u.buf.h);
+        e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, new_bytes);
+        e->u.buf.type = (SglBufferType)type;
+        e->u.buf.size_bytes = new_bytes;
+    }
     e->version = version;
     free(data);
 
