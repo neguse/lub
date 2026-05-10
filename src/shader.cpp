@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <vector>
 
 using slang::IGlobalSession;
 using slang::ISession;
@@ -237,6 +238,82 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
     return true;
 }
 
+// Rewrite descriptor-set decorations in a SPIR-V module to match sokol's
+// Vulkan backend layout: uniform buffers stay on set 0, but every other
+// resource (textures, samplers, storage buffers, storage images, etc.) is
+// moved to set 1. Slang emits all globals on set 0 by default, which causes
+// VkPipelineLayout / SPIR-V mismatch panics on strict drivers (e.g. lavapipe
+// SIGSEGV in samples/03_texture before this patch).
+//
+// SPIR-V layout reference:
+//   header = 5 words, then a stream of instructions where word0 = (wc<<16)|op.
+// We do two passes:
+//   1. Collect IDs of OpVariable %T %ID UniformConstant or StorageBuffer.
+//      These are the resources that belong on set 1.
+//   2. For each OpDecorate %ID DescriptorSet 0 referring to one of those IDs,
+//      rewrite the literal 0 to 1 in place.
+// All other decorations (UB on set 0, bindings, locations, ...) are left
+// untouched.
+void patch_spirv_descriptor_sets(void *spv, size_t size_bytes) {
+    if (!spv || size_bytes < 20) return; // too small to be valid
+    uint32_t *words = (uint32_t*)spv;
+    size_t nwords = size_bytes / 4;
+    if (words[0] != 0x07230203u) return; // not a SPIR-V module
+
+    // Opcodes / decorations / storage-classes we care about.
+    constexpr uint32_t kOpVariable     = 59;
+    constexpr uint32_t kOpDecorate     = 71;
+    constexpr uint32_t kDecDescriptorSet = 34;
+    constexpr uint32_t kStorageUniformConstant = 0;
+    constexpr uint32_t kStorageStorageBuffer   = 12;
+
+    std::vector<uint32_t> set1_ids;
+    set1_ids.reserve(8);
+
+    // Pass 1: collect IDs that should live on set 1.
+    size_t i = 5; // skip header
+    while (i < nwords) {
+        uint32_t w0 = words[i];
+        uint32_t wc = w0 >> 16;
+        uint32_t op = w0 & 0xffff;
+        if (wc == 0 || i + wc > nwords) break;
+        if (op == kOpVariable && wc >= 4) {
+            // OpVariable: words[i+1]=ResultType, [i+2]=ResultId, [i+3]=StorageClass
+            uint32_t storage = words[i + 3];
+            if (storage == kStorageUniformConstant ||
+                storage == kStorageStorageBuffer)
+            {
+                set1_ids.push_back(words[i + 2]);
+            }
+        }
+        i += wc;
+    }
+    if (set1_ids.empty()) return;
+
+    auto is_set1 = [&](uint32_t id) {
+        for (uint32_t v : set1_ids) if (v == id) return true;
+        return false;
+    };
+
+    // Pass 2: bump DescriptorSet decorations for collected IDs.
+    i = 5;
+    while (i < nwords) {
+        uint32_t w0 = words[i];
+        uint32_t wc = w0 >> 16;
+        uint32_t op = w0 & 0xffff;
+        if (wc == 0 || i + wc > nwords) break;
+        if (op == kOpDecorate && wc >= 4) {
+            // OpDecorate: words[i+1]=Target, [i+2]=Decoration, [i+3]=Operand0
+            uint32_t target = words[i + 1];
+            uint32_t deco   = words[i + 2];
+            if (deco == kDecDescriptorSet && is_set1(target)) {
+                words[i + 3] = 1;
+            }
+        }
+        i += wc;
+    }
+}
+
 } // anonymous namespace
 
 extern "C" bool shader_compile_and_create(
@@ -324,10 +401,22 @@ extern "C" bool shader_compile_and_create(
         return false;
     }
 
-    const void *vs_spv      = vsBlob->getBufferPointer();
-    const size_t vs_spv_size = vsBlob->getBufferSize();
-    const void *fs_spv      = fsBlob->getBufferPointer();
-    const size_t fs_spv_size = fsBlob->getBufferSize();
+    // Copy the SPIR-V blobs into mutable buffers so we can patch descriptor
+    // sets in place (see patch_spirv_descriptor_sets above for why). The
+    // copies live on the stack-allocated std::vector and are kept alive
+    // until sg_make_shader returns; sokol reads/copies the bytecode there.
+    std::vector<uint8_t> vs_spv_buf(
+        (const uint8_t*)vsBlob->getBufferPointer(),
+        (const uint8_t*)vsBlob->getBufferPointer() + vsBlob->getBufferSize());
+    std::vector<uint8_t> fs_spv_buf(
+        (const uint8_t*)fsBlob->getBufferPointer(),
+        (const uint8_t*)fsBlob->getBufferPointer() + fsBlob->getBufferSize());
+    patch_spirv_descriptor_sets(vs_spv_buf.data(), vs_spv_buf.size());
+    patch_spirv_descriptor_sets(fs_spv_buf.data(), fs_spv_buf.size());
+    const void *vs_spv      = vs_spv_buf.data();
+    const size_t vs_spv_size = vs_spv_buf.size();
+    const void *fs_spv      = fs_spv_buf.data();
+    const size_t fs_spv_size = fs_spv_buf.size();
 
     // Reflection
     ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
