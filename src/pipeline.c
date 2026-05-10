@@ -79,3 +79,21 @@ BackendPipeline pipeline_cache_get(
     c->buckets[bi] = e;
     return pip;
 }
+
+void pipeline_cache_invalidate_shader(PipelineCache *c, uintptr_t old_shader) {
+    for (int i = 0; i < PIPELINE_BUCKETS; ++i) {
+        PipelineEntry **prev = &c->buckets[i];
+        PipelineEntry *e = c->buckets[i];
+        while (e) {
+            PipelineEntry *next = e->next;
+            if (e->key.shader_handle == old_shader) {
+                if (e->pip) g_backend->destroy_pipeline(e->pip);
+                *prev = next;
+                free(e);
+            } else {
+                prev = &e->next;
+            }
+            e = next;
+        }
+    }
+}
