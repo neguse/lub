@@ -389,6 +389,22 @@ static int l_capture(lua_State *L) {
     return 0;
 }
 
+static int l_config(lua_State *L) {
+    if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
+        return luaL_error(L, "config: must be called inside on_init");
+    }
+    luaL_checktype(L, 1, LUA_TTABLE);
+    lua_getfield(L, 1, "backend");
+    const char *name = lua_isstring(L, -1) ? lua_tostring(L, -1) : "sokol";
+    if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0) {
+        return luaL_error(L, "config: backend must be 'sokol' or 'sdlgpu', got '%s'", name);
+    }
+    strncpy(g_app_for_lua->backend_name, name, sizeof(g_app_for_lua->backend_name) - 1);
+    g_app_for_lua->backend_name[sizeof(g_app_for_lua->backend_name) - 1] = '\0';
+    lua_pop(L, 1);
+    return 0;
+}
+
 void lua_api_register(lua_State *L) {
     enums_register(L);
     // main_tex は { __sgl_kind = "main_tex" } という sentinel テーブル
@@ -411,6 +427,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "draw");
     lua_pushcfunction(L, l_capture);
     lua_setglobal(L, "capture");
+    lua_pushcfunction(L, l_config);
+    lua_setglobal(L, "config");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {

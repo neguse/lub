@@ -10,6 +10,11 @@
 #include "pipeline.h"
 #include "capture.h"
 
+typedef enum {
+    APP_PHASE_PRE_BACKEND,
+    APP_PHASE_POST_BACKEND
+} AppPhase;
+
 typedef struct App {
     SDL_Window *window;
 
@@ -53,6 +58,13 @@ typedef struct App {
     CaptureState  capture;
     bool          capture_then_exit; // set by app_frame_end after a successful capture
     int           last_w, last_h;    // last extents seen by app_frame_begin
+
+    // Backend selection (Task 2). app_init sets phase = PRE_BACKEND and
+    // backend_name = "sokol". Lua's config() may overwrite backend_name during
+    // on_init (PRE_BACKEND only). app_backend_init flips phase to POST_BACKEND
+    // after the backend's init() succeeds.
+    AppPhase      phase;
+    char          backend_name[16];
 } App;
 
 bool app_init(App *app);

@@ -21,14 +21,24 @@ bool app_init(App *app) {
     app->last_w = 0;
     app->last_h = 0;
     app->frame_index = 0;
+    app->phase = APP_PHASE_PRE_BACKEND;
+    strcpy(app->backend_name, "sokol");
     return true;
 }
 
 bool app_backend_init(App *app) {
-    if (!g_backend->init(app)) {
-        SDL_Log("backend(%s) init failed", g_backend->name);
+    if (strcmp(app->backend_name, "sdlgpu") == 0) {
+        // Task 3 で g_backend_sdlgpu を実装する。今は未対応として扱う。
+        SDL_Log("backend 'sdlgpu' is not yet implemented (Task 3+)");
         return false;
     }
+    g_backend = &g_backend_sokol;
+    SDL_Log("backend selected: %s", g_backend->name);
+    if (!g_backend->init(app)) {
+        SDL_Log("backend init failed");
+        return false;
+    }
+    app->phase = APP_PHASE_POST_BACKEND;
     return true;
 }
 
