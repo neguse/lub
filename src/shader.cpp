@@ -15,6 +15,7 @@
 #include <string.h>
 #include <string>
 #include <regex>
+#include <vector>
 
 using slang::IGlobalSession;
 using slang::ISession;
@@ -114,14 +115,78 @@ std::string downversion_glsl(const char *src, size_t n) {
     // the texture), so nothing else references the standalone sampler.
     s = std::regex_replace(s, std::regex(R"(\buniform\s+texture2D\b)"), "uniform sampler2D");
     // Strip the standalone sampler declaration. Slang emits it across two
-    // lines in the form `layout(binding = N)\nuniform sampler NAME;`. Match
-    // and drop both lines (replaced with empty lines so #line directives the
-    // driver sees still resolve correctly).
+    // lines in the form `layout(binding = N)\nuniform sampler NAME;`.
     s = std::regex_replace(
         s,
         std::regex(R"(layout\s*\(\s*binding\s*=\s*\d+\s*\)\s*\n\s*uniform\s+sampler\s+\w+_\d+\s*;)"),
         "");
     s = std::regex_replace(s, std::regex(R"(sampler2D\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*[A-Za-z_][A-Za-z0-9_]*\s*\))"), "$1");
+
+    // Flatten std140 uniform blocks into plain `uniform` declarations.
+    //
+    // sokol's GL backend doesn't actually use UBOs (no glBindBufferRange /
+    // glGetUniformBlockIndex anywhere) — it issues individual glUniform* calls
+    // per member at sg_apply_uniforms time, looking each member up via
+    // glGetUniformLocation(). That call returns -1 for any name inside a real
+    // uniform block, so blocks must be flattened to plain uniforms.
+    //
+    // Slang emits, e.g.:
+    //   layout(binding = 0)
+    //   layout(std140) uniform block_Uniforms_0 { mat4x4 mvp_0; ... } u_0;
+    //   ... mul(u_0.mvp_0, ...) ...
+    //
+    // We rewrite the block to:
+    //   uniform mat4x4 mvp_0;
+    //   ... mul(mvp_0, ...) ...
+    //
+    // The `layout(column_major) uniform;` default qualifier line emitted near
+    // the top is harmless once no real blocks remain.
+    {
+        // Match the whole block declaration. The (?s) flag isn't supported in
+        // libstdc++'s default ECMAScript regex; use [\s\S] for "any char".
+        std::regex block_re(
+            R"(layout\s*\(\s*binding\s*=\s*\d+\s*\)\s*\n\s*layout\s*\(\s*std140\s*\)\s*uniform\s+\w+\s*\{([\s\S]*?)\}\s*(\w+)\s*;)");
+        std::smatch m;
+        std::string out;
+        std::string::const_iterator search_start = s.cbegin();
+        std::vector<std::string> inst_names;
+        while (std::regex_search(search_start, s.cend(), m, block_re)) {
+            out.append(search_start, m[0].first);
+            std::string body = m[1].str();   // text between { ... }
+            std::string inst = m[2].str();   // instance name, e.g., "u_0"
+            inst_names.push_back(inst);
+            // Convert each line of the body (e.g. "    mat4x4 mvp_0;") into
+            // `uniform <type> <name>;`. We just keep semicolon-separated decls.
+            // Strip leading whitespace per stmt, prefix `uniform `.
+            std::string flat;
+            size_t pos = 0;
+            while (pos < body.size()) {
+                size_t semi = body.find(';', pos);
+                if (semi == std::string::npos) break;
+                std::string stmt = body.substr(pos, semi - pos);
+                // trim
+                size_t a = stmt.find_first_not_of(" \t\r\n");
+                size_t b = stmt.find_last_not_of(" \t\r\n");
+                if (a != std::string::npos && b != std::string::npos) {
+                    flat += "uniform ";
+                    flat += stmt.substr(a, b - a + 1);
+                    flat += ";\n";
+                }
+                pos = semi + 1;
+            }
+            out += flat;
+            search_start = m[0].second;
+        }
+        out.append(search_start, s.cend());
+        s = std::move(out);
+
+        // Strip `<inst>.` prefix from usages.
+        for (const auto& inst : inst_names) {
+            std::regex usage_re("\\b" + inst + "\\s*\\.");
+            s = std::regex_replace(s, usage_re, "");
+        }
+    }
+
     return s;
 }
 
@@ -459,7 +524,9 @@ extern "C" bool shader_compile_and_create(
         dst->size = (uint32_t)(u->size_floats * 4);
         dst->layout = SG_UNIFORMLAYOUT_STD140;
         for (int m = 0; m < u->member_count && m < SG_MAX_UNIFORMBLOCK_MEMBERS; ++m) {
-            ub_member_names[b][m] = u->members[m].name;
+            // Slang appends `_0` to identifiers in its GLSL output, and we flatten
+            // the uniform block in downversion_glsl, so the lookup name is `<name>_0`.
+            ub_member_names[b][m] = std::string(u->members[m].name) + "_0";
             dst->glsl_uniforms[m].type = guess_uniform_type(u->members[m].comp_count);
             dst->glsl_uniforms[m].array_count = 1;
             dst->glsl_uniforms[m].glsl_name = ub_member_names[b][m].c_str();

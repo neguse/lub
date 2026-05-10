@@ -355,11 +355,50 @@ static int l_draw(lua_State *L) {
                     }
                 }
             }
-            // uniforms processing added in Task 11
+            // uniforms processing handled separately below (resources.uniforms key)
         }
         lua_pop(L, 1); // value, key stays for lua_next
     }
     sg_apply_bindings(&bind);
+
+    // uniforms: read resources.uniforms = { ub_member_name = {floats...} } and pack
+    // into the shader's first uniform block. PoC: only ub[0] supported.
+    lua_getfield(L, 2, "uniforms");
+    if (lua_istable(L, -1) && sh_e->u.sh.refl.ub_count > 0) {
+        const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[0];
+        int total_floats = ub->size_floats;
+        if (total_floats < 0) total_floats = 0;
+        // Stack-buffer up to a sensible cap; for matrices total is small.
+        enum { UB_MAX_FLOATS = 256 };
+        float buf[UB_MAX_FLOATS];
+        memset(buf, 0, sizeof(buf));
+        if (total_floats > UB_MAX_FLOATS) {
+            return luaL_error(L, "draw: uniform block too large (%d floats > %d)",
+                              total_floats, UB_MAX_FLOATS);
+        }
+        for (int m = 0; m < ub->member_count; ++m) {
+            const ShaderUniformMember *mem = &ub->members[m];
+            lua_getfield(L, -1, mem->name);
+            if (lua_istable(L, -1)) {
+                int n_provided = (int)lua_rawlen(L, -1);
+                int copy = n_provided < mem->comp_count ? n_provided : mem->comp_count;
+                for (int j = 0; j < copy; ++j) {
+                    lua_rawgeti(L, -1, j + 1);
+                    if (lua_isnumber(L, -1)) {
+                        buf[mem->offset_floats + j] = (float)lua_tonumber(L, -1);
+                    }
+                    lua_pop(L, 1);
+                }
+            }
+            lua_pop(L, 1); // pop the field (or nil)
+        }
+        sg_apply_uniforms(ub->slot, &(sg_range){
+            .ptr = buf,
+            .size = (size_t)total_floats * sizeof(float),
+        });
+    }
+    lua_pop(L, 1); // pop "uniforms" field (or nil)
+
     sg_draw(0, count, 1);
     return 0;
 }
