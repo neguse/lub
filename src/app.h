@@ -19,7 +19,23 @@ typedef struct App {
     VkQueue          vk_queue;
     uint32_t         vk_queue_family;
 
-    // (Task 15 で swapchain / surface / semaphores 追加)
+    // Surface & swapchain
+    VkSurfaceKHR     vk_surface;
+    VkSwapchainKHR   vk_swapchain;
+    VkFormat         vk_swapchain_format;
+    uint32_t         vk_swapchain_image_count;
+    VkImage         *vk_swapchain_images;
+    VkImageView     *vk_swapchain_views;
+
+    // Depth attachment (swapchain 全体で 1 枚共有)
+    VkImage          vk_depth_image;
+    VkDeviceMemory   vk_depth_mem;
+    VkImageView      vk_depth_view;
+
+    // Per-frame semaphores (PoC: 1 ペアのみ)
+    VkSemaphore      vk_acquire_sem;
+    VkSemaphore      vk_present_sem;
+    uint32_t         vk_current_image;
 
     LuaCtx        lua;
     PassState     pass;
