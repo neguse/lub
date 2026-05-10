@@ -1,10 +1,10 @@
 // Slang shader compile + reflection -> sg_shader
 //
-// Compiles two source strings (vertex and fragment) written in Slang to GLSL,
-// builds an sg_shader_desc with attribute/uniform/texture reflection, and
-// hands the resulting sg_shader handle plus a small ShaderReflection struct
-// back to the caller. This file is C++ because the Slang public API uses
-// COM-like C++ interfaces; the exposed interface (shader.h) is pure C.
+// Compiles two source strings (vertex and fragment) written in Slang to
+// SPIR-V, builds an sg_shader_desc with attribute/uniform/texture reflection,
+// and hands the resulting sg_shader handle plus a small ShaderReflection
+// struct back to the caller. This file is C++ because the Slang public API
+// uses COM-like C++ interfaces; the exposed interface (shader.h) is pure C.
 #include "shader.h"
 
 #include <slang.h>
@@ -14,8 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
-#include <regex>
-#include <vector>
 
 using slang::IGlobalSession;
 using slang::ISession;
@@ -37,7 +35,7 @@ namespace {
 // Lazy global session, reused across compiles.
 struct GlobalSlangCtx {
     ComPtr<IGlobalSession> g;
-    SlangProfileID glsl_profile = SLANG_PROFILE_UNKNOWN;
+    SlangProfileID spirv_profile = SLANG_PROFILE_UNKNOWN;
 };
 
 GlobalSlangCtx g_slang;
@@ -47,7 +45,12 @@ bool ensure_global_session() {
     if (SLANG_FAILED(slang::createGlobalSession(g_slang.g.writeRef()))) {
         return false;
     }
-    g_slang.glsl_profile = g_slang.g->findProfile("glsl_330");
+    // Prefer spirv_1_5; fall back to glsl_450 (which still produces SPIR-V
+    // when target.format == SLANG_SPIRV).
+    g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_5");
+    if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
+        g_slang.spirv_profile = g_slang.g->findProfile("glsl_450");
+    }
     return true;
 }
 
@@ -62,132 +65,6 @@ void copy_diag(IBlob *diag, char *err_buf, size_t err_buf_size) {
     if (n >= err_buf_size) n = err_buf_size - 1;
     memcpy(err_buf, diag->getBufferPointer(), n);
     err_buf[n] = '\0';
-}
-
-// Slang's GLSL backend always emits `#version 450` regardless of the profile we
-// requested. Rewrite that to `#version 330` so sokol_gfx's GL 3.3 backend
-// accepts the source. The PoC shaders only use features common to both
-// versions (layout qualifiers, basic types, std140 uniform blocks).
-//
-// Slang also unconditionally emits `layout(column_major) buffer;` which is a
-// GLSL 4.30+ construct (SSBO declarations didn't exist before that). The PoC
-// doesn't use SSBOs, so we strip that line entirely. Without this strip, the
-// driver's GLSL frontend rejects the shader at GL_SHADER_COMPILATION_FAILED on
-// first use (sg_make_shader defers compilation, so the failure surfaces on
-// sg_apply_pipeline rather than at create time).
-std::string downversion_glsl(const char *src, size_t n) {
-    std::string s(src, n);
-    const char *needle = "#version 450";
-    size_t pos = s.find(needle);
-    if (pos != std::string::npos) {
-        // Replace `#version 450` with `#version 330` plus extension enables.
-        // Slang emits:
-        //  - `layout(location = N)` on inter-stage varyings, which requires
-        //    GL_ARB_separate_shader_objects on GLSL 3.30.
-        //  - `layout(binding = N)` on samplers/UBOs, which requires
-        //    GL_ARB_shading_language_420pack on GLSL 3.30.
-        const char *replacement =
-            "#version 330\n"
-            "#extension GL_ARB_separate_shader_objects : enable\n"
-            "#extension GL_ARB_shading_language_420pack : enable";
-        s.replace(pos, strlen(needle), replacement);
-    }
-    const char *buf_needle = "layout(column_major) buffer;";
-    size_t bpos = s.find(buf_needle);
-    if (bpos != std::string::npos) {
-        // Replace with whitespace of the same length so reported line numbers
-        // in driver diagnostics still line up.
-        s.replace(bpos, strlen(buf_needle), std::string(strlen(buf_needle), ' '));
-    }
-
-    // GLSL 3.30 doesn't support separate texture / sampler opaque types
-    // (`texture2D` / `sampler`) — those came in 4.20 + Vulkan-flavored GLSL.
-    // Slang emits Vulkan-style separate textures + `sampler2D(tex, smp)`
-    // construction. Rewrite the pattern back to traditional combined samplers
-    // so GL 3.3 accepts the source:
-    //
-    //   uniform texture2D NAME;            ->  uniform sampler2D NAME;
-    //   uniform sampler  NAME;             ->  (stripped to whitespace)
-    //   sampler2D(<texname>, <smpname>)    ->  <texname>
-    //
-    // The drop of the standalone sampler is safe because every sampler usage
-    // is wrapped in a `sampler2D(tex, smp)` call (which we collapse to just
-    // the texture), so nothing else references the standalone sampler.
-    s = std::regex_replace(s, std::regex(R"(\buniform\s+texture2D\b)"), "uniform sampler2D");
-    // Strip the standalone sampler declaration. Slang emits it across two
-    // lines in the form `layout(binding = N)\nuniform sampler NAME;`.
-    s = std::regex_replace(
-        s,
-        std::regex(R"(layout\s*\(\s*binding\s*=\s*\d+\s*\)\s*\n\s*uniform\s+sampler\s+\w+_\d+\s*;)"),
-        "");
-    s = std::regex_replace(s, std::regex(R"(sampler2D\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*[A-Za-z_][A-Za-z0-9_]*\s*\))"), "$1");
-
-    // Flatten std140 uniform blocks into plain `uniform` declarations.
-    //
-    // sokol's GL backend doesn't actually use UBOs (no glBindBufferRange /
-    // glGetUniformBlockIndex anywhere) — it issues individual glUniform* calls
-    // per member at sg_apply_uniforms time, looking each member up via
-    // glGetUniformLocation(). That call returns -1 for any name inside a real
-    // uniform block, so blocks must be flattened to plain uniforms.
-    //
-    // Slang emits, e.g.:
-    //   layout(binding = 0)
-    //   layout(std140) uniform block_Uniforms_0 { mat4x4 mvp_0; ... } u_0;
-    //   ... mul(u_0.mvp_0, ...) ...
-    //
-    // We rewrite the block to:
-    //   uniform mat4x4 mvp_0;
-    //   ... mul(mvp_0, ...) ...
-    //
-    // The `layout(column_major) uniform;` default qualifier line emitted near
-    // the top is harmless once no real blocks remain.
-    {
-        // Match the whole block declaration. The (?s) flag isn't supported in
-        // libstdc++'s default ECMAScript regex; use [\s\S] for "any char".
-        std::regex block_re(
-            R"(layout\s*\(\s*binding\s*=\s*\d+\s*\)\s*\n\s*layout\s*\(\s*std140\s*\)\s*uniform\s+\w+\s*\{([\s\S]*?)\}\s*(\w+)\s*;)");
-        std::smatch m;
-        std::string out;
-        std::string::const_iterator search_start = s.cbegin();
-        std::vector<std::string> inst_names;
-        while (std::regex_search(search_start, s.cend(), m, block_re)) {
-            out.append(search_start, m[0].first);
-            std::string body = m[1].str();   // text between { ... }
-            std::string inst = m[2].str();   // instance name, e.g., "u_0"
-            inst_names.push_back(inst);
-            // Convert each line of the body (e.g. "    mat4x4 mvp_0;") into
-            // `uniform <type> <name>;`. We just keep semicolon-separated decls.
-            // Strip leading whitespace per stmt, prefix `uniform `.
-            std::string flat;
-            size_t pos = 0;
-            while (pos < body.size()) {
-                size_t semi = body.find(';', pos);
-                if (semi == std::string::npos) break;
-                std::string stmt = body.substr(pos, semi - pos);
-                // trim
-                size_t a = stmt.find_first_not_of(" \t\r\n");
-                size_t b = stmt.find_last_not_of(" \t\r\n");
-                if (a != std::string::npos && b != std::string::npos) {
-                    flat += "uniform ";
-                    flat += stmt.substr(a, b - a + 1);
-                    flat += ";\n";
-                }
-                pos = semi + 1;
-            }
-            out += flat;
-            search_start = m[0].second;
-        }
-        out.append(search_start, s.cend());
-        s = std::move(out);
-
-        // Strip `<inst>.` prefix from usages.
-        for (const auto& inst : inst_names) {
-            std::regex usage_re("\\b" + inst + "\\s*\\.");
-            s = std::regex_replace(s, usage_re, "");
-        }
-    }
-
-    return s;
 }
 
 void copy_name(char *dst, size_t cap, const char *src) {
@@ -360,17 +237,6 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
     return true;
 }
 
-sg_uniform_type guess_uniform_type(int comp_count) {
-    switch (comp_count) {
-        case 1:  return SG_UNIFORMTYPE_FLOAT;
-        case 2:  return SG_UNIFORMTYPE_FLOAT2;
-        case 3:  return SG_UNIFORMTYPE_FLOAT3;
-        case 4:  return SG_UNIFORMTYPE_FLOAT4;
-        case 16: return SG_UNIFORMTYPE_MAT4;
-        default: return SG_UNIFORMTYPE_FLOAT4;
-    }
-}
-
 } // anonymous namespace
 
 extern "C" bool shader_compile_and_create(
@@ -387,8 +253,8 @@ extern "C" bool shader_compile_and_create(
     }
 
     TargetDesc target = {};
-    target.format = SLANG_GLSL;
-    target.profile = g_slang.glsl_profile;
+    target.format = SLANG_SPIRV;
+    target.profile = g_slang.spirv_profile;
 
     SessionDesc sd = {};
     sd.targets = &target;
@@ -444,7 +310,10 @@ extern "C" bool shader_compile_and_create(
     }
 
     // Get target code: entry 0 is vs (declared first in `components`),
-    // entry 1 is fs.
+    // entry 1 is fs. With target.format == SLANG_SPIRV the blobs hold
+    // SPIR-V binary, not GLSL source. The blobs (and the COM objects that
+    // own them) must remain alive until sg_make_shader returns, since
+    // sg_shader_desc holds raw pointers into the blob memory.
     ComPtr<IBlob> vsBlob, fsBlob;
     if (SLANG_FAILED(linked->getEntryPointCode(0, 0, vsBlob.writeRef(), diag.writeRef()))) {
         copy_diag(diag.get(), err_buf, err_buf_size);
@@ -455,10 +324,10 @@ extern "C" bool shader_compile_and_create(
         return false;
     }
 
-    std::string vs_glsl = downversion_glsl(
-        (const char*)vsBlob->getBufferPointer(), vsBlob->getBufferSize());
-    std::string fs_glsl = downversion_glsl(
-        (const char*)fsBlob->getBufferPointer(), fsBlob->getBufferSize());
+    const void *vs_spv      = vsBlob->getBufferPointer();
+    const size_t vs_spv_size = vsBlob->getBufferSize();
+    const void *fs_spv      = fsBlob->getBufferPointer();
+    const size_t fs_spv_size = fsBlob->getBufferSize();
 
     // Reflection
     ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
@@ -483,35 +352,31 @@ extern "C" bool shader_compile_and_create(
 
     // Build sg_shader_desc.
     //
-    // Lifetime contract: the std::string locals/vectors below (vs_glsl, fs_glsl,
-    // attr_names, ub_member_names, tex_pair_names) own the C-string buffers
-    // referenced by sg_shader_desc fields (vertex_func.source, attrs[].glsl_name,
-    // uniform_blocks[].glsl_uniforms[].glsl_name, texture_sampler_pairs[].glsl_name,
-    // etc.). sg_make_shader copies these strings during the call, so the local
-    // std::strings can safely go out of scope after it returns. DO NOT return or
-    // branch out of this section between filling the desc and calling
-    // sg_make_shader, or the c_str() pointers will dangle.
+    // Lifetime contract: vsBlob/fsBlob own the SPIR-V byte buffers referenced
+    // by desc.vertex_func.bytecode / desc.fragment_func.bytecode. sg_make_shader
+    // copies the bytecode into VkShaderModule on its way through the Vulkan
+    // backend, so the blobs can be released after that call returns.
     sg_shader_desc desc = {};
-    desc.vertex_func.source = vs_glsl.c_str();
-    desc.vertex_func.entry  = "main"; // GLSL output uses `main`
-    desc.fragment_func.source = fs_glsl.c_str();
-    desc.fragment_func.entry  = "main";
+    // Slang's SPIR-V emitter renames the entry-point function to "main"
+    // (regardless of the source-level name `vs_main`/`fs_main`) so that
+    // generated SPIR-V matches the GLSL convention. Vulkan validation
+    // confirms this — we must pass "main" here, not "vs_main"/"fs_main".
+    desc.vertex_func.entry            = "main";
+    desc.vertex_func.bytecode.ptr     = vs_spv;
+    desc.vertex_func.bytecode.size    = vs_spv_size;
+    desc.fragment_func.entry          = "main";
+    desc.fragment_func.bytecode.ptr   = fs_spv;
+    desc.fragment_func.bytecode.size  = fs_spv_size;
 
-    // Vertex attributes — Slang's GLSL emitter names vertex inputs
-    // `i_<field>_0` for struct fields, with explicit `layout(location=N)`
-    // qualifiers (so the location matches the order Slang declared them).
-    // We populate glsl_name for safety on backends that need it.
-    std::string attr_names[SGL_MAX_ATTRS];
+    // Vertex attributes — SPIR-V identifies inputs by location number, which
+    // sokol's Vulkan backend reads from the SPIR-V module directly; the desc
+    // only needs base_type set for validation.
     for (int i = 0; i < out_refl->attr_count && i < SG_MAX_VERTEX_ATTRIBUTES; ++i) {
-        char tmp[64];
-        snprintf(tmp, sizeof(tmp), "i_%s_0", out_refl->attrs[i].name);
-        attr_names[i] = tmp;
-        desc.attrs[i].glsl_name = attr_names[i].c_str();
         desc.attrs[i].base_type = SG_SHADERATTRBASETYPE_FLOAT;
     }
 
-    // Uniform blocks.
-    std::string ub_member_names[SGL_MAX_UNIFORM_BLOCKS][SG_MAX_UNIFORMBLOCK_MEMBERS];
+    // Uniform blocks. Vulkan backend reads spirv_set0_binding_n to map sokol's
+    // uniform-block bind slot to a (set=0, binding=N) descriptor.
     for (int b = 0; b < out_refl->ub_count && b < SGL_MAX_UNIFORM_BLOCKS; ++b) {
         ShaderUniformBlock *u = &out_refl->ubs[b];
         int slot = u->slot;
@@ -523,18 +388,10 @@ extern "C" bool shader_compile_and_create(
         dst->stage = SG_SHADERSTAGE_VERTEX;
         dst->size = (uint32_t)(u->size_floats * 4);
         dst->layout = SG_UNIFORMLAYOUT_STD140;
-        for (int m = 0; m < u->member_count && m < SG_MAX_UNIFORMBLOCK_MEMBERS; ++m) {
-            // Slang appends `_0` to identifiers in its GLSL output, and we flatten
-            // the uniform block in downversion_glsl, so the lookup name is `<name>_0`.
-            ub_member_names[b][m] = std::string(u->members[m].name) + "_0";
-            dst->glsl_uniforms[m].type = guess_uniform_type(u->members[m].comp_count);
-            dst->glsl_uniforms[m].array_count = 1;
-            dst->glsl_uniforms[m].glsl_name = ub_member_names[b][m].c_str();
-        }
+        dst->spirv_set0_binding_n = (uint8_t)slot;
     }
 
     // Textures + samplers + texture-sampler pairs (PoC: stage=FRAGMENT).
-    std::string tex_pair_names[SGL_MAX_TEXTURES];
     for (int i = 0; i < out_refl->tex_count && i < SGL_MAX_TEXTURES; ++i) {
         ShaderTexture *tx = &out_refl->texs[i];
         int img_slot = tx->img_slot;
@@ -545,25 +402,19 @@ extern "C" bool shader_compile_and_create(
         view->texture.stage = SG_SHADERSTAGE_FRAGMENT;
         view->texture.image_type = SG_IMAGETYPE_2D;
         view->texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
+        view->texture.spirv_set1_binding_n = (uint8_t)img_slot;
 
         if (smp_slot >= 0 && smp_slot < SG_MAX_SAMPLER_BINDSLOTS) {
             sg_shader_sampler *smp = &desc.samplers[smp_slot];
             smp->stage = SG_SHADERSTAGE_FRAGMENT;
             smp->sampler_type = SG_SAMPLERTYPE_FILTERING;
+            smp->spirv_set1_binding_n = (uint8_t)smp_slot;
         }
         if (i < SG_MAX_TEXTURE_SAMPLER_PAIRS) {
             sg_shader_texture_sampler_pair *pair = &desc.texture_sampler_pairs[i];
             pair->stage = SG_SHADERSTAGE_FRAGMENT;
             pair->view_slot = (uint8_t)img_slot;
             pair->sampler_slot = (uint8_t)(smp_slot >= 0 ? smp_slot : 0);
-            // Slang's GLSL emitter appends `_0` to texture names (same as
-            // vertex inputs), so the GLSL identifier is `<name>_0`. sokol_gfx
-            // looks this up in the linked program when binding image-samplers
-            // via the GL backend.
-            char tmp[64];
-            snprintf(tmp, sizeof(tmp), "%s_0", tx->name);
-            tex_pair_names[i] = tmp;
-            pair->glsl_name = tex_pair_names[i].c_str();
         }
     }
 
