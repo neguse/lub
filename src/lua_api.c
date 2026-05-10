@@ -440,14 +440,14 @@ static int l_fnv1a64(lua_State *L) {
 
 static int l_load_png(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
-    int w, h, ch;
-    unsigned char *pixels = stbi_load(path, &w, &h, &ch, 4);  // force RGBA
+    int w, h;
+    unsigned char *pixels = stbi_load(path, &w, &h, NULL, STBI_rgb_alpha);
     if (!pixels) {
         SDL_Log("load_png: %s: %s", path, stbi_failure_reason());
         lua_pushnil(L);
         return 1;
     }
-    int n = w * h * 4;
+    int n = w * h * STBI_rgb_alpha;
     lua_createtable(L, n, 0);
     for (int i = 0; i < n; ++i) {
         lua_pushinteger(L, pixels[i]);
