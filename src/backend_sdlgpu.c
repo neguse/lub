@@ -28,6 +28,8 @@ static bool sg_init(App *app) {
     }
     if (!SDL_ClaimWindowForGPUDevice(app->gpu_device, app->window)) {
         SDL_Log("SDL_ClaimWindowForGPUDevice failed: %s", SDL_GetError());
+        SDL_DestroyGPUDevice(app->gpu_device);
+        app->gpu_device = NULL;
         return false;
     }
     return true;
@@ -43,6 +45,12 @@ static void sg_shutdown(App *app) {
 
 static void sg_begin_frame(App *app, int *out_w, int *out_h) {
     app->gpu_cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
+    if (!app->gpu_cmd) {
+        SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+        if (out_w) *out_w = 0;
+        if (out_h) *out_h = 0;
+        return;
+    }
     Uint32 sw = 0, sh = 0;
     app->gpu_swapchain_tex = NULL;
     if (!SDL_AcquireGPUSwapchainTexture(app->gpu_cmd, app->window,
@@ -54,14 +62,18 @@ static void sg_begin_frame(App *app, int *out_w, int *out_h) {
 }
 
 static void sg_end_frame(App *app) {
-    if (app->gpu_cmd) {
-        SDL_SubmitGPUCommandBuffer(app->gpu_cmd);
+    if (app->gpu_cmd && !SDL_SubmitGPUCommandBuffer(app->gpu_cmd)) {
+        SDL_Log("SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
     }
     app->gpu_cmd = NULL;
     app->gpu_swapchain_tex = NULL;
 }
 
 static void sg_begin_pass(App *app, const PassBeginDesc *d) {
+    if (!app->gpu_swapchain_tex) {
+        g_render_pass = NULL;
+        return;
+    }
     SDL_GPUColorTargetInfo target = {
         .texture = app->gpu_swapchain_tex,
         .clear_color = { d->clear[0], d->clear[1], d->clear[2], d->clear[3] },
@@ -83,30 +95,52 @@ static void sg_end_pass(App *app) {
 
 static BackendBuffer sg_make_buffer(SglBufferType t, const float *d, size_t b) {
     (void)t; (void)d; (void)b;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: make_buffer not yet implemented (Task 4)"); warned = true; }
     return 0;
 }
 static BackendImage sg_make_image(const ImageDesc *d) {
     (void)d;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: make_image not yet implemented (Task 6)"); warned = true; }
     return 0;
 }
 static BackendShader sg_make_shader(const ShaderDesc *d) {
     (void)d;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: make_shader not yet implemented (Task 4)"); warned = true; }
     return 0;
 }
 static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
     (void)d;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: make_pipeline not yet implemented (Task 4)"); warned = true; }
     return 0;
 }
 static void sg_destroy_buffer(BackendBuffer h)   { (void)h; }
 static void sg_destroy_image(BackendImage h)     { (void)h; }
 static void sg_destroy_shader(BackendShader h)   { (void)h; }
 static void sg_destroy_pipeline(BackendPipeline h){ (void)h; }
-static void sg_apply_pipeline(BackendPipeline h) { (void)h; }
-static void sg_apply_bindings(const BindingsDesc *b) { (void)b; }
+static void sg_apply_pipeline(BackendPipeline h) {
+    (void)h;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: apply_pipeline not yet implemented (Task 4)"); warned = true; }
+}
+static void sg_apply_bindings(const BindingsDesc *b) {
+    (void)b;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: apply_bindings not yet implemented (Task 4 / Task 6)"); warned = true; }
+}
 static void sg_apply_uniforms(int slot, const void *d, size_t b) {
     (void)slot; (void)d; (void)b;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: apply_uniforms not yet implemented (Task 7)"); warned = true; }
 }
-static void sg_draw(int base, int count) { (void)base; (void)count; }
+static void sg_draw(int base, int count) {
+    (void)base; (void)count;
+    static bool warned = false;
+    if (!warned) { SDL_Log("sdlgpu: draw not yet implemented (Task 4)"); warned = true; }
+}
 
 static bool sg_capture(App *app, const char *path) {
     (void)app; (void)path;
