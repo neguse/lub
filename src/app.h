@@ -8,6 +8,7 @@
 #include "pass.h"
 #include "resources.h"
 #include "pipeline.h"
+#include "capture.h"
 
 typedef struct App {
     SDL_Window *window;
@@ -42,6 +43,11 @@ typedef struct App {
     ResTable      res;
     PipelineCache pip_cache;
     uint64_t      frame_index;
+
+    // Offscreen capture
+    CaptureState  capture;
+    bool          capture_then_exit; // set by app_frame_end after a successful capture
+    int           last_w, last_h;    // last extents seen by app_frame_begin
 } App;
 
 bool app_init(App *app);

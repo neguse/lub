@@ -331,6 +331,10 @@ bool app_init(App *app) {
     pass_state_set_app(&app->pass, app);
     res_table_init(&app->res);
     pipeline_cache_init(&app->pip_cache);
+    capture_state_init(&app->capture);
+    app->capture_then_exit = false;
+    app->last_w = 0;
+    app->last_h = 0;
     app->frame_index = 0;
     return true;
 }
@@ -340,6 +344,8 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
     if (out_w) *out_w = w;
     if (out_h) *out_h = h;
+    app->last_w = w;
+    app->last_h = h;
     pass_state_set_swapchain_size(&app->pass, w, h);
 
     vkAcquireNextImageKHR(app->vk_device, app->vk_swapchain, UINT64_MAX,
@@ -348,6 +354,9 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
 
 void app_frame_end(App *app) {
     sg_commit();
+    // Snapshot the swapchain image for capture BEFORE present advances state.
+    VkImage captured_image = app->vk_swapchain_images[app->vk_current_image];
+
     VkPresentInfoKHR pi = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
@@ -358,6 +367,33 @@ void app_frame_end(App *app) {
     };
     vkQueuePresentKHR(app->vk_queue, &pi);
     app->frame_index++;
+
+    if (app->capture.pending) {
+        const char *err = NULL;
+        bool captured = capture_run_if_pending(
+            &app->capture,
+            app->frame_index,
+            app->vk_instance,
+            app->vk_phys,
+            app->vk_device,
+            app->vk_queue,
+            app->vk_queue_family,
+            captured_image,
+            (uint32_t)app->last_w,
+            (uint32_t)app->last_h,
+            app->vk_swapchain_format,
+            &err);
+        if (captured) {
+            if (err) {
+                SDL_Log("capture error: %s", err);
+            } else {
+                SDL_Log("captured frame %llu -> %s",
+                        (unsigned long long)app->frame_index,
+                        app->capture.path ? app->capture.path : "(null)");
+            }
+            app->capture_then_exit = true;
+        }
+    }
 }
 
 void app_shutdown(App *app) {
@@ -367,6 +403,7 @@ void app_shutdown(App *app) {
     // Pipelines reference shaders, so destroy pipelines before resources.
     pipeline_cache_shutdown(&app->pip_cache);
     res_table_shutdown(&app->res);
+    capture_state_shutdown(&app->capture);
     sg_shutdown();
 
     if (app->vk_device) {

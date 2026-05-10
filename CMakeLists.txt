@@ -43,10 +43,12 @@ add_executable(sglua
   src/resources.c
   src/shader.cpp
   src/pipeline.c
+  src/capture.c
 )
 target_include_directories(sglua PRIVATE
   third_party/sokol
   third_party/slang/include
+  third_party/stb
   src
 )
 target_link_directories(sglua PRIVATE third_party/slang/lib)

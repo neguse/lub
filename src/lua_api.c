@@ -6,6 +6,7 @@
 #include "shader.h"
 #include "pipeline.h"
 #include "enums.h"
+#include "capture.h"
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -410,6 +411,12 @@ static int l_end_pass(lua_State *L) {
     return 0;
 }
 
+static int l_capture(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    capture_schedule(&g_app_for_lua->capture, path, 0); // 0 = next frame
+    return 0;
+}
+
 void lua_api_register(lua_State *L) {
     enums_register(L);
     // main_tex は { __sgl_kind = "main_tex" } という sentinel テーブル
@@ -430,6 +437,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "use_shader");
     lua_pushcfunction(L, l_draw);
     lua_setglobal(L, "draw");
+    lua_pushcfunction(L, l_capture);
+    lua_setglobal(L, "capture");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {

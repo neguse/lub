@@ -1,8 +1,11 @@
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <stdlib.h>
+#include <string.h>
 #include "app.h"
 #include "lua_api.h"
+#include "capture.h"
 
 static App g_app;
 
@@ -13,9 +16,29 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
     if (!app_init(&g_app)) return SDL_APP_FAILURE;
-    const char *script = (argc >= 2) ? argv[1] : "samples/00_hello.lua";
+
+    const char *script        = NULL;
+    const char *capture_path  = NULL;
+    uint64_t    capture_frame = 30;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) {
+            capture_path = argv[++i];
+        } else if (strcmp(argv[i], "--capture-frame") == 0 && i + 1 < argc) {
+            capture_frame = strtoull(argv[++i], NULL, 10);
+        } else {
+            script = argv[i];
+        }
+    }
+    if (!script) script = "samples/00_hello.lua";
+
     if (!lua_ctx_init(&g_app.lua, script, &g_app)) return SDL_APP_FAILURE;
     lua_ctx_call_init(&g_app.lua);
+
+    if (capture_path) {
+        capture_schedule(&g_app.capture, capture_path, capture_frame);
+        SDL_Log("capture scheduled: path=%s at_frame=%llu",
+                capture_path, (unsigned long long)capture_frame);
+    }
     return SDL_APP_CONTINUE;
 }
 
@@ -34,6 +57,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     // 安全策: on_frame が pass を閉じ忘れた場合、強制的に閉じる
     if (pass_state_in_pass(&g_app.pass)) pass_state_end(&g_app.pass);
     app_frame_end(&g_app);
+    if (g_app.capture_then_exit) return SDL_APP_SUCCESS;
     return SDL_APP_CONTINUE;
 }
 
