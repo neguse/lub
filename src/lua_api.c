@@ -175,19 +175,27 @@ static int l_use_texture(lua_State *L) {
         }
     }
 
-    if (e->u.tex.h != 0) g_backend->destroy_image(e->u.tex.h);
-    e->u.tex.h = 0;
-
-    ImageDesc d = {
-        .fmt = (SglPixelFormat)fmt,
-        .w = w, .h = h,
-        .data = pixels,
-        .data_bytes = pixels ? (size_t)w * (size_t)h * (size_t)bpp : 0,
-    };
-    e->u.tex.h = g_backend->make_image(&d);
-    e->u.tex.w   = w;
-    e->u.tex.h_  = h;
-    e->u.tex.fmt = (SglPixelFormat)fmt;
+    size_t new_bytes = pixels ? (size_t)w * (size_t)h * (size_t)bpp : 0;
+    bool same_shape = (e->u.tex.h != 0)
+                      && (e->u.tex.w == w)
+                      && (e->u.tex.h_ == h)
+                      && (e->u.tex.fmt == (SglPixelFormat)fmt);
+    if (same_shape && pixels && new_bytes > 0) {
+        // in-place update
+        g_backend->update_image(e->u.tex.h, pixels, new_bytes);
+    } else {
+        if (e->u.tex.h != 0) g_backend->destroy_image(e->u.tex.h);
+        ImageDesc d = {
+            .fmt = (SglPixelFormat)fmt,
+            .w = w, .h = h,
+            .data = pixels,
+            .data_bytes = new_bytes,
+        };
+        e->u.tex.h = g_backend->make_image(&d);
+        e->u.tex.w   = w;
+        e->u.tex.h_  = h;
+        e->u.tex.fmt = (SglPixelFormat)fmt;
+    }
     e->version   = version;
 
     if (pixels) free(pixels);
