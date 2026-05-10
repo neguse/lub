@@ -12,7 +12,7 @@ typedef enum { RES_NONE = 0, RES_BUFFER, RES_TEXTURE, RES_SHADER } ResKind;
 typedef struct ResEntry {
     char *key;            // strdup'd
     ResKind kind;
-    int version;
+    int64_t version;
     int64_t last_seen_frame;
     union {
         struct { uintptr_t h; SglBufferType type; size_t size_bytes; } buf;

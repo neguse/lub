@@ -86,7 +86,7 @@ static int l_use_buffer(lua_State *L) {
     const char *key = luaL_checkstring(L, 1);
     int type = (int)luaL_checkinteger(L, 2);
     luaL_checktype(L, 3, LUA_TTABLE);
-    int version = (int)luaL_checkinteger(L, 4);
+    int64_t version = (int64_t)luaL_checkinteger(L, 4);
 
     if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX) {
         return luaL_error(L, "use_buffer: only VERTEX/INDEX supported in PoC");
@@ -132,7 +132,7 @@ static int l_use_texture(lua_State *L) {
     int fmt = (int)luaL_checkinteger(L, 4);
     int has_data = !lua_isnoneornil(L, 5);
     if (has_data) luaL_checktype(L, 5, LUA_TTABLE);
-    int version = (int)luaL_checkinteger(L, 6);
+    int64_t version = (int64_t)luaL_checkinteger(L, 6);
 
     if (w <= 0 || h <= 0) return luaL_error(L, "use_texture: invalid size %dx%d", w, h);
 
@@ -194,7 +194,7 @@ static int l_use_shader(lua_State *L) {
     const char *key = luaL_checkstring(L, 1);
     const char *vs  = luaL_checkstring(L, 2);
     const char *fs  = luaL_checkstring(L, 3);
-    int version = (int)luaL_checkinteger(L, 4);
+    int64_t version = (int64_t)luaL_checkinteger(L, 4);
 
     ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_SHADER);
     if (!e) return luaL_error(L, "use_shader: key '%s' already used as different kind", key);
