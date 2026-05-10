@@ -2202,3 +2202,1047 @@ git commit -m "docs: poc readme with sample run instructions"
 - Slang library のビルド済みバイナリの配布: `third_party/slang/lib/libslang.so` を git LFS or 取得スクリプト化する。
 - Multi-uniform-block / Multi-vertex-buffer: shader reflection の取り扱い拡張が必要。
 - shader sampler 設定の Lua 側からの指定 (filter, wrap): Open Question。texture 作成時引数に追加するのが筋。
+
+---
+
+# Phase 2: Vulkan Migration Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** sokol_gfx の backend を `SOKOL_GLCORE` から `SOKOL_VULKAN` に切替え、Slang ターゲットを SPIR-V にし、`downversion_glsl` regex hack を全面削除する。lavapipe (Mesa software Vulkan ICD) を使った headless 動作を確立する。GL 経路は完全削除。
+
+**Architecture:**
+SDL3 で window + Vulkan instance/surface を作成、Vulkan loader 経由で実 ICD (実機 GPU は本物の vendor driver、headless は lavapipe) に到達する。`app.c` が VkInstance/PhysicalDevice/Device/Queue/Swapchain/depth attachment/per-frame semaphores を保持し、`sg_environment.vulkan` と `sg_swapchain.vulkan` に渡す。Slang は SPIR-V を直接出すので、shader compile pipeline はクロスコンパイル不要 — reflection は target 非依存なのでロジックはほぼ流用。lavapipe 経由 headless は `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` を立てて実行スクリプトで切替えるだけ (コードは判定不要)。
+
+**Tech Stack:**
+- 既存と同じ (C11, C++17, CMake 3.20+, SDL3, Lua 5.4, Slang, sokol_gfx)
+- `find_package(Vulkan REQUIRED)` でシステム Vulkan loader を link
+- ソフトウェア Vulkan: Mesa の lavapipe (`mesa-vulkan-drivers` / `vulkan-swrast`)
+
+**移行前後の差分**
+- `OpenGL::GL` link → `Vulkan::Vulkan` link
+- `SOKOL_GLCORE` → `SOKOL_VULKAN`
+- `SDL_WINDOW_OPENGL` → `SDL_WINDOW_VULKAN`
+- `SDL_GL_*` (CreateContext / SwapWindow) → SDL3 Vulkan + 自前 swapchain + present queue
+- Slang target `glsl_330` → `spirv_1_5` / `glsl-450` (sokol vulkan の期待に合わせる)
+- `downversion_glsl` 全面削除 (#version 書換、column_major strip、separate texture/sampler 書換、UBO flatten すべて消える)
+- `sg_shader_desc.vertex_func/.fragment_func` の `.source` → `.bytecode` (SPIR-V binary)
+
+---
+
+## File Structure (Phase 2 後)
+
+変わるファイル:
+```
+src/
+├── main.c               # SDL_INIT_VIDEO + SDL_WINDOW_VULKAN
+├── app.{h,c}            # Vulkan instance/device/swapchain/semaphores ライフサイクル
+├── pass.{h,c}           # sg_swapchain.vulkan 形式に組み立て直し
+├── shader.cpp           # Slang→SPIR-V、reflection はそのまま流用、downversion_glsl 削除
+├── pipeline.{h,c}       # 大半維持、color/depth pixel format は Vulkan 互換に
+├── sokol_impl.c         # SOKOL_VULKAN define
+├── resources.{h,c}      # 維持 (sokol API 越し)
+├── lua_api.c            # 維持
+└── enums.h, enums_lua.c # 維持
+
+CMakeLists.txt           # find_package(Vulkan), -DSOKOL_VULKAN, link 切替
+scripts/run-headless.sh  # 新規: VK_ICD_FILENAMES=lavapipe icd で起動
+README.md                # 依存と headless 手順を更新
+```
+
+新規ファイルは `scripts/run-headless.sh` のみ。
+
+---
+
+## Task 13: CMake / define 切替と最小ビルド
+
+**Goal:** GL 関連を削除し、Vulkan link + `SOKOL_VULKAN` define でビルドが通る最小状態にする。app.c は中身が壊れててもよいので、まず CMake のみ通す。
+
+**Files:**
+- Modify: `CMakeLists.txt`
+- Modify: `src/main.c` (1 行)
+
+- [ ] **Step 1: CMakeLists.txt の link/include を Vulkan に切替**
+
+```cmake
+# 削除: find_package(OpenGL REQUIRED) と OpenGL::GL link
+# 追加:
+find_package(Vulkan REQUIRED)
+
+target_link_libraries(sglua PRIVATE
+  SDL3::SDL3
+  lua_static
+  slang
+  Vulkan::Vulkan      # OpenGL::GL から置換
+  m dl
+)
+
+# Compile define を切替
+target_compile_definitions(sglua PRIVATE
+  SOKOL_VULKAN        # SOKOL_GLCORE から置換
+)
+```
+
+`m dl` の Linux-only コメントはそのまま残してよい (Vulkan loader でも libdl 経由)。
+
+- [ ] **Step 2: main.c の WINDOW フラグ切替**
+
+`SDL_CreateWindow` (もしあれば。現状は app.c だが念のため) と app_init 内の window 作成で `SDL_WINDOW_OPENGL` を `SDL_WINDOW_VULKAN` に変更。
+
+```c
+// src/app.c の SDL_CreateWindow 呼び出し
+app->window = SDL_CreateWindow("sglua", 1280, 720,
+    SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+```
+
+- [ ] **Step 3: app.c の GL ctx 作成行を一旦コメントアウト**
+
+`SDL_GL_CreateContext` / `SDL_GL_MakeCurrent` / `SDL_GL_SetSwapInterval` / `sg_setup` / `sg_commit` / `SDL_GL_SwapWindow` 等の GL 直叩き行を **すべてコメントアウト or 削除**。app_init は `return false;` で即時失敗してよい (Task 14 で実装する)。app_frame_begin / app_frame_end / app_shutdown も最小化。
+
+これで「ビルドは通るが実行は失敗する」状態を作る。
+
+- [ ] **Step 4: ビルド確認**
+
+```bash
+cmake -S . -B build
+cmake --build build -j 2>&1 | tee /tmp/build.log
+```
+
+期待: ビルド成功。`undefined reference to glX*` 等の GL シンボルエラーが出ていないこと。Vulkan は loader 経由なので `vk*` シンボル参照は `Vulkan::Vulkan` の `libvulkan.so` で解決される。
+
+`undefined reference` が GL 関連で出る場合、消し忘れた呼び出しがどこかにある。
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add CMakeLists.txt src/app.c src/main.c
+git commit -m "build: switch backend to SOKOL_VULKAN and Vulkan link"
+```
+
+---
+
+## Task 14: Vulkan instance / physical device / device / queue 作成
+
+**Goal:** SDL3 と Vulkan loader を使って VkInstance / VkPhysicalDevice / VkDevice / VkQueue を作り、`sg_environment.vulkan` を埋めて `sg_setup` を呼ぶ。pass はまだ実装しない。
+
+**Files:**
+- Modify: `src/app.h` (App 構造体に Vulkan handle を追加)
+- Modify: `src/app.c` (Vulkan 初期化ロジック)
+
+- [ ] **Step 1: src/app.h に Vulkan handle を追加**
+
+```c
+#pragma once
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "lua_api.h"
+#include "pass.h"
+#include "resources.h"
+#include "pipeline.h"
+
+typedef struct App {
+    SDL_Window *window;
+
+    // Vulkan core
+    VkInstance       vk_instance;
+    VkPhysicalDevice vk_phys;
+    VkDevice         vk_device;
+    VkQueue          vk_queue;
+    uint32_t         vk_queue_family;
+
+    // (Task 15 で追加: surface, swapchain, semaphores, depth)
+
+    LuaCtx        lua;
+    PassState     pass;
+    ResTable      res;
+    PipelineCache pip_cache;
+    uint64_t      frame_index;
+} App;
+
+bool app_init(App *app);
+void app_frame_begin(App *app, int *out_w, int *out_h);
+void app_frame_end(App *app);
+void app_shutdown(App *app);
+```
+
+`SDL_GLContext gl_ctx` は削除。
+
+- [ ] **Step 2: src/app.c の app_init を Vulkan 化**
+
+```c
+#include "app.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
+#include "sokol_gfx.h"
+#include <stdlib.h>
+#include <string.h>
+
+static void sglua_sokol_logger(
+    const char* tag, uint32_t level, uint32_t item_id,
+    const char* msg, uint32_t line, const char* file, void* user)
+{
+    (void)tag; (void)item_id; (void)file; (void)user;
+    const char *lvl = (level == 0) ? "PANIC" : (level == 1) ? "ERROR"
+                    : (level == 2) ? "WARN"  : "INFO";
+    SDL_Log("[sg %s:%u] %s", lvl, line, msg ? msg : "(no msg)");
+}
+
+static bool create_vk_instance(VkInstance *out_inst) {
+    Uint32 ext_count = 0;
+    const char * const *sdl_exts = SDL_Vulkan_GetInstanceExtensions(&ext_count);
+    if (!sdl_exts) {
+        SDL_Log("SDL_Vulkan_GetInstanceExtensions failed: %s", SDL_GetError());
+        return false;
+    }
+    VkApplicationInfo ai = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pApplicationName = "sglua",
+        .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
+        .pEngineName = "sglua",
+        .engineVersion = VK_MAKE_VERSION(0, 1, 0),
+        .apiVersion = VK_API_VERSION_1_2,
+    };
+    VkInstanceCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &ai,
+        .enabledExtensionCount = ext_count,
+        .ppEnabledExtensionNames = sdl_exts,
+    };
+    if (vkCreateInstance(&ci, NULL, out_inst) != VK_SUCCESS) {
+        SDL_Log("vkCreateInstance failed");
+        return false;
+    }
+    return true;
+}
+
+static bool pick_physical_device(VkInstance inst, VkPhysicalDevice *out_phys, uint32_t *out_qf) {
+    uint32_t n = 0;
+    vkEnumeratePhysicalDevices(inst, &n, NULL);
+    if (n == 0) { SDL_Log("no Vulkan physical device"); return false; }
+    VkPhysicalDevice *phys = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * n);
+    vkEnumeratePhysicalDevices(inst, &n, phys);
+
+    // Pick first device that has a graphics queue family.
+    for (uint32_t i = 0; i < n; ++i) {
+        uint32_t qfn = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(phys[i], &qfn, NULL);
+        VkQueueFamilyProperties *qfp = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * qfn);
+        vkGetPhysicalDeviceQueueFamilyProperties(phys[i], &qfn, qfp);
+        for (uint32_t q = 0; q < qfn; ++q) {
+            if (qfp[q].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                *out_phys = phys[i];
+                *out_qf = q;
+                free(qfp); free(phys);
+                return true;
+            }
+        }
+        free(qfp);
+    }
+    free(phys);
+    SDL_Log("no graphics queue family found");
+    return false;
+}
+
+static bool create_vk_device(VkPhysicalDevice phys, uint32_t qf,
+                             VkDevice *out_dev, VkQueue *out_q) {
+    float prio = 1.0f;
+    VkDeviceQueueCreateInfo qci = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = qf,
+        .queueCount = 1,
+        .pQueuePriorities = &prio,
+    };
+    const char *dev_exts[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    VkDeviceCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &qci,
+        .enabledExtensionCount = 1,
+        .ppEnabledExtensionNames = dev_exts,
+    };
+    if (vkCreateDevice(phys, &ci, NULL, out_dev) != VK_SUCCESS) {
+        SDL_Log("vkCreateDevice failed");
+        return false;
+    }
+    vkGetDeviceQueue(*out_dev, qf, 0, out_q);
+    return true;
+}
+
+bool app_init(App *app) {
+    memset(app, 0, sizeof(*app));
+    app->window = SDL_CreateWindow("sglua", 1280, 720,
+        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+    if (!app->window) { SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError()); return false; }
+
+    if (!SDL_Vulkan_LoadLibrary(NULL)) {
+        SDL_Log("SDL_Vulkan_LoadLibrary failed: %s", SDL_GetError()); return false;
+    }
+    if (!create_vk_instance(&app->vk_instance)) return false;
+    if (!pick_physical_device(app->vk_instance, &app->vk_phys, &app->vk_queue_family)) return false;
+    if (!create_vk_device(app->vk_phys, app->vk_queue_family, &app->vk_device, &app->vk_queue)) return false;
+
+    sg_setup(&(sg_desc){
+        .environment = {
+            .defaults = {
+                .color_format = SG_PIXELFORMAT_BGRA8,    // Vulkan swapchain は BGRA がデフォルト
+                .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+                .sample_count = 1,
+            },
+            .vulkan = {
+                .instance        = (const void*)app->vk_instance,
+                .physical_device = (const void*)app->vk_phys,
+                .device          = (const void*)app->vk_device,
+                .queue           = (const void*)app->vk_queue,
+                .queue_family_index = app->vk_queue_family,
+            },
+        },
+        .logger.func = sglua_sokol_logger,
+    });
+
+    pass_state_init(&app->pass);
+    res_table_init(&app->res);
+    pipeline_cache_init(&app->pip_cache);
+    return true;
+}
+
+void app_frame_begin(App *app, int *out_w, int *out_h) {
+    int w, h;
+    SDL_GetWindowSizeInPixels(app->window, &w, &h);
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
+    pass_state_set_swapchain_size(&app->pass, w, h);
+    // (Task 15: vkAcquireNextImage 等)
+}
+
+void app_frame_end(App *app) {
+    sg_commit();
+    // (Task 15: vkQueuePresentKHR 等)
+    app->frame_index++;
+}
+
+void app_shutdown(App *app) {
+    pipeline_cache_shutdown(&app->pip_cache);
+    res_table_shutdown(&app->res);
+    sg_shutdown();
+    if (app->vk_device)   vkDestroyDevice(app->vk_device, NULL);
+    if (app->vk_instance) vkDestroyInstance(app->vk_instance, NULL);
+    SDL_Vulkan_UnloadLibrary();
+    if (app->window) SDL_DestroyWindow(app->window);
+}
+```
+
+注: BGRA8 を default にしているのは Vulkan swapchain の一般的な surface format に合わせるため。後段で実 swapchain format を取得して反映する (Task 15)。
+
+- [ ] **Step 3: ビルド & smoke test**
+
+```bash
+cmake --build build -j
+SDL_VIDEODRIVER=offscreen timeout 2 ./build/sglua samples/00_hello.lua
+```
+
+期待: ビルド clean、起動して `[lua] on_init` が出る、exit 124。`vkCreateInstance failed` 等のログが出ていないこと。
+
+(まだ swapchain が無いので描画系サンプルは動かなくてよい。)
+
+- [ ] **Step 4: コミット**
+
+```bash
+git add src/app.h src/app.c
+git commit -m "feat(vk): create Vulkan instance/device/queue and call sg_setup"
+```
+
+---
+
+## Task 15: Swapchain 構築と presentation loop
+
+**Goal:** VkSurfaceKHR + VkSwapchainKHR + depth attachment + per-frame semaphores を作り、毎フレーム `vkAcquireNextImageKHR` → sokol render → `vkQueuePresentKHR` で画面更新する。`sg_swapchain.vulkan` を pass 開始時に渡せるようにする。
+
+**Files:**
+- Modify: `src/app.h` (フィールド追加)
+- Modify: `src/app.c` (swapchain 関連実装)
+- Modify: `src/pass.h`, `src/pass.c` (sg_swapchain.vulkan 組立て)
+
+- [ ] **Step 1: src/app.h を拡張**
+
+App 構造体に追加:
+
+```c
+    // Surface & swapchain
+    VkSurfaceKHR     vk_surface;
+    VkSwapchainKHR   vk_swapchain;
+    VkFormat         vk_swapchain_format;
+    uint32_t         vk_swapchain_image_count;
+    VkImage         *vk_swapchain_images;       // 配列、image_count 個
+    VkImageView     *vk_swapchain_views;        // 同上
+
+    // Depth attachment (swapchain 全体で 1 枚共有)
+    VkImage          vk_depth_image;
+    VkDeviceMemory   vk_depth_mem;
+    VkImageView      vk_depth_view;
+
+    // Per-frame semaphores
+    VkSemaphore      vk_acquire_sem;            // image 取得待ち
+    VkSemaphore      vk_present_sem;            // present 待ち
+    uint32_t         vk_current_image;          // acquire の戻り値
+```
+
+`vk_acquire_sem` / `vk_present_sem` は本格的なフレーム並列を入れるなら配列化が必要だが、PoC は 1 フレーム同期前提で 1 個ずつ。
+
+- [ ] **Step 2: src/app.c に swapchain 作成関数を追加**
+
+```c
+static bool create_swapchain(App *app) {
+    if (!SDL_Vulkan_CreateSurface(app->window, app->vk_instance, NULL, &app->vk_surface)) {
+        SDL_Log("SDL_Vulkan_CreateSurface failed: %s", SDL_GetError());
+        return false;
+    }
+
+    // Surface format: 最初に対応する BGRA8 SRGB or UNORM を選ぶ。
+    uint32_t fmt_count = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(app->vk_phys, app->vk_surface, &fmt_count, NULL);
+    VkSurfaceFormatKHR *fmts = malloc(sizeof(VkSurfaceFormatKHR) * fmt_count);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(app->vk_phys, app->vk_surface, &fmt_count, fmts);
+    VkSurfaceFormatKHR chosen = fmts[0];
+    for (uint32_t i = 0; i < fmt_count; ++i) {
+        if (fmts[i].format == VK_FORMAT_B8G8R8A8_UNORM) { chosen = fmts[i]; break; }
+    }
+    free(fmts);
+    app->vk_swapchain_format = chosen.format;
+
+    VkSurfaceCapabilitiesKHR caps;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(app->vk_phys, app->vk_surface, &caps);
+
+    int w, h;
+    SDL_GetWindowSizeInPixels(app->window, &w, &h);
+    VkExtent2D extent = caps.currentExtent.width != 0xffffffff ? caps.currentExtent
+                                                               : (VkExtent2D){ (uint32_t)w, (uint32_t)h };
+
+    VkSwapchainCreateInfoKHR sci = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = app->vk_surface,
+        .minImageCount = caps.minImageCount + 1,
+        .imageFormat = chosen.format,
+        .imageColorSpace = chosen.colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = caps.currentTransform,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR,
+        .clipped = VK_TRUE,
+    };
+    if (vkCreateSwapchainKHR(app->vk_device, &sci, NULL, &app->vk_swapchain) != VK_SUCCESS) {
+        SDL_Log("vkCreateSwapchainKHR failed"); return false;
+    }
+
+    // Swapchain images & views
+    vkGetSwapchainImagesKHR(app->vk_device, app->vk_swapchain, &app->vk_swapchain_image_count, NULL);
+    app->vk_swapchain_images = malloc(sizeof(VkImage) * app->vk_swapchain_image_count);
+    vkGetSwapchainImagesKHR(app->vk_device, app->vk_swapchain, &app->vk_swapchain_image_count, app->vk_swapchain_images);
+    app->vk_swapchain_views = malloc(sizeof(VkImageView) * app->vk_swapchain_image_count);
+    for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+        VkImageViewCreateInfo ivci = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = app->vk_swapchain_images[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = chosen.format,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .levelCount = 1, .layerCount = 1,
+            },
+        };
+        vkCreateImageView(app->vk_device, &ivci, NULL, &app->vk_swapchain_views[i]);
+    }
+
+    // Depth attachment (D24S8 or D32S8 fallback)
+    VkFormat depth_fmt = VK_FORMAT_D24_UNORM_S8_UINT;
+    VkFormatProperties fp;
+    vkGetPhysicalDeviceFormatProperties(app->vk_phys, depth_fmt, &fp);
+    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+        depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    }
+
+    VkImageCreateInfo dci = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = depth_fmt,
+        .extent = { extent.width, extent.height, 1 },
+        .mipLevels = 1, .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    vkCreateImage(app->vk_device, &dci, NULL, &app->vk_depth_image);
+
+    VkMemoryRequirements mr;
+    vkGetImageMemoryRequirements(app->vk_device, app->vk_depth_image, &mr);
+    VkPhysicalDeviceMemoryProperties pmp;
+    vkGetPhysicalDeviceMemoryProperties(app->vk_phys, &pmp);
+    uint32_t mem_type = 0;
+    for (uint32_t i = 0; i < pmp.memoryTypeCount; ++i) {
+        if ((mr.memoryTypeBits & (1u << i)) &&
+            (pmp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            mem_type = i; break;
+        }
+    }
+    VkMemoryAllocateInfo mai = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mr.size,
+        .memoryTypeIndex = mem_type,
+    };
+    vkAllocateMemory(app->vk_device, &mai, NULL, &app->vk_depth_mem);
+    vkBindImageMemory(app->vk_device, app->vk_depth_image, app->vk_depth_mem, 0);
+
+    VkImageViewCreateInfo dvci = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = app->vk_depth_image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = depth_fmt,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+            .levelCount = 1, .layerCount = 1,
+        },
+    };
+    vkCreateImageView(app->vk_device, &dvci, NULL, &app->vk_depth_view);
+
+    // Semaphores
+    VkSemaphoreCreateInfo sci2 = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+    vkCreateSemaphore(app->vk_device, &sci2, NULL, &app->vk_acquire_sem);
+    vkCreateSemaphore(app->vk_device, &sci2, NULL, &app->vk_present_sem);
+
+    return true;
+}
+```
+
+- [ ] **Step 3: app_init で swapchain 作成、app_shutdown で破棄**
+
+`app_init` の `sg_setup` 呼び出しの**直前**に `if (!create_swapchain(app)) return false;` を入れる。`color_format` は実 swapchain format に応じて決める:
+
+```c
+sg_pixel_format color_pf =
+    (app->vk_swapchain_format == VK_FORMAT_B8G8R8A8_UNORM) ? SG_PIXELFORMAT_BGRA8 :
+    (app->vk_swapchain_format == VK_FORMAT_R8G8B8A8_UNORM) ? SG_PIXELFORMAT_RGBA8 :
+    SG_PIXELFORMAT_BGRA8;
+
+sg_setup(&(sg_desc){
+    .environment = {
+        .defaults = {
+            .color_format = color_pf,
+            .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+            .sample_count = 1,
+        },
+        .vulkan = { /* 既存 */ },
+    },
+    .logger.func = sglua_sokol_logger,
+});
+```
+
+`app_shutdown` の sokol shutdown 後・`vkDestroyDevice` 前に追加:
+
+```c
+vkDeviceWaitIdle(app->vk_device);
+if (app->vk_present_sem) vkDestroySemaphore(app->vk_device, app->vk_present_sem, NULL);
+if (app->vk_acquire_sem) vkDestroySemaphore(app->vk_device, app->vk_acquire_sem, NULL);
+if (app->vk_depth_view)  vkDestroyImageView(app->vk_device, app->vk_depth_view, NULL);
+if (app->vk_depth_image) vkDestroyImage(app->vk_device, app->vk_depth_image, NULL);
+if (app->vk_depth_mem)   vkFreeMemory(app->vk_device, app->vk_depth_mem, NULL);
+for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+    vkDestroyImageView(app->vk_device, app->vk_swapchain_views[i], NULL);
+}
+free(app->vk_swapchain_views);
+free(app->vk_swapchain_images);
+if (app->vk_swapchain) vkDestroySwapchainKHR(app->vk_device, app->vk_swapchain, NULL);
+if (app->vk_surface)   vkDestroySurfaceKHR(app->vk_instance, app->vk_surface, NULL);
+```
+
+- [ ] **Step 4: app_frame_begin で acquire、app_frame_end で present**
+
+```c
+void app_frame_begin(App *app, int *out_w, int *out_h) {
+    int w, h;
+    SDL_GetWindowSizeInPixels(app->window, &w, &h);
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
+    pass_state_set_swapchain_size(&app->pass, w, h);
+
+    vkAcquireNextImageKHR(app->vk_device, app->vk_swapchain, UINT64_MAX,
+                          app->vk_acquire_sem, VK_NULL_HANDLE, &app->vk_current_image);
+}
+
+void app_frame_end(App *app) {
+    sg_commit();
+    VkPresentInfoKHR pi = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &app->vk_present_sem,
+        .swapchainCount = 1,
+        .pSwapchains = &app->vk_swapchain,
+        .pImageIndices = &app->vk_current_image,
+    };
+    vkQueuePresentKHR(app->vk_queue, &pi);
+    app->frame_index++;
+}
+```
+
+注: `present_sem` は sokol が pass の最後で signal するセマフォ。`acquire_sem` は sokol が pass の最初で wait するセマフォ。これらを **`sg_swapchain.vulkan`** に渡す (Step 5)。
+
+- [ ] **Step 5: pass.h / pass.c を Vulkan swapchain ベースに変更**
+
+`PassState` に Vulkan swapchain の参照を持たせ、`pass_state_begin_main` で `sg_swapchain.vulkan` を組み立てる。**App ポインタを PassState に保持** するのが簡単。
+
+`src/pass.h`:
+
+```c
+#pragma once
+#include <stdbool.h>
+
+struct App; // 前方宣言
+
+typedef struct PassState {
+    bool in_pass;
+    int swapchain_w, swapchain_h;
+    struct App *app;     // swapchain handle 取得用
+} PassState;
+
+void pass_state_init(PassState *p);
+void pass_state_set_app(PassState *p, struct App *app);
+void pass_state_set_swapchain_size(PassState *p, int w, int h);
+bool pass_state_in_pass(const PassState *p);
+void pass_state_begin_main(PassState *p, float r, float g, float b, float a);
+void pass_state_end(PassState *p);
+```
+
+`src/pass.c`:
+
+```c
+#include "pass.h"
+#include "app.h"
+#include "sokol_gfx.h"
+#include <SDL3/SDL.h>
+
+void pass_state_init(PassState *p) { *p = (PassState){0}; }
+void pass_state_set_app(PassState *p, struct App *app) { p->app = app; }
+void pass_state_set_swapchain_size(PassState *p, int w, int h) {
+    p->swapchain_w = w; p->swapchain_h = h;
+}
+bool pass_state_in_pass(const PassState *p) { return p->in_pass; }
+
+void pass_state_begin_main(PassState *p, float r, float g, float b, float a) {
+    if (p->in_pass) { SDL_Log("begin_pass nested"); return; }
+    App *app = p->app;
+    sg_pass pass = {
+        .action.colors[0] = {
+            .load_action = SG_LOADACTION_CLEAR,
+            .clear_value = {r, g, b, a},
+        },
+        .swapchain = {
+            .width = p->swapchain_w,
+            .height = p->swapchain_h,
+            .color_format = SG_PIXELFORMAT_BGRA8,    // app の swapchain format に合わせる
+            .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+            .sample_count = 1,
+            .vulkan = {
+                .render_image = (const void*)app->vk_swapchain_images[app->vk_current_image],
+                .render_view  = (const void*)app->vk_swapchain_views[app->vk_current_image],
+                .depth_stencil_image = (const void*)app->vk_depth_image,
+                .depth_stencil_view  = (const void*)app->vk_depth_view,
+                .render_finished_semaphore = (const void*)app->vk_present_sem,
+                .present_complete_semaphore = (const void*)app->vk_acquire_sem,
+            },
+        },
+    };
+    sg_begin_pass(&pass);
+    p->in_pass = true;
+}
+
+void pass_state_end(PassState *p) {
+    if (!p->in_pass) { SDL_Log("end_pass without begin"); return; }
+    sg_end_pass();
+    p->in_pass = false;
+}
+```
+
+`color_format` を `app->vk_swapchain_format` から推論するヘルパを別途用意してもよいが、PoC は BGRA8 固定でよい (Step 3 で BGRA8 を選んでいるため)。
+
+- [ ] **Step 6: app_init で pass_state_set_app を呼ぶ**
+
+`pass_state_init` 直後に:
+
+```c
+pass_state_set_app(&app->pass, app);
+```
+
+- [ ] **Step 7: ビルド & smoke test**
+
+```bash
+cmake --build build -j
+./build/sglua samples/00b_clear.lua
+```
+
+期待: ディスプレイ環境ならウィンドウが虹色クリアでアニメーションする。ヘッドレスでは:
+
+```bash
+SDL_VIDEODRIVER=offscreen timeout 2 ./build/sglua samples/00b_clear.lua
+```
+exit 124、エラーなし。
+
+注: SDL3 の offscreen driver は Vulkan 対応してない場合がある。その場合は Task 20 で lavapipe + SDL3 dummy/x11 driver の組合せに切替える。ここでは「ビルド clean、ディスプレイあれば動く」までで OK。
+
+- [ ] **Step 8: コミット**
+
+```bash
+git add src/app.h src/app.c src/pass.h src/pass.c
+git commit -m "feat(vk): create swapchain with depth attachment and per-frame acquire/present"
+```
+
+---
+
+## Task 16: Slang を SPIR-V ターゲットに切替
+
+**Goal:** `src/shader.cpp` の Slang ターゲットを `SLANG_GLSL`/`glsl_330` から `SLANG_SPIRV`/`spirv_1_5` (or appropriate) に変更し、`downversion_glsl` 関数を完全削除。`sg_shader_desc.vertex_func.bytecode` / `.fragment_func.bytecode` に SPIR-V binary を渡すように切替える。reflection は target 非依存なのでロジックは流用。
+
+**Files:**
+- Modify: `src/shader.cpp`
+
+- [ ] **Step 1: TargetDesc 切替**
+
+`shader.cpp` 内の Slang セッション作成で、target を切替える:
+
+```cpp
+slang::TargetDesc target_desc = {};
+target_desc.format  = SLANG_SPIRV;
+target_desc.profile = global_session->findProfile("spirv_1_5");
+// target_desc.flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY; // 必要なら
+```
+
+`spirv_1_5` が無ければ `glsl_450` でも Slang は SPIR-V 出力する (target.format = SLANG_SPIRV を見るので)。実際には `spirv_1_3` あたりが最も互換性が広い。
+
+- [ ] **Step 2: getEntryPointCode が SPIR-V を返すようになるので blob はバイナリ扱いに**
+
+```cpp
+// 旧:
+// std::string vs_glsl(reinterpret_cast<const char*>(vs_blob->getBufferPointer()), vs_blob->getBufferSize());
+// vs_glsl = downversion_glsl(vs_glsl.c_str(), vs_glsl.size());
+
+// 新: SPIR-V はバイナリ。文字列扱い禁止
+const void *vs_spv = vs_blob->getBufferPointer();
+size_t      vs_spv_size = vs_blob->getBufferSize();
+const void *fs_spv = fs_blob->getBufferPointer();
+size_t      fs_spv_size = fs_blob->getBufferSize();
+```
+
+`vs_blob` / `fs_blob` (Slang の `IBlob`) は `shader_compile_and_create` の終端まで生存する必要がある。**ローカル変数として保持し、`sg_make_shader` の前に解放しないこと。**
+
+- [ ] **Step 3: sg_shader_desc に bytecode を渡す**
+
+```cpp
+sg_shader_desc desc = {};
+desc.vertex_func.entry = "main";    // Slang は entry 名を main に出力する
+desc.vertex_func.bytecode.ptr  = vs_spv;
+desc.vertex_func.bytecode.size = vs_spv_size;
+desc.fragment_func.entry = "main";
+desc.fragment_func.bytecode.ptr  = fs_spv;
+desc.fragment_func.bytecode.size = fs_spv_size;
+// .source は使わない (削除 or 0 のまま)
+```
+
+(GL backend では `desc.vertex_func.source = vs_glsl_str.c_str()` を渡していたが、Vulkan backend は bytecode 一択。)
+
+- [ ] **Step 4: vertex attribute / uniform block / image_sampler の name 系設定を整理**
+
+Vulkan の sokol backend では SPIR-V の binding 番号で識別するので、`attrs[i].name` / `glsl_name` / `glsl_uniforms[]` などは不要。`sg_shader_desc.attrs[]` の `.name` フィールドが残っているか sokol_gfx.h で確認。Vulkan backend では多くの場合不要 (空文字でよい)。
+
+具体的には:
+- 旧: `desc.attrs[i].name = name; desc.attrs[i].glsl_name = name;`
+- 新: `desc.attrs[i] = (sg_shader_vertex_attr_desc){0};` でも動く。
+
+`uniform_blocks[i].layout = SG_UNIFORMLAYOUT_STD140;` と `.size = ub.size_floats * sizeof(float);` は維持。`glsl_uniforms[]` は GL 専用なので削除。
+
+`image_sampler_pairs[i]` は `view_slot` / `sampler_slot` / `stage` を使う。`glsl_name` は GL 専用 → 削除可。
+
+- [ ] **Step 5: downversion_glsl 関数および <regex> インクルードを削除**
+
+`downversion_glsl` 関数定義と呼び出しすべてを削除。`#include <regex>` も削除。
+
+- [ ] **Step 6: ビルド & 動作確認**
+
+```bash
+cmake --build build -j
+./build/sglua samples/01_triangle.lua
+```
+
+ディスプレイ環境: オレンジ三角形が描画される。ヘッドレス:
+
+```bash
+SDL_VIDEODRIVER=offscreen timeout 2 ./build/sglua samples/01_triangle.lua
+```
+exit 124、エラーなし。
+
+(Vulkan validation layer を有効化していれば、SPIR-V バリデーションエラーがあれば logger に出る。エラーが出る場合は `desc.vertex_func.entry` が "main" でない可能性 — Slang が出す SPIR-V の entry 名は通常 "main"、Slang にカスタム entry 名を出させたい場合は `EntryPointDesc::name` を指定する。)
+
+- [ ] **Step 7: コミット**
+
+```bash
+git add src/shader.cpp
+git commit -m "feat(vk): switch slang target to spirv and drop glsl downversion hacks"
+```
+
+---
+
+## Task 17: 残るサンプル動作確認 (vertex color / texture / uniform)
+
+**Goal:** Sample 02/03/04 が新しい SPIR-V + Vulkan backend で動く。reflection ロジックや `sg_shader_desc` 詰める部分が attribute / texture / uniform で正しく機能することを確認。問題があれば直す。
+
+**Files:**
+- Modify: `src/shader.cpp` (必要に応じて binding/location 反映の調整)
+
+- [ ] **Step 1: samples/02 動作確認**
+
+```bash
+./build/sglua samples/02_vertex_color.lua
+```
+
+期待: RGB 補間された三角形が描かれる。エラーが出る場合:
+- vertex attribute の `location` が SPIR-V と pipeline desc で不一致 → `attrs[i].name` 指定が機能してない可能性。reflection で取得した `slot` (= location) が正しく `desc.layout.attrs[refl->attrs[i].slot]` のインデックスに対応しているか確認 (これは pipeline.c の責務、変更不要のはず)。
+
+- [ ] **Step 2: samples/03 動作確認**
+
+```bash
+./build/sglua samples/03_texture.lua
+```
+
+期待: チェッカー三角形。エラーが出る場合:
+- SPIR-V では descriptor set 0 + binding N で texture/sampler 識別。reflection の `img_slot` / `smp_slot` が SPIR-V binding と一致してるか確認。
+- Slang の SPIR-V 出力では、`Texture2D diffuse;` は binding 0、`SamplerState diffuse_smp;` は別 binding になる (HLSL→SPIR-V の通常)。`sg_image_sampler_pair_desc` の `view_slot` / `sampler_slot` がそれぞれの binding 番号と一致するように。
+
+- [ ] **Step 3: samples/04 動作確認**
+
+```bash
+./build/sglua samples/04_mvp.lua
+```
+
+期待: 回転する RGB 三角形。エラーが出る場合:
+- uniform block は SPIR-V では UBO bound。`uniform_blocks[0].size` / `.layout = SG_UNIFORMLAYOUT_STD140` が正しいか。`sg_apply_uniforms(ub_slot, range)` の slot = SPIR-V binding 番号。
+
+- [ ] **Step 4: 4 sample すべて headless smoke test**
+
+```bash
+for s in samples/0[1-4]_*.lua; do
+    SDL_VIDEODRIVER=offscreen timeout 2 ./build/sglua "$s" 2>&1 | head -5
+    echo "EXIT=$?"
+done
+```
+
+期待: 各 EXIT=124、エラーログなし。
+
+- [ ] **Step 5: 必要に応じて shader.cpp を修正**
+
+問題があった場合、reflection の binding 取得部分や `sg_shader_desc` 詰める部分を Vulkan に合わせて修正。具体的には Slang reflection の以下のメソッドを使う:
+
+- `parameter->getCategory()` で `DescriptorTableSlot` / `ConstantBuffer` 等を判定
+- `parameter->getBindingIndex()` で SPIR-V の binding 番号取得
+- `parameter->getBindingSpace()` で descriptor set 番号取得
+
+GL では `getOffset(SLANG_PARAMETER_CATEGORY_UNIFORM)` を使っていたが、Vulkan では `getBindingIndex()` 系。
+
+- [ ] **Step 6: コミット**
+
+```bash
+git add src/shader.cpp
+git commit -m "feat(vk): adjust reflection bindings for spirv samples 02-04"
+```
+
+(変更が無ければスキップして次タスクへ。)
+
+---
+
+## Task 18: lavapipe 経由 headless 動作確認
+
+**Goal:** Mesa の lavapipe を ICD として指定し、GPU 不要で 4 サンプルが動作することを確認。実行スクリプトを `scripts/run-headless.sh` として用意。
+
+**Files:**
+- Create: `scripts/run-headless.sh`
+
+- [ ] **Step 1: lavapipe をシステムに用意**
+
+Arch Linux: `sudo pacman -S vulkan-swrast`
+Debian/Ubuntu: `sudo apt install mesa-vulkan-drivers`
+
+ICD JSON の場所を確認:
+
+```bash
+ls /usr/share/vulkan/icd.d/ | grep -i lvp
+# 期待: lvp_icd.x86_64.json (or similar)
+```
+
+- [ ] **Step 2: scripts/run-headless.sh を作成**
+
+```bash
+#!/usr/bin/env bash
+# headless 実行: Mesa lavapipe (CPU Vulkan) を ICD として強制指定。
+# SDL は dummy video driver で OK (Vulkan loader は SDL とは独立)。
+
+set -euo pipefail
+
+ICD=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+if [[ ! -f "$ICD" ]]; then
+    echo "lavapipe ICD not found at $ICD" >&2
+    echo "Install with: sudo pacman -S vulkan-swrast (Arch) or sudo apt install mesa-vulkan-drivers (Debian)" >&2
+    exit 1
+fi
+
+export VK_ICD_FILENAMES="$ICD"
+export VK_LOADER_DRIVERS_SELECT=lvp_icd.x86_64.json
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"  # x11 が無ければ dummy にフォールバック (Step 3)
+
+exec "${1:-./build/sglua}" "${@:2}"
+```
+
+(Note: SDL3 で `SDL_WINDOW_VULKAN` を作るには SDL の video driver が VULKAN extension を提供する必要がある。x11 / wayland / cocoa は OK。`offscreen` / `dummy` は Vulkan 対応していない場合があるので、ヘッドレス CI では Xvfb と組み合わせるのが堅い。)
+
+- [ ] **Step 3: 必要なら Xvfb と組合せ**
+
+ディスプレイ無し CI では:
+
+```bash
+xvfb-run -a scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
+```
+
+`xvfb-run` で X server を立てて、SDL3 が x11 video driver で window を作る → window は X 上に存在 → SDL_Vulkan_CreateSurface が成功 → Vulkan 側は lavapipe で実行 (実 GPU には到達しない)。
+
+これを `scripts/run-headless.sh` に統合してもよい:
+
+```bash
+if ! command -v xvfb-run >/dev/null && [[ -z "${DISPLAY:-}" ]]; then
+    echo "no DISPLAY and no xvfb-run; cannot create SDL window" >&2
+    exit 2
+fi
+if [[ -z "${DISPLAY:-}" ]]; then
+    exec xvfb-run -a "$0" "$@"
+fi
+# ... 上記の本体 ...
+```
+
+- [ ] **Step 4: 実行確認**
+
+```bash
+chmod +x scripts/run-headless.sh
+scripts/run-headless.sh ./build/sglua samples/01_triangle.lua &
+sleep 2
+kill $!
+```
+
+期待: エラーなし、`vkCreateInstance` 等が成功している (logger に WARN/PANIC が出ない)。
+
+```bash
+# 4 sample 全部
+for s in samples/0[1-4]_*.lua; do
+    timeout 2 scripts/run-headless.sh ./build/sglua "$s" || true
+done
+```
+
+期待: 各サンプル exit 124 (or 137 for SIGKILL from timeout)、エラーログなし。
+
+- [ ] **Step 5: コミット**
+
+```bash
+chmod +x scripts/run-headless.sh
+git add scripts/run-headless.sh
+git commit -m "feat(headless): add lavapipe-based run script for software vulkan"
+```
+
+---
+
+## Task 19: 残置 GL artifact のクリーンアップ + README 更新
+
+**Goal:** GL 関連の dead code / コメント / 依存をすべて掃除。README.md に Vulkan + headless 構成を反映。
+
+**Files:**
+- Modify: `src/shader.cpp` (`<regex>` include / downversion_glsl が残っていれば削除)
+- Modify: `src/app.c` (`SDL_GL_*` 残存があれば削除)
+- Modify: `CMakeLists.txt` (find_package(OpenGL) / OpenGL::GL の残存があれば削除)
+- Modify: `README.md`
+
+- [ ] **Step 1: dead code 検索**
+
+```bash
+grep -n "OpenGL::GL\|find_package(OpenGL\|SDL_GL_\|SDL_WINDOW_OPENGL\|SOKOL_GLCORE\|downversion_glsl\|#include <regex>" \
+    CMakeLists.txt src/*.c src/*.cpp src/*.h
+```
+
+期待: マッチなし (もしあれば削除)。
+
+- [ ] **Step 2: README.md を更新**
+
+`## ビルド` セクションに「Vulkan SDK or Vulkan loader (libvulkan)」を依存に追加。`## 実行` セクションに headless 手順を追記:
+
+```markdown
+## ビルド
+
+依存:
+- CMake 3.20+
+- C11 / C++17 対応コンパイラ
+- Vulkan loader (`libvulkan` — Linux: `vulkan-icd-loader` / `vulkan-loader`)
+- Linux x86_64 (現状)
+
+```sh
+cmake -S . -B build
+cmake --build build -j
+```
+
+## 実行
+
+通常 (実 GPU 経由):
+```sh
+./build/sglua samples/01_triangle.lua
+```
+
+ヘッドレス (Mesa lavapipe = CPU Vulkan):
+```sh
+# 事前: sudo pacman -S vulkan-swrast (Arch) / sudo apt install mesa-vulkan-drivers (Debian)
+scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
+```
+
+CI 等の DISPLAY 無し環境では `xvfb-run` でラップする:
+```sh
+xvfb-run -a scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
+```
+```
+
+`## アーキテクチャ` の図中の「sokol_gfx (GL 3.3)」を「sokol_gfx (Vulkan)」に、「Slang→GLSL」を「Slang→SPIR-V」に更新。
+
+- [ ] **Step 3: 4 sample 最終 smoke test**
+
+```bash
+for s in samples/0[1-4]_*.lua; do
+    timeout 2 scripts/run-headless.sh ./build/sglua "$s"
+    echo "  $s -> $?"
+done
+```
+
+期待: 全部 124 (or SIGKILL から 137)、エラーログなし。
+
+- [ ] **Step 4: コミット**
+
+```bash
+git add CMakeLists.txt src/shader.cpp src/app.c README.md
+git commit -m "docs: vulkan migration cleanup and readme update"
+```
+
+---
+
+## 計画外 (Phase 2 で先送り)
+
+- MSAA 対応 (`sg_swapchain.vulkan.resolve_image/view` を使う)
+- swapchain recreate (window resize 対応): 現状はリサイズ無視。対応するなら `vkAcquireNextImageKHR` の `VK_ERROR_OUT_OF_DATE_KHR` を捕捉して swapchain 作り直す
+- フレーム並列度 > 1 (per-frame semaphore array, fence、frame in flight)
+- VK_KHR_headless_surface 使用 (X server 不要パス) — Mesa lavapipe は対応してるが SDL3 が surface 作成しないので別途 vkCreateHeadlessSurfaceEXT を呼ぶ実装が必要。Phase 3 で
+- macOS / Windows (MoltenVK / dxvk 経由) — 移植
+- Vulkan validation layers の自動有効化 (DEBUG ビルド時)
