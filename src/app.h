@@ -1,6 +1,7 @@
 #pragma once
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#include <SDL3/SDL_gpu.h>
 #include <vulkan/vulkan.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -65,6 +66,11 @@ typedef struct App {
     // after the backend's init() succeeds.
     AppPhase      phase;
     char          backend_name[16];
+
+    // SDL3 GPU backend state (Task 3). Owned/used by backend_sdlgpu.c only.
+    SDL_GPUDevice       *gpu_device;
+    SDL_GPUTexture      *gpu_swapchain_tex;  // current frame の swapchain
+    SDL_GPUCommandBuffer *gpu_cmd;           // current frame
 } App;
 
 bool app_init(App *app);

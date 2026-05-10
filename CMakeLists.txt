@@ -45,6 +45,7 @@ add_executable(sglua
   src/pipeline.c
   src/capture.c
   src/backend_sokol.c
+  src/backend_sdlgpu.c
   src/stb_impl.c
 )
 target_include_directories(sglua PRIVATE

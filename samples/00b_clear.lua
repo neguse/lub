@@ -1,5 +1,8 @@
 local t = 0
 function on_init()
+  local b = os.getenv("SGLUA_BACKEND") or "sokol"
+  config({ backend = b })
+  print("backend = " .. b)
   print("clear demo")
 end
 function on_event(e) end

@@ -28,11 +28,10 @@ bool app_init(App *app) {
 
 bool app_backend_init(App *app) {
     if (strcmp(app->backend_name, "sdlgpu") == 0) {
-        // Task 3 で g_backend_sdlgpu を実装する。今は未対応として扱う。
-        SDL_Log("backend 'sdlgpu' is not yet implemented (Task 3+)");
-        return false;
+        g_backend = &g_backend_sdlgpu;
+    } else {
+        g_backend = &g_backend_sokol;
     }
-    g_backend = &g_backend_sokol;
     SDL_Log("backend selected: %s", g_backend->name);
     if (!g_backend->init(app)) {
         SDL_Log("backend init failed");

@@ -92,6 +92,7 @@ typedef struct RenderBackend {
 
 extern const RenderBackend *g_backend;
 extern const RenderBackend g_backend_sokol;
+extern const RenderBackend g_backend_sdlgpu;
 
 #ifdef __cplusplus
 }

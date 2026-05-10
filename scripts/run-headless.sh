@@ -25,6 +25,9 @@ export VK_ICD_FILENAMES="$ICD"
 # Modern Vulkan loader honors this; older may need the legacy var, set both.
 export VK_DRIVER_FILES="$ICD"
 
+# Forward SGLUA_BACKEND into the wrapped process so samples can pick the backend.
+[[ -n "${SGLUA_BACKEND:-}" ]] && export SGLUA_BACKEND
+
 # Default binary if first arg looks like a sample script
 binary=./build/sglua
 args=("$@")
