@@ -31,7 +31,7 @@ list(REMOVE_ITEM LUA_SRC
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR}/src)
 
-find_package(OpenGL REQUIRED)
+find_package(Vulkan REQUIRED)
 
 add_executable(sglua
   src/main.c
@@ -54,7 +54,7 @@ target_link_libraries(sglua PRIVATE
   SDL3::SDL3
   lua_static
   slang
-  OpenGL::GL
+  Vulkan::Vulkan
   # Linux-only PoC; libdl required by Lua dynamic loading, libm by sokol/Lua math
   m dl
 )
@@ -70,7 +70,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
   )
 endif()
-# OpenGL 3.3 backend を sokol_gfx に指示 (Linux)
+# Vulkan backend を sokol_gfx に指示 (Linux)
 target_compile_definitions(sglua PRIVATE
-  SOKOL_GLCORE
+  SOKOL_VULKAN
 )

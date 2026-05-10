@@ -8,7 +8,7 @@
 
 typedef struct App {
     SDL_Window *window;
-    SDL_GLContext gl_ctx;
+    // Vulkan handles added in Task 14
     LuaCtx lua;
     PassState pass;
     ResTable res;
