@@ -30,7 +30,9 @@ float4 fs_main(FSIn i) : SV_Target { return i.color; }
 ]]
 
 local t = 0
-function on_init() end
+function on_init()
+    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+end
 function on_event(e) end
 function on_quit() end
 

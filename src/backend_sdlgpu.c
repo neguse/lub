@@ -508,9 +508,11 @@ static void sg_apply_bindings(const BindingsDesc *b) {
 }
 
 static void sg_apply_uniforms(int slot, const void *d, size_t b) {
-    (void)slot; (void)d; (void)b;
-    static bool warned = false;
-    if (!warned) { SDL_Log("sdlgpu: apply_uniforms not yet implemented (Task 7)"); warned = true; }
+    if (!g_app || !g_app->gpu_cmd) return;
+    // PoC: only VS-stage UBs (sample 04's mvp). SDL_GPU per-stage layout maps
+    // VS uniform buffers to descriptor set 1; the slot here is the binding
+    // index within set 1 (matches ShaderUniformBlock.slot from reflection).
+    SDL_PushGPUVertexUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
 }
 
 static void sg_draw(int base, int count) {
