@@ -231,8 +231,13 @@ static int l_use_shader(lua_State *L) {
     if (!shader_compile(vs, fs, tgt, &vsb, &fsb, &new_refl, err, sizeof(err))) {
         shader_blob_free(&vsb);
         shader_blob_free(&fsb);
+        // No old shader to fall back to → fail loud so the caller doesn't draw
+        // with handle 0. Once we have a working shader, later failures keep the
+        // old one and just log.
+        if (e->u.sh.h == 0) {
+            return luaL_error(L, "shader compile error: %s", err);
+        }
         SDL_Log("use_shader: recompile failed for key '%s': %s (keeping old)", key, err);
-        // 旧 handle 維持、version 据え置き。次回 version 違いで再試行。
         push_shader_ref(L, key);
         return 1;
     }
@@ -245,6 +250,9 @@ static int l_use_shader(lua_State *L) {
     shader_blob_free(&vsb);
     shader_blob_free(&fsb);
     if (!new_h) {
+        if (e->u.sh.h == 0) {
+            return luaL_error(L, "use_shader: make_shader failed for key '%s'", key);
+        }
         SDL_Log("use_shader: make_shader failed for key '%s' (keeping old)", key);
         push_shader_ref(L, key);
         return 1;
