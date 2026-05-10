@@ -17,8 +17,8 @@ FetchContent_MakeAvailable(SDL3)
 
 FetchContent_Declare(
   lua
-  URL https://www.lua.org/ftp/lua-5.4.7.tar.gz
-  URL_HASH SHA256=9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30
+  URL https://www.lua.org/ftp/lua-5.5.0.tar.gz
+  URL_HASH SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d
 )
 FetchContent_MakeAvailable(lua)
 
