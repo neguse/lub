@@ -22,7 +22,9 @@ struct FSIn { float4 color : COLOR; };
 float4 fs_main(FSIn i) : SV_Target { return i.color; }
 ]]
 
-function on_init() end
+function on_init()
+    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+end
 function on_event(e) end
 function on_quit() end
 
