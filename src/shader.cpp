@@ -366,9 +366,14 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
 // Fix: rewrite each (texture, sampler) pair into a single OpVariable of
 // type "Pointer<UniformConstant, OpTypeSampledImage>", and replace
 // each OpSampledImage call site with an OpLoad of that combined variable.
-// We leave the original OpVariable / OpDecorate / OpName instructions
-// in place but overwrite them with OpNop so binary length stays the
-// same (offset bookkeeping is then trivial).
+// Implementation: we rebuild the SPIR-V module into a fresh buffer,
+// copying each instruction except the ones being deleted (sampler
+// OpVariable / OpDecorate / OpName / OpLoad, plus the OpSampledImage
+// that fed the texture sample call). In-place edits are applied to:
+// OpEntryPoint (drop sampler from interface), the texture's OpVariable /
+// OpLoad result-type / sample-call image operand. (An earlier draft
+// padded deleted slots with OpNop to keep offsets stable; that approach
+// was abandoned in favor of a fresh rebuild.)
 //
 // Limitations:
 //  - Single-pair test path only (sample 03). Multi-pair, image arrays,
@@ -391,10 +396,9 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
 //          immediately after the OpTypeSampledImage instruction.
 //        - Promote OpVariable %tex's type-id operand to the new pointer.
 //        - Drop OpName %smp, OpDecorate %smp *, OpVariable %smp.
-//        - In OpEntryPoint interface list, drop the sampler id (the
-//          interface count word stays the same length-wise — we either
-//          shrink wordCount or just keep the id; we shrink, then write
-//          OpNop in the freed slot to keep total length stable).
+//        - In OpEntryPoint interface list, drop the sampler id and emit
+//          a new header with shrunk wordCount (the rebuild buffer makes
+//          the freed slot disappear naturally; no OpNop padding needed).
 //        - Drop OpLoad of the sampler variable.
 //        - Promote OpLoad of the image variable: change its result-type
 //          operand from %img_t to %sampledimage_t.
@@ -584,6 +588,40 @@ bool patch_spirv_combined_samplers(ShaderBlob *blob, ShaderReflection *refl) {
     for (int k = 0; k < 5; ++k) dst.push_back(src[k]);
 
     bool inserted_new_ptr = false;
+
+    // Safety bail: scan for any consumer of P.sampled_image_result whose
+    // opcode is NOT in the rewrite-handled set. We currently only rewrite
+    // OpImageSampleImplicitLod / OpImageSampleExplicitLod. If Slang ever
+    // emits e.g. OpImageSampleProj*, OpImage*Dref*, OpImageGather,
+    // OpImageDrefGather, or OpImageQueryLod, deleting the OpSampledImage
+    // would leave a dangling reference and produce invalid SPIR-V.
+    {
+        const uint16_t handled_sample_opcodes[] = {
+            (uint16_t)kOpImageSampleImplicitLod,  // 87
+            (uint16_t)kOpImageSampleExplicitLod,  // 88
+        };
+        for (size_t i = 5; i < nwords; ) {
+            uint32_t hdr = src[i];
+            uint32_t wc = hdr >> 16;
+            uint32_t op = hdr & 0xffff;
+            if (wc == 0 || i + wc > nwords) break;
+            for (uint32_t k = 3; k < wc; ++k) {
+                if (src[i + k] == P.sampled_image_result) {
+                    bool ok = false;
+                    for (size_t s = 0; s < sizeof(handled_sample_opcodes)/sizeof(*handled_sample_opcodes); ++s) {
+                        if (op == handled_sample_opcodes[s]) { ok = true; break; }
+                    }
+                    if (!ok) {
+                        fprintf(stderr,
+                                "[shader] combined-sampler patcher bailing -- unhandled SampledImage consumer opcode=%u\n",
+                                op);
+                        return true;
+                    }
+                }
+            }
+            i += wc;
+        }
+    }
 
     for (size_t i = 5; i < nwords; ) {
         uint32_t hdr = src[i];
@@ -878,6 +916,15 @@ extern "C" bool shader_compile(
     memcpy(out_fs->spirv, fsBlob->getBufferPointer(), fs_size);
     out_fs->bytes = fs_size;
 
+    // Patcher order matters:
+    //   1. patch_spirv_descriptor_sets — assigns descriptor-set numbers
+    //      per (storage class, stage, target backend). For sdlgpu fragment
+    //      stage this places textures+samplers at set 2.
+    //   2. patch_spirv_combined_samplers (sdlgpu only) — fuses the
+    //      texture+sampler pair into a single combined-image-sampler
+    //      OpVariable, inheriting the descriptor set/binding the previous
+    //      pass wrote on the texture variable. Reversing this order would
+    //      mean the combined variable inherits unassigned/wrong sets.
     patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes, target, SpvStage::Vertex);
     patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes, target, SpvStage::Fragment);
 
