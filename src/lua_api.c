@@ -15,7 +15,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <time.h>
 
 static App *g_app_for_lua = NULL;
 
