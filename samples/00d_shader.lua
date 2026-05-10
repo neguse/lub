@@ -9,13 +9,16 @@ local fs = [[
 float4 fs_main() : SV_Target { return float4(1.0, 0.5, 0.0, 1.0); }
 ]]
 
-function on_init()
-  local s = use_shader("test", vs, fs, 1)
-  print("shader compiled:", s.key)
-end
+local printed = false
+function on_init() end
 function on_event(e) end
 function on_quit() end
 function on_frame()
+  local s = use_shader("test", vs, fs, 1)
+  if not printed and s and s.__sgl_kind == "shader" then
+    print("shader compiled:", s.key)
+    printed = true
+  end
   begin_pass({ target = main_tex, clear_color = {0.1, 0.1, 0.2, 1} })
   end_pass()
 end
