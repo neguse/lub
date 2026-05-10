@@ -12,8 +12,10 @@
 //   end_frame  : SubmitGPUCommandBuffer
 #include "backend.h"
 #include "app.h"
+#include "stb_image_write.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -110,6 +112,11 @@ static void sg_end_frame(App *app) {
     if (app->gpu_cmd && !SDL_SubmitGPUCommandBuffer(app->gpu_cmd)) {
         SDL_Log("SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
     }
+    // Snapshot for sg_capture: capture_state_drain runs AFTER this function,
+    // so gpu_swapchain_tex is about to be cleared. Stash it for the capture
+    // path. The submit above ensures the GPU has begun consuming it; capture
+    // additionally fences its own copy to wait for that work.
+    app->gpu_last_swapchain_tex = app->gpu_swapchain_tex;
     app->gpu_cmd = NULL;
     app->gpu_swapchain_tex = NULL;
 }
@@ -520,10 +527,103 @@ static void sg_draw(int base, int count) {
     SDL_DrawGPUPrimitives(g_render_pass, (Uint32)count, 1, (Uint32)base, 0);
 }
 
+// --- capture: SDL_DownloadFromGPUTexture + stb_image_write ---------------
+//
+// Called from app_frame_end -> capture_state_drain, AFTER sg_end_frame has
+// submitted the frame's command buffer and snapshotted the swapchain texture
+// into app->gpu_last_swapchain_tex. We:
+//   1. Allocate a DOWNLOAD-usage transfer buffer sized w*h*4 bytes.
+//   2. Run a one-shot copy pass: SDL_DownloadFromGPUTexture(swapchain -> tb).
+//   3. Submit + acquire fence + wait, so the host map below is safe.
+//   4. SDL_MapGPUTransferBuffer, memcpy out, unmap+release.
+//   5. If the swapchain format is BGRA8(_SRGB), swap R/B per pixel so the PNG
+//      is RGBA. (sokol's sk_capture does the same swizzle.)
+//   6. stbi_write_png with stride=w*4.
 static bool sg_capture(App *app, const char *path) {
-    (void)app; (void)path;
-    SDL_Log("sdlgpu capture not yet implemented (Task 8)");
-    return false;
+    SDL_GPUTexture *src_tex = app->gpu_last_swapchain_tex;
+    if (!src_tex) {
+        SDL_Log("sg_capture: no last swapchain texture (frame skipped?)");
+        return false;
+    }
+    int w = app->last_w, h = app->last_h;
+    if (w <= 0 || h <= 0) {
+        SDL_Log("sg_capture: invalid size %dx%d", w, h);
+        return false;
+    }
+    Uint32 stride = (Uint32)w * 4;
+    Uint32 bytes  = stride * (Uint32)h;
+
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(app->gpu_device,
+        &(SDL_GPUTransferBufferCreateInfo){
+            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+            .size = bytes,
+        });
+    if (!tb) {
+        SDL_Log("sg_capture: SDL_CreateGPUTransferBuffer failed: %s", SDL_GetError());
+        return false;
+    }
+
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
+    if (!cmd) {
+        SDL_Log("sg_capture: SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+        return false;
+    }
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_DownloadFromGPUTexture(cp,
+        &(SDL_GPUTextureRegion){
+            .texture = src_tex,
+            .w = (Uint32)w, .h = (Uint32)h, .d = 1,
+        },
+        &(SDL_GPUTextureTransferInfo){
+            .transfer_buffer = tb,
+            .offset = 0,
+            .pixels_per_row = (Uint32)w,
+            .rows_per_layer = (Uint32)h,
+        });
+    SDL_EndGPUCopyPass(cp);
+
+    SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    if (!fence) {
+        SDL_Log("sg_capture: SubmitAndAcquireFence failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+        return false;
+    }
+    SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1);
+    SDL_ReleaseGPUFence(app->gpu_device, fence);
+
+    void *src = SDL_MapGPUTransferBuffer(app->gpu_device, tb, false);
+    if (!src) {
+        SDL_Log("sg_capture: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+        return false;
+    }
+    uint8_t *rgba = (uint8_t*)malloc(bytes);
+    if (!rgba) {
+        SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
+        SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+        return false;
+    }
+    memcpy(rgba, src, bytes);
+    SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+
+    SDL_GPUTextureFormat fmt = SDL_GetGPUSwapchainTextureFormat(app->gpu_device, app->window);
+    if (fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM ||
+        fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB) {
+        for (Uint32 i = 0; i < bytes; i += 4) {
+            uint8_t t = rgba[i]; rgba[i] = rgba[i+2]; rgba[i+2] = t;
+        }
+    }
+
+    int ok = stbi_write_png(path, w, h, 4, rgba, (int)stride);
+    free(rgba);
+    if (!ok) {
+        SDL_Log("sg_capture: stbi_write_png failed for %s", path);
+        return false;
+    }
+    SDL_Log("sg_capture: wrote %s (%dx%d)", path, w, h);
+    return true;
 }
 
 static SglPixelFormat sg_swapchain_color_format(App *app) {

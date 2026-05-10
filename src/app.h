@@ -71,6 +71,10 @@ typedef struct App {
     SDL_GPUDevice       *gpu_device;
     SDL_GPUTexture      *gpu_swapchain_tex;  // current frame の swapchain
     SDL_GPUCommandBuffer *gpu_cmd;           // current frame
+    // Snapshot for capture (Task 8): set in sg_end_frame just before
+    // gpu_swapchain_tex is cleared. capture_state_drain runs AFTER
+    // end_frame, so sg_capture reads from this field instead.
+    SDL_GPUTexture      *gpu_last_swapchain_tex;
 } App;
 
 bool app_init(App *app);
