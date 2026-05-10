@@ -5,14 +5,14 @@
 **Goal:** Lua から呼べる薄い 3D 描画ライブラリの PoC を作り、仕様書の Sample 1〜4 (単色三角形 / 頂点カラー / テクスチャ / MVP) を `samples/*.lua` として動かす。
 
 **Architecture:**
-ホスト言語 C。SDL3 でウィンドウ + main callbacks、sokol_gfx (GL 3.3 backend) で描画、Lua 5.4 で API 露出、Slang をライブラリ同梱してランタイム shader compile。仕様書の `use_*(key, ..., version)` 宣言型ライフサイクルと `begin_pass / draw / end_pass` を最小実装する。MRT / post process / hot reload / sweep の高度機能は後段に回し、PoC では「触れたリソースは保持、無条件で再 upload は version 比較で抑制」までとする。
+ホスト言語 C。SDL3 でウィンドウ + main callbacks、sokol_gfx (GL 3.3 backend) で描画、Lua 5.5 で API 露出、Slang をライブラリ同梱してランタイム shader compile。仕様書の `use_*(key, ..., version)` 宣言型ライフサイクルと `begin_pass / draw / end_pass` を最小実装する。MRT / post process / hot reload / sweep の高度機能は後段に回し、PoC では「触れたリソースは保持、無条件で再 upload は version 比較で抑制」までとする。
 
 **Tech Stack:**
 - C11
 - CMake 3.20+ (FetchContent で SDL3 と Lua を取得)
 - SDL3 (release tag, main callbacks API)
 - sokol_gfx (single-header, vendored copy)
-- Lua 5.4 (FetchContent / amalgamation)
+- Lua 5.5 (FetchContent / amalgamation)
 - Slang (prebuilt binary release を vendor)
 - Linux x86_64 / GL 3.3 を最初のターゲット platform とする
 
@@ -95,7 +95,8 @@ FetchContent_MakeAvailable(SDL3)
 
 FetchContent_Declare(
   lua
-  URL https://www.lua.org/ftp/lua-5.4.7.tar.gz
+  URL https://www.lua.org/ftp/lua-5.5.0.tar.gz
+  URL_HASH SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d
 )
 FetchContent_MakeAvailable(lua)
 
@@ -2137,7 +2138,7 @@ git commit -m "feat: bind uniform block from lua resources.uniforms — sample 0
 ```markdown
 # sglua (PoC)
 
-Lua 向け薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx + Slang + Lua 5.4。
+Lua 向け薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx + Slang + Lua 5.5。
 
 ## Build
 
@@ -2215,7 +2216,7 @@ git commit -m "docs: poc readme with sample run instructions"
 SDL3 で window + Vulkan instance/surface を作成、Vulkan loader 経由で実 ICD (実機 GPU は本物の vendor driver、headless は lavapipe) に到達する。`app.c` が VkInstance/PhysicalDevice/Device/Queue/Swapchain/depth attachment/per-frame semaphores を保持し、`sg_environment.vulkan` と `sg_swapchain.vulkan` に渡す。Slang は SPIR-V を直接出すので、shader compile pipeline はクロスコンパイル不要 — reflection は target 非依存なのでロジックはほぼ流用。lavapipe 経由 headless は `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` を立てて実行スクリプトで切替えるだけ (コードは判定不要)。
 
 **Tech Stack:**
-- 既存と同じ (C11, C++17, CMake 3.20+, SDL3, Lua 5.4, Slang, sokol_gfx)
+- 既存と同じ (C11, C++17, CMake 3.20+, SDL3, Lua 5.5, Slang, sokol_gfx)
 - `find_package(Vulkan REQUIRED)` でシステム Vulkan loader を link
 - ソフトウェア Vulkan: Mesa の lavapipe (`mesa-vulkan-drivers` / `vulkan-swrast`)
 

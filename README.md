@@ -1,6 +1,6 @@
 # sglua (PoC)
 
-Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx (Vulkan) + Slang + Lua 5.4。
+Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + sokol_gfx (Vulkan) + Slang + Lua 5.5。
 
 ## ビルド
 
@@ -92,7 +92,7 @@ src/
 - `third_party/slang/` — Slang 2026.x prebuilt (`include/`, `lib/`)、SPIR-V を target
 - SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
 - Vulkan loader (`libvulkan.so`) — system 提供
-- Lua 5.4 — CMake FetchContent (static lib build)
+- Lua 5.5 — CMake FetchContent (static lib build)
 
 ## Known issues
 
