@@ -14,6 +14,8 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <time.h>
 
 static App *g_app_for_lua = NULL;
 
@@ -411,6 +413,31 @@ static int l_config(lua_State *L) {
     return 0;
 }
 
+static int l_file_mtime(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    int64_t ns = (int64_t)st.st_mtim.tv_sec * 1000000000LL
+               + (int64_t)st.st_mtim.tv_nsec;
+    lua_pushinteger(L, (lua_Integer)ns);
+    return 1;
+}
+
+static int l_fnv1a64(lua_State *L) {
+    size_t n;
+    const char *s = luaL_checklstring(L, 1, &n);
+    uint64_t h = 0xcbf29ce484222325ULL;          // FNV offset basis
+    for (size_t i = 0; i < n; ++i) {
+        h ^= (unsigned char)s[i];
+        h *= 0x100000001b3ULL;                    // FNV prime
+    }
+    lua_pushinteger(L, (lua_Integer)h);            // Lua 5.5 integers are 64-bit signed
+    return 1;
+}
+
 void lua_api_register(lua_State *L) {
     enums_register(L);
     // main_tex は { __sgl_kind = "main_tex" } という sentinel テーブル
@@ -435,6 +462,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "capture");
     lua_pushcfunction(L, l_config);
     lua_setglobal(L, "config");
+    lua_pushcfunction(L, l_file_mtime); lua_setglobal(L, "file_mtime");
+    lua_pushcfunction(L, l_fnv1a64);    lua_setglobal(L, "fnv1a64");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
