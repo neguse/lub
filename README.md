@@ -82,6 +82,28 @@ SGLUA_BACKEND=sdlgpu scripts/run-headless.sh ./build/sglua samples/01_triangle.l
 両 backend で 4 サンプル + capture が動作することを確認済み。
 capture 出力は両 backend で **byte-identical** (lavapipe + xvfb 上で検証)。
 
+## Live edit (file watching)
+
+サンプルは `samples/data/` 配下の外部ファイルから shader / 頂点データ / テクスチャを
+読み込む。起動中にファイルを編集して保存すると次フレームから反映される。
+
+仕組み:
+
+- 各サンプル冒頭で `samples/sg_io.lua` を `dofile` で読み込み、`load_text` /
+  `load_floats` / `load_png` を経由してリソースを取得する。
+- helper は `path → {mtime, content_hash}` のキャッシュを持ち、毎フレームの
+  `stat()` 1 回だけで「変化なし」を判定する。mtime 違い時のみ再読み込みして
+  FNV-1a 64 ハッシュを取り、それを `version` として `use_*` に渡す。
+- C 側は `version` 違いで in-place update (buffer / texture) または recompile
+  (shader) を実施。shader recompile 時は旧 shader を参照する pipeline cache
+  entry を sweep してリークを防ぐ。
+- shader compile error 時は旧 shader を維持してログを出すのみで、クラッシュせず
+  エディタで修正→保存すれば復帰する (初回 compile 失敗だけは loud に止める)。
+
+例: `samples/data/01_triangle.fs.slang` の出力色をエディタで書き換えて保存すると、
+起動中の `samples/01_triangle.lua` の三角形の色が即座に変わる。
+PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編集すれば頂点も同様。
+
 ## サンプル
 
 | # | スクリプト              | 内容                                            |
@@ -110,7 +132,6 @@ capture 出力は両 backend で **byte-identical** (lavapipe + xvfb 上で検�
 
 - Sample 5: post process (offscreen render target を渡せるように `use_texture(..., data=nil)` を render target にする)
 - Sample 6: deferred shading (MRT、複数 color attachment)
-- Sample 7: ホットリロード (use_* の version 引数は対応済み、Lua 側ファイル監視は未実装)
 - Golden image diff 回帰テスト (`capture` 機能を活かした自動 visual 比較)
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS / Windows 対応 (MoltenVK / dxvk 経由 or SDL3 GPU の Metal / D3D12 backend 経由)
