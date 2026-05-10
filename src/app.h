@@ -1,6 +1,9 @@
 #pragma once
-#include <stdint.h>
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include "lua_api.h"
 #include "pass.h"
 #include "resources.h"
@@ -8,12 +11,21 @@
 
 typedef struct App {
     SDL_Window *window;
-    // Vulkan handles added in Task 14
-    LuaCtx lua;
-    PassState pass;
-    ResTable res;
+
+    // Vulkan core
+    VkInstance       vk_instance;
+    VkPhysicalDevice vk_phys;
+    VkDevice         vk_device;
+    VkQueue          vk_queue;
+    uint32_t         vk_queue_family;
+
+    // (Task 15 で swapchain / surface / semaphores 追加)
+
+    LuaCtx        lua;
+    PassState     pass;
+    ResTable      res;
     PipelineCache pip_cache;
-    uint64_t frame_index;
+    uint64_t      frame_index;
 } App;
 
 bool app_init(App *app);
