@@ -56,7 +56,7 @@ typedef struct App {
 } App;
 
 bool app_init(App *app);
-void app_backend_init(App *app);  // call after lua on_init has run
+bool app_backend_init(App *app);  // call after lua on_init has run; returns false on backend init failure
 void app_frame_begin(App *app, int *out_w, int *out_h);
 void app_frame_end(App *app);
 void app_shutdown(App *app);

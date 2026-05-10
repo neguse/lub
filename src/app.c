@@ -24,10 +24,12 @@ bool app_init(App *app) {
     return true;
 }
 
-void app_backend_init(App *app) {
+bool app_backend_init(App *app) {
     if (!g_backend->init(app)) {
         SDL_Log("backend(%s) init failed", g_backend->name);
+        return false;
     }
+    return true;
 }
 
 void app_frame_begin(App *app, int *out_w, int *out_h) {
@@ -37,7 +39,6 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     if (out_h) *out_h = h;
     app->last_w = w;
     app->last_h = h;
-    pass_state_set_swapchain_size(&app->pass, w, h);
 }
 
 void app_frame_end(App *app) {

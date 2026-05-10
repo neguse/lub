@@ -4,18 +4,11 @@
 
 void pass_state_init(PassState *p) {
     p->in_pass = false;
-    p->swapchain_w = 0;
-    p->swapchain_h = 0;
     p->app = NULL;
 }
 
 void pass_state_set_app(PassState *p, struct App *app) {
     p->app = app;
-}
-
-void pass_state_set_swapchain_size(PassState *p, int w, int h) {
-    p->swapchain_w = w;
-    p->swapchain_h = h;
 }
 
 bool pass_state_in_pass(const PassState *p) {
