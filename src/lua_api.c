@@ -140,13 +140,43 @@ static int l_use_texture(lua_State *L) {
     if (has_data) luaL_checktype(L, 5, LUA_TTABLE);
     int64_t version = (int64_t)luaL_checkinteger(L, 6);
 
+    // optional 7th arg: { filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP }
+    SglFilter filter = SGL_FILTER_LINEAR;
+    SglWrap   wrap   = SGL_WRAP_REPEAT;
+    if (!lua_isnoneornil(L, 7)) {
+        luaL_checktype(L, 7, LUA_TTABLE);
+        lua_getfield(L, 7, "filter");
+        if (lua_isinteger(L, -1)) {
+            int v = (int)lua_tointeger(L, -1);
+            if (v != SGL_FILTER_LINEAR && v != SGL_FILTER_NEAREST) {
+                lua_pop(L, 1);
+                return luaL_error(L, "use_texture: opts.filter must be LINEAR or NEAREST");
+            }
+            filter = (SglFilter)v;
+        }
+        lua_pop(L, 1);
+        lua_getfield(L, 7, "wrap");
+        if (lua_isinteger(L, -1)) {
+            int v = (int)lua_tointeger(L, -1);
+            if (v != SGL_WRAP_REPEAT && v != SGL_WRAP_CLAMP) {
+                lua_pop(L, 1);
+                return luaL_error(L, "use_texture: opts.wrap must be REPEAT or CLAMP");
+            }
+            wrap = (SglWrap)v;
+        }
+        lua_pop(L, 1);
+    }
+
     if (w <= 0 || h <= 0) return luaL_error(L, "use_texture: invalid size %dx%d", w, h);
 
     ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_TEXTURE);
     if (!e) return luaL_error(L, "use_texture: key '%s' already used as different kind", key);
     res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-    if (e->version == version && e->u.tex.h != 0) {
+    bool sampler_changed = (e->u.tex.h != 0)
+                           && (e->u.tex.filter != filter || e->u.tex.wrap != wrap);
+
+    if (e->version == version && e->u.tex.h != 0 && !sampler_changed) {
         push_texture_ref(L, key);
         return 1;
     }
@@ -180,7 +210,7 @@ static int l_use_texture(lua_State *L) {
                       && (e->u.tex.w == w)
                       && (e->u.tex.h_ == h)
                       && (e->u.tex.fmt == (SglPixelFormat)fmt);
-    if (same_shape && pixels && new_bytes > 0) {
+    if (same_shape && !sampler_changed && pixels && new_bytes > 0) {
         // in-place update
         g_backend->update_image(e->u.tex.h, pixels, new_bytes);
     } else {
@@ -190,12 +220,16 @@ static int l_use_texture(lua_State *L) {
             .w = w, .h = h,
             .data = pixels,
             .data_bytes = new_bytes,
+            .filter = filter,
+            .wrap = wrap,
         };
         e->u.tex.h = g_backend->make_image(&d);
         e->u.tex.w   = w;
         e->u.tex.h_  = h;
         e->u.tex.fmt = (SglPixelFormat)fmt;
     }
+    e->u.tex.filter = filter;
+    e->u.tex.wrap   = wrap;
     e->version   = version;
 
     if (pixels) free(pixels);

@@ -440,11 +440,13 @@ static BackendImage sk_make_image(const ImageDesc *d) {
             .mip_levels[0] = { .ptr = d->data, .size = d->data_bytes },
         });
     }
+    sg_filter sf = (d->filter == SGL_FILTER_NEAREST) ? SG_FILTER_NEAREST : SG_FILTER_LINEAR;
+    sg_wrap   sw = (d->wrap   == SGL_WRAP_CLAMP)     ? SG_WRAP_CLAMP_TO_EDGE : SG_WRAP_REPEAT;
     si->smp = sg_make_sampler(&(sg_sampler_desc){
-        .min_filter = SG_FILTER_LINEAR,
-        .mag_filter = SG_FILTER_LINEAR,
-        .wrap_u = SG_WRAP_REPEAT,
-        .wrap_v = SG_WRAP_REPEAT,
+        .min_filter = sf,
+        .mag_filter = sf,
+        .wrap_u = sw,
+        .wrap_v = sw,
     });
     si->view = sg_make_view(&(sg_view_desc){
         .texture = { .image = si->img },

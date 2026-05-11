@@ -22,6 +22,8 @@ typedef struct ImageDesc {
     int w, h;
     const uint8_t *data;
     size_t data_bytes;
+    SglFilter filter;   // 0 = default (LINEAR)
+    SglWrap   wrap;     // 0 = default (REPEAT)
 } ImageDesc;
 
 typedef struct ShaderDesc {

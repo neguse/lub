@@ -5,7 +5,6 @@
 
 ## サンプル / API 拡張
 
-- **[S] Lua 側 sampler 設定**: `use_texture(key, w, h, fmt, data, version, {filter='nearest'|'linear', wrap='repeat'|'clamp'})` を追加。`enums_lua.c` に `NEAREST` / `CLAMP` を登録、`backend_sokol` / `backend_sdlgpu` の sampler 生成箇所で desc に流す。
 - **[M] Sample 5: post process (offscreen render target)**: `use_texture(key, w, h, fmt, nil, version, {target=true})` で render-target texture を宣言。`begin_pass({target = texRef})` で main_tex 以外も受ける。pipeline cache のキーに color format を含める。
 - **[M] Sample 6: deferred shading (MRT)**: `begin_pass({targets = {t1, t2, ...}, clear_colors = {...}})` 形式に拡張、pipeline.c の color attachment 配列化、両 backend の pass begin を多色 attachment 対応に。Sample 5 と同時にやるのが筋。
 - **[M] compute shader**: `dispatch(x, y, z, resources, {shader})` を `lua_api.c` に追加、`use_buffer` に `STORAGE` type 追加、`shader.cpp` で `[shader("compute")]` entry point を拾う。両 backend に `dispatch` vtable 追加。

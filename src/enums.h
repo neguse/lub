@@ -27,3 +27,5 @@ typedef enum {
     SGL_PRIM_TRIANGLES = 1, SGL_PRIM_TRIANGLE_STRIP,
     SGL_PRIM_LINES, SGL_PRIM_LINE_STRIP, SGL_PRIM_POINTS,
 } SglPrimitive;
+typedef enum { SGL_FILTER_LINEAR = 1, SGL_FILTER_NEAREST } SglFilter;
+typedef enum { SGL_WRAP_REPEAT  = 1, SGL_WRAP_CLAMP    } SglWrap;

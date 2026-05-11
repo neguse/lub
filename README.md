@@ -146,7 +146,7 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 ## API
 
 - `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX`。`data` は float の Lua table。同 `version` なら再アップロードしない。
-- `use_texture(key, w, h, format, data, version)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可)。sampler は LINEAR / REPEAT 固定。
+- `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP }`。デフォルトは `LINEAR` / `REPEAT`。
 - `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
 - `begin_pass({ target = main_tex, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は今のところ `main_tex` のみ。
 - `draw(count, resources, options)` — 描画コマンド。
@@ -170,7 +170,6 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
 - compute shader / VR / マルチスレッド描画
-- Lua 側からの sampler 設定 (filter / wrap)
 
 ## アーキテクチャ
 

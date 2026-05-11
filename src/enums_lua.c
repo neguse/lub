@@ -52,4 +52,9 @@ void enums_register(lua_State *L) {
     set_int(L, "LINES", SGL_PRIM_LINES);
     set_int(L, "LINE_STRIP", SGL_PRIM_LINE_STRIP);
     set_int(L, "POINTS", SGL_PRIM_POINTS);
+    // Sampler: filter / wrap (use_texture の opts に渡す)
+    set_int(L, "LINEAR",  SGL_FILTER_LINEAR);
+    set_int(L, "NEAREST", SGL_FILTER_NEAREST);
+    set_int(L, "REPEAT",  SGL_WRAP_REPEAT);
+    set_int(L, "CLAMP",   SGL_WRAP_CLAMP);
 }

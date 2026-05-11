@@ -293,13 +293,18 @@ static BackendImage sg_make_image(const ImageDesc *d) {
         }
     }
 
+    SDL_GPUFilter sf = (d->filter == SGL_FILTER_NEAREST)
+        ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
+    SDL_GPUSamplerAddressMode sw = (d->wrap == SGL_WRAP_CLAMP)
+        ? SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE
+        : SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
     im->smp = SDL_CreateGPUSampler(g_app->gpu_device,
         &(SDL_GPUSamplerCreateInfo){
-            .min_filter = SDL_GPU_FILTER_LINEAR,
-            .mag_filter = SDL_GPU_FILTER_LINEAR,
-            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+            .min_filter = sf,
+            .mag_filter = sf,
+            .address_mode_u = sw,
+            .address_mode_v = sw,
+            .address_mode_w = sw,
         });
     if (!im->smp) {
         SDL_Log("sg_make_image: SDL_CreateGPUSampler failed: %s", SDL_GetError());
