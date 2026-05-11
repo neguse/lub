@@ -70,15 +70,41 @@ static void push_texture_ref(lua_State *L, const char *key) {
 static int l_begin_pass(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_getfield(L, 1, "target");
-    int is_main = is_sentinel(L, -1, "main_tex");
+
+    uintptr_t target_image = 0;
+    SglPixelFormat fmt = SGL_PF_RGBA8;
+    int tw = 0, th = 0;
+    if (is_sentinel(L, -1, "main_tex")) {
+        // pass_state_begin will resolve swapchain format itself.
+    } else if (is_sentinel(L, -1, "texture")) {
+        lua_getfield(L, -1, "key");
+        const char *tk = lua_tostring(L, -1);
+        ResEntry *te = tk ? res_table_get(&g_app_for_lua->res, tk) : NULL;
+        lua_pop(L, 1);
+        if (!te || te->kind != RES_TEXTURE) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: target texture not found: %s", tk ? tk : "?");
+        }
+        if (!te->u.tex.is_target) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: target texture '%s' was not declared with {target=true}", tk);
+        }
+        target_image = te->u.tex.h;
+        fmt = te->u.tex.fmt;
+        tw = te->u.tex.w;
+        th = te->u.tex.h_;
+    } else {
+        lua_pop(L, 1);
+        return luaL_error(L, "begin_pass: target must be main_tex or a TextureRef declared with {target=true}");
+    }
     lua_pop(L, 1);
-    if (!is_main) return luaL_error(L, "begin_pass: target must be main_tex");
 
     static const float defaults[4] = {0, 0, 0, 1};
     float c[4];
     desc_get_float4(L, 1, "clear_color", c, defaults);
 
-    pass_state_begin_main(&g_app_for_lua->pass, c[0], c[1], c[2], c[3]);
+    pass_state_begin(&g_app_for_lua->pass, target_image, fmt, tw, th,
+                     c[0], c[1], c[2], c[3]);
     return 0;
 }
 
@@ -140,9 +166,10 @@ static int l_use_texture(lua_State *L) {
     if (has_data) luaL_checktype(L, 5, LUA_TTABLE);
     int64_t version = (int64_t)luaL_checkinteger(L, 6);
 
-    // optional 7th arg: { filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP }
+    // optional 7th arg: { filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }
     SglFilter filter = SGL_FILTER_LINEAR;
     SglWrap   wrap   = SGL_WRAP_REPEAT;
+    bool is_target = false;
     if (!lua_isnoneornil(L, 7)) {
         luaL_checktype(L, 7, LUA_TTABLE);
         lua_getfield(L, 7, "filter");
@@ -165,6 +192,12 @@ static int l_use_texture(lua_State *L) {
             wrap = (SglWrap)v;
         }
         lua_pop(L, 1);
+        lua_getfield(L, 7, "target");
+        if (!lua_isnoneornil(L, -1)) is_target = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+    }
+    if (is_target && has_data) {
+        return luaL_error(L, "use_texture: render target cannot be initialized with data");
     }
 
     if (w <= 0 || h <= 0) return luaL_error(L, "use_texture: invalid size %dx%d", w, h);
@@ -175,8 +208,9 @@ static int l_use_texture(lua_State *L) {
 
     bool sampler_changed = (e->u.tex.h != 0)
                            && (e->u.tex.filter != filter || e->u.tex.wrap != wrap);
+    bool target_changed = (e->u.tex.h != 0) && (e->u.tex.is_target != is_target);
 
-    if (e->version == version && e->u.tex.h != 0 && !sampler_changed) {
+    if (e->version == version && e->u.tex.h != 0 && !sampler_changed && !target_changed) {
         push_texture_ref(L, key);
         return 1;
     }
@@ -210,7 +244,7 @@ static int l_use_texture(lua_State *L) {
                       && (e->u.tex.w == w)
                       && (e->u.tex.h_ == h)
                       && (e->u.tex.fmt == (SglPixelFormat)fmt);
-    if (same_shape && !sampler_changed && pixels && new_bytes > 0) {
+    if (same_shape && !sampler_changed && !target_changed && pixels && new_bytes > 0) {
         // in-place update
         g_backend->update_image(e->u.tex.h, pixels, new_bytes);
     } else {
@@ -222,6 +256,7 @@ static int l_use_texture(lua_State *L) {
             .data_bytes = new_bytes,
             .filter = filter,
             .wrap = wrap,
+            .render_target = is_target,
         };
         e->u.tex.h = g_backend->make_image(&d);
         e->u.tex.w   = w;
@@ -230,6 +265,7 @@ static int l_use_texture(lua_State *L) {
     }
     e->u.tex.filter = filter;
     e->u.tex.wrap   = wrap;
+    e->u.tex.is_target = is_target;
     e->version   = version;
 
     if (pixels) free(pixels);
@@ -364,7 +400,8 @@ static int l_draw(lua_State *L) {
         sh_e->u.sh.h, &sh_e->u.sh.refl,
         (SglBlend)blend, depth_test, depth_write,
         (SglCull)cull, (SglPrimitive)prim,
-        g_backend->swapchain_color_format(g_app_for_lua));
+        g_app_for_lua->pass.current_color_fmt,
+        g_app_for_lua->pass.current_has_depth);
     g_backend->apply_pipeline(pip);
 
     // bindings: walk resources table, populate BindingsDesc.

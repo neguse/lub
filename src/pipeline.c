@@ -36,7 +36,7 @@ static uint32_t hash_key(const PipelineKey *k) {
 BackendPipeline pipeline_cache_get(
     PipelineCache *c, BackendShader sh, const ShaderReflection *refl,
     SglBlend blend, bool dt, bool dw, SglCull cull, SglPrimitive prim,
-    SglPixelFormat cfmt)
+    SglPixelFormat cfmt, bool has_depth)
 {
     // memset before designated init: designated initialization does not strictly
     // guarantee struct padding bytes are zeroed. Since the cache compares keys
@@ -50,6 +50,7 @@ BackendPipeline pipeline_cache_get(
     k.cull = (uint8_t)cull;
     k.primitive = (uint8_t)prim;
     k.color_fmt = (uint8_t)cfmt;
+    k.has_depth = has_depth ? 1 : 0;
     uint32_t bi = hash_key(&k) & (PIPELINE_BUCKETS - 1);
     for (PipelineEntry *e = c->buckets[bi]; e; e = e->next) {
         if (memcmp(&e->key, &k, sizeof(k)) == 0) return e->pip;
@@ -64,6 +65,7 @@ BackendPipeline pipeline_cache_get(
         .cull = cull,
         .primitive = prim,
         .color_fmt = cfmt,
+        .has_depth = has_depth,
     };
     BackendPipeline pip = g_backend->make_pipeline(&desc);
 

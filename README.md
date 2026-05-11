@@ -142,13 +142,14 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 | 2 | 02_vertex_color.lua     | 頂点カラー補間された三角形                      |
 | 3 | 03_texture.lua          | チェッカー柄テクスチャを貼った三角形 (use_texture) |
 | 4 | 04_mvp.lua              | 回転行列を uniform で渡す三角形                 |
+| 5 | 05_postprocess.lua      | offscreen render target に三角形 → 全画面 quad で色反転 + ヴィネット post process |
 
 ## API
 
 - `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX`。`data` は float の Lua table。同 `version` なら再アップロードしない。
-- `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP }`。デフォルトは `LINEAR` / `REPEAT`。
+- `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可、`opts.target=true` の場合は nil 必須)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }`。デフォルトは `LINEAR` / `REPEAT` / `false`。`target=true` で render-target texture (color attachment + sampler) を宣言。
 - `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
-- `begin_pass({ target = main_tex, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は今のところ `main_tex` のみ。
+- `begin_pass({ target = main_tex | texRef, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は `main_tex` (swapchain) または `use_texture(..., {target=true})` で宣言した texture ref。後者で offscreen render target に描画できる (Sample 5)。offscreen pass は depth/stencil 無し、swapchain pass は depth/stencil 付き。pipeline cache のキーには color format と depth 有無も含まれる。
 - `draw(count, resources, options)` — 描画コマンド。
   - `resources` は名前付き table: `{ verts = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。テクスチャの名前はシェーダ側のリフレクションに突き合わせる。uniform は uniform block の最初のものに pack される。
   - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
@@ -165,7 +166,6 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 
 ## 未実装 (将来)
 
-- Sample 5: post process (offscreen render target を渡せるように `use_texture(..., data=nil)` を render target にする)
 - Sample 6: deferred shading (MRT、複数 color attachment)
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)

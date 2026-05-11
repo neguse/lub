@@ -5,6 +5,8 @@
 void pass_state_init(PassState *p) {
     p->in_pass = false;
     p->app = NULL;
+    p->current_color_fmt = SGL_PF_RGBA8;
+    p->current_has_depth = false;
 }
 
 void pass_state_set_app(PassState *p, struct App *app) {
@@ -15,17 +17,29 @@ bool pass_state_in_pass(const PassState *p) {
     return p->in_pass;
 }
 
-void pass_state_begin_main(PassState *p, float r, float g, float b, float a) {
+void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
+                      int target_w, int target_h,
+                      float r, float g, float b, float a) {
     if (p->in_pass) {
         SDL_Log("begin_pass called while already in pass (nested passes not supported)");
         return;
     }
+    SglPixelFormat use_fmt = target_image
+        ? fmt
+        : g_backend->swapchain_color_format(p->app);
     PassBeginDesc d = {
-        .target = 0,
+        .target = target_image,
+        .color_fmt = use_fmt,
+        .target_w = target_w,
+        .target_h = target_h,
         .clear = { r, g, b, a },
     };
     g_backend->begin_pass(p->app, &d);
     p->in_pass = true;
+    p->current_color_fmt = use_fmt;
+    // PoC convention: swapchain pass has a depth/stencil attachment,
+    // offscreen render-target passes do not.
+    p->current_has_depth = (target_image == 0);
 }
 
 void pass_state_end(PassState *p) {

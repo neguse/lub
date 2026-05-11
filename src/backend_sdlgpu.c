@@ -60,6 +60,7 @@ typedef struct SgImage {
     SDL_GPUSampler *smp;
     int w, h;
     SglPixelFormat fmt;
+    bool render_target;
 } SgImage;
 
 // --- backend lifecycle ----------------------------------------------------
@@ -122,12 +123,19 @@ static void sg_end_frame(App *app) {
 }
 
 static void sg_begin_pass(App *app, const PassBeginDesc *d) {
-    if (!app->gpu_swapchain_tex) {
+    SDL_GPUTexture *tex = NULL;
+    if (d->target) {
+        SgImage *im = (SgImage*)d->target;
+        tex = im->tex;
+    } else {
+        tex = app->gpu_swapchain_tex;
+    }
+    if (!tex || !app->gpu_cmd) {
         g_render_pass = NULL;
         return;
     }
     SDL_GPUColorTargetInfo target = {
-        .texture = app->gpu_swapchain_tex,
+        .texture = tex,
         .clear_color = { d->clear[0], d->clear[1], d->clear[2], d->clear[3] },
         .load_op = SDL_GPU_LOADOP_CLEAR,
         .store_op = SDL_GPU_STOREOP_STORE,
@@ -268,14 +276,17 @@ static BackendImage sg_make_image(const ImageDesc *d) {
     SgImage *im = (SgImage*)calloc(1, sizeof(SgImage));
     if (!im) return 0;
     im->w = d->w; im->h = d->h; im->fmt = d->fmt;
+    im->render_target = d->render_target;
 
     SDL_GPUTextureFormat tfmt = (d->fmt == SGL_PF_R8) ? SDL_GPU_TEXTUREFORMAT_R8_UNORM
                                                        : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    Uint32 usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    if (d->render_target) usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
     im->tex = SDL_CreateGPUTexture(g_app->gpu_device,
         &(SDL_GPUTextureCreateInfo){
             .type = SDL_GPU_TEXTURETYPE_2D,
             .format = tfmt,
-            .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            .usage = usage,
             .width = (Uint32)d->w, .height = (Uint32)d->h,
             .layer_count_or_depth = 1, .num_levels = 1,
         });
@@ -285,7 +296,7 @@ static BackendImage sg_make_image(const ImageDesc *d) {
         return 0;
     }
 
-    if (d->data && d->data_bytes > 0) {
+    if (!d->render_target && d->data && d->data_bytes > 0) {
         if (!sg_upload_to_image(im->tex, d->w, d->h, d->data, d->data_bytes, false)) {
             SDL_ReleaseGPUTexture(g_app->gpu_device, im->tex);
             free(im);
@@ -406,8 +417,16 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
         .instance_step_rate = 0,
     };
+    SDL_GPUTextureFormat target_fmt;
+    switch (d->color_fmt) {
+        case SGL_PF_RGBA8: target_fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; break;
+        case SGL_PF_BGRA8: target_fmt = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM; break;
+        default:
+            target_fmt = SDL_GetGPUSwapchainTextureFormat(g_app->gpu_device, g_app->window);
+            break;
+    }
     SDL_GPUColorTargetDescription ctd = {
-        .format = SDL_GetGPUSwapchainTextureFormat(g_app->gpu_device, g_app->window),
+        .format = target_fmt,
         // PoC: blend off (sample 01 uses SGL_BLEND_NONE).
     };
 

@@ -25,7 +25,9 @@
 typedef struct SkImage {
     sg_image  img;
     sg_sampler smp;
-    sg_view   view;
+    sg_view   view;         // texture-sample view
+    sg_view   color_att;    // color-attachment view (valid when render_target)
+    bool      render_target;
 } SkImage;
 
 typedef struct SkShader {
@@ -426,16 +428,21 @@ static void sk_destroy_buffer(BackendBuffer h) {
 static BackendImage sk_make_image(const ImageDesc *d) {
     SkImage *si = (SkImage*)calloc(1, sizeof(SkImage));
     if (!si) return 0;
+    si->render_target = d->render_target;
     sg_pixel_format pf = (d->fmt == SGL_PF_R8) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
     sg_image_desc img_desc = {
         .width = d->w,
         .height = d->h,
         .pixel_format = pf,
-        .usage = { .dynamic_update = true },
     };
+    if (d->render_target) {
+        img_desc.usage.color_attachment = true;
+    } else {
+        img_desc.usage.dynamic_update = true;
+    }
     si->img = sg_make_image(&img_desc);
     if (si->img.id == SG_INVALID_ID) { free(si); return 0; }
-    if (d->data && d->data_bytes > 0) {
+    if (!d->render_target && d->data && d->data_bytes > 0) {
         sg_update_image(si->img, &(sg_image_data){
             .mip_levels[0] = { .ptr = d->data, .size = d->data_bytes },
         });
@@ -451,12 +458,18 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     si->view = sg_make_view(&(sg_view_desc){
         .texture = { .image = si->img },
     });
+    if (d->render_target) {
+        si->color_att = sg_make_view(&(sg_view_desc){
+            .color_attachment = { .image = si->img },
+        });
+    }
     return (uintptr_t)si;
 }
 
 static void sk_destroy_image(BackendImage h) {
     SkImage *si = (SkImage*)h;
     if (!si) return;
+    if (si->color_att.id) sg_destroy_view(si->color_att);
     if (si->view.id) sg_destroy_view(si->view);
     if (si->img.id)  sg_destroy_image(si->img);
     if (si->smp.id)  sg_destroy_sampler(si->smp);
@@ -581,9 +594,18 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
     desc.shader = ss->sh;
     desc.colors[0].pixel_format = sgl_to_sg_fmt(d->color_fmt);
     desc.colors[0].blend = to_sokol_blend(d->blend);
-    desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    desc.depth.compare = d->depth_test ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
-    desc.depth.write_enabled = d->depth_write;
+    if (d->has_depth) {
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+        desc.depth.compare = d->depth_test ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = d->depth_write;
+    } else {
+        // Offscreen color-only pass: no depth attachment, so the pipeline must
+        // match (SG_PIXELFORMAT_NONE) and depth state stays off regardless of
+        // what the caller asked for.
+        desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+    }
     desc.cull_mode =
         (d->cull == SGL_CULL_BACK)  ? SG_CULLMODE_BACK :
         (d->cull == SGL_CULL_FRONT) ? SG_CULLMODE_FRONT :
@@ -638,6 +660,20 @@ static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
 }
 
 static void sk_begin_pass(App *app, const PassBeginDesc *d) {
+    if (d->target) {
+        SkImage *si = (SkImage*)d->target;
+        sg_pass pass = {
+            .action.colors[0] = {
+                .load_action = SG_LOADACTION_CLEAR,
+                .clear_value = { d->clear[0], d->clear[1], d->clear[2], d->clear[3] },
+            },
+            .attachments = {
+                .colors[0] = si->color_att,
+            },
+        };
+        sg_begin_pass(&pass);
+        return;
+    }
     sg_pass pass = {
         .action.colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,

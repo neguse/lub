@@ -24,6 +24,7 @@ typedef struct ImageDesc {
     size_t data_bytes;
     SglFilter filter;   // 0 = default (LINEAR)
     SglWrap   wrap;     // 0 = default (REPEAT)
+    bool render_target; // true = usable as color attachment (no initial data)
 } ImageDesc;
 
 typedef struct ShaderDesc {
@@ -41,10 +42,13 @@ typedef struct PipelineDesc {
     SglCull cull;
     SglPrimitive primitive;
     SglPixelFormat color_fmt;
+    bool has_depth;            // false = offscreen color-only pass
 } PipelineDesc;
 
 typedef struct PassBeginDesc {
     BackendImage target;          // 0 = main_tex
+    SglPixelFormat color_fmt;     // target's color format (used for pipeline cache key)
+    int target_w, target_h;       // valid when target != 0
     float clear[4];
 } PassBeginDesc;
 

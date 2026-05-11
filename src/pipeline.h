@@ -9,8 +9,8 @@
 
 typedef struct PipelineKey {
     uintptr_t shader_handle;
-    uint8_t blend, depth_test, depth_write, cull, primitive, color_fmt;
-    uint8_t _pad[2];
+    uint8_t blend, depth_test, depth_write, cull, primitive, color_fmt, has_depth;
+    uint8_t _pad[1];
 } PipelineKey;
 
 typedef struct PipelineEntry {
@@ -31,7 +31,7 @@ BackendPipeline pipeline_cache_get(
     BackendShader sh, const ShaderReflection *refl,
     SglBlend blend, bool depth_test, bool depth_write,
     SglCull cull, SglPrimitive prim,
-    SglPixelFormat color_fmt);
+    SglPixelFormat color_fmt, bool has_depth);
 
 // 指定 shader handle を参照する全 pipeline entry を破棄しキャッシュから外す。
 // shader recompile で旧 handle が無効になる際に呼ぶ。
