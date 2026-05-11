@@ -189,11 +189,13 @@ static bool create_swapchain(App *app) {
     }
 
     // Depth attachment
-    VkFormat depth_fmt = VK_FORMAT_D24_UNORM_S8_UINT;
+    // sokol_gfx の Vulkan backend が SG_PIXELFORMAT_DEPTH_STENCIL に対して
+    // D32_SFLOAT_S8_UINT を採用するためそれに合わせる。
+    VkFormat depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
     VkFormatProperties fp;
     vkGetPhysicalDeviceFormatProperties(app->vk_phys, depth_fmt, &fp);
     if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
-        depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
+        depth_fmt = VK_FORMAT_D24_UNORM_S8_UINT;
     }
 
     VkImageCreateInfo dci = {

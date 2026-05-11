@@ -16,7 +16,6 @@
 
 ### sokol backend
 
-- **[S] Depth/stencil format mismatch**: `backend_sokol.c:190` の第一候補を `VK_FORMAT_D32_SFLOAT_S8_UINT` に統一 (sokol 内部の `SG_PIXELFORMAT_DEPTH_STENCIL` 解決に合わせる)。`VUID-vkCmdDraw-...-08914 / 08917` が消える。
 - **[M] Semaphore array 化**: `vk_acquire_sem` / `vk_present_sem` を swapchain image 数分確保し `frame_index % N` で回す。`VUID-vkAcquireNextImageKHR-semaphore-01779`, `vkQueueSubmit-pSignalSemaphores-00067` 解消。`VK_KHR_swapchain_maintenance1` 採用なら更にクリーン (任意)。
 - **[M] Window resize (swapchain recreate)**: `vkAcquireNextImageKHR` / `vkQueuePresentKHR` の `VK_ERROR_OUT_OF_DATE_KHR` / `VK_SUBOPTIMAL_KHR` を捕捉、swapchain / depth / image views を作り直す関数に分離。`SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED` をトリガにする。
 
