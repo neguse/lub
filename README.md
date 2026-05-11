@@ -229,10 +229,6 @@ scripts/
 
 ### sdlgpu backend
 
-- **`VUID-VkShaderModuleCreateInfo-pCode-08737`** (SPIR-V 1.5 vs Vulkan 1.0 target-env):
-  Slang が SPIR-V 1.5 を吐くが SDL_GPU の内部 Vulkan device は 1.0 target で validate
-  するため warning が出る。lavapipe / 実 GPU 双方で機能上問題なし。Slang 側の
-  target-env オプション or 後処理で SPIR-V version を 1.0 に下げる対応が将来課題。
 - **`VUID-vkCmdCopyImageToBuffer-srcImage-00186`** など SDL_GPU + lavapipe での
   capture 時 validation warning: SDL_GPU swapchain texture に
   `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` が立っていないため。capture 自体は機能して

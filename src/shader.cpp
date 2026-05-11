@@ -47,9 +47,12 @@ bool ensure_global_session() {
     if (SLANG_FAILED(slang::createGlobalSession(g_slang.g.writeRef()))) {
         return false;
     }
-    // Prefer spirv_1_5; fall back to glsl_450 (which still produces SPIR-V
-    // when target.format == SLANG_SPIRV).
-    g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_5");
+    // Target spirv_1_0 to match SDL_GPU's Vulkan 1.0 target-env (silences
+    // VUID-VkShaderModuleCreateInfo-pCode-08737). Fallbacks for older Slang.
+    g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_0");
+    if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
+        g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_5");
+    }
     if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
         g_slang.spirv_profile = g_slang.g->findProfile("glsl_450");
     }
