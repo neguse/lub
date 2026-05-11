@@ -32,3 +32,16 @@ void res_table_shutdown(ResTable *t);
 ResEntry *res_table_get(ResTable *t, const char *key);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);
 void res_table_touch(ResEntry *e, int64_t frame_index);
+
+// Callback invoked just before a RES_SHADER entry is destroyed, so the caller
+// (typically app.c) can invalidate pipelines that hold the now-stale handle.
+typedef void (*ResShaderInvalidateFn)(void *ctx, uintptr_t old_shader);
+
+// Release entries whose last_seen_frame is older than (current_frame -
+// max_unused_frames). Entries with last_seen_frame < 0 (never touched) are
+// left alone — config callbacks may create resources before the first frame.
+void res_table_sweep(ResTable *t,
+                     int64_t current_frame,
+                     int64_t max_unused_frames,
+                     ResShaderInvalidateFn on_shader_release,
+                     void *ctx);

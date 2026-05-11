@@ -401,7 +401,8 @@ static int l_draw(lua_State *L) {
         (SglBlend)blend, depth_test, depth_write,
         (SglCull)cull, (SglPrimitive)prim,
         g_app_for_lua->pass.current_color_fmt,
-        g_app_for_lua->pass.current_has_depth);
+        g_app_for_lua->pass.current_has_depth,
+        (int64_t)g_app_for_lua->frame_index);
     g_backend->apply_pipeline(pip);
 
     // bindings: walk resources table, populate BindingsDesc.
@@ -515,6 +516,21 @@ static int l_config(lua_State *L) {
     }
     strncpy(g_app_for_lua->backend_name, name, sizeof(g_app_for_lua->backend_name) - 1);
     g_app_for_lua->backend_name[sizeof(g_app_for_lua->backend_name) - 1] = '\0';
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "resource_sweep_after_frames");
+    if (!lua_isnoneornil(L, -1)) {
+        if (!lua_isinteger(L, -1)) {
+            lua_pop(L, 1);
+            return luaL_error(L, "config: resource_sweep_after_frames must be integer");
+        }
+        lua_Integer v = lua_tointeger(L, -1);
+        if (v < 0) {
+            lua_pop(L, 1);
+            return luaL_error(L, "config: resource_sweep_after_frames must be >= 0");
+        }
+        g_app_for_lua->resource_sweep_after_frames = (int)v;
+    }
     lua_pop(L, 1);
     return 0;
 }

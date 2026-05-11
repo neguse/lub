@@ -50,10 +50,23 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     app->last_h = h;
 }
 
+static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
+    App *app = (App*)ctx;
+    pipeline_cache_invalidate_shader(&app->pip_cache, old_shader);
+}
+
 void app_frame_end(App *app) {
     g_backend->end_frame(app);
     if (capture_state_drain(&app->capture, app)) {
         app->capture_then_exit = true;
+    }
+    if (app->resource_sweep_after_frames > 0) {
+        int64_t cf = (int64_t)app->frame_index;
+        int64_t thr = (int64_t)app->resource_sweep_after_frames;
+        // Pipelines first: invalidate_shader (called by res sweep) walks the
+        // same buckets, so ordering avoids touching freed entries.
+        pipeline_cache_sweep(&app->pip_cache, cf, thr);
+        res_table_sweep(&app->res, cf, thr, app_on_shader_release, app);
     }
     app->frame_index++;
 }

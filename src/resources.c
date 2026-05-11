@@ -74,3 +74,31 @@ ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind) {
 void res_table_touch(ResEntry *e, int64_t frame_index) {
     e->last_seen_frame = frame_index;
 }
+
+void res_table_sweep(ResTable *t,
+                     int64_t current_frame,
+                     int64_t max_unused_frames,
+                     ResShaderInvalidateFn on_shader_release,
+                     void *ctx)
+{
+    if (max_unused_frames < 0) return;
+    for (int i = 0; i < RES_BUCKETS; ++i) {
+        ResEntry **prev = &t->buckets[i];
+        ResEntry *e = t->buckets[i];
+        while (e) {
+            ResEntry *next = e->next;
+            int evict = (e->last_seen_frame >= 0)
+                     && (current_frame - e->last_seen_frame > max_unused_frames);
+            if (evict) {
+                if (e->kind == RES_SHADER && e->u.sh.h && on_shader_release) {
+                    on_shader_release(ctx, e->u.sh.h);
+                }
+                *prev = next;
+                res_entry_release(e);
+            } else {
+                prev = &e->next;
+            }
+            e = next;
+        }
+    }
+}

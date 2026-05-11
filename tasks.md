@@ -8,10 +8,6 @@
 - **[M] Sample 6: deferred shading (MRT)**: `begin_pass({targets = {t1, t2, ...}, clear_colors = {...}})` 形式に拡張、pipeline.c の color attachment 配列化、両 backend の pass begin を多色 attachment 対応に。Sample 5 と同じ路線の延長。
 - **[M] compute shader**: `dispatch(x, y, z, resources, {shader})` を `lua_api.c` に追加、`use_buffer` に `STORAGE` type 追加、`shader.cpp` で `[shader("compute")]` entry point を拾う。両 backend に `dispatch` vtable 追加。
 
-## リソース管理
-
-- **[S] フレーム未参照リソースの sweep**: `res_table_touch` / `e->last_seen_frame` のインフラは既にある (`resources.c:74`)。`app_frame_end` で `current_frame - last_seen_frame > N` のエントリを `res_entry_release` に流す関数を追加するだけ。pipeline cache も同方式。閾値 N は config 化推奨。
-
 ## 安定化
 
 ### sokol backend
@@ -21,7 +17,6 @@
 
 ### sdlgpu backend
 
-- **[S] SPIR-V version を 1.0 に下げる試行**: `shader.cpp:52` の `findProfile("spirv_1_5")` を `"spirv_1_0"` にして 4 sample が通るか確認 (現状未使用機能なら通るはず)。NG なら SPIR-V 生成後に header (`words[1]`) を `0x00010000` にパッチする手も可。`VUID-VkShaderModuleCreateInfo-pCode-08737` 解消。
 - **[L] Combined image sampler の multi-pair 対応**: `shader.cpp` の patcher を SPIR-V を歩いて各 `(SampledImage, Sampler)` ペアごとに `OpSampledImage` を組み直す形に拡張。テクスチャ複数枚を要求する Sample で blocker。SPIRV-Tools 依存導入の判断 (依存させない場合は 300+ 行)。
 - **[upstream] swapchain texture に `TRANSFER_SRC_BIT` 未付与**: `VUID-vkCmdCopyImageToBuffer-srcImage-00186`。SDL3 upstream で usage flag を追加してもらうのが本筋。回避は offscreen color target 経由の二段 capture (副作用大、推奨しない)。
 - **(削除候補) Windows での swapchain texture NULL**: `src/capture.c` の retry slip で実害消えている。Known issue から落とすか「workaround あり」と注記するかの整理。

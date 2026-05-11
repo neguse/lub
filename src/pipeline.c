@@ -36,7 +36,7 @@ static uint32_t hash_key(const PipelineKey *k) {
 BackendPipeline pipeline_cache_get(
     PipelineCache *c, BackendShader sh, const ShaderReflection *refl,
     SglBlend blend, bool dt, bool dw, SglCull cull, SglPrimitive prim,
-    SglPixelFormat cfmt, bool has_depth)
+    SglPixelFormat cfmt, bool has_depth, int64_t current_frame)
 {
     // memset before designated init: designated initialization does not strictly
     // guarantee struct padding bytes are zeroed. Since the cache compares keys
@@ -53,7 +53,10 @@ BackendPipeline pipeline_cache_get(
     k.has_depth = has_depth ? 1 : 0;
     uint32_t bi = hash_key(&k) & (PIPELINE_BUCKETS - 1);
     for (PipelineEntry *e = c->buckets[bi]; e; e = e->next) {
-        if (memcmp(&e->key, &k, sizeof(k)) == 0) return e->pip;
+        if (memcmp(&e->key, &k, sizeof(k)) == 0) {
+            e->last_seen_frame = current_frame;
+            return e->pip;
+        }
     }
 
     PipelineDesc desc = {
@@ -77,6 +80,7 @@ BackendPipeline pipeline_cache_get(
     }
     e->key = k;
     e->pip = pip;
+    e->last_seen_frame = current_frame;
     e->next = c->buckets[bi];
     c->buckets[bi] = e;
     return pip;
@@ -89,6 +93,30 @@ void pipeline_cache_invalidate_shader(PipelineCache *c, uintptr_t old_shader) {
         while (e) {
             PipelineEntry *next = e->next;
             if (e->key.shader_handle == old_shader) {
+                if (e->pip) g_backend->destroy_pipeline(e->pip);
+                *prev = next;
+                free(e);
+            } else {
+                prev = &e->next;
+            }
+            e = next;
+        }
+    }
+}
+
+void pipeline_cache_sweep(PipelineCache *c,
+                          int64_t current_frame,
+                          int64_t max_unused_frames)
+{
+    if (max_unused_frames < 0) return;
+    for (int i = 0; i < PIPELINE_BUCKETS; ++i) {
+        PipelineEntry **prev = &c->buckets[i];
+        PipelineEntry *e = c->buckets[i];
+        while (e) {
+            PipelineEntry *next = e->next;
+            int evict = (e->last_seen_frame >= 0)
+                     && (current_frame - e->last_seen_frame > max_unused_frames);
+            if (evict) {
                 if (e->pip) g_backend->destroy_pipeline(e->pip);
                 *prev = next;
                 free(e);

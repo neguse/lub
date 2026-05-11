@@ -67,6 +67,12 @@ typedef struct App {
     AppPhase      phase;
     char          backend_name[16];
 
+    // Frame-based GC threshold. 0 disables sweeping. When > 0, app_frame_end
+    // releases resource / pipeline entries whose last_seen_frame is older than
+    // (frame_index - resource_sweep_after_frames). Configurable via Lua
+    // config({ resource_sweep_after_frames = N }) during on_init.
+    int           resource_sweep_after_frames;
+
     // SDL3 GPU backend state (Task 3). Owned/used by backend_sdlgpu.c only.
     SDL_GPUDevice       *gpu_device;
     SDL_GPUTexture      *gpu_swapchain_tex;  // current frame の swapchain
