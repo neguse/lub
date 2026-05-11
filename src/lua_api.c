@@ -69,6 +69,88 @@ static void push_texture_ref(lua_State *L, const char *key) {
 
 static int l_begin_pass(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
+
+    // MRT path: { targets = {t1, t2, ...}, clear_colors = {{r,g,b,a},...} }
+    lua_getfield(L, 1, "targets");
+    if (lua_istable(L, -1)) {
+        int n = (int)lua_rawlen(L, -1);
+        if (n < 1) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: targets table is empty");
+        }
+        if (n > SGL_MAX_COLOR_TARGETS) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: too many targets (%d > %d)",
+                              n, SGL_MAX_COLOR_TARGETS);
+        }
+        uintptr_t targets[SGL_MAX_COLOR_TARGETS] = {0};
+        SglPixelFormat fmts[SGL_MAX_COLOR_TARGETS] = {0};
+        float clears[SGL_MAX_COLOR_TARGETS][4] = {0};
+        int tw = 0, th = 0;
+        for (int i = 0; i < n; ++i) {
+            lua_rawgeti(L, -1, i + 1);
+            if (!is_sentinel(L, -1, "texture")) {
+                lua_pop(L, 2);
+                return luaL_error(L, "begin_pass: targets[%d] must be a TextureRef", i + 1);
+            }
+            lua_getfield(L, -1, "key");
+            const char *tk = lua_tostring(L, -1);
+            ResEntry *te = tk ? res_table_get(&g_app_for_lua->res, tk) : NULL;
+            lua_pop(L, 1);
+            if (!te || te->kind != RES_TEXTURE) {
+                lua_pop(L, 2);
+                return luaL_error(L, "begin_pass: target texture not found: %s",
+                                  tk ? tk : "?");
+            }
+            if (!te->u.tex.is_target) {
+                lua_pop(L, 2);
+                return luaL_error(L,
+                    "begin_pass: target texture '%s' was not declared with {target=true}",
+                    tk);
+            }
+            if (i == 0) { tw = te->u.tex.w; th = te->u.tex.h_; }
+            else if (te->u.tex.w != tw || te->u.tex.h_ != th) {
+                lua_pop(L, 2);
+                return luaL_error(L,
+                    "begin_pass: targets must share the same size (got %dx%d at [%d], expected %dx%d)",
+                    te->u.tex.w, te->u.tex.h_, i + 1, tw, th);
+            }
+            targets[i] = te->u.tex.h;
+            fmts[i] = te->u.tex.fmt;
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1); // targets table
+
+        // clear_colors: optional. nil -> all clear to {0,0,0,1}. If shorter than
+        // n_targets, the missing entries default to {0,0,0,1}.
+        for (int i = 0; i < n; ++i) {
+            clears[i][0] = 0; clears[i][1] = 0;
+            clears[i][2] = 0; clears[i][3] = 1;
+        }
+        lua_getfield(L, 1, "clear_colors");
+        if (lua_istable(L, -1)) {
+            int m = (int)lua_rawlen(L, -1);
+            if (m > n) m = n;
+            for (int i = 0; i < m; ++i) {
+                lua_rawgeti(L, -1, i + 1);
+                if (lua_istable(L, -1)) {
+                    for (int j = 0; j < 4; ++j) {
+                        lua_rawgeti(L, -1, j + 1);
+                        if (lua_isnumber(L, -1)) clears[i][j] = (float)lua_tonumber(L, -1);
+                        lua_pop(L, 1);
+                    }
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1); // clear_colors
+
+        pass_state_begin_mrt(&g_app_for_lua->pass, n, targets, fmts, tw, th,
+                             (const float (*)[4])clears);
+        return 0;
+    }
+    lua_pop(L, 1); // targets (was not a table)
+
     lua_getfield(L, 1, "target");
 
     uintptr_t target_image = 0;
@@ -400,7 +482,8 @@ static int l_draw(lua_State *L) {
         sh_e->u.sh.h, &sh_e->u.sh.refl,
         (SglBlend)blend, depth_test, depth_write,
         (SglCull)cull, (SglPrimitive)prim,
-        g_app_for_lua->pass.current_color_fmt,
+        g_app_for_lua->pass.current_n_color_targets,
+        g_app_for_lua->pass.current_color_fmts,
         g_app_for_lua->pass.current_has_depth,
         (int64_t)g_app_for_lua->frame_index);
     g_backend->apply_pipeline(pip);

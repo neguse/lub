@@ -5,7 +5,6 @@
 
 ## サンプル / API 拡張
 
-- **[M] Sample 6: deferred shading (MRT)**: `begin_pass({targets = {t1, t2, ...}, clear_colors = {...}})` 形式に拡張、pipeline.c の color attachment 配列化、両 backend の pass begin を多色 attachment 対応に。Sample 5 と同じ路線の延長。
 - **[M] compute shader**: `dispatch(x, y, z, resources, {shader})` を `lua_api.c` に追加、`use_buffer` に `STORAGE` type 追加、`shader.cpp` で `[shader("compute")]` entry point を拾う。両 backend に `dispatch` vtable 追加。
 
 ## 安定化

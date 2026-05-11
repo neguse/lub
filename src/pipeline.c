@@ -36,8 +36,11 @@ static uint32_t hash_key(const PipelineKey *k) {
 BackendPipeline pipeline_cache_get(
     PipelineCache *c, BackendShader sh, const ShaderReflection *refl,
     SglBlend blend, bool dt, bool dw, SglCull cull, SglPrimitive prim,
-    SglPixelFormat cfmt, bool has_depth, int64_t current_frame)
+    int n_color_targets, const SglPixelFormat *cfmts,
+    bool has_depth, int64_t current_frame)
 {
+    if (n_color_targets < 1) n_color_targets = 1;
+    if (n_color_targets > SGL_MAX_COLOR_TARGETS) n_color_targets = SGL_MAX_COLOR_TARGETS;
     // memset before designated init: designated initialization does not strictly
     // guarantee struct padding bytes are zeroed. Since the cache compares keys
     // with memcmp, indeterminate padding could cause false misses on lookups.
@@ -49,8 +52,11 @@ BackendPipeline pipeline_cache_get(
     k.depth_write = dw ? 1 : 0;
     k.cull = (uint8_t)cull;
     k.primitive = (uint8_t)prim;
-    k.color_fmt = (uint8_t)cfmt;
     k.has_depth = has_depth ? 1 : 0;
+    k.n_color_targets = (uint8_t)n_color_targets;
+    for (int i = 0; i < n_color_targets; ++i) {
+        k.color_fmts[i] = (uint8_t)cfmts[i];
+    }
     uint32_t bi = hash_key(&k) & (PIPELINE_BUCKETS - 1);
     for (PipelineEntry *e = c->buckets[bi]; e; e = e->next) {
         if (memcmp(&e->key, &k, sizeof(k)) == 0) {
@@ -67,9 +73,12 @@ BackendPipeline pipeline_cache_get(
         .depth_write = dw,
         .cull = cull,
         .primitive = prim,
-        .color_fmt = cfmt,
+        .n_color_targets = n_color_targets,
         .has_depth = has_depth,
     };
+    for (int i = 0; i < n_color_targets; ++i) {
+        desc.color_fmts[i] = cfmts[i];
+    }
     BackendPipeline pip = g_backend->make_pipeline(&desc);
 
     PipelineEntry *e = (PipelineEntry*)calloc(1, sizeof(PipelineEntry));

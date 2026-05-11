@@ -17,6 +17,11 @@ typedef uintptr_t BackendImage;
 typedef uintptr_t BackendShader;
 typedef uintptr_t BackendPipeline;
 
+// Max color attachments for MRT (G-buffer style). Sokol's hard cap is
+// SG_MAX_COLOR_ATTACHMENTS = 8; SDL_GPU also supports up to 4 on every
+// platform. 4 is more than enough for the PoC samples.
+#define SGL_MAX_COLOR_TARGETS 4
+
 typedef struct ImageDesc {
     SglPixelFormat fmt;
     int w, h;
@@ -41,15 +46,17 @@ typedef struct PipelineDesc {
     bool depth_write;
     SglCull cull;
     SglPrimitive primitive;
-    SglPixelFormat color_fmt;
+    int n_color_targets;       // 1..SGL_MAX_COLOR_TARGETS
+    SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS];
     bool has_depth;            // false = offscreen color-only pass
 } PipelineDesc;
 
 typedef struct PassBeginDesc {
-    BackendImage target;          // 0 = main_tex
-    SglPixelFormat color_fmt;     // target's color format (used for pipeline cache key)
-    int target_w, target_h;       // valid when target != 0
-    float clear[4];
+    int n_color_targets;          // 1..SGL_MAX_COLOR_TARGETS
+    BackendImage targets[SGL_MAX_COLOR_TARGETS]; // targets[0] == 0 (with n_color_targets == 1) => swapchain
+    SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS]; // per-target color format
+    int target_w, target_h;       // offscreen target size (ignored for swapchain)
+    float clear[SGL_MAX_COLOR_TARGETS][4];
 } PassBeginDesc;
 
 typedef struct BindingsDesc {

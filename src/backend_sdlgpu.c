@@ -123,24 +123,36 @@ static void sg_end_frame(App *app) {
 }
 
 static void sg_begin_pass(App *app, const PassBeginDesc *d) {
-    SDL_GPUTexture *tex = NULL;
-    if (d->target) {
-        SgImage *im = (SgImage*)d->target;
-        tex = im->tex;
-    } else {
-        tex = app->gpu_swapchain_tex;
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
+    SDL_GPUColorTargetInfo targets[SGL_MAX_COLOR_TARGETS] = {0};
+    if (d->targets[0] == 0) {
+        // swapchain target (single)
+        SDL_GPUTexture *tex = app->gpu_swapchain_tex;
+        if (!tex || !app->gpu_cmd) {
+            g_render_pass = NULL;
+            return;
+        }
+        targets[0].texture = tex;
+        targets[0].clear_color = (SDL_FColor){ d->clear[0][0], d->clear[0][1], d->clear[0][2], d->clear[0][3] };
+        targets[0].load_op = SDL_GPU_LOADOP_CLEAR;
+        targets[0].store_op = SDL_GPU_STOREOP_STORE;
+        g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, targets, 1, NULL);
+        return;
     }
-    if (!tex || !app->gpu_cmd) {
+    if (!app->gpu_cmd) {
         g_render_pass = NULL;
         return;
     }
-    SDL_GPUColorTargetInfo target = {
-        .texture = tex,
-        .clear_color = { d->clear[0], d->clear[1], d->clear[2], d->clear[3] },
-        .load_op = SDL_GPU_LOADOP_CLEAR,
-        .store_op = SDL_GPU_STOREOP_STORE,
-    };
-    g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, &target, 1, NULL);
+    for (int i = 0; i < nct; ++i) {
+        SgImage *im = (SgImage*)d->targets[i];
+        if (!im || !im->tex) { g_render_pass = NULL; return; }
+        targets[i].texture = im->tex;
+        targets[i].clear_color = (SDL_FColor){ d->clear[i][0], d->clear[i][1], d->clear[i][2], d->clear[i][3] };
+        targets[i].load_op = SDL_GPU_LOADOP_CLEAR;
+        targets[i].store_op = SDL_GPU_STOREOP_STORE;
+    }
+    g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, targets, (Uint32)nct, NULL);
 }
 
 static void sg_end_pass(App *app) {
@@ -417,18 +429,21 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
         .instance_step_rate = 0,
     };
-    SDL_GPUTextureFormat target_fmt;
-    switch (d->color_fmt) {
-        case SGL_PF_RGBA8: target_fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; break;
-        case SGL_PF_BGRA8: target_fmt = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM; break;
-        default:
-            target_fmt = SDL_GetGPUSwapchainTextureFormat(g_app->gpu_device, g_app->window);
-            break;
-    }
-    SDL_GPUColorTargetDescription ctd = {
-        .format = target_fmt,
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
+    SDL_GPUColorTargetDescription ctd[SGL_MAX_COLOR_TARGETS] = {0};
+    for (int i = 0; i < nct; ++i) {
+        SDL_GPUTextureFormat tf;
+        switch (d->color_fmts[i]) {
+            case SGL_PF_RGBA8: tf = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; break;
+            case SGL_PF_BGRA8: tf = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM; break;
+            default:
+                tf = SDL_GetGPUSwapchainTextureFormat(g_app->gpu_device, g_app->window);
+                break;
+        }
+        ctd[i].format = tf;
         // PoC: blend off (sample 01 uses SGL_BLEND_NONE).
-    };
+    }
 
     SDL_GPUPrimitiveType prim;
     switch (d->primitive) {
@@ -470,8 +485,8 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
                 .enable_depth_write = false,
             },
             .target_info = {
-                .color_target_descriptions = &ctd,
-                .num_color_targets = 1,
+                .color_target_descriptions = ctd,
+                .num_color_targets = (Uint32)nct,
                 .has_depth_stencil_target = false,
             },
         });

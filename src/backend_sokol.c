@@ -594,8 +594,15 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
 
     sg_pipeline_desc desc = {0};
     desc.shader = ss->sh;
-    desc.colors[0].pixel_format = sgl_to_sg_fmt(d->color_fmt);
-    desc.colors[0].blend = to_sokol_blend(d->blend);
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
+    desc.color_count = nct;
+    sg_blend_state bs = to_sokol_blend(d->blend);
+    for (int i = 0; i < nct; ++i) {
+        desc.colors[i].pixel_format = sgl_to_sg_fmt(d->color_fmts[i]);
+        // PoC: replicate blend state across all color attachments.
+        desc.colors[i].blend = bs;
+    }
     if (d->has_depth) {
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         desc.depth.compare = d->depth_test ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
@@ -662,24 +669,27 @@ static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
 }
 
 static void sk_begin_pass(App *app, const PassBeginDesc *d) {
-    if (d->target) {
-        SkImage *si = (SkImage*)d->target;
-        sg_pass pass = {
-            .action.colors[0] = {
-                .load_action = SG_LOADACTION_CLEAR,
-                .clear_value = { d->clear[0], d->clear[1], d->clear[2], d->clear[3] },
-            },
-            .attachments = {
-                .colors[0] = si->color_att,
-            },
-        };
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
+    if (d->targets[0]) {
+        // offscreen (possibly MRT). All targets must be non-zero render-target images.
+        sg_pass pass = {0};
+        for (int i = 0; i < nct; ++i) {
+            SkImage *si = (SkImage*)d->targets[i];
+            pass.action.colors[i].load_action = SG_LOADACTION_CLEAR;
+            pass.action.colors[i].clear_value.r = d->clear[i][0];
+            pass.action.colors[i].clear_value.g = d->clear[i][1];
+            pass.action.colors[i].clear_value.b = d->clear[i][2];
+            pass.action.colors[i].clear_value.a = d->clear[i][3];
+            pass.attachments.colors[i] = si->color_att;
+        }
         sg_begin_pass(&pass);
         return;
     }
     sg_pass pass = {
         .action.colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
-            .clear_value = { d->clear[0], d->clear[1], d->clear[2], d->clear[3] },
+            .clear_value = { d->clear[0][0], d->clear[0][1], d->clear[0][2], d->clear[0][3] },
         },
         .swapchain = {
             .width = app->last_w,

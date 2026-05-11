@@ -672,6 +672,20 @@ bool patch_spirv_combined_samplers(ShaderBlob *blob, ShaderReflection *refl) {
         } else if (op == kOpDecorate && wc >= 4) {
             uint32_t target = src[i + 1];
             if (target == P.smp_var) emit = false;
+            // Renumber the texture's Binding decoration to 0. Slang allocates
+            // bindings across both UBs and SRVs (so a shader with a UB and a
+            // Texture2D gets binding=0 / binding=1), but the SDL_GPU pipeline
+            // layout exposes num_samplers=1 = a single binding at slot 0.
+            // Single-pair only; multi-pair support (separate task) will need
+            // to assign each pair to its index in declaration order.
+            constexpr uint32_t kDecBinding = 33;
+            if (target == P.tex_var && wc >= 4 && src[i + 2] == kDecBinding) {
+                dst.push_back(hdr);
+                dst.push_back(target);
+                dst.push_back(kDecBinding);
+                dst.push_back(0u);
+                emit = false;
+            }
         } else if (op == kOpTypeSampledImage && wc >= 3) {
             // Copy as-is. If this is the OpTypeSampledImage we're going
             // to point at, immediately append the new OpTypePointer so
@@ -774,16 +788,20 @@ bool patch_spirv_combined_samplers(ShaderBlob *blob, ShaderReflection *refl) {
             }
             i += wc;
         }
+        // We rewrote the texture's Binding decoration to 0 above. Mirror that
+        // in the reflection so the apply_bindings name->slot lookup hits the
+        // right combined-sampler slot.
         if (name_found) {
             for (int t = 0; t < refl->tex_count; ++t) {
                 if (strcmp(refl->texs[t].name, tex_name) == 0) {
-                    refl->texs[t].smp_slot = refl->texs[t].img_slot;
+                    refl->texs[t].img_slot = 0;
+                    refl->texs[t].smp_slot = 0;
                     break;
                 }
             }
         } else {
-            // Fallback: set first texture's smp_slot to img_slot.
-            refl->texs[0].smp_slot = refl->texs[0].img_slot;
+            refl->texs[0].img_slot = 0;
+            refl->texs[0].smp_slot = 0;
         }
     }
     return true;
