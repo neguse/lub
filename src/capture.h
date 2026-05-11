@@ -9,6 +9,7 @@ typedef struct CaptureState {
     bool     pending;      // true = capture next presented frame
     char    *path;         // strdup'd PNG path (free on shutdown / after capture)
     uint64_t target_frame; // frame index at/after which to capture (0 = next)
+    uint32_t retries_left; // remaining retries when backend can't read swapchain yet
 } CaptureState;
 
 void capture_state_init(CaptureState *c);

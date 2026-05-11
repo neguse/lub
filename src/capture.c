@@ -6,11 +6,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+// On Windows the SDL_GPU swapchain may legitimately return NULL for several
+// frames in a row (e.g. while the OS compositor catches up after window
+// creation). Allow the capture to slip forward up to this many frames before
+// giving up so a one-shot --capture --capture-frame N still succeeds.
+#define CAPTURE_RETRY_FRAMES 120
+
 void capture_state_init(CaptureState *c) {
     if (!c) return;
     c->pending = false;
     c->path = NULL;
     c->target_frame = 0;
+    c->retries_left = 0;
 }
 
 void capture_state_shutdown(CaptureState *c) {
@@ -36,6 +43,7 @@ void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame) {
     }
     c->target_frame = at_frame;
     c->pending = true;
+    c->retries_left = CAPTURE_RETRY_FRAMES;
 }
 
 bool capture_state_drain(CaptureState *c, struct App *app) {
@@ -46,6 +54,11 @@ bool capture_state_drain(CaptureState *c, struct App *app) {
     if (ok) {
         SDL_Log("captured frame %llu -> %s",
                 (unsigned long long)app->frame_index, c->path);
+    } else if (c->retries_left > 0) {
+        c->retries_left--;
+        // Slip the target forward one frame and try again next iteration.
+        c->target_frame = app->frame_index + 1;
+        return false; // not consumed yet
     } else {
         SDL_Log("capture failed (frame %llu, path=%s)",
                 (unsigned long long)app->frame_index, c->path);
@@ -53,5 +66,5 @@ bool capture_state_drain(CaptureState *c, struct App *app) {
     free(c->path);
     c->path = NULL;
     c->pending = false;
-    return true; // consume the request either way
+    return true; // consume the request
 }

@@ -450,6 +450,17 @@ static int l_config(lua_State *L) {
 
 static int l_file_mtime(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
+#ifdef _WIN32
+    // MSVC's struct _stat64 has only seconds resolution in st_mtime.
+    // sub-second changes are still caught by the content-hash fallback
+    // in samples/sg_io.lua, so seconds-precision mtime is fine here.
+    struct _stat64 st;
+    if (_stat64(path, &st) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    int64_t ns = (int64_t)st.st_mtime * 1000000000LL;
+#else
     struct stat st;
     if (stat(path, &st) != 0) {
         lua_pushnil(L);
@@ -457,6 +468,7 @@ static int l_file_mtime(lua_State *L) {
     }
     int64_t ns = (int64_t)st.st_mtim.tv_sec * 1000000000LL
                + (int64_t)st.st_mtim.tv_nsec;
+#endif
     lua_pushinteger(L, (lua_Integer)ns);
     return 1;
 }

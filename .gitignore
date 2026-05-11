@@ -1,2 +1,4 @@
 build/
+out/
 third_party/slang/lib/
+third_party/slang/bin/

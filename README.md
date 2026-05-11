@@ -3,24 +3,41 @@
 Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + Slang + Lua 5.5。
 GPU backend は **sokol_gfx (Vulkan)** と **SDL3 GPU API** の 2 系統を持ち、
 Lua の `config()` で切り替えられる (詳細は後述)。
+対応プラットフォームは Linux x86_64 と Windows x86_64。
 
 ## ビルド
 
 依存:
 - CMake 3.20+
-- C11 / C++17 対応コンパイラ (GCC / Clang)
-- Vulkan loader (`libvulkan.so` — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`)
-- Linux x86_64 (現状)
+- C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
+- Vulkan SDK / loader
+  - Linux — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
+  - Windows — LunarG Vulkan SDK (`winget install KhronosGroup.VulkanSDK`)
+
+Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
+`third_party/slang/lib/` に無ければ GitHub release から自動取得する
+(`third_party/slang/{lib,bin}/` は gitignore 対象)。
+
+Linux:
 
 ```sh
-# Slang prebuilt は third_party/slang/lib に配置済み (gitignore 対象)
 cmake -S . -B build
 cmake --build build -j
 ```
 
-## 実行
+Windows (PowerShell, MSVC + Ninja):
 
-通常 (実 GPU 経由):
+```powershell
+$env:VULKAN_SDK = "C:\VulkanSDK\1.4.341.1"  # winget でインストールされた SDK
+& 'C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat'
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `sglua.exe`
+の横にコピーされるので、追加の PATH 設定なしで実行できる。
+
+## 実行
 
 ```sh
 ./build/sglua samples/01_triangle.lua
@@ -29,7 +46,9 @@ cmake --build build -j
 ./build/sglua samples/04_mvp.lua
 ```
 
-ヘッドレス (Mesa lavapipe = CPU Vulkan):
+(Windows は `.\build\sglua.exe samples\01_triangle.lua` 形式)
+
+Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
 ```sh
 # 事前: sudo pacman -S vulkan-swrast (Arch) / sudo apt install mesa-vulkan-drivers (Debian)
@@ -38,8 +57,8 @@ scripts/run-headless.sh samples/01_triangle.lua
 
 `scripts/run-headless.sh` は `VK_ICD_FILENAMES` で lavapipe ICD を強制し、
 `DISPLAY` / `WAYLAND_DISPLAY` が無ければ自動で `xvfb-run` でラップする。
-CI / SSH / コンテナ環境でも動くことを確認している (Mesa lavapipe + AMD radv の両方で
-sample 01〜04 が pass)。
+これにより CI / SSH / コンテナ環境でも sample 01〜04 が走る (Mesa lavapipe / AMD radv 双方で動作)。
+Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
 スクリーンショット capture (PNG 出力):
 
@@ -79,8 +98,8 @@ SGLUA_BACKEND=sdlgpu ./build/sglua samples/01_triangle.lua
 SGLUA_BACKEND=sdlgpu scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
 ```
 
-両 backend で 4 サンプル + capture が動作する。capture 出力は両 backend で
-**byte-identical** であることを lavapipe + xvfb 上で検証済み。
+どちらの backend でも 4 サンプル + capture が同一 Lua API で動く。
+lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical** になる。
 
 ## Live edit (file watching)
 
@@ -139,7 +158,7 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 - Sample 6: deferred shading (MRT、複数 color attachment)
 - Golden image diff 回帰テスト (`capture` 機能を活かした自動 visual 比較)
 - リソース sweep (フレーム未参照の自動破棄)
-- macOS / Windows 対応 (MoltenVK / dxvk 経由 or SDL3 GPU の Metal / D3D12 backend 経由)
+- macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
 - compute shader / VR / マルチスレッド描画
 - Lua 側からの sampler 設定 (filter / wrap)
 
@@ -174,11 +193,12 @@ scripts/
 
 依存:
 - `third_party/sokol/sokol_gfx.h` — single-header (vendored)、`SOKOL_VULKAN` backend
-- `third_party/slang/` — Slang 2026.x prebuilt (`include/`, `lib/`)、SPIR-V を target
+- `third_party/slang/` — Slang prebuilt (`include/` vendored、`lib/` と Windows のみ `bin/`
+  は CMake configure 時に GitHub release から自動取得; gitignore 対象)、SPIR-V を target
 - `third_party/stb/stb_image_write.h` — single-header (vendored)、PNG 出力 (capture)
 - `third_party/stb/stb_image.h` — single-header (vendored)、PNG 入力 (`load_png`)
 - SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
-- Vulkan loader (`libvulkan.so`) — system 提供
+- Vulkan loader (`libvulkan.so` / `vulkan-1.dll`) — system 提供
 - Lua 5.5 — CMake FetchContent (static lib build)
 
 ## Known issues
@@ -212,8 +232,10 @@ scripts/
   `src/shader.cpp` に sdlgpu 限定の SPIR-V combined-sampler 合成 patcher が入っている。
   現状は単一の texture+sampler ペアのみサポート (multi-pair fragment shader は
   patcher が bail)。将来 multi-pair / 配列 / `OpImageGather` 等への対応は拡張課題。
-
-これらはいずれも実用上の致命的問題ではなく、PoC スコープ外として残置している。
+- **swapchain texture NULL の頻発 (Windows)**: SDL3 GPU の `SDL_AcquireGPU-`
+  `SwapchainTexture` が起動直後の数十フレームに渡って NULL を返すケースがある
+  (SDL3 仕様上エラーではない)。指定フレームでの単発 capture が空振りすると困るので、
+  `src/capture.c` で次フレームへ最大 120 回まで自動 slip する。
 
 ## ライセンス
 
