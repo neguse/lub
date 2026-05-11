@@ -3,10 +3,6 @@
 未実装と Known issues を実作業単位に分けたもの。タグは規模感:
 **[S]** 数十行 / **[M]** 100〜200 行 / **[L]** 設計 + 大幅実装 / **[upstream]** 外部依存。
 
-## テスト / CI
-
-- **[S] Golden image diff (lavapipe 限定)**: `tests/golden/<sample>_<backend>.png` を置き、`scripts/run-golden.sh` で `--capture` 後に `cmp` で完全一致を判定。lavapipe + xvfb 環境で確定的。実 GPU 用には tolerance 比較 (PSNR / max diff) を別途、後回しで良い。
-
 ## サンプル / API 拡張
 
 - **[S] Lua 側 sampler 設定**: `use_texture(key, w, h, fmt, data, version, {filter='nearest'|'linear', wrap='repeat'|'clamp'})` を追加。`enums_lua.c` に `NEAREST` / `CLAMP` を登録、`backend_sokol` / `backend_sdlgpu` の sampler 生成箇所で desc に流す。

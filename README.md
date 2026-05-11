@@ -71,6 +71,17 @@ scripts/run-headless.sh samples/01_triangle.lua --capture out.png --capture-fram
 でスケジュール可能 (次フレームで実行)。BGRA8/RGBA8 のスワップチェインから RGBA に
 swizzle して `stb_image_write` で PNG 出力する。
 
+### Golden image diff (回帰テスト)
+
+```sh
+scripts/run-golden.sh             # 全 sample × 両 backend を tests/golden と cmp
+scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的変更時)
+scripts/run-golden.sh --sample 01_triangle --backend sokol
+```
+
+lavapipe + xvfb 環境では capture が確定的なので `cmp -s` で完全一致判定する。
+実 GPU でのドリフトは想定範囲外 (tolerance 比較は別途)。
+
 ## Backend 切替
 
 sglua は内部に 2 つの GPU backend を持つ:
@@ -156,7 +167,6 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 
 - Sample 5: post process (offscreen render target を渡せるように `use_texture(..., data=nil)` を render target にする)
 - Sample 6: deferred shading (MRT、複数 color attachment)
-- Golden image diff 回帰テスト (`capture` 機能を活かした自動 visual 比較)
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
 - compute shader / VR / マルチスレッド描画
@@ -188,7 +198,8 @@ src/
 
 ```
 scripts/
-└── run-headless.sh   VK_ICD_FILENAMES=lavapipe + xvfb-run wrapper
+├── run-headless.sh   VK_ICD_FILENAMES=lavapipe + xvfb-run wrapper
+└── run-golden.sh     tests/golden/<sample>_<backend>.png と cmp
 ```
 
 依存:
