@@ -133,8 +133,6 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 
 エントリポイント: Lua 側で `on_init` / `on_frame` / `on_event` / `on_quit` の global 関数を定義すると呼ばれる。
 
-設計と実装計画の詳細は `docs/superpowers/specs/` / `docs/superpowers/plans/` 配下を参照。
-
 ## 未実装 (将来)
 
 - Sample 5: post process (offscreen render target を渡せるように `use_texture(..., data=nil)` を render target にする)
