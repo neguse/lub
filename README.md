@@ -64,7 +64,7 @@ sglua は内部に 2 つの GPU backend を持つ:
 
 ```lua
 function on_init()
-    config({ backend = arg and arg[1] or os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
 ```
 
@@ -79,8 +79,8 @@ SGLUA_BACKEND=sdlgpu ./build/sglua samples/01_triangle.lua
 SGLUA_BACKEND=sdlgpu scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
 ```
 
-両 backend で 4 サンプル + capture が動作することを確認済み。
-capture 出力は両 backend で **byte-identical** (lavapipe + xvfb 上で検証)。
+両 backend で 4 サンプル + capture が動作する。capture 出力は両 backend で
+**byte-identical** であることを lavapipe + xvfb 上で検証済み。
 
 ## Live edit (file watching)
 
@@ -124,9 +124,16 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
   - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
 - `capture(path)` — 次フレーム終了時に swapchain image を PNG として `path` に書き出してアプリを終了する。CLI フラグ `--capture <path>` (任意で `--capture-frame N`、デフォルト 30) でも同等。
 
+### Live edit helpers
+
+- `file_mtime(path)` — ファイルの mtime をナノ秒単位の整数で返す。存在しなければ nil。
+- `fnv1a64(s)` — 文字列の FNV-1a 64-bit ハッシュを整数で返す。`use_*` の `version` 引数に流すための content-hash 用途。
+- `load_png(path)` — stb_image で PNG を RGBA8 にデコードして `(bytes_table, w, h, fmt)` を返す。失敗時は nil。
+- 高レベルラッパ: `samples/sg_io.lua` (`load_text` / `load_floats` / `load_png`) — mtime fast-path + content hash キャッシュ。詳細は「Live edit」セクション。
+
 エントリポイント: Lua 側で `on_init` / `on_frame` / `on_event` / `on_quit` の global 関数を定義すると呼ばれる。
 
-詳細は `tasks.md` 参照。
+設計と実装計画の詳細は `docs/superpowers/specs/` / `docs/superpowers/plans/` 配下を参照。
 
 ## 未実装 (将来)
 
@@ -170,14 +177,15 @@ scripts/
 依存:
 - `third_party/sokol/sokol_gfx.h` — single-header (vendored)、`SOKOL_VULKAN` backend
 - `third_party/slang/` — Slang 2026.x prebuilt (`include/`, `lib/`)、SPIR-V を target
-- `third_party/stb/stb_image_write.h` — single-header (vendored)、PNG 出力
+- `third_party/stb/stb_image_write.h` — single-header (vendored)、PNG 出力 (capture)
+- `third_party/stb/stb_image.h` — single-header (vendored)、PNG 入力 (`load_png`)
 - SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
 - Vulkan loader (`libvulkan.so`) — system 提供
 - Lua 5.5 — CMake FetchContent (static lib build)
 
 ## Known issues
 
-### sokol backend (Phase 2 で残った Vulkan validation warning / 制限)
+### sokol backend
 
 - **Depth/stencil format mismatch** (`VUID-vkCmdDraw-dynamicRenderingUnusedAttachments-08914` /
   `08917`): `src/backend_sokol.c` で D24_UNORM_S8_UINT を depth attachment に選んでいるが
@@ -190,8 +198,6 @@ scripts/
   fix は per-image semaphore array か `VK_KHR_swapchain_maintenance1` の利用。
 - **Window resize 未対応**: swapchain recreate (`VK_ERROR_OUT_OF_DATE_KHR`) を
   キャッチしていない。リサイズすると以後のフレームが broken になる可能性。
-- **lavapipe での 03_texture**: 解決済み (Phase 2 Task 18 で SPIR-V descriptor set
-  patch 適用)。両 driver で動作。
 
 ### sdlgpu backend
 
