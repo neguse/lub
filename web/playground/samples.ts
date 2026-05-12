@@ -1,3 +1,5 @@
+import type { EditorFile } from './editor'
+
 export const SAMPLE_NAMES = [
   '00_hello',
   '00b_clear',
@@ -12,8 +14,6 @@ export const SAMPLE_NAMES = [
   '07_compute',
 ]
 
-export type LoadedFile = { content: string; dirty: boolean; initial: string }
-
 function scanLuaReferences(src: string): string[] {
   const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g
   const out: string[] = []
@@ -24,12 +24,12 @@ function scanLuaReferences(src: string): string[] {
   return out
 }
 
-export async function loadSample(name: string): Promise<Map<string, LoadedFile>> {
+export async function loadSample(name: string): Promise<Map<string, EditorFile>> {
   const luaPath = `${name}.lua`
   const luaRes = await fetch('/samples/' + luaPath)
   if (!luaRes.ok) throw new Error(`fetch /samples/${luaPath} -> ${luaRes.status}`)
   const luaText = await luaRes.text()
-  const files = new Map<string, LoadedFile>()
+  const files = new Map<string, EditorFile>()
   files.set(luaPath, { content: luaText, dirty: false, initial: luaText })
   for (const ref of scanLuaReferences(luaText)) {
     // ref comes verbatim out of `load_text("...")`; the path may start with "samples/" or be relative

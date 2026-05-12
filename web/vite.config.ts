@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
-import { readFileSync, existsSync, cpSync } from 'node:fs'
-import { resolve, extname } from 'node:path'
+import { readFileSync, existsSync, cpSync, mkdirSync } from 'node:fs'
+import { resolve, extname, sep } from 'node:path'
 
 export default defineConfig({
   publicDir: 'public',
@@ -14,6 +14,8 @@ export default defineConfig({
         function serveDir(prefix: string, baseDir: string) {
           server.middlewares.use(prefix, (req, res, next) => {
             const filePath = resolve(baseDir, req.url?.slice(1) || '')
+            // Path traversal guard: filePath must be inside baseDir.
+            if (!filePath.startsWith(baseDir + sep) && filePath !== baseDir) return next()
             if (!existsSync(filePath)) return next()
             const ext = extname(filePath).toLowerCase()
             if (textExts.has(ext)) {
@@ -36,7 +38,11 @@ export default defineConfig({
       },
       closeBundle() {
         cpSync('../samples', 'dist/samples', { recursive: true })
-        cpSync('../build/wasm', 'dist/wasm', { recursive: true })
+        mkdirSync('dist/wasm', { recursive: true })
+        const wasmFiles = ['sglua.js', 'sglua.wasm', 'sglua.data']
+        for (const f of wasmFiles) {
+          cpSync(`../build/wasm/${f}`, `dist/wasm/${f}`)
+        }
       },
     },
   ],

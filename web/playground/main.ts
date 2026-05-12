@@ -26,7 +26,7 @@ $sample.addEventListener('change', async () => {
   }
   currentSample = $sample.value
   const files = await loadSample(currentSample)
-  setFiles(files as any)
+  setFiles(files)
   await restart()
 })
 
@@ -103,7 +103,7 @@ function waitForMsg(type: string): Promise<MessageEvent> {
 
 // boot
 loadSample(currentSample).then((files) => {
-  setFiles(files as any)
+  setFiles(files)
   restart()
 }).catch((e) => {
   addLog('failed to load initial sample: ' + e.message, 'err')

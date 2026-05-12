@@ -11,6 +11,8 @@ let files = new Map<string, EditorFile>()
 let activePath: string | null = null
 let onChangeCb: ((path: string, content: string) => void) | null = null
 
+// TODO(Phase 7): wire per-tab language via a CodeMirror Compartment.
+// langFor is the picker for .slang vs .lua highlight modes.
 function langFor(path: string) {
   if (path.endsWith('.slang')) return StreamLanguage.define(clike)
   return StreamLanguage.define(lua)
