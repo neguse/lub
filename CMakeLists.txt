@@ -203,6 +203,16 @@ endif()
 # alone is no longer enough on Emscripten >= 3.1.61.
 if(SGLUA_WASM)
   set_target_properties(sglua PROPERTIES SUFFIX ".js")
+  # --- emdawnwebgpu port ---
+  # Provides webgpu/webgpu.h that sokol_gfx's WGPU backend includes. Plain
+  # -sUSE_WEBGPU=1 is no longer sufficient on emscripten >= 3.1.61. The port
+  # is auto-fetched against the active emsdk's manifest, so the header ABI
+  # can shift if the SDK is upgraded.
+  #
+  # Tested with: emsdk 5.0.2 (emcc 5.0.2 / dc80f645ee70178c11666de0c3860d9e064d50e4).
+  # If you upgrade emsdk and sokol_gfx WGPU calls suddenly stop compiling or
+  # render-paths regress, revert to this SDK version or update sokol_gfx to a
+  # release that tracks the newer Dawn ABI.
   target_compile_options(sglua PRIVATE --use-port=emdawnwebgpu)
   # SHELL: keeps multi-token flags (`--preload-file PATH`) as one logical
   # unit so CMake doesn't dedupe / split them. Without SHELL the second
