@@ -1442,7 +1442,12 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
             app->wgpu_swapchain_tex = NULL;
         }
         sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-        sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch);
+        if (!sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
+            SDL_Log("sk_begin_frame: depth recreate failed during resize; skipping frame");
+            if (out_w) *out_w = cw;
+            if (out_h) *out_h = ch;
+            return;
+        }
     }
 
     // Acquire this frame's swapchain texture and create a view.
@@ -1453,12 +1458,20 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
     if (!ok) {
         // Outdated / Lost / Timeout: reconfigure and retry once. Anything
         // else, give up on this frame — the next iteration will try again.
-        if (surf_tex.texture) wgpuTextureRelease(surf_tex.texture);
+        if (surf_tex.texture) {
+            wgpuTextureRelease(surf_tex.texture);
+            surf_tex.texture = NULL;
+        }
         if (surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Outdated
          || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Lost
          || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Timeout) {
             sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-            sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch);
+            if (!sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
+                SDL_Log("sk_begin_frame: depth recreate failed during retry; skipping frame");
+                if (out_w) *out_w = cw;
+                if (out_h) *out_h = ch;
+                return;
+            }
             WGPUSurfaceTexture retry = {0};
             wgpuSurfaceGetCurrentTexture(app->wgpu_surface, &retry);
             ok = (retry.status == WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
