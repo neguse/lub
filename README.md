@@ -134,35 +134,120 @@ lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical*
 起動中の `samples/01_triangle.lua` の三角形の色が即座に変わる。
 PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編集すれば頂点も同様。
 
-## WASM playground (Phase 7 PoC)
+## WASM playground (web)
 
-ブラウザ上で動く Vite + CodeMirror ベースの playground を `web/` 配下に試験実装中。
-sokol-gfx の WGPU backend をターゲットに WASM へクロスコンパイルしたバイナリを iframe
+ブラウザ上で動く Vite + CodeMirror ベースの playground を `web/` 配下に同梱。
+sokol-gfx の WGPU backend を target に WASM へクロスコンパイルしたバイナリを iframe
 で読み込み、左ペインのエディタで `.slang` / `.lua` を編集すると 300ms debounce で右ペインの
 プレイヤーに同期される (`samples/data/*` の mtime/hash hot-reload 経路を再利用)。
-shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) を vendoring。
+shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) を vendor。
+
+### Build
 
 ```sh
+# 1. WASM バイナリを生成 (Linux/macOS — emsdk が必要)
+source ~/emsdk/emsdk_env.sh             # emcc / emcmake を PATH に
+emcmake cmake -S . -B build/wasm        # WGPU + emdawnwebgpu port が configure される
+cmake --build build/wasm -j             # sglua.{js,wasm,data} が生成
+
+# 2. JS 側の依存と slang-wasm を取得
 cd web
-npm install                  # postinstall で web/scripts/fetch-slang-wasm.sh が走り
-                             # web/public/slang/ に slang-wasm.* を取得する
-npm run dev                  # http://localhost:5173/
-npm run verify               # 別端末: playwright + swiftshader で headless 検証
+npm install                             # postinstall で web/scripts/fetch-slang-wasm.sh が
+                                        # web/public/slang/ に slang-wasm.{js,wasm} を取得
+npm run dev                             # http://localhost:5173/ で dev server 起動
+npm run verify                          # 別端末: playwright + swiftshader で headless 検証
+npm run build                           # web/dist/ に production bundle 生成
 ```
 
-`npm run verify` (= `web/scripts/verify-headless.mjs`) は dev server を立ち上げた状態で
-sample 01 の初期描画 / shader edit / lua edit / verts edit の auto-sync を pixel-bucket
-で検証し、sample 01〜07 の切替後の非黒描画を確認する。スクリーンショットは
-`/tmp/sglua-verify/` に出力される。
+### アーキテクチャ
+
+```
+            parent (index.html / main.ts)              iframe (player.html / player.ts)
+            ┌────────────────────────────┐             ┌──────────────────────────────────┐
+            │ CodeMirror editor          │   setFiles  │ slang-bridge.ts                  │
+            │   path -> content table    │  ────────▶  │   window.slangCompile() を export │
+            │ sample dropdown / restart  │  syncFiles  │ WebGPU device 取得 → preinit     │
+            │ debounce 300ms             │  ────────▶  │ sglua.js (Emscripten module)     │
+            └────────────────────────────┘  ◀─player──│   ↑ EM_ASYNC_JS bridge            │
+                                            Ready/log │   ↑ FS.writeFile で MEMFS overlay │
+                                                       │ sokol_gfx (WGPU) — canvas へ描画 │
+                                                       └──────────────────────────────────┘
+```
+
+postMessage プロトコル:
+
+- `parent → iframe`: `setFiles {files, entry}` (初回ブート時 1 回), `syncFiles {files}` (編集毎)
+- `iframe → parent`: `playerReady` (ハンドシェイク), `log {level, msg}` (console relay)
+
+shader compile は C 側 (`src/shader.cpp`) の `EM_ASYNC_JS` shim から
+`window.slangCompile(src, entry, stage)` を呼び、`{wgsl, reflectJson}` を `'\x01'`
+区切りで pack して戻す。エラーは `'\x02' + msg` 形式で Slang diagnostic として
+err_buf に届く。
+
+MEMFS sync: iframe 側で Emscripten の data file package (`sglua.data`) をマウント
+した直後に `FS.writeFile` でエディタ内容を上書きする (`player.ts` の `postPreload`
+hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
+`stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
 
 ### サンプル対応状況 (web)
 
 | Sample | Status |
 |--------|--------|
 | 01〜05, 07 | ✓ ブラウザで動作 |
-| 06_deferred | ✗ slang-wasm が `06_gbuffer.vs.slang` で OOB throw (Phase 8 で調査予定) |
+| 06_deferred | ✗ MRT → swapchain 経路の WGPU validation で描画されない (詳細 → 後述) |
 
-詳細・既知制約は Phase 8 で別途まとめる予定。
+06_deferred は当初 slang-wasm が `Aborted ... unreachable` で死んでいた。
+原因は per-compile に `Session` を作り捨てしていたことで、3 回目あたりの
+`Session.delete()` で slang-wasm が internal abort する embind バグ
+(`v2026.8.1`)。Phase 8 で `sharedSession` を 1 つ保持し続け、module 名だけ
+ユニーク化する戦略に切り替えて compile は green。
+残るのは swapchain pass で `depth attachment 480x360 != color attachments
+base plane 1280x720` を report される WGPU validation エラーで、
+これは MRT pass 後の sokol-gfx WGPU backend 側の swapchain 寸法管理の
+別バグ (sample 01〜05, 07 で出る warning は描画を阻害しないのに 06 だけは
+submit が無効化される)。native は影響なし、`scripts/run-golden.sh` で
+22/22 PASS。
+
+`web/scripts/verify-headless.mjs` は `KNOWN_FAILING` セットを持っており、
+06 は描画失敗 (`nonBlack` ratio = 0) でも CI を落とさないようゲートしてある。
+
+### Browser requirements
+
+- WebGPU が利用可能なブラウザ:
+  - **Chrome / Edge** (primary、137+) — 既定で WebGPU 有効。
+  - **Firefox Nightly** — `dom.webgpu.enabled` を `about:config` で有効化。
+- ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
+- production bundle (`npm run build`) は `web/dist/` 配下、`/wasm/`,
+  `/slang/` への絶対パス前提なので site root に置く。
+
+### Headless verification
+
+`npm run verify` は playwright + chromium (swiftshader Vulkan) で:
+
+1. sample 01 の初期描画 (orange triangle on dark blue clear) を pixel bucket で確認
+2. fragment shader を編集 → green になる
+3. lua の clear_color を編集 → 背景が red になる
+4. verts を縮小編集 → green pixel 数が減る
+5. sample 01〜07 を順に切替 → 各サンプルの非黒描画を確認 (KNOWN_FAILING を除く)
+
+スクリーンショットは `/tmp/sglua-verify/` に出力される。CI 利用時は dev server を
+別ジョブで立ち上げてから `SGLUA_URL=http://...` を指定すること。
+
+### Live edit caveats
+
+- shader に syntax error がある場合: 既存の shader を維持して Slang diagnostic を
+  iframe log に流すのみ (next save で復帰)。初回 compile 失敗のみ load を止める。
+- 300ms debounce: 入力後 300ms 静止してから `syncFiles` を送る。連打中は更新されない。
+- サンプル切替時に dirty な編集があると `confirm()` で警告する。
+
+### Known limitations
+
+- **capture / golden image は native のみ**。WebGPU の `mapAsync` 経路で readback
+  は可能だが capture API が同期 sync なので未実装 (`backend_sokol.c` の `sk_capture`
+  が `false` を返す)。
+- **sdlgpu backend は web 非対応**。WGPU backend の sokol のみ。
+- **sample 06 は描画されない (上記表)**。compile は成功するが MRT → swapchain pass
+  の WGPU validation で submit が無効化される。
 
 ## サンプル
 
@@ -203,7 +288,7 @@ sample 01 の初期描画 / shader edit / lua edit / verts edit の auto-sync �
 
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
-- VR / マルチスレッド描画
+- sample 06 を web で描画 (sokol-gfx WGPU backend の swapchain depth 寸法問題)
 
 ## アーキテクチャ
 

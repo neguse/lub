@@ -336,7 +336,14 @@ page.on('dialog', (d) => d.accept().catch(() => {}))
 // gate CI on them. If a listed sample unexpectedly PASSES we warn loudly so
 // the entry gets removed.
 const KNOWN_FAILING = new Set([
-  '06_deferred',  // slang-wasm OOB on 06_gbuffer.vs.slang (Phase 8 investigation)
+  // 06_deferred compiles fine in slang-wasm (Phase 8 sharedSession fix), but
+  // its swapchain pass after the MRT pass trips a WGPU validation:
+  // "depth stencil attachment 480x360 != color attachments base plane
+  // 1280x720" → the command buffer is invalid → swapchain is never written.
+  // Same warnings appear for other samples but don't suppress their draws;
+  // only 06 ends up uniformly black. Tracked as a separate web-only render
+  // issue (not slang/compile).
+  '06_deferred',
 ])
 
 // Per-sample minimum non-black canvas ratio. Floors are picked from observed

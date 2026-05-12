@@ -1229,9 +1229,9 @@ EM_ASYNC_JS(char*, sglua_slang_compile_js,
     };
     if (typeof window === 'undefined' ||
         typeof window.slangCompile !== 'function') {
-        console.error('[sglua] window.slangCompile not yet defined ' +
-                      "(Phase 6 hasn't wired up slang-wasm). entry=" + entryStr);
-        return packError('slang-wasm not loaded yet (Phase 6)');
+        console.error('[sglua] window.slangCompile not exposed by the host; ' +
+                      'slang-wasm bridge not loaded. entry=' + entryStr);
+        return packError('slang-wasm bridge not loaded (window.slangCompile undefined)');
     }
     try {
         const result = await window.slangCompile(srcStr, entryStr, stage);
