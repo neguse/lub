@@ -1329,7 +1329,7 @@ static SglPixelFormat sk_swapchain_color_format(App *app) {
 //
 // Canvas dimensions are queried from the JS side (player.html sets
 // window._canvasWidth / _canvasHeight before loading the WASM, then keeps
-// them in sync when the iframe is resized). Phase 5 will land that html.
+// them in sync when the iframe is resized). The player html provides this.
 
 EM_JS(int, sglua_canvas_width,  (void), { return (window._canvasWidth  || 480) | 0; })
 EM_JS(int, sglua_canvas_height, (void), { return (window._canvasHeight || 360) | 0; })
@@ -1386,7 +1386,7 @@ static void sglua_wgpu_configure_surface(App *app, uint32_t w, uint32_t h) {
 
 static bool sk_init(App *app) {
     // emdawnwebgpu exposes the JS-side preinitializedWebGPUDevice through
-    // emscripten_webgpu_get_device(). player.html (Phase 5) is expected to
+    // emscripten_webgpu_get_device(). player.html is expected to
     // have already done `await navigator.gpu.requestAdapter().requestDevice()`
     // and assigned `Module.preinitializedWebGPUDevice = device` before
     // loading sglua.js. If this returns NULL the page hasn't done that and
@@ -1596,8 +1596,8 @@ static void sk_begin_pass(App *app, const PassBeginDesc *d) {
 static bool sk_capture(App *app, const char *path) {
     (void)app; (void)path;
     // WebGPU readback (mapAsync) would work, but the path is async and the
-    // capture API is currently synchronous. Phase 6+ may revisit; for now
-    // capture is intentionally not supported under wasm.
+    // capture API is currently synchronous. Capture is intentionally not
+    // supported under wasm.
     SDL_Log("[wasm] capture not supported on WebGPU backend");
     return false;
 }

@@ -7,11 +7,9 @@
 // This file is C++ because the Slang public API uses COM-like C++
 // interfaces; the exposed interface (shader.h) is pure C.
 //
-// Emscripten: the Slang prebuilt is native-only; Phase 4 will load
-// slang-wasm via EM_ASYNC_JS. Until then shader_compile / _compute return
-// failure so use_shader keeps the previous (or empty) shader entry. The
-// caller already has fallback paths for compile failure (samples log the
-// error and continue), so a stub-fail keeps the frame loop alive.
+// Emscripten loads slang-wasm via EM_ASYNC_JS; native uses the C++ Slang API.
+// On wasm the JS bridge returns WGSL bytes (stashed into ShaderBlob.spirv)
+// plus a reflection JSON blob — see the EM_ASYNC_JS section below.
 #include "shader.h"
 
 #ifndef __EMSCRIPTEN__
@@ -1173,15 +1171,14 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 // Emscripten Slang bridge.
 //
 // We delegate Slang compilation to the JS side via EM_ASYNC_JS. The JS
-// glue (`window.slangCompile`, defined in Phase 6 in
-// web/playground/slang-bridge.ts) loads `@shader-slang/slang-wasm`, runs
-// Slang in-page, and returns `{wgsl, reflectJson}` (or `{error}`).
+// glue (`window.slangCompile`, defined in web/playground/slang-bridge.ts)
+// loads `@shader-slang/slang-wasm`, runs Slang in-page, and returns
+// `{wgsl, reflectJson}` (or `{error}`).
 //
 // File layout (this block):
 //   1. EM_ASYNC_JS shim `sglua_slang_compile_js` — single async call point.
 //   2. `reflect_from_slang_json` — populate ShaderReflection from Slang's
-//      reflection JSON. Phase 4 lands a near-empty implementation; Phase 6
-//      will iterate based on observed Slang output.
+//      reflection JSON.
 //   3. `shader_compile` / `shader_compile_compute` — drive (1) twice/once
 //      and (2) per blob, returning WGSL bytes into ShaderBlob.spirv.
 
@@ -1296,7 +1293,7 @@ bool tex_slot_exists(const ShaderReflection* refl, int img_slot) {
     }
     return false;
 }
-// Used by Phase 6's storage-buffer dedup path in reflect_from_slang_json.
+// Used by the storage-buffer dedup path in reflect_from_slang_json.
 bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
     for (int i = 0; i < refl->storage_buf_count; ++i) {
         if (refl->storage_bufs[i].slot == slot) return true;
@@ -1445,7 +1442,7 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
     std::string bkind = p["binding"].value("kind", std::string(""));
     // Only descriptorTableSlot bindings are for resources; uniform/varyingInput
     // appear nested inside fields. Other bindings (rootConstant, etc.) are
-    // outside Phase 6's scope.
+    // outside current scope.
     if (bkind != "descriptorTableSlot") return;
     int slot = p["binding"].value("index", 0);
 
@@ -1621,7 +1618,7 @@ bool compile_one(const char *src, const char *entry, int stage,
     }
     // Stash WGSL source bytes into out_blob->spirv. The field is misnamed on
     // wasm (it's WGSL text, not SPIR-V binary) but it's the same opaque byte
-    // container the backend will consume in Phase 6.
+    // container the backend consumes.
     size_t n = wgsl.size();
     out_blob->spirv = (uint32_t*)malloc(n + 1);
     if (!out_blob->spirv) {

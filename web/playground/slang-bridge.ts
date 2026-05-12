@@ -266,15 +266,15 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
       layout = linked.getLayout(0)
       if (layout) reflectObj = layout.toJsonObject() ?? {}
     } catch (e) {
-      // Reflection failure is non-fatal — we still got WGSL. Phase 6's
-      // reflection mapper degrades gracefully on missing fields.
+      // Reflection failure is non-fatal — we still got WGSL. The reflection
+      // mapper degrades gracefully on missing fields.
       console.warn('[slang-bridge] reflection extraction threw:', e)
     }
     const reflectJson = JSON.stringify(reflectObj)
     // Sanity-check: if reflection says there ARE resources but the regex
     // matched zero or fewer-than-expected declarations, Slang likely emitted
     // a form we don't recognise (e.g. multi-line @binding or a new resource
-    // kind). Warn so a Phase 8 maintainer sees it before runtime breakage.
+    // kind). Warn so future maintainers see it before runtime breakage.
     const expected = expectedResourceCount(reflectObj)
     if (expected > 0 && remapped < expected) {
       console.warn('[slang-bridge] WGSL group remap matched',
@@ -282,8 +282,8 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
                    expected, 'parameters; group rewrite may have missed a form. WGSL:\n',
                    wgsl)
     }
-    // Debug: dump the first compile's reflection so a Phase 6 maintainer can
-    // see the schema in the browser console. Toggle via the URL hash.
+    // Debug: dump the first compile's reflection so a maintainer can see
+    // the schema in the browser console. Toggle via the URL hash.
     if (location.hash.includes('debug-slang')) {
       console.log('[slang-bridge] WGSL for', entry, '\n', wgsl)
       console.log('[slang-bridge] reflection for', entry, '\n', reflectJson)

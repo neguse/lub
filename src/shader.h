@@ -66,11 +66,11 @@ typedef struct ShaderReflection {
 // Opaque shader byte-blob, owner = caller (free with shader_blob_free).
 //
 // On native builds this is the SPIR-V module bytes produced by Slang, hence
-// the historical field name `spirv`. On the wasm build (Phase 4+) we instead
-// stash WGSL source bytes into the same buffer — see shader.cpp's
-// EM_ASYNC_JS bridge. The backend make_shader path will eventually fork on
-// SOKOL_WGPU vs SOKOL_VULKAN to read the right slot (Phase 6); until then
-// the field stays a generic byte container so the wasm bridge can land.
+// the historical field name `spirv`. On the wasm build we instead stash WGSL
+// source bytes into the same buffer — see shader.cpp's EM_ASYNC_JS bridge.
+// The backend make_shader path forks on SOKOL_WGPU vs SOKOL_VULKAN to read
+// the right slot; the field stays a generic byte container so the same
+// struct can serve both targets.
 typedef struct ShaderBlob {
     uint32_t *spirv;
     size_t bytes;
