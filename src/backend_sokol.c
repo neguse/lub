@@ -1,13 +1,20 @@
-// backend_sokol.c — RenderBackend impl using sokol_gfx (Vulkan backend) plus
-// direct Vulkan calls for instance/device/swapchain ownership and capture.
+// backend_sokol.c — RenderBackend impl using sokol_gfx.
 //
-// All sg_*/vk* calls used by the runtime live in this file. Other source files
-// (pass.c, pipeline.c, resources.c, capture.c, lua_api.c) talk to the GPU
-// only through g_backend->xxx().
+// Two GPU API paths share most of this file:
+//   - native: SOKOL_VULKAN, with direct Vulkan calls for instance / device /
+//     swapchain ownership and the capture (vkCmdCopyImageToBuffer) path.
+//   - wasm  : SOKOL_WGPU via emdawnwebgpu, with direct webgpu.h calls for
+//     surface ownership / per-frame texture acquisition.
 //
-// Emscripten: the entire Vulkan path is #ifdef'd out; a small WGPU stub at
-// the bottom provides just enough vtable surface to let the C frame loop run
-// without crashing. Phase 3 will implement real WebGPU swapchain wiring.
+// Data-path callbacks (make/destroy/update/apply/draw/dispatch/end_pass and
+// the offscreen branch of begin_pass) are pure sokol_gfx and therefore
+// shared verbatim — they sit outside the platform guards. Only the bring-up,
+// swapchain, capture, and "what's the swapchain color format" entry points
+// differ per backend.
+//
+// All sg_*/vk*/wgpu* calls used by the runtime live in this file. Other
+// source files (pass.c, pipeline.c, resources.c, capture.c, lua_api.c) talk
+// to the GPU only through g_backend->xxx().
 #include "backend.h"
 #include "app.h"
 #include "shader.h"
@@ -25,8 +32,13 @@
 #include <vulkan/vulkan.h>
 
 #include "stb_image_write.h"
+#else
+#include <webgpu/webgpu.h>
+#include <emscripten/emscripten.h>
+#endif
 
 // --- per-image / per-shader / per-pipeline backend objects ---------------
+// Cross-platform: sokol-level handles only.
 
 typedef struct SkImage {
     sg_image  img;
@@ -59,6 +71,7 @@ static void sglua_sokol_logger(
     SDL_Log("[sg %s:%u] %s", lvl, line, msg ? msg : "(no msg)");
 }
 
+#ifndef __EMSCRIPTEN__
 // --- Vulkan boot (instance/device/swapchain) ----------------------------
 
 static bool create_vk_instance(VkInstance *out_inst) {
@@ -506,6 +519,11 @@ static void sk_end_frame(App *app) {
     }
 }
 
+#endif // !__EMSCRIPTEN__
+
+// --- shared data path -----------------------------------------------------
+// Pure sokol_gfx — no API-direct calls. Used by both native and wasm.
+
 static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_t bytes) {
     SkBuffer *sb = (SkBuffer*)calloc(1, sizeof(SkBuffer));
     if (!sb) return 0;
@@ -851,24 +869,30 @@ static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
     });
 }
 
-static void sk_begin_pass(App *app, const PassBeginDesc *d) {
+// Shared offscreen-MRT path; the swapchain branch is platform-specific and
+// lives in sk_begin_pass below. Returns true if the desc described an
+// offscreen pass and the pass was started here.
+static bool sk_try_begin_offscreen_pass(const PassBeginDesc *d) {
+    if (!d->targets[0]) return false;
     int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
     if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
-    if (d->targets[0]) {
-        // offscreen (possibly MRT). All targets must be non-zero render-target images.
-        sg_pass pass = {0};
-        for (int i = 0; i < nct; ++i) {
-            SkImage *si = (SkImage*)d->targets[i];
-            pass.action.colors[i].load_action = SG_LOADACTION_CLEAR;
-            pass.action.colors[i].clear_value.r = d->clear[i][0];
-            pass.action.colors[i].clear_value.g = d->clear[i][1];
-            pass.action.colors[i].clear_value.b = d->clear[i][2];
-            pass.action.colors[i].clear_value.a = d->clear[i][3];
-            pass.attachments.colors[i] = si->color_att;
-        }
-        sg_begin_pass(&pass);
-        return;
+    sg_pass pass = {0};
+    for (int i = 0; i < nct; ++i) {
+        SkImage *si = (SkImage*)d->targets[i];
+        pass.action.colors[i].load_action = SG_LOADACTION_CLEAR;
+        pass.action.colors[i].clear_value.r = d->clear[i][0];
+        pass.action.colors[i].clear_value.g = d->clear[i][1];
+        pass.action.colors[i].clear_value.b = d->clear[i][2];
+        pass.action.colors[i].clear_value.a = d->clear[i][3];
+        pass.attachments.colors[i] = si->color_att;
     }
+    sg_begin_pass(&pass);
+    return true;
+}
+
+#ifndef __EMSCRIPTEN__
+static void sk_begin_pass(App *app, const PassBeginDesc *d) {
+    if (sk_try_begin_offscreen_pass(d)) return;
     uint32_t slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
     sg_pass pass = {
         .action.colors[0] = {
@@ -893,6 +917,7 @@ static void sk_begin_pass(App *app, const PassBeginDesc *d) {
     };
     sg_begin_pass(&pass);
 }
+#endif // !__EMSCRIPTEN__
 
 static void sk_end_pass(App *app) {
     (void)app;
@@ -969,6 +994,7 @@ static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
     sg_end_pass();
 }
 
+#ifndef __EMSCRIPTEN__
 // --- capture: vkCmdCopyImageToBuffer + stb_image_write -------------------
 
 static uint32_t pick_host_visible_memory_type(
@@ -1222,38 +1248,129 @@ static SglPixelFormat sk_swapchain_color_format(App *app) {
     }
 }
 
-#else  // __EMSCRIPTEN__
-// -------------------------------------------------------------------------
-// Emscripten / WGPU stubs.
-//
-// Phase 2 deliberately doesn't wire up the WebGPU device or swapchain —
-// shader compile is also stubbed out, so even if rendering worked, samples
-// would have nothing to draw with. These stubs exist so the C frame loop
-// (begin_frame → on_frame → end_frame) runs without crashing the wasm
-// process and so the link succeeds. Phase 3 will:
-//   1. Request a WebGPU adapter/device via emscripten_webgpu_*.
-//   2. Create a canvas-backed swapchain.
-//   3. Plumb the device pointer into sg_setup's sg_wgpu_environment.
-//   4. Per-frame: acquire the swapchain texture view and pass it to
-//      sg_begin_pass via sg_wgpu_swapchain.
+#endif // !__EMSCRIPTEN__
 
-static void sglua_sokol_logger(
-    const char* tag, uint32_t level, uint32_t item_id,
-    const char* msg, uint32_t line, const char* file, void* user)
-{
-    (void)tag; (void)item_id; (void)file; (void)user;
-    const char *lvl = (level == 0) ? "PANIC" : (level == 1) ? "ERROR"
-                    : (level == 2) ? "WARN"  : "INFO";
-    SDL_Log("[sg %s:%u] %s", lvl, line, msg ? msg : "(no msg)");
+#ifdef __EMSCRIPTEN__
+// -------------------------------------------------------------------------
+// Emscripten / WebGPU bring-up.
+//
+// Architecture mirror of the Vulkan path above:
+//   - sk_init   : grab the JS-side preinitialized WGPUDevice, build an
+//                 instance, create a surface from the #canvas selector,
+//                 configure it, allocate a depth-stencil, hand the device
+//                 to sg_setup.
+//   - sk_begin_frame : on resize, reconfigure surface + rebuild depth.
+//                 Otherwise, wgpuSurfaceGetCurrentTexture → cache view.
+//   - sk_begin_pass  : when targets[0]==0 (swapchain), populate
+//                 sg_pass.swapchain.wgpu with the cached view + depth view.
+//   - sk_end_frame   : sg_commit; release the per-frame view. On Emscripten
+//                 the browser presents automatically via rAF — there's no
+//                 wgpuSurfacePresent call.
+//
+// Canvas dimensions are queried from the JS side (player.html sets
+// window._canvasWidth / _canvasHeight before loading the WASM, then keeps
+// them in sync when the iframe is resized). Phase 5 will land that html.
+
+EM_JS(int, sglua_canvas_width,  (void), { return (window._canvasWidth  || 480) | 0; })
+EM_JS(int, sglua_canvas_height, (void), { return (window._canvasHeight || 360) | 0; })
+
+static WGPUStringView sglua_wgpu_string(const char *s) {
+    WGPUStringView v = { s, s ? strlen(s) : 0 };
+    return v;
+}
+
+// Create/recreate the depth-stencil texture sized to the current canvas.
+// Releases the old pair if present. Called from sk_init and on resize.
+static bool sglua_wgpu_recreate_depth(App *app, uint32_t w, uint32_t h) {
+    if (app->wgpu_depth_view) {
+        wgpuTextureViewRelease(app->wgpu_depth_view);
+        app->wgpu_depth_view = NULL;
+    }
+    if (app->wgpu_depth_tex) {
+        wgpuTextureRelease(app->wgpu_depth_tex);
+        app->wgpu_depth_tex = NULL;
+    }
+    WGPUTextureDescriptor ds_desc = {
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .dimension = WGPUTextureDimension_2D,
+        .size = { .width = w, .height = h, .depthOrArrayLayers = 1 },
+        .format = WGPUTextureFormat_Depth32FloatStencil8,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    app->wgpu_depth_tex = wgpuDeviceCreateTexture(app->wgpu_device, &ds_desc);
+    if (!app->wgpu_depth_tex) {
+        SDL_Log("[wgpu] wgpuDeviceCreateTexture (depth) failed");
+        return false;
+    }
+    app->wgpu_depth_view = wgpuTextureCreateView(app->wgpu_depth_tex, NULL);
+    if (!app->wgpu_depth_view) {
+        SDL_Log("[wgpu] wgpuTextureCreateView (depth) failed");
+        return false;
+    }
+    return true;
+}
+
+static void sglua_wgpu_configure_surface(App *app, uint32_t w, uint32_t h) {
+    WGPUSurfaceConfiguration cfg = {
+        .device = app->wgpu_device,
+        .format = app->wgpu_surface_format,
+        .usage  = WGPUTextureUsage_RenderAttachment,
+        .width  = w,
+        .height = h,
+        .alphaMode   = WGPUCompositeAlphaMode_Opaque,
+        .presentMode = WGPUPresentMode_Fifo,
+    };
+    wgpuSurfaceConfigure(app->wgpu_surface, &cfg);
 }
 
 static bool sk_init(App *app) {
-    (void)app;
-    SDL_Log("[wasm] sokol backend init: WGPU stub (Phase 3 will complete this)");
-    // Bring up sokol_gfx with a minimal environment. Without a real WGPU
-    // device this won't successfully create GPU resources, but sg_setup
-    // itself only stores the desc — most failure modes will surface later
-    // in sg_begin_pass / sg_commit, where the stubs below early-return.
+    // emdawnwebgpu exposes the JS-side preinitializedWebGPUDevice through
+    // emscripten_webgpu_get_device(). player.html (Phase 5) is expected to
+    // have already done `await navigator.gpu.requestAdapter().requestDevice()`
+    // and assigned `Module.preinitializedWebGPUDevice = device` before
+    // loading sglua.js. If this returns NULL the page hasn't done that and
+    // there's nothing the C side can recover to.
+    app->wgpu_device = emscripten_webgpu_get_device();
+    if (!app->wgpu_device) {
+        SDL_Log("[wgpu] emscripten_webgpu_get_device returned NULL — "
+                "did player.html set Module.preinitializedWebGPUDevice?");
+        return false;
+    }
+
+    app->wgpu_instance = wgpuCreateInstance(NULL);
+    if (!app->wgpu_instance) {
+        SDL_Log("[wgpu] wgpuCreateInstance failed");
+        return false;
+    }
+
+    // Surface from the player.html canvas. The CSS selector matches the
+    // <canvas id="canvas"> in player.html documented in the spec.
+    WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas_src = {
+        .chain = { .sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector },
+        .selector = sglua_wgpu_string("#canvas"),
+    };
+    WGPUSurfaceDescriptor surf_desc = {
+        .nextInChain = &canvas_src.chain,
+    };
+    app->wgpu_surface = wgpuInstanceCreateSurface(app->wgpu_instance, &surf_desc);
+    if (!app->wgpu_surface) {
+        SDL_Log("[wgpu] wgpuInstanceCreateSurface failed");
+        return false;
+    }
+
+    // BGRA8Unorm is what every browser-side WebGPU surface supports today.
+    // The pixel-format match with sg_setup defaults below is load-bearing —
+    // sokol_gfx asserts on mismatch in begin_pass.
+    app->wgpu_surface_format = WGPUTextureFormat_BGRA8Unorm;
+
+    int cw = sglua_canvas_width();
+    int ch = sglua_canvas_height();
+    if (cw <= 0) cw = 480;
+    if (ch <= 0) ch = 360;
+    sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
+    if (!sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) return false;
+
     sg_setup(&(sg_desc){
         .environment = {
             .defaults = {
@@ -1261,96 +1378,164 @@ static bool sk_init(App *app) {
                 .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
                 .sample_count = 1,
             },
-            // .wgpu.device is left NULL; Phase 3 will fill it in.
+            .wgpu = {
+                .device = (const void*)app->wgpu_device,
+            },
         },
         .logger.func = sglua_sokol_logger,
     });
+    SDL_Log("[wgpu] sokol backend init OK: %dx%d", cw, ch);
     return true;
 }
 
 static void sk_shutdown(App *app) {
-    (void)app;
     sg_shutdown();
+    if (app->wgpu_swapchain_view) {
+        wgpuTextureViewRelease(app->wgpu_swapchain_view);
+        app->wgpu_swapchain_view = NULL;
+    }
+    if (app->wgpu_swapchain_tex) {
+        wgpuTextureRelease(app->wgpu_swapchain_tex);
+        app->wgpu_swapchain_tex = NULL;
+    }
+    if (app->wgpu_depth_view) {
+        wgpuTextureViewRelease(app->wgpu_depth_view);
+        app->wgpu_depth_view = NULL;
+    }
+    if (app->wgpu_depth_tex) {
+        wgpuTextureRelease(app->wgpu_depth_tex);
+        app->wgpu_depth_tex = NULL;
+    }
+    if (app->wgpu_surface) {
+        wgpuSurfaceRelease(app->wgpu_surface);
+        app->wgpu_surface = NULL;
+    }
+    if (app->wgpu_instance) {
+        wgpuInstanceRelease(app->wgpu_instance);
+        app->wgpu_instance = NULL;
+    }
+    // wgpu_device is owned by the JS side (preinitializedWebGPUDevice).
+    // We do NOT release it; the page will discard it on iframe reload.
+    app->wgpu_device = NULL;
 }
 
 static void sk_begin_frame(App *app, int *out_w, int *out_h) {
-    (void)app;
-    // Hard-coded extents until canvas wiring lands in Phase 3.
-    if (out_w) *out_w = 480;
-    if (out_h) *out_h = 360;
+    int cw = sglua_canvas_width();
+    int ch = sglua_canvas_height();
+    if (cw <= 0) cw = 480;
+    if (ch <= 0) ch = 360;
+
+    // Resize: either the SDL event handler flagged pending_resize or the
+    // canvas extents diverged from what's currently configured.
+    bool needs_resize = app->pending_resize
+                       || (app->last_w != 0 && cw != app->last_w)
+                       || (app->last_h != 0 && ch != app->last_h);
+    if (needs_resize) {
+        app->pending_resize = false;
+        // Drop any in-flight per-frame view before reconfiguring.
+        if (app->wgpu_swapchain_view) {
+            wgpuTextureViewRelease(app->wgpu_swapchain_view);
+            app->wgpu_swapchain_view = NULL;
+        }
+        if (app->wgpu_swapchain_tex) {
+            wgpuTextureRelease(app->wgpu_swapchain_tex);
+            app->wgpu_swapchain_tex = NULL;
+        }
+        sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
+        sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch);
+    }
+
+    // Acquire this frame's swapchain texture and create a view.
+    WGPUSurfaceTexture surf_tex = {0};
+    wgpuSurfaceGetCurrentTexture(app->wgpu_surface, &surf_tex);
+    bool ok = (surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
+            || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal);
+    if (!ok) {
+        // Outdated / Lost / Timeout: reconfigure and retry once. Anything
+        // else, give up on this frame — the next iteration will try again.
+        if (surf_tex.texture) wgpuTextureRelease(surf_tex.texture);
+        if (surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Outdated
+         || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Lost
+         || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Timeout) {
+            sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
+            sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch);
+            WGPUSurfaceTexture retry = {0};
+            wgpuSurfaceGetCurrentTexture(app->wgpu_surface, &retry);
+            ok = (retry.status == WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
+               || retry.status == WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal);
+            surf_tex = retry;
+        }
+    }
+    if (ok && surf_tex.texture) {
+        app->wgpu_swapchain_tex  = surf_tex.texture;
+        app->wgpu_swapchain_view = wgpuTextureCreateView(surf_tex.texture, NULL);
+    } else {
+        // sk_begin_pass will see NULL view and skip the swapchain attachment;
+        // sokol_gfx will then panic. We log and let the next frame retry —
+        // the most common cause is a 0x0 canvas while the iframe loads.
+        if (surf_tex.texture) wgpuTextureRelease(surf_tex.texture);
+        SDL_Log("[wgpu] surface acquire failed (status=%d)", (int)surf_tex.status);
+    }
+
+    if (out_w) *out_w = cw;
+    if (out_h) *out_h = ch;
 }
 
 static void sk_end_frame(App *app) {
-    (void)app;
-    // sg_commit() would attempt to submit to a WGPU queue we haven't set up;
-    // skip until Phase 3.
-}
-
-static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_t bytes) {
-    (void)type; (void)data; (void)bytes;
-    return 0;
-}
-
-static void sk_destroy_buffer(BackendBuffer h) { (void)h; }
-
-static BackendImage sk_make_image(const ImageDesc *d) {
-    (void)d;
-    return 0;
-}
-
-static void sk_destroy_image(BackendImage h) { (void)h; }
-
-static BackendShader sk_make_shader(const ShaderDesc *d) {
-    (void)d;
-    return 0;
-}
-
-static void sk_destroy_shader(BackendShader h) { (void)h; }
-
-static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
-    (void)d;
-    return 0;
-}
-
-static void sk_destroy_pipeline(BackendPipeline h) { (void)h; }
-
-static void sk_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
-    (void)h; (void)data; (void)bytes;
-}
-
-static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
-    (void)h; (void)data; (void)bytes;
+    sg_commit();
+    // Per-frame view+texture are 1-use: release them after sg_commit has
+    // queued the command buffer. Texture itself is owned by the surface so
+    // we release the handle, not destroy the underlying GPU resource.
+    if (app->wgpu_swapchain_view) {
+        wgpuTextureViewRelease(app->wgpu_swapchain_view);
+        app->wgpu_swapchain_view = NULL;
+    }
+    if (app->wgpu_swapchain_tex) {
+        wgpuTextureRelease(app->wgpu_swapchain_tex);
+        app->wgpu_swapchain_tex = NULL;
+    }
+    // No wgpuSurfacePresent on Emscripten — the browser flushes via rAF
+    // and presents automatically after the JS event loop runs.
 }
 
 static void sk_begin_pass(App *app, const PassBeginDesc *d) {
-    (void)app; (void)d;
-}
-
-static void sk_end_pass(App *app) { (void)app; }
-
-static void sk_apply_pipeline(BackendPipeline p) { (void)p; }
-static void sk_apply_bindings(const BindingsDesc *b) { (void)b; }
-static void sk_apply_uniforms(int ub_slot, const void *data, size_t bytes) {
-    (void)ub_slot; (void)data; (void)bytes;
-}
-static void sk_draw(int base, int count) { (void)base; (void)count; }
-
-static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
-    (void)app; (void)d;
+    if (sk_try_begin_offscreen_pass(d)) return;
+    sg_pass pass = {
+        .action.colors[0] = {
+            .load_action = SG_LOADACTION_CLEAR,
+            .clear_value = { d->clear[0][0], d->clear[0][1], d->clear[0][2], d->clear[0][3] },
+        },
+        .swapchain = {
+            .width = app->last_w,
+            .height = app->last_h,
+            .color_format = SG_PIXELFORMAT_BGRA8,
+            .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+            .sample_count = 1,
+            .wgpu = {
+                .render_view = (const void*)app->wgpu_swapchain_view,
+                .depth_stencil_view = (const void*)app->wgpu_depth_view,
+            },
+        },
+    };
+    sg_begin_pass(&pass);
 }
 
 static bool sk_capture(App *app, const char *path) {
     (void)app; (void)path;
-    SDL_Log("[wasm] capture not supported (no Vulkan readback path)");
+    // WebGPU readback (mapAsync) would work, but the path is async and the
+    // capture API is currently synchronous. Phase 6+ may revisit; for now
+    // capture is intentionally not supported under wasm.
+    SDL_Log("[wasm] capture not supported on WebGPU backend");
     return false;
 }
 
 static SglPixelFormat sk_swapchain_color_format(App *app) {
     (void)app;
+    // Surface format is pinned to BGRA8Unorm at sk_init (see comment there).
     return SGL_PF_BGRA8;
 }
 
-#endif  // __EMSCRIPTEN__
+#endif // __EMSCRIPTEN__
 
 const RenderBackend g_backend_sokol = {
     .name = "sokol",

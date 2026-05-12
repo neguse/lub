@@ -6,6 +6,11 @@
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3/SDL_gpu.h>
 #include <vulkan/vulkan.h>
+#else
+// emdawnwebgpu port: the same webgpu/webgpu.h header that sokol_gfx's WGPU
+// backend pulls in. Defining types here keeps the App struct WGPU fields
+// real (opaque pointer typedefs) instead of void* placeholders.
+#include <webgpu/webgpu.h>
 #endif
 #include <stdint.h>
 #include <stdbool.h>
@@ -56,6 +61,22 @@ typedef struct App {
     // Frame snapshot for capture: the swapchain image presented this frame.
     // Set in begin_frame, used by sokol backend's capture path.
     VkImage          vk_last_presented_image;
+#else  // __EMSCRIPTEN__
+    // WGPU state. Mirrors the Vulkan owners above: the wasm sokol backend
+    // creates these in sk_init and tears them down in sk_shutdown. The
+    // surface lives across resizes; depth_stencil + the current swapchain
+    // view get rebuilt when canvas extents change.
+    WGPUInstance     wgpu_instance;
+    WGPUDevice       wgpu_device;
+    WGPUSurface      wgpu_surface;
+    WGPUTextureFormat wgpu_surface_format;   // WGPUTextureFormat_BGRA8Unorm
+    WGPUTexture      wgpu_depth_tex;
+    WGPUTextureView  wgpu_depth_view;
+    // Per-frame: acquired from wgpuSurfaceGetCurrentTexture in begin_frame,
+    // released in end_frame. begin_pass reads it to populate the swapchain
+    // attachment.
+    WGPUTexture      wgpu_swapchain_tex;
+    WGPUTextureView  wgpu_swapchain_view;
 #endif  // __EMSCRIPTEN__
 
     LuaCtx        lua;
