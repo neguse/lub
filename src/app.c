@@ -1,5 +1,6 @@
 #include "app.h"
 #include "backend.h"
+#include "lua_api.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,6 +49,21 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     if (out_h) *out_h = h;
     app->last_w = w;
     app->last_h = h;
+
+    // Hot-reload entry Lua when its mtime changes. Skip during PRE_BACKEND
+    // (callbacks aren't being driven yet) and on the very first poll
+    // (cache == 0) — record the baseline instead of triggering an
+    // unnecessary swap at boot.
+    if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
+        int64_t now = app_file_mtime_ns(app->entry_path);
+        if (now && now != app->entry_mtime_cache) {
+            if (app->entry_mtime_cache != 0) {
+                SDL_Log("entry mtime changed, hotswapping %s", app->entry_module_name);
+                lua_ctx_hotswap(&app->lua, app->entry_module_name);
+            }
+            app->entry_mtime_cache = now;
+        }
+    }
 }
 
 static void app_on_shader_release(void *ctx, uintptr_t old_shader) {

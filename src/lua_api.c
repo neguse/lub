@@ -802,27 +802,33 @@ static int l_config(lua_State *L) {
     return 0;
 }
 
-static int l_file_mtime(lua_State *L) {
-    const char *path = luaL_checkstring(L, 1);
+int64_t app_file_mtime_ns(const char *path) {
+    if (!path) return 0;
 #ifdef _WIN32
     // MSVC's struct _stat64 has only seconds resolution in st_mtime.
     // sub-second changes are still caught by the content-hash fallback
     // in samples/sg_io.lua, so seconds-precision mtime is fine here.
     struct _stat64 st;
-    if (_stat64(path, &st) != 0) {
-        lua_pushnil(L);
-        return 1;
-    }
-    int64_t ns = (int64_t)st.st_mtime * 1000000000LL;
+    if (_stat64(path, &st) != 0) return 0;
+    return (int64_t)st.st_mtime * 1000000000LL;
 #else
     struct stat st;
-    if (stat(path, &st) != 0) {
+    if (stat(path, &st) != 0) return 0;
+    return (int64_t)st.st_mtim.tv_sec * 1000000000LL
+         + (int64_t)st.st_mtim.tv_nsec;
+#endif
+}
+
+static int l_file_mtime(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    int64_t ns = app_file_mtime_ns(path);
+    if (ns == 0) {
+        // Preserve the original binding contract: nil for "not found / error"
+        // so samples/sg_io.lua's `if not mtime then return nil end` keeps
+        // working unchanged.
         lua_pushnil(L);
         return 1;
     }
-    int64_t ns = (int64_t)st.st_mtim.tv_sec * 1000000000LL
-               + (int64_t)st.st_mtim.tv_nsec;
-#endif
     lua_pushinteger(L, (lua_Integer)ns);
     return 1;
 }
@@ -962,6 +968,51 @@ void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e) {
     if (!ctx->L) return;
     push_event_table(ctx->L, e);
     call_module_field(ctx, "on_event", 1);
+}
+
+// Stack discipline:
+//   entry:                       [...]
+//   getglobal "lume":            [..., lume]                  pop 1 on bail
+//   getfield "hotswap":          [..., lume, fn]              pop 2 on bail
+//   push module_name:            [..., lume, fn, name]
+//   pcall(1, 2) on error:        [..., lume, err]             pop 2 on bail
+//   pcall(1, 2) on success:      [..., lume, ret, err_or_nil]
+//     if ret is a table:         re-ref, pop 2 (ret + err), pop 1 (lume)
+//     else (nil + err):          log err, pop 2, pop 1 (lume)
+bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name) {
+    if (!ctx || !ctx->L || !module_name) return false;
+    lua_State *L = ctx->L;
+    lua_getglobal(L, "lume");
+    if (!lua_istable(L, -1)) { lua_pop(L, 1); return false; }
+    lua_getfield(L, -1, "hotswap");
+    if (!lua_isfunction(L, -1)) { lua_pop(L, 2); return false; }
+    lua_pushstring(L, module_name);
+    // lume.hotswap returns (oldmod) on success or (nil, err) on failure.
+    // Request 2 results so both branches are uniform on the stack.
+    if (lua_pcall(L, 1, 2, 0) != LUA_OK) {
+        SDL_Log("hotswap pcall failed: %s", lua_tostring(L, -1));
+        lua_pop(L, 2); // err + lume
+        return false;
+    }
+    // stack: [..., lume, ret, err_or_nil]
+    bool ok = false;
+    if (lua_istable(L, -2)) {
+        // Success path. lume.hotswap mutates the existing module table in
+        // place, so ctx->module_ref already points at the updated table.
+        // Re-ref the returned value anyway in case a future lume version
+        // returns a freshly-required table instead.
+        lua_pop(L, 1);                                        // drop err_or_nil
+        luaL_unref(L, LUA_REGISTRYINDEX, ctx->module_ref);
+        ctx->module_ref = luaL_ref(L, LUA_REGISTRYINDEX);     // pops the table
+        ok = true;
+    } else {
+        // Failure path: lume returned (nil, err). Log and keep the old module.
+        const char *err = lua_isstring(L, -1) ? lua_tostring(L, -1) : "<unknown>";
+        SDL_Log("hotswap failed for module '%s': %s", module_name, err);
+        lua_pop(L, 2); // err + nil
+    }
+    lua_pop(L, 1); // lume
+    return ok;
 }
 
 void lua_ctx_shutdown(LuaCtx *ctx) {

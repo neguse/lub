@@ -41,6 +41,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     memcpy(modbuf, base, n);
     modbuf[n] = '\0';
 
+    SDL_strlcpy(g_app.entry_module_name, modbuf, sizeof(g_app.entry_module_name));
+    SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path),
+                 "samples/%s.lua", modbuf);
+    g_app.entry_mtime_cache = 0;
+
     if (!lua_ctx_init(&g_app.lua, modbuf, &g_app)) return SDL_APP_FAILURE;
     lua_ctx_call_init(&g_app.lua);
     if (!app_backend_init(&g_app)) return SDL_APP_FAILURE;   // initialize GPU backend after Lua on_init

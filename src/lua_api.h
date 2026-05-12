@@ -16,4 +16,12 @@ void lua_ctx_call_frame(LuaCtx *ctx);
 void lua_ctx_call_quit(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
 
+// Reload `module_name` via lume.hotswap. lume.hotswap mutates the old module
+// table in place (so the existing module_ref still points at live data), but
+// we still re-ref the returned table to stay robust against future lume
+// implementations. Errors are logged and the function returns false; the
+// program is never aborted, so a syntax error in a saved file just means the
+// next save retries.
+bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name);
+
 void lua_api_register(lua_State *L);

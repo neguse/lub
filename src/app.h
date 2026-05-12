@@ -90,6 +90,13 @@ typedef struct App {
     // gpu_swapchain_tex is cleared. capture_state_drain runs AFTER
     // end_frame, so sg_capture reads from this field instead.
     SDL_GPUTexture      *gpu_last_swapchain_tex;
+
+    // Entry .lua hot-reload state. main.c populates entry_path /
+    // entry_module_name after app_init; app_frame_begin polls mtime each
+    // frame and calls lume.hotswap when it changes.
+    char    entry_path[256];        // e.g. "samples/01_triangle.lua"
+    char    entry_module_name[128]; // e.g. "01_triangle"
+    int64_t entry_mtime_cache;      // last observed mtime in ns; 0 means "unknown / first poll"
 } App;
 
 bool app_init(App *app);
@@ -97,3 +104,9 @@ bool app_backend_init(App *app);  // call after lua on_init has run; returns fal
 void app_frame_begin(App *app, int *out_w, int *out_h);
 void app_frame_end(App *app);
 void app_shutdown(App *app);
+
+// Returns mtime of `path` in nanoseconds since epoch (sub-second precision on
+// POSIX, seconds * 1e9 on Windows). Returns 0 if the file does not exist or
+// stat fails. Used by both the C-side entry-Lua mtime poll in app_frame_begin
+// and the `file_mtime` Lua binding consumed by samples/sg_io.lua.
+int64_t app_file_mtime_ns(const char *path);
