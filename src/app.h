@@ -40,9 +40,12 @@ typedef struct App {
     VkDeviceMemory   vk_depth_mem;
     VkImageView      vk_depth_view;
 
-    // Per-frame semaphores (PoC: 1 ペアのみ)
-    VkSemaphore      vk_acquire_sem;
-    VkSemaphore      vk_present_sem;
+    // Per-frame semaphores: 1 ペア / swapchain image. frame_index % N で回す。
+    // 単一ペアだと前フレームの present が in-flight な間に acquire / submit を
+    // 同じ semaphore で再利用してしまい VUID-vkAcquireNextImageKHR-semaphore-01779
+    // および vkQueueSubmit-pSignalSemaphores-00067 に抵触する。
+    VkSemaphore     *vk_acquire_sems;
+    VkSemaphore     *vk_present_sems;
     uint32_t         vk_current_image;
 
     // Frame snapshot for capture: the swapchain image presented this frame.

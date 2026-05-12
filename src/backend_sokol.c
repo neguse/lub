@@ -259,8 +259,18 @@ static bool create_swapchain(App *app) {
     }
 
     VkSemaphoreCreateInfo sci2 = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-    vkCreateSemaphore(app->vk_device, &sci2, NULL, &app->vk_acquire_sem);
-    vkCreateSemaphore(app->vk_device, &sci2, NULL, &app->vk_present_sem);
+    app->vk_acquire_sems = (VkSemaphore*)calloc(app->vk_swapchain_image_count, sizeof(VkSemaphore));
+    app->vk_present_sems = (VkSemaphore*)calloc(app->vk_swapchain_image_count, sizeof(VkSemaphore));
+    for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+        if (vkCreateSemaphore(app->vk_device, &sci2, NULL, &app->vk_acquire_sems[i]) != VK_SUCCESS) {
+            SDL_Log("vkCreateSemaphore (acquire #%u) failed", i);
+            return false;
+        }
+        if (vkCreateSemaphore(app->vk_device, &sci2, NULL, &app->vk_present_sems[i]) != VK_SUCCESS) {
+            SDL_Log("vkCreateSemaphore (present #%u) failed", i);
+            return false;
+        }
+    }
 
     return true;
 }
@@ -364,8 +374,20 @@ static void sk_shutdown(App *app) {
     sg_shutdown();
 
     if (app->vk_device) {
-        if (app->vk_present_sem) vkDestroySemaphore(app->vk_device, app->vk_present_sem, NULL);
-        if (app->vk_acquire_sem) vkDestroySemaphore(app->vk_device, app->vk_acquire_sem, NULL);
+        if (app->vk_present_sems) {
+            for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+                if (app->vk_present_sems[i]) vkDestroySemaphore(app->vk_device, app->vk_present_sems[i], NULL);
+            }
+            free(app->vk_present_sems);
+            app->vk_present_sems = NULL;
+        }
+        if (app->vk_acquire_sems) {
+            for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+                if (app->vk_acquire_sems[i]) vkDestroySemaphore(app->vk_device, app->vk_acquire_sems[i], NULL);
+            }
+            free(app->vk_acquire_sems);
+            app->vk_acquire_sems = NULL;
+        }
         if (app->vk_depth_view)  vkDestroyImageView(app->vk_device, app->vk_depth_view, NULL);
         if (app->vk_depth_image) vkDestroyImage(app->vk_device, app->vk_depth_image, NULL);
         if (app->vk_depth_mem)   vkFreeMemory(app->vk_device, app->vk_depth_mem, NULL);
@@ -393,17 +415,19 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
     if (out_w) *out_w = w;
     if (out_h) *out_h = h;
+    uint32_t slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
     vkAcquireNextImageKHR(app->vk_device, app->vk_swapchain, UINT64_MAX,
-                          app->vk_acquire_sem, VK_NULL_HANDLE, &app->vk_current_image);
+                          app->vk_acquire_sems[slot], VK_NULL_HANDLE, &app->vk_current_image);
     app->vk_last_presented_image = app->vk_swapchain_images[app->vk_current_image];
 }
 
 static void sk_end_frame(App *app) {
     sg_commit();
+    uint32_t slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
     VkPresentInfoKHR pi = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &app->vk_present_sem,
+        .pWaitSemaphores = &app->vk_present_sems[slot],
         .swapchainCount = 1,
         .pSwapchains = &app->vk_swapchain,
         .pImageIndices = &app->vk_current_image,
@@ -774,6 +798,7 @@ static void sk_begin_pass(App *app, const PassBeginDesc *d) {
         sg_begin_pass(&pass);
         return;
     }
+    uint32_t slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
     sg_pass pass = {
         .action.colors[0] = {
             .load_action = SG_LOADACTION_CLEAR,
@@ -790,8 +815,8 @@ static void sk_begin_pass(App *app, const PassBeginDesc *d) {
                 .render_view  = (const void*)app->vk_swapchain_views[app->vk_current_image],
                 .depth_stencil_image = (const void*)app->vk_depth_image,
                 .depth_stencil_view  = (const void*)app->vk_depth_view,
-                .render_finished_semaphore = (const void*)app->vk_present_sem,
-                .present_complete_semaphore = (const void*)app->vk_acquire_sem,
+                .render_finished_semaphore = (const void*)app->vk_present_sems[slot],
+                .present_complete_semaphore = (const void*)app->vk_acquire_sems[slot],
             },
         },
     };
