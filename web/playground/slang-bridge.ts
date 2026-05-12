@@ -52,6 +52,12 @@ function stageToSlang(stage: StageCode): number {
 let slangModulePromise: Promise<any> | null = null
 let globalSession: any = null
 let wgslTarget: number = -1
+// Session shared across compile calls. See compileOne() for the rationale.
+let sharedSession: any = null
+// Monotonic counter used to give each loadModuleFromSource() a unique module
+// name. Slang caches modules within a session by name; if we re-use a name the
+// stale module is returned and a fresh entry-point lookup fails.
+let moduleSeq: number = 0
 
 async function loadSlangModule(): Promise<any> {
   if (slangModulePromise) return slangModulePromise
@@ -187,27 +193,42 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
     Promise<{ wgsl: string, reflectJson: string } | { error: string }>
 {
   // Slang's embind bindings hand out ClassHandle objects for every long-lived
-  // structure (session / module / entry point / composite / linked program /
-  // layout). The C++ side reference-counts them and only frees on .delete().
-  // Without explicit deletes we leak ~MB per compile, which adds up fast
-  // during a hot-reload editing session. Track everything and clean it up in
-  // a try/finally so exceptions still trigger release.
-  let session: any = null
+  // structure (module / entry point / composite / linked program / layout).
+  // The C++ side reference-counts them and only frees on .delete(). Without
+  // explicit deletes we leak ~MB per compile, which adds up fast during a
+  // hot-reload editing session. Track everything and clean it up in a
+  // try/finally so exceptions still trigger release.
+  //
+  // Phase 8 note (slang-wasm v2026.8.1 / Emscripten): destroying a per-compile
+  // Session after building / discarding ~3 sessions aborts the wasm runtime
+  // ("Aborted(native code called abort()) ... unreachable"). The failing case
+  // in our suite is sample 06 (`06_gbuffer.vs.slang`) — third compile after
+  // page load, with three vertex-input attributes — but the abort itself is
+  // in Slang's internal session teardown, not in shader parsing. Once
+  // aborted, every subsequent slang call throws "memory access out of bounds"
+  // because the runtime is dead. Workaround: share a single session across
+  // every compile and never delete it; give each module a unique name so
+  // Slang's per-session module cache doesn't return a stale handle on the
+  // next compile. Stress-tested at 5 passes × 8 compiles in Node with
+  // slang-wasm v2026.8.1 (see /tmp probes used during Phase 8).
   let userModule: any = null
   let entryPoint: any = null
   let composite: any = null
   let linked: any = null
   let layout: any = null
   try {
-    session = globalSession.createSession(wgslTarget)
-    if (!session) {
-      const err = main.getLastError?.()
-      return { error: 'createSession failed: ' + (err?.message ?? '<unknown>') }
+    if (!sharedSession) {
+      sharedSession = globalSession.createSession(wgslTarget)
+      if (!sharedSession) {
+        const err = main.getLastError?.()
+        return { error: 'createSession failed: ' + (err?.message ?? '<unknown>') }
+      }
     }
-    // Module name and "path" are both arbitrary identifiers used in Slang's
-    // diagnostics. The third arg is the synthetic path Slang uses for
-    // `#line` references in errors.
-    userModule = session.loadModuleFromSource(src, 'user', 'user.slang')
+    // Module name + path must be unique per call: Slang's session keeps a
+    // module cache keyed by name, and reusing a name returns the cached one
+    // (whose entry-point lookups would fail for a different shader source).
+    const modName = 'user_' + (moduleSeq++)
+    userModule = sharedSession.loadModuleFromSource(src, modName, modName + '.slang')
     if (!userModule) {
       const err = main.getLastError?.()
       return { error: 'loadModuleFromSource failed: ' + (err?.message ?? '<unknown>') }
@@ -218,7 +239,7 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
       const err = main.getLastError?.()
       return { error: 'findAndCheckEntryPoint(' + entry + ') failed: ' + (err?.message ?? '<unknown>') }
     }
-    composite = session.createCompositeComponentType([userModule, entryPoint])
+    composite = sharedSession.createCompositeComponentType([userModule, entryPoint])
     if (!composite) {
       const err = main.getLastError?.()
       return { error: 'createCompositeComponentType failed: ' + (err?.message ?? '<unknown>') }
@@ -276,11 +297,14 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
     // `.delete?.()` is defensive — some return values might not be
     // ClassHandles in older Slang versions, and we don't want a missing
     // method to take down the cleanup chain.
+    //
+    // NB: sharedSession is intentionally NOT deleted here — see the long
+    // comment at the top of compileOne(). Deleting it after a few compiles
+    // aborts the wasm runtime in slang-wasm v2026.8.1.
     try { layout?.delete?.() }     catch {}
     try { linked?.delete?.() }     catch {}
     try { composite?.delete?.() }  catch {}
     try { entryPoint?.delete?.() } catch {}
     try { userModule?.delete?.() } catch {}
-    try { session?.delete?.() }    catch {}
   }
 }
