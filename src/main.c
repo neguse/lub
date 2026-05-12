@@ -29,9 +29,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
             script = argv[i];
         }
     }
-    if (!script) script = "samples/00_hello.lua";
+    // Accept "01_triangle", "01_triangle.lua", or "samples/01_triangle.lua"
+    // and reduce to the bare module name ("01_triangle") for require().
+    const char *raw = script ? script : "00_hello";
+    const char *base = strrchr(raw, '/');
+    base = base ? base + 1 : raw;
+    char modbuf[256];
+    size_t n = strlen(base);
+    if (n >= 4 && strcmp(base + n - 4, ".lua") == 0) n -= 4;
+    if (n >= sizeof(modbuf)) n = sizeof(modbuf) - 1;
+    memcpy(modbuf, base, n);
+    modbuf[n] = '\0';
 
-    if (!lua_ctx_init(&g_app.lua, script, &g_app)) return SDL_APP_FAILURE;
+    if (!lua_ctx_init(&g_app.lua, modbuf, &g_app)) return SDL_APP_FAILURE;
     lua_ctx_call_init(&g_app.lua);
     if (!app_backend_init(&g_app)) return SDL_APP_FAILURE;   // initialize GPU backend after Lua on_init
 

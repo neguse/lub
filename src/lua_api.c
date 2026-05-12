@@ -901,50 +901,76 @@ static void push_event_table(lua_State *L, const SDL_Event *e) {
     // 詳細フィールドは後段で増やす
 }
 
-static void call_global_if_present(lua_State *L, const char *name, int nargs) {
-    lua_getglobal(L, name);
-    if (!lua_isfunction(L, -1)) {
-        lua_pop(L, 1 + nargs);
-        return;
-    }
-    if (nargs > 0) {
-        lua_insert(L, -1 - nargs);
-    }
+// Fetches the entry module from the registry, looks up the named field, and
+// pcalls it with the existing top-of-stack args. No `self` is passed — the
+// samples accept (self) but the C side never supplies one.
+static void call_module_field(LuaCtx *ctx, const char *name, int nargs) {
+    lua_State *L = ctx->L;
+    /* stack on entry: [..., arg1, arg2, ...] (nargs items on top) */
+    if (ctx->module_ref == LUA_NOREF) { lua_pop(L, nargs); return; }
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref);          /* +1: module */
+    if (!lua_istable(L, -1)) { lua_pop(L, 1 + nargs); return; }
+    lua_getfield(L, -1, name);                                    /* +1: fn */
+    if (!lua_isfunction(L, -1)) { lua_pop(L, 2 + nargs); return; }
+    lua_remove(L, -2);                                            /* drop module: stack [..., args, fn] */
+    if (nargs > 0) lua_insert(L, -1 - nargs);                     /* move fn before args */
     if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
         SDL_Log("lua error in %s: %s", name, lua_tostring(L, -1));
         lua_pop(L, 1);
     }
 }
 
-bool lua_ctx_init(LuaCtx *ctx, const char *script_path, App *app) {
+bool lua_ctx_init(LuaCtx *ctx, const char *entry_module_name, App *app) {
     g_app_for_lua = app;
     ctx->L = luaL_newstate();
     if (!ctx->L) {
         SDL_Log("luaL_newstate failed (out of memory)");
         return false;
     }
+    ctx->module_ref = LUA_NOREF;
     luaL_openlibs(ctx->L);
     lua_api_register(ctx->L);
-    if (luaL_dofile(ctx->L, script_path) != LUA_OK) {
-        SDL_Log("lua load error: %s", lua_tostring(ctx->L, -1));
+
+    if (luaL_loadfile(ctx->L, "samples/boot.lua") != LUA_OK) {
+        SDL_Log("boot.lua load error: %s", lua_tostring(ctx->L, -1));
         lua_close(ctx->L);
         ctx->L = NULL;
         return false;
     }
+    lua_pushstring(ctx->L, entry_module_name);
+    if (lua_pcall(ctx->L, 1, 1, 0) != LUA_OK) {
+        SDL_Log("boot.lua run error: %s", lua_tostring(ctx->L, -1));
+        lua_close(ctx->L);
+        ctx->L = NULL;
+        return false;
+    }
+    if (!lua_istable(ctx->L, -1)) {
+        SDL_Log("boot.lua did not return a module table");
+        lua_close(ctx->L);
+        ctx->L = NULL;
+        return false;
+    }
+    ctx->module_ref = luaL_ref(ctx->L, LUA_REGISTRYINDEX);
     return true;
 }
 
-void lua_ctx_call_init(LuaCtx *ctx)  { if (!ctx->L) return; call_global_if_present(ctx->L, "on_init", 0); }
-void lua_ctx_call_frame(LuaCtx *ctx) { if (!ctx->L) return; call_global_if_present(ctx->L, "on_frame", 0); }
-void lua_ctx_call_quit(LuaCtx *ctx)  { if (!ctx->L) return; call_global_if_present(ctx->L, "on_quit", 0); }
+void lua_ctx_call_init(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "on_init", 0); }
+void lua_ctx_call_frame(LuaCtx *ctx) { if (!ctx->L) return; call_module_field(ctx, "on_frame", 0); }
+void lua_ctx_call_quit(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "on_quit", 0); }
 
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e) {
     if (!ctx->L) return;
     push_event_table(ctx->L, e);
-    call_global_if_present(ctx->L, "on_event", 1);
+    call_module_field(ctx, "on_event", 1);
 }
 
 void lua_ctx_shutdown(LuaCtx *ctx) {
-    if (ctx->L) lua_close(ctx->L);
+    if (ctx->L) {
+        if (ctx->module_ref != LUA_NOREF) {
+            luaL_unref(ctx->L, LUA_REGISTRYINDEX, ctx->module_ref);
+            ctx->module_ref = LUA_NOREF;
+        }
+        lua_close(ctx->L);
+    }
     ctx->L = NULL;
 }

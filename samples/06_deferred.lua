@@ -1,14 +1,16 @@
-local sg_io = dofile("samples/sg_io.lua")
+local sg_io = require("sg_io")
+local M = {}
 
 local RT_W, RT_H = 256, 256
 
-function on_init()
+function M.on_init(self)
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
-function on_event(e) end
-function on_quit() end
 
-function on_frame()
+function M.on_event(self, e) end
+function M.on_quit(self) end
+
+function M.on_frame(self)
     local gvs, gvsv = sg_io.load_text("samples/data/06_gbuffer.vs.slang")
     local gfs, gfsv = sg_io.load_text("samples/data/06_gbuffer.fs.slang")
     local gverts, gvv = sg_io.load_floats("samples/data/06_gbuffer.verts.lua")
@@ -48,3 +50,5 @@ function on_frame()
              { shader = sh_v, depth = false, cull = NONE })
     end_pass()
 end
+
+return M

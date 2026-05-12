@@ -1,14 +1,16 @@
-local sg_io = dofile("samples/sg_io.lua")
+local sg_io = require("sg_io")
+local M = {}
 
 local RT_W, RT_H = 256, 256
 
-function on_init()
+function M.on_init(self)
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
-function on_event(e) end
-function on_quit() end
 
-function on_frame()
+function M.on_event(self, e) end
+function M.on_quit(self) end
+
+function M.on_frame(self)
     local ovs, ovsv = sg_io.load_text("samples/data/05_offscreen.vs.slang")
     local ofs, ofsv = sg_io.load_text("samples/data/05_offscreen.fs.slang")
     local overts, ovv = sg_io.load_floats("samples/data/05_offscreen.verts.lua")
@@ -34,3 +36,5 @@ function on_frame()
              { shader = sh_post, depth = false, cull = NONE })
     end_pass()
 end
+
+return M

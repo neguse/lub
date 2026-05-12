@@ -1,3 +1,5 @@
+local M = {}
+
 local vs = [[
 struct VSIn  { float3 pos : POSITION; };
 struct VSOut { float4 pos : SV_Position; };
@@ -10,10 +12,12 @@ float4 fs_main() : SV_Target { return float4(1.0, 0.5, 0.0, 1.0); }
 ]]
 
 local printed = false
-function on_init() end
-function on_event(e) end
-function on_quit() end
-function on_frame()
+
+function M.on_init(self) end
+function M.on_event(self, e) end
+function M.on_quit(self) end
+
+function M.on_frame(self)
   local s = use_shader("test", vs, fs, 1)
   if not printed and s and s.__sgl_kind == "shader" then
     print("shader compiled:", s.key)
@@ -22,3 +26,5 @@ function on_frame()
   begin_pass({ target = main_tex, clear_color = {0.1, 0.1, 0.2, 1} })
   end_pass()
 end
+
+return M

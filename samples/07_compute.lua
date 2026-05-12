@@ -3,18 +3,20 @@
 -- Compute writes 3 vertices (vec4 = position.xy + color.rg) into a storage
 -- buffer. The render pass then rebinds the same buffer as a VERTEX buffer
 -- and draws a triangle whose vertex positions/colors came from the GPU.
-local sg_io = dofile("samples/sg_io.lua")
+local sg_io = require("sg_io")
+local M = {}
 
-function on_init()
+function M.on_init(self)
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
-function on_event(e) end
-function on_quit() end
+
+function M.on_event(self, e) end
+function M.on_quit(self) end
 
 -- 3 vertices * 4 floats (vec2 pos + vec2 col) = 12 floats.
 local VERT_FLOATS = 12
 
-function on_frame()
+function M.on_frame(self)
     local cs, csv = sg_io.load_text("samples/data/07_gen_verts.cs.slang")
     local vs, vsv = sg_io.load_text("samples/data/07_render.vs.slang")
     local fs, fsv = sg_io.load_text("samples/data/07_render.fs.slang")
@@ -31,3 +33,5 @@ function on_frame()
              { shader = sh_r, depth = false, cull = NONE })
     end_pass()
 end
+
+return M
