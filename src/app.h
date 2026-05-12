@@ -63,6 +63,12 @@ typedef struct App {
     bool          capture_then_exit; // set by app_frame_end after a successful capture
     int           last_w, last_h;    // last extents seen by app_frame_begin
 
+    // Set by SDL_AppEvent on SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED. The backend's
+    // begin_frame checks this and rebuilds its swapchain before acquire. The
+    // VkResult path (OUT_OF_DATE / SUBOPTIMAL) is also a trigger — both write
+    // through this flag so the swapchain is only ever rebuilt at frame start.
+    bool          pending_resize;
+
     // Backend selection (Task 2). app_init sets phase = PRE_BACKEND and
     // backend_name = "sokol". Lua's config() may overwrite backend_name during
     // on_init (PRE_BACKEND only). app_backend_init flips phase to POST_BACKEND

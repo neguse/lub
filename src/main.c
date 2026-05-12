@@ -46,6 +46,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     (void)appstate;
     if (event->type == SDL_EVENT_QUIT) return SDL_APP_SUCCESS;
+    if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+        g_app.pending_resize = true;
+    }
     lua_ctx_call_event(&g_app.lua, event);
     return SDL_APP_CONTINUE;
 }
@@ -53,6 +56,14 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     (void)appstate;
     int w, h;
+    // Minimized: SDL reports 0x0 pixels and the swapchain can't be (re)created
+    // until the window is restored. Don't run the Lua frame callback in that
+    // state — the GPU pass would dereference a NULL swapchain image.
+    SDL_GetWindowSizeInPixels(g_app.window, &w, &h);
+    if (w == 0 || h == 0) {
+        SDL_Delay(16);
+        return SDL_APP_CONTINUE;
+    }
     app_frame_begin(&g_app, &w, &h);
     lua_ctx_call_frame(&g_app.lua);
     // 安全策: on_frame が pass を閉じ忘れた場合、強制的に閉じる

@@ -122,12 +122,51 @@ static bool pick_physical_device(VkInstance inst, VkPhysicalDevice *out_phys, ui
     return false;
 }
 
-static bool create_swapchain(App *app) {
+static bool create_surface(App *app) {
     if (!SDL_Vulkan_CreateSurface(app->window, app->vk_instance, NULL, &app->vk_surface)) {
         SDL_Log("SDL_Vulkan_CreateSurface failed: %s", SDL_GetError());
         return false;
     }
+    return true;
+}
 
+// Destroys swapchain-derived resources (views, depth, semaphores, swapchain)
+// but leaves surface / device / instance intact. Safe to call multiple times.
+static void destroy_swapchain_resources(App *app) {
+    if (!app->vk_device) return;
+    if (app->vk_present_sems) {
+        for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+            if (app->vk_present_sems[i]) vkDestroySemaphore(app->vk_device, app->vk_present_sems[i], NULL);
+        }
+        free(app->vk_present_sems);
+        app->vk_present_sems = NULL;
+    }
+    if (app->vk_acquire_sems) {
+        for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+            if (app->vk_acquire_sems[i]) vkDestroySemaphore(app->vk_device, app->vk_acquire_sems[i], NULL);
+        }
+        free(app->vk_acquire_sems);
+        app->vk_acquire_sems = NULL;
+    }
+    if (app->vk_depth_view)  { vkDestroyImageView(app->vk_device, app->vk_depth_view, NULL);  app->vk_depth_view  = VK_NULL_HANDLE; }
+    if (app->vk_depth_image) { vkDestroyImage(app->vk_device, app->vk_depth_image, NULL);     app->vk_depth_image = VK_NULL_HANDLE; }
+    if (app->vk_depth_mem)   { vkFreeMemory(app->vk_device, app->vk_depth_mem, NULL);         app->vk_depth_mem   = VK_NULL_HANDLE; }
+    if (app->vk_swapchain_views) {
+        for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+            if (app->vk_swapchain_views[i]) {
+                vkDestroyImageView(app->vk_device, app->vk_swapchain_views[i], NULL);
+            }
+        }
+        free(app->vk_swapchain_views);
+        app->vk_swapchain_views = NULL;
+    }
+    free(app->vk_swapchain_images);
+    app->vk_swapchain_images = NULL;
+    if (app->vk_swapchain) { vkDestroySwapchainKHR(app->vk_device, app->vk_swapchain, NULL); app->vk_swapchain = VK_NULL_HANDLE; }
+    app->vk_swapchain_image_count = 0;
+}
+
+static bool create_swapchain_resources(App *app) {
     uint32_t fmt_count = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(app->vk_phys, app->vk_surface, &fmt_count, NULL);
     if (fmt_count == 0) { SDL_Log("no surface formats"); return false; }
@@ -147,6 +186,12 @@ static bool create_swapchain(App *app) {
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
     VkExtent2D extent = caps.currentExtent.width != 0xffffffff ? caps.currentExtent
                                                                : (VkExtent2D){ (uint32_t)w, (uint32_t)h };
+    // Minimized window or surface lost: bail without leaving partial state.
+    // Caller retries next frame; destroy_swapchain_resources has already zero'd
+    // the relevant fields.
+    if (extent.width == 0 || extent.height == 0) {
+        return false;
+    }
 
     uint32_t min_image_count = caps.minImageCount + 1;
     if (caps.maxImageCount > 0 && min_image_count > caps.maxImageCount) {
@@ -176,7 +221,9 @@ static bool create_swapchain(App *app) {
     vkGetSwapchainImagesKHR(app->vk_device, app->vk_swapchain, &app->vk_swapchain_image_count, NULL);
     app->vk_swapchain_images = (VkImage*)malloc(sizeof(VkImage) * app->vk_swapchain_image_count);
     vkGetSwapchainImagesKHR(app->vk_device, app->vk_swapchain, &app->vk_swapchain_image_count, app->vk_swapchain_images);
-    app->vk_swapchain_views = (VkImageView*)malloc(sizeof(VkImageView) * app->vk_swapchain_image_count);
+    // calloc so a partial failure mid-loop leaves the rest as NULL and the
+    // destroy path can skip them safely.
+    app->vk_swapchain_views = (VkImageView*)calloc(app->vk_swapchain_image_count, sizeof(VkImageView));
     for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
         VkImageViewCreateInfo ivci = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -275,6 +322,22 @@ static bool create_swapchain(App *app) {
     return true;
 }
 
+// Wait for GPU idle, tear down the swapchain-derived resources, then build a
+// fresh swapchain matching the current window size. Returns false if the
+// window is currently 0x0 (minimized) or creation otherwise failed; in either
+// case app->vk_swapchain stays VK_NULL_HANDLE so begin_frame can skip the
+// frame and retry next iteration.
+static bool recreate_swapchain_resources(App *app) {
+    if (!app->vk_device) return false;
+    vkDeviceWaitIdle(app->vk_device);
+    destroy_swapchain_resources(app);
+    if (!create_swapchain_resources(app)) {
+        destroy_swapchain_resources(app);  // ensure clean slate after partial failure
+        return false;
+    }
+    return true;
+}
+
 static bool create_vk_device(VkPhysicalDevice phys, uint32_t qf,
                              VkDevice *out_dev, VkQueue *out_q) {
     float prio = 1.0f;
@@ -345,7 +408,8 @@ static bool sk_init(App *app) {
     if (!create_vk_instance(&app->vk_instance)) return false;
     if (!pick_physical_device(app->vk_instance, &app->vk_phys, &app->vk_queue_family)) return false;
     if (!create_vk_device(app->vk_phys, app->vk_queue_family, &app->vk_device, &app->vk_queue)) return false;
-    if (!create_swapchain(app)) return false;
+    if (!create_surface(app)) return false;
+    if (!create_swapchain_resources(app)) return false;
 
     sg_pixel_format color_pf = vk_to_sg_fmt(app->vk_swapchain_format);
 
@@ -373,37 +437,7 @@ static void sk_shutdown(App *app) {
     if (app->vk_device) vkDeviceWaitIdle(app->vk_device);
     sg_shutdown();
 
-    if (app->vk_device) {
-        if (app->vk_present_sems) {
-            for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
-                if (app->vk_present_sems[i]) vkDestroySemaphore(app->vk_device, app->vk_present_sems[i], NULL);
-            }
-            free(app->vk_present_sems);
-            app->vk_present_sems = NULL;
-        }
-        if (app->vk_acquire_sems) {
-            for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
-                if (app->vk_acquire_sems[i]) vkDestroySemaphore(app->vk_device, app->vk_acquire_sems[i], NULL);
-            }
-            free(app->vk_acquire_sems);
-            app->vk_acquire_sems = NULL;
-        }
-        if (app->vk_depth_view)  vkDestroyImageView(app->vk_device, app->vk_depth_view, NULL);
-        if (app->vk_depth_image) vkDestroyImage(app->vk_device, app->vk_depth_image, NULL);
-        if (app->vk_depth_mem)   vkFreeMemory(app->vk_device, app->vk_depth_mem, NULL);
-        if (app->vk_swapchain_views) {
-            for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
-                if (app->vk_swapchain_views[i]) {
-                    vkDestroyImageView(app->vk_device, app->vk_swapchain_views[i], NULL);
-                }
-            }
-            free(app->vk_swapchain_views);
-            app->vk_swapchain_views = NULL;
-        }
-        free(app->vk_swapchain_images);
-        app->vk_swapchain_images = NULL;
-        if (app->vk_swapchain) vkDestroySwapchainKHR(app->vk_device, app->vk_swapchain, NULL);
-    }
+    destroy_swapchain_resources(app);
     if (app->vk_surface)  vkDestroySurfaceKHR(app->vk_instance, app->vk_surface, NULL);
     if (app->vk_device)   vkDestroyDevice(app->vk_device, NULL);
     if (app->vk_instance) vkDestroyInstance(app->vk_instance, NULL);
@@ -415,14 +449,40 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
     if (out_w) *out_w = w;
     if (out_h) *out_h = h;
+
+    // The SDL event path sets pending_resize before this fires; rebuild the
+    // swapchain at frame start so the acquire below sees fresh extents.
+    if (app->pending_resize) {
+        app->pending_resize = false;
+        recreate_swapchain_resources(app);
+    }
+    if (!app->vk_swapchain) return;  // minimize / failed recreate; main loop skips frame
+
     uint32_t slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
-    vkAcquireNextImageKHR(app->vk_device, app->vk_swapchain, UINT64_MAX,
-                          app->vk_acquire_sems[slot], VK_NULL_HANDLE, &app->vk_current_image);
+    VkResult r = vkAcquireNextImageKHR(app->vk_device, app->vk_swapchain, UINT64_MAX,
+                                       app->vk_acquire_sems[slot], VK_NULL_HANDLE,
+                                       &app->vk_current_image);
+    if (r == VK_ERROR_OUT_OF_DATE_KHR) {
+        // Driver noticed the resize before SDL did. Recreate now and retry
+        // once with a fresh acquire semaphore from the rebuilt array.
+        if (recreate_swapchain_resources(app)) {
+            slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
+            r = vkAcquireNextImageKHR(app->vk_device, app->vk_swapchain, UINT64_MAX,
+                                      app->vk_acquire_sems[slot], VK_NULL_HANDLE,
+                                      &app->vk_current_image);
+        }
+    }
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
+        // Couldn't acquire even after rebuild; defer to next frame.
+        app->pending_resize = true;
+        return;
+    }
     app->vk_last_presented_image = app->vk_swapchain_images[app->vk_current_image];
 }
 
 static void sk_end_frame(App *app) {
     sg_commit();
+    if (!app->vk_swapchain) return;
     uint32_t slot = (uint32_t)(app->frame_index % app->vk_swapchain_image_count);
     VkPresentInfoKHR pi = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -432,7 +492,12 @@ static void sk_end_frame(App *app) {
         .pSwapchains = &app->vk_swapchain,
         .pImageIndices = &app->vk_current_image,
     };
-    vkQueuePresentKHR(app->vk_queue, &pi);
+    VkResult r = vkQueuePresentKHR(app->vk_queue, &pi);
+    if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) {
+        // Defer to next begin_frame so we don't recreate while the present is
+        // still being consumed by the compositor.
+        app->pending_resize = true;
+    }
 }
 
 static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_t bytes) {

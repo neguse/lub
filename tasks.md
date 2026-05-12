@@ -5,10 +5,6 @@
 
 ## 安定化
 
-### sokol backend
-
-- **[M] Window resize (swapchain recreate)**: `vkAcquireNextImageKHR` / `vkQueuePresentKHR` の `VK_ERROR_OUT_OF_DATE_KHR` / `VK_SUBOPTIMAL_KHR` を捕捉、swapchain / depth / image views を作り直す関数に分離。`SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED` をトリガにする。
-
 ### sdlgpu backend
 
 - **[L] Combined image sampler の multi-pair 対応**: `shader.cpp` の patcher を SPIR-V を歩いて各 `(SampledImage, Sampler)` ペアごとに `OpSampledImage` を組み直す形に拡張。テクスチャ複数枚を要求する Sample で blocker。SPIRV-Tools 依存導入の判断 (依存させない場合は 300+ 行)。
