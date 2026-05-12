@@ -1,0 +1,226 @@
+// Loads @shader-slang/slang-wasm (vendored at /public/slang/) and exposes
+// window.slangCompile so the C side's EM_ASYNC_JS bridge can drive it.
+//
+// Contract (defined in src/shader.cpp):
+//   window.slangCompile(src: string, entry: string, stage: 0|1|2)
+//     => Promise<{wgsl: string, reflectJson: string} | {error: string}>
+//   stage: 0 = vertex, 1 = fragment, 2 = compute
+//
+// We pin to the GitHub release shipped via `web/scripts/fetch-slang-wasm.sh`.
+// The package isn't on npm — slang-playground vendors the same release.
+//
+// Slang stage codes match SlangCompiler.SLANG_STAGE_* in slang-playground:
+//   1 = vertex, 5 = fragment, 6 = compute.
+//
+// API discovery notes (from interface.d.ts shipped in the release zip):
+//   - default export is `MainModuleFactory(options?) => Promise<MainModule>`.
+//   - MainModule.createGlobalSession() => GlobalSession
+//   - MainModule.getCompileTargets() => [{name: "WGSL"|"SPIRV"|..., value: int}]
+//   - globalSession.createSession(targetValueNumber) => Session
+//   - session.loadModuleFromSource(src, modName, path) => Module
+//   - module.findAndCheckEntryPoint(name, stage) => EntryPoint
+//   - session.createCompositeComponentType([module, entryPoint]) => ComponentType
+//   - composite.link() => ComponentType (linked program)
+//   - linked.getEntryPointCode(0, 0) => string (WGSL code)
+//   - linked.getLayout(0).toJsonObject() => reflection object
+//
+// Locator policy: we use the WASM file co-located with slang-wasm.js by
+// telling Emscripten to use a relative URL via `locateFile`. The .wasm sits
+// next to the .js in /slang/. Without this, emdawnwebgpu's resolver looks
+// for slang-wasm.wasm relative to the page (player.html) which would
+// 404.
+
+type StageCode = 0 | 1 | 2
+
+// Slang's internal stage enum (matches slang.h SLANG_STAGE_*).
+const SLANG_STAGE_VERTEX = 1
+const SLANG_STAGE_FRAGMENT = 5
+const SLANG_STAGE_COMPUTE = 6
+
+function stageToSlang(stage: StageCode): number {
+  switch (stage) {
+    case 0: return SLANG_STAGE_VERTEX
+    case 1: return SLANG_STAGE_FRAGMENT
+    case 2: return SLANG_STAGE_COMPUTE
+    default: throw new Error(`unknown stage code ${stage}`)
+  }
+}
+
+// MainModule is loaded lazily so missing files (forgot to run fetch script)
+// don't crash module evaluation. Errors surface through window.slangCompile's
+// {error} response and reach the user as a Slang diagnostic.
+let slangModulePromise: Promise<any> | null = null
+let globalSession: any = null
+let wgslTarget: number = -1
+
+async function loadSlangModule(): Promise<any> {
+  if (slangModulePromise) return slangModulePromise
+  slangModulePromise = (async () => {
+    // Dynamic import keeps slang-wasm.js out of the main editor bundle and
+    // skips Rollup's static-import resolver entirely. We sneak the URL
+    // through `new Function` so Vite/Rollup never see it as an `import`
+    // expression at build time. At runtime the browser loads it from the
+    // vendored copy in /public/slang/.
+    const importer = new Function('u', 'return import(u)')
+    const mod = (await importer('/slang/slang-wasm.js')) as any
+    const factory = mod.default
+    if (typeof factory !== 'function') {
+      throw new Error('slang-wasm.js did not provide a default Module factory')
+    }
+    const main = await factory({
+      // emscripten locator: maps slang-wasm.wasm -> /slang/slang-wasm.wasm.
+      // Without this it would default to a path relative to the HTML doc.
+      locateFile: (path: string) => {
+        if (path.endsWith('.wasm')) return '/slang/' + path
+        return path
+      },
+    })
+    return main
+  })()
+  return slangModulePromise
+}
+
+export async function initSlang(): Promise<void> {
+  const main = await loadSlangModule()
+  globalSession = main.createGlobalSession()
+  if (!globalSession) {
+    const err = main.getLastError?.()
+    throw new Error('Slang createGlobalSession failed: ' + (err?.message ?? '<unknown>'))
+  }
+  // Look up the integer code for "WGSL" once and cache it.
+  const targets = main.getCompileTargets() as { name: string, value: number }[]
+  for (const t of targets) {
+    if (t.name === 'WGSL') { wgslTarget = t.value; break }
+  }
+  if (wgslTarget < 0) {
+    throw new Error('Slang has no WGSL target (targets: ' + targets.map(t => t.name).join(',') + ')')
+  }
+
+  ;(window as any).slangCompile = async (src: string, entry: string, stage: StageCode) => {
+    return compileOne(main, src, entry, stage)
+  }
+}
+
+// Patch WGSL group numbers so Slang's "everything in @group(0)" layout
+// matches sokol-gfx's WGPU convention:
+//   * uniform        -> @group(0)   (unchanged)
+//   * texture_*      -> @group(1)
+//   * sampler*       -> @group(1)
+//   * var<storage,*> -> @group(1)
+//   * texture_storage_* (storage image) -> @group(1)
+//
+// Each global `@binding(B) @group(G) var<...> name : ty;` declaration is a
+// separate line in Slang's WGSL output (see the probe scripts in
+// docs/wasm-playground-plan.md notes). We do a single-pass regex over the
+// `@group(N) var ...` form, deciding the new group from the inferred kind:
+//
+//   - "var<uniform>"      -> uniform block, keep group 0
+//   - "var<storage, ..>"  -> storage buffer, move to group 1
+//   - "var ... : sampler" or " : sampler_comparison" -> sampler, group 1
+//   - "var ... : texture_..." -> texture or storage image, group 1
+//   - anything else (workgroup, private, function-scope) untouched.
+//
+// Regex (multiline, single line per @binding declaration):
+//   ^(\s*)@binding\(\d+\)\s+@group\((\d+)\)\s+var(?:<[^>]+>)?\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_]\w*)
+// We rewrite the group number IN PLACE, preserving every other character so
+// line numbers / column counts in error messages stay aligned.
+function remapWgslGroups(src: string): string {
+  // Match group declarations on a single line. We accept (and leave alone)
+  // any spacing variations Slang might use.
+  const re = /@binding\((\d+)\)\s+@group\((\d+)\)\s+var(<[^>]*>)?(\s+[A-Za-z_]\w*\s*:\s*[A-Za-z_]\w*)/g
+  return src.replace(re, (full, _bind, _grp, varTpl, tail) => {
+    // varTpl is the optional <...> after `var`. tail is `  name : type_id`.
+    const tpl  = (varTpl  ?? '').toLowerCase()
+    const tail_l = (tail ?? '').toLowerCase()
+    // Type id sits after the colon in `tail`.
+    const colon = tail_l.lastIndexOf(':')
+    const typeId = colon >= 0 ? tail_l.slice(colon + 1).trim() : ''
+
+    // Default: keep whatever group Slang assigned.
+    let newGroup = _grp
+    if (tpl.startsWith('<uniform')) {
+      newGroup = '0'
+    } else if (tpl.startsWith('<storage')) {
+      newGroup = '1'
+    } else if (typeId.startsWith('texture_') || typeId === 'sampler' ||
+               typeId === 'sampler_comparison') {
+      newGroup = '1'
+    }
+    // Reconstruct the prefix; we only swap the @group(N) literal.
+    return full.replace(/@group\(\d+\)/, `@group(${newGroup})`)
+  })
+}
+
+async function compileOne(main: any, src: string, entry: string, stage: StageCode):
+    Promise<{ wgsl: string, reflectJson: string } | { error: string }>
+{
+  let session: any = null
+  try {
+    session = globalSession.createSession(wgslTarget)
+    if (!session) {
+      const err = main.getLastError?.()
+      return { error: 'createSession failed: ' + (err?.message ?? '<unknown>') }
+    }
+    // Module name and "path" are both arbitrary identifiers used in Slang's
+    // diagnostics. The third arg is the synthetic path Slang uses for
+    // `#line` references in errors.
+    const userModule = session.loadModuleFromSource(src, 'user', 'user.slang')
+    if (!userModule) {
+      const err = main.getLastError?.()
+      return { error: 'loadModuleFromSource failed: ' + (err?.message ?? '<unknown>') }
+    }
+    const slangStage = stageToSlang(stage)
+    const entryPoint = userModule.findAndCheckEntryPoint(entry, slangStage)
+    if (!entryPoint) {
+      const err = main.getLastError?.()
+      return { error: 'findAndCheckEntryPoint(' + entry + ') failed: ' + (err?.message ?? '<unknown>') }
+    }
+    const composite = session.createCompositeComponentType([userModule, entryPoint])
+    if (!composite) {
+      const err = main.getLastError?.()
+      return { error: 'createCompositeComponentType failed: ' + (err?.message ?? '<unknown>') }
+    }
+    const linked = composite.link()
+    if (!linked) {
+      const err = main.getLastError?.()
+      return { error: 'link failed: ' + (err?.message ?? '<unknown>') }
+    }
+    // getEntryPointCode(entryPointIndex=0, targetIndex=0). With a single-entry
+    // composite, index 0 always corresponds to the entry we just added.
+    const rawWgsl: string = linked.getEntryPointCode(0, 0)
+    if (!rawWgsl || rawWgsl === 'Error' || rawWgsl.length === 0) {
+      const err = main.getLastError?.()
+      return { error: 'getEntryPointCode returned empty: ' + (err?.message ?? '<unknown>') }
+    }
+    // Sokol-gfx's WGPU backend expects UBs in @group(0) and textures /
+    // samplers / storage buffers in @group(1). Slang emits everything in
+    // @group(0). Patch the WGSL declarations so the @binding numbers stay
+    // intact but resources land in their expected groups.
+    const wgsl = remapWgslGroups(rawWgsl)
+    let reflectObj: any = {}
+    try {
+      const layout = linked.getLayout(0)
+      if (layout) reflectObj = layout.toJsonObject() ?? {}
+    } catch (e) {
+      // Reflection failure is non-fatal — we still got WGSL. Phase 6's
+      // reflection mapper degrades gracefully on missing fields.
+      console.warn('[slang-bridge] reflection extraction threw:', e)
+    }
+    const reflectJson = JSON.stringify(reflectObj)
+    // Debug: dump the first compile's reflection so a Phase 6 maintainer can
+    // see the schema in the browser console. Toggle via the URL hash.
+    if (location.hash.includes('debug-slang')) {
+      console.log('[slang-bridge] WGSL for', entry, '\n', wgsl)
+      console.log('[slang-bridge] reflection for', entry, '\n', reflectJson)
+    }
+    return { wgsl, reflectJson }
+  } catch (e: any) {
+    return { error: 'slangCompile threw: ' + (e?.message ?? String(e)) }
+  } finally {
+    // Slang's WASM bindings track lifetimes via embind. Sessions and
+    // composites should be released to avoid leaking GC handles. The
+    // .delete() guards swallow exceptions because some objects might not
+    // be ClassHandles in older Slang versions.
+    try { session?.delete?.() } catch {}
+  }
+}

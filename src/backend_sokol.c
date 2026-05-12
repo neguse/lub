@@ -647,11 +647,41 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
 
     sg_shader_desc desc = {0};
     bool is_compute = (d->cs_spirv != NULL);
-    // Slang's SPIR-V emitter renames the entry-point function to "main".
+
+    // Backend dispatch:
+    //   * Native Vulkan: Slang emits SPIR-V binaries; sokol-gfx reads
+    //     desc.*.bytecode and the spirv_set*_binding_n fields point at the
+    //     descriptor-set/binding pair patch_spirv_descriptor_sets() wrote.
+    //   * WASM / WebGPU: slang-bridge.ts emits WGSL source text into the
+    //     same ShaderBlob.spirv buffer (null-terminated). sokol-gfx's WGPU
+    //     backend reads desc.*.source and the wgsl_groupN_binding_n
+    //     fields. Slang puts everything in @group(0); slang-bridge.ts's
+    //     WGSL post-processor remaps non-UB resources to @group(1) so the
+    //     sokol layout matches.
+    //
+    // Entry name: Slang's SPIR-V emitter renames the entry point to "main",
+    // but its WGSL emitter preserves the user-supplied name (e.g. "vs_main",
+    // "fs_main", "cs_main"). We pull that from the reflection rather than
+    // hardcoding.
+#ifdef __EMSCRIPTEN__
+    const char *vs_entry = "vs_main";
+    const char *fs_entry = "fs_main";
+    const char *cs_entry = "cs_main";
+#else
+    const char *vs_entry = "main";
+    const char *fs_entry = "main";
+    const char *cs_entry = "main";
+#endif
+
     if (is_compute) {
-        desc.compute_func.entry        = "main";
+#ifdef __EMSCRIPTEN__
+        desc.compute_func.entry  = cs_entry;
+        desc.compute_func.source = (const char*)d->cs_spirv;  // WGSL string
+#else
+        desc.compute_func.entry         = cs_entry;
         desc.compute_func.bytecode.ptr  = d->cs_spirv;
         desc.compute_func.bytecode.size = d->cs_bytes;
+#endif
         // Storage buffers: PoC restriction — only RW storage at set=1, binding=slot.
         for (int i = 0; i < ss->refl.storage_buf_count && i < SG_MAX_VIEW_BINDSLOTS; ++i) {
             ShaderStorageBuf *sbuf = &ss->refl.storage_bufs[i];
@@ -660,8 +690,12 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
             sg_shader_view *view = &desc.views[slot];
             view->storage_buffer.stage = SG_SHADERSTAGE_COMPUTE;
             view->storage_buffer.readonly = sbuf->readonly;
+#ifdef __EMSCRIPTEN__
+            view->storage_buffer.wgsl_group1_binding_n = (uint8_t)slot;
+#else
             view->storage_buffer.spirv_set1_binding_n = (uint8_t)slot;
             view->storage_buffer.glsl_binding_n = (uint8_t)slot;
+#endif
         }
         for (int b = 0; b < ss->refl.ub_count && b < SGL_MAX_UNIFORM_BLOCKS; ++b) {
             ShaderUniformBlock *u = &ss->refl.ubs[b];
@@ -671,28 +705,42 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
             dst->stage = SG_SHADERSTAGE_COMPUTE;
             dst->size = (uint32_t)(u->size_floats * 4);
             dst->layout = SG_UNIFORMLAYOUT_STD140;
+#ifdef __EMSCRIPTEN__
+            dst->wgsl_group0_binding_n = (uint8_t)slot;
+#else
             dst->spirv_set0_binding_n = (uint8_t)slot;
+#endif
         }
         ss->sh = sg_make_shader(&desc);
         if (ss->sh.id == 0) { free(ss); return 0; }
         return (uintptr_t)ss;
     }
 
-    desc.vertex_func.entry            = "main";
+#ifdef __EMSCRIPTEN__
+    desc.vertex_func.entry            = vs_entry;
+    desc.vertex_func.source           = (const char*)d->vs_spirv;  // WGSL string
+    desc.fragment_func.entry          = fs_entry;
+    desc.fragment_func.source         = (const char*)d->fs_spirv;  // WGSL string
+#else
+    desc.vertex_func.entry            = vs_entry;
     desc.vertex_func.bytecode.ptr     = d->vs_spirv;
     desc.vertex_func.bytecode.size    = d->vs_bytes;
-    desc.fragment_func.entry          = "main";
+    desc.fragment_func.entry          = fs_entry;
     desc.fragment_func.bytecode.ptr   = d->fs_spirv;
     desc.fragment_func.bytecode.size  = d->fs_bytes;
+#endif
 
     // Vertex attributes — SPIR-V identifies inputs by location number, which
     // sokol's Vulkan backend reads from the SPIR-V module directly; the desc
-    // only needs base_type set for validation.
+    // only needs base_type set for validation. WGPU's WGSL backend reads the
+    // module similarly.
     for (int i = 0; i < ss->refl.attr_count && i < SG_MAX_VERTEX_ATTRIBUTES; ++i) {
         desc.attrs[i].base_type = SG_SHADERATTRBASETYPE_FLOAT;
     }
 
-    // Uniform blocks: map sokol bind slot to (set=0, binding=N).
+    // Uniform blocks: map sokol bind slot to (set=0, binding=N) for Vulkan
+    // or (group=0, binding=N) for WGPU. Same numerical slot — the bridge
+    // ensures Slang's @binding number equals the reflection slot index.
     for (int b = 0; b < ss->refl.ub_count && b < SGL_MAX_UNIFORM_BLOCKS; ++b) {
         ShaderUniformBlock *u = &ss->refl.ubs[b];
         int slot = u->slot;
@@ -702,7 +750,11 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
         dst->stage = SG_SHADERSTAGE_VERTEX;
         dst->size = (uint32_t)(u->size_floats * 4);
         dst->layout = SG_UNIFORMLAYOUT_STD140;
+#ifdef __EMSCRIPTEN__
+        dst->wgsl_group0_binding_n = (uint8_t)slot;
+#else
         dst->spirv_set0_binding_n = (uint8_t)slot;
+#endif
     }
 
     // Textures + samplers + texture-sampler pairs (PoC: stage=FRAGMENT).
@@ -716,13 +768,21 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
         view->texture.stage = SG_SHADERSTAGE_FRAGMENT;
         view->texture.image_type = SG_IMAGETYPE_2D;
         view->texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
+#ifdef __EMSCRIPTEN__
+        view->texture.wgsl_group1_binding_n = (uint8_t)img_slot;
+#else
         view->texture.spirv_set1_binding_n = (uint8_t)img_slot;
+#endif
 
         if (smp_slot >= 0 && smp_slot < SG_MAX_SAMPLER_BINDSLOTS) {
             sg_shader_sampler *smp = &desc.samplers[smp_slot];
             smp->stage = SG_SHADERSTAGE_FRAGMENT;
             smp->sampler_type = SG_SAMPLERTYPE_FILTERING;
+#ifdef __EMSCRIPTEN__
+            smp->wgsl_group1_binding_n = (uint8_t)smp_slot;
+#else
             smp->spirv_set1_binding_n = (uint8_t)smp_slot;
+#endif
         }
         if (i < SG_MAX_TEXTURE_SAMPLER_PAIRS) {
             sg_shader_texture_sampler_pair *pair = &desc.texture_sampler_pairs[i];

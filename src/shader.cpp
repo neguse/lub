@@ -1304,24 +1304,204 @@ bool tex_slot_exists(const ShaderReflection* refl, int img_slot) {
     return false;
 }
 
-// Populate ShaderReflection from a Slang `--reflection-json`-style document.
+// ---------------------------------------------------------------------------
+// Reflection schema reference (Slang WASM, release v2026.8.1+):
 //
-// **Phase 4 status: stub.** The exact JSON schema Slang emits via
-// IComponentType::getLayout()->toJson()-equivalent in the wasm build hasn't
-// been observed against real output yet (Phase 6 will iterate). For now we
-// do a best-effort, defensive walk: if we find an obvious "parameters" or
-// "entryPoints" array we try to extract attribute / uniform / texture
-// names. Missing/unknown fields are silently skipped — the goal is to
-// return true so the bridge call succeeds and the rest of the pipeline can
-// be exercised end-to-end. Sample-by-sample correctness will be added when
-// Phase 6 produces real JSON to diff against.
+// Top-level object from ProgramLayout::toJsonObject():
+// {
+//   "parameters": [           // global parameters (UBs, textures, samplers, storage)
+//     {
+//       "name": "...",
+//       "binding": { "kind": "descriptorTableSlot", "index": N },
+//       "type": {
+//         "kind": "constantBuffer" | "resource" | "samplerState" | ...,
+//         // ConstantBuffer<T>:
+//         "elementType": { "kind": "struct", "name": "...", "fields": [
+//             { "name": "...", "type": { "kind": "vector"|"scalar"|"matrix", ... },
+//               "binding": { "kind": "uniform", "offset": N_bytes, "size": M_bytes } }
+//         ] },
+//         // Resource (texture or structured buffer):
+//         "baseShape": "texture2D" | "structuredBuffer" | "byteAddressBuffer" | ...,
+//         "access": "readWrite" | "read" | ...,  // omitted for read-only
+//         "resultType": { kind: "vector"|"scalar", ... },
+//       }
+//     }
+//   ],
+//   "entryPoints": [
+//     {
+//       "name": "...",
+//       "stage": "vertex" | "fragment" | "compute",
+//       "parameters": [        // varying inputs
+//         {
+//           "name": "...",
+//           "binding": { "kind": "varyingInput", "index": N, "count"?: K },
+//           "type": { "kind": "struct", "fields": [
+//               { "name": "...", "type": {kind:"vector"|"scalar", elementCount?: 2|3|4},
+//                 "binding": { "kind": "varyingInput", "index": N }, "semanticName": "POSITION" }
+//           ] }
+//         }
+//       ],
+//       "threadGroupSize": [x, y, z],   // compute only
+//       "result": { ... varying outputs ... }
+//     }
+//   ]
+// }
 //
-// TODO(Phase 6): replace with a schema-aware mapping once we have ground
-// truth from `@shader-slang/slang-wasm`. Specifically map:
-//   * parameters[].binding.{kind,index}    -> attr.slot / ub.slot / tex.{img,smp}_slot
-//   * parameters[].type.{kind,elementType} -> attr.comp_count / ub.members[].comp_count
-//   * entryPoints[].threadGroupSize        -> workgroup[3] for compute
-//   * parameters[].type.kind == "resource" -> texs / storage_bufs
+// Notes:
+//  * Vertex inputs live under entryPoints[].parameters[] — NOT under the
+//    top-level parameters[]. The latter only holds resources / UBs.
+//  * The top-level parameter for a ConstantBuffer<T> has
+//    binding.kind = "descriptorTableSlot" and type.kind = "constantBuffer".
+//    We pull UB member layout out of type.elementType.fields[].
+//  * For a Texture2D the param is descriptorTableSlot + type.kind=resource,
+//    baseShape=texture2D. SamplerState gets its own descriptorTableSlot
+//    entry with type.kind=samplerState.
+//  * For RWStructuredBuffer<T>: type.kind=resource, baseShape=structuredBuffer,
+//    access="readWrite". Read-only StructuredBuffer<T> omits the access key.
+
+// Map a "type" node from the Slang reflection JSON to a float-component
+// count (mat4 = 16, vec3 = 3, scalar = 1). Returns 0 for unrecognised
+// shapes; caller may default to 4.
+int comp_count_of_type_json(const json &t) {
+    if (!t.is_object()) return 0;
+    std::string kind = t.value("kind", std::string(""));
+    if (kind == "scalar") return 1;
+    if (kind == "vector") return t.value("elementCount", 0);
+    if (kind == "matrix") {
+        int rc = t.value("rowCount", 0);
+        int cc = t.value("columnCount", 0);
+        return rc * cc;
+    }
+    return 0;
+}
+
+// Record a single varying-input field. Fields appear inside a struct's
+// "fields" array, each with its own binding.{index, kind} and type.
+void record_attr_field(const json &f, ShaderReflection *out) {
+    if (out->attr_count >= SGL_MAX_ATTRS) return;
+    std::string name = f.value("name", std::string("attr"));
+    int idx = -1;
+    if (f.contains("binding") && f["binding"].is_object() &&
+        f["binding"].contains("index"))
+    {
+        idx = f["binding"]["index"].get<int>();
+    }
+    int cc = 0;
+    if (f.contains("type")) cc = comp_count_of_type_json(f["type"]);
+    if (cc <= 0) cc = 4;
+
+    ShaderAttr *a = &out->attrs[out->attr_count];
+    copy_name_capped(a->name, sizeof(a->name), name);
+    a->slot = (idx >= 0) ? idx : out->attr_count;
+    a->comp_count = cc;
+    a->offset_floats = out->vertex_stride_floats;
+    out->vertex_stride_floats += cc;
+    out->attr_count++;
+}
+
+// Populate a ShaderUniformBlock from a top-level parameter whose type is
+// a ConstantBuffer<T>. Reads members from type.elementType.fields[].
+void fill_uniform_block_from_json(const json &p, int slot, ShaderUniformBlock *u) {
+    u->slot = slot;
+    u->size_floats = 0;
+    u->member_count = 0;
+    copy_name_capped(u->name, sizeof(u->name), p.value("name", std::string("")));
+
+    if (!p.contains("type") || !p["type"].is_object()) return;
+    const json &t = p["type"];
+    if (!t.contains("elementType") || !t["elementType"].is_object()) return;
+    const json &el = t["elementType"];
+    if (el.value("kind", std::string("")) != "struct") return;
+    if (!el.contains("fields") || !el["fields"].is_array()) return;
+
+    int total_bytes = 0;
+    for (const auto &f : el["fields"]) {
+        if (u->member_count >= SGL_MAX_UB_MEMBERS) break;
+        if (!f.is_object()) continue;
+        ShaderUniformMember *m = &u->members[u->member_count++];
+        copy_name_capped(m->name, sizeof(m->name), f.value("name", std::string("")));
+        int off_bytes = 0;
+        int size_bytes = 0;
+        if (f.contains("binding") && f["binding"].is_object()) {
+            off_bytes  = f["binding"].value("offset", 0);
+            size_bytes = f["binding"].value("size", 0);
+        }
+        m->offset_floats = off_bytes / 4;
+        int cc = f.contains("type") ? comp_count_of_type_json(f["type"]) : 0;
+        if (cc <= 0) cc = (size_bytes + 3) / 4;
+        m->comp_count = cc;
+        int end_bytes = off_bytes + size_bytes;
+        if (end_bytes > total_bytes) total_bytes = end_bytes;
+    }
+    u->size_floats = (total_bytes + 3) / 4;
+}
+
+// Top-level parameters[] walker. Each entry is either a UB, a texture, a
+// sampler, or a storage buffer. We dedup by slot so cross-stage merges
+// don't double-count.
+void process_global_parameter(const json &p, ShaderReflection *out) {
+    if (!p.is_object()) return;
+    if (!p.contains("binding") || !p["binding"].is_object()) return;
+    std::string bkind = p["binding"].value("kind", std::string(""));
+    // Only descriptorTableSlot bindings are for resources; uniform/varyingInput
+    // appear nested inside fields. Other bindings (rootConstant, etc.) are
+    // outside Phase 6's scope.
+    if (bkind != "descriptorTableSlot") return;
+    int slot = p["binding"].value("index", 0);
+
+    const json *t = nullptr;
+    if (p.contains("type") && p["type"].is_object()) t = &p["type"];
+    std::string tkind = t ? t->value("kind", std::string("")) : "";
+
+    if (tkind == "constantBuffer") {
+        if (ub_slot_exists(out, slot)) return;
+        if (out->ub_count >= SGL_MAX_UNIFORM_BLOCKS) return;
+        fill_uniform_block_from_json(p, slot, &out->ubs[out->ub_count++]);
+        return;
+    }
+    if (tkind == "resource") {
+        std::string shape = t->value("baseShape", std::string(""));
+        if (shape == "structuredBuffer" || shape == "byteAddressBuffer") {
+            if (sbuf_slot_exists(out, slot)) return;
+            if (out->storage_buf_count >= SGL_MAX_STORAGE_BUFS) return;
+            ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
+            copy_name_capped(sb->name, sizeof(sb->name), p.value("name", std::string("")));
+            sb->slot = slot;
+            // access="readWrite" => writable; absent or "read" => readonly.
+            sb->readonly = (t->value("access", std::string("")) != "readWrite");
+            return;
+        }
+        // Texture (baseShape="texture2D"/"texture3D"/...). Sampler comes via
+        // a separate parameter with type.kind="samplerState".
+        if (tex_slot_exists(out, slot)) return;
+        if (out->tex_count >= SGL_MAX_TEXTURES) return;
+        ShaderTexture *tx = &out->texs[out->tex_count++];
+        copy_name_capped(tx->name, sizeof(tx->name), p.value("name", std::string("")));
+        tx->img_slot = slot;
+        tx->smp_slot = -1;  // resolved by samplerState pass below
+        return;
+    }
+    if (tkind == "samplerState") {
+        // Pair with the next unpaired texture in declaration order. This
+        // matches the native (Slang COM API) path's behaviour and works for
+        // the typical `Texture2D foo; SamplerState foo_smp;` convention.
+        for (int k = 0; k < out->tex_count; ++k) {
+            if (out->texs[k].smp_slot < 0) {
+                out->texs[k].smp_slot = slot;
+                return;
+            }
+        }
+    }
+}
+
+// Populate ShaderReflection from a Slang reflection JSON document.
+//
+// Slang WGSL emit puts UBs / textures / samplers / storage in @group(0).
+// Sokol-gfx's WGPU backend expects UBs in @group(0) and the rest in
+// @group(1). The slang-bridge.ts post-processor patches the WGSL group
+// indices; the reflection here remains in Slang's native indexing
+// (descriptorTableSlot index), since that's the @binding number which
+// is preserved across the rewrite.
 bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
                              bool is_vertex_stage) {
     if (!out) return false;
@@ -1333,79 +1513,69 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
         return false;
     }
 
-    static bool warned_once = false;
-    if (!warned_once) {
-        fprintf(stderr,
-                "[sglua] reflect_from_slang_json: Phase 4 stub mapping "
-                "(field set is incomplete; Phase 6 will flesh this out).\n");
-        warned_once = true;
-    }
-
-    // Best-effort: walk a top-level "parameters" array if present and pull
-    // out anything that smells like a vertex input, uniform block, or texture.
-    // The exact schema is TBD; the code below is intentionally tolerant.
+    // 1. Top-level parameters[]: UBs, textures, samplers, storage buffers.
     if (j.contains("parameters") && j["parameters"].is_array()) {
+        // Two passes so SamplerState entries can pair with already-recorded
+        // Texture entries regardless of declaration order in the JSON.
         for (const auto &p : j["parameters"]) {
             if (!p.is_object()) continue;
-            std::string name = p.value("name", std::string(""));
-            std::string kind;
-            if (p.contains("binding") && p["binding"].is_object()) {
-                kind = p["binding"].value("kind", std::string(""));
+            const auto *t = p.contains("type") ? &p["type"] : nullptr;
+            if (t && t->is_object() && t->value("kind", std::string("")) == "samplerState") {
+                continue;  // handled in second pass
             }
-            int index = -1;
-            if (p.contains("binding") && p["binding"].is_object() &&
-                p["binding"].contains("index")) {
-                index = p["binding"]["index"].get<int>();
+            process_global_parameter(p, out);
+        }
+        for (const auto &p : j["parameters"]) {
+            if (!p.is_object()) continue;
+            const auto *t = p.contains("type") ? &p["type"] : nullptr;
+            if (t && t->is_object() && t->value("kind", std::string("")) == "samplerState") {
+                process_global_parameter(p, out);
             }
-
-            if (is_vertex_stage && kind == "varyingInput" &&
-                out->attr_count < SGL_MAX_ATTRS) {
-                ShaderAttr *a = &out->attrs[out->attr_count];
-                copy_name_capped(a->name, sizeof(a->name), name);
-                a->slot = (index >= 0) ? index : out->attr_count;
-                a->comp_count = 4; // TODO(Phase 6): read from type
-                a->offset_floats = out->vertex_stride_floats;
-                out->vertex_stride_floats += a->comp_count;
-                out->attr_count++;
-            } else if (kind == "uniform" || kind == "constantBuffer") {
-                int slot = (index >= 0) ? index : 0;
-                // Cross-stage dedup: same UB declared in both VS and FS
-                // collapses to one entry.
-                if (!ub_slot_exists(out, slot) &&
-                    out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
-                    ShaderUniformBlock *u = &out->ubs[out->ub_count++];
-                    copy_name_capped(u->name, sizeof(u->name), name);
-                    u->slot = slot;
-                    u->size_floats = 0; // TODO(Phase 6): infer from type layout
-                    u->member_count = 0;
-                }
-            } else if (kind == "descriptorTableSlot" || kind == "shaderResource") {
-                int slot = (index >= 0) ? index : 0;
-                // Cross-stage dedup: same texture/sampler at same image slot.
-                if (!tex_slot_exists(out, slot) &&
-                    out->tex_count < SGL_MAX_TEXTURES) {
-                    ShaderTexture *tx = &out->texs[out->tex_count++];
-                    copy_name_capped(tx->name, sizeof(tx->name), name);
-                    tx->img_slot = slot;
-                    tx->smp_slot = slot;
-                }
-            }
-            // samplerState / storageBuffer / etc. omitted — Phase 6.
-            // (When storage buffers land, dedup with sbuf_slot_exists().)
         }
     }
 
-    // Compute thread group size, if present in an entryPoints[] node.
+    // 2. entryPoints[]: varying inputs (vertex only) and threadGroupSize
+    //    (compute only).
     if (j.contains("entryPoints") && j["entryPoints"].is_array()) {
         for (const auto &ep : j["entryPoints"]) {
             if (!ep.is_object()) continue;
             std::string stage = ep.value("stage", std::string(""));
+
+            // Compute work-group size.
             if (stage == "compute" && ep.contains("threadGroupSize") &&
                 ep["threadGroupSize"].is_array() &&
-                ep["threadGroupSize"].size() == 3) {
+                ep["threadGroupSize"].size() == 3)
+            {
                 out->is_compute = true;
                 for (int k = 0; k < 3; ++k) {
                     out->workgroup[k] = ep["threadGroupSize"][k].get<int>();
+                }
+            }
+
+            // Varying inputs (vertex only). is_vertex_stage gates this — the
+            // FS reflection has its own varyingInput entries (texcoords etc.)
+            // but those aren't pipeline-level vertex attributes.
+            if (!is_vertex_stage || stage != "vertex") continue;
+            if (!ep.contains("parameters") || !ep["parameters"].is_array()) continue;
+            for (const auto &p : ep["parameters"]) {
+                if (!p.is_object()) continue;
+                std::string bkind;
+                if (p.contains("binding") && p["binding"].is_object()) {
+                    bkind = p["binding"].value("kind", std::string(""));
+                }
+                if (bkind != "varyingInput") continue;
+                // Two cases mirror the native path's fill_attrs_from_entry_point:
+                //   (a) struct => flatten its fields[]
+                //   (b) scalar/vector => single attr
+                if (!p.contains("type") || !p["type"].is_object()) continue;
+                const json &t = p["type"];
+                std::string tkind = t.value("kind", std::string(""));
+                if (tkind == "struct" && t.contains("fields") && t["fields"].is_array()) {
+                    for (const auto &f : t["fields"]) {
+                        record_attr_field(f, out);
+                    }
+                } else {
+                    record_attr_field(p, out);
                 }
             }
         }

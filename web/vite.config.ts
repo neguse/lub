@@ -5,7 +5,19 @@ import { resolve, extname, sep } from 'node:path'
 export default defineConfig({
   publicDir: 'public',
   server: { fs: { allow: ['..'] } },
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      // Two HTML entries: the main editor shell (index.html) and the
+      // iframe player (player.html). Vite processes both and emits a
+      // hashed JS bundle per entry. Without this only index.html would
+      // pick up its <script type="module">.
+      input: {
+        main:   resolve(__dirname, 'index.html'),
+        player: resolve(__dirname, 'player.html'),
+      },
+    },
+  },
   plugins: [
     {
       name: 'serve-samples-and-wasm',
