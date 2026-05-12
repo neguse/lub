@@ -13,11 +13,11 @@ float4 fs_main() : SV_Target { return float4(1.0, 0.5, 0.0, 1.0); }
 
 local printed = false
 
-function M.on_init(self) end
-function M.on_event(self, e) end
-function M.on_quit(self) end
+function M.on_init() end
+function M.on_event(e) end
+function M.on_quit() end
 
-function M.on_frame(self)
+function M.on_frame()
   local s = use_shader("test", vs, fs, 1)
   if not printed and s and s.__sgl_kind == "shader" then
     print("shader compiled:", s.key)

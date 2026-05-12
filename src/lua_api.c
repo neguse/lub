@@ -902,8 +902,8 @@ static void push_event_table(lua_State *L, const SDL_Event *e) {
 }
 
 // Fetches the entry module from the registry, looks up the named field, and
-// pcalls it with the existing top-of-stack args. No `self` is passed — the
-// samples accept (self) but the C side never supplies one.
+// pcalls it with the existing top-of-stack args. samples declare callbacks
+// without `self`; C-side does not push module table as first arg.
 static void call_module_field(LuaCtx *ctx, const char *name, int nargs) {
     lua_State *L = ctx->L;
     /* stack on entry: [..., arg1, arg2, ...] (nargs items on top) */

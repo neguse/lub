@@ -9,14 +9,14 @@ end
 
 local t = 0
 
-function M.on_init(self)
+function M.on_init()
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
 
-function M.on_event(self, e) end
-function M.on_quit(self) end
+function M.on_event(e) end
+function M.on_quit() end
 
-function M.on_frame(self)
+function M.on_frame()
   t = t + 1/60
   local vs, vsv = sg_io.load_text("samples/data/04_mvp.vs.slang")
   local fs, fsv = sg_io.load_text("samples/data/04_mvp.fs.slang")

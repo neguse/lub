@@ -1,7 +1,7 @@
 -- samples/boot.lua
 local entry_name = ...
 
-package.path = "/lume/?.lua;third_party/lume/?.lua;samples/?.lua;samples/?/init.lua;" .. package.path
+package.path = "/lume/?.lua;third_party/lume/?.lua;samples/?.lua;" .. package.path
 
 local ok, lume = pcall(require, "lume")
 if not ok then

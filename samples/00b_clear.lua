@@ -1,17 +1,17 @@
 local M = {}
 local t = 0
 
-function M.on_init(self)
+function M.on_init()
   local b = os.getenv("SGLUA_BACKEND") or "sokol"
   config({ backend = b })
   print("backend = " .. b)
   print("clear demo")
 end
 
-function M.on_event(self, e) end
-function M.on_quit(self) end
+function M.on_event(e) end
+function M.on_quit() end
 
-function M.on_frame(self)
+function M.on_frame()
   t = t + 1/60
   local r = 0.5 + 0.5 * math.sin(t)
   local g = 0.5 + 0.5 * math.sin(t + 2.0)

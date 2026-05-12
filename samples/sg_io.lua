@@ -2,7 +2,7 @@
 -- File-input helper with mtime fast-path + content hash version.
 --
 -- Usage:
---   local sg_io = dofile("samples/sg_io.lua")
+--   local sg_io = require("sg_io")
 --   local src,  ver = sg_io.load_text("foo.slang")
 --   local tab,  ver = sg_io.load_floats("foo.verts.lua")
 --   local px, w, h, fmt, ver = sg_io.load_png("foo.png")

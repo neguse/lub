@@ -6,17 +6,17 @@
 local sg_io = require("sg_io")
 local M = {}
 
-function M.on_init(self)
+function M.on_init()
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
 
-function M.on_event(self, e) end
-function M.on_quit(self) end
+function M.on_event(e) end
+function M.on_quit() end
 
 -- 3 vertices * 4 floats (vec2 pos + vec2 col) = 12 floats.
 local VERT_FLOATS = 12
 
-function M.on_frame(self)
+function M.on_frame()
     local cs, csv = sg_io.load_text("samples/data/07_gen_verts.cs.slang")
     local vs, vsv = sg_io.load_text("samples/data/07_render.vs.slang")
     local fs, fsv = sg_io.load_text("samples/data/07_render.fs.slang")

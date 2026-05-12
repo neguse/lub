@@ -3,14 +3,14 @@ local M = {}
 
 local RT_W, RT_H = 256, 256
 
-function M.on_init(self)
+function M.on_init()
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
 
-function M.on_event(self, e) end
-function M.on_quit(self) end
+function M.on_event(e) end
+function M.on_quit() end
 
-function M.on_frame(self)
+function M.on_frame()
     local ovs, ovsv = sg_io.load_text("samples/data/05_offscreen.vs.slang")
     local ofs, ofsv = sg_io.load_text("samples/data/05_offscreen.fs.slang")
     local overts, ovv = sg_io.load_floats("samples/data/05_offscreen.verts.lua")

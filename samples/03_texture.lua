@@ -1,14 +1,14 @@
 local sg_io = require("sg_io")
 local M = {}
 
-function M.on_init(self)
+function M.on_init()
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
 
-function M.on_event(self, e) end
-function M.on_quit(self) end
+function M.on_event(e) end
+function M.on_quit() end
 
-function M.on_frame(self)
+function M.on_frame()
     local vs, vsv = sg_io.load_text("samples/data/03_tex.vs.slang")
     local fs, fsv = sg_io.load_text("samples/data/03_tex.fs.slang")
     local verts, vv = sg_io.load_floats("samples/data/03_tex.verts.lua")

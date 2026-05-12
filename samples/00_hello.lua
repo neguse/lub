@@ -1,6 +1,6 @@
 local M = {}
 
-function M.on_init(self)
+function M.on_init()
   print("[lua] on_init")
   config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
   print("config called")
@@ -10,14 +10,14 @@ function M.on_init(self)
   end
 end
 
-function M.on_event(self, e) end
+function M.on_event(e) end
 
-function M.on_frame(self)
+function M.on_frame()
   begin_pass({ target = main_tex, clear_color = {0.1, 0.1, 0.2, 1} })
   end_pass()
 end
 
-function M.on_quit(self)
+function M.on_quit()
   print("[lua] on_quit")
 end
 
