@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
+    "verify": "node scripts/verify-headless.mjs",
+    "postinstall": "npm run fetch-slang"
   },
   "dependencies": {
     "codemirror": "^6.0.1",

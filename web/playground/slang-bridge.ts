@@ -124,11 +124,17 @@ export async function initSlang(): Promise<void> {
 //   ^(\s*)@binding\(\d+\)\s+@group\((\d+)\)\s+var(?:<[^>]+>)?\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_]\w*)
 // We rewrite the group number IN PLACE, preserving every other character so
 // line numbers / column counts in error messages stay aligned.
-function remapWgslGroups(src: string): string {
+//
+// Returns the rewritten WGSL plus the number of matched declarations so the
+// caller can sanity-check it against the reflection's resource count and warn
+// when Slang emits a declaration form the regex doesn't recognise.
+function remapWgslGroups(src: string): { wgsl: string, remapped: number } {
   // Match group declarations on a single line. We accept (and leave alone)
   // any spacing variations Slang might use.
   const re = /@binding\((\d+)\)\s+@group\((\d+)\)\s+var(<[^>]*>)?(\s+[A-Za-z_]\w*\s*:\s*[A-Za-z_]\w*)/g
-  return src.replace(re, (full, _bind, _grp, varTpl, tail) => {
+  let count = 0
+  const wgsl = src.replace(re, (full, _bind, _grp, varTpl, tail) => {
+    count++
     // varTpl is the optional <...> after `var`. tail is `  name : type_id`.
     const tpl  = (varTpl  ?? '').toLowerCase()
     const tail_l = (tail ?? '').toLowerCase()
@@ -149,12 +155,49 @@ function remapWgslGroups(src: string): string {
     // Reconstruct the prefix; we only swap the @group(N) literal.
     return full.replace(/@group\(\d+\)/, `@group(${newGroup})`)
   })
+  return { wgsl, remapped: count }
+}
+
+// Count the resources reflected by Slang that we expect remapWgslGroups to
+// have rewritten. We compare this against the regex's match count so a future
+// Slang release that emits, say, a multi-line @binding declaration triggers a
+// loud warning rather than silently mis-grouping resources at runtime.
+//
+// Schema (Slang WASM v2026.8.1 reflection):
+//   { parameters: [
+//       { binding: { kind: "constantBuffer"|"shaderResource"|
+//                          "sampler"|"unorderedAccess"|"descriptorTableSlot",
+//                    index: int, space: int },
+//         type:    { kind, ... },
+//         ... },
+//       ...
+//     ],
+//     ... }
+// kinds that map to a @binding @group declaration in WGSL: every kind above
+// except function parameters and entry-point varyings (those aren't in
+// `parameters`). The simplest robust count is `parameters.length` when the
+// field is present.
+function expectedResourceCount(reflectObj: any): number {
+  const params = reflectObj?.parameters
+  if (!Array.isArray(params)) return -1
+  return params.length
 }
 
 async function compileOne(main: any, src: string, entry: string, stage: StageCode):
     Promise<{ wgsl: string, reflectJson: string } | { error: string }>
 {
+  // Slang's embind bindings hand out ClassHandle objects for every long-lived
+  // structure (session / module / entry point / composite / linked program /
+  // layout). The C++ side reference-counts them and only frees on .delete().
+  // Without explicit deletes we leak ~MB per compile, which adds up fast
+  // during a hot-reload editing session. Track everything and clean it up in
+  // a try/finally so exceptions still trigger release.
   let session: any = null
+  let userModule: any = null
+  let entryPoint: any = null
+  let composite: any = null
+  let linked: any = null
+  let layout: any = null
   try {
     session = globalSession.createSession(wgslTarget)
     if (!session) {
@@ -164,23 +207,23 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
     // Module name and "path" are both arbitrary identifiers used in Slang's
     // diagnostics. The third arg is the synthetic path Slang uses for
     // `#line` references in errors.
-    const userModule = session.loadModuleFromSource(src, 'user', 'user.slang')
+    userModule = session.loadModuleFromSource(src, 'user', 'user.slang')
     if (!userModule) {
       const err = main.getLastError?.()
       return { error: 'loadModuleFromSource failed: ' + (err?.message ?? '<unknown>') }
     }
     const slangStage = stageToSlang(stage)
-    const entryPoint = userModule.findAndCheckEntryPoint(entry, slangStage)
+    entryPoint = userModule.findAndCheckEntryPoint(entry, slangStage)
     if (!entryPoint) {
       const err = main.getLastError?.()
       return { error: 'findAndCheckEntryPoint(' + entry + ') failed: ' + (err?.message ?? '<unknown>') }
     }
-    const composite = session.createCompositeComponentType([userModule, entryPoint])
+    composite = session.createCompositeComponentType([userModule, entryPoint])
     if (!composite) {
       const err = main.getLastError?.()
       return { error: 'createCompositeComponentType failed: ' + (err?.message ?? '<unknown>') }
     }
-    const linked = composite.link()
+    linked = composite.link()
     if (!linked) {
       const err = main.getLastError?.()
       return { error: 'link failed: ' + (err?.message ?? '<unknown>') }
@@ -196,10 +239,10 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
     // samplers / storage buffers in @group(1). Slang emits everything in
     // @group(0). Patch the WGSL declarations so the @binding numbers stay
     // intact but resources land in their expected groups.
-    const wgsl = remapWgslGroups(rawWgsl)
+    const { wgsl, remapped } = remapWgslGroups(rawWgsl)
     let reflectObj: any = {}
     try {
-      const layout = linked.getLayout(0)
+      layout = linked.getLayout(0)
       if (layout) reflectObj = layout.toJsonObject() ?? {}
     } catch (e) {
       // Reflection failure is non-fatal — we still got WGSL. Phase 6's
@@ -207,6 +250,17 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
       console.warn('[slang-bridge] reflection extraction threw:', e)
     }
     const reflectJson = JSON.stringify(reflectObj)
+    // Sanity-check: if reflection says there ARE resources but the regex
+    // matched zero or fewer-than-expected declarations, Slang likely emitted
+    // a form we don't recognise (e.g. multi-line @binding or a new resource
+    // kind). Warn so a Phase 8 maintainer sees it before runtime breakage.
+    const expected = expectedResourceCount(reflectObj)
+    if (expected > 0 && remapped < expected) {
+      console.warn('[slang-bridge] WGSL group remap matched',
+                   remapped, 'declarations but reflection reports',
+                   expected, 'parameters; group rewrite may have missed a form. WGSL:\n',
+                   wgsl)
+    }
     // Debug: dump the first compile's reflection so a Phase 6 maintainer can
     // see the schema in the browser console. Toggle via the URL hash.
     if (location.hash.includes('debug-slang')) {
@@ -217,10 +271,16 @@ async function compileOne(main: any, src: string, entry: string, stage: StageCod
   } catch (e: any) {
     return { error: 'slangCompile threw: ' + (e?.message ?? String(e)) }
   } finally {
-    // Slang's WASM bindings track lifetimes via embind. Sessions and
-    // composites should be released to avoid leaking GC handles. The
-    // .delete() guards swallow exceptions because some objects might not
-    // be ClassHandles in older Slang versions.
-    try { session?.delete?.() } catch {}
+    // Slang's WASM bindings track lifetimes via embind. Release everything we
+    // allocated, in reverse construction order. The optional-chained
+    // `.delete?.()` is defensive — some return values might not be
+    // ClassHandles in older Slang versions, and we don't want a missing
+    // method to take down the cleanup chain.
+    try { layout?.delete?.() }     catch {}
+    try { linked?.delete?.() }     catch {}
+    try { composite?.delete?.() }  catch {}
+    try { entryPoint?.delete?.() } catch {}
+    try { userModule?.delete?.() } catch {}
+    try { session?.delete?.() }    catch {}
   }
 }

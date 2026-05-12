@@ -134,6 +134,29 @@ lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical*
 起動中の `samples/01_triangle.lua` の三角形の色が即座に変わる。
 PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編集すれば頂点も同様。
 
+## WASM playground (Phase 7 PoC)
+
+ブラウザ上で動く Vite + CodeMirror ベースの playground を `web/` 配下に試験実装中。
+sokol-gfx の WGPU backend をターゲットに WASM へクロスコンパイルしたバイナリを iframe
+で読み込み、左ペインのエディタで `.slang` / `.lua` を編集すると 300ms debounce で右ペインの
+プレイヤーに同期される (`samples/data/*` の mtime/hash hot-reload 経路を再利用)。
+shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) を vendoring。
+
+```sh
+cd web
+npm install                  # postinstall で web/scripts/fetch-slang-wasm.sh が走り
+                             # web/public/slang/ に slang-wasm.* を取得する
+npm run dev                  # http://localhost:5173/
+npm run verify               # 別端末: playwright + swiftshader で headless 検証
+```
+
+`npm run verify` (= `web/scripts/verify-headless.mjs`) は dev server を立ち上げた状態で
+sample 01 の初期描画 / shader edit / lua edit / verts edit の auto-sync を pixel-bucket
+で検証し、sample 01〜07 の切替後の非黒描画を確認する。スクリーンショットは
+`/tmp/sglua-verify/` に出力される。
+
+詳細・既知制約は Phase 8 で別途まとめる予定。
+
 ## サンプル
 
 | # | スクリプト              | 内容                                            |

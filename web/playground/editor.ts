@@ -56,6 +56,20 @@ export function attachEditor(container: HTMLElement,
     ],
     parent: container,
   })
+  // Expose for headless tests (web/scripts/verify-headless.mjs): we need to
+  // drive the editor end-to-end including the dirty-bit + debounce flow, and
+  // CodeMirror 6's EditorView isn't reachable from the DOM without using a
+  // private API. A handful of read/write hooks keeps the test code honest.
+  ;(window as any).__sgluaTest = {
+    selectTab,
+    replaceContent(filePath: string, newContent: string) {
+      selectTab(filePath)
+      view!.dispatch({
+        changes: { from: 0, to: view!.state.doc.length, insert: newContent },
+      })
+    },
+    listFiles(): string[] { return Array.from(files.keys()) },
+  }
 }
 
 export function setFiles(newFiles: Map<string, EditorFile>) {

@@ -1296,8 +1296,8 @@ bool tex_slot_exists(const ShaderReflection* refl, int img_slot) {
     }
     return false;
 }
-// Unused until Phase 6 wires storage-buffer extraction in reflect_from_slang_json.
-[[maybe_unused]] bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
+// Used by Phase 6's storage-buffer dedup path in reflect_from_slang_json.
+bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
     for (int i = 0; i < refl->storage_buf_count; ++i) {
         if (refl->storage_bufs[i].slot == slot) return true;
     }
