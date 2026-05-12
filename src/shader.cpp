@@ -1188,49 +1188,71 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 #include <emscripten.h>
 #include "../third_party/nlohmann/json.hpp"
 
+// Stage codes passed across the JS bridge to window.slangCompile.
+// Must match what playground/slang-bridge.ts expects.
+enum SglShaderStage {
+    SGL_STAGE_VS = 0,
+    SGL_STAGE_FS = 1,
+    SGL_STAGE_CS = 2,
+};
+
 // JS bridge into window.slangCompile().
 //
 // Contract:
 //   * `src`   — Slang source string (UTF-8).
 //   * `entry` — entry-point name (e.g. "vs_main", "fs_main", "cs_main").
-//   * `stage` — 0=vertex, 1=fragment, 2=compute. JS side passes this
-//                straight to slang-wasm's stage enum.
+//   * `stage` — SglShaderStage (0=vertex, 1=fragment, 2=compute). JS side
+//                passes this straight to slang-wasm's stage enum.
 //
-// Returns a malloc'd UTF-8 char* whose contents are `wgsl + '\x01' + reflectJson`,
-// or NULL on error. Caller frees with free(). The 0x01 byte is chosen as the
-// separator because it cannot appear in valid WGSL source or JSON.
-//
-// Until Phase 6 wires up `window.slangCompile`, this returns 0 and logs once;
-// callers then take the existing compile-failed branch (keep old shader / fail
-// loud if no old shader exists).
+// Return value (malloc'd UTF-8 char*, caller frees with free()):
+//   * Success: `wgsl + '\x01' + reflectJson` — leading byte is the first byte
+//     of valid WGSL source (never 0x02). The 0x01 separator cannot appear in
+//     valid WGSL or JSON.
+//   * Failure (diagnostic available): `'\x02' + errorString`. The leading 0x02
+//     byte signals that the rest is a human-readable Slang diagnostic to be
+//     surfaced in `err_buf`.
+//   * NULL: only for genuinely unrecoverable cases (malloc failure inside the
+//     JS shim). Everything else — including "slang-wasm not loaded yet" — uses
+//     the 0x02-prefixed error form so the diagnostic reaches the user.
 EM_ASYNC_JS(char*, sglua_slang_compile_js,
             (const char* src, const char* entry, int stage),
 {
     const srcStr   = UTF8ToString(src);
     const entryStr = UTF8ToString(entry);
+    const packError = (msg) => {
+        const errMsg = '\x02' + msg;
+        const len = lengthBytesUTF8(errMsg) + 1;
+        const ptr = _malloc(len);
+        if (!ptr) return 0;
+        stringToUTF8(errMsg, ptr, len);
+        return ptr;
+    };
     if (typeof window === 'undefined' ||
         typeof window.slangCompile !== 'function') {
-        console.error('[sglua] window.slangCompile not defined yet ' +
-                      '(Phase 6 will wire slang-wasm). entry=' + entryStr);
-        return 0;
+        console.error('[sglua] window.slangCompile not yet defined ' +
+                      "(Phase 6 hasn't wired up slang-wasm). entry=" + entryStr);
+        return packError('slang-wasm not loaded yet (Phase 6)');
     }
     try {
         const result = await window.slangCompile(srcStr, entryStr, stage);
         if (!result || result.error) {
-            if (result && result.error) {
-                console.error('[sglua] slang compile error:', result.error);
-            }
-            return 0;
+            const msg = (result && result.error)
+                ? result.error
+                : 'slang compile returned no result';
+            console.error('[sglua] slang compile error:', msg);
+            return packError(msg);
         }
         // Pack {wgsl, reflectJson} into a single \x01-separated UTF-8 string.
         const blob = result.wgsl + '\x01' + (result.reflectJson || '{}');
         const len = lengthBytesUTF8(blob) + 1;
         const ptr = _malloc(len);
+        if (!ptr) return 0;
         stringToUTF8(blob, ptr, len);
         return ptr;
     } catch (e) {
-        console.error('[sglua] slangCompile threw:', e);
-        return 0;
+        const msg = (e && e.message) ? e.message : String(e);
+        console.error('[sglua] slangCompile threw:', msg);
+        return packError(msg);
     }
 });
 
@@ -1254,6 +1276,32 @@ bool split_blob(const char *blob, std::string &out_wgsl, std::string &out_refl_j
     out_wgsl.assign(blob, (size_t)(sep - blob));
     out_refl_json.assign(sep + 1);
     return true;
+}
+
+// Cross-stage dedup helpers. shader_compile() merges VS and FS reflection
+// JSON into one ShaderReflection by calling reflect_from_slang_json twice.
+// If both stages declare the same UB/texture/storage-buffer (very common —
+// e.g. a UB at slot 0 used by both vertex and fragment), the second call
+// would otherwise append a duplicate entry. We guard each append with a
+// slot-existence check.
+bool ub_slot_exists(const ShaderReflection* refl, int slot) {
+    for (int i = 0; i < refl->ub_count; ++i) {
+        if (refl->ubs[i].slot == slot) return true;
+    }
+    return false;
+}
+bool tex_slot_exists(const ShaderReflection* refl, int img_slot) {
+    for (int i = 0; i < refl->tex_count; ++i) {
+        if (refl->texs[i].img_slot == img_slot) return true;
+    }
+    return false;
+}
+// Unused until Phase 6 wires storage-buffer extraction in reflect_from_slang_json.
+[[maybe_unused]] bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
+    for (int i = 0; i < refl->storage_buf_count; ++i) {
+        if (refl->storage_bufs[i].slot == slot) return true;
+    }
+    return false;
 }
 
 // Populate ShaderReflection from a Slang `--reflection-json`-style document.
@@ -1320,22 +1368,30 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
                 out->vertex_stride_floats += a->comp_count;
                 out->attr_count++;
             } else if (kind == "uniform" || kind == "constantBuffer") {
-                if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
+                int slot = (index >= 0) ? index : 0;
+                // Cross-stage dedup: same UB declared in both VS and FS
+                // collapses to one entry.
+                if (!ub_slot_exists(out, slot) &&
+                    out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
                     ShaderUniformBlock *u = &out->ubs[out->ub_count++];
                     copy_name_capped(u->name, sizeof(u->name), name);
-                    u->slot = (index >= 0) ? index : 0;
+                    u->slot = slot;
                     u->size_floats = 0; // TODO(Phase 6): infer from type layout
                     u->member_count = 0;
                 }
             } else if (kind == "descriptorTableSlot" || kind == "shaderResource") {
-                if (out->tex_count < SGL_MAX_TEXTURES) {
+                int slot = (index >= 0) ? index : 0;
+                // Cross-stage dedup: same texture/sampler at same image slot.
+                if (!tex_slot_exists(out, slot) &&
+                    out->tex_count < SGL_MAX_TEXTURES) {
                     ShaderTexture *tx = &out->texs[out->tex_count++];
                     copy_name_capped(tx->name, sizeof(tx->name), name);
-                    tx->img_slot = (index >= 0) ? index : 0;
-                    tx->smp_slot = (index >= 0) ? index : 0;
+                    tx->img_slot = slot;
+                    tx->smp_slot = slot;
                 }
             }
             // samplerState / storageBuffer / etc. omitted — Phase 6.
+            // (When storage buffers land, dedup with sbuf_slot_exists().)
         }
     }
 
@@ -1365,10 +1421,22 @@ bool compile_one(const char *src, const char *entry, int stage,
                  char *err_buf, size_t err_buf_size) {
     char *blob = sglua_slang_compile_js(src, entry, stage);
     if (!blob) {
+        // NULL is reserved for genuinely unrecoverable cases (alloc failure
+        // inside the JS shim, runtime not initialised). Anything else comes
+        // back as a 0x02-prefixed error payload — see the EM_ASYNC_JS contract.
         if (err_buf && err_buf_size) {
             snprintf(err_buf, err_buf_size,
-                     "slang(%s) compile failed (see browser console)", entry);
+                     "slang(%s) compile: out of memory or runtime not initialised",
+                     entry);
         }
+        return false;
+    }
+    // 0x02 leading byte signals a Slang diagnostic; the rest is the message.
+    if (blob[0] == '\x02') {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "slang(%s) %s", entry, blob + 1);
+        }
+        free(blob);
         return false;
     }
     std::string wgsl;
@@ -1413,18 +1481,20 @@ extern "C" bool shader_compile(
     if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
 
     std::string vs_refl_json, fs_refl_json;
-    if (!compile_one(vs_src, "vs_main", 0, out_vs, vs_refl_json, err_buf, err_buf_size)) {
+    if (!compile_one(vs_src, "vs_main", SGL_STAGE_VS, out_vs, vs_refl_json,
+                     err_buf, err_buf_size)) {
         return false;
     }
-    if (!compile_one(fs_src, "fs_main", 1, out_fs, fs_refl_json, err_buf, err_buf_size)) {
+    if (!compile_one(fs_src, "fs_main", SGL_STAGE_FS, out_fs, fs_refl_json,
+                     err_buf, err_buf_size)) {
         free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
         return false;
     }
 
     // Merge both stages' reflection JSON into the single ShaderReflection
     // struct: VS contributes attrs + UBs + textures, FS contributes its
-    // own UBs + textures (de-dup by slot would be ideal but the Phase 4
-    // stub doesn't get that fancy).
+    // own UBs + textures. reflect_from_slang_json() now dedups by slot so
+    // a UB/texture declared in both stages collapses to one entry.
     if (!reflect_from_slang_json(vs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/true) ||
         !reflect_from_slang_json(fs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false))
     {
@@ -1450,7 +1520,8 @@ extern "C" bool shader_compile_compute(
     if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
 
     std::string cs_refl_json;
-    if (!compile_one(cs_src, "cs_main", 2, out_cs, cs_refl_json, err_buf, err_buf_size)) {
+    if (!compile_one(cs_src, "cs_main", SGL_STAGE_CS, out_cs, cs_refl_json,
+                     err_buf, err_buf_size)) {
         return false;
     }
     out_refl->is_compute = true;
