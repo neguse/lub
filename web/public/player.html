@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head>
+  <meta charset="UTF-8" />
+  <style>
+    html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+    canvas { display:block; }
+  </style>
+</head><body>
+  <canvas id="canvas" width="480" height="360" tabindex="0"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    window._canvasWidth  = 480;
+    window._canvasHeight = 360;
+
+    // Logs from native print/printErr (and from JS) -> forward to parent
+    function relayLog(msg, level) {
+      try { parent.postMessage({ type:'log', msg: String(msg), level: level||'log' }, '*'); } catch(e){}
+    }
+    const _origLog   = console.log;
+    const _origErr   = console.error;
+    const _origWarn  = console.warn;
+    console.log   = (...a) => { _origLog(...a);  relayLog(a.join(' '), 'log');  };
+    console.error = (...a) => { _origErr(...a);  relayLog(a.join(' '), 'err'); };
+    console.warn  = (...a) => { _origWarn(...a); relayLog(a.join(' '), 'warn');};
+
+    function writeFileEnsureDir(path, content) {
+      // path is samples/<rel> by convention
+      const parts = path.split('/');
+      let cur = '';
+      for (let i = 0; i < parts.length - 1; ++i) {
+        cur = cur ? (cur + '/' + parts[i]) : parts[i];
+        try { FS.mkdir(cur); } catch (e) { /* exists */ }
+      }
+      FS.writeFile(path, content);
+    }
+
+    async function initWebGPU() {
+      if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) throw new Error('No WebGPU adapter');
+      return await adapter.requestDevice();
+    }
+
+    let pendingFiles = null;
+    let pendingEntry = null;
+    let wasmStarted = false;
+
+    async function startWasm() {
+      if (wasmStarted) return;
+      wasmStarted = true;
+      let device;
+      try { device = await initWebGPU(); }
+      catch (e) { console.error('WebGPU init failed:', e.message); return; }
+
+      window.Module = {
+        canvas,
+        preinitializedWebGPUDevice: device,
+        print:    (t) => relayLog(t, 'log'),
+        printErr: (t) => relayLog(t, 'err'),
+        preRun: [() => {
+          for (const [p, c] of Object.entries(pendingFiles)) {
+            const full = p.startsWith('samples/') ? p : ('samples/' + p);
+            writeFileEnsureDir(full, c);
+          }
+        }],
+        arguments: [pendingEntry || '01_triangle'],
+      };
+      const s = document.createElement('script');
+      s.src = '/wasm/sglua.js';
+      document.body.appendChild(s);
+    }
+
+    window.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.type === 'setFiles') {
+        pendingFiles = d.files || {};
+        pendingEntry = d.entry || null;
+        startWasm();
+      } else if (d.type === 'syncFiles') {
+        if (!window.FS) return; // wasm not yet ready; user likely just opened the page
+        for (const [p, c] of Object.entries(d.files || {})) {
+          const full = p.startsWith('samples/') ? p : ('samples/' + p);
+          writeFileEnsureDir(full, c);
+        }
+        // mtime-poll on C side picks it up next frame
+      }
+    });
+
+    // Tell parent we're ready to receive code
+    parent.postMessage({ type: 'playerReady' }, '*');
+  </script>
+</body></html>
