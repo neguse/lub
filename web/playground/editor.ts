@@ -60,15 +60,20 @@ export function attachEditor(container: HTMLElement,
   // drive the editor end-to-end including the dirty-bit + debounce flow, and
   // CodeMirror 6's EditorView isn't reachable from the DOM without using a
   // private API. A handful of read/write hooks keeps the test code honest.
-  ;(window as any).__sgluaTest = {
-    selectTab,
-    replaceContent(filePath: string, newContent: string) {
-      selectTab(filePath)
-      view!.dispatch({
-        changes: { from: 0, to: view!.state.doc.length, insert: newContent },
-      })
-    },
-    listFiles(): string[] { return Array.from(files.keys()) },
+  //
+  // Gated to dev/test builds only so production bundles don't ship the hook
+  // (verified by grepping for __sgluaTest in web/dist after `npm run build`).
+  if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+    ;(window as any).__sgluaTest = {
+      selectTab,
+      replaceContent(filePath: string, newContent: string) {
+        selectTab(filePath)
+        view!.dispatch({
+          changes: { from: 0, to: view!.state.doc.length, insert: newContent },
+        })
+      },
+      listFiles(): string[] { return Array.from(files.keys()) },
+    }
   }
 }
 

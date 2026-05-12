@@ -155,6 +155,13 @@ sample 01 の初期描画 / shader edit / lua edit / verts edit の auto-sync �
 で検証し、sample 01〜07 の切替後の非黒描画を確認する。スクリーンショットは
 `/tmp/sglua-verify/` に出力される。
 
+### サンプル対応状況 (web)
+
+| Sample | Status |
+|--------|--------|
+| 01〜05, 07 | ✓ ブラウザで動作 |
+| 06_deferred | ✗ slang-wasm が `06_gbuffer.vs.slang` で OOB throw (Phase 8 で調査予定) |
+
 詳細・既知制約は Phase 8 で別途まとめる予定。
 
 ## サンプル
