@@ -188,6 +188,7 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
     if (!layout) return false;
     out->ub_count = 0;
     out->tex_count = 0;
+    out->storage_buf_count = 0;
     unsigned gpc = layout->getParameterCount();
     for (unsigned i = 0; i < gpc; ++i) {
         VariableLayoutReflection *p = layout->getParameterByIndex(i);
@@ -202,6 +203,32 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
             if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
                 fill_uniform_block(p, &out->ubs[out->ub_count]);
                 out->ub_count++;
+            }
+            continue;
+        }
+
+        // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
+        // under SHADER_RESOURCE (resource shape == STRUCTURED_BUFFER) and
+        // RWStructuredBuffer<T> under UNORDERED_ACCESS. Both feed the same
+        // storage-buffer plumbing on our backends, distinguished by `readonly`.
+        bool is_structured_buf = false;
+        bool readonly = true;
+        if (t && t->getKind() == TypeReflection::Kind::Resource) {
+            SlangResourceShape shape = (SlangResourceShape)
+                (t->getResourceShape() & SLANG_RESOURCE_BASE_SHAPE_MASK);
+            if (shape == SLANG_STRUCTURED_BUFFER ||
+                shape == SLANG_BYTE_ADDRESS_BUFFER) {
+                is_structured_buf = true;
+                SlangResourceAccess acc = t->getResourceAccess();
+                readonly = (acc == SLANG_RESOURCE_ACCESS_READ);
+            }
+        }
+        if (is_structured_buf) {
+            if (out->storage_buf_count < SGL_MAX_STORAGE_BUFS) {
+                ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
+                copy_name(sb->name, sizeof(sb->name), p->getName());
+                sb->slot = (int)p->getBindingIndex();
+                sb->readonly = readonly;
             }
             continue;
         }
@@ -254,6 +281,9 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
 //   SDL_GPU (per-stage layout, see SDL_gpu.h CreateGPUShader docs):
 //     vertex stage    -> set 0: textures/storage; set 1: uniform buffers
 //     fragment stage  -> set 2: textures/samplers/storage; set 3: uniform buffers
+//     compute stage   -> set 0: sampled textures + RO storage textures + RO storage buffers
+//                        set 1: RW storage textures + RW storage buffers
+//                        set 2: uniform buffers
 //
 // SPIR-V structure: header = 5 words, then instructions where
 // word0 = (wc<<16)|op. We do two passes:
@@ -267,7 +297,12 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
 //
 // The patch is split per-stage and per-backend because both blobs are passed
 // in independently (one is VS-only, the other FS-only).
-enum class SpvStage { Vertex, Fragment };
+//
+// Compute support is intentionally PoC-narrow: a single RW storage buffer
+// (kind 0) + an optional uniform block. Readonly storage buffers and storage
+// textures would need an additional kind to map them to SDL_GPU's compute
+// set 0 — out of scope here.
+enum class SpvStage { Vertex, Fragment, Compute };
 
 void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
                                  ShaderTargetBackend target, SpvStage stage) {
@@ -277,16 +312,61 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
     if (words[0] != 0x07230203u) return; // not a SPIR-V module
 
     // Opcodes / decorations / storage-classes we care about.
+    constexpr uint32_t kOpTypePointer  = 32;
     constexpr uint32_t kOpVariable     = 59;
     constexpr uint32_t kOpDecorate     = 71;
+    constexpr uint32_t kDecBufferBlock   = 3;
     constexpr uint32_t kDecDescriptorSet = 34;
     constexpr uint32_t kStorageUniformConstant = 0;
     constexpr uint32_t kStorageUniform         = 2;
     constexpr uint32_t kStorageStorageBuffer   = 12;
 
+    // Slang targets SPIR-V 1.0, where a Vulkan SSBO is encoded as an
+    // OpTypeStruct decorated with BufferBlock + OpTypePointer Uniform.
+    // (SPIR-V >= 1.3 would use storage class StorageBuffer directly.)
+    // Collect the set of pointer-type result-ids that target a BufferBlock
+    // struct so we can tell the SSBO Uniform pointers apart from real UB
+    // Uniform pointers below.
+    std::vector<uint32_t> bb_struct_ids;
+    {
+        size_t i = 5;
+        while (i < nwords) {
+            uint32_t w0 = words[i];
+            uint32_t wc = w0 >> 16;
+            uint32_t op = w0 & 0xffff;
+            if (wc == 0 || i + wc > nwords) break;
+            if (op == kOpDecorate && wc >= 3 && words[i + 2] == kDecBufferBlock) {
+                bb_struct_ids.push_back(words[i + 1]);
+            }
+            i += wc;
+        }
+    }
+    std::vector<uint32_t> ssbo_ptr_type_ids;
+    {
+        size_t i = 5;
+        while (i < nwords) {
+            uint32_t w0 = words[i];
+            uint32_t wc = w0 >> 16;
+            uint32_t op = w0 & 0xffff;
+            if (wc == 0 || i + wc > nwords) break;
+            if (op == kOpTypePointer && wc >= 4) {
+                uint32_t ptr_id  = words[i + 1];
+                uint32_t storage = words[i + 2];
+                uint32_t pointed = words[i + 3];
+                if (storage == kStorageUniform) {
+                    for (uint32_t s : bb_struct_ids) {
+                        if (s == pointed) { ssbo_ptr_type_ids.push_back(ptr_id); break; }
+                    }
+                }
+            }
+            i += wc;
+        }
+    }
+
     // Map each resource OpVariable's ID to its descriptor-set destination.
-    // "kind 0" = texture/sampler/SSBO (UniformConstant or StorageBuffer)
-    // "kind 1" = uniform block (Uniform)
+    // "kind 0" = texture/sampler/SSBO (UniformConstant, StorageBuffer, or
+    //           Uniform-with-BufferBlock SSBO)
+    // "kind 1" = uniform block (Uniform pointing at a plain Block struct)
     std::vector<std::pair<uint32_t, int>> id_to_kind;
     id_to_kind.reserve(8);
 
@@ -297,14 +377,19 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
         uint32_t op = w0 & 0xffff;
         if (wc == 0 || i + wc > nwords) break;
         if (op == kOpVariable && wc >= 4) {
-            uint32_t storage = words[i + 3];
-            uint32_t id      = words[i + 2];
+            uint32_t res_type = words[i + 1];
+            uint32_t id       = words[i + 2];
+            uint32_t storage  = words[i + 3];
             if (storage == kStorageUniformConstant ||
                 storage == kStorageStorageBuffer)
             {
                 id_to_kind.push_back({id, 0});
             } else if (storage == kStorageUniform) {
-                id_to_kind.push_back({id, 1});
+                bool is_ssbo = false;
+                for (uint32_t p : ssbo_ptr_type_ids) {
+                    if (p == res_type) { is_ssbo = true; break; }
+                }
+                id_to_kind.push_back({id, is_ssbo ? 0 : 1});
             }
         }
         i += wc;
@@ -324,8 +409,13 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
         // SDL_GPU per-stage table:
         if (stage == SpvStage::Vertex) {
             return (kind == 0) ? 0 : 1;  // image=set0, ub=set1
-        } else {
+        } else if (stage == SpvStage::Fragment) {
             return (kind == 0) ? 2 : 3;  // image=set2, ub=set3
+        } else {
+            // Compute. PoC narrow: kind 0 is treated as RW storage (set 1) and
+            // kind 1 is uniform (set 2). Readonly storage / sampled-texture
+            // would belong on set 0 but are not exercised here.
+            return (kind == 0) ? 1 : 2;
         }
     };
 
@@ -957,6 +1047,105 @@ extern "C" bool shader_compile(
         // and uniform buffers are unaffected.
         patch_spirv_combined_samplers(out_fs, out_refl);
     }
+    return true;
+}
+
+extern "C" bool shader_compile_compute(
+    const char *cs_src,
+    ShaderTargetBackend target,
+    ShaderBlob *out_cs,
+    ShaderReflection *out_refl,
+    char *err_buf, size_t err_buf_size)
+{
+    if (out_cs)  { out_cs->spirv = nullptr; out_cs->bytes = 0; }
+    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+
+    if (!ensure_global_session()) {
+        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "createGlobalSession failed");
+        return false;
+    }
+
+    TargetDesc slang_target = {};
+    slang_target.format = SLANG_SPIRV;
+    slang_target.profile = g_slang.spirv_profile;
+
+    SessionDesc sd = {};
+    sd.targets = &slang_target;
+    sd.targetCount = 1;
+    sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
+
+    ComPtr<ISession> session;
+    if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
+        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "createSession failed");
+        return false;
+    }
+
+    ComPtr<IBlob> diag;
+    IModule *modRaw = session->loadModuleFromSourceString(
+        "user_cs", "user_cs.slang", cs_src, diag.writeRef());
+    if (!modRaw) {
+        copy_diag(diag.get(), err_buf, err_buf_size);
+        return false;
+    }
+    ComPtr<IModule> module(modRaw);
+
+    ComPtr<IEntryPoint> csEp;
+    if (SLANG_FAILED(module->findEntryPointByName("cs_main", csEp.writeRef())) || !csEp) {
+        if (err_buf && err_buf_size)
+            snprintf(err_buf, err_buf_size, "cs_main entry point not found");
+        return false;
+    }
+
+    IComponentType *components[] = { module.get(), csEp.get() };
+    ComPtr<IComponentType> composite;
+    if (SLANG_FAILED(session->createCompositeComponentType(components, 2,
+            composite.writeRef(), diag.writeRef()))) {
+        copy_diag(diag.get(), err_buf, err_buf_size);
+        return false;
+    }
+    ComPtr<IComponentType> linked;
+    if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
+        copy_diag(diag.get(), err_buf, err_buf_size);
+        return false;
+    }
+
+    ComPtr<IBlob> csBlob;
+    if (SLANG_FAILED(linked->getEntryPointCode(0, 0, csBlob.writeRef(), diag.writeRef()))) {
+        copy_diag(diag.get(), err_buf, err_buf_size);
+        return false;
+    }
+
+    ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
+    if (!programLayout) {
+        copy_diag(diag.get(), err_buf, err_buf_size);
+        return false;
+    }
+
+    out_refl->is_compute = true;
+    out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
+    SlangUInt epc = programLayout->getEntryPointCount();
+    for (SlangUInt i = 0; i < epc; ++i) {
+        EntryPointReflection *ep = programLayout->getEntryPointByIndex(i);
+        if (!ep || ep->getStage() != SLANG_STAGE_COMPUTE) continue;
+        SlangUInt sizes[3] = {1, 1, 1};
+        ep->getComputeThreadGroupSize(3, sizes);
+        out_refl->workgroup[0] = (int)sizes[0];
+        out_refl->workgroup[1] = (int)sizes[1];
+        out_refl->workgroup[2] = (int)sizes[2];
+        break;
+    }
+    fill_global_reflection(programLayout, out_refl);
+
+    size_t cs_size = csBlob->getBufferSize();
+    out_cs->spirv = (uint32_t*)malloc(cs_size);
+    if (!out_cs->spirv) {
+        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "OOM (cs blob)");
+        return false;
+    }
+    memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
+    out_cs->bytes = cs_size;
+
+    patch_spirv_descriptor_sets(out_cs->spirv, out_cs->bytes, target, SpvStage::Compute);
     return true;
 }
 

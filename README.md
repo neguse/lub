@@ -144,17 +144,20 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 | 4 | 04_mvp.lua              | 回転行列を uniform で渡す三角形                 |
 | 5 | 05_postprocess.lua      | offscreen render target に三角形 → 全画面 quad で色反転 + ヴィネット post process |
 | 6 | 06_deferred.lua         | MRT (2 color attachments) で G-buffer 風に色をペアで書き出し → swapchain pass で左右 split-screen に表示 |
+| 7 | 07_compute.lua          | compute shader で storage buffer に三角形の頂点を書き出し、同じバッファを VBO として draw |
 
 ## API
 
-- `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX`。`data` は float の Lua table。同 `version` なら再アップロードしない。
+- `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX` / `STORAGE`。`data` は float の Lua table。`STORAGE` の場合は `data` の代わりに float 数 (integer) を渡すと中身未初期化で割り当てる (compute shader が後で埋める前提)。同 `version` なら再アップロードしない。`STORAGE` は VBO 兼用で作られるので、compute が書き出したバッファをそのまま draw の `verts` に渡せる。
 - `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可、`opts.target=true` の場合は nil 必須)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }`。デフォルトは `LINEAR` / `REPEAT` / `false`。`target=true` で render-target texture (color attachment + sampler) を宣言。
 - `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
+- `use_shader_compute(key, cs_src, version)` — compute shader を compile (`cs_main` entry point)。`[numthreads(...)]` で threadgroup を指定。`dispatch` で呼ぶ。
 - `begin_pass({ target = main_tex | texRef, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は `main_tex` (swapchain) または `use_texture(..., {target=true})` で宣言した texture ref。後者で offscreen render target に描画できる (Sample 5)。offscreen pass は depth/stencil 無し、swapchain pass は depth/stencil 付き。pipeline cache のキーには color format と depth 有無も含まれる。
 - `begin_pass({ targets = {texRef1, texRef2, ...}, clear_colors = {{r,g,b,a}, ...} })` — MRT (Multi Render Target) 形式の offscreen pass (Sample 6)。最大 `SGL_MAX_COLOR_TARGETS` (= 4) 個まで。全 target は同サイズで、各々 `use_texture(..., {target=true})` で宣言済みであること。fragment shader 側は `SV_Target0` / `SV_Target1` / ... を出力する。
 - `draw(count, resources, options)` — 描画コマンド。
   - `resources` は名前付き table: `{ verts = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。テクスチャの名前はシェーダ側のリフレクションに突き合わせる。uniform は uniform block の最初のものに pack される。
   - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
+- `dispatch(x, y, z, resources, options)` — compute dispatch。`begin_pass`/`end_pass` の外側で呼ぶこと。`resources` は `{ buffer_name = bufferRef, uniforms = {...} }` で、shader 側 reflection の名前と突き合わせて binding を解決する。`options.shader` には compute shader ref が必須。PoC では RW storage buffer (`RWStructuredBuffer<...>`) 1〜N 個 + uniform block 1 個まで。read-only storage buffer / storage texture は未対応。
 - `capture(path)` — 次フレーム終了時に swapchain image を PNG として `path` に書き出してアプリを終了する。CLI フラグ `--capture <path>` (任意で `--capture-frame N`、デフォルト 30) でも同等。
 
 ### Live edit helpers
@@ -170,7 +173,7 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
-- compute shader / VR / マルチスレッド描画
+- VR / マルチスレッド描画
 
 ## アーキテクチャ
 

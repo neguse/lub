@@ -47,11 +47,19 @@ typedef struct SgBuffer {
 typedef struct SgShader {
     SDL_GPUShader *vs;
     SDL_GPUShader *fs;
+    // Compute pipeline (SDL_GPU collapses shader+pipeline for compute). Set
+    // when the shader was created from a compute SPIR-V blob.
+    SDL_GPUComputePipeline *compute_pip;
     ShaderReflection refl;
 } SgShader;
 
 typedef struct SgPipeline {
     SDL_GPUGraphicsPipeline *gpu;
+    // Compute pipeline shadow — for compute, the SgShader already owns the
+    // SDL_GPUComputePipeline, so the SgPipeline wrapping it just holds a
+    // weak pointer and the reflection for binding resolution.
+    SDL_GPUComputePipeline *compute_gpu;
+    bool is_compute;
     ShaderReflection refl;
 } SgPipeline;
 
@@ -253,9 +261,25 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_
     if (!b) return 0;
     b->bytes = (Uint32)bytes;
     b->type = type;
+    SDL_GPUBufferUsageFlags usage;
+    switch (type) {
+        case SGL_BUFFER_VERTEX:  usage = SDL_GPU_BUFFERUSAGE_VERTEX; break;
+        case SGL_BUFFER_INDEX:   usage = SDL_GPU_BUFFERUSAGE_INDEX;  break;
+        case SGL_BUFFER_STORAGE:
+            // Storage buffer for compute output + graphics vertex input.
+            // The compute pass writes via COMPUTE_STORAGE_*; the same buffer
+            // is rebound as a VBO in the subsequent render pass.
+            usage = SDL_GPU_BUFFERUSAGE_VERTEX
+                  | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
+                  | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
+                  | SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            break;
+        default:
+            SDL_Log("sg_make_buffer: unsupported buffer type %d", (int)type);
+            free(b); return 0;
+    }
     b->gpu = SDL_CreateGPUBuffer(g_app->gpu_device, &(SDL_GPUBufferCreateInfo){
-        .usage = (type == SGL_BUFFER_VERTEX) ? SDL_GPU_BUFFERUSAGE_VERTEX
-                                              : SDL_GPU_BUFFERUSAGE_INDEX,
+        .usage = usage,
         .size  = (Uint32)bytes,
     });
     if (!b->gpu) {
@@ -263,10 +287,12 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_
         free(b);
         return 0;
     }
-    if (!sg_upload_to_buffer(b->gpu, data, bytes, false)) {
-        SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
-        free(b);
-        return 0;
+    if (data && bytes > 0) {
+        if (!sg_upload_to_buffer(b->gpu, data, bytes, false)) {
+            SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+            free(b);
+            return 0;
+        }
     }
     return (uintptr_t)b;
 }
@@ -346,6 +372,37 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
     SgShader *s = (SgShader*)calloc(1, sizeof(SgShader));
     if (!s) return 0;
     if (d->refl) s->refl = *d->refl;
+    // Compute path collapses shader+pipeline into SDL_GPUComputePipeline.
+    if (d->cs_spirv) {
+        Uint32 n_rw_buf = 0, n_ro_buf = 0;
+        for (int i = 0; i < s->refl.storage_buf_count; ++i) {
+            if (s->refl.storage_bufs[i].readonly) n_ro_buf++;
+            else n_rw_buf++;
+        }
+        s->compute_pip = SDL_CreateGPUComputePipeline(g_app->gpu_device,
+            &(SDL_GPUComputePipelineCreateInfo){
+                .code = (const Uint8*)d->cs_spirv,
+                .code_size = d->cs_bytes,
+                .entrypoint = "main",
+                .format = SDL_GPU_SHADERFORMAT_SPIRV,
+                .num_samplers = 0,
+                .num_readonly_storage_textures = 0,
+                .num_readonly_storage_buffers = n_ro_buf,
+                .num_readwrite_storage_textures = 0,
+                .num_readwrite_storage_buffers = n_rw_buf,
+                .num_uniform_buffers = (Uint32)s->refl.ub_count,
+                .threadcount_x = (Uint32)s->refl.workgroup[0],
+                .threadcount_y = (Uint32)s->refl.workgroup[1],
+                .threadcount_z = (Uint32)s->refl.workgroup[2],
+            });
+        if (!s->compute_pip) {
+            SDL_Log("sg_make_shader: SDL_CreateGPUComputePipeline failed: %s",
+                    SDL_GetError());
+            free(s);
+            return 0;
+        }
+        return (uintptr_t)s;
+    }
     // Slang's SPIR-V emitter renames the entry-point function to "main"
     // (same convention used by the sokol backend). Both vs and fs blobs
     // each have a single "main" entry point.
@@ -388,6 +445,7 @@ static void sg_destroy_shader(BackendShader h) {
     if (g_app && g_app->gpu_device) {
         if (s->vs) SDL_ReleaseGPUShader(g_app->gpu_device, s->vs);
         if (s->fs) SDL_ReleaseGPUShader(g_app->gpu_device, s->fs);
+        if (s->compute_pip) SDL_ReleaseGPUComputePipeline(g_app->gpu_device, s->compute_pip);
     }
     free(s);
 }
@@ -398,7 +456,23 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
         return 0;
     }
     SgShader *sh = (SgShader*)d->shader;
-    if (!sh || !sh->vs || !sh->fs) {
+    if (!sh) {
+        SDL_Log("sg_make_pipeline: null shader");
+        return 0;
+    }
+    if (d->is_compute) {
+        if (!sh->compute_pip) {
+            SDL_Log("sg_make_pipeline: shader is not compute");
+            return 0;
+        }
+        SgPipeline *p = (SgPipeline*)calloc(1, sizeof(SgPipeline));
+        if (!p) return 0;
+        p->compute_gpu = sh->compute_pip;
+        p->is_compute = true;
+        if (d->refl) p->refl = *d->refl;
+        return (uintptr_t)p;
+    }
+    if (!sh->vs || !sh->fs) {
         SDL_Log("sg_make_pipeline: invalid shader");
         return 0;
     }
@@ -504,6 +578,7 @@ static void sg_destroy_pipeline(BackendPipeline h) {
     if (g_app && g_app->gpu_device && p->gpu) {
         SDL_ReleaseGPUGraphicsPipeline(g_app->gpu_device, p->gpu);
     }
+    // p->compute_gpu is owned by SgShader, do not release here.
     free(p);
 }
 
@@ -585,6 +660,60 @@ static void sg_apply_uniforms(int slot, const void *d, size_t b) {
 static void sg_draw(int base, int count) {
     if (!g_render_pass) return;
     SDL_DrawGPUPrimitives(g_render_pass, (Uint32)count, 1, (Uint32)base, 0);
+}
+
+static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
+    if (!d || !d->pipeline || !d->refl) return;
+    if (!app->gpu_cmd) {
+        SDL_Log("sg_dispatch: no command buffer (called outside of frame?)");
+        return;
+    }
+    SgPipeline *p = (SgPipeline*)d->pipeline;
+    if (!p->is_compute || !p->compute_gpu) {
+        SDL_Log("sg_dispatch: not a compute pipeline");
+        return;
+    }
+    // Resolve storage buffers into ordered RW / RO arrays per the SDL_GPU
+    // layout (set 1 = RW, set 0 = RO). The slot number from reflection is
+    // the binding within its set; for our PoC there is at most one of each.
+    SDL_GPUStorageBufferReadWriteBinding rw[SGL_MAX_STORAGE_BUFS] = {0};
+    SDL_GPUBuffer *ro[SGL_MAX_STORAGE_BUFS] = {0};
+    int n_rw = 0, n_ro = 0;
+    for (int i = 0; i < d->n_storage_bufs; ++i) {
+        SgBuffer *buf = (SgBuffer*)d->storage_bufs[i].buf;
+        if (!buf || !buf->gpu || !d->storage_bufs[i].name) continue;
+        for (int k = 0; k < d->refl->storage_buf_count; ++k) {
+            if (strcmp(d->refl->storage_bufs[k].name, d->storage_bufs[i].name) != 0) continue;
+            if (d->refl->storage_bufs[k].readonly) {
+                if (n_ro < SGL_MAX_STORAGE_BUFS) ro[n_ro++] = buf->gpu;
+            } else {
+                if (n_rw < SGL_MAX_STORAGE_BUFS) {
+                    rw[n_rw].buffer = buf->gpu;
+                    rw[n_rw].cycle = true; // discard previous content
+                    n_rw++;
+                }
+            }
+            break;
+        }
+    }
+    SDL_GPUComputePass *cp = SDL_BeginGPUComputePass(app->gpu_cmd,
+        NULL, 0, rw, (Uint32)n_rw);
+    if (!cp) {
+        SDL_Log("sg_dispatch: SDL_BeginGPUComputePass failed: %s", SDL_GetError());
+        return;
+    }
+    SDL_BindGPUComputePipeline(cp, p->compute_gpu);
+    if (n_ro > 0) {
+        SDL_BindGPUComputeStorageBuffers(cp, 0, ro, (Uint32)n_ro);
+    }
+    if (d->uniform_slot >= 0 && d->uniform_data && d->uniform_bytes > 0) {
+        SDL_PushGPUComputeUniformData(app->gpu_cmd, (Uint32)d->uniform_slot,
+                                      d->uniform_data, (Uint32)d->uniform_bytes);
+    }
+    SDL_DispatchGPUCompute(cp, (Uint32)d->groups_x,
+                                (Uint32)d->groups_y,
+                                (Uint32)d->groups_z);
+    SDL_EndGPUComputePass(cp);
 }
 
 // --- capture: SDL_DownloadFromGPUTexture + stb_image_write ---------------
@@ -740,6 +869,7 @@ const RenderBackend g_backend_sdlgpu = {
     .apply_bindings = sg_apply_bindings,
     .apply_uniforms = sg_apply_uniforms,
     .draw = sg_draw,
+    .dispatch = sg_dispatch,
     .capture = sg_capture,
     .swapchain_color_format = sg_swapchain_color_format,
 };

@@ -3,10 +3,6 @@
 未実装と Known issues を実作業単位に分けたもの。タグは規模感:
 **[S]** 数十行 / **[M]** 100〜200 行 / **[L]** 設計 + 大幅実装 / **[upstream]** 外部依存。
 
-## サンプル / API 拡張
-
-- **[M] compute shader**: `dispatch(x, y, z, resources, {shader})` を `lua_api.c` に追加、`use_buffer` に `STORAGE` type 追加、`shader.cpp` で `[shader("compute")]` entry point を拾う。両 backend に `dispatch` vtable 追加。
-
 ## 安定化
 
 ### sokol backend

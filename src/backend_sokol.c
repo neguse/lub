@@ -30,6 +30,12 @@ typedef struct SkImage {
     bool      render_target;
 } SkImage;
 
+typedef struct SkBuffer {
+    sg_buffer buf;
+    sg_view   storage_view; // valid only for storage buffers (id != 0)
+    SglBufferType type;
+} SkBuffer;
+
 typedef struct SkShader {
     sg_shader sh;
     ShaderReflection refl;  // copy for binding resolution
@@ -406,7 +412,47 @@ static void sk_end_frame(App *app) {
 }
 
 static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_t bytes) {
-    sg_buffer h = sg_make_buffer(&(sg_buffer_desc){
+    SkBuffer *sb = (SkBuffer*)calloc(1, sizeof(SkBuffer));
+    if (!sb) return 0;
+    sb->type = type;
+    if (type == SGL_BUFFER_STORAGE) {
+        // Storage buffer: also marked vertex_buffer so the same backing buffer
+        // can be re-bound as a VBO after compute writes. .immutable + size=0
+        // is sokol's "let compute populate it" mode. If initial data is given
+        // we use dynamic_update instead so sg_update_buffer can seed it.
+        if (data && bytes > 0) {
+            sb->buf = sg_make_buffer(&(sg_buffer_desc){
+                .size = bytes,
+                .usage = {
+                    .vertex_buffer  = true,
+                    .storage_buffer = true,
+                    .dynamic_update = true,
+                },
+            });
+            if (sb->buf.id == SG_INVALID_ID) { free(sb); return 0; }
+            sg_update_buffer(sb->buf, &(sg_range){ .ptr = data, .size = bytes });
+        } else {
+            sb->buf = sg_make_buffer(&(sg_buffer_desc){
+                .size = bytes,
+                .usage = {
+                    .vertex_buffer  = true,
+                    .storage_buffer = true,
+                },
+            });
+            if (sb->buf.id == SG_INVALID_ID) { free(sb); return 0; }
+        }
+        sb->storage_view = sg_make_view(&(sg_view_desc){
+            .storage_buffer = { .buffer = sb->buf },
+        });
+        if (sb->storage_view.id == SG_INVALID_ID) {
+            sg_destroy_buffer(sb->buf);
+            free(sb);
+            return 0;
+        }
+        return (uintptr_t)sb;
+    }
+
+    sb->buf = sg_make_buffer(&(sg_buffer_desc){
         .size = bytes,
         .usage = {
             .vertex_buffer  = (type == SGL_BUFFER_VERTEX),
@@ -415,16 +461,19 @@ static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_
         },
         // dynamic_update: initial data はここで渡せないので make 後に update
     });
-    if (h.id == SG_INVALID_ID) return 0;
+    if (sb->buf.id == SG_INVALID_ID) { free(sb); return 0; }
     if (data && bytes > 0) {
-        sg_update_buffer(h, &(sg_range){ .ptr = data, .size = bytes });
+        sg_update_buffer(sb->buf, &(sg_range){ .ptr = data, .size = bytes });
     }
-    return (uintptr_t)h.id;
+    return (uintptr_t)sb;
 }
 
 static void sk_destroy_buffer(BackendBuffer h) {
-    if (!h) return;
-    sg_destroy_buffer((sg_buffer){ .id = (uint32_t)h });
+    SkBuffer *sb = (SkBuffer*)h;
+    if (!sb) return;
+    if (sb->storage_view.id) sg_destroy_view(sb->storage_view);
+    if (sb->buf.id) sg_destroy_buffer(sb->buf);
+    free(sb);
 }
 
 static BackendImage sk_make_image(const ImageDesc *d) {
@@ -484,7 +533,38 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
     if (d->refl) ss->refl = *d->refl;
 
     sg_shader_desc desc = {0};
+    bool is_compute = (d->cs_spirv != NULL);
     // Slang's SPIR-V emitter renames the entry-point function to "main".
+    if (is_compute) {
+        desc.compute_func.entry        = "main";
+        desc.compute_func.bytecode.ptr  = d->cs_spirv;
+        desc.compute_func.bytecode.size = d->cs_bytes;
+        // Storage buffers: PoC restriction — only RW storage at set=1, binding=slot.
+        for (int i = 0; i < ss->refl.storage_buf_count && i < SG_MAX_VIEW_BINDSLOTS; ++i) {
+            ShaderStorageBuf *sbuf = &ss->refl.storage_bufs[i];
+            int slot = sbuf->slot;
+            if (slot < 0 || slot >= SG_MAX_VIEW_BINDSLOTS) continue;
+            sg_shader_view *view = &desc.views[slot];
+            view->storage_buffer.stage = SG_SHADERSTAGE_COMPUTE;
+            view->storage_buffer.readonly = sbuf->readonly;
+            view->storage_buffer.spirv_set1_binding_n = (uint8_t)slot;
+            view->storage_buffer.glsl_binding_n = (uint8_t)slot;
+        }
+        for (int b = 0; b < ss->refl.ub_count && b < SGL_MAX_UNIFORM_BLOCKS; ++b) {
+            ShaderUniformBlock *u = &ss->refl.ubs[b];
+            int slot = u->slot;
+            if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS) continue;
+            sg_shader_uniform_block *dst = &desc.uniform_blocks[slot];
+            dst->stage = SG_SHADERSTAGE_COMPUTE;
+            dst->size = (uint32_t)(u->size_floats * 4);
+            dst->layout = SG_UNIFORMLAYOUT_STD140;
+            dst->spirv_set0_binding_n = (uint8_t)slot;
+        }
+        ss->sh = sg_make_shader(&desc);
+        if (ss->sh.id == 0) { free(ss); return 0; }
+        return (uintptr_t)ss;
+    }
+
     desc.vertex_func.entry            = "main";
     desc.vertex_func.bytecode.ptr     = d->vs_spirv;
     desc.vertex_func.bytecode.size    = d->vs_bytes;
@@ -592,6 +672,14 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
     SkShader *ss = (SkShader*)d->shader;
     if (!ss) return 0;
 
+    if (d->is_compute) {
+        sg_pipeline pip = sg_make_pipeline(&(sg_pipeline_desc){
+            .compute = true,
+            .shader = ss->sh,
+        });
+        return (uintptr_t)pip.id;
+    }
+
     sg_pipeline_desc desc = {0};
     desc.shader = ss->sh;
     int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
@@ -655,9 +743,9 @@ static void sk_destroy_pipeline(BackendPipeline h) {
 }
 
 static void sk_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
-    if (!h || !data || bytes == 0) return;
-    sg_update_buffer((sg_buffer){ .id = (uint32_t)h },
-                     &(sg_range){ .ptr = data, .size = bytes });
+    SkBuffer *sb = (SkBuffer*)h;
+    if (!sb || !data || bytes == 0) return;
+    sg_update_buffer(sb->buf, &(sg_range){ .ptr = data, .size = bytes });
 }
 
 static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
@@ -721,7 +809,10 @@ static void sk_apply_pipeline(BackendPipeline p) {
 
 static void sk_apply_bindings(const BindingsDesc *b) {
     sg_bindings sb = {0};
-    if (b->vbuf) sb.vertex_buffers[0] = (sg_buffer){ .id = (uint32_t)b->vbuf };
+    if (b->vbuf) {
+        SkBuffer *vb = (SkBuffer*)b->vbuf;
+        sb.vertex_buffers[0] = vb->buf;
+    }
 
     // Resolve textures via reflection name → slot.
     if (b->refl) {
@@ -751,6 +842,35 @@ static void sk_apply_uniforms(int ub_slot, const void *data, size_t bytes) {
 
 static void sk_draw(int base, int count) {
     sg_draw(base, count, 1);
+}
+
+static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
+    (void)app;
+    if (!d || !d->pipeline || !d->refl) return;
+    sg_begin_pass(&(sg_pass){ .compute = true });
+    sg_apply_pipeline((sg_pipeline){ .id = (uint32_t)d->pipeline });
+    sg_bindings sb = {0};
+    for (int i = 0; i < d->n_storage_bufs; ++i) {
+        SkBuffer *buf = (SkBuffer*)d->storage_bufs[i].buf;
+        if (!buf || !buf->storage_view.id || !d->storage_bufs[i].name) continue;
+        // Resolve name -> slot via reflection.
+        for (int k = 0; k < d->refl->storage_buf_count; ++k) {
+            if (strcmp(d->refl->storage_bufs[k].name, d->storage_bufs[i].name) == 0) {
+                int slot = d->refl->storage_bufs[k].slot;
+                if (slot >= 0 && slot < SG_MAX_VIEW_BINDSLOTS) {
+                    sb.views[slot] = buf->storage_view;
+                }
+                break;
+            }
+        }
+    }
+    sg_apply_bindings(&sb);
+    if (d->uniform_slot >= 0 && d->uniform_data && d->uniform_bytes > 0) {
+        sg_apply_uniforms(d->uniform_slot,
+                          &(sg_range){ .ptr = d->uniform_data, .size = d->uniform_bytes });
+    }
+    sg_dispatch(d->groups_x, d->groups_y, d->groups_z);
+    sg_end_pass();
 }
 
 // --- capture: vkCmdCopyImageToBuffer + stb_image_write -------------------
@@ -1028,6 +1148,7 @@ const RenderBackend g_backend_sokol = {
     .apply_bindings = sk_apply_bindings,
     .apply_uniforms = sk_apply_uniforms,
     .draw = sk_draw,
+    .dispatch = sk_dispatch,
     .capture = sk_capture,
     .swapchain_color_format = sk_swapchain_color_format,
 };

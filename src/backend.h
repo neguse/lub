@@ -35,6 +35,9 @@ typedef struct ImageDesc {
 typedef struct ShaderDesc {
     const uint32_t *vs_spirv; size_t vs_bytes;
     const uint32_t *fs_spirv; size_t fs_bytes;
+    // Compute shader. Either (vs_spirv & fs_spirv) or cs_spirv is non-NULL,
+    // never both; the backend branches on cs_spirv != NULL.
+    const uint32_t *cs_spirv; size_t cs_bytes;
     const ShaderReflection *refl;
 } ShaderDesc;
 
@@ -49,6 +52,7 @@ typedef struct PipelineDesc {
     int n_color_targets;       // 1..SGL_MAX_COLOR_TARGETS
     SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS];
     bool has_depth;            // false = offscreen color-only pass
+    bool is_compute;           // true: make_pipeline ignores graphics state and builds a compute pipeline
 } PipelineDesc;
 
 typedef struct PassBeginDesc {
@@ -68,6 +72,24 @@ typedef struct BindingsDesc {
         BackendImage image;
     } textures[8];
 } BindingsDesc;
+
+// Compute dispatch: bundles pipeline + storage-buffer bindings + uniform data
+// into a single backend call. The backend wraps everything in its own
+// compute pass (begin/dispatch/end). Issued outside begin_pass/end_pass.
+typedef struct ComputeDispatchDesc {
+    BackendPipeline pipeline;
+    const ShaderReflection *refl;
+    int groups_x, groups_y, groups_z;
+    int n_storage_bufs;
+    struct {
+        const char *name;         // matches ShaderStorageBuf.name
+        BackendBuffer buf;
+    } storage_bufs[SGL_MAX_STORAGE_BUFS];
+    // PoC: at most one uniform block, supplied as packed std140 floats.
+    int uniform_slot;             // -1 if no uniforms
+    const void *uniform_data;
+    size_t uniform_bytes;
+} ComputeDispatchDesc;
 
 typedef struct RenderBackend {
     const char *name;
@@ -98,6 +120,11 @@ typedef struct RenderBackend {
     void (*apply_bindings)(const BindingsDesc *);
     void (*apply_uniforms)(int ub_slot, const void *data, size_t bytes);
     void (*draw)(int base, int count);
+
+    // Compute dispatch (outside any render pass). The backend opens its own
+    // compute pass internally; the call must not be made between begin_pass
+    // and end_pass.
+    void (*dispatch)(struct App *app, const ComputeDispatchDesc *);
 
     bool (*capture)(struct App *app, const char *path);
 

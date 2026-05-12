@@ -193,11 +193,11 @@ static int l_begin_pass(lua_State *L) {
 static int l_use_buffer(lua_State *L) {
     const char *key = luaL_checkstring(L, 1);
     int type = (int)luaL_checkinteger(L, 2);
-    luaL_checktype(L, 3, LUA_TTABLE);
     int64_t version = (int64_t)luaL_checkinteger(L, 4);
 
-    if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX) {
-        return luaL_error(L, "use_buffer: only VERTEX/INDEX supported in PoC");
+    if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX &&
+        type != SGL_BUFFER_STORAGE) {
+        return luaL_error(L, "use_buffer: only VERTEX/INDEX/STORAGE supported in PoC");
     }
 
     ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_BUFFER);
@@ -211,19 +211,32 @@ static int l_use_buffer(lua_State *L) {
         return 1;
     }
 
-    // Read Lua table of numbers into a float buffer
-    int n = (int)lua_rawlen(L, 3);
-    if (n <= 0) return luaL_error(L, "use_buffer: empty data");
-    float *data = (float*)malloc((size_t)n * sizeof(float));
-    if (!data) return luaL_error(L, "use_buffer: out of memory");
-    for (int i = 0; i < n; ++i) {
-        lua_rawgeti(L, 3, i + 1);
-        data[i] = (float)lua_tonumber(L, -1);
-        lua_pop(L, 1);
+    // STORAGE may be allocated empty by passing an integer float-count as arg #3
+    // (the compute shader populates it). VERTEX/INDEX must always have a data
+    // table.
+    bool allocate_empty = (type == SGL_BUFFER_STORAGE) && lua_isinteger(L, 3);
+    size_t new_bytes = 0;
+    float *data = NULL;
+    if (allocate_empty) {
+        lua_Integer n = lua_tointeger(L, 3);
+        if (n <= 0) return luaL_error(L, "use_buffer: STORAGE float-count must be > 0");
+        new_bytes = (size_t)n * sizeof(float);
+    } else {
+        luaL_checktype(L, 3, LUA_TTABLE);
+        int n = (int)lua_rawlen(L, 3);
+        if (n <= 0) return luaL_error(L, "use_buffer: empty data");
+        data = (float*)malloc((size_t)n * sizeof(float));
+        if (!data) return luaL_error(L, "use_buffer: out of memory");
+        for (int i = 0; i < n; ++i) {
+            lua_rawgeti(L, 3, i + 1);
+            data[i] = (float)lua_tonumber(L, -1);
+            lua_pop(L, 1);
+        }
+        new_bytes = (size_t)n * sizeof(float);
     }
 
-    size_t new_bytes = (size_t)n * sizeof(float);
-    if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes && e->u.buf.type == (SglBufferType)type) {
+    if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
+        e->u.buf.type == (SglBufferType)type && data) {
         // in-place update
         g_backend->update_buffer(e->u.buf.h, data, new_bytes);
     } else {
@@ -233,7 +246,7 @@ static int l_use_buffer(lua_State *L) {
         e->u.buf.size_bytes = new_bytes;
     }
     e->version = version;
-    free(data);
+    if (data) free(data);
 
     push_buffer_ref(L, key);
     return 1;
@@ -424,6 +437,172 @@ static int l_use_shader(lua_State *L) {
     return 1;
 }
 
+static int l_use_shader_compute(lua_State *L) {
+    const char *key = luaL_checkstring(L, 1);
+    const char *cs  = luaL_checkstring(L, 2);
+    int64_t version = (int64_t)luaL_checkinteger(L, 3);
+
+    ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_SHADER);
+    if (!e) return luaL_error(L, "use_shader_compute: key '%s' already used as different kind", key);
+    res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
+
+    if (e->version == version && e->u.sh.h != 0) {
+        push_shader_ref(L, key);
+        return 1;
+    }
+
+    char err[1024];
+    ShaderBlob csb = {0};
+    ShaderReflection new_refl;
+    ShaderTargetBackend tgt = (g_backend && g_backend->name &&
+                                strcmp(g_backend->name, "sdlgpu") == 0)
+                              ? SHADER_TARGET_SDLGPU
+                              : SHADER_TARGET_SOKOL;
+    if (!shader_compile_compute(cs, tgt, &csb, &new_refl, err, sizeof(err))) {
+        shader_blob_free(&csb);
+        if (e->u.sh.h == 0) {
+            return luaL_error(L, "compute shader compile error: %s", err);
+        }
+        SDL_Log("use_shader_compute: recompile failed for key '%s': %s (keeping old)", key, err);
+        push_shader_ref(L, key);
+        return 1;
+    }
+    ShaderDesc sd = {
+        .cs_spirv = csb.spirv, .cs_bytes = csb.bytes,
+        .refl = &new_refl,
+    };
+    BackendShader new_h = g_backend->make_shader(&sd);
+    shader_blob_free(&csb);
+    if (!new_h) {
+        if (e->u.sh.h == 0) {
+            return luaL_error(L, "use_shader_compute: make_shader failed for key '%s'", key);
+        }
+        SDL_Log("use_shader_compute: make_shader failed for key '%s' (keeping old)", key);
+        push_shader_ref(L, key);
+        return 1;
+    }
+    BackendShader old_h = e->u.sh.h;
+    if (old_h) {
+        pipeline_cache_invalidate_shader(&g_app_for_lua->pip_cache, (uintptr_t)old_h);
+        g_backend->destroy_shader(old_h);
+    }
+    e->u.sh.h    = new_h;
+    e->u.sh.refl = new_refl;
+    e->version   = version;
+    push_shader_ref(L, key);
+    return 1;
+}
+
+static int l_dispatch(lua_State *L) {
+    if (pass_state_in_pass(&g_app_for_lua->pass)) {
+        return luaL_error(L, "dispatch: must be called outside begin_pass/end_pass");
+    }
+    int gx = (int)luaL_checkinteger(L, 1);
+    int gy = (int)luaL_checkinteger(L, 2);
+    int gz = (int)luaL_checkinteger(L, 3);
+    luaL_checktype(L, 4, LUA_TTABLE); // resources
+    luaL_checktype(L, 5, LUA_TTABLE); // options
+
+    lua_getfield(L, 5, "shader");
+    if (!is_sentinel(L, -1, "shader")) {
+        lua_pop(L, 1);
+        return luaL_error(L, "dispatch: options.shader required (ShaderRef)");
+    }
+    lua_getfield(L, -1, "key");
+    const char *shader_key = lua_tostring(L, -1);
+    char shader_key_buf[128];
+    if (shader_key) {
+        strncpy(shader_key_buf, shader_key, sizeof(shader_key_buf) - 1);
+        shader_key_buf[sizeof(shader_key_buf) - 1] = '\0';
+    } else {
+        shader_key_buf[0] = '\0';
+    }
+    lua_pop(L, 2);
+
+    ResEntry *sh_e = res_table_get(&g_app_for_lua->res, shader_key_buf);
+    if (!sh_e || sh_e->kind != RES_SHADER) {
+        return luaL_error(L, "dispatch: shader not found: %s", shader_key_buf);
+    }
+    if (!sh_e->u.sh.refl.is_compute) {
+        return luaL_error(L, "dispatch: shader '%s' is not a compute shader", shader_key_buf);
+    }
+
+    BackendPipeline pip = pipeline_cache_get_compute(
+        &g_app_for_lua->pip_cache,
+        sh_e->u.sh.h, &sh_e->u.sh.refl,
+        (int64_t)g_app_for_lua->frame_index);
+
+    ComputeDispatchDesc dd = {0};
+    dd.pipeline = pip;
+    dd.refl = &sh_e->u.sh.refl;
+    dd.groups_x = gx; dd.groups_y = gy; dd.groups_z = gz;
+    dd.uniform_slot = -1;
+
+    // Walk resources: storage buffers (by name) + uniforms (single block).
+    lua_pushnil(L);
+    while (lua_next(L, 4) != 0) {
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "__sgl_kind");
+            const char *kind = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+            char kind_buf[16];
+            strncpy(kind_buf, kind, sizeof(kind_buf) - 1);
+            kind_buf[sizeof(kind_buf) - 1] = '\0';
+            lua_pop(L, 1);
+
+            if (strcmp(kind_buf, "buffer") == 0) {
+                const char *res_name = lua_type(L, -2) == LUA_TSTRING ? lua_tostring(L, -2) : NULL;
+                lua_getfield(L, -1, "key");
+                const char *bk = lua_tostring(L, -1);
+                ResEntry *be = bk ? res_table_get(&g_app_for_lua->res, bk) : NULL;
+                lua_pop(L, 1);
+                if (be && be->kind == RES_BUFFER && be->u.buf.type == SGL_BUFFER_STORAGE &&
+                    res_name && dd.n_storage_bufs < SGL_MAX_STORAGE_BUFS)
+                {
+                    dd.storage_bufs[dd.n_storage_bufs].name = res_name;
+                    dd.storage_bufs[dd.n_storage_bufs].buf  = be->u.buf.h;
+                    dd.n_storage_bufs++;
+                }
+            }
+        }
+        lua_pop(L, 1);
+    }
+
+    // Uniforms: same packing as draw — first UB, std140 floats.
+    float ubuf[256];
+    lua_getfield(L, 4, "uniforms");
+    if (lua_istable(L, -1) && sh_e->u.sh.refl.ub_count > 0) {
+        const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[0];
+        int total_floats = ub->size_floats < 0 ? 0 : ub->size_floats;
+        if (total_floats > (int)(sizeof(ubuf)/sizeof(ubuf[0]))) {
+            return luaL_error(L, "dispatch: uniform block too large (%d floats)", total_floats);
+        }
+        memset(ubuf, 0, sizeof(ubuf));
+        for (int m = 0; m < ub->member_count; ++m) {
+            const ShaderUniformMember *mem = &ub->members[m];
+            lua_getfield(L, -1, mem->name);
+            if (lua_istable(L, -1)) {
+                int n_provided = (int)lua_rawlen(L, -1);
+                int copy = n_provided < mem->comp_count ? n_provided : mem->comp_count;
+                for (int j = 0; j < copy; ++j) {
+                    lua_rawgeti(L, -1, j + 1);
+                    if (lua_isnumber(L, -1)) {
+                        ubuf[mem->offset_floats + j] = (float)lua_tonumber(L, -1);
+                    }
+                    lua_pop(L, 1);
+                }
+            }
+            lua_pop(L, 1);
+        }
+        dd.uniform_slot = ub->slot;
+        dd.uniform_data = ubuf;
+        dd.uniform_bytes = (size_t)total_floats * sizeof(float);
+    }
+    lua_pop(L, 1); // uniforms field (or nil)
+
+    g_backend->dispatch(g_app_for_lua, &dd);
+    return 0;
+}
+
 static int l_draw(lua_State *L) {
     if (!pass_state_in_pass(&g_app_for_lua->pass)) {
         return luaL_error(L, "draw: must be called inside begin_pass/end_pass");
@@ -508,7 +687,12 @@ static int l_draw(lua_State *L) {
                 const char *bk = lua_tostring(L, -1);
                 ResEntry *be = bk ? res_table_get(&g_app_for_lua->res, bk) : NULL;
                 lua_pop(L, 1);
-                if (be && be->kind == RES_BUFFER && be->u.buf.type == SGL_BUFFER_VERTEX) {
+                // STORAGE buffers can also serve as a vertex source — they
+                // are declared with both vertex_buffer + storage_buffer usage
+                // so the same buffer can flow from compute write to draw read.
+                if (be && be->kind == RES_BUFFER &&
+                    (be->u.buf.type == SGL_BUFFER_VERTEX ||
+                     be->u.buf.type == SGL_BUFFER_STORAGE)) {
                     bind.vbuf = be->u.buf.h;
                 }
             } else if (strcmp(kind_buf, "texture") == 0) {
@@ -695,6 +879,10 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "use_texture");
     lua_pushcfunction(L, l_use_shader);
     lua_setglobal(L, "use_shader");
+    lua_pushcfunction(L, l_use_shader_compute);
+    lua_setglobal(L, "use_shader_compute");
+    lua_pushcfunction(L, l_dispatch);
+    lua_setglobal(L, "dispatch");
     lua_pushcfunction(L, l_draw);
     lua_setglobal(L, "draw");
     lua_pushcfunction(L, l_capture);

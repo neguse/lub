@@ -12,7 +12,8 @@ typedef struct PipelineKey {
     uint8_t blend, depth_test, depth_write, cull, primitive, has_depth;
     uint8_t n_color_targets;
     uint8_t color_fmts[SGL_MAX_COLOR_TARGETS];
-    uint8_t _pad[5]; // memset-zeroed; memcmp would otherwise hit indeterminate padding
+    uint8_t is_compute; // 1 = compute pipeline (all graphics fields are zero)
+    uint8_t _pad[4];    // memset-zeroed; memcmp would otherwise hit indeterminate padding
 } PipelineKey;
 
 typedef struct PipelineEntry {
@@ -36,6 +37,13 @@ BackendPipeline pipeline_cache_get(
     SglCull cull, SglPrimitive prim,
     int n_color_targets, const SglPixelFormat *color_fmts,
     bool has_depth,
+    int64_t current_frame);
+
+// Compute pipeline lookup. The same cache holds both render and compute
+// pipelines, keyed by `is_compute` so they never collide on shader_handle.
+BackendPipeline pipeline_cache_get_compute(
+    PipelineCache *c,
+    BackendShader sh, const ShaderReflection *refl,
     int64_t current_frame);
 
 // 指定 shader handle を参照する全 pipeline entry を破棄しキャッシュから外す。

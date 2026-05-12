@@ -11,6 +11,7 @@ extern "C" {
 #define SGL_MAX_UB_MEMBERS 32
 #define SGL_MAX_TEXTURES 8
 #define SGL_MAX_UNIFORM_BLOCKS 2
+#define SGL_MAX_STORAGE_BUFS 4
 
 typedef struct ShaderAttr {
     char name[32];
@@ -39,6 +40,12 @@ typedef struct ShaderTexture {
     int smp_slot;
 } ShaderTexture;
 
+typedef struct ShaderStorageBuf {
+    char name[32];
+    int slot;
+    bool readonly;
+} ShaderStorageBuf;
+
 typedef struct ShaderReflection {
     int attr_count;
     ShaderAttr attrs[SGL_MAX_ATTRS];
@@ -47,6 +54,13 @@ typedef struct ShaderReflection {
     int tex_count;
     ShaderTexture texs[SGL_MAX_TEXTURES];
     int vertex_stride_floats;
+    // Compute-only reflection. is_compute=true for compute shaders compiled via
+    // shader_compile_compute; ubs/texs/storage_bufs may still be populated for
+    // graphics shaders that use those resources.
+    bool is_compute;
+    int workgroup[3];                // [numthreads(x,y,z)] from cs entry point
+    int storage_buf_count;
+    ShaderStorageBuf storage_bufs[SGL_MAX_STORAGE_BUFS];
 } ShaderReflection;
 
 // SPIR-V byte blob, owner = caller (free with shader_blob_free).
@@ -68,6 +82,13 @@ bool shader_compile(
     const char *vs_src, const char *fs_src,
     ShaderTargetBackend target,
     ShaderBlob *out_vs, ShaderBlob *out_fs,
+    ShaderReflection *out_refl,
+    char *err_buf, size_t err_buf_size);
+
+bool shader_compile_compute(
+    const char *cs_src,
+    ShaderTargetBackend target,
+    ShaderBlob *out_cs,
     ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size);
 
