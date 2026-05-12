@@ -1170,11 +1170,236 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 #else  // __EMSCRIPTEN__
 
 // -------------------------------------------------------------------------
-// Emscripten Slang stubs.
+// Emscripten Slang bridge.
 //
-// Phase 4 will replace these with EM_ASYNC_JS calls into slang-wasm. For
-// now: log once, return false so use_shader's failure path triggers and
-// the caller keeps whatever shader it was using before (or none).
+// We delegate Slang compilation to the JS side via EM_ASYNC_JS. The JS
+// glue (`window.slangCompile`, defined in Phase 6 in
+// web/playground/slang-bridge.ts) loads `@shader-slang/slang-wasm`, runs
+// Slang in-page, and returns `{wgsl, reflectJson}` (or `{error}`).
+//
+// File layout (this block):
+//   1. EM_ASYNC_JS shim `sglua_slang_compile_js` — single async call point.
+//   2. `reflect_from_slang_json` — populate ShaderReflection from Slang's
+//      reflection JSON. Phase 4 lands a near-empty implementation; Phase 6
+//      will iterate based on observed Slang output.
+//   3. `shader_compile` / `shader_compile_compute` — drive (1) twice/once
+//      and (2) per blob, returning WGSL bytes into ShaderBlob.spirv.
+
+#include <emscripten.h>
+#include "../third_party/nlohmann/json.hpp"
+
+// JS bridge into window.slangCompile().
+//
+// Contract:
+//   * `src`   — Slang source string (UTF-8).
+//   * `entry` — entry-point name (e.g. "vs_main", "fs_main", "cs_main").
+//   * `stage` — 0=vertex, 1=fragment, 2=compute. JS side passes this
+//                straight to slang-wasm's stage enum.
+//
+// Returns a malloc'd UTF-8 char* whose contents are `wgsl + '\x01' + reflectJson`,
+// or NULL on error. Caller frees with free(). The 0x01 byte is chosen as the
+// separator because it cannot appear in valid WGSL source or JSON.
+//
+// Until Phase 6 wires up `window.slangCompile`, this returns 0 and logs once;
+// callers then take the existing compile-failed branch (keep old shader / fail
+// loud if no old shader exists).
+EM_ASYNC_JS(char*, sglua_slang_compile_js,
+            (const char* src, const char* entry, int stage),
+{
+    const srcStr   = UTF8ToString(src);
+    const entryStr = UTF8ToString(entry);
+    if (typeof window === 'undefined' ||
+        typeof window.slangCompile !== 'function') {
+        console.error('[sglua] window.slangCompile not defined yet ' +
+                      '(Phase 6 will wire slang-wasm). entry=' + entryStr);
+        return 0;
+    }
+    try {
+        const result = await window.slangCompile(srcStr, entryStr, stage);
+        if (!result || result.error) {
+            if (result && result.error) {
+                console.error('[sglua] slang compile error:', result.error);
+            }
+            return 0;
+        }
+        // Pack {wgsl, reflectJson} into a single \x01-separated UTF-8 string.
+        const blob = result.wgsl + '\x01' + (result.reflectJson || '{}');
+        const len = lengthBytesUTF8(blob) + 1;
+        const ptr = _malloc(len);
+        stringToUTF8(blob, ptr, len);
+        return ptr;
+    } catch (e) {
+        console.error('[sglua] slangCompile threw:', e);
+        return 0;
+    }
+});
+
+namespace {
+
+using json = nlohmann::json;
+
+void copy_name_capped(char *dst, size_t cap, const std::string &src) {
+    if (cap == 0) return;
+    size_t n = src.size();
+    if (n >= cap) n = cap - 1;
+    memcpy(dst, src.data(), n);
+    dst[n] = '\0';
+}
+
+// Split "wgsl\x01reflectJson" on the first 0x01 byte. Returns false if no sep.
+bool split_blob(const char *blob, std::string &out_wgsl, std::string &out_refl_json) {
+    if (!blob) return false;
+    const char *sep = strchr(blob, '\x01');
+    if (!sep) return false;
+    out_wgsl.assign(blob, (size_t)(sep - blob));
+    out_refl_json.assign(sep + 1);
+    return true;
+}
+
+// Populate ShaderReflection from a Slang `--reflection-json`-style document.
+//
+// **Phase 4 status: stub.** The exact JSON schema Slang emits via
+// IComponentType::getLayout()->toJson()-equivalent in the wasm build hasn't
+// been observed against real output yet (Phase 6 will iterate). For now we
+// do a best-effort, defensive walk: if we find an obvious "parameters" or
+// "entryPoints" array we try to extract attribute / uniform / texture
+// names. Missing/unknown fields are silently skipped — the goal is to
+// return true so the bridge call succeeds and the rest of the pipeline can
+// be exercised end-to-end. Sample-by-sample correctness will be added when
+// Phase 6 produces real JSON to diff against.
+//
+// TODO(Phase 6): replace with a schema-aware mapping once we have ground
+// truth from `@shader-slang/slang-wasm`. Specifically map:
+//   * parameters[].binding.{kind,index}    -> attr.slot / ub.slot / tex.{img,smp}_slot
+//   * parameters[].type.{kind,elementType} -> attr.comp_count / ub.members[].comp_count
+//   * entryPoints[].threadGroupSize        -> workgroup[3] for compute
+//   * parameters[].type.kind == "resource" -> texs / storage_bufs
+bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
+                             bool is_vertex_stage) {
+    if (!out) return false;
+    if (!json_text || !*json_text) return true; // empty JSON -> nothing to merge
+
+    json j = json::parse(json_text, nullptr, false);
+    if (j.is_discarded()) {
+        fprintf(stderr, "[sglua] reflect_from_slang_json: parse failed\n");
+        return false;
+    }
+
+    static bool warned_once = false;
+    if (!warned_once) {
+        fprintf(stderr,
+                "[sglua] reflect_from_slang_json: Phase 4 stub mapping "
+                "(field set is incomplete; Phase 6 will flesh this out).\n");
+        warned_once = true;
+    }
+
+    // Best-effort: walk a top-level "parameters" array if present and pull
+    // out anything that smells like a vertex input, uniform block, or texture.
+    // The exact schema is TBD; the code below is intentionally tolerant.
+    if (j.contains("parameters") && j["parameters"].is_array()) {
+        for (const auto &p : j["parameters"]) {
+            if (!p.is_object()) continue;
+            std::string name = p.value("name", std::string(""));
+            std::string kind;
+            if (p.contains("binding") && p["binding"].is_object()) {
+                kind = p["binding"].value("kind", std::string(""));
+            }
+            int index = -1;
+            if (p.contains("binding") && p["binding"].is_object() &&
+                p["binding"].contains("index")) {
+                index = p["binding"]["index"].get<int>();
+            }
+
+            if (is_vertex_stage && kind == "varyingInput" &&
+                out->attr_count < SGL_MAX_ATTRS) {
+                ShaderAttr *a = &out->attrs[out->attr_count];
+                copy_name_capped(a->name, sizeof(a->name), name);
+                a->slot = (index >= 0) ? index : out->attr_count;
+                a->comp_count = 4; // TODO(Phase 6): read from type
+                a->offset_floats = out->vertex_stride_floats;
+                out->vertex_stride_floats += a->comp_count;
+                out->attr_count++;
+            } else if (kind == "uniform" || kind == "constantBuffer") {
+                if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
+                    ShaderUniformBlock *u = &out->ubs[out->ub_count++];
+                    copy_name_capped(u->name, sizeof(u->name), name);
+                    u->slot = (index >= 0) ? index : 0;
+                    u->size_floats = 0; // TODO(Phase 6): infer from type layout
+                    u->member_count = 0;
+                }
+            } else if (kind == "descriptorTableSlot" || kind == "shaderResource") {
+                if (out->tex_count < SGL_MAX_TEXTURES) {
+                    ShaderTexture *tx = &out->texs[out->tex_count++];
+                    copy_name_capped(tx->name, sizeof(tx->name), name);
+                    tx->img_slot = (index >= 0) ? index : 0;
+                    tx->smp_slot = (index >= 0) ? index : 0;
+                }
+            }
+            // samplerState / storageBuffer / etc. omitted — Phase 6.
+        }
+    }
+
+    // Compute thread group size, if present in an entryPoints[] node.
+    if (j.contains("entryPoints") && j["entryPoints"].is_array()) {
+        for (const auto &ep : j["entryPoints"]) {
+            if (!ep.is_object()) continue;
+            std::string stage = ep.value("stage", std::string(""));
+            if (stage == "compute" && ep.contains("threadGroupSize") &&
+                ep["threadGroupSize"].is_array() &&
+                ep["threadGroupSize"].size() == 3) {
+                out->is_compute = true;
+                for (int k = 0; k < 3; ++k) {
+                    out->workgroup[k] = ep["threadGroupSize"][k].get<int>();
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// Common driver: call the JS bridge once, split, and copy WGSL bytes into
+// `out_blob`. Reflection JSON is returned via `out_refl_json` for the caller
+// to merge into ShaderReflection.
+bool compile_one(const char *src, const char *entry, int stage,
+                 ShaderBlob *out_blob, std::string &out_refl_json,
+                 char *err_buf, size_t err_buf_size) {
+    char *blob = sglua_slang_compile_js(src, entry, stage);
+    if (!blob) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size,
+                     "slang(%s) compile failed (see browser console)", entry);
+        }
+        return false;
+    }
+    std::string wgsl;
+    bool ok = split_blob(blob, wgsl, out_refl_json);
+    free(blob);
+    if (!ok) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size,
+                     "slang(%s) returned malformed blob", entry);
+        }
+        return false;
+    }
+    // Stash WGSL source bytes into out_blob->spirv. The field is misnamed on
+    // wasm (it's WGSL text, not SPIR-V binary) but it's the same opaque byte
+    // container the backend will consume in Phase 6.
+    size_t n = wgsl.size();
+    out_blob->spirv = (uint32_t*)malloc(n + 1);
+    if (!out_blob->spirv) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "OOM copying WGSL (%zu bytes)", n);
+        }
+        return false;
+    }
+    memcpy(out_blob->spirv, wgsl.data(), n);
+    ((char*)out_blob->spirv)[n] = '\0';
+    out_blob->bytes = n;
+    return true;
+}
+
+} // anonymous namespace
+
 extern "C" bool shader_compile(
     const char *vs_src, const char *fs_src,
     ShaderTargetBackend target,
@@ -1182,20 +1407,35 @@ extern "C" bool shader_compile(
     ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size)
 {
-    (void)vs_src; (void)fs_src; (void)target;
+    (void)target; // sokol-wgpu only on wasm; descriptor-set patching N/A for WGSL.
     if (out_vs) { out_vs->spirv = nullptr; out_vs->bytes = 0; }
     if (out_fs) { out_fs->spirv = nullptr; out_fs->bytes = 0; }
     if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
-    static bool warned_once = false;
-    if (!warned_once) {
-        fprintf(stderr,
-                "[wasm stub] shader_compile not implemented yet (Phase 4 will wire slang-wasm)\n");
-        warned_once = true;
+
+    std::string vs_refl_json, fs_refl_json;
+    if (!compile_one(vs_src, "vs_main", 0, out_vs, vs_refl_json, err_buf, err_buf_size)) {
+        return false;
     }
-    if (err_buf && err_buf_size) {
-        snprintf(err_buf, err_buf_size, "shader compile unavailable on wasm (Phase 4)");
+    if (!compile_one(fs_src, "fs_main", 1, out_fs, fs_refl_json, err_buf, err_buf_size)) {
+        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
+        return false;
     }
-    return false;
+
+    // Merge both stages' reflection JSON into the single ShaderReflection
+    // struct: VS contributes attrs + UBs + textures, FS contributes its
+    // own UBs + textures (de-dup by slot would be ideal but the Phase 4
+    // stub doesn't get that fancy).
+    if (!reflect_from_slang_json(vs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/true) ||
+        !reflect_from_slang_json(fs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false))
+    {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "slang reflection parse failed");
+        }
+        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
+        free(out_fs->spirv); out_fs->spirv = nullptr; out_fs->bytes = 0;
+        return false;
+    }
+    return true;
 }
 
 extern "C" bool shader_compile_compute(
@@ -1205,19 +1445,24 @@ extern "C" bool shader_compile_compute(
     ShaderReflection *out_refl,
     char *err_buf, size_t err_buf_size)
 {
-    (void)cs_src; (void)target;
-    if (out_cs)  { out_cs->spirv = nullptr; out_cs->bytes = 0; }
+    (void)target;
+    if (out_cs)   { out_cs->spirv = nullptr; out_cs->bytes = 0; }
     if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
-    static bool warned_once = false;
-    if (!warned_once) {
-        fprintf(stderr,
-                "[wasm stub] shader_compile_compute not implemented yet (Phase 4)\n");
-        warned_once = true;
+
+    std::string cs_refl_json;
+    if (!compile_one(cs_src, "cs_main", 2, out_cs, cs_refl_json, err_buf, err_buf_size)) {
+        return false;
     }
-    if (err_buf && err_buf_size) {
-        snprintf(err_buf, err_buf_size, "compute shader compile unavailable on wasm (Phase 4)");
+    out_refl->is_compute = true;
+    out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
+    if (!reflect_from_slang_json(cs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false)) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "slang reflection parse failed (compute)");
+        }
+        free(out_cs->spirv); out_cs->spirv = nullptr; out_cs->bytes = 0;
+        return false;
     }
-    return false;
+    return true;
 }
 
 extern "C" void shader_blob_free(ShaderBlob *b) {
