@@ -4,6 +4,10 @@
 // All sg_*/vk* calls used by the runtime live in this file. Other source files
 // (pass.c, pipeline.c, resources.c, capture.c, lua_api.c) talk to the GPU
 // only through g_backend->xxx().
+//
+// Emscripten: the entire Vulkan path is #ifdef'd out; a small WGPU stub at
+// the bottom provides just enough vtable surface to let the C frame loop run
+// without crashing. Phase 3 will implement real WebGPU swapchain wiring.
 #include "backend.h"
 #include "app.h"
 #include "shader.h"
@@ -11,12 +15,14 @@
 #include "sokol_gfx.h"
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_vulkan.h>
-#include <vulkan/vulkan.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef __EMSCRIPTEN__
+#include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
 
 #include "stb_image_write.h"
 
@@ -1215,6 +1221,136 @@ static SglPixelFormat sk_swapchain_color_format(App *app) {
         default:                        return SGL_PF_RGBA8;
     }
 }
+
+#else  // __EMSCRIPTEN__
+// -------------------------------------------------------------------------
+// Emscripten / WGPU stubs.
+//
+// Phase 2 deliberately doesn't wire up the WebGPU device or swapchain —
+// shader compile is also stubbed out, so even if rendering worked, samples
+// would have nothing to draw with. These stubs exist so the C frame loop
+// (begin_frame → on_frame → end_frame) runs without crashing the wasm
+// process and so the link succeeds. Phase 3 will:
+//   1. Request a WebGPU adapter/device via emscripten_webgpu_*.
+//   2. Create a canvas-backed swapchain.
+//   3. Plumb the device pointer into sg_setup's sg_wgpu_environment.
+//   4. Per-frame: acquire the swapchain texture view and pass it to
+//      sg_begin_pass via sg_wgpu_swapchain.
+
+static void sglua_sokol_logger(
+    const char* tag, uint32_t level, uint32_t item_id,
+    const char* msg, uint32_t line, const char* file, void* user)
+{
+    (void)tag; (void)item_id; (void)file; (void)user;
+    const char *lvl = (level == 0) ? "PANIC" : (level == 1) ? "ERROR"
+                    : (level == 2) ? "WARN"  : "INFO";
+    SDL_Log("[sg %s:%u] %s", lvl, line, msg ? msg : "(no msg)");
+}
+
+static bool sk_init(App *app) {
+    (void)app;
+    SDL_Log("[wasm] sokol backend init: WGPU stub (Phase 3 will complete this)");
+    // Bring up sokol_gfx with a minimal environment. Without a real WGPU
+    // device this won't successfully create GPU resources, but sg_setup
+    // itself only stores the desc — most failure modes will surface later
+    // in sg_begin_pass / sg_commit, where the stubs below early-return.
+    sg_setup(&(sg_desc){
+        .environment = {
+            .defaults = {
+                .color_format = SG_PIXELFORMAT_BGRA8,
+                .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+                .sample_count = 1,
+            },
+            // .wgpu.device is left NULL; Phase 3 will fill it in.
+        },
+        .logger.func = sglua_sokol_logger,
+    });
+    return true;
+}
+
+static void sk_shutdown(App *app) {
+    (void)app;
+    sg_shutdown();
+}
+
+static void sk_begin_frame(App *app, int *out_w, int *out_h) {
+    (void)app;
+    // Hard-coded extents until canvas wiring lands in Phase 3.
+    if (out_w) *out_w = 480;
+    if (out_h) *out_h = 360;
+}
+
+static void sk_end_frame(App *app) {
+    (void)app;
+    // sg_commit() would attempt to submit to a WGPU queue we haven't set up;
+    // skip until Phase 3.
+}
+
+static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_t bytes) {
+    (void)type; (void)data; (void)bytes;
+    return 0;
+}
+
+static void sk_destroy_buffer(BackendBuffer h) { (void)h; }
+
+static BackendImage sk_make_image(const ImageDesc *d) {
+    (void)d;
+    return 0;
+}
+
+static void sk_destroy_image(BackendImage h) { (void)h; }
+
+static BackendShader sk_make_shader(const ShaderDesc *d) {
+    (void)d;
+    return 0;
+}
+
+static void sk_destroy_shader(BackendShader h) { (void)h; }
+
+static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
+    (void)d;
+    return 0;
+}
+
+static void sk_destroy_pipeline(BackendPipeline h) { (void)h; }
+
+static void sk_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
+    (void)h; (void)data; (void)bytes;
+}
+
+static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
+    (void)h; (void)data; (void)bytes;
+}
+
+static void sk_begin_pass(App *app, const PassBeginDesc *d) {
+    (void)app; (void)d;
+}
+
+static void sk_end_pass(App *app) { (void)app; }
+
+static void sk_apply_pipeline(BackendPipeline p) { (void)p; }
+static void sk_apply_bindings(const BindingsDesc *b) { (void)b; }
+static void sk_apply_uniforms(int ub_slot, const void *data, size_t bytes) {
+    (void)ub_slot; (void)data; (void)bytes;
+}
+static void sk_draw(int base, int count) { (void)base; (void)count; }
+
+static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
+    (void)app; (void)d;
+}
+
+static bool sk_capture(App *app, const char *path) {
+    (void)app; (void)path;
+    SDL_Log("[wasm] capture not supported (no Vulkan readback path)");
+    return false;
+}
+
+static SglPixelFormat sk_swapchain_color_format(App *app) {
+    (void)app;
+    return SGL_PF_BGRA8;
+}
+
+#endif  // __EMSCRIPTEN__
 
 const RenderBackend g_backend_sokol = {
     .name = "sokol",

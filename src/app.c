@@ -7,8 +7,14 @@
 
 bool app_init(App *app) {
     memset(app, 0, sizeof(*app));
+    // Window creation flag set: native asks for a Vulkan-capable surface so
+    // SDL_Vulkan_* APIs work; wasm just needs the canvas-backed default.
+#ifdef __EMSCRIPTEN__
+    app->window = SDL_CreateWindow("sglua", 1280, 720, SDL_WINDOW_RESIZABLE);
+#else
     app->window = SDL_CreateWindow("sglua", 1280, 720,
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+#endif
     if (!app->window) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         return false;
@@ -28,11 +34,16 @@ bool app_init(App *app) {
 }
 
 bool app_backend_init(App *app) {
+#ifndef __EMSCRIPTEN__
     if (strcmp(app->backend_name, "sdlgpu") == 0) {
         g_backend = &g_backend_sdlgpu;
     } else {
         g_backend = &g_backend_sokol;
     }
+#else
+    // wasm build: only the sokol/WGPU backend is compiled in.
+    g_backend = &g_backend_sokol;
+#endif
     SDL_Log("backend selected: %s", g_backend->name);
     if (!g_backend->init(app)) {
         SDL_Log("backend init failed");

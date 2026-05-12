@@ -1,8 +1,12 @@
 #pragma once
 #include <SDL3/SDL.h>
+#ifndef __EMSCRIPTEN__
+// Vulkan + SDL_GPU headers only exist on the native build; the wasm path
+// uses sokol's WGPU backend and doesn't touch these APIs at all.
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3/SDL_gpu.h>
 #include <vulkan/vulkan.h>
+#endif
 #include <stdint.h>
 #include <stdbool.h>
 #include "lua_api.h"
@@ -19,6 +23,7 @@ typedef enum {
 typedef struct App {
     SDL_Window *window;
 
+#ifndef __EMSCRIPTEN__
     // Vulkan core (still owned by App in Task 1; sokol backend reads/writes
     // these directly. Task 3 will introduce a parallel sdlgpu state set.)
     VkInstance       vk_instance;
@@ -51,6 +56,7 @@ typedef struct App {
     // Frame snapshot for capture: the swapchain image presented this frame.
     // Set in begin_frame, used by sokol backend's capture path.
     VkImage          vk_last_presented_image;
+#endif  // __EMSCRIPTEN__
 
     LuaCtx        lua;
     PassState     pass;
@@ -82,6 +88,7 @@ typedef struct App {
     // config({ resource_sweep_after_frames = N }) during on_init.
     int           resource_sweep_after_frames;
 
+#ifndef __EMSCRIPTEN__
     // SDL3 GPU backend state (Task 3). Owned/used by backend_sdlgpu.c only.
     SDL_GPUDevice       *gpu_device;
     SDL_GPUTexture      *gpu_swapchain_tex;  // current frame の swapchain
@@ -90,6 +97,7 @@ typedef struct App {
     // gpu_swapchain_tex is cleared. capture_state_drain runs AFTER
     // end_frame, so sg_capture reads from this field instead.
     SDL_GPUTexture      *gpu_last_swapchain_tex;
+#endif  // __EMSCRIPTEN__
 
     // Entry .lua hot-reload state. main.c populates entry_path /
     // entry_module_name after app_init; app_frame_begin polls mtime each

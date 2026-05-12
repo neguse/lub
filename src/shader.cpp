@@ -6,10 +6,18 @@
 // (sg_make_shader / SDL_CreateGPUShader / etc.) lives in the backend.
 // This file is C++ because the Slang public API uses COM-like C++
 // interfaces; the exposed interface (shader.h) is pure C.
+//
+// Emscripten: the Slang prebuilt is native-only; Phase 4 will load
+// slang-wasm via EM_ASYNC_JS. Until then shader_compile / _compute return
+// failure so use_shader keeps the previous (or empty) shader entry. The
+// caller already has fallback paths for compile failure (samples log the
+// error and continue), so a stub-fail keeps the frame loop alive.
 #include "shader.h"
 
+#ifndef __EMSCRIPTEN__
 #include <slang.h>
 #include <slang-com-ptr.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#ifndef __EMSCRIPTEN__
 using slang::IGlobalSession;
 using slang::ISession;
 using slang::IModule;
@@ -1157,3 +1166,67 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
     }
     b->bytes = 0;
 }
+
+#else  // __EMSCRIPTEN__
+
+// -------------------------------------------------------------------------
+// Emscripten Slang stubs.
+//
+// Phase 4 will replace these with EM_ASYNC_JS calls into slang-wasm. For
+// now: log once, return false so use_shader's failure path triggers and
+// the caller keeps whatever shader it was using before (or none).
+extern "C" bool shader_compile(
+    const char *vs_src, const char *fs_src,
+    ShaderTargetBackend target,
+    ShaderBlob *out_vs, ShaderBlob *out_fs,
+    ShaderReflection *out_refl,
+    char *err_buf, size_t err_buf_size)
+{
+    (void)vs_src; (void)fs_src; (void)target;
+    if (out_vs) { out_vs->spirv = nullptr; out_vs->bytes = 0; }
+    if (out_fs) { out_fs->spirv = nullptr; out_fs->bytes = 0; }
+    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+    static bool warned_once = false;
+    if (!warned_once) {
+        fprintf(stderr,
+                "[wasm stub] shader_compile not implemented yet (Phase 4 will wire slang-wasm)\n");
+        warned_once = true;
+    }
+    if (err_buf && err_buf_size) {
+        snprintf(err_buf, err_buf_size, "shader compile unavailable on wasm (Phase 4)");
+    }
+    return false;
+}
+
+extern "C" bool shader_compile_compute(
+    const char *cs_src,
+    ShaderTargetBackend target,
+    ShaderBlob *out_cs,
+    ShaderReflection *out_refl,
+    char *err_buf, size_t err_buf_size)
+{
+    (void)cs_src; (void)target;
+    if (out_cs)  { out_cs->spirv = nullptr; out_cs->bytes = 0; }
+    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+    static bool warned_once = false;
+    if (!warned_once) {
+        fprintf(stderr,
+                "[wasm stub] shader_compile_compute not implemented yet (Phase 4)\n");
+        warned_once = true;
+    }
+    if (err_buf && err_buf_size) {
+        snprintf(err_buf, err_buf_size, "compute shader compile unavailable on wasm (Phase 4)");
+    }
+    return false;
+}
+
+extern "C" void shader_blob_free(ShaderBlob *b) {
+    if (!b) return;
+    if (b->spirv) {
+        free(b->spirv);
+        b->spirv = nullptr;
+    }
+    b->bytes = 0;
+}
+
+#endif  // __EMSCRIPTEN__

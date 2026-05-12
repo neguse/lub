@@ -1,0 +1,26 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "wasm-debug",
+      "displayName": "WebAssembly WebGPU Debug",
+      "description": "emcmake cmake --preset wasm-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "wasm-release",
+      "displayName": "WebAssembly WebGPU Release",
+      "description": "emcmake cmake --preset wasm-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "wasm-debug",   "configurePreset": "wasm-debug" },
+    { "name": "wasm-release", "configurePreset": "wasm-release" }
+  ]
+}
