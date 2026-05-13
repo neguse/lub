@@ -41,6 +41,9 @@ BackendPipeline pipeline_cache_get(
 {
     if (n_color_targets < 1) n_color_targets = 1;
     if (n_color_targets > SGL_MAX_COLOR_TARGETS) n_color_targets = SGL_MAX_COLOR_TARGETS;
+    // memset before designated init: designated initialization does not strictly
+    // guarantee struct padding bytes are zeroed. Since the cache compares keys
+    // with memcmp, indeterminate padding could cause false misses on lookups.
     PipelineKey k;
     memset(&k, 0, sizeof(k));
     k.shader_handle = sh;
