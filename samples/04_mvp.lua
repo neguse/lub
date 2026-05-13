@@ -1,4 +1,5 @@
-local sg_io = dofile("samples/sg_io.lua")
+local sg_io = require("sg_io")
+local M = {}
 
 -- column-major 4x4 (Z-axis rotation)
 local function rot_z(theta)
@@ -7,13 +8,15 @@ local function rot_z(theta)
 end
 
 local t = 0
-function on_init()
+
+function M.on_init()
     config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
 end
-function on_event(e) end
-function on_quit() end
 
-function on_frame()
+function M.on_event(e) end
+function M.on_quit() end
+
+function M.on_frame()
   t = t + 1/60
   local vs, vsv = sg_io.load_text("samples/data/04_mvp.vs.slang")
   local fs, fsv = sg_io.load_text("samples/data/04_mvp.fs.slang")
@@ -26,3 +29,5 @@ function on_frame()
             { shader = s, depth = false, cull = NONE })
   end_pass()
 end
+
+return M

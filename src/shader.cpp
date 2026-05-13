@@ -6,10 +6,16 @@
 // (sg_make_shader / SDL_CreateGPUShader / etc.) lives in the backend.
 // This file is C++ because the Slang public API uses COM-like C++
 // interfaces; the exposed interface (shader.h) is pure C.
+//
+// Emscripten loads slang-wasm via EM_ASYNC_JS; native uses the C++ Slang API.
+// On wasm the JS bridge returns WGSL bytes (stashed into ShaderBlob.spirv)
+// plus a reflection JSON blob — see the EM_ASYNC_JS section below.
 #include "shader.h"
 
+#ifndef __EMSCRIPTEN__
 #include <slang.h>
 #include <slang-com-ptr.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#ifndef __EMSCRIPTEN__
 using slang::IGlobalSession;
 using slang::ISession;
 using slang::IModule;
@@ -1157,3 +1164,552 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
     }
     b->bytes = 0;
 }
+
+#else  // __EMSCRIPTEN__
+
+// -------------------------------------------------------------------------
+// Emscripten Slang bridge.
+//
+// We delegate Slang compilation to the JS side via EM_ASYNC_JS. The JS
+// glue (`window.slangCompile`, defined in web/playground/slang-bridge.ts)
+// loads `@shader-slang/slang-wasm`, runs Slang in-page, and returns
+// `{wgsl, reflectJson}` (or `{error}`).
+//
+// File layout (this block):
+//   1. EM_ASYNC_JS shim `sglua_slang_compile_js` — single async call point.
+//   2. `reflect_from_slang_json` — populate ShaderReflection from Slang's
+//      reflection JSON.
+//   3. `shader_compile` / `shader_compile_compute` — drive (1) twice/once
+//      and (2) per blob, returning WGSL bytes into ShaderBlob.spirv.
+
+#include <emscripten.h>
+#include "../third_party/nlohmann/json.hpp"
+
+// Stage codes passed across the JS bridge to window.slangCompile.
+// Must match what playground/slang-bridge.ts expects.
+enum SglShaderStage {
+    SGL_STAGE_VS = 0,
+    SGL_STAGE_FS = 1,
+    SGL_STAGE_CS = 2,
+};
+
+// JS bridge into window.slangCompile().
+//
+// Contract:
+//   * `src`   — Slang source string (UTF-8).
+//   * `entry` — entry-point name (e.g. "vs_main", "fs_main", "cs_main").
+//   * `stage` — SglShaderStage (0=vertex, 1=fragment, 2=compute). JS side
+//                passes this straight to slang-wasm's stage enum.
+//
+// Return value (malloc'd UTF-8 char*, caller frees with free()):
+//   * Success: `wgsl + '\x01' + reflectJson` — leading byte is the first byte
+//     of valid WGSL source (never 0x02). The 0x01 separator cannot appear in
+//     valid WGSL or JSON.
+//   * Failure (diagnostic available): `'\x02' + errorString`. The leading 0x02
+//     byte signals that the rest is a human-readable Slang diagnostic to be
+//     surfaced in `err_buf`.
+//   * NULL: only for genuinely unrecoverable cases (malloc failure inside the
+//     JS shim). Everything else — including "slang-wasm not loaded yet" — uses
+//     the 0x02-prefixed error form so the diagnostic reaches the user.
+EM_ASYNC_JS(char*, sglua_slang_compile_js,
+            (const char* src, const char* entry, int stage),
+{
+    const srcStr   = UTF8ToString(src);
+    const entryStr = UTF8ToString(entry);
+    const packError = (msg) => {
+        const errMsg = '\x02' + msg;
+        const len = lengthBytesUTF8(errMsg) + 1;
+        const ptr = _malloc(len);
+        if (!ptr) return 0;
+        stringToUTF8(errMsg, ptr, len);
+        return ptr;
+    };
+    if (typeof window === 'undefined' ||
+        typeof window.slangCompile !== 'function') {
+        console.error('[sglua] window.slangCompile not exposed by the host; ' +
+                      'slang-wasm bridge not loaded. entry=' + entryStr);
+        return packError('slang-wasm bridge not loaded (window.slangCompile undefined)');
+    }
+    try {
+        const result = await window.slangCompile(srcStr, entryStr, stage);
+        if (!result || result.error) {
+            const msg = (result && result.error)
+                ? result.error
+                : 'slang compile returned no result';
+            console.error('[sglua] slang compile error:', msg);
+            return packError(msg);
+        }
+        // Pack {wgsl, reflectJson} into a single \x01-separated UTF-8 string.
+        const blob = result.wgsl + '\x01' + (result.reflectJson || '{}');
+        const len = lengthBytesUTF8(blob) + 1;
+        const ptr = _malloc(len);
+        if (!ptr) return 0;
+        stringToUTF8(blob, ptr, len);
+        return ptr;
+    } catch (e) {
+        const msg = (e && e.message) ? e.message : String(e);
+        console.error('[sglua] slangCompile threw:', msg);
+        return packError(msg);
+    }
+});
+
+namespace {
+
+using json = nlohmann::json;
+
+void copy_name_capped(char *dst, size_t cap, const std::string &src) {
+    if (cap == 0) return;
+    size_t n = src.size();
+    if (n >= cap) n = cap - 1;
+    memcpy(dst, src.data(), n);
+    dst[n] = '\0';
+}
+
+// Split "wgsl\x01reflectJson" on the first 0x01 byte. Returns false if no sep.
+bool split_blob(const char *blob, std::string &out_wgsl, std::string &out_refl_json) {
+    if (!blob) return false;
+    const char *sep = strchr(blob, '\x01');
+    if (!sep) return false;
+    out_wgsl.assign(blob, (size_t)(sep - blob));
+    out_refl_json.assign(sep + 1);
+    return true;
+}
+
+// Cross-stage dedup helpers. shader_compile() merges VS and FS reflection
+// JSON into one ShaderReflection by calling reflect_from_slang_json twice.
+// If both stages declare the same UB/texture/storage-buffer (very common —
+// e.g. a UB at slot 0 used by both vertex and fragment), the second call
+// would otherwise append a duplicate entry. We guard each append with a
+// slot-existence check.
+bool ub_slot_exists(const ShaderReflection* refl, int slot) {
+    for (int i = 0; i < refl->ub_count; ++i) {
+        if (refl->ubs[i].slot == slot) return true;
+    }
+    return false;
+}
+bool tex_slot_exists(const ShaderReflection* refl, int img_slot) {
+    for (int i = 0; i < refl->tex_count; ++i) {
+        if (refl->texs[i].img_slot == img_slot) return true;
+    }
+    return false;
+}
+// Used by the storage-buffer dedup path in reflect_from_slang_json.
+bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
+    for (int i = 0; i < refl->storage_buf_count; ++i) {
+        if (refl->storage_bufs[i].slot == slot) return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Reflection schema reference (Slang WASM, release v2026.8.1+):
+//
+// Top-level object from ProgramLayout::toJsonObject():
+// {
+//   "parameters": [           // global parameters (UBs, textures, samplers, storage)
+//     {
+//       "name": "...",
+//       "binding": { "kind": "descriptorTableSlot", "index": N },
+//       "type": {
+//         "kind": "constantBuffer" | "resource" | "samplerState" | ...,
+//         // ConstantBuffer<T>:
+//         "elementType": { "kind": "struct", "name": "...", "fields": [
+//             { "name": "...", "type": { "kind": "vector"|"scalar"|"matrix", ... },
+//               "binding": { "kind": "uniform", "offset": N_bytes, "size": M_bytes } }
+//         ] },
+//         // Resource (texture or structured buffer):
+//         "baseShape": "texture2D" | "structuredBuffer" | "byteAddressBuffer" | ...,
+//         "access": "readWrite" | "read" | ...,  // omitted for read-only
+//         "resultType": { kind: "vector"|"scalar", ... },
+//       }
+//     }
+//   ],
+//   "entryPoints": [
+//     {
+//       "name": "...",
+//       "stage": "vertex" | "fragment" | "compute",
+//       "parameters": [        // varying inputs
+//         {
+//           "name": "...",
+//           "binding": { "kind": "varyingInput", "index": N, "count"?: K },
+//           "type": { "kind": "struct", "fields": [
+//               { "name": "...", "type": {kind:"vector"|"scalar", elementCount?: 2|3|4},
+//                 "binding": { "kind": "varyingInput", "index": N }, "semanticName": "POSITION" }
+//           ] }
+//         }
+//       ],
+//       "threadGroupSize": [x, y, z],   // compute only
+//       "result": { ... varying outputs ... }
+//     }
+//   ]
+// }
+//
+// Notes:
+//  * Vertex inputs live under entryPoints[].parameters[] — NOT under the
+//    top-level parameters[]. The latter only holds resources / UBs.
+//  * The top-level parameter for a ConstantBuffer<T> has
+//    binding.kind = "descriptorTableSlot" and type.kind = "constantBuffer".
+//    We pull UB member layout out of type.elementType.fields[].
+//  * For a Texture2D the param is descriptorTableSlot + type.kind=resource,
+//    baseShape=texture2D. SamplerState gets its own descriptorTableSlot
+//    entry with type.kind=samplerState.
+//  * For RWStructuredBuffer<T>: type.kind=resource, baseShape=structuredBuffer,
+//    access="readWrite". Read-only StructuredBuffer<T> omits the access key.
+
+// Map a "type" node from the Slang reflection JSON to a float-component
+// count (mat4 = 16, vec3 = 3, scalar = 1). Returns 0 for unrecognised
+// shapes; caller may default to 4.
+int comp_count_of_type_json(const json &t) {
+    if (!t.is_object()) return 0;
+    std::string kind = t.value("kind", std::string(""));
+    if (kind == "scalar") return 1;
+    if (kind == "vector") return t.value("elementCount", 0);
+    if (kind == "matrix") {
+        int rc = t.value("rowCount", 0);
+        int cc = t.value("columnCount", 0);
+        return rc * cc;
+    }
+    return 0;
+}
+
+// Record a single varying-input field. Fields appear inside a struct's
+// "fields" array, each with its own binding.{index, kind} and type.
+void record_attr_field(const json &f, ShaderReflection *out) {
+    if (out->attr_count >= SGL_MAX_ATTRS) return;
+    std::string name = f.value("name", std::string("attr"));
+    int idx = -1;
+    if (f.contains("binding") && f["binding"].is_object() &&
+        f["binding"].contains("index"))
+    {
+        idx = f["binding"]["index"].get<int>();
+    }
+    int cc = 0;
+    if (f.contains("type")) cc = comp_count_of_type_json(f["type"]);
+    if (cc <= 0) cc = 4;
+
+    ShaderAttr *a = &out->attrs[out->attr_count];
+    copy_name_capped(a->name, sizeof(a->name), name);
+    a->slot = (idx >= 0) ? idx : out->attr_count;
+    a->comp_count = cc;
+    a->offset_floats = out->vertex_stride_floats;
+    out->vertex_stride_floats += cc;
+    out->attr_count++;
+}
+
+// Populate a ShaderUniformBlock from a top-level parameter whose type is
+// a ConstantBuffer<T>. Reads members from type.elementType.fields[].
+void fill_uniform_block_from_json(const json &p, int slot, ShaderUniformBlock *u) {
+    u->slot = slot;
+    u->size_floats = 0;
+    u->member_count = 0;
+    copy_name_capped(u->name, sizeof(u->name), p.value("name", std::string("")));
+
+    if (!p.contains("type") || !p["type"].is_object()) return;
+    const json &t = p["type"];
+    if (!t.contains("elementType") || !t["elementType"].is_object()) return;
+    const json &el = t["elementType"];
+    if (el.value("kind", std::string("")) != "struct") return;
+    if (!el.contains("fields") || !el["fields"].is_array()) return;
+
+    int total_bytes = 0;
+    for (const auto &f : el["fields"]) {
+        if (u->member_count >= SGL_MAX_UB_MEMBERS) break;
+        if (!f.is_object()) continue;
+        ShaderUniformMember *m = &u->members[u->member_count++];
+        copy_name_capped(m->name, sizeof(m->name), f.value("name", std::string("")));
+        int off_bytes = 0;
+        int size_bytes = 0;
+        if (f.contains("binding") && f["binding"].is_object()) {
+            off_bytes  = f["binding"].value("offset", 0);
+            size_bytes = f["binding"].value("size", 0);
+        }
+        m->offset_floats = off_bytes / 4;
+        int cc = f.contains("type") ? comp_count_of_type_json(f["type"]) : 0;
+        if (cc <= 0) cc = (size_bytes + 3) / 4;
+        m->comp_count = cc;
+        int end_bytes = off_bytes + size_bytes;
+        if (end_bytes > total_bytes) total_bytes = end_bytes;
+    }
+    u->size_floats = (total_bytes + 3) / 4;
+}
+
+// Top-level parameters[] walker. Each entry is either a UB, a texture, a
+// sampler, or a storage buffer. We dedup by slot so cross-stage merges
+// don't double-count.
+void process_global_parameter(const json &p, ShaderReflection *out) {
+    if (!p.is_object()) return;
+    if (!p.contains("binding") || !p["binding"].is_object()) return;
+    std::string bkind = p["binding"].value("kind", std::string(""));
+    // Only descriptorTableSlot bindings are for resources; uniform/varyingInput
+    // appear nested inside fields. Other bindings (rootConstant, etc.) are
+    // outside current scope.
+    if (bkind != "descriptorTableSlot") return;
+    int slot = p["binding"].value("index", 0);
+
+    const json *t = nullptr;
+    if (p.contains("type") && p["type"].is_object()) t = &p["type"];
+    std::string tkind = t ? t->value("kind", std::string("")) : "";
+
+    if (tkind == "constantBuffer") {
+        if (ub_slot_exists(out, slot)) return;
+        if (out->ub_count >= SGL_MAX_UNIFORM_BLOCKS) return;
+        fill_uniform_block_from_json(p, slot, &out->ubs[out->ub_count++]);
+        return;
+    }
+    if (tkind == "resource") {
+        std::string shape = t->value("baseShape", std::string(""));
+        if (shape == "structuredBuffer" || shape == "byteAddressBuffer") {
+            if (sbuf_slot_exists(out, slot)) return;
+            if (out->storage_buf_count >= SGL_MAX_STORAGE_BUFS) return;
+            ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
+            copy_name_capped(sb->name, sizeof(sb->name), p.value("name", std::string("")));
+            sb->slot = slot;
+            // access="readWrite" => writable; absent or "read" => readonly.
+            sb->readonly = (t->value("access", std::string("")) != "readWrite");
+            return;
+        }
+        // Texture (baseShape="texture2D"/"texture3D"/...). Sampler comes via
+        // a separate parameter with type.kind="samplerState".
+        if (tex_slot_exists(out, slot)) return;
+        if (out->tex_count >= SGL_MAX_TEXTURES) return;
+        ShaderTexture *tx = &out->texs[out->tex_count++];
+        copy_name_capped(tx->name, sizeof(tx->name), p.value("name", std::string("")));
+        tx->img_slot = slot;
+        tx->smp_slot = -1;  // resolved by samplerState pass below
+        return;
+    }
+    if (tkind == "samplerState") {
+        // Pair with the next unpaired texture in declaration order. This
+        // matches the native (Slang COM API) path's behaviour and works for
+        // the typical `Texture2D foo; SamplerState foo_smp;` convention.
+        for (int k = 0; k < out->tex_count; ++k) {
+            if (out->texs[k].smp_slot < 0) {
+                out->texs[k].smp_slot = slot;
+                return;
+            }
+        }
+    }
+}
+
+// Populate ShaderReflection from a Slang reflection JSON document.
+//
+// Slang WGSL emit puts UBs / textures / samplers / storage in @group(0).
+// Sokol-gfx's WGPU backend expects UBs in @group(0) and the rest in
+// @group(1). The slang-bridge.ts post-processor patches the WGSL group
+// indices; the reflection here remains in Slang's native indexing
+// (descriptorTableSlot index), since that's the @binding number which
+// is preserved across the rewrite.
+bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
+                             bool is_vertex_stage) {
+    if (!out) return false;
+    if (!json_text || !*json_text) return true; // empty JSON -> nothing to merge
+
+    json j = json::parse(json_text, nullptr, false);
+    if (j.is_discarded()) {
+        fprintf(stderr, "[sglua] reflect_from_slang_json: parse failed\n");
+        return false;
+    }
+
+    // 1. Top-level parameters[]: UBs, textures, samplers, storage buffers.
+    if (j.contains("parameters") && j["parameters"].is_array()) {
+        // Two passes so SamplerState entries can pair with already-recorded
+        // Texture entries regardless of declaration order in the JSON.
+        for (const auto &p : j["parameters"]) {
+            if (!p.is_object()) continue;
+            const auto *t = p.contains("type") ? &p["type"] : nullptr;
+            if (t && t->is_object() && t->value("kind", std::string("")) == "samplerState") {
+                continue;  // handled in second pass
+            }
+            process_global_parameter(p, out);
+        }
+        for (const auto &p : j["parameters"]) {
+            if (!p.is_object()) continue;
+            const auto *t = p.contains("type") ? &p["type"] : nullptr;
+            if (t && t->is_object() && t->value("kind", std::string("")) == "samplerState") {
+                process_global_parameter(p, out);
+            }
+        }
+    }
+
+    // 2. entryPoints[]: varying inputs (vertex only) and threadGroupSize
+    //    (compute only).
+    if (j.contains("entryPoints") && j["entryPoints"].is_array()) {
+        for (const auto &ep : j["entryPoints"]) {
+            if (!ep.is_object()) continue;
+            std::string stage = ep.value("stage", std::string(""));
+
+            // Compute work-group size.
+            if (stage == "compute" && ep.contains("threadGroupSize") &&
+                ep["threadGroupSize"].is_array() &&
+                ep["threadGroupSize"].size() == 3)
+            {
+                out->is_compute = true;
+                for (int k = 0; k < 3; ++k) {
+                    out->workgroup[k] = ep["threadGroupSize"][k].get<int>();
+                }
+            }
+
+            // Varying inputs (vertex only). is_vertex_stage gates this — the
+            // FS reflection has its own varyingInput entries (texcoords etc.)
+            // but those aren't pipeline-level vertex attributes.
+            if (!is_vertex_stage || stage != "vertex") continue;
+            if (!ep.contains("parameters") || !ep["parameters"].is_array()) continue;
+            for (const auto &p : ep["parameters"]) {
+                if (!p.is_object()) continue;
+                std::string bkind;
+                if (p.contains("binding") && p["binding"].is_object()) {
+                    bkind = p["binding"].value("kind", std::string(""));
+                }
+                if (bkind != "varyingInput") continue;
+                // Two cases mirror the native path's fill_attrs_from_entry_point:
+                //   (a) struct => flatten its fields[]
+                //   (b) scalar/vector => single attr
+                if (!p.contains("type") || !p["type"].is_object()) continue;
+                const json &t = p["type"];
+                std::string tkind = t.value("kind", std::string(""));
+                if (tkind == "struct" && t.contains("fields") && t["fields"].is_array()) {
+                    for (const auto &f : t["fields"]) {
+                        record_attr_field(f, out);
+                    }
+                } else {
+                    record_attr_field(p, out);
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// Common driver: call the JS bridge once, split, and copy WGSL bytes into
+// `out_blob`. Reflection JSON is returned via `out_refl_json` for the caller
+// to merge into ShaderReflection.
+bool compile_one(const char *src, const char *entry, int stage,
+                 ShaderBlob *out_blob, std::string &out_refl_json,
+                 char *err_buf, size_t err_buf_size) {
+    char *blob = sglua_slang_compile_js(src, entry, stage);
+    if (!blob) {
+        // NULL is reserved for genuinely unrecoverable cases (alloc failure
+        // inside the JS shim, runtime not initialised). Anything else comes
+        // back as a 0x02-prefixed error payload — see the EM_ASYNC_JS contract.
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size,
+                     "slang(%s) compile: out of memory or runtime not initialised",
+                     entry);
+        }
+        return false;
+    }
+    // 0x02 leading byte signals a Slang diagnostic; the rest is the message.
+    if (blob[0] == '\x02') {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "slang(%s) %s", entry, blob + 1);
+        }
+        free(blob);
+        return false;
+    }
+    std::string wgsl;
+    bool ok = split_blob(blob, wgsl, out_refl_json);
+    free(blob);
+    if (!ok) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size,
+                     "slang(%s) returned malformed blob", entry);
+        }
+        return false;
+    }
+    // Stash WGSL source bytes into out_blob->spirv. The field is misnamed on
+    // wasm (it's WGSL text, not SPIR-V binary) but it's the same opaque byte
+    // container the backend consumes.
+    size_t n = wgsl.size();
+    out_blob->spirv = (uint32_t*)malloc(n + 1);
+    if (!out_blob->spirv) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "OOM copying WGSL (%zu bytes)", n);
+        }
+        return false;
+    }
+    memcpy(out_blob->spirv, wgsl.data(), n);
+    ((char*)out_blob->spirv)[n] = '\0';
+    out_blob->bytes = n;
+    return true;
+}
+
+} // anonymous namespace
+
+extern "C" bool shader_compile(
+    const char *vs_src, const char *fs_src,
+    ShaderTargetBackend target,
+    ShaderBlob *out_vs, ShaderBlob *out_fs,
+    ShaderReflection *out_refl,
+    char *err_buf, size_t err_buf_size)
+{
+    (void)target; // sokol-wgpu only on wasm; descriptor-set patching N/A for WGSL.
+    if (out_vs) { out_vs->spirv = nullptr; out_vs->bytes = 0; }
+    if (out_fs) { out_fs->spirv = nullptr; out_fs->bytes = 0; }
+    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+
+    std::string vs_refl_json, fs_refl_json;
+    if (!compile_one(vs_src, "vs_main", SGL_STAGE_VS, out_vs, vs_refl_json,
+                     err_buf, err_buf_size)) {
+        return false;
+    }
+    if (!compile_one(fs_src, "fs_main", SGL_STAGE_FS, out_fs, fs_refl_json,
+                     err_buf, err_buf_size)) {
+        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
+        return false;
+    }
+
+    // Merge both stages' reflection JSON into the single ShaderReflection
+    // struct: VS contributes attrs + UBs + textures, FS contributes its
+    // own UBs + textures. reflect_from_slang_json() now dedups by slot so
+    // a UB/texture declared in both stages collapses to one entry.
+    if (!reflect_from_slang_json(vs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/true) ||
+        !reflect_from_slang_json(fs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false))
+    {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "slang reflection parse failed");
+        }
+        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
+        free(out_fs->spirv); out_fs->spirv = nullptr; out_fs->bytes = 0;
+        return false;
+    }
+    return true;
+}
+
+extern "C" bool shader_compile_compute(
+    const char *cs_src,
+    ShaderTargetBackend target,
+    ShaderBlob *out_cs,
+    ShaderReflection *out_refl,
+    char *err_buf, size_t err_buf_size)
+{
+    (void)target;
+    if (out_cs)   { out_cs->spirv = nullptr; out_cs->bytes = 0; }
+    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+
+    std::string cs_refl_json;
+    if (!compile_one(cs_src, "cs_main", SGL_STAGE_CS, out_cs, cs_refl_json,
+                     err_buf, err_buf_size)) {
+        return false;
+    }
+    out_refl->is_compute = true;
+    out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
+    if (!reflect_from_slang_json(cs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false)) {
+        if (err_buf && err_buf_size) {
+            snprintf(err_buf, err_buf_size, "slang reflection parse failed (compute)");
+        }
+        free(out_cs->spirv); out_cs->spirv = nullptr; out_cs->bytes = 0;
+        return false;
+    }
+    return true;
+}
+
+extern "C" void shader_blob_free(ShaderBlob *b) {
+    if (!b) return;
+    if (b->spirv) {
+        free(b->spirv);
+        b->spirv = nullptr;
+    }
+    b->bytes = 0;
+}
+
+#endif  // __EMSCRIPTEN__

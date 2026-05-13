@@ -11,6 +11,10 @@
 - **[upstream] swapchain texture に `TRANSFER_SRC_BIT` 未付与**: `VUID-vkCmdCopyImageToBuffer-srcImage-00186`。SDL3 upstream で usage flag を追加してもらうのが本筋。回避は offscreen color target 経由の二段 capture (副作用大、推奨しない)。
 - **(削除候補) Windows での swapchain texture NULL**: `src/capture.c` の retry slip で実害消えている。Known issue から落とすか「workaround あり」と注記するかの整理。
 
+### sokol-wgpu backend (web only)
+
+- **[L] swapchain dimensions: devicePixelRatio 不整合**: sample 06 で MRT pass を経由した後の swapchain pass で depth attachment と color attachment のサイズが食い違って Chromium WebGPU validation が draw を弾く。Canvas は 480x360 で確保しているが Chromium は devicePixelRatio スケール後の物理サイズで surface を構成するため、`sg_pass.swapchain.{width,height}` と実 surface との整合が必要。`web/playground/player.ts` の canvas init で `devicePixelRatio` を反映するか、`backend_sokol.c::sk_begin_frame` で wgpuSurfaceGetCurrentTexture が返す実テクスチャ寸法を `app->last_w/h` に書き戻す。
+
 ## 大きい話 (要設計)
 
 - **[L] macOS 対応**: sdlgpu 経路で `SDL_GPU_SHADERFORMAT_MSL` + Slang の MSL target を試すのが現実的。`shader.cpp` で MSL を出力する分岐、`backend_sdlgpu.c` の shader create を MSL バイナリパスに対応。実機 / CI なしでの検証手段が本質的な障壁。

@@ -1,13 +1,20 @@
 #include "app.h"
 #include "backend.h"
+#include "lua_api.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 
 bool app_init(App *app) {
     memset(app, 0, sizeof(*app));
+    // Window creation flag set: native asks for a Vulkan-capable surface so
+    // SDL_Vulkan_* APIs work; wasm just needs the canvas-backed default.
+#ifdef __EMSCRIPTEN__
+    app->window = SDL_CreateWindow("sglua", 1280, 720, SDL_WINDOW_RESIZABLE);
+#else
     app->window = SDL_CreateWindow("sglua", 1280, 720,
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+#endif
     if (!app->window) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         return false;
@@ -27,11 +34,16 @@ bool app_init(App *app) {
 }
 
 bool app_backend_init(App *app) {
+#ifndef __EMSCRIPTEN__
     if (strcmp(app->backend_name, "sdlgpu") == 0) {
         g_backend = &g_backend_sdlgpu;
     } else {
         g_backend = &g_backend_sokol;
     }
+#else
+    // wasm build: only the sokol/WGPU backend is compiled in.
+    g_backend = &g_backend_sokol;
+#endif
     SDL_Log("backend selected: %s", g_backend->name);
     if (!g_backend->init(app)) {
         SDL_Log("backend init failed");
@@ -48,6 +60,21 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     if (out_h) *out_h = h;
     app->last_w = w;
     app->last_h = h;
+
+    // Hot-reload entry Lua when its mtime changes. Skip during PRE_BACKEND
+    // (callbacks aren't being driven yet) and on the very first poll
+    // (cache == 0) — record the baseline instead of triggering an
+    // unnecessary swap at boot.
+    if (app->phase == APP_PHASE_POST_BACKEND && app->entry_module_name[0]) {
+        int64_t now = app_file_mtime_ns(app->entry_path);
+        if (now && now != app->entry_mtime_cache) {
+            if (app->entry_mtime_cache != 0) {
+                SDL_Log("entry mtime changed, hotswapping %s", app->entry_module_name);
+                lua_ctx_hotswap(&app->lua, app->entry_module_name);
+            }
+            app->entry_mtime_cache = now;
+        }
+    }
 }
 
 static void app_on_shader_release(void *ctx, uintptr_t old_shader) {

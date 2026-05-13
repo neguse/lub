@@ -1,0 +1,5 @@
+# Vendored from https://github.com/shader-slang/slang/releases (slang-*-wasm.zip).
+# The 22MB .wasm file is too large to track; fetch via web/scripts/fetch-slang-wasm.sh.
+slang-wasm.wasm
+slang-wasm.js
+interface.d.ts
