@@ -664,6 +664,7 @@ static int l_draw(lua_State *L) {
         g_app_for_lua->pass.current_n_color_targets,
         g_app_for_lua->pass.current_color_fmts,
         g_app_for_lua->pass.current_has_depth,
+        false,                       // is_indexed (Task 7 で動的化)
         (int64_t)g_app_for_lua->frame_index);
     g_backend->apply_pipeline(pip);
 

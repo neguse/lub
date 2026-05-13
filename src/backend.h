@@ -52,6 +52,7 @@ typedef struct PipelineDesc {
     int n_color_targets;       // 1..SGL_MAX_COLOR_TARGETS
     SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS];
     bool has_depth;            // false = offscreen color-only pass
+    bool is_indexed;           // true = pipeline used for indexed draw (sokol: index_type = UINT32)
     bool is_compute;           // true: make_pipeline ignores graphics state and builds a compute pipeline
 } PipelineDesc;
 
@@ -66,6 +67,7 @@ typedef struct PassBeginDesc {
 typedef struct BindingsDesc {
     const ShaderReflection *refl; // for resolving texture name -> slot. NULL = skip texture binding.
     BackendBuffer vbuf;           // 0 = none
+    BackendBuffer ibuf;           // 0 = none (non-indexed); non-0 = u32 index buffer
     int texture_count;
     struct {
         const char *name;         // matches reflection name
