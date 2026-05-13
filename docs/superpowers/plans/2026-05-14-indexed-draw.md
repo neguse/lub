@@ -95,7 +95,7 @@ function on_frame(t)
 
    begin_pass({ target = main_tex, clear_color = {0.05, 0.05, 0.1, 1} })
    draw(6, { verts = "vb", indices = "ib" },
-        { shader = "sh", depth = false, cull = "NONE" })
+        { shader = "sh", depth = false, cull = NONE })
    end_pass()
 end
 ```
