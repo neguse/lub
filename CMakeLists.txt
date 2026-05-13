@@ -119,6 +119,7 @@ set(SGLUA_SOURCES
   src/capture.c
   src/backend_sokol.c
   src/stb_impl.c
+  src/gltf.c
 )
 if(NOT SGLUA_WASM)
   list(APPEND SGLUA_SOURCES src/backend_sdlgpu.c)
@@ -129,6 +130,7 @@ target_include_directories(sglua PRIVATE
   third_party/sokol
   third_party/slang/include
   third_party/stb
+  third_party/cgltf
   src
 )
 if(NOT SGLUA_WASM)
