@@ -7,44 +7,44 @@ local M = {}
 local t_accum = 0
 
 local function make_mvp(t)
-    -- Y 軸回転 + 簡易 perspective + view (z=-3) を 4x4 行列にして
-    -- column-major で平 float table に flatten する (Slang/std140 互換)。
+    -- row-major で平 float table に flatten する (Slang の
+    -- SLANG_MATRIX_LAYOUT_ROW_MAJOR と整合)。
     local cs = math.cos(t)
     local sn = math.sin(t)
-    -- model: Y 軸回転 (column-major)
+    -- model: Y 軸回転
     local m = {
-        cs, 0, -sn, 0,
-        0,  1, 0,   0,
-        sn, 0, cs,  0,
-        0,  0, 0,   1,
+        cs, 0, sn, 0,
+        0,  1, 0,  0,
+        -sn,0, cs, 0,
+        0,  0, 0,  1,
     }
-    -- view: translate z = -3 (column-major)
+    -- view: translate z = +3 (D3D-style LH: camera at origin looks down +Z;
+    -- move world +Z so the box sits in front of the camera)
     local v = {
         1, 0, 0, 0,
         0, 1, 0, 0,
-        0, 0, 1, 0,
-        0, 0, -3, 1,
+        0, 0, 1, 3,
+        0, 0, 0, 1,
     }
-    -- proj: perspective f=2.0, aspect=16/9, near=0.1, far=100 (column-major)
+    -- proj: perspective f=2.0, aspect=16/9, near=0.1, far=100
     local f = 2.0
     local aspect = 16.0 / 9.0
     local nz, fz = 0.1, 100.0
     local p = {
-        f / aspect, 0, 0, 0,
-        0, f, 0, 0,
-        0, 0, fz / (fz - nz), 1,
-        0, 0, -fz * nz / (fz - nz), 0,
+        f / aspect, 0, 0,                 0,
+        0,          f, 0,                 0,
+        0,          0, fz / (fz - nz),    -fz * nz / (fz - nz),
+        0,          0, 1,                 0,
     }
-    -- mvp = p * v * m (column-major).
     local function mul4(a, b)
         local r = {}
-        for col = 0, 3 do
-            for row = 0, 3 do
+        for row = 0, 3 do
+            for col = 0, 3 do
                 local s = 0
                 for k = 0, 3 do
-                    s = s + a[row + k * 4 + 1] * b[k + col * 4 + 1]
+                    s = s + a[row * 4 + k + 1] * b[k * 4 + col + 1]
                 end
-                r[row + col * 4 + 1] = s
+                r[row * 4 + col + 1] = s
             end
         end
         return r
