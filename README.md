@@ -261,6 +261,7 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 | 5 | 05_postprocess.lua      | offscreen render target に三角形 → 全画面 quad で色反転 + ヴィネット post process |
 | 6 | 06_deferred.lua         | MRT (2 color attachments) で G-buffer 風に色をペアで書き出し → swapchain pass で左右 split-screen に表示 |
 | 7 | 07_compute.lua          | compute shader で storage buffer に三角形の頂点を書き出し、同じバッファを VBO として draw |
+| 8 | 08_gltf.lua             | glTF mesh (Box.glb) を法線可視化 shader + 回転 MVP で描画 (load_gltf + interleave_pn + indexed draw) |
 
 ## API
 
@@ -289,7 +290,8 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 - `file_mtime(path)` — ファイルの mtime をナノ秒単位の整数で返す。存在しなければ nil。
 - `fnv1a64(s)` — 文字列の FNV-1a 64-bit ハッシュを整数で返す。`use_*` の `version` 引数に流すための content-hash 用途。
 - `load_png(path)` — stb_image で PNG を RGBA8 にデコードして `(bytes_table, w, h, fmt)` を返す。失敗時は nil。
-- 高レベルラッパ: `samples/sg_io.lua` (`load_text` / `load_floats` / `load_png`) — mtime fast-path + content hash キャッシュ。詳細は「Live edit」セクション。
+- `load_gltf(path)` — cgltf で glTF 2.0 (`.glb` / `.gltf`) を読み、`mesh[0].primitives[0]` のみを抽出。返り値は `{ positions, normals?, uvs?, indices?, vert_count, index_count }` 形式の Lua table。triangle primitive 以外 / POSITION 欠落は nil を返してログ出力。TANGENT / COLOR_0 / JOINTS / WEIGHTS / TEXCOORD_1+ は無視。indices は size に応じて u8/u16/u32 を Lua integer に統一して返す。
+- 高レベルラッパ: `samples/sg_io.lua` (`load_text` / `load_floats` / `load_png` / `load_gltf` / `interleave_pn`) — mtime fast-path + content hash キャッシュ。`load_gltf` ラッパは parsed mesh table + content-hash version を返す。`interleave_pn(mesh)` は pos3+normal3 を stride 6 で interleave して `use_buffer(VERTEX, ...)` 向けの平 float table を返す (sample 08 で使用)。詳細は「Live edit」セクション。
 
 エントリポイント: Lua 側で `on_init` / `on_frame` / `on_event` / `on_quit` の global 関数を定義すると呼ばれる。
 
@@ -335,6 +337,7 @@ scripts/
   は CMake configure 時に GitHub release から自動取得; gitignore 対象)、SPIR-V を target
 - `third_party/stb/stb_image_write.h` — single-header (vendored)、PNG 出力 (capture)
 - `third_party/stb/stb_image.h` — single-header (vendored)、PNG 入力 (`load_png`)
+- `third_party/cgltf/cgltf.h` — single-header (vendored)、MIT、glTF 2.0 parser
 - SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
 - Vulkan loader (`libvulkan.so` / `vulkan-1.dll`) — system 提供
 - Lua 5.5 — CMake FetchContent (static lib build)
