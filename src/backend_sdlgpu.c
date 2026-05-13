@@ -36,6 +36,10 @@ static App *g_app = NULL;
 // this just records the current pipeline for future use.
 static struct SgPipeline *g_current_pip = NULL;
 
+// Whether the most recent apply_bindings bound an index buffer. sg_draw
+// branches on this between SDL_DrawGPUIndexedPrimitives and SDL_DrawGPUPrimitives.
+static bool g_last_indexed = false;
+
 // --- per-resource backend objects ----------------------------------------
 
 typedef struct SgBuffer {
@@ -622,6 +626,19 @@ static void sg_apply_bindings(const BindingsDesc *b) {
                 &(SDL_GPUBufferBinding){ .buffer = vb->gpu, .offset = 0 }, 1);
         }
     }
+    if (b->ibuf) {
+        SgBuffer *ib = (SgBuffer*)b->ibuf;
+        if (ib && ib->gpu) {
+            SDL_BindGPUIndexBuffer(g_render_pass,
+                &(SDL_GPUBufferBinding){ .buffer = ib->gpu, .offset = 0 },
+                SDL_GPU_INDEXELEMENTSIZE_32BIT);
+            g_last_indexed = true;
+        } else {
+            g_last_indexed = false;
+        }
+    } else {
+        g_last_indexed = false;
+    }
     // Fragment-stage texture+sampler binding: resolve name->slot via reflection,
     // then issue a single SDL_BindGPUFragmentSamplers covering [0..max_slot].
     if (b->texture_count > 0 && b->refl) {
@@ -659,7 +676,13 @@ static void sg_apply_uniforms(int slot, const void *d, size_t b) {
 
 static void sg_draw(int base, int count) {
     if (!g_render_pass) return;
-    SDL_DrawGPUPrimitives(g_render_pass, (Uint32)count, 1, (Uint32)base, 0);
+    if (g_last_indexed) {
+        SDL_DrawGPUIndexedPrimitives(g_render_pass,
+            (Uint32)count, 1, (Uint32)base, 0, 0);
+    } else {
+        SDL_DrawGPUPrimitives(g_render_pass,
+            (Uint32)count, 1, (Uint32)base, 0);
+    }
 }
 
 static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
