@@ -336,14 +336,10 @@ page.on('dialog', (d) => d.accept().catch(() => {}))
 // gate CI on them. If a listed sample unexpectedly PASSES we warn loudly so
 // the entry gets removed.
 const KNOWN_FAILING = new Set([
-  // 06_deferred compiles fine in slang-wasm (Phase 8 sharedSession fix), but
-  // its swapchain pass after the MRT pass trips a WGPU validation:
-  // "depth stencil attachment 480x360 != color attachments base plane
-  // 1280x720" → the command buffer is invalid → swapchain is never written.
-  // Same warnings appear for other samples but don't suppress their draws;
-  // only 06 ends up uniformly black. Tracked as a separate web-only render
-  // issue (not slang/compile).
-  '06_deferred',
+  // (empty — 06_deferred used to be here. Resolved by reading the actual
+  // swapchain texture dims via wgpuTextureGetWidth/Height in sk_begin_frame
+  // and resizing the depth attachment to match instead of trusting the
+  // configured surface size, which Chromium routinely diverges from.)
 ])
 
 // Per-sample minimum non-black canvas ratio. Floors are picked from observed
@@ -355,7 +351,7 @@ const samples = [
   { name: '03_texture',      minNonBlack: 0.10 },
   { name: '04_mvp',          minNonBlack: 0.05 },
   { name: '05_postprocess',  minNonBlack: 0.20 },  // full-canvas vignette
-  { name: '06_deferred',     minNonBlack: 0.10 },  // KNOWN_FAILING; threshold ignored on failure
+  { name: '06_deferred',     minNonBlack: 0.10 },
   { name: '07_compute',      minNonBlack: 0.10 },
 ]
 const sampleResults = {}

@@ -1542,6 +1542,21 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
     if (ok && surf_tex.texture) {
         app->wgpu_swapchain_tex  = surf_tex.texture;
         app->wgpu_swapchain_view = wgpuTextureCreateView(surf_tex.texture, NULL);
+        // Chromium may hand back a swapchain texture at a different size than
+        // we configured (devicePixelRatio scaling, or the surface getting
+        // resized between our configure call and getCurrentTexture). The
+        // depth attachment must match the color attachment's base-plane size,
+        // so resize depth on the fly when they diverge.
+        uint32_t sw = wgpuTextureGetWidth(surf_tex.texture);
+        uint32_t sh = wgpuTextureGetHeight(surf_tex.texture);
+        if ((int)sw != cw || (int)sh != ch) {
+            if (!sglua_wgpu_recreate_depth(app, sw, sh)) {
+                SDL_Log("sk_begin_frame: depth recreate failed for swapchain %ux%u",
+                        sw, sh);
+            }
+            cw = (int)sw;
+            ch = (int)sh;
+        }
     } else {
         // sk_begin_pass will see NULL view and skip the swapchain attachment;
         // sokol_gfx will then panic. We log and let the next frame retry —

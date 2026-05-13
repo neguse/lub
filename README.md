@@ -193,24 +193,21 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 
 | Sample | Status |
 |--------|--------|
-| 01〜05, 07 | ✓ ブラウザで動作 |
-| 06_deferred | ✗ MRT → swapchain 経路の WGPU validation で描画されない (詳細 → 後述) |
+| 01〜07 | ✓ ブラウザで動作 |
 
-06_deferred は当初 slang-wasm が `Aborted ... unreachable` で死んでいた。
-原因は per-compile に `Session` を作り捨てしていたことで、3 回目あたりの
-`Session.delete()` で slang-wasm が internal abort する embind バグ
-(`v2026.8.1`)。`sharedSession` を 1 つ保持し続け、module 名だけ
-ユニーク化する戦略に切り替えて compile は green。
-残るのは swapchain pass で `depth attachment 480x360 != color attachments
-base plane 1280x720` を report される WGPU validation エラー。
-原因は canvas backing-store と WGPU surface の解像度ズレと推定: player.html /
-player.ts は canvas を 480x360 で確保するが Chromium WebGPU は
-`devicePixelRatio` (= 2 等) を掛けた物理寸法で surface を構成するため、
-`sg_pass.swapchain.{width,height}` (sokol-gfx に伝えている論理寸法) と
-実 swapchain texture (1280x720 = 480x360 × DPR) との寸法が食い違う。
-sample 01〜05, 07 は depth を読まないので warning 止まりだが、06 は MRT
-pass 経由で depth attachment を要求するので validation で submit が無効化
-される。native は影響なし、`scripts/run-golden.sh` で 22/22 PASS。
+過去の歴史:
+
+- 06_deferred は当初 slang-wasm が `Aborted ... unreachable` で死んでいた。
+  per-compile に `Session` を作り捨てしていたことで、3 回目あたりの
+  `Session.delete()` で slang-wasm が internal abort する embind バグ
+  (`v2026.8.1`)。`sharedSession` を 1 つ保持し続け、module 名だけ
+  ユニーク化する戦略に切り替えて compile は green に。
+- その後 swapchain pass で `depth 480x360 != color 1280x720` の WGPU
+  validation で submit が無効化されて 06 が黒画面だった。canvas backing-store
+  と Chromium が実際に作る WGPU surface texture との解像度ズレ
+  (`devicePixelRatio` スケーリング) に起因。
+  `sk_begin_frame` で `wgpuTextureGetWidth/Height` を取って depth attachment
+  を実 swapchain 寸法に毎フレーム合わせ込むようにして解消。
 
 `web/scripts/verify-headless.mjs` は `KNOWN_FAILING` セットを持っており、
 06 は描画失敗 (`nonBlack` ratio = 0) でも CI を落とさないようゲートしてある。
