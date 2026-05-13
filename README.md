@@ -264,14 +264,22 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 
 ## API
 
-- `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX` / `STORAGE`。`data` は float の Lua table。`STORAGE` の場合は `data` の代わりに float 数 (integer) を渡すと中身未初期化で割り当てる (compute shader が後で埋める前提)。同 `version` なら再アップロードしない。`STORAGE` は VBO 兼用で作られるので、compute が書き出したバッファをそのまま draw の `verts` に渡せる。
+- `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX` / `STORAGE`。
+  - `VERTEX` / `STORAGE`: `data` は float の Lua table。`STORAGE` で `data` の代わりに float 数 (integer) を渡すと中身未初期化で割り当てる (compute shader が後で埋める前提)。`STORAGE` は VBO 兼用で作られるので、compute が書き出したバッファをそのまま draw の `verts` に渡せる。
+  - `INDEX`: `data` は Lua 数値 table。`(uint32_t)lua_tonumber` で truncate して u32 配列として GPU に格納する。小数/負値はそのまま truncate / wrap される (caller responsibility)。`draw` の `resources.indices` に渡す indexed buffer はこれで作る。
+  - 同 `version` なら再アップロードしない。
 - `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可、`opts.target=true` の場合は nil 必須)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }`。デフォルトは `LINEAR` / `REPEAT` / `false`。`target=true` で render-target texture (color attachment + sampler) を宣言。
 - `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
 - `use_shader_compute(key, cs_src, version)` — compute shader を compile (`cs_main` entry point)。`[numthreads(...)]` で threadgroup を指定。`dispatch` で呼ぶ。
 - `begin_pass({ target = main_tex | texRef, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は `main_tex` (swapchain) または `use_texture(..., {target=true})` で宣言した texture ref。後者で offscreen render target に描画できる (Sample 5)。offscreen pass は depth/stencil 無し、swapchain pass は depth/stencil 付き。pipeline cache のキーには color format と depth 有無も含まれる。
 - `begin_pass({ targets = {texRef1, texRef2, ...}, clear_colors = {{r,g,b,a}, ...} })` — MRT (Multi Render Target) 形式の offscreen pass (Sample 6)。最大 `SGL_MAX_COLOR_TARGETS` (= 4) 個まで。全 target は同サイズで、各々 `use_texture(..., {target=true})` で宣言済みであること。fragment shader 側は `SV_Target0` / `SV_Target1` / ... を出力する。
 - `draw(count, resources, options)` — 描画コマンド。
-  - `resources` は名前付き table: `{ verts = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。テクスチャの名前はシェーダ側のリフレクションに突き合わせる。uniform は uniform block の最初のものに pack される。
+  - `count` はプリミティブカウント: `resources.indices` があれば index 数、無ければ vertex 数。
+  - `resources` は名前付き table: `{ verts = bufferRef, indices = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。
+    - `verts` は VERTEX または STORAGE 型 buffer。
+    - `indices` は任意。INDEX 型 buffer を渡すと u32 indexed draw に切り替わる (`SGL_BUFFER_INDEX` 以外を渡すと Lua エラー)。
+    - テクスチャの名前はシェーダ側のリフレクションに突き合わせる。
+    - uniform は uniform block の最初のものに pack される。
   - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
 - `dispatch(x, y, z, resources, options)` — compute dispatch。`begin_pass`/`end_pass` の外側で呼ぶこと。`resources` は `{ buffer_name = bufferRef, uniforms = {...} }` で、shader 側 reflection の名前と突き合わせて binding を解決する。`options.shader` には compute shader ref が必須。PoC では RW storage buffer (`RWStructuredBuffer<...>`) 1〜N 個 + uniform block 1 個まで。read-only storage buffer / storage texture は未対応。
 - `capture(path)` — 次フレーム終了時に swapchain image を PNG として `path` に書き出してアプリを終了する。CLI フラグ `--capture <path>` (任意で `--capture-frame N`、デフォルト 30) でも同等。
