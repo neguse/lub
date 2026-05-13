@@ -353,6 +353,7 @@ const samples = [
   { name: '05_postprocess',  minNonBlack: 0.20 },  // full-canvas vignette
   { name: '06_deferred',     minNonBlack: 0.10 },
   { name: '07_compute',      minNonBlack: 0.10 },
+  { name: '08_gltf',         minNonBlack: 0.10 },
 ]
 const sampleResults = {}
 

@@ -12,6 +12,7 @@ export const SAMPLE_NAMES = [
   '05_postprocess',
   '06_deferred',
   '07_compute',
+  '08_gltf',
 ]
 
 function scanLuaReferences(src: string): string[] {
