@@ -83,4 +83,39 @@ function M.load_png(path)
    return parsed.px, parsed.w, parsed.h, parsed.fmt, ver
 end
 
+function M.load_gltf(path)
+   local parsed, ver = refresh(path, function(_bytes, p)
+      -- _bytes は使わず C 側に再読み込みさせる (load_gltf は path を取る)
+      return load_gltf(p)
+   end)
+   if not parsed then return nil end
+   return parsed, ver
+end
+
+-- mesh.positions (vec3 * N) + mesh.normals (vec3 * N) を
+-- pos.x, pos.y, pos.z, n.x, n.y, n.z, ... 形式の平らな float table に詰める。
+-- normals が nil の場合は (0, 0, 1) で埋める。
+function M.interleave_pn(mesh)
+   local n = mesh.vert_count
+   local out = {}
+   local pos = mesh.positions
+   local nrm = mesh.normals
+   for i = 0, n - 1 do
+      local pi = i * 3
+      out[#out + 1] = pos[pi + 1]
+      out[#out + 1] = pos[pi + 2]
+      out[#out + 1] = pos[pi + 3]
+      if nrm then
+         out[#out + 1] = nrm[pi + 1]
+         out[#out + 1] = nrm[pi + 2]
+         out[#out + 1] = nrm[pi + 3]
+      else
+         out[#out + 1] = 0
+         out[#out + 1] = 0
+         out[#out + 1] = 1
+      end
+   end
+   return out
+end
+
 return M
