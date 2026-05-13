@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include "stb_image.h"
+#include "gltf.h"
 
 static App *g_app_for_lua = NULL;
 
@@ -924,6 +925,7 @@ void lua_api_register(lua_State *L) {
     lua_pushcfunction(L, l_file_mtime); lua_setglobal(L, "file_mtime");
     lua_pushcfunction(L, l_fnv1a64);    lua_setglobal(L, "fnv1a64");
     lua_pushcfunction(L, l_load_png);   lua_setglobal(L, "load_png");
+    lua_pushcfunction(L, sgl_load_gltf);   lua_setglobal(L, "load_gltf");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
