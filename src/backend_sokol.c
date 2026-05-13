@@ -524,7 +524,7 @@ static void sk_end_frame(App *app) {
 // --- shared data path -----------------------------------------------------
 // Pure sokol_gfx — no API-direct calls. Used by both native and wasm.
 
-static BackendBuffer sk_make_buffer(SglBufferType type, const float *data, size_t bytes) {
+static BackendBuffer sk_make_buffer(SglBufferType type, const void *data, size_t bytes) {
     SkBuffer *sb = (SkBuffer*)calloc(1, sizeof(SkBuffer));
     if (!sb) return 0;
     sb->type = type;

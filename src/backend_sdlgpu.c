@@ -252,7 +252,7 @@ static bool sg_upload_to_image(SDL_GPUTexture *dst, int w, int h,
     return true;
 }
 
-static BackendBuffer sg_make_buffer(SglBufferType type, const float *data, size_t bytes) {
+static BackendBuffer sg_make_buffer(SglBufferType type, const void *data, size_t bytes) {
     if (!g_app || !g_app->gpu_device) {
         SDL_Log("sg_make_buffer: no GPU device");
         return 0;

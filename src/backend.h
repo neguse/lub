@@ -100,7 +100,7 @@ typedef struct RenderBackend {
     void (*begin_frame)(struct App *app, int *out_w, int *out_h);
     void (*end_frame)(struct App *app);
 
-    BackendBuffer   (*make_buffer)(SglBufferType type, const float *data, size_t bytes);
+    BackendBuffer   (*make_buffer)(SglBufferType type, const void *data, size_t bytes);
     BackendImage    (*make_image)(const ImageDesc *desc);
     BackendShader   (*make_shader)(const ShaderDesc *desc);
     BackendPipeline (*make_pipeline)(const PipelineDesc *desc);
