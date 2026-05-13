@@ -906,6 +906,7 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
         desc.layout.buffers[0].stride = d->refl->vertex_stride_floats * (int)sizeof(float);
     }
 
+    desc.index_type = d->is_indexed ? SG_INDEXTYPE_UINT32 : SG_INDEXTYPE_NONE;
     sg_pipeline pip = sg_make_pipeline(&desc);
     return (uintptr_t)pip.id;
 }
@@ -993,6 +994,10 @@ static void sk_apply_bindings(const BindingsDesc *b) {
     if (b->vbuf) {
         SkBuffer *vb = (SkBuffer*)b->vbuf;
         sb.vertex_buffers[0] = vb->buf;
+    }
+    if (b->ibuf) {
+        SkBuffer *ib = (SkBuffer*)b->ibuf;
+        sb.index_buffer = ib->buf;
     }
 
     // Resolve textures via reflection name → slot.
