@@ -671,19 +671,8 @@ static int l_draw(lua_State *L) {
     if (!lua_isnoneornil(L, -1)) depth_write = lua_toboolean(L, -1);
     lua_pop(L, 1);
 
-    BackendPipeline pip = pipeline_cache_get(
-        &g_app_for_lua->pip_cache,
-        sh_e->u.sh.h, &sh_e->u.sh.refl,
-        (SglBlend)blend, depth_test, depth_write,
-        (SglCull)cull, (SglPrimitive)prim,
-        g_app_for_lua->pass.current_n_color_targets,
-        g_app_for_lua->pass.current_color_fmts,
-        g_app_for_lua->pass.current_has_depth,
-        false,                       // is_indexed (Task 7 で動的化)
-        (int64_t)g_app_for_lua->frame_index);
-    g_backend->apply_pipeline(pip);
-
-    // bindings: walk resources table, populate BindingsDesc.
+    // bindings: walk resources table FIRST so we know whether the draw is
+    // indexed (bind.ibuf != 0) before picking a pipeline.
     BindingsDesc bind = {0};
     bind.refl = &sh_e->u.sh.refl;
 
@@ -699,23 +688,31 @@ static int l_draw(lua_State *L) {
             lua_pop(L, 1);
 
             if (strcmp(kind_buf, "buffer") == 0) {
+                // Use lua_type rather than lua_isstring — the latter returns true for
+                // numbers and lua_tostring would coerce the value in place, which corrupts
+                // lua_next iteration.
+                const char *res_name = lua_type(L, -2) == LUA_TSTRING ? lua_tostring(L, -2) : NULL;
                 lua_getfield(L, -1, "key");
                 const char *bk = lua_tostring(L, -1);
                 ResEntry *be = bk ? res_table_get(&g_app_for_lua->res, bk) : NULL;
                 lua_pop(L, 1);
-                // STORAGE buffers can also serve as a vertex source — they
-                // are declared with both vertex_buffer + storage_buffer usage
-                // so the same buffer can flow from compute write to draw read.
-                if (be && be->kind == RES_BUFFER &&
-                    (be->u.buf.type == SGL_BUFFER_VERTEX ||
-                     be->u.buf.type == SGL_BUFFER_STORAGE)) {
-                    bind.vbuf = be->u.buf.h;
+                if (be && be->kind == RES_BUFFER) {
+                    if (res_name && strcmp(res_name, "indices") == 0) {
+                        if (be->u.buf.type != SGL_BUFFER_INDEX) {
+                            return luaL_error(L,
+                                "draw: 'indices' must be an INDEX buffer (got type %d)",
+                                (int)be->u.buf.type);
+                        }
+                        bind.ibuf = be->u.buf.h;
+                    } else if (be->u.buf.type == SGL_BUFFER_VERTEX ||
+                               be->u.buf.type == SGL_BUFFER_STORAGE) {
+                        // STORAGE buffers can also serve as a vertex source — they
+                        // are declared with both vertex_buffer + storage_buffer usage
+                        // so the same buffer can flow from compute write to draw read.
+                        bind.vbuf = be->u.buf.h;
+                    }
                 }
             } else if (strcmp(kind_buf, "texture") == 0) {
-                // resource_name (the Lua key, like "diffuse") is on the stack at index -2.
-                // Use lua_type rather than lua_isstring — the latter returns true for
-                // numbers and lua_tostring would coerce the value in place, which corrupts
-                // lua_next iteration.
                 const char *res_name = lua_type(L, -2) == LUA_TSTRING ? lua_tostring(L, -2) : NULL;
                 lua_getfield(L, -1, "key");
                 const char *tk = lua_tostring(L, -1);
@@ -733,6 +730,19 @@ static int l_draw(lua_State *L) {
         }
         lua_pop(L, 1); // value, key stays for lua_next
     }
+
+    // pipeline lookup (after bindings walk so we know is_indexed)
+    BackendPipeline pip = pipeline_cache_get(
+        &g_app_for_lua->pip_cache,
+        sh_e->u.sh.h, &sh_e->u.sh.refl,
+        (SglBlend)blend, depth_test, depth_write,
+        (SglCull)cull, (SglPrimitive)prim,
+        g_app_for_lua->pass.current_n_color_targets,
+        g_app_for_lua->pass.current_color_fmts,
+        g_app_for_lua->pass.current_has_depth,
+        (bind.ibuf != 0),
+        (int64_t)g_app_for_lua->frame_index);
+    g_backend->apply_pipeline(pip);
     g_backend->apply_bindings(&bind);
 
     // uniforms: read resources.uniforms = { ub_member_name = {floats...} } and pack
