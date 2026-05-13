@@ -216,23 +216,38 @@ static int l_use_buffer(lua_State *L) {
     // table.
     bool allocate_empty = (type == SGL_BUFFER_STORAGE) && lua_isinteger(L, 3);
     size_t new_bytes = 0;
-    float *data = NULL;
+    void *data = NULL;
     if (allocate_empty) {
         lua_Integer n = lua_tointeger(L, 3);
         if (n <= 0) return luaL_error(L, "use_buffer: STORAGE float-count must be > 0");
         new_bytes = (size_t)n * sizeof(float);
-    } else {
+    } else if (type == SGL_BUFFER_INDEX) {
         luaL_checktype(L, 3, LUA_TTABLE);
         int n = (int)lua_rawlen(L, 3);
         if (n <= 0) return luaL_error(L, "use_buffer: empty data");
-        data = (float*)malloc((size_t)n * sizeof(float));
-        if (!data) return luaL_error(L, "use_buffer: out of memory");
+        uint32_t *idx = (uint32_t*)malloc((size_t)n * sizeof(uint32_t));
+        if (!idx) return luaL_error(L, "use_buffer: out of memory");
         for (int i = 0; i < n; ++i) {
             lua_rawgeti(L, 3, i + 1);
-            data[i] = (float)lua_tonumber(L, -1);
+            idx[i] = (uint32_t)lua_tonumber(L, -1);
+            lua_pop(L, 1);
+        }
+        new_bytes = (size_t)n * sizeof(uint32_t);
+        data = idx;
+    } else {
+        // VERTEX / STORAGE with data
+        luaL_checktype(L, 3, LUA_TTABLE);
+        int n = (int)lua_rawlen(L, 3);
+        if (n <= 0) return luaL_error(L, "use_buffer: empty data");
+        float *fdata = (float*)malloc((size_t)n * sizeof(float));
+        if (!fdata) return luaL_error(L, "use_buffer: out of memory");
+        for (int i = 0; i < n; ++i) {
+            lua_rawgeti(L, 3, i + 1);
+            fdata[i] = (float)lua_tonumber(L, -1);
             lua_pop(L, 1);
         }
         new_bytes = (size_t)n * sizeof(float);
+        data = fdata;
     }
 
     if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
