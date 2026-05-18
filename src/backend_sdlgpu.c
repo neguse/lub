@@ -656,7 +656,8 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
             .rasterizer_state = {
                 .fill_mode = SDL_GPU_FILLMODE_FILL,
                 .cull_mode = cull,
-                .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+                // Match sokol's default and the runtime's D3D-style LH examples.
+                .front_face = SDL_GPU_FRONTFACE_CLOCKWISE,
             },
             .multisample_state = {
                 .sample_count = SDL_GPU_SAMPLECOUNT_1,
