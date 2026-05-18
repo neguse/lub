@@ -193,7 +193,7 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 
 | Sample | Status |
 |--------|--------|
-| 01〜07 | ✓ ブラウザで動作 |
+| 01〜10 | ✓ ブラウザで動作 |
 
 過去の歴史:
 
@@ -229,7 +229,7 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 2. fragment shader を編集 → green になる
 3. lua の clear_color を編集 → 背景が red になる
 4. verts を縮小編集 → green pixel 数が減る
-5. sample 01〜07 を順に切替 → 各サンプルの非黒描画を確認 (KNOWN_FAILING を除く)
+5. sample 01〜10 を順に切替 → 各サンプルの非黒描画を確認 (KNOWN_FAILING を除く)
 
 スクリーンショットは `/tmp/sglua-verify/` に出力される。CI 利用時は dev server を
 別ジョブで立ち上げてから `SGLUA_URL=http://...` を指定すること。
@@ -262,6 +262,8 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 | 6 | 06_deferred.lua         | MRT (2 color attachments) で G-buffer 風に色をペアで書き出し → swapchain pass で左右 split-screen に表示 |
 | 7 | 07_compute.lua          | compute shader で storage buffer に三角形の頂点を書き出し、同じバッファを VBO として draw |
 | 8 | 08_gltf.lua             | glTF mesh (Box.glb) を法線可視化 shader + 回転 MVP で描画 (load_gltf + interleave_pn + indexed draw) |
+| 9 | 09_breakout.lua         | ブロックくずし。左右/A/D でパドル移動、Space で発射、R でリセット |
+| 10 | 10_breakout3d.lua      | 3D ブロックくずし。cuboid / sphere を MVP + depth で描画 |
 
 ## API
 
@@ -284,6 +286,7 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
   - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
 - `dispatch(x, y, z, resources, options)` — compute dispatch。`begin_pass`/`end_pass` の外側で呼ぶこと。`resources` は `{ buffer_name = bufferRef, uniforms = {...} }` で、shader 側 reflection の名前と突き合わせて binding を解決する。`options.shader` には compute shader ref が必須。PoC では RW storage buffer (`RWStructuredBuffer<...>`) 1〜N 個 + uniform block 1 個まで。read-only storage buffer / storage texture は未対応。
 - `capture(path)` — 次フレーム終了時に swapchain image を PNG として `path` に書き出してアプリを終了する。CLI フラグ `--capture <path>` (任意で `--capture-frame N`、デフォルト 30) でも同等。
+- `key_down(name)` — 現在押されているキーを bool で返す。`"left"` / `"right"` / `"space"` / `"r"` / `"a"` / `"d"` などを指定できる。
 
 ### Live edit helpers
 

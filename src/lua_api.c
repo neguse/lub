@@ -14,6 +14,7 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #include "stb_image.h"
 #include "gltf.h"
@@ -798,6 +799,67 @@ static int l_capture(lua_State *L) {
     return 0;
 }
 
+static SDL_Scancode scancode_from_name(const char *name) {
+    if (!name || !name[0]) return SDL_SCANCODE_UNKNOWN;
+
+    char key[32];
+    size_t n = strlen(name);
+    if (n >= sizeof(key)) n = sizeof(key) - 1;
+    for (size_t i = 0; i < n; ++i) {
+        key[i] = (char)tolower((unsigned char)name[i]);
+    }
+    key[n] = '\0';
+
+    if (n == 1) {
+        if (key[0] >= 'a' && key[0] <= 'z') {
+            return (SDL_Scancode)(SDL_SCANCODE_A + (key[0] - 'a'));
+        }
+        if (key[0] >= '1' && key[0] <= '9') {
+            return (SDL_Scancode)(SDL_SCANCODE_1 + (key[0] - '1'));
+        }
+        if (key[0] == '0') return SDL_SCANCODE_0;
+    }
+
+    if (strcmp(key, "left") == 0 || strcmp(key, "arrowleft") == 0) {
+        return SDL_SCANCODE_LEFT;
+    }
+    if (strcmp(key, "right") == 0 || strcmp(key, "arrowright") == 0) {
+        return SDL_SCANCODE_RIGHT;
+    }
+    if (strcmp(key, "up") == 0 || strcmp(key, "arrowup") == 0) {
+        return SDL_SCANCODE_UP;
+    }
+    if (strcmp(key, "down") == 0 || strcmp(key, "arrowdown") == 0) {
+        return SDL_SCANCODE_DOWN;
+    }
+    if (strcmp(key, "space") == 0 || strcmp(key, "spacebar") == 0) {
+        return SDL_SCANCODE_SPACE;
+    }
+    if (strcmp(key, "enter") == 0 || strcmp(key, "return") == 0) {
+        return SDL_SCANCODE_RETURN;
+    }
+    if (strcmp(key, "escape") == 0 || strcmp(key, "esc") == 0) {
+        return SDL_SCANCODE_ESCAPE;
+    }
+    if (strcmp(key, "tab") == 0) return SDL_SCANCODE_TAB;
+    if (strcmp(key, "backspace") == 0) return SDL_SCANCODE_BACKSPACE;
+    return SDL_SCANCODE_UNKNOWN;
+}
+
+static int l_key_down(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    SDL_Scancode sc = scancode_from_name(name);
+    if (sc == SDL_SCANCODE_UNKNOWN) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    int key_count = 0;
+    const bool *state = SDL_GetKeyboardState(&key_count);
+    lua_pushboolean(L, state && sc >= 0 && sc < key_count && state[sc]);
+    return 1;
+}
+
 static int l_config(lua_State *L) {
     if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
         return luaL_error(L, "config: must be called inside on_init");
@@ -920,6 +982,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "draw");
     lua_pushcfunction(L, l_capture);
     lua_setglobal(L, "capture");
+    lua_pushcfunction(L, l_key_down);
+    lua_setglobal(L, "key_down");
     lua_pushcfunction(L, l_config);
     lua_setglobal(L, "config");
     lua_pushcfunction(L, l_file_mtime); lua_setglobal(L, "file_mtime");

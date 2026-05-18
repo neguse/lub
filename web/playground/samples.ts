@@ -13,6 +13,8 @@ export const SAMPLE_NAMES = [
   '06_deferred',
   '07_compute',
   '08_gltf',
+  '09_breakout',
+  '10_breakout3d',
 ]
 
 function scanLuaReferences(src: string): string[] {

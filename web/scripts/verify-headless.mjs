@@ -13,7 +13,7 @@
 //      background is no longer the dark blue clear.
 //   4. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
 //      the pixel footprint of the drawn shape shrank.
-//   5. All-samples render sanity. For each sample 01..07 switch via the
+//   5. All-samples render sanity. For each sample 01..10 switch via the
 //      dropdown, wait for the iframe to relaunch + compile, screenshot
 //      and assert the canvas isn't uniformly black.
 //
@@ -354,6 +354,8 @@ const samples = [
   { name: '06_deferred',     minNonBlack: 0.10 },
   { name: '07_compute',      minNonBlack: 0.10 },
   { name: '08_gltf',         minNonBlack: 0.10 },
+  { name: '09_breakout',     minNonBlack: 0.10 },
+  { name: '10_breakout3d',   minNonBlack: 0.10 },
 ]
 const sampleResults = {}
 
