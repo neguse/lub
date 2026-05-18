@@ -114,6 +114,10 @@ typedef struct App {
     SDL_GPUDevice       *gpu_device;
     SDL_GPUTexture      *gpu_swapchain_tex;  // current frame の swapchain
     SDL_GPUCommandBuffer *gpu_cmd;           // current frame
+    SDL_GPUTexture      *gpu_depth_tex;      // swapchain-sized depth/stencil target
+    int                  gpu_depth_w;
+    int                  gpu_depth_h;
+    SDL_GPUTextureFormat gpu_depth_fmt;
     // Snapshot for capture (Task 8): set in sg_end_frame just before
     // gpu_swapchain_tex is cleared. capture_state_drain runs AFTER
     // end_frame, so sg_capture reads from this field instead.

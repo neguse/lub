@@ -40,6 +40,73 @@ static struct SgPipeline *g_current_pip = NULL;
 // branches on this between SDL_DrawGPUIndexedPrimitives and SDL_DrawGPUPrimitives.
 static bool g_last_indexed = false;
 
+static void sg_release_depth_texture(App *app) {
+    if (app->gpu_device && app->gpu_depth_tex) {
+        SDL_ReleaseGPUTexture(app->gpu_device, app->gpu_depth_tex);
+    }
+    app->gpu_depth_tex = NULL;
+    app->gpu_depth_w = 0;
+    app->gpu_depth_h = 0;
+    app->gpu_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+}
+
+static SDL_GPUTextureFormat sg_choose_depth_format(SDL_GPUDevice *dev) {
+    const SDL_GPUTextureFormat candidates[] = {
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+        SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+    };
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+        if (SDL_GPUTextureSupportsFormat(dev, candidates[i],
+                SDL_GPU_TEXTURETYPE_2D,
+                SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+            return candidates[i];
+        }
+    }
+    return SDL_GPU_TEXTUREFORMAT_INVALID;
+}
+
+static bool sg_ensure_depth_texture(App *app, Uint32 w, Uint32 h) {
+    if (!app || !app->gpu_device || w == 0 || h == 0) return false;
+    if (app->gpu_depth_tex &&
+        app->gpu_depth_w == (int)w &&
+        app->gpu_depth_h == (int)h) {
+        return true;
+    }
+
+    sg_release_depth_texture(app);
+
+    SDL_GPUTextureFormat fmt = sg_choose_depth_format(app->gpu_device);
+    if (fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
+        SDL_Log("sg_ensure_depth_texture: no supported depth format");
+        return false;
+    }
+
+    app->gpu_depth_tex = SDL_CreateGPUTexture(app->gpu_device,
+        &(SDL_GPUTextureCreateInfo){
+            .type = SDL_GPU_TEXTURETYPE_2D,
+            .format = fmt,
+            .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+            .width = w,
+            .height = h,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+            .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        });
+    if (!app->gpu_depth_tex) {
+        SDL_Log("sg_ensure_depth_texture: SDL_CreateGPUTexture failed: %s", SDL_GetError());
+        app->gpu_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+        return false;
+    }
+
+    app->gpu_depth_w = (int)w;
+    app->gpu_depth_h = (int)h;
+    app->gpu_depth_fmt = fmt;
+    return true;
+}
+
 // --- per-resource backend objects ----------------------------------------
 
 typedef struct SgBuffer {
@@ -95,6 +162,7 @@ static bool sg_init(App *app) {
 
 static void sg_shutdown(App *app) {
     if (app->gpu_device) {
+        sg_release_depth_texture(app);
         SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
         SDL_DestroyGPUDevice(app->gpu_device);
         app->gpu_device = NULL;
@@ -116,6 +184,11 @@ static void sg_begin_frame(App *app, int *out_w, int *out_h) {
     if (!SDL_AcquireGPUSwapchainTexture(app->gpu_cmd, app->window,
                                           &app->gpu_swapchain_tex, &sw, &sh)) {
         SDL_Log("SDL_AcquireGPUSwapchainTexture failed: %s", SDL_GetError());
+    }
+    if (app->gpu_swapchain_tex && sw > 0 && sh > 0) {
+        if (!sg_ensure_depth_texture(app, sw, sh)) {
+            SDL_Log("sg_begin_frame: depth texture unavailable; swapchain pass will be skipped");
+        }
     }
     if (out_w) *out_w = (int)sw;
     if (out_h) *out_h = (int)sh;
@@ -149,7 +222,25 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
         targets[0].clear_color = (SDL_FColor){ d->clear[0][0], d->clear[0][1], d->clear[0][2], d->clear[0][3] };
         targets[0].load_op = SDL_GPU_LOADOP_CLEAR;
         targets[0].store_op = SDL_GPU_STOREOP_STORE;
-        g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, targets, 1, NULL);
+        if (!app->gpu_depth_tex &&
+            app->last_w > 0 &&
+            app->last_h > 0) {
+            (void)sg_ensure_depth_texture(app, (Uint32)app->last_w, (Uint32)app->last_h);
+        }
+        if (!app->gpu_depth_tex) {
+            SDL_Log("sg_begin_pass: no depth texture for swapchain pass");
+            g_render_pass = NULL;
+            return;
+        }
+        SDL_GPUDepthStencilTargetInfo depth = {
+            .texture = app->gpu_depth_tex,
+            .clear_depth = 1.0f,
+            .load_op = SDL_GPU_LOADOP_CLEAR,
+            .store_op = SDL_GPU_STOREOP_DONT_CARE,
+            .stencil_load_op = SDL_GPU_LOADOP_DONT_CARE,
+            .stencil_store_op = SDL_GPU_STOREOP_DONT_CARE,
+        };
+        g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, targets, 1, &depth);
         return;
     }
     if (!app->gpu_cmd) {
@@ -538,6 +629,19 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
         (d->cull == SGL_CULL_FRONT) ? SDL_GPU_CULLMODE_FRONT :
                                        SDL_GPU_CULLMODE_NONE;
 
+    SDL_GPUTextureFormat depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+    if (d->has_depth) {
+        depth_fmt = g_app->gpu_depth_fmt;
+        if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
+            depth_fmt = sg_choose_depth_format(g_app->gpu_device);
+        }
+        if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
+            SDL_Log("sg_make_pipeline: no supported depth format");
+            free(p);
+            return 0;
+        }
+    }
+
     p->gpu = SDL_CreateGPUGraphicsPipeline(g_app->gpu_device,
         &(SDL_GPUGraphicsPipelineCreateInfo){
             .vertex_shader = sh->vs,
@@ -558,14 +662,17 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
                 .sample_count = SDL_GPU_SAMPLECOUNT_1,
             },
             .depth_stencil_state = {
-                // PoC: depth disabled (no depth attachment in our render pass).
-                .enable_depth_test = false,
-                .enable_depth_write = false,
+                .compare_op = (d->has_depth && d->depth_test)
+                    ? SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+                    : SDL_GPU_COMPAREOP_ALWAYS,
+                .enable_depth_test = d->has_depth && d->depth_test,
+                .enable_depth_write = d->has_depth && d->depth_write,
             },
             .target_info = {
                 .color_target_descriptions = ctd,
                 .num_color_targets = (Uint32)nct,
-                .has_depth_stencil_target = false,
+                .depth_stencil_format = depth_fmt,
+                .has_depth_stencil_target = d->has_depth,
             },
         });
     if (!p->gpu) {
