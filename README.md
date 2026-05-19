@@ -195,23 +195,6 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 |--------|--------|
 | 01〜10 | ✓ ブラウザで動作 |
 
-過去の歴史:
-
-- 06_deferred は当初 slang-wasm が `Aborted ... unreachable` で死んでいた。
-  per-compile に `Session` を作り捨てしていたことで、3 回目あたりの
-  `Session.delete()` で slang-wasm が internal abort する embind バグ
-  (`v2026.8.1`)。`sharedSession` を 1 つ保持し続け、module 名だけ
-  ユニーク化する戦略に切り替えて compile は green に。
-- その後 swapchain pass で `depth 480x360 != color 1280x720` の WGPU
-  validation で submit が無効化されて 06 が黒画面だった。canvas backing-store
-  と Chromium が実際に作る WGPU surface texture との解像度ズレ
-  (`devicePixelRatio` スケーリング) に起因。
-  `sk_begin_frame` で `wgpuTextureGetWidth/Height` を取って depth attachment
-  を実 swapchain 寸法に毎フレーム合わせ込むようにして解消。
-
-`web/scripts/verify-headless.mjs` は `KNOWN_FAILING` セットを持っており、
-06 は描画失敗 (`nonBlack` ratio = 0) でも CI を落とさないようゲートしてある。
-
 ### Browser requirements
 
 - WebGPU が利用可能なブラウザ:
@@ -229,7 +212,7 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 2. fragment shader を編集 → green になる
 3. lua の clear_color を編集 → 背景が red になる
 4. verts を縮小編集 → green pixel 数が減る
-5. sample 01〜10 を順に切替 → 各サンプルの非黒描画を確認 (KNOWN_FAILING を除く)
+5. sample 01〜10 を順に切替 → 各サンプルの非黒描画を確認
 
 スクリーンショットは `/tmp/sglua-verify/` に出力される。CI 利用時は dev server を
 別ジョブで立ち上げてから `SGLUA_URL=http://...` を指定すること。
@@ -247,8 +230,6 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
   は可能だが capture API が同期 sync なので未実装 (`backend_sokol.c` の `sk_capture`
   が `false` を返す)。
 - **sdlgpu backend は web 非対応**。WGPU backend の sokol のみ。
-- **sample 06 は描画されない (上記表)**。compile は成功するが MRT → swapchain pass
-  の WGPU validation で submit が無効化される。
 
 ## サンプル
 
@@ -302,7 +283,6 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 
 - リソース sweep (フレーム未参照の自動破棄)
 - macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
-- sample 06 を web で描画 (sokol-gfx WGPU backend の swapchain depth 寸法問題)
 
 ## アーキテクチャ
 
