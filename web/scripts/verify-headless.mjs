@@ -356,6 +356,7 @@ const samples = [
   { name: '08_gltf',         minNonBlack: 0.10 },
   { name: '09_breakout',     minNonBlack: 0.10 },
   { name: '10_breakout3d',   minNonBlack: 0.10 },
+  { name: '11_shadow',       minNonBlack: 0.10 },
 ]
 const sampleResults = {}
 

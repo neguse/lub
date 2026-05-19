@@ -69,8 +69,51 @@ static void push_texture_ref(lua_State *L, const char *key) {
     lua_pushstring(L, key);       lua_setfield(L, -2, "key");
 }
 
+static bool is_depth_format(SglPixelFormat fmt) {
+    return fmt == SGL_PF_DEPTH16 ||
+           fmt == SGL_PF_DEPTH24_STENCIL8 ||
+           fmt == SGL_PF_DEPTH32F;
+}
+
 static int l_begin_pass(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
+
+    uintptr_t depth_image = 0;
+    SglPixelFormat depth_fmt = SGL_PF_DEPTH24_STENCIL8;
+    int depth_w = 0, depth_h = 0;
+    float clear_depth = 1.0f;
+
+    lua_getfield(L, 1, "clear_depth");
+    if (lua_isnumber(L, -1)) clear_depth = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "depth_target");
+    if (!lua_isnoneornil(L, -1)) {
+        if (!is_sentinel(L, -1, "texture")) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: depth_target must be a TextureRef");
+        }
+        lua_getfield(L, -1, "key");
+        const char *dk = lua_tostring(L, -1);
+        ResEntry *de = dk ? res_table_get(&g_app_for_lua->res, dk) : NULL;
+        lua_pop(L, 1);
+        if (!de || de->kind != RES_TEXTURE) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: depth target texture not found: %s",
+                              dk ? dk : "?");
+        }
+        if (!de->u.tex.is_target || !is_depth_format(de->u.tex.fmt)) {
+            lua_pop(L, 1);
+            return luaL_error(L,
+                "begin_pass: depth_target '%s' must be a depth texture declared with {target=true}",
+                dk ? dk : "?");
+        }
+        depth_image = de->u.tex.h;
+        depth_fmt = de->u.tex.fmt;
+        depth_w = de->u.tex.w;
+        depth_h = de->u.tex.h_;
+    }
+    lua_pop(L, 1);
 
     // MRT path: { targets = {t1, t2, ...}, clear_colors = {{r,g,b,a},...} }
     lua_getfield(L, 1, "targets");
@@ -110,6 +153,10 @@ static int l_begin_pass(lua_State *L) {
                     "begin_pass: target texture '%s' was not declared with {target=true}",
                     tk);
             }
+            if (is_depth_format(te->u.tex.fmt)) {
+                lua_pop(L, 2);
+                return luaL_error(L, "begin_pass: targets[%d] must be a color texture", i + 1);
+            }
             if (i == 0) { tw = te->u.tex.w; th = te->u.tex.h_; }
             else if (te->u.tex.w != tw || te->u.tex.h_ != th) {
                 lua_pop(L, 2);
@@ -147,8 +194,14 @@ static int l_begin_pass(lua_State *L) {
         }
         lua_pop(L, 1); // clear_colors
 
-        pass_state_begin_mrt(&g_app_for_lua->pass, n, targets, fmts, tw, th,
-                             (const float (*)[4])clears);
+        if (depth_image && (depth_w != tw || depth_h != th)) {
+            return luaL_error(L,
+                "begin_pass: depth_target size %dx%d must match color targets %dx%d",
+                depth_w, depth_h, tw, th);
+        }
+        pass_state_begin_ex(&g_app_for_lua->pass, n, targets, fmts, tw, th,
+                            (const float (*)[4])clears,
+                            depth_image, depth_fmt, clear_depth);
         return 0;
     }
     lua_pop(L, 1); // targets (was not a table)
@@ -158,7 +211,13 @@ static int l_begin_pass(lua_State *L) {
     uintptr_t target_image = 0;
     SglPixelFormat fmt = SGL_PF_RGBA8;
     int tw = 0, th = 0;
+    bool is_main = false;
     if (is_sentinel(L, -1, "main_tex")) {
+        if (depth_image) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: main_tex uses the swapchain depth buffer; depth_target is only for offscreen passes");
+        }
+        is_main = true;
         // pass_state_begin will resolve swapchain format itself.
     } else if (is_sentinel(L, -1, "texture")) {
         lua_getfield(L, -1, "key");
@@ -173,13 +232,19 @@ static int l_begin_pass(lua_State *L) {
             lua_pop(L, 1);
             return luaL_error(L, "begin_pass: target texture '%s' was not declared with {target=true}", tk);
         }
+        if (is_depth_format(te->u.tex.fmt)) {
+            lua_pop(L, 1);
+            return luaL_error(L, "begin_pass: target must be a color texture; use depth_target for depth textures");
+        }
         target_image = te->u.tex.h;
         fmt = te->u.tex.fmt;
         tw = te->u.tex.w;
         th = te->u.tex.h_;
+    } else if (lua_isnoneornil(L, -1) && depth_image) {
+        // Depth-only offscreen pass.
     } else {
         lua_pop(L, 1);
-        return luaL_error(L, "begin_pass: target must be main_tex or a TextureRef declared with {target=true}");
+        return luaL_error(L, "begin_pass: target must be main_tex, a color TextureRef, or omitted for a depth-only pass");
     }
     lua_pop(L, 1);
 
@@ -187,8 +252,27 @@ static int l_begin_pass(lua_State *L) {
     float c[4];
     desc_get_float4(L, 1, "clear_color", c, defaults);
 
-    pass_state_begin(&g_app_for_lua->pass, target_image, fmt, tw, th,
-                     c[0], c[1], c[2], c[3]);
+    if (is_main) {
+        pass_state_begin(&g_app_for_lua->pass, target_image, fmt, tw, th,
+                         c[0], c[1], c[2], c[3]);
+    } else if (target_image) {
+        if (depth_image && (depth_w != tw || depth_h != th)) {
+            return luaL_error(L,
+                "begin_pass: depth_target size %dx%d must match color target %dx%d",
+                depth_w, depth_h, tw, th);
+        }
+        uintptr_t targets[1] = { target_image };
+        SglPixelFormat fmts[1] = { fmt };
+        float clears[1][4] = { { c[0], c[1], c[2], c[3] } };
+        pass_state_begin_ex(&g_app_for_lua->pass, 1, targets, fmts, tw, th,
+                            (const float (*)[4])clears,
+                            depth_image, depth_fmt, clear_depth);
+    } else {
+        float clears[1][4] = { { 0, 0, 0, 1 } };
+        pass_state_begin_ex(&g_app_for_lua->pass, 0, NULL, NULL, depth_w, depth_h,
+                            (const float (*)[4])clears,
+                            depth_image, depth_fmt, clear_depth);
+    }
     return 0;
 }
 
@@ -311,6 +395,10 @@ static int l_use_texture(lua_State *L) {
     if (is_target && has_data) {
         return luaL_error(L, "use_texture: render target cannot be initialized with data");
     }
+    bool depth_fmt = is_depth_format((SglPixelFormat)fmt);
+    if (depth_fmt && !is_target) {
+        return luaL_error(L, "use_texture: depth formats are only supported with {target=true}");
+    }
 
     if (w <= 0 || h <= 0) return luaL_error(L, "use_texture: invalid size %dx%d", w, h);
 
@@ -331,11 +419,21 @@ static int l_use_texture(lua_State *L) {
     switch (fmt) {
         case SGL_PF_RGBA8: bpp = 4; break;
         case SGL_PF_R8:    bpp = 1; break;
-        default: return luaL_error(L, "use_texture: format not supported in PoC (only RGBA8/R8)");
+        case SGL_PF_RGBA16F:
+        case SGL_PF_RGBA32F:
+        case SGL_PF_DEPTH16:
+        case SGL_PF_DEPTH24_STENCIL8:
+        case SGL_PF_DEPTH32F:
+            bpp = 0;
+            break;
+        default: return luaL_error(L, "use_texture: format not supported (RGBA8/R8/RGBA16F/RGBA32F/depth target formats only)");
     }
 
     uint8_t *pixels = NULL;
     if (has_data) {
+        if (bpp == 0) {
+            return luaL_error(L, "use_texture: this texture format cannot be initialized with byte data");
+        }
         int n = (int)lua_rawlen(L, 5);
         if (n != w * h * bpp) {
             return luaL_error(L, "use_texture: data size mismatch: got %d, expected %d", n, w * h * bpp);
@@ -742,6 +840,7 @@ static int l_draw(lua_State *L) {
         g_app_for_lua->pass.current_n_color_targets,
         g_app_for_lua->pass.current_color_fmts,
         g_app_for_lua->pass.current_has_depth,
+        g_app_for_lua->pass.current_depth_fmt,
         (bind.ibuf != 0),
         (int64_t)g_app_for_lua->frame_index);
     g_backend->apply_pipeline(pip);

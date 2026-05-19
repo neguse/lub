@@ -12,9 +12,10 @@ typedef struct PipelineKey {
     uint8_t blend, depth_test, depth_write, cull, primitive, has_depth;
     uint8_t n_color_targets;
     uint8_t color_fmts[SGL_MAX_COLOR_TARGETS];
+    uint8_t depth_fmt;
     uint8_t is_compute; // 1 = compute pipeline (all graphics fields are zero)
     uint8_t is_indexed; // 1 = pipeline used for indexed draw
-    uint8_t _pad[3];    // memset-zeroed; memcmp would otherwise hit indeterminate padding
+    uint8_t _pad[2];    // memset-zeroed; memcmp would otherwise hit indeterminate padding
 } PipelineKey;
 
 typedef struct PipelineEntry {
@@ -37,7 +38,7 @@ BackendPipeline pipeline_cache_get(
     SglBlend blend, bool depth_test, bool depth_write,
     SglCull cull, SglPrimitive prim,
     int n_color_targets, const SglPixelFormat *color_fmts,
-    bool has_depth, bool is_indexed,
+    bool has_depth, SglPixelFormat depth_fmt, bool is_indexed,
     int64_t current_frame);
 
 // Compute pipeline lookup. The same cache holds both render and compute

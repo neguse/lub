@@ -68,6 +68,26 @@ static SDL_GPUTextureFormat sg_choose_depth_format(SDL_GPUDevice *dev) {
     return SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
+static SDL_GPUTextureFormat sgl_to_sdl_texture_format(SglPixelFormat fmt) {
+    switch (fmt) {
+        case SGL_PF_R8:               return SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+        case SGL_PF_RGBA16F:          return SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+        case SGL_PF_RGBA32F:          return SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+        case SGL_PF_DEPTH16:          return SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+        case SGL_PF_DEPTH32F:         return SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+        case SGL_PF_DEPTH24_STENCIL8: return SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+        case SGL_PF_BGRA8:            return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
+        case SGL_PF_RGBA8:
+        default:                      return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    }
+}
+
+static bool sgl_is_depth_format(SglPixelFormat fmt) {
+    return fmt == SGL_PF_DEPTH16 ||
+           fmt == SGL_PF_DEPTH24_STENCIL8 ||
+           fmt == SGL_PF_DEPTH32F;
+}
+
 static bool sg_ensure_depth_texture(App *app, Uint32 w, Uint32 h) {
     if (!app || !app->gpu_device || w == 0 || h == 0) return false;
     if (app->gpu_depth_tex &&
@@ -208,10 +228,10 @@ static void sg_end_frame(App *app) {
 }
 
 static void sg_begin_pass(App *app, const PassBeginDesc *d) {
-    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
     if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
     SDL_GPUColorTargetInfo targets[SGL_MAX_COLOR_TARGETS] = {0};
-    if (d->targets[0] == 0) {
+    if (d->n_color_targets == 1 && d->targets[0] == 0 && !d->depth_target) {
         // swapchain target (single)
         SDL_GPUTexture *tex = app->gpu_swapchain_tex;
         if (!tex || !app->gpu_cmd) {
@@ -255,7 +275,23 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
         targets[i].load_op = SDL_GPU_LOADOP_CLEAR;
         targets[i].store_op = SDL_GPU_STOREOP_STORE;
     }
-    g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd, targets, (Uint32)nct, NULL);
+    SDL_GPUDepthStencilTargetInfo depth = {0};
+    SDL_GPUDepthStencilTargetInfo *depth_ptr = NULL;
+    if (d->depth_target) {
+        SgImage *di = (SgImage*)d->depth_target;
+        if (!di || !di->tex) { g_render_pass = NULL; return; }
+        depth = (SDL_GPUDepthStencilTargetInfo){
+            .texture = di->tex,
+            .clear_depth = d->clear_depth,
+            .load_op = SDL_GPU_LOADOP_CLEAR,
+            .store_op = SDL_GPU_STOREOP_STORE,
+            .stencil_load_op = SDL_GPU_LOADOP_DONT_CARE,
+            .stencil_store_op = SDL_GPU_STOREOP_DONT_CARE,
+        };
+        depth_ptr = &depth;
+    }
+    g_render_pass = SDL_BeginGPURenderPass(app->gpu_cmd,
+        nct > 0 ? targets : NULL, (Uint32)nct, depth_ptr);
 }
 
 static void sg_end_pass(App *app) {
@@ -411,10 +447,13 @@ static BackendImage sg_make_image(const ImageDesc *d) {
     im->w = d->w; im->h = d->h; im->fmt = d->fmt;
     im->render_target = d->render_target;
 
-    SDL_GPUTextureFormat tfmt = (d->fmt == SGL_PF_R8) ? SDL_GPU_TEXTUREFORMAT_R8_UNORM
-                                                       : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    SDL_GPUTextureFormat tfmt = sgl_to_sdl_texture_format(d->fmt);
     Uint32 usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    if (d->render_target) usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    if (d->render_target) {
+        usage |= sgl_is_depth_format(d->fmt)
+            ? SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET
+            : SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    }
     im->tex = SDL_CreateGPUTexture(g_app->gpu_device,
         &(SDL_GPUTextureCreateInfo){
             .type = SDL_GPU_TEXTURETYPE_2D,
@@ -545,6 +584,47 @@ static void sg_destroy_shader(BackendShader h) {
     free(s);
 }
 
+static SDL_GPUColorTargetBlendState to_sdl_blend(SglBlend b) {
+    SDL_GPUColorTargetBlendState bs = {
+        .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+        .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
+        .color_blend_op = SDL_GPU_BLENDOP_ADD,
+        .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+        .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
+        .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+        .color_write_mask = SDL_GPU_COLORCOMPONENT_R |
+                            SDL_GPU_COLORCOMPONENT_G |
+                            SDL_GPU_COLORCOMPONENT_B |
+                            SDL_GPU_COLORCOMPONENT_A,
+        .enable_color_write_mask = true,
+    };
+
+    switch (b) {
+        case SGL_BLEND_ALPHA:
+            bs.enable_blend = true;
+            bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+            bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            bs.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            bs.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+        case SGL_BLEND_ADDITIVE:
+            bs.enable_blend = true;
+            bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            bs.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            bs.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            break;
+        case SGL_BLEND_MULTIPLY:
+            bs.enable_blend = true;
+            bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_DST_COLOR;
+            bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+            break;
+        default:
+            break;
+    }
+    return bs;
+}
+
 static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
     if (!g_app || !g_app->gpu_device) {
         SDL_Log("sg_make_pipeline: no GPU device");
@@ -598,20 +678,14 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
         .instance_step_rate = 0,
     };
-    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
     if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
     SDL_GPUColorTargetDescription ctd[SGL_MAX_COLOR_TARGETS] = {0};
+    SDL_GPUColorTargetBlendState blend = to_sdl_blend(d->blend);
     for (int i = 0; i < nct; ++i) {
-        SDL_GPUTextureFormat tf;
-        switch (d->color_fmts[i]) {
-            case SGL_PF_RGBA8: tf = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM; break;
-            case SGL_PF_BGRA8: tf = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM; break;
-            default:
-                tf = SDL_GetGPUSwapchainTextureFormat(g_app->gpu_device, g_app->window);
-                break;
-        }
+        SDL_GPUTextureFormat tf = sgl_to_sdl_texture_format(d->color_fmts[i]);
         ctd[i].format = tf;
-        // PoC: blend off (sample 01 uses SGL_BLEND_NONE).
+        ctd[i].blend_state = blend;
     }
 
     SDL_GPUPrimitiveType prim;
@@ -631,7 +705,12 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
 
     SDL_GPUTextureFormat depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
     if (d->has_depth) {
-        depth_fmt = g_app->gpu_depth_fmt;
+        if (d->depth_fmt == SGL_PF_DEPTH24_STENCIL8) {
+            depth_fmt = g_app->gpu_depth_fmt;
+        }
+        if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID && d->depth_fmt != SGL_PF_DEPTH24_STENCIL8) {
+            depth_fmt = sgl_to_sdl_texture_format(d->depth_fmt);
+        }
         if (depth_fmt == SDL_GPU_TEXTUREFORMAT_INVALID) {
             depth_fmt = sg_choose_depth_format(g_app->gpu_device);
         }
@@ -670,7 +749,7 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
                 .enable_depth_write = d->has_depth && d->depth_write,
             },
             .target_info = {
-                .color_target_descriptions = ctd,
+                .color_target_descriptions = nct > 0 ? ctd : NULL,
                 .num_color_targets = (Uint32)nct,
                 .depth_stencil_format = depth_fmt,
                 .has_depth_stencil_target = d->has_depth,

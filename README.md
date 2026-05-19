@@ -245,6 +245,7 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 | 8 | 08_gltf.lua             | glTF mesh (Box.glb) を法線可視化 shader + 回転 MVP で描画 (load_gltf + interleave_pn + indexed draw) |
 | 9 | 09_breakout.lua         | ブロックくずし。左右/A/D でパドル移動、Space で発射、R でリセット |
 | 10 | 10_breakout3d.lua      | 3D ブロックくずし。cuboid / sphere を MVP + depth で描画 |
+| 11 | 11_shadow.lua          | offscreen shadow map (color target + depth target) で directional light の影を描画 |
 
 ## API
 
@@ -252,11 +253,11 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
   - `VERTEX` / `STORAGE`: `data` は float の Lua table。`STORAGE` で `data` の代わりに float 数 (integer) を渡すと中身未初期化で割り当てる (compute shader が後で埋める前提)。`STORAGE` は VBO 兼用で作られるので、compute が書き出したバッファをそのまま draw の `verts` に渡せる。
   - `INDEX`: `data` は Lua 数値 table。`(uint32_t)lua_tonumber` で truncate して u32 配列として GPU に格納する。小数/負値はそのまま truncate / wrap される (caller responsibility)。`draw` の `resources.indices` に渡す indexed buffer はこれで作る。
   - 同 `version` なら再アップロードしない。
-- `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8`。`data` は uint8 の Lua table (省略可、`opts.target=true` の場合は nil 必須)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }`。デフォルトは `LINEAR` / `REPEAT` / `false`。`target=true` で render-target texture (color attachment + sampler) を宣言。
+- `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8` / `RGBA16F` / `RGBA32F` / `DEPTH16` / `DEPTH24_STENCIL8` / `DEPTH32F`。`data` は `RGBA8` / `R8` 用の uint8 Lua table (省略可、`opts.target=true` の場合は nil 必須)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }`。デフォルトは `LINEAR` / `REPEAT` / `false`。`target=true` で color format は color attachment + sampler、depth format は depth attachment として使える texture を宣言。
 - `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
 - `use_shader_compute(key, cs_src, version)` — compute shader を compile (`cs_main` entry point)。`[numthreads(...)]` で threadgroup を指定。`dispatch` で呼ぶ。
-- `begin_pass({ target = main_tex | texRef, clear_color = {r,g,b,a} })` / `end_pass()` — pass 制御。`target` は `main_tex` (swapchain) または `use_texture(..., {target=true})` で宣言した texture ref。後者で offscreen render target に描画できる (Sample 5)。offscreen pass は depth/stencil 無し、swapchain pass は depth/stencil 付き。pipeline cache のキーには color format と depth 有無も含まれる。
-- `begin_pass({ targets = {texRef1, texRef2, ...}, clear_colors = {{r,g,b,a}, ...} })` — MRT (Multi Render Target) 形式の offscreen pass (Sample 6)。最大 `SGL_MAX_COLOR_TARGETS` (= 4) 個まで。全 target は同サイズで、各々 `use_texture(..., {target=true})` で宣言済みであること。fragment shader 側は `SV_Target0` / `SV_Target1` / ... を出力する。
+- `begin_pass({ target = main_tex | texRef, clear_color = {r,g,b,a}, depth_target = depthTex?, clear_depth = 1 })` / `end_pass()` — pass 制御。`target` は `main_tex` (swapchain) または color target texture。`depth_target` には depth target texture を指定できる。`target` を省略して `depth_target` だけ指定すると depth-only pass になる。swapchain pass は従来通り内部 depth/stencil を使う。
+- `begin_pass({ targets = {texRef1, texRef2, ...}, clear_colors = {{r,g,b,a}, ...}, depth_target = depthTex? })` — MRT (Multi Render Target) 形式の offscreen pass (Sample 6)。最大 `SGL_MAX_COLOR_TARGETS` (= 4) 個まで。全 color target と depth target は同サイズで、各々 `use_texture(..., {target=true})` で宣言済みであること。fragment shader 側は `SV_Target0` / `SV_Target1` / ... を出力する。
 - `draw(count, resources, options)` — 描画コマンド。
   - `count` はプリミティブカウント: `resources.indices` があれば index 数、無ければ vertex 数。
   - `resources` は名前付き table: `{ verts = bufferRef, indices = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。

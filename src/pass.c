@@ -11,6 +11,7 @@ void pass_state_init(PassState *p) {
         p->current_color_fmts[i] = SGL_PF_RGBA8;
     }
     p->current_has_depth = false;
+    p->current_depth_fmt = SGL_PF_DEPTH24_STENCIL8;
 }
 
 void pass_state_set_app(PassState *p, struct App *app) {
@@ -38,6 +39,9 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
         .target_w = target_w,
         .target_h = target_h,
         .clear = { { r, g, b, a } },
+        .clear_depth = 1.0f,
+        .has_depth = (target_image == 0),
+        .depth_fmt = SGL_PF_DEPTH24_STENCIL8,
     };
     g_backend->begin_pass(p->app, &d);
     p->in_pass = true;
@@ -46,25 +50,33 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
     // PoC convention: swapchain pass has a depth/stencil attachment,
     // offscreen render-target passes do not.
     p->current_has_depth = (target_image == 0);
+    p->current_depth_fmt = SGL_PF_DEPTH24_STENCIL8;
 }
 
-void pass_state_begin_mrt(PassState *p,
-                          int n_targets,
-                          const uintptr_t *targets,
-                          const SglPixelFormat *fmts,
-                          int target_w, int target_h,
-                          const float (*clears)[4])
+void pass_state_begin_ex(PassState *p,
+                         int n_targets,
+                         const uintptr_t *targets,
+                         const SglPixelFormat *fmts,
+                         int target_w, int target_h,
+                         const float (*clears)[4],
+                         uintptr_t depth_target,
+                         SglPixelFormat depth_fmt,
+                         float clear_depth)
 {
     if (p->in_pass) {
         SDL_Log("begin_pass called while already in pass (nested passes not supported)");
         return;
     }
-    if (n_targets < 1) n_targets = 1;
+    if (n_targets < 0) n_targets = 0;
     if (n_targets > SGL_MAX_COLOR_TARGETS) n_targets = SGL_MAX_COLOR_TARGETS;
     PassBeginDesc d = {0};
     d.n_color_targets = n_targets;
     d.target_w = target_w;
     d.target_h = target_h;
+    d.depth_target = depth_target;
+    d.depth_fmt = depth_fmt;
+    d.clear_depth = clear_depth;
+    d.has_depth = (depth_target != 0);
     for (int i = 0; i < n_targets; ++i) {
         d.targets[i] = targets[i];
         d.color_fmts[i] = fmts[i];
@@ -79,7 +91,21 @@ void pass_state_begin_mrt(PassState *p,
     for (int i = 0; i < n_targets; ++i) {
         p->current_color_fmts[i] = fmts[i];
     }
-    p->current_has_depth = false; // MRT offscreen has no depth in this PoC
+    p->current_has_depth = (depth_target != 0);
+    p->current_depth_fmt = depth_fmt;
+}
+
+void pass_state_begin_mrt(PassState *p,
+                          int n_targets,
+                          const uintptr_t *targets,
+                          const SglPixelFormat *fmts,
+                          int target_w, int target_h,
+                          const float (*clears)[4])
+{
+    if (n_targets < 1) n_targets = 1;
+    if (n_targets > SGL_MAX_COLOR_TARGETS) n_targets = SGL_MAX_COLOR_TARGETS;
+    pass_state_begin_ex(p, n_targets, targets, fmts, target_w, target_h, clears,
+                        0, SGL_PF_DEPTH24_STENCIL8, 1.0f);
 }
 
 void pass_state_end(PassState *p) {

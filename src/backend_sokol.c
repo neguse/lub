@@ -45,7 +45,9 @@ typedef struct SkImage {
     sg_sampler smp;
     sg_view   view;         // texture-sample view
     sg_view   color_att;    // color-attachment view (valid when render_target)
+    sg_view   depth_att;    // depth-stencil-attachment view (valid for depth targets)
     bool      render_target;
+    SglPixelFormat fmt;
 } SkImage;
 
 typedef struct SkBuffer {
@@ -593,14 +595,29 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     SkImage *si = (SkImage*)calloc(1, sizeof(SkImage));
     if (!si) return 0;
     si->render_target = d->render_target;
-    sg_pixel_format pf = (d->fmt == SGL_PF_R8) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+    si->fmt = d->fmt;
+    sg_pixel_format pf;
+    switch (d->fmt) {
+        case SGL_PF_R8:               pf = SG_PIXELFORMAT_R8; break;
+        case SGL_PF_RGBA16F:          pf = SG_PIXELFORMAT_RGBA16F; break;
+        case SGL_PF_RGBA32F:          pf = SG_PIXELFORMAT_RGBA32F; break;
+        case SGL_PF_DEPTH16:
+        case SGL_PF_DEPTH32F:         pf = SG_PIXELFORMAT_DEPTH; break;
+        case SGL_PF_DEPTH24_STENCIL8: pf = SG_PIXELFORMAT_DEPTH_STENCIL; break;
+        case SGL_PF_RGBA8:
+        default:                      pf = SG_PIXELFORMAT_RGBA8; break;
+    }
     sg_image_desc img_desc = {
         .width = d->w,
         .height = d->h,
         .pixel_format = pf,
     };
     if (d->render_target) {
-        img_desc.usage.color_attachment = true;
+        if (pf == SG_PIXELFORMAT_DEPTH || pf == SG_PIXELFORMAT_DEPTH_STENCIL) {
+            img_desc.usage.depth_stencil_attachment = true;
+        } else {
+            img_desc.usage.color_attachment = true;
+        }
     } else {
         img_desc.usage.dynamic_update = true;
     }
@@ -622,9 +639,13 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     si->view = sg_make_view(&(sg_view_desc){
         .texture = { .image = si->img },
     });
-    if (d->render_target) {
+    if (d->render_target && img_desc.usage.color_attachment) {
         si->color_att = sg_make_view(&(sg_view_desc){
             .color_attachment = { .image = si->img },
+        });
+    } else if (d->render_target && img_desc.usage.depth_stencil_attachment) {
+        si->depth_att = sg_make_view(&(sg_view_desc){
+            .depth_stencil_attachment = { .image = si->img },
         });
     }
     return (uintptr_t)si;
@@ -634,6 +655,7 @@ static void sk_destroy_image(BackendImage h) {
     SkImage *si = (SkImage*)h;
     if (!si) return;
     if (si->color_att.id) sg_destroy_view(si->color_att);
+    if (si->depth_att.id) sg_destroy_view(si->depth_att);
     if (si->view.id) sg_destroy_view(si->view);
     if (si->img.id)  sg_destroy_image(si->img);
     if (si->smp.id)  sg_destroy_sampler(si->smp);
@@ -834,10 +856,15 @@ static sg_blend_state to_sokol_blend(SglBlend b) {
 
 static sg_pixel_format sgl_to_sg_fmt(SglPixelFormat fmt) {
     switch (fmt) {
-        case SGL_PF_RGBA8: return SG_PIXELFORMAT_RGBA8;
-        case SGL_PF_R8:    return SG_PIXELFORMAT_R8;
-        case SGL_PF_BGRA8: return SG_PIXELFORMAT_BGRA8;
-        default:           return SG_PIXELFORMAT_RGBA8;
+        case SGL_PF_RGBA8:            return SG_PIXELFORMAT_RGBA8;
+        case SGL_PF_R8:               return SG_PIXELFORMAT_R8;
+        case SGL_PF_RGBA16F:          return SG_PIXELFORMAT_RGBA16F;
+        case SGL_PF_RGBA32F:          return SG_PIXELFORMAT_RGBA32F;
+        case SGL_PF_DEPTH16:
+        case SGL_PF_DEPTH32F:         return SG_PIXELFORMAT_DEPTH;
+        case SGL_PF_DEPTH24_STENCIL8: return SG_PIXELFORMAT_DEPTH_STENCIL;
+        case SGL_PF_BGRA8:            return SG_PIXELFORMAT_BGRA8;
+        default:                      return SG_PIXELFORMAT_RGBA8;
     }
 }
 
@@ -855,7 +882,7 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
 
     sg_pipeline_desc desc = {0};
     desc.shader = ss->sh;
-    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
     if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
     desc.color_count = nct;
     sg_blend_state bs = to_sokol_blend(d->blend);
@@ -865,7 +892,7 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
         desc.colors[i].blend = bs;
     }
     if (d->has_depth) {
-        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+        desc.depth.pixel_format = sgl_to_sg_fmt(d->depth_fmt);
         desc.depth.compare = d->depth_test ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
         desc.depth.write_enabled = d->depth_write;
     } else {
@@ -934,8 +961,8 @@ static void sk_update_image(BackendImage h, const void *data, size_t bytes) {
 // lives in sk_begin_pass below. Returns true if the desc described an
 // offscreen pass and the pass was started here.
 static bool sk_try_begin_offscreen_pass(const PassBeginDesc *d) {
-    if (!d->targets[0]) return false;
-    int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+    if (!d->targets[0] && !d->depth_target) return false;
+    int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
     if (nct > SGL_MAX_COLOR_TARGETS) nct = SGL_MAX_COLOR_TARGETS;
     sg_pass pass = {0};
     for (int i = 0; i < nct; ++i) {
@@ -946,6 +973,13 @@ static bool sk_try_begin_offscreen_pass(const PassBeginDesc *d) {
         pass.action.colors[i].clear_value.b = d->clear[i][2];
         pass.action.colors[i].clear_value.a = d->clear[i][3];
         pass.attachments.colors[i] = si->color_att;
+    }
+    if (d->depth_target) {
+        SkImage *di = (SkImage*)d->depth_target;
+        pass.action.depth.load_action = SG_LOADACTION_CLEAR;
+        pass.action.depth.store_action = SG_STOREACTION_STORE;
+        pass.action.depth.clear_value = d->clear_depth;
+        pass.attachments.depth_stencil = di->depth_att;
     }
     sg_begin_pass(&pass);
     return true;

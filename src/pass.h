@@ -12,6 +12,7 @@ typedef struct PassState {
     int current_n_color_targets;
     SglPixelFormat current_color_fmts[SGL_MAX_COLOR_TARGETS]; // valid while in_pass
     bool current_has_depth;           // valid while in_pass
+    SglPixelFormat current_depth_fmt; // valid when current_has_depth
 } PassState;
 
 void pass_state_init(PassState *p);
@@ -32,5 +33,18 @@ void pass_state_begin_mrt(PassState *p,
                           const SglPixelFormat *fmts,
                           int target_w, int target_h,
                           const float (*clears)[4]);
+
+// General offscreen path. n_targets may be 0 for a depth-only pass; depth_target
+// is optional for color passes. A swapchain pass is still represented by
+// pass_state_begin() with target_image == 0.
+void pass_state_begin_ex(PassState *p,
+                         int n_targets,
+                         const uintptr_t *targets,
+                         const SglPixelFormat *fmts,
+                         int target_w, int target_h,
+                         const float (*clears)[4],
+                         uintptr_t depth_target,
+                         SglPixelFormat depth_fmt,
+                         float clear_depth);
 
 void pass_state_end(PassState *p);

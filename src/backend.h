@@ -52,16 +52,21 @@ typedef struct PipelineDesc {
     int n_color_targets;       // 1..SGL_MAX_COLOR_TARGETS
     SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS];
     bool has_depth;            // false = offscreen color-only pass
+    SglPixelFormat depth_fmt;  // valid when has_depth
     bool is_indexed;           // true = pipeline used for indexed draw (sokol: index_type = UINT32)
     bool is_compute;           // true: make_pipeline ignores graphics state and builds a compute pipeline
 } PipelineDesc;
 
 typedef struct PassBeginDesc {
-    int n_color_targets;          // 1..SGL_MAX_COLOR_TARGETS
+    int n_color_targets;          // 0..SGL_MAX_COLOR_TARGETS; 0 = depth-only
     BackendImage targets[SGL_MAX_COLOR_TARGETS]; // targets[0] == 0 (with n_color_targets == 1) => swapchain
     SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS]; // per-target color format
     int target_w, target_h;       // offscreen target size (ignored for swapchain)
     float clear[SGL_MAX_COLOR_TARGETS][4];
+    BackendImage depth_target;    // 0 = swapchain/default depth or no offscreen depth
+    SglPixelFormat depth_fmt;
+    float clear_depth;
+    bool has_depth;
 } PassBeginDesc;
 
 typedef struct BindingsDesc {
