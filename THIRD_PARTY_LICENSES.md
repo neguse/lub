@@ -9,14 +9,16 @@ sglua bundles or links the following third-party components.
 | sokol_gfx | third_party/sokol/sokol_gfx.h | zlib | https://github.com/floooh/sokol |
 | stb_image / stb_image_write | third_party/stb/ | Public Domain / MIT (dual) | https://github.com/nothings/stb |
 | cgltf | third_party/cgltf/cgltf.h | MIT | https://github.com/jkuhlmann/cgltf |
-| Slang headers | third_party/slang/include/ | Apache-2.0 + MIT | https://github.com/shader-slang/slang |
+| Slang headers | third_party/slang/include/ | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang |
 | lume | third_party/lume/lume.lua | MIT | https://github.com/rxi/lume |
+| nlohmann/json | third_party/nlohmann/json.hpp | MIT | https://github.com/nlohmann/json |
 
-## Fetched at configure time (gitignored)
+## Fetched at configure/install time (gitignored)
 
 | Component | Path | License | Source |
 |-----------|------|---------|--------|
-| Slang prebuilt | third_party/slang/{lib,bin}/ | Apache-2.0 + MIT | https://github.com/shader-slang/slang/releases |
+| Slang prebuilt | third_party/slang/{lib,bin}/ | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang/releases |
+| slang-wasm | web/public/slang/slang-wasm.{js,wasm} | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang/releases |
 
 ## CMake FetchContent (configure-time source build)
 
