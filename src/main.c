@@ -7,6 +7,9 @@
 #include "app.h"
 #include "lua_api.h"
 #include "capture.h"
+#ifndef __EMSCRIPTEN__
+#include "haxe_build.h"  // path_basename_noext / path_dirname
+#endif
 
 static App g_app;
 
@@ -36,28 +39,63 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
     }
     const char *entry_path = script ? script : "00_hello";
+
+    // L 作成は entry kind に関わらず先に行う。boot.lua + require の resolution は
+    // .hxml dispatch 後に lua_ctx_load_entry で行うことで、package.path 拡張
+    // (`<dir>/.lub/?.lua`) が boot.lua の require より先に効くようにする。
+    if (!lua_ctx_init(&g_app.lua, &g_app)) return SDL_APP_FAILURE;
+
+    char modbuf[256] = {0};
+
+#ifdef __EMSCRIPTEN__
     if (has_extension(entry_path, ".hxml")) {
-        SDL_Log("FATAL: .hxml entry not implemented yet");
+        SDL_Log("FATAL: .hxml entry not supported on WASM");
         return SDL_APP_FAILURE;
     }
-    // Accept "01_triangle", "01_triangle.lua", or "samples/01_triangle.lua"
-    // and reduce to the bare module name ("01_triangle") for require().
-    const char *raw = entry_path;
-    const char *base = strrchr(raw, '/');
-    base = base ? base + 1 : raw;
-    char modbuf[256];
-    size_t n = strlen(base);
-    if (n >= 4 && strcmp(base + n - 4, ".lua") == 0) n -= 4;
-    if (n >= sizeof(modbuf)) n = sizeof(modbuf) - 1;
-    memcpy(modbuf, base, n);
-    modbuf[n] = '\0';
+#else
+    if (has_extension(entry_path, ".hxml")) {
+        if (!haxe_pipeline_start(&g_app.haxe, entry_path)) {
+            SDL_Log("FATAL: haxe pipeline start failed");
+            return SDL_APP_FAILURE;
+        }
+        g_app.haxe_enabled = true;
+        // entry module 名は hxml basename
+        path_basename_noext(entry_path, modbuf, sizeof(modbuf));
+        SDL_snprintf(g_app.entry_module_name, sizeof(g_app.entry_module_name),
+                     "%s", modbuf);
+        // entry_path 自体は .lub/<base>.lua に向ける (既存 mtime polling が拾う)
+        char dir[512];
+        path_dirname(entry_path, dir, sizeof(dir));
+        char lua_path[768];
+        SDL_snprintf(lua_path, sizeof(lua_path), "%s/.lub/%s.lua", dir, modbuf);
+        SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path), "%s", lua_path);
+        g_app.entry_mtime_cache = 0;
+        // package.path 拡張 (boot.lua の require が <dir>/.lub/?.lua を見られる
+        // ように)。lua_ctx_add_package_path は内部で `/.lub/?.lua` を付けるので
+        // entry dir を渡す。
+        lua_ctx_add_package_path(&g_app.lua, dir);
+    }
+#endif
 
-    SDL_strlcpy(g_app.entry_module_name, modbuf, sizeof(g_app.entry_module_name));
-    SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path),
-                 "samples/%s.lua", modbuf);
-    g_app.entry_mtime_cache = 0;
+    if (!has_extension(entry_path, ".hxml")) {
+        // Accept "01_triangle", "01_triangle.lua", or "samples/01_triangle.lua"
+        // and reduce to the bare module name ("01_triangle") for require().
+        const char *raw = entry_path;
+        const char *base = strrchr(raw, '/');
+        base = base ? base + 1 : raw;
+        size_t n = strlen(base);
+        if (n >= 4 && strcmp(base + n - 4, ".lua") == 0) n -= 4;
+        if (n >= sizeof(modbuf)) n = sizeof(modbuf) - 1;
+        memcpy(modbuf, base, n);
+        modbuf[n] = '\0';
 
-    if (!lua_ctx_init(&g_app.lua, modbuf, &g_app)) return SDL_APP_FAILURE;
+        SDL_strlcpy(g_app.entry_module_name, modbuf, sizeof(g_app.entry_module_name));
+        SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path),
+                     "samples/%s.lua", modbuf);
+        g_app.entry_mtime_cache = 0;
+    }
+
+    if (!lua_ctx_load_entry(&g_app.lua, modbuf)) return SDL_APP_FAILURE;
     lua_ctx_call_init(&g_app.lua);
     if (!app_backend_init(&g_app)) return SDL_APP_FAILURE;   // initialize GPU backend after Lua onInit
 

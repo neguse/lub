@@ -1117,7 +1117,7 @@ static void call_module_field(LuaCtx *ctx, const char *name, int nargs) {
     }
 }
 
-bool lua_ctx_init(LuaCtx *ctx, const char *entry_module_name, App *app) {
+bool lua_ctx_init(LuaCtx *ctx, App *app) {
     g_app_for_lua = app;
     ctx->L = luaL_newstate();
     if (!ctx->L) {
@@ -1127,7 +1127,11 @@ bool lua_ctx_init(LuaCtx *ctx, const char *entry_module_name, App *app) {
     ctx->module_ref = LUA_NOREF;
     luaL_openlibs(ctx->L);
     lua_api_register(ctx->L);
+    return true;
+}
 
+bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
+    if (!ctx || !ctx->L || !entry_module_name) return false;
     if (luaL_loadfile(ctx->L, "samples/boot.lua") != LUA_OK) {
         SDL_Log("boot.lua load error: %s", lua_tostring(ctx->L, -1));
         lua_close(ctx->L);

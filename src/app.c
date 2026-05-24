@@ -61,6 +61,15 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     app->last_w = w;
     app->last_h = h;
 
+    // .hxml entry のときは毎フレーム haxe pipeline を tick して .hx 変更を拾い
+    // .lub/<base>.lua へ atomic write する。下の mtime polling が新しい .lua を
+    // 検出して lume.hotswap を回す、という二段構え。
+#ifndef __EMSCRIPTEN__
+    if (app->haxe_enabled) {
+        haxe_pipeline_tick(&app->haxe);
+    }
+#endif
+
     // Hot-reload entry Lua when its mtime changes. Skip during PRE_BACKEND
     // (callbacks aren't being driven yet) and on the very first poll
     // (cache == 0) — record the baseline instead of triggering an
