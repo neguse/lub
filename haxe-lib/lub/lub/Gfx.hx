@@ -7,7 +7,9 @@ extern class Gfx {
   // resources
   @:native("use_shader")         public static function useShader(key: String, vs: String, fs: String, version: Int): Dynamic;
   @:native("use_shader_compute") public static function useShaderCompute(key: String, src: String, version: Int): Dynamic;
-  @:native("use_buffer")         public static function useBuffer(key: String, type: Int, data: lua.Table<Int, Float>, version: Int): Dynamic;
+  // `data` is `lua.Table<Int, Float>` for VERTEX/INDEX/STORAGE-with-data,
+  // or an `Int` float-count for STORAGE-allocate-empty (compute output buffers).
+  @:native("use_buffer")         public static function useBuffer(key: String, type: Int, data: Dynamic, version: Int): Dynamic;
   @:native("use_texture")        public static function useTexture(key: String, w: Int, h: Int, fmt: Int, px: Dynamic, version: Int, ?opts: Dynamic): Dynamic;
   // commands
   @:native("draw")               public static function draw(count: Int, bindings: Dynamic, opts: Dynamic): Void;
