@@ -15,9 +15,13 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 - ゲームをコード中心に組み立てられる。
 - 実行中のゲームを止めずに、コードや asset の変更を即座に反映できる。
 - runtime 基盤は C/C++ と既存ライブラリを再利用し、移植性と native integration を保つ。
+- Lua を runtime API の接点にし、Haxe は Lua を生成する script authoring layer として扱う。
 - 3D graphics を標準の描画基盤として持ち、2D game もその上で自然に扱える。
 - core API は最小の固い primitive に絞る。
 - core API の外側は runtime 外の Lua library と app code が担う。
+
+Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
+Haxe はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
 ## Non-Goals
 
