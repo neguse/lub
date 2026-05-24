@@ -9,6 +9,10 @@
 //     lub C 側は global function (begin_pass) として expose しているので、
 //     globals を namespace table に集約してギャップを埋める。
 //     lub.Io は @:luaRequire("lub_io") 経由で別経路なので shim 不要。
+// (3) Haxe lua target は Int の bitwise (^, &, |, <<, >>) を _hx_bit (= bit32)
+//     経由で呼ぶ。Lua 5.5 は native bitwise operator を持つが bit32 module
+//     を持たないため、Lua 5.5 native bitwise op で bit32 互換 table を
+//     preload しておく。
 static const char HAXE_PRELUDE[] =
     "package.preload[\"lua-utf8\"] = function()\n"
     "  return {\n"
@@ -16,6 +20,18 @@ static const char HAXE_PRELUDE[] =
     "    upper = string.upper, lower = string.lower,\n"
     "    find = string.find, sub = string.sub, byte = string.byte,\n"
     "  }\n"
+    "end\n"
+    "package.preload[\"bit32\"] = function()\n"
+    "  local M = {}\n"
+    "  local MASK = 0xFFFFFFFF\n"
+    "  function M.band(a, b, ...) local r = a & b; for i=1,select('#',...) do r = r & (select(i,...)) end; return r & MASK end\n"
+    "  function M.bor(a, b, ...)  local r = a | b; for i=1,select('#',...) do r = r | (select(i,...)) end; return r & MASK end\n"
+    "  function M.bxor(a, b, ...) local r = a ~ b; for i=1,select('#',...) do r = r ~ (select(i,...)) end; return r & MASK end\n"
+    "  function M.bnot(a) return (~a) & MASK end\n"
+    "  function M.lshift(a, n) return (a << n) & MASK end\n"
+    "  function M.rshift(a, n) return (a & MASK) >> n end\n"
+    "  function M.arshift(a, n) local s = a & MASK; if s >= 0x80000000 then s = s - 0x100000000 end; return (s >> n) & MASK end\n"
+    "  return M\n"
     "end\n"
     "lub = lub or {}\n"
     "lub.Lub = { config = config }\n"
