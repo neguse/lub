@@ -25,8 +25,8 @@ static SDL_GPURenderPass *g_render_pass = NULL;
 
 // Cached App* for use by resource-creation vtable functions that don't
 // receive App* as an argument (make_buffer/make_shader/make_pipeline).
-// PoC concession: there is exactly one App per process. Set in sg_init
-// (and re-confirmed each begin_frame as a paranoia measure).
+// The current runtime owns exactly one App per process. Set in sg_init and
+// re-confirmed each begin_frame as a paranoia measure.
 static App *g_app = NULL;
 
 // Most-recently bound pipeline. Tracked here because SDL_GPU's pipeline
@@ -855,9 +855,9 @@ static void sg_apply_bindings(const BindingsDesc *b) {
 
 static void sg_apply_uniforms(int slot, const void *d, size_t b) {
     if (!g_app || !g_app->gpu_cmd) return;
-    // PoC: only VS-stage UBs (sample 04's mvp). SDL_GPU per-stage layout maps
-    // VS uniform buffers to descriptor set 1; the slot here is the binding
-    // index within set 1 (matches ShaderUniformBlock.slot from reflection).
+    // Current binding exposes vertex-stage uniform blocks. SDL_GPU per-stage
+    // layout maps VS uniform buffers to descriptor set 1; the slot here is the
+    // binding index within set 1 (matches ShaderUniformBlock.slot from reflection).
     SDL_PushGPUVertexUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
 }
 
@@ -885,7 +885,8 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
     }
     // Resolve storage buffers into ordered RW / RO arrays per the SDL_GPU
     // layout (set 1 = RW, set 0 = RO). The slot number from reflection is
-    // the binding within its set; for our PoC there is at most one of each.
+    // the binding within its set; the current compute binding normally uses
+    // one of each.
     SDL_GPUStorageBufferReadWriteBinding rw[SGL_MAX_STORAGE_BUFS] = {0};
     SDL_GPUBuffer *ro[SGL_MAX_STORAGE_BUFS] = {0};
     int n_rw = 0, n_ro = 0;

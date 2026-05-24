@@ -39,33 +39,33 @@ static void desc_get_float4(lua_State *L, int idx, const char *key,
     lua_pop(L, 1);
 }
 
-// Helper: check if value at stack index is a sentinel table with __sgl_kind == kind
+// Helper: check if value at stack index is a sentinel table with __lub_kind == kind
 static int is_sentinel(lua_State *L, int idx, const char *kind) {
     if (!lua_istable(L, idx)) return 0;
-    lua_getfield(L, idx, "__sgl_kind");
+    lua_getfield(L, idx, "__lub_kind");
     int ok = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), kind) == 0;
     lua_pop(L, 1);
     return ok;
 }
 
-// Helper: push a BufferRef sentinel table { __sgl_kind = "buffer", key = key }
+// Helper: push a BufferRef sentinel table { __lub_kind = "buffer", key = key }
 static void push_buffer_ref(lua_State *L, const char *key) {
     lua_newtable(L);
-    lua_pushstring(L, "buffer"); lua_setfield(L, -2, "__sgl_kind");
+    lua_pushstring(L, "buffer"); lua_setfield(L, -2, "__lub_kind");
     lua_pushstring(L, key);      lua_setfield(L, -2, "key");
 }
 
-// Helper: push a ShaderRef sentinel table { __sgl_kind = "shader", key = key }
+// Helper: push a ShaderRef sentinel table { __lub_kind = "shader", key = key }
 static void push_shader_ref(lua_State *L, const char *key) {
     lua_newtable(L);
-    lua_pushstring(L, "shader"); lua_setfield(L, -2, "__sgl_kind");
+    lua_pushstring(L, "shader"); lua_setfield(L, -2, "__lub_kind");
     lua_pushstring(L, key);      lua_setfield(L, -2, "key");
 }
 
-// Helper: push a TextureRef sentinel table { __sgl_kind = "texture", key = key }
+// Helper: push a TextureRef sentinel table { __lub_kind = "texture", key = key }
 static void push_texture_ref(lua_State *L, const char *key) {
     lua_newtable(L);
-    lua_pushstring(L, "texture"); lua_setfield(L, -2, "__sgl_kind");
+    lua_pushstring(L, "texture"); lua_setfield(L, -2, "__lub_kind");
     lua_pushstring(L, key);       lua_setfield(L, -2, "key");
 }
 
@@ -283,7 +283,7 @@ static int l_use_buffer(lua_State *L) {
 
     if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX &&
         type != SGL_BUFFER_STORAGE) {
-        return luaL_error(L, "use_buffer: only VERTEX/INDEX/STORAGE supported in PoC");
+        return luaL_error(L, "use_buffer: only VERTEX/INDEX/STORAGE are supported");
     }
 
     ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_BUFFER);
@@ -657,7 +657,7 @@ static int l_dispatch(lua_State *L) {
     lua_pushnil(L);
     while (lua_next(L, 4) != 0) {
         if (lua_istable(L, -1)) {
-            lua_getfield(L, -1, "__sgl_kind");
+            lua_getfield(L, -1, "__lub_kind");
             const char *kind = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
             char kind_buf[16];
             strncpy(kind_buf, kind, sizeof(kind_buf) - 1);
@@ -780,7 +780,7 @@ static int l_draw(lua_State *L) {
     while (lua_next(L, 2) != 0) {
         // stack: -2 = key, -1 = value
         if (lua_istable(L, -1)) {
-            lua_getfield(L, -1, "__sgl_kind");
+            lua_getfield(L, -1, "__lub_kind");
             const char *kind = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
             char kind_buf[16];
             strncpy(kind_buf, kind, sizeof(kind_buf) - 1);
@@ -847,7 +847,7 @@ static int l_draw(lua_State *L) {
     g_backend->apply_bindings(&bind);
 
     // uniforms: read resources.uniforms = { ub_member_name = {floats...} } and pack
-    // into the shader's first uniform block. PoC: only ub[0] supported.
+    // into the shader's first uniform block. Multi-block binding is not yet exposed.
     lua_getfield(L, 2, "uniforms");
     if (lua_istable(L, -1) && sh_e->u.sh.refl.ub_count > 0) {
         const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[0];
@@ -995,7 +995,7 @@ int64_t app_file_mtime_ns(const char *path) {
 #ifdef _WIN32
     // MSVC's struct _stat64 has only seconds resolution in st_mtime.
     // sub-second changes are still caught by the content-hash fallback
-    // in samples/sg_io.lua, so seconds-precision mtime is fine here.
+    // in samples/lub_io.lua, so seconds-precision mtime is fine here.
     struct _stat64 st;
     if (_stat64(path, &st) != 0) return 0;
     return (int64_t)st.st_mtime * 1000000000LL;
@@ -1012,7 +1012,7 @@ static int l_file_mtime(lua_State *L) {
     int64_t ns = app_file_mtime_ns(path);
     if (ns == 0) {
         // Preserve the original binding contract: nil for "not found / error"
-        // so samples/sg_io.lua's `if not mtime then return nil end` keeps
+        // so samples/lub_io.lua's `if not mtime then return nil end` keeps
         // working unchanged.
         lua_pushnil(L);
         return 1;
@@ -1057,10 +1057,10 @@ static int l_load_png(lua_State *L) {
 
 void lua_api_register(lua_State *L) {
     enums_register(L);
-    // main_tex は { __sgl_kind = "main_tex" } という sentinel テーブル
+    // main_tex は { __lub_kind = "main_tex" } という sentinel テーブル
     lua_newtable(L);
     lua_pushstring(L, "main_tex");
-    lua_setfield(L, -2, "__sgl_kind");
+    lua_setfield(L, -2, "__lub_kind");
     lua_setglobal(L, "main_tex");
 
     lua_pushcfunction(L, l_begin_pass);
@@ -1088,7 +1088,7 @@ void lua_api_register(lua_State *L) {
     lua_pushcfunction(L, l_file_mtime); lua_setglobal(L, "file_mtime");
     lua_pushcfunction(L, l_fnv1a64);    lua_setglobal(L, "fnv1a64");
     lua_pushcfunction(L, l_load_png);   lua_setglobal(L, "load_png");
-    lua_pushcfunction(L, sgl_load_gltf);   lua_setglobal(L, "load_gltf");
+    lua_pushcfunction(L, lub_load_gltf);   lua_setglobal(L, "load_gltf");
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {

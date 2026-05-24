@@ -2,10 +2,10 @@
 
 ## ゴール
 
-sglua から glTF 2.0 のメッシュデータ (頂点 + index) を読み込んで描画できるようにする。
+lub から glTF 2.0 のメッシュデータ (頂点 + index) を読み込んで描画できるようにする。
 - 新規 Lua API `load_gltf(path)` を 1 個追加。`load_png` と同形 (raw data 返却 + caller が `use_buffer` に流す)。
 - runtime parse、`.glb` / `.gltf` 両形式に cgltf 経由で対応。
-- 既存の `sg_io.lua` mtime fast-path + hash version 経路にそのまま乗せて live edit と一貫。
+- 既存の `lub_io.lua` mtime fast-path + hash version 経路にそのまま乗せて live edit と一貫。
 - サンプル 1 個 (`samples/08_gltf.lua`) で Box の法線可視化を回転表示、native (sokol / sdlgpu) + web 3 系統で動作。
 - Khronos `Box.glb` (CC0) を vendor。同時に repo の third-party ライセンス整備 (`THIRD_PARTY_LICENSES.md` 新設) も巻き取る。
 
@@ -19,7 +19,7 @@ sglua から glTF 2.0 のメッシュデータ (頂点 + index) を読み込ん�
 - camera / light。
 - web playground での `.glb` 差し替え UX (ドラッグ&ドロップ) — out of scope、将来作業。
 - web playground での `.glb` バイナリ編集 UX (CodeMirror では非現実的)。
-- sglua 本体ライセンスの確定 (現状 README 末尾「未定」のまま据え置き)。
+- lub 本体ライセンスの確定 (現状 README 末尾「未定」のまま据え置き)。
 
 ## 採用ライブラリ
 
@@ -55,9 +55,9 @@ C 側で実装し Lua にグローバルバインド (既存 `load_png` と同�
 - indices は uint8 / uint16 / uint32 のいずれであっても Lua integer に統一して返す。
 - 失敗時は `nil` のみ返す (`load_png` と同様、エラー文字列は返さない)。診断は stderr。
 
-### `sg_io.load_gltf(path)` (Lua wrapper)
+### `lub_io.load_gltf(path)` (Lua wrapper)
 
-`samples/sg_io.lua` に追加。`load_png` と同形:
+`samples/lub_io.lua` に追加。`load_png` と同形:
 
 ```lua
 function M.load_gltf(path)
@@ -75,7 +75,7 @@ end
 
 ### interleave ヘルパ
 
-`samples/sg_io.lua` に小さい helper を 1 個追加:
+`samples/lub_io.lua` に小さい helper を 1 個追加:
 
 ```lua
 function M.interleave_pn(mesh)
@@ -112,7 +112,7 @@ scope は sample 08 が使う pos3+normal3 (stride 6) のみ。他の組合せ (
 ### `src/lua_api.c` への変更
 
 - `load_gltf` Lua C 関数を 1 個 register (既存 `load_png` の隣)。
-- 関数本体は `src/gltf.c` の `sgl_load_gltf` を呼んで Lua stack に table を残すだけ。
+- 関数本体は `src/gltf.c` の `lub_load_gltf` を呼んで Lua stack に table を残すだけ。
 
 ### Build 統合 (`CMakeLists.txt`)
 
@@ -136,9 +136,9 @@ mesh-only スコープなのでテクスチャ系は今回読まないが、`buf
 
 ### Live edit (mtime watch)
 
-- `sg_io.load_gltf` は対象パス本体 (`.glb` 又は `.gltf`) の mtime を 1 個 watch するのみ。
+- `lub_io.load_gltf` は対象パス本体 (`.glb` 又は `.gltf`) の mtime を 1 個 watch するのみ。
 - `.gltf` + 外部 `.bin` 構成で外部 `.bin` だけ書き換えても reload しない (大半のオーサリングツールは `.gltf` と `.bin` を同時に書き出すので実害は低い)。README に注記する。
-- パース失敗時は前フレームの parsed を維持 (`sg_io.refresh` が既にそうなっている)。
+- パース失敗時は前フレームの parsed を維持 (`lub_io.refresh` が既にそうなっている)。
 - 初回パース失敗は loud に止める方針 (shader と一貫、起動できないことが分かる方が良い)。
 
 ### Vendored asset の置き場
@@ -148,7 +148,7 @@ mesh-only スコープなのでテクスチャ系は今回読まないが、`buf
 
 ### ユーザ持ち込みの `.gltf` / `.glb`
 
-- sglua は path を受け取って parse するだけなので、ユーザ自身のアセットは任意の path に置ける。
+- lub は path を受け取って parse するだけなので、ユーザ自身のアセットは任意の path に置ける。
 - ライセンス管理はユーザの責務。README に 1 段落「自分で読ませる glTF のライセンスは利用者責任」と明記。
 
 ## Sample 08 構成
@@ -174,19 +174,19 @@ shader 側は既存 prefix 規約 `08_gltf.*`、`.glb` だけ中身に合わせ�
 ### Lua フロー
 
 ```lua
-local sg_io = dofile("samples/sg_io.lua")
+local lub_io = dofile("samples/lub_io.lua")
 
 function on_init()
    -- shader 準備のみ
 end
 
 function on_frame(t)
-   local sh_vs, sh_ver_vs = sg_io.load_text("samples/data/08_gltf.vs.slang")
-   local sh_fs, sh_ver_fs = sg_io.load_text("samples/data/08_gltf.fs.slang")
+   local sh_vs, sh_ver_vs = lub_io.load_text("samples/data/08_gltf.vs.slang")
+   local sh_fs, sh_ver_fs = lub_io.load_text("samples/data/08_gltf.fs.slang")
    use_shader("gltf_sh", sh_vs, sh_fs, sh_ver_vs ~ sh_ver_fs)
 
-   local mesh, mesh_ver = sg_io.load_gltf("samples/data/08_box.glb")
-   local verts = sg_io.interleave_pn(mesh)
+   local mesh, mesh_ver = lub_io.load_gltf("samples/data/08_box.glb")
+   local verts = lub_io.interleave_pn(mesh)
    use_buffer("gltf_vb", VERTEX, verts, mesh_ver)
    use_buffer("gltf_ib", INDEX, mesh.indices, mesh_ver)
 
@@ -210,7 +210,7 @@ end
 
 ### Build 時 bundling
 
-- WASM ビルドの Emscripten data file package (`sglua.data`) は `samples/data/*` を preload する経路がある。`samples/data/08_box.glb` は自動でその package に含まれる想定。
+- WASM ビルドの Emscripten data file package (`lub.data`) は `samples/data/*` を preload する経路がある。`samples/data/08_box.glb` は自動でその package に含まれる想定。
 - CMake の preload 設定が拡張子フィルタしている場合のみ `.glb` を追加 — 実装段階で確認。
 
 ### Editor (CodeMirror) 上の見せ方
@@ -248,7 +248,7 @@ end
 ```markdown
 # Third-Party Licenses
 
-sglua bundles or links the following third-party components.
+lub bundles or links the following third-party components.
 
 ## Vendored single-header / sources
 
@@ -287,7 +287,7 @@ sglua bundles or links the following third-party components.
 - 現状 `third_party/sokol/LICENSE` / `third_party/stb/LICENSE` 等が存在するか未確認 (実装段階で点検)。
 - 欠けているものは upstream から取って併置する。1 ファイル数 KB なので作業量小。
 
-### sglua 本体ライセンス
+### lub 本体ライセンス
 
 - 現状 README 末尾「未定」のまま据え置き。今回のスコープでは触らない。
 
@@ -295,7 +295,7 @@ sglua bundles or links the following third-party components.
 
 | 状況 | 挙動 |
 |------|------|
-| ファイル不在 | `sg_io.load_gltf` が nil 返却 (既存 refresh の挙動) |
+| ファイル不在 | `lub_io.load_gltf` が nil 返却 (既存 refresh の挙動) |
 | cgltf parse 失敗 | `load_gltf` が nil 返却、stderr に診断 |
 | `mesh[0]` 不在 | nil 返却 + stderr |
 | `primitives[0]` 非 triangle | nil 返却 + stderr |
@@ -315,7 +315,7 @@ sglua bundles or links the following third-party components.
 - web playground での `.glb` 差し替え / ドラッグ&ドロップ UX
 - web playground での `.glb` 編集 UX
 - 大きなメッシュ (数十万頂点) でのパフォーマンス最適化 (Lua table 経由のオーバーヘッドが顕在化したら別途検討)
-- sglua 本体ライセンス確定
+- lub 本体ライセンス確定
 
 ## オープン項目 (実装時に確認)
 

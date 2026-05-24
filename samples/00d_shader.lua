@@ -19,7 +19,7 @@ function M.on_quit() end
 
 function M.on_frame()
   local s = use_shader("test", vs, fs, 1)
-  if not printed and s and s.__sgl_kind == "shader" then
+  if not printed and s and s.__lub_kind == "shader" then
     print("shader compiled:", s.key)
     printed = true
   end

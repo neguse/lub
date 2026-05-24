@@ -63,7 +63,7 @@ typedef struct SkShader {
 
 // --- sokol logger --------------------------------------------------------
 
-static void sglua_sokol_logger(
+static void lub_sokol_logger(
     const char* tag, uint32_t level, uint32_t item_id,
     const char* msg, uint32_t line, const char* file, void* user)
 {
@@ -95,9 +95,9 @@ static bool create_vk_instance(VkInstance *out_inst) {
 
     VkApplicationInfo ai = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "sglua",
+        .pApplicationName = "lub",
         .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
-        .pEngineName = "sglua",
+        .pEngineName = "lub",
         .engineVersion = VK_MAKE_VERSION(0, 1, 0),
         .apiVersion = VK_API_VERSION_1_3,
     };
@@ -449,7 +449,7 @@ static bool sk_init(App *app) {
                 .queue_family_index = app->vk_queue_family,
             },
         },
-        .logger.func = sglua_sokol_logger,
+        .logger.func = lub_sokol_logger,
     });
     return true;
 }
@@ -704,7 +704,8 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
         desc.compute_func.bytecode.ptr  = d->cs_spirv;
         desc.compute_func.bytecode.size = d->cs_bytes;
 #endif
-        // Storage buffers: PoC restriction — only RW storage at set=1, binding=slot.
+        // Storage buffers: current compute path supports RW storage at set=1,
+        // binding=slot.
         for (int i = 0; i < ss->refl.storage_buf_count && i < SG_MAX_VIEW_BINDSLOTS; ++i) {
             ShaderStorageBuf *sbuf = &ss->refl.storage_bufs[i];
             int slot = sbuf->slot;
@@ -768,7 +769,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
         int slot = u->slot;
         if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS) continue;
         sg_shader_uniform_block *dst = &desc.uniform_blocks[slot];
-        // PoC assumption: vertex shader is the only stage that uses uniform blocks.
+        // Current graphics binding exposes uniform blocks to the vertex stage.
         dst->stage = SG_SHADERSTAGE_VERTEX;
         dst->size = (uint32_t)(u->size_floats * 4);
         dst->layout = SG_UNIFORMLAYOUT_STD140;
@@ -779,7 +780,8 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
 #endif
     }
 
-    // Textures + samplers + texture-sampler pairs (PoC: stage=FRAGMENT).
+    // Textures + samplers + texture-sampler pairs are fragment-stage bindings
+    // in the current graphics API.
     for (int i = 0; i < ss->refl.tex_count && i < SGL_MAX_TEXTURES; ++i) {
         ShaderTexture *tx = &ss->refl.texs[i];
         int img_slot = tx->img_slot;
@@ -888,7 +890,7 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
     sg_blend_state bs = to_sokol_blend(d->blend);
     for (int i = 0; i < nct; ++i) {
         desc.colors[i].pixel_format = sgl_to_sg_fmt(d->color_fmts[i]);
-        // PoC: replicate blend state across all color attachments.
+        // The current API applies one blend state to all color attachments.
         desc.colors[i].blend = bs;
     }
     if (d->has_depth) {
@@ -1370,17 +1372,17 @@ static SglPixelFormat sk_swapchain_color_format(App *app) {
 // window._canvasWidth / _canvasHeight before loading the WASM, then keeps
 // them in sync when the iframe is resized). The player html provides this.
 
-EM_JS(int, sglua_canvas_width,  (void), { return (window._canvasWidth  || 480) | 0; })
-EM_JS(int, sglua_canvas_height, (void), { return (window._canvasHeight || 360) | 0; })
+EM_JS(int, lub_canvas_width,  (void), { return (window._canvasWidth  || 480) | 0; })
+EM_JS(int, lub_canvas_height, (void), { return (window._canvasHeight || 360) | 0; })
 
-static WGPUStringView sglua_wgpu_string(const char *s) {
+static WGPUStringView lub_wgpu_string(const char *s) {
     WGPUStringView v = { s, s ? strlen(s) : 0 };
     return v;
 }
 
 // Create/recreate the depth-stencil texture sized to the current canvas.
 // Releases the old pair if present. Called from sk_init and on resize.
-static bool sglua_wgpu_recreate_depth(App *app, uint32_t w, uint32_t h) {
+static bool lub_wgpu_recreate_depth(App *app, uint32_t w, uint32_t h) {
     if (app->wgpu_depth_view) {
         wgpuTextureViewRelease(app->wgpu_depth_view);
         app->wgpu_depth_view = NULL;
@@ -1410,7 +1412,7 @@ static bool sglua_wgpu_recreate_depth(App *app, uint32_t w, uint32_t h) {
     return true;
 }
 
-static void sglua_wgpu_configure_surface(App *app, uint32_t w, uint32_t h) {
+static void lub_wgpu_configure_surface(App *app, uint32_t w, uint32_t h) {
     WGPUSurfaceConfiguration cfg = {
         .device = app->wgpu_device,
         .format = app->wgpu_surface_format,
@@ -1428,7 +1430,7 @@ static bool sk_init(App *app) {
     // emscripten_webgpu_get_device(). player.html is expected to
     // have already done `await navigator.gpu.requestAdapter().requestDevice()`
     // and assigned `Module.preinitializedWebGPUDevice = device` before
-    // loading sglua.js. If this returns NULL the page hasn't done that and
+    // loading lub.js. If this returns NULL the page hasn't done that and
     // there's nothing the C side can recover to.
     app->wgpu_device = emscripten_webgpu_get_device();
     if (!app->wgpu_device) {
@@ -1447,7 +1449,7 @@ static bool sk_init(App *app) {
     // <canvas id="canvas"> in player.html documented in the spec.
     WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas_src = {
         .chain = { .sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector },
-        .selector = sglua_wgpu_string("#canvas"),
+        .selector = lub_wgpu_string("#canvas"),
     };
     WGPUSurfaceDescriptor surf_desc = {
         .nextInChain = &canvas_src.chain,
@@ -1463,12 +1465,12 @@ static bool sk_init(App *app) {
     // sokol_gfx asserts on mismatch in begin_pass.
     app->wgpu_surface_format = WGPUTextureFormat_BGRA8Unorm;
 
-    int cw = sglua_canvas_width();
-    int ch = sglua_canvas_height();
+    int cw = lub_canvas_width();
+    int ch = lub_canvas_height();
     if (cw <= 0) cw = 480;
     if (ch <= 0) ch = 360;
-    sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-    if (!sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) return false;
+    lub_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
+    if (!lub_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) return false;
 
     sg_setup(&(sg_desc){
         .environment = {
@@ -1481,7 +1483,7 @@ static bool sk_init(App *app) {
                 .device = (const void*)app->wgpu_device,
             },
         },
-        .logger.func = sglua_sokol_logger,
+        .logger.func = lub_sokol_logger,
     });
     SDL_Log("[wgpu] sokol backend init OK: %dx%d", cw, ch);
     return true;
@@ -1519,8 +1521,8 @@ static void sk_shutdown(App *app) {
 }
 
 static void sk_begin_frame(App *app, int *out_w, int *out_h) {
-    int cw = sglua_canvas_width();
-    int ch = sglua_canvas_height();
+    int cw = lub_canvas_width();
+    int ch = lub_canvas_height();
     if (cw <= 0) cw = 480;
     if (ch <= 0) ch = 360;
 
@@ -1540,8 +1542,8 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
             wgpuTextureRelease(app->wgpu_swapchain_tex);
             app->wgpu_swapchain_tex = NULL;
         }
-        sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-        if (!sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
+        lub_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
+        if (!lub_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
             SDL_Log("sk_begin_frame: depth recreate failed during resize; skipping frame");
             if (out_w) *out_w = cw;
             if (out_h) *out_h = ch;
@@ -1564,8 +1566,8 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
         if (surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Outdated
          || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Lost
          || surf_tex.status == WGPUSurfaceGetCurrentTextureStatus_Timeout) {
-            sglua_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
-            if (!sglua_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
+            lub_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
+            if (!lub_wgpu_recreate_depth(app, (uint32_t)cw, (uint32_t)ch)) {
                 SDL_Log("sk_begin_frame: depth recreate failed during retry; skipping frame");
                 if (out_w) *out_w = cw;
                 if (out_h) *out_h = ch;
@@ -1589,7 +1591,7 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
         uint32_t sw = wgpuTextureGetWidth(surf_tex.texture);
         uint32_t sh = wgpuTextureGetHeight(surf_tex.texture);
         if ((int)sw != cw || (int)sh != ch) {
-            if (!sglua_wgpu_recreate_depth(app, sw, sh)) {
+            if (!lub_wgpu_recreate_depth(app, sw, sh)) {
                 SDL_Log("sk_begin_frame: depth recreate failed for swapchain %ux%u",
                         sw, sh);
             }

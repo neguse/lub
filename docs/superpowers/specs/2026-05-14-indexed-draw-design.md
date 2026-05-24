@@ -2,7 +2,7 @@
 
 ## ゴール
 
-sglua の描画経路に **indexed draw** を追加する。`use_buffer` の INDEX 型を実際に動作するパスにし、`draw` を indices 有無で内部分岐させる。両 backend (sokol / sdlgpu) で動作。golden 比較で決定的に固定。glTF メッシュ取扱いを始めとする後続作業の前提インフラ。
+lub の描画経路に **indexed draw** を追加する。`use_buffer` の INDEX 型を実際に動作するパスにし、`draw` を indices 有無で内部分岐させる。両 backend (sokol / sdlgpu) で動作。golden 比較で決定的に固定。glTF メッシュ取扱いを始めとする後続作業の前提インフラ。
 
 ## 非ゴール
 
@@ -158,15 +158,15 @@ tests/golden/test_indexed_draw_sdlgpu.png
 
 ```lua
 -- tests/lua/test_indexed_draw.lua (要点)
-local sg_io = dofile("samples/sg_io.lua")
+local lub_io = dofile("samples/lub_io.lua")
 
 function on_init()
-   config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+   config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function on_frame()
-   local vs = sg_io.load_text("tests/lua/test_indexed_draw.vs.slang")
-   local fs = sg_io.load_text("tests/lua/test_indexed_draw.fs.slang")
+   local vs = lub_io.load_text("tests/lua/test_indexed_draw.vs.slang")
+   local fs = lub_io.load_text("tests/lua/test_indexed_draw.fs.slang")
    use_shader("sh", vs, fs, 1)
 
    -- 4 corner verts of a quad

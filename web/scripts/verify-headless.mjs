@@ -22,7 +22,7 @@
 //   cd web && npm run verify   # in another
 //
 // Exit code: 0 on success, 1 on any failure. Screenshots are dropped in
-// /tmp/sglua-verify/ for offline inspection.
+// /tmp/lub-verify/ for offline inspection.
 //
 // Requires the `playwright` npm package and a chromium binary. We auto-detect
 // a few common paths.
@@ -32,14 +32,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PNG } from 'pngjs'
 
-const URL = process.env.SGLUA_URL || 'http://localhost:5173/'
+const URL = process.env.LUB_URL || 'http://localhost:5173/'
 const HEAD = process.env.HEADLESS !== '0'
 const WAIT_MS = Number(process.env.WAIT_MS || 20000)
 const VERBOSE = process.env.VERBOSE === '1'
-const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/sglua-verify'
+const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/lub-verify'
 // Single-file legacy SCREENSHOT path (Phase 6) — written as the first
-// shot to keep external tooling that grep'd /tmp/sglua-iframe.png happy.
-const LEGACY_SCREENSHOT = process.env.SCREENSHOT || '/tmp/sglua-iframe.png'
+// shot to keep external tooling that grep'd /tmp/lub-iframe.png happy.
+const LEGACY_SCREENSHOT = process.env.SCREENSHOT || '/tmp/lub-iframe.png'
 // How long to wait after a debounced edit for the next frame to draw with
 // the new content. 300ms debounce + a couple of frames + a margin to be
 // kind to swiftshader. Bump via DEBOUNCE_WAIT_MS for slower hosts.
@@ -101,7 +101,7 @@ if (!iframe) {
 }
 
 // Forward iframe log relays into the node console for failure forensics.
-await page.exposeFunction('__sgluaLog', (level, msg) => {
+await page.exposeFunction('__lubLog', (level, msg) => {
   logs.push({ level, msg })
   if (VERBOSE || level === 'err' || level === 'warn') {
     console.log(`IFRAME[${level}]`, msg)
@@ -111,7 +111,7 @@ await page.evaluate(() => {
   window.addEventListener('message', (e) => {
     const d = (e && e.data) || {}
     if (d && d.type === 'log') {
-      const fn = window.__sgluaLog
+      const fn = window.__lubLog
       if (fn) fn(d.level || 'log', String(d.msg == null ? '' : d.msg))
     }
   })
@@ -158,15 +158,15 @@ function classify(pngPath) {
 }
 
 // Drive the CodeMirror editor inside the parent page via the test hook
-// exposed by editor.ts (window.__sgluaTest.replaceContent). The hook swaps
+// exposed by editor.ts (window.__lubTest.replaceContent). The hook swaps
 // the active tab and dispatches a CM6 transaction, which triggers the same
 // onChange path a real keypress would — exactly what main.ts's debounced
 // syncDirtyNow watches for.
 async function selectTabAndReplace(filePath, newContent) {
   await page.evaluate(({ filePath, newContent }) => {
-    const hook = window.__sgluaTest
+    const hook = window.__lubTest
     if (!hook || typeof hook.replaceContent !== 'function') {
-      throw new Error('__sgluaTest hook not present (rebuild the web bundle?)')
+      throw new Error('__lubTest hook not present (rebuild the web bundle?)')
     }
     hook.replaceContent(filePath, newContent)
   }, { filePath, newContent })
@@ -189,7 +189,7 @@ console.log(`[verify] A1: waiting ${WAIT_MS}ms for shaders + frames...`)
 await page.waitForTimeout(WAIT_MS)
 
 const shot01 = await takeShot('01_initial.png')
-// Mirror to legacy /tmp/sglua-iframe.png for back-compat with Phase 6.
+// Mirror to legacy /tmp/lub-iframe.png for back-compat with Phase 6.
 try { fs.copyFileSync(shot01, LEGACY_SCREENSHOT) } catch {}
 const c1 = classify(shot01)
 console.log('[verify] A1 buckets', c1)
@@ -229,20 +229,20 @@ try {
 // ===== Test A3: lua edit (clear_color) ====================================
 // Patch the .lua tab so clear_color is a bright red instead of dark blue.
 
-const redClearLua = `local sg_io = require("sg_io")
+const redClearLua = `local lub_io = require("lub_io")
 local M = {}
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function M.on_event(e) end
 function M.on_quit() end
 
 function M.on_frame()
-    local vs, vsv = sg_io.load_text("samples/data/01_triangle.vs.slang")
-    local fs, fsv = sg_io.load_text("samples/data/01_triangle.fs.slang")
-    local verts, vv = sg_io.load_floats("samples/data/01_triangle.verts.lua")
+    local vs, vsv = lub_io.load_text("samples/data/01_triangle.vs.slang")
+    local fs, fsv = lub_io.load_text("samples/data/01_triangle.fs.slang")
+    local verts, vv = lub_io.load_floats("samples/data/01_triangle.verts.lua")
     if not vs or not fs or not verts then return end
     local s = use_shader("tri_shader", vs, fs, vsv ~ fsv)
     local b = use_buffer("tri_verts", VERTEX, verts, vv)
@@ -363,7 +363,7 @@ const sampleResults = {}
 // main.ts's restart() removes the existing iframe and appends a new one. To
 // avoid screenshotting the stale (about-to-be-detached) iframe we wait for an
 // iframe whose `src` query string contains a freshness token we ourselves
-// stamp in via window.__sgluaTest. Without it, headless chromium sometimes
+// stamp in via window.__lubTest. Without it, headless chromium sometimes
 // returns the screenshot of the previous render and the assertions look
 // identical across samples.
 //

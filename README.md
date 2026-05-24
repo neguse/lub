@@ -1,9 +1,22 @@
-# sglua (PoC)
+# lub
 
-Lua から扱える薄い 3D 描画ライブラリの PoC。SDL3 + Slang + Lua 5.5。
-GPU backend は **sokol_gfx (Vulkan)** と **SDL3 GPU API** の 2 系統を持ち、
-Lua の `config()` で切り替えられる (詳細は後述)。
-対応プラットフォームは Linux x86_64 と Windows x86_64。
+`lub` は、細部までこだわったゲーム体験を作るためのコード中心のゲーム開発環境。
+ゲームの動作を止めずにコード変更を即座に反映し、試行錯誤の速度を上げることを
+コアな価値に置く。
+
+runtime は C/C++ と既存ライブラリで組み、Lua を通して API を呼び出す。
+上位の script layer は Haxe で書き、Lua に transpile して hot reload する想定。
+特定のアセット形式や GUI editor に依存せず、ゲームを構成する状態、描画、
+入力、物理、音、debug 情報をコードから制御できる環境を目指す。
+
+現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend として
+**sokol_gfx (Vulkan/WebGPU)** と **SDL3 GPU API** の 2 系統を持つ。
+対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
+
+## ドキュメント
+
+- [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
+- [docs/roadmap.md](docs/roadmap.md): API を固めるための実装順序。
 
 ## ビルド
 
@@ -34,19 +47,18 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `sglua.exe`
+CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.exe`
 の横にコピーされるので、追加の PATH 設定なしで実行できる。
 
 ## 実行
 
 ```sh
-./build/sglua samples/01_triangle.lua
-./build/sglua samples/02_vertex_color.lua
-./build/sglua samples/03_texture.lua
-./build/sglua samples/04_mvp.lua
+./build/lub samples/01_triangle.lua
 ```
 
-(Windows は `.\build\sglua.exe samples\01_triangle.lua` 形式)
+(Windows は `.\build\lub.exe samples\01_triangle.lua` 形式)
+
+サンプルは `samples/*.lua` に置く。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
@@ -57,7 +69,8 @@ scripts/run-headless.sh samples/01_triangle.lua
 
 `scripts/run-headless.sh` は `VK_ICD_FILENAMES` で lavapipe ICD を強制し、
 `DISPLAY` / `WAYLAND_DISPLAY` が無ければ自動で `xvfb-run` でラップする。
-これにより CI / SSH / コンテナ環境でも sample 01〜04 が走る (Mesa lavapipe / AMD radv 双方で動作)。
+これにより CI / SSH / コンテナ環境でも native sample を走らせられる
+(Mesa lavapipe / AMD radv 双方で動作)。
 Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
 スクリーンショット capture (PNG 出力):
@@ -84,32 +97,32 @@ lavapipe + xvfb 環境では capture が確定的なので `cmp -s` で完全一
 
 ## Backend 切替
 
-sglua は内部に 2 つの GPU backend を持つ:
+lub は内部に 2 つの GPU backend を持つ:
 
 - `sokol` (default) — sokol_gfx (Vulkan)
 - `sdlgpu` — SDL3 GPU API (現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
 
 切替は Lua の `on_init` 内で `config({ backend = "sdlgpu" })` を呼ぶ。
-サンプルでは `arg[1]` または環境変数 `SGLUA_BACKEND` を見るパターン:
+サンプルでは `arg[1]` または環境変数 `LUB_BACKEND` を見るパターン:
 
 ```lua
 function on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 ```
 
 ```sh
 # default = sokol
-./build/sglua samples/01_triangle.lua
+./build/lub samples/01_triangle.lua
 
 # SDL3 GPU 経路
-SGLUA_BACKEND=sdlgpu ./build/sglua samples/01_triangle.lua
+LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle.lua
 
 # headless でも同じ
-SGLUA_BACKEND=sdlgpu scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
+LUB_BACKEND=sdlgpu scripts/run-headless.sh ./build/lub samples/01_triangle.lua
 ```
 
-どちらの backend でも 4 サンプル + capture が同一 Lua API で動く。
+どちらの backend でも同一 Lua API で sample と capture が動く。
 lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical** になる。
 
 ## Live edit (file watching)
@@ -119,7 +132,7 @@ lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical*
 
 仕組み:
 
-- 各サンプル冒頭で `samples/sg_io.lua` を `dofile` で読み込み、`load_text` /
+- 各サンプル冒頭で `lub_io` を `require` し、`load_text` /
   `load_floats` / `load_png` を経由してリソースを取得する。
 - helper は `path → {mtime, content_hash}` のキャッシュを持ち、毎フレームの
   `stat()` 1 回だけで「変化なし」を判定する。mtime 違い時のみ再読み込みして
@@ -148,7 +161,7 @@ shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) 
 # 1. WASM バイナリを生成 (Linux/macOS — emsdk が必要)
 source ~/emsdk/emsdk_env.sh             # emcc / emcmake を PATH に
 emcmake cmake -S . -B build/wasm        # WGPU + emdawnwebgpu port が configure される
-cmake --build build/wasm -j             # sglua.{js,wasm,data} が生成
+cmake --build build/wasm -j             # lub.{js,wasm,data} が生成
 
 # 2. JS 側の依存と slang-wasm を取得
 cd web
@@ -167,7 +180,7 @@ npm run build                           # web/dist/ に production bundle 生成
             │ CodeMirror editor          │   setFiles  │ slang-bridge.ts                  │
             │   path -> content table    │  ────────▶  │   window.slangCompile() を export │
             │ sample dropdown / restart  │  syncFiles  │ WebGPU device 取得 → preinit     │
-            │ debounce 300ms             │  ────────▶  │ sglua.js (Emscripten module)     │
+            │ debounce 300ms             │  ────────▶  │ lub.js (Emscripten module)     │
             └────────────────────────────┘  ◀─player──│   ↑ EM_ASYNC_JS bridge            │
                                             Ready/log │   ↑ FS.writeFile で MEMFS overlay │
                                                        │ sokol_gfx (WGPU) — canvas へ描画 │
@@ -184,16 +197,14 @@ shader compile は C 側 (`src/shader.cpp`) の `EM_ASYNC_JS` shim から
 区切りで pack して戻す。エラーは `'\x02' + msg` 形式で Slang diagnostic として
 err_buf に届く。
 
-MEMFS sync: iframe 側で Emscripten の data file package (`sglua.data`) をマウント
+MEMFS sync: iframe 側で Emscripten の data file package (`lub.data`) をマウント
 した直後に `FS.writeFile` でエディタ内容を上書きする (`player.ts` の `postPreload`
 hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
 `stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
 
 ### サンプル対応状況 (web)
 
-| Sample | Status |
-|--------|--------|
-| 01〜10 | ✓ ブラウザで動作 |
+web playground の対象 sample は `web/` 側の sample list と verify script で管理する。
 
 ### Browser requirements
 
@@ -212,10 +223,10 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 2. fragment shader を編集 → green になる
 3. lua の clear_color を編集 → 背景が red になる
 4. verts を縮小編集 → green pixel 数が減る
-5. sample 01〜10 を順に切替 → 各サンプルの非黒描画を確認
+5. 登録済み sample を順に切替 → 各サンプルの非黒描画を確認
 
-スクリーンショットは `/tmp/sglua-verify/` に出力される。CI 利用時は dev server を
-別ジョブで立ち上げてから `SGLUA_URL=http://...` を指定すること。
+スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
+別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。
 
 ### Live edit caveats
 
@@ -230,133 +241,6 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
   は可能だが capture API が同期 sync なので未実装 (`backend_sokol.c` の `sk_capture`
   が `false` を返す)。
 - **sdlgpu backend は web 非対応**。WGPU backend の sokol のみ。
-
-## サンプル
-
-| # | スクリプト              | 内容                                            |
-|---|-------------------------|-------------------------------------------------|
-| 1 | 01_triangle.lua         | 単色オレンジ三角形 (use_buffer / use_shader / draw / begin_pass) |
-| 2 | 02_vertex_color.lua     | 頂点カラー補間された三角形                      |
-| 3 | 03_texture.lua          | チェッカー柄テクスチャを貼った三角形 (use_texture) |
-| 4 | 04_mvp.lua              | 回転行列を uniform で渡す三角形                 |
-| 5 | 05_postprocess.lua      | offscreen render target に三角形 → 全画面 quad で色反転 + ヴィネット post process |
-| 6 | 06_deferred.lua         | MRT (2 color attachments) で G-buffer 風に色をペアで書き出し → swapchain pass で左右 split-screen に表示 |
-| 7 | 07_compute.lua          | compute shader で storage buffer に三角形の頂点を書き出し、同じバッファを VBO として draw |
-| 8 | 08_gltf.lua             | glTF mesh (Box.glb) を法線可視化 shader + 回転 MVP で描画 (load_gltf + interleave_pn + indexed draw) |
-| 9 | 09_breakout.lua         | ブロックくずし。左右/A/D でパドル移動、Space で発射、R でリセット |
-| 10 | 10_breakout3d.lua      | 3D ブロックくずし。cuboid / sphere を MVP + depth で描画 |
-| 11 | 11_shadow.lua          | offscreen shadow map (color target + depth target) で directional light の影を描画 |
-
-## API
-
-- `use_buffer(key, type, data, version)` — GPU buffer 宣言。`type` は `VERTEX` / `INDEX` / `STORAGE`。
-  - `VERTEX` / `STORAGE`: `data` は float の Lua table。`STORAGE` で `data` の代わりに float 数 (integer) を渡すと中身未初期化で割り当てる (compute shader が後で埋める前提)。`STORAGE` は VBO 兼用で作られるので、compute が書き出したバッファをそのまま draw の `verts` に渡せる。
-  - `INDEX`: `data` は Lua 数値 table。`(uint32_t)lua_tonumber` で truncate して u32 配列として GPU に格納する。小数/負値はそのまま truncate / wrap される (caller responsibility)。`draw` の `resources.indices` に渡す indexed buffer はこれで作る。
-  - 同 `version` なら再アップロードしない。
-- `use_texture(key, w, h, format, data, version, opts?)` — image + sampler を作成。`format` は `RGBA8` / `R8` / `RGBA16F` / `RGBA32F` / `DEPTH16` / `DEPTH24_STENCIL8` / `DEPTH32F`。`data` は `RGBA8` / `R8` 用の uint8 Lua table (省略可、`opts.target=true` の場合は nil 必須)。`opts` (省略可) は `{ filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target = bool }`。デフォルトは `LINEAR` / `REPEAT` / `false`。`target=true` で color format は color attachment + sampler、depth format は depth attachment として使える texture を宣言。
-- `use_shader(key, vs_src, fs_src, version)` — Slang shader を compile (`vs_main` / `fs_main` entry points)。SPIR-V を生成して reflection し、sokol_gfx (Vulkan) に渡す。
-- `use_shader_compute(key, cs_src, version)` — compute shader を compile (`cs_main` entry point)。`[numthreads(...)]` で threadgroup を指定。`dispatch` で呼ぶ。
-- `begin_pass({ target = main_tex | texRef, clear_color = {r,g,b,a}, depth_target = depthTex?, clear_depth = 1 })` / `end_pass()` — pass 制御。`target` は `main_tex` (swapchain) または color target texture。`depth_target` には depth target texture を指定できる。`target` を省略して `depth_target` だけ指定すると depth-only pass になる。swapchain pass は従来通り内部 depth/stencil を使う。
-- `begin_pass({ targets = {texRef1, texRef2, ...}, clear_colors = {{r,g,b,a}, ...}, depth_target = depthTex? })` — MRT (Multi Render Target) 形式の offscreen pass (Sample 6)。最大 `SGL_MAX_COLOR_TARGETS` (= 4) 個まで。全 color target と depth target は同サイズで、各々 `use_texture(..., {target=true})` で宣言済みであること。fragment shader 側は `SV_Target0` / `SV_Target1` / ... を出力する。
-- `draw(count, resources, options)` — 描画コマンド。
-  - `count` はプリミティブカウント: `resources.indices` があれば index 数、無ければ vertex 数。
-  - `resources` は名前付き table: `{ verts = bufferRef, indices = bufferRef, diffuse = textureRef, uniforms = { mvp = {...floats} } }`。
-    - `verts` は VERTEX または STORAGE 型 buffer。
-    - `indices` は任意。INDEX 型 buffer を渡すと u32 indexed draw に切り替わる (`SGL_BUFFER_INDEX` 以外を渡すと Lua エラー)。
-    - テクスチャの名前はシェーダ側のリフレクションに突き合わせる。
-    - uniform は uniform block の最初のものに pack される。
-  - `options` は `{ shader = shaderRef, blend, depth, depth_write, cull, primitive }`。`shader` だけ必須。
-- `dispatch(x, y, z, resources, options)` — compute dispatch。`begin_pass`/`end_pass` の外側で呼ぶこと。`resources` は `{ buffer_name = bufferRef, uniforms = {...} }` で、shader 側 reflection の名前と突き合わせて binding を解決する。`options.shader` には compute shader ref が必須。PoC では RW storage buffer (`RWStructuredBuffer<...>`) 1〜N 個 + uniform block 1 個まで。read-only storage buffer / storage texture は未対応。
-- `capture(path)` — 次フレーム終了時に swapchain image を PNG として `path` に書き出してアプリを終了する。CLI フラグ `--capture <path>` (任意で `--capture-frame N`、デフォルト 30) でも同等。
-- `key_down(name)` — 現在押されているキーを bool で返す。`"left"` / `"right"` / `"space"` / `"r"` / `"a"` / `"d"` などを指定できる。
-
-### Live edit helpers
-
-- `file_mtime(path)` — ファイルの mtime をナノ秒単位の整数で返す。存在しなければ nil。
-- `fnv1a64(s)` — 文字列の FNV-1a 64-bit ハッシュを整数で返す。`use_*` の `version` 引数に流すための content-hash 用途。
-- `load_png(path)` — stb_image で PNG を RGBA8 にデコードして `(bytes_table, w, h, fmt)` を返す。失敗時は nil。
-- `load_gltf(path)` — cgltf で glTF 2.0 (`.glb` / `.gltf`) を読み、`mesh[0].primitives[0]` のみを抽出。返り値は `{ positions, normals?, uvs?, indices?, vert_count, index_count }` 形式の Lua table。triangle primitive 以外 / POSITION 欠落は nil を返してログ出力。TANGENT / COLOR_0 / JOINTS / WEIGHTS / TEXCOORD_1+ は無視。indices は size に応じて u8/u16/u32 を Lua integer に統一して返す。
-- 高レベルラッパ: `samples/sg_io.lua` (`load_text` / `load_floats` / `load_png` / `load_gltf` / `interleave_pn`) — mtime fast-path + content hash キャッシュ。`load_gltf` ラッパは parsed mesh table + content-hash version を返す。`interleave_pn(mesh)` は pos3+normal3 を stride 6 で interleave して `use_buffer(VERTEX, ...)` 向けの平 float table を返す (sample 08 で使用)。詳細は「Live edit」セクション。
-
-エントリポイント: Lua 側で `on_init` / `on_frame` / `on_event` / `on_quit` の global 関数を定義すると呼ばれる。
-
-## 未実装 (将来)
-
-- リソース sweep (フレーム未参照の自動破棄)
-- macOS 対応 (MoltenVK 経由 or SDL3 GPU の Metal backend 経由)
-
-## アーキテクチャ
-
-GPU 操作は `RenderBackend` vtable に集約され、`backend_sokol` / `backend_sdlgpu` の
-2 実装を切替えて使う。`pass.c` / `pipeline.c` / `resources.c` / `capture.c` は
-backend を呼び出す薄い glue になっている。
-
-```
-src/
-├── main.c            SDL3 main callbacks エントリ + argv (--capture)
-├── app.{h,c}         App 状態 (SDL window + 選択 backend、lifecycle)
-├── lua_api.{h,c}     Lua bindings (config, use_*, begin_pass, end_pass, draw, capture)
-├── enums.h           SglBufferType / SglPixelFormat / ... の C-side enum
-├── enums_lua.{h,c}   それらを Lua グローバルに登録
-├── backend.h         RenderBackend interface (vtable + opaque handles)
-├── backend_sokol.c   sokol_gfx (Vulkan) + 直叩き Vulkan 実装 (instance/device/swapchain も保持)
-├── backend_sdlgpu.c  SDL3 GPU API (SDL_GPUDevice / SDL_GPUBuffer / ...) 実装
-├── pass.{h,c}        現フレームの pass state (backend に begin/end を委譲)
-├── resources.{h,c}   key → ResEntry のハッシュマップ (buffer/texture/shader)
-├── shader.h, shader.cpp   Slang compile (SPIR-V) + reflection + sdlgpu 用 combined-sampler patcher
-├── pipeline.{h,c}    pipeline state hash → backend pipeline cache
-├── capture.{h,c}     swapchain texture を PNG として書き出す (backend ごとの read-back)
-└── sokol_impl.c      SOKOL_GFX_IMPL の TU (SOKOL_VULKAN backend)
-```
-
-```
-scripts/
-├── run-headless.sh   VK_ICD_FILENAMES=lavapipe + xvfb-run wrapper
-└── run-golden.sh     tests/golden/<sample>_<backend>.png と cmp
-```
-
-依存:
-- `third_party/sokol/sokol_gfx.h` — single-header (vendored)、`SOKOL_VULKAN` backend
-- `third_party/slang/` — Slang prebuilt (`include/` vendored、`lib/` と Windows のみ `bin/`
-  は CMake configure 時に GitHub release から自動取得; gitignore 対象)、SPIR-V を target
-- `third_party/stb/stb_image_write.h` — single-header (vendored)、PNG 出力 (capture)
-- `third_party/stb/stb_image.h` — single-header (vendored)、PNG 入力 (`load_png`)
-- `third_party/cgltf/cgltf.h` — single-header (vendored)、MIT、glTF 2.0 parser
-- SDL3 — CMake FetchContent (`SDL_WINDOW_VULKAN` + `SDL_Vulkan_*` API)
-- Vulkan loader (`libvulkan.so` / `vulkan-1.dll`) — system 提供
-- Lua 5.5 — CMake FetchContent (static lib build)
-
-## Known issues
-
-### sokol backend
-
-- **Depth/stencil format mismatch** (`VUID-vkCmdDraw-dynamicRenderingUnusedAttachments-08914` /
-  `08917`): `src/backend_sokol.c` で D24_UNORM_S8_UINT を depth attachment に選んでいるが
-  sokol 内部は `SG_PIXELFORMAT_DEPTH_STENCIL` を D32_SFLOAT_S8_UINT に解決する。
-  validation 警告は出るが描画自体は通る。fix は backend 側で `D32_SFLOAT_S8_UINT` を
-  選ぶか pipeline.c に depth format を渡す方向。
-- **Single-pair semaphore reuse** (`VUID-vkAcquireNextImageKHR-semaphore-01779`,
-  `VUID-vkQueueSubmit-pSignalSemaphores-00067`): `vk_acquire_sem` / `vk_present_sem` を
-  全フレームで再利用しているため、複数フレーム並列対応の前提では推奨されない。
-  fix は per-image semaphore array か `VK_KHR_swapchain_maintenance1` の利用。
-- **Window resize 未対応**: swapchain recreate (`VK_ERROR_OUT_OF_DATE_KHR`) を
-  キャッチしていない。リサイズすると以後のフレームが broken になる可能性。
-
-### sdlgpu backend
-
-- **`VUID-vkCmdCopyImageToBuffer-srcImage-00186`** など SDL_GPU + lavapipe での
-  capture 時 validation warning: SDL_GPU swapchain texture に
-  `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` が立っていないため。capture 自体は機能して
-  PNG は両 backend で byte-identical。SDL3 upstream の対応待ち。
-- **Combined image sampler の単一ペア制約**: sokol path は分離 `SAMPLED_IMAGE` +
-  `SAMPLER` で受けるが、SDL_GPU は `COMBINED_IMAGE_SAMPLER` を要求するため、
-  `src/shader.cpp` に sdlgpu 限定の SPIR-V combined-sampler 合成 patcher が入っている。
-  現状は単一の texture+sampler ペアのみサポート (multi-pair fragment shader は
-  patcher が bail)。将来 multi-pair / 配列 / `OpImageGather` 等への対応は拡張課題。
-- **swapchain texture NULL の頻発 (Windows)**: SDL3 GPU の `SDL_AcquireGPU-`
-  `SwapchainTexture` が起動直後の数十フレームに渡って NULL を返すケースがある
-  (SDL3 仕様上エラーではない)。指定フレームでの単発 capture が空振りすると困るので、
-  `src/capture.c` で次フレームへ最大 120 回まで自動 slip する。
 
 ## ライセンス
 

@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf)
 BACKENDS=(sokol sdlgpu)
 FRAME=30
-BINARY=./build/sglua
+BINARY=./build/lub
 GOLDEN_DIR=tests/golden
 
 update=0
@@ -64,7 +64,7 @@ for sample in "${SAMPLES[@]}"; do
         out="$tmpdir/${sample}_${backend}.png"
         golden="$GOLDEN_DIR/${sample}_${backend}.png"
 
-        SGLUA_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
+        LUB_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
             "samples/${sample}.lua" --capture "$out" --capture-frame "$FRAME" \
             >"$tmpdir/${sample}_${backend}.log" 2>&1
 

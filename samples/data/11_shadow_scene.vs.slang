@@ -1,5 +1,5 @@
-#ifndef SGLUA_11_SHADOW_SCENE_UNIFORMS
-#define SGLUA_11_SHADOW_SCENE_UNIFORMS
+#ifndef LUB_11_SHADOW_SCENE_UNIFORMS
+#define LUB_11_SHADOW_SCENE_UNIFORMS
 struct ShadowSceneUniforms {
     float4x4 mvp;
     float4x4 light_mvp;

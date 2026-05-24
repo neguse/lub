@@ -1,4 +1,4 @@
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 
 local M = {}
 
@@ -369,7 +369,7 @@ local function make_mvp(t)
 end
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
     reset_game()
 end
 
@@ -380,8 +380,8 @@ function M.on_frame()
     camera_t = camera_t + DT
     update_game()
 
-    local vs, vsv = sg_io.load_text("samples/data/10_breakout3d.vs.slang")
-    local fs, fsv = sg_io.load_text("samples/data/10_breakout3d.fs.slang")
+    local vs, vsv = lub_io.load_text("samples/data/10_breakout3d.vs.slang")
+    local fs, fsv = lub_io.load_text("samples/data/10_breakout3d.fs.slang")
     if not vs or not fs then return end
 
     local verts = build_vertices()

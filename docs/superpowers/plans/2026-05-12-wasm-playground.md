@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** sglua の sample 01〜07 をブラウザで走らせ、編集に応じて debounce auto-sync で即時反映する WebGPU playground を作る。
+**Goal:** lub の sample 01〜07 をブラウザで走らせ、編集に応じて debounce auto-sync で即時反映する WebGPU playground を作る。
 
 **Architecture:** Emscripten で sokol_gfx の `SOKOL_WGPU` backend をビルド、Slang は `@shader-slang/slang-wasm` (JS) 経由で `EM_ASYNC_JS` ブリッジ。フロントは Vite + TypeScript + CodeMirror 6 で multi-tab editor、player は iframe (`/player.html`) に隔離し parent → MEMFS の片方向 sync で生かす。entry Lua は lume.hotswap で mtime-poll hotswap、shader/verts/texture は既存 version 機構が拾う。
 
@@ -46,7 +46,7 @@
 | `src/backend_sokol.c` | Vulkan 直叩きを `#ifndef __EMSCRIPTEN__` で囲う |
 | `src/sokol_impl.c` | (define は CMake から付与、コード変更なし) |
 | `samples/01_triangle.lua` 〜 `07_compute.lua` | module table 返却型に統一 |
-| `samples/sg_io.lua` | `dofile` から `require` パターンへ (既に `return M` なので呼び出し側変更だけ) |
+| `samples/lub_io.lua` | `dofile` から `require` パターンへ (既に `return M` なので呼び出し側変更だけ) |
 | `README.md` | wasm build と playground 起動手順を追記 |
 
 ---
@@ -55,15 +55,15 @@
 
 > hotswap の前提として、各サンプルを module table 返却型に揃え、C 側の dispatch を `lua_getglobal` から module table の field 呼出に変える。Web 作業に入る前にここを native で動く状態に確定する。
 
-### Task 0.1: `samples/sg_io.lua` を require で読めるように `package.path` 経由化
+### Task 0.1: `samples/lub_io.lua` を require で読めるように `package.path` 経由化
 
 **Files:**
-- Modify: `samples/sg_io.lua:1-86` (中身そのまま、ファイル末尾の `return M` を維持)
-- 各 `samples/0?_*.lua` の `dofile("samples/sg_io.lua")` を `require("sg_io")` に変更 (Task 0.2 と 0.3 で行う)
+- Modify: `samples/lub_io.lua:1-86` (中身そのまま、ファイル末尾の `return M` を維持)
+- 各 `samples/0?_*.lua` の `dofile("samples/lub_io.lua")` を `require("lub_io")` に変更 (Task 0.2 と 0.3 で行う)
 
-`sg_io.lua` は既に module pattern なので変更不要。`package.path` の整備は Task 0.4 で boot.lua 経由で行う。
+`lub_io.lua` は既に module pattern なので変更不要。`package.path` の整備は Task 0.4 で boot.lua 経由で行う。
 
-- [ ] **Step 1: package.path 整備が完了するまで一時的に dofile を維持していい確認** — `samples/sg_io.lua` 自体は変更不要。
+- [ ] **Step 1: package.path 整備が完了するまで一時的に dofile を維持していい確認** — `samples/lub_io.lua` 自体は変更不要。
 
 ### Task 0.2: 全 sample を module table 返却型に書き換え
 
@@ -80,12 +80,12 @@
 
 ```lua
 -- 旧
-local sg_io = dofile("samples/sg_io.lua")
+local lub_io = dofile("samples/lub_io.lua")
 function on_init() ... end
 function on_frame() ... end
 
 -- 新
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 local M = {}
 function M.on_init(self) ... end
 function M.on_frame(self) ... end
@@ -98,20 +98,20 @@ return M
 
 ```lua
 -- samples/01_triangle.lua
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 local M = {}
 
 function M.on_init(self)
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function M.on_event(self, e) end
 function M.on_quit(self) end
 
 function M.on_frame(self)
-    local vs, vsv = sg_io.load_text("samples/data/01_triangle.vs.slang")
-    local fs, fsv = sg_io.load_text("samples/data/01_triangle.fs.slang")
-    local verts, vv = sg_io.load_floats("samples/data/01_triangle.verts.lua")
+    local vs, vsv = lub_io.load_text("samples/data/01_triangle.vs.slang")
+    local fs, fsv = lub_io.load_text("samples/data/01_triangle.fs.slang")
+    local verts, vv = lub_io.load_floats("samples/data/01_triangle.verts.lua")
     if not vs or not fs or not verts then return end
     local s = use_shader("tri_shader", vs, fs, vsv ~ fsv)
     local b = use_buffer("tri_verts", VERTEX, verts, vv)
@@ -125,7 +125,7 @@ return M
 
 - [ ] **Step 2: 同じパターンで `02_vertex_color.lua` 〜 `07_compute.lua` を書き換え**
 
-各ファイルの旧 global 関数 (`on_init` / `on_frame` / `on_event` / `on_quit`) を `M.on_init(self)` 等に詰め替え、最初の `dofile(...)` を `require("sg_io")` にする。最後に `return M` を追加。中身の動作ロジックは変えない。
+各ファイルの旧 global 関数 (`on_init` / `on_frame` / `on_event` / `on_quit`) を `M.on_init(self)` 等に詰め替え、最初の `dofile(...)` を `require("lub_io")` にする。最後に `return M` を追加。中身の動作ロジックは変えない。
 
 - [ ] **Step 3: ビルドはまだ通らない (C 側がまだ global を見ているため)。コミットは Task 0.3 と一緒に行う** ので一旦コミットしない。
 
@@ -339,7 +339,7 @@ git commit -m "refactor(samples): return module table; lua dispatch via registry
 
 ## Phase 1: Entry Lua の mtime-poll hotswap (native)
 
-> 既存の shader/verts/texture mtime-poll は `samples/sg_io.lua` 側で動いている。 entry .lua はまだ未対応なので、`app.c` で frame ごとに poll し、変化していたら `lume.hotswap` を呼ぶ。
+> 既存の shader/verts/texture mtime-poll は `samples/lub_io.lua` 側で動いている。 entry .lua はまだ未対応なので、`app.c` で frame ごとに poll し、変化していたら `lume.hotswap` を呼ぶ。
 
 ### Task 1.1: App に hotswap state を追加
 
@@ -371,7 +371,7 @@ g_app.entry_mtime_cache = 0;
 ### Task 1.2: `file_mtime` を C から呼べる helper にする
 
 **Files:**
-- 確認のみ: `src/lua_api.c` で `file_mtime` Lua API は既にある (使用例: sg_io.lua)
+- 確認のみ: `src/lua_api.c` で `file_mtime` Lua API は既にある (使用例: lub_io.lua)
 
 Lua から C 関数を呼んでファイルの mtime を取る。C から直接 mtime を取る既存 helper があるか確認 — 無ければ追加。
 
@@ -451,7 +451,7 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
 
 ```bash
 cmake --build build -j
-./build/sglua samples/01_triangle.lua
+./build/lub samples/01_triangle.lua
 ```
 
 - [ ] **Step 2: 別ターミナルから `samples/01_triangle.lua` を編集** (例: `clear_color` を変える、`{0.1, 0.5, 0.2, 1}` など)
@@ -478,14 +478,14 @@ git commit -m "feat(hotreload): poll entry lua mtime and lume.hotswap each frame
 
 - [ ] **Step 1: EMSCRIPTEN 検出と source list 分岐**
 
-`add_executable(sglua ...)` の前で sources を変数化:
+`add_executable(lub ...)` の前で sources を変数化:
 
 ```cmake
 if(EMSCRIPTEN)
-    set(SGLUA_WASM ON)
+    set(LUB_WASM ON)
 endif()
 
-set(SGLUA_SOURCES
+set(LUB_SOURCES
     src/main.c
     src/app.c
     src/sokol_impl.c
@@ -498,58 +498,58 @@ set(SGLUA_SOURCES
     src/backend_sokol.c
     src/stb_impl.c
 )
-if(NOT SGLUA_WASM)
-    list(APPEND SGLUA_SOURCES src/capture.c src/backend_sdlgpu.c)
+if(NOT LUB_WASM)
+    list(APPEND LUB_SOURCES src/capture.c src/backend_sdlgpu.c)
 endif()
 
-add_executable(sglua ${SGLUA_SOURCES})
+add_executable(lub ${LUB_SOURCES})
 ```
 
-- [ ] **Step 2: `find_package(Vulkan REQUIRED)` を `if(NOT SGLUA_WASM)` で囲う**
+- [ ] **Step 2: `find_package(Vulkan REQUIRED)` を `if(NOT LUB_WASM)` で囲う**
 
 ```cmake
-if(NOT SGLUA_WASM)
+if(NOT LUB_WASM)
     find_package(Vulkan REQUIRED)
 endif()
 ```
 
 - [ ] **Step 3: Slang prebuilt fetch を WASM では skip**
 
-既存の `if(NOT EXISTS "${_slang_lib_marker}") ... endif()` 全体を `if(NOT SGLUA_WASM)` で囲う。
+既存の `if(NOT EXISTS "${_slang_lib_marker}") ... endif()` 全体を `if(NOT LUB_WASM)` で囲う。
 
 - [ ] **Step 4: target link libraries を分岐**
 
 ```cmake
-target_link_libraries(sglua PRIVATE
+target_link_libraries(lub PRIVATE
     SDL3::SDL3
     lua_static
 )
-if(NOT SGLUA_WASM)
-    target_link_libraries(sglua PRIVATE slang Vulkan::Vulkan)
-    target_link_directories(sglua PRIVATE third_party/slang/lib)
+if(NOT LUB_WASM)
+    target_link_libraries(lub PRIVATE slang Vulkan::Vulkan)
+    target_link_directories(lub PRIVATE third_party/slang/lib)
 endif()
-if(UNIX AND NOT SGLUA_WASM)
-    target_link_libraries(sglua PRIVATE m dl)
+if(UNIX AND NOT LUB_WASM)
+    target_link_libraries(lub PRIVATE m dl)
 endif()
 ```
 
 - [ ] **Step 5: backend defines を分岐**
 
 ```cmake
-# 末尾の target_compile_definitions(sglua PRIVATE SOKOL_VULKAN) を:
-if(SGLUA_WASM)
-    target_compile_definitions(sglua PRIVATE SOKOL_WGPU)
+# 末尾の target_compile_definitions(lub PRIVATE SOKOL_VULKAN) を:
+if(LUB_WASM)
+    target_compile_definitions(lub PRIVATE SOKOL_WGPU)
 else()
-    target_compile_definitions(sglua PRIVATE SOKOL_VULKAN)
+    target_compile_definitions(lub PRIVATE SOKOL_VULKAN)
 endif()
 ```
 
 - [ ] **Step 6: WASM 用 link options + preload**
 
 ```cmake
-if(SGLUA_WASM)
-    set_target_properties(sglua PROPERTIES SUFFIX ".js")
-    target_link_options(sglua PRIVATE
+if(LUB_WASM)
+    set_target_properties(lub PROPERTIES SUFFIX ".js")
+    target_link_options(lub PRIVATE
         -sASYNCIFY
         -sUSE_WEBGPU=1
         -sALLOW_MEMORY_GROWTH=1
@@ -679,7 +679,7 @@ emcmake cmake --preset wasm-debug
 cmake --build build/wasm -j
 ```
 
-期待: 成功して `build/wasm/sglua.{js,wasm,data}` が生成される。link error は読んで都度修正 (例: SDL3 が emscripten target を選んでない、`-sUSE_SDL=3` の追加が必要等)。
+期待: 成功して `build/wasm/lub.{js,wasm,data}` が生成される。link error は読んで都度修正 (例: SDL3 が emscripten target を選んでない、`-sUSE_SDL=3` の追加が必要等)。
 
 - [ ] **Step 3: SDL3 が emscripten で正しくビルドされるか問題があれば調整**
 
@@ -715,10 +715,10 @@ sokol_gfx の WGPU backend は `emscripten_webgpu_get_device()` で device を�
 #include <emscripten/emscripten.h>
 #include <emscripten/html5_webgpu.h>
 
-EM_JS(int, sglua_get_canvas_width, (), {
+EM_JS(int, lub_get_canvas_width, (), {
     return (window._canvasWidth || 480) | 0;
 });
-EM_JS(int, sglua_get_canvas_height, (), {
+EM_JS(int, lub_get_canvas_height, (), {
     return (window._canvasHeight || 360) | 0;
 });
 
@@ -754,13 +754,13 @@ static bool sokol_init_wgpu(App *app) {
 ### Task 3.2: 一旦 link & 動作確認用の最小 HTML
 
 **Files:**
-- 一時的に `build/wasm/sglua.html` を browser で開いて動作確認 (emcc が自動生成する shell)
+- 一時的に `build/wasm/lub.html` を browser で開いて動作確認 (emcc が自動生成する shell)
 
 - [ ] **Step 1: 最小確認**
 
 ```bash
 cd build/wasm && python3 -m http.server 8000
-# ブラウザで http://localhost:8000/sglua.html を開く
+# ブラウザで http://localhost:8000/lub.html を開く
 ```
 
 期待: WebGPU device 取得まで進む、shader compile で stub の "not implemented" ログが出る、画面はクリアカラー (黒) だけが出る。コンソールにエラーが大量に出ても OK (Slang stub 状態なので)。
@@ -825,7 +825,7 @@ bool reflect_from_slang_json(const char* json, ShaderReflection& out);
 // 戻り値は malloc された JSON 文字列ポインタ。"\n" の手前が status ("ok" or "error")、
 // それ以降が { wgsl, reflect_json } または error message を含む JSON。
 // シンプル化: 成功時は wgsl と reflect_json を null 区切りで詰めて返す、失敗時は NULL。
-EM_ASYNC_JS(char*, sglua_slang_compile, (const char* src, const char* entry, int stage), {
+EM_ASYNC_JS(char*, lub_slang_compile, (const char* src, const char* entry, int stage), {
     const srcStr = UTF8ToString(src);
     const entryStr = UTF8ToString(entry);
     const result = await window.slangCompile(srcStr, entryStr, stage);
@@ -851,7 +851,7 @@ Task 2.4 で入れた stub の場所を:
 #ifdef __EMSCRIPTEN__
 bool compile_shader_to_wgsl(const char* src, const char* entry, int stage,
                             std::string& out_wgsl, ShaderReflection& out_refl) {
-    char* blob = sglua_slang_compile(src, entry, stage);
+    char* blob = lub_slang_compile(src, entry, stage);
     if (!blob) return false;
     std::string s(blob);
     free(blob);
@@ -939,7 +939,7 @@ git commit -m "feat(shader): EM_ASYNC_JS bridge to slang-wasm; reflection abstra
 
 ```json
 {
-  "name": "sglua-playground",
+  "name": "lub-playground",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -1008,7 +1008,7 @@ export default defineConfig({
               : 'application/octet-stream')
           res.end(readFileSync(filePath))
         })
-        // sglua.{js,wasm,data} を build/wasm から serve
+        // lub.{js,wasm,data} を build/wasm から serve
         server.middlewares.use('/wasm', (req, res, next) => {
           const filePath = resolve(__dirname, '../build/wasm', req.url?.slice(1) || '')
           if (!existsSync(filePath)) return next()
@@ -1036,7 +1036,7 @@ export default defineConfig({
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>sglua playground</title>
+  <title>lub playground</title>
   <style>
     body { margin: 0; display: grid; grid-template-columns: 1fr 1fr; height: 100vh; font-family: sans-serif; }
     #left  { display: flex; flex-direction: column; }
@@ -1127,12 +1127,12 @@ export default defineConfig({
           preRun: [() => {
             for (const [p, c] of Object.entries(pendingFiles))
               writeFileEnsureDir(p.startsWith('samples/') ? p : 'samples/' + p, c)
-            window._sglua_entry_module = pendingEntry
+            window._lub_entry_module = pendingEntry
           }],
           arguments: [pendingEntry],
         }
         const script = document.createElement('script')
-        script.src = '/wasm/sglua.js'
+        script.src = '/wasm/lub.js'
         document.body.appendChild(script)
       } else if (e.data.type === 'syncFiles') {
         if (!window.FS) return

@@ -10,9 +10,9 @@ bool app_init(App *app) {
     // Window creation flag set: native asks for a Vulkan-capable surface so
     // SDL_Vulkan_* APIs work; wasm just needs the canvas-backed default.
 #ifdef __EMSCRIPTEN__
-    app->window = SDL_CreateWindow("sglua", 1280, 720, SDL_WINDOW_RESIZABLE);
+    app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
 #else
-    app->window = SDL_CreateWindow("sglua", 1280, 720,
+    app->window = SDL_CreateWindow("lub", 1280, 720,
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 #endif
     if (!app->window) {

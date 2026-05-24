@@ -2,19 +2,19 @@
 -- 4 頂点 quad を 6 index で indexed draw する最小テスト。
 -- vertex 重複なしで quad を成立させられることが indexed draw の動作確認になる。
 
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 local M = {}
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function M.on_event(e) end
 function M.on_quit() end
 
 function M.on_frame()
-    local vs, ver_vs = sg_io.load_text("tests/lua/test_indexed_draw.vs.slang")
-    local fs, ver_fs = sg_io.load_text("tests/lua/test_indexed_draw.fs.slang")
+    local vs, ver_vs = lub_io.load_text("tests/lua/test_indexed_draw.vs.slang")
+    local fs, ver_fs = lub_io.load_text("tests/lua/test_indexed_draw.fs.slang")
     if not vs or not fs then return end
     local s = use_shader("sh", vs, fs, ver_vs ~ ver_fs)
 

@@ -141,5 +141,5 @@ void app_shutdown(App *app);
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision on
 // POSIX, seconds * 1e9 on Windows). Returns 0 if the file does not exist or
 // stat fails. Used by both the C-side entry-Lua mtime poll in app_frame_begin
-// and the `file_mtime` Lua binding consumed by samples/sg_io.lua.
+// and the `file_mtime` Lua binding consumed by samples/lub_io.lua.
 int64_t app_file_mtime_ns(const char *path);

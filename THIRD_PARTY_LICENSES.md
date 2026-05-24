@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-sglua bundles or links the following third-party components.
+lub bundles or links the following third-party components.
 
 ## Vendored single-header / sources
 

@@ -61,9 +61,9 @@ export function attachEditor(container: HTMLElement,
   // private API. A handful of read/write hooks keeps the test code honest.
   //
   // Gated to dev/test builds only so production bundles don't ship the hook
-  // (verified by grepping for __sgluaTest in web/dist after `npm run build`).
+  // (verified by grepping for __lubTest in web/dist after `npm run build`).
   if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
-    ;(window as any).__sgluaTest = {
+    ;(window as any).__lubTest = {
       selectTab,
       replaceContent(filePath: string, newContent: string) {
         selectTab(filePath)

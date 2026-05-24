@@ -1,0 +1,86 @@
+# lub Design
+
+lub は、細部までこだわったゲーム体験を作るためのコード中心のゲーム開発環境である。
+最重要の価値は、ゲームを止めずに変更を反映し、トライアンドエラーを極限まで速くすること。
+
+## Why
+
+AI が自動生成する平均的な体験ではなく、人間が細部まで調整しきった体験を作れる環境がほしい。
+そのためには、asset、描画、入力、物理、音、診断情報をコードから直接制御でき、変更が即座に動作へ反映される必要がある。
+
+lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が自分のゲームに必要なデータ構造と workflow をコードで組める余地を残す。
+
+## To Be
+
+- ゲームをコード中心に組み立てられる。
+- 実行中のゲームを止めずに、コードや asset の変更を即座に反映できる。
+- runtime 基盤は C/C++ と既存ライブラリを再利用し、移植性と native integration を保つ。
+- 3D graphics を標準の描画基盤として持ち、2D game もその上で自然に扱える。
+- core API は最小の固い primitive に絞る。
+- core API の外側は runtime 外の Lua library と app code が担う。
+
+## Non-Goals
+
+- 既存 framework / engine の API 互換。
+- 特定ゲームの元実装をそのまま載せるための alias や shortcut。
+- 分業用 GUI authoring tool。
+- 実行時 performance の最大化。大量 object や巨大 scene の処理は主目的ではない。
+- AI ベース開発にしか役に立たない機能。
+
+## Core API Boundary
+
+lub core は、runtime が所有しなければ一貫性を保てない primitive だけを持つ。
+それ以外は runtime API にしない。
+
+core が所有するもの:
+
+- 実行の境界: 起動、終了、frame、time step。
+- 外部状態の snapshot: 入力や環境状態を frame 内で一貫して読むための境界。
+- resource identity: resource の名前、寿命、version、reload の一貫性。
+- backend abstraction: platform/backend 差分を Lua 側へ漏らさないための command 境界。
+- diagnostics: runtime 内部状態を観測し、再現と検証に使える情報。
+
+core が所有しないもの:
+
+- gameplay semantics。
+- content semantics。
+- application workflow。
+- compatibility surface。
+- authoring tools。
+
+同じ処理が複数箇所で必要になっても、それだけでは core に入れない。
+runtime invariant、resource lifetime、backend abstraction、hot reload、diagnostics のどれかを runtime が守る必要がある場合だけ core API として扱う。
+
+API の細かいシグネチャや binding の制約は、この文書ではなく実装側に置く。
+現時点の一次情報は `src/lua_api.c` と `src/enums_lua.c`。
+
+## Runtime Shape
+
+```mermaid
+flowchart TB
+    app["application layer"]
+    lua["Lua core API"]
+    runtime["runtime core"]
+    backend["backend boundary"]
+    libs["native libraries"]
+
+    app --> lua
+    lua --> runtime
+    runtime --> backend
+    runtime --> libs
+```
+
+`RenderBackend` vtable で backend 差分を閉じ込め、Lua core API には漏らさない。
+`pass.c` / `pipeline.c` / `resources.c` / `capture.c` は backend を呼び出す glue に留める。
+
+`diag` は core API に置く。
+log、capture、resource dump、runtime state dump のような情報取得は、人間の debug と自動検証の両方で必要になるため。
+
+## Current Constraints
+
+- resource sweep はまだない。
+- macOS は未対応。
+- WebGPU は sokol backend のみ。sdlgpu backend は native 専用。
+- native capture / golden は動くが、WebGPU readback はまだ runtime API になっていない。
+- sokol Vulkan path には depth/stencil format と semaphore reuse の validation warning が残っている。
+- SDL GPU path は combined image sampler 周辺に制約がある。

@@ -2,7 +2,7 @@
 
 ## ゴール
 
-sglua の sample 01〜07 を **ブラウザ上で走らせるデモページ** を作る。同ページ内に
+lub の sample 01〜07 を **ブラウザ上で走らせるデモページ** を作る。同ページ内に
 Lua/Slang のライブエディタを併設し、編集の度に画面へ即時反映 (debounce auto-sync)
 される PoC とする。lub3d (`../lub3d`) の playground 構成と整合させる。
 
@@ -30,7 +30,7 @@ Lua/Slang のライブエディタを併設し、編集の度に画面へ即時�
 ## ディレクトリ構成
 
 ```
-sglua/
+lub/
 ├── CMakeLists.txt                  -- 既存 + EMSCRIPTEN 分岐
 ├── CMakePresets.json               -- 新規 (wasm-debug / wasm-release)
 ├── src/
@@ -42,7 +42,7 @@ sglua/
 │   └── lume.lua                     -- 新規 vendor (rxi/lume, MIT)
 ├── samples/
 │   ├── boot.lua                     -- 新規 (lume require + module 呼び出し)
-│   ├── sg_io.lua                    -- 既存
+│   ├── lub_io.lua                    -- 既存
 │   ├── 01_triangle.lua              -- module table 返却に書き換え
 │   ├── 02_vertex_color.lua          -- 同上
 │   ├── ... 03..07 ...               -- 同上
@@ -78,7 +78,7 @@ sglua/
 │   ├ <canvas>                                                  │
 │   ├ slang-wasm session (window.slangCompile)                  │
 │   ├ Module.FS.writeFile on syncFiles message                  │
-│   └ sglua.{js,wasm}                                           │
+│   └ lub.{js,wasm}                                           │
 │        ├ Lua 5.5 + samples (module 化)                         │
 │        ├ sokol_gfx (SOKOL_WGPU)                               │
 │        ├ shader.cpp → EM_ASYNC_JS(slangCompile) → WGSL        │
@@ -207,7 +207,7 @@ web では MEMFS に対して同じく動く。
 
 ```cpp
 #ifdef __EMSCRIPTEN__
-extern "C" int sglua_slang_compile(
+extern "C" int lub_slang_compile(
     const char* src, const char* entry, int stage,
     char** out_wgsl, size_t* out_wgsl_len,
     char** out_reflect_json);
@@ -258,33 +258,33 @@ ASYNCIFY コストは無視できる。
 
 ```cmake
 if(EMSCRIPTEN)
-    set(SGLUA_WASM ON)
+    set(LUB_WASM ON)
 endif()
 
-if(NOT SGLUA_WASM)
+if(NOT LUB_WASM)
     find_package(Vulkan REQUIRED)
 endif()
 
 # Slang prebuilt: WASM では skip (slang-wasm は JS 側に npm install されたもの)
-if(NOT SGLUA_WASM)
+if(NOT LUB_WASM)
     # 既存の Slang prebuilt fetch
 endif()
 
-set(SGLUA_SOURCES
+set(LUB_SOURCES
     src/main.c src/app.c src/sokol_impl.c src/lua_api.c
     src/enums_lua.c src/pass.c src/resources.c src/shader.cpp
     src/pipeline.c src/stb_impl.c src/backend_sokol.c
 )
-if(NOT SGLUA_WASM)
-    list(APPEND SGLUA_SOURCES src/capture.c src/backend_sdlgpu.c)
+if(NOT LUB_WASM)
+    list(APPEND LUB_SOURCES src/capture.c src/backend_sdlgpu.c)
 endif()
 
-add_executable(sglua ${SGLUA_SOURCES})
+add_executable(lub ${LUB_SOURCES})
 
-if(SGLUA_WASM)
-    target_compile_definitions(sglua PRIVATE SOKOL_WGPU)
-    set_target_properties(sglua PROPERTIES SUFFIX ".js")
-    target_link_options(sglua PRIVATE
+if(LUB_WASM)
+    target_compile_definitions(lub PRIVATE SOKOL_WGPU)
+    set_target_properties(lub PROPERTIES SUFFIX ".js")
+    target_link_options(lub PRIVATE
         -sASYNCIFY
         -sUSE_WEBGPU=1
         -sALLOW_MEMORY_GROWTH=1
@@ -296,8 +296,8 @@ if(SGLUA_WASM)
         --preload-file third_party/lume@/lume
     )
 else()
-    target_compile_definitions(sglua PRIVATE SOKOL_VULKAN)
-    target_link_libraries(sglua PRIVATE slang Vulkan::Vulkan)
+    target_compile_definitions(lub PRIVATE SOKOL_VULKAN)
+    target_link_libraries(lub PRIVATE slang Vulkan::Vulkan)
 endif()
 ```
 
@@ -409,10 +409,10 @@ async function restartPlayer(sample: string) {
           window.Module.preRun = [() => {
               for (const [p, c] of Object.entries(pendingFiles))
                   writeFileEnsureDir('samples/' + p, c)
-              window._sglua_entry_module = pendingEntry
+              window._lub_entry_module = pendingEntry
           }]
           const script = document.createElement('script')
-          script.src = '/sglua.js'
+          script.src = '/lub.js'
           document.body.appendChild(script)
       } else if (e.data.type === 'syncFiles') {
           for (const [p, c] of Object.entries(e.data.files))
@@ -425,8 +425,8 @@ async function restartPlayer(sample: string) {
 </script>
 ```
 
-`window._sglua_entry_module` を `app.c` から `EM_JS` で取得 (例:
-`const char* sglua_get_entry_module(void)`)。native では argv から渡す。
+`window._lub_entry_module` を `app.c` から `EM_JS` で取得 (例:
+`const char* lub_get_entry_module(void)`)。native では argv から渡す。
 
 ### samples/ の書き換え
 
@@ -434,7 +434,7 @@ async function restartPlayer(sample: string) {
 
 ```lua
 -- 01_triangle.lua (例)
-local sg_io = require("sg_io")  -- 既存 require pattern に変更 (今は dofile)
+local lub_io = require("lub_io")  -- 既存 require pattern に変更 (今は dofile)
 local M = {}
 
 function M.on_init(self)
@@ -451,8 +451,8 @@ function M.on_quit(self) end
 return M
 ```
 
-`samples/sg_io.lua` も `local M = {}; function M.load_text(...) ...; return M` 形に変更。
-これで `require("sg_io")` が動き、各サンプルから dofile を撤廃できる。
+`samples/lub_io.lua` も `local M = {}; function M.load_text(...) ...; return M` 形に変更。
+これで `require("lub_io")` が動き、各サンプルから dofile を撤廃できる。
 
 ### lume の vendor
 
@@ -489,7 +489,7 @@ return M
 ## オープン項目 (実装中に判断)
 
 - `samples/boot.lua` で entry module 名を受け取る経路: native は argv、web は
-  `EM_JS` で `window._sglua_entry_module` を取りに行く。C 側で文字列を確定したら
+  `EM_JS` で `window._lub_entry_module` を取りに行く。C 側で文字列を確定したら
   `boot.lua` を `loadfile` で読み込み、`lua_pushstring(L, module_name)` してから
   `lua_pcall(L, 1, 1, 0)` で実行する。boot.lua は受け取った名前で `require` する。
 - Slang reflection JSON のフォーマット詳細: Slang API ドキュメントを実装段階で確認、

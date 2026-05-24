@@ -1,4 +1,4 @@
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 
 local M = {}
 
@@ -274,7 +274,7 @@ local function build_vertices()
 end
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
     reset_game()
 end
 
@@ -284,8 +284,8 @@ function M.on_quit() end
 function M.on_frame()
     update_game()
 
-    local vs, vsv = sg_io.load_text("samples/data/09_breakout.vs.slang")
-    local fs, fsv = sg_io.load_text("samples/data/09_breakout.fs.slang")
+    local vs, vsv = lub_io.load_text("samples/data/09_breakout.vs.slang")
+    local fs, fsv = lub_io.load_text("samples/data/09_breakout.fs.slang")
     if not vs or not fs then return end
 
     local verts = build_vertices()

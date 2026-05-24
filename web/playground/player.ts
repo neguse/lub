@@ -1,4 +1,4 @@
-// Iframe-side glue for the sglua playground. Replaces the inline <script>
+// Iframe-side glue for the lub playground. Replaces the inline <script>
 // block that lived in public/player.html through Phase 5. Vite picks
 // player.html up as a secondary HTML entry (see vite.config.ts) and bundles
 // this module alongside.
@@ -10,7 +10,7 @@
 //   2. Relay console output from the WASM print/printErr hooks (and from
 //      any in-iframe JS) up to the parent window for the editor's log
 //      panel.
-//   3. Init a WebGPU device and pass it to sglua.js via
+//   3. Init a WebGPU device and pass it to lub.js via
 //      Module.preinitializedWebGPUDevice.
 //   4. Receive `setFiles` (first boot) and `syncFiles` (live edits)
 //      postMessage from the parent.
@@ -79,7 +79,7 @@ function writeFileEnsureDir(FS: any, path: string, content: string) {
 // hand it off to Emscripten as Module.preinitializedWebGPUDevice.
 //
 // We request the `depth32float-stencil8` feature because src/backend_sokol.c
-// (wasm/wgpu branch, sglua_wgpu_recreate_depth) creates the swapchain depth
+// (wasm/wgpu branch, lub_wgpu_recreate_depth) creates the swapchain depth
 // texture in that format. Without the feature, wgpuDeviceCreateTexture
 // throws "Use of the 'depth32float-stencil8' texture format requires the
 // 'depth32float-stencil8' feature to be enabled".
@@ -116,10 +116,10 @@ async function startWasm() {
     preinitializedWebGPUDevice: device,
     print:    (t: string) => relayLog(t, 'log'),
     printErr: (t: string) => relayLog(t, 'err'),
-    // emscripten resolves auxiliary files (sglua.wasm, sglua.data) via
+    // emscripten resolves auxiliary files (lub.wasm, lub.data) via
     // Module.locateFile. The default resolver makes them relative to the
     // HTML document, which on this page is /player.html — so it tries
-    // /sglua.data instead of /wasm/sglua.data. Override to always pull
+    // /lub.data instead of /wasm/lub.data. Override to always pull
     // from /wasm/.
     locateFile: (path: string) => '/wasm/' + path,
     preRun: [],
@@ -131,7 +131,7 @@ async function startWasm() {
   //
   // Strategy: gate main() on an "editor-files-overlayed" run dependency,
   // then in our preRun add a separate hook that resolves the dependency
-  // only once the bundled `datafile_sglua.data` dependency has cleared.
+  // only once the bundled `datafile_lub.data` dependency has cleared.
   // We monkey-patch Module.removeRunDependency so we can react to the
   // bundle's completion without polling.
   const DEP = 'editor_overlay'
@@ -141,7 +141,7 @@ async function startWasm() {
     const origRemove = M.removeRunDependency
     M.removeRunDependency = function (id: string) {
       origRemove.call(M, id)
-      if (id === 'datafile_sglua.data') {
+      if (id === 'datafile_lub.data') {
         try {
           const FS = M.FS ?? (window as any).FS
           const files = pendingFiles || {}
@@ -164,7 +164,7 @@ async function startWasm() {
   })
   window.Module = moduleConfig
   const s = document.createElement('script')
-  s.src = '/wasm/sglua.js'
+  s.src = '/wasm/lub.js'
   document.body.appendChild(s)
 }
 
@@ -188,7 +188,7 @@ window.addEventListener('message', (e: MessageEvent) => {
 // Boot order: kick off slang-wasm init in parallel with the playerReady
 // announcement. Slang typically finishes well before the user has the
 // first sample's shader compiled, but even if not, the C-side bridge
-// (sglua_slang_compile_js) re-checks `typeof window.slangCompile` on
+// (lub_slang_compile_js) re-checks `typeof window.slangCompile` on
 // every invocation, so a late init is recovered automatically.
 initSlang().catch((e: any) => {
   // Non-fatal: shader_compile() will return the canonical "slang-wasm not

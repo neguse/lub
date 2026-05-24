@@ -305,10 +305,10 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
 // The patch is split per-stage and per-backend because both blobs are passed
 // in independently (one is VS-only, the other FS-only).
 //
-// Compute support is intentionally PoC-narrow: a single RW storage buffer
-// (kind 0) + an optional uniform block. Readonly storage buffers and storage
-// textures would need an additional kind to map them to SDL_GPU's compute
-// set 0 — out of scope here.
+// Compute descriptor rewriting currently supports a single RW storage class
+// (kind 0) plus an optional uniform block. Readonly storage buffers and
+// storage textures need an additional kind to map them to SDL_GPU's compute
+// set 0.
 enum class SpvStage { Vertex, Fragment, Compute };
 
 void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
@@ -419,9 +419,9 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
         } else if (stage == SpvStage::Fragment) {
             return (kind == 0) ? 2 : 3;  // image=set2, ub=set3
         } else {
-            // Compute. PoC narrow: kind 0 is treated as RW storage (set 1) and
+            // Compute. kind 0 is currently treated as RW storage (set 1) and
             // kind 1 is uniform (set 2). Readonly storage / sampled-texture
-            // would belong on set 0 but are not exercised here.
+            // would belong on set 0 but are not exposed yet.
             return (kind == 0) ? 1 : 2;
         }
     };
@@ -1176,7 +1176,7 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 // `{wgsl, reflectJson}` (or `{error}`).
 //
 // File layout (this block):
-//   1. EM_ASYNC_JS shim `sglua_slang_compile_js` — single async call point.
+//   1. EM_ASYNC_JS shim `lub_slang_compile_js` — single async call point.
 //   2. `reflect_from_slang_json` — populate ShaderReflection from Slang's
 //      reflection JSON.
 //   3. `shader_compile` / `shader_compile_compute` — drive (1) twice/once
@@ -1211,7 +1211,7 @@ enum SglShaderStage {
 //   * NULL: only for genuinely unrecoverable cases (malloc failure inside the
 //     JS shim). Everything else — including "slang-wasm not loaded yet" — uses
 //     the 0x02-prefixed error form so the diagnostic reaches the user.
-EM_ASYNC_JS(char*, sglua_slang_compile_js,
+EM_ASYNC_JS(char*, lub_slang_compile_js,
             (const char* src, const char* entry, int stage),
 {
     const srcStr   = UTF8ToString(src);
@@ -1226,7 +1226,7 @@ EM_ASYNC_JS(char*, sglua_slang_compile_js,
     };
     if (typeof window === 'undefined' ||
         typeof window.slangCompile !== 'function') {
-        console.error('[sglua] window.slangCompile not exposed by the host; ' +
+        console.error('[lub] window.slangCompile not exposed by the host; ' +
                       'slang-wasm bridge not loaded. entry=' + entryStr);
         return packError('slang-wasm bridge not loaded (window.slangCompile undefined)');
     }
@@ -1236,7 +1236,7 @@ EM_ASYNC_JS(char*, sglua_slang_compile_js,
             const msg = (result && result.error)
                 ? result.error
                 : 'slang compile returned no result';
-            console.error('[sglua] slang compile error:', msg);
+            console.error('[lub] slang compile error:', msg);
             return packError(msg);
         }
         // Pack {wgsl, reflectJson} into a single \x01-separated UTF-8 string.
@@ -1248,7 +1248,7 @@ EM_ASYNC_JS(char*, sglua_slang_compile_js,
         return ptr;
     } catch (e) {
         const msg = (e && e.message) ? e.message : String(e);
-        console.error('[sglua] slangCompile threw:', msg);
+        console.error('[lub] slangCompile threw:', msg);
         return packError(msg);
     }
 });
@@ -1506,7 +1506,7 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
 
     json j = json::parse(json_text, nullptr, false);
     if (j.is_discarded()) {
-        fprintf(stderr, "[sglua] reflect_from_slang_json: parse failed\n");
+        fprintf(stderr, "[lub] reflect_from_slang_json: parse failed\n");
         return false;
     }
 
@@ -1586,7 +1586,7 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
 bool compile_one(const char *src, const char *entry, int stage,
                  ShaderBlob *out_blob, std::string &out_refl_json,
                  char *err_buf, size_t err_buf_size) {
-    char *blob = sglua_slang_compile_js(src, entry, stage);
+    char *blob = lub_slang_compile_js(src, entry, stage);
     if (!blob) {
         // NULL is reserved for genuinely unrecoverable cases (alloc failure
         // inside the JS shim, runtime not initialised). Anything else comes

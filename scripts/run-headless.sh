@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run sglua with Mesa lavapipe (CPU Vulkan) ICD forced.
+# Run lub with Mesa lavapipe (CPU Vulkan) ICD forced.
 # - VK_ICD_FILENAMES selects lavapipe instead of any GPU driver.
 # - If DISPLAY/WAYLAND_DISPLAY are unset, wrap in xvfb-run so SDL3 can
 #   create a Vulkan-capable window (the SDL3 offscreen/dummy drivers
@@ -7,10 +7,10 @@
 #   the X server only exists for window creation).
 #
 # Usage:
-#   scripts/run-headless.sh [args passed to ./build/sglua]
-#   scripts/run-headless.sh ./build/sglua samples/01_triangle.lua
+#   scripts/run-headless.sh [args passed to ./build/lub]
+#   scripts/run-headless.sh ./build/lub samples/01_triangle.lua
 # If first arg starts with "./" or "/", it is taken as the binary;
-# otherwise we default to ./build/sglua.
+# otherwise we default to ./build/lub.
 
 set -euo pipefail
 
@@ -25,11 +25,11 @@ export VK_ICD_FILENAMES="$ICD"
 # Modern Vulkan loader honors this; older may need the legacy var, set both.
 export VK_DRIVER_FILES="$ICD"
 
-# Forward SGLUA_BACKEND into the wrapped process so samples can pick the backend.
-[[ -n "${SGLUA_BACKEND:-}" ]] && export SGLUA_BACKEND
+# Forward LUB_BACKEND into the wrapped process so samples can pick the backend.
+[[ -n "${LUB_BACKEND:-}" ]] && export LUB_BACKEND
 
 # Default binary if first arg looks like a sample script
-binary=./build/sglua
+binary=./build/lub
 args=("$@")
 if [[ ${#args[@]} -gt 0 && ( "${args[0]}" == ./* || "${args[0]}" == /* ) && -x "${args[0]}" ]]; then
     binary="${args[0]}"

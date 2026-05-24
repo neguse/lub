@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 TESTS=(indexed_draw)
 BACKENDS=(sokol sdlgpu)
 FRAME=30
-BINARY=./build/sglua
+BINARY=./build/lub
 GOLDEN_DIR=tests/golden
 
 update=0
@@ -55,7 +55,7 @@ for t in "${TESTS[@]}"; do
         out="$tmpdir/${name}_${backend}.png"
         golden="$GOLDEN_DIR/${name}_${backend}.png"
 
-        SGLUA_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
+        LUB_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
             "tests/lua/${name}.lua" --capture "$out" --capture-frame "$FRAME" \
             >"$tmpdir/${name}_${backend}.log" 2>&1 || true
 

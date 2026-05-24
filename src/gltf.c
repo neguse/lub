@@ -15,7 +15,7 @@
 #include <lua.h>
 #include <lauxlib.h>
 
-int sgl_load_gltf(lua_State *L) {
+int lub_load_gltf(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     cgltf_options options = {0};
     cgltf_data *data = NULL;

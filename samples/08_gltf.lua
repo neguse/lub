@@ -1,7 +1,7 @@
 -- samples/08_gltf.lua
 -- glTF mesh (Box.glb) を法線可視化 shader + Y 軸回転 MVP で描く。
 
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 local M = {}
 
 local t_accum = 0
@@ -54,7 +54,7 @@ local function make_mvp(t)
 end
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function M.on_event(e) end
@@ -63,15 +63,15 @@ function M.on_quit() end
 function M.on_frame(dt)
     t_accum = t_accum + (dt or 0.016)
 
-    local vs, ver_vs = sg_io.load_text("samples/data/08_gltf.vs.slang")
-    local fs, ver_fs = sg_io.load_text("samples/data/08_gltf.fs.slang")
+    local vs, ver_vs = lub_io.load_text("samples/data/08_gltf.vs.slang")
+    local fs, ver_fs = lub_io.load_text("samples/data/08_gltf.fs.slang")
     if not vs or not fs then return end
     local s = use_shader("gltf_sh", vs, fs, ver_vs ~ ver_fs)
 
-    local mesh, mesh_ver = sg_io.load_gltf("samples/data/08_box.glb")
+    local mesh, mesh_ver = lub_io.load_gltf("samples/data/08_box.glb")
     if not mesh then return end
 
-    local verts = sg_io.interleave_pn(mesh)
+    local verts = lub_io.interleave_pn(mesh)
     local vb = use_buffer("gltf_vb", VERTEX, verts, mesh_ver)
     local ib = use_buffer("gltf_ib", INDEX, mesh.indices, mesh_ver)
 

@@ -20,10 +20,10 @@ DEST="${SCRIPT_DIR}/../public/slang"
 # size, skip the download. The postinstall hook fires on every `npm install`
 # so without this check fresh installs would re-download ~10MB every time.
 # Force a re-fetch by deleting web/public/slang/slang-wasm.wasm or setting
-# SGLUA_FETCH_SLANG_FORCE=1.
+# LUB_FETCH_SLANG_FORCE=1.
 WASM_PATH="${DEST}/slang-wasm.wasm"
-if [[ -z "${SGLUA_FETCH_SLANG_FORCE:-}" ]] && [[ -s "${WASM_PATH}" ]]; then
-  echo "[fetch-slang-wasm] already vendored (${WASM_PATH}); set SGLUA_FETCH_SLANG_FORCE=1 to refetch"
+if [[ -z "${LUB_FETCH_SLANG_FORCE:-}" ]] && [[ -s "${WASM_PATH}" ]]; then
+  echo "[fetch-slang-wasm] already vendored (${WASM_PATH}); set LUB_FETCH_SLANG_FORCE=1 to refetch"
   exit 0
 fi
 

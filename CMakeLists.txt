@@ -1,24 +1,24 @@
 cmake_minimum_required(VERSION 3.20)
-project(sglua C CXX)
+project(lub C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Emscripten branch toggle. SGLUA_WASM is the canonical flag for everything
+# Emscripten branch toggle. LUB_WASM is the canonical flag for everything
 # downstream — the rest of this file checks it instead of EMSCRIPTEN directly
 # so it's easy to grep all of the wasm-specific divergences.
 if(EMSCRIPTEN)
-  set(SGLUA_WASM ON)
+  set(LUB_WASM ON)
 endif()
 
 include(FetchContent)
 
-# SDL3 build flags must be set BEFORE FetchContent_MakeAvailable. Emscripten
-# build needs the static lib and definitely no pthreads / tests, mirroring
-# lub3d's working pattern.
-if(SGLUA_WASM)
+# SDL3 build flags must be set BEFORE FetchContent_MakeAvailable. The
+# Emscripten build uses static SDL and disables pthreads/tests so the wasm
+# artifact stays self-contained.
+if(LUB_WASM)
   set(SDL_PTHREADS OFF CACHE BOOL "" FORCE)
   set(SDL_TESTS    OFF CACHE BOOL "" FORCE)
   set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
@@ -36,6 +36,7 @@ FetchContent_Declare(
   lua
   URL https://www.lua.org/ftp/lua-5.5.0.tar.gz
   URL_HASH SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(lua)
 
@@ -48,7 +49,7 @@ list(REMOVE_ITEM LUA_SRC
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR}/src)
 
-if(NOT SGLUA_WASM)
+if(NOT LUB_WASM)
   find_package(Vulkan REQUIRED)
 endif()
 
@@ -58,10 +59,9 @@ endif()
 # pieces (lib/, on Windows also bin/) are gitignored. Auto-fetch them from
 # GitHub releases when missing so a fresh checkout builds out of the box.
 #
-# emscripten: skip entirely. shader.cpp's Slang code is #ifdef'd out and
-# replaced with a stub that returns failure; Phase 4 will wire up slang-wasm
-# via EM_ASYNC_JS.
-if(NOT SGLUA_WASM)
+# emscripten: skip the native prebuilt. shader.cpp delegates Slang
+# compilation to the browser-side slang-wasm bridge via EM_ASYNC_JS.
+if(NOT LUB_WASM)
   set(SLANG_VERSION "2026.8.1")
   set(SLANG_ROOT "${CMAKE_SOURCE_DIR}/third_party/slang")
   if(WIN32)
@@ -106,7 +106,7 @@ endif()
 # and compiles everywhere; only backend_sdlgpu.c is native-only because the
 # SDL_GPU APIs aren't available on the WGPU path we use under wasm. The
 # sokol backend's capture stub returns false on wasm.
-set(SGLUA_SOURCES
+set(LUB_SOURCES
   src/main.c
   src/app.c
   src/sokol_impl.c
@@ -121,63 +121,63 @@ set(SGLUA_SOURCES
   src/stb_impl.c
   src/gltf.c
 )
-if(NOT SGLUA_WASM)
-  list(APPEND SGLUA_SOURCES src/backend_sdlgpu.c)
+if(NOT LUB_WASM)
+  list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
 endif()
-add_executable(sglua ${SGLUA_SOURCES})
+add_executable(lub ${LUB_SOURCES})
 
-target_include_directories(sglua PRIVATE
+target_include_directories(lub PRIVATE
   third_party/sokol
   third_party/slang/include
   third_party/stb
   third_party/cgltf
   src
 )
-if(NOT SGLUA_WASM)
-  target_link_directories(sglua PRIVATE third_party/slang/lib)
+if(NOT LUB_WASM)
+  target_link_directories(lub PRIVATE third_party/slang/lib)
 endif()
 
-target_link_libraries(sglua PRIVATE
+target_link_libraries(lub PRIVATE
   SDL3::SDL3
   lua_static
 )
-if(NOT SGLUA_WASM)
-  target_link_libraries(sglua PRIVATE
+if(NOT LUB_WASM)
+  target_link_libraries(lub PRIVATE
     slang
     Vulkan::Vulkan
   )
 endif()
-if(UNIX AND NOT SGLUA_WASM)
+if(UNIX AND NOT LUB_WASM)
   # libdl required by Lua dynamic loading, libm by sokol/Lua math (Linux/Mac).
   # Under emscripten the libc already provides both equivalents.
-  target_link_libraries(sglua PRIVATE m dl)
+  target_link_libraries(lub PRIVATE m dl)
 endif()
-if(UNIX AND NOT APPLE AND NOT SGLUA_WASM)
+if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
   # discoverable at runtime so the smoke test doesn't need LD_LIBRARY_PATH.
-  set_target_properties(sglua PROPERTIES
+  set_target_properties(lub PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
       INSTALL_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
   )
 endif()
 if(WIN32)
   # On Windows the Slang runtime is a set of DLLs in third_party/slang/bin/.
-  # Copy them next to sglua.exe so it can resolve them at runtime without
+  # Copy them next to lub.exe so it can resolve them at runtime without
   # putting third_party/slang/bin on PATH.
-  add_custom_command(TARGET sglua POST_BUILD
+  add_custom_command(TARGET lub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       "${CMAKE_SOURCE_DIR}/third_party/slang/bin"
-      "$<TARGET_FILE_DIR:sglua>"
+      "$<TARGET_FILE_DIR:lub>"
     VERBATIM)
   # SDL3 builds as a shared library; copy the import-side DLL too.
-  add_custom_command(TARGET sglua POST_BUILD
+  add_custom_command(TARGET lub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "$<TARGET_FILE:SDL3::SDL3>"
-      "$<TARGET_FILE_DIR:sglua>"
+      "$<TARGET_FILE_DIR:lub>"
     VERBATIM)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(sglua PRIVATE
+  target_compile_options(lub PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
   )
@@ -185,14 +185,14 @@ endif()
 if(MSVC)
   # Sources are UTF-8 (Japanese comments); without /utf-8 MSVC will emit
   # C4819 on default code page (CP932 on jp Windows) and may mis-decode.
-  target_compile_options(sglua PRIVATE /utf-8)
+  target_compile_options(lub PRIVATE /utf-8)
 endif()
 
 # Backend define: native uses sokol's Vulkan backend; emscripten uses WebGPU.
-if(SGLUA_WASM)
-  target_compile_definitions(sglua PRIVATE SOKOL_WGPU)
+if(LUB_WASM)
+  target_compile_definitions(lub PRIVATE SOKOL_WGPU)
 else()
-  target_compile_definitions(sglua PRIVATE SOKOL_VULKAN)
+  target_compile_definitions(lub PRIVATE SOKOL_VULKAN)
 endif()
 
 # Emscripten link flags: WebGPU + ASYNCIFY for the (future) Slang fetch, plus
@@ -203,8 +203,8 @@ endif()
 # referenced from sokol_gfx.h's WGPU backend; the port supplies both the
 # header at compile time and the JS glue at link time. -sUSE_WEBGPU=1
 # alone is no longer enough on Emscripten >= 3.1.61.
-if(SGLUA_WASM)
-  set_target_properties(sglua PROPERTIES SUFFIX ".js")
+if(LUB_WASM)
+  set_target_properties(lub PROPERTIES SUFFIX ".js")
   # --- emdawnwebgpu port ---
   # Provides webgpu/webgpu.h that sokol_gfx's WGPU backend includes. Plain
   # -sUSE_WEBGPU=1 is no longer sufficient on emscripten >= 3.1.61. The port
@@ -215,12 +215,12 @@ if(SGLUA_WASM)
   # If you upgrade emsdk and sokol_gfx WGPU calls suddenly stop compiling or
   # render-paths regress, revert to this SDK version or update sokol_gfx to a
   # release that tracks the newer Dawn ABI.
-  target_compile_options(sglua PRIVATE --use-port=emdawnwebgpu)
+  target_compile_options(lub PRIVATE --use-port=emdawnwebgpu)
   # SHELL: keeps multi-token flags (`--preload-file PATH`) as one logical
   # unit so CMake doesn't dedupe / split them. Without SHELL the second
   # `--preload-file` got dropped during CMake's list deduplication and only
   # the first preload path was preserved.
-  target_link_options(sglua PRIVATE
+  target_link_options(lub PRIVATE
     --use-port=emdawnwebgpu
     -sASYNCIFY
     -sALLOW_MEMORY_GROWTH=1

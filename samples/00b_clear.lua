@@ -2,7 +2,7 @@ local M = {}
 local t = 0
 
 function M.on_init()
-  local b = os.getenv("SGLUA_BACKEND") or "sokol"
+  local b = os.getenv("LUB_BACKEND") or "sokol"
   config({ backend = b })
   print("backend = " .. b)
   print("clear demo")

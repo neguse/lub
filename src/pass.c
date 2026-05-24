@@ -47,8 +47,8 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
     p->in_pass = true;
     p->current_n_color_targets = 1;
     p->current_color_fmts[0] = use_fmt;
-    // PoC convention: swapchain pass has a depth/stencil attachment,
-    // offscreen render-target passes do not.
+    // Swapchain passes use the default depth/stencil attachment; offscreen
+    // render-target passes need an explicit depth target.
     p->current_has_depth = (target_image == 0);
     p->current_depth_fmt = SGL_PF_DEPTH24_STENCIL8;
 }

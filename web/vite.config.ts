@@ -51,7 +51,7 @@ export default defineConfig({
       closeBundle() {
         cpSync('../samples', 'dist/samples', { recursive: true })
         mkdirSync('dist/wasm', { recursive: true })
-        const wasmFiles = ['sglua.js', 'sglua.wasm', 'sglua.data']
+        const wasmFiles = ['lub.js', 'lub.wasm', 'lub.data']
         for (const f of wasmFiles) {
           cpSync(`../build/wasm/${f}`, `dist/wasm/${f}`)
         }

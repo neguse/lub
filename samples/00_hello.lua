@@ -2,10 +2,10 @@ local M = {}
 
 function M.on_init()
   print("[lua] on_init")
-  config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+  config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
   print("config called")
   print("VERTEX=", VERTEX, "RGBA8=", RGBA8, "CLEAR=", CLEAR)
-  if main_tex and main_tex.__sgl_kind == "main_tex" then
+  if main_tex and main_tex.__lub_kind == "main_tex" then
     print("main_tex is registered")
   end
 end

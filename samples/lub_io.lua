@@ -1,11 +1,11 @@
--- samples/sg_io.lua
+-- samples/lub_io.lua
 -- File-input helper with mtime fast-path + content hash version.
 --
 -- Usage:
---   local sg_io = require("sg_io")
---   local src,  ver = sg_io.load_text("foo.slang")
---   local tab,  ver = sg_io.load_floats("foo.verts.lua")
---   local px, w, h, fmt, ver = sg_io.load_png("foo.png")
+--   local lub_io = require("lub_io")
+--   local src,  ver = lub_io.load_text("foo.slang")
+--   local tab,  ver = lub_io.load_floats("foo.verts.lua")
+--   local px, w, h, fmt, ver = lub_io.load_png("foo.png")
 --
 -- Cache: path -> { mtime, bytes, hash, parsed }
 -- Fast path: same mtime -> return cached parsed + hash (no read, no hash).
@@ -55,16 +55,16 @@ function M.load_floats(path)
    return refresh(path, function(src, p)
       local chunk, err = load(src, "@" .. p, "t")      -- 既定 env を使う
       if not chunk then
-         print("sg_io.load_floats: parse error in " .. p .. ": " .. tostring(err))
+         print("lub_io.load_floats: parse error in " .. p .. ": " .. tostring(err))
          return nil
       end
       local ok, t = pcall(chunk)
       if not ok then
-         print("sg_io.load_floats: exec error in " .. p .. ": " .. tostring(t))
+         print("lub_io.load_floats: exec error in " .. p .. ": " .. tostring(t))
          return nil
       end
       if type(t) ~= "table" then
-         print("sg_io.load_floats: " .. p .. " did not return a table")
+         print("lub_io.load_floats: " .. p .. " did not return a table")
          return nil
       end
       return t

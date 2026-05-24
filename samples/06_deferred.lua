@@ -1,22 +1,22 @@
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 local M = {}
 
 local RT_W, RT_H = 256, 256
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function M.on_event(e) end
 function M.on_quit() end
 
 function M.on_frame()
-    local gvs, gvsv = sg_io.load_text("samples/data/06_gbuffer.vs.slang")
-    local gfs, gfsv = sg_io.load_text("samples/data/06_gbuffer.fs.slang")
-    local gverts, gvv = sg_io.load_floats("samples/data/06_gbuffer.verts.lua")
-    local vvs, vvsv = sg_io.load_text("samples/data/06_view.vs.slang")
-    local vfs, vfsv = sg_io.load_text("samples/data/06_view.fs.slang")
-    local vverts, vvv = sg_io.load_floats("samples/data/06_view.verts.lua")
+    local gvs, gvsv = lub_io.load_text("samples/data/06_gbuffer.vs.slang")
+    local gfs, gfsv = lub_io.load_text("samples/data/06_gbuffer.fs.slang")
+    local gverts, gvv = lub_io.load_floats("samples/data/06_gbuffer.verts.lua")
+    local vvs, vvsv = lub_io.load_text("samples/data/06_view.vs.slang")
+    local vfs, vfsv = lub_io.load_text("samples/data/06_view.fs.slang")
+    local vverts, vvv = lub_io.load_floats("samples/data/06_view.verts.lua")
     if not gvs or not gfs or not gverts or not vvs or not vfs or not vverts then return end
 
     -- G-buffer attachments. Two render-target textures of the same size.

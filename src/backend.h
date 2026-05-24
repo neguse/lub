@@ -19,7 +19,7 @@ typedef uintptr_t BackendPipeline;
 
 // Max color attachments for MRT (G-buffer style). Sokol's hard cap is
 // SG_MAX_COLOR_ATTACHMENTS = 8; SDL_GPU also supports up to 4 on every
-// platform. 4 is more than enough for the PoC samples.
+// platform. lub exposes 4 until a real use case needs more.
 #define SGL_MAX_COLOR_TARGETS 4
 
 typedef struct ImageDesc {
@@ -92,7 +92,7 @@ typedef struct ComputeDispatchDesc {
         const char *name;         // matches ShaderStorageBuf.name
         BackendBuffer buf;
     } storage_bufs[SGL_MAX_STORAGE_BUFS];
-    // PoC: at most one uniform block, supplied as packed std140 floats.
+    // Current Lua binding supplies at most one packed std140 uniform block.
     int uniform_slot;             // -1 if no uniforms
     const void *uniform_data;
     size_t uniform_bytes;

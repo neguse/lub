@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- []`) syntax for tracking.
 
-**Goal:** sglua の `draw` に indexed draw 経路を実装し、`use_buffer(INDEX, ...)` を実動作させて両 backend (sokol / sdlgpu) で u32 indexed draw を可能にする。
+**Goal:** lub の `draw` に indexed draw 経路を実装し、`use_buffer(INDEX, ...)` を実動作させて両 backend (sokol / sdlgpu) で u32 indexed draw を可能にする。
 
 **Architecture:** API surface は据え置き。`use_buffer` は `type==INDEX` の時のみ Lua 数値 table を `uint32_t` 配列として詰める。`draw(count, resources, options)` は `resources.indices` が INDEX 型 buffer ref なら `bind.ibuf` を設定し、pipeline cache に `is_indexed=true` を渡して indexed pipeline を取得、backend が分岐。`make_buffer` の `data` 型は `void *` に統一。検証は `tests/lua/test_indexed_draw.lua` + lavapipe + xvfb で sokol / sdlgpu 両 backend の golden を 1 枚ずつ固定。
 
@@ -77,15 +77,15 @@ float4 fs_main(FSIn i) : SV_Target
 -- 4 頂点 quad を 6 index で indexed draw する最小テスト。
 -- vertex 重複なしで quad を成立させられることが indexed draw の動作確認になる。
 
-local sg_io = dofile("samples/sg_io.lua")
+local lub_io = dofile("samples/lub_io.lua")
 
 function on_init()
-   config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+   config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function on_frame(t)
-   local vs, ver_vs = sg_io.load_text("tests/lua/test_indexed_draw.vs.slang")
-   local fs, ver_fs = sg_io.load_text("tests/lua/test_indexed_draw.fs.slang")
+   local vs, ver_vs = lub_io.load_text("tests/lua/test_indexed_draw.vs.slang")
+   local fs, ver_fs = lub_io.load_text("tests/lua/test_indexed_draw.fs.slang")
    use_shader("sh", vs, fs, ver_vs ~ ver_fs)
 
    local verts = { -0.6,-0.6,  0.6,-0.6,  0.6,0.6,  -0.6,0.6 }
@@ -120,7 +120,7 @@ cd "$(dirname "$0")/.."
 TESTS=(indexed_draw)
 BACKENDS=(sokol sdlgpu)
 FRAME=30
-BINARY=./build/sglua
+BINARY=./build/lub
 GOLDEN_DIR=tests/golden
 
 update=0
@@ -161,7 +161,7 @@ for t in "${TESTS[@]}"; do
         out="$tmpdir/${name}_${backend}.png"
         golden="$GOLDEN_DIR/${name}_${backend}.png"
 
-        SGLUA_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
+        LUB_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
             "tests/lua/${name}.lua" --capture "$out" --capture-frame "$FRAME" \
             >"$tmpdir/${name}_${backend}.log" 2>&1 || true
 
@@ -548,7 +548,7 @@ Expected: 既存 11 サンプル × 2 backend = 22 件すべて `PASS`。
 `tests/lua/test_indexed_draw.lua` を一度実行 (まだ draw 経路は indexed 動かないが、`use_buffer(INDEX, ...)` が malloc + upload する経路は走る、メモリエラーや panic が無いことを確認):
 
 ```bash
-scripts/run-headless.sh ./build/sglua tests/lua/test_indexed_draw.lua --capture /tmp/test_use_buffer_index.png --capture-frame 30 2>&1 | head -50
+scripts/run-headless.sh ./build/lub tests/lua/test_indexed_draw.lua --capture /tmp/test_use_buffer_index.png --capture-frame 30 2>&1 | head -50
 ```
 
 Expected: クラッシュせずに動く。capture PNG はまだ正しい絵にならない (draw 側が indices を読まない)。
@@ -869,7 +869,7 @@ static int l_draw(lua_State *L) {
     while (lua_next(L, 2) != 0) {
         // stack: -2 = key, -1 = value
         if (lua_istable(L, -1)) {
-            lua_getfield(L, -1, "__sgl_kind");
+            lua_getfield(L, -1, "__lub_kind");
             const char *kind = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
             char kind_buf[16];
             strncpy(kind_buf, kind, sizeof(kind_buf) - 1);
@@ -979,8 +979,8 @@ Expected: 既存 11 サンプル × 2 backend = 22 件すべて `PASS`。indices
 - [ ] **Step 3: indexed draw のテスト fixture を走らせて視覚確認**
 
 ```bash
-scripts/run-headless.sh ./build/sglua tests/lua/test_indexed_draw.lua --capture /tmp/idx.png --capture-frame 30
-SGLUA_BACKEND=sdlgpu scripts/run-headless.sh ./build/sglua tests/lua/test_indexed_draw.lua --capture /tmp/idx_sdl.png --capture-frame 30
+scripts/run-headless.sh ./build/lub tests/lua/test_indexed_draw.lua --capture /tmp/idx.png --capture-frame 30
+LUB_BACKEND=sdlgpu scripts/run-headless.sh ./build/lub tests/lua/test_indexed_draw.lua --capture /tmp/idx_sdl.png --capture-frame 30
 ```
 
 Expected: `/tmp/idx.png` と `/tmp/idx_sdl.png` が両方とも生成され、quad (4 角形領域) に uv ベースのグラデーション (左下が黒、右上が黄、青みあり) が描かれている。視覚的に同じであれば OK。
@@ -1043,7 +1043,7 @@ file tests/golden/test_indexed_draw_sokol.png
 file tests/golden/test_indexed_draw_sdlgpu.png
 ```
 
-Expected: 両方とも `PNG image data, 1280 x 720` (sglua のデフォルト window サイズ) と表示される。サイズが大きすぎ / 小さすぎなら capture 設定の問題。
+Expected: 両方とも `PNG image data, 1280 x 720` (lub のデフォルト window サイズ) と表示される。サイズが大きすぎ / 小さすぎなら capture 設定の問題。
 
 可能なら任意のビューアで PNG を開いて、quad に uv グラデーション (左下が黒〜紫、右上が黄〜緑寄り) が描かれていることを確認。背景は `clear_color = {0.05, 0.05, 0.1, 1}` の濃い紺。
 

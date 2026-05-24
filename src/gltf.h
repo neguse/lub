@@ -16,4 +16,4 @@ struct lua_State;
 //
 // On failure returns nil and logs to stderr (no error string in second return).
 // Reads only mesh[0].primitives[0]. Triangle primitive required.
-int sgl_load_gltf(struct lua_State *L);
+int lub_load_gltf(struct lua_State *L);

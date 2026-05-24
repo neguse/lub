@@ -2,7 +2,7 @@
 -- Shadow mapping: render light-space depth into an offscreen float target,
 -- using a depth attachment to keep the closest caster.
 
-local sg_io = require("sg_io")
+local lub_io = require("lub_io")
 local M = {}
 
 local STRIDE = 10 -- pos.xyz + normal.xyz + color.rgba
@@ -203,7 +203,7 @@ local function light_mvp()
 end
 
 function M.on_init()
-    config({ backend = os.getenv("SGLUA_BACKEND") or "sokol" })
+    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
 function M.on_event(e) end
@@ -212,10 +212,10 @@ function M.on_quit() end
 function M.on_frame(dt)
     t_accum = t_accum + (dt or DT)
 
-    local dvs, dvsv = sg_io.load_text("samples/data/11_shadow_depth.vs.slang")
-    local dfs, dfsv = sg_io.load_text("samples/data/11_shadow_depth.fs.slang")
-    local svs, svsv = sg_io.load_text("samples/data/11_shadow_scene.vs.slang")
-    local sfs, sfsv = sg_io.load_text("samples/data/11_shadow_scene.fs.slang")
+    local dvs, dvsv = lub_io.load_text("samples/data/11_shadow_depth.vs.slang")
+    local dfs, dfsv = lub_io.load_text("samples/data/11_shadow_depth.fs.slang")
+    local svs, svsv = lub_io.load_text("samples/data/11_shadow_scene.vs.slang")
+    local sfs, sfsv = lub_io.load_text("samples/data/11_shadow_scene.fs.slang")
     if not dvs or not dfs or not svs or not sfs then return end
 
     local depth_shader = use_shader("shadow_depth_shader", dvs, dfs, dvsv ~ dfsv)
