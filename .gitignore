@@ -4,3 +4,4 @@ third_party/slang/lib/
 third_party/slang/bin/
 web/node_modules/
 web/dist/
+.lub/
