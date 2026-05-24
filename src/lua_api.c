@@ -1151,6 +1151,20 @@ bool lua_ctx_init(LuaCtx *ctx, const char *entry_module_name, App *app) {
     return true;
 }
 
+void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir) {
+    if (!ctx || !ctx->L || !entry_dir) return;
+    lua_State *L = ctx->L;
+    lua_getglobal(L, "package");                     /* +1 */
+    lua_getfield(L, -1, "path");                     /* +1 */
+    const char *cur = lua_tostring(L, -1);
+    char buf[1024];
+    SDL_snprintf(buf, sizeof(buf), "%s/.lub/?.lua;%s", entry_dir, cur ? cur : "");
+    lua_pop(L, 1);                                   /* drop old path */
+    lua_pushstring(L, buf);
+    lua_setfield(L, -2, "path");                     /* set package.path */
+    lua_pop(L, 1);                                   /* drop package */
+}
+
 void lua_ctx_call_init(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "onInit", 0); }
 void lua_ctx_call_frame(LuaCtx *ctx) { if (!ctx->L) return; call_module_field(ctx, "onFrame", 0); }
 void lua_ctx_call_quit(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "onQuit", 0); }

@@ -1,6 +1,7 @@
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include "app.h"
@@ -8,6 +9,11 @@
 #include "capture.h"
 
 static App g_app;
+
+static bool has_extension(const char *path, const char *ext) {
+    size_t n = SDL_strlen(path), m = SDL_strlen(ext);
+    return n >= m && SDL_strcasecmp(path + n - m, ext) == 0;
+}
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     (void)appstate;
@@ -29,9 +35,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
             script = argv[i];
         }
     }
+    const char *entry_path = script ? script : "00_hello";
+    if (has_extension(entry_path, ".hxml")) {
+        SDL_Log("FATAL: .hxml entry not implemented yet");
+        return SDL_APP_FAILURE;
+    }
     // Accept "01_triangle", "01_triangle.lua", or "samples/01_triangle.lua"
     // and reduce to the bare module name ("01_triangle") for require().
-    const char *raw = script ? script : "00_hello";
+    const char *raw = entry_path;
     const char *base = strrchr(raw, '/');
     base = base ? base + 1 : raw;
     char modbuf[256];

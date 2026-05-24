@@ -10,6 +10,11 @@ typedef struct LuaCtx {
 } LuaCtx;
 
 bool lua_ctx_init(LuaCtx *ctx, const char *entry_module_name, struct App *app);
+
+// entry .hxml 経由の build 後、生成 .lua を find できるよう
+// `<dir>/.lub/?.lua` を package.path の先頭に積む。
+void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
+
 void lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e);
 void lua_ctx_call_frame(LuaCtx *ctx);
