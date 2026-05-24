@@ -19,6 +19,9 @@
 #include "resources.h"
 #include "pipeline.h"
 #include "capture.h"
+#ifndef __EMSCRIPTEN__
+#include "haxe_server.h"
+#endif
 
 typedef enum {
     APP_PHASE_PRE_BACKEND,
@@ -130,6 +133,15 @@ typedef struct App {
     char    entry_path[256];        // e.g. "samples/01_triangle.lua"
     char    entry_module_name[128]; // e.g. "01_triangle"
     int64_t entry_mtime_cache;      // last observed mtime in ns; 0 means "unknown / first poll"
+
+#ifndef __EMSCRIPTEN__
+    // Haxe pipeline state. .hxml entry path のとき main.c が haxe_enabled = true に
+    // し、haxe_server を立ち上げる。app_shutdown が haxe_enabled ガード下で
+    // haxe_server_stop を呼ぶ。WASM ビルドでは子プロセスを spawn しないため
+    // フィールドごと存在しない。
+    HaxeServer haxe_server;
+    bool       haxe_enabled;
+#endif
 } App;
 
 bool app_init(App *app);

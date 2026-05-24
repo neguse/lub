@@ -106,4 +106,12 @@ void app_shutdown(App *app) {
     g_backend->shutdown(app);
 
     if (app->window) SDL_DestroyWindow(app->window);
+
+#ifndef __EMSCRIPTEN__
+    // .hxml entry を踏んでいたときだけ haxe --wait 子プロセスを止める。
+    // 通常の .lua-only 実行は haxe_enabled = false のままなので no-op。
+    if (app->haxe_enabled) {
+        haxe_server_stop(&app->haxe_server);
+    }
+#endif
 }

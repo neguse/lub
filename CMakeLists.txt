@@ -123,6 +123,8 @@ set(LUB_SOURCES
 )
 if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
+  # haxe --wait child process management; WASM ビルドでは process spawn が無いので除外。
+  list(APPEND LUB_SOURCES src/haxe_server.c)
 endif()
 add_executable(lub ${LUB_SOURCES})
 
@@ -230,4 +232,14 @@ if(LUB_WASM)
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples@/samples"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/third_party/lume@/lume"
   )
+endif()
+
+# Haxe pipeline C-side smoke tests (native only — spawn は wasm に存在しない).
+if(NOT LUB_WASM)
+  add_executable(lub_haxe_server_smoke
+    tests/c/haxe_server_smoke.c
+    src/haxe_server.c
+  )
+  target_link_libraries(lub_haxe_server_smoke PRIVATE SDL3::SDL3)
+  target_include_directories(lub_haxe_server_smoke PRIVATE src)
 endif()
