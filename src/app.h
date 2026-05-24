@@ -98,7 +98,7 @@ typedef struct App {
 
     // Backend selection (Task 2). app_init sets phase = PRE_BACKEND and
     // backend_name = "sokol". Lua's config() may overwrite backend_name during
-    // on_init (PRE_BACKEND only). app_backend_init flips phase to POST_BACKEND
+    // onInit (PRE_BACKEND only). app_backend_init flips phase to POST_BACKEND
     // after the backend's init() succeeds.
     AppPhase      phase;
     char          backend_name[16];
@@ -106,7 +106,7 @@ typedef struct App {
     // Frame-based GC threshold. 0 disables sweeping. When > 0, app_frame_end
     // releases resource / pipeline entries whose last_seen_frame is older than
     // (frame_index - resource_sweep_after_frames). Configurable via Lua
-    // config({ resource_sweep_after_frames = N }) during on_init.
+    // config({ resource_sweep_after_frames = N }) during onInit.
     int           resource_sweep_after_frames;
 
 #ifndef __EMSCRIPTEN__
@@ -133,7 +133,7 @@ typedef struct App {
 } App;
 
 bool app_init(App *app);
-bool app_backend_init(App *app);  // call after lua on_init has run; returns false on backend init failure
+bool app_backend_init(App *app);  // call after lua onInit has run; returns false on backend init failure
 void app_frame_begin(App *app, int *out_w, int *out_h);
 void app_frame_end(App *app);
 void app_shutdown(App *app);

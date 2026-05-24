@@ -273,15 +273,15 @@ local function build_vertices()
     return out
 end
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
     reset_game()
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
     update_game()
 
     local vs, vsv = lub_io.load_text("samples/data/09_breakout.vs.slang")

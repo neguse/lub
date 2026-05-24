@@ -3,14 +3,14 @@ local M = {}
 
 local RT_W, RT_H = 256, 256
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
     local ovs, ovsv = lub_io.load_text("samples/data/05_offscreen.vs.slang")
     local ofs, ofsv = lub_io.load_text("samples/data/05_offscreen.fs.slang")
     local overts, ovv = lub_io.load_floats("samples/data/05_offscreen.verts.lua")

@@ -1,7 +1,7 @@
 local M = {}
 
-function M.on_init()
-  print("[lua] on_init")
+function M.onInit()
+  print("[lua] onInit")
   config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
   print("config called")
   print("VERTEX=", VERTEX, "RGBA8=", RGBA8, "CLEAR=", CLEAR)
@@ -10,15 +10,15 @@ function M.on_init()
   end
 end
 
-function M.on_event(e) end
+function M.onEvent(e) end
 
-function M.on_frame()
+function M.onFrame()
   begin_pass({ target = main_tex, clear_color = {0.1, 0.1, 0.2, 1} })
   end_pass()
 end
 
-function M.on_quit()
-  print("[lua] on_quit")
+function M.onQuit()
+  print("[lua] onQuit")
 end
 
 return M

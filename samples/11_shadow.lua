@@ -202,14 +202,14 @@ local function light_mvp()
     return mul4(ortho_lh(3.4, 3.4, 0.1, 7.0), view)
 end
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame(dt)
+function M.onFrame(dt)
     t_accum = t_accum + (dt or DT)
 
     local dvs, dvsv = lub_io.load_text("samples/data/11_shadow_depth.vs.slang")

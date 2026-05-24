@@ -961,7 +961,7 @@ static int l_key_down(lua_State *L) {
 
 static int l_config(lua_State *L) {
     if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
-        return luaL_error(L, "config: must be called inside on_init");
+        return luaL_error(L, "config: must be called inside onInit");
     }
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_getfield(L, 1, "backend");
@@ -1151,14 +1151,14 @@ bool lua_ctx_init(LuaCtx *ctx, const char *entry_module_name, App *app) {
     return true;
 }
 
-void lua_ctx_call_init(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "on_init", 0); }
-void lua_ctx_call_frame(LuaCtx *ctx) { if (!ctx->L) return; call_module_field(ctx, "on_frame", 0); }
-void lua_ctx_call_quit(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "on_quit", 0); }
+void lua_ctx_call_init(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "onInit", 0); }
+void lua_ctx_call_frame(LuaCtx *ctx) { if (!ctx->L) return; call_module_field(ctx, "onFrame", 0); }
+void lua_ctx_call_quit(LuaCtx *ctx)  { if (!ctx->L) return; call_module_field(ctx, "onQuit", 0); }
 
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e) {
     if (!ctx->L) return;
     push_event_table(ctx->L, e);
-    call_module_field(ctx, "on_event", 1);
+    call_module_field(ctx, "onEvent", 1);
 }
 
 // Stack discipline:

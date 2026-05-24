@@ -1,14 +1,14 @@
 local lub_io = require("lub_io")
 local M = {}
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
     local vs, vsv = lub_io.load_text("samples/data/02_vcol.vs.slang")
     local fs, fsv = lub_io.load_text("samples/data/02_vcol.fs.slang")
     local verts, vv = lub_io.load_floats("samples/data/02_vcol.verts.lua")

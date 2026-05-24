@@ -5,14 +5,14 @@
 local lub_io = require("lub_io")
 local M = {}
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
     local vs, ver_vs = lub_io.load_text("tests/lua/test_indexed_draw.vs.slang")
     local fs, ver_fs = lub_io.load_text("tests/lua/test_indexed_draw.fs.slang")
     if not vs or not fs then return end

@@ -48,7 +48,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     if (!lua_ctx_init(&g_app.lua, modbuf, &g_app)) return SDL_APP_FAILURE;
     lua_ctx_call_init(&g_app.lua);
-    if (!app_backend_init(&g_app)) return SDL_APP_FAILURE;   // initialize GPU backend after Lua on_init
+    if (!app_backend_init(&g_app)) return SDL_APP_FAILURE;   // initialize GPU backend after Lua onInit
 
     if (capture_path) {
         capture_schedule(&g_app.capture, capture_path, capture_frame);
@@ -81,7 +81,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
     app_frame_begin(&g_app, &w, &h);
     lua_ctx_call_frame(&g_app.lua);
-    // 安全策: on_frame が pass を閉じ忘れた場合、強制的に閉じる
+    // 安全策: onFrame が pass を閉じ忘れた場合、強制的に閉じる
     if (pass_state_in_pass(&g_app.pass)) pass_state_end(&g_app.pass);
     app_frame_end(&g_app);
     if (g_app.capture_then_exit) return SDL_APP_SUCCESS;

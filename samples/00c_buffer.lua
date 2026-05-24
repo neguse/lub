@@ -1,11 +1,11 @@
 local M = {}
 local data = { 0, 0.5, 0,  -0.5, -0.5, 0,  0.5, -0.5, 0 }
 
-function M.on_init() end
-function M.on_event(e) end
-function M.on_quit() end
+function M.onInit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
   local b = use_buffer("tri", VERTEX, data, 1)
   if b and b.__lub_kind == "buffer" then
     -- buffer registered

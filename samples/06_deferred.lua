@@ -3,14 +3,14 @@ local M = {}
 
 local RT_W, RT_H = 256, 256
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
     local gvs, gvsv = lub_io.load_text("samples/data/06_gbuffer.vs.slang")
     local gfs, gfsv = lub_io.load_text("samples/data/06_gbuffer.fs.slang")
     local gverts, gvv = lub_io.load_floats("samples/data/06_gbuffer.verts.lua")

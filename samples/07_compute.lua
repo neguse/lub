@@ -6,17 +6,17 @@
 local lub_io = require("lub_io")
 local M = {}
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
 -- 3 vertices * 4 floats (vec2 pos + vec2 col) = 12 floats.
 local VERT_FLOATS = 12
 
-function M.on_frame()
+function M.onFrame()
     local cs, csv = lub_io.load_text("samples/data/07_gen_verts.cs.slang")
     local vs, vsv = lub_io.load_text("samples/data/07_render.vs.slang")
     local fs, fsv = lub_io.load_text("samples/data/07_render.fs.slang")

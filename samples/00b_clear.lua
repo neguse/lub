@@ -1,17 +1,17 @@
 local M = {}
 local t = 0
 
-function M.on_init()
+function M.onInit()
   local b = os.getenv("LUB_BACKEND") or "sokol"
   config({ backend = b })
   print("backend = " .. b)
   print("clear demo")
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
   t = t + 1/60
   local r = 0.5 + 0.5 * math.sin(t)
   local g = 0.5 + 0.5 * math.sin(t + 2.0)

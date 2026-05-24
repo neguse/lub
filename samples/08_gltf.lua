@@ -53,14 +53,14 @@ local function make_mvp(t)
     return mul4(p, vm)
 end
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame(dt)
+function M.onFrame(dt)
     t_accum = t_accum + (dt or 0.016)
 
     local vs, ver_vs = lub_io.load_text("samples/data/08_gltf.vs.slang")

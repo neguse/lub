@@ -368,15 +368,15 @@ local function make_mvp(t)
     return mul4(proj, mul4(view, mul4(rx, ry)))
 end
 
-function M.on_init()
+function M.onInit()
     config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
     reset_game()
 end
 
-function M.on_event(e) end
-function M.on_quit() end
+function M.onEvent(e) end
+function M.onQuit() end
 
-function M.on_frame()
+function M.onFrame()
     camera_t = camera_t + DT
     update_game()
 
