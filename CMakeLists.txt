@@ -125,6 +125,8 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
   # haxe --wait child process management; WASM ビルドでは process spawn が無いので除外。
   list(APPEND LUB_SOURCES src/haxe_server.c)
+  # hxml parse + haxe --connect 呼び出し + prelude/postlude concat (atomic write)。
+  list(APPEND LUB_SOURCES src/haxe_build.c)
 endif()
 add_executable(lub ${LUB_SOURCES})
 
@@ -242,4 +244,21 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_haxe_server_smoke PRIVATE SDL3::SDL3)
   target_include_directories(lub_haxe_server_smoke PRIVATE src)
+
+  # hxml parser 単体 unit test (haxe 子プロセスは spawn しない)。
+  add_executable(lub_hxml_parse_test
+    tests/c/hxml_parse_test.c
+    src/haxe_build.c
+  )
+  target_link_libraries(lub_hxml_parse_test PRIVATE SDL3::SDL3)
+  target_include_directories(lub_hxml_parse_test PRIVATE src)
+
+  # haxe_build end-to-end smoke (haxe --wait → --connect → atomic write の貫通)。
+  add_executable(lub_haxe_build_smoke
+    tests/c/haxe_build_smoke.c
+    src/haxe_build.c
+    src/haxe_server.c
+  )
+  target_link_libraries(lub_haxe_build_smoke PRIVATE SDL3::SDL3)
+  target_include_directories(lub_haxe_build_smoke PRIVATE src)
 endif()
