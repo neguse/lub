@@ -60,6 +60,22 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 
 サンプルは `samples/*.lua` に置く。
 
+### Haxe sample の実行 (Phase 0)
+
+依存:
+- Haxe 5+ (`haxe --version` で確認、4.3+ で動作確認済み)
+- `haxelib dev lub /path/to/lub/haxe-lib/lub` で extern を 1 回登録 (dev-machine setup)
+
+```sh
+./build/lub samples/01_triangle.hxml
+```
+
+lub が起動時に `haxe --wait` を子プロセスとして spawn し、`samples/Triangle01.hx` の編集を保存すると `samples/.lub/01_triangle.lua` が atomic に更新され、`lume.hotswap` で reload される。
+
+`.lub/` は generated artifact なので gitignore 済み。
+
+extern は `lub.Lub` / `lub.Gfx` / `lub.Input` / `lub.Io` / `lub.Sys` の 5 class に責務別。配列を lub API に渡すときは `lua.Table.fromArray([...])` で 1-indexed Lua table に明示変換する (Haxe 配列は 0-indexed のため)。
+
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
 ```sh
