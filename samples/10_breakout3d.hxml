@@ -1,0 +1,3 @@
+-cp samples
+-lib lub
+-main Breakout3d10
