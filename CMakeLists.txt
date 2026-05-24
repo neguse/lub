@@ -126,7 +126,10 @@ if(NOT LUB_WASM)
   # haxe --wait child process management; WASM ビルドでは process spawn が無いので除外。
   list(APPEND LUB_SOURCES src/haxe_server.c)
   # hxml parse + haxe --connect 呼び出し + prelude/postlude concat (atomic write)。
+  # haxe_pipeline_{start,stop,tick} もこの TU に同居している (haxe_build.c 末尾)。
   list(APPEND LUB_SOURCES src/haxe_build.c)
+  # `*.hx` の recursive mtime watcher (50ms debounce)。
+  list(APPEND LUB_SOURCES src/haxe_watch.c)
 endif()
 add_executable(lub ${LUB_SOURCES})
 
@@ -246,18 +249,25 @@ if(NOT LUB_WASM)
   target_include_directories(lub_haxe_server_smoke PRIVATE src)
 
   # hxml parser 単体 unit test (haxe 子プロセスは spawn しない)。
+  # haxe_build.c は pipeline 実装も同居しており haxe_server / haxe_watch の
+  # 関数を参照するため、test 自体が parser しか呼ばなくても両者を link する。
   add_executable(lub_hxml_parse_test
     tests/c/hxml_parse_test.c
     src/haxe_build.c
+    src/haxe_server.c
+    src/haxe_watch.c
   )
   target_link_libraries(lub_hxml_parse_test PRIVATE SDL3::SDL3)
   target_include_directories(lub_hxml_parse_test PRIVATE src)
 
   # haxe_build end-to-end smoke (haxe --wait → --connect → atomic write の貫通)。
+  # haxe_build.c は pipeline 実装 (haxe_watch.h を含む) も持つので、
+  # smoke 自体が watch を呼ばなくても haxe_watch.c を link する必要がある。
   add_executable(lub_haxe_build_smoke
     tests/c/haxe_build_smoke.c
     src/haxe_build.c
     src/haxe_server.c
+    src/haxe_watch.c
   )
   target_link_libraries(lub_haxe_build_smoke PRIVATE SDL3::SDL3)
   target_include_directories(lub_haxe_build_smoke PRIVATE src)

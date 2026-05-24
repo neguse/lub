@@ -1,4 +1,5 @@
 #include "haxe_build.h"
+#include "haxe_pipeline.h"
 #include "embedded_prelude.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -292,4 +293,67 @@ HaxeBuildResult haxe_build_run(const HaxeServer *server,
 
     r.ok = true;
     return r;
+}
+
+// ---- haxe_pipeline ---------------------------------------------------------
+// server + build + watch を 1 つの lifecycle に束ねた layer。実装は小さい
+// ので別 .c を起こさず haxe_build.c に同居させる。
+
+bool haxe_pipeline_start(HaxePipeline *p, const char *hxml_path) {
+    if (!p || !hxml_path) return false;
+    SDL_zerop(p);
+    SDL_snprintf(p->hxml_path, sizeof(p->hxml_path), "%s", hxml_path);
+
+    if (!haxe_server_start(&p->server)) {
+        SDL_Log("haxe_pipeline_start: server start failed");
+        return false;
+    }
+    if (!hxml_parse(hxml_path, &p->meta)) {
+        SDL_Log("haxe_pipeline_start: hxml parse failed (%s)", hxml_path);
+        haxe_server_stop(&p->server);
+        return false;
+    }
+    HaxeBuildResult r = haxe_build_run(&p->server, hxml_path, &p->meta);
+    if (!r.ok) {
+        SDL_Log("haxe_pipeline_start: initial build failed: %s", r.log);
+        haxe_server_stop(&p->server);
+        return false;
+    }
+    if (!haxe_watch_init(&p->watch, hxml_path, &p->meta)) {
+        SDL_Log("haxe_pipeline_start: watch init failed");
+        haxe_server_stop(&p->server);
+        return false;
+    }
+    p->enabled = true;
+    return true;
+}
+
+void haxe_pipeline_stop(HaxePipeline *p) {
+    if (!p || !p->enabled) return;
+    haxe_watch_shutdown(&p->watch);
+    haxe_server_stop(&p->server);
+    p->enabled = false;
+}
+
+bool haxe_pipeline_tick(HaxePipeline *p) {
+    if (!p || !p->enabled) return false;
+    bool meta_dirty = false;
+    if (!haxe_watch_tick(&p->watch, &meta_dirty)) return false;
+
+    if (meta_dirty) {
+        // hxml が変わったので meta を再 parse し、watch root も作り直す。
+        if (!hxml_parse(p->hxml_path, &p->meta)) {
+            SDL_Log("haxe_pipeline_tick: re-parse hxml failed; keeping old meta");
+        } else {
+            haxe_watch_shutdown(&p->watch);
+            haxe_watch_init(&p->watch, p->hxml_path, &p->meta);
+        }
+    }
+
+    HaxeBuildResult r = haxe_build_run(&p->server, p->hxml_path, &p->meta);
+    if (!r.ok) {
+        SDL_Log("haxe_pipeline_tick: rebuild failed: %s", r.log);
+        return false;
+    }
+    return true;
 }

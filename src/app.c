@@ -108,10 +108,10 @@ void app_shutdown(App *app) {
     if (app->window) SDL_DestroyWindow(app->window);
 
 #ifndef __EMSCRIPTEN__
-    // .hxml entry を踏んでいたときだけ haxe --wait 子プロセスを止める。
+    // .hxml entry を踏んでいたときだけ haxe pipeline (server + watch) を止める。
     // 通常の .lua-only 実行は haxe_enabled = false のままなので no-op。
     if (app->haxe_enabled) {
-        haxe_server_stop(&app->haxe_server);
+        haxe_pipeline_stop(&app->haxe);
     }
 #endif
 }

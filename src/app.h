@@ -20,7 +20,7 @@
 #include "pipeline.h"
 #include "capture.h"
 #ifndef __EMSCRIPTEN__
-#include "haxe_server.h"
+#include "haxe_pipeline.h"
 #endif
 
 typedef enum {
@@ -136,11 +136,11 @@ typedef struct App {
 
 #ifndef __EMSCRIPTEN__
     // Haxe pipeline state. .hxml entry path のとき main.c が haxe_enabled = true に
-    // し、haxe_server を立ち上げる。app_shutdown が haxe_enabled ガード下で
-    // haxe_server_stop を呼ぶ。WASM ビルドでは子プロセスを spawn しないため
-    // フィールドごと存在しない。
-    HaxeServer haxe_server;
-    bool       haxe_enabled;
+    // し、haxe_pipeline_start で server + initial build + watch を一括起動する。
+    // app_shutdown が haxe_enabled ガード下で haxe_pipeline_stop を呼ぶ。
+    // WASM ビルドでは子プロセスを spawn しないためフィールドごと存在しない。
+    HaxePipeline haxe;
+    bool         haxe_enabled;
 #endif
 } App;
 
