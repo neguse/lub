@@ -8,7 +8,7 @@ extern class Gfx {
   @:native("use_shader")         public static function useShader(key: String, vs: String, fs: String, version: Int): Dynamic;
   @:native("use_shader_compute") public static function useShaderCompute(key: String, src: String, version: Int): Dynamic;
   @:native("use_buffer")         public static function useBuffer(key: String, type: Int, data: lua.Table<Int, Float>, version: Int): Dynamic;
-  @:native("use_texture")        public static function useTexture(key: String, px: Dynamic, w: Int, h: Int, fmt: Int, version: Int, ?opts: Dynamic): Dynamic;
+  @:native("use_texture")        public static function useTexture(key: String, w: Int, h: Int, fmt: Int, px: Dynamic, version: Int, ?opts: Dynamic): Dynamic;
   // commands
   @:native("draw")               public static function draw(count: Int, bindings: Dynamic, opts: Dynamic): Void;
   @:native("dispatch")           public static function dispatch(x: Int, y: Int, z: Int, bindings: Dynamic, opts: Dynamic): Void;
