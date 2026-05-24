@@ -93,15 +93,41 @@ Haxe `-lua` 出力は最後に `<MainClass>.main()` を呼ぶ script で、`requ
 
 これに伴い lub C 側 (lua_api.c の `lua_ctx_call_init` / `call_frame` 等が読むフィールド名) も Haxe 慣習に合わせ snake_case (`on_init` 等) から camelCase (`onInit`/`onFrame`/`onEvent`/`onQuit`) に揃える。既存 `samples/*.lua` は Phase 0 の sample 移植で全部置き換わるので、契約変更は移植作業に巻き込む形で吸収する。
 
-**lub binary に embed する prelude** (生成 `.lua` の先頭に concat、static):
+**lub binary に embed する prelude** (生成 `.lua` の先頭に concat、static、実体は `src/embedded_prelude.h`):
+
 ```lua
--- haxe std で足りない bits の shim (lub runtime は Lua 5.5 で utf8 built-in だが
--- Haxe lua target が require("lua-utf8") を出す場合に備えて alias を貼っておく)
+-- (1) Haxe lua target は utf8 機能を require("lua-utf8") 経由で参照する想定だが、
+--     lub runtime (Lua 5.5) には utf8 が built-in。両者を埋めるための alias。
 package.preload["lua-utf8"] = function()
-   return { len = string.len, char = string.char, upper = string.upper,
-            lower = string.lower, find = string.find, sub = string.sub, byte = string.byte }
+  return {
+    len = string.len, char = string.char,
+    upper = string.upper, lower = string.lower,
+    find = string.find, sub = string.sub, byte = string.byte,
+  }
 end
+
+-- (2) Haxe extern (lub.Lub / lub.Gfx / lub.Input / lub.Sys) は
+--     class-qualified call (e.g. `lub.Gfx.begin_pass(...)`) を emit するが、
+--     lub C 側は global function (`begin_pass`) として expose する。
+--     globals を namespace table に集約してギャップを埋める。
+--     lub.Io は @:luaRequire("lub_io") 経由で `require("lub_io")` を直接吐くため shim 不要。
+lub = lub or {}
+lub.Lub   = { config = config }
+lub.Gfx   = { begin_pass = begin_pass, end_pass = end_pass,
+              use_shader = use_shader, use_shader_compute = use_shader_compute,
+              use_buffer = use_buffer, use_texture = use_texture,
+              draw = draw, dispatch = dispatch, capture = capture,
+              main_tex = main_tex,
+              -- enum / constant 群 (VERTEX / RGBA8 / NONE / TRIANGLES / LINEAR / ...)
+              VERTEX = VERTEX, INDEX = INDEX, UNIFORM = UNIFORM, STORAGE = STORAGE,
+              -- ... (pixel format / load-store / blend / cull / primitive / sampler 全部)
+            }
+lub.Input = { key_down = key_down }
+lub.Sys   = { file_mtime = file_mtime, fnv1a64 = fnv1a64,
+              load_png = load_png, load_gltf = load_gltf }
 ```
+
+namespace shim を embed する必然性: Haxe extern を package 配下に置くと出力 Lua は `lub.Gfx.begin_pass(...)` のように 2 段の table lookup になる。lub C 側のグローバル登録 (`lua_register(L, "begin_pass", ...)`) のままだと top-level `begin_pass` しか見えないので、prelude で `lub.Gfx = { begin_pass = begin_pass, ... }` を 1 回作って Haxe 側の呼び出しに合流させる。`lub.Io` は `@:luaRequire("lub_io")` 経由で `require("lub_io")` を独立して呼ぶので shim 対象外。
 
 **lub が build 毎に動的生成する postlude** (末尾に concat、`<ClassName>` は hxml の `-main` から取る):
 ```lua
@@ -213,15 +239,22 @@ extern class Input {
 ```haxe
 package lub;
 
+@:multiReturn extern class IoTextResult   { var text: String;    var version: Int; }
+@:multiReturn extern class IoFloatsResult { var data: Dynamic;   var version: Int; }
+@:multiReturn extern class IoPngResult    { var pixels: Dynamic; var width: Int; var height: Int; var format: Int; var version: Int; }
+@:multiReturn extern class IoGltfResult   { var mesh: Dynamic;   var version: Int; }
+
 @:luaRequire("lub_io")
 extern class Io {
-  @:native("load_text")    public static function loadText(path: String): lua.PairTools.MultiReturn2<String, Int>;
-  @:native("load_floats")  public static function loadFloats(path: String): lua.PairTools.MultiReturn2<Dynamic, Int>;
-  @:native("load_png")     public static function loadPng(path: String): lua.PairTools.MultiReturn5<Dynamic, Int, Int, Int, Int>;
-  @:native("load_gltf")    public static function loadGltf(path: String): lua.PairTools.MultiReturn2<Dynamic, Int>;
+  @:native("load_text")     public static function loadText(path: String): IoTextResult;
+  @:native("load_floats")   public static function loadFloats(path: String): IoFloatsResult;
+  @:native("load_png")      public static function loadPng(path: String): IoPngResult;
+  @:native("load_gltf")     public static function loadGltf(path: String): IoGltfResult;
   @:native("interleave_pn") public static function interleavePn(mesh: Dynamic): lua.Table<Int, Float>;
 }
 ```
+
+`lua.PairTools.MultiReturn*` は Haxe 4.3.7 stdlib に存在しなかったため、`@:multiReturn` 付きの per-loader 専用 extern class を 1 個ずつ宣言する形に確定した。フィールド名は `text` / `data` / `pixels` / `mesh` のように戻り値の意味を反映する (旧案の `content` / `values` から変更)。`version` は全 loader 共通で末尾に置く。`lub_io.lua` が返す table は **既に 1-indexed Lua table** として組まれているので、`loadFloats` の `.data` をそのまま `Gfx.useBuffer` に渡せる (後述の 0-indexed 問題は発生しない)。
 
 ### `haxe-lib/lub/lub/Sys.hx` — raw C-side primitive (普段は使わない、低 level)
 
@@ -259,7 +292,26 @@ class Triangle01 {
 
 `onInit`/`onFrame` は **public static** で書く。class table の field として Lua 出力に並ぶ。`register()` 呼び出しは不要。lub は hxml の `-main Triangle01` を読んで postlude `return Triangle01` を build 時に注入し、`require` の戻り値が class table そのものになる。
 
-Multi-return の正確な API は Haxe 5 の `lua.PairTools` / `lua.MultiReturn` の挙動を確認して impl 時に確定する。
+Multi-return は impl 時に `@:multiReturn` 付き per-loader extern class 方式に確定 (`Io.hx` の節を参照)。`lua.PairTools.MultiReturn*` は Haxe 4.3.7 stdlib に存在しないため使えない。
+
+### Haxe stdlib との衝突
+
+- **`Sys.getEnv` は使えない**。Haxe stdlib `Sys.getEnv` は `luv.Os.os_getenv` に経路を通すため module load 時に `require("luv")` が無条件で走る。lub は `luv` binding を提供していないので module load が失敗する。env var を読む場合は `lua.Os.getenv("LUB_BACKEND")` を使う (これは `_G.os.getenv(...)` を直接 emit し、ポート前の Lua sample と同じ挙動になる)。
+- **`lub.Sys` は Haxe stdlib `Sys` を shadow する**。`import lub.Sys;` を書くと user code から Haxe stdlib `Sys` が見えなくなる。sample が Haxe stdlib 側の `Sys` (e.g. `Sys.args()`) を必要とする場合は、`lub.Sys` を import せず fully-qualified (`lub.Sys.fileMtime(...)`) で参照するか、stdlib 側を `haxe.macro.Compiler` 経由で alias する。現状は前者を運用方針とする (`lub.Sys` の rename は採用しない)。
+
+### 配列の indexing
+
+Haxe の `[a, b, c]` 配列リテラルは Lua target で `_hx_tab_array({[0]=a, b, c}, 3)` に展開され、**0-indexed** になる。一方 lub C 側は `lua_rawgeti(L, -1, 1)` で **1-indexed** 前提に読む。両者を素通しでつなぐと最初の要素が読み落とされる。
+
+対策: lub API に直接配列を渡すときは `lua.Table.fromArray([...])` で 1-indexed Lua table に明示変換する。
+
+```haxe
+Gfx.beginPass({ clear_color: lua.Table.fromArray([0.1, 0.1, 0.2, 1.0]) });
+```
+
+- 名前付き field のみの anonymous structure (`{ verts: b, count: 3 }`) は **wrap 不要** (Lua の string key になるので index 問題は起きない)。
+- `Io.loadFloats` 等が返す table は `lub_io.lua` 側で 1-indexed として組まれているので **wrap 不要**。
+- 数値 index で読む lub C 受け口 (`clear_color`, `verts`, `indices` 等) に Haxe 配列リテラルを直接渡す箇所だけ wrap する。
 
 ## Process management
 
@@ -285,8 +337,8 @@ lub (parent)
    - embedded prelude + 中間 raw の内容 + 生成 postlude を `<dir>/.lub/<basename>.lua.tmp` に書く。
    - `SDL_RenamePath` で `<basename>.lua.tmp` → `<basename>.lua` に atomic 差し替え。
    - 中間 raw (`<basename>.raw.tmp`) は削除。
-4. **package.path 更新**: lub init 中に `package.path = "<dir>/.lub/?.lua;" .. package.path` を inject (boot.lua より前)。
-5. **既存経路**: backend init → Lua state → boot.lua → `require("<basename>")` → `.lub/<basename>.lua` が読まれる。
+4. **package.path 更新**: lub init 中に `package.path = "<dir>/.lub/?.lua;" .. package.path` を inject (boot.lua より前)。実装上は lub C 側の `lua_ctx_init` が **2 段に分割**されている: `lua_ctx_init(ctx, app)` が L 生成 + lib open + API 登録までを行い、その後 lub が `package.path` を inject、最後に `lua_ctx_load_entry(ctx, entry_module_name)` が boot.lua を実行して entry module を require する。この分割があるため、API 登録済みの Lua state に対して boot.lua 実行前に `package.path` を弄る window が確保できる。
+5. **既存経路**: backend init → `lua_ctx_init` → package.path inject → `lua_ctx_load_entry` → boot.lua → `require("<basename>")` → `.lub/<basename>.lua` が読まれる。
 6. **watch root の記憶**: hxml を line parse して `-cp <path>` をすべて抜き出し、watch root list として保持する。hxml 自体のパスも watch list に入れる。
    - `-lib <name>` 経由で haxelib classpath に入る source (例: `lub` extern) は **watch 対象外**。user は自分の `-cp` 配下しか編集しない前提。`lub` extern を編集したい開発者は明示的に該当 dir を `-cp` で追加するか lub を再起動する。
 
@@ -389,5 +441,8 @@ Phase 0 spec のうち実装は次の順:
 
 ## 未解決事項
 
-- Haxe 5 の `lua.PairTools.MultiReturn*` の正確な型名は impl 時に確定 (`lub_io.lua` の multi-return を Haxe extern で正しく受ける書き方)。
 - haxelib `lub` の version 戦略 (semver / lub runtime と lockstep)。
+
+### 解決済み
+
+- ~~Haxe 5 の `lua.PairTools.MultiReturn*` の正確な型名~~ → Haxe 4.3.7 stdlib に存在しないため、`@:multiReturn` 付きの per-loader 専用 extern class (`IoTextResult` / `IoFloatsResult` / `IoPngResult` / `IoGltfResult`) で受ける方式に確定 (`haxe-lib/lub/lub/Io.hx` が source of truth)。
