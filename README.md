@@ -60,21 +60,49 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 
 サンプルは `samples/*.lua` に置く。
 
-### Haxe sample の実行 (Phase 0)
+### Haxe sample の実行
+
+Haxe で書いた sample を `.hxml` を entry にして直接実行できる。`.hx` 編集 → 保存で hot reload される。
 
 依存:
-- Haxe 5+ (`haxe --version` で確認、4.3+ で動作確認済み)
-- `haxelib dev lub /path/to/lub/haxe-lib/lub` で extern を 1 回登録 (dev-machine setup)
+- Haxe 4.3+ (`haxe --version` で確認)
+- 1 回だけ extern を haxelib に登録: `haxelib dev lub <repo>/haxe-lib/lub`
 
 ```sh
 ./build/lub samples/01_triangle.hxml
 ```
 
-lub が起動時に `haxe --wait` を子プロセスとして spawn し、`samples/Triangle01.hx` の編集を保存すると `samples/.lub/01_triangle.lua` が atomic に更新され、`lume.hotswap` で reload される。
+`samples/Triangle01.hx` を編集して保存すると、走っている game に即反映される。
 
-`.lub/` は generated artifact なので gitignore 済み。
+#### sample の書き方
 
-extern は `lub.Lub` / `lub.Gfx` / `lub.Input` / `lub.Io` / `lub.Sys` の 5 class に責務別。配列を lub API に渡すときは `lua.Table.fromArray([...])` で 1-indexed Lua table に明示変換する (Haxe 配列は 0-indexed のため)。
+`-cp samples / -lib lub / -main <ClassName>` の 3 行 hxml + Haxe class 1 個が最小構成。
+
+```haxe
+import lub.Lub;
+import lub.Gfx;
+
+class Triangle01 {
+  public static function main() {}
+  public static function onInit() { Lub.config({ backend: "sokol" }); }
+  public static function onFrame() {
+    Gfx.beginPass({ target: Gfx.mainTex, clear_color: lua.Table.fromArray([0.1, 0.1, 0.2, 1.0]) });
+    Gfx.endPass();
+  }
+}
+```
+
+extern は責務別に 5 class:
+- `lub.Lub` — `config()`
+- `lub.Gfx` — 描画 / GPU / 定数
+- `lub.Input` — `keyDown()`
+- `lub.Io` — `samples/lub_io.lua` の cached loader (`loadText`/`loadPng` 等)
+- `lub.Sys` — 低 level primitive (普段不要、Haxe stdlib `Sys` を import するときは衝突に注意)
+
+#### 注意点
+
+- **配列リテラル**: `Gfx.beginPass({ clear_color: [...] })` のように Haxe array をそのまま渡すと 0-indexed の Lua table になり lub C 側 (1-indexed 期待) と噛み合わない。`lua.Table.fromArray([0.1, 0.1, 0.2, 1.0])` で明示変換する。named field の anonymous structure (`{ target: x }`) は対象外。
+- **環境変数読み出し**: `Sys.getEnv(...)` は使えない (Haxe stdlib が `luv` を require するため)。代わりに `lua.Os.getenv(...)` を使う。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
