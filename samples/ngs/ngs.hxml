@@ -1,0 +1,3 @@
+-cp samples/ngs
+-lib lub
+-main NgsMain
