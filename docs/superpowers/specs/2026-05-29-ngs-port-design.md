@@ -360,7 +360,7 @@ Asset 変換前提: font.png は **白グリフ、透明背景** (§8 で BMP �
 
 ### NSP → Haxe table 変換
 
-`.nsp` は 4 bytes/rect (`short x, y, w, h`、little-endian) の連続。`Atlases.hx` に const として埋め込む:
+`.nsp` は ASCII テキストで、1 行 1 rect の `x,y,w,h,` 形式 (末尾カンマ + CRLF)。`Atlases.hx` に const として埋め込む:
 
 ```haxe
 class Atlases {

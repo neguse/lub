@@ -241,7 +241,7 @@ Expected: 7 ファイルとも存在する。
 ```python
 #!/usr/bin/env python3
 # NGS asset converter: 8-bit indexed BMP -> RGBA8 PNG (palette idx 0 = transparent),
-# NSP (4*int16 LE per rect) -> samples/ngs/assets/Atlases.hx literal table.
+# NSP (ASCII text, "x,y,w,h," per line) -> samples/ngs/assets/Atlases.hx literal table.
 import os, struct, zlib
 
 # .../lub/samples/ngs/scripts から各 dir を解決。ngs は lub の兄弟。
@@ -311,12 +311,16 @@ def bmp_to_png(name):
     print(f"  {name}.png  {w}x{h}")
 
 def read_nsp(name):
-    with open(os.path.join(NGS_DIR, name + ".nsp"), "rb") as f:
-        b = f.read()
+    # NSP format: plain ASCII text, one rect per line, "x,y,w,h," (trailing comma, CRLF).
+    with open(os.path.join(NGS_DIR, name + ".nsp"), "r") as f:
+        text = f.read()
     rects = []
-    for i in range(0, len(b) - 7, 8):
-        x, y, w, h = struct.unpack_from("<hhhh", b, i)
-        rects.append((x, y, w, h))
+    for line in text.splitlines():
+        line = line.strip().rstrip(",")
+        if not line:
+            continue
+        parts = [int(v) for v in line.split(",")]
+        rects.append((parts[0], parts[1], parts[2], parts[3]))
     return rects
 
 def gen_atlases():
