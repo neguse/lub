@@ -10,6 +10,7 @@ import input.MockInput;
 import scenes.Scene;
 import scenes.SceneTransition;
 import scenes.Title;
+import scenes.Play;
 
 class Game {
   public static inline var W: Int = 640;
@@ -18,10 +19,12 @@ class Game {
   public static var fontAtlas: Atlas = null;
   public static var jikiAtlas: Atlas = null;
   public static var cursorAtlas: Atlas = null;
+  public static var enemyAtlas: Atlas = null;
   public static var font: Font = null;
   static var input: InputSource = null;
   static var scene: Scene = null;
   public static var frameCount: Int = 0;
+  public static var score: Int = 0;
 
   public static function init() {
     var backend: String = lua.Os.getenv("LUB_BACKEND");
@@ -34,12 +37,16 @@ class Game {
     if (fontAtlas == null) fontAtlas = new Atlas("ngs_font", "samples/ngs/data/font.png");
     if (jikiAtlas == null) jikiAtlas = new Atlas("ngs_jiki", "samples/ngs/data/jiki.png");
     if (cursorAtlas == null) cursorAtlas = new Atlas("ngs_cursor", "samples/ngs/data/cursor.png");
-    if (!gfx.ensure() || !fontAtlas.ensure() || !jikiAtlas.ensure() || !cursorAtlas.ensure()) return false;
+    if (enemyAtlas == null) enemyAtlas = new Atlas("ngs_enemy", "samples/ngs/data/enemy.png");
+    if (!gfx.ensure() || !fontAtlas.ensure() || !jikiAtlas.ensure() || !cursorAtlas.ensure() || !enemyAtlas.ensure()) return false;
     if (font == null) font = new Font(fontAtlas);
     if (input == null) {
       input = (lua.Os.getenv("LUB_NGS_MOCK") != null) ? new MockInput() : new Input();
     }
-    if (scene == null) scene = new Title();
+    if (scene == null) {
+      var boot = lua.Os.getenv("LUB_NGS_BOOT");
+      scene = (boot == "play") ? new Play(false) : new Title();
+    }
     return true;
   }
 

@@ -2,25 +2,35 @@ package scenes;
 
 import input.InputSnapshot;
 import render.DrawList;
+import render.Color;
 import game.Game;
-import assets.Atlases;
+import game.Spawner;
+import entities.World;
 
 class Play implements Scene {
-  final noGod: Bool;
-  var t: Int = 0;
+  final world: World;
+  final spawner: Spawner;
 
   public function new(noGod: Bool) {
-    this.noGod = noGod;
+    Game.score = 0;
+    world = new World(noGod);
+    spawner = new Spawner(noGod);
   }
 
   public function update(input: InputSnapshot): Void {
-    t = t + 1;
+    spawner.tick(world);
+    world.tick(input);
+    world.resolveCollisions();
   }
 
   public function draw(dl: DrawList): Void {
-    // 自機 (jiki atlas rect 0) を画面中央下に。Plan 2 で Player entity に置換。
-    dl.sprite(Game.jikiAtlas, Atlases.jiki[0], 312, 400);
+    world.drawAll(dl);
+    var white: Color = { r: 1, g: 1, b: 1, a: 1 };
+    Game.font.drawString(dl, 460, 20, "score", white);
+    Game.font.drawInt(dl, 460, 30, Game.score, 6, white);
+    Game.font.drawString(dl, 460, 50, "life", white);
+    Game.font.drawInt(dl, 500, 50, world.player.lives, 1, white);
   }
 
-  public function transition(): SceneTransition return Stay;
+  public function transition(): SceneTransition return Stay;  // GameOver は Plan 4
 }
