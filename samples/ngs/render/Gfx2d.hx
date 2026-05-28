@@ -7,7 +7,6 @@ class Gfx2d {
   public var drawList: DrawList;
   public var white: Atlas;     // quad 用 1x1 白
   var shader: Dynamic;
-  var ready: Bool = false;
 
   public function new() {}
 
@@ -26,7 +25,6 @@ class Gfx2d {
       lua.Table.fromArray([255, 255, 255, 255]), 1, { filter: Gfx.NEAREST, wrap: Gfx.CLAMP });
     if (drawList == null) drawList = new DrawList(shader);
     else drawList.shader = shader;
-    ready = true;
     return true;
   }
 

@@ -23,10 +23,11 @@ class Font {
     }
   }
 
-  // width 桁の先頭ゼロ詰め整数描画。
+  // width 桁の先頭ゼロ詰め整数描画。負数は符号を保ったまま数値部だけ詰める。
   public function drawInt(dl: DrawList, x: Int, y: Int, n: Int, width: Int, ?tint: Color) {
-    var s = Std.string(n);
-    while (s.length < width) s = "0" + s;
-    drawString(dl, x, y, s, tint);
+    var neg = n < 0;
+    var digits = Std.string(neg ? -n : n);
+    while (digits.length < width) digits = "0" + digits;
+    drawString(dl, x, y, neg ? "-" + digits : digits, tint);
   }
 }
