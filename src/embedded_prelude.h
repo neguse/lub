@@ -34,7 +34,7 @@ static const char HAXE_PRELUDE[] =
     "  return M\n"
     "end\n"
     "lub = lub or {}\n"
-    "lub.Lub = { config = config }\n"
+    "lub.Lub = { config = config, quit = quit }\n"
     "lub.Gfx = {\n"
     "  begin_pass = begin_pass, end_pass = end_pass,\n"
     "  use_shader = use_shader, use_shader_compute = use_shader_compute,\n"

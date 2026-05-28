@@ -28,6 +28,9 @@ bool app_init(App *app) {
     app->last_w = 0;
     app->last_h = 0;
     app->frame_index = 0;
+    app->cfg_w = 0;
+    app->cfg_h = 0;
+    app->quit_requested = false;
     app->phase = APP_PHASE_PRE_BACKEND;
     strcpy(app->backend_name, "sokol");
     return true;

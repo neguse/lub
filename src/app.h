@@ -92,6 +92,8 @@ typedef struct App {
     CaptureState  capture;
     bool          capture_then_exit; // set by app_frame_end after a successful capture
     int           last_w, last_h;    // last extents seen by app_frame_begin
+    int           cfg_w, cfg_h;       // config({width,height}) で要求された窓サイズ。0 = 既定維持
+    bool          quit_requested;     // Lua quit() が立てる。AppIterate が SUCCESS で抜ける
 
     // Set by SDL_AppEvent on SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED. The backend's
     // begin_frame checks this and rebuilds its swapchain before acquire. The

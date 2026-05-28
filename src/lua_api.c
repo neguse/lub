@@ -987,6 +987,30 @@ static int l_config(lua_State *L) {
         g_app_for_lua->resource_sweep_after_frames = (int)v;
     }
     lua_pop(L, 1);
+
+    lua_getfield(L, 1, "width");
+    if (!lua_isnoneornil(L, -1)) {
+        if (!lua_isinteger(L, -1)) { lua_pop(L, 1); return luaL_error(L, "config: width must be integer"); }
+        lua_Integer w = lua_tointeger(L, -1);
+        if (w <= 0) { lua_pop(L, 1); return luaL_error(L, "config: width must be > 0"); }
+        g_app_for_lua->cfg_w = (int)w;
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "height");
+    if (!lua_isnoneornil(L, -1)) {
+        if (!lua_isinteger(L, -1)) { lua_pop(L, 1); return luaL_error(L, "config: height must be integer"); }
+        lua_Integer h = lua_tointeger(L, -1);
+        if (h <= 0) { lua_pop(L, 1); return luaL_error(L, "config: height must be > 0"); }
+        g_app_for_lua->cfg_h = (int)h;
+    }
+    lua_pop(L, 1);
+    return 0;
+}
+
+static int l_quit(lua_State *L) {
+    (void)L;
+    if (g_app_for_lua) g_app_for_lua->quit_requested = true;
     return 0;
 }
 
@@ -1085,6 +1109,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "key_down");
     lua_pushcfunction(L, l_config);
     lua_setglobal(L, "config");
+    lua_pushcfunction(L, l_quit);
+    lua_setglobal(L, "quit");
     lua_pushcfunction(L, l_file_mtime); lua_setglobal(L, "file_mtime");
     lua_pushcfunction(L, l_fnv1a64);    lua_setglobal(L, "fnv1a64");
     lua_pushcfunction(L, l_load_png);   lua_setglobal(L, "load_png");
