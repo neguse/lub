@@ -3,6 +3,8 @@ package entities;
 import input.InputSnapshot;
 import render.DrawList;
 import render.Rect;
+import entities.enemies.Enemy;
+import game.Game;
 
 class World {
   final lists: Map<Faction, Array<Entity>> = new Map();
@@ -42,6 +44,30 @@ class World {
     for (f in ORDER) for (e in lists.get(f)) e.draw(dl);
     // 自機は最前面
     player.draw(dl);
+  }
+
+  public function resolveCollisions(): Void {
+    var enemies = lists.get(Faction.Enemies);
+    var pbs = lists.get(Faction.PlayerBullets);
+    for (b in pbs) {
+      var bullet: Bullet = cast b;
+      if (bullet.dead) continue;
+      for (e in enemies) {
+        var en: Enemy = cast e;
+        if (en.dead) continue;
+        if (overlap(b.bounds(), e.bounds())) {
+          bullet.dead = true;
+          Game.score += 10;
+          if (en.onDamage(1)) Game.score += 100;
+          break;
+        }
+      }
+    }
+    if (player.alive && player.invincible == 0) {
+      for (e in enemies) {
+        if (overlap(player.bounds(), e.bounds())) { player.hit(); break; }
+      }
+    }
   }
 
   public static function overlap(a: Rect, b: Rect): Bool {
