@@ -21,10 +21,6 @@ class World {
     lists.get(f).push(e);
   }
 
-  public inline function each(f: Faction, fn: (Entity) -> Void): Void {
-    for (e in lists.get(f)) fn(e);
-  }
-
   // 全 entity を update し、false を返したものを除去。
   public function tick(input: InputSnapshot): Void {
     player.update(this, input);

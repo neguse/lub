@@ -14,6 +14,8 @@ class Player {
   public static inline var H: Int = 16;
   static inline var HOX = 5; static inline var HOY = 5; static inline var HW = 5; static inline var HH = 7;
   static inline var SPEED = 6; static inline var SLOW = 3;
+  static inline var INVINCIBLE = 90;    // 復活後の無敵 (点滅) フレーム
+  static inline var DEATH_FRAMES = 154; // 死亡→復活までの停止 (原典 player_state 5..0x9f)
 
   public var lives: Int;
   public var alive: Bool = true;
@@ -35,9 +37,8 @@ class Player {
         var ang = Math.atan2(input.dirX, -input.dirY); // 上(-y)=0, 右(+x)=+90°
         x += Std.int(Math.round(Math.sin(ang) * spd));
         y += Std.int(Math.round(-Math.cos(ang) * spd));
-        // animState: 左(-x)寄り 0..中央2..右(+x)4
+        // animState: 左(-x)寄り 1..中央2..右(+x)3 (dirX ∈ {-1,0,1})
         animState = 2 + input.dirX;
-        if (animState < 0) animState = 0; if (animState > 4) animState = 4;
       }
       // クランプ
       if (x < Viewport.X) x = Viewport.X;
@@ -49,8 +50,8 @@ class Player {
       if (invincible > 0) invincible--;
     } else {
       dying++;
-      if (dying > 90) {
-        if (lives > 0) { lives--; alive = true; dying = 0; invincible = 90; x = 312; y = 460; }
+      if (dying > DEATH_FRAMES) {
+        if (lives > 0) { lives--; alive = true; dying = 0; invincible = INVINCIBLE; x = 312; y = 460; }
       }
     }
   }
