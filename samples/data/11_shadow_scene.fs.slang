@@ -1,5 +1,4 @@
-Texture2D shadow_map;
-SamplerState shadow_map_smp;
+LUB_TEXTURE2D(shadow_map);
 
 struct FSIn {
     float3 normal : TEXCOORD0;
@@ -26,7 +25,7 @@ float shadow_factor(float4 light_pos) {
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             float2 duv = uv + float2((float)x, (float)y) * texel;
-            float closest = unpack_depth(shadow_map.Sample(shadow_map_smp, duv).rgb);
+            float closest = unpack_depth(LUB_SAMPLE(shadow_map, duv).rgb);
             lit += (ndc.z - bias <= closest) ? 1.0 : strength;
         }
     }
