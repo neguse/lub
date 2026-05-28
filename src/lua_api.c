@@ -992,7 +992,7 @@ static int l_config(lua_State *L) {
     if (!lua_isnoneornil(L, -1)) {
         if (!lua_isinteger(L, -1)) { lua_pop(L, 1); return luaL_error(L, "config: width must be integer"); }
         lua_Integer w = lua_tointeger(L, -1);
-        if (w <= 0) { lua_pop(L, 1); return luaL_error(L, "config: width must be > 0"); }
+        if (w <= 0 || w > 32767) { lua_pop(L, 1); return luaL_error(L, "config: width out of range (1..32767)"); }
         g_app_for_lua->cfg_w = (int)w;
     }
     lua_pop(L, 1);
@@ -1001,10 +1001,13 @@ static int l_config(lua_State *L) {
     if (!lua_isnoneornil(L, -1)) {
         if (!lua_isinteger(L, -1)) { lua_pop(L, 1); return luaL_error(L, "config: height must be integer"); }
         lua_Integer h = lua_tointeger(L, -1);
-        if (h <= 0) { lua_pop(L, 1); return luaL_error(L, "config: height must be > 0"); }
+        if (h <= 0 || h > 32767) { lua_pop(L, 1); return luaL_error(L, "config: height out of range (1..32767)"); }
         g_app_for_lua->cfg_h = (int)h;
     }
     lua_pop(L, 1);
+    if ((g_app_for_lua->cfg_w == 0) != (g_app_for_lua->cfg_h == 0)) {
+        return luaL_error(L, "config: width and height must both be specified or neither");
+    }
     return 0;
 }
 
