@@ -8,9 +8,11 @@ class World {
   final lists: Map<Faction, Array<Entity>> = new Map();
   // 決定的な反復順のため faction の固定順を持つ
   static final ORDER: Array<Faction> = [Faction.EnemyBullets, Faction.Enemies, Faction.Effects, Faction.PlayerBullets];
+  public var player: Player;
 
-  public function new() {
+  public function new(noGod: Bool) {
     for (f in ORDER) lists.set(f, []);
+    player = new Player(noGod);
   }
 
   public inline function spawn(f: Faction, e: Entity): Void {
@@ -23,6 +25,7 @@ class World {
 
   // 全 entity を update し、false を返したものを除去。
   public function tick(input: InputSnapshot): Void {
+    player.update(this, input);
     for (f in ORDER) {
       var arr = lists.get(f);
       var w = 0;
@@ -37,6 +40,8 @@ class World {
   public function drawAll(dl: DrawList): Void {
     // 描画順: 敵弾 → 敵 → effects → 自弾 (ORDER と同順)
     for (f in ORDER) for (e in lists.get(f)) e.draw(dl);
+    // 自機は最前面
+    player.draw(dl);
   }
 
   public static function overlap(a: Rect, b: Rect): Bool {
