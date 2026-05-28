@@ -9,6 +9,7 @@ import input.Input;
 import input.MockInput;
 import scenes.Scene;
 import scenes.SceneTransition;
+import scenes.Title;
 
 class Game {
   public static inline var W: Int = 640;
@@ -38,7 +39,7 @@ class Game {
     if (input == null) {
       input = (lua.Os.getenv("LUB_NGS_MOCK") != null) ? new MockInput() : new Input();
     }
-    if (scene == null) scene = new StubScene();
+    if (scene == null) scene = new Title();
     return true;
   }
 
