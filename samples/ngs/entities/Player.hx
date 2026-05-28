@@ -1,0 +1,77 @@
+package entities;
+
+import input.InputSnapshot;
+import render.DrawList;
+import render.Rect;
+import render.Viewport;
+import game.Game;
+import assets.Atlases;
+
+class Player {
+  public var x: Int;
+  public var y: Int;
+  public static inline var W: Int = 16;
+  public static inline var H: Int = 16;
+  static inline var HOX = 5; static inline var HOY = 5; static inline var HW = 5; static inline var HH = 7;
+  static inline var SPEED = 6; static inline var SLOW = 3;
+
+  public var lives: Int;
+  public var alive: Bool = true;
+  public var invincible: Int = 0;   // >0 の間は被弾無効 + 点滅
+  var dying: Int = 0;               // 死亡アニメカウンタ
+  var animState: Int = 2;           // 0..4 = 傾き, 描画用
+
+  public function new(noGod: Bool) {
+    x = 312; y = 460;
+    lives = noGod ? 2 : 3;
+  }
+
+  // 8方向 (dirX,dirY) → 進行 (sin/cos, 上=angle0)。停止時は移動なし。
+  public function update(world: World, input: InputSnapshot): Void {
+    if (alive) {
+      var spd = input.slow ? SLOW : SPEED;
+      if (input.dirX != 0 || input.dirY != 0) {
+        // 上=angle0、右回り。dirY: +1=下。world y は下方向増加。
+        var ang = Math.atan2(input.dirX, -input.dirY); // 上(-y)=0, 右(+x)=+90°
+        x += Std.int(Math.round(Math.sin(ang) * spd));
+        y += Std.int(Math.round(-Math.cos(ang) * spd));
+        // animState: 左(-x)寄り 0..中央2..右(+x)4
+        animState = 2 + input.dirX;
+        if (animState < 0) animState = 0; if (animState > 4) animState = 4;
+      }
+      // クランプ
+      if (x < Viewport.X) x = Viewport.X;
+      if (x + W > Viewport.X + Viewport.W) x = Viewport.X + Viewport.W - W;
+      if (y < Viewport.Y) y = Viewport.Y;
+      if (y + H > Viewport.Y + Viewport.H) y = Viewport.Y + Viewport.H - H;
+      // 射撃
+      if (input.menu) world.spawn(Faction.PlayerBullets, new Bullet(x, y));
+      if (invincible > 0) invincible--;
+    } else {
+      dying++;
+      if (dying > 90) {
+        if (lives > 0) { lives--; alive = true; dying = 0; invincible = 90; x = 312; y = 460; }
+      }
+    }
+  }
+
+  public function bounds(): Rect {
+    return { x: x + HOX, y: y + HOY, w: HW, h: HH };
+  }
+
+  // 敵/敵弾に当たったとき World から呼ぶ。無敵中は無効。
+  public function hit(): Void {
+    if (invincible == 0 && alive) { alive = false; dying = 0; }
+  }
+
+  public function draw(dl: DrawList): Void {
+    if (!alive) {
+      // 簡易: dying 中は最終フレーム sprite を出す (爆発演出は Plan 3)
+      dl.sprite(Game.jikiAtlas, Atlases.jiki[5], Viewport.sx(x), Viewport.sy(y));
+      return;
+    }
+    if ((invincible & 1) == 0) {  // 点滅
+      dl.sprite(Game.jikiAtlas, Atlases.jiki[animState], Viewport.sx(x), Viewport.sy(y));
+    }
+  }
+}
