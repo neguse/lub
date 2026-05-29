@@ -10,7 +10,7 @@ import entities.Entity;
 import entities.World;
 
 // 自機狙い弾 (原典 type 2)。EnemyBullets faction: 自弾では消えず、自機に当たる。
-// 描画は hitbox 6×7 と一致する小弾 sprite (enemy[5]/[6]) を anim で交互。
+// 当たり判定は 6×7、描画は原典どおり enemy[1]。
 class Aimed implements Entity {
   var x: Int; var y: Int;
   final originX: Int; final originY: Int;
@@ -30,9 +30,9 @@ class Aimed implements Entity {
   }
 
   public function update(world: World, input: InputSnapshot): Bool {
-    dist += speed;
     x = originX + Std.int(Math.round(Math.sin(theta) * dist));
     y = originY - Std.int(Math.round(Math.cos(theta) * dist));
+    dist += speed;
     anim = (anim + 1) & 7;
     return World.overlap(bounds(), { x: Viewport.X, y: Viewport.Y, w: Viewport.W, h: Viewport.H });
   }
@@ -40,6 +40,6 @@ class Aimed implements Entity {
   public function bounds(): Rect return { x: x, y: y, w: W, h: H };
 
   public function draw(dl: DrawList): Void {
-    dl.sprite(Game.enemyAtlas, Atlases.enemy[5 + (anim & 1)], Viewport.sx(x), Viewport.sy(y));
+    dl.sprite(Game.enemyAtlas, Atlases.enemy[1], Viewport.sx(x), Viewport.sy(y));
   }
 }

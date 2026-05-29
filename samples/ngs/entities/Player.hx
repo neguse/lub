@@ -16,6 +16,7 @@ class Player {
   static inline var SPEED = 6; static inline var SLOW = 3;
   static inline var INVINCIBLE = 90;    // 復活後の無敵 (点滅) フレーム
   static inline var DEATH_FRAMES = 154; // 死亡→復活までの停止 (原典 player_state 5..0x9f)
+  static inline var GAMEOVER_FRAMES = 245; // lives==0 の game over 表示待ち (player_state > 0xfa)
 
   public var lives: Int;
   public var alive: Bool = true;
@@ -45,13 +46,13 @@ class Player {
       if (x + W > Viewport.X + Viewport.W) x = Viewport.X + Viewport.W - W;
       if (y < Viewport.Y) y = Viewport.Y;
       if (y + H > Viewport.Y + Viewport.H) y = Viewport.Y + Viewport.H - H;
-      // 射撃
-      if (input.fire) world.spawn(Faction.PlayerBullets, new Bullet(x, y)); // 原典: Z 押下中は毎 frame 発射
+      // 射撃は trigger。押しっぱなし自動連射ではなく、手連射で弾を出す。
+      if (input.menu) world.spawn(Faction.PlayerBullets, new Bullet(x, y));
       if (invincible > 0) invincible--;
     } else {
       dying++;
       if (dying > DEATH_FRAMES) {
-        if (lives > 0) { lives--; alive = true; dying = 0; invincible = INVINCIBLE; x = 312; y = 460; }
+        if (lives > 0) { lives--; alive = true; dying = 0; invincible = INVINCIBLE; }
       }
     }
   }
@@ -66,7 +67,7 @@ class Player {
   }
 
   // 残機尽きて復活もできない (全滅) 状態。Play が GameOver 遷移に使う。
-  public function isFinished(): Bool return !alive && lives <= 0 && dying > DEATH_FRAMES;
+  public function isFinished(): Bool return !alive && lives <= 0 && dying > GAMEOVER_FRAMES;
 
   public function draw(dl: DrawList): Void {
     if (!alive) {

@@ -68,9 +68,8 @@ class Normal implements Enemy {
       dead = true;
       Game.score += 100;
       world.spawn(Faction.Effects, new Explosion(x + 3, y + 3));
-      return true;
     }
-    return false;
+    return true;
   }
 
   public function bounds(): Rect return { x: x, y: y, w: W, h: H };

@@ -30,9 +30,9 @@ class Homing implements Enemy {
 
   public function update(world: World, input: InputSnapshot): Bool {
     if (dead) return false;
-    dist += speed;
     x = originX + Std.int(Math.round(Math.sin(theta) * dist));
     y = originY - Std.int(Math.round(Math.cos(theta) * dist));
+    dist += speed;
     if (!World.overlap(bounds(), { x: Viewport.X, y: Viewport.Y, w: Viewport.W, h: Viewport.H })) dead = true;
     return !dead;
   }

@@ -5,66 +5,99 @@ import render.DrawList;
 import render.Rect;
 import entities.enemies.Enemy;
 
+typedef Slot = {
+  var faction: Faction;
+  var entity: Entity;
+}
+
 class World {
-  final lists: Map<Faction, Array<Entity>> = new Map();
-  // 決定的な反復順のため faction の固定順を持つ
-  static final ORDER: Array<Faction> = [Faction.EnemyBullets, Faction.Enemies, Faction.Effects, Faction.PlayerBullets];
+  final playerBullets: Array<Entity> = [];
+  final enemySlots: Array<Slot> = [];
+  static inline var MAX_PLAYER_BULLETS = 32;
   public var player: Player;
   public var bossDefeated: Bool = false;   // ボス撃破で Boss が立てる。Play が遷移判定に使う
 
   public function new(noGod: Bool) {
-    for (f in ORDER) lists.set(f, []);
     player = new Player(noGod);
   }
 
-  public inline function spawn(f: Faction, e: Entity): Void {
-    lists.get(f).push(e);
+  public function spawn(f: Faction, e: Entity): Void {
+    if (f == Faction.PlayerBullets) {
+      if (playerBullets.length < MAX_PLAYER_BULLETS) playerBullets.push(e);
+      return;
+    }
+    enemySlots.push({ faction: f, entity: e });
   }
 
-  // 全 entity を update し、false を返したものを除去。
+  // 原典順: player → 自機弾 → enemy slots。enemy update 中に spawn された slot も同 frame で更新される。
   public function tick(input: InputSnapshot): Void {
     player.update(this, input);
-    for (f in ORDER) {
-      var arr = lists.get(f);
-      var w = 0;
-      for (r in 0...arr.length) {
-        var e = arr[r];
-        if (e.update(this, input)) { arr[w] = e; w++; }
-      }
-      arr.resize(w);
+    var bi = 0;
+    while (bi < playerBullets.length) {
+      var b = playerBullets[bi];
+      if (b.update(this, input)) bi++ else playerBullets.splice(bi, 1);
+    }
+    var ei = 0;
+    while (ei < enemySlots.length) {
+      var s = enemySlots[ei];
+      if (s.entity.update(this, input)) ei++ else enemySlots.splice(ei, 1);
     }
   }
 
   public function drawAll(dl: DrawList): Void {
-    // 描画順: 敵弾 → 敵 → effects → 自弾 (ORDER と同順)
-    for (f in ORDER) for (e in lists.get(f)) e.draw(dl);
-    // 自機は最前面
+    // 原典順: enemy slots → player bullets → player。
+    for (s in enemySlots) if (!slotDead(s)) s.entity.draw(dl);
+    for (b in playerBullets) {
+      var bullet: Bullet = cast b;
+      if (!bullet.dead) b.draw(dl);
+    }
     player.draw(dl);
   }
 
   public function resolveCollisions(): Void {
-    var enemies = lists.get(Faction.Enemies);
-    var pbs = lists.get(Faction.PlayerBullets);
-    for (b in pbs) {
-      var bullet: Bullet = cast b;
-      if (bullet.dead) continue;
-      for (e in enemies) {
-        var en: Enemy = cast e;
-        if (en.dead) continue;
-        if (overlap(b.bounds(), e.bounds())) {
-          bullet.dead = true;
-          en.onDamage(this, 1);   // score/explosion は enemy が担う
+    for (s in enemySlots) {
+      if (s.faction != Faction.Enemies) continue;
+      var en: Enemy = cast s.entity;
+      if (en.dead) continue;
+      var checked = 0;
+      for (b in playerBullets) {
+        if (checked >= 16) break; // 原典は先頭 16 bullet slot のみ判定
+        checked++;
+        var bullet: Bullet = cast b;
+        if (bullet.dead) continue;
+        if (overlap(s.entity.bounds(), b.bounds())) {
+          if (en.onDamage(this, 1)) bullet.dead = true;
           break;
         }
       }
     }
     if (player.alive && player.invincible == 0) {
-      for (e in enemies) {
-        if (overlap(player.bounds(), e.bounds())) { player.hit(); break; }
+      for (s in enemySlots) {
+        if (s.faction == Faction.Effects || slotDead(s)) continue;
+        if (overlap(player.bounds(), s.entity.bounds())) {
+          player.hit();
+          break;
+        }
       }
-      for (eb in lists.get(Faction.EnemyBullets)) {
-        if (overlap(player.bounds(), eb.bounds())) { player.hit(); break; }
-      }
+    }
+    cleanupDeadAfterCollision();
+  }
+
+  inline function slotDead(s: Slot): Bool {
+    if (s.faction != Faction.Enemies) return false;
+    var en: Enemy = cast s.entity;
+    return en.dead;
+  }
+
+  function cleanupDeadAfterCollision(): Void {
+    var bi = 0;
+    while (bi < playerBullets.length) {
+      var bullet: Bullet = cast playerBullets[bi];
+      if (bullet.dead) playerBullets.splice(bi, 1) else bi++;
+    }
+    var ei = 0;
+    while (ei < enemySlots.length) {
+      if (slotDead(enemySlots[ei])) enemySlots.splice(ei, 1) else ei++;
     }
   }
 

@@ -129,11 +129,16 @@ class Boss implements Enemy {
       case 1:
         if (hp > 0) hp -= amount;
         Game.score += 1;
+        return true;
       case 2:
-        if (hp > 0 && counter > 0x96) { hp -= amount; Game.score += 1; }
+        if (counter > 0x95) {
+          if (hp > 0 && counter > 0x96) { hp -= amount; Game.score += 1; }
+          return true;
+        }
       case 3:
         if (anim > 0) anim -= amount;
         Game.score += 1;
+        return true;
       default:   // phase0/4 は無敵
     }
     return false;

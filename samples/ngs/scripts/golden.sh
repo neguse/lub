@@ -2,7 +2,7 @@
 # NGS golden runner. title / play を各 frame で両 backend capture して比較。
 #   samples/ngs/scripts/golden.sh            # check
 #   samples/ngs/scripts/golden.sh --update   # regenerate
-# play_* ケースは LUB_NGS_BOOT=play で Play 直入り。kill_ は Play + 射撃保持 mock
+# play_* ケースは LUB_NGS_BOOT=play で Play 直入り。kill_ は intro を飛ばした Play + 手連射 mock
 # (LUB_NGS_MOCK=kill) で敵#1 を即撃破し explosion を出す (弾ライン上端の小火花)。
 set -euo pipefail
 cd "$(dirname "$0")/../../.."   # -> lub repo root
@@ -25,7 +25,7 @@ for c in "${CASES[@]}"; do
   name="${c%%:*}"; frame="${c##*:}"
   boot=""; mock=""
   [[ "$name" == play_* ]] && boot="play"
-  [[ "$name" == kill_* ]] && { boot="play"; mock="kill"; }
+  [[ "$name" == kill_* ]] && { boot="active"; mock="kill"; }
   [[ "$name" == boss_* ]] && boot="boss"
   [[ "$name" == gameover_* ]] && boot="gameover"
   for bk in "${BACKENDS[@]}"; do

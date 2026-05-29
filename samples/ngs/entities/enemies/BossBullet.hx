@@ -28,9 +28,9 @@ class BossBullet implements Entity {
   }
 
   public function update(world: World, input: InputSnapshot): Bool {
-    dist += speed;
     x = originX + Std.int(Math.round(Math.sin(theta) * dist));
     y = originY - Std.int(Math.round(Math.cos(theta) * dist));
+    dist += speed;
     return World.overlap(bounds(), { x: Viewport.X, y: Viewport.Y, w: Viewport.W, h: Viewport.H });
   }
 
