@@ -61,6 +61,9 @@ class World {
       for (e in enemies) {
         if (overlap(player.bounds(), e.bounds())) { player.hit(); break; }
       }
+      for (eb in lists.get(Faction.EnemyBullets)) {
+        if (overlap(player.bounds(), eb.bounds())) { player.hit(); break; }
+      }
     }
   }
 
