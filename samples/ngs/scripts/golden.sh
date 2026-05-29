@@ -11,8 +11,8 @@ BINARY=./build/lub
 ENTRY=samples/ngs/ngs.hxml
 GOLDEN_DIR=tests/golden/ngs
 BACKENDS=(sokol sdlgpu)
-# name:frame の組。name が play_ で始まると Play 直入り、kill_ は Play + 撃破 mock。
-CASES=(title_f0:0 title_f30:30 play_f0:0 play_f70:70 play_f120:120 play_f240:240 kill_f64:64)
+# name:frame の組。play_=Play直入り, kill_=Play+撃破mock, boss_=boss直入り, gameover_=GameOver直入り。
+CASES=(title_f0:0 title_f30:30 play_f0:0 play_f70:70 play_f120:120 play_f240:240 kill_f64:64 boss_f40:40 boss_f120:120 gameover_f30:30)
 
 update=0
 [[ "${1:-}" == "--update" ]] && update=1
@@ -26,6 +26,8 @@ for c in "${CASES[@]}"; do
   boot=""; mock=""
   [[ "$name" == play_* ]] && boot="play"
   [[ "$name" == kill_* ]] && { boot="play"; mock="kill"; }
+  [[ "$name" == boss_* ]] && boot="boss"
+  [[ "$name" == gameover_* ]] && boot="gameover"
   for bk in "${BACKENDS[@]}"; do
     out="$tmp/ngs_${name}_${bk}.png"
     golden="$GOLDEN_DIR/ngs_${name}_${bk}.png"
