@@ -10,6 +10,7 @@ class World {
   // 決定的な反復順のため faction の固定順を持つ
   static final ORDER: Array<Faction> = [Faction.EnemyBullets, Faction.Enemies, Faction.Effects, Faction.PlayerBullets];
   public var player: Player;
+  public var bossDefeated: Bool = false;   // ボス撃破で Boss が立てる。Play が遷移判定に使う
 
   public function new(noGod: Bool) {
     for (f in ORDER) lists.set(f, []);
