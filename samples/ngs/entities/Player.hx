@@ -65,6 +65,9 @@ class Player {
     if (invincible == 0 && alive) { alive = false; dying = 0; }
   }
 
+  // 残機尽きて復活もできない (全滅) 状態。Play が GameOver 遷移に使う。
+  public function isFinished(): Bool return !alive && lives <= 0 && dying > DEATH_FRAMES;
+
   public function draw(dl: DrawList): Void {
     if (!alive) {
       // 簡易: dying 中は最終フレーム sprite を出す (爆発演出は Plan 3)

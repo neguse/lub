@@ -38,5 +38,8 @@ class Play implements Scene {
     Game.font.drawInt(dl, 500, 50, world.player.lives, 1, white);
   }
 
-  public function transition(): SceneTransition return Stay;  // GameOver 遷移は Task 5
+  public function transition(): SceneTransition {
+    if (world.bossDefeated || world.player.isFinished()) return Switch(new GameOver(Game.score));
+    return Stay;
+  }
 }

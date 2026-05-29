@@ -12,6 +12,7 @@ import scenes.Scene;
 import scenes.SceneTransition;
 import scenes.Title;
 import scenes.Play;
+import scenes.GameOver;
 
 class Game {
   public static inline var W: Int = 640;
@@ -26,6 +27,7 @@ class Game {
   static var scene: Scene = null;
   public static var frameCount: Int = 0;
   public static var score: Int = 0;
+  public static var hiscore: Int = 0;
 
   public static function init() {
     var backend: String = lua.Os.getenv("LUB_BACKEND");
@@ -57,7 +59,12 @@ class Game {
     }
     if (scene == null) {
       var boot = lua.Os.getenv("LUB_NGS_BOOT");
-      scene = (boot == "play") ? new Play(false) : new Title();
+      scene = switch (boot) {
+        case "play":     new Play(false);
+        case "boss":     new Play(false, true);   // boss 直入り (golden 用)
+        case "gameover": new GameOver(12345);      // score inject 直入り (golden 用)
+        default:         new Title();
+      };
     }
     return true;
   }
