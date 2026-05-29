@@ -4,7 +4,6 @@ import input.InputSnapshot;
 import render.DrawList;
 import render.Rect;
 import entities.enemies.Enemy;
-import game.Game;
 
 class World {
   final lists: Map<Faction, Array<Entity>> = new Map();
@@ -53,8 +52,7 @@ class World {
         if (en.dead) continue;
         if (overlap(b.bounds(), e.bounds())) {
           bullet.dead = true;
-          Game.score += 10;
-          if (en.onDamage(1)) Game.score += 100;
+          en.onDamage(this, 1);   // score/explosion は enemy が担う
           break;
         }
       }

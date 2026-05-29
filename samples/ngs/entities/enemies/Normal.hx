@@ -7,6 +7,8 @@ import render.Viewport;
 import game.Game;
 import assets.Atlases;
 import entities.World;
+import entities.Faction;
+import entities.Explosion;
 
 class Normal implements Enemy {
   var x: Int; var y: Int;
@@ -38,9 +40,15 @@ class Normal implements Enemy {
     return !dead;
   }
 
-  public function onDamage(amount: Int): Bool {
+  public function onDamage(world: World, amount: Int): Bool {
     hp -= amount;
-    if (hp < 1) { dead = true; return true; }
+    Game.score += 10;
+    if (hp < 1) {
+      dead = true;
+      Game.score += 100;
+      world.spawn(Faction.Effects, new Explosion(x + 3, y + 3));
+      return true;
+    }
     return false;
   }
 
