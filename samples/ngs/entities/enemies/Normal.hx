@@ -33,6 +33,7 @@ class Normal implements Enemy {
   }
 
   public function update(world: World, input: InputSnapshot): Bool {
+    if (dead) return false;   // 撃破済みは行動しない (墓場発砲の防止)
     // 原典: x = origin_x + sin(θ)*counter, y = origin_y - cos(θ)*counter (上=θ0)
     x = originX + Std.int(Math.round(Math.sin(theta) * counter));
     y = originY - Std.int(Math.round(Math.cos(theta) * counter));

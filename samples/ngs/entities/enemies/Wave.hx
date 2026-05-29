@@ -31,6 +31,7 @@ class Wave implements Enemy {
   }
 
   public function update(world: World, input: InputSnapshot): Bool {
+    if (dead) return false;   // 撃破済みは行動しない (墓場 Laser の防止)
     animToggle = (animToggle == 0) ? 1 : 0;
     var px = world.player.x;
     if (!descending) {
