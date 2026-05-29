@@ -7,6 +7,7 @@ import render.Font;
 import input.InputSource;
 import input.Input;
 import input.MockInput;
+import input.InputSnapshot;
 import scenes.Scene;
 import scenes.SceneTransition;
 import scenes.Title;
@@ -41,7 +42,14 @@ class Game {
     if (!gfx.ensure() || !fontAtlas.ensure() || !jikiAtlas.ensure() || !cursorAtlas.ensure() || !enemyAtlas.ensure()) return false;
     if (font == null) font = new Font(fontAtlas);
     if (input == null) {
-      input = (lua.Os.getenv("LUB_NGS_MOCK") != null) ? new MockInput() : new Input();
+      var mock = lua.Os.getenv("LUB_NGS_MOCK");
+      if (mock == "fire") {
+        input = new MockInput(function(f) { var s = new InputSnapshot(); s.fire = true; return s; }); // 全 frame 射撃保持
+      } else if (mock != null) {
+        input = new MockInput();
+      } else {
+        input = new Input();
+      }
     }
     if (scene == null) {
       var boot = lua.Os.getenv("LUB_NGS_BOOT");

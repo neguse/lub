@@ -46,7 +46,7 @@ class Player {
       if (y < Viewport.Y) y = Viewport.Y;
       if (y + H > Viewport.Y + Viewport.H) y = Viewport.Y + Viewport.H - H;
       // 射撃
-      if (input.menu) world.spawn(Faction.PlayerBullets, new Bullet(x, y));
+      if (input.fire) world.spawn(Faction.PlayerBullets, new Bullet(x, y)); // 原典: Z 押下中は毎 frame 発射
       if (invincible > 0) invincible--;
     } else {
       dying++;
