@@ -45,6 +45,10 @@ class Game {
       var mock = lua.Os.getenv("LUB_NGS_MOCK");
       if (mock == "fire") {
         input = new MockInput(function(f) { var s = new InputSnapshot(); s.fire = true; return s; }); // 全 frame 射撃保持
+      } else if (mock == "kill") {
+        // 左へ 6 frame 寄り enemy#1 (spawn x280) の弾ライン上に陣取り射撃保持。
+        // 連続弾の壁に降下してきた敵が即撃破され explosion が出る (golden 用)。
+        input = new MockInput(function(f) { var s = new InputSnapshot(); s.fire = true; if (f < 6) s.dirX = -1; return s; });
       } else if (mock != null) {
         input = new MockInput();
       } else {

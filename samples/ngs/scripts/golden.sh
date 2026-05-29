@@ -2,7 +2,8 @@
 # NGS golden runner. title / play を各 frame で両 backend capture して比較。
 #   samples/ngs/scripts/golden.sh            # check
 #   samples/ngs/scripts/golden.sh --update   # regenerate
-# play_* ケースは LUB_NGS_BOOT=play で Play シーンへ直入りする。
+# play_* ケースは LUB_NGS_BOOT=play で Play 直入り。kill_ は Play + 射撃保持 mock
+# (LUB_NGS_MOCK=kill) で敵#1 を即撃破し explosion を出す (弾ライン上端の小火花)。
 set -euo pipefail
 cd "$(dirname "$0")/../../.."   # -> lub repo root
 
@@ -10,8 +11,8 @@ BINARY=./build/lub
 ENTRY=samples/ngs/ngs.hxml
 GOLDEN_DIR=tests/golden/ngs
 BACKENDS=(sokol sdlgpu)
-# name:frame の組。name が play_ で始まると Play 直入り。
-CASES=(title_f0:0 title_f30:30 play_f0:0 play_f70:70)
+# name:frame の組。name が play_ で始まると Play 直入り、kill_ は Play + 撃破 mock。
+CASES=(title_f0:0 title_f30:30 play_f0:0 play_f70:70 play_f120:120 play_f240:240 kill_f64:64)
 
 update=0
 [[ "${1:-}" == "--update" ]] && update=1
@@ -22,12 +23,13 @@ pass=0; fail=0; missing=0; updated=0
 
 for c in "${CASES[@]}"; do
   name="${c%%:*}"; frame="${c##*:}"
-  boot=""
+  boot=""; mock=""
   [[ "$name" == play_* ]] && boot="play"
+  [[ "$name" == kill_* ]] && { boot="play"; mock="kill"; }
   for bk in "${BACKENDS[@]}"; do
     out="$tmp/ngs_${name}_${bk}.png"
     golden="$GOLDEN_DIR/ngs_${name}_${bk}.png"
-    LUB_BACKEND="$bk" LUB_NGS_BOOT="$boot" scripts/run-headless.sh "$BINARY" "$ENTRY" \
+    LUB_BACKEND="$bk" LUB_NGS_BOOT="$boot" LUB_NGS_MOCK="$mock" scripts/run-headless.sh "$BINARY" "$ENTRY" \
       --capture "$out" --capture-frame "$frame" >"$tmp/${name}_${bk}.log" 2>&1
     if [[ ! -f "$out" ]]; then
       echo "FAIL ${name} ${bk}: no capture (see $tmp/${name}_${bk}.log)"; fail=$((fail+1)); continue
