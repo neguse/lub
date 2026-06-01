@@ -118,4 +118,35 @@ function M.interleave_pn(mesh)
    return out
 end
 
+-- mesh.positions + normals + uvs を pos.xyz, n.xyz, uv.xy (stride 8) に詰める。
+-- normals 欠損は (0,0,1)、uvs 欠損は (0,0) で埋める。material shader 用。
+function M.interleave_pnu(mesh)
+   local n = mesh.vert_count
+   local out = {}
+   local pos = mesh.positions
+   local nrm = mesh.normals
+   local uv = mesh.uvs
+   for i = 0, n - 1 do
+      local pi = i * 3
+      out[#out + 1] = pos[pi + 1]
+      out[#out + 1] = pos[pi + 2]
+      out[#out + 1] = pos[pi + 3]
+      if nrm then
+         out[#out + 1] = nrm[pi + 1]
+         out[#out + 1] = nrm[pi + 2]
+         out[#out + 1] = nrm[pi + 3]
+      else
+         out[#out + 1] = 0; out[#out + 1] = 0; out[#out + 1] = 1
+      end
+      if uv then
+         local ui = i * 2
+         out[#out + 1] = uv[ui + 1]
+         out[#out + 1] = uv[ui + 2]
+      else
+         out[#out + 1] = 0; out[#out + 1] = 0
+      end
+   end
+   return out
+end
+
 return M

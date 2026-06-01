@@ -959,6 +959,25 @@ static int l_key_down(lua_State *L) {
     return 1;
 }
 
+// mouse_delta() -> dx, dy : relative motion (window pixels) since the last
+// call. Consumes the accumulated delta, so call it once per frame.
+static int l_mouse_delta(lua_State *L) {
+    float dx = 0.0f, dy = 0.0f;
+    SDL_GetRelativeMouseState(&dx, &dy);
+    lua_pushnumber(L, (lua_Number)dx);
+    lua_pushnumber(L, (lua_Number)dy);
+    return 2;
+}
+
+// mouse_down(button) -> bool. button: 1=left (default), 2=middle, 3=right.
+static int l_mouse_down(lua_State *L) {
+    int btn = (int)luaL_optinteger(L, 1, 1);
+    if (btn < 1) btn = 1;
+    SDL_MouseButtonFlags mask = SDL_GetMouseState(NULL, NULL);
+    lua_pushboolean(L, (mask & SDL_BUTTON_MASK(btn)) != 0);
+    return 1;
+}
+
 static int l_config(lua_State *L) {
     if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
         return luaL_error(L, "config: must be called inside onInit");
@@ -1110,6 +1129,10 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "capture");
     lua_pushcfunction(L, l_key_down);
     lua_setglobal(L, "key_down");
+    lua_pushcfunction(L, l_mouse_delta);
+    lua_setglobal(L, "mouse_delta");
+    lua_pushcfunction(L, l_mouse_down);
+    lua_setglobal(L, "mouse_down");
     lua_pushcfunction(L, l_config);
     lua_setglobal(L, "config");
     lua_pushcfunction(L, l_quit);

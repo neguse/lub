@@ -29,5 +29,6 @@ extern class Io {
   @:native("load_floats")   public static function loadFloats(path: String): IoFloatsResult;
   @:native("load_png")      public static function loadPng(path: String): IoPngResult;
   @:native("load_gltf")     public static function loadGltf(path: String): IoGltfResult;
-  @:native("interleave_pn") public static function interleavePn(mesh: Dynamic): lua.Table<Int, Float>;
+  @:native("interleave_pn")  public static function interleavePn(mesh: Dynamic): lua.Table<Int, Float>;
+  @:native("interleave_pnu") public static function interleavePnu(mesh: Dynamic): lua.Table<Int, Float>;
 }

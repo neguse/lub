@@ -61,6 +61,7 @@ int lub_load_gltf(lua_State *L) {
     cgltf_accessor *acc_pos = NULL;
     cgltf_accessor *acc_nrm = NULL;
     cgltf_accessor *acc_uv  = NULL;
+    cgltf_accessor *acc_tan = NULL;
     bool warned_unknown = false;
     for (cgltf_size i = 0; i < prim->attributes_count; ++i) {
         cgltf_attribute *a = &prim->attributes[i];
@@ -72,6 +73,8 @@ int lub_load_gltf(lua_State *L) {
             case cgltf_attribute_type_texcoord:
                 if (a->index == 0) acc_uv = a->data;
                 break;
+            case cgltf_attribute_type_tangent:
+                acc_tan = a->data; break;
             default:
                 if (!warned_unknown) {
                     fprintf(stderr, "load_gltf: ignoring unsupported attribute(s) in %s\n", path);
@@ -143,6 +146,24 @@ int lub_load_gltf(lua_State *L) {
         }
         free(buf);
         lua_setfield(L, -2, "uvs");
+    }
+
+    // TANGENT is vec4 (xyz tangent + w handedness sign). Optional.
+    if (acc_tan) {
+        size_t n = vert_count * 4;
+        float *buf = (float*)malloc(n * sizeof(float));
+        if (!buf) {
+            cgltf_free(data);
+            return luaL_error(L, "load_gltf: out of memory");
+        }
+        cgltf_accessor_unpack_floats(acc_tan, buf, n);
+        lua_createtable(L, (int)n, 0);
+        for (size_t i = 0; i < n; ++i) {
+            lua_pushnumber(L, buf[i]);
+            lua_rawseti(L, -2, (int)(i + 1));
+        }
+        free(buf);
+        lua_setfield(L, -2, "tangents");
     }
 
     size_t index_count = 0;

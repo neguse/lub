@@ -54,7 +54,8 @@ static const char HAXE_PRELUDE[] =
     "  LINES = LINES, LINE_STRIP = LINE_STRIP, POINTS = POINTS,\n"
     "  LINEAR = LINEAR, NEAREST = NEAREST, REPEAT = REPEAT, CLAMP = CLAMP,\n"
     "}\n"
-    "lub.Input = { key_down = key_down }\n"
+    "lub.Input = { key_down = key_down, mouse_delta = mouse_delta,\n"
+    "  mouse_down = mouse_down }\n"
     "lub.Sys = { file_mtime = file_mtime, fnv1a64 = fnv1a64,\n"
     "  load_png = load_png, load_gltf = load_gltf }\n";
 
