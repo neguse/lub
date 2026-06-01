@@ -531,7 +531,7 @@ class Sfb12 {
       blit(texA, pShader, quadBufF, texB);
     } else {
       waterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex, waterNrmTex,
-        invView, tAccum, WATER_Y);
+        invView, tAccum, WATER_Y, proj[0], proj[5]);
     }
 
     // Depth of field: blur a copy of the beauty (texA) through the bloom
@@ -700,14 +700,14 @@ class Sfb12 {
 
   static function waterPass(targ: Dynamic, shader: Dynamic, quad: Dynamic,
       tex: Dynamic, gPosition: Dynamic, flowTex: Dynamic, wnTex: Dynamic,
-      iv: Array<Float>, time: Float, waterY: Float) {
+      iv: Array<Float>, time: Float, waterY: Float, p00: Float, p11: Float) {
     Gfx.beginPass({ target: targ, clear_color: black() });
     Gfx.draw(6, { verts: quad, scene: tex, gpos: gPosition, flowmap: flowTex, waternormal: wnTex,
         uniforms: {
           ir0: lua.Table.fromArray([iv[0], iv[1], iv[2], iv[3]]),
           ir1: lua.Table.fromArray([iv[4], iv[5], iv[6], iv[7]]),
           ir2: lua.Table.fromArray([iv[8], iv[9], iv[10], iv[11]]),
-          params: lua.Table.fromArray([time, waterY, 0.0, 0.0]),
+          params: lua.Table.fromArray([time, waterY, p00, p11]),
         } },
         { shader: shader, depth: false, cull: Gfx.NONE });
     Gfx.endPass();
