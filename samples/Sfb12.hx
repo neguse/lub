@@ -15,8 +15,10 @@ import lub.Input;
 // RGBA8 work textures).
 class Sfb12 {
   static inline var STRIDE: Int = 10; // pos.xyz + normal.xyz + color.rgba
-  static inline var RT_W: Int = 1280;
-  static inline var RT_H: Int = 720;
+  // render-target size; set from Gfx.size() each frame so the whole post chain
+  // runs at the real drawable resolution (smaller = faster on weak devices).
+  static var RT_W: Int = 1280;
+  static var RT_H: Int = 720;
   static inline var DT: Float = 1.0 / 60.0;
   static inline var WATER_Y: Float = 0.12; // world height of the water plane
 
@@ -393,6 +395,11 @@ class Sfb12 {
 
   public static function onFrame() {
     tAccum = tAccum + DT;
+
+    // size the offscreen chain to the real drawable (canvas/swapchain).
+    var sz = Gfx.size();
+    RT_W = sz.w;
+    RT_H = sz.h;
 
     var gShader = shader2("sfb_gbuf", "12_gbuffer.vs.slang", "12_gbuffer.fs.slang");
     var matShader = shader2("sfb_mat", "12_mat.vs.slang", "12_mat.fs.slang");

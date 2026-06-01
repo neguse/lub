@@ -2,8 +2,6 @@
 // target (see 12_fog.fs for why there is no uniform block).
 LUB_TEXTURE2D(scene);
 
-static const float2 STEP = float2(1.0 / 1280.0, 0.0);
-
 struct FSIn { float2 uv : TEXCOORD0; };
 
 float3 blur9(float2 uv, float2 o) {
@@ -22,5 +20,7 @@ float3 blur9(float2 uv, float2 o) {
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    return float4(blur9(i.uv, STEP), 1.0);
+    // texel from screen-space derivative of uv -> auto-adapts to the RT size.
+    float2 step = float2(ddx(i.uv).x, 0.0);
+    return float4(blur9(i.uv, step), 1.0);
 }

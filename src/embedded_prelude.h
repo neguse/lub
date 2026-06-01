@@ -43,7 +43,7 @@ static const char HAXE_PRELUDE[] =
     "  use_shader = use_shader, use_shader_compute = use_shader_compute,\n"
     "  use_buffer = use_buffer, use_texture = use_texture,\n"
     "  draw = draw, dispatch = dispatch, capture = capture,\n"
-    "  main_tex = main_tex,\n"
+    "  main_tex = main_tex, size = gfx_size,\n"
     "  VERTEX = VERTEX, INDEX = INDEX, UNIFORM = UNIFORM, STORAGE = STORAGE,\n"
     "  RGBA8 = RGBA8, R8 = R8, RG8 = RG8, RGBA16F = RGBA16F, RGBA32F = RGBA32F,\n"
     "  DEPTH16 = DEPTH16, DEPTH24_STENCIL8 = DEPTH24_STENCIL8, DEPTH32F = DEPTH32F,\n"

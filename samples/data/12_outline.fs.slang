@@ -1,10 +1,10 @@
-// Edge outline from G-buffer depth + normal discontinuities. Texel + weights
-// baked for a 1280x720 target (see 12_fog.fs for why there is no uniform block).
+// Edge outline from G-buffer depth + normal discontinuities. Texel is derived
+// from ddx/ddy(uv) so it auto-adapts to the render-target size (no uniform
+// block; see 12_fog.fs for why).
 LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(gnormal);
 LUB_TEXTURE2D(gpos);
 
-static const float2 TEXEL = float2(1.0 / 1280.0, 1.0 / 720.0);
 static const float DEPTH_WEIGHT = 6.0;
 static const float NORMAL_WEIGHT = 0.45;
 static const float3 INK = float3(0.02, 0.02, 0.04);
@@ -13,6 +13,7 @@ struct FSIn { float2 uv : TEXCOORD0; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
+    float2 TEXEL = float2(ddx(i.uv).x, ddy(i.uv).y); // uniform control flow here
     float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;
     float dC = LUB_SAMPLE_LOD(gpos, i.uv).z;
     if (dC <= 0.0001) return float4(c, 1.0);

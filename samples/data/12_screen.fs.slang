@@ -6,16 +6,14 @@
 // derivatives undefined and crashes some drivers). Texel baked for 1280x720.
 LUB_TEXTURE2D(scene);
 
-static const float2 TEXEL = float2(1.0 / 1280.0, 1.0 / 720.0);
-
 struct FSIn { float2 uv : TEXCOORD0; float2 info : TEXCOORD1; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
     int mode = int(i.info.x + 0.5);
     float amount = i.info.y;
-    float2 t = TEXEL;
     float2 uv = i.uv;
+    float2 t = float2(ddx(uv).x, ddy(uv).y); // texel auto-adapts to RT size
 
     float4 center = LUB_SAMPLE_LOD(scene, uv);
     float3 base = center.rgb;

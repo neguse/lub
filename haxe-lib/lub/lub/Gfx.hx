@@ -1,5 +1,10 @@
 package lub;
 
+@:multiReturn extern class GfxSize {
+  var w: Int;
+  var h: Int;
+}
+
 extern class Gfx {
   // pass
   @:native("begin_pass")         public static function beginPass(opts: Dynamic): Void;
@@ -16,6 +21,8 @@ extern class Gfx {
   @:native("dispatch")           public static function dispatch(x: Int, y: Int, z: Int, bindings: Dynamic, opts: Dynamic): Void;
   // capture
   @:native("capture")            public static function capture(path: String): Void;
+  // current drawable size in pixels (swapchain / canvas) -> w, h
+  @:native("size")               public static function size(): GfxSize;
 
   // globals
   @:native("main_tex")           public static var mainTex(default, null): Dynamic;

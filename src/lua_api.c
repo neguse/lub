@@ -978,6 +978,21 @@ static int l_mouse_down(lua_State *L) {
     return 1;
 }
 
+// gfx_size() -> w, h : current drawable size in pixels (the swapchain / canvas).
+// Lets a sample size its offscreen render targets to the real output so it can
+// render at a chosen resolution (e.g. smaller for weak devices).
+static int l_gfx_size(lua_State *L) {
+    int w = 0, h = 0;
+    if (g_app_for_lua && g_app_for_lua->window) {
+        SDL_GetWindowSizeInPixels(g_app_for_lua->window, &w, &h);
+    }
+    if (w <= 0) w = 1280;
+    if (h <= 0) h = 720;
+    lua_pushinteger(L, w);
+    lua_pushinteger(L, h);
+    return 2;
+}
+
 static int l_config(lua_State *L) {
     if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
         return luaL_error(L, "config: must be called inside onInit");
@@ -1133,6 +1148,8 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, "mouse_delta");
     lua_pushcfunction(L, l_mouse_down);
     lua_setglobal(L, "mouse_down");
+    lua_pushcfunction(L, l_gfx_size);
+    lua_setglobal(L, "gfx_size");
     lua_pushcfunction(L, l_config);
     lua_setglobal(L, "config");
     lua_pushcfunction(L, l_quit);
