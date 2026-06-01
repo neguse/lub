@@ -13,10 +13,10 @@ struct FSIn { float2 uv : TEXCOORD0; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 c = LUB_SAMPLE(scene, i.uv).rgb;
-    float dC = LUB_SAMPLE(gpos, i.uv).z;
+    float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float dC = LUB_SAMPLE_LOD(gpos, i.uv).z;
     if (dC <= 0.0001) return float4(c, 1.0);
-    float3 nC = normalize(LUB_SAMPLE(gnormal, i.uv).xyz * 2.0 - 1.0);
+    float3 nC = normalize(LUB_SAMPLE_LOD(gnormal, i.uv).xyz * 2.0 - 1.0);
 
     float2 offs[4] = {
         float2(TEXEL.x, 0.0), float2(-TEXEL.x, 0.0),
@@ -26,8 +26,8 @@ float4 fs_main(FSIn i) : SV_Target {
     float depthEdge = 0.0;
     float normalEdge = 0.0;
     for (int k = 0; k < 4; ++k) {
-        float d = LUB_SAMPLE(gpos, i.uv + offs[k]).z;
-        float3 n = normalize(LUB_SAMPLE(gnormal, i.uv + offs[k]).xyz * 2.0 - 1.0);
+        float d = LUB_SAMPLE_LOD(gpos, i.uv + offs[k]).z;
+        float3 n = normalize(LUB_SAMPLE_LOD(gnormal, i.uv + offs[k]).xyz * 2.0 - 1.0);
         if (d > 0.0001) depthEdge += abs(d - dC);
         normalEdge += 1.0 - saturate(dot(n, nC));
     }

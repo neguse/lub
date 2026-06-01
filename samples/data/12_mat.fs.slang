@@ -30,7 +30,7 @@ float shadow_factor(float4 lpos) {
     for (int y = -1; y <= 1; ++y)
         for (int x = -1; x <= 1; ++x) {
             float closest = unpack_depth(
-                LUB_SAMPLE(shadow_map, uv + float2(float(x), float(y)) * texel).rgb);
+                LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).rgb);
             lit += (ndc.z - bias <= closest) ? 1.0 : 0.0;
         }
     return lit / 9.0;
@@ -52,13 +52,13 @@ float3 perturb_normal(float3 N, float3 vpos, float2 uv) {
     float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
     float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
     float invmax = rsqrt(max(dot(T, T), dot(B, B)));
-    float3 nm = LUB_SAMPLE(normalmap, uv).xyz * 2.0 - 1.0;
+    float3 nm = LUB_SAMPLE_LOD(normalmap, uv).xyz * 2.0 - 1.0;
     return normalize(T * (nm.x * invmax) + B * (nm.y * invmax) + N * nm.z);
 }
 
 [shader("fragment")]
 FSOut fs_main(FSIn i) {
-    float3 alb = LUB_SAMPLE(albedo, i.uv).rgb;
+    float3 alb = LUB_SAMPLE_LOD(albedo, i.uv).rgb;
     float3 N = perturb_normal(normalize(i.vn), i.vpos, i.uv);
     float3 L = normalize(i.ldir);
     float3 V = normalize(-i.vpos);

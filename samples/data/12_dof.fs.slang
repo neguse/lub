@@ -14,10 +14,10 @@ struct FSIn { float2 uv : TEXCOORD0; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 sharp = LUB_SAMPLE(scene, i.uv).rgb;
-    float d = LUB_SAMPLE(gpos, i.uv).z;
+    float3 sharp = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float d = LUB_SAMPLE_LOD(gpos, i.uv).z;
     if (d <= 0.0001) return float4(sharp, 1.0);
-    float3 blur = LUB_SAMPLE(blurred, i.uv).rgb;
+    float3 blur = LUB_SAMPLE_LOD(blurred, i.uv).rgb;
     float coc = min(abs(d - FOCUS) / RANGE, MAX_COC);
     return float4(lerp(sharp, blur, coc), 1.0);
 }

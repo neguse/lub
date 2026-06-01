@@ -93,6 +93,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path),
                      "samples/%s.lua", modbuf);
         g_app.entry_mtime_cache = 0;
+        // Haxe samples transpile to samples/.lub/<name>.lua. A bare-name entry
+        // (e.g. the WASM playground passing "12_sfb") must resolve there too, so
+        // extend package.path the same way the .hxml branch does.
+        lua_ctx_add_package_path(&g_app.lua, "samples");
     }
 
     if (!lua_ctx_load_entry(&g_app.lua, modbuf)) return SDL_APP_FAILURE;

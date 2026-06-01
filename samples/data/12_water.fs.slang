@@ -31,8 +31,8 @@ float3 ripple_normal(float2 wuv, float2 flow, float t) {
     // half-phase-offset samples so the scroll never visibly resets.
     float phase = frac(t * 0.4);
     float blend = abs(phase * 2.0 - 1.0);
-    float3 nA = LUB_SAMPLE(waternormal, wuv + flow * (phase) * 0.4).xyz * 2.0 - 1.0;
-    float3 nB = LUB_SAMPLE(waternormal, wuv + flow * (phase - 1.0) * 0.4).xyz * 2.0 - 1.0;
+    float3 nA = LUB_SAMPLE_LOD(waternormal, wuv + flow * (phase) * 0.4).xyz * 2.0 - 1.0;
+    float3 nB = LUB_SAMPLE_LOD(waternormal, wuv + flow * (phase - 1.0) * 0.4).xyz * 2.0 - 1.0;
     return normalize(lerp(nA, nB, blend));
 }
 
@@ -49,8 +49,8 @@ float4 ssr(float3 start, float3 R, float2 proj) {
         float2 suv = float2(proj.x * p.x / pz, proj.y * p.y / pz) * 0.5 + 0.5;
         suv.y = 1.0 - suv.y; // G-buffer offscreen (y-down) vs sample uv
         float2 csuv = clamp(suv, 0.0, 1.0);
-        float sceneZ = LUB_SAMPLE(gpos, csuv).z;
-        float3 sceneCol = LUB_SAMPLE(scene, csuv).rgb;
+        float sceneZ = LUB_SAMPLE_LOD(gpos, csuv).z;
+        float3 sceneCol = LUB_SAMPLE_LOD(scene, csuv).rgb;
         float diff = p.z - sceneZ;
         bool inb = suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0;
         bool valid = inb && p.z > 0.05 && sceneZ > 0.0001 && diff > 0.02 && diff < SSR_THICKNESS;
@@ -61,8 +61,8 @@ float4 ssr(float3 start, float3 R, float2 proj) {
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 sceneColor = LUB_SAMPLE(scene, i.uv).rgb;
-    float4 P = LUB_SAMPLE(gpos, i.uv);
+    float3 sceneColor = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float4 P = LUB_SAMPLE_LOD(gpos, i.uv);
     if (P.z <= 0.0001) return float4(sceneColor, 1.0); // sky
 
     float waterY = i.p.y;
@@ -78,7 +78,7 @@ float4 fs_main(FSIn i) : SV_Target {
     float wz = dot(i.c.xyz, wView) + i.c.w;
     float2 wuv = float2(wx, wz) * TILE;
 
-    float2 flow = LUB_SAMPLE(flowmap, wuv).xy * 2.0 - 1.0;
+    float2 flow = LUB_SAMPLE_LOD(flowmap, wuv).xy * 2.0 - 1.0;
     float3 wn = ripple_normal(wuv, flow, i.p.x);
 
     // view-space TBN of the water plane (world up/x/z expressed in view space).
@@ -88,7 +88,7 @@ float4 fs_main(FSIn i) : SV_Target {
     float3 Np = normalize(Nv + (Tv * wn.x + Bv * wn.y) * 0.55);
 
     // refraction: offset the (submerged) scene sample by the ripple normal
-    float3 refr = LUB_SAMPLE(scene, i.uv + wn.xy * 0.025).rgb;
+    float3 refr = LUB_SAMPLE_LOD(scene, i.uv + wn.xy * 0.025).rgb;
 
     // shoreline foam where the scene sits just under the surface
     float depthDiff = sceneDist - s;

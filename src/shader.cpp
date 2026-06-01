@@ -36,14 +36,21 @@
 // combined samplers for WGSL so either prelude works; sokol-form keeps the
 // declaration shape consistent across native + wasm reflection output.
 static const char *prelude_for_target(ShaderTargetBackend target) {
+    // LUB_SAMPLE_LOD is an explicit-LOD (level 0) sample. Textures here are never
+    // mipmapped so it's equivalent to LUB_SAMPLE, but unlike implicit-LOD Sample
+    // it is legal in non-uniform control flow — WGSL (WebGPU) rejects an
+    // implicit-LOD textureSample after a data-dependent branch/loop, which the
+    // post passes (SSAO/outline/water) hit when they sample after an early-out.
     if (target == SHADER_TARGET_SDLGPU) {
         return
             "#define LUB_TEXTURE2D(n) Sampler2D<float4> n\n"
-            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n";
+            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
+            "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
     }
     return
         "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
-        "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n";
+        "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
+        "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
 }
 
 #ifndef __EMSCRIPTEN__

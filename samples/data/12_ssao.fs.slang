@@ -26,11 +26,11 @@ float hash12(float2 p) {
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 base = LUB_SAMPLE(scene, i.uv).rgb;
-    float3 P = LUB_SAMPLE(gpos, i.uv).xyz;
+    float3 base = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float3 P = LUB_SAMPLE_LOD(gpos, i.uv).xyz;
     if (P.z <= 0.0001) return float4(base, 1.0);
 
-    float3 N = normalize(LUB_SAMPLE(gnormal, i.uv).xyz * 2.0 - 1.0);
+    float3 N = normalize(LUB_SAMPLE_LOD(gnormal, i.uv).xyz * 2.0 - 1.0);
     float3 up = abs(N.z) < 0.99 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
     float3 T = normalize(cross(up, N));
     float3 B = cross(N, T);
@@ -48,7 +48,7 @@ float4 fs_main(FSIn i) : SV_Target {
         suv.y = 1.0 - suv.y; // G-buffer is offscreen (y-down) vs the sample uv
         if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
 
-        float sampleDepth = LUB_SAMPLE(gpos, suv).z;
+        float sampleDepth = LUB_SAMPLE_LOD(gpos, suv).z;
         if (sampleDepth <= 0.0001) continue;
 
         float rangeCheck = smoothstep(0.0, 1.0, RADIUS / max(abs(P.z - sampleDepth), 1e-4));

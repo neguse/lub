@@ -17,29 +17,29 @@ float4 fs_main(FSIn i) : SV_Target {
     float2 t = TEXEL;
     float2 uv = i.uv;
 
-    float4 center = LUB_SAMPLE(scene, uv);
+    float4 center = LUB_SAMPLE_LOD(scene, uv);
     float3 base = center.rgb;
 
     float levels = 5.0;
     float3 cPost = floor(base * levels) / (levels - 1.0);
 
     float px = 96.0;
-    float3 cPix = LUB_SAMPLE(scene, (floor(uv * px) + 0.5) / px).rgb;
+    float3 cPix = LUB_SAMPLE_LOD(scene, (floor(uv * px) + 0.5) / px).rgb;
 
     float2 dir = uv - 0.5;
     float3 cChrom = float3(
-        LUB_SAMPLE(scene, uv + dir * amount).r,
+        LUB_SAMPLE_LOD(scene, uv + dir * amount).r,
         base.g,
-        LUB_SAMPLE(scene, uv - dir * amount).b);
+        LUB_SAMPLE_LOD(scene, uv - dir * amount).b);
 
-    float3 sR = LUB_SAMPLE(scene, uv + float2( t.x, 0.0)).rgb;
-    float3 sL = LUB_SAMPLE(scene, uv + float2(-t.x, 0.0)).rgb;
-    float3 sU = LUB_SAMPLE(scene, uv + float2(0.0,  t.y)).rgb;
-    float3 sD = LUB_SAMPLE(scene, uv + float2(0.0, -t.y)).rgb;
-    float3 sRU = LUB_SAMPLE(scene, uv + float2( t.x,  t.y)).rgb;
-    float3 sLU = LUB_SAMPLE(scene, uv + float2(-t.x,  t.y)).rgb;
-    float3 sRD = LUB_SAMPLE(scene, uv + float2( t.x, -t.y)).rgb;
-    float3 sLD = LUB_SAMPLE(scene, uv + float2(-t.x, -t.y)).rgb;
+    float3 sR = LUB_SAMPLE_LOD(scene, uv + float2( t.x, 0.0)).rgb;
+    float3 sL = LUB_SAMPLE_LOD(scene, uv + float2(-t.x, 0.0)).rgb;
+    float3 sU = LUB_SAMPLE_LOD(scene, uv + float2(0.0,  t.y)).rgb;
+    float3 sD = LUB_SAMPLE_LOD(scene, uv + float2(0.0, -t.y)).rgb;
+    float3 sRU = LUB_SAMPLE_LOD(scene, uv + float2( t.x,  t.y)).rgb;
+    float3 sLU = LUB_SAMPLE_LOD(scene, uv + float2(-t.x,  t.y)).rgb;
+    float3 sRD = LUB_SAMPLE_LOD(scene, uv + float2( t.x, -t.y)).rgb;
+    float3 sLD = LUB_SAMPLE_LOD(scene, uv + float2(-t.x, -t.y)).rgb;
 
     float3 cSharp = saturate(base * 5.0 - sR - sL - sU - sD);
     float3 cDil = max(max(max(max(base, sR), sL), sU), sD);

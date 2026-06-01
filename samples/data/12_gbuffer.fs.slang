@@ -37,7 +37,7 @@ float shadow_factor(float4 lpos) {
     for (int y = -1; y <= 1; ++y)
         for (int x = -1; x <= 1; ++x) {
             float closest = unpack_depth(
-                LUB_SAMPLE(shadow_map, uv + float2(float(x), float(y)) * texel).rgb);
+                LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).rgb);
             lit += (ndc.z - bias <= closest) ? 1.0 : 0.0;
         }
     return lit / 9.0;

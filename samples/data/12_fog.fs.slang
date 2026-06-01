@@ -13,8 +13,8 @@ struct FSIn { float2 uv : TEXCOORD0; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 c = LUB_SAMPLE(scene, i.uv).rgb;
-    float d = LUB_SAMPLE(gpos, i.uv).z;
+    float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float d = LUB_SAMPLE_LOD(gpos, i.uv).z;
     if (d <= 0.0001) return float4(c, 1.0);
     float f = saturate((d - FOG_START) / (FOG_END - FOG_START));
     return float4(lerp(c, FOG_COLOR, f), 1.0);

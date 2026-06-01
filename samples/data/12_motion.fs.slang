@@ -19,8 +19,8 @@ struct FSIn {
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 base = LUB_SAMPLE(scene, i.uv).rgb;
-    float4 P = LUB_SAMPLE(gpos, i.uv);
+    float3 base = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float4 P = LUB_SAMPLE_LOD(gpos, i.uv);
     if (P.z <= 0.0001) return float4(base, 1.0);
 
     float4 vp = float4(P.xyz, 1.0);
@@ -39,7 +39,7 @@ float4 fs_main(FSIn i) : SV_Target {
     float3 acc = float3(0.0, 0.0, 0.0);
     for (int k = 0; k < SAMPLES; ++k) {
         float t = (float(k) / float(SAMPLES - 1)) - 0.5; // centred [-0.5, 0.5]
-        acc += LUB_SAMPLE(scene, i.uv + vel * t).rgb;
+        acc += LUB_SAMPLE_LOD(scene, i.uv + vel * t).rgb;
     }
     return float4(acc / float(SAMPLES), 1.0);
 }

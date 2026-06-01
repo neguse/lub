@@ -9,7 +9,7 @@ struct FSIn { float2 uv : TEXCOORD0; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    float3 b = LUB_SAMPLE(scene, i.uv).rgb;
-    float3 bl = LUB_SAMPLE(bloom, i.uv).rgb;
+    float3 b = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+    float3 bl = LUB_SAMPLE_LOD(bloom, i.uv).rgb;
     return float4(b + bl * STRENGTH, 1.0);
 }
