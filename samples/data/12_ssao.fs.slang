@@ -3,14 +3,17 @@
 // VS varying, so a view-space sample point projects to uv as:
 //   suv.x = (proj00 * x / z) * 0.5 + 0.5
 //   suv.y = (proj11 * y / z) * 0.5 + 0.5
-// (proj11 already carries the offscreen y-flip, matching the stored G-buffer.)
+// The G-buffer is an offscreen target stored y-down, so the sample uv still
+// needs suv.y = 1 - suv.y (same flip the shadow map needs); without it the AO
+// samples a vertically mirrored location and smears a floating band across the
+// floor behind objects.
 LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(gnormal);
 LUB_TEXTURE2D(gpos);
 
-static const float RADIUS = 0.16;
+static const float RADIUS = 0.3;
 static const float BIAS = 0.03;
-static const float STRENGTH = 0.55;
+static const float STRENGTH = 0.7;
 static const int N_SAMPLES = 24;
 
 struct FSIn { float2 uv : TEXCOORD0; float2 proj : TEXCOORD1; };
@@ -42,6 +45,7 @@ float4 fs_main(FSIn i) : SV_Target {
         float3 sp = P + (T * disc.x + B * disc.y) + N * (r * 0.6);
 
         float2 suv = float2(i.proj.x * sp.x / sp.z, i.proj.y * sp.y / sp.z) * 0.5 + 0.5;
+        suv.y = 1.0 - suv.y; // G-buffer is offscreen (y-down) vs the sample uv
         if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
 
         float sampleDepth = LUB_SAMPLE(gpos, suv).z;
