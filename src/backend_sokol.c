@@ -1594,10 +1594,13 @@ static SglPixelFormat sk_swapchain_color_format(App *app) {
 // window._canvasWidth / _canvasHeight before loading the WASM, then keeps
 // them in sync when the iframe is resized). The player html provides this.
 
+// EM_JS bodies are JavaScript (see the shader.cpp note).
+// clang-format off
 EM_JS(int, lub_canvas_width, (void),
       { return (window._canvasWidth || 480) | 0; })
 EM_JS(int, lub_canvas_height, (void),
       { return (window._canvasHeight || 360) | 0; })
+// clang-format on
 
 static WGPUStringView lub_wgpu_string(const char *s) {
   WGPUStringView v = {s, s ? strlen(s) : 0};

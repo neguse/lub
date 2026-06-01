@@ -982,6 +982,10 @@ enum SglShaderStage {
 //   * NULL: only for genuinely unrecoverable cases (malloc failure inside the
 //     JS shim). Everything else — including "slang-wasm not loaded yet" — uses
 //     the 0x02-prefixed error form so the diagnostic reaches the user.
+// EM_ASYNC_JS body below is JavaScript, not C++. clang-format mangles JS
+// operators (=== becomes "== =", !== becomes "!= =") and breaks the generated
+// lub.js WASM glue, so disable formatting for this region.
+// clang-format off
 EM_ASYNC_JS(
     char *, lub_slang_compile_js,
     (const char *src, const char *entry, int stage), {
@@ -996,8 +1000,8 @@ EM_ASYNC_JS(
         stringToUTF8(errMsg, ptr, len);
         return ptr;
       };
-      if (typeof window == = 'undefined' ||
-                             typeof window.slangCompile != = 'function') {
+      if (typeof window === 'undefined' ||
+          typeof window.slangCompile !== 'function') {
         console.error('[lub] window.slangCompile not exposed by the host; ' +
                       'slang-wasm bridge not loaded. entry=' + entryStr);
         return packError(
@@ -1026,6 +1030,7 @@ EM_ASYNC_JS(
         return packError(msg);
       }
     });
+// clang-format on
 
 namespace {
 
