@@ -16,7 +16,25 @@ export const SAMPLE_NAMES = [
   '09_breakout',
   '10_breakout3d',
   '11_shadow',
+  '12_sfb',
 ]
+
+// Samples whose Lua builds shader paths dynamically (so the load_text scan
+// below can't see them) list their editable data files explicitly.
+const EXTRA_FILES: Record<string, string[]> = {
+  '12_sfb': [
+    'data/12_gbuffer.vs.slang', 'data/12_gbuffer.fs.slang',
+    'data/12_mat.vs.slang', 'data/12_mat.fs.slang',
+    'data/12_shadow_flat.vs.slang', 'data/12_shadow_hero.vs.slang', 'data/12_shadow.fs.slang',
+    'data/12_ssao.vs.slang', 'data/12_ssao.fs.slang',
+    'data/12_fog.fs.slang', 'data/12_outline.fs.slang',
+    'data/12_bright.fs.slang', 'data/12_blur_h.fs.slang', 'data/12_blur_v.fs.slang', 'data/12_combine.fs.slang',
+    'data/12_dof.fs.slang', 'data/12_motion.vs.slang', 'data/12_motion.fs.slang',
+    'data/12_water.vs.slang', 'data/12_water.fs.slang',
+    'data/12_screen.vs.slang', 'data/12_screen.fs.slang',
+    'data/12_quad.vs.slang', 'data/12_present.fs.slang',
+  ],
+}
 
 function scanLuaReferences(src: string): string[] {
   const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g
@@ -29,14 +47,21 @@ function scanLuaReferences(src: string): string[] {
 }
 
 export async function loadSample(name: string): Promise<Map<string, EditorFile>> {
-  const luaPath = `${name}.lua`
-  const luaRes = await fetch('/samples/' + luaPath)
-  if (!luaRes.ok) throw new Error(`fetch /samples/${luaPath} -> ${luaRes.status}`)
+  // Samples are authored in Haxe and transpiled to samples/.lub/<name>.lua;
+  // the C runtime resolves bare-name entries from there, so fetch the same.
+  const entryKey = `.lub/${name}.lua`
+  const luaRes = await fetch('/samples/' + entryKey)
+  if (!luaRes.ok) throw new Error(`fetch /samples/${entryKey} -> ${luaRes.status}`)
   const luaText = await luaRes.text()
   const files = new Map<string, EditorFile>()
-  files.set(luaPath, { content: luaText, dirty: false, initial: luaText })
-  for (const ref of scanLuaReferences(luaText)) {
-    // ref comes verbatim out of `load_text("...")`; the path may start with "samples/" or be relative
+  files.set(entryKey, { content: luaText, dirty: false, initial: luaText })
+
+  const refs = scanLuaReferences(luaText)
+  for (const extra of EXTRA_FILES[name] || []) {
+    if (!refs.includes(extra)) refs.push(extra)
+  }
+  for (const ref of refs) {
+    // ref may start with "samples/" or be relative to the samples dir
     const fetchPath = ref.startsWith('samples/') ? '/' + ref : '/samples/' + ref
     const storeKey  = ref.startsWith('samples/') ? ref.slice('samples/'.length) : ref
     try {
