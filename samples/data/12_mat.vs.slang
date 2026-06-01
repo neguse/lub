@@ -7,6 +7,7 @@ struct MatUniforms {
     float4x4 proj;
     float4x4 view;
     float4x4 model;
+    float4x4 light_mvp;
     float4   light_dir_view;
 };
 ConstantBuffer<MatUniforms> u;
@@ -24,6 +25,7 @@ struct VSOut {
     float3 vn : TEXCOORD1;
     float3 ldir : TEXCOORD2;
     float2 uv : TEXCOORD3;
+    float4 lpos : TEXCOORD4;
 };
 
 [shader("vertex")]
@@ -38,5 +40,6 @@ VSOut vs_main(VSIn i) {
     o.vn = mul((float3x3)u.view, mul((float3x3)u.model, i.normal));
     o.ldir = u.light_dir_view.xyz;
     o.uv = i.uv;
+    o.lpos = mul(u.light_mvp, wp);
     return o;
 }

@@ -7,6 +7,7 @@
 struct GBufUniforms {
     float4x4 proj;
     float4x4 view;
+    float4x4 light_mvp;      // world -> light clip, for the shadow lookup
     float4   light_dir_view; // light direction in view space (xyz), w unused
 };
 ConstantBuffer<GBufUniforms> u;
@@ -25,6 +26,7 @@ struct VSOut {
     float3 ldir : TEXCOORD2;  // light dir (view space), forwarded so the FS
                               // needs no uniform block of its own (only one
                               // uniform block per shader is wired up).
+    float4 lpos : TEXCOORD3;  // light-clip position for shadow mapping
     float4 color : COLOR;
 };
 
@@ -36,6 +38,7 @@ VSOut vs_main(VSIn i) {
     o.pos = mul(u.proj, vp);
     o.vn = mul((float3x3)u.view, i.normal);
     o.ldir = u.light_dir_view.xyz;
+    o.lpos = mul(u.light_mvp, float4(i.pos, 1.0));
     o.color = i.color;
     return o;
 }

@@ -288,6 +288,15 @@ class Sfb12 {
     ];
   }
 
+  static function orthoLh(w: Float, h: Float, nz: Float, fz: Float): Array<Float> {
+    return [
+      2 / w, 0,     0,             0,
+      0,     2 / h, 0,             0,
+      0,     0,     1 / (fz - nz), -nz / (fz - nz),
+      0,     0,     0,             1,
+    ];
+  }
+
   static function perspectiveLh(fovDeg: Float, aspect: Float, nz: Float, fz: Float): Array<Float> {
     var f = 1 / Math.tan(fovDeg * Math.PI / 360);
     return [
@@ -318,6 +327,16 @@ class Sfb12 {
 
   static function updateCamera(): Array<Float> {
     var up: Array<Float> = [0, 1, 0];
+
+    // LUB_SFB_CAM="yaw,pitch,ex,ey,ez" pins the camera to a fixed pose (testing).
+    var camStr = lua.Os.getenv("LUB_SFB_CAM");
+    if (camStr != null) {
+      var p = camStr.split(",");
+      if (p.length >= 5) {
+        camYaw = Std.parseFloat(p[0]); camPitch = Std.parseFloat(p[1]);
+        camEye[0] = Std.parseFloat(p[2]); camEye[1] = Std.parseFloat(p[3]); camEye[2] = Std.parseFloat(p[4]);
+      }
+    }
 
     // LUB_SFB_SPIN auto-orbits the camera (deterministic) so motion blur is
     // visible in a headless capture; default (unset) keeps the golden still.
@@ -377,6 +396,8 @@ class Sfb12 {
 
     var gShader = shader2("sfb_gbuf", "12_gbuffer.vs.slang", "12_gbuffer.fs.slang");
     var matShader = shader2("sfb_mat", "12_mat.vs.slang", "12_mat.fs.slang");
+    var shFlatShader = shader2("sfb_shflat", "12_shadow_flat.vs.slang", "12_shadow.fs.slang");
+    var shHeroShader = shader2("sfb_shhero", "12_shadow_hero.vs.slang", "12_shadow.fs.slang");
     var pShader = fsShader("sfb_present", "12_present.fs.slang");
     var ssaoShader = shader2("sfb_ssao", "12_ssao.vs.slang", "12_ssao.fs.slang");
     var fogShader = fsShader("sfb_fog", "12_fog.fs.slang");
@@ -389,7 +410,8 @@ class Sfb12 {
     var motionShader = shader2("sfb_motion", "12_motion.vs.slang", "12_motion.fs.slang");
     var waterShader = shader2("sfb_water", "12_water.vs.slang", "12_water.fs.slang");
     var screenShader = shader2("sfb_screen", "12_screen.vs.slang", "12_screen.fs.slang");
-    if (gShader == null || matShader == null || pShader == null || ssaoShader == null
+    if (gShader == null || matShader == null || shFlatShader == null || shHeroShader == null
+        || pShader == null || ssaoShader == null
         || fogShader == null || brightShader == null || blurHShader == null
         || blurVShader == null || combineShader == null || outlineShader == null
         || dofShader == null || motionShader == null || waterShader == null
@@ -406,6 +428,8 @@ class Sfb12 {
     var gNormal = target("sfb_gNormal", RT_W, RT_H, Gfx.RGBA16F, Gfx.NEAREST);
     var gPosition = target("sfb_gPosition", RT_W, RT_H, Gfx.RGBA16F, Gfx.NEAREST);
     var gDepth = target("sfb_gDepth", RT_W, RT_H, Gfx.DEPTH32F, Gfx.NEAREST);
+    var shadowMap = target("sfb_shadow", 1024, 1024, Gfx.RGBA8, Gfx.NEAREST);
+    var shadowDepth = target("sfb_shadowD", 1024, 1024, Gfx.DEPTH32F, Gfx.NEAREST);
     var texA = target("sfb_texA", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
     var texB = target("sfb_texB", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
     var bloomA = target("sfb_bloomA", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
@@ -458,7 +482,13 @@ class Sfb12 {
     // the default framebuffer). Pre-flip clip-space Y so the G-buffer is
     // screen-oriented; cull is NONE so the winding change is harmless.
     proj[5] = -proj[5];
-    var lightView = norm3(mat3mul(view, norm3([-0.48, 1.0, -0.32])));
+    var worldLight = norm3([-0.48, 1.0, -0.32]); // direction toward the light
+    var lightView = norm3(mat3mul(view, worldLight));
+    // directional shadow: orthographic light camera looking at the scene centre.
+    var lightLook = lookAtLh(
+      [0.1 + worldLight[0] * 6.0, 0.3 + worldLight[1] * 6.0, worldLight[2] * 6.0],
+      [0.1, 0.3, 0.0], [0, 1, 0]);
+    var lightMvp = mul4(orthoLh(5.5, 5.5, 0.1, 12.0), lightLook);
 
     // Reprojection for motion blur: maps a current view-space point to last
     // frame's clip space = prevViewProj * inverse(currentView). Still camera =>
@@ -474,8 +504,13 @@ class Sfb12 {
     pcEye[0] = camEye[0]; pcEye[1] = camEye[1]; pcEye[2] = camEye[2];
     pcYaw = camYaw; pcPitch = camPitch;
 
+    // shadow depth pass (light POV) -> shadowMap, then the G-buffer samples it.
+    shadowPass(shadowMap, shadowDepth, shFlatShader, sceneBuf, Std.int(scene.length / STRIDE),
+      shHeroShader, heroBuf, heroCount, heroIdx, heroModel, lightMvp);
+
     geometryPass(gShader, sceneBuf, Std.int(scene.length / STRIDE),
       matShader, heroBuf, heroCount, heroIdx, heroModel, albedoTex, normalTex,
+      shadowMap, lightMvp,
       gColor, gNormal, gPosition, gDepth, proj, view, lightView);
 
     // SSAO folds AO into the lit color; fog -> bloom -> outline build the look.
@@ -541,15 +576,36 @@ class Sfb12 {
     return lua.Table.fromArray([0.0, 0.0, 0.0, 1.0]);
   }
 
+  // shadow depth pass: render flat + hero from the light's POV into shadowMap.
+  static function shadowPass(shadowMap: Dynamic, shadowDepth: Dynamic,
+      flatShader: Dynamic, sceneBuf: Dynamic, count: Int,
+      heroShader: Dynamic, heroBuf: Dynamic, heroCount: Int, heroIdx: Dynamic,
+      heroModel: Array<Float>, lightMvp: Array<Float>) {
+    var lmvp = lua.Table.fromArray(lightMvp);
+    var mv = lua.Table.fromArray(heroModel);
+    Gfx.beginPass({ target: shadowMap, depth_target: shadowDepth,
+      clear_color: lua.Table.fromArray([1.0, 1.0, 1.0, 1.0]), clear_depth: 1 });
+    Gfx.draw(count, { verts: sceneBuf, uniforms: { light_mvp: lmvp } },
+      { shader: flatShader, depth: true, depth_write: true, cull: Gfx.NONE });
+    var opts = { shader: heroShader, depth: true, depth_write: true, cull: Gfx.NONE };
+    if (heroIdx != null) {
+      Gfx.draw(heroCount, { verts: heroBuf, indices: heroIdx, uniforms: { light_mvp: lmvp, model: mv } }, opts);
+    } else {
+      Gfx.draw(heroCount, { verts: heroBuf, uniforms: { light_mvp: lmvp, model: mv } }, opts);
+    }
+    Gfx.endPass();
+  }
+
   static function geometryPass(shader: Dynamic, sceneBuf: Dynamic, count: Int,
       matShader: Dynamic, heroBuf: Dynamic, heroCount: Int, heroIdx: Dynamic, heroModel: Array<Float>,
-      albedoTex: Dynamic, normalTex: Dynamic,
+      albedoTex: Dynamic, normalTex: Dynamic, shadowMap: Dynamic, lightMvp: Array<Float>,
       gColor: Dynamic, gNormal: Dynamic, gPosition: Dynamic, gDepth: Dynamic,
       proj: Array<Float>, view: Array<Float>, lightView: Array<Float>) {
     var lt = lua.Table.fromArray([lightView[0], lightView[1], lightView[2], 0.0]);
     var pv = lua.Table.fromArray(proj);
     var vv = lua.Table.fromArray(view);
     var mv = lua.Table.fromArray(heroModel);
+    var lmvp = lua.Table.fromArray(lightMvp);
     Gfx.beginPass({
       targets: lua.Table.fromArray([gColor, gNormal, gPosition]),
       depth_target: gDepth,
@@ -561,16 +617,19 @@ class Sfb12 {
       clear_depth: 1,
     });
     // flat-shaded scene objects
-    Gfx.draw(count, { verts: sceneBuf, uniforms: { proj: pv, view: vv, light_dir_view: lt } },
+    Gfx.draw(count, { verts: sceneBuf, shadow_map: shadowMap,
+        uniforms: { proj: pv, view: vv, light_mvp: lmvp, light_dir_view: lt } },
       { shader: shader, depth: true, depth_write: true, cull: Gfx.NONE });
     // textured + normal-mapped hero (same G-buffer); indexed for glTF meshes.
     var opts = { shader: matShader, depth: true, depth_write: true, cull: Gfx.NONE };
     if (heroIdx != null) {
       Gfx.draw(heroCount, { verts: heroBuf, indices: heroIdx, albedo: albedoTex, normalmap: normalTex,
-          uniforms: { proj: pv, view: vv, model: mv, light_dir_view: lt } }, opts);
+          shadow_map: shadowMap,
+          uniforms: { proj: pv, view: vv, model: mv, light_mvp: lmvp, light_dir_view: lt } }, opts);
     } else {
       Gfx.draw(heroCount, { verts: heroBuf, albedo: albedoTex, normalmap: normalTex,
-          uniforms: { proj: pv, view: vv, model: mv, light_dir_view: lt } }, opts);
+          shadow_map: shadowMap,
+          uniforms: { proj: pv, view: vv, model: mv, light_mvp: lmvp, light_dir_view: lt } }, opts);
     }
     Gfx.endPass();
   }
