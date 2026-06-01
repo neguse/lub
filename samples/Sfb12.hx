@@ -418,7 +418,8 @@ class Sfb12 {
         || screenShader == null) return;
 
     // effect isolation mode (LUB_SFB_MODE): 0=composite, 1=posterize,
-    // 2=pixelize, 3=chromatic, 4=sharpen, 5=dilation, 6=normal, 7=depth.
+    // 2=pixelize, 3=chromatic, 4=sharpen, 5=dilation, 6=normal, 7=depth,
+    // 8=shadow map. (LUB_SFB_NOWATER=1 skips the water plane.)
     var modeStr: String = lua.Os.getenv("LUB_SFB_MODE");
     var mode: Int = (modeStr == null) ? 0 : Std.parseInt(modeStr);
     if (mode == null) mode = 0;
@@ -526,8 +527,12 @@ class Sfb12 {
 
     // Water: composite a flow-mapped, refracting, foaming plane at y = WATER_Y
     // over the scene (reflection/refraction/foam/flow). texB -> texA.
-    waterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex, waterNrmTex,
-      invView, tAccum, WATER_Y);
+    if (lua.Os.getenv("LUB_SFB_NOWATER") != null) {
+      blit(texA, pShader, quadBufF, texB);
+    } else {
+      waterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex, waterNrmTex,
+        invView, tAccum, WATER_Y);
+    }
 
     // Depth of field: blur a copy of the beauty (texA) through the bloom
     // buffers, then lerp by circle-of-confusion -> texB.
@@ -546,7 +551,7 @@ class Sfb12 {
 
     // Parameterised screen effect runs offscreen (the swapchain pass stays free
     // of a fragment uniform block); debug modes sample the raw G-buffer.
-    var screenSrc = (mode == 6) ? gNormal : (mode == 7) ? gPosition : beauty;
+    var screenSrc = (mode == 6) ? gNormal : (mode == 7) ? gPosition : (mode == 8) ? shadowMap : beauty;
     screenPass(outBuf, screenShader, quadBufF, screenSrc, mode);
     present(pShader, quadBuf, outBuf);
   }

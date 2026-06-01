@@ -21,6 +21,7 @@ float unpack_depth(float3 v) {
 float shadow_factor(float4 lpos) {
     float3 ndc = lpos.xyz / lpos.w;
     float2 uv = ndc.xy * 0.5 + 0.5;
+    uv.y = 1.0 - uv.y; // shadow map stored y-down vs the lookup uv
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 ||
         ndc.z < 0.0 || ndc.z > 1.0) return 1.0;
     float texel = 1.0 / 1024.0;
