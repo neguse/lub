@@ -8,9 +8,9 @@ LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(gnormal);
 LUB_TEXTURE2D(gpos);
 
-static const float RADIUS = 0.28;
+static const float RADIUS = 0.16;
 static const float BIAS = 0.03;
-static const float STRENGTH = 0.6; // gentler now that real shadows do the heavy lifting
+static const float STRENGTH = 0.55;
 static const int N_SAMPLES = 24;
 
 struct FSIn { float2 uv : TEXCOORD0; float2 proj : TEXCOORD1; };
