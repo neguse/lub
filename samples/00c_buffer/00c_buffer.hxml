@@ -1,0 +1,3 @@
+-cp samples/00c_buffer
+-lib lub
+-main Buffer00c

@@ -6,9 +6,9 @@
 typedef struct SDL_Process SDL_Process;
 
 typedef struct HaxeServer {
-    SDL_Process *child;    // haxe --wait child
-    int          port;     // 確保した port
-    bool         ready;    // listening を確認済みなら true
+  SDL_Process *child; // haxe --wait child
+  int port;           // 確保した port
+  bool ready;         // listening を確認済みなら true
 } HaxeServer;
 
 // 起動。`LUB_HAXE_PORT` env var があればそれを 1 回だけ試す。

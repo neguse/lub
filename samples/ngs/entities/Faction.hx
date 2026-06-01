@@ -1,8 +1,8 @@
 package entities;
 
 enum Faction {
-  PlayerBullets;
-  Enemies;
-  EnemyBullets;
-  Effects;
+	PlayerBullets;
+	Enemies;
+	EnemyBullets;
+	Effects;
 }

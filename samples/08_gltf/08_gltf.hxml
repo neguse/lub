@@ -1,0 +1,3 @@
+-cp samples/08_gltf
+-lib lub
+-main Gltf08

@@ -208,7 +208,7 @@ const greenShader =
   '[shader("fragment")]\nfloat4 fs_main() : SV_Target { return float4(0.0, 0.9, 0.2, 1.0); }\n'
 
 try {
-  await selectTabAndReplace('data/01_triangle.fs.slang', greenShader)
+  await selectTabAndReplace('01_triangle/data/01_triangle.fs.slang', greenShader)
   // 300ms debounce in main.ts; allow extra slack for shader recompile.
   await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
   const shot02 = await takeShot('02_shader_edit.png')
@@ -240,9 +240,9 @@ function M.on_event(e) end
 function M.on_quit() end
 
 function M.on_frame()
-    local vs, vsv = lub_io.load_text("samples/data/01_triangle.vs.slang")
-    local fs, fsv = lub_io.load_text("samples/data/01_triangle.fs.slang")
-    local verts, vv = lub_io.load_floats("samples/data/01_triangle.verts.lua")
+    local vs, vsv = lub_io.load_text("samples/01_triangle/data/01_triangle.vs.slang")
+    local fs, fsv = lub_io.load_text("samples/01_triangle/data/01_triangle.fs.slang")
+    local verts, vv = lub_io.load_floats("samples/01_triangle/data/01_triangle.verts.lua")
     if not vs or not fs or not verts then return end
     local s = use_shader("tri_shader", vs, fs, vsv ~ fsv)
     local b = use_buffer("tri_verts", VERTEX, verts, vv)
@@ -255,7 +255,7 @@ return M
 `
 
 try {
-  await selectTabAndReplace('01_triangle.lua', redClearLua)
+  await selectTabAndReplace('01_triangle/.lub/01_triangle.lua', redClearLua)
   // The hot-reload of the entry .lua takes effect when app_frame_begin sees
   // a new mtime; we wrote at "now", so the next frame should pick it up.
   await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
@@ -287,7 +287,7 @@ const smallVerts = `return {
 `
 
 try {
-  await selectTabAndReplace('data/01_triangle.verts.lua', smallVerts)
+  await selectTabAndReplace('01_triangle/data/01_triangle.verts.lua', smallVerts)
   await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
   const shot04 = await takeShot('04_verts_edit.png')
   const c4 = classify(shot04)

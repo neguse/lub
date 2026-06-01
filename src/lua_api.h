@@ -1,17 +1,18 @@
 #pragma once
-#include <lua.h>
 #include <SDL3/SDL.h>
+#include <lua.h>
 
-struct App;  // forward declaration
+struct App; // forward declaration
 
 typedef struct LuaCtx {
-    lua_State *L;
-    int        module_ref;  // luaL_ref into LUA_REGISTRYINDEX for the entry module table
+  lua_State *L;
+  int module_ref; // luaL_ref into LUA_REGISTRYINDEX for the entry module table
 } LuaCtx;
 
 // L を作って openlibs + lua_api_register まで実施する。boot.lua の読み込みや
 // entry module の require はここでは行わない (Task 23: .hxml dispatch から
-// package.path を inject する余地を作るため、L 作成と entry resolution を分離)。
+// package.path を inject する余地を作るため、L 作成と entry resolution
+// を分離)。
 bool lua_ctx_init(LuaCtx *ctx, struct App *app);
 
 // boot.lua を読み込み、entry_module_name を require して module table を ref

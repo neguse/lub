@@ -1,21 +1,21 @@
 #ifndef LUB_HAXE_WATCH_H
 #define LUB_HAXE_WATCH_H
 
-#include <stdbool.h>
-#include <SDL3/SDL_stdinc.h>
 #include "haxe_build.h"
+#include <SDL3/SDL_stdinc.h>
+#include <stdbool.h>
 
 typedef struct HaxeWatchEntry {
-    char   path[768];
-    Sint64 mtime_ns;
+  char path[768];
+  Sint64 mtime_ns;
 } HaxeWatchEntry;
 
 typedef struct HaxeWatch {
-    HaxeWatchEntry *entries;
-    int             count;
-    int             cap;
-    Sint64          last_change_ns;   // debounce 用
-    bool            pending_rebuild;
+  HaxeWatchEntry *entries;
+  int count;
+  int cap;
+  Sint64 last_change_ns; // debounce 用
+  bool pending_rebuild;
 } HaxeWatch;
 
 // hxml + meta から watch root を確定し、recursive に *.hx を拾う。

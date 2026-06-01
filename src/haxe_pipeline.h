@@ -1,19 +1,19 @@
 #ifndef LUB_HAXE_PIPELINE_H
 #define LUB_HAXE_PIPELINE_H
 
-#include <stdbool.h>
-#include "haxe_server.h"
 #include "haxe_build.h"
+#include "haxe_server.h"
 #include "haxe_watch.h"
+#include <stdbool.h>
 
 // haxe --wait + build + watch を 1 つの lifecycle で扱う合成 layer。
 // app.c の haxe_enabled 経路はこれだけを触る。
 typedef struct HaxePipeline {
-    HaxeServer server;
-    HxmlMeta   meta;
-    HaxeWatch  watch;
-    char       hxml_path[768];
-    bool       enabled;
+  HaxeServer server;
+  HxmlMeta meta;
+  HaxeWatch watch;
+  char hxml_path[768];
+  bool enabled;
 } HaxePipeline;
 
 // server を起動 -> hxml parse -> 初回 build -> watch を init。

@@ -9,20 +9,23 @@
     "preview": "vite preview",
     "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
     "verify": "node scripts/verify-headless.mjs",
+    "format": "prettier --write 'playground/**/*.ts' vite.config.ts",
+    "format:check": "prettier --check 'playground/**/*.ts' vite.config.ts",
     "deploy": "npm run build && wrangler deploy",
     "postinstall": "npm run fetch-slang"
   },
   "dependencies": {
-    "codemirror": "^6.0.1",
-    "@codemirror/legacy-modes": "^6.4.0",
     "@codemirror/language": "^6.10.0",
-    "@codemirror/theme-one-dark": "^6.1.2"
+    "@codemirror/legacy-modes": "^6.4.0",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "codemirror": "^6.0.1"
   },
   "devDependencies": {
-    "vite": "^8.0.13",
-    "typescript": "^5.3.0",
     "playwright": "^1.58.0",
     "pngjs": "^7.0.0",
+    "prettier": "^3.8.3",
+    "typescript": "^5.3.0",
+    "vite": "^8.0.13",
     "wrangler": "^4.0.0"
   }
 }

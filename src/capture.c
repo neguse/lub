@@ -1,6 +1,6 @@
 #include "capture.h"
-#include "backend.h"
 #include "app.h"
+#include "backend.h"
 
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -13,58 +13,63 @@
 #define CAPTURE_RETRY_FRAMES 120
 
 void capture_state_init(CaptureState *c) {
-    if (!c) return;
-    c->pending = false;
-    c->path = NULL;
-    c->target_frame = 0;
-    c->retries_left = 0;
+  if (!c)
+    return;
+  c->pending = false;
+  c->path = NULL;
+  c->target_frame = 0;
+  c->retries_left = 0;
 }
 
 void capture_state_shutdown(CaptureState *c) {
-    if (!c) return;
-    if (c->path) {
-        free(c->path);
-        c->path = NULL;
-    }
-    c->pending = false;
-    c->target_frame = 0;
+  if (!c)
+    return;
+  if (c->path) {
+    free(c->path);
+    c->path = NULL;
+  }
+  c->pending = false;
+  c->target_frame = 0;
 }
 
 void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame) {
-    if (!c || !path) return;
-    if (c->path) {
-        free(c->path);
-        c->path = NULL;
-    }
-    size_t n = strlen(path);
-    c->path = (char*)malloc(n + 1);
-    if (c->path) {
-        memcpy(c->path, path, n + 1);
-    }
-    c->target_frame = at_frame;
-    c->pending = true;
-    c->retries_left = CAPTURE_RETRY_FRAMES;
+  if (!c || !path)
+    return;
+  if (c->path) {
+    free(c->path);
+    c->path = NULL;
+  }
+  size_t n = strlen(path);
+  c->path = (char *)malloc(n + 1);
+  if (c->path) {
+    memcpy(c->path, path, n + 1);
+  }
+  c->target_frame = at_frame;
+  c->pending = true;
+  c->retries_left = CAPTURE_RETRY_FRAMES;
 }
 
 bool capture_state_drain(CaptureState *c, struct App *app) {
-    if (!c || !c->pending || !c->path) return false;
-    if (app->frame_index < c->target_frame) return false;
+  if (!c || !c->pending || !c->path)
+    return false;
+  if (app->frame_index < c->target_frame)
+    return false;
 
-    bool ok = g_backend->capture(app, c->path);
-    if (ok) {
-        SDL_Log("captured frame %llu -> %s",
-                (unsigned long long)app->frame_index, c->path);
-    } else if (c->retries_left > 0) {
-        c->retries_left--;
-        // Slip the target forward one frame and try again next iteration.
-        c->target_frame = app->frame_index + 1;
-        return false; // not consumed yet
-    } else {
-        SDL_Log("capture failed (frame %llu, path=%s)",
-                (unsigned long long)app->frame_index, c->path);
-    }
-    free(c->path);
-    c->path = NULL;
-    c->pending = false;
-    return true; // consume the request
+  bool ok = g_backend->capture(app, c->path);
+  if (ok) {
+    SDL_Log("captured frame %llu -> %s", (unsigned long long)app->frame_index,
+            c->path);
+  } else if (c->retries_left > 0) {
+    c->retries_left--;
+    // Slip the target forward one frame and try again next iteration.
+    c->target_frame = app->frame_index + 1;
+    return false; // not consumed yet
+  } else {
+    SDL_Log("capture failed (frame %llu, path=%s)",
+            (unsigned long long)app->frame_index, c->path);
+  }
+  free(c->path);
+  c->path = NULL;
+  c->pending = false;
+  return true; // consume the request
 }

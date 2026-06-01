@@ -64,14 +64,9 @@ for sample in "${SAMPLES[@]}"; do
         out="$tmpdir/${sample}_${backend}.png"
         golden="$GOLDEN_DIR/${sample}_${backend}.png"
 
-        # Prefer `.hxml` (Haxe pipeline entry) over the bare `.lua` script so
-        # migrated samples exercise the haxe build path; fall back to .lua for
-        # samples that haven't been ported yet.
-        if [[ -f "samples/${sample}.hxml" ]]; then
-            entry="samples/${sample}.hxml"
-        else
-            entry="samples/${sample}.lua"
-        fi
+        # 各サンプルは samples/<name>/<name>.hxml に自己完結している
+        # (Haxe pipeline entry; .hx 編集で hot reload)。
+        entry="samples/${sample}/${sample}.hxml"
 
         LUB_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$FRAME" \

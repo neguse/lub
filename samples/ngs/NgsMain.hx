@@ -1,7 +1,13 @@
 import game.Game;
 
 class NgsMain {
-  public static function main() {}
-  public static function onInit() { Game.init(); }
-  public static function onFrame() { Game.frame(); }
+	public static function main() {}
+
+	public static function onInit() {
+		Game.init();
+	}
+
+	public static function onFrame() {
+		Game.frame();
+	}
 }

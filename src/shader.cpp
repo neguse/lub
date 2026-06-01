@@ -13,8 +13,8 @@
 #include "shader.h"
 
 #ifndef __EMSCRIPTEN__
-#include <slang.h>
 #include <slang-com-ptr.h>
+#include <slang.h>
 #endif
 
 #include <stdio.h>
@@ -36,282 +36,315 @@
 // combined samplers for WGSL so either prelude works; sokol-form keeps the
 // declaration shape consistent across native + wasm reflection output.
 static const char *prelude_for_target(ShaderTargetBackend target) {
-    // LUB_SAMPLE_LOD is an explicit-LOD (level 0) sample. Textures here are never
-    // mipmapped so it's equivalent to LUB_SAMPLE, but unlike implicit-LOD Sample
-    // it is legal in non-uniform control flow — WGSL (WebGPU) rejects an
-    // implicit-LOD textureSample after a data-dependent branch/loop, which the
-    // post passes (SSAO/outline/water) hit when they sample after an early-out.
-    if (target == SHADER_TARGET_SDLGPU) {
-        return
-            "#define LUB_TEXTURE2D(n) Sampler2D<float4> n\n"
-            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
-            "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
-    }
-    return
-        "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
-        "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
-        "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
+  // LUB_SAMPLE_LOD is an explicit-LOD (level 0) sample. Textures here are never
+  // mipmapped so it's equivalent to LUB_SAMPLE, but unlike implicit-LOD Sample
+  // it is legal in non-uniform control flow — WGSL (WebGPU) rejects an
+  // implicit-LOD textureSample after a data-dependent branch/loop, which the
+  // post passes (SSAO/outline/water) hit when they sample after an early-out.
+  if (target == SHADER_TARGET_SDLGPU) {
+    return "#define LUB_TEXTURE2D(n) Sampler2D<float4> n\n"
+           "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
+           "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
+  }
+  return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
+         "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
+         "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
 }
 
 #ifndef __EMSCRIPTEN__
-using slang::IGlobalSession;
-using slang::ISession;
-using slang::IModule;
-using slang::IEntryPoint;
-using slang::IComponentType;
+using Slang::ComPtr;
+using slang::EntryPointReflection;
 using slang::IBlob;
+using slang::IComponentType;
+using slang::IEntryPoint;
+using slang::IGlobalSession;
+using slang::IModule;
+using slang::ISession;
+using slang::ProgramLayout;
 using slang::SessionDesc;
 using slang::TargetDesc;
-using slang::ProgramLayout;
-using slang::EntryPointReflection;
-using slang::VariableLayoutReflection;
 using slang::TypeLayoutReflection;
 using slang::TypeReflection;
-using Slang::ComPtr;
+using slang::VariableLayoutReflection;
 
 namespace {
 
 // Lazy global session, reused across compiles.
 struct GlobalSlangCtx {
-    ComPtr<IGlobalSession> g;
-    SlangProfileID spirv_profile = SLANG_PROFILE_UNKNOWN;
+  ComPtr<IGlobalSession> g;
+  SlangProfileID spirv_profile = SLANG_PROFILE_UNKNOWN;
 };
 
 GlobalSlangCtx g_slang;
 
 bool ensure_global_session() {
-    if (g_slang.g) return true;
-    if (SLANG_FAILED(slang::createGlobalSession(g_slang.g.writeRef()))) {
-        return false;
-    }
-    // Target spirv_1_0 to match SDL_GPU's Vulkan 1.0 target-env (silences
-    // VUID-VkShaderModuleCreateInfo-pCode-08737). Fallbacks for older Slang.
-    g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_0");
-    if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
-        g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_5");
-    }
-    if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
-        g_slang.spirv_profile = g_slang.g->findProfile("glsl_450");
-    }
+  if (g_slang.g)
     return true;
+  if (SLANG_FAILED(slang::createGlobalSession(g_slang.g.writeRef()))) {
+    return false;
+  }
+  // Target spirv_1_0 to match SDL_GPU's Vulkan 1.0 target-env (silences
+  // VUID-VkShaderModuleCreateInfo-pCode-08737). Fallbacks for older Slang.
+  g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_0");
+  if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
+    g_slang.spirv_profile = g_slang.g->findProfile("spirv_1_5");
+  }
+  if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
+    g_slang.spirv_profile = g_slang.g->findProfile("glsl_450");
+  }
+  return true;
 }
 
 // Copy a diagnostic blob into a caller-supplied buffer (truncating).
 void copy_diag(IBlob *diag, char *err_buf, size_t err_buf_size) {
-    if (!err_buf || err_buf_size == 0) return;
-    if (!diag) {
-        snprintf(err_buf, err_buf_size, "(no diagnostic available)");
-        return;
-    }
-    size_t n = diag->getBufferSize();
-    if (n >= err_buf_size) n = err_buf_size - 1;
-    memcpy(err_buf, diag->getBufferPointer(), n);
-    err_buf[n] = '\0';
+  if (!err_buf || err_buf_size == 0)
+    return;
+  if (!diag) {
+    snprintf(err_buf, err_buf_size, "(no diagnostic available)");
+    return;
+  }
+  size_t n = diag->getBufferSize();
+  if (n >= err_buf_size)
+    n = err_buf_size - 1;
+  memcpy(err_buf, diag->getBufferPointer(), n);
+  err_buf[n] = '\0';
 }
 
 void copy_name(char *dst, size_t cap, const char *src) {
-    if (cap == 0) return;
-    if (!src) { dst[0] = '\0'; return; }
-    size_t n = strlen(src);
-    if (n >= cap) n = cap - 1;
-    memcpy(dst, src, n);
-    dst[n] = '\0';
+  if (cap == 0)
+    return;
+  if (!src) {
+    dst[0] = '\0';
+    return;
+  }
+  size_t n = strlen(src);
+  if (n >= cap)
+    n = cap - 1;
+  memcpy(dst, src, n);
+  dst[n] = '\0';
 }
 
 // Map a slang TypeReflection (vector or scalar) to GLSL component count.
 int component_count_of(TypeReflection *t) {
-    if (!t) return 0;
-    auto kind = t->getKind();
-    if (kind == TypeReflection::Kind::Scalar) return 1;
-    if (kind == TypeReflection::Kind::Vector) return (int)t->getElementCount();
-    if (kind == TypeReflection::Kind::Matrix) {
-        return (int)(t->getRowCount() * t->getColumnCount());
-    }
+  if (!t)
     return 0;
+  auto kind = t->getKind();
+  if (kind == TypeReflection::Kind::Scalar)
+    return 1;
+  if (kind == TypeReflection::Kind::Vector)
+    return (int)t->getElementCount();
+  if (kind == TypeReflection::Kind::Matrix) {
+    return (int)(t->getRowCount() * t->getColumnCount());
+  }
+  return 0;
 }
 
-bool fill_attrs_from_entry_point(EntryPointReflection *ep, ShaderReflection *out, char *err, size_t errsz) {
-    out->attr_count = 0;
-    out->vertex_stride_floats = 0;
-    if (!ep) {
-        if (err && errsz) snprintf(err, errsz, "no vertex entry point reflection");
+bool fill_attrs_from_entry_point(EntryPointReflection *ep,
+                                 ShaderReflection *out, char *err,
+                                 size_t errsz) {
+  out->attr_count = 0;
+  out->vertex_stride_floats = 0;
+  if (!ep) {
+    if (err && errsz)
+      snprintf(err, errsz, "no vertex entry point reflection");
+    return false;
+  }
+  unsigned pcount = ep->getParameterCount();
+  int offset = 0;
+  for (unsigned i = 0; i < pcount; ++i) {
+    VariableLayoutReflection *p = ep->getParameterByIndex(i);
+    if (!p)
+      continue;
+    TypeLayoutReflection *tl = p->getTypeLayout();
+    if (!tl)
+      continue;
+    TypeReflection *t = tl->getType();
+    if (!t)
+      continue;
+
+    // Two cases:
+    //  (a) parameter is a struct: iterate its fields as varying inputs.
+    //  (b) parameter is a vector/scalar: it's a single varying input.
+    auto record_one = [&](const char *name, TypeReflection *vt) -> bool {
+      if (out->attr_count >= SGL_MAX_ATTRS) {
+        if (err && errsz)
+          snprintf(err, errsz, "too many vertex attributes (>%d)",
+                   SGL_MAX_ATTRS);
+        return false;
+      }
+      ShaderAttr *a = &out->attrs[out->attr_count];
+      copy_name(a->name, sizeof(a->name), name);
+      a->slot = out->attr_count; // input location: assume sequential
+      a->comp_count = component_count_of(vt);
+      if (a->comp_count <= 0)
+        a->comp_count = 4;
+      a->offset_floats = offset;
+      offset += a->comp_count;
+      out->attr_count++;
+      return true;
+    };
+
+    if (t->getKind() == TypeReflection::Kind::Struct) {
+      unsigned fc = tl->getFieldCount();
+      for (unsigned f = 0; f < fc; ++f) {
+        VariableLayoutReflection *fl = tl->getFieldByIndex(f);
+        if (!fl)
+          continue;
+        TypeReflection *ft = fl->getTypeLayout()->getType();
+        if (!record_one(fl->getName() ? fl->getName() : "attr", ft))
+          return false;
+      }
+    } else {
+      if (!record_one(p->getName() ? p->getName() : "attr", t))
         return false;
     }
-    unsigned pcount = ep->getParameterCount();
-    int offset = 0;
-    for (unsigned i = 0; i < pcount; ++i) {
-        VariableLayoutReflection *p = ep->getParameterByIndex(i);
-        if (!p) continue;
-        TypeLayoutReflection *tl = p->getTypeLayout();
-        if (!tl) continue;
-        TypeReflection *t = tl->getType();
-        if (!t) continue;
-
-        // Two cases:
-        //  (a) parameter is a struct: iterate its fields as varying inputs.
-        //  (b) parameter is a vector/scalar: it's a single varying input.
-        auto record_one = [&](const char *name, TypeReflection *vt) -> bool {
-            if (out->attr_count >= SGL_MAX_ATTRS) {
-                if (err && errsz) snprintf(err, errsz, "too many vertex attributes (>%d)", SGL_MAX_ATTRS);
-                return false;
-            }
-            ShaderAttr *a = &out->attrs[out->attr_count];
-            copy_name(a->name, sizeof(a->name), name);
-            a->slot = out->attr_count; // input location: assume sequential
-            a->comp_count = component_count_of(vt);
-            if (a->comp_count <= 0) a->comp_count = 4;
-            a->offset_floats = offset;
-            offset += a->comp_count;
-            out->attr_count++;
-            return true;
-        };
-
-        if (t->getKind() == TypeReflection::Kind::Struct) {
-            unsigned fc = tl->getFieldCount();
-            for (unsigned f = 0; f < fc; ++f) {
-                VariableLayoutReflection *fl = tl->getFieldByIndex(f);
-                if (!fl) continue;
-                TypeReflection *ft = fl->getTypeLayout()->getType();
-                if (!record_one(fl->getName() ? fl->getName() : "attr", ft)) return false;
-            }
-        } else {
-            if (!record_one(p->getName() ? p->getName() : "attr", t)) return false;
-        }
-    }
-    out->vertex_stride_floats = offset;
-    return true;
+  }
+  out->vertex_stride_floats = offset;
+  return true;
 }
 
 bool fill_uniform_block(VariableLayoutReflection *p, ShaderUniformBlock *ub) {
-    copy_name(ub->name, sizeof(ub->name), p->getName());
-    ub->slot = (int)p->getBindingIndex();
-    ub->size_floats = 0;
-    ub->member_count = 0;
+  copy_name(ub->name, sizeof(ub->name), p->getName());
+  ub->slot = (int)p->getBindingIndex();
+  ub->size_floats = 0;
+  ub->member_count = 0;
 
-    TypeLayoutReflection *tl = p->getTypeLayout();
-    if (!tl) return false;
-    TypeReflection *t = tl->getType();
-    if (!t) return false;
+  TypeLayoutReflection *tl = p->getTypeLayout();
+  if (!tl)
+    return false;
+  TypeReflection *t = tl->getType();
+  if (!t)
+    return false;
 
-    // For a ConstantBuffer<T>, walk into its element layout.
-    TypeLayoutReflection *element = tl;
-    if (t->getKind() == TypeReflection::Kind::ConstantBuffer) {
-        element = tl->getElementTypeLayout();
-        t = element ? element->getType() : nullptr;
-    }
-    if (!element || !t) return false;
+  // For a ConstantBuffer<T>, walk into its element layout.
+  TypeLayoutReflection *element = tl;
+  if (t->getKind() == TypeReflection::Kind::ConstantBuffer) {
+    element = tl->getElementTypeLayout();
+    t = element ? element->getType() : nullptr;
+  }
+  if (!element || !t)
+    return false;
 
-    size_t total_bytes = element->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
-    ub->size_floats = (int)((total_bytes + 3) / 4);
+  size_t total_bytes = element->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+  ub->size_floats = (int)((total_bytes + 3) / 4);
 
-    if (t->getKind() != TypeReflection::Kind::Struct) return true;
-
-    unsigned fc = element->getFieldCount();
-    for (unsigned f = 0; f < fc && ub->member_count < SGL_MAX_UB_MEMBERS; ++f) {
-        VariableLayoutReflection *fl = element->getFieldByIndex(f);
-        if (!fl) continue;
-        ShaderUniformMember *m = &ub->members[ub->member_count++];
-        copy_name(m->name, sizeof(m->name), fl->getName());
-        size_t off_bytes = fl->getOffset(SLANG_PARAMETER_CATEGORY_UNIFORM);
-        m->offset_floats = (int)(off_bytes / 4);
-        TypeReflection *mt = fl->getTypeLayout()->getType();
-        m->comp_count = component_count_of(mt);
-        if (m->comp_count <= 0) m->comp_count = 1;
-    }
+  if (t->getKind() != TypeReflection::Kind::Struct)
     return true;
+
+  unsigned fc = element->getFieldCount();
+  for (unsigned f = 0; f < fc && ub->member_count < SGL_MAX_UB_MEMBERS; ++f) {
+    VariableLayoutReflection *fl = element->getFieldByIndex(f);
+    if (!fl)
+      continue;
+    ShaderUniformMember *m = &ub->members[ub->member_count++];
+    copy_name(m->name, sizeof(m->name), fl->getName());
+    size_t off_bytes = fl->getOffset(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    m->offset_floats = (int)(off_bytes / 4);
+    TypeReflection *mt = fl->getTypeLayout()->getType();
+    m->comp_count = component_count_of(mt);
+    if (m->comp_count <= 0)
+      m->comp_count = 1;
+  }
+  return true;
 }
 
 bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
-    if (!layout) return false;
-    out->ub_count = 0;
-    out->tex_count = 0;
-    out->storage_buf_count = 0;
-    unsigned gpc = layout->getParameterCount();
-    for (unsigned i = 0; i < gpc; ++i) {
-        VariableLayoutReflection *p = layout->getParameterByIndex(i);
-        if (!p) continue;
-        SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
-        TypeReflection *t = p->getTypeLayout() ? p->getTypeLayout()->getType() : nullptr;
+  if (!layout)
+    return false;
+  out->ub_count = 0;
+  out->tex_count = 0;
+  out->storage_buf_count = 0;
+  unsigned gpc = layout->getParameterCount();
+  for (unsigned i = 0; i < gpc; ++i) {
+    VariableLayoutReflection *p = layout->getParameterByIndex(i);
+    if (!p)
+      continue;
+    SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
+    TypeReflection *t =
+        p->getTypeLayout() ? p->getTypeLayout()->getType() : nullptr;
 
-        // Constant buffers / uniform blocks
-        if (cat == SLANG_PARAMETER_CATEGORY_CONSTANT_BUFFER ||
-            (t && t->getKind() == TypeReflection::Kind::ConstantBuffer))
-        {
-            if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
-                fill_uniform_block(p, &out->ubs[out->ub_count]);
-                out->ub_count++;
-            }
-            continue;
-        }
-
-        // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
-        // under SHADER_RESOURCE (resource shape == STRUCTURED_BUFFER) and
-        // RWStructuredBuffer<T> under UNORDERED_ACCESS. Both feed the same
-        // storage-buffer plumbing on our backends, distinguished by `readonly`.
-        bool is_structured_buf = false;
-        bool readonly = true;
-        if (t && t->getKind() == TypeReflection::Kind::Resource) {
-            SlangResourceShape shape = (SlangResourceShape)
-                (t->getResourceShape() & SLANG_RESOURCE_BASE_SHAPE_MASK);
-            if (shape == SLANG_STRUCTURED_BUFFER ||
-                shape == SLANG_BYTE_ADDRESS_BUFFER) {
-                is_structured_buf = true;
-                SlangResourceAccess acc = t->getResourceAccess();
-                readonly = (acc == SLANG_RESOURCE_ACCESS_READ);
-            }
-        }
-        if (is_structured_buf) {
-            if (out->storage_buf_count < SGL_MAX_STORAGE_BUFS) {
-                ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
-                copy_name(sb->name, sizeof(sb->name), p->getName());
-                sb->slot = (int)p->getBindingIndex();
-                sb->readonly = readonly;
-            }
-            continue;
-        }
-
-        // Textures (SRV) — record as a texture entry; sampler match is filled below.
-        if (cat == SLANG_PARAMETER_CATEGORY_SHADER_RESOURCE ||
-            (t && t->getKind() == TypeReflection::Kind::Resource))
-        {
-            if (out->tex_count < SGL_MAX_TEXTURES) {
-                ShaderTexture *tx = &out->texs[out->tex_count++];
-                copy_name(tx->name, sizeof(tx->name), p->getName());
-                tx->img_slot = (int)p->getBindingIndex();
-                // Combined `Sampler2D<>` puts the sampler at the same binding
-                // as the image (single descriptor); separate `Texture2D` waits
-                // for the matching SAMPLER_STATE param below.
-                bool combined = false;
-                if (t && t->getKind() == TypeReflection::Kind::Resource) {
-                    unsigned shape = (unsigned)t->getResourceShape();
-                    combined = (shape & SLANG_TEXTURE_COMBINED_FLAG) != 0;
-                }
-                tx->smp_slot = combined ? tx->img_slot : -1;
-            }
-            continue;
-        }
-
-        // Sampler states — pair with the next unmatched texture in declaration
-        // order. Slang/HLSL forbids identical names for separate Texture2D and
-        // SamplerState parameters, so name-based matching can never succeed.
-        // Instead we always pair positionally: the i-th texture is assigned the
-        // i-th sampler. This works for the typical "Texture2D foo;
-        // SamplerState foo_smp;" pattern. If shaders use combined samplers
-        // (GLSL-style sampler2D) Slang may not produce separate parameters at
-        // all.
-        if (cat == SLANG_PARAMETER_CATEGORY_SAMPLER_STATE ||
-            (t && t->getKind() == TypeReflection::Kind::SamplerState))
-        {
-            int sidx = (int)p->getBindingIndex();
-            int matched = -1;
-            for (int k = 0; k < out->tex_count; ++k) {
-                if (out->texs[k].smp_slot < 0) { matched = k; break; }
-            }
-            if (matched >= 0) out->texs[matched].smp_slot = sidx;
-            continue;
-        }
+    // Constant buffers / uniform blocks
+    if (cat == SLANG_PARAMETER_CATEGORY_CONSTANT_BUFFER ||
+        (t && t->getKind() == TypeReflection::Kind::ConstantBuffer)) {
+      if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
+        fill_uniform_block(p, &out->ubs[out->ub_count]);
+        out->ub_count++;
+      }
+      continue;
     }
-    return true;
+
+    // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
+    // under SHADER_RESOURCE (resource shape == STRUCTURED_BUFFER) and
+    // RWStructuredBuffer<T> under UNORDERED_ACCESS. Both feed the same
+    // storage-buffer plumbing on our backends, distinguished by `readonly`.
+    bool is_structured_buf = false;
+    bool readonly = true;
+    if (t && t->getKind() == TypeReflection::Kind::Resource) {
+      SlangResourceShape shape =
+          (SlangResourceShape)(t->getResourceShape() &
+                               SLANG_RESOURCE_BASE_SHAPE_MASK);
+      if (shape == SLANG_STRUCTURED_BUFFER ||
+          shape == SLANG_BYTE_ADDRESS_BUFFER) {
+        is_structured_buf = true;
+        SlangResourceAccess acc = t->getResourceAccess();
+        readonly = (acc == SLANG_RESOURCE_ACCESS_READ);
+      }
+    }
+    if (is_structured_buf) {
+      if (out->storage_buf_count < SGL_MAX_STORAGE_BUFS) {
+        ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
+        copy_name(sb->name, sizeof(sb->name), p->getName());
+        sb->slot = (int)p->getBindingIndex();
+        sb->readonly = readonly;
+      }
+      continue;
+    }
+
+    // Textures (SRV) — record as a texture entry; sampler match is filled
+    // below.
+    if (cat == SLANG_PARAMETER_CATEGORY_SHADER_RESOURCE ||
+        (t && t->getKind() == TypeReflection::Kind::Resource)) {
+      if (out->tex_count < SGL_MAX_TEXTURES) {
+        ShaderTexture *tx = &out->texs[out->tex_count++];
+        copy_name(tx->name, sizeof(tx->name), p->getName());
+        tx->img_slot = (int)p->getBindingIndex();
+        // Combined `Sampler2D<>` puts the sampler at the same binding
+        // as the image (single descriptor); separate `Texture2D` waits
+        // for the matching SAMPLER_STATE param below.
+        bool combined = false;
+        if (t && t->getKind() == TypeReflection::Kind::Resource) {
+          unsigned shape = (unsigned)t->getResourceShape();
+          combined = (shape & SLANG_TEXTURE_COMBINED_FLAG) != 0;
+        }
+        tx->smp_slot = combined ? tx->img_slot : -1;
+      }
+      continue;
+    }
+
+    // Sampler states — pair with the next unmatched texture in declaration
+    // order. Slang/HLSL forbids identical names for separate Texture2D and
+    // SamplerState parameters, so name-based matching can never succeed.
+    // Instead we always pair positionally: the i-th texture is assigned the
+    // i-th sampler. This works for the typical "Texture2D foo;
+    // SamplerState foo_smp;" pattern. If shaders use combined samplers
+    // (GLSL-style sampler2D) Slang may not produce separate parameters at
+    // all.
+    if (cat == SLANG_PARAMETER_CATEGORY_SAMPLER_STATE ||
+        (t && t->getKind() == TypeReflection::Kind::SamplerState)) {
+      int sidx = (int)p->getBindingIndex();
+      int matched = -1;
+      for (int k = 0; k < out->tex_count; ++k) {
+        if (out->texs[k].smp_slot < 0) {
+          matched = k;
+          break;
+        }
+      }
+      if (matched >= 0)
+        out->texs[matched].smp_slot = sidx;
+      continue;
+    }
+  }
+  return true;
 }
 
 // Rewrite descriptor-set decorations in a SPIR-V module to match the target
@@ -325,8 +358,9 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
 //
 //   SDL_GPU (per-stage layout, see SDL_gpu.h CreateGPUShader docs):
 //     vertex stage    -> set 0: textures/storage; set 1: uniform buffers
-//     fragment stage  -> set 2: textures/samplers/storage; set 3: uniform buffers
-//     compute stage   -> set 0: sampled textures + RO storage textures + RO storage buffers
+//     fragment stage  -> set 2: textures/samplers/storage; set 3: uniform
+//     buffers compute stage   -> set 0: sampled textures + RO storage textures
+//     + RO storage buffers
 //                        set 1: RW storage textures + RW storage buffers
 //                        set 2: uniform buffers
 //
@@ -351,139 +385,154 @@ enum class SpvStage { Vertex, Fragment, Compute };
 
 void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
                                  ShaderTargetBackend target, SpvStage stage) {
-    if (!spv || size_bytes < 20) return; // too small to be valid
-    uint32_t *words = (uint32_t*)spv;
-    size_t nwords = size_bytes / 4;
-    if (words[0] != 0x07230203u) return; // not a SPIR-V module
+  if (!spv || size_bytes < 20)
+    return; // too small to be valid
+  uint32_t *words = (uint32_t *)spv;
+  size_t nwords = size_bytes / 4;
+  if (words[0] != 0x07230203u)
+    return; // not a SPIR-V module
 
-    // Opcodes / decorations / storage-classes we care about.
-    constexpr uint32_t kOpTypePointer  = 32;
-    constexpr uint32_t kOpVariable     = 59;
-    constexpr uint32_t kOpDecorate     = 71;
-    constexpr uint32_t kDecBufferBlock   = 3;
-    constexpr uint32_t kDecDescriptorSet = 34;
-    constexpr uint32_t kStorageUniformConstant = 0;
-    constexpr uint32_t kStorageUniform         = 2;
-    constexpr uint32_t kStorageStorageBuffer   = 12;
+  // Opcodes / decorations / storage-classes we care about.
+  constexpr uint32_t kOpTypePointer = 32;
+  constexpr uint32_t kOpVariable = 59;
+  constexpr uint32_t kOpDecorate = 71;
+  constexpr uint32_t kDecBufferBlock = 3;
+  constexpr uint32_t kDecDescriptorSet = 34;
+  constexpr uint32_t kStorageUniformConstant = 0;
+  constexpr uint32_t kStorageUniform = 2;
+  constexpr uint32_t kStorageStorageBuffer = 12;
 
-    // Slang targets SPIR-V 1.0, where a Vulkan SSBO is encoded as an
-    // OpTypeStruct decorated with BufferBlock + OpTypePointer Uniform.
-    // (SPIR-V >= 1.3 would use storage class StorageBuffer directly.)
-    // Collect the set of pointer-type result-ids that target a BufferBlock
-    // struct so we can tell the SSBO Uniform pointers apart from real UB
-    // Uniform pointers below.
-    std::vector<uint32_t> bb_struct_ids;
-    {
-        size_t i = 5;
-        while (i < nwords) {
-            uint32_t w0 = words[i];
-            uint32_t wc = w0 >> 16;
-            uint32_t op = w0 & 0xffff;
-            if (wc == 0 || i + wc > nwords) break;
-            if (op == kOpDecorate && wc >= 3 && words[i + 2] == kDecBufferBlock) {
-                bb_struct_ids.push_back(words[i + 1]);
-            }
-            i += wc;
-        }
-    }
-    std::vector<uint32_t> ssbo_ptr_type_ids;
-    {
-        size_t i = 5;
-        while (i < nwords) {
-            uint32_t w0 = words[i];
-            uint32_t wc = w0 >> 16;
-            uint32_t op = w0 & 0xffff;
-            if (wc == 0 || i + wc > nwords) break;
-            if (op == kOpTypePointer && wc >= 4) {
-                uint32_t ptr_id  = words[i + 1];
-                uint32_t storage = words[i + 2];
-                uint32_t pointed = words[i + 3];
-                if (storage == kStorageUniform) {
-                    for (uint32_t s : bb_struct_ids) {
-                        if (s == pointed) { ssbo_ptr_type_ids.push_back(ptr_id); break; }
-                    }
-                }
-            }
-            i += wc;
-        }
-    }
-
-    // Map each resource OpVariable's ID to its descriptor-set destination.
-    // "kind 0" = texture/sampler/SSBO (UniformConstant, StorageBuffer, or
-    //           Uniform-with-BufferBlock SSBO)
-    // "kind 1" = uniform block (Uniform pointing at a plain Block struct)
-    std::vector<std::pair<uint32_t, int>> id_to_kind;
-    id_to_kind.reserve(8);
-
-    size_t i = 5; // skip header
+  // Slang targets SPIR-V 1.0, where a Vulkan SSBO is encoded as an
+  // OpTypeStruct decorated with BufferBlock + OpTypePointer Uniform.
+  // (SPIR-V >= 1.3 would use storage class StorageBuffer directly.)
+  // Collect the set of pointer-type result-ids that target a BufferBlock
+  // struct so we can tell the SSBO Uniform pointers apart from real UB
+  // Uniform pointers below.
+  std::vector<uint32_t> bb_struct_ids;
+  {
+    size_t i = 5;
     while (i < nwords) {
-        uint32_t w0 = words[i];
-        uint32_t wc = w0 >> 16;
-        uint32_t op = w0 & 0xffff;
-        if (wc == 0 || i + wc > nwords) break;
-        if (op == kOpVariable && wc >= 4) {
-            uint32_t res_type = words[i + 1];
-            uint32_t id       = words[i + 2];
-            uint32_t storage  = words[i + 3];
-            if (storage == kStorageUniformConstant ||
-                storage == kStorageStorageBuffer)
-            {
-                id_to_kind.push_back({id, 0});
-            } else if (storage == kStorageUniform) {
-                bool is_ssbo = false;
-                for (uint32_t p : ssbo_ptr_type_ids) {
-                    if (p == res_type) { is_ssbo = true; break; }
-                }
-                id_to_kind.push_back({id, is_ssbo ? 0 : 1});
-            }
-        }
-        i += wc;
+      uint32_t w0 = words[i];
+      uint32_t wc = w0 >> 16;
+      uint32_t op = w0 & 0xffff;
+      if (wc == 0 || i + wc > nwords)
+        break;
+      if (op == kOpDecorate && wc >= 3 && words[i + 2] == kDecBufferBlock) {
+        bb_struct_ids.push_back(words[i + 1]);
+      }
+      i += wc;
     }
-    if (id_to_kind.empty()) return;
-
-    auto kind_of = [&](uint32_t id) -> int {
-        for (auto &p : id_to_kind) if (p.first == id) return p.second;
-        return -1;
-    };
-
-    // Resolve target set for (kind, target, stage).
-    auto target_set = [&](int kind) -> int {
-        if (target == SHADER_TARGET_SOKOL) {
-            return (kind == 0) ? 1 : 0;  // image=set1, ub=set0
-        }
-        // SDL_GPU per-stage table:
-        if (stage == SpvStage::Vertex) {
-            return (kind == 0) ? 0 : 1;  // image=set0, ub=set1
-        } else if (stage == SpvStage::Fragment) {
-            return (kind == 0) ? 2 : 3;  // image=set2, ub=set3
-        } else {
-            // Compute. kind 0 is currently treated as RW storage (set 1) and
-            // kind 1 is uniform (set 2). Readonly storage / sampled-texture
-            // would belong on set 0 but are not exposed yet.
-            return (kind == 0) ? 1 : 2;
-        }
-    };
-
-    // Pass 2: rewrite DescriptorSet decorations.
-    i = 5;
+  }
+  std::vector<uint32_t> ssbo_ptr_type_ids;
+  {
+    size_t i = 5;
     while (i < nwords) {
-        uint32_t w0 = words[i];
-        uint32_t wc = w0 >> 16;
-        uint32_t op = w0 & 0xffff;
-        if (wc == 0 || i + wc > nwords) break;
-        if (op == kOpDecorate && wc >= 4) {
-            uint32_t tgt  = words[i + 1];
-            uint32_t deco = words[i + 2];
-            if (deco == kDecDescriptorSet) {
-                int k = kind_of(tgt);
-                if (k >= 0) {
-                    int s = target_set(k);
-                    if (s >= 0) words[i + 3] = (uint32_t)s;
-                }
+      uint32_t w0 = words[i];
+      uint32_t wc = w0 >> 16;
+      uint32_t op = w0 & 0xffff;
+      if (wc == 0 || i + wc > nwords)
+        break;
+      if (op == kOpTypePointer && wc >= 4) {
+        uint32_t ptr_id = words[i + 1];
+        uint32_t storage = words[i + 2];
+        uint32_t pointed = words[i + 3];
+        if (storage == kStorageUniform) {
+          for (uint32_t s : bb_struct_ids) {
+            if (s == pointed) {
+              ssbo_ptr_type_ids.push_back(ptr_id);
+              break;
             }
+          }
         }
-        i += wc;
+      }
+      i += wc;
     }
+  }
+
+  // Map each resource OpVariable's ID to its descriptor-set destination.
+  // "kind 0" = texture/sampler/SSBO (UniformConstant, StorageBuffer, or
+  //           Uniform-with-BufferBlock SSBO)
+  // "kind 1" = uniform block (Uniform pointing at a plain Block struct)
+  std::vector<std::pair<uint32_t, int>> id_to_kind;
+  id_to_kind.reserve(8);
+
+  size_t i = 5; // skip header
+  while (i < nwords) {
+    uint32_t w0 = words[i];
+    uint32_t wc = w0 >> 16;
+    uint32_t op = w0 & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpVariable && wc >= 4) {
+      uint32_t res_type = words[i + 1];
+      uint32_t id = words[i + 2];
+      uint32_t storage = words[i + 3];
+      if (storage == kStorageUniformConstant ||
+          storage == kStorageStorageBuffer) {
+        id_to_kind.push_back({id, 0});
+      } else if (storage == kStorageUniform) {
+        bool is_ssbo = false;
+        for (uint32_t p : ssbo_ptr_type_ids) {
+          if (p == res_type) {
+            is_ssbo = true;
+            break;
+          }
+        }
+        id_to_kind.push_back({id, is_ssbo ? 0 : 1});
+      }
+    }
+    i += wc;
+  }
+  if (id_to_kind.empty())
+    return;
+
+  auto kind_of = [&](uint32_t id) -> int {
+    for (auto &p : id_to_kind)
+      if (p.first == id)
+        return p.second;
+    return -1;
+  };
+
+  // Resolve target set for (kind, target, stage).
+  auto target_set = [&](int kind) -> int {
+    if (target == SHADER_TARGET_SOKOL) {
+      return (kind == 0) ? 1 : 0; // image=set1, ub=set0
+    }
+    // SDL_GPU per-stage table:
+    if (stage == SpvStage::Vertex) {
+      return (kind == 0) ? 0 : 1; // image=set0, ub=set1
+    } else if (stage == SpvStage::Fragment) {
+      return (kind == 0) ? 2 : 3; // image=set2, ub=set3
+    } else {
+      // Compute. kind 0 is currently treated as RW storage (set 1) and
+      // kind 1 is uniform (set 2). Readonly storage / sampled-texture
+      // would belong on set 0 but are not exposed yet.
+      return (kind == 0) ? 1 : 2;
+    }
+  };
+
+  // Pass 2: rewrite DescriptorSet decorations.
+  i = 5;
+  while (i < nwords) {
+    uint32_t w0 = words[i];
+    uint32_t wc = w0 >> 16;
+    uint32_t op = w0 & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpDecorate && wc >= 4) {
+      uint32_t tgt = words[i + 1];
+      uint32_t deco = words[i + 2];
+      if (deco == kDecDescriptorSet) {
+        int k = kind_of(tgt);
+        if (k >= 0) {
+          int s = target_set(k);
+          if (s >= 0)
+            words[i + 3] = (uint32_t)s;
+        }
+      }
+    }
+    i += wc;
+  }
 }
 
 // Renumber the binding decorations of fragment-stage texture/sampler
@@ -502,358 +551,392 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
 // never have more than one per stage so binding 0 is already correct).
 void renumber_fs_image_bindings_sdlgpu(ShaderBlob *fs_blob,
                                        ShaderReflection *refl) {
-    if (!fs_blob || !fs_blob->spirv || fs_blob->bytes < 20) return;
-    uint32_t *words = fs_blob->spirv;
-    size_t nwords = fs_blob->bytes / 4;
-    if (words[0] != 0x07230203u) return;
+  if (!fs_blob || !fs_blob->spirv || fs_blob->bytes < 20)
+    return;
+  uint32_t *words = fs_blob->spirv;
+  size_t nwords = fs_blob->bytes / 4;
+  if (words[0] != 0x07230203u)
+    return;
 
-    constexpr uint32_t kOpName     = 5;
-    constexpr uint32_t kOpVariable = 59;
-    constexpr uint32_t kOpDecorate = 71;
-    constexpr uint32_t kDecBinding = 33;
-    constexpr uint32_t kStorageUniformConstant = 0;
+  constexpr uint32_t kOpName = 5;
+  constexpr uint32_t kOpVariable = 59;
+  constexpr uint32_t kOpDecorate = 71;
+  constexpr uint32_t kDecBinding = 33;
+  constexpr uint32_t kStorageUniformConstant = 0;
 
-    struct VarInfo { uint32_t id; std::string name; };
-    std::vector<VarInfo> vars;
+  struct VarInfo {
+    uint32_t id;
+    std::string name;
+  };
+  std::vector<VarInfo> vars;
 
-    // Pass 1: collect UniformConstant OpVariables in declaration order.
-    size_t i = 5;
-    while (i < nwords) {
-        uint32_t hdr = words[i];
-        uint32_t wc = hdr >> 16;
-        uint32_t op = hdr & 0xffff;
-        if (wc == 0 || i + wc > nwords) break;
-        if (op == kOpVariable && wc >= 4 &&
-            words[i + 3] == kStorageUniformConstant)
-        {
-            vars.push_back({words[i + 2], ""});
-        }
-        i += wc;
+  // Pass 1: collect UniformConstant OpVariables in declaration order.
+  size_t i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpVariable && wc >= 4 &&
+        words[i + 3] == kStorageUniformConstant) {
+      vars.push_back({words[i + 2], ""});
     }
-    if (vars.empty()) return;
+    i += wc;
+  }
+  if (vars.empty())
+    return;
 
-    // Pass 1b: pick up names via OpName so we can update the reflection
-    // entry by texture name.
-    i = 5;
-    while (i < nwords) {
-        uint32_t hdr = words[i];
-        uint32_t wc = hdr >> 16;
-        uint32_t op = hdr & 0xffff;
-        if (wc == 0 || i + wc > nwords) break;
-        if (op == kOpName && wc >= 2) {
-            uint32_t target = words[i + 1];
-            const char *name = (const char*)&words[i + 2];
-            for (auto &v : vars) {
-                if (v.id == target && v.name.empty()) {
-                    v.name = name;
-                    break;
-                }
-            }
+  // Pass 1b: pick up names via OpName so we can update the reflection
+  // entry by texture name.
+  i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpName && wc >= 2) {
+      uint32_t target = words[i + 1];
+      const char *name = (const char *)&words[i + 2];
+      for (auto &v : vars) {
+        if (v.id == target && v.name.empty()) {
+          v.name = name;
+          break;
         }
-        i += wc;
+      }
     }
+    i += wc;
+  }
 
-    // Pass 2: rewrite OpDecorate %id Binding ... to declaration index.
-    i = 5;
-    while (i < nwords) {
-        uint32_t hdr = words[i];
-        uint32_t wc = hdr >> 16;
-        uint32_t op = hdr & 0xffff;
-        if (wc == 0 || i + wc > nwords) break;
-        if (op == kOpDecorate && wc >= 4 && words[i + 2] == kDecBinding) {
-            uint32_t target = words[i + 1];
-            for (size_t k = 0; k < vars.size(); ++k) {
-                if (vars[k].id == target) {
-                    words[i + 3] = (uint32_t)k;
-                    break;
-                }
-            }
+  // Pass 2: rewrite OpDecorate %id Binding ... to declaration index.
+  i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpDecorate && wc >= 4 && words[i + 2] == kDecBinding) {
+      uint32_t target = words[i + 1];
+      for (size_t k = 0; k < vars.size(); ++k) {
+        if (vars[k].id == target) {
+          words[i + 3] = (uint32_t)k;
+          break;
         }
-        i += wc;
+      }
     }
+    i += wc;
+  }
 
-    // Pass 3: mirror the new bindings into ShaderReflection.
-    if (refl) {
-        for (size_t k = 0; k < vars.size(); ++k) {
-            if (vars[k].name.empty()) continue;
-            for (int t = 0; t < refl->tex_count; ++t) {
-                if (strcmp(refl->texs[t].name, vars[k].name.c_str()) == 0) {
-                    refl->texs[t].img_slot = (int)k;
-                    refl->texs[t].smp_slot = (int)k;
-                    break;
-                }
-            }
+  // Pass 3: mirror the new bindings into ShaderReflection.
+  if (refl) {
+    for (size_t k = 0; k < vars.size(); ++k) {
+      if (vars[k].name.empty())
+        continue;
+      for (int t = 0; t < refl->tex_count; ++t) {
+        if (strcmp(refl->texs[t].name, vars[k].name.c_str()) == 0) {
+          refl->texs[t].img_slot = (int)k;
+          refl->texs[t].smp_slot = (int)k;
+          break;
         }
+      }
     }
+  }
 }
-
 
 } // anonymous namespace
 
-extern "C" bool shader_compile(
-    const char *vs_src, const char *fs_src,
-    ShaderTargetBackend target,
-    ShaderBlob *out_vs, ShaderBlob *out_fs,
-    ShaderReflection *out_refl,
-    char *err_buf, size_t err_buf_size)
-{
-    if (out_vs) { out_vs->spirv = nullptr; out_vs->bytes = 0; }
-    if (out_fs) { out_fs->spirv = nullptr; out_fs->bytes = 0; }
-    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
+                               ShaderTargetBackend target, ShaderBlob *out_vs,
+                               ShaderBlob *out_fs, ShaderReflection *out_refl,
+                               char *err_buf, size_t err_buf_size) {
+  if (out_vs) {
+    out_vs->spirv = nullptr;
+    out_vs->bytes = 0;
+  }
+  if (out_fs) {
+    out_fs->spirv = nullptr;
+    out_fs->bytes = 0;
+  }
+  if (out_refl)
+    memset(out_refl, 0, sizeof(*out_refl));
 
-    if (!ensure_global_session()) {
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "createGlobalSession failed");
-        return false;
-    }
+  if (!ensure_global_session()) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "createGlobalSession failed");
+    return false;
+  }
 
-    TargetDesc slang_target = {};
-    slang_target.format = SLANG_SPIRV;
-    slang_target.profile = g_slang.spirv_profile;
+  TargetDesc slang_target = {};
+  slang_target.format = SLANG_SPIRV;
+  slang_target.profile = g_slang.spirv_profile;
 
-    SessionDesc sd = {};
-    sd.targets = &slang_target;
-    sd.targetCount = 1;
-    sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
+  SessionDesc sd = {};
+  sd.targets = &slang_target;
+  sd.targetCount = 1;
+  sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
 
-    ComPtr<ISession> session;
-    if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "createSession failed");
-        return false;
-    }
+  ComPtr<ISession> session;
+  if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "createSession failed");
+    return false;
+  }
 
-    // Concatenate VS and FS into a single module. They are kept distinct via
-    // their `[shader("vertex")]` / `[shader("fragment")]` attributes. The
-    // per-target prelude is prepended so the LUB_TEXTURE2D / LUB_SAMPLE
-    // macros expand to the descriptor layout this backend expects.
-    const char *prelude = prelude_for_target(target);
-    std::string combined;
-    combined.reserve(strlen(prelude) + strlen(vs_src) + strlen(fs_src) + 4);
-    combined.append(prelude);
-    combined.append(vs_src);
-    combined.append("\n");
-    combined.append(fs_src);
+  // Concatenate VS and FS into a single module. They are kept distinct via
+  // their `[shader("vertex")]` / `[shader("fragment")]` attributes. The
+  // per-target prelude is prepended so the LUB_TEXTURE2D / LUB_SAMPLE
+  // macros expand to the descriptor layout this backend expects.
+  const char *prelude = prelude_for_target(target);
+  std::string combined;
+  combined.reserve(strlen(prelude) + strlen(vs_src) + strlen(fs_src) + 4);
+  combined.append(prelude);
+  combined.append(vs_src);
+  combined.append("\n");
+  combined.append(fs_src);
 
-    ComPtr<IBlob> diag;
-    IModule *modRaw = session->loadModuleFromSourceString(
-        "user", "user.slang", combined.c_str(), diag.writeRef());
-    if (!modRaw) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
-    ComPtr<IModule> module(modRaw);
+  ComPtr<IBlob> diag;
+  IModule *modRaw = session->loadModuleFromSourceString(
+      "user", "user.slang", combined.c_str(), diag.writeRef());
+  if (!modRaw) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IModule> module(modRaw);
 
-    ComPtr<IEntryPoint> vsEp, fsEp;
-    if (SLANG_FAILED(module->findEntryPointByName("vs_main", vsEp.writeRef())) || !vsEp) {
-        if (err_buf && err_buf_size)
-            snprintf(err_buf, err_buf_size, "vs_main entry point not found");
-        return false;
-    }
-    if (SLANG_FAILED(module->findEntryPointByName("fs_main", fsEp.writeRef())) || !fsEp) {
-        if (err_buf && err_buf_size)
-            snprintf(err_buf, err_buf_size, "fs_main entry point not found");
-        return false;
-    }
+  ComPtr<IEntryPoint> vsEp, fsEp;
+  if (SLANG_FAILED(module->findEntryPointByName("vs_main", vsEp.writeRef())) ||
+      !vsEp) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "vs_main entry point not found");
+    return false;
+  }
+  if (SLANG_FAILED(module->findEntryPointByName("fs_main", fsEp.writeRef())) ||
+      !fsEp) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "fs_main entry point not found");
+    return false;
+  }
 
-    IComponentType *components[] = { module.get(), vsEp.get(), fsEp.get() };
-    ComPtr<IComponentType> composite;
-    if (SLANG_FAILED(session->createCompositeComponentType(components, 3,
-            composite.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
-    ComPtr<IComponentType> linked;
-    if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
+  IComponentType *components[] = {module.get(), vsEp.get(), fsEp.get()};
+  ComPtr<IComponentType> composite;
+  if (SLANG_FAILED(session->createCompositeComponentType(
+          components, 3, composite.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IComponentType> linked;
+  if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
 
-    // Get target code: entry 0 is vs (declared first in `components`),
-    // entry 1 is fs. With target.format == SLANG_SPIRV the blobs hold
-    // SPIR-V binary, not GLSL source.
-    ComPtr<IBlob> vsBlob, fsBlob;
-    if (SLANG_FAILED(linked->getEntryPointCode(0, 0, vsBlob.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
-    if (SLANG_FAILED(linked->getEntryPointCode(1, 0, fsBlob.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
+  // Get target code: entry 0 is vs (declared first in `components`),
+  // entry 1 is fs. With target.format == SLANG_SPIRV the blobs hold
+  // SPIR-V binary, not GLSL source.
+  ComPtr<IBlob> vsBlob, fsBlob;
+  if (SLANG_FAILED(linked->getEntryPointCode(0, 0, vsBlob.writeRef(),
+                                             diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  if (SLANG_FAILED(linked->getEntryPointCode(1, 0, fsBlob.writeRef(),
+                                             diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
 
-    // Reflection
-    ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
-    if (!programLayout) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
+  // Reflection
+  ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
+  if (!programLayout) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
 
-    EntryPointReflection *vsRefl = nullptr;
-    SlangUInt epc = programLayout->getEntryPointCount();
-    for (SlangUInt i = 0; i < epc; ++i) {
-        EntryPointReflection *ep = programLayout->getEntryPointByIndex(i);
-        if (ep && ep->getStage() == SLANG_STAGE_VERTEX) {
-            vsRefl = ep;
-            break;
-        }
+  EntryPointReflection *vsRefl = nullptr;
+  SlangUInt epc = programLayout->getEntryPointCount();
+  for (SlangUInt i = 0; i < epc; ++i) {
+    EntryPointReflection *ep = programLayout->getEntryPointByIndex(i);
+    if (ep && ep->getStage() == SLANG_STAGE_VERTEX) {
+      vsRefl = ep;
+      break;
     }
-    if (!fill_attrs_from_entry_point(vsRefl, out_refl, err_buf, err_buf_size)) {
-        return false;
-    }
-    fill_global_reflection(programLayout, out_refl);
+  }
+  if (!fill_attrs_from_entry_point(vsRefl, out_refl, err_buf, err_buf_size)) {
+    return false;
+  }
+  fill_global_reflection(programLayout, out_refl);
 
-    // Copy the SPIR-V bytes into caller-owned mutable malloc'd buffers and
-    // patch descriptor sets in place.
-    size_t vs_size = vsBlob->getBufferSize();
-    size_t fs_size = fsBlob->getBufferSize();
-    out_vs->spirv = (uint32_t*)malloc(vs_size);
-    if (!out_vs->spirv) {
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "OOM (vs blob)");
-        return false;
-    }
-    memcpy(out_vs->spirv, vsBlob->getBufferPointer(), vs_size);
-    out_vs->bytes = vs_size;
+  // Copy the SPIR-V bytes into caller-owned mutable malloc'd buffers and
+  // patch descriptor sets in place.
+  size_t vs_size = vsBlob->getBufferSize();
+  size_t fs_size = fsBlob->getBufferSize();
+  out_vs->spirv = (uint32_t *)malloc(vs_size);
+  if (!out_vs->spirv) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM (vs blob)");
+    return false;
+  }
+  memcpy(out_vs->spirv, vsBlob->getBufferPointer(), vs_size);
+  out_vs->bytes = vs_size;
 
-    out_fs->spirv = (uint32_t*)malloc(fs_size);
-    if (!out_fs->spirv) {
-        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "OOM (fs blob)");
-        return false;
-    }
-    memcpy(out_fs->spirv, fsBlob->getBufferPointer(), fs_size);
-    out_fs->bytes = fs_size;
+  out_fs->spirv = (uint32_t *)malloc(fs_size);
+  if (!out_fs->spirv) {
+    free(out_vs->spirv);
+    out_vs->spirv = nullptr;
+    out_vs->bytes = 0;
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM (fs blob)");
+    return false;
+  }
+  memcpy(out_fs->spirv, fsBlob->getBufferPointer(), fs_size);
+  out_fs->bytes = fs_size;
 
-    // patch_spirv_descriptor_sets assigns per-(storage class, stage,
-    // target backend) descriptor-set numbers. For sdlgpu fragment stage
-    // this places textures+samplers at set 2.
-    patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes, target, SpvStage::Vertex);
-    patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes, target, SpvStage::Fragment);
+  // patch_spirv_descriptor_sets assigns per-(storage class, stage,
+  // target backend) descriptor-set numbers. For sdlgpu fragment stage
+  // this places textures+samplers at set 2.
+  patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes, target,
+                              SpvStage::Vertex);
+  patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes, target,
+                              SpvStage::Fragment);
 
-    if (target == SHADER_TARGET_SDLGPU) {
-        // Renumber FS image/sampler bindings 0-based per stage. Required
-        // because Slang allocates bindings module-wide while SDL_GPU's
-        // pipeline layout expects num_samplers=N => bindings 0..N-1.
-        // Combined Sampler2D<> source (via the LUB_TEXTURE2D macro
-        // prelude) already produces a single OpVariable per texture.
-        renumber_fs_image_bindings_sdlgpu(out_fs, out_refl);
-    }
-    return true;
+  if (target == SHADER_TARGET_SDLGPU) {
+    // Renumber FS image/sampler bindings 0-based per stage. Required
+    // because Slang allocates bindings module-wide while SDL_GPU's
+    // pipeline layout expects num_samplers=N => bindings 0..N-1.
+    // Combined Sampler2D<> source (via the LUB_TEXTURE2D macro
+    // prelude) already produces a single OpVariable per texture.
+    renumber_fs_image_bindings_sdlgpu(out_fs, out_refl);
+  }
+  return true;
 }
 
-extern "C" bool shader_compile_compute(
-    const char *cs_src,
-    ShaderTargetBackend target,
-    ShaderBlob *out_cs,
-    ShaderReflection *out_refl,
-    char *err_buf, size_t err_buf_size)
-{
-    if (out_cs)  { out_cs->spirv = nullptr; out_cs->bytes = 0; }
-    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+extern "C" bool shader_compile_compute(const char *cs_src,
+                                       ShaderTargetBackend target,
+                                       ShaderBlob *out_cs,
+                                       ShaderReflection *out_refl,
+                                       char *err_buf, size_t err_buf_size) {
+  if (out_cs) {
+    out_cs->spirv = nullptr;
+    out_cs->bytes = 0;
+  }
+  if (out_refl)
+    memset(out_refl, 0, sizeof(*out_refl));
 
-    if (!ensure_global_session()) {
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "createGlobalSession failed");
-        return false;
-    }
+  if (!ensure_global_session()) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "createGlobalSession failed");
+    return false;
+  }
 
-    TargetDesc slang_target = {};
-    slang_target.format = SLANG_SPIRV;
-    slang_target.profile = g_slang.spirv_profile;
+  TargetDesc slang_target = {};
+  slang_target.format = SLANG_SPIRV;
+  slang_target.profile = g_slang.spirv_profile;
 
-    SessionDesc sd = {};
-    sd.targets = &slang_target;
-    sd.targetCount = 1;
-    sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
+  SessionDesc sd = {};
+  sd.targets = &slang_target;
+  sd.targetCount = 1;
+  sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
 
-    ComPtr<ISession> session;
-    if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "createSession failed");
-        return false;
-    }
+  ComPtr<ISession> session;
+  if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "createSession failed");
+    return false;
+  }
 
-    const char *prelude = prelude_for_target(target);
-    std::string cs_with_prelude;
-    cs_with_prelude.reserve(strlen(prelude) + strlen(cs_src) + 1);
-    cs_with_prelude.append(prelude);
-    cs_with_prelude.append(cs_src);
+  const char *prelude = prelude_for_target(target);
+  std::string cs_with_prelude;
+  cs_with_prelude.reserve(strlen(prelude) + strlen(cs_src) + 1);
+  cs_with_prelude.append(prelude);
+  cs_with_prelude.append(cs_src);
 
-    ComPtr<IBlob> diag;
-    IModule *modRaw = session->loadModuleFromSourceString(
-        "user_cs", "user_cs.slang", cs_with_prelude.c_str(), diag.writeRef());
-    if (!modRaw) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
-    ComPtr<IModule> module(modRaw);
+  ComPtr<IBlob> diag;
+  IModule *modRaw = session->loadModuleFromSourceString(
+      "user_cs", "user_cs.slang", cs_with_prelude.c_str(), diag.writeRef());
+  if (!modRaw) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IModule> module(modRaw);
 
-    ComPtr<IEntryPoint> csEp;
-    if (SLANG_FAILED(module->findEntryPointByName("cs_main", csEp.writeRef())) || !csEp) {
-        if (err_buf && err_buf_size)
-            snprintf(err_buf, err_buf_size, "cs_main entry point not found");
-        return false;
-    }
+  ComPtr<IEntryPoint> csEp;
+  if (SLANG_FAILED(module->findEntryPointByName("cs_main", csEp.writeRef())) ||
+      !csEp) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "cs_main entry point not found");
+    return false;
+  }
 
-    IComponentType *components[] = { module.get(), csEp.get() };
-    ComPtr<IComponentType> composite;
-    if (SLANG_FAILED(session->createCompositeComponentType(components, 2,
-            composite.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
-    ComPtr<IComponentType> linked;
-    if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
+  IComponentType *components[] = {module.get(), csEp.get()};
+  ComPtr<IComponentType> composite;
+  if (SLANG_FAILED(session->createCompositeComponentType(
+          components, 2, composite.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IComponentType> linked;
+  if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
 
-    ComPtr<IBlob> csBlob;
-    if (SLANG_FAILED(linked->getEntryPointCode(0, 0, csBlob.writeRef(), diag.writeRef()))) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
+  ComPtr<IBlob> csBlob;
+  if (SLANG_FAILED(linked->getEntryPointCode(0, 0, csBlob.writeRef(),
+                                             diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
 
-    ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
-    if (!programLayout) {
-        copy_diag(diag.get(), err_buf, err_buf_size);
-        return false;
-    }
+  ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
+  if (!programLayout) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
 
-    out_refl->is_compute = true;
-    out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
-    SlangUInt epc = programLayout->getEntryPointCount();
-    for (SlangUInt i = 0; i < epc; ++i) {
-        EntryPointReflection *ep = programLayout->getEntryPointByIndex(i);
-        if (!ep || ep->getStage() != SLANG_STAGE_COMPUTE) continue;
-        SlangUInt sizes[3] = {1, 1, 1};
-        ep->getComputeThreadGroupSize(3, sizes);
-        out_refl->workgroup[0] = (int)sizes[0];
-        out_refl->workgroup[1] = (int)sizes[1];
-        out_refl->workgroup[2] = (int)sizes[2];
-        break;
-    }
-    fill_global_reflection(programLayout, out_refl);
+  out_refl->is_compute = true;
+  out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
+  SlangUInt epc = programLayout->getEntryPointCount();
+  for (SlangUInt i = 0; i < epc; ++i) {
+    EntryPointReflection *ep = programLayout->getEntryPointByIndex(i);
+    if (!ep || ep->getStage() != SLANG_STAGE_COMPUTE)
+      continue;
+    SlangUInt sizes[3] = {1, 1, 1};
+    ep->getComputeThreadGroupSize(3, sizes);
+    out_refl->workgroup[0] = (int)sizes[0];
+    out_refl->workgroup[1] = (int)sizes[1];
+    out_refl->workgroup[2] = (int)sizes[2];
+    break;
+  }
+  fill_global_reflection(programLayout, out_refl);
 
-    size_t cs_size = csBlob->getBufferSize();
-    out_cs->spirv = (uint32_t*)malloc(cs_size);
-    if (!out_cs->spirv) {
-        if (err_buf && err_buf_size) snprintf(err_buf, err_buf_size, "OOM (cs blob)");
-        return false;
-    }
-    memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
-    out_cs->bytes = cs_size;
+  size_t cs_size = csBlob->getBufferSize();
+  out_cs->spirv = (uint32_t *)malloc(cs_size);
+  if (!out_cs->spirv) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM (cs blob)");
+    return false;
+  }
+  memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
+  out_cs->bytes = cs_size;
 
-    patch_spirv_descriptor_sets(out_cs->spirv, out_cs->bytes, target, SpvStage::Compute);
-    return true;
+  patch_spirv_descriptor_sets(out_cs->spirv, out_cs->bytes, target,
+                              SpvStage::Compute);
+  return true;
 }
 
 extern "C" void shader_blob_free(ShaderBlob *b) {
-    if (!b) return;
-    if (b->spirv) {
-        free(b->spirv);
-        b->spirv = nullptr;
-    }
-    b->bytes = 0;
+  if (!b)
+    return;
+  if (b->spirv) {
+    free(b->spirv);
+    b->spirv = nullptr;
+  }
+  b->bytes = 0;
 }
 
-#else  // __EMSCRIPTEN__
+#else // __EMSCRIPTEN__
 
 // -------------------------------------------------------------------------
 // Emscripten Slang bridge.
@@ -870,15 +953,15 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 //   3. `shader_compile` / `shader_compile_compute` — drive (1) twice/once
 //      and (2) per blob, returning WGSL bytes into ShaderBlob.spirv.
 
-#include <emscripten.h>
 #include "../third_party/nlohmann/json.hpp"
+#include <emscripten.h>
 
 // Stage codes passed across the JS bridge to window.slangCompile.
 // Must match what playground/slang-bridge.ts expects.
 enum SglShaderStage {
-    SGL_STAGE_VS = 0,
-    SGL_STAGE_FS = 1,
-    SGL_STAGE_CS = 2,
+  SGL_STAGE_VS = 0,
+  SGL_STAGE_FS = 1,
+  SGL_STAGE_CS = 2,
 };
 
 // JS bridge into window.slangCompile().
@@ -899,68 +982,76 @@ enum SglShaderStage {
 //   * NULL: only for genuinely unrecoverable cases (malloc failure inside the
 //     JS shim). Everything else — including "slang-wasm not loaded yet" — uses
 //     the 0x02-prefixed error form so the diagnostic reaches the user.
-EM_ASYNC_JS(char*, lub_slang_compile_js,
-            (const char* src, const char* entry, int stage),
-{
-    const srcStr   = UTF8ToString(src);
-    const entryStr = UTF8ToString(entry);
-    const packError = (msg) => {
+EM_ASYNC_JS(
+    char *, lub_slang_compile_js,
+    (const char *src, const char *entry, int stage), {
+      const srcStr = UTF8ToString(src);
+      const entryStr = UTF8ToString(entry);
+      const packError = (msg) => {
         const errMsg = '\x02' + msg;
         const len = lengthBytesUTF8(errMsg) + 1;
         const ptr = _malloc(len);
-        if (!ptr) return 0;
+        if (!ptr)
+          return 0;
         stringToUTF8(errMsg, ptr, len);
         return ptr;
-    };
-    if (typeof window === 'undefined' ||
-        typeof window.slangCompile !== 'function') {
+      };
+      if (typeof window == = 'undefined' ||
+                             typeof window.slangCompile != = 'function') {
         console.error('[lub] window.slangCompile not exposed by the host; ' +
                       'slang-wasm bridge not loaded. entry=' + entryStr);
-        return packError('slang-wasm bridge not loaded (window.slangCompile undefined)');
-    }
-    try {
+        return packError(
+            'slang-wasm bridge not loaded (window.slangCompile undefined)');
+      }
+      try {
         const result = await window.slangCompile(srcStr, entryStr, stage);
         if (!result || result.error) {
-            const msg = (result && result.error)
-                ? result.error
-                : 'slang compile returned no result';
-            console.error('[lub] slang compile error:', msg);
-            return packError(msg);
+          const msg = (result && result.error)
+                          ? result.error
+                          : 'slang compile returned no result';
+          console.error('[lub] slang compile error:', msg);
+          return packError(msg);
         }
         // Pack {wgsl, reflectJson} into a single \x01-separated UTF-8 string.
         const blob = result.wgsl + '\x01' + (result.reflectJson || '{}');
         const len = lengthBytesUTF8(blob) + 1;
         const ptr = _malloc(len);
-        if (!ptr) return 0;
+        if (!ptr)
+          return 0;
         stringToUTF8(blob, ptr, len);
         return ptr;
-    } catch (e) {
+      } catch (e) {
         const msg = (e && e.message) ? e.message : String(e);
         console.error('[lub] slangCompile threw:', msg);
         return packError(msg);
-    }
-});
+      }
+    });
 
 namespace {
 
 using json = nlohmann::json;
 
 void copy_name_capped(char *dst, size_t cap, const std::string &src) {
-    if (cap == 0) return;
-    size_t n = src.size();
-    if (n >= cap) n = cap - 1;
-    memcpy(dst, src.data(), n);
-    dst[n] = '\0';
+  if (cap == 0)
+    return;
+  size_t n = src.size();
+  if (n >= cap)
+    n = cap - 1;
+  memcpy(dst, src.data(), n);
+  dst[n] = '\0';
 }
 
 // Split "wgsl\x01reflectJson" on the first 0x01 byte. Returns false if no sep.
-bool split_blob(const char *blob, std::string &out_wgsl, std::string &out_refl_json) {
-    if (!blob) return false;
-    const char *sep = strchr(blob, '\x01');
-    if (!sep) return false;
-    out_wgsl.assign(blob, (size_t)(sep - blob));
-    out_refl_json.assign(sep + 1);
-    return true;
+bool split_blob(const char *blob, std::string &out_wgsl,
+                std::string &out_refl_json) {
+  if (!blob)
+    return false;
+  const char *sep = strchr(blob, '\x01');
+  if (!sep)
+    return false;
+  out_wgsl.assign(blob, (size_t)(sep - blob));
+  out_refl_json.assign(sep + 1);
+  return true;
 }
 
 // Cross-stage dedup helpers. shader_compile() merges VS and FS reflection
@@ -969,24 +1060,27 @@ bool split_blob(const char *blob, std::string &out_wgsl, std::string &out_refl_j
 // e.g. a UB at slot 0 used by both vertex and fragment), the second call
 // would otherwise append a duplicate entry. We guard each append with a
 // slot-existence check.
-bool ub_slot_exists(const ShaderReflection* refl, int slot) {
-    for (int i = 0; i < refl->ub_count; ++i) {
-        if (refl->ubs[i].slot == slot) return true;
-    }
-    return false;
+bool ub_slot_exists(const ShaderReflection *refl, int slot) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    if (refl->ubs[i].slot == slot)
+      return true;
+  }
+  return false;
 }
-bool tex_slot_exists(const ShaderReflection* refl, int img_slot) {
-    for (int i = 0; i < refl->tex_count; ++i) {
-        if (refl->texs[i].img_slot == img_slot) return true;
-    }
-    return false;
+bool tex_slot_exists(const ShaderReflection *refl, int img_slot) {
+  for (int i = 0; i < refl->tex_count; ++i) {
+    if (refl->texs[i].img_slot == img_slot)
+      return true;
+  }
+  return false;
 }
 // Used by the storage-buffer dedup path in reflect_from_slang_json.
-bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
-    for (int i = 0; i < refl->storage_buf_count; ++i) {
-        if (refl->storage_bufs[i].slot == slot) return true;
-    }
-    return false;
+bool sbuf_slot_exists(const ShaderReflection *refl, int slot) {
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    if (refl->storage_bufs[i].slot == slot)
+      return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -994,7 +1088,8 @@ bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
 //
 // Top-level object from ProgramLayout::toJsonObject():
 // {
-//   "parameters": [           // global parameters (UBs, textures, samplers, storage)
+//   "parameters": [           // global parameters (UBs, textures, samplers,
+//   storage)
 //     {
 //       "name": "...",
 //       "binding": { "kind": "descriptorTableSlot", "index": N },
@@ -1002,12 +1097,14 @@ bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
 //         "kind": "constantBuffer" | "resource" | "samplerState" | ...,
 //         // ConstantBuffer<T>:
 //         "elementType": { "kind": "struct", "name": "...", "fields": [
-//             { "name": "...", "type": { "kind": "vector"|"scalar"|"matrix", ... },
-//               "binding": { "kind": "uniform", "offset": N_bytes, "size": M_bytes } }
+//             { "name": "...", "type": { "kind": "vector"|"scalar"|"matrix",
+//             ... },
+//               "binding": { "kind": "uniform", "offset": N_bytes, "size":
+//               M_bytes } }
 //         ] },
 //         // Resource (texture or structured buffer):
-//         "baseShape": "texture2D" | "structuredBuffer" | "byteAddressBuffer" | ...,
-//         "access": "readWrite" | "read" | ...,  // omitted for read-only
+//         "baseShape": "texture2D" | "structuredBuffer" | "byteAddressBuffer" |
+//         ..., "access": "readWrite" | "read" | ...,  // omitted for read-only
 //         "resultType": { kind: "vector"|"scalar", ... },
 //       }
 //     }
@@ -1021,8 +1118,10 @@ bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
 //           "name": "...",
 //           "binding": { "kind": "varyingInput", "index": N, "count"?: K },
 //           "type": { "kind": "struct", "fields": [
-//               { "name": "...", "type": {kind:"vector"|"scalar", elementCount?: 2|3|4},
-//                 "binding": { "kind": "varyingInput", "index": N }, "semanticName": "POSITION" }
+//               { "name": "...", "type": {kind:"vector"|"scalar",
+//               elementCount?: 2|3|4},
+//                 "binding": { "kind": "varyingInput", "index": N },
+//                 "semanticName": "POSITION" }
 //           ] }
 //         }
 //       ],
@@ -1048,138 +1147,165 @@ bool sbuf_slot_exists(const ShaderReflection* refl, int slot) {
 // count (mat4 = 16, vec3 = 3, scalar = 1). Returns 0 for unrecognised
 // shapes; caller may default to 4.
 int comp_count_of_type_json(const json &t) {
-    if (!t.is_object()) return 0;
-    std::string kind = t.value("kind", std::string(""));
-    if (kind == "scalar") return 1;
-    if (kind == "vector") return t.value("elementCount", 0);
-    if (kind == "matrix") {
-        int rc = t.value("rowCount", 0);
-        int cc = t.value("columnCount", 0);
-        return rc * cc;
-    }
+  if (!t.is_object())
     return 0;
+  std::string kind = t.value("kind", std::string(""));
+  if (kind == "scalar")
+    return 1;
+  if (kind == "vector")
+    return t.value("elementCount", 0);
+  if (kind == "matrix") {
+    int rc = t.value("rowCount", 0);
+    int cc = t.value("columnCount", 0);
+    return rc * cc;
+  }
+  return 0;
 }
 
 // Record a single varying-input field. Fields appear inside a struct's
 // "fields" array, each with its own binding.{index, kind} and type.
 void record_attr_field(const json &f, ShaderReflection *out) {
-    if (out->attr_count >= SGL_MAX_ATTRS) return;
-    std::string name = f.value("name", std::string("attr"));
-    int idx = -1;
-    if (f.contains("binding") && f["binding"].is_object() &&
-        f["binding"].contains("index"))
-    {
-        idx = f["binding"]["index"].get<int>();
-    }
-    int cc = 0;
-    if (f.contains("type")) cc = comp_count_of_type_json(f["type"]);
-    if (cc <= 0) cc = 4;
+  if (out->attr_count >= SGL_MAX_ATTRS)
+    return;
+  std::string name = f.value("name", std::string("attr"));
+  int idx = -1;
+  if (f.contains("binding") && f["binding"].is_object() &&
+      f["binding"].contains("index")) {
+    idx = f["binding"]["index"].get<int>();
+  }
+  int cc = 0;
+  if (f.contains("type"))
+    cc = comp_count_of_type_json(f["type"]);
+  if (cc <= 0)
+    cc = 4;
 
-    ShaderAttr *a = &out->attrs[out->attr_count];
-    copy_name_capped(a->name, sizeof(a->name), name);
-    a->slot = (idx >= 0) ? idx : out->attr_count;
-    a->comp_count = cc;
-    a->offset_floats = out->vertex_stride_floats;
-    out->vertex_stride_floats += cc;
-    out->attr_count++;
+  ShaderAttr *a = &out->attrs[out->attr_count];
+  copy_name_capped(a->name, sizeof(a->name), name);
+  a->slot = (idx >= 0) ? idx : out->attr_count;
+  a->comp_count = cc;
+  a->offset_floats = out->vertex_stride_floats;
+  out->vertex_stride_floats += cc;
+  out->attr_count++;
 }
 
 // Populate a ShaderUniformBlock from a top-level parameter whose type is
 // a ConstantBuffer<T>. Reads members from type.elementType.fields[].
-void fill_uniform_block_from_json(const json &p, int slot, ShaderUniformBlock *u) {
-    u->slot = slot;
-    u->size_floats = 0;
-    u->member_count = 0;
-    copy_name_capped(u->name, sizeof(u->name), p.value("name", std::string("")));
+void fill_uniform_block_from_json(const json &p, int slot,
+                                  ShaderUniformBlock *u) {
+  u->slot = slot;
+  u->size_floats = 0;
+  u->member_count = 0;
+  copy_name_capped(u->name, sizeof(u->name), p.value("name", std::string("")));
 
-    if (!p.contains("type") || !p["type"].is_object()) return;
-    const json &t = p["type"];
-    if (!t.contains("elementType") || !t["elementType"].is_object()) return;
-    const json &el = t["elementType"];
-    if (el.value("kind", std::string("")) != "struct") return;
-    if (!el.contains("fields") || !el["fields"].is_array()) return;
+  if (!p.contains("type") || !p["type"].is_object())
+    return;
+  const json &t = p["type"];
+  if (!t.contains("elementType") || !t["elementType"].is_object())
+    return;
+  const json &el = t["elementType"];
+  if (el.value("kind", std::string("")) != "struct")
+    return;
+  if (!el.contains("fields") || !el["fields"].is_array())
+    return;
 
-    int total_bytes = 0;
-    for (const auto &f : el["fields"]) {
-        if (u->member_count >= SGL_MAX_UB_MEMBERS) break;
-        if (!f.is_object()) continue;
-        ShaderUniformMember *m = &u->members[u->member_count++];
-        copy_name_capped(m->name, sizeof(m->name), f.value("name", std::string("")));
-        int off_bytes = 0;
-        int size_bytes = 0;
-        if (f.contains("binding") && f["binding"].is_object()) {
-            off_bytes  = f["binding"].value("offset", 0);
-            size_bytes = f["binding"].value("size", 0);
-        }
-        m->offset_floats = off_bytes / 4;
-        int cc = f.contains("type") ? comp_count_of_type_json(f["type"]) : 0;
-        if (cc <= 0) cc = (size_bytes + 3) / 4;
-        m->comp_count = cc;
-        int end_bytes = off_bytes + size_bytes;
-        if (end_bytes > total_bytes) total_bytes = end_bytes;
+  int total_bytes = 0;
+  for (const auto &f : el["fields"]) {
+    if (u->member_count >= SGL_MAX_UB_MEMBERS)
+      break;
+    if (!f.is_object())
+      continue;
+    ShaderUniformMember *m = &u->members[u->member_count++];
+    copy_name_capped(m->name, sizeof(m->name),
+                     f.value("name", std::string("")));
+    int off_bytes = 0;
+    int size_bytes = 0;
+    if (f.contains("binding") && f["binding"].is_object()) {
+      off_bytes = f["binding"].value("offset", 0);
+      size_bytes = f["binding"].value("size", 0);
     }
-    u->size_floats = (total_bytes + 3) / 4;
+    m->offset_floats = off_bytes / 4;
+    int cc = f.contains("type") ? comp_count_of_type_json(f["type"]) : 0;
+    if (cc <= 0)
+      cc = (size_bytes + 3) / 4;
+    m->comp_count = cc;
+    int end_bytes = off_bytes + size_bytes;
+    if (end_bytes > total_bytes)
+      total_bytes = end_bytes;
+  }
+  u->size_floats = (total_bytes + 3) / 4;
 }
 
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
 // sampler, or a storage buffer. We dedup by slot so cross-stage merges
 // don't double-count.
 void process_global_parameter(const json &p, ShaderReflection *out) {
-    if (!p.is_object()) return;
-    if (!p.contains("binding") || !p["binding"].is_object()) return;
-    std::string bkind = p["binding"].value("kind", std::string(""));
-    // Only descriptorTableSlot bindings are for resources; uniform/varyingInput
-    // appear nested inside fields. Other bindings (rootConstant, etc.) are
-    // outside current scope.
-    if (bkind != "descriptorTableSlot") return;
-    int slot = p["binding"].value("index", 0);
+  if (!p.is_object())
+    return;
+  if (!p.contains("binding") || !p["binding"].is_object())
+    return;
+  std::string bkind = p["binding"].value("kind", std::string(""));
+  // Only descriptorTableSlot bindings are for resources; uniform/varyingInput
+  // appear nested inside fields. Other bindings (rootConstant, etc.) are
+  // outside current scope.
+  if (bkind != "descriptorTableSlot")
+    return;
+  int slot = p["binding"].value("index", 0);
 
-    const json *t = nullptr;
-    if (p.contains("type") && p["type"].is_object()) t = &p["type"];
-    std::string tkind = t ? t->value("kind", std::string("")) : "";
+  const json *t = nullptr;
+  if (p.contains("type") && p["type"].is_object())
+    t = &p["type"];
+  std::string tkind = t ? t->value("kind", std::string("")) : "";
 
-    if (tkind == "constantBuffer") {
-        if (ub_slot_exists(out, slot)) return;
-        if (out->ub_count >= SGL_MAX_UNIFORM_BLOCKS) return;
-        fill_uniform_block_from_json(p, slot, &out->ubs[out->ub_count++]);
+  if (tkind == "constantBuffer") {
+    if (ub_slot_exists(out, slot))
+      return;
+    if (out->ub_count >= SGL_MAX_UNIFORM_BLOCKS)
+      return;
+    fill_uniform_block_from_json(p, slot, &out->ubs[out->ub_count++]);
+    return;
+  }
+  if (tkind == "resource") {
+    std::string shape = t->value("baseShape", std::string(""));
+    if (shape == "structuredBuffer" || shape == "byteAddressBuffer") {
+      if (sbuf_slot_exists(out, slot))
         return;
-    }
-    if (tkind == "resource") {
-        std::string shape = t->value("baseShape", std::string(""));
-        if (shape == "structuredBuffer" || shape == "byteAddressBuffer") {
-            if (sbuf_slot_exists(out, slot)) return;
-            if (out->storage_buf_count >= SGL_MAX_STORAGE_BUFS) return;
-            ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
-            copy_name_capped(sb->name, sizeof(sb->name), p.value("name", std::string("")));
-            sb->slot = slot;
-            // access="readWrite" => writable; absent or "read" => readonly.
-            sb->readonly = (t->value("access", std::string("")) != "readWrite");
-            return;
-        }
-        // Texture (baseShape="texture2D"/"texture3D"/...). Sampler usually
-        // comes via a separate parameter with type.kind="samplerState", but a
-        // combined `Sampler2D<>` source has Slang emit "combined": true and
-        // serves both image and sampler from a single descriptor slot.
-        if (tex_slot_exists(out, slot)) return;
-        if (out->tex_count >= SGL_MAX_TEXTURES) return;
-        ShaderTexture *tx = &out->texs[out->tex_count++];
-        copy_name_capped(tx->name, sizeof(tx->name), p.value("name", std::string("")));
-        tx->img_slot = slot;
-        bool combined = t->value("combined", false);
-        tx->smp_slot = combined ? slot : -1;
+      if (out->storage_buf_count >= SGL_MAX_STORAGE_BUFS)
         return;
+      ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
+      copy_name_capped(sb->name, sizeof(sb->name),
+                       p.value("name", std::string("")));
+      sb->slot = slot;
+      // access="readWrite" => writable; absent or "read" => readonly.
+      sb->readonly = (t->value("access", std::string("")) != "readWrite");
+      return;
     }
-    if (tkind == "samplerState") {
-        // Pair with the next unpaired texture in declaration order. This
-        // matches the native (Slang COM API) path's behaviour and works for
-        // the typical `Texture2D foo; SamplerState foo_smp;` convention.
-        for (int k = 0; k < out->tex_count; ++k) {
-            if (out->texs[k].smp_slot < 0) {
-                out->texs[k].smp_slot = slot;
-                return;
-            }
-        }
+    // Texture (baseShape="texture2D"/"texture3D"/...). Sampler usually
+    // comes via a separate parameter with type.kind="samplerState", but a
+    // combined `Sampler2D<>` source has Slang emit "combined": true and
+    // serves both image and sampler from a single descriptor slot.
+    if (tex_slot_exists(out, slot))
+      return;
+    if (out->tex_count >= SGL_MAX_TEXTURES)
+      return;
+    ShaderTexture *tx = &out->texs[out->tex_count++];
+    copy_name_capped(tx->name, sizeof(tx->name),
+                     p.value("name", std::string("")));
+    tx->img_slot = slot;
+    bool combined = t->value("combined", false);
+    tx->smp_slot = combined ? slot : -1;
+    return;
+  }
+  if (tkind == "samplerState") {
+    // Pair with the next unpaired texture in declaration order. This
+    // matches the native (Slang COM API) path's behaviour and works for
+    // the typical `Texture2D foo; SamplerState foo_smp;` convention.
+    for (int k = 0; k < out->tex_count; ++k) {
+      if (out->texs[k].smp_slot < 0) {
+        out->texs[k].smp_slot = slot;
+        return;
+      }
     }
+  }
 }
 
 // Populate ShaderReflection from a Slang reflection JSON document.
@@ -1192,83 +1318,95 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
 // is preserved across the rewrite.
 bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
                              bool is_vertex_stage) {
-    if (!out) return false;
-    if (!json_text || !*json_text) return true; // empty JSON -> nothing to merge
+  if (!out)
+    return false;
+  if (!json_text || !*json_text)
+    return true; // empty JSON -> nothing to merge
 
-    json j = json::parse(json_text, nullptr, false);
-    if (j.is_discarded()) {
-        fprintf(stderr, "[lub] reflect_from_slang_json: parse failed\n");
-        return false;
+  json j = json::parse(json_text, nullptr, false);
+  if (j.is_discarded()) {
+    fprintf(stderr, "[lub] reflect_from_slang_json: parse failed\n");
+    return false;
+  }
+
+  // 1. Top-level parameters[]: UBs, textures, samplers, storage buffers.
+  if (j.contains("parameters") && j["parameters"].is_array()) {
+    // Two passes so SamplerState entries can pair with already-recorded
+    // Texture entries regardless of declaration order in the JSON.
+    for (const auto &p : j["parameters"]) {
+      if (!p.is_object())
+        continue;
+      const auto *t = p.contains("type") ? &p["type"] : nullptr;
+      if (t && t->is_object() &&
+          t->value("kind", std::string("")) == "samplerState") {
+        continue; // handled in second pass
+      }
+      process_global_parameter(p, out);
     }
-
-    // 1. Top-level parameters[]: UBs, textures, samplers, storage buffers.
-    if (j.contains("parameters") && j["parameters"].is_array()) {
-        // Two passes so SamplerState entries can pair with already-recorded
-        // Texture entries regardless of declaration order in the JSON.
-        for (const auto &p : j["parameters"]) {
-            if (!p.is_object()) continue;
-            const auto *t = p.contains("type") ? &p["type"] : nullptr;
-            if (t && t->is_object() && t->value("kind", std::string("")) == "samplerState") {
-                continue;  // handled in second pass
-            }
-            process_global_parameter(p, out);
-        }
-        for (const auto &p : j["parameters"]) {
-            if (!p.is_object()) continue;
-            const auto *t = p.contains("type") ? &p["type"] : nullptr;
-            if (t && t->is_object() && t->value("kind", std::string("")) == "samplerState") {
-                process_global_parameter(p, out);
-            }
-        }
+    for (const auto &p : j["parameters"]) {
+      if (!p.is_object())
+        continue;
+      const auto *t = p.contains("type") ? &p["type"] : nullptr;
+      if (t && t->is_object() &&
+          t->value("kind", std::string("")) == "samplerState") {
+        process_global_parameter(p, out);
+      }
     }
+  }
 
-    // 2. entryPoints[]: varying inputs (vertex only) and threadGroupSize
-    //    (compute only).
-    if (j.contains("entryPoints") && j["entryPoints"].is_array()) {
-        for (const auto &ep : j["entryPoints"]) {
-            if (!ep.is_object()) continue;
-            std::string stage = ep.value("stage", std::string(""));
+  // 2. entryPoints[]: varying inputs (vertex only) and threadGroupSize
+  //    (compute only).
+  if (j.contains("entryPoints") && j["entryPoints"].is_array()) {
+    for (const auto &ep : j["entryPoints"]) {
+      if (!ep.is_object())
+        continue;
+      std::string stage = ep.value("stage", std::string(""));
 
-            // Compute work-group size.
-            if (stage == "compute" && ep.contains("threadGroupSize") &&
-                ep["threadGroupSize"].is_array() &&
-                ep["threadGroupSize"].size() == 3)
-            {
-                out->is_compute = true;
-                for (int k = 0; k < 3; ++k) {
-                    out->workgroup[k] = ep["threadGroupSize"][k].get<int>();
-                }
-            }
-
-            // Varying inputs (vertex only). is_vertex_stage gates this — the
-            // FS reflection has its own varyingInput entries (texcoords etc.)
-            // but those aren't pipeline-level vertex attributes.
-            if (!is_vertex_stage || stage != "vertex") continue;
-            if (!ep.contains("parameters") || !ep["parameters"].is_array()) continue;
-            for (const auto &p : ep["parameters"]) {
-                if (!p.is_object()) continue;
-                std::string bkind;
-                if (p.contains("binding") && p["binding"].is_object()) {
-                    bkind = p["binding"].value("kind", std::string(""));
-                }
-                if (bkind != "varyingInput") continue;
-                // Two cases mirror the native path's fill_attrs_from_entry_point:
-                //   (a) struct => flatten its fields[]
-                //   (b) scalar/vector => single attr
-                if (!p.contains("type") || !p["type"].is_object()) continue;
-                const json &t = p["type"];
-                std::string tkind = t.value("kind", std::string(""));
-                if (tkind == "struct" && t.contains("fields") && t["fields"].is_array()) {
-                    for (const auto &f : t["fields"]) {
-                        record_attr_field(f, out);
-                    }
-                } else {
-                    record_attr_field(p, out);
-                }
-            }
+      // Compute work-group size.
+      if (stage == "compute" && ep.contains("threadGroupSize") &&
+          ep["threadGroupSize"].is_array() &&
+          ep["threadGroupSize"].size() == 3) {
+        out->is_compute = true;
+        for (int k = 0; k < 3; ++k) {
+          out->workgroup[k] = ep["threadGroupSize"][k].get<int>();
         }
+      }
+
+      // Varying inputs (vertex only). is_vertex_stage gates this — the
+      // FS reflection has its own varyingInput entries (texcoords etc.)
+      // but those aren't pipeline-level vertex attributes.
+      if (!is_vertex_stage || stage != "vertex")
+        continue;
+      if (!ep.contains("parameters") || !ep["parameters"].is_array())
+        continue;
+      for (const auto &p : ep["parameters"]) {
+        if (!p.is_object())
+          continue;
+        std::string bkind;
+        if (p.contains("binding") && p["binding"].is_object()) {
+          bkind = p["binding"].value("kind", std::string(""));
+        }
+        if (bkind != "varyingInput")
+          continue;
+        // Two cases mirror the native path's fill_attrs_from_entry_point:
+        //   (a) struct => flatten its fields[]
+        //   (b) scalar/vector => single attr
+        if (!p.contains("type") || !p["type"].is_object())
+          continue;
+        const json &t = p["type"];
+        std::string tkind = t.value("kind", std::string(""));
+        if (tkind == "struct" && t.contains("fields") &&
+            t["fields"].is_array()) {
+          for (const auto &f : t["fields"]) {
+            record_attr_field(f, out);
+          }
+        } else {
+          record_attr_field(p, out);
+        }
+      }
     }
-    return true;
+  }
+  return true;
 }
 
 // Common driver: call the JS bridge once, split, and copy WGSL bytes into
@@ -1277,138 +1415,156 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
 bool compile_one(const char *src, const char *entry, int stage,
                  ShaderBlob *out_blob, std::string &out_refl_json,
                  char *err_buf, size_t err_buf_size) {
-    char *blob = lub_slang_compile_js(src, entry, stage);
-    if (!blob) {
-        // NULL is reserved for genuinely unrecoverable cases (alloc failure
-        // inside the JS shim, runtime not initialised). Anything else comes
-        // back as a 0x02-prefixed error payload — see the EM_ASYNC_JS contract.
-        if (err_buf && err_buf_size) {
-            snprintf(err_buf, err_buf_size,
-                     "slang(%s) compile: out of memory or runtime not initialised",
-                     entry);
-        }
-        return false;
+  char *blob = lub_slang_compile_js(src, entry, stage);
+  if (!blob) {
+    // NULL is reserved for genuinely unrecoverable cases (alloc failure
+    // inside the JS shim, runtime not initialised). Anything else comes
+    // back as a 0x02-prefixed error payload — see the EM_ASYNC_JS contract.
+    if (err_buf && err_buf_size) {
+      snprintf(err_buf, err_buf_size,
+               "slang(%s) compile: out of memory or runtime not initialised",
+               entry);
     }
-    // 0x02 leading byte signals a Slang diagnostic; the rest is the message.
-    if (blob[0] == '\x02') {
-        if (err_buf && err_buf_size) {
-            snprintf(err_buf, err_buf_size, "slang(%s) %s", entry, blob + 1);
-        }
-        free(blob);
-        return false;
+    return false;
+  }
+  // 0x02 leading byte signals a Slang diagnostic; the rest is the message.
+  if (blob[0] == '\x02') {
+    if (err_buf && err_buf_size) {
+      snprintf(err_buf, err_buf_size, "slang(%s) %s", entry, blob + 1);
     }
-    std::string wgsl;
-    bool ok = split_blob(blob, wgsl, out_refl_json);
     free(blob);
-    if (!ok) {
-        if (err_buf && err_buf_size) {
-            snprintf(err_buf, err_buf_size,
-                     "slang(%s) returned malformed blob", entry);
-        }
-        return false;
+    return false;
+  }
+  std::string wgsl;
+  bool ok = split_blob(blob, wgsl, out_refl_json);
+  free(blob);
+  if (!ok) {
+    if (err_buf && err_buf_size) {
+      snprintf(err_buf, err_buf_size, "slang(%s) returned malformed blob",
+               entry);
     }
-    // Stash WGSL source bytes into out_blob->spirv. The field is misnamed on
-    // wasm (it's WGSL text, not SPIR-V binary) but it's the same opaque byte
-    // container the backend consumes.
-    size_t n = wgsl.size();
-    out_blob->spirv = (uint32_t*)malloc(n + 1);
-    if (!out_blob->spirv) {
-        if (err_buf && err_buf_size) {
-            snprintf(err_buf, err_buf_size, "OOM copying WGSL (%zu bytes)", n);
-        }
-        return false;
+    return false;
+  }
+  // Stash WGSL source bytes into out_blob->spirv. The field is misnamed on
+  // wasm (it's WGSL text, not SPIR-V binary) but it's the same opaque byte
+  // container the backend consumes.
+  size_t n = wgsl.size();
+  out_blob->spirv = (uint32_t *)malloc(n + 1);
+  if (!out_blob->spirv) {
+    if (err_buf && err_buf_size) {
+      snprintf(err_buf, err_buf_size, "OOM copying WGSL (%zu bytes)", n);
     }
-    memcpy(out_blob->spirv, wgsl.data(), n);
-    ((char*)out_blob->spirv)[n] = '\0';
-    out_blob->bytes = n;
-    return true;
+    return false;
+  }
+  memcpy(out_blob->spirv, wgsl.data(), n);
+  ((char *)out_blob->spirv)[n] = '\0';
+  out_blob->bytes = n;
+  return true;
 }
 
 } // anonymous namespace
 
-extern "C" bool shader_compile(
-    const char *vs_src, const char *fs_src,
-    ShaderTargetBackend target,
-    ShaderBlob *out_vs, ShaderBlob *out_fs,
-    ShaderReflection *out_refl,
-    char *err_buf, size_t err_buf_size)
-{
-    // sokol-wgpu only on wasm; descriptor-set patching N/A for WGSL. But
-    // the LUB_TEXTURE2D / LUB_SAMPLE macros still need expanding so the
-    // shader source can be shared with native sokol/sdlgpu builds.
-    if (out_vs) { out_vs->spirv = nullptr; out_vs->bytes = 0; }
-    if (out_fs) { out_fs->spirv = nullptr; out_fs->bytes = 0; }
-    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
+                               ShaderTargetBackend target, ShaderBlob *out_vs,
+                               ShaderBlob *out_fs, ShaderReflection *out_refl,
+                               char *err_buf, size_t err_buf_size) {
+  // sokol-wgpu only on wasm; descriptor-set patching N/A for WGSL. But
+  // the LUB_TEXTURE2D / LUB_SAMPLE macros still need expanding so the
+  // shader source can be shared with native sokol/sdlgpu builds.
+  if (out_vs) {
+    out_vs->spirv = nullptr;
+    out_vs->bytes = 0;
+  }
+  if (out_fs) {
+    out_fs->spirv = nullptr;
+    out_fs->bytes = 0;
+  }
+  if (out_refl)
+    memset(out_refl, 0, sizeof(*out_refl));
 
-    const char *prelude = prelude_for_target(target);
-    std::string vs_with_prelude = std::string(prelude) + vs_src;
-    std::string fs_with_prelude = std::string(prelude) + fs_src;
+  const char *prelude = prelude_for_target(target);
+  std::string vs_with_prelude = std::string(prelude) + vs_src;
+  std::string fs_with_prelude = std::string(prelude) + fs_src;
 
-    std::string vs_refl_json, fs_refl_json;
-    if (!compile_one(vs_with_prelude.c_str(), "vs_main", SGL_STAGE_VS,
-                     out_vs, vs_refl_json, err_buf, err_buf_size)) {
-        return false;
-    }
-    if (!compile_one(fs_with_prelude.c_str(), "fs_main", SGL_STAGE_FS,
-                     out_fs, fs_refl_json, err_buf, err_buf_size)) {
-        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
-        return false;
-    }
+  std::string vs_refl_json, fs_refl_json;
+  if (!compile_one(vs_with_prelude.c_str(), "vs_main", SGL_STAGE_VS, out_vs,
+                   vs_refl_json, err_buf, err_buf_size)) {
+    return false;
+  }
+  if (!compile_one(fs_with_prelude.c_str(), "fs_main", SGL_STAGE_FS, out_fs,
+                   fs_refl_json, err_buf, err_buf_size)) {
+    free(out_vs->spirv);
+    out_vs->spirv = nullptr;
+    out_vs->bytes = 0;
+    return false;
+  }
 
-    // Merge both stages' reflection JSON into the single ShaderReflection
-    // struct: VS contributes attrs + UBs + textures, FS contributes its
-    // own UBs + textures. reflect_from_slang_json() now dedups by slot so
-    // a UB/texture declared in both stages collapses to one entry.
-    if (!reflect_from_slang_json(vs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/true) ||
-        !reflect_from_slang_json(fs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false))
-    {
-        if (err_buf && err_buf_size) {
-            snprintf(err_buf, err_buf_size, "slang reflection parse failed");
-        }
-        free(out_vs->spirv); out_vs->spirv = nullptr; out_vs->bytes = 0;
-        free(out_fs->spirv); out_fs->spirv = nullptr; out_fs->bytes = 0;
-        return false;
+  // Merge both stages' reflection JSON into the single ShaderReflection
+  // struct: VS contributes attrs + UBs + textures, FS contributes its
+  // own UBs + textures. reflect_from_slang_json() now dedups by slot so
+  // a UB/texture declared in both stages collapses to one entry.
+  if (!reflect_from_slang_json(vs_refl_json.c_str(), out_refl,
+                               /*is_vertex_stage=*/true) ||
+      !reflect_from_slang_json(fs_refl_json.c_str(), out_refl,
+                               /*is_vertex_stage=*/false)) {
+    if (err_buf && err_buf_size) {
+      snprintf(err_buf, err_buf_size, "slang reflection parse failed");
     }
-    return true;
+    free(out_vs->spirv);
+    out_vs->spirv = nullptr;
+    out_vs->bytes = 0;
+    free(out_fs->spirv);
+    out_fs->spirv = nullptr;
+    out_fs->bytes = 0;
+    return false;
+  }
+  return true;
 }
 
-extern "C" bool shader_compile_compute(
-    const char *cs_src,
-    ShaderTargetBackend target,
-    ShaderBlob *out_cs,
-    ShaderReflection *out_refl,
-    char *err_buf, size_t err_buf_size)
-{
-    if (out_cs)   { out_cs->spirv = nullptr; out_cs->bytes = 0; }
-    if (out_refl) memset(out_refl, 0, sizeof(*out_refl));
+extern "C" bool shader_compile_compute(const char *cs_src,
+                                       ShaderTargetBackend target,
+                                       ShaderBlob *out_cs,
+                                       ShaderReflection *out_refl,
+                                       char *err_buf, size_t err_buf_size) {
+  if (out_cs) {
+    out_cs->spirv = nullptr;
+    out_cs->bytes = 0;
+  }
+  if (out_refl)
+    memset(out_refl, 0, sizeof(*out_refl));
 
-    const char *prelude = prelude_for_target(target);
-    std::string cs_with_prelude = std::string(prelude) + cs_src;
+  const char *prelude = prelude_for_target(target);
+  std::string cs_with_prelude = std::string(prelude) + cs_src;
 
-    std::string cs_refl_json;
-    if (!compile_one(cs_with_prelude.c_str(), "cs_main", SGL_STAGE_CS,
-                     out_cs, cs_refl_json, err_buf, err_buf_size)) {
-        return false;
+  std::string cs_refl_json;
+  if (!compile_one(cs_with_prelude.c_str(), "cs_main", SGL_STAGE_CS, out_cs,
+                   cs_refl_json, err_buf, err_buf_size)) {
+    return false;
+  }
+  out_refl->is_compute = true;
+  out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
+  if (!reflect_from_slang_json(cs_refl_json.c_str(), out_refl,
+                               /*is_vertex_stage=*/false)) {
+    if (err_buf && err_buf_size) {
+      snprintf(err_buf, err_buf_size,
+               "slang reflection parse failed (compute)");
     }
-    out_refl->is_compute = true;
-    out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
-    if (!reflect_from_slang_json(cs_refl_json.c_str(), out_refl, /*is_vertex_stage=*/false)) {
-        if (err_buf && err_buf_size) {
-            snprintf(err_buf, err_buf_size, "slang reflection parse failed (compute)");
-        }
-        free(out_cs->spirv); out_cs->spirv = nullptr; out_cs->bytes = 0;
-        return false;
-    }
-    return true;
+    free(out_cs->spirv);
+    out_cs->spirv = nullptr;
+    out_cs->bytes = 0;
+    return false;
+  }
+  return true;
 }
 
 extern "C" void shader_blob_free(ShaderBlob *b) {
-    if (!b) return;
-    if (b->spirv) {
-        free(b->spirv);
-        b->spirv = nullptr;
-    }
-    b->bytes = 0;
+  if (!b)
+    return;
+  if (b->spirv) {
+    free(b->spirv);
+    b->spirv = nullptr;
+  }
+  b->bytes = 0;
 }
 
-#endif  // __EMSCRIPTEN__
+#endif // __EMSCRIPTEN__

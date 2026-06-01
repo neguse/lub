@@ -1,0 +1,3 @@
+-cp samples/02_vertex_color
+-lib lub
+-main VertexColor02

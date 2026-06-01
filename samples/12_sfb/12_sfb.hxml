@@ -1,0 +1,3 @@
+-cp samples/12_sfb
+-lib lub
+-main Sfb12

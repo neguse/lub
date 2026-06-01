@@ -12,34 +12,52 @@ import entities.World;
 // 自機狙い弾 (原典 type 2)。EnemyBullets faction: 自弾では消えず、自機に当たる。
 // 当たり判定は 6×7、描画は原典どおり enemy[1]。
 class Aimed implements Entity {
-  var x: Int; var y: Int;
-  final originX: Int; final originY: Int;
-  final theta: Float;       // 照準方向 (上=0, rad) + spread offset
-  var dist: Float = 0;
-  var anim: Int = 0;
-  final speed: Int;
-  static inline var W = 6; static inline var H = 7;
+	var x:Int;
+	var y:Int;
+	final originX:Int;
+	final originY:Int;
+	final theta:Float; // 照準方向 (上=0, rad) + spread offset
+	var dist:Float = 0;
+	var anim:Int = 0;
+	final speed:Int;
 
-  // spawn 位置 (sx,sy) の中心から自機中心 (pcx,pcy) へ照準し offset(rad) を足す。
-  public function new(sx: Int, sy: Int, pcx: Float, pcy: Float, offset: Float, noGod: Bool) {
-    x = sx; y = sy; originX = sx; originY = sy;
-    var dxw = pcx - (sx + W / 2);
-    var dyUp = -(pcy - (sy + H / 2));
-    theta = Math.atan2(dxw, dyUp) + offset;   // 上=0 規約
-    speed = noGod ? 8 : 4;
-  }
+	static inline var W = 6;
+	static inline var H = 7;
 
-  public function update(world: World, input: InputSnapshot): Bool {
-    x = originX + Std.int(Math.round(Math.sin(theta) * dist));
-    y = originY - Std.int(Math.round(Math.cos(theta) * dist));
-    dist += speed;
-    anim = (anim + 1) & 7;
-    return World.overlap(bounds(), { x: Viewport.X, y: Viewport.Y, w: Viewport.W, h: Viewport.H });
-  }
+	// spawn 位置 (sx,sy) の中心から自機中心 (pcx,pcy) へ照準し offset(rad) を足す。
+	public function new(sx:Int, sy:Int, pcx:Float, pcy:Float, offset:Float, noGod:Bool) {
+		x = sx;
+		y = sy;
+		originX = sx;
+		originY = sy;
+		var dxw = pcx - (sx + W / 2);
+		var dyUp = -(pcy - (sy + H / 2));
+		theta = Math.atan2(dxw, dyUp) + offset; // 上=0 規約
+		speed = noGod ? 8 : 4;
+	}
 
-  public function bounds(): Rect return { x: x, y: y, w: W, h: H };
+	public function update(world:World, input:InputSnapshot):Bool {
+		x = originX + Std.int(Math.round(Math.sin(theta) * dist));
+		y = originY - Std.int(Math.round(Math.cos(theta) * dist));
+		dist += speed;
+		anim = (anim + 1) & 7;
+		return World.overlap(bounds(), {
+			x: Viewport.X,
+			y: Viewport.Y,
+			w: Viewport.W,
+			h: Viewport.H
+		});
+	}
 
-  public function draw(dl: DrawList): Void {
-    dl.sprite(Game.enemyAtlas, Atlases.enemy[1], Viewport.sx(x), Viewport.sy(y));
-  }
+	public function bounds():Rect
+		return {
+			x: x,
+			y: y,
+			w: W,
+			h: H
+		};
+
+	public function draw(dl:DrawList):Void {
+		dl.sprite(Game.enemyAtlas, Atlases.enemy[1], Viewport.sx(x), Viewport.sy(y));
+	}
 }

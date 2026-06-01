@@ -50,15 +50,31 @@ cmake --build build -j
 CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.exe`
 の横にコピーされるので、追加の PATH 設定なしで実行できる。
 
+## コードフォーマット
+
+各フォーマッタの **デフォルト設定** で整形する。既存スタイルに寄せる
+プロジェクト固有の設定ファイル (`.clang-format` / `hxformat.json` /
+`.prettierrc`) は意図的に置かず、ツール標準のスタイルに従う。
+
+- C/C++ — `clang-format` (LLVM default)
+- Haxe — `haxelib formatter` (要 `haxelib install formatter`)
+- Web TS — `prettier` (`web/` で `npm install` 後に利用可)
+
+```sh
+scripts/format.sh            # 全ソースを整形
+scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非ゼロ終了で失敗)
+```
+
 ## 実行
 
 ```sh
-./build/lub samples/01_triangle.lua
+./build/lub samples/01_triangle/01_triangle.hxml
 ```
 
-(Windows は `.\build\lub.exe samples\01_triangle.lua` 形式)
+(Windows は `.\build\lub.exe samples\01_triangle\01_triangle.hxml` 形式)
 
-サンプルは `samples/*.lua` に置く。
+サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
+(`<ClassName>.hx` + `<name>.hxml` + `data/`)。
 
 ### Haxe sample の実行
 
@@ -69,14 +85,14 @@ Haxe で書いた sample を `.hxml` を entry にして直接実行できる。
 - 1 回だけ extern を haxelib に登録: `haxelib dev lub <repo>/haxe-lib/lub`
 
 ```sh
-./build/lub samples/01_triangle.hxml
+./build/lub samples/01_triangle/01_triangle.hxml
 ```
 
-`samples/Triangle01.hx` を編集して保存すると、走っている game に即反映される。
+`samples/01_triangle/Triangle01.hx` を編集して保存すると、走っている game に即反映される。
 
 #### sample の書き方
 
-`-cp samples / -lib lub / -main <ClassName>` の 3 行 hxml + Haxe class 1 個が最小構成。
+`-cp samples/<name> / -lib lub / -main <ClassName>` の 3 行 hxml + Haxe class 1 個が最小構成。
 
 ```haxe
 import lub.Lub;
@@ -108,7 +124,7 @@ Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
 ```sh
 # 事前: sudo pacman -S vulkan-swrast (Arch) / sudo apt install mesa-vulkan-drivers (Debian)
-scripts/run-headless.sh samples/01_triangle.lua
+scripts/run-headless.sh samples/01_triangle/01_triangle.hxml
 ```
 
 `scripts/run-headless.sh` は `VK_ICD_FILENAMES` で lavapipe ICD を強制し、
@@ -121,7 +137,7 @@ Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
 ```sh
 # 30 フレーム描画後にキャプチャして即終了
-scripts/run-headless.sh samples/01_triangle.lua --capture out.png --capture-frame 30
+scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30
 ```
 
 実 GPU でも `--capture` フラグはそのまま使える。Lua 側からも `capture("path.png")`
@@ -157,13 +173,13 @@ end
 
 ```sh
 # default = sokol
-./build/lub samples/01_triangle.lua
+./build/lub samples/01_triangle/01_triangle.hxml
 
 # SDL3 GPU 経路
-LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle.lua
+LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/01_triangle.hxml
 
 # headless でも同じ
-LUB_BACKEND=sdlgpu scripts/run-headless.sh ./build/lub samples/01_triangle.lua
+LUB_BACKEND=sdlgpu scripts/run-headless.sh ./build/lub samples/01_triangle/01_triangle.hxml
 ```
 
 どちらの backend でも同一 Lua API で sample と capture が動く。
@@ -171,7 +187,7 @@ lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical*
 
 ## Live edit (file watching)
 
-サンプルは `samples/data/` 配下の外部ファイルから shader / 頂点データ / テクスチャを
+サンプルは `samples/<name>/data/` 配下の外部ファイルから shader / 頂点データ / テクスチャを
 読み込む。起動中にファイルを編集して保存すると次フレームから反映される。
 
 仕組み:
@@ -187,8 +203,8 @@ lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical*
 - shader compile error 時は旧 shader を維持してログを出すのみで、クラッシュせず
   エディタで修正→保存すれば復帰する (初回 compile 失敗だけは loud に止める)。
 
-例: `samples/data/01_triangle.fs.slang` の出力色をエディタで書き換えて保存すると、
-起動中の `samples/01_triangle.lua` の三角形の色が即座に変わる。
+例: `samples/01_triangle/data/01_triangle.fs.slang` の出力色をエディタで書き換えて保存すると、
+起動中の `samples/01_triangle/01_triangle.hxml` の三角形の色が即座に変わる。
 PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編集すれば頂点も同様。
 
 ## WASM playground (web)
@@ -196,7 +212,7 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 ブラウザ上で動く Vite + CodeMirror ベースの playground を `web/` 配下に同梱。
 sokol-gfx の WGPU backend を target に WASM へクロスコンパイルしたバイナリを iframe
 で読み込み、左ペインのエディタで `.slang` / `.lua` を編集すると 300ms debounce で右ペインの
-プレイヤーに同期される (`samples/data/*` の mtime/hash hot-reload 経路を再利用)。
+プレイヤーに同期される (`samples/<name>/data/*` の mtime/hash hot-reload 経路を再利用)。
 shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) を vendor。
 
 ### Build

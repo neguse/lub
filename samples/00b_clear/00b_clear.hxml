@@ -1,0 +1,3 @@
+-cp samples/00b_clear
+-lib lub
+-main Clear00b

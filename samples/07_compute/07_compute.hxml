@@ -1,0 +1,3 @@
+-cp samples/07_compute
+-lib lub
+-main Compute07
