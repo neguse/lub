@@ -32,6 +32,11 @@ ctx.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`))
 await page.goto(URL, { waitUntil: 'load' })
 await page.waitForTimeout(3000) // let the initial sample boot
 
+// optional resolution preset, e.g. RES=320x180
+if (process.env.RES) {
+  try { await page.selectOption('#res-select', process.env.RES); await page.waitForTimeout(2000) } catch (e) { console.log('res select failed', e.message) }
+}
+
 // select the target sample
 await page.selectOption('#sample-select', sample)
 console.log('selected', sample, '— waiting for compile + render...')

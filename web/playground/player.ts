@@ -33,8 +33,16 @@ declare global {
 }
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
-window._canvasWidth  = 480
-window._canvasHeight = 360
+// Render resolution comes from the iframe URL (?w=&h=), so the editor shell can
+// pick a preset (smaller = faster on weak devices). The whole offscreen chain
+// follows this via Gfx.size() on the C side; CSS scales the canvas to fit.
+const _q = new URLSearchParams(location.search)
+const _cw = Math.max(64, Math.min(4096, parseInt(_q.get('w') || '480', 10) || 480))
+const _ch = Math.max(64, Math.min(4096, parseInt(_q.get('h') || '360', 10) || 360))
+canvas.width  = _cw
+canvas.height = _ch
+window._canvasWidth  = _cw
+window._canvasHeight = _ch
 
 function relayLog(msg: string, level: 'log' | 'err' | 'warn' = 'log') {
   try { parent.postMessage({ type: 'log', msg: String(msg), level }, '*') } catch {}

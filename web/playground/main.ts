@@ -6,6 +6,7 @@ let currentSample = '01_triangle'
 let syncTimer: number | null = null
 
 const $sample  = document.querySelector<HTMLSelectElement>('#sample-select')!
+const $res     = document.querySelector<HTMLSelectElement>('#res-select')!
 const $restart = document.querySelector<HTMLButtonElement>('#restart-btn')!
 const $log     = document.getElementById('log')!
 const $status  = document.getElementById('status')!
@@ -16,6 +17,33 @@ for (const s of SAMPLE_NAMES) {
   $sample.appendChild(o)
 }
 $sample.value = currentSample
+
+// Render-resolution presets (16:9). Smaller = fewer pixels through the whole
+// post chain = faster on weak devices. The choice rides the player iframe URL.
+const RES_PRESETS: [string, number, number][] = [
+  ['180p (320×180)', 320, 180],
+  ['240p (426×240)', 426, 240],
+  ['360p (640×360)', 640, 360],
+  ['540p (960×540)', 960, 540],
+  ['720p (1280×720)', 1280, 720],
+]
+let resW = 640, resH = 360
+const savedRes = localStorage.getItem('lub-res')
+for (const [label, w, h] of RES_PRESETS) {
+  const o = document.createElement('option')
+  o.value = `${w}x${h}`; o.textContent = label
+  $res.appendChild(o)
+}
+if (savedRes && RES_PRESETS.some(([, w, h]) => `${w}x${h}` === savedRes)) {
+  const [w, h] = savedRes.split('x').map(Number); resW = w; resH = h
+}
+$res.value = `${resW}x${resH}`
+$res.addEventListener('change', () => {
+  const [w, h] = $res.value.split('x').map(Number)
+  resW = w; resH = h
+  localStorage.setItem('lub-res', $res.value)
+  restart()
+})
 
 $sample.addEventListener('change', async () => {
   if (anyDirty()) {
@@ -79,7 +107,7 @@ async function restart() {
   if (playerIframe) playerIframe.remove()
   $log.innerHTML = ''
   playerIframe = document.createElement('iframe')
-  playerIframe.src = '/player.html'
+  playerIframe.src = `/player.html?w=${resW}&h=${resH}`
   document.getElementById('player-mount')!.appendChild(playerIframe)
   await waitForMsg('playerReady')
   const all: Record<string, string> = {}
