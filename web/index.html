@@ -5,11 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>lub playground</title>
   <style>
-    body { margin: 0; display: grid; grid-template-columns: 1fr 1fr; height: 100vh;
+    /* fit the viewport with no page scrolling (100dvh handles the mobile
+       address bar; panes scroll internally, the page never does). */
+    html, body { height: 100vh; height: 100dvh; overflow: hidden; }
+    body { margin: 0; display: grid; grid-template-columns: 1fr 1fr;
            font-family: system-ui, sans-serif; background: #1d1f21; color: #ddd; }
-    #left, #right { display: flex; flex-direction: column; min-width: 0; }
-    #toolbar { padding: 6px 8px; background: #111; display: flex; gap: 8px; align-items: center; }
+    #left, #right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    #toolbar { padding: 6px 8px; background: #111; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     #toolbar select, #toolbar button { background: #222; color: #ddd; border: 1px solid #333; padding: 4px 8px; }
+    /* narrow screens (phones): stack vertically with the preview given more room. */
+    @media (max-width: 700px) {
+      body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr); }
+      #log { height: 90px; }
+    }
     #tabs { display: flex; background: #181a1c; padding: 4px 4px 0 4px; gap: 4px; flex-wrap: wrap; }
     .tab { padding: 4px 10px; background: #2a2d31; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 12px; }
     .tab.active { background: #3a3d41; }
