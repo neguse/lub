@@ -24,6 +24,33 @@
   </style>
 </head>
 <body>
+  <!-- Visible diagnostics: show JS errors and a WebGPU hint on the page itself
+       (a blank screen otherwise hides why nothing rendered, esp. on Safari). -->
+  <div id="fatal" style="display:none; position:fixed; top:0; left:0; right:0; z-index:9999;
+       max-height:50vh; background:#2a1414; color:#f99; font-family:monospace; font-size:13px;
+       padding:16px 20px; white-space:pre-wrap; overflow:auto; border-bottom:2px solid #f55;"></div>
+  <script>
+    (function () {
+      var box = document.getElementById('fatal')
+      function show(msg) {
+        if (!box) return
+        box.style.display = 'block'
+        box.textContent += msg + '\n'
+      }
+      window.addEventListener('error', function (e) {
+        show('JS error: ' + (e.message || e.error || e) +
+             (e.filename ? '  @ ' + e.filename + ':' + e.lineno : ''))
+      })
+      window.addEventListener('unhandledrejection', function (e) {
+        show('Promise rejection: ' + ((e.reason && e.reason.message) || e.reason))
+      })
+      if (!('gpu' in navigator)) {
+        show('WebGPU is not available in this browser.\n' +
+             'Use Chrome or Edge 137+, or Safari 18+ (Technology Preview may be needed).\n' +
+             'The editor below still loads; only the live preview needs WebGPU.')
+      }
+    })()
+  </script>
   <div id="left">
     <div id="toolbar">
       <select id="sample-select"></select>

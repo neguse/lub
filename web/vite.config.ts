@@ -7,6 +7,11 @@ export default defineConfig({
   server: { fs: { allow: ['..'] } },
   build: {
     outDir: 'dist',
+    // Keep the editor shell parseable on a wide range of browsers (Vite's
+    // default target can be newer than the user's Safari, which would make
+    // main.js fail to even build the sample dropdown). The player still needs
+    // WebGPU, but the shell + the "use a WebGPU browser" hint must load.
+    target: 'es2020',
     rollupOptions: {
       // Two HTML entries: the main editor shell (index.html) and the
       // iframe player (player.html). Vite processes both and emits a
