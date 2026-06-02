@@ -5,6 +5,12 @@ import { resolve, extname, sep } from "node:path";
 export default defineConfig({
   publicDir: "public",
   server: { fs: { allow: [".."] } },
+  // editor.ts が Compartment を @codemirror/state から直接 import するため、
+  // codemirror バンドルが内包する copy と二重ロードされると instanceof が壊れる
+  // ("Unrecognized extension value")。単一インスタンスに dedupe する。
+  resolve: {
+    dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language"],
+  },
   build: {
     outDir: "dist",
     // Keep the editor shell parseable on a wide range of browsers (Vite's

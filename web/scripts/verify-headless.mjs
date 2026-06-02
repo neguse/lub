@@ -9,8 +9,9 @@
 //   2. Shader edit. Patch the fragment colour literal in the .fs.slang tab,
 //      wait one debounce window + frame, assert the orange triangle is no
 //      longer orange-ish (we recolour it green-ish).
-//   3. Lua edit. Patch the `clear_color` in the .lua tab, wait, assert the
-//      background is no longer the dark blue clear.
+//   3. Haxe source edit. Patch the `clear_color` literal in the Triangle01.hx
+//      tab; the client-only wasm Haxe compiler regenerates the .lua and syncs
+//      it. Wait, assert the background is no longer the dark blue clear.
 //   4. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
 //      the pixel footprint of the drawn shape shrank.
 //   5. All-samples render sanity. For each sample 01..10 switch via the
@@ -226,39 +227,21 @@ try {
   failures++
 }
 
-// ===== Test A3: lua edit (clear_color) ====================================
-// Patch the .lua tab so clear_color is a bright red instead of dark blue.
+// ===== Test A3: Haxe source edit (clear_color) ============================
+// Playground は .hx を編集し、wasm Haxe コンパイラ(client-only)で .lua を
+// 生成して player に sync する。ここでは Triangle01.hx の clear_color リテラルを
+// 赤に書き換え、再コンパイル → hot-reload で背景が赤くなることを確認する。
 
-const redClearLua = `local lub_io = require("lub_io")
-local M = {}
-
-function M.onInit()
-    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
-end
-
-function M.onEvent(e) end
-function M.onQuit() end
-
-function M.onFrame()
-    local vs, vsv = lub_io.load_text("samples/01_triangle/data/01_triangle.vs.slang")
-    local fs, fsv = lub_io.load_text("samples/01_triangle/data/01_triangle.fs.slang")
-    local verts, vv = lub_io.load_floats("samples/01_triangle/data/01_triangle.verts.lua")
-    if not vs or not fs or not verts then return end
-    local s = use_shader("tri_shader", vs, fs, vsv ~ fsv)
-    local b = use_buffer("tri_verts", VERTEX, verts, vv)
-    begin_pass({ target = main_tex, clear_color = {0.9, 0.05, 0.05, 1} })
-        draw(3, { verts = b }, { shader = s, depth = false, cull = NONE })
-    end_pass()
-end
-
-return M
-`
+// NOTE: this script shadows the global `URL` with a string const above, so we
+// resolve the path via `path` (verify is run from web/, so .. is the repo root).
+const triangleHx = fs.readFileSync(path.resolve('..', 'samples', '01_triangle', 'Triangle01.hx'), 'utf8')
+const redClearHx = triangleHx.replace('[0.1, 0.1, 0.2, 1.0]', '[0.9, 0.05, 0.05, 1.0]')
 
 try {
-  await selectTabAndReplace('01_triangle/.lub/01_triangle.lua', redClearLua)
-  // The hot-reload of the entry .lua takes effect when app_frame_begin sees
-  // a new mtime; we wrote at "now", so the next frame should pick it up.
-  await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
+  if (redClearHx === triangleHx) throw new Error('clear_color literal not found in Triangle01.hx')
+  await selectTabAndReplace('Triangle01.hx', redClearHx)
+  // 300ms debounce + wasm Haxe 再コンパイル + .lua hot-reload。コンパイルは数百 ms。
+  await page.waitForTimeout(DEBOUNCE_WAIT_MS + 3000)
   const shot03 = await takeShot('03_lua_edit.png')
   const c3 = classify(shot03)
   console.log('[verify] A3 buckets', c3)

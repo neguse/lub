@@ -1,8 +1,12 @@
 import { attachEditor, setFiles, getFiles } from "./editor";
-import { SAMPLE_NAMES, loadSample } from "./samples";
+import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
+import { compileHaxe } from "./haxe-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
 let currentSample = "01_triangle";
+let mainClass = "";
+let entryKey = "";
+let lastLua: string | null = null;
 let syncTimer: number | null = null;
 
 const $sample = document.querySelector<HTMLSelectElement>("#sample-select")!;
@@ -59,9 +63,7 @@ $sample.addEventListener("change", async () => {
     }
   }
   currentSample = $sample.value;
-  const files = await loadSample(currentSample);
-  setFiles(files);
-  await restart();
+  await loadCompileRun(currentSample);
 });
 
 $restart.addEventListener("click", () => restart());
@@ -93,10 +95,103 @@ function anyDirty(): boolean {
   return false;
 }
 
-function syncDirtyNow() {
+function isHaxeSource(path: string): boolean {
+  return path.endsWith(".hx") || path.endsWith(".hxml");
+}
+
+/** エディタ上の .hx ソース一式を compileHaxe へ渡す形({ "Foo.hx": content })にする。 */
+function collectHaxeSources(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [p, f] of getFiles()) if (p.endsWith(".hx")) out[p] = f.content;
+  return out;
+}
+
+/** 現在の .hx を compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
+async function compileCurrent(): Promise<string | null> {
+  $status.textContent = "compiling…";
+  const res = await compileHaxe(collectHaxeSources(), mainClass);
+  if (!res.ok) {
+    addLog("Haxe compile error:", "err");
+    for (const line of res.stderr.split("\n"))
+      if (line.trim()) addLog(line, "err");
+    $status.textContent = "compile error";
+    return null;
+  }
+  $status.textContent = "compiled";
+  return res.lua;
+}
+
+/** サンプルをロード → compile → data file 解決 → エディタ反映 → player 起動。 */
+async function loadCompileRun(name: string) {
+  $status.textContent = `loading ${name}…`;
+  $log.innerHTML = "";
+  let src;
+  try {
+    src = await loadSampleSource(name);
+  } catch (e: any) {
+    addLog("failed to load sample: " + e.message, "err");
+    return;
+  }
+  mainClass = src.mainClass;
+  entryKey = src.entryKey;
+  // まず .hx/.hxml だけエディタに出してから compile(エラーでもソースは見える)。
+  setFiles(src.files);
+
+  const lua = await compileCurrent();
+  if (lua == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
+  lastLua = lua;
+
+  const dataFiles = await discoverDataFiles(name, lua);
+  // エディタ表示 = ソース(.hx/.hxml)+ data files。
+  const all = new Map(src.files);
+  for (const [k, v] of dataFiles) all.set(k, v);
+  setFiles(all);
+
+  await restart();
+}
+
+/** player iframe を作り直し、コンパイル済み Lua + data files を送る。 */
+async function restart() {
+  if (!entryKey) return;
+  if (lastLua == null) {
+    const lua = await compileCurrent();
+    if (lua == null) return;
+    lastLua = lua;
+  }
+  $status.textContent = "restarting…";
+  if (playerIframe) playerIframe.remove();
+  $log.innerHTML = "";
+  playerIframe = document.createElement("iframe");
+  playerIframe.src = `/player.html?w=${resW}&h=${resH}`;
+  document.getElementById("player-mount")!.appendChild(playerIframe);
+  await waitForMsg("playerReady");
+
+  const all: Record<string, string> = { [entryKey]: lastLua! };
+  for (const [p, f] of getFiles()) if (!isHaxeSource(p)) all[p] = f.content; // data files
+  playerIframe.contentWindow!.postMessage(
+    { type: "setFiles", files: all, entry: currentSample },
+    "*",
+  );
+  $status.textContent = `running ${currentSample}`;
+}
+
+/** debounce 後の同期: .hx 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
+async function syncDirtyNow() {
   if (!playerIframe?.contentWindow) return;
+  const dirty = [...getFiles()].filter(([, f]) => f.dirty);
+  if (dirty.length === 0) return;
+
+  const haxeDirty = dirty.some(([p]) => isHaxeSource(p));
   const files: Record<string, string> = {};
-  for (const [p, f] of getFiles()) if (f.dirty) files[p] = f.content;
+
+  if (haxeDirty) {
+    const lua = await compileCurrent();
+    if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
+    lastLua = lua;
+    files[entryKey] = lua;
+  }
+  for (const [p, f] of dirty) if (!isHaxeSource(p)) files[p] = f.content; // data files
+
   if (Object.keys(files).length === 0) return;
   playerIframe.contentWindow.postMessage({ type: "syncFiles", files }, "*");
   $status.textContent = `synced ${Object.keys(files).length} file(s)`;
@@ -109,23 +204,6 @@ function addLog(msg: string, level = "log") {
   $log.appendChild(line);
   $log.scrollTop = $log.scrollHeight;
   while ($log.children.length > 500) $log.removeChild($log.firstChild!);
-}
-
-async function restart() {
-  $status.textContent = "restarting...";
-  if (playerIframe) playerIframe.remove();
-  $log.innerHTML = "";
-  playerIframe = document.createElement("iframe");
-  playerIframe.src = `/player.html?w=${resW}&h=${resH}`;
-  document.getElementById("player-mount")!.appendChild(playerIframe);
-  await waitForMsg("playerReady");
-  const all: Record<string, string> = {};
-  for (const [p, f] of getFiles()) all[p] = f.content;
-  playerIframe.contentWindow!.postMessage(
-    { type: "setFiles", files: all, entry: currentSample },
-    "*",
-  );
-  $status.textContent = `running ${currentSample}`;
 }
 
 function waitForMsg(type: string): Promise<MessageEvent> {
@@ -141,11 +219,6 @@ function waitForMsg(type: string): Promise<MessageEvent> {
 }
 
 // boot
-loadSample(currentSample)
-  .then((files) => {
-    setFiles(files);
-    restart();
-  })
-  .catch((e) => {
-    addLog("failed to load initial sample: " + e.message, "err");
-  });
+loadCompileRun(currentSample).catch((e) => {
+  addLog("boot failed: " + (e?.message ?? String(e)), "err");
+});

@@ -1,4 +1,5 @@
 import type { EditorFile } from "./editor";
+import { parseMainClass } from "./haxe-compiler";
 
 export const SAMPLE_NAMES = [
   "00_hello",
@@ -50,37 +51,69 @@ const EXTRA_FILES: Record<string, string[]> = {
   ],
 };
 
+export type SampleSource = {
+  /** エディタに出す編集対象(.hx + .hxml)。data files は compile 後に追加する。 */
+  files: Map<string, EditorFile>;
+  /** -main のクラス名(compile と postlude の `return <Main>` に使う)。 */
+  mainClass: string;
+  /** 拡張子 .hx のソースファイル名一覧(compile に渡す)。 */
+  hxFiles: string[];
+  /** player に渡す entry(サンプル名)と lua のキー。 */
+  entryKey: string;
+};
+
+async function fetchText(url: string): Promise<string> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`fetch ${url} -> ${r.status}`);
+  return r.text();
+}
+
+/**
+ * `.hx`/`.hxml` ソースをロードする。各 playground サンプルは単一 `<MainClass>.hx`。
+ * data files(slang 等)は compile 後の Lua を scan して別途取得する(discoverDataFiles)。
+ */
+export async function loadSampleSource(name: string): Promise<SampleSource> {
+  const hxmlName = `${name}.hxml`;
+  const hxml = await fetchText(`/samples/${name}/${hxmlName}`);
+  const mainClass = parseMainClass(hxml);
+  if (!mainClass) throw new Error(`-main not found in ${hxmlName}`);
+  const hxName = `${mainClass}.hx`;
+  const hx = await fetchText(`/samples/${name}/${hxName}`);
+
+  const files = new Map<string, EditorFile>();
+  files.set(hxName, { content: hx, dirty: false, initial: hx });
+  files.set(hxmlName, { content: hxml, dirty: false, initial: hxml });
+  return {
+    files,
+    mainClass,
+    hxFiles: [hxName],
+    entryKey: `${name}/.lub/${name}.lua`,
+  };
+}
+
 function scanLuaReferences(src: string): string[] {
   const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g;
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) {
-    if (!out.includes(m[1])) out.push(m[1]);
-  }
+  while ((m = re.exec(src))) if (!out.includes(m[1])) out.push(m[1]);
   return out;
 }
 
-export async function loadSample(
+/**
+ * compile 済み Lua を scan して data files(slang 等)を取得する。
+ * 返り値のキーは player 側の `samples/` 相対(`<name>/data/...`)。
+ */
+export async function discoverDataFiles(
   name: string,
+  luaText: string,
 ): Promise<Map<string, EditorFile>> {
-  // Samples are authored in Haxe and transpiled to samples/<name>/.lub/<name>.lua;
-  // the C runtime resolves bare-name entries from there, so fetch the same.
-  const entryKey = `${name}/.lub/${name}.lua`;
-  const luaRes = await fetch("/samples/" + entryKey);
-  if (!luaRes.ok)
-    throw new Error(`fetch /samples/${entryKey} -> ${luaRes.status}`);
-  const luaText = await luaRes.text();
-  const files = new Map<string, EditorFile>();
-  files.set(entryKey, { content: luaText, dirty: false, initial: luaText });
-
   const refs = scanLuaReferences(luaText);
-  // EXTRA_FILES entries are relative to the sample dir (samples/<name>/).
   for (const extra of EXTRA_FILES[name] || []) {
     const full = `samples/${name}/${extra}`;
     if (!refs.includes(full)) refs.push(full);
   }
+  const files = new Map<string, EditorFile>();
   for (const ref of refs) {
-    // ref may start with "samples/" or be relative to the samples dir
     const fetchPath = ref.startsWith("samples/")
       ? "/" + ref
       : "/samples/" + ref;
@@ -94,7 +127,7 @@ export async function loadSample(
         files.set(storeKey, { content: t, dirty: false, initial: t });
       }
     } catch {
-      /* skip silently -- Lua will error at runtime if it actually reads this path */
+      /* skip: Lua errors at runtime if it actually reads this path */
     }
   }
   return files;

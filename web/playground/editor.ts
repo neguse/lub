@@ -1,7 +1,9 @@
 import { EditorView, basicSetup } from "codemirror";
 import { StreamLanguage } from "@codemirror/language";
+import { Compartment } from "@codemirror/state";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
 import { c as clike } from "@codemirror/legacy-modes/mode/clike";
+import { haxe } from "@codemirror/legacy-modes/mode/haxe";
 import { oneDark } from "@codemirror/theme-one-dark";
 
 export type EditorFile = { content: string; dirty: boolean; initial: string };
@@ -11,9 +13,14 @@ let files = new Map<string, EditorFile>();
 let activePath: string | null = null;
 let onChangeCb: ((path: string, content: string) => void) | null = null;
 
-// langFor is the picker for .slang vs .lua highlight modes.
-function langFor(path: string) {
-  if (path.endsWith(".slang")) return StreamLanguage.define(clike);
+// アクティブタブの拡張子に応じて言語を差し替えるための Compartment。
+const langComp = new Compartment();
+
+// langFor is the picker for .hx vs .slang vs .lua highlight modes.
+function langFor(path: string | null) {
+  if (path?.endsWith(".hx") || path?.endsWith(".hxml"))
+    return StreamLanguage.define(haxe);
+  if (path?.endsWith(".slang")) return StreamLanguage.define(clike);
   return StreamLanguage.define(lua);
 }
 
@@ -42,6 +49,7 @@ export function attachEditor(
     extensions: [
       basicSetup,
       oneDark,
+      langComp.of(langFor(activePath)),
       EditorView.theme({
         "&": { height: "100%" },
         ".cm-scroller": { overflow: "auto" },
@@ -92,6 +100,7 @@ export function setFiles(newFiles: Map<string, EditorFile>) {
     const f = files.get(activePath)!;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: f.content },
+      effects: langComp.reconfigure(langFor(activePath)),
     });
   }
 }
@@ -106,6 +115,7 @@ export function selectTab(path: string) {
   activePath = path;
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: f.content },
+    effects: langComp.reconfigure(langFor(path)),
   });
   rebuildTabs();
 }
