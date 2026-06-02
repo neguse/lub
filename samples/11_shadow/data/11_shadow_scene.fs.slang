@@ -25,7 +25,11 @@ float shadow_factor(float4 light_pos) {
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             float2 duv = uv + float2((float)x, (float)y) * texel;
-            float closest = unpack_depth(LUB_SAMPLE(shadow_map, duv).rgb);
+            // LUB_SAMPLE_LOD (explicit LOD 0) avoids implicit derivatives so the
+            // sample is legal under WebGPU's "textureSample must be in uniform
+            // control flow" rule (this runs inside shadow_factor's early-return +
+            // PCF loop). Shadow map has no mips, so LOD 0 is identical to Sample.
+            float closest = unpack_depth(LUB_SAMPLE_LOD(shadow_map, duv).rgb);
             lit += (ndc.z - bias <= closest) ? 1.0 : strength;
         }
     }
