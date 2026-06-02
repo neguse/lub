@@ -81,10 +81,18 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 Haxe で書いた sample を `.hxml` を entry にして直接実行できる。`.hx` 編集 → 保存で hot reload される。
 
 依存:
-- Haxe 4.3+ (`haxe --version` で確認)
+- **Haxe 5.0.0-preview.1**(`haxe --version` で確認)。web playground(client-only wasm
+  コンパイル)と native で版を揃える。`scripts/install-haxe5.sh` でローカル導入できる
+  (system の haxe を壊さない)。
 - 1 回だけ extern を haxelib に登録: `haxelib dev lub <repo>/haxe-lib/lub`
 
 ```sh
+# system の haxe が 5.0.0-preview.1 ならそのまま:
+./build/lub samples/01_triangle/01_triangle.hxml
+
+# 別バイナリ(例: scripts/install-haxe5.sh で入れた ~/haxe5)を使う場合:
+export LUB_HAXE="$HOME/haxe5/haxe"   # native player が spawn する haxe。
+                                     # HAXE_STD_PATH は隣の std/ から自動補完される。
 ./build/lub samples/01_triangle/01_triangle.hxml
 ```
 

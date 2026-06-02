@@ -12,6 +12,33 @@
 #define READY_TIMEOUT_MS 1500
 #define READY_POLL_MS 50
 
+const char *haxe_bin(void) {
+  const char *h = SDL_getenv("LUB_HAXE");
+  return (h && h[0]) ? h : "haxe";
+}
+
+// `LUB_HAXE` 指定時、HAXE_STD_PATH が未設定なら <dirname(LUB_HAXE)>/std
+// を補完する。 公式 tarball の haxe バイナリは std を自動検出せず HAXE_STD_PATH
+// を要求するため (system haxe は通常パッケージが std パスを解決済み)。--wait
+// サーバが継承して使う。
+static void ensure_haxe_std_path(void) {
+  const char *lub_haxe = SDL_getenv("LUB_HAXE");
+  if (!lub_haxe || !lub_haxe[0])
+    return;
+  if (SDL_getenv("HAXE_STD_PATH"))
+    return;
+  const char *slash = SDL_strrchr(lub_haxe, '/');
+  if (!slash)
+    return; // PATH 解決される名前のみ: std 位置を推定できないので何もしない
+  size_t dirlen = (size_t)(slash - lub_haxe);
+  char std_path[1024];
+  if (dirlen + 5 >= sizeof(std_path))
+    return;
+  SDL_memcpy(std_path, lub_haxe, dirlen);
+  SDL_snprintf(std_path + dirlen, sizeof(std_path) - dirlen, "/std");
+  setenv("HAXE_STD_PATH", std_path, 0); // overwrite=0: 既存があれば尊重
+}
+
 static void drain_stdio(SDL_Process *p) {
   // pipe を放置すると buffer が埋まって子が block しうるので、捨て読みする。
   // stdout / stderr 両方ノンブロッキングなので available 分だけ読めば良い。
@@ -27,7 +54,7 @@ static void drain_stdio(SDL_Process *p) {
 static bool try_spawn_one(HaxeServer *s, int port) {
   char port_str[16];
   SDL_snprintf(port_str, sizeof(port_str), "%d", port);
-  const char *argv[] = {"haxe", "--wait", port_str, NULL};
+  const char *argv[] = {haxe_bin(), "--wait", port_str, NULL};
 
   SDL_PropertiesID props = SDL_CreateProperties();
   if (props == 0) {
@@ -76,6 +103,7 @@ bool haxe_server_start(HaxeServer *s) {
   if (!s)
     return false;
   SDL_zero(*s);
+  ensure_haxe_std_path();
   const char *env = SDL_getenv("LUB_HAXE_PORT");
   if (env && env[0]) {
     int p = atoi(env);

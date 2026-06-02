@@ -11,6 +11,11 @@ typedef struct HaxeServer {
   bool ready;         // listening を確認済みなら true
 } HaxeServer;
 
+// コンパイルに使う haxe バイナリのパス。`LUB_HAXE` env var があればそれを、
+// 無ければ PATH 上の "haxe"。system の haxe を壊さず Haxe 5
+// 等へ切り替えるため。
+const char *haxe_bin(void);
+
 // 起動。`LUB_HAXE_PORT` env var があればそれを 1 回だけ試す。
 // 無ければ 7400 から 7410 まで probe。成功時 true。
 bool haxe_server_start(HaxeServer *s);

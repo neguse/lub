@@ -263,8 +263,8 @@ HaxeBuildResult haxe_build_run(const HaxeServer *server, const char *hxml_path,
   char port_str[16];
   SDL_snprintf(port_str, sizeof(port_str), "%d", server->port);
 
-  const char *argv[] = {"haxe",  "--connect", port_str, hxml_path,
-                        "--lua", raw_tmp,     NULL};
+  const char *argv[] = {haxe_bin(), "--connect", port_str, hxml_path,
+                        "--lua",    raw_tmp,     NULL};
 
   SDL_PropertiesID props = SDL_CreateProperties();
   if (props == 0) {
