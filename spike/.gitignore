@@ -1,0 +1,10 @@
+# spike の重いビルド成果物は commit しない。
+# 残すのは scripts/・harness/・README.md と、軽量な計測結果のみ。
+build/
+dist/
+*.wasm
+*.bc
+*.log
+node_modules/
+# browser harness が pack_fs.mjs で生成する VFS バンドル(std+externs+sample, ~8MB)
+harness/browser/fs-bundle.json

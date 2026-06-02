@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Haxe WASM browser harness</title>
+</head>
+<body>
+  <pre id="log">booting…</pre>
+  <!-- node-shim は haxe.js より前に評価する必要がある(process/require を定義) -->
+  <script src="node-shim.js"></script>
+  <script>
+    const logEl = document.getElementById("log");
+    const log = (m) => { logEl.textContent += "\n" + m; };
+    globalThis.__HARNESS = { phase: "boot", error: null };
+
+    window.addEventListener("error", (e) => {
+      globalThis.__HARNESS.error = String(e.message || e.error);
+      log("window error: " + globalThis.__HARNESS.error);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      globalThis.__HARNESS.error = "unhandledrejection: " + String(e.reason && (e.reason.stack || e.reason.message || e.reason));
+      log(globalThis.__HARNESS.error);
+    });
+
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const u = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      return u;
+    }
+
+    (async () => {
+      try {
+        const params = new URLSearchParams(location.search);
+        const wasmName = params.get("wasm"); // 例: code-f47c....wasm
+        if (!wasmName) throw new Error("missing ?wasm= param");
+
+        globalThis.__HARNESS.phase = "fetch-bundle";
+        log("fetching fs-bundle.json …");
+        const bundle = await (await fetch("fs-bundle.json")).json();
+        let n = 0;
+        for (const [path, b64] of Object.entries(bundle.files)) {
+          globalThis.__VFS.addFile(path, b64ToBytes(b64));
+          n++;
+        }
+        log("VFS files loaded: " + n);
+
+        globalThis.__HARNESS.phase = "fetch-wasm";
+        log("fetching wasm " + wasmName + " …");
+        const wbuf = new Uint8Array(await (await fetch("haxe.assets/" + wasmName)).arrayBuffer());
+        globalThis.__VFS.addFile("/haxe.assets/" + wasmName, wbuf);
+        log("wasm bytes: " + wbuf.length);
+
+        globalThis.__VFS.addDir("/work");
+        globalThis.__VFS.addDir("/tmp");
+        // cwd は std サブディレクトリを持たない /work にする。"/" のままだと std を /std に
+        // マウントした結果 `std/Date.hx` が cwd 相対で見つかり、Haxe の `std.Date`(lua/Boot.hx 等)
+        // が実 std ファイルへ誤解決して "package; should be package std" になる(native では
+        // cwd に std/ が無いため起きない)。
+        process.chdir("/work");
+
+        // 実 compile 引数(iter.sh と同一): -cp /lub -cp /sample -main Hello00 --lua /work/out.lua
+        process.argv = ["node", "/haxe.js", "-cp", "/lub", "-cp", "/sample", "-main", "Hello00", "--lua", "/work/out.lua"];
+        process.env.HAXE_STD_PATH = "/std";
+        require.main.filename = "/haxe.js";
+
+        globalThis.__HARNESS.phase = "run";
+        log("loading haxe.js (compile starts) …");
+        const s = document.createElement("script");
+        s.src = "haxe.js";
+        s.onerror = () => { globalThis.__HARNESS.error = "failed to load haxe.js"; };
+        document.body.appendChild(s);
+
+        // 完了は process.exit / 正常終了の両方を見る。out.lua が書かれていれば成功とみなす fallback も。
+        const start = Date.now();
+        const tick = () => {
+          if (globalThis.__HAXE_DONE) { globalThis.__HARNESS.phase = "done"; log("DONE code=" + globalThis.__HAXE_DONE.code + " outLen=" + globalThis.__HAXE_DONE.outLen); return; }
+          if (globalThis.__VFS.files.has("/work/out.lua") && Date.now() - start > 300) {
+            // exit が呼ばれずに終わった場合の fallback
+            globalThis.__recordHaxeDone(0);
+            globalThis.__HARNESS.phase = "done";
+            log("DONE (fallback) outLen=" + globalThis.__HAXE_DONE.outLen);
+            return;
+          }
+          if (Date.now() - start > 120000) { globalThis.__HARNESS.error = globalThis.__HARNESS.error || "timeout"; return; }
+          setTimeout(tick, 50);
+        };
+        setTimeout(tick, 50);
+      } catch (e) {
+        globalThis.__HARNESS.error = String(e && (e.stack || e.message || e));
+        log("setup error: " + globalThis.__HARNESS.error);
+      }
+    })();
+  </script>
+</body>
+</html>

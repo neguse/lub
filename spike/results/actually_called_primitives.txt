@@ -1,0 +1,17 @@
+# 00_hello --lua compile 中に wasm Haxe が実際に呼んだ C primitive(2回のトレースの和)
+# 群: threads-init / ctypes整数(luv→ctypes→integers) / SHA1。
+# これ以外(luv本体/unix net/mbedtls/dynlink/process)は一切呼ばれない。
+caml_thread_initialize
+integers_unsigned_init
+integers_size_t_size
+integers_uint32_max
+integers_uint32_of_int
+integers_uint32_of_int32
+integers_uint32_of_string
+integers_uint64_max
+integers_uint64_of_int
+integers_uint64_of_int64
+integers_uint64_of_string
+stub_sha1_init
+stub_sha1_update
+stub_sha1_finalize
