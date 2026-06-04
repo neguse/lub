@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #define SGL_MAX_ATTRS 8
+#define SGL_MAX_VERTEX_BUFFERS 2
 #define SGL_MAX_UB_MEMBERS 32
 #define SGL_MAX_TEXTURES 8
 #define SGL_MAX_UNIFORM_BLOCKS 2
@@ -17,6 +18,7 @@ typedef struct ShaderAttr {
   char name[32];
   int slot;          // input location
   int comp_count;    // 1..4
+  int buffer_index;  // vertex-buffer slot; 0 = per-vertex, 1 = per-instance
   int offset_floats; // within the vertex stride
 } ShaderAttr;
 
@@ -49,10 +51,13 @@ typedef struct ShaderStorageBuf {
 typedef struct ShaderReflection {
   int attr_count;
   ShaderAttr attrs[SGL_MAX_ATTRS];
+  int buffer_count;
+  int buffer_stride_floats[SGL_MAX_VERTEX_BUFFERS];
   int ub_count;
   ShaderUniformBlock ubs[SGL_MAX_UNIFORM_BLOCKS];
   int tex_count;
   ShaderTexture texs[SGL_MAX_TEXTURES];
+  // Back-compat alias for buffer_stride_floats[0].
   int vertex_stride_floats;
   // Compute-only reflection. is_compute=true for compute shaders compiled via
   // shader_compile_compute; ubs/texs/storage_bufs may still be populated for

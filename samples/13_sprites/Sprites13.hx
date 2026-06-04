@@ -15,6 +15,14 @@ class BenchSprite13 {
 	public var timeLeft:Float;
 	public var r:Float;
 	public var dr:Float;
+	public var cr:Float;
+	public var sr:Float;
+	public var stepCr:Float;
+	public var stepSr:Float;
+	public var tintS:Float;
+	public var tintC:Float;
+	public var tintStepS:Float;
+	public var tintStepC:Float;
 	public var scale:Float;
 	public var kind:Int;
 
@@ -25,6 +33,17 @@ class BenchSprite13 {
 		this.timeLeft = timeInit;
 		this.r = r;
 		this.dr = dr;
+		this.cr = Math.cos(r);
+		this.sr = Math.sin(r);
+		var step = dr / 60.0;
+		this.stepCr = Math.cos(step);
+		this.stepSr = Math.sin(step);
+		var phase = r * 3.0;
+		this.tintS = Math.sin(phase);
+		this.tintC = Math.cos(phase);
+		var tintStep = step * 3.0;
+		this.tintStepS = Math.sin(tintStep);
+		this.tintStepC = Math.cos(tintStep);
 		this.scale = scale;
 		this.kind = kind;
 	}
@@ -32,6 +51,12 @@ class BenchSprite13 {
 	public function update(dt:Float) {
 		r = r + dt * dr;
 		timeLeft = timeLeft - dt;
+		var nextCr = cr * stepCr - sr * stepSr;
+		sr = cr * stepSr + sr * stepCr;
+		cr = nextCr;
+		var nextTintS = tintS * tintStepC + tintC * tintStepS;
+		tintC = tintC * tintStepC - tintS * tintStepS;
+		tintS = nextTintS;
 	}
 
 	public inline function dead():Bool {
@@ -46,6 +71,7 @@ class Sprites13 {
 	static inline var TEX_W:Int = 80;
 	static inline var TEX_H:Int = 16;
 	static inline var CELL:Int = 16;
+	static inline var SQRT3_HALF:Float = 0.8660254037844386;
 
 	static var sprites:Array<BenchSprite13> = [];
 	static var batch:SpriteBatch = null;
@@ -59,6 +85,7 @@ class Sprites13 {
 	static var burst:Int = 1;
 	static var scoreFrame:Int = 0;
 	static var scorePrinted:Bool = false;
+	static var useInstancing:Bool = true;
 
 	static var spriteRects:Array<Rect> = [
 		{x: 0, y: 0, w: CELL, h: CELL},
@@ -80,10 +107,11 @@ class Sprites13 {
 		maxSprites = envInt("LUB_SPRITE_MAX", 200000);
 		burst = envInt("LUB_SPRITE_BURST", 1);
 		scoreFrame = envInt("LUB_SPRITE_SCORE_FRAME", 0);
+		useInstancing = envBool("LUB_SPRITE_INSTANCED", true);
 		if (burst < 1)
 			burst = 1;
 
-		batch = new SpriteBatch(W, H, "sprites13_shader", "sprites13_batch");
+		batch = new SpriteBatch(W, H, "sprites13_shader", "sprites13_batch", useInstancing);
 		atlas = Atlas.fromPixels("sprites13_atlas", TEX_W, TEX_H, buildAtlas(), 1, {filter: Gfx.LINEAR, wrap: Gfx.CLAMP});
 		meter = new FpsMeter(targetFps);
 	}
@@ -104,6 +132,13 @@ class Sprites13 {
 		return v == null ? fallback : v;
 	}
 
+	static function envBool(name:String, fallback:Bool):Bool {
+		var s = lua.Os.getenv(name);
+		if (s == null)
+			return fallback;
+		return s != "0" && s != "false" && s != "FALSE";
+	}
+
 	static function rand01():Float {
 		rng = rng * 1664525.0 + 1013904223.0;
 		rng = rng - Math.floor(rng / 4294967296.0) * 4294967296.0;
@@ -119,13 +154,15 @@ class Sprites13 {
 	static function updateSprites(fps:Float) {
 		tick = tick + 1;
 
-		var live:Array<BenchSprite13> = [];
+		var write = 0;
 		for (s in sprites) {
 			s.update(DT);
-			if (!s.dead())
-				live.push(s);
+			if (!s.dead()) {
+				sprites[write] = s;
+				write = write + 1;
+			}
 		}
-		sprites = live;
+		sprites.resize(write);
 
 		var spawn = false;
 		if (sprites.length < maxSprites) {
@@ -182,15 +219,6 @@ class Sprites13 {
 		return px;
 	}
 
-	static function tint(phase:Float, alpha:Float):Color {
-		return {
-			r: 0.58 + 0.42 * Math.sin(phase),
-			g: 0.58 + 0.42 * Math.sin(phase + 2.09439510239),
-			b: 0.58 + 0.42 * Math.sin(phase + 4.18879020479),
-			a: alpha
-		};
-	}
-
 	static function drawSprites() {
 		for (s in sprites) {
 			var age = (s.timeInit - s.timeLeft) / s.timeInit;
@@ -199,7 +227,12 @@ class Sprites13 {
 				continue;
 			var size = pulse * s.scale;
 			var a = pulse < 0.18 ? pulse / 0.18 : 1.0;
-			batch.sprite(atlas, spriteRects[s.kind], s.x * W, s.y * H, size, size, s.r, tint(s.r * 3.0, a));
+			var ts = s.tintS;
+			var tc = s.tintC;
+			var red = 0.58 + 0.42 * ts;
+			var green = 0.58 + 0.42 * (-0.5 * ts + SQRT3_HALF * tc);
+			var blue = 0.58 + 0.42 * (-0.5 * ts - SQRT3_HALF * tc);
+			batch.spriteColor(atlas, spriteRects[s.kind], s.x * W, s.y * H, size, size, s.cr, s.sr, red, green, blue, a);
 		}
 	}
 
@@ -260,7 +293,7 @@ class Sprites13 {
 			return;
 		scorePrinted = true;
 		Lua.print("SPRITES13_SCORE frame=" + tick + " sprites=" + sprites.length + " fps=" + fpsText(fps) + " target=" + fpsText(targetFps)
-			+ " time_multiply=" + fpsText(timeMultiply) + " burst=" + burst);
+			+ " time_multiply=" + fpsText(timeMultiply) + " burst=" + burst + " instanced=" + useInstancing);
 		Lub.quit();
 	}
 

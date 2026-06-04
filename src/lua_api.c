@@ -62,6 +62,39 @@ static void push_buffer_ref(lua_State *L, const char *key) {
   lua_setfield(L, -2, "key");
 }
 
+static int numeric_table_len(lua_State *L, int idx, bool *zero_based) {
+  if (idx < 0)
+    idx = lua_gettop(L) + idx + 1;
+  if (zero_based)
+    *zero_based = false;
+
+  // Haxe's Lua backend represents Array as a 0-based table with a numeric
+  // `length` field. Accept that shape directly so hot paths don't need to
+  // copy into a temporary 1-based lua.Table.
+  lua_getfield(L, idx, "length");
+  if (lua_isinteger(L, -1)) {
+    lua_Integer n = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    if (n >= 0) {
+      if (zero_based)
+        *zero_based = true;
+      return (int)n;
+    }
+  } else if (lua_isnumber(L, -1)) {
+    lua_Number n = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    if (n >= 0) {
+      if (zero_based)
+        *zero_based = true;
+      return (int)n;
+    }
+  } else {
+    lua_pop(L, 1);
+  }
+
+  return (int)lua_rawlen(L, idx);
+}
+
 // Helper: push a ShaderRef sentinel table { __lub_kind = "shader", key = key }
 static void push_shader_ref(lua_State *L, const char *key) {
   lua_newtable(L);
@@ -344,14 +377,15 @@ static int l_use_buffer(lua_State *L) {
     new_bytes = (size_t)n * sizeof(float);
   } else if (type == SGL_BUFFER_INDEX) {
     luaL_checktype(L, 3, LUA_TTABLE);
-    int n = (int)lua_rawlen(L, 3);
+    bool zero_based = false;
+    int n = numeric_table_len(L, 3, &zero_based);
     if (n <= 0)
       return luaL_error(L, "use_buffer: empty data");
     uint32_t *idx = (uint32_t *)malloc((size_t)n * sizeof(uint32_t));
     if (!idx)
       return luaL_error(L, "use_buffer: out of memory");
     for (int i = 0; i < n; ++i) {
-      lua_rawgeti(L, 3, i + 1);
+      lua_rawgeti(L, 3, zero_based ? i : i + 1);
       idx[i] = (uint32_t)lua_tonumber(L, -1);
       lua_pop(L, 1);
     }
@@ -360,14 +394,15 @@ static int l_use_buffer(lua_State *L) {
   } else {
     // VERTEX / STORAGE with data
     luaL_checktype(L, 3, LUA_TTABLE);
-    int n = (int)lua_rawlen(L, 3);
+    bool zero_based = false;
+    int n = numeric_table_len(L, 3, &zero_based);
     if (n <= 0)
       return luaL_error(L, "use_buffer: empty data");
     float *fdata = (float *)malloc((size_t)n * sizeof(float));
     if (!fdata)
       return luaL_error(L, "use_buffer: out of memory");
     for (int i = 0; i < n; ++i) {
-      lua_rawgeti(L, 3, i + 1);
+      lua_rawgeti(L, 3, zero_based ? i : i + 1);
       fdata[i] = (float)lua_tonumber(L, -1);
       lua_pop(L, 1);
     }
@@ -841,6 +876,7 @@ static int l_draw(lua_State *L) {
   int prim = SGL_PRIM_TRIANGLES;
   bool depth_test = true;
   bool depth_write = true;
+  int instance_count = 1;
 
   lua_getfield(L, 3, "blend");
   if (lua_isinteger(L, -1))
@@ -862,6 +898,12 @@ static int l_draw(lua_State *L) {
   if (!lua_isnoneornil(L, -1))
     depth_write = lua_toboolean(L, -1);
   lua_pop(L, 1);
+  lua_getfield(L, 3, "instance_count");
+  if (lua_isinteger(L, -1))
+    instance_count = (int)lua_tointeger(L, -1);
+  lua_pop(L, 1);
+  if (instance_count <= 0)
+    return 0;
 
   // bindings: walk resources table FIRST so we know whether the draw is
   // indexed (bind.ibuf != 0) before picking a pipeline.
@@ -897,6 +939,11 @@ static int l_draw(lua_State *L) {
                   (int)be->u.buf.type);
             }
             bind.ibuf = be->u.buf.h;
+          } else if (res_name && strcmp(res_name, "instances") == 0) {
+            if (be->u.buf.type == SGL_BUFFER_VERTEX ||
+                be->u.buf.type == SGL_BUFFER_STORAGE) {
+              bind.instance_vbuf = be->u.buf.h;
+            }
           } else if (be->u.buf.type == SGL_BUFFER_VERTEX ||
                      be->u.buf.type == SGL_BUFFER_STORAGE) {
             // STORAGE buffers can also serve as a vertex source — they
@@ -975,7 +1022,7 @@ static int l_draw(lua_State *L) {
   }
   lua_pop(L, 1); // pop "uniforms" field (or nil)
 
-  g_backend->draw(0, count);
+  g_backend->draw(0, count, instance_count);
   return 0;
 }
 

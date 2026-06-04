@@ -1075,6 +1075,9 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
 
   if (d->refl) {
     for (int i = 0; i < d->refl->attr_count; ++i) {
+      int buffer_index = d->refl->attrs[i].buffer_index;
+      if (buffer_index < 0 || buffer_index >= SGL_MAX_VERTEX_BUFFERS)
+        buffer_index = 0;
       sg_vertex_format fmt;
       switch (d->refl->attrs[i].comp_count) {
       case 1:
@@ -1093,13 +1096,23 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
         fmt = SG_VERTEXFORMAT_FLOAT3;
       }
       desc.layout.attrs[d->refl->attrs[i].slot] = (sg_vertex_attr_state){
-          .buffer_index = 0,
+          .buffer_index = buffer_index,
           .offset = d->refl->attrs[i].offset_floats * (int)sizeof(float),
           .format = fmt,
       };
     }
-    desc.layout.buffers[0].stride =
-        d->refl->vertex_stride_floats * (int)sizeof(float);
+    int buffer_count = d->refl->buffer_count;
+    if (buffer_count <= 0 && d->refl->attr_count > 0)
+      buffer_count = 1;
+    if (buffer_count > SGL_MAX_VERTEX_BUFFERS)
+      buffer_count = SGL_MAX_VERTEX_BUFFERS;
+    for (int i = 0; i < buffer_count; ++i) {
+      desc.layout.buffers[i].stride =
+          d->refl->buffer_stride_floats[i] * (int)sizeof(float);
+      desc.layout.buffers[i].step_func =
+          (i == 0) ? SG_VERTEXSTEP_PER_VERTEX : SG_VERTEXSTEP_PER_INSTANCE;
+      desc.layout.buffers[i].step_rate = 1;
+    }
   }
 
   desc.index_type = d->is_indexed ? SG_INDEXTYPE_UINT32 : SG_INDEXTYPE_NONE;
@@ -1214,6 +1227,10 @@ static void sk_apply_bindings(const BindingsDesc *b) {
     SkBuffer *vb = (SkBuffer *)b->vbuf;
     sb.vertex_buffers[0] = vb->buf;
   }
+  if (b->instance_vbuf) {
+    SkBuffer *vb = (SkBuffer *)b->instance_vbuf;
+    sb.vertex_buffers[1] = vb->buf;
+  }
   if (b->ibuf) {
     SkBuffer *ib = (SkBuffer *)b->ibuf;
     sb.index_buffer = ib->buf;
@@ -1246,7 +1263,9 @@ static void sk_apply_uniforms(int ub_slot, const void *data, size_t bytes) {
   sg_apply_uniforms(ub_slot, &(sg_range){.ptr = data, .size = bytes});
 }
 
-static void sk_draw(int base, int count) { sg_draw(base, count, 1); }
+static void sk_draw(int base, int count, int instance_count) {
+  sg_draw(base, count, instance_count > 0 ? instance_count : 1);
+}
 
 static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
   (void)app;

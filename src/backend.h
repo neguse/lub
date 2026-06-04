@@ -81,6 +81,7 @@ typedef struct BindingsDesc {
   const ShaderReflection
       *refl; // for resolving texture name -> slot. NULL = skip texture binding.
   BackendBuffer vbuf; // 0 = none
+  BackendBuffer instance_vbuf; // 0 = none; slot 1, per-instance attributes
   BackendBuffer ibuf; // 0 = none (non-indexed); non-0 = u32 index buffer
   int texture_count;
   struct {
@@ -136,7 +137,7 @@ typedef struct RenderBackend {
   void (*apply_pipeline)(BackendPipeline);
   void (*apply_bindings)(const BindingsDesc *);
   void (*apply_uniforms)(int ub_slot, const void *data, size_t bytes);
-  void (*draw)(int base, int count);
+  void (*draw)(int base, int count, int instance_count);
 
   // Compute dispatch (outside any render pass). The backend opens its own
   // compute pass internally; the call must not be made between begin_pass

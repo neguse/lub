@@ -144,13 +144,15 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
                                  size_t errsz) {
   out->attr_count = 0;
   out->vertex_stride_floats = 0;
+  out->buffer_count = 0;
+  memset(out->buffer_stride_floats, 0, sizeof(out->buffer_stride_floats));
   if (!ep) {
     if (err && errsz)
       snprintf(err, errsz, "no vertex entry point reflection");
     return false;
   }
   unsigned pcount = ep->getParameterCount();
-  int offset = 0;
+  int input_buffer = 0;
   for (unsigned i = 0; i < pcount; ++i) {
     VariableLayoutReflection *p = ep->getParameterByIndex(i);
     if (!p)
@@ -165,6 +167,14 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
     // Two cases:
     //  (a) parameter is a struct: iterate its fields as varying inputs.
     //  (b) parameter is a vector/scalar: it's a single varying input.
+    if (input_buffer >= SGL_MAX_VERTEX_BUFFERS) {
+      if (err && errsz)
+        snprintf(err, errsz, "too many vertex input buffers (>%d)",
+                 SGL_MAX_VERTEX_BUFFERS);
+      return false;
+    }
+    const int buffer_index = input_buffer;
+    bool recorded_any = false;
     auto record_one = [&](const char *name, TypeReflection *vt) -> bool {
       if (out->attr_count >= SGL_MAX_ATTRS) {
         if (err && errsz)
@@ -178,9 +188,11 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
       a->comp_count = component_count_of(vt);
       if (a->comp_count <= 0)
         a->comp_count = 4;
-      a->offset_floats = offset;
-      offset += a->comp_count;
+      a->buffer_index = buffer_index;
+      a->offset_floats = out->buffer_stride_floats[buffer_index];
+      out->buffer_stride_floats[buffer_index] += a->comp_count;
       out->attr_count++;
+      recorded_any = true;
       return true;
     };
 
@@ -198,8 +210,12 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
       if (!record_one(p->getName() ? p->getName() : "attr", t))
         return false;
     }
+    if (recorded_any) {
+      input_buffer++;
+      out->buffer_count = input_buffer;
+    }
   }
-  out->vertex_stride_floats = offset;
+  out->vertex_stride_floats = out->buffer_stride_floats[0];
   return true;
 }
 
@@ -1169,8 +1185,10 @@ int comp_count_of_type_json(const json &t) {
 
 // Record a single varying-input field. Fields appear inside a struct's
 // "fields" array, each with its own binding.{index, kind} and type.
-void record_attr_field(const json &f, ShaderReflection *out) {
+void record_attr_field(const json &f, ShaderReflection *out, int buffer_index) {
   if (out->attr_count >= SGL_MAX_ATTRS)
+    return;
+  if (buffer_index < 0 || buffer_index >= SGL_MAX_VERTEX_BUFFERS)
     return;
   std::string name = f.value("name", std::string("attr"));
   int idx = -1;
@@ -1188,8 +1206,12 @@ void record_attr_field(const json &f, ShaderReflection *out) {
   copy_name_capped(a->name, sizeof(a->name), name);
   a->slot = (idx >= 0) ? idx : out->attr_count;
   a->comp_count = cc;
-  a->offset_floats = out->vertex_stride_floats;
-  out->vertex_stride_floats += cc;
+  a->buffer_index = buffer_index;
+  a->offset_floats = out->buffer_stride_floats[buffer_index];
+  out->buffer_stride_floats[buffer_index] += cc;
+  if (out->buffer_count < buffer_index + 1)
+    out->buffer_count = buffer_index + 1;
+  out->vertex_stride_floats = out->buffer_stride_floats[0];
   out->attr_count++;
 }
 
@@ -1384,6 +1406,7 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
         continue;
       if (!ep.contains("parameters") || !ep["parameters"].is_array())
         continue;
+      int input_buffer = 0;
       for (const auto &p : ep["parameters"]) {
         if (!p.is_object())
           continue;
@@ -1393,6 +1416,8 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
         }
         if (bkind != "varyingInput")
           continue;
+        if (input_buffer >= SGL_MAX_VERTEX_BUFFERS)
+          continue;
         // Two cases mirror the native path's fill_attrs_from_entry_point:
         //   (a) struct => flatten its fields[]
         //   (b) scalar/vector => single attr
@@ -1400,14 +1425,19 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
           continue;
         const json &t = p["type"];
         std::string tkind = t.value("kind", std::string(""));
+        bool recorded_any = false;
+        int before_count = out->attr_count;
         if (tkind == "struct" && t.contains("fields") &&
             t["fields"].is_array()) {
           for (const auto &f : t["fields"]) {
-            record_attr_field(f, out);
+            record_attr_field(f, out, input_buffer);
           }
         } else {
-          record_attr_field(p, out);
+          record_attr_field(p, out, input_buffer);
         }
+        recorded_any = out->attr_count > before_count;
+        if (recorded_any)
+          input_buffer++;
       }
     }
   }
