@@ -21,6 +21,7 @@ bool app_init(App *app) {
   }
   pass_state_init(&app->pass);
   pass_state_set_app(&app->pass, app);
+  profile_state_init(&app->profile);
   res_table_init(&app->res);
   pipeline_cache_init(&app->pip_cache);
   capture_state_init(&app->capture);
@@ -31,6 +32,9 @@ bool app_init(App *app) {
   app->cfg_w = 0;
   app->cfg_h = 0;
   app->quit_requested = false;
+  app->actual_fps = 0.0;
+  app->fps_last_ns = 0;
+  app->fps_frame_count = 0;
   app->phase = APP_PHASE_PRE_BACKEND;
   strcpy(app->backend_name, "sokol");
   return true;
@@ -98,6 +102,20 @@ static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
 
 void app_frame_end(App *app) {
   g_backend->end_frame(app);
+  uint64_t now_ns = SDL_GetTicksNS();
+  if (app->fps_last_ns == 0) {
+    app->fps_last_ns = now_ns;
+    app->fps_frame_count = 0;
+  } else {
+    app->fps_frame_count++;
+    uint64_t elapsed_ns = now_ns - app->fps_last_ns;
+    if (elapsed_ns >= 1000000000ULL) {
+      app->actual_fps =
+          (double)app->fps_frame_count * 1000000000.0 / (double)elapsed_ns;
+      app->fps_last_ns = now_ns;
+      app->fps_frame_count = 0;
+    }
+  }
   if (capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }

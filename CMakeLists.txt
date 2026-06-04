@@ -45,6 +45,7 @@ file(GLOB LUA_SRC CONFIGURE_DEPENDS ${lua_SOURCE_DIR}/src/*.c)
 list(REMOVE_ITEM LUA_SRC
   ${lua_SOURCE_DIR}/src/lua.c
   ${lua_SOURCE_DIR}/src/luac.c
+  ${lua_SOURCE_DIR}/src/onelua.c
 )
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR}/src)
@@ -113,6 +114,7 @@ set(LUB_SOURCES
   src/lua_api.c
   src/enums_lua.c
   src/pass.c
+  src/profile.c
   src/resources.c
   src/shader.cpp
   src/pipeline.c

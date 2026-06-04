@@ -17,6 +17,7 @@ runtime は C/C++ と既存ライブラリで組み、Lua を通して API を�
 
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
 - [docs/roadmap.md](docs/roadmap.md): API を固めるための実装順序。
+- [docs/profile.md](docs/profile.md): Release 計測と汎用 CPU profiler。
 
 ## ビルド
 
@@ -46,6 +47,20 @@ $env:VULKAN_SDK = "C:\VulkanSDK\1.4.341.1"  # winget でインストールされ
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
+
+Windows Release build は手順を固定するため、通常は script 経由で行う:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
+```
+
+Linux Release build も同じく script 経由:
+
+```sh
+bash scripts/build-release.sh
+```
+
+詳細は [docs/release-build.md](docs/release-build.md) を参照。
 
 CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.exe`
 の横にコピーされるので、追加の PATH 設定なしで実行できる。
@@ -140,6 +155,21 @@ scripts/run-headless.sh samples/01_triangle/01_triangle.hxml
 これにより CI / SSH / コンテナ環境でも native sample を走らせられる
 (Mesa lavapipe / AMD radv 双方で動作)。
 Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
+
+### Sprite benchmark (Release)
+
+`rsushi` 風のスプライト数ベンチは、Release build と実行を毎回組み立てず
+固定スクリプト経由で走らせる:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1
+```
+
+```sh
+bash scripts/run-sprites-bench.sh
+```
+
+score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/sprites-bench.md) を参照。
 
 スクリーンショット capture (PNG 出力):
 

@@ -1,0 +1,3 @@
+-cp samples/13_sprites
+-lib lub
+-main Sprites13

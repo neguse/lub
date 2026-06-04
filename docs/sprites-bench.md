@@ -1,0 +1,74 @@
+# Sprite Benchmark
+
+Use the platform script for the `rsushi`-style Release benchmark. It builds
+Release when needed, runs `samples/13_sprites/13_sprites.hxml`, prints a
+`SPRITES13_SCORE ...` line, and exits.
+
+Automation should run these commands with a 2-hour process timeout.
+
+The benchmark entry is `.hxml`, so Haxe must be available in `PATH` or via
+`LUB_HAXE`. When `LUB_HAXE` is set, the scripts add that directory to `PATH`
+so the matching `haxelib` command can resolve `-lib lub`.
+
+## Windows
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1
+```
+
+Useful variants:
+
+```powershell
+# Reuse an existing Release build.
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -NoBuild
+
+# Run the SDL GPU backend.
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -Backend sdlgpu
+
+# Print generic CPU profile timing over the final profile window.
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -Profile
+
+# Longer single-spawn benchmark run.
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -ScoreFrame 7200 -Burst 1
+```
+
+## Linux
+
+```sh
+bash scripts/run-sprites-bench.sh
+```
+
+The Linux script uses `build-release-linux` by default. If Haxe 5 is not in
+`PATH`, install the local Haxe bundle once and set `LUB_HAXE`:
+
+```sh
+bash scripts/install-haxe5.sh
+export LUB_HAXE="$HOME/haxe5/haxe"
+```
+
+The installer also initializes a user-local haxelib repository when needed and
+registers `haxe-lib/lub` as the `lub` development library.
+
+Useful variants:
+
+```sh
+# Reuse an existing Release build.
+bash scripts/run-sprites-bench.sh --no-build
+
+# Run the SDL GPU backend.
+bash scripts/run-sprites-bench.sh --backend sdlgpu
+
+# Print generic CPU profile timing over the final profile window.
+bash scripts/run-sprites-bench.sh --profile
+
+# Longer single-spawn benchmark run.
+bash scripts/run-sprites-bench.sh --score-frame 7200 --burst 1
+```
+
+For comparable performance scores, run on a real GPU in a normal desktop
+session. Headless/lavapipe runs are useful for correctness, not for score
+comparison.
+
+When reporting a score, include the exact command, OS, backend, target FPS,
+score frame, burst, and the full `LUB_PROFILE` / `LUB_PROFILE_SCOPE` /
+`SPRITES13_SCORE` lines.

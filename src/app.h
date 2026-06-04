@@ -16,6 +16,7 @@
 #include "lua_api.h"
 #include "pass.h"
 #include "pipeline.h"
+#include "profile.h"
 #include "resources.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -82,6 +83,7 @@ typedef struct App {
 
   LuaCtx lua;
   PassState pass;
+  ProfileState profile;
   ResTable res;
   PipelineCache pip_cache;
   uint64_t frame_index;
@@ -92,6 +94,9 @@ typedef struct App {
   int last_w, last_h;     // last extents seen by app_frame_begin
   int cfg_w, cfg_h; // config({width,height}) で要求された窓サイズ。0 = 既定維持
   bool quit_requested; // Lua quit() が立てる。AppIterate が SUCCESS で抜ける
+  double actual_fps; // updated once per second after backend end_frame/present
+  uint64_t fps_last_ns;
+  int fps_frame_count;
 
   // Set by SDL_AppEvent on SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED. The backend's
   // begin_frame checks this and rebuilds its swapchain before acquire. The

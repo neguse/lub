@@ -1094,6 +1094,47 @@ static int l_gfx_size(lua_State *L) {
   return 2;
 }
 
+// actual_fps() -> measured frames per second, updated about once per second
+// after the backend presents the frame.
+static int l_actual_fps(lua_State *L) {
+  double fps = g_app_for_lua ? g_app_for_lua->actual_fps : 0.0;
+  lua_pushnumber(L, (lua_Number)fps);
+  return 1;
+}
+
+static int l_profile_enabled(lua_State *L) {
+  lua_pushboolean(L, g_app_for_lua && g_app_for_lua->profile.enabled);
+  return 1;
+}
+
+static int l_profile_begin(lua_State *L) {
+  const char *name = luaL_checkstring(L, 1);
+  if (g_app_for_lua)
+    profile_begin_scope(&g_app_for_lua->profile, name);
+  return 0;
+}
+
+static int l_profile_end(lua_State *L) {
+  const char *name = luaL_optstring(L, 1, NULL);
+  if (g_app_for_lua)
+    profile_end_scope(&g_app_for_lua->profile, name);
+  return 0;
+}
+
+static int l_profile_reset(lua_State *L) {
+  (void)L;
+  if (g_app_for_lua)
+    profile_reset(&g_app_for_lua->profile);
+  return 0;
+}
+
+static int l_profile_report(lua_State *L) {
+  const char *label = luaL_optstring(L, 1, "manual");
+  if (g_app_for_lua)
+    profile_report(&g_app_for_lua->profile, label);
+  return 0;
+}
+
 static int l_config(lua_State *L) {
   if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
     return luaL_error(L, "config: must be called inside onInit");
@@ -1272,6 +1313,18 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "mouse_down");
   lua_pushcfunction(L, l_gfx_size);
   lua_setglobal(L, "gfx_size");
+  lua_pushcfunction(L, l_actual_fps);
+  lua_setglobal(L, "actual_fps");
+  lua_pushcfunction(L, l_profile_enabled);
+  lua_setglobal(L, "profile_enabled");
+  lua_pushcfunction(L, l_profile_begin);
+  lua_setglobal(L, "profile_begin");
+  lua_pushcfunction(L, l_profile_end);
+  lua_setglobal(L, "profile_end");
+  lua_pushcfunction(L, l_profile_reset);
+  lua_setglobal(L, "profile_reset");
+  lua_pushcfunction(L, l_profile_report);
+  lua_setglobal(L, "profile_report");
   lua_pushcfunction(L, l_config);
   lua_setglobal(L, "config");
   lua_pushcfunction(L, l_quit);

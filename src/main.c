@@ -2,6 +2,7 @@
 #include "app.h"
 #include "capture.h"
 #include "lua_api.h"
+#include "profile.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
@@ -148,12 +149,23 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
   }
+  uint64_t profile_frame = g_app.frame_index;
+  profile_frame_begin(&g_app.profile, profile_frame);
+  profile_begin_scope(&g_app.profile, "runtime.begin_frame");
   app_frame_begin(&g_app, &w, &h);
+  profile_end_scope(&g_app.profile, "runtime.begin_frame");
+  profile_begin_scope(&g_app.profile, "script.onFrame");
   lua_ctx_call_frame(&g_app.lua);
+  profile_end_scope(&g_app.profile, "script.onFrame");
   // 安全策: onFrame が pass を閉じ忘れた場合、強制的に閉じる
+  profile_begin_scope(&g_app.profile, "runtime.pass_guard");
   if (pass_state_in_pass(&g_app.pass))
     pass_state_end(&g_app.pass);
+  profile_end_scope(&g_app.profile, "runtime.pass_guard");
+  profile_begin_scope(&g_app.profile, "runtime.end_frame");
   app_frame_end(&g_app);
+  profile_end_scope(&g_app.profile, "runtime.end_frame");
+  profile_frame_end(&g_app.profile, profile_frame);
   if (g_app.quit_requested)
     return SDL_APP_SUCCESS;
   if (g_app.capture_then_exit)

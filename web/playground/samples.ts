@@ -18,6 +18,7 @@ export const SAMPLE_NAMES = [
   "10_breakout3d",
   "11_shadow",
   "12_sfb",
+  "13_sprites",
 ];
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan

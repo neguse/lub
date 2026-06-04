@@ -28,6 +28,13 @@ else
   echo "==> installed: $("$DIR/haxe" --version)"
 fi
 
+if ! HAXE_STD_PATH="$DIR/std" "$DIR/haxelib" config >/dev/null 2>&1; then
+  HAXELIB_REPO_DIR="${HAXELIB_REPO_DIR:-$HOME/haxelib}"
+  echo "==> haxelib setup $HAXELIB_REPO_DIR"
+  mkdir -p "$HAXELIB_REPO_DIR"
+  HAXE_STD_PATH="$DIR/std" "$DIR/haxelib" setup "$HAXELIB_REPO_DIR" >/dev/null
+fi
+
 # lub extern を haxelib に dev 登録(共有 haxelib repo。既存なら上書きで害なし)。
 echo "==> haxelib dev lub $REPO_ROOT/haxe-lib/lub"
 HAXE_STD_PATH="$DIR/std" "$DIR/haxelib" dev lub "$REPO_ROOT/haxe-lib/lub" >/dev/null 2>&1 || \

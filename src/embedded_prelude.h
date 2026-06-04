@@ -63,7 +63,11 @@ static const char HAXE_PRELUDE[] =
     "}\n"
     "lub.Input = { key_down = key_down, mouse_delta = mouse_delta,\n"
     "  mouse_down = mouse_down }\n"
+    "lub.Profiler = { enabled = profile_enabled,\n"
+    "  begin_scope = profile_begin, end_scope = profile_end,\n"
+    "  reset = profile_reset, report = profile_report }\n"
     "lub.Sys = { file_mtime = file_mtime, fnv1a64 = fnv1a64,\n"
+    "  actual_fps = actual_fps,\n"
     "  load_png = load_png, load_gltf = load_gltf }\n";
 
 #endif

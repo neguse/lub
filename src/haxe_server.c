@@ -36,7 +36,8 @@ static void ensure_haxe_std_path(void) {
     return;
   SDL_memcpy(std_path, lub_haxe, dirlen);
   SDL_snprintf(std_path + dirlen, sizeof(std_path) - dirlen, "/std");
-  setenv("HAXE_STD_PATH", std_path, 0); // overwrite=0: 既存があれば尊重
+  SDL_setenv_unsafe("HAXE_STD_PATH", std_path,
+                    0); // overwrite=0: 既存があれば尊重
 }
 
 static void drain_stdio(SDL_Process *p) {
