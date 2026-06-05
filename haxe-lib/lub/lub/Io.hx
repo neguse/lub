@@ -39,4 +39,5 @@ extern class Io {
 	@:native("load_gltf") public static function loadGltf(path:String):IoGltfResult;
 	@:native("interleave_pn") public static function interleavePn(mesh:Dynamic):lua.Table<Int, Float>;
 	@:native("interleave_pnu") public static function interleavePnu(mesh:Dynamic):lua.Table<Int, Float>;
+	@:native("interleave_pnut") public static function interleavePnut(mesh:Dynamic):lua.Table<Int, Float>;
 }

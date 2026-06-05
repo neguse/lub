@@ -1,6 +1,8 @@
 LUB_TEXTURE2D(g_albedo);
 LUB_TEXTURE2D(g_normal);
 LUB_TEXTURE2D(g_position);
+LUB_TEXTURE2D(shadow_map);
+LUB_TEXTURE2D(ao_map);
 
 static const float PI = 3.14159265359;
 
@@ -9,14 +11,14 @@ struct FSIn {
     float4 light0 : TEXCOORD1;
     float4 light1 : TEXCOORD2;
     float4 params : TEXCOORD3;
+    float4 vl0 : TEXCOORD4;
+    float4 vl1 : TEXCOORD5;
+    float4 vl2 : TEXCOORD6;
+    float4 vl3 : TEXCOORD7;
 };
 
 float3 srgb_to_linear(float3 c) {
     return pow(max(c, 0.0), float3(2.2));
-}
-
-float3 linear_to_srgb(float3 c) {
-    return pow(max(c, 0.0), float3(1.0 / 2.2));
 }
 
 float distribution_ggx(float ndh, float roughness) {
@@ -52,14 +54,39 @@ float3 pbr_light(float3 albedo, float metallic, float roughness, float3 N, float
     return (kd * albedo / PI + specular) * intensity * ndl;
 }
 
+float unpack_depth(float3 v) {
+    return dot(v, float3(1.0, 1.0 / 255.0, 1.0 / 65025.0));
+}
+
+float shadow_factor(float4 lpos) {
+    if (abs(lpos.w) < 1.0e-5) return 1.0;
+    float3 ndc = lpos.xyz / lpos.w;
+    float2 uv = ndc.xy * 0.5 + 0.5;
+    uv.y = 1.0 - uv.y;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 ||
+        ndc.z < 0.0 || ndc.z > 1.0) return 1.0;
+
+    float texel = 1.0 / 2048.0;
+    float bias = 0.0016;
+    float lit = 0.0;
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x) {
+            float closest = unpack_depth(
+                LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).rgb);
+            lit += (ndc.z - bias <= closest) ? 1.0 : 0.0;
+        }
+    return lit / 9.0;
+}
+
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
     float4 ar = LUB_SAMPLE_LOD(g_albedo, i.uv);
     float4 nm = LUB_SAMPLE_LOD(g_normal, i.uv);
     float4 gp = LUB_SAMPLE_LOD(g_position, i.uv);
-    if (gp.a < 0.5) {
-        float v = 0.02 + 0.035 * (1.0 - i.uv.y);
-        return float4(v, v * 1.08, v * 1.18, 1.0);
+    if (gp.z <= 0.0001) {
+        float t = saturate(1.0 - i.uv.y);
+        float3 sky = lerp(float3(0.010, 0.012, 0.016), float3(0.045, 0.055, 0.070), t);
+        return float4(sky, 1.0);
     }
 
     float3 albedo = srgb_to_linear(ar.rgb);
@@ -67,12 +94,15 @@ float4 fs_main(FSIn i) : SV_Target {
     float3 N = normalize(nm.xyz * 2.0 - 1.0);
     float metallic = saturate(nm.a);
     float3 V = normalize(-gp.xyz);
+    float4 vp = float4(gp.xyz, 1.0);
+    float4 lpos = float4(dot(i.vl0, vp), dot(i.vl1, vp), dot(i.vl2, vp), dot(i.vl3, vp));
+    float shadow = lerp(1.0, shadow_factor(lpos), i.params.z);
+    float ao = lerp(1.0, saturate(LUB_SAMPLE_LOD(ao_map, i.uv).r), i.params.w);
 
-    float3 color = albedo * i.params.y;
-    color += pbr_light(albedo, metallic, roughness, N, V, normalize(i.light0.xyz), i.light0.w);
+    float3 color = albedo * i.params.y * ao;
+    color += pbr_light(albedo, metallic, roughness, N, V, normalize(i.light0.xyz), i.light0.w) * shadow;
     color += pbr_light(albedo, metallic, roughness, N, V, normalize(i.light1.xyz), i.light1.w);
 
     color *= i.params.x;
-    color = color / (color + 1.0);
-    return float4(linear_to_srgb(color), 1.0);
+    return float4(max(color, 0.0), 1.0);
 }

@@ -214,4 +214,46 @@ function M.interleave_pnu(mesh)
    return out
 end
 
+-- mesh.positions + normals + uvs + tangents を
+-- pos.xyz, n.xyz, uv.xy, tangent.xyzw (stride 12) に詰める。
+-- tangent 欠損時は w=0 にして shader 側が derivative TBN にfallbackできるようにする。
+function M.interleave_pnut(mesh)
+   local n = mesh.vert_count
+   local out = {}
+   local pos = mesh.positions
+   local nrm = mesh.normals
+   local uv = mesh.uvs
+   local tan = mesh.tangents
+   for i = 0, n - 1 do
+      local pi = i * 3
+      out[#out + 1] = pos[pi + 1]
+      out[#out + 1] = pos[pi + 2]
+      out[#out + 1] = pos[pi + 3]
+      if nrm then
+         out[#out + 1] = nrm[pi + 1]
+         out[#out + 1] = nrm[pi + 2]
+         out[#out + 1] = nrm[pi + 3]
+      else
+         out[#out + 1] = 0; out[#out + 1] = 0; out[#out + 1] = 1
+      end
+      if uv then
+         local ui = i * 2
+         out[#out + 1] = uv[ui + 1]
+         out[#out + 1] = uv[ui + 2]
+      else
+         out[#out + 1] = 0; out[#out + 1] = 0
+      end
+      if tan then
+         local ti = i * 4
+         out[#out + 1] = tan[ti + 1]
+         out[#out + 1] = tan[ti + 2]
+         out[#out + 1] = tan[ti + 3]
+         out[#out + 1] = tan[ti + 4]
+      else
+         out[#out + 1] = 1; out[#out + 1] = 0; out[#out + 1] = 0; out[#out + 1] = 0
+      end
+   end
+   return out
+end
+
 return M
