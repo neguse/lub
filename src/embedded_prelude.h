@@ -66,7 +66,9 @@ static const char HAXE_PRELUDE[] =
     "lub.Profiler = { enabled = profile_enabled,\n"
     "  begin_scope = profile_begin, end_scope = profile_end,\n"
     "  reset = profile_reset, report = profile_report }\n"
-    "lub.Sys = { file_mtime = file_mtime, fnv1a64 = fnv1a64,\n"
+    "lub.Sys = { file_mtime = file_mtime, request_file = request_file,\n"
+    "  is_web = is_web,\n"
+    "  fnv1a64 = fnv1a64,\n"
     "  actual_fps = actual_fps,\n"
     "  load_png = load_png, load_gltf = load_gltf }\n";
 

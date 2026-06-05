@@ -513,6 +513,10 @@ static bool sk_init(App *app) {
   sg_pixel_format color_pf = vk_to_sg_fmt(app->vk_swapchain_format);
 
   sg_setup(&(sg_desc){
+      .buffer_pool_size = 512,
+      .image_pool_size = 256,
+      .sampler_pool_size = 256,
+      .view_pool_size = 512,
       .environment =
           {
               .defaults =
@@ -1722,6 +1726,10 @@ static bool sk_init(App *app) {
     return false;
 
   sg_setup(&(sg_desc){
+      .buffer_pool_size = 512,
+      .image_pool_size = 256,
+      .sampler_pool_size = 256,
+      .view_pool_size = 512,
       .environment =
           {
               .defaults =

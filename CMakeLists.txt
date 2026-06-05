@@ -236,8 +236,13 @@ if(LUB_WASM)
     -sASSERTIONS=1
     -sSTACK_SIZE=1048576
     "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString']"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples@/samples"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_io.lua@/samples/lub_io.lua"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/third_party/lume@/lume"
+  )
+  set_property(TARGET lub APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_SOURCE_DIR}/samples/boot.lua"
+    "${CMAKE_SOURCE_DIR}/samples/lub_io.lua"
   )
 endif()
 

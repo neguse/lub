@@ -3,15 +3,19 @@
 --
 -- Usage:
 --   local lub_io = require("lub_io")
---   local src,  ver = lub_io.load_text("foo.slang")
---   local tab,  ver = lub_io.load_floats("foo.verts.lua")
---   local px, w, h, fmt, ver = lub_io.load_png("foo.png")
+--   local src,  ver, status = lub_io.load_text("foo.slang")
+--   local tab,  ver, status = lub_io.load_floats("foo.verts.lua")
+--   local px, w, h, fmt, ver, status = lub_io.load_png("foo.png")
 --
 -- Cache: path -> { mtime, bytes, hash, parsed }
 -- Fast path: same mtime -> return cached parsed + hash (no read, no hash).
 -- Slow path: stat, read bytes, fnv1a64 -> if hash differs, reparse.
 
 local M = {}
+M.PENDING = "pending"
+M.READY = "ready"
+M.ERROR = "error"
+
 local cache = {}
 
 local function read_bytes(path)
@@ -22,29 +26,84 @@ local function read_bytes(path)
    return s
 end
 
--- Returns (parsed, version). Returns nil on failure.
+local function request_status(path)
+   if type(request_file) == "function" then
+      local st, err = request_file(path)
+      if st == M.READY or st == M.PENDING or st == M.ERROR then
+         return st, err
+      end
+      return M.ERROR, err or ("bad request_file status: " .. tostring(st))
+   end
+   if file_mtime(path) then return M.READY end
+   return M.ERROR, "missing"
+end
+
+local function dirname(path)
+   return path:match("^(.*[/\\])") or ""
+end
+
+local function requestable_uri(uri)
+   local lower = uri:lower()
+   if lower:match("^data:") or lower:match("^https?://") then return false end
+   if uri:sub(1, 1) == "/" then return false end
+   return true
+end
+
+local function blocking_gltf_uri(uri)
+   local lower = uri:lower()
+   return lower:match("%.bin$") or lower:match("%.glb$")
+end
+
+local function request_gltf_dependencies(src, path)
+   local base = dirname(path)
+   local pending_path = nil
+   for uri in src:gmatch('"uri"%s*:%s*"([^"]+)"') do
+      if requestable_uri(uri) and blocking_gltf_uri(uri) then
+         local dep = base .. uri
+         local st, err = request_status(dep)
+         if st ~= M.READY then
+            if st == M.ERROR then
+               return M.ERROR, err or dep
+            end
+            pending_path = pending_path or dep
+         end
+      end
+   end
+   if pending_path then return M.PENDING, pending_path end
+   return M.READY
+end
+
+-- Returns (parsed, version, status, error). Returns nil while pending/error.
 local function refresh(path, parse_fn)
    local mtime = file_mtime(path)
-   if not mtime then return nil end
+   if not mtime then
+      local st, err = request_status(path)
+      return nil, 0, st, err
+   end
    local c = cache[path]
    if c and c.mtime == mtime then
-      return c.parsed, c.hash
+      return c.parsed, c.hash, M.READY
    end
    local bytes = read_bytes(path)
-   if not bytes then return nil end
+   if not bytes then
+      local st, err = request_status(path)
+      if c then return c.parsed, c.hash, st, err end
+      return nil, 0, st, err
+   end
    local hash = fnv1a64(bytes)
    if c and c.hash == hash then
       c.mtime = mtime    -- 内容変わってない、mtime だけ更新
-      return c.parsed, hash
+      return c.parsed, hash, M.READY
    end
-   local parsed = parse_fn(bytes, path)
+   local parsed, parse_status, parse_err = parse_fn(bytes, path)
    if parsed == nil then
       -- parse 失敗、cache 更新せずに前回値を維持
-      if c then return c.parsed, c.hash end
-      return nil
+      local st = parse_status or M.ERROR
+      if c then return c.parsed, c.hash, st, parse_err end
+      return nil, 0, st, parse_err
    end
    cache[path] = { mtime = mtime, bytes = bytes, hash = hash, parsed = parsed }
-   return parsed, hash
+   return parsed, hash, M.READY
 end
 
 function M.load_text(path)
@@ -56,16 +115,16 @@ function M.load_floats(path)
       local chunk, err = load(src, "@" .. p, "t")      -- 既定 env を使う
       if not chunk then
          print("lub_io.load_floats: parse error in " .. p .. ": " .. tostring(err))
-         return nil
+         return nil, M.ERROR, err
       end
       local ok, t = pcall(chunk)
       if not ok then
          print("lub_io.load_floats: exec error in " .. p .. ": " .. tostring(t))
-         return nil
+         return nil, M.ERROR, t
       end
       if type(t) ~= "table" then
          print("lub_io.load_floats: " .. p .. " did not return a table")
-         return nil
+         return nil, M.ERROR, "not a table"
       end
       return t
    end)
@@ -73,23 +132,29 @@ end
 
 function M.load_png(path)
    -- PNG は parsed = { px = {...}, w, h, fmt }
-   local parsed, ver = refresh(path, function(_bytes, p)
+   local parsed, ver, st, err = refresh(path, function(_bytes, p)
       -- _bytes は使わず C 側に再読み込みさせる (load_png は path を取る)
       local px, w, h, fmt = load_png(p)
-      if px == nil then return nil end
+      if px == nil then return nil, M.ERROR, "load_png failed" end
       return { px = px, w = w, h = h, fmt = fmt }
    end)
-   if not parsed then return nil end
-   return parsed.px, parsed.w, parsed.h, parsed.fmt, ver
+   if not parsed then return nil, nil, nil, nil, ver or 0, st or M.ERROR, err end
+   return parsed.px, parsed.w, parsed.h, parsed.fmt, ver, st or M.READY, err
 end
 
 function M.load_gltf(path)
-   local parsed, ver = refresh(path, function(_bytes, p)
+   local parsed, ver, st, err = refresh(path, function(bytes, p)
+      local dep_status, dep_err = request_gltf_dependencies(bytes, p)
+      if dep_status ~= M.READY then
+         return nil, dep_status, dep_err
+      end
       -- _bytes は使わず C 側に再読み込みさせる (load_gltf は path を取る)
-      return load_gltf(p)
+      local mesh = load_gltf(p)
+      if mesh == nil then return nil, M.ERROR, "load_gltf failed" end
+      return mesh
    end)
-   if not parsed then return nil end
-   return parsed, ver
+   if not parsed then return nil, ver or 0, st or M.ERROR, err end
+   return parsed, ver, st or M.READY, err
 end
 
 -- mesh.positions (vec3 * N) + mesh.normals (vec3 * N) を

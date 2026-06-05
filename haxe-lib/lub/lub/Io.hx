@@ -3,11 +3,15 @@ package lub;
 @:multiReturn extern class IoTextResult {
 	var text:String;
 	var version:Int;
+	var status:String;
+	var error:String;
 }
 
 @:multiReturn extern class IoFloatsResult {
 	var data:Dynamic;
 	var version:Int;
+	var status:String;
+	var error:String;
 }
 
 @:multiReturn extern class IoPngResult {
@@ -16,11 +20,15 @@ package lub;
 	var height:Int;
 	var format:Int;
 	var version:Int;
+	var status:String;
+	var error:String;
 }
 
 @:multiReturn extern class IoGltfResult {
 	var mesh:Dynamic;
 	var version:Int;
+	var status:String;
+	var error:String;
 }
 
 @:luaRequire("lub_io")

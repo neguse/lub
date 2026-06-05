@@ -19,6 +19,7 @@ export const SAMPLE_NAMES = [
   "11_shadow",
   "12_sfb",
   "13_sprites",
+  "14_sponza",
 ];
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
@@ -49,6 +50,12 @@ const EXTRA_FILES: Record<string, string[]> = {
     "data/12_screen.fs.slang",
     "data/12_quad.vs.slang",
     "data/12_present.fs.slang",
+  ],
+  "14_sponza": [
+    "data/14_sponza_gbuffer.vs.slang",
+    "data/14_sponza_gbuffer.fs.slang",
+    "data/14_sponza_light.vs.slang",
+    "data/14_sponza_light.fs.slang",
   ],
 };
 

@@ -11,6 +11,9 @@
 #include "shader.h"
 #include "stb_image.h"
 #include <SDL3/SDL.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 #include <ctype.h>
 #include <lauxlib.h>
 #include <lua.h>
@@ -20,6 +23,74 @@
 #include <sys/stat.h>
 
 static App *g_app_for_lua = NULL;
+
+#ifdef __EMSCRIPTEN__
+enum {
+  LUB_FILE_PENDING = 0,
+  LUB_FILE_READY = 1,
+  LUB_FILE_ERROR = 2,
+};
+
+// EM_JS bodies are JavaScript (see shader.cpp's bridge note).
+// clang-format off
+EM_JS(int, lub_web_request_file_js, (const char *c_path), {
+  var raw = UTF8ToString(c_path);
+  if (!raw || raw.length == 0)
+    return 2;
+
+  var path = raw.charAt(0) == "/" ? raw.substring(1) : raw;
+  var fs = Module["FS"];
+  if (!fs && typeof FS != "undefined")
+    fs = FS;
+  if (!fs)
+    return 2;
+
+  try {
+    fs.stat(path);
+    return 1;
+  }
+  catch(e) {}
+
+  var requests = Module["__lubFileRequests"];
+  if (!requests)
+    requests = Module["__lubFileRequests"] = Object.create(null);
+
+  var req = requests[path];
+  if (req)
+    return req.status;
+
+  req = requests[path] = {status : 0};
+  fetch("/" + path)
+      .then(function(response) {
+        if (!response.ok)
+          throw new Error(response.status + " " + response.statusText);
+        return response.arrayBuffer();
+      })
+      .then(function(buffer) {
+        var parts = path.split("/");
+        var cur = "";
+        for (var i = 0; i < parts.length - 1; ++i) {
+          if (!parts[i])
+            continue;
+          cur = cur ? cur + "/" + parts[i] : parts[i];
+          try { fs.mkdir(cur); }
+          catch(e) {}
+        }
+        try { fs.unlink(path); }
+        catch(e) {}
+        fs.writeFile(path, new Uint8Array(buffer));
+        req.status = 1;
+      })
+      .catch(function(e) {
+        req.status = 2;
+        req.error = String((e && e.message) || e);
+        if (typeof console != "undefined" && console.error)
+          console.error("[lub] request_file failed:", path, req.error);
+      });
+  return 0;
+})
+// clang-format on
+#endif
 
 // Helper: read a vec4 (rgba) from table at idx field name `key`. Defaults
 // for missing fields go to `defaults[]`. Caller pops nothing — the helper
@@ -1292,6 +1363,38 @@ static int l_file_mtime(lua_State *L) {
   return 1;
 }
 
+static int l_request_file(lua_State *L) {
+  const char *path = luaL_checkstring(L, 1);
+#ifdef __EMSCRIPTEN__
+  int status = lub_web_request_file_js(path);
+  if (status == LUB_FILE_READY) {
+    lua_pushstring(L, "ready");
+    return 1;
+  }
+  if (status == LUB_FILE_PENDING) {
+    lua_pushstring(L, "pending");
+    return 1;
+  }
+#else
+  if (app_file_mtime_ns(path) != 0) {
+    lua_pushstring(L, "ready");
+    return 1;
+  }
+#endif
+  lua_pushstring(L, "error");
+  lua_pushstring(L, "missing");
+  return 2;
+}
+
+static int l_is_web(lua_State *L) {
+#ifdef __EMSCRIPTEN__
+  lua_pushboolean(L, 1);
+#else
+  lua_pushboolean(L, 0);
+#endif
+  return 1;
+}
+
 static int l_fnv1a64(lua_State *L) {
   size_t n;
   const char *s = luaL_checklstring(L, 1, &n);
@@ -1378,6 +1481,10 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "quit");
   lua_pushcfunction(L, l_file_mtime);
   lua_setglobal(L, "file_mtime");
+  lua_pushcfunction(L, l_request_file);
+  lua_setglobal(L, "request_file");
+  lua_pushcfunction(L, l_is_web);
+  lua_setglobal(L, "is_web");
   lua_pushcfunction(L, l_fnv1a64);
   lua_setglobal(L, "fnv1a64");
   lua_pushcfunction(L, l_load_png);

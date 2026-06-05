@@ -32,6 +32,7 @@ lub bundles or links the following third-party components.
 | Asset | Path | License | Source |
 |-------|------|---------|--------|
 | Box.glb | samples/data/08_box.glb | CC0 (Public Domain) | https://github.com/KhronosGroup/glTF-Sample-Assets |
+| Sponza | samples/14_sponza/data/Sponza/ | Cryengine Limited License Agreement | https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza |
 
 ## Client-side Haxe compiler (web playground)
 

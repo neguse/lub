@@ -13,7 +13,9 @@ struct lua_State;
 //   (TEXCOORD_0 only) tangents    = { tx,ty,tz,tw, ... }           -- nil if
 //   not present (vec4, w=handedness) indices     = { i0,i1,i2, ... } -- nil if
 //   non-indexed vert_count  = N index_count = M  (0 if non-indexed)
+//   primitives = { primitive tables with the same fields + material = {...} }
+//   primitive_count = P
 //
-// On failure returns nil and logs to stderr (no error string in second return).
-// Reads only mesh[0].primitives[0]. Triangle primitive required.
+// The top-level position/normal/uv/index fields mirror primitives[1] for
+// compatibility with older samples. Triangle primitives required.
 int lub_load_gltf(struct lua_State *L);

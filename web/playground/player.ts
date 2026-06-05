@@ -142,6 +142,12 @@ let pendingFiles: Record<string, string> | null = null;
 let pendingEntry: string | null = null;
 let wasmStarted = false;
 
+const slangReady = initSlang().catch((e: any) => {
+  // Non-fatal: shader_compile() will return the canonical "slang-wasm not
+  // loaded yet" diagnostic via the \x02 path. We just want it visible.
+  console.error("[player] slang-wasm init failed:", e?.message ?? e);
+});
+
 async function startWasm() {
   if (wasmStarted) return;
   wasmStarted = true;
@@ -152,6 +158,7 @@ async function startWasm() {
     console.error("WebGPU init failed:", e.message);
     return;
   }
+  await slangReady;
 
   // The preRun callback runs after Module.FS has been wired up but before
   // main(). emscripten passes the Module object as `this`/argument so we
@@ -233,17 +240,6 @@ window.addEventListener("message", (e: MessageEvent) => {
     }
     // mtime poll on C side picks it up next frame.
   }
-});
-
-// Boot order: kick off slang-wasm init in parallel with the playerReady
-// announcement. Slang typically finishes well before the user has the
-// first sample's shader compiled, but even if not, the C-side bridge
-// (lub_slang_compile_js) re-checks `typeof window.slangCompile` on
-// every invocation, so a late init is recovered automatically.
-initSlang().catch((e: any) => {
-  // Non-fatal: shader_compile() will return the canonical "slang-wasm not
-  // loaded yet" diagnostic via the \x02 path. We just want it visible.
-  console.error("[player] slang-wasm init failed:", e?.message ?? e);
 });
 
 parent.postMessage({ type: "playerReady" }, "*");
