@@ -48,6 +48,8 @@ const EXTRA_FILES: Record<string, string[]> = {
     "data/12_water.fs.slang",
     "data/12_screen.vs.slang",
     "data/12_screen.fs.slang",
+    "data/12_grade.vs.slang",
+    "data/12_grade.fs.slang",
     "data/12_quad.vs.slang",
     "data/12_present.fs.slang",
   ],
@@ -56,6 +58,24 @@ const EXTRA_FILES: Record<string, string[]> = {
     "data/14_sponza_gbuffer.fs.slang",
     "data/14_sponza_light.vs.slang",
     "data/14_sponza_light.fs.slang",
+    "data/14_sponza_shadow.vs.slang",
+    "data/14_sponza_shadow.fs.slang",
+    "data/14_sponza_ssao.vs.slang",
+    "data/14_sponza_ssao.fs.slang",
+    "data/14_sponza_quad.vs.slang",
+    "data/14_sponza_copy.fs.slang",
+    "data/14_sponza_present.fs.slang",
+    "data/14_sponza_fog.fs.slang",
+    "data/14_sponza_bright.fs.slang",
+    "data/14_sponza_blur_h.fs.slang",
+    "data/14_sponza_blur_v.fs.slang",
+    "data/14_sponza_combine.fs.slang",
+    "data/14_sponza_outline.fs.slang",
+    "data/14_sponza_dof.fs.slang",
+    "data/14_sponza_motion.vs.slang",
+    "data/14_sponza_motion.fs.slang",
+    "data/14_sponza_screen.vs.slang",
+    "data/14_sponza_screen.fs.slang",
   ],
 };
 
@@ -117,7 +137,7 @@ export async function discoverDataFiles(
 ): Promise<Map<string, EditorFile>> {
   const refs = scanLuaReferences(luaText);
   for (const extra of EXTRA_FILES[name] || []) {
-    const full = `samples/${name}/${extra}`;
+    const full = extra.startsWith("samples/") ? extra : `samples/${name}/${extra}`;
     if (!refs.includes(full)) refs.push(full);
   }
   const files = new Map<string, EditorFile>();

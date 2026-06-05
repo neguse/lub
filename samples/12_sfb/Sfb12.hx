@@ -166,6 +166,8 @@ class Sfb12 {
 
 	static var flowPx:Array<Int> = null;
 	static var waterNrmPx:Array<Int> = null;
+	static var lutPx:Array<Int> = null;
+	static inline var LUT_N:Int = 16;
 
 	// Flow map (RG = flow direction) + ripple normal map for the water surface.
 	static function genWaterTextures() {
@@ -191,6 +193,37 @@ class Sfb12 {
 				waterNrmPx.push(255);
 			}
 		}
+	}
+
+	// 16^3 color lookup table flattened into a 256x16 texture. This is a real
+	// LUT sample in the grade pass, with a deliberately subtle teal/warm grade.
+	static function genLut() {
+		if (lutPx != null)
+			return;
+		lutPx = [];
+		for (g in 0...LUT_N) {
+			for (b in 0...LUT_N) {
+				for (r in 0...LUT_N) {
+					var rr = r / (LUT_N - 1);
+					var gg = g / (LUT_N - 1);
+					var bb = b / (LUT_N - 1);
+					var lum = rr * 0.2126 + gg * 0.7152 + bb * 0.0722;
+					var shadow = 1.0 - lum;
+					var high = lum;
+					var nr = rr * 1.03 + high * 0.035 - shadow * 0.025;
+					var ng = gg * 1.01 + shadow * 0.025 + high * 0.010;
+					var nb = bb * 0.98 + shadow * 0.060 - high * 0.020;
+					lutPx.push(Std.int(saturate(nr) * 255));
+					lutPx.push(Std.int(saturate(ng) * 255));
+					lutPx.push(Std.int(saturate(nb) * 255));
+					lutPx.push(255);
+				}
+			}
+		}
+	}
+
+	static inline function saturate(v:Float):Float {
+		return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
 	}
 
 	static inline function pushHero(out:Array<Float>, cx:Float, cy:Float, cz:Float, r:Float, seg:Int, ring:Int, segs:Int, rings:Int) {
@@ -459,9 +492,10 @@ class Sfb12 {
 		var motionShader = shader2("sfb_motion", "12_motion.vs.slang", "12_motion.fs.slang");
 		var waterShader = shader2("sfb_water", "12_water.vs.slang", "12_water.fs.slang");
 		var screenShader = shader2("sfb_screen", "12_screen.vs.slang", "12_screen.fs.slang");
+		var gradeShader = shader2("sfb_grade", "12_grade.vs.slang", "12_grade.fs.slang");
 		if (gShader == null || matShader == null || shFlatShader == null || shHeroShader == null || pShader == null || ssaoShader == null
 			|| fogShader == null || brightShader == null || blurHShader == null || blurVShader == null || combineShader == null || outlineShader == null
-			|| dofShader == null || motionShader == null || waterShader == null || screenShader == null)
+			|| dofShader == null || motionShader == null || waterShader == null || screenShader == null || gradeShader == null)
 			return;
 
 		// effect isolation mode (LUB_SFB_MODE): 0=composite, 1=posterize,
@@ -520,6 +554,8 @@ class Sfb12 {
 		genWaterTextures();
 		var flowTex = Gfx.useTexture("sfb_flow", TEX_N, TEX_N, Gfx.RGBA8, lua.Table.fromArray(flowPx), 1, {filter: Gfx.LINEAR, wrap: Gfx.REPEAT});
 		var waterNrmTex = Gfx.useTexture("sfb_waternrm", TEX_N, TEX_N, Gfx.RGBA8, lua.Table.fromArray(waterNrmPx), 1, {filter: Gfx.LINEAR, wrap: Gfx.REPEAT});
+		genLut();
+		var lutTex = Gfx.useTexture("sfb_lut", LUT_N * LUT_N, LUT_N, Gfx.RGBA8, lua.Table.fromArray(lutPx), 1, {filter: Gfx.LINEAR, wrap: Gfx.CLAMP});
 
 		var view = updateCamera();
 		var proj = perspectiveLh(52, RT_W / RT_H, 0.1, 40.0);
@@ -594,7 +630,9 @@ class Sfb12 {
 		// of a fragment uniform block); debug modes sample the raw G-buffer.
 		var screenSrc = (mode == 6) ? gNormal : (mode == 7) ? gPosition : (mode == 8) ? shadowMap : beauty;
 		screenPass(outBuf, screenShader, quadBufF, screenSrc, mode);
-		present(pShader, quadBuf, outBuf);
+		var gradeOut = (outBuf == texA) ? texB : texA;
+		gradePass(gradeOut, gradeShader, quadBufF, outBuf, lutTex, tAccum);
+		present(pShader, quadBuf, gradeOut);
 	}
 
 	// ---- resource + pass helpers (kept out of onFrame to stay under Lua's
@@ -787,6 +825,17 @@ class Sfb12 {
 			verts: quad,
 			scene: tex,
 			uniforms: {params: lua.Table.fromArray([mode, 0.004, 0.0, 0.0])}
+		}, {shader: shader, depth: false, cull: Gfx.NONE});
+		Gfx.endPass();
+	}
+
+	static function gradePass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, lut:Dynamic, time:Float) {
+		Gfx.beginPass({target: targ, clear_color: black()});
+		Gfx.draw(6, {
+			verts: quad,
+			scene: tex,
+			lut: lut,
+			uniforms: {params: lua.Table.fromArray([time, 0.025, 0.65, 2.2])}
 		}, {shader: shader, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();
 	}
