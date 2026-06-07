@@ -117,6 +117,10 @@ typedef struct App {
   // config({ resource_sweep_after_frames = N }) during onInit.
   int resource_sweep_after_frames;
 
+  // Default readback queue depth for Gfx.readback() handles. Configurable via
+  // Lua config({ readback_depth = N }) during onInit.
+  int readback_depth;
+
 #ifndef __EMSCRIPTEN__
   // SDL3 GPU backend state (Task 3). Owned/used by backend_sdlgpu.c only.
   SDL_GPUDevice *gpu_device;
@@ -126,10 +130,6 @@ typedef struct App {
   int gpu_depth_w;
   int gpu_depth_h;
   SDL_GPUTextureFormat gpu_depth_fmt;
-  // Snapshot for capture (Task 8): set in sg_end_frame just before
-  // gpu_swapchain_tex is cleared. capture_state_drain runs AFTER
-  // end_frame, so sg_capture reads from this field instead.
-  SDL_GPUTexture *gpu_last_swapchain_tex;
 #endif // __EMSCRIPTEN__
 
   // Entry .lua hot-reload state. main.c populates entry_path /

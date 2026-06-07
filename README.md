@@ -131,12 +131,13 @@ class Triangle01 {
 }
 ```
 
-extern は責務別に 5 class:
+extern は責務別に分割:
 - `lub.Lub` — `config()`
 - `lub.Gfx` — 描画 / GPU / 定数
 - `lub.Input` — `keyDown()`
-- `lub.Io` — `samples/lub_io.lua` の cached loader (`loadText`/`loadPng` 等)
+- `lub.Io` — `samples/lub_io.lua` の cached loader (`loadText`/`loadFloats`/`loadGltf` 等)
 - `lub.Sys` — 低 level primitive (普段不要、Haxe stdlib `Sys` を import するときは衝突に注意)
+- `lubx.Png` — PNG load/write helper (`Bytes` backed)
 
 #### 注意点
 
@@ -178,9 +179,20 @@ score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/s
 scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30
 ```
 
-実 GPU でも `--capture` フラグはそのまま使える。Lua 側からも `capture("path.png")`
-でスケジュール可能 (次フレームで実行)。BGRA8/RGBA8 のスワップチェインから RGBA に
-swizzle して `stb_image_write` で PNG 出力する。
+Lua/Haxe 側で任意の render target を保存する場合は readback handle を作り、
+`id` 付きで request してから次の call 以降で結果を drain する:
+
+```haxe
+var rb = Gfx.readback();
+var r = rb.readTexture(tex, frame == 30 ? 30 : null);
+if (r.status == "ready" && r.id == 30) {
+  lubx.Png.write(path, r.bytes, r.width, r.height, r.stride);
+}
+```
+
+readback queue depth は既定 8。必要な場合だけ起動時 config で変更できる
+(Lua: `config({ readback_depth = N })`, Haxe: `Lub.config({ readback_depth: N })`,
+1..32)。
 
 ### Golden image diff (回帰テスト)
 
@@ -220,8 +232,8 @@ LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/01_triangle.hxml
 LUB_BACKEND=sdlgpu scripts/run-headless.sh ./build/lub samples/01_triangle/01_triangle.hxml
 ```
 
-どちらの backend でも同一 Lua API で sample と capture が動く。
-lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical** になる。
+どちらの backend でも同一 Lua API で sample が動く。render target の readback は
+`Gfx.readback()` で作った handle を使う。
 
 ## Live edit (file watching)
 
@@ -230,8 +242,8 @@ lavapipe + xvfb 環境では、両 backend の capture PNG は **byte-identical*
 
 仕組み:
 
-- 各サンプル冒頭で `lub_io` を `require` し、`load_text` /
-  `load_floats` / `load_png` を経由してリソースを取得する。
+- 各サンプル冒頭で `lub_io` / `lubx_png` を `require` し、`load_text` /
+  `load_floats` / `Png.load` を経由してリソースを取得する。
 - helper は `path → {mtime, content_hash}` のキャッシュを持ち、毎フレームの
   `stat()` 1 回だけで「変化なし」を判定する。mtime 違い時のみ再読み込みして
   FNV-1a 64 ハッシュを取り、それを `version` として `use_*` に渡す。
@@ -335,9 +347,8 @@ web playground の対象 sample は `web/` 側の sample list と verify script 
 
 ### Known limitations
 
-- **capture / golden image は native のみ**。WebGPU の `mapAsync` 経路で readback
-  は可能だが capture API が同期 sync なので未実装 (`backend_sokol.c` の `sk_capture`
-  が `false` を返す)。
+- **`--capture` の swapchain capture は native sokol のみ**。任意 render target の
+  readback は `Gfx.readback()` を使う。
 - **sdlgpu backend は web 非対応**。WGPU backend の sokol のみ。
 
 ## ライセンス

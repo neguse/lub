@@ -17,7 +17,9 @@
 // to the GPU only through g_backend->xxx().
 #include "app.h"
 #include "backend.h"
+#include "gpu_stats.h"
 #include "shader.h"
+#include "sokol_private.h"
 
 #include "sokol_gfx.h"
 
@@ -46,6 +48,7 @@ typedef struct SkImage {
   sg_view view;      // texture-sample view
   sg_view color_att; // color-attachment view (valid when render_target)
   sg_view depth_att; // depth-stencil-attachment view (valid for depth targets)
+  uint64_t bytes;
   bool render_target;
   SglPixelFormat fmt;
 } SkImage;
@@ -53,6 +56,7 @@ typedef struct SkImage {
 typedef struct SkBuffer {
   sg_buffer buf;
   sg_view storage_view; // valid only for storage buffers (id != 0)
+  uint64_t bytes;
   SglBufferType type;
 } SkBuffer;
 
@@ -189,10 +193,12 @@ static void destroy_swapchain_resources(App *app) {
   }
   if (app->vk_depth_view) {
     vkDestroyImageView(app->vk_device, app->vk_depth_view, NULL);
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
     app->vk_depth_view = VK_NULL_HANDLE;
   }
   if (app->vk_depth_image) {
     vkDestroyImage(app->vk_device, app->vk_depth_image, NULL);
+    gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     app->vk_depth_image = VK_NULL_HANDLE;
   }
   if (app->vk_depth_mem) {
@@ -203,10 +209,16 @@ static void destroy_swapchain_resources(App *app) {
     for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
       if (app->vk_swapchain_views[i]) {
         vkDestroyImageView(app->vk_device, app->vk_swapchain_views[i], NULL);
+        gpu_stats_destroy(GPU_STAT_SURFACE_VIEW, 0);
       }
     }
     free(app->vk_swapchain_views);
     app->vk_swapchain_views = NULL;
+  }
+  if (app->vk_swapchain_images) {
+    for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+      gpu_stats_destroy(GPU_STAT_SURFACE_TEXTURE, 0);
+    }
   }
   free(app->vk_swapchain_images);
   app->vk_swapchain_images = NULL;
@@ -288,6 +300,9 @@ static bool create_swapchain_resources(App *app) {
   vkGetSwapchainImagesKHR(app->vk_device, app->vk_swapchain,
                           &app->vk_swapchain_image_count,
                           app->vk_swapchain_images);
+  for (uint32_t i = 0; i < app->vk_swapchain_image_count; ++i) {
+    gpu_stats_create(GPU_STAT_SURFACE_TEXTURE, 0);
+  }
   // calloc so a partial failure mid-loop leaves the rest as NULL and the
   // destroy path can skip them safely.
   app->vk_swapchain_views =
@@ -310,6 +325,7 @@ static bool create_swapchain_resources(App *app) {
       SDL_Log("vkCreateImageView (swapchain) failed");
       return false;
     }
+    gpu_stats_create(GPU_STAT_SURFACE_VIEW, 0);
   }
 
   // Depth attachment
@@ -341,6 +357,7 @@ static bool create_swapchain_resources(App *app) {
     SDL_Log("vkCreateImage (depth) failed");
     return false;
   }
+  gpu_stats_create(GPU_STAT_TEXTURE, 0);
 
   VkMemoryRequirements mr;
   vkGetImageMemoryRequirements(app->vk_device, app->vk_depth_image, &mr);
@@ -385,6 +402,7 @@ static bool create_swapchain_resources(App *app) {
     SDL_Log("vkCreateImageView (depth) failed");
     return false;
   }
+  gpu_stats_create(GPU_STAT_VIEW, 0);
 
   VkSemaphoreCreateInfo sci2 = {.sType =
                                     VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -626,6 +644,7 @@ static BackendBuffer sk_make_buffer(SglBufferType type, const void *data,
   if (!sb)
     return 0;
   sb->type = type;
+  sb->bytes = (uint64_t)bytes;
   if (type == SGL_BUFFER_STORAGE) {
     // Storage buffer: also marked vertex_buffer so the same backing buffer
     // can be re-bound as a VBO after compute writes. .immutable + size=0
@@ -645,6 +664,7 @@ static BackendBuffer sk_make_buffer(SglBufferType type, const void *data,
         free(sb);
         return 0;
       }
+      gpu_stats_create(GPU_STAT_BUFFER, sb->bytes);
       sg_update_buffer(sb->buf, &(sg_range){.ptr = data, .size = bytes});
     } else {
       sb->buf = sg_make_buffer(&(sg_buffer_desc){
@@ -659,15 +679,18 @@ static BackendBuffer sk_make_buffer(SglBufferType type, const void *data,
         free(sb);
         return 0;
       }
+      gpu_stats_create(GPU_STAT_BUFFER, sb->bytes);
     }
     sb->storage_view = sg_make_view(&(sg_view_desc){
         .storage_buffer = {.buffer = sb->buf},
     });
     if (sb->storage_view.id == SG_INVALID_ID) {
       sg_destroy_buffer(sb->buf);
+      gpu_stats_destroy(GPU_STAT_BUFFER, sb->bytes);
       free(sb);
       return 0;
     }
+    gpu_stats_create(GPU_STAT_VIEW, 0);
     return (uintptr_t)sb;
   }
 
@@ -685,6 +708,7 @@ static BackendBuffer sk_make_buffer(SglBufferType type, const void *data,
     free(sb);
     return 0;
   }
+  gpu_stats_create(GPU_STAT_BUFFER, sb->bytes);
   if (data && bytes > 0) {
     sg_update_buffer(sb->buf, &(sg_range){.ptr = data, .size = bytes});
   }
@@ -695,10 +719,14 @@ static void sk_destroy_buffer(BackendBuffer h) {
   SkBuffer *sb = (SkBuffer *)h;
   if (!sb)
     return;
-  if (sb->storage_view.id)
+  if (sb->storage_view.id) {
     sg_destroy_view(sb->storage_view);
-  if (sb->buf.id)
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
+  }
+  if (sb->buf.id) {
     sg_destroy_buffer(sb->buf);
+    gpu_stats_destroy(GPU_STAT_BUFFER, sb->bytes);
+  }
   free(sb);
 }
 
@@ -708,6 +736,7 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     return 0;
   si->render_target = d->render_target;
   si->fmt = d->fmt;
+  si->bytes = gpu_stats_image_bytes(d->fmt, d->w, d->h);
   sg_pixel_format pf;
   switch (d->fmt) {
   case SGL_PF_R8:
@@ -750,6 +779,7 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     free(si);
     return 0;
   }
+  gpu_stats_create(GPU_STAT_TEXTURE, si->bytes);
   if (!d->render_target && d->data && d->data_bytes > 0) {
     sg_update_image(
         si->img, &(sg_image_data){
@@ -766,17 +796,25 @@ static BackendImage sk_make_image(const ImageDesc *d) {
       .wrap_u = sw,
       .wrap_v = sw,
   });
+  if (si->smp.id)
+    gpu_stats_create(GPU_STAT_SAMPLER, 0);
   si->view = sg_make_view(&(sg_view_desc){
       .texture = {.image = si->img},
   });
+  if (si->view.id)
+    gpu_stats_create(GPU_STAT_VIEW, 0);
   if (d->render_target && img_desc.usage.color_attachment) {
     si->color_att = sg_make_view(&(sg_view_desc){
         .color_attachment = {.image = si->img},
     });
+    if (si->color_att.id)
+      gpu_stats_create(GPU_STAT_VIEW, 0);
   } else if (d->render_target && img_desc.usage.depth_stencil_attachment) {
     si->depth_att = sg_make_view(&(sg_view_desc){
         .depth_stencil_attachment = {.image = si->img},
     });
+    if (si->depth_att.id)
+      gpu_stats_create(GPU_STAT_VIEW, 0);
   }
   return (uintptr_t)si;
 }
@@ -785,16 +823,26 @@ static void sk_destroy_image(BackendImage h) {
   SkImage *si = (SkImage *)h;
   if (!si)
     return;
-  if (si->color_att.id)
+  if (si->color_att.id) {
     sg_destroy_view(si->color_att);
-  if (si->depth_att.id)
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
+  }
+  if (si->depth_att.id) {
     sg_destroy_view(si->depth_att);
-  if (si->view.id)
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
+  }
+  if (si->view.id) {
     sg_destroy_view(si->view);
-  if (si->img.id)
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
+  }
+  if (si->img.id) {
     sg_destroy_image(si->img);
-  if (si->smp.id)
+    gpu_stats_destroy(GPU_STAT_TEXTURE, si->bytes);
+  }
+  if (si->smp.id) {
     sg_destroy_sampler(si->smp);
+    gpu_stats_destroy(GPU_STAT_SAMPLER, 0);
+  }
   free(si);
 }
 
@@ -880,6 +928,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
       free(ss);
       return 0;
     }
+    gpu_stats_create(GPU_STAT_SHADER, 0);
     return (uintptr_t)ss;
   }
 
@@ -968,6 +1017,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
     free(ss);
     return 0;
   }
+  gpu_stats_create(GPU_STAT_SHADER, 0);
   return (uintptr_t)ss;
 }
 
@@ -975,8 +1025,10 @@ static void sk_destroy_shader(BackendShader h) {
   SkShader *ss = (SkShader *)h;
   if (!ss)
     return;
-  if (ss->sh.id)
+  if (ss->sh.id) {
     sg_destroy_shader(ss->sh);
+    gpu_stats_destroy(GPU_STAT_SHADER, 0);
+  }
   free(ss);
 }
 
@@ -1038,6 +1090,8 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
         .compute = true,
         .shader = ss->sh,
     });
+    if (pip.id)
+      gpu_stats_create(GPU_STAT_PIPELINE, 0);
     return (uintptr_t)pip.id;
   }
 
@@ -1121,6 +1175,8 @@ static BackendPipeline sk_make_pipeline(const PipelineDesc *d) {
 
   desc.index_type = d->is_indexed ? SG_INDEXTYPE_UINT32 : SG_INDEXTYPE_NONE;
   sg_pipeline pip = sg_make_pipeline(&desc);
+  if (pip.id)
+    gpu_stats_create(GPU_STAT_PIPELINE, 0);
   return (uintptr_t)pip.id;
 }
 
@@ -1128,6 +1184,7 @@ static void sk_destroy_pipeline(BackendPipeline h) {
   if (!h)
     return;
   sg_destroy_pipeline((sg_pipeline){.id = (uint32_t)h});
+  gpu_stats_destroy(GPU_STAT_PIPELINE, 0);
 }
 
 static void sk_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
@@ -1339,6 +1396,328 @@ static bool format_is_bgra8(VkFormat f) {
 }
 static bool format_is_rgba8(VkFormat f) {
   return f == VK_FORMAT_R8G8B8A8_UNORM || f == VK_FORMAT_R8G8B8A8_SRGB;
+}
+
+static int sk_readback_src_bpp(SglPixelFormat fmt) {
+  switch (fmt) {
+  case SGL_PF_RGBA8:
+  case SGL_PF_BGRA8:
+    return 4;
+  case SGL_PF_R8:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+static void sk_convert_readback_to_rgba8(SglPixelFormat fmt,
+                                         const uint8_t *src, uint8_t *dst,
+                                         int w, int h) {
+  size_t pixels = (size_t)w * (size_t)h;
+  if (fmt == SGL_PF_RGBA8) {
+    memcpy(dst, src, pixels * 4);
+    return;
+  }
+  if (fmt == SGL_PF_BGRA8) {
+    for (size_t i = 0; i < pixels; ++i) {
+      dst[i * 4 + 0] = src[i * 4 + 2];
+      dst[i * 4 + 1] = src[i * 4 + 1];
+      dst[i * 4 + 2] = src[i * 4 + 0];
+      dst[i * 4 + 3] = src[i * 4 + 3];
+    }
+    return;
+  }
+  if (fmt == SGL_PF_R8) {
+    for (size_t i = 0; i < pixels; ++i) {
+      uint8_t v = src[i];
+      dst[i * 4 + 0] = v;
+      dst[i * 4 + 1] = v;
+      dst[i * 4 + 2] = v;
+      dst[i * 4 + 3] = 255;
+    }
+  }
+}
+
+static bool sk_readback_image(App *app, BackendImage image, int w, int h,
+                              SglPixelFormat src_fmt, ReadbackResult *out) {
+  if (!app || !image || !out || w <= 0 || h <= 0)
+    return false;
+  SkImage *si = (SkImage *)image;
+  int bpp = sk_readback_src_bpp(src_fmt);
+  if (bpp == 0) {
+    SDL_Log("sk_readback_image: unsupported format %d", (int)src_fmt);
+    return false;
+  }
+
+  VkImage vk_image = VK_NULL_HANDLE;
+  VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  if (!lub_sokol_vk_image_readback_info(si->img, &vk_image, &old_layout) ||
+      !vk_image) {
+    SDL_Log("sk_readback_image: failed to query VkImage");
+    return false;
+  }
+
+  // Flush current sokol work first so render-target writes are visible to the
+  // one-shot Vulkan copy submitted below.
+  sg_commit();
+
+  VkDevice dev = app->vk_device;
+  VkPhysicalDevice phys = app->vk_phys;
+  VkQueue queue = app->vk_queue;
+  uint32_t queue_family = app->vk_queue_family;
+  uint32_t width = (uint32_t)w;
+  uint32_t height = (uint32_t)h;
+  VkDeviceSize src_size =
+      (VkDeviceSize)width * (VkDeviceSize)height * (VkDeviceSize)bpp;
+  VkDeviceSize dst_size = (VkDeviceSize)width * (VkDeviceSize)height * 4;
+
+  VkBuffer buf = VK_NULL_HANDLE;
+  VkDeviceMemory mem = VK_NULL_HANDLE;
+  VkCommandPool pool = VK_NULL_HANDLE;
+  VkCommandBuffer cmd = VK_NULL_HANDLE;
+  VkFence fence = VK_NULL_HANDLE;
+  void *mapped = NULL;
+  uint8_t *rgba = NULL;
+  bool coherent = false;
+  bool ok = false;
+  const char *err = NULL;
+
+  VkBufferCreateInfo bci = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = src_size,
+      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+  if (vkCreateBuffer(dev, &bci, NULL, &buf) != VK_SUCCESS) {
+    err = "vkCreateBuffer failed";
+    goto done;
+  }
+
+  VkMemoryRequirements mr;
+  vkGetBufferMemoryRequirements(dev, buf, &mr);
+  uint32_t mt =
+      pick_host_visible_memory_type(phys, mr.memoryTypeBits, &coherent);
+  if (mt == UINT32_MAX) {
+    err = "no host-visible memory type";
+    goto done;
+  }
+  VkMemoryAllocateInfo mai = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = mr.size,
+      .memoryTypeIndex = mt,
+  };
+  if (vkAllocateMemory(dev, &mai, NULL, &mem) != VK_SUCCESS) {
+    err = "vkAllocateMemory failed";
+    goto done;
+  }
+  if (vkBindBufferMemory(dev, buf, mem, 0) != VK_SUCCESS) {
+    err = "vkBindBufferMemory failed";
+    goto done;
+  }
+
+  VkCommandPoolCreateInfo cpci = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+      .queueFamilyIndex = queue_family,
+  };
+  if (vkCreateCommandPool(dev, &cpci, NULL, &pool) != VK_SUCCESS) {
+    err = "vkCreateCommandPool failed";
+    goto done;
+  }
+  VkCommandBufferAllocateInfo cbai = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = pool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+  };
+  if (vkAllocateCommandBuffers(dev, &cbai, &cmd) != VK_SUCCESS) {
+    err = "vkAllocateCommandBuffers failed";
+    goto done;
+  }
+
+  VkCommandBufferBeginInfo cbbi = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  if (vkBeginCommandBuffer(cmd, &cbbi) != VK_SUCCESS) {
+    err = "vkBeginCommandBuffer failed";
+    goto done;
+  }
+
+  VkImageMemoryBarrier b1 = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT,
+      .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+      .oldLayout = old_layout,
+      .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .image = vk_image,
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .levelCount = 1,
+              .layerCount = 1,
+          },
+  };
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1,
+                       &b1);
+
+  VkBufferImageCopy region = {
+      .bufferOffset = 0,
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .layerCount = 1,
+          },
+      .imageOffset = {0, 0, 0},
+      .imageExtent = {width, height, 1},
+  };
+  vkCmdCopyImageToBuffer(cmd, vk_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                         buf, 1, &region);
+
+  VkImageLayout restore_layout =
+      old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_GENERAL
+                                              : old_layout;
+  VkImageMemoryBarrier b2 = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+      .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT,
+      .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      .newLayout = restore_layout,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .image = vk_image,
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .levelCount = 1,
+              .layerCount = 1,
+          },
+  };
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL,
+                       1, &b2);
+
+  if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+    err = "vkEndCommandBuffer failed";
+    goto done;
+  }
+
+  VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+  if (vkCreateFence(dev, &fci, NULL, &fence) != VK_SUCCESS) {
+    err = "vkCreateFence failed";
+    goto done;
+  }
+  VkSubmitInfo si_submit = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &cmd,
+  };
+  if (vkQueueSubmit(queue, 1, &si_submit, fence) != VK_SUCCESS) {
+    err = "vkQueueSubmit failed";
+    goto done;
+  }
+  if (vkWaitForFences(dev, 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
+    err = "vkWaitForFences failed";
+    goto done;
+  }
+
+  if (vkMapMemory(dev, mem, 0, src_size, 0, &mapped) != VK_SUCCESS) {
+    err = "vkMapMemory failed";
+    goto done;
+  }
+  if (!coherent) {
+    VkMappedMemoryRange range = {
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .memory = mem,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE,
+    };
+    vkInvalidateMappedMemoryRanges(dev, 1, &range);
+  }
+
+  rgba = (uint8_t *)malloc((size_t)dst_size);
+  if (!rgba) {
+    err = "out of memory (rgba buffer)";
+    goto done;
+  }
+  sk_convert_readback_to_rgba8(src_fmt, (const uint8_t *)mapped, rgba, w, h);
+
+  out->w = w;
+  out->h = h;
+  out->stride = w * 4;
+  out->fmt = SGL_PF_RGBA8;
+  out->data = rgba;
+  out->data_bytes = (size_t)dst_size;
+  rgba = NULL;
+  ok = true;
+
+done:
+  if (mapped) {
+    vkUnmapMemory(dev, mem);
+    mapped = NULL;
+  }
+  if (rgba)
+    free(rgba);
+  if (fence)
+    vkDestroyFence(dev, fence, NULL);
+  if (cmd && pool)
+    vkFreeCommandBuffers(dev, pool, 1, &cmd);
+  if (pool)
+    vkDestroyCommandPool(dev, pool, NULL);
+  if (buf)
+    vkDestroyBuffer(dev, buf, NULL);
+  if (mem)
+    vkFreeMemory(dev, mem, NULL);
+
+  if (!ok && err)
+    SDL_Log("sk_readback_image: %s", err);
+  return ok;
+}
+
+typedef struct SkReadbackRequest {
+  ReadbackResult rb;
+} SkReadbackRequest;
+
+static bool sk_request_readback_image(App *app, BackendImage image, int w,
+                                      int h, SglPixelFormat src_fmt,
+                                      BackendReadback *out) {
+  if (!out)
+    return false;
+  *out = 0;
+  SkReadbackRequest *req =
+      (SkReadbackRequest *)calloc(1, sizeof(SkReadbackRequest));
+  if (!req)
+    return false;
+  if (!sk_readback_image(app, image, w, h, src_fmt, &req->rb)) {
+    free(req);
+    return false;
+  }
+  *out = (BackendReadback)req;
+  return true;
+}
+
+static ReadbackPollStatus sk_poll_readback(BackendReadback h,
+                                           ReadbackResult *out) {
+  if (!h || !out)
+    return READBACK_POLL_ERROR;
+  SkReadbackRequest *req = (SkReadbackRequest *)h;
+  *out = req->rb;
+  memset(&req->rb, 0, sizeof(req->rb));
+  return READBACK_POLL_READY;
+}
+
+static void sk_destroy_readback(BackendReadback h) {
+  if (!h)
+    return;
+  SkReadbackRequest *req = (SkReadbackRequest *)h;
+  if (req->rb.data)
+    free(req->rb.data);
+  free(req);
 }
 
 static bool sk_capture(App *app, const char *path) {
@@ -1635,10 +2014,12 @@ static WGPUStringView lub_wgpu_string(const char *s) {
 static bool lub_wgpu_recreate_depth(App *app, uint32_t w, uint32_t h) {
   if (app->wgpu_depth_view) {
     wgpuTextureViewRelease(app->wgpu_depth_view);
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
     app->wgpu_depth_view = NULL;
   }
   if (app->wgpu_depth_tex) {
     wgpuTextureRelease(app->wgpu_depth_tex);
+    gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     app->wgpu_depth_tex = NULL;
   }
   WGPUTextureDescriptor ds_desc = {
@@ -1654,11 +2035,16 @@ static bool lub_wgpu_recreate_depth(App *app, uint32_t w, uint32_t h) {
     SDL_Log("[wgpu] wgpuDeviceCreateTexture (depth) failed");
     return false;
   }
+  gpu_stats_create(GPU_STAT_TEXTURE, 0);
   app->wgpu_depth_view = wgpuTextureCreateView(app->wgpu_depth_tex, NULL);
   if (!app->wgpu_depth_view) {
     SDL_Log("[wgpu] wgpuTextureCreateView (depth) failed");
+    wgpuTextureRelease(app->wgpu_depth_tex);
+    gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
+    app->wgpu_depth_tex = NULL;
     return false;
   }
+  gpu_stats_create(GPU_STAT_VIEW, 0);
   return true;
 }
 
@@ -1753,18 +2139,22 @@ static void sk_shutdown(App *app) {
   sg_shutdown();
   if (app->wgpu_swapchain_view) {
     wgpuTextureViewRelease(app->wgpu_swapchain_view);
+    gpu_stats_destroy(GPU_STAT_SURFACE_VIEW, 0);
     app->wgpu_swapchain_view = NULL;
   }
   if (app->wgpu_swapchain_tex) {
     wgpuTextureRelease(app->wgpu_swapchain_tex);
+    gpu_stats_destroy(GPU_STAT_SURFACE_TEXTURE, 0);
     app->wgpu_swapchain_tex = NULL;
   }
   if (app->wgpu_depth_view) {
     wgpuTextureViewRelease(app->wgpu_depth_view);
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
     app->wgpu_depth_view = NULL;
   }
   if (app->wgpu_depth_tex) {
     wgpuTextureRelease(app->wgpu_depth_tex);
+    gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
     app->wgpu_depth_tex = NULL;
   }
   if (app->wgpu_surface) {
@@ -1798,10 +2188,12 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
     // Drop any in-flight per-frame view before reconfiguring.
     if (app->wgpu_swapchain_view) {
       wgpuTextureViewRelease(app->wgpu_swapchain_view);
+      gpu_stats_destroy(GPU_STAT_SURFACE_VIEW, 0);
       app->wgpu_swapchain_view = NULL;
     }
     if (app->wgpu_swapchain_tex) {
       wgpuTextureRelease(app->wgpu_swapchain_tex);
+      gpu_stats_destroy(GPU_STAT_SURFACE_TEXTURE, 0);
       app->wgpu_swapchain_tex = NULL;
     }
     lub_wgpu_configure_surface(app, (uint32_t)cw, (uint32_t)ch);
@@ -1852,7 +2244,10 @@ static void sk_begin_frame(App *app, int *out_w, int *out_h) {
   }
   if (ok && surf_tex.texture) {
     app->wgpu_swapchain_tex = surf_tex.texture;
+    gpu_stats_create(GPU_STAT_SURFACE_TEXTURE, 0);
     app->wgpu_swapchain_view = wgpuTextureCreateView(surf_tex.texture, NULL);
+    if (app->wgpu_swapchain_view)
+      gpu_stats_create(GPU_STAT_SURFACE_VIEW, 0);
     // Chromium may hand back a swapchain texture at a different size than
     // we configured (devicePixelRatio scaling, or the surface getting
     // resized between our configure call and getCurrentTexture). The
@@ -1890,10 +2285,12 @@ static void sk_end_frame(App *app) {
   // we release the handle, not destroy the underlying GPU resource.
   if (app->wgpu_swapchain_view) {
     wgpuTextureViewRelease(app->wgpu_swapchain_view);
+    gpu_stats_destroy(GPU_STAT_SURFACE_VIEW, 0);
     app->wgpu_swapchain_view = NULL;
   }
   if (app->wgpu_swapchain_tex) {
     wgpuTextureRelease(app->wgpu_swapchain_tex);
+    gpu_stats_destroy(GPU_STAT_SURFACE_TEXTURE, 0);
     app->wgpu_swapchain_tex = NULL;
   }
   // No wgpuSurfacePresent on Emscripten — the browser flushes via rAF
@@ -1937,6 +2334,233 @@ static bool sk_capture(App *app, const char *path) {
   return false;
 }
 
+typedef struct SkWgpuReadbackRequest {
+  WGPUBuffer buf;
+  size_t map_bytes;
+  uint32_t src_stride;
+  int w;
+  int h;
+  int bpp;
+  SglPixelFormat src_fmt;
+  bool done;
+  bool cancelled;
+  WGPUMapAsyncStatus status;
+} SkWgpuReadbackRequest;
+
+static int sk_wgpu_readback_src_bpp(SglPixelFormat fmt) {
+  switch (fmt) {
+  case SGL_PF_RGBA8:
+  case SGL_PF_BGRA8:
+    return 4;
+  case SGL_PF_R8:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+static uint32_t sk_wgpu_align_u32(uint32_t v, uint32_t align) {
+  return (v + align - 1u) & ~(align - 1u);
+}
+
+static void sk_wgpu_convert_rows_to_rgba8(SglPixelFormat fmt,
+                                          const uint8_t *src, uint32_t stride,
+                                          uint8_t *dst, int w, int h) {
+  for (int y = 0; y < h; ++y) {
+    const uint8_t *row = src + (size_t)y * stride;
+    uint8_t *out = dst + (size_t)y * (size_t)w * 4;
+    if (fmt == SGL_PF_RGBA8) {
+      memcpy(out, row, (size_t)w * 4);
+    } else if (fmt == SGL_PF_BGRA8) {
+      for (int x = 0; x < w; ++x) {
+        out[x * 4 + 0] = row[x * 4 + 2];
+        out[x * 4 + 1] = row[x * 4 + 1];
+        out[x * 4 + 2] = row[x * 4 + 0];
+        out[x * 4 + 3] = row[x * 4 + 3];
+      }
+    } else if (fmt == SGL_PF_R8) {
+      for (int x = 0; x < w; ++x) {
+        uint8_t v = row[x];
+        out[x * 4 + 0] = v;
+        out[x * 4 + 1] = v;
+        out[x * 4 + 2] = v;
+        out[x * 4 + 3] = 255;
+      }
+    }
+  }
+}
+
+static void sk_wgpu_readback_release_buffer(SkWgpuReadbackRequest *req) {
+  if (!req || !req->buf)
+    return;
+  if (req->done && req->status == WGPUMapAsyncStatus_Success)
+    wgpuBufferUnmap(req->buf);
+  wgpuBufferRelease(req->buf);
+  req->buf = NULL;
+}
+
+static void sk_wgpu_readback_callback(WGPUMapAsyncStatus status,
+                                      WGPUStringView message, void *userdata1,
+                                      void *userdata2) {
+  (void)message;
+  (void)userdata2;
+  SkWgpuReadbackRequest *req = (SkWgpuReadbackRequest *)userdata1;
+  if (!req)
+    return;
+  req->status = status;
+  req->done = true;
+  if (req->cancelled) {
+    sk_wgpu_readback_release_buffer(req);
+    free(req);
+  }
+}
+
+static bool sk_request_readback_image(App *app, BackendImage image, int w,
+                                      int h, SglPixelFormat src_fmt,
+                                      BackendReadback *out) {
+  if (!out)
+    return false;
+  *out = 0;
+  if (!app || !image || w <= 0 || h <= 0)
+    return false;
+  SkImage *si = (SkImage *)image;
+  int bpp = sk_wgpu_readback_src_bpp(src_fmt);
+  if (bpp == 0) {
+    SDL_Log("[wgpu] read_texture unsupported format %d", (int)src_fmt);
+    return false;
+  }
+
+  WGPUTexture tex = NULL;
+  if (!lub_sokol_wgpu_image_texture(si->img, &tex) || !tex) {
+    SDL_Log("[wgpu] read_texture failed to query WGPUTexture");
+    return false;
+  }
+
+  // Flush current sokol work so render-target writes are visible to this copy.
+  sg_commit();
+
+  uint32_t tight_stride = (uint32_t)w * (uint32_t)bpp;
+  uint32_t src_stride = sk_wgpu_align_u32(tight_stride, 256);
+  size_t map_bytes = (size_t)src_stride * (size_t)h;
+
+  SkWgpuReadbackRequest *req =
+      (SkWgpuReadbackRequest *)calloc(1, sizeof(SkWgpuReadbackRequest));
+  if (!req)
+    return false;
+  req->map_bytes = map_bytes;
+  req->src_stride = src_stride;
+  req->w = w;
+  req->h = h;
+  req->bpp = bpp;
+  req->src_fmt = src_fmt;
+  req->status = WGPUMapAsyncStatus_Error;
+
+  WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+  bd.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+  bd.size = (uint64_t)map_bytes;
+  req->buf = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
+  if (!req->buf) {
+    SDL_Log("[wgpu] read_texture wgpuDeviceCreateBuffer failed");
+    free(req);
+    return false;
+  }
+
+  WGPUCommandEncoderDescriptor enc_desc = {0};
+  WGPUCommandEncoder enc =
+      wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
+  if (!enc) {
+    SDL_Log("[wgpu] read_texture wgpuDeviceCreateCommandEncoder failed");
+    sk_wgpu_readback_release_buffer(req);
+    free(req);
+    return false;
+  }
+
+  WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+  src.texture = tex;
+  src.aspect = WGPUTextureAspect_All;
+  WGPUTexelCopyBufferInfo dst = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
+  dst.buffer = req->buf;
+  dst.layout.offset = 0;
+  dst.layout.bytesPerRow = src_stride;
+  dst.layout.rowsPerImage = (uint32_t)h;
+  WGPUExtent3D extent = {
+      .width = (uint32_t)w,
+      .height = (uint32_t)h,
+      .depthOrArrayLayers = 1,
+  };
+  wgpuCommandEncoderCopyTextureToBuffer(enc, &src, &dst, &extent);
+
+  WGPUCommandBufferDescriptor cmd_desc = {0};
+  WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, &cmd_desc);
+  wgpuCommandEncoderRelease(enc);
+  if (!cmd) {
+    SDL_Log("[wgpu] read_texture wgpuCommandEncoderFinish failed");
+    sk_wgpu_readback_release_buffer(req);
+    free(req);
+    return false;
+  }
+  WGPUQueue queue = (WGPUQueue)sg_wgpu_queue();
+  if (!queue)
+    queue = wgpuDeviceGetQueue(app->wgpu_device);
+  wgpuQueueSubmit(queue, 1, &cmd);
+  wgpuCommandBufferRelease(cmd);
+
+  WGPUBufferMapCallbackInfo cb = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
+  cb.mode = WGPUCallbackMode_AllowSpontaneous;
+  cb.callback = sk_wgpu_readback_callback;
+  cb.userdata1 = req;
+  wgpuBufferMapAsync(req->buf, WGPUMapMode_Read, 0, map_bytes, cb);
+
+  *out = (BackendReadback)req;
+  return true;
+}
+
+static ReadbackPollStatus sk_poll_readback(BackendReadback h,
+                                           ReadbackResult *out) {
+  if (!h || !out)
+    return READBACK_POLL_ERROR;
+  SkWgpuReadbackRequest *req = (SkWgpuReadbackRequest *)h;
+  if (!req->done)
+    return READBACK_POLL_PENDING;
+  if (req->status != WGPUMapAsyncStatus_Success)
+    return READBACK_POLL_ERROR;
+
+  const uint8_t *mapped =
+      (const uint8_t *)wgpuBufferGetConstMappedRange(req->buf, 0,
+                                                     req->map_bytes);
+  if (!mapped)
+    return READBACK_POLL_ERROR;
+
+  size_t dst_stride = (size_t)req->w * 4;
+  size_t dst_bytes = dst_stride * (size_t)req->h;
+  uint8_t *rgba = (uint8_t *)malloc(dst_bytes);
+  if (!rgba)
+    return READBACK_POLL_ERROR;
+  sk_wgpu_convert_rows_to_rgba8(req->src_fmt, mapped, req->src_stride, rgba,
+                                req->w, req->h);
+  sk_wgpu_readback_release_buffer(req);
+
+  out->w = req->w;
+  out->h = req->h;
+  out->stride = (int)dst_stride;
+  out->fmt = SGL_PF_RGBA8;
+  out->data = rgba;
+  out->data_bytes = dst_bytes;
+  return READBACK_POLL_READY;
+}
+
+static void sk_destroy_readback(BackendReadback h) {
+  if (!h)
+    return;
+  SkWgpuReadbackRequest *req = (SkWgpuReadbackRequest *)h;
+  if (!req->done) {
+    req->cancelled = true;
+    return;
+  }
+  sk_wgpu_readback_release_buffer(req);
+  free(req);
+}
+
 static SglPixelFormat sk_swapchain_color_format(App *app) {
   (void)app;
   // Surface format is pinned to BGRA8Unorm at sk_init (see comment there).
@@ -1968,6 +2592,9 @@ const RenderBackend g_backend_sokol = {
     .apply_uniforms = sk_apply_uniforms,
     .draw = sk_draw,
     .dispatch = sk_dispatch,
+    .request_readback_image = sk_request_readback_image,
+    .poll_readback = sk_poll_readback,
+    .destroy_readback = sk_destroy_readback,
     .capture = sk_capture,
     .swapchain_color_format = sk_swapchain_color_format,
 };

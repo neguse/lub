@@ -1,7 +1,6 @@
 #include "lua_api.h"
 #include "app.h"
 #include "backend.h"
-#include "capture.h"
 #include "enums.h"
 #include "enums_lua.h"
 #include "gltf.h"
@@ -10,6 +9,7 @@
 #include "resources.h"
 #include "shader.h"
 #include "stb_image.h"
+#include "stb_image_write.h"
 #include <SDL3/SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -23,6 +23,327 @@
 #include <sys/stat.h>
 
 static App *g_app_for_lua = NULL;
+
+typedef struct LubBytes {
+  uint8_t *data;
+  size_t len;
+} LubBytes;
+
+#define LUB_BYTES_MT "lub.Bytes"
+#define LUB_READBACK_MT "lub.Readback"
+#define LUB_READBACK_MAX_DEPTH 32
+
+static int is_sentinel(lua_State *L, int idx, const char *kind);
+static bool is_depth_format(SglPixelFormat fmt);
+
+typedef struct LubReadbackItem {
+  int id_ref;
+  BackendReadback req;
+  ReadbackResult rb;
+  char *error;
+  enum {
+    LUB_READBACK_ITEM_EMPTY = 0,
+    LUB_READBACK_ITEM_PENDING,
+    LUB_READBACK_ITEM_READY,
+    LUB_READBACK_ITEM_ERROR,
+  } state;
+} LubReadbackItem;
+
+typedef struct LubReadback {
+  int depth;
+  int head;
+  int count;
+  LubReadbackItem items[LUB_READBACK_MAX_DEPTH];
+} LubReadback;
+
+static LubBytes *lub_bytes_test(lua_State *L, int idx) {
+  return (LubBytes *)luaL_testudata(L, idx, LUB_BYTES_MT);
+}
+
+static LubBytes *lub_bytes_check(lua_State *L, int idx) {
+  return (LubBytes *)luaL_checkudata(L, idx, LUB_BYTES_MT);
+}
+
+static void lub_bytes_push(lua_State *L, uint8_t *data, size_t len) {
+  LubBytes *b = (LubBytes *)lua_newuserdatauv(L, sizeof(LubBytes), 0);
+  b->data = data;
+  b->len = len;
+  luaL_getmetatable(L, LUB_BYTES_MT);
+  lua_setmetatable(L, -2);
+}
+
+static int l_bytes_gc(lua_State *L) {
+  LubBytes *b = lub_bytes_check(L, 1);
+  if (b->data) {
+    free(b->data);
+    b->data = NULL;
+  }
+  b->len = 0;
+  return 0;
+}
+
+static int l_bytes_len(lua_State *L) {
+  LubBytes *b = lub_bytes_check(L, 1);
+  lua_pushinteger(L, (lua_Integer)b->len);
+  return 1;
+}
+
+static int l_bytes_index(lua_State *L) {
+  LubBytes *b = lub_bytes_check(L, 1);
+  const char *key = luaL_checkstring(L, 2);
+  if (strcmp(key, "length") == 0 || strcmp(key, "len") == 0) {
+    lua_pushinteger(L, (lua_Integer)b->len);
+    return 1;
+  }
+  lua_pushnil(L);
+  return 1;
+}
+
+static void lub_bytes_register(lua_State *L) {
+  if (luaL_newmetatable(L, LUB_BYTES_MT)) {
+    lua_pushcfunction(L, l_bytes_gc);
+    lua_setfield(L, -2, "__gc");
+    lua_pushcfunction(L, l_bytes_len);
+    lua_setfield(L, -2, "__len");
+    lua_pushcfunction(L, l_bytes_index);
+    lua_setfield(L, -2, "__index");
+  }
+  lua_pop(L, 1);
+}
+
+static void lub_readback_item_init(LubReadbackItem *it) {
+  memset(it, 0, sizeof(*it));
+  it->id_ref = LUA_NOREF;
+}
+
+static void lub_readback_item_clear(lua_State *L, LubReadbackItem *it) {
+  if (it->id_ref != LUA_NOREF) {
+    luaL_unref(L, LUA_REGISTRYINDEX, it->id_ref);
+  }
+  it->id_ref = LUA_NOREF;
+  if (it->req && g_backend && g_backend->destroy_readback) {
+    g_backend->destroy_readback(it->req);
+  }
+  it->req = 0;
+  if (it->rb.data) {
+    free(it->rb.data);
+  }
+  memset(&it->rb, 0, sizeof(it->rb));
+  if (it->error) {
+    free(it->error);
+    it->error = NULL;
+  }
+  it->state = LUB_READBACK_ITEM_EMPTY;
+}
+
+static LubReadback *lub_readback_check(lua_State *L, int idx) {
+  return (LubReadback *)luaL_checkudata(L, idx, LUB_READBACK_MT);
+}
+
+static void lub_readback_push_processing(lua_State *L) {
+  lua_pushstring(L, "processing");
+  for (int i = 0; i < 8; ++i)
+    lua_pushnil(L);
+}
+
+static void lub_readback_push_dropped(lua_State *L, int dropped_idx) {
+  lua_pushstring(L, "dropped");
+  for (int i = 0; i < 6; ++i)
+    lua_pushnil(L);
+  lua_pushvalue(L, dropped_idx);
+  lua_pushnil(L);
+}
+
+static int lub_readback_push_item(lua_State *L, LubReadbackItem *it) {
+  if (it->state == LUB_READBACK_ITEM_ERROR || it->error) {
+    lua_pushstring(L, "error");
+    for (int i = 0; i < 5; ++i)
+      lua_pushnil(L);
+    if (it->id_ref != LUA_NOREF)
+      lua_rawgeti(L, LUA_REGISTRYINDEX, it->id_ref);
+    else
+      lua_pushnil(L);
+    lua_pushnil(L);
+    lua_pushstring(L, it->error);
+    lub_readback_item_clear(L, it);
+    return 9;
+  }
+
+  lua_pushstring(L, "ready");
+  lub_bytes_push(L, it->rb.data, it->rb.data_bytes);
+  it->rb.data = NULL;
+  it->rb.data_bytes = 0;
+  lua_pushinteger(L, it->rb.w);
+  lua_pushinteger(L, it->rb.h);
+  lua_pushinteger(L, it->rb.fmt);
+  lua_pushinteger(L, it->rb.stride);
+  if (it->id_ref != LUA_NOREF)
+    lua_rawgeti(L, LUA_REGISTRYINDEX, it->id_ref);
+  else
+    lua_pushnil(L);
+  lua_pushnil(L);
+  lua_pushnil(L);
+  lub_readback_item_clear(L, it);
+  return 9;
+}
+
+static bool lub_readback_poll_item(lua_State *L, LubReadbackItem *it) {
+  (void)L;
+  if (it->state == LUB_READBACK_ITEM_READY ||
+      it->state == LUB_READBACK_ITEM_ERROR) {
+    return true;
+  }
+  if (it->state != LUB_READBACK_ITEM_PENDING || !it->req) {
+    it->error = SDL_strdup("read_texture: invalid readback request");
+    it->state = LUB_READBACK_ITEM_ERROR;
+    return true;
+  }
+  if (!g_backend || !g_backend->poll_readback || !g_backend->destroy_readback) {
+    it->error = SDL_strdup("read_texture: backend does not support readback");
+    it->state = LUB_READBACK_ITEM_ERROR;
+    return true;
+  }
+
+  ReadbackResult out = {0};
+  ReadbackPollStatus st = g_backend->poll_readback(it->req, &out);
+  if (st == READBACK_POLL_PENDING)
+    return false;
+
+  g_backend->destroy_readback(it->req);
+  it->req = 0;
+  if (st == READBACK_POLL_READY) {
+    it->rb = out;
+    it->state = LUB_READBACK_ITEM_READY;
+  } else {
+    it->error = SDL_strdup("read_texture: backend readback failed");
+    it->state = LUB_READBACK_ITEM_ERROR;
+  }
+  return true;
+}
+
+static bool lub_readback_enqueue(lua_State *L, LubReadback *rb, int tex_idx,
+                                 int id_idx) {
+  if (rb->count >= rb->depth)
+    return false;
+
+  int tail = (rb->head + rb->count) % LUB_READBACK_MAX_DEPTH;
+  LubReadbackItem *it = &rb->items[tail];
+  lub_readback_item_clear(L, it);
+  lua_pushvalue(L, id_idx);
+  it->id_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+  if (!is_sentinel(L, tex_idx, "texture")) {
+    it->error = SDL_strdup("read_texture: expected a TextureRef");
+    it->state = LUB_READBACK_ITEM_ERROR;
+    rb->count++;
+    return true;
+  }
+  lua_getfield(L, tex_idx, "key");
+  const char *key = lua_tostring(L, -1);
+  ResEntry *e = key ? res_table_get(&g_app_for_lua->res, key) : NULL;
+  lua_pop(L, 1);
+  if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
+    char buf[256];
+    SDL_snprintf(buf, sizeof(buf), "read_texture: texture not found: %s",
+                 key ? key : "?");
+    it->error = SDL_strdup(buf);
+    it->state = LUB_READBACK_ITEM_ERROR;
+    rb->count++;
+    return true;
+  }
+  if (is_depth_format(e->u.tex.fmt)) {
+    it->error = SDL_strdup("read_texture: depth textures are not supported");
+    it->state = LUB_READBACK_ITEM_ERROR;
+    rb->count++;
+    return true;
+  }
+  if (!g_backend || !g_backend->request_readback_image) {
+    it->error = SDL_strdup("read_texture: backend does not support readback");
+    it->state = LUB_READBACK_ITEM_ERROR;
+    rb->count++;
+    return true;
+  }
+
+  BackendReadback req = 0;
+  if (!g_backend->request_readback_image(g_app_for_lua, e->u.tex.h, e->u.tex.w,
+                                         e->u.tex.h_, e->u.tex.fmt, &req) ||
+      !req) {
+    it->error = SDL_strdup("read_texture: backend readback request failed");
+    it->state = LUB_READBACK_ITEM_ERROR;
+    rb->count++;
+    return true;
+  }
+  it->req = req;
+  it->state = LUB_READBACK_ITEM_PENDING;
+  rb->count++;
+  return true;
+}
+
+static int l_readback_read_texture(lua_State *L) {
+  LubReadback *rb = lub_readback_check(L, 1);
+  if (pass_state_in_pass(&g_app_for_lua->pass)) {
+    return luaL_error(L, "read_texture: cannot read while a pass is active");
+  }
+
+  bool has_id = !lua_isnoneornil(L, 3);
+  if (rb->count > 0 &&
+      lub_readback_poll_item(L, &rb->items[rb->head])) {
+    int idx = rb->head;
+    rb->head = (rb->head + 1) % LUB_READBACK_MAX_DEPTH;
+    rb->count--;
+    if (has_id)
+      lub_readback_enqueue(L, rb, 2, 3);
+    return lub_readback_push_item(L, &rb->items[idx]);
+  }
+
+  if (has_id && !lub_readback_enqueue(L, rb, 2, 3)) {
+    lub_readback_push_dropped(L, 3);
+    return 9;
+  }
+
+  lub_readback_push_processing(L);
+  return 9;
+}
+
+static int l_readback_gc(lua_State *L) {
+  LubReadback *rb = lub_readback_check(L, 1);
+  for (int i = 0; i < LUB_READBACK_MAX_DEPTH; ++i)
+    lub_readback_item_clear(L, &rb->items[i]);
+  rb->depth = 0;
+  rb->head = 0;
+  rb->count = 0;
+  return 0;
+}
+
+static int l_readback_new(lua_State *L) {
+  int depth = g_app_for_lua ? g_app_for_lua->readback_depth : 8;
+  if (depth < 1)
+    depth = 1;
+  if (depth > LUB_READBACK_MAX_DEPTH)
+    depth = LUB_READBACK_MAX_DEPTH;
+
+  LubReadback *rb = (LubReadback *)lua_newuserdatauv(L, sizeof(LubReadback), 0);
+  rb->depth = depth;
+  rb->head = 0;
+  rb->count = 0;
+  for (int i = 0; i < LUB_READBACK_MAX_DEPTH; ++i)
+    lub_readback_item_init(&rb->items[i]);
+  luaL_getmetatable(L, LUB_READBACK_MT);
+  lua_setmetatable(L, -2);
+  return 1;
+}
+
+static void lub_readback_register(lua_State *L) {
+  if (luaL_newmetatable(L, LUB_READBACK_MT)) {
+    lua_pushcfunction(L, l_readback_gc);
+    lua_setfield(L, -2, "__gc");
+    lua_newtable(L);
+    lua_pushcfunction(L, l_readback_read_texture);
+    lua_setfield(L, -2, "read_texture");
+    lua_setfield(L, -2, "__index");
+  }
+  lua_pop(L, 1);
+}
 
 #ifdef __EMSCRIPTEN__
 enum {
@@ -506,8 +827,12 @@ static int l_use_texture(lua_State *L) {
   int h = (int)luaL_checkinteger(L, 3);
   int fmt = (int)luaL_checkinteger(L, 4);
   int has_data = !lua_isnoneornil(L, 5);
-  if (has_data)
-    luaL_checktype(L, 5, LUA_TTABLE);
+  LubBytes *byte_data = NULL;
+  if (has_data) {
+    byte_data = lub_bytes_test(L, 5);
+    if (!byte_data)
+      luaL_checktype(L, 5, LUA_TTABLE);
+  }
   int64_t version = (int64_t)luaL_checkinteger(L, 6);
 
   // optional 7th arg: { filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target =
@@ -594,39 +919,53 @@ static int l_use_texture(lua_State *L) {
   }
 
   uint8_t *pixels = NULL;
+  const uint8_t *pixel_src = NULL;
+  size_t new_bytes = 0;
   if (has_data) {
     if (bpp == 0) {
       return luaL_error(L, "use_texture: this texture format cannot be "
                            "initialized with byte data");
     }
-    int n = (int)lua_rawlen(L, 5);
-    if (n != w * h * bpp) {
-      return luaL_error(L,
-                        "use_texture: data size mismatch: got %d, expected %d",
-                        n, w * h * bpp);
-    }
-    pixels = (uint8_t *)malloc((size_t)n);
-    if (!pixels)
-      return luaL_error(L, "use_texture: out of memory");
-    for (int i = 0; i < n; ++i) {
-      lua_rawgeti(L, 5, i + 1);
-      int v = (int)lua_tointeger(L, -1);
-      if (v < 0)
-        v = 0;
-      else if (v > 255)
-        v = 255;
-      pixels[i] = (uint8_t)v;
-      lua_pop(L, 1);
+    size_t expected = (size_t)w * (size_t)h * (size_t)bpp;
+    if (byte_data) {
+      if (byte_data->len != expected) {
+        return luaL_error(
+            L, "use_texture: byte size mismatch: got %zu, expected %zu",
+            byte_data->len, expected);
+      }
+      pixel_src = byte_data->data;
+      new_bytes = expected;
+    } else {
+      int n = (int)lua_rawlen(L, 5);
+      if ((size_t)n != expected) {
+        return luaL_error(
+            L, "use_texture: data size mismatch: got %d, expected %zu", n,
+            expected);
+      }
+      pixels = (uint8_t *)malloc((size_t)n);
+      if (!pixels)
+        return luaL_error(L, "use_texture: out of memory");
+      for (int i = 0; i < n; ++i) {
+        lua_rawgeti(L, 5, i + 1);
+        int v = (int)lua_tointeger(L, -1);
+        if (v < 0)
+          v = 0;
+        else if (v > 255)
+          v = 255;
+        pixels[i] = (uint8_t)v;
+        lua_pop(L, 1);
+      }
+      pixel_src = pixels;
+      new_bytes = expected;
     }
   }
 
-  size_t new_bytes = pixels ? (size_t)w * (size_t)h * (size_t)bpp : 0;
   bool same_shape = (e->u.tex.h != 0) && (e->u.tex.w == w) &&
                     (e->u.tex.h_ == h) && (e->u.tex.fmt == (SglPixelFormat)fmt);
-  if (same_shape && !sampler_changed && !target_changed && pixels &&
+  if (same_shape && !sampler_changed && !target_changed && pixel_src &&
       new_bytes > 0) {
     // in-place update
-    g_backend->update_image(e->u.tex.h, pixels, new_bytes);
+    g_backend->update_image(e->u.tex.h, pixel_src, new_bytes);
   } else {
     if (e->u.tex.h != 0)
       g_backend->destroy_image(e->u.tex.h);
@@ -634,7 +973,7 @@ static int l_use_texture(lua_State *L) {
         .fmt = (SglPixelFormat)fmt,
         .w = w,
         .h = h,
-        .data = pixels,
+        .data = pixel_src,
         .data_bytes = new_bytes,
         .filter = filter,
         .wrap = wrap,
@@ -1103,12 +1442,6 @@ static int l_end_pass(lua_State *L) {
   return 0;
 }
 
-static int l_capture(lua_State *L) {
-  const char *path = luaL_checkstring(L, 1);
-  capture_schedule(&g_app_for_lua->capture, path, 0); // 0 = next frame
-  return 0;
-}
-
 static SDL_Scancode scancode_from_name(const char *name) {
   if (!name || !name[0])
     return SDL_SCANCODE_UNKNOWN;
@@ -1286,6 +1619,22 @@ static int l_config(lua_State *L) {
   }
   lua_pop(L, 1);
 
+  lua_getfield(L, 1, "readback_depth");
+  if (!lua_isnoneornil(L, -1)) {
+    if (!lua_isinteger(L, -1)) {
+      lua_pop(L, 1);
+      return luaL_error(L, "config: readback_depth must be integer");
+    }
+    lua_Integer v = lua_tointeger(L, -1);
+    if (v < 1 || v > LUB_READBACK_MAX_DEPTH) {
+      lua_pop(L, 1);
+      return luaL_error(L, "config: readback_depth out of range (1..%d)",
+                        LUB_READBACK_MAX_DEPTH);
+    }
+    g_app_for_lua->readback_depth = (int)v;
+  }
+  lua_pop(L, 1);
+
   lua_getfield(L, 1, "width");
   if (!lua_isnoneornil(L, -1)) {
     if (!lua_isinteger(L, -1)) {
@@ -1407,29 +1756,48 @@ static int l_fnv1a64(lua_State *L) {
   return 1;
 }
 
-static int l_load_png(lua_State *L) {
+static int l_png_load(lua_State *L) {
   const char *path = luaL_checkstring(L, 1);
   int w, h;
   unsigned char *pixels = stbi_load(path, &w, &h, NULL, STBI_rgb_alpha);
   if (!pixels) {
-    SDL_Log("load_png: %s: %s", path, stbi_failure_reason());
+    SDL_Log("png_load: %s: %s", path, stbi_failure_reason());
     lua_pushnil(L);
     return 1;
   }
-  int n = w * h * STBI_rgb_alpha;
-  lua_createtable(L, n, 0);
-  for (int i = 0; i < n; ++i) {
-    lua_pushinteger(L, pixels[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  stbi_image_free(pixels);
+  size_t n = (size_t)w * (size_t)h * STBI_rgb_alpha;
+  lub_bytes_push(L, pixels, n);
   lua_pushinteger(L, w);
   lua_pushinteger(L, h);
   lua_pushinteger(L, SGL_PF_RGBA8);
-  return 4; // (table, w, h, fmt)
+  lua_pushinteger(L, w * STBI_rgb_alpha);
+  return 5; // (bytes, w, h, fmt, stride)
+}
+
+static int l_png_write(lua_State *L) {
+  const char *path = luaL_checkstring(L, 1);
+  LubBytes *bytes = lub_bytes_check(L, 2);
+  int w = (int)luaL_checkinteger(L, 3);
+  int h = (int)luaL_checkinteger(L, 4);
+  int stride = (int)luaL_optinteger(L, 5, w * 4);
+  if (w <= 0 || h <= 0)
+    return luaL_error(L, "png_write: invalid size %dx%d", w, h);
+  if (stride < w * 4)
+    return luaL_error(L, "png_write: stride %d is smaller than width*4 %d",
+                      stride, w * 4);
+  size_t needed = (size_t)stride * (size_t)h;
+  if (bytes->len < needed) {
+    return luaL_error(L, "png_write: byte buffer too small: got %zu, need %zu",
+                      bytes->len, needed);
+  }
+  int ok = stbi_write_png(path, w, h, 4, bytes->data, stride);
+  lua_pushboolean(L, ok != 0);
+  return 1;
 }
 
 void lua_api_register(lua_State *L) {
+  lub_bytes_register(L);
+  lub_readback_register(L);
   enums_register(L);
   // main_tex は { __lub_kind = "main_tex" } という sentinel テーブル
   lua_newtable(L);
@@ -1453,8 +1821,8 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "dispatch");
   lua_pushcfunction(L, l_draw);
   lua_setglobal(L, "draw");
-  lua_pushcfunction(L, l_capture);
-  lua_setglobal(L, "capture");
+  lua_pushcfunction(L, l_readback_new);
+  lua_setglobal(L, "readback");
   lua_pushcfunction(L, l_key_down);
   lua_setglobal(L, "key_down");
   lua_pushcfunction(L, l_mouse_delta);
@@ -1487,8 +1855,10 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "is_web");
   lua_pushcfunction(L, l_fnv1a64);
   lua_setglobal(L, "fnv1a64");
-  lua_pushcfunction(L, l_load_png);
-  lua_setglobal(L, "load_png");
+  lua_pushcfunction(L, l_png_load);
+  lua_setglobal(L, "png_load");
+  lua_pushcfunction(L, l_png_write);
+  lua_setglobal(L, "png_write");
   lua_pushcfunction(L, lub_load_gltf);
   lua_setglobal(L, "load_gltf");
 }

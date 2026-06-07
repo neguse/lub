@@ -47,7 +47,7 @@ static const char HAXE_PRELUDE[] =
     "  begin_pass = begin_pass, end_pass = end_pass,\n"
     "  use_shader = use_shader, use_shader_compute = use_shader_compute,\n"
     "  use_buffer = use_buffer, use_texture = use_texture,\n"
-    "  draw = draw, dispatch = dispatch, capture = capture,\n"
+    "  draw = draw, dispatch = dispatch, readback = readback,\n"
     "  main_tex = main_tex, size = gfx_size,\n"
     "  VERTEX = VERTEX, INDEX = INDEX, UNIFORM = UNIFORM, STORAGE = STORAGE,\n"
     "  RGBA8 = RGBA8, R8 = R8, RG8 = RG8, RGBA16F = RGBA16F, RGBA32F = "
@@ -70,6 +70,6 @@ static const char HAXE_PRELUDE[] =
     "  is_web = is_web,\n"
     "  fnv1a64 = fnv1a64,\n"
     "  actual_fps = actual_fps,\n"
-    "  load_png = load_png, load_gltf = load_gltf }\n";
+    "  load_gltf = load_gltf }\n";
 
 #endif

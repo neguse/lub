@@ -16,6 +16,7 @@ typedef uintptr_t BackendBuffer;
 typedef uintptr_t BackendImage;
 typedef uintptr_t BackendShader;
 typedef uintptr_t BackendPipeline;
+typedef uintptr_t BackendReadback;
 
 // Max color attachments for MRT (G-buffer style). Sokol's hard cap is
 // SG_MAX_COLOR_ATTACHMENTS = 8; SDL_GPU also supports up to 4 on every
@@ -90,6 +91,20 @@ typedef struct BindingsDesc {
   } textures[8];
 } BindingsDesc;
 
+typedef struct ReadbackResult {
+  int w, h;
+  int stride;
+  SglPixelFormat fmt; // result format, currently RGBA8
+  uint8_t *data;      // malloc'd; caller takes ownership
+  size_t data_bytes;
+} ReadbackResult;
+
+typedef enum ReadbackPollStatus {
+  READBACK_POLL_PENDING = 0,
+  READBACK_POLL_READY = 1,
+  READBACK_POLL_ERROR = 2,
+} ReadbackPollStatus;
+
 // Compute dispatch: bundles pipeline + storage-buffer bindings + uniform data
 // into a single backend call. The backend wraps everything in its own
 // compute pass (begin/dispatch/end). Issued outside begin_pass/end_pass.
@@ -143,6 +158,13 @@ typedef struct RenderBackend {
   // compute pass internally; the call must not be made between begin_pass
   // and end_pass.
   void (*dispatch)(struct App *app, const ComputeDispatchDesc *);
+
+  bool (*request_readback_image)(struct App *app, BackendImage image, int w,
+                                 int h, SglPixelFormat src_fmt,
+                                 BackendReadback *out);
+  ReadbackPollStatus (*poll_readback)(BackendReadback req,
+                                      ReadbackResult *out);
+  void (*destroy_readback)(BackendReadback req);
 
   bool (*capture)(struct App *app, const char *path);
 

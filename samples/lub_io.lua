@@ -5,7 +5,6 @@
 --   local lub_io = require("lub_io")
 --   local src,  ver, status = lub_io.load_text("foo.slang")
 --   local tab,  ver, status = lub_io.load_floats("foo.verts.lua")
---   local px, w, h, fmt, ver, status = lub_io.load_png("foo.png")
 --
 -- Cache: path -> { mtime, bytes, hash, parsed }
 -- Fast path: same mtime -> return cached parsed + hash (no read, no hash).
@@ -128,18 +127,6 @@ function M.load_floats(path)
       end
       return t
    end)
-end
-
-function M.load_png(path)
-   -- PNG は parsed = { px = {...}, w, h, fmt }
-   local parsed, ver, st, err = refresh(path, function(_bytes, p)
-      -- _bytes は使わず C 側に再読み込みさせる (load_png は path を取る)
-      local px, w, h, fmt = load_png(p)
-      if px == nil then return nil, M.ERROR, "load_png failed" end
-      return { px = px, w = w, h = h, fmt = fmt }
-   end)
-   if not parsed then return nil, nil, nil, nil, ver or 0, st or M.ERROR, err end
-   return parsed.px, parsed.w, parsed.h, parsed.fmt, ver, st or M.READY, err
 end
 
 function M.load_gltf(path)

@@ -5,6 +5,22 @@ package lub;
 	var h:Int;
 }
 
+@:multiReturn extern class ReadTextureResult {
+	var status:String;
+	var bytes:Bytes;
+	var width:Int;
+	var height:Int;
+	var format:Int;
+	var stride:Int;
+	var id:Dynamic;
+	var dropped:Dynamic;
+	var error:String;
+}
+
+extern class Readback {
+	@:native("read_texture") public function readTexture(tex:Dynamic, ?id:Dynamic):ReadTextureResult;
+}
+
 extern class Gfx {
 	// pass
 	@:native("begin_pass") public static function beginPass(opts:Dynamic):Void;
@@ -16,11 +32,10 @@ extern class Gfx {
 	// or an `Int` float-count for STORAGE-allocate-empty (compute output buffers).
 	@:native("use_buffer") public static function useBuffer(key:String, type:Int, data:Dynamic, version:Int):Dynamic;
 	@:native("use_texture") public static function useTexture(key:String, w:Int, h:Int, fmt:Int, px:Dynamic, version:Int, ?opts:Dynamic):Dynamic;
+	@:native("readback") public static function readback():Readback;
 	// commands
 	@:native("draw") public static function draw(count:Int, bindings:Dynamic, opts:Dynamic):Void;
 	@:native("dispatch") public static function dispatch(x:Int, y:Int, z:Int, bindings:Dynamic, opts:Dynamic):Void;
-	// capture
-	@:native("capture") public static function capture(path:String):Void;
 	// current drawable size in pixels (swapchain / canvas) -> w, h
 	@:native("size") public static function size():GfxSize;
 

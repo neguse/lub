@@ -1,7 +1,6 @@
 package lubx;
 
 import lub.Gfx;
-import lub.Io;
 
 class Atlas {
 	public var texture:Dynamic = null;
@@ -55,12 +54,12 @@ class Atlas {
 		if (path == null || path == "")
 			return texture != null;
 
-		var r = Io.loadPng(path);
-		if (r.pixels == null)
+		var r = Png.load(path);
+		if (r.bytes == null)
 			return false;
 		w = r.width;
 		h = r.height;
-		texture = Gfx.useTexture(key, r.width, r.height, r.format, r.pixels, r.version, textureOpts());
+		texture = Gfx.useTexture(key, r.width, r.height, r.format, r.bytes, r.version, textureOpts());
 		return true;
 	}
 }

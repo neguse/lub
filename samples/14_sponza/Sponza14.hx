@@ -2,6 +2,7 @@ import lub.Gfx;
 import lub.Input;
 import lub.Io;
 import lub.Lub;
+import lubx.Png;
 
 class Sponza14 {
 	static inline var DT:Float = 1.0 / 60.0;
@@ -391,9 +392,9 @@ class Sponza14 {
 	static function materialTexture(path:Dynamic, suffix:String, fallback:Array<Int>):Dynamic {
 		if (path != null) {
 			var p = Std.string(path);
-			var r = Io.loadPng(p);
-			if (r.pixels != null) {
-				return Gfx.useTexture("sponza_tex_" + suffix + "_" + p, r.width, r.height, r.format, r.pixels, r.version,
+			var r = Png.load(p);
+			if (r.bytes != null) {
+				return Gfx.useTexture("sponza_tex_" + suffix + "_" + p, r.width, r.height, r.format, r.bytes, r.version,
 					{filter: Gfx.LINEAR, wrap: Gfx.REPEAT});
 			}
 		}

@@ -1,6 +1,7 @@
 import lub.Lub;
 import lub.Gfx;
 import lub.Io;
+import lubx.Png;
 
 class Texture03 {
 	public static function main() {}
@@ -16,14 +17,14 @@ class Texture03 {
 		var vsResult = Io.loadText("samples/03_texture/data/03_tex.vs.slang");
 		var fsResult = Io.loadText("samples/03_texture/data/03_tex.fs.slang");
 		var vertsResult = Io.loadFloats("samples/03_texture/data/03_tex.verts.lua");
-		var pngResult = Io.loadPng("samples/03_texture/data/03_tex.png");
+		var pngResult = Png.load("samples/03_texture/data/03_tex.png");
 		var vs:String = vsResult.text;
 		var vsv:Int = vsResult.version;
 		var fs:String = fsResult.text;
 		var fsv:Int = fsResult.version;
 		var verts:Dynamic = vertsResult.data;
 		var vv:Int = vertsResult.version;
-		var px:Dynamic = pngResult.pixels;
+		var px:Dynamic = pngResult.bytes;
 		var w:Int = pngResult.width;
 		var h:Int = pngResult.height;
 		var fmt:Int = pngResult.format;

@@ -18033,7 +18033,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_wgpu_create_image(_sg_image_t* img, const s
     } else {
         _SG_STRUCT(WGPUTextureDescriptor, wgpu_tex_desc);
         wgpu_tex_desc.label = _sg_wgpu_stringview(desc->label);
-        wgpu_tex_desc.usage = WGPUTextureUsage_TextureBinding|WGPUTextureUsage_CopyDst;
+        wgpu_tex_desc.usage = WGPUTextureUsage_TextureBinding|WGPUTextureUsage_CopyDst|WGPUTextureUsage_CopySrc;
         if (desc->usage.color_attachment || desc->usage.resolve_attachment || desc->usage.depth_stencil_attachment) {
             wgpu_tex_desc.usage |= WGPUTextureUsage_RenderAttachment;
         }
@@ -20247,7 +20247,7 @@ _SOKOL_PRIVATE VkImageType _sg_vk_image_type(sg_image_type t) {
 }
 
 _SOKOL_PRIVATE VkImageUsageFlags _sg_vk_image_usage(const sg_image_usage* usg) {
-    VkImageUsageFlags res = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    VkImageUsageFlags res = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     res |= VK_IMAGE_USAGE_SAMPLED_BIT;
     if (usg->storage_image) {
         res |= VK_IMAGE_USAGE_STORAGE_BIT;

@@ -1,5 +1,6 @@
 #include "app.h"
 #include "backend.h"
+#include "gpu_stats.h"
 #include "lua_api.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@ bool app_init(App *app) {
   pass_state_init(&app->pass);
   pass_state_set_app(&app->pass, app);
   profile_state_init(&app->profile);
+  gpu_stats_init_from_env();
   res_table_init(&app->res);
   pipeline_cache_init(&app->pip_cache);
   capture_state_init(&app->capture);
@@ -37,6 +39,7 @@ bool app_init(App *app) {
   app->fps_frame_count = 0;
   app->phase = APP_PHASE_PRE_BACKEND;
   strcpy(app->backend_name, "sokol");
+  app->readback_depth = 8;
   return true;
 }
 
@@ -128,6 +131,7 @@ void app_frame_end(App *app) {
     res_table_sweep(&app->res, cf, thr, app_on_shader_release, app);
   }
   app->frame_index++;
+  gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
 }
 
 void app_shutdown(App *app) {
@@ -136,6 +140,7 @@ void app_shutdown(App *app) {
   res_table_shutdown(&app->res);
   capture_state_shutdown(&app->capture);
   g_backend->shutdown(app);
+  gpu_stats_shutdown(g_backend ? g_backend->name : NULL);
 
   if (app->window)
     SDL_DestroyWindow(app->window);
