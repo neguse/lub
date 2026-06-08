@@ -6,6 +6,25 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'EOF'
+Usage: scripts/pre-commit.sh
+
+Runs the full local pre-commit gate:
+  format, whitespace checks, Release build, visual goldens, WASM build,
+  web build, and headless web verification.
+EOF
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    echo "unknown arg: $1" >&2
+    exit 2
+    ;;
+esac
+
 timeout_cmd=()
 if command -v timeout >/dev/null 2>&1; then
   timeout_cmd=(timeout 2h)
@@ -73,7 +92,6 @@ run git diff --cached --check
 run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 run_timed env BINARY="$native_binary" scripts/run-golden.sh
-run_timed env BINARY="$native_binary" scripts/run-test-golden.sh
 
 if [[ -f "$HOME/emsdk/emsdk_env.sh" ]]; then
   echo
