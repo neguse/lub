@@ -26,7 +26,8 @@ class SpriteBatch {
 	static var INSTANCED_VS:String = "struct Uniforms { float4 params; };\n"
 		+ "ConstantBuffer<Uniforms> u;\n"
 		+ "struct VSVertex { float2 corner : POSITION; float2 uv01 : TEXCOORD0; };\n"
-		+ "struct VSInstance { float2 pos : TEXCOORD1; float2 size : TEXCOORD2; float2 rot_cs : TEXCOORD3; float4 uv_rect : TEXCOORD4; float4 color : TEXCOORD5; };\n"
+		+
+		"struct VSInstance { float2 pos : TEXCOORD1; float2 size : TEXCOORD2; float2 rot_cs : TEXCOORD3; float4 uv_rect : TEXCOORD4; float4 color : TEXCOORD5; };\n"
 		+ "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
 		+ "[shader(\"vertex\")]\n"
 		+ "VSOut vs_main(VSVertex v, VSInstance i) {\n"
@@ -101,16 +102,20 @@ class SpriteBatch {
 	inline function colorOrWhite(c:Color):Color {
 		if (c != null)
 			return c;
-		return {r: 1.0, g: 1.0, b: 1.0, a: 1.0};
+		return {
+			r: 1.0,
+			g: 1.0,
+			b: 1.0,
+			a: 1.0
+		};
 	}
 
-	inline function pushInstance(out:Array<Float>, cx:Float, cy:Float, w:Float, h:Float, cr:Float, sr:Float, u0:Float, v0:Float, u1:Float, v1:Float,
-			c:Color) {
+	inline function pushInstance(out:Array<Float>, cx:Float, cy:Float, w:Float, h:Float, cr:Float, sr:Float, u0:Float, v0:Float, u1:Float, v1:Float, c:Color) {
 		pushInstanceColor(out, cx, cy, w, h, cr, sr, u0, v0, u1, v1, c.r, c.g, c.b, c.a);
 	}
 
-	inline function pushInstanceColor(out:Array<Float>, cx:Float, cy:Float, w:Float, h:Float, cr:Float, sr:Float, u0:Float, v0:Float, u1:Float,
-			v1:Float, r:Float, g:Float, b:Float, alpha:Float) {
+	inline function pushInstanceColor(out:Array<Float>, cx:Float, cy:Float, w:Float, h:Float, cr:Float, sr:Float, u0:Float, v0:Float, u1:Float, v1:Float,
+			r:Float, g:Float, b:Float, alpha:Float) {
 		var i = out.length;
 		untyped out[i] = cx;
 		untyped out[i + 1] = cy;
@@ -150,8 +155,8 @@ class SpriteBatch {
 		pushVertex(out, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, c);
 	}
 
-	inline function pushRotColor(out:Array<Float>, cx:Float, cy:Float, ox:Float, oy:Float, cr:Float, sr:Float, u:Float, v:Float, r:Float, g:Float,
-			b:Float, alpha:Float) {
+	inline function pushRotColor(out:Array<Float>, cx:Float, cy:Float, ox:Float, oy:Float, cr:Float, sr:Float, u:Float, v:Float, r:Float, g:Float, b:Float,
+			alpha:Float) {
 		pushVertexColor(out, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, r, g, b, alpha);
 	}
 
@@ -213,9 +218,9 @@ class SpriteBatch {
 		if (quadData == null)
 			quadData = lua.Table.fromArray([
 				-0.5, -0.5, 0.0, 0.0,
-				0.5, -0.5, 1.0, 0.0,
-				-0.5, 0.5, 0.0, 1.0,
-				0.5, 0.5, 1.0, 1.0
+				 0.5, -0.5, 1.0, 0.0,
+				-0.5,  0.5, 0.0, 1.0,
+				 0.5,  0.5, 1.0, 1.0
 			]);
 		quadBuf = Gfx.useBuffer(bufferPrefix + "_quad", Gfx.VERTEX, quadData, 1);
 		return quadBuf;

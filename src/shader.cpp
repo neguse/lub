@@ -356,9 +356,8 @@ static bool refl_sbuf_exists(const ShaderReflection *refl, SglShaderStage stage,
   return false;
 }
 
-static bool refl_stex_exists(const ShaderReflection *refl,
-                             SglShaderStage stage, int slot,
-                             const char *name) {
+static bool refl_stex_exists(const ShaderReflection *refl, SglShaderStage stage,
+                             int slot, const char *name) {
   for (int i = 0; i < refl->storage_tex_count; ++i) {
     const ShaderStorageTexture *t = &refl->storage_texs[i];
     if (t->stage == stage && t->slot == slot &&
@@ -534,8 +533,9 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
 // set 0.
 enum class SpvStage { Vertex, Fragment, Compute };
 
-[[maybe_unused]] void patch_spirv_descriptor_sets(
-    void *spv, size_t size_bytes, ShaderTargetBackend target, SpvStage stage) {
+[[maybe_unused]] void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
+                                                  ShaderTargetBackend target,
+                                                  SpvStage stage) {
   if (!spv || size_bytes < 20)
     return; // too small to be valid
   uint32_t *words = (uint32_t *)spv;
@@ -700,8 +700,8 @@ enum class SpvStage { Vertex, Fragment, Compute };
 // Only the FS UniformConstant variables are touched. UBs stay where Slang
 // put them (they live in a separate descriptor set, and lub's samples
 // never have more than one per stage so binding 0 is already correct).
-[[maybe_unused]] void renumber_fs_image_bindings_sdlgpu(
-    ShaderBlob *fs_blob, ShaderReflection *refl) {
+[[maybe_unused]] void
+renumber_fs_image_bindings_sdlgpu(ShaderBlob *fs_blob, ShaderReflection *refl) {
   if (!fs_blob || !fs_blob->spirv || fs_blob->bytes < 20)
     return;
   uint32_t *words = fs_blob->spirv;
@@ -885,16 +885,16 @@ static bool name_matches_sampler(const char *var_name, const char *tex_name) {
 
 static bool reflected_binding_for_name(const ShaderReflection *refl,
                                        ShaderTargetBackend target,
-                                       SglShaderStage stage,
-                                       const char *name, int *out_set,
-                                       int *out_binding) {
+                                       SglShaderStage stage, const char *name,
+                                       int *out_set, int *out_binding) {
   if (!refl || !name || !out_set || !out_binding)
     return false;
   for (int i = 0; i < refl->ub_count; ++i) {
     const ShaderUniformBlock *u = &refl->ubs[i];
     if (u->stage == stage && strcmp(u->name, name) == 0) {
-      *out_set =
-          (target == SHADER_TARGET_SOKOL) ? 0 : sdl_set_for_stage_uniform(stage);
+      *out_set = (target == SHADER_TARGET_SOKOL)
+                     ? 0
+                     : sdl_set_for_stage_uniform(stage);
       *out_binding = u->slot;
       return true;
     }
@@ -904,14 +904,17 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
     if (t->stage != stage)
       continue;
     if (strcmp(t->name, name) == 0) {
-      *out_set =
-          (target == SHADER_TARGET_SOKOL) ? 1 : sdl_set_for_stage_resource(stage);
-      *out_binding = (target == SHADER_TARGET_SOKOL) ? t->img_slot : t->smp_slot;
+      *out_set = (target == SHADER_TARGET_SOKOL)
+                     ? 1
+                     : sdl_set_for_stage_resource(stage);
+      *out_binding =
+          (target == SHADER_TARGET_SOKOL) ? t->img_slot : t->smp_slot;
       return true;
     }
     if (name_matches_sampler(name, t->name)) {
-      *out_set =
-          (target == SHADER_TARGET_SOKOL) ? 1 : sdl_set_for_stage_resource(stage);
+      *out_set = (target == SHADER_TARGET_SOKOL)
+                     ? 1
+                     : sdl_set_for_stage_resource(stage);
       *out_binding = t->smp_slot;
       return true;
     }
@@ -1184,9 +1187,10 @@ static bool view_or_sampler_binding_used(const ShaderReflection *refl,
   return false;
 }
 
-static bool stage_local_view_or_sampler_binding_used(
-    const ShaderReflection *refl, int upto_tex, int upto_sbuf, int upto_stex,
-    int slot) {
+static bool
+stage_local_view_or_sampler_binding_used(const ShaderReflection *refl,
+                                         int upto_tex, int upto_sbuf,
+                                         int upto_stex, int slot) {
   for (int i = 0; i < upto_tex; ++i) {
     if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
       return true;
@@ -1269,9 +1273,9 @@ static void remap_stage_for_sokol(const ShaderReflection *existing,
   }
   for (int i = 0; i < stage->storage_tex_count; ++i) {
     if (view_or_sampler_binding_used(existing, stage->storage_texs[i].slot) ||
-        stage_local_view_or_sampler_binding_used(
-            stage, stage->tex_count, stage->storage_buf_count, i,
-            stage->storage_texs[i].slot)) {
+        stage_local_view_or_sampler_binding_used(stage, stage->tex_count,
+                                                 stage->storage_buf_count, i,
+                                                 stage->storage_texs[i].slot)) {
       int slot = next_free_view_slot(existing, stage, stage->tex_count,
                                      stage->storage_buf_count, i);
       if (slot >= 0)
@@ -1907,8 +1911,7 @@ void record_attr_field(const json &f, ShaderReflection *out, int buffer_index) {
 
 // Populate a ShaderUniformBlock from a top-level parameter whose type is
 // a ConstantBuffer<T>. Reads members from type.elementType.fields[].
-void fill_uniform_block_from_json(const json &p, int slot,
-                                  SglShaderStage stage,
+void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
                                   ShaderUniformBlock *u) {
   u->slot = slot;
   u->stage = stage;
@@ -2001,8 +2004,7 @@ void process_global_parameter(const json &p, ShaderReflection *out,
       return;
     }
     std::string access = t->value("access", std::string(""));
-    if (access == "readWrite" || access == "write" ||
-        access == "writeOnly") {
+    if (access == "readWrite" || access == "write" || access == "writeOnly") {
       if (stex_slot_exists(out, stage, slot))
         return;
       if (out->storage_tex_count >= SGL_MAX_STORAGE_TEXTURES)
@@ -2242,8 +2244,7 @@ static void wasm_merge_stage_reflection(ShaderReflection *dst,
   for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
        ++i)
     dst->ubs[dst->ub_count++] = stage.ubs[i];
-  for (int i = 0; i < stage.tex_count && dst->tex_count < SGL_MAX_TEXTURES;
-       ++i)
+  for (int i = 0; i < stage.tex_count && dst->tex_count < SGL_MAX_TEXTURES; ++i)
     dst->texs[dst->tex_count++] = stage.texs[i];
   for (int i = 0; i < stage.storage_buf_count &&
                   dst->storage_buf_count < SGL_MAX_STORAGE_BUFS;
@@ -2445,14 +2446,12 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   std::string fs_with_prelude = std::string(prelude) + fs_src;
 
   std::string vs_refl_json, fs_refl_json;
-  if (!compile_one(vs_with_prelude.c_str(), "vs_main",
-                   SLANG_BRIDGE_STAGE_VS, out_vs, vs_refl_json, err_buf,
-                   err_buf_size)) {
+  if (!compile_one(vs_with_prelude.c_str(), "vs_main", SLANG_BRIDGE_STAGE_VS,
+                   out_vs, vs_refl_json, err_buf, err_buf_size)) {
     return false;
   }
-  if (!compile_one(fs_with_prelude.c_str(), "fs_main",
-                   SLANG_BRIDGE_STAGE_FS, out_fs, fs_refl_json, err_buf,
-                   err_buf_size)) {
+  if (!compile_one(fs_with_prelude.c_str(), "fs_main", SLANG_BRIDGE_STAGE_FS,
+                   out_fs, fs_refl_json, err_buf, err_buf_size)) {
     free(out_vs->spirv);
     out_vs->spirv = nullptr;
     out_vs->bytes = 0;
@@ -2501,9 +2500,8 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   std::string cs_with_prelude = std::string(prelude) + cs_src;
 
   std::string cs_refl_json;
-  if (!compile_one(cs_with_prelude.c_str(), "cs_main",
-                   SLANG_BRIDGE_STAGE_CS, out_cs, cs_refl_json, err_buf,
-                   err_buf_size)) {
+  if (!compile_one(cs_with_prelude.c_str(), "cs_main", SLANG_BRIDGE_STAGE_CS,
+                   out_cs, cs_refl_json, err_buf, err_buf_size)) {
     return false;
   }
   out_refl->is_compute = true;

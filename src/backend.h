@@ -82,7 +82,7 @@ typedef struct PassBeginDesc {
 typedef struct BindingsDesc {
   const ShaderReflection
       *refl; // for resolving texture name -> slot. NULL = skip texture binding.
-  BackendBuffer vbuf; // 0 = none
+  BackendBuffer vbuf;          // 0 = none
   BackendBuffer instance_vbuf; // 0 = none; slot 1, per-instance attributes
   BackendBuffer ibuf; // 0 = none (non-indexed); non-0 = u32 index buffer
   int texture_count;
@@ -177,11 +177,11 @@ typedef struct RenderBackend {
   bool (*request_readback_image)(struct App *app, BackendImage image, int w,
                                  int h, SglPixelFormat src_fmt,
                                  BackendReadback *out);
-  ReadbackPollStatus (*poll_readback)(BackendReadback req,
-                                      ReadbackResult *out);
+  ReadbackPollStatus (*poll_readback)(BackendReadback req, ReadbackResult *out);
   void (*destroy_readback)(BackendReadback req);
 
   bool (*capture)(struct App *app, const char *path);
+  bool capture_before_end_frame;
 
   // Pipeline cache uses this as part of its key — both backends must
   // return the swapchain's color format for the current frame.

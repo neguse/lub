@@ -104,6 +104,11 @@ static void app_on_shader_release(void *ctx, uintptr_t old_shader) {
 }
 
 void app_frame_end(App *app) {
+  bool capture_before_end_frame =
+      g_backend && g_backend->capture_before_end_frame;
+  if (capture_before_end_frame && capture_state_drain(&app->capture, app)) {
+    app->capture_then_exit = true;
+  }
   g_backend->end_frame(app);
   uint64_t now_ns = SDL_GetTicksNS();
   if (app->fps_last_ns == 0) {
@@ -119,7 +124,7 @@ void app_frame_end(App *app) {
       app->fps_frame_count = 0;
     }
   }
-  if (capture_state_drain(&app->capture, app)) {
+  if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
   if (app->resource_sweep_after_frames > 0) {

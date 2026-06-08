@@ -47,9 +47,9 @@ static sg_pixel_format sgl_to_sg_fmt(SglPixelFormat fmt);
 typedef struct SkImage {
   sg_image img;
   sg_sampler smp;
-  sg_view view;      // texture-sample view
+  sg_view view;         // texture-sample view
   sg_view storage_view; // storage-image view (valid when storage)
-  sg_view color_att; // color-attachment view (valid when render_target)
+  sg_view color_att;    // color-attachment view (valid when render_target)
   sg_view depth_att; // depth-stencil-attachment view (valid for depth targets)
   uint64_t bytes;
   bool render_target;
@@ -974,9 +974,8 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
         pair->sampler_slot = (uint8_t)(smp_slot >= 0 ? smp_slot : 0);
       }
     }
-    for (int i = 0; i < ss->refl.storage_tex_count &&
-                    i < SGL_MAX_STORAGE_TEXTURES;
-         ++i) {
+    for (int i = 0;
+         i < ss->refl.storage_tex_count && i < SGL_MAX_STORAGE_TEXTURES; ++i) {
       ShaderStorageTexture *st = &ss->refl.storage_texs[i];
       int slot = st->slot;
       if (slot < 0 || slot >= SG_MAX_VIEW_BINDSLOTS)
@@ -1049,7 +1048,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
     if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS)
       continue;
     sg_shader_uniform_block *dst = &desc.uniform_blocks[slot];
-    dst->stage = (u->stage == SGL_STAGE_FRAGMENT) ? SG_SHADERSTAGE_FRAGMENT
+    dst->stage = (u->stage == SGL_STAGE_FRAGMENT)  ? SG_SHADERSTAGE_FRAGMENT
                  : (u->stage == SGL_STAGE_COMPUTE) ? SG_SHADERSTAGE_COMPUTE
                                                    : SG_SHADERSTAGE_VERTEX;
     dst->size = (uint32_t)(u->size_floats * 4);
@@ -1072,7 +1071,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
 
     sg_shader_view *view = &desc.views[img_slot];
     view->texture.stage =
-        (tx->stage == SGL_STAGE_VERTEX) ? SG_SHADERSTAGE_VERTEX
+        (tx->stage == SGL_STAGE_VERTEX)    ? SG_SHADERSTAGE_VERTEX
         : (tx->stage == SGL_STAGE_COMPUTE) ? SG_SHADERSTAGE_COMPUTE
                                            : SG_SHADERSTAGE_FRAGMENT;
     view->texture.image_type = SG_IMAGETYPE_2D;
@@ -1470,8 +1469,8 @@ static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
     if (!img || !img->storage_view.id || !d->storage_textures[i].name)
       continue;
     for (int k = 0; k < d->refl->storage_tex_count; ++k) {
-      if (strcmp(d->refl->storage_texs[k].name,
-                 d->storage_textures[i].name) == 0) {
+      if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) ==
+          0) {
         int slot = d->refl->storage_texs[k].slot;
         if (slot >= 0 && slot < SG_MAX_VIEW_BINDSLOTS)
           sb.views[slot] = img->storage_view;
@@ -1543,9 +1542,8 @@ static int sk_readback_src_bpp(SglPixelFormat fmt) {
   }
 }
 
-static void sk_convert_readback_to_rgba8(SglPixelFormat fmt,
-                                         const uint8_t *src, uint8_t *dst,
-                                         int w, int h) {
+static void sk_convert_readback_to_rgba8(SglPixelFormat fmt, const uint8_t *src,
+                                         uint8_t *dst, int w, int h) {
   size_t pixels = (size_t)w * (size_t)h;
   if (fmt == SGL_PF_RGBA8) {
     memcpy(dst, src, pixels * 4);
@@ -1712,9 +1710,9 @@ static bool sk_readback_image(App *app, BackendImage image, int w, int h,
   vkCmdCopyImageToBuffer(cmd, vk_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                          buf, 1, &region);
 
-  VkImageLayout restore_layout =
-      old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_GENERAL
-                                              : old_layout;
+  VkImageLayout restore_layout = old_layout == VK_IMAGE_LAYOUT_UNDEFINED
+                                     ? VK_IMAGE_LAYOUT_GENERAL
+                                     : old_layout;
   VkImageMemoryBarrier b2 = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
       .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
@@ -2658,9 +2656,8 @@ static ReadbackPollStatus sk_poll_readback(BackendReadback h,
   if (req->status != WGPUMapAsyncStatus_Success)
     return READBACK_POLL_ERROR;
 
-  const uint8_t *mapped =
-      (const uint8_t *)wgpuBufferGetConstMappedRange(req->buf, 0,
-                                                     req->map_bytes);
+  const uint8_t *mapped = (const uint8_t *)wgpuBufferGetConstMappedRange(
+      req->buf, 0, req->map_bytes);
   if (!mapped)
     return READBACK_POLL_ERROR;
 
@@ -2729,6 +2726,7 @@ const RenderBackend g_backend_sokol = {
     .poll_readback = sk_poll_readback,
     .destroy_readback = sk_destroy_readback,
     .capture = sk_capture,
+    .capture_before_end_frame = false,
     .swapchain_color_format = sk_swapchain_color_format,
 };
 

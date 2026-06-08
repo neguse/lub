@@ -129,7 +129,8 @@ void profile_report(ProfileState *p, const char *label) {
   if (!p->enabled)
     return;
   const char *tag = (label && label[0]) ? label : "manual";
-  double avg_frame = p->frames > 0 ? ns_to_ms(p->frame_total_ns) / p->frames : 0.0;
+  double avg_frame =
+      p->frames > 0 ? ns_to_ms(p->frame_total_ns) / p->frames : 0.0;
   double max_frame = ns_to_ms(p->frame_max_ns);
   SDL_Log("LUB_PROFILE label=%s frames=%" PRIu64 " avg_frame_ms=%.3f "
           "max_frame_ms=%.3f",
@@ -138,9 +139,9 @@ void profile_report(ProfileState *p, const char *label) {
     ProfileScopeStats *scope = &p->scopes[i];
     double total_ms = ns_to_ms(scope->total_ns);
     double avg_ms = scope->calls > 0 ? total_ms / scope->calls : 0.0;
-    double pct = p->frame_total_ns > 0
-                     ? (double)scope->total_ns * 100.0 / (double)p->frame_total_ns
-                     : 0.0;
+    double pct = p->frame_total_ns > 0 ? (double)scope->total_ns * 100.0 /
+                                             (double)p->frame_total_ns
+                                       : 0.0;
     SDL_Log("LUB_PROFILE_SCOPE label=%s name=%s calls=%" PRIu64
             " total_ms=%.3f avg_ms=%.3f max_ms=%.3f pct=%.1f",
             tag, scope->name, scope->calls, total_ms, avg_ms,

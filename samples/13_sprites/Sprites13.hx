@@ -88,12 +88,37 @@ class Sprites13 {
 	static var useInstancing:Bool = true;
 
 	static var spriteRects:Array<Rect> = [
-		{x: 0, y: 0, w: CELL, h: CELL},
-		{x: 16, y: 0, w: CELL, h: CELL},
-		{x: 32, y: 0, w: CELL, h: CELL},
-		{x: 48, y: 0, w: CELL, h: CELL},
+		{
+			x: 0,
+			y: 0,
+			w: CELL,
+			h: CELL
+		},
+		{
+			x: 16,
+			y: 0,
+			w: CELL,
+			h: CELL
+		},
+		{
+			x: 32,
+			y: 0,
+			w: CELL,
+			h: CELL
+		},
+		{
+			x: 48,
+			y: 0,
+			w: CELL,
+			h: CELL
+		},
 	];
-	static var whiteRect:Rect = {x: 64, y: 0, w: 1, h: 1};
+	static var whiteRect:Rect = {
+		x: 64,
+		y: 0,
+		w: 1,
+		h: 1
+	};
 
 	public static function main() {}
 
@@ -279,9 +304,24 @@ class Sprites13 {
 	}
 
 	static function drawHud(fps:Float) {
-		batch.quad(atlas, whiteRect, 8, 8, 248, 46, {r: 0.0, g: 0.0, b: 0.0, a: 0.56});
-		drawText(16, 16, "SPRITES:" + sprites.length, 3, {r: 0.90, g: 0.96, b: 1.0, a: 1.0});
-		drawText(16, 36, "FPS:" + Std.int(fps + 0.5) + " TARGET:" + Std.int(targetFps + 0.5), 2, {r: 0.78, g: 1.0, b: 0.70, a: 1.0});
+		batch.quad(atlas, whiteRect, 8, 8, 248, 46, {
+			r: 0.0,
+			g: 0.0,
+			b: 0.0,
+			a: 0.56
+		});
+		drawText(16, 16, "SPRITES:" + sprites.length, 3, {
+			r: 0.90,
+			g: 0.96,
+			b: 1.0,
+			a: 1.0
+		});
+		drawText(16, 36, "FPS:" + Std.int(fps + 0.5) + " TARGET:" + Std.int(targetFps + 0.5), 2, {
+			r: 0.78,
+			g: 1.0,
+			b: 0.70,
+			a: 1.0
+		});
 	}
 
 	static function fpsText(fps:Float):String {

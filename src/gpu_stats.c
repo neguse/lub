@@ -107,55 +107,51 @@ static void gpu_stats_log(const char *label, uint64_t frame,
   const GpuStatCounter *v = &g_gpu_stats.counters[GPU_STAT_VIEW];
   const GpuStatCounter *sh = &g_gpu_stats.counters[GPU_STAT_SHADER];
   const GpuStatCounter *p = &g_gpu_stats.counters[GPU_STAT_PIPELINE];
-  const GpuStatCounter *tb =
-      &g_gpu_stats.counters[GPU_STAT_TRANSFER_BUFFER];
+  const GpuStatCounter *tb = &g_gpu_stats.counters[GPU_STAT_TRANSFER_BUFFER];
   const GpuStatCounter *f = &g_gpu_stats.counters[GPU_STAT_FENCE];
-  const GpuStatCounter *st =
-      &g_gpu_stats.counters[GPU_STAT_SURFACE_TEXTURE];
+  const GpuStatCounter *st = &g_gpu_stats.counters[GPU_STAT_SURFACE_TEXTURE];
   const GpuStatCounter *sv = &g_gpu_stats.counters[GPU_STAT_SURFACE_VIEW];
 
-  SDL_Log("LUB_GPU_STATS label=%s frame=%llu backend=%s "
-          "buffers_live=%llu buffers_created=%llu buffers_destroyed=%llu "
-          "buffer_bytes_live=%llu buffer_bytes_created=%llu "
-          "buffer_bytes_destroyed=%llu textures_live=%llu "
-          "textures_created=%llu textures_destroyed=%llu "
-          "texture_bytes_live=%llu texture_bytes_created=%llu "
-          "texture_bytes_destroyed=%llu samplers_live=%llu "
-          "samplers_created=%llu samplers_destroyed=%llu views_live=%llu "
-          "views_created=%llu views_destroyed=%llu shaders_live=%llu "
-          "shaders_created=%llu shaders_destroyed=%llu pipelines_live=%llu "
-          "pipelines_created=%llu pipelines_destroyed=%llu "
-          "transfer_live=%llu transfer_created=%llu transfer_destroyed=%llu "
-          "transfer_bytes_live=%llu transfer_bytes_created=%llu "
-          "transfer_bytes_destroyed=%llu fences_live=%llu fences_created=%llu "
-          "fences_destroyed=%llu surface_textures_live=%llu "
-          "surface_textures_created=%llu surface_textures_destroyed=%llu "
-          "surface_views_live=%llu surface_views_created=%llu "
-          "surface_views_destroyed=%llu",
-          label ? label : "frame", (unsigned long long)frame,
-          backend_name ? backend_name : "(none)", (unsigned long long)b->live,
-          (unsigned long long)b->created, (unsigned long long)b->destroyed,
-          (unsigned long long)b->live_bytes,
-          (unsigned long long)b->created_bytes,
-          (unsigned long long)b->destroyed_bytes, (unsigned long long)t->live,
-          (unsigned long long)t->created, (unsigned long long)t->destroyed,
-          (unsigned long long)t->live_bytes,
-          (unsigned long long)t->created_bytes,
-          (unsigned long long)t->destroyed_bytes, (unsigned long long)s->live,
-          (unsigned long long)s->created, (unsigned long long)s->destroyed,
-          (unsigned long long)v->live, (unsigned long long)v->created,
-          (unsigned long long)v->destroyed, (unsigned long long)sh->live,
-          (unsigned long long)sh->created, (unsigned long long)sh->destroyed,
-          (unsigned long long)p->live, (unsigned long long)p->created,
-          (unsigned long long)p->destroyed, (unsigned long long)tb->live,
-          (unsigned long long)tb->created, (unsigned long long)tb->destroyed,
-          (unsigned long long)tb->live_bytes,
-          (unsigned long long)tb->created_bytes,
-          (unsigned long long)tb->destroyed_bytes, (unsigned long long)f->live,
-          (unsigned long long)f->created, (unsigned long long)f->destroyed,
-          (unsigned long long)st->live, (unsigned long long)st->created,
-          (unsigned long long)st->destroyed, (unsigned long long)sv->live,
-          (unsigned long long)sv->created, (unsigned long long)sv->destroyed);
+  SDL_Log(
+      "LUB_GPU_STATS label=%s frame=%llu backend=%s "
+      "buffers_live=%llu buffers_created=%llu buffers_destroyed=%llu "
+      "buffer_bytes_live=%llu buffer_bytes_created=%llu "
+      "buffer_bytes_destroyed=%llu textures_live=%llu "
+      "textures_created=%llu textures_destroyed=%llu "
+      "texture_bytes_live=%llu texture_bytes_created=%llu "
+      "texture_bytes_destroyed=%llu samplers_live=%llu "
+      "samplers_created=%llu samplers_destroyed=%llu views_live=%llu "
+      "views_created=%llu views_destroyed=%llu shaders_live=%llu "
+      "shaders_created=%llu shaders_destroyed=%llu pipelines_live=%llu "
+      "pipelines_created=%llu pipelines_destroyed=%llu "
+      "transfer_live=%llu transfer_created=%llu transfer_destroyed=%llu "
+      "transfer_bytes_live=%llu transfer_bytes_created=%llu "
+      "transfer_bytes_destroyed=%llu fences_live=%llu fences_created=%llu "
+      "fences_destroyed=%llu surface_textures_live=%llu "
+      "surface_textures_created=%llu surface_textures_destroyed=%llu "
+      "surface_views_live=%llu surface_views_created=%llu "
+      "surface_views_destroyed=%llu",
+      label ? label : "frame", (unsigned long long)frame,
+      backend_name ? backend_name : "(none)", (unsigned long long)b->live,
+      (unsigned long long)b->created, (unsigned long long)b->destroyed,
+      (unsigned long long)b->live_bytes, (unsigned long long)b->created_bytes,
+      (unsigned long long)b->destroyed_bytes, (unsigned long long)t->live,
+      (unsigned long long)t->created, (unsigned long long)t->destroyed,
+      (unsigned long long)t->live_bytes, (unsigned long long)t->created_bytes,
+      (unsigned long long)t->destroyed_bytes, (unsigned long long)s->live,
+      (unsigned long long)s->created, (unsigned long long)s->destroyed,
+      (unsigned long long)v->live, (unsigned long long)v->created,
+      (unsigned long long)v->destroyed, (unsigned long long)sh->live,
+      (unsigned long long)sh->created, (unsigned long long)sh->destroyed,
+      (unsigned long long)p->live, (unsigned long long)p->created,
+      (unsigned long long)p->destroyed, (unsigned long long)tb->live,
+      (unsigned long long)tb->created, (unsigned long long)tb->destroyed,
+      (unsigned long long)tb->live_bytes, (unsigned long long)tb->created_bytes,
+      (unsigned long long)tb->destroyed_bytes, (unsigned long long)f->live,
+      (unsigned long long)f->created, (unsigned long long)f->destroyed,
+      (unsigned long long)st->live, (unsigned long long)st->created,
+      (unsigned long long)st->destroyed, (unsigned long long)sv->live,
+      (unsigned long long)sv->created, (unsigned long long)sv->destroyed);
 }
 
 void gpu_stats_frame(uint64_t frame, const char *backend_name) {

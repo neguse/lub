@@ -147,7 +147,9 @@ export async function discoverDataFiles(
 ): Promise<Map<string, EditorFile>> {
   const refs = scanLuaReferences(luaText);
   for (const extra of EXTRA_FILES[name] || []) {
-    const full = extra.startsWith("samples/") ? extra : `samples/${name}/${extra}`;
+    const full = extra.startsWith("samples/")
+      ? extra
+      : `samples/${name}/${extra}`;
     if (!refs.includes(full)) refs.push(full);
   }
   const files = new Map<string, EditorFile>();

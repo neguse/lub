@@ -13,6 +13,7 @@
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "stb_image_write.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <stdint.h>
@@ -40,6 +41,8 @@ static struct SgPipeline *g_current_pip = NULL;
 // branches on this between SDL_DrawGPUIndexedPrimitives and
 // SDL_DrawGPUPrimitives.
 static bool g_last_indexed = false;
+
+static SglPixelFormat sg_swapchain_color_format(App *app);
 
 static void sg_release_depth_texture(App *app) {
   if (app->gpu_device && app->gpu_depth_tex) {
@@ -145,9 +148,9 @@ static bool sg_ensure_depth_texture(App *app, Uint32 w, Uint32 h) {
   app->gpu_depth_w = (int)w;
   app->gpu_depth_h = (int)h;
   app->gpu_depth_fmt = fmt;
-  gpu_stats_create(GPU_STAT_TEXTURE,
-                   gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8, (int)w,
-                                         (int)h));
+  gpu_stats_create(
+      GPU_STAT_TEXTURE,
+      gpu_stats_image_bytes(SGL_PF_DEPTH24_STENCIL8, (int)w, (int)h));
   return true;
 }
 
@@ -625,8 +628,7 @@ static BackendImage sg_make_image(const ImageDesc *d) {
     free(im);
     return 0;
   }
-  gpu_stats_create(GPU_STAT_TEXTURE,
-                   gpu_stats_image_bytes(d->fmt, d->w, d->h));
+  gpu_stats_create(GPU_STAT_TEXTURE, gpu_stats_image_bytes(d->fmt, d->w, d->h));
 
   if (!d->render_target && d->data && d->data_bytes > 0) {
     if (!sg_upload_to_image(im->tex, d->w, d->h, d->data, d->data_bytes,
@@ -676,37 +678,27 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
   // Compute path collapses shader+pipeline into SDL_GPUComputePipeline.
   if (d->cs_spirv) {
     s->compute_pip = SDL_CreateGPUComputePipeline(
-        g_app->gpu_device, &(SDL_GPUComputePipelineCreateInfo){
-                               .code = (const Uint8 *)d->cs_spirv,
-                               .code_size = d->cs_bytes,
-                               .entrypoint = "main",
-                               .format = SDL_GPU_SHADERFORMAT_SPIRV,
-                               .num_samplers =
-                                   refl_sampler_count(&s->refl,
-                                                      SGL_STAGE_COMPUTE),
-                               .num_readonly_storage_textures =
-                                   refl_storage_tex_count(&s->refl,
-                                                          SGL_STAGE_COMPUTE,
-                                                          true),
-                               .num_readonly_storage_buffers =
-                                   refl_storage_buf_count(&s->refl,
-                                                          SGL_STAGE_COMPUTE,
-                                                          true),
-                               .num_readwrite_storage_textures =
-                                   refl_storage_tex_count(&s->refl,
-                                                          SGL_STAGE_COMPUTE,
-                                                          false),
-                               .num_readwrite_storage_buffers =
-                                   refl_storage_buf_count(&s->refl,
-                                                          SGL_STAGE_COMPUTE,
-                                                          false),
-                               .num_uniform_buffers =
-                                   refl_uniform_count(&s->refl,
-                                                      SGL_STAGE_COMPUTE),
-                               .threadcount_x = (Uint32)s->refl.workgroup[0],
-                               .threadcount_y = (Uint32)s->refl.workgroup[1],
-                               .threadcount_z = (Uint32)s->refl.workgroup[2],
-                           });
+        g_app->gpu_device,
+        &(SDL_GPUComputePipelineCreateInfo){
+            .code = (const Uint8 *)d->cs_spirv,
+            .code_size = d->cs_bytes,
+            .entrypoint = "main",
+            .format = SDL_GPU_SHADERFORMAT_SPIRV,
+            .num_samplers = refl_sampler_count(&s->refl, SGL_STAGE_COMPUTE),
+            .num_readonly_storage_textures =
+                refl_storage_tex_count(&s->refl, SGL_STAGE_COMPUTE, true),
+            .num_readonly_storage_buffers =
+                refl_storage_buf_count(&s->refl, SGL_STAGE_COMPUTE, true),
+            .num_readwrite_storage_textures =
+                refl_storage_tex_count(&s->refl, SGL_STAGE_COMPUTE, false),
+            .num_readwrite_storage_buffers =
+                refl_storage_buf_count(&s->refl, SGL_STAGE_COMPUTE, false),
+            .num_uniform_buffers =
+                refl_uniform_count(&s->refl, SGL_STAGE_COMPUTE),
+            .threadcount_x = (Uint32)s->refl.workgroup[0],
+            .threadcount_y = (Uint32)s->refl.workgroup[1],
+            .threadcount_z = (Uint32)s->refl.workgroup[2],
+        });
     if (!s->compute_pip) {
       SDL_Log("sg_make_shader: SDL_CreateGPUComputePipeline failed: %s",
               SDL_GetError());
@@ -727,8 +719,7 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
           .entrypoint = "main",
           .format = SDL_GPU_SHADERFORMAT_SPIRV,
           .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-          .num_uniform_buffers =
-              refl_uniform_count(d->refl, SGL_STAGE_VERTEX),
+          .num_uniform_buffers = refl_uniform_count(d->refl, SGL_STAGE_VERTEX),
           .num_storage_buffers =
               refl_storage_buf_count(d->refl, SGL_STAGE_VERTEX, true),
           .num_storage_textures =
@@ -1132,11 +1123,9 @@ static void sg_apply_uniforms(SglShaderStage stage, int slot, const void *d,
   if (!g_app || !g_app->gpu_cmd)
     return;
   if (stage == SGL_STAGE_FRAGMENT) {
-    SDL_PushGPUFragmentUniformData(g_app->gpu_cmd, (Uint32)slot, d,
-                                   (Uint32)b);
+    SDL_PushGPUFragmentUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
   } else if (stage == SGL_STAGE_COMPUTE) {
-    SDL_PushGPUComputeUniformData(g_app->gpu_cmd, (Uint32)slot, d,
-                                  (Uint32)b);
+    SDL_PushGPUComputeUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
   } else {
     SDL_PushGPUVertexUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
   }
@@ -1150,8 +1139,8 @@ static void sg_draw(int base, int count, int instance_count) {
     SDL_DrawGPUIndexedPrimitives(g_render_pass, (Uint32)count, instances,
                                  (Uint32)base, 0, 0);
   } else {
-    SDL_DrawGPUPrimitives(g_render_pass, (Uint32)count, instances,
-                          (Uint32)base, 0);
+    SDL_DrawGPUPrimitives(g_render_pass, (Uint32)count, instances, (Uint32)base,
+                          0);
   }
 }
 
@@ -1208,8 +1197,8 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
     if (!img || !img->tex || !d->storage_textures[i].name)
       continue;
     for (int k = 0; k < d->refl->storage_tex_count; ++k) {
-      if (strcmp(d->refl->storage_texs[k].name,
-                 d->storage_textures[i].name) != 0)
+      if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) !=
+          0)
         continue;
       int slot = d->refl->storage_texs[k].slot;
       if (slot < 0 || slot >= SGL_MAX_STORAGE_TEXTURES)
@@ -1291,9 +1280,8 @@ static int sg_readback_src_bpp(SglPixelFormat fmt) {
   }
 }
 
-static void sg_convert_readback_to_rgba8(SglPixelFormat fmt,
-                                         const uint8_t *src, uint8_t *dst,
-                                         int w, int h) {
+static void sg_convert_readback_to_rgba8(SglPixelFormat fmt, const uint8_t *src,
+                                         uint8_t *dst, int w, int h) {
   size_t pixels = (size_t)w * (size_t)h;
   if (fmt == SGL_PF_RGBA8) {
     memcpy(dst, src, pixels * 4);
@@ -1491,11 +1479,110 @@ static void sg_destroy_readback(BackendReadback h) {
 }
 
 static bool sg_capture(App *app, const char *path) {
-  (void)app;
-  (void)path;
-  SDL_Log("sg_capture: swapchain capture is not supported on SDLGPU; use "
-          "Gfx.readback + lubx.Png.write");
-  return false;
+  if (!app || !app->gpu_device || !app->gpu_cmd || !app->gpu_swapchain_tex ||
+      !path) {
+    return false;
+  }
+  int w = app->last_w;
+  int h = app->last_h;
+  if (w <= 0 || h <= 0) {
+    SDL_Log("sg_capture: zero extent");
+    return false;
+  }
+
+  SglPixelFormat src_fmt = sg_swapchain_color_format(app);
+  int bpp = sg_readback_src_bpp(src_fmt);
+  if (bpp == 0) {
+    SDL_Log("sg_capture: unsupported swapchain format %d", (int)src_fmt);
+    return false;
+  }
+
+  Uint32 src_stride = (Uint32)w * (Uint32)bpp;
+  Uint32 src_bytes = src_stride * (Uint32)h;
+  Uint32 dst_stride = (Uint32)w * 4;
+  Uint32 dst_bytes = dst_stride * (Uint32)h;
+  SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(
+      app->gpu_device, &(SDL_GPUTransferBufferCreateInfo){
+                           .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+                           .size = src_bytes,
+                       });
+  if (!tb) {
+    SDL_Log("sg_capture: SDL_CreateGPUTransferBuffer failed: %s",
+            SDL_GetError());
+    return false;
+  }
+  gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+
+  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(app->gpu_cmd);
+  if (!cp) {
+    SDL_Log("sg_capture: SDL_BeginGPUCopyPass failed: %s", SDL_GetError());
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+    return false;
+  }
+  SDL_DownloadFromGPUTexture(cp,
+                             &(SDL_GPUTextureRegion){
+                                 .texture = app->gpu_swapchain_tex,
+                                 .w = (Uint32)w,
+                                 .h = (Uint32)h,
+                                 .d = 1,
+                             },
+                             &(SDL_GPUTextureTransferInfo){
+                                 .transfer_buffer = tb,
+                                 .offset = 0,
+                                 .pixels_per_row = (Uint32)w,
+                                 .rows_per_layer = (Uint32)h,
+                             });
+  SDL_EndGPUCopyPass(cp);
+
+  SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(app->gpu_cmd);
+  app->gpu_cmd = NULL;
+  app->gpu_swapchain_tex = NULL;
+  if (!fence) {
+    SDL_Log("sg_capture: SubmitAndAcquireFence failed: %s", SDL_GetError());
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+    return false;
+  }
+  gpu_stats_create(GPU_STAT_FENCE, 0);
+  if (!SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1)) {
+    SDL_Log("sg_capture: SDL_WaitForGPUFences failed: %s", SDL_GetError());
+    SDL_ReleaseGPUFence(app->gpu_device, fence);
+    gpu_stats_destroy(GPU_STAT_FENCE, 0);
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+    return false;
+  }
+  SDL_ReleaseGPUFence(app->gpu_device, fence);
+  gpu_stats_destroy(GPU_STAT_FENCE, 0);
+
+  void *src = SDL_MapGPUTransferBuffer(app->gpu_device, tb, false);
+  if (!src) {
+    SDL_Log("sg_capture: SDL_MapGPUTransferBuffer failed: %s", SDL_GetError());
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+    return false;
+  }
+  uint8_t *rgba = (uint8_t *)malloc(dst_bytes);
+  if (!rgba) {
+    SDL_Log("sg_capture: out of memory (%u bytes)", dst_bytes);
+    SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+    return false;
+  }
+  sg_convert_readback_to_rgba8(src_fmt, (const uint8_t *)src, rgba, w, h);
+  SDL_UnmapGPUTransferBuffer(app->gpu_device, tb);
+  SDL_ReleaseGPUTransferBuffer(app->gpu_device, tb);
+  gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, src_bytes);
+
+  int ok = stbi_write_png(path, w, h, 4, rgba, (int)dst_stride);
+  free(rgba);
+  if (!ok) {
+    SDL_Log("sg_capture: stbi_write_png failed");
+    return false;
+  }
+  return true;
 }
 
 static SglPixelFormat sg_swapchain_color_format(App *app) {
@@ -1540,5 +1627,6 @@ const RenderBackend g_backend_sdlgpu = {
     .poll_readback = sg_poll_readback,
     .destroy_readback = sg_destroy_readback,
     .capture = sg_capture,
+    .capture_before_end_frame = true,
     .swapchain_color_format = sg_swapchain_color_format,
 };

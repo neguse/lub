@@ -46,11 +46,11 @@ class Rcas {
 		if (quad == null) {
 			quad = Gfx.useBuffer(bufferKey, Gfx.VERTEX, Table.fromArray([
 				-1.0, -1.0, 0.0, 1.0,
-				1.0, -1.0, 1.0, 1.0,
-				1.0, 1.0, 1.0, 0.0,
+				 1.0, -1.0, 1.0, 1.0,
+				 1.0,  1.0, 1.0, 0.0,
 				-1.0, -1.0, 0.0, 1.0,
-				1.0, 1.0, 1.0, 0.0,
-				-1.0, 1.0, 0.0, 0.0
+				 1.0,  1.0, 1.0, 0.0,
+				-1.0,  1.0, 0.0, 0.0
 			]), 1);
 		}
 		shader = Gfx.useShader(shaderKey, VS, FS, 1);

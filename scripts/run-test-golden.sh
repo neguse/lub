@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 TESTS=(indexed_draw)
 BACKENDS=(sokol sdlgpu)
 FRAME=30
-BINARY=./build/lub
+BINARY="${BINARY:-./build/lub}"
 GOLDEN_DIR=tests/golden
 
 update=0

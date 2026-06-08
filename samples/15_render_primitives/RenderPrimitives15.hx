@@ -37,18 +37,18 @@ class RenderPrimitives15 {
 		if (quad == null) {
 			quad = Gfx.useBuffer("rp15_quad", Gfx.VERTEX, Table.fromArray([
 				-1.0, -1.0, 0.0, 1.0,
-				1.0, -1.0, 1.0, 1.0,
-				1.0, 1.0, 1.0, 0.0,
+				 1.0, -1.0, 1.0, 1.0,
+				 1.0,  1.0, 1.0, 0.0,
 				-1.0, -1.0, 0.0, 1.0,
-				1.0, 1.0, 1.0, 0.0,
-				-1.0, 1.0, 0.0, 0.0
+				 1.0,  1.0, 1.0, 0.0,
+				-1.0,  1.0, 0.0, 0.0
 			]), 1);
 		}
 		if (tri == null) {
 			tri = Gfx.useBuffer("rp15_tri", Gfx.VERTEX, Table.fromArray([
 				-0.75, -0.70, 0.25,
-				0.85, -0.65, 0.75,
-				-0.10, 0.82, 0.55
+				 0.85, -0.65, 0.75,
+				-0.10,  0.82, 0.55
 			]), 1);
 		}
 	}
@@ -116,7 +116,12 @@ class RenderPrimitives15 {
 			clear_color: Table.fromArray([0.02, 0.02, 0.04, 1.0]),
 			clear_depth: 1.0
 		});
-		Gfx.draw(3, {verts: tri}, {shader: depth, depth: true, depth_write: true, cull: Gfx.NONE});
+		Gfx.draw(3, {verts: tri}, {
+			shader: depth,
+			depth: true,
+			depth_write: true,
+			cull: Gfx.NONE
+		});
 		Gfx.endPass();
 
 		Gfx.dispatch(Std.int(Math.ceil(RTW / 8)), Std.int(Math.ceil(RTH / 8)), 1, {

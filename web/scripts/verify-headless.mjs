@@ -339,7 +339,7 @@ function greenAppearedRef() {
 }
 
 // ===== Test A5: all-samples render ========================================
-// For each sample in the dropdown, switch + screenshot + assert non-black.
+// For each currently-gated web sample, switch + screenshot + assert non-black.
 // We confirm the user-visible "compile something and draw it" path works for
 // each one, but don't pixel-validate content (Phase 8's job).
 //
@@ -375,6 +375,7 @@ const samples = [
   { name: '09_breakout',     minNonBlack: 0.10 },
   { name: '10_breakout3d',   minNonBlack: 0.10 },
   { name: '11_shadow',       minNonBlack: 0.10 },
+  { name: '12_sfb',          minNonBlack: 0.01 },
 ]
 const sampleResults = {}
 

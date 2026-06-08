@@ -286,8 +286,7 @@ static int l_readback_read_texture(lua_State *L) {
   }
 
   bool has_id = !lua_isnoneornil(L, 3);
-  if (rb->count > 0 &&
-      lub_readback_poll_item(L, &rb->items[rb->head])) {
+  if (rb->count > 0 && lub_readback_poll_item(L, &rb->items[rb->head])) {
     int idx = rb->head;
     rb->head = (rb->head + 1) % LUB_READBACK_MAX_DEPTH;
     rb->count--;
@@ -932,10 +931,9 @@ static int l_use_texture(lua_State *L) {
     bpp = 0;
     break;
   default:
-    return luaL_error(L,
-                      "use_texture: format not supported "
-                      "(RGBA8/R8/RG8/R16F/RG16F/R32F/RGBA16F/RGBA32F/"
-                      "depth target formats only)");
+    return luaL_error(L, "use_texture: format not supported "
+                         "(RGBA8/R8/RG8/R16F/RG16F/R32F/RGBA16F/RGBA32F/"
+                         "depth target formats only)");
   }
 
   uint8_t *pixels = NULL;
@@ -1291,8 +1289,7 @@ static int l_dispatch(lua_State *L) {
           if (refl_has_storage_texture(&sh_e->u.sh.refl, res_name)) {
             if (!te->u.tex.storage) {
               return luaL_error(
-                  L,
-                  "dispatch: texture '%s' must be created with storage=true",
+                  L, "dispatch: texture '%s' must be created with storage=true",
                   tk ? tk : "?");
             }
             if (dd.n_storage_textures < SGL_MAX_STORAGE_TEXTURES) {
@@ -1315,8 +1312,8 @@ static int l_dispatch(lua_State *L) {
 
   for (int i = 0; i < dd.texture_count; ++i) {
     for (int j = 0; j < dd.n_storage_textures; ++j) {
-      if (dd.textures[i].image && dd.textures[i].image ==
-                                      dd.storage_textures[j].image) {
+      if (dd.textures[i].image &&
+          dd.textures[i].image == dd.storage_textures[j].image) {
         return luaL_error(L,
                           "dispatch: same texture cannot be read and written "
                           "in one dispatch");
