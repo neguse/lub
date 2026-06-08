@@ -49,7 +49,7 @@ References:
 - Lua API は `use_buffer` / `use_texture` と同じ key-based resource model に揃える。
 - API surface は retained object method ではなく immediate-mode declaration に寄せる。
 - C 側は Box2D handle の lifetime、stale handle、event snapshot を隠蔽する。
-- Haxe は `haxe-lib/lub/lub/Phys.hx` に typed extern を置き、Lua globals と 1:1 で呼ぶ。
+- Haxe は `haxe-lib/lub/lub/Phys2d.hx` に typed extern を置き、Lua globals と 1:1 で呼ぶ。
 - 初期 scope は gameplay に必要な rigid body 2D の最小セットにする。
   - world
   - static / kinematic / dynamic body
@@ -68,6 +68,33 @@ References:
 - physics と renderer の座標変換や pixels-per-meter を core が所有する。
 - joints / motors / character mover を Phase 1 に含める。これらは Phase 2 以降。
 
+### Full Coverage Concerns
+
+Box2D v3 の API は C なので一見そのまま Lua に並べられそうに見えるが、全面対応を
+thin binding で進めると `lub` の hot reload / immediate declaration / deterministic test
+と衝突する箇所がある。Phase 1 の最小 scope は実装順の都合であり、最終 API 設計では
+以下を最初から潰せる形にしておく。
+
+| Area | Why It Is Hard | Direction |
+|---|---|---|
+| Joints | joint は 2 bodies を跨ぐ constraint。片方の body が immediate prune / recreate されると joint id が stale になり、warm start も失われる。 | `phys2d_joint(world, key, bodyA, bodyB, desc)` の key-based resource にし、body recreate 時は dependent joints を明示 recreate。body より後に宣言する順序を contract にする。 |
+| Motors / limits / targets | revolute/prismatic などは runtime tuning 項目が多く、create-only field と mutable field が混ざる。 | joint descriptor を fingerprint し、safe mutable fields は setter、unsafe field は recreate。Phase 1 body/shape と同じ差分更新規則を joint にも適用する。 |
+| Contact/filter/pre-solve callbacks | Box2D callback は thread-safe である必要があり、world を読んだり書いたりしてはいけない。Lua callback を直接呼ぶと VM safety、world lock、determinism の全てが危ない。 | Lua callback は採用しない。filter/pre-solve は declarative rule table を C 側で評価するか、当面 non-goal にする。events は step 後 snapshot だけ返す。 |
+| Friction/restitution callbacks | v3.1 は material id と mixing callback を持つ。Lua callback 化すると contact solver 内で Lua が走る。 | material registry + built-in mixing policy に寄せる。custom callback は C plugin か future advanced API 扱い。 |
+| Character mover | `b2World_CastMover` / plane solve 系は rigid body とは別の controller API。world callback から複数 plane を集め、gameplay 側で解く必要がある。 | `phys2d_mover_cast` のような snapshot API として別 namespace/phase に分ける。body immediate API に混ぜない。 |
+| Chain / terrain | chain shape は大量の vertices と per-segment material を持つ。毎フレーム Lua table で宣言すると重いし、少しの差分で whole chain recreate になる。 | `phys2d_chain(body, key, points, version, opts)` のように explicit `version` を持たせ、points が変わらない限り C 側 shape を再利用する。 |
+| Large queries | overlap/raycast の all-hit callback を Lua callback にすると callback lifetime と allocation が難しい。dynamic tree traversal order もそのままだと deterministic test に向かない。 | C 側で bounded result array に collect し、fraction/key などで安定 sort して Lua table に返す。closest query は Phase 1 で先行可。 |
+| Event identity | end contact / end sensor は shape/body destroy に伴って出ることがあり、Box2D id validation に失敗する場合がある。 | event snapshot には user key の tombstone copy を持つ。`valid=false` を返せる schema にする。 |
+| Body/shape mutation | geometry や density 変更は mass/inertia、sleep island、contact cache に影響する。毎フレーム recreate すると solver が落ち着かない。 | descriptor hash で no-op update を徹底する。manual mass override を入れるなら shape update 後の mass policy を明示する。 |
+| Task system / multithreading | Box2D world def は task callbacks を持てるが、Lua VM と共有すると危険。worker count は determinism と platform parity にも影響する。 | 初期は Box2D internal single-thread/default path。task system expose は native-only advanced feature とし、Lua callback は入れない。 |
+| Debug draw | Box2D debug draw は callback struct。そこで `Gfx` を呼ぶと physics step 中に renderer API を呼ぶことになる。 | callback で line/circle/polygon を C buffer に collect し、step 後に `phys2d_debug` で返す。render は `lubx` が担当。 |
+| Serialization / save state | Box2D の internal ids と `lub` key maps、Lua-side gameplay state をまとめて保存する必要がある。thin binding では再現性が弱い。 | core API としては持たない。必要なら key-based scene descriptor + gameplay save data から再構築する方針。 |
+
+結論として、全部を「シュッと」1:1 binding で expose するのは避ける。全面対応する場合も
+public API は key-based declarations、snapshot queries、declarative policies に寄せる。
+危ないのは Box2D の solver そのものではなく、callback / lifetime / mutation timing を
+Lua/Haxe hot reload 環境にそのまま持ち込むこと。
+
 ## 3. API Shape
 
 ### Naming
@@ -75,38 +102,38 @@ References:
 Lua globals は既存 API と同じく snake_case の global function にする。
 
 ```lua
-phys_world()
-phys_begin()
-phys_body()
-phys_box()
-phys_circle()
-phys_capsule()
-phys_segment()
-phys_step()
-phys_pose()
-phys_contacts()
-phys_sensors()
-phys_body_events()
-phys_raycast()
-phys_overlap_aabb()
+phys2d_world()
+phys2d_begin()
+phys2d_body()
+phys2d_box()
+phys2d_circle()
+phys2d_capsule()
+phys2d_segment()
+phys2d_step()
+phys2d_pose()
+phys2d_contacts()
+phys2d_sensors()
+phys2d_body_events()
+phys2d_raycast()
+phys2d_overlap_aabb()
 ```
 
-Haxe extern は `lub.Phys` に集約する。
+Haxe extern は `lub.Phys2d` に集約する。
 
 ```haxe
-import lub.Phys;
+import lub.Phys2d;
 
-var world = Phys.world("main", { gravity: { x: 0.0, y: -20.0 } });
-Phys.begin(world);
-var player = Phys.body(world, "player", {
-  type: Phys.DYNAMIC,
+var world = Phys2d.world("main", { gravity: { x: 0.0, y: -20.0 } });
+Phys2d.begin(world);
+var player = Phys2d.body(world, "player", {
+  type: Phys2d.DYNAMIC,
   x: 0.0,
   y: 4.0,
   fixedRotation: true
 });
-Phys.capsule(player, "body", { ax: 0, ay: -0.35, bx: 0, by: 0.35, r: 0.18, density: 1.0 });
-Phys.step(world, dt);
-var pose = Phys.pose(player);
+Phys2d.capsule(player, "body", { ax: 0, ay: -0.35, bx: 0, by: 0.35, r: 0.18, density: 1.0 });
+Phys2d.step(world, dt);
+var pose = Phys2d.pose(player);
 ```
 
 ### Sentinel refs
@@ -114,9 +141,9 @@ var pose = Phys.pose(player);
 既存の GPU resource と同じ sentinel table 方式を使う。
 
 ```lua
-{ __lub_kind = "phys_world", key = "main" }
-{ __lub_kind = "phys_body",  world = "main", key = "player" }
-{ __lub_kind = "phys_shape", world = "main", body = "player", key = "body" }
+{ __lub_kind = "phys2d_world", key = "main" }
+{ __lub_kind = "phys2d_body",  world = "main", key = "player" }
+{ __lub_kind = "phys2d_shape", world = "main", body = "player", key = "body" }
 ```
 
 Lua user は中身を直接読めるが、contract は「ref として次の API に渡す」だけ。
@@ -127,7 +154,7 @@ Haxe では `abstract WorldRef(Dynamic)` / `abstract BodyRef(Dynamic)` で包む
 Frame flow:
 
 ```lua
-local w = phys_world("main", {
+local w = phys2d_world("main", {
   gravity = { 0, -20 },
   fixed_dt = 1 / 60,
   substeps = 4,
@@ -135,13 +162,13 @@ local w = phys_world("main", {
 })
 
 function M.onFrame(dt)
-  phys_begin(w)
+  phys2d_begin(w)
 
-  local ground = phys_body(w, "ground", { type = STATIC, x = 0, y = -2 })
-  phys_box(ground, "floor", { hx = 8, hy = 0.25, friction = 0.8 })
+  local ground = phys2d_body(w, "ground", { type = STATIC, x = 0, y = -2 })
+  phys2d_box(ground, "floor", { hx = 8, hy = 0.25, friction = 0.8 })
 
-  local ball = phys_body(w, "ball", { type = DYNAMIC, x = spawn_x, y = spawn_y })
-  phys_circle(ball, "shape", {
+  local ball = phys2d_body(w, "ball", { type = DYNAMIC, x = spawn_x, y = spawn_y })
+  phys2d_circle(ball, "shape", {
     r = 0.25,
     density = 1,
     friction = 0.4,
@@ -150,22 +177,22 @@ function M.onFrame(dt)
   })
 
   if key_down("Space") then
-    phys_impulse(ball, { x = 0, y = 4 }, { wake = true })
+    phys2d_impulse(ball, { x = 0, y = 4 }, { wake = true })
   end
 
-  phys_step(w, dt)
+  phys2d_step(w, dt)
 
-  local p = phys_pose(ball)
+  local p = phys2d_pose(ball)
   draw_ball_at(p.x, p.y, p.angle)
 
-  for _, c in ipairs(phys_contacts(w, "begin")) do
+  for _, c in ipairs(phys2d_contacts(w, "begin")) do
     -- c.a.body / c.a.shape / c.b.body / c.b.shape are user keys
   end
 end
 ```
 
-`phys_begin(world)` increments a declaration generation. Every `phys_body` and shape call marks an
-entry as touched. `phys_step(world, dt)` reconciles:
+`phys2d_begin(world)` increments a declaration generation. Every `phys2d_body` and shape call marks an
+entry as touched. `phys2d_step(world, dt)` reconciles:
 
 1. Destroy shapes not touched in this generation.
 2. Destroy bodies not touched in this generation.
@@ -176,17 +203,122 @@ entry as touched. `phys_step(world, dt)` reconciles:
 This means game code must declare all currently alive physics bodies each frame. That is intentional:
 the retained state lives in C/Box2D, while Lua/Haxe owns scene intent through stable keys.
 
-For cases where explicit lifetime is more natural, `phys_begin(world, { prune = false })` may be
+For cases where explicit lifetime is more natural, `phys2d_begin(world, { prune = false })` may be
 added in Phase 2. Phase 1 should keep the model strict and simple.
 
-## 5. Lua API Contract
+## 5. Constructor Version Semantics
 
-### `phys_world(key, opts) -> WorldRef`
+Box2D resources have two classes of parameters.
+
+1. **Constructor parameters**
+   These are fields Box2D consumes at create time, or fields whose change invalidates solver/cache
+   state. Examples: body type at creation, shape geometry, sensor flag, filter, joint endpoints,
+   joint local anchors, chain vertices.
+
+2. **Runtime parameters**
+   These can be updated safely through Box2D setters without recreating the resource. Examples:
+   transform, velocity, awake flag, damping, gravity scale, forces/impulses, many joint motor
+   tuning values.
+
+The public API must define what happens when constructor parameters change for an existing key.
+The rule is intentionally close to `use_shader(key, ..., version)` / `use_buffer(key, ..., version)`.
+
+### Version rule
+
+Every constructor-like declaration accepts an optional `version` field.
+
+```lua
+local body = phys2d_body(world, "crate:17", {
+  version = crate_def_version,
+  type = DYNAMIC,
+  x = 0,
+  y = 4,
+})
+
+phys2d_box(body, "solid", {
+  version = crate_shape_version,
+  hx = 0.5,
+  hy = 0.5,
+  density = 1,
+  friction = 0.6,
+})
+```
+
+If `version` is provided, it is authoritative:
+
+- same key + same version => constructor parameters are treated as unchanged
+- same key + different version => recreate the Box2D object
+- same version but different constructor fields => ignored for constructor state, like changing buffer
+  data without bumping `use_buffer` version
+- runtime parameters are still applied through setters every declaration, even when version is same
+
+This gives user code and Haxe-generated code a cheap, explicit invalidation path. It also avoids deep
+table scans for large resources such as chains.
+
+If `version` is omitted, lub computes a stable constructor hash from normalized scalar constructor
+fields and uses that as the version fallback. This keeps simple hand-written Lua ergonomic:
+
+```lua
+phys2d_circle(body, "ball", { r = 0.25, density = 1 })
+```
+
+For data-heavy declarations (`phys2d_chain`, future polygon soup, large joint arrays), explicit
+`version` is required or strongly recommended. The implementation should reject missing `version`
+for resources where hashing the whole input would be too expensive or ambiguous.
+
+### Recreate timing
+
+Recreate happens during declaration, before the function returns its ref.
+
+- `phys2d_world` version change destroys and recreates the world. All old bodies, shapes, joints,
+  event buffers, and query caches under that world are invalidated. Later declarations with the same
+  keys create fresh objects.
+- `phys2d_body` version change destroys and recreates that body. Child shapes and dependent joints are
+  destroyed as part of the body recreate and must be declared again in the same frame.
+- shape version change destroys and recreates only that shape, then updates body mass if needed.
+- future joint version change destroys and recreates only that joint.
+
+Commands are key-based. A command issued after a recreate applies to the new object. A command issued
+before a declaration that recreates the object is dropped with a debug log because the target handle no
+longer exists. Samples should declare first, then issue commands, then `phys2d_step`.
+
+### What state is preserved
+
+Same key + same constructor version preserves Box2D solver state: sleep state, contact cache, warm
+starting, body velocity, and accumulated island state.
+
+Version change does not preserve those internals. Only fields present in the new declaration are used
+to initialize the new Box2D object. For example, changing a shape's `version` may change mass/inertia
+and will lose active contacts for that shape. This is the expected cost of constructor invalidation.
+
+### Debug / validation behavior
+
+In debug builds, lub should keep the last constructor hash even when explicit `version` is present.
+If the hash changes while `version` is unchanged, log once per key:
+
+```text
+phys2d_box('crate:17/solid'): constructor fields changed without version bump
+```
+
+Do not silently recreate in that case. The explicit version must remain authoritative, otherwise
+shader/buffer-like semantics are lost.
+
+### Haxe convention
+
+Haxe descriptors include optional `version:Int` on world/body/shape/joint descriptors. Higher-level
+Haxe helpers should derive that number from asset or gameplay definition versions, not from frame
+number. Passing frame count as version would recreate the physics object every frame and destroy
+solver stability.
+
+## 6. Lua API Contract
+
+### `phys2d_world(key, opts) -> WorldRef`
 
 Creates or updates a world.
 
 ```lua
-local world = phys_world("main", {
+local world = phys2d_world("main", {
+  version = 1,
   gravity = { 0, -9.8 },
   fixed_dt = 1 / 60,
   substeps = 4,
@@ -201,6 +333,7 @@ Fields:
 
 | field | type | default | notes |
 |---|---:|---:|---|
+| `version` | integer | constructor hash fallback | create-only invalidation key |
 | `gravity` | `{x,y}` or `{x,y}` array | `{0,-9.8}` | Box2D units, not pixels |
 | `fixed_dt` | number | `1/60` | accumulator step size |
 | `substeps` | integer | `4` | passed to `b2World_Step` |
@@ -209,26 +342,27 @@ Fields:
 | `continuous` | bool | `true` | continuous collision |
 | `hit_event_threshold` | number | Box2D default | only relevant for hit events |
 
-World create-only fields changing at runtime should recreate the Box2D world only if there is no safe
-setter. For gravity / sleep / continuous, use Box2D setters where available.
+Create-only field changes follow the constructor version rule. Mutable world fields such as gravity
+should use Box2D setters where available and do not require a version bump.
 
-### `phys_begin(world, opts?)`
+### `phys2d_begin(world, opts?)`
 
 Starts a declaration frame.
 
 ```lua
-phys_begin(world)
-phys_begin(world, { prune = true })
+phys2d_begin(world)
+phys2d_begin(world, { prune = true })
 ```
 
-`prune = true` is Phase 1 default and means unmentioned bodies/shapes are destroyed on `phys_step`.
+`prune = true` is Phase 1 default and means unmentioned bodies/shapes are destroyed on `phys2d_step`.
 
-### `phys_body(world, key, desc) -> BodyRef`
+### `phys2d_body(world, key, desc) -> BodyRef`
 
 Creates or updates a body.
 
 ```lua
-local b = phys_body(world, "enemy:42", {
+local b = phys2d_body(world, "enemy:42", {
+  version = enemy_body_version,
   type = DYNAMIC,
   x = 3,
   y = 1,
@@ -263,15 +397,17 @@ Creation uses `b2DefaultBodyDef`, then fills fields. Runtime changes use setters
 - gravity scale / damping -> Box2D body setters
 - awake -> `b2Body_SetAwake`
 
-If a field cannot be safely updated, log once and recreate the body. Recreate is acceptable for
-definition-level changes, but should not happen every frame for stable declarations.
+Create-only body field changes require a version bump and recreate the body. Runtime fields use
+setters. Recreate is acceptable for definition-level changes, but should not happen every frame for
+stable declarations.
 
 ### Shape APIs
 
 Shapes are declared under a body.
 
 ```lua
-phys_box(body, "feet", {
+phys2d_box(body, "feet", {
+  version = feet_shape_version,
   hx = 0.25,
   hy = 0.08,
   cx = 0,
@@ -287,9 +423,10 @@ phys_box(body, "feet", {
   filter = { category = 1, mask = { 0, 2 } },
 })
 
-phys_circle(body, "ball", { r = 0.25, density = 1 })
+phys2d_circle(body, "ball", { version = ball_shape_version, r = 0.25, density = 1 })
 
-phys_capsule(body, "capsule", {
+phys2d_capsule(body, "capsule", {
+  version = capsule_shape_version,
   ax = 0,
   ay = -0.4,
   bx = 0,
@@ -298,7 +435,8 @@ phys_capsule(body, "capsule", {
   density = 1,
 })
 
-phys_segment(body, "ground_edge", {
+phys2d_segment(body, "ground_edge", {
+  version = ground_edge_version,
   ax = -2,
   ay = 0,
   bx = 2,
@@ -311,6 +449,7 @@ All shape functions share material/filter/event fields:
 
 | field | type | default | Box2D mapping |
 |---|---:|---:|---|
+| `version` | integer | constructor hash fallback | create-only invalidation key |
 | `density` | number | `0` for static, `1` for dynamic | `b2ShapeDef.density` |
 | `friction` | number | Box2D default | `b2ShapeDef.material.friction` |
 | `restitution` | number | Box2D default | `b2ShapeDef.material.restitution` |
@@ -330,33 +469,33 @@ filter = { category_bits = "0x0000000000000008",
            mask_bits = "0xffffffffffffffff" }       -- advanced exact path
 ```
 
-Shape geometry is part of the shape fingerprint. If geometry, sensor flag, or filter changes, the
-runtime destroys and recreates the shape. Material changes can be applied by setters where cheap;
-otherwise Phase 1 may also recreate the shape and call mass update.
+Shape geometry, sensor flag, and filter are constructor state. If their explicit `version` or fallback
+constructor hash changes, the runtime destroys and recreates the shape. Material changes can be applied
+by setters where cheap; otherwise Phase 1 may also recreate the shape and call mass update.
 
 ### Commands
 
 Commands are queued and applied immediately before stepping.
 
 ```lua
-phys_force(body, { x = 0, y = 20 }, { px = 0, py = 0, wake = true })
-phys_force_center(body, { x = 0, y = 20 }, { wake = true })
-phys_impulse(body, { x = 0, y = 5 }, { px = 0, py = 0, wake = true })
-phys_impulse_center(body, { x = 0, y = 5 }, { wake = true })
-phys_torque(body, 3.0, { wake = true })
-phys_velocity(body, { x = 2, y = 0, w = 0 })
-phys_transform(body, { x = 1, y = 2, angle = 0.5 })
-phys_target(body, { x = 3, y = 2, angle = 0 }, { dt = 1 / 60 })
+phys2d_force(body, { x = 0, y = 20 }, { px = 0, py = 0, wake = true })
+phys2d_force_center(body, { x = 0, y = 20 }, { wake = true })
+phys2d_impulse(body, { x = 0, y = 5 }, { px = 0, py = 0, wake = true })
+phys2d_impulse_center(body, { x = 0, y = 5 }, { wake = true })
+phys2d_torque(body, 3.0, { wake = true })
+phys2d_velocity(body, { x = 2, y = 0, w = 0 })
+phys2d_transform(body, { x = 1, y = 2, angle = 0.5 })
+phys2d_target(body, { x = 3, y = 2, angle = 0 }, { dt = 1 / 60 })
 ```
 
-`phys_target` maps to `b2Body_SetTargetTransform` and is intended for kinematic bodies.
+`phys2d_target` maps to `b2Body_SetTargetTransform` and is intended for kinematic bodies.
 
-### `phys_step(world, dt) -> StepInfo`
+### `phys2d_step(world, dt) -> StepInfo`
 
 Steps the world using an accumulator.
 
 ```lua
-local info = phys_step(world, dt)
+local info = phys2d_step(world, dt)
 -- { steps = 1, alpha = 0.35, body_events = 12, contact_begins = 2 }
 ```
 
@@ -371,13 +510,13 @@ Rules:
 ### Pose and state queries
 
 ```lua
-local p = phys_pose(body)
+local p = phys2d_pose(body)
 -- { x = ..., y = ..., angle = ..., vx = ..., vy = ..., w = ..., awake = true }
 
-local p = phys_pose(world, "player") -- convenience form
+local p = phys2d_pose(world, "player") -- convenience form
 ```
 
-`phys_pose` reads from Box2D after the latest step. It returns `nil, "not found"` for missing bodies
+`phys2d_pose` reads from Box2D after the latest step. It returns `nil, "not found"` for missing bodies
 rather than creating anything.
 
 ### Events
@@ -385,11 +524,11 @@ rather than creating anything.
 C copies Box2D transient event arrays into stable buffers after each step.
 
 ```lua
-for _, e in ipairs(phys_body_events(world)) do
+for _, e in ipairs(phys2d_body_events(world)) do
   -- { body = "player", x = ..., y = ..., angle = ..., fell_asleep = false }
 end
 
-for _, e in ipairs(phys_contacts(world, "begin")) do
+for _, e in ipairs(phys2d_contacts(world, "begin")) do
   -- {
   --   a = { body = "player", shape = "feet" },
   --   b = { body = "ground", shape = "floor" },
@@ -398,10 +537,10 @@ for _, e in ipairs(phys_contacts(world, "begin")) do
   -- }
 end
 
-for _, e in ipairs(phys_contacts(world, "end")) do ... end
-for _, e in ipairs(phys_contacts(world, "hit")) do ... end
-for _, e in ipairs(phys_sensors(world, "begin")) do ... end
-for _, e in ipairs(phys_sensors(world, "end")) do ... end
+for _, e in ipairs(phys2d_contacts(world, "end")) do ... end
+for _, e in ipairs(phys2d_contacts(world, "hit")) do ... end
+for _, e in ipairs(phys2d_sensors(world, "begin")) do ... end
+for _, e in ipairs(phys2d_sensors(world, "end")) do ... end
 ```
 
 Events return user keys, not Box2D ids. C maps `b2ShapeId` to `PhysShape` through internal user data
@@ -410,19 +549,19 @@ or id lookup.
 Contact events are opt-in per shape:
 
 ```lua
-phys_box(body, "feet", { hx = 0.2, hy = 0.05, contact = true })
+phys2d_box(body, "feet", { hx = 0.2, hy = 0.05, contact = true })
 ```
 
 Hit events are also opt-in and should be used sparingly:
 
 ```lua
-phys_circle(body, "ball", { r = 0.25, hit = true })
+phys2d_circle(body, "ball", { r = 0.25, hit = true })
 ```
 
 ### Queries
 
 ```lua
-local hit = phys_raycast(world, {
+local hit = phys2d_raycast(world, {
   x = 0,
   y = 2,
   dx = 10,
@@ -432,7 +571,7 @@ local hit = phys_raycast(world, {
 -- closest hit:
 -- { body = "wall", shape = "solid", x = ..., y = ..., nx = ..., ny = ..., fraction = ... }
 
-local hits = phys_overlap_aabb(world, {
+local hits = phys2d_overlap_aabb(world, {
   min_x = -1,
   min_y = -1,
   max_x = 1,
@@ -449,7 +588,7 @@ collect callback results into temporary arrays.
 Do not make Box2D draw directly through `Gfx` in Phase 1. Instead return geometry.
 
 ```lua
-local dbg = phys_debug(world, { shapes = true, contacts = true })
+local dbg = phys2d_debug(world, { shapes = true, contacts = true })
 -- {
 --   segments = { x1,y1,x2,y2,r,g,b,a, ... },
 --   circles = { x,y,r,r,g,b,a, ... },
@@ -459,9 +598,9 @@ local dbg = phys_debug(world, { shapes = true, contacts = true })
 
 This keeps physics independent from renderer features. `lubx` can turn this into line/shape draw calls.
 
-## 6. Haxe API
+## 7. Haxe API
 
-Add `haxe-lib/lub/lub/Phys.hx`.
+Add `haxe-lib/lub/lub/Phys2d.hx`.
 
 ```haxe
 package lub;
@@ -469,6 +608,7 @@ package lub;
 typedef Vec2 = { var x:Float; var y:Float; }
 
 typedef WorldOpts = {
+  ?version:Int,
   ?gravity:Vec2,
   ?fixedDt:Float,
   ?substeps:Int,
@@ -483,6 +623,7 @@ typedef BeginOpts = {
 }
 
 typedef BodyDesc = {
+  ?version:Int,
   ?type:Int,
   ?x:Float,
   ?y:Float,
@@ -507,6 +648,7 @@ typedef FilterDesc = {
 }
 
 typedef ShapeDesc = {
+  ?version:Int,
   ?density:Float,
   ?friction:Float,
   ?restitution:Float,
@@ -560,37 +702,37 @@ abstract WorldRef(Dynamic) from Dynamic to Dynamic {}
 abstract BodyRef(Dynamic) from Dynamic to Dynamic {}
 abstract ShapeRef(Dynamic) from Dynamic to Dynamic {}
 
-extern class Phys {
+extern class Phys2d {
   @:native("STATIC") public static var STATIC(default, null):Int;
   @:native("KINEMATIC") public static var KINEMATIC(default, null):Int;
   @:native("DYNAMIC") public static var DYNAMIC(default, null):Int;
 
-  @:native("phys_world") public static function world(key:String, ?opts:WorldOpts):WorldRef;
-  @:native("phys_begin") public static function begin(world:WorldRef, ?opts:BeginOpts):Void;
-  @:native("phys_body") public static function body(world:WorldRef, key:String, desc:BodyDesc):BodyRef;
+  @:native("phys2d_world") public static function world(key:String, ?opts:WorldOpts):WorldRef;
+  @:native("phys2d_begin") public static function begin(world:WorldRef, ?opts:BeginOpts):Void;
+  @:native("phys2d_body") public static function body(world:WorldRef, key:String, desc:BodyDesc):BodyRef;
 
-  @:native("phys_box") public static function box(body:BodyRef, key:String, desc:BoxDesc):ShapeRef;
-  @:native("phys_circle") public static function circle(body:BodyRef, key:String, desc:CircleDesc):ShapeRef;
-  @:native("phys_capsule") public static function capsule(body:BodyRef, key:String, desc:CapsuleDesc):ShapeRef;
-  @:native("phys_segment") public static function segment(body:BodyRef, key:String, desc:SegmentDesc):ShapeRef;
+  @:native("phys2d_box") public static function box(body:BodyRef, key:String, desc:BoxDesc):ShapeRef;
+  @:native("phys2d_circle") public static function circle(body:BodyRef, key:String, desc:CircleDesc):ShapeRef;
+  @:native("phys2d_capsule") public static function capsule(body:BodyRef, key:String, desc:CapsuleDesc):ShapeRef;
+  @:native("phys2d_segment") public static function segment(body:BodyRef, key:String, desc:SegmentDesc):ShapeRef;
 
-  @:native("phys_step") public static function step(world:WorldRef, dt:Float):Dynamic;
-  @:native("phys_pose") public static function pose(ref:Dynamic, ?key:String):Pose;
+  @:native("phys2d_step") public static function step(world:WorldRef, dt:Float):Dynamic;
+  @:native("phys2d_pose") public static function pose(ref:Dynamic, ?key:String):Pose;
 
-  @:native("phys_force") public static function force(body:BodyRef, f:Vec2, ?opts:Dynamic):Void;
-  @:native("phys_force_center") public static function forceCenter(body:BodyRef, f:Vec2, ?opts:Dynamic):Void;
-  @:native("phys_impulse") public static function impulse(body:BodyRef, p:Vec2, ?opts:Dynamic):Void;
-  @:native("phys_impulse_center") public static function impulseCenter(body:BodyRef, p:Vec2, ?opts:Dynamic):Void;
-  @:native("phys_torque") public static function torque(body:BodyRef, torque:Float, ?opts:Dynamic):Void;
-  @:native("phys_velocity") public static function velocity(body:BodyRef, v:Dynamic):Void;
-  @:native("phys_transform") public static function transform(body:BodyRef, t:Dynamic):Void;
-  @:native("phys_target") public static function target(body:BodyRef, t:Dynamic, ?opts:Dynamic):Void;
+  @:native("phys2d_force") public static function force(body:BodyRef, f:Vec2, ?opts:Dynamic):Void;
+  @:native("phys2d_force_center") public static function forceCenter(body:BodyRef, f:Vec2, ?opts:Dynamic):Void;
+  @:native("phys2d_impulse") public static function impulse(body:BodyRef, p:Vec2, ?opts:Dynamic):Void;
+  @:native("phys2d_impulse_center") public static function impulseCenter(body:BodyRef, p:Vec2, ?opts:Dynamic):Void;
+  @:native("phys2d_torque") public static function torque(body:BodyRef, torque:Float, ?opts:Dynamic):Void;
+  @:native("phys2d_velocity") public static function velocity(body:BodyRef, v:Dynamic):Void;
+  @:native("phys2d_transform") public static function transform(body:BodyRef, t:Dynamic):Void;
+  @:native("phys2d_target") public static function target(body:BodyRef, t:Dynamic, ?opts:Dynamic):Void;
 
-  @:native("phys_body_events") public static function bodyEvents(world:WorldRef):lua.Table<Int, Dynamic>;
-  @:native("phys_contacts") public static function contacts(world:WorldRef, ?kind:String):lua.Table<Int, Dynamic>;
-  @:native("phys_sensors") public static function sensors(world:WorldRef, ?kind:String):lua.Table<Int, Dynamic>;
-  @:native("phys_raycast") public static function raycast(world:WorldRef, query:Dynamic):Dynamic;
-  @:native("phys_overlap_aabb") public static function overlapAabb(world:WorldRef, query:Dynamic):lua.Table<Int, Dynamic>;
+  @:native("phys2d_body_events") public static function bodyEvents(world:WorldRef):lua.Table<Int, Dynamic>;
+  @:native("phys2d_contacts") public static function contacts(world:WorldRef, ?kind:String):lua.Table<Int, Dynamic>;
+  @:native("phys2d_sensors") public static function sensors(world:WorldRef, ?kind:String):lua.Table<Int, Dynamic>;
+  @:native("phys2d_raycast") public static function raycast(world:WorldRef, query:Dynamic):Dynamic;
+  @:native("phys2d_overlap_aabb") public static function overlapAabb(world:WorldRef, query:Dynamic):lua.Table<Int, Dynamic>;
 }
 ```
 
@@ -605,7 +747,7 @@ Haxe field naming is camelCase; Lua accepts both snake_case and camelCase for co
 
 This mirrors existing `Gfx` extern style while keeping Lua hand-written code natural.
 
-## 7. C Integration
+## 8. C Integration
 
 ### Dependency
 
@@ -641,7 +783,7 @@ Add:
 
 - `src/physics_box2d.h`
 - `src/physics_box2d.c`
-- `haxe-lib/lub/lub/Phys.hx`
+- `haxe-lib/lub/lub/Phys2d.hx`
 - `tests/c/physics_box2d_smoke.c`
 - `tests/lua/test_physics_box2d.lua` if a Lua-side smoke runner is added
 - optional visual sample: `samples/16_box2d/`
@@ -669,7 +811,7 @@ typedef struct App {
 } App;
 ```
 
-`app_init` calls `phys_state_init`, `app_shutdown` calls `phys_state_shutdown`.
+`app_init` calls `phys2d_state_init`, `app_shutdown` calls `phys2d_state_shutdown`.
 
 ### Internal model
 
@@ -713,8 +855,8 @@ World:
 
 - create with `b2DefaultWorldDef`
 - set gravity and options from opts
-- if `phys_world` is called again with safe mutable fields, call setters
-- if an unsafe field changes, log and recreate only on `phys_begin` boundary
+- if `phys2d_world` is called again with safe mutable fields, call setters
+- if an unsafe field changes, log and recreate only on `phys2d_begin` boundary
 
 Body:
 
@@ -754,9 +896,9 @@ return any key cached in our event map if available; otherwise include `valid = 
 - Invalid shape geometry: `luaL_error` with the field name.
 - Unknown body type: `luaL_error`.
 - Filter bit index outside `0..63`: `luaL_error`.
-- World step without `phys_begin`: allow but log once; use previous declarations.
+- World step without `phys2d_begin`: allow but log once; use previous declarations.
 
-## 8. Units and Coordinate Convention
+## 9. Units and Coordinate Convention
 
 Core uses Box2D units directly:
 
@@ -765,7 +907,7 @@ Core uses Box2D units directly:
 - velocity: units per second
 - y-axis: user-defined; examples should use y-up to match Box2D docs
 
-No pixels-per-meter conversion in `lub.Phys`. Rendering helpers can live in `lubx`.
+No pixels-per-meter conversion in `lub.Phys2d`. Rendering helpers can live in `lubx`.
 
 Example:
 
@@ -774,18 +916,18 @@ final ppm = 64.0;
 Gfx.draw(..., { uniforms: { model: makeModel(pose.x * ppm, -pose.y * ppm, pose.angle) } });
 ```
 
-## 9. Version and Hot Reload Behavior
+## 10. Version and Hot Reload Behavior
 
 Haxe/Lua hot reload must not leak Box2D worlds.
 
 - Physics state lives in `App`, not Lua VM.
 - If Lua reloads and calls the same keys, existing worlds/bodies/shapes continue.
-- If Lua reloads and stops declaring old keys, `phys_step` prunes them.
+- If Lua reloads and stops declaring old keys, `phys2d_step` prunes them.
 - On app shutdown, destroy all Box2D worlds.
 
 This is the same philosophy as GPU resources: stable key means reuse; absence means eventual cleanup.
 
-## 10. Testing Strategy
+## 11. Testing Strategy
 
 ### Unit / smoke tests
 
@@ -829,13 +971,13 @@ Golden should verify integration/rendering, not every solver detail.
 
 ### Haxe compile smoke
 
-Add one Haxe sample or compile-only smoke that imports `lub.Phys` and exercises:
+Add one Haxe sample or compile-only smoke that imports `lub.Phys2d` and exercises:
 
-- `Phys.world`
-- `Phys.body`
-- `Phys.box`
-- `Phys.step`
-- `Phys.pose`
+- `Phys2d.world`
+- `Phys2d.body`
+- `Phys2d.box`
+- `Phys2d.step`
+- `Phys2d.pose`
 
 The Haxe smoke should fail if extern names drift from Lua globals.
 
@@ -847,27 +989,27 @@ After implementation:
 - Existing `scripts/pre-commit.sh` should cover native build, golden, WASM build, web verify.
 - Add any numeric physics smoke to the pre-commit gate only if it is deterministic and fast.
 
-## 11. Implementation Phases
+## 12. Implementation Phases
 
 ### Phase 1: Minimal rigid-body core
 
 - Pin Box2D v3.1.1.
 - Add `PhysState`.
 - Add Lua globals:
-  - `phys_world`
-  - `phys_begin`
-  - `phys_body`
-  - `phys_box`
-  - `phys_circle`
-  - `phys_step`
-  - `phys_pose`
-  - `phys_contacts`
-- Add Haxe `lub.Phys`.
+  - `phys2d_world`
+  - `phys2d_begin`
+  - `phys2d_body`
+  - `phys2d_box`
+  - `phys2d_circle`
+  - `phys2d_step`
+  - `phys2d_pose`
+  - `phys2d_contacts`
+- Add Haxe `lub.Phys2d`.
 - Add C smoke tests.
 
 ### Phase 2: Gameplay completeness
 
-- `phys_capsule`, `phys_segment`
+- `phys2d_capsule`, `phys2d_segment`
 - force / impulse / velocity / transform / target commands
 - sensor events
 - body events
@@ -886,7 +1028,7 @@ After implementation:
 Callbacks that Box2D requires to be thread-safe should not call back into Lua. Prefer declarative tables
 and C-side decisions.
 
-## 12. Risks
+## 13. Risks
 
 - **64-bit filters:** Haxe `Int` and Lua number paths are not reliable for all 64 bits. Use bit indices
   or hex strings in public API.
@@ -900,7 +1042,7 @@ and C-side decisions.
 - **CMake version:** upstream CMake requires 3.22. Decide before implementation whether to bump `lub`
   or vendor source files.
 
-## 13. Decision
+## 14. Decision
 
 Adopt a key-based immediate declaration API:
 
