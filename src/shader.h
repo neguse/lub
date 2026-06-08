@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "enums.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -13,6 +15,14 @@ extern "C" {
 #define SGL_MAX_TEXTURES 8
 #define SGL_MAX_UNIFORM_BLOCKS 2
 #define SGL_MAX_STORAGE_BUFS 4
+#define SGL_MAX_STORAGE_TEXTURES 4
+
+typedef enum SglShaderStage {
+  SGL_STAGE_NONE = 0,
+  SGL_STAGE_VERTEX = 1,
+  SGL_STAGE_FRAGMENT = 2,
+  SGL_STAGE_COMPUTE = 3,
+} SglShaderStage;
 
 typedef struct ShaderAttr {
   char name[32];
@@ -31,6 +41,7 @@ typedef struct ShaderUniformMember {
 typedef struct ShaderUniformBlock {
   char name[32];
   int slot;
+  SglShaderStage stage;
   int size_floats;
   int member_count;
   ShaderUniformMember members[SGL_MAX_UB_MEMBERS];
@@ -40,13 +51,23 @@ typedef struct ShaderTexture {
   char name[32];
   int img_slot;
   int smp_slot;
+  SglShaderStage stage;
 } ShaderTexture;
 
 typedef struct ShaderStorageBuf {
   char name[32];
   int slot;
+  SglShaderStage stage;
   bool readonly;
 } ShaderStorageBuf;
+
+typedef struct ShaderStorageTexture {
+  char name[32];
+  int slot;
+  SglShaderStage stage;
+  SglPixelFormat access_format;
+  bool readonly;
+} ShaderStorageTexture;
 
 typedef struct ShaderReflection {
   int attr_count;
@@ -66,6 +87,8 @@ typedef struct ShaderReflection {
   int workgroup[3]; // [numthreads(x,y,z)] from cs entry point
   int storage_buf_count;
   ShaderStorageBuf storage_bufs[SGL_MAX_STORAGE_BUFS];
+  int storage_tex_count;
+  ShaderStorageTexture storage_texs[SGL_MAX_STORAGE_TEXTURES];
 } ShaderReflection;
 
 // Opaque shader byte-blob, owner = caller (free with shader_blob_free).

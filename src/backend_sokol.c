@@ -39,6 +39,8 @@
 #include <webgpu/webgpu.h>
 #endif
 
+static sg_pixel_format sgl_to_sg_fmt(SglPixelFormat fmt);
+
 // --- per-image / per-shader / per-pipeline backend objects ---------------
 // Cross-platform: sokol-level handles only.
 
@@ -46,10 +48,12 @@ typedef struct SkImage {
   sg_image img;
   sg_sampler smp;
   sg_view view;      // texture-sample view
+  sg_view storage_view; // storage-image view (valid when storage)
   sg_view color_att; // color-attachment view (valid when render_target)
   sg_view depth_att; // depth-stencil-attachment view (valid for depth targets)
   uint64_t bytes;
   bool render_target;
+  bool storage;
   SglPixelFormat fmt;
 } SkImage;
 
@@ -735,12 +739,25 @@ static BackendImage sk_make_image(const ImageDesc *d) {
   if (!si)
     return 0;
   si->render_target = d->render_target;
+  si->storage = d->storage;
   si->fmt = d->fmt;
   si->bytes = gpu_stats_image_bytes(d->fmt, d->w, d->h);
   sg_pixel_format pf;
   switch (d->fmt) {
   case SGL_PF_R8:
     pf = SG_PIXELFORMAT_R8;
+    break;
+  case SGL_PF_RG8:
+    pf = SG_PIXELFORMAT_RG8;
+    break;
+  case SGL_PF_R16F:
+    pf = SG_PIXELFORMAT_R16F;
+    break;
+  case SGL_PF_RG16F:
+    pf = SG_PIXELFORMAT_RG16F;
+    break;
+  case SGL_PF_R32F:
+    pf = SG_PIXELFORMAT_R32F;
     break;
   case SGL_PF_RGBA16F:
     pf = SG_PIXELFORMAT_RGBA16F;
@@ -771,8 +788,14 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     } else {
       img_desc.usage.color_attachment = true;
     }
-  } else {
+  }
+  if (d->storage) {
+    img_desc.usage.storage_image = true;
+  }
+  if (!d->render_target && !d->storage) {
     img_desc.usage.dynamic_update = true;
+  } else {
+    img_desc.usage.immutable = true;
   }
   si->img = sg_make_image(&img_desc);
   if (si->img.id == SG_INVALID_ID) {
@@ -816,6 +839,13 @@ static BackendImage sk_make_image(const ImageDesc *d) {
     if (si->depth_att.id)
       gpu_stats_create(GPU_STAT_VIEW, 0);
   }
+  if (d->storage) {
+    si->storage_view = sg_make_view(&(sg_view_desc){
+        .storage_image = {.image = si->img},
+    });
+    if (si->storage_view.id)
+      gpu_stats_create(GPU_STAT_VIEW, 0);
+  }
   return (uintptr_t)si;
 }
 
@@ -829,6 +859,10 @@ static void sk_destroy_image(BackendImage h) {
   }
   if (si->depth_att.id) {
     sg_destroy_view(si->depth_att);
+    gpu_stats_destroy(GPU_STAT_VIEW, 0);
+  }
+  if (si->storage_view.id) {
+    sg_destroy_view(si->storage_view);
     gpu_stats_destroy(GPU_STAT_VIEW, 0);
   }
   if (si->view.id) {
@@ -908,6 +942,57 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
       view->storage_buffer.glsl_binding_n = (uint8_t)slot;
 #endif
     }
+    for (int i = 0; i < ss->refl.tex_count && i < SGL_MAX_TEXTURES; ++i) {
+      ShaderTexture *tx = &ss->refl.texs[i];
+      int img_slot = tx->img_slot;
+      int smp_slot = tx->smp_slot;
+      if (img_slot < 0 || img_slot >= SG_MAX_VIEW_BINDSLOTS)
+        continue;
+      sg_shader_view *view = &desc.views[img_slot];
+      view->texture.stage = SG_SHADERSTAGE_COMPUTE;
+      view->texture.image_type = SG_IMAGETYPE_2D;
+      view->texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
+#ifdef __EMSCRIPTEN__
+      view->texture.wgsl_group1_binding_n = (uint8_t)img_slot;
+#else
+      view->texture.spirv_set1_binding_n = (uint8_t)img_slot;
+#endif
+      if (smp_slot >= 0 && smp_slot < SG_MAX_SAMPLER_BINDSLOTS) {
+        sg_shader_sampler *smp = &desc.samplers[smp_slot];
+        smp->stage = SG_SHADERSTAGE_COMPUTE;
+        smp->sampler_type = SG_SAMPLERTYPE_FILTERING;
+#ifdef __EMSCRIPTEN__
+        smp->wgsl_group1_binding_n = (uint8_t)smp_slot;
+#else
+        smp->spirv_set1_binding_n = (uint8_t)smp_slot;
+#endif
+      }
+      if (i < SG_MAX_TEXTURE_SAMPLER_PAIRS) {
+        sg_shader_texture_sampler_pair *pair = &desc.texture_sampler_pairs[i];
+        pair->stage = SG_SHADERSTAGE_COMPUTE;
+        pair->view_slot = (uint8_t)img_slot;
+        pair->sampler_slot = (uint8_t)(smp_slot >= 0 ? smp_slot : 0);
+      }
+    }
+    for (int i = 0; i < ss->refl.storage_tex_count &&
+                    i < SGL_MAX_STORAGE_TEXTURES;
+         ++i) {
+      ShaderStorageTexture *st = &ss->refl.storage_texs[i];
+      int slot = st->slot;
+      if (slot < 0 || slot >= SG_MAX_VIEW_BINDSLOTS)
+        continue;
+      sg_shader_view *view = &desc.views[slot];
+      view->storage_image.stage = SG_SHADERSTAGE_COMPUTE;
+      view->storage_image.image_type = SG_IMAGETYPE_2D;
+      view->storage_image.access_format = sgl_to_sg_fmt(st->access_format);
+      view->storage_image.writeonly = true;
+#ifdef __EMSCRIPTEN__
+      view->storage_image.wgsl_group1_binding_n = (uint8_t)slot;
+#else
+      view->storage_image.spirv_set1_binding_n = (uint8_t)slot;
+      view->storage_image.glsl_binding_n = (uint8_t)slot;
+#endif
+    }
     for (int b = 0; b < ss->refl.ub_count && b < SGL_MAX_UNIFORM_BLOCKS; ++b) {
       ShaderUniformBlock *u = &ss->refl.ubs[b];
       int slot = u->slot;
@@ -964,8 +1049,9 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
     if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS)
       continue;
     sg_shader_uniform_block *dst = &desc.uniform_blocks[slot];
-    // Current graphics binding exposes uniform blocks to the vertex stage.
-    dst->stage = SG_SHADERSTAGE_VERTEX;
+    dst->stage = (u->stage == SGL_STAGE_FRAGMENT) ? SG_SHADERSTAGE_FRAGMENT
+                 : (u->stage == SGL_STAGE_COMPUTE) ? SG_SHADERSTAGE_COMPUTE
+                                                   : SG_SHADERSTAGE_VERTEX;
     dst->size = (uint32_t)(u->size_floats * 4);
     dst->layout = SG_UNIFORMLAYOUT_STD140;
 #ifdef __EMSCRIPTEN__
@@ -985,7 +1071,10 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
       continue;
 
     sg_shader_view *view = &desc.views[img_slot];
-    view->texture.stage = SG_SHADERSTAGE_FRAGMENT;
+    view->texture.stage =
+        (tx->stage == SGL_STAGE_VERTEX) ? SG_SHADERSTAGE_VERTEX
+        : (tx->stage == SGL_STAGE_COMPUTE) ? SG_SHADERSTAGE_COMPUTE
+                                           : SG_SHADERSTAGE_FRAGMENT;
     view->texture.image_type = SG_IMAGETYPE_2D;
     view->texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
 #ifdef __EMSCRIPTEN__
@@ -996,7 +1085,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
 
     if (smp_slot >= 0 && smp_slot < SG_MAX_SAMPLER_BINDSLOTS) {
       sg_shader_sampler *smp = &desc.samplers[smp_slot];
-      smp->stage = SG_SHADERSTAGE_FRAGMENT;
+      smp->stage = view->texture.stage;
       smp->sampler_type = SG_SAMPLERTYPE_FILTERING;
 #ifdef __EMSCRIPTEN__
       smp->wgsl_group1_binding_n = (uint8_t)smp_slot;
@@ -1006,7 +1095,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
     }
     if (i < SG_MAX_TEXTURE_SAMPLER_PAIRS) {
       sg_shader_texture_sampler_pair *pair = &desc.texture_sampler_pairs[i];
-      pair->stage = SG_SHADERSTAGE_FRAGMENT;
+      pair->stage = view->texture.stage;
       pair->view_slot = (uint8_t)img_slot;
       pair->sampler_slot = (uint8_t)(smp_slot >= 0 ? smp_slot : 0);
     }
@@ -1064,6 +1153,14 @@ static sg_pixel_format sgl_to_sg_fmt(SglPixelFormat fmt) {
     return SG_PIXELFORMAT_RGBA8;
   case SGL_PF_R8:
     return SG_PIXELFORMAT_R8;
+  case SGL_PF_RG8:
+    return SG_PIXELFORMAT_RG8;
+  case SGL_PF_R16F:
+    return SG_PIXELFORMAT_R16F;
+  case SGL_PF_RG16F:
+    return SG_PIXELFORMAT_RG16F;
+  case SGL_PF_R32F:
+    return SG_PIXELFORMAT_R32F;
   case SGL_PF_RGBA16F:
     return SG_PIXELFORMAT_RGBA16F;
   case SGL_PF_RGBA32F:
@@ -1320,7 +1417,9 @@ static void sk_apply_bindings(const BindingsDesc *b) {
   sg_apply_bindings(&sb);
 }
 
-static void sk_apply_uniforms(int ub_slot, const void *data, size_t bytes) {
+static void sk_apply_uniforms(SglShaderStage stage, int ub_slot,
+                              const void *data, size_t bytes) {
+  (void)stage;
   sg_apply_uniforms(ub_slot, &(sg_range){.ptr = data, .size = bytes});
 }
 
@@ -1350,10 +1449,44 @@ static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
       }
     }
   }
+  for (int i = 0; i < d->texture_count; ++i) {
+    SkImage *img = (SkImage *)d->textures[i].image;
+    if (!img || !img->view.id || !d->textures[i].name)
+      continue;
+    for (int k = 0; k < d->refl->tex_count; ++k) {
+      if (strcmp(d->refl->texs[k].name, d->textures[i].name) == 0) {
+        int img_slot = d->refl->texs[k].img_slot;
+        int smp_slot = d->refl->texs[k].smp_slot;
+        if (img_slot >= 0 && img_slot < SG_MAX_VIEW_BINDSLOTS)
+          sb.views[img_slot] = img->view;
+        if (smp_slot >= 0 && smp_slot < SG_MAX_SAMPLER_BINDSLOTS)
+          sb.samplers[smp_slot] = img->smp;
+        break;
+      }
+    }
+  }
+  for (int i = 0; i < d->n_storage_textures; ++i) {
+    SkImage *img = (SkImage *)d->storage_textures[i].image;
+    if (!img || !img->storage_view.id || !d->storage_textures[i].name)
+      continue;
+    for (int k = 0; k < d->refl->storage_tex_count; ++k) {
+      if (strcmp(d->refl->storage_texs[k].name,
+                 d->storage_textures[i].name) == 0) {
+        int slot = d->refl->storage_texs[k].slot;
+        if (slot >= 0 && slot < SG_MAX_VIEW_BINDSLOTS)
+          sb.views[slot] = img->storage_view;
+        break;
+      }
+    }
+  }
   sg_apply_bindings(&sb);
-  if (d->uniform_slot >= 0 && d->uniform_data && d->uniform_bytes > 0) {
-    sg_apply_uniforms(d->uniform_slot, &(sg_range){.ptr = d->uniform_data,
-                                                   .size = d->uniform_bytes});
+  for (int i = 0; i < d->uniform_count; ++i) {
+    if (d->uniforms[i].slot >= 0 && d->uniforms[i].data &&
+        d->uniforms[i].bytes > 0) {
+      sg_apply_uniforms(d->uniforms[i].slot,
+                        &(sg_range){.ptr = d->uniforms[i].data,
+                                    .size = d->uniforms[i].bytes});
+    }
   }
   sg_dispatch(d->groups_x, d->groups_y, d->groups_z);
   sg_end_pass();

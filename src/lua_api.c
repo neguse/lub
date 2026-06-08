@@ -836,10 +836,11 @@ static int l_use_texture(lua_State *L) {
   int64_t version = (int64_t)luaL_checkinteger(L, 6);
 
   // optional 7th arg: { filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target =
-  // bool }
+  // bool, storage = bool }
   SglFilter filter = SGL_FILTER_LINEAR;
   SglWrap wrap = SGL_WRAP_REPEAT;
   bool is_target = false;
+  bool storage = false;
   if (!lua_isnoneornil(L, 7)) {
     luaL_checktype(L, 7, LUA_TTABLE);
     lua_getfield(L, 7, "filter");
@@ -867,15 +868,26 @@ static int l_use_texture(lua_State *L) {
     if (!lua_isnoneornil(L, -1))
       is_target = lua_toboolean(L, -1);
     lua_pop(L, 1);
+    lua_getfield(L, 7, "storage");
+    if (!lua_isnoneornil(L, -1))
+      storage = lua_toboolean(L, -1);
+    lua_pop(L, 1);
   }
   if (is_target && has_data) {
     return luaL_error(
         L, "use_texture: render target cannot be initialized with data");
   }
+  if (storage && has_data) {
+    return luaL_error(
+        L, "use_texture: storage texture cannot be initialized with data");
+  }
   bool depth_fmt = is_depth_format((SglPixelFormat)fmt);
   if (depth_fmt && !is_target) {
     return luaL_error(
         L, "use_texture: depth formats are only supported with {target=true}");
+  }
+  if (depth_fmt && storage) {
+    return luaL_error(L, "use_texture: depth formats cannot use storage=true");
   }
 
   if (w <= 0 || h <= 0)
@@ -890,9 +902,10 @@ static int l_use_texture(lua_State *L) {
   bool sampler_changed =
       (e->u.tex.h != 0) && (e->u.tex.filter != filter || e->u.tex.wrap != wrap);
   bool target_changed = (e->u.tex.h != 0) && (e->u.tex.is_target != is_target);
+  bool storage_changed = (e->u.tex.h != 0) && (e->u.tex.storage != storage);
 
   if (e->version == version && e->u.tex.h != 0 && !sampler_changed &&
-      !target_changed) {
+      !target_changed && !storage_changed) {
     push_texture_ref(L, key);
     return 1;
   }
@@ -905,6 +918,12 @@ static int l_use_texture(lua_State *L) {
   case SGL_PF_R8:
     bpp = 1;
     break;
+  case SGL_PF_RG8:
+    bpp = 2;
+    break;
+  case SGL_PF_R16F:
+  case SGL_PF_RG16F:
+  case SGL_PF_R32F:
   case SGL_PF_RGBA16F:
   case SGL_PF_RGBA32F:
   case SGL_PF_DEPTH16:
@@ -915,7 +934,8 @@ static int l_use_texture(lua_State *L) {
   default:
     return luaL_error(L,
                       "use_texture: format not supported "
-                      "(RGBA8/R8/RGBA16F/RGBA32F/depth target formats only)");
+                      "(RGBA8/R8/RG8/R16F/RG16F/R32F/RGBA16F/RGBA32F/"
+                      "depth target formats only)");
   }
 
   uint8_t *pixels = NULL;
@@ -962,8 +982,8 @@ static int l_use_texture(lua_State *L) {
 
   bool same_shape = (e->u.tex.h != 0) && (e->u.tex.w == w) &&
                     (e->u.tex.h_ == h) && (e->u.tex.fmt == (SglPixelFormat)fmt);
-  if (same_shape && !sampler_changed && !target_changed && pixel_src &&
-      new_bytes > 0) {
+  if (same_shape && !sampler_changed && !target_changed && !storage_changed &&
+      pixel_src && new_bytes > 0) {
     // in-place update
     g_backend->update_image(e->u.tex.h, pixel_src, new_bytes);
   } else {
@@ -978,6 +998,7 @@ static int l_use_texture(lua_State *L) {
         .filter = filter,
         .wrap = wrap,
         .render_target = is_target,
+        .storage = storage,
     };
     e->u.tex.h = g_backend->make_image(&d);
     e->u.tex.w = w;
@@ -987,6 +1008,7 @@ static int l_use_texture(lua_State *L) {
   e->u.tex.filter = filter;
   e->u.tex.wrap = wrap;
   e->u.tex.is_target = is_target;
+  e->u.tex.storage = storage;
   e->version = version;
 
   if (pixels)
@@ -1135,6 +1157,56 @@ static int l_use_shader_compute(lua_State *L) {
   return 1;
 }
 
+static void pack_uniform_block(lua_State *L, int uniforms_idx,
+                               const ShaderUniformBlock *ub, float *dst,
+                               int max_floats, const char *ctx) {
+  int total_floats = ub->size_floats < 0 ? 0 : ub->size_floats;
+  if (total_floats > max_floats) {
+    luaL_error(L, "%s: uniform block too large (%d floats > %d)", ctx,
+               total_floats, max_floats);
+    return;
+  }
+  memset(dst, 0, (size_t)max_floats * sizeof(float));
+  for (int m = 0; m < ub->member_count; ++m) {
+    const ShaderUniformMember *mem = &ub->members[m];
+    lua_getfield(L, uniforms_idx, mem->name);
+    if (lua_istable(L, -1)) {
+      int n_provided = (int)lua_rawlen(L, -1);
+      int copy = n_provided < mem->comp_count ? n_provided : mem->comp_count;
+      for (int j = 0; j < copy; ++j) {
+        lua_rawgeti(L, -1, j + 1);
+        if (lua_isnumber(L, -1)) {
+          dst[mem->offset_floats + j] = (float)lua_tonumber(L, -1);
+        }
+        lua_pop(L, 1);
+      }
+    }
+    lua_pop(L, 1);
+  }
+}
+
+static bool refl_has_sampled_texture(const ShaderReflection *refl,
+                                     const char *name) {
+  if (!refl || !name)
+    return false;
+  for (int i = 0; i < refl->tex_count; ++i) {
+    if (strcmp(refl->texs[i].name, name) == 0)
+      return true;
+  }
+  return false;
+}
+
+static bool refl_has_storage_texture(const ShaderReflection *refl,
+                                     const char *name) {
+  if (!refl || !name)
+    return false;
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    if (strcmp(refl->storage_texs[i].name, name) == 0)
+      return true;
+  }
+  return false;
+}
+
 static int l_dispatch(lua_State *L) {
   if (pass_state_in_pass(&g_app_for_lua->pass)) {
     return luaL_error(L,
@@ -1181,9 +1253,9 @@ static int l_dispatch(lua_State *L) {
   dd.groups_x = gx;
   dd.groups_y = gy;
   dd.groups_z = gz;
-  dd.uniform_slot = -1;
 
-  // Walk resources: storage buffers (by name) + uniforms (single block).
+  // Walk resources: storage buffers/textures/sampled textures by reflected
+  // name. The Lua API does not expose binding kind.
   lua_pushnil(L);
   while (lua_next(L, 4) != 0) {
     if (lua_istable(L, -1)) {
@@ -1208,41 +1280,67 @@ static int l_dispatch(lua_State *L) {
           dd.storage_bufs[dd.n_storage_bufs].buf = be->u.buf.h;
           dd.n_storage_bufs++;
         }
+      } else if (strcmp(kind_buf, "texture") == 0) {
+        const char *res_name =
+            lua_type(L, -2) == LUA_TSTRING ? lua_tostring(L, -2) : NULL;
+        lua_getfield(L, -1, "key");
+        const char *tk = lua_tostring(L, -1);
+        ResEntry *te = tk ? res_table_get(&g_app_for_lua->res, tk) : NULL;
+        lua_pop(L, 1);
+        if (te && te->kind == RES_TEXTURE && res_name) {
+          if (refl_has_storage_texture(&sh_e->u.sh.refl, res_name)) {
+            if (!te->u.tex.storage) {
+              return luaL_error(
+                  L,
+                  "dispatch: texture '%s' must be created with storage=true",
+                  tk ? tk : "?");
+            }
+            if (dd.n_storage_textures < SGL_MAX_STORAGE_TEXTURES) {
+              dd.storage_textures[dd.n_storage_textures].name = res_name;
+              dd.storage_textures[dd.n_storage_textures].image = te->u.tex.h;
+              dd.n_storage_textures++;
+            }
+          } else if (refl_has_sampled_texture(&sh_e->u.sh.refl, res_name)) {
+            if (dd.texture_count < SGL_MAX_TEXTURES) {
+              dd.textures[dd.texture_count].name = res_name;
+              dd.textures[dd.texture_count].image = te->u.tex.h;
+              dd.texture_count++;
+            }
+          }
+        }
       }
     }
     lua_pop(L, 1);
   }
 
-  // Uniforms: same packing as draw — first UB, std140 floats.
-  float ubuf[256];
+  for (int i = 0; i < dd.texture_count; ++i) {
+    for (int j = 0; j < dd.n_storage_textures; ++j) {
+      if (dd.textures[i].image && dd.textures[i].image ==
+                                      dd.storage_textures[j].image) {
+        return luaL_error(L,
+                          "dispatch: same texture cannot be read and written "
+                          "in one dispatch");
+      }
+    }
+  }
+
+  enum { UB_MAX_FLOATS = 256 };
+  float ubufs[SGL_MAX_UNIFORM_BLOCKS][UB_MAX_FLOATS];
   lua_getfield(L, 4, "uniforms");
   if (lua_istable(L, -1) && sh_e->u.sh.refl.ub_count > 0) {
-    const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[0];
-    int total_floats = ub->size_floats < 0 ? 0 : ub->size_floats;
-    if (total_floats > (int)(sizeof(ubuf) / sizeof(ubuf[0]))) {
-      return luaL_error(L, "dispatch: uniform block too large (%d floats)",
-                        total_floats);
+    for (int i = 0; i < sh_e->u.sh.refl.ub_count &&
+                    dd.uniform_count < SGL_MAX_UNIFORM_BLOCKS;
+         ++i) {
+      const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[i];
+      pack_uniform_block(L, lua_gettop(L), ub, ubufs[dd.uniform_count],
+                         UB_MAX_FLOATS, "dispatch");
+      dd.uniforms[dd.uniform_count].stage = ub->stage;
+      dd.uniforms[dd.uniform_count].slot = ub->slot;
+      dd.uniforms[dd.uniform_count].data = ubufs[dd.uniform_count];
+      dd.uniforms[dd.uniform_count].bytes =
+          (size_t)(ub->size_floats < 0 ? 0 : ub->size_floats) * sizeof(float);
+      dd.uniform_count++;
     }
-    memset(ubuf, 0, sizeof(ubuf));
-    for (int m = 0; m < ub->member_count; ++m) {
-      const ShaderUniformMember *mem = &ub->members[m];
-      lua_getfield(L, -1, mem->name);
-      if (lua_istable(L, -1)) {
-        int n_provided = (int)lua_rawlen(L, -1);
-        int copy = n_provided < mem->comp_count ? n_provided : mem->comp_count;
-        for (int j = 0; j < copy; ++j) {
-          lua_rawgeti(L, -1, j + 1);
-          if (lua_isnumber(L, -1)) {
-            ubuf[mem->offset_floats + j] = (float)lua_tonumber(L, -1);
-          }
-          lua_pop(L, 1);
-        }
-      }
-      lua_pop(L, 1);
-    }
-    dd.uniform_slot = ub->slot;
-    dd.uniform_data = ubuf;
-    dd.uniform_bytes = (size_t)total_floats * sizeof(float);
   }
   lua_pop(L, 1); // uniforms field (or nil)
 
@@ -1395,40 +1493,21 @@ static int l_draw(lua_State *L) {
   g_backend->apply_bindings(&bind);
 
   // uniforms: read resources.uniforms = { ub_member_name = {floats...} } and
-  // pack into the shader's first uniform block. Multi-block binding is not yet
-  // exposed.
+  // pack every reflected graphics uniform block. Blocks are not exposed to Lua;
+  // each block picks only its own members from the shared table.
   lua_getfield(L, 2, "uniforms");
   if (lua_istable(L, -1) && sh_e->u.sh.refl.ub_count > 0) {
-    const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[0];
-    int total_floats = ub->size_floats;
-    if (total_floats < 0)
-      total_floats = 0;
-    // Stack-buffer up to a sensible cap; for matrices total is small.
     enum { UB_MAX_FLOATS = 256 };
     float buf[UB_MAX_FLOATS];
-    memset(buf, 0, sizeof(buf));
-    if (total_floats > UB_MAX_FLOATS) {
-      return luaL_error(L, "draw: uniform block too large (%d floats > %d)",
-                        total_floats, UB_MAX_FLOATS);
+    for (int i = 0; i < sh_e->u.sh.refl.ub_count; ++i) {
+      const ShaderUniformBlock *ub = &sh_e->u.sh.refl.ubs[i];
+      if (ub->stage == SGL_STAGE_COMPUTE)
+        continue;
+      pack_uniform_block(L, lua_gettop(L), ub, buf, UB_MAX_FLOATS, "draw");
+      g_backend->apply_uniforms(
+          ub->stage, ub->slot, buf,
+          (size_t)(ub->size_floats < 0 ? 0 : ub->size_floats) * sizeof(float));
     }
-    for (int m = 0; m < ub->member_count; ++m) {
-      const ShaderUniformMember *mem = &ub->members[m];
-      lua_getfield(L, -1, mem->name);
-      if (lua_istable(L, -1)) {
-        int n_provided = (int)lua_rawlen(L, -1);
-        int copy = n_provided < mem->comp_count ? n_provided : mem->comp_count;
-        for (int j = 0; j < copy; ++j) {
-          lua_rawgeti(L, -1, j + 1);
-          if (lua_isnumber(L, -1)) {
-            buf[mem->offset_floats + j] = (float)lua_tonumber(L, -1);
-          }
-          lua_pop(L, 1);
-        }
-      }
-      lua_pop(L, 1); // pop the field (or nil)
-    }
-    g_backend->apply_uniforms(ub->slot, buf,
-                              (size_t)total_floats * sizeof(float));
   }
   lua_pop(L, 1); // pop "uniforms" field (or nil)
 

@@ -51,6 +51,9 @@ extern class Gfx {
 	@:native("RGBA8") public static var RGBA8(default, null):Int;
 	@:native("R8") public static var R8(default, null):Int;
 	@:native("RG8") public static var RG8(default, null):Int;
+	@:native("R16F") public static var R16F(default, null):Int;
+	@:native("RG16F") public static var RG16F(default, null):Int;
+	@:native("R32F") public static var R32F(default, null):Int;
 	@:native("RGBA16F") public static var RGBA16F(default, null):Int;
 	@:native("RGBA32F") public static var RGBA32F(default, null):Int;
 	@:native("DEPTH16") public static var DEPTH16(default, null):Int;

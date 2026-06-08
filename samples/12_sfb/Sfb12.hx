@@ -626,8 +626,8 @@ class Sfb12 {
 		}
 		var outBuf = (beauty == texB) ? texA : texB;
 
-		// Parameterised screen effect runs offscreen (the swapchain pass stays free
-		// of a fragment uniform block); debug modes sample the raw G-buffer.
+		// Parameterised screen effect runs offscreen; debug modes sample the raw
+		// G-buffer.
 		var screenSrc = (mode == 6) ? gNormal : (mode == 7) ? gPosition : (mode == 8) ? shadowMap : beauty;
 		screenPass(outBuf, screenShader, quadBufF, screenSrc, mode);
 		var gradeOut = (outBuf == texA) ? texB : texA;
@@ -636,9 +636,7 @@ class Sfb12 {
 	}
 
 	// ---- resource + pass helpers (kept out of onFrame to stay under Lua's
-	// 200-locals-per-function limit; uniforms live in vertex stages only —
-	// a fragment-stage uniform block next to sampled textures gets an
-	// inconsistent descriptor binding in the backend) ----
+	// 200-locals-per-function limit) ----
 
 	static function target(key:String, w:Int, h:Int, fmt:Int, filter:Int):Dynamic {
 		return Gfx.useTexture(key, w, h, fmt, null, 1, {target: true, filter: filter, wrap: Gfx.CLAMP});
@@ -806,7 +804,6 @@ class Sfb12 {
 		Gfx.endPass();
 	}
 
-	// SSAO + screen carry their (vertex-stage) uniform via the draw's `uniforms`.
 	static function ssaoPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, gColor:Dynamic, gNormal:Dynamic, gPosition:Dynamic, p00:Float, p11:Float) {
 		Gfx.beginPass({target: targ, clear_color: black()});
 		Gfx.draw(6, {

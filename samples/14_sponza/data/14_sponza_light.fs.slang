@@ -4,17 +4,21 @@ LUB_TEXTURE2D(g_position);
 LUB_TEXTURE2D(shadow_map);
 LUB_TEXTURE2D(ao_map);
 
+struct LightUniforms {
+    float4 light0; // xyz view-space light direction, w intensity
+    float4 light1;
+    float4 params; // x light scale, y ambient, z shadow strength, w ao strength
+    float4 vl0;    // view-space position -> light clip rows
+    float4 vl1;
+    float4 vl2;
+    float4 vl3;
+};
+ConstantBuffer<LightUniforms> u;
+
 static const float PI = 3.14159265359;
 
 struct FSIn {
     float2 uv : TEXCOORD0;
-    float4 light0 : TEXCOORD1;
-    float4 light1 : TEXCOORD2;
-    float4 params : TEXCOORD3;
-    float4 vl0 : TEXCOORD4;
-    float4 vl1 : TEXCOORD5;
-    float4 vl2 : TEXCOORD6;
-    float4 vl3 : TEXCOORD7;
 };
 
 float3 srgb_to_linear(float3 c) {
@@ -95,14 +99,14 @@ float4 fs_main(FSIn i) : SV_Target {
     float metallic = saturate(nm.a);
     float3 V = normalize(-gp.xyz);
     float4 vp = float4(gp.xyz, 1.0);
-    float4 lpos = float4(dot(i.vl0, vp), dot(i.vl1, vp), dot(i.vl2, vp), dot(i.vl3, vp));
-    float shadow = lerp(1.0, shadow_factor(lpos), i.params.z);
-    float ao = lerp(1.0, saturate(LUB_SAMPLE_LOD(ao_map, i.uv).r), i.params.w);
+    float4 lpos = float4(dot(u.vl0, vp), dot(u.vl1, vp), dot(u.vl2, vp), dot(u.vl3, vp));
+    float shadow = lerp(1.0, shadow_factor(lpos), u.params.z);
+    float ao = lerp(1.0, saturate(LUB_SAMPLE_LOD(ao_map, i.uv).r), u.params.w);
 
-    float3 color = albedo * i.params.y * ao;
-    color += pbr_light(albedo, metallic, roughness, N, V, normalize(i.light0.xyz), i.light0.w) * shadow;
-    color += pbr_light(albedo, metallic, roughness, N, V, normalize(i.light1.xyz), i.light1.w);
+    float3 color = albedo * u.params.y * ao;
+    color += pbr_light(albedo, metallic, roughness, N, V, normalize(u.light0.xyz), u.light0.w) * shadow;
+    color += pbr_light(albedo, metallic, roughness, N, V, normalize(u.light1.xyz), u.light1.w);
 
-    color *= i.params.x;
+    color *= u.params.x;
     return float4(max(color, 0.0), 1.0);
 }

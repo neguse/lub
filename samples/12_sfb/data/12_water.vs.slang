@@ -1,6 +1,6 @@
 // Fullscreen-quad VS for the water pass. Forwards three rows of inverse(view)
 // (enough to recover a view-space point's world x/y/z) plus params (time,
-// waterY) to the FS as varyings. Uniform kept in the vertex stage.
+// waterY) to the FS as varyings.
 struct U {
     float4 ir0; // inverse(view) row 0 -> world.x
     float4 ir1; // row 1 -> world.y

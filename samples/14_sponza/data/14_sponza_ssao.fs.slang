@@ -1,12 +1,15 @@
 LUB_TEXTURE2D(gnormal);
 LUB_TEXTURE2D(gpos);
 
+struct U { float4 params; }; // x=proj00, y=proj11
+ConstantBuffer<U> u;
+
 static const float RADIUS = 0.34;
 static const float BIAS = 0.035;
 static const float STRENGTH = 0.95;
 static const int N_SAMPLES = 24;
 
-struct FSIn { float2 uv : TEXCOORD0; float2 proj : TEXCOORD1; };
+struct FSIn { float2 uv : TEXCOORD0; };
 
 float hash12(float2 p) {
     float3 p3 = frac(float3(p.xyx) * 0.1031);
@@ -33,7 +36,7 @@ float4 fs_main(FSIn i) : SV_Target {
         float2 disc = float2(cos(ang), sin(ang)) * r;
         float3 sp = P + (T * disc.x + B * disc.y) + N * (r * 0.55);
 
-        float2 suv = float2(i.proj.x * sp.x / sp.z, i.proj.y * sp.y / sp.z) * 0.5 + 0.5;
+        float2 suv = float2(u.params.x * sp.x / sp.z, u.params.y * sp.y / sp.z) * 0.5 + 0.5;
         suv.y = 1.0 - suv.y;
         if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
 

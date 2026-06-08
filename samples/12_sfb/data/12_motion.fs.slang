@@ -5,16 +5,20 @@
 LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(gpos);
 
+struct U {
+    float4 r0;
+    float4 r1;
+    float4 r2;
+    float4 r3;
+};
+ConstantBuffer<U> u;
+
 static const int SAMPLES = 9;
 static const float STRENGTH = 0.6;  // fraction of the per-frame velocity to smear
 static const float MAX_UV = 0.05;   // clamp so fast motion doesn't streak forever
 
 struct FSIn {
     float2 uv : TEXCOORD0;
-    float4 m0 : TEXCOORD1;
-    float4 m1 : TEXCOORD2;
-    float4 m2 : TEXCOORD3;
-    float4 m3 : TEXCOORD4;
 };
 
 [shader("fragment")]
@@ -24,7 +28,7 @@ float4 fs_main(FSIn i) : SV_Target {
     if (P.z <= 0.0001) return float4(base, 1.0);
 
     float4 vp = float4(P.xyz, 1.0);
-    float4 prevClip = float4(dot(i.m0, vp), dot(i.m1, vp), dot(i.m2, vp), dot(i.m3, vp));
+    float4 prevClip = float4(dot(u.r0, vp), dot(u.r1, vp), dot(u.r2, vp), dot(u.r3, vp));
     if (abs(prevClip.w) < 1e-5) return float4(base, 1.0);
     float2 prevUV = prevClip.xy / prevClip.w * 0.5 + 0.5;
     // The G-buffer is rasterised y-down but the post quad samples y-up, so the

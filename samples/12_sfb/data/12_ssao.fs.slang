@@ -1,6 +1,6 @@
 // Screen-space ambient occlusion in view space, folded into the lit color.
-// Projection is reduced to the two scalars (proj00, proj11) handed in via the
-// VS varying, so a view-space sample point projects to uv as:
+// Projection is reduced to the two scalars (proj00, proj11), so a view-space
+// sample point projects to uv as:
 //   suv.x = (proj00 * x / z) * 0.5 + 0.5
 //   suv.y = (proj11 * y / z) * 0.5 + 0.5
 // The G-buffer is an offscreen target stored y-down, so the sample uv still
@@ -11,12 +11,15 @@ LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(gnormal);
 LUB_TEXTURE2D(gpos);
 
+struct U { float4 params; }; // x=proj00, y=proj11
+ConstantBuffer<U> u;
+
 static const float RADIUS = 0.3;
 static const float BIAS = 0.03;
 static const float STRENGTH = 0.7;
 static const int N_SAMPLES = 24;
 
-struct FSIn { float2 uv : TEXCOORD0; float2 proj : TEXCOORD1; };
+struct FSIn { float2 uv : TEXCOORD0; };
 
 float hash12(float2 p) {
     float3 p3 = frac(float3(p.xyx) * 0.1031);
@@ -44,7 +47,7 @@ float4 fs_main(FSIn i) : SV_Target {
         float2 disc = float2(cos(ang), sin(ang)) * r;
         float3 sp = P + (T * disc.x + B * disc.y) + N * (r * 0.6);
 
-        float2 suv = float2(i.proj.x * sp.x / sp.z, i.proj.y * sp.y / sp.z) * 0.5 + 0.5;
+        float2 suv = float2(u.params.x * sp.x / sp.z, u.params.y * sp.y / sp.z) * 0.5 + 0.5;
         suv.y = 1.0 - suv.y; // G-buffer is offscreen (y-down) vs the sample uv
         if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
 

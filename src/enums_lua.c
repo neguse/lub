@@ -22,6 +22,9 @@ void enums_register(lua_State *L) {
   set_int(L, "RGBA8", SGL_PF_RGBA8);
   set_int(L, "R8", SGL_PF_R8);
   set_int(L, "RG8", SGL_PF_RG8);
+  set_int(L, "R16F", SGL_PF_R16F);
+  set_int(L, "RG16F", SGL_PF_RG16F);
+  set_int(L, "R32F", SGL_PF_R32F);
   set_int(L, "RGBA16F", SGL_PF_RGBA16F);
   set_int(L, "RGBA32F", SGL_PF_RGBA32F);
   set_int(L, "DEPTH16", SGL_PF_DEPTH16);

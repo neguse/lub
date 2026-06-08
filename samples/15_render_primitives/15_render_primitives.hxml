@@ -1,0 +1,3 @@
+-cp samples/15_render_primitives
+-lib lub
+-main RenderPrimitives15

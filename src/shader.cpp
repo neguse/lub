@@ -77,6 +77,17 @@ struct GlobalSlangCtx {
 
 GlobalSlangCtx g_slang;
 
+static void configure_spirv_target(TargetDesc *target) {
+  static const slang::CompilerOptionEntry opts[] = {{
+      slang::CompilerOptionName::DefaultImageFormatUnknown,
+      {slang::CompilerOptionValueKind::Int, 0, 0, nullptr, nullptr},
+  }};
+  target->format = SLANG_SPIRV;
+  target->profile = g_slang.spirv_profile;
+  target->compilerOptionEntries = opts;
+  target->compilerOptionEntryCount = sizeof(opts) / sizeof(opts[0]);
+}
+
 bool ensure_global_session() {
   if (g_slang.g)
     return true;
@@ -122,6 +133,52 @@ void copy_name(char *dst, size_t cap, const char *src) {
     n = cap - 1;
   memcpy(dst, src, n);
   dst[n] = '\0';
+}
+
+SglPixelFormat image_format_to_sgl(SlangImageFormat fmt) {
+  switch (fmt) {
+  case SLANG_IMAGE_FORMAT_rgba32f:
+    return SGL_PF_RGBA32F;
+  case SLANG_IMAGE_FORMAT_rgba16f:
+    return SGL_PF_RGBA16F;
+  case SLANG_IMAGE_FORMAT_rg16f:
+    return SGL_PF_RG16F;
+  case SLANG_IMAGE_FORMAT_r32f:
+    return SGL_PF_R32F;
+  case SLANG_IMAGE_FORMAT_r16f:
+    return SGL_PF_R16F;
+  case SLANG_IMAGE_FORMAT_rg8:
+    return SGL_PF_RG8;
+  case SLANG_IMAGE_FORMAT_r8:
+    return SGL_PF_R8;
+  case SLANG_IMAGE_FORMAT_rgba8:
+  case SLANG_IMAGE_FORMAT_unknown:
+  default:
+    return SGL_PF_RGBA16F;
+  }
+}
+
+static uint32_t sgl_to_spv_image_format(SglPixelFormat fmt) {
+  switch (fmt) {
+  case SGL_PF_RGBA32F:
+    return 1; // Rgba32f
+  case SGL_PF_RGBA16F:
+    return 2; // Rgba16f
+  case SGL_PF_R32F:
+    return 3; // R32f
+  case SGL_PF_RG16F:
+    return 7; // Rg16f
+  case SGL_PF_R16F:
+    return 9; // R16f
+  case SGL_PF_RG8:
+    return 13; // Rg8
+  case SGL_PF_R8:
+    return 15; // R8
+  case SGL_PF_RGBA8:
+    return 4; // Rgba8
+  default:
+    return 2; // Rgba16f
+  }
 }
 
 // Map a slang TypeReflection (vector or scalar) to GLSL component count.
@@ -219,9 +276,11 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
   return true;
 }
 
-bool fill_uniform_block(VariableLayoutReflection *p, ShaderUniformBlock *ub) {
+bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
+                        ShaderUniformBlock *ub) {
   copy_name(ub->name, sizeof(ub->name), p->getName());
   ub->slot = (int)p->getBindingIndex();
+  ub->stage = stage;
   ub->size_floats = 0;
   ub->member_count = 0;
 
@@ -264,12 +323,55 @@ bool fill_uniform_block(VariableLayoutReflection *p, ShaderUniformBlock *ub) {
   return true;
 }
 
-bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
+static bool refl_ub_exists(const ShaderReflection *refl, SglShaderStage stage,
+                           int slot, const char *name) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *u = &refl->ubs[i];
+    if (u->stage == stage && u->slot == slot &&
+        (!name || strcmp(u->name, name) == 0))
+      return true;
+  }
+  return false;
+}
+
+static bool refl_tex_exists(const ShaderReflection *refl, SglShaderStage stage,
+                            int slot, const char *name) {
+  for (int i = 0; i < refl->tex_count; ++i) {
+    const ShaderTexture *t = &refl->texs[i];
+    if (t->stage == stage && t->img_slot == slot &&
+        (!name || strcmp(t->name, name) == 0))
+      return true;
+  }
+  return false;
+}
+
+static bool refl_sbuf_exists(const ShaderReflection *refl, SglShaderStage stage,
+                             int slot, const char *name) {
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    const ShaderStorageBuf *b = &refl->storage_bufs[i];
+    if (b->stage == stage && b->slot == slot &&
+        (!name || strcmp(b->name, name) == 0))
+      return true;
+  }
+  return false;
+}
+
+static bool refl_stex_exists(const ShaderReflection *refl,
+                             SglShaderStage stage, int slot,
+                             const char *name) {
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    const ShaderStorageTexture *t = &refl->storage_texs[i];
+    if (t->stage == stage && t->slot == slot &&
+        (!name || strcmp(t->name, name) == 0))
+      return true;
+  }
+  return false;
+}
+
+bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
+                            SglShaderStage stage) {
   if (!layout)
     return false;
-  out->ub_count = 0;
-  out->tex_count = 0;
-  out->storage_buf_count = 0;
   unsigned gpc = layout->getParameterCount();
   for (unsigned i = 0; i < gpc; ++i) {
     VariableLayoutReflection *p = layout->getParameterByIndex(i);
@@ -282,8 +384,10 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
     // Constant buffers / uniform blocks
     if (cat == SLANG_PARAMETER_CATEGORY_CONSTANT_BUFFER ||
         (t && t->getKind() == TypeReflection::Kind::ConstantBuffer)) {
-      if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS) {
-        fill_uniform_block(p, &out->ubs[out->ub_count]);
+      if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS &&
+          !refl_ub_exists(out, stage, (int)p->getBindingIndex(),
+                          p->getName())) {
+        fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
         out->ub_count++;
       }
       continue;
@@ -307,23 +411,54 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
       }
     }
     if (is_structured_buf) {
-      if (out->storage_buf_count < SGL_MAX_STORAGE_BUFS) {
+      if (out->storage_buf_count < SGL_MAX_STORAGE_BUFS &&
+          !refl_sbuf_exists(out, stage, (int)p->getBindingIndex(),
+                            p->getName())) {
         ShaderStorageBuf *sb = &out->storage_bufs[out->storage_buf_count++];
         copy_name(sb->name, sizeof(sb->name), p->getName());
         sb->slot = (int)p->getBindingIndex();
+        sb->stage = stage;
         sb->readonly = readonly;
       }
       continue;
     }
 
-    // Textures (SRV) — record as a texture entry; sampler match is filled
-    // below.
+    // Texture resources. Read-write textures become storage textures;
+    // sampled textures keep the existing texture+sampler reflection path.
     if (cat == SLANG_PARAMETER_CATEGORY_SHADER_RESOURCE ||
+        cat == SLANG_PARAMETER_CATEGORY_UNORDERED_ACCESS ||
         (t && t->getKind() == TypeReflection::Kind::Resource)) {
-      if (out->tex_count < SGL_MAX_TEXTURES) {
+      SlangResourceAccess acc =
+          t ? t->getResourceAccess() : SLANG_RESOURCE_ACCESS_READ;
+      bool storage_tex = false;
+      if (t && t->getKind() == TypeReflection::Kind::Resource) {
+        SlangResourceShape shape =
+            (SlangResourceShape)(t->getResourceShape() &
+                                 SLANG_RESOURCE_BASE_SHAPE_MASK);
+        storage_tex =
+            (shape == SLANG_TEXTURE_1D || shape == SLANG_TEXTURE_2D ||
+             shape == SLANG_TEXTURE_3D || shape == SLANG_TEXTURE_CUBE) &&
+            acc != SLANG_RESOURCE_ACCESS_READ;
+      }
+      if (storage_tex) {
+        if (out->storage_tex_count < SGL_MAX_STORAGE_TEXTURES &&
+            !refl_stex_exists(out, stage, (int)p->getBindingIndex(),
+                              p->getName())) {
+          ShaderStorageTexture *st =
+              &out->storage_texs[out->storage_tex_count++];
+          copy_name(st->name, sizeof(st->name), p->getName());
+          st->slot = (int)p->getBindingIndex();
+          st->stage = stage;
+          st->access_format = image_format_to_sgl(p->getImageFormat());
+          st->readonly = false;
+        }
+      } else if (out->tex_count < SGL_MAX_TEXTURES &&
+                 !refl_tex_exists(out, stage, (int)p->getBindingIndex(),
+                                  p->getName())) {
         ShaderTexture *tx = &out->texs[out->tex_count++];
         copy_name(tx->name, sizeof(tx->name), p->getName());
         tx->img_slot = (int)p->getBindingIndex();
+        tx->stage = stage;
         // Combined `Sampler2D<>` puts the sampler at the same binding
         // as the image (single descriptor); separate `Texture2D` waits
         // for the matching SAMPLER_STATE param below.
@@ -350,7 +485,7 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
       int sidx = (int)p->getBindingIndex();
       int matched = -1;
       for (int k = 0; k < out->tex_count; ++k) {
-        if (out->texs[k].smp_slot < 0) {
+        if (out->texs[k].stage == stage && out->texs[k].smp_slot < 0) {
           matched = k;
           break;
         }
@@ -399,8 +534,8 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out) {
 // set 0.
 enum class SpvStage { Vertex, Fragment, Compute };
 
-void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
-                                 ShaderTargetBackend target, SpvStage stage) {
+[[maybe_unused]] void patch_spirv_descriptor_sets(
+    void *spv, size_t size_bytes, ShaderTargetBackend target, SpvStage stage) {
   if (!spv || size_bytes < 20)
     return; // too small to be valid
   uint32_t *words = (uint32_t *)spv;
@@ -565,8 +700,8 @@ void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
 // Only the FS UniformConstant variables are touched. UBs stay where Slang
 // put them (they live in a separate descriptor set, and lub's samples
 // never have more than one per stage so binding 0 is already correct).
-void renumber_fs_image_bindings_sdlgpu(ShaderBlob *fs_blob,
-                                       ShaderReflection *refl) {
+[[maybe_unused]] void renumber_fs_image_bindings_sdlgpu(
+    ShaderBlob *fs_blob, ShaderReflection *refl) {
   if (!fs_blob || !fs_blob->spirv || fs_blob->bytes < 20)
     return;
   uint32_t *words = fs_blob->spirv;
@@ -661,6 +796,558 @@ void renumber_fs_image_bindings_sdlgpu(ShaderBlob *fs_blob,
   }
 }
 
+SglShaderStage to_sgl_stage(SpvStage stage) {
+  switch (stage) {
+  case SpvStage::Vertex:
+    return SGL_STAGE_VERTEX;
+  case SpvStage::Fragment:
+    return SGL_STAGE_FRAGMENT;
+  case SpvStage::Compute:
+    return SGL_STAGE_COMPUTE;
+  }
+  return SGL_STAGE_NONE;
+}
+
+static int sdl_set_for_stage_resource(SglShaderStage stage) {
+  switch (stage) {
+  case SGL_STAGE_VERTEX:
+    return 0;
+  case SGL_STAGE_FRAGMENT:
+    return 2;
+  case SGL_STAGE_COMPUTE:
+    return 0;
+  default:
+    return 0;
+  }
+}
+
+static int sdl_set_for_stage_uniform(SglShaderStage stage) {
+  switch (stage) {
+  case SGL_STAGE_VERTEX:
+    return 1;
+  case SGL_STAGE_FRAGMENT:
+    return 3;
+  case SGL_STAGE_COMPUTE:
+    return 2;
+  default:
+    return 1;
+  }
+}
+
+static int sdl_sampler_count_for_stage(const ShaderReflection *refl,
+                                       SglShaderStage stage) {
+  int count = 0;
+  for (int i = 0; i < refl->tex_count; ++i) {
+    if (refl->texs[i].stage == stage)
+      count++;
+  }
+  return count;
+}
+
+static int sdl_storage_tex_count_for_stage(const ShaderReflection *refl,
+                                           SglShaderStage stage,
+                                           bool readonly) {
+  int count = 0;
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    if (refl->storage_texs[i].stage == stage &&
+        refl->storage_texs[i].readonly == readonly)
+      count++;
+  }
+  return count;
+}
+
+static int sdl_read_storage_buffer_binding(const ShaderReflection *refl,
+                                           SglShaderStage stage,
+                                           const ShaderStorageBuf *buf) {
+  return sdl_sampler_count_for_stage(refl, stage) +
+         sdl_storage_tex_count_for_stage(refl, stage, true) + buf->slot;
+}
+
+static int sdl_read_storage_texture_binding(const ShaderReflection *refl,
+                                            SglShaderStage stage,
+                                            const ShaderStorageTexture *tex) {
+  return sdl_sampler_count_for_stage(refl, stage) + tex->slot;
+}
+
+static int sdl_write_storage_buffer_binding(const ShaderReflection *refl,
+                                            SglShaderStage stage,
+                                            const ShaderStorageBuf *buf) {
+  return sdl_storage_tex_count_for_stage(refl, stage, false) + buf->slot;
+}
+
+static bool name_matches_sampler(const char *var_name, const char *tex_name) {
+  if (!var_name || !tex_name)
+    return false;
+  size_t n = strlen(tex_name);
+  return strncmp(var_name, tex_name, n) == 0 &&
+         strcmp(var_name + n, "_smp") == 0;
+}
+
+static bool reflected_binding_for_name(const ShaderReflection *refl,
+                                       ShaderTargetBackend target,
+                                       SglShaderStage stage,
+                                       const char *name, int *out_set,
+                                       int *out_binding) {
+  if (!refl || !name || !out_set || !out_binding)
+    return false;
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *u = &refl->ubs[i];
+    if (u->stage == stage && strcmp(u->name, name) == 0) {
+      *out_set =
+          (target == SHADER_TARGET_SOKOL) ? 0 : sdl_set_for_stage_uniform(stage);
+      *out_binding = u->slot;
+      return true;
+    }
+  }
+  for (int i = 0; i < refl->tex_count; ++i) {
+    const ShaderTexture *t = &refl->texs[i];
+    if (t->stage != stage)
+      continue;
+    if (strcmp(t->name, name) == 0) {
+      *out_set =
+          (target == SHADER_TARGET_SOKOL) ? 1 : sdl_set_for_stage_resource(stage);
+      *out_binding = (target == SHADER_TARGET_SOKOL) ? t->img_slot : t->smp_slot;
+      return true;
+    }
+    if (name_matches_sampler(name, t->name)) {
+      *out_set =
+          (target == SHADER_TARGET_SOKOL) ? 1 : sdl_set_for_stage_resource(stage);
+      *out_binding = t->smp_slot;
+      return true;
+    }
+  }
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    const ShaderStorageBuf *b = &refl->storage_bufs[i];
+    if (b->stage == stage && strcmp(b->name, name) == 0) {
+      *out_set = (target == SHADER_TARGET_SOKOL)
+                     ? 1
+                     : ((stage == SGL_STAGE_COMPUTE && !b->readonly)
+                            ? 1
+                            : sdl_set_for_stage_resource(stage));
+      if (target == SHADER_TARGET_SOKOL) {
+        *out_binding = b->slot;
+      } else if (stage == SGL_STAGE_COMPUTE && !b->readonly) {
+        *out_binding = sdl_write_storage_buffer_binding(refl, stage, b);
+      } else {
+        *out_binding = sdl_read_storage_buffer_binding(refl, stage, b);
+      }
+      return true;
+    }
+  }
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    const ShaderStorageTexture *t = &refl->storage_texs[i];
+    if (t->stage == stage && strcmp(t->name, name) == 0) {
+      *out_set = (target == SHADER_TARGET_SOKOL)
+                     ? 1
+                     : ((stage == SGL_STAGE_COMPUTE && !t->readonly)
+                            ? 1
+                            : sdl_set_for_stage_resource(stage));
+      if (target == SHADER_TARGET_SOKOL) {
+        *out_binding = t->slot;
+      } else if (stage == SGL_STAGE_COMPUTE && !t->readonly) {
+        *out_binding = t->slot;
+      } else {
+        *out_binding = sdl_read_storage_texture_binding(refl, stage, t);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+void patch_spirv_bindings_from_reflection(void *spv, size_t size_bytes,
+                                          ShaderTargetBackend target,
+                                          SpvStage spv_stage,
+                                          const ShaderReflection *refl) {
+  if (!spv || size_bytes < 20 || !refl)
+    return;
+  uint32_t *words = (uint32_t *)spv;
+  size_t nwords = size_bytes / 4;
+  if (words[0] != 0x07230203u)
+    return;
+
+  constexpr uint32_t kOpName = 5;
+  constexpr uint32_t kOpDecorate = 71;
+  constexpr uint32_t kDecBinding = 33;
+  constexpr uint32_t kDecDescriptorSet = 34;
+
+  struct SpvNamedId {
+    uint32_t id;
+    std::string name;
+  };
+  std::vector<SpvNamedId> names;
+
+  size_t i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpName && wc >= 3) {
+      uint32_t id = words[i + 1];
+      const char *name = (const char *)&words[i + 2];
+      names.push_back({id, name ? name : ""});
+    }
+    i += wc;
+  }
+
+  auto name_of = [&](uint32_t id) -> const char * {
+    for (const auto &n : names) {
+      if (n.id == id)
+        return n.name.c_str();
+    }
+    return nullptr;
+  };
+
+  SglShaderStage stage = to_sgl_stage(spv_stage);
+  i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpDecorate && wc >= 4) {
+      uint32_t id = words[i + 1];
+      uint32_t deco = words[i + 2];
+      const char *name = name_of(id);
+      int set = -1;
+      int binding = -1;
+      if (reflected_binding_for_name(refl, target, stage, name, &set,
+                                     &binding)) {
+        if (deco == kDecDescriptorSet && set >= 0) {
+          words[i + 3] = (uint32_t)set;
+        } else if (deco == kDecBinding && binding >= 0) {
+          words[i + 3] = (uint32_t)binding;
+        }
+      }
+    }
+    i += wc;
+  }
+}
+
+void patch_spirv_storage_image_formats(void *spv, size_t size_bytes,
+                                       SpvStage spv_stage,
+                                       const ShaderReflection *refl) {
+  if (!spv || size_bytes < 20 || !refl)
+    return;
+  uint32_t *words = (uint32_t *)spv;
+  size_t nwords = size_bytes / 4;
+  if (words[0] != 0x07230203u)
+    return;
+
+  constexpr uint32_t kOpCapability = 17;
+  constexpr uint32_t kOpTypeImage = 25;
+  constexpr uint32_t kOpTypePointer = 32;
+  constexpr uint32_t kOpVariable = 59;
+  constexpr uint32_t kOpName = 5;
+  constexpr uint32_t kCapabilityShader = 1;
+  constexpr uint32_t kCapabilityStorageImageReadWithoutFormat = 55;
+  constexpr uint32_t kCapabilityStorageImageWriteWithoutFormat = 56;
+  constexpr uint32_t kStorageUniformConstant = 0;
+  constexpr uint32_t kImageFormatUnknown = 0;
+  constexpr uint32_t kSampledStorageImage = 2;
+
+  struct NamedId {
+    uint32_t id;
+    std::string name;
+  };
+  struct PointerType {
+    uint32_t id;
+    uint32_t pointee;
+  };
+  struct Variable {
+    uint32_t id;
+    uint32_t type_id;
+  };
+  std::vector<NamedId> names;
+  std::vector<PointerType> pointers;
+  std::vector<Variable> vars;
+  std::vector<std::pair<uint32_t, uint32_t>> image_type_to_format;
+
+  size_t i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpName && wc >= 3) {
+      uint32_t id = words[i + 1];
+      const char *name = (const char *)&words[i + 2];
+      names.push_back({id, name ? name : ""});
+    } else if (op == kOpTypePointer && wc >= 4) {
+      pointers.push_back({words[i + 1], words[i + 3]});
+    } else if (op == kOpVariable && wc >= 4 &&
+               words[i + 3] == kStorageUniformConstant) {
+      vars.push_back({words[i + 2], words[i + 1]});
+    }
+    i += wc;
+  }
+
+  auto name_of = [&](uint32_t id) -> const char * {
+    for (const auto &n : names) {
+      if (n.id == id)
+        return n.name.c_str();
+    }
+    return nullptr;
+  };
+  auto pointee_of = [&](uint32_t ptr_type) -> uint32_t {
+    for (const auto &p : pointers) {
+      if (p.id == ptr_type)
+        return p.pointee;
+    }
+    return 0;
+  };
+  auto image_format_for_name = [&](const char *name, uint32_t *out) -> bool {
+    if (!name || !out)
+      return false;
+    SglShaderStage stage = to_sgl_stage(spv_stage);
+    for (int k = 0; k < refl->storage_tex_count; ++k) {
+      const ShaderStorageTexture *st = &refl->storage_texs[k];
+      if (st->stage == stage && strcmp(st->name, name) == 0) {
+        *out = sgl_to_spv_image_format(st->access_format);
+        return true;
+      }
+    }
+    return false;
+  };
+  auto set_image_type_format = [&](uint32_t image_type, uint32_t fmt) {
+    if (image_type == 0 || fmt == kImageFormatUnknown)
+      return;
+    for (auto &p : image_type_to_format) {
+      if (p.first == image_type) {
+        if (p.second == kImageFormatUnknown)
+          p.second = fmt;
+        return;
+      }
+    }
+    image_type_to_format.push_back({image_type, fmt});
+  };
+  auto format_for_image_type = [&](uint32_t image_type) -> uint32_t {
+    for (const auto &p : image_type_to_format) {
+      if (p.first == image_type)
+        return p.second;
+    }
+    return sgl_to_spv_image_format(SGL_PF_RGBA16F);
+  };
+
+  for (const auto &v : vars) {
+    uint32_t fmt = kImageFormatUnknown;
+    if (image_format_for_name(name_of(v.id), &fmt))
+      set_image_type_format(pointee_of(v.type_id), fmt);
+  }
+
+  i = 5;
+  while (i < nwords) {
+    uint32_t hdr = words[i];
+    uint32_t wc = hdr >> 16;
+    uint32_t op = hdr & 0xffff;
+    if (wc == 0 || i + wc > nwords)
+      break;
+    if (op == kOpCapability && wc >= 2 &&
+        (words[i + 1] == kCapabilityStorageImageReadWithoutFormat ||
+         words[i + 1] == kCapabilityStorageImageWriteWithoutFormat)) {
+      words[i + 1] = kCapabilityShader;
+    } else if (op == kOpTypeImage && wc >= 9 &&
+               words[i + 7] == kSampledStorageImage &&
+               words[i + 8] == kImageFormatUnknown) {
+      words[i + 8] = format_for_image_type(words[i + 1]);
+    }
+    i += wc;
+  }
+}
+
+static bool ub_slot_used(const ShaderReflection *refl, int slot) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    if (refl->ubs[i].slot == slot)
+      return true;
+  }
+  return false;
+}
+
+static bool view_or_sampler_binding_used(const ShaderReflection *refl,
+                                         int slot) {
+  for (int i = 0; i < refl->tex_count; ++i) {
+    if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
+      return true;
+  }
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    if (refl->storage_bufs[i].slot == slot)
+      return true;
+  }
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    if (refl->storage_texs[i].slot == slot)
+      return true;
+  }
+  return false;
+}
+
+static bool stage_local_view_or_sampler_binding_used(
+    const ShaderReflection *refl, int upto_tex, int upto_sbuf, int upto_stex,
+    int slot) {
+  for (int i = 0; i < upto_tex; ++i) {
+    if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
+      return true;
+  }
+  for (int i = 0; i < upto_sbuf; ++i) {
+    if (refl->storage_bufs[i].slot == slot)
+      return true;
+  }
+  for (int i = 0; i < upto_stex; ++i) {
+    if (refl->storage_texs[i].slot == slot)
+      return true;
+  }
+  return false;
+}
+
+static int next_free_ub_slot(const ShaderReflection *existing,
+                             const ShaderReflection *stage, int upto) {
+  for (int s = 0; s < SGL_MAX_UNIFORM_BLOCKS; ++s) {
+    bool used = ub_slot_used(existing, s);
+    for (int i = 0; i < upto && !used; ++i)
+      used = stage->ubs[i].slot == s;
+    if (!used)
+      return s;
+  }
+  return -1;
+}
+
+static int next_free_view_slot(const ShaderReflection *existing,
+                               const ShaderReflection *stage, int upto_tex,
+                               int upto_sbuf, int upto_stex) {
+  for (int s = 0; s < SGL_MAX_TEXTURES; ++s) {
+    if (!view_or_sampler_binding_used(existing, s) &&
+        !stage_local_view_or_sampler_binding_used(stage, upto_tex, upto_sbuf,
+                                                  upto_stex, s)) {
+      return s;
+    }
+  }
+  return -1;
+}
+
+static void remap_stage_for_sokol(const ShaderReflection *existing,
+                                  ShaderReflection *stage) {
+  for (int i = 0; i < stage->ub_count; ++i) {
+    if (stage->ubs[i].slot < 0 ||
+        stage->ubs[i].slot >= SGL_MAX_UNIFORM_BLOCKS ||
+        ub_slot_used(existing, stage->ubs[i].slot)) {
+      int slot = next_free_ub_slot(existing, stage, i);
+      if (slot >= 0)
+        stage->ubs[i].slot = slot;
+    }
+  }
+
+  for (int i = 0; i < stage->tex_count; ++i) {
+    if (view_or_sampler_binding_used(existing, stage->texs[i].img_slot) ||
+        stage_local_view_or_sampler_binding_used(stage, i, 0, 0,
+                                                 stage->texs[i].img_slot)) {
+      int slot = next_free_view_slot(existing, stage, i, 0, 0);
+      if (slot >= 0)
+        stage->texs[i].img_slot = slot;
+    }
+    if (stage->texs[i].smp_slot >= 0 &&
+        (view_or_sampler_binding_used(existing, stage->texs[i].smp_slot) ||
+         stage->texs[i].img_slot == stage->texs[i].smp_slot ||
+         stage_local_view_or_sampler_binding_used(stage, i, 0, 0,
+                                                  stage->texs[i].smp_slot))) {
+      int slot = next_free_view_slot(existing, stage, i + 1, 0, 0);
+      if (slot >= 0)
+        stage->texs[i].smp_slot = slot;
+    }
+  }
+
+  for (int i = 0; i < stage->storage_buf_count; ++i) {
+    if (view_or_sampler_binding_used(existing, stage->storage_bufs[i].slot) ||
+        stage_local_view_or_sampler_binding_used(stage, stage->tex_count, i, 0,
+                                                 stage->storage_bufs[i].slot)) {
+      int slot = next_free_view_slot(existing, stage, stage->tex_count, i, 0);
+      if (slot >= 0)
+        stage->storage_bufs[i].slot = slot;
+    }
+  }
+  for (int i = 0; i < stage->storage_tex_count; ++i) {
+    if (view_or_sampler_binding_used(existing, stage->storage_texs[i].slot) ||
+        stage_local_view_or_sampler_binding_used(
+            stage, stage->tex_count, stage->storage_buf_count, i,
+            stage->storage_texs[i].slot)) {
+      int slot = next_free_view_slot(existing, stage, stage->tex_count,
+                                     stage->storage_buf_count, i);
+      if (slot >= 0)
+        stage->storage_texs[i].slot = slot;
+    }
+  }
+}
+
+static void remap_stage_for_sdlgpu(ShaderReflection *stage) {
+  for (int i = 0; i < stage->ub_count; ++i) {
+    stage->ubs[i].slot = i;
+  }
+  for (int i = 0; i < stage->tex_count; ++i) {
+    stage->texs[i].img_slot = i;
+    stage->texs[i].smp_slot = i;
+  }
+
+  int ro_stex = 0;
+  int rw_stex = 0;
+  for (int i = 0; i < stage->storage_tex_count; ++i) {
+    stage->storage_texs[i].slot =
+        stage->storage_texs[i].readonly ? ro_stex++ : rw_stex++;
+  }
+
+  int ro_sbuf = 0;
+  int rw_sbuf = 0;
+  for (int i = 0; i < stage->storage_buf_count; ++i) {
+    stage->storage_bufs[i].slot =
+        stage->storage_bufs[i].readonly ? ro_sbuf++ : rw_sbuf++;
+  }
+}
+
+static void merge_stage_reflection(ShaderReflection *dst,
+                                   const ShaderReflection *src,
+                                   ShaderTargetBackend target) {
+  ShaderReflection stage = *src;
+  if (target == SHADER_TARGET_SOKOL) {
+    remap_stage_for_sokol(dst, &stage);
+  } else {
+    remap_stage_for_sdlgpu(&stage);
+  }
+
+  if (stage.attr_count > 0) {
+    dst->attr_count = stage.attr_count;
+    memcpy(dst->attrs, stage.attrs, sizeof(stage.attrs));
+    dst->buffer_count = stage.buffer_count;
+    memcpy(dst->buffer_stride_floats, stage.buffer_stride_floats,
+           sizeof(stage.buffer_stride_floats));
+    dst->vertex_stride_floats = stage.vertex_stride_floats;
+  }
+  for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
+       ++i) {
+    dst->ubs[dst->ub_count++] = stage.ubs[i];
+  }
+  for (int i = 0; i < stage.tex_count && dst->tex_count < SGL_MAX_TEXTURES;
+       ++i) {
+    dst->texs[dst->tex_count++] = stage.texs[i];
+  }
+  for (int i = 0; i < stage.storage_buf_count &&
+                  dst->storage_buf_count < SGL_MAX_STORAGE_BUFS;
+       ++i) {
+    dst->storage_bufs[dst->storage_buf_count++] = stage.storage_bufs[i];
+  }
+  for (int i = 0; i < stage.storage_tex_count &&
+                  dst->storage_tex_count < SGL_MAX_STORAGE_TEXTURES;
+       ++i) {
+    dst->storage_texs[dst->storage_tex_count++] = stage.storage_texs[i];
+  }
+  if (stage.is_compute) {
+    dst->is_compute = true;
+    dst->workgroup[0] = stage.workgroup[0];
+    dst->workgroup[1] = stage.workgroup[1];
+    dst->workgroup[2] = stage.workgroup[2];
+  }
+}
+
 } // anonymous namespace
 
 extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
@@ -685,8 +1372,7 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   }
 
   TargetDesc slang_target = {};
-  slang_target.format = SLANG_SPIRV;
-  slang_target.profile = g_slang.spirv_profile;
+  configure_spirv_target(&slang_target);
 
   SessionDesc sd = {};
   sd.targets = &slang_target;
@@ -700,131 +1386,119 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
     return false;
   }
 
-  // Concatenate VS and FS into a single module. They are kept distinct via
-  // their `[shader("vertex")]` / `[shader("fragment")]` attributes. The
-  // per-target prelude is prepended so the LUB_TEXTURE2D / LUB_SAMPLE
-  // macros expand to the descriptor layout this backend expects.
   const char *prelude = prelude_for_target(target);
-  std::string combined;
-  combined.reserve(strlen(prelude) + strlen(vs_src) + strlen(fs_src) + 4);
-  combined.append(prelude);
-  combined.append(vs_src);
-  combined.append("\n");
-  combined.append(fs_src);
 
-  ComPtr<IBlob> diag;
-  IModule *modRaw = session->loadModuleFromSourceString(
-      "user", "user.slang", combined.c_str(), diag.writeRef());
-  if (!modRaw) {
-    copy_diag(diag.get(), err_buf, err_buf_size);
-    return false;
-  }
-  ComPtr<IModule> module(modRaw);
+  auto compile_stage = [&](const char *src, const char *entry,
+                           const char *module_name, SglShaderStage sgl_stage,
+                           SpvStage spv_stage, ShaderBlob *out_blob,
+                           ShaderReflection *stage_refl) -> bool {
+    memset(stage_refl, 0, sizeof(*stage_refl));
+    std::string source;
+    source.reserve(strlen(prelude) + strlen(src) + 1);
+    source.append(prelude);
+    source.append(src);
 
-  ComPtr<IEntryPoint> vsEp, fsEp;
-  if (SLANG_FAILED(module->findEntryPointByName("vs_main", vsEp.writeRef())) ||
-      !vsEp) {
-    if (err_buf && err_buf_size)
-      snprintf(err_buf, err_buf_size, "vs_main entry point not found");
-    return false;
-  }
-  if (SLANG_FAILED(module->findEntryPointByName("fs_main", fsEp.writeRef())) ||
-      !fsEp) {
-    if (err_buf && err_buf_size)
-      snprintf(err_buf, err_buf_size, "fs_main entry point not found");
-    return false;
-  }
-
-  IComponentType *components[] = {module.get(), vsEp.get(), fsEp.get()};
-  ComPtr<IComponentType> composite;
-  if (SLANG_FAILED(session->createCompositeComponentType(
-          components, 3, composite.writeRef(), diag.writeRef()))) {
-    copy_diag(diag.get(), err_buf, err_buf_size);
-    return false;
-  }
-  ComPtr<IComponentType> linked;
-  if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
-    copy_diag(diag.get(), err_buf, err_buf_size);
-    return false;
-  }
-
-  // Get target code: entry 0 is vs (declared first in `components`),
-  // entry 1 is fs. With target.format == SLANG_SPIRV the blobs hold
-  // SPIR-V binary, not GLSL source.
-  ComPtr<IBlob> vsBlob, fsBlob;
-  if (SLANG_FAILED(linked->getEntryPointCode(0, 0, vsBlob.writeRef(),
-                                             diag.writeRef()))) {
-    copy_diag(diag.get(), err_buf, err_buf_size);
-    return false;
-  }
-  if (SLANG_FAILED(linked->getEntryPointCode(1, 0, fsBlob.writeRef(),
-                                             diag.writeRef()))) {
-    copy_diag(diag.get(), err_buf, err_buf_size);
-    return false;
-  }
-
-  // Reflection
-  ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
-  if (!programLayout) {
-    copy_diag(diag.get(), err_buf, err_buf_size);
-    return false;
-  }
-
-  EntryPointReflection *vsRefl = nullptr;
-  SlangUInt epc = programLayout->getEntryPointCount();
-  for (SlangUInt i = 0; i < epc; ++i) {
-    EntryPointReflection *ep = programLayout->getEntryPointByIndex(i);
-    if (ep && ep->getStage() == SLANG_STAGE_VERTEX) {
-      vsRefl = ep;
-      break;
+    ComPtr<IBlob> diag;
+    IModule *modRaw = session->loadModuleFromSourceString(
+        module_name, (std::string(module_name) + ".slang").c_str(),
+        source.c_str(), diag.writeRef());
+    if (!modRaw) {
+      copy_diag(diag.get(), err_buf, err_buf_size);
+      return false;
     }
-  }
-  if (!fill_attrs_from_entry_point(vsRefl, out_refl, err_buf, err_buf_size)) {
+    ComPtr<IModule> module(modRaw);
+
+    ComPtr<IEntryPoint> ep;
+    if (SLANG_FAILED(module->findEntryPointByName(entry, ep.writeRef())) ||
+        !ep) {
+      if (err_buf && err_buf_size)
+        snprintf(err_buf, err_buf_size, "%s entry point not found", entry);
+      return false;
+    }
+
+    IComponentType *components[] = {module.get(), ep.get()};
+    ComPtr<IComponentType> composite;
+    if (SLANG_FAILED(session->createCompositeComponentType(
+            components, 2, composite.writeRef(), diag.writeRef()))) {
+      copy_diag(diag.get(), err_buf, err_buf_size);
+      return false;
+    }
+    ComPtr<IComponentType> linked;
+    if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
+      copy_diag(diag.get(), err_buf, err_buf_size);
+      return false;
+    }
+
+    ComPtr<IBlob> code;
+    if (SLANG_FAILED(linked->getEntryPointCode(0, 0, code.writeRef(),
+                                               diag.writeRef()))) {
+      copy_diag(diag.get(), err_buf, err_buf_size);
+      return false;
+    }
+
+    ProgramLayout *programLayout = linked->getLayout(0, diag.writeRef());
+    if (!programLayout) {
+      copy_diag(diag.get(), err_buf, err_buf_size);
+      return false;
+    }
+
+    if (sgl_stage == SGL_STAGE_VERTEX) {
+      EntryPointReflection *vsRefl = nullptr;
+      SlangUInt epc = programLayout->getEntryPointCount();
+      for (SlangUInt i = 0; i < epc; ++i) {
+        EntryPointReflection *epr = programLayout->getEntryPointByIndex(i);
+        if (epr && epr->getStage() == SLANG_STAGE_VERTEX) {
+          vsRefl = epr;
+          break;
+        }
+      }
+      if (!fill_attrs_from_entry_point(vsRefl, stage_refl, err_buf,
+                                       err_buf_size)) {
+        return false;
+      }
+    }
+    fill_global_reflection(programLayout, stage_refl, sgl_stage);
+
+    size_t size = code->getBufferSize();
+    out_blob->spirv = (uint32_t *)malloc(size);
+    if (!out_blob->spirv) {
+      if (err_buf && err_buf_size)
+        snprintf(err_buf, err_buf_size, "OOM (%s blob)", entry);
+      return false;
+    }
+    memcpy(out_blob->spirv, code->getBufferPointer(), size);
+    out_blob->bytes = size;
+    (void)spv_stage;
+    return true;
+  };
+
+  ShaderReflection vs_refl;
+  ShaderReflection fs_refl;
+  memset(&vs_refl, 0, sizeof(vs_refl));
+  memset(&fs_refl, 0, sizeof(fs_refl));
+  if (!compile_stage(vs_src, "vs_main", "user_vs", SGL_STAGE_VERTEX,
+                     SpvStage::Vertex, out_vs, &vs_refl)) {
+    shader_blob_free(out_vs);
     return false;
   }
-  fill_global_reflection(programLayout, out_refl);
-
-  // Copy the SPIR-V bytes into caller-owned mutable malloc'd buffers and
-  // patch descriptor sets in place.
-  size_t vs_size = vsBlob->getBufferSize();
-  size_t fs_size = fsBlob->getBufferSize();
-  out_vs->spirv = (uint32_t *)malloc(vs_size);
-  if (!out_vs->spirv) {
-    if (err_buf && err_buf_size)
-      snprintf(err_buf, err_buf_size, "OOM (vs blob)");
+  if (!compile_stage(fs_src, "fs_main", "user_fs", SGL_STAGE_FRAGMENT,
+                     SpvStage::Fragment, out_fs, &fs_refl)) {
+    shader_blob_free(out_vs);
+    shader_blob_free(out_fs);
     return false;
   }
-  memcpy(out_vs->spirv, vsBlob->getBufferPointer(), vs_size);
-  out_vs->bytes = vs_size;
 
-  out_fs->spirv = (uint32_t *)malloc(fs_size);
-  if (!out_fs->spirv) {
-    free(out_vs->spirv);
-    out_vs->spirv = nullptr;
-    out_vs->bytes = 0;
-    if (err_buf && err_buf_size)
-      snprintf(err_buf, err_buf_size, "OOM (fs blob)");
-    return false;
-  }
-  memcpy(out_fs->spirv, fsBlob->getBufferPointer(), fs_size);
-  out_fs->bytes = fs_size;
+  merge_stage_reflection(out_refl, &vs_refl, target);
+  merge_stage_reflection(out_refl, &fs_refl, target);
 
-  // patch_spirv_descriptor_sets assigns per-(storage class, stage,
-  // target backend) descriptor-set numbers. For sdlgpu fragment stage
-  // this places textures+samplers at set 2.
-  patch_spirv_descriptor_sets(out_vs->spirv, out_vs->bytes, target,
-                              SpvStage::Vertex);
-  patch_spirv_descriptor_sets(out_fs->spirv, out_fs->bytes, target,
-                              SpvStage::Fragment);
-
-  if (target == SHADER_TARGET_SDLGPU) {
-    // Renumber FS image/sampler bindings 0-based per stage. Required
-    // because Slang allocates bindings module-wide while SDL_GPU's
-    // pipeline layout expects num_samplers=N => bindings 0..N-1.
-    // Combined Sampler2D<> source (via the LUB_TEXTURE2D macro
-    // prelude) already produces a single OpVariable per texture.
-    renumber_fs_image_bindings_sdlgpu(out_fs, out_refl);
-  }
+  patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes, target,
+                                       SpvStage::Vertex, out_refl);
+  patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes, target,
+                                       SpvStage::Fragment, out_refl);
+  patch_spirv_storage_image_formats(out_vs->spirv, out_vs->bytes,
+                                    SpvStage::Vertex, out_refl);
+  patch_spirv_storage_image_formats(out_fs->spirv, out_fs->bytes,
+                                    SpvStage::Fragment, out_refl);
   return true;
 }
 
@@ -847,8 +1521,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   }
 
   TargetDesc slang_target = {};
-  slang_target.format = SLANG_SPIRV;
-  slang_target.profile = g_slang.spirv_profile;
+  configure_spirv_target(&slang_target);
 
   SessionDesc sd = {};
   sd.targets = &slang_target;
@@ -925,7 +1598,9 @@ extern "C" bool shader_compile_compute(const char *cs_src,
     out_refl->workgroup[2] = (int)sizes[2];
     break;
   }
-  fill_global_reflection(programLayout, out_refl);
+  fill_global_reflection(programLayout, out_refl, SGL_STAGE_COMPUTE);
+  if (target == SHADER_TARGET_SDLGPU)
+    remap_stage_for_sdlgpu(out_refl);
 
   size_t cs_size = csBlob->getBufferSize();
   out_cs->spirv = (uint32_t *)malloc(cs_size);
@@ -937,8 +1612,10 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
   out_cs->bytes = cs_size;
 
-  patch_spirv_descriptor_sets(out_cs->spirv, out_cs->bytes, target,
-                              SpvStage::Compute);
+  patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes, target,
+                                       SpvStage::Compute, out_refl);
+  patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
+                                    SpvStage::Compute, out_refl);
   return true;
 }
 
@@ -974,10 +1651,10 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 
 // Stage codes passed across the JS bridge to window.slangCompile.
 // Must match what playground/slang-bridge.ts expects.
-enum SglShaderStage {
-  SGL_STAGE_VS = 0,
-  SGL_STAGE_FS = 1,
-  SGL_STAGE_CS = 2,
+enum SlangBridgeStage {
+  SLANG_BRIDGE_STAGE_VS = 0,
+  SLANG_BRIDGE_STAGE_FS = 1,
+  SLANG_BRIDGE_STAGE_CS = 2,
 };
 
 // JS bridge into window.slangCompile().
@@ -1081,24 +1758,37 @@ bool split_blob(const char *blob, std::string &out_wgsl,
 // e.g. a UB at slot 0 used by both vertex and fragment), the second call
 // would otherwise append a duplicate entry. We guard each append with a
 // slot-existence check.
-bool ub_slot_exists(const ShaderReflection *refl, int slot) {
+bool ub_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
+                    int slot) {
   for (int i = 0; i < refl->ub_count; ++i) {
-    if (refl->ubs[i].slot == slot)
+    if (refl->ubs[i].stage == stage && refl->ubs[i].slot == slot)
       return true;
   }
   return false;
 }
-bool tex_slot_exists(const ShaderReflection *refl, int img_slot) {
+bool tex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
+                     int img_slot) {
   for (int i = 0; i < refl->tex_count; ++i) {
-    if (refl->texs[i].img_slot == img_slot)
+    if (refl->texs[i].stage == stage && refl->texs[i].img_slot == img_slot)
       return true;
   }
   return false;
 }
 // Used by the storage-buffer dedup path in reflect_from_slang_json.
-bool sbuf_slot_exists(const ShaderReflection *refl, int slot) {
+bool sbuf_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
+                      int slot) {
   for (int i = 0; i < refl->storage_buf_count; ++i) {
-    if (refl->storage_bufs[i].slot == slot)
+    if (refl->storage_bufs[i].stage == stage &&
+        refl->storage_bufs[i].slot == slot)
+      return true;
+  }
+  return false;
+}
+bool stex_slot_exists(const ShaderReflection *refl, SglShaderStage stage,
+                      int slot) {
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    if (refl->storage_texs[i].stage == stage &&
+        refl->storage_texs[i].slot == slot)
       return true;
   }
   return false;
@@ -1218,8 +1908,10 @@ void record_attr_field(const json &f, ShaderReflection *out, int buffer_index) {
 // Populate a ShaderUniformBlock from a top-level parameter whose type is
 // a ConstantBuffer<T>. Reads members from type.elementType.fields[].
 void fill_uniform_block_from_json(const json &p, int slot,
+                                  SglShaderStage stage,
                                   ShaderUniformBlock *u) {
   u->slot = slot;
+  u->stage = stage;
   u->size_floats = 0;
   u->member_count = 0;
   copy_name_capped(u->name, sizeof(u->name), p.value("name", std::string("")));
@@ -1265,7 +1957,8 @@ void fill_uniform_block_from_json(const json &p, int slot,
 // Top-level parameters[] walker. Each entry is either a UB, a texture, a
 // sampler, or a storage buffer. We dedup by slot so cross-stage merges
 // don't double-count.
-void process_global_parameter(const json &p, ShaderReflection *out) {
+void process_global_parameter(const json &p, ShaderReflection *out,
+                              SglShaderStage stage) {
   if (!p.is_object())
     return;
   if (!p.contains("binding") || !p["binding"].is_object())
@@ -1284,17 +1977,17 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
   std::string tkind = t ? t->value("kind", std::string("")) : "";
 
   if (tkind == "constantBuffer") {
-    if (ub_slot_exists(out, slot))
+    if (ub_slot_exists(out, stage, slot))
       return;
     if (out->ub_count >= SGL_MAX_UNIFORM_BLOCKS)
       return;
-    fill_uniform_block_from_json(p, slot, &out->ubs[out->ub_count++]);
+    fill_uniform_block_from_json(p, slot, stage, &out->ubs[out->ub_count++]);
     return;
   }
   if (tkind == "resource") {
     std::string shape = t->value("baseShape", std::string(""));
     if (shape == "structuredBuffer" || shape == "byteAddressBuffer") {
-      if (sbuf_slot_exists(out, slot))
+      if (sbuf_slot_exists(out, stage, slot))
         return;
       if (out->storage_buf_count >= SGL_MAX_STORAGE_BUFS)
         return;
@@ -1302,15 +1995,32 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
       copy_name_capped(sb->name, sizeof(sb->name),
                        p.value("name", std::string("")));
       sb->slot = slot;
+      sb->stage = stage;
       // access="readWrite" => writable; absent or "read" => readonly.
       sb->readonly = (t->value("access", std::string("")) != "readWrite");
+      return;
+    }
+    std::string access = t->value("access", std::string(""));
+    if (access == "readWrite" || access == "write" ||
+        access == "writeOnly") {
+      if (stex_slot_exists(out, stage, slot))
+        return;
+      if (out->storage_tex_count >= SGL_MAX_STORAGE_TEXTURES)
+        return;
+      ShaderStorageTexture *st = &out->storage_texs[out->storage_tex_count++];
+      copy_name_capped(st->name, sizeof(st->name),
+                       p.value("name", std::string("")));
+      st->slot = slot;
+      st->stage = stage;
+      st->access_format = SGL_PF_RGBA16F;
+      st->readonly = false;
       return;
     }
     // Texture (baseShape="texture2D"/"texture3D"/...). Sampler usually
     // comes via a separate parameter with type.kind="samplerState", but a
     // combined `Sampler2D<>` source has Slang emit "combined": true and
     // serves both image and sampler from a single descriptor slot.
-    if (tex_slot_exists(out, slot))
+    if (tex_slot_exists(out, stage, slot))
       return;
     if (out->tex_count >= SGL_MAX_TEXTURES)
       return;
@@ -1318,6 +2028,7 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
     copy_name_capped(tx->name, sizeof(tx->name),
                      p.value("name", std::string("")));
     tx->img_slot = slot;
+    tx->stage = stage;
     bool combined = t->value("combined", false);
     tx->smp_slot = combined ? slot : -1;
     return;
@@ -1327,7 +2038,7 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
     // matches the native (Slang COM API) path's behaviour and works for
     // the typical `Texture2D foo; SamplerState foo_smp;` convention.
     for (int k = 0; k < out->tex_count; ++k) {
-      if (out->texs[k].smp_slot < 0) {
+      if (out->texs[k].stage == stage && out->texs[k].smp_slot < 0) {
         out->texs[k].smp_slot = slot;
         return;
       }
@@ -1344,7 +2055,7 @@ void process_global_parameter(const json &p, ShaderReflection *out) {
 // (descriptorTableSlot index), since that's the @binding number which
 // is preserved across the rewrite.
 bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
-                             bool is_vertex_stage) {
+                             SglShaderStage reflect_stage) {
   if (!out)
     return false;
   if (!json_text || !*json_text)
@@ -1368,7 +2079,7 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
           t->value("kind", std::string("")) == "samplerState") {
         continue; // handled in second pass
       }
-      process_global_parameter(p, out);
+      process_global_parameter(p, out, reflect_stage);
     }
     for (const auto &p : j["parameters"]) {
       if (!p.is_object())
@@ -1376,7 +2087,7 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
       const auto *t = p.contains("type") ? &p["type"] : nullptr;
       if (t && t->is_object() &&
           t->value("kind", std::string("")) == "samplerState") {
-        process_global_parameter(p, out);
+        process_global_parameter(p, out, reflect_stage);
       }
     }
   }
@@ -1402,7 +2113,7 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
       // Varying inputs (vertex only). is_vertex_stage gates this — the
       // FS reflection has its own varyingInput entries (texcoords etc.)
       // but those aren't pipeline-level vertex attributes.
-      if (!is_vertex_stage || stage != "vertex")
+      if (reflect_stage != SGL_STAGE_VERTEX || stage != "vertex")
         continue;
       if (!ep.contains("parameters") || !ep["parameters"].is_array())
         continue;
@@ -1442,6 +2153,218 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
     }
   }
   return true;
+}
+
+static bool wasm_ub_slot_used(const ShaderReflection *refl, int slot) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    if (refl->ubs[i].slot == slot)
+      return true;
+  }
+  return false;
+}
+
+static bool wasm_binding_used(const ShaderReflection *refl, int slot) {
+  for (int i = 0; i < refl->tex_count; ++i) {
+    if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
+      return true;
+  }
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    if (refl->storage_bufs[i].slot == slot)
+      return true;
+  }
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    if (refl->storage_texs[i].slot == slot)
+      return true;
+  }
+  return false;
+}
+
+static int wasm_next_free_ub_slot(const ShaderReflection *dst,
+                                  const ShaderReflection *stage, int upto) {
+  for (int s = 0; s < SGL_MAX_UNIFORM_BLOCKS; ++s) {
+    bool used = wasm_ub_slot_used(dst, s);
+    for (int i = 0; i < upto && !used; ++i)
+      used = stage->ubs[i].slot == s;
+    if (!used)
+      return s;
+  }
+  return -1;
+}
+
+static int wasm_next_free_binding(const ShaderReflection *dst,
+                                  const ShaderReflection *stage) {
+  for (int s = 0; s < SGL_MAX_TEXTURES; ++s) {
+    if (!wasm_binding_used(dst, s) && !wasm_binding_used(stage, s))
+      return s;
+  }
+  return -1;
+}
+
+static void wasm_remap_stage_for_sokol(const ShaderReflection *dst,
+                                       ShaderReflection *stage) {
+  for (int i = 0; i < stage->ub_count; ++i) {
+    if (wasm_ub_slot_used(dst, stage->ubs[i].slot)) {
+      int slot = wasm_next_free_ub_slot(dst, stage, i);
+      if (slot >= 0)
+        stage->ubs[i].slot = slot;
+    }
+  }
+  for (int i = 0; i < stage->tex_count; ++i) {
+    if (wasm_binding_used(dst, stage->texs[i].img_slot)) {
+      int slot = wasm_next_free_binding(dst, stage);
+      if (slot >= 0)
+        stage->texs[i].img_slot = slot;
+    }
+    if (stage->texs[i].smp_slot >= 0 &&
+        (wasm_binding_used(dst, stage->texs[i].smp_slot) ||
+         stage->texs[i].smp_slot == stage->texs[i].img_slot)) {
+      int slot = wasm_next_free_binding(dst, stage);
+      if (slot >= 0)
+        stage->texs[i].smp_slot = slot;
+    }
+  }
+}
+
+static void wasm_merge_stage_reflection(ShaderReflection *dst,
+                                        const ShaderReflection *src,
+                                        ShaderTargetBackend target) {
+  ShaderReflection stage = *src;
+  if (target == SHADER_TARGET_SOKOL)
+    wasm_remap_stage_for_sokol(dst, &stage);
+  if (stage.attr_count > 0) {
+    dst->attr_count = stage.attr_count;
+    memcpy(dst->attrs, stage.attrs, sizeof(stage.attrs));
+    dst->buffer_count = stage.buffer_count;
+    memcpy(dst->buffer_stride_floats, stage.buffer_stride_floats,
+           sizeof(stage.buffer_stride_floats));
+    dst->vertex_stride_floats = stage.vertex_stride_floats;
+  }
+  for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
+       ++i)
+    dst->ubs[dst->ub_count++] = stage.ubs[i];
+  for (int i = 0; i < stage.tex_count && dst->tex_count < SGL_MAX_TEXTURES;
+       ++i)
+    dst->texs[dst->tex_count++] = stage.texs[i];
+  for (int i = 0; i < stage.storage_buf_count &&
+                  dst->storage_buf_count < SGL_MAX_STORAGE_BUFS;
+       ++i)
+    dst->storage_bufs[dst->storage_buf_count++] = stage.storage_bufs[i];
+  for (int i = 0; i < stage.storage_tex_count &&
+                  dst->storage_tex_count < SGL_MAX_STORAGE_TEXTURES;
+       ++i)
+    dst->storage_texs[dst->storage_tex_count++] = stage.storage_texs[i];
+  if (stage.is_compute) {
+    dst->is_compute = true;
+    dst->workgroup[0] = stage.workgroup[0];
+    dst->workgroup[1] = stage.workgroup[1];
+    dst->workgroup[2] = stage.workgroup[2];
+  }
+}
+
+static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
+                                            SglShaderStage stage,
+                                            const std::string &name,
+                                            int *out_binding) {
+  for (int i = 0; i < refl->ub_count; ++i) {
+    const ShaderUniformBlock *u = &refl->ubs[i];
+    if (u->stage == stage && name == u->name) {
+      *out_binding = u->slot;
+      return true;
+    }
+  }
+  for (int i = 0; i < refl->tex_count; ++i) {
+    const ShaderTexture *t = &refl->texs[i];
+    if (t->stage != stage)
+      continue;
+    if (name == t->name) {
+      *out_binding = t->img_slot;
+      return true;
+    }
+    std::string smp = std::string(t->name) + "_smp";
+    if (name == smp) {
+      *out_binding = t->smp_slot;
+      return true;
+    }
+  }
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    const ShaderStorageBuf *b = &refl->storage_bufs[i];
+    if (b->stage == stage && name == b->name) {
+      *out_binding = b->slot;
+      return true;
+    }
+  }
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    const ShaderStorageTexture *t = &refl->storage_texs[i];
+    if (t->stage == stage && name == t->name) {
+      *out_binding = t->slot;
+      return true;
+    }
+  }
+  return false;
+}
+
+static std::string wasm_extract_var_name(const std::string &line) {
+  size_t p = line.find(" var");
+  if (p == std::string::npos)
+    return "";
+  p += 4;
+  if (p < line.size() && line[p] == '<') {
+    size_t e = line.find('>', p);
+    if (e == std::string::npos)
+      return "";
+    p = e + 1;
+  }
+  while (p < line.size() && (line[p] == ' ' || line[p] == '\t'))
+    p++;
+  size_t start = p;
+  while (p < line.size() &&
+         ((line[p] >= 'A' && line[p] <= 'Z') ||
+          (line[p] >= 'a' && line[p] <= 'z') ||
+          (line[p] >= '0' && line[p] <= '9') || line[p] == '_')) {
+    p++;
+  }
+  return p > start ? line.substr(start, p - start) : "";
+}
+
+static void patch_wgsl_bindings_from_reflection(ShaderBlob *blob,
+                                                SglShaderStage stage,
+                                                const ShaderReflection *refl) {
+  if (!blob || !blob->spirv || !refl)
+    return;
+  std::string src((const char *)blob->spirv, blob->bytes);
+  std::string out;
+  out.reserve(src.size());
+  size_t pos = 0;
+  while (pos < src.size()) {
+    size_t end = src.find('\n', pos);
+    if (end == std::string::npos)
+      end = src.size();
+    std::string line = src.substr(pos, end - pos);
+    size_t b0 = line.find("@binding(");
+    if (b0 != std::string::npos) {
+      size_t n0 = b0 + strlen("@binding(");
+      size_t n1 = line.find(')', n0);
+      std::string name = wasm_extract_var_name(line);
+      int binding = -1;
+      if (n1 != std::string::npos &&
+          wasm_reflected_binding_for_name(refl, stage, name, &binding) &&
+          binding >= 0) {
+        line.replace(n0, n1 - n0, std::to_string(binding));
+      }
+    }
+    out.append(line);
+    if (end < src.size())
+      out.push_back('\n');
+    pos = end + 1;
+  }
+  uint32_t *patched = (uint32_t *)malloc(out.size() + 1);
+  if (!patched)
+    return;
+  memcpy(patched, out.data(), out.size());
+  ((char *)patched)[out.size()] = '\0';
+  free(blob->spirv);
+  blob->spirv = patched;
+  blob->bytes = out.size();
 }
 
 // Common driver: call the JS bridge once, split, and copy WGSL bytes into
@@ -1522,26 +2445,28 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   std::string fs_with_prelude = std::string(prelude) + fs_src;
 
   std::string vs_refl_json, fs_refl_json;
-  if (!compile_one(vs_with_prelude.c_str(), "vs_main", SGL_STAGE_VS, out_vs,
-                   vs_refl_json, err_buf, err_buf_size)) {
+  if (!compile_one(vs_with_prelude.c_str(), "vs_main",
+                   SLANG_BRIDGE_STAGE_VS, out_vs, vs_refl_json, err_buf,
+                   err_buf_size)) {
     return false;
   }
-  if (!compile_one(fs_with_prelude.c_str(), "fs_main", SGL_STAGE_FS, out_fs,
-                   fs_refl_json, err_buf, err_buf_size)) {
+  if (!compile_one(fs_with_prelude.c_str(), "fs_main",
+                   SLANG_BRIDGE_STAGE_FS, out_fs, fs_refl_json, err_buf,
+                   err_buf_size)) {
     free(out_vs->spirv);
     out_vs->spirv = nullptr;
     out_vs->bytes = 0;
     return false;
   }
 
-  // Merge both stages' reflection JSON into the single ShaderReflection
-  // struct: VS contributes attrs + UBs + textures, FS contributes its
-  // own UBs + textures. reflect_from_slang_json() now dedups by slot so
-  // a UB/texture declared in both stages collapses to one entry.
-  if (!reflect_from_slang_json(vs_refl_json.c_str(), out_refl,
-                               /*is_vertex_stage=*/true) ||
-      !reflect_from_slang_json(fs_refl_json.c_str(), out_refl,
-                               /*is_vertex_stage=*/false)) {
+  ShaderReflection vs_refl;
+  ShaderReflection fs_refl;
+  memset(&vs_refl, 0, sizeof(vs_refl));
+  memset(&fs_refl, 0, sizeof(fs_refl));
+  if (!reflect_from_slang_json(vs_refl_json.c_str(), &vs_refl,
+                               SGL_STAGE_VERTEX) ||
+      !reflect_from_slang_json(fs_refl_json.c_str(), &fs_refl,
+                               SGL_STAGE_FRAGMENT)) {
     if (err_buf && err_buf_size) {
       snprintf(err_buf, err_buf_size, "slang reflection parse failed");
     }
@@ -1553,6 +2478,10 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
     out_fs->bytes = 0;
     return false;
   }
+  wasm_merge_stage_reflection(out_refl, &vs_refl, target);
+  wasm_merge_stage_reflection(out_refl, &fs_refl, target);
+  patch_wgsl_bindings_from_reflection(out_vs, SGL_STAGE_VERTEX, out_refl);
+  patch_wgsl_bindings_from_reflection(out_fs, SGL_STAGE_FRAGMENT, out_refl);
   return true;
 }
 
@@ -1572,14 +2501,15 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   std::string cs_with_prelude = std::string(prelude) + cs_src;
 
   std::string cs_refl_json;
-  if (!compile_one(cs_with_prelude.c_str(), "cs_main", SGL_STAGE_CS, out_cs,
-                   cs_refl_json, err_buf, err_buf_size)) {
+  if (!compile_one(cs_with_prelude.c_str(), "cs_main",
+                   SLANG_BRIDGE_STAGE_CS, out_cs, cs_refl_json, err_buf,
+                   err_buf_size)) {
     return false;
   }
   out_refl->is_compute = true;
   out_refl->workgroup[0] = out_refl->workgroup[1] = out_refl->workgroup[2] = 1;
   if (!reflect_from_slang_json(cs_refl_json.c_str(), out_refl,
-                               /*is_vertex_stage=*/false)) {
+                               SGL_STAGE_COMPUTE)) {
     if (err_buf && err_buf_size) {
       snprintf(err_buf, err_buf_size,
                "slang reflection parse failed (compute)");
@@ -1589,6 +2519,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
     out_cs->bytes = 0;
     return false;
   }
+  patch_wgsl_bindings_from_reflection(out_cs, SGL_STAGE_COMPUTE, out_refl);
   return true;
 }
 

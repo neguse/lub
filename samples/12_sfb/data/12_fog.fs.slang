@@ -1,7 +1,6 @@
 // Linear distance fog. Blends toward FOG_COLOR by view-space linear depth
-// (gPosition.z). Background (z == 0) is left untouched. No uniform block: the
-// backend's fragment-stage uniform binding clashes with sampled textures, so
-// tuning values are baked here (still hot-reloadable — edit and save).
+// (gPosition.z). Background (z == 0) is left untouched. Tuning values are
+// baked here and remain hot-reloadable by editing this shader.
 LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(gpos);
 

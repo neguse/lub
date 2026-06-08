@@ -73,8 +73,14 @@ uint64_t gpu_stats_image_bytes(SglPixelFormat fmt, int w, int h) {
   case SGL_PF_R8:
     bpp = 1;
     break;
+  case SGL_PF_RG8:
+  case SGL_PF_R16F:
   case SGL_PF_DEPTH16:
     bpp = 2;
+    break;
+  case SGL_PF_RG16F:
+  case SGL_PF_R32F:
+    bpp = 4;
     break;
   case SGL_PF_RGBA16F:
     bpp = 8;

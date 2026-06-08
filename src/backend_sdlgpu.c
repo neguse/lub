@@ -77,6 +77,14 @@ static SDL_GPUTextureFormat sgl_to_sdl_texture_format(SglPixelFormat fmt) {
   switch (fmt) {
   case SGL_PF_R8:
     return SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+  case SGL_PF_RG8:
+    return SDL_GPU_TEXTUREFORMAT_R8G8_UNORM;
+  case SGL_PF_R16F:
+    return SDL_GPU_TEXTUREFORMAT_R16_FLOAT;
+  case SGL_PF_RG16F:
+    return SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT;
+  case SGL_PF_R32F:
+    return SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
   case SGL_PF_RGBA16F:
     return SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
   case SGL_PF_RGBA32F:
@@ -207,6 +215,7 @@ typedef struct SgImage {
   int w, h;
   SglPixelFormat fmt;
   bool render_target;
+  bool storage;
 } SgImage;
 
 // --- backend lifecycle ----------------------------------------------------
@@ -525,6 +534,58 @@ static void sg_destroy_buffer(BackendBuffer h) {
   free(b);
 }
 
+static Uint32 refl_uniform_count(const ShaderReflection *refl,
+                                 SglShaderStage stage) {
+  int max_slot = -1;
+  if (!refl)
+    return 0;
+  for (int i = 0; i < refl->ub_count; ++i) {
+    if (refl->ubs[i].stage == stage && refl->ubs[i].slot > max_slot)
+      max_slot = refl->ubs[i].slot;
+  }
+  return (Uint32)(max_slot + 1);
+}
+
+static Uint32 refl_sampler_count(const ShaderReflection *refl,
+                                 SglShaderStage stage) {
+  int max_slot = -1;
+  if (!refl)
+    return 0;
+  for (int i = 0; i < refl->tex_count; ++i) {
+    if (refl->texs[i].stage == stage && refl->texs[i].smp_slot > max_slot)
+      max_slot = refl->texs[i].smp_slot;
+  }
+  return (Uint32)(max_slot + 1);
+}
+
+static Uint32 refl_storage_buf_count(const ShaderReflection *refl,
+                                     SglShaderStage stage, bool readonly) {
+  int max_slot = -1;
+  if (!refl)
+    return 0;
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    if (refl->storage_bufs[i].stage == stage &&
+        refl->storage_bufs[i].readonly == readonly &&
+        refl->storage_bufs[i].slot > max_slot)
+      max_slot = refl->storage_bufs[i].slot;
+  }
+  return (Uint32)(max_slot + 1);
+}
+
+static Uint32 refl_storage_tex_count(const ShaderReflection *refl,
+                                     SglShaderStage stage, bool readonly) {
+  int max_slot = -1;
+  if (!refl)
+    return 0;
+  for (int i = 0; i < refl->storage_tex_count; ++i) {
+    if (refl->storage_texs[i].stage == stage &&
+        refl->storage_texs[i].readonly == readonly &&
+        refl->storage_texs[i].slot > max_slot)
+      max_slot = refl->storage_texs[i].slot;
+  }
+  return (Uint32)(max_slot + 1);
+}
+
 static BackendImage sg_make_image(const ImageDesc *d) {
   if (!g_app || !g_app->gpu_device) {
     SDL_Log("sg_make_image: no GPU device");
@@ -537,6 +598,7 @@ static BackendImage sg_make_image(const ImageDesc *d) {
   im->h = d->h;
   im->fmt = d->fmt;
   im->render_target = d->render_target;
+  im->storage = d->storage;
 
   SDL_GPUTextureFormat tfmt = sgl_to_sdl_texture_format(d->fmt);
   Uint32 usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
@@ -544,6 +606,9 @@ static BackendImage sg_make_image(const ImageDesc *d) {
     usage |= sgl_is_depth_format(d->fmt)
                  ? SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET
                  : SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+  }
+  if (d->storage) {
+    usage |= SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
   }
   im->tex = SDL_CreateGPUTexture(g_app->gpu_device,
                                  &(SDL_GPUTextureCreateInfo){
@@ -610,25 +675,34 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
     s->refl = *d->refl;
   // Compute path collapses shader+pipeline into SDL_GPUComputePipeline.
   if (d->cs_spirv) {
-    Uint32 n_rw_buf = 0, n_ro_buf = 0;
-    for (int i = 0; i < s->refl.storage_buf_count; ++i) {
-      if (s->refl.storage_bufs[i].readonly)
-        n_ro_buf++;
-      else
-        n_rw_buf++;
-    }
     s->compute_pip = SDL_CreateGPUComputePipeline(
         g_app->gpu_device, &(SDL_GPUComputePipelineCreateInfo){
                                .code = (const Uint8 *)d->cs_spirv,
                                .code_size = d->cs_bytes,
                                .entrypoint = "main",
                                .format = SDL_GPU_SHADERFORMAT_SPIRV,
-                               .num_samplers = 0,
-                               .num_readonly_storage_textures = 0,
-                               .num_readonly_storage_buffers = n_ro_buf,
-                               .num_readwrite_storage_textures = 0,
-                               .num_readwrite_storage_buffers = n_rw_buf,
-                               .num_uniform_buffers = (Uint32)s->refl.ub_count,
+                               .num_samplers =
+                                   refl_sampler_count(&s->refl,
+                                                      SGL_STAGE_COMPUTE),
+                               .num_readonly_storage_textures =
+                                   refl_storage_tex_count(&s->refl,
+                                                          SGL_STAGE_COMPUTE,
+                                                          true),
+                               .num_readonly_storage_buffers =
+                                   refl_storage_buf_count(&s->refl,
+                                                          SGL_STAGE_COMPUTE,
+                                                          true),
+                               .num_readwrite_storage_textures =
+                                   refl_storage_tex_count(&s->refl,
+                                                          SGL_STAGE_COMPUTE,
+                                                          false),
+                               .num_readwrite_storage_buffers =
+                                   refl_storage_buf_count(&s->refl,
+                                                          SGL_STAGE_COMPUTE,
+                                                          false),
+                               .num_uniform_buffers =
+                                   refl_uniform_count(&s->refl,
+                                                      SGL_STAGE_COMPUTE),
                                .threadcount_x = (Uint32)s->refl.workgroup[0],
                                .threadcount_y = (Uint32)s->refl.workgroup[1],
                                .threadcount_z = (Uint32)s->refl.workgroup[2],
@@ -653,10 +727,13 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
           .entrypoint = "main",
           .format = SDL_GPU_SHADERFORMAT_SPIRV,
           .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-          .num_uniform_buffers = (Uint32)(d->refl ? d->refl->ub_count : 0),
-          .num_storage_buffers = 0,
-          .num_storage_textures = 0,
-          .num_samplers = 0,
+          .num_uniform_buffers =
+              refl_uniform_count(d->refl, SGL_STAGE_VERTEX),
+          .num_storage_buffers =
+              refl_storage_buf_count(d->refl, SGL_STAGE_VERTEX, true),
+          .num_storage_textures =
+              refl_storage_tex_count(d->refl, SGL_STAGE_VERTEX, true),
+          .num_samplers = refl_sampler_count(d->refl, SGL_STAGE_VERTEX),
       });
   s->fs = SDL_CreateGPUShader(
       g_app->gpu_device,
@@ -666,10 +743,13 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
           .entrypoint = "main",
           .format = SDL_GPU_SHADERFORMAT_SPIRV,
           .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
-          .num_uniform_buffers = 0,
-          .num_storage_buffers = 0,
-          .num_storage_textures = 0,
-          .num_samplers = (Uint32)(d->refl ? d->refl->tex_count : 0),
+          .num_uniform_buffers =
+              refl_uniform_count(d->refl, SGL_STAGE_FRAGMENT),
+          .num_storage_buffers =
+              refl_storage_buf_count(d->refl, SGL_STAGE_FRAGMENT, true),
+          .num_storage_textures =
+              refl_storage_tex_count(d->refl, SGL_STAGE_FRAGMENT, true),
+          .num_samplers = refl_sampler_count(d->refl, SGL_STAGE_FRAGMENT),
       });
   if (!s->vs || !s->fs) {
     SDL_Log("sg_make_shader: shader create failed (vs=%p fs=%p): %s",
@@ -1047,14 +1127,19 @@ static void sg_apply_bindings(const BindingsDesc *b) {
   }
 }
 
-static void sg_apply_uniforms(int slot, const void *d, size_t b) {
+static void sg_apply_uniforms(SglShaderStage stage, int slot, const void *d,
+                              size_t b) {
   if (!g_app || !g_app->gpu_cmd)
     return;
-  // Current binding exposes vertex-stage uniform blocks. SDL_GPU per-stage
-  // layout maps VS uniform buffers to descriptor set 1; the slot here is the
-  // binding index within set 1 (matches ShaderUniformBlock.slot from
-  // reflection).
-  SDL_PushGPUVertexUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
+  if (stage == SGL_STAGE_FRAGMENT) {
+    SDL_PushGPUFragmentUniformData(g_app->gpu_cmd, (Uint32)slot, d,
+                                   (Uint32)b);
+  } else if (stage == SGL_STAGE_COMPUTE) {
+    SDL_PushGPUComputeUniformData(g_app->gpu_cmd, (Uint32)slot, d,
+                                  (Uint32)b);
+  } else {
+    SDL_PushGPUVertexUniformData(g_app->gpu_cmd, (Uint32)slot, d, (Uint32)b);
+  }
 }
 
 static void sg_draw(int base, int count, int instance_count) {
@@ -1097,31 +1182,97 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
       if (strcmp(d->refl->storage_bufs[k].name, d->storage_bufs[i].name) != 0)
         continue;
       if (d->refl->storage_bufs[k].readonly) {
-        if (n_ro < SGL_MAX_STORAGE_BUFS)
-          ro[n_ro++] = buf->gpu;
+        int slot = d->refl->storage_bufs[k].slot;
+        if (slot >= 0 && slot < SGL_MAX_STORAGE_BUFS) {
+          ro[slot] = buf->gpu;
+          if (slot + 1 > n_ro)
+            n_ro = slot + 1;
+        }
       } else {
-        if (n_rw < SGL_MAX_STORAGE_BUFS) {
-          rw[n_rw].buffer = buf->gpu;
-          rw[n_rw].cycle = true; // discard previous content
-          n_rw++;
+        int slot = d->refl->storage_bufs[k].slot;
+        if (slot >= 0 && slot < SGL_MAX_STORAGE_BUFS) {
+          rw[slot].buffer = buf->gpu;
+          rw[slot].cycle = true; // discard previous content
+          if (slot + 1 > n_rw)
+            n_rw = slot + 1;
         }
       }
       break;
     }
   }
-  SDL_GPUComputePass *cp =
-      SDL_BeginGPUComputePass(app->gpu_cmd, NULL, 0, rw, (Uint32)n_rw);
+  SDL_GPUStorageTextureReadWriteBinding rw_tex[SGL_MAX_STORAGE_TEXTURES] = {0};
+  SDL_GPUTexture *ro_tex[SGL_MAX_STORAGE_TEXTURES] = {0};
+  int n_rw_tex = 0, n_ro_tex = 0;
+  for (int i = 0; i < d->n_storage_textures; ++i) {
+    SgImage *img = (SgImage *)d->storage_textures[i].image;
+    if (!img || !img->tex || !d->storage_textures[i].name)
+      continue;
+    for (int k = 0; k < d->refl->storage_tex_count; ++k) {
+      if (strcmp(d->refl->storage_texs[k].name,
+                 d->storage_textures[i].name) != 0)
+        continue;
+      int slot = d->refl->storage_texs[k].slot;
+      if (slot < 0 || slot >= SGL_MAX_STORAGE_TEXTURES)
+        break;
+      if (d->refl->storage_texs[k].readonly) {
+        ro_tex[slot] = img->tex;
+        if (slot + 1 > n_ro_tex)
+          n_ro_tex = slot + 1;
+      } else {
+        rw_tex[slot].texture = img->tex;
+        rw_tex[slot].mip_level = 0;
+        rw_tex[slot].layer = 0;
+        rw_tex[slot].cycle = true;
+        if (slot + 1 > n_rw_tex)
+          n_rw_tex = slot + 1;
+      }
+      break;
+    }
+  }
+  SDL_GPUComputePass *cp = SDL_BeginGPUComputePass(
+      app->gpu_cmd, rw_tex, (Uint32)n_rw_tex, rw, (Uint32)n_rw);
   if (!cp) {
     SDL_Log("sg_dispatch: SDL_BeginGPUComputePass failed: %s", SDL_GetError());
     return;
   }
   SDL_BindGPUComputePipeline(cp, p->compute_gpu);
+  if (d->texture_count > 0) {
+    SDL_GPUTextureSamplerBinding tsb[SGL_MAX_TEXTURES] = {0};
+    int max_slot = -1;
+    for (int i = 0; i < d->texture_count; ++i) {
+      SgImage *img = (SgImage *)d->textures[i].image;
+      if (!img || !img->tex || !img->smp || !d->textures[i].name)
+        continue;
+      for (int k = 0; k < d->refl->tex_count; ++k) {
+        if (strcmp(d->refl->texs[k].name, d->textures[i].name) != 0)
+          continue;
+        int slot = d->refl->texs[k].smp_slot;
+        if (slot >= 0 && slot < SGL_MAX_TEXTURES) {
+          tsb[slot].texture = img->tex;
+          tsb[slot].sampler = img->smp;
+          if (slot > max_slot)
+            max_slot = slot;
+        }
+        break;
+      }
+    }
+    if (max_slot >= 0) {
+      SDL_BindGPUComputeSamplers(cp, 0, tsb, (Uint32)(max_slot + 1));
+    }
+  }
+  if (n_ro_tex > 0) {
+    SDL_BindGPUComputeStorageTextures(cp, 0, ro_tex, (Uint32)n_ro_tex);
+  }
   if (n_ro > 0) {
     SDL_BindGPUComputeStorageBuffers(cp, 0, ro, (Uint32)n_ro);
   }
-  if (d->uniform_slot >= 0 && d->uniform_data && d->uniform_bytes > 0) {
-    SDL_PushGPUComputeUniformData(app->gpu_cmd, (Uint32)d->uniform_slot,
-                                  d->uniform_data, (Uint32)d->uniform_bytes);
+  for (int i = 0; i < d->uniform_count; ++i) {
+    if (d->uniforms[i].slot >= 0 && d->uniforms[i].data &&
+        d->uniforms[i].bytes > 0) {
+      SDL_PushGPUComputeUniformData(app->gpu_cmd, (Uint32)d->uniforms[i].slot,
+                                    d->uniforms[i].data,
+                                    (Uint32)d->uniforms[i].bytes);
+    }
   }
   SDL_DispatchGPUCompute(cp, (Uint32)d->groups_x, (Uint32)d->groups_y,
                          (Uint32)d->groups_z);

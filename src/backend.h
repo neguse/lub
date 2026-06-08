@@ -31,6 +31,7 @@ typedef struct ImageDesc {
   SglFilter filter;   // 0 = default (LINEAR)
   SglWrap wrap;       // 0 = default (REPEAT)
   bool render_target; // true = usable as color attachment (no initial data)
+  bool storage;       // true = usable as compute storage texture output
 } ImageDesc;
 
 typedef struct ShaderDesc {
@@ -117,10 +118,23 @@ typedef struct ComputeDispatchDesc {
     const char *name; // matches ShaderStorageBuf.name
     BackendBuffer buf;
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
-  // Current Lua binding supplies at most one packed std140 uniform block.
-  int uniform_slot; // -1 if no uniforms
-  const void *uniform_data;
-  size_t uniform_bytes;
+  int texture_count;
+  struct {
+    const char *name; // matches ShaderTexture.name
+    BackendImage image;
+  } textures[SGL_MAX_TEXTURES];
+  int n_storage_textures;
+  struct {
+    const char *name; // matches ShaderStorageTexture.name
+    BackendImage image;
+  } storage_textures[SGL_MAX_STORAGE_TEXTURES];
+  int uniform_count;
+  struct {
+    SglShaderStage stage;
+    int slot;
+    const void *data;
+    size_t bytes;
+  } uniforms[SGL_MAX_UNIFORM_BLOCKS];
 } ComputeDispatchDesc;
 
 typedef struct RenderBackend {
@@ -151,7 +165,8 @@ typedef struct RenderBackend {
 
   void (*apply_pipeline)(BackendPipeline);
   void (*apply_bindings)(const BindingsDesc *);
-  void (*apply_uniforms)(int ub_slot, const void *data, size_t bytes);
+  void (*apply_uniforms)(SglShaderStage stage, int ub_slot, const void *data,
+                         size_t bytes);
   void (*draw)(int base, int count, int instance_count);
 
   // Compute dispatch (outside any render pass). The backend opens its own

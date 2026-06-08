@@ -4,9 +4,12 @@
 LUB_TEXTURE2D(scene);
 LUB_TEXTURE2D(lut);
 
+struct U { float4 params; }; // x=time, y=grain, z=lut mix, w=gamma
+ConstantBuffer<U> u;
+
 static const float LUT_N = 16.0;
 
-struct FSIn { float2 uv : TEXCOORD0; float4 params : TEXCOORD1; };
+struct FSIn { float2 uv : TEXCOORD0; };
 
 float hash12(float2 p) {
     float3 p3 = frac(float3(p.xyx) * 0.1031);
@@ -34,11 +37,11 @@ float4 fs_main(FSIn i) : SV_Target {
     float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;
 
     float3 graded = sample_lut(c);
-    c = lerp(c, graded, saturate(i.params.z));
+    c = lerp(c, graded, saturate(u.params.z));
 
-    float grain = hash12(i.uv * float2(1920.0, 1080.0) + i.params.x * 37.0) - 0.5;
-    c += grain * i.params.y;
+    float grain = hash12(i.uv * float2(1920.0, 1080.0) + u.params.x * 37.0) - 0.5;
+    c += grain * u.params.y;
 
-    c = pow(saturate(c), float3(1.0 / max(i.params.w, 0.001)));
+    c = pow(saturate(c), float3(1.0 / max(u.params.w, 0.001)));
     return float4(c, 1.0);
 }

@@ -1,4 +1,4 @@
-// Screen-space "toy" effects, selected by the mode forwarded from the VS.
+// Screen-space "toy" effects.
 //   0 passthrough   1 posterize   2 pixelize   3 chromatic aberration
 //   4 sharpen       5 dilation    6 normal      7 depth
 // All texture sampling is at uniform control flow; mode only selects between
@@ -6,12 +6,15 @@
 // derivatives undefined and crashes some drivers). Texel baked for 1280x720.
 LUB_TEXTURE2D(scene);
 
-struct FSIn { float2 uv : TEXCOORD0; float2 info : TEXCOORD1; };
+struct U { float4 params; }; // x=mode, y=amount
+ConstantBuffer<U> u;
+
+struct FSIn { float2 uv : TEXCOORD0; };
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    int mode = int(i.info.x + 0.5);
-    float amount = i.info.y;
+    int mode = int(u.params.x + 0.5);
+    float amount = u.params.y;
     float2 uv = i.uv;
     float2 t = float2(ddx(uv).x, ddy(uv).y); // texel auto-adapts to RT size
 

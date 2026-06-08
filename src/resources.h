@@ -27,6 +27,7 @@ typedef struct ResEntry {
       SglFilter filter;
       SglWrap wrap;
       bool is_target;
+      bool storage;
     } tex;
     struct {
       uintptr_t h;

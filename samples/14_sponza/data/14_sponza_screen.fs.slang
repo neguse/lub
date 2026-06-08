@@ -1,6 +1,9 @@
 LUB_TEXTURE2D(scene);
 
-struct FSIn { float2 uv : TEXCOORD0; float2 info : TEXCOORD1; };
+struct U { float4 params; }; // x=mode, y=amount
+ConstantBuffer<U> u;
+
+struct FSIn { float2 uv : TEXCOORD0; };
 
 float unpack_depth(float3 v) {
     return dot(v, float3(1.0, 1.0 / 255.0, 1.0 / 65025.0));
@@ -12,7 +15,7 @@ float3 srgb_to_linear(float3 c) {
 
 [shader("fragment")]
 float4 fs_main(FSIn i) : SV_Target {
-    int mode = int(i.info.x + 0.5);
+    int mode = int(u.params.x + 0.5);
     float4 center = LUB_SAMPLE_LOD(scene, i.uv);
     float3 c = center.rgb;
     float alpha = 0.0;
