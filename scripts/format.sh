@@ -5,6 +5,8 @@
 #
 #   clang-format     : C/C++ and Slang-as-HLSL (LLVM default)
 #   haxelib formatter: Haxe                    - `haxelib install formatter`
+#   stylua           : Lua                     - `npm --prefix web install`
+#   text normalize   : HXML                    - trim trailing spaces + final LF
 #   prettier         : Web TS/MJS/JSON/HTML    - `npm --prefix web install`
 #
 # Usage:
@@ -47,6 +49,8 @@ run_if_any() {
 mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp')
 mapfile -d '' HAXE_FILES < <(git_files 'haxe-lib/**/*.hx' 'samples/**/*.hx')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/**/*.slang' 'tests/**/*.slang')
+mapfile -d '' LUA_FILES < <(git_files '*.lua')
+mapfile -d '' HXML_FILES < <(git_files '*.hxml')
 mapfile -d '' WEB_FILES < <(git_files \
     'web/*.html' \
     'web/*.json' \
@@ -59,12 +63,41 @@ for f in "${HAXE_FILES[@]}"; do
     HAXE_ARGS+=(-s "$f")
 done
 
+normalize_text_files() {
+    local file
+    for file in "$@"; do
+        perl -0pi -e 's/[ \t]+$//mg; s/\z/\n/ unless /\n\z/' "$file"
+    done
+}
+
+check_text_files_normalized() {
+    local tmpdir file copy failed=0
+    tmpdir="$(mktemp -d)"
+
+    for file in "$@"; do
+        copy="$tmpdir/$file"
+        mkdir -p "$(dirname "$copy")"
+        cp "$file" "$copy"
+        normalize_text_files "$copy"
+        if ! cmp -s "$file" "$copy"; then
+            echo "$file needs text normalization" >&2
+            diff -u "$file" "$copy" >&2 || true
+            failed=1
+        fi
+    done
+
+    rm -rf "$tmpdir"
+    return "$failed"
+}
+
 if [[ $check -eq 1 ]]; then
     run_if_any C_FILES clang-format --dry-run --Werror
     if [[ ${#HAXE_ARGS[@]} -gt 0 ]]; then
         haxelib run formatter --check "${HAXE_ARGS[@]}"
     fi
     run_if_any SLANG_FILES clang-format --assume-filename=shader.hlsl --dry-run --Werror
+    run_if_any LUA_FILES env XDG_CONFIG_HOME=/nonexistent npx --prefix web stylua --no-editorconfig --check --verify
+    run_if_any HXML_FILES check_text_files_normalized
     run_if_any WEB_FILES npx --prefix web prettier --check
 else
     run_if_any C_FILES clang-format -i
@@ -72,5 +105,7 @@ else
         haxelib run formatter "${HAXE_ARGS[@]}"
     fi
     run_if_any SLANG_FILES clang-format --assume-filename=shader.hlsl -i
+    run_if_any LUA_FILES env XDG_CONFIG_HOME=/nonexistent npx --prefix web stylua --no-editorconfig --verify
+    run_if_any HXML_FILES normalize_text_files
     run_if_any WEB_FILES npx --prefix web prettier --write
 fi

@@ -23,6 +23,7 @@
     "codemirror": "^6.0.1"
   },
   "devDependencies": {
+    "@johnnymorganz/stylua-bin": "^2.5.2",
     "playwright": "^1.58.0",
     "pngjs": "^7.0.0",
     "prettier": "^3.8.3",
