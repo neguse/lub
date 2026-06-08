@@ -1,81 +1,201 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>lub playground</title>
-  <style>
-    /* fit the viewport with no page scrolling (100dvh handles the mobile
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lub playground</title>
+    <style>
+      /* fit the viewport with no page scrolling (100dvh handles the mobile
        address bar; panes scroll internally, the page never does). */
-    html, body { height: 100vh; height: 100dvh; overflow: hidden; }
-    body { margin: 0; display: grid; grid-template-columns: 1fr 1fr;
-           font-family: system-ui, sans-serif; background: #1d1f21; color: #ddd; }
-    #left, #right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-    #toolbar { padding: 6px 8px; background: #111; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    #toolbar select, #toolbar button { background: #222; color: #ddd; border: 1px solid #333; padding: 4px 8px; }
-    /* narrow screens (phones): stack vertically with the preview given more room. */
-    @media (max-width: 700px) {
-      body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr); }
-      #log { height: 90px; }
-    }
-    #tabs { display: flex; background: #181a1c; padding: 4px 4px 0 4px; gap: 4px; flex-wrap: wrap; }
-    .tab { padding: 4px 10px; background: #2a2d31; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 12px; }
-    .tab.active { background: #3a3d41; }
-    .tab.dirty::after { content: " *"; color: #fa0; }
-    #editor { flex: 1; overflow: auto; background: #282c34; }
-    #player-mount { flex: 1; display: flex; background: #000; }
-    iframe { flex: 1; border: 0; background: #000; }
-    #log { height: 150px; background: #0e0f10; color: #9f9; font-family: monospace; font-size: 12px;
-           overflow: auto; padding: 4px 8px; border-top: 1px solid #333; }
-    #log .err  { color: #f55; }
-    #log .warn { color: #fa0; }
-  </style>
-</head>
-<body>
-  <!-- Visible diagnostics: show JS errors and a WebGPU hint on the page itself
+      html,
+      body {
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+      }
+      body {
+        margin: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        font-family: system-ui, sans-serif;
+        background: #1d1f21;
+        color: #ddd;
+      }
+      #left,
+      #right {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+      #toolbar {
+        padding: 6px 8px;
+        background: #111;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      #toolbar select,
+      #toolbar button {
+        background: #222;
+        color: #ddd;
+        border: 1px solid #333;
+        padding: 4px 8px;
+      }
+      /* narrow screens (phones): stack vertically with the preview given more room. */
+      @media (max-width: 700px) {
+        body {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr);
+        }
+        #log {
+          height: 90px;
+        }
+      }
+      #tabs {
+        display: flex;
+        background: #181a1c;
+        padding: 4px 4px 0 4px;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .tab {
+        padding: 4px 10px;
+        background: #2a2d31;
+        cursor: pointer;
+        border-radius: 4px 4px 0 0;
+        font-size: 12px;
+      }
+      .tab.active {
+        background: #3a3d41;
+      }
+      .tab.dirty::after {
+        content: " *";
+        color: #fa0;
+      }
+      #editor {
+        flex: 1;
+        overflow: auto;
+        background: #282c34;
+      }
+      #player-mount {
+        flex: 1;
+        display: flex;
+        background: #000;
+      }
+      iframe {
+        flex: 1;
+        border: 0;
+        background: #000;
+      }
+      #log {
+        height: 150px;
+        background: #0e0f10;
+        color: #9f9;
+        font-family: monospace;
+        font-size: 12px;
+        overflow: auto;
+        padding: 4px 8px;
+        border-top: 1px solid #333;
+      }
+      #log .err {
+        color: #f55;
+      }
+      #log .warn {
+        color: #fa0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Visible diagnostics: show JS errors and a WebGPU hint on the page itself
        (a blank screen otherwise hides why nothing rendered, esp. on Safari). -->
-  <div id="fatal" style="display:none; position:fixed; top:0; left:0; right:0; z-index:9999;
-       max-height:50vh; background:#2a1414; color:#f99; font-family:monospace; font-size:13px;
-       padding:16px 20px; white-space:pre-wrap; overflow:auto; border-bottom:2px solid #f55;"></div>
-  <script>
-    (function () {
-      var box = document.getElementById('fatal')
-      function show(msg) {
-        if (!box) return
-        box.style.display = 'block'
-        box.textContent += msg + '\n'
-      }
-      window.addEventListener('error', function (e) {
-        show('JS error: ' + (e.message || e.error || e) +
-             (e.filename ? '  @ ' + e.filename + ':' + e.lineno : ''))
-      })
-      window.addEventListener('unhandledrejection', function (e) {
-        show('Promise rejection: ' + ((e.reason && e.reason.message) || e.reason))
-      })
-      if (!('gpu' in navigator)) {
-        show('WebGPU is not available in this browser.\n' +
-             'Use Chrome or Edge 137+, or Safari 18+ (Technology Preview may be needed).\n' +
-             'The editor below still loads; only the live preview needs WebGPU.')
-      }
-    })()
-  </script>
-  <div id="left">
-    <div id="toolbar">
-      <select id="sample-select"></select>
-      <select id="res-select" title="render resolution (smaller = faster)"></select>
-      <button id="restart-btn" title="restart player (Alt+R)">&#x21bb; Restart</button>
-      <span id="status" style="margin-left:auto; font-size:12px; opacity:0.7;"></span>
-      <a id="src-link" href="https://github.com/neguse/lub" target="_blank" rel="noopener"
-         title="Source. lub is MIT; the in-browser Haxe compiler is GPL-2.0-or-later (build patches in spike/patches/)."
-         style="margin-left:12px; font-size:12px; opacity:0.6; color:inherit;">src (MIT / Haxe GPLv2)</a>
+    <div
+      id="fatal"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        max-height: 50vh;
+        background: #2a1414;
+        color: #f99;
+        font-family: monospace;
+        font-size: 13px;
+        padding: 16px 20px;
+        white-space: pre-wrap;
+        overflow: auto;
+        border-bottom: 2px solid #f55;
+      "
+    ></div>
+    <script>
+      (function () {
+        var box = document.getElementById("fatal");
+        function show(msg) {
+          if (!box) return;
+          box.style.display = "block";
+          box.textContent += msg + "\n";
+        }
+        window.addEventListener("error", function (e) {
+          show(
+            "JS error: " +
+              (e.message || e.error || e) +
+              (e.filename ? "  @ " + e.filename + ":" + e.lineno : ""),
+          );
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          show(
+            "Promise rejection: " +
+              ((e.reason && e.reason.message) || e.reason),
+          );
+        });
+        if (!("gpu" in navigator)) {
+          show(
+            "WebGPU is not available in this browser.\n" +
+              "Use Chrome or Edge 137+, or Safari 18+ (Technology Preview may be needed).\n" +
+              "The editor below still loads; only the live preview needs WebGPU.",
+          );
+        }
+      })();
+    </script>
+    <div id="left">
+      <div id="toolbar">
+        <select id="sample-select"></select>
+        <select
+          id="res-select"
+          title="render resolution (smaller = faster)"
+        ></select>
+        <button id="restart-btn" title="restart player (Alt+R)">
+          &#x21bb; Restart
+        </button>
+        <span
+          id="status"
+          style="margin-left: auto; font-size: 12px; opacity: 0.7"
+        ></span>
+        <a
+          id="src-link"
+          href="https://github.com/neguse/lub"
+          target="_blank"
+          rel="noopener"
+          title="Source. lub is MIT; the in-browser Haxe compiler is GPL-2.0-or-later (build patches in spike/patches/)."
+          style="
+            margin-left: 12px;
+            font-size: 12px;
+            opacity: 0.6;
+            color: inherit;
+          "
+          >src (MIT / Haxe GPLv2)</a
+        >
+      </div>
+      <div id="tabs"></div>
+      <div id="editor"></div>
     </div>
-    <div id="tabs"></div>
-    <div id="editor"></div>
-  </div>
-  <div id="right">
-    <div id="player-mount"></div>
-    <div id="log"></div>
-  </div>
-  <script type="module" src="/playground/main.ts"></script>
-</body>
+    <div id="right">
+      <div id="player-mount"></div>
+      <div id="log"></div>
+    </div>
+    <script type="module" src="/playground/main.ts"></script>
+  </body>
 </html>

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 全ソースを各フォーマッタの「デフォルト設定」で整形する。
-# プロジェクト固有の設定ファイル (.clang-format / hxformat.json / .prettierrc)
-# は意図的に置かず、各ツール標準のスタイルに従う。
+# Format first-party source with each formatter's default style.
+# Project-specific config files (.clang-format / hxformat.json / .prettierrc)
+# are intentionally absent, so each tool's stock style is used.
 #
-#   clang-format     : C/C++  (LLVM default)
-#   haxelib formatter: Haxe   (default)        ← `haxelib install formatter`
-#   prettier         : Web TS (default)        ← web/ で `npm install`
+#   clang-format     : C/C++ and Slang-as-HLSL (LLVM default)
+#   haxelib formatter: Haxe                    - `haxelib install formatter`
+#   prettier         : Web TS/MJS/JSON/HTML    - `npm --prefix web install`
 #
 # Usage:
 #   scripts/format.sh            # 全部整形
@@ -14,16 +14,63 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 check=0
-[[ "${1:-}" == "--check" ]] && check=1
+case "${1:-}" in
+    --check) check=1 ;;
+    -h | --help)
+        sed -n '2,14p' "$0"
+        exit 0
+        ;;
+    "") ;;
+    *)
+        echo "unknown arg: $1" >&2
+        exit 2
+        ;;
+esac
 
-C_FILES=(src/*.c src/*.h src/*.cpp tests/c/*.c)
+git_files() {
+    git ls-files -z -- "$@" \
+        ':!:third_party/**' \
+        ':!:spike/**' \
+        ':!:web/dist/**' \
+        ':!:web/public/**' \
+        ':!:web/node_modules/**'
+}
+
+run_if_any() {
+    local -n files_ref=$1
+    shift
+    if [[ ${#files_ref[@]} -gt 0 ]]; then
+        "$@" "${files_ref[@]}"
+    fi
+}
+
+mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp')
+mapfile -d '' HAXE_FILES < <(git_files 'haxe-lib/**/*.hx' 'samples/**/*.hx')
+mapfile -d '' SLANG_FILES < <(git_files 'samples/**/*.slang' 'tests/**/*.slang')
+mapfile -d '' WEB_FILES < <(git_files \
+    'web/*.html' \
+    'web/*.json' \
+    'web/*.ts' \
+    'web/playground/**/*.ts' \
+    'web/scripts/**/*.mjs')
+
+HAXE_ARGS=()
+for f in "${HAXE_FILES[@]}"; do
+    HAXE_ARGS+=(-s "$f")
+done
 
 if [[ $check -eq 1 ]]; then
-    clang-format --dry-run --Werror "${C_FILES[@]}"
-    haxelib run formatter --check -s samples -s haxe-lib
-    ( cd web && npx prettier --check 'playground/**/*.ts' vite.config.ts )
+    run_if_any C_FILES clang-format --dry-run --Werror
+    if [[ ${#HAXE_ARGS[@]} -gt 0 ]]; then
+        haxelib run formatter --check "${HAXE_ARGS[@]}"
+    fi
+    run_if_any SLANG_FILES clang-format --assume-filename=shader.hlsl --dry-run --Werror
+    run_if_any WEB_FILES npx --prefix web prettier --check
 else
-    clang-format -i "${C_FILES[@]}"
-    haxelib run formatter -s samples -s haxe-lib
-    ( cd web && npx prettier --write 'playground/**/*.ts' vite.config.ts )
+    run_if_any C_FILES clang-format -i
+    if [[ ${#HAXE_ARGS[@]} -gt 0 ]]; then
+        haxelib run formatter "${HAXE_ARGS[@]}"
+    fi
+    run_if_any SLANG_FILES clang-format --assume-filename=shader.hlsl -i
+    run_if_any WEB_FILES npx --prefix web prettier --write
 fi

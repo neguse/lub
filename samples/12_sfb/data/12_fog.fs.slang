@@ -8,13 +8,15 @@ static const float FOG_START = 4.0;
 static const float FOG_END = 15.0;
 static const float3 FOG_COLOR = float3(0.09, 0.12, 0.15);
 
-struct FSIn { float2 uv : TEXCOORD0; };
+struct FSIn {
+  float2 uv : TEXCOORD0;
+};
 
-[shader("fragment")]
-float4 fs_main(FSIn i) : SV_Target {
-    float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;
-    float d = LUB_SAMPLE_LOD(gpos, i.uv).z;
-    if (d <= 0.0001) return float4(c, 1.0);
-    float f = saturate((d - FOG_START) / (FOG_END - FOG_START));
-    return float4(lerp(c, FOG_COLOR, f), 1.0);
+[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
+  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;
+  float d = LUB_SAMPLE_LOD(gpos, i.uv).z;
+  if (d <= 0.0001)
+    return float4(c, 1.0);
+  float f = saturate((d - FOG_START) / (FOG_END - FOG_START));
+  return float4(lerp(c, FOG_COLOR, f), 1.0);
 }
