@@ -8,6 +8,8 @@ let mainClass = "";
 let entryKey = "";
 let lastLua: string | null = null;
 let syncTimer: number | null = null;
+const pendingSyncPaths = new Set<string>();
+let syncInFlight = false;
 
 const $sample = document.querySelector<HTMLSelectElement>("#sample-select")!;
 const $res = document.querySelector<HTMLSelectElement>("#res-select")!;
@@ -84,7 +86,8 @@ window.addEventListener("message", (e) => {
 
 attachEditor(
   document.querySelector<HTMLDivElement>("#editor")!,
-  (_path, _content) => {
+  (path, _content) => {
+    pendingSyncPaths.add(path);
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = window.setTimeout(syncDirtyNow, 300);
   },
@@ -125,6 +128,10 @@ async function compileCurrent(): Promise<string | null> {
 async function loadCompileRun(name: string) {
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = null;
+  pendingSyncPaths.clear();
+  lastLua = null;
   let src;
   try {
     src = await loadSampleSource(name);
@@ -177,24 +184,50 @@ async function restart() {
 
 /** debounce 後の同期: .hx 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
 async function syncDirtyNow() {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = null;
+  if (syncInFlight) return;
   if (!playerIframe?.contentWindow) return;
-  const dirty = [...getFiles()].filter(([, f]) => f.dirty);
-  if (dirty.length === 0) return;
-
-  const haxeDirty = dirty.some(([p]) => isHaxeSource(p));
-  const files: Record<string, string> = {};
-
-  if (haxeDirty) {
-    const lua = await compileCurrent();
-    if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
-    lastLua = lua;
-    files[entryKey] = lua;
+  const paths = [...pendingSyncPaths];
+  if (paths.length === 0) return;
+  const changed = [];
+  for (const p of paths) {
+    const f = getFiles().get(p);
+    if (f) changed.push([p, f] as const);
+    else pendingSyncPaths.delete(p);
   }
-  for (const [p, f] of dirty) if (!isHaxeSource(p)) files[p] = f.content; // data files
+  if (changed.length === 0) {
+    return;
+  }
 
-  if (Object.keys(files).length === 0) return;
-  playerIframe.contentWindow.postMessage({ type: "syncFiles", files }, "*");
-  $status.textContent = `synced ${Object.keys(files).length} file(s)`;
+  const snapshot = new Map(changed.map(([p, f]) => [p, f.content]));
+  syncInFlight = true;
+  try {
+    const haxeChanged = changed.some(([p]) => isHaxeSource(p));
+    const files: Record<string, string> = {};
+
+    if (haxeChanged) {
+      const lua = await compileCurrent();
+      if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
+      lastLua = lua;
+      files[entryKey] = lua;
+    }
+    for (const [p, f] of changed) if (!isHaxeSource(p)) files[p] = f.content; // data files
+
+    if (Object.keys(files).length === 0) return;
+    playerIframe.contentWindow.postMessage({ type: "syncFiles", files }, "*");
+    for (const [p, content] of snapshot) {
+      const current = getFiles().get(p);
+      if (!current || current.content === content) pendingSyncPaths.delete(p);
+    }
+    $status.textContent = `synced ${Object.keys(files).length} file(s)`;
+  } finally {
+    syncInFlight = false;
+  }
+
+  if (pendingSyncPaths.size > 0) {
+    syncTimer = window.setTimeout(syncDirtyNow, 300);
+  }
 }
 
 function addLog(msg: string, level = "log") {

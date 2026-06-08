@@ -12,6 +12,7 @@ let view: EditorView | null = null;
 let files = new Map<string, EditorFile>();
 let activePath: string | null = null;
 let onChangeCb: ((path: string, content: string) => void) | null = null;
+let suppressChange = false;
 
 // アクティブタブの拡張子に応じて言語を差し替えるための Compartment。
 const langComp = new Compartment();
@@ -55,7 +56,8 @@ export function attachEditor(
         ".cm-scroller": { overflow: "auto" },
       }),
       EditorView.updateListener.of((u) => {
-        if (!u.docChanged || !activePath || !onChangeCb) return;
+        if (suppressChange || !u.docChanged || !activePath || !onChangeCb)
+          return;
         const content = u.state.doc.toString();
         const f = files.get(activePath);
         if (!f) return;
@@ -98,10 +100,15 @@ export function setFiles(newFiles: Map<string, EditorFile>) {
   rebuildTabs();
   if (view && activePath) {
     const f = files.get(activePath)!;
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: f.content },
-      effects: langComp.reconfigure(langFor(activePath)),
-    });
+    suppressChange = true;
+    try {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: f.content },
+        effects: langComp.reconfigure(langFor(activePath)),
+      });
+    } finally {
+      suppressChange = false;
+    }
   }
 }
 
@@ -113,9 +120,14 @@ export function selectTab(path: string) {
   const f = files.get(path);
   if (!f || !view) return;
   activePath = path;
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: f.content },
-    effects: langComp.reconfigure(langFor(path)),
-  });
+  suppressChange = true;
+  try {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: f.content },
+      effects: langComp.reconfigure(langFor(path)),
+    });
+  } finally {
+    suppressChange = false;
+  }
   rebuildTabs();
 }

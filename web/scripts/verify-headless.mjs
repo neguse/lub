@@ -9,12 +9,14 @@
 //   2. Shader edit. Patch the fragment colour literal in the .fs.slang tab,
 //      wait one debounce window + frame, assert the orange triangle is no
 //      longer orange-ish (we recolour it green-ish).
-//   3. Haxe source edit. Patch the `clear_color` literal in the Triangle01.hx
+//   3. Shader revert. Restore the original .fs.slang content and assert it
+//      syncs even though the tab's dirty bit turns off.
+//   4. Haxe source edit. Patch the `clear_color` literal in the Triangle01.hx
 //      tab; the client-only wasm Haxe compiler regenerates the .lua and syncs
 //      it. Wait, assert the background is no longer the dark blue clear.
-//   4. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
+//   5. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
 //      the pixel footprint of the drawn shape shrank.
-//   5. All-samples render sanity. For each sample 01..10 switch via the
+//   6. All-samples render sanity. For each sample 01..10 switch via the
 //      dropdown, wait for the iframe to relaunch + compile, screenshot
 //      and assert the canvas isn't uniformly black.
 //
@@ -207,6 +209,10 @@ if (!check('A1 initial render (orange triangle)',
 
 const greenShader =
   '[shader("fragment")]\nfloat4 fs_main() : SV_Target { return float4(0.0, 0.9, 0.2, 1.0); }\n'
+const originalShader = fs.readFileSync(
+  path.resolve('..', 'samples', '01_triangle', 'data', '01_triangle.fs.slang'),
+  'utf8'
+)
 
 try {
   await selectTabAndReplace('01_triangle/data/01_triangle.fs.slang', greenShader)
@@ -224,6 +230,35 @@ try {
   }
 } catch (e) {
   console.error('[verify] A2 threw', e.message)
+  failures++
+}
+
+// ===== Test A2b: shader revert ============================================
+// Restore the file to its pristine content. This specifically checks the
+// regression where main.ts only synced dirty files; reverting to the original
+// content cleared the dirty bit, so the player kept running the edited shader.
+
+try {
+  await selectTabAndReplace(
+    '01_triangle/data/01_triangle.fs.slang',
+    originalShader
+  )
+  await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
+  const shot02b = await takeShot('02b_shader_revert.png')
+  const c2b = classify(shot02b)
+  console.log('[verify] A2b buckets', c2b)
+  const orangeReturned = (c2b.orangeish / c2b.total) > 0.005
+  const greenGone = (c2b.greenish / c2b.total) < 0.001
+  if (!check(
+    'A2b shader revert (orange fragment)',
+    orangeReturned && greenGone,
+    `orange ${(c2b.orangeish/c2b.total).toFixed(4)}, green ${(c2b.greenish/c2b.total).toFixed(4)}`
+  )) {
+    failures++
+  }
+  await selectTabAndReplace('01_triangle/data/01_triangle.fs.slang', greenShader)
+} catch (e) {
+  console.error('[verify] A2b threw', e.message)
   failures++
 }
 
