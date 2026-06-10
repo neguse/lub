@@ -1,0 +1,3 @@
+-cp samples/16_box2d
+-lib lub
+-main Box2d16

@@ -91,6 +91,22 @@ run git diff --cached --check
 
 run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
+run_timed bash scripts/build-release.sh --target lub_haxe_build_smoke --no-configure
+run_timed ./build-release-linux/lub_haxe_build_smoke
+run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
+run_timed ./build-release-linux/lub_physics_box2d_smoke
+physics_lua_tests=(
+  tests/lua/test_physics_box2d.lua
+  tests/lua/test_physics_box2d_phase2.lua
+  tests/lua/test_physics_box2d_phase3.lua
+  tests/lua/test_physics_box2d_debug.lua
+  tests/lua/test_physics_box2d_joints.lua
+  tests/lua/test_physics_box2d_callbacks.lua
+  tests/lua/test_physics_box2d_lifetime.lua
+)
+for physics_lua_test in "${physics_lua_tests[@]}"; do
+  run_timed scripts/run-headless.sh "$native_binary" "$physics_lua_test"
+done
 run_timed env BINARY="$native_binary" scripts/run-golden.sh
 
 if [[ -f "$HOME/emsdk/emsdk_env.sh" ]]; then

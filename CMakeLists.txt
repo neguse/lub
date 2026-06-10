@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.22)
 project(lub C CXX)
 
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,6 +39,21 @@ FetchContent_Declare(
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(lua)
+
+# Box2D v3 is C17. Only the library is used; the upstream sample/test/benchmark
+# applications are intentionally disabled because lub exposes its own Lua/Haxe
+# sample surface.
+set(BOX2D_SAMPLES OFF CACHE BOOL "" FORCE)
+set(BOX2D_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(BOX2D_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(BOX2D_DOCS OFF CACHE BOOL "" FORCE)
+set(BOX2D_COMPILE_WARNING_AS_ERROR OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  box2d
+  GIT_REPOSITORY https://github.com/erincatto/box2d.git
+  GIT_TAG v3.1.1
+)
+FetchContent_MakeAvailable(box2d)
 
 # Lua は素の Makefile なので、ソースを集めて static lib を作る
 file(GLOB LUA_SRC CONFIGURE_DEPENDS ${lua_SOURCE_DIR}/src/*.c)
@@ -117,6 +132,7 @@ set(LUB_SOURCES
   src/profile.c
   src/gpu_stats.c
   src/resources.c
+  src/physics_box2d.c
   src/shader.cpp
   src/pipeline.c
   src/capture.c
@@ -150,6 +166,7 @@ endif()
 target_link_libraries(lub PRIVATE
   SDL3::SDL3
   lua_static
+  box2d
 )
 if(NOT LUB_WASM)
   target_link_libraries(lub PRIVATE
@@ -281,4 +298,18 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_haxe_build_smoke PRIVATE SDL3::SDL3)
   target_include_directories(lub_haxe_build_smoke PRIVATE src)
+
+  add_executable(lub_physics_box2d_smoke
+    tests/c/physics_box2d_smoke.c
+    src/physics_box2d.c
+  )
+  target_link_libraries(lub_physics_box2d_smoke PRIVATE
+    SDL3::SDL3
+    lua_static
+    box2d
+  )
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(lub_physics_box2d_smoke PRIVATE m dl)
+  endif()
+  target_include_directories(lub_physics_box2d_smoke PRIVATE src)
 endif()

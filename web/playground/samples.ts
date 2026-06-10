@@ -21,6 +21,7 @@ export const SAMPLE_NAMES = [
   "13_sprites",
   "14_sponza",
   "15_render_primitives",
+  "16_box2d",
 ];
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan

@@ -20,7 +20,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb)
+SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d)
 VISUAL_TESTS=(indexed_draw)
 BACKENDS=(sokol sdlgpu)
 FRAME=30
@@ -76,13 +76,17 @@ check_entry() {
     local entry="$2"
     local golden_name="$3"
     local backend="$4"
+    local frame="$FRAME"
+    case "$golden_name" in
+        16_box2d) frame=120 ;;
+    esac
 
     local out="$tmpdir/${golden_name}_${backend}.png"
     local golden="$GOLDEN_DIR/${golden_name}_${backend}.png"
     local log="$tmpdir/${golden_name}_${backend}.log"
 
     if ! LUB_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
-        "$entry" --capture "$out" --capture-frame "$FRAME" \
+        "$entry" --capture "$out" --capture-frame "$frame" \
         >"$log" 2>&1; then
         echo "FAIL ${label} ${backend}: process failed (see $log)"
         fail=$((fail + 1))

@@ -177,7 +177,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate;
   (void)result;
   lua_ctx_call_quit(&g_app.lua);
-  lua_ctx_shutdown(&g_app.lua);
   app_shutdown(&g_app);
+  lua_ctx_shutdown(&g_app.lua);
   SDL_Quit();
 }

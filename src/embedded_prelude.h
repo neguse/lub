@@ -4,7 +4,7 @@
 // Haxe -lua の出力に prepend する shim。
 // (1) lub runtime は Lua 5.5 (utf8 built-in) だが、Haxe lua target が
 //     require("lua-utf8") を出す前提なので alias を貼っておく。
-// (2) Haxe extern (lub.Lub / lub.Gfx / lub.Input / lub.Sys) は
+// (2) Haxe extern (lub.Lub / lub.Gfx / lub.Phys2d / lub.Input / lub.Sys) は
 //     class-qualified call (e.g. lub.Gfx.begin_pass) を emit するが、
 //     lub C 側は global function (begin_pass) として expose しているので、
 //     globals を namespace table に集約してギャップを埋める。
@@ -62,6 +62,25 @@ static const char HAXE_PRELUDE[] =
     "  LINES = LINES, LINE_STRIP = LINE_STRIP, POINTS = POINTS,\n"
     "  LINEAR = LINEAR, NEAREST = NEAREST, REPEAT = REPEAT, CLAMP = CLAMP,\n"
     "}\n"
+    "do local P={}\n"
+    "for _,n in "
+    "ipairs({'world','begin','world_info','body','box','circle','capsule',"
+    "'segment','polygon','chain','chain_segments',"
+    "'joint','joint_info','joint_force','joint_torque','joint_angle',"
+    "'joint_translation','joint_speed','joint_length','joint_motor_force',"
+    "'joint_motor_torque','joint_set_motor','joint_set_limit',"
+    "'joint_set_spring','joint_set_target','step','pose','velocity','mass',"
+    "'center','world_point','local_point','velocity_at','body_shapes',"
+    "'body_joints','body_contacts','shape_test_point','shape_raycast',"
+    "'shape_closest_point','shape_aabb','shape_info','shape_set_material',"
+    "'shape_set_filter','shape_set_events','contacts','body_events','sensors',"
+    "'raycast','overlap_aabb','shape_cast','cast_mover','collide_mover',"
+    "'explode','debug','profile','counters','add_force','add_force_center',"
+    "'add_impulse','add_impulse_center','add_torque','add_angular_impulse',"
+    "'set_velocity','teleport','set_target','set_mass_data'}) do "
+    "P['phys2d_'..n]=_G['phys2d_'..n] "
+    "end\n"
+    "P.STATIC=STATIC;P.KINEMATIC=KINEMATIC;P.DYNAMIC=DYNAMIC;lub.Phys2d=P end\n"
     "lub.Input = { key_down = key_down, mouse_delta = mouse_delta,\n"
     "  mouse_down = mouse_down }\n"
     "lub.Profiler = { enabled = profile_enabled,\n"

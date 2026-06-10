@@ -1,0 +1,101 @@
+local M = {}
+
+local frame = 0
+
+local function fail(message)
+	print("PHYS2D_DEBUG_FAIL " .. message)
+	os.exit(1, true)
+end
+
+function M.onInit()
+	config({ backend = os.getenv("LUB_BACKEND") or "sokol", width = 320, height = 180 })
+end
+
+function M.onFrame()
+	frame = frame + 1
+
+	local world = phys2d_world("debug", {
+		gravity = { x = 0, y = -10 },
+		fixed_dt = 1 / 60,
+		substeps = 4,
+		max_steps = 1,
+	})
+	world:begin()
+
+	local ground = world:body("ground", {
+		type = STATIC,
+		initial = { x = 0, y = -1 },
+	})
+	ground:box("box", { hx = 2, hy = 0.1, density = 0 })
+	ground:segment("rail", { ax = -2, ay = 0.3, bx = 2, by = 0.3 })
+
+	local ball = world:body("ball", {
+		type = DYNAMIC,
+		initial = { x = -0.5, y = 1 },
+	})
+	ball:circle("circle", { r = 0.2, density = 1 })
+
+	local capsule_body = world:body("capsule", {
+		type = DYNAMIC,
+		initial = { x = 0.6, y = 1.2 },
+	})
+	capsule_body:capsule("capsule", {
+		ax = -0.2,
+		ay = 0,
+		bx = 0.2,
+		by = 0,
+		r = 0.1,
+		density = 1,
+	})
+
+	world:step(1 / 60)
+
+	local dbg = world:debug_draw({ shapes = true, bounds = true, mass = true })
+	if type(dbg) ~= "table" then
+		fail("debug result missing")
+	end
+	if #dbg.polygons < 10 then
+		fail("expected polygon data, got " .. tostring(#dbg.polygons))
+	end
+	if #dbg.circles < 7 then
+		fail("expected circle data, got " .. tostring(#dbg.circles))
+	end
+	if #dbg.capsules < 9 then
+		fail("expected capsule data, got " .. tostring(#dbg.capsules))
+	end
+	if #dbg.segments < 8 then
+		fail("expected segment data, got " .. tostring(#dbg.segments))
+	end
+	local profile = world:profile()
+	if type(profile.step) ~= "number" or profile.step < 0 then
+		fail("profile step missing")
+	end
+	local counters = world:counters()
+	if counters.body_count < 3 then
+		fail("expected body counters, got " .. tostring(counters.body_count))
+	end
+	if counters.shape_count < 4 then
+		fail("expected shape counters, got " .. tostring(counters.shape_count))
+	end
+
+	begin_pass({ target = main_tex, clear_color = { 0.01, 0.015, 0.02, 1.0 } })
+	end_pass()
+
+	print(
+		"PHYS2D_DEBUG_OK polygons="
+			.. #dbg.polygons
+			.. " circles="
+			.. #dbg.circles
+			.. " capsules="
+			.. #dbg.capsules
+			.. " segments="
+			.. #dbg.segments
+			.. " bodies="
+			.. counters.body_count
+			.. " shapes="
+			.. counters.shape_count
+	)
+	quit()
+end
+
+return M

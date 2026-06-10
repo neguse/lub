@@ -18,6 +18,14 @@ Haxe からは型付き extern で同じ API を呼べるようにする設計�
   実装時は `v3.1.1` tag の header を source of truth にし、設計上の API 名確認は
   3.1.0 docs を参照する。
 - Box2D v3 は portable C17。world/body/shape/joint は opaque id で扱う C API。
+- Box2D samples app は GLFW / imgui / enkiTS を使う demo/test framework。Box2D library
+  本体の一部ではなく、Box2D library 自体は renderer-agnostic。
+- `v3.1.1` の upstream `samples/` は `sample_bodies.cpp` / `sample_shapes.cpp` /
+  `sample_stacking.cpp` / `sample_events.cpp` / `sample_joints.cpp` /
+  `sample_character.cpp` / `sample_world.cpp` / `sample_benchmark.cpp` などに分かれる。
+  `lub` ではこの framework を移植せず、scenario behavior を Haxe sample として再実装する。
+- Upstream Box2D source and samples are MIT licensed。コードやデータを実質的に copy する場合は
+  copyright/SPDX 表記と license notice を保持する。
 - World は `b2CreateWorld` / `b2DestroyWorld` / `b2World_Step` が基本操作。
 - Body は `b2DefaultBodyDef` で definition を作って `b2CreateBody` する。definition は
   copied される。
@@ -44,6 +52,9 @@ References:
 - https://box2d.org/documentation/group__body.html
 - https://box2d.org/documentation/group__shape.html
 - https://box2d.org/documentation/group__geometry.html
+- https://box2d.org/documentation/samples.html
+- https://github.com/erincatto/box2d/tree/v3.1.1/samples
+- https://raw.githubusercontent.com/erincatto/box2d/v3.1.1/LICENSE
 - https://raw.githubusercontent.com/erincatto/box2d/v3.1.1/CMakeLists.txt
 
 ## 2. Goals / Non-Goals
@@ -90,7 +101,7 @@ thin binding で進めると `lub` の hot reload / immediate declaration / dete
 | Motors / limits / targets | revolute/prismatic などは runtime tuning 項目が多く、create-only field と mutable field が混ざる。 | joint descriptor を fingerprint し、safe mutable fields は setter、unsafe field は recreate。Phase 1 body/shape と同じ差分更新規則を joint にも適用する。 |
 | Contact/filter/pre-solve callbacks | Box2D callback は返り値で collision / contact solve を即時決定する。step 後 queue では遅い。一方で callback 中の world mutation は Box2D contract 違反。 | `phys2d_world(... { callbacks = ... })` の world declaration field として expose する。毎フレーム差し直し、未指定なら解除。callback へ渡すのは immutable view、callback 内 mutation は禁止。 |
 | Friction/restitution callbacks | v3.1 は material id と mixing callback を持つが、callback に context pointer がない。worker thread から呼ばれる前提でもある。 | Lua mixer を使う world は single-thread step に固定する。C trampoline は固定し、step 中だけ current world の Lua ref を参照する。isolated/thread-safe callback は future advanced。 |
-| Character mover | `b2World_CastMover` / plane solve 系は rigid body とは別の controller API。world callback から複数 plane を集め、gameplay 側で解く必要がある。 | `phys2d_mover_cast` のような snapshot API として別 namespace/phase に分ける。body immediate API に混ぜない。 |
+| Character mover | `b2World_CastMover` / plane solve 系は rigid body とは別の controller API。world callback から複数 plane を集め、gameplay 側で解く必要がある。 | `phys2d_cast_mover` / `phys2d_collide_mover` のような snapshot API として別 namespace/phase に分ける。body immediate API に混ぜない。 |
 | Chain / terrain | chain shape は大量の vertices と per-segment material を持つ。毎フレーム Lua table で宣言すると重いし、少しの差分で whole chain recreate になる。 | `phys2d_chain(body, key, points, version, opts)` のように explicit `version` を持たせ、points が変わらない限り C 側 shape を再利用する。 |
 | Large queries | overlap/raycast/shape cast は callback の返り値で traversal 継続、無視、停止、clip を決める。collect だけだと `closest / any / n hits` を user が組みにくい。 | query function の optional visitor と collect result の両方を用意する。visitor は呼び出し中だけ有効で retained しない。collect result は bounded array + stable sort。 |
 | Event identity | end contact / end sensor は shape/body destroy に伴って出ることがあり、Box2D id validation に失敗する場合がある。 | event snapshot には user key の tombstone copy を持つ。`valid=false` を返せる schema にする。 |
@@ -154,6 +165,7 @@ Lua globals は既存 API と同じく snake_case の global function にする�
 ```lua
 phys2d_world()
 phys2d_begin()
+phys2d_world_info()
 phys2d_body()
 phys2d_box()
 phys2d_circle()
@@ -161,24 +173,62 @@ phys2d_capsule()
 phys2d_segment()
 phys2d_polygon()
 phys2d_chain()
+phys2d_chain_segments()
 phys2d_joint()
+phys2d_joint_info()
+phys2d_joint_force()
+phys2d_joint_torque()
+phys2d_joint_angle()
+phys2d_joint_translation()
+phys2d_joint_speed()
+phys2d_joint_length()
+phys2d_joint_motor_force()
+phys2d_joint_motor_torque()
+phys2d_joint_set_motor()
+phys2d_joint_set_limit()
+phys2d_joint_set_spring()
+phys2d_joint_set_target()
 phys2d_step()
 phys2d_pose()
+phys2d_velocity()
+phys2d_mass()
+phys2d_center()
+phys2d_world_point()
+phys2d_local_point()
+phys2d_velocity_at()
+phys2d_body_shapes()
+phys2d_body_joints()
+phys2d_body_contacts()
+phys2d_shape_test_point()
+phys2d_shape_raycast()
+phys2d_shape_closest_point()
+phys2d_shape_aabb()
+phys2d_shape_info()
+phys2d_shape_set_material()
+phys2d_shape_set_filter()
+phys2d_shape_set_events()
 phys2d_add_force()
 phys2d_add_force_center()
 phys2d_add_impulse()
 phys2d_add_impulse_center()
 phys2d_add_torque()
+phys2d_add_angular_impulse()
 phys2d_set_velocity()
 phys2d_teleport()
 phys2d_set_target()
+phys2d_set_mass_data()
 phys2d_contacts()
 phys2d_sensors()
 phys2d_body_events()
 phys2d_raycast()
 phys2d_overlap_aabb()
 phys2d_shape_cast()
+phys2d_cast_mover()
+phys2d_collide_mover()
+phys2d_explode()
 phys2d_debug()
+phys2d_profile()
+phys2d_counters()
 ```
 
 Returned refs may also expose method sugar through Lua metatables:
@@ -504,6 +554,9 @@ local b = phys2d_body(world, "enemy:42", {
   type = DYNAMIC,
   fixed_rotation = true,
   bullet = false,
+  enabled = true,
+  sleep = true,
+  sleep_threshold = 0.05,
   gravity_scale = 1,
   linear_damping = 0,
   angular_damping = 0,
@@ -532,6 +585,9 @@ Creation uses `b2DefaultBodyDef`, then fills fields. Runtime changes use setters
 - type -> `b2Body_SetType`
 - fixed rotation -> `b2Body_SetFixedRotation`
 - bullet -> `b2Body_SetBullet`
+- enabled -> `b2Body_Enable` / `b2Body_Disable`
+- sleep -> `b2Body_EnableSleep`
+- sleep threshold -> `b2Body_SetSleepThreshold`
 - gravity scale / damping -> Box2D body setters
 - awake -> `b2Body_SetAwake`
 
@@ -622,8 +678,10 @@ filter = { category_bits = "0x0000000000000008",
 ```
 
 Shape geometry, sensor flag, and filter are constructor state. If their explicit `version` or fallback
-constructor hash changes, the runtime destroys and recreates the shape. Material changes can be applied
-by setters where cheap; otherwise Phase 1 may also recreate the shape and call mass update.
+constructor hash changes, the runtime destroys and recreates the shape. Material fields and event flags
+(`contact`, `hit`, `sensor_events`, `pre_solve`) are runtime state: repeated declarations update them
+on the existing shape, and the explicit `shape:set_material`, `shape:set_filter`, and
+`shape:set_events` helpers are available when code wants to mutate a live `ShapeRef` directly.
 
 `tag` and string `material` are lub metadata. Box2D does not interpret them. They exist so filter,
 pre-solve, query, and event code can make decisions without raw ids. Numeric `material` may additionally
@@ -682,8 +740,11 @@ local hinge = phys2d_joint(world, "door:hinge", {
 })
 
 hinge:set_motor({ speed = target_speed, max_torque = 12 })
+hinge:set_limit({ enabled = true, lower = -1.2, upper = 1.2 })
+hinge:set_spring({ enabled = true, hertz = 2, damping_ratio = 0.7 })
 local angle = hinge:angle()
 local torque = hinge:motor_torque()
+local info = hinge:info()
 ```
 
 Constructor/version state:
@@ -705,6 +766,12 @@ Runtime tuning state:
 
 Changing constructor state requires a version bump and recreates the joint. Runtime tuning uses joint
 setters and preserves solver state where Box2D supports it.
+
+Initial implementation covers `distance`, `filter`, `motor`, `mouse`, `prismatic`, `revolute`,
+`weld`, and `wheel` creation through `phys2d_joint`. `body:joints()` returns snapshot views with
+`joint`, `type`, `a`, `b`, and `valid`. Joint readback exposes `info`, `force`, `torque`, and
+type-specific helpers such as `angle`, `translation`, `speed`, `length`, `motor_force`, and
+`motor_torque`.
 
 ### Commands
 
@@ -731,7 +798,7 @@ Steps the world using an accumulator.
 
 ```lua
 local info = phys2d_step(world, dt)
--- { steps = 1, alpha = 0.35, body_events = 12, contact_begins = 2 }
+-- { steps = 1, commands = 3, alpha = 0.35, body_events = 12, contact_begins = 2 }
 ```
 
 Rules:
@@ -739,6 +806,8 @@ Rules:
 - `dt` is real frame delta in seconds.
 - fixed step is `world.fixed_dt`.
 - number of Box2D steps is clamped by `max_steps`.
+- queued body commands are applied once after prune and before the first Box2D step; commands whose
+  body key no longer resolves to a live body are dropped.
 - if clamped, leftover accumulator is dropped and `info.dropped = true`.
 - return value is a small table useful for diagnostics, not required for gameplay.
 
@@ -746,18 +815,39 @@ Rules:
 
 ```lua
 local p = body:pose()
--- { x = ..., y = ..., angle = ..., vx = ..., vy = ..., w = ..., awake = true }
+-- { x = ..., y = ..., angle = ..., vx = ..., vy = ..., w = ..., awake = true, enabled = true, sleep = true }
+
+local wi = world:info()
+-- { key = ..., gravity = { x = ..., y = ... }, fixed_dt = ..., substeps = ..., pending_commands = ... }
 
 local v = body:velocity()
 local m = body:mass()
+body:set_mass_data({ mass = 2, inertia = 1, center = { x = 0, y = 0 } })
 local wp = body:world_point({ x = 0, y = 1 })
 local vp = body:velocity_at({ x = wp.x, y = wp.y })
+local shapes = body:shapes()
+local contacts = body:contacts()
+local inside = shape:test_point({ x = 1, y = 2 })
+local hit = shape:raycast({ x = 0, y = 2, dx = 4, dy = 0 })
+local p = shape:closest_point({ x = 5, y = 0 })
+local bounds = shape:aabb()
+local si = shape:info()
+-- includes kind, density, material, filter, sensor/contact/pre_solve/hit flags
+shape:set_material({ material = "ice", user_material_id = 7, friction = 0.05 })
+shape:set_filter({ category = 2, mask = { 0, 2 } })
+shape:set_events({ contact = true, hit = true, pre_solve = false })
 
 local p = phys2d_pose(world, "player") -- convenience form
 ```
 
 `phys2d_pose` reads from Box2D after the latest step. It returns `nil, "not found"` for missing bodies
 rather than creating anything.
+
+Other read-only world/body/shape/chain/joint accessors and query functions such as `world:info`,
+`contacts`, `sensors`, ray/overlap/cast queries, `debug_draw`, `profile`, `counters`, `velocity`,
+`mass`, `center`, point transforms, shape lists, joint lists, body contact lists, shape queries, shape
+info, chain segment lists, and joint readbacks follow the same stale-ref behavior: `nil, "not found"`
+instead of throwing. Mutation APIs still error for missing refs.
 
 Accessors read the current committed Box2D state. If a command was issued earlier in the same frame and
 has not reached `phys2d_step` yet, the accessor returns the pre-command state unless the command is an
@@ -823,17 +913,47 @@ local hits = world:overlap_aabb({
   max_y = 1,
   filter = { mask = "all" },
 })
+
+local swept = world:shape_cast({
+  type = "circle",
+  x = 0,
+  y = 2,
+  r = 0.2,
+  dx = 0,
+  dy = -4,
+  filter = { mask = "all" },
+})
+
+local mover_fraction = world:cast_mover({
+  ax = 0,
+  ay = 0.2,
+  bx = 0,
+  by = 1.0,
+  r = 0.18,
+  dx = 0,
+  dy = -1,
+  filter = { mask = "all" },
+})
+
+local planes = world:collide_mover({
+  ax = 0,
+  ay = 0.2,
+  bx = 0,
+  by = 1.0,
+  r = 0.18,
+  filter = { mask = "all" },
+})
 ```
 
 Queries also accept an optional visitor. The visitor is not retained after the call returns.
 
 ```lua
 world:raycast(query, function(hit)
-  if hit.shape.tag == "glass" then
+  if hit.tag == "glass" then
     return "ignore" -- Box2D -1
   end
 
-  if hit.shape.tag == "target" then
+  if hit.tag == "target" then
     return "stop" -- Box2D 0
   end
 
@@ -851,8 +971,31 @@ Visitor return values:
 | `"clip"` / `true` / nil | return current hit fraction |
 | number | return exact fraction |
 
+`shape_cast` accepts small query-local primitives: `circle`, `capsule`, `segment`, `box`, and
+`polygon`. The query shape is not retained in the Box2D world.
+
+`cast_mover` and `collide_mover` use a query-local capsule and return character-controller data.
+`cast_mover` returns a safe movement fraction and delta. `collide_mover` returns plane snapshots with
+shape keys plus `x/y`, `nx/ny`, and `offset`; gameplay code can feed these into a higher-level mover
+solver.
+
 Collecting variants use bounded arrays and stable sort where possible. Phase 1 may implement closest
 raycast first, but the signature should reserve the optional visitor position.
+
+### World commands
+
+```lua
+world:explode({
+  x = 0,
+  y = 0,
+  radius = 2,
+  falloff = 1,
+  impulse_per_length = 20,
+  filter = { mask = "all" },
+})
+```
+
+Explosion is an immediate world command. It does not create retained lub state.
 
 ### Debug draw
 
@@ -863,7 +1006,9 @@ local dbg = world:debug_draw({ shapes = true, contacts = true })
 -- {
 --   segments = { x1,y1,x2,y2,r,g,b,a, ... },
 --   circles = { x,y,r,r,g,b,a, ... },
---   polygons = { ... }
+--   capsules = { x1,y1,x2,y2,radius,r,g,b,a, ... },
+--   polygons = { vertex_count,solid,r,g,b,a,x1,y1,x2,y2,..., ... },
+--   points = { x,y,size,r,g,b,a, ... },
 -- }
 ```
 
@@ -872,6 +1017,11 @@ This keeps physics independent from renderer features. `lubx` can turn this into
 ## 7. Haxe API
 
 Add `haxe-lib/lub/lub/Phys2d.hx`.
+
+The checked-in extern file is the source of truth for the complete Phase 1-3 surface and must expose
+every Lua global listed in [Naming](#naming). The excerpt below shows the descriptor style and core
+signatures; do not keep a second hand-maintained exhaustive symbol list here. `tests/c/haxe_build_smoke.c`
+compiles against the full extern and scans the generated Lua for all required `phys2d_*` symbols.
 
 ```haxe
 package lub;
@@ -922,6 +1072,10 @@ typedef BodyDesc = {
   ?type:Int,
   ?fixedRotation:Bool,
   ?bullet:Bool,
+  ?enabled:Bool,
+  ?awake:Bool,
+  ?sleep:Bool,
+  ?sleepThreshold:Float,
   ?gravityScale:Float,
   ?linearDamping:Float,
   ?angularDamping:Float,
@@ -930,7 +1084,7 @@ typedef BodyDesc = {
 
 typedef FilterDesc = {
   ?category:Int,
-  ?mask:Array<Int>,
+  ?mask:Dynamic,
   ?categoryBits:String,
   ?maskBits:String,
   ?group:Int,
@@ -940,6 +1094,8 @@ typedef ShapeDesc = {
   ?version:Int,
   ?tag:String,
   ?material:Dynamic,
+  ?materialId:Int,
+  ?userMaterialId:Int,
   ?density:Float,
   ?friction:Float,
   ?restitution:Float,
@@ -980,6 +1136,105 @@ typedef SegmentDesc = ShapeDesc & {
   var by:Float;
 }
 
+typedef PolygonDesc = ShapeDesc & {
+  var points:Dynamic;
+  ?radius:Float;
+  ?r:Float;
+}
+
+typedef ChainDesc = {
+  var version:Int;
+  var points:Dynamic;
+  ?materials:Dynamic;
+  ?loop:Bool;
+  ?filter:FilterDesc;
+}
+
+typedef JointDesc = {
+  ?version:Int,
+  ?type:String,
+  ?a:Dynamic,
+  ?b:Dynamic,
+  ?bodyA:Dynamic,
+  ?bodyB:Dynamic,
+  ?anchorA:Vec2,
+  ?anchorB:Vec2,
+  ?axis:Vec2,
+  ?spring:Dynamic,
+  ?limit:Dynamic,
+  ?motor:Dynamic,
+  ?target:Vec2,
+}
+
+typedef CommandOpts = {
+  ?wake:Bool,
+  ?point:Vec2,
+  ?px:Float,
+  ?py:Float,
+  ?dt:Float,
+  ?timeStep:Float,
+}
+
+typedef VelocityDesc = {
+  ?x:Float,
+  ?y:Float,
+  ?vx:Float,
+  ?vy:Float,
+  ?w:Float,
+}
+
+typedef PoseDesc = {
+  ?x:Float,
+  ?y:Float,
+  ?angle:Float,
+}
+
+typedef MassDataDesc = {
+  ?mass:Float,
+  ?inertia:Float,
+  ?center:Vec2,
+}
+
+typedef RaycastDesc = {
+  ?x:Float,
+  ?y:Float,
+  ?dx:Float,
+  ?dy:Float,
+  ?origin:Vec2,
+  ?translation:Vec2,
+  ?to:Vec2,
+  ?filter:FilterDesc,
+}
+
+typedef AabbDesc = {
+  var minX:Float;
+  var minY:Float;
+  var maxX:Float;
+  var maxY:Float;
+  ?filter:FilterDesc,
+}
+
+typedef MoverDesc = {
+  var ax:Float;
+  var ay:Float;
+  var bx:Float;
+  var by:Float;
+  var r:Float;
+  ?dx:Float,
+  ?dy:Float,
+  ?filter:FilterDesc,
+}
+
+typedef ExplosionDesc = {
+  ?x:Float,
+  ?y:Float,
+  ?radius:Float,
+  ?r:Float,
+  ?impulsePerLength:Float,
+  ?impulse:Float,
+  ?filter:FilterDesc,
+}
+
 typedef Pose = {
   var x:Float;
   var y:Float;
@@ -988,6 +1243,15 @@ typedef Pose = {
   var vy:Float;
   var w:Float;
   var awake:Bool;
+  var enabled:Bool;
+  var sleep:Bool;
+  var sleep_threshold:Float;
+}
+
+typedef Velocity = {
+  var x:Float;
+  var y:Float;
+  var w:Float;
 }
 
 abstract WorldRef(Dynamic) from Dynamic to Dynamic {}
@@ -1003,41 +1267,80 @@ extern class Phys2d {
 
   @:native("phys2d_world") public static function world(key:String, ?opts:WorldOpts):WorldRef;
   @:native("phys2d_begin") public static function begin(world:WorldRef, ?opts:BeginOpts):Void;
+  @:native("phys2d_world_info") public static function worldInfo(world:WorldRef):Dynamic;
   @:native("phys2d_body") public static function body(world:WorldRef, key:String, desc:BodyDesc):BodyRef;
 
   @:native("phys2d_box") public static function box(body:BodyRef, key:String, desc:BoxDesc):ShapeRef;
   @:native("phys2d_circle") public static function circle(body:BodyRef, key:String, desc:CircleDesc):ShapeRef;
   @:native("phys2d_capsule") public static function capsule(body:BodyRef, key:String, desc:CapsuleDesc):ShapeRef;
   @:native("phys2d_segment") public static function segment(body:BodyRef, key:String, desc:SegmentDesc):ShapeRef;
-  @:native("phys2d_polygon") public static function polygon(body:BodyRef, key:String, desc:Dynamic):ShapeRef;
-  @:native("phys2d_chain") public static function chain(body:BodyRef, key:String, desc:Dynamic):ChainRef;
-  @:native("phys2d_joint") public static function joint(world:WorldRef, key:String, desc:Dynamic):JointRef;
+  @:native("phys2d_polygon") public static function polygon(body:BodyRef, key:String, desc:PolygonDesc):ShapeRef;
+  @:native("phys2d_chain") public static function chain(body:BodyRef, key:String, desc:ChainDesc):ChainRef;
+  @:native("phys2d_chain_segments") public static function chainSegments(chain:ChainRef):lua.Table<Int, Dynamic>;
+  @:native("phys2d_joint") public static function joint(world:WorldRef, key:String, desc:JointDesc):JointRef;
+  @:native("phys2d_joint_info") public static function jointInfo(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_force") public static function jointForce(joint:JointRef):Vec2;
+  @:native("phys2d_joint_torque") public static function jointTorque(joint:JointRef):Float;
+  @:native("phys2d_joint_angle") public static function jointAngle(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_translation") public static function jointTranslation(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_speed") public static function jointSpeed(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_length") public static function jointLength(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_motor_force") public static function jointMotorForce(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_motor_torque") public static function jointMotorTorque(joint:JointRef):Dynamic;
+  @:native("phys2d_joint_set_motor") public static function jointSetMotor(joint:JointRef, desc:Dynamic):Void;
+  @:native("phys2d_joint_set_limit") public static function jointSetLimit(joint:JointRef, desc:Dynamic):Void;
+  @:native("phys2d_joint_set_spring") public static function jointSetSpring(joint:JointRef, desc:Dynamic):Void;
+  @:native("phys2d_joint_set_target") public static function jointSetTarget(joint:JointRef, desc:Dynamic):Void;
 
   @:native("phys2d_step") public static function step(world:WorldRef, dt:Float):Dynamic;
   @:native("phys2d_pose") public static function pose(ref:Dynamic, ?key:String):Pose;
+  @:native("phys2d_velocity") public static function velocity(body:BodyRef):Velocity;
+  @:native("phys2d_mass") public static function mass(body:BodyRef):Dynamic;
+  @:native("phys2d_center") public static function center(body:BodyRef):Vec2;
+  @:native("phys2d_world_point") public static function worldPoint(body:BodyRef, local:Vec2):Vec2;
+  @:native("phys2d_local_point") public static function localPoint(body:BodyRef, world:Vec2):Vec2;
+  @:native("phys2d_velocity_at") public static function velocityAt(body:BodyRef, world:Vec2):Vec2;
+  @:native("phys2d_body_shapes") public static function bodyShapes(body:BodyRef):lua.Table<Int, Dynamic>;
+  @:native("phys2d_body_joints") public static function bodyJoints(body:BodyRef):lua.Table<Int, Dynamic>;
+  @:native("phys2d_body_contacts") public static function bodyContacts(body:BodyRef):lua.Table<Int, Dynamic>;
+  @:native("phys2d_shape_test_point") public static function shapeTestPoint(shape:ShapeRef, point:Vec2):Bool;
+  @:native("phys2d_shape_raycast") public static function shapeRaycast(shape:ShapeRef, query:RaycastDesc):Dynamic;
+  @:native("phys2d_shape_closest_point") public static function shapeClosestPoint(shape:ShapeRef, point:Vec2):Vec2;
+  @:native("phys2d_shape_aabb") public static function shapeAabb(shape:ShapeRef):Dynamic;
+  @:native("phys2d_shape_info") public static function shapeInfo(shape:ShapeRef):Dynamic;
+  @:native("phys2d_shape_set_material") public static function shapeSetMaterial(shape:ShapeRef, desc:Dynamic):Void;
+  @:native("phys2d_shape_set_filter") public static function shapeSetFilter(shape:ShapeRef, filter:Dynamic):Void;
+  @:native("phys2d_shape_set_events") public static function shapeSetEvents(shape:ShapeRef, desc:Dynamic):Void;
 
-  @:native("phys2d_add_force") public static function addForce(body:BodyRef, f:Vec2, ?opts:Dynamic):Void;
-  @:native("phys2d_add_force_center") public static function addForceCenter(body:BodyRef, f:Vec2, ?opts:Dynamic):Void;
-  @:native("phys2d_add_impulse") public static function addImpulse(body:BodyRef, p:Vec2, ?opts:Dynamic):Void;
-  @:native("phys2d_add_impulse_center") public static function addImpulseCenter(body:BodyRef, p:Vec2, ?opts:Dynamic):Void;
-  @:native("phys2d_add_torque") public static function addTorque(body:BodyRef, torque:Float, ?opts:Dynamic):Void;
-  @:native("phys2d_set_velocity") public static function setVelocity(body:BodyRef, v:Dynamic):Void;
-  @:native("phys2d_teleport") public static function teleport(body:BodyRef, t:Dynamic):Void;
-  @:native("phys2d_set_target") public static function setTarget(body:BodyRef, t:Dynamic, ?opts:Dynamic):Void;
+  @:native("phys2d_add_force") public static function addForce(body:BodyRef, f:Vec2, ?opts:CommandOpts):Void;
+  @:native("phys2d_add_force_center") public static function addForceCenter(body:BodyRef, f:Vec2, ?opts:CommandOpts):Void;
+  @:native("phys2d_add_impulse") public static function addImpulse(body:BodyRef, p:Vec2, ?opts:CommandOpts):Void;
+  @:native("phys2d_add_impulse_center") public static function addImpulseCenter(body:BodyRef, p:Vec2, ?opts:CommandOpts):Void;
+  @:native("phys2d_add_torque") public static function addTorque(body:BodyRef, torque:Float, ?opts:CommandOpts):Void;
+  @:native("phys2d_add_angular_impulse") public static function addAngularImpulse(body:BodyRef, impulse:Float, ?opts:CommandOpts):Void;
+  @:native("phys2d_set_velocity") public static function setVelocity(body:BodyRef, v:VelocityDesc, ?opts:CommandOpts):Void;
+  @:native("phys2d_teleport") public static function teleport(body:BodyRef, t:PoseDesc, ?opts:CommandOpts):Void;
+  @:native("phys2d_set_target") public static function setTarget(body:BodyRef, t:PoseDesc, ?opts:CommandOpts):Void;
+  @:native("phys2d_set_mass_data") public static function setMassData(body:BodyRef, massData:MassDataDesc, ?opts:CommandOpts):Void;
 
   @:native("phys2d_body_events") public static function bodyEvents(world:WorldRef):lua.Table<Int, Dynamic>;
   @:native("phys2d_contacts") public static function contacts(world:WorldRef, ?kind:String):lua.Table<Int, Dynamic>;
   @:native("phys2d_sensors") public static function sensors(world:WorldRef, ?kind:String):lua.Table<Int, Dynamic>;
-  @:native("phys2d_raycast") public static function raycast(world:WorldRef, query:Dynamic, ?visitor:Dynamic):Dynamic;
-  @:native("phys2d_overlap_aabb") public static function overlapAabb(world:WorldRef, query:Dynamic, ?visitor:Dynamic):lua.Table<Int, Dynamic>;
+  @:native("phys2d_raycast") public static function raycast(world:WorldRef, query:RaycastDesc, ?visitor:Dynamic):Dynamic;
+  @:native("phys2d_overlap_aabb") public static function overlapAabb(world:WorldRef, query:AabbDesc, ?visitor:Dynamic):lua.Table<Int, Dynamic>;
   @:native("phys2d_shape_cast") public static function shapeCast(world:WorldRef, query:Dynamic, ?visitor:Dynamic):Dynamic;
-  @:native("phys2d_debug") public static function debug(world:WorldRef, opts:Dynamic):Dynamic;
+  @:native("phys2d_cast_mover") public static function castMover(world:WorldRef, query:MoverDesc):Dynamic;
+  @:native("phys2d_collide_mover") public static function collideMover(world:WorldRef, query:MoverDesc, ?visitor:Dynamic):lua.Table<Int, Dynamic>;
+  @:native("phys2d_explode") public static function explode(world:WorldRef, desc:ExplosionDesc):Void;
+  @:native("phys2d_debug") public static function debug(world:WorldRef, ?opts:Dynamic):Dynamic;
+  @:native("phys2d_profile") public static function profile(world:WorldRef):Dynamic;
+  @:native("phys2d_counters") public static function counters(world:WorldRef):Dynamic;
 }
 ```
 
 The Lua surface may expose method sugar on refs. Haxe can mirror that later with inline abstract
 methods that call the static externs, but the native symbol surface should remain the small global set
-above.
+listed in [Naming](#naming).
 
 Haxe field naming is camelCase; Lua accepts both snake_case and camelCase for common fields:
 
@@ -1097,7 +1400,8 @@ Modify:
 - `src/app.h`
 - `src/app.c`
 - `src/lua_api.c`
-- `src/enums_lua.c`
+- `src/enums_lua.c` only if physics constants are centralized there; the current implementation
+  registers `STATIC` / `KINEMATIC` / `DYNAMIC` from the physics module.
 - `scripts/run-golden.sh` if a visual sample is added
 
 ### App state
@@ -1144,10 +1448,11 @@ typedef struct PhysBody {
 typedef struct PhysShape {
   char *key;
   char *tag;
+  char *material_name;
   b2ShapeId id;
   uint64_t seen_generation;
   uint64_t geom_hash;
-  uint64_t material_hash;
+  int material_id;
 } PhysShape;
 ```
 
@@ -1162,7 +1467,7 @@ World:
 - set gravity and options from opts
 - if `phys2d_world` is called again with safe mutable fields, call setters
 - if an unsafe field changes, log and recreate only on `phys2d_begin` boundary
-- install C callback trampolines once on world creation when needed
+- install/clear Box2D callback slots when current Lua refs change; C function pointers remain stable
 - replace Lua callback refs from `opts.callbacks` on every `phys2d_world` call
 - clear Lua callback refs when `callbacks` is omitted, false, or empty
 
@@ -1181,8 +1486,8 @@ Shape:
   - circle: `b2CreateCircleShape`
   - capsule: `b2CreateCapsuleShape`
   - segment: `b2CreateSegmentShape`
-- geometry/filter/sensor/event flag changes recreate shape
-- material/density changes may use setters, then mass update where required
+- geometry/filter/sensor changes recreate shape
+- material/density/event flag changes use setters, then mass update where required
 - metadata-only changes such as `tag` update C-side strings without recreating the Box2D shape
 
 Callbacks:
@@ -1195,7 +1500,8 @@ Callbacks:
   callback key per frame.
 - query visitor errors abort the query and return `nil, error` because queries are user-initiated and
   do not run inside the solver.
-- if any solver callback is present, assert or force single-thread stepping for that world.
+- if any Lua solver/mixer callback is present, keep Box2D on the default single-thread stepping path
+  for that world.
 
 ### Event snapshot
 
@@ -1208,7 +1514,10 @@ After each `b2World_Step`, copy:
 Do not store Box2D event pointers. Copy only stable values and user keys.
 
 For end contact events, Box2D warns that shapes may already be destroyed. If id validation fails,
-return any key cached in our event map if available; otherwise include `valid = false`.
+return any key cached in our event map if available; otherwise include `valid = false`. The C
+implementation keeps a `b2StoreShapeId`-keyed tombstone map updated from live shape and chain segment
+metadata so destroy-driven end contact/sensor events can still report `body` / `shape` user keys with
+`valid = false`.
 
 ### Callback view schema
 
@@ -1334,16 +1643,132 @@ Add a headless Lua entry:
 This can be a non-golden numeric test if a generic Lua test runner is added. If not, make it a visual
 sample and verify with golden.
 
-### Visual sample
+### Box2D-derived visual samples
 
-Add `samples/16_box2d` only after Phase 1 API is stable.
+Keep `samples/16_box2d` as the Phase 1 visual integration sample. It should be derived from upstream
+Box2D sample behavior, not a port of the upstream samples application.
 
-- a small stack or rolling ball
-- debug geometry rendered through `lubx` helper or simple generated vertex lines
-- golden for deterministic frame 30 or 120
+Do not vendor or recreate the upstream testbed framework:
 
-Physics visual golden can be brittle, so unit/numeric tests should carry most of the correctness.
-Golden should verify integration/rendering, not every solver detail.
+- no GLFW/imgui/enkiTS/OpenGL sample framework inside `lub`
+- no upstream `Sample` subclass hierarchy
+- no direct `b2BodyId` / `b2ShapeId` / `b2JointId` in Haxe or Lua sample code
+- no immediate GUI dependency for sample parameters
+
+Instead, implement small lub-native scenarios that exercise the public `lub.Phys2d` API. Each
+scenario should be deterministic by default and follow the same frame order:
+
+```haxe
+world = Phys2d.world("box2d16", {
+  gravity: { x: 0.0, y: -10.0 },
+  fixedDt: 1.0 / 60.0,
+  substeps: 4,
+  maxSteps: 4,
+});
+
+Phys2d.begin(world);
+
+final ground = Phys2d.body(world, "ground", {
+  type: Phys2d.STATIC,
+  initial: { x: 0.0, y: -2.0 },
+});
+Phys2d.box(ground, "floor", { hx: 8.0, hy: 0.25, friction: 0.8 });
+
+final box = Phys2d.body(world, "box:0", {
+  type: Phys2d.DYNAMIC,
+  initial: { x: 0.0, y: 2.0, angle: 0.0 },
+});
+Phys2d.box(box, "solid", { hx: 0.5, hy: 0.5, density: 1.0, contact: true });
+
+Phys2d.step(world, dt);
+
+final pose = Phys2d.pose(box);
+drawBoxFromPose(pose);
+```
+
+The sample should declare the same body/shape keys every frame. Scenario constants use stable
+`version` values only when constructor data changes; never use frame count as `version`.
+
+#### Initial sample layout
+
+Use the normal Haxe sample layout:
+
+```text
+samples/16_box2d/
+  16_box2d.hxml
+  Box2d16.hx
+  Box2dScenario.hx        -- small enum/config table, if more than one scenario exists
+  Box2dDraw.hx            -- pose/debug-geometry to lub Gfx helper, if needed
+```
+
+Phase 1 can keep `Box2d16.hx` as one file if the sample only contains one or two scenarios. Add
+helpers only when repeated code becomes visible.
+
+The first scenario should be a `Stacking / Single Box`-style scene:
+
+- static ground
+- one dynamic box or a tiny vertical stack
+- optional dynamic circle when `phys2d_circle` is available
+- contact events enabled on at least one shape
+- draw from pose readback; do not require `phys2d_debug` until debug snapshots exist
+
+This gives a short visual integration test for declaration, stepping, pose readback, and contact
+snapshot plumbing.
+
+#### Upstream scenario mapping
+
+Map upstream samples to lub samples by API phase:
+
+| Upstream reference | lub sample target | Phase | What it proves |
+|---|---|---:|---|
+| `Stacking / Single Box`, `Tilted Stack`, `Vertical Stack` | `samples/16_box2d` scenarios | 1 | world/body/box declarations, fixed stepping, pose readback |
+| `Stacking / Circle Stack`, `Capsule Stack` | `samples/16_box2d` optional scenarios | 1/2 | circle/capsule shapes, stable keys in loops |
+| `Events / Contact`, `Body Move` | `samples/17_box2d_events` or a `16_box2d` scenario | 1/2 | opt-in contact events and body move events |
+| `Events / Foot Sensor`, `Sensor Funnel`, `Platformer` | `samples/17_box2d_events` or `samples/18_box2d_platformer` | 2 | sensor events, capsule player bodies, kinematic/platform commands |
+| `Shapes / Filter`, `Custom Filter` | `samples/18_box2d_shapes` | 2/3 | 64-bit filter descriptors and filter callbacks |
+| `Shapes / Conveyor Belt`, `Tangent Speed`, `Restitution`, `Friction` | `samples/18_box2d_shapes` | 2/3 | material fields, tangent speed, mixer limitations |
+| `Joints / Revolute`, `Bridge`, `Door`, `Driving` | `samples/19_box2d_joints` | 3 | joint declarations, runtime joint tuning, dependent recreate |
+| `Character / Mover` | `samples/20_box2d_character` | 3 | mover cast/collide APIs, plane snapshot handling |
+| `Benchmark / Large Pyramid`, `Many Tumblers`, `Cast`, `Sensor` | numeric benchmark script/sample | 3+ | performance counters and query throughput, not visual golden correctness |
+
+The mapping is a backlog, not a promise to implement every upstream scenario. A lub sample is useful
+only when it validates a public API contract or demonstrates a gameplay pattern that users should copy.
+
+#### Porting rules
+
+When translating an upstream C++ sample:
+
+- Constructor code becomes Haxe declarations inside every frame.
+- C++ member arrays of `b2BodyId` become arrays of stable string keys or small records with
+  `{ key, version, spawn }`.
+- Upstream `CreateWorld()` options become `Phys2d.world` fields.
+- Upstream `Step()` side effects become `declare -> command -> step -> readback -> draw`.
+- Upstream `UpdateGui()` sliders become deterministic constants first. Keyboard toggles may be added
+  later, but golden paths must run without input.
+- Upstream mouse dragging is skipped until joints or a documented kinematic-target substitute exists.
+- Random setup uses a fixed seed stored in sample state. If a scenario has randomizable variants,
+  expose the seed as an environment/config value but keep the default stable.
+- Debug rendering uses `Phys2d.debug` snapshots after Phase 2. Before that, draw known shapes from
+  pose readback with simple sample-side geometry.
+- If upstream code or data is copied rather than behaviorally reimplemented, keep the MIT notice in
+  the copied file or adjacent `*.LICENSE.md`.
+
+#### Golden and numeric checks
+
+Physics visual golden can be brittle, so unit/numeric tests should carry most correctness. Visual
+golden should verify integration/rendering, not every solver detail.
+
+For Box2D-derived visual samples:
+
+- choose a fixed scenario, seed, target frame, and input-disabled path
+- prefer frame 60, 120, or another settled frame over first-frame captures
+- draw a small number of readable bodies with clear silhouettes
+- avoid golden captures for large piles, benchmark scenes, or chaotic collision chains
+- add numeric smoke checks for body pose ranges and expected contact/event counts where possible
+
+If a benchmark-style sample is added later, make it print stable machine-readable lines similar to the
+sprite benchmark rather than relying on screenshots. The report should include scenario name, body
+count, shape count, fixed dt, substeps, backend, score frame, and any physics profile/counter lines.
 
 ### Haxe compile smoke
 
@@ -1364,7 +1789,8 @@ After implementation:
 
 - Release build must use `bash scripts/build-release.sh`.
 - Existing `scripts/pre-commit.sh` should cover native build, golden, WASM build, web verify.
-- Add any numeric physics smoke to the pre-commit gate only if it is deterministic and fast.
+- Deterministic numeric physics smoke should run in `scripts/pre-commit.sh`: C smoke, Haxe extern
+  smoke, and the focused Lua headless physics tests.
 
 ## 12. Implementation Phases
 
@@ -1384,6 +1810,8 @@ After implementation:
 - Add BodyRef/WorldRef Lua method sugar for the Phase 1 functions.
 - Add Haxe `lub.Phys2d`.
 - Add C smoke tests.
+- Add `samples/16_box2d` with a Box2D `Stacking / Single Box`-derived scenario once the API and
+  extern compile path are stable; keep it focused on the minimal rigid-body declaration loop.
 
 ### Phase 2: Gameplay completeness
 
@@ -1395,6 +1823,7 @@ After implementation:
 - query visitor callbacks
 - world callback declaration through `phys2d_world(... callbacks = ...)`
 - debug geometry snapshot
+- Extend Box2D-derived samples with contact/body/sensor event scenarios and filter/query scenarios.
 
 ### Phase 3: Advanced Box2D v3 features
 
@@ -1406,6 +1835,8 @@ After implementation:
 - friction/restitution Lua mixer callbacks on single-thread worlds
 - pre-solve table return / manifold patching if needed
 - isolated/thread-safe callback runtime if worker stepping becomes important
+- Add Box2D-derived joints, character mover, and benchmark-style numeric scenarios only after the
+  corresponding public APIs exist.
 
 ## 13. Risks
 
@@ -1426,6 +1857,11 @@ After implementation:
   The first implementation must run the existing WASM build.
 - **CMake version:** upstream CMake requires 3.22. Decide before implementation whether to bump `lub`
   or vendor source files.
+- **Sample framework mismatch:** upstream Box2D samples are C++ testbed scenarios with GUI, mouse
+  joints, debug draw callbacks, and worker tasks. lub samples should copy behavior selectively, not the
+  framework shape.
+- **Physics golden brittleness:** small timestep, backend, compiler, or Box2D version changes can move
+  bodies by a few pixels. Golden tests should stay coarse; numeric tests should cover physics contracts.
 
 ## 14. Decision
 

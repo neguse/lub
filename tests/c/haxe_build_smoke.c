@@ -16,15 +16,177 @@ int main(void) {
 
   FILE *fx = fopen("/tmp/build_smoke/Main.hx", "w");
   assert(fx);
-  fprintf(fx, "class Main {\n"
-              "  public static function main() {}\n"
-              "  public static function onFrame() {}\n"
-              "}\n");
+  fprintf(
+      fx,
+      "import lub.Phys2d;\n"
+      "class Main {\n"
+      "  public static function main() {}\n"
+      "  public static function onFrame() {\n"
+      "    var world = Phys2d.world(\"smoke\", {\n"
+      "      gravity: { x: 0.0, y: -9.8 }, fixedDt: 1.0 / 60.0,\n"
+      "      substeps: 4, maxSteps: 1,\n"
+      "      callbacks: {\n"
+      "        filter: function(a:Dynamic, b:Dynamic):Bool return true,\n"
+      "        preSolve: function(c:Dynamic):Bool return true,\n"
+      "        friction: function(a:Dynamic, b:Dynamic):Float return 0.6,\n"
+      "        restitution: function(a:Dynamic, b:Dynamic):Float return 0.0\n"
+      "      }\n"
+      "    });\n"
+      "    Phys2d.begin(world);\n"
+      "    var wi = Phys2d.worldInfo(world);\n"
+      "    var body = Phys2d.body(world, \"body\", {\n"
+      "      type: Phys2d.DYNAMIC, enabled: true, awake: true,\n"
+      "      sleep: true, sleepThreshold: 0.05,\n"
+      "      initial: { x: 0.0, y: 1.0 }\n"
+      "    });\n"
+      "    var other = Phys2d.body(world, \"other\", {\n"
+      "      type: Phys2d.DYNAMIC, initial: { x: 1.0, y: 1.0 }\n"
+      "    });\n"
+      "    var shape = Phys2d.box(body, \"shape\", {\n"
+      "      hx: 0.5, hy: 0.5, density: 1.0, contact: true\n"
+      "    });\n"
+      "    var circle = Phys2d.circle(body, \"circle\", {\n"
+      "      r: 0.2, density: 1.0, sensorEvents: true\n"
+      "    });\n"
+      "    var capsule = Phys2d.capsule(body, \"capsule\", {\n"
+      "      ax: -0.2, ay: 0.0, bx: 0.2, by: 0.0, r: 0.1, density: 1.0\n"
+      "    });\n"
+      "    var segment = Phys2d.segment(body, \"segment\", {\n"
+      "      ax: -1.0, ay: -0.5, bx: 1.0, by: -0.5, contact: true\n"
+      "    });\n"
+      "    var polygon = Phys2d.polygon(body, \"polygon\", {\n"
+      "      points: [{ x: -0.2, y: -0.1 }, { x: 0.2, y: -0.1 },\n"
+      "        { x: 0.15, y: 0.2 }, { x: -0.15, y: 0.2 }],\n"
+      "      radius: 0.01, density: 1.0\n"
+      "    });\n"
+      "    var chain = Phys2d.chain(body, \"chain\", {\n"
+      "      version: 1,\n"
+      "      points: [{ x: -2.0, y: -1.0 }, { x: -0.5, y: -1.0 },\n"
+      "        { x: 0.5, y: -1.0 }, { x: 2.0, y: -1.0 }],\n"
+      "      materials: [{ material: 3, friction: 0.7 }],\n"
+      "      sensorEvents: true\n"
+      "    });\n"
+      "    var chainSegments = Phys2d.chainSegments(chain);\n"
+      "    Phys2d.shapeSetMaterial(shape, { material: \"smoke\", "
+      "userMaterialId: 2 });\n"
+      "    Phys2d.shapeSetFilter(shape, { category: 1, mask: \"all\" });\n"
+      "    Phys2d.shapeSetEvents(shape, { contact: true, hit: false });\n"
+      "    var si = Phys2d.shapeInfo(shape);\n"
+      "    var joint = Phys2d.joint(world, \"joint\", {\n"
+      "      type: \"distance\", bodyA: body, bodyB: other,\n"
+      "      localAnchorA: { x: 0.0, y: 0.0 }, localAnchorB: { x: 0.0, y: 0.0 "
+      "},\n"
+      "      length: 1.0, hertz: 2.0, dampingRatio: 0.5\n"
+      "    });\n"
+      "    var jointInfo = Phys2d.jointInfo(joint);\n"
+      "    var jointForce = Phys2d.jointForce(joint);\n"
+      "    var jointTorque = Phys2d.jointTorque(joint);\n"
+      "    var jointAngle = Phys2d.jointAngle(joint);\n"
+      "    var jointTranslation = Phys2d.jointTranslation(joint);\n"
+      "    var jointSpeed = Phys2d.jointSpeed(joint);\n"
+      "    var jointLength = Phys2d.jointLength(joint);\n"
+      "    var jointMotorForce = Phys2d.jointMotorForce(joint);\n"
+      "    var jointMotorTorque = Phys2d.jointMotorTorque(joint);\n"
+      "    Phys2d.jointSetMotor(joint, { enabled: true, speed: 1.0, maxForce: "
+      "5.0, maxTorque: 5.0 });\n"
+      "    Phys2d.jointSetLimit(joint, { enabled: true, lower: 0.1, upper: 2.0 "
+      "});\n"
+      "    Phys2d.jointSetSpring(joint, { enabled: true, hertz: 3.0, "
+      "dampingRatio: 0.6 });\n"
+      "    Phys2d.jointSetTarget(joint, { target: { x: 0.0, y: 0.0 }, "
+      "linearOffset: { x: 0.0, y: 0.0 }, angularOffset: 0.0 });\n"
+      "    Phys2d.addForce(body, { x: 0.0, y: 1.0 }, { point: { x: 0.0, y: 1.0 "
+      "} });\n"
+      "    Phys2d.addForceCenter(body, { x: 0.0, y: 1.0 });\n"
+      "    Phys2d.addImpulse(body, { x: 0.0, y: 0.1 }, { px: 0.0, py: 1.0 });\n"
+      "    Phys2d.addImpulseCenter(body, { x: 0.0, y: 0.1 });\n"
+      "    Phys2d.addTorque(body, 0.1);\n"
+      "    Phys2d.addAngularImpulse(body, 0.1);\n"
+      "    Phys2d.setVelocity(body, { vx: 0.0, vy: 0.0, w: 0.0 }, { wake: "
+      "false });\n"
+      "    Phys2d.teleport(body, { x: 0.0, y: 1.0, angle: 0.0 }, { wake: false "
+      "});\n"
+      "    Phys2d.setTarget(body, { x: 0.0, y: 1.0, angle: 0.0 }, { timeStep: "
+      "1.0 / 60.0 });\n"
+      "    Phys2d.setMassData(body, { mass: 1.0, inertia: 1.0, center: { x: "
+      "0.0, y: 0.0 } });\n"
+      "    Phys2d.step(world, 1.0 / 60.0);\n"
+      "    var pose = Phys2d.pose(body);\n"
+      "    var poseEnabled:Bool = pose.enabled;\n"
+      "    var poseSleep:Bool = pose.sleep;\n"
+      "    var poseSleepThreshold:Float = pose.sleep_threshold;\n"
+      "    var poseByKey = Phys2d.pose(world, \"body\");\n"
+      "    var velocity = Phys2d.velocity(body);\n"
+      "    var mass = Phys2d.mass(body);\n"
+      "    var center = Phys2d.center(body);\n"
+      "    var worldPoint = Phys2d.worldPoint(body, { x: 0.0, y: 0.0 });\n"
+      "    var localPoint = Phys2d.localPoint(body, { x: 0.0, y: 0.0 });\n"
+      "    var velocityAt = Phys2d.velocityAt(body, { x: 0.0, y: 0.0 });\n"
+      "    var bodyShapes = Phys2d.bodyShapes(body);\n"
+      "    var bodyJoints = Phys2d.bodyJoints(body);\n"
+      "    var bodyContacts = Phys2d.bodyContacts(body);\n"
+      "    var tested = Phys2d.shapeTestPoint(shape, { x: 0.0, y: 1.0 });\n"
+      "    var shapeRay = Phys2d.shapeRaycast(shape, { x: 0.0, y: 2.0, dx: "
+      "0.0, dy: -1.0 });\n"
+      "    var closest = Phys2d.shapeClosestPoint(shape, { x: 0.0, y: 2.0 });\n"
+      "    var aabb = Phys2d.shapeAabb(shape);\n"
+      "    var contacts = Phys2d.contacts(world, \"begin\");\n"
+      "    var bodyEvents = Phys2d.bodyEvents(world);\n"
+      "    var sensors = Phys2d.sensors(world, \"begin\");\n"
+      "    var hit = Phys2d.raycast(world, {\n"
+      "      x: 0.0, y: 2.0, dx: 0.0, dy: -4.0,\n"
+      "      filter: { mask: \"all\" }\n"
+      "    }, function(h:Dynamic):Dynamic { return \"clip\"; });\n"
+      "    var overlaps = Phys2d.overlapAabb(world, {\n"
+      "      minX: -2.0, minY: -2.0, maxX: 2.0, maxY: 2.0,\n"
+      "      filter: { mask: \"all\" }\n"
+      "    }, function(h:Dynamic):Dynamic { return true; });\n"
+      "    var shapeCastHit = Phys2d.shapeCast(world, {\n"
+      "      type: \"circle\", r: 0.1, x: 0.0, y: 2.0, dx: 0.0, dy: -1.0,\n"
+      "      filter: { mask: \"all\" }\n"
+      "    }, function(h:Dynamic):Dynamic { return \"clip\"; });\n"
+      "    var moverHit = Phys2d.castMover(world, {\n"
+      "      ax: -0.1, ay: 0.0, bx: 0.1, by: 0.0, r: 0.2,\n"
+      "      dx: 0.0, dy: -1.0, filter: { mask: \"all\" }\n"
+      "    });\n"
+      "    var moverPlanes = Phys2d.collideMover(world, {\n"
+      "      ax: -0.1, ay: 0.0, bx: 0.1, by: 0.0, r: 0.2,\n"
+      "      filter: { mask: \"all\" }\n"
+      "    }, function(h:Dynamic):Dynamic { return true; });\n"
+      "    Phys2d.explode(world, { x: 0.0, y: 0.0, radius: 1.0, impulse: 0.1 "
+      "});\n"
+      "    var debug = Phys2d.debug(world, { shapes: true });\n"
+      "    var profile = Phys2d.profile(world);\n"
+      "    var counters = Phys2d.counters(world);\n"
+      "    if (wi == null || si == null || pose == null || hit == null || "
+      "chainSegments == null\n"
+      "      || circle == null || capsule == null || segment == null || "
+      "polygon == null\n"
+      "      || jointInfo == null || jointForce == null || jointTorque == null "
+      "|| jointAngle == null\n"
+      "      || jointTranslation == null || jointSpeed == null || jointLength "
+      "== null\n"
+      "      || jointMotorForce == null || jointMotorTorque == null || "
+      "poseByKey == null\n"
+      "      || velocity == null || mass == null || center == null || "
+      "worldPoint == null\n"
+      "      || localPoint == null || velocityAt == null || bodyShapes == null "
+      "|| bodyJoints == null\n"
+      "      || bodyContacts == null || tested == false || shapeRay == null || "
+      "closest == null\n"
+      "      || aabb == null || contacts == null || bodyEvents == null || "
+      "sensors == null\n"
+      "      || overlaps == null || shapeCastHit == null || moverHit == null "
+      "|| "
+      "moverPlanes == null\n"
+      "      || debug == null || profile == null || counters == null) {}\n"
+      "  }\n"
+      "}\n");
   fclose(fx);
 
   FILE *fh = fopen("/tmp/build_smoke/Main.hxml", "w");
   assert(fh);
-  fprintf(fh, "-cp /tmp/build_smoke\n-main Main\n");
+  fprintf(fh, "-cp /tmp/build_smoke\n-lib lub\n-main Main\n");
   fclose(fh);
 
   HaxeServer s;
@@ -70,6 +232,83 @@ int main(void) {
   if (!strstr(buf, "return Main")) {
     SDL_Log("postlude 'return Main' not found in output");
     return 1;
+  }
+  const char *required_phys2d_symbols[] = {
+      "phys2d_world",
+      "phys2d_begin",
+      "phys2d_world_info",
+      "phys2d_body",
+      "phys2d_box",
+      "phys2d_circle",
+      "phys2d_capsule",
+      "phys2d_segment",
+      "phys2d_polygon",
+      "phys2d_chain",
+      "phys2d_chain_segments",
+      "phys2d_joint",
+      "phys2d_joint_info",
+      "phys2d_joint_force",
+      "phys2d_joint_torque",
+      "phys2d_joint_angle",
+      "phys2d_joint_translation",
+      "phys2d_joint_speed",
+      "phys2d_joint_length",
+      "phys2d_joint_motor_force",
+      "phys2d_joint_motor_torque",
+      "phys2d_joint_set_motor",
+      "phys2d_joint_set_limit",
+      "phys2d_joint_set_spring",
+      "phys2d_joint_set_target",
+      "phys2d_step",
+      "phys2d_pose",
+      "phys2d_velocity",
+      "phys2d_mass",
+      "phys2d_center",
+      "phys2d_world_point",
+      "phys2d_local_point",
+      "phys2d_velocity_at",
+      "phys2d_body_shapes",
+      "phys2d_body_joints",
+      "phys2d_body_contacts",
+      "phys2d_shape_test_point",
+      "phys2d_shape_raycast",
+      "phys2d_shape_closest_point",
+      "phys2d_shape_aabb",
+      "phys2d_shape_info",
+      "phys2d_shape_set_material",
+      "phys2d_shape_set_filter",
+      "phys2d_shape_set_events",
+      "phys2d_contacts",
+      "phys2d_body_events",
+      "phys2d_sensors",
+      "phys2d_raycast",
+      "phys2d_overlap_aabb",
+      "phys2d_shape_cast",
+      "phys2d_cast_mover",
+      "phys2d_collide_mover",
+      "phys2d_explode",
+      "phys2d_debug",
+      "phys2d_profile",
+      "phys2d_counters",
+      "phys2d_add_force",
+      "phys2d_add_force_center",
+      "phys2d_add_impulse",
+      "phys2d_add_impulse_center",
+      "phys2d_add_torque",
+      "phys2d_add_angular_impulse",
+      "phys2d_set_velocity",
+      "phys2d_teleport",
+      "phys2d_set_target",
+      "phys2d_set_mass_data",
+  };
+  for (size_t i = 0;
+       i < sizeof(required_phys2d_symbols) / sizeof(required_phys2d_symbols[0]);
+       ++i) {
+    if (!strstr(buf, required_phys2d_symbols[i])) {
+      SDL_Log("phys2d extern marker '%s' not found in output",
+              required_phys2d_symbols[i]);
+      return 1;
+    }
   }
 
   // raw.tmp が掃除されていることを確認

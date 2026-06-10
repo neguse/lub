@@ -15,6 +15,7 @@
 #include "capture.h"
 #include "lua_api.h"
 #include "pass.h"
+#include "physics_box2d.h"
 #include "pipeline.h"
 #include "profile.h"
 #include "resources.h"
@@ -85,6 +86,7 @@ typedef struct App {
   PassState pass;
   ProfileState profile;
   ResTable res;
+  PhysState phys;
   PipelineCache pip_cache;
   uint64_t frame_index;
 
