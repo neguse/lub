@@ -1036,7 +1036,7 @@ static BackendShader sk_make_shader(const ShaderDesc *d) {
   // module similarly.
   for (int i = 0; i < ss->refl.attr_count && i < SG_MAX_VERTEX_ATTRIBUTES;
        ++i) {
-    desc.attrs[i].base_type = SG_SHADERATTRBASETYPE_FLOAT;
+    desc.attrs[ss->refl.attrs[i].slot].base_type = SG_SHADERATTRBASETYPE_FLOAT;
   }
 
   // Uniform blocks: map sokol bind slot to (set=0, binding=N) for Vulkan

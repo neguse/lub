@@ -354,28 +354,42 @@ page.on('dialog', (d) => d.accept().catch(() => {}))
 // gate CI on them. If a listed sample unexpectedly PASSES we warn loudly so
 // the entry gets removed.
 const KNOWN_FAILING = new Set([
-  // (empty — 06_deferred used to be here. Resolved by reading the actual
-  // swapchain texture dims via wgpuTextureGetWidth/Height in sk_begin_frame
-  // and resizing the depth attachment to match instead of trusting the
-  // configured surface size, which Chromium routinely diverges from.)
+  // BindGroupLayout for group 0 missing — fragment shader's WGSL references
+  // @group(0) but sokol's pipeline layout doesn't include it. Needs C-level
+  // investigation of how Slang WASM emits multi-shader uniform/texture groups.
+  '14_sponza',
+  // StorageTextureAccess::WriteOnly vs ReadWrite mismatch for RWTexture2D, and
+  // R32Float / Depth32Float textures are UnfilterableFloat in WebGPU (need
+  // float32-filterable feature or non-filtering samplers).
+  '15_render_primitives',
+  // Phys2d bindings not available in the web WASM build — Haxe compile fails.
+  '16_box2d',
 ])
 
 // Per-sample minimum non-black canvas ratio. Floors are picked from observed
 // values on cd1dd5d minus a small margin so a regression that loses meaningful
 // content (not just a uniform clear) trips the assertion.
 const samples = [
-  { name: '01_triangle',     minNonBlack: 0.10 },  // ~10% — orange triangle on dark blue clear
-  { name: '02_vertex_color', minNonBlack: 0.10 },
-  { name: '03_texture',      minNonBlack: 0.10 },
-  { name: '04_mvp',          minNonBlack: 0.05 },
-  { name: '05_postprocess',  minNonBlack: 0.20 },  // full-canvas vignette
-  { name: '06_deferred',     minNonBlack: 0.10 },
-  { name: '07_compute',      minNonBlack: 0.10 },
-  { name: '08_gltf',         minNonBlack: 0.10 },
-  { name: '09_breakout',     minNonBlack: 0.10 },
-  { name: '10_breakout3d',   minNonBlack: 0.10 },
-  { name: '11_shadow',       minNonBlack: 0.10 },
-  { name: '12_sfb',          minNonBlack: 0.01 },
+  { name: '00_hello',            minNonBlack: 0.01 },
+  { name: '00b_clear',           minNonBlack: 0.01 },
+  { name: '00c_buffer',          minNonBlack: 0.01 },
+  { name: '00d_shader',          minNonBlack: 0.01 },
+  { name: '01_triangle',         minNonBlack: 0.10 },
+  { name: '02_vertex_color',     minNonBlack: 0.10 },
+  { name: '03_texture',          minNonBlack: 0.10 },
+  { name: '04_mvp',              minNonBlack: 0.05 },
+  { name: '05_postprocess',      minNonBlack: 0.20 },
+  { name: '06_deferred',         minNonBlack: 0.10 },
+  { name: '07_compute',          minNonBlack: 0.10 },
+  { name: '08_gltf',             minNonBlack: 0.10 },
+  { name: '09_breakout',         minNonBlack: 0.10 },
+  { name: '10_breakout3d',       minNonBlack: 0.10 },
+  { name: '11_shadow',           minNonBlack: 0.10 },
+  { name: '12_sfb',              minNonBlack: 0.01 },
+  { name: '13_sprites',          minNonBlack: 0.01 },
+  { name: '14_sponza',           minNonBlack: 0.01 },
+  { name: '15_render_primitives', minNonBlack: 0.01 },
+  { name: '16_box2d',            minNonBlack: 0.01 },
 ]
 const sampleResults = {}
 

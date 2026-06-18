@@ -25,9 +25,9 @@ class SpriteBatch {
 
 	static var INSTANCED_VS:String = "struct Uniforms { float4 params; };\n"
 		+ "ConstantBuffer<Uniforms> u;\n"
-		+ "struct VSVertex { float2 corner : POSITION; float2 uv01 : TEXCOORD0; };\n"
+		+ "struct VSVertex { float2 corner : TEXCOORD0; float2 uv01 : TEXCOORD1; };\n"
 		+
-		"struct VSInstance { float2 pos : TEXCOORD1; float2 size : TEXCOORD2; float2 rot_cs : TEXCOORD3; float4 uv_rect : TEXCOORD4; float4 color : TEXCOORD5; };\n"
+		"struct VSInstance { float2 pos : TEXCOORD2; float2 size : TEXCOORD3; float2 rot_cs : TEXCOORD4; float4 uv_rect : TEXCOORD5; float4 color : TEXCOORD6; };\n"
 		+ "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
 		+ "[shader(\"vertex\")]\n"
 		+ "VSOut vs_main(VSVertex v, VSInstance i) {\n"

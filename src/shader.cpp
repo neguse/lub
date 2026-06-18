@@ -1885,11 +1885,6 @@ void record_attr_field(const json &f, ShaderReflection *out, int buffer_index) {
   if (buffer_index < 0 || buffer_index >= SGL_MAX_VERTEX_BUFFERS)
     return;
   std::string name = f.value("name", std::string("attr"));
-  int idx = -1;
-  if (f.contains("binding") && f["binding"].is_object() &&
-      f["binding"].contains("index")) {
-    idx = f["binding"]["index"].get<int>();
-  }
   int cc = 0;
   if (f.contains("type"))
     cc = comp_count_of_type_json(f["type"]);
@@ -1898,7 +1893,12 @@ void record_attr_field(const json &f, ShaderReflection *out, int buffer_index) {
 
   ShaderAttr *a = &out->attrs[out->attr_count];
   copy_name_capped(a->name, sizeof(a->name), name);
-  a->slot = (idx >= 0) ? idx : out->attr_count;
+  // Slang WASM reflection reports field binding.index as per-struct-relative,
+  // not global WGSL @location. Using the relative index directly causes slot
+  // collisions with multi-struct vertex inputs (e.g. instanced shaders with
+  // separate vertex + instance structs). Always use sequential attr_count,
+  // matching the native Slang API path in fill_attrs_from_entry_point.
+  a->slot = out->attr_count;
   a->comp_count = cc;
   a->buffer_index = buffer_index;
   a->offset_floats = out->buffer_stride_floats[buffer_index];
