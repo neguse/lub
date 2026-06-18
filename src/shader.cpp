@@ -2015,6 +2015,22 @@ void process_global_parameter(const json &p, ShaderReflection *out,
       st->slot = slot;
       st->stage = stage;
       st->access_format = SGL_PF_RGBA16F;
+      if (t->contains("resultType") && (*t)["resultType"].is_object()) {
+        const json &rt = (*t)["resultType"];
+        std::string stype;
+        int elems = 1;
+        if (rt.value("kind", std::string("")) == "vector") {
+          elems = rt.value("elementCount", 1);
+          if (rt.contains("elementType") && rt["elementType"].is_object())
+            stype = rt["elementType"].value("scalarType", std::string(""));
+        } else {
+          stype = rt.value("scalarType", std::string(""));
+        }
+        if (stype == "float32" && elems == 4)
+          st->access_format = SGL_PF_RGBA32F;
+        else if (stype == "float16" && elems == 4)
+          st->access_format = SGL_PF_RGBA16F;
+      }
       st->readonly = false;
       return;
     }
@@ -2154,6 +2170,26 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
       }
     }
   }
+  // Slang assigns a single contiguous binding index across ALL resource types
+  // (textures, samplers, UBs share one counter). After TS-side remapWgslGroups
+  // splits UBs to @group(0) and textures/samplers/storage to @group(1), the
+  // binding indices within each group must be compacted to 0, 1, 2, ...
+  // Otherwise a shader with 4 textures and 1 UB ends up with UB @binding(4)
+  // which can exceed SG_MAX_UNIFORMBLOCK_BINDSLOTS.
+  for (int i = 0; i < out->ub_count; ++i)
+    out->ubs[i].slot = i;
+  {
+    int next = 0;
+    for (int i = 0; i < out->tex_count; ++i) {
+      out->texs[i].img_slot = next++;
+      if (out->texs[i].smp_slot >= 0)
+        out->texs[i].smp_slot = next++;
+    }
+    for (int i = 0; i < out->storage_buf_count; ++i)
+      out->storage_bufs[i].slot = next++;
+    for (int i = 0; i < out->storage_tex_count; ++i)
+      out->storage_texs[i].slot = next++;
+  }
   return true;
 }
 
@@ -2262,13 +2298,32 @@ static void wasm_merge_stage_reflection(ShaderReflection *dst,
   }
 }
 
+// Slang WASM appends _0, _1, ... suffixes to WGSL identifiers to avoid
+// collisions, but reflection JSON keeps the original source names.  Strip
+// a single trailing _\d+ so the WGSL name `scene_0` matches reflection
+// name `scene`, while a user-defined `pos_1` still matches `pos_1` first.
+static bool wasm_name_matches(const std::string &wgsl_name,
+                              const char *refl_name) {
+  if (wgsl_name == refl_name)
+    return true;
+  size_t last_us = wgsl_name.rfind('_');
+  if (last_us == std::string::npos || last_us == 0 ||
+      last_us + 1 >= wgsl_name.size())
+    return false;
+  bool all_digits = true;
+  for (size_t i = last_us + 1; i < wgsl_name.size(); ++i)
+    if (wgsl_name[i] < '0' || wgsl_name[i] > '9')
+      all_digits = false;
+  return all_digits && wgsl_name.substr(0, last_us) == refl_name;
+}
+
 static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
                                             SglShaderStage stage,
                                             const std::string &name,
                                             int *out_binding) {
   for (int i = 0; i < refl->ub_count; ++i) {
     const ShaderUniformBlock *u = &refl->ubs[i];
-    if (u->stage == stage && name == u->name) {
+    if (u->stage == stage && wasm_name_matches(name, u->name)) {
       *out_binding = u->slot;
       return true;
     }
@@ -2277,26 +2332,26 @@ static bool wasm_reflected_binding_for_name(const ShaderReflection *refl,
     const ShaderTexture *t = &refl->texs[i];
     if (t->stage != stage)
       continue;
-    if (name == t->name) {
+    if (wasm_name_matches(name, t->name)) {
       *out_binding = t->img_slot;
       return true;
     }
     std::string smp = std::string(t->name) + "_smp";
-    if (name == smp) {
+    if (wasm_name_matches(name, smp.c_str())) {
       *out_binding = t->smp_slot;
       return true;
     }
   }
   for (int i = 0; i < refl->storage_buf_count; ++i) {
     const ShaderStorageBuf *b = &refl->storage_bufs[i];
-    if (b->stage == stage && name == b->name) {
+    if (b->stage == stage && wasm_name_matches(name, b->name)) {
       *out_binding = b->slot;
       return true;
     }
   }
   for (int i = 0; i < refl->storage_tex_count; ++i) {
     const ShaderStorageTexture *t = &refl->storage_texs[i];
-    if (t->stage == stage && name == t->name) {
+    if (t->stage == stage && wasm_name_matches(name, t->name)) {
       *out_binding = t->slot;
       return true;
     }

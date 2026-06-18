@@ -3,5 +3,6 @@ struct FSIn {
 };
 
 [shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
-  return float4(i.color, 1.0);
+  float d = i.color.r;
+  return float4(d, d, d, 1.0);
 }

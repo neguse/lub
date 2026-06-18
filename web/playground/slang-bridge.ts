@@ -308,7 +308,14 @@ async function compileOne(
     // samplers / storage buffers in @group(1). Slang emits everything in
     // @group(0). Patch the WGSL declarations so the @binding numbers stay
     // intact but resources land in their expected groups.
-    const { wgsl, remapped } = remapWgslGroups(rawWgsl);
+    const { wgsl: groupWgsl, remapped } = remapWgslGroups(rawWgsl);
+    // WebGPU core only supports write-only storage textures. Slang emits
+    // read_write for RWTexture2D; downgrade to write so the shader matches
+    // sokol's writeonly bind-group layout entry.
+    const wgsl = groupWgsl.replace(
+      /texture_storage_(\w+)<([^,]+),\s*read_write>/g,
+      "texture_storage_$1<$2, write>",
+    );
     let reflectObj: any = {};
     try {
       layout = linked.getLayout(0);

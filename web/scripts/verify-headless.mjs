@@ -354,16 +354,6 @@ page.on('dialog', (d) => d.accept().catch(() => {}))
 // gate CI on them. If a listed sample unexpectedly PASSES we warn loudly so
 // the entry gets removed.
 const KNOWN_FAILING = new Set([
-  // BindGroupLayout for group 0 missing — fragment shader's WGSL references
-  // @group(0) but sokol's pipeline layout doesn't include it. Needs C-level
-  // investigation of how Slang WASM emits multi-shader uniform/texture groups.
-  '14_sponza',
-  // StorageTextureAccess::WriteOnly vs ReadWrite mismatch for RWTexture2D, and
-  // R32Float / Depth32Float textures are UnfilterableFloat in WebGPU (need
-  // float32-filterable feature or non-filtering samplers).
-  '15_render_primitives',
-  // Phys2d bindings not available in the web WASM build — Haxe compile fails.
-  '16_box2d',
 ])
 
 // Per-sample minimum non-black canvas ratio. Floors are picked from observed

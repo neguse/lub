@@ -128,12 +128,8 @@ async function initWebGPU(): Promise<any> {
   const adapter = await (navigator as any).gpu.requestAdapter();
   if (!adapter) throw new Error("No WebGPU adapter");
   const wantedFeatures: string[] = [];
-  if (adapter.features?.has?.("depth32float-stencil8")) {
-    wantedFeatures.push("depth32float-stencil8");
-  } else {
-    console.warn(
-      "[player] adapter lacks depth32float-stencil8 feature; sample setup may fail",
-    );
+  for (const f of ["depth32float-stencil8", "float32-filterable"]) {
+    if (adapter.features?.has?.(f)) wantedFeatures.push(f);
   }
   return await adapter.requestDevice({ requiredFeatures: wantedFeatures });
 }

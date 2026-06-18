@@ -96,7 +96,7 @@ class RenderPrimitives15 {
 		var r32 = target("rp15_r32f", Gfx.R32F);
 		var depthColor = target("rp15_depth_color", Gfx.RGBA8);
 		var depthTex = target("rp15_depth", Gfx.DEPTH32F);
-		var storageTex = target("rp15_storage", Gfx.RGBA16F, Gfx.LINEAR, true);
+		var storageTex = target("rp15_storage", Gfx.RGBA32F, Gfx.LINEAR, true);
 
 		Gfx.beginPass({target: r16, clear_color: Table.fromArray([0.0, 0.0, 0.0, 1.0])});
 		Gfx.draw(6, {verts: quad, uniforms: {fill: Table.fromArray([0.25, 0.0, 0.0, 1.0])}}, {shader: fill, depth: false, cull: Gfx.NONE});
@@ -136,7 +136,7 @@ class RenderPrimitives15 {
 		drawPanel(present, r16, -0.66, 0.47, 0.29, 0.42, [1.0, 0.35, 0.25, 1.0], 0.0);
 		drawPanel(present, rg16, 0.0, 0.47, 0.29, 0.42, [0.35, 1.0, 0.55, 1.0], 0.0);
 		drawPanel(present, r32, 0.66, 0.47, 0.29, 0.42, [0.55, 0.72, 1.0, 1.0], 0.0);
-		drawPanel(present, depthTex, -0.34, -0.48, 0.29, 0.42, [0.8, 0.9, 1.0, 1.0], 1.0);
+		drawPanel(present, depthColor, -0.34, -0.48, 0.29, 0.42, [0.8, 0.9, 1.0, 1.0], 0.0);
 		drawPanel(present, storageTex, 0.34, -0.48, 0.29, 0.42, [1.0, 1.0, 1.0, 1.0], 0.0);
 		Gfx.endPass();
 	}
