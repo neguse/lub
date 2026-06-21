@@ -154,6 +154,9 @@ async function startWasm() {
     console.error("WebGPU init failed:", e.message);
     return;
   }
+  device.addEventListener("uncapturederror", (e: any) => {
+    console.error("[webgpu-validation]", e.error?.message ?? e.error);
+  });
   await slangReady;
 
   // The preRun callback runs after Module.FS has been wired up but before

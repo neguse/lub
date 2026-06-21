@@ -162,14 +162,21 @@ static WGPURenderPassEncoder g_rpass;
 
 // Uniform staging: WebGPU doesn't have push constants, so we write uniform
 // data to per-frame staging buffers and bind them as uniform buffers.
+// We use a ring buffer approach: each draw call writes to the next 256-byte
+// aligned offset in a large buffer, avoiding the problem of later draws
+// overwriting earlier draws' uniform data.
 #define WG_MAX_UB_SLOTS 2
-#define WG_UB_SIZE 1024 // max bytes per uniform block
+#define WG_UB_ALIGN 256   // minUniformBufferOffsetAlignment
+#define WG_UB_SIZE 1024   // max bytes per uniform block
+#define WG_UB_STRIDE 1024 // ring stride: aligned to WG_UB_ALIGN, >= WG_UB_SIZE
+#define WG_UB_RING_SIZE (WG_UB_STRIDE * 128) // 128KB ring per slot
 
 typedef struct WgUniformState {
   WGPUBuffer bufs[WG_MAX_UB_SLOTS];
   bool dirty[WG_MAX_UB_SLOTS];
   uint8_t data[WG_MAX_UB_SLOTS][WG_UB_SIZE];
   size_t sizes[WG_MAX_UB_SLOTS];
+  uint32_t ring_offset[WG_MAX_UB_SLOTS]; // current write offset in ring
 } WgUniformState;
 
 static WgUniformState g_ub;
@@ -259,7 +266,6 @@ static bool wg_init(App *app) {
   app->wgpu_surface_format = WGPUTextureFormat_BGRA8Unorm;
   g_dev = app->wgpu_device;
   g_queue = wgpuDeviceGetQueue(g_dev);
-
   int cw = wg_canvas_width();
   int ch = wg_canvas_height();
   if (cw <= 0)
@@ -274,7 +280,7 @@ static bool wg_init(App *app) {
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
     WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
     bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    bd.size = WG_UB_SIZE;
+    bd.size = WG_UB_RING_SIZE;
     g_ub.bufs[i] = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
   }
 
@@ -327,6 +333,9 @@ static void wg_shutdown(App *app) {
 // ---- frame begin / end -----------------------------------------------------
 
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
+  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
+    g_ub.ring_offset[i] = 0;
+
   int cw = wg_canvas_width();
   int ch = wg_canvas_height();
   if (cw <= 0)
@@ -420,9 +429,6 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
 }
 
 static void wg_end_frame(App *app) {
-  // Flush any pending uniform writes before submitting.
-  // (individual passes already handle this via draw)
-
   // Submit the command buffer.
   if (g_enc) {
     WGPUCommandBufferDescriptor cmd_desc = {0};
@@ -729,7 +735,7 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
                           ? WGPUShaderStage_Fragment
                           : WGPUShaderStage_Vertex;
       e->buffer.type = WGPUBufferBindingType_Uniform;
-      e->buffer.hasDynamicOffset = false;
+      e->buffer.hasDynamicOffset = true;
       e->buffer.minBindingSize = 0;
     }
     WGPUBindGroupLayoutDescriptor bgl_desc = {
@@ -956,7 +962,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
           {
               .topology = sgl_to_wgpu_prim(d->primitive),
               .stripIndexFormat = WGPUIndexFormat_Undefined,
-              .frontFace = WGPUFrontFace_CCW,
+              .frontFace = WGPUFrontFace_CW,
               .cullMode = sgl_to_wgpu_cull(d->cull),
           },
       .fragment = &fs,
@@ -1230,6 +1236,10 @@ static void wg_apply_bindings(const BindingsDesc *b) {
       if (bg) {
         wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
         wgpuBindGroupRelease(bg);
+      } else {
+        SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, count=%d "
+                "tex_count=%d bgl1=%p",
+                count, b->texture_count, (void *)g_cur_pipeline->bgl1);
       }
     }
   }
@@ -1247,6 +1257,8 @@ static void wg_apply_uniforms(SglShaderStage stage, int ub_slot,
 }
 
 // Flush uniform data to GPU and bind group 0 before draw/dispatch.
+// Uses a ring buffer with dynamic offsets so each draw gets its own
+// uniform data region, preventing later draws from overwriting earlier ones.
 static void wg_flush_uniforms(void) {
   if (!g_cur_pipeline)
     return;
@@ -1255,25 +1267,35 @@ static void wg_flush_uniforms(void) {
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
     if (g_ub.dirty[i]) {
       any_dirty = true;
-      // WebGPU requires uniform buffer sizes to be multiples of 16.
       size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
       if (aligned > WG_UB_SIZE)
         aligned = WG_UB_SIZE;
-      wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], 0, g_ub.data[i], aligned);
+      uint32_t off = g_ub.ring_offset[i];
+      if (off + WG_UB_STRIDE > WG_UB_RING_SIZE)
+        off = 0;
+      wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
+      g_ub.ring_offset[i] = off + WG_UB_STRIDE;
     }
   }
   if (!any_dirty && g_cur_pipeline->refl.ub_count == 0)
     return;
 
-  // Build bind group 0 with the uniform buffers.
+  // Build bind group 0 with the uniform buffers, using dynamic offsets.
   WGPUBindGroupEntry entries[WG_MAX_UB_SLOTS] = {0};
+  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
   int count = 0;
   for (int i = 0; i < g_cur_pipeline->refl.ub_count && i < WG_MAX_UB_SLOTS;
        ++i) {
-    WGPUBindGroupEntry *e = &entries[count++];
-    e->binding = (uint32_t)g_cur_pipeline->refl.ubs[i].slot;
-    e->buffer = g_ub.bufs[g_cur_pipeline->refl.ubs[i].slot];
+    int slot = g_cur_pipeline->refl.ubs[i].slot;
+    WGPUBindGroupEntry *e = &entries[count];
+    e->binding = (uint32_t)slot;
+    e->buffer = g_ub.bufs[slot];
+    e->offset = 0;
     e->size = WG_UB_SIZE;
+    // Dynamic offset = where we last wrote for this slot.
+    uint32_t off = g_ub.ring_offset[slot];
+    dyn_offsets[count] = (off >= WG_UB_STRIDE) ? (off - WG_UB_STRIDE) : 0;
+    count++;
   }
   if (count > 0) {
     WGPUBindGroupDescriptor bgd = {
@@ -1283,7 +1305,8 @@ static void wg_flush_uniforms(void) {
     };
     WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
     if (bg) {
-      wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, 0, NULL);
+      wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
+                                        dyn_offsets);
       wgpuBindGroupRelease(bg);
     }
   }
@@ -1320,8 +1343,9 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     return;
 
   // Build bind groups for compute.
-  // Group 0: uniforms
+  // Group 0: uniforms (ring-buffered with dynamic offsets)
   WGPUBindGroupEntry ub_entries[WG_MAX_UB_SLOTS] = {0};
+  uint32_t ub_dyn_offsets[WG_MAX_UB_SLOTS] = {0};
   int ub_count = 0;
   for (int i = 0; i < d->uniform_count; ++i) {
     int slot = d->uniforms[i].slot;
@@ -1330,12 +1354,19 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     size_t aligned = wg_align((uint32_t)d->uniforms[i].bytes, 16);
     if (aligned > WG_UB_SIZE)
       aligned = WG_UB_SIZE;
-    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[slot], 0, d->uniforms[i].data,
+    uint32_t off = g_ub.ring_offset[slot];
+    if (off + WG_UB_ALIGN > WG_UB_RING_SIZE)
+      off = 0;
+    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[slot], off, d->uniforms[i].data,
                          aligned);
-    WGPUBindGroupEntry *e = &ub_entries[ub_count++];
+    WGPUBindGroupEntry *e = &ub_entries[ub_count];
     e->binding = (uint32_t)slot;
     e->buffer = g_ub.bufs[slot];
+    e->offset = 0;
     e->size = WG_UB_SIZE;
+    ub_dyn_offsets[ub_count] = off;
+    g_ub.ring_offset[slot] = off + WG_UB_ALIGN;
+    ub_count++;
   }
 
   // Group 1: textures + samplers + storage buffers + storage textures
@@ -1419,7 +1450,8 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (cpass) {
     wgpuComputePassEncoderSetPipeline(cpass, wp->compute);
     if (bg0)
-      wgpuComputePassEncoderSetBindGroup(cpass, 0, bg0, 0, NULL);
+      wgpuComputePassEncoderSetBindGroup(cpass, 0, bg0, (size_t)ub_count,
+                                         ub_dyn_offsets);
     if (bg1)
       wgpuComputePassEncoderSetBindGroup(cpass, 1, bg1, 0, NULL);
     wgpuComputePassEncoderDispatchWorkgroups(cpass, (uint32_t)d->groups_x,
