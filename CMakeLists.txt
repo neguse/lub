@@ -140,6 +140,7 @@ set(LUB_SOURCES
   src/stb_impl.c
   src/gltf.c
 )
+list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
   # haxe --wait child process management; WASM ビルドでは process spawn が無いので除外。

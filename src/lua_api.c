@@ -1670,11 +1670,24 @@ static int l_config(lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
   lua_getfield(L, 1, "backend");
   const char *name =
-      (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : "sokol";
+      (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : NULL;
+#ifdef __EMSCRIPTEN__
+  // WASM: samples hardcode "sokol" via LUB_BACKEND env (nil in wasm).
+  // Silently map "sokol" and NULL to "webgpu" so existing samples work.
+  if (!name || strcmp(name, "sokol") == 0)
+    name = "webgpu";
+  if (strcmp(name, "sokol") != 0 && strcmp(name, "webgpu") != 0) {
+    return luaL_error(
+        L, "config: backend must be 'sokol' or 'webgpu', got '%s'", name);
+  }
+#else
+  if (!name)
+    name = "sokol";
   if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0) {
     return luaL_error(
         L, "config: backend must be 'sokol' or 'sdlgpu', got '%s'", name);
   }
+#endif
   strncpy(g_app_for_lua->backend_name, name,
           sizeof(g_app_for_lua->backend_name) - 1);
   g_app_for_lua->backend_name[sizeof(g_app_for_lua->backend_name) - 1] = '\0';

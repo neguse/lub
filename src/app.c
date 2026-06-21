@@ -40,7 +40,11 @@ bool app_init(App *app) {
   app->fps_last_ns = 0;
   app->fps_frame_count = 0;
   app->phase = APP_PHASE_PRE_BACKEND;
+#ifdef __EMSCRIPTEN__
+  strcpy(app->backend_name, "webgpu");
+#else
   strcpy(app->backend_name, "sokol");
+#endif
   app->readback_depth = 8;
   return true;
 }
@@ -53,8 +57,12 @@ bool app_backend_init(App *app) {
     g_backend = &g_backend_sokol;
   }
 #else
-  // wasm build: only the sokol/WGPU backend is compiled in.
-  g_backend = &g_backend_sokol;
+  // wasm build: sokol/WGPU or direct webgpu backend.
+  if (strcmp(app->backend_name, "webgpu") == 0) {
+    g_backend = &g_backend_webgpu;
+  } else {
+    g_backend = &g_backend_sokol;
+  }
 #endif
   SDL_Log("backend selected: %s", g_backend->name);
   if (!g_backend->init(app)) {
