@@ -1693,4 +1693,6 @@ const RenderBackend g_backend_webgpu = {
     .swapchain_color_format = wg_swapchain_color_format,
 };
 
+#else
+typedef int _wg_empty_tu;
 #endif // __EMSCRIPTEN__
