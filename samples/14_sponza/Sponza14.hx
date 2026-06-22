@@ -21,13 +21,13 @@ class Sponza14 {
 	static var primCounts:Array<Int> = [];
 	static var primMats:Array<Dynamic> = [];
 
-	static var camEye:Array<Float> = [0.0, 1.15, 0.0];
+	static var camEye:Array<Float> = [-1.5, 0.25, 0.0];
 	static var camYaw:Float = 1.5708;
-	static var camPitch:Float = -0.02;
+	static var camPitch:Float = 0.0;
 	static var prevViewProj:Array<Float> = null;
-	static var pcEye:Array<Float> = [0.0, 1.15, 0.0];
+	static var pcEye:Array<Float> = [-1.5, 0.25, 0.0];
 	static var pcYaw:Float = 1.5708;
-	static var pcPitch:Float = -0.02;
+	static var pcPitch:Float = 0.0;
 
 	static var quadVerts:Array<Float> = [
 		-1, -1, 0, 0,
