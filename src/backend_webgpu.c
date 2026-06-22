@@ -1196,51 +1196,51 @@ static void wg_apply_bindings(const BindingsDesc *b) {
     g_ibuf_bound = true;
   }
 
-  // Build bind group 1: textures + samplers + storage
-  if (b->refl &&
-      (b->texture_count > 0 || g_cur_pipeline->refl.storage_buf_count > 0)) {
+  // Build bind group 1: textures + samplers + storage.
+  // Always set group 1 — WebKit requires all pipeline bind groups to be bound.
+  if (g_cur_pipeline->bgl1) {
     WGPUBindGroupEntry entries[32] = {0};
     int count = 0;
 
-    for (int i = 0; i < b->texture_count; ++i) {
-      const char *name = b->textures[i].name;
-      WgImage *wi = (WgImage *)b->textures[i].image;
-      if (!name || !wi)
-        continue;
-      for (int k = 0; k < b->refl->tex_count; ++k) {
-        if (strcmp(b->refl->texs[k].name, name) == 0) {
-          int img_slot = b->refl->texs[k].img_slot;
-          int smp_slot = b->refl->texs[k].smp_slot;
-          if (img_slot >= 0) {
-            WGPUBindGroupEntry *e = &entries[count++];
-            e->binding = (uint32_t)img_slot;
-            e->textureView = wi->view;
+    if (b->refl) {
+      for (int i = 0; i < b->texture_count; ++i) {
+        const char *name = b->textures[i].name;
+        WgImage *wi = (WgImage *)b->textures[i].image;
+        if (!name || !wi)
+          continue;
+        for (int k = 0; k < b->refl->tex_count; ++k) {
+          if (strcmp(b->refl->texs[k].name, name) == 0) {
+            int img_slot = b->refl->texs[k].img_slot;
+            int smp_slot = b->refl->texs[k].smp_slot;
+            if (img_slot >= 0) {
+              WGPUBindGroupEntry *e = &entries[count++];
+              e->binding = (uint32_t)img_slot;
+              e->textureView = wi->view;
+            }
+            if (smp_slot >= 0) {
+              WGPUBindGroupEntry *e = &entries[count++];
+              e->binding = (uint32_t)smp_slot;
+              e->sampler = wi->sampler;
+            }
+            break;
           }
-          if (smp_slot >= 0) {
-            WGPUBindGroupEntry *e = &entries[count++];
-            e->binding = (uint32_t)smp_slot;
-            e->sampler = wi->sampler;
-          }
-          break;
         }
       }
     }
 
-    if (count > 0) {
-      WGPUBindGroupDescriptor bgd = {
-          .layout = g_cur_pipeline->bgl1,
-          .entryCount = (size_t)count,
-          .entries = entries,
-      };
-      WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-      if (bg) {
-        wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
-        wgpuBindGroupRelease(bg);
-      } else {
-        SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, count=%d "
-                "tex_count=%d bgl1=%p",
-                count, b->texture_count, (void *)g_cur_pipeline->bgl1);
-      }
+    WGPUBindGroupDescriptor bgd = {
+        .layout = g_cur_pipeline->bgl1,
+        .entryCount = (size_t)count,
+        .entries = entries,
+    };
+    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
+    if (bg) {
+      wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
+      wgpuBindGroupRelease(bg);
+    } else {
+      SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, count=%d "
+              "tex_count=%d bgl1=%p",
+              count, b->texture_count, (void *)g_cur_pipeline->bgl1);
     }
   }
 }
