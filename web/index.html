@@ -139,9 +139,11 @@
           box.textContent += msg + "\n";
         }
         window.addEventListener("error", function (e) {
+          var msg = e.message || e.error || "";
+          if (msg === "Script error." || msg === "Script error") return;
           show(
             "JS error: " +
-              (e.message || e.error || e) +
+              (msg || e) +
               (e.filename ? "  @ " + e.filename + ":" + e.lineno : ""),
           );
         });

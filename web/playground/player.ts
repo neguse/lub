@@ -84,7 +84,9 @@ window.addEventListener("unhandledrejection", (e) => {
   );
 });
 window.addEventListener("error", (e) => {
-  relayLog("[error] " + (e.message ?? String(e)), "err");
+  const msg = e.message ?? String(e);
+  if (msg === "Script error." || msg === "Script error") return;
+  relayLog("[error] " + msg, "err");
 });
 
 function writeFileEnsureDir(FS: any, path: string, content: string) {
@@ -154,8 +156,12 @@ async function startWasm() {
     console.error("WebGPU init failed:", e.message);
     return;
   }
+  const _seenErrors = new Set<string>();
   device.addEventListener("uncapturederror", (e: any) => {
-    console.error("[webgpu-validation]", e.error?.message ?? e.error);
+    const msg = String(e.error?.message ?? e.error);
+    if (_seenErrors.has(msg)) return;
+    _seenErrors.add(msg);
+    console.error("[webgpu-validation]", msg);
   });
   await slangReady;
 
