@@ -9,7 +9,6 @@ class Sponza14 {
 	static inline var MODEL_SCALE:Float = 0.002;
 	static inline var SHADOW_SIZE:Int = 2048;
 	static inline var ASSET_FULL:String = "samples/14_sponza/data/Sponza/Sponza.gltf";
-	static inline var ASSET_WEB:String = "samples/14_sponza/data/Sponza/SponzaLite.gltf";
 
 	static var rtW:Int = 1280;
 	static var rtH:Int = 720;
@@ -85,7 +84,7 @@ class Sponza14 {
 			|| dofShader == null || motionShader == null || screenShader == null)
 			return;
 
-		var meshR = Io.loadGltf(lub.Sys.isWeb() ? ASSET_WEB : ASSET_FULL);
+		var meshR = Io.loadGltf(ASSET_FULL);
 		var mesh:Dynamic = meshR.mesh;
 		if (mesh == null)
 			return;
