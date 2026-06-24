@@ -1,6 +1,7 @@
 import lub.Lub;
 import lub.Gfx;
 import lub.Io;
+import lub.Math;
 
 // glTF mesh (Box.glb) を法線可視化 shader + Y 軸回転 MVP で描く。
 class Gltf08 {
@@ -15,54 +16,26 @@ class Gltf08 {
 		Lub.config({backend: backend});
 	}
 
-	// row-major で平 float table に flatten する (Slang の
-	// SLANG_MATRIX_LAYOUT_ROW_MAJOR と整合)。
-	static function mul4(a:Array<Float>, b:Array<Float>):Array<Float> {
-		var r:Array<Float> = [for (_ in 0...16) 0.0];
-		for (row in 0...4) {
-			for (col in 0...4) {
-				var s = 0.0;
-				for (k in 0...4) {
-					s = s + a[row * 4 + k] * b[k * 4 + col];
-				}
-				r[row * 4 + col] = s;
-			}
-		}
-		return r;
-	}
-
 	static function makeMvp(t:Float):lua.Table<Int, Float> {
-		var cs = Math.cos(t);
-		var sn = Math.sin(t);
 		// model: Y 軸回転
-		var m:Array<Float> = [
-			 cs, 0.0,  sn, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			-sn, 0.0,  cs, 0.0,
-			0.0, 0.0, 0.0, 1.0
-		];
+		var model = Mat4.rotateY(-t);
 		// view: translate z = +3 (D3D-style LH: camera at origin looks down +Z;
 		// move world +Z so the box sits in front of the camera)
-		var v:Array<Float> = [
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 3.0,
-			0.0, 0.0, 0.0, 1.0
-		];
-		// proj: perspective f=2.0, aspect=16/9, near=0.1, far=100
+		var view = Mat4.translate(new Vec3(0.0, 0.0, 3.0));
+		// proj: perspective with focal length f=2.0 directly (not an fov),
+		// aspect=16/9, near=0.1, far=100
 		var f = 2.0;
 		var aspect = 16.0 / 9.0;
 		var nz = 0.1;
 		var fz = 100.0;
-		var p:Array<Float> = [
-			f / aspect, 0.0,            0.0,                  0.0,
-			       0.0,   f,            0.0,                  0.0,
-			       0.0, 0.0, fz / (fz - nz), -fz * nz / (fz - nz),
-			       0.0, 0.0,            1.0,                  0.0
-		];
-		var vm = mul4(v, m);
-		var pvm = mul4(p, vm);
-		return lua.Table.fromArray(pvm);
+		var proj = Mat4.zero();
+		proj.m[0] = f / aspect;
+		proj.m[5] = f;
+		proj.m[10] = fz / (fz - nz);
+		proj.m[11] = -fz * nz / (fz - nz);
+		proj.m[14] = 1.0;
+		var pvm = proj.mul(view.mul(model));
+		return lua.Table.fromArray(pvm.m);
 	}
 
 	public static function onFrame() {

@@ -2,6 +2,7 @@ import lub.Lub;
 import lub.Gfx;
 import lub.Io;
 import lub.Input;
+import lub.Math;
 
 // 3D-game-shaders-for-beginners style showcase.
 //
@@ -213,17 +214,13 @@ class Sfb12 {
 					var nr = rr * 1.03 + high * 0.035 - shadow * 0.025;
 					var ng = gg * 1.01 + shadow * 0.025 + high * 0.010;
 					var nb = bb * 0.98 + shadow * 0.060 - high * 0.020;
-					lutPx.push(Std.int(saturate(nr) * 255));
-					lutPx.push(Std.int(saturate(ng) * 255));
-					lutPx.push(Std.int(saturate(nb) * 255));
+					lutPx.push(Std.int(MathUtil.saturate(nr) * 255));
+					lutPx.push(Std.int(MathUtil.saturate(ng) * 255));
+					lutPx.push(Std.int(MathUtil.saturate(nb) * 255));
 					lutPx.push(255);
 				}
 			}
 		}
-	}
-
-	static inline function saturate(v:Float):Float {
-		return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
 	}
 
 	static inline function pushHero(out:Array<Float>, cx:Float, cy:Float, cz:Float, r:Float, seg:Int, ring:Int, segs:Int, rings:Int) {
@@ -272,115 +269,26 @@ class Sfb12 {
 	}
 
 	// ---- matrix math (row-major, matches Slang ROW_MAJOR) ----
-
-	static function mul4(a:Array<Float>, b:Array<Float>):Array<Float> {
-		var r:Array<Float> = [for (_ in 0...16) 0.0];
-		for (row in 0...4)
-			for (col in 0...4) {
-				var s = 0.0;
-				for (k in 0...4)
-					s = s + a[row * 4 + k] * b[k * 4 + col];
-				r[row * 4 + col] = s;
-			}
-		return r;
-	}
-
-	static inline function dot3(a:Array<Float>, b:Array<Float>):Float {
-		return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-	}
-
-	static function cross3(a:Array<Float>, b:Array<Float>):Array<Float> {
-		return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-	}
-
-	static function norm3(v:Array<Float>):Array<Float> {
-		var len = Math.sqrt(dot3(v, v));
-		return [v[0] / len, v[1] / len, v[2] / len];
-	}
-
-	static inline function sub3(a:Array<Float>, b:Array<Float>):Array<Float> {
-		return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-	}
-
-	static function identityMat():Array<Float> {
-		return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-	}
-
-	// uniform scale + translation (row-major).
-	static function scaleTransMat(s:Float, tx:Float, ty:Float, tz:Float):Array<Float> {
-		return [s, 0, 0, tx, 0, s, 0, ty, 0, 0, s, tz, 0, 0, 0, 1];
-	}
-
-	// inverse of a rigid view matrix [R | -R*eye] -> [R^T | eye] (row-major).
-	static function rigidInverse(view:Array<Float>, eye:Array<Float>):Array<Float> {
-		return [
-			view[0], view[4],  view[8], eye[0],
-			view[1], view[5],  view[9], eye[1],
-			view[2], view[6], view[10], eye[2],
-			      0,       0,        0,      1,
-		];
-	}
-
-	// upper-left 3x3 of a row-major 4x4 applied to a vector
-	static function mat3mul(m:Array<Float>, v:Array<Float>):Array<Float> {
-		return [
-			m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
-			m[4] * v[0] + m[5] * v[1] + m[6] * v[2],
-			m[8] * v[0] + m[9] * v[1] + m[10] * v[2],
-		];
-	}
-
-	static function lookAtLh(eye:Array<Float>, target:Array<Float>, up:Array<Float>):Array<Float> {
-		var z = norm3(sub3(target, eye));
-		var x = norm3(cross3(up, z));
-		var y = cross3(z, x);
-		return [
-			x[0], x[1], x[2], -dot3(x, eye),
-			y[0], y[1], y[2], -dot3(y, eye),
-			z[0], z[1], z[2], -dot3(z, eye),
-			   0,    0,    0,             1,
-		];
-	}
-
-	static function orthoLh(w:Float, h:Float, nz:Float, fz:Float):Array<Float> {
-		return [
-			2 / w,     0,             0,               0,
-			    0, 2 / h,             0,               0,
-			    0,     0, 1 / (fz - nz), -nz / (fz - nz),
-			    0,     0,             0,               1,
-		];
-	}
-
-	static function perspectiveLh(fovDeg:Float, aspect:Float, nz:Float, fz:Float):Array<Float> {
-		var f = 1 / Math.tan(fovDeg * Math.PI / 360);
-		return [
-			f / aspect, 0,              0,                    0,
-			         0, f,              0,                    0,
-			         0, 0, fz / (fz - nz), -fz * nz / (fz - nz),
-			         0, 0,              1,                    0,
-		];
-	}
-
 	// ---- free-fly camera (WASD move, Q/E down/up, left-drag to look) ----
 	// Persists across frames. With no input (headless golden) it stays at the
 	// initial pose, so captures remain deterministic.
-	static var camEye:Array<Float> = [2.0, 1.35, -2.85];
+	static var camEye:Vec3 = new Vec3(2.0, 1.35, -2.85);
 	static var camYaw:Float = -0.581; // looks toward the scene centre
 	static var camPitch:Float = -0.277;
-	static var prevViewProj:Array<Float> = null; // last frame's proj*view (motion blur)
+	static var prevViewProj:Mat4 = null; // last frame's proj*view (motion blur)
 	// last frame's camera pose, to detect whether the camera actually moved
 	// (motion blur only runs when it did, so a still camera stays a clean no-op).
-	static var pcEye:Array<Float> = [2.0, 1.35, -2.85];
+	static var pcEye:Vec3 = new Vec3(2.0, 1.35, -2.85);
 	static var pcYaw:Float = -0.581;
 	static var pcPitch:Float = -0.277;
 
-	static function forwardDir():Array<Float> {
+	static function forwardDir():Vec3 {
 		var cp = Math.cos(camPitch);
-		return [Math.sin(camYaw) * cp, Math.sin(camPitch), Math.cos(camYaw) * cp];
+		return new Vec3(Math.sin(camYaw) * cp, Math.sin(camPitch), Math.cos(camYaw) * cp);
 	}
 
-	static function updateCamera():Array<Float> {
-		var up:Array<Float> = [0, 1, 0];
+	static function updateCamera():Mat4 {
+		var up = new Vec3(0, 1, 0);
 
 		// LUB_SFB_CAM="yaw,pitch,ex,ey,ez" pins the camera to a fixed pose (testing).
 		var camStr = lua.Os.getenv("LUB_SFB_CAM");
@@ -389,9 +297,9 @@ class Sfb12 {
 			if (p.length >= 5) {
 				camYaw = Std.parseFloat(p[0]);
 				camPitch = Std.parseFloat(p[1]);
-				camEye[0] = Std.parseFloat(p[2]);
-				camEye[1] = Std.parseFloat(p[3]);
-				camEye[2] = Std.parseFloat(p[4]);
+				camEye.x = Std.parseFloat(p[2]);
+				camEye.y = Std.parseFloat(p[3]);
+				camEye.z = Std.parseFloat(p[4]);
 			}
 		}
 
@@ -413,35 +321,35 @@ class Sfb12 {
 		}
 
 		var fwd = forwardDir();
-		var right = norm3(cross3(up, fwd));
+		var right = up.cross(fwd).normalize();
 		var spd = 2.0 * DT;
 		if (Input.keyDown("w")) {
-			camEye[0] += fwd[0] * spd;
-			camEye[1] += fwd[1] * spd;
-			camEye[2] += fwd[2] * spd;
+			camEye.x += fwd.x * spd;
+			camEye.y += fwd.y * spd;
+			camEye.z += fwd.z * spd;
 		}
 		if (Input.keyDown("s")) {
-			camEye[0] -= fwd[0] * spd;
-			camEye[1] -= fwd[1] * spd;
-			camEye[2] -= fwd[2] * spd;
+			camEye.x -= fwd.x * spd;
+			camEye.y -= fwd.y * spd;
+			camEye.z -= fwd.z * spd;
 		}
 		if (Input.keyDown("d")) {
-			camEye[0] += right[0] * spd;
-			camEye[1] += right[1] * spd;
-			camEye[2] += right[2] * spd;
+			camEye.x += right.x * spd;
+			camEye.y += right.y * spd;
+			camEye.z += right.z * spd;
 		}
 		if (Input.keyDown("a")) {
-			camEye[0] -= right[0] * spd;
-			camEye[1] -= right[1] * spd;
-			camEye[2] -= right[2] * spd;
+			camEye.x -= right.x * spd;
+			camEye.y -= right.y * spd;
+			camEye.z -= right.z * spd;
 		}
 		if (Input.keyDown("e"))
-			camEye[1] += spd;
+			camEye.y += spd;
 		if (Input.keyDown("q"))
-			camEye[1] -= spd;
+			camEye.y -= spd;
 
-		var target:Array<Float> = [camEye[0] + fwd[0], camEye[1] + fwd[1], camEye[2] + fwd[2]];
-		return lookAtLh(camEye, target, up);
+		var target = new Vec3(camEye.x + fwd.x, camEye.y + fwd.y, camEye.z + fwd.z);
+		return Mat4.lookAtLh(camEye, target, up);
 	}
 
 	// ---- fullscreen quad (pos.xy, uv) ----
@@ -532,7 +440,7 @@ class Sfb12 {
 		var heroBuf:Dynamic = null;
 		var heroIdx:Dynamic = null;
 		var heroCount:Int = 0;
-		var heroModel:Array<Float> = identityMat();
+		var heroModel = Mat4.identity();
 		if (lua.Os.getenv("LUB_SFB_GLTF") != null) {
 			var gr = Io.loadGltf("samples/12_sfb/data/12_avocado.gltf");
 			var mesh:Dynamic = gr.mesh;
@@ -540,7 +448,7 @@ class Sfb12 {
 				heroBuf = Gfx.useBuffer("sfb_hero", Gfx.VERTEX, Io.interleavePnu(mesh), gr.version);
 				heroIdx = Gfx.useBuffer("sfb_heroIdx", Gfx.INDEX, mesh.indices, gr.version);
 				heroCount = mesh.index_count;
-				heroModel = scaleTransMat(8.5, 0.1, 0.0, -0.7);
+				heroModel = Mat4.scaleTrans(8.5, new Vec3(0.1, 0.0, -0.7));
 			}
 		}
 		if (heroBuf == null) {
@@ -558,30 +466,31 @@ class Sfb12 {
 		var lutTex = Gfx.useTexture("sfb_lut", LUT_N * LUT_N, LUT_N, Gfx.RGBA8, lua.Table.fromArray(lutPx), 1, {filter: Gfx.LINEAR, wrap: Gfx.CLAMP});
 
 		var view = updateCamera();
-		var proj = perspectiveLh(52, RT_W / RT_H, 0.1, 40.0);
+		var proj = Mat4.perspectiveLh(52, RT_W / RT_H, 0.1, 40.0);
 		// Offscreen targets are stored y-down vs the swapchain (sokol only y-flips
 		// the default framebuffer). Pre-flip clip-space Y so the G-buffer is
 		// screen-oriented; cull is NONE so the winding change is harmless.
-		proj[5] = -proj[5];
-		var worldLight = norm3([-0.48, 1.0, -0.32]); // direction toward the light
-		var lightView = norm3(mat3mul(view, worldLight));
+		proj.m[5] = -proj.m[5];
+		var worldLight = new Vec3(-0.48, 1.0, -0.32).normalize(); // direction toward the light
+		var lightView = view.mat3MulVec3(worldLight).normalize();
 		// directional shadow: orthographic light camera looking at the scene centre.
-		var lightLook = lookAtLh([0.1 + worldLight[0] * 6.0, 0.3 + worldLight[1] * 6.0, worldLight[2] * 6.0], [0.1, 0.3, 0.0], [0, 1, 0]);
-		var lightMvp = mul4(orthoLh(5.5, 5.5, 0.1, 12.0), lightLook);
+		var lightLook = Mat4.lookAtLh(new Vec3(0.1 + worldLight.x * 6.0, 0.3 + worldLight.y * 6.0, worldLight.z * 6.0), new Vec3(0.1, 0.3, 0.0),
+			new Vec3(0, 1, 0));
+		var lightMvp = Mat4.orthoLh(5.5, 5.5, 0.1, 12.0).mul(lightLook);
 
 		// Reprojection for motion blur: maps a current view-space point to last
 		// frame's clip space = prevViewProj * inverse(currentView). Still camera =>
 		// reproj == proj => zero velocity.
-		var viewProj = mul4(proj, view);
-		var invView = rigidInverse(view, camEye);
-		var reproj = mul4((prevViewProj == null) ? viewProj : prevViewProj, invView);
+		var viewProj = proj.mul(view);
+		var invView = view.rigidInverse(camEye);
+		var reproj = ((prevViewProj == null) ? viewProj : prevViewProj).mul(invView);
 		prevViewProj = viewProj;
 
-		var camMoved = Math.abs(camEye[0] - pcEye[0]) + Math.abs(camEye[1] - pcEye[1]) + Math.abs(camEye[2] - pcEye[2]) + Math.abs(camYaw - pcYaw)
+		var camMoved = Math.abs(camEye.x - pcEye.x) + Math.abs(camEye.y - pcEye.y) + Math.abs(camEye.z - pcEye.z) + Math.abs(camYaw - pcYaw)
 			+ Math.abs(camPitch - pcPitch) > 1e-6;
-		pcEye[0] = camEye[0];
-		pcEye[1] = camEye[1];
-		pcEye[2] = camEye[2];
+		pcEye.x = camEye.x;
+		pcEye.y = camEye.y;
+		pcEye.z = camEye.z;
 		pcYaw = camYaw;
 		pcPitch = camPitch;
 
@@ -595,7 +504,7 @@ class Sfb12 {
 		// SSAO folds AO into the lit color; fog -> bloom -> outline build the look.
 		// (proj[0], proj[5]) are the two projection scalars SSAO needs to project a
 		// view-space sample point back to uv.
-		ssaoPass(texA, ssaoShader, quadBufF, gColor, gNormal, gPosition, proj[0], proj[5]);
+		ssaoPass(texA, ssaoShader, quadBufF, gColor, gNormal, gPosition, proj.m[0], proj.m[5]);
 		blitFog(texB, fogShader, quadBufF, texA, gPosition);
 		blit(bloomA, brightShader, quadBufF, texB);
 		blit(bloomB, blurHShader, quadBufF, bloomA);
@@ -608,7 +517,7 @@ class Sfb12 {
 		if (lua.Os.getenv("LUB_SFB_NOWATER") != null) {
 			blit(texA, pShader, quadBufF, texB);
 		} else {
-			waterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex, waterNrmTex, invView, tAccum, WATER_Y, proj[0], proj[5]);
+			waterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex, waterNrmTex, invView, tAccum, WATER_Y, proj.m[0], proj.m[5]);
 		}
 
 		// Depth of field: blur a copy of the beauty (texA) through the bloom
@@ -660,9 +569,9 @@ class Sfb12 {
 
 	// shadow depth pass: render flat + hero from the light's POV into shadowMap.
 	static function shadowPass(shadowMap:Dynamic, shadowDepth:Dynamic, flatShader:Dynamic, sceneBuf:Dynamic, count:Int, heroShader:Dynamic, heroBuf:Dynamic,
-			heroCount:Int, heroIdx:Dynamic, heroModel:Array<Float>, lightMvp:Array<Float>) {
-		var lmvp = lua.Table.fromArray(lightMvp);
-		var mv = lua.Table.fromArray(heroModel);
+			heroCount:Int, heroIdx:Dynamic, heroModel:Mat4, lightMvp:Mat4) {
+		var lmvp = lua.Table.fromArray(lightMvp.m);
+		var mv = lua.Table.fromArray(heroModel.m);
 		Gfx.beginPass({
 			target: shadowMap,
 			depth_target: shadowDepth,
@@ -690,13 +599,13 @@ class Sfb12 {
 	}
 
 	static function geometryPass(shader:Dynamic, sceneBuf:Dynamic, count:Int, matShader:Dynamic, heroBuf:Dynamic, heroCount:Int, heroIdx:Dynamic,
-			heroModel:Array<Float>, albedoTex:Dynamic, normalTex:Dynamic, shadowMap:Dynamic, lightMvp:Array<Float>, gColor:Dynamic, gNormal:Dynamic,
-			gPosition:Dynamic, gDepth:Dynamic, proj:Array<Float>, view:Array<Float>, lightView:Array<Float>) {
-		var lt = lua.Table.fromArray([lightView[0], lightView[1], lightView[2], 0.0]);
-		var pv = lua.Table.fromArray(proj);
-		var vv = lua.Table.fromArray(view);
-		var mv = lua.Table.fromArray(heroModel);
-		var lmvp = lua.Table.fromArray(lightMvp);
+			heroModel:Mat4, albedoTex:Dynamic, normalTex:Dynamic, shadowMap:Dynamic, lightMvp:Mat4, gColor:Dynamic, gNormal:Dynamic, gPosition:Dynamic,
+			gDepth:Dynamic, proj:Mat4, view:Mat4, lightView:Vec3) {
+		var lt = lua.Table.fromArray([lightView.x, lightView.y, lightView.z, 0.0]);
+		var pv = lua.Table.fromArray(proj.m);
+		var vv = lua.Table.fromArray(view.m);
+		var mv = lua.Table.fromArray(heroModel.m);
+		var lmvp = lua.Table.fromArray(lightMvp.m);
 		Gfx.beginPass({
 			targets: lua.Table.fromArray([gColor, gNormal, gPosition]),
 			depth_target: gDepth,
@@ -837,8 +746,8 @@ class Sfb12 {
 		Gfx.endPass();
 	}
 
-	static function waterPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, gPosition:Dynamic, flowTex:Dynamic, wnTex:Dynamic, iv:Array<Float>,
-			time:Float, waterY:Float, p00:Float, p11:Float) {
+	static function waterPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, gPosition:Dynamic, flowTex:Dynamic, wnTex:Dynamic, iv:Mat4, time:Float,
+			waterY:Float, p00:Float, p11:Float) {
 		Gfx.beginPass({target: targ, clear_color: black()});
 		Gfx.draw(6, {
 			verts: quad,
@@ -847,26 +756,26 @@ class Sfb12 {
 			flowmap: flowTex,
 			waternormal: wnTex,
 			uniforms: {
-				ir0: lua.Table.fromArray([iv[0], iv[1], iv[2], iv[3]]),
-				ir1: lua.Table.fromArray([iv[4], iv[5], iv[6], iv[7]]),
-				ir2: lua.Table.fromArray([iv[8], iv[9], iv[10], iv[11]]),
+				ir0: lua.Table.fromArray([iv.m[0], iv.m[1], iv.m[2], iv.m[3]]),
+				ir1: lua.Table.fromArray([iv.m[4], iv.m[5], iv.m[6], iv.m[7]]),
+				ir2: lua.Table.fromArray([iv.m[8], iv.m[9], iv.m[10], iv.m[11]]),
 				params: lua.Table.fromArray([time, waterY, p00, p11]),
 			}
 		}, {shader: shader, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();
 	}
 
-	static function motionPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, gPosition:Dynamic, m:Array<Float>) {
+	static function motionPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, gPosition:Dynamic, m:Mat4) {
 		Gfx.beginPass({target: targ, clear_color: black()});
 		Gfx.draw(6, {
 			verts: quad,
 			scene: tex,
 			gpos: gPosition,
 			uniforms: {
-				r0: lua.Table.fromArray([m[0], m[1], m[2], m[3]]),
-				r1: lua.Table.fromArray([m[4], m[5], m[6], m[7]]),
-				r2: lua.Table.fromArray([m[8], m[9], m[10], m[11]]),
-				r3: lua.Table.fromArray([m[12], m[13], m[14], m[15]]),
+				r0: lua.Table.fromArray([m.m[0], m.m[1], m.m[2], m.m[3]]),
+				r1: lua.Table.fromArray([m.m[4], m.m[5], m.m[6], m.m[7]]),
+				r2: lua.Table.fromArray([m.m[8], m.m[9], m.m[10], m.m[11]]),
+				r3: lua.Table.fromArray([m.m[12], m.m[13], m.m[14], m.m[15]]),
 			}
 		}, {shader: shader, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();

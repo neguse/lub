@@ -1,6 +1,7 @@
 import lub.Lub;
 import lub.Gfx;
 import lub.Io;
+import lub.Math;
 
 // Shadow mapping: render light-space depth into an offscreen target with
 // a depth attachment, then use it as a comparison sampler in the scene pass.
@@ -134,78 +135,16 @@ class Shadow11 {
 		return {casters: casters, scene: scene};
 	}
 
-	static function mul4(a:Array<Float>, b:Array<Float>):Array<Float> {
-		var r:Array<Float> = [for (_ in 0...16) 0.0];
-		for (row in 0...4) {
-			for (col in 0...4) {
-				var s = 0.0;
-				for (k in 0...4) {
-					s = s + a[row * 4 + k] * b[k * 4 + col];
-				}
-				r[row * 4 + col] = s;
-			}
-		}
-		return r;
+	static function cameraMvp(t:Float):Mat4 {
+		var eye = new Vec3(2.0 + Math.sin(t * 0.25) * 0.12, 1.35, -2.85);
+		var view = Mat4.lookAtLh(eye, new Vec3(0.05, 0.34, 0.12), new Vec3(0, 1, 0));
+		return Mat4.perspectiveLh(52, 16.0 / 9.0, 0.1, 40.0).mul(view);
 	}
 
-	static inline function dot3(a:Array<Float>, b:Array<Float>):Float {
-		return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-	}
-
-	static function cross3(a:Array<Float>, b:Array<Float>):Array<Float> {
-		return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0],];
-	}
-
-	static function norm3(vv:Array<Float>):Array<Float> {
-		var len = Math.sqrt(dot3(vv, vv));
-		return [vv[0] / len, vv[1] / len, vv[2] / len];
-	}
-
-	static inline function sub3(a:Array<Float>, b:Array<Float>):Array<Float> {
-		return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-	}
-
-	static function lookAtLh(eye:Array<Float>, target:Array<Float>, up:Array<Float>):Array<Float> {
-		var z = norm3(sub3(target, eye));
-		var x = norm3(cross3(up, z));
-		var y = cross3(z, x);
-		return [
-			x[0], x[1], x[2], -dot3(x, eye),
-			y[0], y[1], y[2], -dot3(y, eye),
-			z[0], z[1], z[2], -dot3(z, eye),
-			   0,    0,    0,             1,
-		];
-	}
-
-	static function perspectiveLh(fovDeg:Float, aspect:Float, nz:Float, fz:Float):Array<Float> {
-		var f = 1 / Math.tan(fovDeg * Math.PI / 360);
-		return [
-			f / aspect, 0,              0,                    0,
-			         0, f,              0,                    0,
-			         0, 0, fz / (fz - nz), -fz * nz / (fz - nz),
-			         0, 0,              1,                    0,
-		];
-	}
-
-	static function orthoLh(w:Float, h:Float, nz:Float, fz:Float):Array<Float> {
-		return [
-			2 / w,     0,             0,               0,
-			    0, 2 / h,             0,               0,
-			    0,     0, 1 / (fz - nz), -nz / (fz - nz),
-			    0,     0,             0,               1,
-		];
-	}
-
-	static function cameraMvp(t:Float):Array<Float> {
-		var eye:Array<Float> = [2.0 + Math.sin(t * 0.25) * 0.12, 1.35, -2.85];
-		var view = lookAtLh(eye, [0.05, 0.34, 0.12], [0, 1, 0]);
-		return mul4(perspectiveLh(52, 16.0 / 9.0, 0.1, 40.0), view);
-	}
-
-	static function lightMvp():Array<Float> {
-		var lightPos:Array<Float> = [-2.0, 3.3, -1.5];
-		var view = lookAtLh(lightPos, [0.08, 0.24, 0.08], [0, 1, 0]);
-		return mul4(orthoLh(3.4, 3.4, 0.1, 7.0), view);
+	static function lightMvp():Mat4 {
+		var lightPos = new Vec3(-2.0, 3.3, -1.5);
+		var view = Mat4.lookAtLh(lightPos, new Vec3(0.08, 0.24, 0.08), new Vec3(0, 1, 0));
+		return Mat4.orthoLh(3.4, 3.4, 0.1, 7.0).mul(view);
 	}
 
 	public static function onFrame() {
@@ -239,7 +178,7 @@ class Shadow11 {
 		var casterBuf = Gfx.useBuffer("shadow_casters", Gfx.VERTEX, lua.Table.fromArray(casters), meshVersion);
 		var sceneBuf = Gfx.useBuffer("shadow_scene", Gfx.VERTEX, lua.Table.fromArray(scene), meshVersion);
 
-		var lmvp = lua.Table.fromArray(lightMvp());
+		var lmvp = lua.Table.fromArray(lightMvp().m);
 
 		Gfx.beginPass({
 			target: shadowMap,
@@ -263,7 +202,7 @@ class Shadow11 {
 			verts: sceneBuf,
 			shadow_map: shadowMap,
 			uniforms: {
-				mvp: lua.Table.fromArray(cameraMvp(tAccum)),
+				mvp: lua.Table.fromArray(cameraMvp(tAccum).m),
 				light_mvp: lmvp,
 			},
 		}, {

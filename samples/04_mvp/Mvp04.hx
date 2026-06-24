@@ -1,6 +1,7 @@
 import lub.Lub;
 import lub.Gfx;
 import lub.Io;
+import lub.Math;
 
 class Mvp04 {
 	static var t:Float = 0;
@@ -12,18 +13,6 @@ class Mvp04 {
 		if (backend == null)
 			backend = "sokol";
 		Lub.config({backend: backend});
-	}
-
-	// column-major 4x4 (Z-axis rotation)
-	static function rotZ(theta:Float):lua.Table<Int, Float> {
-		var c = Math.cos(theta);
-		var s = Math.sin(theta);
-		return lua.Table.fromArray([
-			  c,   s, 0.0, 0.0,
-			 -s,   c, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			0.0, 0.0, 0.0, 1.0
-		]);
 	}
 
 	public static function onFrame() {
@@ -46,7 +35,7 @@ class Mvp04 {
 			target: Gfx.mainTex,
 			clear_color: lua.Table.fromArray([0.1, 0.1, 0.2, 1.0])
 		});
-		Gfx.draw(3, {verts: b, uniforms: {mvp: rotZ(t)}}, {shader: s, depth: false, cull: Gfx.NONE});
+		Gfx.draw(3, {verts: b, uniforms: {mvp: lua.Table.fromArray(Mat4.rotateZ(t).m)}}, {shader: s, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();
 	}
 }

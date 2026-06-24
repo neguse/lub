@@ -2,6 +2,7 @@ import lub.Gfx;
 import lub.Input;
 import lub.Io;
 import lub.Lub;
+import lub.Math;
 import lubx.Png;
 
 class Sponza14 {
@@ -20,11 +21,11 @@ class Sponza14 {
 	static var primCounts:Array<Int> = [];
 	static var primMats:Array<Dynamic> = [];
 
-	static var camEye:Array<Float> = [-1.5, 0.25, 0.0];
+	static var camEye:Vec3 = new Vec3(-1.5, 0.25, 0.0);
 	static var camYaw:Float = 1.5708;
 	static var camPitch:Float = 0.0;
-	static var prevViewProj:Array<Float> = null;
-	static var pcEye:Array<Float> = [-1.5, 0.25, 0.0];
+	static var prevViewProj:Mat4 = null;
+	static var pcEye:Vec3 = new Vec3(-1.5, 0.25, 0.0);
 	static var pcYaw:Float = 1.5708;
 	static var pcPitch:Float = 0.0;
 
@@ -105,30 +106,26 @@ class Sponza14 {
 		var quadF = Gfx.useBuffer("sponza_quadF", Gfx.VERTEX, lua.Table.fromArray(quadVertsFlip), 1);
 
 		var view = updateCamera();
-		var proj = perspectiveLh(55.0, rtW / rtH, 0.05, 80.0);
-		proj[5] = -proj[5];
-		var model = scaleTransMat(MODEL_SCALE, 0.0, 0.0, 0.0);
+		var proj = Mat4.perspectiveLh(55.0, rtW / rtH, 0.05, 80.0);
+		proj.m[5] = -proj.m[5];
+		var model = Mat4.scaleTrans(MODEL_SCALE, new Vec3(0.0, 0.0, 0.0));
 
-		var worldLight = norm3([-0.42, 0.92, -0.32]);
-		var lightTarget:Array<Float> = [0.0, 1.1, 0.0];
-		var lightEye:Array<Float> = [
-			lightTarget[0] + worldLight[0] * 7.0,
-			lightTarget[1] + worldLight[1] * 7.0,
-			lightTarget[2] + worldLight[2] * 7.0
-		];
-		var lightView = lookAtLh(lightEye, lightTarget, [0, 1, 0]);
-		var lightMvp = mul4(orthoLh(8.0, 8.0, 0.1, 15.0), lightView);
-		var invView = rigidInverse(view, camEye);
-		var viewToLight = mul4(lightMvp, invView);
+		var worldLight = new Vec3(-0.42, 0.92, -0.32).normalize();
+		var lightTarget = new Vec3(0.0, 1.1, 0.0);
+		var lightEye = new Vec3(lightTarget.x + worldLight.x * 7.0, lightTarget.y + worldLight.y * 7.0, lightTarget.z + worldLight.z * 7.0);
+		var lightView = Mat4.lookAtLh(lightEye, lightTarget, new Vec3(0, 1, 0));
+		var lightMvp = Mat4.orthoLh(8.0, 8.0, 0.1, 15.0).mul(lightView);
+		var invView = view.rigidInverse(camEye);
+		var viewToLight = lightMvp.mul(invView);
 
-		var viewProj = mul4(proj, view);
-		var reproj = mul4((prevViewProj == null) ? viewProj : prevViewProj, invView);
+		var viewProj = proj.mul(view);
+		var reproj = ((prevViewProj == null) ? viewProj : prevViewProj).mul(invView);
 		prevViewProj = viewProj;
 		var camMoved = cameraMoved();
 
 		shadowPass(shadowShader, shadowMap, shadowDepth, model, lightMvp);
 		geometryPass(gShader, gAlbedo, gNormal, gPosition, gDepth, proj, view, model, lightMvp);
-		ssaoPass(aoTex, ssaoShader, quadF, gNormal, gPosition, proj[0], proj[5]);
+		ssaoPass(aoTex, ssaoShader, quadF, gNormal, gPosition, proj.m[0], proj.m[5]);
 		lightingPass(texA, lightShader, quadF, gAlbedo, gNormal, gPosition, shadowMap, aoTex, view, viewToLight);
 
 		blitFog(texB, fogShader, quadF, texA, gPosition);
@@ -201,15 +198,15 @@ class Sponza14 {
 		}
 	}
 
-	static function shadowPass(shader:Dynamic, shadowMap:Dynamic, shadowDepth:Dynamic, model:Array<Float>, lightMvp:Array<Float>) {
+	static function shadowPass(shader:Dynamic, shadowMap:Dynamic, shadowDepth:Dynamic, model:Mat4, lightMvp:Mat4) {
 		Gfx.beginPass({
 			target: shadowMap,
 			depth_target: shadowDepth,
 			clear_color: lua.Table.fromArray([1.0, 1.0, 1.0, 1.0]),
 			clear_depth: 1.0
 		});
-		var lmvp = lua.Table.fromArray(lightMvp);
-		var mv = lua.Table.fromArray(model);
+		var lmvp = lua.Table.fromArray(lightMvp.m);
+		var mv = lua.Table.fromArray(model.m);
 		for (i in 0...primVbs.length) {
 			var mat:Dynamic = primMats[i];
 			var bindings:Dynamic = {
@@ -234,8 +231,8 @@ class Sponza14 {
 		Gfx.endPass();
 	}
 
-	static function geometryPass(shader:Dynamic, gAlbedo:Dynamic, gNormal:Dynamic, gPosition:Dynamic, gDepth:Dynamic, proj:Array<Float>, view:Array<Float>,
-			model:Array<Float>, lightMvp:Array<Float>) {
+	static function geometryPass(shader:Dynamic, gAlbedo:Dynamic, gNormal:Dynamic, gPosition:Dynamic, gDepth:Dynamic, proj:Mat4, view:Mat4, model:Mat4,
+			lightMvp:Mat4) {
 		Gfx.beginPass({
 			targets: lua.Table.fromArray([gAlbedo, gNormal, gPosition]),
 			depth_target: gDepth,
@@ -247,10 +244,10 @@ class Sponza14 {
 			clear_depth: 1.0,
 		});
 
-		var pv = lua.Table.fromArray(proj);
-		var vv = lua.Table.fromArray(view);
-		var mv = lua.Table.fromArray(model);
-		var lmvp = lua.Table.fromArray(lightMvp);
+		var pv = lua.Table.fromArray(proj.m);
+		var vv = lua.Table.fromArray(view.m);
+		var mv = lua.Table.fromArray(model.m);
+		var lmvp = lua.Table.fromArray(lightMvp.m);
 		for (i in 0...primVbs.length) {
 			var mat:Dynamic = primMats[i];
 			var bindings:Dynamic = {
@@ -281,9 +278,9 @@ class Sponza14 {
 	}
 
 	static function lightingPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, gAlbedo:Dynamic, gNormal:Dynamic, gPosition:Dynamic, shadowMap:Dynamic,
-			aoTex:Dynamic, view:Array<Float>, viewToLight:Array<Float>) {
-		var l0 = norm3(mat3mul(view, norm3([-0.42, 0.92, -0.32])));
-		var l1 = norm3(mat3mul(view, norm3([0.58, 0.35, 0.22])));
+			aoTex:Dynamic, view:Mat4, viewToLight:Mat4) {
+		var l0 = view.mat3MulVec3(new Vec3(-0.42, 0.92, -0.32).normalize()).normalize();
+		var l1 = view.mat3MulVec3(new Vec3(0.58, 0.35, 0.22).normalize()).normalize();
 		Gfx.beginPass({target: targ, clear_color: lua.Table.fromArray([0.0, 0.0, 0.0, 1.0])});
 		Gfx.draw(6, {
 			verts: quad,
@@ -293,13 +290,13 @@ class Sponza14 {
 			shadow_map: shadowMap,
 			ao_map: aoTex,
 			uniforms: {
-				light0: lua.Table.fromArray([l0[0], l0[1], l0[2], 5.6]),
-				light1: lua.Table.fromArray([l1[0], l1[1], l1[2], 0.7]),
+				light0: lua.Table.fromArray([l0.x, l0.y, l0.z, 5.6]),
+				light1: lua.Table.fromArray([l1.x, l1.y, l1.z, 0.7]),
 				params: lua.Table.fromArray([1.0, 0.050, 0.82, 0.85]),
-				vl0: lua.Table.fromArray([viewToLight[0], viewToLight[1], viewToLight[2], viewToLight[3]]),
-				vl1: lua.Table.fromArray([viewToLight[4], viewToLight[5], viewToLight[6], viewToLight[7]]),
-				vl2: lua.Table.fromArray([viewToLight[8], viewToLight[9], viewToLight[10], viewToLight[11]]),
-				vl3: lua.Table.fromArray([viewToLight[12], viewToLight[13], viewToLight[14], viewToLight[15]]),
+				vl0: lua.Table.fromArray([viewToLight.m[0], viewToLight.m[1], viewToLight.m[2], viewToLight.m[3]]),
+				vl1: lua.Table.fromArray([viewToLight.m[4], viewToLight.m[5], viewToLight.m[6], viewToLight.m[7]]),
+				vl2: lua.Table.fromArray([viewToLight.m[8], viewToLight.m[9], viewToLight.m[10], viewToLight.m[11]]),
+				vl3: lua.Table.fromArray([viewToLight.m[12], viewToLight.m[13], viewToLight.m[14], viewToLight.m[15]]),
 			}
 		}, {shader: shader, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();
@@ -356,17 +353,17 @@ class Sponza14 {
 		Gfx.endPass();
 	}
 
-	static function motionPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, gPosition:Dynamic, m:Array<Float>) {
+	static function motionPass(targ:Dynamic, shader:Dynamic, quad:Dynamic, tex:Dynamic, gPosition:Dynamic, m:Mat4) {
 		Gfx.beginPass({target: targ, clear_color: black()});
 		Gfx.draw(6, {
 			verts: quad,
 			scene: tex,
 			gpos: gPosition,
 			uniforms: {
-				r0: lua.Table.fromArray([m[0], m[1], m[2], m[3]]),
-				r1: lua.Table.fromArray([m[4], m[5], m[6], m[7]]),
-				r2: lua.Table.fromArray([m[8], m[9], m[10], m[11]]),
-				r3: lua.Table.fromArray([m[12], m[13], m[14], m[15]]),
+				r0: lua.Table.fromArray([m.m[0], m.m[1], m.m[2], m.m[3]]),
+				r1: lua.Table.fromArray([m.m[4], m.m[5], m.m[6], m.m[7]]),
+				r2: lua.Table.fromArray([m.m[8], m.m[9], m.m[10], m.m[11]]),
+				r3: lua.Table.fromArray([m.m[12], m.m[13], m.m[14], m.m[15]]),
 			}
 		}, {shader: shader, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();
@@ -477,26 +474,26 @@ class Sponza14 {
 	}
 
 	static function cameraMoved():Bool {
-		var moved = Math.abs(camEye[0] - pcEye[0]) + Math.abs(camEye[1] - pcEye[1]) + Math.abs(camEye[2] - pcEye[2]) + Math.abs(camYaw - pcYaw)
+		var moved = Math.abs(camEye.x - pcEye.x) + Math.abs(camEye.y - pcEye.y) + Math.abs(camEye.z - pcEye.z) + Math.abs(camYaw - pcYaw)
 			+ Math.abs(camPitch - pcPitch) > 1e-6;
-		pcEye[0] = camEye[0];
-		pcEye[1] = camEye[1];
-		pcEye[2] = camEye[2];
+		pcEye.x = camEye.x;
+		pcEye.y = camEye.y;
+		pcEye.z = camEye.z;
 		pcYaw = camYaw;
 		pcPitch = camPitch;
 		return moved;
 	}
 
-	static function updateCamera():Array<Float> {
+	static function updateCamera():Mat4 {
 		var camStr = lua.Os.getenv("LUB_SPONZA_CAM");
 		if (camStr != null) {
 			var p = camStr.split(",");
 			if (p.length >= 5) {
 				camYaw = Std.parseFloat(p[0]);
 				camPitch = Std.parseFloat(p[1]);
-				camEye[0] = Std.parseFloat(p[2]);
-				camEye[1] = Std.parseFloat(p[3]);
-				camEye[2] = Std.parseFloat(p[4]);
+				camEye.x = Std.parseFloat(p[2]);
+				camEye.y = Std.parseFloat(p[3]);
+				camEye.z = Std.parseFloat(p[4]);
 			}
 		}
 		if (lua.Os.getenv("LUB_SPONZA_SPIN") != null)
@@ -512,122 +509,41 @@ class Sponza14 {
 				camPitch = -1.45;
 		}
 
-		var up:Array<Float> = [0, 1, 0];
+		var up = new Vec3(0, 1, 0);
 		var fwd = forwardDir();
-		var right = norm3(cross3(up, fwd));
+		var right = up.cross(fwd).normalize();
 		var spd = 2.6 * DT;
 		if (Input.keyDown("w")) {
-			camEye[0] += fwd[0] * spd;
-			camEye[1] += fwd[1] * spd;
-			camEye[2] += fwd[2] * spd;
+			camEye.x += fwd.x * spd;
+			camEye.y += fwd.y * spd;
+			camEye.z += fwd.z * spd;
 		}
 		if (Input.keyDown("s")) {
-			camEye[0] -= fwd[0] * spd;
-			camEye[1] -= fwd[1] * spd;
-			camEye[2] -= fwd[2] * spd;
+			camEye.x -= fwd.x * spd;
+			camEye.y -= fwd.y * spd;
+			camEye.z -= fwd.z * spd;
 		}
 		if (Input.keyDown("d")) {
-			camEye[0] += right[0] * spd;
-			camEye[1] += right[1] * spd;
-			camEye[2] += right[2] * spd;
+			camEye.x += right.x * spd;
+			camEye.y += right.y * spd;
+			camEye.z += right.z * spd;
 		}
 		if (Input.keyDown("a")) {
-			camEye[0] -= right[0] * spd;
-			camEye[1] -= right[1] * spd;
-			camEye[2] -= right[2] * spd;
+			camEye.x -= right.x * spd;
+			camEye.y -= right.y * spd;
+			camEye.z -= right.z * spd;
 		}
 		if (Input.keyDown("e"))
-			camEye[1] += spd;
+			camEye.y += spd;
 		if (Input.keyDown("q"))
-			camEye[1] -= spd;
+			camEye.y -= spd;
 
-		var target:Array<Float> = [camEye[0] + fwd[0], camEye[1] + fwd[1], camEye[2] + fwd[2]];
-		return lookAtLh(camEye, target, up);
+		var target = new Vec3(camEye.x + fwd.x, camEye.y + fwd.y, camEye.z + fwd.z);
+		return Mat4.lookAtLh(camEye, target, up);
 	}
 
-	static function forwardDir():Array<Float> {
+	static function forwardDir():Vec3 {
 		var cp = Math.cos(camPitch);
-		return [Math.sin(camYaw) * cp, Math.sin(camPitch), Math.cos(camYaw) * cp];
-	}
-
-	static function mul4(a:Array<Float>, b:Array<Float>):Array<Float> {
-		var r:Array<Float> = [for (_ in 0...16) 0.0];
-		for (row in 0...4)
-			for (col in 0...4) {
-				var s = 0.0;
-				for (k in 0...4)
-					s = s + a[row * 4 + k] * b[k * 4 + col];
-				r[row * 4 + col] = s;
-			}
-		return r;
-	}
-
-	static function rigidInverse(view:Array<Float>, eye:Array<Float>):Array<Float> {
-		return [
-			view[0], view[4],  view[8], eye[0],
-			view[1], view[5],  view[9], eye[1],
-			view[2], view[6], view[10], eye[2],
-			      0,       0,        0,      1,
-		];
-	}
-
-	static function scaleTransMat(s:Float, tx:Float, ty:Float, tz:Float):Array<Float> {
-		return [s, 0, 0, tx, 0, s, 0, ty, 0, 0, s, tz, 0, 0, 0, 1];
-	}
-
-	static function perspectiveLh(fovDeg:Float, aspect:Float, nz:Float, fz:Float):Array<Float> {
-		var f = 1 / Math.tan(fovDeg * Math.PI / 360);
-		return [
-			f / aspect, 0,              0,                    0,
-			         0, f,              0,                    0,
-			         0, 0, fz / (fz - nz), -fz * nz / (fz - nz),
-			         0, 0,              1,                    0,
-		];
-	}
-
-	static function orthoLh(w:Float, h:Float, nz:Float, fz:Float):Array<Float> {
-		return [
-			2 / w,     0,             0,               0,
-			    0, 2 / h,             0,               0,
-			    0,     0, 1 / (fz - nz), -nz / (fz - nz),
-			    0,     0,             0,               1,
-		];
-	}
-
-	static function lookAtLh(eye:Array<Float>, target:Array<Float>, up:Array<Float>):Array<Float> {
-		var z = norm3(sub3(target, eye));
-		var x = norm3(cross3(up, z));
-		var y = cross3(z, x);
-		return [
-			x[0], x[1], x[2], -dot3(x, eye),
-			y[0], y[1], y[2], -dot3(y, eye),
-			z[0], z[1], z[2], -dot3(z, eye),
-			   0,    0,    0,             1,
-		];
-	}
-
-	static function mat3mul(m:Array<Float>, v:Array<Float>):Array<Float> {
-		return [
-			m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
-			m[4] * v[0] + m[5] * v[1] + m[6] * v[2],
-			m[8] * v[0] + m[9] * v[1] + m[10] * v[2],
-		];
-	}
-
-	static inline function dot3(a:Array<Float>, b:Array<Float>):Float {
-		return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-	}
-
-	static function cross3(a:Array<Float>, b:Array<Float>):Array<Float> {
-		return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-	}
-
-	static function norm3(v:Array<Float>):Array<Float> {
-		var len = Math.sqrt(dot3(v, v));
-		return [v[0] / len, v[1] / len, v[2] / len];
-	}
-
-	static inline function sub3(a:Array<Float>, b:Array<Float>):Array<Float> {
-		return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+		return new Vec3(Math.sin(camYaw) * cp, Math.sin(camPitch), Math.cos(camYaw) * cp);
 	}
 }

@@ -2,6 +2,7 @@ import lub.Lub;
 import lub.Gfx;
 import lub.Io;
 import lub.Input;
+import lub.Math;
 
 // 3D Breakout: paddle, ball, bricks rendered as boxes/sphere with an MVP.
 // MVP and camera oscillation derive from frame-deterministic camera_t.
@@ -63,19 +64,11 @@ class Breakout3d10 {
 		resetGame();
 	}
 
-	static function clamp(v:Float, lo:Float, hi:Float):Float {
-		if (v < lo)
-			return lo;
-		if (v > hi)
-			return hi;
-		return v;
-	}
-
 	static function shade(c:Array<Float>, k:Float):Array<Float> {
 		return [
-			clamp(c[0] * k, 0, 1),
-			clamp(c[1] * k, 0, 1),
-			clamp(c[2] * k, 0, 1),
+			MathUtil.clamp(c[0] * k, 0, 1),
+			MathUtil.clamp(c[1] * k, 0, 1),
+			MathUtil.clamp(c[2] * k, 0, 1),
 			c.length > 3 ? c[3] : 1.0,
 		];
 	}
@@ -173,7 +166,7 @@ class Breakout3d10 {
 			move = move + 1;
 
 		paddlePrevX = paddleX;
-		paddleX = clamp(paddleX + move * PADDLE_SPEED * DT, -1 + PADDLE_W * 0.5 + 0.05, 1 - PADDLE_W * 0.5 - 0.05);
+		paddleX = MathUtil.clamp(paddleX + move * PADDLE_SPEED * DT, -1 + PADDLE_W * 0.5 + 0.05, 1 - PADDLE_W * 0.5 - 0.05);
 
 		if (ballStuck) {
 			ballX = paddleX;
@@ -208,7 +201,7 @@ class Breakout3d10 {
 		if (ballVy < 0 && circleHitsRect(ballX, ballY, BALL_R, paddleRect)) {
 			var hit = (ballX - paddleX) / (PADDLE_W * 0.5);
 			ballY = paddleRect.y1 + BALL_R;
-			ballVx = clamp(hit * 0.9 + (paddleX - paddlePrevX) * 2.5, -0.98, 0.98);
+			ballVx = MathUtil.clamp(hit * 0.9 + (paddleX - paddlePrevX) * 2.5, -0.98, 0.98);
 			ballVy = Math.abs(ballVy);
 		}
 
@@ -346,56 +339,24 @@ class Breakout3d10 {
 		return out;
 	}
 
-	static function mul4(a:Array<Float>, b:Array<Float>):Array<Float> {
-		var r:Array<Float> = [for (_ in 0...16) 0.0];
-		for (row in 0...4) {
-			for (col in 0...4) {
-				var s = 0.0;
-				for (k in 0...4) {
-					s = s + a[row * 4 + k] * b[k * 4 + col];
-				}
-				r[row * 4 + col] = s;
-			}
-		}
-		return r;
-	}
-
 	static function makeMvp(t:Float):lua.Table<Int, Float> {
 		var yaw = -0.22 + Math.sin(t * 0.35) * 0.025;
 		var pitch = -0.18;
-		var cy = Math.cos(yaw);
-		var sy = Math.sin(yaw);
-		var cx = Math.cos(pitch);
-		var sx = Math.sin(pitch);
-		var ry:Array<Float> = [
-			 cy, 0, sy, 0,
-			  0, 1,  0, 0,
-			-sy, 0, cy, 0,
-			  0, 0,  0, 1,
-		];
-		var rx:Array<Float> = [
-			1,  0,   0, 0,
-			0, cx, -sx, 0,
-			0, sx,  cx, 0,
-			0,  0,   0, 1,
-		];
-		var view:Array<Float> = [
-			1, 0, 0,     0,
-			0, 1, 0, -0.02,
-			0, 0, 1,  3.15,
-			0, 0, 0,     1,
-		];
+		var ry = Mat4.rotateY(-yaw);
+		var rx = Mat4.rotateX(-pitch);
+		var view = Mat4.translate(new Vec3(0, -0.02, 3.15));
+		// proj: perspective with focal length f=2.05 directly, aspect=16/9, near=0.1, far=40
 		var f = 2.05;
 		var aspect = 16.0 / 9.0;
 		var nz = 0.1;
 		var fz = 40.0;
-		var proj:Array<Float> = [
-			f / aspect, 0,              0,                    0,
-			         0, f,              0,                    0,
-			         0, 0, fz / (fz - nz), -fz * nz / (fz - nz),
-			         0, 0,              1,                    0,
-		];
-		return lua.Table.fromArray(mul4(proj, mul4(view, mul4(rx, ry))));
+		var proj = Mat4.zero();
+		proj.m[0] = f / aspect;
+		proj.m[5] = f;
+		proj.m[10] = fz / (fz - nz);
+		proj.m[11] = -fz * nz / (fz - nz);
+		proj.m[14] = 1.0;
+		return lua.Table.fromArray(proj.mul(view.mul(rx.mul(ry))).m);
 	}
 
 	public static function onFrame() {
