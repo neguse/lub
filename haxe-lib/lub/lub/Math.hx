@@ -1,5 +1,10 @@
 package lub;
 
+// このモジュール名 lub.Math が標準の Math クラスを覆い隠すため、
+// 無修飾の `Math.sqrt` 等が解決できるよう明示的に取り込む。
+// (Haxe 4 は暗黙に std を引くが、Haxe 5 preview はパッケージ内モジュールを優先する)
+import Math;
+
 class Vec2 {
 	public var x:Float;
 	public var y:Float;
