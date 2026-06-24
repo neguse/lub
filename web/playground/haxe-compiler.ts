@@ -1,7 +1,7 @@
 /*
  * haxe-compiler.ts — client-only な Haxe→Lua コンパイラ(wasm)の main-thread API。
  *
- * spike(spike/harness/browser)で実証した「未改変 wsoo glue を Node 擬装 + in-memory VFS で
+ * spike(haxe-wasm/harness/browser)で実証した「未改変 wsoo glue を Node 擬装 + in-memory VFS で
  * 走らせる」方式を Web Worker 化したもの。`.hx`/`.hxml` ソースを渡すと、native の
  * haxe_build.c と同じ連結(HAXE_PRELUDE + raw + "\nreturn <Main>\n")で player が読める
  * `.lua` を返す。

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 成果物を一発ビルド + 抽出 + 検証する。
 #   1. Dockerfile で wasm Haxe(haxe.js + haxe.assets + std)を再現ビルド。
-#   2. 成果物を spike/dist/ に抽出。
+#   2. 成果物を haxe-wasm/dist/ に抽出。
 #   3. caml_thread_initialize(OCaml stdlib systhreads、pin 不可)を env-patch で
 #      no-op 化した haxe.js を生成(これが配布する最終 glue)。
 #   4. ホスト Node で samples/00_hello を compile し、native golden と byte 比較。

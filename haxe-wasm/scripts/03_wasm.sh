@@ -15,20 +15,20 @@
 set -euxo pipefail
 HAXE_SRC="${HAXE_SRC:-/home/opam/haxe}"
 REPO="${REPO:-/repo}"
-OUT="$REPO/spike/build/wasm"
+OUT="$REPO/haxe-wasm/build/wasm"
 eval "$(opam env)"
 export PATH=/usr/local/bin:$PATH
 
 # (A) Haxe-vendored libs の pure-OCaml 化パッチを適用(idempotent)
-git -C "$HAXE_SRC" apply --check "$REPO/spike/patches/haxe-5.0.0-preview.1-wasm.diff" 2>/dev/null \
-  && git -C "$HAXE_SRC" apply "$REPO/spike/patches/haxe-5.0.0-preview.1-wasm.diff" || true
+git -C "$HAXE_SRC" apply --check "$REPO/haxe-wasm/patches/haxe-5.0.0-preview.1-wasm.diff" 2>/dev/null \
+  && git -C "$HAXE_SRC" apply "$REPO/haxe-wasm/patches/haxe-5.0.0-preview.1-wasm.diff" || true
 
 # bytecode を作り直して wasm 化
 cd "$HAXE_SRC"
 dune build --profile release src/haxe.bc
 mkdir -p "$OUT"
 wasm_of_ocaml compile --effects=cps _build/default/src/haxe.bc -o "$OUT/haxe.js" \
-  2> "$REPO/spike/build/wasm_compile.stderr"
+  2> "$REPO/haxe-wasm/build/wasm_compile.stderr"
 echo "=== linker-missing primitives(全体像。実呼出は results/actually_called_primitives.txt)==="
-awk '/Missing primitives:/{f=1} f' "$REPO/spike/build/wasm_compile.stderr" | head -5 || true
+awk '/Missing primitives:/{f=1} f' "$REPO/haxe-wasm/build/wasm_compile.stderr" | head -5 || true
 ls -la "$OUT"

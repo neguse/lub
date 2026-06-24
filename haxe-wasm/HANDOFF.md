@@ -8,10 +8,10 @@
 - 目的: Haxe 5 compiler を wasm_of_ocaml で wasm 化し、ブラウザ単体で `.hx → .lua` compile。
 - 結論: **GO**。domain GREEN、コア primitive 欠落ゼロ、バンドル ~4MB gz / cold ~185ms。
 - **byte一致 達成(Node + 実ブラウザ)**:
-  - `bash spike/harness/iter.sh` → `WASM == NATIVE GOLDEN: IDENTICAL ✓`(24331B、Node)。
-  - `node spike/harness/browser/run.mjs` → `★ BROWSER WASM == NATIVE GOLDEN: IDENTICAL ✓`
+  - `bash haxe-wasm/harness/iter.sh` → `WASM == NATIVE GOLDEN: IDENTICAL ✓`(24331B、Node)。
+  - `node haxe-wasm/harness/browser/run.mjs` → `★ BROWSER WASM == NATIVE GOLDEN: IDENTICAL ✓`
     (headless Chromium / WasmGC、仮想FS)。
-- **Dockerfile からの end-to-end 再現も byte一致**(`bash spike/build.sh` → `★ verify OK`)。
+- **Dockerfile からの end-to-end 再現も byte一致**(`bash haxe-wasm/build.sh` → `★ verify OK`)。
 - 最後の2壁(luv trampoline / thread-local-storage の Thread.t 表現)は解決済(下記)。
 
 ## 達成までに解いた壁
@@ -48,20 +48,20 @@ docker exec haxe-spike bash -lc '
   cd /home/opam/haxe
   rm -f _build/default/src/haxe.bc
   dune build --profile release src/haxe.bc
-  rm -rf /repo/spike/build/wasm; mkdir -p /repo/spike/build/wasm
-  wasm_of_ocaml compile --effects=cps _build/default/src/haxe.bc -o /repo/spike/build/wasm/haxe.js'
+  rm -rf /repo/haxe-wasm/build/wasm; mkdir -p /repo/haxe-wasm/build/wasm
+  wasm_of_ocaml compile --effects=cps _build/default/src/haxe.bc -o /repo/haxe-wasm/build/wasm/haxe.js'
 
 # B) Node で byte 一致確認
-bash spike/harness/iter.sh                # → WASM == NATIVE GOLDEN: IDENTICAL ✓
+bash haxe-wasm/harness/iter.sh                # → WASM == NATIVE GOLDEN: IDENTICAL ✓
 
 # C) 実ブラウザ(WasmGC)で byte 一致確認
-node spike/harness/browser/run.mjs        # → ★ BROWSER WASM == NATIVE GOLDEN: IDENTICAL ✓
+node haxe-wasm/harness/browser/run.mjs        # → ★ BROWSER WASM == NATIVE GOLDEN: IDENTICAL ✓
 
 # D) Dockerfile から end-to-end 再現(クリーン clone + パッチ + 全ビルド + 検証)
-bash spike/build.sh                       # → ★ verify OK
+bash haxe-wasm/build.sh                       # → ★ verify OK
 ```
 
-native golden: `spike/build/00_hello.native.raw.lua`
+native golden: `haxe-wasm/build/00_hello.native.raw.lua`
 (sha256 `d5c975ec27a761e07aba06b6e05f616a713984863e5049636f51ed3111db5633`)。
 無ければ `scripts/01_build_native.sh` で再生成。デバッグは `harness/trace_env.mjs` /
 `wasm_of_ocaml compile --debug-info --sourcemap` + sourcemap 解析。

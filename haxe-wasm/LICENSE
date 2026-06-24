@@ -1,4 +1,4 @@
-Licensing of the spike/ directory
+Licensing of the haxe-wasm/ directory
 =================================
 
 This directory builds a WebAssembly port of the Haxe compiler. It mixes

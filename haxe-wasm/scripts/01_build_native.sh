@@ -8,7 +8,7 @@ set -euxo pipefail
 HAXE_TAG="${HAXE_TAG:-5.0.0-preview.1}"
 HAXE_SRC="${HAXE_SRC:-/home/opam/haxe}"
 REPO="${REPO:-/repo}"
-OUT="$REPO/spike/build"
+OUT="$REPO/haxe-wasm/build"
 mkdir -p "$OUT"
 
 eval "$(opam env)"

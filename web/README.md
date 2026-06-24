@@ -15,11 +15,11 @@
 # 2. slang-wasm(web/public/slang/…) … シェーダコンパイラ
 npm run fetch-slang          # postinstall でも走る
 # 3. Haxe コンパイラ wasm 一式(web/public/haxe-wasm/…) … spike の成果物から生成
-#    先に spike をビルドしておくこと(spike/build.sh または spike/harness/iter.sh)。
-npm run gen-haxe             # spike/dist or spike/build から glue+wasm+std+prelude を固める
+#    先に spike をビルドしておくこと(haxe-wasm/build.sh または haxe-wasm/harness/iter.sh)。
+npm run gen-haxe             # haxe-wasm/dist or haxe-wasm/build から glue+wasm+std+prelude を固める
 ```
 
-`npm run gen-haxe`(`scripts/gen-haxe-assets.mjs`)は spike(`spike/`)が出力した
+`npm run gen-haxe`(`scripts/gen-haxe-assets.mjs`)は spike(`haxe-wasm/`)が出力した
 `haxe.js`(patched glue)+ `code-*.wasm` + Haxe std + lub externs + prelude を
 `public/haxe-wasm/{haxe.js, *.wasm, std-bundle.json, manifest.json}` に固める(~18MB、gitignore)。
 
@@ -29,7 +29,7 @@ npm run gen-haxe             # spike/dist or spike/build から glue+wasm+std+pr
   Web Worker(`haxe-compiler.worker.ts`)に投げ、native の `haxe_build.c` と同じ連結
   (`HAXE_PRELUDE + raw + "\nreturn <Main>\n"`)で player が読める `.lua` を返す。
 - worker は未改変の wsoo glue を「Node 擬装(`process`/`require`)+ in-memory VFS(node:fs sync
-  サブセット)」で動かす(spike の `spike/harness/browser/` と同方式)。WebAssembly.Module は
+  サブセット)」で動かす(spike の `haxe-wasm/harness/browser/` と同方式)。WebAssembly.Module は
   1 回だけコンパイルしてキャッシュ、compile ごとに fresh instance を起こす。
 - `playground/samples.ts` … `.hx`/`.hxml` をロードし、compile 後の `.lua` を scan して data files
   (slang 等)を解決。

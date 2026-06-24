@@ -1,6 +1,6 @@
 # Haxe 5 compiler を WebAssembly 化して client-only で .hx → .lua compile するための
 # ビルダ。成果物: /home/opam/out/{haxe.js, haxe.assets/, std/}。
-# 再現手順は spike/README.md / scripts/ と一致。build.sh で image build + 成果物抽出 + 検証。
+# 再現手順は haxe-wasm/README.md / scripts/ と一致。build.sh で image build + 成果物抽出 + 検証。
 FROM ocaml/opam:debian-12-ocaml-5.2
 
 ARG HAXE_TAG=5.0.0-preview.1

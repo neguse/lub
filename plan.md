@@ -45,7 +45,7 @@ spike** を先に1本通し、結果を見て (A)/(B) を最終決定する(ユ�
 (コンパイル時に missing primitive 一覧が warning で出る)。よって spike は「最小 compile を走らせて
 **実際に呼ばれる primitive だけ**を洗い出し、それだけ shim する」戦略が取れる。
 
-## Phase 0: spike 手順(隔離環境で実施、repo へは `spike/` 追加のみ)
+## Phase 0: spike 手順(隔離環境で実施、repo へは `haxe-wasm/` 追加のみ)
 
 1. **baseline**: `HaxeFoundation/haxe`(`5.0.0-preview.1` tag)を clone、OCaml 5 + opam 依存を入れ、
    **native haxe 5 をビルド**して `haxe -cp samples/00_hello -lib lub -main Hello00 --lua out.raw`
@@ -75,9 +75,9 @@ spike** を先に1本通し、結果を見て (A)/(B) を最終決定する(ユ�
 
 ## spike の成果物 / 検証
 
-- `spike/README.md`: missing primitive 一覧、実際に呼ばれた primitive、domain 判定、shim 量、バンドル
+- `haxe-wasm/README.md`: missing primitive 一覧、実際に呼ばれた primitive、domain 判定、shim 量、バンドル
   サイズ、レイテンシ、**GO/NO-GO 勧告**。
-- `spike/`: ①haxe bytecode ビルド手順スクリプト ②wasm_of_ocaml 実行スクリプト ③`00_hello` を
+- `haxe-wasm/`: ①haxe bytecode ビルド手順スクリプト ②wasm_of_ocaml 実行スクリプト ③`00_hello` を
   compile する Node-wasm ハーネス(出力を native ゴールデンと diff)。
 - 検証 = ハーネスが `00_hello.hx → .lua` を native 一致で吐けば spike 成功。ブラウザ実行まで通れば GO 確度大。
 - timebox 目安 1〜3日。深掘り前に手順3のmissing primitive一覧と手順5のdomain判定で早期に見切る。

@@ -2,7 +2,7 @@
 # opam lib(sha / integers / ctypes / luv)を pure-OCaml 化して pin する。
 # Haxe-vendored ではないため `opam source` で取得 → patch → `opam pin --no-action`。
 # 以降の `opam install . --deps-only` がこれら patched 版を使う。
-# patches/ の各ファイルを使う。Dockerfile と spike/scripts/04 から共用。
+# patches/ の各ファイルを使う。Dockerfile と haxe-wasm/scripts/04 から共用。
 set -euxo pipefail
 PATCHES="${PATCHES:-$(cd "$(dirname "$0")/../patches" && pwd)}"
 eval "$(opam env)"

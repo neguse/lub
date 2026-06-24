@@ -6,9 +6,9 @@ native golden と**バイト一致**することを確認する(plan.md 手順6 
 ## 使い方
 
 ```bash
-# 前提: spike/build/wasm/{haxe.js, haxe.assets/*.wasm} と spike/build/std が存在すること
-#       (spike/harness/iter.sh を一度通すか、scripts/03_wasm.sh で生成)
-node spike/harness/browser/run.mjs
+# 前提: haxe-wasm/build/wasm/{haxe.js, haxe.assets/*.wasm} と haxe-wasm/build/std が存在すること
+#       (haxe-wasm/harness/iter.sh を一度通すか、scripts/03_wasm.sh で生成)
+node haxe-wasm/harness/browser/run.mjs
 # → ★ BROWSER WASM == NATIVE GOLDEN: IDENTICAL ✓
 ```
 

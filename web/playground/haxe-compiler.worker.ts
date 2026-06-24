@@ -4,7 +4,7 @@
  * glue は `process.versions.node` が truthy だと Node 経路(node:fs 同期 API + wasm を
  * node:fs/promises.readFile で取得)を使う。ブラウザ/Worker には fs が無いので、ここで
  * `globalThis.process` / `globalThis.require` を擬装し、in-memory VFS を node:fs sync API の
- * サブセットとして実装する(spike/harness/browser/node-shim.js と同じ方式)。
+ * サブセットとして実装する(haxe-wasm/harness/browser/node-shim.js と同じ方式)。
  *
  * init で std/lub バンドル + wasm + glue を受け取り、std/lub を VFS に常駐させ WebAssembly.Module を
  * 1 回だけコンパイルしてキャッシュ。compile ごとに /sample を入れ替え glue を再 eval(キャッシュ

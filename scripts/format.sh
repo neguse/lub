@@ -32,7 +32,7 @@ esac
 git_files() {
     git ls-files -z -- "$@" \
         ':!:third_party/**' \
-        ':!:spike/**' \
+        ':!:haxe-wasm/**' \
         ':!:web/dist/**' \
         ':!:web/public/**' \
         ':!:web/node_modules/**'

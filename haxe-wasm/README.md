@@ -25,10 +25,10 @@
 ## 全自動ビルド(`build.sh` / `Dockerfile`)
 
 ```
-spike/build.sh
+haxe-wasm/build.sh
 ```
 で `Dockerfile` を build し、wasm Haxe(`haxe.js` + `haxe.assets/*.wasm` + `std/`)を
-`spike/dist/` に抽出 → caml_thread_initialize を env-patch(no-op)→ `00_hello` を
+`haxe-wasm/dist/` に抽出 → caml_thread_initialize を env-patch(no-op)→ `00_hello` を
 ホスト Node で compile して native golden と byte 比較する。Dockerfile が行うこと:
 
 1. system deps(`libmbedtls-dev` は opam depext が拾わない)。
