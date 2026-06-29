@@ -21,16 +21,17 @@
 
 ## Rider inspection result
 
-- `TCS1001` x4 shown in editor:
+- `TCS1001` x5 shown in editor:
   - `StructDeclaration`: yes / no
   - `LocalFunctionStatement`: yes / no
   - `TryStatement`: yes / no
   - `ThrowStatement`: yes / no
+  - `ListPattern`: yes / no
 - `TCS1002` x1 shown in editor:
   - `System.IO.File.ReadAllText`: yes / no
 - `TCS1003` x1 shown in editor:
   - `List<string?> { null }`: yes / no
-- Build tool window shows `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1: yes / no
+- Build tool window shows `TCS1001` x5 / `TCS1002` x1 / `TCS1003` x1: yes / no
 - `.editorconfig` severity override is reflected in Rider:
   - `dotnet_diagnostic.TCS1001.severity = error`: yes / no
   - `dotnet_diagnostic.TCS1002.severity = error`: yes / no

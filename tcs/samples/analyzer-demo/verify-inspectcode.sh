@@ -60,8 +60,8 @@ assert_expected_counts() {
   tcs1002_count="$(count_rule "$sarif" TCS1002)"
   tcs1003_count="$(count_rule "$sarif" TCS1003)"
 
-  if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count" -ne 1 ]; then
-    echo "Error: InspectCode $label expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
+  if [ "$tcs1001_count" -ne 5 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count" -ne 1 ]; then
+    echo "Error: InspectCode $label expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
     echo "SARIF: $sarif" >&2
     echo "stdout/stderr log: $stdout_log" >&2
     exit 1
@@ -143,8 +143,8 @@ fi
 override_tcs1001_count="$(awk 'index($0, "TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG")"
 override_tcs1002_count="$(awk 'index($0, "TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG")"
 override_tcs1003_count="$(awk 'index($0, "TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG")"
-if [ "$override_tcs1001_count" -ne 4 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
-  echo "Error: InspectCode PackageReference severity override expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
+if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
+  echo "Error: InspectCode PackageReference severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
   echo "stdout/stderr log: $PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" >&2
   exit 1
 fi

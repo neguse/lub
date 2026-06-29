@@ -103,8 +103,8 @@ count_diagnostic() {
 tcs1001_count="$(count_diagnostic TCS1001)"
 tcs1002_count="$(count_diagnostic TCS1002)"
 tcs1003_count="$(count_diagnostic TCS1003)"
-if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count" -ne 1 ]; then
-  echo "Error: analyzer demo expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
+if [ "$tcs1001_count" -ne 5 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count" -ne 1 ]; then
+  echo "Error: analyzer demo expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
   exit 1
 fi
 
@@ -153,8 +153,8 @@ consumer_tcs1002_count="$(printf '%s\n' "$consumer_output" \
   | awk 'index($0, "warning TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
 consumer_tcs1003_count="$(printf '%s\n' "$consumer_output" \
   | awk 'index($0, "warning TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-if [ "$consumer_tcs1001_count" -ne 4 ] || [ "$consumer_tcs1002_count" -ne 1 ] || [ "$consumer_tcs1003_count" -ne 1 ]; then
-  echo "Error: analyzer package consumer expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count / TCS1003 x$consumer_tcs1003_count" >&2
+if [ "$consumer_tcs1001_count" -ne 5 ] || [ "$consumer_tcs1002_count" -ne 1 ] || [ "$consumer_tcs1003_count" -ne 1 ]; then
+  echo "Error: analyzer package consumer expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count / TCS1003 x$consumer_tcs1003_count" >&2
   exit 1
 fi
 
@@ -182,8 +182,8 @@ override_tcs1002_count="$(printf '%s\n' "$override_output" \
   | awk 'index($0, "error TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
 override_tcs1003_count="$(printf '%s\n' "$override_output" \
   | awk 'index($0, "error TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-if [ "$override_tcs1001_count" -ne 4 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
-  echo "Error: analyzer package severity override expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
+if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
+  echo "Error: analyzer package severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
   exit 1
 fi
 

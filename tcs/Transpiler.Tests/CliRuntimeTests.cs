@@ -111,7 +111,7 @@ public class CliRuntimeTests
 
         Assert.Equal(1, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.Equal(4, CountDiagnostics(result.Stderr,
+        Assert.Equal(5, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal(1, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedApi));
@@ -121,6 +121,7 @@ public class CliRuntimeTests
         Assert.Contains("LocalFunctionStatement", result.Stderr);
         Assert.Contains("TryStatement", result.Stderr);
         Assert.Contains("ThrowStatement", result.Stderr);
+        Assert.Contains("ListPattern", result.Stderr);
         Assert.Contains("System.IO.File.ReadAllText", result.Stderr);
         Assert.Contains("List<T>", result.Stderr);
     }

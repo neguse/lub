@@ -167,9 +167,9 @@
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC を作る
   - 進行中: Analyzer project / analyzer tests / analyzer-demo project / `.editorconfig` / `tcs check` / CI workflow / Rider 確認 checklist を追加
-  - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x4 / TCS1002 x1 / TCS1003 x1 を検出する
+  - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 を検出する
   - README / analyzer-demo README に `PackageReference` 導入手順と local nupkg consumer 検証の位置づけを記録済み
-  - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも ProjectReference analyzer-demo と local nupkg `PackageReference` consumer の TCS1001 x4 / TCS1002 x1 / TCS1003 x1、および PackageReference consumer の TCS1001/TCS1002/TCS1003 error override を確認できる
+  - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも ProjectReference analyzer-demo と local nupkg `PackageReference` consumer の TCS1001 x5 / TCS1002 x1 / TCS1003 x1、および PackageReference consumer の TCS1001/TCS1002/TCS1003 error override を確認できる
   - `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md` に Rider go/no-go 記録と後続タスク化のテンプレートを追加
   - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
   - TCS diagnostic severity override は analyzer test と analyzer nupkg consumer の `.editorconfig` build で検証済み

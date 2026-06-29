@@ -96,8 +96,8 @@ $tcs1002Count = @($analyzerOutput |
 $tcs1003Count = @($analyzerOutput |
     Where-Object { "$_".Contains("warning TCS1003:") } |
     Sort-Object -Unique).Count
-if ($tcs1001Count -ne 4 -or $tcs1002Count -ne 1 -or $tcs1003Count -ne 1) {
-    Write-Error "Analyzer demo expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001Count / TCS1002 x$tcs1002Count / TCS1003 x$tcs1003Count"
+if ($tcs1001Count -ne 5 -or $tcs1002Count -ne 1 -or $tcs1003Count -ne 1) {
+    Write-Error "Analyzer demo expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001Count / TCS1002 x$tcs1002Count / TCS1003 x$tcs1003Count"
     exit 1
 }
 
@@ -157,8 +157,8 @@ dotnet_diagnostic.TCS1003.severity = warning
     $consumerTcs1003Count = @($consumerOutput |
         Where-Object { "$_".Contains("warning TCS1003:") } |
         Sort-Object -Unique).Count
-    if ($consumerTcs1001Count -ne 4 -or $consumerTcs1002Count -ne 1 -or $consumerTcs1003Count -ne 1) {
-        Write-Error "Analyzer package consumer expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumerTcs1001Count / TCS1002 x$consumerTcs1002Count / TCS1003 x$consumerTcs1003Count"
+    if ($consumerTcs1001Count -ne 5 -or $consumerTcs1002Count -ne 1 -or $consumerTcs1003Count -ne 1) {
+        Write-Error "Analyzer package consumer expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumerTcs1001Count / TCS1002 x$consumerTcs1002Count / TCS1003 x$consumerTcs1003Count"
         exit 1
     }
 
@@ -191,8 +191,8 @@ dotnet_diagnostic.TCS1003.severity = error
     $overrideTcs1003Count = @($overrideOutput |
         Where-Object { "$_".Contains("error TCS1003:") } |
         Sort-Object -Unique).Count
-    if ($overrideTcs1001Count -ne 4 -or $overrideTcs1002Count -ne 1 -or $overrideTcs1003Count -ne 1) {
-        Write-Error "Analyzer package severity override expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$overrideTcs1001Count / TCS1002 x$overrideTcs1002Count / TCS1003 x$overrideTcs1003Count"
+    if ($overrideTcs1001Count -ne 5 -or $overrideTcs1002Count -ne 1 -or $overrideTcs1003Count -ne 1) {
+        Write-Error "Analyzer package severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$overrideTcs1001Count / TCS1002 x$overrideTcs1002Count / TCS1003 x$overrideTcs1003Count"
         exit 1
     }
 }

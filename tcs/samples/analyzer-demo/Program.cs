@@ -26,4 +26,9 @@ public class Demo
     {
         return new List<string?> { null };
     }
+
+    public static bool MatchesPair(int[] values)
+    {
+        return values is [1, 2];
+    }
 }
