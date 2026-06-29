@@ -13,6 +13,19 @@ Rider / Roslyn Analyzer PoC の実機確認用 project。
 root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にしているため、build は warning だけで完了する。
 `run-tests` では `TCS1002` を error にした一時 project も build し、`.editorconfig` severity override が build に反映されることを検証する。
 
+## JetBrains InspectCode
+
+Rider 本体ではなく JetBrains InspectCode 2026.1.3 の headless 実行では、SARIF に `TCS1001` x4 / `TCS1002` x1 が出ることを確認済み。
+stdout には bundled analyzer 由来の noisy log が出る場合があるため、確認には SARIF を使う。
+
+```bash
+dotnet tool install JetBrains.ReSharper.GlobalTools --tool-path /tmp/tcs-jetbrains-tools --version 2026.1.3
+/tmp/tcs-jetbrains-tools/jb inspectcode samples/analyzer-demo/analyzer-demo.csproj \
+  --format=Sarif --output=/tmp/tcs-inspect.sarif --no-updates --verbosity=ERROR
+rg -c '"ruleId": "TCS1001"' /tmp/tcs-inspect.sarif # 4
+rg -c '"ruleId": "TCS1002"' /tmp/tcs-inspect.sarif # 1
+```
+
 ## Rider 確認手順
 
 1. repository root または `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開く

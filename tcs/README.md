@@ -198,6 +198,7 @@ dotnet build samples/analyzer-demo/analyzer-demo.csproj
 demo project 固有の expected diagnostics と Rider 確認手順は
 [`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
 `run-tests` は `.editorconfig` で `TCS1002` を error にした一時 project の build も検証する。
+JetBrains InspectCode 2026.1.3 の headless 実行でも `TCS1001` x4 / `TCS1002` x1 が SARIF に出ることを確認済み。
 
 通常の C# project から参照する場合:
 
