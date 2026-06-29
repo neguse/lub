@@ -28,7 +28,9 @@
   - `ThrowStatement`: yes / no
 - `TCS1002` x1 shown in editor:
   - `System.IO.File.ReadAllText`: yes / no
-- Build tool window shows `TCS1001` x4 / `TCS1002` x1: yes / no
+- `TCS1003` x1 shown in editor:
+  - `List<string?> { null }`: yes / no
+- Build tool window shows `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1: yes / no
 - `.editorconfig` severity override is reflected in Rider:
   - `dotnet_diagnostic.TCS1002.severity = error`: yes / no
 
@@ -55,7 +57,7 @@ Add product tasks to `doc/tasks.md` using this shape:
 ### T124: tcs check / analyzer / transpiler diagnostics の一致を継続検証する
 - 目的: shared compliance facts の変更時に IDE/build/check/transpile の判定ずれを防ぐ
 - 作業:
-  - analyzer-demo fixture を TCS1003 も含む形へ拡張するか判断する
+  - TCS1003 を含む analyzer-demo fixture を維持する
   - CLI fixture と analyzer test の expected diagnostics を同じケースで比較する
   - support matrix の診断対象と test case を同期する
 - 完了条件: 代表 unsupported syntax / API / collection null が analyzer, `tcs check`, transpiler warning で同じ ID になる

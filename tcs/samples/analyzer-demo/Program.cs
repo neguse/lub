@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 
 public struct Vec2
@@ -19,5 +20,10 @@ public class Demo
         {
             throw;
         }
+    }
+
+    public static List<string?> Values()
+    {
+        return new List<string?> { null };
     }
 }

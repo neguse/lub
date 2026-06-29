@@ -198,7 +198,7 @@ dotnet build samples/analyzer-demo/analyzer-demo.csproj
 demo project 固有の expected diagnostics と Rider 確認手順は
 [`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
 `run-tests` は analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1002` を error にした build が失敗することも検証する。
-[`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも、ProjectReference と local nupkg `PackageReference` consumer の両方で `TCS1001` x4 / `TCS1002` x1 が SARIF に出ることを確認できる。さらに PackageReference consumer の `.editorconfig` で `TCS1002` を error にした場合、InspectCode が `TCS1002` error を返すことも検証する。
+[`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも、ProjectReference と local nupkg `PackageReference` consumer の両方で `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1 が SARIF に出ることを確認できる。さらに PackageReference consumer の `.editorconfig` で `TCS1002` を error にした場合、InspectCode が `TCS1002` error を返すことも検証する。
 
 通常の C# project から package として参照する場合:
 
@@ -234,8 +234,8 @@ Rider 実機確認の手順:
 
 1. `samples/analyzer-demo/analyzer-demo.csproj` を含む solution/project を Rider で開く
 1. Restore 後、`samples/analyzer-demo/Program.cs` を開く
-1. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText` に Roslyn inspection の squiggle が出ることを確認する
-1. Build tool window で `TCS1001` が4件、`TCS1002` が1件出ることを確認する
+1. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText`, `List<string?> { null }` に Roslyn inspection の squiggle が出ることを確認する
+1. Build tool window で `TCS1001` が4件、`TCS1002` が1件、`TCS1003` が1件出ることを確認する
 1. `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` を変え、Rider 表示が追従するか確認する（build 上の severity override は `run-tests` で検証済み）
 1. [`samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`](samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md) に沿って、結果を `q.md` に go / no-go として記録する
 

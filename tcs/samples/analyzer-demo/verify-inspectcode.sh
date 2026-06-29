@@ -54,19 +54,21 @@ assert_expected_counts() {
   local stdout_log="$3"
   local tcs1001_count
   local tcs1002_count
+  local tcs1003_count
 
   tcs1001_count="$(count_rule "$sarif" TCS1001)"
   tcs1002_count="$(count_rule "$sarif" TCS1002)"
+  tcs1003_count="$(count_rule "$sarif" TCS1003)"
 
-  if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ]; then
-    echo "Error: InspectCode $label expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count" >&2
+  if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count" -ne 1 ]; then
+    echo "Error: InspectCode $label expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
     echo "SARIF: $sarif" >&2
     echo "stdout/stderr log: $stdout_log" >&2
     exit 1
   fi
 
   echo "InspectCode $label diagnostics verified."
-  echo "TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count"
+  echo "TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count"
   echo "SARIF: $sarif"
   echo "stdout/stderr log: $stdout_log"
 }

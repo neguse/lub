@@ -115,11 +115,14 @@ public class CliRuntimeTests
             TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal(1, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.Equal(1, CountDiagnostics(result.Stderr,
+            TinyCsDiagnosticIds.UnsupportedCollectionNull));
         Assert.Contains("StructDeclaration", result.Stderr);
         Assert.Contains("LocalFunctionStatement", result.Stderr);
         Assert.Contains("TryStatement", result.Stderr);
         Assert.Contains("ThrowStatement", result.Stderr);
         Assert.Contains("System.IO.File.ReadAllText", result.Stderr);
+        Assert.Contains("List<T>", result.Stderr);
     }
 
     [Fact]

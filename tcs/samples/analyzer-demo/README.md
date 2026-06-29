@@ -9,6 +9,7 @@ Rider / Roslyn Analyzer PoC の実機確認用 project。
 
 - `TCS1001` x4: `StructDeclaration`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`
 - `TCS1002` x1: `System.IO.File.ReadAllText`
+- `TCS1003` x1: `List<T>` への null 保存
 
 root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にしているため、build は warning だけで完了する。
 `run-tests` では analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1002` を error にした build が失敗することも検証する。
@@ -16,7 +17,7 @@ root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にし
 ## PackageReference 確認
 
 通常の利用形に近い package consumer 経路は `run-tests` で検証する。
-一時 project は local nupkg source から `TinyCs.Analyzers` 0.1.0 を restore し、`PackageReference` だけで `TCS1001` x4 / `TCS1002` x1 を出す。
+一時 project は local nupkg source から `TinyCs.Analyzers` 0.1.0 を restore し、`PackageReference` だけで `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1 を出す。
 
 ```xml
 <PackageReference Include="TinyCs.Analyzers"
@@ -26,7 +27,7 @@ root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にし
 
 ## JetBrains InspectCode
 
-Rider 本体ではなく JetBrains InspectCode 2026.1.3 の headless 実行では、ProjectReference と local nupkg `PackageReference` consumer の両方で SARIF に `TCS1001` x4 / `TCS1002` x1 が出ることを確認済み。
+Rider 本体ではなく JetBrains InspectCode 2026.1.3 の headless 実行では、ProjectReference と local nupkg `PackageReference` consumer の両方で SARIF に `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1 が出ることを確認済み。
 また、PackageReference consumer の `.editorconfig` で `TCS1002` を error にした場合、InspectCode が `TCS1002` error を返すことも確認する。
 stdout には bundled analyzer 由来の noisy log が出る場合があるため、確認には SARIF を使う。
 
@@ -41,8 +42,8 @@ PackageReference consumer は script 内で local nupkg を pack して同じ出
 
 1. repository root または `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開く
 2. Restore が終わった後、`samples/analyzer-demo/Program.cs` を開く
-3. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText` に inspection / squiggle が出ることを確認する
-4. Build tool window で `TCS1001` x4 / `TCS1002` x1 が表示されることを確認する
+3. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText`, `List<string?> { null }` に inspection / squiggle が出ることを確認する
+4. Build tool window で `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1 が表示されることを確認する
 5. root `.editorconfig` の `dotnet_diagnostic.TCS1002.severity` を一時的に `error` へ変え、Rider 表示が追従することを確認する
 6. 確認後、`.editorconfig` は repository の既定値へ戻す
 7. 結果を `q.md` の Q12 に go / no-go として記録する

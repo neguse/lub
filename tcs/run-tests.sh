@@ -102,8 +102,9 @@ count_diagnostic() {
 
 tcs1001_count="$(count_diagnostic TCS1001)"
 tcs1002_count="$(count_diagnostic TCS1002)"
-if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ]; then
-  echo "Error: analyzer demo expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count" >&2
+tcs1003_count="$(count_diagnostic TCS1003)"
+if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count" -ne 1 ]; then
+  echo "Error: analyzer demo expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
   exit 1
 fi
 
@@ -150,8 +151,10 @@ consumer_tcs1001_count="$(printf '%s\n' "$consumer_output" \
   | awk 'index($0, "warning TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
 consumer_tcs1002_count="$(printf '%s\n' "$consumer_output" \
   | awk 'index($0, "warning TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-if [ "$consumer_tcs1001_count" -ne 4 ] || [ "$consumer_tcs1002_count" -ne 1 ]; then
-  echo "Error: analyzer package consumer expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count" >&2
+consumer_tcs1003_count="$(printf '%s\n' "$consumer_output" \
+  | awk 'index($0, "warning TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
+if [ "$consumer_tcs1001_count" -ne 4 ] || [ "$consumer_tcs1002_count" -ne 1 ] || [ "$consumer_tcs1003_count" -ne 1 ]; then
+  echo "Error: analyzer package consumer expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count / TCS1003 x$consumer_tcs1003_count" >&2
   exit 1
 fi
 
