@@ -74,4 +74,23 @@ dotnet run --project (Join-Path $ScriptDir "Transpiler") -- `
     --ref (Join-Path $ScriptDir "samples\host_api_stub.cs")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Write-Host "Running analyzer demo build..."
+$analyzerOutput = dotnet build `
+    (Join-Path $ScriptDir "samples\analyzer-demo\analyzer-demo.csproj") `
+    --no-incremental 2>&1
+$analyzerExit = $LASTEXITCODE
+$analyzerOutput | ForEach-Object { Write-Host $_ }
+if ($analyzerExit -ne 0) { exit $analyzerExit }
+
+$tcs1001Count = @($analyzerOutput |
+    Where-Object { "$_".Contains("warning TCS1001:") } |
+    Sort-Object -Unique).Count
+$tcs1002Count = @($analyzerOutput |
+    Where-Object { "$_".Contains("warning TCS1002:") } |
+    Sort-Object -Unique).Count
+if ($tcs1001Count -ne 4 -or $tcs1002Count -ne 1) {
+    Write-Error "Analyzer demo expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$tcs1001Count / TCS1002 x$tcs1002Count"
+    exit 1
+}
+
 Write-Host "All tests passed."
