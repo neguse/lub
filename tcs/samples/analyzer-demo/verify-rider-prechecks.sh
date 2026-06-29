@@ -7,6 +7,33 @@ OUTPUT_DIR="${TCS_RIDER_PRECHECK_OUTPUT_DIR:-/tmp/tcs-rider-verification-prechec
 SUMMARY="$OUTPUT_DIR/summary.md"
 FAILED=0
 
+find_rider_command() {
+  if command -v rider >/dev/null 2>&1; then
+    command -v rider
+    return
+  fi
+
+  if command -v jetbrains-rider >/dev/null 2>&1; then
+    command -v jetbrains-rider
+    return
+  fi
+
+  if command -v rider.sh >/dev/null 2>&1; then
+    command -v rider.sh
+    return
+  fi
+
+  find "$HOME/.local/share/JetBrains" \
+      "$HOME/.local/share/JetBrains/Toolbox/apps" \
+      /opt /usr/local \
+      -maxdepth 8 \
+      -type f \
+      -name rider.sh \
+      -perm -u+x \
+      2>/dev/null \
+    | head -1
+}
+
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
@@ -37,6 +64,10 @@ run_check() {
   echo "- Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "- OS: $(uname -a)"
   echo "- .NET SDK: $(dotnet --version)"
+  echo "- Rider command: $(find_rider_command || true)"
+  echo "- DISPLAY: ${DISPLAY-}"
+  echo "- WAYLAND_DISPLAY: ${WAYLAND_DISPLAY-}"
+  echo "- XDG_SESSION_TYPE: ${XDG_SESSION_TYPE-}"
   echo
   echo "## Results"
 } >"$SUMMARY"
