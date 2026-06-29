@@ -27,6 +27,7 @@ root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にし
 ## JetBrains InspectCode
 
 Rider 本体ではなく JetBrains InspectCode 2026.1.3 の headless 実行では、ProjectReference と local nupkg `PackageReference` consumer の両方で SARIF に `TCS1001` x4 / `TCS1002` x1 が出ることを確認済み。
+また、PackageReference consumer の `.editorconfig` で `TCS1002` を error にした場合、InspectCode が `TCS1002` error を返すことも確認する。
 stdout には bundled analyzer 由来の noisy log が出る場合があるため、確認には SARIF を使う。
 
 ```bash
