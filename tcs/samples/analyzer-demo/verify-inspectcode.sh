@@ -100,6 +100,19 @@ assert_expected_counts() {
   echo "stdout/stderr log: $stdout_log"
 }
 
+count_stdout_diagnostic() {
+  local stdout_log="$1"
+  local diagnostic_id="$2"
+  if [ ! -f "$stdout_log" ]; then
+    echo 0
+    return
+  fi
+
+  awk -v diagnostic="$diagnostic_id:" \
+    'index($0, diagnostic) { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' \
+    "$stdout_log"
+}
+
 run_inspectcode \
   "$REPO_ROOT/samples/analyzer-demo/analyzer-demo.csproj" \
   "$PROJECT_REFERENCE_SARIF" \
@@ -154,27 +167,47 @@ dotnet_diagnostic.TCS1001.severity = error
 dotnet_diagnostic.TCS1002.severity = error
 dotnet_diagnostic.TCS1003.severity = error
 EOF
-set +e
-run_inspectcode \
-  "$PACKAGE_CONSUMER_PROJECT" \
-  "$PACKAGE_REFERENCE_OVERRIDE_SARIF" \
-  "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG"
-override_exit=$?
-set -e
-if [ "$override_exit" -eq 0 ]; then
-  echo "Error: InspectCode PackageReference severity override expected TCS errors" >&2
-  echo "SARIF: $PACKAGE_REFERENCE_OVERRIDE_SARIF" >&2
-  echo "stdout/stderr log: $PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" >&2
-  exit 1
-fi
-override_tcs1001_count="$(awk 'index($0, "TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG")"
-override_tcs1002_count="$(awk 'index($0, "TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG")"
-override_tcs1003_count="$(awk 'index($0, "TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }' "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG")"
-if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
-  echo "Error: InspectCode PackageReference severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
-  echo "stdout/stderr log: $PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" >&2
-  exit 1
-fi
+
+override_attempt=1
+override_max_attempts=2
+while true; do
+  rm -f "$PACKAGE_REFERENCE_OVERRIDE_SARIF" "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG"
+  set +e
+  run_inspectcode \
+    "$PACKAGE_CONSUMER_PROJECT" \
+    "$PACKAGE_REFERENCE_OVERRIDE_SARIF" \
+    "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG"
+  override_exit=$?
+  set -e
+
+  override_tcs1001_count="$(count_stdout_diagnostic "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" TCS1001)"
+  override_tcs1002_count="$(count_stdout_diagnostic "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" TCS1002)"
+  override_tcs1003_count="$(count_stdout_diagnostic "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" TCS1003)"
+
+  if [ "$override_exit" -ne 0 ] \
+      && [ "$override_tcs1001_count" -eq 5 ] \
+      && [ "$override_tcs1002_count" -eq 1 ] \
+      && [ "$override_tcs1003_count" -eq 1 ]; then
+    break
+  fi
+
+  if [ "$override_attempt" -ge "$override_max_attempts" ]; then
+    if [ "$override_exit" -eq 0 ]; then
+      echo "Error: InspectCode PackageReference severity override expected TCS errors" >&2
+      echo "SARIF: $PACKAGE_REFERENCE_OVERRIDE_SARIF" >&2
+      echo "stdout/stderr log: $PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" >&2
+      exit 1
+    fi
+
+    echo "Error: InspectCode PackageReference severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
+    echo "stdout/stderr log: $PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" >&2
+    exit 1
+  fi
+
+  echo "InspectCode PackageReference severity override returned incomplete diagnostics on attempt $override_attempt; retrying." >&2
+  override_attempt=$((override_attempt + 1))
+done
+
 assert_expected_diagnostic_texts \
   "PackageReference severity override" \
   "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG"

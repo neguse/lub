@@ -7,54 +7,7 @@ OUTPUT_DIR="${TCS_RIDER_PRECHECK_OUTPUT_DIR:-/tmp/tcs-rider-verification-prechec
 SUMMARY="$OUTPUT_DIR/summary.md"
 FAILED=0
 
-value_or_unset() {
-  local value="$1"
-  if [ -n "$value" ]; then
-    printf '%s\n' "$value"
-  else
-    printf '(unset)\n'
-  fi
-}
-
-command_or_not_found() {
-  local command_name="$1"
-  if command -v "$command_name" >/dev/null 2>&1; then
-    command -v "$command_name"
-  else
-    printf '(not found)\n'
-  fi
-}
-
-find_rider_command() {
-  if command -v rider >/dev/null 2>&1; then
-    command -v rider
-    return
-  fi
-
-  if command -v jetbrains-rider >/dev/null 2>&1; then
-    command -v jetbrains-rider
-    return
-  fi
-
-  if command -v rider.sh >/dev/null 2>&1; then
-    command -v rider.sh
-    return
-  fi
-
-  find "$HOME/.local/share/JetBrains" \
-      "$HOME/.local/share/JetBrains/Toolbox/apps" \
-      /opt /usr/local \
-      -maxdepth 8 \
-      -type f \
-      -name rider.sh \
-      -perm -u+x \
-      2>/dev/null \
-    | head -1
-}
-
-has_display() {
-  [ -n "${DISPLAY-}" ] || [ -n "${WAYLAND_DISPLAY-}" ]
-}
+source "$SCRIPT_DIR/rider-env.sh"
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"

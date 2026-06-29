@@ -18,6 +18,7 @@
 - `samples/analyzer-demo/verify-rider-prechecks.sh`: pass / fail / not run
   - summary:
   - Rider UI launchable from this shell: yes / no
+- `samples/analyzer-demo/open-rider-demo.sh`: opened / not used / failed
 - `bash run-tests.sh`: pass / fail / not run
 - `samples/analyzer-demo/verify-inspectcode.sh` (ProjectReference + PackageReference + severity override): pass / fail / not run
 - `dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental`: pass / fail / not run
