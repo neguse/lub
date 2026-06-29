@@ -200,7 +200,20 @@ demo project 固有の expected diagnostics と Rider 確認手順は
 `run-tests` は analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1002` を error にした build が失敗することも検証する。
 [`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも `TCS1001` x4 / `TCS1002` x1 が SARIF に出ることを確認できる。
 
-通常の C# project から参照する場合:
+通常の C# project から package として参照する場合:
+
+```bash
+dotnet pack TinyCs.Analyzers/TinyCs.Analyzers.csproj -c Release -o .nupkgs
+dotnet restore your-project.csproj --source .nupkgs --source https://api.nuget.org/v3/index.json
+```
+
+```xml
+<PackageReference Include="TinyCs.Analyzers"
+                  Version="0.1.0"
+                  PrivateAssets="all" />
+```
+
+repository 内で直接参照する場合:
 
 ```xml
 <ProjectReference Include="..\TinyCs.Analyzers\TinyCs.Analyzers.csproj"

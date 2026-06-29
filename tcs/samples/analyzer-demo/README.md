@@ -11,7 +11,18 @@ Rider / Roslyn Analyzer PoC の実機確認用 project。
 - `TCS1002` x1: `System.IO.File.ReadAllText`
 
 root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にしているため、build は warning だけで完了する。
-`run-tests` では `TCS1002` を error にした一時 project も build し、`.editorconfig` severity override が build に反映されることを検証する。
+`run-tests` では analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1002` を error にした build が失敗することも検証する。
+
+## PackageReference 確認
+
+通常の利用形に近い package consumer 経路は `run-tests` で検証する。
+一時 project は local nupkg source から `TinyCs.Analyzers` 0.1.0 を restore し、`PackageReference` だけで `TCS1001` x4 / `TCS1002` x1 を出す。
+
+```xml
+<PackageReference Include="TinyCs.Analyzers"
+                  Version="0.1.0"
+                  PrivateAssets="all" />
+```
 
 ## JetBrains InspectCode
 
