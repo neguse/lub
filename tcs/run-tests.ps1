@@ -104,6 +104,15 @@ dotnet run --project (Join-Path $ScriptDir "Transpiler") -- `
     --ref (Join-Path $ScriptDir "samples\host_api_stub.cs")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$bash = Get-Command bash -ErrorAction SilentlyContinue
+if ($bash) {
+    & $bash.Source (Join-Path $ScriptDir "samples/analyzer-demo/verify-rider-scripts.sh")
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+else {
+    Write-Host "Skipping Rider helper script tests; bash was not found."
+}
+
 Write-Host "Running analyzer demo build..."
 $analyzerOutput = dotnet build `
     (Join-Path $ScriptDir "samples\analyzer-demo\analyzer-demo.csproj") `

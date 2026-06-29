@@ -60,6 +60,7 @@ samples/analyzer-demo/open-rider-demo.sh
 ```
 
 pre-check 済みなら `--no-precheck` を付ける。
+`samples/analyzer-demo/verify-rider-scripts.sh` は Rider 本体を使わず、fake command でこの helper の検出・エラー経路を検証する。`run-tests` からも実行される。
 
 ## Rider 確認手順
 

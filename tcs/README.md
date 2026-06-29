@@ -58,7 +58,7 @@ Windows (PowerShell):
 
 Lua が未ビルド、CMake 入力より古い、または `Lua 5.5` ではない場合は自動で `cmake` を呼んでビルドしてからテストを実行する。
 テスト時は `deps/lua/lua -v` が `Lua 5.5` で始まることも検証する。
-`run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
+`run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、Rider helper script、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
 GitHub Actions (`.github/workflows/ci.yml`) でも同じ gate を実行する。
 
 ## 依存と配布

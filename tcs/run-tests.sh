@@ -84,6 +84,8 @@ dotnet run --project "$SCRIPT_DIR/Transpiler" -- \
   check "$SCRIPT_DIR/samples/host_api_game.cs" \
   --ref "$SCRIPT_DIR/samples/host_api_stub.cs"
 
+bash "$SCRIPT_DIR/samples/analyzer-demo/verify-rider-scripts.sh"
+
 echo "Running analyzer demo build..."
 set +e
 analyzer_output="$(dotnet build "$SCRIPT_DIR/samples/analyzer-demo/analyzer-demo.csproj" --no-incremental 2>&1)"
