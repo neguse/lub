@@ -135,7 +135,7 @@
 
 ### Lua 5.5 build
 - CMake は Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で Lua compile definitions と system libs を分岐
-- `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成、CMake 入力より古い、または `Lua 5.5` でない場合に再ビルドし、dotnet tests、sample `tcs check`、analyzer-demo expected diagnostics、analyzer nupkg consumer、severity override 検証を実行する
+- `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成、CMake 入力より古い、または `Lua 5.5` でない場合に再ビルドし、dotnet tests、sample `tcs check`、analyzer-demo expected diagnostics、analyzer nupkg consumer / severity override 検証を実行する
 - `.github/workflows/ci.yml` は submodule checkout → .NET 10 setup → `run-tests.sh` を実行する
 
 ### 依存・配布
@@ -170,7 +170,7 @@
   - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x4 / TCS1002 x1 を検出する
   - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも analyzer-demo の TCS1001 x4 / TCS1002 x1 を SARIF で確認できる
   - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
-  - TCS diagnostic severity override は analyzer test と一時 project の `.editorconfig` build で検証済み
+  - TCS diagnostic severity override は analyzer test と analyzer nupkg consumer の `.editorconfig` build で検証済み
   - `q.md` に Q12 として Rider go / no-go 判断待ちを記録
   - 残り: Rider 実機で squiggle / inspection 表示を確認し、go / no-go と後続タスクを記録する
 

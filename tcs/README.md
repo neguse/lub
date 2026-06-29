@@ -58,7 +58,7 @@ Windows (PowerShell):
 
 Lua が未ビルド、CMake 入力より古い、または `Lua 5.5` ではない場合は自動で `cmake` を呼んでビルドしてからテストを実行する。
 テスト時は `deps/lua/lua -v` が `Lua 5.5` で始まることも検証する。
-`run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer、`.editorconfig` severity override build を検査する。
+`run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics、analyzer nupkg の PackageReference consumer と `.editorconfig` severity override を検査する。
 GitHub Actions (`.github/workflows/ci.yml`) でも同じ gate を実行する。
 
 ## 依存と配布
@@ -197,8 +197,7 @@ dotnet build samples/analyzer-demo/analyzer-demo.csproj
 
 demo project 固有の expected diagnostics と Rider 確認手順は
 [`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
-`run-tests` は `.editorconfig` で `TCS1002` を error にした一時 project の build も検証する。
-`run-tests` は analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることも検証する。
+`run-tests` は analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1002` を error にした build が失敗することも検証する。
 [`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも `TCS1001` x4 / `TCS1002` x1 が SARIF に出ることを確認できる。
 
 通常の C# project から参照する場合:
