@@ -71,7 +71,7 @@ deps/lua/lua output.lua
 bash run-tests.sh
 ```
 
-`run-tests.sh` / `run-tests.ps1` は Lua binary が未生成・stale・Lua 5.5 でない場合に CMake で再ビルドし、`dotnet test`、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics 検証を実行する。
+`run-tests.sh` / `run-tests.ps1` は Lua binary が未生成・stale・Lua 5.5 でない場合に CMake で再ビルドし、`dotnet test`、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics 検証、`.editorconfig` severity override build 検証を実行する。
 
 ## 開発ワークフロー
 

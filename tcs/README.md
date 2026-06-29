@@ -58,7 +58,7 @@ Windows (PowerShell):
 
 Lua が未ビルド、CMake 入力より古い、または `Lua 5.5` ではない場合は自動で `cmake` を呼んでビルドしてからテストを実行する。
 テスト時は `deps/lua/lua -v` が `Lua 5.5` で始まることも検証する。
-`run-tests` は `dotnet test` に加え、代表 sample の `tcs check` と analyzer-demo build の expected diagnostics を検査する。
+`run-tests` は `dotnet test` に加え、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics、`.editorconfig` severity override build を検査する。
 GitHub Actions (`.github/workflows/ci.yml`) でも同じ gate を実行する。
 
 ## 依存と配布
@@ -197,6 +197,7 @@ dotnet build samples/analyzer-demo/analyzer-demo.csproj
 
 demo project 固有の expected diagnostics と Rider 確認手順は
 [`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
+`run-tests` は `.editorconfig` で `TCS1002` を error にした一時 project の build も検証する。
 
 通常の C# project から参照する場合:
 
@@ -221,7 +222,7 @@ Rider 実機確認の手順:
 1. Restore 後、`samples/analyzer-demo/Program.cs` を開く
 1. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText` に Roslyn inspection の squiggle が出ることを確認する
 1. Build tool window で `TCS1001` が4件、`TCS1002` が1件出ることを確認する
-1. `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` を変え、Rider 表示が追従するか確認する
+1. `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` を変え、Rider 表示が追従するか確認する（build 上の severity override は `run-tests` で検証済み）
 1. 結果を `doc/done.md` または `q.md` に go / no-go として記録する
 
 ## サポートしている C# 機能

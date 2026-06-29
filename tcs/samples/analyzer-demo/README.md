@@ -11,6 +11,7 @@ Rider / Roslyn Analyzer PoC の実機確認用 project。
 - `TCS1002` x1: `System.IO.File.ReadAllText`
 
 root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にしているため、build は warning だけで完了する。
+`run-tests` では `TCS1002` を error にした一時 project も build し、`.editorconfig` severity override が build に反映されることを検証する。
 
 ## Rider 確認手順
 
@@ -18,7 +19,7 @@ root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にし
 2. Restore が終わった後、`samples/analyzer-demo/Program.cs` を開く
 3. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText` に inspection / squiggle が出ることを確認する
 4. Build tool window で `TCS1001` x4 / `TCS1002` x1 が表示されることを確認する
-5. root `.editorconfig` の `dotnet_diagnostic.TCS1002.severity` を一時的に `error` へ変え、Rider 表示と build severity が追従することを確認する
+5. root `.editorconfig` の `dotnet_diagnostic.TCS1002.severity` を一時的に `error` へ変え、Rider 表示が追従することを確認する
 6. 確認後、`.editorconfig` は repository の既定値へ戻す
 7. 結果を `q.md` の Q12 に go / no-go として記録する
 

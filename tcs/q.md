@@ -7,7 +7,7 @@
 ### Q12: Rider 上の Roslyn Analyzer PoC は go か no-go か
 - `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開き、`Program.cs` 上で TCS1001/TCS1002 が通常の inspection / squiggle として表示されるか確認する
 - 期待値: TCS1001 x4 (`StructDeclaration`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`) / TCS1002 x1 (`System.IO.File.ReadAllText`)
-- `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` 変更が Rider 表示に反映されるか確認する
+- `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` 変更が Rider 表示に反映されるか確認する（build への反映は `run-tests` で検証済み）
 - 詳細な実機確認手順は `samples/analyzer-demo/README.md` に記録済み
 - go の場合: analyzer package / `tcs check` / CI を正式な準拠チェック導線として product task に分解する
 - no-go の場合: Rider plugin、external tool、または CLI watcher 連携などの代替案を検討する
