@@ -237,7 +237,7 @@ Rider 実機確認の手順:
 1. `struct`, local function, `try`, `throw`, `System.IO.File.ReadAllText` に Roslyn inspection の squiggle が出ることを確認する
 1. Build tool window で `TCS1001` が4件、`TCS1002` が1件出ることを確認する
 1. `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` を変え、Rider 表示が追従するか確認する（build 上の severity override は `run-tests` で検証済み）
-1. 結果を `doc/done.md` または `q.md` に go / no-go として記録する
+1. [`samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`](samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md) に沿って、結果を `q.md` に go / no-go として記録する
 
 ## サポートしている C# 機能
 

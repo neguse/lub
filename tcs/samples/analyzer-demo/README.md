@@ -45,6 +45,8 @@ script は必要なら `/tmp/tcs-jetbrains-tools` に JetBrains ReSharper Global
 6. 確認後、`.editorconfig` は repository の既定値へ戻す
 7. 結果を `q.md` の Q12 に go / no-go として記録する
 
+記録時は [`RIDER_VERIFICATION_TEMPLATE.md`](RIDER_VERIFICATION_TEMPLATE.md) を使う。
+
 ## go / no-go の判定
 
 - go: Rider 上で realtime inspection と `.editorconfig` severity override が期待どおり反映される
