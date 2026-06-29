@@ -7,6 +7,24 @@ OUTPUT_DIR="${TCS_RIDER_PRECHECK_OUTPUT_DIR:-/tmp/tcs-rider-verification-prechec
 SUMMARY="$OUTPUT_DIR/summary.md"
 FAILED=0
 
+value_or_unset() {
+  local value="$1"
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+  else
+    printf '(unset)\n'
+  fi
+}
+
+command_or_not_found() {
+  local command_name="$1"
+  if command -v "$command_name" >/dev/null 2>&1; then
+    command -v "$command_name"
+  else
+    printf '(not found)\n'
+  fi
+}
+
 find_rider_command() {
   if command -v rider >/dev/null 2>&1; then
     command -v rider
@@ -59,15 +77,18 @@ run_check() {
 }
 
 {
+  rider_command="$(find_rider_command || true)"
   echo "# Rider verification prechecks"
   echo
   echo "- Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "- OS: $(uname -a)"
   echo "- .NET SDK: $(dotnet --version)"
-  echo "- Rider command: $(find_rider_command || true)"
-  echo "- DISPLAY: ${DISPLAY-}"
-  echo "- WAYLAND_DISPLAY: ${WAYLAND_DISPLAY-}"
-  echo "- XDG_SESSION_TYPE: ${XDG_SESSION_TYPE-}"
+  echo "- Rider command: $(value_or_unset "$rider_command")"
+  echo "- DISPLAY: $(value_or_unset "${DISPLAY-}")"
+  echo "- WAYLAND_DISPLAY: $(value_or_unset "${WAYLAND_DISPLAY-}")"
+  echo "- XDG_SESSION_TYPE: $(value_or_unset "${XDG_SESSION_TYPE-}")"
+  echo "- Xvfb: $(command_or_not_found Xvfb)"
+  echo "- xvfb-run: $(command_or_not_found xvfb-run)"
   echo
   echo "## Results"
 } >"$SUMMARY"
