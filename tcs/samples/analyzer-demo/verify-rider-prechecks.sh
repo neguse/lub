@@ -52,6 +52,10 @@ find_rider_command() {
     | head -1
 }
 
+has_display() {
+  [ -n "${DISPLAY-}" ] || [ -n "${WAYLAND_DISPLAY-}" ]
+}
+
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
@@ -78,12 +82,19 @@ run_check() {
 
 {
   rider_command="$(find_rider_command || true)"
+  if [ -n "$rider_command" ] && has_display; then
+    rider_ui_ready="yes"
+  else
+    rider_ui_ready="no"
+  fi
+
   echo "# Rider verification prechecks"
   echo
   echo "- Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "- OS: $(uname -a)"
   echo "- .NET SDK: $(dotnet --version)"
   echo "- Rider command: $(value_or_unset "$rider_command")"
+  echo "- Rider UI launchable from this shell: $rider_ui_ready"
   echo "- DISPLAY: $(value_or_unset "${DISPLAY-}")"
   echo "- WAYLAND_DISPLAY: $(value_or_unset "${WAYLAND_DISPLAY-}")"
   echo "- XDG_SESSION_TYPE: $(value_or_unset "${XDG_SESSION_TYPE-}")"

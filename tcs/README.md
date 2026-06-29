@@ -232,6 +232,7 @@ dotnet_diagnostic.TCS1003.severity = warning
 
 Rider 実機確認の手順:
 
+1. 必要なら `samples/analyzer-demo/verify-rider-prechecks.sh` を実行し、Rider command / display 環境と headless 検証結果を確認する
 1. `samples/analyzer-demo/analyzer-demo.csproj` を含む solution/project を Rider で開く
 1. Restore 後、`samples/analyzer-demo/Program.cs` を開く
 1. `struct`, local function, `try`, `throw`, `values is [1, 2]`, `System.IO.File.ReadAllText`, `List<string?> { null }` に Roslyn inspection の squiggle が出ることを確認する
