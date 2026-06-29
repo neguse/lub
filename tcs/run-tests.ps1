@@ -98,6 +98,69 @@ if ($tcs1001Count -ne 4 -or $tcs1002Count -ne 1) {
     exit 1
 }
 
+Write-Host "Running analyzer package consumer build..."
+$packageDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+$consumerDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+New-Item -ItemType Directory -Path $packageDir | Out-Null
+New-Item -ItemType Directory -Path $consumerDir | Out-Null
+try {
+    dotnet pack `
+        (Join-Path $ScriptDir "TinyCs.Analyzers\TinyCs.Analyzers.csproj") `
+        -c Release `
+        -o $packageDir | Out-Null
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Copy-Item `
+        (Join-Path $ScriptDir "samples\analyzer-demo\Program.cs") `
+        (Join-Path $consumerDir "Program.cs")
+
+    Set-Content -Path (Join-Path $consumerDir "analyzer-package-consumer.csproj") -Value @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestoreAdditionalProjectSources>$packageDir</RestoreAdditionalProjectSources>
+    <RestorePackagesPath>$consumerDir\packages</RestorePackagesPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TinyCs.Analyzers" Version="0.1.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+"@
+    Set-Content -Path (Join-Path $consumerDir ".editorconfig") -Value @"
+root = true
+
+[*.cs]
+dotnet_diagnostic.TCS1001.severity = warning
+dotnet_diagnostic.TCS1002.severity = warning
+dotnet_diagnostic.TCS1003.severity = warning
+"@
+
+    $consumerOutput = dotnet build `
+        (Join-Path $consumerDir "analyzer-package-consumer.csproj") `
+        --no-incremental 2>&1
+    $consumerExit = $LASTEXITCODE
+    $consumerOutput | ForEach-Object { Write-Host $_ }
+    if ($consumerExit -ne 0) { exit $consumerExit }
+
+    $consumerTcs1001Count = @($consumerOutput |
+        Where-Object { "$_".Contains("warning TCS1001:") } |
+        Sort-Object -Unique).Count
+    $consumerTcs1002Count = @($consumerOutput |
+        Where-Object { "$_".Contains("warning TCS1002:") } |
+        Sort-Object -Unique).Count
+    if ($consumerTcs1001Count -ne 4 -or $consumerTcs1002Count -ne 1) {
+        Write-Error "Analyzer package consumer expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$consumerTcs1001Count / TCS1002 x$consumerTcs1002Count"
+        exit 1
+    }
+}
+finally {
+    Remove-Item -Recurse -Force $packageDir
+    Remove-Item -Recurse -Force $consumerDir
+}
+
 Write-Host "Running analyzer severity override build..."
 $overrideDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $overrideDir | Out-Null

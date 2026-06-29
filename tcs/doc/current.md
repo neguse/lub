@@ -45,7 +45,7 @@
 **T119**: 標準ライブラリ小拡張 (`IndexOf`/`Join`/`Pow`/`Sort`/LINQ 追加)
 **T120**: ユーザー定義 `struct` / `record struct` を TCS1001 未対応診断として確定
 **T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
-**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加 + analyzer-demo Rider 検証手順を README 化 + run-tests で analyzer-demo expected diagnostics / severity override 検証 + JetBrains InspectCode headless 確認 script 化
+**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加 + analyzer-demo Rider 検証手順を README 化 + run-tests で analyzer-demo expected diagnostics / nupkg consumer / severity override 検証 + JetBrains InspectCode headless 確認 script 化
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -135,8 +135,8 @@
 
 ### Lua 5.5 build
 - CMake は Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で Lua compile definitions と system libs を分岐
-- `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成、CMake 入力より古い、または `Lua 5.5` でない場合に再ビルドし、dotnet tests、sample `tcs check`、analyzer-demo expected diagnostics / severity override 検証を実行する
-- `.github/workflows/ci.yml` は submodule checkout → .NET 10 setup → `run-tests.sh` → analyzer pack を実行する
+- `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成、CMake 入力より古い、または `Lua 5.5` でない場合に再ビルドし、dotnet tests、sample `tcs check`、analyzer-demo expected diagnostics、analyzer nupkg consumer、severity override 検証を実行する
+- `.github/workflows/ci.yml` は submodule checkout → .NET 10 setup → `run-tests.sh` を実行する
 
 ### 依存・配布
 - `deps/lua` は git submodule commit で固定し、更新時は `Lua 5.5` version check を必須にする

@@ -107,6 +107,54 @@ if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ]; then
   exit 1
 fi
 
+echo "Running analyzer package consumer build..."
+package_dir="$(mktemp -d)"
+consumer_dir="$(mktemp -d)"
+TEMP_DIRS+=("$package_dir" "$consumer_dir")
+dotnet pack "$SCRIPT_DIR/TinyCs.Analyzers/TinyCs.Analyzers.csproj" \
+  -c Release \
+  -o "$package_dir" >/dev/null
+cp "$SCRIPT_DIR/samples/analyzer-demo/Program.cs" "$consumer_dir/Program.cs"
+cat > "$consumer_dir/analyzer-package-consumer.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestoreAdditionalProjectSources>$package_dir</RestoreAdditionalProjectSources>
+    <RestorePackagesPath>$consumer_dir/packages</RestorePackagesPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TinyCs.Analyzers" Version="0.1.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+EOF
+cat > "$consumer_dir/.editorconfig" <<'EOF'
+root = true
+
+[*.cs]
+dotnet_diagnostic.TCS1001.severity = warning
+dotnet_diagnostic.TCS1002.severity = warning
+dotnet_diagnostic.TCS1003.severity = warning
+EOF
+set +e
+consumer_output="$(dotnet build "$consumer_dir/analyzer-package-consumer.csproj" --no-incremental 2>&1)"
+consumer_exit=$?
+set -e
+printf '%s\n' "$consumer_output"
+if [ "$consumer_exit" -ne 0 ]; then
+  exit "$consumer_exit"
+fi
+consumer_tcs1001_count="$(printf '%s\n' "$consumer_output" \
+  | awk 'index($0, "warning TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
+consumer_tcs1002_count="$(printf '%s\n' "$consumer_output" \
+  | awk 'index($0, "warning TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
+if [ "$consumer_tcs1001_count" -ne 4 ] || [ "$consumer_tcs1002_count" -ne 1 ]; then
+  echo "Error: analyzer package consumer expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count" >&2
+  exit 1
+fi
+
 echo "Running analyzer severity override build..."
 override_dir="$(mktemp -d)"
 TEMP_DIRS+=("$override_dir")

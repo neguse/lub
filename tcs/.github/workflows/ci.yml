@@ -21,6 +21,3 @@ jobs:
 
       - name: Run tests and tcs checks
         run: bash run-tests.sh
-
-      - name: Pack analyzer
-        run: dotnet pack TinyCs.Analyzers/TinyCs.Analyzers.csproj -o /tmp/tcs-analyzer-pack
