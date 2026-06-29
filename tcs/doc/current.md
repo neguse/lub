@@ -45,7 +45,7 @@
 **T119**: 標準ライブラリ小拡張 (`IndexOf`/`Join`/`Pow`/`Sort`/LINQ 追加)
 **T120**: ユーザー定義 `struct` / `record struct` を TCS1001 未対応診断として確定
 **T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
-**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加 + analyzer-demo Rider 検証手順を README 化 + run-tests で analyzer-demo expected diagnostics / severity override 検証 + JetBrains InspectCode headless 確認
+**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加 + analyzer-demo Rider 検証手順を README 化 + run-tests で analyzer-demo expected diagnostics / severity override 検証 + JetBrains InspectCode headless 確認 script 化
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -168,7 +168,7 @@
 - T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC を作る
   - 進行中: Analyzer project / analyzer tests / analyzer-demo project / `.editorconfig` / `tcs check` / CI workflow / Rider 確認 checklist を追加
   - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x4 / TCS1002 x1 を検出する
-  - JetBrains InspectCode 2026.1.3 headless 実行でも analyzer-demo の TCS1001 x4 / TCS1002 x1 を SARIF で確認済み
+  - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも analyzer-demo の TCS1001 x4 / TCS1002 x1 を SARIF で確認できる
   - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
   - TCS diagnostic severity override は analyzer test と一時 project の `.editorconfig` build で検証済み
   - `q.md` に Q12 として Rider go / no-go 判断待ちを記録
