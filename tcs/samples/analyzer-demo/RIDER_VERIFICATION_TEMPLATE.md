@@ -32,7 +32,9 @@
   - `List<string?> { null }`: yes / no
 - Build tool window shows `TCS1001` x4 / `TCS1002` x1 / `TCS1003` x1: yes / no
 - `.editorconfig` severity override is reflected in Rider:
+  - `dotnet_diagnostic.TCS1001.severity = error`: yes / no
   - `dotnet_diagnostic.TCS1002.severity = error`: yes / no
+  - `dotnet_diagnostic.TCS1003.severity = error`: yes / no
 
 ## Decision
 

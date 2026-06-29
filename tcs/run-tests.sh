@@ -163,9 +163,9 @@ cat > "$consumer_dir/.editorconfig" <<'EOF'
 root = true
 
 [*.cs]
-dotnet_diagnostic.TCS1001.severity = warning
+dotnet_diagnostic.TCS1001.severity = error
 dotnet_diagnostic.TCS1002.severity = error
-dotnet_diagnostic.TCS1003.severity = warning
+dotnet_diagnostic.TCS1003.severity = error
 EOF
 set +e
 override_output="$(dotnet build "$consumer_dir/analyzer-package-consumer.csproj" --no-incremental 2>&1)"
@@ -173,17 +173,17 @@ override_exit=$?
 set -e
 printf '%s\n' "$override_output"
 if [ "$override_exit" -eq 0 ]; then
-  echo "Error: analyzer package severity override build expected TCS1002 error" >&2
+  echo "Error: analyzer package severity override build expected TCS errors" >&2
   exit 1
 fi
-if ! printf '%s\n' "$override_output" | grep -q "error TCS1002:"; then
-  echo "Error: analyzer package severity override build did not report error TCS1002" >&2
-  exit 1
-fi
+override_tcs1001_count="$(printf '%s\n' "$override_output" \
+  | awk 'index($0, "error TCS1001:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
 override_tcs1002_count="$(printf '%s\n' "$override_output" \
   | awk 'index($0, "error TCS1002:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
-if [ "$override_tcs1002_count" -ne 1 ]; then
-  echo "Error: analyzer package severity override expected TCS1002 x1, got x$override_tcs1002_count" >&2
+override_tcs1003_count="$(printf '%s\n' "$override_output" \
+  | awk 'index($0, "error TCS1003:") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }')"
+if [ "$override_tcs1001_count" -ne 4 ] || [ "$override_tcs1002_count" -ne 1 ] || [ "$override_tcs1003_count" -ne 1 ]; then
+  echo "Error: analyzer package severity override expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
   exit 1
 fi
 

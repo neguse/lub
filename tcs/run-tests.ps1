@@ -167,9 +167,9 @@ dotnet_diagnostic.TCS1003.severity = warning
 root = true
 
 [*.cs]
-dotnet_diagnostic.TCS1001.severity = warning
+dotnet_diagnostic.TCS1001.severity = error
 dotnet_diagnostic.TCS1002.severity = error
-dotnet_diagnostic.TCS1003.severity = warning
+dotnet_diagnostic.TCS1003.severity = error
 "@
 
     $overrideOutput = dotnet build `
@@ -178,15 +178,21 @@ dotnet_diagnostic.TCS1003.severity = warning
     $overrideExit = $LASTEXITCODE
     $overrideOutput | ForEach-Object { Write-Host $_ }
     if ($overrideExit -eq 0) {
-        Write-Error "Analyzer package severity override build expected TCS1002 error"
+        Write-Error "Analyzer package severity override build expected TCS errors"
         exit 1
     }
 
+    $overrideTcs1001Count = @($overrideOutput |
+        Where-Object { "$_".Contains("error TCS1001:") } |
+        Sort-Object -Unique).Count
     $overrideTcs1002Count = @($overrideOutput |
         Where-Object { "$_".Contains("error TCS1002:") } |
         Sort-Object -Unique).Count
-    if ($overrideTcs1002Count -ne 1) {
-        Write-Error "Analyzer package severity override expected TCS1002 x1, got x$overrideTcs1002Count"
+    $overrideTcs1003Count = @($overrideOutput |
+        Where-Object { "$_".Contains("error TCS1003:") } |
+        Sort-Object -Unique).Count
+    if ($overrideTcs1001Count -ne 4 -or $overrideTcs1002Count -ne 1 -or $overrideTcs1003Count -ne 1) {
+        Write-Error "Analyzer package severity override expected TCS1001 x4 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$overrideTcs1001Count / TCS1002 x$overrideTcs1002Count / TCS1003 x$overrideTcs1003Count"
         exit 1
     }
 }

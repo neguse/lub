@@ -8,7 +8,7 @@
 - `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開き、`Program.cs` 上で TCS1001/TCS1002/TCS1003 が通常の inspection / squiggle として表示されるか確認する
 - 期待値: TCS1001 x4 (`StructDeclaration`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`) / TCS1002 x1 (`System.IO.File.ReadAllText`) / TCS1003 x1 (`List<T>` null storage)
 - `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` 変更が Rider 表示に反映されるか確認する（build への反映は `run-tests` で検証済み）
-- JetBrains InspectCode 2026.1.3 headless 実行では ProjectReference と local nupkg `PackageReference` consumer の両方で TCS1001 x4 / TCS1002 x1 / TCS1003 x1 が SARIF に出ることと、PackageReference consumer の `TCS1002=error` override が error として扱われることを確認済み。再確認用 script: `samples/analyzer-demo/verify-inspectcode.sh`
+- JetBrains InspectCode 2026.1.3 headless 実行では ProjectReference と local nupkg `PackageReference` consumer の両方で TCS1001 x4 / TCS1002 x1 / TCS1003 x1 が SARIF に出ることと、PackageReference consumer の TCS1001/TCS1002/TCS1003 error override が同じ件数の error として扱われることを確認済み。再確認用 script: `samples/analyzer-demo/verify-inspectcode.sh`
 - 詳細な実機確認手順は `samples/analyzer-demo/README.md` に記録済み
 - 結果記録テンプレートは `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`
 - go の場合: analyzer package / `tcs check` / CI を正式な準拠チェック導線として product task に分解する
