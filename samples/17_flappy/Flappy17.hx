@@ -67,27 +67,26 @@ class Flappy17 {
 		var aspect:Float = 1280.0 / 720.0;
 		var proj = Mat4.perspectiveLh(60.0, aspect, 0.1, 100.0);
 		var view = Mat4.lookAtLh(new Vec3(0, 0, -8), new Vec3(0, 0, 0), new Vec3(0, 1, 0));
-		var vp = view.mul(proj);
+		var vp = proj.mul(view);
 
 		Gfx.beginPass({
 			target: Gfx.mainTex,
 			clear_color: lua.Table.fromArray([0.05, 0.05, 0.15, 1.0])
 		});
 
-		var drawOpts = {shader: s, depth: true, cull: Gfx.BACK};
+		var drawOpts = {shader: s, depth: true, cull: Gfx.NONE};
 
-		var playerMat = Mat4.translate(new Vec3(-2.0, playerY, 0)).mul(Mat4.rotateY(t * 3.0));
-		var playerScale = Mat4.scale(new Vec3(0.4, 0.4, 0.4));
-		var playerMvp = playerScale.mul(playerMat).mul(vp);
+		var playerModel = Mat4.translate(new Vec3(-2.0, playerY, 0)).mul(Mat4.rotateY(t * 3.0)).mul(Mat4.scale(new Vec3(0.4, 0.4, 0.4)));
+		var playerMvp = vp.mul(playerModel);
 		Gfx.draw(36, {verts: b, uniforms: {mvp: lua.Table.fromArray(playerMvp.m)}}, drawOpts);
 
-		var topMat = Mat4.translate(new Vec3(pipeX, gapY + 3.5, 0));
 		var pipeScale = Mat4.scale(new Vec3(0.8, 5.0, 0.8));
-		var topMvp = pipeScale.mul(topMat).mul(vp);
+		var topModel = Mat4.translate(new Vec3(pipeX, gapY + 3.5, 0)).mul(pipeScale);
+		var topMvp = vp.mul(topModel);
 		Gfx.draw(36, {verts: b, uniforms: {mvp: lua.Table.fromArray(topMvp.m)}}, drawOpts);
 
-		var botMat = Mat4.translate(new Vec3(pipeX, gapY - 3.5, 0));
-		var botMvp = pipeScale.mul(botMat).mul(vp);
+		var botModel = Mat4.translate(new Vec3(pipeX, gapY - 3.5, 0)).mul(pipeScale);
+		var botMvp = vp.mul(botModel);
 		Gfx.draw(36, {verts: b, uniforms: {mvp: lua.Table.fromArray(botMvp.m)}}, drawOpts);
 
 		Gfx.endPass();
