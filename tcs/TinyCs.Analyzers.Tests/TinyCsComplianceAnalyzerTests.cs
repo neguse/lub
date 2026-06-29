@@ -122,6 +122,30 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task DiagnosticSeverity_CanBeOverridden()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            using System.IO;
+
+            public class Demo
+            {
+                public static string Load(string path)
+                {
+                    return File.ReadAllText(path);
+                }
+            }
+            """,
+            new Dictionary<string, ReportDiagnostic>
+            {
+                [TinyCsDiagnosticIds.UnsupportedApi] = ReportDiagnostic.Error,
+            });
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedApi, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+    }
+
+    [Fact]
     public async Task UnsupportedCoreLibraryMembers_ReportUnsupportedApi()
     {
         var diagnostics = await AnalyzeAsync("""
@@ -221,16 +245,23 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     private static async Task<IReadOnlyList<Diagnostic>> AnalyzeAsync(
-        string source)
+        string source,
+        IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source,
             CSharpParseOptions.Default.WithLanguageVersion(
                 LanguageVersion.Preview));
+        var options = new CSharpCompilationOptions(
+            OutputKind.DynamicallyLinkedLibrary);
+        if (specificDiagnosticOptions != null)
+            options = options.WithSpecificDiagnosticOptions(
+                specificDiagnosticOptions);
+
         var compilation = CSharpCompilation.Create(
             "TinyCsAnalyzerTests",
             [tree],
             GetReferences(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options);
 
         var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(
             new TinyCsComplianceAnalyzer());

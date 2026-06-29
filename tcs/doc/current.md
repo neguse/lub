@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Compact C# baseline 整理済み
 
-### 完了済み (303テスト tcs / 9テスト analyzer / 477テスト lub3d)
+### 完了済み (303テスト tcs / 10テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -169,6 +169,7 @@
   - 進行中: Analyzer project / analyzer tests / analyzer-demo project / `.editorconfig` / `tcs check` / CI workflow / Rider 確認 checklist を追加
   - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x4 / TCS1002 x1 を検出する
   - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
+  - TCS diagnostic severity override を analyzer test で検証済み
   - `q.md` に Q12 として Rider go / no-go 判断待ちを記録
   - 残り: Rider 実機で squiggle / inspection 表示を確認し、go / no-go と後続タスクを記録する
 
