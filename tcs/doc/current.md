@@ -45,7 +45,7 @@
 **T119**: 標準ライブラリ小拡張 (`IndexOf`/`Join`/`Pow`/`Sort`/LINQ 追加)
 **T120**: ユーザー定義 `struct` / `record struct` を TCS1001 未対応診断として確定
 **T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
-**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加
+**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加 + analyzer-demo Rider 検証手順を README 化
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |

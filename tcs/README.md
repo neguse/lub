@@ -195,6 +195,9 @@ dotnet test TinyCs.Analyzers.Tests
 dotnet build samples/analyzer-demo/analyzer-demo.csproj
 ```
 
+demo project 固有の expected diagnostics と Rider 確認手順は
+[`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
+
 通常の C# project から参照する場合:
 
 ```xml

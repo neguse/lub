@@ -3,3 +3,4 @@ root = true
 [*.cs]
 dotnet_diagnostic.TCS1001.severity = warning
 dotnet_diagnostic.TCS1002.severity = warning
+dotnet_diagnostic.TCS1003.severity = warning
