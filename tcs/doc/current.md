@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了
+## フェーズ: Phase 0-19 完了 / Compact C# baseline 整理済み
 
-### 完了済み (227テスト tcs / 477テスト lub3d)
+### 完了済み (234テスト tcs / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -22,6 +22,8 @@
 **Phase 17**: 文字列補間 フォーマット指定子 (T91)
 **Phase 18**: Lua出力最適化 (T92-T94)
 **Phase 19**: ソースマップ (T95-T96)
+**Docs**: Compact C# baseline / support matrix 分類整理 (T103,T115)
+**T97**: 未対応構文を黙殺しない診断へ統一
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -99,6 +101,7 @@
 - `HotReload.update()`: フレームごとのポーリング (0.5秒間隔)
 
 ### TinyCSharpGen (lub3d Generator 統合)
+- 現方針では lub3d 直対応を tcs 本体の主目的にせず、外部 API facade / `--ref` の参考実装として扱う
 - `lub3d/Generator/TinyCSharp/TinyCSharpGen.cs` — ModuleSpec → C# interface 生成
 - BindingType → C# 型マッピング完了
 - `lub3d/Generator/Program.cs` — `--tcs-output-dir` オプション追加
@@ -107,7 +110,12 @@
 - dep 型 stub 自動生成、C# 予約語エスケープ、完全修飾型名解決
 
 ### 次のタスク
-- Phase 1 (T7-T11) ユースケース検証サンプル
+- `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
+- T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC を作る
+- T101 + T102: 生成 Lua の TinySystem 読み込み方式と Lua 5.5 実行環境を再現可能にする
+- T98-T100 + T104-T105: Core 判定済みの構文・意味論ギャップを埋める
+- T108: TinySystem C# facade を runtime と同期する
+- T7-T11: baseline と基盤が固まってからサンプル/E2E で開発体験を検証する
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ

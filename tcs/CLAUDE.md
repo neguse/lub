@@ -2,7 +2,9 @@
 
 ## プロジェクト概要
 
-C#の極小サブセットをフロントエンド言語とし、Lua 5.5ソースコードをバックエンドとするトランスパイラ。
+C#の小さなサブセットをフロントエンド言語とし、Lua 5.5ソースコードをバックエンドとするトランスパイラ。
+フル C# / フル BCL ではなく、モダンな .NET / C# 開発体験を満たす最小ラインを選び、Go のようなコンパクトさを保つ。
+Rider など標準的な C# ツールキット上で tcs 準拠コードかをリアルタイム確認できる Roslyn Analyzer も開発体験の中核に置く。
 詳細は `objective.md` を参照。
 
 ## ディレクトリ構成
@@ -140,10 +142,16 @@ bash run-tests.sh
 - `CSharpCompilation` でセマンティック解析
 - `IOperation` (Bound Tree) を走査してLuaコード生成
 - 型情報は Roslyn から取得、自前の型システムは持たない
+- Roslyn Analyzer を先行し、トランスパイラ診断と将来の `tcs check` は同じ準拠ルールを共有する
 
-## lub3d API interface 生成（TinyCSharpGen）
+## 外部エンジン連携メモ
 
-lub3d の Generator パイプラインに乗せて C# interface を自動生成する。
+tcs のコア目的は engine agnostic な C# サブセット → Lua 5.5 トランスパイラであり、lub3d への直接対応は現時点の前提ではない。
+lub3d 側のプロジェクト方針が変わっているため、以下の TinyCSharpGen 案は過去の検討メモとして扱う。実装タスクに戻す場合は、その時点の lub3d 側設計を読み直してから判断する。
+
+### 旧案: lub3d API interface 生成（TinyCSharpGen）
+
+lub3d の Generator パイプラインに乗せて C# interface を自動生成する案。
 
 ### アーキテクチャ
 
@@ -187,7 +195,7 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 
 ## 参考リポジトリ（読み取り専用）
 
-- `../lub3d` — 組み込み先ゲームエンジン（Lua 5.5 + Sokol、C# Generator あり）
+- `../lub3d` — 参考実装。直接対応先とは限らない
 - `../lubs` — Lua linter（開発ワークフローの参考）
 
 ### lub3d から学ぶこと

@@ -231,3 +231,21 @@
 - テスト3件追加 (マッピング存在確認、ファイル名検証、逆引き)
 - 変更ファイル: Phase14to19Tests.cs (新規)
 - 全18件追加、全227件パス
+
+### T103,T115: Compact C# baseline / support matrix 整理 ✓ (2026-06-29)
+- C# 14 / full BCL 全対応ではなく、モダンな .NET/C# 開発体験に必要な小さな baseline を採用
+- `doc/support-matrix.md` に Core / Useful / Out of scope の分類を追加
+- 言語機能と標準ライブラリのサマリへ優先度列を追加し、現実装に合わせて対応状況を更新
+- `doc/tasks.md` の推奨着手順を T97 起点に整理し、T103/T115 は完了扱いにした
+- 判断: lub3d 直対応は tcs 本体の主目的から外し、外部 API facade / `--ref` の参考統合として扱う
+- 残課題: T101/T102 で実行環境の信頼性を固める
+
+### T97: 未対応構文を黙殺しない診断へ統一 ✓ (2026-06-29)
+- `VisitMember` と class/record 内 member の default 経路で unsupported warning を出すようにした
+- `VisitStatement` の default 経路で `throw`, `try/catch`, `using`, local function などが黙って消えないようにした
+- unsupported pattern の `TODO pattern` コメントを warning 化した
+- binary/unary/postfix/assignment expression の unsupported コメントも warning 化した
+- 診断位置に file/line/column を含め、将来の T122 analyzer で使い回しやすい形に寄せた
+- テスト7件追加、全234テストパス
+- 判断: T122 でルール共有を進める前段として、まず既存 `Warnings` API に最小統合した
+- 残課題: T122 で Roslyn Analyzer PoC、T98 で top-level statements の復旧または禁止を決める

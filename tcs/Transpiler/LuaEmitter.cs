@@ -51,6 +51,9 @@ public partial class LuaEmitter
             case InterfaceDeclarationSyntax:
                 // Interfaces are type-only; no Lua output
                 break;
+            default:
+                WarnUnsupportedMember(member);
+                break;
         }
     }
 
@@ -124,6 +127,13 @@ public partial class LuaEmitter
                 case PropertyDeclarationSyntax prop when !IsAutoProperty(prop)
                     && prop.AccessorList != null:
                     VisitCustomProperty(model, name, prop);
+                    break;
+                case FieldDeclarationSyntax:
+                case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
+                case ConstructorDeclarationSyntax:
+                    break;
+                default:
+                    WarnUnsupportedMember(member);
                     break;
             }
         }
@@ -249,6 +259,8 @@ public partial class LuaEmitter
         {
             if (member is MethodDeclarationSyntax method)
                 VisitMethod(model, name, method);
+            else
+                WarnUnsupportedMember(member);
         }
     }
 
@@ -329,9 +341,14 @@ public partial class LuaEmitter
         var loc = node.GetLocation().GetLineSpan();
         var line = loc.StartLinePosition.Line + 1;
         var col = loc.StartLinePosition.Character + 1;
-        Warnings.Add($"({line},{col}): unsupported {description}");
+        var file = loc.Path;
+        var prefix = string.IsNullOrEmpty(file) ? "" : file;
+        Warnings.Add($"{prefix}({line},{col}): unsupported {description}");
         return $"--[[ unsupported: {description} ]]";
     }
+
+    private void WarnUnsupportedMember(MemberDeclarationSyntax member) =>
+        _ = WarnUnsupported(member, $"member: {member.Kind()}");
 
     public override string ToString() => _sb.ToString().TrimEnd() + "\n";
 }

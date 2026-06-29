@@ -25,6 +25,10 @@ public partial class LuaEmitter
                     }:
                 VisitDeconstruction(model, declExpr, rhs);
                 break;
+            case LocalDeclarationStatementSyntax local
+                when local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword):
+                AppendLine(WarnUnsupported(local, "statement: UsingDeclaration"));
+                break;
             case LocalDeclarationStatementSyntax local:
                 foreach (var v in local.Declaration.Variables)
                 {
@@ -76,6 +80,9 @@ public partial class LuaEmitter
                 break;
             case SwitchStatementSyntax switchStmt:
                 VisitSwitch(model, switchStmt);
+                break;
+            default:
+                AppendLine(WarnUnsupported(stmt, $"statement: {stmt.Kind()}"));
                 break;
         }
     }

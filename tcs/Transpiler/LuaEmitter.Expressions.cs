@@ -174,7 +174,7 @@ public partial class LuaEmitter
             SyntaxKind.LogicalAndExpression => "and",
             SyntaxKind.LogicalOrExpression => "or",
             SyntaxKind.CoalesceExpression => "or",
-            _ => $"--[[ unsupported binary: {bin.Kind()} ]]"
+            _ => WarnUnsupported(bin, $"binary expression: {bin.Kind()}")
         };
         return $"{left} {op} {right}";
     }
@@ -188,7 +188,7 @@ public partial class LuaEmitter
             SyntaxKind.LogicalNotExpression => $"not {operand}",
             SyntaxKind.PreIncrementExpression => $"({operand} + 1)",
             SyntaxKind.PreDecrementExpression => $"({operand} - 1)",
-            _ => $"--[[ unsupported unary: {prefix.Kind()} ]]"
+            _ => WarnUnsupported(prefix, $"unary expression: {prefix.Kind()}")
         };
     }
 
@@ -200,7 +200,7 @@ public partial class LuaEmitter
         {
             SyntaxKind.PostIncrementExpression => $"{operand} + 1",
             SyntaxKind.PostDecrementExpression => $"{operand} - 1",
-            _ => $"--[[ unsupported postfix: {postfix.Kind()} ]]"
+            _ => WarnUnsupported(postfix, $"postfix expression: {postfix.Kind()}")
         };
     }
 
@@ -424,7 +424,7 @@ public partial class LuaEmitter
             SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
             SyntaxKind.CoalesceAssignmentExpression =>
                 $"(function() if {left} == nil then {left} = {right} end return {left} end)()",
-            _ => $"--[[ unsupported assign: {assign.Kind()} ]]"
+            _ => WarnUnsupported(assign, $"assignment expression: {assign.Kind()}")
         };
     }
 
@@ -627,7 +627,7 @@ public partial class LuaEmitter
                 $"({VisitPattern(model, bp.Left, governing)} " +
                 $"{(bp.IsKind(SyntaxKind.AndPattern) ? "and" : "or")} " +
                 $"{VisitPattern(model, bp.Right, governing)})",
-            _ => $"--[[ TODO pattern: {pattern.Kind()} ]] true"
+            _ => $"{WarnUnsupported(pattern, $"pattern: {pattern.Kind()}")} true"
         };
     }
 
@@ -657,7 +657,7 @@ public partial class LuaEmitter
                 $"{(bp.IsKind(SyntaxKind.AndPattern) ? "and" : "or")} " +
                 $"{VisitIsSubPattern(model, expr, bp.Right)})",
             RecursivePatternSyntax rp => VisitRecursivePattern(model, expr, rp),
-            _ => $"--[[ TODO pattern: {pattern.Kind()} ]] true"
+            _ => $"{WarnUnsupported(pattern, $"pattern: {pattern.Kind()}")} true"
         };
     }
 
