@@ -1,0 +1,3 @@
+-cp templates/game
+-lib lub
+-main Game

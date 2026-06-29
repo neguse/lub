@@ -150,6 +150,8 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/haxe_build.c)
   # `*.hx` の recursive mtime watcher (50ms debounce)。
   list(APPEND LUB_SOURCES src/haxe_watch.c)
+  # HTTP + SSE dev server for `lub --serve game.hxml`.
+  list(APPEND LUB_SOURCES src/serve.c)
 endif()
 add_executable(lub ${LUB_SOURCES})
 
@@ -299,6 +301,16 @@ if(NOT LUB_WASM)
   )
   target_link_libraries(lub_haxe_build_smoke PRIVATE SDL3::SDL3)
   target_include_directories(lub_haxe_build_smoke PRIVATE src)
+
+  add_executable(lub_serve_smoke
+    tests/c/serve_smoke.c
+    src/serve.c
+    src/haxe_build.c
+    src/haxe_server.c
+    src/haxe_watch.c
+  )
+  target_link_libraries(lub_serve_smoke PRIVATE SDL3::SDL3)
+  target_include_directories(lub_serve_smoke PRIVATE src)
 
   add_executable(lub_physics_box2d_smoke
     tests/c/physics_box2d_smoke.c
