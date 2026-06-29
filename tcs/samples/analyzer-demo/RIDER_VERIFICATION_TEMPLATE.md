@@ -9,6 +9,7 @@
 - OS:
 - Rider version:
 - .NET SDK:
+- TCS_RIDER_COMMAND:
 - Project opened as:
   - repository root
   - `samples/analyzer-demo/analyzer-demo.csproj`

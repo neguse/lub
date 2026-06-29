@@ -3,6 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OPEN_RIDER="$SCRIPT_DIR/open-rider-demo.sh"
+TEMP_DIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT
 
 assert_contains() {
   local label="$1"
@@ -17,14 +23,21 @@ assert_contains() {
 
 echo "Running Rider helper script tests..."
 
+fake_rider="$TEMP_DIR/rider.sh"
+cat >"$fake_rider" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$fake_rider"
+
 success_output="$(
-  TCS_RIDER_COMMAND=/bin/true \
+  TCS_RIDER_COMMAND="$fake_rider" \
   DISPLAY=:0 \
   WAYLAND_DISPLAY= \
   "$OPEN_RIDER" --no-precheck 2>&1
 )"
 assert_contains "open-rider-demo success path" "$success_output" "Opening "
-assert_contains "open-rider-demo success path" "$success_output" "Rider command: /bin/true"
+assert_contains "open-rider-demo success path" "$success_output" "Rider command: $fake_rider"
 
 set +e
 missing_output="$(
@@ -45,7 +58,7 @@ case "$(uname -s 2>/dev/null || true)" in
   Linux)
     set +e
     no_display_output="$(
-      TCS_RIDER_COMMAND=/bin/true \
+      TCS_RIDER_COMMAND="$fake_rider" \
       DISPLAY= \
       WAYLAND_DISPLAY= \
       "$OPEN_RIDER" --no-precheck 2>&1

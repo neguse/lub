@@ -47,7 +47,7 @@ Rider を開く前に、テンプレートへ転記する pre-check 結果をま
 samples/analyzer-demo/verify-rider-prechecks.sh
 ```
 
-script は Rider command / display 環境情報と、この shell から Rider UI を起動できる状態かを記録し、`bash run-tests.sh`、`samples/analyzer-demo/verify-inspectcode.sh`、`dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental` を実行する。
+script は `TCS_RIDER_COMMAND` / Rider command / display 環境情報と、この shell から Rider UI を起動できる状態かを記録し、`bash run-tests.sh`、`samples/analyzer-demo/verify-inspectcode.sh`、`dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental` を実行する。
 結果とログパスは `/tmp/tcs-rider-verification-precheck/summary.md` に出す。
 Rider の自動検出に失敗する場合は `TCS_RIDER_COMMAND=/path/to/rider.sh` を指定する。
 

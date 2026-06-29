@@ -172,7 +172,7 @@
   - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも ProjectReference analyzer-demo と local nupkg `PackageReference` consumer の TCS1001 x5 / TCS1002 x1 / TCS1003 x1、および PackageReference consumer の TCS1001/TCS1002/TCS1003 error override を確認できる
   - InspectCode severity override 検証は incomplete output の場合に一度だけ再実行し、期待件数が揃った場合だけ pass とする
   - analyzer-demo build / PackageReference consumer / InspectCode は expected diagnostics の件数に加え、各診断の具体メッセージも検証する
-  - `samples/analyzer-demo/verify-rider-prechecks.sh` で Rider 実機確認前の pre-check summary を `/tmp/tcs-rider-verification-precheck/summary.md` に生成でき、Rider command / display / UI 起動可否も記録する
+  - `samples/analyzer-demo/verify-rider-prechecks.sh` で Rider 実機確認前の pre-check summary を `/tmp/tcs-rider-verification-precheck/summary.md` に生成でき、`TCS_RIDER_COMMAND` / Rider command / display / UI 起動可否も記録する
   - `samples/analyzer-demo/open-rider-demo.sh` で pre-check 後に検出済み Rider から analyzer-demo project を開ける。自動検出できない場合は `TCS_RIDER_COMMAND` で指定する
   - `samples/analyzer-demo/verify-rider-scripts.sh` で Rider helper の fake command success / missing command / no-display 経路を検証し、`run-tests` からも実行する
   - `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md` に Rider go/no-go 記録と後続タスク化のテンプレートを追加

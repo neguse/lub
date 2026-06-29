@@ -46,6 +46,7 @@ run_check() {
   echo "- Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "- OS: $(uname -a)"
   echo "- .NET SDK: $(dotnet --version)"
+  echo "- TCS_RIDER_COMMAND: $(value_or_unset "${TCS_RIDER_COMMAND-}")"
   echo "- Rider command: $(value_or_unset "$rider_command")"
   echo "- Rider UI launchable from this shell: $rider_ui_ready"
   echo "- DISPLAY: $(value_or_unset "${DISPLAY-}")"
