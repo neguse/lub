@@ -18,8 +18,9 @@
 ### Q11: tcs 準拠チェック → 標準 C# ツールキット上の linter / analyzer が必要
 - C# をフロントエンドにする以上、トランスパイル時だけでなく IDE / `dotnet build` / CI 上で tcs 準拠性を確認できる必要がある
 - 主目的は Rider などの IDE で書いている最中にリアルタイム警告を出すこと
-- 実装方針は Roslyn Analyzer を先行し、`tcs check` CLI は同じルールを使う後続入口にする
-- 診断ルールはトランスパイラ本体と共有し、Compact C# baseline / TinySystem API / Out of scope API の判定がずれないようにする
+- Roslyn Analyzer PoC と `tcs check` CLI は実装済み
+- 診断ルールは `Shared/TinyCsComplianceFacts.cs` で analyzer / transpiler warning / `tcs check` が共有し、Compact C# baseline / TinySystem API / Out of scope API の判定がずれないようにする
+- 残りの判断は Q12 の Rider 実機 go / no-go 確認
 
 ### Q10: 開発軸 → Compact C# baseline
 - C# 側の仕様準拠度と標準ライブラリ網羅性を棚卸し軸にする
@@ -47,9 +48,9 @@
   - `BindingType` → C#型名のマッピング (`Int→int`, `Float→float`, `Struct→class名`, etc.)
 - 段階的に: まず App + Gfx + Glm で検証、その後全モジュールに展開
 
-### Q6: struct の値セマンティクス → 初期は class に寄せる
-- struct は C API を直接叩く最適化には有効だが、初期は class のみで進める
-- objective.md の「残すもの」リストに struct はあるが、優先度を下げる
+### Q6: struct の値セマンティクス → TCS1001 未対応診断
+- ユーザー定義 `struct` / `record struct` は現時点では Lua へ class 相当に lowering せず、TCS1001 の未対応構文診断として扱う
+- 値セマンティクスが必要なサンプルが出るまでは `class` / `record class` で代替する
 - Vec2/Vec3 等は外部エンジン/数学ライブラリ側の型として提供される可能性があるため、ユーザー定義 struct の必要性はサンプルから逆算する
 - 将来の最適化フェーズで必要に応じて追加
 
@@ -72,9 +73,10 @@
 - CLI 生成 Lua は TinySystem runtime prelude をデフォルトで埋め込み、`--no-runtime` で host 供給へ戻せる
 - HotReload は `HotReload.swap(path)` と host 注入 mtime による `watch/update` を使う
 
-### Q5: CLI 設計 → 変換・watch・SourceMap 後処理を実装済み
+### Q5: CLI 設計 → 変換・watch・check・SourceMap 後処理を実装済み
 - 基本形: `tcs input.cs [input2.cs ...] --ref ref.cs -o output.lua`
+- `tcs check input.cs [input2.cs ...] --ref ref.cs`: Lua を出力せず、compile error と TCS1001/TCS1002/TCS1003 準拠診断だけを返す
 - `--watch` / `-w`: 入力と `--ref` ファイルを監視して再トランスパイル
 - `--sourcemap`: `output.lua.map` を生成し、runtime prelude offset 済みの Lua 行番号を出す
 - `--map-stacktrace output.lua.map [trace.txt]`: Lua stack trace を C# ファイル:行番号で注釈する
-- 残り: `--help`, `--version`, unknown option, glob 方針などの UX は T117 で扱う
+- `--help`, `--version`, unknown option, missing option value の UX は T117 で実装済み

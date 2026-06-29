@@ -27,6 +27,9 @@ tcs/
 ├── TinySystem/            # 標準ライブラリ型定義 (.NET)
 │   ├── TinySystem.csproj
 │   └── ...
+├── TinyCs.Analyzers/      # Roslyn Analyzer PoC
+├── TinyCs.Analyzers.Tests/
+├── Shared/                # analyzer / transpiler / check 共有診断ルール
 ├── samples/               # サンプル TinyC# スクリプト
 ├── runtime/               # Lua側ランタイムライブラリ
 ├── deps/                  # 外部依存 (git submodule)
@@ -42,7 +45,8 @@ tcs/
 ### 前提
 
 - .NET 10 SDK / C# 14
-- Lua 5.5 (`deps/lua/lua`)
+- CMake 3.12+ / C compiler (Lua 5.5 build)
+- Lua 5.5 (`deps/lua/lua` or `deps/lua/lua.exe`)
 
 ### コマンド
 
@@ -50,11 +54,15 @@ tcs/
 # テスト実行（基本操作）
 dotnet test
 
+# 準拠チェック（Lua 出力なし、警告/エラーで exit 1）
+dotnet run --project Transpiler -- check input.cs --ref engine-stub.cs
+
 # トランスパイラ実行
 dotnet run --project Transpiler -- input.cs -o output.lua
 
 # Lua 5.5 ビルド
-make -C deps/lua
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
 
 # Lua でトランスパイル結果を実行
 deps/lua/lua output.lua
@@ -62,6 +70,8 @@ deps/lua/lua output.lua
 # 全テスト（シェルスクリプト）
 bash run-tests.sh
 ```
+
+`run-tests.sh` / `run-tests.ps1` は Lua binary が未生成・stale・Lua 5.5 でない場合に CMake で再ビルドし、`dotnet test` と代表 sample の `tcs check` を実行する。
 
 ## 開発ワークフロー
 
@@ -124,7 +134,7 @@ bash run-tests.sh
 | C#                  | Lua 5.5                            |
 |---------------------|------------------------------------|
 | class               | table + metatable                  |
-| struct              | 初期は非対応（classに寄せる）       |
+| struct / record struct | TCS1001 未対応診断（class / record class で代替） |
 | enum                | integer 定数テーブル                |
 | method              | function(self, ...)                |
 | static method       | function(...)                      |
@@ -142,7 +152,10 @@ bash run-tests.sh
 - `CSharpCompilation` でセマンティック解析
 - `IOperation` (Bound Tree) を走査してLuaコード生成
 - 型情報は Roslyn から取得、自前の型システムは持たない
-- Roslyn Analyzer を先行し、トランスパイラ診断と将来の `tcs check` は同じ準拠ルールを共有する
+- Roslyn Analyzer / transpiler warning / `tcs check` は `Shared/TinyCsComplianceFacts.cs` の同じ準拠ルールを共有する
+- `TCS1001`: 未対応構文 (`struct`, `record struct`, `try`, `throw`, local function, list pattern など)
+- `TCS1002`: 未対応 BCL API / core library allowlist 外 member (`Math.Log`, `List.Reverse`, `Enumerable.Single` など)
+- `TCS1003`: Lua table で表現できない collection null 保存
 
 ## 外部エンジン連携メモ
 
@@ -219,6 +232,6 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 
 - dotnet と Lua の数値精度差異（double vs Lua number）
 - 文字列: C# は UTF-16、Lua は バイト列（UTF-8前提）
-- struct: 初期は非対応（classに寄せる）。C API最適化フェーズで再検討
+- struct / record struct: 現時点は TCS1001 未対応診断。値セマンティクス需要が出るまでは class / record class で代替
 - null vs nil: C# の null は Lua の nil にマップ
 - 型消去: ジェネリクスはコンパイル時のみ、Lua出力には型情報なし
