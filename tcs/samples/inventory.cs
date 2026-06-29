@@ -20,10 +20,13 @@ public class Item
 public class Inventory
 {
     public List<Item> Items = new List<Item>();
+    private Dictionary<string, Item> _itemsByName = new Dictionary<string, Item>();
 
     public void Add(string name, int price, int count)
     {
-        Items.Add(new Item(name, price, count));
+        var item = new Item(name, price, count);
+        Items.Add(item);
+        _itemsByName.Add(name, item);
     }
 
     public int TotalValue()
@@ -41,12 +44,23 @@ public class Inventory
         return Items.OrderBy(i => -i.Price).First();
     }
 
+    public bool HasItem(string name)
+    {
+        return _itemsByName.ContainsKey(name);
+    }
+
+    public int CountOf(string name)
+    {
+        return _itemsByName[name].Count;
+    }
+
     public string Summary()
     {
         var total = TotalValue();
         var count = Items.Count;
         var best = MostExpensive();
-        return $"Items={count} Total={total} Best={best.Name}";
+        var shieldCount = HasItem("Shield") ? CountOf("Shield") : 0;
+        return $"Items={count} Total={total} Best={best.Name} Shield={shieldCount}";
     }
 }
 

@@ -91,4 +91,42 @@ public class ListSemanticTests
             """, "T.Test()");
         Assert.Equal("1", result);
     }
+
+    [Fact]
+    public void List_Sort()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var list = new List<int> { 3, 1, 2 };
+                    list.Sort();
+                    return list[0].ToString() + "," + list[1].ToString() + "," + list[2].ToString();
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("1,2,3", result);
+    }
+
+    [Fact]
+    public void List_Sort_Comparison()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var list = new List<int> { 3, 1, 2 };
+                    list.Sort((a, b) => b - a);
+                    return list[0].ToString() + "," + list[1].ToString() + "," + list[2].ToString();
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("3,2,1", result);
+    }
 }

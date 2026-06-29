@@ -174,6 +174,80 @@ public class NullConditionalTests
     }
 
     [Fact]
+    public void NullConditionalStringMethod_UsesRuntimeMapping()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static bool Test()
+                {
+                    string s = "hello";
+                    return s?.Contains("ell") ?? false;
+                }
+            }
+            """,
+            "tostring(T.Test())");
+
+        Assert.Equal("true", result);
+    }
+
+    [Fact]
+    public void NullConditionalStringMethod_NullPropagates()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static string Test()
+                {
+                    string s = null;
+                    return s?.Substring(1, 2) ?? "nil";
+                }
+            }
+            """,
+            "T.Test()");
+
+        Assert.Equal("nil", result);
+    }
+
+    [Fact]
+    public void NullConditionalListMethod_UsesRuntimeMapping()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static bool Test()
+                {
+                    List<int> list = new List<int> { 1, 2, 3 };
+                    return list?.Contains(2) ?? false;
+                }
+            }
+            """,
+            "tostring(T.Test())");
+
+        Assert.Equal("true", result);
+    }
+
+    [Fact]
+    public void NullConditionalDictMethod_UsesRuntimeMapping()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static bool Test()
+                {
+                    Dictionary<string, int> dict = new Dictionary<string, int> { { "a", 10 } };
+                    return dict?.ContainsKey("a") ?? false;
+                }
+            }
+            """,
+            "tostring(T.Test())");
+
+        Assert.Equal("true", result);
+    }
+
+    [Fact]
     public void CoalesceAssignment_WithObjectCreation()
     {
         var result = TestHelper.TranspileAndRun("""

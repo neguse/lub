@@ -4,7 +4,12 @@
 
 ---
 
-（未解決の質問なし — 作りながら決める）
+### Q12: Rider 上の Roslyn Analyzer PoC は go か no-go か
+- `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開き、`Program.cs` 上で TCS1001/TCS1002 が通常の inspection / squiggle として表示されるか確認する
+- 期待値: TCS1001 x4 (`StructDeclaration`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`) / TCS1002 x1 (`System.IO.File.ReadAllText`)
+- `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` 変更が Rider 表示に反映されるか確認する
+- go の場合: analyzer package / `tcs check` / CI を正式な準拠チェック導線として product task に分解する
+- no-go の場合: Rider plugin、external tool、または CLI watcher 連携などの代替案を検討する
 
 ---
 
@@ -56,6 +61,20 @@
 ### Q8: TinySystem の配布 → NuGet は当面やらない
 - ProjectReference のみで進める
 
-### Q2, Q3, Q5: 名前空間マッピング / エントリポイント / CLI設計 → 作りながら決める
-- Phase 1 のユースケース検証で自然に決まる想定
-- 候補メモ: Q2は案C(ファイル単位モジュール)、Q3はホットリロードしやすい `dofile`/明示エントリポイント、Q5はwatch後回し
+### Q2: 名前空間マッピング → Lua table namespace
+- `namespace Foo.Bar` は `Foo = Foo or {}; Foo.Bar = Foo.Bar or {}` のような nested table として表現する
+- class 名は namespace table 配下へ配置し、namespace 未指定の型は従来どおり global table へ出す
+- 複数入力ファイルは同一 Roslyn Compilation で解決し、出力は入力順にまとめる
+
+### Q3: エントリポイント → Lua chunk + 明示呼び出し
+- top-level statements は型定義を emit した後に Lua chunk として出力する
+- class/static method は自動実行せず、host やテストが `Class.Method()` を明示的に呼ぶ
+- CLI 生成 Lua は TinySystem runtime prelude をデフォルトで埋め込み、`--no-runtime` で host 供給へ戻せる
+- HotReload は `HotReload.swap(path)` と host 注入 mtime による `watch/update` を使う
+
+### Q5: CLI 設計 → 変換・watch・SourceMap 後処理を実装済み
+- 基本形: `tcs input.cs [input2.cs ...] --ref ref.cs -o output.lua`
+- `--watch` / `-w`: 入力と `--ref` ファイルを監視して再トランスパイル
+- `--sourcemap`: `output.lua.map` を生成し、runtime prelude offset 済みの Lua 行番号を出す
+- `--map-stacktrace output.lua.map [trace.txt]`: Lua stack trace を C# ファイル:行番号で注釈する
+- 残り: `--help`, `--version`, unknown option, glob 方針などの UX は T117 で扱う

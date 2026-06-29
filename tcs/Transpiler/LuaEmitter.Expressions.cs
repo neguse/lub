@@ -9,7 +9,9 @@ public partial class LuaEmitter
     // List/Dict method names that map to runtime library calls
     private static readonly HashSet<string> ListRuntimeMethods =
         ["Where", "Select", "Any", "All", "First", "FirstOrDefault",
-         "OrderBy", "Min", "Max", "Sum", "ToList", "Contains", "IndexOf"];
+         "OrderBy", "OrderByDescending", "Take", "Skip", "Last", "LastOrDefault",
+         "Min", "Max", "Sum", "Count", "ToList", "ToDictionary",
+         "Contains", "IndexOf"];
 
     private string VisitExpression(SemanticModel model, ExpressionSyntax expr)
     {
@@ -53,6 +55,8 @@ public partial class LuaEmitter
             ImplicitArrayCreationExpressionSyntax implArr =>
                 VisitImplicitArrayCreation(model, implArr),
             WithExpressionSyntax withExpr => VisitWithExpression(model, withExpr),
+            DeclarationExpressionSyntax declaration =>
+                VisitDeclarationExpression(declaration),
             PredefinedTypeSyntax predefined => ResolvePredefinedType(predefined),
             _ => WarnUnsupported(expr, $"expression: {expr.Kind()}")
         };
@@ -215,6 +219,18 @@ public partial class LuaEmitter
             var symbol = model.GetSymbolInfo(ma).Symbol;
             var methodName = ma.Name.Identifier.Text;
 
+            if (ma.Expression is BaseExpressionSyntax
+                && symbol is IMethodSymbol baseMethod)
+            {
+                var allArgs = new List<string> { "self" };
+                allArgs.AddRange(args);
+                return $"{baseMethod.ContainingType.Name}.{methodName}({string.Join(", ", allArgs)})";
+            }
+
+            if (symbol is IMethodSymbol { IsStatic: true } staticMethod
+                && IsTinySystemFacade(staticMethod.ContainingType))
+                return $"{staticMethod.ContainingType.Name}.{methodName}({string.Join(", ", args)})";
+
             // Check for List<T>/IEnumerable<T> method calls → runtime library
             if (symbol is IMethodSymbol methodSym && TryMapCollectionMethod(
                     model, ma, methodSym, methodName, args, out var result))
@@ -246,6 +262,12 @@ public partial class LuaEmitter
                 };
                 return $"Math.{luaName}({string.Join(", ", args)})";
             }
+
+            // string.Join(...) → String.Join(...)
+            if (symbol is IMethodSymbol stringStaticMethod
+                && stringStaticMethod.ContainingType.SpecialType == SpecialType.System_String
+                && methodName == "Join")
+                return $"String.Join({string.Join(", ", args)})";
 
             // String method calls → String.Method(str, args)
             if (TryMapStringMethod(model, ma, methodName, args, out var strResult))
@@ -308,6 +330,11 @@ public partial class LuaEmitter
                 case "Clear":
                     result = $"(function() for k in pairs({obj}) do {obj}[k] = nil end end)()";
                     return true;
+                case "Sort":
+                    var allSortArgs = new List<string> { obj };
+                    allSortArgs.AddRange(args);
+                    result = $"List.Sort({string.Join(", ", allSortArgs)})";
+                    return true;
             }
             if (ListRuntimeMethods.Contains(methodName))
             {
@@ -333,8 +360,13 @@ public partial class LuaEmitter
                     result = $"({obj}[{args[0]}] ~= nil)";
                     return true;
                 case "TryGetValue":
-                    // Simplified: just check and assign
-                    result = $"({obj}[{args[0]}] ~= nil)";
+                    var outTarget = args[1];
+                    var defaultValue = GetDefaultValueForType(methodSym.Parameters.Length > 1
+                        ? methodSym.Parameters[1].Type
+                        : null);
+                    result = $"(function() local __tcs_value = {obj}[{args[0]}]; " +
+                             $"if __tcs_value ~= nil then {outTarget} = __tcs_value; return true " +
+                             $"else {outTarget} = {defaultValue}; return false end end)()";
                     return true;
             }
         }
@@ -357,6 +389,13 @@ public partial class LuaEmitter
     private static bool IsDictType(string typeDef) =>
         typeDef.StartsWith("System.Collections.Generic.Dictionary<");
 
+    private static bool IsTinySystemFacade(INamedTypeSymbol? type)
+    {
+        if (type?.ContainingNamespace.ToDisplayString() != "TinySystem")
+            return false;
+        return type.Name is "Random" or "Math" or "String" or "List" or "Dict";
+    }
+
     private string VisitMemberAccess(SemanticModel model,
         MemberAccessExpressionSyntax memberAccess)
     {
@@ -365,6 +404,13 @@ public partial class LuaEmitter
 
         // Check for .Count on List<T> → #list, .Length on string → #str
         var symbol = model.GetSymbolInfo(memberAccess).Symbol;
+        if (symbol is IFieldSymbol { IsStatic: true } staticField
+            && IsTinySystemFacade(staticField.ContainingType))
+            return $"{staticField.ContainingType.Name}.{member}";
+        if (symbol is IPropertySymbol { IsStatic: true } staticProperty
+            && IsTinySystemFacade(staticProperty.ContainingType))
+            return $"{staticProperty.ContainingType.Name}.{member}";
+
         if (symbol is IPropertySymbol propSym)
         {
             var receiverType = model.GetTypeInfo(memberAccess.Expression).Type;
@@ -571,6 +617,8 @@ public partial class LuaEmitter
     {
         var savedSb = _sb.ToString();
         var savedIndent = _indent;
+        var savedLuaLine = _luaLine;
+        var savedSource = _currentSource;
         _sb.Clear();
         _indent = 0;
 
@@ -578,9 +626,12 @@ public partial class LuaEmitter
             VisitStatement(model, s);
 
         var body = _sb.ToString().Trim();
+        SourceMap.RemoveFrom(savedLuaLine);
         _sb.Clear();
         _sb.Append(savedSb);
         _indent = savedIndent;
+        _luaLine = savedLuaLine;
+        _currentSource = savedSource;
         return body;
     }
 
@@ -715,13 +766,33 @@ public partial class LuaEmitter
     {
         return expr switch
         {
-            MemberBindingExpressionSyntax mb => $"{obj}.{mb.Name.Identifier.Text}",
+            MemberBindingExpressionSyntax mb =>
+                VisitConditionalMemberBinding(mb, obj, receiverType),
             InvocationExpressionSyntax inv when inv.Expression is MemberBindingExpressionSyntax mb2 =>
-                VisitConditionalInvocation(model, mb2, inv.ArgumentList, obj),
+                VisitConditionalInvocation(model, mb2, inv.ArgumentList, obj, receiverType),
             ElementBindingExpressionSyntax eb =>
                 VisitConditionalElementAccess(model, eb, obj, receiverType),
             _ => VisitExpression(model, expr)
         };
+    }
+
+    private string VisitConditionalMemberBinding(MemberBindingExpressionSyntax mb,
+        string obj, ITypeSymbol? receiverType)
+    {
+        var member = mb.Name.Identifier.Text;
+        var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+
+        if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)))
+            return IsDictType(typeDef) ? $"Dict.Count({obj})" : $"#{obj}";
+        if (member == "Keys" && IsDictType(typeDef))
+            return $"Dict.Keys({obj})";
+        if (member == "Values" && IsDictType(typeDef))
+            return $"Dict.Values({obj})";
+        if (member == "Length" && (receiverType?.SpecialType == SpecialType.System_String
+            || receiverType is IArrayTypeSymbol))
+            return $"#{obj}";
+
+        return $"{obj}.{member}";
     }
 
     private string VisitConditionalElementAccess(SemanticModel model,
@@ -730,21 +801,77 @@ public partial class LuaEmitter
         var index = VisitExpression(model, eb.ArgumentList.Arguments[0].Expression);
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
         // List<T>: 0-indexed → 1-indexed
-        if (IsListType(typeDef))
+        if (IsListType(typeDef) || receiverType is IArrayTypeSymbol)
             return $"{obj}[{index} + 1]";
         return $"{obj}[{index}]";
     }
 
     private string VisitConditionalInvocation(SemanticModel model,
-        MemberBindingExpressionSyntax mb, ArgumentListSyntax argList, string obj)
+        MemberBindingExpressionSyntax mb, ArgumentListSyntax argList,
+        string obj, ITypeSymbol? receiverType)
     {
         var methodName = mb.Name.Identifier.Text;
         var args = argList.Arguments
             .Select(a => VisitExpression(model, a.Expression)).ToList();
-        // Check if it's a string method
-        // For now, use instance call syntax
+        var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+
+        if (receiverType?.SpecialType == SpecialType.System_String)
+            return MapStringMethodCall(obj, methodName, args);
+
+        if (IsListType(typeDef))
+        {
+            switch (methodName)
+            {
+                case "Add":
+                    return $"table.insert({obj}, {string.Join(", ", args)})";
+                case "Remove":
+                    return $"List.Remove({obj}, {string.Join(", ", args)})";
+                case "RemoveAt":
+                    return $"table.remove({obj}, {args[0]} + 1)";
+                case "Clear":
+                    return $"(function() for k in pairs({obj}) do {obj}[k] = nil end end)()";
+            }
+            if (ListRuntimeMethods.Contains(methodName))
+            {
+                var allArgs = new List<string> { obj };
+                allArgs.AddRange(args);
+                return $"List.{methodName}({string.Join(", ", allArgs)})";
+            }
+        }
+
+        if (IsDictType(typeDef))
+        {
+            return methodName switch
+            {
+                "Add" => $"{obj}[{args[0]}] = {args[1]}",
+                "Remove" => $"Dict.Remove({obj}, {args[0]})",
+                "ContainsKey" => $"({obj}[{args[0]}] ~= nil)",
+                "TryGetValue" => $"(function() local __tcs_value = {obj}[{args[0]}]; " +
+                    $"if __tcs_value ~= nil then {args[1]} = __tcs_value; return true " +
+                    $"else {args[1]} = nil; return false end end)()",
+                _ => $"{obj}:{methodName}({string.Join(", ", args)})"
+            };
+        }
+
         return $"{obj}:{methodName}({string.Join(", ", args)})";
     }
+
+    private static string MapStringMethodCall(string obj, string methodName,
+        List<string> args) => methodName switch
+    {
+        "Contains" => $"String.Contains({obj}, {string.Join(", ", args)})",
+        "IndexOf" => $"String.IndexOf({obj}, {string.Join(", ", args)})",
+        "Replace" => $"String.Replace({obj}, {string.Join(", ", args)})",
+        "StartsWith" => $"String.StartsWith({obj}, {args[0]})",
+        "EndsWith" => $"String.EndsWith({obj}, {args[0]})",
+        "Trim" => $"String.Trim({obj})",
+        "Substring" => $"String.Substring({obj}, {string.Join(", ", args)})",
+        "ToUpper" => $"string.upper({obj})",
+        "ToLower" => $"string.lower({obj})",
+        "Split" => $"String.Split({obj}, {string.Join(", ", args)})",
+        "ToString" => $"tostring({obj})",
+        _ => $"{obj}:{methodName}({string.Join(", ", args)})"
+    };
 
     // String method mapping
     private bool TryMapStringMethod(SemanticModel model,
@@ -756,40 +883,8 @@ public partial class LuaEmitter
         if (receiverType?.SpecialType != SpecialType.System_String) return false;
 
         var obj = VisitExpression(model, ma.Expression);
-        switch (methodName)
-        {
-            case "Contains":
-                result = $"String.Contains({obj}, {string.Join(", ", args)})";
-                return true;
-            case "Replace":
-                result = $"String.Replace({obj}, {string.Join(", ", args)})";
-                return true;
-            case "StartsWith":
-                result = $"String.StartsWith({obj}, {args[0]})";
-                return true;
-            case "EndsWith":
-                result = $"String.EndsWith({obj}, {args[0]})";
-                return true;
-            case "Trim":
-                result = $"String.Trim({obj})";
-                return true;
-            case "Substring":
-                result = $"String.Substring({obj}, {string.Join(", ", args)})";
-                return true;
-            case "ToUpper":
-                result = $"string.upper({obj})";
-                return true;
-            case "ToLower":
-                result = $"string.lower({obj})";
-                return true;
-            case "Split":
-                result = $"String.Split({obj}, {string.Join(", ", args)})";
-                return true;
-            case "ToString":
-                result = $"tostring({obj})";
-                return true;
-        }
-        return false;
+        result = MapStringMethodCall(obj, methodName, args);
+        return !result.StartsWith(obj + ":", StringComparison.Ordinal);
     }
 
     private string VisitWithExpression(SemanticModel model, WithExpressionSyntax withExpr)
@@ -818,7 +913,29 @@ public partial class LuaEmitter
         return type != null ? GetDefaultValueForType(type) : "nil";
     }
 
-    private static string GetDefaultValueForType(ITypeSymbol type) => type.SpecialType switch
+    private static string VisitDeclarationExpression(DeclarationExpressionSyntax declaration) =>
+        declaration.Designation switch
+        {
+            SingleVariableDesignationSyntax single => single.Identifier.Text,
+            DiscardDesignationSyntax => "_",
+            _ => "_"
+        };
+
+    private static string? TryGetOutArgumentName(ArgumentSyntax argument)
+    {
+        if (!argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword))
+            return null;
+
+        return argument.Expression switch
+        {
+            DeclarationExpressionSyntax declaration =>
+                VisitDeclarationExpression(declaration),
+            IdentifierNameSyntax identifier => identifier.Identifier.Text,
+            _ => null
+        };
+    }
+
+    private static string GetDefaultValueForType(ITypeSymbol? type) => type?.SpecialType switch
     {
         SpecialType.System_Boolean => "false",
         SpecialType.System_Int32 or SpecialType.System_Int64

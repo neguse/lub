@@ -74,4 +74,84 @@ public class DictSemanticTests
             """, "T.Test()");
         Assert.Equal("2", result);
     }
+
+    [Fact]
+    public void Dict_TryGetValue_Found_AssignsOutVar()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var dict = new Dictionary<string, int> { { "x", 42 } };
+                    var found = dict.TryGetValue("x", out var value);
+                    return found.ToString() + ":" + value.ToString();
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("true:42", result);
+    }
+
+    [Fact]
+    public void Dict_TryGetValue_Missing_AssignsDefaultToOutVar()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var dict = new Dictionary<string, int> { { "x", 42 } };
+                    var found = dict.TryGetValue("missing", out var value);
+                    return found.ToString() + ":" + value.ToString();
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("false:0", result);
+    }
+
+    [Fact]
+    public void Dict_TryGetValue_IfCondition_OutVarVisibleInThen()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test()
+                {
+                    var dict = new Dictionary<string, int> { { "x", 7 } };
+                    if (dict.TryGetValue("x", out var value))
+                    {
+                        return value;
+                    }
+                    return 0;
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("7", result);
+    }
+
+    [Fact]
+    public void Dict_TryGetValue_ExistingOutVariable()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var dict = new Dictionary<string, string> { { "x", "ok" } };
+                    string value;
+                    var found = dict.TryGetValue("missing", out value);
+                    return found.ToString() + ":" + (value == null ? "nil" : value);
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("false:nil", result);
+    }
 }

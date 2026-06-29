@@ -28,7 +28,14 @@ function List.RemoveAt(list, index)
   table.remove(list, index + 1) -- 0-indexed to 1-indexed
 end
 
-function List.Count(list)
+function List.Count(list, predicate)
+  if predicate then
+    local n = 0
+    for i = 1, #list do
+      if predicate(list[i]) then n = n + 1 end
+    end
+    return n
+  end
   return #list
 end
 
@@ -44,6 +51,14 @@ function List.IndexOf(list, item)
     if list[i] == item then return i - 1 end -- return 0-indexed
   end
   return -1
+end
+
+function List.Sort(list, comparison)
+  if comparison then
+    table.sort(list, function(a, b) return comparison(a, b) < 0 end)
+  else
+    table.sort(list)
+  end
 end
 
 -- LINQ-style methods
@@ -105,6 +120,49 @@ function List.OrderBy(list, keySelector)
   return copy
 end
 
+function List.OrderByDescending(list, keySelector)
+  local copy = {}
+  for i = 1, #list do copy[i] = list[i] end
+  table.sort(copy, function(a, b)
+    return keySelector(a) > keySelector(b)
+  end)
+  return copy
+end
+
+function List.Take(list, count)
+  local result = {}
+  if count < 0 then count = 0 end
+  local limit = math.min(count, #list)
+  for i = 1, limit do result[#result + 1] = list[i] end
+  return result
+end
+
+function List.Skip(list, count)
+  local result = {}
+  if count < 0 then count = 0 end
+  for i = count + 1, #list do result[#result + 1] = list[i] end
+  return result
+end
+
+function List.Last(list, predicate)
+  if not predicate then
+    if #list == 0 then error("Sequence contains no elements") end
+    return list[#list]
+  end
+  for i = #list, 1, -1 do
+    if predicate(list[i]) then return list[i] end
+  end
+  error("Sequence contains no matching element")
+end
+
+function List.LastOrDefault(list, predicate)
+  if not predicate then return list[#list] end
+  for i = #list, 1, -1 do
+    if predicate(list[i]) then return list[i] end
+  end
+  return nil
+end
+
 function List.Min(list, selector)
   selector = selector or function(x) return x end
   local minVal = nil
@@ -138,6 +196,16 @@ function List.ToList(list)
   local copy = {}
   for i = 1, #list do copy[i] = list[i] end
   return copy
+end
+
+function List.ToDictionary(list, keySelector, valueSelector)
+  valueSelector = valueSelector or function(x) return x end
+  local dict = {}
+  for i = 1, #list do
+    local item = list[i]
+    dict[keySelector(item)] = valueSelector(item)
+  end
+  return dict
 end
 
 -- Dictionary operations
@@ -188,6 +256,21 @@ TinySystem.String = String
 
 function String.Contains(str, substr)
   return string.find(str, substr, 1, true) ~= nil
+end
+
+function String.IndexOf(str, value, start)
+  local found = string.find(str, value, (start or 0) + 1, true)
+  if not found then return -1 end
+  return found - 1
+end
+
+function String.Join(sep, values, ...)
+  if type(values) == "table" and select("#", ...) == 0 then
+    return table.concat(values, sep)
+  end
+
+  local parts = { values, ... }
+  return table.concat(parts, sep)
 end
 
 function String.Replace(str, old, new_str)
@@ -262,6 +345,7 @@ function Math.Sqrt(x) return math.sqrt(x) end
 function Math.Sin(x) return math.sin(x) end
 function Math.Cos(x) return math.cos(x) end
 function Math.Atan2(y, x) return math.atan(y, x) end
+function Math.Pow(x, y) return x ^ y end
 
 function Math.Clamp(value, min, max)
   if value < min then return min end
@@ -304,30 +388,20 @@ HotReload.enabled = true
 local watched = {}     -- { [filepath] = { mtime=number, on_reload=func? } }
 local last_check = 0
 
--- Get file modification time (cross-platform, pure Lua)
--- Returns a number that changes when the file is modified, or nil.
-local function getmtime(filepath)
-  local f = io.open(filepath, "rb")
-  if not f then return nil end
-  local size = f:seek("end")
-  f:close()
-  -- Lua 5.5 doesn't have lfs; use os.execute + temp file for real mtime
-  -- Fallback: file size as cheap change indicator (works for transpiler output)
-  -- For production, lub3d provides fs.mtime() via C module.
-  local ok, _, _, mtime = pcall(os.execute, "")  -- test if os.execute works
-  -- Try stat-based mtime
-  local handle = io.popen('stat -c %Y "' .. filepath .. '" 2>/dev/null || stat -f %m "' .. filepath .. '" 2>/dev/null', "r")
-  if handle then
-    local result = handle:read("*l")
-    handle:close()
-    if result then return tonumber(result) end
-  end
-  -- Fallback: size-based (sufficient for tcs --watch which always rewrites)
-  return size
+-- Host-provided file modification time.
+-- Embedded targets often do not expose shell/stat APIs, so the default is a
+-- safe no-op. Engines can inject this, e.g.:
+--   HotReload.mtime = function(path) return fs.mtime(path) end
+function HotReload.mtime(filepath)
+  return nil
 end
 
--- Allow injecting a custom mtime function (e.g., lub3d's fs.mtime)
-HotReload.mtime = getmtime
+local function read_mtime(filepath)
+  local ok, result = pcall(HotReload.mtime, filepath)
+  if ok then return result end
+  print(string.format("[hotreload] mtime error: %s", result))
+  return nil
+end
 
 -- Recursively update old table in-place with new values,
 -- keeping the old table identity so existing references survive.
@@ -379,7 +453,7 @@ end
 -- Watch a file for hot reload.
 -- on_reload: optional callback called after successful reload.
 function HotReload.watch(filepath, on_reload)
-  local mtime = HotReload.mtime(filepath)
+  local mtime = read_mtime(filepath)
   watched[filepath] = { mtime = mtime, on_reload = on_reload }
 end
 
@@ -393,7 +467,7 @@ function HotReload.update()
   last_check = now
 
   for filepath, info in pairs(watched) do
-    local new_mtime = HotReload.mtime(filepath)
+    local new_mtime = read_mtime(filepath)
     if new_mtime and new_mtime ~= info.mtime then
       local ok, err = HotReload.swap(filepath)
       if ok then

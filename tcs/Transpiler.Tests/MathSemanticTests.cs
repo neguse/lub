@@ -118,4 +118,17 @@ public class MathSemanticTests
             """, "tostring(T.Test())");
         Assert.Equal("true", result);
     }
+
+    [Fact]
+    public void Math_Pow()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System;
+            public class T
+            {
+                public static double Test() => Math.Pow(2, 5);
+            }
+            """, "T.Test()");
+        Assert.Equal("32.0", result);
+    }
 }

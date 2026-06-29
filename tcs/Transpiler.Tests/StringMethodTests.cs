@@ -153,6 +153,92 @@ public class StringMethodTests
     }
 
     [Fact]
+    public void String_IndexOf()
+    {
+        var result = TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static int Test()
+                {
+                    string s = "hello world";
+                    return s.IndexOf("world");
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("6", result);
+    }
+
+    [Fact]
+    public void String_IndexOf_NotFound()
+    {
+        var result = TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static int Test()
+                {
+                    string s = "hello";
+                    return s.IndexOf("x");
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("-1", result);
+    }
+
+    [Fact]
+    public void String_IndexOf_StartIndex()
+    {
+        var result = TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static int Test()
+                {
+                    string s = "hello hello";
+                    return s.IndexOf("hello", 1);
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("6", result);
+    }
+
+    [Fact]
+    public void String_Join_List()
+    {
+        var result = TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+
+            public class T
+            {
+                public static string Test()
+                {
+                    var parts = new List<string> { "red", "blue", "green" };
+                    return string.Join("/", parts);
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("red/blue/green", result);
+    }
+
+    [Fact]
+    public void String_Join_Params()
+    {
+        var result = TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static string Test()
+                {
+                    return string.Join("/", "red", "blue", "green");
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("red/blue/green", result);
+    }
+
+    [Fact]
     public void String_ToUpperLower()
     {
         var result = TranspileAndRunWithRuntime("""

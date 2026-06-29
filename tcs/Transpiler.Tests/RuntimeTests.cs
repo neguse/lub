@@ -6,6 +6,12 @@ namespace TinyCs.Tests;
 /// </summary>
 public class RuntimeTests
 {
+    [Fact]
+    public void LuaBinary_IsLua55()
+    {
+        Assert.StartsWith("Lua 5.5", TestHelper.LuaVersion);
+    }
+
     private static string RunWithRuntime(string luaCode)
     {
         var runtimePath = TestHelper.FindProjectFile("runtime/tinysystem.lua");

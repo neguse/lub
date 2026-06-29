@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
@@ -26,6 +27,7 @@ public static class Transpiler
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Collections.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Linq.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Console.dll")),
+            MetadataReference.CreateFromFile(typeof(global::TinySystem.Random).Assembly.Location),
         ];
     }
 
@@ -49,10 +51,13 @@ public static class Transpiler
         var refTrees = referenceSources?.Select(s =>
             CSharpSyntaxTree.ParseText(s)).ToArray() ?? [];
         var allTrees = trees.Concat(refTrees).ToArray();
+        var hasTopLevelStatements = allTrees.Any(HasTopLevelStatements);
         var compilation = CSharpCompilation.Create("TinyCs",
             allTrees,
             DefaultReferences,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(hasTopLevelStatements
+                ? OutputKind.ConsoleApplication
+                : OutputKind.DynamicallyLinkedLibrary));
 
         var errors = new List<string>();
         var warnings = new List<string>();
@@ -81,13 +86,41 @@ public static class Transpiler
 
         // Naming convention analysis
         foreach (var tree in trees)
-            warnings.AddRange(NamingAnalyzer.Analyze(tree));
-
-        var emitter = new LuaEmitter();
-        foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);
-            emitter.Visit(compilation, model, tree);
+            warnings.AddRange(NamingAnalyzer.Analyze(tree));
+            warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
+                tree));
+            warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
+                tree, model));
+            warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(
+                tree, model));
+        }
+
+        var emitter = new LuaEmitter();
+        if (hasTopLevelStatements)
+        {
+            foreach (var tree in trees)
+            {
+                var model = compilation.GetSemanticModel(tree);
+                emitter.Visit(compilation, model, tree,
+                    emitGlobalStatements: false);
+            }
+
+            foreach (var tree in trees)
+            {
+                var model = compilation.GetSemanticModel(tree);
+                emitter.Visit(compilation, model, tree,
+                    emitNonGlobalMembers: false);
+            }
+        }
+        else
+        {
+            foreach (var tree in trees)
+            {
+                var model = compilation.GetSemanticModel(tree);
+                emitter.Visit(compilation, model, tree);
+            }
         }
 
         warnings.AddRange(emitter.Warnings);
@@ -99,4 +132,9 @@ public static class Transpiler
             Warnings = warnings
         };
     }
+
+    private static bool HasTopLevelStatements(SyntaxTree tree) =>
+        tree.GetCompilationUnitRoot().Members
+            .OfType<GlobalStatementSyntax>()
+            .Any();
 }

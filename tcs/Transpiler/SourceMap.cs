@@ -20,7 +20,14 @@ public class SourceMap
 
     public int Count => _mappings.Count;
 
-    public string ToJson()
+    public void RemoveFrom(int luaLine)
+    {
+        var keys = _mappings.Keys.Where(k => k >= luaLine).ToArray();
+        foreach (var key in keys)
+            _mappings.Remove(key);
+    }
+
+    public string ToJson(int luaLineOffset = 0)
     {
         var sb = new StringBuilder();
         sb.AppendLine("{");
@@ -32,7 +39,7 @@ public class SourceMap
             if (!first) sb.AppendLine(",");
             first = false;
             var escapedFile = JsonEncodedText.Encode(file);
-            sb.Append($"    \"{luaLine}\": {{\"file\": \"{escapedFile}\", \"line\": {csLine}}}");
+            sb.Append($"    \"{luaLine + luaLineOffset}\": {{\"file\": \"{escapedFile}\", \"line\": {csLine}}}");
         }
         sb.AppendLine();
         sb.AppendLine("  }");

@@ -31,9 +31,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:------:|------|
 | 基本型・nullable・リテラル | **Core** | 日常的な C# の型チェックと値表現を保つ |
 | class / enum / interface / record class | **Core** | editor 補完、型チェック、データ表現に必要 |
-| struct / record struct | **Useful** | 値セマンティクスが必要なサンプルが出るまで class/record で代替 |
+| struct / record struct | **Useful** | 現時点は TCS1001 未対応診断。値セマンティクス需要が出るまで class/record class で代替 |
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
-| LINQ メソッドチェーン | **Core** | `Where`/`Select`/`Any`/`All`/`First`/`OrderBy`/集計の小核だけ即時評価で提供 |
+| LINQ メソッドチェーン | **Core** | `Where`/`Select`/`Any`/`All`/`First`/`Last`/`OrderBy`/`Take`/`Skip`/集計の小核だけ即時評価で提供 |
 | ユーザー定義ジェネリクス | **Out** | 型消去 runtime と複雑さが釣り合わない。組み込み generic 型に限定 |
 | reflection / dynamic / expression tree | **Out** | Lua 5.5 backend と compact baseline に合わない |
 | async / Task / threading | **Out** | ホットリロード可能なシングルスレッド Lua 実行を基本にする |
@@ -60,38 +60,38 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | カテゴリ | 優先度 | Y | P | - | N/A | 計 |
 |---------|:------:|---|---|---|-----|---|
 | 組み込み型 | **Core** | 7 | 4 | 11 | 6 | 28 |
-| ユーザー定義型 | **Core** | 2 | 2 | 2 | 2 | 8 |
+| ユーザー定義型 | **Core** | 2 | 2 | 3 | 1 | 8 |
 | 名前空間・using | **Core** | 3 | 0 | 3 | 1 | 7 |
 | 型宣言 | **Core** | 3 | 1 | 5 | 0 | 9 |
 | メンバー宣言 | **Core** | 10 | 2 | 9 | 1 | 22 |
-| ローカル宣言 | **Core** | 2 | 1 | 7 | 1 | 11 |
+| ローカル宣言 | **Core** | 3 | 1 | 6 | 1 | 11 |
 | 文 | **Core** | 12 | 0 | 6 | 4 | 22 |
 | リテラル | **Core** | 12 | 0 | 0 | 1 | 13 |
 | 演算子 | **Core** | 21 | 1 | 11 | 5 | 38 |
-| 高度な式 | **Core** | 5 | 3 | 9 | 2 | 19 |
+| 高度な式 | **Core** | 6 | 2 | 9 | 2 | 19 |
 | パターンマッチング | **Core** | 8 | 1 | 8 | 0 | 17 |
 | 修飾子 | **Useful** | 4 | 2 | 20 | 4 | 30 |
 | ジェネリクス | **Core/Out** | 1 | 1 | 5 | 0 | 7 |
-| 継承 | **Useful** | 3 | 1 | 2 | 0 | 6 |
-| **小計** | | **93** | **19** | **98** | **27** | **237** |
+| 継承 | **Useful** | 4 | 0 | 2 | 0 | 6 |
+| **小計** | | **96** | **17** | **98** | **26** | **237** |
 
 ### 標準ライブラリ
 
 | 名前空間 | 優先度 | Y | P | - | N/A | 計 |
 |---------|:------:|---|---|---|-----|---|
 | System 基本型 | **Core/Useful** | 4 | 2 | 19 | 3 | 28 |
-| String メンバー | **Core** | 12 | 0 | 20 | 0 | 32 |
-| Math メンバー | **Core** | 11 | 0 | 20 | 0 | 31 |
+| String メンバー | **Core** | 14 | 0 | 18 | 0 | 32 |
+| Math メンバー | **Core** | 12 | 0 | 19 | 0 | 31 |
 | Random メンバー | **Core** | 3 | 0 | 6 | 0 | 9 |
-| List\<T\> メンバー | **Core** | 10 | 0 | 19 | 0 | 29 |
-| Dictionary\<K,V\> メンバー | **Core** | 9 | 1 | 3 | 0 | 13 |
-| LINQ (Enumerable) | **Core/Useful** | 12 | 0 | 36 | 0 | 48 |
+| List\<T\> メンバー | **Core** | 11 | 0 | 18 | 0 | 29 |
+| Dictionary\<K,V\> メンバー | **Core** | 10 | 0 | 3 | 0 | 13 |
+| LINQ (Enumerable) | **Core/Useful** | 18 | 0 | 30 | 0 | 48 |
 | Collections.Generic 型 | **Core/Useful** | 2 | 0 | 8 | 5 | 15 |
 | System.Text | **Out** | 0 | 0 | 3 | 0 | 3 |
 | System.IO | **Out** | 0 | 0 | 7 | 0 | 7 |
 | System.Threading.Tasks | **Out** | 0 | 0 | 0 | 4 | 4 |
 | System.Numerics | **Useful** | 0 | 0 | 6 | 0 | 6 |
-| **小計** | | **63** | **3** | **147** | **12** | **225** |
+| **小計** | | **74** | **2** | **137** | **12** | **225** |
 
 ---
 
@@ -149,9 +149,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
 | `class` | **Y** | table + metatable | |
-| `struct` | **N/A** | | class に寄せる方針 |
+| `struct` | **-** | | TCS1001。class / record class で代替 |
 | `record` / `record class` | **P** | table + metatable | positional record |
-| `record struct` | **-** | | |
+| `record struct` | **-** | | TCS1001。record class で代替 |
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
 | `enum` | **Y** | 定数テーブル | |
 | `delegate` 型定義 | **N/A** | | Action/Func で代替 |
@@ -178,9 +178,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | `class` 宣言 | **Y** | |
-| `struct` 宣言 | **-** | class に寄せる |
+| `struct` 宣言 | **-** | TCS1001。class / record class で代替 |
 | `record` 宣言 (C# 9) | **P** | positional record |
-| `record struct` 宣言 (C# 10) | **-** | |
+| `record struct` 宣言 (C# 10) | **-** | TCS1001。record class で代替 |
 | `interface` 宣言 | **Y** | 出力なし |
 | `enum` 宣言 | **Y** | |
 | `delegate` 宣言 | **-** | |
@@ -191,10 +191,10 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | 機能 | 状態 | Lua マッピング | 備考 |
 |------|:----:|--------------|------|
-| フィールド | **Y** | `self.Field` | |
+| フィールド | **Y** | `self.Field` | initializer なしは型別 default |
 | フィールド初期化子 | **Y** | コンストラクタ内 | |
 | `const` フィールド | **Y** | `ClassName.CONST` | |
-| オートプロパティ (`{ get; set; }`) | **Y** | フィールド直接 | |
+| オートプロパティ (`{ get; set; }`) | **Y** | フィールド直接 | initializer なしは型別 default |
 | プロパティ初期化子 | **Y** | | |
 | カスタム getter/setter | **Y** | `get_`/`set_` メソッド | |
 | 式本体メンバー (`=>`, C# 6) | **Y** | | |
@@ -224,7 +224,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | ローカル定数 `const` | **-** | | |
 | 分解宣言 `var (a, b) = ...` (C# 7) | **P** | `local a, b = ...` | record positional property 限定 |
 | 破棄 `_ = expr` (C# 7) | **-** | | |
-| トップレベル文 (C# 9) | **-** | | Core gap: unsupported 診断あり |
+| トップレベル文 (C# 9) | **Y** | Lua chunk | 型定義を先に出力してから実行 |
 | using 宣言 `using var` (C# 8) | **-** | | unsupported 診断あり |
 | `scoped` ローカル (C# 11) | **-** | | |
 | パターン変数 `if (x is int i)` (C# 7) | **-** | | |
@@ -242,7 +242,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `switch` 文 | **Y** | if-elseif チェーン | |
 | `while` ループ | **Y** | `while cond do end` | |
 | `do-while` ループ | **Y** | `repeat ... until not(cond)` | |
-| `for` ループ (C 形式) | **Y** | `for i=s,e do` / while 展開 | |
+| `for` ループ (C 形式) | **Y** | `for i=s,e do` / while 展開 | 一般 incrementor 対応 |
 | `foreach` ループ | **Y** | `ipairs`/`pairs` | |
 | `break` | **Y** | `break` | |
 | `continue` | **Y** | `goto _continue_N` | Lua 5.5 goto |
@@ -298,13 +298,13 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `+=` `-=` `*=` `/=` `%=` | **Y** | 展開 `x = x op y` | |
 | `? :` (三項) | **Y** | IIFE | falsy 安全 |
 | `??` (null 合体) | **Y** | `or` | |
-| `?.` (null 条件アクセス, C# 6) | **Y** | IIFE nil チェック | |
+| `?.` (null 条件アクセス, C# 6) | **Y** | IIFE nil チェック | String/List/Dict mapping 対応 |
 | `(T)x` (キャスト) | **Y** | 透過 (型消去) | |
 | `is null` / `is not null` | **Y** | `== nil` / `~= nil` | |
 | `is Type` | **Y** | `getmetatable() ==` | |
 | `new T(args)` | **Y** | `T.new(args)` | |
 | `??=` (null 合体代入, C# 8) | **Y** | nil check + assignment | |
-| `?[]` (null 条件インデクサ, C# 6) | **Y** | IIFE nil チェック | |
+| `?[]` (null 条件インデクサ, C# 6) | **Y** | IIFE nil チェック | List/array は 0→1 indexed |
 | `?.Prop = v` (null条件代入, C# 14) | **-** | | |
 | `as` (安全キャスト) | **-** | | |
 | `typeof(T)` | **-** | | |
@@ -332,7 +332,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | ラムダ (文本体) `(x) => { }` | **Y** | `function(x) ... end` | |
 | switch 式 (C# 8) | **Y** | IIFE if-elseif | |
 | `this` | **Y** | `self` | |
-| `base.Method()` | **P** | 親テーブルメソッド | Core gap: 実装確認/修正対象 |
+| `base.Method()` | **Y** | `Base.Method(self, ...)` | |
 | メソッドチェーン (LINQ) | **Y** | ネスト呼び出し | |
 | `with` 式 (C# 9) | **P** | shallow copy + field override | record/class table 限定 |
 | LINQ クエリ構文 (C# 3) | **-** | | メソッドチェーンで代替 |
@@ -448,7 +448,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:----:|--------------|------|
 | 単一継承 | **Y** | metatable チェーン | |
 | `base()` コンストラクタ | **Y** | `Base.new()` + setmetatable | |
-| `base.Method()` | **P** | 親テーブル参照 | Core gap: 実装確認/修正対象 |
+| `base.Method()` | **Y** | `Base.Method(self, ...)` | |
 | 多重インターフェース実装 | **Y** | Roslyn 型チェックのみ | |
 | 抽象クラス | **-** | | |
 | 共変戻り値型 (C# 9) | **-** | | |
@@ -580,7 +580,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `.ToLower()` | **Y** | `string.lower(str)` | T |
 | `.ToString()` | **Y** | `tostring(x)` | T |
 | `string + string` | **Y** | `..` | T |
-| `.IndexOf(c)` / `.IndexOf(s)` | **-** | | |
+| `.IndexOf(c)` / `.IndexOf(s)` | **Y** | `String.IndexOf(str, value)` | T+R |
 | `.LastIndexOf(c)` / `.LastIndexOf(s)` | **-** | | |
 | `.IndexOfAny(chars)` | **-** | | |
 | `.Insert(i, s)` | **-** | | |
@@ -593,7 +593,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `String.IsNullOrEmpty(s)` (static) | **-** | | |
 | `String.IsNullOrWhiteSpace(s)` (static) | **-** | | |
 | `String.Format(fmt, ...)` (static) | **-** | | 補間で代替 |
-| `String.Join(sep, ...)` (static) | **-** | | |
+| `String.Join(sep, ...)` (static) | **Y** | `String.Join(sep, values)` | T+R |
 | `String.Concat(...)` (static) | **-** | | |
 | `String.Compare(a, b)` (static) | **-** | | |
 | `String.Equals(a, b)` (static) | **-** | | |
@@ -620,7 +620,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `Math.Atan2(y, x)` | **Y** | `Math.Atan2(y, x)` | R |
 | `Math.E` | **-** | | |
 | `Math.Tau` | **-** | | |
-| `Math.Pow(x, y)` | **-** | | Lua `^` で可能 |
+| `Math.Pow(x, y)` | **Y** | `Math.Pow(x, y)` | R |
 | `Math.Exp(x)` | **-** | | |
 | `Math.Log(x)` / `Math.Log10(x)` / `Math.Log2(x)` | **-** | | |
 | `Math.Round(x)` / `Math.Round(x, digits)` | **-** | | |
@@ -661,8 +661,8 @@ using(宣言)  virtual(部分)  volatile  yield
 
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
-| `List<T>` | **Y** | sequence table | |
-| `Dictionary<TKey, TValue>` | **Y** | hash table | |
+| `List<T>` | **Y** | sequence table | null 要素は TCS1003 診断 |
+| `Dictionary<TKey, TValue>` | **Y** | hash table | null 値は TCS1003 診断 |
 | `HashSet<T>` | **-** | | |
 | `Queue<T>` | **-** | | |
 | `Stack<T>` | **-** | | |
@@ -680,6 +680,9 @@ using(宣言)  virtual(部分)  volatile  yield
 ---
 
 ## 17. List\<T\> メンバー
+
+Lua sequence table は `nil` 要素を保持できないため、`null` 要素の保存は未対応。
+直接の `null` / 参照型 `default` は TCS1003 として報告する。
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
@@ -700,7 +703,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `.RemoveAll(predicate)` | **-** | | |
 | `.Find(predicate)` / `.FindLast()` / `.FindAll()` | **-** | | |
 | `.FindIndex(predicate)` / `.FindLastIndex()` | **-** | | |
-| `.Sort()` / `.Sort(comparison)` | **-** | | |
+| `.Sort()` / `.Sort(comparison)` | **Y** | `List.Sort(list, comparison)` | T+R |
 | `.Reverse()` | **-** | | |
 | `.BinarySearch(item)` | **-** | | |
 | `.Exists(predicate)` | **-** | | |
@@ -717,6 +720,9 @@ using(宣言)  virtual(部分)  volatile  yield
 
 ## 18. Dictionary\<TKey, TValue\> メンバー
 
+Lua hash table は `nil` 代入を key 削除として扱うため、`null` 値の保存は未対応。
+直接の `null` / 参照型 `default` は TCS1003 として報告する。
+
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
 | `new Dictionary<K,V>()` | **Y** | `{}` | T |
@@ -728,7 +734,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `.ContainsKey(key)` | **Y** | `(dict[key] ~= nil)` | T |
 | `.Keys` | **Y** | `Dict.Keys(dict)` | T+R |
 | `.Values` | **Y** | `Dict.Values(dict)` | T+R |
-| `.TryGetValue(key, out value)` | **P** | key 存在チェックのみ | T |
+| `.TryGetValue(key, out value)` | **Y** | out 代入 + bool | T |
 | `.TryAdd(key, value)` | **-** | | |
 | `.ContainsValue(value)` | **-** | | |
 | `.Clear()` | **-** | | |
@@ -751,10 +757,16 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.First()` / `.First(predicate)` | **Y** | `List.First(list, fn)` | T+R |
 | `.FirstOrDefault()` / `.FirstOrDefault(pred)` | **Y** | `List.FirstOrDefault(list, fn)` | T+R |
 | `.OrderBy(keySelector)` | **Y** | `List.OrderBy(list, fn)` | T+R |
+| `.OrderByDescending(keySelector)` | **Y** | `List.OrderByDescending(list, fn)` | T+R |
+| `.Take(count)` | **Y** | `List.Take(list, count)` | T+R |
+| `.Skip(count)` | **Y** | `List.Skip(list, count)` | T+R |
+| `.Last()` / `.LastOrDefault()` | **Y** | `List.Last/LastOrDefault(list, fn)` | T+R |
 | `.Min()` | **Y** | `List.Min(list)` | T+R |
 | `.Max()` | **Y** | `List.Max(list)` | T+R |
 | `.Sum()` | **Y** | `List.Sum(list)` | T+R |
+| `.Count()` / `.Count(predicate)` | **Y** | `List.Count(list, fn)` | T+R |
 | `.ToList()` | **Y** | `List.ToList(list)` | T+R |
+| `.ToDictionary(key)` / `.ToDictionary(key, value)` | **Y** | `List.ToDictionary(list, keyFn, valueFn)` | T+R |
 | チェーン `.Where().Select().ToList()` | **Y** | ネスト呼び出し | T |
 
 ### 未対応
@@ -762,7 +774,6 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | メソッド | 状態 | 備考 |
 |---------|:----:|------|
 | `.SelectMany()` | **-** | |
-| `.OrderByDescending()` | **-** | |
 | `.ThenBy()` / `.ThenByDescending()` | **-** | |
 | `.GroupBy()` | **-** | |
 | `.Join()` / `.GroupJoin()` | **-** | |
@@ -773,21 +784,18 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.Concat()` | **-** | |
 | `.Zip()` | **-** | |
 | `.Append()` / `.Prepend()` | **-** | |
-| `.Skip()` / `.SkipLast()` / `.SkipWhile()` | **-** | |
-| `.Take()` / `.TakeLast()` / `.TakeWhile()` | **-** | |
+| `.SkipLast()` / `.SkipWhile()` | **-** | |
+| `.TakeLast()` / `.TakeWhile()` | **-** | |
 | `.Chunk()` | **-** | |
-| `.Last()` / `.LastOrDefault()` | **-** | |
 | `.Single()` / `.SingleOrDefault()` | **-** | |
 | `.ElementAt()` / `.ElementAtOrDefault()` | **-** | |
 | `.DefaultIfEmpty()` | **-** | |
-| `.Count()` (LINQ) | **-** | `.Count` プロパティで代替 |
 | `.LongCount()` | **-** | |
 | `.Average()` | **-** | |
 | `.Aggregate()` | **-** | |
 | `.Contains()` (LINQ) | **-** | |
 | `.SequenceEqual()` | **-** | |
 | `.ToArray()` | **-** | |
-| `.ToDictionary()` | **-** | |
 | `.ToHashSet()` | **-** | |
 | `.ToLookup()` | **-** | |
 | `.Cast()` / `.OfType()` | **-** | |
@@ -857,12 +865,19 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
-| 未対応構文の警告 | **Y** | Warnings コレクション |
+| 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler で共有 (`struct` / `record struct` など) |
+| 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist 外の member も検出 |
+| collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
 | namespace 解決 | **Y** | 透過 |
-| CLI | **Y** | `tcs a.cs b.cs [-o out.lua] [--sourcemap] [--watch]` |
+| CLI | **Y** | `tcs a.cs b.cs [-o out.lua]`, `tcs check a.cs`, `--help`, `--version` |
+| CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
 | ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |
+| Lua stack trace SourceMap 注釈 | **Y** | `--map-stacktrace out.lua.map [trace.txt]` |
 | watch モード | **Y** | `--watch` でファイル監視 |
+| HotReload mtime 注入 | **Y** | shell 非依存 default + host `HotReload.mtime` |
+| Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
+| 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
 | 命名規約チェック | **Y** | PascalCase/camelCase 警告 |
 
 ## 25. 許容される C# エラー (TinyC# 固有)

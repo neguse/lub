@@ -249,3 +249,220 @@
 - テスト7件追加、全234テストパス
 - 判断: T122 でルール共有を進める前段として、まず既存 `Warnings` API に最小統合した
 - 残課題: T122 で Roslyn Analyzer PoC、T98 で top-level statements の復旧または禁止を決める
+
+### T101-T102: Lua 実行環境の再現性 ✓ (2026-06-29)
+- CLI 生成 Lua に TinySystem runtime prelude をデフォルト埋め込みし、`--no-runtime` で bare 出力へ戻せるようにした
+- runtime prelude 埋め込み時も `.lua.map` の Lua 行番号が実ファイルの行番号に合うよう SourceMap offset を追加
+- `TestHelper` / `run-tests.sh` / `run-tests.ps1` で `lua -v` が `Lua 5.5` で始まることを検証するようにした
+- CLI E2E テスト3件と Lua version テスト1件を追加し、全238 tcs テスト + 5 analyzer テストが通過
+- 変更ファイル: Program.cs, LuaRuntime.cs, SourceMap.cs, TestHelper.cs, CliRuntimeTests.cs, RuntimeTests.cs, run-tests.sh, run-tests.ps1, README.md
+- よかったこと: runtime をファイルパス参照ではなく埋め込みにしたため、生成 Lua 単体で List/Dict/Math/String/Random/HotReload を再現できる
+- 判断: エンジン統合や runtime 外部供給の余地を残すため、Transpiler API は bare Lua のままとし、CLI にだけ runtime 埋め込みを適用した
+- 残課題: 配布時に runtime/tinysystem.lua を CLI と同梱する packaging 方針は T118 で整理する
+
+### T98-T100,T104-T105: Core 正しさ穴埋め ✓ (2026-06-29)
+- T98: top-level statements を Lua chunk へ出力し、型定義を先に emit して同一/別ファイルの class 参照を可能にした
+- T99: `base.Method(args)` を `Base.Method(self, args)` へ変換し、override/new method 内の親実装呼び出しを修正した
+- T100: null 条件アクセス内の String/List/Dictionary method/property/indexer を通常アクセスと同じ runtime mapping に通した
+- T104: initializer なし instance field / auto property を型別 default (`0`/`false`/`nil`) で constructor 初期化するようにした
+- T105: 一般 `for` ループの incrementor を文として emit し、`i--`, `i += 2`, 複数 incrementor を正しく処理するようにした
+- テスト13件追加: TopLevelStatementTests, InheritanceTests, NullConditionalTests, ClassTests, ForLoopTests
+- 変更ファイル: Transpiler.cs, LuaEmitter.cs, LuaEmitter.Expressions.cs, LuaEmitter.Statements.cs, TopLevelStatementTests.cs, InheritanceTests.cs, NullConditionalTests.cs, ClassTests.cs, ForLoopTests.cs, support-matrix/current/tasks
+- よかったこと: 既存の statement emit / default value / runtime mapping を再利用し、特殊ケースを増やしすぎずに Core gap を埋められた
+- 判断: top-level statements は禁止ではなく復旧を選び、C# 側 compilation は top-level 検出時だけ `OutputKind.ConsoleApplication` に切り替える
+- 残課題: T106 の lambda block SourceMap、T107 の `--ref` watch、T108 の TinySystem facade
+
+### T106-T107: SourceMap/watch 開発体験ギャップ修正 ✓ (2026-06-29)
+- T106: lambda block 生成時に一時 `_sb` / `_luaLine` / `_currentSource` を復元し、仮 emit の SourceMap を削除するようにした
+- T106: `AppendLine` が multiline 文字列の実出力行数を `_luaLine` に反映するようにした
+- T107: watch モードの監視対象に `--ref` ファイルを含め、参照 stub/facade 更新でも rebuild されるようにした
+- T107: `--ref` ファイルの存在チェックを CLI 引数検証に追加した
+- テスト2件追加: block lambda 後続行 SourceMap、`--ref` watch rebuild
+- 変更ファイル: SourceMap.cs, LuaEmitter.cs, LuaEmitter.Expressions.cs, Program.cs, SourceMapTests.cs, WatchModeTests.cs
+- よかったこと: SourceMap のずれは行カウンタ復元だけでなく multiline output の実行数加算も同時に直す必要があると確認できた
+- 判断: lambda block 内部の個別行マッピングはまだ粗いが、今回の修正範囲は「後続行を壊さない」ことに絞った
+- 残課題: T108 の TinySystem facade、T114 の Lua runtime error から SourceMap を引く仕組み
+
+### T108: TinySystem C# facade 同期 ✓ (2026-06-29)
+- `TinySystem/RuntimeFacades.cs` を追加し、runtime/tinysystem.lua と対応する `Random`, `Math`, `String`, `List`, `Dict` の C# 型チェック用 API を定義した
+- Transpiler の Roslyn compilation に TinySystem.dll を参照追加し、手書き stub なしで `TinySystem.Random.NextFloat()` などが解決できるようにした
+- `TinySystem.*` facade static call を Lua runtime global (`Random.*`, `Math.*`, `String.*`, `List.*`, `Dict.*`) へ変換する mapping を追加した
+- `RandomSemanticTests` の手書き `Random` stub を削除し、`TinySystem.Random` facade 参照へ移行した
+- facade E2E テスト5件追加、Random 既存テスト3件も facade 経由で通過
+- 変更ファイル: RuntimeFacades.cs, Transpiler.cs, LuaEmitter.Expressions.cs, TinySystemFacadeTests.cs, RandomSemanticTests.cs, current/tasks/done
+- よかったこと: TinySystem.dll を Transpiler compilation に入れることで、IDE/build/check/transpile が同じ facade を見られる基盤になった
+- 判断: `System.Action` / `System.Func` は BCL 型をそのまま使い、TinySystem 側で別名 delegate を増やさない
+- 残課題: T122 の analyzer で TinySystem facade を許可 API 判定に使う、T7-T11 で実サンプルから不足 facade を洗い出す
+
+### T7: サンプル検証ハーネス整備 ✓ (2026-06-29)
+- `samples/hello.cs`, `samples/game.cs`, `samples/inventory.cs` を実ファイルから読み、C# → Lua 5.5 実行まで検証する E2E テストを追加した
+- 期待 Lua 文字列比較ではなく、代表 API の戻り値を検証する形にした
+- 検証内容: Hello greeting/add, Battle.Run summary, Inventory/Game.Test summary
+- テスト3件追加、サンプルが現行 Compact C# baseline 上で動作することを確認
+- 変更ファイル: SampleE2ETests.cs, current/tasks/done
+- よかったこと: T98-T108 の基盤修正後に既存サンプルがそのまま実行でき、baseline の実用経路を確認できた
+- 判断: `samples/lub3d_hello.cs` は外部 stub が必要なため T7 対象外とし、T121 で扱いを整理する
+- 残課題: T8-T11 で entity/statemachine/inventory/collision サンプルを拡充し、不足 API を洗い出す
+
+### T8: エンティティ定義サンプル ✓ (2026-06-29)
+- `samples/entity.cs` を追加し、class, field, auto property, enum, constructor, method による状態更新の最小サンプルを作った
+- `EntitySample.Run()` の E2E テストを追加し、生成・移動・ダメージ・switch expression による表示文字列を Lua 5.5 で検証した
+- テスト1件追加、期待値 `Slime:enemy@6,2 HP=13` を確認
+- 変更ファイル: samples/entity.cs, SampleE2ETests.cs, current/tasks/done
+- よかったこと: T104 の field/property default と T98-T100 の Core 修正後の構文をサンプルでも自然に使えることを確認できた
+- 判断: 既存 `samples/game.cs` から分離せず、entity 単体の読みやすい最小サンプルとして追加した
+- 残課題: T9 状態遷移サンプル、T10 inventory Dictionary 拡張、T11 collision サンプル
+
+### T9: 状態遷移サンプル ✓ (2026-06-29)
+- `samples/statemachine.cs` を追加し、enum, switch 文, switch 式, method call による状態遷移サンプルを作った
+- default case が先頭にある switch 文を E2E で検証し、Lua 出力では default section を最後の `else` として emit するよう修正した
+- `StateMachineSample.Run()` の E2E テストを追加し、期待値 `open,open,locked,closed` を確認
+- テスト1件追加
+- 変更ファイル: samples/statemachine.cs, LuaEmitter.Statements.cs, SampleE2ETests.cs, current/tasks/done
+- よかったこと: サンプル作成で switch default 非末尾の実バグを検出し、仕様に近い形へ修正できた
+- 判断: switch 文の section 順序は case section を先に評価し、default は出現位置に関わらず fallback として最後に出す
+- 残課題: T10 inventory Dictionary 拡張、T11 collision サンプル
+
+### T10: インベントリ Dictionary サンプル拡張 ✓ (2026-06-29)
+- `samples/inventory.cs` に `Dictionary<string, Item>` の名前検索インデックスを追加した
+- `Add` で List と Dictionary の両方を更新し、`ContainsKey` と indexer lookup を `Summary()` 経由で使うようにした
+- 既存 Sample E2E の期待値を `Items=4 Total=330 Best=Sword Shield=1` に更新し、List/LINQ/Dictionary の実サンプルを同時に検証した
+- 変更ファイル: samples/inventory.cs, SampleE2ETests.cs, current/tasks/done
+- よかったこと: 既存 Inventory サンプルの流れを保ったまま Dictionary の代表操作を自然に追加できた
+- 判断: `DictSemanticTests` の単体保証に加え、ユーザー向け sample でも `ContainsKey` + indexer を通す形にした
+- 残課題: T11 collision サンプルとサブセット妥当性レビュー
+
+### T11: 衝突処理サンプル + サブセット妥当性レビュー ✓ (2026-06-29)
+- `samples/collision.cs` を追加し、`Vec2` と `CircleCollider` を `class` で表現した衝突判定サンプルを作った
+- `CollisionSample.Run()` の E2E テストを追加し、期待値 `hit,miss,hit` を Lua 5.5 で確認した
+- `objective.md` の型リストから Core 風に見える `struct` 記述を外し、ユーザー定義 `struct` / `record struct` は Useful 扱いで class/record 代替する方針を明記した
+- サンプル検証の結果、現時点の entity/statemachine/inventory/collision ではユーザー定義 struct は不要と判断した
+- テスト1件追加
+- 変更ファイル: samples/collision.cs, SampleE2ETests.cs, objective.md, current/tasks/done
+- よかったこと: collision でも class ベースの Vec2 で十分に読みやすく、struct 実装を Core に戻す根拠は出なかった
+- 判断: ユーザー定義 struct は T120 の診断/実装方針タスクに残し、サンプル側では class/record 代替を標準とする
+- 残課題: T119 でサンプルから必要になった標準ライブラリ候補だけ追加検討する
+
+### T109: Dictionary TryGetValue セマンティクス ✓ (2026-06-29)
+- `Dictionary<TKey,TValue>.TryGetValue(key, out value)` を out 代入 + bool 戻り値として変換するようにした
+- key が存在する場合は value へ代入して `true`、存在しない場合は TValue の default (`0`/`false`/`nil`) を代入して `false` を返す
+- `out var` / 既存 out 変数の両方を statement emit 側で扱い、条件式内でも宣言済み変数として使えるようにした
+- テスト4件追加: found, missing default, `if` 条件内 out var, 既存 string out 変数の missing
+- 変更ファイル: LuaEmitter.Expressions.cs, LuaEmitter.Statements.cs, DictSemanticTests.cs, current/tasks/support-matrix/done
+- よかったこと: out/ref 全般対応へ広げず、Compact C# baseline に必要な `TryGetValue` だけを閉じた IIFE とローカル宣言で実装できた
+- 判断: `Dictionary` は Lua `nil` を key 不在と同一視する現方針を維持し、null 値セマンティクスは T111 へ残す
+- 残課題: T111 で `List<T>` null 要素と `Dictionary<K,V>` null 値の扱いを定義する
+
+### T110: LINQ Count/ToDictionary Core 実装 ✓ (2026-06-29)
+- LINQ `.Count()` / `.Count(predicate)` を `List.Count(list, predicate)` へ変換するようにした
+- LINQ `.ToDictionary(keySelector)` / `.ToDictionary(keySelector, valueSelector)` を `List.ToDictionary` runtime へ追加した
+- TinySystem C# facade に predicate 版 `Count` と `ToDictionary` overload を追加し、dotnet 側の型チェックと Lua runtime を同期した
+- テスト4件追加: Count, Count(predicate), ToDictionary key selector, ToDictionary value selector
+- 変更ファイル: runtime/tinysystem.lua, RuntimeFacades.cs, LuaEmitter.Expressions.cs, LinqSemanticTests.cs, current/tasks/support-matrix/done
+- よかったこと: objective.md の LINQ baseline に既に含まれていた API を実装へ追いつかせ、サンプルから必要になりやすい集計/辞書化を Core として扱えるようになった
+- 判断: 遅延評価は導入せず、既存 LINQ runtime と同じ即時評価 table 生成に揃える
+- 残課題: T119 で追加 LINQ (`OrderByDescending`, `Take`, `Skip`, `Last/LastOrDefault` など) の必要性をサンプルベースで判断する
+
+### T111: List/Dictionary null 保存セマンティクス ✓ (2026-06-29)
+- Lua table の制約に合わせ、`List<T>` の null 要素と `Dictionary<K,V>` の null 値は TinyC# では未対応として禁止する方針にした
+- shared compliance facts に `TCS1003` を追加し、analyzer と transpiler warning の両方で同じ検出ルールを使うようにした
+- 検出対象: collection initializer、`List.Add(null)`, `list[i] = null`, `Dictionary.Add(k, null)`, `dict[k] = null`, `ToDictionary(..., _ => null)` の直接 `null` / 参照型 `default`
+- analyzer テスト2件、transpiler diagnostic テスト1件を追加
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzer.cs, TinyCsComplianceAnalyzerTests.cs, Transpiler.cs, DiagnosticTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: sentinel を runtime に導入せず、Lua の `nil` 表現とずれるケースを事前診断に寄せて実装を小さく保てた
+- 判断: nullable flow の完全解析や null key の扱いまでは広げず、ソース上で直接分かる null 値保存をまず警告する
+- 残課題: 必要になれば T119/T120 以降で null key 診断やより強い nullable flow 解析を検討する
+
+### T112: HotReload mtime の組み込み環境対応 ✓ (2026-06-29)
+- `runtime/tinysystem.lua` の default `HotReload.mtime` から `io.popen('stat ...')` 依存を削除し、shell 非依存の no-op (`nil`) にした
+- `HotReload.watch` / `HotReload.update` は `HotReload.mtime` を `pcall` 経由で呼び、host 側 mtime 実装の例外で runtime 全体が落ちないようにした
+- engine 側は `HotReload.mtime = function(path) return fs.mtime(path) end` のように注入する方針を README/current/support-matrix に明記した
+- HotReload テスト2件追加: default mtime が shell 不要で安全に nil を返すこと、注入 mtime で watch/update が reload すること
+- 変更ファイル: runtime/tinysystem.lua, HotReloadTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: デスクトップ専用の `stat` 推測をやめ、iOS/WASM/Switch など shell-less 環境でも安全な default にできた
+- 判断: 純 Lua で不完全な mtime 推測を続けず、HotReload の file watch は host API 注入を明示要件にする
+- 残課題: T113 で Lua ビルドのプラットフォーム分岐、T114 で runtime error と SourceMap 連携を整理する
+
+### T113: Lua CMake platform 分岐 ✓ (2026-06-29)
+- `CMakeLists.txt` の Lua build を Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で分岐し、非 Windows 全部を `LUA_USE_LINUX` + `m dl` にする状態を解消した
+- Linux は `LUA_USE_LINUX` + `m` + `${CMAKE_DL_LIBS}`、macOS は `LUA_USE_MACOSX` + `m`、iOS/tvOS/watchOS は `LUA_USE_IOS`、Emscripten/unknown は `LUA_USE_C89` にした
+- `run-tests.sh` / `run-tests.ps1` は Lua binary が存在しない場合だけでなく、`CMakeLists.txt` / `luaconf.h` / `lua.c` より古い場合や version mismatch 時も再ビルドするようにした
+- Linux 環境で `cmake -B build -DCMAKE_BUILD_TYPE=Release -S . && cmake --build build --parallel 2` が通ることを確認した
+- 変更ファイル: CMakeLists.txt, run-tests.sh, run-tests.ps1, README.md, current/tasks/support-matrix/done
+- よかったこと: CMake の platform 判定を `CMAKE_SYSTEM_NAME` ベースに寄せ、desktop と embedded/WASM の前提を分けられた
+- 判断: iOS-family と Emscripten はこの repo では cross build 実行まではせず、compile definitions の方針と host 側検証境界を文書化する
+- 残課題: T114 で runtime error と SourceMap 連携を整理する
+
+### T114: SourceMap runtime error 注釈 CLI ✓ (2026-06-29)
+- `SourceMapResolver` を追加し、`.lua.map` JSON から Lua 行番号を C# ファイル:行番号へ解決できるようにした
+- `tcs --map-stacktrace <output.lua.map> [trace.txt]` を追加し、Lua stack trace 内の `file.lua:line:` 行へ `--> file.cs:line` 注釈を付けて stdout に出すようにした
+- stack trace 行が SourceMap の exact key に無い場合は、直前の mapping を使う nearest lookup にした
+- `.lua.map` の仕様を README に明記した: `version: 1`, `mappings: { "<luaLine>": { "file": "...", "line": n } }`
+- テスト2件追加: resolver の exact/nearest 注釈、CLI `--map-stacktrace` の注釈出力
+- 変更ファイル: SourceMapResolver.cs, Program.cs, SourceMapTests.cs, CliRuntimeTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: runtime 実行器に依存せず、Lua の標準 stack trace テキストを後処理するだけで既存 SourceMap を実用経路へ接続できた
+- 判断: 現時点の SourceMap は statement の最初の出力行中心なので、generated line 内部の完全精度ではなく nearest lookup による実用的な復元を採用した
+- 残課題: SourceMap の列情報や multi-line 式内部の精度改善は、必要になった時に別タスクで扱う
+
+### T116: README / objective / q / current 同期 ✓ (2026-06-29)
+- README に `--ref` の参照専用 stub/facade 手順を追加し、CMake 要件を `3.12+` へ更新した
+- `objective.md` を TinySystem facade 実装済み、collection null 診断、実装済み String/LINQ 対象範囲に合わせた
+- `q.md` の Q2/Q3/Q5 を resolved な決定事項として整理し、namespace mapping、entrypoint、CLI/watch/sourcemap 方針を明記した
+- `doc/current.md` の次タスクを T117/T119/T122 へ同期した
+- 変更ファイル: CMakeLists.txt, README.md, objective.md, q.md, current/tasks/done
+- よかったこと: 実装で固まった CLI と facade の境界を古い検討メモから回収できた
+- 判断: commit 履歴欄は実 git 履歴として残し、未コミットの今回作業は done/current の完了タスク欄で表現する
+- 残課題: T117 で CLI UX、T118 で配布/依存の再現性、T121 で外部エンジンサンプルの扱いを整理する
+
+### T117: CLI 引数 UX 改善 ✓ (2026-06-29)
+- `--help` / `-h` を追加し、usage を stdout に出して exit 0 にした
+- `--version` を追加し、`tcs 0.1.0` を stdout に出して exit 0 にした
+- unknown option を error として stderr に出し、exit 1 にした
+- `-o` / `--ref` の値欠落を検出し、次の option を値として誤読しないようにした
+- README の `src/*.cs` は shell glob 展開に依存する例であることを明記した
+- CLI テスト5件追加
+- 変更ファイル: Program.cs, CliRuntimeTests.cs, README.md, current/tasks/support-matrix/done
+- よかったこと: 引数パースを大きな parser 導入なしで、既存 CLI の構造に沿って明確化できた
+- 判断: glob 展開は CLI 側ではまだ実装せず、T117 ではドキュメント明記に留める
+- 残課題: T118 で配布/依存の再現性、T121 で外部エンジンサンプルの扱いを整理する
+
+### T118: 依存・配布の再現性 ✓ (2026-06-29)
+- floating package version (`4.*`, `17.*`, `2.*`) を解決済み version へ pin した
+- `Directory.Build.props` で `RestorePackagesWithLockFile=true` を有効化し、各 project の `packages.lock.json` を生成した
+- `Transpiler.csproj` の publish/build 出力へ `runtime/tinysystem.lua` を `runtime/` 配下でコピーするようにした
+- `dotnet publish Transpiler/Transpiler.csproj -c Release -o /tmp/tcs-publish` を実行し、publish 出力単体で runtime prelude 埋め込みが動くことを確認した
+- README に `deps/lua` submodule policy、package pin/lock policy、CLI publish 手順と runtime 同梱方針を追記した
+- 変更ファイル: Directory.Build.props, *.csproj, packages.lock.json, README.md, current/tasks/support-matrix/done
+- よかったこと: runtime を publish output に含めたことで、開発 checkout 以外から実行した CLI でも `--no-runtime` なしの通常変換が再現できる
+- 判断: NuGet は floating range を使わず、今 restore で解決されていた version へ明示 pin する
+- 残課題: T119 で標準ライブラリ小拡張、T120 で struct 方針、T121 で外部エンジンサンプルの扱いを整理する
+
+### T119: 標準ライブラリ小拡張 ✓ (2026-06-29)
+- Compact C# baseline とサンプルで不足しやすい API に絞り、`String.IndexOf`, `String.Join`, `Math.Pow`, `List.Sort`, LINQ `OrderByDescending` / `Take` / `Skip` / `Last` / `LastOrDefault` を追加した
+- Lua runtime と TinySystem C# facade を同期し、transpiler の instance/static/extension method mapping を追加した
+- LINQ 追加 API は既存方針どおり遅延評価ではなく即時評価 table を返す
+- テスト13件追加: string IndexOf/Join overloads, Math.Pow, List.Sort overloads, LINQ OrderByDescending/Take/Skip/Last/LastOrDefault
+- 変更ファイル: runtime/tinysystem.lua, RuntimeFacades.cs, LuaEmitter.Expressions.cs, StringMethodTests.cs, MathSemanticTests.cs, ListSemanticTests.cs, LinqSemanticTests.cs, README.md, objective.md, current/tasks/support-matrix/done
+- よかったこと: T119 の候補を全部入り BCL に広げず、ゲームスクリプトで使いやすい小核だけを TDD で増やせた
+- 判断: `List.Reverse`, `Find` 系、DateTime/TimeSpan 相当は現サンプルでは必要性が薄いため未対応のまま維持する
+- 残課題: T120 で struct 方針、T121 で外部エンジンサンプルの扱いを整理する
+
+### T120: struct 方針を TCS1001 診断として確定 ✓ (2026-06-29)
+- ユーザー定義 `struct` / `record struct` は現時点で Lua へ class 相当に lowering せず、TCS1001 の未対応構文診断として扱う方針に確定した
+- `record struct` の analyzer / transpiler 診断テストを追加し、既存 `struct` 診断と同じ shared compliance facts 経由で検出されることを確認した
+- `objective.md` と `doc/support-matrix.md` の記述を、曖昧な「class に寄せる」から「class / record class で代替」に更新した
+- テスト2件追加: analyzer `RecordStructDeclaration_ReportsUnsupportedSyntax`, transpiler `UnsupportedRecordStructDeclaration_ReportsWarning`
+- 変更ファイル: TinyCsComplianceAnalyzerTests.cs, DiagnosticTests.cs, README.md, objective.md, current/tasks/support-matrix/done
+- よかったこと: 値セマンティクスの不完全な再現に踏み込まず、現サンプルで有効だった class/record class 代替を仕様境界として明確にできた
+- 判断: 外部数学型や engine API の値型が必要になった場合は、ユーザー定義 struct lowering ではなく facade/stub か専用 runtime 型として別途検討する
+- 残課題: T121 で外部エンジンサンプルの扱いを整理する
+
+### T121: 外部エンジン連携サンプル整理 ✓ (2026-06-29)
+- `samples/lub3d_hello.cs` を削除し、engine agnostic な `samples/host_api_game.cs` + `samples/host_api_stub.cs` に置き換えた
+- `host_api_stub.cs` は `--ref` 用の型チェック専用 stub とし、Lua 出力には含めない方針を sample と README で明示した
+- E2E テストで ref source が Lua に出ないこと、実行時に注入した `Screen` / `Time` / `Log` Lua table で sample が動くことを確認した
+- テスト1件追加: `Sample_HostApiRef_TranspilesAndRuns`
+- 変更ファイル: samples/host_api_game.cs, samples/host_api_stub.cs, samples/lub3d_hello.cs, SampleE2ETests.cs, README.md, current/tasks/done
+- よかったこと: `--ref` の代表例を特定エンジン名から外し、host API 境界だけを小さく示せるようになった
+- 判断: lub3d 連携は過去の generator 参考実装として記録に残し、tcs 本体の sample は engine agnostic に保つ
+- 残課題: T122 の Rider 実機確認が残る

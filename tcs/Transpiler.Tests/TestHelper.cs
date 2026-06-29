@@ -6,6 +6,7 @@ public static class TestHelper
 {
     private static readonly string ProjectRoot = FindProjectRoot();
     private static readonly string LuaPath = FindLua();
+    public static string LuaVersion => GetLuaVersion(LuaPath);
 
     private static string FindProjectRoot()
     {
@@ -43,11 +44,62 @@ public static class TestHelper
         foreach (var name in names)
         {
             var candidate = Path.Combine(ProjectRoot, "deps", "lua", name);
-            if (File.Exists(candidate)) return candidate;
+            if (File.Exists(candidate))
+            {
+                EnsureLua55(candidate);
+                return candidate;
+            }
         }
 
         // Fallback to system PATH
-        return isWindows ? "lua.exe" : "lua";
+        var fallback = isWindows ? "lua.exe" : "lua";
+        EnsureLua55(fallback);
+        return fallback;
+    }
+
+    private static void EnsureLua55(string luaPath)
+    {
+        var version = GetLuaVersion(luaPath);
+        if (!version.StartsWith("Lua 5.5", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"TinyC# tests require Lua 5.5, but '{luaPath}' is '{version}'.");
+        }
+    }
+
+    private static string GetLuaVersion(string luaPath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = luaPath,
+                Arguments = "-v",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException(
+                    $"Failed to start Lua: {luaPath}");
+            var stdout = proc.StandardOutput.ReadToEnd();
+            var stderr = proc.StandardError.ReadToEnd();
+            proc.WaitForExit();
+            var version = (stdout + stderr).Trim();
+            if (proc.ExitCode != 0 || version.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to read Lua version from '{luaPath}'.");
+            }
+
+            return version;
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                $"Lua 5.5 binary not found or not executable: {luaPath}", ex);
+        }
     }
 
     /// <summary>

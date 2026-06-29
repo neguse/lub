@@ -53,4 +53,33 @@ public class InheritanceTests
             """);
         Assert.Equal("25", result);
     }
+
+    [Fact]
+    public void BaseMethodCall_CallsParentImplementation()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Animal
+            {
+                public string Name;
+
+                public Animal(string name) { this.Name = name; }
+
+                public string Speak() { return this.Name + " speaks"; }
+            }
+
+            public class Dog : Animal
+            {
+                public Dog(string name) : base(name) { }
+
+                public new string Speak()
+                {
+                    return base.Speak() + " and barks";
+                }
+            }
+            """, """
+            Dog.new("Rex"):Speak()
+            """);
+
+        Assert.Equal("Rex speaks and barks", result);
+    }
 }

@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Compact C# baseline 整理済み
 
-### 完了済み (234テスト tcs / 477テスト lub3d)
+### 完了済み (303テスト tcs / 9テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -24,6 +24,28 @@
 **Phase 19**: ソースマップ (T95-T96)
 **Docs**: Compact C# baseline / support matrix 分類整理 (T103,T115)
 **T97**: 未対応構文を黙殺しない診断へ統一
+**T101-T102**: CLI runtime prelude 埋め込み + Lua 5.5 バージョン検証
+**T98-T100,T104-T105**: Core 正しさ穴埋め (top-level/base/null条件/default field/general for)
+**T106-T107**: lambda block SourceMap 修正 + watch `--ref` 監視
+**T108**: TinySystem C# facade と runtime mapping 同期
+**T7**: samples/hello.cs, game.cs, inventory.cs E2E 検証
+**T8**: samples/entity.cs 追加 + E2E 検証
+**T9**: samples/statemachine.cs 追加 + switch default 順序修正
+**T10**: samples/inventory.cs Dictionary 使用例へ拡張
+**T11**: samples/collision.cs 追加 + struct 方針同期
+**T109**: Dictionary `TryGetValue` out 代入 + default 値
+**T110**: LINQ `Count()` / `ToDictionary()` Core 実装
+**T111**: List/Dictionary null 保存の禁止診断
+**T112**: HotReload mtime の shell 非依存化
+**T113**: Lua CMake ビルドの platform 分岐 + stale rebuild
+**T114**: Lua stack trace の SourceMap 注釈 CLI
+**T116**: README/objective/q/current 同期
+**T117**: CLI 引数 UX (`--help`, `--version`, unknown/missing option)
+**T118**: dependency pin / lock file / publish runtime 同梱
+**T119**: 標準ライブラリ小拡張 (`IndexOf`/`Join`/`Pow`/`Sort`/LINQ 追加)
+**T120**: ユーザー定義 `struct` / `record struct` を TCS1001 未対応診断として確定
+**T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
+**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -35,7 +57,9 @@
 | instance method | obj:Method() |
 | field / auto property | table field |
 | custom property | get_/set_ メソッド |
+| field / auto property default | 型別 default (`0`/`false`/`nil`) |
 | enum | 定数テーブル |
+| top-level statements | 型定義後に Lua chunk へ出力 |
 | if/else/elseif | if/elseif/else |
 | for (i=0; i<n; i++) | for i=0,n-1 |
 | foreach | ipairs/pairs |
@@ -52,15 +76,18 @@
 | ?? | or |
 | ??= | if x == nil then x = v end |
 | ?. / ?[] | IIFE nil チェック |
+| s?.Method / list?.Method / dict?.Method | 型別 runtime mapping + nil チェック |
 | i++ (statement) | i = i + 1 |
 | cast | 透過 (型消去) |
 | new List<T>{...} | {…} (sequence table) |
 | list[i] | list[i+1] (0→1 indexed) |
 | list.Count | #list |
-| list.Where/Select/... | List.Method(list, fn) |
+| list.Where/Select/Count/ToDictionary/... | List.Method(list, fn) |
 | new Dictionary<K,V>{...} | {…} (hash table) |
 | dict[key] | dict[key] |
 | dict.ContainsKey(k) | (dict[k] ~= nil) |
+| dict.TryGetValue(k, out v) | out 代入 + bool |
+| collection null storage | TCS1003 warning |
 | switch statement | if-elseif-else end |
 | switch expression | IIFE if-elseif-else |
 | interface | 透過 (出力なし) |
@@ -79,28 +106,55 @@
 | var (x, y) = p | local x, y = p.X, p.Y |
 | record == record | __eq メタメソッド |
 | obj.ExtMethod() | ExtClass.ExtMethod(obj) |
+| base.Method() | Base.Method(self, ...) |
 | $"{val:F2}" | string.format("%.2f", val) |
 
 ### TinySystem ランタイム (runtime/tinysystem.lua)
-- List: new, Add, Remove, Count, Contains, IndexOf
-- LINQ: Where, Select, Any, All, First, FirstOrDefault, OrderBy, Min, Max, Sum, ToList
+- List: new, Add, Remove, Count, Contains, IndexOf, Sort
+- LINQ: Where, Select, Any, All, First, FirstOrDefault, Last, LastOrDefault, OrderBy, OrderByDescending, Take, Skip, Min, Max, Sum, Count, ToList, ToDictionary
 - Dict: new, Add, Remove, ContainsKey, Count, Keys, Values
-- Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, PI
+- Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, Pow, PI
 - Random: Next, NextFloat, Range
-- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split
+- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split, IndexOf, Join
+
+### TinySystem C# facade (TinySystem/)
+- `TinySystem.Random`, `TinySystem.Math`, `TinySystem.String`, `TinySystem.List`, `TinySystem.Dict`
+- Transpiler の Roslyn compilation は TinySystem.dll を参照し、facade static call を Lua runtime global (`Random.*`, `Math.*`, etc.) へ変換する
+- `System.Action` / `System.Func` は標準 BCL 型をそのまま使い、TinySystem facade の delegate 引数にも利用する
 
 ### CLI
-- `dotnet run --project Transpiler -- input1.cs [input2.cs ...] [--ref ref.cs] [-o output.lua] [--watch]`
-- `--watch` / `-w`: ファイル変更監視 + 自動再トランスパイル (FileSystemWatcher + 100msデバウンス)
+- `dotnet run --project Transpiler -- input1.cs [input2.cs ...] [--ref ref.cs] [-o output.lua] [--watch] [--no-runtime]`
+- `dotnet run --project Transpiler -- check input1.cs [input2.cs ...] [--ref ref.cs]`: Lua を出力せず、診断だけを返す CI 向けチェック
+- `--help` / `--version`
+- 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込み、`--no-runtime` で bare 出力に戻せる
+- `--sourcemap`: runtime prelude 埋め込み時も Lua 行番号を offset 済みで JSON 出力
+- `--map-stacktrace out.lua.map [trace.txt]`: Lua stack trace の `file.lua:line:` を C# `file.cs:line` で注釈する
+- `--watch` / `-w`: 入力/`--ref` ファイル変更監視 + 自動再トランスパイル (FileSystemWatcher + 100msデバウンス)
 - エラー時: ソース位置付きでエラーメッセージを stderr に出力
-- 警告時: 未対応構文を stderr に出力
+- 警告時: TCS1001/TCS1002/TCS1003 などの準拠診断を stderr に出力
+
+### Lua 5.5 build
+- CMake は Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で Lua compile definitions と system libs を分岐
+- `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成、CMake 入力より古い、または `Lua 5.5` でない場合に再ビルドし、dotnet tests と sample `tcs check` を実行する
+- `.github/workflows/ci.yml` は submodule checkout → .NET 10 setup → `run-tests.sh` → analyzer demo build → analyzer pack を実行する
+
+### 依存・配布
+- `deps/lua` は git submodule commit で固定し、更新時は `Lua 5.5` version check を必須にする
+- NuGet package は `.csproj` に明示 version を pin し、`packages.lock.json` で transitive dependency も固定する
+- `dotnet publish Transpiler/Transpiler.csproj -c Release -o <dir>` は `runtime/tinysystem.lua` を publish 出力の `runtime/` 配下へ同梱する
 
 ### HotReload (runtime/tinysystem.lua)
 - `HotReload.swap(filepath)`: dofile → グローバルテーブルの深い更新 (既存インスタンス状態保持)
-- `HotReload.watch(filepath)`: ファイル変更監視 (mtime ベース)
+- `HotReload.watch(filepath)`: ファイル変更監視 (host が `HotReload.mtime` を注入した場合のみ)
 - `HotReload.update()`: フレームごとのポーリング (0.5秒間隔)
+- `HotReload.mtime(filepath)`: デフォルトは shell 非依存の no-op (`nil`)、engine 側 `fs.mtime()` 等を代入する
 
-### TinyCSharpGen (lub3d Generator 統合)
+### 外部 API / --ref サンプル
+- `samples/host_api_game.cs` + `samples/host_api_stub.cs` を engine agnostic な参照専用 stub 例として追加
+- `--ref` source は型チェックだけに使い、Lua 出力には含めない。実行時は host / engine 側が同名 Lua table を注入する
+- 旧 `samples/lub3d_hello.cs` は削除し、lub3d 直対応前提の sample は tcs 本体から外した
+
+### TinyCSharpGen (lub3d Generator 参考実装)
 - 現方針では lub3d 直対応を tcs 本体の主目的にせず、外部 API facade / `--ref` の参考実装として扱う
 - `lub3d/Generator/TinyCSharp/TinyCSharpGen.cs` — ModuleSpec → C# interface 生成
 - BindingType → C# 型マッピング完了
@@ -112,10 +166,11 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC を作る
-- T101 + T102: 生成 Lua の TinySystem 読み込み方式と Lua 5.5 実行環境を再現可能にする
-- T98-T100 + T104-T105: Core 判定済みの構文・意味論ギャップを埋める
-- T108: TinySystem C# facade を runtime と同期する
-- T7-T11: baseline と基盤が固まってからサンプル/E2E で開発体験を検証する
+  - 進行中: Analyzer project / analyzer tests / analyzer-demo project / `.editorconfig` / `tcs check` / CI workflow / Rider 確認 checklist を追加
+  - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x4 / TCS1002 x1 を検出する
+  - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
+  - `q.md` に Q12 として Rider go / no-go 判断待ちを記録
+  - 残り: Rider 実機で squiggle / inspection 表示を確認し、go / no-go と後続タスクを記録する
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ

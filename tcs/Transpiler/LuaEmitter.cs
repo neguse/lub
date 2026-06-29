@@ -17,7 +17,9 @@ public partial class LuaEmitter
     public List<string> Warnings { get; } = [];
     public SourceMap SourceMap { get; } = new();
 
-    public void Visit(CSharpCompilation compilation, SemanticModel model, SyntaxTree tree)
+    public void Visit(CSharpCompilation compilation, SemanticModel model,
+        SyntaxTree tree, bool emitNonGlobalMembers = true,
+        bool emitGlobalStatements = true)
     {
         if (!_headerEmitted)
         {
@@ -25,12 +27,30 @@ public partial class LuaEmitter
             _headerEmitted = true;
         }
         var root = tree.GetCompilationUnitRoot();
-        foreach (var member in root.Members)
-            VisitMember(model, member);
+        if (emitNonGlobalMembers)
+        {
+            foreach (var member in root.Members)
+            {
+                if (member is not GlobalStatementSyntax)
+                    VisitMember(model, member);
+            }
+        }
+
+        if (emitGlobalStatements)
+        {
+            foreach (var global in root.Members.OfType<GlobalStatementSyntax>())
+                VisitGlobalStatement(model, global);
+        }
     }
 
     private void VisitMember(SemanticModel model, MemberDeclarationSyntax member)
     {
+        if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(member, out _))
+        {
+            WarnUnsupportedMember(member);
+            return;
+        }
+
         switch (member)
         {
             case NamespaceDeclarationSyntax ns:
@@ -51,11 +71,18 @@ public partial class LuaEmitter
             case InterfaceDeclarationSyntax:
                 // Interfaces are type-only; no Lua output
                 break;
+            case GlobalStatementSyntax global:
+                VisitGlobalStatement(model, global);
+                break;
             default:
                 WarnUnsupportedMember(member);
                 break;
         }
     }
+
+    private void VisitGlobalStatement(SemanticModel model,
+        GlobalStatementSyntax global) =>
+        VisitStatement(model, global.Statement);
 
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
@@ -73,7 +100,7 @@ public partial class LuaEmitter
             AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
         AppendLine();
 
-        var fieldInits = new List<(string Name, ExpressionSyntax? Init)>();
+        var fieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
         var staticFieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
         ConstructorDeclarationSyntax? ctor = null;
 
@@ -84,20 +111,22 @@ public partial class LuaEmitter
                 case FieldDeclarationSyntax field:
                     var isStatic = field.Modifiers.Any(SyntaxKind.StaticKeyword)
                         || field.Modifiers.Any(SyntaxKind.ConstKeyword);
+                    var typeInfo = model.GetTypeInfo(field.Declaration.Type);
                     foreach (var v in field.Declaration.Variables)
                     {
                         if (isStatic)
                         {
-                            var typeInfo = model.GetTypeInfo(field.Declaration.Type);
                             staticFieldInits.Add((v.Identifier.Text, v.Initializer?.Value,
                                 typeInfo.Type));
                         }
                         else
-                            fieldInits.Add((v.Identifier.Text, v.Initializer?.Value));
+                            fieldInits.Add((v.Identifier.Text, v.Initializer?.Value,
+                                typeInfo.Type));
                     }
                     break;
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
-                    fieldInits.Add((prop.Identifier.Text, prop.Initializer?.Value));
+                    fieldInits.Add((prop.Identifier.Text, prop.Initializer?.Value,
+                        model.GetTypeInfo(prop.Type).Type));
                     break;
                 case ConstructorDeclarationSyntax c:
                     ctor = c;
@@ -144,7 +173,8 @@ public partial class LuaEmitter
         && prop.AccessorList.Accessors.All(a => a.Body == null && a.ExpressionBody == null);
 
     private void EmitConstructor(SemanticModel model, string className,
-        ConstructorDeclarationSyntax? ctor, List<(string Name, ExpressionSyntax? Init)> fieldInits)
+        ConstructorDeclarationSyntax? ctor,
+        List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits)
     {
         var ctorParams = ctor?.ParameterList.Parameters
             .Select(p => p.Identifier.Text).ToList() ?? [];
@@ -172,10 +202,12 @@ public partial class LuaEmitter
             AppendLine($"local self = setmetatable({{}}, {className})");
         }
 
-        foreach (var (fieldName, init) in fieldInits)
+        foreach (var (fieldName, init, type) in fieldInits)
         {
             if (init != null)
                 AppendLine($"self.{fieldName} = {VisitExpression(model, init)}");
+            else
+                AppendLine($"self.{fieldName} = {GetDefaultValueForType(type!)}");
         }
 
         if (ctor?.Body != null)
@@ -323,6 +355,7 @@ public partial class LuaEmitter
         if (string.IsNullOrEmpty(line))
         {
             _sb.AppendLine();
+            _luaLine++;
         }
         else
         {
@@ -331,19 +364,27 @@ public partial class LuaEmitter
                 SourceMap.Add(_luaLine, _currentSource.Value.File, _currentSource.Value.Line);
                 _currentSource = null;
             }
-            _sb.AppendLine($"{new string(' ', _indent * 2)}{line}");
+            var output = $"{new string(' ', _indent * 2)}{line}";
+            _sb.AppendLine(output);
+            _luaLine += CountOutputLines(output);
         }
-        _luaLine++;
     }
+
+    private static int CountOutputLines(string output) =>
+        output.Count(ch => ch == '\n') + 1;
 
     private string WarnUnsupported(SyntaxNode node, string description)
     {
-        var loc = node.GetLocation().GetLineSpan();
-        var line = loc.StartLinePosition.Line + 1;
-        var col = loc.StartLinePosition.Character + 1;
-        var file = loc.Path;
-        var prefix = string.IsNullOrEmpty(file) ? "" : file;
-        Warnings.Add($"{prefix}({line},{col}): unsupported {description}");
+        if (TinyCsComplianceFacts.TryGetUnsupportedSyntax(node,
+            out var syntaxName))
+        {
+            description = syntaxName;
+            return $"--[[ unsupported: {description} ]]";
+        }
+
+        Warnings.Add(TinyCsComplianceFacts.FormatWarning(node,
+            TinyCsDiagnosticIds.UnsupportedSyntax,
+            $"unsupported syntax: {description}"));
         return $"--[[ unsupported: {description} ]]";
     }
 

@@ -195,6 +195,56 @@ public class HotReloadTests
         Assert.Equal("A_v2|B_v2", result);
     }
 
+    [Fact]
+    public void HotReload_DefaultMtime_DoesNotRequireShell()
+    {
+        var result = RunWithRuntime("""
+            local old_popen = io.popen
+            io.popen = function() error("shell unavailable") end
+
+            local ok, value = pcall(HotReload.mtime, "missing.lua")
+
+            io.popen = old_popen
+            print(tostring(ok) .. "|" .. tostring(value))
+            """);
+        Assert.Equal("true|nil", result);
+    }
+
+    [Fact]
+    public void HotReload_Watch_UsesInjectedMtime()
+    {
+        var result = RunWithRuntime("""
+            Widget = {}
+            function Widget.Value() return "v1" end
+
+            local tmp = os.tmpname()
+            local f = io.open(tmp, "w")
+            f:write([[
+            Widget = {}
+            function Widget.Value() return "v2" end
+            ]])
+            f:close()
+
+            local mtimes = {}
+            mtimes[tmp] = 1
+            HotReload.mtime = function(path) return mtimes[path] end
+            HotReload.interval = 0
+
+            local reloaded = false
+            HotReload.watch(tmp, function() reloaded = true end)
+            mtimes[tmp] = 2
+
+            local real_print = print
+            print = function() end
+            HotReload.update()
+            print = real_print
+
+            os.remove(tmp)
+            print(tostring(reloaded) .. "|" .. Widget.Value())
+            """);
+        Assert.Equal("true|v2", result);
+    }
+
     // ===== E2E: C# transpile → Lua HotReload =====
 
     [Fact]

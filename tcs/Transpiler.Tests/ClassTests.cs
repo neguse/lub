@@ -108,6 +108,46 @@ public class ClassTests
     }
 
     [Fact]
+    public void InstanceField_DefaultValues()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Defaults
+            {
+                public int Count;
+                public bool Enabled;
+                public string Name;
+            }
+            """, """
+            (function()
+              local d = Defaults.new()
+              return tostring(d.Count) .. "," .. tostring(d.Enabled) .. "," .. tostring(d.Name == nil)
+            end)()
+            """);
+
+        Assert.Equal("0,false,true", result);
+    }
+
+    [Fact]
+    public void AutoProperty_DefaultValues()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Defaults
+            {
+                public int Count { get; set; }
+                public bool Enabled { get; set; }
+                public string Name { get; set; }
+            }
+            """, """
+            (function()
+              local d = Defaults.new()
+              return tostring(d.Count) .. "," .. tostring(d.Enabled) .. "," .. tostring(d.Name == nil)
+            end)()
+            """);
+
+        Assert.Equal("0,false,true", result);
+    }
+
+    [Fact]
     public void ExpressionBodiedMethod()
     {
         var result = TestHelper.TranspileAndRun("""

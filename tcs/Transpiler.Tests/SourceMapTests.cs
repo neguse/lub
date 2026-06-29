@@ -90,4 +90,63 @@ public class SourceMapTests
         Assert.Contains("\"1\":", json);
         Assert.Contains("\"line\": 5", json);
     }
+
+    [Fact]
+    public void SourceMap_AfterBlockLambda_MapsFollowingStatement()
+    {
+        var source = """
+            using System;
+            public class T
+            {
+                public static int Test()
+                {
+                    Func<int, int> f = x =>
+                    {
+                        var y = x + 1;
+                        return y;
+                    };
+                    var z = 10;
+                    return f(z);
+                }
+            }
+            """;
+
+        var result = Transpiler.TranspileWithDiagnostics([source], ["lambda.cs"]);
+
+        Assert.True(result.Success);
+        var lines = result.Lua.Split('\n');
+        var zLine = Array.FindIndex(lines, line => line.Contains("local z = 10")) + 1;
+        Assert.True(zLine > 0, "Could not find 'local z = 10' in output");
+
+        var entry = result.SourceMap!.Lookup(zLine);
+
+        Assert.NotNull(entry);
+        Assert.Equal("lambda.cs", entry.Value.File);
+        Assert.Equal(11, entry.Value.Line);
+    }
+
+    [Fact]
+    public void SourceMapResolver_AnnotatesStackTrace_WithNearestMapping()
+    {
+        var mapJson = """
+            {
+              "version": 1,
+              "mappings": {
+                "10": {"file": "app.cs", "line": 5},
+                "20": {"file": "app.cs", "line": 12}
+              }
+            }
+            """;
+        var trace = """
+            app.lua:10: boom
+            stack traceback:
+                app.lua:21: in function 'T.Test'
+            """;
+
+        var annotated = SourceMapResolver.AnnotateStackTrace(trace, mapJson);
+
+        Assert.Contains("app.lua:10: boom  --> app.cs:5", annotated);
+        Assert.Contains("app.lua:21: in function 'T.Test'  --> app.cs:12",
+            annotated);
+    }
 }

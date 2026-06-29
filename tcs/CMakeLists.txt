@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.12)
 project(tcs-lua C)
 
 set(LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/deps/lua)
@@ -26,19 +26,47 @@ set(LUA_LIB
 # --- liblua (static library, shared by lua) ---
 add_library(liblua STATIC ${LUA_CORE} ${LUA_LIB})
 target_include_directories(liblua PUBLIC ${LUA_SRC})
+
+set(TCS_LUA_DEFINITIONS)
+set(TCS_LUA_SYSTEM_LIBS)
+
 if(WIN32)
-    target_compile_definitions(liblua PRIVATE _CRT_SECURE_NO_WARNINGS)
+    list(APPEND TCS_LUA_DEFINITIONS _CRT_SECURE_NO_WARNINGS)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND TCS_LUA_DEFINITIONS LUA_USE_LINUX)
+    list(APPEND TCS_LUA_SYSTEM_LIBS m ${CMAKE_DL_LIBS})
+elseif(APPLE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS"
+            OR CMAKE_SYSTEM_NAME STREQUAL "tvOS"
+            OR CMAKE_SYSTEM_NAME STREQUAL "watchOS")
+        list(APPEND TCS_LUA_DEFINITIONS LUA_USE_IOS)
+    else()
+        list(APPEND TCS_LUA_DEFINITIONS LUA_USE_MACOSX)
+    endif()
+    list(APPEND TCS_LUA_SYSTEM_LIBS m)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # WASM builds should not assume POSIX dlopen/stat/readline support.
+    list(APPEND TCS_LUA_DEFINITIONS LUA_USE_C89)
+elseif(CMAKE_SYSTEM_NAME MATCHES "^(FreeBSD|OpenBSD|NetBSD|DragonFly)$")
+    list(APPEND TCS_LUA_DEFINITIONS LUA_USE_POSIX)
+    list(APPEND TCS_LUA_SYSTEM_LIBS m)
+elseif(UNIX)
+    # Generic Unix: use POSIX libc helpers, but do not assume dlopen needs -ldl.
+    list(APPEND TCS_LUA_DEFINITIONS LUA_USE_POSIX)
+    list(APPEND TCS_LUA_SYSTEM_LIBS m)
 else()
-    target_compile_definitions(liblua PRIVATE LUA_USE_LINUX)
-    target_link_libraries(liblua m dl)
+    list(APPEND TCS_LUA_DEFINITIONS LUA_USE_C89)
+endif()
+
+target_compile_definitions(liblua PRIVATE ${TCS_LUA_DEFINITIONS})
+if(TCS_LUA_SYSTEM_LIBS)
+    target_link_libraries(liblua PUBLIC ${TCS_LUA_SYSTEM_LIBS})
 endif()
 
 # --- lua (standard interpreter) ---
 add_executable(lua ${LUA_SRC}/lua.c)
 target_link_libraries(lua liblua)
-if(WIN32)
-    target_compile_definitions(lua PRIVATE _CRT_SECURE_NO_WARNINGS)
-endif()
+target_compile_definitions(lua PRIVATE ${TCS_LUA_DEFINITIONS})
 set_target_properties(lua PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${LUA_SRC}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${LUA_SRC}

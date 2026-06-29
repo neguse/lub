@@ -9,6 +9,9 @@ public partial class LuaEmitter
     private void VisitStatement(SemanticModel model, StatementSyntax stmt)
     {
         SetSource(stmt);
+        if (stmt is not BlockSyntax && EmitOutVarDeclarations(stmt))
+            SetSource(stmt);
+
         switch (stmt)
         {
             case ReturnStatementSyntax ret:
@@ -87,10 +90,31 @@ public partial class LuaEmitter
         }
     }
 
+    private bool EmitOutVarDeclarations(StatementSyntax stmt)
+    {
+        var names = stmt.DescendantNodes()
+            .OfType<ArgumentSyntax>()
+            .Where(arg => arg.Ancestors().OfType<StatementSyntax>().FirstOrDefault() == stmt)
+            .Select(TryGetOutArgumentName)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Distinct()
+            .ToList();
+
+        foreach (var name in names)
+            AppendLine($"local {name}");
+
+        return names.Count > 0;
+    }
+
     private void VisitExpressionStatement(SemanticModel model, ExpressionStatementSyntax exprStmt)
     {
+        VisitExpressionAsStatement(model, exprStmt.Expression);
+    }
+
+    private void VisitExpressionAsStatement(SemanticModel model, ExpressionSyntax expr)
+    {
         // Handle i++ / i-- as statements: emit as i = i + 1
-        if (exprStmt.Expression is PostfixUnaryExpressionSyntax postfix)
+        if (expr is PostfixUnaryExpressionSyntax postfix)
         {
             var operand = VisitExpression(model, postfix.Operand);
             var op = postfix.Kind() switch
@@ -101,7 +125,7 @@ public partial class LuaEmitter
             };
             if (op != null) { AppendLine($"{operand} = {operand} {op} 1"); return; }
         }
-        if (exprStmt.Expression is PrefixUnaryExpressionSyntax prefix)
+        if (expr is PrefixUnaryExpressionSyntax prefix)
         {
             var operand = VisitExpression(model, prefix.Operand);
             var op = prefix.Kind() switch
@@ -113,7 +137,7 @@ public partial class LuaEmitter
             if (op != null) { AppendLine($"{operand} = {operand} {op} 1"); return; }
         }
         // ??= as statement: emit as if-then block
-        if (exprStmt.Expression is AssignmentExpressionSyntax
+        if (expr is AssignmentExpressionSyntax
             { RawKind: (int)SyntaxKind.CoalesceAssignmentExpression } coalesce)
         {
             var left = VisitExpression(model, coalesce.Left);
@@ -125,7 +149,7 @@ public partial class LuaEmitter
             AppendLine("end");
             return;
         }
-        AppendLine(VisitExpression(model, exprStmt.Expression));
+        AppendLine(VisitExpression(model, expr));
     }
 
     private void VisitBlock(SemanticModel model, StatementSyntax stmt)
@@ -238,7 +262,7 @@ public partial class LuaEmitter
         VisitBlock(model, forStmt.Statement);
         EmitContinueLabel(label);
         foreach (var inc in forStmt.Incrementors)
-            AppendLine(VisitExpression(model, inc));
+            VisitExpressionAsStatement(model, inc);
         _indent--;
         AppendLine("end");
         PopContinueLabel();
@@ -288,22 +312,19 @@ public partial class LuaEmitter
     private void VisitSwitch(SemanticModel model, SwitchStatementSyntax switchStmt)
     {
         var governing = VisitExpression(model, switchStmt.Expression);
+        var defaultSection = switchStmt.Sections
+            .FirstOrDefault(s => s.Labels.Any(l => l is DefaultSwitchLabelSyntax));
+        var sections = switchStmt.Sections
+            .Where(s => !s.Labels.Any(l => l is DefaultSwitchLabelSyntax))
+            .ToList();
         bool first = true;
-        foreach (var section in switchStmt.Sections)
+        foreach (var section in sections)
         {
-            bool isDefault = section.Labels.Any(l => l is DefaultSwitchLabelSyntax);
-            if (isDefault)
-            {
-                AppendLine(first ? "do" : "else");
-            }
-            else
-            {
-                var conditions = section.Labels
-                    .OfType<CaseSwitchLabelSyntax>()
-                    .Select(l => $"{governing} == {VisitExpression(model, l.Value)}");
-                var cond = string.Join(" or ", conditions);
-                AppendLine($"{(first ? "if" : "elseif")} {cond} then");
-            }
+            var conditions = section.Labels
+                .OfType<CaseSwitchLabelSyntax>()
+                .Select(l => $"{governing} == {VisitExpression(model, l.Value)}");
+            var cond = string.Join(" or ", conditions);
+            AppendLine($"{(first ? "if" : "elseif")} {cond} then");
             _indent++;
             foreach (var stmt in section.Statements)
             {
@@ -314,6 +335,19 @@ public partial class LuaEmitter
             _indent--;
             first = false;
         }
+
+        if (defaultSection != null)
+        {
+            AppendLine(first ? "do" : "else");
+            _indent++;
+            foreach (var stmt in defaultSection.Statements)
+            {
+                if (stmt is BreakStatementSyntax) continue;
+                VisitStatement(model, stmt);
+            }
+            _indent--;
+        }
+
         AppendLine("end");
     }
 

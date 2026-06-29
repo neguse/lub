@@ -157,6 +157,71 @@ public class ForLoopTests
         Assert.Equal("12", result); // 1+2+4+5
     }
 
+    // ===== general for incrementors =====
+
+    [Fact]
+    public void GeneralFor_PostDecrementIncrementor()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    var sum = 0;
+                    for (int i = 3; i > 0; i--)
+                    {
+                        sum += i;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("6", result);
+    }
+
+    [Fact]
+    public void GeneralFor_AddAssignmentIncrementor()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    var sum = 0;
+                    for (int i = 0; i < 6; i += 2)
+                    {
+                        sum += i;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("6", result);
+    }
+
+    [Fact]
+    public void GeneralFor_MultipleIncrementors()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    var sum = 0;
+                    for (int i = 0, j = 0; i < 3; i++, j += 2)
+                    {
+                        sum += j;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("6", result);
+    }
+
     // ===== do-while =====
 
     [Fact]
