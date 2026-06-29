@@ -48,6 +48,32 @@ count_rule() {
     "$sarif"
 }
 
+assert_file_contains() {
+  local label="$1"
+  local file="$2"
+  local needle="$3"
+  if ! grep -Fq -- "$needle" "$file"; then
+    echo "Error: InspectCode $label did not contain expected diagnostic text: $needle" >&2
+    echo "file: $file" >&2
+    exit 1
+  fi
+}
+
+assert_expected_diagnostic_texts() {
+  local label="$1"
+  local file="$2"
+  for needle in \
+      "StructDeclaration" \
+      "LocalFunctionStatement" \
+      "TryStatement" \
+      "ThrowStatement" \
+      "ListPattern" \
+      "System.IO.File.ReadAllText" \
+      "List<T> cannot store null elements"; do
+    assert_file_contains "$label" "$file" "$needle"
+  done
+}
+
 assert_expected_counts() {
   local label="$1"
   local sarif="$2"
@@ -66,6 +92,7 @@ assert_expected_counts() {
     echo "stdout/stderr log: $stdout_log" >&2
     exit 1
   fi
+  assert_expected_diagnostic_texts "$label" "$sarif"
 
   echo "InspectCode $label diagnostics verified."
   echo "TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count"
@@ -148,6 +175,9 @@ if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] ||
   echo "stdout/stderr log: $PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG" >&2
   exit 1
 fi
+assert_expected_diagnostic_texts \
+  "PackageReference severity override" \
+  "$PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG"
 
 echo "InspectCode PackageReference severity override verified."
 echo "TCS1001 error x$override_tcs1001_count / TCS1002 error x$override_tcs1002_count / TCS1003 error x$override_tcs1003_count"

@@ -37,6 +37,31 @@ function Test-LuaBuildNeeded {
     return $false
 }
 
+function Assert-ExpectedDiagnosticTexts {
+    param(
+        [object[]] $Output,
+        [string] $Label
+    )
+
+    $text = ($Output | ForEach-Object { "$_" }) -join "`n"
+    $needles = @(
+        "StructDeclaration",
+        "LocalFunctionStatement",
+        "TryStatement",
+        "ThrowStatement",
+        "ListPattern",
+        "System.IO.File.ReadAllText",
+        "List<T> cannot store null elements"
+    )
+
+    foreach ($needle in $needles) {
+        if (-not $text.Contains($needle)) {
+            Write-Error "$Label did not contain expected diagnostic text: $needle"
+            exit 1
+        }
+    }
+}
+
 # Build Lua if missing or stale against the local build inputs
 if (Test-LuaBuildNeeded) {
     Build-Lua
@@ -100,6 +125,7 @@ if ($tcs1001Count -ne 5 -or $tcs1002Count -ne 1 -or $tcs1003Count -ne 1) {
     Write-Error "Analyzer demo expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001Count / TCS1002 x$tcs1002Count / TCS1003 x$tcs1003Count"
     exit 1
 }
+Assert-ExpectedDiagnosticTexts -Output $analyzerOutput -Label "Analyzer demo"
 
 Write-Host "Running analyzer package consumer build..."
 $packageDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
@@ -161,6 +187,7 @@ dotnet_diagnostic.TCS1003.severity = warning
         Write-Error "Analyzer package consumer expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumerTcs1001Count / TCS1002 x$consumerTcs1002Count / TCS1003 x$consumerTcs1003Count"
         exit 1
     }
+    Assert-ExpectedDiagnosticTexts -Output $consumerOutput -Label "Analyzer package consumer"
 
     Write-Host "Running analyzer package severity override build..."
     Set-Content -Path (Join-Path $consumerDir ".editorconfig") -Value @"
@@ -195,6 +222,7 @@ dotnet_diagnostic.TCS1003.severity = error
         Write-Error "Analyzer package severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$overrideTcs1001Count / TCS1002 x$overrideTcs1002Count / TCS1003 x$overrideTcs1003Count"
         exit 1
     }
+    Assert-ExpectedDiagnosticTexts -Output $overrideOutput -Label "Analyzer package severity override"
 }
 finally {
     Remove-Item -Recurse -Force $packageDir

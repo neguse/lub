@@ -170,6 +170,7 @@
   - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 を検出する
   - README / analyzer-demo README に `PackageReference` 導入手順と local nupkg consumer 検証の位置づけを記録済み
   - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも ProjectReference analyzer-demo と local nupkg `PackageReference` consumer の TCS1001 x5 / TCS1002 x1 / TCS1003 x1、および PackageReference consumer の TCS1001/TCS1002/TCS1003 error override を確認できる
+  - analyzer-demo build / PackageReference consumer / InspectCode は expected diagnostics の件数に加え、各診断の具体メッセージも検証する
   - `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md` に Rider go/no-go 記録と後続タスク化のテンプレートを追加
   - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
   - TCS diagnostic severity override は analyzer test と analyzer nupkg consumer の `.editorconfig` build で検証済み

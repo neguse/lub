@@ -100,6 +100,31 @@ count_diagnostic() {
     | awk -v id="$id" 'index($0, "warning " id ":") { seen[$0] = 1 } END { for (line in seen) count++; print count + 0 }'
 }
 
+assert_contains() {
+  local label="$1"
+  local output="$2"
+  local needle="$3"
+  if ! printf '%s\n' "$output" | grep -Fq -- "$needle"; then
+    echo "Error: $label did not contain expected diagnostic text: $needle" >&2
+    exit 1
+  fi
+}
+
+assert_expected_diagnostic_texts() {
+  local label="$1"
+  local output="$2"
+  for needle in \
+      "StructDeclaration" \
+      "LocalFunctionStatement" \
+      "TryStatement" \
+      "ThrowStatement" \
+      "ListPattern" \
+      "System.IO.File.ReadAllText" \
+      "List<T> cannot store null elements"; do
+    assert_contains "$label" "$output" "$needle"
+  done
+}
+
 tcs1001_count="$(count_diagnostic TCS1001)"
 tcs1002_count="$(count_diagnostic TCS1002)"
 tcs1003_count="$(count_diagnostic TCS1003)"
@@ -107,6 +132,7 @@ if [ "$tcs1001_count" -ne 5 ] || [ "$tcs1002_count" -ne 1 ] || [ "$tcs1003_count
   echo "Error: analyzer demo expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count / TCS1003 x$tcs1003_count" >&2
   exit 1
 fi
+assert_expected_diagnostic_texts "analyzer demo" "$analyzer_output"
 
 echo "Running analyzer package consumer build..."
 package_dir="$(mktemp -d)"
@@ -157,6 +183,7 @@ if [ "$consumer_tcs1001_count" -ne 5 ] || [ "$consumer_tcs1002_count" -ne 1 ] ||
   echo "Error: analyzer package consumer expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$consumer_tcs1001_count / TCS1002 x$consumer_tcs1002_count / TCS1003 x$consumer_tcs1003_count" >&2
   exit 1
 fi
+assert_expected_diagnostic_texts "analyzer package consumer" "$consumer_output"
 
 echo "Running analyzer package severity override build..."
 cat > "$consumer_dir/.editorconfig" <<'EOF'
@@ -186,5 +213,6 @@ if [ "$override_tcs1001_count" -ne 5 ] || [ "$override_tcs1002_count" -ne 1 ] ||
   echo "Error: analyzer package severity override expected TCS1001 x5 / TCS1002 x1 / TCS1003 x1, got TCS1001 x$override_tcs1001_count / TCS1002 x$override_tcs1002_count / TCS1003 x$override_tcs1003_count" >&2
   exit 1
 fi
+assert_expected_diagnostic_texts "analyzer package severity override" "$override_output"
 
 echo "All tests passed."
