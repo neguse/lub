@@ -38,15 +38,26 @@ samples/analyzer-demo/verify-inspectcode.sh
 script は必要なら `/tmp/tcs-jetbrains-tools` に JetBrains ReSharper GlobalTools 2026.1.3 を install し、結果を `/tmp/tcs-inspectcode-analyzer-demo/` に出す。
 PackageReference consumer は script 内で local nupkg を pack して同じ出力ディレクトリ配下に作る。
 
+## Rider pre-check
+
+Rider を開く前に、テンプレートへ転記する pre-check 結果をまとめて作れる。
+
+```bash
+samples/analyzer-demo/verify-rider-prechecks.sh
+```
+
+script は `bash run-tests.sh`、`samples/analyzer-demo/verify-inspectcode.sh`、`dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental` を実行し、`/tmp/tcs-rider-verification-precheck/summary.md` に結果とログパスを出す。
+
 ## Rider 確認手順
 
+1. 必要なら `samples/analyzer-demo/verify-rider-prechecks.sh` を実行する
 1. repository root または `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開く
-2. Restore が終わった後、`samples/analyzer-demo/Program.cs` を開く
-3. `struct`, local function, `try`, `throw`, `values is [1, 2]`, `System.IO.File.ReadAllText`, `List<string?> { null }` に inspection / squiggle が出ることを確認する
-4. Build tool window で `TCS1001` x5 / `TCS1002` x1 / `TCS1003` x1 が表示されることを確認する
-5. root `.editorconfig` の `dotnet_diagnostic.TCS1001.severity` / `dotnet_diagnostic.TCS1002.severity` / `dotnet_diagnostic.TCS1003.severity` を一時的に `error` へ変え、Rider 表示が追従することを確認する
-6. 確認後、`.editorconfig` は repository の既定値へ戻す
-7. 結果を `q.md` の Q12 に go / no-go として記録する
+1. Restore が終わった後、`samples/analyzer-demo/Program.cs` を開く
+1. `struct`, local function, `try`, `throw`, `values is [1, 2]`, `System.IO.File.ReadAllText`, `List<string?> { null }` に inspection / squiggle が出ることを確認する
+1. Build tool window で `TCS1001` x5 / `TCS1002` x1 / `TCS1003` x1 が表示されることを確認する
+1. root `.editorconfig` の `dotnet_diagnostic.TCS1001.severity` / `dotnet_diagnostic.TCS1002.severity` / `dotnet_diagnostic.TCS1003.severity` を一時的に `error` へ変え、Rider 表示が追従することを確認する
+1. 確認後、`.editorconfig` は repository の既定値へ戻す
+1. 結果を `q.md` の Q12 に go / no-go として記録する
 
 記録時は [`RIDER_VERIFICATION_TEMPLATE.md`](RIDER_VERIFICATION_TEMPLATE.md) を使う。
 

@@ -10,6 +10,7 @@
 - `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` 変更が Rider 表示に反映されるか確認する（build への反映は `run-tests` で検証済み）
 - JetBrains InspectCode 2026.1.3 headless 実行では ProjectReference と local nupkg `PackageReference` consumer の両方で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 が SARIF に出ることと、PackageReference consumer の TCS1001/TCS1002/TCS1003 error override が同じ件数の error として扱われることを確認済み。再確認用 script: `samples/analyzer-demo/verify-inspectcode.sh`
 - 詳細な実機確認手順は `samples/analyzer-demo/README.md` に記録済み
+- Rider 実機確認前の pre-check summary は `samples/analyzer-demo/verify-rider-prechecks.sh` で生成できる
 - 結果記録テンプレートは `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`
 - go の場合: analyzer package / `tcs check` / CI を正式な準拠チェック導線として product task に分解する
 - no-go の場合: Rider plugin、external tool、または CLI watcher 連携などの代替案を検討する
