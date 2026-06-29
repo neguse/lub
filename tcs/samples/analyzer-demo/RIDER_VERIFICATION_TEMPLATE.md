@@ -16,7 +16,7 @@
 ## Pre-checks
 
 - `bash run-tests.sh`: pass / fail / not run
-- `samples/analyzer-demo/verify-inspectcode.sh`: pass / fail / not run
+- `samples/analyzer-demo/verify-inspectcode.sh` (ProjectReference + PackageReference): pass / fail / not run
 - `dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental`: pass / fail / not run
 
 ## Rider inspection result

@@ -198,7 +198,7 @@ dotnet build samples/analyzer-demo/analyzer-demo.csproj
 demo project 固有の expected diagnostics と Rider 確認手順は
 [`samples/analyzer-demo/README.md`](samples/analyzer-demo/README.md) にも残している。
 `run-tests` は analyzer nupkg を pack し、一時 project から `PackageReference` で参照して同じ診断が出ることと、`.editorconfig` で `TCS1002` を error にした build が失敗することも検証する。
-[`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも `TCS1001` x4 / `TCS1002` x1 が SARIF に出ることを確認できる。
+[`samples/analyzer-demo/verify-inspectcode.sh`](samples/analyzer-demo/verify-inspectcode.sh) で JetBrains InspectCode 2026.1.3 の headless 実行でも、ProjectReference と local nupkg `PackageReference` consumer の両方で `TCS1001` x4 / `TCS1002` x1 が SARIF に出ることを確認できる。
 
 通常の C# project から package として参照する場合:
 

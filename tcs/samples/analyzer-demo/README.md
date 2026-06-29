@@ -26,7 +26,7 @@ root `.editorconfig` では `TCS1001` / `TCS1002` / `TCS1003` を warning にし
 
 ## JetBrains InspectCode
 
-Rider 本体ではなく JetBrains InspectCode 2026.1.3 の headless 実行では、SARIF に `TCS1001` x4 / `TCS1002` x1 が出ることを確認済み。
+Rider 本体ではなく JetBrains InspectCode 2026.1.3 の headless 実行では、ProjectReference と local nupkg `PackageReference` consumer の両方で SARIF に `TCS1001` x4 / `TCS1002` x1 が出ることを確認済み。
 stdout には bundled analyzer 由来の noisy log が出る場合があるため、確認には SARIF を使う。
 
 ```bash
@@ -34,6 +34,7 @@ samples/analyzer-demo/verify-inspectcode.sh
 ```
 
 script は必要なら `/tmp/tcs-jetbrains-tools` に JetBrains ReSharper GlobalTools 2026.1.3 を install し、結果を `/tmp/tcs-inspectcode-analyzer-demo/` に出す。
+PackageReference consumer は script 内で local nupkg を pack して同じ出力ディレクトリ配下に作る。
 
 ## Rider 確認手順
 

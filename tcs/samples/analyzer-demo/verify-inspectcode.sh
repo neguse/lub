@@ -7,8 +7,13 @@ TOOL_VERSION="2026.1.3"
 TOOL_DIR="${TCS_JETBRAINS_TOOL_DIR:-/tmp/tcs-jetbrains-tools}"
 OUTPUT_DIR="${TCS_INSPECTCODE_OUTPUT_DIR:-/tmp/tcs-inspectcode-analyzer-demo}"
 JB="$TOOL_DIR/jb"
-SARIF="$OUTPUT_DIR/inspectcode.sarif"
-STDOUT_LOG="$OUTPUT_DIR/inspectcode.stdout"
+PROJECT_REFERENCE_SARIF="$OUTPUT_DIR/project-reference.sarif"
+PROJECT_REFERENCE_STDOUT_LOG="$OUTPUT_DIR/project-reference.stdout"
+PACKAGE_DIR="$OUTPUT_DIR/local-nupkg"
+PACKAGE_CONSUMER_DIR="$OUTPUT_DIR/package-consumer"
+PACKAGE_CONSUMER_PROJECT="$PACKAGE_CONSUMER_DIR/analyzer-package-consumer.csproj"
+PACKAGE_REFERENCE_SARIF="$OUTPUT_DIR/package-reference.sarif"
+PACKAGE_REFERENCE_STDOUT_LOG="$OUTPUT_DIR/package-reference.stdout"
 
 if [ ! -x "$JB" ]; then
   mkdir -p "$TOOL_DIR"
@@ -18,33 +23,94 @@ if [ ! -x "$JB" ]; then
 fi
 
 rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR" "$PACKAGE_DIR" "$PACKAGE_CONSUMER_DIR"
 
-"$JB" inspectcode "$REPO_ROOT/samples/analyzer-demo/analyzer-demo.csproj" \
-  --format=Sarif \
-  --output="$SARIF" \
-  --no-updates \
-  --verbosity=ERROR \
-  >"$STDOUT_LOG" 2>&1
+run_inspectcode() {
+  local project="$1"
+  local sarif="$2"
+  local stdout_log="$3"
 
-count_rule() {
-  local rule_id="$1"
-  awk -v rule_id="\"ruleId\": \""$rule_id"\"" \
-    'index($0, rule_id) { count++ } END { print count + 0 }' \
-    "$SARIF"
+  "$JB" inspectcode "$project" \
+    --format=Sarif \
+    --output="$sarif" \
+    --no-updates \
+    --verbosity=ERROR \
+    >"$stdout_log" 2>&1
 }
 
-tcs1001_count="$(count_rule TCS1001)"
-tcs1002_count="$(count_rule TCS1002)"
+count_rule() {
+  local sarif="$1"
+  local rule_id="$2"
+  awk -v rule_id="\"ruleId\": \"$rule_id\"" \
+    'index($0, rule_id) { count++ } END { print count + 0 }' \
+    "$sarif"
+}
 
-if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ]; then
-  echo "Error: InspectCode expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count" >&2
-  echo "SARIF: $SARIF" >&2
-  echo "stdout/stderr log: $STDOUT_LOG" >&2
-  exit 1
-fi
+assert_expected_counts() {
+  local label="$1"
+  local sarif="$2"
+  local stdout_log="$3"
+  local tcs1001_count
+  local tcs1002_count
 
-echo "InspectCode analyzer demo diagnostics verified."
-echo "TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count"
-echo "SARIF: $SARIF"
-echo "stdout/stderr log: $STDOUT_LOG"
+  tcs1001_count="$(count_rule "$sarif" TCS1001)"
+  tcs1002_count="$(count_rule "$sarif" TCS1002)"
+
+  if [ "$tcs1001_count" -ne 4 ] || [ "$tcs1002_count" -ne 1 ]; then
+    echo "Error: InspectCode $label expected TCS1001 x4 / TCS1002 x1, got TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count" >&2
+    echo "SARIF: $sarif" >&2
+    echo "stdout/stderr log: $stdout_log" >&2
+    exit 1
+  fi
+
+  echo "InspectCode $label diagnostics verified."
+  echo "TCS1001 x$tcs1001_count / TCS1002 x$tcs1002_count"
+  echo "SARIF: $sarif"
+  echo "stdout/stderr log: $stdout_log"
+}
+
+run_inspectcode \
+  "$REPO_ROOT/samples/analyzer-demo/analyzer-demo.csproj" \
+  "$PROJECT_REFERENCE_SARIF" \
+  "$PROJECT_REFERENCE_STDOUT_LOG"
+assert_expected_counts \
+  "ProjectReference analyzer demo" \
+  "$PROJECT_REFERENCE_SARIF" \
+  "$PROJECT_REFERENCE_STDOUT_LOG"
+
+dotnet pack "$REPO_ROOT/TinyCs.Analyzers/TinyCs.Analyzers.csproj" \
+  -c Release \
+  -o "$PACKAGE_DIR" >/dev/null
+cp "$REPO_ROOT/samples/analyzer-demo/Program.cs" "$PACKAGE_CONSUMER_DIR/Program.cs"
+cat > "$PACKAGE_CONSUMER_PROJECT" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestoreAdditionalProjectSources>$PACKAGE_DIR</RestoreAdditionalProjectSources>
+    <RestorePackagesPath>$PACKAGE_CONSUMER_DIR/packages</RestorePackagesPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TinyCs.Analyzers" Version="0.1.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+EOF
+cat > "$PACKAGE_CONSUMER_DIR/.editorconfig" <<'EOF'
+root = true
+
+[*.cs]
+dotnet_diagnostic.TCS1001.severity = warning
+dotnet_diagnostic.TCS1002.severity = warning
+dotnet_diagnostic.TCS1003.severity = warning
+EOF
+dotnet restore "$PACKAGE_CONSUMER_PROJECT" >/dev/null
+run_inspectcode \
+  "$PACKAGE_CONSUMER_PROJECT" \
+  "$PACKAGE_REFERENCE_SARIF" \
+  "$PACKAGE_REFERENCE_STDOUT_LOG"
+assert_expected_counts \
+  "PackageReference consumer" \
+  "$PACKAGE_REFERENCE_SARIF" \
+  "$PACKAGE_REFERENCE_STDOUT_LOG"
