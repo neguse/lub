@@ -12,6 +12,7 @@
 - 詳細な実機確認手順は `samples/analyzer-demo/README.md` に記録済み
 - Rider 実機確認前の pre-check summary は `samples/analyzer-demo/verify-rider-prechecks.sh` で生成でき、`TCS_RIDER_COMMAND` / Rider command / display / この shell からの Rider UI 起動可否も記録する
 - `samples/analyzer-demo/open-rider-demo.sh` で pre-check 後に検出済み Rider から demo project を開ける。自動検出できない場合は `TCS_RIDER_COMMAND=/path/to/rider.sh` を指定する
+- Windows では `.\samples\analyzer-demo\verify-rider-prechecks.ps1` / `.\samples\analyzer-demo\open-rider-demo.ps1` を使える。Rider を自動検出できない場合は `$env:TCS_RIDER_COMMAND = "C:\path\to\rider64.exe"` を指定する
 - 結果記録テンプレートは `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`
 - go の場合: analyzer package / `tcs check` / CI を正式な準拠チェック導線として product task に分解する
 - no-go の場合: Rider plugin、external tool、または CLI watcher 連携などの代替案を検討する

@@ -174,6 +174,7 @@
   - analyzer-demo build / PackageReference consumer / InspectCode は expected diagnostics の件数に加え、各診断の具体メッセージも検証する
   - `samples/analyzer-demo/verify-rider-prechecks.sh` で Rider 実機確認前の pre-check summary を `/tmp/tcs-rider-verification-precheck/summary.md` に生成でき、`TCS_RIDER_COMMAND` / Rider command / display / UI 起動可否も記録する
   - `samples/analyzer-demo/open-rider-demo.sh` で pre-check 後に検出済み Rider から analyzer-demo project を開ける。自動検出できない場合は `TCS_RIDER_COMMAND` で指定する
+  - Windows PowerShell では `samples/analyzer-demo/verify-rider-prechecks.ps1` / `open-rider-demo.ps1` を使い、`TCS_RIDER_COMMAND` に `rider64.exe` などを指定できる
   - `samples/analyzer-demo/verify-rider-scripts.sh` で Rider helper の fake command success / missing command / no-display 経路を検証し、`run-tests` からも実行する
   - `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md` に Rider go/no-go 記録と後続タスク化のテンプレートを追加
   - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
