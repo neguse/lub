@@ -128,6 +128,7 @@ set(LUB_SOURCES
   src/gpu_stats.c
   src/resources.c
   src/physics_box2d.c
+  src/physics_box3d.c
   src/shader.cpp
   src/pipeline.c
   src/capture.c
@@ -165,6 +166,7 @@ target_link_libraries(lub PRIVATE
   SDL3::SDL3
   lua_static
   box2d
+  box3d
 )
 if(NOT LUB_WASM)
   target_link_libraries(lub PRIVATE
@@ -320,4 +322,18 @@ if(NOT LUB_WASM)
     target_link_libraries(lub_physics_box2d_smoke PRIVATE m dl)
   endif()
   target_include_directories(lub_physics_box2d_smoke PRIVATE src)
+
+  add_executable(lub_physics_box3d_smoke
+    tests/c/physics_box3d_smoke.c
+    src/physics_box3d.c
+  )
+  target_link_libraries(lub_physics_box3d_smoke PRIVATE
+    SDL3::SDL3
+    lua_static
+    box3d
+  )
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(lub_physics_box3d_smoke PRIVATE m dl)
+  endif()
+  target_include_directories(lub_physics_box3d_smoke PRIVATE src)
 endif()

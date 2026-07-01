@@ -72,7 +72,8 @@
 このへんは今後扱う予定の領域として持っておく。
 
 - Miniaudio による audio。
-- Box2D による 2D physics。
-- Jolt Physics による 3D physics。
+- Box2D による 2D physics。(済: `phys2d_*` immediate-mode API + sample 16)
+- Box3D による 3D physics。(済: `phys3d_*` immediate-mode API + sample 18 coin pusher。
+  Jolt 案は Box2D と設計が揃う Box3D v0.1 の登場で置き換えた)
 - Ozz Animation による animation。
 - Dear ImGui などを使った in-process diagnostics。

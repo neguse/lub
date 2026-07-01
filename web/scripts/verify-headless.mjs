@@ -380,6 +380,8 @@ const samples = [
   { name: '14_sponza',           minNonBlack: 0.01 },
   { name: '15_render_primitives', minNonBlack: 0.01 },
   { name: '16_box2d',            minNonBlack: 0.01 },
+  { name: '17_flappy',           minNonBlack: 0.01 },
+  { name: '18_coin_pusher',      minNonBlack: 0.01 },
 ]
 const sampleResults = {}
 

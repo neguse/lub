@@ -3,6 +3,7 @@
 #include "gpu_stats.h"
 #include "lua_api.h"
 #include "physics_box2d.h"
+#include "physics_box3d.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,7 @@ bool app_init(App *app) {
   gpu_stats_init_from_env();
   res_table_init(&app->res);
   phys2d_state_init(&app->phys);
+  phys3d_state_init(&app->phys3);
   pipeline_cache_init(&app->pip_cache);
   capture_state_init(&app->capture);
   app->capture_then_exit = false;
@@ -152,6 +154,7 @@ void app_frame_end(App *app) {
 void app_shutdown(App *app) {
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
+  phys3d_state_shutdown(&app->phys3);
   phys2d_state_shutdown(&app->phys);
   res_table_shutdown(&app->res);
   capture_state_shutdown(&app->capture);

@@ -6,6 +6,7 @@
 #include "gltf.h"
 #include "pass.h"
 #include "physics_box2d.h"
+#include "physics_box3d.h"
 #include "pipeline.h"
 #include "resources.h"
 #include "shader.h"
@@ -1952,6 +1953,7 @@ void lua_api_register(lua_State *L) {
   lua_pushcfunction(L, lub_load_gltf);
   lua_setglobal(L, "load_gltf");
   phys2d_lua_register(L);
+  phys3d_lua_register(L);
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
@@ -2000,6 +2002,7 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
   phys2d_lua_set_state(&app->phys);
+  phys3d_lua_set_state(&app->phys3);
   lua_api_register(ctx->L);
   return true;
 }
