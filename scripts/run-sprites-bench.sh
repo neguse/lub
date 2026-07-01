@@ -10,7 +10,6 @@ max_sprites=200000
 profile=0
 profile_window=300
 no_build=0
-download_timeout_sec=1200
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -28,7 +27,6 @@ Options:
   --profile                    Enable generic CPU profiler for the final window
   --profile-window N           Profile window before score frame (default: 300)
   --no-build                   Reuse an existing Release build
-  --download-timeout-sec SEC   Dependency download timeout per URL (default: 1200)
 EOF
 }
 
@@ -70,10 +68,6 @@ while [[ $# -gt 0 ]]; do
       no_build=1
       shift
       ;;
-    --download-timeout-sec)
-      download_timeout_sec="$2"
-      shift 2
-      ;;
     -h|--help)
       usage
       exit 0
@@ -93,8 +87,7 @@ sample="$repo_root/samples/13_sprites/13_sprites.hxml"
 if [[ "$no_build" -eq 0 ]]; then
   bash "$repo_root/scripts/build-release.sh" \
     --build-dir "$build_dir" \
-    --target lub \
-    --download-timeout-sec "$download_timeout_sec"
+    --target lub
 fi
 
 if [[ ! -x "$exe" && ! -f "$exe" ]]; then

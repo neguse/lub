@@ -20,12 +20,14 @@ lub bundles or links the following third-party components.
 | Slang prebuilt | third_party/slang/{lib,bin}/ | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang/releases |
 | slang-wasm | web/public/slang/slang-wasm.{js,wasm} | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang/releases |
 
-## CMake FetchContent (configure-time source build)
+## Git submodules (source build)
 
-| Component | License | Source |
-|-----------|---------|--------|
-| SDL3 | zlib | https://github.com/libsdl-org/SDL |
-| Lua 5.5 | MIT | https://www.lua.org |
+| Component | Path | License | Source |
+|-----------|------|---------|--------|
+| SDL3 release-3.2.30 | third_party/SDL/ | zlib | https://github.com/libsdl-org/SDL |
+| Lua v5.5.0 | third_party/lua/ | MIT | https://github.com/lua/lua |
+| Box2D v3.1.1 | third_party/box2d/ | MIT | https://github.com/erincatto/box2d |
+| Box3D v0.1.0 | third_party/box3d/ | MIT | https://github.com/erincatto/box3d |
 
 ## Bundled sample assets
 

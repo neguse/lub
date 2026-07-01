@@ -1,8 +1,10 @@
 # Release Build
 
-Use the platform script instead of hand-composing CMake commands. First-time
-Release builds may fetch and build dependencies, so automation should run these
-commands with a 2-hour process timeout.
+Use the platform script instead of hand-composing CMake commands. Compiled
+dependencies (SDL3, Lua, Box2D, Box3D) are git submodules under `third_party/`;
+run `git submodule update --init` once after cloning. First-time Release builds
+compile all dependencies from source, so automation should run these commands
+with a 2-hour process timeout.
 
 ## Windows
 
@@ -21,9 +23,6 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Confi
 
 # Build from the existing configure step.
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -NoConfigure
-
-# Slow network or first-time dependency fetch.
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -DownloadTimeoutSec 1200
 
 # Visual Studio installed outside the default path.
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -VcvarsPath "C:\path\to\vcvars64.bat"
@@ -49,9 +48,6 @@ bash scripts/build-release.sh --configure-only
 
 # Build from the existing configure step.
 bash scripts/build-release.sh --no-configure
-
-# Slow network or first-time dependency fetch.
-bash scripts/build-release.sh --download-timeout-sec 1200
 ```
 
 Linux prerequisites:
@@ -60,12 +56,6 @@ Linux prerequisites:
 - C11 / C++17 compiler
 - Vulkan loader and development headers
 - Ninja is preferred when installed; otherwise the default CMake generator is used
-- `curl` or `wget` for dependency fallback downloads
-- `sha256sum`
-
-Both scripts reuse already fetched dependency sources from `build-release/_deps`
-or `build/_deps` when present. If Lua sources are missing, they fetch,
-SHA256-verify, and normalize the source archive into `build-release/_deps`.
 
 The Linux script defaults to `build-release-linux` so it can coexist with a
 Windows `build-release` directory in the same checkout.

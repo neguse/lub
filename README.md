@@ -32,6 +32,13 @@ Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
 (`third_party/slang/{lib,bin}/` は gitignore 対象)。
 
+コンパイルする依存 (SDL3 / Lua / Box2D / Box3D) は `third_party/` 配下の
+git submodule なので、clone 後に一度 submodule を取得する:
+
+```sh
+git submodule update --init
+```
+
 Linux:
 
 ```sh

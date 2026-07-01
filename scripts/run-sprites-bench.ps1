@@ -8,8 +8,6 @@ param(
     [switch]$Profile,
     [int]$ProfileWindow = 300,
     [switch]$NoBuild,
-    [string[]]$DependencySourceRoot = @("build-release\_deps", "build\_deps"),
-    [int]$DownloadTimeoutSec = 1200,
     [string]$VcvarsPath = "C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat"
 )
 
@@ -27,7 +25,7 @@ $ExePath = Join-Path $BuildPath "lub.exe"
 Push-Location $RepoRoot
 try {
     if (-not $NoBuild) {
-        & (Join-Path $PSScriptRoot "build-release.ps1") -BuildDir $BuildDir -Target lub -DependencySourceRoot $DependencySourceRoot -DownloadTimeoutSec $DownloadTimeoutSec -VcvarsPath $VcvarsPath
+        & (Join-Path $PSScriptRoot "build-release.ps1") -BuildDir $BuildDir -Target lub -VcvarsPath $VcvarsPath
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }

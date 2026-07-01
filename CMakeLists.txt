@@ -13,32 +13,25 @@ if(EMSCRIPTEN)
   set(LUB_WASM ON)
 endif()
 
-include(FetchContent)
+# Compiled dependencies are pinned as git submodules under third_party/ so
+# their sources live at stable in-tree paths. Run
+#   git submodule update --init
+# after cloning. Pinned versions: SDL release-3.2.30, Lua v5.5.0 (github
+# mirror), Box2D v3.1.1, Box3D v0.1.0 (alpha).
+if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
+  message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")
+endif()
 
-# SDL3 build flags must be set BEFORE FetchContent_MakeAvailable. The
-# Emscripten build uses static SDL and disables pthreads/tests so the wasm
-# artifact stays self-contained.
+# SDL3 build flags must be set BEFORE add_subdirectory. The Emscripten build
+# uses static SDL and disables pthreads/tests so the wasm artifact stays
+# self-contained.
 if(LUB_WASM)
   set(SDL_PTHREADS OFF CACHE BOOL "" FORCE)
   set(SDL_TESTS    OFF CACHE BOOL "" FORCE)
   set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
   set(SDL_STATIC   ON  CACHE BOOL "" FORCE)
 endif()
-
-FetchContent_Declare(
-  SDL3
-  GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG release-3.2.30
-)
-FetchContent_MakeAvailable(SDL3)
-
-FetchContent_Declare(
-  lua
-  URL https://www.lua.org/ftp/lua-5.5.0.tar.gz
-  URL_HASH SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_MakeAvailable(lua)
+add_subdirectory(third_party/SDL)
 
 # Box2D v3 is C17. Only the library is used; the upstream sample/test/benchmark
 # applications are intentionally disabled because lub exposes its own Lua/Haxe
@@ -48,22 +41,24 @@ set(BOX2D_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(BOX2D_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(BOX2D_DOCS OFF CACHE BOOL "" FORCE)
 set(BOX2D_COMPILE_WARNING_AS_ERROR OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-  box2d
-  GIT_REPOSITORY https://github.com/erincatto/box2d.git
-  GIT_TAG v3.1.1
-)
-FetchContent_MakeAvailable(box2d)
+add_subdirectory(third_party/box2d)
 
-# Lua は素の Makefile なので、ソースを集めて static lib を作る
-file(GLOB LUA_SRC CONFIGURE_DEPENDS ${lua_SOURCE_DIR}/src/*.c)
+# Box3D samples/tests/benchmarks are gated by PROJECT_IS_TOP_LEVEL upstream,
+# so only the library builds here.
+add_subdirectory(third_party/box3d)
+
+# Lua は素の Makefile なので、ソースを集めて static lib を作る。
+# github mirror は tarball と違い src/ を持たず、ソースが repo 直下にある。
+# ltests.c は tarball に含まれないテスト計装なので除外する。
+set(lua_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lua)
+file(GLOB LUA_SRC CONFIGURE_DEPENDS ${lua_SOURCE_DIR}/*.c)
 list(REMOVE_ITEM LUA_SRC
-  ${lua_SOURCE_DIR}/src/lua.c
-  ${lua_SOURCE_DIR}/src/luac.c
-  ${lua_SOURCE_DIR}/src/onelua.c
+  ${lua_SOURCE_DIR}/lua.c
+  ${lua_SOURCE_DIR}/onelua.c
+  ${lua_SOURCE_DIR}/ltests.c
 )
 add_library(lua_static STATIC ${LUA_SRC})
-target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR}/src)
+target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
 
 if(NOT LUB_WASM)
   find_package(Vulkan REQUIRED)
