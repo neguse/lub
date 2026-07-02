@@ -23,6 +23,13 @@ for (const s of SAMPLE_NAMES) {
   o.textContent = s;
   $sample.appendChild(o);
 }
+
+// URL hash (#sample=<name>&...) からサンプルを復元する。他のフラグ(debug-slang等)と
+// 共存できるよう key=value 形式にしている。不正/未指定なら既定値のまま。
+const hashSample = new URLSearchParams(location.hash.slice(1)).get("sample");
+if (hashSample && SAMPLE_NAMES.includes(hashSample)) {
+  currentSample = hashSample;
+}
 $sample.value = currentSample;
 
 // Render-resolution presets (16:9). Smaller = fewer pixels through the whole
@@ -65,6 +72,7 @@ $sample.addEventListener("change", async () => {
     }
   }
   currentSample = $sample.value;
+  updateHashSample(currentSample);
   await loadCompileRun(currentSample);
 });
 
@@ -92,6 +100,13 @@ attachEditor(
     syncTimer = window.setTimeout(syncDirtyNow, 300);
   },
 );
+
+/** URL hash の sample= を現在のサンプルに同期する(履歴は汚さない)。 */
+function updateHashSample(name: string) {
+  const params = new URLSearchParams(location.hash.slice(1));
+  params.set("sample", name);
+  history.replaceState(null, "", "#" + params.toString());
+}
 
 function anyDirty(): boolean {
   for (const f of getFiles().values()) if (f.dirty) return true;
