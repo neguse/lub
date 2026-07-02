@@ -3,7 +3,7 @@
 この roadmap は実装手順ではなく、各段階で達成したいことを並べる。
 具体的な API shape や実装方法は、その phase に入ってから code と sample で決める。
 
-## Phase 0: PoC 脱却
+## Phase 0: PoC 脱却 (完了)
 
 達成したいこと:
 
@@ -13,7 +13,7 @@
 - 既存 PoC 由来の helper、adapter、loader が runtime API として扱われていない。
 - Haxe -> Lua の transpile / reload 体験が最小構成で成立している。
 
-## Phase 1: NGS
+## Phase 1: NGS (完了)
 
 達成したいこと:
 
@@ -31,7 +31,7 @@
 - Haxe -> Lua 経由で同等の最小画面が動き、runtime API を Haxe 都合に寄せていない。
 - deterministic な描画結果を capture / golden で固定できる。
 
-## Phase 2: Hakonotaiatari
+## Phase 2: Hakonotaiatari (進行中)
 
 達成したいこと:
 
@@ -49,7 +49,7 @@
 - custom shader 用の low-level gfx 経路が残っている。
 - Haxe -> Lua 経由でも core API の形を変えずに 3D scene を更新できる。
 
-## Phase 3: SuperJumpAndDashMan
+## Phase 3: SuperJumpAndDashMan (未着手)
 
 達成したいこと:
 

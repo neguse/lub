@@ -1,5 +1,8 @@
 # Phase 0 spike: Haxe compiler を WASM 化して web playground で client-only compile できるか
 
+> 記録: 2026-05 時点の spike 計画。結果は GO で web playground 統合まで完了済み。
+> 現状は [README.md](README.md)(実施記録)と [HANDOFF.md](HANDOFF.md)(引き継ぎ)を参照。
+
 ## Context
 
 web playground (`web/`) で `.hx` を編集して動かしたい。コンパイル実行場所として

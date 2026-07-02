@@ -1,5 +1,8 @@
 # Native Backend Design — DX12 + WebGPU 直接実装
 
+> 記録: 2026-06 時点の設計。WebGPU backend は実装済み(`src/backend_webgpu.c`、web の default)。
+> DX12 backend は未着手。現状の backend 構成は README の「Backend 切替」を参照。
+
 ## 動機
 
 プラットフォーム API を直接叩くバックエンドを追加する。既存の sokol / SDL-GPU バックエンドは残し、並行稼働させる。

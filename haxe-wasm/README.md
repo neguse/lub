@@ -1,6 +1,9 @@
 # Phase 0 spike: Haxe compiler を WASM 化して client-only compile できるか
 
-`plan.md` の feasibility spike 実施記録と GO/NO-GO 勧告 + 全自動ビルド。
+> 記録: 2026-06-02 時点の spike 実施記録。GO 確定・web playground 統合済み。
+> 現状のビルド手順は本書の `build.sh` 節と [../web/README.md](../web/README.md) を参照。
+
+[plan.md](plan.md) の feasibility spike 実施記録と GO/NO-GO 勧告 + 全自動ビルド。
 
 ## 結論: **GO(client WASM 採用を推奨)**
 

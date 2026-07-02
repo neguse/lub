@@ -9,14 +9,17 @@ runtime は C/C++ と既存ライブラリで組み、Lua を通して API を�
 特定のアセット形式や GUI editor に依存せず、ゲームを構成する状態、描画、
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
-現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend として
-**sokol_gfx (Vulkan/WebGPU)** と **SDL3 GPU API** の 2 系統を持つ。
+現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
+native が **sokol_gfx (Vulkan、default)** と **SDL3 GPU API**、
+web が **webgpu.h 直接実装 (default)** と **sokol_gfx (WGPU)**。
 対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
 
 ## ドキュメント
 
+- [docs/README.md](docs/README.md): ドキュメント索引と方針。
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
-- [docs/roadmap.md](docs/roadmap.md): API を固めるための実装順序。
+- [docs/roadmap.md](docs/roadmap.md): phase ごとの達成目標と状態。
+- [docs/serve.md](docs/serve.md): 外部リポのゲームを web で開発する `--serve` モード。
 - [docs/profile.md](docs/profile.md): Release 計測と汎用 CPU profiler。
 
 ## ビルド
@@ -214,10 +217,12 @@ lavapipe + xvfb 環境では capture が確定的なので `cmp -s` で完全一
 
 ## Backend 切替
 
-lub は内部に 2 つの GPU backend を持つ:
+lub は内部に 3 つの GPU backend を持つ:
 
-- `sokol` (default) — sokol_gfx (Vulkan)
-- `sdlgpu` — SDL3 GPU API (現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
+- `sokol` (native default) — sokol_gfx (Vulkan)。web build では sokol/WGPU として選択可。
+- `sdlgpu` — SDL3 GPU API (native 専用。現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
+- `webgpu` (web default) — webgpu.h 直接実装 (設計記録は
+  [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))
 
 切替は Lua の `on_init` 内で `config({ backend = "sdlgpu" })` を呼ぶ。
 サンプルでは `arg[1]` または環境変数 `LUB_BACKEND` を見るパターン:
@@ -267,9 +272,11 @@ PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編�
 ## WASM playground (web)
 
 ブラウザ上で動く Vite + CodeMirror ベースの playground を `web/` 配下に同梱。
-sokol-gfx の WGPU backend を target に WASM へクロスコンパイルしたバイナリを iframe
-で読み込み、左ペインのエディタで `.slang` / `.lua` を編集すると 300ms debounce で右ペインの
-プレイヤーに同期される (`samples/<name>/data/*` の mtime/hash hot-reload 経路を再利用)。
+WASM へクロスコンパイルしたバイナリ (GPU backend は webgpu.h 直接実装が default) を
+iframe で読み込み、左ペインのエディタで `.hx` / `.slang` を編集すると 300ms debounce で
+右ペインのプレイヤーに同期される (`samples/<name>/data/*` の mtime/hash hot-reload
+経路を再利用)。`.hx` は WASM 化した Haxe コンパイラでブラウザ内 (Web Worker) で
+Lua に compile する (詳細は [web/README.md](web/README.md))。
 shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) を vendor。
 
 ### Build
@@ -338,7 +345,7 @@ web playground の対象 sample は `web/` 側の sample list と verify script 
 
 1. sample 01 の初期描画 (orange triangle on dark blue clear) を pixel bucket で確認
 2. fragment shader を編集 → green になる
-3. lua の clear_color を編集 → 背景が red になる
+3. `.hx` の clear_color を編集 → 再 compile → 背景が red になる
 4. verts を縮小編集 → green pixel 数が減る
 5. 登録済み sample を順に切替 → 各サンプルの非黒描画を確認
 
@@ -354,9 +361,21 @@ web playground の対象 sample は `web/` 側の sample list と verify script 
 
 ### Known limitations
 
-- **`--capture` の swapchain capture は native sokol のみ**。任意 render target の
-  readback は `Gfx.readback()` を使う。
-- **sdlgpu backend は web 非対応**。WGPU backend の sokol のみ。
+- **`--capture` の swapchain capture は native のみ**。web (webgpu backend) では
+  任意 render target の readback (`Gfx.readback()`) を使う。
+- **sdlgpu backend は web 非対応**。web は `webgpu` (default) と sokol/WGPU。
+
+## 外部プロジェクトから使う (--serve)
+
+lub を別リポのゲームから使うための Web 開発モード。native の `lub game.hxml` と
+対称に、ブラウザをレンダリング先として `.hx` / `.slang` / `data/` のホットリロード
+開発ができる:
+
+```sh
+./build/lub --serve mygame/game.hxml   # http://localhost:8080 (--port N で変更)
+```
+
+雛形は `templates/game/` を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
 
 ## ライセンス
 

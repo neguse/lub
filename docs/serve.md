@@ -32,10 +32,14 @@ lub のゲームコンテンツを別リポで管理したい。ネイティブ�
 
 # Web 開発
 ./build/lub --serve mygame/game.hxml
-# → localhost:PORT で配信開始
+# → http://localhost:8080 で配信開始 (--port N で変更)
 # → ブラウザで開く → ゲーム全画面表示
 # → .hx や .slang を編集 → 自動リロード
 ```
+
+WASM 成果物 (`build/wasm/lub.{js,wasm,data}`) と slang-wasm (`web/public/slang/`) は
+実行ファイルの位置から自動検出される。別の場所に置く場合は `--wasm-dir` /
+`--slang-dir` で指定する。
 
 ## アーキテクチャ
 
@@ -116,15 +120,17 @@ while running:
 
 ## template-game
 
-lub リポ内に `templates/game/` としてテンプレートを用意する。
+lub リポ内の `templates/game/` がテンプレート。
 
 ```
 templates/game/
 ├── CMakeLists.txt       # add_subdirectory(../lub lub_build)
-├── Main.hx              # 立方体フラッピーバード (3D)
+├── Game.hx              # 立方体フラッピーバード (3D)
 ├── game.hxml
 └── data/
-    └── cube.slang       # 最小 3D シェーダー (MVP + 単色)
+    ├── cube.vs.slang    # 最小 3D シェーダー (MVP + 単色)
+    ├── cube.fs.slang
+    └── cube.verts.lua
 ```
 
 `cp -r lub/templates/game ../mygame` でコピーして使い始める。
@@ -138,10 +144,4 @@ haxe game.hxml                    # .hx → .lua
 # lub WASM 成果物 + game.lua + data/ + index.html を配置
 ```
 
-## 実装順序
-
-1. HTTP + SSE サーバー (`src/serve.c`)
-2. ファイル監視の拡張 (.hx 以外も対象に)
-3. `--serve` フラグ + ヘッドレスメインループ
-4. ブラウザ側 HTML/JS (埋め込み)
-5. template-game
+実装は `src/serve.c` (HTTP + SSE) と `src/embedded_serve_page.h` (埋め込み HTML/JS)。

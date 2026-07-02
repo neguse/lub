@@ -1,5 +1,7 @@
 # 引き継ぎ: Haxe→WASM spike(**byte一致 達成 / GO 確定**)
 
+> 記録: 2026-06-02 時点の引き継ぎ。web playground 統合まで完了済み。現状は [../web/README.md](../web/README.md) を参照。
+
 最終更新 2026-06-02。詳細な調査結果は [README.md](README.md) を参照。本書は spike の到達点と、
 **この先(製品化)の作業手順**をまとめる。
 

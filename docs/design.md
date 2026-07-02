@@ -82,9 +82,10 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 
 ## Current Constraints
 
-- resource sweep はまだない。
 - macOS は未対応。
-- WebGPU は sokol backend のみ。sdlgpu backend は native 専用。
-- native capture / golden は動くが、WebGPU readback はまだ runtime API になっていない。
+- sdlgpu backend は native 専用。web は webgpu backend (default) と sokol/WGPU。
+  DX12 backend は未着手 (`docs/log/2026-06-22-native-backend-design.md`)。
+- swapchain capture (`--capture`) は native のみ。web は `Gfx.readback()` による
+  render target readback のみ。
 - sokol Vulkan path には depth/stencil format と semaphore reuse の validation warning が残っている。
 - SDL GPU path は combined image sampler 周辺に制約がある。
