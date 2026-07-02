@@ -133,8 +133,7 @@ export async function initSlang(): Promise<void> {
 //   * texture_storage_* (storage image) -> @group(1)
 //
 // Each global `@binding(B) @group(G) var<...> name : ty;` declaration is a
-// separate line in Slang's WGSL output (see the probe scripts in
-// docs/wasm-playground-plan.md notes). We do a single-pass regex over the
+// separate line in Slang's WGSL output. We do a single-pass regex over the
 // `@group(N) var ...` form, deciding the new group from the inferred kind:
 //
 //   - "var<uniform>"      -> uniform block, keep group 0
