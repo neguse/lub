@@ -45,5 +45,11 @@ else
         echo "install xorg-server-xvfb (Arch) or xvfb (Debian)" >&2
         exit 2
     fi
+    # xvfb-run -a races when instances start concurrently (two pick the same
+    # display, one X server dies under the other's client). Parallel drivers
+    # must hand each job a unique LUB_XVFB_SERVERNUM instead.
+    if [[ -n "${LUB_XVFB_SERVERNUM:-}" ]]; then
+        exec xvfb-run -n "$LUB_XVFB_SERVERNUM" "$binary" "${args[@]}"
+    fi
     exec xvfb-run -a "$binary" "${args[@]}"
 fi

@@ -12,30 +12,45 @@
 # Usage:
 #   scripts/format.sh            # 全部整形
 #   scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け, 非ゼロ終了で失敗)
+#   scripts/format.sh --changed  # HEAD から変更のあるファイルだけを対象にする
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 check=0
-case "${1:-}" in
-    --check) check=1 ;;
-    -h | --help)
-        sed -n '2,14p' "$0"
-        exit 0
-        ;;
-    "") ;;
-    *)
-        echo "unknown arg: $1" >&2
-        exit 2
-        ;;
-esac
+changed=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --check) check=1 ;;
+        --changed) changed=1 ;;
+        -h | --help)
+            sed -n '2,15p' "$0"
+            exit 0
+            ;;
+        *)
+            echo "unknown arg: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
 
 git_files() {
-    git ls-files -z -- "$@" \
-        ':!:third_party/**' \
-        ':!:haxe-wasm/**' \
-        ':!:web/dist/**' \
-        ':!:web/public/**' \
-        ':!:web/node_modules/**'
+    if [[ $changed -eq 1 ]]; then
+        # Working tree + index vs HEAD; deletions have nothing to format.
+        git diff -z --name-only --diff-filter=d HEAD -- "$@" \
+            ':!:third_party/**' \
+            ':!:haxe-wasm/**' \
+            ':!:web/dist/**' \
+            ':!:web/public/**' \
+            ':!:web/node_modules/**'
+    else
+        git ls-files -z -- "$@" \
+            ':!:third_party/**' \
+            ':!:haxe-wasm/**' \
+            ':!:web/dist/**' \
+            ':!:web/public/**' \
+            ':!:web/node_modules/**'
+    fi
 }
 
 run_if_any() {

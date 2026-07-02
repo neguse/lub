@@ -64,18 +64,30 @@ fi
 
 mkdir -p "$GOLDEN_DIR"
 tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
+keep_tmpdir=0
+cleanup() {
+    if [[ $keep_tmpdir -eq 1 ]]; then
+        echo "failure artifacts kept in $tmpdir"
+    else
+        rm -rf "$tmpdir"
+    fi
+}
+trap cleanup EXIT
 
-pass=0
-fail=0
-missing=0
-updated=0
+# lavapipe renders on the CPU, so independent captures scale with cores.
+# Entries run as background jobs; each writes its verdict to a status file
+# in $tmpdir, aggregated after the final wait. LUB_GOLDEN_JOBS=1 for serial.
+jobs_max="${LUB_GOLDEN_JOBS:-$(nproc)}"
+jobs_running=0
+jobs_launched=0
 
 check_entry() {
     local label="$1"
     local entry="$2"
     local golden_name="$3"
     local backend="$4"
+    local display_num="$5"
+    local haxe_port="$6"
     local frame="$FRAME"
     case "$golden_name" in
         16_box2d) frame=120 ;;
@@ -85,40 +97,75 @@ check_entry() {
     local out="$tmpdir/${golden_name}_${backend}.png"
     local golden="$GOLDEN_DIR/${golden_name}_${backend}.png"
     local log="$tmpdir/${golden_name}_${backend}.log"
+    local status="$tmpdir/${golden_name}_${backend}.status"
 
-    if ! LUB_BACKEND="$backend" scripts/run-headless.sh "$BINARY" \
+    if ! LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" \
+        LUB_HAXE_PORT="$haxe_port" \
+        scripts/run-headless.sh "$BINARY" \
         "$entry" --capture "$out" --capture-frame "$frame" \
         >"$log" 2>&1; then
         echo "FAIL ${label} ${backend}: process failed (see $log)"
-        fail=$((fail + 1))
+        echo fail >"$status"
         return
     fi
 
     if [[ ! -f "$out" ]]; then
         echo "FAIL ${label} ${backend}: capture not produced (see $log)"
-        fail=$((fail + 1))
+        echo fail >"$status"
         return
     fi
 
     if [[ $update -eq 1 ]]; then
         cp "$out" "$golden"
         echo "UPDATED ${golden}"
-        updated=$((updated + 1))
+        echo updated >"$status"
         return
     fi
 
     if [[ ! -f "$golden" ]]; then
         echo "MISSING ${golden} (run with --update to create)"
-        missing=$((missing + 1))
+        echo missing >"$status"
         return
     fi
 
     if cmp -s "$out" "$golden"; then
         echo "PASS ${label} ${backend}"
-        pass=$((pass + 1))
+        echo pass >"$status"
     else
         echo "FAIL ${label} ${backend}: $out != $golden"
-        fail=$((fail + 1))
+        echo fail >"$status"
+    fi
+}
+
+# Both backends of one entry share the generated Lua artifacts, so they
+# must not run concurrently (the second compile hotswaps under the first
+# run). Backends run serially inside one background job per entry.
+run_entry_backends() {
+    local label="$1"
+    local entry="$2"
+    local golden_name="$3"
+    local base="$4"
+    local bi=0
+    local backend
+    for backend in "${BACKENDS[@]}"; do
+        if [[ -z "$backend_filter" || "$backend" == "$backend_filter" ]]; then
+            # Unique X display + haxe --wait port per run: concurrent jobs
+            # must not race for xvfb display numbers (run-headless.sh) or
+            # the 7400..7410 haxe server probe range (src/haxe_server.c).
+            check_entry "$label" "$entry" "$golden_name" "$backend" \
+                $((100 + base * 2 + bi)) $((7500 + base * 2 + bi))
+        fi
+        bi=$((bi + 1))
+    done
+}
+
+launch_entry() {
+    run_entry_backends "$@" "$jobs_launched" &
+    jobs_launched=$((jobs_launched + 1))
+    jobs_running=$((jobs_running + 1))
+    if ((jobs_running >= jobs_max)); then
+        wait -n || true
+        jobs_running=$((jobs_running - 1))
     fi
 }
 
@@ -135,12 +182,8 @@ fi
 if [[ $run_samples -eq 1 ]]; then
     for sample in "${SAMPLES[@]}"; do
         [[ -n "$sample_filter" && "$sample" != "$sample_filter" ]] && continue
-        for backend in "${BACKENDS[@]}"; do
-            [[ -n "$backend_filter" && "$backend" != "$backend_filter" ]] && continue
-            # Each sample is self-contained at samples/<name>/<name>.hxml.
-            check_entry "$sample" "samples/${sample}/${sample}.hxml" \
-                "$sample" "$backend"
-        done
+        # Each sample is self-contained at samples/<name>/<name>.hxml.
+        launch_entry "$sample" "samples/${sample}/${sample}.hxml" "$sample"
     done
 fi
 
@@ -148,12 +191,27 @@ if [[ $run_tests -eq 1 ]]; then
     for t in "${VISUAL_TESTS[@]}"; do
         [[ -n "$test_filter" && "$t" != "$test_filter" ]] && continue
         local_name="test_${t}"
-        for backend in "${BACKENDS[@]}"; do
-            [[ -n "$backend_filter" && "$backend" != "$backend_filter" ]] && continue
-            check_entry "$local_name" "tests/lua/${local_name}.lua" \
-                "$local_name" "$backend"
-        done
+        launch_entry "$local_name" "tests/lua/${local_name}.lua" "$local_name"
     done
+fi
+
+wait
+
+pass=0
+fail=0
+missing=0
+updated=0
+for status_file in "$tmpdir"/*.status; do
+    [[ -e "$status_file" ]] || continue
+    case "$(<"$status_file")" in
+        pass) pass=$((pass + 1)) ;;
+        fail) fail=$((fail + 1)) ;;
+        missing) missing=$((missing + 1)) ;;
+        updated) updated=$((updated + 1)) ;;
+    esac
+done
+if [[ $fail -gt 0 ]]; then
+    keep_tmpdir=1
 fi
 
 echo "---"
