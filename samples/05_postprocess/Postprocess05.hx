@@ -39,7 +39,7 @@ class Postprocess05 {
 
 		var rt = Gfx.useTexture("rt_scene", RT_W, RT_H, Gfx.RGBA8, null, 1, {filter: Gfx.LINEAR, wrap: Gfx.CLAMP, target: true});
 
-		var shOff = Gfx.useShader("off_shader", ovs, ofs, ovsv ^ ofsv);
+		var shOff = Gfx.useShader("off_shader", ovs, ofs, ovsv * 31 + ofsv);
 		var bOff = Gfx.useBuffer("off_verts", Gfx.VERTEX, overts, ovv);
 		Gfx.beginPass({
 			target: rt,
@@ -48,7 +48,7 @@ class Postprocess05 {
 		Gfx.draw(3, {verts: bOff}, {shader: shOff, depth: false, cull: Gfx.NONE});
 		Gfx.endPass();
 
-		var shPost = Gfx.useShader("post_shader", pvs, pfs, pvsv ^ pfsv);
+		var shPost = Gfx.useShader("post_shader", pvs, pfs, pvsv * 31 + pfsv);
 		var bPost = Gfx.useBuffer("post_verts", Gfx.VERTEX, pverts, pvv);
 		Gfx.beginPass({
 			target: Gfx.mainTex,

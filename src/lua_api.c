@@ -1586,23 +1586,72 @@ static int l_key_down(lua_State *L) {
   return 1;
 }
 
-// mouse_delta() -> dx, dy : relative motion (window pixels) since the last
-// call. Consumes the accumulated delta, so call it once per frame.
+// mouse_delta() -> dx, dy : relative motion (window pixels) accumulated over
+// the current frame. Idempotent within a frame; the latch is cleared by the
+// runtime after onFrame.
 static int l_mouse_delta(lua_State *L) {
-  float dx = 0.0f, dy = 0.0f;
-  SDL_GetRelativeMouseState(&dx, &dy);
-  lua_pushnumber(L, (lua_Number)dx);
-  lua_pushnumber(L, (lua_Number)dy);
+  lua_pushnumber(L, (lua_Number)g_app_for_lua->mouse_rel_x);
+  lua_pushnumber(L, (lua_Number)g_app_for_lua->mouse_rel_y);
   return 2;
+}
+
+static int check_mouse_button(lua_State *L, const char *fn) {
+  int btn = (int)luaL_optinteger(L, 1, 1);
+  if (btn < 1)
+    luaL_error(L, "%s: button must be >= 1 (1=left, 2=middle, 3=right)", fn);
+  return btn;
 }
 
 // mouse_down(button) -> bool. button: 1=left (default), 2=middle, 3=right.
 static int l_mouse_down(lua_State *L) {
-  int btn = (int)luaL_optinteger(L, 1, 1);
-  if (btn < 1)
-    btn = 1;
+  int btn = check_mouse_button(L, "mouse_down");
   SDL_MouseButtonFlags mask = SDL_GetMouseState(NULL, NULL);
   lua_pushboolean(L, (mask & SDL_BUTTON_MASK(btn)) != 0);
+  return 1;
+}
+
+// mouse_pressed(button) -> bool : pressed during the current frame (latched).
+static int l_mouse_pressed(lua_State *L) {
+  int btn = check_mouse_button(L, "mouse_pressed");
+  lua_pushboolean(
+      L, (g_app_for_lua->mouse_pressed_mask & SDL_BUTTON_MASK(btn)) != 0);
+  return 1;
+}
+
+// mouse_released(button) -> bool : released during the current frame
+// (latched).
+static int l_mouse_released(lua_State *L) {
+  int btn = check_mouse_button(L, "mouse_released");
+  lua_pushboolean(
+      L, (g_app_for_lua->mouse_released_mask & SDL_BUTTON_MASK(btn)) != 0);
+  return 1;
+}
+
+// mouse_pos() -> x, y : absolute cursor position in window pixels.
+static int l_mouse_pos(lua_State *L) {
+  float x = 0.0f, y = 0.0f;
+  SDL_GetMouseState(&x, &y);
+  lua_pushnumber(L, (lua_Number)x);
+  lua_pushnumber(L, (lua_Number)y);
+  return 2;
+}
+
+// key_pressed(name) -> bool : pressed during the current frame (latched, so
+// a press shorter than one frame is still observed).
+static int l_key_pressed(lua_State *L) {
+  const char *name = luaL_checkstring(L, 1);
+  SDL_Scancode sc = scancode_from_name(name);
+  lua_pushboolean(L, sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
+                         g_app_for_lua->key_pressed[sc]);
+  return 1;
+}
+
+// key_released(name) -> bool : released during the current frame (latched).
+static int l_key_released(lua_State *L) {
+  const char *name = luaL_checkstring(L, 1);
+  SDL_Scancode sc = scancode_from_name(name);
+  lua_pushboolean(L, sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
+                         g_app_for_lua->key_released[sc]);
   return 1;
 }
 
@@ -1920,6 +1969,16 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "mouse_delta");
   lua_pushcfunction(L, l_mouse_down);
   lua_setglobal(L, "mouse_down");
+  lua_pushcfunction(L, l_mouse_pressed);
+  lua_setglobal(L, "mouse_pressed");
+  lua_pushcfunction(L, l_mouse_released);
+  lua_setglobal(L, "mouse_released");
+  lua_pushcfunction(L, l_mouse_pos);
+  lua_setglobal(L, "mouse_pos");
+  lua_pushcfunction(L, l_key_pressed);
+  lua_setglobal(L, "key_pressed");
+  lua_pushcfunction(L, l_key_released);
+  lua_setglobal(L, "key_released");
   lua_pushcfunction(L, l_gfx_size);
   lua_setglobal(L, "gfx_size");
   lua_pushcfunction(L, l_actual_fps);
@@ -2053,10 +2112,13 @@ void lua_ctx_call_init(LuaCtx *ctx) {
     return;
   call_module_field(ctx, "onInit", 0);
 }
-void lua_ctx_call_frame(LuaCtx *ctx) {
+void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "onFrame", 0);
+  // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
+  // Lua が余分な引数を無視するのでそのまま動く。
+  lua_pushnumber(ctx->L, dt);
+  call_module_field(ctx, "onFrame", 1);
 }
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)

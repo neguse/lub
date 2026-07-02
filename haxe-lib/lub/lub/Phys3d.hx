@@ -1,11 +1,16 @@
 package lub;
 
+/**
+	3D 物理の座標 wire format。`lub.Math.Vec3` はこの形へ暗黙変換できる
+	ので、そのまま渡してよい。
+**/
 typedef Vec3d = {
 	var x:Float;
 	var y:Float;
 	var z:Float;
 }
 
+/** 回転の wire format。`lub.Math.Quat` から暗黙変換できる。 **/
 typedef Quat3d = {
 	var x:Float;
 	var y:Float;
@@ -13,6 +18,11 @@ typedef Quat3d = {
 	var w:Float;
 }
 
+/**
+	body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにも
+	この値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。
+	`wx/wy/wz` は角速度 (rad/s)。
+**/
 typedef InitialState3d = {
 	?x:Float,
 	?y:Float,
@@ -44,6 +54,12 @@ typedef WorldCallbacks3d = {
 	?restitution:Dynamic,
 }
 
+/**
+	world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) が
+	シミュレーション刻み。`step(world, dt)` は内部の accumulator が
+	`fixedDt` を超えるたびに substep し、1 回の step での消化は
+	`maxSteps` 回まで。
+**/
 typedef WorldOpts3d = {
 	?version:Int,
 	?gravity:Vec3d,
@@ -56,10 +72,19 @@ typedef WorldOpts3d = {
 	?callbacks:WorldCallbacks3d,
 }
 
+/**
+	`begin` のオプション。`prune` (既定 true) を false にすると、この
+	フレームで宣言されなかった body/shape/joint の自動削除を止める。
+**/
 typedef BeginOpts3d = {
 	?prune:Bool,
 }
 
+/**
+	body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC`
+	(既定 STATIC)。`version` を上げると `initial` の状態で作り直される
+	(リスポーンの定型)。
+**/
 typedef BodyDesc3d = {
 	?version:Int,
 	?type:Int,
@@ -83,6 +108,16 @@ typedef FilterDesc3d = {
 	?group:Int,
 }
 
+/**
+	shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。
+
+	- `density` (既定 1) / `friction` / `restitution`: 材質。
+	- `sensor`: 接触応答なしの検知専用。イベントは `sensorEvents` で有効化。
+	- `contact`: begin/end の contact イベントを出す。
+	- `hit`: 衝撃イベント (閾値は `WorldOpts3d.hitEventThreshold`)。
+	- `preSolve`: `WorldCallbacks3d.preSolve` の対象にする。
+	- `tag`: イベントに載る識別子。
+**/
 typedef SphereDesc3d = {
 	?version:Int,
 	?density:Float,
@@ -226,6 +261,38 @@ typedef FrameDesc3d = {
 	?euler:Vec3d,
 }
 
+/**
+	joint の宣言。`type` ごとに有効なフィールドが異なる
+	(下記以外は無視される)。
+
+	共通: `type`, `version`, `a`/`b` (BodyRef), `anchorA`/`anchorB`
+	(**ワールド座標**。2D と違い body ローカルではない),
+	`frameA`/`frameB` (ローカルフレーム。anchor/axis より優先),
+	`axis` (ワールド軸), `collideConnected`, `forceThreshold`,
+	`torqueThreshold`, `constraintHertz`, `constraintDampingRatio`。
+
+	- `distance`: length, enableSpring, hertz, dampingRatio,
+	  enableLimit, minLength, maxLength, enableMotor, motorSpeed, maxForce
+	- `revolute` (別名 `hinge`): enableSpring, hertz, dampingRatio,
+	  targetAngle, enableLimit, lower, upper, enableMotor, motorSpeed,
+	  maxTorque
+	- `prismatic`: enableSpring, hertz, dampingRatio, targetTranslation,
+	  enableLimit, lower, upper, enableMotor, motorSpeed, maxForce
+	- `spherical`: enableSpring, hertz, dampingRatio, targetRotation
+	  (quat/euler), enableConeLimit, coneAngle, enableTwistLimit,
+	  lowerTwistAngle, upperTwistAngle, enableMotor, motorVelocity,
+	  maxTorque
+	- `weld`: linearHertz, linearDampingRatio, angularHertz,
+	  angularDampingRatio
+	- `wheel`: サスペンション/操舵/駆動をまとめた車輪用。専用名
+	  (suspension* / spin* / steering*) が汎用名より優先される
+	- `motor`: linearVelocity, angularVelocity ほか速度駆動
+	- `parallel`: hertz, dampingRatio, maxTorque
+	- `filter`: 固有フィールドなし (2 body 間の衝突を切る)
+
+	`spring` / `limit` / `motor` の nested テーブルはフラット指定の別記法。
+	角度は全てラジアン。
+**/
 typedef JointDesc3d = {
 	?version:Int,
 	?type:String,
@@ -437,6 +504,28 @@ abstract BodyRef3d(Dynamic) from Dynamic to Dynamic {}
 abstract ShapeRef3d(Dynamic) from Dynamic to Dynamic {}
 abstract JointRef3d(Dynamic) from Dynamic to Dynamic {}
 
+/**
+	Box3D の即時モード API。毎フレーム同じ `key` で `world` / `body` /
+	shape / `joint` を宣言し、`step` を呼ぶのが基本形
+	(サンプル 18_coin_pusher 参照):
+
+	```haxe
+	var world = Phys3d.world("main", {gravity: {x: 0, y: -10, z: 0}});
+	Phys3d.begin(world);
+	var body = Phys3d.body(world, "coin", {type: Phys3d.DYNAMIC});
+	Phys3d.cylinder(body, "solid", {height: 0.07, radius: 0.17});
+	Phys3d.step(world, dt);
+	var pose = Phys3d.pose(body);
+	```
+
+	`begin` から次の `begin` までに宣言されなかった body/shape/joint は
+	自動削除される (`BeginOpts3d.prune` で無効化可)。desc の `version` を
+	上げるとそのリソースが作り直される。
+
+	イベント取得は `contacts(world, kind)` (kind = "begin" 既定 /
+	"end" / "hit")、`sensors(world, kind)`、`bodyEvents(world)`、
+	`jointEvents(world)`。戻り値は 1 始まりの Lua 配列。
+**/
 extern class Phys3d {
 	@:native("STATIC") public static var STATIC(default, null):Int;
 	@:native("KINEMATIC") public static var KINEMATIC(default, null):Int;

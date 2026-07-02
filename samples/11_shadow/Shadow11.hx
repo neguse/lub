@@ -165,8 +165,8 @@ class Shadow11 {
 		if (dvs == null || dfs == null || svs == null || sfs == null)
 			return;
 
-		var depthShader = Gfx.useShader("shadow_depth_shader", dvs, dfs, dvsv ^ dfsv);
-		var sceneShader = Gfx.useShader("shadow_scene_shader", svs, sfs, svsv ^ sfsv);
+		var depthShader = Gfx.useShader("shadow_depth_shader", dvs, dfs, dvsv * 31 + dfsv);
+		var sceneShader = Gfx.useShader("shadow_scene_shader", svs, sfs, svsv * 31 + sfsv);
 
 		var shadowMap = Gfx.useTexture("shadow_map", SHADOW_SIZE, SHADOW_SIZE, Gfx.RGBA8, null, 1, {target: true, filter: Gfx.NEAREST, wrap: Gfx.CLAMP});
 		var shadowDepth = Gfx.useTexture("shadow_depth", SHADOW_SIZE, SHADOW_SIZE, Gfx.DEPTH16, null, 1, {target: true, filter: Gfx.NEAREST, wrap: Gfx.CLAMP});

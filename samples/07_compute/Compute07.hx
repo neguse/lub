@@ -33,7 +33,7 @@ class Compute07 {
 
 		var vbuf = Gfx.useBuffer("compute_verts", Gfx.STORAGE, VERT_FLOATS, 1);
 		var shC = Gfx.useShaderCompute("gen", cs, csv);
-		var shR = Gfx.useShader("render", vs, fs, vsv ^ fsv);
+		var shR = Gfx.useShader("render", vs, fs, vsv * 31 + fsv);
 
 		Gfx.dispatch(1, 1, 1, {out_verts: vbuf}, {shader: shC});
 

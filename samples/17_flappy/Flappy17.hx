@@ -1,6 +1,7 @@
 import lub.Lub;
 import lub.Gfx;
 import lub.Input;
+import lub.Input.Key;
 import lub.Io;
 import lub.Math;
 
@@ -22,8 +23,8 @@ class Flappy17 {
 		Lub.config({backend: backend});
 	}
 
-	public static function onFrame() {
-		t += 1.0 / 60.0;
+	public static function onFrame(dt:Float) {
+		t += dt;
 
 		var vsResult = Io.loadText("samples/17_flappy/data/cube.vs.slang");
 		var fsResult = Io.loadText("samples/17_flappy/data/cube.fs.slang");
@@ -31,17 +32,20 @@ class Flappy17 {
 		if (vsResult.text == null || fsResult.text == null || vertsResult.data == null)
 			return;
 
-		var s = Gfx.useShader("cube_shader", vsResult.text, fsResult.text, vsResult.version ^ fsResult.version);
+		var s = Gfx.useShader("cube_shader", vsResult.text, fsResult.text, vsResult.version * 31 + fsResult.version);
 		var b = Gfx.useBuffer("cube_verts", Gfx.VERTEX, vertsResult.data, vertsResult.version);
 
+		// keyPressed / mousePressed はフレームラッチされたエッジ検出。
+		// タップ (web) は SDL の合成でマウス左ボタンとして届く。
+		var flap = Input.keyPressed(Key.Space) || Input.mousePressed();
 		if (!dead) {
-			if (Input.keyDown("space") || Input.mouseDown(0)) {
+			if (flap) {
 				velocityY = 3.0;
 			}
-			velocityY -= 8.0 / 60.0;
-			playerY += velocityY / 60.0;
+			velocityY -= 8.0 * dt;
+			playerY += velocityY * dt;
 
-			pipeX -= 2.0 / 60.0;
+			pipeX -= 2.0 * dt;
 			if (pipeX < -3.0) {
 				pipeX = 5.0;
 				gapY = (Math.sin(t * 1.7) * 1.5:Float);
@@ -55,7 +59,7 @@ class Flappy17 {
 					dead = true;
 			}
 		} else {
-			if (Input.keyDown("space") || Input.mouseDown(0)) {
+			if (flap) {
 				dead = false;
 				playerY = 0;
 				velocityY = 0;
@@ -67,7 +71,7 @@ class Flappy17 {
 		var aspect:Float = 1280.0 / 720.0;
 		var proj = Mat4.perspectiveLh(60.0, aspect, 0.1, 100.0);
 		var view = Mat4.lookAtLh(new Vec3(0, 0, -8), new Vec3(0, 0, 0), new Vec3(0, 1, 0));
-		var vp = proj.mul(view);
+		var vp = proj * view;
 
 		Gfx.beginPass({
 			target: Gfx.mainTex,
@@ -76,17 +80,17 @@ class Flappy17 {
 
 		var drawOpts = {shader: s, depth: true, cull: Gfx.NONE};
 
-		var playerModel = Mat4.translate(new Vec3(-2.0, playerY, 0)).mul(Mat4.rotateY(t * 3.0)).mul(Mat4.scale(new Vec3(0.4, 0.4, 0.4)));
-		var playerMvp = vp.mul(playerModel);
+		var playerModel = Mat4.translate(new Vec3(-2.0, playerY, 0)) * Mat4.rotateY(t * 3.0) * Mat4.scale(new Vec3(0.4, 0.4, 0.4));
+		var playerMvp = vp * playerModel;
 		Gfx.draw(36, {verts: b, uniforms: {mvp: lua.Table.fromArray(playerMvp.m)}}, drawOpts);
 
 		var pipeScale = Mat4.scale(new Vec3(0.8, 5.0, 0.8));
-		var topModel = Mat4.translate(new Vec3(pipeX, gapY + 3.5, 0)).mul(pipeScale);
-		var topMvp = vp.mul(topModel);
+		var topModel = Mat4.translate(new Vec3(pipeX, gapY + 3.5, 0)) * pipeScale;
+		var topMvp = vp * topModel;
 		Gfx.draw(36, {verts: b, uniforms: {mvp: lua.Table.fromArray(topMvp.m)}}, drawOpts);
 
-		var botModel = Mat4.translate(new Vec3(pipeX, gapY - 3.5, 0)).mul(pipeScale);
-		var botMvp = vp.mul(botModel);
+		var botModel = Mat4.translate(new Vec3(pipeX, gapY - 3.5, 0)) * pipeScale;
+		var botMvp = vp * botModel;
 		Gfx.draw(36, {verts: b, uniforms: {mvp: lua.Table.fromArray(botMvp.m)}}, drawOpts);
 
 		Gfx.endPass();

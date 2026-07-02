@@ -212,8 +212,39 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
     g_app.pending_resize = true;
   }
+  switch (event->type) {
+  case SDL_EVENT_KEY_DOWN:
+    if (!event->key.repeat && event->key.scancode < SDL_SCANCODE_COUNT)
+      g_app.key_pressed[event->key.scancode] = true;
+    break;
+  case SDL_EVENT_KEY_UP:
+    if (event->key.scancode < SDL_SCANCODE_COUNT)
+      g_app.key_released[event->key.scancode] = true;
+    break;
+  case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    g_app.mouse_pressed_mask |= SDL_BUTTON_MASK(event->button.button);
+    break;
+  case SDL_EVENT_MOUSE_BUTTON_UP:
+    g_app.mouse_released_mask |= SDL_BUTTON_MASK(event->button.button);
+    break;
+  case SDL_EVENT_MOUSE_MOTION:
+    g_app.mouse_rel_x += event->motion.xrel;
+    g_app.mouse_rel_y += event->motion.yrel;
+    break;
+  default:
+    break;
+  }
   lua_ctx_call_event(&g_app.lua, event);
   return SDL_APP_CONTINUE;
+}
+
+static void input_latch_clear(App *app) {
+  memset(app->key_pressed, 0, sizeof(app->key_pressed));
+  memset(app->key_released, 0, sizeof(app->key_released));
+  app->mouse_pressed_mask = 0;
+  app->mouse_released_mask = 0;
+  app->mouse_rel_x = 0.0f;
+  app->mouse_rel_y = 0.0f;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
@@ -231,14 +262,25 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
   }
+  uint64_t now = SDL_GetPerformanceCounter();
+  if (g_app.frame_prev_counter != 0) {
+    g_app.frame_dt = (double)(now - g_app.frame_prev_counter) /
+                     (double)SDL_GetPerformanceFrequency();
+    if (g_app.frame_dt > 0.25)
+      g_app.frame_dt = 0.25;
+  } else {
+    g_app.frame_dt = 1.0 / 60.0;
+  }
+  g_app.frame_prev_counter = now;
   uint64_t profile_frame = g_app.frame_index;
   profile_frame_begin(&g_app.profile, profile_frame);
   profile_begin_scope(&g_app.profile, "runtime.begin_frame");
   app_frame_begin(&g_app, &w, &h);
   profile_end_scope(&g_app.profile, "runtime.begin_frame");
   profile_begin_scope(&g_app.profile, "script.onFrame");
-  lua_ctx_call_frame(&g_app.lua);
+  lua_ctx_call_frame(&g_app.lua, g_app.frame_dt);
   profile_end_scope(&g_app.profile, "script.onFrame");
+  input_latch_clear(&g_app);
   profile_begin_scope(&g_app.profile, "runtime.pass_guard");
   if (pass_state_in_pass(&g_app.pass))
     pass_state_end(&g_app.pass);

@@ -374,7 +374,7 @@ class Breakout3d10 {
 
 		var verts = buildVertices();
 		meshVersion = meshVersion + 1;
-		var shader = Gfx.useShader("breakout3d_shader", vs, fs, vsv ^ fsv);
+		var shader = Gfx.useShader("breakout3d_shader", vs, fs, vsv * 31 + fsv);
 		var vbuf = Gfx.useBuffer("breakout3d_verts", Gfx.VERTEX, lua.Table.fromArray(verts), meshVersion);
 
 		Gfx.beginPass({

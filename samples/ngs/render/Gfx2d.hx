@@ -17,7 +17,7 @@ class Gfx2d {
 		var fs = Io.loadText("samples/ngs/data/sprite.fs.slang");
 		if (vs.text == null || fs.text == null)
 			return false;
-		shader = Gfx.useShader("ngs_sprite", vs.text, fs.text, vs.version ^ fs.version);
+		shader = Gfx.useShader("ngs_sprite", vs.text, fs.text, vs.version * 31 + fs.version);
 		if (white == null) {
 			white = new Atlas("ngs_white", ""); // path 空: ensure() は呼ばず手動確保
 			white.w = 1;

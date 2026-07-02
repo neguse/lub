@@ -50,7 +50,6 @@ class Breakout09 {
 	static var lives:Int = 3;
 	static var score:Int = 0;
 	static var launchTimer:Float = 0;
-	static var resetWasDown:Bool = false;
 	static var meshVersion:Int = 0;
 	static var initialized:Bool = false;
 
@@ -153,11 +152,10 @@ class Breakout09 {
 	}
 
 	static function updateGame() {
-		var resetDown = Input.keyDown("r");
-		if (resetDown && !resetWasDown) {
+		// keyPressed はランタイムがフレームラッチするエッジ検出。
+		if (Input.keyPressed("r")) {
 			resetGame();
 		}
-		resetWasDown = resetDown;
 
 		var move = 0;
 		if (Input.keyDown("left") || Input.keyDown("a"))
@@ -307,7 +305,7 @@ class Breakout09 {
 
 		var verts = buildVertices();
 		meshVersion = meshVersion + 1;
-		var shader = Gfx.useShader("breakout_shader", vs, fs, vsv ^ fsv);
+		var shader = Gfx.useShader("breakout_shader", vs, fs, vsv * 31 + fsv);
 		var vbuf = Gfx.useBuffer("breakout_verts", Gfx.VERTEX, lua.Table.fromArray(verts), meshVersion);
 
 		Gfx.beginPass({

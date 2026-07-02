@@ -560,7 +560,7 @@ class Sfb12 {
 		var f = Io.loadText("samples/12_sfb/data/" + fsPath);
 		if (v.text == null || f.text == null)
 			return null;
-		return Gfx.useShader(key, v.text, f.text, v.version ^ f.version);
+		return Gfx.useShader(key, v.text, f.text, v.version * 31 + f.version);
 	}
 
 	static inline function black():lua.Table<Int, Float> {

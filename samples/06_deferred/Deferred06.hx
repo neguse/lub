@@ -42,7 +42,7 @@ class Deferred06 {
 		var gbuf1 = Gfx.useTexture("gbuf1", RT_W, RT_H, Gfx.RGBA8, null, 1, {filter: Gfx.LINEAR, wrap: Gfx.CLAMP, target: true});
 
 		// G-buffer pass: MRT write. SV_Target0 -> gbuf0, SV_Target1 -> gbuf1.
-		var shG = Gfx.useShader("gbuf_shader", gvs, gfs, gvsv ^ gfsv);
+		var shG = Gfx.useShader("gbuf_shader", gvs, gfs, gvsv * 31 + gfsv);
 		var bG = Gfx.useBuffer("gbuf_verts", Gfx.VERTEX, gverts, gvv);
 		Gfx.beginPass({
 			targets: lua.Table.fromArray([gbuf0, gbuf1]),
@@ -57,7 +57,7 @@ class Deferred06 {
 		// View pass: split-screen visualization. Left half samples gbuf0,
 		// right half samples gbuf1. Same shader; only the texture binding and
 		// the (scale, offset) transform uniform differ.
-		var shV = Gfx.useShader("view_shader", vvs, vfs, vvsv ^ vfsv);
+		var shV = Gfx.useShader("view_shader", vvs, vfs, vvsv * 31 + vfsv);
 		var bV = Gfx.useBuffer("view_verts", Gfx.VERTEX, vverts, vvv);
 		Gfx.beginPass({
 			target: Gfx.mainTex,

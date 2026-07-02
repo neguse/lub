@@ -13,6 +13,10 @@ import lub.Bytes;
 	var error:String;
 }
 
+/**
+	PNG の読み書き。`load` は `Io.load*` と同じ status/version 規約
+	(web では "pending" があり得る。`bytes` が null の間は待つ)。
+**/
 @:luaRequire("lubx_png")
 extern class Png {
 	@:native("load") public static function load(path:String):PngResult;

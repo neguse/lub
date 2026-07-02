@@ -26,7 +26,8 @@ void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
 
 void lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e);
-void lua_ctx_call_frame(LuaCtx *ctx);
+// onFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
+void lua_ctx_call_frame(LuaCtx *ctx, double dt);
 void lua_ctx_call_quit(LuaCtx *ctx);
 void lua_ctx_shutdown(LuaCtx *ctx);
 

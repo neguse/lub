@@ -58,7 +58,7 @@ class RenderPrimitives15 {
 		var fs = Io.loadText("samples/15_render_primitives/data/" + fsPath);
 		if (vs.text == null || fs.text == null)
 			return null;
-		return Gfx.useShader(key, vs.text, fs.text, vs.version ^ fs.version);
+		return Gfx.useShader(key, vs.text, fs.text, vs.version * 31 + fs.version);
 	}
 
 	static function shaderC(key:String, csPath:String):Dynamic {

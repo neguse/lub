@@ -99,15 +99,16 @@ static const char HAXE_PRELUDE[] =
     "P['phys3d_'..n]=_G['phys3d_'..n] "
     "end\n"
     "P.STATIC=STATIC;P.KINEMATIC=KINEMATIC;P.DYNAMIC=DYNAMIC;lub.Phys3d=P end\n"
-    "lub.Input = { key_down = key_down, mouse_delta = mouse_delta,\n"
-    "  mouse_down = mouse_down }\n"
+    "lub.Input = { key_down = key_down, key_pressed = key_pressed,\n"
+    "  key_released = key_released, mouse_delta = mouse_delta,\n"
+    "  mouse_down = mouse_down, mouse_pressed = mouse_pressed,\n"
+    "  mouse_released = mouse_released, mouse_pos = mouse_pos }\n"
     "lub.Profiler = { enabled = profile_enabled,\n"
     "  begin_scope = profile_begin, end_scope = profile_end,\n"
     "  reset = profile_reset, report = profile_report }\n"
     "lub.Sys = { file_mtime = file_mtime, request_file = request_file,\n"
     "  is_web = is_web,\n"
     "  fnv1a64 = fnv1a64,\n"
-    "  actual_fps = actual_fps,\n"
-    "  load_gltf = load_gltf }\n";
+    "  actual_fps = actual_fps }\n";
 
 #endif

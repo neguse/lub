@@ -32,7 +32,7 @@ class Texture03 {
 		if (vs == null || fs == null || verts == null || px == null)
 			return;
 
-		var s = Gfx.useShader("tex_shader", vs, fs, vsv ^ fsv);
+		var s = Gfx.useShader("tex_shader", vs, fs, vsv * 31 + fsv);
 		var b = Gfx.useBuffer("tex_verts", Gfx.VERTEX, verts, vv);
 		var t = Gfx.useTexture("tex_chk", w, h, fmt, px, pv);
 		Gfx.beginPass({

@@ -29,7 +29,7 @@ class Mvp04 {
 		if (vs == null || fs == null || verts == null)
 			return;
 
-		var s = Gfx.useShader("mvp_shader", vs, fs, vsv ^ fsv);
+		var s = Gfx.useShader("mvp_shader", vs, fs, vsv * 31 + fsv);
 		var b = Gfx.useBuffer("mvp_verts", Gfx.VERTEX, verts, vv);
 		Gfx.beginPass({
 			target: Gfx.mainTex,

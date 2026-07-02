@@ -4,6 +4,12 @@ import lub.Gfx;
 
 typedef SpriteBucket = {atlas:Atlas, verts:Array<Float>, ready:Bool};
 
+/**
+	2D スプライトのバッチ描画。毎フレーム `begin()` → `sprite()`/`quad()`
+	を積む → pass 内で `flush()` の順で使う。座標は論理解像度
+	(`logicalW` x `logicalH`) のピクセル、左上原点。
+	アトラスごとに 1 draw にまとめられる。
+**/
 class SpriteBatch {
 	public static inline var LEGACY_STRIDE:Int = 8;
 	public static inline var VERTEX_STRIDE:Int = 4;

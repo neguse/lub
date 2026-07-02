@@ -3,6 +3,10 @@ package lubx;
 import lub.Gfx;
 import lua.Table;
 
+/**
+	RCAS 風のシャープ化ポストプロセス。`run(target, scene, sharpness)` で
+	`scene` を鮮鋭化して `target` に描く。sharpness は 0..1。
+**/
 class Rcas {
 	static var VS:String = "struct VSIn { float2 pos : POSITION; float2 uv : TEXCOORD0; };\n"
 		+ "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"

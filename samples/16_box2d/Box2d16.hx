@@ -110,7 +110,7 @@ class Box2d16 {
 		var fs = Io.loadText("samples/16_box2d/data/16_color.fs.slang");
 		if (vs.text == null || fs.text == null)
 			return;
-		var shader = Gfx.useShader("box2d16_color", vs.text, fs.text, vs.version ^ fs.version);
+		var shader = Gfx.useShader("box2d16_color", vs.text, fs.text, vs.version * 31 + fs.version);
 		var mesh = Gfx.useBuffer("box2d16_mesh", Gfx.VERTEX, Table.fromArray(verts), meshVersion);
 
 		Gfx.beginPass({

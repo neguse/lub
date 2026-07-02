@@ -108,6 +108,22 @@ typedef struct App {
   // through this flag so the swapchain is only ever rebuilt at frame start.
   bool pending_resize;
 
+  // Input latch: SDL_AppEvent accumulates edge events here so a press that
+  // begins and ends inside one frame is still observable from the script.
+  // SDL_AppIterate clears the latches right after the script's onFrame.
+  bool key_pressed[SDL_SCANCODE_COUNT];
+  bool key_released[SDL_SCANCODE_COUNT];
+  uint32_t mouse_pressed_mask;
+  uint32_t mouse_released_mask;
+  // Per-frame mouse motion sum (window px). mouse_delta() reads this, so it
+  // is idempotent within a frame (unlike SDL_GetRelativeMouseState).
+  float mouse_rel_x, mouse_rel_y;
+
+  // Real frame delta time in seconds, passed to onFrame(dt). Clamped so a
+  // debugger pause or window drag does not produce a giant step.
+  double frame_dt;
+  uint64_t frame_prev_counter;
+
   // Backend selection (Task 2). app_init sets phase = PRE_BACKEND and
   // backend_name = "sokol". Lua's config() may overwrite backend_name during
   // onInit (PRE_BACKEND only). app_backend_init flips phase to POST_BACKEND

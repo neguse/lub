@@ -5,14 +5,20 @@ package lub;
 // (Haxe 4 は暗黙に std を引くが、Haxe 5 preview はパッケージ内モジュールを優先する)
 import Math;
 
-class Vec2 {
-	public var x:Float;
-	public var y:Float;
+/**
+	2 次元ベクトル。
 
-	public inline function new(x:Float, y:Float) {
-		this.x = x;
-		this.y = y;
-	}
+	下地は `{x:Float, y:Float}` の匿名構造体なので、`lub.Phys2d` の
+	座標を受け取る箇所とは暗黙に相互変換できる。
+
+	演算子: `a + b` / `a - b` / `a * b` (成分積) / `a * s` / `s * a` /
+	`a / b` (成分商) / `a / s` / `-a`。
+	同名メソッド (`add` / `sub` / `mul` / `scale` / `div` / `negate`) も残る。
+**/
+@:forward
+abstract Vec2({x:Float, y:Float}) from {x:Float, y:Float} to {x:Float, y:Float} {
+	public inline function new(x:Float, y:Float)
+		this = {x: x, y: y};
 
 	public static inline function zero():Vec2
 		return new Vec2(0, 0);
@@ -20,39 +26,50 @@ class Vec2 {
 	public static inline function one():Vec2
 		return new Vec2(1, 1);
 
+	/** 全成分が `v` のベクトル。 **/
 	public static inline function splat(v:Float):Vec2
 		return new Vec2(v, v);
 
-	public inline function add(b:Vec2):Vec2
-		return new Vec2(x + b.x, y + b.y);
+	@:op(A + B) public inline function add(b:Vec2):Vec2
+		return new Vec2(this.x + b.x, this.y + b.y);
 
-	public inline function sub(b:Vec2):Vec2
-		return new Vec2(x - b.x, y - b.y);
+	@:op(A - B) public inline function sub(b:Vec2):Vec2
+		return new Vec2(this.x - b.x, this.y - b.y);
 
-	public inline function scale(s:Float):Vec2
-		return new Vec2(x * s, y * s);
+	/** スカラー倍。演算子は `v * s` と `s * v` の両方が使える。 **/
+	@:op(A * B) public inline function scale(s:Float):Vec2
+		return new Vec2(this.x * s, this.y * s);
 
-	public inline function negate():Vec2
-		return new Vec2(-x, -y);
+	@:op(A * B) @:commutative static inline function scalePre(a:Vec2, s:Float):Vec2
+		return a.scale(s);
 
-	public inline function mul(b:Vec2):Vec2
-		return new Vec2(x * b.x, y * b.y);
+	@:op(-A) public inline function negate():Vec2
+		return new Vec2(-this.x, -this.y);
 
-	public inline function div(b:Vec2):Vec2
-		return new Vec2(x / b.x, y / b.y);
+	/** 成分ごとの積 (Hadamard 積)。 **/
+	@:op(A * B) public inline function mul(b:Vec2):Vec2
+		return new Vec2(this.x * b.x, this.y * b.y);
+
+	/** 成分ごとの商。 **/
+	@:op(A / B) public inline function div(b:Vec2):Vec2
+		return new Vec2(this.x / b.x, this.y / b.y);
+
+	@:op(A / B) inline function divScale(s:Float):Vec2
+		return new Vec2(this.x / s, this.y / s);
 
 	public inline function dot(b:Vec2):Float
-		return x * b.x + y * b.y;
+		return this.x * b.x + this.y * b.y;
 
 	public inline function lengthSq():Float
-		return x * x + y * y;
+		return this.x * this.x + this.y * this.y;
 
 	public inline function length():Float
 		return Math.sqrt(lengthSq());
 
+	/** 正規化。零ベクトルは零ベクトルのまま返す。 **/
 	public function normalize():Vec2 {
 		var len = length();
-		return if (len > 0) new Vec2(x / len, y / len) else zero();
+		return if (len > 0) new Vec2(this.x / len, this.y / len) else zero();
 	}
 
 	public inline function distanceSq(b:Vec2):Float
@@ -62,34 +79,40 @@ class Vec2 {
 		return Math.sqrt(distanceSq(b));
 
 	public inline function lerp(b:Vec2, t:Float):Vec2
-		return new Vec2(x + (b.x - x) * t, y + (b.y - y) * t);
+		return new Vec2(this.x + (b.x - this.x) * t, this.y + (b.y - this.y) * t);
 
 	public inline function min(b:Vec2):Vec2
-		return new Vec2(Math.min(x, b.x), Math.min(y, b.y));
+		return new Vec2(Math.min(this.x, b.x), Math.min(this.y, b.y));
 
 	public inline function max(b:Vec2):Vec2
-		return new Vec2(Math.max(x, b.x), Math.max(y, b.y));
+		return new Vec2(Math.max(this.x, b.x), Math.max(this.y, b.y));
 
 	public function clamp(lo:Vec2, hi:Vec2):Vec2
-		return new Vec2(Math.max(lo.x, Math.min(hi.x, x)), Math.max(lo.y, Math.min(hi.y, y)));
+		return new Vec2(Math.max(lo.x, Math.min(hi.x, this.x)), Math.max(lo.y, Math.min(hi.y, this.y)));
 
+	/** 反時計回りに 90 度回した垂直ベクトル `(-y, x)`。 **/
 	public inline function perp():Vec2
-		return new Vec2(-y, x);
+		return new Vec2(-this.y, this.x);
 
+	/** +X 軸からの角度 (ラジアン)。 **/
 	public inline function angle():Float
-		return Math.atan2(y, x);
+		return Math.atan2(this.y, this.x);
 }
 
-class Vec3 {
-	public var x:Float;
-	public var y:Float;
-	public var z:Float;
+/**
+	3 次元ベクトル。
 
-	public inline function new(x:Float, y:Float, z:Float) {
-		this.x = x;
-		this.y = y;
-		this.z = z;
-	}
+	下地は `{x:Float, y:Float, z:Float}` の匿名構造体なので、`lub.Phys3d`
+	の `Vec3d` を受け取る箇所とは暗黙に相互変換できる。
+
+	演算子: `a + b` / `a - b` / `a * b` (成分積) / `a * s` / `s * a` /
+	`a / b` (成分商) / `a / s` / `-a`。
+	同名メソッド (`add` / `sub` / `mul` / `scale` / `div` / `negate`) も残る。
+**/
+@:forward
+abstract Vec3({x:Float, y:Float, z:Float}) from {x:Float, y:Float, z:Float} to {x:Float, y:Float, z:Float} {
+	public inline function new(x:Float, y:Float, z:Float)
+		this = {x: x, y: y, z: z};
 
 	public static inline function zero():Vec3
 		return new Vec3(0, 0, 0);
@@ -97,6 +120,7 @@ class Vec3 {
 	public static inline function one():Vec3
 		return new Vec3(1, 1, 1);
 
+	/** 全成分が `v` のベクトル。 **/
 	public static inline function splat(v:Float):Vec3
 		return new Vec3(v, v, v);
 
@@ -106,42 +130,53 @@ class Vec3 {
 	public static inline function right():Vec3
 		return new Vec3(1, 0, 0);
 
+	/** 左手系 (`lookAtLh` / `perspectiveLh`) の前方 +Z。 **/
 	public static inline function forward():Vec3
 		return new Vec3(0, 0, 1);
 
-	public inline function add(b:Vec3):Vec3
-		return new Vec3(x + b.x, y + b.y, z + b.z);
+	@:op(A + B) public inline function add(b:Vec3):Vec3
+		return new Vec3(this.x + b.x, this.y + b.y, this.z + b.z);
 
-	public inline function sub(b:Vec3):Vec3
-		return new Vec3(x - b.x, y - b.y, z - b.z);
+	@:op(A - B) public inline function sub(b:Vec3):Vec3
+		return new Vec3(this.x - b.x, this.y - b.y, this.z - b.z);
 
-	public inline function scale(s:Float):Vec3
-		return new Vec3(x * s, y * s, z * s);
+	/** スカラー倍。演算子は `v * s` と `s * v` の両方が使える。 **/
+	@:op(A * B) public inline function scale(s:Float):Vec3
+		return new Vec3(this.x * s, this.y * s, this.z * s);
 
-	public inline function negate():Vec3
-		return new Vec3(-x, -y, -z);
+	@:op(A * B) @:commutative static inline function scalePre(a:Vec3, s:Float):Vec3
+		return a.scale(s);
 
-	public inline function mul(b:Vec3):Vec3
-		return new Vec3(x * b.x, y * b.y, z * b.z);
+	@:op(-A) public inline function negate():Vec3
+		return new Vec3(-this.x, -this.y, -this.z);
 
-	public inline function div(b:Vec3):Vec3
-		return new Vec3(x / b.x, y / b.y, z / b.z);
+	/** 成分ごとの積 (Hadamard 積)。 **/
+	@:op(A * B) public inline function mul(b:Vec3):Vec3
+		return new Vec3(this.x * b.x, this.y * b.y, this.z * b.z);
+
+	/** 成分ごとの商。 **/
+	@:op(A / B) public inline function div(b:Vec3):Vec3
+		return new Vec3(this.x / b.x, this.y / b.y, this.z / b.z);
+
+	@:op(A / B) inline function divScale(s:Float):Vec3
+		return new Vec3(this.x / s, this.y / s, this.z / s);
 
 	public inline function dot(b:Vec3):Float
-		return x * b.x + y * b.y + z * b.z;
+		return this.x * b.x + this.y * b.y + this.z * b.z;
 
 	public inline function cross(b:Vec3):Vec3
-		return new Vec3(y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x);
+		return new Vec3(this.y * b.z - this.z * b.y, this.z * b.x - this.x * b.z, this.x * b.y - this.y * b.x);
 
 	public inline function lengthSq():Float
-		return x * x + y * y + z * z;
+		return this.x * this.x + this.y * this.y + this.z * this.z;
 
 	public inline function length():Float
 		return Math.sqrt(lengthSq());
 
+	/** 正規化。零ベクトルは零ベクトルのまま返す。 **/
 	public function normalize():Vec3 {
 		var len = length();
-		return if (len > 0) new Vec3(x / len, y / len, z / len) else zero();
+		return if (len > 0) new Vec3(this.x / len, this.y / len, this.z / len) else zero();
 	}
 
 	public inline function distanceSq(b:Vec3):Float
@@ -151,33 +186,51 @@ class Vec3 {
 		return Math.sqrt(distanceSq(b));
 
 	public inline function lerp(b:Vec3, t:Float):Vec3
-		return new Vec3(x + (b.x - x) * t, y + (b.y - y) * t, z + (b.z - z) * t);
+		return new Vec3(this.x + (b.x - this.x) * t, this.y + (b.y - this.y) * t, this.z + (b.z - this.z) * t);
 
 	public inline function min(b:Vec3):Vec3
-		return new Vec3(Math.min(x, b.x), Math.min(y, b.y), Math.min(z, b.z));
+		return new Vec3(Math.min(this.x, b.x), Math.min(this.y, b.y), Math.min(this.z, b.z));
 
 	public inline function max(b:Vec3):Vec3
-		return new Vec3(Math.max(x, b.x), Math.max(y, b.y), Math.max(z, b.z));
+		return new Vec3(Math.max(this.x, b.x), Math.max(this.y, b.y), Math.max(this.z, b.z));
 
 	public function clamp(lo:Vec3, hi:Vec3):Vec3
-		return new Vec3(Math.max(lo.x, Math.min(hi.x, x)), Math.max(lo.y, Math.min(hi.y, y)), Math.max(lo.z, Math.min(hi.z, z)));
+		return new Vec3(Math.max(lo.x, Math.min(hi.x, this.x)), Math.max(lo.y, Math.min(hi.y, this.y)), Math.max(lo.z, Math.min(hi.z, this.z)));
 
+	/** `normal` (正規化済みであること) に対する反射ベクトル。 **/
 	public inline function reflect(normal:Vec3):Vec3
 		return sub(normal.scale(2.0 * dot(normal)));
 }
 
-class Vec4 {
-	public var x:Float;
-	public var y:Float;
-	public var z:Float;
-	public var w:Float;
+/**
+	4 次元ベクトル (同次座標・色など)。
 
-	public inline function new(x:Float, y:Float, z:Float, w:Float) {
-		this.x = x;
-		this.y = y;
-		this.z = z;
-		this.w = w;
-	}
+	演算子: `a + b` / `a - b` / `a * s` / `s * a` / `a / s` / `-a`。
+**/
+@:forward
+abstract Vec4({
+	x:Float,
+	y:Float,
+	z:Float,
+	w:Float
+}) from {
+	x:Float,
+	y:Float,
+	z:Float,
+	w:Float
+} to {
+	x:Float,
+	y:Float,
+	z:Float,
+	w:Float
+	} {
+	public inline function new(x:Float, y:Float, z:Float, w:Float)
+		this = {
+			x: x,
+			y: y,
+			z: z,
+			w: w
+		};
 
 	public static inline function zero():Vec4
 		return new Vec4(0, 0, 0, 0);
@@ -185,58 +238,86 @@ class Vec4 {
 	public static inline function one():Vec4
 		return new Vec4(1, 1, 1, 1);
 
+	/** `w` を付与して Vec3 から拡張する。位置なら `w=1`、方向なら `w=0`。 **/
 	public static inline function fromVec3(v:Vec3, w:Float):Vec4
 		return new Vec4(v.x, v.y, v.z, w);
 
-	public inline function add(b:Vec4):Vec4
-		return new Vec4(x + b.x, y + b.y, z + b.z, w + b.w);
+	@:op(A + B) public inline function add(b:Vec4):Vec4
+		return new Vec4(this.x + b.x, this.y + b.y, this.z + b.z, this.w + b.w);
 
-	public inline function sub(b:Vec4):Vec4
-		return new Vec4(x - b.x, y - b.y, z - b.z, w - b.w);
+	@:op(A - B) public inline function sub(b:Vec4):Vec4
+		return new Vec4(this.x - b.x, this.y - b.y, this.z - b.z, this.w - b.w);
 
-	public inline function scale(s:Float):Vec4
-		return new Vec4(x * s, y * s, z * s, w * s);
+	/** スカラー倍。演算子は `v * s` と `s * v` の両方が使える。 **/
+	@:op(A * B) public inline function scale(s:Float):Vec4
+		return new Vec4(this.x * s, this.y * s, this.z * s, this.w * s);
 
-	public inline function negate():Vec4
-		return new Vec4(-x, -y, -z, -w);
+	@:op(A * B) @:commutative static inline function scalePre(a:Vec4, s:Float):Vec4
+		return a.scale(s);
+
+	@:op(-A) public inline function negate():Vec4
+		return new Vec4(-this.x, -this.y, -this.z, -this.w);
+
+	@:op(A / B) inline function divScale(s:Float):Vec4
+		return new Vec4(this.x / s, this.y / s, this.z / s, this.w / s);
 
 	public inline function dot(b:Vec4):Float
-		return x * b.x + y * b.y + z * b.z + w * b.w;
+		return this.x * b.x + this.y * b.y + this.z * b.z + this.w * b.w;
 
 	public inline function lengthSq():Float
-		return x * x + y * y + z * z + w * w;
+		return this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;
 
 	public inline function length():Float
 		return Math.sqrt(lengthSq());
 
+	/** 正規化。零ベクトルは零ベクトルのまま返す。 **/
 	public function normalize():Vec4 {
 		var len = length();
-		return if (len > 0) new Vec4(x / len, y / len, z / len, w / len) else zero();
+		return if (len > 0) new Vec4(this.x / len, this.y / len, this.z / len, this.w / len) else zero();
 	}
 
 	public inline function lerp(b:Vec4, t:Float):Vec4
-		return new Vec4(x + (b.x - x) * t, y + (b.y - y) * t, z + (b.z - z) * t, w + (b.w - w) * t);
+		return new Vec4(this.x + (b.x - this.x) * t, this.y + (b.y - this.y) * t, this.z + (b.z - this.z) * t, this.w + (b.w - this.w) * t);
 
 	public inline function xyz():Vec3
-		return new Vec3(x, y, z);
+		return new Vec3(this.x, this.y, this.z);
 }
 
-class Quat {
-	public var x:Float;
-	public var y:Float;
-	public var z:Float;
-	public var w:Float;
+/**
+	回転を表すクォータニオン。
 
-	public inline function new(x:Float, y:Float, z:Float, w:Float) {
-		this.x = x;
-		this.y = y;
-		this.z = z;
-		this.w = w;
-	}
+	演算子: `a * b` (回転の合成)、`q * v` (Vec3 の回転 = `rotateVec3`)。
+	角度は全てラジアン。
+**/
+@:forward
+abstract Quat({
+	x:Float,
+	y:Float,
+	z:Float,
+	w:Float
+}) from {
+	x:Float,
+	y:Float,
+	z:Float,
+	w:Float
+} to {
+	x:Float,
+	y:Float,
+	z:Float,
+	w:Float
+	} {
+	public inline function new(x:Float, y:Float, z:Float, w:Float)
+		this = {
+			x: x,
+			y: y,
+			z: z,
+			w: w
+		};
 
 	public static inline function identity():Quat
 		return new Quat(0, 0, 0, 1);
 
+	/** `axis` 回りに `angle` ラジアン回す回転。`axis` は内部で正規化される。 **/
 	public static function fromAxisAngle(axis:Vec3, angle:Float):Quat {
 		var half = angle * 0.5;
 		var s = Math.sin(half);
@@ -244,6 +325,7 @@ class Quat {
 		return new Quat(n.x * s, n.y * s, n.z * s, Math.cos(half));
 	}
 
+	/** オイラー角 (ラジアン) から生成。適用順は roll (Z) → pitch (X) → yaw (Y)。 **/
 	public static function fromEuler(yaw:Float, pitch:Float, roll:Float):Quat {
 		var cy = Math.cos(yaw * 0.5);
 		var sy = Math.sin(yaw * 0.5);
@@ -254,50 +336,54 @@ class Quat {
 		return new Quat(sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy);
 	}
 
-	public inline function mul(b:Quat):Quat
-		return new Quat(w * b.x
-			+ x * b.w
-			+ y * b.z
-			- z * b.y, w * b.y
-			- x * b.z
-			+ y * b.w
-			+ z * b.x, w * b.z
-			+ x * b.y
-			- y * b.x
-			+ z * b.w,
-			w * b.w
-			- x * b.x
-			- y * b.y
-			- z * b.z);
+	/** 回転の合成。`a * b` は「b の回転をしてから a の回転」。 **/
+	@:op(A * B) public inline function mul(b:Quat):Quat
+		return new Quat(this.w * b.x
+			+ this.x * b.w
+			+ this.y * b.z
+			- this.z * b.y, this.w * b.y
+			- this.x * b.z
+			+ this.y * b.w
+			+ this.z * b.x,
+			this.w * b.z
+			+ this.x * b.y
+			- this.y * b.x
+			+ this.z * b.w, this.w * b.w
+			- this.x * b.x
+			- this.y * b.y
+			- this.z * b.z);
 
 	public inline function dot(b:Quat):Float
-		return x * b.x + y * b.y + z * b.z + w * b.w;
+		return this.x * b.x + this.y * b.y + this.z * b.z + this.w * b.w;
 
 	public inline function lengthSq():Float
-		return x * x + y * y + z * z + w * w;
+		return this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;
 
 	public inline function length():Float
 		return Math.sqrt(lengthSq());
 
+	/** 正規化。零クォータニオンは identity を返す。 **/
 	public function normalize():Quat {
 		var len = length();
-		return if (len > 0) new Quat(x / len, y / len, z / len, w / len) else identity();
+		return if (len > 0) new Quat(this.x / len, this.y / len, this.z / len, this.w / len) else identity();
 	}
 
 	public inline function conjugate():Quat
-		return new Quat(-x, -y, -z, w);
+		return new Quat(-this.x, -this.y, -this.z, this.w);
 
 	public function inverse():Quat {
 		var lsq = lengthSq();
 		return if (lsq > 0) {
 			var inv = 1.0 / lsq;
-			new Quat(-x * inv, -y * inv, -z * inv, w * inv);
+			new Quat(-this.x * inv, -this.y * inv, -this.z * inv, this.w * inv);
 		} else identity();
 	}
 
+	/** 成分の線形補間。正規化はしないので必要なら `normalize` を挟む。 **/
 	public inline function lerp(b:Quat, t:Float):Quat
-		return new Quat(x + (b.x - x) * t, y + (b.y - y) * t, z + (b.z - z) * t, w + (b.w - w) * t);
+		return new Quat(this.x + (b.x - this.x) * t, this.y + (b.y - this.y) * t, this.z + (b.z - this.z) * t, this.w + (b.w - this.w) * t);
 
+	/** 球面線形補間。 **/
 	public function slerp(b:Quat, t:Float):Quat {
 		var d = dot(b);
 		var bx = b.x;
@@ -312,34 +398,35 @@ class Quat {
 			bw = -bw;
 		}
 		if (d > 0.9995)
-			return new Quat(x + (bx - x) * t, y + (by - y) * t, z + (bz - z) * t, w + (bw - w) * t).normalize();
+			return new Quat(this.x + (bx - this.x) * t, this.y + (by - this.y) * t, this.z + (bz - this.z) * t, this.w + (bw - this.w) * t).normalize();
 		var theta = Math.acos(d);
 		var sinT = Math.sin(theta);
 		var s0 = Math.sin((1.0 - t) * theta) / sinT;
 		var s1 = Math.sin(t * theta) / sinT;
-		return new Quat(x * s0 + bx * s1, y * s0 + by * s1, z * s0 + bz * s1, w * s0 + bw * s1);
+		return new Quat(this.x * s0 + bx * s1, this.y * s0 + by * s1, this.z * s0 + bz * s1, this.w * s0 + bw * s1);
 	}
 
-	public inline function rotateVec3(v:Vec3):Vec3 {
-		var qv = new Vec3(x, y, z);
+	/** ベクトルを回転する。演算子 `q * v` でも呼べる。 **/
+	@:op(A * B) public inline function rotateVec3(v:Vec3):Vec3 {
+		var qv = new Vec3(this.x, this.y, this.z);
 		var uv = qv.cross(v);
 		var uuv = qv.cross(uv);
-		return v.add(uv.scale(2.0 * w).add(uuv.scale(2.0)));
+		return v.add(uv.scale(2.0 * this.w).add(uuv.scale(2.0)));
 	}
 
 	public function toMat4():Mat4 {
-		var x2 = x + x;
-		var y2 = y + y;
-		var z2 = z + z;
-		var xx = x * x2;
-		var xy = x * y2;
-		var xz = x * z2;
-		var yy = y * y2;
-		var yz = y * z2;
-		var zz = z * z2;
-		var wx = w * x2;
-		var wy = w * y2;
-		var wz = w * z2;
+		var x2 = this.x + this.x;
+		var y2 = this.y + this.y;
+		var z2 = this.z + this.z;
+		var xx = this.x * x2;
+		var xy = this.x * y2;
+		var xz = this.x * z2;
+		var yy = this.y * y2;
+		var yz = this.y * z2;
+		var zz = this.z * z2;
+		var wx = this.w * x2;
+		var wy = this.w * y2;
+		var wz = this.w * z2;
 		var r = Mat4.zero();
 		r.m[0] = 1 - (yy + zz);
 		r.m[1] = xy + wz;
@@ -378,12 +465,17 @@ class Quat {
 	}
 }
 
-class Mat4 {
-	public var m:Array<Float>;
+/**
+	4x4 行列 (行優先 / row-major、`m[row * 4 + col]`)。
 
-	public inline function new() {
-		m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-	}
+	演算子: `a * b` (行列積)、`m * v` (Vec4 との積 = `mulVec4`)。
+	MVP 合成は `proj * view * model` の順。
+**/
+@:forward
+abstract Mat4({m:Array<Float>}) {
+	/** 単位行列で初期化する。 **/
+	public inline function new()
+		this = {m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]};
 
 	public static inline function identity():Mat4
 		return new Mat4();
@@ -395,9 +487,10 @@ class Mat4 {
 		return r;
 	}
 
-	public function mul(b:Mat4):Mat4 {
+	/** 行列積。演算子 `a * b` でも呼べる。 **/
+	@:op(A * B) public function mul(b:Mat4):Mat4 {
 		var r = zero();
-		var a = m;
+		var a = this.m;
 		var bm = b.m;
 		r.m[0] = a[0] * bm[0] + a[1] * bm[4] + a[2] * bm[8] + a[3] * bm[12];
 		r.m[1] = a[0] * bm[1] + a[1] * bm[5] + a[2] * bm[9] + a[3] * bm[13];
@@ -418,17 +511,23 @@ class Mat4 {
 		return r;
 	}
 
-	public inline function mulVec4(v:Vec4):Vec4 {
+	/** Vec4 との積。演算子 `m * v` でも呼べる。 **/
+	@:op(A * B) public inline function mulVec4(v:Vec4):Vec4 {
+		var m = this.m;
 		return new Vec4(m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3] * v.w, m[4] * v.x + m[5] * v.y + m[6] * v.z + m[7] * v.w,
 			m[8] * v.x + m[9] * v.y + m[10] * v.z + m[11] * v.w, m[12] * v.x + m[13] * v.y + m[14] * v.z + m[15] * v.w);
 	}
 
+	/** 位置として変換する (`w=1` 扱い。平行移動が効く)。 **/
 	public inline function mulPoint(v:Vec3):Vec3 {
+		var m = this.m;
 		return new Vec3(m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3], m[4] * v.x + m[5] * v.y + m[6] * v.z + m[7],
 			m[8] * v.x + m[9] * v.y + m[10] * v.z + m[11]);
 	}
 
+	/** 方向として変換する (`w=0` 扱い。平行移動は無視)。 **/
 	public inline function mulDir(v:Vec3):Vec3 {
+		var m = this.m;
 		return new Vec3(m[0] * v.x + m[1] * v.y + m[2] * v.z, m[4] * v.x + m[5] * v.y + m[6] * v.z, m[8] * v.x + m[9] * v.y + m[10] * v.z);
 	}
 
@@ -439,12 +538,12 @@ class Mat4 {
 		var r = zero();
 		for (row in 0...4)
 			for (col in 0...4)
-				r.m[col * 4 + row] = m[row * 4 + col];
+				r.m[col * 4 + row] = this.m[row * 4 + col];
 		return r;
 	}
 
 	public function determinant():Float {
-		var a = m;
+		var a = this.m;
 		var a00 = a[0];
 		var a01 = a[1];
 		var a02 = a[2];
@@ -467,8 +566,9 @@ class Mat4 {
 			- a03 * (a10 * (a21 * a32 - a22 * a31) - a11 * (a20 * a32 - a22 * a30) + a12 * (a20 * a31 - a21 * a30));
 	}
 
+	/** 逆行列。特異行列 (det=0) の場合は単位行列を返す。 **/
 	public function inverse():Mat4 {
-		var a = m;
+		var a = this.m;
 		var a00 = a[0];
 		var a01 = a[1];
 		var a02 = a[2];
@@ -523,19 +623,20 @@ class Mat4 {
 		return r;
 	}
 
+	/** 回転 + 平行移動だけの view 行列を、回転転置 + `eye` 差し替えで逆変換する。 **/
 	public function rigidInverse(eye:Vec3):Mat4 {
 		var r = zero();
-		r.m[0] = m[0];
-		r.m[1] = m[4];
-		r.m[2] = m[8];
+		r.m[0] = this.m[0];
+		r.m[1] = this.m[4];
+		r.m[2] = this.m[8];
 		r.m[3] = eye.x;
-		r.m[4] = m[1];
-		r.m[5] = m[5];
-		r.m[6] = m[9];
+		r.m[4] = this.m[1];
+		r.m[5] = this.m[5];
+		r.m[6] = this.m[9];
 		r.m[7] = eye.y;
-		r.m[8] = m[2];
-		r.m[9] = m[6];
-		r.m[10] = m[10];
+		r.m[8] = this.m[2];
+		r.m[9] = this.m[6];
+		r.m[10] = this.m[10];
 		r.m[11] = eye.z;
 		r.m[12] = 0;
 		r.m[13] = 0;
@@ -561,6 +662,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** 均一スケール `s` + 平行移動 `t` を 1 つの行列にまとめる。 **/
 	public static function scaleTrans(s:Float, t:Vec3):Mat4 {
 		var r = zero();
 		r.m[0] = s;
@@ -573,6 +675,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** X 軸回りの回転 (ラジアン)。 **/
 	public static function rotateX(angle:Float):Mat4 {
 		var c = Math.cos(angle);
 		var s = Math.sin(angle);
@@ -584,6 +687,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** Y 軸回りの回転 (ラジアン)。 **/
 	public static function rotateY(angle:Float):Mat4 {
 		var c = Math.cos(angle);
 		var s = Math.sin(angle);
@@ -595,6 +699,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** Z 軸回りの回転 (ラジアン)。 **/
 	public static function rotateZ(angle:Float):Mat4 {
 		var c = Math.cos(angle);
 		var s = Math.sin(angle);
@@ -606,6 +711,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** 任意軸 `axis` 回りの回転 (ラジアン)。 **/
 	public static function rotate(angle:Float, axis:Vec3):Mat4 {
 		return Quat.fromAxisAngle(axis, angle).toMat4();
 	}
@@ -613,6 +719,7 @@ class Mat4 {
 	public static function fromQuat(q:Quat):Mat4
 		return q.toMat4();
 
+	/** 左手系の view 行列。 **/
 	public static function lookAtLh(eye:Vec3, target:Vec3, up:Vec3):Mat4 {
 		var z = target.sub(eye).normalize();
 		var x = up.cross(z).normalize();
@@ -637,6 +744,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** 左手系の透視投影。`fovDeg` は垂直視野角 (度)。depth は [0, 1]。 **/
 	public static function perspectiveLh(fovDeg:Float, aspect:Float, nz:Float, fz:Float):Mat4 {
 		var f = 1.0 / Math.tan(fovDeg * Math.PI / 360.0);
 		var r = zero();
@@ -648,6 +756,7 @@ class Mat4 {
 		return r;
 	}
 
+	/** 左手系の平行投影。`w` / `h` は view volume の幅と高さ。depth は [0, 1]。 **/
 	public static function orthoLh(w:Float, h:Float, nz:Float, fz:Float):Mat4 {
 		var r = zero();
 		r.m[0] = 2 / w;
@@ -659,10 +768,13 @@ class Mat4 {
 	}
 }
 
+/** スカラー演算のユーティリティ。角度変換以外は GLSL の同名関数と同義。 **/
 class MathUtil {
+	/** 度 → ラジアン。 **/
 	public static inline function radians(deg:Float):Float
 		return deg * (Math.PI / 180.0);
 
+	/** ラジアン → 度。 **/
 	public static inline function degrees(rad:Float):Float
 		return rad * (180.0 / Math.PI);
 

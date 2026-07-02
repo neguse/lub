@@ -49,7 +49,7 @@ class Gltf08 {
 		var verFs:Int = fsR.version;
 		if (vs == null || fs == null)
 			return;
-		var s = Gfx.useShader("gltf_sh", vs, fs, verVs ^ verFs);
+		var s = Gfx.useShader("gltf_sh", vs, fs, verVs * 31 + verFs);
 
 		var meshR = Io.loadGltf("samples/08_gltf/data/08_box.glb");
 		var mesh:Dynamic = meshR.mesh;

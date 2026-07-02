@@ -2,6 +2,11 @@ package lubx;
 
 import lub.Gfx;
 
+/**
+	`SpriteBatch` 用のテクスチャアトラス。PNG (`fromPng`) か生ピクセル
+	(`fromPixels`) から作り、`ensure()` が true を返したフレームから
+	描画に使える (web ではロード完了まで false)。
+**/
 class Atlas {
 	public var texture:Dynamic = null;
 	public var w:Int = 0;

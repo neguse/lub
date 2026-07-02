@@ -298,13 +298,14 @@ class CoinPusher18 {
 		if (spawnX > 1.25)
 			spawnX = 1.25;
 
-		// Manual drop plus a deterministic auto drop so the demo (and the
-		// golden capture) feeds itself.
-		var wantDrop = Input.keyDown("space") || Input.mouseDown(1);
+		// Manual drop (edge-triggered: one coin per press/click) plus a
+		// deterministic auto drop so the demo (and the golden capture)
+		// feeds itself.
+		var wantDrop = Input.keyPressed("space") || Input.mousePressed();
 		var autoDrop = frame % SPAWN_INTERVAL == 10;
 		if (autoDrop)
 			spawnCoin(-1.0 + ((frame * 7919) % 2000) / 1000.0);
-		else if (wantDrop && frame % 8 == 0)
+		else if (wantDrop)
 			spawnCoin(spawnX);
 
 		var live = declareCoins(world);
@@ -340,7 +341,7 @@ class CoinPusher18 {
 		var fs = Io.loadText("samples/18_coin_pusher/data/18_lit.fs.slang");
 		if (vs.text == null || fs.text == null)
 			return;
-		var shader = Gfx.useShader("coin_pusher_lit", vs.text, fs.text, vs.version ^ fs.version);
+		var shader = Gfx.useShader("coin_pusher_lit", vs.text, fs.text, vs.version * 31 + fs.version);
 		var cubeVb = Gfx.useBuffer("cp_cube_vb", Gfx.VERTEX, cubeVerts, 1);
 		var cubeIb = Gfx.useBuffer("cp_cube_ib", Gfx.INDEX, cubeIndices, 1);
 		var cylVb = Gfx.useBuffer("cp_cyl_vb", Gfx.VERTEX, cylVerts, 1);
