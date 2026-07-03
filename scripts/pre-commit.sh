@@ -78,6 +78,8 @@ run_timed bash scripts/build-release.sh --target lub_haxe_build_smoke --no-confi
 run_timed ./build-release-linux/lub_haxe_build_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
+run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
+run_timed ./build-release-linux/lub_surfacenets_smoke
 
 physics_lua_tests=(
   tests/lua/test_physics_box2d.lua

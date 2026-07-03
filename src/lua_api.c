@@ -12,6 +12,7 @@
 #include "shader.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "surfacenets.h"
 #include <SDL3/SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -2011,6 +2012,8 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "png_write");
   lua_pushcfunction(L, lub_load_gltf);
   lua_setglobal(L, "load_gltf");
+  lua_pushcfunction(L, lub_surface_nets);
+  lua_setglobal(L, "surface_nets");
   phys2d_lua_register(L);
   phys3d_lua_register(L);
 }

@@ -1,0 +1,3 @@
+-cp samples/19_sdf
+-lib lub
+-main Sdf19

@@ -20,7 +20,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d 18_coin_pusher)
+SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d 18_coin_pusher 19_sdf)
 VISUAL_TESTS=(indexed_draw)
 BACKENDS=(sokol sdlgpu)
 FRAME=30

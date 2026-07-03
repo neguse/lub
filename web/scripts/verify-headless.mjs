@@ -382,6 +382,7 @@ const samples = [
   { name: '16_box2d',            minNonBlack: 0.01 },
   { name: '17_flappy',           minNonBlack: 0.01 },
   { name: '18_coin_pusher',      minNonBlack: 0.01 },
+  { name: '19_sdf',              minNonBlack: 0.05 },
 ]
 const sampleResults = {}
 
