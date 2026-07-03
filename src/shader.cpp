@@ -41,6 +41,9 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
   // it is legal in non-uniform control flow — WGSL (WebGPU) rejects an
   // implicit-LOD textureSample after a data-dependent branch/loop, which the
   // post passes (SSAO/outline/water) hit when they sample after an early-out.
+  // Native SDL_GPU/Vulkan tolerates implicit-LOD there, so a native-only run
+  // passes and the pipeline only turns up invalid (black screen) on web: use
+  // LUB_SAMPLE_LOD for any sample reached after a branch/loop.
   if (target == SHADER_TARGET_SDLGPU) {
     return "#define LUB_TEXTURE2D(n) Sampler2D<float4> n\n"
            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
@@ -1681,7 +1684,9 @@ enum SlangBridgeStage {
 //     the 0x02-prefixed error form so the diagnostic reaches the user.
 // EM_ASYNC_JS body below is JavaScript, not C++. clang-format mangles JS
 // operators (=== becomes "== =", !== becomes "!= =") and breaks the generated
-// lub.js WASM glue, so disable formatting for this region.
+// lub.js WASM glue, so disable formatting for this region. The native build
+// drops this block via #ifdef __EMSCRIPTEN__, so a reformat only breaks web
+// and native build/golden won't catch it — keep the clang-format off guard.
 // clang-format off
 EM_ASYNC_JS(
     char *, lub_slang_compile_js,
