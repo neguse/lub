@@ -114,6 +114,7 @@ static const char HAXE_PRELUDE[] =
     "  ui_slider_float = ui_slider_float, ui_slider_int = ui_slider_int,\n"
     "  ui_drag_float = ui_drag_float, ui_color_edit3 = ui_color_edit3,\n"
     "  ui_separator = ui_separator, ui_same_line = ui_same_line,\n"
+    "  ui_tree_node = ui_tree_node, ui_tree_pop = ui_tree_pop,\n"
     "  ui_set_next_window = ui_set_next_window,\n"
     "  ui_want_capture_mouse = ui_want_capture_mouse }\n"
     "lub.Sys = { file_mtime = file_mtime, request_file = request_file,\n"

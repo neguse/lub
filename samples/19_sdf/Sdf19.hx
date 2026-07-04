@@ -7,6 +7,7 @@ import lub.Mesh;
 import lub.Math;
 import lub.Ui;
 import lubx.Sdf;
+import lubx.SdfPanel;
 
 // SDF モデリング: lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が
 // 評価 → surface nets でメッシュ化する。model() を書き換えて保存すれば
@@ -19,21 +20,16 @@ class Sdf19 {
 	// 最長軸の grid cell 数。bounds はツリーの AABB から自動で決まる。
 	static inline var N = 64;
 
-	// --- チューニング対象パラメータ (Ui パネルと hot reload の両方で編集可) --
-	static var bodyR = 0.72;
-	static var headR = 0.46;
-	static var blendK = 0.22;
-
 	// --- モデル: 雪だるま風 -------------------------------------------------
 	static function model():SdfNode {
-		var body = Sdf.sphere(bodyR).move(0, -0.42, 0);
-		var head = Sdf.sphere(headR).move(0, 0.48, 0);
+		var body = Sdf.sphere(0.72).move(0, -0.42, 0);
+		var head = Sdf.sphere(0.46).move(0, 0.48, 0);
 		// 腕: 胴から斜め上へのカプセル。mirrorX で左右対称に
 		var arm = Sdf.capsule(new Vec3(0.56, -0.32, 0), new Vec3(1.04, 0.24, 0), 0.13).mirrorX();
 		// 目: 球で smooth にくり抜き (camera は -Z 側)。切断面には cutter の
 		// 材質が出るので、目玉の色は「彫る球の paint」で決まる
 		var eye = Sdf.sphere(0.11).move(0.17, 0.56, -0.40).mirrorX().paint(0x1E2130, 0.0, 0.15);
-		return body.smin(head, blendK).smin(arm, 0.10).paint(0xE58B52).ssub(eye, 0.06);
+		return body.smin(head, 0.22).smin(arm, 0.10).paint(0xE58B52).ssub(eye, 0.06);
 	}
 
 	// --- メッシュ化 ----------------------------------------------------------
@@ -45,8 +41,12 @@ class Sdf19 {
 	static var metalTarget = 0.0;
 	// hot reload (lume.hotswap) は「新モジュールの非 nil static」だけを
 	// 上書きする (nil は pairs で列挙されないので mesh = null は戻らない)。
-	// 初期値 true のこのフラグがリロード毎に true へ戻るのを remesh の
-	// トリガに使う。
+	// 初期値 true のフラグがリロード毎に true へ戻るのをトリガに使う。
+	// treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価
+	// (SdfPanel での編集時)。パネル編集はツリー (data) に直接乗るので、
+	// リロードするまで生きる。
+	static var tree:SdfNode = null;
+	static var treeDirty = true;
 	static var meshDirty = true;
 
 	public static function main() {}
@@ -61,7 +61,7 @@ class Sdf19 {
 	static var matcapPx:lua.Table<Int, Int> = null;
 
 	static function remesh() {
-		mesh = Sdf.mesh(model(), N);
+		mesh = Sdf.mesh(tree, N);
 		matcapPx = makeMatcap(64); // reload と同じタイミングで作り直す
 		// version は「同じ key で違う内容」を区別できればよいので CPU 時刻 (ms)
 		// を使う (remesh 自体が 1ms 以上かかるので衝突しない)。
@@ -121,18 +121,19 @@ class Sdf19 {
 			return;
 		var s = Gfx.useShader("sdf_sh", vsR.text, fsR.text, vsR.version * 31 + fsR.version);
 
-		// debug UI: いじったフレームだけ remesh (C 評価 ~10ms なのでドラッグ追従)
-		Ui.setNextWindow(10, 10, 250, 140);
+		if (treeDirty) {
+			tree = model(); // コードが source of truth。reload でパネル編集は破棄
+			treeDirty = false;
+			meshDirty = true;
+		}
+
+		// debug UI: ツリー (data) から自動生成したパネル。いじったフレームだけ
+		// remesh (C 評価 ~10ms なのでドラッグ追従)
+		Ui.setNextWindow(10, 10, 300, 460);
 		if (Ui.begin("sdf tuning")) {
-			var nb = Ui.slider("body", bodyR, 0.3, 1.1);
-			var nh = Ui.slider("head", headR, 0.2, 0.8);
-			var nk = Ui.slider("blend", blendK, 0.01, 0.6);
-			if (nb != bodyR || nh != headR || nk != blendK) {
-				bodyR = nb;
-				headR = nh;
-				blendK = nk;
+			if (SdfPanel.draw(tree))
 				meshDirty = true;
-			}
+			Ui.separator();
 			metalTarget = Ui.slider("metal (Space)", metalTarget, 0, 1);
 			if (mesh != null)
 				Ui.text("verts: " + mesh.vert_count);

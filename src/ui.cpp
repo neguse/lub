@@ -431,6 +431,24 @@ static int l_ui_same_line(lua_State *L) {
   return 0;
 }
 
+// 階層 UI。true が返ったら子を描いて ui_tree_pop を呼ぶ。
+// 第 2 引数 true で初期展開。
+static int l_ui_tree_node(lua_State *L) {
+  const char *label = luaL_checkstring(L, 1);
+  bool def_open = lua_toboolean(L, 2) != 0;
+  UI_GUARD((lua_pushboolean(L, 0), 1));
+  lua_pushboolean(L, ImGui::TreeNodeEx(
+                         label, def_open ? ImGuiTreeNodeFlags_DefaultOpen : 0));
+  return 1;
+}
+
+static int l_ui_tree_pop(lua_State *L) {
+  (void)L;
+  UI_GUARD(0);
+  ImGui::TreePop();
+  return 0;
+}
+
 // 初回配置だけ指定 (ユーザのドラッグは活かす)。
 static int l_ui_set_next_window(lua_State *L) {
   float x = (float)luaL_checknumber(L, 1);
@@ -466,6 +484,8 @@ extern "C" void ui_register_lua(lua_State *L) {
       {"ui_color_edit3", l_ui_color_edit3},
       {"ui_separator", l_ui_separator},
       {"ui_same_line", l_ui_same_line},
+      {"ui_tree_node", l_ui_tree_node},
+      {"ui_tree_pop", l_ui_tree_pop},
       {"ui_set_next_window", l_ui_set_next_window},
       {"ui_want_capture_mouse", l_ui_want_capture_mouse},
   };

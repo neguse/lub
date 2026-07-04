@@ -43,6 +43,11 @@ extern class Ui {
 	@:native("ui_separator") public static function separator():Void;
 	@:native("ui_same_line") public static function sameLine():Void;
 
+	/** 階層ノード。true が返ったら子を描いて `treePop()` する。 **/
+	@:native("ui_tree_node") public static function treeNode(label:String, ?defaultOpen:Bool):Bool;
+
+	@:native("ui_tree_pop") public static function treePop():Void;
+
 	/** 次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。 **/
 	@:native("ui_set_next_window") public static function setNextWindow(x:Float, y:Float, w:Float, h:Float):Void;
 
