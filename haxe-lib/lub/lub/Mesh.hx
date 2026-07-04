@@ -22,6 +22,13 @@ typedef MeshData = {
 	@:optional var colors:lua.Table<Int, Float>;
 
 	@:optional var metal_rough:lua.Table<Int, Float>;
+
+	/** `sdfMesh` + bone ノードあり時のみ: 頂点ごとの top-2 部位 (0-based) と
+		重み、および bones = {name, x, y, z(pivot)} のリスト。 **/
+	@:optional var joints:lua.Table<Int, Int>;
+
+	@:optional var weights:lua.Table<Int, Float>;
+	@:optional var bones:lua.Table<Int, Dynamic>;
 }
 
 /** CPU メッシュ生成。 **/
@@ -47,5 +54,5 @@ extern class Mesh {
 		通常は生 table を組まず `lubx.Sdf` builder を使う。
 	**/
 	@:native("sdf_mesh")
-	public static function sdfMesh(tree:Dynamic, n:Int):MeshData;
+	public static function sdfMesh(tree:Dynamic, n:Int, ?skinK:Float):MeshData;
 }

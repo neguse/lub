@@ -5,6 +5,7 @@
 #include <lauxlib.h>
 #include <lua.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,6 +24,7 @@ enum {
   OP_SCALE,
   OP_MIRROR_X,
   OP_PAINT,
+  OP_BONE,
   OP_UNION,
   OP_SMIN,
   OP_SUBTRACT,
@@ -32,6 +34,8 @@ enum {
 
 // per-vertex material: albedo rgb + metallic + roughness
 #define SDF_MAT_N 5
+// skinning parts (bone nodes) per tree
+#define SDF_MAX_PARTS 8
 
 #define SDF_MAX_DEPTH 64
 #define SDF_MAX_NODES 4096
@@ -44,11 +48,26 @@ typedef struct {
   float p[10];
 } SdfNode;
 
+// bone ノードが宣言する skinning 部位。path は root からその bone までに
+// 通過した xform/mirror ノードの flat index 列で、頂点の部位距離を測るとき
+// 同じ点変換を再現するのに使う。
+typedef struct {
+  int node; // OP_BONE の flat index (距離評価はここから子へ)
+  char name[32];
+  float pivot[3];
+  int path[SDF_MAX_DEPTH];
+  int path_len;
+} SdfPart;
+
 typedef struct {
   lua_State *L;
   SdfNode *nodes;
   int len, cap;
   int depth;
+  SdfPart parts[SDF_MAX_PARTS];
+  int part_count;
+  int xpath[SDF_MAX_DEPTH]; // 現在の再帰位置までの xform/mirror ノード列
+  int xpath_len;
 } SdfBuild;
 
 static float need_num(lua_State *L, int t, const char *op, const char *k) {
@@ -180,6 +199,27 @@ static int flatten(SdfBuild *b, int t) {
     n->p[2] = need_num(L, t, op, "cb");
     n->p[3] = opt_num(L, t, "metallic", 0.0f);
     n->p[4] = opt_num(L, t, "roughness", 0.8f);
+  } else if (strcmp(op, "bone") == 0) {
+    n->op = OP_BONE;
+    n->p[0] = need_num(L, t, op, "px");
+    n->p[1] = need_num(L, t, op, "py");
+    n->p[2] = need_num(L, t, op, "pz");
+    if (b->part_count >= SDF_MAX_PARTS)
+      luaL_error(L, "sdf_mesh: more than %d bones", SDF_MAX_PARTS);
+    lua_getfield(L, t, "name");
+    const char *bn = lua_tostring(L, -1);
+    if (!bn)
+      luaL_error(L, "sdf_mesh: bone needs string field 'name'");
+    SdfPart *part = &b->parts[b->part_count++];
+    part->node = ni;
+    strncpy(part->name, bn, sizeof(part->name) - 1);
+    part->name[sizeof(part->name) - 1] = '\0';
+    part->pivot[0] = n->p[0];
+    part->pivot[1] = n->p[1];
+    part->pivot[2] = n->p[2];
+    memcpy(part->path, b->xpath, (size_t)b->xpath_len * sizeof(int));
+    part->path_len = b->xpath_len;
+    lua_pop(L, 1);
   } else if (strcmp(op, "union") == 0) {
     n->op = OP_UNION;
   } else if (strcmp(op, "smin") == 0 || strcmp(op, "ssub") == 0) {
@@ -197,9 +237,14 @@ static int flatten(SdfBuild *b, int t) {
 
   int kind = b->nodes[ni].op;
   if (kind == OP_MOVE || kind == OP_ROTATE || kind == OP_SCALE ||
-      kind == OP_MIRROR_X || kind == OP_PAINT) {
+      kind == OP_MIRROR_X || kind == OP_PAINT || kind == OP_BONE) {
+    bool is_xform = kind != OP_PAINT && kind != OP_BONE;
+    if (is_xform)
+      b->xpath[b->xpath_len++] = ni;
     int a = need_child(b, t, op, "c");
     b->nodes[ni].a = a;
+    if (is_xform)
+      --b->xpath_len;
   } else if (kind >= OP_UNION) {
     int a = need_child(b, t, op, "a");
     int c = need_child(b, t, op, "b");
@@ -252,6 +297,7 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
   case OP_MIRROR_X:
     return sdf_eval(ns, n->a, fabsf(x), y, z);
   case OP_PAINT:
+  case OP_BONE:
     return sdf_eval(ns, n->a, x, y, z);
   case OP_UNION:
     return fminf(sdf_eval(ns, n->a, x, y, z), sdf_eval(ns, n->b, x, y, z));
@@ -305,6 +351,8 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
     return sdf_eval_mat(ns, n->a, fabsf(x), y, z, inherited, out);
   case OP_PAINT:
     return sdf_eval_mat(ns, n->a, x, y, z, n->p, out);
+  case OP_BONE:
+    return sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
   case OP_UNION:
   case OP_INTERSECT: {
     float mb[SDF_MAT_N];
@@ -353,6 +401,43 @@ static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
   }
 }
 
+// 部位 (bone subtree) までの距離。root からの xform 列を再現して点を部位の
+// 局所空間へ落としてから評価する (scale は距離も直す)。
+static float sdf_eval_part(const SdfNode *ns, const SdfPart *part, float x,
+                           float y, float z) {
+  float scale = 1;
+  for (int i = 0; i < part->path_len; ++i) {
+    const SdfNode *n = &ns[part->path[i]];
+    switch (n->op) {
+    case OP_MOVE:
+      x -= n->p[0];
+      y -= n->p[1];
+      z -= n->p[2];
+      break;
+    case OP_ROTATE: {
+      const float *m = n->p;
+      float nx = m[0] * x + m[3] * y + m[6] * z;
+      float ny = m[1] * x + m[4] * y + m[7] * z;
+      float nz = m[2] * x + m[5] * y + m[8] * z;
+      x = nx;
+      y = ny;
+      z = nz;
+      break;
+    }
+    case OP_SCALE:
+      x /= n->p[0];
+      y /= n->p[0];
+      z /= n->p[0];
+      scale *= n->p[0];
+      break;
+    case OP_MIRROR_X:
+      x = fabsf(x);
+      break;
+    }
+  }
+  return sdf_eval(ns, part->node, x, y, z) * scale;
+}
+
 // Conservative AABB per node; exactness is not required (the grid adds a
 // one-cell margin on top). smin/ssub bulge outward by at most k/4.
 static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
@@ -395,6 +480,7 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
     }
     return;
   case OP_PAINT:
+  case OP_BONE:
     sdf_aabb(ns, n->a, mn, mx);
     return;
   case OP_ROTATE: {
@@ -567,6 +653,62 @@ int lub_sdf_mesh(lua_State *L) {
   }
   lua_setfield(L, -3, "metal_rough");
   lua_setfield(L, -2, "colors");
+
+  // skinning: bone ノードがあれば頂点ごとに最寄り 2 部位の重みを焼く。
+  // w0 = softmax(-d/k) の 2 部位版 = 1 / (1 + e^((d0-d1)/k))。k が blend 幅。
+  if (b.part_count > 0) {
+    float skin_k = (float)luaL_optnumber(L, 3, 0.1);
+    if (skin_k <= 0)
+      skin_k = 0.1f;
+    lua_createtable(L, (int)(m.vert_count * 2), 0); // joints (0-based index)
+    lua_createtable(L, (int)(m.vert_count * 2), 0); // weights
+    for (size_t v = 0; v < m.vert_count; ++v) {
+      float px = m.positions[v * 3];
+      float py = m.positions[v * 3 + 1];
+      float pz = m.positions[v * 3 + 2];
+      int j0 = 0, j1 = 0;
+      float d0 = 1e30f, d1 = 1e30f;
+      for (int pi = 0; pi < b.part_count; ++pi) {
+        float d = sdf_eval_part(b.nodes, &b.parts[pi], px, py, pz);
+        if (d < d0) {
+          d1 = d0;
+          j1 = j0;
+          d0 = d;
+          j0 = pi;
+        } else if (d < d1) {
+          d1 = d;
+          j1 = pi;
+        }
+      }
+      float w0 =
+          b.part_count > 1 ? 1.0f / (1.0f + expf((d0 - d1) / skin_k)) : 1.0f;
+      lua_pushinteger(L, j0);
+      lua_rawseti(L, -3, (int)(v * 2 + 1));
+      lua_pushinteger(L, j1);
+      lua_rawseti(L, -3, (int)(v * 2 + 2));
+      lua_pushnumber(L, w0);
+      lua_rawseti(L, -2, (int)(v * 2 + 1));
+      lua_pushnumber(L, 1.0f - w0);
+      lua_rawseti(L, -2, (int)(v * 2 + 2));
+    }
+    lua_setfield(L, -3, "weights");
+    lua_setfield(L, -2, "joints");
+
+    lua_createtable(L, b.part_count, 0);
+    for (int pi = 0; pi < b.part_count; ++pi) {
+      lua_createtable(L, 0, 4);
+      lua_pushstring(L, b.parts[pi].name);
+      lua_setfield(L, -2, "name");
+      lua_pushnumber(L, b.parts[pi].pivot[0]);
+      lua_setfield(L, -2, "x");
+      lua_pushnumber(L, b.parts[pi].pivot[1]);
+      lua_setfield(L, -2, "y");
+      lua_pushnumber(L, b.parts[pi].pivot[2]);
+      lua_setfield(L, -2, "z");
+      lua_rawseti(L, -2, pi + 1);
+    }
+    lua_setfield(L, -2, "bones");
+  }
 
   free(b.nodes);
   sn_mesh_free(&m);

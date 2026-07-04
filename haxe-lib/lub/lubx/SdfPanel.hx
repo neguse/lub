@@ -82,6 +82,10 @@ class SdfPanel {
 				changed = color(n, path) || changed;
 				changed = num01(n, "metallic", path) || changed;
 				changed = num01(n, "roughness", path) || changed;
+			case "bone":
+				changed = num(n, "px", 0.01, path) || changed;
+				changed = num(n, "py", 0.01, path) || changed;
+				changed = num(n, "pz", 0.01, path) || changed;
 			case _: // rotate (quat は直接いじらない) / mirror_x / union / ...
 		}
 		return changed;

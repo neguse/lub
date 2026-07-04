@@ -318,4 +318,34 @@ function M.interleave_pncm(mesh)
 	return out
 end
 
+-- interleave_pncm + skin (j0, w0, j1, w1) の stride 15。sdf_mesh の bone 付き
+-- メッシュ用。joints/weights 欠損は「bone 0 に重み 1」で埋める。
+function M.interleave_pncmw(mesh)
+	local n = mesh.vert_count
+	local out = M.interleave_pncm(mesh)
+	local jt = mesh.joints
+	local wt = mesh.weights
+	-- interleave_pncm の stride 11 の後ろに 4 要素を差し込む形で組み直す
+	local full = {}
+	for i = 0, n - 1 do
+		local src = i * 11
+		for k = 1, 11 do
+			full[#full + 1] = out[src + k]
+		end
+		if jt and wt then
+			local si = i * 2
+			full[#full + 1] = jt[si + 1]
+			full[#full + 1] = wt[si + 1]
+			full[#full + 1] = jt[si + 2]
+			full[#full + 1] = wt[si + 2]
+		else
+			full[#full + 1] = 0
+			full[#full + 1] = 1
+			full[#full + 1] = 0
+			full[#full + 1] = 0
+		end
+	end
+	return full
+end
+
 return M

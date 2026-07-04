@@ -21,15 +21,59 @@ class Sdf19 {
 	static inline var N = 64;
 
 	// --- モデル: 雪だるま風 -------------------------------------------------
+	// bone(name, pivot) を付けた部位には skinning 重みが焼かれる。動かす腕は
+	// mirror だと pivot が片側になるので左右を個別に置く(目は動かないので
+	// mirror のまま)。
 	static function model():SdfNode {
-		var body = Sdf.sphere(0.72).move(0, -0.42, 0);
-		var head = Sdf.sphere(0.46).move(0, 0.48, 0);
-		// 腕: 胴から斜め上へのカプセル。mirrorX で左右対称に
-		var arm = Sdf.capsule(new Vec3(0.56, -0.32, 0), new Vec3(1.04, 0.24, 0), 0.13).mirrorX();
+		var body = Sdf.sphere(0.72).move(0, -0.42, 0).bone("body", new Vec3(0, -0.42, 0));
+		var head = Sdf.sphere(0.46).move(0, 0.48, 0).bone("head", new Vec3(0, 0.10, 0));
+		var armL = Sdf.capsule(new Vec3(0.56, -0.32, 0), new Vec3(1.04, 0.24, 0), 0.13).bone("arm_l", new Vec3(0.56, -0.32, 0));
+		var armR = Sdf.capsule(new Vec3(-0.56, -0.32, 0), new Vec3(-1.04, 0.24, 0), 0.13).bone("arm_r", new Vec3(-0.56, -0.32, 0));
 		// 目: 球で smooth にくり抜き (camera は -Z 側)。切断面には cutter の
 		// 材質が出るので、目玉の色は「彫る球の paint」で決まる
 		var eye = Sdf.sphere(0.11).move(0.17, 0.56, -0.40).mirrorX().paint(0x1E2130, 0.0, 0.15);
-		return body.smin(head, 0.22).smin(arm, 0.10).paint(0xE58B52).ssub(eye, 0.06);
+		return body.smin(head, 0.22).smin(armL, 0.10).smin(armR, 0.10).paint(0xE58B52).ssub(eye, 0.06);
+	}
+
+	// --- アニメーション -------------------------------------------------------
+	static var waveOn = true;
+
+	// pivot 回りの回転行列 (model 空間)。T(p) * R * T(-p)
+	static function boneMat(px:Float, py:Float, pz:Float, rot:Mat4):Mat4 {
+		return Mat4.translate(new Vec3(px, py, pz)).mul(rot.mul(Mat4.translate(new Vec3(-px, -py, -pz))));
+	}
+
+	// mesh.bones の順で 8 本分の行列 (mat4 × 8 = 128 float) を詰める
+	static function packBones(t:Float):lua.Table<Int, Float> {
+		var arr = new Array<Float>();
+		var wave = waveOn ? Math.sin(t * 4.0) * 0.5 : 0.0;
+		var nod = waveOn ? Math.sin(t * 2.0) * 0.10 : 0.0;
+		var count = 0;
+		if (mesh != null && mesh.bones != null) {
+			var i = 1;
+			while (true) {
+				var b:Dynamic = mesh.bones[i];
+				if (b == null)
+					break;
+				var m = switch ((b.name : String)) {
+					case "arm_l": boneMat(b.x, b.y, b.z, Mat4.rotateZ(wave));
+					case "arm_r": boneMat(b.x, b.y, b.z, Mat4.rotateZ(-wave));
+					case "head": boneMat(b.x, b.y, b.z, Mat4.rotateZ(nod));
+					case _: new Mat4();
+				}
+				for (v in m.m)
+					arr.push(v);
+				count++;
+				i++;
+			}
+		}
+		while (count < 8) {
+			var id = new Mat4();
+			for (v in id.m)
+				arr.push(v);
+			count++;
+		}
+		return lua.Table.fromArray(arr);
 	}
 
 	// --- メッシュ化 ----------------------------------------------------------
@@ -135,6 +179,7 @@ class Sdf19 {
 				meshDirty = true;
 			Ui.separator();
 			metalTarget = Ui.slider("metal (Space)", metalTarget, 0, 1);
+			waveOn = Ui.checkbox("wave", waveOn);
 			if (mesh != null)
 				Ui.text("verts: " + mesh.vert_count);
 		}
@@ -142,7 +187,7 @@ class Sdf19 {
 
 		if (meshDirty)
 			remesh();
-		var verts = Io.interleavePncm(mesh);
+		var verts = Io.interleavePncmw(mesh);
 		var vb = Gfx.useBuffer("sdf_vb", Gfx.VERTEX, verts, meshVer);
 		var ib = Gfx.useBuffer("sdf_ib", Gfx.INDEX, mesh.indices, meshVer);
 		var matcap = Gfx.useTexture("sdf_matcap", 64, 64, Gfx.RGBA8, matcapPx, meshVer);
@@ -166,7 +211,9 @@ class Sdf19 {
 				model: lua.Table.fromArray(model.m),
 				view: lua.Table.fromArray(view.m),
 				// メタル変身の override。ジオメトリにも頂点にも触らない
-				params: lua.Table.fromArray([metalT, 0.0, 0.0, 0.0])
+				params: lua.Table.fromArray([metalT, 0.0, 0.0, 0.0]),
+				// skinning: bone ごとの pivot 回り回転 (LBS は vertex shader)
+				bones: packBones(tAccum)
 			}
 		}, {
 			shader: s,

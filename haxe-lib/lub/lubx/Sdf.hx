@@ -92,6 +92,22 @@ abstract SdfNode(Dynamic) from Dynamic to Dynamic {
 
 	public inline function intersect(b:SdfNode):SdfNode
 		return {op: "intersect", a: this, b: b};
+
+	/**
+		サブツリーを skinning 部位として宣言する。`pivot` は関節位置
+		(model 空間)。メッシュ化時に頂点ごとの部位距離から重みが焼かれる。
+		mirror_x の内側に置くと両側に重みが付くのに pivot が片側になるので、
+		動かす bone は mirror の外で個別に置くこと。
+	**/
+	public inline function bone(name:String, pivot:Vec3):SdfNode
+		return {
+			op: "bone",
+			name: name,
+			px: pivot.x,
+			py: pivot.y,
+			pz: pivot.z,
+			c: this
+		};
 }
 
 /**
@@ -134,7 +150,8 @@ class Sdf {
 	public static inline function torus(rMajor:Float, rMinor:Float):SdfNode
 		return {op: "torus", rmajor: rMajor, rminor: rMinor};
 
-	/** ツリーをメッシュ化する。`n` は最長軸の cell 数 (bounds は自動)。 **/
-	public static inline function mesh(root:SdfNode, n:Int):MeshData
-		return Mesh.sdfMesh({version: 1, root: root}, n);
+	/** ツリーをメッシュ化する。`n` は最長軸の cell 数 (bounds は自動)。
+		bone ノードがあれば skinning 情報も焼かれる (`skinK` = 重みの blend 幅)。 **/
+	public static inline function mesh(root:SdfNode, n:Int, ?skinK:Float):MeshData
+		return Mesh.sdfMesh({version: 1, root: root}, n, skinK);
 }

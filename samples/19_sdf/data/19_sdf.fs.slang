@@ -7,10 +7,10 @@ struct Uniforms {
 };
 ConstantBuffer<Uniforms> u;
 struct FSIn {
-  float3 normal : TEXCOORD1;
-  float3 vnormal : TEXCOORD2;
+  float3 normal : TEXCOORD2;
+  float3 vnormal : TEXCOORD3;
   float3 color : COLOR0;
-  float2 mr : TEXCOORD3;
+  float2 mr : TEXCOORD4;
 };
 [shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
   float3 n = normalize(i.normal);

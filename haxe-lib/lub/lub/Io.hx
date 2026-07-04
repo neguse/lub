@@ -54,6 +54,9 @@ extern class Io {
 	/** position + normal + albedo + metallic/roughness (`Mesh.sdfMesh` 用)。 **/
 	@:native("interleave_pncm") public static function interleavePncm(mesh:Dynamic):lua.Table<Int, Float>;
 
+	/** interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.sdfMesh` 用。 **/
+	@:native("interleave_pncmw") public static function interleavePncmw(mesh:Dynamic):lua.Table<Int, Float>;
+
 	/** position + normal + uv。 **/
 	@:native("interleave_pnu") public static function interleavePnu(mesh:Dynamic):lua.Table<Int, Float>;
 

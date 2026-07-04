@@ -196,6 +196,11 @@ int component_count_of(TypeReflection *t) {
   if (kind == TypeReflection::Kind::Matrix) {
     return (int)(t->getRowCount() * t->getColumnCount());
   }
+  if (kind == TypeReflection::Kind::Array) {
+    // e.g. float4x4 bones[8] = 128 floats (uniform packing treats the
+    // member as one flat float run)
+    return (int)t->getElementCount() * component_count_of(t->getElementType());
+  }
   return 0;
 }
 
@@ -1878,6 +1883,15 @@ int comp_count_of_type_json(const json &t) {
     int rc = t.value("rowCount", 0);
     int cc = t.value("columnCount", 0);
     return rc * cc;
+  }
+  if (kind == "array") {
+    // e.g. float4x4 bones[8] = 128 floats (native 側 component_count_of と
+    // 同じく flat な float 数として扱う)
+    int ec = t.value("elementCount", 0);
+    int inner = t.contains("elementType")
+                    ? comp_count_of_type_json(t["elementType"])
+                    : 0;
+    return ec * inner;
   }
   return 0;
 }
