@@ -4,6 +4,7 @@
 #include "enums.h"
 #include "enums_lua.h"
 #include "gltf.h"
+#include "host.h"
 #include "pass.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -2018,6 +2019,7 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "surface_nets");
   lua_pushcfunction(L, lub_sdf_mesh);
   lua_setglobal(L, "sdf_mesh");
+  host_lua_register(L);
   ui_register_lua(L);
   phys2d_lua_register(L);
   phys3d_lua_register(L);

@@ -522,6 +522,16 @@ static void handle_request(ServeState *s, int conn_idx) {
   if (strcmp(path, "/") == 0) {
     handle_index(s, c->fd);
     conn_close(s, conn_idx);
+  } else if (strcmp(path, "/host.js") == 0) {
+    // Host bridge script from the game dir. The serve page always includes
+    // <script src="/host.js">, so answer an empty script when the game has
+    // none (see src/host.c for the window.lubHost contract).
+    char file_path[1024];
+    SDL_snprintf(file_path, sizeof(file_path), "%s/host.js", s->game_dir);
+    if (!send_file_response(c->fd, file_path)) {
+      send_http_response(c->fd, 200, "OK", "application/javascript", "", 0);
+    }
+    conn_close(s, conn_idx);
   } else if (strcmp(path, "/events") == 0) {
     // SSE endpoint
     if (!send_sse_headers(c->fd)) {

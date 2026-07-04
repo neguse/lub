@@ -19,6 +19,10 @@ static const char SERVE_PAGE_HTML[] =
     "<div id=\"status\">connecting...</div>\n"
     "<canvas id=\"canvas\" width=\"1280\" height=\"720\" "
     "tabindex=\"0\"></canvas>\n"
+    // Host bridge (window.lubHost) from the game dir; the server answers an
+    // empty script when the game has none. Loaded synchronously before the
+    // main script so lubHost exists before any Lua runs.
+    "<script src=\"/host.js\"></script>\n"
     "<script>\n"
     "'use strict';\n"
     "const ENTRY='{{ENTRY}}';\n"

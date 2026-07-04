@@ -135,6 +135,7 @@ set(LUB_SOURCES
   src/backend_sokol.c
   src/stb_impl.c
   src/gltf.c
+  src/host.c
   src/surfacenets.c
   src/sdf.c
   src/ui.cpp

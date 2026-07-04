@@ -100,8 +100,25 @@ POSIX ソケットで最小限の HTTP を実装する。
 
 配信するもの:
 - `/` → 埋め込み HTML (全画面 canvas + EventSource JS + lub.wasm ローダー)
+- `/host.js` → ゲームディレクトリの `host.js` (無ければ空スクリプト)
 - `/wasm/*` → lub の WASM ビルド成果物 (lub.js, lub.wasm, lub.data)
 - `/events` → SSE
+
+## ホストブリッジ (host.js + lub.Host)
+
+ゲームディレクトリに `host.js` を置くと、serve ページが WASM 起動前に
+同期ロードする。`host.js` は `window.lubHost` を定義し、ゲーム Lua とは
+`lub.Host` (`host_available` / `host_send` / `host_poll`) で topic + payload
+(バイナリ可) を交換する。ネットワーク (WebTransport 等) や clipboard の
+実体はホストページ JS 側に置く。契約の詳細は `src/host.c` 冒頭を参照。
+
+```js
+// host.js の骨格
+window.lubHost = {
+  queue: [], // ゲームへの受信キュー: {topic, payload: Uint8Array|string}
+  onMessage(topic, payload /* Uint8Array */) { /* ゲームからの送信 */ },
+};
+```
 
 ## メインループ
 

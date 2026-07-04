@@ -117,6 +117,8 @@ static const char HAXE_PRELUDE[] =
     "  ui_tree_node = ui_tree_node, ui_tree_pop = ui_tree_pop,\n"
     "  ui_set_next_window = ui_set_next_window,\n"
     "  ui_want_capture_mouse = ui_want_capture_mouse }\n"
+    "lub.Host = { host_available = host_available, host_send = host_send,\n"
+    "  host_poll = host_poll }\n"
     "lub.Sys = { file_mtime = file_mtime, request_file = request_file,\n"
     "  is_web = is_web,\n"
     "  fnv1a64 = fnv1a64,\n"
