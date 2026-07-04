@@ -136,6 +136,7 @@ set(LUB_SOURCES
   src/stb_impl.c
   src/gltf.c
   src/surfacenets.c
+  src/sdf.c
 )
 list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
@@ -347,4 +348,15 @@ if(NOT LUB_WASM)
     target_link_libraries(lub_surfacenets_smoke PRIVATE m dl)
   endif()
   target_include_directories(lub_surfacenets_smoke PRIVATE src)
+
+  add_executable(lub_sdf_smoke
+    tests/c/sdf_smoke.c
+    src/sdf.c
+    src/surfacenets.c
+  )
+  target_link_libraries(lub_sdf_smoke PRIVATE lua_static)
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(lub_sdf_smoke PRIVATE m dl)
+  endif()
+  target_include_directories(lub_sdf_smoke PRIVATE src)
 endif()

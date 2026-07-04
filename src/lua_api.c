@@ -9,6 +9,7 @@
 #include "physics_box3d.h"
 #include "pipeline.h"
 #include "resources.h"
+#include "sdf.h"
 #include "shader.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -2014,6 +2015,8 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "load_gltf");
   lua_pushcfunction(L, lub_surface_nets);
   lua_setglobal(L, "surface_nets");
+  lua_pushcfunction(L, lub_sdf_mesh);
+  lua_setglobal(L, "sdf_mesh");
   phys2d_lua_register(L);
   phys3d_lua_register(L);
 }
