@@ -272,4 +272,50 @@ function M.interleave_pnut(mesh)
 	return out
 end
 
+-- mesh.positions + normals + colors + metal_rough を
+-- pos.xyz, n.xyz, albedo.rgb, mr.xy (stride 11) に詰める。
+-- sdf_mesh の頂点 material 用。colors 欠損は 0.8 グレー、
+-- metal_rough 欠損は (0, 0.8)。
+function M.interleave_pncm(mesh)
+	local n = mesh.vert_count
+	local out = {}
+	local pos = mesh.positions
+	local nrm = mesh.normals
+	local col = mesh.colors
+	local mr = mesh.metal_rough
+	for i = 0, n - 1 do
+		local pi = i * 3
+		out[#out + 1] = pos[pi + 1]
+		out[#out + 1] = pos[pi + 2]
+		out[#out + 1] = pos[pi + 3]
+		if nrm then
+			out[#out + 1] = nrm[pi + 1]
+			out[#out + 1] = nrm[pi + 2]
+			out[#out + 1] = nrm[pi + 3]
+		else
+			out[#out + 1] = 0
+			out[#out + 1] = 0
+			out[#out + 1] = 1
+		end
+		if col then
+			out[#out + 1] = col[pi + 1]
+			out[#out + 1] = col[pi + 2]
+			out[#out + 1] = col[pi + 3]
+		else
+			out[#out + 1] = 0.8
+			out[#out + 1] = 0.8
+			out[#out + 1] = 0.8
+		end
+		if mr then
+			local mi = i * 2
+			out[#out + 1] = mr[mi + 1]
+			out[#out + 1] = mr[mi + 2]
+		else
+			out[#out + 1] = 0
+			out[#out + 1] = 0.8
+		end
+	end
+	return out
+end
+
 return M

@@ -22,12 +22,16 @@ enum {
   OP_ROTATE,
   OP_SCALE,
   OP_MIRROR_X,
+  OP_PAINT,
   OP_UNION,
   OP_SMIN,
   OP_SUBTRACT,
   OP_SSUB,
   OP_INTERSECT,
 };
+
+// per-vertex material: albedo rgb + metallic + roughness
+#define SDF_MAT_N 5
 
 #define SDF_MAX_DEPTH 64
 #define SDF_MAX_NODES 4096
@@ -52,6 +56,13 @@ static float need_num(lua_State *L, int t, const char *op, const char *k) {
   if (!lua_isnumber(L, -1))
     luaL_error(L, "sdf_mesh: node '%s' needs number field '%s'", op, k);
   float v = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  return v;
+}
+
+static float opt_num(lua_State *L, int t, const char *k, float def) {
+  lua_getfield(L, t, k);
+  float v = lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : def;
   lua_pop(L, 1);
   return v;
 }
@@ -162,6 +173,13 @@ static int flatten(SdfBuild *b, int t) {
       luaL_error(L, "sdf_mesh: scale 's' must be > 0");
   } else if (strcmp(op, "mirror_x") == 0) {
     n->op = OP_MIRROR_X;
+  } else if (strcmp(op, "paint") == 0) {
+    n->op = OP_PAINT;
+    n->p[0] = need_num(L, t, op, "cr");
+    n->p[1] = need_num(L, t, op, "cg");
+    n->p[2] = need_num(L, t, op, "cb");
+    n->p[3] = opt_num(L, t, "metallic", 0.0f);
+    n->p[4] = opt_num(L, t, "roughness", 0.8f);
   } else if (strcmp(op, "union") == 0) {
     n->op = OP_UNION;
   } else if (strcmp(op, "smin") == 0 || strcmp(op, "ssub") == 0) {
@@ -179,7 +197,7 @@ static int flatten(SdfBuild *b, int t) {
 
   int kind = b->nodes[ni].op;
   if (kind == OP_MOVE || kind == OP_ROTATE || kind == OP_SCALE ||
-      kind == OP_MIRROR_X) {
+      kind == OP_MIRROR_X || kind == OP_PAINT) {
     int a = need_child(b, t, op, "c");
     b->nodes[ni].a = a;
   } else if (kind >= OP_UNION) {
@@ -233,6 +251,8 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
     return sdf_eval(ns, n->a, x / n->p[0], y / n->p[0], z / n->p[0]) * n->p[0];
   case OP_MIRROR_X:
     return sdf_eval(ns, n->a, fabsf(x), y, z);
+  case OP_PAINT:
+    return sdf_eval(ns, n->a, x, y, z);
   case OP_UNION:
     return fminf(sdf_eval(ns, n->a, x, y, z), sdf_eval(ns, n->b, x, y, z));
   case OP_SMIN: {
@@ -255,6 +275,82 @@ static float sdf_eval(const SdfNode *ns, int ni, float x, float y, float z) {
     return fmaxf(sdf_eval(ns, n->a, x, y, z), sdf_eval(ns, n->b, x, y, z));
   }
   return 1e30f;
+}
+
+// Material evaluation: like sdf_eval but carries (distance, material) pairs.
+// Only called once per output vertex (not per grid point), so the extra cost
+// is negligible. paint sets the material for its subtree (innermost wins via
+// `inherited`), union/intersect take the winner's material, smin/ssub lerp
+// materials with the same h as the distance so the material blend matches
+// the geometric blend. Where a cutter wins (subtract/ssub) its own material
+// shows — cut surfaces reveal what the cutter is "made of".
+static float sdf_eval_mat(const SdfNode *ns, int ni, float x, float y, float z,
+                          const float *inherited, float *out) {
+  const SdfNode *n = &ns[ni];
+  switch (n->op) {
+  case OP_MOVE:
+    return sdf_eval_mat(ns, n->a, x - n->p[0], y - n->p[1], z - n->p[2],
+                        inherited, out);
+  case OP_ROTATE: {
+    const float *m = n->p;
+    return sdf_eval_mat(ns, n->a, m[0] * x + m[3] * y + m[6] * z,
+                        m[1] * x + m[4] * y + m[7] * z,
+                        m[2] * x + m[5] * y + m[8] * z, inherited, out);
+  }
+  case OP_SCALE:
+    return sdf_eval_mat(ns, n->a, x / n->p[0], y / n->p[0], z / n->p[0],
+                        inherited, out) *
+           n->p[0];
+  case OP_MIRROR_X:
+    return sdf_eval_mat(ns, n->a, fabsf(x), y, z, inherited, out);
+  case OP_PAINT:
+    return sdf_eval_mat(ns, n->a, x, y, z, n->p, out);
+  case OP_UNION:
+  case OP_INTERSECT: {
+    float mb[SDF_MAT_N];
+    float da = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float db = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    int b_wins = n->op == OP_UNION ? db < da : db > da;
+    if (b_wins) {
+      memcpy(out, mb, sizeof(mb));
+      return db;
+    }
+    return da;
+  }
+  case OP_SMIN: {
+    float mb[SDF_MAT_N];
+    float a = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float c = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    float k = n->p[0];
+    float h = clamp01(0.5f + 0.5f * (c - a) / k); // h = 1 -> a wins
+    for (int i = 0; i < SDF_MAT_N; ++i)
+      out[i] = mb[i] + (out[i] - mb[i]) * h;
+    return c + (a - c) * h - k * h * (1 - h);
+  }
+  case OP_SUBTRACT: {
+    float mb[SDF_MAT_N];
+    float d = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float s = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    if (-s > d) {
+      memcpy(out, mb, sizeof(mb));
+      return -s;
+    }
+    return d;
+  }
+  case OP_SSUB: {
+    float mb[SDF_MAT_N];
+    float d = sdf_eval_mat(ns, n->a, x, y, z, inherited, out);
+    float s = sdf_eval_mat(ns, n->b, x, y, z, inherited, mb);
+    float k = n->p[0];
+    float h = clamp01(0.5f - 0.5f * (d + s) / k); // h = 1 -> cutter wins
+    for (int i = 0; i < SDF_MAT_N; ++i)
+      out[i] = out[i] + (mb[i] - out[i]) * h;
+    return d + (-s - d) * h + k * h * (1 - h);
+  }
+  default: // primitives
+    memcpy(out, inherited, SDF_MAT_N * sizeof(float));
+    return sdf_eval(ns, ni, x, y, z);
+  }
 }
 
 // Conservative AABB per node; exactness is not required (the grid adds a
@@ -297,6 +393,9 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
       mn[i] += n->p[i];
       mx[i] += n->p[i];
     }
+    return;
+  case OP_PAINT:
+    sdf_aabb(ns, n->a, mn, mx);
     return;
   case OP_ROTATE: {
     float cmn[3], cmx[3];
@@ -446,9 +545,30 @@ int lub_sdf_mesh(lua_State *L) {
       return luaL_error(L, "sdf_mesh: out of memory");
     }
   }
-  free(b.nodes);
-
   sn_mesh_push(L, &m);
+
+  // bake per-vertex materials (albedo rgb + metallic/roughness) by
+  // re-evaluating the tree with materials at each vertex position
+  static const float DEFAULT_MAT[SDF_MAT_N] = {0.8f, 0.8f, 0.8f, 0.0f, 0.8f};
+  lua_createtable(L, (int)(m.vert_count * 3), 0);
+  lua_createtable(L, (int)(m.vert_count * 2), 0);
+  for (size_t v = 0; v < m.vert_count; ++v) {
+    float mat[SDF_MAT_N];
+    sdf_eval_mat(b.nodes, root, m.positions[v * 3], m.positions[v * 3 + 1],
+                 m.positions[v * 3 + 2], DEFAULT_MAT, mat);
+    for (int i = 0; i < 3; ++i) {
+      lua_pushnumber(L, mat[i]);
+      lua_rawseti(L, -3, (int)(v * 3 + i + 1));
+    }
+    for (int i = 0; i < 2; ++i) {
+      lua_pushnumber(L, mat[3 + i]);
+      lua_rawseti(L, -2, (int)(v * 2 + i + 1));
+    }
+  }
+  lua_setfield(L, -3, "metal_rough");
+  lua_setfield(L, -2, "colors");
+
+  free(b.nodes);
   sn_mesh_free(&m);
   push_vec3_table(L, mn);
   lua_setfield(L, -2, "bounds_min");

@@ -17,6 +17,11 @@ typedef MeshData = {
 	@:optional var bounds_min:lua.Table<Int, Float>;
 	@:optional var bounds_max:lua.Table<Int, Float>;
 	@:optional var cell:Float;
+
+	/** `sdfMesh` のみ: 頂点ごとの albedo (flat rgb) と metallic/roughness。 **/
+	@:optional var colors:lua.Table<Int, Float>;
+
+	@:optional var metal_rough:lua.Table<Int, Float>;
 }
 
 /** CPU メッシュ生成。 **/

@@ -13,8 +13,9 @@
 //     経由で呼ぶ。Lua 5.5 は native bitwise operator を持つが bit32 module
 //     を持たないため、Lua 5.5 native bitwise op で bit32 互換 table を
 //     preload しておく。
-// (4) Haxe Math.atan2 は math.atan2 を emit するが、Lua 5.3+ で削除された
-//     (math.atan(y, x) に統合)。Lua 5.5 用に atan2 を補完する。
+// (4) Haxe Math.atan2 / Math.pow は math.atan2 / math.pow を emit するが、
+//     どちらも Lua 5.3+ で削除された (atan(y, x) と ^ 演算子に統合)。
+//     Lua 5.5 用に両方補完する。
 static const char HAXE_PRELUDE[] =
     "package.preload[\"lua-utf8\"] = function()\n"
     "  return {\n"
@@ -41,6 +42,7 @@ static const char HAXE_PRELUDE[] =
     "end\n"
     "if math.atan2 == nil then math.atan2 = function(y, x) return math.atan(y, "
     "x) end end\n"
+    "if math.pow == nil then math.pow = function(a, b) return a ^ b end end\n"
     "lub = lub or {}\n"
     "lub.Lub = { config = config, quit = quit }\n"
     "lub.Gfx = {\n"

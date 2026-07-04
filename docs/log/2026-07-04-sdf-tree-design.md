@@ -60,10 +60,30 @@ Haxe builder (lubx.Sdf) ──→  SDF ツリー(素の table)──→ sdf_mesh
 | combine | `ssub` | `k a b` | smooth subtraction |
 | combine | `intersect` | `a b` | |
 | misc | `mirror_x` | `c` | X 対称(\|x\| 折り畳み) |
+| misc | `paint` | `cr cg cb ?metallic ?roughness c` | サブツリーの材質。innermost 優先 |
 
 - 任意ノードに `name`(string)を置ける。v1 では無視。将来の bones タグ・
   エディタのラベル・パラメータ UI のグルーピングに使う予約フィールド。
 - 未知の op / version 不一致は `sdf_mesh` が luaL_error にする(黙って無視しない)。
+
+### 材質 (paint) の設計
+
+材質は 3 層に分解し、「マテリアルアセット」という中間概念は作らない:
+
+| 層 | 実体 | 従来エンジンでの対応物 |
+| --- | --- | --- |
+| モデルが何でできてるか | `paint` → 頂点に焼く(data) | メッシュへのマテリアル割り当て |
+| どう描くか | slang shader(コード) | shader graph / .shader |
+| いま何が起きてるか | draw 毎の uniforms(state) | material instance / MPB |
+
+- `paint` はサブツリーに albedo + metallic/roughness を与える wrapper ノード。
+  評価は `(distance, material)` のペアで行い、`union` は近い方、`smin`/`ssub` は
+  距離と同じ `h` で材質も lerp(幾何の blend と材質の blend が k 一本で一致)、
+  `subtract`/`ssub` で cutter が勝つ点は **cutter の材質**(切断面に中身の色が出る)。
+- 頂点材質はメッシュ化後に頂点位置で 1 回評価して焼く。トポロジ非依存なので
+  remesh しても色は安定。UV は導入しない(表面ディテールは将来 triplanar で)。
+- メタル変身のような実行時の材質変化は uniform override でやる(remesh 不要・
+  補間可)。metallic の見た目は matcap(sphere map)で出す。
 
 ## C ランタイム: `sdf_mesh`
 

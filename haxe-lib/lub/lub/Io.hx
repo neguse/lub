@@ -51,6 +51,9 @@ extern class Io {
 	/** mesh を position + normal で interleave した頂点列にする。 **/
 	@:native("interleave_pn") public static function interleavePn(mesh:Dynamic):lua.Table<Int, Float>;
 
+	/** position + normal + albedo + metallic/roughness (`Mesh.sdfMesh` 用)。 **/
+	@:native("interleave_pncm") public static function interleavePncm(mesh:Dynamic):lua.Table<Int, Float>;
+
 	/** position + normal + uv。 **/
 	@:native("interleave_pnu") public static function interleavePnu(mesh:Dynamic):lua.Table<Int, Float>;
 

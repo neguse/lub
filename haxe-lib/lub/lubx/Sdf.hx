@@ -48,6 +48,23 @@ abstract SdfNode(Dynamic) from Dynamic to Dynamic {
 	public inline function mirrorX():SdfNode
 		return {op: "mirror_x", c: this};
 
+	/**
+		サブツリーに材質 (albedo + metallic/roughness) を与える。
+		innermost の paint が勝つ。`rgb` は 0xRRGGBB。
+		smin/ssub では距離と同じ blend で材質も混ざり、subtract/ssub の
+		切断面には cutter の材質が出る。
+	**/
+	public inline function paint(rgb:Int, metallic:Float = 0.0, roughness:Float = 0.8):SdfNode
+		return {
+			op: "paint",
+			cr: ((rgb >> 16) & 0xFF) / 255.0,
+			cg: ((rgb >> 8) & 0xFF) / 255.0,
+			cb: (rgb & 0xFF) / 255.0,
+			metallic: metallic,
+			roughness: roughness,
+			c: this
+		};
+
 	public inline function union(b:SdfNode):SdfNode
 		return {op: "union", a: this, b: b};
 
