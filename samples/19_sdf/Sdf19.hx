@@ -5,6 +5,7 @@ import lub.Input.Key;
 import lub.Io;
 import lub.Mesh;
 import lub.Math;
+import lub.Ui;
 import lubx.Sdf;
 
 // SDF モデリング: lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が
@@ -18,16 +19,21 @@ class Sdf19 {
 	// 最長軸の grid cell 数。bounds はツリーの AABB から自動で決まる。
 	static inline var N = 64;
 
+	// --- チューニング対象パラメータ (Ui パネルと hot reload の両方で編集可) --
+	static var bodyR = 0.72;
+	static var headR = 0.46;
+	static var blendK = 0.22;
+
 	// --- モデル: 雪だるま風 -------------------------------------------------
 	static function model():SdfNode {
-		var body = Sdf.sphere(0.72).move(0, -0.42, 0);
-		var head = Sdf.sphere(0.46).move(0, 0.48, 0);
+		var body = Sdf.sphere(bodyR).move(0, -0.42, 0);
+		var head = Sdf.sphere(headR).move(0, 0.48, 0);
 		// 腕: 胴から斜め上へのカプセル。mirrorX で左右対称に
 		var arm = Sdf.capsule(new Vec3(0.56, -0.32, 0), new Vec3(1.04, 0.24, 0), 0.13).mirrorX();
 		// 目: 球で smooth にくり抜き (camera は -Z 側)。切断面には cutter の
 		// 材質が出るので、目玉の色は「彫る球の paint」で決まる
 		var eye = Sdf.sphere(0.11).move(0.17, 0.56, -0.40).mirrorX().paint(0x1E2130, 0.0, 0.15);
-		return body.smin(head, 0.22).smin(arm, 0.10).paint(0xE58B52).ssub(eye, 0.06);
+		return body.smin(head, blendK).smin(arm, 0.10).paint(0xE58B52).ssub(eye, 0.06);
 	}
 
 	// --- メッシュ化 ----------------------------------------------------------
@@ -115,6 +121,24 @@ class Sdf19 {
 			return;
 		var s = Gfx.useShader("sdf_sh", vsR.text, fsR.text, vsR.version * 31 + fsR.version);
 
+		// debug UI: いじったフレームだけ remesh (C 評価 ~10ms なのでドラッグ追従)
+		Ui.setNextWindow(10, 10, 250, 140);
+		if (Ui.begin("sdf tuning")) {
+			var nb = Ui.slider("body", bodyR, 0.3, 1.1);
+			var nh = Ui.slider("head", headR, 0.2, 0.8);
+			var nk = Ui.slider("blend", blendK, 0.01, 0.6);
+			if (nb != bodyR || nh != headR || nk != blendK) {
+				bodyR = nb;
+				headR = nh;
+				blendK = nk;
+				meshDirty = true;
+			}
+			metalTarget = Ui.slider("metal (Space)", metalTarget, 0, 1);
+			if (mesh != null)
+				Ui.text("verts: " + mesh.vert_count);
+		}
+		Ui.end();
+
 		if (meshDirty)
 			remesh();
 		var verts = Io.interleavePncm(mesh);
@@ -149,6 +173,7 @@ class Sdf19 {
 			depth_write: true,
 			cull: Gfx.BACK
 		});
+		Ui.render();
 		Gfx.endPass();
 	}
 }

@@ -14,6 +14,7 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include "surfacenets.h"
+#include "ui.h"
 #include <SDL3/SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -2017,6 +2018,7 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "surface_nets");
   lua_pushcfunction(L, lub_sdf_mesh);
   lua_setglobal(L, "sdf_mesh");
+  ui_register_lua(L);
   phys2d_lua_register(L);
   phys3d_lua_register(L);
 }

@@ -1333,6 +1333,13 @@ static void wg_draw(int base, int count, int instance_count) {
   }
 }
 
+static void wg_set_scissor(int x, int y, int w, int h) {
+  if (!g_rpass)
+    return;
+  wgpuRenderPassEncoderSetScissorRect(g_rpass, (uint32_t)x, (uint32_t)y,
+                                      (uint32_t)w, (uint32_t)h);
+}
+
 static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   (void)app;
   if (!d || !d->pipeline || !d->refl || !g_enc)
@@ -1716,6 +1723,7 @@ const RenderBackend g_backend_webgpu = {
     .apply_bindings = wg_apply_bindings,
     .apply_uniforms = wg_apply_uniforms,
     .draw = wg_draw,
+    .set_scissor = wg_set_scissor,
     .dispatch = wg_dispatch,
     .request_readback_image = wg_request_readback_image,
     .poll_readback = wg_poll_readback,

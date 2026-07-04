@@ -118,6 +118,8 @@ typedef struct App {
   // Per-frame mouse motion sum (window px). mouse_delta() reads this, so it
   // is idempotent within a frame (unlike SDL_GetRelativeMouseState).
   float mouse_rel_x, mouse_rel_y;
+  // Per-frame wheel sum (SDL wheel units; +y = away from user).
+  float mouse_wheel_x, mouse_wheel_y;
 
   // Real frame delta time in seconds, passed to onFrame(dt). Clamped so a
   // debugger pause or window drag does not produce a giant step.

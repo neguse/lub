@@ -1144,6 +1144,12 @@ static void sg_draw(int base, int count, int instance_count) {
   }
 }
 
+static void sg_set_scissor(int x, int y, int w, int h) {
+  if (!g_render_pass)
+    return;
+  SDL_SetGPUScissor(g_render_pass, &(SDL_Rect){.x = x, .y = y, .w = w, .h = h});
+}
+
 static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (!d || !d->pipeline || !d->refl)
     return;
@@ -1622,6 +1628,7 @@ const RenderBackend g_backend_sdlgpu = {
     .apply_bindings = sg_apply_bindings,
     .apply_uniforms = sg_apply_uniforms,
     .draw = sg_draw,
+    .set_scissor = sg_set_scissor,
     .dispatch = sg_dispatch,
     .request_readback_image = sg_request_readback_image,
     .poll_readback = sg_poll_readback,

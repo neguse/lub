@@ -3,6 +3,7 @@
 #include "capture.h"
 #include "lua_api.h"
 #include "profile.h"
+#include "ui.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
@@ -231,6 +232,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     g_app.mouse_rel_x += event->motion.xrel;
     g_app.mouse_rel_y += event->motion.yrel;
     break;
+  case SDL_EVENT_MOUSE_WHEEL:
+    g_app.mouse_wheel_x += event->wheel.x;
+    g_app.mouse_wheel_y += event->wheel.y;
+    break;
   default:
     break;
   }
@@ -245,6 +250,8 @@ static void input_latch_clear(App *app) {
   app->mouse_released_mask = 0;
   app->mouse_rel_x = 0.0f;
   app->mouse_rel_y = 0.0f;
+  app->mouse_wheel_x = 0.0f;
+  app->mouse_wheel_y = 0.0f;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
@@ -277,6 +284,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   profile_begin_scope(&g_app.profile, "runtime.begin_frame");
   app_frame_begin(&g_app, &w, &h);
   profile_end_scope(&g_app.profile, "runtime.begin_frame");
+  ui_new_frame(&g_app, (float)g_app.frame_dt, w, h);
   profile_begin_scope(&g_app.profile, "script.onFrame");
   lua_ctx_call_frame(&g_app.lua, g_app.frame_dt);
   profile_end_scope(&g_app.profile, "script.onFrame");
@@ -307,6 +315,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   }
 #endif
   lua_ctx_call_quit(&g_app.lua);
+  ui_shutdown();
   app_shutdown(&g_app);
   lua_ctx_shutdown(&g_app.lua);
   SDL_Quit();

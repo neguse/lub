@@ -168,6 +168,9 @@ typedef struct RenderBackend {
   void (*apply_uniforms)(SglShaderStage stage, int ub_slot, const void *data,
                          size_t bytes);
   void (*draw)(int base, int count, int instance_count);
+  // Scissor rect in framebuffer pixels, top-left origin. Only valid inside a
+  // render pass; begin_pass resets it to the full target.
+  void (*set_scissor)(int x, int y, int w, int h);
 
   // Compute dispatch (outside any render pass). The backend opens its own
   // compute pass internally; the call must not be made between begin_pass

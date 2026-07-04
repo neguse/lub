@@ -12,6 +12,7 @@ lub bundles or links the following third-party components.
 | Slang headers | third_party/slang/include/ | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang |
 | lume | third_party/lume/lume.lua | MIT | https://github.com/rxi/lume |
 | nlohmann/json | third_party/nlohmann/json.hpp | MIT | https://github.com/nlohmann/json |
+| Dear ImGui (v1.91.9b) | third_party/imgui/ | MIT | https://github.com/ocornut/imgui |
 
 ## Fetched at configure/install time (gitignored)
 

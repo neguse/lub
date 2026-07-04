@@ -137,6 +137,11 @@ set(LUB_SOURCES
   src/gltf.c
   src/surfacenets.c
   src/sdf.c
+  src/ui.cpp
+  third_party/imgui/imgui.cpp
+  third_party/imgui/imgui_draw.cpp
+  third_party/imgui/imgui_tables.cpp
+  third_party/imgui/imgui_widgets.cpp
 )
 list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
@@ -158,8 +163,11 @@ target_include_directories(lub PRIVATE
   third_party/slang/include
   third_party/stb
   third_party/cgltf
+  third_party/imgui
   src
 )
+# backend の index buffer は u32 固定なので ImDrawIdx を 32bit にする。
+target_compile_definitions(lub PRIVATE ImDrawIdx=unsigned)
 if(NOT LUB_WASM)
   target_link_directories(lub PRIVATE third_party/slang/lib)
 endif()

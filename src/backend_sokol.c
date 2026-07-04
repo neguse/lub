@@ -1426,6 +1426,10 @@ static void sk_draw(int base, int count, int instance_count) {
   sg_draw(base, count, instance_count > 0 ? instance_count : 1);
 }
 
+static void sk_set_scissor(int x, int y, int w, int h) {
+  sg_apply_scissor_rect(x, y, w, h, true /* origin_top_left */);
+}
+
 static void sk_dispatch(App *app, const ComputeDispatchDesc *d) {
   (void)app;
   if (!d || !d->pipeline || !d->refl)
@@ -2721,6 +2725,7 @@ const RenderBackend g_backend_sokol = {
     .apply_bindings = sk_apply_bindings,
     .apply_uniforms = sk_apply_uniforms,
     .draw = sk_draw,
+    .set_scissor = sk_set_scissor,
     .dispatch = sk_dispatch,
     .request_readback_image = sk_request_readback_image,
     .poll_readback = sk_poll_readback,
