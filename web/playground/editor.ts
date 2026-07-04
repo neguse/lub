@@ -5,6 +5,7 @@ import { lua } from "@codemirror/legacy-modes/mode/lua";
 import { c as clike } from "@codemirror/legacy-modes/mode/clike";
 import { haxe } from "@codemirror/legacy-modes/mode/haxe";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { numberScrubber } from "./scrub";
 
 export type EditorFile = { content: string; dirty: boolean; initial: string };
 
@@ -50,6 +51,7 @@ export function attachEditor(
     extensions: [
       basicSetup,
       oneDark,
+      numberScrubber(),
       langComp.of(langFor(activePath)),
       EditorView.theme({
         "&": { height: "100%" },
