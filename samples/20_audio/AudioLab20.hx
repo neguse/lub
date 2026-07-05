@@ -21,10 +21,10 @@ class AudioLab20 {
 
 	// --- 再生パラメータ ------------------------------------------------------
 	static var volume = 0.5;
+	static var pitch = 1.0;
 	static var pan = 0.0;
 	static var playOnChange = true;
 	static var voiceOn = false;
-	static var voicePitch = 1.0;
 	static var master = 1.0;
 
 	static var snd = 0;
@@ -113,20 +113,22 @@ class AudioLab20 {
 				duty = Ui.slider("duty", duty, 0.05, 0.95);
 			Ui.separator();
 
+			// pitch は oneshot では発火時に固定 (負値なら末尾から逆再生)、
+			// loop voice では鳴っている間もリアルタイムに追従する。
+			// 0 で停止、負値で逆再生 (ターンテーブルのつもりで)。
 			volume = Ui.slider("volume", volume, 0.0, 1.0);
+			pitch = Ui.slider("pitch", pitch, -2.0, 2.0);
 			pan = Ui.slider("pan", pan, -1.0, 1.0);
 			var changed = ensureSnd();
 			var hit = Ui.button("play");
 			Ui.sameLine();
 			playOnChange = Ui.checkbox("play on change", playOnChange);
 			if (hit || (changed && playOnChange && !voiceOn))
-				Audio.play(snd, {volume: volume, pan: pan});
+				Audio.play(snd, {volume: volume, pitch: pitch, pan: pan});
 			Ui.separator();
 
 			// 継続音: ON の間だけ毎フレーム宣言する。OFF で fade out。
-			// pitch < 0 は逆再生、0 で停止 (ターンテーブルのつもりで)。
 			voiceOn = Ui.checkbox("loop voice", voiceOn);
-			voicePitch = Ui.slider("voice pitch", voicePitch, -2.0, 2.0);
 			Ui.separator();
 
 			master = Ui.slider("master", master, 0.0, 1.0);
@@ -140,7 +142,7 @@ class AudioLab20 {
 			Audio.voice("lab", snd, {
 				loop: true,
 				volume: volume,
-				pitch: voicePitch,
+				pitch: pitch,
 				pan: pan
 			});
 		sweepRetired();
