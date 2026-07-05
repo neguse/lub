@@ -71,7 +71,23 @@
 
 このへんは今後扱う予定の領域として持っておく。
 
-- Miniaudio による audio。
+- Miniaudio による audio。core の resource 契約はファイルフォーマットに依存しない:
+  snd を生むのは `audio_pcm(bytes) -> snd` の一本だけで、raw PCM しか受けない。
+  decoder は `png_load` と同じ立て付け — 純関数 utility
+  `audio_decode(bytes) -> pcm, channels, rate`(miniaudio decoder 利用、snd handle は作らない)。
+  cache/reload/status の方針は lubx 側(`lubx_png.lua` と同型)。
+  再生は2口: oneshot の `audio_play(snd, opts)` と、
+  毎フレーム宣言の `audio_voice(key, snd, {loop, volume, pitch, pan})`
+  (宣言が途切れたら fade out、同一 key は再生位置を保って継続。loop は単なるオプション)。
+  BGM(loop)・エンジン音(pitch 追従)・スクラッチ音(loop なし + pitch 追従、
+  retrigger は key を変える)はすべて宣言 voice の利用例で、専用 API は作らない。
+  実装は voice pool を共通化し、play/voice の差は寿命ポリシーのみ
+  (サンプル末尾で自動解放 / 宣言途切れで fade)。
+  volume/pitch は宣言値を目標に audio 側で補間してクリックと 60Hz 階段を防ぐ。
+  pitch は 0(停止)と負値(逆再生)も許す契約にする(snd は raw PCM 所有なので
+  自前サンプラーで実現可能。その場合 miniaudio は device 出力のみ)。
+  将来の扉: レジスタ式の固定機能チップシンセ(audio callback 内オンデマンド生成)、
+  timestamp 付きイベントキューによるサンプル精度シーケンス。いずれも需要が出るまで作らない。
 - Box2D による 2D physics。(済: `phys2d_*` immediate-mode API + sample 16)
 - Box3D による 3D physics。(済: `phys3d_*` immediate-mode API + sample 18 coin pusher。
   Jolt 案は Box2D と設計が揃う Box3D v0.1 の登場で置き換えた)
