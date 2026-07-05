@@ -12,6 +12,7 @@
 // real (opaque pointer typedefs) instead of void* placeholders.
 #include <webgpu/webgpu.h>
 #endif
+#include "audio.h"
 #include "capture.h"
 #include "lua_api.h"
 #include "pass.h"
@@ -89,6 +90,9 @@ typedef struct App {
   ResTable res;
   PhysState phys;
   Phys3dState phys3;
+  // audio_* Lua API の初回呼び出しで lazy に生成される (デバイス起動込み)。
+  // NULL のままなら音を一度も使っていない。
+  AudioState *audio;
   PipelineCache pip_cache;
   uint64_t frame_index;
 

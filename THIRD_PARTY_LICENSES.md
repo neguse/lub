@@ -13,6 +13,7 @@ lub bundles or links the following third-party components.
 | lume | third_party/lume/lume.lua | MIT | https://github.com/rxi/lume |
 | nlohmann/json | third_party/nlohmann/json.hpp | MIT | https://github.com/nlohmann/json |
 | Dear ImGui (v1.91.9b) | third_party/imgui/ | MIT | https://github.com/ocornut/imgui |
+| miniaudio (v0.11.25) | third_party/miniaudio/miniaudio.h | Public Domain / MIT-0 (dual) | https://github.com/mackron/miniaudio |
 
 ## Fetched at configure/install time (gitignored)
 

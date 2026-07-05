@@ -139,6 +139,9 @@ void app_frame_end(App *app) {
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
+  if (app->audio) {
+    audio_state_frame_end(app->audio);
+  }
   if (app->resource_sweep_after_frames > 0) {
     int64_t cf = (int64_t)app->frame_index;
     int64_t thr = (int64_t)app->resource_sweep_after_frames;
@@ -154,6 +157,8 @@ void app_frame_end(App *app) {
 void app_shutdown(App *app) {
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
+  audio_state_destroy(app->audio);
+  app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);
   phys2d_state_shutdown(&app->phys);
   res_table_shutdown(&app->res);

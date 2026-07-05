@@ -71,7 +71,10 @@
 
 このへんは今後扱う予定の領域として持っておく。
 
-- Miniaudio による audio。core の resource 契約はファイルフォーマットに依存しない:
+- Miniaudio による audio。(済: `audio_*` core API + `lub.Audio` extern +
+  sample 17 SE + `tests/lua/test_audio.lua`。miniaudio は device/decoder のみで
+  sampler/mixer は自前 — pitch 0/負値対応のため)
+  core の resource 契約はファイルフォーマットに依存しない:
   snd を生むのは `audio_pcm(bytes) -> snd` の一本だけで、raw PCM しか受けない。
   decoder は `png_load` と同じ立て付け — 純関数 utility
   `audio_decode(bytes) -> pcm, channels, rate`(miniaudio decoder 利用、snd handle は作らない)。

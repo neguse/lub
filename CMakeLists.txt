@@ -134,6 +134,8 @@ set(LUB_SOURCES
   src/capture.c
   src/backend_sokol.c
   src/stb_impl.c
+  src/audio.c
+  src/miniaudio_impl.c
   src/gltf.c
   src/host.c
   src/surfacenets.c
@@ -164,6 +166,7 @@ target_include_directories(lub PRIVATE
   third_party/slang/include
   third_party/stb
   third_party/cgltf
+  third_party/miniaudio
   third_party/imgui
   src
 )
@@ -219,6 +222,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
   )
+  # miniaudio 本体の警告はこちらで直せないので実装 TU だけ抑制する。
+  set_source_files_properties(src/miniaudio_impl.c PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 if(MSVC)
   # Sources are UTF-8 (Japanese comments); without /utf-8 MSVC will emit

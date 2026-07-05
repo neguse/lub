@@ -1939,6 +1939,171 @@ static int l_png_write(lua_State *L) {
   return 1;
 }
 
+// ---------------------------------------------------------------------------
+// audio: raw PCM だけを受ける core 契約 (docs/roadmap.md)。decode は
+// png_load と同格の純関数 utility で snd handle を作らない。
+
+static AudioState *audio_state_lazy(lua_State *L) {
+  if (!g_app_for_lua)
+    luaL_error(L, "audio: no app");
+  if (!g_app_for_lua->audio) {
+    g_app_for_lua->audio = audio_state_create();
+    if (!g_app_for_lua->audio)
+      luaL_error(L, "audio: state create failed");
+  }
+  return g_app_for_lua->audio;
+}
+
+// (data, channels, rate) -> snd。data は f32 の LubBytes / string、または
+// サンプル値の table (コードで波形を作る経路)。
+static int l_audio_pcm(lua_State *L) {
+  AudioState *st = audio_state_lazy(L);
+  uint32_t channels = (uint32_t)luaL_checkinteger(L, 2);
+  uint32_t rate = (uint32_t)luaL_checkinteger(L, 3);
+  const float *pcm = NULL;
+  float *tmp = NULL;
+  size_t samples = 0;
+  if (lua_istable(L, 1)) {
+    samples = lua_rawlen(L, 1);
+    tmp = (float *)malloc(samples * sizeof(float));
+    if (!tmp)
+      return luaL_error(L, "audio_pcm: out of memory");
+    for (size_t i = 0; i < samples; i++) {
+      lua_rawgeti(L, 1, (lua_Integer)i + 1);
+      tmp[i] = (float)lua_tonumber(L, -1);
+      lua_pop(L, 1);
+    }
+    pcm = tmp;
+  } else {
+    LubBytes *b = lub_bytes_test(L, 1);
+    const void *data;
+    size_t len;
+    if (b) {
+      data = b->data;
+      len = b->len;
+    } else {
+      data = luaL_checklstring(L, 1, &len);
+    }
+    if (len % sizeof(float) != 0)
+      return luaL_error(L, "audio_pcm: byte length %zu is not f32-aligned",
+                        len);
+    pcm = (const float *)data;
+    samples = len / sizeof(float);
+  }
+  if (channels == 0 || samples == 0 || samples % channels != 0) {
+    free(tmp);
+    return luaL_error(L, "audio_pcm: %zu samples not divisible by %u channels",
+                      samples, (unsigned)channels);
+  }
+  int id = audio_snd_from_pcm(st, pcm, (uint32_t)(samples / channels), channels,
+                              rate);
+  free(tmp);
+  if (id == 0)
+    return luaL_error(L, "audio_pcm: rejected (registry full or bad args)");
+  lua_pushinteger(L, id);
+  return 1;
+}
+
+// (bytes|string) -> (bytes, channels, rate) | nil
+static int l_audio_decode(lua_State *L) {
+  const void *data;
+  size_t len;
+  LubBytes *b = lub_bytes_test(L, 1);
+  if (b) {
+    data = b->data;
+    len = b->len;
+  } else {
+    data = luaL_checklstring(L, 1, &len);
+  }
+  uint32_t frames = 0, ch = 0, rate = 0;
+  float *pcm = audio_decode_bytes(data, len, &frames, &ch, &rate);
+  if (!pcm) {
+    lua_pushnil(L);
+    return 1;
+  }
+  lub_bytes_push(L, (uint8_t *)pcm, (size_t)frames * ch * sizeof(float));
+  lua_pushinteger(L, ch);
+  lua_pushinteger(L, rate);
+  return 3;
+}
+
+static void audio_read_opts(lua_State *L, int idx, bool *loop, float *volume,
+                            float *pitch, float *pan) {
+  *volume = 1.0f;
+  *pitch = 1.0f;
+  *pan = 0.0f;
+  if (loop)
+    *loop = false;
+  if (lua_isnoneornil(L, idx))
+    return;
+  luaL_checktype(L, idx, LUA_TTABLE);
+  lua_getfield(L, idx, "volume");
+  if (!lua_isnil(L, -1))
+    *volume = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  lua_getfield(L, idx, "pitch");
+  if (!lua_isnil(L, -1))
+    *pitch = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  lua_getfield(L, idx, "pan");
+  if (!lua_isnil(L, -1))
+    *pan = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  if (loop) {
+    lua_getfield(L, idx, "loop");
+    *loop = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+  }
+}
+
+static int l_audio_play(lua_State *L) {
+  AudioState *st = audio_state_lazy(L);
+  int snd = (int)luaL_checkinteger(L, 1);
+  float volume, pitch, pan;
+  audio_read_opts(L, 2, NULL, &volume, &pitch, &pan);
+  lua_pushboolean(L, audio_play(st, snd, volume, pitch, pan));
+  return 1;
+}
+
+static int l_audio_voice(lua_State *L) {
+  AudioState *st = audio_state_lazy(L);
+  const char *key = luaL_checkstring(L, 1);
+  int snd = (int)luaL_checkinteger(L, 2);
+  bool loop;
+  float volume, pitch, pan;
+  audio_read_opts(L, 3, &loop, &volume, &pitch, &pan);
+  lua_pushboolean(L, audio_voice(st, key, snd, loop, volume, pitch, pan));
+  return 1;
+}
+
+static int l_audio_free(lua_State *L) {
+  AudioState *st = audio_state_lazy(L);
+  lua_pushboolean(L, audio_snd_free(st, (int)luaL_checkinteger(L, 1)));
+  return 1;
+}
+
+static int l_audio_master_volume(lua_State *L) {
+  AudioState *st = audio_state_lazy(L);
+  audio_master_volume(st, (float)luaL_checknumber(L, 1));
+  return 0;
+}
+
+static int l_audio_info(lua_State *L) {
+  AudioState *st = audio_state_lazy(L);
+  AudioInfo info;
+  audio_state_info(st, &info);
+  lua_newtable(L);
+  lua_pushboolean(L, info.device_ok);
+  lua_setfield(L, -2, "device");
+  lua_pushinteger(L, info.rate);
+  lua_setfield(L, -2, "rate");
+  lua_pushinteger(L, info.active_voices);
+  lua_setfield(L, -2, "voices");
+  lua_pushinteger(L, info.snds);
+  lua_setfield(L, -2, "snds");
+  return 1;
+}
+
 void lua_api_register(lua_State *L) {
   lub_bytes_register(L);
   lub_readback_register(L);
@@ -2013,6 +2178,20 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "png_load");
   lua_pushcfunction(L, l_png_write);
   lua_setglobal(L, "png_write");
+  lua_pushcfunction(L, l_audio_pcm);
+  lua_setglobal(L, "audio_pcm");
+  lua_pushcfunction(L, l_audio_decode);
+  lua_setglobal(L, "audio_decode");
+  lua_pushcfunction(L, l_audio_play);
+  lua_setglobal(L, "audio_play");
+  lua_pushcfunction(L, l_audio_voice);
+  lua_setglobal(L, "audio_voice");
+  lua_pushcfunction(L, l_audio_free);
+  lua_setglobal(L, "audio_free");
+  lua_pushcfunction(L, l_audio_master_volume);
+  lua_setglobal(L, "audio_master_volume");
+  lua_pushcfunction(L, l_audio_info);
+  lua_setglobal(L, "audio_info");
   lua_pushcfunction(L, lub_load_gltf);
   lua_setglobal(L, "load_gltf");
   lua_pushcfunction(L, lub_surface_nets);

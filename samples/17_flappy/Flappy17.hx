@@ -1,3 +1,4 @@
+import lub.Audio;
 import lub.Lub;
 import lub.Gfx;
 import lub.Input;
@@ -13,6 +14,57 @@ class Flappy17 {
 	static var gapY:Float = 0;
 	static var score:Int = 0;
 	static var dead:Bool = false;
+
+	// SE はコードで合成する (raw PCM → Audio.pcm)。内容 dedupe されるので
+	// hot reload で作り直しても同じ snd handle に戻る。
+	static var sndFlap:Int = 0;
+	static var sndScore:Int = 0;
+	static var sndDeath:Int = 0;
+
+	static inline var RATE = 44100;
+
+	// 矩形波 blip。freq0→freq1 へスイープしつつ指数減衰。
+	static function blip(freq0:Float, freq1:Float, dur:Float, vol:Float):lua.Table<Int, Float> {
+		var n = Std.int(dur * RATE);
+		var out = lua.Table.create();
+		var phase = 0.0;
+		for (i in 0...n) {
+			var u = i / n;
+			var freq = freq0 + (freq1 - freq0) * u;
+			phase += freq / RATE;
+			var env = Math.exp(-5.0 * u);
+			out[i + 1] = ((phase % 1.0) < 0.5 ? 1.0 : -1.0) * env * vol;
+		}
+		return out;
+	}
+
+	// ノイズバースト。乱数は固定シードの xorshift (Math.random だと reload の
+	// たびに波形が変わって dedupe が効かない)。
+	static function noiseBurst(dur:Float, vol:Float):lua.Table<Int, Float> {
+		var n = Std.int(dur * RATE);
+		var out = lua.Table.create();
+		var seed = 0x12345678;
+		var hold = 0.0;
+		for (i in 0...n) {
+			if (i % 16 == 0) {
+				seed ^= seed << 13;
+				seed ^= seed >>> 17;
+				seed ^= seed << 5;
+				hold = (seed & 0xffff) / 32768.0 - 1.0;
+			}
+			var u = i / n;
+			out[i + 1] = hold * Math.exp(-4.0 * u) * vol;
+		}
+		return out;
+	}
+
+	static function synth() {
+		if (sndFlap != 0)
+			return;
+		sndFlap = Audio.pcm(blip(300, 700, 0.09, 0.4), 1, RATE);
+		sndScore = Audio.pcm(blip(660, 990, 0.12, 0.35), 1, RATE);
+		sndDeath = Audio.pcm(noiseBurst(0.3, 0.5), 1, RATE);
+	}
 
 	public static function main() {}
 
@@ -37,10 +89,13 @@ class Flappy17 {
 
 		// keyPressed / mousePressed はフレームラッチされたエッジ検出。
 		// タップ (web) は SDL の合成でマウス左ボタンとして届く。
+		synth();
+
 		var flap = Input.keyPressed(Key.Space) || Input.mousePressed();
 		if (!dead) {
 			if (flap) {
 				velocityY = 3.0;
+				Audio.play(sndFlap);
 			}
 			velocityY -= 8.0 * dt;
 			playerY += velocityY * dt;
@@ -50,6 +105,7 @@ class Flappy17 {
 				pipeX = 5.0;
 				gapY = (Math.sin(t * 1.7) * 1.5:Float);
 				score++;
+				Audio.play(sndScore);
 			}
 
 			if (playerY < -3.0 || playerY > 3.0)
@@ -58,6 +114,13 @@ class Flappy17 {
 				if (playerY > gapY + 1.0 || playerY < gapY - 1.0)
 					dead = true;
 			}
+			if (dead)
+				Audio.play(sndDeath);
+
+			// 落下速度に pitch が追従する風切り音 (毎フレーム宣言する声)。
+			// 宣言をやめれば fade out するので stop 管理は要らない。
+			var wind = Math.min(1.0, Math.abs(velocityY) * 0.25);
+			Audio.voice("wind", sndDeath, {loop: true, volume: 0.05 * wind, pitch: 0.5 + wind});
 		} else {
 			if (flap) {
 				dead = false;

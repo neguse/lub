@@ -91,6 +91,7 @@ physics_lua_tests=(
   tests/lua/test_physics_box2d_joints.lua
   tests/lua/test_physics_box2d_callbacks.lua
   tests/lua/test_physics_box2d_lifetime.lua
+  tests/lua/test_audio.lua
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
