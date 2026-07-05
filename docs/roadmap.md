@@ -96,3 +96,61 @@
   Jolt 案は Box2D と設計が揃う Box3D v0.1 の登場で置き換えた)
 - Ozz Animation による animation。
 - Dear ImGui などを使った in-process diagnostics。
+- Gamepad 入力。core の「外部状態の snapshot」として polling API を持つ:
+  `pads()`(接続 slot 一覧)、`pad_down/pressed/released(slot, button)`、
+  `pad_axis(slot, axis)`、`pad_info(slot) -> {connected, mapping, name}`。
+  button/axis 名は standard layout で正規化(`a/b/x/y`, `dpad_*`, `lb/rb`,
+  `lx/ly/rx/ry/lt/rt`)。native は SDL3 SDL_Gamepad(mapping DB が
+  XInput/DInput/HIDAPI を吸収)、web は Gamepad API `mapping="standard"`。
+  slot は接続順に採番し、切断→再接続で同じ slot を維持する(hot reload 耐性)。
+  web は仕様上、接続済みでも最初のボタン入力までパッドが見えない
+  (fingerprinting 対策)ので、「ボタンを押して」誘導は app 側の責務とし
+  core は `pads()` で観測可能にするだけ。`mapping != "standard"` の機器
+  (Switch Pro 等の一部ブラウザ×OS)はリマップせず `pad_info` で観測のみ。
+  振動は宣言型 `pad_rumble(slot, {low, high})`(voice と同型: 毎フレーム宣言、
+  途切れたら停止)。native=SDL_RumbleGamepad、web=vibrationActuator
+  "dual-rumble" を feature-detect し Firefox/iOS では no-op。
+  trigger-rumble・navigator.vibrate(iOS 不可で移植性なし)・raw joystick は作らない。
+- Save 永続化。前提となる web の実態: Safari は「7日間未訪問で script-writable
+  storage 全削除」が現役で `persist()` が免除になるか Apple 未回答、
+  itch.io 埋め込みは更新のたびに配信 origin が変わり旧セーブに到達不能。
+  よって「ブラウザ保存はキャッシュ、恒久保証はユーザー手元のファイル」と
+  割り切る。core API は KV:
+  `save_write(key, bytes)` / `save_read(key) -> status, bytes`
+  (status は request_file と同型の pending/ready/missing/error)/
+  `save_delete(key)` / `save_keys()`。
+  native は save dir(ゲーム id ごと)に 1 key = 1 file で即 flush。
+  web は IndexedDB に 1 record で書き込み毎に即 commit、起動時に
+  `navigator.storage.persist()` を要求し全 key を先読み(実用上は起動直後に
+  ready)。localStorage は採らない(5MiB 制限で eviction 耐性は IndexedDB と
+  大差なく二重管理になるだけ)。保険の export/import(web=blob download /
+  file picker、native=save dir 直接)を v1 要件に含める。
+- TTF フォント。拡大に耐える距離場方式でやる。core は純関数 utility 一本:
+  glyph outline in → 距離場画素 + metrics out(`audio_decode` と同じ立て付け、
+  atlas/cache/layout は core に入れない)。生成方式は MSDF を本命
+  (第1候補 pjako/msdf_c: 単一ヘッダ C99・stb_truetype のみ依存。品質不足なら
+  msdfgen core: C++ だが依存ゼロ、stb_truetype outline を渡せば FreeType 不要)。
+  MSDF のグリフ単価は公開ベンチが無いので採用時に 32–48px で実測し、
+  ブートストラップには stbtt_GetGlyphSDF(単チャンネル、強拡大で角が丸む)も
+  許す — 契約を「outline in → field out」で固定して差し替え可能にする。
+  lubx 側: fontstash 方式の動的 glyph atlas(skyline packing + 満杯時リセット)、
+  fallback チェーン(web はシステムフォント列挙不可なので Noto Sans +
+  Noto Sans JP サブセット同梱が前提)、レイアウト(kerning + UAX #14
+  サブセットの禁則)。v1 の線: シェーピング無し = cmap 直引きで正しく出る
+  Latin/Greek/Cyrillic + CJK 横書きまで。Arabic/Indic は非対応と明言する
+  (シェーピング無しで出すと壊れた文字列になるため)。カラー絵文字は
+  MSDF 不可 + stb_truetype が CBDT/COLR 未対応なので v1 非対応
+  (必要なら app 側の PNG シートで)。v2 への布石は3点だけ契約に残す:
+  距離場生成の差し替え点、atlas の RGBA ページ、codepoint 列→配置 glyph 列の
+  間に shaper を挟める層分離。
+- Window 制御。title / fullscreen / cursor(表示・グラブ)を実行中に動的に
+  変えられること(カーソルキャプチャは FPS カメラ系で必須)。API は宣言型
+  `window({title, fullscreen, cursor})` を毎フレーム宣言し、runtime が実状態を
+  収束させる(voice と同型、hot reload 後もコードが真)。ただし web の
+  fullscreen / Pointer Lock はユーザージェスチャ必須なので「宣言 = 要求」とし、
+  runtime は入力のあったフレームまで適用を保留、実状態は `window_info()`
+  snapshot(focused, fullscreen, width/height, dpi)で読む2層契約にする。
+  cursor は visible / hidden / grabbed(= relative mode / Pointer Lock)の3値。
+  native は SDL3 直、web は document.title / Fullscreen API / CSS cursor /
+  Pointer Lock に張る。vsync は native のみ config で(web は rAF 固定)。
+  初期 width/height/backend は従来どおり `config`(onInit 専用)に残す。
