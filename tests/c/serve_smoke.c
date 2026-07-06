@@ -1,18 +1,15 @@
 #include "../../src/serve.h"
+#include "../../src/sock_compat.h"
 #include <SDL3/SDL.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 // Smoke test for lub --serve. Single-threaded: interleaves serve_tick with
 // non-blocking client I/O.
 
 static int nb_connect(int port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
     return -1;
   struct sockaddr_in addr = {0};
@@ -20,11 +17,10 @@ static int nb_connect(int port) {
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   addr.sin_port = htons((uint16_t)port);
   if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-    close(fd);
+    sock_close(fd);
     return -1;
   }
-  int flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  sock_set_nonblocking(fd);
   return fd;
 }
 
@@ -38,7 +34,7 @@ static int do_request(ServeState *s, int port, const char *path, char *out,
   char req[256];
   int rlen = SDL_snprintf(req, sizeof(req),
                           "GET %s HTTP/1.1\r\nHost: localhost\r\n\r\n", path);
-  send(fd, req, (size_t)rlen, 0);
+  send(fd, req, rlen, 0);
 
   // Tick server to process the connection
   for (int i = 0; i < 20; i++) {
@@ -48,18 +44,18 @@ static int do_request(ServeState *s, int port, const char *path, char *out,
 
   size_t total = 0;
   for (int attempt = 0; attempt < 10 && total < out_sz - 1; attempt++) {
-    ssize_t n = recv(fd, out + total, out_sz - 1 - total, 0);
+    ssize_t n = recv(fd, out + total, (int)(out_sz - 1 - total), 0);
     if (n > 0)
       total += (size_t)n;
     else if (n == 0)
       break;
-    else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+    else if (sock_would_block()) {
       serve_tick(s);
       SDL_Delay(10);
     } else
       break;
   }
-  close(fd);
+  sock_close(fd);
   out[total] = '\0';
   return (int)total;
 }
@@ -110,7 +106,7 @@ static bool test_sse_connect(ServeState *s, int port) {
   }
 
   const char *req = "GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n";
-  send(fd, req, strlen(req), 0);
+  send(fd, req, (int)strlen(req), 0);
 
   // Tick server many times to accept, handle request, and send initial data
   for (int i = 0; i < 30; i++) {
@@ -121,18 +117,18 @@ static bool test_sse_connect(ServeState *s, int port) {
   char buf[65536] = {0};
   size_t total = 0;
   for (int attempt = 0; attempt < 20 && total < sizeof(buf) - 1; attempt++) {
-    ssize_t n = recv(fd, buf + total, sizeof(buf) - 1 - total, 0);
+    ssize_t n = recv(fd, buf + total, (int)(sizeof(buf) - 1 - total), 0);
     if (n > 0)
       total += (size_t)n;
     else if (n == 0)
       break;
-    else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+    else if (sock_would_block()) {
       serve_tick(s);
       SDL_Delay(20);
     } else
       break;
   }
-  close(fd);
+  sock_close(fd);
   buf[total] = '\0';
 
   if (!strstr(buf, "text/event-stream")) {

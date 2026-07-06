@@ -1,16 +1,12 @@
 #include "serve.h"
 #include "embedded_serve_page.h"
 #include "haxe_build.h"
+#include "sock_compat.h"
 #include <SDL3/SDL.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #define WATCH_DEBOUNCE_NS (50LL * 1000LL * 1000LL)
 
@@ -68,32 +64,25 @@ static size_t json_escape(const char *in, size_t in_len, char *out,
 
 // ---- socket helpers ---------------------------------------------------------
 
-static int make_nonblocking(int fd) {
-  int flags = fcntl(fd, F_GETFL, 0);
-  if (flags < 0)
-    return -1;
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
 static int create_listen_socket(int port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
     return -1;
   int opt = 1;
-  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
   struct sockaddr_in addr = {0};
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
   addr.sin_port = htons((uint16_t)port);
   if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-    close(fd);
+    sock_close(fd);
     return -1;
   }
   if (listen(fd, 8) < 0) {
-    close(fd);
+    sock_close(fd);
     return -1;
   }
-  make_nonblocking(fd);
+  sock_set_nonblocking(fd);
   return fd;
 }
 
@@ -117,9 +106,9 @@ static const char *content_type_for(const char *path) {
 static bool send_all(int fd, const char *data, size_t len) {
   size_t sent = 0;
   while (sent < len) {
-    ssize_t n = send(fd, data + sent, len - sent, MSG_NOSIGNAL);
+    ssize_t n = send(fd, data + sent, (int)(len - sent), MSG_NOSIGNAL);
     if (n < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK)
+      if (sock_would_block())
         continue;
       return false;
     }
@@ -447,7 +436,7 @@ static void send_sse_to_all(ServeState *s, const char *msg) {
       continue;
     if (!send_all(s->conns[i].fd, msg, len)) {
       // Client disconnected, close it
-      close(s->conns[i].fd);
+      sock_close(s->conns[i].fd);
       s->conns[i] = s->conns[--s->conn_count];
       i--;
     }
@@ -457,7 +446,7 @@ static void send_sse_to_all(ServeState *s, const char *msg) {
 // ---- connection management --------------------------------------------------
 
 static void conn_close(ServeState *s, int idx) {
-  close(s->conns[idx].fd);
+  sock_close(s->conns[idx].fd);
   s->conns[idx] = s->conns[--s->conn_count];
 }
 
@@ -595,6 +584,12 @@ bool serve_start(ServeState *s, const char *hxml_path, const char *wasm_dir,
   data_watch_rescan(&s->data_watch, s->game_dir);
 
   // Start listening
+  if (!sock_startup()) {
+    SDL_Log("[serve] socket startup failed");
+    haxe_pipeline_stop(&s->haxe);
+    data_watch_shutdown(&s->data_watch);
+    return false;
+  }
   s->listen_fd = create_listen_socket(port);
   if (s->listen_fd < 0) {
     SDL_Log("[serve] failed to listen on port %d: %s", port, strerror(errno));
@@ -631,17 +626,17 @@ bool serve_tick(ServeState *s) {
 
   // Accept new connections
   if (pfds[0].revents & POLLIN) {
-    int client_fd = accept(s->listen_fd, NULL, NULL);
+    int client_fd = (int)accept(s->listen_fd, NULL, NULL);
     if (client_fd >= 0) {
       if (s->conn_count < SERVE_MAX_CONNS) {
-        make_nonblocking(client_fd);
+        sock_set_nonblocking(client_fd);
         ServeConn *c = &s->conns[s->conn_count++];
         c->fd = client_fd;
         c->is_sse = false;
         c->buf_len = 0;
         memset(c->buf, 0, sizeof(c->buf));
       } else {
-        close(client_fd);
+        sock_close(client_fd);
       }
     }
   }
@@ -658,7 +653,7 @@ bool serve_tick(ServeState *s) {
 
     ServeConn *c = &s->conns[i];
     ssize_t n = recv(c->fd, c->buf + c->buf_len,
-                     sizeof(c->buf) - (size_t)c->buf_len - 1, 0);
+                     (int)(sizeof(c->buf) - (size_t)c->buf_len - 1), 0);
     if (n <= 0) {
       conn_close(s, i);
       i--;
@@ -725,10 +720,10 @@ void serve_stop(ServeState *s) {
   if (!s)
     return;
   for (int i = 0; i < s->conn_count; i++)
-    close(s->conns[i].fd);
+    sock_close(s->conns[i].fd);
   s->conn_count = 0;
   if (s->listen_fd >= 0) {
-    close(s->listen_fd);
+    sock_close(s->listen_fd);
     s->listen_fd = -1;
   }
   haxe_pipeline_stop(&s->haxe);

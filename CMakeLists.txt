@@ -6,6 +6,13 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Sources are UTF-8 (Japanese comments); without /utf-8 MSVC decodes them with
+# the system code page (CP932 on jp Windows) and can mis-parse multibyte
+# sequences as line continuations. Applies to every target incl. smoke tests.
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 # Emscripten branch toggle. LUB_WASM is the canonical flag for everything
 # downstream — the rest of this file checks it instead of EMSCRIPTEN directly
 # so it's easy to grep all of the wasm-specific divergences.
@@ -123,6 +130,7 @@ if(NOT LUB_WASM)
       message(FATAL_ERROR "Slang archive did not contain ${_slang_lib_marker}")
     endif()
   endif()
+
 endif()
 
 # Source list. capture.c itself is backend-agnostic (uses g_backend->capture)
@@ -207,6 +215,10 @@ if(UNIX AND NOT LUB_WASM)
   # Under emscripten the libc already provides both equivalents.
   target_link_libraries(lub PRIVATE m dl)
 endif()
+if(WIN32)
+  # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
+  target_link_libraries(lub PRIVATE ws2_32)
+endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
   # discoverable at runtime so the smoke test doesn't need LD_LIBRARY_PATH.
@@ -238,11 +250,6 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   )
   # miniaudio 本体の警告はこちらで直せないので実装 TU だけ抑制する。
   set_source_files_properties(src/miniaudio_impl.c PROPERTIES COMPILE_OPTIONS "-w")
-endif()
-if(MSVC)
-  # Sources are UTF-8 (Japanese comments); without /utf-8 MSVC will emit
-  # C4819 on default code page (CP932 on jp Windows) and may mis-decode.
-  target_compile_options(lub PRIVATE /utf-8)
 endif()
 
 # Backend define: native uses sokol's Vulkan backend; emscripten uses WebGPU.
@@ -337,6 +344,9 @@ if(NOT LUB_WASM)
     src/haxe_watch.c
   )
   target_link_libraries(lub_serve_smoke PRIVATE SDL3::SDL3)
+  if(WIN32)
+    target_link_libraries(lub_serve_smoke PRIVATE ws2_32)
+  endif()
   target_include_directories(lub_serve_smoke PRIVATE src)
 
   add_executable(lub_physics_box2d_smoke
