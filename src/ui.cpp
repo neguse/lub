@@ -70,7 +70,7 @@ static bool ui_gpu_init() {
   if (g_backend && g_backend->name) {
     if (strcmp(g_backend->name, "sdlgpu") == 0)
       tgt = SHADER_TARGET_SDLGPU;
-    else if (strcmp(g_backend->name, "dx12") == 0)
+    else if (strcmp(g_backend->name, "native") == 0)
       tgt = SHADER_TARGET_DX12;
   }
   char err[1024];

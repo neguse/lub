@@ -167,8 +167,9 @@ lub は内部に 4 つの GPU backend を持ち、同一 Lua API で動く:
 
 - `sokol` (native default) — sokol_gfx (Vulkan)。web build では sokol/WGPU として選択可。
 - `sdlgpu` — SDL3 GPU API (native 専用。現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
-- `dx12` — D3D12 直接実装 (Windows 専用。設計は
-  [docs/dx12-backend.md](docs/dx12-backend.md))
+- `native` — プラットフォーム直接実装。native build では D3D12 (Windows
+  専用。設計は [docs/dx12-backend.md](docs/dx12-backend.md))、web build では
+  `webgpu` の別名
 - `webgpu` (web default) — webgpu.h 直接実装 (設計記録は
   [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))
 

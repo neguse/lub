@@ -7,8 +7,11 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
 ## 選択と配置
 
 - 実装: `src/backend_dx12.cpp`(C++。D3D12 は COM のため)
-- 選択: `config({ backend = "dx12" })` / `LUB_BACKEND=dx12`。Windows 以外は
-  config でエラー。
+- 選択: `config({ backend = "native" })` / `LUB_BACKEND=native`。
+  「native」= そのプラットフォームの直接実装 backend で、native build では
+  D3D12(Windows 以外は config でエラー)、web build では webgpu 直接実装の
+  別名。実装ファイル名とシンボル(`g_backend_dx12`)は実装 API を表すので
+  dx12 のまま。
 - リンク: `d3d12.lib` `dxgi.lib` `dxguid.lib`(OS 標準)。CMake は `WIN32`
   のみソースを追加。
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。

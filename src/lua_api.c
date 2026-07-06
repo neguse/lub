@@ -1036,7 +1036,9 @@ static ShaderTargetBackend shader_target_for_backend(void) {
   if (g_backend && g_backend->name) {
     if (strcmp(g_backend->name, "sdlgpu") == 0)
       return SHADER_TARGET_SDLGPU;
-    if (strcmp(g_backend->name, "dx12") == 0)
+    // "native" = platform 直接実装。native build では D3D12 (Windows のみ
+    // 選択可) なので DXIL を出す。wasm の直接実装 (webgpu) はここに来ない。
+    if (strcmp(g_backend->name, "native") == 0)
       return SHADER_TARGET_DX12;
   }
   return SHADER_TARGET_SOKOL;
@@ -1738,27 +1740,31 @@ static int l_config(lua_State *L) {
   lua_getfield(L, 1, "backend");
   const char *name =
       (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : NULL;
+  // "native" = そのプラットフォームの直接実装 backend
+  // (native build: D3D12 / web build: webgpu)。
 #ifdef __EMSCRIPTEN__
   // WASM: samples hardcode "sokol" via LUB_BACKEND env (nil in wasm).
   // Silently map "sokol" and NULL to "webgpu" so existing samples work.
-  if (!name || strcmp(name, "sokol") == 0)
+  if (!name || strcmp(name, "sokol") == 0 || strcmp(name, "native") == 0)
     name = "webgpu";
   if (strcmp(name, "sokol") != 0 && strcmp(name, "webgpu") != 0) {
     return luaL_error(
-        L, "config: backend must be 'sokol' or 'webgpu', got '%s'", name);
+        L, "config: backend must be 'sokol', 'webgpu' or 'native', got '%s'",
+        name);
   }
 #else
   if (!name)
     name = "sokol";
   if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0 &&
-      strcmp(name, "dx12") != 0) {
+      strcmp(name, "native") != 0) {
     return luaL_error(
-        L, "config: backend must be 'sokol', 'sdlgpu' or 'dx12', got '%s'",
+        L, "config: backend must be 'sokol', 'sdlgpu' or 'native', got '%s'",
         name);
   }
 #ifndef _WIN32
-  if (strcmp(name, "dx12") == 0) {
-    return luaL_error(L, "config: backend 'dx12' is Windows-only");
+  if (strcmp(name, "native") == 0) {
+    return luaL_error(
+        L, "config: backend 'native' (D3D12) is Windows-only for now");
   }
 #endif
 #endif

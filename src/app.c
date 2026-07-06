@@ -56,7 +56,8 @@ bool app_backend_init(App *app) {
   if (strcmp(app->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
 #ifdef _WIN32
-  } else if (strcmp(app->backend_name, "dx12") == 0) {
+  } else if (strcmp(app->backend_name, "native") == 0) {
+    // "native" = このプラットフォームの直接実装。Windows は D3D12。
     g_backend = &g_backend_dx12;
 #endif
   } else {
