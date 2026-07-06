@@ -27,6 +27,7 @@ export const SAMPLE_NAMES = [
   "19_sdf",
   "20_audio",
   "21_iroha",
+  "22_tonton",
 ];
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
