@@ -94,5 +94,11 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
 - graphics stage の storage buffer バインドは未対応(SDL_GPU backend と
   同等。compute 経由でのみ使用)。
 - Enhanced Barriers 不使用(対応 GPU の幅優先)。
-- golden test(`scripts/run-golden.sh`)は lavapipe/xvfb 前提で Linux 専用の
-  ため dx12 は対象外。検証は Windows 実 GPU での capture 比較による。
+
+## Golden test
+
+`scripts/run-golden.sh` は Windows (git bash) では native backend を
+**WARP**(`LUB_DX12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
+`tests/golden/<name>_native.png` と byte 比較する。lavapipe と同じく
+機材・ドライバ非依存の CPU rasterizer なので `cmp -s` の完全一致が成立する。
+実 GPU での動作確認は別途 capture 目視で行う。

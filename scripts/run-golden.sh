@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Golden image regression test (lavapipe + xvfb limited).
-# Runs visual entries with --capture under both backends and byte-compares
+# Golden image regression test (CPU rasterizer limited).
+# Runs visual entries with --capture under each backend and byte-compares
 # the result to tests/golden/<name>_<backend>.png.
 #
 # Usage:
@@ -12,9 +12,13 @@
 #   scripts/run-golden.sh --backend sokol
 #
 # Determinism relies on:
-#   - lavapipe ICD (CPU Vulkan)            - run-headless.sh enforces this
-#   - fixed --capture-frame                - set below to FRAME
+#   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
+#     run-headless.sh enforces it) / Windows: WARP via LUB_DX12_WARP=1
+#   - fixed --capture-frame                 - set below to FRAME
 # Exit code is 0 only if every checked visual golden matches.
+#
+# Platform selects the backend set: Linux checks sokol + sdlgpu, Windows
+# (git bash) checks the native (D3D12) backend.
 
 set -euo pipefail
 
@@ -22,9 +26,19 @@ cd "$(dirname "$0")/.."
 
 SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d 18_coin_pusher 19_sdf)
 VISUAL_TESTS=(indexed_draw)
-BACKENDS=(sokol sdlgpu)
 FRAME=30
-BINARY="${BINARY:-./build/lub}"
+case "$(uname -s)" in
+    MINGW* | MSYS*)
+        windows=1
+        BACKENDS=(native)
+        BINARY="${BINARY:-./build-release/lub.exe}"
+        ;;
+    *)
+        windows=0
+        BACKENDS=(sokol sdlgpu)
+        BINARY="${BINARY:-./build/lub}"
+        ;;
+esac
 GOLDEN_DIR=tests/golden
 
 update=0
@@ -99,11 +113,22 @@ check_entry() {
     local log="$tmpdir/${golden_name}_${backend}.log"
     local status="$tmpdir/${golden_name}_${backend}.status"
 
-    if ! LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" \
-        LUB_HAXE_PORT="$haxe_port" \
-        scripts/run-headless.sh "$BINARY" \
-        "$entry" --capture "$out" --capture-frame "$frame" \
-        >"$log" 2>&1; then
+    local run_ok=1
+    if [[ $windows -eq 1 ]]; then
+        # No xvfb/lavapipe on Windows; real windows open, WARP renders.
+        LUB_BACKEND="$backend" LUB_DX12_WARP=1 \
+            LUB_HAXE_PORT="$haxe_port" \
+            "$BINARY" \
+            "$entry" --capture "$out" --capture-frame "$frame" \
+            >"$log" 2>&1 || run_ok=0
+    else
+        LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" \
+            LUB_HAXE_PORT="$haxe_port" \
+            scripts/run-headless.sh "$BINARY" \
+            "$entry" --capture "$out" --capture-frame "$frame" \
+            >"$log" 2>&1 || run_ok=0
+    fi
+    if [[ $run_ok -ne 1 ]]; then
         echo "FAIL ${label} ${backend}: process failed (see $log)"
         echo fail >"$status"
         return

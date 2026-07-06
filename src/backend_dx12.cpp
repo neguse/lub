@@ -443,8 +443,15 @@ bool dx_init(App *app) {
   }
 
   // Prefer the high-performance adapter when the OS knows the difference.
+  // LUB_DX12_WARP=1 forces the WARP software rasterizer — deterministic
+  // CPU rendering for golden image tests (the lavapipe of D3D12).
   ComPtr<IDXGIAdapter1> adapter;
-  {
+  if (getenv("LUB_DX12_WARP") != nullptr) {
+    if (FAILED(g.factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter)))) {
+      SDL_Log("dx12: EnumWarpAdapter failed");
+      return false;
+    }
+  } else {
     ComPtr<IDXGIFactory6> f6;
     if (SUCCEEDED(g.factory.As(&f6))) {
       f6->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,

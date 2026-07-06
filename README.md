@@ -153,13 +153,16 @@ score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/s
 ### Golden image diff (回帰テスト)
 
 ```sh
-scripts/run-golden.sh             # 全 sample × 両 backend を tests/golden と cmp
+scripts/run-golden.sh             # 全 sample × backend を tests/golden と cmp
 scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的変更時)
 scripts/run-golden.sh --sample 01_triangle --backend sokol
 ```
 
-lavapipe + xvfb 環境では capture が確定的なので `cmp -s` で完全一致判定する。
-実 GPU でのドリフトは想定範囲外 (tolerance 比較は別途)。
+プラットフォームごとに機材非依存の CPU rasterizer を強制するので capture が
+確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
+sokol / sdlgpu を、Windows (git bash) は WARP (`LUB_DX12_WARP=1`) で
+native (D3D12) をチェックする。実 GPU でのドリフトは想定範囲外
+(tolerance 比較は別途)。
 
 ## Backend 切替
 
