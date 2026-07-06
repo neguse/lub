@@ -60,6 +60,18 @@ list(REMOVE_ITEM LUA_SRC
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
 
+# libtess2 (glyph outline tessellation for font_glyph_mesh)
+add_library(tess2 STATIC
+  third_party/libtess2/Source/bucketalloc.c
+  third_party/libtess2/Source/dict.c
+  third_party/libtess2/Source/geom.c
+  third_party/libtess2/Source/mesh.c
+  third_party/libtess2/Source/priorityq.c
+  third_party/libtess2/Source/sweep.c
+  third_party/libtess2/Source/tess.c
+)
+target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
+
 if(NOT LUB_WASM)
   find_package(Vulkan REQUIRED)
 endif()
@@ -140,6 +152,7 @@ set(LUB_SOURCES
   src/host.c
   src/surfacenets.c
   src/sdf.c
+  src/font.c
   src/ui.cpp
   third_party/imgui/imgui.cpp
   third_party/imgui/imgui_draw.cpp
@@ -181,6 +194,7 @@ target_link_libraries(lub PRIVATE
   lua_static
   box2d
   box3d
+  tess2
 )
 if(NOT LUB_WASM)
   target_link_libraries(lub PRIVATE

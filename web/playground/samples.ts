@@ -26,6 +26,7 @@ export const SAMPLE_NAMES = [
   "18_coin_pusher",
   "19_sdf",
   "20_audio",
+  "21_iroha",
 ];
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
@@ -134,11 +135,17 @@ export async function loadSampleSource(name: string): Promise<SampleSource> {
   };
 }
 
+// Binary assets (fonts, images, models) must not round-trip through the
+// text editor — fetch() as text mangles them, and the player's FS overlay
+// would then shadow the runtime's own binary-safe fetch.
+const BINARY_RE = /\.(ttf|otf|png|jpg|glb|gltf|wav|ogg|mp3)$/i;
+
 function scanLuaReferences(src: string): string[] {
   const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g;
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) if (!out.includes(m[1])) out.push(m[1]);
+  while ((m = re.exec(src)))
+    if (!out.includes(m[1]) && !BINARY_RE.test(m[1])) out.push(m[1]);
   return out;
 }
 

@@ -1,0 +1,3 @@
+-cp samples/21_iroha
+-lib lub
+-main Iroha21

@@ -109,6 +109,8 @@ static const char HAXE_PRELUDE[] =
     "  begin_scope = profile_begin, end_scope = profile_end,\n"
     "  reset = profile_reset, report = profile_report }\n"
     "lub.Mesh = { surface_nets = surface_nets, sdf_mesh = sdf_mesh }\n"
+    "lub.Font = { font_metrics = font_metrics, font_glyph = font_glyph,\n"
+    "  font_glyph_mesh = font_glyph_mesh, font_kern = font_kern }\n"
     "lub.Ui = { ui_render = ui_render, ui_begin = ui_begin, ui_end = ui_end,\n"
     "  ui_text = ui_text, ui_button = ui_button, ui_checkbox = ui_checkbox,\n"
     "  ui_slider_float = ui_slider_float, ui_slider_int = ui_slider_int,\n"

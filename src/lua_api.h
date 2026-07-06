@@ -40,3 +40,8 @@ void lua_ctx_shutdown(LuaCtx *ctx);
 bool lua_ctx_hotswap(LuaCtx *ctx, const char *module_name);
 
 void lua_api_register(lua_State *L);
+
+// Bytes userdata (LUB_BYTES_MT) is private to lua_api.c; this lets other
+// modules accept raw byte buffers from Lua without knowing the layout: a Lua
+// string or a Bytes userdata at idx (raises on anything else).
+const uint8_t *lub_bytes_arg(lua_State *L, int idx, size_t *len);

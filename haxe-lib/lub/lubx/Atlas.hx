@@ -42,6 +42,16 @@ class Atlas {
 		return a;
 	}
 
+	/**
+		動的 atlas 用: ピクセル配列を差し替えて version を上げる。次の
+		`ensure()` で再アップロードされる (`lubx.Text` の glyph 追加が使う)。
+	**/
+	public function updatePixels(pixels:Array<Int>, version:Int) {
+		this.pixels = pixels;
+		this.version = version;
+		this.pixelTable = null;
+	}
+
 	function textureOpts():Dynamic {
 		if (opts != null)
 			return opts;

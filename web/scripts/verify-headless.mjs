@@ -384,6 +384,7 @@ const samples = [
   { name: '18_coin_pusher',      minNonBlack: 0.01 },
   { name: '19_sdf',              minNonBlack: 0.05 },
   { name: '20_audio',            minNonBlack: 0.01 },
+  { name: '21_iroha',            minNonBlack: 0.01 },
 ]
 const sampleResults = {}
 

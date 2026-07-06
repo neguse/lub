@@ -127,7 +127,11 @@
   (native は save dir を直接触れる。web の blob download / file picker は
   app/JS 側の責務)。core の契約は「永続を保証する」ではなく
   「プラットフォームの storage に書く」に留める。
-- TTF フォント。要件: 大サイズの見た目にこだわれる、メッシュ化できる、
+- TTF フォント。(一部済: `font_metrics/glyph/glyph_mesh/kern` core API +
+  `lub.Font` extern + `lubx.Text` 動的 glyph atlas + sample 21 いろはスイカ +
+  `tests/lua/test_font.lua`。native/web 両対応を verify 済。
+  未着手: 折返し・禁則レイアウト、fallback チェーン、絵文字画像シート)
+  要件: 大サイズの見た目にこだわれる、メッシュ化できる、
   FIGS + CCJK、動的文字列(プレイヤー名等の任意入力)前提、絵文字も出せる。
   スコープの最大境界は「対応言語 = 表引き (cmap) で正しく出る言語」:
   FIGS + CCJK はこの内側に収まる(入力は NFC 正規化前提、現代ハングルは

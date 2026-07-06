@@ -14,6 +14,8 @@ lub bundles or links the following third-party components.
 | nlohmann/json | third_party/nlohmann/json.hpp | MIT | https://github.com/nlohmann/json |
 | Dear ImGui (v1.91.9b) | third_party/imgui/ | MIT | https://github.com/ocornut/imgui |
 | miniaudio (v0.11.25) | third_party/miniaudio/miniaudio.h | Public Domain / MIT-0 (dual) | https://github.com/mackron/miniaudio |
+| stb_truetype | third_party/stb/stb_truetype.h | Public Domain / MIT (dual) | https://github.com/nothings/stb |
+| libtess2 | third_party/libtess2/ | SGI Free Software License B 2.0 | https://github.com/memononen/libtess2 |
 
 ## Fetched at configure/install time (gitignored)
 
@@ -37,6 +39,7 @@ lub bundles or links the following third-party components.
 |-------|------|---------|--------|
 | Box.glb | samples/data/08_box.glb | CC0 (Public Domain) | https://github.com/KhronosGroup/glTF-Sample-Assets |
 | Sponza | samples/14_sponza/data/Sponza/ | Cryengine Limited License Agreement | https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza |
+| M PLUS 1p Regular (kana+ASCII subset) | samples/21_iroha/data/MPLUS1p-subset.ttf | OFL-1.1 (samples/21_iroha/data/MPLUS1p-OFL.txt) | https://github.com/google/fonts/tree/main/ofl/mplus1p |
 
 ## Client-side Haxe compiler (web playground)
 

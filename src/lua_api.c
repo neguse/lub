@@ -3,6 +3,7 @@
 #include "backend.h"
 #include "enums.h"
 #include "enums_lua.h"
+#include "font.h"
 #include "gltf.h"
 #include "host.h"
 #include "pass.h"
@@ -76,6 +77,15 @@ static void lub_bytes_push(lua_State *L, uint8_t *data, size_t len) {
   b->len = len;
   luaL_getmetatable(L, LUB_BYTES_MT);
   lua_setmetatable(L, -2);
+}
+
+const uint8_t *lub_bytes_arg(lua_State *L, int idx, size_t *len) {
+  LubBytes *b = lub_bytes_test(L, idx);
+  if (b) {
+    *len = b->len;
+    return b->data;
+  }
+  return (const uint8_t *)luaL_checklstring(L, idx, len);
 }
 
 static int l_bytes_gc(lua_State *L) {
@@ -2198,6 +2208,14 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "surface_nets");
   lua_pushcfunction(L, lub_sdf_mesh);
   lua_setglobal(L, "sdf_mesh");
+  lua_pushcfunction(L, lub_font_metrics);
+  lua_setglobal(L, "font_metrics");
+  lua_pushcfunction(L, lub_font_glyph);
+  lua_setglobal(L, "font_glyph");
+  lua_pushcfunction(L, lub_font_glyph_mesh);
+  lua_setglobal(L, "font_glyph_mesh");
+  lua_pushcfunction(L, lub_font_kern);
+  lua_setglobal(L, "font_kern");
   host_lua_register(L);
   ui_register_lua(L);
   phys2d_lua_register(L);
