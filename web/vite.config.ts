@@ -26,6 +26,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         player: resolve(__dirname, "player.html"),
+        docs: resolve(__dirname, "docs.html"),
       },
     },
   },

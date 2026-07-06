@@ -16,6 +16,10 @@ web が **webgpu.h 直接実装 (default)** と **sokol_gfx (WGPU)**。
 
 ## ドキュメント
 
+- **[lub.neguse.net/docs](https://lub.neguse.net/docs)**: ゲームを書く人向けの
+  ガイド(基礎概念)+ API reference。ガイドの原稿は `docs/manual/`、API は
+  `haxe-lib/lub/` の doc comment から生成。
+- [lub.neguse.net](https://lub.neguse.net): ブラウザで動く playground。
 - [docs/README.md](docs/README.md): ドキュメント索引と方針。
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
 - [docs/roadmap.md](docs/roadmap.md): phase ごとの達成目標と状態。
@@ -58,19 +62,13 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-Windows Release build は手順を固定するため、通常は script 経由で行う:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
-```
-
-Linux Release build も同じく script 経由:
+Release build は手順を固定するため、通常は script 経由で行う
+(詳細は [docs/release-build.md](docs/release-build.md)):
 
 ```sh
-bash scripts/build-release.sh
+bash scripts/build-release.sh                                              # Linux
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1  # Windows
 ```
-
-詳細は [docs/release-build.md](docs/release-build.md) を参照。
 
 CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.exe`
 の横にコピーされるので、追加の PATH 設定なしで実行できる。
@@ -98,12 +96,8 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 
 (Windows は `.\build\lub.exe samples\01_triangle\01_triangle.hxml` 形式)
 
-サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
-(`<ClassName>.hx` + `<name>.hxml` + `data/`)。
-
-### Haxe sample の実行
-
-Haxe で書いた sample を `.hxml` を entry にして直接実行できる。`.hx` 編集 → 保存で hot reload される。
+`.hx` を編集して保存すると、走っている game に即反映される(hot reload)。
+`.slang` / PNG / `*.verts.lua` などの data ファイルも同様に保存で即反映。
 
 依存:
 - **Haxe 5.0.0-preview.1**(`haxe --version` で確認)。web playground(client-only wasm
@@ -112,47 +106,16 @@ Haxe で書いた sample を `.hxml` を entry にして直接実行できる。
 - 1 回だけ extern を haxelib に登録: `haxelib dev lub <repo>/haxe-lib/lub`
 
 ```sh
-# system の haxe が 5.0.0-preview.1 ならそのまま:
-./build/lub samples/01_triangle/01_triangle.hxml
-
 # 別バイナリ(例: scripts/install-haxe5.sh で入れた ~/haxe5)を使う場合:
 export LUB_HAXE="$HOME/haxe5/haxe"   # native player が spawn する haxe。
                                      # HAXE_STD_PATH は隣の std/ から自動補完される。
 ./build/lub samples/01_triangle/01_triangle.hxml
 ```
 
-`samples/01_triangle/Triangle01.hx` を編集して保存すると、走っている game に即反映される。
-
-#### sample の書き方
-
-`-cp samples/<name> / -lib lub / -main <ClassName>` の 3 行 hxml + Haxe class 1 個が最小構成。
-
-```haxe
-import lub.Lub;
-import lub.Gfx;
-
-class Triangle01 {
-  public static function main() {}
-  public static function onInit() { Lub.config({ backend: "sokol" }); }
-  public static function onFrame() {
-    Gfx.beginPass({ target: Gfx.mainTex, clear_color: lua.Table.fromArray([0.1, 0.1, 0.2, 1.0]) });
-    Gfx.endPass();
-  }
-}
-```
-
-extern は責務別に分割:
-- `lub.Lub` — `config()`
-- `lub.Gfx` — 描画 / GPU / 定数
-- `lub.Input` — `keyDown()`
-- `lub.Io` — `samples/lub_io.lua` の cached loader (`loadText`/`loadFloats`/`loadGltf` 等)
-- `lub.Sys` — 低 level primitive (普段不要、Haxe stdlib `Sys` を import するときは衝突に注意)
-- `lubx.Png` — PNG load/write helper (`Bytes` backed)
-
-#### 注意点
-
-- **配列リテラル**: `Gfx.beginPass({ clear_color: [...] })` のように Haxe array をそのまま渡すと 0-indexed の Lua table になり lub C 側 (1-indexed 期待) と噛み合わない。`lua.Table.fromArray([0.1, 0.1, 0.2, 1.0])` で明示変換する。named field の anonymous structure (`{ target: x }`) は対象外。
-- **環境変数読み出し**: `Sys.getEnv(...)` は使えない (Haxe stdlib が `luv` を require するため)。代わりに `lua.Os.getenv(...)` を使う。
+サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
+(`<ClassName>.hx` + `-cp/-lib/-main` の 3 行 `<name>.hxml` + `data/`)。
+ゲームの書き方(ライフサイクル、座標系、描画モデル、Haxe→Lua の注意点)は
+[lub.neguse.net/docs](https://lub.neguse.net/docs) のガイドを参照。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
@@ -167,42 +130,24 @@ scripts/run-headless.sh samples/01_triangle/01_triangle.hxml
 (Mesa lavapipe / AMD radv 双方で動作)。
 Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
-### Sprite benchmark (Release)
-
-`rsushi` 風のスプライト数ベンチは、Release build と実行を毎回組み立てず
-固定スクリプト経由で走らせる:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1
-```
-
-```sh
-bash scripts/run-sprites-bench.sh
-```
-
-score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/sprites-bench.md) を参照。
-
-スクリーンショット capture (PNG 出力):
+スクリーンショット capture (PNG 出力、native のみ):
 
 ```sh
 # 30 フレーム描画後にキャプチャして即終了
 scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30
 ```
 
-Lua/Haxe 側で任意の render target を保存する場合は readback handle を作り、
-`id` 付きで request してから次の call 以降で結果を drain する:
+Lua/Haxe 側から任意の render target を保存する場合は `Gfx.readback()` を使う
+([API reference](https://lub.neguse.net/docs#lub.Gfx) 参照)。
 
-```haxe
-var rb = Gfx.readback();
-var r = rb.readTexture(tex, frame == 30 ? 30 : null);
-if (r.status == "ready" && r.id == 30) {
-  lubx.Png.write(path, r.bytes, r.width, r.height, r.stride);
-}
+### Sprite benchmark (Release)
+
+```sh
+bash scripts/run-sprites-bench.sh                                              # Linux
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1  # Windows
 ```
 
-readback queue depth は既定 8。必要な場合だけ起動時 config で変更できる
-(Lua: `config({ readback_depth = N })`, Haxe: `Lub.config({ readback_depth: N })`,
-1..32)。
+score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/sprites-bench.md) を参照。
 
 ### Golden image diff (回帰テスト)
 
@@ -217,153 +162,30 @@ lavapipe + xvfb 環境では capture が確定的なので `cmp -s` で完全一
 
 ## Backend 切替
 
-lub は内部に 3 つの GPU backend を持つ:
+lub は内部に 3 つの GPU backend を持ち、同一 Lua API で動く:
 
 - `sokol` (native default) — sokol_gfx (Vulkan)。web build では sokol/WGPU として選択可。
 - `sdlgpu` — SDL3 GPU API (native 専用。現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
 - `webgpu` (web default) — webgpu.h 直接実装 (設計記録は
   [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))
 
-切替は Lua の `on_init` 内で `config({ backend = "sdlgpu" })` を呼ぶ。
-サンプルでは `arg[1]` または環境変数 `LUB_BACKEND` を見るパターン:
-
-```lua
-function on_init()
-    config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
-end
-```
+切替は `Lub.config({backend: ...})`。サンプルは環境変数を見る
+`lubx.Boot.config` を使っているので CLI から切り替えられる:
 
 ```sh
-# default = sokol
-./build/lub samples/01_triangle/01_triangle.hxml
-
-# SDL3 GPU 経路
 LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/01_triangle.hxml
-
-# headless でも同じ
-LUB_BACKEND=sdlgpu scripts/run-headless.sh ./build/lub samples/01_triangle/01_triangle.hxml
 ```
-
-どちらの backend でも同一 Lua API で sample が動く。render target の readback は
-`Gfx.readback()` で作った handle を使う。
-
-## Live edit (file watching)
-
-サンプルは `samples/<name>/data/` 配下の外部ファイルから shader / 頂点データ / テクスチャを
-読み込む。起動中にファイルを編集して保存すると次フレームから反映される。
-
-仕組み:
-
-- 各サンプル冒頭で `lub_io` / `lubx_png` を `require` し、`load_text` /
-  `load_floats` / `Png.load` を経由してリソースを取得する。
-- helper は `path → {mtime, content_hash}` のキャッシュを持ち、毎フレームの
-  `stat()` 1 回だけで「変化なし」を判定する。mtime 違い時のみ再読み込みして
-  FNV-1a 64 ハッシュを取り、それを `version` として `use_*` に渡す。
-- C 側は `version` 違いで in-place update (buffer / texture) または recompile
-  (shader) を実施。shader recompile 時は旧 shader を参照する pipeline cache
-  entry を sweep してリークを防ぐ。
-- shader compile error 時は旧 shader を維持してログを出すのみで、クラッシュせず
-  エディタで修正→保存すれば復帰する (初回 compile 失敗だけは loud に止める)。
-
-例: `samples/01_triangle/data/01_triangle.fs.slang` の出力色をエディタで書き換えて保存すると、
-起動中の `samples/01_triangle/01_triangle.hxml` の三角形の色が即座に変わる。
-PNG を別画像で上書きすればテクスチャも、`*.verts.lua` を編集すれば頂点も同様。
 
 ## WASM playground (web)
 
-ブラウザ上で動く Vite + CodeMirror ベースの playground を `web/` 配下に同梱。
-WASM へクロスコンパイルしたバイナリ (GPU backend は webgpu.h 直接実装が default) を
-iframe で読み込み、左ペインのエディタで `.hx` / `.slang` を編集すると 300ms debounce で
-右ペインのプレイヤーに同期される (`samples/<name>/data/*` の mtime/hash hot-reload
-経路を再利用)。`.hx` は WASM 化した Haxe コンパイラでブラウザ内 (Web Worker) で
-Lua に compile する (詳細は [web/README.md](web/README.md))。
-shader compile は [slang-wasm](https://github.com/shader-slang/slang/releases) を vendor。
+ブラウザ上で動く playground を `web/` 配下に同梱し、
+[lub.neguse.net](https://lub.neguse.net) で公開している。`.hx` は WASM 化した
+Haxe コンパイラでブラウザ内 (Web Worker) で Lua に compile され、native と
+同じ hot reload 経路で player に反映される。ガイド + API reference の
+docs サイト (`/docs`) も同じサイトに同居する。
 
-### Build
-
-```sh
-# 1. WASM バイナリを生成 (Linux/macOS — emsdk が必要)
-source ~/emsdk/emsdk_env.sh             # emcc / emcmake を PATH に
-emcmake cmake -S . -B build/wasm        # WGPU + emdawnwebgpu port が configure される
-cmake --build build/wasm -j             # lub.{js,wasm,data} が生成
-
-# 2. JS 側の依存と slang-wasm を取得
-cd web
-npm install                             # postinstall で web/scripts/fetch-slang-wasm.sh が
-                                        # web/public/slang/ に slang-wasm.{js,wasm} を取得
-npm run dev                             # http://localhost:5173/ で dev server 起動
-npm run verify                          # 別端末: playwright + swiftshader で headless 検証
-npm run build                           # web/dist/ に production bundle 生成
-```
-
-### アーキテクチャ
-
-```
-            parent (index.html / main.ts)              iframe (player.html / player.ts)
-            ┌────────────────────────────┐             ┌──────────────────────────────────┐
-            │ CodeMirror editor          │   setFiles  │ slang-bridge.ts                  │
-            │   path -> content table    │  ────────▶  │   window.slangCompile() を export │
-            │ sample dropdown / restart  │  syncFiles  │ WebGPU device 取得 → preinit     │
-            │ debounce 300ms             │  ────────▶  │ lub.js (Emscripten module)     │
-            └────────────────────────────┘  ◀─player──│   ↑ EM_ASYNC_JS bridge            │
-                                            Ready/log │   ↑ FS.writeFile で MEMFS overlay │
-                                                       │ sokol_gfx (WGPU) — canvas へ描画 │
-                                                       └──────────────────────────────────┘
-```
-
-postMessage プロトコル:
-
-- `parent → iframe`: `setFiles {files, entry}` (初回ブート時 1 回), `syncFiles {files}` (編集毎)
-- `iframe → parent`: `playerReady` (ハンドシェイク), `log {level, msg}` (console relay)
-
-shader compile は C 側 (`src/shader.cpp`) の `EM_ASYNC_JS` shim から
-`window.slangCompile(src, entry, stage)` を呼び、`{wgsl, reflectJson}` を `'\x01'`
-区切りで pack して戻す。エラーは `'\x02' + msg` 形式で Slang diagnostic として
-err_buf に届く。
-
-MEMFS sync: iframe 側で Emscripten の data file package (`lub.data`) をマウント
-した直後に `FS.writeFile` でエディタ内容を上書きする (`player.ts` の `postPreload`
-hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は次フレームの
-`stat()` で mtime 違いを検知して reload する (native と同じ hot-reload コード)。
-
-### サンプル対応状況 (web)
-
-web playground の対象 sample は `web/` 側の sample list と verify script で管理する。
-
-### Browser requirements
-
-- WebGPU が利用可能なブラウザ:
-  - **Chrome / Edge** (primary、137+) — 既定で WebGPU 有効。
-  - **Firefox Nightly** — `dom.webgpu.enabled` を `about:config` で有効化。
-- ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
-- production bundle (`npm run build`) は `web/dist/` 配下、`/wasm/`,
-  `/slang/` への絶対パス前提なので site root に置く。
-
-### Headless verification
-
-`npm run verify` は playwright + chromium (swiftshader Vulkan) で:
-
-1. sample 01 の初期描画 (orange triangle on dark blue clear) を pixel bucket で確認
-2. fragment shader を編集 → green になる
-3. `.hx` の clear_color を編集 → 再 compile → 背景が red になる
-4. verts を縮小編集 → green pixel 数が減る
-5. 登録済み sample を順に切替 → 各サンプルの非黒描画を確認
-
-スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
-別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。
-
-### Live edit caveats
-
-- shader に syntax error がある場合: 既存の shader を維持して Slang diagnostic を
-  iframe log に流すのみ (next save で復帰)。初回 compile 失敗のみ load を止める。
-- 300ms debounce: 入力後 300ms 静止してから `syncFiles` を送る。連打中は更新されない。
-- サンプル切替時に dirty な編集があると `confirm()` で警告する。
-
-### Known limitations
-
-- **`--capture` の swapchain capture は native のみ**。web (webgpu backend) では
-  任意 render target の readback (`Gfx.readback()`) を使う。
-- **sdlgpu backend は web 非対応**。web は `webgpu` (default) と sokol/WGPU。
+ビルド手順・実行時アーキテクチャ・headless 検証・制約は
+[web/README.md](web/README.md) を参照。
 
 ## 外部プロジェクトから使う (--serve)
 

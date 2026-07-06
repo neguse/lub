@@ -93,6 +93,20 @@ typedef TextureOpts = {
 	var error:String;
 }
 
+/**
+	render target の GPU → CPU 読み戻し。`Gfx.readback` で handle を作り、
+	`id` 付きで request してから次 call 以降で結果を drain する:
+
+	```haxe
+	var rb = Gfx.readback();
+	var r = rb.readTexture(tex, frame == 30 ? 30 : null);
+	if (r.status == "ready" && r.id == 30) {
+		lubx.Png.write(path, r.bytes, r.width, r.height, r.stride);
+	}
+	```
+
+	queue depth は既定 8。必要なら `Lub.config({readback_depth: N})` (1..32)。
+**/
 extern class Readback {
 	@:native("read_texture") public function readTexture(tex:TextureRef, ?id:Dynamic):ReadTextureResult;
 }
