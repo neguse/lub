@@ -6,8 +6,9 @@ import lub.Input.Key;
 import lub.Io;
 import lub.Lub;
 import lub.Phys2d;
-import lubx.Atlas;
 import lubx.Color;
+import lubx.Rand;
+import lubx.Sfx;
 import lubx.SpriteBatch;
 import lubx.Text;
 
@@ -59,7 +60,6 @@ class Iroha21 {
 	static inline var WALL_TOP = 3.2; // 壁の上端 (m)
 	static inline var LINE_Y = 2.45; // ゲームオーバー線 (m)
 	static inline var DROP_Y = 2.85; // 投下位置 (m)
-	static inline var RATE = 44100;
 
 	static var CHARS = ["い", "ろ", "は", "に", "ほ", "へ", "と"];
 	static var RADII = [0.13, 0.17, 0.22, 0.28, 0.36, 0.46, 0.58];
@@ -112,8 +112,6 @@ class Iroha21 {
 	// ゲームオーバー表示用。SpriteBatch は atlas バケツ順で描くので、玉の上に
 	// 帯を重ねるには flush を分ける必要がある (バッファも別 prefix にする)。
 	static var overlay = new SpriteBatch(W, H, "lubx_sprite", "iroha_overlay");
-	static var circleAtlas:Atlas = null;
-	static var whiteAtlas:Atlas = null;
 	static var hud:Text = null;
 	static var ttf:String = null;
 	static var fontVersion = 0;
@@ -128,11 +126,7 @@ class Iroha21 {
 	static var cooldown = 0.0;
 	static var over = false;
 	static var t = 0.0;
-	static var seed = 0x1234567;
-
-	static var sndDrop = 0;
-	static var sndMerge = 0;
-	static var sndOver = 0;
+	static var rng = new Rand(0x1234567);
 
 	// LUB_IROHA_AUTO=1 で自動プレイ (ヘッドレス検証・デモ用)
 	static var auto = lua.Os.getenv("LUB_IROHA_AUTO") != null;
@@ -146,52 +140,6 @@ class Iroha21 {
 		Lub.config({backend: backend, width: W, height: H});
 	}
 
-	// --- 小物 ---------------------------------------------------------------
-
-	static function rand():Float {
-		seed ^= seed << 13;
-		seed ^= seed >>> 17;
-		seed ^= seed << 5;
-		return (seed & 0xffff) / 65536.0;
-	}
-
-	static function blip(freq0:Float, freq1:Float, dur:Float, vol:Float):lua.Table<Int, Float> {
-		var n = Std.int(dur * RATE);
-		var out = lua.Table.create();
-		var phase = 0.0;
-		for (i in 0...n) {
-			var u = i / n;
-			phase += (freq0 + (freq1 - freq0) * u) / RATE;
-			out[i + 1] = ((phase % 1.0) < 0.5 ? 1.0 : -1.0) * Math.exp(-5.0 * u) * vol;
-		}
-		return out;
-	}
-
-	static function noiseBurst(dur:Float, vol:Float):lua.Table<Int, Float> {
-		var n = Std.int(dur * RATE);
-		var out = lua.Table.create();
-		var s = 0x2468ace;
-		var hold = 0.0;
-		for (i in 0...n) {
-			if (i % 16 == 0) {
-				s ^= s << 13;
-				s ^= s >>> 17;
-				s ^= s << 5;
-				hold = (s & 0xffff) / 32768.0 - 1.0;
-			}
-			out[i + 1] = hold * Math.exp(-4.0 * (i / n)) * vol;
-		}
-		return out;
-	}
-
-	static function synth() {
-		if (sndDrop != 0)
-			return;
-		sndDrop = Audio.pcm(blip(420, 260, 0.06, 0.3), 1, RATE);
-		sndMerge = Audio.pcm(blip(400, 840, 0.12, 0.35), 1, RATE);
-		sndOver = Audio.pcm(noiseBurst(0.4, 0.5), 1, RATE);
-	}
-
 	// --- アセット -----------------------------------------------------------
 
 	static function ensureAssets():Bool {
@@ -203,32 +151,6 @@ class Iroha21 {
 			fontVersion = r.version;
 			hud = new Text("iroha_hud", ttf, 20);
 			glyphs = new Map();
-		}
-
-		if (circleAtlas == null) {
-			// 64x64 の soft disc。tint で色を付ける。
-			var n = 64;
-			var px = new Array<Int>();
-			for (y in 0...n) {
-				for (x in 0...n) {
-					var dx = (x + 0.5) / n * 2.0 - 1.0;
-					var dy = (y + 0.5) / n * 2.0 - 1.0;
-					var d = Math.sqrt(dx * dx + dy * dy);
-					var a = Math.max(0.0, Math.min(1.0, (1.0 - d) * n * 0.5));
-					var i = (y * n + x) * 4;
-					px[i] = 255;
-					px[i + 1] = 255;
-					px[i + 2] = 255;
-					px[i + 3] = Std.int(a * 255);
-				}
-			}
-			circleAtlas = Atlas.fromPixels("iroha_circle", n, n, px, 1);
-		}
-		if (whiteAtlas == null) {
-			var px = new Array<Int>();
-			for (i in 0...4 * 4 * 4)
-				px[i] = 255;
-			whiteAtlas = Atlas.fromPixels("iroha_white", 4, 4, px, 1);
 		}
 
 		var vs = Io.loadText("samples/21_iroha/data/glyph.vs.slang");
@@ -375,7 +297,6 @@ class Iroha21 {
 			dt = 0.1;
 		if (!ensureAssets())
 			return;
-		synth();
 
 		// --- 入力
 		var dropR = RADII[nextLevel];
@@ -388,17 +309,17 @@ class Iroha21 {
 		var click = Input.mousePressed() || Input.keyPressed(Key.Space);
 		if (auto && cooldown <= 0.0 && !over) {
 			click = true;
-			dropX = (rand() * 2.0 - 1.0) * (HALF_W - dropR);
+			dropX = (rng.float() * 2.0 - 1.0) * (HALF_W - dropR);
 		}
 		if (over) {
 			if (click)
 				reset();
 		} else if (click && cooldown <= 0.0) {
 			spawn(dropX, DROP_Y, nextLevel);
-			var pick = [0, 0, 0, 1, 1, 2][Std.int(rand() * 6)];
+			var pick = [0, 0, 0, 1, 1, 2][Std.int(rng.float() * 6)];
 			nextLevel = pick;
 			cooldown = 0.45;
-			Audio.play(sndDrop);
+			Audio.play(Sfx.blip(420, 260, 0.06, 0.3));
 		}
 
 		// --- 物理 (immediate mode: 生きている玉だけ毎フレーム宣言する)
@@ -486,7 +407,7 @@ class Iroha21 {
 				score += (level + 1) * (level + 1);
 				if (score > best)
 					best = score;
-				Audio.play(sndMerge, {pitch: 1.0 + level * 0.15});
+				Audio.play(Sfx.blip(400, 840, 0.12, 0.35), {pitch: 1.0 + level * 0.15});
 			}
 			if (merged.iterator().hasNext())
 				balls = balls.filter(b -> !merged.exists(b.id));
@@ -502,7 +423,7 @@ class Iroha21 {
 					ball.overT = 0.0;
 				if (ball.overT > 1.0) {
 					over = true;
-					Audio.play(sndOver);
+					Audio.play(Sfx.noise(0.4, 0.5, 0x2468ace));
 				}
 			}
 		}
@@ -521,19 +442,13 @@ class Iroha21 {
 			b: 0.42,
 			a: 1.0
 		};
-		var rect = {
-			x: 0,
-			y: 0,
-			w: 4,
-			h: 4
-		};
-		batch.quad(whiteAtlas, rect, sx(-HALF_W) - 8, sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
-		batch.quad(whiteAtlas, rect, sx(HALF_W), sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
-		batch.quad(whiteAtlas, rect, sx(-HALF_W) - 8, FLOOR_Y, HALF_W * 2 * PPM + 16, 8, wallCol);
+		batch.rect(sx(-HALF_W) - 8, sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
+		batch.rect(sx(HALF_W), sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
+		batch.rect(sx(-HALF_W) - 8, FLOOR_Y, HALF_W * 2 * PPM + 16, 8, wallCol);
 
 		// ゲームオーバー線
 		var lineBlink = over ? 1.0 : 0.25 + 0.15 * Math.sin(t * 4.0);
-		batch.quad(whiteAtlas, rect, sx(-HALF_W), sy(LINE_Y), HALF_W * 2 * PPM, 2, {
+		batch.rect(sx(-HALF_W), sy(LINE_Y), HALF_W * 2 * PPM, 2, {
 			r: 0.9,
 			g: 0.3,
 			b: 0.3,
@@ -544,24 +459,14 @@ class Iroha21 {
 		for (ball in balls) {
 			var r = RADII[ball.level] * PPM;
 			var c = COLORS[ball.level];
-			batch.sprite(circleAtlas, {
-				x: 0,
-				y: 0,
-				w: 64,
-				h: 64
-			}, sx(ball.x), sy(ball.y), r * 2, r * 2, 0.0, c);
+			batch.disc(sx(ball.x), sy(ball.y), r, c);
 		}
 
 		// 投下プレビュー
 		if (!over) {
 			var r = dropR * PPM;
 			var c = COLORS[nextLevel];
-			batch.sprite(circleAtlas, {
-				x: 0,
-				y: 0,
-				w: 64,
-				h: 64
-			}, sx(dropX), sy(DROP_Y), r * 2, r * 2, 0.0, {
+			batch.disc(sx(dropX), sy(DROP_Y), r, {
 				r: c.r,
 				g: c.g,
 				b: c.b,
@@ -608,7 +513,7 @@ class Iroha21 {
 		if (over) {
 			// 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
 			overlay.begin();
-			overlay.quad(whiteAtlas, rect, 0, 108, W, 132, {
+			overlay.rect(0, 108, W, 132, {
 				r: 0.05,
 				g: 0.04,
 				b: 0.07,

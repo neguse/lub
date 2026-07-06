@@ -56,6 +56,9 @@ class SpriteBatch {
 		+ "    return c;\n"
 		+ "}\n";
 
+	static var whiteAtlas:Atlas = null;
+	static var discAtlas:Atlas = null;
+
 	public var logicalW:Int;
 	public var logicalH:Int;
 
@@ -218,6 +221,59 @@ class SpriteBatch {
 		pushVertex(out, x, y, u0, v0, c);
 		pushVertex(out, x1, y1, u1, v1, c);
 		pushVertex(out, x, y1, u0, v1, c);
+	}
+
+	static function ensureWhiteAtlas():Atlas {
+		if (whiteAtlas == null) {
+			var px = new Array<Int>();
+			for (i in 0...4 * 4 * 4)
+				px[i] = 255;
+			whiteAtlas = Atlas.fromPixels("lubx_white", 4, 4, px, 1);
+		}
+		return whiteAtlas;
+	}
+
+	static function ensureDiscAtlas():Atlas {
+		if (discAtlas == null) {
+			// 64x64 の soft disc。tint で色を付ける。
+			var n = 64;
+			var px = new Array<Int>();
+			for (y in 0...n) {
+				for (x in 0...n) {
+					var dx = (x + 0.5) / n * 2.0 - 1.0;
+					var dy = (y + 0.5) / n * 2.0 - 1.0;
+					var d = Math.sqrt(dx * dx + dy * dy);
+					var a = Math.max(0.0, Math.min(1.0, (1.0 - d) * n * 0.5));
+					var i = (y * n + x) * 4;
+					px[i] = 255;
+					px[i + 1] = 255;
+					px[i + 2] = 255;
+					px[i + 3] = Std.int(a * 255);
+				}
+			}
+			discAtlas = Atlas.fromPixels("lubx_disc", n, n, px, 1);
+		}
+		return discAtlas;
+	}
+
+	/** 単色矩形。(x, y) は左上、座標系は quad と同じ論理 px。 **/
+	public function rect(x:Float, y:Float, w:Float, h:Float, ?tint:Color) {
+		quad(ensureWhiteAtlas(), {
+			x: 0,
+			y: 0,
+			w: 4,
+			h: 4
+		}, x, y, w, h, tint);
+	}
+
+	/** 単色の円 (ソフトエッジの disc)。(cx, cy) は中心、r は半径 px。 **/
+	public function disc(cx:Float, cy:Float, r:Float, ?tint:Color) {
+		sprite(ensureDiscAtlas(), {
+			x: 0,
+			y: 0,
+			w: 64,
+			h: 64
+		}, cx, cy, r * 2, r * 2, 0.0, tint);
 	}
 
 	function ensureQuad():Dynamic {
