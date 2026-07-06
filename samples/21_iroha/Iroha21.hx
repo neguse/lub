@@ -109,6 +109,9 @@ class Iroha21 {
 	];
 
 	static var batch = new SpriteBatch(W, H);
+	// ゲームオーバー表示用。SpriteBatch は atlas バケツ順で描くので、玉の上に
+	// 帯を重ねるには flush を分ける必要がある (バッファも別 prefix にする)。
+	static var overlay = new SpriteBatch(W, H, "lubx_sprite", "iroha_overlay");
 	static var circleAtlas:Atlas = null;
 	static var whiteAtlas:Atlas = null;
 	static var hud:Text = null;
@@ -566,15 +569,6 @@ class Iroha21 {
 			});
 		}
 
-		// ゲームオーバー帯 (メッシュ文字の下敷き)
-		if (over)
-			batch.quad(whiteAtlas, rect, 0, 108, W, 132, {
-				r: 0.05,
-				g: 0.04,
-				b: 0.07,
-				a: 0.8
-			});
-
 		// HUD (bitmap 小サイズレジーム)
 		hud.draw(batch, "スコア " + score, 12, 26);
 		hud.draw(batch, "ベスト " + best, 12, 50, {
@@ -612,16 +606,23 @@ class Iroha21 {
 			}, true);
 
 		if (over) {
-			drawGlyphText("おしまい", CX, 180, 72, {
+			// 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
+			overlay.begin();
+			overlay.quad(whiteAtlas, rect, 0, 108, W, 132, {
+				r: 0.05,
+				g: 0.04,
+				b: 0.07,
+				a: 0.85
+			});
+			var msg = "クリックでもういちど";
+			hud.draw(overlay, msg, CX - hud.width(msg) * 0.5, 222);
+			overlay.flush();
+			drawGlyphText("おしまい", CX, 190, 64, {
 				r: 0.95,
 				g: 0.92,
 				b: 0.85,
 				a: 1.0
 			});
-			batch.begin();
-			var msg = "クリックでもういちど";
-			hud.draw(batch, msg, CX - hud.width(msg) * 0.5, 220);
-			batch.flush();
 		}
 
 		Gfx.endPass();
