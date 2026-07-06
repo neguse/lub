@@ -90,8 +90,21 @@ class MeshText {
 		if (e != null)
 			return e;
 		var gm = Font.glyphMesh(ttf, cp);
-		if (gm == null || gm.vert_count == 0)
+		if (gm == null)
 			return null;
+		if (gm.vert_count == 0) {
+			// 空グリフ (スペース等) も advance を持つのでキャッシュする
+			e = {
+				vb: null,
+				ib: null,
+				count: 0,
+				advance: gm.advance,
+				cx: 0.0,
+				cy: 0.0
+			};
+			glyphs.set(cp, e);
+			return e;
+		}
 		var verts = new Array<Float>();
 		var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
 		for (i in 0...gm.vert_count) {
@@ -140,7 +153,7 @@ class MeshText {
 		if (!ensure())
 			return;
 		var e = glyphFor(cp);
-		if (e == null)
+		if (e == null || e.count == 0)
 			return;
 		var c = colorOrWhite(tint);
 		Gfx.draw(e.count, {
