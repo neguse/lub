@@ -1,0 +1,93 @@
+# Windows regression CI. 普段の開発が Linux なので、Windows build と
+# native (D3D12) backend の破壊をここで検知する:
+#   build -> C smoke tests -> WARP golden (scripts/run-golden.sh)
+# WARP はソフトウェアラスタライザなので GPU の無い runner でも
+# tests/golden/*_native.png と byte 一致する。
+name: windows
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      # find_package(Vulkan) 用 (sokol backend のリンクに必要)。runner に
+      # GPU/ICD は無いが、CI では native/WARP しか動かさないので loader の
+      # vulkan-1.dll が process 起動時に解決できれば十分。
+      - name: Vulkan SDK (headers + loader)
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
+        with:
+          vulkan-query-version: 1.3.283.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      # CMake configure が slang / dxc の prebuilt (~150MB) を落とすので
+      # third_party/slang をキャッシュする。key は取得 URL を持つ
+      # CMakeLists.txt に紐付け。
+      - name: Cache slang + dxc prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-release
+
+      - name: Copy vulkan-1.dll next to lub.exe
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem $env:VULKAN_SDK -Recurse -Filter vulkan-1.dll | Select-Object -First 1
+          if (-not $dll) { throw "vulkan-1.dll not found under $env:VULKAN_SDK" }
+          Copy-Item $dll.FullName build-release/
+
+      - name: C smoke tests
+        shell: bash
+        run: |
+          cd build-release
+          ./lub_shader_dx12_smoke.exe
+          ./lub_hxml_parse_test.exe
+          ./lub_sdf_smoke.exe
+          ./lub_surfacenets_smoke.exe
+          ./lub_physics_box2d_smoke.exe
+          ./lub_physics_box3d_smoke.exe
+
+      # golden はサンプルの .hxml を起動時にコンパイルするので Haxe 5 が要る。
+      - name: Install Haxe 5 + haxelib dev lub
+        shell: bash
+        run: |
+          scripts/install-haxe5.sh "$HOME/haxe5"
+          echo "LUB_HAXE=$(cygpath -m "$HOME/haxe5/haxe.exe")" >> "$GITHUB_ENV"
+
+      - name: Golden image test (native backend, WARP)
+        shell: bash
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/golden-tmp"
+          mkdir -p "$TMPDIR"
+          scripts/run-golden.sh
+
+      - name: Upload golden failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failure
+          path: ${{ runner.temp }}/golden-tmp
+          if-no-files-found: ignore
