@@ -20,12 +20,12 @@ struct VSIn {
 };
 
 struct VSOut {
-  float4 pos : SV_Position;
   float3 vpos : TEXCOORD0;
   float3 vn : TEXCOORD1;
   float3 ldir : TEXCOORD2;
   float2 uv : TEXCOORD3;
   float4 lpos : TEXCOORD4;
+  float4 pos : SV_Position;
 };
 
 [shader("vertex")] VSOut vs_main(VSIn i) {

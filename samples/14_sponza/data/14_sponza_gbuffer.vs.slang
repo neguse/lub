@@ -17,7 +17,6 @@ struct VSIn {
 };
 
 struct VSOut {
-  float4 pos : SV_Position;
   float3 vpos : TEXCOORD0;
   float3 vn : TEXCOORD1;
   float2 uv : TEXCOORD2;
@@ -26,6 +25,7 @@ struct VSOut {
   float4 base_color_factor : TEXCOORD5;
   float4 material : TEXCOORD6;
   float4 normal_params : TEXCOORD7;
+  float4 pos : SV_Position;
 };
 
 [shader("vertex")] VSOut vs_main(VSIn i) {

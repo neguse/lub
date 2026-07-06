@@ -14,10 +14,10 @@ struct VSIn {
 };
 
 struct VSOut {
-  float4 pos : SV_Position;
   float3 normal : TEXCOORD0;
   float4 color : COLOR;
   float4 light_pos : TEXCOORD1;
+  float4 pos : SV_Position;
 };
 
 [shader("vertex")] VSOut vs_main(VSIn i) {

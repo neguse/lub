@@ -10,8 +10,8 @@ struct VSIn {
 };
 
 struct VSOut {
-  float4 pos : SV_Position;
   float depth : TEXCOORD0;
+  float4 pos : SV_Position;
 };
 
 [shader("vertex")] VSOut vs_main(VSIn i) {

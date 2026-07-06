@@ -131,6 +131,34 @@ if(NOT LUB_WASM)
     endif()
   endif()
 
+  # --- DXC (dxcompiler.dll) -------------------------------------------------
+  # The dx12 backend compiles Slang -> DXIL, and Slang delegates DXIL emission
+  # to dxcompiler.dll, which the Slang prebuilt does not bundle. Fetch it from
+  # the DirectXShaderCompiler release into third_party/slang/bin, which is
+  # already copied next to lub.exe post-build. DXC >= 1.8.2502 signs DXIL with
+  # the open-source validator hash, so dxil.dll is not needed.
+  # License: University of Illinois/NCSA (LLVM Release License).
+  if(WIN32)
+    set(_dxc_marker "${SLANG_ROOT}/bin/dxcompiler.dll")
+    set(_dxc_archive_url
+      "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip")
+    if(NOT EXISTS "${_dxc_marker}")
+      message(STATUS "dxcompiler.dll missing; downloading ${_dxc_archive_url}")
+      set(_dxc_archive "${CMAKE_BINARY_DIR}/_dxc_prebuilt.archive")
+      set(_dxc_extract "${CMAKE_BINARY_DIR}/_dxc_prebuilt")
+      file(DOWNLOAD "${_dxc_archive_url}" "${_dxc_archive}" SHOW_PROGRESS STATUS _dxc_dl_status)
+      list(GET _dxc_dl_status 0 _dxc_dl_code)
+      if(NOT _dxc_dl_code EQUAL 0)
+        message(FATAL_ERROR "Failed to download DXC prebuilt: ${_dxc_dl_status}")
+      endif()
+      file(REMOVE_RECURSE "${_dxc_extract}")
+      file(ARCHIVE_EXTRACT INPUT "${_dxc_archive}" DESTINATION "${_dxc_extract}")
+      file(COPY "${_dxc_extract}/bin/x64/dxcompiler.dll" DESTINATION "${SLANG_ROOT}/bin")
+      if(NOT EXISTS "${_dxc_marker}")
+        message(FATAL_ERROR "DXC archive did not contain bin/x64/dxcompiler.dll")
+      endif()
+    endif()
+  endif()
 endif()
 
 # Source list. capture.c itself is backend-agnostic (uses g_backend->capture)
@@ -179,6 +207,10 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/haxe_watch.c)
   # HTTP + SSE dev server for `lub --serve game.hxml`.
   list(APPEND LUB_SOURCES src/serve.c)
+  if(WIN32)
+    # D3D12 backend (config({backend="dx12"})).
+    list(APPEND LUB_SOURCES src/backend_dx12.cpp)
+  endif()
 endif()
 add_executable(lub ${LUB_SOURCES})
 
@@ -217,7 +249,8 @@ if(UNIX AND NOT LUB_WASM)
 endif()
 if(WIN32)
   # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
-  target_link_libraries(lub PRIVATE ws2_32)
+  # d3d12/dxgi/dxguid for the dx12 backend (all OS-provided).
+  target_link_libraries(lub PRIVATE ws2_32 d3d12 dxgi dxguid)
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
@@ -397,4 +430,21 @@ if(NOT LUB_WASM)
     target_link_libraries(lub_sdf_smoke PRIVATE m dl)
   endif()
   target_include_directories(lub_sdf_smoke PRIVATE src)
+
+  # Slang -> DXIL compile smoke (Windows only; needs dxcompiler.dll from the
+  # DXC fetch above, resolved from the build dir where the slang DLLs are
+  # copied post-build of lub).
+  if(WIN32)
+    add_executable(lub_shader_dx12_smoke
+      tests/c/shader_dx12_smoke.c
+      src/shader.cpp
+    )
+    target_include_directories(lub_shader_dx12_smoke PRIVATE
+      src
+      third_party/slang/include
+    )
+    target_link_directories(lub_shader_dx12_smoke PRIVATE third_party/slang/lib)
+    target_link_libraries(lub_shader_dx12_smoke PRIVATE slang)
+    add_dependencies(lub_shader_dx12_smoke lub) # slang DLLs land via lub's post-build copy
+  endif()
 endif()

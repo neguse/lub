@@ -8,8 +8,8 @@ struct VSIn {
   float4 color : COLOR;
 };
 struct VSOut {
-  float4 pos : SV_Position;
   float4 color : COLOR;
+  float4 pos : SV_Position;
 };
 
 [shader("vertex")] VSOut vs_main(VSIn i) {

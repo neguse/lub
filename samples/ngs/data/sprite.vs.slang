@@ -4,9 +4,9 @@ struct VSIn {
   float4 color : COLOR;
 };
 struct VSOut {
-  float4 pos : SV_Position;
   float2 uv : TEXCOORD0;
   float4 color : COLOR;
+  float4 pos : SV_Position;
 };
 [shader("vertex")] VSOut vs_main(VSIn i) {
   VSOut o;

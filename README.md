@@ -10,7 +10,8 @@ runtime は C/C++ と既存ライブラリで組み、Lua を通して API を�
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
-native が **sokol_gfx (Vulkan、default)** と **SDL3 GPU API**、
+native が **sokol_gfx (Vulkan、default)** と **SDL3 GPU API** と
+**D3D12 直接実装 (Windows)**、
 web が **webgpu.h 直接実装 (default)** と **sokol_gfx (WGPU)**。
 対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
 
@@ -162,10 +163,12 @@ lavapipe + xvfb 環境では capture が確定的なので `cmp -s` で完全一
 
 ## Backend 切替
 
-lub は内部に 3 つの GPU backend を持ち、同一 Lua API で動く:
+lub は内部に 4 つの GPU backend を持ち、同一 Lua API で動く:
 
 - `sokol` (native default) — sokol_gfx (Vulkan)。web build では sokol/WGPU として選択可。
 - `sdlgpu` — SDL3 GPU API (native 専用。現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
+- `dx12` — D3D12 直接実装 (Windows 専用。設計は
+  [docs/dx12-backend.md](docs/dx12-backend.md))
 - `webgpu` (web default) — webgpu.h 直接実装 (設計記録は
   [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))
 

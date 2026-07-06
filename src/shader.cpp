@@ -49,6 +49,8 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
            "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
   }
+  // sokol, wasm and dx12 all use the separate texture+sampler form (D3D12
+  // has no combined image samplers; t/s registers are distinct classes).
   return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
          "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
          "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
@@ -76,6 +78,7 @@ namespace {
 struct GlobalSlangCtx {
   ComPtr<IGlobalSession> g;
   SlangProfileID spirv_profile = SLANG_PROFILE_UNKNOWN;
+  SlangProfileID dxil_profile = SLANG_PROFILE_UNKNOWN;
 };
 
 GlobalSlangCtx g_slang;
@@ -89,6 +92,18 @@ static void configure_spirv_target(TargetDesc *target) {
   target->profile = g_slang.spirv_profile;
   target->compilerOptionEntries = opts;
   target->compilerOptionEntryCount = sizeof(opts) / sizeof(opts[0]);
+}
+
+// DXIL emission goes through dxcompiler.dll (shipped next to the slang DLLs;
+// see the DXC fetch in CMakeLists). dxcompiler >= 1.8.2502 signs the DXIL
+// itself, so no dxil.dll is needed.
+static void configure_target(TargetDesc *target, ShaderTargetBackend backend) {
+  if (backend == SHADER_TARGET_DX12) {
+    target->format = SLANG_DXIL;
+    target->profile = g_slang.dxil_profile;
+    return;
+  }
+  configure_spirv_target(target);
 }
 
 bool ensure_global_session() {
@@ -106,6 +121,7 @@ bool ensure_global_session() {
   if (g_slang.spirv_profile == SLANG_PROFILE_UNKNOWN) {
     g_slang.spirv_profile = g_slang.g->findProfile("glsl_450");
   }
+  g_slang.dxil_profile = g_slang.g->findProfile("sm_6_0");
   return true;
 }
 
@@ -240,7 +256,8 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
     }
     const int buffer_index = input_buffer;
     bool recorded_any = false;
-    auto record_one = [&](const char *name, TypeReflection *vt) -> bool {
+    auto record_one = [&](const char *name, TypeReflection *vt,
+                          const char *semantic, size_t semantic_index) -> bool {
       if (out->attr_count >= SGL_MAX_ATTRS) {
         if (err && errsz)
           snprintf(err, errsz, "too many vertex attributes (>%d)",
@@ -249,6 +266,19 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
       }
       ShaderAttr *a = &out->attrs[out->attr_count];
       copy_name(a->name, sizeof(a->name), name);
+      // Canonicalize "TEXCOORD0" style semantics into base + index so the
+      // dx12 input layout matches the DXIL input signature.
+      copy_name(a->semantic, sizeof(a->semantic), semantic);
+      a->semantic_index = (int)semantic_index;
+      size_t sn = strlen(a->semantic);
+      size_t digits = 0;
+      while (digits < sn && a->semantic[sn - 1 - digits] >= '0' &&
+             a->semantic[sn - 1 - digits] <= '9')
+        digits++;
+      if (digits > 0 && digits < sn) {
+        a->semantic_index = atoi(a->semantic + sn - digits);
+        a->semantic[sn - digits] = '\0';
+      }
       a->slot = out->attr_count; // input location: assume sequential
       a->comp_count = component_count_of(vt);
       if (a->comp_count <= 0)
@@ -268,11 +298,15 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
         if (!fl)
           continue;
         TypeReflection *ft = fl->getTypeLayout()->getType();
-        if (!record_one(fl->getName() ? fl->getName() : "attr", ft))
+        if (!record_one(fl->getName() ? fl->getName() : "attr", ft,
+                        fl->getSemanticName() ? fl->getSemanticName() : "",
+                        fl->getSemanticIndex()))
           return false;
       }
     } else {
-      if (!record_one(p->getName() ? p->getName() : "attr", t))
+      if (!record_one(p->getName() ? p->getName() : "attr", t,
+                      p->getSemanticName() ? p->getSemanticName() : "",
+                      p->getSemanticIndex()))
         return false;
     }
     if (recorded_any) {
@@ -375,15 +409,13 @@ static bool refl_stex_exists(const ShaderReflection *refl, SglShaderStage stage,
   return false;
 }
 
-bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
-                            SglShaderStage stage) {
-  if (!layout)
-    return false;
-  unsigned gpc = layout->getParameterCount();
-  for (unsigned i = 0; i < gpc; ++i) {
-    VariableLayoutReflection *p = layout->getParameterByIndex(i);
-    if (!p)
-      continue;
+// Record one global (module-scope) shader parameter into the reflection,
+// attributed to `stage`. Sampler states pair positionally with the preceding
+// textures of the same stage, so callers must feed a stage's parameters in
+// declaration order.
+void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
+                       SglShaderStage stage) {
+  {
     SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
     TypeReflection *t =
         p->getTypeLayout() ? p->getTypeLayout()->getType() : nullptr;
@@ -397,7 +429,7 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
         fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
         out->ub_count++;
       }
-      continue;
+      return;
     }
 
     // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
@@ -426,8 +458,15 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
         sb->slot = (int)p->getBindingIndex();
         sb->stage = stage;
         sb->readonly = readonly;
+        sb->elem_stride = 0;
+        if (TypeLayoutReflection *tl = p->getTypeLayout()) {
+          if (TypeLayoutReflection *el = tl->getElementTypeLayout()) {
+            sb->elem_stride =
+                (int)el->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+          }
+        }
       }
-      continue;
+      return;
     }
 
     // Texture resources. Read-write textures become storage textures;
@@ -476,7 +515,7 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
         }
         tx->smp_slot = combined ? tx->img_slot : -1;
       }
-      continue;
+      return;
     }
 
     // Sampler states — pair with the next unmatched texture in declaration
@@ -499,8 +538,21 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
       }
       if (matched >= 0)
         out->texs[matched].smp_slot = sidx;
-      continue;
+      return;
     }
+  }
+}
+
+bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
+                            SglShaderStage stage) {
+  if (!layout)
+    return false;
+  unsigned gpc = layout->getParameterCount();
+  for (unsigned i = 0; i < gpc; ++i) {
+    VariableLayoutReflection *p = layout->getParameterByIndex(i);
+    if (!p)
+      continue;
+    fill_global_param(p, out, stage);
   }
   return true;
 }
@@ -1322,9 +1374,12 @@ static void merge_stage_reflection(ShaderReflection *dst,
   ShaderReflection stage = *src;
   if (target == SHADER_TARGET_SOKOL) {
     remap_stage_for_sokol(dst, &stage);
-  } else {
+  } else if (target == SHADER_TARGET_SDLGPU) {
     remap_stage_for_sdlgpu(&stage);
   }
+  // DX12: no remap. The slots are Slang's HLSL register indices and the
+  // DXIL blob can't be re-numbered after the fact; the backend builds its
+  // root signature from these values instead.
 
   if (stage.attr_count > 0) {
     dst->attr_count = stage.attr_count;
@@ -1360,6 +1415,163 @@ static void merge_stage_reflection(ShaderReflection *dst,
   }
 }
 
+// DX12 graphics path: VS+FS must be linked into ONE slang program. DXIL
+// matches varyings between stages by hardware register (not by location as
+// SPIR-V/Vulkan does), and separately-compiled programs pack their varying
+// signatures independently — e.g. VS emits SV_Position at o0 pushing COLOR
+// to o1 while the FS expects COLOR at v0. Linking both entry points lets
+// Slang lay out one consistent inter-stage signature. Side effect: b/t/s/u
+// registers become program-unique across stages, which the dx12 backend
+// relies on (single root-signature tables with SHADER_VISIBILITY_ALL).
+bool compile_dx12_graphics(const char *vs_src, const char *fs_src,
+                           ShaderBlob *out_vs, ShaderBlob *out_fs,
+                           ShaderReflection *out_refl, char *err_buf,
+                           size_t err_buf_size) {
+  TargetDesc slang_target = {};
+  configure_target(&slang_target, SHADER_TARGET_DX12);
+  SessionDesc sd = {};
+  sd.targets = &slang_target;
+  sd.targetCount = 1;
+  sd.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_ROW_MAJOR;
+  ComPtr<ISession> session;
+  if (SLANG_FAILED(g_slang.g->createSession(sd, session.writeRef()))) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "createSession failed");
+    return false;
+  }
+
+  const char *prelude = prelude_for_target(SHADER_TARGET_DX12);
+  auto load = [&](const char *src, const char *mod_name, const char *entry,
+                  ComPtr<IModule> &mod, ComPtr<IEntryPoint> &ep) -> bool {
+    std::string full(prelude);
+    full += src;
+    ComPtr<IBlob> diag;
+    IModule *raw = session->loadModuleFromSourceString(
+        mod_name, (std::string(mod_name) + ".slang").c_str(), full.c_str(),
+        diag.writeRef());
+    if (!raw) {
+      copy_diag(diag.get(), err_buf, err_buf_size);
+      return false;
+    }
+    mod = ComPtr<IModule>(raw);
+    if (SLANG_FAILED(mod->findEntryPointByName(entry, ep.writeRef())) || !ep) {
+      if (err_buf && err_buf_size)
+        snprintf(err_buf, err_buf_size, "%s entry point not found", entry);
+      return false;
+    }
+    return true;
+  };
+  ComPtr<IModule> vs_mod, fs_mod;
+  ComPtr<IEntryPoint> vs_ep, fs_ep;
+  if (!load(vs_src, "user_vs", "vs_main", vs_mod, vs_ep))
+    return false;
+  if (!load(fs_src, "user_fs", "fs_main", fs_mod, fs_ep))
+    return false;
+
+  IComponentType *components[] = {vs_mod.get(), vs_ep.get(), fs_mod.get(),
+                                  fs_ep.get()};
+  ComPtr<IBlob> diag;
+  ComPtr<IComponentType> composite;
+  if (SLANG_FAILED(session->createCompositeComponentType(
+          components, 4, composite.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  ComPtr<IComponentType> linked;
+  if (SLANG_FAILED(composite->link(linked.writeRef(), diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+
+  // Entry point indices follow composition order: 0 = vs, 1 = fs.
+  ComPtr<IBlob> vs_code, fs_code;
+  if (SLANG_FAILED(linked->getEntryPointCode(0, 0, vs_code.writeRef(),
+                                             diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+  if (SLANG_FAILED(linked->getEntryPointCode(1, 0, fs_code.writeRef(),
+                                             diag.writeRef()))) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+
+  ProgramLayout *layout = linked->getLayout(0, diag.writeRef());
+  if (!layout) {
+    copy_diag(diag.get(), err_buf, err_buf_size);
+    return false;
+  }
+
+  EntryPointReflection *vsRefl = nullptr;
+  SlangUInt epc = layout->getEntryPointCount();
+  for (SlangUInt i = 0; i < epc; ++i) {
+    EntryPointReflection *epr = layout->getEntryPointByIndex(i);
+    if (epr && epr->getStage() == SLANG_STAGE_VERTEX) {
+      vsRefl = epr;
+      break;
+    }
+  }
+  if (!fill_attrs_from_entry_point(vsRefl, out_refl, err_buf, err_buf_size))
+    return false;
+
+  // Stage attribution. The linked layout's registers are what the DXIL uses,
+  // but it doesn't say which stage consumes a parameter — recover that by
+  // matching names against each module's own parameter list.
+  auto collect_names = [&](IModule *mod, std::vector<std::string> *names) {
+    ComPtr<IComponentType> ml;
+    ComPtr<IBlob> d2;
+    if (SLANG_FAILED(mod->link(ml.writeRef(), d2.writeRef())) || !ml)
+      return;
+    ProgramLayout *l = ml->getLayout(0, d2.writeRef());
+    if (!l)
+      return;
+    unsigned n = l->getParameterCount();
+    for (unsigned i = 0; i < n; ++i) {
+      VariableLayoutReflection *p = l->getParameterByIndex(i);
+      if (p && p->getName())
+        names->push_back(p->getName());
+    }
+  };
+  std::vector<std::string> vs_names, fs_names;
+  collect_names(vs_mod.get(), &vs_names);
+  collect_names(fs_mod.get(), &fs_names);
+  auto has = [](const std::vector<std::string> &v, const char *n) {
+    for (const auto &s : v)
+      if (s == n)
+        return true;
+    return false;
+  };
+  unsigned gpc = layout->getParameterCount();
+  for (int pass = 0; pass < 2; ++pass) {
+    SglShaderStage stage = pass == 0 ? SGL_STAGE_VERTEX : SGL_STAGE_FRAGMENT;
+    const std::vector<std::string> &names = pass == 0 ? vs_names : fs_names;
+    for (unsigned i = 0; i < gpc; ++i) {
+      VariableLayoutReflection *p = layout->getParameterByIndex(i);
+      if (!p || !p->getName())
+        continue;
+      if (!has(names, p->getName()))
+        continue;
+      fill_global_param(p, out_refl, stage);
+    }
+  }
+
+  auto copy_code = [&](IBlob *code, ShaderBlob *out) -> bool {
+    size_t size = code->getBufferSize();
+    out->spirv = (uint32_t *)malloc(size);
+    if (!out->spirv)
+      return false;
+    memcpy(out->spirv, code->getBufferPointer(), size);
+    out->bytes = size;
+    return true;
+  };
+  if (!copy_code(vs_code.get(), out_vs) || !copy_code(fs_code.get(), out_fs)) {
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM (dx12 blobs)");
+    return false;
+  }
+  return true;
+}
+
 } // anonymous namespace
 
 extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
@@ -1383,8 +1595,13 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
     return false;
   }
 
+  if (target == SHADER_TARGET_DX12) {
+    return compile_dx12_graphics(vs_src, fs_src, out_vs, out_fs, out_refl,
+                                 err_buf, err_buf_size);
+  }
+
   TargetDesc slang_target = {};
-  configure_spirv_target(&slang_target);
+  configure_target(&slang_target, target);
 
   SessionDesc sd = {};
   sd.targets = &slang_target;
@@ -1503,14 +1720,16 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   merge_stage_reflection(out_refl, &vs_refl, target);
   merge_stage_reflection(out_refl, &fs_refl, target);
 
-  patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes, target,
-                                       SpvStage::Vertex, out_refl);
-  patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes, target,
-                                       SpvStage::Fragment, out_refl);
-  patch_spirv_storage_image_formats(out_vs->spirv, out_vs->bytes,
-                                    SpvStage::Vertex, out_refl);
-  patch_spirv_storage_image_formats(out_fs->spirv, out_fs->bytes,
-                                    SpvStage::Fragment, out_refl);
+  if (target != SHADER_TARGET_DX12) {
+    patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes, target,
+                                         SpvStage::Vertex, out_refl);
+    patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes, target,
+                                         SpvStage::Fragment, out_refl);
+    patch_spirv_storage_image_formats(out_vs->spirv, out_vs->bytes,
+                                      SpvStage::Vertex, out_refl);
+    patch_spirv_storage_image_formats(out_fs->spirv, out_fs->bytes,
+                                      SpvStage::Fragment, out_refl);
+  }
   return true;
 }
 
@@ -1533,7 +1752,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   }
 
   TargetDesc slang_target = {};
-  configure_spirv_target(&slang_target);
+  configure_target(&slang_target, target);
 
   SessionDesc sd = {};
   sd.targets = &slang_target;
@@ -1624,10 +1843,12 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
   out_cs->bytes = cs_size;
 
-  patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes, target,
-                                       SpvStage::Compute, out_refl);
-  patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
-                                    SpvStage::Compute, out_refl);
+  if (target != SHADER_TARGET_DX12) {
+    patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes, target,
+                                         SpvStage::Compute, out_refl);
+    patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
+                                      SpvStage::Compute, out_refl);
+  }
   return true;
 }
 

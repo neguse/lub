@@ -55,6 +55,10 @@ bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
   if (strcmp(app->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
+#ifdef _WIN32
+  } else if (strcmp(app->backend_name, "dx12") == 0) {
+    g_backend = &g_backend_dx12;
+#endif
   } else {
     g_backend = &g_backend_sokol;
   }

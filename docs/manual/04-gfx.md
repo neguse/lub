@@ -27,6 +27,16 @@ var shader = Gfx.useShader("cube", vs.text, fs.text, vs.version * 31 + fs.versio
 シェーダソースは [Slang](https://shader-slang.org/) で書き、文字列のまま
 `useShader(key, vs, fs, version)` に渡す(native / web 共通)。
 
+VS→FS の varying には 2 つの規約がある:
+
+- FS の入力構造体は、VS 出力の varying を **先頭から使う分だけ** 同じ順で
+  宣言する(途中を飛ばさない)。
+- VS 出力構造体の `SV_Position` メンバは **最後に置く**。D3D12 (dx12
+  backend) はステージ間をレジスタ位置で一致させるため、`SV_Position` が
+  先頭にあると FS 側の varying 位置がずれる。Vulkan / WebGPU では
+  `SV_Position` は location 採番の対象外なので、この順序はどの backend
+  でも同じ意味になる。
+
 ## pass と draw
 
 ```haxe

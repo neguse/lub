@@ -9,7 +9,7 @@ import lua.Table;
 **/
 class Rcas {
 	static var VS:String = "struct VSIn { float2 pos : POSITION; float2 uv : TEXCOORD0; };\n"
-		+ "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
+		+ "struct VSOut { float2 uv : TEXCOORD0; float4 pos : SV_Position; };\n"
 		+ "[shader(\"vertex\")]\n"
 		+ "VSOut vs_main(VSIn i) {\n"
 		+ "    VSOut o;\n"

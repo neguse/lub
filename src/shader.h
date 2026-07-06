@@ -26,6 +26,11 @@ typedef enum SglShaderStage {
 
 typedef struct ShaderAttr {
   char name[32];
+  // HLSL semantic (base name without trailing index + index), used by the
+  // dx12 backend's input layout. Empty on the wasm reflection path where
+  // only locations matter.
+  char semantic[32];
+  int semantic_index;
   int slot;          // input location
   int comp_count;    // 1..4
   int buffer_index;  // vertex-buffer slot; 0 = per-vertex, 1 = per-instance
@@ -59,6 +64,10 @@ typedef struct ShaderStorageBuf {
   int slot;
   SglShaderStage stage;
   bool readonly;
+  // Element size in bytes of StructuredBuffer<T>. The dx12 backend needs it
+  // for D3D12_BUFFER_SRV/UAV StructureByteStride; 0 on paths that don't
+  // populate it (wasm reflection JSON).
+  int elem_stride;
 } ShaderStorageBuf;
 
 typedef struct ShaderStorageTexture {
@@ -104,13 +113,16 @@ typedef struct ShaderBlob {
   size_t bytes;
 } ShaderBlob;
 
-// Target backend for SPIR-V descriptor-set patching. The two backends use
-// different Vulkan descriptor-set layouts (sokol: UB on set 0, samplers on
-// set 1; SDL_GPU: per stage, vs textures=0/UB=1, fs textures=2/UB=3) so the
-// SPIR-V emitted by Slang has to be rewritten differently for each.
+// Target backend for shader codegen. The two Vulkan backends use different
+// descriptor-set layouts (sokol: UB on set 0, samplers on set 1; SDL_GPU:
+// per stage, vs textures=0/UB=1, fs textures=2/UB=3) so the SPIR-V emitted
+// by Slang has to be rewritten differently for each. DX12 emits DXIL
+// instead; no patching, the reflection slots are Slang's HLSL register
+// indices per register class (b/t/s/u).
 typedef enum ShaderTargetBackend {
   SHADER_TARGET_SOKOL = 0,
   SHADER_TARGET_SDLGPU = 1,
+  SHADER_TARGET_DX12 = 2,
 } ShaderTargetBackend;
 
 bool shader_compile(const char *vs_src, const char *fs_src,

@@ -195,6 +195,9 @@ extern const RenderBackend *g_backend;
 extern const RenderBackend g_backend_sokol;
 extern const RenderBackend g_backend_sdlgpu;
 extern const RenderBackend g_backend_webgpu;
+#ifdef _WIN32
+extern const RenderBackend g_backend_dx12; // backend_dx12.cpp, Windows-only
+#endif
 
 #ifdef __cplusplus
 }

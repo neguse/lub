@@ -44,9 +44,9 @@ static const char *UI_VS = //
     "  float4 col : COLOR;\n"
     "};\n"
     "struct VSOut {\n"
-    "  float4 pos : SV_Position;\n"
     "  float2 uv : TEXCOORD0;\n"
     "  float4 col : COLOR0;\n"
+    "  float4 pos : SV_Position;\n"
     "};\n"
     "[shader(\"vertex\")] VSOut vs_main(VSIn i) {\n"
     "  VSOut o;\n"
@@ -66,10 +66,13 @@ static const char *UI_FS = //
     "}\n";
 
 static bool ui_gpu_init() {
-  ShaderTargetBackend tgt =
-      (g_backend && g_backend->name && strcmp(g_backend->name, "sdlgpu") == 0)
-          ? SHADER_TARGET_SDLGPU
-          : SHADER_TARGET_SOKOL;
+  ShaderTargetBackend tgt = SHADER_TARGET_SOKOL;
+  if (g_backend && g_backend->name) {
+    if (strcmp(g_backend->name, "sdlgpu") == 0)
+      tgt = SHADER_TARGET_SDLGPU;
+    else if (strcmp(g_backend->name, "dx12") == 0)
+      tgt = SHADER_TARGET_DX12;
+  }
   char err[1024];
   ShaderBlob vsb = {}, fsb = {};
   if (!shader_compile(UI_VS, UI_FS, tgt, &vsb, &fsb, &g_refl, err,

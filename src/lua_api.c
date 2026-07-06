@@ -1032,6 +1032,16 @@ static int l_use_texture(lua_State *L) {
   return 1;
 }
 
+static ShaderTargetBackend shader_target_for_backend(void) {
+  if (g_backend && g_backend->name) {
+    if (strcmp(g_backend->name, "sdlgpu") == 0)
+      return SHADER_TARGET_SDLGPU;
+    if (strcmp(g_backend->name, "dx12") == 0)
+      return SHADER_TARGET_DX12;
+  }
+  return SHADER_TARGET_SOKOL;
+}
+
 static int l_use_shader(lua_State *L) {
   const char *key = luaL_checkstring(L, 1);
   const char *vs = luaL_checkstring(L, 2);
@@ -1054,11 +1064,7 @@ static int l_use_shader(lua_State *L) {
   char err[1024];
   ShaderBlob vsb = {0}, fsb = {0};
   ShaderReflection new_refl;
-  // Patch SPIR-V descriptor sets for the active backend.
-  ShaderTargetBackend tgt =
-      (g_backend && g_backend->name && strcmp(g_backend->name, "sdlgpu") == 0)
-          ? SHADER_TARGET_SDLGPU
-          : SHADER_TARGET_SOKOL;
+  ShaderTargetBackend tgt = shader_target_for_backend();
   if (!shader_compile(vs, fs, tgt, &vsb, &fsb, &new_refl, err, sizeof(err))) {
     shader_blob_free(&vsb);
     shader_blob_free(&fsb);
@@ -1126,10 +1132,7 @@ static int l_use_shader_compute(lua_State *L) {
   char err[1024];
   ShaderBlob csb = {0};
   ShaderReflection new_refl;
-  ShaderTargetBackend tgt =
-      (g_backend && g_backend->name && strcmp(g_backend->name, "sdlgpu") == 0)
-          ? SHADER_TARGET_SDLGPU
-          : SHADER_TARGET_SOKOL;
+  ShaderTargetBackend tgt = shader_target_for_backend();
   if (!shader_compile_compute(cs, tgt, &csb, &new_refl, err, sizeof(err))) {
     shader_blob_free(&csb);
     if (e->u.sh.h == 0) {
@@ -1747,10 +1750,17 @@ static int l_config(lua_State *L) {
 #else
   if (!name)
     name = "sokol";
-  if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0) {
+  if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0 &&
+      strcmp(name, "dx12") != 0) {
     return luaL_error(
-        L, "config: backend must be 'sokol' or 'sdlgpu', got '%s'", name);
+        L, "config: backend must be 'sokol', 'sdlgpu' or 'dx12', got '%s'",
+        name);
   }
+#ifndef _WIN32
+  if (strcmp(name, "dx12") == 0) {
+    return luaL_error(L, "config: backend 'dx12' is Windows-only");
+  }
+#endif
 #endif
   strncpy(g_app_for_lua->backend_name, name,
           sizeof(g_app_for_lua->backend_name) - 1);

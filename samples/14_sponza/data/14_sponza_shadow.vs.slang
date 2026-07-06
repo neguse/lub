@@ -14,11 +14,11 @@ struct VSIn {
 };
 
 struct VSOut {
-  float4 pos : SV_Position;
   float depth : TEXCOORD0;
   float2 uv : TEXCOORD1;
   float4 base_color_factor : TEXCOORD2;
   float4 material : TEXCOORD3;
+  float4 pos : SV_Position;
 };
 
 [shader("vertex")] VSOut vs_main(VSIn i) {

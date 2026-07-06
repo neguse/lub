@@ -14,9 +14,9 @@ struct VSIn {
   float4 skin : TEXCOORD4; // j0, w0, j1, w1 (SDF 部位距離から焼いた重み)
 };
 struct VSOut {
-  float4 pos : SV_Position;
   float3 normal : TEXCOORD2; // world
   float3 color : COLOR0;
+  float4 pos : SV_Position;
 };
 [shader("vertex")] VSOut vs_main(VSIn i) {
   VSOut o;

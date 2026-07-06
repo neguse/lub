@@ -18,7 +18,7 @@ class SpriteBatch {
 	static var LEGACY_VS:String = "struct Uniforms { float4 params; };\n"
 		+ "ConstantBuffer<Uniforms> u;\n"
 		+ "struct VSIn  { float2 pos : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
-		+ "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
+		+ "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
 		+ "[shader(\"vertex\")]\n"
 		+ "VSOut vs_main(VSIn i) {\n"
 		+ "    VSOut o;\n"
@@ -34,7 +34,7 @@ class SpriteBatch {
 		+ "struct VSVertex { float2 corner : TEXCOORD0; float2 uv01 : TEXCOORD1; };\n"
 		+
 		"struct VSInstance { float2 pos : TEXCOORD2; float2 size : TEXCOORD3; float2 rot_cs : TEXCOORD4; float4 uv_rect : TEXCOORD5; float4 color : TEXCOORD6; };\n"
-		+ "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
+		+ "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
 		+ "[shader(\"vertex\")]\n"
 		+ "VSOut vs_main(VSVertex v, VSInstance i) {\n"
 		+ "    VSOut o;\n"
