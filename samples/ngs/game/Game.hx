@@ -1,6 +1,7 @@
 package game;
 
 import lub.Lub;
+import lubx.Boot;
 import render.Gfx2d;
 import render.Atlas;
 import render.Font;
@@ -30,10 +31,7 @@ class Game {
 	public static var hiscore:Int = 0;
 
 	public static function init() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend, width: W, height: H});
+		Boot.config({width: W, height: H});
 	}
 
 	static function boot():Bool {

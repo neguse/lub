@@ -1,8 +1,8 @@
 import lub.Gfx;
 import lub.Input;
 import lub.Io;
-import lub.Lub;
 import lub.Math;
+import lubx.Boot;
 import lubx.Png;
 
 class Sponza14 {
@@ -53,10 +53,7 @@ class Sponza14 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend});
+		Boot.config({});
 	}
 
 	public static function onFrame() {

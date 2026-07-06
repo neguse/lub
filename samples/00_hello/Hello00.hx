@@ -1,4 +1,4 @@
-import lub.Lub;
+import lubx.Boot;
 import lub.Gfx;
 import lua.Lua;
 
@@ -7,10 +7,7 @@ class Hello00 {
 
 	public static function onInit() {
 		Lua.print("[lua] onInit");
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend});
+		Boot.config({});
 		Lua.print("config called");
 		Lua.print("VERTEX=", Gfx.VERTEX, "RGBA8=", Gfx.RGBA8, "CLEAR=", Gfx.CLEAR);
 		var mt:Dynamic = Gfx.mainTex;

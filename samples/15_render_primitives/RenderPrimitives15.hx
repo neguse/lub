@@ -1,6 +1,6 @@
 import lub.Gfx;
 import lub.Io;
-import lub.Lub;
+import lubx.Boot;
 import lua.Table;
 
 class RenderPrimitives15 {
@@ -16,10 +16,7 @@ class RenderPrimitives15 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend, width: W, height: H});
+		Boot.config({width: W, height: H});
 	}
 
 	static function target(key:String, fmt:Int, filter:Int = -1, storage:Bool = false):Dynamic {

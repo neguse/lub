@@ -423,7 +423,7 @@ for (const sample of samples) {
   const known = KNOWN_FAILING.has(name)
   try {
     console.log(`[verify] A5 switching to ${name}`)
-    const readyP = waitForPlayerReady(10000).catch((e) => {
+    const readyP = waitForPlayerReady(15000).catch((e) => {
       console.warn(`[verify] A5 ${name} playerReady wait:`, e.message)
     })
     if (firstIter && name === '01_triangle') {

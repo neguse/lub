@@ -1,4 +1,3 @@
-import lub.Lub;
 import lub.Gfx;
 import lub.Input;
 import lub.Input.Key;
@@ -6,6 +5,7 @@ import lub.Io;
 import lub.Mesh;
 import lub.Math;
 import lub.Ui;
+import lubx.Boot;
 import lubx.Sdf;
 import lubx.SdfPanel;
 
@@ -96,10 +96,7 @@ class Sdf19 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend});
+		Boot.config({});
 	}
 
 	static var matcapPx:lua.Table<Int, Int> = null;

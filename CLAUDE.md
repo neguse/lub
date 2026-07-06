@@ -34,4 +34,6 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - **emcc は PATH に無いが存在する**: `source ~/emsdk/emsdk_env.sh` で使える。`which emcc` だけで「無い」と早合点しない。
 - build: `emcmake cmake --preset wasm-release` → `cmake --build build/wasm -j`。既存 build/wasm が Unix Makefiles だと preset(Ninja)の configure は mismatch で失敗するが、`cmake --build build/wasm` は既存設定で再ビルドできる。
 - verify: `cd web && npm run dev`(localhost:5173)起動 → 別プロセスで `LUB_URL=http://localhost:5173/ npm run verify`(playwright + chromium swiftshader)。A1-A4=初期描画/hot reload、A5=全サンプル切替。
+- **haxe-lib を変えたら `cd web && npm run gen-haxe`**: in-browser コンパイラの lub ライブラリは `web/public/haxe-wasm/std-bundle.json`(gitignore)に焼き込みなので、再生成しないと web 側だけ古い lubx でコンパイルされる(A5 は nonBlack 判定が甘く、コンパイル失敗しても前サンプルの絵で PASS しうる。playerReady timeout 警告が出たら疑う)。
+- verify が「compiling…」のままハングしたら vite dev server の詰まりを疑って再起動(長時間稼働 + 大量ファイル変更で worker モジュール変換が無音で止まることがある)。
 - lub.js 構文チェック: `node --check build/wasm/lub.js`。

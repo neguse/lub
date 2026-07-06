@@ -2,7 +2,7 @@ import lub.Gfx;
 import lub.Input;
 import lub.Input.Key;
 import lub.Io;
-import lub.Lub;
+import lubx.Boot;
 import lub.Math.Mat4;
 import lub.Math.MathUtil;
 import lub.Math.Quat;
@@ -66,10 +66,7 @@ class CoinPusher18 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend, width: 640, height: 360});
+		Boot.config({width: 640, height: 360});
 		for (_ in 0...MAX_COINS)
 			coins.push({
 				active: false,

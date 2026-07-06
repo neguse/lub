@@ -2,6 +2,7 @@ import lub.Gfx;
 import lub.Lub;
 import lub.Profiler;
 import lubx.Atlas;
+import lubx.Boot;
 import lubx.Color;
 import lubx.FpsMeter;
 import lubx.Rect;
@@ -123,10 +124,7 @@ class Sprites13 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend, width: W, height: H});
+		Boot.config({width: W, height: H});
 
 		targetFps = envFloat("LUB_SPRITE_TARGET_FPS", 60.0);
 		maxSprites = envInt("LUB_SPRITE_MAX", 200000);

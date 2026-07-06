@@ -1,4 +1,4 @@
-import lub.Lub;
+import lubx.Boot;
 import lub.Gfx;
 import lub.Io;
 import lub.Math;
@@ -10,10 +10,7 @@ class Gltf08 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend});
+		Boot.config({});
 	}
 
 	static function makeMvp(t:Float):lua.Table<Int, Float> {

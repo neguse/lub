@@ -128,7 +128,8 @@
   app/JS 側の責務)。core の契約は「永続を保証する」ではなく
   「プラットフォームの storage に書く」に留める。
 - TTF フォント。(一部済: `font_metrics/glyph/glyph_mesh/kern` core API +
-  `lub.Font` extern + `lubx.Text` 動的 glyph atlas + sample 21 いろはスイカ +
+  `lub.Font` extern + `lubx.Text` 動的 glyph atlas + `lubx.MeshText`
+  メッシュグリフ描画(大サイズレジーム)+ sample 21 いろはスイカ +
   `tests/lua/test_font.lua`。native/web 両対応を verify 済。
   未着手: 折返し・禁則レイアウト、fallback チェーン、絵文字画像シート)
   要件: 大サイズの見た目にこだわれる、メッシュ化できる、

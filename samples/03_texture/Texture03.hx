@@ -1,16 +1,13 @@
-import lub.Lub;
 import lub.Gfx;
 import lub.Io;
+import lubx.Boot;
 import lubx.Png;
 
 class Texture03 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend});
+		Boot.config({});
 	}
 
 	public static function onFrame() {

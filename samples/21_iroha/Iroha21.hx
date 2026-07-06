@@ -1,27 +1,17 @@
 import lub.Audio;
-import lub.Font;
 import lub.Gfx;
 import lub.Input;
 import lub.Input.Key;
 import lub.Io;
-import lub.Lub;
 import lub.Phys2d;
+import lubx.Boot;
+import lubx.Camera2d;
 import lubx.Color;
+import lubx.MeshText;
 import lubx.Rand;
 import lubx.Sfx;
 import lubx.SpriteBatch;
 import lubx.Text;
-
-@:native("utf8")
-private extern class NativeUtf8 {
-	static function codepoint(s:String, i:Int):Int;
-	static function offset(s:String, n:Int, i:Int):Null<Int>;
-}
-
-@:native("string")
-private extern class NativeString {
-	static function len(s:String):Int;
-}
 
 private typedef Ball = {
 	id:Int,
@@ -35,15 +25,6 @@ private typedef Ball = {
 	overT:Float
 };
 
-private typedef GlyphEntry = {
-	vb:Dynamic,
-	ib:Dynamic,
-	count:Int,
-	advance:Float,
-	cx:Float,
-	cy:Float
-};
-
 /**
 	いろはスイカ: 同じ文字の玉がぶつかると「い→ろ→は→に→ほ→へ→と」の
 	順に育つスイカゲーム風サンプル。玉の文字は `font_glyph_mesh` の
@@ -54,8 +35,6 @@ class Iroha21 {
 	static inline var W = 640;
 	static inline var H = 360;
 	static inline var PPM = 100.0; // physics m -> logical px
-	static inline var CX = 320.0; // world x=0 の screen x
-	static inline var FLOOR_Y = 344.0; // world y=0 の screen y
 	static inline var HALF_W = 1.15; // 容器の半幅 (m)
 	static inline var WALL_TOP = 3.2; // 壁の上端 (m)
 	static inline var LINE_Y = 2.45; // ゲームオーバー線 (m)
@@ -64,59 +43,25 @@ class Iroha21 {
 	static var CHARS = ["い", "ろ", "は", "に", "ほ", "へ", "と"];
 	static var RADII = [0.13, 0.17, 0.22, 0.28, 0.36, 0.46, 0.58];
 	static var COLORS:Array<Color> = [
-		{
-			r: 0.91,
-			g: 0.36,
-			b: 0.36,
-			a: 1.0
-		},
-		{
-			r: 0.93,
-			g: 0.60,
-			b: 0.34,
-			a: 1.0
-		},
-		{
-			r: 0.93,
-			g: 0.83,
-			b: 0.36,
-			a: 1.0
-		},
-		{
-			r: 0.49,
-			g: 0.80,
-			b: 0.42,
-			a: 1.0
-		},
-		{
-			r: 0.36,
-			g: 0.72,
-			b: 0.91,
-			a: 1.0
-		},
-		{
-			r: 0.50,
-			g: 0.45,
-			b: 0.93,
-			a: 1.0
-		},
-		{
-			r: 0.83,
-			g: 0.36,
-			b: 0.91,
-			a: 1.0
-		},
+		Color.rgb(0.91, 0.36, 0.36),
+		Color.rgb(0.93, 0.60, 0.34),
+		Color.rgb(0.93, 0.83, 0.36),
+		Color.rgb(0.49, 0.80, 0.42),
+		Color.rgb(0.36, 0.72, 0.91),
+		Color.rgb(0.50, 0.45, 0.93),
+		Color.rgb(0.83, 0.36, 0.91),
 	];
+
+	static var cam = new Camera2d(W, H, PPM, 320.0, 344.0);
 
 	static var batch = new SpriteBatch(W, H);
 	// ゲームオーバー表示用。SpriteBatch は atlas バケツ順で描くので、玉の上に
 	// 帯を重ねるには flush を分ける必要がある (バッファも別 prefix にする)。
 	static var overlay = new SpriteBatch(W, H, "lubx_sprite", "iroha_overlay");
 	static var hud:Text = null;
+	static var mesh:MeshText = null;
 	static var ttf:String = null;
 	static var fontVersion = 0;
-	static var glyphs = new Map<Int, GlyphEntry>();
-	static var glyphShader:Dynamic = null;
 
 	static var balls:Array<Ball> = [];
 	static var nextId = 0;
@@ -134,10 +79,7 @@ class Iroha21 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend, width: W, height: H});
+		Boot.config({width: W, height: H});
 	}
 
 	// --- アセット -----------------------------------------------------------
@@ -150,120 +92,9 @@ class Iroha21 {
 			ttf = r.text;
 			fontVersion = r.version;
 			hud = new Text("iroha_hud", ttf, 20);
-			glyphs = new Map();
+			mesh = new MeshText("iroha_mesh", ttf, fontVersion, W, H);
 		}
-
-		var vs = Io.loadText("samples/21_iroha/data/glyph.vs.slang");
-		var fs = Io.loadText("samples/21_iroha/data/glyph.fs.slang");
-		if (vs.text == null || fs.text == null)
-			return false;
-		glyphShader = Gfx.useShader("iroha_glyph", vs.text, fs.text, vs.version * 31 + fs.version);
-		return glyphShader != null;
-	}
-
-	static function glyphFor(cp:Int):GlyphEntry {
-		var e = glyphs.get(cp);
-		if (e != null)
-			return e;
-		var gm = Font.glyphMesh(ttf, cp);
-		if (gm == null || gm.vert_count == 0)
-			return null;
-		var verts = new Array<Float>();
-		var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-		for (i in 0...gm.vert_count) {
-			var x:Float = gm.positions[i * 3 + 1];
-			var y:Float = gm.positions[i * 3 + 2];
-			verts.push(x);
-			verts.push(y);
-			if (x < minX)
-				minX = x;
-			if (x > maxX)
-				maxX = x;
-			if (y < minY)
-				minY = y;
-			if (y > maxY)
-				maxY = y;
-		}
-		var idx = new Array<Float>();
-		for (i in 0...gm.index_count)
-			idx.push(gm.indices[i + 1]);
-		e = {
-			vb: Gfx.useBuffer("iroha_gv:" + cp, Gfx.VERTEX, verts, fontVersion),
-			ib: Gfx.useBuffer("iroha_gi:" + cp, Gfx.INDEX, idx, fontVersion),
-			count: gm.index_count,
-			advance: gm.advance,
-			cx: (minX + maxX) * 0.5,
-			cy: (minY + maxY) * 0.5,
-		};
-		glyphs.set(cp, e);
-		return e;
-	}
-
-	/** メッシュグリフを1つ描く。(x, y) は配置中心 (論理 px)、size は px/em。 **/
-	static function drawGlyph(cp:Int, x:Float, y:Float, size:Float, angle:Float, color:Color, centered:Bool) {
-		var e = glyphFor(cp);
-		if (e == null)
-			return;
-		Gfx.draw(e.count, {
-			verts: e.vb,
-			indices: e.ib,
-			uniforms: {
-				psr: lua.Table.fromArray([x, y, size, angle]),
-				tint: lua.Table.fromArray([color.r, color.g, color.b, color.a]),
-				screen: lua.Table.fromArray([(W : Float), (H : Float), 0.0, 0.0]),
-				center: lua.Table.fromArray(centered ? [e.cx, e.cy, 0.0, 0.0] : [0.0, 0.0, 0.0, 0.0]),
-			},
-		}, {
-			shader: glyphShader,
-			depth: false,
-			cull: Gfx.NONE,
-			blend: Gfx.ALPHA,
-		});
-	}
-
-	/** メッシュグリフで1行 (ベースライン基準、中央揃え)。大サイズ演出用。 **/
-	static function drawGlyphText(s:String, cx:Float, baselineY:Float, size:Float, color:Color) {
-		var width = 0.0;
-		var n = NativeString.len(s);
-		var i:Null<Int> = 1;
-		while (i != null) {
-			var pos:Int = i;
-			if (pos > n)
-				break;
-			var e = glyphFor(NativeUtf8.codepoint(s, pos));
-			if (e != null)
-				width += e.advance;
-			i = NativeUtf8.offset(s, 2, pos);
-		}
-		var pen = cx - width * size * 0.5;
-		i = 1;
-		while (i != null) {
-			var pos:Int = i;
-			if (pos > n)
-				break;
-			var cp = NativeUtf8.codepoint(s, pos);
-			var e = glyphFor(cp);
-			if (e != null) {
-				drawGlyph(cp, pen, baselineY, size, 0.0, color, false);
-				pen += e.advance * size;
-			}
-			i = NativeUtf8.offset(s, 2, pos);
-		}
-	}
-
-	// --- 座標変換 -----------------------------------------------------------
-
-	static inline function sx(wx:Float):Float
-		return CX + wx * PPM;
-
-	static inline function sy(wy:Float):Float
-		return FLOOR_Y - wy * PPM;
-
-	static function mouseWorldX():Float {
-		var g = Gfx.size();
-		var mp = Input.mousePos();
-		var mx = mp.x * W / g.w;
-		return (mx - CX) / PPM;
+		return ttf != null && mesh != null;
 	}
 
 	// --- ゲーム -------------------------------------------------------------
@@ -300,7 +131,7 @@ class Iroha21 {
 
 		// --- 入力
 		var dropR = RADII[nextLevel];
-		var dropX = mouseWorldX();
+		var dropX = cam.mouseWorld().x;
 		if (dropX < -(HALF_W - dropR))
 			dropX = -(HALF_W - dropR);
 		if (dropX > HALF_W - dropR)
@@ -436,98 +267,52 @@ class Iroha21 {
 		batch.begin();
 
 		// 容器
-		var wallCol:Color = {
-			r: 0.35,
-			g: 0.32,
-			b: 0.42,
-			a: 1.0
-		};
-		batch.rect(sx(-HALF_W) - 8, sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
-		batch.rect(sx(HALF_W), sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
-		batch.rect(sx(-HALF_W) - 8, FLOOR_Y, HALF_W * 2 * PPM + 16, 8, wallCol);
+		var wallCol = Color.rgb(0.35, 0.32, 0.42);
+		batch.rect(cam.sx(-HALF_W) - 8, cam.sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
+		batch.rect(cam.sx(HALF_W), cam.sy(WALL_TOP), 8, WALL_TOP * PPM, wallCol);
+		batch.rect(cam.sx(-HALF_W) - 8, cam.originY, HALF_W * 2 * PPM + 16, 8, wallCol);
 
 		// ゲームオーバー線
 		var lineBlink = over ? 1.0 : 0.25 + 0.15 * Math.sin(t * 4.0);
-		batch.rect(sx(-HALF_W), sy(LINE_Y), HALF_W * 2 * PPM, 2, {
-			r: 0.9,
-			g: 0.3,
-			b: 0.3,
-			a: lineBlink
-		});
+		batch.rect(cam.sx(-HALF_W), cam.sy(LINE_Y), HALF_W * 2 * PPM, 2, Color.rgb(0.9, 0.3, 0.3, lineBlink));
 
 		// 玉 (sprite は本体、上に mesh グリフ)
 		for (ball in balls) {
 			var r = RADII[ball.level] * PPM;
 			var c = COLORS[ball.level];
-			batch.disc(sx(ball.x), sy(ball.y), r, c);
+			batch.disc(cam.sx(ball.x), cam.sy(ball.y), r, c);
 		}
 
 		// 投下プレビュー
 		if (!over) {
 			var r = dropR * PPM;
 			var c = COLORS[nextLevel];
-			batch.disc(sx(dropX), sy(DROP_Y), r, {
-				r: c.r,
-				g: c.g,
-				b: c.b,
-				a: 0.5 + 0.2 * Math.sin(t * 6.0)
-			});
+			batch.disc(cam.sx(dropX), cam.sy(DROP_Y), r, Color.rgb(c.r, c.g, c.b, 0.5 + 0.2 * Math.sin(t * 6.0)));
 		}
 
 		// HUD (bitmap 小サイズレジーム)
 		hud.draw(batch, "スコア " + score, 12, 26);
-		hud.draw(batch, "ベスト " + best, 12, 50, {
-			r: 0.8,
-			g: 0.8,
-			b: 0.8,
-			a: 0.8
-		});
-		hud.draw(batch, "いろはにほへと", 500, 26, {
-			r: 0.7,
-			g: 0.7,
-			b: 0.8,
-			a: 0.9
-		}, 0.8);
+		hud.draw(batch, "ベスト " + best, 12, 50, Color.rgb(0.8, 0.8, 0.8, 0.8));
+		hud.draw(batch, "いろはにほへと", 500, 26, Color.rgb(0.7, 0.7, 0.8, 0.9), 0.8);
 
 		batch.flush();
 
 		// mesh グリフ (拡大レジーム): 玉の文字は物理の回転ごと描く
-		var ink:Color = {
-			r: 0.12,
-			g: 0.10,
-			b: 0.14,
-			a: 0.9
-		};
+		var ink = Color.rgb(0.12, 0.10, 0.14, 0.9);
 		for (ball in balls) {
-			var cp = NativeUtf8.codepoint(CHARS[ball.level], 1);
-			drawGlyph(cp, sx(ball.x), sy(ball.y), RADII[ball.level] * PPM * 1.3, ball.angle, ink, true);
+			mesh.char(CHARS[ball.level], cam.sx(ball.x), cam.sy(ball.y), RADII[ball.level] * PPM * 1.3, ball.angle, ink, true);
 		}
 		if (!over)
-			drawGlyph(NativeUtf8.codepoint(CHARS[nextLevel], 1), sx(dropX), sy(DROP_Y), dropR * PPM * 1.3, 0.0, {
-				r: ink.r,
-				g: ink.g,
-				b: ink.b,
-				a: 0.6
-			}, true);
+			mesh.char(CHARS[nextLevel], cam.sx(dropX), cam.sy(DROP_Y), dropR * PPM * 1.3, 0.0, Color.rgb(ink.r, ink.g, ink.b, 0.6), true);
 
 		if (over) {
 			// 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
 			overlay.begin();
-			overlay.rect(0, 108, W, 132, {
-				r: 0.05,
-				g: 0.04,
-				b: 0.07,
-				a: 0.85
-			});
+			overlay.rect(0, 108, W, 132, Color.rgb(0.05, 0.04, 0.07, 0.85));
 			var msg = "クリックでもういちど";
-			hud.draw(overlay, msg, CX - hud.width(msg) * 0.5, 222);
+			hud.draw(overlay, msg, cam.originX - hud.width(msg) * 0.5, 222);
 			overlay.flush();
-			drawGlyphText("おしまい", CX, 190, 64, {
-				r: 0.95,
-				g: 0.92,
-				b: 0.85,
-				a: 1.0
-			});
+			mesh.textCentered("おしまい", cam.originX, 190, 64, Color.rgb(0.95, 0.92, 0.85));
 		}
 
 		Gfx.endPass();

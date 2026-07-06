@@ -1,6 +1,6 @@
 import lub.Audio;
 import lub.Gfx;
-import lub.Lub;
+import lubx.Boot;
 import lub.Ui;
 
 // サウンドラボ: ImGui で波形パラメータを調整しながら音を作る。
@@ -37,10 +37,7 @@ class AudioLab20 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend});
+		Boot.config({});
 	}
 
 	static function synth():lua.Table<Int, Float> {

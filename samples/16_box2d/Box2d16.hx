@@ -1,6 +1,6 @@
 import lub.Gfx;
 import lub.Io;
-import lub.Lub;
+import lubx.Boot;
 import lub.Phys2d;
 import lub.Phys2d.Pose;
 import lua.Table;
@@ -15,10 +15,7 @@ class Box2d16 {
 	public static function main() {}
 
 	public static function onInit() {
-		var backend:String = lua.Os.getenv("LUB_BACKEND");
-		if (backend == null)
-			backend = "sokol";
-		Lub.config({backend: backend, width: 640, height: 360});
+		Boot.config({width: 640, height: 360});
 	}
 
 	static function pushVertex(out:Array<Float>, x:Float, y:Float, r:Float, g:Float, b:Float, a:Float) {
