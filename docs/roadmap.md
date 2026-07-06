@@ -123,26 +123,36 @@
   web は IndexedDB に 1 record で書き込み毎に即 commit、起動時に
   `navigator.storage.persist()` を要求し全 key を先読み(実用上は起動直後に
   ready)。localStorage は採らない(5MiB 制限で eviction 耐性は IndexedDB と
-  大差なく二重管理になるだけ)。保険の export/import(web=blob download /
-  file picker、native=save dir 直接)を v1 要件に含める。
-- TTF フォント。拡大に耐える距離場方式でやる。core は純関数 utility 一本:
-  glyph outline in → 距離場画素 + metrics out(`audio_decode` と同じ立て付け、
-  atlas/cache/layout は core に入れない)。生成方式は MSDF を本命
-  (第1候補 pjako/msdf_c: 単一ヘッダ C99・stb_truetype のみ依存。品質不足なら
-  msdfgen core: C++ だが依存ゼロ、stb_truetype outline を渡せば FreeType 不要)。
-  MSDF のグリフ単価は公開ベンチが無いので採用時に 32–48px で実測し、
-  ブートストラップには stbtt_GetGlyphSDF(単チャンネル、強拡大で角が丸む)も
-  許す — 契約を「outline in → field out」で固定して差し替え可能にする。
-  lubx 側: fontstash 方式の動的 glyph atlas(skyline packing + 満杯時リセット)、
-  fallback チェーン(web はシステムフォント列挙不可なので Noto Sans +
-  Noto Sans JP サブセット同梱が前提)、レイアウト(kerning + UAX #14
-  サブセットの禁則)。v1 の線: シェーピング無し = cmap 直引きで正しく出る
-  Latin/Greek/Cyrillic + CJK 横書きまで。Arabic/Indic は非対応と明言する
-  (シェーピング無しで出すと壊れた文字列になるため)。カラー絵文字は
-  MSDF 不可 + stb_truetype が CBDT/COLR 未対応なので v1 非対応
-  (必要なら app 側の PNG シートで)。v2 への布石は3点だけ契約に残す:
-  距離場生成の差し替え点、atlas の RGBA ページ、codepoint 列→配置 glyph 列の
-  間に shaper を挟める層分離。
+  大差なく二重管理になるだけ)。export/import は core API にしない
+  (native は save dir を直接触れる。web の blob download / file picker は
+  app/JS 側の責務)。core の契約は「永続を保証する」ではなく
+  「プラットフォームの storage に書く」に留める。
+- TTF フォント。要件: 大サイズの見た目にこだわれる、メッシュ化できる、
+  FIGS + CCJK、動的文字列(プレイヤー名等の任意入力)前提、絵文字も出せる。
+  スコープの最大境界は「対応言語 = 表引き (cmap) で正しく出る言語」:
+  FIGS + CCJK はこの内側に収まる(入力は NFC 正規化前提、現代ハングルは
+  合成済み音節で足りる。旧ハングルは対象外)。シェーピングが要る
+  Arabic/Indic 等は非対応と明言する(中途半端に出すと壊れた文字列になる)。
+  この線を越えない限り全経路が決定的な純関数で、golden 互換を保てる。
+  サイズは2レジームに分割し、1方式で全域をカバーしない:
+  大サイズ演出はメッシュ(TTF 輪郭→三角形化。押し出しで 3D 文字にもなる)、
+  小サイズ本文はサイズごと bitmap ラスタ。距離場 (SDF/MSDF) は
+  メッシュが大サイズを担うので採らない。
+  core は純関数 utility(`surface_nets` と同じ立て付け、stb_truetype ベース、
+  FreeType 不要): glyph の bitmap ラスタ、glyph の輪郭→三角形化 MeshData、
+  metrics/kerning 取得。atlas/cache/layout は core に入れない。
+  lubx 側: fontstash 方式の動的 glyph atlas(skyline packing + 満杯時リセット、
+  サイズ×フォントごと)、fallback チェーン(web はシステムフォント列挙不可
+  なのでフォント同梱前提)、行レイアウト(kerning + 折返し: UAX #14
+  サブセットの禁則(日中)+ 単語折返し(FIGS/韓))。
+  絵文字は生成経路だけ別、行レイアウトは文字と同じ仕組みに乗せる:
+  カラーフォント (CBDT/COLR) は読まず、画像シート(Twemoji / Noto Emoji の
+  PNG、ファイル名 = codepoint 列)を既存の画像→atlas 経路に貼る。
+  ZWJ 合字・肌色・旗はシート索引への最長一致で解決し、未知の列は
+  構成要素に分解して個別表示にフォールバック。
+  未解決課題: 動的 CCJK 前提だと同梱フォントが重い(Noto CJK 級)。
+  native は許容できるが web 配信では言語別分割ロードや使用頻度サブセット
+  + フォールバックの工夫が要る。
 - Window 制御。title / fullscreen / cursor(表示・グラブ)を実行中に動的に
   変えられること(カーソルキャプチャは FPS カメラ系で必須)。API は宣言型
   `window({title, fullscreen, cursor})` を毎フレーム宣言し、runtime が実状態を
