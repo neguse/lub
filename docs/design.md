@@ -30,6 +30,11 @@ Haxe はその性質を活かしたまま、より書きやすい script authori
 - 分業用 GUI authoring tool。
 - 実行時 performance の最大化。大量 object や巨大 scene の処理は主目的ではない。
 - AI ベース開発にしか役に立たない機能。
+- WebGL fallback。web は WebGPU 必須とする。core API が compute / storage buffer を
+  一級で持つため WebGL2 には収まらず、対応するなら core API のサブセット化という
+  別の決断になる。WebGPU の無い環境 (古い iOS、Vulkan driver がブロックリストに
+  載った Android の Chrome) は配布対象外
+  (経緯: `docs/log/2026-07-07-backend-consolidation.md`)。
 
 ## Core API Boundary
 
@@ -83,9 +88,10 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 ## Current Constraints
 
 - macOS は未対応。
-- sdlgpu backend は native 専用。web は webgpu backend (default) と sokol/WGPU。
-  DX12 backend は未着手 (`docs/log/2026-06-22-native-backend-design.md`)。
+- sdlgpu backend は native 専用。web は webgpu backend のみ。
+- DX12 backend (`native`) は Windows 専用で実装済み。CI golden は WARP で回す
+  (`docs/dx12-backend.md`)。backend 構成の整理方針は
+  `docs/log/2026-07-07-backend-consolidation.md`。
 - swapchain capture (`--capture`) は native のみ。web は `Gfx.readback()` による
   render target readback のみ。
-- sokol Vulkan path には depth/stencil format と semaphore reuse の validation warning が残っている。
 - SDL GPU path は combined image sampler 周辺に制約がある。

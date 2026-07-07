@@ -708,9 +708,8 @@ static BackendShader sg_make_shader(const ShaderDesc *d) {
     gpu_stats_create(GPU_STAT_PIPELINE, 0);
     return (uintptr_t)s;
   }
-  // Slang's SPIR-V emitter renames the entry-point function to "main"
-  // (same convention used by the sokol backend). Both vs and fs blobs
-  // each have a single "main" entry point.
+  // Slang's SPIR-V emitter renames the entry-point function to "main".
+  // Both vs and fs blobs each have a single "main" entry point.
   s->vs = SDL_CreateGPUShader(
       g_app->gpu_device,
       &(SDL_GPUShaderCreateInfo){
@@ -965,8 +964,7 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
               {
                   .fill_mode = SDL_GPU_FILLMODE_FILL,
                   .cull_mode = cull,
-                  // Match sokol's default and the runtime's D3D-style LH
-                  // examples.
+                  // Match the runtime's D3D-style LH examples.
                   .front_face = SDL_GPU_FRONTFACE_CLOCKWISE,
               },
           .multisample_state =

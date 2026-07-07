@@ -79,10 +79,6 @@ add_library(tess2 STATIC
 )
 target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
 
-if(NOT LUB_WASM)
-  find_package(Vulkan REQUIRED)
-endif()
-
 # --- Slang prebuilt -------------------------------------------------------
 # We use the Slang prebuilt release (slang.h + slang.lib/libslang.so + DLLs).
 # The header tree lives under third_party/slang/include (in-tree). The binary
@@ -162,13 +158,11 @@ if(NOT LUB_WASM)
 endif()
 
 # Source list. capture.c itself is backend-agnostic (uses g_backend->capture)
-# and compiles everywhere; only backend_sdlgpu.c is native-only because the
-# SDL_GPU APIs aren't available on the WGPU path we use under wasm. The
-# sokol backend's capture stub returns false on wasm.
+# and compiles everywhere. backend_sdlgpu.c / backend_dx12.cpp are
+# native-only; wasm builds ship the webgpu backend alone.
 set(LUB_SOURCES
   src/main.c
   src/app.c
-  src/sokol_impl.c
   src/lua_api.c
   src/enums_lua.c
   src/pass.c
@@ -180,7 +174,6 @@ set(LUB_SOURCES
   src/shader.cpp
   src/pipeline.c
   src/capture.c
-  src/backend_sokol.c
   src/stb_impl.c
   src/audio.c
   src/miniaudio_impl.c
@@ -215,7 +208,6 @@ endif()
 add_executable(lub ${LUB_SOURCES})
 
 target_include_directories(lub PRIVATE
-  third_party/sokol
   third_party/slang/include
   third_party/stb
   third_party/cgltf
@@ -237,13 +229,10 @@ target_link_libraries(lub PRIVATE
   tess2
 )
 if(NOT LUB_WASM)
-  target_link_libraries(lub PRIVATE
-    slang
-    Vulkan::Vulkan
-  )
+  target_link_libraries(lub PRIVATE slang)
 endif()
 if(UNIX AND NOT LUB_WASM)
-  # libdl required by Lua dynamic loading, libm by sokol/Lua math (Linux/Mac).
+  # libdl required by Lua dynamic loading, libm by Lua math (Linux/Mac).
   # Under emscripten the libc already provides both equivalents.
   target_link_libraries(lub PRIVATE m dl)
 endif()
@@ -285,33 +274,27 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   set_source_files_properties(src/miniaudio_impl.c PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
-# Backend define: native uses sokol's Vulkan backend; emscripten uses WebGPU.
-if(LUB_WASM)
-  target_compile_definitions(lub PRIVATE SOKOL_WGPU)
-else()
-  target_compile_definitions(lub PRIVATE SOKOL_VULKAN)
-endif()
 
 # Emscripten link flags: WebGPU + ASYNCIFY for the (future) Slang fetch, plus
 # the samples/lume tree preloaded as virtual FS.
 #
 # WebGPU is wired up through the `emdawnwebgpu` emscripten port (Dawn's
 # Chrome/Node-compatible WGPU header set). The header `webgpu/webgpu.h` is
-# referenced from sokol_gfx.h's WGPU backend; the port supplies both the
+# referenced from backend_webgpu.c; the port supplies both the
 # header at compile time and the JS glue at link time. -sUSE_WEBGPU=1
 # alone is no longer enough on Emscripten >= 3.1.61.
 if(LUB_WASM)
   set_target_properties(lub PROPERTIES SUFFIX ".js")
   # --- emdawnwebgpu port ---
-  # Provides webgpu/webgpu.h that sokol_gfx's WGPU backend includes. Plain
+  # Provides webgpu/webgpu.h for backend_webgpu.c. Plain
   # -sUSE_WEBGPU=1 is no longer sufficient on emscripten >= 3.1.61. The port
   # is auto-fetched against the active emsdk's manifest, so the header ABI
   # can shift if the SDK is upgraded.
   #
   # Tested with: emsdk 5.0.2 (emcc 5.0.2 / dc80f645ee70178c11666de0c3860d9e064d50e4).
-  # If you upgrade emsdk and sokol_gfx WGPU calls suddenly stop compiling or
-  # render-paths regress, revert to this SDK version or update sokol_gfx to a
-  # release that tracks the newer Dawn ABI.
+  # If you upgrade emsdk and wgpu* calls suddenly stop compiling or
+  # render-paths regress, revert to this SDK version or update backend_webgpu.c
+  # to track the newer Dawn ABI.
   target_compile_options(lub PRIVATE --use-port=emdawnwebgpu)
   # SHELL: keeps multi-token flags (`--preload-file PATH`) as one logical
   # unit so CMake doesn't dedupe / split them. Without SHELL the second

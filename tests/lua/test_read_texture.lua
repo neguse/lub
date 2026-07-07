@@ -4,7 +4,7 @@ local wrote = false
 local rb = nil
 
 function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
+	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 	rb = readback()
 end
 

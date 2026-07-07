@@ -10,7 +10,7 @@ cd "$(dirname "$0")/../../.."   # -> lub repo root
 BINARY=./build/lub
 ENTRY=samples/ngs/ngs.hxml
 GOLDEN_DIR=tests/golden/ngs
-BACKENDS=(sokol sdlgpu)
+BACKENDS=(sdlgpu)
 # name:frame の組。play_=Play直入り, kill_=Play+撃破mock, boss_=boss直入り, gameover_=GameOver直入り。
 CASES=(title_f0:0 title_f30:30 play_f0:0 play_f70:70 play_f120:120 play_f240:240 kill_f64:64 boss_f40:40 boss_f120:120 gameover_f30:30)
 

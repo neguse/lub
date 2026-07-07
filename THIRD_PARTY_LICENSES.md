@@ -6,7 +6,6 @@ lub bundles or links the following third-party components.
 
 | Component | Path | License | Source |
 |-----------|------|---------|--------|
-| sokol_gfx | third_party/sokol/sokol_gfx.h | zlib | https://github.com/floooh/sokol |
 | stb_image / stb_image_write | third_party/stb/ | Public Domain / MIT (dual) | https://github.com/nothings/stb |
 | cgltf | third_party/cgltf/cgltf.h | MIT | https://github.com/jkuhlmann/cgltf |
 | Slang headers | third_party/slang/include/ | Apache-2.0 WITH LLVM-exception | https://github.com/shader-slang/slang |

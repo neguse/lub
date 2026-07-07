@@ -9,7 +9,7 @@
 #   scripts/run-golden.sh --sample 01_triangle
 #   scripts/run-golden.sh --test indexed_draw
 #   scripts/run-golden.sh --tests-only
-#   scripts/run-golden.sh --backend sokol
+#   scripts/run-golden.sh --backend sdlgpu
 #
 # Determinism relies on:
 #   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
@@ -17,8 +17,8 @@
 #   - fixed --capture-frame                 - set below to FRAME
 # Exit code is 0 only if every checked visual golden matches.
 #
-# Platform selects the backend set: Linux checks sokol + sdlgpu, Windows
-# (git bash) checks the native (D3D12) backend.
+# Platform selects the backend set: Linux checks sdlgpu, Windows (git
+# bash) checks the native (D3D12) backend.
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ case "$(uname -s)" in
         ;;
     *)
         windows=0
-        BACKENDS=(sokol sdlgpu)
+        BACKENDS=(sdlgpu)
         BINARY="${BINARY:-./build/lub}"
         ;;
 esac

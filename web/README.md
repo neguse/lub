@@ -49,7 +49,7 @@ npm run gen-haxe             # haxe-wasm/dist or haxe-wasm/build から glue+was
             │ debounce 300ms             │  ────────▶  │ lub.js (Emscripten module)     │
             └────────────────────────────┘  ◀─player──│   ↑ EM_ASYNC_JS bridge            │
                                             Ready/log │   ↑ FS.writeFile で MEMFS overlay │
-                                                       │ sokol_gfx (WGPU) — canvas へ描画 │
+                                                       │ backend_webgpu — canvas へ描画   │
                                                        └──────────────────────────────────┘
 ```
 
@@ -109,4 +109,4 @@ npm run deploy    # build + wrangler deploy
 - サンプル切替時に dirty な編集があると `confirm()` で警告する。
 - **`--capture` の swapchain capture は native のみ**。web (webgpu backend) では
   任意 render target の readback (`Gfx.readback()`) を使う。
-- **sdlgpu backend は web 非対応**。web は `webgpu` (default) と sokol/WGPU。
+- **sdlgpu backend は web 非対応**。web は `webgpu` のみ。

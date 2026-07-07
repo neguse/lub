@@ -1,4 +1,4 @@
-// backend_webgpu.c — RenderBackend impl using webgpu.h directly (no sokol).
+// backend_webgpu.c — RenderBackend impl using webgpu.h directly.
 //
 // Emscripten-only for now. Uses the browser's native WebGPU API via
 // emdawnwebgpu. Shaders arrive as WGSL source from slang-bridge.ts.

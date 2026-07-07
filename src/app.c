@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Selected in app_backend_init; NULL until then. All GPU work goes through
+// g_backend->xxx() after that point.
+const RenderBackend *g_backend = NULL;
+
 bool app_init(App *app) {
   memset(app, 0, sizeof(*app));
 
@@ -23,21 +27,25 @@ bool app_init(App *app) {
       strncpy(app->backend_name, env_b, sizeof(app->backend_name) - 1);
       app->backend_name[sizeof(app->backend_name) - 1] = '\0';
     } else {
-      strcpy(app->backend_name, "sokol");
+      strcpy(app->backend_name, "native");
     }
   }
 #endif
 
-  // Window creation flag: sokol/sdlgpu は SDL_Vulkan_* を使うので
-  // Vulkan-capable surface を要求する。D3D12 直接実装 ("native", Windows 専用)
-  // は Vulkan を 使わないため flag を外し、Vulkan ICD の無い環境 (GPU 無しの CI
-  // 等) でも window を作れるようにする。wasm は canvas-backed default のみ。
+  // Window creation flag: sdlgpu (Vulkan driver) は Vulkan-capable surface を
+  // 要求する。D3D12 直接実装 (Windows の "native") は Vulkan を使わないため
+  // flag を外し、Vulkan ICD の無い環境 (GPU 無しの CI 等) でも window を
+  // 作れるようにする。wasm は canvas-backed default のみ。
 #ifdef __EMSCRIPTEN__
   app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
 #else
   SDL_WindowFlags win_flags = SDL_WINDOW_RESIZABLE;
+#ifdef _WIN32
   if (strcmp(app->backend_name, "native") != 0)
     win_flags |= SDL_WINDOW_VULKAN;
+#else
+  win_flags |= SDL_WINDOW_VULKAN;
+#endif
   app->window = SDL_CreateWindow("lub", 1280, 720, win_flags);
 #endif
   if (!app->window) {
@@ -70,23 +78,24 @@ bool app_init(App *app) {
 
 bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
+  // "native" = このプラットフォームの最短距離実装。Windows は D3D12 直接、
+  // Linux は直接実装 (backend_vulkan.c) ができるまで sdlgpu が代行する。
   if (strcmp(app->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
-#ifdef _WIN32
   } else if (strcmp(app->backend_name, "native") == 0) {
-    // "native" = このプラットフォームの直接実装。Windows は D3D12。
+#ifdef _WIN32
     g_backend = &g_backend_dx12;
+#else
+    g_backend = &g_backend_sdlgpu;
 #endif
   } else {
-    g_backend = &g_backend_sokol;
+    SDL_Log("unknown backend '%s' (expected 'native' or 'sdlgpu')",
+            app->backend_name);
+    return false;
   }
 #else
-  // wasm build: sokol/WGPU or direct webgpu backend.
-  if (strcmp(app->backend_name, "webgpu") == 0) {
-    g_backend = &g_backend_webgpu;
-  } else {
-    g_backend = &g_backend_sokol;
-  }
+  // wasm build: webgpu backend only (backend_name is ignored).
+  g_backend = &g_backend_webgpu;
 #endif
   SDL_Log("backend selected: %s", g_backend->name);
   if (!g_backend->init(app)) {

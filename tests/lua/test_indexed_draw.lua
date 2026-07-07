@@ -6,7 +6,7 @@ local lub_io = require("lub_io")
 local M = {}
 
 function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sokol" })
+	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
 end
 
 function M.onEvent(e) end

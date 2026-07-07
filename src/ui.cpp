@@ -66,13 +66,14 @@ static const char *UI_FS = //
     "}\n";
 
 static bool ui_gpu_init() {
-  ShaderTargetBackend tgt = SHADER_TARGET_SOKOL;
-  if (g_backend && g_backend->name) {
-    if (strcmp(g_backend->name, "sdlgpu") == 0)
-      tgt = SHADER_TARGET_SDLGPU;
-    else if (strcmp(g_backend->name, "native") == 0)
-      tgt = SHADER_TARGET_DX12;
-  }
+#ifdef __EMSCRIPTEN__
+  ShaderTargetBackend tgt = SHADER_TARGET_WGSL;
+#else
+  // dx12 の vtable name は "native" (Linux の "native" は sdlgpu に解決済み)。
+  ShaderTargetBackend tgt = SHADER_TARGET_SDLGPU;
+  if (g_backend && g_backend->name && strcmp(g_backend->name, "native") == 0)
+    tgt = SHADER_TARGET_DX12;
+#endif
   char err[1024];
   ShaderBlob vsb = {}, fsb = {};
   if (!shader_compile(UI_VS, UI_FS, tgt, &vsb, &fsb, &g_refl, err,

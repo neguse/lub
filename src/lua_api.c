@@ -1033,15 +1033,15 @@ static int l_use_texture(lua_State *L) {
 }
 
 static ShaderTargetBackend shader_target_for_backend(void) {
-  if (g_backend && g_backend->name) {
-    if (strcmp(g_backend->name, "sdlgpu") == 0)
-      return SHADER_TARGET_SDLGPU;
-    // "native" = platform 直接実装。native build では D3D12 (Windows のみ
-    // 選択可) なので DXIL を出す。wasm の直接実装 (webgpu) はここに来ない。
-    if (strcmp(g_backend->name, "native") == 0)
-      return SHADER_TARGET_DX12;
-  }
-  return SHADER_TARGET_SOKOL;
+#ifdef __EMSCRIPTEN__
+  // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
+  return SHADER_TARGET_WGSL;
+#else
+  // dx12 の vtable name は "native" (Linux の "native" は sdlgpu に解決済み)。
+  if (g_backend && g_backend->name && strcmp(g_backend->name, "native") == 0)
+    return SHADER_TARGET_DX12;
+  return SHADER_TARGET_SDLGPU;
+#endif
 }
 
 static int l_use_shader(lua_State *L) {
@@ -1740,33 +1740,18 @@ static int l_config(lua_State *L) {
   lua_getfield(L, 1, "backend");
   const char *name =
       (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : NULL;
-  // "native" = そのプラットフォームの直接実装 backend
-  // (native build: D3D12 / web build: webgpu)。
+  // "native" = そのプラットフォームの最短距離実装
+  // (Windows: D3D12 / web: webgpu / Linux: 当面 sdlgpu が代行)。
 #ifdef __EMSCRIPTEN__
-  // WASM: samples hardcode "sokol" via LUB_BACKEND env (nil in wasm).
-  // Silently map "sokol" and NULL to "webgpu" so existing samples work.
-  if (!name || strcmp(name, "sokol") == 0 || strcmp(name, "native") == 0)
-    name = "webgpu";
-  if (strcmp(name, "sokol") != 0 && strcmp(name, "webgpu") != 0) {
-    return luaL_error(
-        L, "config: backend must be 'sokol', 'webgpu' or 'native', got '%s'",
-        name);
-  }
+  // WASM: backend は webgpu 一択なので指定を無視する。
+  name = "webgpu";
 #else
   if (!name)
-    name = "sokol";
-  if (strcmp(name, "sokol") != 0 && strcmp(name, "sdlgpu") != 0 &&
-      strcmp(name, "native") != 0) {
+    name = "native";
+  if (strcmp(name, "sdlgpu") != 0 && strcmp(name, "native") != 0) {
     return luaL_error(
-        L, "config: backend must be 'sokol', 'sdlgpu' or 'native', got '%s'",
-        name);
+        L, "config: backend must be 'native' or 'sdlgpu', got '%s'", name);
   }
-#ifndef _WIN32
-  if (strcmp(name, "native") == 0) {
-    return luaL_error(
-        L, "config: backend 'native' (D3D12) is Windows-only for now");
-  }
-#endif
 #endif
   strncpy(g_app_for_lua->backend_name, name,
           sizeof(g_app_for_lua->backend_name) - 1);

@@ -273,8 +273,8 @@ class Sfb12 {
 	}
 
 	// ---- fullscreen quad (pos.xy, uv) ----
-	// Quad used for the final present (offscreen -> swapchain). sokol y-flips
-	// the swapchain, so this maps clip y = -1 to uv.y = 0.
+	// Quad used for the final present (offscreen -> swapchain). The runtime
+	// y-flips the swapchain, so this maps clip y = -1 to uv.y = 0.
 	static var quadVerts:Array<Float> = [
 		-1, -1, 0, 0,
 		 1, -1, 1, 0,
@@ -387,8 +387,8 @@ class Sfb12 {
 
 		var view = updateCamera();
 		var proj = Mat4.perspectiveLh(52, RT_W / RT_H, 0.1, 40.0);
-		// Offscreen targets are stored y-down vs the swapchain (sokol only y-flips
-		// the default framebuffer). Pre-flip clip-space Y so the G-buffer is
+		// Offscreen targets are stored y-down vs the swapchain (the runtime only
+		// y-flips the default framebuffer). Pre-flip clip-space Y so the G-buffer is
 		// screen-oriented; cull is NONE so the winding change is harmless.
 		proj.m[5] = -proj.m[5];
 		var worldLight = new Vec3(-0.48, 1.0, -0.32).normalize(); // direction toward the light

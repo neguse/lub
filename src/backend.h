@@ -18,9 +18,8 @@ typedef uintptr_t BackendShader;
 typedef uintptr_t BackendPipeline;
 typedef uintptr_t BackendReadback;
 
-// Max color attachments for MRT (G-buffer style). Sokol's hard cap is
-// SG_MAX_COLOR_ATTACHMENTS = 8; SDL_GPU also supports up to 4 on every
-// platform. lub exposes 4 until a real use case needs more.
+// Max color attachments for MRT (G-buffer style). SDL_GPU supports up to 4
+// on every platform. lub exposes 4 until a real use case needs more.
 #define SGL_MAX_COLOR_TARGETS 4
 
 typedef struct ImageDesc {
@@ -58,8 +57,7 @@ typedef struct PipelineDesc {
   SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS];
   bool has_depth;           // false = offscreen color-only pass
   SglPixelFormat depth_fmt; // valid when has_depth
-  bool is_indexed; // true = pipeline used for indexed draw (sokol: index_type =
-                   // UINT32)
+  bool is_indexed; // true = pipeline used for indexed draw (u32 indices)
   bool is_compute; // true: make_pipeline ignores graphics state and builds a
                    // compute pipeline
 } PipelineDesc;
@@ -192,7 +190,6 @@ typedef struct RenderBackend {
 } RenderBackend;
 
 extern const RenderBackend *g_backend;
-extern const RenderBackend g_backend_sokol;
 extern const RenderBackend g_backend_sdlgpu;
 extern const RenderBackend g_backend_webgpu;
 #ifdef _WIN32

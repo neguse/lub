@@ -23,18 +23,18 @@
 #include <string>
 #include <vector>
 
-// Per-target shader prelude. sokol-gfx wants textures and samplers declared
-// as separate Vulkan descriptors at distinct bindings; SDL_GPU wants them as
-// VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER at a single binding. The macros
-// let one shader source compile to both layouts without per-target #ifdef.
+// Per-target shader prelude. SDL_GPU wants textures and samplers as
+// VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER at a single binding; DX12 and
+// WGSL use separate texture + sampler declarations. The macros let one
+// shader source compile to both layouts without per-target #ifdef.
 //
-//   LUB_TEXTURE2D(diffuse);          // sokol: Texture2D + SamplerState pair;
-//                                    // sdlgpu: Sampler2D<float4>.
+//   LUB_TEXTURE2D(diffuse);          // dx12/wgsl: Texture2D + SamplerState
+//                                    // pair; sdlgpu: Sampler2D<float4>.
 //   color = LUB_SAMPLE(diffuse, uv); // expands to the right Sample() call.
 //
-// Wasm (WGSL via slang-wasm) is grouped with sokol: Slang auto-lowers
-// combined samplers for WGSL so either prelude works; sokol-form keeps the
-// declaration shape consistent across native + wasm reflection output.
+// Wasm (WGSL via slang-wasm) uses the separate form: Slang auto-lowers it
+// for WGSL and the declaration shape stays consistent across native + wasm
+// reflection output.
 static const char *prelude_for_target(ShaderTargetBackend target) {
   // LUB_SAMPLE_LOD is an explicit-LOD (level 0) sample. Textures here are never
   // mipmapped so it's equivalent to LUB_SAMPLE, but unlike implicit-LOD Sample
@@ -49,8 +49,8 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
            "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
   }
-  // sokol, wasm and dx12 all use the separate texture+sampler form (D3D12
-  // has no combined image samplers; t/s registers are distinct classes).
+  // wasm and dx12 use the separate texture+sampler form (D3D12 has no
+  // combined image samplers; t/s registers are distinct classes).
   return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
          "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
          "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
@@ -557,194 +557,17 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
   return true;
 }
 
-// Rewrite descriptor-set decorations in a SPIR-V module to match the target
-// backend's expected Vulkan descriptor-set layout. Slang emits everything on
-// set 0 by default, which causes VkPipelineLayout / SPIR-V mismatch panics on
-// strict drivers. The two backends have different conventions:
-//
-//   sokol (single layout shared by VS+FS):
-//     set 0: uniform buffers
-//     set 1: textures, samplers, storage buffers
-//
-//   SDL_GPU (per-stage layout, see SDL_gpu.h CreateGPUShader docs):
-//     vertex stage    -> set 0: textures/storage; set 1: uniform buffers
-//     fragment stage  -> set 2: textures/samplers/storage; set 3: uniform
-//     buffers compute stage   -> set 0: sampled textures + RO storage textures
-//     + RO storage buffers
-//                        set 1: RW storage textures + RW storage buffers
-//                        set 2: uniform buffers
-//
-// SPIR-V structure: header = 5 words, then instructions where
-// word0 = (wc<<16)|op. We do two passes:
-//   1. Walk OpVariable to classify each resource ID by storage class.
-//      - UniformConstant / StorageBuffer -> "image-ish" (texture/sampler/SSBO)
-//      - Uniform                          -> "uniform-block"
-//   2. For each OpDecorate %id DescriptorSet <n> we encounter, look up the
-//      resource class and the desired set per the table above, then rewrite
-//      the literal in place.
-// Bindings, locations and other decorations are left untouched.
-//
-// The patch is split per-stage and per-backend because both blobs are passed
-// in independently (one is VS-only, the other FS-only).
-//
-// Compute descriptor rewriting currently supports a single RW storage class
-// (kind 0) plus an optional uniform block. Readonly storage buffers and
-// storage textures need an additional kind to map them to SDL_GPU's compute
-// set 0.
+// SDL_GPU expects a per-stage Vulkan descriptor-set layout
+// (see SDL_gpu.h CreateGPUShader docs):
+//   vertex stage   -> set 0: textures/storage; set 1: uniform buffers
+//   fragment stage -> set 2: textures/samplers/storage; set 3: uniform buffers
+//   compute stage  -> set 0: sampled textures + RO storage textures/buffers
+//                     set 1: RW storage textures + RW storage buffers
+//                     set 2: uniform buffers
+// Slang emits everything on set 0 by default, which causes VkPipelineLayout /
+// SPIR-V mismatch panics on strict drivers;
+// patch_spirv_bindings_from_reflection rewrites the decorations to match.
 enum class SpvStage { Vertex, Fragment, Compute };
-
-[[maybe_unused]] void patch_spirv_descriptor_sets(void *spv, size_t size_bytes,
-                                                  ShaderTargetBackend target,
-                                                  SpvStage stage) {
-  if (!spv || size_bytes < 20)
-    return; // too small to be valid
-  uint32_t *words = (uint32_t *)spv;
-  size_t nwords = size_bytes / 4;
-  if (words[0] != 0x07230203u)
-    return; // not a SPIR-V module
-
-  // Opcodes / decorations / storage-classes we care about.
-  constexpr uint32_t kOpTypePointer = 32;
-  constexpr uint32_t kOpVariable = 59;
-  constexpr uint32_t kOpDecorate = 71;
-  constexpr uint32_t kDecBufferBlock = 3;
-  constexpr uint32_t kDecDescriptorSet = 34;
-  constexpr uint32_t kStorageUniformConstant = 0;
-  constexpr uint32_t kStorageUniform = 2;
-  constexpr uint32_t kStorageStorageBuffer = 12;
-
-  // Slang targets SPIR-V 1.0, where a Vulkan SSBO is encoded as an
-  // OpTypeStruct decorated with BufferBlock + OpTypePointer Uniform.
-  // (SPIR-V >= 1.3 would use storage class StorageBuffer directly.)
-  // Collect the set of pointer-type result-ids that target a BufferBlock
-  // struct so we can tell the SSBO Uniform pointers apart from real UB
-  // Uniform pointers below.
-  std::vector<uint32_t> bb_struct_ids;
-  {
-    size_t i = 5;
-    while (i < nwords) {
-      uint32_t w0 = words[i];
-      uint32_t wc = w0 >> 16;
-      uint32_t op = w0 & 0xffff;
-      if (wc == 0 || i + wc > nwords)
-        break;
-      if (op == kOpDecorate && wc >= 3 && words[i + 2] == kDecBufferBlock) {
-        bb_struct_ids.push_back(words[i + 1]);
-      }
-      i += wc;
-    }
-  }
-  std::vector<uint32_t> ssbo_ptr_type_ids;
-  {
-    size_t i = 5;
-    while (i < nwords) {
-      uint32_t w0 = words[i];
-      uint32_t wc = w0 >> 16;
-      uint32_t op = w0 & 0xffff;
-      if (wc == 0 || i + wc > nwords)
-        break;
-      if (op == kOpTypePointer && wc >= 4) {
-        uint32_t ptr_id = words[i + 1];
-        uint32_t storage = words[i + 2];
-        uint32_t pointed = words[i + 3];
-        if (storage == kStorageUniform) {
-          for (uint32_t s : bb_struct_ids) {
-            if (s == pointed) {
-              ssbo_ptr_type_ids.push_back(ptr_id);
-              break;
-            }
-          }
-        }
-      }
-      i += wc;
-    }
-  }
-
-  // Map each resource OpVariable's ID to its descriptor-set destination.
-  // "kind 0" = texture/sampler/SSBO (UniformConstant, StorageBuffer, or
-  //           Uniform-with-BufferBlock SSBO)
-  // "kind 1" = uniform block (Uniform pointing at a plain Block struct)
-  std::vector<std::pair<uint32_t, int>> id_to_kind;
-  id_to_kind.reserve(8);
-
-  size_t i = 5; // skip header
-  while (i < nwords) {
-    uint32_t w0 = words[i];
-    uint32_t wc = w0 >> 16;
-    uint32_t op = w0 & 0xffff;
-    if (wc == 0 || i + wc > nwords)
-      break;
-    if (op == kOpVariable && wc >= 4) {
-      uint32_t res_type = words[i + 1];
-      uint32_t id = words[i + 2];
-      uint32_t storage = words[i + 3];
-      if (storage == kStorageUniformConstant ||
-          storage == kStorageStorageBuffer) {
-        id_to_kind.push_back({id, 0});
-      } else if (storage == kStorageUniform) {
-        bool is_ssbo = false;
-        for (uint32_t p : ssbo_ptr_type_ids) {
-          if (p == res_type) {
-            is_ssbo = true;
-            break;
-          }
-        }
-        id_to_kind.push_back({id, is_ssbo ? 0 : 1});
-      }
-    }
-    i += wc;
-  }
-  if (id_to_kind.empty())
-    return;
-
-  auto kind_of = [&](uint32_t id) -> int {
-    for (auto &p : id_to_kind)
-      if (p.first == id)
-        return p.second;
-    return -1;
-  };
-
-  // Resolve target set for (kind, target, stage).
-  auto target_set = [&](int kind) -> int {
-    if (target == SHADER_TARGET_SOKOL) {
-      return (kind == 0) ? 1 : 0; // image=set1, ub=set0
-    }
-    // SDL_GPU per-stage table:
-    if (stage == SpvStage::Vertex) {
-      return (kind == 0) ? 0 : 1; // image=set0, ub=set1
-    } else if (stage == SpvStage::Fragment) {
-      return (kind == 0) ? 2 : 3; // image=set2, ub=set3
-    } else {
-      // Compute. kind 0 is currently treated as RW storage (set 1) and
-      // kind 1 is uniform (set 2). Readonly storage / sampled-texture
-      // would belong on set 0 but are not exposed yet.
-      return (kind == 0) ? 1 : 2;
-    }
-  };
-
-  // Pass 2: rewrite DescriptorSet decorations.
-  i = 5;
-  while (i < nwords) {
-    uint32_t w0 = words[i];
-    uint32_t wc = w0 >> 16;
-    uint32_t op = w0 & 0xffff;
-    if (wc == 0 || i + wc > nwords)
-      break;
-    if (op == kOpDecorate && wc >= 4) {
-      uint32_t tgt = words[i + 1];
-      uint32_t deco = words[i + 2];
-      if (deco == kDecDescriptorSet) {
-        int k = kind_of(tgt);
-        if (k >= 0) {
-          int s = target_set(k);
-          if (s >= 0)
-            words[i + 3] = (uint32_t)s;
-        }
-      }
-    }
-    i += wc;
-  }
-}
 
 // Renumber the binding decorations of fragment-stage texture/sampler
 // resources to be 0-based in declaration order. Slang allocates binding
@@ -944,7 +767,6 @@ static bool name_matches_sampler(const char *var_name, const char *tex_name) {
 }
 
 static bool reflected_binding_for_name(const ShaderReflection *refl,
-                                       ShaderTargetBackend target,
                                        SglShaderStage stage, const char *name,
                                        int *out_set, int *out_binding) {
   if (!refl || !name || !out_set || !out_binding)
@@ -952,9 +774,7 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
   for (int i = 0; i < refl->ub_count; ++i) {
     const ShaderUniformBlock *u = &refl->ubs[i];
     if (u->stage == stage && strcmp(u->name, name) == 0) {
-      *out_set = (target == SHADER_TARGET_SOKOL)
-                     ? 0
-                     : sdl_set_for_stage_uniform(stage);
+      *out_set = sdl_set_for_stage_uniform(stage);
       *out_binding = u->slot;
       return true;
     }
@@ -964,17 +784,12 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
     if (t->stage != stage)
       continue;
     if (strcmp(t->name, name) == 0) {
-      *out_set = (target == SHADER_TARGET_SOKOL)
-                     ? 1
-                     : sdl_set_for_stage_resource(stage);
-      *out_binding =
-          (target == SHADER_TARGET_SOKOL) ? t->img_slot : t->smp_slot;
+      *out_set = sdl_set_for_stage_resource(stage);
+      *out_binding = t->smp_slot;
       return true;
     }
     if (name_matches_sampler(name, t->name)) {
-      *out_set = (target == SHADER_TARGET_SOKOL)
-                     ? 1
-                     : sdl_set_for_stage_resource(stage);
+      *out_set = sdl_set_for_stage_resource(stage);
       *out_binding = t->smp_slot;
       return true;
     }
@@ -982,16 +797,11 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
   for (int i = 0; i < refl->storage_buf_count; ++i) {
     const ShaderStorageBuf *b = &refl->storage_bufs[i];
     if (b->stage == stage && strcmp(b->name, name) == 0) {
-      *out_set = (target == SHADER_TARGET_SOKOL)
-                     ? 1
-                     : ((stage == SGL_STAGE_COMPUTE && !b->readonly)
-                            ? 1
-                            : sdl_set_for_stage_resource(stage));
-      if (target == SHADER_TARGET_SOKOL) {
-        *out_binding = b->slot;
-      } else if (stage == SGL_STAGE_COMPUTE && !b->readonly) {
+      if (stage == SGL_STAGE_COMPUTE && !b->readonly) {
+        *out_set = 1;
         *out_binding = sdl_write_storage_buffer_binding(refl, stage, b);
       } else {
+        *out_set = sdl_set_for_stage_resource(stage);
         *out_binding = sdl_read_storage_buffer_binding(refl, stage, b);
       }
       return true;
@@ -1000,16 +810,11 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
   for (int i = 0; i < refl->storage_tex_count; ++i) {
     const ShaderStorageTexture *t = &refl->storage_texs[i];
     if (t->stage == stage && strcmp(t->name, name) == 0) {
-      *out_set = (target == SHADER_TARGET_SOKOL)
-                     ? 1
-                     : ((stage == SGL_STAGE_COMPUTE && !t->readonly)
-                            ? 1
-                            : sdl_set_for_stage_resource(stage));
-      if (target == SHADER_TARGET_SOKOL) {
-        *out_binding = t->slot;
-      } else if (stage == SGL_STAGE_COMPUTE && !t->readonly) {
+      if (stage == SGL_STAGE_COMPUTE && !t->readonly) {
+        *out_set = 1;
         *out_binding = t->slot;
       } else {
+        *out_set = sdl_set_for_stage_resource(stage);
         *out_binding = sdl_read_storage_texture_binding(refl, stage, t);
       }
       return true;
@@ -1019,7 +824,6 @@ static bool reflected_binding_for_name(const ShaderReflection *refl,
 }
 
 void patch_spirv_bindings_from_reflection(void *spv, size_t size_bytes,
-                                          ShaderTargetBackend target,
                                           SpvStage spv_stage,
                                           const ShaderReflection *refl) {
   if (!spv || size_bytes < 20 || !refl)
@@ -1077,8 +881,7 @@ void patch_spirv_bindings_from_reflection(void *spv, size_t size_bytes,
       const char *name = name_of(id);
       int set = -1;
       int binding = -1;
-      if (reflected_binding_for_name(refl, target, stage, name, &set,
-                                     &binding)) {
+      if (reflected_binding_for_name(refl, stage, name, &set, &binding)) {
         if (deco == kDecDescriptorSet && set >= 0) {
           words[i + 3] = (uint32_t)set;
         } else if (deco == kDecBinding && binding >= 0) {
@@ -1222,128 +1025,6 @@ void patch_spirv_storage_image_formats(void *spv, size_t size_bytes,
   }
 }
 
-static bool ub_slot_used(const ShaderReflection *refl, int slot) {
-  for (int i = 0; i < refl->ub_count; ++i) {
-    if (refl->ubs[i].slot == slot)
-      return true;
-  }
-  return false;
-}
-
-static bool view_or_sampler_binding_used(const ShaderReflection *refl,
-                                         int slot) {
-  for (int i = 0; i < refl->tex_count; ++i) {
-    if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
-      return true;
-  }
-  for (int i = 0; i < refl->storage_buf_count; ++i) {
-    if (refl->storage_bufs[i].slot == slot)
-      return true;
-  }
-  for (int i = 0; i < refl->storage_tex_count; ++i) {
-    if (refl->storage_texs[i].slot == slot)
-      return true;
-  }
-  return false;
-}
-
-static bool
-stage_local_view_or_sampler_binding_used(const ShaderReflection *refl,
-                                         int upto_tex, int upto_sbuf,
-                                         int upto_stex, int slot) {
-  for (int i = 0; i < upto_tex; ++i) {
-    if (refl->texs[i].img_slot == slot || refl->texs[i].smp_slot == slot)
-      return true;
-  }
-  for (int i = 0; i < upto_sbuf; ++i) {
-    if (refl->storage_bufs[i].slot == slot)
-      return true;
-  }
-  for (int i = 0; i < upto_stex; ++i) {
-    if (refl->storage_texs[i].slot == slot)
-      return true;
-  }
-  return false;
-}
-
-static int next_free_ub_slot(const ShaderReflection *existing,
-                             const ShaderReflection *stage, int upto) {
-  for (int s = 0; s < SGL_MAX_UNIFORM_BLOCKS; ++s) {
-    bool used = ub_slot_used(existing, s);
-    for (int i = 0; i < upto && !used; ++i)
-      used = stage->ubs[i].slot == s;
-    if (!used)
-      return s;
-  }
-  return -1;
-}
-
-static int next_free_view_slot(const ShaderReflection *existing,
-                               const ShaderReflection *stage, int upto_tex,
-                               int upto_sbuf, int upto_stex) {
-  for (int s = 0; s < SGL_MAX_TEXTURES; ++s) {
-    if (!view_or_sampler_binding_used(existing, s) &&
-        !stage_local_view_or_sampler_binding_used(stage, upto_tex, upto_sbuf,
-                                                  upto_stex, s)) {
-      return s;
-    }
-  }
-  return -1;
-}
-
-static void remap_stage_for_sokol(const ShaderReflection *existing,
-                                  ShaderReflection *stage) {
-  for (int i = 0; i < stage->ub_count; ++i) {
-    if (stage->ubs[i].slot < 0 ||
-        stage->ubs[i].slot >= SGL_MAX_UNIFORM_BLOCKS ||
-        ub_slot_used(existing, stage->ubs[i].slot)) {
-      int slot = next_free_ub_slot(existing, stage, i);
-      if (slot >= 0)
-        stage->ubs[i].slot = slot;
-    }
-  }
-
-  for (int i = 0; i < stage->tex_count; ++i) {
-    if (view_or_sampler_binding_used(existing, stage->texs[i].img_slot) ||
-        stage_local_view_or_sampler_binding_used(stage, i, 0, 0,
-                                                 stage->texs[i].img_slot)) {
-      int slot = next_free_view_slot(existing, stage, i, 0, 0);
-      if (slot >= 0)
-        stage->texs[i].img_slot = slot;
-    }
-    if (stage->texs[i].smp_slot >= 0 &&
-        (view_or_sampler_binding_used(existing, stage->texs[i].smp_slot) ||
-         stage->texs[i].img_slot == stage->texs[i].smp_slot ||
-         stage_local_view_or_sampler_binding_used(stage, i, 0, 0,
-                                                  stage->texs[i].smp_slot))) {
-      int slot = next_free_view_slot(existing, stage, i + 1, 0, 0);
-      if (slot >= 0)
-        stage->texs[i].smp_slot = slot;
-    }
-  }
-
-  for (int i = 0; i < stage->storage_buf_count; ++i) {
-    if (view_or_sampler_binding_used(existing, stage->storage_bufs[i].slot) ||
-        stage_local_view_or_sampler_binding_used(stage, stage->tex_count, i, 0,
-                                                 stage->storage_bufs[i].slot)) {
-      int slot = next_free_view_slot(existing, stage, stage->tex_count, i, 0);
-      if (slot >= 0)
-        stage->storage_bufs[i].slot = slot;
-    }
-  }
-  for (int i = 0; i < stage->storage_tex_count; ++i) {
-    if (view_or_sampler_binding_used(existing, stage->storage_texs[i].slot) ||
-        stage_local_view_or_sampler_binding_used(stage, stage->tex_count,
-                                                 stage->storage_buf_count, i,
-                                                 stage->storage_texs[i].slot)) {
-      int slot = next_free_view_slot(existing, stage, stage->tex_count,
-                                     stage->storage_buf_count, i);
-      if (slot >= 0)
-        stage->storage_texs[i].slot = slot;
-    }
-  }
-}
-
 static void remap_stage_for_sdlgpu(ShaderReflection *stage) {
   for (int i = 0; i < stage->ub_count; ++i) {
     stage->ubs[i].slot = i;
@@ -1372,9 +1053,7 @@ static void merge_stage_reflection(ShaderReflection *dst,
                                    const ShaderReflection *src,
                                    ShaderTargetBackend target) {
   ShaderReflection stage = *src;
-  if (target == SHADER_TARGET_SOKOL) {
-    remap_stage_for_sokol(dst, &stage);
-  } else if (target == SHADER_TARGET_SDLGPU) {
+  if (target == SHADER_TARGET_SDLGPU) {
     remap_stage_for_sdlgpu(&stage);
   }
   // DX12: no remap. The slots are Slang's HLSL register indices and the
@@ -1721,9 +1400,9 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   merge_stage_reflection(out_refl, &fs_refl, target);
 
   if (target != SHADER_TARGET_DX12) {
-    patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes, target,
+    patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes,
                                          SpvStage::Vertex, out_refl);
-    patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes, target,
+    patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes,
                                          SpvStage::Fragment, out_refl);
     patch_spirv_storage_image_formats(out_vs->spirv, out_vs->bytes,
                                       SpvStage::Vertex, out_refl);
@@ -1844,7 +1523,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   out_cs->bytes = cs_size;
 
   if (target != SHADER_TARGET_DX12) {
-    patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes, target,
+    patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes,
                                          SpvStage::Compute, out_refl);
     patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
                                       SpvStage::Compute, out_refl);
@@ -2478,8 +2157,12 @@ static int wasm_next_free_binding(const ShaderReflection *dst,
   return -1;
 }
 
-static void wasm_remap_stage_for_sokol(const ShaderReflection *dst,
-                                       ShaderReflection *stage) {
+// WGSL bind-slot remap: keep module-wide ub/texture/sampler bindings unique
+// across the merged VS+FS reflection. The convention originates from
+// sokol-gfx's WGPU backend and is mirrored by web/playground/slang-bridge.ts
+// and backend_webgpu.c's bind group layout.
+static void wasm_remap_stage_for_wgsl(const ShaderReflection *dst,
+                                      ShaderReflection *stage) {
   for (int i = 0; i < stage->ub_count; ++i) {
     if (wasm_ub_slot_used(dst, stage->ubs[i].slot)) {
       int slot = wasm_next_free_ub_slot(dst, stage, i);
@@ -2507,8 +2190,8 @@ static void wasm_merge_stage_reflection(ShaderReflection *dst,
                                         const ShaderReflection *src,
                                         ShaderTargetBackend target) {
   ShaderReflection stage = *src;
-  if (target == SHADER_TARGET_SOKOL)
-    wasm_remap_stage_for_sokol(dst, &stage);
+  if (target == SHADER_TARGET_WGSL)
+    wasm_remap_stage_for_wgsl(dst, &stage);
   if (stage.attr_count > 0) {
     dst->attr_count = stage.attr_count;
     memcpy(dst->attrs, stage.attrs, sizeof(stage.attrs));
@@ -2722,9 +2405,9 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
                                ShaderTargetBackend target, ShaderBlob *out_vs,
                                ShaderBlob *out_fs, ShaderReflection *out_refl,
                                char *err_buf, size_t err_buf_size) {
-  // sokol-wgpu only on wasm; descriptor-set patching N/A for WGSL. But
-  // the LUB_TEXTURE2D / LUB_SAMPLE macros still need expanding so the
-  // shader source can be shared with native sokol/sdlgpu builds.
+  // wasm emits WGSL; descriptor-set patching N/A. But the LUB_TEXTURE2D /
+  // LUB_SAMPLE macros still need expanding so the shader source can be
+  // shared with native sdlgpu/dx12 builds.
   if (out_vs) {
     out_vs->spirv = nullptr;
     out_vs->bytes = 0;

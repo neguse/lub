@@ -3,7 +3,7 @@
   "url": "https://github.com/neguse/lub",
   "license": "MIT",
   "tags": ["cross", "gamedev", "lua"],
-  "description": "Haxe externs for the lub runtime (Lua 5.5 + SDL3 + sokol/sdlgpu).",
+  "description": "Haxe externs for the lub runtime (Lua 5.5 + SDL3).",
   "version": "0.0.1",
   "classPath": "",
   "releasenote": "Phase 0 initial drop.",

@@ -1,6 +1,6 @@
 param(
     [string]$BuildDir = "build-release",
-    [string]$Backend = "sokol",
+    [string]$Backend = "native",
     [int]$ScoreFrame = 3600,
     [int]$Burst = 1,
     [double]$TargetFps = 60.0,

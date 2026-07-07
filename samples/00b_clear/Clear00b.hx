@@ -10,7 +10,7 @@ class Clear00b {
 	public static function onInit() {
 		var b:String = lua.Os.getenv("LUB_BACKEND");
 		if (b == null)
-			b = "sokol";
+			b = "native";
 		Lub.config({backend: b});
 		Lua.print("backend = " + b);
 		Lua.print("clear demo");

@@ -54,7 +54,7 @@ local snd_freed
 local baseline_voices = 0
 
 function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sokol", width = 320, height = 180 })
+	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
 local function set_phase(next_phase)

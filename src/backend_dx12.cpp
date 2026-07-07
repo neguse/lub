@@ -1417,7 +1417,7 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
       (d->cull == SGL_CULL_BACK)    ? D3D12_CULL_MODE_BACK
       : (d->cull == SGL_CULL_FRONT) ? D3D12_CULL_MODE_FRONT
                                     : D3D12_CULL_MODE_NONE;
-  // Match sokol's default and the runtime's D3D-style LH examples.
+  // Match the runtime's D3D-style LH examples.
   pd.RasterizerState.FrontCounterClockwise = FALSE;
   pd.RasterizerState.DepthClipEnable = TRUE;
 

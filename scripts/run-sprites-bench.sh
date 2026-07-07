@@ -2,7 +2,7 @@
 set -euo pipefail
 
 build_dir="build-release-linux"
-backend="sokol"
+backend="native"
 score_frame=3600
 burst=1
 target_fps=60
@@ -19,7 +19,7 @@ Usage: bash scripts/run-sprites-bench.sh [options]
 
 Options:
   --build-dir DIR              Build directory (default: build-release-linux)
-  --backend NAME               Backend: sokol or sdlgpu (default: sokol)
+  --backend NAME               Backend: native or sdlgpu (default: native)
   --score-frame N              Frame to print score and quit (default: 3600)
   --burst N                    Sprites spawned per accepted spawn tick (default: 1)
   --target-fps N               Target FPS threshold (default: 60)

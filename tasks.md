@@ -15,5 +15,5 @@
 
 ## やらないこと
 
-- **VR / OpenXR**: SDL3 の OpenXR サポートが実験的、sokol_gfx 側に multiview / VR 専用 API もなく、規模が PoC を逸脱する。
+- **VR / OpenXR**: SDL3 の OpenXR サポートが実験的で、規模が PoC を逸脱する。
 - **マルチスレッド描画**: per-thread command buffer / resource ownership 分割 / pipeline cache の lock 化など、現状の single command queue 前提の全面見直しが必要で、PoC スコープから外れる。

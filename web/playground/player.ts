@@ -119,9 +119,8 @@ function writeFileEnsureDir(FS: any, path: string, content: string) {
 // thin); the device object is opaque on the JS side anyway since we only
 // hand it off to Emscripten as Module.preinitializedWebGPUDevice.
 //
-// We request the `depth32float-stencil8` feature because src/backend_sokol.c
-// (wasm/wgpu branch, lub_wgpu_recreate_depth) creates the swapchain depth
-// texture in that format. Without the feature, wgpuDeviceCreateTexture
+// We request the `depth32float-stencil8` feature because src/backend_webgpu.c
+// (wg_recreate_depth) creates the swapchain depth texture in that format. Without the feature, wgpuDeviceCreateTexture
 // throws "Use of the 'depth32float-stencil8' texture format requires the
 // 'depth32float-stencil8' feature to be enabled".
 async function initWebGPU(): Promise<any> {

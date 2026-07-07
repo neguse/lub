@@ -10,9 +10,9 @@ runtime は C/C++ と既存ライブラリで組み、Lua を通して API を�
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
-native が **sokol_gfx (Vulkan、default)** と **SDL3 GPU API** と
-**D3D12 直接実装 (Windows)**、
-web が **webgpu.h 直接実装 (default)** と **sokol_gfx (WGPU)**。
+native が **プラットフォーム直接実装 (`native`、default — Windows: D3D12)** と
+**SDL3 GPU API (`sdlgpu` — Linux では `native` の代行)**、
+web が **webgpu.h 直接実装**。
 対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
 
 ## ドキュメント
@@ -155,26 +155,27 @@ score の見方や `-NoBuild` / backend 切替は [docs/sprites-bench.md](docs/s
 ```sh
 scripts/run-golden.sh             # 全 sample × backend を tests/golden と cmp
 scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的変更時)
-scripts/run-golden.sh --sample 01_triangle --backend sokol
+scripts/run-golden.sh --sample 01_triangle --backend sdlgpu
 ```
 
 プラットフォームごとに機材非依存の CPU rasterizer を強制するので capture が
 確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
-sokol / sdlgpu を、Windows (git bash) は WARP (`LUB_DX12_WARP=1`) で
+sdlgpu を、Windows (git bash) は WARP (`LUB_DX12_WARP=1`) で
 native (D3D12) をチェックする。実 GPU でのドリフトは想定範囲外
 (tolerance 比較は別途)。
 
 ## Backend 切替
 
-lub は内部に 4 つの GPU backend を持ち、同一 Lua API で動く:
+lub は内部に 3 つの GPU backend を持ち、同一 Lua API で動く:
 
-- `sokol` (native default) — sokol_gfx (Vulkan)。web build では sokol/WGPU として選択可。
+- `native` (default) — プラットフォームの最短距離実装。Windows は D3D12 直接
+  (設計は [docs/dx12-backend.md](docs/dx12-backend.md))、web は webgpu.h 直接
+  (設計記録は
+  [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))、
+  Linux は直接実装ができるまで `sdlgpu` が代行する
+  (整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md))
 - `sdlgpu` — SDL3 GPU API (native 専用。現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
-- `native` — プラットフォーム直接実装。native build では D3D12 (Windows
-  専用。設計は [docs/dx12-backend.md](docs/dx12-backend.md))、web build では
-  `webgpu` の別名
-- `webgpu` (web default) — webgpu.h 直接実装 (設計記録は
-  [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))
+- `webgpu` (web) — web build の実体。web では backend 指定は無視される
 
 切替は `Lub.config({backend: ...})`。サンプルは環境変数を見る
 `lubx.Boot.config` を使っているので CLI から切り替えられる:
@@ -211,5 +212,5 @@ lub を別リポのゲームから使うための Web 開発モード。native �
 - lub 本体(C ランタイム / web playground / samples / `haxe-lib/lub`)は **MIT**(`LICENSE`)。
 - web playground がブラウザ内で使う **Haxe コンパイラ wasm は GPL-2.0-or-later**(改変版、
   ビルド用パッチは `haxe-wasm/patches/`)。ツールとしての同梱=集約で、lub 本体には伝播しない。
-- バンドル/リンクする第三者依存(SDL3 / sokol / Lua / Slang / Haxe std 等)は
+- バンドル/リンクする第三者依存(SDL3 / Lua / Slang / Haxe std 等)は
   `THIRD_PARTY_LICENSES.md` を参照。spike の内訳は `haxe-wasm/LICENSE`。

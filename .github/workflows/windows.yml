@@ -25,16 +25,6 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      # find_package(Vulkan) 用 (sokol backend のリンクに必要)。runner に
-      # GPU/ICD は無いが、CI では native/WARP しか動かさないので loader の
-      # vulkan-1.dll が process 起動時に解決できれば十分。
-      - name: Vulkan SDK (headers + loader)
-        uses: humbletim/setup-vulkan-sdk@v1.2.1
-        with:
-          vulkan-query-version: 1.3.283.0
-          vulkan-components: Vulkan-Headers, Vulkan-Loader
-          vulkan-use-cache: true
-
       # CMake configure が slang / dxc の prebuilt (~150MB) を落とすので
       # third_party/slang をキャッシュする。key は取得 URL を持つ
       # CMakeLists.txt に紐付け。
@@ -51,13 +41,6 @@ jobs:
 
       - name: Build
         run: cmake --build build-release
-
-      - name: Copy vulkan-1.dll next to lub.exe
-        shell: pwsh
-        run: |
-          $dll = Get-ChildItem $env:VULKAN_SDK -Recurse -Filter vulkan-1.dll | Select-Object -First 1
-          if (-not $dll) { throw "vulkan-1.dll not found under $env:VULKAN_SDK" }
-          Copy-Item $dll.FullName build-release/
 
       # smoke test の exe は SDL3 (shared) にリンクしている。SDL3.dll は
       # build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の

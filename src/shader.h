@@ -102,25 +102,25 @@ typedef struct ShaderReflection {
 
 // Opaque shader byte-blob, owner = caller (free with shader_blob_free).
 //
-// On native builds this is the SPIR-V module bytes produced by Slang, hence
-// the historical field name `spirv`. On the wasm build we instead stash WGSL
-// source bytes into the same buffer — see shader.cpp's EM_ASYNC_JS bridge.
-// The backend make_shader path forks on SOKOL_WGPU vs SOKOL_VULKAN to read
-// the right slot; the field stays a generic byte container so the same
-// struct can serve both targets.
+// On native builds this is the SPIR-V module bytes produced by Slang
+// (DXIL bytecode for the dx12 target), hence the historical field name
+// `spirv`. On the wasm build we instead stash WGSL source bytes into the
+// same buffer — see shader.cpp's EM_ASYNC_JS bridge. The field stays a
+// generic byte container so the same struct serves every target.
 typedef struct ShaderBlob {
   uint32_t *spirv;
   size_t bytes;
 } ShaderBlob;
 
-// Target backend for shader codegen. The two Vulkan backends use different
-// descriptor-set layouts (sokol: UB on set 0, samplers on set 1; SDL_GPU:
-// per stage, vs textures=0/UB=1, fs textures=2/UB=3) so the SPIR-V emitted
-// by Slang has to be rewritten differently for each. DX12 emits DXIL
+// Target backend for shader codegen. SDL_GPU expects a per-stage Vulkan
+// descriptor-set layout (vs textures=0/UB=1, fs textures=2/UB=3) so the
+// SPIR-V emitted by Slang has to be rewritten to match. DX12 emits DXIL
 // instead; no patching, the reflection slots are Slang's HLSL register
-// indices per register class (b/t/s/u).
+// indices per register class (b/t/s/u). WGSL is the wasm build's only
+// target (webgpu backend, source via slang-wasm); bind slots follow the
+// convention mirrored in web/playground/slang-bridge.ts.
 typedef enum ShaderTargetBackend {
-  SHADER_TARGET_SOKOL = 0,
+  SHADER_TARGET_WGSL = 0,
   SHADER_TARGET_SDLGPU = 1,
   SHADER_TARGET_DX12 = 2,
 } ShaderTargetBackend;
