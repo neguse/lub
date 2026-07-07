@@ -15,8 +15,21 @@ bool app_init(App *app) {
 #ifdef __EMSCRIPTEN__
   app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
 #else
-  app->window = SDL_CreateWindow("lub", 1280, 720,
-                                 SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+  // backend は config() で決まる(window 生成より後)ので、ここでは env
+  // LUB_BACKEND で早期判定する。D3D12 直接実装 ("native", Windows 専用) は
+  // Vulkan を一切使わないため Vulkan flag を外し、Vulkan ICD の無い環境
+  // (GPU 無しの CI 等) でも window を作れるようにする。sokol/sdlgpu は従来通り
+  // Vulkan-capable surface を要求する。
+  SDL_WindowFlags win_flags = SDL_WINDOW_RESIZABLE;
+#ifdef _WIN32
+  const char *env_backend = getenv("LUB_BACKEND");
+  bool d3d12_native = env_backend && strcmp(env_backend, "native") == 0;
+#else
+  bool d3d12_native = false;
+#endif
+  if (!d3d12_native)
+    win_flags |= SDL_WINDOW_VULKAN;
+  app->window = SDL_CreateWindow("lub", 1280, 720, win_flags);
 #endif
   if (!app->window) {
     SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
