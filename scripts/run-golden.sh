@@ -113,16 +113,18 @@ check_entry() {
     local log="$tmpdir/${golden_name}_${backend}.log"
     local status="$tmpdir/${golden_name}_${backend}.status"
 
+    # LUB_GOLDEN=1: sample が golden capture 中と分かるようにする。debug UI 等
+    # の非決定な overlay を描かせないため (例: 19_sdf の imgui パネル)。
     local run_ok=1
     if [[ $windows -eq 1 ]]; then
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
-        LUB_BACKEND="$backend" LUB_DX12_WARP=1 \
+        LUB_BACKEND="$backend" LUB_DX12_WARP=1 LUB_GOLDEN=1 \
             LUB_HAXE_PORT="$haxe_port" \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
             >"$log" 2>&1 || run_ok=0
     else
-        LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" \
+        LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" LUB_GOLDEN=1 \
             LUB_HAXE_PORT="$haxe_port" \
             scripts/run-headless.sh "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \

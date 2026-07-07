@@ -169,18 +169,22 @@ class Sdf19 {
 		}
 
 		// debug UI: ツリー (data) から自動生成したパネル。いじったフレームだけ
-		// remesh (C 評価 ~10ms なのでドラッグ追従)
-		Ui.setNextWindow(10, 10, 300, 460);
-		if (Ui.begin("sdf tuning")) {
-			if (SdfPanel.draw(tree))
-				meshDirty = true;
-			Ui.separator();
-			metalTarget = Ui.slider("metal (Space)", metalTarget, 0, 1);
-			waveOn = Ui.checkbox("wave", waveOn);
-			if (mesh != null)
-				Ui.text("verts: " + mesh.vert_count);
+		// remesh (C 評価 ~10ms なのでドラッグ追従)。golden capture 中は描画しない
+		// (imgui テキストの AA が WARP で ±1 揺れて byte 比較が非決定になるため。
+		// 3D シーン本体は決定的)。LUB_GOLDEN は scripts/run-golden.sh がセット。
+		if (lua.Os.getenv("LUB_GOLDEN") == null) {
+			Ui.setNextWindow(10, 10, 300, 460);
+			if (Ui.begin("sdf tuning")) {
+				if (SdfPanel.draw(tree))
+					meshDirty = true;
+				Ui.separator();
+				metalTarget = Ui.slider("metal (Space)", metalTarget, 0, 1);
+				waveOn = Ui.checkbox("wave", waveOn);
+				if (mesh != null)
+					Ui.text("verts: " + mesh.vert_count);
+			}
+			Ui.end();
 		}
-		Ui.end();
 
 		if (meshDirty)
 			remesh();
