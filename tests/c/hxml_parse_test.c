@@ -8,7 +8,9 @@ int main(void) {
   // 一時 hxml
   // を作る。`-cp`、`--class-path`、`-main`、コメント、空行を混在させて
   // 全部の経路を 1 ファイルで通す。
-  const char *hxml_path = "/tmp/lub_hxml_parse_test.hxml";
+  // cwd (build dir) に書く。Windows の MSVCRT は "/tmp/" を C:\tmp\ と解釈し
+  // 存在しなければ fopen が失敗するので、絶対 /tmp を避けて相対パスにする。
+  const char *hxml_path = "lub_hxml_parse_test.hxml";
   FILE *f = fopen(hxml_path, "w");
   assert(f);
   fprintf(f, "# leading comment\n"
@@ -29,7 +31,7 @@ int main(void) {
   assert(strcmp(m.cp_paths[1], "haxe-extra") == 0);
 
   // missing -main → false
-  const char *bad_path = "/tmp/lub_hxml_parse_test_bad.hxml";
+  const char *bad_path = "lub_hxml_parse_test_bad.hxml";
   FILE *fb = fopen(bad_path, "w");
   assert(fb);
   fprintf(fb, "-cp foo\n");

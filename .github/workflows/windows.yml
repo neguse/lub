@@ -59,6 +59,22 @@ jobs:
           if (-not $dll) { throw "vulkan-1.dll not found under $env:VULKAN_SDK" }
           Copy-Item $dll.FullName build-release/
 
+      # smoke test の exe は SDL3 (shared) にリンクしている。SDL3.dll は
+      # build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の
+      # POST_BUILD 頼み。smoke exe と同じ dir に無いと loader が解決できず
+      # git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
+      - name: Stage runtime DLLs next to smoke tests
+        shell: bash
+        run: |
+          cd build-release
+          echo "== *.dll in build-release (before) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
+          if [ ! -f SDL3.dll ]; then
+            dll=$(find . -name SDL3.dll | head -1)
+            echo "SDL3.dll not at root; found at: ${dll:-<none>}"
+            [ -n "$dll" ] && cp "$dll" .
+          fi
+          echo "== *.dll in build-release (after) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
+
       - name: C smoke tests
         shell: bash
         run: |
