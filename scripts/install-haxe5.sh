@@ -50,6 +50,32 @@ if [ "${installed:-0}" -ne 1 ]; then
   echo "==> installed: $("$DIR/haxe" --version)"
 fi
 
+# haxelib.exe は neko.dll に依存する neko プログラムだが、Haxe の win64 zip は
+# haxe.exe (native) だけで Neko を同梱しない。Neko を haxe dir に同居させ、
+# haxelib.exe (同 dir) が neko.dll を、neko が NEKOPATH から ndll を解決できる
+# ようにする。これが無いと haxelib は起動前 DLL 解決に失敗し exit 127 になる。
+if [ "$windows" -eq 1 ]; then
+  if [ ! -f "$DIR/neko.dll" ]; then
+    NEKO_VER="2.4.1"
+    NURL="https://github.com/HaxeFoundation/neko/releases/download/v2-4-1/neko-${NEKO_VER}-win64.zip"
+    echo "==> downloading Neko $NEKO_VER (haxelib runtime) -> $DIR"
+    ntmp="$(mktemp -d)"
+    curl -fsSL -o "$ntmp/neko.zip" "$NURL"
+    unzip -q "$ntmp/neko.zip" -d "$ntmp/x"
+    ninner="$(find "$ntmp/x" -maxdepth 1 -mindepth 1 -type d | head -1)"
+    cp -r "$ninner"/. "$DIR"/
+    rm -rf "$ntmp"
+  fi
+  # neko は ndll (std/regexp 等) を NEKOPATH から探す。exe 隣の neko.dll は OS の
+  # DLL 検索で拾えるので PATH 追加は不要。native の neko が読むので path は
+  # Windows 形式 (C:/...) に変換する (MSYS の /c/... は解釈できない)。
+  if command -v cygpath >/dev/null; then
+    export NEKOPATH="$(cygpath -m "$DIR")"
+  else
+    export NEKOPATH="$DIR"
+  fi
+fi
+
 if ! HAXE_STD_PATH="$DIR/std" "$DIR/haxelib" config >/dev/null 2>&1; then
   HAXELIB_REPO_DIR="${HAXELIB_REPO_DIR:-$HOME/haxelib}"
   echo "==> haxelib setup $HAXELIB_REPO_DIR"

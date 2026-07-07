@@ -92,6 +92,10 @@ jobs:
         run: |
           scripts/install-haxe5.sh "$HOME/haxe5"
           echo "LUB_HAXE=$(cygpath -m "$HOME/haxe5/haxe.exe")" >> "$GITHUB_ENV"
+          # golden step で haxe.exe が -lib lub を解決するために haxelib を呼ぶ。
+          # haxelib.exe は neko 依存なので、install が haxe dir に同居させた ndll
+          # を指す NEKOPATH を後続ステップへ引き継ぐ (neko.dll は exe 隣で解決)。
+          echo "NEKOPATH=$(cygpath -m "$HOME/haxe5")" >> "$GITHUB_ENV"
 
       - name: Golden image test (native backend, WARP)
         shell: bash
