@@ -10,24 +10,33 @@
 
 bool app_init(App *app) {
   memset(app, 0, sizeof(*app));
-  // Window creation flag set: native asks for a Vulkan-capable surface so
-  // SDL_Vulkan_* APIs work; wasm just needs the canvas-backed default.
+
+  // backend は config()/Boot.config で最終決定される(window 生成より後)が、
+  // config() を呼ばない sample でも harness の backend 選択を尊重できるよう、
+  // ここで default を env LUB_BACKEND から決める。config() が明示すれば勝つ。
+#ifdef __EMSCRIPTEN__
+  strcpy(app->backend_name, "webgpu");
+#else
+  {
+    const char *env_b = getenv("LUB_BACKEND");
+    if (env_b && *env_b) {
+      strncpy(app->backend_name, env_b, sizeof(app->backend_name) - 1);
+      app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+    } else {
+      strcpy(app->backend_name, "sokol");
+    }
+  }
+#endif
+
+  // Window creation flag: sokol/sdlgpu は SDL_Vulkan_* を使うので
+  // Vulkan-capable surface を要求する。D3D12 直接実装 ("native", Windows 専用)
+  // は Vulkan を 使わないため flag を外し、Vulkan ICD の無い環境 (GPU 無しの CI
+  // 等) でも window を作れるようにする。wasm は canvas-backed default のみ。
 #ifdef __EMSCRIPTEN__
   app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
 #else
-  // backend は config() で決まる(window 生成より後)ので、ここでは env
-  // LUB_BACKEND で早期判定する。D3D12 直接実装 ("native", Windows 専用) は
-  // Vulkan を一切使わないため Vulkan flag を外し、Vulkan ICD の無い環境
-  // (GPU 無しの CI 等) でも window を作れるようにする。sokol/sdlgpu は従来通り
-  // Vulkan-capable surface を要求する。
   SDL_WindowFlags win_flags = SDL_WINDOW_RESIZABLE;
-#ifdef _WIN32
-  const char *env_backend = getenv("LUB_BACKEND");
-  bool d3d12_native = env_backend && strcmp(env_backend, "native") == 0;
-#else
-  bool d3d12_native = false;
-#endif
-  if (!d3d12_native)
+  if (strcmp(app->backend_name, "native") != 0)
     win_flags |= SDL_WINDOW_VULKAN;
   app->window = SDL_CreateWindow("lub", 1280, 720, win_flags);
 #endif
@@ -55,11 +64,6 @@ bool app_init(App *app) {
   app->fps_last_ns = 0;
   app->fps_frame_count = 0;
   app->phase = APP_PHASE_PRE_BACKEND;
-#ifdef __EMSCRIPTEN__
-  strcpy(app->backend_name, "webgpu");
-#else
-  strcpy(app->backend_name, "sokol");
-#endif
   app->readback_depth = 8;
   return true;
 }
