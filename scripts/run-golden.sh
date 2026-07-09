@@ -17,8 +17,11 @@
 #   - fixed --capture-frame                 - set below to FRAME
 # Exit code is 0 only if every checked visual golden matches.
 #
-# Platform selects the backend set: Linux checks sdlgpu, Windows (git
-# bash) checks the native (D3D12) backend.
+# Platform selects the backend set: Linux checks sdlgpu and native
+# (Vulkan direct), Windows (git bash) checks native (D3D12). On Linux both
+# backends render through lavapipe and must produce byte-identical output,
+# so they share the *_sdlgpu.png goldens — a native/sdlgpu divergence is a
+# test failure by design.
 
 set -euo pipefail
 
@@ -35,7 +38,7 @@ case "$(uname -s)" in
         ;;
     *)
         windows=0
-        BACKENDS=(sdlgpu)
+        BACKENDS=(sdlgpu native)
         BINARY="${BINARY:-./build/lub}"
         ;;
 esac
@@ -108,8 +111,14 @@ check_entry() {
         18_coin_pusher) frame=240 ;;
     esac
 
+    # Linux native (Vulkan) shares the sdlgpu goldens: same lavapipe
+    # rasterizer, byte-identical output is the contract between them.
+    local golden_backend="$backend"
+    if [[ $windows -eq 0 && "$backend" == native ]]; then
+        golden_backend=sdlgpu
+    fi
     local out="$tmpdir/${golden_name}_${backend}.png"
-    local golden="$GOLDEN_DIR/${golden_name}_${backend}.png"
+    local golden="$GOLDEN_DIR/${golden_name}_${golden_backend}.png"
     local log="$tmpdir/${golden_name}_${backend}.log"
     local status="$tmpdir/${golden_name}_${backend}.status"
 
@@ -143,10 +152,16 @@ check_entry() {
     fi
 
     if [[ $update -eq 1 ]]; then
-        cp "$out" "$golden"
-        echo "UPDATED ${golden}"
-        echo updated >"$status"
-        return
+        if [[ "$golden_backend" != "$backend" ]]; then
+            # Shared golden (linux native -> sdlgpu): only the owning
+            # backend regenerates it; still verify below.
+            :
+        else
+            cp "$out" "$golden"
+            echo "UPDATED ${golden}"
+            echo updated >"$status"
+            return
+        fi
     fi
 
     if [[ ! -f "$golden" ]]; then

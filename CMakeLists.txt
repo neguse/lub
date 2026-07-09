@@ -201,8 +201,11 @@ if(NOT LUB_WASM)
   # HTTP + SSE dev server for `lub --serve game.hxml`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)
-    # D3D12 backend (config({backend="dx12"})).
+    # D3D12 backend ("native" on Windows).
     list(APPEND LUB_SOURCES src/backend_dx12.cpp)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Vulkan backend ("native" on Linux).
+    list(APPEND LUB_SOURCES src/backend_vk.c)
   endif()
 endif()
 add_executable(lub ${LUB_SOURCES})
@@ -240,6 +243,11 @@ if(WIN32)
   # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
   # d3d12/dxgi/dxguid for the dx12 backend (all OS-provided).
   target_link_libraries(lub PRIVATE ws2_32 d3d12 dxgi dxguid)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT LUB_WASM)
+  # Vulkan loader for backend_vk.c.
+  find_package(Vulkan REQUIRED)
+  target_link_libraries(lub PRIVATE Vulkan::Vulkan)
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them

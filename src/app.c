@@ -79,12 +79,14 @@ bool app_init(App *app) {
 bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
   // "native" = このプラットフォームの最短距離実装。Windows は D3D12 直接、
-  // Linux は直接実装 (backend_vulkan.c) ができるまで sdlgpu が代行する。
+  // Linux は Vulkan 直接 (backend_vk.c)。それ以外は sdlgpu が代行する。
   if (strcmp(app->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
   } else if (strcmp(app->backend_name, "native") == 0) {
-#ifdef _WIN32
+#if defined(_WIN32)
     g_backend = &g_backend_dx12;
+#elif defined(__linux__)
+    g_backend = &g_backend_vk;
 #else
     g_backend = &g_backend_sdlgpu;
 #endif
