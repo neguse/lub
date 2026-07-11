@@ -540,3 +540,13 @@
 - よかったこと: lub の --capture がそのまま画面検証ゲートになった。読解ベースの分析2点が実測で覆っており、PoC を先にやる判断が正しかった
 - 判断: lub 側 HAXE_PRELUDE 相当は lub 固有 shim (samples/lub/lub_shim.lua) と汎用 CLI (--prelude) に分離し、tcs 本体に lub 依存を入れない
 - 残課題: T127 (hot reload) → T131 (multi-return)。lub feature request 候補: .lua entry の任意パス対応
+
+### T127: lub 上の hot reload 検証 ✓ (2026-07-12)
+- lub 実行中に `tcs --watch` で entry .lua を再生成 → lub の mtime poll → `lume.hotswap` が発火し、Lua エラーなしで clear 色の変更が反映されることを確認した (変更後の frame を `--capture` して赤画面を検証)
+- 発見1: `tcs --watch` が Changed イベントしか拾わず、エディタの atomic save (tmp へ書いて rename) を取りこぼしていた。NotifyFilters.FileName + Created/Renamed handler を追加し、os.replace での保存でも rebuild が走ることを実測した
+- 発見2: WatchModeTests が `dotnet run` の wrapper だけ Kill して子の Transpiler --watch プロセスを leak していた (47個蓄積、inotify 枯渇で他テストが flaky 化)。`proc.Kill(entireProcessTree: true)` に修正し、3連続 green + leak 0 を確認した
+- tcs 側 HotReload runtime は lub 経路では不要 (lume.hotswap が担う)。併用しない方針を current.md に明記
+- 変更ファイル: Program.cs, WatchModeTests.cs, current/tasks/done
+- よかったこと: 実機の hot reload 検証が、watch の atomic save バグとテストの process leak という2つの既存問題を炙り出した
+- 判断: leak した watch プロセス群は当セッションで kill して掃除した。flaky の再発条件 (inotify 上限) は leak 修正で根が取れている
+- 残課題: T131 (multi-return) → breakout 級サンプル移植の判断

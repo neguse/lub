@@ -60,7 +60,8 @@ public class WatchModeTests
             }
             finally
             {
-                proc.Kill();
+                // dotnet run の子プロセス (Transpiler --watch) ごと止める
+                proc.Kill(entireProcessTree: true);
                 proc.WaitForExit(3000);
             }
         }
@@ -130,7 +131,7 @@ public class WatchModeTests
             }
             finally
             {
-                proc.Kill();
+                proc.Kill(entireProcessTree: true);
                 proc.WaitForExit(3000);
             }
         }

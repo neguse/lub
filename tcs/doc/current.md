@@ -134,7 +134,7 @@
 - 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込み、`--no-runtime` で bare 出力に戻せる
 - `--sourcemap`: runtime prelude 埋め込み時も Lua 行番号を offset 済みで JSON 出力
 - `--map-stacktrace out.lua.map [trace.txt]`: Lua stack trace の `file.lua:line:` を C# `file.cs:line` で注釈する
-- `--watch` / `-w`: 入力/`--ref` ファイル変更監視 + 自動再トランスパイル (FileSystemWatcher + 100msデバウンス)
+- `--watch` / `-w`: 入力/`--ref` ファイル変更監視 + 自動再トランスパイル (FileSystemWatcher + 100msデバウンス)。エディタの atomic save (rename 書き込み) も Created/Renamed イベントで拾う
 - エラー時: ソース位置付きでエラーメッセージを stderr に出力
 - 警告時: TCS1001/TCS1002/TCS1003 などの準拠診断を stderr に出力
 
@@ -158,6 +158,7 @@
 - `hello.cs` + `lub_stub.cs` (--ref) + `lub_shim.lua` (--prelude) で lub の 00_hello 相当を実行できる
 - `run-lub.sh` が staging (lub は cwd 相対の samples/<mod>/.lub レイアウト前提のため) と headless 起動をまとめる
 - 検証は lub の `--capture` でフレーム画像を確認。詳細は `doc/lub-gap-analysis.md`
+- hot reload: `tcs --watch` の出力を staging パスへ向けると、lub の mtime poll → lume.hotswap で C# 編集が再起動なしに反映される (tcs 側 HotReload runtime は lub 経路では使わない)
 
 ### 外部 API / --ref サンプル
 - `samples/host_api_game.cs` + `samples/host_api_stub.cs` を engine agnostic な参照専用 stub 例として追加
@@ -184,7 +185,7 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
-- 着手順: T127 (hot reload) → T131 (multi-return)。T128/T129/T130/T126 は完了 (00_hello 相当が lub 上で動作、--capture で画面検証済み)
+- 着手順: T131 (multi-return) → breakout 級サンプル移植の判断。T126-T130 は完了 (00_hello 相当が lub 上で動作 + hot reload 検証済み)
 - P2: T123 analyzer release 手順の README 化 (縮小)
 - T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
 

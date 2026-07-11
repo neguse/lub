@@ -369,7 +369,10 @@ public class Program
 
             var watcher = new FileSystemWatcher(dir, "*.cs")
             {
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size,
+                // FileName も含める: エディタの atomic save (tmp へ書いて
+                // rename) は Changed ではなく Created/Renamed で届く
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size
+                    | NotifyFilters.FileName,
                 EnableRaisingEvents = true
             };
             watchers.Add(watcher);
@@ -383,11 +386,14 @@ public class Program
 
         foreach (var watcher in watchers)
         {
-            watcher.Changed += (_, e) =>
+            void OnFsEvent(object _, FileSystemEventArgs e)
             {
                 if (watchedFiles.Contains(Path.GetFullPath(e.FullPath)))
                     pending.Set();
-            };
+            }
+            watcher.Changed += OnFsEvent;
+            watcher.Created += OnFsEvent;
+            watcher.Renamed += (_, e) => OnFsEvent(_, e);
         }
 
         try

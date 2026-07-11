@@ -14,8 +14,7 @@
 lub Haxe 代替検証のギャップ分析は `doc/lub-gap-analysis.md` (T125) にまとめた。
 G1〜G4 のギャップを tcs 側機能として埋めてから PoC (T126/T127) へ進む。
 
-1. **T127: lub 上の hot reload 検証**
-2. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
+1. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
 
 前提: `../lub` は readonly。lub 側に変更が必要な場合は feature request を出し、
 tcs 側から直接変更しない。
@@ -27,13 +26,6 @@ tcs 側から直接変更しない。
 lub は C/C++ runtime + Lua 5.5 の上に Haxe → Lua transpile の script 層を持つ。
 この script 層を tcs で置き換えられるかを検証する。契約とギャップの詳細は
 `doc/lub-gap-analysis.md` を参照。
-
-### T127: lub 上の hot reload 検証
-- 目的: lub の hot reload と tcs 出力 Lua の相性を確認する
-- 作業:
-  - `tcs --watch` で entry .lua を再生成し、lub 側の mtime poll → lume.hotswap が機能するか検証する
-  - tcs 側 HotReload runtime との重複・競合を整理する
-- 完了条件: C# ソースの編集 → lub の画面が再起動なしで更新される
 
 ### T131: Lua multi-return 対応 (G4)
 - 目的: `Io.loadText` (text/version/status/error) など multi-return API を C# から使えるようにする
