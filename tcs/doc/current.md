@@ -173,7 +173,8 @@
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- P0: lub (`../lub`, readonly) の Haxe 代替検証 — T125 ギャップ分析 → T126 00_hello 相当 → T127 hot reload
+- P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
+- 着手順: T128 (object initializer 黙殺修正) → T129 (module return) → T130 (naming 抑制) → T126 (00_hello 相当) → T127 (hot reload) → T131 (multi-return)
 - P2: T123 analyzer release 手順の README 化 (縮小)
 - T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
 

@@ -485,3 +485,13 @@
 - `../lub` は readonly。lub 側に変更が必要な場合は feature request を出す
 - 変更ファイル: doc/tasks.md, doc/current.md, doc/done.md, CLAUDE.md
 - 判断: stub を書き始める前にギャップ分析 (T125) を置き、snake_case リネームやエントリ契約など tcs 本体機能になり得るものと shim で吸収するものを先に切り分ける
+
+### T125: lub script 層のギャップ分析 ✓ (2026-07-12)
+- lub の entry/hot reload/module/core API/lubx 契約を実装読解し、tcs で 00_hello 相当の最小コードを transpile/check して実験した
+- 成果物: `doc/lub-gap-analysis.md`。ギャップは G1 (object initializer 黙殺 = 既存バグ) / G2 (module return なし) / G3 (naming warning で check exit 1) / G4 (multi-return 表現なし) の4点
+- 名前は無変換で emit されるためリネーム機構は不要、`--ref` と lub extern の構図一致、`.lua` entry は lub 外パス可 + mtime poll で hotswap、と PoC 経路が lub 無変更で成立する見込みを確認した
+- 切り分け: G1-G4 は全て tcs 側機能 (T128-T131 として起票)、stub/起動定型は tcs 側 samples で吸収、lub への feature request は現時点なし
+- 変更ファイル: doc/lub-gap-analysis.md, doc/tasks.md, doc/current.md, doc/done.md
+- よかったこと: 読解だけで済ませず最小コードを実 transpile したことで、黙殺バグ (G1) と check exit 1 (G3) という読解では出ない事実を掴めた
+- 判断: G1 は lub 非依存の正しさバグなので PoC 都合と切り離して最優先に置いた。multi-return (G4) は 00_hello に不要なので breakout 級まで先送りした
+- 残課題: T128 → T129 → T130 → T126 → T127 → T131 の順で実装・検証

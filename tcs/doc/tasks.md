@@ -11,13 +11,15 @@
 
 ## 推奨着手順
 
-2026-07-12 の棚卸しで、lub (`../lub`) の Haxe 代替検証を P0 に設定した。
-実装より先にギャップ分析 (T125) を置き、tcs 本体に足す機能と stub/shim で
-吸収するものを切り分けてから着手する。
+lub Haxe 代替検証のギャップ分析は `doc/lub-gap-analysis.md` (T125) にまとめた。
+G1〜G4 のギャップを tcs 側機能として埋めてから PoC (T126/T127) へ進む。
 
-1. **T125: lub script 層のギャップ分析**
-2. **T126: 00_hello 相当を tcs で動かす**
-3. **T127: lub 上の hot reload 検証**
+1. **T128: object initializer の黙殺修正** (G1 — lub 非依存の正しさバグでもある)
+2. **T129: entry class 指定で module return を出す** (G2)
+3. **T130: naming warning の抑制手段** (G3)
+4. **T126: 00_hello 相当を tcs で動かす**
+5. **T127: lub 上の hot reload 検証**
+6. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
 
 前提: `../lub` は readonly。lub 側に変更が必要な場合は feature request を出し、
 tcs 側から直接変更しない。
@@ -27,34 +29,50 @@ tcs 側から直接変更しない。
 ## P0: lub Haxe 代替検証 (dogfooding)
 
 lub は C/C++ runtime + Lua 5.5 の上に Haxe → Lua transpile の script 層を持つ。
-この script 層を tcs で置き換えられるかを検証する。
+この script 層を tcs で置き換えられるかを検証する。契約とギャップの詳細は
+`doc/lub-gap-analysis.md` を参照。
 
-### T125: lub script 層のギャップ分析
-- 目的: Haxe の代わりに tcs で lub の script 層を書けるかの判断材料を揃える
+### T128: object initializer の黙殺修正 (G1)
+- 目的: `new T { ... }` の初期化子が診断なしで消える既存バグを直す (T97 方針)
 - 作業:
-  - boot 契約 (module が table を return し `onInit`/`onEvent`/`onFrame`/`onQuit` を公開) と tcs 出力形式の突き合わせ
-  - `@:native` snake_case リネーム相当 (`Gfx.beginPass` → `Gfx.begin_pass`) の要否と実現方式 (tcs 機能 / stub 命名で吸収)
-  - `PassOpts` 等の匿名オプション table の C# 表現 (class + object initializer → Lua table リテラル)
-  - opaque handle (Haxe `Dynamic` 相当) と Lua multi-return の表現
-  - lubx 層 (Haxe 実装のヘルパー) の扱い。PoC では core API 直呼びで回避する前提を確認
-- 完了条件: ギャップ一覧と「tcs に足す機能 / stub・shim で吸収 / lub へ feature request」の切り分けが文書化されている
+  - Lua 出力対象外の型 (`--ref` 型) の `new` + initializer は plain table literal `{ key = value, ... }` へ emit する
+  - Lua 出力対象の通常 class は `.new()` + field 代入で対応するか、TCS1001 診断にする
+  - analyzer / `tcs check` / transpiler warning の判定を共有 facts で揃える
+- 完了条件: initializer が黙って消えるケースがなく、`--ref` 型の opts が Lua table として渡る
+
+### T129: entry class 指定で module return を出す (G2)
+- 目的: lub の entry module 契約 (require が table を返す) に tcs 出力を適合させる
+- 作業: CLI に entry class 指定 (例: `--entry Hello`) を追加し、出力末尾に `return Hello` を出す
+- 完了条件: 生成 Lua を require すると指定 class の table が返る
+
+### T130: naming warning の抑制手段 (G3)
+- 目的: lub の wire format (lowerCamel / snake_case) を使うコードを `tcs check` ゲートに乗せられるようにする
+- 作業: naming warning を抑制する CLI flag 等を追加する (デフォルト挙動は変えない)
+- 完了条件: lowerCamel callback を含むソースで `tcs check` が exit 0 にできる
 
 ### T126: 00_hello 相当を tcs で動かす
-- 目的: 最小サンプルで tcs → lub runtime の E2E 経路を成立させる
+- 目的: 最小サンプルで tcs → lub runtime の E2E 経路を成立させる (T128〜T130 が前提)
 - 作業:
-  - lub core API の最小 C# 参照 stub (`Gfx` / print 相当) を tcs 側に置く
-  - エントリ契約 (table return + callbacks) への対応 (T125 の方針に従う)
+  - lub core API の最小 C# stub (`Gfx` / `Lub` / `os` 相当) を `samples/lub/` に置く
+  - `lubx.Boot.config` 相当の起動定型 (env 読み + `Lub.config`) を C# で書く
   - tcs 出力 Lua を lub runtime にロードして clear 画面を出す
+  - 未確認事項 (ref 型 instance method の emit 形、event field 透過、`os.getenv` 透過) を実測する
 - 完了条件: tcs で書いた 00_hello 相当が lub 上で動く
 
 ### T127: lub 上の hot reload 検証
 - 目的: lub の hot reload と tcs 出力 Lua の相性を確認する
 - 作業:
-  - lub の reload 経路 (lume.hotswap) が tcs 出力 module で機能するか検証する
+  - `tcs --watch` で entry .lua を再生成し、lub 側の mtime poll → lume.hotswap が機能するか検証する
   - tcs 側 HotReload runtime との重複・競合を整理する
-- 完了条件: tcs 出力 module の編集 → reload で lub の画面が更新される
+- 完了条件: C# ソースの編集 → lub の画面が再起動なしで更新される
 
-T126 の結果を見てから、breakout 級サンプル移植などの後続タスクを切る。
+### T131: Lua multi-return 対応 (G4)
+- 目的: `Io.loadText` (text/version/status/error) など multi-return API を C# から使えるようにする
+- 作業: `out` 引数への割り当てなど、multi-return の C# 表現を設計して実装する
+- 完了条件: multi-return を返す `--ref` stub API を C# から受け取れる
+- 備考: 00_hello では不要。breakout 級サンプル移植の前提
+
+T126/T127 の結果を見てから、breakout 級サンプル移植などの後続タスクを切る。
 
 ---
 
