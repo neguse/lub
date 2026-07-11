@@ -187,8 +187,7 @@
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
 - 着手順: T132 (breakout 級サンプル移植)。G1-G5 のギャップ解消 (T128-T131) と 00_hello 実機動作 + hot reload 検証 (T126/T127) は完了
-- P2: T123 analyzer release 手順の README 化 (縮小)
-- T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
+- T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ

@@ -560,3 +560,10 @@
 - よかったこと: TryGetValue の先例 (statement 冒頭 local + 代入) に乗ったので、emitter の新規機構なしで表現できた
 - 判断: `ref` 引数は未対応警告に留めた (lub API に前例がなく、C# 側の意味論も multi-return と一致しない)
 - 残課題: T132 (breakout 級サンプル移植) で実戦検証
+
+### T123: tcs analyzer package の release 手順整備 (縮小) ✓ (2026-07-12)
+- README の analyzer 節に release 手順 (PackageVersion bump → 参照例と run-tests consumer の version 同期 → pack → run-tests 検証) を追記した
+- NuGet 公開は当面行わず local nupkg 配布のみとする方針 (Q8) を手順に明記した
+- 変更ファイル: README.md, current/tasks/done
+- 判断: T123 当初案の metadata / versioning policy / CI gate 整備は、consumer gate が run-tests で恒常化済みのため手順文書化のみに縮小した (2026-07-12 の棚卸しどおり)
+- 残課題: なし (公開判断は必要になった時点で再検討)

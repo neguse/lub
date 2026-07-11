@@ -228,6 +228,15 @@ dotnet restore your-project.csproj --source .nupkgs --source https://api.nuget.o
                   PrivateAssets="all" />
 ```
 
+#### analyzer package の release 手順
+
+NuGet 公開は当面行わず、local nupkg の配布のみとする。
+
+1. `TinyCs.Analyzers/TinyCs.Analyzers.csproj` の `PackageVersion` を上げる
+2. `run-tests.sh` 内の consumer 検証と本 README の `PackageReference` 例の `Version` を同じ値に更新する
+3. `dotnet pack TinyCs.Analyzers/TinyCs.Analyzers.csproj -c Release -o .nupkgs` で再生成する
+4. `bash run-tests.sh` を実行し、nupkg consumer build と `.editorconfig` severity override の検証が通ることを確認する
+
 repository 内で直接参照する場合:
 
 ```xml
