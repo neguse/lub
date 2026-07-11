@@ -318,7 +318,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `^x` (Index from end, C# 8) | **-** | | |
 | `new T { ... }` (初期化子) | **Y** | List/Dict、class (IIFE + field 代入)、`--ref` 型 (plain table)。ネストした初期化子は TCS1001 | |
 | `new(args)` (ターゲット型, C# 9) | **Y** | 初期化子含む | |
-| `x!` (null 許容抑制, C# 8) | **N/A** | | |
+| `x!` (null 許容抑制, C# 8) | **Y** | 型チェック専用、Lua へは透過 | |
 | `stackalloc` | **N/A** | | |
 | `&x` `*x` `->` (ポインタ) | **N/A** | | |
 | `delegate { }` (匿名メソッド, C# 2) | **-** | | |

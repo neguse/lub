@@ -12,4 +12,16 @@ Gfx = {
   begin_pass = begin_pass,
   end_pass = end_pass,
   main_tex = main_tex,
+  use_shader = use_shader,
+  use_buffer = use_buffer,
+  draw = draw,
+  VERTEX = VERTEX,
+  NONE = NONE,
+  ALPHA = ALPHA,
 }
+Input = {
+  key_down = key_down,
+  key_pressed = key_pressed,
+}
+-- Io は C 提供ではなく lub 同梱の Lua module (samples/lub_io.lua)
+Io = require("lub_io")

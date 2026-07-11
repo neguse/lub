@@ -204,6 +204,8 @@ public partial class LuaEmitter
         {
             SyntaxKind.PostIncrementExpression => $"{operand} + 1",
             SyntaxKind.PostDecrementExpression => $"{operand} - 1",
+            // x! は型チェック専用。Lua 出力には operand をそのまま通す
+            SyntaxKind.SuppressNullableWarningExpression => operand,
             _ => WarnUnsupported(postfix, $"postfix expression: {postfix.Kind()}")
         };
     }

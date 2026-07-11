@@ -79,6 +79,7 @@
 | s?.Method / list?.Method / dict?.Method | 型別 runtime mapping + nil チェック |
 | i++ (statement) | i = i + 1 |
 | cast | 透過 (型消去) |
+| x! (null-forgiving) | 透過 |
 | new List<T>{...} | {…} (sequence table) |
 | list[i] | list[i+1] (0→1 indexed) |
 | list.Count | #list |
@@ -156,8 +157,9 @@
 - `HotReload.mtime(filepath)`: デフォルトは shell 非依存の no-op (`nil`)、engine 側 `fs.mtime()` 等を代入する
 
 ### lub 連携サンプル (samples/lub/)
-- `hello.cs` + `lub_stub.cs` (--ref) + `lub_shim.lua` (--prelude) で lub の 00_hello 相当を実行できる
-- `run-lub.sh` が staging (lub は cwd 相対の samples/<mod>/.lub レイアウト前提のため) と headless 起動をまとめる
+- `hello.cs` / `breakout.cs` + `lub_stub.cs` (--ref) + `lub_shim.lua` (--prelude) で lub の 00_hello / 09_breakout 相当を実行できる
+- `run-lub.sh [hello|breakout] [--build] [lub args...]` が staging (lub は cwd 相対の samples/<mod>/.lub レイアウト前提のため) と headless 起動をまとめる
+- breakout は Input / Io (multi-return) / use_shader / use_buffer / draw まで stub/shim を拡張し、決定論 gameplay を `--capture` frame 240 で検証済み
 - 検証は lub の `--capture` でフレーム画像を確認。詳細は `doc/lub-gap-analysis.md`
 - hot reload: `tcs --watch` の出力を staging パスへ向けると、lub の mtime poll → lume.hotswap で C# 編集が再起動なしに反映される (tcs 側 HotReload runtime は lub 経路では使わない)
 
@@ -186,7 +188,7 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
-- 着手順: T132 (breakout 級サンプル移植)。G1-G5 のギャップ解消 (T128-T131) と 00_hello 実機動作 + hot reload 検証 (T126/T127) は完了
+- 着手順: T133 (完全修飾 API の TCS1002 誤検出修正)。lub 検証トラック (T125-T132) は breakout 実機動作まで完了
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 
 ### コミット履歴

@@ -567,3 +567,15 @@
 - 変更ファイル: README.md, current/tasks/done
 - 判断: T123 当初案の metadata / versioning policy / CI gate 整備は、consumer gate が run-tests で恒常化済みのため手順文書化のみに縮小した (2026-07-12 の棚卸しどおり)
 - 残課題: なし (公開判断は必要になった時点で再検討)
+
+### T132: lub breakout 級サンプル移植 ✓ (2026-07-12)
+- lub の samples/09_breakout 相当を TinyC# で移植した (samples/lub/breakout.cs、Brick class + List<double> 頂点構築 + out 引数 multi-return)
+- lub_stub.cs / lub_shim.lua を Input (key_down/key_pressed) / Io (require "lub_io") / Gfx (use_shader/use_buffer/draw + VERTEX/NONE/ALPHA) まで拡張し、run-lub.sh をサンプル名パラメータ対応にした
+- lavapipe headless + `--capture` frame 240 で、ブロック破壊・スコア・残機減少まで決定論 gameplay が動くことを画像で確認した
+- 未実測2項目を確定: `--ref` 型 instance method は colon call で lub の userdata method 規約 (self 第1引数) と一致、host table の field 読みは透過 (RefTypeAccessTests 2件で固定)
+- 追加発見1: `x!` (null-forgiving) が unsupported 黙殺で Lua を壊していた → 透過に修正 (support-matrix N/A → Y)
+- 追加発見2: 完全修飾 `System.Math.*` の TCS1002 誤検出 → T133 として起票 (breakout は `using System;` + bare Math で回避)
+- 変更ファイル: samples/lub/breakout.cs, samples/lub/lub_stub.cs, samples/lub/lub_shim.lua, samples/lub/run-lub.sh, LuaEmitter.Expressions.cs, RefTypeAccessTests.cs, doc/lub-gap-analysis.md, doc/support-matrix.md, current/tasks/done
+- よかったこと: T128-T131 で入れた機能 (object initializer table / --entry / --prelude / multi-return) が全部そのまま効き、移植中の tcs 側変更は null-forgiving の1点だけだった
+- 判断: 原典の Array<Dynamic> は class Brick に型付けした (tcs に Dynamic はなく、型付けの方が TinyC# の狙いに合う)。paddle 衝突の rect は座標引数に展開して Dynamic 相当の使い捨て table を避けた
+- 残課題: T133。以降のサンプル移植 (audio / texture 系) や Useful 層追加は需要駆動で判断

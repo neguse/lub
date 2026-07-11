@@ -67,13 +67,17 @@ lowerCamel callback) を `--ref` stub 付きで transpile / check した。
 | G4 | Lua multi-return | C# 側に multi-return の表現がない。00_hello では不要だが、breakout 級で `Io.loadText` (text/version/status/error) が必要になる |
 | G5 | host API の namespace shim | lub の C 側は flat global を expose し、namespace table は Haxe 専用 prelude が作る。tcs 出力にも同等の shim を前置する仕組みが必要 (T126 で発見) |
 
-### 未確認 (breakout 級で実測)
+### 実測済み
 
-- `--ref` 型の instance method 呼び出しの emit 形。tcs は `obj:Method()` (colon call) を出すはずだが、lub の instance 風 API (`Readback.read_texture` 等) の呼び出し規約と合うか。00_hello / breakout では不要
-- `onEvent(e)` の event table を typed stub class で読む際の field 名透過 (field access は透過のはずだが未実測)
+- T126: stub class `os` 経由の `os.getenv` 透過呼び、`Lub.config` の opts table、`begin_pass` の PassOpts table literal、`--entry` module return、lub `--capture` による画面検証
+- T132 (breakout 移植): `Input` (key_down/key_pressed)、`Io.load_text` の multi-return を out 引数で受ける経路、`use_shader`/`use_buffer`/`draw` の opts/bindings table、決定論 gameplay の `--capture` 検証
+- `--ref` 型の instance method は colon call (`obj:method(...)`) で emit され、lub の userdata method (self 第1引数、`src/lua_api.c` の `lub_readback_check(L, 1)`) と一致する (RefTypeAccessTests で固定)
+- host table の field 読みは `obj.field` で透過する (event table 相当、RefTypeAccessTests で固定)
 
-T126 で実測済み: stub class `os` 経由の `os.getenv` 透過呼び、`Lub.config` の opts table、
-`begin_pass` の PassOpts table literal、`--entry` module return、lub `--capture` による画面検証。
+### T132 で見つかった tcs 側の追加ギャップ
+
+- `x!` (null-forgiving) が unsupported 黙殺で Lua 出力を壊していた → 透過に修正済み
+- 完全修飾 `System.Math.Min(...)` は `System.Math` の部分式が TCS1002 誤検出になる (`using System;` + bare `Math.*` なら通る)。T133 として起票
 
 ## 切り分け
 
