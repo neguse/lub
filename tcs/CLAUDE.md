@@ -72,6 +72,7 @@ bash run-tests.sh
 ```
 
 `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成・stale・Lua 5.5 でない場合に CMake で再ビルドし、`dotnet test`、代表 sample の `tcs check`、analyzer-demo build の expected diagnostics 検証、analyzer nupkg の PackageReference consumer / `.editorconfig` severity override 検証を実行する。Rider helper script (`verify-rider-scripts.sh`) の検証は `run-tests.sh` のみ。
+analyzer / `tcs check` / transpiler warning の診断一致は run-tests のこの恒常ゲートで守る（個別タスクにはしない）。
 
 ## 開発ワークフロー
 
@@ -208,6 +209,7 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 
 ## 参考リポジトリ（読み取り専用）
 
+- `../lub` — Haxe 代替検証 (T125-T127) の対象。C/C++ runtime + Lua 5.5 + Haxe script 層。readonly で、lub 側に変更が必要な場合は feature request を出す
 - `../lub3d` — 参考実装。直接対応先とは限らない
 - `../lubs` — Lua linter（開発ワークフローの参考）
 

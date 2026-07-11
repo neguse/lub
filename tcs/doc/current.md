@@ -1,6 +1,6 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Compact C# baseline 整理済み / Analyzer PoC go 確定 (T122)
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証へ (T125-T127)
 
 ### 完了済み (303テスト tcs / 10テスト analyzer / 477テスト lub3d)
 
@@ -173,8 +173,9 @@
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- T123: tcs analyzer package を正式導線にする (metadata / versioning / release 手順 / CI gate)
-- T124: tcs check / analyzer / transpiler diagnostics の一致を継続検証する
+- P0: lub (`../lub`, readonly) の Haxe 代替検証 — T125 ギャップ分析 → T126 00_hello 相当 → T127 hot reload
+- P2: T123 analyzer release 手順の README 化 (縮小)
+- T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ

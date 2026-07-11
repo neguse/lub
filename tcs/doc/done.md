@@ -476,3 +476,12 @@
 - よかったこと: pwsh を Linux に導入して Windows の失敗を手元で再現でき、実機往復を減らして修正を検証できた
 - 判断: precheck 全 pass を Rider 起動の前提にした設計は目的過剰だった。go/no-go 確認は analyzer-demo build pass だけで進められると判断し、bash gate は撤去した
 - 残課題: T123 (analyzer package 正式導線) / T124 (診断一致の継続検証)
+
+### タスク棚卸し・トリアージ再設定 ✓ (2026-07-12)
+- T122 go 後の方向をタスク棚卸しで再設定し、lub (`../lub`) の Haxe 代替検証を P0 とした
+- T125 (script 層ギャップ分析) / T126 (00_hello 相当を tcs で実行) / T127 (hot reload 検証) を新設
+- T123 は release 手順の README 化へ縮小して P2 降格 (NuGet 公開は Q8 どおり当面やらない、consumer gate は run-tests で恒常化済み)
+- T124 はタスクとしてクローズし、run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) として扱う
+- `../lub` は readonly。lub 側に変更が必要な場合は feature request を出す
+- 変更ファイル: doc/tasks.md, doc/current.md, doc/done.md, CLAUDE.md
+- 判断: stub を書き始める前にギャップ分析 (T125) を置き、snake_case リネームやエントリ契約など tcs 本体機能になり得るものと shim で吸収するものを先に切り分ける
