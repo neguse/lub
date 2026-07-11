@@ -4,22 +4,14 @@
 
 ---
 
-### Q12: Rider 上の Roslyn Analyzer PoC は go か no-go か
-- `samples/analyzer-demo/analyzer-demo.csproj` を Rider で開き、`Program.cs` 上で TCS1001/TCS1002/TCS1003 が通常の inspection / squiggle として表示されるか確認する
-- 期待値: TCS1001 x5 (`StructDeclaration`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`, `ListPattern`) / TCS1002 x1 (`System.IO.File.ReadAllText`) / TCS1003 x1 (`List<T>` null storage)
-- `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity` 変更が Rider 表示に反映されるか確認する（build への反映は `run-tests` で検証済み）
-- JetBrains InspectCode 2026.1.3 headless 実行では ProjectReference と local nupkg `PackageReference` consumer の両方で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 が SARIF に出ることと、PackageReference consumer の TCS1001/TCS1002/TCS1003 error override が同じ件数の error として扱われることを確認済み。再確認用 script: `samples/analyzer-demo/verify-inspectcode.sh`
-- 詳細な実機確認手順は `samples/analyzer-demo/README.md` に記録済み
-- Rider 実機確認前の pre-check summary は `samples/analyzer-demo/verify-rider-prechecks.sh` で生成でき、`TCS_RIDER_COMMAND` / Rider command / display / この shell からの Rider UI 起動可否も記録する
-- `samples/analyzer-demo/open-rider-demo.sh` で pre-check 後に検出済み Rider から demo project を開ける。自動検出できない場合は `TCS_RIDER_COMMAND=/path/to/rider.sh` を指定する
-- Windows では `.\samples\analyzer-demo\verify-rider-prechecks.ps1` / `.\samples\analyzer-demo\open-rider-demo.ps1` を使える。Rider を自動検出できない場合は `$env:TCS_RIDER_COMMAND = "C:\path\to\rider64.exe"` を指定する
-- 結果記録テンプレートは `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md`
-- go の場合: analyzer package / `tcs check` / CI を正式な準拠チェック導線として product task に分解する
-- no-go の場合: Rider plugin、external tool、または CLI watcher 連携などの代替案を検討する
-
----
-
 ## Resolved
+
+### Q12: Rider 上の Roslyn Analyzer PoC → go (2026-07-12)
+- Windows 10.0.26200 / .NET SDK 10.0.301 / JetBrains Toolbox の Rider で `samples/analyzer-demo/analyzer-demo.csproj` を実機確認
+- editor inspection に期待どおり TCS1001 x5 (`Unsupported TinyC# syntax`) / TCS1002 x1 (`Unsupported TinyC# API`) / TCS1003 x1 (`Unsupported TinyC# collection null`) が表示された
+- `.editorconfig` の `dotnet_diagnostic.TCSxxxx.severity = error` 変更が Rider 表示にも error として反映された
+- InspectCode headless 検証（ProjectReference / PackageReference consumer / severity override）は `verify-inspectcode.sh` / `.ps1` で再確認できる
+- go に伴い T123 (analyzer package 正式導線) / T124 (診断一致の継続検証) を `doc/tasks.md` に追加
 
 ### Q11: tcs 準拠チェック → 標準 C# ツールキット上の linter / analyzer が必要
 - C# をフロントエンドにする以上、トランスパイル時だけでなく IDE / `dotnet build` / CI 上で tcs 準拠性を確認できる必要がある

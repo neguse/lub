@@ -466,3 +466,13 @@
 - よかったこと: `--ref` の代表例を特定エンジン名から外し、host API 境界だけを小さく示せるようになった
 - 判断: lub3d 連携は過去の generator 参考実装として記録に残し、tcs 本体の sample は engine agnostic に保つ
 - 残課題: T122 の Rider 実機確認が残る
+
+### T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC ✓ (2026-07-12)
+- TinyCs.Analyzers / analyzer tests / samples/analyzer-demo / `tcs check` / CI workflow / analyzer nupkg consumer 検証 / InspectCode headless 検証 / Rider helper script (bash + PowerShell) を整備した
+- Rider 実機 (Windows 10.0.26200, JetBrains Toolbox) で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 が editor inspection に表示され、`.editorconfig` の severity=error 昇格が Rider 表示にも反映されることを確認し、Q12 を go で解決した
+- Windows pwsh 7 で `$isWindows` / `$isMacOS` が read-only 自動変数と衝突して precheck が落ちる不具合を修正した (Linux の pwsh 7.6.3 で再現・検証)
+- run-tests.ps1 の bash helper script 検証は WSL bash 検出が壊れやすく Rider 確認にも寄与しないため撤去し、`verify-rider-scripts.sh` の検証は run-tests.sh (Linux/CI) のみとした
+- 変更ファイル: run-tests.ps1, samples/analyzer-demo/rider-env.ps1, samples/analyzer-demo/verify-inspectcode.ps1, q.md, doc/tasks.md, doc/done.md, doc/current.md, CLAUDE.md
+- よかったこと: pwsh を Linux に導入して Windows の失敗を手元で再現でき、実機往復を減らして修正を検証できた
+- 判断: precheck 全 pass を Rider 起動の前提にした設計は目的過剰だった。go/no-go 確認は analyzer-demo build pass だけで進められると判断し、bash gate は撤去した
+- 残課題: T123 (analyzer package 正式導線) / T124 (診断一致の継続検証)

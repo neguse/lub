@@ -1,6 +1,6 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Compact C# baseline 整理済み
+## フェーズ: Phase 0-19 完了 / Compact C# baseline 整理済み / Analyzer PoC go 確定 (T122)
 
 ### 完了済み (303テスト tcs / 10テスト analyzer / 477テスト lub3d)
 
@@ -45,7 +45,7 @@
 **T119**: 標準ライブラリ小拡張 (`IndexOf`/`Join`/`Pow`/`Sort`/LINQ 追加)
 **T120**: ユーザー定義 `struct` / `record struct` を TCS1001 未対応診断として確定
 **T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
-**T122 進捗**: `tcs check` 追加 + TCS1001/TCS1002/TCS1003 を transpiler/check/analyzer で共有診断化 + core API allowlist + CI workflow 追加 + analyzer-demo Rider 検証手順を README 化 + run-tests で analyzer-demo expected diagnostics / nupkg consumer / severity override 検証 + JetBrains InspectCode headless 確認 script 化
+**T122**: Rider リアルタイム警告向け Roslyn Analyzer PoC (`tcs check` / 共有診断化 / core API allowlist / CI / nupkg consumer / InspectCode headless / Rider 実機確認 go)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -163,25 +163,18 @@
 - 全14モジュール C# ファイル生成・コンパイル検証済み (5,443行、0エラー)
 - dep 型 stub 自動生成、C# 予約語エスケープ、完全修飾型名解決
 
+### Analyzer PoC (T122, go 確定)
+- Rider 実機 (Windows) で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 の editor inspection 表示と `.editorconfig` severity=error の表示反映を確認済み (`q.md` Q12 → Resolved)
+- `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 を検出する
+- `verify-inspectcode.sh` / `.ps1` で InspectCode 2026.1.3 headless の ProjectReference / local nupkg `PackageReference` consumer / severity override を再確認できる
+- `verify-rider-prechecks.sh` / `.ps1` で pre-check summary、`open-rider-demo.sh` / `.ps1` (`-NoPrecheck` あり) で Rider 起動
+- `.ps1` は pwsh 7 の read-only 自動変数 (`$IsWindows` / `$IsMacOS`) と衝突する変数名を使わない。`verify-rider-scripts.sh` の検証は `run-tests.sh` (Linux/CI) のみで行い、`run-tests.ps1` は bash を使わない
+- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
+
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- T122: Rider リアルタイム警告向け tcs Roslyn Analyzer PoC を作る
-  - 進行中: Analyzer project / analyzer tests / analyzer-demo project / `.editorconfig` / `tcs check` / CI workflow / Rider 確認 checklist を追加
-  - `samples/analyzer-demo/Program.cs` は analyzer build と `tcs check` の両方で TCS1001 x5 / TCS1002 x1 / TCS1003 x1 を検出する
-  - README / analyzer-demo README に `PackageReference` 導入手順と local nupkg consumer 検証の位置づけを記録済み
-  - `samples/analyzer-demo/verify-inspectcode.sh` で JetBrains InspectCode 2026.1.3 headless 実行でも ProjectReference analyzer-demo と local nupkg `PackageReference` consumer の TCS1001 x5 / TCS1002 x1 / TCS1003 x1、および PackageReference consumer の TCS1001/TCS1002/TCS1003 error override を確認できる
-  - InspectCode severity override 検証は incomplete output の場合に一度だけ再実行し、期待件数が揃った場合だけ pass とする
-  - analyzer-demo build / PackageReference consumer / InspectCode は expected diagnostics の件数に加え、各診断の具体メッセージも検証する
-  - `samples/analyzer-demo/verify-rider-prechecks.sh` で Rider 実機確認前の pre-check summary を `/tmp/tcs-rider-verification-precheck/summary.md` に生成でき、`TCS_RIDER_COMMAND` / Rider command / display / UI 起動可否も記録する
-  - `samples/analyzer-demo/open-rider-demo.sh` で pre-check 後に検出済み Rider から analyzer-demo project を開ける。自動検出できない場合は `TCS_RIDER_COMMAND` で指定する
-  - Windows PowerShell では `samples/analyzer-demo/verify-rider-prechecks.ps1` / `open-rider-demo.ps1` を使い、`TCS_RIDER_COMMAND` に `rider64.exe` などを指定できる
-  - `.ps1` は pwsh 7 の read-only 自動変数 (`$IsWindows` / `$IsMacOS`) と衝突する変数名を使わない。`verify-rider-scripts.sh` の検証は `run-tests.sh` (Linux/CI) のみで行い、`run-tests.ps1` は bash を使わない
-  - `samples/analyzer-demo/verify-rider-scripts.sh` で Rider helper の fake command success / missing command / no-display 経路を検証し、`run-tests` からも実行する
-  - `samples/analyzer-demo/RIDER_VERIFICATION_TEMPLATE.md` に Rider go/no-go 記録と後続タスク化のテンプレートを追加
-  - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
-  - TCS diagnostic severity override は analyzer test と analyzer nupkg consumer の `.editorconfig` build で検証済み
-  - `q.md` に Q12 として Rider go / no-go 判断待ちを記録
-  - 残り: Rider 実機で squiggle / inspection 表示を確認し、go / no-go と後続タスクを記録する
+- T123: tcs analyzer package を正式導線にする (metadata / versioning / release 手順 / CI gate)
+- T124: tcs check / analyzer / transpiler diagnostics の一致を継続検証する
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ
