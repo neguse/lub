@@ -483,31 +483,92 @@ public partial class LuaEmitter
 
         // new List<T> { ... } → { items }
         if (IsListType(typeDef))
-            return VisitListInitializer(model, creation);
+            return VisitListInitializer(model, creation.Initializer);
         // new Dictionary<K,V> { ... } → { [k]=v, ... }
         if (IsDictType(typeDef))
-            return VisitDictInitializer(model, creation);
+            return VisitDictInitializer(model, creation.Initializer);
 
         var args = creation.ArgumentList?.Arguments
             .Select(a => VisitExpression(model, a.Expression)).ToList() ?? [];
-        return $"{typeName}.new({string.Join(", ", args)})";
+
+        if (IsReferenceOnlyType(typeSymbol))
+        {
+            if (args.Count > 0)
+                _ = WarnUnsupported(creation,
+                    "constructor arguments on reference-only type");
+            return EmitRefTypeTable(model, creation.Initializer);
+        }
+
+        var ctor = $"{typeName}.new({string.Join(", ", args)})";
+        return creation.Initializer != null
+            ? EmitObjectInitializer(model, ctor, creation.Initializer)
+            : ctor;
+    }
+
+    // Reference-only (--ref) types have no Lua-side class table; emit a plain
+    // table so host APIs receive `{ key = value, ... }` option tables.
+    private string EmitRefTypeTable(SemanticModel model,
+        InitializerExpressionSyntax? initializer)
+    {
+        if (initializer == null) return "{}";
+        var entries = new List<string>();
+        foreach (var expr in initializer.Expressions)
+        {
+            if (expr is AssignmentExpressionSyntax
+                {
+                    Left: IdentifierNameSyntax name,
+                    Right: not InitializerExpressionSyntax
+                } assign)
+            {
+                var value = VisitExpression(model, assign.Right);
+                entries.Add($"{name.Identifier.Text} = {value}");
+            }
+            else
+            {
+                _ = WarnUnsupported(expr, "object initializer entry");
+            }
+        }
+        return $"{{{string.Join(", ", entries)}}}";
+    }
+
+    private string EmitObjectInitializer(SemanticModel model, string ctor,
+        InitializerExpressionSyntax initializer)
+    {
+        var stmts = new List<string>();
+        foreach (var expr in initializer.Expressions)
+        {
+            if (expr is AssignmentExpressionSyntax
+                {
+                    Left: IdentifierNameSyntax name,
+                    Right: not InitializerExpressionSyntax
+                } assign)
+            {
+                var value = VisitExpression(model, assign.Right);
+                stmts.Add($"__init.{name.Identifier.Text} = {value}");
+            }
+            else
+            {
+                _ = WarnUnsupported(expr, "object initializer entry");
+            }
+        }
+        return $"(function() local __init = {ctor} {string.Join(" ", stmts)} return __init end)()";
     }
 
     private string VisitListInitializer(SemanticModel model,
-        ObjectCreationExpressionSyntax creation)
+        InitializerExpressionSyntax? initializer)
     {
-        if (creation.Initializer == null) return "{}";
-        var items = creation.Initializer.Expressions
+        if (initializer == null) return "{}";
+        var items = initializer.Expressions
             .Select(e => VisitExpression(model, e));
         return $"{{{string.Join(", ", items)}}}";
     }
 
     private string VisitDictInitializer(SemanticModel model,
-        ObjectCreationExpressionSyntax creation)
+        InitializerExpressionSyntax? initializer)
     {
-        if (creation.Initializer == null) return "{}";
+        if (initializer == null) return "{}";
         var entries = new List<string>();
-        foreach (var expr in creation.Initializer.Expressions)
+        foreach (var expr in initializer.Expressions)
         {
             if (expr is InitializerExpressionSyntax kvInit && kvInit.Expressions.Count == 2)
             {
@@ -533,9 +594,27 @@ public partial class LuaEmitter
     {
         var typeSymbol = model.GetTypeInfo(creation).ConvertedType;
         var typeName = typeSymbol?.Name ?? "UNKNOWN";
+        var typeDef = typeSymbol?.OriginalDefinition.ToDisplayString() ?? "";
+        if (IsListType(typeDef))
+            return VisitListInitializer(model, creation.Initializer);
+        if (IsDictType(typeDef))
+            return VisitDictInitializer(model, creation.Initializer);
+
         var args = creation.ArgumentList.Arguments
             .Select(a => VisitExpression(model, a.Expression)).ToList();
-        return $"{typeName}.new({string.Join(", ", args)})";
+
+        if (IsReferenceOnlyType(typeSymbol))
+        {
+            if (args.Count > 0)
+                _ = WarnUnsupported(creation,
+                    "constructor arguments on reference-only type");
+            return EmitRefTypeTable(model, creation.Initializer);
+        }
+
+        var ctor = $"{typeName}.new({string.Join(", ", args)})";
+        return creation.Initializer != null
+            ? EmitObjectInitializer(model, ctor, creation.Initializer)
+            : ctor;
     }
 
     private string VisitTernary(SemanticModel model, ConditionalExpressionSyntax ternary)

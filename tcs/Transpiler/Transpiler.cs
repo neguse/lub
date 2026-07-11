@@ -98,6 +98,8 @@ public static class Transpiler
         }
 
         var emitter = new LuaEmitter();
+        foreach (var refTree in refTrees)
+            emitter.ReferenceTrees.Add(refTree);
         if (hasTopLevelStatements)
         {
             foreach (var tree in trees)

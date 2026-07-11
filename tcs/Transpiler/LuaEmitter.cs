@@ -16,6 +16,13 @@ public partial class LuaEmitter
     private readonly Stack<int> _continueStack = new();
     public List<string> Warnings { get; } = [];
     public SourceMap SourceMap { get; } = new();
+    // Types declared in these trees are type-check only (--ref); they have no
+    // Lua definition, so `new` on them must produce a plain table.
+    public HashSet<SyntaxTree> ReferenceTrees { get; } = [];
+
+    private bool IsReferenceOnlyType(ITypeSymbol? type) =>
+        type != null && type.DeclaringSyntaxReferences
+            .Any(r => ReferenceTrees.Contains(r.SyntaxTree));
 
     public void Visit(CSharpCompilation compilation, SemanticModel model,
         SyntaxTree tree, bool emitNonGlobalMembers = true,

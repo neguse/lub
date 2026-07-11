@@ -14,12 +14,11 @@
 lub Haxe 代替検証のギャップ分析は `doc/lub-gap-analysis.md` (T125) にまとめた。
 G1〜G4 のギャップを tcs 側機能として埋めてから PoC (T126/T127) へ進む。
 
-1. **T128: object initializer の黙殺修正** (G1 — lub 非依存の正しさバグでもある)
-2. **T129: entry class 指定で module return を出す** (G2)
-3. **T130: naming warning の抑制手段** (G3)
-4. **T126: 00_hello 相当を tcs で動かす**
-5. **T127: lub 上の hot reload 検証**
-6. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
+1. **T129: entry class 指定で module return を出す** (G2)
+2. **T130: naming warning の抑制手段** (G3)
+3. **T126: 00_hello 相当を tcs で動かす**
+4. **T127: lub 上の hot reload 検証**
+5. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
 
 前提: `../lub` は readonly。lub 側に変更が必要な場合は feature request を出し、
 tcs 側から直接変更しない。
@@ -31,14 +30,6 @@ tcs 側から直接変更しない。
 lub は C/C++ runtime + Lua 5.5 の上に Haxe → Lua transpile の script 層を持つ。
 この script 層を tcs で置き換えられるかを検証する。契約とギャップの詳細は
 `doc/lub-gap-analysis.md` を参照。
-
-### T128: object initializer の黙殺修正 (G1)
-- 目的: `new T { ... }` の初期化子が診断なしで消える既存バグを直す (T97 方針)
-- 作業:
-  - Lua 出力対象外の型 (`--ref` 型) の `new` + initializer は plain table literal `{ key = value, ... }` へ emit する
-  - Lua 出力対象の通常 class は `.new()` + field 代入で対応するか、TCS1001 診断にする
-  - analyzer / `tcs check` / transpiler warning の判定を共有 facts で揃える
-- 完了条件: initializer が黙って消えるケースがなく、`--ref` 型の opts が Lua table として渡る
 
 ### T129: entry class 指定で module return を出す (G2)
 - 目的: lub の entry module 契約 (require が table を返す) に tcs 出力を適合させる

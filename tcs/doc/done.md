@@ -495,3 +495,15 @@
 - よかったこと: 読解だけで済ませず最小コードを実 transpile したことで、黙殺バグ (G1) と check exit 1 (G3) という読解では出ない事実を掴めた
 - 判断: G1 は lub 非依存の正しさバグなので PoC 都合と切り離して最優先に置いた。multi-return (G4) は 00_hello に不要なので breakout 級まで先送りした
 - 残課題: T128 → T129 → T130 → T126 → T127 → T131 の順で実装・検証
+
+### T128: object initializer の黙殺修正 (G1) ✓ (2026-07-12)
+- `new T { X = v }` の初期化子が診断なしで消える既存バグを修正した (T97 方針)
+- 通常 class は IIFE (`local __init = T.new(...)` + field 代入) で対応、`--ref` 型 (Lua 出力対象外) は plain table literal `{key = value}` へ emit するようにした
+- `--ref` 型の `new` はこれまで存在しない `.new()` を emit して実行時エラーだったが、lub の opts table 契約にそのまま合う形になった
+- implicit `new(args)` / `new() { ... }` にも List/Dict/ref/class の同じ経路を配線した
+- ネストした初期化子・collection add 形式・ref 型 constructor 引数は TCS1001 warning (黙殺しない)
+- テスト5件追加 (ObjectInitializerTests): class 初期化子、constructor 併用、ref 型 table literal、ref 型空 table、ネスト警告
+- 変更ファイル: LuaEmitter.cs, LuaEmitter.Expressions.cs, Transpiler.cs, ObjectInitializerTests.cs, doc/support-matrix.md, current/tasks/done
+- よかったこと: ref 型かどうかを DeclaringSyntaxReferences と ReferenceTrees の照合だけで判定でき、emitter に大きな状態を足さずに済んだ
+- 判断: 通常 class の初期化子は TCS1001 にせず対応した。record `with` の IIFE 前例があり、コストが低かったため
+- 残課題: T129 (module return) → T130 (naming 抑制) → T126 (00_hello)
