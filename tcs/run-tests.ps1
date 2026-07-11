@@ -104,13 +104,28 @@ dotnet run --project (Join-Path $ScriptDir "Transpiler") -- `
     --ref (Join-Path $ScriptDir "samples\host_api_stub.cs")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$bash = Get-Command bash -ErrorAction SilentlyContinue
-if ($bash) {
-    & $bash.Source (Join-Path $ScriptDir "samples/analyzer-demo/verify-rider-scripts.sh")
+function Find-UsableBash {
+    foreach ($candidate in @(Get-Command bash -All -ErrorAction SilentlyContinue)) {
+        # WSL's System32 bash.exe cannot run repository scripts by Windows path
+        if ($env:SystemRoot -and $candidate.Source.StartsWith(
+                $env:SystemRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+        return $candidate.Source
+    }
+
+    return $null
+}
+
+$bashExe = Find-UsableBash
+if ($bashExe) {
+    $riderScriptsTest = (Join-Path $ScriptDir "samples\analyzer-demo\verify-rider-scripts.sh") `
+        -replace '\\', '/'
+    & $bashExe $riderScriptsTest
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 else {
-    Write-Host "Skipping Rider helper script tests; bash was not found."
+    Write-Host "Skipping Rider helper script tests; usable bash was not found."
 }
 
 Write-Host "Running analyzer demo build..."

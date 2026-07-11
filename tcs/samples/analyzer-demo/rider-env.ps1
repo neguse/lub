@@ -103,11 +103,12 @@ function Find-RiderCommand {
 }
 
 function Test-RiderUiLaunchable {
-    $isWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
-    $isMacOS = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    # $isWindows / $isMacOS collide with pwsh 7 read-only automatic variables
+    $onWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
+    $onMacOS = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
         [System.Runtime.InteropServices.OSPlatform]::OSX)
 
-    if ($isWindows -or $isMacOS) {
+    if ($onWindows -or $onMacOS) {
         return [Environment]::UserInteractive
     }
 

@@ -20,8 +20,9 @@ $OutputDir = if ($env:TCS_INSPECTCODE_OUTPUT_DIR) {
 else {
     Join-Path $TempRoot "tcs-inspectcode-analyzer-demo"
 }
-$isWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
-$Jb = Join-Path $ToolDir ($(if ($isWindows) { "jb.exe" } else { "jb" }))
+# $isWindows collides with the pwsh 7 read-only automatic variable
+$onWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
+$Jb = Join-Path $ToolDir ($(if ($onWindows) { "jb.exe" } else { "jb" }))
 $ProjectReferenceSarif = Join-Path $OutputDir "project-reference.sarif"
 $ProjectReferenceStdoutLog = Join-Path $OutputDir "project-reference.stdout"
 $PackageDir = Join-Path $OutputDir "local-nupkg"
