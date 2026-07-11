@@ -550,3 +550,13 @@
 - よかったこと: 実機の hot reload 検証が、watch の atomic save バグとテストの process leak という2つの既存問題を炙り出した
 - 判断: leak した watch プロセス群は当セッションで kill して掃除した。flaky の再発条件 (inotify 上限) は leak 修正で根が取れている
 - 残課題: T131 (multi-return) → breakout 級サンプル移植の判断
+
+### T131: Lua multi-return 対応 (G4) ✓ (2026-07-12)
+- `--ref` method の `out` 引数を Lua multi-return 受けにマップした: void 戻りは `a, b = f(args)`、値戻りは IIFE で `__ret, a, b = f(args)` を受けて `__ret` を返す (条件式内でも使える)
+- out 変数の local 宣言は既存の EmitOutVarDeclarations (statement 冒頭) をそのまま利用し、`out _` は Lua の `_` へ落ちる
+- lub の `Io.load_text` (text/version/status) 型 API を C# の out 引数シグネチャで書けるようになった
+- テスト3件追加 (MultiReturnTests): multi-return 受け、値戻り + 条件式、discard
+- 変更ファイル: LuaEmitter.Expressions.cs, MultiReturnTests.cs, current/tasks/done
+- よかったこと: TryGetValue の先例 (statement 冒頭 local + 代入) に乗ったので、emitter の新規機構なしで表現できた
+- 判断: `ref` 引数は未対応警告に留めた (lub API に前例がなく、C# 側の意味論も multi-return と一致しない)
+- 残課題: T132 (breakout 級サンプル移植) で実戦検証

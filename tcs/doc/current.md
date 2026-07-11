@@ -87,6 +87,7 @@
 | dict[key] | dict[key] |
 | dict.ContainsKey(k) | (dict[k] ~= nil) |
 | dict.TryGetValue(k, out v) | out 代入 + bool |
+| RefT.f(x, out a, out b) (--ref 型) | a, b = RefT.f(x) (Lua multi-return 受け) |
 | collection null storage | TCS1003 warning |
 | switch statement | if-elseif-else end |
 | switch expression | IIFE if-elseif-else |
@@ -185,7 +186,7 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
-- 着手順: T131 (multi-return) → breakout 級サンプル移植の判断。T126-T130 は完了 (00_hello 相当が lub 上で動作 + hot reload 検証済み)
+- 着手順: T132 (breakout 級サンプル移植)。G1-G5 のギャップ解消 (T128-T131) と 00_hello 実機動作 + hot reload 検証 (T126/T127) は完了
 - P2: T123 analyzer release 手順の README 化 (縮小)
 - T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
 

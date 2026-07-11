@@ -231,6 +231,14 @@ public partial class LuaEmitter
                 && IsTinySystemFacade(staticMethod.ContainingType))
                 return $"{staticMethod.ContainingType.Name}.{methodName}({string.Join(", ", args)})";
 
+            // --ref method の out 引数 → Lua multi-return 受け
+            // (host 側は `local a, b = f(args)` の形で複数値を返す)
+            if (symbol is IMethodSymbol refMethod
+                && refMethod.Parameters.Any(p => p.RefKind == RefKind.Out)
+                && refMethod.DeclaringSyntaxReferences
+                    .Any(r => ReferenceTrees.Contains(r.SyntaxTree)))
+                return EmitRefMultiReturnCall(model, invocation, ma, refMethod);
+
             // Check for List<T>/IEnumerable<T> method calls → runtime library
             if (symbol is IMethodSymbol methodSym && TryMapCollectionMethod(
                     model, ma, methodSym, methodName, args, out var result))
@@ -300,6 +308,42 @@ public partial class LuaEmitter
 
         var targetExpr = VisitExpression(model, invocation.Expression);
         return $"{targetExpr}({string.Join(", ", args)})";
+    }
+
+    // out 引数は Lua の追加戻り値として宣言順に受ける。out 変数の local 宣言は
+    // EmitOutVarDeclarations が statement 冒頭で済ませている。
+    private string EmitRefMultiReturnCall(SemanticModel model,
+        InvocationExpressionSyntax invocation, MemberAccessExpressionSyntax ma,
+        IMethodSymbol method)
+    {
+        var callArgs = new List<string>();
+        var outNames = new List<string>();
+        foreach (var arg in invocation.ArgumentList.Arguments)
+        {
+            if (arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword))
+            {
+                var name = TryGetOutArgumentName(arg);
+                outNames.Add(string.IsNullOrEmpty(name) ? "_" : name!);
+            }
+            else if (arg.RefKindKeyword.IsKind(SyntaxKind.RefKeyword))
+            {
+                return WarnUnsupported(arg,
+                    "ref argument on reference-only method");
+            }
+            else
+            {
+                callArgs.Add(VisitExpression(model, arg.Expression));
+            }
+        }
+
+        var methodName = ma.Name.Identifier.Text;
+        var call = method.IsStatic
+            ? $"{method.ContainingType.Name}.{methodName}({string.Join(", ", callArgs)})"
+            : $"{VisitExpression(model, ma.Expression)}:{methodName}({string.Join(", ", callArgs)})";
+        var outs = string.Join(", ", outNames);
+        if (method.ReturnsVoid)
+            return $"{outs} = {call}";
+        return $"(function() local __ret; __ret, {outs} = {call}; return __ret end)()";
     }
 
     private bool TryMapCollectionMethod(SemanticModel model,
