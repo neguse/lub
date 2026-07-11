@@ -34,6 +34,7 @@ public class Program
         var refPaths = new List<string>();
         string? outputPath = null;
         string? entryClass = null;
+        string? preludePath = null;
         bool emitSourceMap = false;
         bool watchMode = false;
         bool includeRuntime = true;
@@ -58,6 +59,12 @@ public class Program
                 if (IsMissingOptionValue(args, i))
                     return Error("missing value for --entry");
                 entryClass = args[++i];
+            }
+            else if (args[i] == "--prelude")
+            {
+                if (IsMissingOptionValue(args, i))
+                    return Error("missing value for --prelude");
+                preludePath = args[++i];
             }
             else if (args[i] == "--sourcemap")
             {
@@ -109,6 +116,12 @@ public class Program
             }
         }
 
+        if (preludePath != null && !File.Exists(preludePath))
+        {
+            Console.Error.WriteLine($"Error: prelude file not found: {preludePath}");
+            return 1;
+        }
+
         if (watchMode)
         {
             if (outputPath == null)
@@ -116,17 +129,23 @@ public class Program
                 Console.Error.WriteLine("Error: --watch requires -o <output.lua>");
                 return 1;
             }
-            return RunWatch(inputPaths, refPaths, outputPath, entryClass,
-                emitSourceMap, includeRuntime, checkNaming);
+            return RunWatch(inputPaths, refPaths, new BuildOptions(
+                outputPath, entryClass, preludePath, emitSourceMap,
+                includeRuntime, checkNaming));
         }
 
-        return RunOnce(inputPaths, refPaths, outputPath, entryClass,
-            emitSourceMap, includeRuntime, checkNaming);
+        return RunOnce(inputPaths, refPaths, new BuildOptions(
+            outputPath, entryClass, preludePath, emitSourceMap,
+            includeRuntime, checkNaming));
     }
+
+    private sealed record BuildOptions(string? OutputPath, string? EntryClass,
+        string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
+        bool CheckNaming);
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check]");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>] [--no-naming-check]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -136,6 +155,7 @@ public class Program
         writer.WriteLine("       --ref <file.cs>             # type-check only (no Lua output)");
         writer.WriteLine("       --entry <Class>             # append 'return <Class>' so the output loads as a Lua module");
         writer.WriteLine("       --no-naming-check           # suppress C# naming convention warnings (host wire-format code)");
+        writer.WriteLine("       --prelude <shim.lua>        # prepend a user Lua file (host API shim, etc.) to the output");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
     }
 
@@ -248,8 +268,7 @@ public class Program
     }
 
     private static int RunOnce(List<string> inputPaths, List<string> refPaths,
-        string? outputPath, string? entryClass, bool emitSourceMap,
-        bool includeRuntime, bool checkNaming)
+        BuildOptions options)
     {
         try
         {
@@ -257,7 +276,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, entryClass, checkNaming);
+                refSources, options.EntryClass, options.CheckNaming);
 
             if (!result.Success)
             {
@@ -269,16 +288,9 @@ public class Program
             foreach (var warn in result.Warnings)
                 Console.Error.WriteLine(warn);
 
-            var lua = result.Lua;
-            var sourceMapLineOffset = 0;
-            if (includeRuntime)
-            {
-                var bundle = LuaRuntime.EmbedRuntime(lua);
-                lua = bundle.Lua;
-                sourceMapLineOffset = bundle.SourceMapLineOffset;
-            }
+            var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
 
-            if (outputPath != null)
+            if (options.OutputPath is { } outputPath)
             {
                 var dir = Path.GetDirectoryName(outputPath);
                 if (!string.IsNullOrEmpty(dir))
@@ -286,7 +298,7 @@ public class Program
                 File.WriteAllText(outputPath, lua);
                 Console.Error.WriteLine($"Wrote {outputPath}");
 
-                if (emitSourceMap && result.SourceMap != null)
+                if (options.EmitSourceMap && result.SourceMap != null)
                 {
                     var mapPath = outputPath + ".map";
                     File.WriteAllText(mapPath,
@@ -297,7 +309,7 @@ public class Program
             else
             {
                 Console.Write(lua);
-                if (emitSourceMap && result.SourceMap != null)
+                if (options.EmitSourceMap && result.SourceMap != null)
                 {
                     Console.Error.WriteLine("--- sourcemap ---");
                     Console.Error.WriteLine(result.SourceMap.ToJson());
@@ -312,16 +324,37 @@ public class Program
         }
     }
 
+    // User prelude (--prelude) → runtime prelude の順で前置し、SourceMap の
+    // Lua 行 offset を合算する。
+    private static (string Lua, int SourceMapLineOffset) ComposeOutput(
+        string lua, BuildOptions options)
+    {
+        var offset = 0;
+        if (options.PreludePath is { } preludePath)
+        {
+            var prelude = File.ReadAllText(preludePath);
+            if (!prelude.EndsWith('\n'))
+                prelude += "\n";
+            lua = prelude + lua;
+            offset += prelude.Count(ch => ch == '\n');
+        }
+        if (options.IncludeRuntime)
+        {
+            var bundle = LuaRuntime.EmbedRuntime(lua);
+            lua = bundle.Lua;
+            offset += bundle.SourceMapLineOffset;
+        }
+        return (lua, offset);
+    }
+
     private static int RunWatch(List<string> inputPaths, List<string> refPaths,
-        string outputPath, string? entryClass, bool emitSourceMap,
-        bool includeRuntime, bool checkNaming)
+        BuildOptions options)
     {
         var watchPaths = inputPaths.Concat(refPaths).ToArray();
         Console.Error.WriteLine($"Watching {watchPaths.Length} file(s)... (Ctrl+C to stop)");
 
         // Initial build
-        Rebuild(inputPaths, refPaths, outputPath, entryClass, emitSourceMap,
-            includeRuntime, checkNaming);
+        Rebuild(inputPaths, refPaths, options);
 
         // Set up file watchers for each unique directory
         var watchers = new List<FileSystemWatcher>();
@@ -368,8 +401,7 @@ public class Program
                 Thread.Sleep(100);
                 pending.Reset();
 
-                Rebuild(inputPaths, refPaths, outputPath, entryClass,
-                    emitSourceMap, includeRuntime, checkNaming);
+                Rebuild(inputPaths, refPaths, options);
             }
         }
         catch (OperationCanceledException) { }
@@ -383,8 +415,7 @@ public class Program
     }
 
     private static void Rebuild(List<string> inputPaths, List<string> refPaths,
-        string outputPath, string? entryClass, bool emitSourceMap,
-        bool includeRuntime, bool checkNaming)
+        BuildOptions options)
     {
         try
         {
@@ -392,7 +423,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, entryClass, checkNaming);
+                refSources, options.EntryClass, options.CheckNaming);
 
             if (!result.Success)
             {
@@ -405,21 +436,15 @@ public class Program
             foreach (var warn in result.Warnings)
                 Console.Error.WriteLine($"  {warn}");
 
-            var lua = result.Lua;
-            var sourceMapLineOffset = 0;
-            if (includeRuntime)
-            {
-                var bundle = LuaRuntime.EmbedRuntime(lua);
-                lua = bundle.Lua;
-                sourceMapLineOffset = bundle.SourceMapLineOffset;
-            }
+            var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
 
+            var outputPath = options.OutputPath!;
             var dir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
             File.WriteAllText(outputPath, lua);
 
-            if (emitSourceMap && result.SourceMap != null)
+            if (options.EmitSourceMap && result.SourceMap != null)
                 File.WriteAllText(outputPath + ".map",
                     result.SourceMap.ToJson(sourceMapLineOffset));
 

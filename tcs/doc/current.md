@@ -128,6 +128,7 @@
 - `dotnet run --project Transpiler -- input1.cs [input2.cs ...] [--ref ref.cs] [-o output.lua] [--entry Class] [--watch] [--no-runtime]`
 - `--entry <Class>`: 出力末尾に `return <Class>` を追記し、require/dofile で class table を返す Lua module にする
 - `--no-naming-check`: C# naming convention warning を抑制する (host の wire format が lowerCamel/snake_case の場合)。transpile / check 両対応
+- `--prelude <shim.lua>`: 任意のユーザー Lua (host API shim 等) を出力の先頭 (runtime prelude の後) に前置する
 - `dotnet run --project Transpiler -- check input1.cs [input2.cs ...] [--ref ref.cs]`: Lua を出力せず、診断だけを返す CI 向けチェック
 - `--help` / `--version`
 - 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込み、`--no-runtime` で bare 出力に戻せる
@@ -152,6 +153,11 @@
 - `HotReload.watch(filepath)`: ファイル変更監視 (host が `HotReload.mtime` を注入した場合のみ)
 - `HotReload.update()`: フレームごとのポーリング (0.5秒間隔)
 - `HotReload.mtime(filepath)`: デフォルトは shell 非依存の no-op (`nil`)、engine 側 `fs.mtime()` 等を代入する
+
+### lub 連携サンプル (samples/lub/)
+- `hello.cs` + `lub_stub.cs` (--ref) + `lub_shim.lua` (--prelude) で lub の 00_hello 相当を実行できる
+- `run-lub.sh` が staging (lub は cwd 相対の samples/<mod>/.lub レイアウト前提のため) と headless 起動をまとめる
+- 検証は lub の `--capture` でフレーム画像を確認。詳細は `doc/lub-gap-analysis.md`
 
 ### 外部 API / --ref サンプル
 - `samples/host_api_game.cs` + `samples/host_api_stub.cs` を engine agnostic な参照専用 stub 例として追加
@@ -178,7 +184,7 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
-- 着手順: T126 (00_hello 相当) → T127 (hot reload) → T131 (multi-return)。T128/T129/T130 は完了
+- 着手順: T127 (hot reload) → T131 (multi-return)。T128/T129/T130/T126 は完了 (00_hello 相当が lub 上で動作、--capture で画面検証済み)
 - P2: T123 analyzer release 手順の README 化 (縮小)
 - T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
 

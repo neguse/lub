@@ -102,10 +102,15 @@ dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
 `--entry <Class>` を付けると出力末尾に `return <Class>` を追記し、
 `require` / `dofile` が class table を返す Lua module として使える
 (host が module の callback を呼ぶ engine 組み込み向け)。
+`--prelude <shim.lua>` は任意のユーザー Lua (host API を tcs stub の形に
+橋渡しする shim など) を出力の先頭に前置する。
 
 ```bash
-dotnet run --project Transpiler -- game.cs -o game.lua --entry Game
+dotnet run --project Transpiler -- game.cs -o game.lua --entry Game --prelude engine-shim.lua
 ```
+
+lub エンジンで動かす実例は `samples/lub/` (`run-lub.sh`) と
+`doc/lub-gap-analysis.md` を参照。
 
 ### 準拠チェック
 

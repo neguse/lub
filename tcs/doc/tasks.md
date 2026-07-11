@@ -14,9 +14,8 @@
 lub Haxe 代替検証のギャップ分析は `doc/lub-gap-analysis.md` (T125) にまとめた。
 G1〜G4 のギャップを tcs 側機能として埋めてから PoC (T126/T127) へ進む。
 
-1. **T126: 00_hello 相当を tcs で動かす**
-2. **T127: lub 上の hot reload 検証**
-3. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
+1. **T127: lub 上の hot reload 検証**
+2. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
 
 前提: `../lub` は readonly。lub 側に変更が必要な場合は feature request を出し、
 tcs 側から直接変更しない。
@@ -28,15 +27,6 @@ tcs 側から直接変更しない。
 lub は C/C++ runtime + Lua 5.5 の上に Haxe → Lua transpile の script 層を持つ。
 この script 層を tcs で置き換えられるかを検証する。契約とギャップの詳細は
 `doc/lub-gap-analysis.md` を参照。
-
-### T126: 00_hello 相当を tcs で動かす
-- 目的: 最小サンプルで tcs → lub runtime の E2E 経路を成立させる (T128〜T130 が前提)
-- 作業:
-  - lub core API の最小 C# stub (`Gfx` / `Lub` / `os` 相当) を `samples/lub/` に置く
-  - `lubx.Boot.config` 相当の起動定型 (env 読み + `Lub.config`) を C# で書く
-  - tcs 出力 Lua を lub runtime にロードして clear 画面を出す
-  - 未確認事項 (ref 型 instance method の emit 形、event field 透過、`os.getenv` 透過) を実測する
-- 完了条件: tcs で書いた 00_hello 相当が lub 上で動く
 
 ### T127: lub 上の hot reload 検証
 - 目的: lub の hot reload と tcs 出力 Lua の相性を確認する

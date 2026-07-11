@@ -528,3 +528,15 @@
 - よかったこと: NamingAnalyzer は元々独立していたので、呼び出しの conditional 化だけで済んだ
 - 判断: file 単位や diagnostic 単位の細かい suppress は必要になるまで作らない。flag 一発で全 naming warning を止める
 - 残課題: T126 (00_hello) → T127 (hot reload)
+
+### T126: 00_hello 相当を tcs で動かす + G5 --prelude ✓ (2026-07-12)
+- `samples/lub/` に hello.cs (entry) / lub_stub.cs (--ref) / lub_shim.lua (--prelude) / run-lub.sh (staging + headless 起動) を追加した
+- lub 実機 (lavapipe + xvfb headless) で tcs 生成 Lua が onInit → onFrame ループ → onQuit まで動き、`--capture` の frame 30 画像が clear_color (0.1, 0.1, 0.2) どおりであることを確認した
+- 新ギャップ G5 を発見: lub C 側は flat global を expose し、namespace table は Haxe 専用 prelude が組み立てる。汎用機能 `--prelude <shim.lua>` (ユーザー Lua を出力へ前置、SourceMap offset 合算) を tcs に追加して解決した
+- ギャップ分析の誤り2点を訂正: 非 hxml entry の dirname は package.path に追加されない (samples/<mod>/.lub の cwd 相対レイアウト前提)、API は namespace table ではなく flat global
+- Program.cs の Run 系引数を BuildOptions record に整理した
+- テスト3件追加 (PreludeTests): prelude 前置で ref API が解決される E2E、missing file エラー、+ 全318テスト green
+- 変更ファイル: Program.cs, PreludeTests.cs, samples/lub/*, doc/lub-gap-analysis.md, README.md, current/tasks/done
+- よかったこと: lub の --capture がそのまま画面検証ゲートになった。読解ベースの分析2点が実測で覆っており、PoC を先にやる判断が正しかった
+- 判断: lub 側 HAXE_PRELUDE 相当は lub 固有 shim (samples/lub/lub_shim.lua) と汎用 CLI (--prelude) に分離し、tcs 本体に lub 依存を入れない
+- 残課題: T127 (hot reload) → T131 (multi-return)。lub feature request 候補: .lua entry の任意パス対応
