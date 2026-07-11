@@ -1,0 +1,3 @@
+-cp samples/23_crane_game
+-lib lub
+-main CraneGame23

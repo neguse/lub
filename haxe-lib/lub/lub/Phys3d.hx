@@ -286,7 +286,9 @@ typedef FrameDesc3d = {
 	  angularDampingRatio
 	- `wheel`: サスペンション/操舵/駆動をまとめた車輪用。専用名
 	  (suspension* / spin* / steering*) が汎用名より優先される
-	- `motor`: linearVelocity, angularVelocity ほか速度駆動
+	- `motor`: linearVelocity / angularVelocity (速度駆動、上限は
+	  maxVelocityForce / maxVelocityTorque)、linearHertz / angularHertz
+	  (位置・姿勢バネ、上限は maxSpringForce / maxSpringTorque)
 	- `parallel`: hertz, dampingRatio, maxTorque
 	- `filter`: 固有フィールドなし (2 body 間の衝突を切る)
 
@@ -321,6 +323,10 @@ typedef JointDesc3d = {
 	?angularDampingRatio:Float,
 	?maxForce:Float,
 	?maxTorque:Float,
+	?maxVelocityForce:Float,
+	?maxVelocityTorque:Float,
+	?maxSpringForce:Float,
+	?maxSpringTorque:Float,
 	?motorSpeed:Float,
 	?targetAngle:Float,
 	?targetTranslation:Float,
