@@ -1,0 +1,3 @@
+-cp samples/25_bowling
+-lib lub
+-main Bowling25

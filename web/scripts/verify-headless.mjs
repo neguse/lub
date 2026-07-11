@@ -388,6 +388,7 @@ const samples = [
   { name: '22_tonton',           minNonBlack: 0.01 },
   { name: '23_crane_game',      minNonBlack: 0.01 },
   { name: '24_baseball',        minNonBlack: 0.01 },
+  { name: '25_bowling',         minNonBlack: 0.01 },
 ]
 const sampleResults = {}
 
