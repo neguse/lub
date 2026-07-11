@@ -14,11 +14,10 @@
 lub Haxe 代替検証のギャップ分析は `doc/lub-gap-analysis.md` (T125) にまとめた。
 G1〜G4 のギャップを tcs 側機能として埋めてから PoC (T126/T127) へ進む。
 
-1. **T129: entry class 指定で module return を出す** (G2)
-2. **T130: naming warning の抑制手段** (G3)
-3. **T126: 00_hello 相当を tcs で動かす**
-4. **T127: lub 上の hot reload 検証**
-5. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
+1. **T130: naming warning の抑制手段** (G3)
+2. **T126: 00_hello 相当を tcs で動かす**
+3. **T127: lub 上の hot reload 検証**
+4. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
 
 前提: `../lub` は readonly。lub 側に変更が必要な場合は feature request を出し、
 tcs 側から直接変更しない。
@@ -30,11 +29,6 @@ tcs 側から直接変更しない。
 lub は C/C++ runtime + Lua 5.5 の上に Haxe → Lua transpile の script 層を持つ。
 この script 層を tcs で置き換えられるかを検証する。契約とギャップの詳細は
 `doc/lub-gap-analysis.md` を参照。
-
-### T129: entry class 指定で module return を出す (G2)
-- 目的: lub の entry module 契約 (require が table を返す) に tcs 出力を適合させる
-- 作業: CLI に entry class 指定 (例: `--entry Hello`) を追加し、出力末尾に `return Hello` を出す
-- 完了条件: 生成 Lua を require すると指定 class の table が返る
 
 ### T130: naming warning の抑制手段 (G3)
 - 目的: lub の wire format (lowerCamel / snake_case) を使うコードを `tcs check` ゲートに乗せられるようにする

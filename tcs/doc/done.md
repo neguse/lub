@@ -507,3 +507,14 @@
 - よかったこと: ref 型かどうかを DeclaringSyntaxReferences と ReferenceTrees の照合だけで判定でき、emitter に大きな状態を足さずに済んだ
 - 判断: 通常 class の初期化子は TCS1001 にせず対応した。record `with` の IIFE 前例があり、コストが低かったため
 - 残課題: T129 (module return) → T130 (naming 抑制) → T126 (00_hello)
+
+### T129: entry class 指定で module return を出す (G2) ✓ (2026-07-12)
+- `--entry <Class>` CLI オプションを追加し、出力 Lua の末尾に `return <Class>` を追記するようにした
+- lub の entry module 契約 (require が callback table を返す) に tcs 出力単体で適合できる
+- entry class が存在しない場合と `--ref` 型 (Lua 出力対象外) の場合はエラーにする
+- Transpiler API は `TranspileWithDiagnostics(..., entryClass:)`、watch モードにも配線
+- テスト4件追加 (EntryClassTests): dofile が class table を返す、not found エラー、ref-only エラー、CLI E2E
+- 変更ファイル: Transpiler.cs, Program.cs, EntryClassTests.cs, README.md, current/tasks/done
+- よかったこと: emitter 出力の末尾追記だけで済み、SourceMap のずれも runtime prelude 埋め込み (前置) とも干渉しない
+- 判断: entry 検証は GetTypeByMetadataName で行い、namespace 付き (`Foo.Bar`) はそのまま Lua の namespace table パスに一致する形にした
+- 残課題: T130 (naming 抑制) → T126 (00_hello)

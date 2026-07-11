@@ -33,6 +33,7 @@ public class Program
         var inputPaths = new List<string>();
         var refPaths = new List<string>();
         string? outputPath = null;
+        string? entryClass = null;
         bool emitSourceMap = false;
         bool watchMode = false;
         bool includeRuntime = true;
@@ -50,6 +51,12 @@ public class Program
                 if (IsMissingOptionValue(args, i))
                     return Error("missing value for --ref");
                 refPaths.Add(args[++i]);
+            }
+            else if (args[i] == "--entry")
+            {
+                if (IsMissingOptionValue(args, i))
+                    return Error("missing value for --entry");
+                entryClass = args[++i];
             }
             else if (args[i] == "--sourcemap")
             {
@@ -104,17 +111,17 @@ public class Program
                 Console.Error.WriteLine("Error: --watch requires -o <output.lua>");
                 return 1;
             }
-            return RunWatch(inputPaths, refPaths, outputPath, emitSourceMap,
-                includeRuntime);
+            return RunWatch(inputPaths, refPaths, outputPath, entryClass,
+                emitSourceMap, includeRuntime);
         }
 
-        return RunOnce(inputPaths, refPaths, outputPath, emitSourceMap,
-            includeRuntime);
+        return RunOnce(inputPaths, refPaths, outputPath, entryClass,
+            emitSourceMap, includeRuntime);
     }
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--sourcemap] [--watch] [--no-runtime]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--sourcemap] [--watch] [--no-runtime]");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -122,6 +129,7 @@ public class Program
         writer.WriteLine("       tcs <input.cs>              # prints to stdout");
         writer.WriteLine("       tcs check <input.cs>        # diagnostics only, no Lua output");
         writer.WriteLine("       --ref <file.cs>             # type-check only (no Lua output)");
+        writer.WriteLine("       --entry <Class>             # append 'return <Class>' so the output loads as a Lua module");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
     }
 
@@ -229,7 +237,8 @@ public class Program
     }
 
     private static int RunOnce(List<string> inputPaths, List<string> refPaths,
-        string? outputPath, bool emitSourceMap, bool includeRuntime)
+        string? outputPath, string? entryClass, bool emitSourceMap,
+        bool includeRuntime)
     {
         try
         {
@@ -237,7 +246,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources);
+                refSources, entryClass);
 
             if (!result.Success)
             {
@@ -293,13 +302,15 @@ public class Program
     }
 
     private static int RunWatch(List<string> inputPaths, List<string> refPaths,
-        string outputPath, bool emitSourceMap, bool includeRuntime)
+        string outputPath, string? entryClass, bool emitSourceMap,
+        bool includeRuntime)
     {
         var watchPaths = inputPaths.Concat(refPaths).ToArray();
         Console.Error.WriteLine($"Watching {watchPaths.Length} file(s)... (Ctrl+C to stop)");
 
         // Initial build
-        Rebuild(inputPaths, refPaths, outputPath, emitSourceMap, includeRuntime);
+        Rebuild(inputPaths, refPaths, outputPath, entryClass, emitSourceMap,
+            includeRuntime);
 
         // Set up file watchers for each unique directory
         var watchers = new List<FileSystemWatcher>();
@@ -346,8 +357,8 @@ public class Program
                 Thread.Sleep(100);
                 pending.Reset();
 
-                Rebuild(inputPaths, refPaths, outputPath, emitSourceMap,
-                    includeRuntime);
+                Rebuild(inputPaths, refPaths, outputPath, entryClass,
+                    emitSourceMap, includeRuntime);
             }
         }
         catch (OperationCanceledException) { }
@@ -361,7 +372,8 @@ public class Program
     }
 
     private static void Rebuild(List<string> inputPaths, List<string> refPaths,
-        string outputPath, bool emitSourceMap, bool includeRuntime)
+        string outputPath, string? entryClass, bool emitSourceMap,
+        bool includeRuntime)
     {
         try
         {
@@ -369,7 +381,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources);
+                refSources, entryClass);
 
             if (!result.Success)
             {

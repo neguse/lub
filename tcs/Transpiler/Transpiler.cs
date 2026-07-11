@@ -43,7 +43,8 @@ public static class Transpiler
     }
 
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
-        string[]? filePaths = null, string[]? referenceSources = null)
+        string[]? filePaths = null, string[]? referenceSources = null,
+        string? entryClass = null)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -127,9 +128,29 @@ public static class Transpiler
 
         warnings.AddRange(emitter.Warnings);
 
+        var lua = emitter.ToString();
+        if (entryClass != null)
+        {
+            var entrySymbol = compilation.GetTypeByMetadataName(entryClass);
+            if (entrySymbol == null)
+                return new TranspileResult
+                {
+                    Errors = [$"entry class not found: {entryClass}"],
+                    Warnings = warnings
+                };
+            if (entrySymbol.DeclaringSyntaxReferences.Any(
+                r => emitter.ReferenceTrees.Contains(r.SyntaxTree)))
+                return new TranspileResult
+                {
+                    Errors = [$"entry class is reference-only (--ref): {entryClass}"],
+                    Warnings = warnings
+                };
+            lua += $"return {entryClass}\n";
+        }
+
         return new TranspileResult
         {
-            Lua = emitter.ToString(),
+            Lua = lua,
             SourceMap = emitter.SourceMap,
             Warnings = warnings
         };
