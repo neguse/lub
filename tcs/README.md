@@ -111,6 +111,8 @@ dotnet run --project Transpiler -- game.cs -o game.lua --entry Game
 
 Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
 警告またはエラーがあれば exit 1、問題がなければ exit 0。
+host の wire format (lowerCamel / snake_case) を使うコードは
+`--no-naming-check` で C# naming convention warning だけを抑制できる。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs

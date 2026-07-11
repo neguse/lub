@@ -37,6 +37,7 @@ public class Program
         bool emitSourceMap = false;
         bool watchMode = false;
         bool includeRuntime = true;
+        bool checkNaming = true;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -69,6 +70,10 @@ public class Program
             else if (args[i] == "--no-runtime")
             {
                 includeRuntime = false;
+            }
+            else if (args[i] == "--no-naming-check")
+            {
+                checkNaming = false;
             }
             else if (!args[i].StartsWith('-'))
             {
@@ -112,17 +117,17 @@ public class Program
                 return 1;
             }
             return RunWatch(inputPaths, refPaths, outputPath, entryClass,
-                emitSourceMap, includeRuntime);
+                emitSourceMap, includeRuntime, checkNaming);
         }
 
         return RunOnce(inputPaths, refPaths, outputPath, entryClass,
-            emitSourceMap, includeRuntime);
+            emitSourceMap, includeRuntime, checkNaming);
     }
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--sourcemap] [--watch] [--no-runtime]");
-        writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check]");
+        writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>] [--no-naming-check]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
         writer.WriteLine("       tcs --version");
@@ -130,6 +135,7 @@ public class Program
         writer.WriteLine("       tcs check <input.cs>        # diagnostics only, no Lua output");
         writer.WriteLine("       --ref <file.cs>             # type-check only (no Lua output)");
         writer.WriteLine("       --entry <Class>             # append 'return <Class>' so the output loads as a Lua module");
+        writer.WriteLine("       --no-naming-check           # suppress C# naming convention warnings (host wire-format code)");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
     }
 
@@ -180,6 +186,7 @@ public class Program
     {
         var inputPaths = new List<string>();
         var refPaths = new List<string>();
+        bool checkNaming = true;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -188,6 +195,10 @@ public class Program
                 if (IsMissingOptionValue(args, i))
                     return Error("missing value for --ref");
                 refPaths.Add(args[++i]);
+            }
+            else if (args[i] == "--no-naming-check")
+            {
+                checkNaming = false;
             }
             else if (!args[i].StartsWith('-'))
             {
@@ -220,7 +231,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources,
-                inputPaths.ToArray(), refSources);
+                inputPaths.ToArray(), refSources, checkNaming: checkNaming);
 
             foreach (var err in result.Errors)
                 Console.Error.WriteLine(err);
@@ -238,7 +249,7 @@ public class Program
 
     private static int RunOnce(List<string> inputPaths, List<string> refPaths,
         string? outputPath, string? entryClass, bool emitSourceMap,
-        bool includeRuntime)
+        bool includeRuntime, bool checkNaming)
     {
         try
         {
@@ -246,7 +257,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, entryClass);
+                refSources, entryClass, checkNaming);
 
             if (!result.Success)
             {
@@ -303,14 +314,14 @@ public class Program
 
     private static int RunWatch(List<string> inputPaths, List<string> refPaths,
         string outputPath, string? entryClass, bool emitSourceMap,
-        bool includeRuntime)
+        bool includeRuntime, bool checkNaming)
     {
         var watchPaths = inputPaths.Concat(refPaths).ToArray();
         Console.Error.WriteLine($"Watching {watchPaths.Length} file(s)... (Ctrl+C to stop)");
 
         // Initial build
         Rebuild(inputPaths, refPaths, outputPath, entryClass, emitSourceMap,
-            includeRuntime);
+            includeRuntime, checkNaming);
 
         // Set up file watchers for each unique directory
         var watchers = new List<FileSystemWatcher>();
@@ -358,7 +369,7 @@ public class Program
                 pending.Reset();
 
                 Rebuild(inputPaths, refPaths, outputPath, entryClass,
-                    emitSourceMap, includeRuntime);
+                    emitSourceMap, includeRuntime, checkNaming);
             }
         }
         catch (OperationCanceledException) { }
@@ -373,7 +384,7 @@ public class Program
 
     private static void Rebuild(List<string> inputPaths, List<string> refPaths,
         string outputPath, string? entryClass, bool emitSourceMap,
-        bool includeRuntime)
+        bool includeRuntime, bool checkNaming)
     {
         try
         {
@@ -381,7 +392,7 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, entryClass);
+                refSources, entryClass, checkNaming);
 
             if (!result.Success)
             {

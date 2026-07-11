@@ -14,10 +14,9 @@
 lub Haxe 代替検証のギャップ分析は `doc/lub-gap-analysis.md` (T125) にまとめた。
 G1〜G4 のギャップを tcs 側機能として埋めてから PoC (T126/T127) へ進む。
 
-1. **T130: naming warning の抑制手段** (G3)
-2. **T126: 00_hello 相当を tcs で動かす**
-3. **T127: lub 上の hot reload 検証**
-4. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
+1. **T126: 00_hello 相当を tcs で動かす**
+2. **T127: lub 上の hot reload 検証**
+3. **T131: Lua multi-return 対応** (G4 — breakout 級サンプルの前提)
 
 前提: `../lub` は readonly。lub 側に変更が必要な場合は feature request を出し、
 tcs 側から直接変更しない。
@@ -29,11 +28,6 @@ tcs 側から直接変更しない。
 lub は C/C++ runtime + Lua 5.5 の上に Haxe → Lua transpile の script 層を持つ。
 この script 層を tcs で置き換えられるかを検証する。契約とギャップの詳細は
 `doc/lub-gap-analysis.md` を参照。
-
-### T130: naming warning の抑制手段 (G3)
-- 目的: lub の wire format (lowerCamel / snake_case) を使うコードを `tcs check` ゲートに乗せられるようにする
-- 作業: naming warning を抑制する CLI flag 等を追加する (デフォルト挙動は変えない)
-- 完了条件: lowerCamel callback を含むソースで `tcs check` が exit 0 にできる
 
 ### T126: 00_hello 相当を tcs で動かす
 - 目的: 最小サンプルで tcs → lub runtime の E2E 経路を成立させる (T128〜T130 が前提)

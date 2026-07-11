@@ -518,3 +518,13 @@
 - よかったこと: emitter 出力の末尾追記だけで済み、SourceMap のずれも runtime prelude 埋め込み (前置) とも干渉しない
 - 判断: entry 検証は GetTypeByMetadataName で行い、namespace 付き (`Foo.Bar`) はそのまま Lua の namespace table パスに一致する形にした
 - 残課題: T130 (naming 抑制) → T126 (00_hello)
+
+### T130: naming warning の抑制手段 (G3) ✓ (2026-07-12)
+- `--no-naming-check` CLI flag を transpile / `tcs check` の両方に追加した (デフォルト挙動は不変)
+- lub の wire format (lowerCamel callback / snake_case API) を使うコードを `tcs check` ゲートに乗せられるようになった
+- Transpiler API は `TranspileWithDiagnostics(..., checkNaming:)`。TCS1001/1002/1003 の準拠診断は抑制対象外
+- テスト4件追加 (NamingSuppressionTests): デフォルト警告あり、抑制で警告なし、抑制時も TCS1001 は残る、check の exit code 比較
+- 変更ファイル: Transpiler.cs, Program.cs, NamingSuppressionTests.cs, README.md, current/tasks/done
+- よかったこと: NamingAnalyzer は元々独立していたので、呼び出しの conditional 化だけで済んだ
+- 判断: file 単位や diagnostic 単位の細かい suppress は必要になるまで作らない。flag 一発で全 naming warning を止める
+- 残課題: T126 (00_hello) → T127 (hot reload)

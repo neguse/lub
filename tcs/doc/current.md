@@ -127,6 +127,7 @@
 ### CLI
 - `dotnet run --project Transpiler -- input1.cs [input2.cs ...] [--ref ref.cs] [-o output.lua] [--entry Class] [--watch] [--no-runtime]`
 - `--entry <Class>`: 出力末尾に `return <Class>` を追記し、require/dofile で class table を返す Lua module にする
+- `--no-naming-check`: C# naming convention warning を抑制する (host の wire format が lowerCamel/snake_case の場合)。transpile / check 両対応
 - `dotnet run --project Transpiler -- check input1.cs [input2.cs ...] [--ref ref.cs]`: Lua を出力せず、診断だけを返す CI 向けチェック
 - `--help` / `--version`
 - 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込み、`--no-runtime` で bare 出力に戻せる
@@ -177,7 +178,7 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
-- 着手順: T130 (naming 抑制) → T126 (00_hello 相当) → T127 (hot reload) → T131 (multi-return)。T128/T129 は完了
+- 着手順: T126 (00_hello 相当) → T127 (hot reload) → T131 (multi-return)。T128/T129/T130 は完了
 - P2: T123 analyzer release 手順の README 化 (縮小)
 - T124 はクローズ: 診断一致は run-tests の恒常ゲート (analyzer-demo expected diagnostics / nupkg consumer 検証) で守る
 

@@ -44,7 +44,7 @@ public static class Transpiler
 
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
-        string? entryClass = null)
+        string? entryClass = null, bool checkNaming = true)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -89,7 +89,8 @@ public static class Transpiler
         foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);
-            warnings.AddRange(NamingAnalyzer.Analyze(tree));
+            if (checkNaming)
+                warnings.AddRange(NamingAnalyzer.Analyze(tree));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
                 tree));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
