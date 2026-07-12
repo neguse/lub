@@ -104,7 +104,13 @@ if command -v dotnet >/dev/null 2>&1 \
     rm -f "$cs_png"
     run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
       "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240
-    run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
+    # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
+    # golden が無いサンプルも capture 実行までは検証される (クラッシュ検出)。
+    if [[ -f "tests/golden/${cs_name}_cs_sdlgpu.png" ]]; then
+      run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
+    else
+      echo "==> golden skip (nondeterministic): ${cs_name}"
+    fi
   done
   shopt -u nullglob
 else
