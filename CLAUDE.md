@@ -10,6 +10,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 
 - `docs/roadmap.md` — Phase の定義と進捗(Phase 0/1 完了、Phase 2 Hakonotaiatari 進行中、Phase 3 未着手)
 - `docs/design.md` — 設計方針
+- `docs/api-glue.md` — 多言語 (Lua/Haxe/C#) binding の構成と実装ライブラリの供給方針
 - `haxe-wasm/HANDOFF.md` — Haxe compiler の client-WASM 化(完遂: byte 一致 + web playground 統合)
 - `docs/serve.md` — `lub --serve`(HTTP + SSE で web ホットリロード)。外部リポからゲームを書くテンプレートは `templates/game/`
 - `git log` — 実装経緯
@@ -30,6 +31,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - 生成 Lua は `samples/<name>/.lub/<name>.lua`(`.lub/` は gitignore)
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
 - **C# (TinyC#) は同一サンプルの言語違い**として `samples/<name>/<Entry>.cs` を Haxe 版と同居させる(番号は分けない。全サンプル両対応がゴール、対応状況の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.csproj`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。csproj は basename = entry class の規約で、lub は MSBuild 評価をしない(IDE 型チェック用の実ファイル)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`、API 面は `samples/lub_prelude.lua` が注入する namespace table で Haxe と共通。web は playground の言語トグル(`#lang=cs`)
+- **haxe-lib (lub/lubx) もサンプルの一部**という位置付けで、実装モジュール(lub.Math, lubx)は C# でも実装する。多言語 binding の構成は `docs/api-glue.md`
 
 ## web / WASM verify
 
