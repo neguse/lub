@@ -3849,10 +3849,12 @@ static void capture_body_events(PhysWorld *w) {
   }
 }
 
+// Box2D は b2World_Step の冒頭でイベント配列をクリアする。
+// 1フレームに複数固定ステップ回すときは各ステップ直後に回収しないと
+// 最後のステップ以外のイベントが失われる。
 static void capture_step_events(PhysWorld *w) {
   capture_contact_events(w);
   capture_sensor_events(w);
-  capture_body_events(w);
 }
 
 static int l_phys2d_step(lua_State *L) {
@@ -3887,6 +3889,7 @@ static int l_phys2d_step(lua_State *L) {
     g_mixer_world = callbacks_any(&w->callbacks) ? w : NULL;
     b2World_Step(w->id, w->fixed_dt, w->substeps);
     g_mixer_world = prev_mixer_world;
+    capture_step_events(w);
     w->accumulator -= (double)w->fixed_dt;
     steps++;
   }
@@ -3895,7 +3898,10 @@ static int l_phys2d_step(lua_State *L) {
     w->accumulator = 0.0;
     dropped = true;
   }
-  capture_step_events(w);
+  // move は最終姿勢だけあればよいので最後のステップぶんのみ。
+  // steps == 0 のフレームで前ステップの残骸を再回収しない。
+  if (steps > 0)
+    capture_body_events(w);
   w->begun = false;
   callbacks_clear(L, w);
   lua_newtable(L);
