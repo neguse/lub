@@ -36,6 +36,7 @@ export default defineConfig({
       configureServer(server) {
         const textExts = new Set([
           ".lua",
+          ".cs",
           ".slang",
           ".txt",
           ".glsl",
@@ -44,7 +45,9 @@ export default defineConfig({
         ]);
         function serveDir(prefix: string, baseDir: string) {
           server.middlewares.use(prefix, (req, res, next) => {
-            const filePath = resolve(baseDir, req.url?.slice(1) || "");
+            // vite の dynamic import は ?import を付けてくるので query は落とす
+            const urlPath = (req.url || "").split("?")[0];
+            const filePath = resolve(baseDir, urlPath.slice(1));
             // Path traversal guard: filePath must be inside baseDir.
             if (!filePath.startsWith(baseDir + sep) && filePath !== baseDir)
               return next();
@@ -66,10 +69,15 @@ export default defineConfig({
           });
         }
         serveDir("/samples", resolve(__dirname, "../samples"));
+        serveDir("/cs-lib", resolve(__dirname, "../cs-lib"));
+        serveDir("/tcs-wasm", resolve(__dirname, "tcs-wasm-assets"));
         serveDir("/wasm", resolve(__dirname, "../build/wasm"));
       },
       closeBundle() {
         cpSync("../samples", "dist/samples", { recursive: true });
+        cpSync("../cs-lib", "dist/cs-lib", { recursive: true });
+        if (existsSync("tcs-wasm-assets"))
+          cpSync("tcs-wasm-assets", "dist/tcs-wasm", { recursive: true });
         mkdirSync("dist/wasm", { recursive: true });
         const wasmFiles = ["lub.js", "lub.wasm", "lub.data"];
         for (const f of wasmFiles) {

@@ -1,11 +1,14 @@
 import { attachEditor, setFiles, getFiles } from "./editor";
 import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
+import type { SampleLanguage } from "./samples";
 import { compileHaxe } from "./haxe-compiler";
+import { compileTcs } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
 let currentSample = "01_triangle";
 let mainClass = "";
 let entryKey = "";
+let language: SampleLanguage = "haxe";
 let lastLua: string | null = null;
 let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
@@ -113,21 +116,36 @@ function anyDirty(): boolean {
   return false;
 }
 
-function isHaxeSource(path: string): boolean {
+/** 現在の言語のソースファイルか(compile トリガと data file の区別)。 */
+function isSourceFile(path: string): boolean {
+  if (language === "cs") return path.endsWith(".cs");
   return path.endsWith(".hx") || path.endsWith(".hxml");
 }
 
-/** エディタ上の .hx ソース一式を compileHaxe へ渡す形({ "Foo.hx": content })にする。 */
-function collectHaxeSources(): Record<string, string> {
+/** エディタ上のソース一式を compiler へ渡す形({ "Foo.hx": content })にする。 */
+function collectSources(ext: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [p, f] of getFiles()) if (p.endsWith(".hx")) out[p] = f.content;
+  for (const [p, f] of getFiles()) if (p.endsWith(ext)) out[p] = f.content;
   return out;
 }
 
-/** 現在の .hx を compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
+/** 現在のソースを言語に応じて compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
 async function compileCurrent(): Promise<string | null> {
   $status.textContent = "compiling…";
-  const res = await compileHaxe(collectHaxeSources(), mainClass);
+  if (language === "cs") {
+    const res = await compileTcs(collectSources(".cs"), mainClass);
+    for (const w of res.warnings) addLog(w, "warn");
+    if (!res.ok) {
+      addLog("C# compile error:", "err");
+      for (const line of res.stderr.split("\n"))
+        if (line.trim()) addLog(line, "err");
+      $status.textContent = "compile error";
+      return null;
+    }
+    $status.textContent = "compiled";
+    return res.lua;
+  }
+  const res = await compileHaxe(collectSources(".hx"), mainClass);
   if (!res.ok) {
     addLog("Haxe compile error:", "err");
     for (const line of res.stderr.split("\n"))
@@ -156,7 +174,8 @@ async function loadCompileRun(name: string) {
   }
   mainClass = src.mainClass;
   entryKey = src.entryKey;
-  // まず .hx/.hxml だけエディタに出してから compile(エラーでもソースは見える)。
+  language = src.language;
+  // まずソース(.hx/.hxml/.cs)だけエディタに出してから compile(エラーでもソースは見える)。
   setFiles(src.files);
 
   const lua = await compileCurrent();
@@ -189,7 +208,7 @@ async function restart() {
   await waitForMsg("playerReady");
 
   const all: Record<string, string> = { [entryKey]: lastLua! };
-  for (const [p, f] of getFiles()) if (!isHaxeSource(p)) all[p] = f.content; // data files
+  for (const [p, f] of getFiles()) if (!isSourceFile(p)) all[p] = f.content; // data files
   playerIframe.contentWindow!.postMessage(
     { type: "setFiles", files: all, entry: currentSample },
     "*",
@@ -218,16 +237,16 @@ async function syncDirtyNow() {
   const snapshot = new Map(changed.map(([p, f]) => [p, f.content]));
   syncInFlight = true;
   try {
-    const haxeChanged = changed.some(([p]) => isHaxeSource(p));
+    const sourceChanged = changed.some(([p]) => isSourceFile(p));
     const files: Record<string, string> = {};
 
-    if (haxeChanged) {
+    if (sourceChanged) {
       const lua = await compileCurrent();
       if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
       lastLua = lua;
       files[entryKey] = lua;
     }
-    for (const [p, f] of changed) if (!isHaxeSource(p)) files[p] = f.content; // data files
+    for (const [p, f] of changed) if (!isSourceFile(p)) files[p] = f.content; // data files
 
     if (Object.keys(files).length === 0) return;
     playerIframe.contentWindow.postMessage({ type: "syncFiles", files }, "*");

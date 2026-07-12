@@ -7,6 +7,7 @@ web/node_modules/
 web/dist/
 # web playground の Haxe wasm コンパイラアセット(~18MB、gen-haxe-assets.mjs で生成)
 web/public/haxe-wasm/
+web/tcs-wasm-assets/
 # API reference データ(gen-api-docs.mjs で haxe doc comment から生成)
 web/public/api-docs.json
 # lub player の emcc ビルド成果物(ローカルビルド由来)

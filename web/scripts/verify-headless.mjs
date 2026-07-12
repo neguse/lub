@@ -390,6 +390,8 @@ const samples = [
   { name: '24_baseball',        minNonBlack: 0.01 },
   { name: '25_bowling',         minNonBlack: 0.01 },
   { name: '26_renderer3d',      minNonBlack: 0.05 },
+  // C# (tcs) サンプル: 初回は .NET wasm ランタイムの cold start が乗る
+  { name: '27_breakout_cs',     minNonBlack: 0.10 },
 ]
 const sampleResults = {}
 

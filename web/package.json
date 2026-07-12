@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
     "gen-haxe": "node scripts/gen-haxe-assets.mjs",
+    "gen-tcs": "node scripts/gen-tcs-assets.mjs",
     "verify": "node scripts/verify-headless.mjs",
     "format": "prettier --write 'playground/**/*.ts' vite.config.ts",
     "format:check": "prettier --check 'playground/**/*.ts' vite.config.ts",

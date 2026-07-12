@@ -2,7 +2,7 @@ import { EditorView, basicSetup } from "codemirror";
 import { StreamLanguage } from "@codemirror/language";
 import { Compartment } from "@codemirror/state";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
-import { c as clike } from "@codemirror/legacy-modes/mode/clike";
+import { c as clike, csharp } from "@codemirror/legacy-modes/mode/clike";
 import { haxe } from "@codemirror/legacy-modes/mode/haxe";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { numberScrubber } from "./scrub";
@@ -18,10 +18,11 @@ let suppressChange = false;
 // アクティブタブの拡張子に応じて言語を差し替えるための Compartment。
 const langComp = new Compartment();
 
-// langFor is the picker for .hx vs .slang vs .lua highlight modes.
+// langFor is the picker for .hx / .cs vs .slang vs .lua highlight modes.
 function langFor(path: string | null) {
   if (path?.endsWith(".hx") || path?.endsWith(".hxml"))
     return StreamLanguage.define(haxe);
+  if (path?.endsWith(".cs")) return StreamLanguage.define(csharp);
   if (path?.endsWith(".slang")) return StreamLanguage.define(clike);
   return StreamLanguage.define(lua);
 }
