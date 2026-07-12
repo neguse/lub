@@ -83,12 +83,23 @@ run_timed env BINARY="$native_binary" scripts/run-golden.sh
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
   shopt -s nullglob
-  for cs_entry in samples/*/[A-Z]*.cs; do
-    cs_dir="$(dirname "$cs_entry")"
+  for cs_dir in samples/*/; do
+    cs_dir="${cs_dir%/}"
+    cs_files=("$cs_dir"/*.cs)
+    ((${#cs_files[@]} == 0)) && continue
     cs_name="$(basename "$cs_dir")"
-    cs_class="$(basename "$cs_entry" .cs)"
+    # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
+    cs_projs=("$cs_dir"/*.csproj)
+    if ((${#cs_projs[@]} >= 1)); then
+      cs_class="$(basename "${cs_projs[0]}" .csproj)"
+    else
+      cs_class="$(basename "${cs_files[0]}" .cs)"
+    fi
     run scripts/run-cs-sample.sh "$cs_name" --check
     run scripts/run-cs-sample.sh "$cs_name" --build
+    for cs_proj in "${cs_projs[@]}"; do
+      run dotnet build "$cs_proj" -nologo
+    done
     cs_png="${TMPDIR:-/tmp}/lub-pre-push-${cs_name}_cs.png"
     rm -f "$cs_png"
     run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \

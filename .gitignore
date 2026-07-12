@@ -15,3 +15,6 @@ web/public/lub.js
 web/public/lub.wasm
 web/public/lub.data
 .lub/
+# C# サンプルの dotnet build (IDE 型チェック) 生成物
+samples/*/bin/
+samples/*/obj/

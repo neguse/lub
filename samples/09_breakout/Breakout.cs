@@ -1,5 +1,5 @@
 // lub の samples/09_breakout 相当を TinyC# で書いた entry。
-// 実行: lub samples/09_breakout/Breakout.cs (transpile + watch + hot reload)
+// 実行: lub samples/09_breakout/Breakout.csproj (transpile + watch + hot reload)
 // gameplay は原典の rule (paddle/ball/bricks, key_down 駆動) を踏襲し、
 // 型は Dynamic ではなく class Brick / out 引数の multi-return で表現する。
 

@@ -165,10 +165,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 #endif
 
 #ifndef __EMSCRIPTEN__
-  // .cs entry: tcs で transpile + watch し、以降は生成 .lua の直パス entry と
-  // 同じ扱いにする (mtime poll が hotswap を担う)。
+  // .csproj entry (hxml 対称の C# プロジェクト記述): tcs で transpile + watch
+  // し、以降は生成 .lua の直パス entry と同じ扱いにする (mtime poll が
+  // hotswap を担う)。
   char cs_out[768];
-  if (has_extension(entry_path, ".cs")) {
+  if (has_extension(entry_path, ".csproj")) {
     if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))
       return SDL_APP_FAILURE;
     entry_path = cs_out;

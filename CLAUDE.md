@@ -29,7 +29,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - 共有 Lua (`boot.lua`, `lub_io.lua`, `lub_prelude.lua`) は `samples/` 直下
 - 生成 Lua は `samples/<name>/.lub/<name>.lua`(`.lub/` は gitignore)
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
-- **C# (TinyC#) は同一サンプルの言語違い**として `samples/<name>/<Entry>.cs` を Haxe 版と同居させる(番号は分けない。全サンプル両対応がゴール、対応状況の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.cs`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`、API 面は `samples/lub_prelude.lua` が注入する namespace table で Haxe と共通。web は playground の言語トグル(`#lang=cs`)
+- **C# (TinyC#) は同一サンプルの言語違い**として `samples/<name>/<Entry>.cs` を Haxe 版と同居させる(番号は分けない。全サンプル両対応がゴール、対応状況の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.csproj`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。csproj は basename = entry class の規約で、lub は MSBuild 評価をしない(IDE 型チェック用の実ファイル)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`、API 面は `samples/lub_prelude.lua` が注入する namespace table で Haxe と共通。web は playground の言語トグル(`#lang=cs`)
 
 ## web / WASM verify
 

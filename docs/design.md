@@ -31,8 +31,9 @@ script authoring layer は複数言語を許す。Haxe に加えて TinyC#
 CS_SAMPLES と `samples/*/<Entry>.cs` の有無)。web playground は Haxe と C# の
 両方を動く状態に保つ: コンパイラは言語別に分離し、player・Lua API 面
 (prelude)・hot reload セマンティクスは言語間で共有する。native CLI も対称で、
-`lub <sample>.hxml` と `lub <sample>/<Entry>.cs` が同じ DX
-(build + watch + hotswap) を持つ。
+`lub <sample>.hxml` と `lub <sample>/<Entry>.csproj` が同じ DX
+(build + watch + hotswap) を持つ。csproj は IDE 用の実プロジェクト
+でもあり、lub は basename (= entry class) しか読まない。
 
 ## Non-Goals
 

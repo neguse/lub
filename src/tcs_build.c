@@ -1,4 +1,4 @@
-// tcs (TinyC#) pipeline: .cs entry を hxml と対称の DX で動かす。
+// tcs (TinyC#) pipeline: .csproj entry を hxml と対称の DX で動かす。
 // 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って
 // entry にする。以後の .cs 保存は tcs --watch が再変換し、既存の entry mtime
 // poll (app.c) が hotswap する。lub 側は子プロセスの lifecycle だけ持つ。
@@ -100,6 +100,10 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     return false;
   SDL_zerop(p);
 
+  // entry class = csproj basename、入力 = 同ディレクトリの全 *.cs
+  // (SDK-style csproj の implicit glob と同じ範囲)。csproj は MSBuild として
+  // 評価しない (IDE の型チェック・補完用の実ファイルで、lub は名前しか
+  // 読まない)。
   char base[256];
   path_basename_noext(cs_path, base, sizeof(base));
   char dir[512];
@@ -110,7 +114,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
 
   char storage[16][512];
-  const char *argv[24];
+  const char *argv[64];
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
     SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
@@ -123,7 +127,26 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   if (!has_stub)
     SDL_Log("cs-lib/lub_stub.cs not found; compiling without lub API stub");
 
-  argv[n++] = cs_path;
+  int glob_count = 0;
+  char **globbed = SDL_GlobDirectory(dir, "*.cs", 0, &glob_count);
+  int inputs = 0;
+  if (globbed && glob_count > 0) {
+    for (int i = 0;
+         i < glob_count && n < (int)(sizeof(argv) / sizeof(argv[0])) - 16;
+         i++) {
+      char full[900];
+      SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
+      argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
+      n++;
+      inputs++;
+    }
+    SDL_free(globbed);
+  }
+  if (inputs == 0) {
+    SDL_Log("no .cs sources next to %s", cs_path);
+    return false;
+  }
+
   if (has_stub) {
     argv[n++] = "--ref";
     argv[n++] = stub;

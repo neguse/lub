@@ -63,11 +63,17 @@ public static class Main
 (`Io.load_text` など) は `out` 引数で受ける。
 
 サンプルは Haxe 版と同じディレクトリに同居する (例:
-`samples/09_breakout/Breakout.cs`)。playground では画面上部の言語トグルで
-Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。native での実行は:
+`samples/09_breakout/Breakout.cs` + `Breakout.csproj`)。playground では
+画面上部の言語トグルで Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。
+native での実行は hxml と対称:
 
 ```
-lub samples/09_breakout/Breakout.cs               # transpile + watch + hot reload
+lub samples/09_breakout/Breakout.csproj           # transpile + watch + hot reload
 scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
 scripts/run-cs-sample.sh 09_breakout --build      # transpile のみ
 ```
+
+csproj は lub にとっては entry 指定 (basename = entry class、入力 = 同
+ディレクトリの全 `*.cs`) でしかないが、dotnet 側 (Rider / VS Code) では
+本物のプロジェクトとして機能する: stub と TinySystem を参照し、TinyC#
+サブセット逸脱は Roslyn Analyzer が IDE 上で TCS 診断として出す。

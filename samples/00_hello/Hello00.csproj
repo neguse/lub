@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- lub の C# entry 兼 IDE 用プロジェクト。
+       lub はこのファイルを MSBuild としては評価せず、basename (= entry class)
+       と同ディレクトリの *.cs だけを読む: lub samples/00_hello/Hello00.csproj
+       dotnet 側 (Rider / VS Code) はこの csproj で型チェック・補完・TCS 診断が効く。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <!-- 生成物はチェック専用 (実行は Lua 側)。.lub を compile 対象から外す -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);.lub/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../cs-lib/lub_stub.cs" Link="lub_stub.cs" />
+    <ProjectReference Include="../../third_party/tcs/TinySystem/TinySystem.csproj" />
+    <ProjectReference Include="../../third_party/tcs/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+</Project>
