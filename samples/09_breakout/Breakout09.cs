@@ -1,5 +1,5 @@
 // lub の samples/09_breakout 相当を TinyC# で書いた entry。
-// 実行: lub samples/09_breakout/Breakout.csproj (transpile + watch + hot reload)
+// 実行: lub samples/09_breakout/Breakout09.csproj (transpile + watch + hot reload)
 // gameplay は原典の rule (paddle/ball/bricks, key_down 駆動) を踏襲し、
 // 型は Dynamic ではなく class Brick / out 引数の multi-return で表現する。
 
@@ -16,7 +16,7 @@ public class Brick
     public bool alive;
 }
 
-public static class Breakout
+public static class Breakout09
 {
     const double DT = 1.0 / 60.0;
     const int STRIDE = 6; // pos.xy + color.rgba
@@ -356,9 +356,9 @@ public static class Breakout
         UpdateGame();
 
         Io.load_text("samples/09_breakout/data/09_breakout.vs.slang",
-            out var vs, out var vsv, out _);
+            out var vs, out var vsv, out _, out _);
         Io.load_text("samples/09_breakout/data/09_breakout.fs.slang",
-            out var fs, out var fsv, out _);
+            out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return;
 
         var verts = BuildVertices();
@@ -366,13 +366,15 @@ public static class Breakout
         var shader = Gfx.use_shader("breakout_shader", vs, fs, vsv * 31 + fsv);
         var vbuf = Gfx.use_buffer("breakout_verts", Gfx.VERTEX, verts,
             meshVersion);
+        if (shader == null || vbuf == null) return;
 
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
             clear_color = new double[] { 0.035, 0.045, 0.065, 1.0 },
         });
-        Gfx.draw(verts.Count / STRIDE, new DrawBindings { verts = vbuf },
+        Gfx.draw(verts.Count / STRIDE,
+            new Dictionary<string, object> { ["verts"] = vbuf },
             new DrawOpts
             {
                 shader = shader,

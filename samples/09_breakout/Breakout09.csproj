@@ -14,6 +14,9 @@
 
   <ItemGroup>
     <Compile Include="../../cs-lib/lub_stub.cs" Link="lub_stub.cs" />
+    <!-- cs-lib 実装ソース (lubx/*) は全サンプルの compile 入力 (lub CLI と同じ規約) -->
+    <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="../../third_party/tcs/TinySystem/TinySystem.csproj" />
     <ProjectReference Include="../../third_party/tcs/TinyCs.Analyzers/TinyCs.Analyzers.csproj"
                       OutputItemType="Analyzer"

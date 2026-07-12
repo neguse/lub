@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- lub の C# entry 兼 IDE 用プロジェクト。
        lub はこのファイルを MSBuild としては評価せず、basename (= entry class)
-       と同ディレクトリの *.cs だけを読む: lub samples/00_hello/Hello00.csproj
+       と同ディレクトリの *.cs だけを読む: lub samples/10_breakout3d/Breakout3d10.csproj
        dotnet 側 (Rider / VS Code) はこの csproj で型チェック・補完・TCS 診断が効く。 -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
