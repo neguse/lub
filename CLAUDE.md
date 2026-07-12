@@ -26,9 +26,10 @@ memory に状態を溜めない。現在地は常に以下を読む:
 
 - hxml は `-cp samples/<name>` / `-main <ClassName>`
 - hx はデータを `Io.loadText("samples/<name>/data/...")` と cwd 基準で参照
-- 共有 Lua (`boot.lua`, `lub_io.lua`) は `samples/` 直下
+- 共有 Lua (`boot.lua`, `lub_io.lua`, `lub_prelude.lua`) は `samples/` 直下
 - 生成 Lua は `samples/<name>/.lub/<name>.lua`(`.lub/` は gitignore)
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
+- **C# (TinyC#) サンプル**は `samples/<name>/<ClassName>.cs`。共有 stub は `cs-lib/lub_stub.cs`、変換・実行・check は `scripts/run-cs-sample.sh <name> [--build|--check|--watch]`(要 dotnet SDK + `third_party/tcs` submodule)。API 面は `samples/lub_prelude.lua` が注入する namespace table で Haxe と共通
 
 ## web / WASM verify
 

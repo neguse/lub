@@ -77,6 +77,22 @@ run bash scripts/pre-commit.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 run_timed env BINARY="$native_binary" scripts/run-golden.sh
 
+# C# (tcs) サンプル: dotnet と third_party/tcs submodule があるときだけ検査する。
+# 無い環境では skip (C# 対応は optional toolchain)。
+if command -v dotnet >/dev/null 2>&1 \
+  && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
+  run scripts/run-cs-sample.sh 27_breakout_cs --check
+  run scripts/run-cs-sample.sh 27_breakout_cs --build
+  cs_png="${TMPDIR:-/tmp}/lub-pre-push-27_breakout_cs.png"
+  rm -f "$cs_png"
+  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+    27_breakout_cs --capture "$cs_png" --capture-frame 240
+  run cmp "$cs_png" tests/golden/27_breakout_cs_sdlgpu.png
+else
+  echo
+  echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
+fi
+
 if [[ -f "$HOME/emsdk/emsdk_env.sh" ]]; then
   echo
   echo "==> source ~/emsdk/emsdk_env.sh && emcmake cmake -S . -B build/wasm && cmake --build build/wasm -j"
