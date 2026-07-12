@@ -238,7 +238,7 @@ public static class Sdf19
                 opts.shader = s;
             if (matcap != null)
                 opts.textures = new Dictionary<string, TextureRef>
-                    { ["matcap"] = matcap };
+                { ["matcap"] = matcap };
             r.draw(m, model, opts);
         }
         r.End();

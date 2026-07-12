@@ -1235,7 +1235,7 @@ public class Renderer3d
             {
                 Gfx.begin_pass(new PassOpts { target = Gfx.main_tex });
                 Gfx.draw(6, new Dictionary<string, object>
-                    { ["verts"] = quad, ["scene"] = dbg },
+                { ["verts"] = quad, ["scene"] = dbg },
                     new DrawOpts { shader = presentSh, depth = false, cull = Gfx.NONE });
                 Gfx.end_pass();
                 return;
@@ -1257,7 +1257,7 @@ public class Renderer3d
         else
         {
             Gfx.draw(6, new Dictionary<string, object>
-                { ["verts"] = quad, ["scene"] = ldr },
+            { ["verts"] = quad, ["scene"] = ldr },
                 new DrawOpts { shader = presentSh, depth = false, cull = Gfx.NONE });
         }
         Gfx.end_pass();

@@ -8,6 +8,7 @@
 #   stylua           : Lua                     - `npm --prefix web install`
 #   text normalize   : HXML                    - trim trailing spaces + final LF
 #   prettier         : Web TS/MJS/JSON/HTML    - `npm --prefix web install`
+#   dotnet format    : C# (whitespace)         - dotnet SDK 付属
 #
 # Usage:
 #   scripts/format.sh            # 全部整形
@@ -66,6 +67,7 @@ mapfile -d '' HAXE_FILES < <(git_files 'haxe-lib/**/*.hx' 'samples/**/*.hx')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/**/*.slang' 'tests/**/*.slang')
 mapfile -d '' LUA_FILES < <(git_files '*.lua')
 mapfile -d '' HXML_FILES < <(git_files '*.hxml')
+mapfile -d '' CS_FILES < <(git_files 'samples/**/*.cs' 'cs-lib/**/*.cs')
 mapfile -d '' WEB_FILES < <(git_files \
     'web/*.html' \
     'web/*.json' \
@@ -114,6 +116,7 @@ if [[ $check -eq 1 ]]; then
     run_if_any LUA_FILES env XDG_CONFIG_HOME=/nonexistent npx --prefix web stylua --no-editorconfig --check --verify
     run_if_any HXML_FILES check_text_files_normalized
     run_if_any WEB_FILES npx --prefix web prettier --check
+    run_if_any CS_FILES dotnet format whitespace . --folder --verify-no-changes --include
 else
     run_if_any C_FILES clang-format -i
     if [[ ${#HAXE_ARGS[@]} -gt 0 ]]; then
@@ -123,4 +126,5 @@ else
     run_if_any LUA_FILES env XDG_CONFIG_HOME=/nonexistent npx --prefix web stylua --no-editorconfig --verify
     run_if_any HXML_FILES normalize_text_files
     run_if_any WEB_FILES npx --prefix web prettier --write
+    run_if_any CS_FILES dotnet format whitespace . --folder --include
 fi

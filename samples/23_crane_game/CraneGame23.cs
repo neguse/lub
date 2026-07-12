@@ -508,9 +508,9 @@ public static class CraneGame23
             a = head,
             b = fr,
             anchorA = new Vec3d
-                { x = HOME_X + SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
+            { x = HOME_X + SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
             anchorB = new Vec3d
-                { x = HOME_X + SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
+            { x = HOME_X + SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
             axis = new Vec3d { x = 0.0, y = 0.0, z = 1.0 },
             enableLimit = true,
             lower = 0.0,
@@ -525,9 +525,9 @@ public static class CraneGame23
             a = head,
             b = fl,
             anchorA = new Vec3d
-                { x = HOME_X - SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
+            { x = HOME_X - SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
             anchorB = new Vec3d
-                { x = HOME_X - SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
+            { x = HOME_X - SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
             axis = new Vec3d { x = 0.0, y = 0.0, z = 1.0 },
             enableLimit = true,
             lower = -OPEN_ANGLE,
