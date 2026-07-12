@@ -596,3 +596,11 @@
 - よかったこと: diagnostic IDではなく最内側の式だけを見ることで、同じIDの通常errorと、外側にenum変換があるnested errorをともにfatalにできた。CLI系40件の反復実行も安定した
 - 判断: enum/integerの`CS0019`は`==`/`!=`だけを許容し、Lua string表現の`char`はinteger集合から除外する。interface facadeは全未実装member（static abstract operator/conversionを含む）がpropertyで、同じclassに宣言した同名・同型public instance fieldがある場合だけ許容し、setterにはmutable fieldを要求する
 - 残課題: T136 (String edge + Lua process timeout) → T133/T137/T138 (診断契約)
+
+### T136: Lua 実行テストの timeout と String edge contract 修正 ✓ (2026-07-12)
+- `RunLua`とLua version取得を共通の有限時間process helperへ寄せ、stdout/stderrの同時非同期drain、timeout時のprocess tree終了、wait/drain、PID・command・両出力・script文脈付き診断を実装した。cleanup中のplatform例外や一部tree kill失敗でも診断まで進む
+- 実際の子孫Lua processをspawnするtree kill、timeout直前の両stream回収、pipe buffer超過の正常終了を3テストで固定した。Stringは空oldValueのReplace即時error、空suffixのEndsWith、空/null separatorと引数なしSplitを.NET比較し、allowlist全体の空文字edgeを8テストで棚卸しした
+- 変更ファイル: TestProcessRunner.cs, TestHelper.cs, ProcessRunnerTests.cs, StringEdgeContractTests.cs, LuaEmitter.Expressions.cs, runtime/tinysystem.lua, support-matrix/current/tasks/done
+- よかったこと: process終了待ちとstream drainを共通化したことで、既存テストの逐次ReadToEnd deadlockと無期限hangを同時に閉じられた。tree killテストはroot PIDだけでなく実descendant PIDの消滅まで確認する
+- 判断: `Split()`と明示nullをLuaの可変引数個数で区別し、引数なしだけをwhitespace分割にした。whitespaceは既存のUTF-8 byte列制約に合わせてLua `%s`の範囲とし、Unicode `Char.IsWhiteSpace`との差はsupport matrixへ明記した。root正常終了後にdescendantがpipeを保持する異常系も5秒で診断失敗するが、root消滅後のtree追跡はprocess helperの契約外
+- 残課題: T133 → T137 → T138 (診断契約)

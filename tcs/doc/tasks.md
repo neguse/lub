@@ -15,14 +15,13 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **即時安全性**: T136
-2. **診断契約**: T133 → T137 → T138
-3. **Lua 命名基盤**: T151
-4. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
-5. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
-6. **runtime 契約**: T152 → T153 → T154
-7. **CLI / watch**: T155 → T156 → T157
-8. **保守性・文書同期**: T158 → T159 → T160 → T161
+1. **診断契約**: T133 → T137 → T138
+2. **Lua 命名基盤**: T151
+3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
+4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
+5. **runtime 契約**: T152 → T153 → T154
+6. **CLI / watch**: T155 → T156 → T157
+7. **保守性・文書同期**: T158 → T159 → T160 → T161
 
 lub Haxe 代替検証は breakout 級サンプルの実機動作まで完了した
 (`doc/lub-gap-analysis.md`)。以降のサンプル移植・Useful 層追加は需要駆動で切る。
@@ -40,15 +39,6 @@ tcs 側から直接変更しない。
   - TryGetUnsupportedApi の member access 判定で、supported 型そのものを指す qualified name を除外する
   - analyzer / `tcs check` / transpiler warning の共有 facts で同じ判定にする
 - 完了条件: `System.Math.Min(1, 2)` が診断なしで通り、`System.IO.File.ReadAllText` は引き続き TCS1002 になる
-
-### T136: Lua 実行テストの timeout と String edge contract 修正
-- 目的: supported な `String.Replace` が無限ループする問題を直し、同種のhangでテスト全体が停止しないようにする
-- 作業:
-  - `TestHelper.RunLua`とversion取得を有限時間の共通process helperへ寄せ、stdout/stderrを非同期drainする
-  - timeout時はprocess treeをkillし、drain/Wait後に診断付きで失敗させる
-  - `String.Replace(str, "", replacement)` をC#と同様に即時エラーへする
-  - `EndsWith("") == true`、`Split("")`は元文字列1要素、`Split()`はwhitespace separatorとなる.NET契約を含め、allowlist済みString APIの空文字edgeを棚卸しする
-- 完了条件: 空 `oldValue` のReplaceが短時間で失敗し、EndsWith/Splitの空引数が.NET比較testと一致し、意図的hangテストのtimeout後に子processが残らない
 
 ### T137: partial / lock の Analyzer / check / emitter 診断を統一
 - 目的: レビューで確認した`partial`上書きと`lock`本体消失を、全診断経路で黙殺しない

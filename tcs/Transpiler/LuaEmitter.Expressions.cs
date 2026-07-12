@@ -993,7 +993,9 @@ public partial class LuaEmitter
         "Substring" => $"String.Substring({obj}, {string.Join(", ", args)})",
         "ToUpper" => $"string.upper({obj})",
         "ToLower" => $"string.lower({obj})",
-        "Split" => $"String.Split({obj}, {string.Join(", ", args)})",
+        "Split" => args.Count == 0
+            ? $"String.Split({obj})"
+            : $"String.Split({obj}, {string.Join(", ", args)})",
         "ToString" => $"tostring({obj})",
         _ => $"{obj}:{methodName}({string.Join(", ", args)})"
     };

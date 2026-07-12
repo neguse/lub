@@ -4,8 +4,11 @@ namespace TinyCs.Tests;
 
 public static class TestHelper
 {
+    private static readonly TimeSpan LuaProcessTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan LuaVersionTimeout = TimeSpan.FromSeconds(5);
     private static readonly string ProjectRoot = FindProjectRoot();
     private static readonly string LuaPath = FindLua();
+    internal static string LuaExecutablePath => LuaPath;
     public static string LuaVersion => GetLuaVersion(LuaPath);
 
     private static string FindProjectRoot()
@@ -74,20 +77,15 @@ public static class TestHelper
             var psi = new ProcessStartInfo
             {
                 FileName = luaPath,
-                Arguments = "-v",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            using var proc = Process.Start(psi)
-                ?? throw new InvalidOperationException(
-                    $"Failed to start Lua: {luaPath}");
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit();
-            var version = (stdout + stderr).Trim();
-            if (proc.ExitCode != 0 || version.Length == 0)
+            psi.ArgumentList.Add("-v");
+            var result = TestProcessRunner.Run(psi, LuaVersionTimeout);
+            var version = (result.Stdout + result.Stderr).Trim();
+            if (result.ExitCode != 0 || version.Length == 0)
             {
                 throw new InvalidOperationException(
                     $"Failed to read Lua version from '{luaPath}'.");
@@ -116,7 +114,8 @@ public static class TestHelper
     /// <summary>
     /// Transpile C# source with runtime loaded, wrap with a Lua expression to evaluate, run in Lua VM.
     /// </summary>
-    public static string TranspileAndRunWithRuntime(string csharpSource, string luaExpr)
+    public static string TranspileAndRunWithRuntime(string csharpSource,
+        string luaExpr, TimeSpan? timeout = null)
     {
         var lua = Transpiler.Transpile(csharpSource);
         var runtimePath = FindProjectFile("runtime/tinysystem.lua");
@@ -127,7 +126,7 @@ public static class TestHelper
                      "String = TinySystem.String\n" +
                      "Random = TinySystem.Random\n" +
                      $"{lua}\nprint({luaExpr})";
-        return RunLua(script).Trim();
+        return RunLua(script, timeout).Trim();
     }
 
     /// <summary>
@@ -143,7 +142,7 @@ public static class TestHelper
     /// <summary>
     /// Run a Lua script string and return stdout.
     /// </summary>
-    public static string RunLua(string script)
+    public static string RunLua(string script, TimeSpan? timeout = null)
     {
         var tmpFile = Path.GetTempFileName();
         try
@@ -152,20 +151,17 @@ public static class TestHelper
             var psi = new ProcessStartInfo
             {
                 FileName = LuaPath,
-                Arguments = tmpFile,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            using var proc = Process.Start(psi)
-                ?? throw new InvalidOperationException($"Failed to start Lua: {LuaPath}");
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit();
-            if (proc.ExitCode != 0)
-                throw new InvalidOperationException($"Lua exited with code {proc.ExitCode}:\n{stderr}\n--- script ---\n{script}");
-            return stdout;
+            psi.ArgumentList.Add(tmpFile);
+            var result = TestProcessRunner.Run(
+                psi, timeout ?? LuaProcessTimeout, script);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException($"Lua exited with code {result.ExitCode}:\n{result.Stderr}\n--- script ---\n{script}");
+            return result.Stdout;
         }
         finally
         {

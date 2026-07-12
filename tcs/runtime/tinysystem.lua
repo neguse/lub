@@ -274,6 +274,10 @@ function String.Join(sep, values, ...)
 end
 
 function String.Replace(str, old, new_str)
+  if old == "" then
+    error("oldValue cannot be empty", 2)
+  end
+
   local result = {}
   local pos = 1
   while true do
@@ -294,6 +298,7 @@ function String.StartsWith(str, prefix)
 end
 
 function String.EndsWith(str, suffix)
+  if suffix == "" then return true end
   return string.sub(str, -#suffix) == suffix
 end
 
@@ -309,17 +314,23 @@ function String.Substring(str, start, length)
   end
 end
 
-function String.Split(str, sep)
+function String.Split(str, ...)
   local result = {}
-  if not sep or sep == "" then
-    for i = 1, #str do
-      result[i] = string.sub(str, i, i)
-    end
-    return result
+  local argument_count = select("#", ...)
+  local sep = ...
+  if argument_count > 0 and (sep == nil or sep == "") then
+    return { str }
   end
+
+  local whitespace = argument_count == 0
   local pos = 1
   while true do
-    local start, stop = string.find(str, sep, pos, true)
+    local start, stop
+    if whitespace then
+      start, stop = string.find(str, "%s", pos)
+    else
+      start, stop = string.find(str, sep, pos, true)
+    end
     if not start then
       result[#result + 1] = string.sub(str, pos)
       break

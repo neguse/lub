@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T133-T161)
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T133/T137-T161)
 
-### 完了済み (363テスト tcs / 10テスト analyzer / 477テスト lub3d)
+### 完了済み (374テスト tcs / 10テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -119,7 +119,7 @@
 - Dict: new, Add, Remove, ContainsKey, Count, Keys, Values
 - Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, Pow, PI
 - Random: Next, NextFloat, Range
-- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split, IndexOf, Join
+- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split, IndexOf, Join。空oldValueのReplaceは即時error、空suffixのEndsWithはtrue、Splitは引数なしLua `%s` whitespace分割（空要素保持）と空/null separatorの元文字列1要素を区別する
 
 ### TinySystem C# facade (TinySystem/)
 - `TinySystem.Random`, `TinySystem.Math`, `TinySystem.String`, `TinySystem.List`, `TinySystem.Dict`
@@ -145,6 +145,7 @@
 ### Lua 5.5 build
 - CMake は Linux / Windows / macOS / iOS-family / Emscripten / BSD / generic Unix で Lua compile definitions と system libs を分岐
 - `run-tests.sh` / `run-tests.ps1` は Lua binary が未生成、CMake 入力より古い、または `Lua 5.5` でない場合に再ビルドし、dotnet tests、sample `tcs check`、analyzer-demo expected diagnostics、analyzer nupkg consumer / severity override 検証を実行する
+- Lua実行testとversion取得は共通の有限時間process helperを使い、stdout/stderrを並行drainする。timeout時はprocess treeを終了・waitして、PID・command・出力・script文脈付きで失敗する
 - `.github/workflows/ci.yml` は submodule checkout → .NET 10 setup → `run-tests.sh` を実行する
 
 ### 依存・配布
@@ -189,8 +190,8 @@
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-code / runtime hangの修正 (T136-T154)
-- 着手順: T136 (String hang + test timeout) → T133/T137/T138 (診断契約)
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T133/T137-T154)
+- 着手順: T133 → T137 → T138 (診断契約)
 - Lua命名T151を先に入れ、lowering修正はT139の一回評価基盤からT140-T148へ展開する。継承T149-T150は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る

@@ -570,12 +570,12 @@ using(宣言)  virtual(部分)  volatile  yield
 |---------|:----:|--------------|:----:|
 | `.Length` | **Y** | `#str` | T |
 | `.Contains(s)` | **Y** | `String.Contains(str, s)` | T+R |
-| `.Replace(old, new)` | **Y** | `String.Replace(str, old, new)` | T+R |
+| `.Replace(old, new)` | **Y** | `String.Replace(str, old, new)` (`old == ""`は即時error) | T+R |
 | `.StartsWith(s)` | **Y** | `String.StartsWith(str, s)` | T+R |
-| `.EndsWith(s)` | **Y** | `String.EndsWith(str, s)` | T+R |
+| `.EndsWith(s)` | **Y** | `String.EndsWith(str, s)` (空suffixはtrue) | T+R |
 | `.Trim()` | **Y** | `String.Trim(str)` | T+R |
 | `.Substring(i)` / `.Substring(i,n)` | **Y** | `String.Substring(str, i[, n])` | T+R |
-| `.Split(sep)` | **Y** | `String.Split(str, sep)` | T+R |
+| `.Split()` / `.Split(sep)` | **Y** | `String.Split(str[, sep])` (引数なしはwhitespace、空/null separatorは元文字列1要素。空要素保持) | T+R |
 | `.ToUpper()` | **Y** | `string.upper(str)` | T |
 | `.ToLower()` | **Y** | `string.lower(str)` | T |
 | `.ToString()` | **Y** | `tostring(x)` | T |
@@ -600,6 +600,9 @@ using(宣言)  virtual(部分)  volatile  yield
 | `String.Empty` (static) | **-** | | |
 | `.ReplaceLineEndings()` | **-** | | |
 | `[int]` (char indexer) | **-** | | |
+
+引数なし`Split()`のwhitespace判定はLua `%s`によるbyte/locale単位であり、
+.NETのUnicode `Char.IsWhiteSpace`とは一致しない。これはUTF-8 byte列を使う既知制約に含む。
 
 ---
 
