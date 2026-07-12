@@ -25,9 +25,14 @@ Haxe はその性質を活かしたまま、より書きやすい script authori
 
 script authoring layer は複数言語を許す。Haxe に加えて TinyC#
 ([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler) を
-第二の authoring 言語とする。web playground は Haxe と C# の両方を動く状態に保つ:
-コンパイラは言語別の worker に分離し、player・Lua API 面(prelude)・hot reload
-セマンティクスは言語間で共有する。
+第二の authoring 言語とする。**全サンプルを Haxe / C# の両言語で提供することを
+ゴールとする**。サンプル番号は言語で分けず、同一サンプルディレクトリに両言語の
+ソースを同居させ、開く言語を選ぶ (対応状況の正は `web/playground/samples.ts` の
+CS_SAMPLES と `samples/*/<Entry>.cs` の有無)。web playground は Haxe と C# の
+両方を動く状態に保つ: コンパイラは言語別に分離し、player・Lua API 面
+(prelude)・hot reload セマンティクスは言語間で共有する。native CLI も対称で、
+`lub <sample>.hxml` と `lub <sample>/<Entry>.cs` が同じ DX
+(build + watch + hotswap) を持つ。
 
 ## Non-Goals
 

@@ -390,8 +390,10 @@ const samples = [
   { name: '24_baseball',        minNonBlack: 0.01 },
   { name: '25_bowling',         minNonBlack: 0.01 },
   { name: '26_renderer3d',      minNonBlack: 0.05 },
-  // C# (tcs) サンプル: 初回は .NET wasm ランタイムの cold start が乗る
-  { name: '27_breakout_cs',     minNonBlack: 0.10 },
+  // C# (tcs) 版: lang=cs で同一サンプルを C# ソースから compile する。
+  // 初回は .NET wasm ランタイムの cold start が乗る。
+  { name: '00_hello',           minNonBlack: 0.01, lang: 'cs' },
+  { name: '09_breakout',        minNonBlack: 0.10, lang: 'cs' },
 ]
 const sampleResults = {}
 
@@ -427,9 +429,11 @@ async function waitForPlayerReady(timeoutMs) {
 let firstIter = true
 for (const sample of samples) {
   const name = sample.name
+  const lang = sample.lang || 'haxe'
+  const label = lang === 'cs' ? `${name} (C#)` : name
   const known = KNOWN_FAILING.has(name)
   try {
-    console.log(`[verify] A5 switching to ${name}`)
+    console.log(`[verify] A5 switching to ${label}`)
     const readyP = waitForPlayerReady(15000).catch((e) => {
       console.warn(`[verify] A5 ${name} playerReady wait:`, e.message)
     })
@@ -450,15 +454,23 @@ for (const sample of samples) {
       await page.selectOption('#sample-select', name)
       await readyP
     }
+    if (lang !== 'haxe') {
+      // 言語トグルは change で loadCompileRun が走る。playerReady を待ち直す
+      const langReadyP = waitForPlayerReady(60000).catch((e) => {
+        console.warn(`[verify] A5 ${label} lang playerReady wait:`, e.message)
+      })
+      await page.selectOption('#lang-select', lang)
+      await langReadyP
+    }
     firstIter = false
     // playerReady fires before the first frame draws. Give the WASM time to
     // compile + run a few frames.
     await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
     const handle = await page.waitForSelector('iframe', { timeout: 10000 })
-    const p = screenshotPath(`A5_${name}.png`)
+    const p = screenshotPath(`A5_${name}${lang === 'cs' ? '_cs' : ''}.png`)
     await handle.screenshot({ path: p })
     const c = classify(p)
-    sampleResults[name] = c
+    sampleResults[label] = c
     const ratio = c.nonBlack / c.total
     const threshold = sample.minNonBlack
     const drewSomething = ratio > threshold
@@ -469,12 +481,12 @@ for (const sample of samples) {
         // remove it from KNOWN_FAILING. Do not fail the suite either way.
         console.warn(`[A5/${name}] unexpected pass — remove from KNOWN_FAILING`)
       }
-      check(`A5 ${name} drew something`, true, detail)
+      check(`A5 ${label} drew something`, true, detail)
     } else {
       if (known) {
         console.warn(`[A5/${name}] expected failure: ${detail}; not gating CI`)
       } else {
-        check(`A5 ${name} drew something`, false, detail)
+        check(`A5 ${label} drew something`, false, detail)
         failures++
       }
     }

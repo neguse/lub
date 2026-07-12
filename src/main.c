@@ -12,9 +12,13 @@
 #ifndef __EMSCRIPTEN__
 #include "haxe_build.h" // path_basename_noext / path_dirname
 #include "serve.h"
+#include "tcs_build.h"
 #endif
 
 static App g_app;
+#ifndef __EMSCRIPTEN__
+static TcsPipeline g_tcs;
+#endif
 
 #ifndef __EMSCRIPTEN__
 static bool g_serve_mode = false;
@@ -161,6 +165,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 #endif
 
 #ifndef __EMSCRIPTEN__
+  // .cs entry: tcs で transpile + watch し、以降は生成 .lua の直パス entry と
+  // 同じ扱いにする (mtime poll が hotswap を担う)。
+  char cs_out[768];
+  if (has_extension(entry_path, ".cs")) {
+    if (!tcs_pipeline_start(&g_tcs, entry_path, cs_out, sizeof(cs_out)))
+      return SDL_APP_FAILURE;
+    entry_path = cs_out;
+  }
   if (has_extension(entry_path, ".lua")) {
     // 任意パスの .lua entry。tcs 等の transpiler 出力を staging なしで
     // 直接ロードする。module 名は basename、実パスを mtime poll 対象にする。
@@ -332,5 +344,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   ui_shutdown();
   app_shutdown(&g_app);
   lua_ctx_shutdown(&g_app.lua);
+#ifndef __EMSCRIPTEN__
+  tcs_pipeline_stop(&g_tcs);
+#endif
   SDL_Quit();
 }

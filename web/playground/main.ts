@@ -1,5 +1,10 @@
 import { attachEditor, setFiles, getFiles } from "./editor";
-import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
+import {
+  SAMPLE_NAMES,
+  loadSampleSource,
+  discoverDataFiles,
+  hasCsVariant,
+} from "./samples";
 import type { SampleLanguage } from "./samples";
 import { compileHaxe } from "./haxe-compiler";
 import { compileTcs } from "./tcs-compiler";
@@ -15,6 +20,7 @@ const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
 
 const $sample = document.querySelector<HTMLSelectElement>("#sample-select")!;
+const $lang = document.querySelector<HTMLSelectElement>("#lang-select")!;
 const $res = document.querySelector<HTMLSelectElement>("#res-select")!;
 const $restart = document.querySelector<HTMLButtonElement>("#restart-btn")!;
 const $log = document.getElementById("log")!;
@@ -27,13 +33,46 @@ for (const s of SAMPLE_NAMES) {
   $sample.appendChild(o);
 }
 
-// URL hash (#sample=<name>&...) からサンプルを復元する。他のフラグ(debug-slang等)と
-// 共存できるよう key=value 形式にしている。不正/未指定なら既定値のまま。
-const hashSample = new URLSearchParams(location.hash.slice(1)).get("sample");
+// URL hash (#sample=<name>&lang=cs&...) からサンプルと言語を復元する。他の
+// フラグ(debug-slang等)と共存できるよう key=value 形式にしている。
+// 不正/未指定なら既定値のまま。
+const hashParams = new URLSearchParams(location.hash.slice(1));
+const hashSample = hashParams.get("sample");
 if (hashSample && SAMPLE_NAMES.includes(hashSample)) {
   currentSample = hashSample;
 }
+if (hashParams.get("lang") === "cs" && hasCsVariant(currentSample)) {
+  language = "cs";
+}
 $sample.value = currentSample;
+
+// 言語トグル: Haxe は全サンプル、C# は .cs を持つサンプルのみ。
+function rebuildLangOptions() {
+  $lang.innerHTML = "";
+  const langs: [SampleLanguage, string][] = [["haxe", "Haxe"]];
+  if (hasCsVariant(currentSample)) langs.push(["cs", "C#"]);
+  for (const [v, label] of langs) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = label;
+    $lang.appendChild(o);
+  }
+  $lang.disabled = langs.length === 1;
+  $lang.value = language;
+}
+rebuildLangOptions();
+
+$lang.addEventListener("change", async () => {
+  if (anyDirty()) {
+    if (!confirm("未保存の変更があります。破棄して言語切替しますか?")) {
+      $lang.value = language;
+      return;
+    }
+  }
+  language = $lang.value as SampleLanguage;
+  updateHash();
+  await loadCompileRun(currentSample);
+});
 
 // Render-resolution presets (16:9). Smaller = fewer pixels through the whole
 // post chain = faster on weak devices. The choice rides the player iframe URL.
@@ -75,7 +114,9 @@ $sample.addEventListener("change", async () => {
     }
   }
   currentSample = $sample.value;
-  updateHashSample(currentSample);
+  if (language === "cs" && !hasCsVariant(currentSample)) language = "haxe";
+  rebuildLangOptions();
+  updateHash();
   await loadCompileRun(currentSample);
 });
 
@@ -104,10 +145,12 @@ attachEditor(
   },
 );
 
-/** URL hash の sample= を現在のサンプルに同期する(履歴は汚さない)。 */
-function updateHashSample(name: string) {
+/** URL hash の sample= / lang= を現在の状態に同期する(履歴は汚さない)。 */
+function updateHash() {
   const params = new URLSearchParams(location.hash.slice(1));
-  params.set("sample", name);
+  params.set("sample", currentSample);
+  if (language === "cs") params.set("lang", "cs");
+  else params.delete("lang");
   history.replaceState(null, "", "#" + params.toString());
 }
 
@@ -167,7 +210,7 @@ async function loadCompileRun(name: string) {
   lastLua = null;
   let src;
   try {
-    src = await loadSampleSource(name);
+    src = await loadSampleSource(name, language);
   } catch (e: any) {
     addLog("failed to load sample: " + e.message, "err");
     return;

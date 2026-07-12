@@ -1,5 +1,5 @@
 // lub の samples/09_breakout 相当を TinyC# で書いた entry。
-// 変換と実行は scripts/run-cs-sample.sh 27_breakout_cs を参照。
+// 実行: lub samples/09_breakout/Breakout.cs (transpile + watch + hot reload)
 // gameplay は原典の rule (paddle/ball/bricks, key_down 駆動) を踏襲し、
 // 型は Dynamic ではなく class Brick / out 引数の multi-return で表現する。
 
@@ -355,9 +355,9 @@ public static class Breakout
     {
         UpdateGame();
 
-        Io.load_text("samples/27_breakout_cs/data/27_breakout_cs.vs.slang",
+        Io.load_text("samples/09_breakout/data/09_breakout.vs.slang",
             out var vs, out var vsv, out _);
-        Io.load_text("samples/27_breakout_cs/data/27_breakout_cs.fs.slang",
+        Io.load_text("samples/09_breakout/data/09_breakout.fs.slang",
             out var fs, out var fsv, out _);
         if (vs == null || fs == null) return;
 

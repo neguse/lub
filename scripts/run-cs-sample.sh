@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# C# (TinyC#) サンプルを tcs で transpile して lub で実行する。
+# C# (TinyC#) サンプルの check / build ヘルパー (主に CI・gate 用)。
+# 対話実行は lub CLI が第一級で対応している:
+#   ./build/lub samples/<name>/<Entry>.cs   # transpile + watch + hot reload
 #
 # 使い方:
-#   scripts/run-cs-sample.sh <sample> [--build|--check|--watch] [lub args...]
-#     --build: transpile のみ (samples/<sample>/.lub/<sample>.lua を生成)
-#     --check: tcs check (診断のみ、Lua 出力なし)
-#     --watch: transpile 後、tcs --watch を背後に起動して lub を実行
-#              (保存 -> 再変換 -> lub の mtime poll で hot reload)
-#     指定なし: transpile して lub を起動。lub args はそのまま渡す
+#   scripts/run-cs-sample.sh <sample> --check   # tcs check (診断のみ)
+#   scripts/run-cs-sample.sh <sample> --build   # transpile のみ
+#     出力は lub CLI と同じ samples/<sample>/.lub/<Entry>.lua
 #
 # 要件: dotnet SDK + third_party/tcs submodule
-#   git submodule update --init third_party/tcs
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-NAME="${1:?usage: run-cs-sample.sh <sample> [--build|--check|--watch] [lub args...]}"
-shift
+NAME="${1:?usage: run-cs-sample.sh <sample> --check|--build}"
+MODE="${2:?usage: run-cs-sample.sh <sample> --check|--build}"
 
 DIR="samples/$NAME"
 if [[ ! -d "$DIR" ]]; then
@@ -28,7 +26,6 @@ if [[ ! -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
     exit 1
 fi
 
-# entry class = サンプル直下の唯一の .cs (共有 stub は cs-lib/)
 mapfile -t CS_FILES < <(find "$DIR" -maxdepth 1 -name '*.cs' | sort)
 if [[ ${#CS_FILES[@]} -ne 1 ]]; then
     echo "expected exactly one .cs in $DIR, found ${#CS_FILES[@]}" >&2
@@ -36,33 +33,21 @@ if [[ ${#CS_FILES[@]} -ne 1 ]]; then
 fi
 ENTRY_CS="${CS_FILES[0]}"
 ENTRY_CLASS="$(basename "$ENTRY_CS" .cs)"
-OUT="$DIR/.lub/$NAME.lua"
 
 TCS=(dotnet run --project third_party/tcs/Transpiler --)
 
-MODE="${1:-}"
 case "$MODE" in
 --check)
     exec "${TCS[@]}" check "$ENTRY_CS" --ref cs-lib/lub_stub.cs --no-naming-check
     ;;
---build | --watch | *) ;;
+--build)
+    mkdir -p "$DIR/.lub"
+    exec "${TCS[@]}" "$ENTRY_CS" --ref cs-lib/lub_stub.cs \
+        -o "$DIR/.lub/$ENTRY_CLASS.lua" --entry "$ENTRY_CLASS" \
+        --no-naming-check
+    ;;
+*)
+    echo "unknown mode: $MODE (--check | --build)" >&2
+    exit 2
+    ;;
 esac
-[[ "$MODE" == "--build" || "$MODE" == "--watch" ]] && shift || true
-
-mkdir -p "$DIR/.lub"
-"${TCS[@]}" "$ENTRY_CS" --ref cs-lib/lub_stub.cs -o "$OUT" \
-    --entry "$ENTRY_CLASS" --no-naming-check
-
-if [[ "$MODE" == "--build" ]]; then
-    echo "built: $OUT"
-    exit 0
-fi
-
-if [[ "$MODE" == "--watch" ]]; then
-    "${TCS[@]}" "$ENTRY_CS" --ref cs-lib/lub_stub.cs -o "$OUT" \
-        --entry "$ENTRY_CLASS" --no-naming-check --watch &
-    WATCH_PID=$!
-    trap 'kill $WATCH_PID 2>/dev/null || true' EXIT
-fi
-
-./build/lub "$NAME" "$@"

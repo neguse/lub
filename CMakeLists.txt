@@ -198,6 +198,8 @@ if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/haxe_build.c)
   # `*.hx` の recursive mtime watcher (50ms debounce)。
   list(APPEND LUB_SOURCES src/haxe_watch.c)
+  # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)
+  list(APPEND LUB_SOURCES src/tcs_build.c)
   # HTTP + SSE dev server for `lub --serve game.hxml`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)

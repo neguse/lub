@@ -42,6 +42,8 @@ public static class Gfx
     public static int VERTEX;
     public static int NONE;
     public static int ALPHA;
+    public static int RGBA8;
+    public static int CLEAR;
 
     public static void begin_pass(PassOpts opts)
     {

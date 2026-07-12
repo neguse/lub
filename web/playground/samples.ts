@@ -32,14 +32,20 @@ export const SAMPLE_NAMES = [
   "24_baseball",
   "25_bowling",
   "26_renderer3d",
-  "27_breakout_cs",
 ];
 
-// C# (TinyC#) サンプル: サンプル名 → entry class。ソースは
-// samples/<name>/<EntryClass>.cs の 1 ファイル構成。
+// C# (TinyC#) 対応済みサンプル: サンプル名 → entry class。ソースは
+// samples/<name>/<EntryClass>.cs の 1 ファイル構成で Haxe 版と同居する。
+// 全サンプルの両言語対応がゴール。ここが対応状況の正。
 const CS_SAMPLES: Record<string, string> = {
-  "27_breakout_cs": "Breakout",
+  "00_hello": "Hello00",
+  "09_breakout": "Breakout",
 };
+
+/** サンプルが C# 版を持つか (言語トグルの活性判定)。 */
+export function hasCsVariant(name: string): boolean {
+  return name in CS_SAMPLES;
+}
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
 // below can't see them) list their editable data files explicitly.
@@ -132,8 +138,11 @@ async function fetchText(url: string): Promise<string> {
  * `.hx`/`.hxml` ソースをロードする。各 playground サンプルは単一 `<MainClass>.hx`。
  * data files(slang 等)は compile 後の Lua を scan して別途取得する(discoverDataFiles)。
  */
-export async function loadSampleSource(name: string): Promise<SampleSource> {
-  if (CS_SAMPLES[name]) {
+export async function loadSampleSource(
+  name: string,
+  language: SampleLanguage = "haxe",
+): Promise<SampleSource> {
+  if (language === "cs" && CS_SAMPLES[name]) {
     const entryClass = CS_SAMPLES[name];
     const csName = `${entryClass}.cs`;
     const cs = await fetchText(`/samples/${name}/${csName}`);

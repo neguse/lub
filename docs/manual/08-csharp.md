@@ -62,10 +62,12 @@ public static class Main
 これを参照に加えると補完と型チェックが効く。Lua 側の multi-return
 (`Io.load_text` など) は `out` 引数で受ける。
 
-サンプルは `samples/27_breakout_cs/` を参照。native での実行は:
+サンプルは Haxe 版と同じディレクトリに同居する (例:
+`samples/09_breakout/Breakout.cs`)。playground では画面上部の言語トグルで
+Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。native での実行は:
 
 ```
-scripts/run-cs-sample.sh 27_breakout_cs           # 実行
-scripts/run-cs-sample.sh 27_breakout_cs --watch   # .cs 保存で hot reload
-scripts/run-cs-sample.sh 27_breakout_cs --check   # 診断のみ
+lub samples/09_breakout/Breakout.cs               # transpile + watch + hot reload
+scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
+scripts/run-cs-sample.sh 09_breakout --build      # transpile のみ
 ```

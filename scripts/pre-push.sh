@@ -77,17 +77,25 @@ run bash scripts/pre-commit.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 run_timed env BINARY="$native_binary" scripts/run-golden.sh
 
-# C# (tcs) サンプル: dotnet と third_party/tcs submodule があるときだけ検査する。
+# C# (tcs) サンプル: dotnet と third_party/tcs submodule があるときだけ、
+# .cs entry を持つ全サンプルを check + build + golden 比較する。
 # 無い環境では skip (C# 対応は optional toolchain)。
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
-  run scripts/run-cs-sample.sh 27_breakout_cs --check
-  run scripts/run-cs-sample.sh 27_breakout_cs --build
-  cs_png="${TMPDIR:-/tmp}/lub-pre-push-27_breakout_cs.png"
-  rm -f "$cs_png"
-  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
-    27_breakout_cs --capture "$cs_png" --capture-frame 240
-  run cmp "$cs_png" tests/golden/27_breakout_cs_sdlgpu.png
+  shopt -s nullglob
+  for cs_entry in samples/*/[A-Z]*.cs; do
+    cs_dir="$(dirname "$cs_entry")"
+    cs_name="$(basename "$cs_dir")"
+    cs_class="$(basename "$cs_entry" .cs)"
+    run scripts/run-cs-sample.sh "$cs_name" --check
+    run scripts/run-cs-sample.sh "$cs_name" --build
+    cs_png="${TMPDIR:-/tmp}/lub-pre-push-${cs_name}_cs.png"
+    rm -f "$cs_png"
+    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+      "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240
+    run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
+  done
+  shopt -u nullglob
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
