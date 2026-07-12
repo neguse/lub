@@ -160,7 +160,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
 #endif
 
-  if (!has_extension(entry_path, ".hxml")) {
+#ifndef __EMSCRIPTEN__
+  if (has_extension(entry_path, ".lua")) {
+    // 任意パスの .lua entry。tcs 等の transpiler 出力を staging なしで
+    // 直接ロードする。module 名は basename、実パスを mtime poll 対象にする。
+    path_basename_noext(entry_path, modbuf, sizeof(modbuf));
+    SDL_strlcpy(g_app.entry_module_name, modbuf,
+                sizeof(g_app.entry_module_name));
+    SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path), "%s", entry_path);
+    g_app.entry_mtime_cache = 0;
+    char dir[512];
+    path_dirname(entry_path, dir, sizeof(dir));
+    lua_ctx_add_package_dir(&g_app.lua, dir);
+  } else
+#endif
+      if (!has_extension(entry_path, ".hxml")) {
     const char *raw = entry_path;
     const char *base = strrchr(raw, '/');
     base = base ? base + 1 : raw;

@@ -2310,17 +2310,56 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   return true;
 }
 
+// boot.lua を cwd 優先で探し、無ければ実行ファイル位置から lub root
+// (<exe_dir>/..) を推定して探す。見つけた root は boot.lua へ渡し、
+// lume / samples の package.path を root 基準で組めるようにする
+// (cwd が lub root 以外でも .lua 直パス entry を動かすため)。
+static bool load_boot_chunk(lua_State *L, char *root, size_t rootsz) {
+  root[0] = '\0';
+  if (luaL_loadfile(L, "samples/boot.lua") == LUA_OK)
+    return true;
+  lua_pop(L, 1);
+#ifndef __EMSCRIPTEN__
+  const char *base_path = SDL_GetBasePath();
+  if (base_path) {
+    char dir[768];
+    SDL_strlcpy(dir, base_path, sizeof(dir));
+    size_t n = SDL_strlen(dir);
+    while (n > 0 && (dir[n - 1] == '/' || dir[n - 1] == '\\'))
+      dir[--n] = '\0';
+    char *cut = SDL_strrchr(dir, '/');
+    char *cut_bs = SDL_strrchr(dir, '\\');
+    if (cut_bs && (!cut || cut_bs > cut))
+      cut = cut_bs;
+    if (cut && cut > dir) {
+      *cut = '\0';
+      char bootpath[900];
+      SDL_snprintf(bootpath, sizeof(bootpath), "%s/samples/boot.lua", dir);
+      if (luaL_loadfile(L, bootpath) == LUA_OK) {
+        SDL_strlcpy(root, dir, rootsz);
+        return true;
+      }
+      lua_pop(L, 1);
+    }
+  }
+#endif
+  SDL_Log("boot.lua not found: tried samples/boot.lua and "
+          "<exe>/../samples/boot.lua");
+  return false;
+}
+
 bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
   if (!ctx || !ctx->L || !entry_module_name)
     return false;
-  if (luaL_loadfile(ctx->L, "samples/boot.lua") != LUA_OK) {
-    SDL_Log("boot.lua load error: %s", lua_tostring(ctx->L, -1));
+  char root[768];
+  if (!load_boot_chunk(ctx->L, root, sizeof(root))) {
     lua_close(ctx->L);
     ctx->L = NULL;
     return false;
   }
   lua_pushstring(ctx->L, entry_module_name);
-  if (lua_pcall(ctx->L, 1, 1, 0) != LUA_OK) {
+  lua_pushstring(ctx->L, root);
+  if (lua_pcall(ctx->L, 2, 1, 0) != LUA_OK) {
     SDL_Log("boot.lua run error: %s", lua_tostring(ctx->L, -1));
     lua_close(ctx->L);
     ctx->L = NULL;
@@ -2336,19 +2375,33 @@ bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name) {
   return true;
 }
 
-void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir) {
-  if (!ctx || !ctx->L || !entry_dir)
-    return;
+static void package_path_prepend(LuaCtx *ctx, const char *pattern) {
   lua_State *L = ctx->L;
   lua_getglobal(L, "package"); /* +1 */
   lua_getfield(L, -1, "path"); /* +1 */
   const char *cur = lua_tostring(L, -1);
   char buf[1024];
-  SDL_snprintf(buf, sizeof(buf), "%s/.lub/?.lua;%s", entry_dir, cur ? cur : "");
+  SDL_snprintf(buf, sizeof(buf), "%s;%s", pattern, cur ? cur : "");
   lua_pop(L, 1); /* drop old path */
   lua_pushstring(L, buf);
   lua_setfield(L, -2, "path"); /* set package.path */
   lua_pop(L, 1);               /* drop package */
+}
+
+void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir) {
+  if (!ctx || !ctx->L || !entry_dir)
+    return;
+  char pat[1000];
+  SDL_snprintf(pat, sizeof(pat), "%s/.lub/?.lua", entry_dir);
+  package_path_prepend(ctx, pat);
+}
+
+void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
+  if (!ctx || !ctx->L || !dir)
+    return;
+  char pat[1000];
+  SDL_snprintf(pat, sizeof(pat), "%s/?.lua", dir);
+  package_path_prepend(ctx, pat);
 }
 
 void lua_ctx_call_init(LuaCtx *ctx) {

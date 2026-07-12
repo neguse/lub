@@ -23,6 +23,12 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
 Haxe はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
+script authoring layer は複数言語を許す。Haxe に加えて TinyC#
+([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler) を
+第二の authoring 言語とする。web playground は Haxe と C# の両方を動く状態に保つ:
+コンパイラは言語別の worker に分離し、player・Lua API 面(prelude)・hot reload
+セマンティクスは言語間で共有する。
+
 ## Non-Goals
 
 - 既存 framework / engine の API 互換。

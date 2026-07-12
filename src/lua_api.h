@@ -24,6 +24,10 @@ bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name);
 // `<dir>/.lub/?.lua` を package.path の先頭に積む。
 void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
 
+// entry の実ディレクトリ (`<dir>/?.lua`) を package.path の先頭に積む。
+// .lua 直パス entry (tcs 等の transpiler 出力) 用。
+void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir);
+
 void lua_ctx_call_init(LuaCtx *ctx);
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e);
 // onFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
