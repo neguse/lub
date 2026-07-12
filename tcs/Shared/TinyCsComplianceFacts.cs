@@ -289,6 +289,16 @@ public static class TinyCsComplianceFacts
             _ => null,
         };
 
+        // A named type in System.Math.Min is a qualifier. The outer member
+        // symbol is analyzed separately as the actual API access.
+        if (node is MemberAccessExpressionSyntax qualifierAccess
+            && symbol is INamedTypeSymbol
+            && qualifierAccess.Parent is MemberAccessExpressionSyntax parentAccess
+            && parentAccess.Expression == qualifierAccess)
+        {
+            return false;
+        }
+
         return TryGetUnsupportedApi(symbol, out apiName);
     }
 

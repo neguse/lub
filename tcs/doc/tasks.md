@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **診断契約**: T133 → T137 → T138
+1. **診断契約**: T137 → T162 → T138 → T163
 2. **Lua 命名基盤**: T151
 3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
 4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
@@ -32,13 +32,6 @@ tcs 側から直接変更しない。
 ---
 
 ## P0: 正しさ・安全性
-
-### T133: 完全修飾 API アクセスの TCS1002 誤検出修正
-- 目的: `System.Math.Min(...)` のような完全修飾アクセスで `System.Math` の部分式が TCS1002 (unsupported API) に誤検出されるのを直す
-- 作業:
-  - TryGetUnsupportedApi の member access 判定で、supported 型そのものを指す qualified name を除外する
-  - analyzer / `tcs check` / transpiler warning の共有 facts で同じ判定にする
-- 完了条件: `System.Math.Min(1, 2)` が診断なしで通り、`System.IO.File.ReadAllText` は引き続き TCS1002 になる
 
 ### T137: partial / lock の Analyzer / check / emitter 診断を統一
 - 目的: レビューで確認した`partial`上書きと`lock`本体消失を、全診断経路で黙殺しない
@@ -57,6 +50,24 @@ tcs 側から直接変更しない。
   - indexed `Select((x, i) => ...)`、comparer、`StringComparison`、明示default、未実装List/Dict constructor overloadをTCS1002にする
   - 実装済みoverloadはAnalyzer / check / emitterで同じく許可されることをtest matrixで固定する
 - 完了条件: 各代表negativeがAnalyzer/checkの両方で同じTCS1002となってcheck exit 1、通常のSelect/Where等は誤検出なしで通る
+
+### T162: nameof を無警告で不正Luaへ出さない
+- 目的: support matrixで未対応の`nameof(...)`を、Luaの未定義関数callとして警告なしで出力するsilent wrong-codeを止める
+- 依存: T137
+- 作業:
+  - semanticなnameof式を共有factsでTCS1001にし、通常method invocationと混同しない
+  - Analyzer / `tcs check` / transpiler warningの位置とsyntax名を統一する
+  - simple/member/typeをoperandにしたnameofと、同名ユーザーmethodのnegativeをtestする
+- 完了条件: 全診断経路でnameofが同じTCS1001となってcheck exit 1、警告なしの生成Luaに`nameof(...)`が残らず、通常の同名method callは誤検出しない
+
+### T163: global:: qualifier を透過loweringする
+- 目的: `global::System.Math.Max(...)`の生成Luaは正しいのにemitter fallbackがTCS1001を出し、unsupported callでは同警告が重複する問題を直す
+- 依存: T133、T138
+- 作業:
+  - `AliasQualifiedNameSyntax`の`global::`だけをcompile-time qualifierとして透過し、extern alias等は未対応のままにする
+  - collection/API mappingがreceiver種別確定前にexpressionをvisitして不要なwarningを出さないようにする
+  - method/property/fieldとsupported/unsupported APIをAnalyzer/check/transpilerで比較する
+- 完了条件: `global::System.Math.Max/PI`がTCS1001なしで実行でき、`global::System.IO.File.ReadAllText`はTCS1002だけを1件返し、未対応aliasは明示診断される
 
 ### T139: 副作用を一度だけ評価する expression lowering 基盤
 - 目的: 式文字列の複製によるreceiver/operandの多重評価を、後続構文でも再利用できる形で止める
@@ -229,7 +240,7 @@ tcs 側から直接変更しない。
 ## P2: 保守性・ドキュメント
 
 ### T158: LuaEmitter.Expressions.cs の責務分割
-- 目的: 1,111行で800行禁止を超えたemitterを、変更競合と意味論漏れを起こしにくい単位へ分ける
+- 目的: 800行禁止を超えたemitterを、変更競合と意味論漏れを起こしにくい単位へ分ける
 - 依存: T139-T148、T151-T153
 - 作業:
   - operator/assignment、invocation/API mapping、object/collection、pattern/null/lambda等のpartial fileへ分割する
@@ -238,7 +249,7 @@ tcs 側から直接変更しない。
 - 完了条件: 各C# sourceが600行以下を目安とし、少なくとも800行未満になる
 
 ### T159: TinyCsComplianceFacts.cs の責務分割
-- 目的: 624行で警告域に入った共有factsを、syntax/API/collection-null/formattingへ分ける
+- 目的: 600行警告域に入った共有factsを、syntax/API/collection-null/formattingへ分ける
 - 依存: T133、T137、T138
 - 作業:
   - AnalyzerとTranspilerが同じsourceを参照できるproject構成を維持してpartial fileへ分割する
@@ -256,7 +267,7 @@ tcs 側から直接変更しない。
 
 ### T161: support matrix / test evidence の最終監査
 - 目的: 一連の修正後に、実装・semantic test・support表のずれを残さない
-- 依存: T133-T160
+- 依存: T133-T160、T162-T163
 - 作業:
   - 実test discovery結果を基準にcurrent/READMEの件数を更新する
   - 本レビューで修正したproperty/operator/inheritance/String/LINQ/CLIのsupport matrix記述を再監査する

@@ -122,6 +122,24 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task FullyQualifiedApis_ReportOnlyUnsupportedMember()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Demo
+            {
+                public static int Supported() => System.Math.Min(3, 7);
+
+                public static string Unsupported() =>
+                    System.IO.File.ReadAllText("save.dat");
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics,
+            value => value.Id == TinyCsDiagnosticIds.UnsupportedApi);
+        Assert.Contains("System.IO.File.ReadAllText", diagnostic.GetMessage());
+    }
+
+    [Fact]
     public async Task DiagnosticSeverity_CanBeOverridden()
     {
         var diagnostics = await AnalyzeAsync("""

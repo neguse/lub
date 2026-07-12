@@ -869,7 +869,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
 | 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler で共有 (`struct` / `record struct` など) |
-| 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist 外の member も検出 |
+| 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist 外の member も検出し、完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
 | namespace 解決 | **Y** | 透過 |

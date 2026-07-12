@@ -604,3 +604,12 @@
 - よかったこと: process終了待ちとstream drainを共通化したことで、既存テストの逐次ReadToEnd deadlockと無期限hangを同時に閉じられた。tree killテストはroot PIDだけでなく実descendant PIDの消滅まで確認する
 - 判断: `Split()`と明示nullをLuaの可変引数個数で区別し、引数なしだけをwhitespace分割にした。whitespaceは既存のUTF-8 byte列制約に合わせてLua `%s`の範囲とし、Unicode `Char.IsWhiteSpace`との差はsupport matrixへ明記した。root正常終了後にdescendantがpipeを保持する異常系も5秒で診断失敗するが、root消滅後のtree追跡はprocess helperの契約外
 - 残課題: T133 → T137 → T138 (診断契約)
+
+### T133: 完全修飾 API アクセスの TCS1002 誤検出修正 ✓ (2026-07-12)
+- syntax全走査で`System.Math.Min`の中間`System.Math`をAPI memberとして再判定していたため、別のmember accessのreceiverとなる`INamedTypeSymbol`をqualifierとして除外し、実際の外側member symbolだけを共有allowlistで判定するようにした
+- Analyzer、`TranspileWithDiagnostics`、`tcs check`の3経路を4テストで固定した。完全修飾`System.Math.Min`は診断なし、`System.IO.File.ReadAllText`はtype qualifierとの重複なしでTCS1002を1件だけ返す
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzerTests.cs, DiagnosticTests.cs, CliRuntimeTests.cs, support-matrix/current/tasks/done
+- よかったこと: syntax文字列ではなくRoslynの`INamedTypeSymbol`と親子関係でqualifierを識別したため、namespace名や表記揺れに依存せずAnalyzerのoperation単位診断と揃えられた
+- 判断: publicなsymbol overloadの契約は変えず、誤検出が起きるsyntax member-access経路だけでtype qualifierを除外した。unsupported側もouter method/property/field/constructor symbolは従来どおり判定する
+- 追加発見: `nameof(...)`の警告なし不正Lua出力をT162、`global::`のTCS1001誤警告・重複をT163として起票した
+- 残課題: T137 → T162 → T138 → T163 (診断契約)

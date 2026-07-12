@@ -72,6 +72,37 @@ public class CliRuntimeTests
     }
 
     [Fact]
+    public void Cli_Check_FullyQualifiedApisUseMemberDiagnosticsOnly()
+    {
+        using var temp = TempDir.Create();
+        var supportedPath = temp.Write("supported.cs", """
+            public class Supported
+            {
+                public static int Test() => System.Math.Min(3, 7);
+            }
+            """);
+        var unsupportedPath = temp.Write("unsupported.cs", """
+            public class Unsupported
+            {
+                public static string Test() =>
+                    System.IO.File.ReadAllText("save.dat");
+            }
+            """);
+
+        var supported = RunCli("check", supportedPath);
+        var unsupported = RunCli("check", unsupportedPath);
+
+        Assert.Equal(0, supported.ExitCode);
+        Assert.Empty(supported.Stdout);
+        Assert.Empty(supported.Stderr);
+        Assert.Equal(1, unsupported.ExitCode);
+        Assert.Empty(unsupported.Stdout);
+        Assert.Equal(1, CountDiagnostics(unsupported.Stderr,
+            TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.Contains("System.IO.File.ReadAllText", unsupported.Stderr);
+    }
+
+    [Fact]
     public void Cli_Check_ComplianceWarnings_ReturnsFailure()
     {
         using var temp = TempDir.Create();

@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T133/T137-T161)
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T137-T163)
 
-### 完了済み (374テスト tcs / 10テスト analyzer / 477テスト lub3d)
+### 完了済み (377テスト tcs / 11テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -186,12 +186,12 @@
 - `verify-inspectcode.sh` / `.ps1` で InspectCode 2026.1.3 headless の ProjectReference / local nupkg `PackageReference` consumer / severity override を再確認できる
 - `verify-rider-prechecks.sh` / `.ps1` で pre-check summary、`open-rider-demo.sh` / `.ps1` (`-NoPrecheck` あり) で Rider 起動
 - `.ps1` は pwsh 7 の read-only 自動変数 (`$IsWindows` / `$IsMacOS`) と衝突する変数名を使わない。`verify-rider-scripts.sh` の検証は `run-tests.sh` (Linux/CI) のみで行い、`run-tests.ps1` は bash を使わない
-- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する
+- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する。`System.Math.Min`のような完全修飾アクセスでは中間の型qualifierをAPI memberとして重複診断しない
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T133/T137-T154)
-- 着手順: T133 → T137 → T138 (診断契約)
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T137-T154/T162-T163)
+- 着手順: T137 → T162 → T138 → T163 (診断契約)
 - Lua命名T151を先に入れ、lowering修正はT139の一回評価基盤からT140-T148へ展開する。継承T149-T150は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る

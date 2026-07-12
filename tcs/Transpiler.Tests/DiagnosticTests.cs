@@ -344,6 +344,43 @@ public class DiagnosticTests
     }
 
     [Fact]
+    public void FullyQualifiedSupportedApi_HasNoUnsupportedApiWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static int Test()
+                {
+                    return System.Math.Min(3, 7);
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            warning => warning.Contains(TinyCsDiagnosticIds.UnsupportedApi));
+    }
+
+    [Fact]
+    public void FullyQualifiedUnsupportedApi_ReportsSingleMemberWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static string Test()
+                {
+                    return System.IO.File.ReadAllText("save.dat");
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        var warning = Assert.Single(result.Warnings,
+            value => value.Contains(TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.Contains("System.IO.File.ReadAllText", warning);
+    }
+
+    [Fact]
     public void UnsupportedCoreLibraryMembers_ReportWarnings()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
