@@ -308,7 +308,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `?.Prop = v` (null条件代入, C# 14) | **-** | | |
 | `as` (安全キャスト) | **-** | | |
 | `typeof(T)` | **-** | | |
-| `nameof(x)` (C# 6) | **-** | | |
+| `nameof(x)` (C# 6) | **-** | 定数文字列 + unsupported marker fallback | TCS1001。semantic判定し、同名ユーザーmethodは通常call |
 | `default` / `default(T)` (C# 7.1) | **Y** | 型別 default | |
 | `sizeof(T)` | **N/A** | | |
 | `~` (ビット反転) | **-** | | |
@@ -868,7 +868,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
-| 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` など) |
+| 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist 外の member も検出し、完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |

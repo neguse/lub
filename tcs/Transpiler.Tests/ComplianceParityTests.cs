@@ -35,8 +35,61 @@ public class ComplianceParityTests
             $"{result.Lua}\nprint(Locker.Test())").Trim());
     }
 
+    [Fact]
+    public void Check_NameOfReportsSharedSyntaxDiagnostics()
+    {
+        var result = RunCli(NameOfSource, check: true);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        AssertNameOfDiagnostics(result.Stderr);
+        Assert.Equal(0, CountDiagnostics(result.Stderr,
+            TinyCsDiagnosticIds.UnsupportedApi));
+    }
+
+    [Fact]
+    public void Transpile_NameOfKeepsValidConstantFallbacks()
+    {
+        var result = RunCli(NameOfSource, check: false);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        AssertNameOfDiagnostics(result.Stderr);
+        Assert.Equal(0, CountDiagnostics(result.Stderr,
+            TinyCsDiagnosticIds.UnsupportedApi));
+        Assert.Equal(3, result.Lua.Split(
+            "--[[ unsupported: NameOfExpression ]]",
+            StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("nameof(", result.Lua);
+        Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
+            {{result.Lua}}
+            print(tostring(NameDemo.Simple(1)) .. "|" ..
+                tostring(NameDemo.MemberName()) .. "|" ..
+                tostring(NameDemo.TypeName()))
+            """).Trim());
+    }
+
+    [Fact]
+    public void UserMethodNamedNameof_RemainsOrdinaryInvocation()
+    {
+        var check = RunCli(UserNameofSource, check: true,
+            noNamingCheck: true);
+        var transpile = RunCli(UserNameofSource, check: false,
+            noNamingCheck: true);
+
+        Assert.Equal(0, check.ExitCode);
+        Assert.Empty(check.Stdout);
+        Assert.Empty(check.Stderr);
+        Assert.Equal(0, transpile.ExitCode);
+        Assert.Empty(transpile.Stdout);
+        Assert.Equal(0, CountDiagnostics(transpile.Stderr,
+            TinyCsDiagnosticIds.UnsupportedSyntax));
+        Assert.Equal("ok", TestHelper.RunLua(
+            $"{transpile.Lua}\nprint(NameDemo.Run())").Trim());
+    }
+
     private static (int ExitCode, string Stdout, string Stderr, string Lua)
-        RunCli(string source, bool check)
+        RunCli(string source, bool check, bool noNamingCheck = false)
     {
         var tempDirectory = Path.Combine(Path.GetTempPath(),
             $"tcs_compliance_{Guid.NewGuid():N}");
@@ -55,9 +108,10 @@ public class ComplianceParityTests
                 Console.SetOut(stdout);
                 Console.SetError(stderr);
                 var args = check
-                    ? new[] { "check", inputPath }
-                    : new[] { inputPath, "-o", outputPath, "--no-runtime" };
-                var exitCode = Program.Main(args);
+                    ? new List<string> { "check", inputPath }
+                    : [inputPath, "-o", outputPath, "--no-runtime"];
+                if (noNamingCheck) args.Add("--no-naming-check");
+                var exitCode = Program.Main([.. args]);
                 var lua = File.Exists(outputPath)
                     ? File.ReadAllText(outputPath)
                     : "";
@@ -79,6 +133,27 @@ public class ComplianceParityTests
     private static int CountDiagnostics(string text, string diagnosticId) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Count(line => line.Contains($"warning {diagnosticId}:"));
+
+    private static void AssertNameOfDiagnostics(string stderr)
+    {
+        var diagnostics = stderr.Split('\n',
+                StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.Contains(
+                $"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:"))
+            .ToArray();
+
+        Assert.Equal(3, diagnostics.Length);
+        Assert.Collection(diagnostics,
+            line => Assert.Contains(
+                "input.cs(3,47): warning TCS1001: unsupported syntax: NameOfExpression",
+                line),
+            line => Assert.Contains(
+                "input.cs(4,42): warning TCS1001: unsupported syntax: NameOfExpression",
+                line),
+            line => Assert.Contains(
+                "input.cs(5,40): warning TCS1001: unsupported syntax: NameOfExpression",
+                line));
+    }
 
     private const string PartialLockSource = """
         public partial class PartialClass
@@ -102,6 +177,23 @@ public class ComplianceParityTests
                     return 1;
                 }
             }
+        }
+        """;
+
+    private const string NameOfSource = """
+        public class NameDemo
+        {
+            public static string Simple(int value) => nameof(value);
+            public static string MemberName() => nameof(System.Math.E);
+            public static string TypeName() => nameof(System.DateTime);
+        }
+        """;
+
+    private const string UserNameofSource = """
+        public class NameDemo
+        {
+            public static string nameof(string value) => value;
+            public static string Run() => nameof("ok");
         }
         """;
 }

@@ -116,6 +116,50 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task NameOfExpressions_ReportUnsupportedSyntax()
+    {
+        const string source = """
+            public class NameDemo
+            {
+                public static string Simple(int value) => nameof(value);
+                public static string MemberName() => nameof(System.Math.E);
+                public static string TypeName() => nameof(System.DateTime);
+            }
+            """;
+        var diagnostics = await AnalyzeAsync(source);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(3, syntaxDiagnostics.Length);
+        Assert.Equal(3, diagnostics.Count);
+        Assert.All(syntaxDiagnostics,
+            d => Assert.Contains("NameOfExpression", d.GetMessage()));
+        Assert.Equal([
+            "nameof(value)",
+            "nameof(System.Math.E)",
+            "nameof(System.DateTime)",
+        ], syntaxDiagnostics.Select(d => source.Substring(
+            d.Location.SourceSpan.Start, d.Location.SourceSpan.Length)));
+    }
+
+    [Fact]
+    public async Task UserMethodNamedNameof_IsNotNameOfExpression()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class NameDemo
+            {
+                public static string nameof(string value) => value;
+                public static string Run() => nameof("ok");
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics,
+            d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax);
+    }
+
+    [Fact]
     public async Task UnsupportedStatements_ReportUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

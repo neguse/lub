@@ -104,7 +104,7 @@ public static class Transpiler
             if (checkNaming)
                 warnings.AddRange(NamingAnalyzer.Analyze(tree));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
-                tree));
+                tree, model));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
                 tree, model));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(

@@ -53,6 +53,8 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             OperationKind.PropertyReference,
             OperationKind.FieldReference,
             OperationKind.ObjectCreation);
+        context.RegisterOperationAction(AnalyzeUnsupportedOperationSyntax,
+            OperationKind.NameOf);
     }
 
     private static void AnalyzeSyntax(SyntaxNodeAnalysisContext context)
@@ -80,8 +82,23 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             context.Node.GetLocation(), description));
     }
 
+    private static void AnalyzeUnsupportedOperationSyntax(
+        OperationAnalysisContext context)
+    {
+        if (!TinyCsComplianceFacts.TryGetUnsupportedSyntax(context.Operation,
+            out var syntaxName))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(UnsupportedSyntaxRule,
+            context.Operation.Syntax.GetLocation(), syntaxName));
+    }
+
     private static void AnalyzeOperation(OperationAnalysisContext context)
     {
+        if (TinyCsComplianceFacts.IsWithinNameOf(context.Operation)) return;
+
         ISymbol? symbol = context.Operation switch
         {
             IInvocationOperation invocation => invocation.TargetMethod,

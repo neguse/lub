@@ -15,6 +15,13 @@ public partial class LuaEmitter
 
     private string VisitExpression(SemanticModel model, ExpressionSyntax expr)
     {
+        if (expr is InvocationExpressionSyntax nameOf
+            && TinyCsComplianceFacts.TryGetUnsupportedSyntax(
+                nameOf, model, out var syntaxName))
+        {
+            return VisitUnsupportedNameOf(model, nameOf, syntaxName);
+        }
+
         return expr switch
         {
             LiteralExpressionSyntax { RawKind: (int)SyntaxKind.DefaultLiteralExpression } defLit =>
@@ -310,6 +317,16 @@ public partial class LuaEmitter
 
         var targetExpr = VisitExpression(model, invocation.Expression);
         return $"{targetExpr}({string.Join(", ", args)})";
+    }
+
+    private static string VisitUnsupportedNameOf(SemanticModel model,
+        InvocationExpressionSyntax invocation, string syntaxName)
+    {
+        var constant = model.GetConstantValue(invocation);
+        var value = constant is { HasValue: true, Value: string name }
+            ? EscapeLuaString(name)
+            : "nil";
+        return $"({value} --[[ unsupported: {syntaxName} ]])";
     }
 
     // out 引数は Lua の追加戻り値として宣言順に受ける。out 変数の local 宣言は

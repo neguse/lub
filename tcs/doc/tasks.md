@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **診断契約**: T162 → T138 → T163
+1. **診断契約**: T138 → T163
 2. **Lua 命名基盤**: T151
 3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
 4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
@@ -41,15 +41,6 @@ tcs 側から直接変更しない。
   - indexed `Select((x, i) => ...)`、comparer、`StringComparison`、明示default、未実装List/Dict constructor overloadをTCS1002にする
   - 実装済みoverloadはAnalyzer / check / emitterで同じく許可されることをtest matrixで固定する
 - 完了条件: 各代表negativeがAnalyzer/checkの両方で同じTCS1002となってcheck exit 1、通常のSelect/Where等は誤検出なしで通る
-
-### T162: nameof を無警告で不正Luaへ出さない
-- 目的: support matrixで未対応の`nameof(...)`を、Luaの未定義関数callとして警告なしで出力するsilent wrong-codeを止める
-- 依存: T137
-- 作業:
-  - semanticなnameof式を共有factsでTCS1001にし、通常method invocationと混同しない
-  - Analyzer / `tcs check` / transpiler warningの位置とsyntax名を統一する
-  - simple/member/typeをoperandにしたnameofと、同名ユーザーmethodのnegativeをtestする
-- 完了条件: 全診断経路でnameofが同じTCS1001となってcheck exit 1、警告なしの生成Luaに`nameof(...)`が残らず、通常の同名method callは誤検出しない
 
 ### T163: global:: qualifier を透過loweringする
 - 目的: `global::System.Math.Max(...)`の生成Luaは正しいのにemitter fallbackがTCS1001を出し、unsupported callでは同警告が重複する問題を直す

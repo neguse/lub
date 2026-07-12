@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace TinyCs;
 
@@ -167,13 +168,31 @@ public static class TinyCsComplianceFacts
         return syntaxName.Length > 0;
     }
 
+    public static bool TryGetUnsupportedSyntax(IOperation? operation,
+        out string syntaxName)
+    {
+        syntaxName = operation is INameOfOperation
+            ? "NameOfExpression"
+            : "";
+        return syntaxName.Length > 0;
+    }
+
+    public static bool TryGetUnsupportedSyntax(SyntaxNode node,
+        SemanticModel model, out string syntaxName)
+    {
+        if (TryGetUnsupportedSyntax(node, out syntaxName)) return true;
+        return node is InvocationExpressionSyntax
+            && TryGetUnsupportedSyntax(model.GetOperation(node),
+                out syntaxName);
+    }
+
     public static IEnumerable<string> AnalyzeUnsupportedSyntaxes(
-        SyntaxTree tree)
+        SyntaxTree tree, SemanticModel model)
     {
         var root = tree.GetRoot();
         foreach (var node in root.DescendantNodes())
         {
-            if (!TryGetUnsupportedSyntax(node, out var syntaxName))
+            if (!TryGetUnsupportedSyntax(node, model, out var syntaxName))
                 continue;
 
             yield return FormatWarning(node,
@@ -282,6 +301,7 @@ public static class TinyCsComplianceFacts
         SemanticModel model, out string apiName)
     {
         apiName = "";
+        if (IsWithinNameOf(node, model)) return false;
 
         ISymbol? symbol = node switch
         {
@@ -309,6 +329,22 @@ public static class TinyCsComplianceFacts
 
         return TryGetUnsupportedApi(symbol, out apiName);
     }
+
+    public static bool IsWithinNameOf(IOperation? operation)
+    {
+        for (var current = operation; current != null;
+             current = current.Parent)
+        {
+            if (current is INameOfOperation) return true;
+        }
+        return false;
+    }
+
+    private static bool IsWithinNameOf(SyntaxNode node,
+        SemanticModel model) => node.AncestorsAndSelf()
+        .OfType<InvocationExpressionSyntax>()
+        .Any(invocation => model.GetOperation(invocation)
+            is INameOfOperation);
 
     private static INamedTypeSymbol? GetContainingType(ISymbol symbol) =>
         symbol switch

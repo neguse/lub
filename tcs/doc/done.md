@@ -632,3 +632,13 @@
 - よかったこと: spike の再適用手順が書いてあったため本実装が一直線だった
 - 判断: WasmCompiler は tcs.slnx に入れない (CI に wasm-tools workload を要求しないため)。ビルドは `dotnet publish WasmCompiler -c Release` を消費側 (lub) が明示的に叩く。TinySystem は DLL 埋め込み (ProjectReference が先にビルドする順序保証を利用)
 - 残課題: なし (lub playground 側の worker 統合は lub リポジトリの作業)
+
+### T162: nameof を無警告で不正Luaへ出さない ✓ (2026-07-13)
+- Roslynの`INameOfOperation`を共有factsでsemantic判定し、Analyzer、`TranspileWithDiagnostics`、`tcs check`、通常CLI transpileの全経路で`NameOfExpression`のTCS1001へ統一した。同じsyntax形状でも`IInvocationOperation`になる同名ユーザーmethodは通常callのまま扱う
+- `nameof` operand内のmember/typeを通常API使用と誤認しないよう、operation/syntax双方のAPI診断を抑制した。`nameof(System.Math.E)`と`nameof(System.DateTime)`でも余分なTCS1002は出ない
+- emitterはoperandを評価せず、Roslynのcompile-time定数文字列とunsupported markerを持つvalid Lua式へ置換する。警告なしの生成Luaに未定義`nameof(...)`が残るsilent wrong-codeを解消した
+- simple/member/type operandと同名ユーザーmethodをAnalyzer 2件・transpiler/check/通常CLI 5件で固定し、全386 tcs / 15 analyzerテストがgreen
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzer.cs, TinyCsComplianceAnalyzerTests.cs, Transpiler.cs, LuaEmitter.Expressions.cs, DiagnosticTests.cs, ComplianceParityTests.cs, README.md, support-matrix/current/tasks/done
+- よかったこと: token文字列やsymbol lookupではなくRoslyn operationで識別したため、contextual keywordである`nameof`と通常method callを同じ共有契約で安全に分離できた
+- 判断: unsupported診断は維持しつつ、通常transpileはRoslynが確定した定数値を安全なfallbackとして出す。API診断抑制はbuilt-in `nameof`の祖先内だけに限定し、同名ユーザーmethodの引数には適用しない
+- 残課題: T138 → T163 (診断契約)

@@ -371,6 +371,62 @@ public class DiagnosticTests
     }
 
     [Fact]
+    public void NameOfExpressions_ReportWarningsAndEmitConstantMarkers()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class NameDemo
+            {
+                public static string Simple(int value) => nameof(value);
+                public static string MemberName() => nameof(System.Math.E);
+                public static string TypeName() => nameof(System.DateTime);
+            }
+            """], ["nameof.cs"]);
+
+        var syntaxWarnings = result.Warnings
+            .Where(w => w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax))
+            .ToArray();
+
+        Assert.True(result.Success);
+        Assert.Equal(3, result.Warnings.Count);
+        Assert.Equal(3, syntaxWarnings.Length);
+        Assert.All(syntaxWarnings,
+            warning => Assert.Contains("NameOfExpression", warning));
+        Assert.Equal([
+            "nameof.cs(3,47): warning TCS1001: unsupported syntax: NameOfExpression",
+            "nameof.cs(4,42): warning TCS1001: unsupported syntax: NameOfExpression",
+            "nameof.cs(5,40): warning TCS1001: unsupported syntax: NameOfExpression",
+        ], syntaxWarnings);
+        Assert.Equal(3, result.Lua.Split(
+            "--[[ unsupported: NameOfExpression ]]",
+            StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("nameof(", result.Lua);
+        Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
+            {{result.Lua}}
+            print(tostring(NameDemo.Simple(1)) .. "|" ..
+                tostring(NameDemo.MemberName()) .. "|" ..
+                tostring(NameDemo.TypeName()))
+            """).Trim());
+    }
+
+    [Fact]
+    public void UserMethodNamedNameof_IsNotNameOfExpression()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class NameDemo
+            {
+                public static string nameof(string value) => value;
+                public static string Run() => nameof("ok");
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            warning => warning.Contains(TinyCsDiagnosticIds.UnsupportedSyntax));
+        Assert.Equal("ok", TestHelper.RunLua(
+            $"{result.Lua}\nprint(NameDemo.Run())").Trim());
+    }
+
+    [Fact]
     public void UnsupportedBclApi_ReportsWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
