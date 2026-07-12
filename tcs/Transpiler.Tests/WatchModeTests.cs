@@ -5,6 +5,105 @@ namespace TinyCs.Tests;
 public class WatchModeTests
 {
     [Fact]
+    public void Watch_OutputCollision_ExitsBeforeInitialBuild()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(),
+            $"tcs_watch_collision_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var inputPath = Path.Combine(tmpDir, "test.cs");
+        var source = """
+            public static class T
+            {
+                public static int Value() => 1;
+            }
+            """;
+        File.WriteAllText(inputPath, source);
+
+        try
+        {
+            var psi = CreateTranspilerProcess(
+                inputPath, "-o", inputPath, "--watch", "--no-runtime");
+
+            using var proc = Process.Start(psi)!;
+            try
+            {
+                var exited = proc.WaitForExit(5000);
+                Assert.True(exited, "watch must reject a colliding output before waiting");
+                var stderr = proc.StandardError.ReadToEnd();
+                Assert.Equal(1, proc.ExitCode);
+                Assert.Contains("conflicts with input", stderr);
+                Assert.Equal(source, File.ReadAllText(inputPath));
+            }
+            finally
+            {
+                if (!proc.HasExited)
+                {
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(3000);
+                }
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Watch_HardLinkOutputCollision_ExitsBeforeInitialBuild()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()
+            && !OperatingSystem.IsMacOS()) return;
+
+        var tmpDir = Path.Combine(Path.GetTempPath(),
+            $"tcs_watch_link_collision_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var inputPath = Path.Combine(tmpDir, "test.cs");
+        var outputPath = Path.Combine(tmpDir, "output.lua");
+        var source = """
+            public static class T
+            {
+                public static int Value() => 1;
+            }
+            """;
+        File.WriteAllText(inputPath, source);
+        FileLinkTestHelper.CreateHardLink(outputPath, inputPath);
+        var originalWriteTime = File.GetLastWriteTimeUtc(inputPath);
+
+        try
+        {
+            var psi = CreateTranspilerProcess(
+                inputPath, "-o", outputPath, "--watch", "--no-runtime");
+
+            using var proc = Process.Start(psi)!;
+            try
+            {
+                var exited = proc.WaitForExit(5000);
+                Assert.True(exited,
+                    "watch must reject a hard-link output before waiting");
+                var stderr = proc.StandardError.ReadToEnd();
+                Assert.Equal(1, proc.ExitCode);
+                Assert.Contains("conflicts with input", stderr);
+                Assert.Equal(source, File.ReadAllText(inputPath));
+                Assert.Equal(originalWriteTime,
+                    File.GetLastWriteTimeUtc(inputPath));
+            }
+            finally
+            {
+                if (!proc.HasExited)
+                {
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(3000);
+                }
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Watch_FileChange_TriggersRebuild()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
@@ -24,16 +123,8 @@ public class WatchModeTests
                 """);
 
             // Start tcs --watch
-            var psi = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"run --project Transpiler -- \"{inputPath}\" -o \"{outputPath}\" --watch",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = FindProjectRoot()
-            };
+            var psi = CreateTranspilerProcess(
+                inputPath, "-o", outputPath, "--watch");
 
             using var proc = Process.Start(psi)!;
 
@@ -99,16 +190,8 @@ public class WatchModeTests
                 }
                 """);
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"run --project Transpiler -- \"{inputPath}\" --ref \"{refPath}\" -o \"{outputPath}\" --watch",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = FindProjectRoot()
-            };
+            var psi = CreateTranspilerProcess(
+                inputPath, "--ref", refPath, "-o", outputPath, "--watch");
 
             using var proc = Process.Start(psi)!;
 
@@ -185,16 +268,20 @@ public class WatchModeTests
         throw new TimeoutException($"File {path} was not rewritten within {timeoutMs}ms");
     }
 
-    private static string FindProjectRoot()
+    private static ProcessStartInfo CreateTranspilerProcess(
+        params string[] arguments)
     {
-        var dir = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(dir))
+        var startInfo = new ProcessStartInfo
         {
-            if (File.Exists(Path.Combine(dir, "tcs.slnx"))) return dir;
-            var parent = Path.GetDirectoryName(dir);
-            if (parent == dir) break;
-            dir = parent;
-        }
-        return Environment.CurrentDirectory;
+            FileName = "dotnet",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add(typeof(Program).Assembly.Location);
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+        return startInfo;
     }
 }

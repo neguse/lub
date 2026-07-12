@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T133-T161)
 
-### 完了済み (323テスト tcs / 10テスト analyzer / 477テスト lub3d)
+### 完了済み (342テスト tcs / 10テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -135,6 +135,7 @@
 - `--help` / `--version`
 - 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込み、`--no-runtime` で bare 出力に戻せる
 - `--sourcemap`: runtime prelude 埋め込み時も Lua 行番号を offset 済みで JSON 出力
+- output / source map が input / `--ref` / `--prelude` と同じパス・同じ実体になる場合は、書き込み前にエラーにして入力破壊を防ぐ。Windowsはvolume/file ID、Linux/macOSはdevice/inodeも比較し、watchの各rebuildでも再検証する
 - `--map-stacktrace out.lua.map [trace.txt]`: Lua stack trace の `file.lua:line:` を C# `file.cs:line` で注釈する
 - `--watch` / `-w`: 入力/`--ref` ファイル変更監視 + 自動再トランスパイル (FileSystemWatcher + 100msデバウンス)。エディタの atomic save (rename 書き込み) も Created/Renamed イベントで拾う
 - エラー時: ソース位置付きでエラーメッセージを stderr に出力
@@ -187,8 +188,8 @@
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-code / 入力破壊 / runtime hangの修正 (T134-T154)
-- 着手順: T135 (出力衝突防止) → T134 (compile error健全化) → T136 (String hang + test timeout) → T133/T137/T138 (診断契約)
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-code / runtime hangの修正 (T134/T136-T154)
+- 着手順: T134 (compile error健全化) → T136 (String hang + test timeout) → T133/T137/T138 (診断契約)
 - Lua命名T151を先に入れ、lowering修正はT139の一回評価基盤からT140-T148へ展開する。継承T149-T150は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る

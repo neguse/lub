@@ -199,6 +199,241 @@ public class CliRuntimeTests
         Assert.Equal(1, entry.GetProperty("line").GetInt32());
     }
 
+    [Theory]
+    [InlineData("input", false)]
+    [InlineData("ref", false)]
+    [InlineData("prelude", false)]
+    [InlineData("input", true)]
+    [InlineData("ref", true)]
+    [InlineData("prelude", true)]
+    public void Cli_OutputPathCollision_DoesNotModifyProtectedFile(
+        string protectedRole, bool sourceMap)
+    {
+        using var temp = TempDir.Create();
+        var mapSuffix = sourceMap ? ".map" : "";
+        var inputPath = temp.Write(
+            protectedRole == "input" ? $"input.cs{mapSuffix}" : "input.cs",
+            ValidSource);
+        var refPath = temp.Write(
+            protectedRole == "ref" ? $"ref.cs{mapSuffix}" : "ref.cs",
+            ValidRefSource);
+        var preludePath = temp.Write(
+            protectedRole == "prelude" ? $"prelude.lua{mapSuffix}" : "prelude.lua",
+            "-- user prelude\n");
+        var protectedPath = protectedRole switch
+        {
+            "input" => inputPath,
+            "ref" => refPath,
+            "prelude" => preludePath,
+            _ => throw new ArgumentOutOfRangeException(nameof(protectedRole))
+        };
+        var outputPath = sourceMap
+            ? protectedPath[..^".map".Length]
+            : protectedPath;
+
+        File.SetLastWriteTimeUtc(protectedPath,
+            new DateTime(2001, 2, 3, 4, 5, 6, DateTimeKind.Utc));
+        var originalContent = File.ReadAllText(protectedPath);
+        var originalWriteTime = File.GetLastWriteTimeUtc(protectedPath);
+
+        var args = new List<string>
+        {
+            inputPath,
+            "--ref", refPath,
+            "--prelude", preludePath,
+            "-o", outputPath,
+            "--no-runtime"
+        };
+        if (sourceMap) args.Add("--sourcemap");
+
+        var result = RunCli(args.ToArray());
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Contains("conflicts with", result.Stderr);
+        Assert.Contains(protectedRole, result.Stderr);
+        Assert.Equal(originalContent, File.ReadAllText(protectedPath));
+        Assert.Equal(originalWriteTime, File.GetLastWriteTimeUtc(protectedPath));
+        if (sourceMap)
+            Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public void Cli_OutputPathCollision_NormalizesDotSegments()
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("input.cs", ValidSource);
+        var subDir = temp.PathFor("sub");
+        Directory.CreateDirectory(subDir);
+        var outputPath = Path.Combine(subDir, "..", "input.cs");
+        var originalContent = File.ReadAllText(inputPath);
+
+        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("conflicts with input", result.Stderr);
+        Assert.Equal(originalContent, File.ReadAllText(inputPath));
+    }
+
+    [Fact]
+    public void Cli_OutputPathCollision_UsesPlatformCaseSensitivity()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()
+            && !OperatingSystem.IsMacOS()) return;
+
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("CaseSensitive.cs", ValidSource);
+        var outputPath = temp.PathFor("casesensitive.cs");
+        var originalContent = File.ReadAllText(inputPath);
+        var aliasesOnFileSystem = File.Exists(outputPath);
+
+        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+
+        if (OperatingSystem.IsWindows() || aliasesOnFileSystem)
+        {
+            Assert.Equal(1, result.ExitCode);
+            Assert.Contains("conflicts with input", result.Stderr);
+            Assert.Equal(originalContent, File.ReadAllText(inputPath));
+        }
+        else
+        {
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(originalContent, File.ReadAllText(inputPath));
+            Assert.True(File.Exists(outputPath));
+        }
+    }
+
+    [Theory]
+    [InlineData("symbolic", "input", false)]
+    [InlineData("hard", "input", false)]
+    [InlineData("symbolic", "ref", true)]
+    [InlineData("hard", "ref", true)]
+    public void Cli_OutputFileAliasCollision_DoesNotModifyProtectedFile(
+        string linkKind, string protectedRole, bool sourceMap)
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()
+            && !OperatingSystem.IsMacOS()) return;
+        if (linkKind == "symbolic" && OperatingSystem.IsWindows()) return;
+
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("input.cs", ValidSource);
+        var refPath = temp.Write("ref.cs", ValidRefSource);
+        var protectedPath = protectedRole == "input" ? inputPath : refPath;
+        var outputPath = temp.PathFor("output.lua");
+        var writePath = sourceMap ? outputPath + ".map" : outputPath;
+
+        if (linkKind == "symbolic")
+            File.CreateSymbolicLink(writePath, protectedPath);
+        else
+            FileLinkTestHelper.CreateHardLink(writePath, protectedPath);
+
+        File.SetLastWriteTimeUtc(protectedPath,
+            new DateTime(2001, 2, 3, 4, 5, 6, DateTimeKind.Utc));
+        var originalContent = File.ReadAllText(protectedPath);
+        var originalWriteTime = File.GetLastWriteTimeUtc(protectedPath);
+
+        var args = new List<string>
+        {
+            inputPath, "--ref", refPath, "-o", outputPath, "--no-runtime"
+        };
+        if (sourceMap) args.Add("--sourcemap");
+
+        var result = RunCli(args.ToArray());
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains($"conflicts with {protectedRole}", result.Stderr);
+        Assert.Equal(originalContent, File.ReadAllText(protectedPath));
+        Assert.Equal(originalWriteTime, File.GetLastWriteTimeUtc(protectedPath));
+        if (sourceMap)
+            Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public void Cli_OutputPathCollision_ResolvesParentDirectorySymbolicLink()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
+
+        using var temp = TempDir.Create();
+        var realDir = temp.PathFor("real");
+        Directory.CreateDirectory(realDir);
+        var inputPath = Path.Combine(realDir, "input.cs");
+        File.WriteAllText(inputPath, ValidSource);
+        var aliasDir = temp.PathFor("alias");
+        Directory.CreateSymbolicLink(aliasDir, realDir);
+        var outputPath = Path.Combine(aliasDir, "input.cs");
+        var originalContent = File.ReadAllText(inputPath);
+
+        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("conflicts with input", result.Stderr);
+        Assert.Equal(originalContent, File.ReadAllText(inputPath));
+    }
+
+    [Fact]
+    public void Cli_AtomicOutputReplace_PreservesUnixMode()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
+
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("input.cs", ValidSource);
+        var outputPath = temp.Write("output.lua", "old output\n");
+        var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+                   | UnixFileMode.UserExecute | UnixFileMode.GroupRead
+                   | UnixFileMode.OtherRead;
+        File.SetUnixFileMode(outputPath, mode);
+
+        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(mode, File.GetUnixFileMode(outputPath));
+    }
+
+    [Fact]
+    public void Cli_AtomicOutputReplace_RespectsUnixWritePermission()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
+
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("input.cs", ValidSource);
+        var outputPath = temp.Write("output.lua", "do not overwrite\n");
+        var readOnlyMode = UnixFileMode.UserRead | UnixFileMode.GroupRead
+                           | UnixFileMode.OtherRead;
+        File.SetUnixFileMode(outputPath, readOnlyMode);
+
+        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("do not overwrite\n", File.ReadAllText(outputPath));
+        Assert.Equal(readOnlyMode, File.GetUnixFileMode(outputPath));
+    }
+
+    [Theory]
+    [InlineData("symbolic")]
+    [InlineData("hard")]
+    public void Cli_UnrelatedOutputLink_IsSafelyDetached(string linkKind)
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()
+            && !OperatingSystem.IsMacOS()) return;
+        if (linkKind == "symbolic" && OperatingSystem.IsWindows()) return;
+
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("input.cs", ValidSource);
+        var targetPath = temp.Write("target.lua", "keep target\n");
+        var outputPath = temp.PathFor("output.lua");
+        if (linkKind == "symbolic")
+            File.CreateSymbolicLink(outputPath, targetPath);
+        else
+            FileLinkTestHelper.CreateHardLink(outputPath, targetPath);
+
+        var result = RunCli(inputPath, "-o", outputPath, "--no-runtime");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("keep target\n", File.ReadAllText(targetPath));
+        Assert.Null(new FileInfo(outputPath).LinkTarget);
+        Assert.Contains("Generated by TinyC#", File.ReadAllText(outputPath));
+    }
+
     [Fact]
     public void Cli_MapStackTrace_AnnotatesLuaLines()
     {
@@ -263,6 +498,21 @@ public class CliRuntimeTests
     private static int CountDiagnostics(string text, string diagnosticId) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Count(line => line.Contains($"warning {diagnosticId}:"));
+
+    private const string ValidSource = """
+        public static class T
+        {
+            public static int Test() => 42;
+        }
+        """;
+
+    private const string ValidRefSource = """
+        namespace Host;
+        public static class Api
+        {
+            public static int Value() => default;
+        }
+        """;
 
     private sealed class TempDir : IDisposable
     {

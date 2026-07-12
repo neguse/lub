@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **即時安全性**: T135 → T134 → T136
+1. **即時安全性**: T134 → T136
 2. **診断契約**: T133 → T137 → T138
 3. **Lua 命名基盤**: T151
 4. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
@@ -49,21 +49,13 @@ tcs 側から直接変更しない。
   - 許容ケースと同じ diagnostic ID を持つ通常の型エラーを negative test に追加する
 - 完了条件: `int x = "oops"`、不正な二項演算、未実装 interface method は compile error になり、既存の enum/int と interface facade の対応ケースは通る
 
-### T135: CLI 出力パス衝突による入力破壊を防止
-- 目的: `tcs app.cs -o app.cs` や map/ref/prelude とのパス衝突でソース・依存ファイルを上書きしない
-- 作業:
-  - input / `--ref` / `--prelude` / output / `--sourcemap`時の`output.map`を正規化した絶対パスで比較する
-  - Windowsはcase-insensitive、Unixはcase-sensitiveなfilesystem規則に合わせる
-  - one-shot / watch の初回 build より前に同じ検証を通す
-- 完了条件: 全衝突ケースが書き込み前に exit 1 となり、元ファイルの内容とmtimeが変わらない
-
 ### T136: Lua 実行テストの timeout と String edge contract 修正
 - 目的: supported な `String.Replace` が無限ループする問題を直し、同種のhangでテスト全体が停止しないようにする
 - 作業:
   - `TestHelper.RunLua`とversion取得を有限時間の共通process helperへ寄せ、stdout/stderrを非同期drainする
   - timeout時はprocess treeをkillし、drain/Wait後に診断付きで失敗させる
   - `String.Replace(str, "", replacement)` をC#と同様に即時エラーへする
-  - `EndsWith("") == true`と`Split("")`のwhitespace separator契約を含め、allowlist済みString APIの空文字edgeを棚卸しする
+  - `EndsWith("") == true`、`Split("")`は元文字列1要素、`Split()`はwhitespace separatorとなる.NET契約を含め、allowlist済みString APIの空文字edgeを棚卸しする
 - 完了条件: 空 `oldValue` のReplaceが短時間で失敗し、EndsWith/Splitの空引数が.NET比較testと一致し、意図的hangテストのtimeout後に子processが残らない
 
 ### T137: partial / lock の Analyzer / check / emitter 診断を統一

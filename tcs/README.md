@@ -91,6 +91,13 @@ dotnet run --project Transpiler -- samples/hello.cs
 dotnet run --project Transpiler -- samples/hello.cs -o out.lua
 ```
 
+`-o`の出力と`--sourcemap`のmapは、input / `--ref` / `--prelude`と
+同じパスにはできない。Windows / Linux / macOSではsymlinkやhardlink等で
+同じ実体を指す場合も含め、衝突時は書き込み前にエラーとなり、入力を変更しない。
+衝突しない既存の出力linkはlink先へ書かず、出力entryを通常ファイルへ置換する。
+既存出力が書き込み不可なら従来どおりエラーにし、Linux / macOSでは置換前の
+Unix permission bitsを維持する。
+
 CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む。
 `List` / `Dict` / `Math` / `String` / `Random` / `HotReload` は生成物だけで利用できる。
 エンジン側で runtime を供給する場合は `--no-runtime` を付ける。

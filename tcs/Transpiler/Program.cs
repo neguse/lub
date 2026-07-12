@@ -3,6 +3,10 @@ namespace TinyCs;
 public class Program
 {
     private const string Version = "0.1.0";
+    private static readonly StringComparer FilePathComparer =
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
 
     public static int Main(string[] args)
     {
@@ -122,26 +126,91 @@ public class Program
             return 1;
         }
 
-        if (watchMode)
+        if (watchMode && outputPath == null)
         {
-            if (outputPath == null)
-            {
-                Console.Error.WriteLine("Error: --watch requires -o <output.lua>");
-                return 1;
-            }
-            return RunWatch(inputPaths, refPaths, new BuildOptions(
-                outputPath, entryClass, preludePath, emitSourceMap,
-                includeRuntime, checkNaming));
+            Console.Error.WriteLine("Error: --watch requires -o <output.lua>");
+            return 1;
         }
 
-        return RunOnce(inputPaths, refPaths, new BuildOptions(
+        var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
-            includeRuntime, checkNaming));
+            includeRuntime, checkNaming);
+        var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
+        if (conflict != null)
+            return Error(conflict);
+
+        return watchMode
+            ? RunWatch(inputPaths, refPaths, options)
+            : RunOnce(inputPaths, refPaths, options);
     }
 
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
         bool CheckNaming);
+
+    private static string? FindOutputPathConflict(
+        IReadOnlyList<string> inputPaths, IReadOnlyList<string> refPaths,
+        BuildOptions options)
+    {
+        if (options.OutputPath == null) return null;
+
+        try
+        {
+            var protectedPaths = new List<(string Role, string Path)>();
+            protectedPaths.AddRange(inputPaths.Select(path => ("input", path)));
+            protectedPaths.AddRange(refPaths.Select(path => ("ref", path)));
+            if (options.PreludePath is { } preludePath)
+                protectedPaths.Add(("prelude", preludePath));
+
+            var protectedFiles = protectedPaths.Select(item =>
+            {
+                var fullPath = Path.GetFullPath(item.Path);
+                var identity = FileIdentityReader.Get(fullPath);
+                if ((OperatingSystem.IsWindows() || OperatingSystem.IsLinux()
+                     || OperatingSystem.IsMacOS())
+                    && identity == null)
+                {
+                    throw new IOException(
+                        $"protected {item.Role} disappeared: {item.Path}");
+                }
+                return (item.Role, FullPath: fullPath,
+                    Identity: identity);
+            }).ToArray();
+
+            var writePaths = new List<(string Role, string Path)>
+            {
+                ("output", options.OutputPath)
+            };
+            if (options.EmitSourceMap)
+                writePaths.Add(("source map", options.OutputPath + ".map"));
+
+            foreach (var (writeRole, writePath) in writePaths)
+            {
+                var fullWritePath = Path.GetFullPath(writePath);
+                var writeIdentity = FileIdentityReader.Get(fullWritePath);
+                foreach (var protectedFile in protectedFiles)
+                {
+                    if (FilePathComparer.Equals(fullWritePath,
+                            protectedFile.FullPath)
+                        || writeIdentity is { } identity
+                        && protectedFile.Identity == identity)
+                    {
+                        return $"{writeRole} path conflicts with " +
+                               $"{protectedFile.Role}: {writePath}";
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException
+            or NotSupportedException or PathTooLongException
+            or IOException or UnauthorizedAccessException
+            or System.Security.SecurityException or TypeLoadException)
+        {
+            return $"cannot validate output path: {ex.Message}";
+        }
+
+        return null;
+    }
 
     private static void PrintUsage(TextWriter writer)
     {
@@ -292,16 +361,18 @@ public class Program
 
             if (options.OutputPath is { } outputPath)
             {
-                var dir = Path.GetDirectoryName(outputPath);
-                if (!string.IsNullOrEmpty(dir))
-                    Directory.CreateDirectory(dir);
-                File.WriteAllText(outputPath, lua);
+                var conflict = FindOutputPathConflict(
+                    inputPaths, refPaths, options);
+                if (conflict != null)
+                    return Error(conflict);
+
+                OutputFileWriter.WriteAllText(outputPath, lua);
                 Console.Error.WriteLine($"Wrote {outputPath}");
 
                 if (options.EmitSourceMap && result.SourceMap != null)
                 {
                     var mapPath = outputPath + ".map";
-                    File.WriteAllText(mapPath,
+                    OutputFileWriter.WriteAllText(mapPath,
                         result.SourceMap.ToJson(sourceMapLineOffset));
                     Console.Error.WriteLine($"Wrote {mapPath}");
                 }
@@ -425,6 +496,15 @@ public class Program
     {
         try
         {
+            var conflict = FindOutputPathConflict(
+                inputPaths, refPaths, options);
+            if (conflict != null)
+            {
+                Console.Error.WriteLine(
+                    $"[{DateTime.Now:HH:mm:ss}] Error: {conflict}");
+                return;
+            }
+
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
@@ -444,14 +524,19 @@ public class Program
 
             var (lua, sourceMapLineOffset) = ComposeOutput(result.Lua, options);
 
+            conflict = FindOutputPathConflict(inputPaths, refPaths, options);
+            if (conflict != null)
+            {
+                Console.Error.WriteLine(
+                    $"[{DateTime.Now:HH:mm:ss}] Error: {conflict}");
+                return;
+            }
+
             var outputPath = options.OutputPath!;
-            var dir = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrEmpty(dir))
-                Directory.CreateDirectory(dir);
-            File.WriteAllText(outputPath, lua);
+            OutputFileWriter.WriteAllText(outputPath, lua);
 
             if (options.EmitSourceMap && result.SourceMap != null)
-                File.WriteAllText(outputPath + ".map",
+                OutputFileWriter.WriteAllText(outputPath + ".map",
                     result.SourceMap.ToJson(sourceMapLineOffset));
 
             Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] Built {outputPath}");

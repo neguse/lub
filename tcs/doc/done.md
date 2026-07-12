@@ -579,3 +579,11 @@
 - よかったこと: T128-T131 で入れた機能 (object initializer table / --entry / --prelude / multi-return) が全部そのまま効き、移植中の tcs 側変更は null-forgiving の1点だけだった
 - 判断: 原典の Array<Dynamic> は class Brick に型付けした (tcs に Dynamic はなく、型付けの方が TinyC# の狙いに合う)。paddle 衝突の rect は座標引数に展開して Dynamic 相当の使い捨て table を避けた
 - 残課題: T133。以降のサンプル移植 (audio / texture 系) や Useful 層追加は需要駆動で判断
+
+### T135: CLI 出力パス衝突による入力破壊を防止 ✓ (2026-07-12)
+- input / `--ref` / `--prelude` と output / source map を絶対パスに加えて実ファイルIDでも比較し、衝突時は書き込み前にexit 1とする共通検証を追加した。Windowsはvolume/file ID、Linux/macOSはdevice/inodeを使う
+- one-shotの6組合せ (output/map × input/ref/prelude)、dot-segment、OS別case、symlink/hardlink、親directory symlink、watch初回build前の拒否、atomic置換契約を19テストで固定し、内容とmtimeが変わらないことを確認した
+- 変更ファイル: Program.cs, FileIdentity.cs, OutputFileWriter.cs, CliRuntimeTests.cs, WatchModeTests.cs, FileLinkTestHelper.cs, README.md, current/tasks/done
+- よかったこと: Mainの分岐前とwatchの各rebuildで同じ検証を再利用し、one-shot/watchの両方を同じ契約で保護できた。watchテストも実際のテスト構成のDLLを直接起動するようにした
+- 判断: 既存ファイルは実体IDでaliasを拒否し、通常の検証後競合でsymlink/hardlink targetをtruncateしないよう、出力は同一directoryの一時ファイルからatomic置換する二層防御にした。安全な既存出力linkも意図的に通常ファイルへ切り離し、事前write-openで従来の書込権限契約を守り、Unix permission bitsは維持する（ACL/xattr等は引き継がない）。敵対的な親directory差し替えを完全に閉じるhandle-relative I/Oは範囲外
+- 残課題: T134 (C# compile error健全化) → T136 (String edge + Lua test timeout)
