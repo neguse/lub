@@ -157,6 +157,7 @@ tcs 側から直接変更しない。
 
 ### T151: C# symbol から安全な Lua 名への中央マングリング
 - 目的: C#では合法な`repeat`等の名前や`@identifier`が、生成Luaをsyntax errorにする問題をなくす
+- 前提: T171でLua予約語識別子はTCS1001拒否、verbatim `@`はValueText emitになった。本タスクの残スコープは「拒否ではなくリネームで通す」中央命名器と、temp/label衝突・host wire名の一貫変換
 - 作業:
   - Lua予約語、escaped identifier、generated temp/labelとの衝突を扱うsymbol-based命名器を追加する
   - type/method/local/parameter/field/propertyと`--ref` host memberのdot/bracket accessを一貫して変換する

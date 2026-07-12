@@ -32,6 +32,13 @@ public static class TinyCsComplianceFacts
         SyntaxKind.OperatorDeclaration,
         SyntaxKind.ConversionOperatorDeclaration,
         SyntaxKind.Parameter,
+        SyntaxKind.EnumDeclaration,
+        SyntaxKind.MethodDeclaration,
+        SyntaxKind.PropertyDeclaration,
+        SyntaxKind.EnumMemberDeclaration,
+        SyntaxKind.VariableDeclarator,
+        SyntaxKind.ForEachStatement,
+        SyntaxKind.SingleVariableDesignation,
     ];
 
     public static readonly SyntaxKind[] CollectionNullSyntaxKinds =
@@ -41,6 +48,17 @@ public static class TinyCsComplianceFacts
         SyntaxKind.InvocationExpression,
         SyntaxKind.SimpleAssignmentExpression,
     ];
+
+    // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
+    // emitted under these names produce syntactically invalid Lua
+    // (`function C:end()`, `local repeat`), so declarations are rejected.
+    private static readonly HashSet<string> LuaKeywords =
+        new(StringComparer.Ordinal)
+        {
+            "and", "break", "do", "else", "elseif", "end", "false", "for",
+            "function", "global", "goto", "if", "in", "local", "nil", "not",
+            "or", "repeat", "return", "then", "true", "until", "while",
+        };
 
     private static readonly string[] UnsupportedNamespacePrefixes =
     [
@@ -185,6 +203,32 @@ public static class TinyCsComplianceFacts
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.RefKeyword)
                     => "RefParameter",
+            // Declared identifiers that reach Lua output. Verbatim forms
+            // (@end) are compared by ValueText, matching the emitter.
+            BaseTypeDeclarationSyntax type
+                when IsLuaKeyword(type.Identifier)
+                    => LuaKeywordName(type.Identifier),
+            MethodDeclarationSyntax method
+                when IsLuaKeyword(method.Identifier)
+                    => LuaKeywordName(method.Identifier),
+            PropertyDeclarationSyntax property
+                when IsLuaKeyword(property.Identifier)
+                    => LuaKeywordName(property.Identifier),
+            EnumMemberDeclarationSyntax enumMember
+                when IsLuaKeyword(enumMember.Identifier)
+                    => LuaKeywordName(enumMember.Identifier),
+            VariableDeclaratorSyntax variable
+                when IsLuaKeyword(variable.Identifier)
+                    => LuaKeywordName(variable.Identifier),
+            ParameterSyntax param
+                when IsLuaKeyword(param.Identifier)
+                    => LuaKeywordName(param.Identifier),
+            ForEachStatementSyntax forEach
+                when IsLuaKeyword(forEach.Identifier)
+                    => LuaKeywordName(forEach.Identifier),
+            SingleVariableDesignationSyntax designation
+                when IsLuaKeyword(designation.Identifier)
+                    => LuaKeywordName(designation.Identifier),
             _ => "",
         };
 
@@ -208,6 +252,12 @@ public static class TinyCsComplianceFacts
             && TryGetUnsupportedSyntax(model.GetOperation(node),
                 out syntaxName);
     }
+
+    private static bool IsLuaKeyword(SyntaxToken identifier) =>
+        LuaKeywords.Contains(identifier.ValueText);
+
+    private static string LuaKeywordName(SyntaxToken identifier) =>
+        $"LuaKeywordIdentifier({identifier.ValueText})";
 
     // Supported user-defined operator overloads and their Lua metamethods.
     // Equality (== / !=) is out of scope: record __eq is the only equality

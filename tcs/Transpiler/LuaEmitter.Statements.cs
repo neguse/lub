@@ -37,7 +37,7 @@ public partial class LuaEmitter
                 {
                     var init = v.Initializer != null
                         ? $" = {VisitExpression(model, v.Initializer.Value)}" : "";
-                    AppendLine($"local {v.Identifier.Text}{init}");
+                    AppendLine($"local {v.Identifier.ValueText}{init}");
                 }
                 break;
             case ExpressionStatementSyntax exprStmt
@@ -177,7 +177,7 @@ public partial class LuaEmitter
         {
             var expr = VisitExpression(model, isPat.Expression);
             var varName = dp.Designation is SingleVariableDesignationSyntax sv
-                ? sv.Identifier.Text : "_";
+                ? sv.Identifier.ValueText : "_";
             AppendLine($"local {varName} = {expr}");
         }
         AppendLine($"{(isRoot ? "if" : "elseif")} {VisitExpression(model, ifStmt.Condition)} then");
@@ -260,7 +260,7 @@ public partial class LuaEmitter
             {
                 var init = v.Initializer != null
                     ? $" = {VisitExpression(model, v.Initializer.Value)}" : "";
-                AppendLine($"local {v.Identifier.Text}{init}");
+                AppendLine($"local {v.Identifier.ValueText}{init}");
             }
 
         var label = PushContinueLabel();
@@ -282,12 +282,12 @@ public partial class LuaEmitter
         if (forStmt.Declaration?.Variables.Count != 1) return false;
         var decl = forStmt.Declaration.Variables[0];
         if (decl.Initializer == null) return false;
-        var varName = decl.Identifier.Text;
+        var varName = decl.Identifier.ValueText;
         var start = VisitExpression(model, decl.Initializer.Value);
 
         if (forStmt.Condition is not BinaryExpressionSyntax cond) return false;
         if (cond.Left is not IdentifierNameSyntax condId
-            || condId.Identifier.Text != varName) return false;
+            || condId.Identifier.ValueText != varName) return false;
 
         if (forStmt.Incrementors.Count != 1) return false;
         var inc = forStmt.Incrementors[0];
@@ -368,7 +368,7 @@ public partial class LuaEmitter
         {
             var names = pvd.Variables
                 .Select(v => v is SingleVariableDesignationSyntax sv
-                    ? sv.Identifier.Text : "_").ToList();
+                    ? sv.Identifier.ValueText : "_").ToList();
             // Get type of rhs to find property/parameter names
             var typeSymbol = model.GetTypeInfo(rhs).Type;
             var propNames = GetDeconstructPropertyNames(typeSymbol, names.Count);
@@ -399,7 +399,7 @@ public partial class LuaEmitter
 
     private void VisitForEach(SemanticModel model, ForEachStatementSyntax foreachStmt)
     {
-        var varName = foreachStmt.Identifier.Text;
+        var varName = foreachStmt.Identifier.ValueText;
         var collection = VisitExpression(model, foreachStmt.Expression);
         var typeInfo = model.GetTypeInfo(foreachStmt.Expression);
         var typeName = typeInfo.Type?.OriginalDefinition.ToDisplayString() ?? "";

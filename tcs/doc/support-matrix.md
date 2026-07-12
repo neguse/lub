@@ -535,6 +535,13 @@ using(宣言)  virtual(部分)  volatile  yield
 | **P** | `when`(switch内のみ), `nint`(外部 API facade 用) |
 | **-** | `add`, `alias`, `allows`, `args`, `ascending`, `async`, `await`, `by`, `descending`, `dynamic`, `equals`, `extension`, `field`, `file`, `from`, `global`, `group`, `init`, `into`, `join`, `let`, `managed`, `nameof`, `notnull`, `nuint`, `on`, `orderby`, `partial`, `remove`, `required`, `scoped`, `select`, `unmanaged`, `where`, `yield` |
 
+### 識別子
+
+| 識別子 | 状態 | 備考 |
+|--------|:----:|------|
+| Lua 5.5 予約語と同名の宣言 (`end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。emit すると不正 Lua になるため拒否 (自動リネームなし) |
+| verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものは上記 TCS1001 |
+
 ---
 
 # Part II: 標準ライブラリ

@@ -47,7 +47,7 @@ public partial class LuaEmitter
             ConditionalAccessExpressionSyntax condAccess =>
                 VisitConditionalAccess(model, condAccess),
             MemberBindingExpressionSyntax memberBinding =>
-                $"__tcs_ca.{memberBinding.Name.Identifier.Text}",
+                $"__tcs_ca.{memberBinding.Name.Identifier.ValueText}",
             ConditionalExpressionSyntax ternary => VisitTernary(model, ternary),
             InterpolatedStringExpressionSyntax interp =>
                 VisitInterpolatedString(model, interp),
@@ -81,12 +81,12 @@ public partial class LuaEmitter
         }
         if (symbol is IFieldSymbol { IsStatic: false }
             or IPropertySymbol { IsStatic: false })
-            return $"self.{id.Identifier.Text}";
+            return $"self.{id.Identifier.ValueText}";
         if (symbol is IFieldSymbol { IsStatic: true } sf && sf.ContainingType != null)
-            return $"{sf.ContainingType.Name}.{id.Identifier.Text}";
+            return $"{sf.ContainingType.Name}.{id.Identifier.ValueText}";
         if (symbol is IPropertySymbol { IsStatic: true } sp && sp.ContainingType != null)
-            return $"{sp.ContainingType.Name}.{id.Identifier.Text}";
-        return id.Identifier.Text;
+            return $"{sp.ContainingType.Name}.{id.Identifier.ValueText}";
+        return id.Identifier.ValueText;
     }
 
     private static string VisitLiteral(LiteralExpressionSyntax lit) => lit.Kind() switch
@@ -241,7 +241,7 @@ public partial class LuaEmitter
         if (invocation.Expression is MemberAccessExpressionSyntax ma)
         {
             var symbol = model.GetSymbolInfo(ma).Symbol;
-            var methodName = ma.Name.Identifier.Text;
+            var methodName = ma.Name.Identifier.ValueText;
 
             if (ma.Expression is BaseExpressionSyntax
                 && symbol is IMethodSymbol baseMethod)
@@ -370,7 +370,7 @@ public partial class LuaEmitter
             }
         }
 
-        var methodName = ma.Name.Identifier.Text;
+        var methodName = ma.Name.Identifier.ValueText;
         var call = method.IsStatic
             ? $"{method.ContainingType.Name}.{methodName}({string.Join(", ", callArgs)})"
             : $"{VisitExpression(model, ma.Expression)}:{methodName}({string.Join(", ", callArgs)})";
@@ -478,7 +478,7 @@ public partial class LuaEmitter
         MemberAccessExpressionSyntax memberAccess)
     {
         var obj = VisitExpression(model, memberAccess.Expression);
-        var member = memberAccess.Name.Identifier.Text;
+        var member = memberAccess.Name.Identifier.ValueText;
 
         // Check for .Count on List<T> → #list, .Length on string → #str
         var symbol = model.GetSymbolInfo(memberAccess).Symbol;
@@ -611,7 +611,7 @@ public partial class LuaEmitter
                 } assign)
             {
                 var value = VisitExpression(model, assign.Right);
-                entries.Add($"{name.Identifier.Text} = {value}");
+                entries.Add($"{name.Identifier.ValueText} = {value}");
             }
             else
             {
@@ -634,7 +634,7 @@ public partial class LuaEmitter
                 } assign)
             {
                 var value = VisitExpression(model, assign.Right);
-                stmts.Add($"__init.{name.Identifier.Text} = {value}");
+                stmts.Add($"__init.{name.Identifier.ValueText} = {value}");
             }
             else
             {
@@ -764,7 +764,7 @@ public partial class LuaEmitter
     private string VisitSimpleLambda(SemanticModel model,
         SimpleLambdaExpressionSyntax lambda)
     {
-        var param = lambda.Parameter.Identifier.Text;
+        var param = lambda.Parameter.Identifier.ValueText;
         if (lambda.ExpressionBody != null)
             return $"function({param}) return " +
                    $"{VisitExpression(model, lambda.ExpressionBody)} end";
@@ -775,7 +775,7 @@ public partial class LuaEmitter
         ParenthesizedLambdaExpressionSyntax lambda)
     {
         var parameters = string.Join(", ",
-            lambda.ParameterList.Parameters.Select(p => p.Identifier.Text));
+            lambda.ParameterList.Parameters.Select(p => p.Identifier.ValueText));
         if (lambda.ExpressionBody != null)
             return $"function({parameters}) return " +
                    $"{VisitExpression(model, lambda.ExpressionBody)} end";
@@ -897,7 +897,7 @@ public partial class LuaEmitter
             {
                 if (sub.NameColon != null)
                 {
-                    var propName = sub.NameColon.Name.Identifier.Text;
+                    var propName = sub.NameColon.Name.Identifier.ValueText;
                     var propExpr = $"{expr}.{propName}";
                     conditions.Add(VisitIsSubPattern(model, propExpr, sub.Pattern));
                 }
@@ -948,7 +948,7 @@ public partial class LuaEmitter
     private string VisitConditionalMemberBinding(MemberBindingExpressionSyntax mb,
         string obj, ITypeSymbol? receiverType)
     {
-        var member = mb.Name.Identifier.Text;
+        var member = mb.Name.Identifier.ValueText;
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
         if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)))
@@ -979,7 +979,7 @@ public partial class LuaEmitter
         MemberBindingExpressionSyntax mb, ArgumentListSyntax argList,
         string obj, ITypeSymbol? receiverType)
     {
-        var methodName = mb.Name.Identifier.Text;
+        var methodName = mb.Name.Identifier.ValueText;
         var args = argList.Arguments
             .Select(a => VisitExpression(model, a.Expression)).ToList();
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
@@ -1068,7 +1068,7 @@ public partial class LuaEmitter
                 && a.Left is IdentifierNameSyntax id)
             {
                 var value = VisitExpression(model, a.Right);
-                overrides.Add($"__tcs_copy.{id.Identifier.Text} = {value}");
+                overrides.Add($"__tcs_copy.{id.Identifier.ValueText} = {value}");
             }
         }
         return $"(function() local __tcs_copy = {{}}; " +
@@ -1087,7 +1087,7 @@ public partial class LuaEmitter
     private static string VisitDeclarationExpression(DeclarationExpressionSyntax declaration) =>
         declaration.Designation switch
         {
-            SingleVariableDesignationSyntax single => single.Identifier.Text,
+            SingleVariableDesignationSyntax single => single.Identifier.ValueText,
             DiscardDesignationSyntax => "_",
             _ => "_"
         };
@@ -1101,7 +1101,7 @@ public partial class LuaEmitter
         {
             DeclarationExpressionSyntax declaration =>
                 VisitDeclarationExpression(declaration),
-            IdentifierNameSyntax identifier => identifier.Identifier.Text,
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
             _ => null
         };
     }

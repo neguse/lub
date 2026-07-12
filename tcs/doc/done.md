@@ -700,3 +700,13 @@
 - よかったこと: 宣言サイト (ParameterSyntax) だけで判定できたため、--ref 判定を持たない analyzer 面と意味がずれない
 - 判断: 呼び出しサイトでなく宣言サイトで診断した (--ref 概念のない analyzer と三面一致にでき、check 面は refTrees 非解析で stub を自然に除外できる)。`in` / `ref readonly` は値意味論の差が小さくスコープ外 (`ref readonly` は ref token を含むため RefParameter に含まれる)
 - 残課題: emitter は警告付きで従来の値渡し Lua を出す (check exit 1 が契約)。完全シグネチャ単位の API 診断は T138
+
+### T171: 不正 Lua を生む識別子の診断化 (Lua 予約語 + verbatim @) ✓ (2026-07-13)
+- Lua 5.5 予約語 (`end` `repeat` `until` `global` 等 23語、deps/lua llex.c luaX_tokens 準拠) と同名の宣言識別子を TCS1001 (`LuaKeywordIdentifier(name)`) で診断するようにした。従来は check 素通りで `function C:end()` / `local repeat` のような syntax error Lua を silent に生成していた
+- 対象宣言: 型 (class/record/enum/interface)、メソッド、プロパティ、enum メンバー、field/local (VariableDeclarator)、パラメータ、foreach 変数、pattern/out var designation。Shared facts 起点で analyzer / `tcs check` / transpiler warning の三面一致 (`UnsupportedSyntaxKinds` に対応 SyntaxKind を追加)
+- verbatim 識別子 (`@float` `@out` 等) は emitter 全体を `Identifier.Text` → `Identifier.ValueText` に統一して `@` なしで emit するようにした (従来は `self.@float` 等の不正 Lua)。`@end` は ValueText 化で Lua 予約語診断に自然に合流する
+- テスト: transpiler 12件 (LuaIdentifierTests: 各宣言種の予約語診断、verbatim 予約語、negative、verbatim の @ なし emit + C# 意味論のセマンティック実行) + analyzer 2件
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter{,.Expressions,.Statements,.Operators}.cs, LuaIdentifierTests.cs, TinyCsComplianceAnalyzerTests.cs, doc (support-matrix §11/tasks T151/current/done)
+- よかったこと: ValueText 統一により verbatim 対応と予約語判定 (ValueText 比較) が同じ土台になり、`@end` のような合成ケースが追加コードなしで正しく診断された
+- 判断: 自動リネームはせず「診断して拒否」(T151 の中央マングリング導入時にリネームへ昇格可能な形)。予約語セットに Lua 5.5 新予約語 `global` を含めた。usage サイト (--ref stub の予約語メンバー等) は宣言サイト診断の対象外で、実需要が出たら T151 のスコープ
+- 残課題: emitter は警告付きで不正 Lua を出しうる (check exit 1 が契約)。型syntax の raw 出力箇所 (`getmetatable(x) == {dp.Type}` の `@Type`) は T151 で symbol 名へ統一する

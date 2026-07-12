@@ -454,6 +454,60 @@ public class TinyCsComplianceAnalyzerTests
             d => d.GetMessage().Contains("RefParameter"));
     }
 
+    [Fact]
+    public async Task LuaKeywordIdentifiers_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Turn
+            {
+                public int until;
+
+                public void end()
+                {
+                    var repeat = 3;
+                    Use(repeat);
+                }
+
+                public void Wait(int @nil) => Use(@nil);
+
+                private static void Use(int value) { }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(4, syntaxDiagnostics.Length);
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("LuaKeywordIdentifier(until)"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("LuaKeywordIdentifier(end)"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("LuaKeywordIdentifier(repeat)"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("LuaKeywordIdentifier(nil)"));
+    }
+
+    [Fact]
+    public async Task NonKeywordVerbatimIdentifiers_HaveNoDiagnostics()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Calc
+            {
+                public int @float;
+
+                public int Add(int @out)
+                {
+                    var @value = @out + @float;
+                    return @value;
+                }
+            }
+            """);
+
+        Assert.Empty(diagnostics);
+    }
+
     private static async Task<IReadOnlyList<Diagnostic>> AnalyzeAsync(
         string source,
         IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null)

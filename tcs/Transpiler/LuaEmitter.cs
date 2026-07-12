@@ -94,7 +94,7 @@ public partial class LuaEmitter
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
         SetSource(cls);
-        var name = cls.Identifier.Text;
+        var name = cls.Identifier.ValueText;
 
         var baseClass = cls.BaseList?.Types
             .Select(t => model.GetTypeInfo(t.Type).Type)
@@ -123,16 +123,16 @@ public partial class LuaEmitter
                     {
                         if (isStatic)
                         {
-                            staticFieldInits.Add((v.Identifier.Text, v.Initializer?.Value,
+                            staticFieldInits.Add((v.Identifier.ValueText, v.Initializer?.Value,
                                 typeInfo.Type));
                         }
                         else
-                            fieldInits.Add((v.Identifier.Text, v.Initializer?.Value,
+                            fieldInits.Add((v.Identifier.ValueText, v.Initializer?.Value,
                                 typeInfo.Type));
                     }
                     break;
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
-                    fieldInits.Add((prop.Identifier.Text, prop.Initializer?.Value,
+                    fieldInits.Add((prop.Identifier.ValueText, prop.Initializer?.Value,
                         model.GetTypeInfo(prop.Type).Type));
                     break;
                 case ConstructorDeclarationSyntax c:
@@ -191,7 +191,7 @@ public partial class LuaEmitter
         List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits)
     {
         var ctorParams = ctor?.ParameterList.Parameters
-            .Select(p => p.Identifier.Text).ToList() ?? [];
+            .Select(p => p.Identifier.ValueText).ToList() ?? [];
 
         AppendLine($"function {className}.new({string.Join(", ", ctorParams)})");
         _indent++;
@@ -243,7 +243,7 @@ public partial class LuaEmitter
     private void VisitCustomProperty(SemanticModel model, string className,
         PropertyDeclarationSyntax prop)
     {
-        var propName = prop.Identifier.Text;
+        var propName = prop.Identifier.ValueText;
         foreach (var accessor in prop.AccessorList!.Accessors)
         {
             var (prefix, extraParam) = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
@@ -268,7 +268,7 @@ public partial class LuaEmitter
     private void VisitRecord(SemanticModel model, RecordDeclarationSyntax rec)
     {
         SetSource(rec);
-        var name = rec.Identifier.Text;
+        var name = rec.Identifier.ValueText;
 
         AppendLine($"{name} = {{}}");
         AppendLine($"{name}.__index = {name}");
@@ -276,7 +276,7 @@ public partial class LuaEmitter
 
         // Positional record: parameter list → constructor + properties
         var paramNames = rec.ParameterList?.Parameters
-            .Select(p => p.Identifier.Text).ToList() ?? [];
+            .Select(p => p.Identifier.ValueText).ToList() ?? [];
 
         AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
         _indent++;
@@ -325,7 +325,7 @@ public partial class LuaEmitter
     private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)
     {
         SetSource(enumDecl);
-        var name = enumDecl.Identifier.Text;
+        var name = enumDecl.Identifier.ValueText;
         AppendLine($"{name} = {{}}");
         int value = 0;
         foreach (var member in enumDecl.Members)
@@ -336,7 +336,7 @@ public partial class LuaEmitter
                 if (constVal.HasValue && constVal.Value is int v)
                     value = v;
             }
-            AppendLine($"{name}.{member.Identifier.Text} = {value}");
+            AppendLine($"{name}.{member.Identifier.ValueText} = {value}");
             value++;
         }
         AppendLine();
@@ -346,10 +346,10 @@ public partial class LuaEmitter
         MethodDeclarationSyntax method)
     {
         SetSource(method);
-        var methodName = method.Identifier.Text;
+        var methodName = method.Identifier.ValueText;
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
         var paramNames = method.ParameterList.Parameters
-            .Select(p => p.Identifier.Text).ToList();
+            .Select(p => p.Identifier.ValueText).ToList();
         var sep = isStatic ? "." : ":";
 
         AppendLine($"function {className}{sep}{methodName}({string.Join(", ", paramNames)})");
