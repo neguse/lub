@@ -13,6 +13,21 @@
 const ASSET_BASE = "/tcs-wasm/";
 const STUB_URL = "/cs-lib/lub_stub.cs";
 
+// cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律 compile 入力に足す。
+// haxe 側が std-bundle.json に lub ライブラリを焼き込むのと同様、build 時に
+// バンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。
+const IMPL_GLOB = import.meta.glob("../../cs-lib/**/*.cs", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+const IMPL_SOURCES: Record<string, string> = {};
+for (const [path, src] of Object.entries(IMPL_GLOB)) {
+  const rel = path.replace(/^.*\/cs-lib\//, "");
+  if (rel === "lub_stub.cs") continue; // 宣言専用 (--ref)。emit しない
+  IMPL_SOURCES[rel] = src;
+}
+
 export type TcsCompileResult =
   | { ok: true; lua: string; stderr: string; warnings: string[]; code: 0 }
   | { ok: false; lua: null; stderr: string; warnings: string[]; code: number };
@@ -38,7 +53,8 @@ function ensureRuntime(): Promise<(json: string) => string> {
 
 /**
  * `.cs` ソース一式を entryClass で compile し、player が読める完全な `.lua` を返す。
- * lub core API の参照は cs-lib/lub_stub.cs を自動で --ref 相当として渡す。
+ * lub core API の参照は cs-lib/lub_stub.cs を自動で --ref 相当として渡し、
+ * cs-lib 実装ソース (lubx/*) も自動で compile 入力に加える。
  */
 export async function compileTcs(
   files: Record<string, string>,
@@ -48,7 +64,7 @@ export async function compileTcs(
   const res = JSON.parse(
     compile(
       JSON.stringify({
-        files,
+        files: { ...IMPL_SOURCES, ...files },
         refs: { "lub_stub.cs": stub },
         entryClass,
         checkNaming: false,

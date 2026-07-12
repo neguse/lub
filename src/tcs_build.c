@@ -68,10 +68,10 @@ static int resolve_tcs_cmd(char storage[][512], int max_args,
   return 0;
 }
 
-// cs-lib/lub_stub.cs を cwd / exe root から探す。
-static bool resolve_stub(char *out, size_t outsz) {
-  const char *cands[2] = {"cs-lib/lub_stub.cs", NULL};
-  char exe_stub[900] = "";
+// cs-lib/ ディレクトリを cwd / exe root から探す。
+static bool resolve_cs_lib(char *out, size_t outsz) {
+  const char *cands[2] = {"cs-lib", NULL};
+  char exe_dir[900] = "";
   const char *base_path = SDL_GetBasePath();
   if (base_path) {
     char root[768];
@@ -82,16 +82,23 @@ static bool resolve_stub(char *out, size_t outsz) {
     char *cut = SDL_strrchr(root, '/');
     if (cut && cut > root)
       *cut = '\0';
-    SDL_snprintf(exe_stub, sizeof(exe_stub), "%s/cs-lib/lub_stub.cs", root);
-    cands[1] = exe_stub;
+    SDL_snprintf(exe_dir, sizeof(exe_dir), "%s/cs-lib", root);
+    cands[1] = exe_dir;
   }
   for (int i = 0; i < 2; i++) {
-    if (cands[i] && file_exists(cands[i])) {
+    SDL_PathInfo info;
+    if (cands[i] && SDL_GetPathInfo(cands[i], &info) &&
+        info.type == SDL_PATHTYPE_DIRECTORY) {
       SDL_strlcpy(out, cands[i], outsz);
       return true;
     }
   }
   return false;
+}
+
+static bool str_ends_with(const char *s, const char *suffix) {
+  size_t ls = SDL_strlen(s), lf = SDL_strlen(suffix);
+  return ls >= lf && SDL_strcmp(s + ls - lf, suffix) == 0;
 }
 
 bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
@@ -114,7 +121,7 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   SDL_snprintf(out_lua, out_lua_sz, "%s/%s.lua", lub_dir, base);
 
   char storage[16][512];
-  const char *argv[64];
+  const char *argv[256];
   int n = resolve_tcs_cmd(storage, 16, argv);
   if (n == 0) {
     SDL_Log("tcs not found: set LUB_TCS or init third_party/tcs "
@@ -122,8 +129,14 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
     return false;
   }
 
-  char stub[900];
-  bool has_stub = resolve_stub(stub, sizeof(stub));
+  char cs_lib[900];
+  bool has_cs_lib = resolve_cs_lib(cs_lib, sizeof(cs_lib));
+  char stub[960] = "";
+  bool has_stub = false;
+  if (has_cs_lib) {
+    SDL_snprintf(stub, sizeof(stub), "%s/lub_stub.cs", cs_lib);
+    has_stub = file_exists(stub);
+  }
   if (!has_stub)
     SDL_Log("cs-lib/lub_stub.cs not found; compiling without lub API stub");
 
@@ -131,9 +144,11 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   char **globbed = SDL_GlobDirectory(dir, "*.cs", 0, &glob_count);
   int inputs = 0;
   if (globbed && glob_count > 0) {
-    for (int i = 0;
-         i < glob_count && n < (int)(sizeof(argv) / sizeof(argv[0])) - 16;
-         i++) {
+    for (int i = 0; i < glob_count; i++) {
+      if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
+        SDL_Log("tcs argv full: dropped %d sample source(s)", glob_count - i);
+        break;
+      }
       char full[900];
       SDL_snprintf(full, sizeof(full), "%s/%s", dir, globbed[i]);
       argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
@@ -145,6 +160,33 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   if (inputs == 0) {
     SDL_Log("no .cs sources next to %s", cs_path);
     return false;
+  }
+
+  // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律追加する。
+  // stub は宣言のみ (--ref) だが、実装モジュールは transpile 対象。
+  // input に入れることで tcs --watch の監視対象にもなる (hot reload)。
+  if (has_cs_lib) {
+    int lib_count = 0;
+    char **lib = SDL_GlobDirectory(cs_lib, NULL, 0, &lib_count);
+    if (lib) {
+      for (int i = 0; i < lib_count; i++) {
+        if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 16) {
+          SDL_Log("tcs argv full: dropped remaining cs-lib sources");
+          break;
+        }
+        if (!str_ends_with(lib[i], ".cs"))
+          continue;
+        const char *base = SDL_strrchr(lib[i], '/');
+        base = base ? base + 1 : lib[i];
+        if (SDL_strcmp(base, "lub_stub.cs") == 0)
+          continue;
+        char full[1200];
+        SDL_snprintf(full, sizeof(full), "%s/%s", cs_lib, lib[i]);
+        argv[n] = SDL_strdup(full); // process 終了まで生存でよい (leak 許容)
+        n++;
+      }
+      SDL_free(lib);
+    }
   }
 
   if (has_stub) {

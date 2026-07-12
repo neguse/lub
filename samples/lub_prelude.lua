@@ -283,6 +283,9 @@ Sys = {
 }
 
 Io = require("lub_io")
+-- lubx_png は Haxe だと @:luaRequire で個別 require されるが、
+-- TinyC# / raw Lua には global で見せる (C# stub の Png class が対応)
+Png = require("lubx_png")
 
 lub = lub or {}
 lub.Lub = Lub
