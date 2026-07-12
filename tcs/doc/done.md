@@ -672,3 +672,12 @@
 - よかったこと: allowlist / runtime / facade の3点を同一コミットで揃え、facade 経由と System.Math 経由の両方をテストで固定できた
 - 判断: Round は C# 既定の MidpointRounding.ToEven を Lua で実装した (Haxe Math.round の half-up とは異なるが、C# 意味論が正)。Log10/Log2 は `Log(x, base)` で代替できるため追加しない。Math.E は今回のスコープ外 (必要になったら定数1行)
 - 残課題: allowlist は member 名単位のため、未実装 overload の検出は T138 (完全シグネチャ単位) に委ねる
+
+### T168: Dictionary<string, object> の wire format 保証 ✓ (2026-07-13)
+- 現状確認: tinysystem の Dictionary 表現は最初から素の Lua hash table (`{[k]=v}`) で、metatable も bookkeeping フィールドも持たない。`Count`/`Keys`/`Values` は pairs 走査の都度計算 (`Dict.Count` 等)。表現の変更は不要で、契約をセマンティックテストで固定した
+- 契約: (1) `Dictionary<string, object>` のヘテロ値 (double / string / bool / `--ref` ハンドル / ネスト Dictionary / List 混在) が保持される、(2) `--ref` 関数へ渡すと host は文字列キー→値のみの素の table を受け取る (`getmetatable == nil`、非文字列キーなし、エントリ数一致、ハンドルは `rawequal` で同一)
+- テスト4件 (DictionaryWireFormatTests): --ref inspect によるヘテロ初期化子 / Add+indexer 構築の素 table 検証、Count の都度計算 (Add/Remove 混在)、foreach がユーザーエントリのみ見えること
+- 変更ファイル: DictionaryWireFormatTests.cs, support-matrix (§18 wire format 契約), current/done
+- よかったこと: 既存表現が既に契約を満たしていたため、実装変更ゼロでテストと文書の固定だけで済んだ。既存 Dictionary テストへの影響なし
+- 判断: lub の `--ref` 関数 (C runtime が table を読む) との契約を tcs 側のテストで保証する形にした。Count を table 内に持つ最適化は今後も不採用 (wire format が壊れるため、この契約テストが番人になる)
+- 残課題: duplicate key の Add 意味論は T153、Clear の allowlist 追加は需要駆動

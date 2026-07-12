@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 正しさレビュー backlog (T138-T163)
 
-### 完了済み (417テスト tcs / 15テスト analyzer / 477テスト lub3d)
+### 完了済み (421テスト tcs / 15テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -49,6 +49,7 @@
 **T165**: ユーザー定義演算子オーバーロード (binary `+ - * / %` / unary `-` → Lua metamethod)
 **T166**: 整数ビット演算子 (`& | ^ ~ << >>` + 複合代入 → Lua 5.5 native、64bit 幅は明示マスク運用)
 **T167**: BCL allowlist 追加 (`Math.Round/Sign/Tan/Log/Exp`, `String.IsNullOrEmpty` — runtime + facade + allowlist 3点セット)
+**T168**: Dictionary の wire format 契約をテストで固定 (素の Lua table / metatable・bookkeeping なし / Count は pairs 走査)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -122,7 +123,7 @@
 ### TinySystem ランタイム (runtime/tinysystem.lua)
 - List: new, Add, Remove, Count, Contains, IndexOf, Sort
 - LINQ: Where, Select, Any, All, First, FirstOrDefault, Last, LastOrDefault, OrderBy, OrderByDescending, Take, Skip, Min, Max, Sum, Count, ToList, ToDictionary
-- Dict: new, Add, Remove, ContainsKey, Count, Keys, Values
+- Dict: new, Add, Remove, ContainsKey, Count, Keys, Values。Dictionary は素の Lua table (metatable / bookkeeping なし) で、`--ref` 関数へそのまま渡せる wire format 契約 (Count/Keys/Values は pairs 走査で都度計算)
 - Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, Pow, Round (偶数丸め, digits対応), Sign, Tan, Log (base対応), Exp, PI
 - Random: Next, NextFloat, Range
 - String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split, IndexOf, Join, IsNullOrEmpty。空oldValueのReplaceは即時error、空suffixのEndsWithはtrue、Splitは引数なしLua `%s` whitespace分割（空要素保持）と空/null separatorの元文字列1要素を区別する
