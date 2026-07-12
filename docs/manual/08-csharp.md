@@ -18,14 +18,24 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 - `List<T>` / `Dictionary<K,V>`(Lua table に対応)
 - LINQ メソッドチェーン(`Where` / `Select` / `First` / `OrderBy` など。
   遅延評価はせず即時実行)
+- 演算子オーバーロード(二項 `+ - * / %` と単項 `-`。`lub.Math` の
+  Vec/Mat がこれで書かれている)、整数ビット演算子
 - `Math` / `Random` / `String` の実用サブセット
 
 ## 使えない主なもの
 
 - `async` / `await` / `Task`、`try` / `throw`、reflection、`dynamic`
-- ユーザー定義ジェネリクス、演算子オーバーロード
+- ユーザー定義ジェネリクス
 - `struct` / `record struct`(`class` / `record class` で代替)
 - LINQ クエリ構文(`from x in y select`)
+
+## 診断に出ない注意点
+
+- **デフォルト引数値は呼び出し側に展開されない**(省略した引数は Lua の
+  nil になる)。`double? x = null` + `x ?? 既定値` で書く
+- **static 初期化子から cs-lib のクラスを参照しない**。生成 Lua はサンプル
+  → cs-lib の順で定義されるため、ロード時に nil 呼び出しになる。
+  `onInit` / `onFrame` で遅延生成する(リテラルだけの static は可)
 
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
 `TCS1003`(Lua table に置けない null 保存)の診断が出る。playground では
