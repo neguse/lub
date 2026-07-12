@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証へ (T125-T127)
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T133-T161)
 
-### 完了済み (303テスト tcs / 10テスト analyzer / 477テスト lub3d)
+### 完了済み (323テスト tcs / 10テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -187,8 +187,10 @@
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- P0: lub (`../lub`, readonly) の Haxe 代替検証。ギャップ分析は `doc/lub-gap-analysis.md` (T125 完了)
-- 着手順: T133 (完全修飾 API の TCS1002 誤検出修正)。lub 検証トラック (T125-T132) は breakout 実機動作まで完了
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-code / 入力破壊 / runtime hangの修正 (T134-T154)
+- 着手順: T135 (出力衝突防止) → T134 (compile error健全化) → T136 (String hang + test timeout) → T133/T137/T138 (診断契約)
+- Lua命名T151を先に入れ、lowering修正はT139の一回評価基盤からT140-T148へ展開する。継承T149-T150は並行可
+- lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 
 ### コミット履歴
