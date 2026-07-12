@@ -587,3 +587,12 @@
 - よかったこと: Mainの分岐前とwatchの各rebuildで同じ検証を再利用し、one-shot/watchの両方を同じ契約で保護できた。watchテストも実際のテスト構成のDLLを直接起動するようにした
 - 判断: 既存ファイルは実体IDでaliasを拒否し、通常の検証後競合でsymlink/hardlink targetをtruncateしないよう、出力は同一directoryの一時ファイルからatomic置換する二層防御にした。安全な既存出力linkも意図的に通常ファイルへ切り離し、事前write-openで従来の書込権限契約を守り、Unix permission bitsは維持する（ACL/xattr等は引き継がない）。敵対的な親directory差し替えを完全に閉じるhandle-relative I/Oは範囲外
 - 残課題: T134 (C# compile error健全化) → T136 (String edge + Lua test timeout)
+
+### T134: C# compile error の一律除外を型安全な判定へ置換 ✓ (2026-07-12)
+- `CS0266` / `CS0029` / `CS0019` / `CS0535` のID一律除外を廃止し、diagnostic位置のsymbol/type/syntaxでTinyC#固有ケースだけを許容する`CompilationDiagnosticPolicy`へ置換した
+- 通常の型変換・二項演算・未実装method、field facadeの型/可視性/static/readonly/method/event/operator/conversion/継承field、enum↔char、外側enum変換による内側error隠蔽をnegative testにし、enum/intと互換fieldの正例を含む21テストで固定した
+- `Program.Main`を直接呼ぶCLI系4クラスはprocess-wide Consoleを奪い合わない非並列collectionへまとめ、追加CLI testが顕在化させた全体testのflakeも解消した
+- 変更ファイル: Transpiler.cs, CompilationDiagnosticPolicy.cs, Diagnostic/Enum/Interface/CliRuntime tests, ConsoleCollection.cs, EntryClass/NamingSuppression/Prelude tests, README.md, support-matrix/current/tasks/done
+- よかったこと: diagnostic IDではなく最内側の式だけを見ることで、同じIDの通常errorと、外側にenum変換があるnested errorをともにfatalにできた。CLI系40件の反復実行も安定した
+- 判断: enum/integerの`CS0019`は`==`/`!=`だけを許容し、Lua string表現の`char`はinteger集合から除外する。interface facadeは全未実装member（static abstract operator/conversionを含む）がpropertyで、同じclassに宣言した同名・同型public instance fieldがある場合だけ許容し、setterにはmutable fieldを要求する
+- 残課題: T136 (String edge + Lua process timeout) → T133/T137/T138 (診断契約)

@@ -1,5 +1,6 @@
 namespace TinyCs.Tests;
 
+[Collection(ConsoleCollection.Name)]
 public class PreludeTests
 {
     [Fact]

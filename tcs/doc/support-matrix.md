@@ -884,10 +884,10 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 
 | エラーコード | 内容 | 理由 |
 |------------|------|------|
-| CS0029 | 暗黙の型変換 | enum ↔ int を許容 |
-| CS0266 | 明示的変換が必要 | enum ↔ int を許容 |
-| CS0019 | 演算子適用不可 | enum == int を許容 |
-| CS0535 | interface 未実装 | フィールド = プロパティとして許容 |
+| CS0029 | 暗黙の型変換 | diagnostic位置の式がenum ↔ numeric integerの場合だけ許容 (`char`は除外) |
+| CS0266 | 明示的変換が必要 | diagnostic位置の式がenum ↔ numeric integerの場合だけ許容 (`char`は除外) |
+| CS0019 | 演算子適用不可 | enumとnumeric integer (`char`除外) の`==` / `!=`だけ許容 |
+| CS0535 | interface 未実装 | 未実装memberがすべて、同じclassで宣言した同名・同型のpublic instance fieldで代替できるpropertyの場合だけ許容。setterにはmutable fieldが必要 |
 
 ## 26. 数値型マッピング
 

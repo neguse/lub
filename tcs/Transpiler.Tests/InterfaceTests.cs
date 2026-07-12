@@ -59,4 +59,47 @@ public class InterfaceTests
             "T.Test()");
         Assert.Equal("110", result);
     }
+
+    [Fact]
+    public void Interface_GetSetProperty_CanUseMutableField()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public interface ICounter
+            {
+                int Value { get; set; }
+            }
+            public class Counter : ICounter
+            {
+                public int Value = 1;
+            }
+            public class T
+            {
+                public static int Test()
+                {
+                    var counter = new Counter();
+                    counter.Value = 5;
+                    return counter.Value;
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("5", result);
+    }
+
+    [Fact]
+    public void Interface_GetOnlyProperty_CanUseReadonlyField()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public interface IValue
+            {
+                int Value { get; }
+            }
+            public class T : IValue
+            {
+                public readonly int Value = 7;
+            }
+            """, "T.new().Value");
+
+        Assert.Equal("7", result);
+    }
 }

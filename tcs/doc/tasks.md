@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **即時安全性**: T134 → T136
+1. **即時安全性**: T136
 2. **診断契約**: T133 → T137 → T138
 3. **Lua 命名基盤**: T151
 4. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
@@ -40,14 +40,6 @@ tcs 側から直接変更しない。
   - TryGetUnsupportedApi の member access 判定で、supported 型そのものを指す qualified name を除外する
   - analyzer / `tcs check` / transpiler warning の共有 facts で同じ判定にする
 - 完了条件: `System.Math.Min(1, 2)` が診断なしで通り、`System.IO.File.ReadAllText` は引き続き TCS1002 になる
-
-### T134: C# compile error の一律除外を型安全な判定へ置換
-- 目的: enum 対応のための例外処理が、無関係な C# 型エラーまで `tcs check` で成功扱いする状態を解消する
-- 作業:
-  - `CS0266` / `CS0029` / `CS0019` / `CS0535` の diagnostic ID 一律除外を廃止する
-  - enum↔integer と field による interface property 代替など、TinyC# で意図的に許容するケースだけを symbol/type/location で判定する
-  - 許容ケースと同じ diagnostic ID を持つ通常の型エラーを negative test に追加する
-- 完了条件: `int x = "oops"`、不正な二項演算、未実装 interface method は compile error になり、既存の enum/int と interface facade の対応ケースは通る
 
 ### T136: Lua 実行テストの timeout と String edge contract 修正
 - 目的: supported な `String.Replace` が無限ループする問題を直し、同種のhangでテスト全体が停止しないようにする

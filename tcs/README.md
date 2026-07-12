@@ -123,6 +123,9 @@ lub エンジンで動かす実例は `samples/lub/` (`run-lub.sh`) と
 
 Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
 警告またはエラーがあれば exit 1、問題がなければ exit 0。
+TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較、および
+互換public fieldによるinterface property facadeだけで、同じC#エラーIDの
+通常の型不一致は失敗する。
 host の wire format (lowerCamel / snake_case) を使うコードは
 `--no-naming-check` で C# naming convention warning だけを抑制できる。
 

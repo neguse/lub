@@ -60,6 +60,105 @@ public class DiagnosticTests
         Assert.Contains("error CS", result.Errors[0]);
     }
 
+    [Theory]
+    [InlineData("public class T { public static int Test() { int x = \"oops\"; return x; } }", "CS0029")]
+    [InlineData("public class T { public static int Test() { int x = 1.5; return x; } }", "CS0266")]
+    [InlineData("public class T { public static bool Test() => true + false; }", "CS0019")]
+    [InlineData("public interface IRun { void Run(); } public class T : IRun { }", "CS0535")]
+    public void OrdinaryErrors_WithTinyCsExceptionIds_AreRejected(
+        string source, string diagnosticId)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([source]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            error => error.Contains($"error {diagnosticId}:"));
+    }
+
+    [Fact]
+    public void NestedTypeError_IsNotHiddenByOuterEnumConversion()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
+
+            public enum State { Idle }
+            public class T
+            {
+                public static int Test()
+                {
+                    int value = ((Func<State>)(() =>
+                    {
+                        int invalid = "oops";
+                        return State.Idle;
+                    }))();
+                    return value;
+                }
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            error => error.Contains("error CS0029:"));
+    }
+
+    [Fact]
+    public void EnumInteger_NonEqualityOperator_IsRejected()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public enum State { Idle }
+            public class T
+            {
+                public static bool Test() => State.Idle < 1;
+            }
+            """]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            error => error.Contains("error CS0019:"));
+    }
+
+    [Theory]
+    [InlineData("public enum E { A = 65 } public class T { public static E Test() { E value = 'A'; return value; } }")]
+    [InlineData("public enum E { A = 65 } public class T { public static char Test() { char value = E.A; return value; } }")]
+    public void EnumCharConversion_IsRejected(string source)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([source]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            error => error.Contains("error CS0266:"));
+    }
+
+    [Theory]
+    [InlineData("public interface IValue { int Value { get; } } public class T : IValue { public string Value = \"\"; }")]
+    [InlineData("public interface IValue { int Value { get; } } public class T : IValue { private int Value; }")]
+    [InlineData("public interface IValue { int Value { get; } } public class T : IValue { public static int Value; }")]
+    [InlineData("public interface IValue { int Value { get; set; } } public class T : IValue { public readonly int Value; }")]
+    [InlineData("public interface IValue { int Value { get; } void Run(); } public class T : IValue { public int Value; }")]
+    [InlineData("public interface IEvents { event System.Action Changed; } public class T : IEvents { public System.Action Changed; }")]
+    [InlineData("public interface IValue { int Value { get; } } public class Base { public int Value; } public class T : Base, IValue { }")]
+    public void InterfaceFieldFacade_InvalidShape_IsRejected(string source)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([source]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            error => error.Contains("error CS0535:"));
+    }
+
+    [Theory]
+    [InlineData("public interface I<T> where T : I<T> { int Value { get; } static abstract T operator +(T left, T right); } public class C : I<C> { public int Value; }")]
+    [InlineData("public interface I<T> where T : I<T> { int Value { get; } static abstract implicit operator int(T value); } public class C : I<C> { public int Value; }")]
+    public void InterfaceFieldFacade_StaticAbstractMember_IsRejected(
+        string source)
+    {
+        var result = Transpiler.TranspileWithDiagnostics([source]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            error => error.Contains("error CS0535:"));
+    }
+
     [Fact]
     public void UnsupportedStructDeclaration_ReportsWarning()
     {

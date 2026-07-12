@@ -66,4 +66,23 @@ public class EnumTests
             """);
         Assert.Equal("true", result);
     }
+
+    [Fact]
+    public void IntegerToEnum_AndNotEquals_AreAllowed()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public enum State { Idle, Active, Done }
+
+            public class T
+            {
+                public static bool Test()
+                {
+                    State state = 1;
+                    return state != 0;
+                }
+            }
+            """, "tostring(T.Test())");
+
+        Assert.Equal("true", result);
+    }
 }

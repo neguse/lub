@@ -63,15 +63,13 @@ public static class Transpiler
         var errors = new List<string>();
         var warnings = new List<string>();
 
-        // Check for C# compilation errors
-        // Skip enum/int conversion errors (CS0266, CS0029) — TinyC# erases enums to ints
-        // CS0266/CS0029: implicit conversion (enum↔int)
-        // CS0019: operator mismatch (enum==int)
-        // CS0535: interface member not implemented (fields as properties)
-        var ignoredIds = new HashSet<string> { "CS0266", "CS0029", "CS0019", "CS0535" };
+        // TinyC# intentionally erases enums to integers and allows public
+        // fields to stand in for interface properties. Suppress only those
+        // exact semantic cases; ordinary C# type errors remain fatal.
         foreach (var diag in compilation.GetDiagnostics())
         {
-            if (diag.Severity == DiagnosticSeverity.Error && !ignoredIds.Contains(diag.Id))
+            if (diag.Severity == DiagnosticSeverity.Error
+                && !CompilationDiagnosticPolicy.IsAllowed(compilation, diag))
             {
                 var loc = diag.Location;
                 var span = loc.GetLineSpan();

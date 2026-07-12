@@ -2,6 +2,7 @@ using System.Text.Json;
 
 namespace TinyCs.Tests;
 
+[Collection(ConsoleCollection.Name)]
 public class CliRuntimeTests
 {
     [Fact]
@@ -99,6 +100,28 @@ public class CliRuntimeTests
         Assert.Contains("StructDeclaration", result.Stderr);
         Assert.Contains(TinyCsDiagnosticIds.UnsupportedApi, result.Stderr);
         Assert.Contains("System.IO.File.ReadAllText", result.Stderr);
+    }
+
+    [Fact]
+    public void Cli_Check_OrdinaryTypeMismatch_ReturnsCompileError()
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("app.cs", """
+            public class T
+            {
+                public static int Test()
+                {
+                    int value = "oops";
+                    return value;
+                }
+            }
+            """);
+
+        var result = RunCli("check", inputPath);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Contains("error CS0029:", result.Stderr);
     }
 
     [Fact]
