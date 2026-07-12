@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / 正しさレビュー backlog (T138-T161, T163)
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 正しさレビュー backlog (T138-T163)
 
-### 完了済み (386テスト tcs / 15テスト analyzer / 477テスト lub3d)
+### 完了済み (395テスト tcs / 15テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -46,6 +46,7 @@
 **T120**: ユーザー定義 `struct` / `record struct` を TCS1001 未対応診断として確定
 **T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
 **T122**: Rider リアルタイム警告向け Roslyn Analyzer PoC (`tcs check` / 共有診断化 / core API allowlist / CI / nupkg consumer / InspectCode headless / Rider 実機確認 go)
+**T165**: ユーザー定義演算子オーバーロード (binary `+ - * / %` / unary `-` → Lua metamethod)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -112,6 +113,7 @@
 | obj.ExtMethod() | ExtClass.ExtMethod(obj) |
 | base.Method() | Base.Method(self, ...) |
 | $"{val:F2}" | string.format("%.2f", val) |
+| operator + - * / % (二項) / - (単項) | __add/__sub/__mul/__div/__mod/__unm metamethod。複数 overload は実行時型分岐 |
 
 ### TinySystem ランタイム (runtime/tinysystem.lua)
 - List: new, Add, Remove, Count, Contains, IndexOf, Sort

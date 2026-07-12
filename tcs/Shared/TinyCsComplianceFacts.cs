@@ -29,6 +29,8 @@ public static class TinyCsComplianceFacts
         SyntaxKind.LocalFunctionStatement,
         SyntaxKind.ListPattern,
         SyntaxKind.SlicePattern,
+        SyntaxKind.OperatorDeclaration,
+        SyntaxKind.ConversionOperatorDeclaration,
     ];
 
     public static readonly SyntaxKind[] CollectionNullSyntaxKinds =
@@ -162,6 +164,10 @@ public static class TinyCsComplianceFacts
             LocalFunctionStatementSyntax => "LocalFunctionStatement",
             ListPatternSyntax => "ListPattern",
             SlicePatternSyntax => "SlicePattern",
+            OperatorDeclarationSyntax op
+                when !TryGetOperatorMetamethod(op, out _)
+                    => $"OperatorDeclaration({op.OperatorToken.Text})",
+            ConversionOperatorDeclarationSyntax => "ConversionOperatorDeclaration",
             _ => "",
         };
 
@@ -184,6 +190,29 @@ public static class TinyCsComplianceFacts
         return node is InvocationExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node),
                 out syntaxName);
+    }
+
+    // Supported user-defined operator overloads and their Lua metamethods.
+    // Equality (== / !=) is out of scope: record __eq is the only equality
+    // customization, so those operator declarations stay TCS1001.
+    public static bool TryGetOperatorMetamethod(OperatorDeclarationSyntax op,
+        out string metamethod)
+    {
+        metamethod = "";
+        if (op.CheckedKeyword.IsKind(SyntaxKind.CheckedKeyword)) return false;
+
+        var arity = op.ParameterList.Parameters.Count;
+        metamethod = (op.OperatorToken.Kind(), arity) switch
+        {
+            (SyntaxKind.PlusToken, 2) => "__add",
+            (SyntaxKind.MinusToken, 2) => "__sub",
+            (SyntaxKind.AsteriskToken, 2) => "__mul",
+            (SyntaxKind.SlashToken, 2) => "__div",
+            (SyntaxKind.PercentToken, 2) => "__mod",
+            (SyntaxKind.MinusToken, 1) => "__unm",
+            _ => "",
+        };
+        return metamethod.Length > 0;
     }
 
     public static IEnumerable<string> AnalyzeUnsupportedSyntaxes(

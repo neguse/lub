@@ -642,3 +642,12 @@
 - よかったこと: token文字列やsymbol lookupではなくRoslyn operationで識別したため、contextual keywordである`nameof`と通常method callを同じ共有契約で安全に分離できた
 - 判断: unsupported診断は維持しつつ、通常transpileはRoslynが確定した定数値を安全なfallbackとして出す。API診断抑制はbuilt-in `nameof`の祖先内だけに限定し、同名ユーザーmethodの引数には適用しない
 - 残課題: T138 → T163 (診断契約)
+### T165: ユーザー定義演算子オーバーロード ✓ (2026-07-13)
+- 二項 `+ - * / %` と単項 `-` の operator 宣言を Lua metamethod (`__add`/`__sub`/`__mul`/`__div`/`__mod`/`__unm`) として class table (= instance metatable) へ emit するようにした (LuaEmitter.Operators.cs 新設、class / record class 両対応)
+- 同一演算子の複数 overload (Vec2*Vec2 / Vec2*double / double*Vec2 等) は overload ごとの関数 + 単一 metamethod dispatcher に分け、実行時 operand 型 (class は `getmetatable == Class`、数値/文字列/bool は `type()`) で分岐する。どれにも一致しない場合は明示 error
+- 未対応の operator 宣言 (`==` `!=` 比較系、checked、変換演算子) は共有 facts の TCS1001 (`OperatorDeclaration(token)` / `ConversionOperatorDeclaration`) にし、Analyzer / `tcs check` / transpiler の三面一致にした
+- セマンティックテスト14件 (OperatorOverloadTests: 単一/複数 overload dispatch、単項 -、%、複合代入、record class、statement body、診断3件) + analyzer 2件
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.Operators.cs, Transpiler/LuaEmitter.cs, OperatorOverloadTests.cs, TinyCsComplianceAnalyzerTests.cs, objective.md, support-matrix/current/done
+- よかったこと: metamethod 対応表を共有 facts (`TryGetOperatorMetamethod`) に置いたことで、emitter の supported 判定と診断の supported 判定が同一ソースになった
+- 判断: オーナー決定により従来 Out だった演算子オーバーロードを Core へ方針変更 (lub の Vec2/Vec3/Vec4/Quat/Mat4 移植に必要な算術セットのみ)。`==`/`!=` は record `__eq` と意味論が競合するためスコープ外を維持。dispatch 条件を作れない引数型 (interface / object 等) は `true` 扱いで宣言順 fallback (C# コンパイル時に overload 解決済みのため実行時の誤 dispatch は型エラー相当のみ)
+- 残課題: operator `==`/`!=` の class 対応は必要になったら別タスク。metamethod は継承されない (metatable 直付け) 点は現行の浅い継承方針では未対応のまま

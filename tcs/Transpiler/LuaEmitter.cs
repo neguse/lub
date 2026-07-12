@@ -153,6 +153,7 @@ public partial class LuaEmitter
 
         EmitConstructor(model, name, ctor, fieldInits);
 
+        var operators = new List<OperatorDeclarationSyntax>();
         foreach (var member in cls.Members)
         {
             switch (member)
@@ -164,6 +165,10 @@ public partial class LuaEmitter
                     && prop.AccessorList != null:
                     VisitCustomProperty(model, name, prop);
                     break;
+                case OperatorDeclarationSyntax op
+                    when TinyCsComplianceFacts.TryGetOperatorMetamethod(op, out _):
+                    operators.Add(op);
+                    break;
                 case FieldDeclarationSyntax:
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
                 case ConstructorDeclarationSyntax:
@@ -173,6 +178,8 @@ public partial class LuaEmitter
                     break;
             }
         }
+
+        EmitOperators(model, name, operators);
     }
 
     private static bool IsAutoProperty(PropertyDeclarationSyntax prop) =>
@@ -293,14 +300,26 @@ public partial class LuaEmitter
             AppendLine();
         }
 
-        // Emit any explicitly defined methods
+        // Emit any explicitly defined methods and operator overloads
+        var operators = new List<OperatorDeclarationSyntax>();
         foreach (var member in rec.Members)
         {
-            if (member is MethodDeclarationSyntax method)
-                VisitMethod(model, name, method);
-            else
-                WarnUnsupportedMember(member);
+            switch (member)
+            {
+                case MethodDeclarationSyntax method:
+                    VisitMethod(model, name, method);
+                    break;
+                case OperatorDeclarationSyntax op
+                    when TinyCsComplianceFacts.TryGetOperatorMetamethod(op, out _):
+                    operators.Add(op);
+                    break;
+                default:
+                    WarnUnsupportedMember(member);
+                    break;
+            }
         }
+
+        EmitOperators(model, name, operators);
     }
 
     private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)

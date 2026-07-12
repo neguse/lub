@@ -33,6 +33,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | class / enum / interface / record class | **Core** | editor 補完、型チェック、データ表現に必要 |
 | struct / record struct | **Useful** | 現時点は TCS1001 未対応診断。値セマンティクス需要が出るまで class/record class で代替 |
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
+| 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを Lua metamethod へ写像し、変換演算子と `==`/`!=`/比較系は対象外 |
 | LINQ メソッドチェーン | **Core** | `Where`/`Select`/`Any`/`All`/`First`/`Last`/`OrderBy`/`Take`/`Skip`/集計の小核だけ即時評価で提供 |
 | ユーザー定義ジェネリクス | **Out** | 型消去 runtime と複雑さが釣り合わない。組み込み generic 型に限定 |
 | reflection / dynamic / expression tree | **Out** | Lua 5.5 backend と compact baseline に合わない |
@@ -63,7 +64,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | ユーザー定義型 | **Core** | 2 | 2 | 3 | 1 | 8 |
 | 名前空間・using | **Core** | 3 | 0 | 3 | 1 | 7 |
 | 型宣言 | **Core** | 3 | 1 | 5 | 0 | 9 |
-| メンバー宣言 | **Core** | 10 | 2 | 9 | 1 | 22 |
+| メンバー宣言 | **Core** | 10 | 3 | 8 | 1 | 22 |
 | ローカル宣言 | **Core** | 3 | 1 | 6 | 1 | 11 |
 | 文 | **Core** | 12 | 0 | 6 | 4 | 22 |
 | リテラル | **Core** | 12 | 0 | 0 | 1 | 13 |
@@ -73,7 +74,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 修飾子 | **Useful** | 4 | 2 | 20 | 4 | 30 |
 | ジェネリクス | **Core/Out** | 1 | 1 | 5 | 0 | 7 |
 | 継承 | **Useful** | 4 | 0 | 2 | 0 | 6 |
-| **小計** | | **96** | **17** | **98** | **26** | **237** |
+| **小計** | | **96** | **18** | **97** | **26** | **237** |
 
 ### 標準ライブラリ
 
@@ -205,8 +206,8 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | デストラクタ / ファイナライザ | **N/A** | | |
 | イベント | **-** | | |
 | インデクサ (`this[int]`) | **-** | | |
-| 演算子オーバーロード | **-** | | |
-| 暗黙/明示変換演算子 | **-** | | |
+| 演算子オーバーロード | **P** | Lua metamethod (`__add`/`__sub`/`__mul`/`__div`/`__mod`/`__unm`) | 二項 `+ - * / %` と単項 `-`。複数 overload は metamethod 内で実行時型分岐 (class は metatable、数値/文字列/bool は `type()`)。`==`/`!=`/比較系は TCS1001 (record の `__eq` のみ) |
+| 暗黙/明示変換演算子 | **-** | | TCS1001 |
 | ローカル関数 (C# 7) | **-** | | unsupported 診断あり |
 | 静的ローカル関数 (C# 8) | **-** | | unsupported 診断あり |
 | 拡張メソッド (C# 3) | **P** | static method 呼び出しへ展開 | LINQ は専用処理 |
@@ -500,7 +501,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 ```
 bool  break  case  class  continue  default(switch/default)  do  double  else  enum  false
 float  for  foreach  if  int  interface  is(部分)  long  namespace
-new  null  private  public  protected(部分)  return  static  string
+new  null  operator(部分)  private  public  protected(部分)  return  static  string
 switch  this  true  var  void  while
 ```
 
@@ -509,7 +510,7 @@ switch  this  true  var  void  while
 ```
 abstract  as  byte  catch  char  checked  const  decimal
 delegate  event  explicit  extern  finally  fixed  goto
-implicit  in(foreach以外)  internal  lock  object  operator  out  override
+implicit  in(foreach以外)  internal  lock  object  out  override
 params  readonly  ref  sbyte  sealed  short  sizeof  stackalloc  struct
 throw  try  typeof  uint(部分)  ulong  unchecked  unsafe  ushort
 using(宣言)  virtual(部分)  volatile  yield
