@@ -501,7 +501,7 @@ public class DiagnosticTests
                     var one = values.Single();
                     var capacity = values.Capacity;
                     var empty = string.Empty;
-                    return Math.Log(one) + Math.E + capacity + empty.Length;
+                    return Math.Cbrt(one) + Math.E + capacity + empty.Length;
                 }
             }
             """]);
@@ -515,7 +515,7 @@ public class DiagnosticTests
         Assert.Contains(apiWarnings, w => w.Contains("List<T>.Reverse"));
         Assert.Contains(apiWarnings,
             w => w.Contains("System.Linq.Enumerable.Single"));
-        Assert.Contains(apiWarnings, w => w.Contains("System.Math.Log"));
+        Assert.Contains(apiWarnings, w => w.Contains("System.Math.Cbrt"));
         Assert.Contains(apiWarnings, w => w.Contains("List<T>.Capacity"));
         Assert.Contains(apiWarnings, w => w.Contains("string.Empty"));
         Assert.Contains(apiWarnings, w => w.Contains("System.Math.E"));

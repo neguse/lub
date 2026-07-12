@@ -285,7 +285,7 @@ public class TinyCsComplianceAnalyzerTests
                     var one = values.Single();
                     var capacity = values.Capacity;
                     var empty = string.Empty;
-                    return Math.Log(one) + Math.E + capacity + empty.Length;
+                    return Math.Cbrt(one) + Math.E + capacity + empty.Length;
                 }
             }
             """);
@@ -300,7 +300,7 @@ public class TinyCsComplianceAnalyzerTests
         Assert.Contains(apiDiagnostics,
             d => d.GetMessage().Contains("System.Linq.Enumerable.Single"));
         Assert.Contains(apiDiagnostics,
-            d => d.GetMessage().Contains("System.Math.Log"));
+            d => d.GetMessage().Contains("System.Math.Cbrt"));
         Assert.Contains(apiDiagnostics,
             d => d.GetMessage().Contains("List<T>.Capacity"));
         Assert.Contains(apiDiagnostics,

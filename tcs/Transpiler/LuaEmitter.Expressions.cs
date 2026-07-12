@@ -295,11 +295,11 @@ public partial class LuaEmitter
                 return $"Math.{luaName}({string.Join(", ", args)})";
             }
 
-            // string.Join(...) → String.Join(...)
+            // string.Join / string.IsNullOrEmpty → String.* runtime call
             if (symbol is IMethodSymbol stringStaticMethod
                 && stringStaticMethod.ContainingType.SpecialType == SpecialType.System_String
-                && methodName == "Join")
-                return $"String.Join({string.Join(", ", args)})";
+                && methodName is "Join" or "IsNullOrEmpty")
+                return $"String.{methodName}({string.Join(", ", args)})";
 
             // String method calls → String.Method(str, args)
             if (TryMapStringMethod(model, ma, methodName, args, out var strResult))

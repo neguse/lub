@@ -74,6 +74,11 @@ public static class TinyCsComplianceFacts
             "Cos",
             "Atan2",
             "Pow",
+            "Round",
+            "Sign",
+            "Tan",
+            "Log",
+            "Exp",
         };
 
     private static readonly HashSet<string> SupportedStringMembers =
@@ -92,6 +97,7 @@ public static class TinyCsComplianceFacts
             "ToString",
             "IndexOf",
             "Join",
+            "IsNullOrEmpty",
         };
 
     private static readonly HashSet<string> SupportedListMembers =

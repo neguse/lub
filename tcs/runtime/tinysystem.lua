@@ -314,6 +314,10 @@ function String.Substring(str, start, length)
   end
 end
 
+function String.IsNullOrEmpty(s)
+  return s == nil or s == ""
+end
+
 function String.Split(str, ...)
   local result = {}
   local argument_count = select("#", ...)
@@ -357,6 +361,35 @@ function Math.Sin(x) return math.sin(x) end
 function Math.Cos(x) return math.cos(x) end
 function Math.Atan2(y, x) return math.atan(y, x) end
 function Math.Pow(x, y) return x ^ y end
+function Math.Tan(x) return math.tan(x) end
+function Math.Exp(x) return math.exp(x) end
+function Math.Log(x, base) return math.log(x, base) end
+
+function Math.Sign(x)
+  if x > 0 then return 1 end
+  if x < 0 then return -1 end
+  return 0
+end
+
+-- C# Math.Round: banker's rounding (midpoint rounds to even)
+function Math.Round(x, digits)
+  local scale = 10 ^ (digits or 0)
+  local scaled = x * scale
+  local floor = math.floor(scaled)
+  local diff = scaled - floor
+  local rounded
+  if diff > 0.5 then
+    rounded = floor + 1
+  elseif diff < 0.5 then
+    rounded = floor
+  elseif floor % 2 == 0 then
+    rounded = floor
+  else
+    rounded = floor + 1
+  end
+  if digits then return rounded / scale end
+  return rounded
+end
 
 function Math.Clamp(value, min, max)
   if value < min then return min end

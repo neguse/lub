@@ -28,11 +28,20 @@ public static class Math
     public static double Cos(double x) => default;
     public static double Atan2(double y, double x) => default;
     public static double Pow(double x, double y) => default;
+    public static double Round(double x) => default;
+    public static double Round(double x, int digits) => default;
+    public static int Sign(int x) => default;
+    public static int Sign(double x) => default;
+    public static double Tan(double x) => default;
+    public static double Log(double x) => default;
+    public static double Log(double x, double newBase) => default;
+    public static double Exp(double x) => default;
 }
 
 public static class String
 {
     public static bool Contains(string str, string substr) => default;
+    public static bool IsNullOrEmpty(string? str) => default;
     public static int IndexOf(string str, string value) => default;
     public static int IndexOf(string str, string value, int startIndex) => default;
     public static string Join(string sep, global::System.Collections.Generic.List<string> values) => "";

@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 正しさレビュー backlog (T138-T163)
 
-### 完了済み (407テスト tcs / 15テスト analyzer / 477テスト lub3d)
+### 完了済み (417テスト tcs / 15テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -48,6 +48,7 @@
 **T122**: Rider リアルタイム警告向け Roslyn Analyzer PoC (`tcs check` / 共有診断化 / core API allowlist / CI / nupkg consumer / InspectCode headless / Rider 実機確認 go)
 **T165**: ユーザー定義演算子オーバーロード (binary `+ - * / %` / unary `-` → Lua metamethod)
 **T166**: 整数ビット演算子 (`& | ^ ~ << >>` + 複合代入 → Lua 5.5 native、64bit 幅は明示マスク運用)
+**T167**: BCL allowlist 追加 (`Math.Round/Sign/Tan/Log/Exp`, `String.IsNullOrEmpty` — runtime + facade + allowlist 3点セット)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -122,9 +123,9 @@
 - List: new, Add, Remove, Count, Contains, IndexOf, Sort
 - LINQ: Where, Select, Any, All, First, FirstOrDefault, Last, LastOrDefault, OrderBy, OrderByDescending, Take, Skip, Min, Max, Sum, Count, ToList, ToDictionary
 - Dict: new, Add, Remove, ContainsKey, Count, Keys, Values
-- Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, Pow, PI
+- Math: Min, Max, Clamp, Abs, Floor, Ceil, Sqrt, Sin, Cos, Atan2, Pow, Round (偶数丸め, digits対応), Sign, Tan, Log (base対応), Exp, PI
 - Random: Next, NextFloat, Range
-- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split, IndexOf, Join。空oldValueのReplaceは即時error、空suffixのEndsWithはtrue、Splitは引数なしLua `%s` whitespace分割（空要素保持）と空/null separatorの元文字列1要素を区別する
+- String: Contains, Replace, StartsWith, EndsWith, Trim, Substring, Split, IndexOf, Join, IsNullOrEmpty。空oldValueのReplaceは即時error、空suffixのEndsWithはtrue、Splitは引数なしLua `%s` whitespace分割（空要素保持）と空/null separatorの元文字列1要素を区別する
 
 ### TinySystem C# facade (TinySystem/)
 - `TinySystem.Random`, `TinySystem.Math`, `TinySystem.String`, `TinySystem.List`, `TinySystem.Dict`
@@ -191,7 +192,7 @@
 - `verify-inspectcode.sh` / `.ps1` で InspectCode 2026.1.3 headless の ProjectReference / local nupkg `PackageReference` consumer / severity override を再確認できる
 - `verify-rider-prechecks.sh` / `.ps1` で pre-check summary、`open-rider-demo.sh` / `.ps1` (`-NoPrecheck` あり) で Rider 起動
 - `.ps1` は pwsh 7 の read-only 自動変数 (`$IsWindows` / `$IsMacOS`) と衝突する変数名を使わない。`verify-rider-scripts.sh` の検証は `run-tests.sh` (Linux/CI) のみで行い、`run-tests.ps1` は bash を使わない
-- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Log`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する。`System.Math.Min`のような完全修飾アクセスでは中間の型qualifierをAPI memberとして重複診断しない
+- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Cbrt`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する。`System.Math.Min`のような完全修飾アクセスでは中間の型qualifierをAPI memberとして重複診断しない
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない

@@ -81,8 +81,8 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 名前空間 | 優先度 | Y | P | - | N/A | 計 |
 |---------|:------:|---|---|---|-----|---|
 | System 基本型 | **Core/Useful** | 4 | 2 | 19 | 3 | 28 |
-| String メンバー | **Core** | 14 | 0 | 18 | 0 | 32 |
-| Math メンバー | **Core** | 12 | 0 | 19 | 0 | 31 |
+| String メンバー | **Core** | 15 | 0 | 17 | 0 | 32 |
+| Math メンバー | **Core** | 17 | 0 | 15 | 0 | 32 |
 | Random メンバー | **Core** | 3 | 0 | 6 | 0 | 9 |
 | List\<T\> メンバー | **Core** | 11 | 0 | 18 | 0 | 29 |
 | Dictionary\<K,V\> メンバー | **Core** | 10 | 0 | 3 | 0 | 13 |
@@ -92,7 +92,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | System.IO | **Out** | 0 | 0 | 7 | 0 | 7 |
 | System.Threading.Tasks | **Out** | 0 | 0 | 0 | 4 | 4 |
 | System.Numerics | **Useful** | 0 | 0 | 6 | 0 | 6 |
-| **小計** | | **74** | **2** | **137** | **12** | **225** |
+| **小計** | | **80** | **2** | **132** | **12** | **226** |
 
 ---
 
@@ -602,7 +602,7 @@ using(宣言)  virtual(部分)  volatile  yield
 | `.ToCharArray()` | **-** | | |
 | `.Equals(s, comp)` | **-** | | |
 | `.CompareTo(s)` | **-** | | |
-| `String.IsNullOrEmpty(s)` (static) | **-** | | |
+| `String.IsNullOrEmpty(s)` (static) | **Y** | `String.IsNullOrEmpty(s)` (`nil or ""`) | T+R |
 | `String.IsNullOrWhiteSpace(s)` (static) | **-** | | |
 | `String.Format(fmt, ...)` (static) | **-** | | 補間で代替 |
 | `String.Join(sep, ...)` (static) | **Y** | `String.Join(sep, values)` | T+R |
@@ -636,12 +636,13 @@ using(宣言)  virtual(部分)  volatile  yield
 | `Math.E` | **-** | | |
 | `Math.Tau` | **-** | | |
 | `Math.Pow(x, y)` | **Y** | `Math.Pow(x, y)` | R |
-| `Math.Exp(x)` | **-** | | |
-| `Math.Log(x)` / `Math.Log10(x)` / `Math.Log2(x)` | **-** | | |
-| `Math.Round(x)` / `Math.Round(x, digits)` | **-** | | |
+| `Math.Exp(x)` | **Y** | `Math.Exp(x)` (`math.exp`) | R |
+| `Math.Log(x)` / `Math.Log(x, base)` | **Y** | `Math.Log(x[, base])` (`math.log`) | R |
+| `Math.Log10(x)` / `Math.Log2(x)` | **-** | | `Math.Log(x, base)` で代替 |
+| `Math.Round(x)` / `Math.Round(x, digits)` | **Y** | `Math.Round(x[, digits])` | R。C# と同じ偶数丸め (banker's rounding) |
 | `Math.Truncate(x)` | **-** | | |
-| `Math.Sign(x)` | **-** | | |
-| `Math.Tan(x)` | **-** | | |
+| `Math.Sign(x)` | **Y** | `Math.Sign(x)` | R |
+| `Math.Tan(x)` | **Y** | `Math.Tan(x)` (`math.tan`) | R |
 | `Math.Asin(x)` / `Math.Acos(x)` / `Math.Atan(x)` | **-** | | |
 | `Math.Sinh(x)` / `Math.Cosh(x)` / `Math.Tanh(x)` | **-** | | |
 | `Math.Cbrt(x)` | **-** | | |

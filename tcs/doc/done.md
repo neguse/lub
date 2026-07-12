@@ -662,3 +662,13 @@
 - よかったこと: C# と Lua 5.5 でビット演算子の相対優先順位 (shift > & > ^ > |、加算 > shift) が一致しているため、構文木からの素直な再出力で括弧補正が不要だった
 - 判断: `>>>` (C# 11 unsigned shift) は 64bit 幅では意味がさらにずれるため未対応のまま。負数 `>>` の意味論補正 (floor div 展開) は行わず、幅差と同じく明示マスク運用に含めた
 - 残課題: 32bit wrap 演算が lub 移植で頻出するようであれば、`Bit32` 系 runtime helper の追加を別タスクで検討
+
+### T167: BCL allowlist 追加 (Math.Round/Sign/Tan/Log/Exp, String.IsNullOrEmpty) ✓ (2026-07-13)
+- `Math.Round` (引数なし/digits、C# と同じ偶数丸め)、`Math.Sign`、`Math.Tan`、`Math.Log` (自然対数 + base 指定)、`Math.Exp`、`String.IsNullOrEmpty` を runtime/tinysystem.lua + TinySystem C# facade + Shared allowlist の3点セットで追加した
+- emitter は `string.IsNullOrEmpty` を `String.IsNullOrEmpty(s)` runtime call へ写像 (既存 `string.Join` 分岐を拡張)。`Math.*` は既存の汎用写像で通る
+- セマンティックテスト10件 (BclAllowlistExtensionTests: 偶数丸め5値、digits、Sign 3値、Tan/Log/Exp、IsNullOrEmpty null/空/非空、TCS1002 が消えること、Log10 が引き続き TCS1002 であること、TinySystem facade 同期)
+- 既存 negative fixture が unsupported 例に使っていた `Math.Log` は `Math.Cbrt` へ差し替えた (`Math.Truncate` は int 引数で double/decimal overload が曖昧になるため不採用)
+- 変更ファイル: runtime/tinysystem.lua, TinySystem/RuntimeFacades.cs, Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.Expressions.cs, BclAllowlistExtensionTests.cs, DiagnosticTests.cs, TinyCsComplianceAnalyzerTests.cs, CLAUDE.md, support-matrix/current/done
+- よかったこと: allowlist / runtime / facade の3点を同一コミットで揃え、facade 経由と System.Math 経由の両方をテストで固定できた
+- 判断: Round は C# 既定の MidpointRounding.ToEven を Lua で実装した (Haxe Math.round の half-up とは異なるが、C# 意味論が正)。Log10/Log2 は `Log(x, base)` で代替できるため追加しない。Math.E は今回のスコープ外 (必要になったら定数1行)
+- 残課題: allowlist は member 名単位のため、未実装 overload の検出は T138 (完全シグネチャ単位) に委ねる
