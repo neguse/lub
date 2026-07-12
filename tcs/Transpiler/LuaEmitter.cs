@@ -390,6 +390,13 @@ public partial class LuaEmitter
                 SourceMap.Add(_luaLine, _currentSource.Value.File, _currentSource.Value.Line);
                 _currentSource = null;
             }
+            // Lua joins a statement starting with '(' onto a preceding
+            // statement that ends in a callable expression (`local b = t[k]`
+            // + `(f)()` parses as `t[k](f)()`). Every statement line is
+            // emitted through here, so prefix ';' to keep IIFE statements
+            // separate regardless of how the previous line ends.
+            if (line[0] == '(')
+                line = ";" + line;
             var output = $"{new string(' ', _indent * 2)}{line}";
             _sb.AppendLine(output);
             _luaLine += CountOutputLines(output);

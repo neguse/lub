@@ -681,3 +681,12 @@
 - よかったこと: 既存表現が既に契約を満たしていたため、実装変更ゼロでテストと文書の固定だけで済んだ。既存 Dictionary テストへの影響なし
 - 判断: lub の `--ref` 関数 (C runtime が table を読む) との契約を tcs 側のテストで保証する形にした。Count を table 内に持つ最適化は今後も不採用 (wire format が壊れるため、この契約テストが番人になる)
 - 残課題: duplicate key の Add 意味論は T153、Clear の allowlist 追加は需要駆動
+
+### T169: `(` 開始文の Lua 結合パースを `;` 前置で分離 ✓ (2026-07-13)
+- IIFE 文 (`List.Clear`、conditional access 文など) の直前の文が callable 終端 (`local b = t[k]` / `f(x)`) の場合、Lua が `t[k](function()...)()` と一続きにパースして実行時エラーになる問題を修正した (lub 側 SpriteBatch.begin() で必発)
+- Lua の定石どおり、`(` で始まる行の emit に `;` を前置する。全 statement は `AppendLine` を通るため、そこで一元的に付与し、lambda block 内の文も同じ経路でカバーされる
+- セマンティックテスト4件 (StatementSeparatorTests: indexer local 直後の List.Clear、conditional access 文、call 文直後の Clear、lambda block 内の conditional access 文)
+- 変更ファイル: Transpiler/LuaEmitter.cs, StatementSeparatorTests.cs, doc (current/done)
+- よかったこと: 出力経路が AppendLine に集約されていたため、1箇所の前置で全 statement emit 経路 (member/statement/lambda block) を一貫して直せた
+- 判断: 「前の文が callable 終端かどうか」の文脈判定はせず、無条件に `;` を前置した (Lua 5.5 は空文 `;` を許すため常に安全で、判定漏れが起きない)
+- 残課題: なし

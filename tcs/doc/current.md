@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 正しさレビュー backlog (T138-T163)
 
-### 完了済み (421テスト tcs / 15テスト analyzer / 477テスト lub3d)
+### 完了済み (425テスト tcs / 15テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -50,6 +50,7 @@
 **T166**: 整数ビット演算子 (`& | ^ ~ << >>` + 複合代入 → Lua 5.5 native、64bit 幅は明示マスク運用)
 **T167**: BCL allowlist 追加 (`Math.Round/Sign/Tan/Log/Exp`, `String.IsNullOrEmpty` — runtime + facade + allowlist 3点セット)
 **T168**: Dictionary の wire format 契約をテストで固定 (素の Lua table / metatable・bookkeeping なし / Count は pairs 走査)
+**T169**: `(` 開始文 (IIFE 文) に `;` を前置し、直前の callable 終端文との Lua 結合パースを分離
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
