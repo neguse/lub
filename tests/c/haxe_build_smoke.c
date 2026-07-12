@@ -218,20 +218,33 @@ int main(void) {
   buf[n] = '\0';
   fclose(fc);
 
-  // prelude marker
+  // prelude marker (HAXE_PRELUDE は Haxe 互換層のみ。namespace table は
+  // samples/lub_prelude.lua が boot 時に注入するので出力には含まれない)
   if (!strstr(buf, "lua-utf8")) {
     SDL_Log("prelude marker 'lua-utf8' not found in output");
     return 1;
   }
-  // namespace shim marker
-  if (!strstr(buf, "lub.Gfx")) {
-    SDL_Log("namespace shim 'lub.Gfx' not found in output");
+  if (!strstr(buf, "bit32")) {
+    SDL_Log("prelude marker 'bit32' not found in output");
     return 1;
   }
   // postlude marker
   if (!strstr(buf, "return Main")) {
     SDL_Log("postlude 'return Main' not found in output");
     return 1;
+  }
+  // phys2d extern の公開面カバレッジは samples/lub_prelude.lua 側を検査する
+  // (namespace table の組み立てが HAXE_PRELUDE からそちらへ移ったため)。
+  char prelude_buf[65536];
+  {
+    FILE *fp = fopen("samples/lub_prelude.lua", "rb");
+    if (!fp) {
+      SDL_Log("samples/lub_prelude.lua not found (run from repo root)");
+      return 1;
+    }
+    size_t pn = fread(prelude_buf, 1, sizeof(prelude_buf) - 1, fp);
+    prelude_buf[pn] = '\0';
+    fclose(fp);
   }
   const char *required_phys2d_symbols[] = {
       "phys2d_world",
@@ -304,9 +317,14 @@ int main(void) {
   for (size_t i = 0;
        i < sizeof(required_phys2d_symbols) / sizeof(required_phys2d_symbols[0]);
        ++i) {
-    if (!strstr(buf, required_phys2d_symbols[i])) {
-      SDL_Log("phys2d extern marker '%s' not found in output",
-              required_phys2d_symbols[i]);
+    // prelude は P["phys2d_" .. n] の形で組むため、リストの引用付き
+    // サフィックス ("world" など) を検査する。
+    const char *suffix = required_phys2d_symbols[i] + strlen("phys2d_");
+    char quoted[128];
+    SDL_snprintf(quoted, sizeof(quoted), "\"%s\"", suffix);
+    if (!strstr(prelude_buf, quoted)) {
+      SDL_Log("phys2d extern marker %s not found in samples/lub_prelude.lua",
+              quoted);
       return 1;
     }
   }

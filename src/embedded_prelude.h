@@ -1,21 +1,21 @@
 #ifndef LUB_EMBEDDED_PRELUDE_H
 #define LUB_EMBEDDED_PRELUDE_H
 
-// Haxe -lua の出力に prepend する shim。
+// Haxe -lua の出力に prepend する shim。Haxe lua target 固有の互換層のみを
+// 持つ。lub API の namespace table (Gfx / Input / ...) は言語非依存の
+// samples/lub_prelude.lua が boot.lua 経由で注入する。
 // (1) lub runtime は Lua 5.5 (utf8 built-in) だが、Haxe lua target が
 //     require("lua-utf8") を出す前提なので alias を貼っておく。
-// (2) Haxe extern (lub.Lub / lub.Gfx / lub.Phys2d / lub.Input / lub.Sys) は
-//     class-qualified call (e.g. lub.Gfx.begin_pass) を emit するが、
-//     lub C 側は global function (begin_pass) として expose しているので、
-//     globals を namespace table に集約してギャップを埋める。
-//     lub.Io は @:luaRequire("lub_io") 経由で別経路なので shim 不要。
-// (3) Haxe lua target は Int の bitwise (^, &, |, <<, >>) を _hx_bit (= bit32)
+// (2) Haxe lua target は Int の bitwise (^, &, |, <<, >>) を _hx_bit (= bit32)
 //     経由で呼ぶ。Lua 5.5 は native bitwise operator を持つが bit32 module
 //     を持たないため、Lua 5.5 native bitwise op で bit32 互換 table を
 //     preload しておく。
-// (4) Haxe Math.atan2 / Math.pow は math.atan2 / math.pow を emit するが、
+// (3) Haxe Math.atan2 / Math.pow は math.atan2 / math.pow を emit するが、
 //     どちらも Lua 5.3+ で削除された (atan(y, x) と ^ 演算子に統合)。
 //     Lua 5.5 用に両方補完する。
+// NOTE: web/scripts/gen-haxe-assets.mjs は HAXE_PRELUDE の宣言以降にある
+//       C 文字列リテラル全部を prelude として抽出する。このファイルへ別の
+//       リテラルを足すときは宣言より前に置くこと。
 static const char HAXE_PRELUDE[] =
     "package.preload[\"lua-utf8\"] = function()\n"
     "  return {\n"
@@ -42,92 +42,6 @@ static const char HAXE_PRELUDE[] =
     "end\n"
     "if math.atan2 == nil then math.atan2 = function(y, x) return math.atan(y, "
     "x) end end\n"
-    "if math.pow == nil then math.pow = function(a, b) return a ^ b end end\n"
-    "lub = lub or {}\n"
-    "lub.Lub = { config = config, quit = quit }\n"
-    "lub.Gfx = {\n"
-    "  begin_pass = begin_pass, end_pass = end_pass,\n"
-    "  use_shader = use_shader, use_shader_compute = use_shader_compute,\n"
-    "  use_buffer = use_buffer, use_texture = use_texture,\n"
-    "  draw = draw, dispatch = dispatch, readback = readback,\n"
-    "  main_tex = main_tex, size = gfx_size,\n"
-    "  VERTEX = VERTEX, INDEX = INDEX, UNIFORM = UNIFORM, STORAGE = STORAGE,\n"
-    "  RGBA8 = RGBA8, R8 = R8, RG8 = RG8,\n"
-    "  R16F = R16F, RG16F = RG16F, R32F = R32F,\n"
-    "  RGBA16F = RGBA16F, RGBA32F = RGBA32F,\n"
-    "  DEPTH16 = DEPTH16, DEPTH24_STENCIL8 = DEPTH24_STENCIL8, DEPTH32F = "
-    "DEPTH32F,\n"
-    "  CLEAR = CLEAR, LOAD = LOAD, DONTCARE = DONTCARE, STORE = STORE,\n"
-    "  NONE = NONE, ALPHA = ALPHA, ADDITIVE = ADDITIVE, MULTIPLY = MULTIPLY,\n"
-    "  BACK = BACK, FRONT = FRONT,\n"
-    "  TRIANGLES = TRIANGLES, TRIANGLE_STRIP = TRIANGLE_STRIP,\n"
-    "  LINES = LINES, LINE_STRIP = LINE_STRIP, POINTS = POINTS,\n"
-    "  LINEAR = LINEAR, NEAREST = NEAREST, REPEAT = REPEAT, CLAMP = CLAMP,\n"
-    "}\n"
-    "do local P={}\n"
-    "for _,n in "
-    "ipairs({'world','begin','world_info','body','box','circle','capsule',"
-    "'segment','polygon','chain','chain_segments',"
-    "'joint','joint_info','joint_force','joint_torque','joint_angle',"
-    "'joint_translation','joint_speed','joint_length','joint_motor_force',"
-    "'joint_motor_torque','joint_set_motor','joint_set_limit',"
-    "'joint_set_spring','joint_set_target','step','pose','velocity','mass',"
-    "'center','world_point','local_point','velocity_at','body_shapes',"
-    "'body_joints','body_contacts','shape_test_point','shape_raycast',"
-    "'shape_closest_point','shape_aabb','shape_info','shape_set_material',"
-    "'shape_set_filter','shape_set_events','contacts','body_events','sensors',"
-    "'raycast','overlap_aabb','shape_cast','cast_mover','collide_mover',"
-    "'explode','debug','profile','counters','add_force','add_force_center',"
-    "'add_impulse','add_impulse_center','add_torque','add_angular_impulse',"
-    "'set_velocity','teleport','set_target','set_mass_data'}) do "
-    "P['phys2d_'..n]=_G['phys2d_'..n] "
-    "end\n"
-    "P.STATIC=STATIC;P.KINEMATIC=KINEMATIC;P.DYNAMIC=DYNAMIC;lub.Phys2d=P end\n"
-    "do local P={}\n"
-    "for _,n in ipairs({'world','begin','world_info','body','sphere','box',"
-    "'capsule','cylinder','cone','hull','mesh','height_field','compound',"
-    "'joint','joint_info','joint_force','joint_torque','joint_angle',"
-    "'joint_translation','joint_speed','joint_length','joint_motor_force',"
-    "'joint_motor_torque','joint_set_motor','joint_set_limit',"
-    "'joint_set_spring','joint_set_target','step','pose','velocity','mass',"
-    "'center','world_point','local_point','velocity_at','body_shapes',"
-    "'body_joints','body_contacts','shape_raycast','shape_closest_point',"
-    "'shape_aabb','shape_info','shape_set_material','shape_set_filter',"
-    "'shape_set_events','contacts','body_events','sensors','joint_events',"
-    "'raycast','overlap_aabb','overlap_shape','shape_cast','cast_mover',"
-    "'collide_mover','profile','counters','add_force','add_force_center',"
-    "'add_impulse','add_impulse_center','add_torque','add_angular_impulse',"
-    "'set_velocity','teleport','set_target'}) do "
-    "P['phys3d_'..n]=_G['phys3d_'..n] "
-    "end\n"
-    "P.STATIC=STATIC;P.KINEMATIC=KINEMATIC;P.DYNAMIC=DYNAMIC;lub.Phys3d=P end\n"
-    "lub.Input = { key_down = key_down, key_pressed = key_pressed,\n"
-    "  key_released = key_released, mouse_delta = mouse_delta,\n"
-    "  mouse_down = mouse_down, mouse_pressed = mouse_pressed,\n"
-    "  mouse_released = mouse_released, mouse_pos = mouse_pos }\n"
-    "lub.Profiler = { enabled = profile_enabled,\n"
-    "  begin_scope = profile_begin, end_scope = profile_end,\n"
-    "  reset = profile_reset, report = profile_report }\n"
-    "lub.Mesh = { surface_nets = surface_nets, sdf_mesh = sdf_mesh }\n"
-    "lub.Font = { font_metrics = font_metrics, font_glyph = font_glyph,\n"
-    "  font_glyph_mesh = font_glyph_mesh, font_kern = font_kern }\n"
-    "lub.Ui = { ui_render = ui_render, ui_begin = ui_begin, ui_end = ui_end,\n"
-    "  ui_text = ui_text, ui_button = ui_button, ui_checkbox = ui_checkbox,\n"
-    "  ui_slider_float = ui_slider_float, ui_slider_int = ui_slider_int,\n"
-    "  ui_drag_float = ui_drag_float, ui_color_edit3 = ui_color_edit3,\n"
-    "  ui_separator = ui_separator, ui_same_line = ui_same_line,\n"
-    "  ui_tree_node = ui_tree_node, ui_tree_pop = ui_tree_pop,\n"
-    "  ui_set_next_window = ui_set_next_window,\n"
-    "  ui_want_capture_mouse = ui_want_capture_mouse }\n"
-    "lub.Host = { host_available = host_available, host_send = host_send,\n"
-    "  host_poll = host_poll }\n"
-    "lub.Audio = { audio_pcm = audio_pcm, audio_decode = audio_decode,\n"
-    "  audio_play = audio_play, audio_voice = audio_voice,\n"
-    "  audio_free = audio_free, audio_master_volume = audio_master_volume,\n"
-    "  audio_info = audio_info }\n"
-    "lub.Sys = { file_mtime = file_mtime, request_file = request_file,\n"
-    "  is_web = is_web,\n"
-    "  fnv1a64 = fnv1a64,\n"
-    "  actual_fps = actual_fps }\n";
+    "if math.pow == nil then math.pow = function(a, b) return a ^ b end end\n";
 
 #endif

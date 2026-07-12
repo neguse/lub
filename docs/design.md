@@ -66,6 +66,18 @@ core が所有しないもの:
 同じ処理が複数箇所で必要になっても、それだけでは core に入れない。
 runtime invariant、resource lifetime、backend abstraction、hot reload、diagnostics のどれかを runtime が守る必要がある場合だけ core API として扱う。
 
+### Script API 面
+
+- C runtime が expose する flat global (`begin_pass`, `phys2d_*`, ...) は wire ABI
+  であり、公式 API 面ではない。
+- 公式面は namespace table (`Gfx` / `Input` / `Phys2d` / ...)。
+  `samples/lub_prelude.lua` が flat global から組み立て、boot.lua が entry
+  require の前に注入する。全 authoring 言語 (raw Lua / Haxe / TinyC#) が
+  同じ面を見る。
+- `lub.Gfx` 等の `lub.*` は Haxe extern の emit 形のための alias で、実体は
+  同一 table。Haxe 固有の互換層 (lua-utf8 / bit32 / math.atan2) だけが
+  HAXE_PRELUDE (`src/embedded_prelude.h`) に残る。
+
 API の細かいシグネチャや binding の制約は、この文書ではなく実装側に置く。
 現時点の一次情報は `src/lua_api.c` と `src/enums_lua.c`。
 
