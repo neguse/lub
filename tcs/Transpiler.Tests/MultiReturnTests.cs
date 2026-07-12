@@ -116,4 +116,74 @@ public class MultiReturnTests
 
         Assert.Equal("7", output);
     }
+
+    // out/ref multi-return は --ref 型メソッド専用。ユーザー定義メソッドの
+    // out/ref パラメータは値渡しのままの silent wrong-code になるため、
+    // TCS1001 で診断する。
+    [Fact]
+    public void UserMethodOutParameter_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class Parser
+            {
+                public static bool TryParse(string text, out int value)
+                {
+                    value = 42;
+                    return true;
+                }
+
+                public static int Run()
+                {
+                    Parser.TryParse("42", out var value);
+                    return value;
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains("OutParameter"));
+    }
+
+    [Fact]
+    public void UserMethodRefParameter_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class Counter
+            {
+                public static void Bump(ref int value)
+                {
+                    value = value + 1;
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains("RefParameter"));
+    }
+
+    [Fact]
+    public void RefStubOutParameter_DoesNotWarn()
+    {
+        var source = """
+            public static class Game
+            {
+                public static int Run()
+                {
+                    Io.load_text("x", out _, out var version, out _);
+                    return version;
+                }
+            }
+            """;
+
+        var result = Transpiler.TranspileWithDiagnostics([source], null,
+            [IoStub], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings, w =>
+            w.Contains("OutParameter") || w.Contains("RefParameter"));
+    }
 }

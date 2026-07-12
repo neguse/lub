@@ -690,3 +690,13 @@
 - よかったこと: 出力経路が AppendLine に集約されていたため、1箇所の前置で全 statement emit 経路 (member/statement/lambda block) を一貫して直せた
 - 判断: 「前の文が callable 終端かどうか」の文脈判定はせず、無条件に `;` を前置した (Lua 5.5 は空文 `;` を許すため常に安全で、判定漏れが起きない)
 - 残課題: なし
+
+### T170: ユーザー定義メソッドの out/ref パラメータを診断化 ✓ (2026-07-13)
+- out 多値戻りは --ref 型メソッド専用だが、ユーザー定義メソッドに out/ref を書いても check が素通りし、値渡しのままの silent wrong-code な Lua になっていた (out 代入が呼び出し元へ返らない)
+- Shared/TinyCsComplianceFacts.cs の `TryGetUnsupportedSyntax` に `ParameterSyntax` の out/ref modifier 判定を追加し、TCS1001 (`OutParameter` / `RefParameter`) として analyzer / `tcs check` / transpiler warning の三面一致で診断するようにした (`UnsupportedSyntaxKinds` に `SyntaxKind.Parameter` を追加)
+- `--ref` source の宣言は check/transpiler では解析対象外 (refTrees を Analyze しない) ため、host stub の out multi-return は従来どおり無警告で使える。Rider (analyzer) では stub ファイル自体に警告が出るため、stub 側は `.editorconfig` の per-file severity 抑制か auto-generated マーカーで抑止する運用
+- テスト4件 (MultiReturnTests: out 宣言 TCS1001 / ref 宣言 TCS1001 / --ref stub 宣言は無警告、analyzer: out+ref で2件)
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, MultiReturnTests.cs, TinyCsComplianceAnalyzerTests.cs, doc (support-matrix/current/done)
+- よかったこと: 宣言サイト (ParameterSyntax) だけで判定できたため、--ref 判定を持たない analyzer 面と意味がずれない
+- 判断: 呼び出しサイトでなく宣言サイトで診断した (--ref 概念のない analyzer と三面一致にでき、check 面は refTrees 非解析で stub を自然に除外できる)。`in` / `ref readonly` は値意味論の差が小さくスコープ外 (`ref readonly` は ref token を含むため RefParameter に含まれる)
+- 残課題: emitter は警告付きで従来の値渡し Lua を出す (check exit 1 が契約)。完全シグネチャ単位の API 診断は T138

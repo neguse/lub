@@ -424,6 +424,36 @@ public class TinyCsComplianceAnalyzerTests
             d => d.GetMessage().Contains("ConversionOperatorDeclaration"));
     }
 
+    [Fact]
+    public async Task OutRefParameters_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Parser
+            {
+                public static bool TryParse(string text, out int value)
+                {
+                    value = 0;
+                    return false;
+                }
+
+                public static void Bump(ref int value)
+                {
+                    value = value + 1;
+                }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(2, syntaxDiagnostics.Length);
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("OutParameter"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("RefParameter"));
+    }
+
     private static async Task<IReadOnlyList<Diagnostic>> AnalyzeAsync(
         string source,
         IDictionary<string, ReportDiagnostic>? specificDiagnosticOptions = null)

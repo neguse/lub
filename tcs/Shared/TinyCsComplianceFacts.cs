@@ -31,6 +31,7 @@ public static class TinyCsComplianceFacts
         SyntaxKind.SlicePattern,
         SyntaxKind.OperatorDeclaration,
         SyntaxKind.ConversionOperatorDeclaration,
+        SyntaxKind.Parameter,
     ];
 
     public static readonly SyntaxKind[] CollectionNullSyntaxKinds =
@@ -174,6 +175,16 @@ public static class TinyCsComplianceFacts
                 when !TryGetOperatorMetamethod(op, out _)
                     => $"OperatorDeclaration({op.OperatorToken.Text})",
             ConversionOperatorDeclarationSyntax => "ConversionOperatorDeclaration",
+            // out/ref multi-return is only supported on --ref host method
+            // declarations (which are never emitted). A user-defined method
+            // with out/ref parameters transpiles to plain value passing, so
+            // reject the declaration instead of emitting silent wrong code.
+            ParameterSyntax param
+                when param.Modifiers.Any(SyntaxKind.OutKeyword)
+                    => "OutParameter",
+            ParameterSyntax param
+                when param.Modifiers.Any(SyntaxKind.RefKeyword)
+                    => "RefParameter",
             _ => "",
         };
 
