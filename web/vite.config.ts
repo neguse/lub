@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import { readFileSync, existsSync, cpSync, mkdirSync } from "node:fs";
-import { resolve, extname, sep } from "node:path";
+import { resolve, extname, sep, basename } from "node:path";
 
 export default defineConfig({
   publicDir: "public",
@@ -74,8 +74,17 @@ export default defineConfig({
         serveDir("/wasm", resolve(__dirname, "../build/wasm"));
       },
       closeBundle() {
-        cpSync("../samples", "dist/samples", { recursive: true });
-        cpSync("../cs-lib", "dist/cs-lib", { recursive: true });
+        // dotnet build (bin/obj) と生成 Lua (.lub) は配信物に含めない
+        const skip = new Set(["bin", "obj", ".lub"]);
+        const noArtifacts = (src: string) => !skip.has(basename(src));
+        cpSync("../samples", "dist/samples", {
+          recursive: true,
+          filter: noArtifacts,
+        });
+        cpSync("../cs-lib", "dist/cs-lib", {
+          recursive: true,
+          filter: noArtifacts,
+        });
         if (existsSync("tcs-wasm-assets"))
           cpSync("tcs-wasm-assets", "dist/tcs-wasm", { recursive: true });
         mkdirSync("dist/wasm", { recursive: true });
