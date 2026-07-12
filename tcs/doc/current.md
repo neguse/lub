@@ -1,6 +1,6 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / 正しさレビュー backlog (T138-T163)
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / 正しさレビュー backlog (T138-T163)
 
 ### 完了済み (380テスト tcs / 13テスト analyzer / 477テスト lub3d)
 

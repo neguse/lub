@@ -15,7 +15,17 @@ public class TranspileResult
 
 public static class Transpiler
 {
-    private static readonly MetadataReference[] DefaultReferences = GetDefaultReferences();
+    private static MetadataReference[]? _references;
+
+    // 参照アセンブリの注入口。browser-wasm など Assembly.Location が空で
+    // runtime pack をファイルとして読めない host は、byte image
+    // (MetadataReference.CreateFromStream) で構築した参照をここへ設定する。
+    // 未設定なら runtime pack から遅延構築する。
+    public static MetadataReference[] References
+    {
+        get => _references ??= GetDefaultReferences();
+        set => _references = value;
+    }
 
     private static MetadataReference[] GetDefaultReferences()
     {
@@ -53,12 +63,16 @@ public static class Transpiler
             CSharpSyntaxTree.ParseText(s)).ToArray() ?? [];
         var allTrees = trees.Concat(refTrees).ToArray();
         var hasTopLevelStatements = allTrees.Any(HasTopLevelStatements);
+        // concurrentBuild: false — Roslyn の並列解析はシングルスレッド WASM で
+        // Monitor.Wait 不可により実行時クラッシュする。tcs の入力サイズでは
+        // 性能影響なし。
         var compilation = CSharpCompilation.Create("TinyCs",
             allTrees,
-            DefaultReferences,
+            References,
             new CSharpCompilationOptions(hasTopLevelStatements
-                ? OutputKind.ConsoleApplication
-                : OutputKind.DynamicallyLinkedLibrary));
+                    ? OutputKind.ConsoleApplication
+                    : OutputKind.DynamicallyLinkedLibrary,
+                concurrentBuild: false));
 
         var errors = new List<string>();
         var warnings = new List<string>();

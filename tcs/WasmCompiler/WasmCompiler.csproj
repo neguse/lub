@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <!-- JSExport の source generator が unsafe を要求する -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ICU データを落として配信サイズを削る (コンパイラ用途に文化情報は不要) -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Roslyn の localized 診断リソースは配信サイズに響くので英語のみ -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- worker から安定 URL で import するため fingerprint を無効化する
+         (lub 側 gen-tcs-assets.mjs がコピー先で cache bust を担う) -->
+    <WasmFingerprintAssets>false</WasmFingerprintAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Transpiler は Exe プロジェクトのため ProjectReference 不可 (NETSDK1150)。
+         core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
+    <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
+    <Compile Include="../Shared/TinyCsComplianceFacts.cs" />
+    <ProjectReference Include="../TinySystem/TinySystem.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- browser では Assembly.Location でファイルを読めないため、Roslyn へ渡す
+         参照アセンブリを byte image として埋め込み、Transpiler.References へ
+         注入する。ref pack の version ディレクトリは glob で解決する
+         (複数版が同居する環境では最初にマッチした版が使われる)。 -->
+    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Runtime.dll" LogicalName="refs/System.Runtime.dll" />
+    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Collections.dll" LogicalName="refs/System.Collections.dll" />
+    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Linq.dll" LogicalName="refs/System.Linq.dll" />
+    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Console.dll" LogicalName="refs/System.Console.dll" />
+    <!-- TinySystem は ProjectReference が先にビルドするので出力 DLL を埋め込める -->
+    <EmbeddedResource Include="../TinySystem/bin/$(Configuration)/net10.0/TinySystem.dll" LogicalName="refs/TinySystem.dll" />
+    <EmbeddedResource Include="../runtime/tinysystem.lua" LogicalName="runtime/tinysystem.lua" />
+  </ItemGroup>
+</Project>

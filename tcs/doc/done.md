@@ -622,3 +622,13 @@
 - よかったこと: shared factsをemitter入口でも使い、診断の正本とwrong-code防止gateを同じ判定にできた。通常CLI出力も実Luaで実行し、lock bodyが消えないことを確認した
 - 判断: partialは安全にmergeできる基盤がないため全宣言をemitしない。lockはシングルスレッドbackendに合わせて同期を省略するが、TCS1001で明示し、bodyの副作用とscopeは保持するfallbackにした。analyzer-demo fixtureの期待件数は変えず、専用parity testを恒常dotnet/run-tests gateへ載せた
 - 残課題: T162 → T138 → T163 (診断契約)
+
+### T164: browser-wasm compiler bundle (WasmCompiler) ✓ (2026-07-12)
+- spike (doc/wasm-playground-spike.md) の変更を本実装として再適用: Transpiler.References 注入口 (byte image 参照) と concurrentBuild:false。ReferenceInjectionTests で契約を固定
+- WasmCompiler/ プロジェクト新設 (Microsoft.NET.Sdk.WebAssembly)。Transpiler core ソース直取り込み + TinySystem ProjectReference + ref pack 4 DLL / TinySystem.dll / runtime/tinysystem.lua を EmbeddedResource 化し、JSExport CompilerExports.Compile(requestJson) で公開。JSON は source-generated JsonSerializerContext (wasm は reflection serializer 無効)
+- WasmFingerprintAssets=false で安定 URL 配信、InvariantGlobalization + SatelliteResourceLanguages=en で _framework 13MB / gzip 約4.6MB
+- 検証: dotnet test 全緑 (381+13)、publish 出力を http 配信し headless chromium で Compile → `return Hello` を確認 (smoke PASS)
+- 変更ファイル: Transpiler/Transpiler.cs, Transpiler.Tests/ReferenceInjectionTests.cs, WasmCompiler/*
+- よかったこと: spike の再適用手順が書いてあったため本実装が一直線だった
+- 判断: WasmCompiler は tcs.slnx に入れない (CI に wasm-tools workload を要求しないため)。ビルドは `dotnet publish WasmCompiler -c Release` を消費側 (lub) が明示的に叩く。TinySystem は DLL 埋め込み (ProjectReference が先にビルドする順序保証を利用)
+- 残課題: なし (lub playground 側の worker 統合は lub リポジトリの作業)
