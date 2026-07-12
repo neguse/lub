@@ -185,10 +185,24 @@ public partial class LuaEmitter
             SyntaxKind.LogicalAndExpression => "and",
             SyntaxKind.LogicalOrExpression => "or",
             SyntaxKind.CoalesceExpression => "or",
+            // Integer bitwise operators map to Lua 5.5 natives. C# `^` is
+            // Lua binary `~` (Lua `^` is exponentiation). bool `& | ^` stay
+            // unsupported: Lua natives reject booleans and and/or would
+            // change C#'s non-short-circuit evaluation.
+            SyntaxKind.BitwiseAndExpression when !HasBoolOperand(model, bin) => "&",
+            SyntaxKind.BitwiseOrExpression when !HasBoolOperand(model, bin) => "|",
+            SyntaxKind.ExclusiveOrExpression when !HasBoolOperand(model, bin) => "~",
+            SyntaxKind.LeftShiftExpression => "<<",
+            SyntaxKind.RightShiftExpression => ">>",
             _ => WarnUnsupported(bin, $"binary expression: {bin.Kind()}")
         };
         return $"{left} {op} {right}";
     }
+
+    private static bool HasBoolOperand(SemanticModel model,
+        BinaryExpressionSyntax bin) =>
+        model.GetTypeInfo(bin.Left).Type?.SpecialType == SpecialType.System_Boolean
+        || model.GetTypeInfo(bin.Right).Type?.SpecialType == SpecialType.System_Boolean;
 
     private string VisitPrefixUnary(SemanticModel model, PrefixUnaryExpressionSyntax prefix)
     {
@@ -197,6 +211,7 @@ public partial class LuaEmitter
         {
             SyntaxKind.UnaryMinusExpression => $"-{operand}",
             SyntaxKind.LogicalNotExpression => $"not {operand}",
+            SyntaxKind.BitwiseNotExpression => $"~{operand}",
             SyntaxKind.PreIncrementExpression => $"({operand} + 1)",
             SyntaxKind.PreDecrementExpression => $"({operand} - 1)",
             _ => WarnUnsupported(prefix, $"unary expression: {prefix.Kind()}")
@@ -531,11 +546,23 @@ public partial class LuaEmitter
             SyntaxKind.MultiplyAssignmentExpression => $"{left} = {left} * {right}",
             SyntaxKind.DivideAssignmentExpression => $"{left} = {left} / {right}",
             SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
+            SyntaxKind.AndAssignmentExpression when !IsBoolTarget(model, assign) =>
+                $"{left} = {left} & {right}",
+            SyntaxKind.OrAssignmentExpression when !IsBoolTarget(model, assign) =>
+                $"{left} = {left} | {right}",
+            SyntaxKind.ExclusiveOrAssignmentExpression when !IsBoolTarget(model, assign) =>
+                $"{left} = {left} ~ {right}",
+            SyntaxKind.LeftShiftAssignmentExpression => $"{left} = {left} << {right}",
+            SyntaxKind.RightShiftAssignmentExpression => $"{left} = {left} >> {right}",
             SyntaxKind.CoalesceAssignmentExpression =>
                 $"(function() if {left} == nil then {left} = {right} end return {left} end)()",
             _ => WarnUnsupported(assign, $"assignment expression: {assign.Kind()}")
         };
     }
+
+    private static bool IsBoolTarget(SemanticModel model,
+        AssignmentExpressionSyntax assign) =>
+        model.GetTypeInfo(assign.Left).Type?.SpecialType == SpecialType.System_Boolean;
 
     private string VisitObjectCreation(SemanticModel model,
         ObjectCreationExpressionSyntax creation)

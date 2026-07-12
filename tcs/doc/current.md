@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 正しさレビュー backlog (T138-T163)
 
-### 完了済み (395テスト tcs / 15テスト analyzer / 477テスト lub3d)
+### 完了済み (407テスト tcs / 15テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -47,6 +47,7 @@
 **T121**: 外部エンジン連携サンプルを engine agnostic な `--ref` 例へ置換
 **T122**: Rider リアルタイム警告向け Roslyn Analyzer PoC (`tcs check` / 共有診断化 / core API allowlist / CI / nupkg consumer / InspectCode headless / Rider 実機確認 go)
 **T165**: ユーザー定義演算子オーバーロード (binary `+ - * / %` / unary `-` → Lua metamethod)
+**T166**: 整数ビット演算子 (`& | ^ ~ << >>` + 複合代入 → Lua 5.5 native、64bit 幅は明示マスク運用)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -114,6 +115,8 @@
 | base.Method() | Base.Method(self, ...) |
 | $"{val:F2}" | string.format("%.2f", val) |
 | operator + - * / % (二項) / - (単項) | __add/__sub/__mul/__div/__mod/__unm metamethod。複数 overload は実行時型分岐 |
+| & \| ^ ~ << >> (整数/enum) | Lua native & \| ~ ~ << >> (C# ^ → 二項 ~)。64bit 幅、bool operand は未対応 |
+| &= \|= ^= <<= >>= | 展開 x = x op y |
 
 ### TinySystem ランタイム (runtime/tinysystem.lua)
 - List: new, Add, Remove, Count, Contains, IndexOf, Sort

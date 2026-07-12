@@ -651,3 +651,14 @@
 - よかったこと: metamethod 対応表を共有 facts (`TryGetOperatorMetamethod`) に置いたことで、emitter の supported 判定と診断の supported 判定が同一ソースになった
 - 判断: オーナー決定により従来 Out だった演算子オーバーロードを Core へ方針変更 (lub の Vec2/Vec3/Vec4/Quat/Mat4 移植に必要な算術セットのみ)。`==`/`!=` は record `__eq` と意味論が競合するためスコープ外を維持。dispatch 条件を作れない引数型 (interface / object 等) は `true` 扱いで宣言順 fallback (C# コンパイル時に overload 解決済みのため実行時の誤 dispatch は型エラー相当のみ)
 - 残課題: operator `==`/`!=` の class 対応は必要になったら別タスク。metamethod は継承されない (metatable 直付け) 点は現行の浅い継承方針では未対応のまま
+
+### T166: 整数ビット演算子 ✓ (2026-07-13)
+- 二項 `& | ^ << >>` と単項 `~` を Lua 5.5 native 演算子 (`& | ~ << >>` / 単項 `~`) へ写像した。C# の `^` は Lua の二項 `~` になる (Lua の `^` は冪乗)
+- 複合代入 `&= |= ^= <<= >>=` を既存の展開形 (`x = x op y`) に追加した
+- 対象は整数と enum。bool operand の `& | ^` / `&= |= ^=` は TCS1001 未対応警告に留めた (Lua native は boolean を拒否し、and/or 写像は非短絡の C# 意味論を黙って変えるため)
+- C# int 32bit と Lua 整数 64bit の幅意味論差 (`~` の上位 bit、負数 `>>` の算術/論理シフト差、シフト量マスク) は support-matrix に明記し、移植側の明示マスク運用とした
+- セマンティックテスト12件 (BitwiseOperatorTests: 各演算子、C# 一致の優先順位2件、複合代入、flags enum、mask 条件、bool 診断)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, BitwiseOperatorTests.cs, support-matrix/current/done
+- よかったこと: C# と Lua 5.5 でビット演算子の相対優先順位 (shift > & > ^ > |、加算 > shift) が一致しているため、構文木からの素直な再出力で括弧補正が不要だった
+- 判断: `>>>` (C# 11 unsigned shift) は 64bit 幅では意味がさらにずれるため未対応のまま。負数 `>>` の意味論補正 (floor div 展開) は行わず、幅差と同じく明示マスク運用に含めた
+- 残課題: 32bit wrap 演算が lub 移植で頻出するようであれば、`Bit32` 系 runtime helper の追加を別タスクで検討
