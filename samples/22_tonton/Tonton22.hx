@@ -6,14 +6,16 @@ import lub.Math.Mat4;
 import lub.Math.Quat;
 import lub.Math.Vec3;
 import lub.Math.Vec4;
-import lub.Mesh;
 import lub.Phys3d;
+import lubx.Bones;
 import lubx.Boot;
 import lubx.Color;
+import lubx.Mesh3d;
 import lubx.MeshText;
+import lubx.Renderer3d;
 import lubx.Sdf;
 import lubx.Sfx;
-import lua.Table;
+import lubx.Shapes3d;
 
 private typedef Rikishi = {
 	var gen:Int; // 再宣言 (respawn) 用 version
@@ -163,15 +165,16 @@ class Tonton22 {
 	static var markerT = 0;
 	static var shake = 0.0;
 
-	// --- procedural meshes (pos + normal interleaved) ------------------------
-	static var cubeVerts:Table<Int, Float> = null;
-	static var cubeIndices:Table<Int, Int> = null;
-	static var cylVerts:Table<Int, Float> = null;
-	static var cylIndices:Table<Int, Int> = null;
-	static var cylIndexCount = 0;
-	static var sphVerts:Table<Int, Float> = null;
-	static var sphIndices:Table<Int, Int> = null;
-	static var sphIndexCount = 0;
+	// --- procedural meshes (Shapes3d) ----------------------------------------
+	static var cubeMesh = new Mesh3d("tt_cube");
+	static var cylMesh = new Mesh3d("tt_cyl");
+	static var sphMesh = new Mesh3d("tt_sph");
+
+	static function buildPrims() {
+		cubeMesh.rebuild(Shapes3d.cube());
+		cylMesh.rebuild(Shapes3d.cylinder(28));
+		sphMesh.rebuild(Shapes3d.sphere(12, 18));
+	}
 
 	public static function main() {}
 
@@ -179,109 +182,11 @@ class Tonton22 {
 		Boot.config({width: W, height: H});
 	}
 
-	static function buildCube() {
-		var verts:Array<Float> = [];
-		var indices:Array<Int> = [];
-		var faces = [
-			{n: [1.0, 0.0, 0.0], u: [0.0, 1.0, 0.0], v: [0.0, 0.0, 1.0]},
-			{n: [-1.0, 0.0, 0.0], u: [0.0, 0.0, 1.0], v: [0.0, 1.0, 0.0]},
-			{n: [0.0, 1.0, 0.0], u: [0.0, 0.0, 1.0], v: [1.0, 0.0, 0.0]},
-			{n: [0.0, -1.0, 0.0], u: [1.0, 0.0, 0.0], v: [0.0, 0.0, 1.0]},
-			{n: [0.0, 0.0, 1.0], u: [1.0, 0.0, 0.0], v: [0.0, 1.0, 0.0]},
-			{n: [0.0, 0.0, -1.0], u: [0.0, 1.0, 0.0], v: [1.0, 0.0, 0.0]},
-		];
-		for (f in faces) {
-			var base = Std.int(verts.length / 6);
-			for (i in 0...4) {
-				var su = (i == 1 || i == 2) ? 1.0 : -1.0;
-				var sv = (i >= 2) ? 1.0 : -1.0;
-				for (k in 0...3)
-					verts.push(f.n[k] + f.u[k] * su + f.v[k] * sv);
-				for (k in 0...3)
-					verts.push(f.n[k]);
-			}
-			for (idx in [0, 1, 2, 0, 2, 3])
-				indices.push(base + idx);
-		}
-		cubeVerts = Table.fromArray(verts);
-		cubeIndices = Table.fromArray(indices);
-	}
-
-	static function buildCylinder(sides:Int) {
-		var verts:Array<Float> = [];
-		var indices:Array<Int> = [];
-		for (i in 0...sides) {
-			var a = i / sides * Math.PI * 2.0;
-			var nx = Math.cos(a);
-			var nz = Math.sin(a);
-			verts = verts.concat([nx, -0.5, nz, nx, 0.0, nz]);
-			verts = verts.concat([nx, 0.5, nz, nx, 0.0, nz]);
-		}
-		for (i in 0...sides) {
-			var b0 = i * 2;
-			var b1 = ((i + 1) % sides) * 2;
-			for (idx in [b0, b0 + 1, b1 + 1, b0, b1 + 1, b1])
-				indices.push(idx);
-		}
-		for (side in 0...2) {
-			var ny = side == 0 ? 1.0 : -1.0;
-			var y = ny * 0.5;
-			var center = Std.int(verts.length / 6);
-			verts = verts.concat([0.0, y, 0.0, 0.0, ny, 0.0]);
-			for (i in 0...sides) {
-				var a = i / sides * Math.PI * 2.0;
-				verts = verts.concat([Math.cos(a), y, Math.sin(a), 0.0, ny, 0.0]);
-			}
-			for (i in 0...sides) {
-				var r0 = center + 1 + i;
-				var r1 = center + 1 + ((i + 1) % sides);
-				if (ny > 0) {
-					for (idx in [center, r0, r1])
-						indices.push(idx);
-				} else {
-					for (idx in [center, r1, r0])
-						indices.push(idx);
-				}
-			}
-		}
-		cylVerts = Table.fromArray(verts);
-		cylIndices = Table.fromArray(indices);
-		cylIndexCount = indices.length;
-	}
-
-	static function buildSphere(stacks:Int, slices:Int) {
-		var verts:Array<Float> = [];
-		var indices:Array<Int> = [];
-		for (st in 0...stacks + 1) {
-			var phi = st / stacks * Math.PI;
-			var y = Math.cos(phi);
-			var r = Math.sin(phi);
-			for (sl in 0...slices + 1) {
-				var th = sl / slices * Math.PI * 2.0;
-				var x = r * Math.cos(th);
-				var z = r * Math.sin(th);
-				verts = verts.concat([x, y, z, x, y, z]);
-			}
-		}
-		for (st in 0...stacks) {
-			for (sl in 0...slices) {
-				var a = st * (slices + 1) + sl;
-				var b = a + slices + 1;
-				for (idx in [a, b, a + 1, a + 1, b, b + 1])
-					indices.push(idx);
-			}
-		}
-		sphVerts = Table.fromArray(verts);
-		sphIndices = Table.fromArray(indices);
-		sphIndexCount = indices.length;
-	}
-
 	// --- SDF だるま力士 -------------------------------------------------------
 	// bone 付き SDF ツリーからメッシュ化。体色だけ違う 2 体分を焼く。
 	// モデルは -Z (相手の方) を向いて作る。feet が y=0。
 	static inline var SDF_N = 56;
-	static var darumaMesh:Array<MeshData> = [null, null];
-	static var darumaVer = 0;
+	static var darumaMesh = [new Mesh3d("tt_daruma0"), new Mesh3d("tt_daruma1")];
 	static var darumaDirty = true; // hot reload で true に戻り再メッシュされる
 
 	static function darumaModel(bodyRgb:Int):SdfNode {
@@ -302,51 +207,23 @@ class Tonton22 {
 		if (!darumaDirty)
 			return;
 		for (i in 0...fighters.length)
-			darumaMesh[i] = Sdf.mesh(darumaModel(fighters[i].bodyRgb), SDF_N);
-		darumaVer = Std.int(lua.Os.clock() * 1000);
+			darumaMesh[i].rebuild(Sdf.mesh(darumaModel(fighters[i].bodyRgb), SDF_N));
 		darumaDirty = false;
-	}
-
-	// pivot 回りの回転行列 (model 空間)。T(p) * R * T(-p)
-	static function boneMat(px:Float, py:Float, pz:Float, rot:Mat4):Mat4 {
-		return Mat4.translate(new Vec3(px, py, pz)).mul(rot.mul(Mat4.translate(new Vec3(-px, -py, -pz))));
 	}
 
 	// 手続きボーンアニメ。腕 = 戦術で構えが変わる + 転倒でバタバタ、
 	// 頭 = 押しの脈動でうなずく。物理 (傾き・跳ね) は model 行列側。
-	static function packBones(mi:Int, f:Rikishi, falling:Bool, pulse:Float):Table<Int, Float> {
-		var mesh = darumaMesh[mi];
-		var arr = new Array<Float>();
+	static function packBones(mi:Int, f:Rikishi, falling:Bool, pulse:Float):lua.Table<Int, Float> {
 		var t = frame * DT;
 		var armSwing = if (falling) Math.sin(t * 16.0 + mi * 2.1) * 0.9 else if (f.tactic == TA_HIKI || f.tactic == TA_INASHI) 0.7 else -0.55 * pulse
 			+ Math.sin(t * 2.3 + mi) * 0.08;
 		var nod = falling ? Math.sin(t * 12.0) * 0.25 : pulse * 0.16;
-		var count = 0;
-		if (mesh != null && mesh.bones != null) {
-			var i = 1;
-			while (true) {
-				var b:Dynamic = mesh.bones[i];
-				if (b == null)
-					break;
-				var m = switch ((b.name : String)) {
-					case "arm_l": boneMat(b.x, b.y, b.z, Mat4.rotateX(armSwing).mul(Mat4.rotateZ(falling ? Math.sin(t * 13.0) * 0.5 : 0.12 * pulse)));
-					case "arm_r": boneMat(b.x, b.y, b.z, Mat4.rotateX(armSwing).mul(Mat4.rotateZ(falling ? -Math.sin(t * 13.0) * 0.5 : -0.12 * pulse)));
-					case "head": boneMat(b.x, b.y, b.z, Mat4.rotateX(nod));
-					case _: new Mat4();
-				}
-				for (v in m.m)
-					arr.push(v);
-				count++;
-				i++;
-			}
-		}
-		while (count < 8) {
-			var id = new Mat4();
-			for (v in id.m)
-				arr.push(v);
-			count++;
-		}
-		return Table.fromArray(arr);
+		return Bones.pack(darumaMesh[mi].data, (name, x, y, z) -> switch (name) {
+			case "arm_l": Bones.pivotRot(x, y, z, Mat4.rotateX(armSwing).mul(Mat4.rotateZ(falling ? Math.sin(t * 13.0) * 0.5 : 0.12 * pulse)));
+			case "arm_r": Bones.pivotRot(x, y, z, Mat4.rotateX(armSwing).mul(Mat4.rotateZ(falling ? -Math.sin(t * 13.0) * 0.5 : -0.12 * pulse)));
+			case "head": Bones.pivotRot(x, y, z, Mat4.rotateX(nod));
+			case _: null;
+		});
 	}
 
 	// --- テキスト (かなサブセット TTF) ----------------------------------------
@@ -726,36 +603,11 @@ class Tonton22 {
 	}
 
 	// --- rendering -------------------------------------------------------------
-
-	static function poseMat(pose:Dynamic):Mat4 {
-		var rot = new Quat(pose.qx, pose.qy, pose.qz, pose.qw).toMat4();
-		return Mat4.translate(new Vec3(pose.x, pose.y, pose.z)) * rot;
-	}
-
-	static function drawMesh(indexCount:Int, vb:Dynamic, ib:Dynamic, shader:Dynamic, vp:Mat4, model:Mat4, color:Array<Float>) {
-		var mvp = vp * model;
-		Gfx.draw(indexCount, {
-			verts: vb,
-			indices: ib,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-				color: Table.fromArray(color),
-			},
-		}, {
-			shader: shader,
-			depth: true,
-			depth_write: true,
-			cull: Gfx.NONE
-		});
-	}
+	static var ren = new Renderer3d("tt22");
 
 	public static function onFrame() {
-		if (cylVerts == null) {
-			buildCube();
-			buildCylinder(28);
-			buildSphere(12, 18);
-		}
+		if (!cylMesh.ready())
+			buildPrims();
 
 		var size = Gfx.size();
 		var aspect = size.w / size.h;
@@ -765,9 +617,6 @@ class Tonton22 {
 			shake *= 0.85;
 		var eye = new Vec3(Math.sin(frame * 1.7) * 0.05 * shake, 3.6 + Math.sin(frame * 2.3) * 0.03 * shake, -5.4);
 		var lookAt = new Vec3(0.0, 0.4, 0.0);
-		var view = Mat4.lookAtLh(eye, lookAt, Vec3.up());
-		var proj = Mat4.perspectiveLh(fovDeg, aspect, 0.1, 50.0);
-		var vp = proj * view;
 
 		var world = declareWorld();
 		declareStatics(world);
@@ -801,102 +650,80 @@ class Tonton22 {
 		}
 
 		// --- draw ---
-		var vs = Io.loadText("samples/22_tonton/data/22_lit.vs.slang");
-		var fs = Io.loadText("samples/22_tonton/data/22_lit.fs.slang");
-		if (vs.text == null || fs.text == null)
-			return;
-		var shader = Gfx.useShader("tonton_lit", vs.text, fs.text, vs.version * 31 + fs.version);
-		var cubeVb = Gfx.useBuffer("tt_cube_vb", Gfx.VERTEX, cubeVerts, 1);
-		var cubeIb = Gfx.useBuffer("tt_cube_ib", Gfx.INDEX, cubeIndices, 1);
-		var cylVb = Gfx.useBuffer("tt_cyl_vb", Gfx.VERTEX, cylVerts, 1);
-		var cylIb = Gfx.useBuffer("tt_cyl_ib", Gfx.INDEX, cylIndices, 1);
-		var sphVb = Gfx.useBuffer("tt_sph_vb", Gfx.VERTEX, sphVerts, 1);
-		var sphIb = Gfx.useBuffer("tt_sph_ib", Gfx.INDEX, sphIndices, 1);
-
-		Gfx.beginPass({
-			target: Gfx.mainTex,
-			clear_color: Table.fromArray([0.05, 0.05, 0.08, 1.0])
+		// 屋外の明るい昼 (だるまの色がよく出るように空色強め)
+		ren.light.dir = new Vec3(-0.4, 1.0, -0.55);
+		ren.sky.top = Color.rgb(0.45, 0.52, 0.62);
+		ren.sky.bottom = Color.rgb(0.16, 0.14, 0.13);
+		ren.background = Color.rgb(0.05, 0.05, 0.08);
+		ren.shadow.center = new Vec3(0, 0.3, 0);
+		ren.shadow.extent = 3.5;
+		ren.begin({
+			eye: eye,
+			target: lookAt,
+			fov: fovDeg,
+			near: 0.1,
+			far: 50.0
 		});
 
 		// 地面と台座
-		drawMesh(36, cubeVb, cubeIb, shader, vp, Mat4.translate(new Vec3(0, -0.5, 0)) * Mat4.scale(new Vec3(8, 0.5, 8)), [0.10, 0.10, 0.13, 1.0]);
-		drawMesh(cylIndexCount, cylVb, cylIb, shader, vp, Mat4.translate(new Vec3(0, 0.15, 0)) * Mat4.scale(new Vec3(1.7, 0.3, 1.7)), [0.16, 0.15, 0.19, 1.0]);
+		ren.draw(cubeMesh, Mat4.translate(new Vec3(0, -0.5, 0)) * Mat4.scale(new Vec3(8, 0.5, 8)), {tint: Color.rgb(0.10, 0.10, 0.13)});
+		ren.draw(cylMesh, Mat4.translate(new Vec3(0, 0.15, 0)) * Mat4.scale(new Vec3(1.7, 0.3, 1.7)), {tint: Color.rgb(0.16, 0.15, 0.19)});
 
 		// 土俵 (懸架で傾く)。上面に俵の白リングと仕切り線を重ねる。
 		var dp = Phys3d.pose(dohyo);
 		if (dp != null) {
-			var dm = poseMat(dp);
-			drawMesh(cylIndexCount, cylVb, cylIb, shader, vp, dm * Mat4.scale(new Vec3(DOHYO_R, DOHYO_H, DOHYO_R)), [0.72, 0.55, 0.38, 1.0]);
+			var dm = Renderer3d.poseMat(dp);
+			ren.draw(cylMesh, dm * Mat4.scale(new Vec3(DOHYO_R, DOHYO_H, DOHYO_R)), {tint: Color.rgb(0.72, 0.55, 0.38)});
 			var topLocal = DOHYO_H * 0.5;
-			drawMesh(cylIndexCount, cylVb, cylIb, shader, vp,
-				dm * Mat4.translate(new Vec3(0, topLocal + 0.005, 0)) * Mat4.scale(new Vec3(DOHYO_R * 0.98, 0.01, DOHYO_R * 0.98)), [0.92, 0.88, 0.78, 1.0]);
-			drawMesh(cylIndexCount, cylVb, cylIb, shader, vp,
-				dm * Mat4.translate(new Vec3(0, topLocal + 0.015, 0)) * Mat4.scale(new Vec3(DOHYO_R * 0.86, 0.01, DOHYO_R * 0.86)), [0.72, 0.55, 0.38, 1.0]);
+			ren.draw(cylMesh, dm * Mat4.translate(new Vec3(0, topLocal + 0.005, 0)) * Mat4.scale(new Vec3(DOHYO_R * 0.98, 0.01, DOHYO_R * 0.98)),
+				{tint: Color.rgb(0.92, 0.88, 0.78)});
+			ren.draw(cylMesh, dm * Mat4.translate(new Vec3(0, topLocal + 0.015, 0)) * Mat4.scale(new Vec3(DOHYO_R * 0.86, 0.01, DOHYO_R * 0.86)),
+				{tint: Color.rgb(0.72, 0.55, 0.38)});
 			for (sx in [-0.22, 0.22])
-				drawMesh(36, cubeVb, cubeIb, shader, vp, dm * Mat4.translate(new Vec3(sx, topLocal + 0.025, 0)) * Mat4.scale(new Vec3(0.02, 0.004, 0.3)),
-					[0.92, 0.88, 0.78, 1.0]);
+				ren.draw(cubeMesh, dm * Mat4.translate(new Vec3(sx, topLocal + 0.025, 0)) * Mat4.scale(new Vec3(0.02, 0.004, 0.3)),
+					{tint: Color.rgb(0.92, 0.88, 0.78)});
 		}
 
 		// 力士: SDF だるま (skinning + 手続きボーンアニメ)。物理の pose に
 		// 相手への正対 yaw と着地スカッシュを重ねる。
 		ensureDaruma();
-		var dvs = Io.loadText("samples/22_tonton/data/22_daruma.vs.slang");
-		var dfs = Io.loadText("samples/22_tonton/data/22_daruma.fs.slang");
-		if (dvs.text != null && dfs.text != null) {
-			var dshader = Gfx.useShader("tonton_daruma", dvs.text, dfs.text, dvs.version * 31 + dfs.version);
-			for (i in 0...fighters.length) {
-				var f = fighters[i];
-				var mesh = darumaMesh[i];
-				var pose = Phys3d.pose(bodies[i]);
-				if (pose == null || mesh == null)
-					continue;
-				// 着地スカッシュ: 落下からの接地 (vy の跳ね) を検出
-				if (f.prevVy < -1.2 && pose.vy > f.prevVy + 0.8)
-					f.squashT = 8;
-				f.prevVy = pose.vy;
-				if (f.squashT > 0)
-					f.squashT--;
-				var sq = f.squashT / 8.0 * 0.22;
-				var op = Phys3d.pose(bodies[1 - i]);
-				var fx = op != null ? op.x - pose.x : -pose.x;
-				var fz = op != null ? op.z - pose.z : -pose.z;
-				var yaw = Math.atan2(fx, fz); // model の -Z を相手へ向ける
-				var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
-				var upv:Vec3 = q * Vec3.up();
-				var falling = upv.y < 0.6;
-				var pulse = f.tactic == TA_OSU ? Math.max(0.0, Math.sin(frame * DT * f.pulseHz * 2.0 * Math.PI + f.phase)) : 0.0;
-				var model = poseMat(pose) * Mat4.rotateY(yaw) * Mat4.scale(new Vec3(1.0 + sq * 0.6, 1.0 - sq, 1.0 + sq * 0.6));
-				var mvp = vp * model;
-				var verts = Io.interleavePncmw(mesh);
-				var dvb = Gfx.useBuffer("tt_daruma_vb:" + i, Gfx.VERTEX, verts, darumaVer);
-				var dib = Gfx.useBuffer("tt_daruma_ib:" + i, Gfx.INDEX, mesh.indices, darumaVer);
-				Gfx.draw(mesh.index_count, {
-					verts: dvb,
-					indices: dib,
-					uniforms: {
-						mvp: Table.fromArray(mvp.m),
-						model: Table.fromArray(model.m),
-						bones: packBones(i, f, falling, pulse),
-					},
-				}, {
-					shader: dshader,
-					depth: true,
-					depth_write: true,
-					cull: Gfx.BACK
-				});
-			}
+		for (i in 0...fighters.length) {
+			var f = fighters[i];
+			var mesh = darumaMesh[i];
+			var pose = Phys3d.pose(bodies[i]);
+			if (pose == null || !mesh.ready())
+				continue;
+			// 着地スカッシュ: 落下からの接地 (vy の跳ね) を検出
+			if (f.prevVy < -1.2 && pose.vy > f.prevVy + 0.8)
+				f.squashT = 8;
+			f.prevVy = pose.vy;
+			if (f.squashT > 0)
+				f.squashT--;
+			var sq = f.squashT / 8.0 * 0.22;
+			var op = Phys3d.pose(bodies[1 - i]);
+			var fx = op != null ? op.x - pose.x : -pose.x;
+			var fz = op != null ? op.z - pose.z : -pose.z;
+			var yaw = Math.atan2(fx, fz); // model の -Z を相手へ向ける
+			var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
+			var upv:Vec3 = q * Vec3.up();
+			var falling = upv.y < 0.6;
+			var pulse = f.tactic == TA_OSU ? Math.max(0.0, Math.sin(frame * DT * f.pulseHz * 2.0 * Math.PI + f.phase)) : 0.0;
+			var model = Renderer3d.poseMat(pose) * Mat4.rotateY(yaw) * Mat4.scale(new Vec3(1.0 + sq * 0.6, 1.0 - sq, 1.0 + sq * 0.6));
+			ren.draw(mesh, model, {bones: packBones(i, f, falling, pulse)});
 		}
 
-		// トントンのマーカー (打った場所に一瞬リング)
+		// トントンのマーカー (打った場所に一瞬リング。高輝度で bloom に乗る)
 		if (markerT > 0) {
 			var k = markerT / 10.0;
-			drawMesh(cylIndexCount, cylVb, cylIb, shader, vp,
-				Mat4.translate(new Vec3(markerX, markerY + 0.03, markerZ)) * Mat4.scale(new Vec3(0.22 * (2.0 - k), 0.01, 0.22 * (2.0 - k))),
-				[1.0, 0.95, 0.6, 1.0]);
+			ren.draw(cylMesh, Mat4.translate(new Vec3(markerX, markerY + 0.03, markerZ)) * Mat4.scale(new Vec3(0.22 * (2.0 - k), 0.01, 0.22 * (2.0 - k))),
+				{tint: Color.rgb(1.6, 1.5, 0.9)});
 			markerT--;
 		}
 
-		// --- テキスト (かな) ---
+		ren.end();
+
+		// --- テキスト (かな): tonemap 後の swapchain に重ね描き ---
+		Gfx.beginPass({target: Gfx.mainTex, load: Gfx.LOAD});
 		if (ensureText()) {
 			var cream = Color.rgb(0.95, 0.92, 0.85);
 			mtext.textCentered("あか　" + stars[0] + " - " + stars[1] + "　あお", W * 0.5, 348, 20, cream);
@@ -909,7 +736,7 @@ class Tonton22 {
 					var pose = Phys3d.pose(bodies[i]);
 					if (pose == null)
 						continue;
-					var sp = screenPos(vp, pose.x, pose.y + 1.5, pose.z);
+					var sp = screenPos(ren.viewProj, pose.x, pose.y + 1.5, pose.z);
 					if (!sp.ok)
 						continue;
 					var label = switch (f.tactic) {

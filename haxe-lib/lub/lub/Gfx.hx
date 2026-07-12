@@ -33,6 +33,10 @@ typedef PassOpts = {
 	?clear_colors:lua.Table<Int, lua.Table<Int, Float>>,
 	/** 省略時 1.0。 **/
 	?clear_depth:Float,
+	/** `Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth)
+		の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じ
+		ターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。 **/
+	?load:Int,
 }
 
 /**

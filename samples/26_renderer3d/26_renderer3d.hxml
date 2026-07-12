@@ -1,0 +1,3 @@
+-cp samples/26_renderer3d
+-lib lub
+-main RendererDemo26

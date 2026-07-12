@@ -4,15 +4,15 @@ import lub.Input.Key;
 import lub.Io;
 import lub.Math.Mat4;
 import lub.Math.MathUtil;
-import lub.Math.Quat;
 import lub.Math.Vec3;
-import lub.Mesh;
 import lub.Phys3d;
 import lubx.Boot;
 import lubx.Color;
+import lubx.Mesh3d;
 import lubx.MeshText;
+import lubx.Renderer3d;
 import lubx.Sdf;
-import lua.Table;
+import lubx.Shapes3d;
 
 typedef Pin = {
 	var gen:Int; // version (ラック再設置で上げる)
@@ -155,19 +155,16 @@ class Bowling25 {
 		return withRing.ssub(h1, 0.002).ssub(h2, 0.002).ssub(h3, 0.002);
 	}
 
-	static var meshDirty = true;
-	static var meshVer = 0;
-	static var pinMesh:MeshData = null;
-	static var ballMesh:MeshData = null;
-	static var pinVerts:Table<Int, Float> = null;
-	static var ballVerts:Table<Int, Float> = null;
+	static var meshDirty = true; // hot reload で true に戻り再メッシュされる
+	static var pinMesh = new Mesh3d("bw25_pin");
+	static var ballMesh = new Mesh3d("bw25_ball");
+	static var cubeMesh = new Mesh3d("bw25_cube");
 
 	static function remesh() {
-		pinMesh = Sdf.mesh(pinModel(), 48);
-		ballMesh = Sdf.mesh(ballModel(), 48);
-		pinVerts = Io.interleavePncm(pinMesh);
-		ballVerts = Io.interleavePncm(ballMesh);
-		meshVer = Std.int(lua.Os.clock() * 1000);
+		pinMesh.rebuild(Sdf.mesh(pinModel(), 48));
+		ballMesh.rebuild(Sdf.mesh(ballModel(), 48));
+		if (!cubeMesh.ready())
+			cubeMesh.rebuild(Shapes3d.cube());
 		meshDirty = false;
 	}
 
@@ -667,72 +664,7 @@ class Bowling25 {
 	}
 
 	// --- 描画 --------------------------------------------------------------------
-	static var cubeVerts:Table<Int, Float> = null;
-	static var cubeIndices:Table<Int, Int> = null;
-	static var discVerts:Table<Int, Float> = null;
-	static var discCount = 0;
-
-	static function buildCube() {
-		var verts:Array<Float> = [];
-		var indices:Array<Int> = [];
-		var faces = [
-			{n: [1.0, 0.0, 0.0], u: [0.0, 1.0, 0.0], v: [0.0, 0.0, 1.0]},
-			{n: [-1.0, 0.0, 0.0], u: [0.0, 0.0, 1.0], v: [0.0, 1.0, 0.0]},
-			{n: [0.0, 1.0, 0.0], u: [0.0, 0.0, 1.0], v: [1.0, 0.0, 0.0]},
-			{n: [0.0, -1.0, 0.0], u: [1.0, 0.0, 0.0], v: [0.0, 0.0, 1.0]},
-			{n: [0.0, 0.0, 1.0], u: [1.0, 0.0, 0.0], v: [0.0, 1.0, 0.0]},
-			{n: [0.0, 0.0, -1.0], u: [0.0, 1.0, 0.0], v: [1.0, 0.0, 0.0]},
-		];
-		for (f in faces) {
-			var base = Std.int(verts.length / 6);
-			for (i in 0...4) {
-				var su = (i == 1 || i == 2) ? 1.0 : -1.0;
-				var sv = (i >= 2) ? 1.0 : -1.0;
-				for (k in 0...3)
-					verts.push(f.n[k] + f.u[k] * su + f.v[k] * sv);
-				for (k in 0...3)
-					verts.push(f.n[k]);
-			}
-			for (idx in [0, 1, 2, 0, 2, 3])
-				indices.push(base + idx);
-		}
-		cubeVerts = Table.fromArray(verts);
-		cubeIndices = Table.fromArray(indices);
-
-		// 影用の円盤 (単位半径、上向き)
-		var d:Array<Float> = [];
-		var segs = 18;
-		for (i in 0...segs) {
-			var a0 = Math.PI * 2 * i / segs;
-			var a1 = Math.PI * 2 * (i + 1) / segs;
-			for (p in [[0.0, 0.0], [Math.cos(a0), Math.sin(a0)], [Math.cos(a1), Math.sin(a1)]]) {
-				d.push(p[0]);
-				d.push(0);
-				d.push(p[1]);
-				d.push(0);
-				d.push(1);
-				d.push(0);
-			}
-		}
-		discVerts = Table.fromArray(d);
-		discCount = segs * 3;
-	}
-
-	static var vp:Mat4 = null;
-	static var litShader:ShaderRef = null;
-	static var sdfShader:ShaderRef = null;
-
-	static function loadShaders():Bool {
-		var lv = Io.loadText("samples/25_bowling/data/25_lit.vs.slang");
-		var lf = Io.loadText("samples/25_bowling/data/25_lit.fs.slang");
-		var sv = Io.loadText("samples/25_bowling/data/25_sdf.vs.slang");
-		var sf = Io.loadText("samples/25_bowling/data/25_sdf.fs.slang");
-		if (lv.text == null || lf.text == null || sv.text == null || sf.text == null)
-			return false;
-		litShader = Gfx.useShader("bw25_lit", lv.text, lf.text, lv.version * 31 + lf.version);
-		sdfShader = Gfx.useShader("bw25_sdf", sv.text, sf.text, sv.version * 31 + sf.version);
-		return true;
-	}
+	static var ren = new Renderer3d("bw25");
 
 	static function boxMat(x:Float, y:Float, z:Float, sx:Float, sy:Float, sz:Float):Mat4
 		return Mat4.translate(new Vec3(x, y, z)) * Mat4.scale(new Vec3(sx, sy, sz));
@@ -740,84 +672,22 @@ class Bowling25 {
 	static function boxMatR(x:Float, y:Float, z:Float, ry:Float, sx:Float, sy:Float, sz:Float):Mat4
 		return Mat4.translate(new Vec3(x, y, z)) * Mat4.rotateY(ry) * Mat4.scale(new Vec3(sx, sy, sz));
 
-	static function poseMat(pose:Dynamic):Mat4
-		return Mat4.translate(new Vec3(pose.x, pose.y, pose.z)) * new Quat(pose.qx, pose.qy, pose.qz, pose.qw).toMat4();
-
-	static function drawBox(model:Mat4, color:Array<Float>, ?blend:Int) {
-		var vb = Gfx.useBuffer("bw_cube_vb", Gfx.VERTEX, cubeVerts, 1);
-		var ib = Gfx.useBuffer("bw_cube_ib", Gfx.INDEX, cubeIndices, 1);
-		var mvp = vp * model;
-		Gfx.draw(36, {
-			verts: vb,
-			indices: ib,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-				color: Table.fromArray(color),
-			},
-		}, {
-			shader: litShader,
-			depth: true,
-			depth_write: blend == null,
-			blend: blend == null ? Gfx.NONE : blend,
-			cull: Gfx.NONE,
-		});
-	}
-
-	static function drawDisc(model:Mat4, color:Array<Float>) {
-		var vb = Gfx.useBuffer("bw_disc_vb", Gfx.VERTEX, discVerts, 1);
-		var mvp = vp * model;
-		Gfx.draw(discCount, {
-			verts: vb,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-				color: Table.fromArray(color),
-			},
-		}, {
-			shader: litShader,
-			depth: true,
-			depth_write: false,
-			blend: Gfx.ALPHA,
-			cull: Gfx.NONE,
-		});
-	}
-
-	static function drawSdf(mesh:MeshData, verts:Table<Int, Float>, key:String, model:Mat4) {
-		var vb = Gfx.useBuffer("bw_" + key + "_vb", Gfx.VERTEX, verts, meshVer);
-		var ib = Gfx.useBuffer("bw_" + key + "_ib", Gfx.INDEX, mesh.indices, meshVer);
-		var mvp = vp * model;
-		Gfx.draw(mesh.index_count, {
-			verts: vb,
-			indices: ib,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-			},
-		}, {
-			shader: sdfShader,
-			depth: true,
-			depth_write: true,
-			cull: Gfx.BACK,
-		});
-	}
-
-	static function drawShadow(x:Float, z:Float, r:Float) {
-		drawDisc(boxMat(x, 0.004, z, r, 1, r), [0, 0, 0, 0.32]);
+	static function drawBox(model:Mat4, color:Color, ?blend:Int) {
+		ren.draw(cubeMesh, model, {tint: color, blend: blend});
 	}
 
 	// 静的な舞台 (物理 STATICS と目視で寸法を揃える)
 	static function drawStage() {
-		var wood = [0.76, 0.60, 0.40, 1.0];
-		var woodOil = [0.70, 0.57, 0.41, 1.0];
-		var dark = [0.16, 0.17, 0.19, 1.0];
-		var accentRed = [0.52, 0.15, 0.20, 1.0];
-		var mark = [0.35, 0.20, 0.12, 1.0];
+		var wood = Color.rgb(0.76, 0.60, 0.40);
+		var woodOil = Color.rgb(0.70, 0.57, 0.41);
+		var dark = Color.rgb(0.16, 0.17, 0.19);
+		var accentRed = Color.rgb(0.52, 0.15, 0.20);
+		var mark = Color.rgb(0.35, 0.20, 0.12);
 
 		// 周辺の床 (見た目のみ)
-		drawBox(boxMat(0, -0.7, 9.0, 6.0, 0.05, 14.0), [0.10, 0.10, 0.13, 1.0]);
+		drawBox(boxMat(0, -0.7, 9.0, 6.0, 0.05, 14.0), Color.rgb(0.10, 0.10, 0.13));
 		// アプローチ
-		drawBox(boxMat(0, -0.06, -1.25, LANE_HW + GUTTER_W + 0.12, 0.06, 1.25), [0.62, 0.51, 0.36, 1.0]);
+		drawBox(boxMat(0, -0.06, -1.25, LANE_HW + GUTTER_W + 0.12, 0.06, 1.25), Color.rgb(0.62, 0.51, 0.36));
 		// レーン (オイル / ドライ)
 		drawBox(boxMat(0, -0.06, OIL_END * 0.5, LANE_HW, 0.06, OIL_END * 0.5), woodOil);
 		drawBox(boxMat(0, -0.06, (OIL_END + DECK_END) * 0.5, LANE_HW, 0.06, (DECK_END - OIL_END) * 0.5), wood);
@@ -825,14 +695,14 @@ class Bowling25 {
 		drawBox(boxMat(-(LANE_HW + GUTTER_W * 0.5), -0.104, DECK_END * 0.5, GUTTER_W * 0.5, 0.05, DECK_END * 0.5), dark);
 		drawBox(boxMat(LANE_HW + GUTTER_W * 0.5, -0.104, DECK_END * 0.5, GUTTER_W * 0.5, 0.05, DECK_END * 0.5), dark);
 		// 側壁
-		drawBox(boxMat(-(LANE_HW + GUTTER_W + 0.03), 0.08, PIT_END * 0.5, 0.03, 0.22, PIT_END * 0.5), [0.30, 0.31, 0.36, 1.0]);
-		drawBox(boxMat(LANE_HW + GUTTER_W + 0.03, 0.08, PIT_END * 0.5, 0.03, 0.22, PIT_END * 0.5), [0.30, 0.31, 0.36, 1.0]);
+		drawBox(boxMat(-(LANE_HW + GUTTER_W + 0.03), 0.08, PIT_END * 0.5, 0.03, 0.22, PIT_END * 0.5), Color.rgb(0.30, 0.31, 0.36));
+		drawBox(boxMat(LANE_HW + GUTTER_W + 0.03, 0.08, PIT_END * 0.5, 0.03, 0.22, PIT_END * 0.5), Color.rgb(0.30, 0.31, 0.36));
 		// ピット (奥の暗がり) とマスキング
-		drawBox(boxMat(0, -0.58, (DECK_END + PIT_END) * 0.5, LANE_HW + GUTTER_W + 0.06, 0.05, (PIT_END - DECK_END) * 0.5 + 0.2), [0.05, 0.05, 0.07, 1.0]);
-		drawBox(boxMat(0, -0.15, PIT_END + 0.05, LANE_HW + GUTTER_W + 0.06, 0.45, 0.05), [0.08, 0.08, 0.10, 1.0]);
+		drawBox(boxMat(0, -0.58, (DECK_END + PIT_END) * 0.5, LANE_HW + GUTTER_W + 0.06, 0.05, (PIT_END - DECK_END) * 0.5 + 0.2), Color.rgb(0.05, 0.05, 0.07));
+		drawBox(boxMat(0, -0.15, PIT_END + 0.05, LANE_HW + GUTTER_W + 0.06, 0.45, 0.05), Color.rgb(0.08, 0.08, 0.10));
 		drawBox(boxMat(0, 0.95, 19.3, LANE_HW + GUTTER_W + 0.06, 0.35, 1.0), accentRed);
 		// ファウルライン
-		drawBox(boxMat(0, 0.001, 0, LANE_HW, 0.0015, 0.012), [0.15, 0.15, 0.17, 1.0]);
+		drawBox(boxMat(0, 0.001, 0, LANE_HW, 0.0015, 0.012), Color.rgb(0.15, 0.15, 0.17));
 		// ガイド: ドット (2.13m) とアロー (V 字に並ぶひし形)
 		for (i in 0...7) {
 			var x = (i - 3) * 0.1365;
@@ -851,13 +721,13 @@ class Bowling25 {
 			var x = aimX + Math.sin(angle) * d - hook * 1.3e-4 * Math.pow(Math.max(0.0, d - 6.0), 2);
 			if (Math.abs(x) > LANE_HW)
 				break;
-			drawBox(boxMat(x, 0.004, d, 0.016, 0.002, 0.028), [1.0, 1.0, 1.0, 0.4], Gfx.ALPHA);
+			drawBox(boxMat(x, 0.004, d, 0.016, 0.002, 0.028), Color.rgb(1.0, 1.0, 1.0, 0.4), Gfx.ALPHA);
 		}
 		// パワーメーター (レーン右脇の柱)
 		if (state == ST_POWER) {
-			drawBox(boxMat(0.95, 0.30, -0.2, 0.035, 0.28, 0.035), [0.12, 0.12, 0.15, 1.0]);
+			drawBox(boxMat(0.95, 0.30, -0.2, 0.035, 0.28, 0.035), Color.rgb(0.12, 0.12, 0.15));
 			var h = 0.26 * power;
-			drawBox(boxMat(0.95, 0.02 + h, -0.2, 0.026, h, 0.026), [0.9, 0.25 + 0.5 * (1 - power), 0.15, 1.0]);
+			drawBox(boxMat(0.95, 0.02 + h, -0.2, 0.026, h, 0.026), Color.rgb(0.9, 0.25 + 0.5 * (1 - power), 0.15));
 		}
 	}
 
@@ -932,13 +802,9 @@ class Bowling25 {
 
 	// --- main loop ---------------------------------------------------------------
 	public static function onFrame() {
-		if (cubeVerts == null)
-			buildCube();
 		if (meshDirty)
 			remesh();
 		ensurePins();
-		if (!loadShaders())
-			return;
 		tAccum += DT;
 		eventT += DT;
 
@@ -957,32 +823,25 @@ class Bowling25 {
 		updateCamera(world);
 
 		// --- 描画 ---
-		var size = Gfx.size();
-		var proj = Mat4.perspectiveLh(camFov, size.w / size.h, 0.05, 80.0);
-		var view = Mat4.lookAtLh(camEye, camTgt, Vec3.up());
-		vp = proj * view;
-
-		Gfx.beginPass({
-			target: Gfx.mainTex,
-			clear_color: Table.fromArray([0.07, 0.08, 0.11, 1.0]),
+		// 暗めの場内 + レーン主体のライティング
+		ren.light.dir = new Vec3(-0.35, 1.0, -0.3);
+		ren.light.intensity = 1.15;
+		ren.sky.top = Color.rgb(0.30, 0.33, 0.42);
+		ren.sky.bottom = Color.rgb(0.10, 0.09, 0.09);
+		ren.sky.intensity = 0.38;
+		ren.background = Color.rgb(0.05, 0.06, 0.09);
+		// 影のオルソ範囲は注視点 (カメラターゲット) 周辺に寄せて解像度を稼ぐ
+		ren.shadow.center = new Vec3(0, 0, MathUtil.clamp(camTgt.z, 3.0, PIN_Z));
+		ren.shadow.extent = 7.0;
+		ren.begin({
+			eye: camEye,
+			target: camTgt,
+			fov: camFov,
+			near: 0.05,
+			far: 80.0,
 		});
 
 		drawStage();
-
-		// 影 (接地感のためのブロブ)
-		for (i in 0...pins.length) {
-			if (!pins[i].standing)
-				continue;
-			var pose = Phys3d.pose(world, "pin:" + i);
-			if (pose != null && pose.y > -0.2)
-				drawShadow(pose.x, pose.z, 0.075);
-		}
-		if (ballLive) {
-			var bp = Phys3d.pose(world, "ball");
-			if (bp != null && bp.y > -0.2)
-				drawShadow(bp.x, bp.z, BALL_R * 0.95);
-		} else if (state <= ST_POWER)
-			drawShadow(aimX, 0, BALL_R * 0.95);
 
 		// ピン
 		for (i in 0...pins.length) {
@@ -990,17 +849,21 @@ class Bowling25 {
 				continue;
 			var pose = Phys3d.pose(world, "pin:" + i);
 			if (pose != null)
-				drawSdf(pinMesh, pinVerts, "pin", poseMat(pose));
+				ren.draw(pinMesh, Renderer3d.poseMat(pose));
 		}
 		// ボール (投球前は構え位置のプレビュー)
 		if (ballLive) {
 			var pose = Phys3d.pose(world, "ball");
 			if (pose != null)
-				drawSdf(ballMesh, ballVerts, "ball", poseMat(pose));
+				ren.draw(ballMesh, Renderer3d.poseMat(pose));
 		} else if (state <= ST_POWER)
-			drawSdf(ballMesh, ballVerts, "ball", Mat4.translate(new Vec3(aimX, BALL_R, 0)));
+			ren.draw(ballMesh, Mat4.translate(new Vec3(aimX, BALL_R, 0)));
 
 		drawGuide();
+		ren.end();
+
+		// HUD は tonemap 後の swapchain に重ね描き (load = LOAD)
+		Gfx.beginPass({target: Gfx.mainTex, load: Gfx.LOAD});
 		drawHud();
 		Gfx.endPass();
 	}

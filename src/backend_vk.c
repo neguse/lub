@@ -1435,6 +1435,9 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
   if (!g.recording)
     return;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
+  VkAttachmentLoadOp load_op = (d->load == SGL_LOAD_LOAD)
+                                   ? VK_ATTACHMENT_LOAD_OP_LOAD
+                                   : VK_ATTACHMENT_LOAD_OP_CLEAR;
 
   int nct = d->n_color_targets;
   if (nct > SGL_MAX_COLOR_TARGETS)
@@ -1461,7 +1464,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = g.sc_views[g.bb_index],
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .loadOp = load_op,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
     };
     memcpy(g.pass_colors[0].clearValue.color.float32, d->clear[0],
@@ -1471,7 +1474,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = g.depth_view,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .loadOp = load_op,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
     };
     g.pass_depth.clearValue.depthStencil.depth = 1.0f;
@@ -1493,7 +1496,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
           .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
           .imageView = im->attach_view,
           .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .loadOp = load_op,
           .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
       };
       memcpy(g.pass_colors[i].clearValue.color.float32, d->clear[i],
@@ -1516,7 +1519,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
           .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
           .imageView = di->attach_view,
           .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .loadOp = load_op,
           .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
       };
       g.pass_depth.clearValue.depthStencil.depth = d->clear_depth;

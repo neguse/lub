@@ -33,5 +33,8 @@ struct FSIn {
       lerp(i.color, float3(1, 1, 1), 0.6); // 金属も albedo をうっすら残す
   float3 metallic = env * tint * (1.0 - rough * 0.5);
 
-  return float4(lerp(dielectric, metallic, metal), 1.0);
+  // Renderer3d の HDR パイプラインは linear 前提 (AgX が display に戻す)。
+  // この shader の色は display 感覚で作っているので linear 化して返す。
+  float3 c = lerp(dielectric, metallic, metal);
+  return float4(pow(max(c, 0.0), float3(2.2, 2.2, 2.2)), 1.0);
 }

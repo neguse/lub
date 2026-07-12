@@ -533,10 +533,22 @@ static int l_begin_pass(lua_State *L) {
   SglPixelFormat depth_fmt = SGL_PF_DEPTH24_STENCIL8;
   int depth_w = 0, depth_h = 0;
   float clear_depth = 1.0f;
+  SglLoadAction load = SGL_LOAD_CLEAR;
 
   lua_getfield(L, 1, "clear_depth");
   if (lua_isnumber(L, -1))
     clear_depth = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+
+  lua_getfield(L, 1, "load");
+  if (!lua_isnoneornil(L, -1)) {
+    int lv = (int)lua_tointeger(L, -1);
+    if (lv != SGL_LOAD_CLEAR && lv != SGL_LOAD_LOAD) {
+      lua_pop(L, 1);
+      return luaL_error(L, "begin_pass: load must be Gfx.CLEAR or Gfx.LOAD");
+    }
+    load = (SglLoadAction)lv;
+  }
   lua_pop(L, 1);
 
   lua_getfield(L, 1, "depth_target");
@@ -665,7 +677,7 @@ static int l_begin_pass(lua_State *L) {
     }
     pass_state_begin_ex(&g_app_for_lua->pass, n, targets, fmts, tw, th,
                         (const float (*)[4])clears, depth_image, depth_fmt,
-                        clear_depth);
+                        clear_depth, load);
     return 0;
   }
   lua_pop(L, 1); // targets (was not a table)
@@ -725,7 +737,7 @@ static int l_begin_pass(lua_State *L) {
 
   if (is_main) {
     pass_state_begin(&g_app_for_lua->pass, target_image, fmt, tw, th, c[0],
-                     c[1], c[2], c[3]);
+                     c[1], c[2], c[3], load);
   } else if (target_image) {
     if (depth_image && (depth_w != tw || depth_h != th)) {
       return luaL_error(
@@ -738,12 +750,12 @@ static int l_begin_pass(lua_State *L) {
     float clears[1][4] = {{c[0], c[1], c[2], c[3]}};
     pass_state_begin_ex(&g_app_for_lua->pass, 1, targets, fmts, tw, th,
                         (const float (*)[4])clears, depth_image, depth_fmt,
-                        clear_depth);
+                        clear_depth, load);
   } else {
     float clears[1][4] = {{0, 0, 0, 1}};
     pass_state_begin_ex(&g_app_for_lua->pass, 0, NULL, NULL, depth_w, depth_h,
                         (const float (*)[4])clears, depth_image, depth_fmt,
-                        clear_depth);
+                        clear_depth, load);
   }
   return 0;
 }
@@ -854,6 +866,7 @@ static int l_use_texture(lua_State *L) {
   // bool, storage = bool }
   SglFilter filter = SGL_FILTER_LINEAR;
   SglWrap wrap = SGL_WRAP_REPEAT;
+  bool filter_explicit = false;
   bool is_target = false;
   bool storage = false;
   if (!lua_isnoneornil(L, 7)) {
@@ -867,6 +880,7 @@ static int l_use_texture(lua_State *L) {
                           "use_texture: opts.filter must be LINEAR or NEAREST");
       }
       filter = (SglFilter)v;
+      filter_explicit = true;
     }
     lua_pop(L, 1);
     lua_getfield(L, 7, "wrap");
@@ -903,6 +917,15 @@ static int l_use_texture(lua_State *L) {
   }
   if (depth_fmt && storage) {
     return luaL_error(L, "use_texture: depth formats cannot use storage=true");
+  }
+  if (depth_fmt) {
+    // WebGPU can only sample depth as unfilterable-float; a filtering sampler
+    // is a validation error there (and LINEAR on D32 is optional in Vulkan).
+    if (filter_explicit && filter == SGL_FILTER_LINEAR) {
+      return luaL_error(L,
+                        "use_texture: depth textures must use NEAREST filter");
+    }
+    filter = SGL_FILTER_NEAREST;
   }
 
   if (w <= 0 || h <= 0)
@@ -1439,6 +1462,7 @@ static int l_draw(lua_State *L) {
   // indexed (bind.ibuf != 0) before picking a pipeline.
   BindingsDesc bind = {0};
   bind.refl = &sh_e->u.sh.refl;
+  uint8_t depth_tex_mask = 0;
 
   lua_pushnil(L);
   while (lua_next(L, 2) != 0) {
@@ -1495,6 +1519,14 @@ static int l_draw(lua_State *L) {
           bind.textures[bind.texture_count].name = res_name;
           bind.textures[bind.texture_count].image = te->u.tex.h;
           bind.texture_count++;
+          if (is_depth_format(te->u.tex.fmt)) {
+            for (int k = 0; k < sh_e->u.sh.refl.tex_count; ++k) {
+              if (strcmp(sh_e->u.sh.refl.texs[k].name, res_name) == 0) {
+                depth_tex_mask |= (uint8_t)(1u << k);
+                break;
+              }
+            }
+          }
         }
       }
       // uniforms processing handled separately below (resources.uniforms key)
@@ -1509,7 +1541,7 @@ static int l_draw(lua_State *L) {
       (SglPrimitive)prim, g_app_for_lua->pass.current_n_color_targets,
       g_app_for_lua->pass.current_color_fmts,
       g_app_for_lua->pass.current_has_depth,
-      g_app_for_lua->pass.current_depth_fmt, (bind.ibuf != 0),
+      g_app_for_lua->pass.current_depth_fmt, (bind.ibuf != 0), depth_tex_mask,
       (int64_t)g_app_for_lua->frame_index);
   g_backend->apply_pipeline(pip);
   g_backend->apply_bindings(&bind);

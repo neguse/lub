@@ -389,6 +389,7 @@ const samples = [
   { name: '23_crane_game',      minNonBlack: 0.01 },
   { name: '24_baseball',        minNonBlack: 0.01 },
   { name: '25_bowling',         minNonBlack: 0.01 },
+  { name: '26_renderer3d',      minNonBlack: 0.05 },
 ]
 const sampleResults = {}
 

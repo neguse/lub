@@ -2,10 +2,12 @@ import lub.Gfx;
 import lub.Input;
 import lub.Input.Key;
 import lub.Io;
-import lub.Mesh;
 import lub.Math;
 import lub.Ui;
+import lubx.Bones;
 import lubx.Boot;
+import lubx.Mesh3d;
+import lubx.Renderer3d;
 import lubx.Sdf;
 import lubx.SdfPanel;
 
@@ -38,47 +40,20 @@ class Sdf19 {
 	// --- アニメーション -------------------------------------------------------
 	static var waveOn = true;
 
-	// pivot 回りの回転行列 (model 空間)。T(p) * R * T(-p)
-	static function boneMat(px:Float, py:Float, pz:Float, rot:Mat4):Mat4 {
-		return Mat4.translate(new Vec3(px, py, pz)).mul(rot.mul(Mat4.translate(new Vec3(-px, -py, -pz))));
-	}
-
-	// mesh.bones の順で 8 本分の行列 (mat4 × 8 = 128 float) を詰める
+	// mesh.bones の順で 8 本分の行列を詰める (規約は lubx.Bones)
 	static function packBones(t:Float):lua.Table<Int, Float> {
-		var arr = new Array<Float>();
 		var wave = waveOn ? Math.sin(t * 4.0) * 0.5 : 0.0;
 		var nod = waveOn ? Math.sin(t * 2.0) * 0.10 : 0.0;
-		var count = 0;
-		if (mesh != null && mesh.bones != null) {
-			var i = 1;
-			while (true) {
-				var b:Dynamic = mesh.bones[i];
-				if (b == null)
-					break;
-				var m = switch ((b.name : String)) {
-					case "arm_l": boneMat(b.x, b.y, b.z, Mat4.rotateZ(wave));
-					case "arm_r": boneMat(b.x, b.y, b.z, Mat4.rotateZ(-wave));
-					case "head": boneMat(b.x, b.y, b.z, Mat4.rotateZ(nod));
-					case _: new Mat4();
-				}
-				for (v in m.m)
-					arr.push(v);
-				count++;
-				i++;
-			}
-		}
-		while (count < 8) {
-			var id = new Mat4();
-			for (v in id.m)
-				arr.push(v);
-			count++;
-		}
-		return lua.Table.fromArray(arr);
+		return Bones.pack(mesh.data, (name, x, y, z) -> switch (name) {
+			case "arm_l": Bones.pivotRot(x, y, z, Mat4.rotateZ(wave));
+			case "arm_r": Bones.pivotRot(x, y, z, Mat4.rotateZ(-wave));
+			case "head": Bones.pivotRot(x, y, z, Mat4.rotateZ(nod));
+			case _: null;
+		});
 	}
 
 	// --- メッシュ化 ----------------------------------------------------------
-	static var mesh:MeshData = null;
-	static var meshVer = 0;
+	static var mesh = new Mesh3d("sdf19");
 	static var tAccum = 0.0;
 	// メタル変身 (0..1)。target を Space でトグルして毎フレーム補間
 	static var metalT = 0.0;
@@ -99,14 +74,17 @@ class Sdf19 {
 		Boot.config({});
 	}
 
+	static var ren = new Renderer3d("sdf19");
+	static var renConfigured = false;
+
 	static var matcapPx:lua.Table<Int, Int> = null;
 
+	static var matcapVer = 0;
+
 	static function remesh() {
-		mesh = Sdf.mesh(tree, N);
+		mesh.rebuild(Sdf.mesh(tree, N));
 		matcapPx = makeMatcap(64); // reload と同じタイミングで作り直す
-		// version は「同じ key で違う内容」を区別できればよいので CPU 時刻 (ms)
-		// を使う (remesh 自体が 1ms 以上かかるので衝突しない)。
-		meshVer = Std.int(lua.Os.clock() * 1000);
+		matcapVer++;
 		meshDirty = false;
 	}
 
@@ -180,48 +158,43 @@ class Sdf19 {
 				Ui.separator();
 				metalTarget = Ui.slider("metal (Space)", metalTarget, 0, 1);
 				waveOn = Ui.checkbox("wave", waveOn);
-				if (mesh != null)
-					Ui.text("verts: " + mesh.vert_count);
+				if (mesh.ready())
+					Ui.text("verts: " + mesh.data.vert_count);
 			}
 			Ui.end();
 		}
 
 		if (meshDirty)
 			remesh();
-		var verts = Io.interleavePncmw(mesh);
-		var vb = Gfx.useBuffer("sdf_vb", Gfx.VERTEX, verts, meshVer);
-		var ib = Gfx.useBuffer("sdf_ib", Gfx.INDEX, mesh.indices, meshVer);
-		var matcap = Gfx.useTexture("sdf_matcap", 64, 64, Gfx.RGBA8, matcapPx, meshVer);
+		var matcap = Gfx.useTexture("sdf_matcap", 64, 64, Gfx.RGBA8, matcapPx, matcapVer);
 
-		var sz = Gfx.size();
+		if (!renConfigured) {
+			ren.background = lubx.Color.rgb(0.09, 0.09, 0.12);
+			renConfigured = true;
+		}
 		var model = Mat4.rotateY(tAccum * 0.7);
-		var view = Mat4.lookAtLh(new Vec3(0.0, 0.55, -3.1), new Vec3(0, 0.05, 0), Vec3.up());
-		var proj = Mat4.perspectiveLh(45, sz.w / sz.h, 0.1, 100);
-		var mvp = proj.mul(view.mul(model));
-
-		Gfx.beginPass({
-			target: Gfx.mainTex,
-			clear_color: lua.Table.fromArray([0.09, 0.09, 0.12, 1.0])
+		ren.begin({
+			eye: new Vec3(0.0, 0.55, -3.1),
+			target: new Vec3(0, 0.05, 0),
+			fov: 45,
+			near: 0.1,
+			far: 100,
 		});
-		Gfx.draw(mesh.index_count, {
-			verts: vb,
-			indices: ib,
-			matcap: matcap,
+		// material は matcap shader に差し替え (ファイル編集で hot reload)。
+		// 追加の view / params / matcap は opts 経由で渡す。
+		ren.draw(mesh, model, {
+			shader: s,
+			textures: {matcap: matcap},
 			uniforms: {
-				mvp: lua.Table.fromArray(mvp.m),
-				model: lua.Table.fromArray(model.m),
-				view: lua.Table.fromArray(view.m),
+				view: lua.Table.fromArray(ren.viewMat.m),
 				// メタル変身の override。ジオメトリにも頂点にも触らない
 				params: lua.Table.fromArray([metalT, 0.0, 0.0, 0.0]),
-				// skinning: bone ごとの pivot 回り回転 (LBS は vertex shader)
-				bones: packBones(tAccum)
-			}
-		}, {
-			shader: s,
-			depth: true,
-			depth_write: true,
-			cull: Gfx.BACK
+			},
+			bones: packBones(tAccum),
 		});
+		ren.end();
+
+		Gfx.beginPass({target: Gfx.mainTex, load: Gfx.LOAD});
 		Ui.render();
 		Gfx.endPass();
 	}

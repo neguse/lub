@@ -20,7 +20,7 @@ bool pass_state_in_pass(const PassState *p) { return p->in_pass; }
 
 void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
                       int target_w, int target_h, float r, float g, float b,
-                      float a) {
+                      float a, SglLoadAction load) {
   if (p->in_pass) {
     SDL_Log("begin_pass called while already in pass (nested passes not "
             "supported)");
@@ -38,6 +38,7 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
       .clear_depth = 1.0f,
       .has_depth = (target_image == 0),
       .depth_fmt = SGL_PF_DEPTH24_STENCIL8,
+      .load = load,
   };
   g_backend->begin_pass(p->app, &d);
   p->in_pass = true;
@@ -52,7 +53,8 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
 void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
                          const SglPixelFormat *fmts, int target_w, int target_h,
                          const float (*clears)[4], uintptr_t depth_target,
-                         SglPixelFormat depth_fmt, float clear_depth) {
+                         SglPixelFormat depth_fmt, float clear_depth,
+                         SglLoadAction load) {
   if (p->in_pass) {
     SDL_Log("begin_pass called while already in pass (nested passes not "
             "supported)");
@@ -70,6 +72,7 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
   d.depth_fmt = depth_fmt;
   d.clear_depth = clear_depth;
   d.has_depth = (depth_target != 0);
+  d.load = load;
   for (int i = 0; i < n_targets; ++i) {
     d.targets[i] = targets[i];
     d.color_fmts[i] = fmts[i];
@@ -96,7 +99,7 @@ void pass_state_begin_mrt(PassState *p, int n_targets, const uintptr_t *targets,
   if (n_targets > SGL_MAX_COLOR_TARGETS)
     n_targets = SGL_MAX_COLOR_TARGETS;
   pass_state_begin_ex(p, n_targets, targets, fmts, target_w, target_h, clears,
-                      0, SGL_PF_DEPTH24_STENCIL8, 1.0f);
+                      0, SGL_PF_DEPTH24_STENCIL8, 1.0f, SGL_LOAD_CLEAR);
 }
 
 void pass_state_end(PassState *p) {

@@ -1,12 +1,14 @@
 import lub.Gfx;
 import lub.Io;
 import lub.Math;
-import lub.Mesh;
 import lubx.Boot;
 import lubx.Color;
+import lubx.Mesh3d;
 import lubx.MeshText;
+import lubx.Renderer3d;
 import lubx.Sdf;
 import lubx.Shapes;
+import lubx.Shapes3d;
 import lua.Table;
 
 // 全自動野球シミュレーション。ユーザーは観るだけ。
@@ -109,9 +111,9 @@ class Baseball24 {
 		return a + (b - a) * Math.random();
 
 	// --- キャラメッシュ (SDF + bones) -------------------------------------------
-	// 身長 ~1.8m。純白 (1,1,1) で焼いた部位はシェーダでチーム色に置換される
-	static var charMesh:MeshData = null;
-	static var meshVer = 0;
+	// 身長 ~1.8m。ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
+	static var charMesh = [new Mesh3d("bb24_char0"), new Mesh3d("bb24_char1")];
+	static var teamRgb = [0xD94038, 0x4073E0]; // teamCol と同じ色
 
 	static inline var TORSO_PX = 0.0;
 	static inline var TORSO_PY = 0.95;
@@ -121,8 +123,8 @@ class Baseball24 {
 	static inline var LEG_PX = 0.10;
 	static inline var LEG_PY = 0.92;
 
-	static function charModel():SdfNode {
-		var white = 0xFFFFFF;
+	static function charModel(jersey:Int):SdfNode {
+		var white = jersey;
 		var skin = 0xF5C29A;
 		var pants = 0x3A3E4C;
 		var torso = Sdf.capsule(new Vec3(0, 0.92, 0), new Vec3(0, 1.42, 0), 0.19).paint(white).bone("torso", new Vec3(TORSO_PX, TORSO_PY, 0));
@@ -149,17 +151,17 @@ class Baseball24 {
 	static var boneSlot:Map<String, Int> = null;
 
 	static function buildCharMesh() {
-		charMesh = Sdf.mesh(charModel(), 56);
+		for (t in 0...2)
+			charMesh[t].rebuild(Sdf.mesh(charModel(teamRgb[t]), 56));
 		boneSlot = new Map();
 		var i = 1;
 		while (true) {
-			var b:Dynamic = charMesh.bones[i];
+			var b:Dynamic = charMesh[0].data.bones[i];
 			if (b == null)
 				break;
 			boneSlot.set((b.name : String), i - 1);
 			i++;
 		}
-		meshVer = Std.int(lua.Os.clock() * 1000);
 	}
 
 	// --- ポーズ → ボーン行列 -----------------------------------------------------
@@ -343,10 +345,9 @@ class Baseball24 {
 	}
 
 	// --- 静的メッシュ (Shapes) ---------------------------------------------------
-	static var fieldVerts:Array<Float> = null;
-	static var ballVerts:Array<Float> = null;
-	static var batVerts:Array<Float> = null;
-	static var shadowVerts:Array<Float> = null;
+	static var fieldMesh = new Mesh3d("bb24_field");
+	static var ballMesh = new Mesh3d("bb24_ball");
+	static var batMesh = new Mesh3d("bb24_bat");
 
 	static function fan(out:Array<Float>, cx:Float, cy:Float, cz:Float, r:Float, a0:Float, a1:Float, segs:Int, col:Array<Float>) {
 		for (i in 0...segs) {
@@ -418,16 +419,15 @@ class Baseball24 {
 			var n:Array<Float> = [-Math.sin(am), 0, -Math.cos(am)];
 			Shapes.quad(v, [x0, 0, z0], [x0, 1.6, z0], [x1, 1.6, z1], [x1, 0, z1], n, [0.48, 0.51, 0.55, 1.0]);
 		}
-		fieldVerts = v;
+		fieldMesh.rebuild(Shapes3d.fromInterleaved(v));
 
-		ballVerts = new Array<Float>();
+		var ballVerts = new Array<Float>();
 		Shapes.sphere(ballVerts, 0, 0, 0, BALL_R, [0.96, 0.96, 0.94, 1.0], 8, 12);
+		ballMesh.rebuild(Shapes3d.fromInterleaved(ballVerts));
 
-		batVerts = new Array<Float>();
+		var batVerts = new Array<Float>();
 		Shapes.box(batVerts, 0, 0, 0.44, 0.075, 0.075, 0.88, [0.85, 0.66, 0.40, 1.0]);
-
-		shadowVerts = new Array<Float>();
-		fan(shadowVerts, 0, 0, 0, 1.0, -Math.PI, Math.PI, 18, [0.0, 0.0, 0.0, 0.38]);
+		batMesh.rebuild(Shapes3d.fromInterleaved(batVerts));
 	}
 
 	// --- ボール ------------------------------------------------------------------
@@ -1199,66 +1199,11 @@ class Baseball24 {
 	// --- 描画 -------------------------------------------------------------------------
 	static var reloaded = true; // hot reload で true に戻る (19_sdf と同じトリック)
 
-	static var litShader:ShaderRef = null;
-	static var charShader:ShaderRef = null;
-
-	static function loadShaders():Bool {
-		var lv = Io.loadText("samples/24_baseball/data/24_lit.vs.slang");
-		var lf = Io.loadText("samples/24_baseball/data/24_lit.fs.slang");
-		var cv = Io.loadText("samples/24_baseball/data/24_char.vs.slang");
-		var cf = Io.loadText("samples/24_baseball/data/24_char.fs.slang");
-		if (lv.text == null || lf.text == null || cv.text == null || cf.text == null)
-			return false;
-		litShader = Gfx.useShader("bb24_lit", lv.text, lf.text, lv.version * 31 + lf.version);
-		charShader = Gfx.useShader("bb24_char", cv.text, cf.text, cv.version * 31 + cf.version);
-		return true;
-	}
-
-	static var vp:Mat4 = null;
-
-	static function drawLit(buf:BufferRef, floatCount:Int, model:Mat4, tint:Array<Float>, alpha:Bool) {
-		var mvp = vp.mul(model);
-		Gfx.draw(Std.int(floatCount / Shapes.STRIDE), {
-			verts: buf,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-				tint: Table.fromArray(tint)
-			}
-		}, {
-			shader: litShader,
-			blend: alpha ? Gfx.ALPHA : Gfx.NONE,
-			depth: true,
-			depth_write: !alpha,
-			cull: Gfx.NONE
-		});
-	}
-
-	static var charVb:BufferRef = null;
-	static var charIb:BufferRef = null;
+	static var ren = new Renderer3d("bb24");
 
 	static function drawChar(x:Float, z:Float, yaw:Float, team:Int, pose:Array<Float>) {
 		var model = Mat4.translate(new Vec3(x, 0, z)).mul(Mat4.rotateY(yaw));
-		var mvp = vp.mul(model);
-		Gfx.draw(charMesh.index_count, {
-			verts: charVb,
-			indices: charIb,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-				tint: Table.fromArray(teamCol[team]),
-				bones: packBones(pose)
-			}
-		}, {
-			shader: charShader,
-			depth: true,
-			depth_write: true,
-			cull: Gfx.BACK
-		});
-	}
-
-	static function drawShadow(buf:BufferRef, x:Float, z:Float, r:Float) {
-		drawLit(buf, shadowVerts.length, Mat4.translate(new Vec3(x, 0.018, z)).mul(Mat4.scale(new Vec3(r, 1, r))), [1, 1, 1, 1], true);
+		ren.draw(charMesh[team], model, {bones: packBones(pose)});
 	}
 
 	// バット。スイング位相から向きを決める (打者ローカル)
@@ -1324,8 +1269,6 @@ class Baseball24 {
 	// --- main loop ----------------------------------------------------------------------
 	public static function onFrame() {
 		tAccum += DT;
-		if (!loadShaders())
-			return;
 		if (reloaded) {
 			buildCharMesh();
 			buildField();
@@ -1355,34 +1298,26 @@ class Baseball24 {
 		}
 
 		// --- 描画 ---
-		var sz = Gfx.size();
-		var proj = Mat4.perspectiveLh(camFov, sz.w / sz.h, 0.1, 400.0);
-		var view = Mat4.lookAtLh(camEye, camTarget, Vec3.up());
-		vp = proj.mul(view);
-
-		var fieldVb = Gfx.useBuffer("bb24_field", Gfx.VERTEX, Table.fromArray(fieldVerts), meshVer);
-		var ballVb = Gfx.useBuffer("bb24_ball", Gfx.VERTEX, Table.fromArray(ballVerts), meshVer);
-		var batVb = Gfx.useBuffer("bb24_bat", Gfx.VERTEX, Table.fromArray(batVerts), meshVer);
-		var shadowVb = Gfx.useBuffer("bb24_shadow", Gfx.VERTEX, Table.fromArray(shadowVerts), meshVer);
-		var verts = Io.interleavePncmw(charMesh);
-		charVb = Gfx.useBuffer("bb24_char_vb", Gfx.VERTEX, verts, meshVer);
-		charIb = Gfx.useBuffer("bb24_char_ib", Gfx.INDEX, charMesh.indices, meshVer);
-
-		Gfx.beginPass({
-			target: Gfx.mainTex,
-			clear_color: Table.fromArray([0.50, 0.68, 0.87, 1.0])
+		// 屋外デーゲーム: 高い太陽 + 空色の環境光
+		ren.light.dir = new Vec3(0.35, 1.0, -0.25);
+		ren.light.intensity = 1.3;
+		ren.light.color = Color.rgb(1.0, 0.98, 0.92);
+		ren.sky.top = Color.rgb(0.55, 0.65, 0.80);
+		ren.sky.bottom = Color.rgb(0.22, 0.28, 0.20);
+		ren.sky.intensity = 0.55;
+		ren.background = Color.rgb(0.50, 0.68, 0.87);
+		// 影はカメラターゲット周辺 (フィールド全体 100m は 1 枚に入れない)
+		ren.shadow.center = new Vec3(camTarget.x, 0, camTarget.z);
+		ren.shadow.extent = 30.0;
+		ren.begin({
+			eye: camEye,
+			target: camTarget,
+			fov: camFov,
+			near: 0.1,
+			far: 400.0,
 		});
 
-		drawLit(fieldVb, fieldVerts.length, new Mat4(), [1, 1, 1, 1], false);
-
-		// 影 (すべて同じ円メッシュ)
-		for (f in fielders)
-			drawShadow(shadowVb, f.x, f.z, 0.42);
-		drawShadow(shadowVb, batter.x, batter.z, 0.42);
-		for (r in runners)
-			drawShadow(shadowVb, r.x, r.z, 0.42);
-		if (ballVisible)
-			drawShadow(shadowVb, bx, bz, MathUtil.clamp(0.30 - by * 0.006, 0.10, 0.30));
+		ren.draw(fieldMesh, new Mat4());
 
 		// 野手 (守備側チーム色)
 		var ft = fieldingTeam();
@@ -1408,7 +1343,7 @@ class Baseball24 {
 				|| state == ST_CALL ? poseSwing(stance) : poseIdle(t));
 			// バット
 			if (state == ST_PREPITCH || state == ST_WINDUP || state == ST_PITCH || state == ST_CALL || batter.anim == AN_SWING)
-				drawLit(batVb, batVerts.length, batMatrix(stance), [1, 1, 1, 1], false);
+				ren.draw(batMesh, batMatrix(stance));
 		}
 		// 走者 (塁上で止まっているときは待機ポーズ)
 		for (r in runners) {
@@ -1419,8 +1354,12 @@ class Baseball24 {
 
 		// ボール
 		if (ballVisible)
-			drawLit(ballVb, ballVerts.length, Mat4.translate(new Vec3(bx, by, bz)), [1, 1, 1, 1], false);
+			ren.draw(ballMesh, Mat4.translate(new Vec3(bx, by, bz)));
 
+		ren.end();
+
+		// HUD は tonemap 後の swapchain に重ね描き (load = LOAD)
+		Gfx.beginPass({target: Gfx.mainTex, load: Gfx.LOAD});
 		drawHud();
 		Gfx.endPass();
 	}

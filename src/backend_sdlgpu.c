@@ -291,6 +291,8 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
     g_render_pass = NULL;
     return;
   }
+  SDL_GPULoadOp load_op =
+      (d->load == SGL_LOAD_LOAD) ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
   int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
   if (nct > SGL_MAX_COLOR_TARGETS)
     nct = SGL_MAX_COLOR_TARGETS;
@@ -309,7 +311,7 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
     targets[0].texture = tex;
     targets[0].clear_color = (SDL_FColor){d->clear[0][0], d->clear[0][1],
                                           d->clear[0][2], d->clear[0][3]};
-    targets[0].load_op = SDL_GPU_LOADOP_CLEAR;
+    targets[0].load_op = load_op;
     targets[0].store_op = SDL_GPU_STOREOP_STORE;
     if (!app->gpu_depth_tex && app->last_w > 0 && app->last_h > 0) {
       (void)sg_ensure_depth_texture(app, (Uint32)app->last_w,
@@ -323,8 +325,10 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
     SDL_GPUDepthStencilTargetInfo depth = {
         .texture = app->gpu_depth_tex,
         .clear_depth = 1.0f,
-        .load_op = SDL_GPU_LOADOP_CLEAR,
-        .store_op = SDL_GPU_STOREOP_DONT_CARE,
+        .load_op = load_op,
+        // STORE so a later swapchain pass with load = LOAD sees valid depth
+        // (matches the vk / webgpu backends).
+        .store_op = SDL_GPU_STOREOP_STORE,
         .stencil_load_op = SDL_GPU_LOADOP_DONT_CARE,
         .stencil_store_op = SDL_GPU_STOREOP_DONT_CARE,
     };
@@ -340,7 +344,7 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
     targets[i].texture = im->tex;
     targets[i].clear_color = (SDL_FColor){d->clear[i][0], d->clear[i][1],
                                           d->clear[i][2], d->clear[i][3]};
-    targets[i].load_op = SDL_GPU_LOADOP_CLEAR;
+    targets[i].load_op = load_op;
     targets[i].store_op = SDL_GPU_STOREOP_STORE;
   }
   SDL_GPUDepthStencilTargetInfo depth = {0};
@@ -354,7 +358,7 @@ static void sg_begin_pass(App *app, const PassBeginDesc *d) {
     depth = (SDL_GPUDepthStencilTargetInfo){
         .texture = di->tex,
         .clear_depth = d->clear_depth,
-        .load_op = SDL_GPU_LOADOP_CLEAR,
+        .load_op = load_op,
         .store_op = SDL_GPU_STOREOP_STORE,
         .stencil_load_op = SDL_GPU_LOADOP_DONT_CARE,
         .stencil_store_op = SDL_GPU_STOREOP_DONT_CARE,

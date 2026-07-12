@@ -649,6 +649,9 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
   (void)app;
   if (!g.recording)
     return;
+  // D3D12 has no load op; LOAD just skips the explicit clears (contents are
+  // preserved by the resource transitions).
+  bool do_clear = (d->load != SGL_LOAD_LOAD);
 
   D3D12_CPU_DESCRIPTOR_HANDLE rtvs[SGL_MAX_COLOR_TARGETS];
   int nct = d->n_color_targets;
@@ -668,10 +671,12 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
     w = g.sw_w;
     h = g.sw_h;
     g.cl->OMSetRenderTargets(1, rtvs, FALSE, &dsv);
-    g.cl->ClearRenderTargetView(rtvs[0], d->clear[0], 0, nullptr);
-    g.cl->ClearDepthStencilView(
-        dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0,
-        nullptr);
+    if (do_clear) {
+      g.cl->ClearRenderTargetView(rtvs[0], d->clear[0], 0, nullptr);
+      g.cl->ClearDepthStencilView(
+          dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0,
+          nullptr);
+    }
   } else {
     // Offscreen pass (color targets and/or depth-only).
     for (int i = 0; i < nct; ++i) {
@@ -699,12 +704,14 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
     }
     g.cl->OMSetRenderTargets((UINT)nct, nct > 0 ? rtvs : nullptr, FALSE,
                              has_dsv ? &dsv : nullptr);
-    for (int i = 0; i < nct; ++i)
-      g.cl->ClearRenderTargetView(rtvs[i], d->clear[i], 0, nullptr);
-    if (has_dsv)
-      g.cl->ClearDepthStencilView(
-          dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-          d->clear_depth, 0, 0, nullptr);
+    if (do_clear) {
+      for (int i = 0; i < nct; ++i)
+        g.cl->ClearRenderTargetView(rtvs[i], d->clear[i], 0, nullptr);
+      if (has_dsv)
+        g.cl->ClearDepthStencilView(
+            dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+            d->clear_depth, 0, 0, nullptr);
+    }
   }
 
   dx_set_viewport_scissor(w, h);

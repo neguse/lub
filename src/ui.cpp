@@ -271,7 +271,7 @@ static int l_ui_render(lua_State *L) {
       /*depth_test=*/false, /*depth_write=*/false, SGL_CULL_NONE,
       SGL_PRIM_TRIANGLES, app->pass.current_n_color_targets,
       app->pass.current_color_fmts, app->pass.current_has_depth,
-      app->pass.current_depth_fmt, /*is_indexed=*/true,
+      app->pass.current_depth_fmt, /*is_indexed=*/true, /*depth_tex_mask=*/0,
       (int64_t)app->frame_index);
   g_backend->apply_pipeline(pip);
 

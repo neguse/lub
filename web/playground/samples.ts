@@ -31,6 +31,7 @@ export const SAMPLE_NAMES = [
   "23_crane_game",
   "24_baseball",
   "25_bowling",
+  "26_renderer3d",
 ];
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan

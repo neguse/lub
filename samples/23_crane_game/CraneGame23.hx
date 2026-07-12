@@ -1,17 +1,18 @@
 import lub.Gfx;
 import lub.Input;
 import lub.Input.Key;
-import lub.Io;
 import lub.Math.Mat4;
 import lub.Math.MathUtil;
 import lub.Math.Quat;
 import lub.Math.Vec3;
-import lub.Mesh;
 import lub.Phys3d;
 import lub.Ui;
 import lubx.Boot;
+import lubx.Color;
+import lubx.Mesh3d;
+import lubx.Renderer3d;
 import lubx.Sdf;
-import lua.Table;
+import lubx.Shapes3d;
 
 typedef Bear = {
 	var gen:Int;
@@ -200,27 +201,22 @@ class CraneGame23 {
 		return dome.smin(rim, 0.015);
 	}
 
-	// --- メッシュ (hot reload 対応: 19_sdf と同じ dirty フラグの流儀) ------
+	// --- メッシュ (hot reload 対応: dirty フラグで再メッシュ) --------------
 	static var meshDirty = true;
-	static var meshVer = 0;
-	static var bearMeshes:Array<MeshData> = null;
-	static var fingerMesh:MeshData = null;
-	static var headMesh:MeshData = null;
-	static var bearVerts:Array<Table<Int, Float>> = null;
-	static var fingerVerts:Table<Int, Float> = null;
-	static var headVerts:Table<Int, Float> = null;
+	static var bearMeshes = [for (i in 0...3) new Mesh3d("cg_bear" + i)];
+	static var fingerMesh = new Mesh3d("cg_finger");
+	static var headMesh = new Mesh3d("cg_head");
+	static var cubeMesh = new Mesh3d("cg_cube");
 
 	static function remesh() {
 		var furs = [0xB07A4A, 0xE8A0B4, 0xF0E5CE];
 		var bellies = [0xF2E3C8, 0xF7D9E2, 0xE0CFA8];
-		bearMeshes = [for (i in 0...3) Sdf.mesh(bearModel(furs[i], bellies[i]), 56)];
-		fingerMesh = Sdf.mesh(fingerModel(), 48);
-		headMesh = Sdf.mesh(headModel(), 56);
-		// interleave は remesh 時に 1 回だけ (毎フレームやると Lua 側が重い)
-		bearVerts = [for (m in bearMeshes) Io.interleavePncm(m)];
-		fingerVerts = Io.interleavePncm(fingerMesh);
-		headVerts = Io.interleavePncm(headMesh);
-		meshVer = Std.int(lua.Os.clock() * 1000);
+		for (i in 0...3)
+			bearMeshes[i].rebuild(Sdf.mesh(bearModel(furs[i], bellies[i]), 56));
+		fingerMesh.rebuild(Sdf.mesh(fingerModel(), 48));
+		headMesh.rebuild(Sdf.mesh(headModel(), 56));
+		if (!cubeMesh.ready())
+			cubeMesh.rebuild(Shapes3d.cube());
 		meshDirty = false;
 	}
 
@@ -625,40 +621,7 @@ class CraneGame23 {
 	}
 
 	// --- 描画 --------------------------------------------------------------
-	static var cubeVerts:Table<Int, Float> = null;
-	static var cubeIndices:Table<Int, Int> = null;
-
-	static function buildCube() {
-		var verts:Array<Float> = [];
-		var indices:Array<Int> = [];
-		var faces = [
-			{n: [1.0, 0.0, 0.0], u: [0.0, 1.0, 0.0], v: [0.0, 0.0, 1.0]},
-			{n: [-1.0, 0.0, 0.0], u: [0.0, 0.0, 1.0], v: [0.0, 1.0, 0.0]},
-			{n: [0.0, 1.0, 0.0], u: [0.0, 0.0, 1.0], v: [1.0, 0.0, 0.0]},
-			{n: [0.0, -1.0, 0.0], u: [1.0, 0.0, 0.0], v: [0.0, 0.0, 1.0]},
-			{n: [0.0, 0.0, 1.0], u: [1.0, 0.0, 0.0], v: [0.0, 1.0, 0.0]},
-			{n: [0.0, 0.0, -1.0], u: [0.0, 1.0, 0.0], v: [1.0, 0.0, 0.0]},
-		];
-		for (f in faces) {
-			var base = Std.int(verts.length / 6);
-			for (i in 0...4) {
-				var su = (i == 1 || i == 2) ? 1.0 : -1.0;
-				var sv = (i >= 2) ? 1.0 : -1.0;
-				for (k in 0...3)
-					verts.push(f.n[k] + f.u[k] * su + f.v[k] * sv);
-				for (k in 0...3)
-					verts.push(f.n[k]);
-			}
-			for (idx in [0, 1, 2, 0, 2, 3])
-				indices.push(base + idx);
-		}
-		cubeVerts = Table.fromArray(verts);
-		cubeIndices = Table.fromArray(indices);
-	}
-
-	static function poseMat(pose:Dynamic):Mat4 {
-		return Mat4.translate(new Vec3(pose.x, pose.y, pose.z)) * new Quat(pose.qx, pose.qy, pose.qz, pose.qw).toMat4();
-	}
+	static var ren = new Renderer3d("cg23");
 
 	static function boxMat(x:Float, y:Float, z:Float, sx:Float, sy:Float, sz:Float):Mat4 {
 		return Mat4.translate(new Vec3(x, y, z)) * Mat4.scale(new Vec3(sx, sy, sz));
@@ -682,49 +645,11 @@ class CraneGame23 {
 		return Mat4.translate(mid) * rot * Mat4.scale(new Vec3(r, len * 0.5, r));
 	}
 
-	static function drawBox(shader:Dynamic, vp:Mat4, model:Mat4, color:Array<Float>, ?blend:Int) {
-		var vb = Gfx.useBuffer("cg_cube_vb", Gfx.VERTEX, cubeVerts, 1);
-		var ib = Gfx.useBuffer("cg_cube_ib", Gfx.INDEX, cubeIndices, 1);
-		var mvp = vp * model;
-		Gfx.draw(36, {
-			verts: vb,
-			indices: ib,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-				color: Table.fromArray(color),
-			},
-		}, {
-			shader: shader,
-			depth: true,
-			depth_write: blend == null,
-			blend: blend == null ? Gfx.NONE : blend,
-			cull: Gfx.NONE,
-		});
-	}
-
-	static function drawSdf(shader:Dynamic, vp:Mat4, mesh:MeshData, verts:Table<Int, Float>, key:String, model:Mat4) {
-		var vb = Gfx.useBuffer("cg_" + key + "_vb", Gfx.VERTEX, verts, meshVer);
-		var ib = Gfx.useBuffer("cg_" + key + "_ib", Gfx.INDEX, mesh.indices, meshVer);
-		var mvp = vp * model;
-		Gfx.draw(mesh.index_count, {
-			verts: vb,
-			indices: ib,
-			uniforms: {
-				mvp: Table.fromArray(mvp.m),
-				model: Table.fromArray(model.m),
-			},
-		}, {
-			shader: shader,
-			depth: true,
-			depth_write: true,
-			cull: Gfx.BACK,
-		});
+	static function drawBox(model:Mat4, color:Color, ?blend:Int) {
+		ren.draw(cubeMesh, model, {tint: color, blend: blend});
 	}
 
 	public static function onFrame() {
-		if (cubeVerts == null)
-			buildCube();
 		if (meshDirty)
 			remesh();
 
@@ -744,83 +669,86 @@ class CraneGame23 {
 		updatePrizes(live);
 
 		// --- draw ---
-		var litVs = Io.loadText("samples/23_crane_game/data/23_lit.vs.slang");
-		var litFs = Io.loadText("samples/23_crane_game/data/23_lit.fs.slang");
-		var sdfVs = Io.loadText("samples/23_crane_game/data/23_sdf.vs.slang");
-		var sdfFs = Io.loadText("samples/23_crane_game/data/23_sdf.fs.slang");
-		if (litVs.text == null || litFs.text == null || sdfVs.text == null || sdfFs.text == null)
-			return;
-		var lit = Gfx.useShader("cg_lit", litVs.text, litFs.text, litVs.version * 31 + litFs.version);
-		var sdf = Gfx.useShader("cg_sdf", sdfVs.text, sdfFs.text, sdfVs.version * 31 + sdfFs.version);
-
-		var size = Gfx.size();
-		var view = Mat4.lookAtLh(new Vec3(0.02, 1.02, 1.95), new Vec3(0.0, 0.30, 0.0), Vec3.up());
-		var proj = Mat4.perspectiveLh(40.0, size.w / size.h, 0.1, 50.0);
-		var vp = proj * view;
-
-		Gfx.beginPass({
-			target: Gfx.mainTex,
-			clear_color: Table.fromArray([0.10, 0.10, 0.13, 1.0]),
+		// ゲームセンターの薄暗い環境 + 筐体上部からの光
+		ren.light.dir = new Vec3(-0.3, 1.0, 0.45);
+		ren.light.intensity = 1.2;
+		ren.sky.top = Color.rgb(0.35, 0.36, 0.45);
+		ren.sky.bottom = Color.rgb(0.12, 0.11, 0.12);
+		ren.sky.intensity = 0.45;
+		ren.background = Color.rgb(0.10, 0.10, 0.13);
+		ren.shadow.center = new Vec3(0, 0.3, 0);
+		ren.shadow.extent = 1.2;
+		ren.begin({
+			eye: new Vec3(0.02, 1.02, 1.95),
+			target: new Vec3(0.0, 0.30, 0.0),
+			fov: 40,
+			near: 0.1,
+			far: 50.0,
 		});
 
 		// 筐体 (描画のみ): 本体・上部飾り・柱・レール
-		var body = [0.93, 0.93, 0.95, 1.0];
-		var accent = [0.88, 0.25, 0.42, 1.0];
-		var dark = [0.22, 0.23, 0.27, 1.0];
-		var felt = [0.32, 0.62, 0.46, 1.0];
-		drawBox(lit, vp, boxMat(0.0, -0.33, 0.0, 0.42, 0.29, FIELD_HZ + 0.05), body);
-		drawBox(lit, vp, boxMat(0.0, -0.06, 0.0, 0.42, 0.022, FIELD_HZ + 0.05), accent);
-		drawBox(lit, vp, boxMat(0.0, 0.86, 0.0, 0.42, 0.075, FIELD_HZ + 0.05), accent);
+		var body = Color.rgb(0.93, 0.93, 0.95);
+		var accent = Color.rgb(0.88, 0.25, 0.42);
+		var dark = Color.rgb(0.22, 0.23, 0.27);
+		var felt = Color.rgb(0.32, 0.62, 0.46);
+		drawBox(boxMat(0.0, -0.33, 0.0, 0.42, 0.29, FIELD_HZ + 0.05), body);
+		drawBox(boxMat(0.0, -0.06, 0.0, 0.42, 0.022, FIELD_HZ + 0.05), accent);
+		drawBox(boxMat(0.0, 0.86, 0.0, 0.42, 0.075, FIELD_HZ + 0.05), accent);
 		for (sx in [-1, 1])
 			for (sz in [-1, 1])
-				drawBox(lit, vp, boxMat(sx * (FIELD_HX + 0.022), 0.31, sz * (FIELD_HZ + 0.028), 0.016, 0.315, 0.016), body);
+				drawBox(boxMat(sx * (FIELD_HX + 0.022), 0.31, sz * (FIELD_HZ + 0.028), 0.016, 0.315, 0.016), body);
 		// 床 (フェルト) と穴の縁
-		drawBox(lit, vp, boxMat(0.0, -0.02, -0.175, FIELD_HX, 0.02, 0.275), felt);
-		drawBox(lit, vp, boxMat(0.175, -0.02, 0.275, 0.20, 0.02, 0.175), felt);
-		drawBox(lit, vp, boxMat(-0.20, -0.05, 0.275, 0.175, 0.05, 0.175), dark); // シュート内部
-		// 払い出しの褒め演出: 獲得口の縁が光る
+		drawBox(boxMat(0.0, -0.02, -0.175, FIELD_HX, 0.02, 0.275), felt);
+		drawBox(boxMat(0.175, -0.02, 0.275, 0.20, 0.02, 0.175), felt);
+		drawBox(boxMat(-0.20, -0.05, 0.275, 0.175, 0.05, 0.175), dark); // シュート内部
+		// 払い出しの褒め演出: 獲得口の縁が光る (HDR 高輝度で bloom に乗せる)
 		if (payoutFlash > 0) {
 			var k = payoutFlash / 60.0;
-			drawBox(lit, vp, boxMat(-0.20, 0.005, 0.275, 0.178, 0.006 + 0.02 * k, 0.178), [1.0, 0.95, 0.5 + 0.5 * k, 1.0]);
+			drawBox(boxMat(-0.20, 0.005, 0.275, 0.178, 0.006 + 0.02 * k, 0.178), Color.rgb(1.6, 1.5, 0.7 + 0.7 * k));
 			payoutFlash--;
 		}
 		// レール: 固定 2 本 + キャリッジと動く梁
-		drawBox(lit, vp, boxMat(-0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark);
-		drawBox(lit, vp, boxMat(0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark);
-		drawBox(lit, vp, boxMat(0.0, 0.76, cz, 0.34, 0.010, 0.010), dark);
-		drawBox(lit, vp, boxMat(cx, 0.775, cz, 0.05, 0.025, 0.05), accent);
+		drawBox(boxMat(-0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark);
+		drawBox(boxMat(0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark);
+		drawBox(boxMat(0.0, 0.76, cz, 0.34, 0.010, 0.010), dark);
+		drawBox(boxMat(cx, 0.775, cz, 0.05, 0.025, 0.05), accent);
 
 		// ワイヤー + ヘッド + 爪 (物理の実 pose で描く)
 		var headPose = Phys3d.pose(machine.head);
 		if (headPose != null) {
 			var anchor = new Vec3(headPose.x, headPose.y, headPose.z)
 				+ new Quat(headPose.qx, headPose.qy, headPose.qz, headPose.qw).rotateVec3(new Vec3(0, HEAD_TOP, 0));
-			drawBox(lit, vp, segmentMat(new Vec3(cx, CARRIAGE_Y, cz), anchor, 0.005), dark);
-			drawSdf(sdf, vp, headMesh, headVerts, "head", poseMat(headPose));
+			drawBox(segmentMat(new Vec3(cx, CARRIAGE_Y, cz), anchor, 0.005), dark);
+			ren.draw(headMesh, Renderer3d.poseMat(headPose));
 		}
 		var frPose = Phys3d.pose(machine.fr);
 		if (frPose != null)
-			drawSdf(sdf, vp, fingerMesh, fingerVerts, "finger", poseMat(frPose));
+			ren.draw(fingerMesh, Renderer3d.poseMat(frPose));
 		var flPose = Phys3d.pose(machine.fl);
 		if (flPose != null)
-			drawSdf(sdf, vp, fingerMesh, fingerVerts, "finger", poseMat(flPose) * Mat4.rotateY(Math.PI));
+			ren.draw(fingerMesh, Renderer3d.poseMat(flPose) * Mat4.rotateY(Math.PI));
 
 		// ぬいぐるみ
 		for (entry in live) {
 			var pose = Phys3d.pose(entry.body);
 			if (pose != null)
-				drawSdf(sdf, vp, bearMeshes[entry.bear.variant], bearVerts[entry.bear.variant], "bear" + entry.bear.variant, poseMat(pose));
+				ren.draw(bearMeshes[entry.bear.variant], Renderer3d.poseMat(pose));
 		}
 
-		// ガラスとフェンス (半透明なので最後に)
-		var glass = [0.75, 0.85, 0.95, 0.12];
-		drawBox(lit, vp, boxMat(-FIELD_HX - 0.006, 0.31, 0.0, 0.005, 0.31, FIELD_HZ), glass, Gfx.ALPHA);
-		drawBox(lit, vp, boxMat(FIELD_HX + 0.006, 0.31, 0.0, 0.005, 0.31, FIELD_HZ), glass, Gfx.ALPHA);
-		drawBox(lit, vp, boxMat(0.0, 0.31, -FIELD_HZ - 0.006, FIELD_HX, 0.31, 0.005), glass, Gfx.ALPHA);
-		drawBox(lit, vp, boxMat(-0.20, 0.07, 0.10, 0.175, 0.07, 0.005), [0.85, 0.9, 1.0, 0.25], Gfx.ALPHA);
-		drawBox(lit, vp, boxMat(-0.025, 0.07, 0.275, 0.005, 0.07, 0.175), [0.85, 0.9, 1.0, 0.25], Gfx.ALPHA);
-		drawBox(lit, vp, boxMat(0.0, 0.31, FIELD_HZ + 0.006, FIELD_HX, 0.31, 0.005), glass, Gfx.ALPHA);
+		// ガラスとフェンス (半透明は opaque の後に自動で回る)
+		var glass = Color.rgb(0.75, 0.85, 0.95, 0.12);
+		var fence = Color.rgb(0.85, 0.9, 1.0, 0.25);
+		drawBox(boxMat(-FIELD_HX - 0.006, 0.31, 0.0, 0.005, 0.31, FIELD_HZ), glass, Gfx.ALPHA);
+		drawBox(boxMat(FIELD_HX + 0.006, 0.31, 0.0, 0.005, 0.31, FIELD_HZ), glass, Gfx.ALPHA);
+		drawBox(boxMat(0.0, 0.31, -FIELD_HZ - 0.006, FIELD_HX, 0.31, 0.005), glass, Gfx.ALPHA);
+		drawBox(boxMat(-0.20, 0.07, 0.10, 0.175, 0.07, 0.005), fence, Gfx.ALPHA);
+		drawBox(boxMat(-0.025, 0.07, 0.275, 0.005, 0.07, 0.175), fence, Gfx.ALPHA);
+		drawBox(boxMat(0.0, 0.31, FIELD_HZ + 0.006, FIELD_HX, 0.31, 0.005), glass, Gfx.ALPHA);
 
+		ren.end();
+
+		// UI は tonemap 後の swapchain に重ね描き (load = LOAD)
+		Gfx.beginPass({target: Gfx.mainTex, load: Gfx.LOAD});
 		Ui.setNextWindow(10, 10, 240, 150);
 		if (Ui.begin("crane game")) {
 			Ui.text("prizes: " + score + "  plays: " + plays);

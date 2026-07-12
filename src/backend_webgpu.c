@@ -720,7 +720,7 @@ static void wg_destroy_shader(BackendShader h) {
 // Group 1: textures + samplers + storage_bufs + storage_textures
 static void wg_build_bind_group_layouts(WGPUDevice dev,
                                         const ShaderReflection *refl,
-                                        bool is_compute,
+                                        bool is_compute, uint8_t depth_tex_mask,
                                         WGPUBindGroupLayout *out_bgl0,
                                         WGPUBindGroupLayout *out_bgl1) {
   // Group 0: uniform buffers
@@ -755,12 +755,18 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
                             : (refl->texs[i].stage == SGL_STAGE_VERTEX)
                                 ? WGPUShaderStage_Vertex
                                 : WGPUShaderStage_Fragment;
+      // Depth-format textures can only be bound as unfilterable-float and
+      // sampled with a non-filtering sampler (use_texture forces NEAREST on
+      // depth formats, so the texture's own sampler is compatible).
+      bool is_depth = (depth_tex_mask >> i) & 1;
       // Texture view
       {
         WGPUBindGroupLayoutEntry *e = &entries[count++];
         e->binding = (uint32_t)refl->texs[i].img_slot;
         e->visibility = vis;
-        e->texture.sampleType = WGPUTextureSampleType_Float;
+        e->texture.sampleType = is_depth
+                                    ? WGPUTextureSampleType_UnfilterableFloat
+                                    : WGPUTextureSampleType_Float;
         e->texture.viewDimension = WGPUTextureViewDimension_2D;
       }
       // Sampler
@@ -768,7 +774,8 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
         WGPUBindGroupLayoutEntry *e = &entries[count++];
         e->binding = (uint32_t)refl->texs[i].smp_slot;
         e->visibility = vis;
-        e->sampler.type = WGPUSamplerBindingType_Filtering;
+        e->sampler.type = is_depth ? WGPUSamplerBindingType_NonFiltering
+                                   : WGPUSamplerBindingType_Filtering;
       }
     }
     for (int i = 0; i < refl->storage_buf_count && i < SGL_MAX_STORAGE_BUFS;
@@ -819,7 +826,8 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
 
   WGPUDevice dev = g_dev;
 
-  wg_build_bind_group_layouts(dev, &ws->refl, d->is_compute, &wp->bgl0,
+  wg_build_bind_group_layouts(dev, &ws->refl, d->is_compute,
+                              d->is_compute ? 0 : d->depth_tex_mask, &wp->bgl0,
                               &wp->bgl1);
 
   WGPUBindGroupLayout bgls[2] = {wp->bgl0, wp->bgl1};
@@ -900,8 +908,11 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
       .buffers = vb_layouts,
   };
 
-  // Fragment state
-  int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+  // Fragment state. n_color_targets == 0 = depth-only pass: the fragment
+  // stage runs with zero color targets (its SV_Target output is discarded).
+  int nct = d->n_color_targets;
+  if (nct < 0)
+    nct = 0;
   if (nct > SGL_MAX_COLOR_TARGETS)
     nct = SGL_MAX_COLOR_TARGETS;
 
@@ -955,6 +966,8 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
       .targets = color_targets,
   };
 
+  // Depth-only: WebGPU rejects a fragment output with no matching color
+  // target, so drop the fragment stage entirely (depth still writes).
   WGPURenderPipelineDescriptor rpd = {
       .layout = wp->layout,
       .vertex = vs,
@@ -965,7 +978,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
               .frontFace = WGPUFrontFace_CW,
               .cullMode = sgl_to_wgpu_cull(d->cull),
           },
-      .fragment = &fs,
+      .fragment = nct > 0 ? &fs : NULL,
   };
 
   // Depth/stencil
@@ -1074,9 +1087,15 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   if (!g_enc)
     return;
 
-  int nct = d->n_color_targets > 0 ? d->n_color_targets : 1;
+  // n_color_targets == 0 with a depth target is a depth-only pass; only
+  // the legacy swapchain path (targets[0] == 0, no depth target) coerces to 1.
+  int nct = d->n_color_targets;
+  if (nct <= 0 && !d->depth_target)
+    nct = 1;
   if (nct > SGL_MAX_COLOR_TARGETS)
     nct = SGL_MAX_COLOR_TARGETS;
+  WGPULoadOp load_op =
+      (d->load == SGL_LOAD_LOAD) ? WGPULoadOp_Load : WGPULoadOp_Clear;
 
   WGPURenderPassColorAttachment colors[SGL_MAX_COLOR_TARGETS] = {0};
 
@@ -1084,7 +1103,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
 
   for (int i = 0; i < nct; ++i) {
     colors[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    colors[i].loadOp = WGPULoadOp_Clear;
+    colors[i].loadOp = load_op;
     colors[i].storeOp = WGPUStoreOp_Store;
     colors[i].clearValue = (WGPUColor){d->clear[i][0], d->clear[i][1],
                                        d->clear[i][2], d->clear[i][3]};
@@ -1099,7 +1118,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
 
   WGPURenderPassDescriptor rpd = {
       .colorAttachmentCount = (size_t)nct,
-      .colorAttachments = colors,
+      .colorAttachments = nct > 0 ? colors : NULL,
   };
 
   WGPURenderPassDepthStencilAttachment depth_att = {0};
@@ -1110,7 +1129,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
     } else {
       depth_att.view = app->wgpu_depth_view;
     }
-    depth_att.depthLoadOp = WGPULoadOp_Clear;
+    depth_att.depthLoadOp = load_op;
     depth_att.depthStoreOp = WGPUStoreOp_Store;
     depth_att.depthClearValue = d->clear_depth;
     // Stencil ops are required when the format has a stencil aspect;
@@ -1124,7 +1143,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
     if (!is_offscreen)
       has_stencil = true;
     if (has_stencil) {
-      depth_att.stencilLoadOp = WGPULoadOp_Clear;
+      depth_att.stencilLoadOp = load_op;
       depth_att.stencilStoreOp = WGPUStoreOp_Store;
       depth_att.stencilClearValue = 0;
     }

@@ -60,6 +60,9 @@ typedef struct PipelineDesc {
   bool is_indexed; // true = pipeline used for indexed draw (u32 indices)
   bool is_compute; // true: make_pipeline ignores graphics state and builds a
                    // compute pipeline
+  // Bit i = reflection texture i is bound to a depth-format texture. Only
+  // the webgpu backend consumes this (bind group layout sample type).
+  uint8_t depth_tex_mask;
 } PipelineDesc;
 
 typedef struct PassBeginDesc {
@@ -75,6 +78,9 @@ typedef struct PassBeginDesc {
   SglPixelFormat depth_fmt;
   float clear_depth;
   bool has_depth;
+  // Applies to all attachments (color + depth). 0 (unset) behaves as
+  // SGL_LOAD_CLEAR; SGL_LOAD_LOAD preserves the previous contents.
+  SglLoadAction load;
 } PassBeginDesc;
 
 typedef struct BindingsDesc {
