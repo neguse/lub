@@ -55,6 +55,67 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task PartialTypesAndLock_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public partial class PartialClass
+            {
+                public static int First() => 1;
+            }
+            public partial class PartialClass
+            {
+                public static int Second() => 2;
+            }
+            public partial record PartialRecord;
+            public partial interface IPartial { }
+
+            public class RegularClass
+            {
+                public static void Run()
+                {
+                    lock (new object())
+                    {
+                    }
+                }
+            }
+
+            public record RegularRecord;
+            public interface IRegular { }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(5, syntaxDiagnostics.Length);
+        Assert.Equal(4, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("PartialTypeDeclaration")));
+        Assert.Single(syntaxDiagnostics,
+            d => d.GetMessage().Contains("LockStatement"));
+    }
+
+    [Fact]
+    public async Task PartialStructs_KeepExistingSingleDiagnostic()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public partial struct PartialStruct { }
+            public readonly partial record struct PartialRecordStruct(int Value);
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(2, syntaxDiagnostics.Length);
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("StructDeclaration"));
+        Assert.Contains(syntaxDiagnostics,
+            d => d.GetMessage().Contains("RecordStructDeclaration"));
+        Assert.DoesNotContain(syntaxDiagnostics,
+            d => d.GetMessage().Contains("PartialTypeDeclaration"));
+    }
+
+    [Fact]
     public async Task UnsupportedStatements_ReportUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

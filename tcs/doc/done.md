@@ -613,3 +613,12 @@
 - 判断: publicなsymbol overloadの契約は変えず、誤検出が起きるsyntax member-access経路だけでtype qualifierを除外した。unsupported側もouter method/property/field/constructor symbolは従来どおり判定する
 - 追加発見: `nameof(...)`の警告なし不正Lua出力をT162、`global::`のTCS1001誤警告・重複をT163として起票した
 - 残課題: T137 → T162 → T138 → T163 (診断契約)
+
+### T137: partial / lock の Analyzer / check / emitter 診断を統一 ✓ (2026-07-12)
+- class/record/interfaceのpartial modifierとLockStatementを共有TCS1001へ追加し、Analyzer、`TranspileWithDiagnostics`、`tcs check`、通常CLI transpileで同じsyntax名・1 node 1診断に統一した。partial struct/record structは既存診断1件のまま重複させない
+- emitterはpartial宣言をVisitClass/VisitRecord前に止めてpartial subtreeのunsupported markerを残し、同名Lua tableのlast-write-winsを防止した。lockはunsupported markerの後に`do ... end`でbodyとlocal scopeを保持する（同期は実装しない）
+- 複数partial class、partial record/interface、通常型、partial struct系、lock body実行をAnalyzer 2件・transpiler/check/通常CLI 3件の計5テストで固定した。全380 tcs / 13 analyzerテストがgreen
+- 変更ファイル: TinyCsComplianceFacts.cs, TinyCsComplianceAnalyzerTests.cs, LuaEmitter.cs, LuaEmitter.Statements.cs, DiagnosticTests.cs, ComplianceParityTests.cs, README.md, support-matrix/current/tasks/done
+- よかったこと: shared factsをemitter入口でも使い、診断の正本とwrong-code防止gateを同じ判定にできた。通常CLI出力も実Luaで実行し、lock bodyが消えないことを確認した
+- 判断: partialは安全にmergeできる基盤がないため全宣言をemitしない。lockはシングルスレッドbackendに合わせて同期を省略するが、TCS1001で明示し、bodyの副作用とscopeは保持するfallbackにした。analyzer-demo fixtureの期待件数は変えず、専用parity testを恒常dotnet/run-tests gateへ載せた
+- 残課題: T162 → T138 → T163 (診断契約)

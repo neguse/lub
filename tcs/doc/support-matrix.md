@@ -184,7 +184,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `interface` 宣言 | **Y** | 出力なし |
 | `enum` 宣言 | **Y** | |
 | `delegate` 宣言 | **-** | |
-| `partial` 型 (C# 2) | **-** | |
+| `partial` 型 (C# 2) | **-** | TCS1001。partial subtreeをunsupported marker化し、同名table上書きを防ぐ |
 | `file` 型 (C# 11) | **-** | |
 
 ### 2.3 メンバー宣言
@@ -250,7 +250,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `throw` | **-** | | unsupported 診断あり |
 | `try` / `catch` / `finally` | **-** | | unsupported 診断あり |
 | `using` 文 (リソース破棄) | **-** | | unsupported 診断あり |
-| `lock` | **N/A** | | シングルスレッド |
+| `lock` | **N/A** | `do ... end` fallback | TCS1001。同期はせずbody/scopeだけ保持 |
 | `yield return` / `yield break` (C# 2) | **-** | | |
 | `goto` / ラベル | **-** | | |
 | `checked` / `unchecked` | **N/A** | | |
@@ -403,7 +403,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `volatile` | **N/A** | |
 | `extern` | **N/A** | |
 | `async` (C# 5) | **N/A** | |
-| `partial` (C# 2) | **-** | |
+| `partial` (C# 2) | **-** | 型宣言はTCS1001 |
 | `required` (C# 11) | **-** | |
 | `unsafe` | **N/A** | |
 
@@ -868,7 +868,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
-| 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler で共有 (`struct` / `record struct` など) |
+| 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` など) |
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist 外の member も検出し、完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |

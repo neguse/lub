@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **診断契約**: T137 → T162 → T138 → T163
+1. **診断契約**: T162 → T138 → T163
 2. **Lua 命名基盤**: T151
 3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
 4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
@@ -32,15 +32,6 @@ tcs 側から直接変更しない。
 ---
 
 ## P0: 正しさ・安全性
-
-### T137: partial / lock の Analyzer / check / emitter 診断を統一
-- 目的: レビューで確認した`partial`上書きと`lock`本体消失を、全診断経路で黙殺しない
-- 依存: T133
-- 作業:
-  - class/record/interface declarationの`partial` modifierと`LockStatement`を共有factsでTCS1001にする
-  - Analyzerと`check`の対象ケースtestを追加し、既存の診断一致gateへ乗せる
-  - emitter fallbackでもwarningを残し、複数partial宣言やlock bodyを無言で別意味へしない
-- 完了条件: `partial class`と`lock`がAnalyzer/checkで同じTCS1001、`tcs check`はexit 1となり、通常transpileも警告なしで黙殺しない
 
 ### T138: supported API allowlist を完全シグネチャ単位へ変更
 - 目的: method名だけが一致する未実装overloadを許可し、runtimeで落ちる問題をなくす

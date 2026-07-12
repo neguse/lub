@@ -15,8 +15,12 @@ public static class TinyCsComplianceFacts
 {
     public static readonly SyntaxKind[] UnsupportedSyntaxKinds =
     [
+        SyntaxKind.ClassDeclaration,
+        SyntaxKind.RecordDeclaration,
+        SyntaxKind.InterfaceDeclaration,
         SyntaxKind.StructDeclaration,
         SyntaxKind.RecordStructDeclaration,
+        SyntaxKind.LockStatement,
         SyntaxKind.TryStatement,
         SyntaxKind.ThrowStatement,
         SyntaxKind.UsingStatement,
@@ -144,6 +148,10 @@ public static class TinyCsComplianceFacts
             RecordDeclarationSyntax record
                 when record.Kind() == SyntaxKind.RecordStructDeclaration
                     => "RecordStructDeclaration",
+            TypeDeclarationSyntax type
+                when type.Modifiers.Any(SyntaxKind.PartialKeyword)
+                    => "PartialTypeDeclaration",
+            LockStatementSyntax => "LockStatement",
             TryStatementSyntax => "TryStatement",
             ThrowStatementSyntax => "ThrowStatement",
             UsingStatementSyntax => "UsingStatement",

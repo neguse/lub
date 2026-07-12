@@ -396,7 +396,7 @@ public partial class LuaEmitter
     }
 
     private void WarnUnsupportedMember(MemberDeclarationSyntax member) =>
-        _ = WarnUnsupported(member, $"member: {member.Kind()}");
+        AppendLine(WarnUnsupported(member, $"member: {member.Kind()}"));
 
     public override string ToString() => _sb.ToString().TrimEnd() + "\n";
 }

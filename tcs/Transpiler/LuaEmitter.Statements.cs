@@ -84,6 +84,15 @@ public partial class LuaEmitter
             case SwitchStatementSyntax switchStmt:
                 VisitSwitch(model, switchStmt);
                 break;
+            case LockStatementSyntax lockStmt:
+                AppendLine(WarnUnsupported(lockStmt,
+                    "statement: LockStatement"));
+                AppendLine("do");
+                _indent++;
+                VisitBlock(model, lockStmt.Statement);
+                _indent--;
+                AppendLine("end");
+                break;
             default:
                 AppendLine(WarnUnsupported(stmt, $"statement: {stmt.Kind()}"));
                 break;

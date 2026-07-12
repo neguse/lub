@@ -323,6 +323,54 @@ public class DiagnosticTests
     }
 
     [Fact]
+    public void PartialTypesAndLock_ReportWarningsWithoutWrongCodeEmission()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public partial class PartialClass
+            {
+                public static int First() => 1;
+            }
+            public partial class PartialClass
+            {
+                public static int Second() => 2;
+            }
+
+            public partial record PartialRecord;
+            public partial interface IPartial { }
+
+            public class Locker
+            {
+                public static int Test()
+                {
+                    lock (new object())
+                    {
+                        return 1;
+                    }
+                }
+            }
+            """]);
+
+        var syntaxWarnings = result.Warnings
+            .Where(w => w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax))
+            .ToArray();
+
+        Assert.True(result.Success);
+        Assert.Equal(5, syntaxWarnings.Length);
+        Assert.Equal(4, syntaxWarnings.Count(
+            warning => warning.Contains("PartialTypeDeclaration")));
+        Assert.Single(syntaxWarnings,
+            warning => warning.Contains("LockStatement"));
+        Assert.DoesNotContain("PartialClass = {}", result.Lua);
+        Assert.DoesNotContain("PartialRecord = {}", result.Lua);
+        Assert.Equal(4, result.Lua.Split(
+            "--[[ unsupported: PartialTypeDeclaration ]]",
+            StringSplitOptions.None).Length - 1);
+        Assert.Contains("--[[ unsupported: LockStatement ]]", result.Lua);
+        Assert.Equal("1", TestHelper.RunLua(
+            $"{result.Lua}\nprint(Locker.Test())").Trim());
+    }
+
+    [Fact]
     public void UnsupportedBclApi_ReportsWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
