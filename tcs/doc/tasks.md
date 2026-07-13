@@ -263,16 +263,8 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-順序は T173 → T174 → T175(M1 hard gate)→ T176 → T177 → T178 → T179。T172 は完了 (done.md)。
+順序は T174 → T175(M1 hard gate)→ T176 → T177 → T178 → T179。T172-T173 は完了 (done.md)。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
-
-### T173: [M0] Chrome benchmark harness
-- 目的: 実ブラウザでの現行 full path baseline(cold/warm/sample-only/memory soak)と、T175 gate 計測の土台を作る
-- 依存: T172
-- 作業:
-  - playwright で lub playground (readonly 利用) を駆動する harness を `bench/` に置く
-  - 同じ edit sequence を warm-up 5 回 + 30 回以上、revision 対応付け、p50/p95/max 出力
-- 完了条件: design doc §2 の観測値を harness の再現可能な baseline で置き換えられる
 
 ### T174: [M0] incremental/full diagnostics differential test 雛形
 - 目的: §9 の diagnostics parity を M1 実装前にテストとして固定する

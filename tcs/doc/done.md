@@ -719,3 +719,11 @@
 - よかったこと: 設計レビューで定性的だった blocker (lume の live graph 全走査) を、budget 比 3 倍超という数字で確定できた。wrapper/fast-path の効果も同一 harness で対比でき、§14.2 の対策が必須である根拠が再現可能になった
 - 判断: lume 実装は計測用に bench 内へ忠実複製 (MIT, rxi/lume)。lub の vendored lume に依存すると readonly 制約と壊れやすい相対 path を持ち込むため。合成 bundle は emitter 出力風 (class table = instance metatable) に揃え、実生成物への依存を切った
 - 残課題: browser (WASM) での同系列実測は T173 の Chrome harness に載せて係数を確定する
+
+### T173: [M0] Chrome benchmark harness ✓ (2026-07-14)
+- `bench/chrome-compile.mjs` を追加。lub playground (readonly) を headless Chromium で駆動し、C# 経路の cold (page load → running) と warm edit→compiled (warm-up 5 + n=30、p50/p95/max) を計測する。playwright は ../lub/web/node_modules から解決し追加 install 不要
+- 実測 (dev server + Release publish bundle、01_triangle): cold 11.3s、warm p50 5.58s / p95 6.23s — design doc §2 の少数回観測 (11.38s / 5.6-7.0s) と整合。§2 に再現 baseline として記録
+- 変更ファイル: bench/chrome-compile.mjs (新規), doc/incremental-module-compilation-design.md
+- よかったこと: status 遷移の観測に MutationObserver 履歴を使うことで、同期 compile 中に rAF が止まり waitForFunction が "compiling…" を取りこぼす問題 (main-thread jank が計測系にも効く実例) を回避できた。初版の「前 run の synced が残って即時成立する」誤計測 (p50 31ms) を、doc 記載値との突き合わせで検出できた — baseline に外部照合値があることの価値
+- 判断: 終点は compile 完了 (現行 protocol に commit ACK がないため Lua commit は測れない。§13.1 導入後に切り替え)。dev server 経由だが WasmCompiler bundle は Release publish 物で、観測値も既存 Release 計測と一致するため baseline として採用。usedJSHeapSize は page 側 heap のみで .NET wasm heap を含まない
+- 残課題: managed heap 計測は T175 の phase timing (managedHeapBytes) で拾う。memory soak (1,000 edit) は同 harness の --runs 拡大で実行可能だが、正式には T175 gate 計測と同時に採る
