@@ -263,15 +263,8 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-順序は T174 → T175(M1 hard gate)→ T176 → T177 → T178 → T179。T172-T173 は完了 (done.md)。
+順序は T175(M1 hard gate)→ T176 → T177 → T178 → T179。T172-T174 は完了 (done.md)。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
-
-### T174: [M0] incremental/full diagnostics differential test 雛形
-- 目的: §9 の diagnostics parity を M1 実装前にテストとして固定する
-- 作業:
-  - Transpiler.Tests に differential harness を追加(現状は full vs full の恒等で green、T175 で session 側へ差し替え)
-  - canonical key (id, severity, path, span, message) の dedup/比較を実装する
-- 完了条件: dotnet test green、不一致時の diff 出力が読める形式になっている
 
 ### T175: [M1] IncrementalCompilationSession
 - 目的: 常駐 Roslyn session と body-only fast path(design doc §7-§9)

@@ -727,3 +727,11 @@
 - よかったこと: status 遷移の観測に MutationObserver 履歴を使うことで、同期 compile 中に rAF が止まり waitForFunction が "compiling…" を取りこぼす問題 (main-thread jank が計測系にも効く実例) を回避できた。初版の「前 run の synced が残って即時成立する」誤計測 (p50 31ms) を、doc 記載値との突き合わせで検出できた — baseline に外部照合値があることの価値
 - 判断: 終点は compile 完了 (現行 protocol に commit ACK がないため Lua commit は測れない。§13.1 導入後に切り替え)。dev server 経由だが WasmCompiler bundle は Release publish 物で、観測値も既存 Release 計測と一致するため baseline として採用。usedJSHeapSize は page 側 heap のみで .NET wasm heap を含まない
 - 残課題: managed heap 計測は T175 の phase timing (managedHeapBytes) で拾う。memory soak (1,000 edit) は同 harness の --runs 拡大で実行可能だが、正式には T175 gate 計測と同時に採る
+
+### T174: [M0] incremental/full diagnostics differential test 雛形 ✓ (2026-07-14)
+- `Transpiler.Tests/IncrementalDifferentialTests.cs` を追加。canonical key (id, severity, path, span, message) への正規化 (Roslyn 標準形式パース + パース不能行の raw fallback)、順序非依存比較、missing/extra を出す readable diff を実装
+- 現段階は full vs full の恒等比較 (clean / warning / error+TCS1001 混在) で契約を固定。T175 で Left 側を IncrementalCompilationSession の増分結果へ差し替える
+- 変更ファイル: Transpiler.Tests/IncrementalDifferentialTests.cs (新規)
+- よかったこと: 診断が整形済み文字列で返る現行 API のまま canonical 化を先に固めたので、session 実装時に wire format を変えずに parity gate を挿せる
+- 判断: harness は test project 内に置いた (production 側に consumer がまだ無く、dead code を作らないため。T175 で必要になれば昇格)
+- 残課題: T175 で Left=session 差し替え + body-edit/surface-change の実 differential 系列を追加
