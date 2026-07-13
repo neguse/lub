@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Full local gate for pushes. Mirrors the repository's native + web
+# Full local gate (manual). Mirrors the repository's native + web
 # regressions: the fast commit gate first, then visual goldens, WASM
 # build, web build, and headless web verification.
+# push hook からは外している: WASM/web build と headless verify は
+# web-deploy CI が push ごとに実行し、deploy を gate する。CI に無いのは
+# visual goldens と C# サンプル check だけで、必要なときに手で回す。
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

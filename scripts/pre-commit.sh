@@ -2,7 +2,8 @@
 # Fast local gate for commits: format (changed files only), whitespace
 # checks, native Release build, smoke tests, and physics Lua tests.
 # The full regression gate (visual goldens, WASM build, web build and
-# headless web verification) runs at push time via scripts/pre-push.sh.
+# headless web verification) is covered by web-deploy CI on push; run
+# scripts/pre-push.sh manually when needed.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,7 +19,8 @@ Runs the fast local pre-commit gate:
   smoke tests, and physics Lua tests.
 
 The full gate (visual goldens, WASM build, web build, headless web
-verification) runs at push time: scripts/pre-push.sh.
+verification) runs in web-deploy CI on push; scripts/pre-push.sh is the
+manual equivalent.
 EOF
     exit 0
     ;;
@@ -121,4 +123,4 @@ if [[ $physics_failed -ne 0 ]]; then
 fi
 
 echo
-echo "pre-commit gate OK (full gate runs at push: scripts/pre-push.sh)"
+echo "pre-commit gate OK (full gate: web-deploy CI (push 時) / scripts/pre-push.sh (手動))"
