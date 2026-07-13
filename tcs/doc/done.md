@@ -771,3 +771,12 @@
 - 検証: dotnet test 476/476、lub 側 tsc/prettier、E2E bench 上記、headless verify (A1-A6) は lub 側で実行
 - 判断: bridge snapshot は毎 edit 全文再送 (§14.2 bridge のまま)。mtime 取りこぼしは ACK timeout 再送 + 同 revision 再 ACK で回収。二相 handoff は未実装のため restart 分類の編集は既存 restart() (compile 成功後の runtime error で旧 player を失い得るが、snapshot は last-good compile なので次 edit で復旧可能)
 - 残課題: prebuilt assets + background prewarm (cold start 11.7s > 従来 5.6s の解消)、ABI-mismatch fallback、二相 handoff + runtimeReady、TextChange span、compiler ready 前 edit queue、soak (1000 edit / sample 切替 heap)。§17 M4 残項目として記載
+
+### T178 追補: cold path 完遂 (prebuilt / runtimeReady / 二相 handoff) ✓ (2026-07-14)
+- CLI `--snapshot` を追加 (`--entry` 必須、bridge snapshot を出力。module ID = 入力 path。playground の in-browser session と ID を一致させる相対 path 契約は lub 側 gen-tcs-prebuilt が担う)
+- lub 側: `gen-tcs-prebuilt.mjs`(cs-lib + 各 C# サンプルを staging して CLI で snapshot 化、web/tcs-prebuilt/ へ)、prebuilt boot(cold start 11.7s → **0.5s**、status running まで)、background session warm + warming 中 edit の queue/flush、player の runtimeReady 分離(FS ready まで syncFiles を queue)、requiresRestart 編集の二相 handoff(hidden player boot → 初回 commit ACK → swap、失敗時旧 player 維持。実測 7.4s)、deploy workflow に prebuilt 生成を追加
+- 設計簡略化: prebuilt は boot 加速専用(session への artifact 再利用なし)。ABI-mismatch fallback は不要化、TextChange span も見送り(design doc §17 M4 に記録)
+- 検証: cold E2E(prebuilt boot 0.5s → warming 中 edit queue → ready 後 flush synced 416ms → static initializer 編集の二相 handoff 7.4s → handoff 後 warm edit 332ms)、soak PASS(chrome-soak.mjs: 1000 edit で JS heap 16→13.4MB と増加なし、20 reopen で 15.4MB plateau。§18.3)
+
+### T179: [M5] optional optimization ✓ 全項目見送り (2026-07-14)
+- profile 判断で全項目不着手 (design doc §17 M5 に内訳)。warm E2E p95 442ms < gate 500ms、managed compile p50 45ms < 予算 275ms。direct apply / candidate-aware invalidation / Worker / AOT A/B のいずれも gate 充足に不要

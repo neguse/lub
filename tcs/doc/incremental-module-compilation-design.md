@@ -648,11 +648,24 @@ base relink・owned key 削除が成立する。emitter の expression/statement
 prebuilt assets(下記残項目)導入までは従来の full compile(約 5.6 s)より遅い。
 実装済み: SessionExports の Open(projectEpoch)/Update(restart 分類込み)/
 LinkSnapshot(raw Lua)、lub 側 session client + 75 ms debounce + ACK 駆動 status +
-ACK timeout 再送 + requiresRestart の fresh player 分岐、lume.hotswap の
-`old == new` fast-path、headless verify A6(実 C# edit → commit ACK 貫通判定)。
-残項目(warm gate に不要のため後続): fixed/sample prebuilt assets と background
-prewarm、ABI-mismatch fallback、二相 restart handoff と runtimeReady 分離、
-TextChange span wire、compiler ready 前 edit の queue。
+ACK timeout 再送、lume.hotswap の `old == new` fast-path、headless verify A6
+(実 C# edit → commit ACK 貫通判定)。
+
+同日中に cold path 残項目も完了: prebuilt snapshot(tcs CLI `--snapshot` +
+lub `gen-tcs-prebuilt`。cs-lib + sample を build 時に link した bridge snapshot
+で player を先に起動し、session は background で温める)により cold start は
+11.7 s → **0.5 s**(status running まで。従来 full compile 比でも 11 倍)。
+runtimeReady 分離(player 側で FS ready を poll し、それ以前の syncFiles は
+queue へ)、compiler warming 中の edit queue(latest-wins、ready 時 flush)、
+requiresRestart 編集の二相 handoff(hidden player を boot し初回 commit ACK
+確認後に swap、失敗時は旧 player 維持。実測 7.4 s)も実装。
+
+設計からの簡略化: prebuilt は boot 加速専用とし、session への artifact 再利用は
+しない(session open は常に editor ソースを full compile する)。これにより
+ABI-mismatch fallback は不要になる — prebuilt が古くても最初の編集で
+authoritative な snapshot に置き換わり、release では CI が生成するため
+常に一致する。TextChange span wire も見送り(MinimalChange で parse p50 2 ms、
+span 化の効果が計測誤差未満)。
 
 
 - `Initialize/OpenProject/Update/LinkSnapshot/Build/Dispose` JSExport(projectEpoch、TextChange span、diagnostic ID 込み)。
@@ -670,6 +683,15 @@ TextChange span wire、compiler ready 前 edit の queue。
 - candidate-aware dependency invalidation。
 - Worker 問題の解消。
 - profile が必要性を示した場合だけ AOT A/B。
+
+2026-07-14 の profile 判断: warm E2E p95 442 ms(gate 500 ms)を bridge のまま
+充足しており、いずれも着手しない。内訳 — direct apply: entry 全文再送 +
+hotswap 再評価は実測で warm 経路の支配項ではない(managed compile p50 45 ms、
+snapshot 再評価は parse 数 ms + registry skip)。candidate-aware invalidation:
+slow path は restart 分類の編集でしか発生せず SLO 対象外。Worker: prebuilt boot
+により起動は非ブロッキング化済みで、残る main-thread stall は background open
+の約 12 s のみ(dotnet worker 問題の解消待ち)。AOT A/B: managed 予算 275 ms に
+対し p50 45 ms で不要。
 
 ## 18. 必須テストと受入条件
 

@@ -263,7 +263,7 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-順序は T176 → T177 → T178 → T179。T172-T178 は完了 (T178 は warm gate 通過。cold path の prebuilt 系は残項目、design doc §17 M4) (done.md)。M1 gate は通過済み。
+順序は T176 → T177 → T178 → T179。T172-T179 完了 (done.md、T179 は profile 判断により全項目見送り。design doc §17 M4/M5)。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
 
 ### T176: [M2] descriptor artifact / registry vertical slice ✓
@@ -274,10 +274,10 @@ tcs 側から直接変更しない。
 - 依存: T176
 - 内容: design doc §17 M3(rawget/rawset transaction / commit ACK / LinkSnapshot / thin entry wrapper / T149 acceptance / T154 registry-owned cases)
 
-### T178: [M4] Wasm delta API と playground bridge ✓ (warm gate)
+### T178: [M4] Wasm delta API と playground bridge ✓
 - 依存: T177
 - 内容: design doc §17 M4(JSExport 一式 / prebuilt assets / 二相 handoff / E2E gate / lub 側 integration change 一覧の doc 化と feature request 提出)
 
-### T179: [M5] optional optimization
+### T179: [M5] optional optimization ✓ (全項目見送り)
 - 依存: T178
 - 内容: design doc §17 M5(direct apply / candidate-aware invalidation / Worker / AOT A/B)。profile が必要性を示した項目だけ着手する
