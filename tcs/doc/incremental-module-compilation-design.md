@@ -616,6 +616,13 @@ native `.csproj` 経路(`tcs --watch` の単一 file atomic write + lub の mtim
 
 ### M2: descriptor artifact / registry vertical slice
 
+`bench/m2-registry-spike.lua`(実 emitter 出力 + registry/read-only `_ENV` プロトタイプ)で
+2026-07-14 に検証済み: define chunk は現行 emit 出力から宣言行(`Name = {}`)と static
+初期化行を除くだけで registry env 下で動き、identity 維持・method swap・static 分離・
+base relink・owned key 削除が成立する。emitter の expression/statement 層は無傷で流用できる。
+また cs-lib / サンプルは全て flat 名のため、T151/T155 は本 milestone の hard blocker ではない
+(namespaced 入力の対応時に統合する)。
+
 - `ModuleArtifactBatch` / tombstone / deterministic module ID / ABI hash。
 - declare(pre-zero 込み)/define/per-type initializers descriptor emit と read-only module `_ENV`。
 - stable type table を作る最小 `ModuleRegistry`。
