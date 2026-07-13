@@ -43,6 +43,7 @@ public class Program
         bool watchMode = false;
         bool includeRuntime = true;
         bool checkNaming = true;
+        bool snapshot = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -86,6 +87,10 @@ public class Program
             {
                 checkNaming = false;
             }
+            else if (args[i] == "--snapshot")
+            {
+                snapshot = true;
+            }
             else if (!args[i].StartsWith('-'))
             {
                 inputPaths.Add(args[i]);
@@ -94,6 +99,15 @@ public class Program
             {
                 return Error($"unknown option: {args[i]}");
             }
+        }
+
+        if (snapshot)
+        {
+            if (entryClass == null)
+                return Error("--snapshot requires --entry <Class>");
+            if (preludePath != null || emitSourceMap || !includeRuntime || watchMode)
+                return Error("--snapshot cannot be combined with "
+                    + "--prelude/--sourcemap/--no-runtime/--watch");
         }
 
         if (inputPaths.Count == 0)
@@ -134,7 +148,7 @@ public class Program
 
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
-            includeRuntime, checkNaming);
+            includeRuntime, checkNaming, snapshot);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
             return Error(conflict);
@@ -146,7 +160,7 @@ public class Program
 
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
-        bool CheckNaming);
+        bool CheckNaming, bool Snapshot = false);
 
     private static string? FindOutputPathConflict(
         IReadOnlyList<string> inputPaths, IReadOnlyList<string> refPaths,
@@ -226,6 +240,7 @@ public class Program
         writer.WriteLine("       --no-naming-check           # suppress C# naming convention warnings (host wire-format code)");
         writer.WriteLine("       --prelude <shim.lua>        # prepend a user Lua file (host API shim, etc.) to the output");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
+        writer.WriteLine("       --snapshot                  # emit module-registry bridge snapshot (requires --entry)");
     }
 
     private static int Error(string message)
@@ -344,6 +359,10 @@ public class Program
             var sources = inputPaths.Select(File.ReadAllText).ToArray();
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
+
+            if (options.Snapshot)
+                return RunSnapshot(inputPaths, sources, refSources, options);
+
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
                 refSources, options.EntryClass, options.CheckNaming);
 
@@ -393,6 +412,44 @@ public class Program
             Console.Error.WriteLine($"Error: {ex.Message}");
             return 1;
         }
+    }
+
+    // --snapshot: module descriptor 化した bridge snapshot (registry apply する
+    // 単一 entry Lua) を出力する。module ID は与えた input path そのもの。
+    // playground の prebuilt 用途では、in-browser session が使う ID と一致する
+    // 相対 path で呼ぶこと (一致しないと hot apply が module 削除と誤認する)。
+    private static int RunSnapshot(List<string> inputPaths, string[] sources,
+        string[]? refSources, BuildOptions options)
+    {
+        var session = new IncrementalCompilationSession(
+            refSources, options.CheckNaming);
+        session.OpenProject([.. inputPaths.Zip(sources,
+            (p, s) => (p.Replace("\\", "/"), s))]);
+        var (errors, warnings) = session.CollectDiagnostics();
+        foreach (var warn in warnings)
+            Console.Error.WriteLine(warn);
+        if (errors.Count > 0)
+        {
+            foreach (var err in errors)
+                Console.Error.WriteLine(err);
+            return 1;
+        }
+
+        var lua = ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision,
+            options.EntryClass,
+            LuaRuntime.LoadTinySystemSource(),
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath),
+            emitAck: true);
+        if (options.OutputPath is { } outputPath)
+        {
+            OutputFileWriter.WriteAllText(outputPath, lua);
+            Console.Error.WriteLine($"Wrote {outputPath}");
+        }
+        else
+        {
+            Console.Write(lua);
+        }
+        return 0;
     }
 
     // User prelude (--prelude) → runtime prelude の順で前置し、SourceMap の
