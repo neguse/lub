@@ -56,8 +56,11 @@ jobs:
         run: bash haxe-wasm/build.sh
 
       # gen-api (npm run build に含まれる) が PATH の haxe を呼ぶ。
+      # 同梱 haxelib は neko 製バイナリなので libneko (neko パッケージ) が要る。
       - name: Install Haxe 5
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends neko
           scripts/install-haxe5.sh "$HOME/haxe5"
           echo "$HOME/haxe5" >> "$GITHUB_PATH"
 
