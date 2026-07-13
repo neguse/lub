@@ -754,3 +754,12 @@
 - 検証: `dotnet test` 467/467 (新規 ModuleDescriptorTests 7: define/initializer 分割、逆順継承の fresh 実行、hot apply の identity 維持 + method swap + static 保持、unchanged skip + 削除 key + 新規 pure static、pre-zero の cross-type 先読み、read-only env、stale skip)
 - 判断: descriptor は文字列 chunk でなく `function(_ENV)` literal で埋め込み (snapshot 全体を 1 parse、load() 不要)。declare は関数でなく metadata 駆動 (pre-zero policy を registry 側に集約)。owned key は shadow-table 検出でなく emitter 記録 (spike で実証済みの直接 apply を維持)
 - 残課題: fresh initialize は per-type topo order でなく module/emit 順 (現 workload と同等。topo は namespaced 入力対応時)。transaction/rollback/ACK/restart 分類は T177。compilerAbi/referenceAbiHash の wire 化は T178
+
+### T177: [M3] transaction / full snapshot compatibility ✓ (2026-07-14)
+- `runtime/module_registry.lua` に atomic transaction を実装: mutation 前検証 (module 削除/alias collision) → 影響 key (新旧 definition/static key の和集合) + metatable + alias を rawget/rawset + presence sentinel で transaction log へ保存 → declare/define/initialize を pcall → 失敗時は完全 rollback して error 再送出 (lume.hotswap が old module を維持)。inherited key を own key として復元しない (§18.2 failed override-add 検証済み)
+- commit ACK (§13.1): `@@tcs_commit {"revision":N,"ok":bool,"commitTimeMs":ms,"error"?}` を host print relay へ出す (batch.ack 時のみ、成功/失敗の両方。commit 後に失敗し得る処理なし)。`ModuleLinker.LinkSnapshot(emitAck)` で bridge snapshot に組み込む
+- restart classification (§11.3): `SessionUpdateResult.RequiresRestart/RestartReasons`。slow path で新旧 artifact metadata を diff — type 削除 / kind / base / instance shape / 既存 static initializer 変更 / 副作用ありの新規 static → restart。body edit / member 追加削除 / 純粋な新規 static / enum member 変更は live-safe
+- lume.hotswap E2E (lume 2.3.0 hotswap を忠実再現した harness): wrapper/type table identity 維持、body edit 反映、200k entry の runtime live state が走査されず保持、失敗 reload で last-good 維持 (nil+err、revision 不変)
+- 検証: `dotnet test` 476/476 (新規 ModuleTransactionTests 9)
+- 判断: per-module source map / revisioned chunk name は見送り (lub に consumer が無い §12。bridge は単一 file で従来と同粒度)。lume E2E は lub の実 lume を直接参照せず verbatim 再現 harness で固定 (repo 境界を越える依存を作らない。実 lume は lub 側 verify で通す)
+- 残課題: fixed implementation の build-time pre-emit と prebuilt assets は T178。T154 の任意 global graph rollback は別 gate (design doc §11.4 注記どおり)

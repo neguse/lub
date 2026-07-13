@@ -51,6 +51,10 @@ public sealed class SessionUpdateResult
 {
     public required bool Success { get; init; }
     public required bool FastPath { get; init; }
+    // live apply できない変更 (§11.3)。host は snapshot を hotswap ではなく
+    // fresh VM restart で適用する。fast path (body edit) では常に false。
+    public bool RequiresRestart { get; init; }
+    public List<string> RestartReasons { get; init; } = [];
     public List<string> Errors { get; init; } = [];
     // 今回の revision で再 emit した module (error 時は空 = last-good 維持)
     public List<SessionModuleArtifact> ChangedArtifacts { get; init; } = [];
@@ -238,14 +242,24 @@ public sealed class IncrementalCompilationSession
                 ParsedTreeCount = _moduleOrder.Count,
             };
 
+        // restart 分類のため、上書き前の last-good artifact を保持する
+        var prevArtifacts = new Dictionary<string, SessionModuleArtifact>(_lastGood);
+
         var swEmit = Stopwatch.StartNew();
         var changed = EmitAll();
         Revision++;
         swEmit.Stop();
+
+        var reasons = new List<string>();
+        foreach (var artifact in changed)
+            ClassifyRestart(prevArtifacts.GetValueOrDefault(artifact.ModuleId),
+                artifact, reasons);
         return new SessionUpdateResult
         {
             Success = true,
             FastPath = false,
+            RequiresRestart = reasons.Count > 0,
+            RestartReasons = reasons,
             ChangedArtifacts = changed,
             ParseUpdateMs = parseMs,
             DiagnosticsMs = swDiag.ElapsedMilliseconds,
@@ -253,6 +267,47 @@ public sealed class IncrementalCompilationSession
             ParsedTreeCount = _moduleOrder.Count,
             EmittedModuleCount = changed.Count,
         };
+    }
+
+    // hot apply できない変更を検出する (§11.3 state policy)。conservative:
+    // 迷ったら restart 側に倒す。fast path (body edit) はここを通らない。
+    private static void ClassifyRestart(SessionModuleArtifact? prev,
+        SessionModuleArtifact next, List<string> reasons)
+    {
+        if (prev == null)
+            return; // module 追加は live-safe (新 type の declare/init のみ)
+        var prevTypes = prev.Types.ToDictionary(t => t.Name);
+        foreach (var t in prevTypes.Values)
+        {
+            if (!next.Types.Any(n => n.Name == t.Name))
+                reasons.Add($"{next.ModuleId}: type removed: {t.Name}");
+        }
+        foreach (var t in next.Types)
+        {
+            if (!prevTypes.TryGetValue(t.Name, out var old))
+                continue; // type 追加は live-safe
+            if (old.Kind != t.Kind)
+                reasons.Add($"{next.ModuleId}: type kind changed: {t.Name}");
+            if (old.BaseName != t.BaseName)
+                reasons.Add($"{next.ModuleId}: base changed: {t.Name}");
+            if (old.InstanceShape != t.InstanceShape)
+                reasons.Add($"{next.ModuleId}: instance shape changed: {t.Name}");
+            var oldStatics = old.StaticFields.ToDictionary(s => s.Key);
+            foreach (var s in t.StaticFields)
+            {
+                if (oldStatics.TryGetValue(s.Key, out var os))
+                {
+                    if (os.InitHash != s.InitHash)
+                        reasons.Add($"{next.ModuleId}: static initializer changed: "
+                            + $"{t.Name}.{s.Key}");
+                }
+                else if (!s.Pure)
+                {
+                    reasons.Add($"{next.ModuleId}: impure new static: "
+                        + $"{t.Name}.{s.Key}");
+                }
+            }
+        }
     }
 
     // 全 editable module を再 emit する (slow path / open、§8.1)

@@ -263,14 +263,14 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-順序は T176 → T177 → T178 → T179。T172-T176 は完了 (done.md)。M1 gate は通過済み。
+順序は T176 → T177 → T178 → T179。T172-T177 は完了 (done.md)。M1 gate は通過済み。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
 
 ### T176: [M2] descriptor artifact / registry vertical slice ✓
 - 依存: T175 gate 通過、T151、T155(flat 名のみの現 workload では non-blocker、design doc §17 M2 注記)
 - 内容: design doc §17 M2(pre-zero 込み declare / per-type initializers / read-only `_ENV` / 最小 ModuleRegistry / 最小 linker)
 
-### T177: [M3] transaction / full snapshot compatibility
+### T177: [M3] transaction / full snapshot compatibility ✓
 - 依存: T176
 - 内容: design doc §17 M3(rawget/rawset transaction / commit ACK / LinkSnapshot / thin entry wrapper / T149 acceptance / T154 registry-owned cases)
 
