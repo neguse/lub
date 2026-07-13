@@ -7,12 +7,20 @@ public sealed record LuaRuntimeBundle(string Lua, int SourceMapLineOffset);
 public static class LuaRuntime
 {
     private const string RuntimeRelativePath = "runtime/tinysystem.lua";
+    public const string RegistryRelativePath = "runtime/module_registry.lua";
 
     public static LuaRuntimeBundle EmbedRuntime(string lua)
     {
         var prelude = CreateEmbeddedPrelude(File.ReadAllText(FindRuntimePath()));
         return new LuaRuntimeBundle(prelude + lua, CountNewLines(prelude));
     }
+
+    // repo 内の runtime lua を読む (native/test 用。wasm は埋め込み resource)。
+    public static string LoadRuntimeFile(string relativePath) =>
+        File.ReadAllText(FindPath(relativePath));
+
+    public static string LoadTinySystemSource() =>
+        File.ReadAllText(FindRuntimePath());
 
     public static string CreateEmbeddedPrelude(string runtimeSource)
     {
@@ -39,7 +47,9 @@ public static class LuaRuntime
         return sb.ToString();
     }
 
-    private static string FindRuntimePath()
+    private static string FindRuntimePath() => FindPath(RuntimeRelativePath);
+
+    private static string FindPath(string relativePath)
     {
         foreach (var start in new[]
         {
@@ -50,7 +60,7 @@ public static class LuaRuntime
             var dir = start;
             while (!string.IsNullOrEmpty(dir))
             {
-                var candidate = Path.Combine(dir, RuntimeRelativePath);
+                var candidate = Path.Combine(dir, relativePath);
                 if (File.Exists(candidate)) return candidate;
 
                 var parent = Path.GetDirectoryName(dir);
@@ -60,7 +70,7 @@ public static class LuaRuntime
         }
 
         throw new FileNotFoundException(
-            $"TinyC# runtime file not found: {RuntimeRelativePath}");
+            $"TinyC# runtime file not found: {relativePath}");
     }
 
     private static int CountNewLines(string text)

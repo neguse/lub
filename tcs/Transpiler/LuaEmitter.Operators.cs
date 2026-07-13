@@ -44,6 +44,7 @@ public partial class LuaEmitter
         var paramList = string.Join(", ", dispatchParams);
 
         SetSource(overloads[0]);
+        _currentType?.DefinitionKeys.Add(metamethod);
         AppendLine($"function {className}.{metamethod}({paramList})");
         _indent++;
         for (var i = 0; i < overloads.Count; i++)
@@ -102,6 +103,7 @@ public partial class LuaEmitter
         string luaName, OperatorDeclarationSyntax op)
     {
         SetSource(op);
+        _currentType?.DefinitionKeys.Add(luaName);
         var paramNames = op.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
         AppendLine($"function {className}.{luaName}({string.Join(", ", paramNames)})");

@@ -16,6 +16,10 @@ public partial class LuaEmitter
     private readonly Stack<int> _continueStack = new();
     public List<string> Warnings { get; } = [];
     public SourceMap SourceMap { get; } = new();
+    // module artifact 用の type 単位記録 (ModuleArtifacts.cs)。宣言行と
+    // static 初期化行の範囲、所有 key、instance shape を emit しながら残す。
+    public List<EmittedTypeInfo> EmittedTypes { get; } = [];
+    private EmittedTypeInfo? _currentType;
     // Types declared in these trees are type-check only (--ref); they have no
     // Lua definition, so `new` on them must produce a plain table.
     public HashSet<SyntaxTree> ReferenceTrees { get; } = [];
@@ -101,10 +105,20 @@ public partial class LuaEmitter
             .FirstOrDefault(t => t is { TypeKind: TypeKind.Class }
                 and not { SpecialType: SpecialType.System_Object });
 
+        var info = new EmittedTypeInfo { Name = name, Kind = "class" };
+        EmittedTypes.Add(info);
+        _currentType = info;
+
+        var declStart = _sb.Length;
         AppendLine($"{name} = {{}}");
+        info.DeclRanges.Add((declStart, _sb.Length - declStart));
         AppendLine($"{name}.__index = {name}");
+        info.DefinitionKeys.Add("__index");
         if (baseClass != null)
+        {
             AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
+            info.BaseName = baseClass.Name;
+        }
         AppendLine();
 
         var fieldInits = new List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)>();
@@ -144,14 +158,26 @@ public partial class LuaEmitter
         // Emit static fields on the class table
         foreach (var (fieldName, init, type) in staticFieldInits)
         {
+            var initStart = _sb.Length;
             if (init != null)
                 AppendLine($"{name}.{fieldName} = {VisitExpression(model, init)}");
             else
                 AppendLine($"{name}.{fieldName} = {GetDefaultValueForType(type!)}");
+            // 定数/default だけを副作用なし (pure) とし、hot apply での新規
+            // field 初期化を許す。それ以外の initializer 変更は restart 境界。
+            var pure = init == null || model.GetConstantValue(init).HasValue;
+            info.StaticFields.Add(new StaticFieldMeta(fieldName,
+                GetDefaultValueForType(type),
+                init == null ? "<default>"
+                    : ModuleArtifactText.Sha256(init.ToString()),
+                pure, initStart, _sb.Length - initStart));
         }
         if (staticFieldInits.Count > 0) AppendLine();
 
+        info.InstanceShape = string.Join("\n", fieldInits.Select(f =>
+            f.Name + "=" + (f.Init?.ToString() ?? GetDefaultValueForType(f.Type))));
         EmitConstructor(model, name, ctor, fieldInits);
+        info.DefinitionKeys.Add("new");
 
         var operators = new List<OperatorDeclarationSyntax>();
         foreach (var member in cls.Members)
@@ -180,6 +206,7 @@ public partial class LuaEmitter
         }
 
         EmitOperators(model, name, operators);
+        _currentType = null;
     }
 
     private static bool IsAutoProperty(PropertyDeclarationSyntax prop) =>
@@ -249,6 +276,7 @@ public partial class LuaEmitter
             var (prefix, extraParam) = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
                 ? ("get_", "") : ("set_", "value");
 
+            _currentType?.DefinitionKeys.Add($"{prefix}{propName}");
             AppendLine($"function {className}:{prefix}{propName}({extraParam})");
             _indent++;
             if (accessor.Body != null)
@@ -270,13 +298,22 @@ public partial class LuaEmitter
         SetSource(rec);
         var name = rec.Identifier.ValueText;
 
+        var info = new EmittedTypeInfo { Name = name, Kind = "record" };
+        EmittedTypes.Add(info);
+        _currentType = info;
+
+        var declStart = _sb.Length;
         AppendLine($"{name} = {{}}");
+        info.DeclRanges.Add((declStart, _sb.Length - declStart));
         AppendLine($"{name}.__index = {name}");
+        info.DefinitionKeys.Add("__index");
         AppendLine();
 
         // Positional record: parameter list → constructor + properties
         var paramNames = rec.ParameterList?.Parameters
             .Select(p => p.Identifier.ValueText).ToList() ?? [];
+        info.InstanceShape = string.Join("\n", paramNames);
+        info.DefinitionKeys.Add("new");
 
         AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
         _indent++;
@@ -291,6 +328,7 @@ public partial class LuaEmitter
         // __eq: value-based equality for record types
         if (paramNames.Count > 0)
         {
+            info.DefinitionKeys.Add("__eq");
             var eqParts = paramNames.Select(p => $"a.{p} == b.{p}");
             AppendLine($"function {name}.__eq(a, b)");
             _indent++;
@@ -320,13 +358,18 @@ public partial class LuaEmitter
         }
 
         EmitOperators(model, name, operators);
+        _currentType = null;
     }
 
     private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)
     {
         SetSource(enumDecl);
         var name = enumDecl.Identifier.ValueText;
+        var info = new EmittedTypeInfo { Name = name, Kind = "enum" };
+        EmittedTypes.Add(info);
+        var declStart = _sb.Length;
         AppendLine($"{name} = {{}}");
+        info.DeclRanges.Add((declStart, _sb.Length - declStart));
         int value = 0;
         foreach (var member in enumDecl.Members)
         {
@@ -337,6 +380,7 @@ public partial class LuaEmitter
                     value = v;
             }
             AppendLine($"{name}.{member.Identifier.ValueText} = {value}");
+            info.DefinitionKeys.Add(member.Identifier.ValueText);
             value++;
         }
         AppendLine();
@@ -373,6 +417,7 @@ public partial class LuaEmitter
         var paramNames = method.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
         var sep = isStatic ? "." : ":";
+        _currentType?.DefinitionKeys.Add(methodName);
         var rangeStart = _sb.Length;
 
         AppendLine($"function {className}{sep}{methodName}({string.Join(", ", paramNames)})");

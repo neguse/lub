@@ -32,8 +32,18 @@ public sealed class SessionModuleArtifact
     public required string Lua { get; init; }
     public required List<string> Warnings { get; init; }
 
-    // method 単位 splice 用の内部状態 (Lua は RawLua の TrimEnd + "\n")
-    internal string RawLua { get; init; } = "";
+    // module 出力内容の hash。registry が hot apply 時に unchanged module を
+    // skip する判定に使う (source が同じでも他 module の surface 変更で
+    // 出力が変わり得るため、source hash ではなく出力 hash)。
+    public string LuaHash => _luaHash ??= ModuleArtifactText.Sha256(Lua);
+    private string? _luaHash;
+
+    // descriptor 分割用の type 単位記録 (ModuleArtifacts.cs)。範囲は RawLua 座標。
+    public List<EmittedTypeInfo> Types { get; init; } = [];
+
+    // method 単位 splice の基準となる未 trim 出力 (Lua は RawLua の TrimEnd + "\n")。
+    // Types の範囲座標はこちら。
+    public string RawLua { get; init; } = "";
     internal List<(string Key, int Start, int Length)> MethodRanges { get; init; } = [];
 }
 
@@ -69,6 +79,10 @@ public sealed class IncrementalCompilationSession
     private bool _hasTopLevelStatements;
     private bool _hasErrors;
 
+    // artifact を更新した revision (成功した Open/Update ごとに増える)。
+    // bridge snapshot と registry の stale reject が参照する。
+    public int Revision { get; private set; }
+
     public IncrementalCompilationSession(string[]? referenceSources = null,
         bool checkNaming = true)
     {
@@ -95,7 +109,10 @@ public sealed class IncrementalCompilationSession
         var errors = RecomputeDiagnostics();
         _hasErrors = errors.Count > 0;
         if (!_hasErrors)
+        {
             EmitAll();
+            Revision++;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -188,6 +205,7 @@ public sealed class IncrementalCompilationSession
         var artifact = TrySpliceMethodEmit(comp, path, tree, bodySpan)
             ?? EmitModule(comp, path, tree);
         _lastGood[path] = artifact;
+        Revision++;
         swEmit.Stop();
         return new SessionUpdateResult
         {
@@ -222,6 +240,7 @@ public sealed class IncrementalCompilationSession
 
         var swEmit = Stopwatch.StartNew();
         var changed = EmitAll();
+        Revision++;
         swEmit.Stop();
         return new SessionUpdateResult
         {
@@ -332,6 +351,7 @@ public sealed class IncrementalCompilationSession
             SurfaceHash = SurfaceHash(tree),
             Lua = emitter.ToString(),
             Warnings = [.. emitter.Warnings],
+            Types = emitter.EmittedTypes,
             RawLua = emitter.RawOutput,
             MethodRanges = emitter.MethodRanges,
         };
@@ -384,6 +404,8 @@ public sealed class IncrementalCompilationSession
             SurfaceHash = prev.SurfaceHash,
             Lua = raw.TrimEnd() + "\n",
             Warnings = [],
+            // 宣言行/static 初期化行の範囲も splice 分だけずらす
+            Types = [.. prev.Types.Select(t => t.Shifted(start, delta))],
             RawLua = raw,
             MethodRanges = ranges,
         };

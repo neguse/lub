@@ -745,3 +745,12 @@
 - よかったこと: gate を probe 極小 file だけで測らず実サンプル級 file を足したことで、「file 全体 emit が budget を壊す」を実装前でなく計測で発見し、method splice まで M1 内で消化できた。splice は full emit との byte 一致をテストで固定した
 - 判断: 診断 parity のため compliance/naming は tree 全体 walk を維持 (23ms、他 member の警告行番号がずれるため span 限定にしない)。splice の continue ラベル採番は file 内通番と不一致だが Lua のラベルは関数スコープで実行意味同一と判断し、byte 決定性は「同一 session 経路内」で保証
 - 残課題: SourceMap は増分 artifact に未対応 (M3 §12)。SurfaceHash/JSON 往復の ~60ms は M4 の wire 設計で削る。sample/言語切替 soak と 1000 edit soak は M4 の E2E gate と同時に採る
+
+### T176: [M2] descriptor artifact / registry vertical slice ✓ (2026-07-14)
+- `Transpiler/ModuleArtifacts.cs` を追加: type 単位 metadata (`EmittedTypeInfo`: 宣言行/static 初期化行の範囲、owned definition keys、instance shape、static field の pure 判定 + initializer hash)、define/initializer chunk の切り出し (`ModuleArtifactText`)、bridge snapshot linker (`ModuleLinker.LinkSnapshot`)
+- `LuaEmitter` が emit しながら type section を記録 (class/record/enum/operator/accessor)。fast path の method splice は記録範囲も同 delta でシフト
+- `runtime/module_registry.lua` を追加: stable type table の declare (pre-zero 込み) → define → initialize 三段階 apply、read-only module `_ENV` (alias → host 順、未宣言 write は error)、hash unchanged module の skip、owned key 削除、thin entry wrapper (identity 維持)、stale revision skip
+- snapshot は idempotent bootstrap (`_G.__tcs_module_runtime` ABI guard) + `applyBatch` + `return wrapper`。fresh VM でも hot reload でも同一ファイルで成立する full active snapshot (§14.2 bridge)
+- 検証: `dotnet test` 467/467 (新規 ModuleDescriptorTests 7: define/initializer 分割、逆順継承の fresh 実行、hot apply の identity 維持 + method swap + static 保持、unchanged skip + 削除 key + 新規 pure static、pre-zero の cross-type 先読み、read-only env、stale skip)
+- 判断: descriptor は文字列 chunk でなく `function(_ENV)` literal で埋め込み (snapshot 全体を 1 parse、load() 不要)。declare は関数でなく metadata 駆動 (pre-zero policy を registry 側に集約)。owned key は shadow-table 検出でなく emitter 記録 (spike で実証済みの直接 apply を維持)
+- 残課題: fresh initialize は per-type topo order でなく module/emit 順 (現 workload と同等。topo は namespaced 入力対応時)。transaction/rollback/ACK/restart 分類は T177。compilerAbi/referenceAbiHash の wire 化は T178
