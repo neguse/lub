@@ -82,9 +82,14 @@ jobs:
         working-directory: web
         run: npm run gen-haxe
 
-      - name: Build site
+      # verify が使う __lubTest hook (editor.ts) は dev/test mode 限定で
+      # production build には入らない。verify は test mode build に対して行い、
+      # deploy する production build は verify 後に作り直す。
+      - name: Build site (test mode for verify)
         working-directory: web
-        run: npm run build
+        run: |
+          npm run gen-api
+          npx vite build --mode test
 
       - name: Install chromium (verify)
         working-directory: web
@@ -108,6 +113,10 @@ jobs:
           name: verify-screenshots
           path: /tmp/lub-verify
           if-no-files-found: ignore
+
+      - name: Build site (production)
+        working-directory: web
+        run: npm run build
 
       - name: Deploy (wrangler)
         working-directory: web
