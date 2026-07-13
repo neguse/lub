@@ -379,7 +379,7 @@
 - engine 側は `HotReload.mtime = function(path) return fs.mtime(path) end` のように注入する方針を README/current/support-matrix に明記した
 - HotReload テスト2件追加: default mtime が shell 不要で安全に nil を返すこと、注入 mtime で watch/update が reload すること
 - 変更ファイル: runtime/tinysystem.lua, HotReloadTests.cs, README.md, current/tasks/support-matrix/done
-- よかったこと: デスクトップ専用の `stat` 推測をやめ、iOS/WASM/Switch など shell-less 環境でも安全な default にできた
+- よかったこと: デスクトップ専用の `stat` 推測をやめ、iOS/WASM/コンソール機など shell-less 環境でも安全な default にできた
 - 判断: 純 Lua で不完全な mtime 推測を続けず、HotReload の file watch は host API 注入を明示要件にする
 - 残課題: T113 で Lua ビルドのプラットフォーム分岐、T114 で runtime error と SourceMap 連携を整理する
 

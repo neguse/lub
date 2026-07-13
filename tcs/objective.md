@@ -149,7 +149,7 @@ Lua table の制約により、`List<T>` の null 要素と `Dictionary<TKey, TV
 |PC          |JIT可。dotnetのほうが速いがLuaで十分    |
 |iOS         |AOT必須。Lua 5.5 VMは制約なし       |
 |WebGL / WASM|.NETランタイムは巨大。Lua 5.5→WASMが軽量|
-|Switch      |.NET公式サポートなし。Lua 5.5は組み込み容易 |
+|コンソール機     |.NET公式サポートなしの機種あり。Lua 5.5は組み込み容易 |
 
 Lua 5.5バックエンドの存在意義はパフォーマンスではなく、組み込みの軽さ・ホットリロード・プラットフォーム制約の回避にある。
 
