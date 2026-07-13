@@ -257,3 +257,55 @@ tcs 側から直接変更しない。
   - liveな累計件数を残すなら自動consistency gateを追加し、難しければcurrentから件数を削除して`run-tests`を正本にする
   - 各タスクで更新済みのtasks/current/doneを最終確認する（done.mdの歴史的件数は変更しない）
 - 完了条件: `dotnet test`と文書の件数・対応状態が一致または自動同期され、既知の「Yだが実行不能」記述が残っていない
+
+---
+
+## 増分 module compilation(doc/incremental-module-compilation-design.md)
+
+設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
+順序は T172 → T173 → T174 → T175(M1 hard gate)→ T176 → T177 → T178 → T179。
+**T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
+
+### T172: [M0] player 側 apply baseline bench
+- 目的: bridge 方式の apply コスト(full snapshot load、lume.hotswap 走査、thin wrapper の効果)を実測し、§14.2 の wrapper 対策と 75 ms budget の妥当性を数字で確定する
+- 作業:
+  - `bench/` に deps/lua/lua (5.5) で走る pure Lua bench を置く
+  - 系列: 生成 Lua bundle の load 時間(規模別)、lume update 走査(type table 直 return vs thin wrapper vs old==new fast-path、live static list 1e4/1e5/2e5 entry)
+  - 結果(p50/p95)を design doc §15 の参考実測に反映する
+- 完了条件: bench が単体で再現実行でき、design doc に数値が入り、wrapper の効果が系列間で確認できる
+
+### T173: [M0] Chrome benchmark harness
+- 目的: 実ブラウザでの現行 full path baseline(cold/warm/sample-only/memory soak)と、T175 gate 計測の土台を作る
+- 依存: T172
+- 作業:
+  - playwright で lub playground (readonly 利用) を駆動する harness を `bench/` に置く
+  - 同じ edit sequence を warm-up 5 回 + 30 回以上、revision 対応付け、p50/p95/max 出力
+- 完了条件: design doc §2 の観測値を harness の再現可能な baseline で置き換えられる
+
+### T174: [M0] incremental/full diagnostics differential test 雛形
+- 目的: §9 の diagnostics parity を M1 実装前にテストとして固定する
+- 作業:
+  - Transpiler.Tests に differential harness を追加(現状は full vs full の恒等で green、T175 で session 側へ差し替え)
+  - canonical key (id, severity, path, span, message) の dedup/比較を実装する
+- 完了条件: dotnet test green、不一致時の diff 出力が読める形式になっている
+
+### T175: [M1] IncrementalCompilationSession
+- 目的: 常駐 Roslyn session と body-only fast path(design doc §7-§9)
+- 依存: T173、T174(gate 計測と parity test が先)
+- 完了条件: design doc §17 M1 の gate(実ブラウザ warm compiler p95 275 ms 以下、body edit の parse/emit tree 数 1)。未達なら §15 の追加施策を M1 内で消化し、それでも未達なら設計見直しへ戻る(go/no-go)
+
+### T176: [M2] descriptor artifact / registry vertical slice
+- 依存: T175 gate 通過、T151、T155
+- 内容: design doc §17 M2(pre-zero 込み declare / per-type initializers / read-only `_ENV` / 最小 ModuleRegistry / 最小 linker)
+
+### T177: [M3] transaction / full snapshot compatibility
+- 依存: T176
+- 内容: design doc §17 M3(rawget/rawset transaction / commit ACK / LinkSnapshot / thin entry wrapper / T149 acceptance / T154 registry-owned cases)
+
+### T178: [M4] Wasm delta API と playground bridge
+- 依存: T177
+- 内容: design doc §17 M4(JSExport 一式 / prebuilt assets / 二相 handoff / E2E gate / lub 側 integration change 一覧の doc 化と feature request 提出)
+
+### T179: [M5] optional optimization
+- 依存: T178
+- 内容: design doc §17 M5(direct apply / candidate-aware invalidation / Worker / AOT A/B)。profile が必要性を示した項目だけ着手する
