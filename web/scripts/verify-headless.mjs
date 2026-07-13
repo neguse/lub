@@ -528,6 +528,39 @@ for (const sample of samples) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// A6. C# incremental edit → commit ACK。実編集が「増分 compile → snapshot
+// hotswap → runtime commit ACK (@@tcs_commit → #status "synced rev N")」まで
+// 貫通することを判定する。session/prebuilt 化で「compiler が動いていないのに
+// 前の絵で PASS」する偽陽性をここで塞ぐ。
+try {
+  console.log('[verify] A6 C# incremental edit → commit ACK')
+  const a6ReadyP = waitForPlayerReady(120000).catch(() => {})
+  await page.selectOption('#sample-select', '17_flappy')
+  await a6ReadyP
+  if ((await page.$eval('#lang-select', (el) => el.value)) !== 'cs') {
+    const langReadyP = waitForPlayerReady(120000).catch(() => {})
+    await page.selectOption('#lang-select', 'cs')
+    await langReadyP
+  }
+  await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
+  const flappySrc = fs.readFileSync(
+    path.resolve('..', 'samples', '17_flappy', 'Flappy17.cs'), 'utf8')
+  const flappyEdited = flappySrc.replace('velocityY = 3.0;', 'velocityY = 3.25;')
+  if (flappyEdited === flappySrc) throw new Error('A6 edit marker not found')
+  await selectTabAndReplace('Flappy17.cs', flappyEdited)
+  await page.waitForFunction(
+    () => /^synced rev \d+/.test(document.getElementById('status').textContent),
+    { timeout: 30000, polling: 100 },
+  )
+  check('A6 C# edit reached commit ACK', true,
+    await page.$eval('#status', (el) => el.textContent))
+} catch (e) {
+  console.error('[verify] A6 threw', e.message)
+  check('A6 C# edit reached commit ACK', false, e.message)
+  failures++
+}
+
 await browser.close()
 
 console.log('\n[verify] summary:')

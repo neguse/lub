@@ -7,7 +7,8 @@ import {
 } from "./samples";
 import type { SampleLanguage } from "./samples";
 import { compileHaxe } from "./haxe-compiler";
-import { compileTcs } from "./tcs-compiler";
+import { openTcsSession } from "./tcs-compiler";
+import type { TcsSession } from "./tcs-compiler";
 
 let playerIframe: HTMLIFrameElement | null = null;
 let currentSample = "01_triangle";
@@ -18,6 +19,20 @@ let lastLua: string | null = null;
 let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
+
+// C# は増分 session (tcs SessionExports)。sample/言語切替で開き直す。
+let tcsSession: TcsSession | null = null;
+// 直近の warm apply が待っている commit ACK (@@tcs_commit、player の
+// print relay 経由)。ACK が来るまで synced にしない。MEMFS の mtime が
+// ms 解像度で同一 ms 書き込みを取りこぼし得るため、時間内に ACK が
+// 来なければ entry を再送する。
+let pendingAck: {
+  revision: number;
+  t0: number;
+  retries: number;
+  timer: number;
+  files: Record<string, string>;
+} | null = null;
 
 const $sample = document.querySelector<HTMLSelectElement>("#sample-select")!;
 const $lang = document.querySelector<HTMLSelectElement>("#lang-select")!;
@@ -132,16 +147,48 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("message", (e) => {
   const d = e.data || {};
   if (d.type === "log") {
-    addLog(String(d.msg ?? ""), d.level || "log");
+    const msg = String(d.msg ?? "");
+    if (msg.startsWith("@@tcs_commit ")) {
+      handleTcsCommitAck(msg.slice("@@tcs_commit ".length));
+      return; // 内部プロトコル行はログに出さない
+    }
+    addLog(msg, d.level || "log");
   }
 });
+
+/** registry の commit ACK (§13.1)。待っている revision だけ状態を進める。 */
+function handleTcsCommitAck(json: string) {
+  let ack: {
+    revision: number;
+    ok: boolean;
+    commitTimeMs: number;
+    error?: string;
+  };
+  try {
+    ack = JSON.parse(json);
+  } catch {
+    return;
+  }
+  if (!pendingAck || ack.revision !== pendingAck.revision) return; // stale
+  clearTimeout(pendingAck.timer);
+  const elapsed = Math.round(performance.now() - pendingAck.t0);
+  const rev = pendingAck.revision;
+  pendingAck = null;
+  if (ack.ok) {
+    $status.textContent = `synced rev ${rev} (${elapsed}ms)`;
+  } else {
+    $status.textContent = "apply failed (rolled back)";
+    addLog(`hot apply failed (rev ${rev}): ${ack.error ?? "?"}`, "err");
+  }
+}
 
 attachEditor(
   document.querySelector<HTMLDivElement>("#editor")!,
   (path, _content) => {
     pendingSyncPaths.add(path);
     if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = window.setTimeout(syncDirtyNow, 300);
+    // C# の増分 path は compile が 100ms 級なので debounce も短くする (§14.2)
+    syncTimer = window.setTimeout(syncDirtyNow, language === "cs" ? 75 : 300);
   },
 );
 
@@ -176,17 +223,25 @@ function collectSources(ext: string): Record<string, string> {
 async function compileCurrent(): Promise<string | null> {
   $status.textContent = "compiling…";
   if (language === "cs") {
-    const res = await compileTcs(collectSources(".cs"), mainClass);
+    // 増分 session を開く (cold path)。以後の編集は syncDirtyNow の
+    // update + linkSnapshot が warm に処理する。
+    tcsSession = null;
+    const res = await openTcsSession(collectSources(".cs"), mainClass);
     for (const w of res.warnings) addLog(w, "warn");
-    if (!res.ok) {
+    if (!res.ok || !res.session) {
       addLog("C# compile error:", "err");
-      for (const line of res.stderr.split("\n"))
-        if (line.trim()) addLog(line, "err");
+      for (const line of res.errors) if (line.trim()) addLog(line, "err");
       $status.textContent = "compile error";
       return null;
     }
+    const lua = res.session.linkSnapshot();
+    if (lua == null) {
+      $status.textContent = "compile error";
+      return null;
+    }
+    tcsSession = res.session;
     $status.textContent = "compiled";
-    return res.lua;
+    return lua;
   }
   const res = await compileHaxe(collectSources(".hx"), mainClass);
   if (!res.ok) {
@@ -207,6 +262,8 @@ async function loadCompileRun(name: string) {
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = null;
   pendingSyncPaths.clear();
+  clearPendingAck();
+  tcsSession = null;
   lastLua = null;
   let src;
   try {
@@ -243,6 +300,7 @@ async function restart() {
     lastLua = lua;
   }
   $status.textContent = "restarting…";
+  clearPendingAck();
   if (playerIframe) playerIframe.remove();
   $log.innerHTML = "";
   playerIframe = document.createElement("iframe");
@@ -282,12 +340,53 @@ async function syncDirtyNow() {
   try {
     const sourceChanged = changed.some(([p]) => isSourceFile(p));
     const files: Record<string, string> = {};
+    let ackRevision = 0;
+    const t0 = performance.now();
 
     if (sourceChanged) {
-      const lua = await compileCurrent();
-      if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
-      lastLua = lua;
-      files[entryKey] = lua;
+      if (language === "cs" && tcsSession) {
+        // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
+        // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh
+        // player を snapshot で起動する (§14.2)。
+        $status.textContent = "compiling…";
+        let requiresRestart = false;
+        for (const [p, f] of changed) {
+          if (!isSourceFile(p)) continue;
+          const r = tcsSession.update(p, f.content);
+          if (!r.ok) {
+            addLog("C# compile error:", "err");
+            for (const line of r.errors) if (line.trim()) addLog(line, "err");
+            $status.textContent = "compile error";
+            return; // player は last-good のまま
+          }
+          if (r.requiresRestart) {
+            requiresRestart = true;
+            for (const m of r.restartReasons) addLog("restart: " + m, "warn");
+          }
+          ackRevision = r.revision;
+        }
+        const lua = tcsSession.linkSnapshot();
+        if (lua == null) {
+          $status.textContent = "compile error";
+          return;
+        }
+        lastLua = lua;
+        if (requiresRestart) {
+          await restart();
+          for (const [p, content] of snapshot) {
+            const current = getFiles().get(p);
+            if (!current || current.content === content)
+              pendingSyncPaths.delete(p);
+          }
+          return;
+        }
+        files[entryKey] = lua;
+      } else {
+        const lua = await compileCurrent();
+        if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
+        lastLua = lua;
+        files[entryKey] = lua;
+      }
     }
     for (const [p, f] of changed) if (!isSourceFile(p)) files[p] = f.content; // data files
 
@@ -297,14 +396,49 @@ async function syncDirtyNow() {
       const current = getFiles().get(p);
       if (!current || current.content === content) pendingSyncPaths.delete(p);
     }
-    $status.textContent = `synced ${Object.keys(files).length} file(s)`;
+    if (ackRevision > 0) {
+      // synced 表示は runtime の commit ACK を受けてから (§13.1)
+      clearPendingAck();
+      pendingAck = { revision: ackRevision, t0, retries: 0, timer: 0, files };
+      scheduleAckRetry();
+      $status.textContent = "applying…";
+    } else {
+      $status.textContent = `synced ${Object.keys(files).length} file(s)`;
+    }
   } finally {
     syncInFlight = false;
   }
 
   if (pendingSyncPaths.size > 0) {
-    syncTimer = window.setTimeout(syncDirtyNow, 300);
+    syncTimer = window.setTimeout(syncDirtyNow, language === "cs" ? 75 : 300);
   }
+}
+
+function clearPendingAck() {
+  if (pendingAck) {
+    clearTimeout(pendingAck.timer);
+    pendingAck = null;
+  }
+}
+
+/** ACK が来ない revision は entry を再送する (MEMFS mtime 取りこぼし対策)。 */
+function scheduleAckRetry() {
+  if (!pendingAck) return;
+  pendingAck.timer = window.setTimeout(() => {
+    if (!pendingAck || !playerIframe?.contentWindow) return;
+    if (pendingAck.retries >= 3) {
+      addLog(`no commit ACK for rev ${pendingAck.revision}`, "warn");
+      $status.textContent = "sync timeout";
+      pendingAck = null;
+      return;
+    }
+    pendingAck.retries++;
+    playerIframe.contentWindow.postMessage(
+      { type: "syncFiles", files: pendingAck.files },
+      "*",
+    );
+    scheduleAckRetry();
+  }, 1500);
 }
 
 function addLog(msg: string, level = "log") {

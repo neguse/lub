@@ -674,6 +674,10 @@ function lume.hotswap(modname)
   local oldglobal = lume.clone(_G)
   local updated = {}
   local function update(old, new)
+    -- lub patch: reload 後も identity が同じ module (tcs module registry の
+    -- stable wrapper 等) は走査しない。中身は registry が所有・更新済みで、
+    -- ここで recursive merge すると live state 量に比例して非有界になる。
+    if old == new then return end
     if updated[old] then return end
     updated[old] = true
     local oldmt, newmt = getmetatable(old), getmetatable(new)

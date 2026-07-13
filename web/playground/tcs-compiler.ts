@@ -32,10 +32,11 @@ export type TcsCompileResult =
   | { ok: true; lua: string; stderr: string; warnings: string[]; code: 0 }
   | { ok: false; lua: null; stderr: string; warnings: string[]; code: number };
 
-let readyPromise: Promise<(json: string) => string> | null = null;
+// dotnet ランタイムの assembly exports (CompilerExports / SessionExports)
+let readyPromise: Promise<any> | null = null;
 let stub = "";
 
-function ensureRuntime(): Promise<(json: string) => string> {
+function ensureRuntime(): Promise<any> {
   if (readyPromise) return readyPromise;
   readyPromise = (async () => {
     const r = await fetch(STUB_URL);
@@ -45,8 +46,7 @@ function ensureRuntime(): Promise<(json: string) => string> {
       /* @vite-ignore */ ASSET_BASE + "_framework/dotnet.js"
     );
     const { getAssemblyExports, getConfig } = await mod.dotnet.create();
-    const exports = await getAssemblyExports(getConfig().mainAssemblyName);
-    return exports.CompilerExports.Compile as (json: string) => string;
+    return await getAssemblyExports(getConfig().mainAssemblyName);
   })();
   return readyPromise;
 }
@@ -60,9 +60,9 @@ export async function compileTcs(
   files: Record<string, string>,
   entryClass: string,
 ): Promise<TcsCompileResult> {
-  const compile = await ensureRuntime();
+  const exports = await ensureRuntime();
   const res = JSON.parse(
-    compile(
+    exports.CompilerExports.Compile(
       JSON.stringify({
         files: { ...IMPL_SOURCES, ...files },
         refs: { "lub_stub.cs": stub },
@@ -86,5 +86,94 @@ export async function compileTcs(
     stderr: (res.errors ?? []).join("\n"),
     warnings: res.warnings ?? [],
     code: 1,
+  };
+}
+
+/*
+ * 増分 session API (tcs doc/incremental-module-compilation-design.md §13-§14)。
+ * OpenProject で常駐 Roslyn session を開き、以後の編集は Update(変更ファイル
+ * のみ) + LinkSnapshot(bridge snapshot = registry apply する単一 entry Lua)。
+ * warm な method-body 編集は full compile (数秒) ではなく 100ms 級で返る。
+ * epoch はサンプル/言語切替の in-flight 応答を捨てるための guard。
+ */
+
+export type TcsUpdateResult = {
+  ok: boolean;
+  fastPath: boolean;
+  requiresRestart: boolean;
+  restartReasons: string[];
+  errors: string[];
+  revision: number;
+  managedMs: number;
+};
+
+export type TcsSession = {
+  update(path: string, content: string): TcsUpdateResult;
+  /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
+  linkSnapshot(): string | null;
+};
+
+export type TcsOpenResult = {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  session: TcsSession | null;
+};
+
+export async function openTcsSession(
+  files: Record<string, string>,
+  entryClass: string,
+): Promise<TcsOpenResult> {
+  const exports = await ensureRuntime();
+  const open = JSON.parse(
+    exports.SessionExports.Open(
+      JSON.stringify({
+        files: { ...IMPL_SOURCES, ...files },
+        refs: { "lub_stub.cs": stub },
+        entryClass,
+        checkNaming: false,
+      }),
+    ),
+  );
+  if (!open.ok) {
+    return {
+      ok: false,
+      errors: open.errors ?? [],
+      warnings: open.warnings ?? [],
+      session: null,
+    };
+  }
+  const epoch: number = open.epoch;
+  const session: TcsSession = {
+    update(path, content) {
+      const r = JSON.parse(exports.SessionExports.Update(epoch, path, content));
+      return {
+        ok: !!r.ok,
+        fastPath: !!r.fastPath,
+        requiresRestart: !!r.requiresRestart,
+        restartReasons: r.restartReasons ?? [],
+        errors: r.errors ?? [],
+        revision: r.revision ?? 0,
+        managedMs:
+          (r.parseUpdateMs ?? 0) +
+          (r.diagnosticsMs ?? 0) +
+          (r.complianceMs ?? 0) +
+          (r.emitMs ?? 0),
+      };
+    },
+    linkSnapshot() {
+      const lua = exports.SessionExports.LinkSnapshot(epoch) as string;
+      if (lua.startsWith("--@@tcs_error")) {
+        console.error("[tcs] LinkSnapshot failed:", lua);
+        return null;
+      }
+      return lua;
+    },
+  };
+  return {
+    ok: true,
+    errors: [],
+    warnings: open.warnings ?? [],
+    session,
   };
 }
