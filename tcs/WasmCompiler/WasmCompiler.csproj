@@ -32,6 +32,7 @@
     <!-- TinySystem は ProjectReference が先にビルドするので出力 DLL を埋め込める -->
     <EmbeddedResource Include="../TinySystem/bin/$(Configuration)/net10.0/TinySystem.dll" LogicalName="refs/TinySystem.dll" />
     <EmbeddedResource Include="../runtime/tinysystem.lua" LogicalName="runtime/tinysystem.lua" />
+    <EmbeddedResource Include="../runtime/module_registry.lua" LogicalName="runtime/module_registry.lua" />
   </ItemGroup>
 
   <!-- browser では Assembly.Location でファイルを読めないため、Roslyn へ渡す

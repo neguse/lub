@@ -37,12 +37,26 @@ public sealed class CompileResponse
     public List<string> Warnings { get; set; } = [];
 }
 
-/// <summary>SessionExports.Update の応答 (M1 gate 計測用の最小 wire)。</summary>
+/// <summary>SessionExports.Open の応答。</summary>
+public sealed class SessionOpenResponse
+{
+    public bool Ok { get; set; }
+    public List<string> Errors { get; set; } = [];
+    public List<string> Warnings { get; set; } = [];
+    public int Epoch { get; set; }
+    public int Revision { get; set; }
+}
+
+/// <summary>SessionExports.Update の応答 (design doc §13)。</summary>
 public sealed class SessionUpdateResponse
 {
     public bool Ok { get; set; }
     public bool FastPath { get; set; }
+    public bool RequiresRestart { get; set; }
+    public List<string> RestartReasons { get; set; } = [];
     public List<string> Errors { get; set; } = [];
+    public int Epoch { get; set; }
+    public int Revision { get; set; }
     public long ParseUpdateMs { get; set; }
     public long DiagnosticsMs { get; set; }
     public long ComplianceMs { get; set; }
@@ -59,6 +73,7 @@ public sealed class SessionUpdateResponse
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(CompileRequest))]
 [JsonSerializable(typeof(CompileResponse))]
+[JsonSerializable(typeof(SessionOpenResponse))]
 [JsonSerializable(typeof(SessionUpdateResponse))]
 public sealed partial class CompileJsonContext : JsonSerializerContext;
 
@@ -90,8 +105,14 @@ public static partial class CompilerExports
         ];
         using var reader = new StreamReader(Res("runtime/tinysystem.lua"));
         _runtimeLua = reader.ReadToEnd();
+        using var regReader = new StreamReader(Res("runtime/module_registry.lua"));
+        _registryLua = regReader.ReadToEnd();
         _initialized = true;
     }
+
+    private static string? _registryLua;
+    internal static string RuntimeLua => _runtimeLua!;
+    internal static string RegistryLua => _registryLua!;
 
     [JSExport]
     public static string Compile(string requestJson)
@@ -130,12 +151,15 @@ public static partial class CompilerExports
     }
 }
 
-// M1 gate (design doc §17) 計測用の最小 session API。single session 固定。
-// production wire contract (projectEpoch / LinkSnapshot / TextChange span 等、
-// design doc §13) は M4 で確定するため、ここでは意図的に持たない。
+// module mode の stateful session API (design doc §13)。single session 固定。
+// Open のたびに projectEpoch を発行し、全 response が epoch を echo する。
+// host は現在の epoch と一致しない response を破棄する (sample/言語切替の
+// in-flight response が新 project へ届く事故の防止)。
 public static partial class SessionExports
 {
     private static IncrementalCompilationSession? _session;
+    private static int _epoch;
+    private static string? _entryClass;
 
     [JSExport]
     public static string Open(string requestJson)
@@ -146,39 +170,52 @@ public static partial class SessionExports
             var req = JsonSerializer.Deserialize(
                           requestJson, CompileJsonContext.Default.CompileRequest)
                       ?? throw new InvalidOperationException("empty request");
+            _epoch++;
+            _entryClass = req.EntryClass;
             _session = new IncrementalCompilationSession(
                 req.Refs?.Values.ToArray(), req.CheckNaming);
             _session.OpenProject([.. req.Files.Select(kv => (kv.Key, kv.Value))]);
-            var (errors, _) = _session.CollectDiagnostics();
-            return JsonSerializer.Serialize(new CompileResponse
+            var (errors, warnings) = _session.CollectDiagnostics();
+            return JsonSerializer.Serialize(new SessionOpenResponse
             {
                 Ok = errors.Count == 0,
                 Errors = errors,
-            }, CompileJsonContext.Default.CompileResponse);
+                Warnings = warnings,
+                Epoch = _epoch,
+                Revision = _session.Revision,
+            }, CompileJsonContext.Default.SessionOpenResponse);
         }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new CompileResponse
+            return JsonSerializer.Serialize(new SessionOpenResponse
             {
                 Ok = false,
                 Errors = [ex.ToString()],
-            }, CompileJsonContext.Default.CompileResponse);
+                Epoch = _epoch,
+            }, CompileJsonContext.Default.SessionOpenResponse);
         }
     }
 
     [JSExport]
-    public static string Update(string path, string content)
+    public static string Update(int epoch, string path, string content)
     {
         try
         {
             var session = _session
                 ?? throw new InvalidOperationException("SessionExports.Open first");
+            if (epoch != _epoch)
+                throw new InvalidOperationException(
+                    $"stale epoch {epoch} (current {_epoch})");
             var r = session.Update(path, content);
             return JsonSerializer.Serialize(new SessionUpdateResponse
             {
                 Ok = r.Success,
                 FastPath = r.FastPath,
+                RequiresRestart = r.RequiresRestart,
+                RestartReasons = r.RestartReasons,
                 Errors = r.Errors,
+                Epoch = _epoch,
+                Revision = session.Revision,
                 ParseUpdateMs = r.ParseUpdateMs,
                 DiagnosticsMs = r.DiagnosticsMs,
                 ComplianceMs = r.ComplianceMs,
@@ -194,7 +231,30 @@ public static partial class SessionExports
             {
                 Ok = false,
                 Errors = [ex.ToString()],
+                Epoch = _epoch,
             }, CompileJsonContext.Default.SessionUpdateResponse);
+        }
+    }
+
+    // bridge snapshot (§14.2)。JSON escape を避けるため raw Lua 文字列を返す。
+    // 失敗時は "--@@tcs_error: " 始まりの 1 行を返す (JS 側は prefix 判定)。
+    [JSExport]
+    public static string LinkSnapshot(int epoch)
+    {
+        try
+        {
+            var session = _session
+                ?? throw new InvalidOperationException("SessionExports.Open first");
+            if (epoch != _epoch)
+                throw new InvalidOperationException(
+                    $"stale epoch {epoch} (current {_epoch})");
+            return ModuleLinker.LinkSnapshot(session.Artifacts, session.Revision,
+                _entryClass, CompilerExports.RuntimeLua,
+                CompilerExports.RegistryLua, emitAck: true);
+        }
+        catch (Exception ex)
+        {
+            return "--@@tcs_error: " + ex.Message.Replace("\n", " ");
         }
     }
 }

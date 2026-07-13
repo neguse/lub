@@ -107,7 +107,7 @@ const result = await page.evaluate(
       for (let i = 0; i < warmup + runs; ++i) {
         const content = template.replace("return 0;", `return ${i + 1};`);
         const t = performance.now();
-        const r = JSON.parse(exports.SessionExports.Update(path, content));
+        const r = JSON.parse(exports.SessionExports.Update(open.epoch, path, content));
         const dt = performance.now() - t;
         if (!r.ok) return { error: "update failed: " + r.errors.join("\n") };
         if (i >= warmup) {
