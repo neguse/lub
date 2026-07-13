@@ -29,16 +29,29 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- browser では Assembly.Location でファイルを読めないため、Roslyn へ渡す
-         参照アセンブリを byte image として埋め込み、Transpiler.References へ
-         注入する。ref pack の version ディレクトリは glob で解決する
-         (複数版が同居する環境では最初にマッチした版が使われる)。 -->
-    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Runtime.dll" LogicalName="refs/System.Runtime.dll" />
-    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Collections.dll" LogicalName="refs/System.Collections.dll" />
-    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Linq.dll" LogicalName="refs/System.Linq.dll" />
-    <EmbeddedResource Include="$(NetCoreTargetingPackRoot)/Microsoft.NETCore.App.Ref/*/ref/net10.0/System.Console.dll" LogicalName="refs/System.Console.dll" />
     <!-- TinySystem は ProjectReference が先にビルドするので出力 DLL を埋め込める -->
     <EmbeddedResource Include="../TinySystem/bin/$(Configuration)/net10.0/TinySystem.dll" LogicalName="refs/TinySystem.dll" />
     <EmbeddedResource Include="../runtime/tinysystem.lua" LogicalName="runtime/tinysystem.lua" />
   </ItemGroup>
+
+  <!-- browser では Assembly.Location でファイルを読めないため、Roslyn へ渡す
+       参照アセンブリを byte image として埋め込み、Transpiler.References へ
+       注入する。version ディレクトリの glob は ref pack が複数版同居する環境
+       (CI runner 等) で同一 LogicalName が重複して CS1508 になるため、
+       SDK が解決した targeting pack 1版 (ResolvedTargetingPack) から取る。 -->
+  <Target Name="EmbedNetCoreRefAssemblies"
+          BeforeTargets="AssignTargetPaths"
+          DependsOnTargets="ResolveFrameworkReferences">
+    <PropertyGroup>
+      <_NetCoreRefDir>@(ResolvedTargetingPack->WithMetadataValue('NuGetPackageId', 'Microsoft.NETCore.App.Ref')->'%(Path)')/ref/net10.0</_NetCoreRefDir>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_NetCoreRefDir)/System.Runtime.dll')"
+           Text="Microsoft.NETCore.App.Ref targeting pack が解決できない: $(_NetCoreRefDir)" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Runtime.dll" LogicalName="refs/System.Runtime.dll" />
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Collections.dll" LogicalName="refs/System.Collections.dll" />
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Linq.dll" LogicalName="refs/System.Linq.dll" />
+      <EmbeddedResource Include="$(_NetCoreRefDir)/System.Console.dll" LogicalName="refs/System.Console.dll" />
+    </ItemGroup>
+  </Target>
 </Project>
