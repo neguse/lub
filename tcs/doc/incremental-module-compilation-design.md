@@ -642,6 +642,19 @@ base relink・owned key 削除が成立する。emitter の expression/statement
 
 ### M4: Wasm delta API と playground bridge
 
+2026-07-14 に warm 経路の gate を通過。`bench/chrome-e2e-ack.mjs`(lub playground
+実機、17_flappy C#、body edit)で edit-stop → commit ACK p50 422 ms / p95 442 ms
+(< 500 ms)。cold start(session open + LinkSnapshot + player boot)は 11.7 s で、
+prebuilt assets(下記残項目)導入までは従来の full compile(約 5.6 s)より遅い。
+実装済み: SessionExports の Open(projectEpoch)/Update(restart 分類込み)/
+LinkSnapshot(raw Lua)、lub 側 session client + 75 ms debounce + ACK 駆動 status +
+ACK timeout 再送 + requiresRestart の fresh player 分岐、lume.hotswap の
+`old == new` fast-path、headless verify A6(実 C# edit → commit ACK 貫通判定)。
+残項目(warm gate に不要のため後続): fixed/sample prebuilt assets と background
+prewarm、ABI-mismatch fallback、二相 restart handoff と runtimeReady 分離、
+TextChange span wire、compiler ready 前 edit の queue。
+
+
 - `Initialize/OpenProject/Update/LinkSnapshot/Build/Dispose` JSExport(projectEpoch、TextChange span、diagnostic ID 込み)。
 - fixed/sample prebuilt assets と background prewarm、dev の ABI-mismatch fallback。
 - latest-wins queue、75 ms debounce、last-good behavior。

@@ -763,3 +763,11 @@
 - 検証: `dotnet test` 476/476 (新規 ModuleTransactionTests 9)
 - 判断: per-module source map / revisioned chunk name は見送り (lub に consumer が無い §12。bridge は単一 file で従来と同粒度)。lume E2E は lub の実 lume を直接参照せず verbatim 再現 harness で固定 (repo 境界を越える依存を作らない。実 lume は lub 側 verify で通す)
 - 残課題: fixed implementation の build-time pre-emit と prebuilt assets は T178。T154 の任意 global graph rollback は別 gate (design doc §11.4 注記どおり)
+
+### T178: [M4] Wasm delta API と playground bridge ✓ warm gate (2026-07-14)
+- `WasmCompiler` SessionExports を production wire 化: `Open`(projectEpoch 発行、entryClass 保持)/`Update(epoch, path, content)`(requiresRestart + restartReasons + revision + phase timing)/`LinkSnapshot(epoch)`(bridge snapshot を raw Lua で返す。JSON escape 回避)。module_registry.lua を埋め込み resource 化。registry は同一 revision 再適用に ACK を返し直す (host の再送 retry が完結する)
+- lub 側 (直接実装。分担廃止に伴い feature request は出さない): `tcs-compiler.ts` に `openTcsSession`(Open/Update/LinkSnapshot client)、`main.ts` を ACK 駆動へ (C# は 75ms debounce → 変更 .cs だけ Update → LinkSnapshot → entry 書き込み → `@@tcs_commit` ACK で synced 表示、1.5s×3 の ACK timeout 再送、requiresRestart は fresh player 起動)、`third_party/lume` hotswap に `old == new` fast-path、`verify-headless.mjs` に A6 (実 C# edit → commit ACK 貫通判定)、submodule tcs 更新 + wasm assets 再生成
+- **E2E gate PASS**: `bench/chrome-e2e-ack.mjs`(playground 実機 17_flappy C# body edit、headless chromium + swiftshader)で edit-stop → commit ACK p50 422 ms / p95 442 ms / max 442 ms (12 runs、gate 500 ms)。従来の同経路 (T173 baseline) は compile だけで warm 5.58 s
+- 検証: dotnet test 476/476、lub 側 tsc/prettier、E2E bench 上記、headless verify (A1-A6) は lub 側で実行
+- 判断: bridge snapshot は毎 edit 全文再送 (§14.2 bridge のまま)。mtime 取りこぼしは ACK timeout 再送 + 同 revision 再 ACK で回収。二相 handoff は未実装のため restart 分類の編集は既存 restart() (compile 成功後の runtime error で旧 player を失い得るが、snapshot は last-good compile なので次 edit で復旧可能)
+- 残課題: prebuilt assets + background prewarm (cold start 11.7s > 従来 5.6s の解消)、ABI-mismatch fallback、二相 handoff + runtimeReady、TextChange span、compiler ready 前 edit queue、soak (1000 edit / sample 切替 heap)。§17 M4 残項目として記載
