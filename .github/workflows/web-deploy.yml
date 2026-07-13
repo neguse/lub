@@ -78,6 +78,10 @@ jobs:
         working-directory: web
         run: npm run gen-tcs -- --publish
 
+      - name: Generate tcs prebuilt snapshots
+        working-directory: web
+        run: npm run gen-tcs-prebuilt
+
       - name: Generate haxe wasm assets
         working-directory: web
         run: npm run gen-haxe

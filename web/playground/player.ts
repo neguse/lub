@@ -138,6 +138,29 @@ async function initWebGPU(): Promise<any> {
 let pendingFiles: Record<string, string> | null = null;
 let pendingEntry: string | null = null;
 let wasmStarted = false;
+// FS (window.FS は wasm main 内で代入) が使えるまでの syncFiles を溜める。
+// 以前は無言で捨てていたが、module mode の runtimeReady 分離に合わせて
+// queue + flush に変更 (tcs design doc §14.1)。
+const pendingSyncBatches: Record<string, string>[] = [];
+
+function writeSyncBatch(FS: any, files: Record<string, string>) {
+  for (const [p, c] of Object.entries(files)) {
+    const full = p.startsWith("samples/") ? p : "samples/" + p;
+    writeFileEnsureDir(FS, full, c);
+  }
+}
+
+// wasm main が FS を公開したら runtimeReady を親へ通知し、溜めた sync を流す
+function watchRuntimeReady() {
+  const poll = setInterval(() => {
+    const FS = (window as any).FS;
+    if (!FS) return;
+    clearInterval(poll);
+    for (const files of pendingSyncBatches) writeSyncBatch(FS, files);
+    pendingSyncBatches.length = 0;
+    parent.postMessage({ type: "runtimeReady" }, "*");
+  }, 50);
+}
 
 const slangReady = initSlang().catch((e: any) => {
   // Non-fatal: shader_compile() will return the canonical "slang-wasm not
@@ -223,6 +246,7 @@ async function startWasm() {
   const s = document.createElement("script");
   s.src = "/wasm/lub.js";
   document.body.appendChild(s);
+  watchRuntimeReady();
 }
 
 window.addEventListener("message", (e: MessageEvent) => {
@@ -237,11 +261,12 @@ window.addEventListener("message", (e: MessageEvent) => {
     startWasm();
   } else if (d.type === "syncFiles") {
     const FS = window.FS;
-    if (!FS) return; // wasm not yet ready; user likely just opened the page
-    for (const [p, c] of Object.entries(d.files || {})) {
-      const full = p.startsWith("samples/") ? p : "samples/" + p;
-      writeFileEnsureDir(FS, full, c);
+    if (!FS) {
+      // wasm 起動前: 捨てずに queue し、runtimeReady 時に flush する
+      pendingSyncBatches.push(d.files || {});
+      return;
     }
+    writeSyncBatch(FS, d.files || {});
     // mtime poll on C side picks it up next frame.
   }
 });

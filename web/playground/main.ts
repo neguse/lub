@@ -22,6 +22,10 @@ let syncInFlight = false;
 
 // C# は増分 session (tcs SessionExports)。sample/言語切替で開き直す。
 let tcsSession: TcsSession | null = null;
+// prebuilt 起動後の background open 中 (この間の C# 編集は queue して待つ)
+let tcsOpening = false;
+// sample/言語切替の世代。async 完了時に古い世代の結果を捨てる。
+let loadGen = 0;
 // 直近の warm apply が待っている commit ACK (@@tcs_commit、player の
 // print relay 経由)。ACK が来るまで synced にしない。MEMFS の mtime が
 // ms 解像度で同一 ms 書き込みを取りこぼし得るため、時間内に ACK が
@@ -257,6 +261,7 @@ async function compileCurrent(): Promise<string | null> {
 
 /** サンプルをロード → compile → data file 解決 → エディタ反映 → player 起動。 */
 async function loadCompileRun(name: string) {
+  const gen = ++loadGen;
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
   if (syncTimer) clearTimeout(syncTimer);
@@ -264,6 +269,7 @@ async function loadCompileRun(name: string) {
   pendingSyncPaths.clear();
   clearPendingAck();
   tcsSession = null;
+  tcsOpening = false;
   lastLua = null;
   let src;
   try {
@@ -278,17 +284,59 @@ async function loadCompileRun(name: string) {
   // まずソース(.hx/.hxml/.cs)だけエディタに出してから compile(エラーでもソースは見える)。
   setFiles(src.files);
 
-  const lua = await compileCurrent();
-  if (lua == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
+  // C# は build 時生成の prebuilt snapshot があれば先に player を起動し、
+  // .NET (Roslyn) session は背景で温める (cold start から compile を外す)。
+  // 編集はエディタソース基準なので、prebuilt が古くても最初の編集で
+  // authoritative な snapshot に置き換わる。
+  let lua: string | null = null;
+  let warmAfterBoot = false;
+  if (language === "cs") {
+    const pre = await fetch(`/tcs-prebuilt/${name}.lua`).catch(() => null);
+    if (gen !== loadGen) return;
+    if (pre?.ok) {
+      lua = await pre.text();
+      warmAfterBoot = true;
+    }
+  }
+  if (lua == null) {
+    lua = await compileCurrent();
+    if (gen !== loadGen) return;
+    if (lua == null) return; // compile 失敗: ソースは出ているので直して再 compile できる
+  }
   lastLua = lua;
 
   const dataFiles = await discoverDataFiles(name, lua);
+  if (gen !== loadGen) return;
   // エディタ表示 = ソース(.hx/.hxml)+ data files。
   const all = new Map(src.files);
   for (const [k, v] of dataFiles) all.set(k, v);
   setFiles(all);
 
   await restart();
+  if (warmAfterBoot && gen === loadGen) void warmTcsSession(gen);
+}
+
+/** prebuilt 起動後に増分 session を背景で開く (§14.1 background prewarm)。
+ * Open は main thread 同期呼び出しのため数秒〜十数秒 UI が固まるが、player は
+ * 既に prebuilt で動いている。完了時に queue された編集を flush する。 */
+async function warmTcsSession(gen: number) {
+  tcsOpening = true;
+  addLog("C# incremental compiler warming in background…");
+  try {
+    const res = await openTcsSession(collectSources(".cs"), mainClass);
+    if (gen !== loadGen) return; // sample/言語切替済み: 結果を捨てる
+    for (const w of res.warnings) addLog(w, "warn");
+    if (!res.ok || !res.session) {
+      addLog("C# compile error (session open):", "err");
+      for (const line of res.errors) if (line.trim()) addLog(line, "err");
+      return;
+    }
+    tcsSession = res.session;
+    addLog("C# incremental compiler ready");
+    if (pendingSyncPaths.size > 0) void syncDirtyNow();
+  } finally {
+    if (gen === loadGen) tcsOpening = false;
+  }
 }
 
 /** player iframe を作り直し、コンパイル済み Lua + data files を送る。 */
@@ -315,6 +363,93 @@ async function restart() {
     "*",
   );
   $status.textContent = `running ${currentSample}`;
+}
+
+/** 特定 iframe からの type メッセージを待つ (timeout で false)。 */
+function waitForMsgFrom(
+  iframe: HTMLIFrameElement,
+  type: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const t = window.setTimeout(() => {
+      window.removeEventListener("message", h);
+      resolve(false);
+    }, timeoutMs);
+    const h = (e: MessageEvent) => {
+      if (e.source === iframe.contentWindow && (e.data || {}).type === type) {
+        clearTimeout(t);
+        window.removeEventListener("message", h);
+        resolve(true);
+      }
+    };
+    window.addEventListener("message", h);
+  });
+}
+
+/** 特定 iframe の print relay から commit ACK を待つ (timeout/失敗 ACK で false)。 */
+function waitForAckFrom(
+  iframe: HTMLIFrameElement,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const t = window.setTimeout(() => {
+      window.removeEventListener("message", h);
+      resolve(false);
+    }, timeoutMs);
+    const h = (e: MessageEvent) => {
+      if (e.source !== iframe.contentWindow) return;
+      const d = e.data || {};
+      if (d.type !== "log") return;
+      const msg = String(d.msg ?? "");
+      if (!msg.startsWith("@@tcs_commit ")) return;
+      clearTimeout(t);
+      window.removeEventListener("message", h);
+      try {
+        resolve(!!JSON.parse(msg.slice("@@tcs_commit ".length)).ok);
+      } catch {
+        resolve(false);
+      }
+    };
+    window.addEventListener("message", h);
+  });
+}
+
+/** requiresRestart 編集の二相 handoff (§14.2)。hidden player を lastLua で
+ * 起動し、runtime の初回 commit ACK を確認してから表示を swap する。
+ * 失敗時は旧 player に触れず false を返す。 */
+async function restartTwoPhase(): Promise<boolean> {
+  if (!entryKey || lastLua == null) return false;
+  const gen = loadGen;
+  $status.textContent = "restarting (two-phase)…";
+  const fresh = document.createElement("iframe");
+  fresh.src = `/player.html?w=${resW}&h=${resH}`;
+  fresh.style.visibility = "hidden";
+  fresh.style.position = "absolute";
+  document.getElementById("player-mount")!.appendChild(fresh);
+  try {
+    if (!(await waitForMsgFrom(fresh, "playerReady", 15000))) return false;
+    if (gen !== loadGen) return false;
+    const all: Record<string, string> = { [entryKey]: lastLua };
+    for (const [p, f] of getFiles()) if (!isSourceFile(p)) all[p] = f.content;
+    const ackP = waitForAckFrom(fresh, 30000);
+    fresh.contentWindow!.postMessage(
+      { type: "setFiles", files: all, entry: currentSample },
+      "*",
+    );
+    if (!(await ackP)) return false;
+    if (gen !== loadGen) return false;
+    // 成功: 表示を swap
+    clearPendingAck();
+    if (playerIframe) playerIframe.remove();
+    fresh.style.visibility = "";
+    fresh.style.position = "";
+    playerIframe = fresh;
+    $status.textContent = `running ${currentSample}`;
+    return true;
+  } finally {
+    if (playerIframe !== fresh) fresh.remove();
+  }
 }
 
 /** debounce 後の同期: .hx 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
@@ -344,6 +479,12 @@ async function syncDirtyNow() {
     const t0 = performance.now();
 
     if (sourceChanged) {
+      if (language === "cs" && !tcsSession && tcsOpening) {
+        // session を background で開いている最中。編集は pending のまま残し、
+        // open 完了時 (warmTcsSession) に flush される (latest-wins)。
+        $status.textContent = "compiler warming…";
+        return;
+      }
       if (language === "cs" && tcsSession) {
         // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
         // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh
@@ -372,7 +513,13 @@ async function syncDirtyNow() {
         }
         lastLua = lua;
         if (requiresRestart) {
-          await restart();
+          // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK
+          // を確認してから表示を swap する。失敗時は旧 player を残す (§14.2)。
+          const ok = await restartTwoPhase();
+          if (!ok) {
+            addLog("two-phase restart failed; keeping current player", "err");
+            $status.textContent = "restart failed (old player kept)";
+          }
           for (const [p, content] of snapshot) {
             const current = getFiles().get(p);
             if (!current || current.content === content)
