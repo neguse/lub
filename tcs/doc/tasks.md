@@ -263,16 +263,8 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-順序は T172 → T173 → T174 → T175(M1 hard gate)→ T176 → T177 → T178 → T179。
+順序は T173 → T174 → T175(M1 hard gate)→ T176 → T177 → T178 → T179。T172 は完了 (done.md)。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
-
-### T172: [M0] player 側 apply baseline bench
-- 目的: bridge 方式の apply コスト(full snapshot load、lume.hotswap 走査、thin wrapper の効果)を実測し、§14.2 の wrapper 対策と 75 ms budget の妥当性を数字で確定する
-- 作業:
-  - `bench/` に deps/lua/lua (5.5) で走る pure Lua bench を置く
-  - 系列: 生成 Lua bundle の load 時間(規模別)、lume update 走査(type table 直 return vs thin wrapper vs old==new fast-path、live static list 1e4/1e5/2e5 entry)
-  - 結果(p50/p95)を design doc §15 の参考実測に反映する
-- 完了条件: bench が単体で再現実行でき、design doc に数値が入り、wrapper の効果が系列間で確認できる
 
 ### T173: [M0] Chrome benchmark harness
 - 目的: 実ブラウザでの現行 full path baseline(cold/warm/sample-only/memory soak)と、T175 gate 計測の土台を作る

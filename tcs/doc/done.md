@@ -710,3 +710,12 @@
 - よかったこと: ValueText 統一により verbatim 対応と予約語判定 (ValueText 比較) が同じ土台になり、`@end` のような合成ケースが追加コードなしで正しく診断された
 - 判断: 自動リネームはせず「診断して拒否」(T151 の中央マングリング導入時にリネームへ昇格可能な形)。予約語セットに Lua 5.5 新予約語 `global` を含めた。usage サイト (--ref stub の予約語メンバー等) は宣言サイト診断の対象外で、実需要が出たら T151 のスコープ
 - 残課題: emitter は警告付きで不正 Lua を出しうる (check exit 1 が契約)。型syntax の raw 出力箇所 (`getmetatable(x) == {dp.Type}` の `@Type`) は T151 で symbol 名へ統一する
+
+### T172: [M0] player 側 apply baseline bench ✓ (2026-07-14)
+- `bench/player-apply.lua` を追加 (deps/lua/lua 5.5 単体で再現実行可)。系列: 合成 bundle の load (12/156/471KB)、lume.hotswap update 走査 (type table 直 return / old==new fast-path / thin wrapper、live static list 1e4/1e5/2e5 entry)
+- 実測 (native Lua 5.5.1, p50): load 156KB=5.0ms / 471KB=16.7ms。walk-type-table 1e5=106ms / 2e5=224ms。walk-fastpath / walk-wrapper は 1〜4µs
+- design doc §15 の参考実測を bench 由来の数値で更新
+- 変更ファイル: bench/player-apply.lua (新規), doc/incremental-module-compilation-design.md
+- よかったこと: 設計レビューで定性的だった blocker (lume の live graph 全走査) を、budget 比 3 倍超という数字で確定できた。wrapper/fast-path の効果も同一 harness で対比でき、§14.2 の対策が必須である根拠が再現可能になった
+- 判断: lume 実装は計測用に bench 内へ忠実複製 (MIT, rxi/lume)。lub の vendored lume に依存すると readonly 制約と壊れやすい相対 path を持ち込むため。合成 bundle は emitter 出力風 (class table = instance metatable) に揃え、実生成物への依存を切った
+- 残課題: browser (WASM) での同系列実測は T173 の Chrome harness に載せて係数を確定する

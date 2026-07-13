@@ -547,7 +547,7 @@ playground editor は file の add/delete/rename UI を持たない(固定ファ
 - 5 回以上 warm-up 後、同じ edit sequence を 30 回以上測る。
 - small / representative / largest playground sample を含める。
 - method literal change、method body dependency change、syntax error→recovery、surface change を別 series にする。
-- **player 側 apply の series を独立に持つ**: full snapshot の Lua load(parse)、`lume.hotswap` 経路の走査、applyBatch の unchanged-skip path を、live state が大きい sample(static list に数万〜数十万 entry)でも測る。参考実測: 現行 C# entry Lua(110〜160 KB)の native Lua 5.5 load は 3.1〜4.9 ms/回で、parse 自体は budget 内。支配項は lume 走査であり、§14.2 の wrapper 対策の効果をここで検証する。
+- **player 側 apply の series を独立に持つ**: full snapshot の Lua load(parse)、`lume.hotswap` 経路の走査、applyBatch の unchanged-skip path を、live state が大きい sample(static list に数万〜数十万 entry)でも測る。native Lua 5.5 の baseline は `bench/player-apply.lua`(T172): load は 156 KB で p50 5.0 ms、471 KB で p50 16.7 ms と budget 内。一方 type table を直接 return した場合の lume 走査は sprite 10 万で p50 106 ms、20 万で p50 224 ms と **native ですら 75 ms budget を単独で超える**。thin wrapper と old==new fast-path はいずれも 1〜4 µs 台に落ちる。§14.2 の wrapper 対策は必須であり、browser(WASM)では同系列を実測して係数を確定する。
 - end-to-end は edit-stop から runtime commit ACK(§13.1)までを同じ revision ID で対応付けて測る。postMessage 送信時刻を commit と見なさない。
 - browser `performance.now()` と managed phase timing を同じ revision ID で対応付ける。
 - **main-thread 同期 compile の UI 影響を併記する**: Long Task 時間、input delay、editor frame gap。Worker 化前は「latest-wins queue」が実質機能しない(同期呼び出し中は event loop が止まる)ため、SLO を満たしても体感停止が残る可能性を数字で見る。
