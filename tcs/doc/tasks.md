@@ -263,13 +263,8 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-順序は T175(M1 hard gate)→ T176 → T177 → T178 → T179。T172-T174 は完了 (done.md)。
+順序は T176 → T177 → T178 → T179。T172-T175 は完了 (done.md)。M1 gate は通過済み。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
-
-### T175: [M1] IncrementalCompilationSession
-- 目的: 常駐 Roslyn session と body-only fast path(design doc §7-§9)
-- 依存: T173、T174(gate 計測と parity test が先)
-- 完了条件: design doc §17 M1 の gate(実ブラウザ warm compiler p95 275 ms 以下、body edit の parse/emit tree 数 1)。未達なら §15 の追加施策を M1 内で消化し、それでも未達なら設計見直しへ戻る(go/no-go)
 
 ### T176: [M2] descriptor artifact / registry vertical slice
 - 依存: T175 gate 通過、T151、T155

@@ -56,6 +56,7 @@
 **T172**: 増分 module compilation M0 — player 側 apply baseline (`bench/player-apply.lua`。lume 走査は live state 20 万 entry で p50 224 ms と 75 ms budget 超過、thin wrapper / fast-path で µs 台を実証)
 **T173**: 増分 module compilation M0 — Chrome benchmark harness (`bench/chrome-compile.mjs`。cold 11.3s / warm p50 5.58s の再現 baseline)
 **T174**: 増分 module compilation M0 — diagnostics differential test 雛形 (canonical key 比較、T175 で session 側へ差し替え)
+**T175**: 増分 module compilation M1 — IncrementalCompilationSession (body-only fast path: span 限定診断 + method splice。M1 gate PASS: 実サンプル級 file の warm body-edit p50 106ms / p95 124ms、現行 full path 5.58s 比 53 倍)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -203,7 +204,7 @@
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
-- 増分 module compilation track: M0 完了。次は T175 (M1 IncrementalCompilationSession、275ms hard gate — 通過まで T176 以降着手禁止)。設計は `doc/incremental-module-compilation-design.md`
+- 増分 module compilation track: M0-M1 完了 (275ms gate PASS)。次は T176 (M2 descriptor artifact / registry vertical slice。依存: T151/T155 の統合)。設計は `doc/incremental-module-compilation-design.md`
 - P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T138-T154/T163)
 - 着手順: T138 → T163 (診断契約)
 - Lua命名T151を先に入れ、lowering修正はT139の一回評価基盤からT140-T148へ展開する。継承T149-T150は並行可

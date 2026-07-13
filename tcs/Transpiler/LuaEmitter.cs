@@ -342,6 +342,28 @@ public partial class LuaEmitter
         AppendLine();
     }
 
+    // 増分 emit (IncrementalCompilationSession) が method 単位で出力を
+    // 差し替えられるよう、method ごとの出力範囲を記録する。Key は emitted
+    // class 名 + method 名 + 構文上の parameter 型リストで、surface 不変の
+    // fast path 内では安定する。
+    public List<(string Key, int Start, int Length)> MethodRanges { get; } = [];
+
+    public static string MethodKey(string className, MethodDeclarationSyntax method) =>
+        $"{className}.{method.Identifier.ValueText}(" +
+        string.Join(",", method.ParameterList.Parameters.Select(p => p.Type?.ToString())) + ")";
+
+    // 単一 method の emit 出力だけを返す (header なし)。full emit 中に
+    // VisitMethod が生成する範囲と byte 一致する (継続ラベル _continue_N の
+    // 採番だけは file 内通番でなく 0 始まりになるが、Lua のラベルは関数
+    // スコープのため実行意味は同一)。
+    public string EmitSingleMethod(SemanticModel model, string className,
+        MethodDeclarationSyntax method)
+    {
+        _headerEmitted = true;
+        VisitMethod(model, className, method);
+        return _sb.ToString();
+    }
+
     private void VisitMethod(SemanticModel model, string className,
         MethodDeclarationSyntax method)
     {
@@ -351,6 +373,7 @@ public partial class LuaEmitter
         var paramNames = method.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
         var sep = isStatic ? "." : ":";
+        var rangeStart = _sb.Length;
 
         AppendLine($"function {className}{sep}{methodName}({string.Join(", ", paramNames)})");
         _indent++;
@@ -364,6 +387,7 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
+        MethodRanges.Add((MethodKey(className, method), rangeStart, _sb.Length - rangeStart));
     }
 
     private void SetSource(SyntaxNode node)
@@ -425,4 +449,7 @@ public partial class LuaEmitter
         AppendLine(WarnUnsupported(member, $"member: {member.Kind()}"));
 
     public override string ToString() => _sb.ToString().TrimEnd() + "\n";
+
+    // 増分 splice 用の未 trim 出力 (MethodRanges の offset はこちらの座標)
+    public string RawOutput => _sb.ToString();
 }

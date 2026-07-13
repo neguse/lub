@@ -735,3 +735,13 @@
 - よかったこと: 診断が整形済み文字列で返る現行 API のまま canonical 化を先に固めたので、session 実装時に wire format を変えずに parity gate を挿せる
 - 判断: harness は test project 内に置いた (production 側に consumer がまだ無く、dead code を作らないため。T175 で必要になれば昇格)
 - 残課題: T175 で Left=session 差し替え + body-edit/surface-change の実 differential 系列を追加
+
+### T175: [M1] IncrementalCompilationSession ✓ (2026-07-14)
+- `Transpiler/IncrementalCompilationSession.cs` を追加。常駐 Roslyn session (fixed/ref tree cache、`WithChangedText`/`ReplaceSyntaxTree`)、body-only fast path (変更 span の body 内包含 + body 除去 surface hash の二重判定、error 状態からの復帰と非 body 編集は無条件 slow path)、error head / last-good artifact の分離と dirty closure、per-module emit
+- fast path の semantic 診断を変更 body span 限定の `GetDiagnostics(span)` に (161→21ms)。emit は変更 method のみ emit して cache へ splice (`LuaEmitter.MethodRanges`/`EmitSingleMethod`、231→1ms)。constructor/accessor/record/警告持ちは file 全体 emit へ fallback
+- `WasmCompiler` に M1 gate 計測用の最小 `SessionExports.Open/Update` JSExport を追加 (production wire は M4)
+- `bench/chrome-session.mjs` で M1 gate PASS: 実サンプル級 file (11.5KB/61 methods) warm body-edit p50 105.8ms / p95 124.2ms (gate 275ms)、tree count assertion 全 run 通過。現行 full path warm 5.58s 比 53 倍
+- 変更ファイル: Transpiler/IncrementalCompilationSession.cs (新規), Transpiler/LuaEmitter.cs, WasmCompiler/Program.cs, Transpiler.Tests/IncrementalSessionTests.cs (新規), Transpiler.Tests/IncrementalDifferentialTests.cs 連携, bench/chrome-session.mjs (新規), doc 更新
+- よかったこと: gate を probe 極小 file だけで測らず実サンプル級 file を足したことで、「file 全体 emit が budget を壊す」を実装前でなく計測で発見し、method splice まで M1 内で消化できた。splice は full emit との byte 一致をテストで固定した
+- 判断: 診断 parity のため compliance/naming は tree 全体 walk を維持 (23ms、他 member の警告行番号がずれるため span 限定にしない)。splice の continue ラベル採番は file 内通番と不一致だが Lua のラベルは関数スコープで実行意味同一と判断し、byte 決定性は「同一 session 経路内」で保証
+- 残課題: SourceMap は増分 artifact に未対応 (M3 §12)。SurfaceHash/JSON 往復の ~60ms は M4 の wire 設計で削る。sample/言語切替 soak と 1000 edit soak は M4 の E2E gate と同時に採る
