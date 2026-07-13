@@ -147,6 +147,11 @@ end
 -- 維持できるように)。
 function Registry:applyBatch(batch)
   if batch.revision <= self.revision then
+    -- 同一 revision の再適用 (host の ACK retry による entry 再書き込み) には
+    -- ACK を返し直す。古い revision は黙って捨てる。
+    if batch.revision == self.revision then
+      emit_ack(self, batch, true, 0)
+    end
     return {
       ok = true,
       skipped = true,
