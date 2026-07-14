@@ -83,6 +83,10 @@ scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
 scripts/run-cs-sample.sh 09_breakout --build      # transpile のみ
 ```
 
+playground の C# は増分コンパイラで hot reload する(編集停止から 0.5 s 未満)。
+何が生きたまま反映されて何が作り直しになるかは「ライフサイクルと hot reload」
+の章を参照。
+
 csproj は lub にとっては entry 指定 (basename = entry class、入力 = 同
 ディレクトリの全 `*.cs`) でしかないが、dotnet 側 (Rider / VS Code) では
 本物のプロジェクトとして機能する: stub と TinySystem を参照し、TinyC#
