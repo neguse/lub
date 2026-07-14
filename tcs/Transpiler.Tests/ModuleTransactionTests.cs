@@ -212,6 +212,55 @@ public class ModuleTransactionTests
         Assert.Equal(["77", "true", "true", "true", "old"], output);
     }
 
+    [Fact]
+    public void OnReloadIsCalledOnHotApplyButNotFreshLoad()
+    {
+        var output = TestHelper.RunLua($$"""
+            local Reg = dofile("{{RegistryPath}}")
+            local reg = Reg.new(_G)
+            local function mod(hash, val)
+              return { id = "m", hash = hash,
+                types = { { id = "m#T", name = "T", kind = "class",
+                  statics = { { key = "marks", default = 0, pure = true } },
+                  keys = { "__index", "Get", "onReload" } } },
+                define = function(_ENV)
+                  T.__index = T
+                  function T:Get() return val end
+                  function T.onReload() T.marks = T.marks + 1 end
+                end,
+                inits = {}, initfns = {} }
+            end
+            local entry = { type = "m#T", keys = { "Get", "onReload" } }
+            reg:applyBatch({ revision = 1, entry = entry, modules = { mod("h1", "a") } })
+            local T = reg.types["m#T"]
+            print(T.marks)                   -- fresh load では呼ばれない
+            reg:applyBatch({ revision = 2, entry = entry, modules = { mod("h2", "b") } })
+            print(T.marks)                   -- hot apply で 1 回
+            reg:applyBatch({ revision = 3, entry = entry, modules = { mod("h2", "b") } })
+            print(T.marks)                   -- unchanged (全 skip) では呼ばれない
+            -- onReload が error しても commit は成立している
+            local function bad(hash)
+              local m = mod(hash, "c")
+              m.define = function(_ENV)
+                T.__index = T
+                function T:Get() return "c" end
+                function T.onReload() error("reload boom") end
+              end
+              return m
+            end
+            reg:applyBatch({ revision = 4, entry = entry, modules = { bad("h3") } })
+            print(reg.revision)
+            print(reg.types["m#T"]:Get())
+            """).Trim().Split('\n').Select(l => l.Trim()).ToArray();
+        Assert.Equal("0", output[0]);
+        Assert.Equal("1", output[1]);
+        Assert.Equal("1", output[2]);
+        // onReload の error は警告行になる (commit は成立)
+        Assert.StartsWith("tcs registry: onReload error", output[3]);
+        Assert.Equal("4", output[4]);
+        Assert.Equal("c", output[5]);
+    }
+
     // ------------------------------------------------------------------
     // commit ACK (§13.1)
 

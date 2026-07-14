@@ -160,6 +160,7 @@ function Registry:applyBatch(batch)
     }
   end
   local t0 = now_ms(self)
+  local was_fresh = self.revision == 0
 
   -- 対象 module の選別 (hash unchanged は skip)
   local changed = {}
@@ -335,6 +336,21 @@ function Registry:applyBatch(batch)
   end
   self.revision = batch.revision
   emit_ack(self, batch, true, now_ms(self) - t0)
+
+  -- hot apply 後は entry の onReload を呼ぶ。module mode は method-body edit で
+  -- static を保持するため、旧 hotswap の「chunk 再実行で dirty フラグが初期値に
+  -- 戻る」イディオムが効かない。コード由来の derived data (SDF mesh 等) の
+  -- 再構築はこの hook を境界にする。commit は確定済みなので失敗は警告のみ。
+  if not was_fresh and #changed > 0 and batch.entry then
+    local et = self.types[batch.entry.type]
+    local f = et and rawget(et, "onReload")
+    if type(f) == "function" then
+      local ok2, err2 = pcall(f)
+      if not ok2 and self.host.print then
+        self.host.print("tcs registry: onReload error: " .. tostring(err2))
+      end
+    end
+  end
 
   return {
     ok = true,
