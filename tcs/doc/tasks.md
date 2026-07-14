@@ -263,6 +263,8 @@ tcs 側から直接変更しない。
 ## 増分 module compilation(doc/incremental-module-compilation-design.md)
 
 設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
+この track の実装オーナーは lub-main (Claude セッション)。tcs-codex への分担は
+2026-07-14 に廃止した。
 順序は T176 → T177 → T178 → T179。T172-T179 完了 (done.md、T179 は profile 判断により全項目見送り。design doc §17 M4/M5)。
 **T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
 
