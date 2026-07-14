@@ -180,7 +180,14 @@ public static class Bowling25
         return withRing.ssub(h1, 0.002).ssub(h2, 0.002).ssub(h3, 0.002);
     }
 
-    static bool meshDirty = true; // hot reload で true に戻り再メッシュされる
+    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
+    // onReload で立てる。どちらも再メッシュのトリガ。
+    static bool meshDirty = true;
+
+    public static void onReload()
+    {
+        meshDirty = true;
+    }
     static Mesh3d? pinMesh = null;
     static Mesh3d? ballMesh = null;
     static Mesh3d? cubeMesh = null;

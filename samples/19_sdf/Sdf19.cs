@@ -73,15 +73,20 @@ public static class Sdf19
     // メタル変身 (0..1)。target を Space でトグルして毎フレーム補間
     static double metalT = 0.0;
     static double metalTarget = 0.0;
-    // hot reload (lume.hotswap) は「新モジュールの非 nil static」だけを
-    // 上書きする (nil は pairs で列挙されないので mesh = null は戻らない)。
-    // 初期値 true のフラグがリロード毎に true へ戻るのをトリガに使う。
     // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価
     // (SdfPanel での編集時)。パネル編集はツリー (data) に直接乗るので、
     // リロードするまで生きる。
+    // reload 検知は経路で異なる: native watch (lume.hotswap) は chunk 再実行で
+    // フラグが初期値 true へ戻る。web playground (module mode) は static を
+    // 保持するため、hot apply 後に呼ばれる onReload() で明示的に立てる。
     static SdfNode? tree = null;
     static bool treeDirty = true;
     static bool meshDirty = true;
+
+    public static void onReload()
+    {
+        treeDirty = true;
+    }
 
     static List<int>? matcapPx = null;
     static int matcapVer = 0;

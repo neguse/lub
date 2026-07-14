@@ -199,7 +199,14 @@ public static class Tonton22
     // モデルは -Z (相手の方) を向いて作る。feet が y=0。
     const int SDF_N = 56;
     static Mesh3d[]? darumaMesh = null;
-    static bool darumaDirty = true; // hot reload で true に戻り再メッシュされる
+    // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
+    // onReload で立てる。どちらも再メッシュのトリガ。
+    static bool darumaDirty = true;
+
+    public static void onReload()
+    {
+        darumaDirty = true;
+    }
 
     static SdfNode darumaModel(int bodyRgb)
     {

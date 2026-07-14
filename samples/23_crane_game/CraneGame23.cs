@@ -228,8 +228,14 @@ public static class CraneGame23
         return dome.smin(rim, 0.015);
     }
 
-    // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ) --------------
+    // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は
+    // chunk 再実行で初期値 true に戻り、web の module mode は onReload で立てる) --
     static bool meshDirty = true;
+
+    public static void onReload()
+    {
+        meshDirty = true;
+    }
     static Renderer3d? ren = null;
     static List<Mesh3d>? bearMeshes = null;
     static Mesh3d? fingerMesh = null;
