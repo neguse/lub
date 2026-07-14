@@ -19,6 +19,7 @@ public class Brick
 public static class Breakout09
 {
     const double DT = 1.0 / 60.0;
+    const int MAX_CATCH_UP_STEPS = 8;
     const int STRIDE = 6; // pos.xy + color.rgba
 
     const int COLS = 11;
@@ -62,6 +63,8 @@ public static class Breakout09
     static int lives = 3;
     static int score = 0;
     static double launchTimer = 0;
+    static double updateAccumulator = 0;
+    static bool resetPending = false;
     static int meshVersion = 0;
 
     public static void onInit()
@@ -184,9 +187,9 @@ public static class Breakout09
         }
     }
 
-    static void UpdateGame()
+    static void UpdateGame(bool resetPressed)
     {
-        if (Input.key_pressed("r"))
+        if (resetPressed)
         {
             ResetGame();
         }
@@ -353,7 +356,24 @@ public static class Breakout09
 
     public static void onFrame(double dt)
     {
-        UpdateGame();
+        // Render frames can outnumber fixed updates, so retain this edge until the
+        // first update tick consumes it.
+        if (Input.key_pressed("r"))
+            resetPending = true;
+        updateAccumulator = Math.Min(updateAccumulator + dt,
+            DT * MAX_CATCH_UP_STEPS);
+        int updateSteps = 0;
+        while (updateAccumulator + 1e-9 >= DT
+            && updateSteps < MAX_CATCH_UP_STEPS)
+        {
+            bool resetPressed = resetPending;
+            resetPending = false;
+            UpdateGame(resetPressed);
+            updateAccumulator = updateAccumulator - DT;
+            if (updateAccumulator < 0)
+                updateAccumulator = 0;
+            updateSteps = updateSteps + 1;
+        }
 
         Io.load_text("samples/09_breakout/data/09_breakout.vs.slang",
             out var vs, out var vsv, out _, out _);

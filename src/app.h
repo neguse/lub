@@ -87,9 +87,12 @@ typedef struct App {
   // Per-frame wheel sum (SDL wheel units; +y = away from user).
   float mouse_wheel_x, mouse_wheel_y;
 
-  // Real frame delta time in seconds, passed to onFrame(dt). Clamped so a
-  // debugger pause or window drag does not produce a giant step.
+  // Effective frame delta time in seconds, passed to UI and onFrame(dt).
+  // Normally measured from the real frame clock and clamped so a debugger
+  // pause or window drag does not produce a giant step.
   double frame_dt;
+  // Test-only override from --fixed-dt. 0 means use the real frame clock.
+  double fixed_frame_dt;
   uint64_t frame_prev_counter;
 
   // Backend selection. app_init sets phase = PRE_BACKEND and backend_name

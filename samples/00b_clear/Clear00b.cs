@@ -24,7 +24,7 @@ public static class Clear00b
 
     public static void onFrame(double dt)
     {
-        t = t + 1.0 / 60.0;
+        t = t + dt;
         var r = 0.5 + 0.5 * Math.Sin(t);
         var g = 0.5 + 0.5 * Math.Sin(t + 2.0);
         var b = 0.5 + 0.5 * Math.Sin(t + 4.0);

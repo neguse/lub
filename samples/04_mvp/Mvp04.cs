@@ -23,7 +23,7 @@ public static class Mvp04
 
     public static void onFrame(double dt)
     {
-        t = t + 1.0 / 60.0;
+        t = t + dt;
         Io.load_text("samples/04_mvp/data/04_mvp.vs.slang",
             out var vs, out var vsv, out _, out _);
         Io.load_text("samples/04_mvp/data/04_mvp.fs.slang",

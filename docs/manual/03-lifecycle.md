@@ -8,12 +8,49 @@
 | --- | --- |
 | `main()` | module ロード時に 1 回。hot reload でも再実行されるので、通常は空にする |
 | `onInit()` | 起動時に 1 回だけ。**hot reload 後は呼ばれない**。`Lub.config` はここでのみ有効 |
-| `onFrame(dt:Float)` | 毎フレーム。`dt` は直近フレームの実測秒 |
+| `onFrame(dt:Float)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
 | `onReload()`(任意) | C#(playground)で編集が生きたまま反映された直後に 1 回(後述) |
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
 ウィンドウサイズや backend の指定は `Lub.config`(または env 補完付きの
 `lubx.Boot.config`)で行う。
+
+見た目だけの連続アニメーションは `angle += radiansPerSecond * dt` のように
+実測時間を直接使う。物理やフレーム単位のゲームルールは、render とは別の
+固定 60 Hz tick にする。1 render あたりの catch-up 回数には上限を設け、
+`keyPressed` / `mousePressed` の edge は tick が 0 回の render でも失わないよう
+先に pending 状態へ保存する。
+
+```haxe
+static inline var DT = 1.0 / 60.0;
+static inline var MAX_STEPS = 8;
+static var accumulator = 0.0;
+static var jumpPending = false;
+
+public static function onFrame(dt:Float) {
+	if (Input.keyPressed(Key.Space))
+		jumpPending = true;
+	accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
+	var steps = 0;
+	while (accumulator + 1e-9 >= DT && steps++ < MAX_STEPS) {
+		simulateTick(DT, jumpPending);
+		jumpPending = false;
+		accumulator -= DT;
+	}
+	drawCurrentState();
+}
+```
+
+physics sample では `Phys2d.begin` / `Phys3d.begin`、body 宣言、force / torque、
+`step(DT)` までを同じ `simulateTick` 内に置く。これらを render ごとに実行して
+`step` だけ固定 tick にすると、物理 step が 0 回だった render の command が
+次の tick へ重複して蓄積する。
+
+`--fixed-dt <seconds>` を付けた起動だけは、UI と `onFrame` に実測値ではなく
+指定した同じ `dt` を毎フレーム渡す。これは capture / golden / replay のための
+テスト専用オプションで、有限かつ `0 < dt <= 0.25` の値を受け付ける。render
+frame の頻度そのものは変えないため、通常プレイの速度や FPS を固定する用途には
+使わない。
 
 ## hot reload の仕組み
 

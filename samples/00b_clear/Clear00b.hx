@@ -20,8 +20,8 @@ class Clear00b {
 
 	public static function onQuit() {}
 
-	public static function onFrame() {
-		t = t + 1.0 / 60.0;
+	public static function onFrame(dt:Float) {
+		t = t + dt;
 		var r = 0.5 + 0.5 * Math.sin(t);
 		var g = 0.5 + 0.5 * Math.sin(t + 2.0);
 		var b = 0.5 + 0.5 * Math.sin(t + 4.0);

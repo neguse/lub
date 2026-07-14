@@ -72,6 +72,7 @@ public static class Baseball24
     const int W = 960;
     const int H = 540;
     const double DT = 1.0 / 60.0;
+    const int MAX_STEPS = 8;
 
     // --- フィールド寸法 (m) -------------------------------------------------
     const double BASE_D = 19.4; // 塁間 27.43m の対角成分
@@ -1476,6 +1477,7 @@ public static class Baseball24
 
     // --- 描画 -----------------------------------------------------------------------
     static bool reloaded = true; // hot reload で true に戻る (19_sdf と同じトリック)
+    static double accumulator = 0.0;
 
     static Renderer3d? ren = null;
 
@@ -1572,10 +1574,38 @@ public static class Baseball24
         }
     }
 
+    static void simulateTick()
+    {
+        tAccum += DT;
+        // ヒットストップ: その間シミュレーションだけ止める
+        if (hitstopT > 0)
+        {
+            hitstopT -= DT;
+        }
+        else
+        {
+            updateGame(DT);
+        }
+        updateCamera(DT);
+
+        var fs = fielders;
+        if (fs == null) return;
+        // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
+        if (fs[1].anim == AN_REACH)
+        {
+            fs[1].animT += DT;
+            if (fs[1].animT > 0.5)
+                fs[1].anim = AN_CROUCH;
+        }
+        else
+        {
+            fs[1].anim = AN_CROUCH;
+        }
+    }
+
     // --- main loop --------------------------------------------------------------------
     public static void onFrame(double dt)
     {
-        tAccum += DT;
         if (reloaded)
         {
             rng = new Rand(0x0B5EBA11);
@@ -1592,16 +1622,16 @@ public static class Baseball24
             showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
         }
 
-        // ヒットストップ: その間シミュレーションだけ止める
-        if (hitstopT > 0)
+        accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
+        int steps = 0;
+        while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
         {
-            hitstopT -= DT;
+            simulateTick();
+            accumulator = accumulator - DT;
+            steps = steps + 1;
         }
-        else
-        {
-            updateGame(DT);
-        }
-        updateCamera(DT);
+        if (accumulator < 0.0) accumulator = 0.0;
+        if (accumulator >= DT) accumulator = accumulator % DT;
 
         var fs = fielders;
         var renNow = ren;
@@ -1610,18 +1640,7 @@ public static class Baseball24
         if (fs == null || renNow == null || eyeNow == null || tgtNow == null)
             return;
 
-        // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
         var t = tAccum;
-        if (fs[1].anim == AN_REACH)
-        {
-            fs[1].animT += DT;
-            if (fs[1].animT > 0.5)
-                fs[1].anim = AN_CROUCH;
-        }
-        else
-        {
-            fs[1].anim = AN_CROUCH;
-        }
 
         // --- 描画 ---
         // 屋外デーゲーム: 高い太陽 + 空色の環境光

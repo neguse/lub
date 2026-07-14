@@ -15,7 +15,6 @@ using System.Collections.Generic;
 
 public static class RendererDemo26
 {
-    const double DT = 1.0 / 60.0;
     static double t = 0.0;
 
     static Renderer3d? ren = null;
@@ -82,7 +81,7 @@ public static class RendererDemo26
 
     public static void onFrame(double dt)
     {
-        t = t + DT;
+        t = t + dt;
         build();
         var r = ren;
         var cubeM = cube;

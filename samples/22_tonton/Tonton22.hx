@@ -61,6 +61,7 @@ class Tonton22 {
 	static inline var W = 640;
 	static inline var H = 360;
 	static inline var DT = 1.0 / 60.0;
+	static inline var MAX_CATCH_UP_STEPS = 8;
 
 	static inline var DOHYO_R = 2.2;
 	static inline var DOHYO_H = 0.4;
@@ -164,6 +165,18 @@ class Tonton22 {
 	static var markerZ = 0.0;
 	static var markerT = 0;
 	static var shake = 0.0;
+	static var updateAccumulator = 0.0;
+	static var world:Dynamic = null;
+	static var renderFrame = 0;
+	static var renderEye = new Vec3(0.0, 3.6, -5.4);
+
+	// render ごとに取る実入力。pressed は位置とともに次 tick まで保持する。
+	static var pendingTap = false;
+	static var pendingTapX = 0.0;
+	static var pendingTapY = 0.0;
+	static var pointerDown = false;
+	static var pointerX = 0.0;
+	static var pointerY = 0.0;
 
 	// --- procedural meshes (Shapes3d) ----------------------------------------
 	static var cubeMesh = new Mesh3d("tt_cube");
@@ -213,8 +226,8 @@ class Tonton22 {
 
 	// 手続きボーンアニメ。腕 = 戦術で構えが変わる + 転倒でバタバタ、
 	// 頭 = 押しの脈動でうなずく。物理 (傾き・跳ね) は model 行列側。
-	static function packBones(mi:Int, f:Rikishi, falling:Bool, pulse:Float):lua.Table<Int, Float> {
-		var t = frame * DT;
+	static function packBones(mi:Int, f:Rikishi, falling:Bool, pulse:Float, logicalFrame:Int):lua.Table<Int, Float> {
+		var t = logicalFrame * DT;
 		var armSwing = if (falling) Math.sin(t * 16.0 + mi * 2.1) * 0.9 else if (f.tactic == TA_HIKI || f.tactic == TA_INASHI) 0.7 else -0.55 * pulse
 			+ Math.sin(t * 2.3 + mi) * 0.08;
 		var nod = falling ? Math.sin(t * 12.0) * 0.25 : pulse * 0.16;
@@ -570,6 +583,23 @@ class Tonton22 {
 		shake = 1.0;
 	}
 
+	static function captureTapInput() {
+		if (auto)
+			return;
+		var pressed = Input.mousePressed();
+		pointerDown = Input.mouseDown();
+		if (pressed || pointerDown) {
+			var mp = Input.mousePos();
+			pointerX = mp.x;
+			pointerY = mp.y;
+			if (pressed) {
+				pendingTap = true;
+				pendingTapX = mp.x;
+				pendingTapY = mp.y;
+			}
+		}
+	}
+
 	static function updateTap(dohyo:Dynamic, eye:Vec3, target:Vec3, fovDeg:Float, aspect:Float, w:Float, h:Float) {
 		// 自動トントン: 決定論の擬似乱数で縁寄りを叩き続ける (勝負中のみ)
 		if (auto) {
@@ -580,14 +610,20 @@ class Tonton22 {
 			tapAt(dohyo, Math.cos(a) * r, Math.sin(a) * r);
 			return;
 		}
-		if (state != ST_FIGHT)
-			return; // 仕切り・余韻中は受け付けない (フェアな取組のため)
-		var tap = Input.mousePressed() || (Input.mouseDown() && frame - lastTap >= tapRepeat);
+		if (state != ST_FIGHT) {
+			// 仕切り・余韻中の pressed は次の取組に持ち越さない。
+			pendingTap = false;
+			return;
+		}
+		var pressed = pendingTap;
+		var sx = pressed ? pendingTapX : pointerX;
+		var sy = pressed ? pendingTapY : pointerY;
+		pendingTap = false;
+		var tap = pressed || (pointerDown && frame - lastTap >= tapRepeat);
 		if (!tap)
 			return;
-		var mp = Input.mousePos();
-		var ndcX = mp.x / w * 2.0 - 1.0;
-		var ndcY = 1.0 - mp.y / h * 2.0;
+		var ndcX = sx / w * 2.0 - 1.0;
+		var ndcY = 1.0 - sy / h * 2.0;
 		var fwd = (target - eye).normalize();
 		var right = Vec3.up().cross(fwd).normalize();
 		var upv = fwd.cross(right);
@@ -602,23 +638,19 @@ class Tonton22 {
 		tapAt(dohyo, p.x, p.z);
 	}
 
-	// --- rendering -------------------------------------------------------------
-	static var ren = new Renderer3d("tt22");
-
-	public static function onFrame() {
-		if (!cylMesh.ready())
-			buildPrims();
-
-		var size = Gfx.size();
-		var aspect = size.w / size.h;
-		var fovDeg = 40.0;
-		// トントンでカメラも少し揺れる (手応えの半分は画面振動)
+	static function tick(aspect:Float, w:Float, h:Float) {
+		// 従来の render frame 冒頭 / 末尾にあった演出カウントを
+		// 60 Hz で進める。この後の tap / judge で始まる演出は全強度で描く。
 		if (shake > 0.001)
 			shake *= 0.85;
-		var eye = new Vec3(Math.sin(frame * 1.7) * 0.05 * shake, 3.6 + Math.sin(frame * 2.3) * 0.03 * shake, -5.4);
+		if (markerT > 0)
+			markerT--;
+		renderFrame = frame;
+		renderEye = new Vec3(Math.sin(frame * 1.7) * 0.05 * shake, 3.6 + Math.sin(frame * 2.3) * 0.03 * shake, -5.4);
 		var lookAt = new Vec3(0.0, 0.4, 0.0);
+		var fovDeg = 40.0;
 
-		var world = declareWorld();
+		world = declareWorld();
 		declareStatics(world);
 		var dohyo = declareDohyo(world);
 		controlDohyo(dohyo);
@@ -626,7 +658,7 @@ class Tonton22 {
 		for (i in 0...fighters.length)
 			controlRikishi(i, fighters[i], bodies[i], bodies[1 - i]);
 		judge(bodies);
-		updateTap(dohyo, eye, lookAt, fovDeg, aspect, size.w, size.h);
+		updateTap(dohyo, renderEye, lookAt, fovDeg, aspect, w, h);
 
 		Phys3d.step(world, DT);
 
@@ -649,6 +681,45 @@ class Tonton22 {
 			}
 		}
 
+		// 着地スカッシュの検出と減衰も logical frame で進める。
+		for (i in 0...fighters.length) {
+			var f = fighters[i];
+			var pose = Phys3d.pose(bodies[i]);
+			if (pose == null)
+				continue;
+			if (f.prevVy < -1.2 && pose.vy > f.prevVy + 0.8)
+				f.squashT = 8;
+			f.prevVy = pose.vy;
+			if (f.squashT > 0)
+				f.squashT--;
+		}
+
+		frame++;
+	}
+
+	// --- rendering -------------------------------------------------------------
+	static var ren = new Renderer3d("tt22");
+
+	public static function onFrame(dt:Float) {
+		if (!cylMesh.ready())
+			buildPrims();
+
+		var size = Gfx.size();
+		var aspect = size.w / size.h;
+		var fovDeg = 40.0;
+		var lookAt = new Vec3(0.0, 0.4, 0.0);
+
+		captureTapInput();
+		updateAccumulator = Math.min(updateAccumulator + dt, DT * MAX_CATCH_UP_STEPS);
+		var updateSteps = 0;
+		while (updateAccumulator + 1e-9 >= DT && updateSteps < MAX_CATCH_UP_STEPS) {
+			tick(aspect, size.w, size.h);
+			updateAccumulator -= DT;
+			if (updateAccumulator < 0)
+				updateAccumulator = 0;
+			updateSteps++;
+		}
+
 		// --- draw ---
 		// 屋外の明るい昼 (だるまの色がよく出るように空色強め)
 		ren.light.dir = new Vec3(-0.4, 1.0, -0.55);
@@ -658,7 +729,7 @@ class Tonton22 {
 		ren.shadow.center = new Vec3(0, 0.3, 0);
 		ren.shadow.extent = 3.5;
 		ren.begin({
-			eye: eye,
+			eye: renderEye,
 			target: lookAt,
 			fov: fovDeg,
 			near: 0.1,
@@ -670,7 +741,7 @@ class Tonton22 {
 		ren.draw(cylMesh, Mat4.translate(new Vec3(0, 0.15, 0)) * Mat4.scale(new Vec3(1.7, 0.3, 1.7)), {tint: Color.rgb(0.16, 0.15, 0.19)});
 
 		// 土俵 (懸架で傾く)。上面に俵の白リングと仕切り線を重ねる。
-		var dp = Phys3d.pose(dohyo);
+		var dp = world == null ? null : Phys3d.pose(world, "dohyo");
 		if (dp != null) {
 			var dm = Renderer3d.poseMat(dp);
 			ren.draw(cylMesh, dm * Mat4.scale(new Vec3(DOHYO_R, DOHYO_H, DOHYO_R)), {tint: Color.rgb(0.72, 0.55, 0.38)});
@@ -690,26 +761,20 @@ class Tonton22 {
 		for (i in 0...fighters.length) {
 			var f = fighters[i];
 			var mesh = darumaMesh[i];
-			var pose = Phys3d.pose(bodies[i]);
+			var pose = world == null ? null : Phys3d.pose(world, "rikishi:" + i);
 			if (pose == null || !mesh.ready())
 				continue;
-			// 着地スカッシュ: 落下からの接地 (vy の跳ね) を検出
-			if (f.prevVy < -1.2 && pose.vy > f.prevVy + 0.8)
-				f.squashT = 8;
-			f.prevVy = pose.vy;
-			if (f.squashT > 0)
-				f.squashT--;
 			var sq = f.squashT / 8.0 * 0.22;
-			var op = Phys3d.pose(bodies[1 - i]);
+			var op = Phys3d.pose(world, "rikishi:" + (1 - i));
 			var fx = op != null ? op.x - pose.x : -pose.x;
 			var fz = op != null ? op.z - pose.z : -pose.z;
 			var yaw = Math.atan2(fx, fz); // model の -Z を相手へ向ける
 			var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
 			var upv:Vec3 = q * Vec3.up();
 			var falling = upv.y < 0.6;
-			var pulse = f.tactic == TA_OSU ? Math.max(0.0, Math.sin(frame * DT * f.pulseHz * 2.0 * Math.PI + f.phase)) : 0.0;
+			var pulse = f.tactic == TA_OSU ? Math.max(0.0, Math.sin(renderFrame * DT * f.pulseHz * 2.0 * Math.PI + f.phase)) : 0.0;
 			var model = Renderer3d.poseMat(pose) * Mat4.rotateY(yaw) * Mat4.scale(new Vec3(1.0 + sq * 0.6, 1.0 - sq, 1.0 + sq * 0.6));
-			ren.draw(mesh, model, {bones: packBones(i, f, falling, pulse)});
+			ren.draw(mesh, model, {bones: packBones(i, f, falling, pulse, renderFrame)});
 		}
 
 		// トントンのマーカー (打った場所に一瞬リング。高輝度で bloom に乗る)
@@ -717,7 +782,6 @@ class Tonton22 {
 			var k = markerT / 10.0;
 			ren.draw(cylMesh, Mat4.translate(new Vec3(markerX, markerY + 0.03, markerZ)) * Mat4.scale(new Vec3(0.22 * (2.0 - k), 0.01, 0.22 * (2.0 - k))),
 				{tint: Color.rgb(1.6, 1.5, 0.9)});
-			markerT--;
 		}
 
 		ren.end();
@@ -728,12 +792,12 @@ class Tonton22 {
 			var cream = Color.rgb(0.95, 0.92, 0.85);
 			mtext.textCentered("あか　" + stars[0] + " - " + stars[1] + "　あお", W * 0.5, 348, 20, cream);
 			if (state == ST_FIGHT) {
-				if (frame - fightStart < 50)
+				if (renderFrame - fightStart < 50)
 					mtext.textCentered("はっけよい", W * 0.5, 120, 44, Color.rgb(0.98, 0.85, 0.4));
 				// 思考の可視化: 頭上に現在の戦術
 				for (i in 0...fighters.length) {
 					var f = fighters[i];
-					var pose = Phys3d.pose(bodies[i]);
+					var pose = world == null ? null : Phys3d.pose(world, "rikishi:" + i);
 					if (pose == null)
 						continue;
 					var sp = screenPos(ren.viewProj, pose.x, pose.y + 1.5, pose.z);
@@ -767,6 +831,5 @@ class Tonton22 {
 		}
 
 		Gfx.endPass();
-		frame++;
 	}
 }

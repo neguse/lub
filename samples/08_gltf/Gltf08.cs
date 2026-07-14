@@ -49,7 +49,7 @@ public static class Gltf08
 
     public static void onFrame(double dt)
     {
-        tAccum = tAccum + 0.016;
+        tAccum = tAccum + dt * 0.96;
 
         Io.load_text("samples/08_gltf/data/08_gltf.vs.slang",
             out var vs, out var verVs, out _, out _);

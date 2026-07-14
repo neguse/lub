@@ -12,7 +12,7 @@ using System.Collections.Generic;
 public class RetiredSnd
 {
     public int snd;
-    public int frames;
+    public double remaining;
 }
 
 public static class AudioLab20
@@ -94,20 +94,20 @@ public static class AudioLab20
         if (key == lastKey && snd != 0) return false;
         if (snd != 0)
         {
-            retired.Add(new RetiredSnd { snd = snd, frames = 30 });
+            retired.Add(new RetiredSnd { snd = snd, remaining = 0.5 });
         }
         snd = Audio.audio_pcm(Synth(), 1, RATE);
         lastKey = key;
         return true;
     }
 
-    static void SweepRetired()
+    static void SweepRetired(double dt)
     {
         for (int i = retired.Count - 1; i >= 0; i--)
         {
             var r = retired[i];
-            r.frames = r.frames - 1;
-            if (r.frames <= 0)
+            r.remaining = r.remaining - dt;
+            if (r.remaining <= 0)
             {
                 // 差し替え後も同じ内容で作り直されて現役に戻っている
                 // (dedupe で同じ handle) 場合は free しない
@@ -179,7 +179,7 @@ public static class AudioLab20
                 pan = pan,
             });
         }
-        SweepRetired();
+        SweepRetired(dt);
 
         Gfx.begin_pass(new PassOpts
         {

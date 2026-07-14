@@ -14,6 +14,8 @@ class MockInput implements InputSource {
 	inline function get_current():InputSnapshot
 		return snap;
 
+	public function capture():Void {}
+
 	public function refresh():Void {
 		var s = (script == null) ? null : script(frame);
 		if (s == null) {

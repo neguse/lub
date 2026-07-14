@@ -8,6 +8,7 @@ import lub.Math;
 // MVP and camera oscillation derive from frame-deterministic camera_t.
 class Breakout3d10 {
 	static inline var DT:Float = 1.0 / 60.0;
+	static inline var MAX_CATCH_UP_STEPS:Int = 8;
 	static inline var STRIDE:Int = 7; // pos.xyz + color.rgba
 
 	static inline var COLS:Int = 9;
@@ -50,7 +51,8 @@ class Breakout3d10 {
 	static var lives:Int = 3;
 	static var score:Int = 0;
 	static var launchTimer:Float = 0;
-	static var resetWasDown:Bool = false;
+	static var resetPending:Bool = false;
+	static var updateAccumulator:Float = 0;
 	static var meshVersion:Int = 0;
 	static var cameraT:Float = 0;
 
@@ -151,10 +153,10 @@ class Breakout3d10 {
 	}
 
 	static function updateGame() {
-		var resetDown = Input.keyDown("r");
-		if (resetDown && !resetWasDown)
+		if (resetPending) {
 			resetGame();
-		resetWasDown = resetDown;
+			resetPending = false;
+		}
 
 		var move = 0;
 		if (Input.keyDown("left") || Input.keyDown("a"))
@@ -356,9 +358,19 @@ class Breakout3d10 {
 		return lua.Table.fromArray(proj.mul(view.mul(rx.mul(ry))).m);
 	}
 
-	public static function onFrame() {
-		cameraT = cameraT + DT;
-		updateGame();
+	public static function onFrame(dt:Float) {
+		if (Input.keyPressed("r"))
+			resetPending = true;
+		updateAccumulator = Math.min(updateAccumulator + dt, DT * MAX_CATCH_UP_STEPS);
+		var updateSteps = 0;
+		while (updateAccumulator + 1e-9 >= DT && updateSteps < MAX_CATCH_UP_STEPS) {
+			cameraT = cameraT + DT;
+			updateGame();
+			updateAccumulator -= DT;
+			if (updateAccumulator < 0)
+				updateAccumulator = 0;
+			updateSteps++;
+		}
 
 		var vsR = Io.loadText("samples/10_breakout3d/data/10_breakout3d.vs.slang");
 		var fsR = Io.loadText("samples/10_breakout3d/data/10_breakout3d.fs.slang");

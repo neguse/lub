@@ -11,7 +11,7 @@ class RenderPrimitives15 {
 
 	static var quad:Dynamic = null;
 	static var tri:Dynamic = null;
-	static var version:Int = 0;
+	static var time:Float = 0.0;
 
 	public static function main() {}
 
@@ -77,9 +77,9 @@ class RenderPrimitives15 {
 		}, {shader: shader, depth: false, cull: Gfx.NONE});
 	}
 
-	public static function onFrame() {
+	public static function onFrame(dt:Float) {
 		ensureGeometry();
-		version++;
+		time += dt;
 
 		var fill = shader2("rp15_fill", "15_quad.vs.slang", "15_fill.fs.slang");
 		var depth = shader2("rp15_depth_scene", "15_depth_scene.vs.slang", "15_depth_scene.fs.slang");
@@ -123,7 +123,8 @@ class RenderPrimitives15 {
 
 		Gfx.dispatch(Std.int(Math.ceil(RTW / 8)), Std.int(Math.ceil(RTH / 8)), 1, {
 			dst: storageTex,
-			uniforms: {params: Table.fromArray([RTW, RTH, version * 0.01, 0.0])}
+			// Preserve the former +0.01-per-frame phase speed at 60 Hz.
+			uniforms: {params: Table.fromArray([RTW, RTH, time * 0.6, 0.0])}
 		}, {shader: compute});
 
 		Gfx.beginPass({

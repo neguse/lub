@@ -12,8 +12,8 @@ class Mvp04 {
 		Boot.config({});
 	}
 
-	public static function onFrame() {
-		t = t + 1.0 / 60.0;
+	public static function onFrame(dt:Float) {
+		t = t + dt;
 		var vsResult = Io.loadText("samples/04_mvp/data/04_mvp.vs.slang");
 		var fsResult = Io.loadText("samples/04_mvp/data/04_mvp.fs.slang");
 		var vertsResult = Io.loadFloats("samples/04_mvp/data/04_mvp.verts.lua");

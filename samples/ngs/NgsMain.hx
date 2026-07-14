@@ -7,7 +7,7 @@ class NgsMain {
 		Game.init();
 	}
 
-	public static function onFrame() {
-		Game.frame();
+	public static function onFrame(dt:Float) {
+		Game.frame(dt);
 	}
 }

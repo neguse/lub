@@ -21,7 +21,6 @@ public class SponzaPrim
 
 public static class Sponza14
 {
-    const double DT = 1.0 / 60.0;
     const double MODEL_SCALE = 0.002;
     const int SHADOW_SIZE = 2048;
     const string ASSET_FULL = "samples/14_sponza/data/Sponza/Sponza.gltf";
@@ -87,7 +86,7 @@ public static class Sponza14
 
     public static void onFrame(double dt)
     {
-        tAccum = tAccum + DT;
+        tAccum = tAccum + dt;
         Gfx.size(out var w, out var h);
         rtW = w;
         rtH = h;
@@ -164,7 +163,7 @@ public static class Sponza14
             return;
         }
 
-        var view = UpdateCamera();
+        var view = UpdateCamera(dt);
         var proj = Mat4.perspectiveLh(55.0, (double)rtW / rtH, 0.05, 80.0);
         proj.m[5] = -proj.m[5];
         var model = Mat4.scaleTrans(MODEL_SCALE, new Vec3(0.0, 0.0, 0.0));
@@ -764,7 +763,7 @@ public static class Sponza14
         return moved;
     }
 
-    static Mat4 UpdateCamera()
+    static Mat4 UpdateCamera(double dt)
     {
         var camStr = os.getenv("LUB_SPONZA_CAM");
         if (camStr != null)
@@ -801,7 +800,7 @@ public static class Sponza14
         var up = new Vec3(0, 1, 0);
         var fwd = ForwardDir();
         var right = up.cross(fwd).normalize();
-        var spd = 2.6 * DT;
+        var spd = 2.6 * dt;
         if (Input.key_down("w"))
         {
             camEyeX = camEyeX + fwd.x * spd;

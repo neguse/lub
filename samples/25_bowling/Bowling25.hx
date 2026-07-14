@@ -38,6 +38,7 @@ class Bowling25 {
 	static inline var W = 960;
 	static inline var H = 540;
 	static inline var DT:Float = 1.0 / 60.0;
+	static inline var MAX_STEPS:Int = 8;
 
 	// --- 実寸 (m) ----------------------------------------------------------
 	static inline var LANE_HW:Float = 0.533; // レーン半幅 (41.5in)
@@ -71,6 +72,8 @@ class Bowling25 {
 	static var state = ST_AIM;
 	static var stateT = 0;
 	static var tAccum = 0.0;
+	static var accumulator = 0.0;
+	static var pendingPresses = 0;
 
 	// 投球パラメータ (各段階でロック)
 	static var aimX = 0.0;
@@ -536,8 +539,9 @@ class Bowling25 {
 	}
 
 	static function buttonPressed():Bool {
-		var real = Input.keyPressed(Key.Space) || Input.mousePressed();
+		var real = pendingPresses > 0;
 		if (real) {
+			pendingPresses--;
 			idleT = 0;
 			if (autoPlay) {
 				autoPlay = false; // 手動に引き継ぎ (この押下は消費)
@@ -545,6 +549,18 @@ class Bowling25 {
 			}
 		}
 		return real;
+	}
+
+	static function simulateTick(world:WorldRef3d) {
+		tAccum += DT;
+		eventT += DT;
+		Phys3d.begin(world);
+		updateSequence(world);
+		declareStatics(world);
+		declarePins(world);
+		declareBall(world);
+		Phys3d.step(world, DT);
+		updateCamera(world);
 	}
 
 	static function startAuto() {
@@ -801,12 +817,12 @@ class Bowling25 {
 	}
 
 	// --- main loop ---------------------------------------------------------------
-	public static function onFrame() {
+	public static function onFrame(dt:Float) {
 		if (meshDirty)
 			remesh();
 		ensurePins();
-		tAccum += DT;
-		eventT += DT;
+		if (Input.keyPressed(Key.Space) || Input.mousePressed())
+			pendingPresses++;
 
 		var world = Phys3d.world("bowling", {
 			gravity: {x: 0.0, y: -9.81, z: 0.0},
@@ -814,13 +830,17 @@ class Bowling25 {
 			substeps: 8,
 			maxSteps: 1,
 		});
-		Phys3d.begin(world);
-		updateSequence(world);
-		declareStatics(world);
-		declarePins(world);
-		declareBall(world);
-		Phys3d.step(world, DT);
-		updateCamera(world);
+		accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
+		var steps = 0;
+		while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
+			simulateTick(world);
+			accumulator -= DT;
+			steps++;
+		}
+		if (accumulator < 0.0)
+			accumulator = 0.0;
+		if (accumulator >= DT)
+			accumulator %= DT;
 
 		// --- 描画 ---
 		// 暗めの場内 + レーン主体のライティング

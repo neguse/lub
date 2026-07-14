@@ -85,6 +85,7 @@ public static class Sprites13
     const int W = 640;
     const int H = 480;
     const double DT = 1.0 / 60.0;
+    const int MAX_STEPS = 8;
     const int TEX_W = 80;
     const int TEX_H = 16;
     const int CELL = 16;
@@ -103,6 +104,7 @@ public static class Sprites13
     static int scoreFrame = 0;
     static bool scorePrinted = false;
     static bool useInstancing = true;
+    static double accumulator = 0.0;
 
     static List<Rect> spriteRects = new List<Rect>();
     static Rect? whiteRect = null;
@@ -444,7 +446,25 @@ public static class Sprites13
 
         double fps = m.tick();
         Profiler.begin_scope("sprites.update");
-        updateSprites(fps);
+        if (scoreFrame > 0)
+        {
+            // The canonical score is intentionally one workload tick per rendered
+            // frame. Interactive mode below uses a real-time 60 Hz simulation.
+            updateSprites(fps);
+        }
+        else
+        {
+            accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
+            int steps = 0;
+            while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
+            {
+                updateSprites(fps);
+                accumulator = accumulator - DT;
+                steps = steps + 1;
+            }
+            if (accumulator < 0.0) accumulator = 0.0;
+            if (accumulator >= DT) accumulator = accumulator % DT;
+        }
         Profiler.end_scope("sprites.update");
 
         Profiler.begin_scope("gfx.begin_pass");

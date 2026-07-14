@@ -136,7 +136,16 @@ Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 ```sh
 # 30 フレーム描画後にキャプチャして即終了
 scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30
+
+# golden test 用: 各 render frame の dt も 1/60 秒に固定
+scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30 --fixed-dt 0.0166666666666667
 ```
+
+通常の `onFrame(dt)` と UI には実測のフレーム間隔が渡る。`--capture-frame` は
+capture する render frame 番号だけを固定し、経過時間は固定しない。
+`--fixed-dt <seconds>` は golden / replay テスト専用で、指定すると実測値の代わりに
+同じ `dt` を毎フレーム渡す(有限かつ `0 < dt <= 0.25` の値のみ)。通常プレイの
+速度制限や FPS 制限には使わない。
 
 Lua/Haxe 側から任意の render target を保存する場合は `Gfx.readback()` を使う
 ([API reference](https://lub.neguse.net/docs#lub.Gfx) 参照)。

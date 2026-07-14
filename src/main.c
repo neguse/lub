@@ -16,6 +16,7 @@
 #endif
 
 static App g_app;
+static bool g_app_initialized = false;
 #ifndef __EMSCRIPTEN__
 static TcsPipeline g_tcs;
 #endif
@@ -112,26 +113,48 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
 #endif // !__EMSCRIPTEN__
 
-  // Normal mode: window + GPU
+  const char *script = NULL;
+  const char *capture_path = NULL;
+  uint64_t capture_frame = 30;
+  double fixed_frame_dt = 0.0;
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) {
+      capture_path = argv[++i];
+    } else if (strcmp(argv[i], "--capture-frame") == 0 && i + 1 < argc) {
+      capture_frame = strtoull(argv[++i], NULL, 10);
+    } else if (strcmp(argv[i], "--fixed-dt") == 0) {
+      if (i + 1 >= argc) {
+        SDL_Log("FATAL: --fixed-dt requires a value in (0, 0.25] seconds");
+        return SDL_APP_FAILURE;
+      }
+      const char *value = argv[++i];
+      char *end = NULL;
+      double fixed_dt = SDL_strtod(value, &end);
+      if (end == value || *end != '\0' || SDL_isnan(fixed_dt) ||
+          SDL_isinf(fixed_dt) || fixed_dt <= 0.0 || fixed_dt > 0.25) {
+        SDL_Log("FATAL: invalid --fixed-dt '%s' (expected a finite value in "
+                "(0, 0.25] seconds)",
+                value);
+        return SDL_APP_FAILURE;
+      }
+      fixed_frame_dt = fixed_dt;
+    } else {
+      script = argv[i];
+    }
+  }
+
+  // Normal mode: window + GPU. Parse test-clock arguments first so invalid
+  // values fail without creating a window or partially initializing App.
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("SDL_Init failed: %s", SDL_GetError());
     return SDL_APP_FAILURE;
   }
   if (!app_init(&g_app))
     return SDL_APP_FAILURE;
-
-  const char *script = NULL;
-  const char *capture_path = NULL;
-  uint64_t capture_frame = 30;
-  for (int i = 1; i < argc; ++i) {
-    if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) {
-      capture_path = argv[++i];
-    } else if (strcmp(argv[i], "--capture-frame") == 0 && i + 1 < argc) {
-      capture_frame = strtoull(argv[++i], NULL, 10);
-    } else {
-      script = argv[i];
-    }
-  }
+  g_app_initialized = true;
+  g_app.fixed_frame_dt = fixed_frame_dt;
+  if (fixed_frame_dt > 0.0)
+    SDL_Log("fixed frame dt enabled: %.17g seconds", fixed_frame_dt);
   const char *entry_path = script ? script : "00_hello";
 
   if (!lua_ctx_init(&g_app.lua, &g_app))
@@ -297,7 +320,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return SDL_APP_CONTINUE;
   }
   uint64_t now = SDL_GetPerformanceCounter();
-  if (g_app.frame_prev_counter != 0) {
+  if (g_app.fixed_frame_dt > 0.0) {
+    g_app.frame_dt = g_app.fixed_frame_dt;
+  } else if (g_app.frame_prev_counter != 0) {
     g_app.frame_dt = (double)(now - g_app.frame_prev_counter) /
                      (double)SDL_GetPerformanceFrequency();
     if (g_app.frame_dt > 0.25)
@@ -341,6 +366,10 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     return;
   }
 #endif
+  if (!g_app_initialized) {
+    SDL_Quit();
+    return;
+  }
   lua_ctx_call_quit(&g_app.lua);
   ui_shutdown();
   app_shutdown(&g_app);

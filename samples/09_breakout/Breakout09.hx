@@ -8,6 +8,7 @@ import lub.Input;
 // (offscreen / no input), state is deterministic from reset_game() init.
 class Breakout09 {
 	static inline var DT:Float = 1.0 / 60.0;
+	static inline var MAX_CATCH_UP_STEPS:Int = 8;
 	static inline var STRIDE:Int = 6; // pos.xy + color.rgba
 
 	static inline var COLS:Int = 11;
@@ -50,6 +51,8 @@ class Breakout09 {
 	static var lives:Int = 3;
 	static var score:Int = 0;
 	static var launchTimer:Float = 0;
+	static var updateAccumulator:Float = 0;
+	static var resetPending:Bool = false;
 	static var meshVersion:Int = 0;
 	static var initialized:Bool = false;
 
@@ -148,9 +151,8 @@ class Breakout09 {
 		}
 	}
 
-	static function updateGame() {
-		// keyPressed はランタイムがフレームラッチするエッジ検出。
-		if (Input.keyPressed("r")) {
+	static function updateGame(resetPressed:Bool) {
+		if (resetPressed) {
 			resetGame();
 		}
 
@@ -288,8 +290,22 @@ class Breakout09 {
 		return out;
 	}
 
-	public static function onFrame() {
-		updateGame();
+	public static function onFrame(dt:Float) {
+		// Render frames can outnumber fixed updates, so retain this edge until the
+		// first update tick consumes it.
+		if (Input.keyPressed("r"))
+			resetPending = true;
+		updateAccumulator = Math.min(updateAccumulator + dt, DT * MAX_CATCH_UP_STEPS);
+		var updateSteps = 0;
+		while (updateAccumulator + 1e-9 >= DT && updateSteps < MAX_CATCH_UP_STEPS) {
+			var resetPressed = resetPending;
+			resetPending = false;
+			updateGame(resetPressed);
+			updateAccumulator -= DT;
+			if (updateAccumulator < 0)
+				updateAccumulator = 0;
+			updateSteps++;
+		}
 
 		var vsR = Io.loadText("samples/09_breakout/data/09_breakout.vs.slang");
 		var fsR = Io.loadText("samples/09_breakout/data/09_breakout.fs.slang");

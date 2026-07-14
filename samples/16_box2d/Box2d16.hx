@@ -7,10 +7,12 @@ import lua.Table;
 
 class Box2d16 {
 	static inline var DT:Float = 1.0 / 60.0;
+	static inline var MAX_STEPS:Int = 8;
 	static inline var PPM_X:Float = 4.0;
 	static inline var PPM_Y:Float = 2.7;
 	static var meshVersion:Int = 0;
 	static var contactFlash:Int = 0;
+	static var accumulator:Float = 0.0;
 
 	public static function main() {}
 
@@ -44,13 +46,7 @@ class Box2d16 {
 		}
 	}
 
-	public static function onFrame() {
-		var world = Phys2d.world("box2d16", {
-			gravity: {x: 0.0, y: -10.0},
-			fixedDt: DT,
-			substeps: 4,
-			maxSteps: 1,
-		});
+	static function simulate(world:lub.Phys2d.WorldRef) {
 		Phys2d.begin(world);
 
 		var ground = Phys2d.body(world, "ground", {
@@ -65,7 +61,6 @@ class Box2d16 {
 			contact: true,
 		});
 
-		var bodies = [];
 		for (i in 0...4) {
 			var b = Phys2d.body(world, "box:" + i, {
 				type: Phys2d.DYNAMIC,
@@ -82,7 +77,6 @@ class Box2d16 {
 				friction: 0.65,
 				contact: true,
 			});
-			bodies.push(b);
 		}
 
 		Phys2d.step(world, DT);
@@ -92,12 +86,36 @@ class Box2d16 {
 			contactFlash = 12;
 		if (contactFlash > 0)
 			contactFlash--;
+	}
+
+	public static function onFrame(dt:Float) {
+		var world = Phys2d.world("box2d16", {
+			gravity: {x: 0.0, y: -10.0},
+			fixedDt: DT,
+			substeps: 4,
+			maxSteps: 1,
+		});
+		accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
+		var steps = 0;
+		while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
+			simulate(world);
+			accumulator -= DT;
+			steps++;
+		}
+		if (accumulator < 0.0)
+			accumulator = 0.0;
+		if (accumulator >= DT)
+			accumulator %= DT;
 
 		var verts:Array<Float> = [];
-		var groundPose = Phys2d.pose(ground);
+		var groundPose = Phys2d.pose(world, "ground");
+		if (groundPose == null)
+			return;
 		pushBox(verts, groundPose, 3.4, 0.18, [0.28, 0.33, 0.36, 1.0]);
-		for (i in 0...bodies.length) {
-			var pose = Phys2d.pose(bodies[i]);
+		for (i in 0...4) {
+			var pose = Phys2d.pose(world, "box:" + i);
+			if (pose == null)
+				continue;
 			var hot = contactFlash > 0 ? 0.12 : 0.0;
 			pushBox(verts, pose, 0.26, 0.26, [0.20 + hot, 0.62, 0.88, 1.0]);
 		}

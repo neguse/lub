@@ -32,7 +32,8 @@ for c in "${CASES[@]}"; do
     out="$tmp/ngs_${name}_${bk}.png"
     golden="$GOLDEN_DIR/ngs_${name}_${bk}.png"
     LUB_BACKEND="$bk" LUB_NGS_BOOT="$boot" LUB_NGS_MOCK="$mock" scripts/run-headless.sh "$BINARY" "$ENTRY" \
-      --capture "$out" --capture-frame "$frame" >"$tmp/${name}_${bk}.log" 2>&1
+      --capture "$out" --capture-frame "$frame" --fixed-dt 0.0166666666666667 \
+      >"$tmp/${name}_${bk}.log" 2>&1
     if [[ ! -f "$out" ]]; then
       echo "FAIL ${name} ${bk}: no capture (see $tmp/${name}_${bk}.log)"; fail=$((fail+1)); continue
     fi

@@ -30,7 +30,7 @@ class AudioLab20 {
 	static var snd = 0;
 	static var lastKey = "";
 	// 差し替えた snd の遅延 free (fade out が終わる猶予を置く)
-	static var retired:Array<{snd:Int, frames:Int}> = [];
+	static var retired:Array<{snd:Int, remaining:Float}> = [];
 
 	static final waveNames = ["square", "saw", "triangle", "sine", "noise"];
 
@@ -77,17 +77,17 @@ class AudioLab20 {
 		if (key == lastKey && snd != 0)
 			return false;
 		if (snd != 0)
-			retired.push({snd: snd, frames: 30});
+			retired.push({snd: snd, remaining: 0.5});
 		snd = Audio.pcm(synth(), 1, RATE);
 		lastKey = key;
 		return true;
 	}
 
-	static function sweepRetired() {
+	static function sweepRetired(dt:Float) {
 		var i = retired.length - 1;
 		while (i >= 0) {
-			retired[i].frames--;
-			if (retired[i].frames <= 0) {
+			retired[i].remaining -= dt;
+			if (retired[i].remaining <= 0) {
 				// 差し替え後も同じ内容で作り直されて現役に戻っている
 				// (dedupe で同じ handle) 場合は free しない
 				if (retired[i].snd != snd)
@@ -142,7 +142,7 @@ class AudioLab20 {
 				pitch: pitch,
 				pan: pan
 			});
-		sweepRetired();
+		sweepRetired(dt);
 
 		Gfx.beginPass({
 			target: Gfx.mainTex,

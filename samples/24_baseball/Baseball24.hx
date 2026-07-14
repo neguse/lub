@@ -58,6 +58,7 @@ class Baseball24 {
 	static inline var W = 960;
 	static inline var H = 540;
 	static inline var DT = 1 / 60;
+	static inline var MAX_STEPS = 8;
 
 	// --- フィールド寸法 (m) ---------------------------------------------------
 	static inline var BASE_D = 19.4; // 塁間 27.43m の対角成分
@@ -1198,6 +1199,7 @@ class Baseball24 {
 
 	// --- 描画 -------------------------------------------------------------------------
 	static var reloaded = true; // hot reload で true に戻る (19_sdf と同じトリック)
+	static var accumulator = 0.0;
 
 	static var ren = new Renderer3d("bb24");
 
@@ -1266,9 +1268,28 @@ class Baseball24 {
 		}
 	}
 
-	// --- main loop ----------------------------------------------------------------------
-	public static function onFrame() {
+	static function simulateTick() {
 		tAccum += DT;
+		// ヒットストップ: その間シミュレーションだけ止める
+		if (hitstopT > 0) {
+			hitstopT -= DT;
+		} else {
+			updateGame(DT);
+		}
+		updateCamera(DT);
+
+		// 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
+		if (fielders[1].anim == AN_REACH) {
+			fielders[1].animT += DT;
+			if (fielders[1].animT > 0.5)
+				fielders[1].anim = AN_CROUCH;
+		} else {
+			fielders[1].anim = AN_CROUCH;
+		}
+	}
+
+	// --- main loop ----------------------------------------------------------------------
+	public static function onFrame(dt:Float) {
 		if (reloaded) {
 			buildCharMesh();
 			buildField();
@@ -1279,23 +1300,19 @@ class Baseball24 {
 			showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
 		}
 
-		// ヒットストップ: その間シミュレーションだけ止める
-		if (hitstopT > 0) {
-			hitstopT -= DT;
-		} else {
-			updateGame(DT);
+		accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
+		var steps = 0;
+		while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
+			simulateTick();
+			accumulator -= DT;
+			steps++;
 		}
-		updateCamera(DT);
+		if (accumulator < 0.0)
+			accumulator = 0.0;
+		if (accumulator >= DT)
+			accumulator %= DT;
 
-		// 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
 		var t = tAccum;
-		if (fielders[1].anim == AN_REACH) {
-			fielders[1].animT += DT;
-			if (fielders[1].animT > 0.5)
-				fielders[1].anim = AN_CROUCH;
-		} else {
-			fielders[1].anim = AN_CROUCH;
-		}
 
 		// --- 描画 ---
 		// 屋外デーゲーム: 高い太陽 + 空色の環境光

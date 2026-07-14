@@ -20,6 +20,7 @@ public class Brick
 public static class Breakout3d10
 {
     const double DT = 1.0 / 60.0;
+    const int MAX_CATCH_UP_STEPS = 8;
     const int STRIDE = 7; // pos.xyz + color.rgba
 
     const int COLS = 9;
@@ -64,6 +65,8 @@ public static class Breakout3d10
     static int lives = 3;
     static int score = 0;
     static double launchTimer = 0;
+    static double updateAccumulator = 0;
+    static bool resetPending = false;
     static int meshVersion = 0;
     static double cameraT = 0;
 
@@ -191,9 +194,9 @@ public static class Breakout3d10
         }
     }
 
-    static void UpdateGame()
+    static void UpdateGame(bool resetPressed)
     {
-        if (Input.key_pressed("r"))
+        if (resetPressed)
         {
             ResetGame();
         }
@@ -444,8 +447,24 @@ public static class Breakout3d10
 
     public static void onFrame(double dt)
     {
-        cameraT = cameraT + DT;
-        UpdateGame();
+        // Preserve reset edges across render frames that do not run an update.
+        if (Input.key_pressed("r"))
+            resetPending = true;
+        updateAccumulator = Math.Min(updateAccumulator + dt,
+            DT * MAX_CATCH_UP_STEPS);
+        int updateSteps = 0;
+        while (updateAccumulator + 1e-9 >= DT
+            && updateSteps < MAX_CATCH_UP_STEPS)
+        {
+            bool resetPressed = resetPending;
+            resetPending = false;
+            cameraT = cameraT + DT;
+            UpdateGame(resetPressed);
+            updateAccumulator = updateAccumulator - DT;
+            if (updateAccumulator < 0)
+                updateAccumulator = 0;
+            updateSteps = updateSteps + 1;
+        }
 
         Io.load_text("samples/10_breakout3d/data/10_breakout3d.vs.slang",
             out var vs, out var vsv, out _, out _);

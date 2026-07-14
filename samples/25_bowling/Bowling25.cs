@@ -38,6 +38,7 @@ public static class Bowling25
     const int W = 960;
     const int H = 540;
     const double DT = 1.0 / 60.0;
+    const int MAX_STEPS = 8;
 
     // --- 実寸 (m) ----------------------------------------------------------
     const double LANE_HW = 0.533; // レーン半幅 (41.5in)
@@ -71,6 +72,8 @@ public static class Bowling25
     static int state = ST_AIM;
     static int stateT = 0;
     static double tAccum = 0.0;
+    static double accumulator = 0.0;
+    static int pendingPresses = 0;
 
     // 投球パラメータ (各段階でロック)
     static double aimX = 0.0;
@@ -614,9 +617,10 @@ public static class Bowling25
 
     static bool buttonPressed()
     {
-        var real = Input.key_pressed("space") || Input.mouse_pressed();
+        var real = pendingPresses > 0;
         if (real)
         {
+            pendingPresses = pendingPresses - 1;
             idleT = 0;
             if (autoPlay)
             {
@@ -625,6 +629,19 @@ public static class Bowling25
             }
         }
         return real;
+    }
+
+    static void simulateTick(WorldRef3d world)
+    {
+        tAccum += DT;
+        eventT += DT;
+        Phys3d.phys3d_begin(world);
+        updateSequence(world);
+        declareStatics(world);
+        declarePins(world);
+        declareBall(world);
+        Phys3d.phys3d_step(world, DT);
+        updateCamera(world);
     }
 
     static void startAuto()
@@ -982,8 +999,8 @@ public static class Bowling25
             meshDirty = false;
         }
         ensurePins();
-        tAccum += DT;
-        eventT += DT;
+        if (Input.key_pressed("space") || Input.mouse_pressed())
+            pendingPresses = pendingPresses + 1;
 
         var world = Phys3d.phys3d_world("bowling", new WorldOpts3d
         {
@@ -993,13 +1010,16 @@ public static class Bowling25
             maxSteps = 1,
         });
         if (world == null) return;
-        Phys3d.phys3d_begin(world);
-        updateSequence(world);
-        declareStatics(world);
-        declarePins(world);
-        declareBall(world);
-        Phys3d.phys3d_step(world, DT);
-        updateCamera(world);
+        accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
+        int steps = 0;
+        while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
+        {
+            simulateTick(world);
+            accumulator = accumulator - DT;
+            steps = steps + 1;
+        }
+        if (accumulator < 0.0) accumulator = 0.0;
+        if (accumulator >= DT) accumulator = accumulator % DT;
         var eyeNow = camEye;
         var tgtNow = camTgt;
         if (eyeNow == null || tgtNow == null) return;
