@@ -63,6 +63,10 @@ public static class CoinPusher18
     static double spawnX = 0.0;
     static int payoutFlash = 0;
     static int markerPulse = 0;
+    static FixedStep? step = null;
+    static int pendingSpawns = 0;
+    static WorldRef3d? world = null;
+    static List<int> renderCoinIndices = new List<int>();
 
     // 壁 {x, y, z, hx, hy, hz}。物理と描画で共有する。
     // トレイ側面は前方 (z > 0.4) が開いていて、そこが側溝 = 没収ゾーン。
@@ -331,28 +335,116 @@ public static class CoinPusher18
         return MathUtil.clamp(-1.0 + 2.0 * t, -1.3, 1.3);
     }
 
-    static void UpdateInput(Mat4 vp, double screenW)
+    static void CaptureInput(Mat4 vp, double screenW)
     {
         // ポインタが動いたらマーカーを追従させる。キー操作 (画面基準:
-        // このカメラでは world +X が画面左) でも微調整できる。
+        // このカメラでは world +X が画面左) への変換は render ごとに行う。
+        bool mousePressed = Input.mouse_pressed();
         Input.mouse_delta(out var dx, out var dy);
-        if (dx != 0 || dy != 0 || Input.mouse_pressed())
+        if (dx != 0 || dy != 0 || mousePressed)
         {
             Input.mouse_pos(out var mx, out _);
             spawnX = ScreenToSpawnX(mx, vp, screenW);
         }
+
+        // 0 tick の render frame でも edge を失わないよう、回数で保持する。
+        // 同じ render frame のクリック + スペースは従来どおり 1 回とする。
+        if (mousePressed || Input.key_pressed("space"))
+            pendingSpawns = pendingSpawns + 1;
+    }
+
+    static void UpdateTickInput()
+    {
+        // held input は 60 Hz tick ごとに適用する。
         if (Input.key_down("left") || Input.key_down("a"))
             spawnX = MathUtil.clamp(spawnX + 0.04, -1.3, 1.3);
         if (Input.key_down("right") || Input.key_down("d"))
             spawnX = MathUtil.clamp(spawnX - 0.04, -1.3, 1.3);
 
-        // クリック/タップ/スペースでその場に投入。エッジ検出なので
-        // 連打した分だけ出る (投入数の制限はない)。
-        if (Input.mouse_pressed() || Input.key_pressed("space"))
-        {
+        for (int i = 0; i < pendingSpawns; i++)
             SpawnCoin(spawnX, 1);
+        if (pendingSpawns > 0)
             markerPulse = 8;
+        pendingSpawns = 0;
+    }
+
+    static void Tick()
+    {
+        // 前 tick で開始した演出を 60 Hz で進める。この後に発生した
+        // 投入パルスと払い出しフラッシュは、最初の描画で全強度になる。
+        if (markerPulse > 0)
+            markerPulse = markerPulse - 1;
+        if (payoutFlash > 0)
+            payoutFlash = payoutFlash - 1;
+
+        var nextWorld = Phys3d.phys3d_world("coin_pusher", new WorldOpts3d
+        {
+            gravity = new Vec3d { x = 0.0, y = -10.0, z = 0.0 },
+            fixedDt = DT,
+            substeps = 4,
+            maxSteps = 1,
+        });
+        if (nextWorld == null) return;
+        world = nextWorld;
+        Phys3d.phys3d_begin(nextWorld);
+
+        DeclareStatics(nextWorld);
+        DeclarePusher(nextWorld);
+        UpdateTickInput();
+
+        // 定期自動投入。デモ (と golden capture) が自走し、数枚に 1 枚の
+        // 大型ボーナスコイン (5 点) が短期目標になる。
+        if (Mod(frame, AUTO_INTERVAL) == 10)
+        {
+            autoCount = autoCount + 1;
+            int value = Mod(autoCount, BONUS_EVERY) == 0 ? 5 : 1;
+            SpawnCoin(-1.0 + Mod(frame * 7919, 2000) / 1000.0, value);
         }
+
+        var live = DeclareCoins(nextWorld);
+        renderCoinIndices = new List<int>();
+        foreach (var entry in live)
+            renderCoinIndices.Add(entry.index);
+
+        Phys3d.phys3d_step(nextWorld, DT);
+
+        // Contact begin events light coins up for a few frames.
+        foreach (var contact in Phys3d.phys3d_contacts(nextWorld, "begin"))
+        {
+            foreach (var entry in live)
+            {
+                var key = "coin:" + entry.index;
+                if (contact.a.body == key || contact.b.body == key)
+                    entry.coin.flash = 10;
+            }
+        }
+        // 従来の draw 直前と同じ順序で減衰させる。
+        foreach (var entry in live)
+        {
+            if (entry.coin.flash > 0)
+                entry.coin.flash = entry.coin.flash - 1;
+        }
+
+        // 台から落ちたコインの判定。前縁 (z > 0.45) から落ちたら払い出し、
+        // 側溝など他の場所からこぼれたら没収 (スコアなし)。
+        foreach (var entry in live)
+        {
+            var pose = Phys3d.phys3d_pose(entry.body);
+            if (pose == null) continue;
+            if (pose.y < -1.2)
+            {
+                entry.coin.active = false;
+                if (pose.z > 0.45)
+                {
+                    score = score + entry.coin.value;
+                    int f = entry.coin.value > 1 ? 45 : 16;
+                    if (f > payoutFlash)
+                        payoutFlash = f;
+                }
+            }
+        }
+
+        frame = frame + 1;
     }
 
     // --- rendering -----------------------------------------------------------
@@ -422,64 +514,11 @@ public static class CoinPusher18
         var vp = rn.viewProj;
         if (vp == null) return;
 
-        var world = Phys3d.phys3d_world("coin_pusher", new WorldOpts3d
-        {
-            gravity = new Vec3d { x = 0.0, y = -10.0, z = 0.0 },
-            fixedDt = DT,
-            substeps = 4,
-            maxSteps = 1,
-        });
-        if (world == null) return;
-        Phys3d.phys3d_begin(world);
-
-        DeclareStatics(world);
-        DeclarePusher(world);
-
         Gfx.size(out var sw, out _);
-        UpdateInput(vp, sw);
-
-        // 定期自動投入。デモ (と golden capture) が自走し、数枚に 1 枚の
-        // 大型ボーナスコイン (5 点) が短期目標になる。
-        if (Mod(frame, AUTO_INTERVAL) == 10)
-        {
-            autoCount = autoCount + 1;
-            int value = Mod(autoCount, BONUS_EVERY) == 0 ? 5 : 1;
-            SpawnCoin(-1.0 + Mod(frame * 7919, 2000) / 1000.0, value);
-        }
-
-        var live = DeclareCoins(world);
-
-        Phys3d.phys3d_step(world, DT);
-
-        // Contact begin events light coins up for a few frames.
-        foreach (var contact in Phys3d.phys3d_contacts(world, "begin"))
-        {
-            foreach (var entry in live)
-            {
-                var key = "coin:" + entry.index;
-                if (contact.a.body == key || contact.b.body == key)
-                    entry.coin.flash = 10;
-            }
-        }
-
-        // 台から落ちたコインの判定。前縁 (z > 0.45) から落ちたら払い出し、
-        // 側溝など他の場所からこぼれたら没収 (スコアなし)。
-        foreach (var entry in live)
-        {
-            var pose = Phys3d.phys3d_pose(entry.body);
-            if (pose == null) continue;
-            if (pose.y < -1.2)
-            {
-                entry.coin.active = false;
-                if (pose.z > 0.45)
-                {
-                    score = score + entry.coin.value;
-                    int f = entry.coin.value > 1 ? 45 : 16;
-                    if (f > payoutFlash)
-                        payoutFlash = f;
-                }
-            }
-        }
+        CaptureInput(vp, sw);
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => Tick());
 
         // --- draw ---
         var gray = Color.rgb(0.42, 0.45, 0.5);
@@ -500,27 +539,31 @@ public static class CoinPusher18
         rn.draw(cube, StaticModel(-0.82, -0.78, 1.28, 0.8, 0.05, 0.42),
             new Draw3dOpts { tint = dark });
 
-        var pusherPose = Phys3d.phys3d_pose(world, "pusher");
-        if (pusherPose != null)
+        var drawWorld = world;
+        if (drawWorld != null)
         {
-            rn.draw(cube, ModelMat(pusherPose, 1.45, 0.22, 0.55),
-                new Draw3dOpts { tint = Color.rgb(0.85, 0.45, 0.15) });
-        }
+            var pusherPose = Phys3d.phys3d_pose(drawWorld, "pusher");
+            if (pusherPose != null)
+            {
+                rn.draw(cube, ModelMat(pusherPose, 1.45, 0.22, 0.55),
+                    new Draw3dOpts { tint = Color.rgb(0.85, 0.45, 0.15) });
+            }
 
-        foreach (var entry in live)
-        {
-            var pose = Phys3d.phys3d_pose(entry.body);
-            if (pose == null) continue;
-            if (entry.coin.flash > 0)
-                entry.coin.flash = entry.coin.flash - 1;
-            double hot = entry.coin.flash > 0 ? 0.25 : 0.0;
-            bool bonus = entry.coin.value > 1;
-            var color = bonus
-                ? Color.rgb(1.0 + hot, 0.9 + hot, 0.35 + hot)
-                : Color.rgb(0.85 + hot, 0.68 + hot, 0.2 + hot);
-            double r = bonus ? BONUS_R : COIN_R;
-            double h = bonus ? BONUS_H : COIN_H;
-            rn.draw(cyl, ModelMat(pose, r, h, r), new Draw3dOpts { tint = color });
+            foreach (var index in renderCoinIndices)
+            {
+                var coin = coins[index];
+                var pose = Phys3d.phys3d_pose(drawWorld, "coin:" + index);
+                if (pose == null) continue;
+                double hot = coin.flash > 0 ? 0.25 : 0.0;
+                bool bonus = coin.value > 1;
+                var color = bonus
+                    ? Color.rgb(1.0 + hot, 0.9 + hot, 0.35 + hot)
+                    : Color.rgb(0.85 + hot, 0.68 + hot, 0.2 + hot);
+                double r = bonus ? BONUS_R : COIN_R;
+                double h = bonus ? BONUS_H : COIN_H;
+                rn.draw(cyl, ModelMat(pose, r, h, r),
+                    new Draw3dOpts { tint = color });
+            }
         }
 
         // 払い出しの褒め演出: 前縁のバーが光る (HDR 高輝度で bloom に乗る)。
@@ -529,20 +572,16 @@ public static class CoinPusher18
             double k = payoutFlash / 45.0;
             rn.draw(cube, StaticModel(0.0, 0.13, 0.53, 1.5, 0.025 + 0.06 * k, 0.05),
                 new Draw3dOpts { tint = Color.rgb(1.4, 1.3, 0.7 + 0.6 * k) });
-            payoutFlash = payoutFlash - 1;
         }
 
         DrawScoreCoins(rn, cyl);
 
         // 投入マーカー: ポインタ追従のゴーストコイン。投入時にパルスする。
         double pulse = 1.0 + markerPulse * 0.07;
-        if (markerPulse > 0)
-            markerPulse = markerPulse - 1;
         rn.draw(cyl, StaticModel(spawnX, DROP_Y, DROP_Z,
             COIN_R * pulse, COIN_H * pulse, COIN_R * pulse),
             new Draw3dOpts { tint = Color.rgb(0.55, 0.78, 0.95, 0.55), blend = Gfx.ALPHA });
 
         rn.End();
-        frame = frame + 1;
     }
 }

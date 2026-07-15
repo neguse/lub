@@ -2,6 +2,7 @@ package game;
 
 import lub.Lub;
 import lubx.Boot;
+import lubx.FixedStep;
 import render.Gfx2d;
 import render.Atlas;
 import render.Font;
@@ -18,6 +19,7 @@ import scenes.GameOver;
 class Game {
 	public static inline var W:Int = 640;
 	public static inline var H:Int = 480;
+	static inline var DT:Float = 1.0 / 60.0;
 	public static var gfx:Gfx2d = null;
 	public static var fontAtlas:Atlas = null;
 	public static var jikiAtlas:Atlas = null;
@@ -26,6 +28,7 @@ class Game {
 	public static var font:Font = null;
 	static var input:InputSource = null;
 	static var scene:Scene = null;
+	static var step = new FixedStep();
 	public static var frameCount:Int = 0;
 	public static var score:Int = 0;
 	public static var hiscore:Int = 0;
@@ -92,21 +95,51 @@ class Game {
 		return true;
 	}
 
-	public static function frame() {
-		if (!boot())
-			return;
-		input.refresh();
-		scene.update(input.current);
-		gfx.beginFrame();
-		scene.draw(gfx.drawList);
-		gfx.endFrame();
-		switch (scene.transition()) {
+	static function applyTransition(from:Scene):Bool {
+		return switch (from.transition()) {
 			case Stay:
+				true;
 			case Switch(s):
 				scene = s;
+				true;
 			case Quit:
 				Lub.quit();
-		}
-		frameCount = frameCount + 1;
+				false;
+		};
+	}
+
+	public static function frame(dt:Float) {
+		if (!boot())
+			return;
+
+		input.capture();
+		var lastDrawScene = scene;
+		var transitionScene:Scene = null;
+		step.frame(dt, _ -> {
+			// catch-up 中間の scene は、省略された draw の後と同じ位置で遷移する。
+			if (transitionScene != null) {
+				var from = transitionScene;
+				transitionScene = null;
+				if (!applyTransition(from)) {
+					step.stop();
+					return;
+				}
+			}
+
+			input.refresh();
+			var updatedScene = scene;
+			updatedScene.update(input.current);
+			lastDrawScene = updatedScene;
+			transitionScene = updatedScene;
+			frameCount++;
+		});
+
+		gfx.beginFrame();
+		lastDrawScene.draw(gfx.drawList);
+		gfx.endFrame();
+
+		// 最後の fixed update は従来どおり update → draw → transition。
+		if (transitionScene != null)
+			applyTransition(transitionScene);
 	}
 }

@@ -35,8 +35,9 @@ class Gltf08 {
 		return lua.Table.fromArray(pvm.m);
 	}
 
-	public static function onFrame() {
-		tAccum = tAccum + 0.016;
+	public static function onFrame(dt:Float) {
+		// Preserve the former 0.016-per-frame animation speed at 60 Hz.
+		tAccum = tAccum + dt * 0.96;
 
 		var vsR = Io.loadText("samples/08_gltf/data/08_gltf.vs.slang");
 		var fsR = Io.loadText("samples/08_gltf/data/08_gltf.fs.slang");

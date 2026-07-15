@@ -64,6 +64,7 @@ public static class Breakout3d10
     static int lives = 3;
     static int score = 0;
     static double launchTimer = 0;
+    static FixedStep? step = null;
     static double cameraT = 0;
 
     public static void onInit()
@@ -190,9 +191,9 @@ public static class Breakout3d10
         }
     }
 
-    static void UpdateGame()
+    static void UpdateGame(bool resetPressed)
     {
-        if (Input.key_pressed("r"))
+        if (resetPressed)
         {
             ResetGame();
         }
@@ -443,8 +444,13 @@ public static class Breakout3d10
 
     public static void onFrame(double dt)
     {
-        cameraT = cameraT + DT;
-        UpdateGame();
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ =>
+        {
+            cameraT = cameraT + DT;
+            UpdateGame(stepNow.keyPressed("r"));
+        });
 
         Io.load_text("samples/10_breakout3d/data/10_breakout3d.vs.slang",
             out var vs, out var vsv, out _, out _);

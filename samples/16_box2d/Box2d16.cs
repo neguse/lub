@@ -1,7 +1,7 @@
 // lub の samples/16_box2d (Haxe 版 Box2d16.hx) の TinyC# 版 entry。
 // 実行: lub samples/16_box2d/Box2d16.csproj (transpile + watch + hot reload)
-// Phys2d の即時モード API で毎フレーム world/body/shape を宣言し、
-// step 後の pose を頂点列に焼いて 1 draw で描く。
+// Phys2d の即時モード API で simulation tick ごとに world/body/shape を宣言し、
+// 最新 pose を render frame ごとに頂点列へ焼いて 1 draw で描く。
 using System;
 using System.Collections.Generic;
 
@@ -11,6 +11,7 @@ public static class Box2d16
     const double PPM_X = 4.0;
     const double PPM_Y = 2.7;
     static int contactFlash = 0;
+    static FixedStep? step = null;
 
     public static void onInit()
     {
@@ -60,16 +61,8 @@ public static class Box2d16
         }
     }
 
-    public static void onFrame(double dt)
+    static void Simulate(WorldRef world)
     {
-        var world = Phys2d.phys2d_world("box2d16", new WorldOpts
-        {
-            gravity = new Vec2d { x = 0.0, y = -10.0 },
-            fixedDt = DT,
-            substeps = 4,
-            maxSteps = 1,
-        });
-        if (world == null) return;
         Phys2d.phys2d_begin(world);
 
         var ground = Phys2d.phys2d_body(world, "ground", new BodyDesc
@@ -87,7 +80,6 @@ public static class Box2d16
             contact = true,
         });
 
-        var bodies = new List<BodyRef>();
         for (int i = 0; i < 4; i++)
         {
             bool even = i == 0 || i == 2;
@@ -110,7 +102,6 @@ public static class Box2d16
                 friction = 0.65,
                 contact = true,
             });
-            bodies.Add(b);
         }
 
         Phys2d.phys2d_step(world, DT);
@@ -118,16 +109,32 @@ public static class Box2d16
         var contacts = Phys2d.phys2d_contacts(world, "begin");
         if (contacts.Count > 0) contactFlash = 12;
         if (contactFlash > 0) contactFlash = contactFlash - 1;
+    }
+
+    public static void onFrame(double dt)
+    {
+        var world = Phys2d.phys2d_world("box2d16", new WorldOpts
+        {
+            gravity = new Vec2d { x = 0.0, y = -10.0 },
+            fixedDt = DT,
+            substeps = 4,
+            maxSteps = 1,
+        });
+        if (world == null) return;
+
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => Simulate(world));
 
         var verts = new List<double>();
-        var groundPose = Phys2d.phys2d_pose(ground);
+        var groundPose = Phys2d.phys2d_pose(world, "ground");
         if (groundPose == null) return;
         PushBox(verts, groundPose, 3.4, 0.18,
             new double[] { 0.28, 0.33, 0.36, 1.0 });
         int boxCount = 1;
-        foreach (var body in bodies)
+        for (int i = 0; i < 4; i++)
         {
-            var pose = Phys2d.phys2d_pose(body);
+            var pose = Phys2d.phys2d_pose(world, "box:" + i);
             if (pose == null) continue;
             double hot = contactFlash > 0 ? 0.12 : 0.0;
             PushBox(verts, pose, 0.26, 0.26,

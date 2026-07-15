@@ -62,6 +62,7 @@ public static class Breakout09
     static int lives = 3;
     static int score = 0;
     static double launchTimer = 0;
+    static FixedStep? step = null;
 
     public static void onInit()
     {
@@ -183,9 +184,9 @@ public static class Breakout09
         }
     }
 
-    static void UpdateGame()
+    static void UpdateGame(bool resetPressed)
     {
-        if (Input.key_pressed("r"))
+        if (resetPressed)
         {
             ResetGame();
         }
@@ -352,7 +353,9 @@ public static class Breakout09
 
     public static void onFrame(double dt)
     {
-        UpdateGame();
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => UpdateGame(stepNow.keyPressed("r")));
 
         Io.load_text("samples/09_breakout/data/09_breakout.vs.slang",
             out var vs, out var vsv, out _, out _);

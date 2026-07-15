@@ -1476,6 +1476,7 @@ public static class Baseball24
 
     // --- 描画 -----------------------------------------------------------------------
     static bool reloaded = true; // hot reload で true に戻る (19_sdf と同じトリック)
+    static FixedStep? step = null;
 
     static Renderer3d? ren = null;
 
@@ -1572,10 +1573,38 @@ public static class Baseball24
         }
     }
 
+    static void simulateTick()
+    {
+        tAccum += DT;
+        // ヒットストップ: その間シミュレーションだけ止める
+        if (hitstopT > 0)
+        {
+            hitstopT -= DT;
+        }
+        else
+        {
+            updateGame(DT);
+        }
+        updateCamera(DT);
+
+        var fs = fielders;
+        if (fs == null) return;
+        // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
+        if (fs[1].anim == AN_REACH)
+        {
+            fs[1].animT += DT;
+            if (fs[1].animT > 0.5)
+                fs[1].anim = AN_CROUCH;
+        }
+        else
+        {
+            fs[1].anim = AN_CROUCH;
+        }
+    }
+
     // --- main loop --------------------------------------------------------------------
     public static void onFrame(double dt)
     {
-        tAccum += DT;
         if (reloaded)
         {
             rng = new Rand(0x0B5EBA11);
@@ -1592,16 +1621,9 @@ public static class Baseball24
             showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
         }
 
-        // ヒットストップ: その間シミュレーションだけ止める
-        if (hitstopT > 0)
-        {
-            hitstopT -= DT;
-        }
-        else
-        {
-            updateGame(DT);
-        }
-        updateCamera(DT);
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => simulateTick());
 
         var fs = fielders;
         var renNow = ren;
@@ -1610,18 +1632,7 @@ public static class Baseball24
         if (fs == null || renNow == null || eyeNow == null || tgtNow == null)
             return;
 
-        // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
         var t = tAccum;
-        if (fs[1].anim == AN_REACH)
-        {
-            fs[1].animT += DT;
-            if (fs[1].animT > 0.5)
-                fs[1].anim = AN_CROUCH;
-        }
-        else
-        {
-            fs[1].anim = AN_CROUCH;
-        }
 
         // --- 描画 ---
         // 屋外デーゲーム: 高い太陽 + 空色の環境光

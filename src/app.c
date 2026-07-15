@@ -71,6 +71,7 @@ bool app_init(App *app) {
   app->actual_fps = 0.0;
   app->fps_last_ns = 0;
   app->fps_frame_count = 0;
+  app->fixed_frame_dt = 0.0;
   app->phase = APP_PHASE_PRE_BACKEND;
   app->readback_depth = 8;
   return true;
@@ -196,7 +197,8 @@ void app_shutdown(App *app) {
   phys2d_state_shutdown(&app->phys);
   res_table_shutdown(&app->res);
   capture_state_shutdown(&app->capture);
-  g_backend->shutdown(app);
+  if (g_backend)
+    g_backend->shutdown(app);
   gpu_stats_shutdown(g_backend ? g_backend->name : NULL);
 
   if (app->window)

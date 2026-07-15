@@ -148,6 +148,9 @@ public static class CraneGame23
     static double autoX = 0.0;
     static double autoZ = 0.0;
     static int slackFrames = 0;
+    static FixedStep? step = null;
+    static int pendingPresses = 0;
+    static List<int> renderBearIndices = new List<int>();
 
     static List<Bear> bears = new List<Bear>();
 
@@ -606,12 +609,11 @@ public static class CraneGame23
             || (Input.mouse_down() && !Ui.ui_want_capture_mouse());
     }
 
-    static bool buttonPressed()
+    static bool buttonPressed(bool tickPressed)
     {
         if (autoPlay)
             return state == ST_IDLE || state == ST_WAIT2;
-        return Input.key_pressed("space")
-            || (Input.mouse_pressed() && !Ui.ui_want_capture_mouse());
+        return tickPressed;
     }
 
     static void enter(int s)
@@ -621,13 +623,14 @@ public static class CraneGame23
         slackFrames = 0;
     }
 
-    static void updateSequence(WorldRef3d world, BodyRef3d head)
+    static void updateSequence(WorldRef3d world, BodyRef3d head,
+        bool tickPressed)
     {
         stateT++;
         if (state == ST_IDLE)
         {
             wireLen = WIRE_MIN;
-            if (buttonPressed())
+            if (buttonPressed(tickPressed))
             {
                 plays++;
                 enter(ST_MOVE_X);
@@ -676,7 +679,7 @@ public static class CraneGame23
         }
         else if (state == ST_WAIT2)
         {
-            if (buttonPressed())
+            if (buttonPressed(tickPressed))
                 enter(ST_MOVE_Z);
             else if (stateT > 420) // 実機同様、放置でも自動で降下へ
                 enter(ST_DESCEND);
@@ -820,6 +823,28 @@ public static class CraneGame23
         r.draw(cube, model, new Draw3dOpts { tint = color, blend = blend });
     }
 
+    static void simulateTick(WorldRef3d world)
+    {
+        // render 側で保持した edge は次の logical tick だけで有効。
+        // 受付外 state の押下を数秒後の IDLE / WAIT2 へ持ち越さない。
+        bool tickPressed = pendingPresses > 0;
+        pendingPresses = 0;
+        if (payoutFlash > 0)
+            payoutFlash--;
+        Phys3d.phys3d_begin(world);
+        declareStatics(world);
+        var machine = declareMachine(world);
+        if (machine == null) return;
+        var live = declareBears(world);
+        renderBearIndices = new List<int>();
+        foreach (var entry in live)
+            renderBearIndices.Add(entry.index);
+        updateSequence(world, machine.head, tickPressed);
+        Phys3d.phys3d_step(world, DT);
+        updatePrizes(live);
+        frame++;
+    }
+
     public static void onFrame(double dt)
     {
         build();
@@ -831,6 +856,9 @@ public static class CraneGame23
         var hm = headMesh;
         if (r == null || bm == null || fm == null || hm == null)
             return;
+        if (!autoPlay && (Input.key_pressed("space")
+            || (Input.mouse_pressed() && !Ui.ui_want_capture_mouse())))
+            pendingPresses = pendingPresses + 1;
 
         var world = Phys3d.phys3d_world("crane_game", new WorldOpts3d
         {
@@ -840,15 +868,9 @@ public static class CraneGame23
             maxSteps = 1,
         });
         if (world == null) return;
-        Phys3d.phys3d_begin(world);
-        declareStatics(world);
-        var machine = declareMachine(world);
-        if (machine == null) return;
-        var live = declareBears(world);
-
-        updateSequence(world, machine.head);
-        Phys3d.phys3d_step(world, DT);
-        updatePrizes(live);
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => simulateTick(world));
 
         // --- draw ---
         // ゲームセンターの薄暗い環境 + 筐体上部からの光
@@ -895,7 +917,6 @@ public static class CraneGame23
             double k = payoutFlash / 60.0;
             drawBox(boxMat(-0.20, 0.005, 0.275, 0.178, 0.006 + 0.02 * k, 0.178),
                 Color.rgb(1.6, 1.5, 0.7 + 0.7 * k), null);
-            payoutFlash--;
         }
         // レール: 固定 2 本 + キャリッジと動く梁
         drawBox(boxMat(-0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark, null);
@@ -904,7 +925,7 @@ public static class CraneGame23
         drawBox(boxMat(cx, 0.775, cz, 0.05, 0.025, 0.05), accent, null);
 
         // ワイヤー + ヘッド + 爪 (物理の実 pose で描く)
-        var headPose = Phys3d.phys3d_pose(machine.head);
+        var headPose = Phys3d.phys3d_pose(world, "head");
         if (headPose != null)
         {
             var anchor = new Vec3(headPose.x, headPose.y, headPose.z)
@@ -914,19 +935,19 @@ public static class CraneGame23
                 dark, null);
             r.draw(hm, Renderer3d.poseMat(headPose));
         }
-        var frPose = Phys3d.phys3d_pose(machine.fr);
+        var frPose = Phys3d.phys3d_pose(world, "finger:r");
         if (frPose != null)
             r.draw(fm, Renderer3d.poseMat(frPose));
-        var flPose = Phys3d.phys3d_pose(machine.fl);
+        var flPose = Phys3d.phys3d_pose(world, "finger:l");
         if (flPose != null)
             r.draw(fm, Renderer3d.poseMat(flPose) * Mat4.rotateY(Math.PI));
 
         // ぬいぐるみ
-        foreach (var entry in live)
+        foreach (var i in renderBearIndices)
         {
-            var pose = Phys3d.phys3d_pose(entry.body);
+            var pose = Phys3d.phys3d_pose(world, "bear:" + i);
             if (pose != null)
-                r.draw(bm[entry.bear.variant], Renderer3d.poseMat(pose));
+                r.draw(bm[bears[i].variant], Renderer3d.poseMat(pose));
         }
 
         // ガラスとフェンス (半透明は opaque の後に自動で回る)
@@ -961,6 +982,5 @@ public static class CraneGame23
         Ui.ui_end();
         Ui.ui_render();
         Gfx.end_pass();
-        frame++;
     }
 }

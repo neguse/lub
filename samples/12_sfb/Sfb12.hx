@@ -20,7 +20,6 @@ class Sfb12 {
 	// runs at the real drawable resolution (smaller = faster on weak devices).
 	static var RT_W:Int = 1280;
 	static var RT_H:Int = 720;
-	static inline var DT:Float = 1.0 / 60.0;
 	static inline var WATER_Y:Float = 0.12; // world height of the water plane
 
 	static var tAccum:Float = 0;
@@ -206,7 +205,7 @@ class Sfb12 {
 		return new Vec3(Math.sin(camYaw) * cp, Math.sin(camPitch), Math.cos(camYaw) * cp);
 	}
 
-	static function updateCamera():Mat4 {
+	static function updateCamera(dt:Float):Mat4 {
 		var up = new Vec3(0, 1, 0);
 
 		// LUB_SFB_CAM="yaw,pitch,ex,ey,ez" pins the camera to a fixed pose (testing).
@@ -222,10 +221,10 @@ class Sfb12 {
 			}
 		}
 
-		// LUB_SFB_SPIN auto-orbits the camera (deterministic) so motion blur is
-		// visible in a headless capture; default (unset) keeps the golden still.
+		// LUB_SFB_SPIN auto-orbits the camera so motion blur is visible in a
+		// headless capture; default (unset) keeps the golden still.
 		if (lua.Os.getenv("LUB_SFB_SPIN") != null)
-			camYaw = camYaw + 0.02;
+			camYaw = camYaw + 1.2 * dt;
 
 		// Mouse look: consume the delta every frame (so it never jumps), apply
 		// only while the left button is held.
@@ -241,7 +240,7 @@ class Sfb12 {
 
 		var fwd = forwardDir();
 		var right = up.cross(fwd).normalize();
-		var spd = 2.0 * DT;
+		var spd = 2.0 * dt;
 		if (Input.keyDown("w")) {
 			camEye.x += fwd.x * spd;
 			camEye.y += fwd.y * spd;
@@ -295,8 +294,8 @@ class Sfb12 {
 		-1,  1, 0, 0,
 	];
 
-	public static function onFrame() {
-		tAccum = tAccum + DT;
+	public static function onFrame(dt:Float) {
+		tAccum = tAccum + dt;
 
 		// size the offscreen chain to the real drawable (canvas/swapchain).
 		var sz = Gfx.size();
@@ -383,7 +382,7 @@ class Sfb12 {
 		genLut();
 		var lutTex = Gfx.useTexture("sfb_lut", LUT_N * LUT_N, LUT_N, Gfx.RGBA8, lua.Table.fromArray(lutPx), 1, {filter: Gfx.LINEAR, wrap: Gfx.CLAMP});
 
-		var view = updateCamera();
+		var view = updateCamera(dt);
 		var proj = Mat4.perspectiveLh(52, RT_W / RT_H, 0.1, 40.0);
 		// Offscreen targets are stored y-down vs the swapchain (the runtime only
 		// y-flips the default framebuffer). Pre-flip clip-space Y so the G-buffer is

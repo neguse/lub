@@ -168,6 +168,20 @@ public static class Tonton22
     static double markerZ = 0.0;
     static int markerT = 0;
     static double shake = 0.0;
+    static FixedStep? step = null;
+    static WorldRef3d? world = null;
+    static int renderFrame = 0;
+    // TinyC# の module static 初期化時点では Vec3 global が未登録なので、
+    // 最初の tick / render で遅延生成する。
+    static Vec3? renderEye = null;
+
+    // render ごとに取る実入力。pressed は位置とともに次 tick まで保持する。
+    static bool pendingTap = false;
+    static double pendingTapX = 0.0;
+    static double pendingTapY = 0.0;
+    static bool pointerDown = false;
+    static double pointerX = 0.0;
+    static double pointerY = 0.0;
 
     // --- procedural meshes (Shapes3d)。onFrame で遅延生成 --------------------
     static Mesh3d? cubeMesh = null;
@@ -243,9 +257,9 @@ public static class Tonton22
     // 手続きボーンアニメ。腕 = 戦術で構えが変わる + 転倒でバタバタ、
     // 頭 = 押しの脈動でうなずく。物理 (傾き・跳ね) は model 行列側。
     static List<double> packBones(int mi, Rikishi f, bool falling, double pulse,
-        MeshData? data)
+        int logicalFrame, MeshData? data)
     {
-        double t = frame * DT;
+        double t = logicalFrame * DT;
         double armSwing;
         if (falling)
             armSwing = Math.Sin(t * 16.0 + mi * 2.1) * 0.9;
@@ -735,6 +749,26 @@ public static class Tonton22
         shake = 1.0;
     }
 
+    static void captureTapInput()
+    {
+        if (auto)
+            return;
+        bool pressed = Input.mouse_pressed();
+        pointerDown = Input.mouse_down();
+        if (pressed || pointerDown)
+        {
+            Input.mouse_pos(out var mx, out var my);
+            pointerX = mx;
+            pointerY = my;
+            if (pressed)
+            {
+                pendingTap = true;
+                pendingTapX = mx;
+                pendingTapY = my;
+            }
+        }
+    }
+
     static void updateTap(BodyRef3d dohyo, Vec3 eye, Vec3 target, double fovDeg,
         double aspect, double w, double h)
     {
@@ -749,14 +783,20 @@ public static class Tonton22
             return;
         }
         if (state != ST_FIGHT)
-            return; // 仕切り・余韻中は受け付けない (フェアな取組のため)
-        var tap = Input.mouse_pressed()
-            || (Input.mouse_down() && frame - lastTap >= tapRepeat);
+        {
+            // 仕切り・余韻中の pressed は次の取組に持ち越さない。
+            pendingTap = false;
+            return;
+        }
+        bool pressed = pendingTap;
+        double sx = pressed ? pendingTapX : pointerX;
+        double sy = pressed ? pendingTapY : pointerY;
+        pendingTap = false;
+        bool tap = pressed || (pointerDown && frame - lastTap >= tapRepeat);
         if (!tap)
             return;
-        Input.mouse_pos(out var mx, out var my);
-        double ndcX = mx / w * 2.0 - 1.0;
-        double ndcY = 1.0 - my / h * 2.0;
+        double ndcX = sx / w * 2.0 - 1.0;
+        double ndcY = 1.0 - sy / h * 2.0;
         var fwd = (target - eye).normalize();
         var right = Vec3.up().cross(fwd).normalize();
         var upv = fwd.cross(right);
@@ -770,6 +810,83 @@ public static class Tonton22
         if (p.x * p.x + p.z * p.z > DOHYO_R * DOHYO_R * 1.1)
             return;
         tapAt(dohyo, p.x, p.z);
+    }
+
+    static void tick(double aspect, double w, double h)
+    {
+        // 従来の render frame 冒頭 / 末尾にあった演出カウントを
+        // 60 Hz で進める。この後の tap / judge で始まる演出は全強度で描く。
+        if (shake > 0.001)
+            shake = shake * 0.85;
+        if (markerT > 0)
+            markerT = markerT - 1;
+        renderFrame = frame;
+        var tickEye = new Vec3(Math.Sin(frame * 1.7) * 0.05 * shake,
+            3.6 + Math.Sin(frame * 2.3) * 0.03 * shake, -5.4);
+        renderEye = tickEye;
+        var lookAt = new Vec3(0.0, 0.4, 0.0);
+        double fovDeg = 40.0;
+
+        var nextWorld = declareWorld();
+        if (nextWorld == null)
+            return;
+        world = nextWorld;
+        declareStatics(nextWorld);
+        var dohyo = declareDohyo(nextWorld);
+        if (dohyo == null)
+            return;
+        controlDohyo(dohyo);
+        var bodies = new List<BodyRef3d>();
+        for (int i = 0; i < fighters.Count; i++)
+        {
+            var body = declareRikishi(nextWorld, i, fighters[i]);
+            if (body == null)
+                return;
+            bodies.Add(body);
+        }
+        for (int i = 0; i < fighters.Count; i++)
+            controlRikishi(i, fighters[i], bodies[i], bodies[1 - i]);
+        judge(bodies);
+        updateTap(dohyo, tickEye, lookAt, fovDeg, aspect, w, h);
+
+        Phys3d.phys3d_step(nextWorld, DT);
+
+        // 立ち合いのぶつかり (接触のエッジで音と振動)
+        {
+            var p0 = Phys3d.phys3d_pose(bodies[0]);
+            var p1 = Phys3d.phys3d_pose(bodies[1]);
+            if (state == ST_FIGHT && p0 != null && p1 != null)
+            {
+                double ddx = p1.x - p0.x;
+                double ddz = p1.z - p0.z;
+                double lim = 2.0 * CAP_R + 0.14;
+                bool eng = ddx * ddx + ddz * ddz < lim * lim;
+                if (eng && !engagedPrev)
+                {
+                    Audio.audio_play(Sfx.noise(0.12, 0.45));
+                    Audio.audio_play(Sfx.blip(90, 55, 0.07, 0.3));
+                    if (shake < 0.6)
+                        shake = 0.6;
+                }
+                engagedPrev = eng;
+            }
+        }
+
+        // 着地スカッシュの検出と減衰も logical frame で進める。
+        for (int i = 0; i < fighters.Count; i++)
+        {
+            var f = fighters[i];
+            var pose = Phys3d.phys3d_pose(bodies[i]);
+            if (pose == null)
+                continue;
+            if (f.prevVy < -1.2 && pose.vy > f.prevVy + 0.8)
+                f.squashT = 8;
+            f.prevVy = pose.vy;
+            if (f.squashT > 0)
+                f.squashT = f.squashT - 1;
+        }
+
+        frame = frame + 1;
     }
 
     // --- rendering -------------------------------------------------------------
@@ -796,55 +913,18 @@ public static class Tonton22
         Gfx.size(out var sw, out var sh);
         double aspect = (double)sw / sh;
         double fovDeg = 40.0;
-        // トントンでカメラも少し揺れる (手応えの半分は画面振動)
-        if (shake > 0.001)
-            shake *= 0.85;
-        var eye = new Vec3(Math.Sin(frame * 1.7) * 0.05 * shake,
-            3.6 + Math.Sin(frame * 2.3) * 0.03 * shake, -5.4);
         var lookAt = new Vec3(0.0, 0.4, 0.0);
 
-        var world = declareWorld();
-        if (world == null)
-            return;
-        declareStatics(world);
-        var dohyo = declareDohyo(world);
-        if (dohyo == null)
-            return;
-        controlDohyo(dohyo);
-        var bodies = new List<BodyRef3d>();
-        for (int i = 0; i < fighters.Count; i++)
-        {
-            var b = declareRikishi(world, i, fighters[i]);
-            if (b == null)
-                return;
-            bodies.Add(b);
-        }
-        for (int i = 0; i < fighters.Count; i++)
-            controlRikishi(i, fighters[i], bodies[i], bodies[1 - i]);
-        judge(bodies);
-        updateTap(dohyo, eye, lookAt, fovDeg, aspect, sw, sh);
+        captureTapInput();
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => tick(aspect, sw, sh));
 
-        Phys3d.phys3d_step(world, DT);
-
-        // 立ち合いのぶつかり (接触のエッジで音と振動)
+        var eyeNow = renderEye;
+        if (eyeNow == null)
         {
-            var p0 = Phys3d.phys3d_pose(bodies[0]);
-            var p1 = Phys3d.phys3d_pose(bodies[1]);
-            if (state == ST_FIGHT && p0 != null && p1 != null)
-            {
-                double ddx = p1.x - p0.x;
-                double ddz = p1.z - p0.z;
-                double lim = 2.0 * CAP_R + 0.14;
-                bool eng = ddx * ddx + ddz * ddz < lim * lim;
-                if (eng && !engagedPrev)
-                {
-                    Audio.audio_play(Sfx.noise(0.12, 0.45));
-                    Audio.audio_play(Sfx.blip(90, 55, 0.07, 0.3));
-                    if (shake < 0.6)
-                        shake = 0.6;
-                }
-                engagedPrev = eng;
-            }
+            eyeNow = new Vec3(0.0, 3.6, -5.4);
+            renderEye = eyeNow;
         }
 
         // --- draw ---
@@ -857,7 +937,7 @@ public static class Tonton22
         renNow.shadow.extent = 3.5;
         renNow.begin(new Camera
         {
-            eye = eye,
+            eye = eyeNow,
             target = lookAt,
             fov = fovDeg,
             near = 0.1,
@@ -873,7 +953,10 @@ public static class Tonton22
             new Draw3dOpts { tint = Color.rgb(0.16, 0.15, 0.19) });
 
         // 土俵 (懸架で傾く)。上面に俵の白リングと仕切り線を重ねる。
-        var dp = Phys3d.phys3d_pose(dohyo);
+        var drawWorld = world;
+        Pose3d? dp = null;
+        if (drawWorld != null)
+            dp = Phys3d.phys3d_pose(drawWorld, "dohyo");
         if (dp != null)
         {
             var dm = Renderer3d.poseMat(dp);
@@ -900,17 +983,13 @@ public static class Tonton22
         {
             var f = fighters[i];
             var mesh = darumaNow[i];
-            var pose = Phys3d.phys3d_pose(bodies[i]);
+            if (drawWorld == null)
+                continue;
+            var pose = Phys3d.phys3d_pose(drawWorld, "rikishi:" + i);
             if (pose == null || !mesh.ready())
                 continue;
-            // 着地スカッシュ: 落下からの接地 (vy の跳ね) を検出
-            if (f.prevVy < -1.2 && pose.vy > f.prevVy + 0.8)
-                f.squashT = 8;
-            f.prevVy = pose.vy;
-            if (f.squashT > 0)
-                f.squashT--;
             double sq = f.squashT / 8.0 * 0.22;
-            var op = Phys3d.phys3d_pose(bodies[1 - i]);
+            var op = Phys3d.phys3d_pose(drawWorld, "rikishi:" + (1 - i));
             double fx = op != null ? op.x - pose.x : -pose.x;
             double fz = op != null ? op.z - pose.z : -pose.z;
             double yaw = Math.Atan2(fx, fz); // model の -Z を相手へ向ける
@@ -919,13 +998,13 @@ public static class Tonton22
             bool falling = upv.y < 0.6;
             double pulse = f.tactic == TA_OSU
                 ? Math.Max(0.0, Math.Sin(
-                    frame * DT * f.pulseHz * 2.0 * Math.PI + f.phase))
+                    renderFrame * DT * f.pulseHz * 2.0 * Math.PI + f.phase))
                 : 0.0;
             var model = Renderer3d.poseMat(pose) * Mat4.rotateY(yaw)
                 * Mat4.scale(new Vec3(1.0 + sq * 0.6, 1.0 - sq, 1.0 + sq * 0.6));
             renNow.draw(mesh, model, new Draw3dOpts
             {
-                bones = packBones(i, f, falling, pulse, mesh.data),
+                bones = packBones(i, f, falling, pulse, renderFrame, mesh.data),
             });
         }
 
@@ -937,7 +1016,6 @@ public static class Tonton22
                 Mat4.translate(new Vec3(markerX, markerY + 0.03, markerZ))
                 * Mat4.scale(new Vec3(0.22 * (2.0 - k), 0.01, 0.22 * (2.0 - k))),
                 new Draw3dOpts { tint = Color.rgb(1.6, 1.5, 0.9) });
-            markerT--;
         }
 
         renNow.End();
@@ -952,7 +1030,7 @@ public static class Tonton22
                 W * 0.5, 348, 20, cream);
             if (state == ST_FIGHT)
             {
-                if (frame - fightStart < 50)
+                if (renderFrame - fightStart < 50)
                     mt.textCentered("はっけよい", W * 0.5, 120, 44,
                         Color.rgb(0.98, 0.85, 0.4));
                 // 思考の可視化: 頭上に現在の戦術
@@ -962,7 +1040,9 @@ public static class Tonton22
                     if (vp == null)
                         continue;
                     var f = fighters[i];
-                    var pose = Phys3d.phys3d_pose(bodies[i]);
+                    if (drawWorld == null)
+                        continue;
+                    var pose = Phys3d.phys3d_pose(drawWorld, "rikishi:" + i);
                     if (pose == null)
                         continue;
                     var sp = screenPos(vp, pose.x, pose.y + 1.5, pose.z);
@@ -1011,6 +1091,5 @@ public static class Tonton22
         }
 
         Gfx.end_pass();
-        frame++;
     }
 }

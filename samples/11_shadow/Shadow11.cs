@@ -8,7 +8,6 @@ using System.Collections.Generic;
 public static class Shadow11
 {
     const int SHADOW_SIZE = 1024;
-    const double DT = 1.0 / 60.0;
 
     static double tAccum = 0;
 
@@ -86,7 +85,7 @@ public static class Shadow11
 
     public static void onFrame(double dt)
     {
-        tAccum = tAccum + DT;
+        tAccum = tAccum + dt;
 
         Io.load_text("samples/11_shadow/data/11_shadow_depth.vs.slang",
             out var dvs, out var dvsv, out _, out _);

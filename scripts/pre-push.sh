@@ -106,7 +106,8 @@ if command -v dotnet >/dev/null 2>&1 \
     cs_png="${TMPDIR:-/tmp}/lub-pre-push-${cs_name}_cs.png"
     rm -f "$cs_png"
     run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
-      "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240
+      "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240 \
+      --fixed-dt 0.0166666666666667
     # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
     # golden が無いサンプルも capture 実行までは検証される (クラッシュ検出)。
     if [[ -f "tests/golden/${cs_name}_cs_sdlgpu.png" ]]; then

@@ -7,6 +7,7 @@ import lub.Math.MathUtil;
 import lub.Math.Vec3;
 import lub.Phys3d;
 import lubx.Boot;
+import lubx.FixedStep;
 import lubx.Color;
 import lubx.Mesh3d;
 import lubx.MeshText;
@@ -71,6 +72,8 @@ class Bowling25 {
 	static var state = ST_AIM;
 	static var stateT = 0;
 	static var tAccum = 0.0;
+	static var step = new FixedStep();
+	static var pendingPresses = 0;
 
 	// 投球パラメータ (各段階でロック)
 	static var aimX = 0.0;
@@ -536,8 +539,9 @@ class Bowling25 {
 	}
 
 	static function buttonPressed():Bool {
-		var real = Input.keyPressed(Key.Space) || Input.mousePressed();
+		var real = pendingPresses > 0;
 		if (real) {
+			pendingPresses--;
 			idleT = 0;
 			if (autoPlay) {
 				autoPlay = false; // 手動に引き継ぎ (この押下は消費)
@@ -545,6 +549,18 @@ class Bowling25 {
 			}
 		}
 		return real;
+	}
+
+	static function simulateTick(world:WorldRef3d) {
+		tAccum += DT;
+		eventT += DT;
+		Phys3d.begin(world);
+		updateSequence(world);
+		declareStatics(world);
+		declarePins(world);
+		declareBall(world);
+		Phys3d.step(world, DT);
+		updateCamera(world);
 	}
 
 	static function startAuto() {
@@ -801,12 +817,12 @@ class Bowling25 {
 	}
 
 	// --- main loop ---------------------------------------------------------------
-	public static function onFrame() {
+	public static function onFrame(dt:Float) {
 		if (meshDirty)
 			remesh();
 		ensurePins();
-		tAccum += DT;
-		eventT += DT;
+		if (Input.keyPressed(Key.Space) || Input.mousePressed())
+			pendingPresses++;
 
 		var world = Phys3d.world("bowling", {
 			gravity: {x: 0.0, y: -9.81, z: 0.0},
@@ -814,13 +830,7 @@ class Bowling25 {
 			substeps: 8,
 			maxSteps: 1,
 		});
-		Phys3d.begin(world);
-		updateSequence(world);
-		declareStatics(world);
-		declarePins(world);
-		declareBall(world);
-		Phys3d.step(world, DT);
-		updateCamera(world);
+		step.frame(dt, _ -> simulateTick(world));
 
 		// --- 描画 ---
 		// 暗めの場内 + レーン主体のライティング

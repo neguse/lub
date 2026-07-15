@@ -14,7 +14,7 @@
 # Determinism relies on:
 #   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
 #     run-headless.sh enforces it) / Windows: WARP via LUB_DX12_WARP=1
-#   - fixed --capture-frame                 - set below to FRAME
+#   - fixed --capture-frame and --fixed-dt  - set below to FRAME and 1/60 s
 # Exit code is 0 only if every checked visual golden matches.
 #
 # Platform selects the backend set: Linux checks sdlgpu and native
@@ -131,12 +131,14 @@ check_entry() {
             LUB_HAXE_PORT="$haxe_port" \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
+            --fixed-dt 0.0166666666666667 \
             >"$log" 2>&1 || run_ok=0
     else
         LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" LUB_GOLDEN=1 \
             LUB_HAXE_PORT="$haxe_port" \
             scripts/run-headless.sh "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
+            --fixed-dt 0.0166666666666667 \
             >"$log" 2>&1 || run_ok=0
     fi
     if [[ $run_ok -ne 1 ]]; then

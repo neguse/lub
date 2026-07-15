@@ -17,7 +17,8 @@ void capture_state_init(CaptureState *c);
 void capture_state_shutdown(CaptureState *c);
 
 // Schedule a capture: takes ownership of a copy of `path`.
-// `at_frame` 0 means "capture as soon as possible (next frame)".
+// `at_frame` is the 1-based count of rendered frames: N captures the Nth
+// frame's draw ("N フレーム描画後"). 0 means "capture as soon as possible".
 void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame);
 
 // Called from app_frame_end. If a capture is pending and the current frame

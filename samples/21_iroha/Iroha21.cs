@@ -128,8 +128,6 @@ public static class Iroha21
 
     public static void onFrame(double dt)
     {
-        if (auto)
-            dt = 1.0 / 60.0; // 自動プレイは決定的に進める (headless 検証用)
         t += dt;
         if (dt > 0.1)
             dt = 0.1;

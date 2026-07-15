@@ -4,6 +4,7 @@ import lub.Profiler;
 import lubx.Atlas;
 import lubx.Boot;
 import lubx.Color;
+import lubx.FixedStep;
 import lubx.FpsMeter;
 import lubx.Rect;
 import lubx.SpriteBatch;
@@ -87,6 +88,7 @@ class Sprites13 {
 	static var scoreFrame:Int = 0;
 	static var scorePrinted:Bool = false;
 	static var useInstancing:Bool = true;
+	static var step = new FixedStep();
 
 	static var spriteRects:Array<Rect> = [
 		{
@@ -335,10 +337,16 @@ class Sprites13 {
 		Lub.quit();
 	}
 
-	public static function onFrame() {
+	public static function onFrame(dt:Float) {
 		var fps = meter.tick();
 		Profiler.beginScope("sprites.update");
-		updateSprites(fps);
+		if (scoreFrame > 0) {
+			// The canonical score is intentionally one workload tick per rendered
+			// frame. Interactive mode below uses a real-time 60 Hz simulation.
+			updateSprites(fps);
+		} else {
+			step.frame(dt, _ -> updateSprites(fps));
+		}
 		Profiler.endScope("sprites.update");
 
 		Profiler.beginScope("gfx.begin_pass");

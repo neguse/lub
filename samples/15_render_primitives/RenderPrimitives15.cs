@@ -15,7 +15,7 @@ public static class RenderPrimitives15
 
     static BufferRef? quad;
     static BufferRef? tri;
-    static int version = 0;
+    static double tAccum = 0.0;
 
     public static void onInit()
     {
@@ -118,7 +118,7 @@ public static class RenderPrimitives15
     public static void onFrame(double dt)
     {
         EnsureGeometry();
-        version = version + 1;
+        tAccum = tAccum + dt;
 
         var fill = Shader2("rp15_fill", "15_quad.vs.slang", "15_fill.fs.slang");
         var depthShader = Shader2("rp15_depth_scene",
@@ -190,7 +190,7 @@ public static class RenderPrimitives15
                 ["uniforms"] = new Dictionary<string, object>
                 {
                     ["params"] = new List<double>
-                        { RTW, RTH, version * 0.01, 0.0 },
+                        { RTW, RTH, tAccum * 0.6, 0.0 },
                 },
             }, new DispatchOpts { shader = compute });
 

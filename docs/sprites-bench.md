@@ -4,6 +4,12 @@ Use the platform script for the `rsushi`-style Release benchmark. It builds
 Release when needed, runs `samples/13_sprites/13_sprites.hxml`, prints a
 `SPRITES13_SCORE ...` line, and exits.
 
+The normal interactive sample advances its animation on a 60 Hz fixed
+simulation clock, independently of the display refresh rate. Benchmark mode
+(`LUB_SPRITE_SCORE_FRAME > 0`, as set by the platform scripts) intentionally
+keeps one workload tick per rendered frame: `score frame` is a rendered-frame
+workload contract, not elapsed wall-clock time.
+
 Automation should run these commands with a 2-hour process timeout.
 
 The benchmark entry is `.hxml`, so Haxe must be available in `PATH` or via

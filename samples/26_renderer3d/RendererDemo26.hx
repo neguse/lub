@@ -14,7 +14,6 @@ import lubx.Shapes3d;
 	の絵が出ることを見せる。ポーズは時刻からの決定的アニメ (乱数なし)。
 **/
 class RendererDemo26 {
-	static inline var DT = 1.0 / 60.0;
 	static var t = 0.0;
 
 	static var ren = new Renderer3d("demo26");
@@ -52,8 +51,8 @@ class RendererDemo26 {
 		built = true;
 	}
 
-	public static function onFrame() {
-		t += DT;
+	public static function onFrame(dt:Float) {
+		t += dt;
 		build();
 
 		ren.shadow.extent = 7.0;

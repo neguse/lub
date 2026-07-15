@@ -1,4 +1,5 @@
 import lubx.Boot;
+import lubx.FixedStep;
 import lub.Gfx;
 import lub.Io;
 import lub.Input;
@@ -50,6 +51,7 @@ class Breakout09 {
 	static var lives:Int = 3;
 	static var score:Int = 0;
 	static var launchTimer:Float = 0;
+	static var step = new FixedStep();
 	static var initialized:Bool = false;
 
 	public static function main() {}
@@ -147,9 +149,8 @@ class Breakout09 {
 		}
 	}
 
-	static function updateGame() {
-		// keyPressed はランタイムがフレームラッチするエッジ検出。
-		if (Input.keyPressed("r")) {
+	static function updateGame(resetPressed:Bool) {
+		if (resetPressed) {
 			resetGame();
 		}
 
@@ -287,8 +288,8 @@ class Breakout09 {
 		return out;
 	}
 
-	public static function onFrame() {
-		updateGame();
+	public static function onFrame(dt:Float) {
+		step.frame(dt, _ -> updateGame(step.keyPressed("r")));
 
 		var vsR = Io.loadText("samples/09_breakout/data/09_breakout.vs.slang");
 		var fsR = Io.loadText("samples/09_breakout/data/09_breakout.fs.slang");

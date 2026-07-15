@@ -103,6 +103,7 @@ public static class Sprites13
     static int scoreFrame = 0;
     static bool scorePrinted = false;
     static bool useInstancing = true;
+    static FixedStep? step = null;
 
     static List<Rect> spriteRects = new List<Rect>();
     static Rect? whiteRect = null;
@@ -444,7 +445,18 @@ public static class Sprites13
 
         double fps = m.tick();
         Profiler.begin_scope("sprites.update");
-        updateSprites(fps);
+        if (scoreFrame > 0)
+        {
+            // The canonical score is intentionally one workload tick per rendered
+            // frame. Interactive mode below uses a real-time 60 Hz simulation.
+            updateSprites(fps);
+        }
+        else
+        {
+            var stepNow = step ?? new FixedStep();
+            step = stepNow;
+            stepNow.frame(dt, _ => updateSprites(fps));
+        }
         Profiler.end_scope("sprites.update");
 
         Profiler.begin_scope("gfx.begin_pass");

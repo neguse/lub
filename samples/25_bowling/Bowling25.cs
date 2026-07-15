@@ -71,6 +71,8 @@ public static class Bowling25
     static int state = ST_AIM;
     static int stateT = 0;
     static double tAccum = 0.0;
+    static FixedStep? step = null;
+    static int pendingPresses = 0;
 
     // 投球パラメータ (各段階でロック)
     static double aimX = 0.0;
@@ -614,9 +616,10 @@ public static class Bowling25
 
     static bool buttonPressed()
     {
-        var real = Input.key_pressed("space") || Input.mouse_pressed();
+        var real = pendingPresses > 0;
         if (real)
         {
+            pendingPresses = pendingPresses - 1;
             idleT = 0;
             if (autoPlay)
             {
@@ -625,6 +628,19 @@ public static class Bowling25
             }
         }
         return real;
+    }
+
+    static void simulateTick(WorldRef3d world)
+    {
+        tAccum += DT;
+        eventT += DT;
+        Phys3d.phys3d_begin(world);
+        updateSequence(world);
+        declareStatics(world);
+        declarePins(world);
+        declareBall(world);
+        Phys3d.phys3d_step(world, DT);
+        updateCamera(world);
     }
 
     static void startAuto()
@@ -982,8 +998,8 @@ public static class Bowling25
             meshDirty = false;
         }
         ensurePins();
-        tAccum += DT;
-        eventT += DT;
+        if (Input.key_pressed("space") || Input.mouse_pressed())
+            pendingPresses = pendingPresses + 1;
 
         var world = Phys3d.phys3d_world("bowling", new WorldOpts3d
         {
@@ -993,13 +1009,9 @@ public static class Bowling25
             maxSteps = 1,
         });
         if (world == null) return;
-        Phys3d.phys3d_begin(world);
-        updateSequence(world);
-        declareStatics(world);
-        declarePins(world);
-        declareBall(world);
-        Phys3d.phys3d_step(world, DT);
-        updateCamera(world);
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => simulateTick(world));
         var eyeNow = camEye;
         var tgtNow = camTgt;
         if (eyeNow == null || tgtNow == null) return;

@@ -23,7 +23,6 @@ public static class Sfb12
     // devices).
     static int RT_W = 1280;
     static int RT_H = 720;
-    const double DT = 1.0 / 60.0;
     const double WATER_Y = 0.12; // world height of the water plane
 
     static double tAccum = 0;
@@ -296,7 +295,7 @@ public static class Sfb12
             Math.Cos(camYaw) * cp);
     }
 
-    static Mat4 UpdateCamera()
+    static Mat4 UpdateCamera(double dt)
     {
         var up = new Vec3(0, 1, 0);
 
@@ -320,7 +319,7 @@ public static class Sfb12
         // visible in a headless capture; default (unset) keeps the golden still.
         if (os.getenv("LUB_SFB_SPIN") != null)
         {
-            camYaw = camYaw + 0.02;
+            camYaw = camYaw + 1.2 * dt;
         }
 
         // Mouse look: consume the delta every frame (so it never jumps), apply
@@ -336,7 +335,7 @@ public static class Sfb12
 
         var fwd = ForwardDir();
         var right = up.cross(fwd).normalize();
-        var spd = 2.0 * DT;
+        var spd = 2.0 * dt;
         if (Input.key_down("w"))
         {
             camEyeX += fwd.x * spd;
@@ -398,7 +397,7 @@ public static class Sfb12
 
     public static void onFrame(double dt)
     {
-        tAccum = tAccum + DT;
+        tAccum = tAccum + dt;
 
         // size the offscreen chain to the real drawable (canvas/swapchain).
         Gfx.size(out var szw, out var szh);
@@ -536,7 +535,7 @@ public static class Sfb12
             return;
         }
 
-        var view = UpdateCamera();
+        var view = UpdateCamera(dt);
         var proj = Mat4.perspectiveLh(52, (double)RT_W / RT_H, 0.1, 40.0);
         // Offscreen targets are stored y-down vs the swapchain (the runtime
         // only y-flips the default framebuffer). Pre-flip clip-space Y so the

@@ -12,12 +12,16 @@ class Title implements Scene {
 
 	var sel:Int = SEL_START;
 	var anim:Int = 0;
+	var drawAnim:Int = 0;
 	var next:SceneTransition = Stay;
 	var noGodHeld:Bool = false;
 
 	public function new() {}
 
 	public function update(input:InputSnapshot):Void {
+		// 従来の draw 後 increment と同じ位相を fixed tick 側で保つ。
+		drawAnim = anim;
+		anim++;
 		if (input.dirY < 0)
 			sel = SEL_START; // up
 		else if (input.dirY > 0)
@@ -47,11 +51,9 @@ class Title implements Scene {
 		Game.font.drawString(dl, 220, 390, "start", white);
 		Game.font.drawString(dl, 220, 420, "end", white);
 
-		var frame = (anim >> 3) & 3;
+		var frame = (drawAnim >> 3) & 3;
 		var cursorY = (sel == SEL_START) ? 390 : 420;
 		dl.sprite(Game.cursorAtlas, Atlases.cursor[frame], 210, cursorY);
-
-		anim = anim + 1; // draw 後に進める: frame 0 capture で cursor frame 0
 	}
 
 	public function transition():SceneTransition

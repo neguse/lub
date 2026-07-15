@@ -8,8 +8,6 @@ import lubx.Boot;
 // a depth attachment, then use it as a comparison sampler in the scene pass.
 class Shadow11 {
 	static inline var SHADOW_SIZE:Int = 1024;
-	static inline var DT:Float = 1.0 / 60.0;
-
 	static var tAccum:Float = 0;
 
 	public static function main() {}
@@ -63,8 +61,8 @@ class Shadow11 {
 		return Mat4.orthoLh(3.4, 3.4, 0.1, 7.0).mul(view);
 	}
 
-	public static function onFrame() {
-		tAccum = tAccum + DT;
+	public static function onFrame(dt:Float) {
+		tAccum = tAccum + dt;
 
 		var dvsR = Io.loadText("samples/11_shadow/data/11_shadow_depth.vs.slang");
 		var dfsR = Io.loadText("samples/11_shadow/data/11_shadow_depth.fs.slang");

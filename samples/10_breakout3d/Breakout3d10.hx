@@ -1,4 +1,5 @@
 import lubx.Boot;
+import lubx.FixedStep;
 import lub.Gfx;
 import lub.Io;
 import lub.Input;
@@ -50,7 +51,7 @@ class Breakout3d10 {
 	static var lives:Int = 3;
 	static var score:Int = 0;
 	static var launchTimer:Float = 0;
-	static var resetWasDown:Bool = false;
+	static var step = new FixedStep();
 	static var cameraT:Float = 0;
 
 	public static function main() {}
@@ -150,10 +151,9 @@ class Breakout3d10 {
 	}
 
 	static function updateGame() {
-		var resetDown = Input.keyDown("r");
-		if (resetDown && !resetWasDown)
+		if (step.keyPressed("r")) {
 			resetGame();
-		resetWasDown = resetDown;
+		}
 
 		var move = 0;
 		if (Input.keyDown("left") || Input.keyDown("a"))
@@ -355,9 +355,11 @@ class Breakout3d10 {
 		return lua.Table.fromArray(proj.mul(view.mul(rx.mul(ry))).m);
 	}
 
-	public static function onFrame() {
-		cameraT = cameraT + DT;
-		updateGame();
+	public static function onFrame(dt:Float) {
+		step.frame(dt, _ -> {
+			cameraT = cameraT + DT;
+			updateGame();
+		});
 
 		var vsR = Io.loadText("samples/10_breakout3d/data/10_breakout3d.vs.slang");
 		var fsR = Io.loadText("samples/10_breakout3d/data/10_breakout3d.fs.slang");

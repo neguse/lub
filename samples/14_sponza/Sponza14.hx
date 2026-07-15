@@ -6,7 +6,6 @@ import lubx.Boot;
 import lubx.Png;
 
 class Sponza14 {
-	static inline var DT:Float = 1.0 / 60.0;
 	static inline var MODEL_SCALE:Float = 0.002;
 	static inline var SHADOW_SIZE:Int = 2048;
 	static inline var ASSET_FULL:String = "samples/14_sponza/data/Sponza/Sponza.gltf";
@@ -56,8 +55,8 @@ class Sponza14 {
 		Boot.config({});
 	}
 
-	public static function onFrame() {
-		tAccum += DT;
+	public static function onFrame(dt:Float) {
+		tAccum += dt;
 		var sz = Gfx.size();
 		rtW = sz.w;
 		rtH = sz.h;
@@ -102,7 +101,7 @@ class Sponza14 {
 		var quad = Gfx.useBuffer("sponza_quad", Gfx.VERTEX, lua.Table.fromArray(quadVerts), 1);
 		var quadF = Gfx.useBuffer("sponza_quadF", Gfx.VERTEX, lua.Table.fromArray(quadVertsFlip), 1);
 
-		var view = updateCamera();
+		var view = updateCamera(dt);
 		var proj = Mat4.perspectiveLh(55.0, rtW / rtH, 0.05, 80.0);
 		proj.m[5] = -proj.m[5];
 		var model = Mat4.scaleTrans(MODEL_SCALE, new Vec3(0.0, 0.0, 0.0));
@@ -481,7 +480,7 @@ class Sponza14 {
 		return moved;
 	}
 
-	static function updateCamera():Mat4 {
+	static function updateCamera(dt:Float):Mat4 {
 		var camStr = lua.Os.getenv("LUB_SPONZA_CAM");
 		if (camStr != null) {
 			var p = camStr.split(",");
@@ -509,7 +508,7 @@ class Sponza14 {
 		var up = new Vec3(0, 1, 0);
 		var fwd = forwardDir();
 		var right = up.cross(fwd).normalize();
-		var spd = 2.6 * DT;
+		var spd = 2.6 * dt;
 		if (Input.keyDown("w")) {
 			camEye.x += fwd.x * spd;
 			camEye.y += fwd.y * spd;

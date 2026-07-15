@@ -128,11 +128,14 @@ class Sdf19 {
 		return px;
 	}
 
-	public static function onFrame() {
-		tAccum = tAccum + 0.016;
+	public static function onFrame(dt:Float) {
+		// Preserve the former 0.016-per-frame animation speed at 60 Hz.
+		tAccum = tAccum + dt * 0.96;
 		if (Input.keyPressed(Key.Space))
 			metalTarget = 1.0 - metalTarget;
-		metalT = metalT + (metalTarget - metalT) * 0.12;
+		// Convert the former 0.12-per-frame blend to an elapsed-time coefficient.
+		var metalBlend = 1.0 - Math.pow(0.88, dt * 60.0);
+		metalT = metalT + (metalTarget - metalT) * metalBlend;
 
 		var vsR = Io.loadText("samples/19_sdf/data/19_sdf.vs.slang");
 		var fsR = Io.loadText("samples/19_sdf/data/19_sdf.fs.slang");

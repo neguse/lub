@@ -76,6 +76,8 @@ run git diff --cached --check
 
 run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
+run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
+  --fixed-dt 0.0125
 run_timed bash scripts/build-release.sh --target lub_haxe_build_smoke --no-configure
 run_timed ./build-release-linux/lub_haxe_build_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure

@@ -159,10 +159,11 @@ public static class Sdf19
 
     public static void onFrame(double dt)
     {
-        tAccum = tAccum + 0.016;
+        tAccum = tAccum + dt * 0.96;
         if (Input.key_pressed("space"))
             metalTarget = 1.0 - metalTarget;
-        metalT = metalT + (metalTarget - metalT) * 0.12;
+        var metalBlend = 1.0 - Math.Pow(1.0 - 0.12, dt * 60.0);
+        metalT = metalT + (metalTarget - metalT) * metalBlend;
 
         Io.load_text("samples/19_sdf/data/19_sdf.vs.slang",
             out var vs, out var vsv, out _, out _);
