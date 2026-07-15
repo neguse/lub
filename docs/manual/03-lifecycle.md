@@ -42,6 +42,11 @@ reload の意味論は 2 方式あり、環境で決まる。
 従来方式(左列)では **static 変数の初期化子が reload のたびに再実行され、
 値は初期値に戻る**。
 
+そのため static / instance のローカル counter を `Gfx.use*` の version に
+直接使わない。手続き生成データは変更時に `Gfx.nextVersion()` を使う。この
+revision は GPU resource table と同じ runtime 側で管理されるため、reload で
+巻き戻らず、fresh player では cache と一緒にリセットされる。
+
 ## 何が生きたまま反映されるか(C# / playground)
 
 playground の C# は判定が単純で、

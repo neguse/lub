@@ -105,7 +105,7 @@ public static class Sdf19
     {
         m.rebuild(Sdf.mesh(t, N));
         matcapPx = MakeMatcap(64); // reload と同じタイミングで作り直す
-        matcapVer = matcapVer + 1;
+        matcapVer = Gfx.next_version();
         meshDirty = false;
     }
 

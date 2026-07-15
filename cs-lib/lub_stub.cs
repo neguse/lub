@@ -189,6 +189,12 @@ public static class Gfx
         return null;
     }
 
+    /// <summary>手続き生成データの変更時に使う、hot reload を跨ぐ revision。</summary>
+    public static int next_version()
+    {
+        return 0;
+    }
+
     public static Readback? readback()
     {
         return null;

@@ -84,7 +84,7 @@ class Sdf19 {
 	static function remesh() {
 		mesh.rebuild(Sdf.mesh(tree, N));
 		matcapPx = makeMatcap(64); // reload と同じタイミングで作り直す
-		matcapVer++;
+		matcapVer = Gfx.nextVersion();
 		meshDirty = false;
 	}
 

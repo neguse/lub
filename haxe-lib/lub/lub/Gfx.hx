@@ -139,6 +139,14 @@ extern class Gfx {
 	// or an `Int` float-count for STORAGE-allocate-empty (compute output buffers).
 	@:native("use_buffer") public static function useBuffer(key:String, type:Int, data:Dynamic, version:Int):BufferRef;
 	@:native("use_texture") public static function useTexture(key:String, w:Int, h:Int, fmt:Int, px:Dynamic, version:Int, ?opts:TextureOpts):TextureRef;
+
+	/**
+		手続き生成データを変更した時点で呼ぶ、player 内で単調増加する revision。
+		entry の hot reload を跨いで値を保つ。毎フレームではなく、同じ key の
+		内容を実際に変更するときだけ呼び、その `use*` の version に渡す。
+	**/
+	@:native("next_version") public static function nextVersion():Int;
+
 	@:native("readback") public static function readback():Readback;
 	// commands
 	@:native("draw") public static function draw(count:Int, bindings:Dynamic, opts:DrawOpts):Void;

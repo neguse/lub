@@ -18,6 +18,10 @@ var shader = Gfx.useShader("cube", vs.text, fs.text, vs.version * 31 + fs.versio
   そのまま使えばよい。複数ファイルを 1 リソースに束ねるときは
   `a.version * 31 + b.version` のような順序依存の結合を使う(XOR は
   同一内容や入れ替えで打ち消し合う)。
+- 手続き生成データのように「内容を変更した時点」が明確なら、その時点でだけ
+  `Gfx.nextVersion()` を呼び、返った revision を `version` に使う。この値は
+  GPU resource cache と同じ寿命を持ち、entry の hot reload を跨いで単調増加
+  する。毎フレーム呼ぶ必要はない。
 - `use*` されなくなったリソースは数フレーム後に自動破棄される
   (`Lub.config` の `resource_sweep_after_frames`)。
 

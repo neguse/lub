@@ -10,8 +10,6 @@ class DrawList {
 
 	public var shader:Dynamic;
 
-	var meshVersion:Int = 0;
-
 	public function new(shader:Dynamic) {
 		this.shader = shader;
 	}
@@ -74,7 +72,7 @@ class DrawList {
 	}
 
 	public function flush() {
-		meshVersion = meshVersion + 1;
+		var meshVersion = Gfx.nextVersion();
 		for (k in order) {
 			var b = buckets.get(k);
 			if (b.verts.length == 0)

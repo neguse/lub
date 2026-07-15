@@ -848,6 +848,16 @@ static int l_use_buffer(lua_State *L) {
   return 1;
 }
 
+static int l_next_resource_version(lua_State *L) {
+  int64_t revision = 0;
+  if (!g_app_for_lua ||
+      !res_table_next_revision(&g_app_for_lua->res, &revision)) {
+    return luaL_error(L, "next_resource_version: revision range exhausted");
+  }
+  lua_pushinteger(L, (lua_Integer)revision);
+  return 1;
+}
+
 static int l_use_texture(lua_State *L) {
   const char *key = luaL_checkstring(L, 1);
   int w = (int)luaL_checkinteger(L, 2);
@@ -2169,6 +2179,8 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "use_buffer");
   lua_pushcfunction(L, l_use_texture);
   lua_setglobal(L, "use_texture");
+  lua_pushcfunction(L, l_next_resource_version);
+  lua_setglobal(L, "next_resource_version");
   lua_pushcfunction(L, l_use_shader);
   lua_setglobal(L, "use_shader");
   lua_pushcfunction(L, l_use_shader_compute);

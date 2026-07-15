@@ -38,11 +38,19 @@ typedef struct ResEntry {
 } ResEntry;
 
 typedef struct ResTable {
+  // Last revision issued for procedural resources.  This counter has exactly
+  // the same lifetime as the cache entries it versions: entry hot reloads do
+  // not reset it, while a fresh player resets both together.
+  int64_t revision;
   ResEntry *buckets[RES_BUCKETS];
 } ResTable;
 
 void res_table_init(ResTable *t);
 void res_table_shutdown(ResTable *t);
+
+// Issues a player-local monotonic revision for procedural resource content.
+// Returns false only after exhausting the positive int64 range.
+bool res_table_next_revision(ResTable *t, int64_t *out_revision);
 
 ResEntry *res_table_get(ResTable *t, const char *key);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);

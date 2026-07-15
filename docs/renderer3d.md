@@ -50,8 +50,9 @@ graph LR
 `lub.Mesh.MeshData`(SDF / glTF / 手続き生成が共有する規約)を GPU buffer まで
 面倒を見るインスタンス。
 
-- `new Mesh3d(key)` / `rebuild(data:MeshData)` — rebuild が内部 version を
-  インクリメントする。`os.clock` による version 捏造は廃止。
+- `new Mesh3d(key)` / `rebuild(data:MeshData)` — rebuild が hot reload を跨ぐ
+  `Gfx.nextVersion()` の revision を使う。`os.clock` や object-local counter に
+  よる version 捏造はしない。
 - MeshData に `bones` があれば `interleavePncmw`(skinned)、無ければ
   `interleavePncm`(static)を自動選択。
 - vertex layout は pncm(w) 固定: pos.xyz + normal.xyz + color.rgb + metal_rough.xy

@@ -62,8 +62,6 @@ public static class Breakout09
     static int lives = 3;
     static int score = 0;
     static double launchTimer = 0;
-    static int meshVersion = 0;
-
     public static void onInit()
     {
         var backend = os.getenv("LUB_BACKEND") ?? "native";
@@ -362,7 +360,7 @@ public static class Breakout09
         if (vs == null || fs == null) return;
 
         var verts = BuildVertices();
-        meshVersion = meshVersion + 1;
+        var meshVersion = Gfx.next_version();
         var shader = Gfx.use_shader("breakout_shader", vs, fs, vsv * 31 + fsv);
         var vbuf = Gfx.use_buffer("breakout_verts", Gfx.VERTEX, verts,
             meshVersion);

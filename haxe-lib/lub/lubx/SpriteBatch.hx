@@ -70,7 +70,6 @@ class SpriteBatch {
 	var shader:Dynamic = null;
 	var quadBuf:Dynamic = null;
 	var quadData:Dynamic = null;
-	var meshVersion:Int = 0;
 
 	public function new(logicalW:Int, logicalH:Int, shaderKey:String = "lubx_sprite", bufferPrefix:String = "lubx_sprite", instanced:Bool = true) {
 		this.logicalW = logicalW;
@@ -295,7 +294,7 @@ class SpriteBatch {
 		if (instanced && quad == null)
 			return;
 
-		meshVersion = meshVersion + 1;
+		var meshVersion = Gfx.nextVersion();
 		var params = lua.Table.fromArray([logicalW, logicalH, 0.0, 0.0]);
 		var blendMode = (blend < 0) ? Gfx.ALPHA : blend;
 		for (k in order) {

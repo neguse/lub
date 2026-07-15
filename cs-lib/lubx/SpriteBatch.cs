@@ -88,7 +88,6 @@ public class SpriteBatch
     private ShaderRef? shader = null;
     private BufferRef? quadBuf = null;
     private List<double>? quadData = null;
-    private int meshVersion = 0;
 
     /// <summary>shaderKey 省略で "lubx_sprite"、instanced 省略で true。</summary>
     public SpriteBatch(int logicalW, int logicalH, string? shaderKey = null,
@@ -357,7 +356,7 @@ public class SpriteBatch
         if (instanced && quadVb == null)
             return;
 
-        meshVersion = meshVersion + 1;
+        int meshVersion = Gfx.next_version();
         var uniformParams = new List<double> { logicalW, logicalH, 0.0, 0.0 };
         int blendArg = blend ?? -1;
         int blendMode = blendArg < 0 ? Gfx.ALPHA : blendArg;

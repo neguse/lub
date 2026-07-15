@@ -11,8 +11,6 @@ public static class Shadow11
     const double DT = 1.0 / 60.0;
 
     static double tAccum = 0;
-    static int meshVersion = 0;
-
     public static void onInit()
     {
         var backend = os.getenv("LUB_BACKEND") ?? "native";
@@ -120,7 +118,7 @@ public static class Shadow11
         {
             scene.Add(f);
         }
-        meshVersion = meshVersion + 1;
+        var meshVersion = Gfx.next_version();
         var casterBuf = Gfx.use_buffer("shadow_casters", Gfx.VERTEX, casters,
             meshVersion);
         var sceneBuf = Gfx.use_buffer("shadow_scene", Gfx.VERTEX, scene,

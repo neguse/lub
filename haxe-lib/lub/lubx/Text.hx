@@ -1,6 +1,7 @@
 package lubx;
 
 import lub.Font;
+import lub.Gfx;
 
 @:native("utf8")
 private extern class NativeUtf8 {
@@ -45,7 +46,7 @@ class Text {
 	final pixels:Array<Int>;
 	final glyphs = new Map<Int, TextGlyph>();
 	final missing = new Map<Int, Bool>();
-	var version:Int = 1;
+	var version:Int;
 	var penX:Int = 1;
 	var penY:Int = 1;
 	var rowH:Int = 0;
@@ -60,6 +61,7 @@ class Text {
 		ascent = m.ascent * px;
 		descent = m.descent * px;
 		lineHeight = (m.ascent - m.descent + m.line_gap) * px;
+		version = Gfx.nextVersion();
 		atlas = Atlas.fromPixels(key, atlasW, atlasH, pixels, version);
 	}
 
@@ -116,7 +118,7 @@ class Text {
 			penX += gb.w + 1;
 			if (gb.h > rowH)
 				rowH = gb.h;
-			version++;
+			version = Gfx.nextVersion();
 			atlas.updatePixels(pixels, version);
 		}
 		g = {
