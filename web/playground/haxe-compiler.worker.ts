@@ -13,7 +13,6 @@
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-const COMPILE_TIMEOUT_MS = 60_000;
 
 function describeError(cause: unknown): string {
   if (!(cause instanceof Error)) return String(cause);
@@ -454,60 +453,46 @@ req.main = { filename: "/haxe.js" };
 req.resolve = (m: string) => m;
 g.require = req;
 
-// WebAssembly.Module を 1 回だけコンパイルしてキャッシュ。glue は内部で
-// WebAssembly.instantiate(bytes, imports, compileOptions) を呼ぶが、wsoo 6.3.2 が指定する
-// wasm:text-{decoder,encoder} builtins は WebKit 未実装。compileOptions を意図的に渡さず、
-// glue が用意する dummy imports を通して wsoo 内蔵の portable string fallback を使う。
+// WebAssembly.Module を 1 回だけコンパイルしてキャッシュ。wsoo 6.3.2 が要求する
+// text builtins は WebKit 未実装なので、compileOptions を省いて portable fallback を使う。
 // bytes を受けたら Module を使い回し {module, instance} 形に揃える(compile ごとに fresh instance)。
 const _compile = WebAssembly.compile.bind(WebAssembly) as (
   b: any,
+  o?: any,
 ) => Promise<WebAssembly.Module>;
 const _instantiate = WebAssembly.instantiate.bind(WebAssembly) as any;
 let _cachedModule: WebAssembly.Module | null = null;
 (WebAssembly as any).instantiate = async (
   src: any,
   imports: any,
-  _opts: any,
+  opts: any,
 ) => {
   if (src instanceof Uint8Array || src instanceof ArrayBuffer) {
     if (!_cachedModule) _cachedModule = await _compile(src);
     const instance = await _instantiate(_cachedModule, imports);
     return { module: _cachedModule, instance };
   }
-  return _instantiate(src, imports, _opts);
+  return _instantiate(src, imports, opts);
 };
 
 let glueSrc = "";
 let ready = false;
 
 async function init(baseUrl: string) {
-  ready = false;
-  const manifestResponse = await fetch(baseUrl + "manifest.json");
-  if (!manifestResponse.ok)
-    throw new Error(
-      `failed to load Haxe manifest (${manifestResponse.status})`,
-    );
-  const manifest = await manifestResponse.json();
+  const manifest = await (await fetch(baseUrl + "manifest.json")).json();
   const wasmName: string = manifest.wasmName;
-  const bundleResponse = await fetch(baseUrl + "std-bundle.json");
-  if (!bundleResponse.ok)
-    throw new Error(`failed to load Haxe stdlib (${bundleResponse.status})`);
-  const bundle = await bundleResponse.json();
+  const bundle = await (await fetch(baseUrl + "std-bundle.json")).json();
   for (const [path, b64] of Object.entries<string>(bundle.files)) {
     const bin = atob(b64);
     const u = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
     addFile(path, u);
   }
-  const wasmResponse = await fetch(baseUrl + wasmName);
-  if (!wasmResponse.ok)
-    throw new Error(`failed to load Haxe Wasm (${wasmResponse.status})`);
-  const wbuf = new Uint8Array(await wasmResponse.arrayBuffer());
+  const wbuf = new Uint8Array(
+    await (await fetch(baseUrl + wasmName)).arrayBuffer(),
+  );
   addFile("/haxe.assets/" + wasmName, wbuf);
-  const glueResponse = await fetch(baseUrl + "haxe.js");
-  if (!glueResponse.ok)
-    throw new Error(`failed to load Haxe glue (${glueResponse.status})`);
-  glueSrc = await glueResponse.text();
+  glueSrc = await (await fetch(baseUrl + "haxe.js")).text();
   ready = true;
 }
 
@@ -551,8 +536,7 @@ async function compile(files: Record<string, string>, mainClass: string) {
   const t0 = Date.now();
   while (!g.__HAXE_DONE) {
     if (executionFailed) throw executionError;
-    if (Date.now() - t0 > COMPILE_TIMEOUT_MS)
-      throw new Error("Haxe compiler did not exit within 60 seconds");
+    if (Date.now() - t0 > 60000) throw new Error("compile timeout");
     await new Promise((r) => setTimeout(r, 5));
   }
   const d = g.__HAXE_DONE;
@@ -576,18 +560,13 @@ self.onmessage = async (e: MessageEvent) => {
       (self as any).postMessage({ type: "result", id: msg.id, ...res });
     }
   } catch (err: any) {
-    const error = describeError(err);
-    if (msg.type === "init") {
-      (self as any).postMessage({ type: "initError", error });
-    } else {
-      (self as any).postMessage({
-        type: "result",
-        id: msg.id,
-        code: -1,
-        raw: null,
-        stderr: error,
-        stdout: "",
-      });
-    }
+    (self as any).postMessage({
+      type: "result",
+      id: msg.id,
+      code: -1,
+      raw: null,
+      stderr: describeError(err),
+      stdout: "",
+    });
   }
 };

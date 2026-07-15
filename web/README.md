@@ -96,8 +96,7 @@ npm run deploy    # build + wrangler deploy
 
 - WebGPU が利用可能なブラウザ:
   - **Chrome / Edge** (primary、137+) — 既定で WebGPU 有効。
-  - **Safari** (iPadOS / iOS / macOS 26+) — Haxe compiler worker は
-    wasm_of_ocaml の portable string fallback を使う。
+  - **Safari** (iPadOS / iOS / macOS 26+) — WebGPU を利用可能。
   - **Firefox Nightly** — `dom.webgpu.enabled` を `about:config` で有効化。
 - ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
 - production bundle (`npm run build`) は `web/dist/` 配下、`/wasm/`,
