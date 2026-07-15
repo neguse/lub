@@ -44,7 +44,10 @@ void capture_schedule(CaptureState *c, const char *path, uint64_t at_frame) {
   if (c->path) {
     memcpy(c->path, path, n + 1);
   }
-  c->target_frame = at_frame;
+  // `at_frame` is the 1-based count of rendered frames ("capture after N
+  // frames"); frame_index is 0-based, so the Nth frame has index N-1.
+  // 0 keeps the "capture as soon as possible" meaning.
+  c->target_frame = at_frame > 0 ? at_frame - 1 : 0;
   c->pending = true;
   c->retries_left = CAPTURE_RETRY_FRAMES;
 }
@@ -57,8 +60,9 @@ bool capture_state_drain(CaptureState *c, struct App *app) {
 
   bool ok = g_backend->capture(app, c->path);
   if (ok) {
-    SDL_Log("captured frame %llu -> %s", (unsigned long long)app->frame_index,
-            c->path);
+    // Log the 1-based frame count to match the --capture-frame argument.
+    SDL_Log("captured frame %llu -> %s",
+            (unsigned long long)(app->frame_index + 1), c->path);
   } else if (c->retries_left > 0) {
     c->retries_left--;
     // Slip the target forward one frame and try again next iteration.
