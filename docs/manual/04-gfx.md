@@ -24,9 +24,13 @@ var shader = Gfx.useShader("cube", vs.text, fs.text, vs.version * 31 + fs.versio
   を発行して必ず upload する。毎フレーム use する key で upload を避けたい
   ときは、前回の戻り値 ref の `version` を渡して「変わっていない」を再主張
   する(`lubx.Atlas` がこの形)。
-- **自前の counter を version にしない**。hot reload で巻き戻り、cache に
-  残った値との偶然の一致で更新が黙って skip される(「ライフサイクル」章
-  参照)。同じ key で方式(定数 / 省略 / hash)を混ぜない。
+- 守るべき不変条件は一つ: **同じ key の異なる内容に同じ version を再利用
+  しない — hot reload を跨いでも**。これを保証できるなら値の作り方は自由
+  (自前 counter でも mtime でも構わない)。ただし素朴な static / instance
+  counter は reload で初期値に巻き戻ってこの保証を破り、cache に残った値
+  との偶然の一致で更新が黙って skip される(「ライフサイクル」章参照)。
+  保証を自分で持ちたくなければ省略(変更宣言)に任せる。同じ key で方式
+  (定数 / 省略 / hash)を混ぜない。
 - `use*` されなくなったリソースは数フレーム後に自動破棄される
   (`Lub.config` の `resource_sweep_after_frames`)。
 

@@ -164,16 +164,18 @@ extern class Gfx {
 		STORAGE の空確保(compute の出力バッファ)では float 個数の `Int`。
 
 		`version` は key の内容に対する「同一性の主張」。stored 値と一致すれば
-		upload/compile を skip してよい、という契約なので、渡してよいのは内容
-		から導ける値だけ — ファイルは `Io.loadText` の version(content hash)、
-		不変内容は定数、複数入力は `a.version * 31 + b.version` のような順序
-		依存の結合。内容から導けない(変更履歴が要る)場合は version を省略
-		する。省略は「内容が変わった」宣言で、runtime が新しい実効 version を
-		発行して必ず upload する。毎フレーム use する key で upload を避けたい
-		ときは、前回の戻り値 ref の `version` を渡して「変わっていない」を
-		再主張する。自前 counter を version にしてはならない(hot reload で
-		巻き戻り、stored 値との偶然の一致で更新が黙って skip される)。同じ
-		key で方式(定数 / 省略 / hash)を混ぜないこと。
+		upload/compile を skip してよい、という契約。不変条件は一つ — **同じ
+		key の異なる内容に同じ version を再利用しない(hot reload を跨いでも)**。
+		内容から導ける値(ファイルなら `Io.loadText` の version = content hash、
+		不変内容なら定数、複数入力なら `a.version * 31 + b.version` のような
+		順序依存の結合)はこれを自動で満たす。素朴な static / instance counter
+		は reload で巻き戻って保証を破るので注意(stored 値との偶然の一致で
+		更新が黙って skip される)。保証を自分で持ちたくなければ version を
+		省略する — 省略は「内容が変わった」宣言で、runtime が新しい実効
+		version を発行して必ず upload する。毎フレーム use する key で upload
+		を避けたいときは、前回の戻り値 ref の `version` を渡して「変わって
+		いない」を再主張する。同じ key で方式(定数 / 省略 / hash)を混ぜない
+		こと。
 	**/
 	@:native("use_buffer") public static function useBuffer(key:String, type:Int, data:Dynamic, ?version:Int):BufferRef;
 
