@@ -9,7 +9,6 @@ class Box2d16 {
 	static inline var DT:Float = 1.0 / 60.0;
 	static inline var PPM_X:Float = 4.0;
 	static inline var PPM_Y:Float = 2.7;
-	static var meshVersion:Int = 0;
 	static var contactFlash:Int = 0;
 
 	public static function main() {}
@@ -102,13 +101,12 @@ class Box2d16 {
 			pushBox(verts, pose, 0.26, 0.26, [0.20 + hot, 0.62, 0.88, 1.0]);
 		}
 
-		meshVersion++;
 		var vs = Io.loadText("samples/16_box2d/data/16_color.vs.slang");
 		var fs = Io.loadText("samples/16_box2d/data/16_color.fs.slang");
 		if (vs.text == null || fs.text == null)
 			return;
 		var shader = Gfx.useShader("box2d16_color", vs.text, fs.text, vs.version * 31 + fs.version);
-		var mesh = Gfx.useBuffer("box2d16_mesh", Gfx.VERTEX, Table.fromArray(verts), meshVersion);
+		var mesh = Gfx.useBuffer("box2d16_mesh", Gfx.VERTEX, Table.fromArray(verts));
 
 		Gfx.beginPass({
 			target: Gfx.mainTex,

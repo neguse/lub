@@ -88,7 +88,6 @@ public class SpriteBatch
     private ShaderRef? shader = null;
     private BufferRef? quadBuf = null;
     private List<double>? quadData = null;
-    private int meshVersion = 0;
 
     /// <summary>shaderKey 省略で "lubx_sprite"、instanced 省略で true。</summary>
     public SpriteBatch(int logicalW, int logicalH, string? shaderKey = null,
@@ -357,7 +356,6 @@ public class SpriteBatch
         if (instanced && quadVb == null)
             return;
 
-        meshVersion = meshVersion + 1;
         var uniformParams = new List<double> { logicalW, logicalH, 0.0, 0.0 };
         int blendArg = blend ?? -1;
         int blendMode = blendArg < 0 ? Gfx.ALPHA : blendArg;
@@ -372,7 +370,7 @@ public class SpriteBatch
             if (!instanced)
             {
                 var vbuf = Gfx.use_buffer(bufferPrefix + "_" + k + "_verts",
-                    Gfx.VERTEX, b.verts, meshVersion);
+                    Gfx.VERTEX, b.verts);
                 if (vbuf == null)
                     continue;
                 Gfx.draw((int)Math.Floor(b.verts.Count / (double)LEGACY_STRIDE),
@@ -395,8 +393,7 @@ public class SpriteBatch
                 continue;
             }
             var instances = Gfx.use_buffer(
-                bufferPrefix + "_" + k + "_instances", Gfx.VERTEX, b.verts,
-                meshVersion);
+                bufferPrefix + "_" + k + "_instances", Gfx.VERTEX, b.verts);
             if (instances == null || quadVb == null)
                 continue;
             Gfx.draw(4,

@@ -11,7 +11,6 @@ class Shadow11 {
 	static inline var DT:Float = 1.0 / 60.0;
 
 	static var tAccum:Float = 0;
-	static var meshVersion:Int = 0;
 
 	public static function main() {}
 
@@ -91,9 +90,8 @@ class Shadow11 {
 		var meshes = buildMeshes(tAccum);
 		var casters = meshes.casters;
 		var scene = meshes.scene;
-		meshVersion = meshVersion + 1;
-		var casterBuf = Gfx.useBuffer("shadow_casters", Gfx.VERTEX, lua.Table.fromArray(casters), meshVersion);
-		var sceneBuf = Gfx.useBuffer("shadow_scene", Gfx.VERTEX, lua.Table.fromArray(scene), meshVersion);
+		var casterBuf = Gfx.useBuffer("shadow_casters", Gfx.VERTEX, lua.Table.fromArray(casters));
+		var sceneBuf = Gfx.useBuffer("shadow_scene", Gfx.VERTEX, lua.Table.fromArray(scene));
 
 		var lmvp = lua.Table.fromArray(lightMvp().m);
 

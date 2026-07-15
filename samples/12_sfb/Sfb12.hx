@@ -24,7 +24,6 @@ class Sfb12 {
 	static inline var WATER_Y:Float = 0.12; // world height of the water plane
 
 	static var tAccum:Float = 0;
-	static var meshVersion:Int = 0;
 
 	public static function main() {}
 
@@ -348,8 +347,7 @@ class Sfb12 {
 
 		// Scene + camera.
 		var scene = buildScene(tAccum);
-		meshVersion = meshVersion + 1;
-		var sceneBuf = Gfx.useBuffer("sfb_scene", Gfx.VERTEX, lua.Table.fromArray(scene), meshVersion);
+		var sceneBuf = Gfx.useBuffer("sfb_scene", Gfx.VERTEX, lua.Table.fromArray(scene));
 		var quadBuf = Gfx.useBuffer("sfb_quad", Gfx.VERTEX, lua.Table.fromArray(quadVerts), 1);
 		var quadBufF = Gfx.useBuffer("sfb_quadF", Gfx.VERTEX, lua.Table.fromArray(quadVertsFlip), 1);
 

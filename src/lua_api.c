@@ -460,13 +460,17 @@ static int is_sentinel(lua_State *L, int idx, const char *kind) {
   return ok;
 }
 
-// Helper: push a BufferRef sentinel table { __lub_kind = "buffer", key = key }
-static void push_buffer_ref(lua_State *L, const char *key) {
+// Helper: push a BufferRef sentinel table { __lub_kind = "buffer", key = key,
+// version = effective stored version }.  `version` lets a caller re-assert
+// "unchanged" on later use_* calls without holding its own version state.
+static void push_buffer_ref(lua_State *L, const char *key, int64_t version) {
   lua_newtable(L);
   lua_pushstring(L, "buffer");
   lua_setfield(L, -2, "__lub_kind");
   lua_pushstring(L, key);
   lua_setfield(L, -2, "key");
+  lua_pushinteger(L, (lua_Integer)version);
+  lua_setfield(L, -2, "version");
 }
 
 static int numeric_table_len(lua_State *L, int idx, bool *zero_based) {
@@ -502,23 +506,28 @@ static int numeric_table_len(lua_State *L, int idx, bool *zero_based) {
   return (int)lua_rawlen(L, idx);
 }
 
-// Helper: push a ShaderRef sentinel table { __lub_kind = "shader", key = key }
-static void push_shader_ref(lua_State *L, const char *key) {
+// Helper: push a ShaderRef sentinel table { __lub_kind = "shader", key = key,
+// version = effective stored version }
+static void push_shader_ref(lua_State *L, const char *key, int64_t version) {
   lua_newtable(L);
   lua_pushstring(L, "shader");
   lua_setfield(L, -2, "__lub_kind");
   lua_pushstring(L, key);
   lua_setfield(L, -2, "key");
+  lua_pushinteger(L, (lua_Integer)version);
+  lua_setfield(L, -2, "version");
 }
 
-// Helper: push a TextureRef sentinel table { __lub_kind = "texture", key = key
-// }
-static void push_texture_ref(lua_State *L, const char *key) {
+// Helper: push a TextureRef sentinel table { __lub_kind = "texture", key =
+// key, version = effective stored version }
+static void push_texture_ref(lua_State *L, const char *key, int64_t version) {
   lua_newtable(L);
   lua_pushstring(L, "texture");
   lua_setfield(L, -2, "__lub_kind");
   lua_pushstring(L, key);
   lua_setfield(L, -2, "key");
+  lua_pushinteger(L, (lua_Integer)version);
+  lua_setfield(L, -2, "version");
 }
 
 static bool is_depth_format(SglPixelFormat fmt) {
@@ -760,10 +769,24 @@ static int l_begin_pass(lua_State *L) {
   return 0;
 }
 
+// use_* version argument.  A caller-supplied int is an identity claim for the
+// key's current content ("equal to stored → may skip upload").  nil/omitted
+// is a "content changed" declaration: the runtime issues a fresh effective
+// version, so the upload can never be skipped against a stale claim.
+static int64_t use_version_arg(lua_State *L, int idx, bool *declared) {
+  if (lua_isnoneornil(L, idx)) {
+    *declared = true;
+    return res_table_next_revision(&g_app_for_lua->res);
+  }
+  *declared = false;
+  return (int64_t)luaL_checkinteger(L, idx);
+}
+
 static int l_use_buffer(lua_State *L) {
   const char *key = luaL_checkstring(L, 1);
   int type = (int)luaL_checkinteger(L, 2);
-  int64_t version = (int64_t)luaL_checkinteger(L, 4);
+  bool declared = false;
+  int64_t version = use_version_arg(L, 4, &declared);
 
   if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX &&
       type != SGL_BUFFER_STORAGE) {
@@ -777,9 +800,9 @@ static int l_use_buffer(lua_State *L) {
 
   res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-  if (e->version == version && e->u.buf.h != 0) {
+  if (!declared && e->version == version && e->u.buf.h != 0) {
     // Skip upload — return existing BufferRef
-    push_buffer_ref(L, key);
+    push_buffer_ref(L, key, e->version);
     return 1;
   }
 
@@ -844,7 +867,7 @@ static int l_use_buffer(lua_State *L) {
   if (data)
     free(data);
 
-  push_buffer_ref(L, key);
+  push_buffer_ref(L, key, e->version);
   return 1;
 }
 
@@ -860,7 +883,8 @@ static int l_use_texture(lua_State *L) {
     if (!byte_data)
       luaL_checktype(L, 5, LUA_TTABLE);
   }
-  int64_t version = (int64_t)luaL_checkinteger(L, 6);
+  bool declared = false;
+  int64_t version = use_version_arg(L, 6, &declared);
 
   // optional 7th arg: { filter = LINEAR|NEAREST, wrap = REPEAT|CLAMP, target =
   // bool, storage = bool }
@@ -942,9 +966,9 @@ static int l_use_texture(lua_State *L) {
   bool target_changed = (e->u.tex.h != 0) && (e->u.tex.is_target != is_target);
   bool storage_changed = (e->u.tex.h != 0) && (e->u.tex.storage != storage);
 
-  if (e->version == version && e->u.tex.h != 0 && !sampler_changed &&
-      !target_changed && !storage_changed) {
-    push_texture_ref(L, key);
+  if (!declared && e->version == version && e->u.tex.h != 0 &&
+      !sampler_changed && !target_changed && !storage_changed) {
+    push_texture_ref(L, key, e->version);
     return 1;
   }
 
@@ -1051,7 +1075,7 @@ static int l_use_texture(lua_State *L) {
   if (pixels)
     free(pixels);
 
-  push_texture_ref(L, key);
+  push_texture_ref(L, key, e->version);
   return 1;
 }
 
@@ -1075,7 +1099,8 @@ static int l_use_shader(lua_State *L) {
   const char *key = luaL_checkstring(L, 1);
   const char *vs = luaL_checkstring(L, 2);
   const char *fs = luaL_checkstring(L, 3);
-  int64_t version = (int64_t)luaL_checkinteger(L, 4);
+  bool declared = false;
+  int64_t version = use_version_arg(L, 4, &declared);
 
   ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_SHADER);
   if (!e)
@@ -1083,8 +1108,8 @@ static int l_use_shader(lua_State *L) {
                       key);
   res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-  if (e->version == version && e->u.sh.h != 0) {
-    push_shader_ref(L, key);
+  if (!declared && e->version == version && e->u.sh.h != 0) {
+    push_shader_ref(L, key, e->version);
     return 1;
   }
 
@@ -1105,7 +1130,7 @@ static int l_use_shader(lua_State *L) {
     }
     SDL_Log("use_shader: recompile failed for key '%s': %s (keeping old)", key,
             err);
-    push_shader_ref(L, key);
+    push_shader_ref(L, key, e->version);
     return 1;
   }
   ShaderDesc sd = {
@@ -1123,7 +1148,7 @@ static int l_use_shader(lua_State *L) {
       return luaL_error(L, "use_shader: make_shader failed for key '%s'", key);
     }
     SDL_Log("use_shader: make_shader failed for key '%s' (keeping old)", key);
-    push_shader_ref(L, key);
+    push_shader_ref(L, key, e->version);
     return 1;
   }
 
@@ -1138,14 +1163,15 @@ static int l_use_shader(lua_State *L) {
   e->u.sh.refl = new_refl;
   e->version = version;
 
-  push_shader_ref(L, key);
+  push_shader_ref(L, key, e->version);
   return 1;
 }
 
 static int l_use_shader_compute(lua_State *L) {
   const char *key = luaL_checkstring(L, 1);
   const char *cs = luaL_checkstring(L, 2);
-  int64_t version = (int64_t)luaL_checkinteger(L, 3);
+  bool declared = false;
+  int64_t version = use_version_arg(L, 3, &declared);
 
   ResEntry *e = res_table_get_or_create(&g_app_for_lua->res, key, RES_SHADER);
   if (!e)
@@ -1153,8 +1179,8 @@ static int l_use_shader_compute(lua_State *L) {
         L, "use_shader_compute: key '%s' already used as different kind", key);
   res_table_touch(e, (int64_t)g_app_for_lua->frame_index);
 
-  if (e->version == version && e->u.sh.h != 0) {
-    push_shader_ref(L, key);
+  if (!declared && e->version == version && e->u.sh.h != 0) {
+    push_shader_ref(L, key, e->version);
     return 1;
   }
 
@@ -1170,7 +1196,7 @@ static int l_use_shader_compute(lua_State *L) {
     SDL_Log(
         "use_shader_compute: recompile failed for key '%s': %s (keeping old)",
         key, err);
-    push_shader_ref(L, key);
+    push_shader_ref(L, key, e->version);
     return 1;
   }
   ShaderDesc sd = {
@@ -1187,7 +1213,7 @@ static int l_use_shader_compute(lua_State *L) {
     }
     SDL_Log("use_shader_compute: make_shader failed for key '%s' (keeping old)",
             key);
-    push_shader_ref(L, key);
+    push_shader_ref(L, key, e->version);
     return 1;
   }
   BackendShader old_h = e->u.sh.h;
@@ -1199,7 +1225,7 @@ static int l_use_shader_compute(lua_State *L) {
   e->u.sh.h = new_h;
   e->u.sh.refl = new_refl;
   e->version = version;
-  push_shader_ref(L, key);
+  push_shader_ref(L, key, e->version);
   return 1;
 }
 

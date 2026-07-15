@@ -50,7 +50,6 @@ class Breakout09 {
 	static var lives:Int = 3;
 	static var score:Int = 0;
 	static var launchTimer:Float = 0;
-	static var meshVersion:Int = 0;
 	static var initialized:Bool = false;
 
 	public static function main() {}
@@ -301,9 +300,8 @@ class Breakout09 {
 			return;
 
 		var verts = buildVertices();
-		meshVersion = meshVersion + 1;
 		var shader = Gfx.useShader("breakout_shader", vs, fs, vsv * 31 + fsv);
-		var vbuf = Gfx.useBuffer("breakout_verts", Gfx.VERTEX, lua.Table.fromArray(verts), meshVersion);
+		var vbuf = Gfx.useBuffer("breakout_verts", Gfx.VERTEX, lua.Table.fromArray(verts));
 
 		Gfx.beginPass({
 			target: Gfx.mainTex,

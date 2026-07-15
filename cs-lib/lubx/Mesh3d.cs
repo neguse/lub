@@ -3,9 +3,9 @@ using System.Collections.Generic;
 
 /// <summary>
 /// MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) を GPU buffer にして
-/// 保持するインスタンス。rebuild() が内部 version を進めるので、呼び側で
-/// version を捏造する必要はない (hot reload や編集のたびに rebuild() を
-/// 呼べばよい)。bones を持つ MeshData は自動で skinned レイアウト
+/// 保持するインスタンス。rebuild() は version 省略の「変更宣言」で upload
+/// するので、呼び側が version を管理する必要はない (hot reload や編集のたびに
+/// rebuild() を呼べばよい)。bones を持つ MeshData は自動で skinned レイアウト
 /// (Io.interleave_pncmw、stride 15)、それ以外は Io.interleave_pncm
 /// (stride 11: pos.xyz + normal.xyz + albedo.rgb + mr.xy)。
 /// この頂点レイアウトが Renderer3d の material 契約。
@@ -20,8 +20,6 @@ public class Mesh3d
     public int indexCount = 0;
     public bool skinned = false;
 
-    private int version = 0;
-
     public Mesh3d(string key)
     {
         this.key = key;
@@ -32,9 +30,8 @@ public class Mesh3d
     {
         this.data = data;
         skinned = data.bones != null;
-        version++;
         var verts = skinned ? Io.interleave_pncmw(data) : Io.interleave_pncm(data);
-        vb = Gfx.use_buffer(key + "_vb", Gfx.VERTEX, verts, version);
+        vb = Gfx.use_buffer(key + "_vb", Gfx.VERTEX, verts);
         // use_buffer は List<double> を取るので indices を詰め替える。
         // Lua 上は同じ整数値の array table になり、wire data は変わらない。
         var indices = new List<double>();
@@ -42,7 +39,7 @@ public class Mesh3d
         {
             indices.Add(i);
         }
-        ib = Gfx.use_buffer(key + "_ib", Gfx.INDEX, indices, version);
+        ib = Gfx.use_buffer(key + "_ib", Gfx.INDEX, indices);
         indexCount = data.index_count;
     }
 

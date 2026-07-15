@@ -78,13 +78,13 @@ class Sdf19 {
 	static var renConfigured = false;
 
 	static var matcapPx:lua.Table<Int, Int> = null;
-
-	static var matcapVer = 0;
+	static var matcapTex:Dynamic = null;
+	static var matcapDirty = true;
 
 	static function remesh() {
 		mesh.rebuild(Sdf.mesh(tree, N));
 		matcapPx = makeMatcap(64); // reload と同じタイミングで作り直す
-		matcapVer++;
+		matcapDirty = true;
 		meshDirty = false;
 	}
 
@@ -166,7 +166,10 @@ class Sdf19 {
 
 		if (meshDirty)
 			remesh();
-		var matcap = Gfx.useTexture("sdf_matcap", 64, 64, Gfx.RGBA8, matcapPx, matcapVer);
+		// dirty なら変更宣言(version 省略)、そうでなければ ref.version で再主張。
+		matcapTex = Gfx.useTexture("sdf_matcap", 64, 64, Gfx.RGBA8, matcapPx, (matcapDirty || matcapTex == null) ? null : matcapTex.version);
+		matcapDirty = false;
+		var matcap = matcapTex;
 
 		if (!renConfigured) {
 			ren.background = lubx.Color.rgb(0.09, 0.09, 0.12);

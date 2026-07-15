@@ -42,6 +42,14 @@ reload の意味論は 2 方式あり、環境で決まる。
 従来方式(左列)では **static 変数の初期化子が reload のたびに再実行され、
 値は初期値に戻る**。
 
+GPU resource cache は reload を跨いで生きるので、`Gfx.use*` に渡す version
+(内容の同一性の主張)は **reload を跨いでも過去の値を再利用しない**ことを
+保証しなければならない。素朴な static / instance のローカル counter は reload
+で初期値に巻き戻ってこの保証を破り、cache に残った値と偶然一致すると更新が
+黙って skip される。保証を自分で持てない(持ちたくない)なら version を
+省略して「内容が変わった」を宣言する — 変更履歴は runtime が cache と同じ
+寿命で管理する。詳細は「描画モデル」章の version 規約を参照。
+
 ## 何が生きたまま反映されるか(C# / playground)
 
 playground の C# は判定が単純で、

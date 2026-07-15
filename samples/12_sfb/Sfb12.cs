@@ -27,7 +27,6 @@ public static class Sfb12
     const double WATER_Y = 0.12; // world height of the water plane
 
     static double tAccum = 0;
-    static int meshVersion = 0;
 
     public static void onInit()
     {
@@ -476,9 +475,7 @@ public static class Sfb12
 
         // Scene + camera.
         var scene = BuildScene(tAccum);
-        meshVersion = meshVersion + 1;
-        var sceneBuf = Gfx.use_buffer("sfb_scene", Gfx.VERTEX, scene,
-            meshVersion);
+        var sceneBuf = Gfx.use_buffer("sfb_scene", Gfx.VERTEX, scene);
         var quadBuf = Gfx.use_buffer("sfb_quad", Gfx.VERTEX, quadVerts, 1);
         var quadBufF = Gfx.use_buffer("sfb_quadF", Gfx.VERTEX, quadVertsFlip,
             1);

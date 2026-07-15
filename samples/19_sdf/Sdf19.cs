@@ -89,7 +89,8 @@ public static class Sdf19
     }
 
     static List<int>? matcapPx = null;
-    static int matcapVer = 0;
+    static TextureRef? matcapTex = null;
+    static bool matcapDirty = true;
 
     public static void onInit()
     {
@@ -105,7 +106,7 @@ public static class Sdf19
     {
         m.rebuild(Sdf.mesh(t, N));
         matcapPx = MakeMatcap(64); // reload と同じタイミングで作り直す
-        matcapVer = matcapVer + 1;
+        matcapDirty = true;
         meshDirty = false;
     }
 
@@ -210,8 +211,11 @@ public static class Sdf19
 
         if (meshDirty)
             Remesh(m, t);
-        var matcap = Gfx.use_texture("sdf_matcap", 64, 64, Gfx.RGBA8,
-            matcapPx, matcapVer);
+        // dirty なら変更宣言 (version 省略)、そうでなければ ref.version で再主張。
+        matcapTex = Gfx.use_texture("sdf_matcap", 64, 64, Gfx.RGBA8, matcapPx,
+            (matcapDirty || matcapTex == null) ? null : (int?)matcapTex.version);
+        matcapDirty = false;
+        var matcap = matcapTex;
 
         var model = Mat4.rotateY(tAccum * 0.7);
         r.begin(new Camera
