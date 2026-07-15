@@ -15,36 +15,49 @@
 ウィンドウサイズや backend の指定は `Lub.config`(または env 補完付きの
 `lubx.Boot.config`)で行う。
 
+## 駆動パターン (可変 dt と固定 tick)
+
 見た目だけの連続アニメーションは `angle += radiansPerSecond * dt` のように
 実測時間を直接使う。物理やフレーム単位のゲームルールは、render とは別の
-固定 60 Hz tick にする。1 render あたりの catch-up 回数には上限を設け、
-`keyPressed` / `mousePressed` の edge は tick が 0 回の render でも失わないよう
-先に pending 状態へ保存する。
+固定 60 Hz tick にする — `lubx.FixedStep` がこの分離を担う。
 
 ```haxe
-static inline var DT = 1.0 / 60.0;
-static inline var MAX_STEPS = 8;
-static var accumulator = 0.0;
-static var jumpPending = false;
+static var step = new FixedStep(); // 60 Hz、catch-up 上限 8
 
 public static function onFrame(dt:Float) {
-	if (Input.keyPressed(Key.Space))
-		jumpPending = true;
-	accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
-	var steps = 0;
-	while (accumulator + 1e-9 >= DT && steps++ < MAX_STEPS) {
-		simulateTick(DT, jumpPending);
-		jumpPending = false;
-		accumulator -= DT;
-	}
-	drawCurrentState();
+	step.frame(dt, tickDt -> update(step.keyPressed(Key.Space)));
+	drawCurrentState(); // render は毎フレーム
 }
 ```
 
-physics sample では `Phys2d.begin` / `Phys3d.begin`、body 宣言、force / torque、
-`step(DT)` までを同じ `simulateTick` 内に置く。これらを render ごとに実行して
+`frame()` は実測 `dt` を積み、溜まった分だけ tick を 0〜上限回実行する
+(上限超過分は捨てられ、ゲームは実時間よりゆっくり進む)。`step.keyPressed` /
+`step.mousePressed` などの edge は tick 粒度で配送され、**tick が 0 回だった
+render frame の edge も失われない**(次の tick が観測する)。tick callback は
+保持されないので、hot reload の live 反映後も次のフレームから新コードが走る。
+
+代表的な構成:
+
+| パターン | 書き方 |
+| --- | --- |
+| 全部可変(見た目デモ) | FixedStep を使わず素の `onFrame(dt)` |
+| 固定 game tick + 毎フレーム render | 上のコードの形 |
+| 物理だけ高頻度(例 240 Hz) | tick 内で整数 substep: `for (i in 0...4) Phys3d.step(world, tickDt / 4)` |
+| game は可変、物理だけ固定 | FixedStep を物理にだけ使い、game 側は `onFrame` で `dt` スケール |
+| 低頻度の系(例 20 Hz の AI) | tick カウンタの整数分周: `if (count % 3 == 0) ai()` |
+
+疎な 2 系なら FixedStep を 2 個持ってもよい(それぞれが独立に時間と edge を
+管理する)が、フレーム内の実行順は呼んだ順に「A の全 tick → B の全 tick」に
+なるため、密結合な系は 1 個の master tick からの分周で書く。
+
+physics は `Phys2d.begin` / `Phys3d.begin`、body 宣言、force / torque、
+`step(tickDt)` までを同じ tick callback 内に置く。これらを render ごとに実行して
 `step` だけ固定 tick にすると、物理 step が 0 回だった render の command が
 次の tick へ重複して蓄積する。
+
+マウス位置に依存する入力(タップ座標など)は per-frame の値なので、render 側で
+座標ごと保持して tick で消費する。edge の bool では足りないケース
+(クリック回数・押下時の座標)の実例は `18_coin_pusher` / `22_tonton` を参照。
 
 `--fixed-dt <seconds>` を付けた起動だけは、UI と `onFrame` に実測値ではなく
 指定した同じ `dt` を毎フレーム渡す。これは capture / golden / replay のための

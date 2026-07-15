@@ -85,7 +85,6 @@ public static class Sprites13
     const int W = 640;
     const int H = 480;
     const double DT = 1.0 / 60.0;
-    const int MAX_STEPS = 8;
     const int TEX_W = 80;
     const int TEX_H = 16;
     const int CELL = 16;
@@ -104,7 +103,7 @@ public static class Sprites13
     static int scoreFrame = 0;
     static bool scorePrinted = false;
     static bool useInstancing = true;
-    static double accumulator = 0.0;
+    static FixedStep? step = null;
 
     static List<Rect> spriteRects = new List<Rect>();
     static Rect? whiteRect = null;
@@ -454,16 +453,9 @@ public static class Sprites13
         }
         else
         {
-            accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
-            int steps = 0;
-            while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
-            {
-                updateSprites(fps);
-                accumulator = accumulator - DT;
-                steps = steps + 1;
-            }
-            if (accumulator < 0.0) accumulator = 0.0;
-            if (accumulator >= DT) accumulator = accumulator % DT;
+            var stepNow = step ?? new FixedStep();
+            step = stepNow;
+            stepNow.frame(dt, _ => updateSprites(fps));
         }
         Profiler.end_scope("sprites.update");
 

@@ -72,7 +72,6 @@ public static class Baseball24
     const int W = 960;
     const int H = 540;
     const double DT = 1.0 / 60.0;
-    const int MAX_STEPS = 8;
 
     // --- フィールド寸法 (m) -------------------------------------------------
     const double BASE_D = 19.4; // 塁間 27.43m の対角成分
@@ -1477,7 +1476,7 @@ public static class Baseball24
 
     // --- 描画 -----------------------------------------------------------------------
     static bool reloaded = true; // hot reload で true に戻る (19_sdf と同じトリック)
-    static double accumulator = 0.0;
+    static FixedStep? step = null;
 
     static Renderer3d? ren = null;
 
@@ -1622,16 +1621,9 @@ public static class Baseball24
             showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
         }
 
-        accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
-        int steps = 0;
-        while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
-        {
-            simulateTick();
-            accumulator = accumulator - DT;
-            steps = steps + 1;
-        }
-        if (accumulator < 0.0) accumulator = 0.0;
-        if (accumulator >= DT) accumulator = accumulator % DT;
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => simulateTick());
 
         var fs = fielders;
         var renNow = ren;

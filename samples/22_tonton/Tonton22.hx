@@ -9,6 +9,7 @@ import lub.Math.Vec4;
 import lub.Phys3d;
 import lubx.Bones;
 import lubx.Boot;
+import lubx.FixedStep;
 import lubx.Color;
 import lubx.Mesh3d;
 import lubx.MeshText;
@@ -61,7 +62,6 @@ class Tonton22 {
 	static inline var W = 640;
 	static inline var H = 360;
 	static inline var DT = 1.0 / 60.0;
-	static inline var MAX_CATCH_UP_STEPS = 8;
 
 	static inline var DOHYO_R = 2.2;
 	static inline var DOHYO_H = 0.4;
@@ -165,7 +165,7 @@ class Tonton22 {
 	static var markerZ = 0.0;
 	static var markerT = 0;
 	static var shake = 0.0;
-	static var updateAccumulator = 0.0;
+	static var step = new FixedStep();
 	static var world:Dynamic = null;
 	static var renderFrame = 0;
 	static var renderEye = new Vec3(0.0, 3.6, -5.4);
@@ -710,15 +710,7 @@ class Tonton22 {
 		var lookAt = new Vec3(0.0, 0.4, 0.0);
 
 		captureTapInput();
-		updateAccumulator = Math.min(updateAccumulator + dt, DT * MAX_CATCH_UP_STEPS);
-		var updateSteps = 0;
-		while (updateAccumulator + 1e-9 >= DT && updateSteps < MAX_CATCH_UP_STEPS) {
-			tick(aspect, size.w, size.h);
-			updateAccumulator -= DT;
-			if (updateAccumulator < 0)
-				updateAccumulator = 0;
-			updateSteps++;
-		}
+		step.frame(dt, _ -> tick(aspect, size.w, size.h));
 
 		// --- draw ---
 		// 屋外の明るい昼 (だるまの色がよく出るように空色強め)

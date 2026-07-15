@@ -7,6 +7,7 @@ import lub.Math.MathUtil;
 import lub.Math.Vec3;
 import lub.Phys3d;
 import lubx.Boot;
+import lubx.FixedStep;
 import lubx.Color;
 import lubx.Mesh3d;
 import lubx.MeshText;
@@ -38,7 +39,6 @@ class Bowling25 {
 	static inline var W = 960;
 	static inline var H = 540;
 	static inline var DT:Float = 1.0 / 60.0;
-	static inline var MAX_STEPS:Int = 8;
 
 	// --- 実寸 (m) ----------------------------------------------------------
 	static inline var LANE_HW:Float = 0.533; // レーン半幅 (41.5in)
@@ -72,7 +72,7 @@ class Bowling25 {
 	static var state = ST_AIM;
 	static var stateT = 0;
 	static var tAccum = 0.0;
-	static var accumulator = 0.0;
+	static var step = new FixedStep();
 	static var pendingPresses = 0;
 
 	// 投球パラメータ (各段階でロック)
@@ -830,17 +830,7 @@ class Bowling25 {
 			substeps: 8,
 			maxSteps: 1,
 		});
-		accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
-		var steps = 0;
-		while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
-			simulateTick(world);
-			accumulator -= DT;
-			steps++;
-		}
-		if (accumulator < 0.0)
-			accumulator = 0.0;
-		if (accumulator >= DT)
-			accumulator %= DT;
+		step.frame(dt, _ -> simulateTick(world));
 
 		// --- 描画 ---
 		// 暗めの場内 + レーン主体のライティング

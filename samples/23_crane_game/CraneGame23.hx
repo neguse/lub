@@ -8,6 +8,7 @@ import lub.Math.Vec3;
 import lub.Phys3d;
 import lub.Ui;
 import lubx.Boot;
+import lubx.FixedStep;
 import lubx.Color;
 import lubx.Mesh3d;
 import lubx.Renderer3d;
@@ -41,7 +42,6 @@ typedef Bear = {
 //   物理は球 + カプセルの複数 shape 近似。
 class CraneGame23 {
 	static inline var DT:Float = 1.0 / 60.0;
-	static inline var MAX_STEPS:Int = 8;
 
 	// --- 実寸パラメータ (フィールド 750×900mm、実機調査に基づく) ---------
 	static inline var FIELD_HX:Float = 0.375; // フィールド半幅 (X)
@@ -109,7 +109,7 @@ class CraneGame23 {
 	static var autoX:Float = 0.0;
 	static var autoZ:Float = 0.0;
 	static var slackFrames:Int = 0;
-	static var accumulator:Float = 0.0;
+	static var step = new FixedStep();
 	static var pendingPresses:Int = 0;
 	static var renderBearIndices:Array<Int> = [];
 
@@ -683,17 +683,7 @@ class CraneGame23 {
 			substeps: 8,
 			maxSteps: 1,
 		});
-		accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
-		var steps = 0;
-		while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
-			simulateTick(world);
-			accumulator -= DT;
-			steps++;
-		}
-		if (accumulator < 0.0)
-			accumulator = 0.0;
-		if (accumulator >= DT)
-			accumulator %= DT;
+		step.frame(dt, _ -> simulateTick(world));
 
 		// --- draw ---
 		// ゲームセンターの薄暗い環境 + 筐体上部からの光

@@ -46,7 +46,6 @@ public class LiveCoin
 public static class CoinPusher18
 {
     const double DT = 1.0 / 60.0;
-    const int MAX_CATCH_UP_STEPS = 8;
     const int MAX_COINS = 80;
     const double COIN_R = 0.17;
     const double COIN_H = 0.07;
@@ -64,7 +63,7 @@ public static class CoinPusher18
     static double spawnX = 0.0;
     static int payoutFlash = 0;
     static int markerPulse = 0;
-    static double updateAccumulator = 0.0;
+    static FixedStep? step = null;
     static int pendingSpawns = 0;
     static WorldRef3d? world = null;
     static List<int> renderCoinIndices = new List<int>();
@@ -517,18 +516,9 @@ public static class CoinPusher18
 
         Gfx.size(out var sw, out _);
         CaptureInput(vp, sw);
-        updateAccumulator = Math.Min(updateAccumulator + dt,
-            DT * MAX_CATCH_UP_STEPS);
-        int updateSteps = 0;
-        while (updateAccumulator + 1e-9 >= DT
-            && updateSteps < MAX_CATCH_UP_STEPS)
-        {
-            Tick();
-            updateAccumulator = updateAccumulator - DT;
-            if (updateAccumulator < 0)
-                updateAccumulator = 0;
-            updateSteps = updateSteps + 1;
-        }
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => Tick());
 
         // --- draw ---
         var gray = Color.rgb(0.42, 0.45, 0.5);

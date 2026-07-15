@@ -61,7 +61,6 @@ public static class Tonton22
     const int W = 640;
     const int H = 360;
     const double DT = 1.0 / 60.0;
-    const int MAX_CATCH_UP_STEPS = 8;
 
     const double DOHYO_R = 2.2;
     const double DOHYO_H = 0.4;
@@ -169,7 +168,7 @@ public static class Tonton22
     static double markerZ = 0.0;
     static int markerT = 0;
     static double shake = 0.0;
-    static double updateAccumulator = 0.0;
+    static FixedStep? step = null;
     static WorldRef3d? world = null;
     static int renderFrame = 0;
     // TinyC# の module static 初期化時点では Vec3 global が未登録なので、
@@ -917,18 +916,9 @@ public static class Tonton22
         var lookAt = new Vec3(0.0, 0.4, 0.0);
 
         captureTapInput();
-        updateAccumulator = Math.Min(updateAccumulator + dt,
-            DT * MAX_CATCH_UP_STEPS);
-        int updateSteps = 0;
-        while (updateAccumulator + 1e-9 >= DT
-            && updateSteps < MAX_CATCH_UP_STEPS)
-        {
-            tick(aspect, sw, sh);
-            updateAccumulator = updateAccumulator - DT;
-            if (updateAccumulator < 0)
-                updateAccumulator = 0;
-            updateSteps = updateSteps + 1;
-        }
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => tick(aspect, sw, sh));
 
         var eyeNow = renderEye;
         if (eyeNow == null)

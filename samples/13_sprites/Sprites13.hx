@@ -4,6 +4,7 @@ import lub.Profiler;
 import lubx.Atlas;
 import lubx.Boot;
 import lubx.Color;
+import lubx.FixedStep;
 import lubx.FpsMeter;
 import lubx.Rect;
 import lubx.SpriteBatch;
@@ -69,7 +70,6 @@ class Sprites13 {
 	static inline var W:Int = 640;
 	static inline var H:Int = 480;
 	static inline var DT:Float = 1.0 / 60.0;
-	static inline var MAX_STEPS:Int = 8;
 	static inline var TEX_W:Int = 80;
 	static inline var TEX_H:Int = 16;
 	static inline var CELL:Int = 16;
@@ -88,7 +88,7 @@ class Sprites13 {
 	static var scoreFrame:Int = 0;
 	static var scorePrinted:Bool = false;
 	static var useInstancing:Bool = true;
-	static var accumulator:Float = 0.0;
+	static var step = new FixedStep();
 
 	static var spriteRects:Array<Rect> = [
 		{
@@ -345,17 +345,7 @@ class Sprites13 {
 			// frame. Interactive mode below uses a real-time 60 Hz simulation.
 			updateSprites(fps);
 		} else {
-			accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
-			var steps = 0;
-			while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
-				updateSprites(fps);
-				accumulator -= DT;
-				steps++;
-			}
-			if (accumulator < 0.0)
-				accumulator = 0.0;
-			if (accumulator >= DT)
-				accumulator %= DT;
+			step.frame(dt, _ -> updateSprites(fps));
 		}
 		Profiler.endScope("sprites.update");
 

@@ -2,6 +2,7 @@ import lub.Gfx;
 import lub.Input;
 import lub.Input.Key;
 import lubx.Boot;
+import lubx.FixedStep;
 import lub.Math.Mat4;
 import lub.Math.MathUtil;
 import lub.Math.Quat;
@@ -32,7 +33,6 @@ typedef Coin = {
 // - 投入はポインタ位置へ直接 (クリック/タップ = その真下に投入)。無限に出せる。
 class CoinPusher18 {
 	static inline var DT:Float = 1.0 / 60.0;
-	static inline var MAX_CATCH_UP_STEPS:Int = 8;
 	static inline var MAX_COINS:Int = 80;
 	static inline var COIN_R:Float = 0.17;
 	static inline var COIN_H:Float = 0.07;
@@ -50,7 +50,7 @@ class CoinPusher18 {
 	static var spawnX:Float = 0.0;
 	static var payoutFlash:Int = 0;
 	static var markerPulse:Int = 0;
-	static var updateAccumulator:Float = 0.0;
+	static var step = new FixedStep();
 	static var pendingSpawns:Int = 0;
 	static var world:Dynamic = null;
 	static var renderCoinIndices:Array<Int> = [];
@@ -404,15 +404,7 @@ class CoinPusher18 {
 		var vp = ren.viewProj;
 
 		captureInput(vp, Gfx.size().w);
-		updateAccumulator = Math.min(updateAccumulator + dt, DT * MAX_CATCH_UP_STEPS);
-		var updateSteps = 0;
-		while (updateAccumulator + 1e-9 >= DT && updateSteps < MAX_CATCH_UP_STEPS) {
-			tick();
-			updateAccumulator -= DT;
-			if (updateAccumulator < 0)
-				updateAccumulator = 0;
-			updateSteps++;
-		}
+		step.frame(dt, _ -> tick());
 
 		// --- draw ---
 		var gray = Color.rgb(0.42, 0.45, 0.5);

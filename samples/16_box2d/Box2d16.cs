@@ -8,11 +8,10 @@ using System.Collections.Generic;
 public static class Box2d16
 {
     const double DT = 1.0 / 60.0;
-    const int MAX_STEPS = 8;
     const double PPM_X = 4.0;
     const double PPM_Y = 2.7;
     static int contactFlash = 0;
-    static double accumulator = 0.0;
+    static FixedStep? step = null;
 
     public static void onInit()
     {
@@ -123,16 +122,9 @@ public static class Box2d16
         });
         if (world == null) return;
 
-        accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
-        int steps = 0;
-        while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
-        {
-            Simulate(world);
-            accumulator = accumulator - DT;
-            steps = steps + 1;
-        }
-        if (accumulator < 0.0) accumulator = 0.0;
-        if (accumulator >= DT) accumulator = accumulator % DT;
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => Simulate(world));
 
         var verts = new List<double>();
         var groundPose = Phys2d.phys2d_pose(world, "ground");

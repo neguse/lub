@@ -38,7 +38,6 @@ public static class Bowling25
     const int W = 960;
     const int H = 540;
     const double DT = 1.0 / 60.0;
-    const int MAX_STEPS = 8;
 
     // --- 実寸 (m) ----------------------------------------------------------
     const double LANE_HW = 0.533; // レーン半幅 (41.5in)
@@ -72,7 +71,7 @@ public static class Bowling25
     static int state = ST_AIM;
     static int stateT = 0;
     static double tAccum = 0.0;
-    static double accumulator = 0.0;
+    static FixedStep? step = null;
     static int pendingPresses = 0;
 
     // 投球パラメータ (各段階でロック)
@@ -1010,16 +1009,9 @@ public static class Bowling25
             maxSteps = 1,
         });
         if (world == null) return;
-        accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
-        int steps = 0;
-        while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
-        {
-            simulateTick(world);
-            accumulator = accumulator - DT;
-            steps = steps + 1;
-        }
-        if (accumulator < 0.0) accumulator = 0.0;
-        if (accumulator >= DT) accumulator = accumulator % DT;
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => simulateTick(world));
         var eyeNow = camEye;
         var tgtNow = camTgt;
         if (eyeNow == null || tgtNow == null) return;

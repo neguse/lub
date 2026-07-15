@@ -80,7 +80,6 @@ public class ClawCommand
 public static class CraneGame23
 {
     const double DT = 1.0 / 60.0;
-    const int MAX_STEPS = 8;
 
     // --- 実寸パラメータ (フィールド 750×900mm、実機調査に基づく) ---------
     const double FIELD_HX = 0.375; // フィールド半幅 (X)
@@ -149,7 +148,7 @@ public static class CraneGame23
     static double autoX = 0.0;
     static double autoZ = 0.0;
     static int slackFrames = 0;
-    static double accumulator = 0.0;
+    static FixedStep? step = null;
     static int pendingPresses = 0;
     static List<int> renderBearIndices = new List<int>();
 
@@ -869,16 +868,9 @@ public static class CraneGame23
             maxSteps = 1,
         });
         if (world == null) return;
-        accumulator = accumulator + Math.Max(0.0, Math.Min(dt, DT * MAX_STEPS));
-        int steps = 0;
-        while (accumulator + 1e-9 >= DT && steps < MAX_STEPS)
-        {
-            simulateTick(world);
-            accumulator = accumulator - DT;
-            steps = steps + 1;
-        }
-        if (accumulator < 0.0) accumulator = 0.0;
-        if (accumulator >= DT) accumulator = accumulator % DT;
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.frame(dt, _ => simulateTick(world));
 
         // --- draw ---
         // ゲームセンターの薄暗い環境 + 筐体上部からの光

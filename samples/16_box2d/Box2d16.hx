@@ -1,17 +1,17 @@
 import lub.Gfx;
 import lub.Io;
 import lubx.Boot;
+import lubx.FixedStep;
 import lub.Phys2d;
 import lub.Phys2d.Pose;
 import lua.Table;
 
 class Box2d16 {
 	static inline var DT:Float = 1.0 / 60.0;
-	static inline var MAX_STEPS:Int = 8;
 	static inline var PPM_X:Float = 4.0;
 	static inline var PPM_Y:Float = 2.7;
 	static var contactFlash:Int = 0;
-	static var accumulator:Float = 0.0;
+	static var step = new FixedStep();
 
 	public static function main() {}
 
@@ -94,17 +94,7 @@ class Box2d16 {
 			substeps: 4,
 			maxSteps: 1,
 		});
-		accumulator += Math.max(0.0, Math.min(dt, DT * MAX_STEPS));
-		var steps = 0;
-		while (accumulator + 1e-9 >= DT && steps < MAX_STEPS) {
-			simulate(world);
-			accumulator -= DT;
-			steps++;
-		}
-		if (accumulator < 0.0)
-			accumulator = 0.0;
-		if (accumulator >= DT)
-			accumulator %= DT;
+		step.frame(dt, _ -> simulate(world));
 
 		var verts:Array<Float> = [];
 		var groundPose = Phys2d.pose(world, "ground");

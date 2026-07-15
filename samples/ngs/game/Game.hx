@@ -2,6 +2,7 @@ package game;
 
 import lub.Lub;
 import lubx.Boot;
+import lubx.FixedStep;
 import render.Gfx2d;
 import render.Atlas;
 import render.Font;
@@ -19,7 +20,6 @@ class Game {
 	public static inline var W:Int = 640;
 	public static inline var H:Int = 480;
 	static inline var DT:Float = 1.0 / 60.0;
-	static inline var MAX_CATCH_UP_STEPS:Int = 8;
 	public static var gfx:Gfx2d = null;
 	public static var fontAtlas:Atlas = null;
 	public static var jikiAtlas:Atlas = null;
@@ -28,7 +28,7 @@ class Game {
 	public static var font:Font = null;
 	static var input:InputSource = null;
 	static var scene:Scene = null;
-	static var updateAccumulator:Float = 0.0;
+	static var step = new FixedStep();
 	public static var frameCount:Int = 0;
 	public static var score:Int = 0;
 	public static var hiscore:Int = 0;
@@ -113,17 +113,17 @@ class Game {
 			return;
 
 		input.capture();
-		updateAccumulator = Math.min(updateAccumulator + dt, DT * MAX_CATCH_UP_STEPS);
-		var updateSteps = 0;
 		var lastDrawScene = scene;
 		var transitionScene:Scene = null;
-		while (updateAccumulator + 1e-9 >= DT && updateSteps < MAX_CATCH_UP_STEPS) {
+		step.frame(dt, _ -> {
 			// catch-up 中間の scene は、省略された draw の後と同じ位置で遷移する。
 			if (transitionScene != null) {
 				var from = transitionScene;
 				transitionScene = null;
-				if (!applyTransition(from))
-					break;
+				if (!applyTransition(from)) {
+					step.stop();
+					return;
+				}
 			}
 
 			input.refresh();
@@ -132,12 +132,7 @@ class Game {
 			lastDrawScene = updatedScene;
 			transitionScene = updatedScene;
 			frameCount++;
-
-			updateAccumulator -= DT;
-			if (updateAccumulator < 0)
-				updateAccumulator = 0;
-			updateSteps++;
-		}
+		});
 
 		gfx.beginFrame();
 		lastDrawScene.draw(gfx.drawList);
