@@ -45,7 +45,6 @@ class Text {
 	final pixels:Array<Int>;
 	final glyphs = new Map<Int, TextGlyph>();
 	final missing = new Map<Int, Bool>();
-	var version:Int = 1;
 	var penX:Int = 1;
 	var penY:Int = 1;
 	var rowH:Int = 0;
@@ -60,7 +59,7 @@ class Text {
 		ascent = m.ascent * px;
 		descent = m.descent * px;
 		lineHeight = (m.ascent - m.descent + m.line_gap) * px;
-		atlas = Atlas.fromPixels(key, atlasW, atlasH, pixels, version);
+		atlas = Atlas.fromPixels(key, atlasW, atlasH, pixels);
 	}
 
 	static function eachCodepoint(s:String, f:Int->Void) {
@@ -116,8 +115,7 @@ class Text {
 			penX += gb.w + 1;
 			if (gb.h > rowH)
 				rowH = gb.h;
-			version++;
-			atlas.updatePixels(pixels, version);
+			atlas.updatePixels(pixels);
 		}
 		g = {
 			u: u,

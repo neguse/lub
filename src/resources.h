@@ -38,11 +38,21 @@ typedef struct ResEntry {
 } ResEntry;
 
 typedef struct ResTable {
+  // Effective-version counter for "content changed" declarations (use_* with
+  // a nil version).  Lives in the table so it can never desync from the
+  // entries it versions: entry hot reloads keep both, a fresh player resets
+  // both together.
+  int64_t revision;
   ResEntry *buckets[RES_BUCKETS];
 } ResTable;
 
 void res_table_init(ResTable *t);
 void res_table_shutdown(ResTable *t);
+
+// Issues a fresh effective version for a "content changed" declaration.
+// Monotonic within the table's lifetime, so it never repeats a value a live
+// entry may still store.
+int64_t res_table_next_revision(ResTable *t);
 
 ResEntry *res_table_get(ResTable *t, const char *key);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);

@@ -70,7 +70,6 @@ class SpriteBatch {
 	var shader:Dynamic = null;
 	var quadBuf:Dynamic = null;
 	var quadData:Dynamic = null;
-	var meshVersion:Int = 0;
 
 	public function new(logicalW:Int, logicalH:Int, shaderKey:String = "lubx_sprite", bufferPrefix:String = "lubx_sprite", instanced:Bool = true) {
 		this.logicalW = logicalW;
@@ -295,7 +294,6 @@ class SpriteBatch {
 		if (instanced && quad == null)
 			return;
 
-		meshVersion = meshVersion + 1;
 		var params = lua.Table.fromArray([logicalW, logicalH, 0.0, 0.0]);
 		var blendMode = (blend < 0) ? Gfx.ALPHA : blend;
 		for (k in order) {
@@ -303,7 +301,7 @@ class SpriteBatch {
 			if (b.verts.length == 0)
 				continue;
 			if (!instanced) {
-				var vbuf = Gfx.useBuffer(bufferPrefix + "_" + k + "_verts", Gfx.VERTEX, b.verts, meshVersion);
+				var vbuf = Gfx.useBuffer(bufferPrefix + "_" + k + "_verts", Gfx.VERTEX, b.verts);
 				Gfx.draw(Std.int(b.verts.length / LEGACY_STRIDE), {
 					verts: vbuf,
 					atlas: b.atlas.texture,
@@ -316,7 +314,7 @@ class SpriteBatch {
 				});
 				continue;
 			}
-			var instances = Gfx.useBuffer(bufferPrefix + "_" + k + "_instances", Gfx.VERTEX, b.verts, meshVersion);
+			var instances = Gfx.useBuffer(bufferPrefix + "_" + k + "_instances", Gfx.VERTEX, b.verts);
 			Gfx.draw(4, {
 				verts: quad,
 				instances: instances,

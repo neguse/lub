@@ -17,6 +17,8 @@ static uint32_t hash_str(const char *s) {
 
 void res_table_init(ResTable *t) { memset(t, 0, sizeof(*t)); }
 
+int64_t res_table_next_revision(ResTable *t) { return ++t->revision; }
+
 static void res_entry_release(ResEntry *e) {
   switch (e->kind) {
   case RES_BUFFER:

@@ -11,7 +11,6 @@ public static class Box2d16
     const int MAX_STEPS = 8;
     const double PPM_X = 4.0;
     const double PPM_Y = 2.7;
-    static int meshVersion = 0;
     static int contactFlash = 0;
     static double accumulator = 0.0;
 
@@ -151,15 +150,13 @@ public static class Box2d16
             boxCount = boxCount + 1;
         }
 
-        meshVersion = meshVersion + 1;
         Io.load_text("samples/16_box2d/data/16_color.vs.slang",
             out var vs, out var vsv, out _, out _);
         Io.load_text("samples/16_box2d/data/16_color.fs.slang",
             out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return;
         var shader = Gfx.use_shader("box2d16_color", vs, fs, vsv * 31 + fsv);
-        var mesh = Gfx.use_buffer("box2d16_mesh", Gfx.VERTEX, verts,
-            meshVersion);
+        var mesh = Gfx.use_buffer("box2d16_mesh", Gfx.VERTEX, verts);
         if (shader == null || mesh == null) return;
 
         Gfx.begin_pass(new PassOpts

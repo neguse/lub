@@ -18,7 +18,8 @@ public class Atlas
     private string? path = null;
     private List<int>? pixels = null;
     private int format = 0;
-    private int version = 1;
+    private int? version = null;
+    private bool dirty = true;
     private TextureOpts? opts = null;
 
     public Atlas(string key)
@@ -34,8 +35,13 @@ public class Atlas
         return a;
     }
 
+    /// <summary>
+    /// version は内容から導ける同一性の値があるときだけ渡す (不変内容なら
+    /// 定数)。省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で
+    /// 管理する。
+    /// </summary>
     public static Atlas fromPixels(string key, int w, int h, List<int> pixels,
-        int version, TextureOpts? opts = null)
+        int? version = null, TextureOpts? opts = null)
     {
         var a = new Atlas(key);
         a.w = w;
@@ -48,13 +54,13 @@ public class Atlas
     }
 
     /// <summary>
-    /// 動的 atlas 用: ピクセル配列を差し替えて version を上げる。次の
+    /// 動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。次の
     /// ensure() で再アップロードされる (lubx.Text の glyph 追加が使う)。
     /// </summary>
-    public void updatePixels(List<int> pixels, int version)
+    public void updatePixels(List<int> pixels)
     {
         this.pixels = pixels;
-        this.version = version;
+        this.dirty = true;
     }
 
     private TextureOpts textureOpts()
@@ -70,8 +76,25 @@ public class Atlas
     {
         if (pixels != null)
         {
-            texture = Gfx.use_texture(key, w, h, format, pixels, version,
-                textureOpts());
+            if (version != null)
+            {
+                // caller 提供の同一性の値 (定数など)
+                texture = Gfx.use_texture(key, w, h, format, pixels, version,
+                    textureOpts());
+            }
+            else if (dirty || texture == null)
+            {
+                // 変更宣言: runtime が実効 version を発行して必ず upload
+                texture = Gfx.use_texture(key, w, h, format, pixels, null,
+                    textureOpts());
+                dirty = false;
+            }
+            else
+            {
+                // 再主張: 前回の実効 version で upload を skip
+                texture = Gfx.use_texture(key, w, h, format, pixels,
+                    texture.version, textureOpts());
+            }
             return true;
         }
 

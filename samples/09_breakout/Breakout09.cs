@@ -65,7 +65,6 @@ public static class Breakout09
     static double launchTimer = 0;
     static double updateAccumulator = 0;
     static bool resetPending = false;
-    static int meshVersion = 0;
 
     public static void onInit()
     {
@@ -382,10 +381,8 @@ public static class Breakout09
         if (vs == null || fs == null) return;
 
         var verts = BuildVertices();
-        meshVersion = meshVersion + 1;
         var shader = Gfx.use_shader("breakout_shader", vs, fs, vsv * 31 + fsv);
-        var vbuf = Gfx.use_buffer("breakout_verts", Gfx.VERTEX, verts,
-            meshVersion);
+        var vbuf = Gfx.use_buffer("breakout_verts", Gfx.VERTEX, verts);
         if (shader == null || vbuf == null) return;
 
         Gfx.begin_pass(new PassOpts
