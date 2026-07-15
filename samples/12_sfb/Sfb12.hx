@@ -347,8 +347,7 @@ class Sfb12 {
 
 		// Scene + camera.
 		var scene = buildScene(tAccum);
-		var meshVersion = Gfx.nextVersion();
-		var sceneBuf = Gfx.useBuffer("sfb_scene", Gfx.VERTEX, lua.Table.fromArray(scene), meshVersion);
+		var sceneBuf = Gfx.useBuffer("sfb_scene", Gfx.VERTEX, lua.Table.fromArray(scene));
 		var quadBuf = Gfx.useBuffer("sfb_quad", Gfx.VERTEX, lua.Table.fromArray(quadVerts), 1);
 		var quadBufF = Gfx.useBuffer("sfb_quadF", Gfx.VERTEX, lua.Table.fromArray(quadVertsFlip), 1);
 

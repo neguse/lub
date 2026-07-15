@@ -14,14 +14,19 @@ var shader = Gfx.useShader("cube", vs.text, fs.text, vs.version * 31 + fs.versio
 
 - `use*` 系は毎フレーム同じ `key` で呼ぶ。`version` が前フレームと同じなら
   キャッシュが返り、変わっていれば作り直される。
-- `version` にはコンテンツハッシュを渡す。`Io.load*` の返す `version` を
-  そのまま使えばよい。複数ファイルを 1 リソースに束ねるときは
-  `a.version * 31 + b.version` のような順序依存の結合を使う(XOR は
-  同一内容や入れ替えで打ち消し合う)。
-- 手続き生成データのように「内容を変更した時点」が明確なら、その時点でだけ
-  `Gfx.nextVersion()` を呼び、返った revision を `version` に使う。この値は
-  GPU resource cache と同じ寿命を持ち、entry の hot reload を跨いで単調増加
-  する。毎フレーム呼ぶ必要はない。
+- `version` は **key の内容に対する同一性の主張**。渡してよいのは内容から
+  導ける値だけ — ファイルは `Io.load*` の返す `version`(content hash)を
+  そのまま、不変内容は定数、複数ファイルを 1 リソースに束ねるときは
+  `a.version * 31 + b.version` のような順序依存の結合(XOR は同一内容や
+  入れ替えで打ち消し合う)。
+- 内容から導けない(手続き生成などで「変更履歴」が要る)場合は `version` を
+  **省略**する。省略は「内容が変わった」宣言で、runtime が新しい実効 version
+  を発行して必ず upload する。毎フレーム use する key で upload を避けたい
+  ときは、前回の戻り値 ref の `version` を渡して「変わっていない」を再主張
+  する(`lubx.Atlas` がこの形)。
+- **自前の counter を version にしない**。hot reload で巻き戻り、cache に
+  残った値との偶然の一致で更新が黙って skip される(「ライフサイクル」章
+  参照)。同じ key で方式(定数 / 省略 / hash)を混ぜない。
 - `use*` されなくなったリソースは数フレーム後に自動破棄される
   (`Lub.config` の `resource_sweep_after_frames`)。
 

@@ -90,9 +90,8 @@ class Shadow11 {
 		var meshes = buildMeshes(tAccum);
 		var casters = meshes.casters;
 		var scene = meshes.scene;
-		var meshVersion = Gfx.nextVersion();
-		var casterBuf = Gfx.useBuffer("shadow_casters", Gfx.VERTEX, lua.Table.fromArray(casters), meshVersion);
-		var sceneBuf = Gfx.useBuffer("shadow_scene", Gfx.VERTEX, lua.Table.fromArray(scene), meshVersion);
+		var casterBuf = Gfx.useBuffer("shadow_casters", Gfx.VERTEX, lua.Table.fromArray(casters));
+		var sceneBuf = Gfx.useBuffer("shadow_scene", Gfx.VERTEX, lua.Table.fromArray(scene));
 
 		var lmvp = lua.Table.fromArray(lightMvp().m);
 

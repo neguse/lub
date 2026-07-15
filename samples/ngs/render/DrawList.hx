@@ -72,12 +72,11 @@ class DrawList {
 	}
 
 	public function flush() {
-		var meshVersion = Gfx.nextVersion();
 		for (k in order) {
 			var b = buckets.get(k);
 			if (b.verts.length == 0)
 				continue;
-			var vbuf = Gfx.useBuffer("ngs_dl_" + k, Gfx.VERTEX, lua.Table.fromArray(b.verts), meshVersion);
+			var vbuf = Gfx.useBuffer("ngs_dl_" + k, Gfx.VERTEX, lua.Table.fromArray(b.verts));
 			Gfx.draw(Std.int(b.verts.length / STRIDE), {verts: vbuf, atlas: b.atlas.texture}, {
 				shader: shader,
 				depth: false,

@@ -53,7 +53,6 @@ public class Text
     private Dictionary<int, TextGlyph> glyphs =
         new Dictionary<int, TextGlyph>();
     private Dictionary<int, bool> missing = new Dictionary<int, bool>();
-    private int version = 0;
     private int penX = 1;
     private int penY = 1;
     private int rowH = 0;
@@ -73,8 +72,7 @@ public class Text
         ascent = m.ascent * px;
         descent = m.descent * px;
         lineHeight = (m.ascent - m.descent + m.line_gap) * px;
-        version = Gfx.next_version();
-        atlas = Atlas.fromPixels(key, atlasW, atlasH, pixels, version);
+        atlas = Atlas.fromPixels(key, atlasW, atlasH, pixels);
     }
 
     private static void eachCodepoint(string s, Action<int> f)
@@ -140,8 +138,7 @@ public class Text
             penX += gb.w + 1;
             if (gb.h > rowH)
                 rowH = gb.h;
-            version = Gfx.next_version();
-            atlas.updatePixels(pixels, version);
+            atlas.updatePixels(pixels);
         }
         var g = new TextGlyph
         {

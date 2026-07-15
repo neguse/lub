@@ -1,13 +1,31 @@
 package lub;
 
 /** `Gfx.useShader` / `useShaderCompute` が返す不透明ハンドル。 **/
-abstract ShaderRef(Dynamic) from Dynamic to Dynamic {}
+abstract ShaderRef(Dynamic) from Dynamic to Dynamic {
+	/** stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。 **/
+	public var version(get, never):Int;
+
+	inline function get_version():Int
+		return this.version;
+}
 
 /** `Gfx.useBuffer` が返す不透明ハンドル。 **/
-abstract BufferRef(Dynamic) from Dynamic to Dynamic {}
+abstract BufferRef(Dynamic) from Dynamic to Dynamic {
+	/** stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。 **/
+	public var version(get, never):Int;
+
+	inline function get_version():Int
+		return this.version;
+}
 
 /** `Gfx.useTexture` が返す不透明ハンドル。`Gfx.mainTex` も同型。 **/
-abstract TextureRef(Dynamic) from Dynamic to Dynamic {}
+abstract TextureRef(Dynamic) from Dynamic to Dynamic {
+	/** stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。 **/
+	public var version(get, never):Int;
+
+	inline function get_version():Int
+		return this.version;
+}
 
 /**
 	`Gfx.beginPass` のオプション。フィールド名は Lua 側の wire format
@@ -132,20 +150,35 @@ extern class Gfx {
 	// pass
 	@:native("begin_pass") public static function beginPass(opts:PassOpts):Void;
 	@:native("end_pass") public static function endPass():Void;
+
 	// resources
-	@:native("use_shader") public static function useShader(key:String, vs:String, fs:String, version:Int):ShaderRef;
-	@:native("use_shader_compute") public static function useShaderCompute(key:String, src:String, version:Int):ShaderRef;
-	// `data` is `lua.Table<Int, Float>` for VERTEX/INDEX/STORAGE-with-data,
-	// or an `Int` float-count for STORAGE-allocate-empty (compute output buffers).
-	@:native("use_buffer") public static function useBuffer(key:String, type:Int, data:Dynamic, version:Int):BufferRef;
-	@:native("use_texture") public static function useTexture(key:String, w:Int, h:Int, fmt:Int, px:Dynamic, version:Int, ?opts:TextureOpts):TextureRef;
+
+	/** version の意味論は `useBuffer` を参照。 **/
+	@:native("use_shader") public static function useShader(key:String, vs:String, fs:String, ?version:Int):ShaderRef;
+
+	/** version の意味論は `useBuffer` を参照。 **/
+	@:native("use_shader_compute") public static function useShaderCompute(key:String, src:String, ?version:Int):ShaderRef;
 
 	/**
-		手続き生成データを変更した時点で呼ぶ、player 内で単調増加する revision。
-		entry の hot reload を跨いで値を保つ。毎フレームではなく、同じ key の
-		内容を実際に変更するときだけ呼び、その `use*` の version に渡す。
+		`data` は VERTEX/INDEX/STORAGE では `lua.Table<Int, Float>`、
+		STORAGE の空確保(compute の出力バッファ)では float 個数の `Int`。
+
+		`version` は key の内容に対する「同一性の主張」。stored 値と一致すれば
+		upload/compile を skip してよい、という契約なので、渡してよいのは内容
+		から導ける値だけ — ファイルは `Io.loadText` の version(content hash)、
+		不変内容は定数、複数入力は `a.version * 31 + b.version` のような順序
+		依存の結合。内容から導けない(変更履歴が要る)場合は version を省略
+		する。省略は「内容が変わった」宣言で、runtime が新しい実効 version を
+		発行して必ず upload する。毎フレーム use する key で upload を避けたい
+		ときは、前回の戻り値 ref の `version` を渡して「変わっていない」を
+		再主張する。自前 counter を version にしてはならない(hot reload で
+		巻き戻り、stored 値との偶然の一致で更新が黙って skip される)。同じ
+		key で方式(定数 / 省略 / hash)を混ぜないこと。
 	**/
-	@:native("next_version") public static function nextVersion():Int;
+	@:native("use_buffer") public static function useBuffer(key:String, type:Int, data:Dynamic, ?version:Int):BufferRef;
+
+	/** version の意味論は `useBuffer` を参照。 **/
+	@:native("use_texture") public static function useTexture(key:String, w:Int, h:Int, fmt:Int, px:Dynamic, ?version:Int, ?opts:TextureOpts):TextureRef;
 
 	@:native("readback") public static function readback():Readback;
 	// commands

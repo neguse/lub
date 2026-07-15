@@ -42,10 +42,13 @@ reload の意味論は 2 方式あり、環境で決まる。
 従来方式(左列)では **static 変数の初期化子が reload のたびに再実行され、
 値は初期値に戻る**。
 
-そのため static / instance のローカル counter を `Gfx.use*` の version に
-直接使わない。手続き生成データは変更時に `Gfx.nextVersion()` を使う。この
-revision は GPU resource table と同じ runtime 側で管理されるため、reload で
-巻き戻らず、fresh player では cache と一緒にリセットされる。
+GPU resource cache は reload を跨いで生きるので、`Gfx.use*` に渡す version
+(内容の同一性の主張)も reload を跨いで一貫していなければならない。static /
+instance のローカル counter は reload で初期値に巻き戻り、cache に残った値と
+偶然一致すると更新が黙って skip される — だから **counter を version にしては
+ならない**。内容から version を導けない手続き生成データは version を省略して
+「内容が変わった」を宣言する(変更履歴は runtime が cache と同じ寿命で管理
+する)。詳細は「描画モデル」章の version 規約を参照。
 
 ## 何が生きたまま反映されるか(C# / playground)
 

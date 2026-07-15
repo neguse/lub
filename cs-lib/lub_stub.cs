@@ -17,19 +17,26 @@ using System.Collections.Generic;
 
 // ---------------------------------------------------------------- handles
 
-/// <summary>use_texture / main_tex の不透明ハンドル。</summary>
+/// <summary>use_texture / main_tex の不透明ハンドル。version は stored
+/// されている実効 version で、次の use_* に渡すと「変わっていない」の
+/// 再主張になる。</summary>
 public class TextureRef
 {
+    public int version;
 }
 
-/// <summary>use_shader / use_shader_compute の不透明ハンドル。</summary>
+/// <summary>use_shader / use_shader_compute の不透明ハンドル。version の
+/// 意味は TextureRef と同じ。</summary>
 public class ShaderRef
 {
+    public int version;
 }
 
-/// <summary>use_buffer の不透明ハンドル。</summary>
+/// <summary>use_buffer の不透明ハンドル。version の意味は TextureRef と
+/// 同じ。</summary>
 public class BufferRef
 {
+    public int version;
 }
 
 /// <summary>ランタイム所有のバイト列ハンドル (readback / audio_decode 等)。</summary>
@@ -157,42 +164,36 @@ public static class Gfx
     }
 
     public static ShaderRef? use_shader(string key, string vs, string fs,
-        int version)
+        int? version = null)
     {
         return null;
     }
 
     public static ShaderRef? use_shader_compute(string key, string src,
-        int version)
+        int? version = null)
     {
         return null;
     }
 
     /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
     public static BufferRef? use_buffer(string key, int type,
-        List<double> data, int version)
+        List<double> data, int? version = null)
     {
         return null;
     }
 
     /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。</summary>
     public static BufferRef? use_buffer(string key, int type, int count,
-        int version)
+        int? version = null)
     {
         return null;
     }
 
     /// <summary>px は Bytes / string / table / null。</summary>
     public static TextureRef? use_texture(string key, int w, int h, int fmt,
-        object? px, int version, TextureOpts? opts = null)
+        object? px, int? version = null, TextureOpts? opts = null)
     {
         return null;
-    }
-
-    /// <summary>手続き生成データの変更時に使う、hot reload を跨ぐ revision。</summary>
-    public static int next_version()
-    {
-        return 0;
     }
 
     public static Readback? readback()

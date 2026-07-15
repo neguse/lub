@@ -38,9 +38,10 @@ typedef struct ResEntry {
 } ResEntry;
 
 typedef struct ResTable {
-  // Last revision issued for procedural resources.  This counter has exactly
-  // the same lifetime as the cache entries it versions: entry hot reloads do
-  // not reset it, while a fresh player resets both together.
+  // Effective-version counter for "content changed" declarations (use_* with
+  // a nil version).  Lives in the table so it can never desync from the
+  // entries it versions: entry hot reloads keep both, a fresh player resets
+  // both together.
   int64_t revision;
   ResEntry *buckets[RES_BUCKETS];
 } ResTable;
@@ -48,9 +49,10 @@ typedef struct ResTable {
 void res_table_init(ResTable *t);
 void res_table_shutdown(ResTable *t);
 
-// Issues a player-local monotonic revision for procedural resource content.
-// Returns false only after exhausting the positive int64 range.
-bool res_table_next_revision(ResTable *t, int64_t *out_revision);
+// Issues a fresh effective version for a "content changed" declaration.
+// Monotonic within the table's lifetime, so it never repeats a value a live
+// entry may still store.
+int64_t res_table_next_revision(ResTable *t);
 
 ResEntry *res_table_get(ResTable *t, const char *key);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);

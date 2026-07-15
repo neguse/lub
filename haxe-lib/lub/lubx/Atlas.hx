@@ -17,7 +17,8 @@ class Atlas {
 	var pixels:Array<Int> = null;
 	var pixelTable:Dynamic = null;
 	var format:Int = 0;
-	var version:Int = 1;
+	var version:Null<Int> = null;
+	var dirty:Bool = true;
 	var opts:Dynamic = null;
 
 	public function new(key:String) {
@@ -31,7 +32,12 @@ class Atlas {
 		return a;
 	}
 
-	public static function fromPixels(key:String, w:Int, h:Int, pixels:Array<Int>, version:Int, ?opts:Dynamic):Atlas {
+	/**
+		`version` は内容から導ける同一性の値があるときだけ渡す(不変内容なら
+		定数)。省略すると「変更宣言 + ref.version 再主張」を Atlas が内部で
+		管理する。
+	**/
+	public static function fromPixels(key:String, w:Int, h:Int, pixels:Array<Int>, ?version:Int, ?opts:Dynamic):Atlas {
 		var a = new Atlas(key);
 		a.w = w;
 		a.h = h;
@@ -43,12 +49,12 @@ class Atlas {
 	}
 
 	/**
-		動的 atlas 用: ピクセル配列を差し替えて version を上げる。次の
+		動的 atlas 用: ピクセル配列を差し替えて変更を宣言する。次の
 		`ensure()` で再アップロードされる (`lubx.Text` の glyph 追加が使う)。
 	**/
-	public function updatePixels(pixels:Array<Int>, version:Int) {
+	public function updatePixels(pixels:Array<Int>) {
 		this.pixels = pixels;
-		this.version = version;
+		this.dirty = true;
 		this.pixelTable = null;
 	}
 
@@ -62,7 +68,17 @@ class Atlas {
 		if (pixels != null) {
 			if (pixelTable == null)
 				pixelTable = lua.Table.fromArray(pixels);
-			texture = Gfx.useTexture(key, w, h, format, pixelTable, version, textureOpts());
+			if (version != null) {
+				// caller 提供の同一性の値(定数など)
+				texture = Gfx.useTexture(key, w, h, format, pixelTable, version, textureOpts());
+			} else if (dirty || texture == null) {
+				// 変更宣言: runtime が実効 version を発行して必ず upload
+				texture = Gfx.useTexture(key, w, h, format, pixelTable, null, textureOpts());
+				dirty = false;
+			} else {
+				// 再主張: 前回の実効 version で upload を skip
+				texture = Gfx.useTexture(key, w, h, format, pixelTable, texture.version, textureOpts());
+			}
 			return true;
 		}
 

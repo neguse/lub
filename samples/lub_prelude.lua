@@ -14,7 +14,6 @@ Gfx = {
 	use_shader_compute = use_shader_compute,
 	use_buffer = use_buffer,
 	use_texture = use_texture,
-	next_version = next_resource_version,
 	draw = draw,
 	dispatch = dispatch,
 	readback = readback,
