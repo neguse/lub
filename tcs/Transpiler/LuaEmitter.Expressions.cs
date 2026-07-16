@@ -807,6 +807,8 @@ public partial class LuaEmitter
     private string VisitSwitchExpression(SemanticModel model,
         SwitchExpressionSyntax switchExpr)
     {
+        // 対象式は IIFE local へ一度だけ評価する。ネストした switch expression
+        // は内側 IIFE の local が shadow する。
         var governing = VisitExpression(model, switchExpr.GoverningExpression);
         var parts = new List<string>();
 
@@ -819,7 +821,7 @@ public partial class LuaEmitter
             }
             else
             {
-                var pattern = VisitPattern(model, arm.Pattern, governing);
+                var pattern = VisitPattern(model, arm.Pattern, "__tcs_sw");
                 var whenClause = arm.WhenClause != null
                     ? $" and {VisitExpression(model, arm.WhenClause.Condition)}" : "";
                 var keyword = parts.Count == 0 ? "if" : "elseif";
@@ -827,7 +829,8 @@ public partial class LuaEmitter
             }
         }
 
-        return $"(function() {string.Join(" ", parts)} end end)()";
+        return $"(function() local __tcs_sw = {governing}; " +
+            $"{string.Join(" ", parts)} end end)()";
     }
 
     // verbatim 型名 (@float) は raw syntax text に @ が残るため、pattern 経路の

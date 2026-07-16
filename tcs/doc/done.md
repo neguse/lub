@@ -835,3 +835,12 @@
 - 判断: 汎用の setup-statements + fresh temp counter 基盤は導入しなかった — `?.` は固定名 `__tcs_ca` + IIFE shadow で正しさが完結し、T151 の `__tcs_` prefix 予約が衝突を構造的に排除する。counter が必要になるのは statement 文脈 (T140 switch 等) で、その時点で消費者と一緒に導入する
 - 副産物: T180 を起票 — `v is int inner` が `getmetatable(v) == int` (未定義 global) になり nil が値型パターンにマッチする silent wrong-code を発見 (テスト作成中に検出)
 - 残課題: T180 (値型/string 型パターン)。conditional TryGetValue の default 値差異は T152 スコープ
+
+### T140: switch 対象式の一回評価とパターンラベル対応 ✓ (2026-07-17)
+- switch expression / statement の対象式を local `__tcs_sw` へ一度だけ保存し、全 case/arm/when 条件で再利用 (従来は case ごとに式文字列を複製して再評価)
+- 追加発見と修正: switch statement のパターンラベルは `CaseSwitchLabelSyntax` の OfType filter で黙って落とされ、`case > 5:` / `case 1 or 2:` が空条件の `if then` (不正 Lua) を無診断で出力していた。`CasePatternSwitchLabelSyntax` を VisitPattern + when 条件で対応し、declaration pattern の designation は is-pattern と同じく chain 前に `local c = __tcs_sw` で束縛
+- `case Circle:` (bare 型) は旧構文の定数ラベルとして parse されるため、semantic 判定で metatable 比較へ (T151 の switch expression 側と同じ扱い)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/SwitchTests.cs (+4)
+- 検証: dotnet test 517/517
+- 判断: temp は固定名 `__tcs_sw` (ネストは Lua の local shadow で正しく分離、`__tcs_` prefix は T151 で予約済み)。連続する switch statement の同名 local 再宣言は Lua で合法
+- 残課題: is-pattern (`if (Next() is Circle c)`) の receiver も binding と条件で二重評価している — T141 以降の一回評価ファミリーで扱う

@@ -320,18 +320,45 @@ public partial class LuaEmitter
 
     private void VisitSwitch(SemanticModel model, SwitchStatementSyntax switchStmt)
     {
+        // 対象式は local へ一度だけ評価する。ネストした switch は内側 block の
+        // local が shadow する。
         var governing = VisitExpression(model, switchStmt.Expression);
+        AppendLine($"local __tcs_sw = {governing}");
         var defaultSection = switchStmt.Sections
             .FirstOrDefault(s => s.Labels.Any(l => l is DefaultSwitchLabelSyntax));
         var sections = switchStmt.Sections
             .Where(s => !s.Labels.Any(l => l is DefaultSwitchLabelSyntax))
             .ToList();
+
+        // declaration pattern の designation は if chain の前で束縛する
+        // (is-pattern の VisitIf と同じ方針)
+        foreach (var label in sections
+            .SelectMany(s => s.Labels.OfType<CasePatternSwitchLabelSyntax>())
+            .Where(l => l.Pattern is DeclarationPatternSyntax
+            {
+                Designation: SingleVariableDesignationSyntax
+            }))
+        {
+            var dp = (DeclarationPatternSyntax)label.Pattern;
+            var sv = (SingleVariableDesignationSyntax)dp.Designation!;
+            AppendLine($"local {sv.Identifier.ValueText} = __tcs_sw");
+        }
+
         bool first = true;
         foreach (var section in sections)
         {
-            var conditions = section.Labels
-                .OfType<CaseSwitchLabelSyntax>()
-                .Select(l => $"{governing} == {VisitExpression(model, l.Value)}");
+            var conditions = section.Labels.Select(l => l switch
+            {
+                // `case Circle:` は旧構文の定数ラベルとして parse されるため、
+                // semantic で型と判れば metatable 比較にする
+                CaseSwitchLabelSyntax c
+                    when model.GetSymbolInfo(c.Value).Symbol is ITypeSymbol =>
+                    $"getmetatable(__tcs_sw) == {VisitExpression(model, c.Value)}",
+                CaseSwitchLabelSyntax c =>
+                    $"__tcs_sw == {VisitExpression(model, c.Value)}",
+                CasePatternSwitchLabelSyntax p => FormatPatternLabel(model, p),
+                _ => WarnUnsupported(l, $"switch label: {l.Kind()}"),
+            });
             var cond = string.Join(" or ", conditions);
             AppendLine($"{(first ? "if" : "elseif")} {cond} then");
             _indent++;
@@ -358,6 +385,15 @@ public partial class LuaEmitter
         }
 
         AppendLine("end");
+    }
+
+    private string FormatPatternLabel(SemanticModel model,
+        CasePatternSwitchLabelSyntax label)
+    {
+        var condition = VisitPattern(model, label.Pattern, "__tcs_sw");
+        return label.WhenClause != null
+            ? $"({condition} and {VisitExpression(model, label.WhenClause.Condition)})"
+            : $"({condition})";
     }
 
     private void VisitDeconstruction(SemanticModel model,

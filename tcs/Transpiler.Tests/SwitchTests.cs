@@ -131,6 +131,134 @@ public class SwitchTests
         Assert.Equal("running", result);
     }
 
+    // T140: switch の対象式は一度だけ評価される (arm/case 数に依存しない)。
+    [Fact]
+    public void SwitchExpression_GoverningExpression_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Calls;
+
+                public static int Next()
+                {
+                    Calls = Calls + 1;
+                    return 7;
+                }
+
+                public static string Test()
+                {
+                    var label = Next() switch
+                    {
+                        > 10 => "big",
+                        > 5 => "mid",
+                        _ => "small",
+                    };
+                    return $"{Calls}|{label}";
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("1|mid", result);
+    }
+
+    [Fact]
+    public void SwitchStatement_GoverningExpression_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Calls;
+
+                public static int Next()
+                {
+                    Calls = Calls + 1;
+                    return 7;
+                }
+
+                public static string Test()
+                {
+                    switch (Next())
+                    {
+                        case > 10:
+                            return $"{Calls}|big";
+                        case > 5:
+                            return $"{Calls}|mid";
+                        default:
+                            return $"{Calls}|small";
+                    }
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("1|mid", result);
+    }
+
+    // T140: switch statement のパターンラベル (relational / or / 型) は
+    // 従来空条件の不正 Lua になっていた。case 値ラベルとの混在も含めて動くこと。
+    [Fact]
+    public void SwitchStatement_PatternAndConstantLabels_Mixed()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Classify(int x)
+                {
+                    switch (x)
+                    {
+                        case 1 or 2:
+                            return "pair";
+                        case 3:
+                            return "three";
+                        case > 10:
+                            return "big";
+                        default:
+                            return "other";
+                    }
+                }
+
+                public static string Test() =>
+                    Classify(2) + "|" + Classify(3) + "|" + Classify(11) + "|" + Classify(5);
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("pair|three|big|other", result);
+    }
+
+    [Fact]
+    public void SwitchStatement_DeclarationPatternWithWhen_BindsAndMatches()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Shape { }
+            public class Circle : Shape
+            {
+                public int R;
+            }
+            public class T
+            {
+                public static string Classify(Shape s)
+                {
+                    switch (s)
+                    {
+                        case Circle c when c.R > 5:
+                            return $"big:{c.R}";
+                        case Circle:
+                            return "circle";
+                        default:
+                            return "other";
+                    }
+                }
+
+                public static string Test() =>
+                    Classify(new Circle { R = 10 }) + "|"
+                    + Classify(new Circle { R = 1 }) + "|"
+                    + Classify(new Shape());
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("big:10|circle|other", result);
+    }
+
     // 型名だけの arm は syntax 上 ConstantPattern になるが、値比較ではなく
     // metatable 比較 (型判定) として動くこと。
     [Fact]

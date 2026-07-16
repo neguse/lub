@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **式 lowering 基盤と評価回数**: T140 → T141 → T142 → T143 → T144
+1. **式 lowering 基盤と評価回数**: T141 → T142 → T143 → T144
 2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
 3. **runtime 契約**: T152 → T153
 4. **CLI / watch**: T155 → T157
@@ -38,14 +38,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T140: switch governing expression の一回評価
-- 目的: switch statement/expressionの対象式をcase/armごとに再実行しない
-- 依存: なし (T139 完了済み)
-- 作業:
-  - governing expressionをswitch開始時のlocalへ保存し、全case/pattern/whenで再利用する
-  - statementとexpression、default、property/relational patternを同じ方針へ揃える
-- 完了条件: counter付き対象式がswitch全体で1回だけ実行され、case数やdefault位置に依存しない
 
 ### T141: deconstruction RHS の一回評価
 - 目的: `var (a, b) = Make()`でRHSを要素数分呼び出す問題を直す
