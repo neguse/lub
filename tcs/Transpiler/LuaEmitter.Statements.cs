@@ -186,7 +186,8 @@ public partial class LuaEmitter
         if (TryGetCustomPropertyTarget(model, operand) is { } prop)
         {
             var target = prop.SideEffect ? "__tcs_obj" : prop.Receiver;
-            var body = $"{target}:set_{prop.Name}({target}:get_{prop.Name}() {op} 1)";
+            var body = $"{target}{prop.CallOp}set_{prop.Name}(" +
+                $"{target}{prop.CallOp}get_{prop.Name}() {op} 1)";
             AppendLine(prop.SideEffect
                 ? $"do local __tcs_obj = {prop.Receiver}; {body} end"
                 : body);

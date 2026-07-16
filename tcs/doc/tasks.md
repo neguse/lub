@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **型・メンバー意味論**: T148、並行して T149 → T150、T180
+1. **型・メンバー意味論**: T149 → T150、T180 (並行可)
 2. **runtime 契約**: T152 → T153
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
@@ -37,15 +37,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T148: static property のstorage/accessor lowering
-- 目的: static auto propertyをinstanceの`self`へ初期化し、static accessがnilになる問題を直す
-- 依存: なし (T147 完了済み)
-- 作業:
-  - static auto propertyをclass tableへ型別default/initializer付きで出力する
-  - static custom getter/setterをclass functionとして生成・呼出する
-  - instance生成の有無に関係なくstatic値が共有されることをtestする
-- 完了条件: initializer/default/read/write/custom accessorのstatic property casesがC#と一致する
 
 ### T149: 継承リンクをソース順・ファイル順から独立化
 - 目的: 派生classが基底classより先にemitされるとmetatable linkが失われる問題を直す

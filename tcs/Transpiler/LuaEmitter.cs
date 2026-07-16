@@ -159,7 +159,10 @@ public partial class LuaEmitter
                     }
                     break;
                 case PropertyDeclarationSyntax prop when IsAutoProperty(prop):
-                    fieldInits.Add((prop.Identifier.ValueText, prop.Initializer?.Value,
+                    var propTarget = prop.Modifiers.Any(SyntaxKind.StaticKeyword)
+                        ? staticFieldInits
+                        : fieldInits;
+                    propTarget.Add((prop.Identifier.ValueText, prop.Initializer?.Value,
                         model.GetTypeInfo(prop.Type).Type));
                     break;
                 case ConstructorDeclarationSyntax c:
@@ -288,13 +291,15 @@ public partial class LuaEmitter
         PropertyDeclarationSyntax prop)
     {
         var propName = prop.Identifier.ValueText;
+        // static accessor は self を取らない class function
+        var separator = prop.Modifiers.Any(SyntaxKind.StaticKeyword) ? "." : ":";
         foreach (var accessor in prop.AccessorList!.Accessors)
         {
             var (prefix, extraParam) = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
                 ? ("get_", "") : ("set_", "value");
 
             _currentType?.DefinitionKeys.Add($"{prefix}{propName}");
-            AppendLine($"function {className}:{prefix}{propName}({extraParam})");
+            AppendLine($"function {className}{separator}{prefix}{propName}({extraParam})");
             _indent++;
             if (accessor.Body != null)
                 foreach (var s in accessor.Body.Statements) VisitStatement(model, s);
@@ -315,8 +320,9 @@ public partial class LuaEmitter
         string className, PropertyDeclarationSyntax prop)
     {
         var propName = prop.Identifier.ValueText;
+        var separator = prop.Modifiers.Any(SyntaxKind.StaticKeyword) ? "." : ":";
         _currentType?.DefinitionKeys.Add($"get_{propName}");
-        AppendLine($"function {className}:get_{propName}()");
+        AppendLine($"function {className}{separator}get_{propName}()");
         _indent++;
         AppendLine($"return {VisitExpression(model, prop.ExpressionBody!.Expression)}");
         _indent--;

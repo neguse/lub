@@ -191,6 +191,64 @@ public class PropertyAccessorTests
         Assert.Equal("true|false", result);
     }
 
+    // T148: static property は instance 生成に関係なく class table 上で共有される
+    [Fact]
+    public void StaticAutoProperty_InitializerAndWrites_OnClassTable()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class Game
+            {
+                public static int Score { get; set; } = 10;
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var before = Game.Score;
+                    Game.Score = 25;
+                    Game.Score += 5;
+                    return $"{before}|{Game.Score}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("10|30", result);
+    }
+
+    [Fact]
+    public void StaticCustomProperty_AccessorsOnClassTable()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class Game
+            {
+                public static int Raw;
+
+                public static int Score
+                {
+                    get { return Raw + 1; }
+                    set { Raw = value - 1; }
+                }
+
+                public static int Doubled => Score * 2;
+
+                public static int Bump()
+                {
+                    Score = 10;
+                    return Score;
+                }
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var v = Game.Bump();
+                    Game.Score += 5;
+                    return $"{Game.Raw}|{v}|{Game.Doubled}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("14|10|30", result);
+    }
+
     [Fact]
     public void AutoProperty_StaysRawField()
     {

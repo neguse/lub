@@ -79,9 +79,12 @@ public partial class LuaEmitter
             // Instance method without explicit receiver → implicit this (self)
             return $"self:{method.Name}";
         }
-        if (symbol is IPropertySymbol { IsStatic: false } instanceProp
-            && IsCustomProperty(instanceProp))
-            return $"self:get_{id.Identifier.ValueText}()";
+        if (symbol is IPropertySymbol customProp && IsCustomProperty(customProp))
+        {
+            return customProp.IsStatic
+                ? $"{customProp.ContainingType.Name}.get_{id.Identifier.ValueText}()"
+                : $"self:get_{id.Identifier.ValueText}()";
+        }
         if (symbol is IFieldSymbol { IsStatic: false }
             or IPropertySymbol { IsStatic: false })
             return $"self.{id.Identifier.ValueText}";
@@ -557,8 +560,12 @@ public partial class LuaEmitter
                 return $"#{obj}";
 
             // custom property の読みは生成済み getter を呼ぶ (auto は raw field)
-            if (propSym is { IsStatic: false } && IsCustomProperty(propSym))
-                return $"{obj}:get_{member}()";
+            if (IsCustomProperty(propSym))
+            {
+                return propSym.IsStatic
+                    ? $"{propSym.ContainingType.Name}.get_{member}()"
+                    : $"{obj}:get_{member}()";
+            }
         }
 
         return $"{obj}.{member}";
@@ -581,22 +588,29 @@ public partial class LuaEmitter
     }
 
     // custom property への書き込み対象なら (receiver Lua, property 名,
-    // receiver に副作用があり得るか) を返す。static は T148 スコープ。
-    private (string Receiver, string Name, bool SideEffect)?
+    // receiver に副作用があり得るか, accessor 呼び出しの区切り) を返す。
+    // static accessor は class function なので `.`、instance は `:`。
+    private (string Receiver, string Name, bool SideEffect, string CallOp)?
         TryGetCustomPropertyTarget(SemanticModel model, ExpressionSyntax left)
     {
         switch (left)
         {
             case IdentifierNameSyntax id
-                when model.GetSymbolInfo(id).Symbol is IPropertySymbol
-                    { IsStatic: false } prop && IsCustomProperty(prop):
-                return ("self", id.Identifier.ValueText, false);
+                when model.GetSymbolInfo(id).Symbol is IPropertySymbol prop
+                    && IsCustomProperty(prop):
+                return prop.IsStatic
+                    ? (prop.ContainingType.Name, id.Identifier.ValueText,
+                        false, ".")
+                    : ("self", id.Identifier.ValueText, false, ":");
             case MemberAccessExpressionSyntax ma
-                when model.GetSymbolInfo(ma).Symbol is IPropertySymbol
-                    { IsStatic: false } prop && IsCustomProperty(prop):
-                return (VisitExpression(model, ma.Expression),
-                    ma.Name.Identifier.ValueText,
-                    HasSideEffectSyntax(ma.Expression));
+                when model.GetSymbolInfo(ma).Symbol is IPropertySymbol prop
+                    && IsCustomProperty(prop):
+                return prop.IsStatic
+                    ? (prop.ContainingType.Name, ma.Name.Identifier.ValueText,
+                        false, ".")
+                    : (VisitExpression(model, ma.Expression),
+                        ma.Name.Identifier.ValueText,
+                        HasSideEffectSyntax(ma.Expression), ":");
             default:
                 return null;
         }
@@ -687,26 +701,26 @@ public partial class LuaEmitter
     // あり得る場合は temp で一回評価にする。
     private string EmitPropertyAssignment(SemanticModel model,
         AssignmentExpressionSyntax assign,
-        (string Receiver, string Name, bool SideEffect) prop)
+        (string Receiver, string Name, bool SideEffect, string CallOp) prop)
     {
         var right = VisitExpression(model, assign.Right);
-        var (receiver, name, sideEffect) = prop;
+        var (receiver, name, sideEffect, callOp) = prop;
         var target = sideEffect ? "__tcs_obj" : receiver;
         var setup = sideEffect ? $"local __tcs_obj = {receiver}; " : "";
 
         string body;
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
-            body = $"{target}:set_{name}({right})";
+            body = $"{target}{callOp}set_{name}({right})";
         }
         else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
         {
-            body = $"if {target}:get_{name}() == nil then " +
-                $"{target}:set_{name}({right}) end";
+            body = $"if {target}{callOp}get_{name}() == nil then " +
+                $"{target}{callOp}set_{name}({right}) end";
         }
         else if (CompoundOperator(model, assign) is { } op)
         {
-            body = $"{target}:set_{name}({ApplyCompound(model, assign, op, $"{target}:get_{name}()", $"({right})")})";
+            body = $"{target}{callOp}set_{name}({ApplyCompound(model, assign, op, $"{target}{callOp}get_{name}()", $"({right})")})";
         }
         else
         {

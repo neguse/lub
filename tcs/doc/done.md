@@ -902,3 +902,11 @@
 - 検証: dotnet test 552/552
 - 判断: static custom property は T148 スコープとして触らず (定義側 emit 自体が instance 形式のため)。record 宣言内の custom property は既存 record 経路のまま (需要が出たら拡張)
 - 残課題: T148 (static property)
+
+### T148: static property の storage/accessor lowering ✓ (2026-07-17)
+- static auto property が instance ctor 内で `self` に初期化され、`Class.Prop` の static access が常に nil になる silent wrong-code を修正 — static field と同じ class table 初期化 (initializer / 型別 default、StaticFieldMeta による hot-apply pure 判定も共通) へ
+- static custom property の accessor を `function Class:get_X()` (instance 形式) から `function Class.get_X()` (class function) へ。読み書き・compound・increment・implicit access の全サイトで `Class.get_/set_` を dot 呼び出しする (TryGetCustomPropertyTarget に CallOp を追加)
+- 変更ファイル: Transpiler/LuaEmitter.cs, Transpiler/LuaEmitter.Expressions.cs, Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/PropertyAccessorTests.cs (+2)
+- 検証: dotnet test 554/554
+- 判断: instance 生成なしでも static 値が共有されることを initializer 読み出しで担保 (class table 初期化は型 emit 時に走る)
+- 残課題: なし
