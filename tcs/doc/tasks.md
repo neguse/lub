@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **診断契約**: T138 → T163
+1. **診断契約**: T138
 2. **Lua 命名基盤**: T151
 3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
 4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
@@ -41,15 +41,6 @@ tcs 側から直接変更しない。
   - indexed `Select((x, i) => ...)`、comparer、`StringComparison`、明示default、未実装List/Dict constructor overloadをTCS1002にする
   - 実装済みoverloadはAnalyzer / check / emitterで同じく許可されることをtest matrixで固定する
 - 完了条件: 各代表negativeがAnalyzer/checkの両方で同じTCS1002となってcheck exit 1、通常のSelect/Where等は誤検出なしで通る
-
-### T163: global:: qualifier を透過loweringする
-- 目的: `global::System.Math.Max(...)`の生成Luaは正しいのにemitter fallbackがTCS1001を出し、unsupported callでは同警告が重複する問題を直す
-- 依存: T133、T138
-- 作業:
-  - `AliasQualifiedNameSyntax`の`global::`だけをcompile-time qualifierとして透過し、extern alias等は未対応のままにする
-  - collection/API mappingがreceiver種別確定前にexpressionをvisitして不要なwarningを出さないようにする
-  - method/property/fieldとsupported/unsupported APIをAnalyzer/check/transpilerで比較する
-- 完了条件: `global::System.Math.Max/PI`がTCS1001なしで実行でき、`global::System.IO.File.ReadAllText`はTCS1002だけを1件返し、未対応aliasは明示診断される
 
 ### T139: 副作用を一度だけ評価する expression lowering 基盤
 - 目的: 式文字列の複製によるreceiver/operandの多重評価を、後続構文でも再利用できる形で止める
@@ -155,14 +146,14 @@ tcs 側から直接変更しない。
   - 基底→派生のfield initializer/constructor body順をtestする
 - 完了条件: `class B { int X = 42; } class D : B {}`の`new D().X`が42となり、constructor formが黙って別の意味にならない
 
-### T151: C# symbol から安全な Lua 名への中央マングリング
-- 目的: C#では合法な`repeat`等の名前や`@identifier`が、生成Luaをsyntax errorにする問題をなくす
-- 前提: T171でLua予約語識別子はTCS1001拒否、verbatim `@`はValueText emitになった。本タスクの残スコープは「拒否ではなくリネームで通す」中央命名器と、temp/label衝突・host wire名の一貫変換
+### T151: generated temp/label の衝突安全と emitted name 解決
+- 目的: emitter が生成する temp/label がユーザー symbol と衝突して生成 Lua の意味が変わる事故を防ぐ (T139 の fresh temp 基盤の前提)
+- 前提: Lua 予約語識別子は T171 で TCS1001 拒否、verbatim `@` は ValueText emit。「拒否ではなくリネームで通す」中央マングリングは棚卸し (2026-07-17) で見送り — 診断拒否のほうが DSL 契約として明瞭で、自動リネームは source map / 生成 Lua の可読性を損なう
 - 作業:
-  - Lua予約語、escaped identifier、generated temp/labelとの衝突を扱うsymbol-based命名器を追加する
-  - type/method/local/parameter/field/propertyと`--ref` host memberのdot/bracket accessを一貫して変換する
-  - call site、entry、hot reloadで同じemitted nameを参照できるAPIにする
-- 完了条件: `repeat`、`@end`、`self`、generated tempと衝突する名前を含むC#がvalid Luaとなり、host wire名も保持される
+  - generated temp/label (`_continue_N` 等) がスコープ内のユーザー symbol や Lua 暗黙名 (`self`) と衝突しない fresh name 生成器を追加する
+  - 型 syntax の raw 出力箇所 (`getmetatable(x) == {dp.Type}` の `@Type`) を symbol 名ベースへ統一する
+  - `--entry` 等が emitted name を参照できる API にする (T155 と共有)
+- 完了条件: generated temp / `self` と衝突する名前を含む C# が valid Lua で正しく動き、verbatim 型名が pattern 経路でも正しく emit される
 
 ### T152: empty sequence と型別 default のLINQ/runtime契約
 - 目的: `FirstOrDefault<int>`等が常にnilを返し、allowlist済みAPIが値型で実行時エラーになる問題を直す
@@ -173,14 +164,15 @@ tcs 側から直接変更しない。
   - 非nullable `First`/`Last`/`Min`/`Max`のempty/predicate missは明確なruntime errorへ揃える
 - 完了条件: empty sequenceのint=0 / bool=false / reference=nilが一致し、First/Last/Min/Maxのempty/predicate missがnil算術ではなく明示errorになる
 
-### T153: Dictionary Add / ToDictionary のduplicate key契約
-- 目的: C#では例外になるduplicate keyをLua table上書きとして黙って通さない
+### T153: ToDictionary selector の一回評価
+- 目的: key/value selector が要素ごとに複数回評価され、副作用付き selector の結果が C# とずれる問題を直す
+- 依存: T139
+- 前提: duplicate key で throw する C# 契約の再現は棚卸し (2026-07-17) で見送り — もともと不正なプログラムの挙動差であり、正しいプログラムを壊さない。`Dictionary.Add` / `ToDictionary` の duplicate は Lua 上書き挙動を既知差異として扱う
 - 作業:
-  - instance `Dictionary.Add`をraw代入ではなく`Dict.Add` helperへrouteし、既存keyで明確なLua errorを返す
-  - `ToDictionary`のkey/value selectorを各要素1回だけ評価し、duplicate時に既存値を上書きしない
-  - collection initializerのAdd形式はduplicate error、index initializer/indexer assignmentは上書き可能なまま区別する
-  - string/number keyとselector重複をsemantic testへ追加する
-- 完了条件: Add/ToDictionaryのduplicateは失敗し、indexer updateは成功する
+  - key/value selector を各要素 1 回だけ評価し、評価順 (key → value) を C# に揃える
+  - 呼出回数・順序を semantic test で固定する
+  - duplicate key の上書き挙動を support-matrix の既知差異へ記載する
+- 完了条件: 副作用付き selector の呼出回数・順序が C# と一致し、既知差異が文書化されている
 
 ---
 
@@ -242,7 +234,7 @@ tcs 側から直接変更しない。
 
 ### T161: support matrix / test evidence の最終監査
 - 目的: 一連の修正後に、実装・semantic test・support表のずれを残さない
-- 依存: T133-T160、T162-T163
+- 依存: T133-T160、T162
 - 作業:
   - 実test discovery結果を基準にcurrent/READMEの件数を更新する
   - 本レビューで修正したproperty/operator/inheritance/String/LINQ/CLIのsupport matrix記述を再監査する
@@ -252,26 +244,5 @@ tcs 側から直接変更しない。
 
 ---
 
-## 増分 module compilation(doc/incremental-module-compilation-design.md)
-
-設計・受入条件・budget の正本は design doc。ここは着手単位と gate だけを持つ。
-この track の実装オーナーは lub-main (Claude セッション)。tcs-codex への分担は
-2026-07-14 に廃止した。
-順序は T176 → T177 → T178 → T179。T172-T179 完了 (done.md、T179 は profile 判断により全項目見送り。design doc §17 M4/M5)。
-**T175 の gate(実ブラウザ warm compiler p95 275 ms 以下)を通過するまで T176 以降に着手しない。**
-
-### T176: [M2] descriptor artifact / registry vertical slice ✓
-- 依存: T175 gate 通過、T151、T155(flat 名のみの現 workload では non-blocker、design doc §17 M2 注記)
-- 内容: design doc §17 M2(pre-zero 込み declare / per-type initializers / read-only `_ENV` / 最小 ModuleRegistry / 最小 linker)
-
-### T177: [M3] transaction / full snapshot compatibility ✓
-- 依存: T176
-- 内容: design doc §17 M3(rawget/rawset transaction / commit ACK / LinkSnapshot / thin entry wrapper / T149 acceptance / T154 registry-owned cases)
-
-### T178: [M4] Wasm delta API と playground bridge ✓
-- 依存: T177
-- 内容: design doc §17 M4(JSExport 一式 / prebuilt assets / 二相 handoff / E2E gate / lub 側 integration change 一覧の doc 化と feature request 提出)
-
-### T179: [M5] optional optimization ✓ (全項目見送り)
-- 依存: T178
-- 内容: design doc §17 M5(direct apply / candidate-aware invalidation / Worker / AOT A/B)。profile が必要性を示した項目だけ着手する
+増分 module compilation track (T172-T179) は完了 (done.md)。設計の正本は
+`doc/incremental-module-compilation-design.md`。

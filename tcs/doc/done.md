@@ -788,3 +788,13 @@
 - よかったこと: 「rollback を作り込む (T154)」ではなく「使われていない機構ごと消す」で backlog を1件無効化できた
 - 判断: swap 単体でなく module 全体を削除 (watch/update/mtime は swap 専用の付属機構)。hot reload の正本は module_registry transaction (T177) と host 側 lume.hotswap に一本化
 - 残課題: なし
+
+### 残タスク棚卸し (T163 削除 / T151・T153 スコープ縮小) ✓ (2026-07-17)
+- 棚卸し基準は「check が通った C# は C# どおりに動く」への直結度と日常コードの遭遇頻度。T138-T153 の silent wrong-code 系は全て維持
+- 変更ファイル: doc/tasks.md, doc/current.md
+- 判断:
+  - T163 削除 — `global::` の生成 Lua は正しく警告が不正確なだけ (wrong-code ではない)。ゲームスクリプトで `global::` を書く実需要なし
+  - T151 縮小 — 「予約語をリネームで通す」中央マングリングは見送り (T171 の診断拒否が DSL 契約として明瞭)。残スコープは generated temp/label の衝突安全 (T139 の前提) と `@Type` raw 出力の symbol 名統一
+  - T153 縮小 — duplicate key throw 契約は見送り (不正なプログラムの挙動差で、正しいプログラムを壊さない)。ToDictionary selector の一回評価だけ残し T139 依存へ
+  - 完了済み増分 module compilation track (T172-T179) のエントリを tasks.md から削除 (done.md が正本)
+- 残課題: なし。次の着手は T138 → T151 縮小版 → T139
