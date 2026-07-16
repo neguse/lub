@@ -53,6 +53,24 @@ canvas.height = _ch;
 window._canvasWidth = _cw;
 window._canvasHeight = _ch;
 
+// Golden capture mode (web/scripts/golden-web.mjs): ?capture=<frame> で
+// wasm 側の --capture 経路を有効化する。fixed-dt は native golden
+// (scripts/run-golden.sh) と同じ値に固定し、PNG は MEMFS の /lub_golden.png
+// に出る (runner が FS.readFile で回収する)。main.c が window._lubGolden を
+// 見て LUB_GOLDEN env を立てる。
+const _captureFrame = parseInt(_q.get("capture") || "", 10);
+const GOLDEN_ARGS: string[] = Number.isFinite(_captureFrame)
+  ? [
+      "--capture",
+      "/lub_golden.png",
+      "--capture-frame",
+      String(_captureFrame),
+      "--fixed-dt",
+      "0.0166666666666667",
+    ]
+  : [];
+if (GOLDEN_ARGS.length > 0) (window as any)._lubGolden = 1;
+
 function relayLog(msg: string, level: "log" | "err" | "warn" = "log") {
   try {
     parent.postMessage({ type: "log", msg: String(msg), level }, "*");
@@ -203,7 +221,7 @@ async function startWasm() {
     // from /wasm/.
     locateFile: (path: string) => "/wasm/" + path,
     preRun: [],
-    arguments: [pendingEntry || "01_triangle"],
+    arguments: [pendingEntry || "01_triangle", ...GOLDEN_ARGS],
   };
   // Defer the editor-file overlay until AFTER emscripten's data-file
   // package has been unpacked. Otherwise `FS_createDataFile` from the

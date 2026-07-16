@@ -125,6 +125,29 @@ $res.addEventListener("change", () => {
   restart();
 });
 
+// Golden capture mode (web/scripts/golden-web.mjs): ページ URL の
+// ?golden=<frame> を iframe へ ?capture=<frame> として引き渡す。解像度は
+// golden の契約として 640x360 固定 (localStorage の preset に依存させない)。
+// __lubTest と同じく dev/test build 限定で、production には入らない。
+let goldenCaptureFrame: number | null = null;
+if (import.meta.env.DEV || import.meta.env.MODE === "test") {
+  const f = parseInt(
+    new URLSearchParams(location.search).get("golden") || "",
+    10,
+  );
+  if (Number.isFinite(f)) {
+    goldenCaptureFrame = f;
+    resW = 640;
+    resH = 360;
+  }
+}
+
+function playerSrc(): string {
+  const capture =
+    goldenCaptureFrame != null ? `&capture=${goldenCaptureFrame}` : "";
+  return `/player.html?w=${resW}&h=${resH}${capture}`;
+}
+
 $sample.addEventListener("change", async () => {
   if (anyDirty()) {
     if (!confirm("未保存の変更があります。破棄してサンプル切替しますか?")) {
@@ -352,7 +375,7 @@ async function restart() {
   if (playerIframe) playerIframe.remove();
   $log.innerHTML = "";
   playerIframe = document.createElement("iframe");
-  playerIframe.src = `/player.html?w=${resW}&h=${resH}`;
+  playerIframe.src = playerSrc();
   document.getElementById("player-mount")!.appendChild(playerIframe);
   await waitForMsg("playerReady");
 
@@ -423,7 +446,7 @@ async function restartTwoPhase(): Promise<boolean> {
   const gen = loadGen;
   $status.textContent = "restarting (two-phase)…";
   const fresh = document.createElement("iframe");
-  fresh.src = `/player.html?w=${resW}&h=${resH}`;
+  fresh.src = playerSrc();
   fresh.style.visibility = "hidden";
   fresh.style.position = "absolute";
   document.getElementById("player-mount")!.appendChild(fresh);
