@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **型パターン**: T180
+1. **型パターン**: T181 (式文脈の designation)
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
 
@@ -29,13 +29,12 @@ tcs 側から直接変更しない。
 
 ## P0: 正しさ・安全性
 
-### T180: 値型/string の型パターンが nil にマッチする問題
-- 目的: `v is int inner` が `getmetatable(v) == int` (未定義 global = nil 比較) になり、nil receiver が値型パターンにマッチして束縛される silent wrong-code を直す。`is string` も string metatable と型 table の比較で常に false になる
+### T181: 式文脈の is-pattern designation 束縛
+- 目的: ternary や式の中の `x is int v ? v : -1` で designation `v` が束縛されず nil になる silent wrong-code を直す (if 文と switch は束縛済み)
 - 作業:
-  - DeclarationPattern / TypePattern / ConstantPattern(型) の対象型が値型・string のとき、metatable 比較ではなく型別判定 (number/boolean/string の `type()` 判定、nullable 透過の receiver は `~= nil`) を emit する
-  - 型消去で判定できない組合せは TCS1001 で明示する
-  - nil / 非 nil / 型不一致の semantic test を追加する
-- 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
+  - 式文脈の IsPatternExpression designation を IIFE local で束縛するか、束縛付き is-pattern の式利用を TCS1001 で明示する
+  - ternary / bool 変数への代入 / 引数位置の各文脈を test する
+- 完了条件: 式文脈の designation が C# と同じ値になるか、明示診断される
 
 ---
 

@@ -187,6 +187,17 @@ public partial class LuaEmitter
             // ユーザー定義 operator % は __mod metamethod に委ねる
         }
 
+        // designation なしの `x is Type` は binary IsExpression として parse
+        // される。pattern 経路と同じ型判定を使う。
+        if (bin.IsKind(SyntaxKind.IsExpression))
+        {
+            var patternType = model.GetTypeInfo(bin.Right).Type;
+            var typeRef = bin.Right is TypeSyntax typeSyntax
+                ? FormatTypeReference(typeSyntax)
+                : right;
+            return $"({EmitTypeCheck(left, patternType, typeRef)})";
+        }
+
         // bool? の ?? は Lua `or` だと false も fallback してしまうため、
         // 明示 nil 判定へ下げる (左辺は一回評価、右辺は nil 時のみ)。
         // 非 bool は false を取り得ないので `or` が正しく、かつ軽い。
@@ -1097,7 +1108,15 @@ public partial class LuaEmitter
             }
         }
 
-        return $"(function() local __tcs_sw = {governing}; " +
+        // arm の declaration pattern designation (`int v => v`) は IIFE 内で
+        // 対象値へ束縛する (switch statement の chain 前束縛と同方針)
+        var bindings = string.Concat(switchExpr.Arms
+            .Select(a => a.Pattern)
+            .OfType<DeclarationPatternSyntax>()
+            .Where(dp => dp.Designation is SingleVariableDesignationSyntax)
+            .Select(dp => $"local {((SingleVariableDesignationSyntax)dp.Designation!).Identifier.ValueText} = __tcs_sw; "));
+
+        return $"(function() local __tcs_sw = {governing}; {bindings}" +
             $"{string.Join(" ", parts)} end end)()";
     }
 
@@ -1111,6 +1130,30 @@ public partial class LuaEmitter
         _ => type.ToString(),
     };
 
+    // 値型・string は Lua 側に型 table が無く getmetatable 比較だと nil が
+    // マッチする (未定義 global との nil == nil)。type() 判定にする。
+    // int/float は Lua の integer/float subtype が代入経路で揺れるため
+    // "number" 一括 (静的型が異なる組合せは C# コンパイルで弾かれる)。
+    private static string? LuaTypeNameFor(ITypeSymbol? patternType)
+    {
+        var type = UnwrapNullable(patternType);
+        if (type == null) return null;
+        if (type.SpecialType == SpecialType.System_String) return "string";
+        if (type.SpecialType == SpecialType.System_Boolean) return "boolean";
+        if (type.TypeKind == TypeKind.Enum || IsIntegralType(type)
+            || IsFloatingType(type))
+        {
+            return "number";
+        }
+        return null;
+    }
+
+    private static string EmitTypeCheck(string expr, ITypeSymbol? patternType,
+        string typeRef) =>
+        LuaTypeNameFor(patternType) is { } luaType
+            ? $"type({expr}) == \"{luaType}\""
+            : $"getmetatable({expr}) == {typeRef}";
+
     private string VisitPattern(SemanticModel model, PatternSyntax pattern,
         string governing)
     {
@@ -1119,13 +1162,15 @@ public partial class LuaEmitter
             // 型名だけの arm (Circle => ...) は syntax 上 ConstantPattern に
             // なるため、semantic で型と判れば metatable 比較にする。
             ConstantPatternSyntax cp
-                when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol =>
-                $"getmetatable({governing}) == {VisitExpression(model, cp.Expression)}",
+                when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol patType =>
+                EmitTypeCheck(governing, patType,
+                    VisitExpression(model, cp.Expression)),
             ConstantPatternSyntax cp =>
                 $"{governing} == {VisitExpression(model, cp.Expression)}",
             DiscardPatternSyntax => "true",
             DeclarationPatternSyntax dp =>
-                $"getmetatable({governing}) == {FormatTypeReference(dp.Type)}",
+                EmitTypeCheck(governing, model.GetTypeInfo(dp.Type).Type,
+                    FormatTypeReference(dp.Type)),
             RecursivePatternSyntax rp => VisitRecursivePattern(model, governing, rp),
             RelationalPatternSyntax rel =>
                 $"{governing} {RelationalOp(rel)} {VisitExpression(model, rel.Expression)}",
@@ -1150,14 +1195,16 @@ public partial class LuaEmitter
         return pattern switch
         {
             ConstantPatternSyntax cp
-                when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol =>
-                $"getmetatable({expr}) == {VisitExpression(model, cp.Expression)}",
+                when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol patType =>
+                EmitTypeCheck(expr, patType, VisitExpression(model, cp.Expression)),
             ConstantPatternSyntax cp =>
                 $"{expr} == {VisitExpression(model, cp.Expression)}",
             TypePatternSyntax tp =>
-                $"getmetatable({expr}) == {FormatTypeReference(tp.Type)}",
+                EmitTypeCheck(expr, model.GetTypeInfo(tp.Type).Type,
+                    FormatTypeReference(tp.Type)),
             DeclarationPatternSyntax dp =>
-                $"getmetatable({expr}) == {FormatTypeReference(dp.Type)}",
+                EmitTypeCheck(expr, model.GetTypeInfo(dp.Type).Type,
+                    FormatTypeReference(dp.Type)),
             UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
                 $"not ({VisitIsSubPattern(model, expr, notPat.Pattern)})",
             RelationalPatternSyntax rp =>
@@ -1178,7 +1225,10 @@ public partial class LuaEmitter
 
         // Type check: is MyType { ... }
         if (rp.Type != null)
-            conditions.Add($"getmetatable({expr}) == {FormatTypeReference(rp.Type)}");
+        {
+            conditions.Add(EmitTypeCheck(expr,
+                model.GetTypeInfo(rp.Type).Type, FormatTypeReference(rp.Type)));
+        }
 
         // Property pattern: { X: > 0, Y: < 10 }
         if (rp.PropertyPatternClause != null)

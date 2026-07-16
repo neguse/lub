@@ -943,3 +943,14 @@
 - 検証: dotnet test 566/566
 - 判断: 前提が再現しないことを test で確認してからクローズ (作り込みではなく契約の固定)
 - 残課題: なし
+
+### T180: 値型/string 型パターンの型判定修正 ✓ (2026-07-17)
+- `v is int inner` が `getmetatable(v) == int` (未定義 global との nil == nil 比較) になり、**nil が値型パターンにマッチして束縛される** silent wrong-code を修正。値型・string・enum のパターンは `type(expr) == "number"/"boolean"/"string"` 判定へ (全パターン経路: is-pattern / switch expression arm / switch statement label / recursive pattern の型部 / 型名 constant pattern)
+- int/float は Lua の integer/float subtype が代入経路で揺れるため "number" 一括判定 (静的型が違う組合せは C# コンパイルで弾かれる)。class/record は従来どおり metatable 比較
+- 追加対応1: designation なしの binary `is Type` (`s is Circle`) を新規サポート (従来は TCS1001 warning で条件が壊れていた)。T151 の残課題を解消
+- 追加対応2: switch expression の arm designation (`int v => v`) が未束縛で nil になっていた問題を IIFE 内 local 束縛で修正
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs (EmitTypeCheck / LuaTypeNameFor + 全パターンサイト), Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/TypePatternTests.cs (新規4)
+- 検証: dotnet test 570/570
+- 判断: `~= nil` ではなく type() 判定 — interface 型 receiver 等でも型不一致を検出できる。object receiver の int/float 判別は型消去の既知限界 (tcs は object 未対応なので実害なし)
+- 副産物: T181 を起票 — 式文脈 (ternary 等) の is-pattern designation が未束縛で nil になる gap を発見
+- 残課題: T181

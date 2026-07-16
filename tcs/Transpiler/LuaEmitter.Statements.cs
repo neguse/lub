@@ -442,10 +442,11 @@ public partial class LuaEmitter
             var conditions = section.Labels.Select(l => l switch
             {
                 // `case Circle:` は旧構文の定数ラベルとして parse されるため、
-                // semantic で型と判れば metatable 比較にする
+                // semantic で型と判れば型判定にする
                 CaseSwitchLabelSyntax c
-                    when model.GetSymbolInfo(c.Value).Symbol is ITypeSymbol =>
-                    $"getmetatable(__tcs_sw) == {VisitExpression(model, c.Value)}",
+                    when model.GetSymbolInfo(c.Value).Symbol is ITypeSymbol patType =>
+                    EmitTypeCheck("__tcs_sw", patType,
+                        VisitExpression(model, c.Value)),
                 CaseSwitchLabelSyntax c =>
                     $"__tcs_sw == {VisitExpression(model, c.Value)}",
                 CasePatternSwitchLabelSyntax p => FormatPatternLabel(model, p),
