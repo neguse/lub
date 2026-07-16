@@ -867,3 +867,11 @@
 - 検証: dotnet test 528/528
 - 判断: 全 lvalue を一律 temp 化せず「副作用の可能性がある場合のみ」に限定 — pure 経路の生成 Lua を変えないことで可読性と既存挙動を守る。bool の &=/|=/^= は従来どおり TCS1001
 - 残課題: expression 文脈の compound assignment (`x = (y += 1)`) は IIFE 化済みだが C# の値返し意味論の網羅テストは未整備 (需要が出たら追加)
+
+### T144: simple for 最適化の動的条件セマンティクス修正 ✓ (2026-07-17)
+- Lua numeric for は limit を一度しか評価しないため、`i < list.Count` / `i < Limit()` / body で bound や loop 変数を書き換える for が C# (毎 iteration 再評価) とずれていた。numeric for への最適化を「bound がリテラル、または関数スコープ内で再代入されない local/param」かつ「loop 変数が body 内で未書き換え」に限定し、それ以外を既存の while lowering へ fallback
+- 変更ファイル: Transpiler/LuaEmitter.Statements.cs (IsLoopInvariantBound / IsAssignedWithin), Transpiler.Tests/ForLoopTests.cs (+5)
+- 検証: dotnet test 533/533
+- 判断: 不変判定は過剰側に倒した (loop 後の再代入でも fallback) — while fallback は常に意味論的に正しく、numeric for は最適化にすぎない。field/property bound は body 内呼び出し経由の変更を追えないため一律 fallback
+- 残課題: loop 前に定義した lambda 経由の local 変更は Roslyn dataflow を使えば precision を上げられるが、syntax 走査 (lambda 内の代入も DescendantNodes で検出) で実用上は足りる
+- 注: while fallback 時の continue → incrementor 順は既存実装が C# と一致 (ラベル後に incrementor)

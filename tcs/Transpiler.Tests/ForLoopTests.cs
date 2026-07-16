@@ -244,6 +244,124 @@ public class ForLoopTests
         Assert.Equal("5", result);
     }
 
+    // T144: C# の for 条件は毎 iteration 再評価される。bound が動的な場合は
+    // Lua numeric for (limit 一回評価) に落とさず while で再評価する。
+    [Fact]
+    public void For_BoundVariableMutatedInBody_ReevaluatedEachIteration()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    var n = 3;
+                    var count = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        count = count + 1;
+                        if (i == 0) n = 5;
+                    }
+                    return count;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("5", result);
+    }
+
+    [Fact]
+    public void For_MethodCallBound_EvaluatedEachIteration()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Calls;
+
+                public static int Limit()
+                {
+                    Calls = Calls + 1;
+                    return 3;
+                }
+
+                public static string Test()
+                {
+                    var sum = 0;
+                    for (int i = 0; i < Limit(); i++)
+                    {
+                        sum = sum + i;
+                    }
+                    return $"{Calls}|{sum}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("4|3", result);
+    }
+
+    [Fact]
+    public void For_ListCountBound_TracksShrinkingList()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            using System.Collections.Generic;
+
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2, 3, 4 };
+                    var iterations = 0;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        iterations = iterations + 1;
+                        if (i == 0) list.RemoveAt(0);
+                    }
+                    return iterations;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void For_LoopVariableAssignedInBody_AffectsIteration()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    var sum = 0;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        sum = sum + i;
+                        if (i == 2) i = 4;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("8", result);
+    }
+
+    [Fact]
+    public void For_StableLocalBound_StillWorks()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    var n = 4;
+                    var sum = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        sum = sum + i;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("6", result);
+    }
+
     [Fact]
     public void DoWhile_ExecutesAtLeastOnce()
     {

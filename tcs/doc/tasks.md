@@ -15,11 +15,10 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **式 lowering 基盤と評価回数**: T144
-2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
-3. **runtime 契約**: T152 → T153
-4. **CLI / watch**: T155 → T157
-5. **保守性・文書同期**: T158 → T159 → T160 → T161
+1. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
+2. **runtime 契約**: T152 → T153
+3. **CLI / watch**: T155 → T157
+4. **保守性・文書同期**: T158 → T159 → T160 → T161
 
 lub Haxe 代替検証は breakout 級サンプルの実機動作まで完了した
 (`doc/lub-gap-analysis.md`)。以降のサンプル移植・Useful 層追加は需要駆動で切る。
@@ -38,15 +37,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T144: simple for 最適化の動的条件セマンティクス修正
-- 目的: C#では各iterationで再評価される終端条件を、Lua numeric forが一度だけ評価する差をなくす
-- 依存: なし (T139 完了済み)
-- 作業:
-  - numeric forへ落とせるloop-invariant/pureな条件を限定する
-  - method call、可変field/property、loop内で変更されるbound/loop variableを含む場合はwhile loweringへfallbackする
-  - continue時もincrementorとconditionの順序を保持する
-- 完了条件: 副作用付き/mutable boundのforが各iterationで条件を再評価し、単純な`i < n; i++`は既存最適化を維持する
 
 ### T145: C# の除算・剰余セマンティクス
 - 目的: Luaの`/`とfloor由来`%`をそのまま使うことで、整数・負数の結果がC#とずれる問題を直す

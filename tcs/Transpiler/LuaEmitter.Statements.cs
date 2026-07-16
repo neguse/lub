@@ -323,6 +323,13 @@ public partial class LuaEmitter
                 && addAssign.Right is LiteralExpressionSyntax { Token.Text: "1" });
         if (!isIncByOne) return false;
 
+        // Lua numeric for は limit を一度しか評価しないため、C# が毎 iteration
+        // 再評価する条件と一致するのは bound が loop-invariant のときだけ。
+        // それ以外 (member/call bound、関数内で再代入される local、body 内で
+        // 書き換えられる loop 変数) は while lowering へ fallback する。
+        if (!IsLoopInvariantBound(model, forStmt, cond.Right)) return false;
+        if (IsAssignedWithin(forStmt.Statement, varName)) return false;
+
         var end = VisitExpression(model, cond.Right);
         var limit = cond.Kind() switch
         {
@@ -342,6 +349,50 @@ public partial class LuaEmitter
         PopContinueLabel();
         return true;
     }
+
+    private static bool IsLoopInvariantBound(SemanticModel model,
+        ForStatementSyntax forStmt, ExpressionSyntax bound)
+    {
+        if (bound is LiteralExpressionSyntax) return true;
+        if (bound is not IdentifierNameSyntax id) return false;
+
+        // local / parameter のみ (field / property は body 内の呼び出し経由で
+        // 変わり得る)。関数スコープ内のどこかで再代入されるなら不変とみなさない
+        // (loop 後の再代入も含む過剰判定だが、fallback は常に正しい)。
+        var symbol = model.GetSymbolInfo(id).Symbol;
+        if (symbol is not (ILocalSymbol or IParameterSymbol)) return false;
+
+        var scope = forStmt.Ancestors().FirstOrDefault(a =>
+            a is BaseMethodDeclarationSyntax
+                or AccessorDeclarationSyntax
+                or AnonymousFunctionExpressionSyntax
+                or LocalFunctionStatementSyntax
+                or CompilationUnitSyntax) ?? forStmt;
+        return !IsAssignedWithin(scope, id.Identifier.ValueText);
+    }
+
+    private static bool IsAssignedWithin(SyntaxNode scope, string name) =>
+        scope.DescendantNodes().Any(n => n switch
+        {
+            AssignmentExpressionSyntax assign =>
+                assign.Left is IdentifierNameSyntax target
+                && target.Identifier.ValueText == name,
+            PostfixUnaryExpressionSyntax post
+                when post.IsKind(SyntaxKind.PostIncrementExpression)
+                    || post.IsKind(SyntaxKind.PostDecrementExpression) =>
+                post.Operand is IdentifierNameSyntax target
+                && target.Identifier.ValueText == name,
+            PrefixUnaryExpressionSyntax pre
+                when pre.IsKind(SyntaxKind.PreIncrementExpression)
+                    || pre.IsKind(SyntaxKind.PreDecrementExpression) =>
+                pre.Operand is IdentifierNameSyntax target
+                && target.Identifier.ValueText == name,
+            ArgumentSyntax arg =>
+                !arg.RefKindKeyword.IsKind(SyntaxKind.None)
+                && arg.Expression is IdentifierNameSyntax target
+                && target.Identifier.ValueText == name,
+            _ => false,
+        });
 
     private void VisitSwitch(SemanticModel model, SwitchStatementSyntax switchStmt)
     {
