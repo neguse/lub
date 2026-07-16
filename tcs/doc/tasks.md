@@ -15,13 +15,12 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **診断契約**: T138
-2. **Lua 命名基盤**: T151
-3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
-4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
-5. **runtime 契約**: T152 → T153
-6. **CLI / watch**: T155 → T157
-7. **保守性・文書同期**: T158 → T159 → T160 → T161
+1. **Lua 命名基盤**: T151
+2. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
+3. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
+4. **runtime 契約**: T152 → T153
+5. **CLI / watch**: T155 → T157
+6. **保守性・文書同期**: T158 → T159 → T160 → T161
 
 lub Haxe 代替検証は breakout 級サンプルの実機動作まで完了した
 (`doc/lub-gap-analysis.md`)。以降のサンプル移植・Useful 層追加は需要駆動で切る。
@@ -32,15 +31,6 @@ tcs 側から直接変更しない。
 ---
 
 ## P0: 正しさ・安全性
-
-### T138: supported API allowlist を完全シグネチャ単位へ変更
-- 目的: method名だけが一致する未実装overloadを許可し、runtimeで落ちる問題をなくす
-- 依存: T133、T137
-- 作業:
-  - `IMethodSymbol.OriginalDefinition`、receiver、static/reduced-extension、generic arity、parameter/ref-kind/delegate arityで許可可否を判定する
-  - indexed `Select((x, i) => ...)`、comparer、`StringComparison`、明示default、未実装List/Dict constructor overloadをTCS1002にする
-  - 実装済みoverloadはAnalyzer / check / emitterで同じく許可されることをtest matrixで固定する
-- 完了条件: 各代表negativeがAnalyzer/checkの両方で同じTCS1002となってcheck exit 1、通常のSelect/Where等は誤検出なしで通る
 
 ### T139: 副作用を一度だけ評価する expression lowering 基盤
 - 目的: 式文字列の複製によるreceiver/operandの多重評価を、後続構文でも再利用できる形で止める
@@ -157,7 +147,7 @@ tcs 側から直接変更しない。
 
 ### T152: empty sequence と型別 default のLINQ/runtime契約
 - 目的: `FirstOrDefault<int>`等が常にnilを返し、allowlist済みAPIが値型で実行時エラーになる問題を直す
-- 依存: T138、T139
+- 依存: T139
 - 作業:
   - element/result typeのdefaultをemitterからruntimeへ渡す共通経路を作る
   - `First`/`Last`のempty error、`FirstOrDefault`/`LastOrDefault`のint=0/bool=false/ref=nilを実装する
@@ -210,7 +200,7 @@ tcs 側から直接変更しない。
 
 ### T159: TinyCsComplianceFacts.cs の責務分割
 - 目的: 600行警告域に入った共有factsを、syntax/API/collection-null/formattingへ分ける
-- 依存: T133、T137、T138
+- 依存: なし (T133/T137/T138 完了済み)
 - 作業:
   - AnalyzerとTranspilerが同じsourceを参照できるproject構成を維持してpartial fileへ分割する
   - allowlistとdiagnostic formattingの重複を作らない

@@ -805,3 +805,14 @@
 - 検証: runtime のみ / runtime+prelude / prelude のみ (--no-runtime) の3構成で、stdout Lua の実行文行と stderr JSON の mapping key が一致することを Red → Green で固定
 - 判断: なし (file 出力分岐と同じ offset を渡すだけの一行修正)
 - 残課題: なし
+
+### T138: supported API allowlist を完全シグネチャ単位へ変更 ✓ (2026-07-17)
+- method 名単位だった許可判定を `OriginalDefinition` の signature display string (custom SymbolDisplayFormat: 型完全修飾 + generic type parameter + ref/out/params) の HashSet 照合へ変更。ReducedFrom で拡張メソッドを unreduced 定義に正規化
+- optional / params 引数を runtime が実装しない overload (`Split(string, StringSplitOptions)` 等) は `MaxExplicitArguments` で明示引数数に上限を設け、`Split(",")` は許可・`Split(",", StringSplitOptions.None)` は TCS1002 に分離。明示引数数は operation ではなく呼び出し syntax から数え、Analyzer と transpiler/check の判定正本を一致させた
+- property/field は family 別の小さな name set (string.Length / List.Count / Dict.Count/Keys/Values / Math.PI) に分離し、List/Dict の indexer を明示許可
+- 検出できるようになった負例: indexed `Select((x,i)=>...)`、comparer 付き OrderBy/Sort/ToDictionary、`StringComparison` 付き Contains/StartsWith (従来は引数を黙って捨てていた)、`Contains(char)`、capacity constructor、`Dictionary.Remove(k, out v)`、`FirstOrDefault(defaultValue)`、`Round(x, MidpointRounding)`、char separator の Split/Join
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, TinyCs.Analyzers/TinyCsComplianceAnalyzer.cs, Transpiler.Tests/ApiSignatureComplianceTests.cs (新規16負例+11正例), TinyCs.Analyzers.Tests/TinyCsComplianceAnalyzerTests.cs (同一 matrix の parity), README/support-matrix/current/tasks/done
+- 検証: dotnet test 500/500 + analyzer 47/47、負例 probe の `tcs check` exit 1 を実機確認。allowlist の正解データは probe compilation から display string を機械採取 (.NET 10 で `Split()`/`Join(sep, params)` が `params ReadOnlySpan<T>` overload に解決される事実を発見、推測記述を排除)
+- よかったこと: 実装前に全テスト/サンプルの API 使用 overload を監査し「テスト証拠 + runtime 実装」の交差だけを allowlist 化した。signature 文字列は手書きせず採取したので typo リスクなし
+- 判断: char overload (`Contains('a')` 等) は emitter が char を Lua string 化するため動く可能性はあるが、テスト証拠がないため許可しない (需要が出たら test とセットで追加)。診断メッセージは従来の `{Type}.{Member}` 形式を維持 (overload 情報は含めない。既存 fixture/parity の期待を変えない)
+- 残課題: なし

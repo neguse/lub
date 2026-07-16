@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T138-T161) 進行中
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (470テスト tcs / 20テスト analyzer / 477テスト lub3d)
+### 完了済み (500テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -194,13 +194,13 @@
 - `verify-inspectcode.sh` / `.ps1` で InspectCode 2026.1.3 headless の ProjectReference / local nupkg `PackageReference` consumer / severity override を再確認できる
 - `verify-rider-prechecks.sh` / `.ps1` で pre-check summary、`open-rider-demo.sh` / `.ps1` (`-NoPrecheck` あり) で Rider 起動
 - `.ps1` は pwsh 7 の read-only 自動変数 (`$IsWindows` / `$IsMacOS`) と衝突する変数名を使わない。`verify-rider-scripts.sh` の検証は `run-tests.sh` (Linux/CI) のみで行い、`run-tests.ps1` は bash を使わない
-- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported member allowlist を持ち、`Math.Cbrt`, `List.Reverse`, `Enumerable.Single` などを TCS1002 として検出する。`System.Math.Min`のような完全修飾アクセスでは中間の型qualifierをAPI memberとして重複診断しない
+- `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported API allowlist を完全シグネチャ単位で持ち、`Math.Cbrt` のような未対応 member に加えて、名前だけ一致する未実装 overload (indexed `Select((x,i)=>...)`, `Contains(char)`, `StringComparison` / comparer 付き、capacity constructor、`Split` への明示 `StringSplitOptions` など) も TCS1002 として検出する。`System.Math.Min`のような完全修飾アクセスでは中間の型qualifierをAPI memberとして重複診断しない
 
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T138-T153)。棚卸し (2026-07-17) で T154 は HotReload runtime 削除によりクローズ、T163 は削除、T151/T153 はスコープ縮小
-- 着手順: T138 (診断契約) → T151 (temp 衝突安全) → T139 の一回評価基盤から T140-T148 へ展開。継承 T149-T150 は並行可
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T139-T153)。棚卸し (2026-07-17) で T154 は HotReload runtime 削除によりクローズ、T163 は削除、T151/T153 はスコープ縮小。T138 (allowlist シグネチャ化) は完了
+- 着手順: T151 (temp 衝突安全) → T139 の一回評価基盤から T140-T148 へ展開。継承 T149-T150 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

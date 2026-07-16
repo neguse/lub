@@ -108,8 +108,13 @@ public sealed class TinyCsComplianceAnalyzer : DiagnosticAnalyzer
             _ => null,
         };
 
-        if (!TinyCsComplianceFacts.TryGetUnsupportedApi(symbol, out var apiName))
+        var explicitArgs = TinyCsComplianceFacts.CountExplicitArguments(
+            context.Operation.Syntax);
+        if (!TinyCsComplianceFacts.TryGetUnsupportedApi(symbol, explicitArgs,
+                out var apiName))
+        {
             return;
+        }
 
         context.ReportDiagnostic(Diagnostic.Create(UnsupportedApiRule,
             context.Operation.Syntax.GetLocation(), apiName));
