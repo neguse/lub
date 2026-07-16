@@ -1,9 +1,11 @@
 # Linux regression CI (PR のマージ gate)。ローカルフック頼みだった Linux 検証を
 # scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で実行する:
-#   Release build -> C smoke tests -> physics Lua tests
-#   -> lavapipe golden (scripts/run-golden.sh) -> C# sample gate
-# lavapipe は CPU ラスタライザなので GPU の無い runner でも
-# tests/golden/*_sdlgpu.png と byte 一致する。
+#   Release build -> C smoke tests -> physics Lua tests -> C# sample gate
+# 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は
+# mesa の version に依存し (filtering の LSB 差、PR #9 で実測 max delta 1-2)、
+# runner の mesa 24 系はローカル (Arch, mesa 25 系) 生成の golden と一致しない。
+# CI の視覚 golden gate は windows.yml (WARP)、lavapipe golden はローカル
+# pre-push の gate。mesa を container 等で pin できたらここでも有効化する。
 name: linux
 
 on:
@@ -61,11 +63,11 @@ jobs:
           echo "LUB_HAXE=$HOME/haxe5/haxe" >> "$GITHUB_ENV"
           echo "$HOME/haxe5" >> "$GITHUB_PATH"
 
-      - name: Native gate (build, smokes, physics Lua, goldens, C# samples)
+      - name: Native gate (build, smokes, physics Lua, C# samples)
         run: |
           export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
           mkdir -p "$TMPDIR"
-          bash scripts/native-gate.sh --require-cs
+          bash scripts/native-gate.sh --require-cs --skip-golden
 
       - name: Upload golden failure artifacts
         if: failure()

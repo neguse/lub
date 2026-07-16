@@ -9,10 +9,12 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 require_cs=0
-case "${1:-}" in
-  -h|--help)
-    cat <<'EOF'
-Usage: scripts/native-gate.sh [--require-cs]
+skip_golden=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      cat <<'EOF'
+Usage: scripts/native-gate.sh [--require-cs] [--skip-golden]
 
 Runs the native regression gate:
   Release build, C smoke tests, physics Lua tests, visual goldens
@@ -20,19 +22,27 @@ Runs the native regression gate:
 
 --require-cs makes a missing C# toolchain (dotnet / third_party/tcs) an
 error instead of a skip; CI passes it so the gate cannot silently narrow.
+--skip-golden skips the visual golden byte-compares. lavapipe output is
+mesa-version-dependent (filtering LSB differences), so the compare only
+holds where goldens were generated; linux CI passes this until its mesa
+is pinned. C# sample captures still run (crash coverage), only cmp is
+skipped.
 EOF
-    exit 0
-    ;;
-  --require-cs)
-    require_cs=1
-    ;;
-  "")
-    ;;
-  *)
-    echo "unknown arg: $1" >&2
-    exit 2
-    ;;
-esac
+      exit 0
+      ;;
+    --require-cs)
+      require_cs=1
+      ;;
+    --skip-golden)
+      skip_golden=1
+      ;;
+    *)
+      echo "unknown arg: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 timeout_cmd=()
 if command -v timeout >/dev/null 2>&1; then
@@ -110,7 +120,12 @@ if [[ $physics_failed -ne 0 ]]; then
   exit 1
 fi
 
-run_timed env BINARY="$native_binary" scripts/run-golden.sh
+if [[ $skip_golden -eq 0 ]]; then
+  run_timed env BINARY="$native_binary" scripts/run-golden.sh
+else
+  echo
+  echo "==> visual goldens SKIPPED (--skip-golden: mesa-version-dependent)"
+fi
 
 # C# (tcs) サンプル: dotnet と third_party/tcs submodule があるときだけ、
 # .cs entry を持つ全サンプルを check + build + golden 比較する。
@@ -143,7 +158,9 @@ if command -v dotnet >/dev/null 2>&1 \
       --fixed-dt 0.0166666666666667
     # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
     # golden が無いサンプルも capture 実行までは検証される (クラッシュ検出)。
-    if [[ -f "tests/golden/${cs_name}_cs_sdlgpu.png" ]]; then
+    if [[ $skip_golden -eq 1 ]]; then
+      echo "==> golden cmp skipped (--skip-golden): ${cs_name}"
+    elif [[ -f "tests/golden/${cs_name}_cs_sdlgpu.png" ]]; then
       run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
     else
       echo "==> golden skip (nondeterministic): ${cs_name}"
