@@ -419,4 +419,19 @@ function Random.Range(min, max)
   return math.random(min, max)
 end
 
+-- C# integer division / remainder (0 方向 truncation、剰余は被除数の符号)。
+-- Lua の // と % は floor 由来で負数の結果が C# とずれるため、生成コードは
+-- __tcs_idiv / __tcs_irem global 経由でこちらを使う。
+function TinySystem.idiv(a, b)
+  local q = a // b
+  if a % b ~= 0 and (a < 0) ~= (b < 0) then
+    q = q + 1
+  end
+  return q
+end
+
+function TinySystem.irem(a, b)
+  return a - TinySystem.idiv(a, b) * b
+end
+
 return TinySystem

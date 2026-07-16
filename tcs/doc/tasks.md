@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
+1. **型・メンバー意味論**: T146 → T147 → T148、並行して T149 → T150、T180
 2. **runtime 契約**: T152 → T153
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
@@ -37,15 +37,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T145: C# の除算・剰余セマンティクス
-- 目的: Luaの`/`とfloor由来`%`をそのまま使うことで、整数・負数の結果がC#とずれる問題を直す
-- 依存: なし (T143 完了済み)
-- 作業:
-  - operand/result typeから整数除算、浮動小数除算、C# remainderを判定する
-  - 0方向truncationと`a - trunc(a / b) * b`相当をruntime helperまたは安全なloweringで実装する
-  - `/=` / `%=`、正負の組合せ、整数0除算errorと浮動小数のIEEE結果を型別に扱う
-- 完了条件: `5 / 2 == 2`、`-5 / 2 == -2`、`-5 % 2 == -1`となり、整数/浮動小数の0除算とcompound casesもC#期待値に一致する
 
 ### T146: nullable bool と GetValueOrDefault のnil-safe lowering
 - 目的: Luaの`or`が`false`もfallback扱いするため、nullable boolの値を壊す問題を直す

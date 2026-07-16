@@ -165,6 +165,22 @@ public partial class LuaEmitter
     {
         var left = VisitExpression(model, bin.Left);
         var right = VisitExpression(model, bin.Right);
+
+        // C# の整数除算/剰余は 0 方向 truncation、float 剰余も truncated。
+        // Lua の / (実数) と % (floor) では負数・整数の結果がずれる。
+        if (bin.IsKind(SyntaxKind.DivideExpression)
+            && IsIntegralType(model.GetTypeInfo(bin).Type))
+        {
+            return $"__tcs_idiv({left}, {right})";
+        }
+        if (bin.IsKind(SyntaxKind.ModuloExpression))
+        {
+            var type = model.GetTypeInfo(bin).Type;
+            if (IsIntegralType(type)) return $"__tcs_irem({left}, {right})";
+            if (IsFloatingType(type)) return $"math.fmod({left}, {right})";
+            // ユーザー定義 operator % は __mod metamethod に委ねる
+        }
+
         var isStringConcat = bin.Kind() == SyntaxKind.AddExpression &&
             (model.GetTypeInfo(bin.Left).Type?.SpecialType == SpecialType.System_String ||
              model.GetTypeInfo(bin.Right).Type?.SpecialType == SpecialType.System_String ||
@@ -564,13 +580,52 @@ public partial class LuaEmitter
 
         if (lowered is { } l)
         {
-            return $"(function() {l.Setup}{l.Access} = {l.Access} {op} ({right}); " +
+            return $"(function() {l.Setup}" +
+                $"{CompoundWrite(model, assign, op, l.Access, $"({right})")}; " +
                 $"return {l.Access} end)()";
         }
 
         var left = VisitExpression(model, assign.Left);
-        return $"{left} = {left} {op} {right}";
+        return CompoundWrite(model, assign, op, left, right);
     }
+
+    // 整数の /= と %=、float の %= は infix では C# 意味論にならないため
+    // helper 呼び出しへ書き換える (T145 と同じ判定)。
+    private string CompoundWrite(SemanticModel model,
+        AssignmentExpressionSyntax assign, string op, string access, string right)
+    {
+        var type = model.GetTypeInfo(assign.Left).Type;
+        return op switch
+        {
+            "/" when IsIntegralType(type) =>
+                $"{access} = __tcs_idiv({access}, {right})",
+            "%" when IsIntegralType(type) =>
+                $"{access} = __tcs_irem({access}, {right})",
+            "%" when IsFloatingType(type) =>
+                $"{access} = math.fmod({access}, {right})",
+            _ => $"{access} = {access} {op} {right}",
+        };
+    }
+
+    private static bool IsFloatingType(ITypeSymbol? type) =>
+        UnwrapNullable(type)?.SpecialType is SpecialType.System_Single
+            or SpecialType.System_Double;
+
+    private static bool IsIntegralType(ITypeSymbol? type) =>
+        UnwrapNullable(type)?.SpecialType is SpecialType.System_Int32
+            or SpecialType.System_Int64
+            or SpecialType.System_Int16
+            or SpecialType.System_SByte
+            or SpecialType.System_Byte
+            or SpecialType.System_UInt16
+            or SpecialType.System_UInt32
+            or SpecialType.System_UInt64;
+
+    private static ITypeSymbol? UnwrapNullable(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+            ? named.TypeArguments[0]
+            : type;
 
     // compound assignment の Lua 演算子。string の += は Lua `+` だと実行時
     // エラーになるため `..` にする。bool の &=/|=/^= は未対応 (null → 診断)。

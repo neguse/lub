@@ -875,3 +875,12 @@
 - 判断: 不変判定は過剰側に倒した (loop 後の再代入でも fallback) — while fallback は常に意味論的に正しく、numeric for は最適化にすぎない。field/property bound は body 内呼び出し経由の変更を追えないため一律 fallback
 - 残課題: loop 前に定義した lambda 経由の local 変更は Roslyn dataflow を使えば precision を上げられるが、syntax 走査 (lambda 内の代入も DescendantNodes で検出) で実用上は足りる
 - 注: while fallback 時の continue → incrementor 順は既存実装が C# と一致 (ラベル後に incrementor)
+
+### T145: C# の除算・剰余セマンティクス ✓ (2026-07-17)
+- 整数 `/` が Lua 実数除算 (5/2=2.5)、`%` が floor 剰余 (-5%2=1) になっていた silent wrong-code を修正。結果型が整数のとき `__tcs_idiv` (0 方向 truncation) / `__tcs_irem` (被除数符号)、float の `%` は `math.fmod` (C# の truncated remainder と一致)。compound `/=` `%=` も同判定。nullable は lifted operator 用に unwrap して判定
+- helper は生成 Lua 冒頭に chunk-local で常時定義 (言語 lowering であり `--no-runtime` の bare 出力でも動く)。module mode の define chunk は同名 global (`_G.__tcs_idiv` — bootstrap が runtime の `TinySystem.idiv/irem` を alias) へ fallback
+- ユーザー定義 operator `%` は従来どおり Lua `%` (__mod metamethod)。整数 0 除算は Lua の `n // 0` エラーで明示 fail、float /0 は IEEE inf のまま
+- 変更ファイル: Transpiler/LuaEmitter.cs (header helper), Transpiler/LuaEmitter.Expressions.cs, runtime/tinysystem.lua (TinySystem.idiv/irem), Transpiler/ModuleArtifacts.cs (bootstrap alias), Transpiler.Tests/DivisionSemanticTests.cs (新規6)
+- 検証: dotnet test 539/539 (sourcemap / module descriptor / operator overload の回帰なし)
+- 判断: helper を usage 検出で条件 emit せず常時 emit — 出力 +8 行のコストで、emit 中に記録する type range / source map の後方 shift 問題を構造的に回避。int.MinValue / -1 の overflow 例外は再現しない (Lua は wrap) — 既知差異
+- 残課題: なし
