@@ -1112,9 +1112,10 @@ public partial class LuaEmitter
                 overrides.Add($"__tcs_copy.{id.Identifier.ValueText} = {value}");
             }
         }
-        return $"(function() local __tcs_copy = {{}}; " +
-               $"for k,v in pairs({obj}) do __tcs_copy[k] = v end; " +
-               $"setmetatable(__tcs_copy, getmetatable({obj})); " +
+        // copy 元は一度だけ評価する (table 走査と metatable 取得で共用)
+        return $"(function() local __tcs_src = {obj}; local __tcs_copy = {{}}; " +
+               $"for k,v in pairs(__tcs_src) do __tcs_copy[k] = v end; " +
+               $"setmetatable(__tcs_copy, getmetatable(__tcs_src)); " +
                $"{string.Join("; ", overrides)}; " +
                $"return __tcs_copy end)()";
     }

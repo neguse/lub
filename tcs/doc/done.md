@@ -852,3 +852,10 @@
 - 検証: dotnet test 520/520
 - 判断: temp は固定名 `__tcs_dec` (T151 の prefix 予約 + ブロック内 local 再宣言は Lua 合法)。ValueTuple swap `(a,b)=(b,a)` は RHS の TupleExpression が従来どおり TCS1001 (tuple 型自体が未対応)
 - 残課題: なし
+
+### T142: with 式 receiver の一回評価 ✓ (2026-07-17)
+- with 式の copy 元式が shallow copy の table 走査と metatable 取得の2箇所に複製されていた多重評価を、IIFE local `__tcs_src` への一回保存に変更
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/Phase14to19Tests.cs (+2: 副作用 receiver 一回 / copy の非破壊性と metatable 保持)
+- 検証: dotnet test 522/522
+- 判断: override の適用順は既存実装が構文順で C# と一致済み (テストで担保)
+- 残課題: なし

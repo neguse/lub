@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **式 lowering 基盤と評価回数**: T142 → T143 → T144
+1. **式 lowering 基盤と評価回数**: T143 → T144
 2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
 3. **runtime 契約**: T152 → T153
 4. **CLI / watch**: T155 → T157
@@ -38,14 +38,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T142: with expression receiver の一回評価
-- 目的: copy元の式をtable走査とmetatable取得で複数回評価しない
-- 依存: なし (T139 完了済み)
-- 作業:
-  - receiverをlocalへ保存し、shallow copyとmetatable取得の双方で再利用する
-  - override式のC#評価順をtestで固定する
-- 完了条件: 副作用付きreceiverが1回だけ実行され、copy元identityとoverride順がC#と一致する
 
 ### T143: assignment/lvalue の一回評価とcompound semantics
 - 目的: indexer/property/receiverをcompound assignment、`??=`、increment、collection mutationで重複評価しない

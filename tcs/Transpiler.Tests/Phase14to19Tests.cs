@@ -136,6 +136,54 @@ public class Phase14to19Tests
         Assert.Equal("7", result);
     }
 
+    // ===== T142: with expression receiver の一回評価 =====
+
+    [Fact]
+    public void With_SideEffectReceiver_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record Point(int X, int Y);
+            public class T
+            {
+                public static int Calls;
+
+                public static Point Make()
+                {
+                    Calls = Calls + 1;
+                    return new Point(1, 2);
+                }
+
+                public static string Test()
+                {
+                    var moved = Make() with { X = 10 };
+                    return $"{Calls}|{moved.X},{moved.Y}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1|10,2", result);
+    }
+
+    [Fact]
+    public void With_CopyDoesNotMutateSource_AndKeepsType()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record Point(int X, int Y)
+            {
+                public int Sum() => X + Y;
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var p = new Point(1, 2);
+                    var q = p with { X = 10 };
+                    return $"{p.X}|{q.X}|{q.Sum()}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1|10|12", result);
+    }
+
     // ===== T141: deconstruction RHS の一回評価 =====
 
     [Fact]
