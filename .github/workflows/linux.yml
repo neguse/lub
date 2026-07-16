@@ -1,0 +1,76 @@
+# Linux regression CI (PR のマージ gate)。ローカルフック頼みだった Linux 検証を
+# scripts/native-gate.sh (CI と手動 pre-push の単一ソース) で実行する:
+#   Release build -> C smoke tests -> physics Lua tests
+#   -> lavapipe golden (scripts/run-golden.sh) -> C# sample gate
+# lavapipe は CPU ラスタライザなので GPU の無い runner でも
+# tests/golden/*_sdlgpu.png と byte 一致する。
+name: linux
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # CMake configure が slang の prebuilt (~150MB) を落とすのでキャッシュする。
+      # key は取得 URL を持つ CMakeLists.txt に紐付け。
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
+      # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓、
+      # neko = haxelib (install-haxe5.sh) のランタイム。
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build libvulkan-dev mesa-vulkan-drivers xvfb neko \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev \
+            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libdbus-1-dev libudev-dev
+
+      # C# sample gate 用。native-gate.sh --require-cs が skip を fail 扱いにする。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # golden と haxe_build_smoke がサンプルの .hxml を起動時にコンパイルする。
+      - name: Install Haxe 5 + haxelib dev lub
+        run: |
+          scripts/install-haxe5.sh "$HOME/haxe5"
+          echo "LUB_HAXE=$HOME/haxe5/haxe" >> "$GITHUB_ENV"
+          echo "$HOME/haxe5" >> "$GITHUB_PATH"
+
+      - name: Native gate (build, smokes, physics Lua, goldens, C# samples)
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/native-gate.sh --require-cs
+
+      - name: Upload golden failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failure-linux
+          path: ${{ runner.temp }}/native-gate-tmp
+          if-no-files-found: ignore
