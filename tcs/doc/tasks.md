@@ -33,15 +33,6 @@ tcs 側から直接変更しない。
 
 ## P2: 保守性・ドキュメント
 
-### T158: LuaEmitter.Expressions.cs の責務分割
-- 目的: 800行禁止を超えたemitterを、変更競合と意味論漏れを起こしにくい単位へ分ける
-- 依存: T139-T148、T151-T153
-- 作業:
-  - operator/assignment、invocation/API mapping、object/collection、pattern/null/lambda等のpartial fileへ分割する
-  - mapping tableとfresh-temp/lvalue helperの所有箇所を一意にする
-  - behavior/source mapに差分がないことを全testで確認する
-- 完了条件: 各C# sourceが600行以下を目安とし、少なくとも800行未満になる
-
 ### T159: TinyCsComplianceFacts.cs の責務分割
 - 目的: 600行警告域に入った共有factsを、syntax/API/collection-null/formattingへ分ける
 - 依存: なし (T133/T137/T138 完了済み)

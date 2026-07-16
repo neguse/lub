@@ -977,3 +977,10 @@
 - 検証: dotnet test 578/578
 - 判断: 出力 (.lua) と prelude が同居しても、対象判定が exact path なので self-trigger loop にならない
 - 残課題: なし
+
+### T158: LuaEmitter.Expressions.cs の責務分割 ✓ (2026-07-17)
+- 800 行禁止を大きく超えていた LuaEmitter.Expressions.cs (1565 行) を責務別 partial へ分割: Expressions (dispatcher / literal / operator / assignment / lvalue helper、580 行)、Invocations (invocation / collection・string・Math API mapping / member access、406 行)、Patterns (pattern / 型判定 / switch 式 / null 条件アクセス / lambda、400 行)、Objects (object・collection・array 生成 / initializer / with / 補間、244 行)
+- 変更ファイル: Transpiler/LuaEmitter.{Expressions,Invocations,Objects,Patterns}.cs
+- 検証: dotnet test 578/578 (behavior / source map 差分なし — 出力生成コードは無変更のテキスト移動)
+- 判断: temp/lvalue helper (TryLowerLvalue / HasSideEffectSyntax / ApplyCompound) は assignment 系と同じ Expressions に置き所有を一意化。mapping table (ListRuntimeMethods) も Expressions 先頭に集約
+- 残課題: なし

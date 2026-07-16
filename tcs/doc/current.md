@@ -77,6 +77,7 @@
 **T181**: 式文脈の is-pattern designation 束縛 — ternary / 複合条件 (`is Circle c && c.R > 5`) / lambda 内の designation を statement/lambda 前の local 宣言 + IIFE 内一回評価代入で束縛 (従来は if 文直下のみ。receiver の二重評価も解消)
 **T155**: --entry の実 emitted 名一致 — metadata 名 → 一意な simple 名の順で解決し、emitted 名 (namespace 透過の simple 名) を return。interface / ref-only / 曖昧 simple 名 / 非 class は exit 1 (従来は `Game.App` 指定で存在しない Lua 名を返して成功扱い)
 **T157**: watch の --prelude dependency 監視 — prelude を input/--ref と同じ監視集合へ (filter を `*.cs` 固定から `*.*` + exact path 判定へ)。削除イベントも rebuild を起こし missing dependency として報告
+**T158**: LuaEmitter.Expressions.cs (1565行) を責務別 partial へ分割 — Expressions (dispatcher/operator/assignment/lvalue) / Invocations (API mapping) / Objects (生成・initializer・補間) / Patterns (pattern/null 条件/lambda)。全ファイル 600 行以下
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -223,7 +224,7 @@
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
 - P0 正しさレビュー backlog (T138-T153) + T180/T181 は全て完了。既知の silent wrong-code は解消済み
-- 残タスクは P2 保守性のみ (T158-T161)。継承 T149-T150、T180 は並行可
+- 残タスクは P2 保守性のみ (T159-T161)。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 
