@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (517テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (520テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -61,6 +61,7 @@
 **T151**: 予約識別子診断 (`self` / `__tcs_` prefix を TCS1001 ReservedIdentifier) + generated temp を `__tcs_` prefix へ統一 + pattern 経路の型参照を ValueText 化 (verbatim 型名 / 型名だけの switch arm の metatable 比較)
 **T139**: `?.` receiver の一回評価 (IIFE local `__tcs_ca` へ保存。null 時は引数/index 未評価) + チェーン `a?.B?.C` の未宣言 temp 参照による実行時エラーを修正
 **T140**: switch 対象式の一回評価 (`__tcs_sw` local へ保存) + switch statement のパターンラベル対応 (`case > 5:` / `case 1 or 2:` / `case Circle c when ...:` — 従来は空条件の不正 Lua)
+**T141**: deconstruction RHS の一回評価 (`__tcs_dec` local へ保存) + 既存変数への分解代入 `(a, b) = rhs` 対応 (従来 TCS1001)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -203,8 +204,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T141-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138 / T151 / T139 / T140 は完了
-- 着手順: T141-T144 (一回評価の展開) → T145-T148。継承 T149-T150、T180 は並行可
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T142-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T141 / T151 は完了
+- 着手順: T142-T144 (一回評価の展開) → T145-T148。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

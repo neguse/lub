@@ -136,6 +136,85 @@ public class Phase14to19Tests
         Assert.Equal("7", result);
     }
 
+    // ===== T141: deconstruction RHS の一回評価 =====
+
+    [Fact]
+    public void Deconstruct_SideEffectRhs_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record Pair(int X, int Y);
+            public class T
+            {
+                public static int Calls;
+
+                public static Pair Make()
+                {
+                    Calls = Calls + 1;
+                    return new Pair(3, 4);
+                }
+
+                public static string Test()
+                {
+                    var (x, y) = Make();
+                    return $"{Calls}|{x}{y}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1|34", result);
+    }
+
+    [Fact]
+    public void Deconstruct_WithDiscard_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record Pair(int X, int Y);
+            public class T
+            {
+                public static int Calls;
+
+                public static Pair Make()
+                {
+                    Calls = Calls + 1;
+                    return new Pair(3, 4);
+                }
+
+                public static string Test()
+                {
+                    var (x, _) = Make();
+                    return $"{Calls}|{x}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1|3", result);
+    }
+
+    [Fact]
+    public void Deconstruct_AssignmentToExistingVariables()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record Pair(int X, int Y);
+            public class T
+            {
+                public static int Calls;
+
+                public static Pair Make()
+                {
+                    Calls = Calls + 1;
+                    return new Pair(5, 6);
+                }
+
+                public static string Test()
+                {
+                    int a = 0;
+                    int b = 0;
+                    (a, b) = Make();
+                    return $"{Calls}|{a}{b}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1|56", result);
+    }
+
     // ===== T88: record value-based Equals =====
 
     [Fact]

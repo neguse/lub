@@ -48,6 +48,15 @@ public partial class LuaEmitter
                 }:
                 VisitDeconstruction(model, declExpr2, rhs2);
                 break;
+            case ExpressionStatementSyntax exprStmt
+                when exprStmt.Expression is AssignmentExpressionSyntax
+                {
+                    Left: TupleExpressionSyntax tuple,
+                    Right: var tupleRhs,
+                    RawKind: (int)SyntaxKind.SimpleAssignmentExpression
+                }:
+                VisitTupleDeconstruction(model, tuple, tupleRhs);
+                break;
             case ExpressionStatementSyntax exprStmt:
                 VisitExpressionStatement(model, exprStmt);
                 break;
@@ -399,26 +408,46 @@ public partial class LuaEmitter
     private void VisitDeconstruction(SemanticModel model,
         DeclarationExpressionSyntax declExpr, ExpressionSyntax rhs)
     {
-        var obj = VisitExpression(model, rhs);
-        if (declExpr.Designation is ParenthesizedVariableDesignationSyntax pvd)
-        {
-            var names = pvd.Variables
-                .Select(v => v is SingleVariableDesignationSyntax sv
-                    ? sv.Identifier.ValueText : "_").ToList();
-            // Get type of rhs to find property/parameter names
-            var typeSymbol = model.GetTypeInfo(rhs).Type;
-            var propNames = GetDeconstructPropertyNames(typeSymbol, names.Count);
+        if (declExpr.Designation is not ParenthesizedVariableDesignationSyntax pvd)
+            return;
 
-            if (propNames != null)
+        var names = pvd.Variables
+            .Select(v => v is SingleVariableDesignationSyntax sv
+                ? sv.Identifier.ValueText : "_").ToList();
+        EmitDeconstruction(model, rhs, names, declare: true);
+    }
+
+    // (a, b) = rhs — 既存変数への分解代入。宣言側と同じ一回評価経路を使う。
+    private void VisitTupleDeconstruction(SemanticModel model,
+        TupleExpressionSyntax tuple, ExpressionSyntax rhs)
+    {
+        var targets = new List<string>();
+        foreach (var arg in tuple.Arguments)
+        {
+            if (arg.Expression is DeclarationExpressionSyntax)
             {
-                var values = propNames.Select(p => $"{obj}.{p}");
-                AppendLine($"local {string.Join(", ", names)} = {string.Join(", ", values)}");
+                // 混在形 (var a, b) は宣言と代入のスコープが割れるため未対応
+                AppendLine(WarnUnsupported(arg.Expression,
+                    "mixed declaration in tuple deconstruction"));
+                return;
             }
-            else
-            {
-                AppendLine($"local {string.Join(", ", names)} = {obj}");
-            }
+            targets.Add(VisitExpression(model, arg.Expression));
         }
+        EmitDeconstruction(model, rhs, targets, declare: false);
+    }
+
+    private void EmitDeconstruction(SemanticModel model, ExpressionSyntax rhs,
+        List<string> targets, bool declare)
+    {
+        // RHS は一度だけ評価する (従来は要素数分の式複製で多重評価だった)
+        AppendLine($"local __tcs_dec = {VisitExpression(model, rhs)}");
+        var typeSymbol = model.GetTypeInfo(rhs).Type;
+        var propNames = GetDeconstructPropertyNames(typeSymbol, targets.Count);
+        var values = propNames != null
+            ? string.Join(", ", propNames.Select(p => $"__tcs_dec.{p}"))
+            : "__tcs_dec";
+        var prefix = declare ? "local " : "";
+        AppendLine($"{prefix}{string.Join(", ", targets)} = {values}");
     }
 
     private static List<string>? GetDeconstructPropertyNames(ITypeSymbol? type, int count)

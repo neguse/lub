@@ -844,3 +844,11 @@
 - 検証: dotnet test 517/517
 - 判断: temp は固定名 `__tcs_sw` (ネストは Lua の local shadow で正しく分離、`__tcs_` prefix は T151 で予約済み)。連続する switch statement の同名 local 再宣言は Lua で合法
 - 残課題: is-pattern (`if (Next() is Circle c)`) の receiver も binding と条件で二重評価している — T141 以降の一回評価ファミリーで扱う
+
+### T141: deconstruction RHS の一回評価 ✓ (2026-07-17)
+- `var (x, y) = Make()` が RHS を要素数分複製して多重評価していた問題を、`local __tcs_dec` への一回保存に変更 (宣言/代入/discard 共通の `EmitDeconstruction` 経路)
+- 既存変数への分解代入 `(a, b) = Make()` (TupleExpression 左辺) を新規対応 — 従来は TCS1001 warning で代入自体が消えていた。混在形 `(var a, b)` は明示 TCS1001 のまま
+- 変更ファイル: Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/Phase14to19Tests.cs (+3)
+- 検証: dotnet test 520/520
+- 判断: temp は固定名 `__tcs_dec` (T151 の prefix 予約 + ブロック内 local 再宣言は Lua 合法)。ValueTuple swap `(a,b)=(b,a)` は RHS の TupleExpression が従来どおり TCS1001 (tuple 型自体が未対応)
+- 残課題: なし
