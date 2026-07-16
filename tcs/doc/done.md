@@ -884,3 +884,12 @@
 - 検証: dotnet test 539/539 (sourcemap / module descriptor / operator overload の回帰なし)
 - 判断: helper を usage 検出で条件 emit せず常時 emit — 出力 +8 行のコストで、emit 中に記録する type range / source map の後方 shift 問題を構造的に回避。int.MinValue / -1 の overflow 例外は再現しない (Lua は wrap) — 既知差異
 - 残課題: なし
+
+### T146: nullable bool と GetValueOrDefault の nil-safe lowering ✓ (2026-07-17)
+- `bool? false ?? true` が Lua `or` で true になる問題を、bool 型 (unwrap nullable) の `??` だけ明示 nil 判定 IIFE (`__tcs_lhs` 一回評価、右辺は nil 時のみ) へ変更。非 bool は false を取り得ないため `or` を維持 (軽く、右辺 lazy も既に正しい)
+- 追加発見と修正: `GetValueOrDefault(fallback)` は明示 fallback 引数を黙って無視して default(T) を返していた。receiver → fallback の順で常に各 1 回評価し、false 値も fallback しない nil 判定へ。引数なし版は default(T) が false/0/nil なので `(x or default)` のまま
+- `??=` は T143 の nil 判定 lowering 済みで bool? も正しい (既存挙動)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/NullableValueTypeTests.cs (+4)
+- 検証: dotnet test 543/543
+- 判断: 全 `??` を IIFE 化せず bool 限定 — 生成 Lua の可読性と実行コストを守りつつ、意味論が壊れる型だけ下げる (T143 の pure/complex 分岐と同じ思想)
+- 残課題: なし

@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (539テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (543テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -66,6 +66,7 @@
 **T143**: 副作用付き lvalue の一回評価 (compound assignment / `??=` / increment / `List.Clear` の receiver・index を temp へ保存。pure lvalue は従来出力を維持) + string `+=` を Lua `..` へ (従来は `+` で実行時エラー)
 **T144**: for 条件の毎 iteration 再評価 — numeric for 最適化は loop-invariant bound (リテラル / 再代入されない local・param) かつ loop 変数を body で書き換えない場合に限定し、それ以外は while lowering へ fallback
 **T145**: C# の除算・剰余セマンティクス — 整数 `/`・`%` は chunk-local helper `__tcs_idiv`/`__tcs_irem` (0 方向 truncation・被除数符号)、float `%` は `math.fmod`。ユーザー operator % は __mod のまま。helper は生成 Lua 冒頭に常時定義し `--no-runtime` でも動く
+**T146**: bool? の `??` を nil 判定 IIFE へ (false を fallback しない。非 bool は `or` のまま) + `GetValueOrDefault(fallback)` の明示引数対応 (従来は黙って無視して default を返していた)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -93,7 +94,7 @@
 | lambda | function() end |
 | ternary | IIFE |
 | string interpolation | tostring + .. |
-| ?? | or |
+| ?? | or (bool? は nil 判定 IIFE) |
 | ??= | if x == nil then x = v end |
 | ?. / ?[] | IIFE nil チェック |
 | s?.Method / list?.Method / dict?.Method | 型別 runtime mapping + nil チェック |
@@ -211,8 +212,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T146-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T145 / T151 は完了
-- 着手順: T146-T148 (型・メンバー意味論)。継承 T149-T150、T180 は並行可
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T147-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T146 / T151 は完了
+- 着手順: T147-T148 (property lowering)。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

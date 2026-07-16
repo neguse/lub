@@ -181,6 +181,18 @@ public partial class LuaEmitter
             // ユーザー定義 operator % は __mod metamethod に委ねる
         }
 
+        // bool? の ?? は Lua `or` だと false も fallback してしまうため、
+        // 明示 nil 判定へ下げる (左辺は一回評価、右辺は nil 時のみ)。
+        // 非 bool は false を取り得ないので `or` が正しく、かつ軽い。
+        if (bin.IsKind(SyntaxKind.CoalesceExpression)
+            && UnwrapNullable(model.GetTypeInfo(bin.Left).Type)?.SpecialType
+                == SpecialType.System_Boolean)
+        {
+            return $"(function() local __tcs_lhs = {left}; " +
+                $"if __tcs_lhs ~= nil then return __tcs_lhs end " +
+                $"return {right} end)()";
+        }
+
         var isStringConcat = bin.Kind() == SyntaxKind.AddExpression &&
             (model.GetTypeInfo(bin.Left).Type?.SpecialType == SpecialType.System_String ||
              model.GetTypeInfo(bin.Right).Type?.SpecialType == SpecialType.System_String ||
@@ -284,11 +296,21 @@ public partial class LuaEmitter
                     model, ma, methodSym, methodName, args, out var result))
                 return result;
 
-            // Nullable<T>.GetValueOrDefault() → x or <default>
+            // Nullable<T>.GetValueOrDefault()
             if (methodName == "GetValueOrDefault" && symbol is IMethodSymbol nullableMethod
                 && nullableMethod.ContainingType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
             {
                 var obj = VisitExpression(model, ma.Expression);
+                if (args.Count == 1)
+                {
+                    // 明示 fallback は C# と同じく receiver → 引数の順で常に
+                    // 各 1 回評価し、false 値も fallback しない nil 判定にする
+                    return $"(function() local __tcs_val = {obj}; " +
+                        $"local __tcs_fb = {args[0]}; " +
+                        $"if __tcs_val ~= nil then return __tcs_val end " +
+                        $"return __tcs_fb end)()";
+                }
+                // 引数なしは default(T) が false/0/nil なので `or` で足りる
                 var underlyingType = ((INamedTypeSymbol)nullableMethod.ContainingType).TypeArguments[0];
                 var defaultVal = GetDefaultValueForType(underlyingType);
                 return $"({obj} or {defaultVal})";
