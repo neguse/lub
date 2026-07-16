@@ -20,7 +20,7 @@
 3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
 4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
 5. **runtime 契約**: T152 → T153
-6. **CLI / watch**: T155 → T156 → T157
+6. **CLI / watch**: T155 → T157
 7. **保守性・文書同期**: T158 → T159 → T160 → T161
 
 lub Haxe 代替検証は breakout 級サンプルの実機動作まで完了した
@@ -186,13 +186,6 @@ tcs 側から直接変更しない。
   - class/record classだけを許可し、interface/ref-only/非emit型を拒否する
   - namespace flatten時のsimple/fully-qualified指定と同名型の曖昧性を定義する
 - 完了条件: `--entry Game.App`と一意なsimple `App`は正しいtableを返し、同名namespace型/interface/ref-onlyはexit 1かつoutput未作成になる
-
-### T156: stdout sourcemap にruntime/prelude offsetを反映
-- 目的: `-o`なしの`--sourcemap`だけ行番号offsetが欠落する問題を直す
-- 作業:
-  - stdout分岐でも`ToJson(sourceMapLineOffset)`を使用する
-  - runtime有無、user prelude有無、両方ありの実Lua行とmapping keyをtestする
-- 完了条件: stdoutへ出したLuaのmapped statement行とstderr JSONのkeyが全構成で一致する
 
 ### T157: watch の --prelude dependency監視
 - 目的: outputへ埋め込まれるpreludeだけを変更してもrebuildされない問題を直す

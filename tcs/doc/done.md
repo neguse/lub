@@ -798,3 +798,10 @@
   - T153 縮小 — duplicate key throw 契約は見送り (不正なプログラムの挙動差で、正しいプログラムを壊さない)。ToDictionary selector の一回評価だけ残し T139 依存へ
   - 完了済み増分 module compilation track (T172-T179) のエントリを tasks.md から削除 (done.md が正本)
 - 残課題: なし。次の着手は T138 → T151 縮小版 → T139
+
+### T156: stdout sourcemap に runtime/prelude offset を反映 ✓ (2026-07-17)
+- `-o` なしの `--sourcemap` (stderr JSON) だけ `ToJson()` を offset なしで呼んでいた stdout 分岐を `ToJson(sourceMapLineOffset)` に修正
+- 変更ファイル: Transpiler/Program.cs, Transpiler.Tests/CliRuntimeTests.cs
+- 検証: runtime のみ / runtime+prelude / prelude のみ (--no-runtime) の3構成で、stdout Lua の実行文行と stderr JSON の mapping key が一致することを Red → Green で固定
+- 判断: なし (file 出力分岐と同じ offset を渡すだけの一行修正)
+- 残課題: なし

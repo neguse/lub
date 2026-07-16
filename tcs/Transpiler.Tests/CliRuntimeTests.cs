@@ -254,6 +254,47 @@ public class CliRuntimeTests
     }
 
     [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void Cli_StdoutSourceMapLinesIncludePreludeOffset(
+        bool includeRuntime, bool userPrelude)
+    {
+        using var temp = TempDir.Create();
+        var inputPath = temp.Write("app.cs", """
+            public class T
+            {
+                public static int Test() => 7;
+            }
+            """);
+        var args = new List<string> { inputPath, "--sourcemap" };
+        if (!includeRuntime) args.Add("--no-runtime");
+        if (userPrelude)
+        {
+            var preludePath = temp.Write("shim.lua", "-- shim line 1\nlocal _ = 0\n");
+            args.Add("--prelude");
+            args.Add(preludePath);
+        }
+
+        var result = RunCli(args.ToArray());
+
+        Assert.Equal(0, result.ExitCode);
+        var luaLines = result.Stdout.Replace("\r\n", "\n").Split('\n');
+        var classLine = Array.FindIndex(luaLines, line => line.Contains("T = {}")) + 1;
+        Assert.True(classLine > 0);
+
+        var marker = "--- sourcemap ---";
+        var markerIndex = result.Stderr.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(markerIndex >= 0);
+        using var json = JsonDocument.Parse(
+            result.Stderr[(markerIndex + marker.Length)..]);
+        var mappings = json.RootElement.GetProperty("mappings");
+        Assert.True(mappings.TryGetProperty(classLine.ToString(), out var entry));
+        Assert.Equal(inputPath, entry.GetProperty("file").GetString());
+        Assert.Equal(1, entry.GetProperty("line").GetInt32());
+    }
+
+    [Theory]
     [InlineData("input", false)]
     [InlineData("ref", false)]
     [InlineData("prelude", false)]

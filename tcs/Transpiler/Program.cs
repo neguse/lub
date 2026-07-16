@@ -402,7 +402,8 @@ public class Program
                 if (options.EmitSourceMap && result.SourceMap != null)
                 {
                     Console.Error.WriteLine("--- sourcemap ---");
-                    Console.Error.WriteLine(result.SourceMap.ToJson());
+                    Console.Error.WriteLine(
+                        result.SourceMap.ToJson(sourceMapLineOffset));
                 }
             }
             return 0;
