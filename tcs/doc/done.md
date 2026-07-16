@@ -934,3 +934,12 @@
 - 検証: dotnet test 565/565 (既存の LastOrDefault string→nil 期待は参照型 default として正しいまま)
 - 判断: default は emitter がサイト毎に埋め込む方式 — runtime に型情報を持たせない (型消去の原則を維持)
 - 残課題: なし
+
+### T153: ToDictionary selector の評価契約 ✓ (2026-07-17)
+- レビュー時に疑われた「selector が要素ごとに複数回評価される」は現行 runtime では再現せず (各要素 1 回)。counter/log 付き selector の semantic test で評価回数と key → value 順を固定
+- Lua の代入式 `dict[k(x)] = v(x)` の評価順は言語仕様上未規定のため、runtime を `local key = keySelector(item)` で明示順序化
+- duplicate key は棚卸し (2026-07-17) の決定どおり C# の ArgumentException を再現せず Lua table 上書きとし、support-matrix の既知差異へ記載 (`Dictionary.Add` も同様)
+- 変更ファイル: runtime/tinysystem.lua, Transpiler.Tests/LinqSemanticTests.cs (+1), doc/support-matrix.md
+- 検証: dotnet test 566/566
+- 判断: 前提が再現しないことを test で確認してからクローズ (作り込みではなく契約の固定)
+- 残課題: なし

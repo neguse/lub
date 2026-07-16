@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **runtime 契約**: T153、並行して T180
+1. **型パターン**: T180
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
 
@@ -36,16 +36,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T153: ToDictionary selector の一回評価
-- 目的: key/value selector が要素ごとに複数回評価され、副作用付き selector の結果が C# とずれる問題を直す
-- 依存: なし (T139 完了済み)
-- 前提: duplicate key で throw する C# 契約の再現は棚卸し (2026-07-17) で見送り — もともと不正なプログラムの挙動差であり、正しいプログラムを壊さない。`Dictionary.Add` / `ToDictionary` の duplicate は Lua 上書き挙動を既知差異として扱う
-- 作業:
-  - key/value selector を各要素 1 回だけ評価し、評価順 (key → value) を C# に揃える
-  - 呼出回数・順序を semantic test で固定する
-  - duplicate key の上書き挙動を support-matrix の既知差異へ記載する
-- 完了条件: 副作用付き selector の呼出回数・順序が C# と一致し、既知差異が文書化されている
 
 ---
 

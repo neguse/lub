@@ -353,6 +353,32 @@ public class LinqSemanticTests
         Assert.Contains("Sequence contains no elements", ex.Message);
     }
 
+    // T153: ToDictionary の key/value selector は各要素 1 回だけ、key → value
+    // の順で評価される (C# と同じ評価回数・順序)。
+    [Fact]
+    public void Linq_ToDictionary_SelectorsEvaluatedOncePerElementInOrder()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public class T
+            {
+                public static string Log = "";
+
+                public static string Test()
+                {
+                    var names = new List<string> { "a", "bb" };
+                    var d = names.ToDictionary(
+                        x => { Log = Log + "k"; return x; },
+                        x => { Log = Log + "v"; return x.Length; });
+                    return $"{Log}|{d["a"]}|{d["bb"]}";
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("kvkv|1|2", result);
+    }
+
     [Fact]
     public void Linq_SumOnEmpty_ReturnsZero()
     {

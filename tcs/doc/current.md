@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (565テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (566テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -72,6 +72,7 @@
 **T149**: 継承 link の宣言順・ファイル順独立化 — 基底が未 emit の派生は link を遅延し、全型 emit 後 (top-level 文実行前) にまとめて張る
 **T150**: 暗黙 base() — initializer なしの派生 constructor / 合成 default constructor で `Base.new()` を呼び基底 field initializer を保持。`this(...)` initializer と複数 constructor は TCS1001 (`ThisConstructorInitializer` / `MultipleConstructors`、emit は先頭 ctor)
 **T152**: LINQ の empty/default 契約 — `FirstOrDefault`/`LastOrDefault` は呼び出しサイトの型から default(T) (int=0/bool=false/ref=nil) を runtime へ渡す。`First()`/`Min`/`Max` の empty は nil 算術ではなく明示 error、`Sum()` empty は 0
+**T153**: ToDictionary selector の評価契約 — 各要素 1 回・key → value 順を runtime で明示し test で固定 (レビュー時の多重評価疑いは再現せず)。duplicate key の Lua 上書きは既知差異として support-matrix に記載
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -217,8 +218,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T152 は完了
-- 着手順: T153 (ToDictionary selector)、T180 は並行可。継承 T149-T150、T180 は並行可
+- P0 正しさレビュー backlog (T138-T153) は全て完了。残る silent wrong-code は T180 (値型 is パターンの nil マッチ、2026-07-17 発見) のみ
+- 着手順: T180 → P1 (T155/T157) → P2 (T158-T161)。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

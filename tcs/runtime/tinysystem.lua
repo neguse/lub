@@ -216,7 +216,11 @@ function List.ToDictionary(list, keySelector, valueSelector)
   local dict = {}
   for i = 1, #list do
     local item = list[i]
-    dict[keySelector(item)] = valueSelector(item)
+    -- C# と同じく key → value の順で各 1 回評価する (Lua の代入式の
+    -- 評価順は未規定なので local で明示する)。duplicate key は C# と
+    -- 異なり上書き (既知差異、support-matrix 参照)
+    local key = keySelector(item)
+    dict[key] = valueSelector(item)
   end
   return dict
 end

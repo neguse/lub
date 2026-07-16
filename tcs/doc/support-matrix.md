@@ -797,7 +797,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.Sum()` | **Y** | `List.Sum(list)` | T+R |
 | `.Count()` / `.Count(predicate)` | **Y** | `List.Count(list, fn)` | T+R |
 | `.ToList()` | **Y** | `List.ToList(list)` | T+R |
-| `.ToDictionary(key)` / `.ToDictionary(key, value)` | **Y** | `List.ToDictionary(list, keyFn, valueFn)` | T+R |
+| `.ToDictionary(key)` / `.ToDictionary(key, value)` | **Y** | `List.ToDictionary(list, keyFn, valueFn)`。selector は各要素 1 回・key → value 順。**既知差異**: duplicate key は C# の ArgumentException ではなく Lua table 上書き (`Dictionary.Add` の duplicate も同様) | T+R |
 | チェーン `.Where().Select().ToList()` | **Y** | ネスト呼び出し | T |
 
 ### 未対応
