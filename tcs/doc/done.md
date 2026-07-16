@@ -918,3 +918,11 @@
 - 検証: dotnet test 557/557
 - 判断: 型依存 graph でのソートではなく link 行だけの遅延 — 順序依存は link 行のみで (ctor 内の `Base.new()` は実行時解決)、emit 順を変えないほうが module slicing と source map に安全
 - 残課題: なし
+
+### T150: 暗黙 base() と constructor chaining の境界整理 ✓ (2026-07-17)
+- initializer なしの派生 constructor / 合成 default constructor が基底の field initializer を黙って落としていた問題を修正 — 非 object 基底なら `local self = Base.new()` → `setmetatable(self, Derived)` で C# の暗黙 base() を実行 (`class B { int X = 42; } class D : B {}` の `new D().X` が 42 に)
+- `: this(...)` initializer を TCS1001 `ThisConstructorInitializer`、2個目以降の constructor を TCS1001 `MultipleConstructors` として shared facts へ追加 (Analyzer/check/transpiler 共有)。emit は先頭 constructor 採用で決定的
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.cs, Transpiler.Tests/InheritanceTests.cs (+4)
+- 検証: dotnet test 561/561 + analyzer 47/47
+- 判断: field initializer の実行順は既存 explicit base() 経路と同じ「基底 (init+body) → 派生 init → 派生 body」。C# は「派生 init → 基底 → 派生 body」だが、観測可能な差は仮想呼び出し等の稀なケースのみで、既存経路との一貫性を優先 (既知差異)
+- 残課題: なし

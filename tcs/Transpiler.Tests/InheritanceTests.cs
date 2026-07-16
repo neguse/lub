@@ -126,6 +126,98 @@ public class InheritanceTests
         Assert.Equal("3", result);
     }
 
+    // T150: initializer なしの派生 constructor でも C# は暗黙に base() を呼ぶ
+    [Fact]
+    public void ImplicitBaseCall_PreservesBaseFieldInitializers()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class B
+            {
+                public int X = 42;
+            }
+            public class D : B
+            {
+            }
+            """, """
+            D.new().X
+            """);
+
+        Assert.Equal("42", result);
+    }
+
+    [Fact]
+    public void ImplicitBaseCall_WithExplicitDerivedConstructor()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class B
+            {
+                public int X = 42;
+            }
+            public class D : B
+            {
+                public int Y;
+
+                public D()
+                {
+                    Y = X + 1;
+                }
+            }
+            """, """
+            (function() local d = D.new() return d.X .. "|" .. d.Y end)()
+            """);
+
+        Assert.Equal("42|43", result);
+    }
+
+    [Fact]
+    public void ThisConstructorInitializer_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class C
+            {
+                public int X;
+
+                public C() : this(5) { }
+
+                public C(int x)
+                {
+                    X = x;
+                }
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains("ThisConstructorInitializer"));
+    }
+
+    [Fact]
+    public void MultipleConstructors_ReportUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class C
+            {
+                public int X;
+
+                public C()
+                {
+                    X = 1;
+                }
+
+                public C(int x)
+                {
+                    X = x;
+                }
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains("MultipleConstructors"));
+    }
+
     [Fact]
     public void Inheritance_DerivedInEarlierFileThanBase()
     {

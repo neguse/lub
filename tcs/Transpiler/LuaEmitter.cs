@@ -189,7 +189,8 @@ public partial class LuaEmitter
                         model.GetTypeInfo(prop.Type).Type));
                     break;
                 case ConstructorDeclarationSyntax c:
-                    ctor = c;
+                    // 複数 constructor は TCS1001 (shared facts)。先頭を emit する
+                    ctor ??= c;
                     break;
             }
         }
@@ -215,7 +216,7 @@ public partial class LuaEmitter
 
         info.InstanceShape = string.Join("\n", fieldInits.Select(f =>
             f.Name + "=" + (f.Init?.ToString() ?? GetDefaultValueForType(f.Type))));
-        EmitConstructor(model, name, ctor, fieldInits);
+        EmitConstructor(model, name, ctor, fieldInits, baseClass);
         info.DefinitionKeys.Add("new");
 
         var operators = new List<OperatorDeclarationSyntax>();
@@ -258,7 +259,8 @@ public partial class LuaEmitter
 
     private void EmitConstructor(SemanticModel model, string className,
         ConstructorDeclarationSyntax? ctor,
-        List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits)
+        List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits,
+        ITypeSymbol? baseClass)
     {
         var ctorParams = ctor?.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList() ?? [];
@@ -266,7 +268,8 @@ public partial class LuaEmitter
         AppendLine($"function {className}.new({string.Join(", ", ctorParams)})");
         _indent++;
 
-        if (ctor?.Initializer != null)
+        if (ctor?.Initializer != null
+            && ctor.Initializer.IsKind(SyntaxKind.BaseConstructorInitializer))
         {
             var baseArgs = ctor.Initializer.ArgumentList.Arguments
                 .Select(a => VisitExpression(model, a.Expression));
@@ -280,6 +283,14 @@ public partial class LuaEmitter
             {
                 AppendLine($"local self = setmetatable({{}}, {className})");
             }
+        }
+        else if (baseClass != null)
+        {
+            // initializer なしでも C# は暗黙に base() を呼ぶ。基底の field
+            // initializer / constructor body を実行してから派生へ差し替える
+            // (this(...) initializer は TCS1001 済みで、ここでは base() 扱い)
+            AppendLine($"local self = {baseClass.Name}.new()");
+            AppendLine($"setmetatable(self, {className})");
         }
         else
         {

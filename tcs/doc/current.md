@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (557テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (561テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -70,13 +70,14 @@
 **T147**: custom property の read/write lowering — 全使用サイト (member access / implicit this / compound / increment / `??=` / object initializer / `?.` / property pattern) を get_/set_ 呼び出しへ。expression-bodied property (`int D => expr;`) を get-only として新規対応 (従来 TCS1001)。auto property は raw field を維持
 **T148**: static property の storage/accessor lowering — static auto property を class table field へ (従来は ctor 内 `self` 初期化で static access が nil)、static custom accessor は `Class.get_/set_` class function へ
 **T149**: 継承 link の宣言順・ファイル順独立化 — 基底が未 emit の派生は link を遅延し、全型 emit 後 (top-level 文実行前) にまとめて張る
+**T150**: 暗黙 base() — initializer なしの派生 constructor / 合成 default constructor で `Base.new()` を呼び基底 field initializer を保持。`this(...)` initializer と複数 constructor は TCS1001 (`ThisConstructorInitializer` / `MultipleConstructors`、emit は先頭 ctor)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
 |---------|---------|
 | class + new | table + metatable + .new() |
 | record | table + metatable + .new() (positional) |
-| inheritance + base() | metatable チェーン |
+| inheritance + base() | metatable チェーン (暗黙 base() も Base.new() 実行) |
 | static method | Class.Method() |
 | instance method | obj:Method() |
 | field / auto property | table field |
@@ -215,8 +216,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T150-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T149 / T151 は完了
-- 着手順: T150 (暗黙 base())、T152-T153 (runtime 契約)、T180 は並行可。継承 T149-T150、T180 は並行可
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T152-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T151 は完了
+- 着手順: T152-T153 (runtime 契約)、T180 は並行可。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

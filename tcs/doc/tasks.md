@@ -15,8 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **型・メンバー意味論**: T150、T180 (並行可)
-2. **runtime 契約**: T152 → T153
+1. **runtime 契約**: T152 → T153、並行して T180
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
 
@@ -37,15 +36,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T150: 暗黙 base() と constructor chaining の境界整理
-- 目的: initializerなしの派生constructorでC#が暗黙に呼ぶ`base()`を実行し、基底field初期化を保持する
-- 依存: なし (T149 完了済み)
-- 作業:
-  - 合成default constructorと明示constructorの双方で非object基底`Base.new()`を呼ぶ
-  - 既存のexplicit `base(args)`を維持し、未対応の`this(args)`/複数constructorはTCS1001で明示する
-  - 基底→派生のfield initializer/constructor body順をtestする
-- 完了条件: `class B { int X = 42; } class D : B {}`の`new D().X`が42となり、constructor formが黙って別の意味にならない
 
 ### T152: empty sequence と型別 default のLINQ/runtime契約
 - 目的: `FirstOrDefault<int>`等が常にnilを返し、allowlist済みAPIが値型で実行時エラーになる問題を直す

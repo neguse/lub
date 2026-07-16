@@ -39,6 +39,8 @@ public static class TinyCsComplianceFacts
         SyntaxKind.VariableDeclarator,
         SyntaxKind.ForEachStatement,
         SyntaxKind.SingleVariableDesignation,
+        SyntaxKind.ThisConstructorInitializer,
+        SyntaxKind.ConstructorDeclaration,
     ];
 
     public static readonly SyntaxKind[] CollectionNullSyntaxKinds =
@@ -275,6 +277,16 @@ public static class TinyCsComplianceFacts
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.RefKeyword)
                     => "RefParameter",
+            // constructor chaining は未対応。this(...) と 2 個目以降の
+            // constructor は黙って別意味にせず診断する (emit は先頭 ctor)。
+            ConstructorInitializerSyntax init
+                when init.IsKind(SyntaxKind.ThisConstructorInitializer)
+                    => "ThisConstructorInitializer",
+            ConstructorDeclarationSyntax ctor
+                when ctor.Parent is TypeDeclarationSyntax owner
+                    && owner.Members.OfType<ConstructorDeclarationSyntax>()
+                        .First() != ctor
+                    => "MultipleConstructors",
             // Declared identifiers that reach Lua output. Verbatim forms
             // (@end) are compared by ValueText, matching the emitter.
             BaseTypeDeclarationSyntax type
