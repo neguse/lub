@@ -316,7 +316,8 @@ if(LUB_WASM)
     -sALLOW_MEMORY_GROWTH=1
     -sASSERTIONS=1
     -sSTACK_SIZE=1048576
-    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString']"
+    # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_io.lua@/samples/lub_io.lua"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_prelude.lua@/samples/lub_prelude.lua"

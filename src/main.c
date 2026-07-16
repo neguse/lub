@@ -15,17 +15,6 @@
 #include "tcs_build.h"
 #endif
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-// golden capture 中は sample 側が非決定な overlay (debug UI 等) を描かない
-// ようにする。native は run-golden.sh が LUB_GOLDEN を export するが、web は
-// player.ts が query param から window._lubGolden を立てるので env へ写す。
-// clang-format off
-EM_JS(int, lub_web_golden_js, (void),
-      { return (typeof window !== 'undefined' && window._lubGolden) ? 1 : 0; })
-// clang-format on
-#endif
-
 static App g_app;
 static bool g_app_initialized = false;
 #ifndef __EMSCRIPTEN__
@@ -153,11 +142,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
       script = argv[i];
     }
   }
-
-#ifdef __EMSCRIPTEN__
-  if (lub_web_golden_js())
-    setenv("LUB_GOLDEN", "1", 1);
-#endif
 
   // Normal mode: window + GPU. Parse test-clock arguments first so invalid
   // values fail without creating a window or partially initializing App.

@@ -143,9 +143,24 @@ if (import.meta.env.DEV || import.meta.env.MODE === "test") {
 }
 
 function playerSrc(): string {
-  const capture =
-    goldenCaptureFrame != null ? `&capture=${goldenCaptureFrame}` : "";
-  return `/player.html?w=${resW}&h=${resH}${capture}`;
+  let extra = "";
+  if (goldenCaptureFrame != null) {
+    // player.ts の汎用 ?argv= / ?env= 転写に golden の実引数を積む。
+    // fixed-dt と LUB_GOLDEN は native golden (scripts/run-golden.sh) と
+    // 同じ契約。「golden なら」の分岐はこのハーネス側にだけ存在する。
+    const argv = [
+      "--capture",
+      "/lub_golden.png",
+      "--capture-frame",
+      String(goldenCaptureFrame),
+      "--fixed-dt",
+      "0.0166666666666667",
+    ];
+    extra =
+      argv.map((a) => `&argv=${encodeURIComponent(a)}`).join("") +
+      `&env=${encodeURIComponent("LUB_GOLDEN=1")}`;
+  }
+  return `/player.html?w=${resW}&h=${resH}${extra}`;
 }
 
 $sample.addEventListener("change", async () => {
