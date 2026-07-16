@@ -278,29 +278,29 @@ public static class TinyCsComplianceFacts
             // Declared identifiers that reach Lua output. Verbatim forms
             // (@end) are compared by ValueText, matching the emitter.
             BaseTypeDeclarationSyntax type
-                when IsLuaKeyword(type.Identifier)
-                    => LuaKeywordName(type.Identifier),
+                when IsUnsafeLuaIdentifier(type.Identifier)
+                    => UnsafeLuaIdentifierName(type.Identifier),
             MethodDeclarationSyntax method
-                when IsLuaKeyword(method.Identifier)
-                    => LuaKeywordName(method.Identifier),
+                when IsUnsafeLuaIdentifier(method.Identifier)
+                    => UnsafeLuaIdentifierName(method.Identifier),
             PropertyDeclarationSyntax property
-                when IsLuaKeyword(property.Identifier)
-                    => LuaKeywordName(property.Identifier),
+                when IsUnsafeLuaIdentifier(property.Identifier)
+                    => UnsafeLuaIdentifierName(property.Identifier),
             EnumMemberDeclarationSyntax enumMember
-                when IsLuaKeyword(enumMember.Identifier)
-                    => LuaKeywordName(enumMember.Identifier),
+                when IsUnsafeLuaIdentifier(enumMember.Identifier)
+                    => UnsafeLuaIdentifierName(enumMember.Identifier),
             VariableDeclaratorSyntax variable
-                when IsLuaKeyword(variable.Identifier)
-                    => LuaKeywordName(variable.Identifier),
+                when IsUnsafeLuaIdentifier(variable.Identifier)
+                    => UnsafeLuaIdentifierName(variable.Identifier),
             ParameterSyntax param
-                when IsLuaKeyword(param.Identifier)
-                    => LuaKeywordName(param.Identifier),
+                when IsUnsafeLuaIdentifier(param.Identifier)
+                    => UnsafeLuaIdentifierName(param.Identifier),
             ForEachStatementSyntax forEach
-                when IsLuaKeyword(forEach.Identifier)
-                    => LuaKeywordName(forEach.Identifier),
+                when IsUnsafeLuaIdentifier(forEach.Identifier)
+                    => UnsafeLuaIdentifierName(forEach.Identifier),
             SingleVariableDesignationSyntax designation
-                when IsLuaKeyword(designation.Identifier)
-                    => LuaKeywordName(designation.Identifier),
+                when IsUnsafeLuaIdentifier(designation.Identifier)
+                    => UnsafeLuaIdentifierName(designation.Identifier),
             _ => "",
         };
 
@@ -325,11 +325,17 @@ public static class TinyCsComplianceFacts
                 out syntaxName);
     }
 
-    private static bool IsLuaKeyword(SyntaxToken identifier) =>
-        LuaKeywords.Contains(identifier.ValueText);
+    // Lua 予約語に加え、`self` (Lua method receiver) と `__tcs_` prefix
+    // (generated temp) を emit 側の予約名として宣言サイトで拒否する。
+    private static bool IsUnsafeLuaIdentifier(SyntaxToken identifier) =>
+        LuaKeywords.Contains(identifier.ValueText)
+        || identifier.ValueText == "self"
+        || identifier.ValueText.StartsWith("__tcs_", StringComparison.Ordinal);
 
-    private static string LuaKeywordName(SyntaxToken identifier) =>
-        $"LuaKeywordIdentifier({identifier.ValueText})";
+    private static string UnsafeLuaIdentifierName(SyntaxToken identifier) =>
+        LuaKeywords.Contains(identifier.ValueText)
+            ? $"LuaKeywordIdentifier({identifier.ValueText})"
+            : $"ReservedIdentifier({identifier.ValueText})";
 
     // Supported user-defined operator overloads and their Lua metamethods.
     // Equality (== / !=) is out of scope: record __eq is the only equality

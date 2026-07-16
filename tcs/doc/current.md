@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (500テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (508テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -57,6 +57,8 @@
 **T173**: 増分 module compilation M0 — Chrome benchmark harness (`bench/chrome-compile.mjs`。cold 11.3s / warm p50 5.58s の再現 baseline)
 **T174**: 増分 module compilation M0 — diagnostics differential test 雛形 (canonical key 比較、T175 で session 側へ差し替え)
 **T175**: 増分 module compilation M1 — IncrementalCompilationSession (body-only fast path: span 限定診断 + method splice。M1 gate PASS: 実サンプル級 file の warm body-edit p50 106ms / p95 124ms、現行 full path 5.58s 比 53 倍)
+**T138**: supported API allowlist を完全シグネチャ単位へ変更 (未実装 overload の TCS1002 検出、Analyzer/check parity matrix)
+**T151**: 予約識別子診断 (`self` / `__tcs_` prefix を TCS1001 ReservedIdentifier) + generated temp を `__tcs_` prefix へ統一 + pattern 経路の型参照を ValueText 化 (verbatim 型名 / 型名だけの switch arm の metatable 比較)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -199,8 +201,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T139-T153)。棚卸し (2026-07-17) で T154 は HotReload runtime 削除によりクローズ、T163 は削除、T151/T153 はスコープ縮小。T138 (allowlist シグネチャ化) は完了
-- 着手順: T151 (temp 衝突安全) → T139 の一回評価基盤から T140-T148 へ展開。継承 T149-T150 は並行可
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T139-T153)。棚卸し (2026-07-17) で T154 は HotReload runtime 削除によりクローズ、T163 は削除、T153 はスコープ縮小。T138 (allowlist シグネチャ化) / T151 (予約識別子・temp 衝突安全) は完了
+- 着手順: T139 の一回評価基盤から T140-T148 へ展開。継承 T149-T150 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

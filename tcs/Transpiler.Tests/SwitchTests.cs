@@ -130,4 +130,32 @@ public class SwitchTests
             "T.Test()");
         Assert.Equal("running", result);
     }
+
+    // 型名だけの arm は syntax 上 ConstantPattern になるが、値比較ではなく
+    // metatable 比較 (型判定) として動くこと。
+    [Fact]
+    public void SwitchExpression_BareTypePatternArm_MatchesByType()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            Shape a = new Circle();
+            Shape b = new Square();
+            var total = Sorter.Classify(a) * 10 + Sorter.Classify(b);
+
+            public class Shape { }
+            public class Circle : Shape { }
+            public class Square : Shape { }
+
+            public class Sorter
+            {
+                public static int Classify(Shape s) => s switch
+                {
+                    Circle => 1,
+                    Square => 2,
+                    _ => 0,
+                };
+            }
+            """, "total");
+
+        Assert.Equal("12", result);
+    }
 }

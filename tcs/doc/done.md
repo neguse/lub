@@ -816,3 +816,13 @@
 - よかったこと: 実装前に全テスト/サンプルの API 使用 overload を監査し「テスト証拠 + runtime 実装」の交差だけを allowlist 化した。signature 文字列は手書きせず採取したので typo リスクなし
 - 判断: char overload (`Contains('a')` 等) は emitter が char を Lua string 化するため動く可能性はあるが、テスト証拠がないため許可しない (需要が出たら test とセットで追加)。診断メッセージは従来の `{Type}.{Member}` 形式を維持 (overload 情報は含めない。既存 fixture/parity の期待を変えない)
 - 残課題: なし
+
+### T151: 予約識別子診断と generated temp の衝突安全 ✓ (2026-07-17)
+- `self` (Lua method receiver) と `__tcs_` prefix (generated temp) の宣言識別子を TCS1001 `ReservedIdentifier(name)` で拒否 (T171 の LuaKeywordIdentifier と同じ宣言サイト網羅・Analyzer/check/transpiler 共有)
+- generated temp を `__tcs_` prefix へ統一 (`__init`→`__tcs_init`, `__ret`→`__tcs_ret`)。prefix 予約により temp とユーザー symbol の衝突を構造的に排除 (`var __init = 5; new T { X = __init }` が正しく動くことをテストで固定)。`_continue_N` label は Lua の label 名前空間が変数と別で衝突しないことをテストで固定
+- pattern 経路の型参照 4 箇所 (`getmetatable(x) == {Type}` raw emit) を ValueText ベースの `FormatTypeReference` へ統一し、verbatim 型名 (`@float`) が pattern でも valid Lua になるよう修正
+- 追加発見: 型名だけの switch arm (`Circle => 1`) は syntax 上 ConstantPattern になり値比較 (`s == Circle`) を emit していた silent wrong-code を修正 — semantic model で型と判れば metatable 比較にする (verbatim 無関係の実バグ)
+- 変更ファイル: Shared/TinyCsComplianceFacts.cs, Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/LuaIdentifierTests.cs, Transpiler.Tests/SwitchTests.cs, doc 同期
+- 検証: dotnet test 508/508 + analyzer 47/47
+- 判断: fresh name 生成器 (リネーム側) ではなく予約 prefix + 診断拒否を採用 — T171 と同じ「拒否で通す」契約で、emitter に scope 解決の複雑さを持ち込まない。`self`/`__tcs_*` の field/method 名は table key で安全だが、契約を一文に保つため宣言サイト一律拒否にした
+- 残課題: designation なしの binary `is Type` (BinaryExpressionSyntax IsExpression) は従来どおり TCS1001 警告の未対応 (silent ではないので需要が出たら対応)。`--entry` の emitted name API は T155 のスコープ

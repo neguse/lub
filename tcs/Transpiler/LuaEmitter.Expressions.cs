@@ -377,7 +377,7 @@ public partial class LuaEmitter
         var outs = string.Join(", ", outNames);
         if (method.ReturnsVoid)
             return $"{outs} = {call}";
-        return $"(function() local __ret; __ret, {outs} = {call}; return __ret end)()";
+        return $"(function() local __tcs_ret; __tcs_ret, {outs} = {call}; return __tcs_ret end)()";
     }
 
     private bool TryMapCollectionMethod(SemanticModel model,
@@ -634,14 +634,14 @@ public partial class LuaEmitter
                 } assign)
             {
                 var value = VisitExpression(model, assign.Right);
-                stmts.Add($"__init.{name.Identifier.ValueText} = {value}");
+                stmts.Add($"__tcs_init.{name.Identifier.ValueText} = {value}");
             }
             else
             {
                 _ = WarnUnsupported(expr, "object initializer entry");
             }
         }
-        return $"(function() local __init = {ctor} {string.Join(" ", stmts)} return __init end)()";
+        return $"(function() local __tcs_init = {ctor} {string.Join(" ", stmts)} return __tcs_init end)()";
     }
 
     private string VisitListInitializer(SemanticModel model,
@@ -830,16 +830,31 @@ public partial class LuaEmitter
         return $"(function() {string.Join(" ", parts)} end end)()";
     }
 
+    // verbatim 型名 (@float) は raw syntax text に @ が残るため、pattern 経路の
+    // 型参照は token ValueText から組み立てる。
+    private static string FormatTypeReference(TypeSyntax type) => type switch
+    {
+        IdentifierNameSyntax id => id.Identifier.ValueText,
+        QualifiedNameSyntax qualified =>
+            $"{FormatTypeReference(qualified.Left)}.{FormatTypeReference(qualified.Right)}",
+        _ => type.ToString(),
+    };
+
     private string VisitPattern(SemanticModel model, PatternSyntax pattern,
         string governing)
     {
         return pattern switch
         {
+            // 型名だけの arm (Circle => ...) は syntax 上 ConstantPattern に
+            // なるため、semantic で型と判れば metatable 比較にする。
+            ConstantPatternSyntax cp
+                when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol =>
+                $"getmetatable({governing}) == {VisitExpression(model, cp.Expression)}",
             ConstantPatternSyntax cp =>
                 $"{governing} == {VisitExpression(model, cp.Expression)}",
             DiscardPatternSyntax => "true",
             DeclarationPatternSyntax dp =>
-                $"getmetatable({governing}) == {dp.Type}",
+                $"getmetatable({governing}) == {FormatTypeReference(dp.Type)}",
             RecursivePatternSyntax rp => VisitRecursivePattern(model, governing, rp),
             RelationalPatternSyntax rel =>
                 $"{governing} {RelationalOp(rel)} {VisitExpression(model, rel.Expression)}",
@@ -863,11 +878,15 @@ public partial class LuaEmitter
     {
         return pattern switch
         {
+            ConstantPatternSyntax cp
+                when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol =>
+                $"getmetatable({expr}) == {VisitExpression(model, cp.Expression)}",
             ConstantPatternSyntax cp =>
                 $"{expr} == {VisitExpression(model, cp.Expression)}",
-            TypePatternSyntax tp => $"getmetatable({expr}) == {tp.Type}",
+            TypePatternSyntax tp =>
+                $"getmetatable({expr}) == {FormatTypeReference(tp.Type)}",
             DeclarationPatternSyntax dp =>
-                $"getmetatable({expr}) == {dp.Type}",
+                $"getmetatable({expr}) == {FormatTypeReference(dp.Type)}",
             UnaryPatternSyntax { RawKind: (int)SyntaxKind.NotPattern } notPat =>
                 $"not ({VisitIsSubPattern(model, expr, notPat.Pattern)})",
             RelationalPatternSyntax rp =>
@@ -888,7 +907,7 @@ public partial class LuaEmitter
 
         // Type check: is MyType { ... }
         if (rp.Type != null)
-            conditions.Add($"getmetatable({expr}) == {rp.Type}");
+            conditions.Add($"getmetatable({expr}) == {FormatTypeReference(rp.Type)}");
 
         // Property pattern: { X: > 0, Y: < 10 }
         if (rp.PropertyPatternClause != null)

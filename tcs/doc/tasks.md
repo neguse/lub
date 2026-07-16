@@ -15,12 +15,11 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **Lua 命名基盤**: T151
-2. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
-3. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
-4. **runtime 契約**: T152 → T153
-5. **CLI / watch**: T155 → T157
-6. **保守性・文書同期**: T158 → T159 → T160 → T161
+1. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
+2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
+3. **runtime 契約**: T152 → T153
+4. **CLI / watch**: T155 → T157
+5. **保守性・文書同期**: T158 → T159 → T160 → T161
 
 lub Haxe 代替検証は breakout 級サンプルの実機動作まで完了した
 (`doc/lub-gap-analysis.md`)。以降のサンプル移植・Useful 層追加は需要駆動で切る。
@@ -34,7 +33,7 @@ tcs 側から直接変更しない。
 
 ### T139: 副作用を一度だけ評価する expression lowering 基盤
 - 目的: 式文字列の複製によるreceiver/operandの多重評価を、後続構文でも再利用できる形で止める
-- 依存: T151
+- 依存: なし (T151 完了済み)
 - 作業:
   - setup statements、value、typeを持つ小さなlowering結果とfresh temp生成器を導入する
   - Roslyn `IOperation` / symbol情報を利用し、`?.` receiverをIIFE内localへ一度だけ保存する
@@ -121,7 +120,7 @@ tcs 側から直接変更しない。
 
 ### T149: 継承リンクをソース順・ファイル順から独立化
 - 目的: 派生classが基底classより先にemitされるとmetatable linkが失われる問題を直す
-- 依存: T151
+- 依存: なし (T151 完了済み)
 - 作業:
   - class table宣言、継承link、constructor/member定義を複数passへ分けるか、型依存graphで順序付ける
   - 同一ファイル逆順、複数ファイル逆順、複数段継承をtestする
@@ -135,15 +134,6 @@ tcs 側から直接変更しない。
   - 既存のexplicit `base(args)`を維持し、未対応の`this(args)`/複数constructorはTCS1001で明示する
   - 基底→派生のfield initializer/constructor body順をtestする
 - 完了条件: `class B { int X = 42; } class D : B {}`の`new D().X`が42となり、constructor formが黙って別の意味にならない
-
-### T151: generated temp/label の衝突安全と emitted name 解決
-- 目的: emitter が生成する temp/label がユーザー symbol と衝突して生成 Lua の意味が変わる事故を防ぐ (T139 の fresh temp 基盤の前提)
-- 前提: Lua 予約語識別子は T171 で TCS1001 拒否、verbatim `@` は ValueText emit。「拒否ではなくリネームで通す」中央マングリングは棚卸し (2026-07-17) で見送り — 診断拒否のほうが DSL 契約として明瞭で、自動リネームは source map / 生成 Lua の可読性を損なう
-- 作業:
-  - generated temp/label (`_continue_N` 等) がスコープ内のユーザー symbol や Lua 暗黙名 (`self`) と衝突しない fresh name 生成器を追加する
-  - 型 syntax の raw 出力箇所 (`getmetatable(x) == {dp.Type}` の `@Type`) を symbol 名ベースへ統一する
-  - `--entry` 等が emitted name を参照できる API にする (T155 と共有)
-- 完了条件: generated temp / `self` と衝突する名前を含む C# が valid Lua で正しく動き、verbatim 型名が pattern 経路でも正しく emit される
 
 ### T152: empty sequence と型別 default のLINQ/runtime契約
 - 目的: `FirstOrDefault<int>`等が常にnilを返し、allowlist済みAPIが値型で実行時エラーになる問題を直す
@@ -170,7 +160,7 @@ tcs 側から直接変更しない。
 
 ### T155: --entry を実際の emitted type/name と一致させる
 - 目的: namespaced classやinterfaceをentryに指定したとき、存在しないLua名をreturnして成功扱いする問題を直す
-- 依存: T151
+- 依存: なし (T151 完了済み)
 - 作業:
   - `INamedTypeSymbol`からemitterの実Lua名を取得し、文字列を直接appendしない
   - class/record classだけを許可し、interface/ref-only/非emit型を拒否する

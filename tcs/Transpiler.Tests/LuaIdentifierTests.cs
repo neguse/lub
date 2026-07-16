@@ -212,4 +212,132 @@ public class LuaIdentifierTests
 
         Assert.Equal("9", output);
     }
+
+    // T151: `self` は Lua method receiver、`__tcs_` prefix は generated temp
+    // として emit 側が予約する。宣言すると receiver/temp を壊すため TCS1001。
+    private static void AssertReservedIdentifierWarning(TranspileResult result,
+        string name)
+    {
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains(result.Warnings, w =>
+            w.Contains($"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && w.Contains($"ReservedIdentifier({name})"));
+    }
+
+    [Fact]
+    public void LocalNamedSelf_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Counter
+            {
+                public int Value = 5;
+
+                public int Get()
+                {
+                    var self = 1;
+                    return Value + self;
+                }
+            }
+            """], checkNaming: false);
+
+        AssertReservedIdentifierWarning(result, "self");
+    }
+
+    [Fact]
+    public void ParameterNamedSelf_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Mixer
+            {
+                public int Blend(int self) => self;
+            }
+            """], checkNaming: false);
+
+        AssertReservedIdentifierWarning(result, "self");
+    }
+
+    [Fact]
+    public void ClassNamedSelf_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class self
+            {
+                public int X;
+            }
+            """], checkNaming: false);
+
+        AssertReservedIdentifierWarning(result, "self");
+    }
+
+    [Fact]
+    public void LocalWithGeneratedTempPrefix_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Holder
+            {
+                public int Get()
+                {
+                    var __tcs_value = 3;
+                    return __tcs_value;
+                }
+            }
+            """], checkNaming: false);
+
+        AssertReservedIdentifierWarning(result, "__tcs_value");
+    }
+
+    // 旧 temp 名 (__init / __ret) は __tcs_ prefix へ統一し、prefix 予約で
+    // 衝突を構造的に防ぐ。__init という名前のユーザー変数は通常どおり動く。
+    [Fact]
+    public void UserVariableNamedInit_DoesNotCollideWithInitializerTemp()
+    {
+        var output = TestHelper.TranspileAndRun("""
+            var __init = 5;
+            var p = new Point { X = __init };
+            var check = p.X;
+
+            public class Point
+            {
+                public int X;
+            }
+            """, "check");
+
+        Assert.Equal("5", output);
+    }
+
+    [Fact]
+    public void ContinueLabel_DoesNotCollideWithUserVariable()
+    {
+        var output = TestHelper.TranspileAndRun("""
+            var _continue_1 = 10;
+            var sum = 0;
+            for (var i = 0; i < 3; i++)
+            {
+                if (i == 1) continue;
+                sum += i + _continue_1;
+            }
+            """, "sum");
+
+        Assert.Equal("22", output);
+    }
+
+    [Fact]
+    public void VerbatimTypeName_EmitsValueTextInPatterns()
+    {
+        var output = TestHelper.TranspileAndRun("""
+            Shape s = new @float();
+            var isFloat = s is @float f;
+            var viaSwitch = s switch
+            {
+                @float => 1,
+                _ => 0,
+            };
+            var total = (isFloat ? 1 : 0) + viaSwitch;
+
+            public class Shape { }
+            public class @float : Shape { }
+            """, "total");
+
+        Assert.Equal("2", output);
+    }
 }
