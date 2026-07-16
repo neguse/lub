@@ -18,7 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-test:
+  # job 名 = branch protection の required check 名。windows の build-test と
+  # 同名にすると required 指定が曖昧になる (check run が名前でしか区別できない)
+  # ので、workflow ごとに一意にする。
+  native-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

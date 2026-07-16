@@ -124,6 +124,7 @@ for (const name of targets) {
           return null
         }
       },
+      undefined, // 第2引数は pageFunction への arg。options を渡すと 30s デフォルトのまま
       { timeout: 120000, polling: 250 },
     )
     const png = Buffer.from(await b64.jsonValue(), 'base64')
