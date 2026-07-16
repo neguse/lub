@@ -970,3 +970,10 @@
 - 検証: dotnet test 577/577
 - 判断: 同名型が複数あるときの全 emit 衝突 (namespace 透過による last-write-wins) は entry 解決とは別の既知制約として残る (namespaced 入力を本格対応する際に扱う)
 - 残課題: なし
+
+### T157: watch の --prelude dependency 監視 ✓ (2026-07-17)
+- 出力へ埋め込まれる `--prelude` だけを変更しても rebuild されない問題を修正。prelude path を input/`--ref` と同じ監視集合へ追加し、watcher filter を `*.cs` 固定から `*.*` + `watchedFiles` の exact path 判定へ変更 (無関係ファイルでは rebuild しない)。Deleted イベントも rebuild を起こし、missing dependency の失敗として報告される
+- 変更ファイル: Transpiler/Program.cs, Transpiler.Tests/WatchModeTests.cs (+1: prelude-only 変更で rebuild / 無関係 .lua で非 rebuild、watch 子プロセスは entireProcessTree kill)
+- 検証: dotnet test 578/578
+- 判断: 出力 (.lua) と prelude が同居しても、対象判定が exact path なので self-trigger loop にならない
+- 残課題: なし

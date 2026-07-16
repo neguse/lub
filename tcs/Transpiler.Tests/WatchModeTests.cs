@@ -268,6 +268,65 @@ public class WatchModeTests
         throw new TimeoutException($"File {path} was not rewritten within {timeoutMs}ms");
     }
 
+    // T157: 出力へ埋め込まれる --prelude も build dependency として監視する。
+    // 無関係ファイルの変更では rebuild しない。
+    [Fact]
+    public void Watch_PreludeChange_TriggersRebuild()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"tcs_watch_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+
+        var inputPath = Path.Combine(tmpDir, "test.cs");
+        var preludePath = Path.Combine(tmpDir, "shim.lua");
+        var outputPath = Path.Combine(tmpDir, "out.lua");
+
+        try
+        {
+            File.WriteAllText(inputPath, """
+                public class Hello
+                {
+                    public static int Value() { return 1; }
+                }
+                """);
+            File.WriteAllText(preludePath, "-- prelude v1\n");
+
+            var psi = CreateTranspilerProcess(
+                inputPath, "-o", outputPath, "--prelude", preludePath, "--watch");
+
+            using var proc = Process.Start(psi)!;
+
+            try
+            {
+                WaitForFile(outputPath, timeoutMs: 15000);
+                var v1 = File.ReadAllText(outputPath);
+                Assert.Contains("prelude v1", v1);
+
+                // prelude だけを変更 (C# は無変更) → rebuild される
+                Thread.Sleep(500);
+                File.WriteAllText(preludePath, "-- prelude v2\n");
+                WaitForFileChange(outputPath, v1, timeoutMs: 5000);
+                var v2 = File.ReadAllText(outputPath);
+                Assert.Contains("prelude v2", v2);
+
+                // 無関係の .lua ファイルでは rebuild しない
+                Thread.Sleep(500);
+                var lastWrite = File.GetLastWriteTimeUtc(outputPath);
+                File.WriteAllText(Path.Combine(tmpDir, "unrelated.lua"), "-- x\n");
+                Thread.Sleep(1500);
+                Assert.Equal(lastWrite, File.GetLastWriteTimeUtc(outputPath));
+            }
+            finally
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(3000);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
     private static ProcessStartInfo CreateTranspilerProcess(
         params string[] arguments)
     {

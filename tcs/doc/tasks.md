@@ -31,18 +31,6 @@ tcs 側から直接変更しない。
 
 ---
 
-## P1: CLI・開発体験
-
-### T157: watch の --prelude dependency監視
-- 目的: outputへ埋め込まれるpreludeだけを変更してもrebuildされない問題を直す
-- 作業:
-  - prelude pathをinput/refと同じbuild dependency集合へ追加する
-  - `*.cs`固定filterをやめ、`.lua` preludeのChanged/Created/Renamed/Deletedをexact path判定で拾う
-  - prelude-only atomic saveのwatch testを追加する
-- 完了条件: C#に変更がなくてもprelude更新でoutputが再生成され、削除時は失敗を報告し、無関係ファイルではrebuildせず、test後にwatch子processが残らない
-
----
-
 ## P2: 保守性・ドキュメント
 
 ### T158: LuaEmitter.Expressions.cs の責務分割

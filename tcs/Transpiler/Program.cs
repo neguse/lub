@@ -479,7 +479,10 @@ public class Program
     private static int RunWatch(List<string> inputPaths, List<string> refPaths,
         BuildOptions options)
     {
-        var watchPaths = inputPaths.Concat(refPaths).ToArray();
+        // 出力へ埋め込まれる prelude も build dependency として監視する
+        var watchPaths = inputPaths.Concat(refPaths)
+            .Concat(options.PreludePath is { } prelude ? [prelude] : Array.Empty<string>())
+            .ToArray();
         Console.Error.WriteLine($"Watching {watchPaths.Length} file(s)... (Ctrl+C to stop)");
 
         // Initial build
@@ -496,7 +499,9 @@ public class Program
             var dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
             if (!watchedDirs.Add(dir)) continue;
 
-            var watcher = new FileSystemWatcher(dir, "*.cs")
+            // filter は *.* (拡張子固定だと .lua prelude を拾えない)。
+            // 対象判定は watchedFiles の exact path 比較で行う
+            var watcher = new FileSystemWatcher(dir, "*.*")
             {
                 // FileName も含める: エディタの atomic save (tmp へ書いて
                 // rename) は Changed ではなく Created/Renamed で届く
@@ -523,6 +528,8 @@ public class Program
             watcher.Changed += OnFsEvent;
             watcher.Created += OnFsEvent;
             watcher.Renamed += (_, e) => OnFsEvent(_, e);
+            // 削除も rebuild を起こし、missing dependency として失敗を報告する
+            watcher.Deleted += OnFsEvent;
         }
 
         try
