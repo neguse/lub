@@ -1,8 +1,8 @@
 # 現在の状態
 
-## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
+## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog 完了 (T138-T161, T180-T181)
 
-### 完了済み (578テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (テスト件数は `dotnet test` / `run-tests.sh` の実行結果を正本とする)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -223,12 +223,10 @@
 - `Math` / `string` / `List<T>` / `Dictionary<K,V>` / LINQ は supported API allowlist を完全シグネチャ単位で持ち、`Math.Cbrt` のような未対応 member に加えて、名前だけ一致する未実装 overload (indexed `Select((x,i)=>...)`, `Contains(char)`, `StringComparison` / comparer 付き、capacity constructor、`Split` への明示 `StringSplitOptions` など) も TCS1002 として検出する。`System.Math.Min`のような完全修飾アクセスでは中間の型qualifierをAPI memberとして重複診断しない
 
 ### 次のタスク
-- `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
+- `doc/tasks.md` は空 (2026-07-12 レビュー由来の正しさ backlog T138-T161 と追加発見 T180-T181 を完遂)。新タスクは需要駆動で起票する
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0 正しさレビュー backlog (T138-T153) + T180/T181 は全て完了。既知の silent wrong-code は解消済み
-- 残タスクは T161 (最終監査) のみ。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
-- T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
+- 診断一致・ファイルサイズ (600/800行) は run-tests の恒常ゲートで守る
 
 ### コミット履歴
 1. `6d02c3e` feat: T1-T6 Phase 0 プロジェクトセットアップ

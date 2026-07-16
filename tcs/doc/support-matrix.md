@@ -65,16 +65,16 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 名前空間・using | **Core** | 3 | 0 | 3 | 1 | 7 |
 | 型宣言 | **Core** | 3 | 1 | 5 | 0 | 9 |
 | メンバー宣言 | **Core** | 10 | 3 | 8 | 1 | 22 |
-| ローカル宣言 | **Core** | 3 | 1 | 6 | 1 | 11 |
+| ローカル宣言 | **Core** | 4 | 1 | 5 | 1 | 11 |
 | 文 | **Core** | 12 | 0 | 6 | 4 | 22 |
 | リテラル | **Core** | 12 | 0 | 0 | 1 | 13 |
 | 演算子 | **Core** | 24 | 1 | 8 | 5 | 38 |
 | 高度な式 | **Core** | 6 | 2 | 9 | 2 | 19 |
-| パターンマッチング | **Core** | 8 | 1 | 8 | 0 | 17 |
+| パターンマッチング | **Core** | 9 | 0 | 8 | 0 | 17 |
 | 修飾子 | **Useful** | 4 | 2 | 20 | 4 | 30 |
 | ジェネリクス | **Core/Out** | 1 | 1 | 5 | 0 | 7 |
 | 継承 | **Useful** | 4 | 0 | 2 | 0 | 6 |
-| **小計** | | **99** | **18** | **94** | **26** | **237** |
+| **小計** | | **101** | **17** | **93** | **26** | **237** |
 
 ### 標準ライブラリ
 
@@ -223,12 +223,12 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `int x = expr;` | **Y** | `local x = expr` | |
 | `ref` ローカル (C# 7) | **N/A** | | |
 | ローカル定数 `const` | **-** | | |
-| 分解宣言 `var (a, b) = ...` (C# 7) | **P** | `local a, b = ...` | record positional property 限定 |
+| 分解宣言 `var (a, b) = ...` (C# 7) | **P** | `__tcs_dec` へ一回評価して展開 | record positional property 限定。既存変数への分解代入 `(a, b) = rhs` も対応 |
 | 破棄 `_ = expr` (C# 7) | **-** | | |
 | トップレベル文 (C# 9) | **Y** | Lua chunk | 型定義を先に出力してから実行 |
 | using 宣言 `using var` (C# 8) | **-** | | unsupported 診断あり |
 | `scoped` ローカル (C# 11) | **-** | | |
-| パターン変数 `if (x is int i)` (C# 7) | **-** | | |
+| パターン変数 `if (x is int i)` (C# 7) | **Y** | statement 前 `local` 宣言 + IIFE 内代入 | 式文脈 (ternary / 複合条件 / lambda) も束縛 |
 | `required` メンバー (C# 11) | **-** | | |
 
 ---
@@ -240,7 +240,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 変数宣言文 | **Y** | `local x = ...` | |
 | 式文 (メソッド呼び出し等) | **Y** | | |
 | `if` / `else if` / `else` | **Y** | `if`/`elseif`/`else`/`end` | |
-| `switch` 文 | **Y** | if-elseif チェーン | |
+| `switch` 文 | **Y** | if-elseif チェーン | 定数に加え関係 (`case > 5:`) / or / 型 / `when` パターンラベル対応 |
 | `while` ループ | **Y** | `while cond do end` | |
 | `do-while` ループ | **Y** | `repeat ... until not(cond)` | |
 | `for` ループ (C 形式) | **Y** | `for i=s,e do` / while 展開 | 一般 incrementor 対応 |
@@ -286,7 +286,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | 演算子 | 状態 | Lua 出力 | 備考 |
 |--------|:----:|---------|------|
-| `+` `-` `*` `/` `%` (算術) | **Y** | そのまま | |
+| `+` `-` `*` `/` `%` (算術) | **Y** | `+ - *` はそのまま。整数 `/` `%` は `__tcs_idiv`/`__tcs_irem` (C# の 0 方向 truncation)、float `%` は `math.fmod` | |
 | `+` (文字列連結) | **Y** | `..` | 型で自動判定 |
 | `==` `!=` | **Y** | `==` `~=` | |
 | `<` `<=` `>` `>=` | **Y** | そのまま | |
@@ -298,11 +298,11 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `=` (代入) | **Y** | そのまま | |
 | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` | **Y** | 展開 `x = x op y` | bool への `&=` `\|=` `^=` は未対応 |
 | `? :` (三項) | **Y** | IIFE | falsy 安全 |
-| `??` (null 合体) | **Y** | `or` | |
+| `??` (null 合体) | **Y** | `or` (bool? のみ nil 判定 IIFE — `or` だと false が fallback するため) | |
 | `?.` (null 条件アクセス, C# 6) | **Y** | IIFE nil チェック | String/List/Dict mapping 対応 |
 | `(T)x` (キャスト) | **Y** | 透過 (型消去) | |
 | `is null` / `is not null` | **Y** | `== nil` / `~= nil` | |
-| `is Type` | **Y** | `getmetatable() ==` | |
+| `is Type` | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定。designation なしの binary 形も対応 | |
 | `new T(args)` | **Y** | `T.new(args)` | |
 | `??=` (null 合体代入, C# 8) | **Y** | nil check + assignment | |
 | `?[]` (null 条件インデクサ, C# 6) | **Y** | IIFE nil チェック | List/array は 0→1 indexed |
@@ -367,10 +367,10 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | パターン | C# ver | 状態 | Lua マッピング | 備考 |
 |---------|--------|:----:|--------------|------|
 | 定数パターン `is 42`, `is null` | 7 | **Y** | `== 42`, `== nil` | |
-| 型パターン `is MyClass` | 7 | **Y** | `getmetatable() ==` | |
+| 型パターン `is MyClass` | 7 | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定 | |
 | `not` パターン `is not null` | 9 | **Y** | `~= nil` | |
 | 破棄パターン `_` | 7 | **Y** | switch 式の default | |
-| 宣言パターン `is int i` | 7 | **P** | 型判定 + 一部 local 束縛 | root if 限定 |
+| 宣言パターン `is int i` | 7 | **Y** | 型判定 + local 束縛 | if / ternary / 複合条件 / lambda / switch で束縛 |
 | `var` パターン `is var v` | 7 | **-** | | |
 | プロパティパターン `is { Name: "x" }` | 8 | **Y** | property 比較展開 | |
 | 位置パターン `is (1, 2)` | 8 | **-** | | |
@@ -786,12 +786,12 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `.Any()` / `.Any(predicate)` | **Y** | `List.Any(list, fn)` | T+R |
 | `.All(predicate)` | **Y** | `List.All(list, fn)` | T+R |
 | `.First()` / `.First(predicate)` | **Y** | `List.First(list, fn)` | T+R |
-| `.FirstOrDefault()` / `.FirstOrDefault(pred)` | **Y** | `List.FirstOrDefault(list, fn)` | T+R |
+| `.FirstOrDefault()` / `.FirstOrDefault(pred)` | **Y** | `List.FirstOrDefault(list, fn, default)` | T+R。miss 時は要素型別 default (int=0/bool=false/ref=nil) |
 | `.OrderBy(keySelector)` | **Y** | `List.OrderBy(list, fn)` | T+R |
 | `.OrderByDescending(keySelector)` | **Y** | `List.OrderByDescending(list, fn)` | T+R |
 | `.Take(count)` | **Y** | `List.Take(list, count)` | T+R |
 | `.Skip(count)` | **Y** | `List.Skip(list, count)` | T+R |
-| `.Last()` / `.LastOrDefault()` | **Y** | `List.Last/LastOrDefault(list, fn)` | T+R |
+| `.Last()` / `.LastOrDefault()` | **Y** | `List.Last/LastOrDefault(list, fn, default)` | T+R。First/Last/Min/Max の empty は明示 error |
 | `.Min()` | **Y** | `List.Min(list)` | T+R |
 | `.Max()` | **Y** | `List.Max(list)` | T+R |
 | `.Sum()` | **Y** | `List.Sum(list)` | T+R |

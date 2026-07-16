@@ -1000,3 +1000,11 @@
 - 検証: dotnet test 583/583 (現行ソースは T158/T159 の分割後で error 0)
 - 判断: fixture ファイル方式ではなく境界 Theory + 実 tree 走査 — cross-platform かつ CI 配線変更ゼロ
 - 残課題: なし
+
+### T161: support matrix / test evidence の最終監査 ✓ (2026-07-17)
+- T138-T181 の変更と support-matrix / README の記述を突き合わせ、stale な箇所を更新: 算術演算子 (整数 `/` `%` の idiv/irem)、`??` (bool? nil 判定)、`is Type` / 型パターン / 宣言パターン (type() 判定・式文脈束縛で P→Y)、パターン変数 (-→Y)、switch 文 (パターンラベル)、分解宣言 (分解代入対応)、FirstOrDefault/Last (型別 default と empty error)。サマリ表を再集計 (言語機能 Y 99→101 / P 18→17 / - 94→93)
+- current.md のテスト件数記述を廃止し `dotnet test` / `run-tests.sh` の実行結果を正本に (件数の手動同期をやめる)。README の analyzer-demo 期待件数 (TCS1001 x5 等) は run-tests の恒常ゲートが実件数を検証しており一致を確認済み
+- 「Y だが実行不能」記述の残りなし (監査は subagent の全文照合で実施)
+- 変更ファイル: doc/support-matrix.md, doc/current.md, doc/tasks.md (空化)
+- 判断: HotReload の概念的言及 (async を Out にする理由の「ホットリロード可能な」) は lume.hotswap / module registry でも成立するため据え置き
+- 残課題: なし — tasks.md は空
