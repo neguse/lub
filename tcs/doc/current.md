@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (570テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (573テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -74,6 +74,7 @@
 **T152**: LINQ の empty/default 契約 — `FirstOrDefault`/`LastOrDefault` は呼び出しサイトの型から default(T) (int=0/bool=false/ref=nil) を runtime へ渡す。`First()`/`Min`/`Max` の empty は nil 算術ではなく明示 error、`Sum()` empty は 0
 **T153**: ToDictionary selector の評価契約 — 各要素 1 回・key → value 順を runtime で明示し test で固定 (レビュー時の多重評価疑いは再現せず)。duplicate key の Lua 上書きは既知差異として support-matrix に記載
 **T180**: 値型/string 型パターンの型判定 — `getmetatable(x) == int` (未定義 global で nil がマッチ) を `type(x) == "number"/"boolean"/"string"` へ (int/float は Lua subtype 揺れのため number 一括、enum は number)。designation なしの binary `is Type` を新規対応 (従来 TCS1001)。switch expression の arm designation (`int v => v`) を IIFE 内で束縛 (従来 nil)
+**T181**: 式文脈の is-pattern designation 束縛 — ternary / 複合条件 (`is Circle c && c.R > 5`) / lambda 内の designation を statement/lambda 前の local 宣言 + IIFE 内一回評価代入で束縛 (従来は if 文直下のみ。receiver の二重評価も解消)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -219,8 +220,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0 正しさレビュー backlog (T138-T153) + T180 は全て完了。残る既知の silent wrong-code は T181 (式文脈の is-pattern designation 束縛) のみ
-- 着手順: T181 → P1 (T155/T157) → P2 (T158-T161)。継承 T149-T150、T180 は並行可
+- P0 正しさレビュー backlog (T138-T153) + T180/T181 は全て完了。既知の silent wrong-code は解消済み
+- 着手順: P1 (T155/T157) → P2 (T158-T161)。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

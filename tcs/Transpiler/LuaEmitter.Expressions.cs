@@ -1045,7 +1045,7 @@ public partial class LuaEmitter
     {
         var param = lambda.Parameter.Identifier.ValueText;
         if (lambda.ExpressionBody != null)
-            return $"function({param}) return " +
+            return $"function({param}) {LambdaPatternLocals(lambda.ExpressionBody)}return " +
                    $"{VisitExpression(model, lambda.ExpressionBody)} end";
         return $"function({param}) {VisitLambdaBlock(model, lambda.Block!)} end";
     }
@@ -1056,9 +1056,17 @@ public partial class LuaEmitter
         var parameters = string.Join(", ",
             lambda.ParameterList.Parameters.Select(p => p.Identifier.ValueText));
         if (lambda.ExpressionBody != null)
-            return $"function({parameters}) return " +
+            return $"function({parameters}) {LambdaPatternLocals(lambda.ExpressionBody)}return " +
                    $"{VisitExpression(model, lambda.ExpressionBody)} end";
         return $"function({parameters}) {VisitLambdaBlock(model, lambda.Block!)} end";
+    }
+
+    // expression-bodied lambda 内の is-pattern designation は statement
+    // pre-pass が無いため、function 冒頭で local 宣言する
+    private static string LambdaPatternLocals(ExpressionSyntax body)
+    {
+        var names = IsPatternDesignationNames(body).ToList();
+        return names.Count > 0 ? $"local {string.Join(", ", names)}; " : "";
     }
 
     private string VisitLambdaBlock(SemanticModel model, BlockSyntax block)
@@ -1186,6 +1194,16 @@ public partial class LuaEmitter
         IsPatternExpressionSyntax isPattern)
     {
         var expr = VisitExpression(model, isPattern.Expression);
+        // designation は statement/lambda 前で `local name` 宣言済み。IIFE 内で
+        // 一度だけ評価・代入し、型判定は束縛済みの値に対して行う
+        if (isPattern.Pattern is DeclarationPatternSyntax
+            { Designation: SingleVariableDesignationSyntax sv } dp)
+        {
+            var name = sv.Identifier.ValueText;
+            var check = EmitTypeCheck(name, model.GetTypeInfo(dp.Type).Type,
+                FormatTypeReference(dp.Type));
+            return $"(function() {name} = {expr}; return {check} end)()";
+        }
         return $"({VisitIsSubPattern(model, expr, isPattern.Pattern)})";
     }
 

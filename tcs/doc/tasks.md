@@ -29,13 +29,6 @@ tcs 側から直接変更しない。
 
 ## P0: 正しさ・安全性
 
-### T181: 式文脈の is-pattern designation 束縛
-- 目的: ternary や式の中の `x is int v ? v : -1` で designation `v` が束縛されず nil になる silent wrong-code を直す (if 文と switch は束縛済み)
-- 作業:
-  - 式文脈の IsPatternExpression designation を IIFE local で束縛するか、束縛付き is-pattern の式利用を TCS1001 で明示する
-  - ternary / bool 変数への代入 / 引数位置の各文脈を test する
-- 完了条件: 式文脈の designation が C# と同じ値になるか、明示診断される
-
 ---
 
 ## P1: CLI・開発体験

@@ -110,11 +110,25 @@ public partial class LuaEmitter
 
     private bool EmitOutVarDeclarations(StatementSyntax stmt)
     {
+        // is-pattern designation も out var と同じく statement 前で宣言し、
+        // 式内 (ternary / 複合条件) の束縛は IIFE 内代入で行う。
+        // elseif には前置文を置けないため、if-elseif 連鎖の条件分は
+        // chain 全体を root の前でまとめて宣言する。
+        var patternScopes = new List<SyntaxNode> { stmt };
+        var chain = stmt as IfStatementSyntax;
+        while (chain?.Else?.Statement is IfStatementSyntax elseIf)
+        {
+            patternScopes.Add(elseIf.Condition);
+            chain = elseIf;
+        }
+
         var names = stmt.DescendantNodes()
             .OfType<ArgumentSyntax>()
             .Where(arg => arg.Ancestors().OfType<StatementSyntax>().FirstOrDefault() == stmt)
             .Select(TryGetOutArgumentName)
             .Where(name => !string.IsNullOrEmpty(name))
+            .Select(name => name!)
+            .Concat(patternScopes.SelectMany(IsPatternDesignationNames))
             .Distinct()
             .ToList();
 
@@ -123,6 +137,22 @@ public partial class LuaEmitter
 
         return names.Count > 0;
     }
+
+    // scope 直下 (内側の statement / lambda を跨がない) の is-pattern
+    // designation 名を列挙する。lambda 内は lambda 側で宣言する。
+    internal static IEnumerable<string> IsPatternDesignationNames(SyntaxNode scope) =>
+        scope.DescendantNodes()
+            .OfType<IsPatternExpressionSyntax>()
+            .Where(p => p.Ancestors()
+                .TakeWhile(a => a != scope)
+                .All(a => a is not StatementSyntax
+                    and not AnonymousFunctionExpressionSyntax))
+            .Select(p => p.Pattern)
+            .OfType<DeclarationPatternSyntax>()
+            .Select(dp => dp.Designation)
+            .OfType<SingleVariableDesignationSyntax>()
+            .Select(sv => sv.Identifier.ValueText)
+            .Distinct();
 
     private void VisitExpressionStatement(SemanticModel model, ExpressionStatementSyntax exprStmt)
     {
@@ -212,15 +242,6 @@ public partial class LuaEmitter
 
     private void VisitIf(SemanticModel model, IfStatementSyntax ifStmt, bool isRoot)
     {
-        // Declaration pattern: emit local variable binding before the if
-        if (isRoot && ifStmt.Condition is IsPatternExpressionSyntax
-            { Pattern: DeclarationPatternSyntax dp } isPat)
-        {
-            var expr = VisitExpression(model, isPat.Expression);
-            var varName = dp.Designation is SingleVariableDesignationSyntax sv
-                ? sv.Identifier.ValueText : "_";
-            AppendLine($"local {varName} = {expr}");
-        }
         AppendLine($"{(isRoot ? "if" : "elseif")} {VisitExpression(model, ifStmt.Condition)} then");
         _indent++;
         VisitBlock(model, ifStmt.Statement);

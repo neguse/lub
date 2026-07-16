@@ -67,6 +67,79 @@ public class TypePatternTests
         Assert.Equal("5|-1", result);
     }
 
+    // T181: 式文脈 (ternary / 複合条件 / lambda) の is-pattern designation 束縛
+    [Fact]
+    public void IsPattern_InTernary_BindsDesignation()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Test()
+                {
+                    int? some = 7;
+                    int? none = null;
+                    var a = some is int x ? x : -1;
+                    var b = none is int y ? y : -1;
+                    return $"{a}|{b}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("7|-1", result);
+    }
+
+    [Fact]
+    public void IsPattern_InCompoundCondition_BindsDesignation()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Shape { }
+            public class Circle : Shape
+            {
+                public int R;
+            }
+            public class T
+            {
+                public static string Classify(Shape s)
+                {
+                    if (s is Circle c && c.R > 5) return $"big:{c.R}";
+                    return "other";
+                }
+
+                public static string Test() =>
+                    Classify(new Circle { R = 9 }) + "|" + Classify(new Shape());
+            }
+            """, "T.Test()");
+        Assert.Equal("big:9|other", result);
+    }
+
+    [Fact]
+    public void IsPattern_InLambda_BindsDesignation()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            using System.Linq;
+
+            public class Shape { }
+            public class Circle : Shape
+            {
+                public int R;
+            }
+            public class T
+            {
+                public static int Test()
+                {
+                    var shapes = new List<Shape>
+                    {
+                        new Circle { R = 1 },
+                        new Shape(),
+                        new Circle { R = 9 },
+                    };
+                    return shapes.Count(o => o is Circle c && c.R > 2);
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("1", result);
+    }
+
     [Fact]
     public void ClassPattern_StillUsesMetatable()
     {

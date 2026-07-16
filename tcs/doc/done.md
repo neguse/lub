@@ -954,3 +954,11 @@
 - 判断: `~= nil` ではなく type() 判定 — interface 型 receiver 等でも型不一致を検出できる。object receiver の int/float 判別は型消去の既知限界 (tcs は object 未対応なので実害なし)
 - 副産物: T181 を起票 — 式文脈 (ternary 等) の is-pattern designation が未束縛で nil になる gap を発見
 - 残課題: T181
+
+### T181: 式文脈の is-pattern designation 束縛 ✓ (2026-07-17)
+- ternary (`x is int v ? v : -1`)、複合条件 (`if (s is Circle c && c.R > 5)`)、lambda 内の is-pattern designation が束縛されず nil になる silent wrong-code を修正。out var と同じ statement 前 `local` 宣言 (elseif 連鎖は chain 全体を root 前で宣言、expression-bodied lambda は function 冒頭で宣言) + IIFE 内の一回評価代入 `(function() v = expr; return type(v)==... end)()` へ統一
+- VisitIf の root 限定 special case (binding + receiver 二重評価) を削除し、全文脈が同じ経路に
+- 変更ファイル: Transpiler/LuaEmitter.Statements.cs (pre-pass 拡張 / IsPatternDesignationNames), Transpiler/LuaEmitter.Expressions.cs (VisitIsPattern 束縛 / lambda locals), Transpiler.Tests/TypePatternTests.cs (+3)
+- 検証: dotnet test 573/573
+- 判断: designation の束縛は C# と同じく match 失敗時も変数自体は存在する (読み出しは C# の definite assignment が防ぐ)。recursive pattern の designation (`is Circle { R: > 2 } c`) は従来どおり未対応
+- 残課題: なし
