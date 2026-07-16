@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 正しさレビュー backlog (T138-T161, T163) / 増分 module compilation M0 進行中 (T172-T179)
 
-### 完了済み (440テスト tcs / 18テスト analyzer / 477テスト lub3d)
+### 完了済み (470テスト tcs / 20テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -167,18 +167,12 @@
 - NuGet package は `.csproj` に明示 version を pin し、`packages.lock.json` で transitive dependency も固定する
 - `dotnet publish Transpiler/Transpiler.csproj -c Release -o <dir>` は `runtime/tinysystem.lua` を publish 出力の `runtime/` 配下へ同梱する
 
-### HotReload (runtime/tinysystem.lua)
-- `HotReload.swap(filepath)`: dofile → グローバルテーブルの深い更新 (既存インスタンス状態保持)
-- `HotReload.watch(filepath)`: ファイル変更監視 (host が `HotReload.mtime` を注入した場合のみ)
-- `HotReload.update()`: フレームごとのポーリング (0.5秒間隔)
-- `HotReload.mtime(filepath)`: デフォルトは shell 非依存の no-op (`nil`)、engine 側 `fs.mtime()` 等を代入する
-
 ### lub 連携サンプル (samples/lub/)
 - `hello.cs` / `breakout.cs` + `lub_stub.cs` (--ref) + `lub_shim.lua` (--prelude) で lub の 00_hello / 09_breakout 相当を実行できる
 - `run-lub.sh [hello|breakout] [--build] [lub args...]` が staging (lub は cwd 相対の samples/<mod>/.lub レイアウト前提のため) と headless 起動をまとめる
 - breakout は Input / Io (multi-return) / use_shader / use_buffer / draw まで stub/shim を拡張し、決定論 gameplay を `--capture` frame 240 で検証済み
 - 検証は lub の `--capture` でフレーム画像を確認。詳細は `doc/lub-gap-analysis.md`
-- hot reload: `tcs --watch` の出力を staging パスへ向けると、lub の mtime poll → lume.hotswap で C# 編集が再起動なしに反映される (tcs 側 HotReload runtime は lub 経路では使わない)
+- hot reload: `tcs --watch` の出力を staging パスへ向けると、lub の mtime poll → lume.hotswap で C# 編集が再起動なしに反映される
 
 ### 外部 API / --ref サンプル
 - `samples/host_api_game.cs` + `samples/host_api_stub.cs` を engine agnostic な参照専用 stub 例として追加

@@ -99,7 +99,7 @@ dotnet run --project Transpiler -- samples/hello.cs -o out.lua
 Unix permission bitsを維持する。
 
 CLI 生成 Lua はデフォルトで TinySystem runtime prelude を埋め込む。
-`List` / `Dict` / `Math` / `String` / `Random` / `HotReload` は生成物だけで利用できる。
+`List` / `Dict` / `Math` / `String` / `Random` は生成物だけで利用できる。
 エンジン側で runtime を供給する場合は `--no-runtime` を付ける。
 
 ```bash
@@ -195,19 +195,6 @@ dotnet run --project Transpiler -- src/*.cs -o out.lua --watch
 
 `src/*.cs` は shell が展開する例。shell が glob 展開しない環境ではファイルを個別に渡す。
 ファイル変更を検知して自動で再トランスパイルする。`Ctrl+C` で停止。
-
-### HotReload runtime
-
-`HotReload.swap(path)` は `dofile` した Lua を既存 table へ反映する。
-`HotReload.watch(path)` / `HotReload.update()` で runtime 側の監視もできるが、
-組み込み環境で shell に依存しないよう default `HotReload.mtime` は `nil` を返す。
-エンジン側の file API がある場合だけ mtime 関数を注入する。
-
-```lua
-HotReload.mtime = function(path)
-  return fs.mtime(path)
-end
-```
 
 ### tcs analyzer PoC
 

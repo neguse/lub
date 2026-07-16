@@ -19,7 +19,7 @@
 2. **Lua 命名基盤**: T151
 3. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
 4. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
-5. **runtime 契約**: T152 → T153 → T154
+5. **runtime 契約**: T152 → T153
 6. **CLI / watch**: T155 → T156 → T157
 7. **保守性・文書同期**: T158 → T159 → T160 → T161
 
@@ -181,14 +181,6 @@ tcs 側から直接変更しない。
   - collection initializerのAdd形式はduplicate error、index initializer/indexer assignmentは上書き可能なまま区別する
   - string/number keyとselector重複をsemantic testへ追加する
 - 完了条件: Add/ToDictionaryのduplicateは失敗し、indexer updateは成功する
-
-### T154: HotReload.swap のtransactional rollback
-- 目的: reload中に既存tableを変更してからerrorになると、失敗後にも変更が残る問題を直す
-- 作業:
-  - staging `_G`とmutable table graphをlive側と共有しない独立環境で成功時だけcommitするか、失敗時にin-place復元できる循環/metatable対応snapshot方式を採用する
-  - 既存table mutation、新規global、metatable変更後のerrorをrollback testに追加する
-  - 成功時のtable identityとinstance state保持は維持する
-- 完了条件: failed swap後のLua global object graph（binding/nested table/metatable/cycle）が旧状態へ戻り、successful swapの既存identity保持testも通る。I/O等の外部副作用はrollback対象外と明記する
 
 ---
 

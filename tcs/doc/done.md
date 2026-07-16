@@ -780,3 +780,11 @@
 
 ### T179: [M5] optional optimization ✓ 全項目見送り (2026-07-14)
 - profile 判断で全項目不着手 (design doc §17 M5 に内訳)。warm E2E p95 442ms < gate 500ms、managed compile p50 45ms < 予算 275ms。direct apply / candidate-aware invalidation / Worker / AOT A/B のいずれも gate 充足に不要
+
+### HotReload runtime の粉砕 (T154 クローズ) ✓ (2026-07-17)
+- 残タスク棚卸しで consumer 不在を確認し、runtime の legacy HotReload module (`swap`/`watch`/`update`/`mtime`) を削除。prelude / bridge snapshot の `_G.HotReload` alias、HotReloadTests (9件) も削除
+- 変更ファイル: runtime/tinysystem.lua, Transpiler/LuaRuntime.cs, Transpiler/ModuleArtifacts.cs, Transpiler.Tests/HotReloadTests.cs (削除), README.md, q.md, doc/support-matrix.md, doc/current.md, doc/tasks.md (T154 削除), doc/incremental-module-compilation-design.md
+- 検証: 削除前に全 grep で利用箇所を棚卸し (samples 参照ゼロ / lub は lume.hotswap / browser playground は module_registry)。`dotnet test` 470/470 + analyzer 20/20 PASS
+- よかったこと: 「rollback を作り込む (T154)」ではなく「使われていない機構ごと消す」で backlog を1件無効化できた
+- 判断: swap 単体でなく module 全体を削除 (watch/update/mtime は swap 専用の付属機構)。hot reload の正本は module_registry transaction (T177) と host 側 lume.hotswap に一本化
+- 残課題: なし

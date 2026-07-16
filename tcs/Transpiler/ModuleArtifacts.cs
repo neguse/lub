@@ -126,7 +126,6 @@ public static class ModuleLinker
         sb.Append("  _G.Math = TinySystem.Math\n");
         sb.Append("  _G.String = TinySystem.String\n");
         sb.Append("  _G.Random = TinySystem.Random\n");
-        sb.Append("  _G.HotReload = TinySystem.HotReload\n");
         sb.Append("  local __registry_mod = (function()\n");
         AppendIndented(sb, registryLua, "    ");
         sb.Append("  end)()\n");

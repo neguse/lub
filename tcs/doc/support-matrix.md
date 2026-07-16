@@ -905,7 +905,6 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |
 | Lua stack trace SourceMap 注釈 | **Y** | `--map-stacktrace out.lua.map [trace.txt]` |
 | watch モード | **Y** | `--watch` でファイル監視 |
-| HotReload mtime 注入 | **Y** | shell 非依存 default + host `HotReload.mtime` |
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
 | 命名規約チェック | **Y** | PascalCase/camelCase 警告 |

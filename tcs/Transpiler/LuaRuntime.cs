@@ -41,7 +41,6 @@ public static class LuaRuntime
         sb.AppendLine("  _G.Math = TinySystem.Math");
         sb.AppendLine("  _G.String = TinySystem.String");
         sb.AppendLine("  _G.Random = TinySystem.Random");
-        sb.AppendLine("  _G.HotReload = TinySystem.HotReload");
         sb.AppendLine("end");
         sb.AppendLine();
         return sb.ToString();

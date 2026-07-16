@@ -69,7 +69,7 @@
 - top-level statements は型定義を emit した後に Lua chunk として出力する
 - class/static method は自動実行せず、host やテストが `Class.Method()` を明示的に呼ぶ
 - CLI 生成 Lua は TinySystem runtime prelude をデフォルトで埋め込み、`--no-runtime` で host 供給へ戻せる
-- HotReload は `HotReload.swap(path)` と host 注入 mtime による `watch/update` を使う
+- hot reload は host 側 (lub の lume.hotswap / browser の module registry) が担い、tcs runtime は reload 機構を持たない
 
 ### Q5: CLI 設計 → 変換・watch・check・SourceMap 後処理を実装済み
 - 基本形: `tcs input.cs [input2.cs ...] --ref ref.cs -o output.lua`
