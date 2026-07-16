@@ -859,3 +859,11 @@
 - 検証: dotnet test 522/522
 - 判断: override の適用順は既存実装が構文順で C# と一致済み (テストで担保)
 - 残課題: なし
+
+### T143: 副作用付き lvalue の一回評価と compound semantics ✓ (2026-07-17)
+- compound assignment / `??=` / increment / `List.Clear` で receiver・index の式文字列を複製していた多重評価を修正。lvalue の receiver/index に副作用があり得るとき (syntax 判定: invocation / object creation / conditional access / assignment / with / increment を含む) だけ `__tcs_obj` / `__tcs_idx` temp へ下げ、pure な lvalue は従来の出力を維持 (既存テスト・生成 Lua 無変化)
+- string `+=` が Lua `+` を emit して実行時エラーになっていた問題を `..` へ修正 (`s += 1` も C# と同じ "s1" 連結になる)。評価順は C# の receiver → index → read → rhs → write に一致
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs (VisitAssignment 再構成 + CompoundOperator / TryLowerLvalue / HasSideEffectSyntax), Transpiler/LuaEmitter.Statements.cs (increment / `??=` statement 経路), Transpiler.Tests/LvalueEvaluationTests.cs (新規6)
+- 検証: dotnet test 528/528
+- 判断: 全 lvalue を一律 temp 化せず「副作用の可能性がある場合のみ」に限定 — pure 経路の生成 Lua を変えないことで可読性と既存挙動を守る。bool の &=/|=/^= は従来どおり TCS1001
+- 残課題: expression 文脈の compound assignment (`x = (y += 1)`) は IIFE 化済みだが C# の値返し意味論の網羅テストは未整備 (需要が出たら追加)

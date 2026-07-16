@@ -134,32 +134,36 @@ public partial class LuaEmitter
         // Handle i++ / i-- as statements: emit as i = i + 1
         if (expr is PostfixUnaryExpressionSyntax postfix)
         {
-            var operand = VisitExpression(model, postfix.Operand);
             var op = postfix.Kind() switch
             {
                 SyntaxKind.PostIncrementExpression => "+",
                 SyntaxKind.PostDecrementExpression => "-",
                 _ => null
             };
-            if (op != null) { AppendLine($"{operand} = {operand} {op} 1"); return; }
+            if (op != null) { EmitIncrement(model, postfix.Operand, op); return; }
         }
         if (expr is PrefixUnaryExpressionSyntax prefix)
         {
-            var operand = VisitExpression(model, prefix.Operand);
             var op = prefix.Kind() switch
             {
                 SyntaxKind.PreIncrementExpression => "+",
                 SyntaxKind.PreDecrementExpression => "-",
                 _ => null
             };
-            if (op != null) { AppendLine($"{operand} = {operand} {op} 1"); return; }
+            if (op != null) { EmitIncrement(model, prefix.Operand, op); return; }
         }
         // ??= as statement: emit as if-then block
         if (expr is AssignmentExpressionSyntax
             { RawKind: (int)SyntaxKind.CoalesceAssignmentExpression } coalesce)
         {
-            var left = VisitExpression(model, coalesce.Left);
             var right = VisitExpression(model, coalesce.Right);
+            if (TryLowerLvalue(model, coalesce.Left) is { } l)
+            {
+                AppendLine($"do {l.Setup}if {l.Access} == nil then " +
+                    $"{l.Access} = {right} end end");
+                return;
+            }
+            var left = VisitExpression(model, coalesce.Left);
             AppendLine($"if {left} == nil then");
             _indent++;
             AppendLine($"{left} = {right}");
@@ -168,6 +172,18 @@ public partial class LuaEmitter
             return;
         }
         AppendLine(VisitExpression(model, expr));
+    }
+
+    private void EmitIncrement(SemanticModel model, ExpressionSyntax operand,
+        string op)
+    {
+        if (TryLowerLvalue(model, operand) is { } l)
+        {
+            AppendLine($"do {l.Setup}{l.Access} = {l.Access} {op} 1 end");
+            return;
+        }
+        var target = VisitExpression(model, operand);
+        AppendLine($"{target} = {target} {op} 1");
     }
 
     private void VisitBlock(SemanticModel model, StatementSyntax stmt)

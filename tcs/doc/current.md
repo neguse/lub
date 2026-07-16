@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (522テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (528テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -63,6 +63,7 @@
 **T140**: switch 対象式の一回評価 (`__tcs_sw` local へ保存) + switch statement のパターンラベル対応 (`case > 5:` / `case 1 or 2:` / `case Circle c when ...:` — 従来は空条件の不正 Lua)
 **T141**: deconstruction RHS の一回評価 (`__tcs_dec` local へ保存) + 既存変数への分解代入 `(a, b) = rhs` 対応 (従来 TCS1001)
 **T142**: with 式 receiver の一回評価 (`__tcs_src` local を table 走査と metatable 取得で共用)
+**T143**: 副作用付き lvalue の一回評価 (compound assignment / `??=` / increment / `List.Clear` の receiver・index を temp へ保存。pure lvalue は従来出力を維持) + string `+=` を Lua `..` へ (従来は `+` で実行時エラー)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -132,6 +133,7 @@
 | operator + - * / % (二項) / - (単項) | __add/__sub/__mul/__div/__mod/__unm metamethod。複数 overload は実行時型分岐 |
 | & \| ^ ~ << >> (整数/enum) | Lua native & \| ~ ~ << >> (C# ^ → 二項 ~)。64bit 幅、bool operand は未対応 |
 | &= \|= ^= <<= >>= | 展開 x = x op y |
+| s += x (string) | s = s .. x |
 
 ### TinySystem ランタイム (runtime/tinysystem.lua)
 - List: new, Add, Remove, Count, Contains, IndexOf, Sort
@@ -205,8 +207,8 @@
 ### 次のタスク
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
-- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T143-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T142 / T151 は完了
-- 着手順: T143-T144 (一回評価の展開) → T145-T148。継承 T149-T150、T180 は並行可
+- P0: 2026-07-12全体コードレビューで確認したsilent wrong-codeの修正 (T144-T153) + T180 (値型 is パターンの nil マッチ、2026-07-17 発見)。棚卸し (2026-07-17) で T154 クローズ / T163 削除 / T153 縮小。T138-T143 / T151 は完了
+- 着手順: T144 (for 条件) → T145-T148。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

@@ -406,7 +406,8 @@ public partial class LuaEmitter
                     result = $"table.remove({obj}, {args[0]} + 1)";
                     return true;
                 case "Clear":
-                    result = $"(function() for k in pairs({obj}) do {obj}[k] = nil end end)()";
+                    result = $"(function() local __tcs_obj = {obj}; " +
+                        $"for k in pairs(__tcs_obj) do __tcs_obj[k] = nil end end)()";
                     return true;
                 case "Sort":
                     var allSortArgs = new List<string> { obj };
@@ -536,29 +537,110 @@ public partial class LuaEmitter
 
     private string VisitAssignment(SemanticModel model, AssignmentExpressionSyntax assign)
     {
-        var left = VisitExpression(model, assign.Left);
-        var right = VisitExpression(model, assign.Right);
-        return assign.Kind() switch
+        if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
-            SyntaxKind.SimpleAssignmentExpression => $"{left} = {right}",
-            SyntaxKind.AddAssignmentExpression => $"{left} = {left} + {right}",
-            SyntaxKind.SubtractAssignmentExpression => $"{left} = {left} - {right}",
-            SyntaxKind.MultiplyAssignmentExpression => $"{left} = {left} * {right}",
-            SyntaxKind.DivideAssignmentExpression => $"{left} = {left} / {right}",
-            SyntaxKind.ModuloAssignmentExpression => $"{left} = {left} % {right}",
-            SyntaxKind.AndAssignmentExpression when !IsBoolTarget(model, assign) =>
-                $"{left} = {left} & {right}",
-            SyntaxKind.OrAssignmentExpression when !IsBoolTarget(model, assign) =>
-                $"{left} = {left} | {right}",
-            SyntaxKind.ExclusiveOrAssignmentExpression when !IsBoolTarget(model, assign) =>
-                $"{left} = {left} ~ {right}",
-            SyntaxKind.LeftShiftAssignmentExpression => $"{left} = {left} << {right}",
-            SyntaxKind.RightShiftAssignmentExpression => $"{left} = {left} >> {right}",
-            SyntaxKind.CoalesceAssignmentExpression =>
-                $"(function() if {left} == nil then {left} = {right} end return {left} end)()",
-            _ => WarnUnsupported(assign, $"assignment expression: {assign.Kind()}")
-        };
+            return $"{VisitExpression(model, assign.Left)}" +
+                $" = {VisitExpression(model, assign.Right)}";
+        }
+
+        var right = VisitExpression(model, assign.Right);
+        var lowered = TryLowerLvalue(model, assign.Left);
+
+        if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
+        {
+            if (lowered is { } lc)
+            {
+                return $"(function() {lc.Setup}if {lc.Access} == nil then " +
+                    $"{lc.Access} = {right} end return {lc.Access} end)()";
+            }
+            var target = VisitExpression(model, assign.Left);
+            return $"(function() if {target} == nil then " +
+                $"{target} = {right} end return {target} end)()";
+        }
+
+        var op = CompoundOperator(model, assign);
+        if (op == null)
+            return WarnUnsupported(assign, $"assignment expression: {assign.Kind()}");
+
+        if (lowered is { } l)
+        {
+            return $"(function() {l.Setup}{l.Access} = {l.Access} {op} ({right}); " +
+                $"return {l.Access} end)()";
+        }
+
+        var left = VisitExpression(model, assign.Left);
+        return $"{left} = {left} {op} {right}";
     }
+
+    // compound assignment の Lua 演算子。string の += は Lua `+` だと実行時
+    // エラーになるため `..` にする。bool の &=/|=/^= は未対応 (null → 診断)。
+    private string? CompoundOperator(SemanticModel model,
+        AssignmentExpressionSyntax assign) => assign.Kind() switch
+    {
+        SyntaxKind.AddAssignmentExpression when
+            model.GetTypeInfo(assign.Left).Type?.SpecialType
+                == SpecialType.System_String => "..",
+        SyntaxKind.AddAssignmentExpression => "+",
+        SyntaxKind.SubtractAssignmentExpression => "-",
+        SyntaxKind.MultiplyAssignmentExpression => "*",
+        SyntaxKind.DivideAssignmentExpression => "/",
+        SyntaxKind.ModuloAssignmentExpression => "%",
+        SyntaxKind.AndAssignmentExpression when !IsBoolTarget(model, assign) => "&",
+        SyntaxKind.OrAssignmentExpression when !IsBoolTarget(model, assign) => "|",
+        SyntaxKind.ExclusiveOrAssignmentExpression
+            when !IsBoolTarget(model, assign) => "~",
+        SyntaxKind.LeftShiftAssignmentExpression => "<<",
+        SyntaxKind.RightShiftAssignmentExpression => ">>",
+        _ => null,
+    };
+
+    // lvalue の receiver / index に副作用があり得るときだけ temp へ下げる。
+    // pure な lvalue は従来の文字列複製のまま (再読みは field / table 読みのみ
+    // で、C# と観測可能な差が出ない)。
+    internal (string Setup, string Access)? TryLowerLvalue(SemanticModel model,
+        ExpressionSyntax left)
+    {
+        switch (left)
+        {
+            case MemberAccessExpressionSyntax ma
+                when HasSideEffectSyntax(ma.Expression):
+                return ($"local __tcs_obj = {VisitExpression(model, ma.Expression)}; ",
+                    $"__tcs_obj.{ma.Name.Identifier.ValueText}");
+            case ElementAccessExpressionSyntax ea when HasSideEffectSyntax(ea):
+            {
+                var receiver = VisitExpression(model, ea.Expression);
+                var index = VisitExpression(model,
+                    ea.ArgumentList.Arguments[0].Expression);
+                var receiverType = model.GetTypeInfo(ea.Expression).Type;
+                var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
+                var adjust = IsListType(typeDef)
+                    || receiverType is IArrayTypeSymbol ? " + 1" : "";
+                return ($"local __tcs_obj = {receiver}; " +
+                    $"local __tcs_idx = {index}{adjust}; ",
+                    "__tcs_obj[__tcs_idx]");
+            }
+            default:
+                return null;
+        }
+    }
+
+    private static bool HasSideEffectSyntax(SyntaxNode node) =>
+        node.DescendantNodesAndSelf().Any(n =>
+            n is InvocationExpressionSyntax
+                or BaseObjectCreationExpressionSyntax
+                or ConditionalAccessExpressionSyntax
+                or AssignmentExpressionSyntax
+                or WithExpressionSyntax
+                or PostfixUnaryExpressionSyntax
+                {
+                    RawKind: (int)SyntaxKind.PostIncrementExpression
+                        or (int)SyntaxKind.PostDecrementExpression
+                }
+                or PrefixUnaryExpressionSyntax
+                {
+                    RawKind: (int)SyntaxKind.PreIncrementExpression
+                        or (int)SyntaxKind.PreDecrementExpression
+                });
 
     private static bool IsBoolTarget(SemanticModel model,
         AssignmentExpressionSyntax assign) =>

@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **式 lowering 基盤と評価回数**: T143 → T144
+1. **式 lowering 基盤と評価回数**: T144
 2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
 3. **runtime 契約**: T152 → T153
 4. **CLI / watch**: T155 → T157
@@ -39,15 +39,6 @@ tcs 側から直接変更しない。
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
 
-### T143: assignment/lvalue の一回評価とcompound semantics
-- 目的: indexer/property/receiverをcompound assignment、`??=`、increment、collection mutationで重複評価しない
-- 依存: なし (T139 完了済み)
-- 作業:
-  - read/writeを分離したlvalue loweringを実装し、receiverとindexをtempへ保存する
-  - `+=`のstring concatを含め、symbol/typeに応じたcompound operatorへ変換する
-  - `List.Clear`等のreceiver埋め込みも一回評価へ揃える
-- 完了条件: 副作用付き`Get()[NextIndex()] += value`、`??=`、increment、`GetList().Clear()`がreceiver/index/RHSのC#評価回数・順序に一致する
-
 ### T144: simple for 最適化の動的条件セマンティクス修正
 - 目的: C#では各iterationで再評価される終端条件を、Lua numeric forが一度だけ評価する差をなくす
 - 依存: なし (T139 完了済み)
@@ -59,7 +50,7 @@ tcs 側から直接変更しない。
 
 ### T145: C# の除算・剰余セマンティクス
 - 目的: Luaの`/`とfloor由来`%`をそのまま使うことで、整数・負数の結果がC#とずれる問題を直す
-- 依存: T143
+- 依存: なし (T143 完了済み)
 - 作業:
   - operand/result typeから整数除算、浮動小数除算、C# remainderを判定する
   - 0方向truncationと`a - trunc(a / b) * b`相当をruntime helperまたは安全なloweringで実装する
@@ -68,7 +59,7 @@ tcs 側から直接変更しない。
 
 ### T146: nullable bool と GetValueOrDefault のnil-safe lowering
 - 目的: Luaの`or`が`false`もfallback扱いするため、nullable boolの値を壊す問題を直す
-- 依存: T143
+- 依存: なし (T143 完了済み)
 - 作業:
   - `??`を明示的な`nil`判定へ変更し、左辺を一回だけ評価する
   - `GetValueOrDefault()`と`GetValueOrDefault(fallback)`をoverload別に実装し、receiver→fallback引数の順で常に各1回評価する
@@ -77,7 +68,7 @@ tcs 側から直接変更しない。
 
 ### T147: custom property accessor のread/write lowering
 - 目的: 生成済み`get_`/`set_`を呼ばずraw fieldとして読み書きする状態を直す
-- 依存: T143
+- 依存: なし (T143 完了済み)
 - 作業:
   - `IPropertySymbol`とsyntaxからauto/custom propertyを判別する
   - instance/implicit-thisのread/writeを`get_`/`set_` callへ変換する
