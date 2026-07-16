@@ -14,6 +14,7 @@
     "gen-tcs": "node scripts/gen-tcs-assets.mjs",
     "gen-tcs-prebuilt": "node scripts/gen-tcs-prebuilt.mjs",
     "verify": "node scripts/verify-headless.mjs",
+    "golden": "node scripts/golden-web.mjs",
     "format": "prettier --write 'playground/**/*.ts' vite.config.ts",
     "format:check": "prettier --check 'playground/**/*.ts' vite.config.ts",
     "deploy": "npm run build && wrangler deploy",

@@ -53,6 +53,21 @@ canvas.height = _ch;
 window._canvasWidth = _cw;
 window._canvasHeight = _ch;
 
+// iframe URL は execve 相当の起動境界: ?argv=<token> (繰り返し) を
+// Module.arguments へ、?env=KEY=VALUE (繰り返し) を Module.ENV (preRun) へ
+// 機械的に写す。値の意味づけ (golden 等) は渡す側 — main.ts の golden mode
+// や web/scripts/golden-web.mjs — が持ち、ここは機構のみ。
+// __lubTest と同じく dev/test build 限定で、production には入らない。
+let extraArgv: string[] = [];
+let extraEnv: Array<[string, string]> = [];
+if (import.meta.env.DEV || import.meta.env.MODE === "test") {
+  extraArgv = _q.getAll("argv");
+  extraEnv = _q.getAll("env").map((kv) => {
+    const i = kv.indexOf("=");
+    return i < 0 ? [kv, "1"] : [kv.slice(0, i), kv.slice(i + 1)];
+  });
+}
+
 function relayLog(msg: string, level: "log" | "err" | "warn" = "log") {
   try {
     parent.postMessage({ type: "log", msg: String(msg), level }, "*");
@@ -203,8 +218,20 @@ async function startWasm() {
     // from /wasm/.
     locateFile: (path: string) => "/wasm/" + path,
     preRun: [],
-    arguments: [pendingEntry || "01_triangle"],
+    arguments: [pendingEntry || "01_triangle", ...extraArgv],
   };
+  if (extraEnv.length > 0) {
+    // preRun 時点では runtime の ENV が Module に export 済みで、environ の
+    // 実体化 (main() 前) はまだ。ここで書けば C の getenv に見える。
+    moduleConfig.preRun.push(function () {
+      const ENV = moduleConfig.ENV;
+      if (!ENV) {
+        console.error("[player] ?env= given but ENV is not exported");
+        return;
+      }
+      for (const [k, v] of extraEnv) ENV[k] = v;
+    });
+  }
   // Defer the editor-file overlay until AFTER emscripten's data-file
   // package has been unpacked. Otherwise `FS_createDataFile` from the
   // bundle throws "File exists" when its preRun runs after ours.

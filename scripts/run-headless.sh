@@ -14,9 +14,10 @@
 
 set -euo pipefail
 
-ICD=/usr/share/vulkan/icd.d/lvp_icd.json
-if [[ ! -f "$ICD" ]]; then
-    echo "lavapipe ICD not found at $ICD" >&2
+# Arch: lvp_icd.json / Debian・Ubuntu: lvp_icd.x86_64.json
+ICD="$(compgen -G '/usr/share/vulkan/icd.d/lvp_icd*.json' | head -1 || true)"
+if [[ -z "$ICD" ]]; then
+    echo "lavapipe ICD not found under /usr/share/vulkan/icd.d/" >&2
     echo "Install with: sudo pacman -S vulkan-swrast (Arch) or" >&2
     echo "             sudo apt install mesa-vulkan-drivers (Debian)" >&2
     exit 1

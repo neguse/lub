@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Full local gate (manual). Mirrors the repository's native + web
-# regressions: the fast commit gate first, then visual goldens, WASM
-# build, web build, and headless web verification.
-# push hook からは外している: WASM/web build と headless verify は
-# web-deploy CI が push ごとに実行し、deploy を gate する。CI に無いのは
-# visual goldens と C# サンプル check だけで、必要なときに手で回す。
+# Full local gate (manual). Mirrors PR CI end to end: the fast commit gate,
+# the native gate (build, smokes, physics Lua, goldens, C# samples), then
+# WASM build, web build, and headless web verification.
+# CI が同じ内容を PR ごとに実行するので普段は不要。CI を待たずに手元で
+# 全周りを確認したいとき、または CI が使えないときの脱出ハッチ。
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,9 +14,11 @@ case "${1:-}" in
     cat <<'EOF'
 Usage: scripts/pre-push.sh
 
-Runs the full local pre-push gate:
-  the fast commit gate (scripts/pre-commit.sh), visual goldens,
-  WASM build, web build, and headless web verification.
+Runs the full local gate:
+  the fast commit gate (scripts/pre-commit.sh), the native gate
+  (scripts/native-gate.sh: build, smokes, physics Lua, goldens, C#
+  samples), WASM build, web build, headless web verification, and
+  web goldens (scripts/golden-web.mjs).
 
 npm ci is skipped when web/package.json + web/package-lock.json are
 unchanged since the last successful install (stamp in web/node_modules).
@@ -76,51 +77,7 @@ wait_for_url() {
 }
 
 run bash scripts/pre-commit.sh
-
-native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
-run_timed env BINARY="$native_binary" scripts/run-golden.sh
-
-# C# (tcs) サンプル: dotnet と third_party/tcs submodule があるときだけ、
-# .cs entry を持つ全サンプルを check + build + golden 比較する。
-# 無い環境では skip (C# 対応は optional toolchain)。
-if command -v dotnet >/dev/null 2>&1 \
-  && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
-  shopt -s nullglob
-  for cs_dir in samples/*/; do
-    cs_dir="${cs_dir%/}"
-    cs_files=("$cs_dir"/*.cs)
-    ((${#cs_files[@]} == 0)) && continue
-    cs_name="$(basename "$cs_dir")"
-    # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
-    cs_projs=("$cs_dir"/*.csproj)
-    if ((${#cs_projs[@]} >= 1)); then
-      cs_class="$(basename "${cs_projs[0]}" .csproj)"
-    else
-      cs_class="$(basename "${cs_files[0]}" .cs)"
-    fi
-    run scripts/run-cs-sample.sh "$cs_name" --check
-    run scripts/run-cs-sample.sh "$cs_name" --build
-    for cs_proj in "${cs_projs[@]}"; do
-      run dotnet build "$cs_proj" -nologo
-    done
-    cs_png="${TMPDIR:-/tmp}/lub-pre-push-${cs_name}_cs.png"
-    rm -f "$cs_png"
-    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
-      "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240 \
-      --fixed-dt 0.0166666666666667
-    # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
-    # golden が無いサンプルも capture 実行までは検証される (クラッシュ検出)。
-    if [[ -f "tests/golden/${cs_name}_cs_sdlgpu.png" ]]; then
-      run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
-    else
-      echo "==> golden skip (nondeterministic): ${cs_name}"
-    fi
-  done
-  shopt -u nullglob
-else
-  echo
-  echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
-fi
+run bash scripts/native-gate.sh
 
 if [[ -f "$HOME/emsdk/emsdk_env.sh" ]]; then
   echo
@@ -165,3 +122,4 @@ wait_for_url "$dev_url" 45 || {
 }
 
 run env LUB_URL="$dev_url" npm --prefix web run verify
+run env LUB_URL="$dev_url" npm --prefix web run golden
