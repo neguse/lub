@@ -2,7 +2,7 @@
 
 ## フェーズ: Phase 0-19 完了 / Analyzer PoC go 確定 (T122) / lub Haxe 代替検証完了 / browser-wasm compiler bundle (T164) / lub 移植向け言語機能 (T165-) / 増分 module compilation 完了 (T172-T179) / 正しさレビュー backlog (T139-T161) 進行中
 
-### 完了済み (573テスト tcs / 47テスト analyzer / 477テスト lub3d)
+### 完了済み (577テスト tcs / 47テスト analyzer / 477テスト lub3d)
 
 **Phase 0**: プロジェクトセットアップ (T1-T6)
 **Phase 2-4**: トランスパイラ中核 (T12-T34)
@@ -75,6 +75,7 @@
 **T153**: ToDictionary selector の評価契約 — 各要素 1 回・key → value 順を runtime で明示し test で固定 (レビュー時の多重評価疑いは再現せず)。duplicate key の Lua 上書きは既知差異として support-matrix に記載
 **T180**: 値型/string 型パターンの型判定 — `getmetatable(x) == int` (未定義 global で nil がマッチ) を `type(x) == "number"/"boolean"/"string"` へ (int/float は Lua subtype 揺れのため number 一括、enum は number)。designation なしの binary `is Type` を新規対応 (従来 TCS1001)。switch expression の arm designation (`int v => v`) を IIFE 内で束縛 (従来 nil)
 **T181**: 式文脈の is-pattern designation 束縛 — ternary / 複合条件 (`is Circle c && c.R > 5`) / lambda 内の designation を statement/lambda 前の local 宣言 + IIFE 内一回評価代入で束縛 (従来は if 文直下のみ。receiver の二重評価も解消)
+**T155**: --entry の実 emitted 名一致 — metadata 名 → 一意な simple 名の順で解決し、emitted 名 (namespace 透過の simple 名) を return。interface / ref-only / 曖昧 simple 名 / 非 class は exit 1 (従来は `Game.App` 指定で存在しない Lua 名を返して成功扱い)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -163,7 +164,7 @@
 
 ### CLI
 - `dotnet run --project Transpiler -- input1.cs [input2.cs ...] [--ref ref.cs] [-o output.lua] [--entry Class] [--watch] [--no-runtime]`
-- `--entry <Class>`: 出力末尾に `return <Class>` を追記し、require/dofile で class table を返す Lua module にする
+- `--entry <Class>`: 出力末尾に emitted 名の `return` を追記し、require/dofile で class table を返す Lua module にする。metadata 名 (`Game.App`) と一意な simple 名の両方を解決し、interface / ref-only / 曖昧名はエラー
 - `--no-naming-check`: C# naming convention warning を抑制する (host の wire format が lowerCamel/snake_case の場合)。transpile / check 両対応
 - `--prelude <shim.lua>`: 任意のユーザー Lua (host API shim 等) を出力の先頭 (runtime prelude の後) に前置する
 - `dotnet run --project Transpiler -- check input1.cs [input2.cs ...] [--ref ref.cs]`: Lua を出力せず、診断だけを返す CI 向けチェック
@@ -221,7 +222,7 @@
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
 - P0 正しさレビュー backlog (T138-T153) + T180/T181 は全て完了。既知の silent wrong-code は解消済み
-- 着手順: P1 (T155/T157) → P2 (T158-T161)。継承 T149-T150、T180 は並行可
+- 着手順: T157 (watch prelude) → P2 (T158-T161)。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

@@ -144,7 +144,21 @@ public static class Transpiler
         var lua = emitter.ToString();
         if (entryClass != null)
         {
+            // metadata 名 (Ns.Type) → 一意な simple 名の順で解決する
             var entrySymbol = compilation.GetTypeByMetadataName(entryClass);
+            if (entrySymbol == null)
+            {
+                var candidates = FindSourceTypesBySimpleName(compilation,
+                    entryClass);
+                if (candidates.Count > 1)
+                    return new TranspileResult
+                    {
+                        Errors = [$"entry class is ambiguous: {entryClass} " +
+                            $"({string.Join(", ", candidates.Select(c => c.ToDisplayString()))})"],
+                        Warnings = warnings
+                    };
+                entrySymbol = candidates.FirstOrDefault();
+            }
             if (entrySymbol == null)
                 return new TranspileResult
                 {
@@ -158,7 +172,15 @@ public static class Transpiler
                     Errors = [$"entry class is reference-only (--ref): {entryClass}"],
                     Warnings = warnings
                 };
-            lua += $"return {entryClass}\n";
+            if (entrySymbol.TypeKind != TypeKind.Class)
+                return new TranspileResult
+                {
+                    Errors = [$"entry class must be a class or record class: " +
+                        $"{entrySymbol.ToDisplayString()} ({entrySymbol.TypeKind})"],
+                    Warnings = warnings
+                };
+            // namespace は Lua 出力で透過 (flatten) なので emitted 名は simple 名
+            lua += $"return {entrySymbol.Name}\n";
         }
 
         return new TranspileResult
@@ -173,4 +195,23 @@ public static class Transpiler
         tree.GetCompilationUnitRoot().Members
             .OfType<GlobalStatementSyntax>()
             .Any();
+
+    private static List<INamedTypeSymbol> FindSourceTypesBySimpleName(
+        CSharpCompilation compilation, string name)
+    {
+        var results = new List<INamedTypeSymbol>();
+        var stack = new Stack<INamespaceSymbol>();
+        stack.Push(compilation.Assembly.GlobalNamespace);
+        while (stack.Count > 0)
+        {
+            foreach (var member in stack.Pop().GetMembers())
+            {
+                if (member is INamespaceSymbol child)
+                    stack.Push(child);
+                else if (member is INamedTypeSymbol type && type.Name == name)
+                    results.Add(type);
+            }
+        }
+        return results;
+    }
 }

@@ -962,3 +962,11 @@
 - 検証: dotnet test 573/573
 - 判断: designation の束縛は C# と同じく match 失敗時も変数自体は存在する (読み出しは C# の definite assignment が防ぐ)。recursive pattern の designation (`is Circle { R: > 2 } c`) は従来どおり未対応
 - 残課題: なし
+
+### T155: --entry を実際の emitted 名と一致させる ✓ (2026-07-17)
+- `--entry Game.App` が入力文字列をそのまま `return Game.App` に貼り、namespace 透過 emit の実名 (`App`) と食い違って nil を返す silent wrong-code を修正。`GetTypeByMetadataName` → source assembly の一意な simple 名の順で解決し、`return {symbol.Name}` を emit
+- interface / enum 等の非 class は "entry class must be a class or record class"、複数 namespace の同名 simple 指定は候補一覧付き "ambiguous" で exit 1 (output 未作成)
+- 変更ファイル: Transpiler/Transpiler.cs, Transpiler.Tests/EntryClassTests.cs (+4)
+- 検証: dotnet test 577/577
+- 判断: 同名型が複数あるときの全 emit 衝突 (namespace 透過による last-write-wins) は entry 解決とは別の既知制約として残る (namespaced 入力を本格対応する際に扱う)
+- 残課題: なし

@@ -33,15 +33,6 @@ tcs 側から直接変更しない。
 
 ## P1: CLI・開発体験
 
-### T155: --entry を実際の emitted type/name と一致させる
-- 目的: namespaced classやinterfaceをentryに指定したとき、存在しないLua名をreturnして成功扱いする問題を直す
-- 依存: なし (T151 完了済み)
-- 作業:
-  - `INamedTypeSymbol`からemitterの実Lua名を取得し、文字列を直接appendしない
-  - class/record classだけを許可し、interface/ref-only/非emit型を拒否する
-  - namespace flatten時のsimple/fully-qualified指定と同名型の曖昧性を定義する
-- 完了条件: `--entry Game.App`と一意なsimple `App`は正しいtableを返し、同名namespace型/interface/ref-onlyはexit 1かつoutput未作成になる
-
 ### T157: watch の --prelude dependency監視
 - 目的: outputへ埋め込まれるpreludeだけを変更してもrebuildされない問題を直す
 - 作業:
