@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **runtime 契約**: T152 → T153、並行して T180
+1. **runtime 契約**: T153、並行して T180
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
 
@@ -36,15 +36,6 @@ tcs 側から直接変更しない。
   - 型消去で判定できない組合せは TCS1001 で明示する
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
-
-### T152: empty sequence と型別 default のLINQ/runtime契約
-- 目的: `FirstOrDefault<int>`等が常にnilを返し、allowlist済みAPIが値型で実行時エラーになる問題を直す
-- 依存: なし (T139 完了済み)
-- 作業:
-  - element/result typeのdefaultをemitterからruntimeへ渡す共通経路を作る
-  - `First`/`Last`のempty error、`FirstOrDefault`/`LastOrDefault`のint=0/bool=false/ref=nilを実装する
-  - 非nullable `First`/`Last`/`Min`/`Max`のempty/predicate missは明確なruntime errorへ揃える
-- 完了条件: empty sequenceのint=0 / bool=false / reference=nilが一致し、First/Last/Min/Maxのempty/predicate missがnil算術ではなく明示errorになる
 
 ### T153: ToDictionary selector の一回評価
 - 目的: key/value selector が要素ごとに複数回評価され、副作用付き selector の結果が C# とずれる問題を直す

@@ -458,6 +458,14 @@ public partial class LuaEmitter
                     allSortArgs.AddRange(args);
                     result = $"List.Sort({string.Join(", ", allSortArgs)})";
                     return true;
+                // empty/miss 時の default は要素型別 (C# default(T))。
+                // 呼び出しサイトの return type から埋め込んで runtime へ渡す
+                case "FirstOrDefault":
+                case "LastOrDefault":
+                    var predicate = args.Count > 0 ? args[0] : "nil";
+                    result = $"List.{methodName}({obj}, {predicate}, " +
+                        $"{GetDefaultValueForType(methodSym.ReturnType)})";
+                    return true;
             }
             if (ListRuntimeMethods.Contains(methodName))
             {
@@ -1321,6 +1329,15 @@ public partial class LuaEmitter
                     return $"table.remove({obj}, {args[0]} + 1)";
                 case "Clear":
                     return $"(function() for k in pairs({obj}) do {obj}[k] = nil end end)()";
+                case "FirstOrDefault":
+                case "LastOrDefault":
+                    var predicate = args.Count > 0 ? args[0] : "nil";
+                    var elementType = receiverType is INamedTypeSymbol
+                        { TypeArguments.Length: 1 } named
+                        ? named.TypeArguments[0]
+                        : null;
+                    return $"List.{methodName}({obj}, {predicate}, " +
+                        $"{GetDefaultValueForType(elementType)})";
             }
             if (ListRuntimeMethods.Contains(methodName))
             {

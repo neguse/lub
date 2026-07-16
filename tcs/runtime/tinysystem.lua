@@ -96,19 +96,27 @@ function List.All(list, predicate)
 end
 
 function List.First(list, predicate)
-  if not predicate then return list[1] end
+  if not predicate then
+    if #list == 0 then error("Sequence contains no elements") end
+    return list[1]
+  end
   for i = 1, #list do
     if predicate(list[i]) then return list[i] end
   end
   error("Sequence contains no matching element")
 end
 
-function List.FirstOrDefault(list, predicate)
-  if not predicate then return list[1] end
+-- default は要素型別の C# default(T) (int=0 / bool=false / ref=nil)。
+-- transpiler が呼び出しサイトの型から埋め込む。
+function List.FirstOrDefault(list, predicate, default)
+  if not predicate then
+    if #list == 0 then return default end
+    return list[1]
+  end
   for i = 1, #list do
     if predicate(list[i]) then return list[i] end
   end
-  return nil
+  return default
 end
 
 function List.OrderBy(list, keySelector)
@@ -155,12 +163,15 @@ function List.Last(list, predicate)
   error("Sequence contains no matching element")
 end
 
-function List.LastOrDefault(list, predicate)
-  if not predicate then return list[#list] end
+function List.LastOrDefault(list, predicate, default)
+  if not predicate then
+    if #list == 0 then return default end
+    return list[#list]
+  end
   for i = #list, 1, -1 do
     if predicate(list[i]) then return list[i] end
   end
-  return nil
+  return default
 end
 
 function List.Min(list, selector)
@@ -170,6 +181,7 @@ function List.Min(list, selector)
     local v = selector(list[i])
     if minVal == nil or v < minVal then minVal = v end
   end
+  if minVal == nil then error("Sequence contains no elements") end
   return minVal
 end
 
@@ -180,6 +192,7 @@ function List.Max(list, selector)
     local v = selector(list[i])
     if maxVal == nil or v > maxVal then maxVal = v end
   end
+  if maxVal == nil then error("Sequence contains no elements") end
   return maxVal
 end
 

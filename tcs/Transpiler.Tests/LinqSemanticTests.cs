@@ -284,4 +284,91 @@ public class LinqSemanticTests
 
         Assert.Equal("nil", result);
     }
+
+    // T152: empty sequence の default は要素型別 (int=0 / bool=false / ref=nil)。
+    // First/Last/Min/Max の empty・predicate miss は nil ではなく明示 error。
+    [Fact]
+    public void Linq_FirstOrDefault_ValueTypeDefaults()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public class T
+            {
+                public static string Test()
+                {
+                    var ints = new List<int>();
+                    var bools = new List<bool>();
+                    var strs = new List<string>();
+                    var i = ints.FirstOrDefault();
+                    var m = ints.FirstOrDefault(x => x > 10);
+                    var b = bools.FirstOrDefault();
+                    var s = strs.FirstOrDefault();
+                    var l = ints.LastOrDefault();
+                    return $"{i}|{m}|{b}|{s ?? "nil"}|{l}";
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("0|0|false|nil|0", result);
+    }
+
+    [Fact]
+    public void Linq_FirstOnEmpty_RaisesExplicitError()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            TestHelper.TranspileAndRunWithRuntime("""
+                using System.Collections.Generic;
+                using System.Linq;
+                public class T
+                {
+                    public static int Test()
+                    {
+                        var ints = new List<int>();
+                        return ints.First();
+                    }
+                }
+                """, "T.Test()"));
+
+        Assert.Contains("Sequence contains no elements", ex.Message);
+    }
+
+    [Fact]
+    public void Linq_MinMaxOnEmpty_RaiseExplicitError()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            TestHelper.TranspileAndRunWithRuntime("""
+                using System.Collections.Generic;
+                using System.Linq;
+                public class T
+                {
+                    public static int Test()
+                    {
+                        var ints = new List<int>();
+                        return ints.Min();
+                    }
+                }
+                """, "T.Test()"));
+
+        Assert.Contains("Sequence contains no elements", ex.Message);
+    }
+
+    [Fact]
+    public void Linq_SumOnEmpty_ReturnsZero()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var ints = new List<int>();
+                    return ints.Sum();
+                }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("0", result);
+    }
 }

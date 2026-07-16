@@ -926,3 +926,11 @@
 - 検証: dotnet test 561/561 + analyzer 47/47
 - 判断: field initializer の実行順は既存 explicit base() 経路と同じ「基底 (init+body) → 派生 init → 派生 body」。C# は「派生 init → 基底 → 派生 body」だが、観測可能な差は仮想呼び出し等の稀なケースのみで、既存経路との一貫性を優先 (既知差異)
 - 残課題: なし
+
+### T152: empty sequence と型別 default の LINQ/runtime 契約 ✓ (2026-07-17)
+- `FirstOrDefault<int>()` 等が常に nil を返し、値型で後続の算術が実行時エラーになる問題を修正。emitter が呼び出しサイトの return type (conditional 経路は receiver の要素型) から `default(T)` を計算し、runtime の `List.FirstOrDefault(list, predicate, default)` / `LastOrDefault` 第3引数へ埋め込む (predicate なしは nil placeholder)
+- `First()` の empty (従来 nil 返し) と `Min`/`Max` の empty (従来 nil 返し) を "Sequence contains no elements" の明示 error へ。`Sum()` empty=0 と `Last` の既存 error は維持
+- 変更ファイル: runtime/tinysystem.lua, Transpiler/LuaEmitter.Expressions.cs (通常 + conditional の2経路), Transpiler.Tests/LinqSemanticTests.cs (+4)
+- 検証: dotnet test 565/565 (既存の LastOrDefault string→nil 期待は参照型 default として正しいまま)
+- 判断: default は emitter がサイト毎に埋め込む方式 — runtime に型情報を持たせない (型消去の原則を維持)
+- 残課題: なし
