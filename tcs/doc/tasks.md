@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **型・メンバー意味論**: T149 → T150、T180 (並行可)
+1. **型・メンバー意味論**: T150、T180 (並行可)
 2. **runtime 契約**: T152 → T153
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
@@ -38,17 +38,9 @@ tcs 側から直接変更しない。
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
 
-### T149: 継承リンクをソース順・ファイル順から独立化
-- 目的: 派生classが基底classより先にemitされるとmetatable linkが失われる問題を直す
-- 依存: なし (T151 完了済み)
-- 作業:
-  - class table宣言、継承link、constructor/member定義を複数passへ分けるか、型依存graphで順序付ける
-  - 同一ファイル逆順、複数ファイル逆順、複数段継承をtestする
-- 完了条件: 入力ファイルと宣言順を入れ替えても継承method/property lookupが同じ結果になる
-
 ### T150: 暗黙 base() と constructor chaining の境界整理
 - 目的: initializerなしの派生constructorでC#が暗黙に呼ぶ`base()`を実行し、基底field初期化を保持する
-- 依存: T149
+- 依存: なし (T149 完了済み)
 - 作業:
   - 合成default constructorと明示constructorの双方で非object基底`Base.new()`を呼ぶ
   - 既存のexplicit `base(args)`を維持し、未対応の`this(args)`/複数constructorはTCS1001で明示する

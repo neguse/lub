@@ -82,4 +82,68 @@ public class InheritanceTests
 
         Assert.Equal("Rex speaks and barks", result);
     }
+
+    // T149: 継承 link は宣言順・ファイル順に依存しない
+    [Fact]
+    public void Inheritance_DerivedDeclaredBeforeBase_SameFile()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Dog : Animal
+            {
+                public string Bark() => Speak() + "!";
+            }
+            public class Animal
+            {
+                public string Speak() => "sound";
+            }
+            """, """
+            Dog.new():Bark()
+            """);
+
+        Assert.Equal("sound!", result);
+    }
+
+    [Fact]
+    public void Inheritance_MultiLevelChain_ReversedDeclarationOrder()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class C : B
+            {
+                public int Three() => Two() + 1;
+            }
+            public class B : A
+            {
+                public int Two() => One() + 1;
+            }
+            public class A
+            {
+                public int One() => 1;
+            }
+            """, """
+            C.new():Three()
+            """);
+
+        Assert.Equal("3", result);
+    }
+
+    [Fact]
+    public void Inheritance_DerivedInEarlierFileThanBase()
+    {
+        var lua = Transpiler.Transpile([
+            """
+            public class Dog : Animal
+            {
+                public string Bark() => Speak() + "!";
+            }
+            """,
+            """
+            public class Animal
+            {
+                public string Speak() => "sound";
+            }
+            """]);
+        var result = TestHelper.RunLua(lua + "\nprint(Dog.new():Bark())").Trim();
+
+        Assert.Equal("sound!", result);
+    }
 }

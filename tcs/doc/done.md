@@ -910,3 +910,11 @@
 - 検証: dotnet test 554/554
 - 判断: instance 生成なしでも static 値が共有されることを initializer 読み出しで担保 (class table 初期化は型 emit 時に走る)
 - 残課題: なし
+
+### T149: 継承リンクの宣言順・ファイル順独立化 ✓ (2026-07-17)
+- 派生 class が基底より先に emit されると `setmetatable(Derived, {__index = nil})` になり継承 lookup が全滅する問題を修正。基底が未 emit なら link を `_pendingBaseLinks` へ遅延し、全型 emit 後 (top-level 文の実行前、または ToString 時) にまとめて張る
+- 宣言順が正しいコードは従来どおり inline link (生成 Lua 無変化)。module/registry 経路は T176 の declare/define 分離が既に順序独立
+- 変更ファイル: Transpiler/LuaEmitter.cs, Transpiler.Tests/InheritanceTests.cs (+3: 同一ファイル逆順 / 3段逆順 / 複数ファイル逆順)
+- 検証: dotnet test 557/557
+- 判断: 型依存 graph でのソートではなく link 行だけの遅延 — 順序依存は link 行のみで (ctor 内の `Base.new()` は実行時解決)、emit 順を変えないほうが module slicing と source map に安全
+- 残課題: なし

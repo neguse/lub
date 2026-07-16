@@ -14,6 +14,8 @@ public partial class LuaEmitter
     private (string File, int Line)? _currentSource;
     private int _continueCounter;
     private readonly Stack<int> _continueStack = new();
+    private readonly HashSet<string> _emittedTypeNames = new(StringComparer.Ordinal);
+    private readonly List<(string Derived, string Base)> _pendingBaseLinks = [];
     public List<string> Warnings { get; } = [];
     public SourceMap SourceMap { get; } = new();
     // module artifact 用の type 単位記録 (ModuleArtifacts.cs)。宣言行と
@@ -62,9 +64,24 @@ public partial class LuaEmitter
 
         if (emitGlobalStatements)
         {
-            foreach (var global in root.Members.OfType<GlobalStatementSyntax>())
-                VisitGlobalStatement(model, global);
+            var globals = root.Members.OfType<GlobalStatementSyntax>().ToList();
+            if (globals.Count > 0)
+            {
+                // top-level 文は実行時に派生型を触り得るため、実行前に link を張る
+                FlushPendingBaseLinks();
+                foreach (var global in globals)
+                    VisitGlobalStatement(model, global);
+            }
         }
+    }
+
+    private void FlushPendingBaseLinks()
+    {
+        if (_pendingBaseLinks.Count == 0) return;
+        foreach (var (derived, baseName) in _pendingBaseLinks)
+            AppendLine($"setmetatable({derived}, {{__index = {baseName}}})");
+        AppendLine();
+        _pendingBaseLinks.Clear();
     }
 
     private void VisitMember(SemanticModel model, MemberDeclarationSyntax member)
@@ -127,10 +144,16 @@ public partial class LuaEmitter
         info.DeclRanges.Add((declStart, _sb.Length - declStart));
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
+        _emittedTypeNames.Add(name);
         if (baseClass != null)
         {
-            AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
             info.BaseName = baseClass.Name;
+            // 基底が未 emit (同一/別ファイルで後方宣言) なら link を遅延し、
+            // 全型 emit 後にまとめて張る (宣言順・ファイル順に依存しない)
+            if (_emittedTypeNames.Contains(baseClass.Name))
+                AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
+            else
+                _pendingBaseLinks.Add((name, baseClass.Name));
         }
         AppendLine();
 
@@ -530,7 +553,11 @@ public partial class LuaEmitter
     private void WarnUnsupportedMember(MemberDeclarationSyntax member) =>
         AppendLine(WarnUnsupported(member, $"member: {member.Kind()}"));
 
-    public override string ToString() => _sb.ToString().TrimEnd() + "\n";
+    public override string ToString()
+    {
+        FlushPendingBaseLinks();
+        return _sb.ToString().TrimEnd() + "\n";
+    }
 
     // 増分 splice 用の未 trim 出力 (MethodRanges の offset はこちらの座標)
     public string RawOutput => _sb.ToString();
