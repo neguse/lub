@@ -33,15 +33,6 @@ tcs 側から直接変更しない。
 
 ## P2: 保守性・ドキュメント
 
-### T160: 600/800行のfile size gateを自動化
-- 目的: CLAUDE.mdの600行警告・800行禁止が手動確認だけで再び破られないようにする
-- 依存: なし (T158/T159 完了済み)
-- 作業:
-  - tracked C# sourceを対象に、600行超をwarning、800行超をerrorにする単一のcross-platform checkerを追加する
-  - checkerを`run-tests.sh` / `run-tests.ps1` / CIの双方から呼び、判定を二重実装しない
-  - generated/bin/obj/depsを除外する
-- 完了条件: 601行fixtureはwarning/exit 0、801行fixtureはerror/nonzeroとなり、現行sourceではerror 0になる
-
 ### T161: support matrix / test evidence の最終監査
 - 目的: 一連の修正後に、実装・semantic test・support表のずれを残さない
 - 依存: T133-T160、T162

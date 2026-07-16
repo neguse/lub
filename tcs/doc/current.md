@@ -79,6 +79,7 @@
 **T157**: watch の --prelude dependency 監視 — prelude を input/--ref と同じ監視集合へ (filter を `*.cs` 固定から `*.*` + exact path 判定へ)。削除イベントも rebuild を起こし missing dependency として報告
 **T158**: LuaEmitter.Expressions.cs (1565行) を責務別 partial へ分割 — Expressions (dispatcher/operator/assignment/lvalue) / Invocations (API mapping) / Objects (生成・initializer・補間) / Patterns (pattern/null 条件/lambda)。全ファイル 600 行以下
 **T159**: TinyCsComplianceFacts.cs (896行) を partial 分割 — 本体 (TCS1001 syntax) / Api (TCS1002 allowlist) / CollectionNull (TCS1003)。csproj は Shared/*.cs wildcard include 化
+**T160**: 600/800 行 file size gate — FileSizeGateTests として dotnet test に常設 (run-tests.sh / .ps1 / CI が全て通る単一実装。bin/obj/deps 除外、600 超は warning 出力、800 超はテスト失敗)
 
 ### 実装済みの C# → Lua マッピング
 | C# 構文 | Lua 出力 |
@@ -225,7 +226,7 @@
 - `doc/tasks.md` の推奨着手順に従い、タスク番号順には進めない
 - 増分 module compilation track (T172-T179) は完了。設計は `doc/incremental-module-compilation-design.md`
 - P0 正しさレビュー backlog (T138-T153) + T180/T181 は全て完了。既知の silent wrong-code は解消済み
-- 残タスクは P2 保守性のみ (T160-T161)。継承 T149-T150、T180 は並行可
+- 残タスクは T161 (最終監査) のみ。継承 T149-T150、T180 は並行可
 - lub検証トラック (T125-T132) はbreakout実機動作まで完了。追加サンプルは需要駆動
 - T123 (analyzer release 手順の README 化) は完了、T124 はクローズ済み: 診断一致は run-tests の恒常ゲートで守る
 

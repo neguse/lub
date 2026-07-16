@@ -992,3 +992,11 @@
 - 検証: dotnet test 578/578 + analyzer 47/47 (parity / nupkg consumer は run-tests 恒常ゲート)
 - 判断: allowlist と diagnostic formatting は Api partial に一元化し重複なし
 - 残課題: なし
+
+### T160: 600/800 行 file size gate の自動化 ✓ (2026-07-17)
+- CLAUDE.md の 600 行警告 / 800 行禁止を FileSizeGateTests として dotnet test に常設。run-tests.sh / run-tests.ps1 / CI はいずれも dotnet test を通るため、外部 checker スクリプトを作らず判定の二重実装を回避
+- 境界 (600/601/800/801) は Theory で固定し、リポジトリ実走査は bin/obj/deps/.git を除外して 800 超をテスト失敗、600 超を warning 出力にする
+- 変更ファイル: Transpiler.Tests/FileSizeGateTests.cs (新規5)
+- 検証: dotnet test 583/583 (現行ソースは T158/T159 の分割後で error 0)
+- 判断: fixture ファイル方式ではなく境界 Theory + 実 tree 走査 — cross-platform かつ CI 配線変更ゼロ
+- 残課題: なし
