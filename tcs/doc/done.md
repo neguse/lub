@@ -984,3 +984,11 @@
 - 検証: dotnet test 578/578 (behavior / source map 差分なし — 出力生成コードは無変更のテキスト移動)
 - 判断: temp/lvalue helper (TryLowerLvalue / HasSideEffectSyntax / ApplyCompound) は assignment 系と同じ Expressions に置き所有を一意化。mapping table (ListRuntimeMethods) も Expressions 先頭に集約
 - 残課題: なし
+
+### T159: TinyCsComplianceFacts.cs の責務分割 ✓ (2026-07-17)
+- 896 行に達していた共有 facts を partial へ分割: TinyCsComplianceFacts.cs (TCS1001 syntax / 予約語 / operator metamethod、220 行)、.Api.cs (TCS1002 allowlist シグネチャと判定、459 行)、.CollectionNull.cs (TCS1003、261 行)
+- Transpiler / TinyCs.Analyzers の csproj を `..\Shared\*.cs` wildcard include へ変更 (ファイル追加時の二重管理をなくす)
+- 変更ファイル: Shared/TinyCsComplianceFacts{,.Api,.CollectionNull}.cs, Transpiler/Transpiler.csproj, TinyCs.Analyzers/TinyCs.Analyzers.csproj
+- 検証: dotnet test 578/578 + analyzer 47/47 (parity / nupkg consumer は run-tests 恒常ゲート)
+- 判断: allowlist と diagnostic formatting は Api partial に一元化し重複なし
+- 残課題: なし

@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\TinyCsComplianceFacts.cs" Link="TinyCsComplianceFacts.cs" />
+    <Compile Include="..\Shared\*.cs" LinkBase="Shared" />
     <None Include="..\README.md" Pack="true" PackagePath="/" />
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
   </ItemGroup>

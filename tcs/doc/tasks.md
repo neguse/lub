@@ -33,17 +33,9 @@ tcs 側から直接変更しない。
 
 ## P2: 保守性・ドキュメント
 
-### T159: TinyCsComplianceFacts.cs の責務分割
-- 目的: 600行警告域に入った共有factsを、syntax/API/collection-null/formattingへ分ける
-- 依存: なし (T133/T137/T138 完了済み)
-- 作業:
-  - AnalyzerとTranspilerが同じsourceを参照できるproject構成を維持してpartial fileへ分割する
-  - allowlistとdiagnostic formattingの重複を作らない
-- 完了条件: 各fileが600行以下になり、Analyzer/check parity testとpackage consumer gateが通る
-
 ### T160: 600/800行のfile size gateを自動化
 - 目的: CLAUDE.mdの600行警告・800行禁止が手動確認だけで再び破られないようにする
-- 依存: T158、T159
+- 依存: なし (T158/T159 完了済み)
 - 作業:
   - tracked C# sourceを対象に、600行超をwarning、800行超をerrorにする単一のcross-platform checkerを追加する
   - checkerを`run-tests.sh` / `run-tests.ps1` / CIの双方から呼び、判定を二重実装しない
