@@ -15,7 +15,7 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **型・メンバー意味論**: T147 → T148、並行して T149 → T150、T180
+1. **型・メンバー意味論**: T148、並行して T149 → T150、T180
 2. **runtime 契約**: T152 → T153
 3. **CLI / watch**: T155 → T157
 4. **保守性・文書同期**: T158 → T159 → T160 → T161
@@ -38,18 +38,9 @@ tcs 側から直接変更しない。
   - nil / 非 nil / 型不一致の semantic test を追加する
 - 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
 
-### T147: custom property accessor のread/write lowering
-- 目的: 生成済み`get_`/`set_`を呼ばずraw fieldとして読み書きする状態を直す
-- 依存: なし (T143 完了済み)
-- 作業:
-  - `IPropertySymbol`とsyntaxからauto/custom propertyを判別する
-  - instance/implicit-thisのread/writeを`get_`/`set_` callへ変換する
-  - compound assignment、object initializer、conditional access、property pattern、get-only/set-onlyを同じproperty loweringで扱う
-- 完了条件: getter/setterに副作用や変換があるpropertyがC#と同じ値・呼出回数になり、auto propertyのraw field表現は維持される
-
 ### T148: static property のstorage/accessor lowering
 - 目的: static auto propertyをinstanceの`self`へ初期化し、static accessがnilになる問題を直す
-- 依存: T147
+- 依存: なし (T147 完了済み)
 - 作業:
   - static auto propertyをclass tableへ型別default/initializer付きで出力する
   - static custom getter/setterをclass functionとして生成・呼出する

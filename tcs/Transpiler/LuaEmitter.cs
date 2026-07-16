@@ -204,6 +204,10 @@ public partial class LuaEmitter
                     && prop.AccessorList != null:
                     VisitCustomProperty(model, name, prop);
                     break;
+                case PropertyDeclarationSyntax prop
+                    when prop.ExpressionBody != null:
+                    VisitExpressionBodiedProperty(model, name, prop);
+                    break;
                 case OperatorDeclarationSyntax op
                     when TinyCsComplianceFacts.TryGetOperatorMetamethod(op, out _):
                     operators.Add(op);
@@ -304,6 +308,20 @@ public partial class LuaEmitter
             AppendLine("end");
             AppendLine();
         }
+    }
+
+    // expression-bodied property (int D => expr;) は get-only custom property
+    private void VisitExpressionBodiedProperty(SemanticModel model,
+        string className, PropertyDeclarationSyntax prop)
+    {
+        var propName = prop.Identifier.ValueText;
+        _currentType?.DefinitionKeys.Add($"get_{propName}");
+        AppendLine($"function {className}:get_{propName}()");
+        _indent++;
+        AppendLine($"return {VisitExpression(model, prop.ExpressionBody!.Expression)}");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
     }
 
     private void VisitRecord(SemanticModel model, RecordDeclarationSyntax rec)

@@ -156,6 +156,12 @@ public partial class LuaEmitter
         if (expr is AssignmentExpressionSyntax
             { RawKind: (int)SyntaxKind.CoalesceAssignmentExpression } coalesce)
         {
+            if (TryGetCustomPropertyTarget(model, coalesce.Left) != null)
+            {
+                // custom property は VisitAssignment の set_/get_ 経路に任せる
+                AppendLine(VisitExpression(model, coalesce));
+                return;
+            }
             var right = VisitExpression(model, coalesce.Right);
             if (TryLowerLvalue(model, coalesce.Left) is { } l)
             {
@@ -177,13 +183,22 @@ public partial class LuaEmitter
     private void EmitIncrement(SemanticModel model, ExpressionSyntax operand,
         string op)
     {
+        if (TryGetCustomPropertyTarget(model, operand) is { } prop)
+        {
+            var target = prop.SideEffect ? "__tcs_obj" : prop.Receiver;
+            var body = $"{target}:set_{prop.Name}({target}:get_{prop.Name}() {op} 1)";
+            AppendLine(prop.SideEffect
+                ? $"do local __tcs_obj = {prop.Receiver}; {body} end"
+                : body);
+            return;
+        }
         if (TryLowerLvalue(model, operand) is { } l)
         {
             AppendLine($"do {l.Setup}{l.Access} = {l.Access} {op} 1 end");
             return;
         }
-        var target = VisitExpression(model, operand);
-        AppendLine($"{target} = {target} {op} 1");
+        var target2 = VisitExpression(model, operand);
+        AppendLine($"{target2} = {target2} {op} 1");
     }
 
     private void VisitBlock(SemanticModel model, StatementSyntax stmt)

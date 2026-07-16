@@ -79,6 +79,9 @@ public partial class LuaEmitter
             // Instance method without explicit receiver → implicit this (self)
             return $"self:{method.Name}";
         }
+        if (symbol is IPropertySymbol { IsStatic: false } instanceProp
+            && IsCustomProperty(instanceProp))
+            return $"self:get_{id.Identifier.ValueText}()";
         if (symbol is IFieldSymbol { IsStatic: false }
             or IPropertySymbol { IsStatic: false })
             return $"self.{id.Identifier.ValueText}";
@@ -552,9 +555,51 @@ public partial class LuaEmitter
             if (member == "Length" && (receiverType?.SpecialType == SpecialType.System_String
                 || receiverType is IArrayTypeSymbol))
                 return $"#{obj}";
+
+            // custom property の読みは生成済み getter を呼ぶ (auto は raw field)
+            if (propSym is { IsStatic: false } && IsCustomProperty(propSym))
+                return $"{obj}:get_{member}()";
         }
 
         return $"{obj}.{member}";
+    }
+
+    // body / expression body を持つ accessor があるか。auto property と
+    // metadata 由来 (BCL) の property は false。
+    internal static bool IsCustomProperty(IPropertySymbol property)
+    {
+        foreach (var reference in property.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is not PropertyDeclarationSyntax decl)
+                continue;
+            if (decl.ExpressionBody != null) return true;
+            if (decl.AccessorList != null && decl.AccessorList.Accessors
+                    .Any(a => a.Body != null || a.ExpressionBody != null))
+                return true;
+        }
+        return false;
+    }
+
+    // custom property への書き込み対象なら (receiver Lua, property 名,
+    // receiver に副作用があり得るか) を返す。static は T148 スコープ。
+    private (string Receiver, string Name, bool SideEffect)?
+        TryGetCustomPropertyTarget(SemanticModel model, ExpressionSyntax left)
+    {
+        switch (left)
+        {
+            case IdentifierNameSyntax id
+                when model.GetSymbolInfo(id).Symbol is IPropertySymbol
+                    { IsStatic: false } prop && IsCustomProperty(prop):
+                return ("self", id.Identifier.ValueText, false);
+            case MemberAccessExpressionSyntax ma
+                when model.GetSymbolInfo(ma).Symbol is IPropertySymbol
+                    { IsStatic: false } prop && IsCustomProperty(prop):
+                return (VisitExpression(model, ma.Expression),
+                    ma.Name.Identifier.ValueText,
+                    HasSideEffectSyntax(ma.Expression));
+            default:
+                return null;
+        }
     }
 
     private string VisitElementAccess(SemanticModel model,
@@ -575,6 +620,9 @@ public partial class LuaEmitter
 
     private string VisitAssignment(SemanticModel model, AssignmentExpressionSyntax assign)
     {
+        if (TryGetCustomPropertyTarget(model, assign.Left) is { } prop)
+            return EmitPropertyAssignment(model, assign, prop);
+
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
             return $"{VisitExpression(model, assign.Left)}" +
@@ -611,23 +659,9 @@ public partial class LuaEmitter
         return CompoundWrite(model, assign, op, left, right);
     }
 
-    // 整数の /= と %=、float の %= は infix では C# 意味論にならないため
-    // helper 呼び出しへ書き換える (T145 と同じ判定)。
     private string CompoundWrite(SemanticModel model,
         AssignmentExpressionSyntax assign, string op, string access, string right)
-    {
-        var type = model.GetTypeInfo(assign.Left).Type;
-        return op switch
-        {
-            "/" when IsIntegralType(type) =>
-                $"{access} = __tcs_idiv({access}, {right})",
-            "%" when IsIntegralType(type) =>
-                $"{access} = __tcs_irem({access}, {right})",
-            "%" when IsFloatingType(type) =>
-                $"{access} = math.fmod({access}, {right})",
-            _ => $"{access} = {access} {op} {right}",
-        };
-    }
+        => $"{access} = {ApplyCompound(model, assign, op, access, right)}";
 
     private static bool IsFloatingType(ITypeSymbol? type) =>
         UnwrapNullable(type)?.SpecialType is SpecialType.System_Single
@@ -648,6 +682,56 @@ public partial class LuaEmitter
         && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
             ? named.TypeArguments[0]
             : type;
+
+    // custom property への代入は set_/get_ 呼び出しへ。receiver に副作用が
+    // あり得る場合は temp で一回評価にする。
+    private string EmitPropertyAssignment(SemanticModel model,
+        AssignmentExpressionSyntax assign,
+        (string Receiver, string Name, bool SideEffect) prop)
+    {
+        var right = VisitExpression(model, assign.Right);
+        var (receiver, name, sideEffect) = prop;
+        var target = sideEffect ? "__tcs_obj" : receiver;
+        var setup = sideEffect ? $"local __tcs_obj = {receiver}; " : "";
+
+        string body;
+        if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
+        {
+            body = $"{target}:set_{name}({right})";
+        }
+        else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
+        {
+            body = $"if {target}:get_{name}() == nil then " +
+                $"{target}:set_{name}({right}) end";
+        }
+        else if (CompoundOperator(model, assign) is { } op)
+        {
+            body = $"{target}:set_{name}({ApplyCompound(model, assign, op, $"{target}:get_{name}()", $"({right})")})";
+        }
+        else
+        {
+            return WarnUnsupported(assign,
+                $"assignment expression: {assign.Kind()}");
+        }
+
+        return setup.Length > 0 || body.StartsWith("if", StringComparison.Ordinal)
+            ? $"(function() {setup}{body} end)()"
+            : body;
+    }
+
+    // compound の右辺式 (read op rhs)。T145 の整数/浮動小数判定を共有する。
+    private string ApplyCompound(SemanticModel model,
+        AssignmentExpressionSyntax assign, string op, string read, string right)
+    {
+        var type = model.GetTypeInfo(assign.Left).Type;
+        return op switch
+        {
+            "/" when IsIntegralType(type) => $"__tcs_idiv({read}, {right})",
+            "%" when IsIntegralType(type) => $"__tcs_irem({read}, {right})",
+            "%" when IsFloatingType(type) => $"math.fmod({read}, {right})",
+            _ => $"{read} {op} {right}",
+        };
+    }
 
     // compound assignment の Lua 演算子。string の += は Lua `+` だと実行時
     // エラーになるため `..` にする。bool の &=/|=/^= は未対応 (null → 診断)。
@@ -793,7 +877,10 @@ public partial class LuaEmitter
                 } assign)
             {
                 var value = VisitExpression(model, assign.Right);
-                stmts.Add($"__tcs_init.{name.Identifier.ValueText} = {value}");
+                stmts.Add(model.GetSymbolInfo(name).Symbol is IPropertySymbol
+                        initProp && IsCustomProperty(initProp)
+                    ? $"__tcs_init:set_{name.Identifier.ValueText}({value})"
+                    : $"__tcs_init.{name.Identifier.ValueText} = {value}");
             }
             else
             {
@@ -1079,7 +1166,10 @@ public partial class LuaEmitter
                 if (sub.NameColon != null)
                 {
                     var propName = sub.NameColon.Name.Identifier.ValueText;
-                    var propExpr = $"{expr}.{propName}";
+                    var propExpr = model.GetSymbolInfo(sub.NameColon.Name).Symbol
+                            is IPropertySymbol patProp && IsCustomProperty(patProp)
+                        ? $"{expr}:get_{propName}()"
+                        : $"{expr}.{propName}";
                     conditions.Add(VisitIsSubPattern(model, propExpr, sub.Pattern));
                 }
             }
@@ -1161,7 +1251,25 @@ public partial class LuaEmitter
             || receiverType is IArrayTypeSymbol))
             return $"#{obj}";
 
+        if (FindInstanceProperty(receiverType, member) is { } condProp
+            && IsCustomProperty(condProp))
+        {
+            return $"{obj}:get_{member}()";
+        }
+
         return $"{obj}.{member}";
+    }
+
+    private static IPropertySymbol? FindInstanceProperty(ITypeSymbol? type,
+        string name)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (current.GetMembers(name).OfType<IPropertySymbol>()
+                    .FirstOrDefault(p => !p.IsStatic) is { } prop)
+                return prop;
+        }
+        return null;
     }
 
     private string VisitConditionalElementAccess(SemanticModel model,

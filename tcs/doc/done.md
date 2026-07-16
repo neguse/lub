@@ -893,3 +893,12 @@
 - 検証: dotnet test 543/543
 - 判断: 全 `??` を IIFE 化せず bool 限定 — 生成 Lua の可読性と実行コストを守りつつ、意味論が壊れる型だけ下げる (T143 の pure/complex 分岐と同じ思想)
 - 残課題: なし
+
+### T147: custom property accessor の read/write lowering ✓ (2026-07-17)
+- 定義側は get_/set_ を生成するのに全使用サイトが raw field を読み書きし、accessor が一度も呼ばれない silent wrong-code を修正。IsCustomProperty (accessor body / expression body の有無を宣言 syntax で判定、auto と BCL property は false) を導入し、member access / implicit this / simple・compound assignment / `??=` / increment / object initializer / conditional access / property pattern の8経路を get_/set_ 呼び出しへ
+- expression-bodied property (`int D => expr;`) を get-only custom property として定義側に新規対応 (従来は TCS1001 で member ごと消えていた)
+- compound は `set_X(get_X() op rhs)` で C# の read → rhs → write 順、副作用 receiver は `__tcs_obj` temp で一回評価 (T143 と同方針)。T145 の整数除算判定は ApplyCompound として共有化
+- 変更ファイル: Transpiler/LuaEmitter.cs, Transpiler/LuaEmitter.Expressions.cs, Transpiler/LuaEmitter.Statements.cs, Transpiler.Tests/PropertyAccessorTests.cs (新規9)
+- 検証: dotnet test 552/552
+- 判断: static custom property は T148 スコープとして触らず (定義側 emit 自体が instance 形式のため)。record 宣言内の custom property は既存 record 経路のまま (需要が出たら拡張)
+- 残課題: T148 (static property)
