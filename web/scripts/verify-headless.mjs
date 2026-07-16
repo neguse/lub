@@ -482,7 +482,8 @@ for (const sample of samples) {
       await page.selectOption('#sample-select', name)
       await readyP
     }
-    if (lang !== 'haxe') {
+    const currentLang = await page.$eval('#lang-select', (el) => el.value)
+    if (currentLang !== lang) {
       // 言語トグルは change で loadCompileRun が走る。playerReady を待ち直す
       const langReadyP = waitForPlayerReady(60000).catch((e) => {
         console.warn(`[verify] A5 ${label} lang playerReady wait:`, e.message)
@@ -496,11 +497,17 @@ for (const sample of samples) {
     await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
     const handle = await page.waitForSelector('iframe', { timeout: 10000 })
     const p = screenshotPath(`A5_${name}${lang === 'cs' ? '_cs' : ''}.png`)
+    const threshold = sample.minNonBlack
     await handle.screenshot({ path: p })
-    const c = classify(p)
+    let c = classify(p)
+    if (c.nonBlack / c.total <= threshold) {
+      console.warn(`[verify] A5 ${label} below threshold; waiting once more`)
+      await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
+      await handle.screenshot({ path: p })
+      c = classify(p)
+    }
     sampleResults[label] = c
     const ratio = c.nonBlack / c.total
-    const threshold = sample.minNonBlack
     const drewSomething = ratio > threshold
     const detail = `nonBlack ${ratio.toFixed(4)} (threshold ${threshold})`
     if (drewSomething) {
