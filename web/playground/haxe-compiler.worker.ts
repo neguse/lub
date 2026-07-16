@@ -14,6 +14,16 @@
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+function describeError(cause: unknown): string {
+  if (!(cause instanceof Error)) return String(cause);
+  const message = `${cause.name}: ${cause.message}`;
+  if (!cause.stack) return message;
+  // Safari の Worker stack は message を含まず `w@...` だけになることがある。
+  return cause.stack.includes(cause.message)
+    ? cause.stack
+    : `${message}\n${cause.stack}`;
+}
+
 type Entry = { dir: boolean; data: Uint8Array | null };
 const VFS = {
   files: new Map<string, Entry>(),
@@ -443,11 +453,9 @@ req.main = { filename: "/haxe.js" };
 req.resolve = (m: string) => m;
 g.require = req;
 
-// WebAssembly.Module を 1 回だけコンパイルしてキャッシュ。glue は内部で
-// WebAssembly.instantiate(bytes, imports, opts) を呼ぶので、bytes を受けたら Module を
-// 使い回し {module, instance} 形に揃えて返す(compile ごとに fresh instance)。
-// WebAssembly.compile/instantiate の 2nd arg(JS string builtins の compileOptions)は
-// 現行 TS lib 型に未収載なので any 経由で渡す。
+// WebAssembly.Module を 1 回だけコンパイルしてキャッシュ。wsoo 6.3.2 が要求する
+// text builtins は WebKit 未実装なので、compileOptions を省いて portable fallback を使う。
+// bytes を受けたら Module を使い回し {module, instance} 形に揃える(compile ごとに fresh instance)。
 const _compile = WebAssembly.compile.bind(WebAssembly) as (
   b: any,
   o?: any,
@@ -460,7 +468,7 @@ let _cachedModule: WebAssembly.Module | null = null;
   opts: any,
 ) => {
   if (src instanceof Uint8Array || src instanceof ArrayBuffer) {
-    if (!_cachedModule) _cachedModule = await _compile(src, opts);
+    if (!_cachedModule) _cachedModule = await _compile(src);
     const instance = await _instantiate(_cachedModule, imports);
     return { module: _cachedModule, instance };
   }
@@ -516,10 +524,18 @@ async function compile(files: Record<string, string>, mainClass: string) {
   ];
   g.process.env.HAXE_STD_PATH = "/std";
 
-  (0, eval)(glueSrc); // glue を再 eval(fresh instance を起こして compile を実行)
+  // glue は async IIFE なので、eval の戻り値を無視すると instantiate rejection が
+  // unhandled のまま60秒 timeoutに化ける。完了は process.exit、失敗は Promise rejection で拾う。
+  let executionFailed = false;
+  let executionError: unknown;
+  Promise.resolve((0, eval)(glueSrc)).catch((cause) => {
+    executionFailed = true;
+    executionError = cause;
+  });
 
   const t0 = Date.now();
   while (!g.__HAXE_DONE) {
+    if (executionFailed) throw executionError;
     if (Date.now() - t0 > 60000) throw new Error("compile timeout");
     await new Promise((r) => setTimeout(r, 5));
   }
@@ -549,7 +565,7 @@ self.onmessage = async (e: MessageEvent) => {
       id: msg.id,
       code: -1,
       raw: null,
-      stderr: String(err && (err.stack || err.message || err)),
+      stderr: describeError(err),
       stdout: "",
     });
   }
