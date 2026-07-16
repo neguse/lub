@@ -940,13 +940,15 @@ public partial class LuaEmitter
     private string VisitConditionalAccess(SemanticModel model,
         ConditionalAccessExpressionSyntax condAccess)
     {
-        var obj = VisitExpression(model, condAccess.Expression);
-        // Use IIFE for safe nil propagation
-        var savedObj = obj;
-        // Visit the when-not-null part, which may contain MemberBindingExpression
+        var receiver = VisitExpression(model, condAccess.Expression);
+        // receiver は IIFE local (__tcs_ca) へ一度だけ評価する。when-not-null 側の
+        // 引数/index は if 分岐内でのみ評価される。ネストした ?. は内側 IIFE の
+        // local が外側を shadow する (local の RHS は宣言前に評価されるため安全)。
         var receiverType = model.GetTypeInfo(condAccess.Expression).Type;
-        var whenNotNull = VisitConditionalWhenNotNull(model, condAccess.WhenNotNull, savedObj, receiverType);
-        return $"(function() if {savedObj} ~= nil then return {whenNotNull} end end)()";
+        var whenNotNull = VisitConditionalWhenNotNull(model,
+            condAccess.WhenNotNull, "__tcs_ca", receiverType);
+        return $"(function() local __tcs_ca = {receiver}; " +
+            $"if __tcs_ca ~= nil then return {whenNotNull} end end)()";
     }
 
     private string VisitConditionalWhenNotNull(SemanticModel model,
@@ -960,8 +962,25 @@ public partial class LuaEmitter
                 VisitConditionalInvocation(model, mb2, inv.ArgumentList, obj, receiverType),
             ElementBindingExpressionSyntax eb =>
                 VisitConditionalElementAccess(model, eb, obj, receiverType),
+            // a?.B()?.C 形のネスト: 内側の receiver (.B() 等) を外側の temp 上で
+            // 評価してから、内側専用の IIFE local で shadow する
+            ConditionalAccessExpressionSyntax nested =>
+                VisitNestedConditionalAccess(model, nested, obj, receiverType),
             _ => VisitExpression(model, expr)
         };
+    }
+
+    private string VisitNestedConditionalAccess(SemanticModel model,
+        ConditionalAccessExpressionSyntax nested, string obj,
+        ITypeSymbol? receiverType)
+    {
+        var receiver = VisitConditionalWhenNotNull(model, nested.Expression,
+            obj, receiverType);
+        var nestedType = model.GetTypeInfo(nested.Expression).Type;
+        var whenNotNull = VisitConditionalWhenNotNull(model, nested.WhenNotNull,
+            "__tcs_ca", nestedType);
+        return $"(function() local __tcs_ca = {receiver}; " +
+            $"if __tcs_ca ~= nil then return {whenNotNull} end end)()";
     }
 
     private string VisitConditionalMemberBinding(MemberBindingExpressionSyntax mb,

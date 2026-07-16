@@ -269,4 +269,164 @@ public class NullConditionalTests
             "T.Test()");
         Assert.Equal("99", result);
     }
+
+    // T139: ?. の receiver は一度だけ評価し、null のときは引数/index を
+    // 評価しない (C# の評価回数・順序と一致させる)。
+    [Fact]
+    public void NullConditional_ReceiverWithSideEffect_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Box
+            {
+                public int Value = 7;
+            }
+            public class T
+            {
+                public static int Calls;
+
+                public static Box Make()
+                {
+                    Calls = Calls + 1;
+                    return new Box();
+                }
+
+                public static int Test()
+                {
+                    var v = Make()?.Value;
+                    var got = v ?? 0;
+                    return Calls * 100 + got;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("107", result);
+    }
+
+    [Fact]
+    public void NullConditional_NullReceiver_DoesNotEvaluateArguments()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Box
+            {
+                public int Twice(int x) => x * 2;
+            }
+            public class T
+            {
+                public static int MakeCalls;
+                public static int ArgCalls;
+
+                public static Box Make()
+                {
+                    MakeCalls = MakeCalls + 1;
+                    return null;
+                }
+
+                public static int Arg()
+                {
+                    ArgCalls = ArgCalls + 1;
+                    return 5;
+                }
+
+                public static int Test()
+                {
+                    var v = Make()?.Twice(Arg());
+                    var got = v ?? -1;
+                    return MakeCalls * 100 + ArgCalls * 10 + got;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("99", result);
+    }
+
+    [Fact]
+    public void NullConditional_ElementAccess_ReceiverOnceAndIndexLazy()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            using System.Collections.Generic;
+
+            public class T
+            {
+                public static int ListCalls;
+                public static int IndexCalls;
+
+                public static List<int> MakeList(bool exists)
+                {
+                    ListCalls = ListCalls + 1;
+                    if (exists) return new List<int> { 10, 20, 30 };
+                    return null;
+                }
+
+                public static int Index()
+                {
+                    IndexCalls = IndexCalls + 1;
+                    return 1;
+                }
+
+                public static int Test()
+                {
+                    var hit = MakeList(true)?[Index()];
+                    var miss = MakeList(false)?[Index()];
+                    var got = hit ?? 0;
+                    var missPart = miss == null ? 1 : 0;
+                    return ListCalls * 1000 + IndexCalls * 100 + got + missPart;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("2121", result);
+    }
+
+    [Fact]
+    public void NullConditional_Chain_EvaluatesEachLinkOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Box
+            {
+                public Box Inner;
+                public string Label;
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var deep = new Box { Inner = new Box { Label = "deep" } };
+                    var got = deep?.Inner?.Label;
+                    var cut = new Box();
+                    var missing = cut?.Inner?.Label;
+                    return (got ?? "none") + "|" + (missing ?? "none");
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("deep|none", result);
+    }
+
+    [Fact]
+    public void NullConditional_MethodChainReceiver_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Node
+            {
+                public int Hits;
+
+                public Node Bump()
+                {
+                    Hits = Hits + 1;
+                    return this;
+                }
+            }
+            public class T
+            {
+                public static int Test()
+                {
+                    var node = new Node();
+                    var hits = node.Bump()?.Bump()?.Hits;
+                    return hits ?? 0;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("2", result);
+    }
 }

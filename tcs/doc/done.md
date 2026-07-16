@@ -826,3 +826,12 @@
 - 検証: dotnet test 508/508 + analyzer 47/47
 - 判断: fresh name 生成器 (リネーム側) ではなく予約 prefix + 診断拒否を採用 — T171 と同じ「拒否で通す」契約で、emitter に scope 解決の複雑さを持ち込まない。`self`/`__tcs_*` の field/method 名は table key で安全だが、契約を一文に保つため宣言サイト一律拒否にした
 - 残課題: designation なしの binary `is Type` (BinaryExpressionSyntax IsExpression) は従来どおり TCS1001 警告の未対応 (silent ではないので需要が出たら対応)。`--entry` の emitted name API は T155 のスコープ
+
+### T139: `?.` receiver の一回評価 lowering ✓ (2026-07-17)
+- `VisitConditionalAccess` が receiver 式文字列を nil 判定と本体の両方へ複製していた多重評価を、IIFE local `__tcs_ca` への一回保存に変更。when-not-null 側の引数/index は if 分岐内でのみ評価される (null 時未評価)
+- 追加発見と修正: チェーン `a?.B?.C` は内側 `?.` が未宣言 global `__tcs_ca` を参照して実行時エラーだった (`attempt to index a nil value`)。ネスト用の `VisitNestedConditionalAccess` を追加し、内側 receiver を外側 temp 上で評価してから内側 IIFE local で shadow する構造にした (Lua の local RHS は宣言前に評価されるため shadow が正しく機能する)
+- 変更ファイル: Transpiler/LuaEmitter.Expressions.cs, Transpiler.Tests/NullConditionalTests.cs (+5: receiver 一回 / null 時引数未評価 / element access の receiver 一回 + index 遅延 / チェーン / メソッドチェーン)
+- 検証: dotnet test 513/513
+- 判断: 汎用の setup-statements + fresh temp counter 基盤は導入しなかった — `?.` は固定名 `__tcs_ca` + IIFE shadow で正しさが完結し、T151 の `__tcs_` prefix 予約が衝突を構造的に排除する。counter が必要になるのは statement 文脈 (T140 switch 等) で、その時点で消費者と一緒に導入する
+- 副産物: T180 を起票 — `v is int inner` が `getmetatable(v) == int` (未定義 global) になり nil が値型パターンにマッチする silent wrong-code を発見 (テスト作成中に検出)
+- 残課題: T180 (値型/string 型パターン)。conditional TryGetValue の default 値差異は T152 スコープ

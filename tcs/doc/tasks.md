@@ -15,8 +15,8 @@
 `tcs check` 後の生成 Lua が C# と異なる結果になる経路を確認した。
 タスク番号順ではなく、次の依存順で着手する。
 
-1. **式 lowering 基盤と評価回数**: T139 → T140 → T141 → T142 → T143 → T144
-2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150
+1. **式 lowering 基盤と評価回数**: T140 → T141 → T142 → T143 → T144
+2. **型・メンバー意味論**: T145 → T146 → T147 → T148、並行して T149 → T150、T180
 3. **runtime 契約**: T152 → T153
 4. **CLI / watch**: T155 → T157
 5. **保守性・文書同期**: T158 → T159 → T160 → T161
@@ -31,18 +31,17 @@ tcs 側から直接変更しない。
 
 ## P0: 正しさ・安全性
 
-### T139: 副作用を一度だけ評価する expression lowering 基盤
-- 目的: 式文字列の複製によるreceiver/operandの多重評価を、後続構文でも再利用できる形で止める
-- 依存: なし (T151 完了済み)
+### T180: 値型/string の型パターンが nil にマッチする問題
+- 目的: `v is int inner` が `getmetatable(v) == int` (未定義 global = nil 比較) になり、nil receiver が値型パターンにマッチして束縛される silent wrong-code を直す。`is string` も string metatable と型 table の比較で常に false になる
 - 作業:
-  - setup statements、value、typeを持つ小さなlowering結果とfresh temp生成器を導入する
-  - Roslyn `IOperation` / symbol情報を利用し、`?.` receiverをIIFE内localへ一度だけ保存する
-  - generated temp名がユーザーsymbolと衝突しないことを保証する
-- 完了条件: 副作用付き`Next()?.Value` / `Next()?.Method(Arg())` / `Next()?[Index()]`でreceiverが1回だけ呼ばれ、null時は引数/indexを評価せず、non-null時もC#と一致する
+  - DeclarationPattern / TypePattern / ConstantPattern(型) の対象型が値型・string のとき、metatable 比較ではなく型別判定 (number/boolean/string の `type()` 判定、nullable 透過の receiver は `~= nil`) を emit する
+  - 型消去で判定できない組合せは TCS1001 で明示する
+  - nil / 非 nil / 型不一致の semantic test を追加する
+- 完了条件: `((int?)null) is int` が false、値ありは true になり、bool/string パターンも C# と一致する
 
 ### T140: switch governing expression の一回評価
 - 目的: switch statement/expressionの対象式をcase/armごとに再実行しない
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 作業:
   - governing expressionをswitch開始時のlocalへ保存し、全case/pattern/whenで再利用する
   - statementとexpression、default、property/relational patternを同じ方針へ揃える
@@ -50,7 +49,7 @@ tcs 側から直接変更しない。
 
 ### T141: deconstruction RHS の一回評価
 - 目的: `var (a, b) = Make()`でRHSを要素数分呼び出す問題を直す
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 作業:
   - RHSをlocalへ一度保存してからproperty/deconstruct値を展開する
   - declaration/assignment deconstructionとdiscardを同じ経路で扱う
@@ -58,7 +57,7 @@ tcs 側から直接変更しない。
 
 ### T142: with expression receiver の一回評価
 - 目的: copy元の式をtable走査とmetatable取得で複数回評価しない
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 作業:
   - receiverをlocalへ保存し、shallow copyとmetatable取得の双方で再利用する
   - override式のC#評価順をtestで固定する
@@ -66,7 +65,7 @@ tcs 側から直接変更しない。
 
 ### T143: assignment/lvalue の一回評価とcompound semantics
 - 目的: indexer/property/receiverをcompound assignment、`??=`、increment、collection mutationで重複評価しない
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 作業:
   - read/writeを分離したlvalue loweringを実装し、receiverとindexをtempへ保存する
   - `+=`のstring concatを含め、symbol/typeに応じたcompound operatorへ変換する
@@ -75,7 +74,7 @@ tcs 側から直接変更しない。
 
 ### T144: simple for 最適化の動的条件セマンティクス修正
 - 目的: C#では各iterationで再評価される終端条件を、Lua numeric forが一度だけ評価する差をなくす
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 作業:
   - numeric forへ落とせるloop-invariant/pureな条件を限定する
   - method call、可変field/property、loop内で変更されるbound/loop variableを含む場合はwhile loweringへfallbackする
@@ -84,7 +83,7 @@ tcs 側から直接変更しない。
 
 ### T145: C# の除算・剰余セマンティクス
 - 目的: Luaの`/`とfloor由来`%`をそのまま使うことで、整数・負数の結果がC#とずれる問題を直す
-- 依存: T139、T143
+- 依存: T143
 - 作業:
   - operand/result typeから整数除算、浮動小数除算、C# remainderを判定する
   - 0方向truncationと`a - trunc(a / b) * b`相当をruntime helperまたは安全なloweringで実装する
@@ -93,7 +92,7 @@ tcs 側から直接変更しない。
 
 ### T146: nullable bool と GetValueOrDefault のnil-safe lowering
 - 目的: Luaの`or`が`false`もfallback扱いするため、nullable boolの値を壊す問題を直す
-- 依存: T139、T143
+- 依存: T143
 - 作業:
   - `??`を明示的な`nil`判定へ変更し、左辺を一回だけ評価する
   - `GetValueOrDefault()`と`GetValueOrDefault(fallback)`をoverload別に実装し、receiver→fallback引数の順で常に各1回評価する
@@ -102,7 +101,7 @@ tcs 側から直接変更しない。
 
 ### T147: custom property accessor のread/write lowering
 - 目的: 生成済み`get_`/`set_`を呼ばずraw fieldとして読み書きする状態を直す
-- 依存: T139、T143
+- 依存: T143
 - 作業:
   - `IPropertySymbol`とsyntaxからauto/custom propertyを判別する
   - instance/implicit-thisのread/writeを`get_`/`set_` callへ変換する
@@ -137,7 +136,7 @@ tcs 側から直接変更しない。
 
 ### T152: empty sequence と型別 default のLINQ/runtime契約
 - 目的: `FirstOrDefault<int>`等が常にnilを返し、allowlist済みAPIが値型で実行時エラーになる問題を直す
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 作業:
   - element/result typeのdefaultをemitterからruntimeへ渡す共通経路を作る
   - `First`/`Last`のempty error、`FirstOrDefault`/`LastOrDefault`のint=0/bool=false/ref=nilを実装する
@@ -146,7 +145,7 @@ tcs 側から直接変更しない。
 
 ### T153: ToDictionary selector の一回評価
 - 目的: key/value selector が要素ごとに複数回評価され、副作用付き selector の結果が C# とずれる問題を直す
-- 依存: T139
+- 依存: なし (T139 完了済み)
 - 前提: duplicate key で throw する C# 契約の再現は棚卸し (2026-07-17) で見送り — もともと不正なプログラムの挙動差であり、正しいプログラムを壊さない。`Dictionary.Add` / `ToDictionary` の duplicate は Lua 上書き挙動を既知差異として扱う
 - 作業:
   - key/value selector を各要素 1 回だけ評価し、評価順 (key → value) を C# に揃える
