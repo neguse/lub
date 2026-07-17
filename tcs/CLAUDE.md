@@ -50,6 +50,9 @@ tcs/
 ### コマンド
 
 ```bash
+# 初回セットアップ: pre-commit ゲート (.githooks/pre-commit = run-tests.sh) の配線
+git config core.hooksPath .githooks
+
 # テスト実行（基本操作）
 dotnet test
 
