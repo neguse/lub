@@ -66,6 +66,28 @@ public sealed class SessionUpdateResponse
     public int ArtifactBytes { get; set; }
 }
 
+/// <summary>SessionExports.Complete の応答 (T230)。</summary>
+public sealed class CompleteResponse
+{
+    public bool Ok { get; set; }
+    public int Epoch { get; set; }
+    public List<CompletionItem> Items { get; set; } = [];
+    public string? Error { get; set; }
+}
+
+/// <summary>SessionExports.Hover の応答 (T230)。</summary>
+public sealed class HoverResponse
+{
+    public bool Ok { get; set; }
+    public int Epoch { get; set; }
+    public bool Found { get; set; }
+    public string? Display { get; set; }
+    public string? Doc { get; set; }
+    public int Start { get; set; }
+    public int End { get; set; }
+    public string? Error { get; set; }
+}
+
 // wasm では reflection ベースの JsonSerializer が無効のため source generator を使う
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
@@ -75,6 +97,8 @@ public sealed class SessionUpdateResponse
 [JsonSerializable(typeof(CompileResponse))]
 [JsonSerializable(typeof(SessionOpenResponse))]
 [JsonSerializable(typeof(SessionUpdateResponse))]
+[JsonSerializable(typeof(CompleteResponse))]
+[JsonSerializable(typeof(HoverResponse))]
 public sealed partial class CompileJsonContext : JsonSerializerContext;
 
 public static partial class CompilerExports
@@ -234,6 +258,78 @@ public static partial class SessionExports
                 Epoch = _epoch,
             }, CompileJsonContext.Default.SessionUpdateResponse);
         }
+    }
+
+    // 補完/hover (T230)。speculative fork への読み取り専用クエリで、session
+    // の revision/artifacts は変えない。エディタの現在バッファを content で
+    // 受け取るため、Update 前の未確定内容でも正しい位置で引ける。
+    [JSExport]
+    public static string Complete(int epoch, string path, string content,
+        int offset)
+    {
+        try
+        {
+            var fork = ForkOrThrow(epoch, path, content);
+            return JsonSerializer.Serialize(new CompleteResponse
+            {
+                Ok = true,
+                Epoch = _epoch,
+                Items = SemanticQueries.Complete(
+                    fork.Compilation, fork.Tree, offset),
+            }, CompileJsonContext.Default.CompleteResponse);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new CompleteResponse
+            {
+                Ok = false,
+                Epoch = _epoch,
+                Error = ex.Message,
+            }, CompileJsonContext.Default.CompleteResponse);
+        }
+    }
+
+    [JSExport]
+    public static string Hover(int epoch, string path, string content,
+        int offset)
+    {
+        try
+        {
+            var fork = ForkOrThrow(epoch, path, content);
+            var info = SemanticQueries.Hover(fork.Compilation, fork.Tree, offset);
+            return JsonSerializer.Serialize(new HoverResponse
+            {
+                Ok = true,
+                Epoch = _epoch,
+                Found = info != null,
+                Display = info?.Display,
+                Doc = info?.Doc,
+                Start = info?.Start ?? 0,
+                End = info?.End ?? 0,
+            }, CompileJsonContext.Default.HoverResponse);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new HoverResponse
+            {
+                Ok = false,
+                Epoch = _epoch,
+                Error = ex.Message,
+            }, CompileJsonContext.Default.HoverResponse);
+        }
+    }
+
+    private static (Microsoft.CodeAnalysis.CSharp.CSharpCompilation Compilation,
+        Microsoft.CodeAnalysis.SyntaxTree Tree) ForkOrThrow(
+        int epoch, string path, string content)
+    {
+        var session = _session
+            ?? throw new InvalidOperationException("SessionExports.Open first");
+        if (epoch != _epoch)
+            throw new InvalidOperationException(
+                $"stale epoch {epoch} (current {_epoch})");
+        return session.ForkWithContent(path, content)
+            ?? throw new ArgumentException($"unknown module: {path}");
     }
 
     // bridge snapshot (§14.2)。JSON escape を避けるため raw Lua 文字列を返す。

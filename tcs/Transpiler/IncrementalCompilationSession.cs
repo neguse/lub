@@ -152,6 +152,22 @@ public sealed class IncrementalCompilationSession
         return FastUpdate(path, newTree, bodySpan, swParse.ElapsedMilliseconds);
     }
 
+    // 補完/hover (SemanticQueries) 用の speculative fork。エディタの現在
+    // バッファ content で tree を差し替えた compilation を返すが、session
+    // 状態 (_texts/_trees/_compilation/Revision/artifacts) は変更しない。
+    // 返り値は transient で、呼び出し側もキャッシュしない前提 (T230)。
+    public (CSharpCompilation Compilation, SyntaxTree Tree)? ForkWithContent(
+        string path, string content)
+    {
+        if (_compilation == null || !_trees.TryGetValue(path, out var oldTree))
+            return null;
+        var oldText = _texts[path];
+        var newText = oldText.WithChanges(
+            MinimalChange(oldText.ToString(), content));
+        var newTree = oldTree.WithChangedText(newText);
+        return (_compilation.ReplaceSyntaxTree(oldTree, newTree), newTree);
+    }
+
     // authoritative full build。診断・出力とも legacy full path と同一実装を使う。
     public TranspileResult BuildFull(string? entryClass = null)
     {
