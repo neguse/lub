@@ -28,6 +28,10 @@
       `getmetatable(x) == T` の完全一致比較のため、派生インスタンスへの
       `is Base` が C# `true` / 現行出力 `false`（実測）。metatable chain を
       辿る runtime helper へ置換。M1 と独立に修正可能
+- [ ] **T223** (P1): interface を対象とする type test / cast の診断化 —
+      interface は実行時表現を持たないため `x is I` は偽陰性になる
+      （il-spec §2 で診断化を決定）。孤立 surrogate を含む string literal の
+      診断化（il-spec §11）も同じ Shared facts 追加で扱う
 - [ ] **T212** (P0, luo 側): 性能上界 spike の PC 測定 —
       `../luo/docs/spike-ceiling.md` の kernels（sprite_update / spawn_churn /
       particles）を手書き C で実測し、aot-slot vs native 比を先に取る。

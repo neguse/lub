@@ -1192,3 +1192,9 @@
 - 検証: 文書のみの変更。規範の根拠事実は T210 の実測 (probe 2 本の Lua/.NET 突き合わせ) に依拠
 - 判断: string を UTF-8 バイト列で規範化 (出荷ターゲット表現を正に置き、.NET 実行側を既知差とする — 逆だと release backend が UTF-16 を背負う)。f32→i32 変換不能と INT_MIN/-1 は fault として決定的に定義 (C# 側が unspecified / 例外なので矛盾しない)。数学関数の規範は「同一プラットフォーム内一致」に留め、プラットフォーム間ビット一致は要求しない (spike の libm 排除方針と整合)
 - 残課題: gpt-5.6 second opinion review、M2 (T217) でシリアライズ形式と luo 向け入力契約
+
+### T211 補遺: gpt-5.6 反証レビューの反映 ✓ (2026-07-18)
+- 反証限定・load-bearing 6 決定に絞った second opinion (Codex 14分)。反証 4 / 生存 2 (fault 決定性、capture 脱糖)
+- 採用 4 件: (1) string 規範を「任意の octet 列」へ修正 + 孤立 surrogate literal の診断化 (UTF-8 不変条件は byte slicing で破綻するため)、(2) 非網羅 switch 式の no-match を fault 種別に追加 (temp 未代入の穴。例外サブセット外なので fault が C# 実挙動と等価)、(3) f32 リテラルは IL が bit 値保持・backend は 16 進浮動小数表記 + excess precision 排除 (10 進→double→f32 の二重丸めで 1 bit ずれる反例)、(4) interface への type test は診断化で決着 (T223 起票)
+- 検証: 文書のみの変更。反例は Codex 提示の C# 仕様条項 (§8.2.5 / §12.12 / §6.4.5.4 / §12.15.12.1) と Lua 5.5 luaconf.h 参照
+- よかったこと: 反証限定 + 対象 6 決定の明示でニトピックゼロ、全指摘が本質だった。レビュー前に自前で付録 C へ落としていた interface 項も具体的な偽陰性反例で決断まで進んだ

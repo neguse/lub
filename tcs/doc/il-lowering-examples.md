@@ -79,6 +79,9 @@ static float Program_Area(TcsObj *shape) {
 - **IL 演算ノードは型解決済みで単型**（i32 加算 / f32 加算 / 文字列連結は
   別ノード）。overload 解決・暗黙変換の挿入は Roslyn 層で完了している
 - 対象式は 1 回評価、arm は宣言順に判定（C# の順序保存）
+- discard arm の無い非網羅 switch 式は、else 節を `switch-no-match` fault へ
+  lower する（C# の SwitchExpressionException 相当。temp 未代入の穴を残さない
+  — gpt-5.6 反証レビューの指摘）
 
 実測で見つけた現行バグ: 型 test が `getmetatable(x) == T` の完全一致のため、
 派生インスタンスへの `is Base` が C# `true` / 現行出力 `false`（→ T222）。
@@ -195,6 +198,7 @@ call Console.WriteLine(concat("x=", i32_to_str(x), ", area=", f32_to_str(call Pr
 | 6 | 制御フローは block / if / while / break / continue / return のみ | E2 |
 | 7 | 値型は place / load / store + copy 地点列挙。メモリ配置は backend 自由 | E3 |
 | 8 | 数値→文字列を含む runtime 表面は intrinsic として規範定義 | E4 |
+| 9 | 非網羅 switch 式の no-match は fault。f32 リテラルは IL が bit 値で保持（二重丸め禁止） | 反証レビュー |
 
 現行実装についての副次的発見: emitter は bound tree（IOperation）ではなく
 syntax tree + SemanticModel を走査している（il-design.md の記述を実態へ修正
