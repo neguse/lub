@@ -1116,3 +1116,8 @@
 - 式文脈の `i++` は「値を返しつつ代入」の意味論だが、現行 emit は `i + 1` の値だけで副作用が消えていた。statement / for 更新部以外の increment/decrement を TCS1001 で拒否。named argument も位置渡しへ黙って落ちていたため NameColon 付き引数を拒否
 - 検証: dotnet test 643/643 + run-tests.sh 全ゲート green (samples/既存テストは statement/for 利用のみ)、spec baseline で Run-timeEvalOfArgLists1 が Diag へ。残 Bug 3
 - 判断: IIFE + temp での完全対応は lvalue 機構拡張が必要で、需要が出たら別タスク。optional parameter default の silent nil は診断でなく修正が妥当 (ゲームコードで頻出) — T207 起票
+
+### T207: optional parameter の default 補完 ✓ (2026-07-18)
+- ユーザーメソッド / constructor の optional parameter が省略呼び出しで silent nil になっていた。関数冒頭に `if p == nil then p = <default> end` を emit して C# の省略時 default を再現
+- 検証: dotnet test 644/644 green (method / ctor / string default の semantic テスト追加)
+- 判断: 省略と明示 null は Lua ではどちらも nil で区別不能 — 明示 null に default と異なる挙動を期待する呼び出しは既知の意味論差としてコメントに明記

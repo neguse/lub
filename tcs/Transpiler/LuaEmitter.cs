@@ -281,6 +281,8 @@ public partial class LuaEmitter
 
         AppendLine($"function {className}.new({string.Join(", ", ctorParams)})");
         _indent++;
+        if (ctor != null)
+            EmitParameterDefaults(model, ctor.ParameterList);
 
         if (ctor?.Initializer != null
             && ctor.Initializer.IsKind(SyntaxKind.BaseConstructorInitializer))
@@ -507,6 +509,7 @@ public partial class LuaEmitter
 
         AppendLine($"function {className}{sep}{methodName}({string.Join(", ", paramNames)})");
         _indent++;
+        EmitParameterDefaults(model, method.ParameterList);
 
         if (method.Body != null)
             foreach (var stmt in method.Body.Statements)
@@ -518,6 +521,23 @@ public partial class LuaEmitter
         AppendLine("end");
         AppendLine();
         MethodRanges.Add((MethodKey(className, method), rangeStart, _sb.Length - rangeStart));
+    }
+
+    // C# の optional parameter は省略時に default 値が入るが、Lua 側は nil で
+    // 届く。関数冒頭で補完する。省略と明示 null は Lua では区別できない
+    // (どちらも nil) — 明示 null を渡して default と違う挙動を期待する呼び出し
+    // は既知の意味論差。
+    private void EmitParameterDefaults(SemanticModel model,
+        ParameterListSyntax parameterList)
+    {
+        foreach (var parameter in parameterList.Parameters)
+        {
+            if (parameter.Default is null) continue;
+            var value = VisitExpression(model, parameter.Default.Value);
+            if (value == "nil") continue;
+            var paramName = parameter.Identifier.ValueText;
+            AppendLine($"if {paramName} == nil then {paramName} = {value} end");
+        }
     }
 
     private void SetSource(SyntaxNode node)

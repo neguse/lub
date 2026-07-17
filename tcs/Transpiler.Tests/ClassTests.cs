@@ -279,6 +279,30 @@ public class ClassTests
     }
 
     [Fact]
+    public void OptionalParameters_FillDefaultsWhenOmitted()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public T(int seed = 7)
+                {
+                    Seed = seed;
+                }
+
+                public int Seed;
+
+                public static string F(int x, int y = -1, string tag = "none")
+                    => x + "," + y + "," + tag;
+
+                public static string Test()
+                    => F(5) + "|" + F(1, 2, "yes") + "|" + new T().Seed;
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("5,-1,none|1,2,yes|7", result);
+    }
+
+    [Fact]
     public void StaticFieldInitializers_SeeDefaultValuesOfLaterFields()
     {
         // C# は static field を default 値で事前初期化してから initializer を
