@@ -39,9 +39,11 @@ public static class TestHelper
     {
         // Try platform-specific binary names
         var isWindows = OperatingSystem.IsWindows();
+        // M4 (T216): 数値モデルの正本は i32/f32 (il-spec §5-6)。LUA_32BITS
+        // ビルド (lua32) を優先し、無ければ 64bit lua へ fallback する
         var names = isWindows
-            ? new[] { "lua.exe", "lua" }
-            : new[] { "lua", "lua5.5" };
+            ? new[] { "lua32.exe", "lua.exe", "lua" }
+            : new[] { "lua32", "lua", "lua5.5" };
 
         // Check local build first
         foreach (var name in names)

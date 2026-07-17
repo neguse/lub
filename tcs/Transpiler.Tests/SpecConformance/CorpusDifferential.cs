@@ -78,12 +78,14 @@ internal static partial class CorpusDifferential
         if (normalized == luaResult)
             return true;
         // C# double の整数値は Lua 側で integer になり得る (math.ceil 等)。
-        // 表示差 (4.0 vs 4) は既知の数値表現差なので数値等価で比較する
+        // 表示差 (4.0 vs 4) は既知の数値表現差なので数値等価で比較する。
+        // M4 (T216): 実行側の数値モデルは f32 (LUA_32BITS) なので、.NET 側の
+        // double 値は f32 へ量子化してから比較する (il-spec §6)
         return double.TryParse(normalized, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var dotnetNumber)
             && double.TryParse(luaResult, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var luaNumber)
-            && dotnetNumber.Equals(luaNumber);
+            && ((float)dotnetNumber).Equals((float)luaNumber);
     }
 
     // Lua 式 → C# 式。翻訳できない Lua 固有構文 (IIFE / .. / # / 演算子) は null

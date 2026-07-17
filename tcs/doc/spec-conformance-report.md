@@ -38,7 +38,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 
 ## Execution (C1: expectedOutput / ignoreOutput)
 
-Executed 36 InRun examples with an output contract; passed 36 (1 via known-differences allowlist). Failures are reclassified as Bug below.
+Executed 36 InRun examples with an output contract; passed 36 (2 via known-differences allowlist). Failures are reclassified as Bug below.
 
 ## Unexpected extraction details
 

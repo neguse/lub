@@ -7,6 +7,8 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference `
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BuildDir = Join-Path $ScriptDir "build"
 $luaExe = Join-Path $ScriptDir "deps\lua\lua.exe"
+# M4 (T216): LUA_32BITS 変種も併産・鮮度確認する
+$lua32Exe = Join-Path $ScriptDir "deps\lua\lua32.exe"
 
 function Build-Lua {
     Write-Host "Building Lua 5.5..."
@@ -16,7 +18,7 @@ function Build-Lua {
 }
 
 function Test-LuaBuildNeeded {
-    if (-not (Test-Path $luaExe)) {
+    if (-not (Test-Path $luaExe) -or -not (Test-Path $lua32Exe)) {
         return $true
     }
 

@@ -68,8 +68,8 @@ public class BclAllowlistExtensionTests
             public class T
             {
                 public static bool Test() =>
-                    Math.Abs(Math.Log(Math.Exp(1.0)) - 1.0) < 1e-9
-                    && Math.Abs(Math.Log(8.0, 2.0) - 3.0) < 1e-9;
+                    Math.Abs(Math.Log(Math.Exp(1.0)) - 1.0) < 1e-6
+                    && Math.Abs(Math.Log(8.0, 2.0) - 3.0) < 1e-6; // f32 精度 (M4)
             }
             """, "tostring(T.Test())");
         Assert.Equal("true", result);

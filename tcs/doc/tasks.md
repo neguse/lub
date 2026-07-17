@@ -38,9 +38,10 @@
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 
-- [ ] **T216** (P1): M4 数値モデル移行 — i32/f32、LUA_32BITS 実行へ切替。
-      differential の .NET 側も int/float 比較へ。全ゲートが 32bit ビルドで green。
-      **T218（IL→C）の digest baseline より前に完了させる**
+- [ ] **T226** (P2): double / long のサブセット外化 — il-design §4 の
+      診断化 (TCS1001) とテスト/サンプル資産の f32 リテラル移行。
+      fuzz の 32bit overflow 回避制約の撤廃 (int32 wrap が .NET と一致した)
+      もここで
 - [ ] **T215** (P1): digest harness — spike と同じ 3 kernel を TinyC# で記述し
       （particles は struct 前提のため M5 までは class 版）、f32 量子化値の
       FNV digest を run-tests ゲート化。2 backend 一致テストの正本になる。

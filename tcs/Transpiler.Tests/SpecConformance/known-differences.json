@@ -1,4 +1,7 @@
 {
+  "classes.md:VariableInitializers1": {
+    "reason": "accepted: 例は Math.Sqrt(2.0) の double 全桁 (1.4142135623730951) を期待するが、tcs の数値モデルは i32/f32 (il-spec §6、M4) で double 精度はサブセット外。f32 の shortest 表示とは桁数が一致しない"
+  },
   "expressions.md:ReferenceTypeEqualityOperators3": {
     "reason": "accepted: C# は別インスタンス string の参照比較で false になるが、Lua の string は intern される値型で同一になる (doc/support-matrix.md の文字列既知差異)。参照同一性の観測はサブセットの保証外"
   }

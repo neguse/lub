@@ -53,7 +53,7 @@ public class DivisionSemanticTests
                     var a = 5.0;
                     var b = 2.0;
                     var zero = 0.0;
-                    var isInf = a / zero > 1e308;
+                    var isInf = a / zero > 1e30; // f32 数値モデルでも成立する閾値 (M4)
                     return $"{a / b}|{isInf}";
                 }
             }

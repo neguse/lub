@@ -1260,3 +1260,9 @@
 - CMake に TCS_LUA_32BITS_VARIANT (既定 ON) を追加し、LUA_32BITS 定義の liblua32/lua32 を deps/lua/lua32 へ併産。既存 lua (64bit) と共存し、run-tests の再ビルド経路でも一緒に生成される
 - 検証: cmake ビルド成功、lua32 で math.maxinteger=2147483647 (int32) / 1/3=0.333333343 (float32) を確認
 - 判断: 既定バイナリの切替は M4 (T216) で行う — テスト資産の移行と同時でないと挙動確認が split-brain になる
+
+### T216: [M4] 数値モデルを i32/f32 (LUA_32BITS) へ移行 ✓ (2026-07-18)
+- テスト実行の Lua を lua32 優先へ (TestHelper FindLua)、run-tests.sh/ps1 の鮮度判定にも lua32 を追加。differential の数値等価は .NET double を f32 量子化してから比較 (il-spec §6)
+- 移行の爆風半径は 3 件のみ: double 精度前提テスト 2 件を f32/double 両立形へ適正化 (1e308→1e30、epsilon 1e-9→1e-6)、spec 例 VariableInitializers1 (Math.Sqrt の double 全桁表示) を known-differences へ理由付き登録
+- 検証: run-tests.sh 全ゲート exit 0 (conformance sweep + differential + fuzz smoke 込み、694 tests)
+- 判断: double/long の診断化 (il-design §4 の完全なサブセット外化) は分離 — T216 の完了条件 (32bit ビルドで全ゲート green + differential f32 比較) は満たしており、ソース資産の一括 f32 リテラル移行は独立タスクとして需要と合わせて判断する (tasks.md T226 起票)
