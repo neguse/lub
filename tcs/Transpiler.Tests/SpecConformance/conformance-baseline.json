@@ -96,22 +96,22 @@
     "category": "Diag"
   },
   "attributes.md:ConditionalAttributeClasses1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:ConditionalAttributeClasses2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:ConditionalMethods1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:ConditionalMethods2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:ConditionalMethods3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:ConditionalMethods4": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "attributes.md:DeclCustomHandler1": {
     "category": "InRun"

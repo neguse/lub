@@ -178,6 +178,20 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // [Conditional] は呼び出し削除の意味論を持ち、tcs は常に呼んでしまう。
+        // metadata のみで意味論を変えない他の属性は対象外。
+        if (node is AttributeSyntax attribute
+            && model.GetSymbolInfo(attribute).Symbol is IMethodSymbol
+            {
+                ContainingType.Name: "ConditionalAttribute",
+                ContainingType.ContainingNamespace:
+                { Name: "Diagnostics", ContainingNamespace.Name: "System" }
+            })
+        {
+            syntaxName = "ConditionalAttribute";
+            return true;
+        }
+
         return node is InvocationExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node),
                 out syntaxName);

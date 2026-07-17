@@ -621,4 +621,36 @@ public class DiagnosticTests
         Assert.DoesNotContain(result.Warnings,
             w => w.Contains("TopLevelArgs"));
     }
+
+    [Fact]
+    public void ConditionalAttribute_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                [System.Diagnostics.Conditional("DEBUG")]
+                public static void Log() { }
+
+                public static void Test() => Log();
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "ConditionalAttribute");
+    }
+
+    [Fact]
+    public void OtherAttributes_AreNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                [System.Obsolete("old")]
+                public static int Test() => 1;
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("ConditionalAttribute"));
+    }
 }

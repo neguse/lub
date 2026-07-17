@@ -1044,3 +1044,8 @@
 - 暗黙パラメータ `args` の参照が未定義 global として emit され実行時 nil エラーになる silent wrong-code を診断化。semantic model で synthesized `<Main>$` の parameter 判定 (lambda 等の自前 args は除外)
 - 検証: dotnet test 617/617 green、spec baseline で basic-concepts.md:TopLevelStatements2A が Bug → Diag
 - 判断: 空 table 供給ではなく診断 — command line は host の責務で、暗黙供給は「動くが常に空」という別の silent 差異を作るため
+
+### T190: [Conditional] 属性の TCS1001 診断化 ✓ (2026-07-18)
+- `[Conditional("DEBUG")]` 付きメソッドの呼び出しが条件無視で常に実行される silent 差異を、属性宣言側の TCS1001 診断で拒否。System.Diagnostics.ConditionalAttribute を semantic 判定し、意味論を変えない他属性 ([Obsolete] 等) は対象外
+- 検証: dotnet test 619/619 green、spec baseline で attributes.md:ConditionalMethods4 ほかが Bug/InRun → Diag
+- 判断: 呼び出し側でなく宣言側で1回診断 (呼び出し網羅より位置が安定)。BCL の Conditional API (Debug.Assert 等) は TCS1002 allowlist 外で既に拒否される
