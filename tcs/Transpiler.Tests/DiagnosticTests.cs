@@ -698,6 +698,44 @@ public class DiagnosticTests
     }
 
     [Fact]
+    public void ConsoleMembersOutsideWriteLine_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void Test()
+                {
+                    var reader = System.Console.In;
+                    System.Console.Write("x");
+                }
+            }
+            """]);
+
+        Assert.Contains(result.Warnings,
+            w => w.Contains("TCS1002") && w.Contains("Console.In"));
+        Assert.Contains(result.Warnings,
+            w => w.Contains("TCS1002") && w.Contains("Console.Write"));
+    }
+
+    [Fact]
+    public void ConsoleWriteLine_IsNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void Test()
+                {
+                    System.Console.WriteLine("x");
+                    System.Console.WriteLine(42);
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("TCS1002"));
+    }
+
+    [Fact]
     public void DecimalTypeAndLiteral_ReportWarnings()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""

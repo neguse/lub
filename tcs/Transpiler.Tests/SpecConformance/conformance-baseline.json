@@ -1514,10 +1514,10 @@
     "category": "Diag"
   },
   "patterns.md:PatternFormGen1": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "patterns.md:PatternFormGen2": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "patterns.md:PositionalPattern1": {
     "category": "Diag"

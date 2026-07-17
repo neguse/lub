@@ -353,7 +353,8 @@ public static partial class TinyCsComplianceFacts
             || IsMathType(containingType)
             || IsListType(containingType)
             || IsDictType(containingType)
-            || IsSystemLinqEnumerable(containingType))
+            || IsSystemLinqEnumerable(containingType)
+            || IsConsoleType(containingType))
         {
             return true;
         }
@@ -361,11 +362,20 @@ public static partial class TinyCsComplianceFacts
         return false;
     }
 
+    // emitter が print へマップするのは WriteLine のみ。In/Out/Write/ReadLine
+    // 等は Lua 出力に対応物がなく silent nil アクセスになるため allowlist 外。
+    private static bool IsConsoleType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && named.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)
+            == "System.Console";
+
     private static bool IsSupportedApiMember(ISymbol symbol,
         INamedTypeSymbol containingType, int? explicitArgumentCount)
     {
         if (symbol is IMethodSymbol method)
         {
+            if (IsConsoleType(containingType))
+                return method.Name == "WriteLine";
             var signature = (method.ReducedFrom ?? method).OriginalDefinition
                 .ToDisplayString(SignatureFormat);
             if (!SupportedApiSignatures.Contains(signature)) return false;

@@ -1076,3 +1076,7 @@
 ### T202: string literal escape の Lua 再変換 ✓ (2026-07-18)
 - 通常の `"..."` literal が C# の raw token text のまま Lua へコピーされていた (escape 文法は非互換: `\x` の可変長 hex、`\0` 直後の数字、`\u` など)。常に ValueText を Lua 形式へ escape し直す経路へ統一し、制御文字は 2 桁固定 `\xXX` で emit
 - 検証: dotnet test 630/630 green (バイト長セマンティクステスト追加)、spec baseline で lexical-structure.md:CharacterLiterals が Bug → InRun (dotnet differential 一致)
+
+### T203: Console を allowlist 型へ昇格 (WriteLine のみ許可) ✓ (2026-07-18)
+- System.Console が型ごと TCS1002 判定を素通りし、emitter が print へマップしない member (Console.In/Write/ReadLine 等) が silent nil アクセスになっていた。Console を partially-supported 型にし WriteLine のみ許可
+- 検証: dotnet test 632/632 green、spec baseline で patterns.md:PatternFormGen1/2 ほかが Diag へ
