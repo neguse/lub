@@ -1,0 +1,129 @@
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace TinyCs;
+
+// M2 (T217): IL→C backend (../luo) 向けの入力契約。検査済みプログラムの
+// IL (doc/il-spec.md) と migration metadata (il-spec §14) を、Lua 出力を
+// 経由せずに公開する。契約の正本は doc/il-reference.md。
+
+/// <summary>class の migration metadata (il-spec §14)。</summary>
+public sealed record IlClassInfo(
+    string Name,
+    string? BaseName,
+    ImmutableArray<IlFieldInfo> Fields,
+    string LayoutHash,
+    ImmutableArray<IlMethodInfo> Methods);
+
+public sealed record IlFieldInfo(string Name, string Type, bool IsStatic);
+
+/// <summary>method body の IL。Body が null なら IL 未対応 (診断構文等) で
+/// backend は対象外にできる。</summary>
+public sealed record IlMethodInfo(
+    string Name,
+    bool IsStatic,
+    ImmutableArray<string> Parameters,
+    IlBlock? Body);
+
+public sealed record IlExportResult(
+    ImmutableArray<IlClassInfo> Classes,
+    ImmutableArray<string> Diagnostics);
+
+public static class IlExport
+{
+    public static IlExportResult Export(string[] csharpSources)
+    {
+        var trees = csharpSources
+            .Select(s => CSharpSyntaxTree.ParseText(s))
+            .ToArray();
+        var compilation = CSharpCompilation.Create("IlExport", trees,
+            Transpiler.References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                allowUnsafe: false));
+
+        var diagnostics = new List<string>();
+        foreach (var tree in trees)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            diagnostics.AddRange(
+                TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
+        }
+
+        var classes = new List<IlClassInfo>();
+        var emitter = new LuaEmitter();
+        foreach (var tree in trees)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            foreach (var cls in tree.GetCompilationUnitRoot().DescendantNodes()
+                .OfType<ClassDeclarationSyntax>())
+            {
+                classes.Add(ExportClass(emitter, model, cls));
+            }
+        }
+        return new IlExportResult([.. classes], [.. diagnostics]);
+    }
+
+    private static IlClassInfo ExportClass(LuaEmitter emitter,
+        SemanticModel model, ClassDeclarationSyntax cls)
+    {
+        var symbol = model.GetDeclaredSymbol(cls);
+        var baseName = symbol?.BaseType is { SpecialType: SpecialType.None } b
+            ? b.Name : null;
+
+        var fields = new List<IlFieldInfo>();
+        foreach (var field in cls.Members.OfType<FieldDeclarationSyntax>())
+        {
+            foreach (var v in field.Declaration.Variables)
+            {
+                var fieldSymbol = model.GetDeclaredSymbol(v) as IFieldSymbol;
+                fields.Add(new IlFieldInfo(
+                    v.Identifier.ValueText,
+                    fieldSymbol?.Type.ToDisplayString() ?? "?",
+                    fieldSymbol?.IsStatic ?? false));
+            }
+        }
+        // auto property は backing field 相当として layout に数える
+        foreach (var prop in cls.Members.OfType<PropertyDeclarationSyntax>()
+            .Where(p => p.AccessorList != null && p.AccessorList.Accessors
+                .All(a => a.Body == null && a.ExpressionBody == null)))
+        {
+            var propSymbol = model.GetDeclaredSymbol(prop);
+            fields.Add(new IlFieldInfo(
+                prop.Identifier.ValueText,
+                propSymbol?.Type.ToDisplayString() ?? "?",
+                propSymbol?.IsStatic ?? false));
+        }
+
+        var methods = new List<IlMethodInfo>();
+        foreach (var method in cls.Members.OfType<MethodDeclarationSyntax>())
+        {
+            var body = emitter.ExportMethodIl(model, method);
+            methods.Add(new IlMethodInfo(
+                method.Identifier.ValueText,
+                method.Modifiers.Any(SyntaxKind.StaticKeyword),
+                [.. method.ParameterList.Parameters
+                    .Select(p => p.Identifier.ValueText)],
+                body));
+        }
+
+        return new IlClassInfo(cls.Identifier.ValueText, baseName,
+            [.. fields], LayoutHash(fields), [.. methods]);
+    }
+
+    // layout version hash (il-spec §14): instance field の (名前, 型) 列の
+    // FNV-1a。field の追加・削除・改名・型変更で変わる。
+    private static string LayoutHash(List<IlFieldInfo> fields)
+    {
+        uint h = 2166136261;
+        foreach (var f in fields.Where(f => !f.IsStatic))
+        {
+            foreach (var ch in $"{f.Name}:{f.Type};")
+            {
+                h = (h ^ ch) * 16777619;
+            }
+        }
+        return h.ToString("x8");
+    }
+}

@@ -1272,3 +1272,9 @@
 - 実測 digest: sprite_update e8814b32 / spawn_churn 4e5bf016 / particles 8bf97e09。CONTRACT へ追記済みで、luo spike の全変種 (interp/aot-hash/aot-slot/native) はこれと一致すべき — 2 backend 一致検証の tcs 側正本
 - 検証: 3/3 green。spawn_churn の CONTRACT 未規定分 (初期空・spawn→update 順・ring 順序) は解釈を明文化
 - 副次発見: nested class は Lua 出力に emit されず実行時 nil (診断もなし)。要診断化 — T227 起票
+
+### T217: [M2] IL 入力契約 — IlExport API + リファレンス文書 ✓ (2026-07-18)
+- `IlExport.Export(sources)` を公開: class metadata (fields/型/static、auto property 込み)、migration metadata の layout hash (il-spec §14 — instance field の名前:型列 FNV、static 変更で不変・改名で変化)、method body の IL (未対応は null)。luo は assembly 参照で直接消費
+- `doc/il-reference.md` を新設: 全 IL ノードのカタログ (意味論は il-spec 参照、Lua render は参考情報)、API、C backend の義務、digest 検証の接続 (DigestKernels ↔ spike CONTRACT)
+- 検証: IlExportTests 3 本 green (metadata/IL body 形/layout hash 性質/未対応 null)
+- 判断: シリアライズ形式は定義しない (il-spec §1 の v0 決定どおり in-memory)。class 骨格 (ctor/accessor/field initializer) の IL 本文は T224 で拡張

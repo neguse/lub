@@ -21,6 +21,18 @@ public partial class LuaEmitter
             ? new IlBlock([.. stats]) : null;
     }
 
+    // IlExport (M2) 用: method body の IL を出力せずに構築して返す。
+    // expression body は IlReturn 1 文へ正規化する。
+    internal IlBlock? ExportMethodIl(SemanticModel model,
+        MethodDeclarationSyntax method)
+    {
+        if (method.Body != null) return TryBuildIlBody(model, method);
+        if (method.ExpressionBody != null
+            && BuildExpr(model, method.ExpressionBody.Expression) is { } expr)
+            return new IlBlock([new IlReturn(expr)]);
+        return null;
+    }
+
     // ---- 共通フック (T214c): 文列 / return 式 / 文位置式を IL 経由で emit ----
 
     private bool TryEmitStatsViaIl(SemanticModel model,

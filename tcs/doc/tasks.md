@@ -44,8 +44,6 @@
       診断化 (TCS1001) とテスト/サンプル資産の f32 リテラル移行。
       fuzz の 32bit overflow 回避制約の撤廃 (int32 wrap が .NET と一致した)
       もここで
-- [ ] **T217** (P1): M2 IL 仕様の文書化 + metadata 出力。
-      合格基準: luo 側が LuaEmitter を読まずに IL 文書だけで実装着手できる
 
 ### Phase 3 — 価値の刈り取り（T218 と T219 は並行可）
 
