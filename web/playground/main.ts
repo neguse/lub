@@ -1,4 +1,14 @@
-import { attachEditor, setFiles, getFiles } from "./editor";
+import {
+  attachEditor,
+  setFiles,
+  getFiles,
+  setPlaygroundDiagnostics,
+  setVirtualFile,
+  setCsLanguageProvider,
+  jumpTo,
+} from "./editor";
+import { parseHaxeDiagnostic, parseTcsDiagnostic } from "./diagnostics";
+import type { PlaygroundDiagnostic } from "./diagnostics";
 import {
   SAMPLE_NAMES,
   loadSampleSource,
@@ -257,8 +267,39 @@ function isSourceFile(path: string): boolean {
 /** エディタ上のソース一式を compiler へ渡す形({ "Foo.hx": content })にする。 */
 function collectSources(ext: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [p, f] of getFiles()) if (p.endsWith(ext)) out[p] = f.content;
+  for (const [p, f] of getFiles())
+    if (p.endsWith(ext) && !f.virtual) out[p] = f.content;
   return out;
+}
+
+/** 生成 Lua 仮想タブのキー(native の samples/<name>/.lub/<name>.lua の鏡写し)。 */
+function genLuaTabPath(): string {
+  return `.lub/${currentSample}.lua`;
+}
+
+/** compile 結果の行群を位置付き診断へパースして squiggle に反映する(全置換)。 */
+function applyCompileDiagnostics(
+  lines: string[],
+  parse: (line: string) => PlaygroundDiagnostic | null,
+) {
+  const diags: PlaygroundDiagnostic[] = [];
+  for (const line of lines) {
+    const d = parse(line);
+    if (d) diags.push(d);
+  }
+  setPlaygroundDiagnostics(diags);
+}
+
+/** tcs session を editor の補完/hover provider として橋渡しする。 */
+function makeCsProvider(session: TcsSession) {
+  return {
+    complete(path: string, content: string, offset: number) {
+      return session.complete(path, content, offset);
+    },
+    hover(path: string, content: string, offset: number) {
+      return session.hover(path, content, offset);
+    },
+  };
 }
 
 /** 現在のソースを言語に応じて compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
@@ -268,24 +309,33 @@ async function compileCurrent(): Promise<string | null> {
     // 増分 session を開く (cold path)。以後の編集は syncDirtyNow の
     // update + linkSnapshot が warm に処理する。
     tcsSession = null;
+    setCsLanguageProvider(null);
     const res = await openTcsSession(collectSources(".cs"), mainClass);
     for (const w of res.warnings) addLog(w, "warn");
     if (!res.ok || !res.session) {
+      applyCompileDiagnostics(
+        [...res.errors, ...res.warnings],
+        parseTcsDiagnostic,
+      );
       addLog("C# compile error:", "err");
       for (const line of res.errors) if (line.trim()) addLog(line, "err");
       $status.textContent = "compile error";
       return null;
     }
+    applyCompileDiagnostics(res.warnings, parseTcsDiagnostic);
     const lua = res.session.linkSnapshot();
     if (lua == null) {
       $status.textContent = "compile error";
       return null;
     }
     tcsSession = res.session;
+    setCsLanguageProvider(makeCsProvider(res.session));
     $status.textContent = "compiled";
     return lua;
   }
   const res = await compileHaxe(collectSources(".hx"), mainClass);
+  // 成功時も stderr に warning が乗ることがあるため常にパースして反映する。
+  applyCompileDiagnostics(res.stderr.split("\n"), parseHaxeDiagnostic);
   if (!res.ok) {
     addLog("Haxe compile error:", "err");
     for (const line of res.stderr.split("\n"))
@@ -302,11 +352,13 @@ async function loadCompileRun(name: string) {
   const gen = ++loadGen;
   $status.textContent = `loading ${name}…`;
   $log.innerHTML = "";
+  setPlaygroundDiagnostics([]);
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = null;
   pendingSyncPaths.clear();
   clearPendingAck();
   tcsSession = null;
+  setCsLanguageProvider(null);
   tcsOpening = false;
   lastLua = null;
   let src;
@@ -345,10 +397,11 @@ async function loadCompileRun(name: string) {
 
   const dataFiles = await discoverDataFiles(name, lua);
   if (gen !== loadGen) return;
-  // エディタ表示 = ソース(.hx/.hxml)+ data files。
+  // エディタ表示 = ソース(.hx/.hxml)+ data files + 生成 Lua(read-only)。
   const all = new Map(src.files);
   for (const [k, v] of dataFiles) all.set(k, v);
   setFiles(all);
+  setVirtualFile(genLuaTabPath(), lua);
 
   await restart();
   if (warmAfterBoot && gen === loadGen) void warmTcsSession(gen);
@@ -365,11 +418,16 @@ async function warmTcsSession(gen: number) {
     if (gen !== loadGen) return; // sample/言語切替済み: 結果を捨てる
     for (const w of res.warnings) addLog(w, "warn");
     if (!res.ok || !res.session) {
+      applyCompileDiagnostics(
+        [...res.errors, ...res.warnings],
+        parseTcsDiagnostic,
+      );
       addLog("C# compile error (session open):", "err");
       for (const line of res.errors) if (line.trim()) addLog(line, "err");
       return;
     }
     tcsSession = res.session;
+    setCsLanguageProvider(makeCsProvider(res.session));
     addLog("C# incremental compiler ready");
     if (pendingSyncPaths.size > 0) void syncDirtyNow();
   } finally {
@@ -384,6 +442,7 @@ async function restart() {
     const lua = await compileCurrent();
     if (lua == null) return;
     lastLua = lua;
+    setVirtualFile(genLuaTabPath(), lua);
   }
   $status.textContent = "restarting…";
   clearPendingAck();
@@ -395,7 +454,8 @@ async function restart() {
   await waitForMsg("playerReady");
 
   const all: Record<string, string> = { [entryKey]: lastLua! };
-  for (const [p, f] of getFiles()) if (!isSourceFile(p)) all[p] = f.content; // data files
+  for (const [p, f] of getFiles())
+    if (!isSourceFile(p) && !f.virtual) all[p] = f.content; // data files
   playerIframe.contentWindow!.postMessage(
     { type: "setFiles", files: all, entry: currentSample },
     "*",
@@ -469,7 +529,8 @@ async function restartTwoPhase(): Promise<boolean> {
     if (!(await waitForMsgFrom(fresh, "playerReady", 15000))) return false;
     if (gen !== loadGen) return false;
     const all: Record<string, string> = { [entryKey]: lastLua };
-    for (const [p, f] of getFiles()) if (!isSourceFile(p)) all[p] = f.content;
+    for (const [p, f] of getFiles())
+      if (!isSourceFile(p) && !f.virtual) all[p] = f.content;
     const ackP = waitForAckFrom(fresh, 30000);
     fresh.contentWindow!.postMessage(
       { type: "setFiles", files: all, entry: currentSample },
@@ -533,6 +594,7 @@ async function syncDirtyNow() {
           if (!isSourceFile(p)) continue;
           const r = tcsSession.update(p, f.content);
           if (!r.ok) {
+            applyCompileDiagnostics(r.errors, parseTcsDiagnostic);
             addLog("C# compile error:", "err");
             for (const line of r.errors) if (line.trim()) addLog(line, "err");
             $status.textContent = "compile error";
@@ -544,12 +606,15 @@ async function syncDirtyNow() {
           }
           ackRevision = r.revision;
         }
+        // 全 update 成功: 前回の squiggle を消す(warm path は warnings を返さない)
+        setPlaygroundDiagnostics([]);
         const lua = tcsSession.linkSnapshot();
         if (lua == null) {
           $status.textContent = "compile error";
           return;
         }
         lastLua = lua;
+        setVirtualFile(genLuaTabPath(), lua);
         if (requiresRestart) {
           // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK
           // を確認してから表示を swap する。失敗時は旧 player を残す (§14.2)。
@@ -570,6 +635,7 @@ async function syncDirtyNow() {
         const lua = await compileCurrent();
         if (lua == null) return; // compile エラー: 既存 player はそのまま、ログにエラー
         lastLua = lua;
+        setVirtualFile(genLuaTabPath(), lua);
         files[entryKey] = lua;
       }
     }
@@ -626,10 +692,47 @@ function scheduleAckRetry() {
   }, 1500);
 }
 
+// ログ中の file:line(:col) / file(line,col) をクリックジャンプ可能にする。
+// Haxe エラー・tcs エラー・Lua runtime traceback の 3 形をカバーする。
+const LOG_LINK_RE =
+  /((?:[\w.-]+\/)*[\w.-]+\.(?:hx|hxml|cs|lua|slang))(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
+
+/** ログ中のパスをエディタのタブキーへ解決する。解決不能なら null。 */
+function resolveLogPath(raw: string): string | null {
+  const files = getFiles();
+  const candidates = [
+    raw,
+    raw.replace(/^\//, ""),
+    raw.replace(/^\/?(?:sample|samples)\//, ""),
+  ];
+  for (const c of candidates) {
+    if (files.has(c)) return c;
+    // entry Lua(<name>/.lub/<name>.lua)は生成 Lua タブへ
+    if (c === entryKey && files.has(genLuaTabPath())) return genLuaTabPath();
+  }
+  return null;
+}
+
 function addLog(msg: string, level = "log") {
   const line = document.createElement("div");
-  line.textContent = msg;
   if (level !== "log") line.className = level;
+  let last = 0;
+  for (const m of msg.matchAll(LOG_LINK_RE)) {
+    const tab = resolveLogPath(m[1]);
+    if (!tab) continue;
+    if (m.index! > last)
+      line.appendChild(document.createTextNode(msg.slice(last, m.index)));
+    const a = document.createElement("span");
+    a.className = "loglink";
+    a.textContent = m[0];
+    const lineNo = parseInt(m[2] ?? m[4], 10);
+    const colNo =
+      (m[3] ?? m[5]) != null ? parseInt(m[3] ?? m[5], 10) : undefined;
+    a.addEventListener("click", () => jumpTo(tab, lineNo, colNo));
+    line.appendChild(a);
+    last = m.index! + m[0].length;
+  }
+  line.appendChild(document.createTextNode(msg.slice(last)));
   $log.appendChild(line);
   $log.scrollTop = $log.scrollHeight;
   while ($log.children.length > 500) $log.removeChild($log.firstChild!);

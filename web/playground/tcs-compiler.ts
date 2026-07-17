@@ -107,10 +107,29 @@ export type TcsUpdateResult = {
   managedMs: number;
 };
 
+export type TcsCompletionItem = {
+  label: string;
+  kind: string;
+  detail: string;
+};
+
+export type TcsHoverResult = {
+  ok: boolean;
+  found: boolean;
+  display?: string;
+  doc?: string;
+  start: number;
+  end: number;
+};
+
 export type TcsSession = {
   update(path: string, content: string): TcsUpdateResult;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
   linkSnapshot(): string | null;
+  /** 補完 (T230)。content はエディタの現在バッファ (speculative、session 不変)。 */
+  complete(path: string, content: string, offset: number): TcsCompletionItem[];
+  /** hover (T230)。同上。 */
+  hover(path: string, content: string, offset: number): TcsHoverResult;
 };
 
 export type TcsOpenResult = {
@@ -168,6 +187,30 @@ export async function openTcsSession(
         return null;
       }
       return lua;
+    },
+    complete(path, content, offset) {
+      const r = JSON.parse(
+        exports.SessionExports.Complete(epoch, path, content, offset),
+      );
+      if (!r.ok) {
+        console.warn("[tcs] Complete failed:", r.error);
+        return [];
+      }
+      return r.items ?? [];
+    },
+    hover(path, content, offset) {
+      const r = JSON.parse(
+        exports.SessionExports.Hover(epoch, path, content, offset),
+      );
+      if (!r.ok) console.warn("[tcs] Hover failed:", r.error);
+      return {
+        ok: !!r.ok,
+        found: !!r.found,
+        display: r.display,
+        doc: r.doc,
+        start: r.start ?? 0,
+        end: r.end ?? 0,
+      };
     },
   };
   return {

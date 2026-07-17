@@ -521,6 +521,11 @@ async function compile(files: Record<string, string>, mainClass: string) {
     mainClass,
     "--lua",
     "/work/out.lua",
+    // 一行 (file:line: characters a-b : msg) 形式に固定する。既定の pretty
+    // 形式は複数行 + caret で、diagnostics.ts の位置パースとログの
+    // linkify が成立しない。
+    "-D",
+    "message.reporting=classic",
   ];
   g.process.env.HAXE_STD_PATH = "/std";
 
