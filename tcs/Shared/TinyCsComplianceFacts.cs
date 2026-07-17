@@ -100,6 +100,15 @@ public static partial class TinyCsComplianceFacts
                             accessor.Body is not null
                             || accessor.ExpressionBody is not null) == true)
                     => "InterfaceDefaultMember",
+            // Lua table は同名 key を 1 つしか持てず、overload は last-write-wins で
+            // silent 誤 dispatch になる。2 個目以降の同名メソッドを拒否する
+            // (MultipleConstructors と同じ方針)。
+            MethodDeclarationSyntax overload
+                when overload.Parent is TypeDeclarationSyntax owner
+                    && owner.Members.OfType<MethodDeclarationSyntax>()
+                        .First(m => m.Identifier.ValueText
+                            == overload.Identifier.ValueText) != overload
+                    => "MethodOverload",
             // `new` による member hiding は静的型でディスパッチが変わる意味論で、
             // metatable の動的ディスパッチでは表現できない (override は対応済み)。
             MemberDeclarationSyntax hiding

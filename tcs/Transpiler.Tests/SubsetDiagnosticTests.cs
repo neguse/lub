@@ -171,6 +171,39 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void MethodOverloads_ReportWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F() { }
+                public static void F(object a, object b) { }
+
+                public static void Test() => F();
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "MethodOverload");
+    }
+
+    [Fact]
+    public void DistinctMethodNames_AreNotFlaggedAsOverloads()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F() { }
+                public static void G() { }
+
+                public static void Test() { F(); G(); }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("MethodOverload"));
+    }
+
+    [Fact]
     public void NewMemberHiding_ReportsWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""

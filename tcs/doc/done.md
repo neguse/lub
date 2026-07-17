@@ -1097,3 +1097,7 @@
 ### T195: `new` member hiding の TCS1001 診断化 ✓ (2026-07-18)
 - `new` modifier による member hiding は静的型でディスパッチが変わる意味論で、metatable の動的ディスパッチでは表現できず silent 誤 dispatch になっていた。`new` modifier 付き member 宣言を TCS1001 で一括拒否 (override は従来どおり対応)
 - 検証: dotnet test 637/637 green、spec baseline で VirtualMethods1/2 と PropertyReservedSignatures (CS0109 の new 宣言含む例) が Bug → Diag。残 Bug 9
+
+### T194: メソッド overload の TCS1001 診断化 ✓ (2026-07-18)
+- Lua table は同名 key を 1 つしか持てず、overload が last-write-wins の silent 誤 dispatch になっていた。同一型内の 2 個目以降の同名メソッド宣言を TCS1001 で拒否 (MultipleConstructors と同じ方針)
+- 検証: dotnet test 639/639 + run-tests.sh 全ゲート green (samples に overload 使用なし)、spec baseline で ParameterArrays3 ほかが Diag へ

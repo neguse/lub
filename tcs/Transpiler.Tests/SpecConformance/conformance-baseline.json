@@ -532,16 +532,16 @@
     "category": "Diag"
   },
   "classes.md:OverrideMethods5": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:OverrideMethods6": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:ParameterArrays1": {
     "category": "Diag"
   },
   "classes.md:ParameterArrays3": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:ParameterArrays4": {
     "category": "Bug"
@@ -957,7 +957,7 @@
     "category": "CsErr"
   },
   "expressions.md:BetterParmPassingMode": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:BinaryNumericPromotions1": {
     "category": "CsErr"
@@ -1023,7 +1023,7 @@
     "category": "CsErr"
   },
   "expressions.md:ExtensionMethodInvocations1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:ExtensionMethodInvocations2": {
     "category": "Bug"
@@ -1098,10 +1098,10 @@
     "category": "Diag"
   },
   "expressions.md:OverloadResolution1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:OverloadResolution2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:OverloadingInGenericClasses": {
     "category": "Diag"
