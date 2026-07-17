@@ -24,8 +24,6 @@
       `../luo/docs/spike-ceiling.md` の kernels（sprite_update / spawn_churn /
       particles）を手書き C で実測し、aot-slot vs native 比を先に取る。
       実機測定は Playdate SDK / toolchain 導入後に追補
-- [ ] **T213** (P1): LUA_32BITS ビルド整備（tcs 側）— CMake で 32bit 変種を
-      選択ビルド可能に。spike（T212）と M4（T216）の共有基盤
 
 ### Phase 1 — M1: 挙動不変の内部再編 ✓ (T214a-c 完、done.md 参照)
 

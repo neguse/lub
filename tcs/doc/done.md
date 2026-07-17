@@ -1255,3 +1255,8 @@
 - Shared/TinyCsComplianceFacts に 2 ルール追加: InterfaceTypeTest (is 式 / declaration・type・recursive・constant pattern の interface 対象 — 実行時表現が無く常に偽の silent wrong-code) と LoneSurrogateLiteral (string/char literal と補間テキストの孤立 surrogate — il-spec §11 の UTF-8 octet 規範へ写像不能)。対 surrogate (astral 文字) は許容
 - 診断一致 (analyzer / check / transpiler) は Shared 共有により自動で、恒常ゲートが担保
 - 検証: SubsetDiagnosticTests 4 本 (Red 2 → green、非対象 2 の非診断)、全テスト 692 + analyzer 47 green
+
+### T213: LUA_32BITS ビルド整備 (lua32) ✓ (2026-07-18)
+- CMake に TCS_LUA_32BITS_VARIANT (既定 ON) を追加し、LUA_32BITS 定義の liblua32/lua32 を deps/lua/lua32 へ併産。既存 lua (64bit) と共存し、run-tests の再ビルド経路でも一緒に生成される
+- 検証: cmake ビルド成功、lua32 で math.maxinteger=2147483647 (int32) / 1/3=0.333333343 (float32) を確認
+- 判断: 既定バイナリの切替は M4 (T216) で行う — テスト資産の移行と同時でないと挙動確認が split-brain になる

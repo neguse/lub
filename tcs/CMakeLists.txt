@@ -72,3 +72,28 @@ set_target_properties(lua PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${LUA_SRC}
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${LUA_SRC}
 )
+
+# --- lua32: LUA_32BITS 変種 (int32 + float32) ---
+# IL の数値モデル (il-design §4 / il-spec §5-6) と性能 spike
+# (../luo/docs/spike-ceiling.md) の実行基盤。M4 (T216) で既定へ切替予定。
+option(TCS_LUA_32BITS_VARIANT "Build lua32 (LUA_32BITS) alongside lua" ON)
+if(TCS_LUA_32BITS_VARIANT)
+    add_library(liblua32 STATIC ${LUA_CORE} ${LUA_LIB})
+    target_include_directories(liblua32 PUBLIC ${LUA_SRC})
+    target_compile_definitions(liblua32
+        PRIVATE ${TCS_LUA_DEFINITIONS} LUA_32BITS)
+    if(TCS_LUA_SYSTEM_LIBS)
+        target_link_libraries(liblua32 PUBLIC ${TCS_LUA_SYSTEM_LIBS})
+    endif()
+
+    add_executable(lua32 ${LUA_SRC}/lua.c)
+    target_link_libraries(lua32 liblua32)
+    target_compile_definitions(lua32
+        PRIVATE ${TCS_LUA_DEFINITIONS} LUA_32BITS)
+    set_target_properties(lua32 PROPERTIES
+        OUTPUT_NAME lua32
+        RUNTIME_OUTPUT_DIRECTORY ${LUA_SRC}
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${LUA_SRC}
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${LUA_SRC}
+    )
+endif()
