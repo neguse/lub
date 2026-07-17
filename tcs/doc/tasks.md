@@ -18,12 +18,16 @@
 3. **数値モデルの凍結を C backend 着手より前に** — double 前提で
    IL→C を書く手戻りを封じる
 
-### Phase 0 — 情報を買う（T210/T211 と T212/T213 は並行可）
+### Phase 0 — 情報を買う（T211 と T212/T213 は並行可）
 
-- [ ] **T210** (P0): 紙の演習 — pattern match / ループ内 struct 配列更新 /
-      ループ変数を捕捉する closure / string interpolation の 3-4 構文について
-      IL 形と両 backend 出力を手書きし、IL の抽象度（何を IL 概念として残し
-      何を lowering で潰すか）を決定。結果は il-design.md §8「IL の具体形」へ反映
+- [ ] **T221** (P0, バグ): closure が捕捉する `for` 変数の意味論 —
+      C# は全反復で 1 変数（実測 `3 3 3`）、現行出力は numeric for のため
+      反復ごと（実測 `0 1 2`）。修正は while + block への脱糖（M1 の
+      lowering 決定と同型）。M1 に先行して直すか M1 に畳むかは着手時に判断
+- [ ] **T222** (P0, バグ): `is` / switch 型判定が継承で偽 —
+      `getmetatable(x) == T` の完全一致比較のため、派生インスタンスへの
+      `is Base` が C# `true` / 現行出力 `false`（実測）。metatable chain を
+      辿る runtime helper へ置換。M1 と独立に修正可能
 - [ ] **T211** (P0): IL 意味論仕様 v0 — il-design.md §2 ギャップ表の各行を
       「IL の条項 + 各 backend の義務」へ分解。評価順の固定・再結合禁止・
       intrinsic（math 関数）集合・値型の copy 地点列挙を含む。
@@ -37,8 +41,9 @@
 
 ### Phase 1 — M1: 挙動不変の内部再編
 
-- [ ] **T214** (P0): Transpiler を bound tree → IL → Lua に再編。
-      T210 の抽象度決定に従い、IL ノード定義 + IOperation→IL builder +
+- [ ] **T214** (P0): Transpiler を syntax 走査 → IL → Lua に再編。
+      T210 の抽象度決定（`doc/il-lowering-examples.md`）に従い、
+      IL ノード定義 + syntax→IL builder +
       IL→Lua emitter へ LuaEmitter 群を段階移行（部分移行中も green を保つ
       ストラングラー方式。Statements → Expressions → Invocations → Patterns 順）。
       完了条件: 全テスト green、増分コンパイル session

@@ -1176,3 +1176,12 @@
 - CI (2 vCPU) で FileSizeGate / FuzzSweep が不定に失敗。原因は SpecDotnetExecutor がグローバル Console.Out を StringWriter へ差し替えて capture する実装で、並列テストの出力 (FileSizeGate の 600 行超 warning 等) が (1) fuzz の期待出力へ混入、(2) dispose 済み writer への書き込み例外、の 2 形態で他テストを壊していた
 - AsyncLocal ルーティング writer を一度だけ挿し、「この実行の論理コールツリーからの書き込み」だけを capture、他スレッドは元の writer へ素通しする方式へ変更 (lock 不要)
 - 検証: ローカル全ゲート green (666/666)。CI は verbosity minimal 化 (失敗詳細の可視化) 済みで、以後の再発時はログに assert が出る
+
+### T210: [IL] 紙の演習 — lowering 例で IL の抽象度を決定 ✓ (2026-07-18)
+- `doc/il-lowering-examples.md` を新設。switch 式パターン / for 変数捕捉 closure / struct 配列更新 / 文字列補間の 4 構文で IL 形と両 backend 出力を手書きし、抽象度 8 決定を確定 (パターン・式位置制御フロー・ループ構文は IL に無い、IIFE 廃止で statement 化、演算ノードは型解決済み単型、capture は変数単位、値型は place/copy 地点列挙、runtime 表面は intrinsic)
+- 演習の実測で現行 transpiler の意味論バグ 2 件を発見・起票: T221 (for 変数捕捉 closure が C# `3 3 3` / 現行 `0 1 2`)、T222 (派生インスタンスへの `is Base` が C# `true` / 現行 `false`)。除算/剰余は既に idiv/irem 補正済みで il-design の「未整理」が stale と判明 → 修正
+- 現行 emitter は bound tree (IOperation) でなく syntax tree + SemanticModel 走査と確認 → il-design.md の記述を実態へ修正し、M1 でも syntax 走査を維持する判断を明記
+- 検証: probe を transpile + Lua 5.5 実行、同一プログラムを実 .NET (net10.0) で実行して両挙動を突き合わせ (バグ 2 件はこの差分)。idiv/irem は -7/2=-3, -7%2=-1 で C# 一致を確認
+- よかったこと: コードを書く前の紙の演習で P0 バグ 2 件と設計判断 8 件が確定。IL 正本化の価値仮説 (ギャップの場当たり埋めが起きている) が実証された
+- 判断: IL builder の入力は IOperation へ移行せず syntax + SemanticModel を維持 — IL 化の価値は IL 側にあり、現行走査コードは資産。IIFE 廃止は意味論でなく性能・可読性判断 (closure 割当除去)
+- 残課題: T211 (仕様 v0)、バグ T221/T222 の修正時期 (M1 先行か畳むか)
