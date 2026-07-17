@@ -568,6 +568,134 @@ try {
   failures++
 }
 
+// ---------------------------------------------------------------------------
+// A7. 診断のエディタ内表示。故意のコンパイルエラーが __lubTest.getDiagnostics()
+// に該当ファイル + error severity で載り、修正で消えることを C#(warm 増分
+// path)と Haxe(full compile path)の両方で確認する。生成 Lua 仮想タブの存在
+// もここで見る。
+
+async function waitForDiagnostics(file, want, timeoutMs) {
+  // want: 'error' = file に error 診断がある / 'none' = file の診断が無い
+  await page.waitForFunction(
+    ({ file, want }) => {
+      const hook = window.__lubTest
+      if (!hook || typeof hook.getDiagnostics !== 'function') return false
+      const diags = hook.getDiagnostics()[file] || []
+      const hasErr = diags.some((d) => d.severity === 'error')
+      return want === 'error' ? hasErr : diags.length === 0
+    },
+    { file, want },
+    { timeout: timeoutMs, polling: 200 },
+  )
+}
+
+try {
+  console.log('[verify] A7 diagnostics: C# (warm incremental path)')
+  // A6 の続き (17_flappy / cs / synced)。未定義識別子で warm update を壊す。
+  const flappySrc = fs.readFileSync(
+    path.resolve('..', 'samples', '17_flappy', 'Flappy17.cs'), 'utf8')
+  const flappyBroken = flappySrc.replace(
+    'velocityY = 3.0;', 'velocityY = thisIsUndefined;')
+  if (flappyBroken === flappySrc) throw new Error('A7 C# edit marker not found')
+  await selectTabAndReplace('Flappy17.cs', flappyBroken)
+  await waitForDiagnostics('Flappy17.cs', 'error', 15000)
+  check('A7 C# error shows diagnostics', true)
+  await selectTabAndReplace('Flappy17.cs', flappySrc)
+  await waitForDiagnostics('Flappy17.cs', 'none', 15000)
+  check('A7 C# fix clears diagnostics', true)
+} catch (e) {
+  console.error('[verify] A7 (C#) threw', e.message)
+  check('A7 C# diagnostics', false, e.message)
+  failures++
+}
+
+// ---------------------------------------------------------------------------
+// A8. C# 補完/hover (T230)。A7-C# の warm session を再利用し、__lubTest.csQuery
+// (エディタの provider 直叩き = 実 wasm SessionExports.Complete/Hover) を検証
+// する。speculative content (`Gfx.` を挿した編集途中バッファ) で lub API の
+// member が引けること、allowlist フィルタで p95 レイテンシも観測ログに残す。
+
+try {
+  console.log('[verify] A8 C# completion/hover (warm session)')
+  await page.waitForFunction(
+    () => {
+      const q = window.__lubTest && window.__lubTest.csQuery
+      return !!q && q.ready()
+    },
+    { timeout: 60000, polling: 200 },
+  )
+  const r = await page.evaluate(() => {
+    const src = window.__lubTest.getContent('Flappy17.cs')
+    const marker = 'velocityY = 3.0;'
+    const at = src.indexOf(marker)
+    if (at < 0) throw new Error('A8 marker not found')
+    // 補完: marker 直後に `Gfx.` を挿した speculative 内容で member を引く
+    const specContent =
+      src.slice(0, at + marker.length) + ' Gfx.' + src.slice(at + marker.length)
+    const compPos = at + marker.length + ' Gfx.'.length
+    const t0 = performance.now()
+    const comp = window.__lubTest.csQuery.complete('Flappy17.cs', specContent, compPos)
+    const compMs = performance.now() - t0
+    // hover: 元ソースの velocityY 参照
+    const hoverPos = src.indexOf('velocityY') + 2
+    const t1 = performance.now()
+    const hov = window.__lubTest.csQuery.hover('Flappy17.cs', src, hoverPos)
+    const hoverMs = performance.now() - t1
+    return {
+      compMs, hoverMs,
+      labels: (comp?.items || []).map((i) => i.label),
+      hover: hov,
+    }
+  })
+  console.log(`[verify] A8 complete ${Math.round(r.compMs)}ms, hover ${Math.round(r.hoverMs)}ms`)
+  if (!check('A8 C# completion lists lub API member',
+             r.labels.includes('begin_pass') && r.labels.includes('VERTEX'),
+             `labels[${r.labels.length}] sample: ${r.labels.slice(0, 8).join(',')}`)) {
+    failures++
+  }
+  if (!check('A8 C# hover shows symbol info',
+             !!r.hover && r.hover.found && /velocityY/.test(r.hover.display || ''),
+             JSON.stringify(r.hover))) {
+    failures++
+  }
+} catch (e) {
+  console.error('[verify] A8 threw', e.message)
+  check('A8 C# completion/hover', false, e.message)
+  failures++
+}
+
+try {
+  console.log('[verify] A7 diagnostics: Haxe (full compile path)')
+  const readyP = waitForPlayerReady(60000).catch(() => {})
+  await page.selectOption('#sample-select', '01_triangle')
+  await readyP
+  if ((await page.$eval('#lang-select', (el) => el.value)) !== 'haxe') {
+    const langReadyP = waitForPlayerReady(60000).catch(() => {})
+    await page.selectOption('#lang-select', 'haxe')
+    await langReadyP
+  }
+  await page.waitForTimeout(2000)
+  // 生成 Lua 仮想タブが出ていること
+  const files = await page.evaluate(() => window.__lubTest.listFiles())
+  check('A7 generated Lua tab present', files.includes('.lub/01_triangle.lua'),
+    JSON.stringify(files))
+  const triHx = fs.readFileSync(
+    path.resolve('..', 'samples', '01_triangle', 'Triangle01.hx'), 'utf8')
+  const triBroken = triHx.replace(
+    '[0.1, 0.1, 0.2, 1.0]', '[0.1, 0.1, 0.2, thisIsUndefined]')
+  if (triBroken === triHx) throw new Error('A7 Haxe edit marker not found')
+  await selectTabAndReplace('Triangle01.hx', triBroken)
+  await waitForDiagnostics('Triangle01.hx', 'error', 30000)
+  check('A7 Haxe error shows diagnostics', true)
+  await selectTabAndReplace('Triangle01.hx', triHx)
+  await waitForDiagnostics('Triangle01.hx', 'none', 30000)
+  check('A7 Haxe fix clears diagnostics', true)
+} catch (e) {
+  console.error('[verify] A7 (Haxe) threw', e.message)
+  check('A7 Haxe diagnostics', false, e.message)
+  failures++
+}
+
 await browser.close()
 
 console.log('\n[verify] summary:')
