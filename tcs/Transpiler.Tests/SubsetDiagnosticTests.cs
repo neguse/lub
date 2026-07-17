@@ -171,6 +171,38 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void ParamsParameter_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static int F(params int[] xs) => xs.Length;
+
+                public static int Test() => F(1, 2, 3);
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "ParamsParameter");
+    }
+
+    [Fact]
+    public void PlainArrayParameter_IsNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static int F(int[] xs) => xs.Length;
+
+                public static int Test() => F(new[] { 1, 2, 3 });
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("ParamsParameter"));
+    }
+
+    [Fact]
     public void IncrementAsExpressionAndNamedArgument_ReportWarnings()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""

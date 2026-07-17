@@ -1121,3 +1121,8 @@
 - ユーザーメソッド / constructor の optional parameter が省略呼び出しで silent nil になっていた。関数冒頭に `if p == nil then p = <default> end` を emit して C# の省略時 default を再現
 - 検証: dotnet test 644/644 green (method / ctor / string default の semantic テスト追加)
 - 判断: 省略と明示 null は Lua ではどちらも nil で区別不能 — 明示 null に default と異なる挙動を期待する呼び出しは既知の意味論差としてコメントに明記
+
+### T208: params parameter の TCS1001 診断化 ✓ (2026-07-18)
+- params の展開呼び出し (`F(1,2,3)` → 配列 pack) が未実装で、展開形が先頭引数だけ束縛される silent wrong-code だった。out/ref と同様に宣言側を TCS1001 で拒否
+- 検証: dotnet test 646/646 + run-tests.sh 全ゲート green、spec baseline で ParameterArrays4 ほかが Diag へ
+- 判断: pack 実装は `F((string)null)` → `{null}` が TCS1003 (collection null) と衝突するなど fidelity の泥沼があり、需要が出てから判断

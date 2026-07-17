@@ -168,6 +168,11 @@ public static partial class TinyCsComplianceFacts
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.RefKeyword)
                     => "RefParameter",
+            // params の展開呼び出し (F(1,2,3) → 配列 pack) は未実装で、展開形の
+            // 呼び出しが先頭引数だけ束縛される silent wrong-code になる。
+            ParameterSyntax paramsParam
+                when paramsParam.Modifiers.Any(SyntaxKind.ParamsKeyword)
+                    => "ParamsParameter",
             // static constructor は「初回アクセス時に一度だけ」の実行タイミング
             // 意味論を持ち、eager な class table 生成では再現できない。
             ConstructorDeclarationSyntax staticCtor
