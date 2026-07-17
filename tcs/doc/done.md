@@ -1215,3 +1215,11 @@
 - foreach の反復変数が反復ごと (C# 5+ 準拠、Lua generic for と自然に一致) であることもテストでロック
 - 検証: ForLoopTests 19/19 green (Red 1 件確認後に実装)、コミット時 pre-commit で全ゲート
 - 判断: M1 に畳まず先行修正 — M1 は挙動不変が完了条件のため、意味論変更を分離してから内部再編に入る
+
+### T214a: [M1] IL 核 — method body の syntax→IL→Lua 経路 ✓ (2026-07-18)
+- IL ノード定義 (Il.cs: place/単型演算/構造化制御フロー、il-spec 準拠)、syntax→IL builder (IlBuild 2 ファイル、全 SemanticModel 問い合わせを集約)、IL→Lua emitter (IlEmit、Roslyn 非依存 — IL が意味を運ぶことの構造的証明)。未対応構文は method 粒度で legacy visitor へ fallback するストラングラー構成
+- 対応範囲: statements 全種 (if/while/for numeric+脱糖/foreach/repeat/break/continue/return/代入/複合代入/increment)、式コア (算術 idiv/irem/fmod・比較・論理・bitwise・null 安全 concat・補間・ternary・List 生成/操作・Dict 読み・new・要素アクセス +1・facade/Math/String/Console 呼び出し)
+- 計測: TranspileResult.IlBodies/LegacyBodies、TCS_IL=off で IL 経路無効化 (退行診断)。samples 実測 21/31 bodies (67%) が IL 経由
+- 検証: 全テスト 671 green + IlPipelineTests 5 本 (IL 経由の確認・fallback 分離・意味論)。挙動不変は corpus semantic + differential + conformance sweep が担保
+- 判断: builder は legacy と同じ helper (VisitLiteral/CompoundOperator/IsListType 等) を共有し出力一致を構成的に保証。診断を出し得る経路 (WarnUnsupported) は必ず fallback。IIFE 廃止等の出力改善は legacy 削除後に IL 上で行う (T214c 以降) — 移行中の差分を挙動不変だけに絞るため
+- 残課題: T214b (lambda/pattern/?./custom property 等)、T214c (legacy 削除)

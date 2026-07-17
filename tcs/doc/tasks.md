@@ -33,14 +33,21 @@
 
 ### Phase 1 — M1: 挙動不変の内部再編
 
-- [ ] **T214** (P0): Transpiler を syntax 走査 → IL → Lua に再編。
-      T210 の抽象度決定（`doc/il-lowering-examples.md`）に従い、
-      IL ノード定義 + syntax→IL builder +
-      IL→Lua emitter へ LuaEmitter 群を段階移行（部分移行中も green を保つ
-      ストラングラー方式。Statements → Expressions → Invocations → Patterns 順）。
-      完了条件: 全テスト green、増分コンパイル session
-      （`doc/incremental-module-compilation-design.md`）と両立、
+- [ ] **T214** (P0): Transpiler を syntax 走査 → IL → Lua に再編
+      （ストラングラー方式・method 粒度 fallback で常時 green）。
+      完了条件: 全テスト green、増分コンパイル session と両立、
       fuzz / differential / conformance ゲート不変
+  - [x] T214a: IL 核（`Il.cs` / `LuaEmitter.IlBuild*` / `LuaEmitter.IlEmit`）。
+        statements 全種 + 式コア（算術 idiv/irem・比較・論理・concat・補間・
+        List 操作・呼び出し・new・元素アクセス）を IL 経由化。
+        `TranspileResult.IlBodies/LegacyBodies` で計測、`TCS_IL=off` で退行診断。
+        samples 実測 67% (21/31 bodies)
+  - [ ] T214b: 残構文の IL 化 — lambda/closure、パターン（is/switch 式/文)、
+        `?.` `??` `??=`、custom property、object/array initializer、Dict 操作、
+        out var、deconstruction、base 呼び出し、with 式
+  - [ ] T214c: legacy visitor 経路の削除（全 method で IlBodies、legacy 0）。
+        IIFE の statement 化などの出力改善（examples 決定 2）は削除後に
+        IL 上で実施
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 

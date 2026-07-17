@@ -491,6 +491,13 @@ public partial class LuaEmitter
     // fast path 内では安定する。
     public List<(string Key, int Start, int Length)> MethodRanges { get; } = [];
 
+    // M1 ストラングラー計測: method body の IL 経由 / legacy fallback 数。
+    // TCS_IL=off で IL 経路を無効化できる (退行診断用)。
+    public int IlBodies { get; private set; }
+    public int LegacyBodies { get; private set; }
+    private static readonly bool IlDisabled =
+        Environment.GetEnvironmentVariable("TCS_IL") == "off";
+
     public static string MethodKey(string className, MethodDeclarationSyntax method) =>
         $"{className}.{method.Identifier.ValueText}(" +
         string.Join(",", method.ParameterList.Parameters.Select(p => p.Type?.ToString())) + ")";
@@ -524,10 +531,33 @@ public partial class LuaEmitter
         EmitParameterDefaults(model, method.ParameterList);
 
         if (method.Body != null)
-            foreach (var stmt in method.Body.Statements)
-                VisitStatement(model, stmt);
+        {
+            if (!IlDisabled && TryBuildIlBody(model, method) is { } ilBody)
+            {
+                IlBodies++;
+                EmitIlBlock(ilBody);
+            }
+            else
+            {
+                LegacyBodies++;
+                foreach (var stmt in method.Body.Statements)
+                    VisitStatement(model, stmt);
+            }
+        }
         else if (method.ExpressionBody != null)
-            AppendLine($"return {VisitExpression(model, method.ExpressionBody.Expression)}");
+        {
+            if (!IlDisabled
+                && BuildExpr(model, method.ExpressionBody.Expression) is { } ilExpr)
+            {
+                IlBodies++;
+                AppendLine($"return {RenderIl(ilExpr)}");
+            }
+            else
+            {
+                LegacyBodies++;
+                AppendLine($"return {VisitExpression(model, method.ExpressionBody.Expression)}");
+            }
+        }
 
         _indent--;
         AppendLine("end");

@@ -108,33 +108,16 @@ public partial class LuaEmitter
         }
     }
 
+    // is-pattern designation も out var と同じく statement 前で宣言し、
+    // 式内 (ternary / 複合条件) の束縛は IIFE 内代入で行う。
+    // elseif には前置文を置けないため、if-elseif 連鎖の条件分は
+    // chain 全体を root の前でまとめて宣言する。名前収集は IL builder と
+    // 共有 (CollectPreDeclNames)。
     private bool EmitOutVarDeclarations(StatementSyntax stmt)
     {
-        // is-pattern designation も out var と同じく statement 前で宣言し、
-        // 式内 (ternary / 複合条件) の束縛は IIFE 内代入で行う。
-        // elseif には前置文を置けないため、if-elseif 連鎖の条件分は
-        // chain 全体を root の前でまとめて宣言する。
-        var patternScopes = new List<SyntaxNode> { stmt };
-        var chain = stmt as IfStatementSyntax;
-        while (chain?.Else?.Statement is IfStatementSyntax elseIf)
-        {
-            patternScopes.Add(elseIf.Condition);
-            chain = elseIf;
-        }
-
-        var names = stmt.DescendantNodes()
-            .OfType<ArgumentSyntax>()
-            .Where(arg => arg.Ancestors().OfType<StatementSyntax>().FirstOrDefault() == stmt)
-            .Select(TryGetOutArgumentName)
-            .Where(name => !string.IsNullOrEmpty(name))
-            .Select(name => name!)
-            .Concat(patternScopes.SelectMany(IsPatternDesignationNames))
-            .Distinct()
-            .ToList();
-
+        var names = CollectPreDeclNames(stmt);
         foreach (var name in names)
             AppendLine($"local {name}");
-
         return names.Count > 0;
     }
 
