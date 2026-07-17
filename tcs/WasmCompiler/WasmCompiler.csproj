@@ -23,7 +23,7 @@
     <!-- Transpiler は Exe プロジェクトのため ProjectReference 不可 (NETSDK1150)。
          core ソースを直接取り込む (CLI entry の Program.cs を除く) -->
     <Compile Include="../Transpiler/*.cs" Exclude="../Transpiler/Program.cs" />
-    <Compile Include="../Shared/TinyCsComplianceFacts.cs" />
+    <Compile Include="../Shared/*.cs" />
     <ProjectReference Include="../TinySystem/TinySystem.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
   </ItemGroup>
