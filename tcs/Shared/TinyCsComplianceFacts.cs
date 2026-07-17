@@ -97,6 +97,11 @@ public static partial class TinyCsComplianceFacts
                             accessor.Body is not null
                             || accessor.ExpressionBody is not null) == true)
                     => "InterfaceDefaultMember",
+            // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
+            // multicast はサブセット外)。callback は BCL の Action/Func を使う。
+            DelegateDeclarationSyntax => "DelegateDeclaration",
+            EventDeclarationSyntax => "EventDeclaration",
+            EventFieldDeclarationSyntax => "EventDeclaration",
             // decimal は Lua number (binary float) で表現できず、スケール保存や
             // 精度の意味論差が silent に出るため拒否する。
             PredefinedTypeSyntax predefined

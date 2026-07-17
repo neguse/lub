@@ -1080,3 +1080,8 @@
 ### T203: Console を allowlist 型へ昇格 (WriteLine のみ許可) ✓ (2026-07-18)
 - System.Console が型ごと TCS1002 判定を素通りし、emitter が print へマップしない member (Console.In/Write/ReadLine 等) が silent nil アクセスになっていた。Console を partially-supported 型にし WriteLine のみ許可
 - 検証: dotnet test 632/632 green、spec baseline で patterns.md:PatternFormGen1/2 ほかが Diag へ
+
+### T200: delegate / event 宣言の TCS1001 診断化 ✓ (2026-07-18)
+- delegate 型宣言が silent に `D.new(...)` (未定義) へ、event 宣言が silent 欠落へ落ちていた。DelegateDeclaration / EventDeclaration / EventFieldDeclaration を TCS1001 で拒否 (callback は BCL の Action/Func が正)
+- あわせて 800 行 gate 超過の DiagnosticTests.cs を分割 (spec conformance 由来の診断テストを SubsetDiagnosticTests.cs へ)
+- 検証: dotnet test 634/634 green、spec baseline で conversions.md:AnonFuncTypeConv2 ほかが Diag へ
