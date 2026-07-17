@@ -165,20 +165,34 @@ public partial class LuaEmitter
             switch (content)
             {
                 case InterpolatedStringTextSyntax text:
-                    parts.Add($"\"{text.TextToken.Text}\"");
+                    // ValueText は \n 等を解決するが brace escape ({{ }}) は
+                    // 残すので明示的に解決し、Lua 形式へ escape し直す (T202 と同方針)
+                    parts.Add(EscapeLuaString(text.TextToken.ValueText
+                        .Replace("{{", "{", StringComparison.Ordinal)
+                        .Replace("}}", "}", StringComparison.Ordinal)));
                     break;
                 case InterpolationSyntax hole:
+                    string rendered;
                     if (hole.FormatClause != null)
                     {
                         var fmt = hole.FormatClause.FormatStringToken.Text;
                         var luaFmt = ConvertFormatSpecifier(fmt);
                         var expr = VisitExpression(model, hole.Expression);
-                        parts.Add($"string.format(\"{luaFmt}\", {expr})");
+                        rendered = $"string.format(\"{luaFmt}\", {expr})";
                     }
                     else
                     {
-                        parts.Add($"tostring({VisitExpression(model, hole.Expression)})");
+                        rendered = $"tostring({VisitExpression(model, hole.Expression)})";
                     }
+                    // alignment は「整形後の文字列を幅 n へ右詰め (負は左詰め)」。
+                    // Lua の %ns / %-ns と同じ意味論
+                    if (hole.AlignmentClause != null)
+                    {
+                        var align = VisitExpression(model,
+                            hole.AlignmentClause.Value);
+                        rendered = $"string.format(\"%{align}s\", {rendered})";
+                    }
+                    parts.Add(rendered);
                     break;
             }
         }
@@ -195,7 +209,12 @@ public partial class LuaEmitter
             'F' => string.IsNullOrEmpty(precision) ? "%.6f" : $"%.{precision}f",
             'N' => string.IsNullOrEmpty(precision) ? "%.2f" : $"%.{precision}f",
             'D' => string.IsNullOrEmpty(precision) ? "%d" : $"%0{precision}d",
+            // hex / 指数は C# の指定子の大文字小文字が出力に反映される
+            'X' when fmt[0] == 'X' =>
+                string.IsNullOrEmpty(precision) ? "%X" : $"%0{precision}X",
             'X' => string.IsNullOrEmpty(precision) ? "%x" : $"%0{precision}x",
+            'E' when fmt[0] == 'E' =>
+                string.IsNullOrEmpty(precision) ? "%E" : $"%.{precision}E",
             'E' => string.IsNullOrEmpty(precision) ? "%e" : $"%.{precision}e",
             'G' => string.IsNullOrEmpty(precision) ? "%g" : $"%.{precision}g",
             _ => "%s"

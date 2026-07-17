@@ -1126,3 +1126,7 @@
 - params の展開呼び出し (`F(1,2,3)` → 配列 pack) が未実装で、展開形が先頭引数だけ束縛される silent wrong-code だった。out/ref と同様に宣言側を TCS1001 で拒否
 - 検証: dotnet test 646/646 + run-tests.sh 全ゲート green、spec baseline で ParameterArrays4 ほかが Diag へ
 - 判断: pack 実装は `F((string)null)` → `{null}` が TCS1003 (collection null) と衝突するなど fidelity の泥沼があり、需要が出てから判断
+
+### T198: 補間文字列の alignment / hex・指数の大文字小文字 / brace escape ✓ (2026-07-18)
+- 補間の text 部が raw token copy で `{{`/`}}` が残り、`X`/`E` 指定子が常に小文字 `%x`/`%e` になり、alignment (`{val,4:X}`) が無視されていた。text 部は brace 解決 + Lua escape 再変換 (T202 と同方針)、指定子は大文字小文字を反映、alignment は整形後文字列への `%ns`/`%-ns` として合成
+- 検証: dotnet test 647/647 green、spec baseline で attributes.md:DeclCustomHandler1 が Bug → InRun (dotnet differential 一致)。残 Bug 1

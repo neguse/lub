@@ -90,6 +90,23 @@ public class StringTests
     }
 
     [Fact]
+    public void InterpolationAlignmentCaseAndEscapedBraces()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Test()
+                {
+                    int val = 255;
+                    return $"{{x={val,6:X}}} {val:x} {val,-4}|";
+                }
+            }
+            """,
+            "S.Test()");
+        Assert.Equal("{x=    FF} ff 255 |", result);
+    }
+
+    [Fact]
     public void NullLiteral()
     {
         var result = TestHelper.TranspileAndRun("""

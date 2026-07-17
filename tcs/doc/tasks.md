@@ -17,7 +17,6 @@
 
 C2 spec differential の発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T198** [P2] 補間文字列の alignment / format specifier が無視される (DeclCustomHandler1) — 対応 or 診断
 - **T204** [P2] namespace 参照解決の破綻 (ExtensionMethodInvocations2) — namespaced 入力の既知制約と統合判断
 
 - **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
