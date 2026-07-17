@@ -1148,3 +1148,9 @@
 - `run-differential.sh` で再現実行 + 内訳表示
 - 検証: dotnet test 661/661 green (env なしでは従来動作)、run-differential.sh exit 0
 - 判断: 手書き期待値そのものの裏取りは「Lua 実行値 vs .NET 実行値」の一致で担保 (期待値が両者とずれれば従来 Assert が落ちる)。翻訳器を汎用化するより skip を可視化して集計する方が誤検出ゼロで保守が軽い
+
+### T185: [C3] spec conformance / differential の恒常ゲート化 ✓ (2026-07-18)
+- run-tests.sh / run-tests.ps1 の dotnet test を TCS_SPEC_CONFORMANCE=1 + TCS_DIFFERENTIAL=1 + TCS_SPEC_REPORT 付きの 1 回実行に変更 — スイート二重実行なしで sweep (baseline 後退検知) と corpus differential が常設ゲートになり、章別レポートも毎回再生成される (挙動変更は report/baseline の diff として現れる)
+- pre-commit hook は run-tests.sh を呼ぶため、コミットごとに sweep + differential 込みの全ゲート (約 40 秒) が走る
+- 検証: baseline を意図的に破壊して赤 (conformance baseline mismatch) を確認後に復元。run-tests.sh 全体 39 秒 exit 0、662/662 green (Skip 0)
+- 判断: nightly 分離は不要 — 全ゲート込みで +数十秒に収まり、恒常実行のほうが後退検知が早い

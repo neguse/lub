@@ -64,9 +64,13 @@ if [[ "$LUA_VERSION" != Lua\ 5.5* ]]; then
   fi
 fi
 
-# Run dotnet tests
-echo "Running dotnet tests..."
-dotnet test "$SCRIPT_DIR" --verbosity quiet
+# Run dotnet tests (spec conformance sweep と corpus differential 込み。
+# 章別レポートも再生成される — 挙動変更は report/baseline の diff として現れる)
+echo "Running dotnet tests (with spec conformance + differential)..."
+TCS_SPEC_CONFORMANCE=1 \
+TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md" \
+TCS_DIFFERENTIAL=1 \
+  dotnet test "$SCRIPT_DIR" --verbosity quiet
 
 echo "Running tcs check on samples..."
 sample_checks=(
