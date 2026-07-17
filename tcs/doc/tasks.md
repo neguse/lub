@@ -15,9 +15,6 @@
 
 - **T206** [P1] C2 後半: 既存 TranspileAndRun corpus (326 箇所) の dotnet differential 裏取り (TestHelper 拡張 + opt-out 設計)
 
-C2 spec differential の発見 (baseline に Bug として記録済み、修正で baseline 更新):
-
-- **T204** [P2] namespace 参照解決の破綻 (ExtensionMethodInvocations2) — namespaced 入力の既知制約と統合判断
 
 - **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
 - **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly

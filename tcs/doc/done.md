@@ -1130,3 +1130,8 @@
 ### T198: 補間文字列の alignment / hex・指数の大文字小文字 / brace escape ✓ (2026-07-18)
 - 補間の text 部が raw token copy で `{{`/`}}` が残り、`X`/`E` 指定子が常に小文字 `%x`/`%e` になり、alignment (`{val,4:X}`) が無視されていた。text 部は brace 解決 + Lua escape 再変換 (T202 と同方針)、指定子は大文字小文字を反映、alignment は整形後文字列への `%ns`/`%-ns` として合成
 - 検証: dotnet test 647/647 green、spec baseline で attributes.md:DeclCustomHandler1 が Bug → InRun (dotnet differential 一致)。残 Bug 1
+
+### T204: spec executor の entry を namespace 透過 emit に合わせる ✓ (2026-07-18)
+- ExtensionMethodInvocations2 の失敗は tcs 側でなくハーネス側: entry 探索が `N2.Test.Main()` と namespace 込みで呼んでいた (tcs は T155 のとおり型を flat 名で emit)。型名チェーンのみで entry を組むよう修正
+- 結果、user 拡張メソッドの static call lowering + using ベースの解決が dotnet differential と一致することを確認 — **C2 differential も Bug 0 達成**
+- 検証: SpecConformance 35/35 green、sweep baseline 一致、Executed 全 InRun で failures ゼロ

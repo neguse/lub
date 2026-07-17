@@ -1026,7 +1026,7 @@
     "category": "Diag"
   },
   "expressions.md:ExtensionMethodInvocations2": {
-    "category": "Bug"
+    "category": "InRun"
   },
   "expressions.md:IdenticalSimpleAndTypeNames": {
     "category": "Diag"

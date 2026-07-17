@@ -476,7 +476,7 @@ public class SpecConformanceTests
         Assert.Equal("Hello.Main()", SpecLuaExecutor.FindEntryInvocation(
             [new SpecSourceFile("a.cs",
                 "class Hello { static void Main() { } }")]));
-        Assert.Equal("A.B.Program.Main()", SpecLuaExecutor.FindEntryInvocation(
+        Assert.Equal("Program.Main()", SpecLuaExecutor.FindEntryInvocation(
             [new SpecSourceFile("a.cs",
                 "namespace A.B { class Program { static void Main() { } } }")]));
         Assert.Equal("", SpecLuaExecutor.FindEntryInvocation(
