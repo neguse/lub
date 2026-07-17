@@ -1049,3 +1049,8 @@
 - `[Conditional("DEBUG")]` 付きメソッドの呼び出しが条件無視で常に実行される silent 差異を、属性宣言側の TCS1001 診断で拒否。System.Diagnostics.ConditionalAttribute を semantic 判定し、意味論を変えない他属性 ([Obsolete] 等) は対象外
 - 検証: dotnet test 619/619 green、spec baseline で attributes.md:ConditionalMethods4 ほかが Bug/InRun → Diag
 - 判断: 呼び出し側でなく宣言側で1回診断 (呼び出し網羅より位置が安定)。BCL の Conditional API (Debug.Assert 等) は TCS1002 allowlist 外で既に拒否される
+
+### T191: interface default member / explicit implementation の TCS1001 診断化 ✓ (2026-07-18)
+- interface は Lua 出力を持たないため、実装付き interface member (DIM) と explicit interface implementation (`void IA.M()`) が silent 欠落し実行時 nil call になっていた。両方を TCS1001 で拒否 (宣言のみの interface 契約と通常の implicit 実装は従来どおり)
+- 検証: dotnet test 621/621 green、spec baseline で interfaces.md ほか 14 例が Diag へ
+- 判断: property は AccessorList の body/expression-body 有無で判定 (auto-property 宣言 `int P { get; }` は契約のみなので許容)

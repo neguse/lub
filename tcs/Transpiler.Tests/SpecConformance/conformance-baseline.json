@@ -1175,7 +1175,7 @@
     "category": "InCompile"
   },
   "interfaces.md:AbstractClassesAndInterfaces2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:BaseInterfaces1": {
     "category": "InCompile"
@@ -1187,7 +1187,7 @@
     "category": "Diag"
   },
   "interfaces.md:ExplicitInterfaceMemberImplementations2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:ExplicitInterfaceMemberImplementations3": {
     "category": "CsErr"
@@ -1196,10 +1196,10 @@
     "category": "CsErr"
   },
   "interfaces.md:ExplicitInterfaceMemberImplementations5": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:ExplicitInterfaceMemberImplementations6": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:ImplementationOfGenericMethods1": {
     "category": "CsErr"
@@ -1223,7 +1223,7 @@
     "category": "InRun"
   },
   "interfaces.md:InterfaceImplementationInheritance5": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceImplementations1": {
     "category": "InCompile"
@@ -1238,7 +1238,7 @@
     "category": "InCompile"
   },
   "interfaces.md:InterfaceMapping3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMapping4": {
     "category": "InCompile"
@@ -1247,16 +1247,16 @@
     "category": "InCompile"
   },
   "interfaces.md:InterfaceMapping6": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMapping7": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMapping8": {
     "category": "InCompile"
   },
   "interfaces.md:InterfaceMember": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMemberAccess2": {
     "category": "InCompile"
@@ -1268,7 +1268,7 @@
     "category": "CsErr"
   },
   "interfaces.md:InterfaceMethods2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMethods4": {
     "category": "CsErr"
@@ -1277,13 +1277,13 @@
     "category": "CsErr"
   },
   "interfaces.md:InterfaceRe-implementation1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceRe-implementation2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceRe-implementation3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:QualifiedInterfaceMemberNames1": {
     "category": "InCompile"
@@ -1295,7 +1295,7 @@
     "category": "CsErr"
   },
   "interfaces.md:UniquenessOfImplementedInterfaces2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:VariantTypeParameterLists": {
     "category": "InCompile"

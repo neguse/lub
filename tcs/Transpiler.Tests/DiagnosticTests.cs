@@ -653,4 +653,47 @@ public class DiagnosticTests
         Assert.DoesNotContain(result.Warnings,
             w => w.Contains("ConditionalAttribute"));
     }
+
+    [Fact]
+    public void InterfaceDefaultMemberAndExplicitImplementation_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public interface IA
+            {
+                int P { get { return 10; } }
+                void M() { }
+            }
+
+            public class C : IA
+            {
+                void IA.M() { }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "InterfaceDefaultMember");
+        AssertUnsupportedWarning(result, "ExplicitInterfaceImplementation");
+    }
+
+    [Fact]
+    public void PlainInterfaceContract_IsNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public interface IShape
+            {
+                int Area();
+                int Size { get; set; }
+            }
+
+            public class Box : IShape
+            {
+                public int Size { get; set; }
+                public int Area() => Size * Size;
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w =>
+            w.Contains("InterfaceDefaultMember") ||
+            w.Contains("ExplicitInterfaceImplementation"));
+    }
 }

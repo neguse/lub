@@ -77,6 +77,26 @@ public static partial class TinyCsComplianceFacts
                 when local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
                     => "UsingDeclaration",
             LocalFunctionStatementSyntax => "LocalFunctionStatement",
+            // interface は型チェックのみで Lua 出力を持たない。実装付き member
+            // (default interface member) と explicit implementation は emit されず
+            // silent 欠落になるため拒否する。
+            MethodDeclarationSyntax explicitImpl
+                when explicitImpl.ExplicitInterfaceSpecifier is not null
+                    => "ExplicitInterfaceImplementation",
+            PropertyDeclarationSyntax explicitProp
+                when explicitProp.ExplicitInterfaceSpecifier is not null
+                    => "ExplicitInterfaceImplementation",
+            MethodDeclarationSyntax dim
+                when dim.Parent is InterfaceDeclarationSyntax
+                    && (dim.Body is not null || dim.ExpressionBody is not null)
+                    => "InterfaceDefaultMember",
+            PropertyDeclarationSyntax dimProp
+                when dimProp.Parent is InterfaceDeclarationSyntax
+                    && (dimProp.ExpressionBody is not null
+                        || dimProp.AccessorList?.Accessors.Any(accessor =>
+                            accessor.Body is not null
+                            || accessor.ExpressionBody is not null) == true)
+                    => "InterfaceDefaultMember",
             // tuple は Lua 表現を持たない (ValueTuple.new は存在しない)。
             // 分解代入の LHS `(x, y) = rhs` だけは deconstruction lowering が
             // 受け持つため除外する。

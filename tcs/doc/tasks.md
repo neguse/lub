@@ -17,7 +17,6 @@
 
 C1 実行フェーズの発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T191** [P1] interface の default member / explicit implementation が silent 欠落 (interfaces.md:InterfaceMember) — TCS1001 へ追加
 - **T192** [P1] string concat の null オペランドが Lua error (expressions.md:AdditionOperator) — C# は空文字列扱い。あわせて浮動小数の指数表記 E/e 差の Normalizer 対応を判断
 - **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
 - **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly
