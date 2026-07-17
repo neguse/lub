@@ -114,7 +114,7 @@
     "category": "Diag"
   },
   "attributes.md:DeclCustomHandler1": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "attributes.md:DeclCustomHandler2": {
     "category": "Diag"
@@ -541,10 +541,10 @@
     "category": "Diag"
   },
   "classes.md:ParameterArrays3": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:ParameterArrays4": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:ParameterArrays5": {
     "category": "Diag"
@@ -586,7 +586,7 @@
     "category": "CsErr"
   },
   "classes.md:PropertyReservedSignatures": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:RecordDeconstruct": {
     "category": "Diag"
@@ -625,10 +625,10 @@
     "category": "CsErr"
   },
   "classes.md:StaticConstructors1": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:StaticConstructors2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:StaticConstructors3": {
     "category": "Diag"
@@ -637,7 +637,7 @@
     "category": "InRun"
   },
   "classes.md:StaticFieldInitialization2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:StaticReadonlyFieldsAsConstants": {
     "category": "InCompile"
@@ -676,16 +676,16 @@
     "category": "InRun"
   },
   "classes.md:VariableInitializers2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:VirtualAbstractAccessors": {
     "category": "InCompile"
   },
   "classes.md:VirtualMethods1": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:VirtualMethods2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "classes.md:VirtualOverrideAccessors": {
     "category": "InCompile"
@@ -697,7 +697,7 @@
     "category": "Diag"
   },
   "conversions.md:AnonFuncTypeConv2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "conversions.md:AnonymousFunctionsConv1": {
     "category": "CsErr"
@@ -1026,7 +1026,7 @@
     "category": "InCompile"
   },
   "expressions.md:ExtensionMethodInvocations2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "expressions.md:IdenticalSimpleAndTypeNames": {
     "category": "Diag"
@@ -1131,7 +1131,7 @@
     "category": "CsErr"
   },
   "expressions.md:Run-timeEvalOfArgLists1": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "expressions.md:Run-timeEvalOfArgLists2": {
     "category": "Unextracted",
@@ -1208,7 +1208,7 @@
     "category": "Diag"
   },
   "interfaces.md:InterfaceFields": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "interfaces.md:InterfaceImplementationInheritance1": {
     "category": "InCompile"
@@ -1301,7 +1301,7 @@
     "category": "InCompile"
   },
   "lexical-structure.md:CharacterLiterals": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "lexical-structure.md:HelloWorld1": {
     "category": "InRun"
@@ -1514,10 +1514,10 @@
     "category": "Diag"
   },
   "patterns.md:PatternFormGen1": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "patterns.md:PatternFormGen2": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "patterns.md:PositionalPattern1": {
     "category": "Diag"

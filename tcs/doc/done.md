@@ -1065,3 +1065,10 @@
 - decimal が Lua number (binary float) へ silent マップされ、スケール表示 (`2.900` → `2.9`) や精度の意味論差が診断なしで出ていた。PredefinedType の decimal keyword と `m` サフィックスリテラルを TCS1001 で拒否 (float/double は非対象)
 - 検証: dotnet test 627/627 green。**spec conformance の Bug 分類が 0 に到達 — C1 完了条件達成** (Executed 7/7 passed、集計: InRun 50 / InCompile 153 / Diag 271 / CsErr 119 / Unextracted 49 / Bug 0)
 - 判断: 数値意味論を近似で通すより DSL 契約として明示拒否 (struct と同じ扱い)。需要が出たら固定小数 helper で再検討
+
+### T184: [C2 前半] spec 例の dotnet differential ✓ (2026-07-18)
+- SpecDotnetExecutor を追加: 例を in-memory Roslyn compile → AssemblyLoadContext 実行 → Console capture (排他 + 10s timeout)。出力契約の無い InRun 例のオラクルを実 .NET 実行出力にし、実行対象を全 InRun 50 例へ拡大
+- 初回 differential で **17 件の意味論バグを新規検出し T194-T204 として起票**: overload 誤 dispatch / `new` hiding 無視 / static ctor 欠落 / 式文脈 increment の副作用消失 / field default nil / delegate `new` / interface const / hex escape 破損 / Console マッピング漏れ / 補間 format specifier / namespace 解決。手書きテスト 326 本が一度も踏まなかった領域が仕様 corpus + 実処理系オラクルで一気に可視化された
+- ハーネス修正 1 件: dotnet 側にも ImplicitUsings 補完 (classifier と対称)
+- 検証: SpecConformance 単体 34/34 green、sweep は baseline 一致 (Bug 17 は起票済み記録)、Executed 50 / passed 33
+- 判断: C2 後半 (既存 TranspileAndRun corpus の裏取り) は luaExpr → C# 翻訳の設計が必要なため T206 へ分割

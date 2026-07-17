@@ -9,7 +9,7 @@ internal sealed partial class SpecConformanceClassifier
     // compile error でなく TCS1001/1002/1003 診断として観測する。transpiler 既定の
     // 最小参照だと template の using (System.IO 等) 自体が CS0234 になり、
     // サブセット外 API の例がすべて分類不能になる。
-    private static readonly Lazy<MetadataReference[]> FullReferences = new(() =>
+    internal static readonly Lazy<MetadataReference[]> FullReferences = new(() =>
         (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "")
         .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
         .Where(path => path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))

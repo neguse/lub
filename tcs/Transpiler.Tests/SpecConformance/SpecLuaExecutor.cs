@@ -16,6 +16,7 @@ internal sealed class SpecLuaExecutor
 {
     private readonly string _runtimePath;
     private readonly IReadOnlyDictionary<string, string> _knownDifferences;
+    private readonly SpecDotnetExecutor _dotnet = new();
 
     public SpecLuaExecutor(string repoRoot)
     {
@@ -25,15 +26,36 @@ internal sealed class SpecLuaExecutor
             "Transpiler.Tests", "SpecConformance", "known-differences.json"));
     }
 
+    // 出力契約 (expectedOutput / ignoreOutput) が無い InRun 例は dotnet
+    // differential (C2) がオラクルになるため、全 InRun が実行対象。
     public static bool IsEligible(ClassifiedSpecExample item) =>
         item.Result.Category == SpecClassification.InRun &&
-        item.Result.Lua is not null &&
-        (item.Example.Annotation.ExpectedOutput is not null ||
-         item.Example.Annotation.IgnoreOutput);
+        item.Result.Lua is not null;
 
     public SpecExecutionOutcome Execute(ClassifiedSpecExample item, string id,
         IReadOnlyList<SpecSourceFile> sources)
     {
+        string[]? expectedLines = null;
+        if (item.Example.Annotation.ExpectedOutput is { } specOutput)
+        {
+            expectedLines = specOutput.Select(NormalizeExpectedLine).ToArray();
+        }
+        else if (!item.Example.Annotation.IgnoreOutput)
+        {
+            var dotnetRun = _dotnet.Run(sources,
+                "Spec_" + id.Replace(':', '_').Replace('.', '_'));
+            if (!dotnetRun.Ok)
+            {
+                if (_knownDifferences.TryGetValue(id, out var knownReason))
+                    return new SpecExecutionOutcome(true, true, true,
+                        knownReason);
+                return new SpecExecutionOutcome(true, false, false,
+                    $"dotnet oracle failed: {dotnetRun.Error}");
+            }
+            expectedLines = SplitOutput(dotnetRun.Output)
+                .Select(NormalizeExpectedLine).ToArray();
+        }
+
         var entry = FindEntryInvocation(sources);
         var script = $"local TinySystem = dofile(\"{_runtimePath}\")\n" +
                      "List = TinySystem.List\n" +
@@ -57,12 +79,10 @@ internal sealed class SpecLuaExecutor
                 $"Lua execution failed: {exception.Message}");
         }
 
-        if (item.Example.Annotation.IgnoreOutput ||
-            item.Example.Annotation.ExpectedOutput is not { } expected)
+        if (expectedLines is null)
             return new SpecExecutionOutcome(true, true, false, null);
 
         var actualLines = SplitOutput(stdout);
-        var expectedLines = expected.Select(NormalizeExpectedLine).ToArray();
         if (actualLines.SequenceEqual(expectedLines, StringComparer.Ordinal))
             return new SpecExecutionOutcome(true, true, false, null);
 

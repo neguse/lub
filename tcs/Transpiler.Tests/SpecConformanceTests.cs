@@ -398,6 +398,69 @@ public class SpecConformanceTests
             "class C { }", sourceLine),
         new SpecClassificationResult(SpecClassification.InCompile));
 
+    [Fact]
+    public void DotnetExecutor_CapturesConsoleOutput()
+    {
+        var run = new SpecDotnetExecutor().Run([new SpecSourceFile(
+            "Example.cs", """
+            using System;
+
+            class Program
+            {
+                static void Main()
+                {
+                    Console.WriteLine("hello");
+                    Console.WriteLine(1 < 2);
+                }
+            }
+            """)], "SpecDotnetSmoke");
+
+        Assert.True(run.Ok, run.Error ?? "");
+        Assert.Equal("hello\ntrue", string.Join("\n",
+            run.Output.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n')
+                .Select(SpecLuaExecutor.NormalizeExpectedLine)));
+    }
+
+    [Fact]
+    public void Executor_UsesDotnetOracleWhenNoOutputAnnotation()
+    {
+        var annotation = new SpecAnnotation
+        {
+            Template = "standalone-console",
+            Name = "DotnetOracle"
+        };
+        var example = new SpecExample("fixture.md", annotation, "", 1);
+        var sources = new List<SpecSourceFile>
+        {
+            new("Example.cs", """
+                using System;
+
+                class Program
+                {
+                    static void Main()
+                    {
+                        int total = 0;
+                        for (int i = 1; i <= 4; i++)
+                        {
+                            total += i;
+                        }
+                        Console.WriteLine("total = " + total);
+                        Console.WriteLine(total > 5);
+                    }
+                }
+                """)
+        };
+        var classified = new ClassifiedSpecExample(example,
+            new SpecConformanceClassifier().Classify(example,
+                new SpecExpansion(sources, IsExecutable: true)));
+        Assert.Equal(SpecClassification.InRun, classified.Result.Category);
+
+        var outcome = new SpecLuaExecutor(SpecConformanceSweep.FindRepoRoot())
+            .Execute(classified, "fixture.md:DotnetOracle", sources);
+
+        Assert.True(outcome.Passed, outcome.Details ?? "");
+    }
+
     [Theory]
     [InlineData("x is True", "x is true")]
     [InlineData("False True Falsehood", "false true Falsehood")]
