@@ -17,7 +17,7 @@
 
 C2 spec differential の発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T197** [P1] 式文脈の increment/decrement の副作用が消える・引数評価順 (Run-timeEvalOfArgLists1) — emitter 調査・修正
+- **T207** [P1] optional parameter の default 値が silent nil (ユーザーメソッドの省略呼び出し) — 関数冒頭で default 補完を emit
 - **T198** [P2] 補間文字列の alignment / format specifier が無視される (DeclCustomHandler1) — 対応 or 診断
 - **T204** [P2] namespace 参照解決の破綻 (ExtensionMethodInvocations2) — namespaced 入力の既知制約と統合判断
 

@@ -1111,3 +1111,8 @@
 - C# は static field を default 値で事前初期化してから initializer を宣言順に実行するが、tcs は initializer を宣言順に直接代入しており、循環参照 (`a = b + 1; b = a + 1`) や後方 field 参照が nil arithmetic になっていた。class table 宣言直後に非 nil default の pre-zero を emit し、DeclRanges に載せて hot apply の define チャンクから除外 (live static 値を上書きしない)
 - instance field は CS0236 (initializer から他 field 参照不可) が守るため対応不要
 - 検証: dotnet test 641/641 green (module artifact / transaction テスト含む)、spec baseline で classes.md:VariableInitializers2 が Bug → InRun (dotnet differential 一致)
+
+### T197: 式文脈 ++/-- と named argument の TCS1001 診断化 ✓ (2026-07-18)
+- 式文脈の `i++` は「値を返しつつ代入」の意味論だが、現行 emit は `i + 1` の値だけで副作用が消えていた。statement / for 更新部以外の increment/decrement を TCS1001 で拒否。named argument も位置渡しへ黙って落ちていたため NameColon 付き引数を拒否
+- 検証: dotnet test 643/643 + run-tests.sh 全ゲート green (samples/既存テストは statement/for 利用のみ)、spec baseline で Run-timeEvalOfArgLists1 が Diag へ。残 Bug 3
+- 判断: IIFE + temp での完全対応は lvalue 機構拡張が必要で、需要が出たら別タスク。optional parameter default の silent nil は診断でなく修正が妥当 (ゲームコードで頻出) — T207 起票

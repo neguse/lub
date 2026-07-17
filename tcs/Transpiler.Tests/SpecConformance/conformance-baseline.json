@@ -291,7 +291,7 @@
     "category": "InCompile"
   },
   "classes.md:Accessors6": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:Accessors7": {
     "category": "Diag"
@@ -1131,7 +1131,7 @@
     "category": "CsErr"
   },
   "expressions.md:Run-timeEvalOfArgLists1": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "expressions.md:Run-timeEvalOfArgLists2": {
     "category": "Unextracted",

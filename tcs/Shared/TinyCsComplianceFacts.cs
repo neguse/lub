@@ -100,6 +100,23 @@ public static partial class TinyCsComplianceFacts
                             accessor.Body is not null
                             || accessor.ExpressionBody is not null) == true)
                     => "InterfaceDefaultMember",
+            // 式文脈の ++/-- は「値を返しつつ代入する」意味論で、現行 emit は
+            // 副作用が消える silent wrong-code になる。statement / for 更新部は
+            // `i = i + 1` へ正しく下がるので許容する。
+            PostfixUnaryExpressionSyntax postfix
+                when postfix.Kind() is SyntaxKind.PostIncrementExpression
+                        or SyntaxKind.PostDecrementExpression
+                    && !IsStatementLikeContext(postfix)
+                    => "IncrementAsExpression",
+            PrefixUnaryExpressionSyntax prefix
+                when prefix.Kind() is SyntaxKind.PreIncrementExpression
+                        or SyntaxKind.PreDecrementExpression
+                    && !IsStatementLikeContext(prefix)
+                    => "IncrementAsExpression",
+            // named argument は引数の並べ替え + optional 補完が必要で、
+            // 現行 emit は位置渡しに黙って落ちる。
+            ArgumentSyntax named
+                when named.NameColon is not null => "NamedArgument",
             // Lua table は同名 key を 1 つしか持てず、overload は last-write-wins で
             // silent 誤 dispatch になる。2 個目以降の同名メソッドを拒否する
             // (MultipleConstructors と同じ方針)。
@@ -197,6 +214,9 @@ public static partial class TinyCsComplianceFacts
 
         return syntaxName.Length > 0;
     }
+
+    private static bool IsStatementLikeContext(SyntaxNode node) =>
+        node.Parent is ExpressionStatementSyntax or ForStatementSyntax;
 
     private static bool IsDeconstructionTarget(TupleExpressionSyntax tuple)
     {

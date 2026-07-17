@@ -171,6 +171,53 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void IncrementAsExpressionAndNamedArgument_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F(int x, int y = -1) { }
+
+                public static int Test()
+                {
+                    int i = 0;
+                    F(i++);
+                    F(y: 2, x: 1);
+                    return i;
+                }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "IncrementAsExpression");
+        AssertUnsupportedWarning(result, "NamedArgument");
+    }
+
+    [Fact]
+    public void StatementAndForLoopIncrements_AreNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static int Test()
+                {
+                    int total = 0;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        total++;
+                        --total;
+                        total++;
+                    }
+                    return total;
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("IncrementAsExpression"));
+    }
+
+    [Fact]
     public void StaticConstructor_ReportsWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
