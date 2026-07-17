@@ -9,9 +9,20 @@
 
 ---
 
-現在オープンなタスクはない (2026-07-12 全体レビュー由来の正しさ backlog
-T138-T161 と追加発見 T180-T181 を 2026-07-17 に完遂)。
-新タスクは需要駆動で起票する。
+## 仕様ベース conformance トラック
+
+設計正本: `doc/spec-conformance-design.md`。C0→C1→C2→C3 直列、C4/C5 は C2 後に並行可。
+
+- **T182** [P1] C0: csharpstandard submodule + 注釈パーサ / template 展開 / 全例分類 sweep (実行なし) + 章別レポート + 初回 baseline
+- **T183** [P1] C1: expectedOutput 付き例の Lua 実行検証 + Normalizer 第1版
+- **T184** [P1] C2: in-memory dotnet differential (仕様例 + 既存 TranspileAndRun corpus) + known-differences.json
+- **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
+- **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly
+- **T187** [P2] C5: coverlet で emitter 未踏分岐の可視化
+
+---
+
+その他は需要駆動で起票する。
 
 - lub 検証トラックの追加サンプル移植・Useful 層追加は需要駆動
 - 診断一致 (analyzer / check / transpiler) とファイルサイズ (600/800 行) は
