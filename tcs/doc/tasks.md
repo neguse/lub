@@ -20,11 +20,6 @@
 
 ### Phase 0 — 情報を買う + 発見バグ修正（並行可）
 
-- [ ] **T212** (P0, luo 側): 性能上界 spike の PC 測定 —
-      `../luo/docs/spike-ceiling.md` の kernels（sprite_update / spawn_churn /
-      particles）を手書き C で実測し、aot-slot vs native 比を先に取る。
-      実機測定は Playdate SDK / toolchain 導入後に追補
-
 ### Phase 1 — M1: 挙動不変の内部再編 ✓ (T214a-c 完、done.md 参照)
 
 - [ ] **T224** (P2): legacy visitor の縮退 — fallback に残る構文

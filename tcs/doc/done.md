@@ -1282,3 +1282,10 @@
 ### T227: nested class の診断化 ✓ (2026-07-18)
 - class 内の class / record class 宣言を TCS1001 (NestedTypeDeclaration) で拒否。emit されず参照時に実行時 nil になる silent wrong-code (T215 で実測) の封鎖
 - 検証: SubsetDiagnosticTests 追加 1 本 green、run-tests 全ゲート green (conformance baseline 影響なし)
+
+### T212: [spike] AOT 性能上界の PC 測定 ✓ (2026-07-18)
+- ../luo/spike/ に CONTRACT 準拠の 3 kernel × 5 変種 (native/aot-hash/aot-slot/interp/jit-off) を実装 (実装は Codex 委任、検証・適用・突き合わせは当方)。全変種 digest 一致 + tcs TinyC#→Lua とも 3 kernel bit 一致 — 「手書き C と transpiler 出力が同じ計算」の初実証で、digest harness (T215) が backend 間契約として実働
+- 実測 (PC): aot-slot/native = 16.8x (sprite N=1024)、interp/native ≈ 19-36x。aot-slot は interp と大差なし — boxed TValue 表現自体がボトルネック
+- 合否解釈: 「aot-* のみ予算落ち、native は通る」側 → **release-lowering は IL-native 表現 (struct / 連続配列) を採る** (il-design §8 の spike 待ち 2 項が決着: release class 表現 = native、Lua 側 struct 配列表現の需要は M5 実装時に再実測)
+- spawn_churn の CONTRACT 未規定分は spike 実装解釈 (開始時充填) に統一し、tcs kernel を追随 (digest 9274159d で一致確認)
+- 残課題: 実機 (Playdate) 測定は SDK 導入後。luo コミット済み (未 push)

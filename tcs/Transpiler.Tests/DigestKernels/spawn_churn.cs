@@ -1,8 +1,8 @@
 using System;
 
 // digest kernel: spawn_churn (../luo/spike/CONTRACT.md kernel 2)。
-// 解釈 (CONTRACT 未規定分): 空から開始し、毎フレーム「spawn 32 (満杯時は
-// 最古を破棄) → 生存全体を最古→最新順に更新」。digest は最古→最新順。
+// 解釈 (spike 実装と統一): 開始時に n 体を充填し、毎フレーム
+// 「spawn 32 (最古を上書き) → 生存全体を最古→最新順に更新」。
 public class Entity
 {
     public float X;
@@ -36,6 +36,16 @@ public class SpawnChurn
         var ring = new Entity[n];
         int head = 0;  // 最古の位置
         int count = 0;
+        for (int p = 0; p < n; p++)
+        {
+            var e0 = new Entity();
+            e0.X = Frand(0.0f, 400.0f);
+            e0.Y = Frand(0.0f, 240.0f);
+            e0.Vx = Frand(-30.0f, 30.0f);
+            e0.Vy = Frand(-30.0f, 30.0f);
+            ring[p] = e0;
+            count = count + 1;
+        }
 
         for (int f = 0; f < frames; f++)
         {

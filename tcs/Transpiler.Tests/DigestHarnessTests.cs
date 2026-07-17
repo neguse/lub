@@ -45,7 +45,7 @@ public class DigestHarnessTests
     public void SpawnChurn_DigestIsStable()
     {
         var digest = Fnv1a32(RunKernel("spawn_churn.cs", "SpawnChurn"));
-        Assert.Equal("4e5bf016", digest);
+        Assert.Equal("9274159d", digest);
     }
 
     [Fact]
