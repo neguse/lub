@@ -9,15 +9,9 @@
 
 ---
 
-## 仕様ベース conformance トラック
-
-設計正本: `doc/spec-conformance-design.md`。C0→C1→C2→C3 直列、C4/C5 は C2 後に並行可。
-
-
-
----
-
-その他は需要駆動で起票する。
+現在オープンなタスクはない (仕様ベース conformance トラック C0-C5 を 2026-07-18 に完遂。
+設計と受入条件の充足は `doc/spec-conformance-design.md`、歴史は done.md)。
+新タスクは需要駆動で起票する。
 
 - lub 検証トラックの追加サンプル移植・Useful 層追加は需要駆動
 - 診断一致 (analyzer / check / transpiler) とファイルサイズ (600/800 行) は
