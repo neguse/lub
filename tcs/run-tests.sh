@@ -71,7 +71,7 @@ TCS_SPEC_CONFORMANCE=1 \
 TCS_SPEC_REPORT="$SCRIPT_DIR/doc/spec-conformance-report.md" \
 TCS_DIFFERENTIAL=1 \
 TCS_FUZZ=1 \
-  dotnet test "$SCRIPT_DIR" --verbosity quiet
+  dotnet test "$SCRIPT_DIR" --verbosity minimal
 
 echo "Running tcs check on samples..."
 sample_checks=(

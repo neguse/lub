@@ -85,7 +85,7 @@ $env:TCS_SPEC_REPORT = Join-Path $ScriptDir "doc\spec-conformance-report.md"
 $env:TCS_DIFFERENTIAL = "1"
 $env:TCS_FUZZ = "1"
 try {
-    dotnet test $ScriptDir --verbosity quiet
+    dotnet test $ScriptDir --verbosity minimal
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
     Remove-Item Env:TCS_SPEC_CONFORMANCE, Env:TCS_SPEC_REPORT, Env:TCS_DIFFERENTIAL, Env:TCS_FUZZ -ErrorAction SilentlyContinue
