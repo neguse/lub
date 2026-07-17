@@ -77,6 +77,12 @@ public static partial class TinyCsComplianceFacts
                 when local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
                     => "UsingDeclaration",
             LocalFunctionStatementSyntax => "LocalFunctionStatement",
+            // tuple は Lua 表現を持たない (ValueTuple.new は存在しない)。
+            // 分解代入の LHS `(x, y) = rhs` だけは deconstruction lowering が
+            // 受け持つため除外する。
+            TupleTypeSyntax => "TupleType",
+            TupleExpressionSyntax tuple
+                when !IsDeconstructionTarget(tuple) => "TupleExpression",
             ListPatternSyntax => "ListPattern",
             SlicePatternSyntax => "SlicePattern",
             OperatorDeclarationSyntax op
@@ -133,6 +139,16 @@ public static partial class TinyCsComplianceFacts
         };
 
         return syntaxName.Length > 0;
+    }
+
+    private static bool IsDeconstructionTarget(TupleExpressionSyntax tuple)
+    {
+        SyntaxNode node = tuple;
+        while (node.Parent is TupleExpressionSyntax parent)
+            node = parent;
+        return node.Parent is AssignmentExpressionSyntax assignment
+            && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+            && assignment.Left == node;
     }
 
     public static bool TryGetUnsupportedSyntax(IOperation? operation,

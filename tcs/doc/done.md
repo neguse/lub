@@ -1034,3 +1034,8 @@
 - レポートに Execution 節と Unexpected extraction details 節 (先頭エラー行) を常設
 - 検証: dotnet test 613/613+47 (sweep Skip 込み)、run-spec-conformance.sh 31/31 green、baseline 再生成後の連続実行で差分なし
 - 判断: 実行失敗の allowlist 逃しは意味論差の受容 (accepted:) に限定し、tcs のバグは Bug のまま baseline に記録して起票する — 「Bug 0 を維持するために隠す」構造を作らない
+
+### T188: tuple 構文の TCS1001 診断化 ✓ (2026-07-17)
+- `(string, int)` 型と tuple literal が診断なしで `ValueTuple.new(...)` (未定義) に emit されていた silent wrong-code を診断化。TupleType 全部と、分解代入 LHS `(x, y) = rhs` (deconstruction lowering が受け持つ) を除く TupleExpression を TCS1001 へ追加
+- 検証: dotnet test 615/615 green (分解宣言/分解代入の非退行テスト込み)、spec baseline で types.md:TupleTypes5 が Bug → Diag
+- 判断: ネスト tuple LHS `((a,b),c) = rhs` は最外殻だけ除外対象なので内側が診断される — 現行 lowering も非対応のため正しい

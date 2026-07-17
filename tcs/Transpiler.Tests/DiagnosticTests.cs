@@ -557,4 +557,45 @@ public class DiagnosticTests
         Assert.Contains(collectionNulls, w => w.Contains("List<T>"));
         Assert.Contains(collectionNulls, w => w.Contains("Dictionary<K,V>"));
     }
+
+    [Fact]
+    public void TupleTypeAndTupleLiteral_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static int Test()
+                {
+                    (string name, int age) a = ("Bert", 42);
+                    return a.age;
+                }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "TupleType");
+        AssertUnsupportedWarning(result, "TupleExpression");
+    }
+
+    [Fact]
+    public void DeconstructionAssignmentTarget_IsNotFlaggedAsTuple()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public record Point(int X, int Y);
+            public class T
+            {
+                public static int Test()
+                {
+                    var p = new Point(1, 2);
+                    var (a, b) = p;
+                    int x;
+                    int y;
+                    (x, y) = p;
+                    return a + b + x + y;
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("Tuple"));
+    }
 }
