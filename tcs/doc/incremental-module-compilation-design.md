@@ -1,6 +1,6 @@
 # browser-wasm 向け増分 source module コンパイル設計
 
-> Status: 提案（増分/module path は未実装。T164 の one-shot `WasmCompiler` は実装済み）
+> Status: 実装済み（M0-M5 完了、実測は §17 に記録。M5 optional optimization は profile 判断で全項目見送り）
 >
 > Date: 2026-07-14
 >
