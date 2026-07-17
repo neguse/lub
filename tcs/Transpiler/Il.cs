@@ -108,8 +108,12 @@ public sealed record IlCallStat(IlExpr Call) : IlStat;
 public sealed record IlIf(
     ImmutableArray<(IlExpr Cond, IlBlock Body)> Arms, IlBlock? Else) : IlStat;
 
-/// <summary>while。Trailer は for 脱糖の incrementors (continue label の後)。</summary>
-public sealed record IlWhile(IlExpr Cond, IlBlock Body, IlBlock? Trailer) : IlStat;
+/// <summary>while。Trailer は for 脱糖の incrementors (continue label の後)。
+/// ScopeBody は body + label を do..end で囲う (continue の goto が後続
+/// local のスコープへ飛び込むのを防ぐ。legacy VisitFor と同条件)。</summary>
+public sealed record IlWhile(
+    IlExpr Cond, IlBlock Body, IlBlock? Trailer, bool ScopeBody = false)
+    : IlStat;
 
 /// <summary>do-while → repeat/until not (cond)。</summary>
 public sealed record IlRepeat(IlBlock Body, IlExpr Cond) : IlStat;

@@ -442,7 +442,9 @@ public partial class LuaEmitter
         var trailer = new List<IlStat>();
         foreach (var inc in forStmt.Incrementors)
             if (!BuildExprStatInto(model, inc, forStmt, trailer)) return false;
-        acc.Add(new IlWhile(cond, body, new IlBlock([.. trailer]))
+        var scopeBody = forStmt.Incrementors.Count > 0
+            && ContainsDirectContinue(forStmt.Statement);
+        acc.Add(new IlWhile(cond, body, new IlBlock([.. trailer]), scopeBody)
             { Origin = forStmt });
         return true;
     }

@@ -228,8 +228,18 @@ public partial class LuaEmitter
         var label = PushContinueLabel();
         AppendLine($"while {RenderIl(whileStat.Cond)} do");
         _indent++;
+        if (whileStat.ScopeBody)
+        {
+            AppendLine("do");
+            _indent++;
+        }
         EmitIlBlock(whileStat.Body);
         EmitContinueLabel(label);
+        if (whileStat.ScopeBody)
+        {
+            _indent--;
+            AppendLine("end");
+        }
         if (whileStat.Trailer != null)
             EmitIlBlock(whileStat.Trailer);
         _indent--;

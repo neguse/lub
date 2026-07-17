@@ -1237,3 +1237,7 @@
 - 検証: 全テスト 676 green、deep fuzz 100 seeds 全一致 (生成プログラムの IL 経路を実 .NET と行単位比較)、コミット時 pre-commit 全ゲート
 - 判断: legacy visitor のコード削除は見送り — fallback は診断構文・method group 参照等の残構文が使い、挙動不変の保険としても機能する。縮退は T224 (P2)、IIFE statement 化は T225 (P2) として M1 契約から分離
 - 残課題: T224/T225、M2 (T217) で luo 向け入力契約 (program 構造の IL 化を含む)
+
+### IL 経路への continue scope 修正の写像 ✓ (2026-07-18)
+- origin 側 19d35c4 (一般 for lowering の continue goto が local スコープへ飛ぶ問題の legacy 修正) を rebase で取り込み、IL emitter (IlWhile) にも同条件 (incrementor あり + 直下 continue) の do..end 囲いを写像。IlWhile に ScopeBody を追加
+- 検証: 回帰テスト Continue_GeneralFor_LocalDeclaredAfterContinue が IL 経路で Red → 修正後 green、全テスト 677 green
