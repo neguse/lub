@@ -15,7 +15,6 @@
 
 
 - **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly
-- **T187** [P2] C5: coverlet で emitter 未踏分岐の可視化
 
 ---
 

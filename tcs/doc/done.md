@@ -1154,3 +1154,9 @@
 - pre-commit hook は run-tests.sh を呼ぶため、コミットごとに sweep + differential 込みの全ゲート (約 40 秒) が走る
 - 検証: baseline を意図的に破壊して赤 (conformance baseline mismatch) を確認後に復元。run-tests.sh 全体 39 秒 exit 0、662/662 green (Skip 0)
 - 判断: nightly 分離は不要 — 全ゲート込みで +数十秒に収まり、恒常実行のほうが後退検知が早い
+
+### T187: [C5] coverlet で emitter 未踏分岐を可視化 ✓ (2026-07-18)
+- coverlet.collector を Transpiler.Tests に追加 (PrivateAssets)。`dotnet test --collect:"XPlat Code Coverage"` (sweep + differential 込み) で計測
+- branch coverage (主要ファイル): LuaEmitter.cs 94% / Invocations 93% / Expressions 86% / Statements 86% / **Objects 68.5%** / **Patterns 70.7%**、Shared facts 83-97%。CLI 系は Program.cs 67% / FileIdentity 50% (watch・stacktrace 注釈の分岐)
+- 判断: カバレッジ率目標は置かない (design 方針)。corpus 追加の需要判定として、Objects (with 式 / initializer 系) と Patterns (switch 式 / null 条件) の未踏分岐が最有力候補。CLI 分岐は CliRuntimeTests の粒度で妥当
+- 検証: dotnet test 662/662 green (collector 追加後)
