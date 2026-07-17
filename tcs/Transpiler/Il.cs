@@ -66,10 +66,32 @@ public sealed record IlInvoke(IlExpr Recv, string Method, ImmutableArray<IlExpr>
 /// <summary>クラス生成: TypeName.new(args)。</summary>
 public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args) : IlExpr;
 
-/// <summary>table 構築 (List / Dict リテラル)。Key が null なら配列項。</summary>
+/// <summary>table 構築 (List / Dict リテラル / ref-type option table)。
+/// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。</summary>
 public sealed record IlTable(ImmutableArray<IlTableEntry> Entries) : IlExpr;
 
-public readonly record struct IlTableEntry(IlExpr? Key, IlExpr Value);
+public readonly record struct IlTableEntry(
+    IlExpr? Key, IlExpr Value, string? NameKey = null);
+
+/// <summary>class 型 test: T またはその派生 (il-spec §9)。</summary>
+public sealed record IlIsType(IlExpr E, string TypeRef) : IlExpr;
+
+/// <summary>プリミティブ型 test: type(e) == "number" 等。</summary>
+public sealed record IlIsLuaType(IlExpr E, string LuaType) : IlExpr;
+
+/// <summary>式位置の逐次実行: (function() ... end)()。中の文は inline
+/// render 可能なもの (local/代入/呼び出し/return/if/for-pairs) に限る。</summary>
+public sealed record IlIife(ImmutableArray<IlStat> Stats) : IlExpr;
+
+/// <summary>closure。ExprBody か Body のどちらか。PatternLocals は
+/// 式本体内 is-pattern designation の関数冒頭宣言。</summary>
+public sealed record IlClosure(
+    ImmutableArray<string> Params, IlBlock? Body, IlExpr? ExprBody,
+    ImmutableArray<string> PatternLocals) : IlExpr;
+
+/// <summary>record with 式 (shallow copy + 上書き)。</summary>
+public sealed record IlWith(
+    IlExpr Src, ImmutableArray<(string Name, IlExpr Value)> Overrides) : IlExpr;
 
 // ---- 文 ----
 
@@ -108,3 +130,15 @@ public sealed record IlBreak : IlStat;
 public sealed record IlContinue : IlStat;
 
 public sealed record IlReturn(IlExpr? Value) : IlStat;
+
+/// <summary>do ... end スコープ (temp local の隔離)。</summary>
+public sealed record IlDo(IlBlock Body) : IlStat;
+
+/// <summary>多重代入: [local ]t1, t2 = v1, v2 (分解・out 引数 multi-return)。</summary>
+public sealed record IlMultiAssign(
+    ImmutableArray<IlExpr> Targets, ImmutableArray<IlExpr> Values, bool Declare)
+    : IlStat;
+
+/// <summary>汎用 pairs ループ: for k[, v] in pairs(coll) do ... end。</summary>
+public sealed record IlForPairs(
+    string KVar, string? VVar, IlExpr Coll, IlBlock Body) : IlStat;

@@ -1223,3 +1223,10 @@
 - 検証: 全テスト 671 green + IlPipelineTests 5 本 (IL 経由の確認・fallback 分離・意味論)。挙動不変は corpus semantic + differential + conformance sweep が担保
 - 判断: builder は legacy と同じ helper (VisitLiteral/CompoundOperator/IsListType 等) を共有し出力一致を構成的に保証。診断を出し得る経路 (WarnUnsupported) は必ず fallback。IIFE 廃止等の出力改善は legacy 削除後に IL 上で行う (T214c 以降) — 移行中の差分を挙動不変だけに絞るため
 - 残課題: T214b (lambda/pattern/?./custom property 等)、T214c (legacy 削除)
+
+### T214b: [M1] 残構文の IL 化 — samples 100% ✓ (2026-07-18)
+- 追加対応: lambda/closure (式/block body、pattern locals)、pattern 全種 (is 式/switch 式/switch 文、recursive/relational/binary/not)、型 test ノード (IlIsType/IlIsLuaType)、conditional access (?. ネスト込み)、?? (bool 厳密判定 IIFE)、??=、custom property accessor (get_/set_、compound、increment、副作用 receiver temp)、副作用 lvalue の temp 化、Dict 操作 (Add 代入形/TryGetValue/Remove/ContainsKey/Clear)、object initializer、ref-type option table、配列生成、with 式、分解代入 (宣言/tuple)、out 引数 multi-return、base 呼び出し、GetValueOrDefault、out var / is-pattern designation の前宣言
+- IL ノード追加: IlIife (式位置逐次実行)、IlClosure、IlWith、IlDo、IlMultiAssign、IlForPairs、IlIsType/IlIsLuaType、IlTable NameKey。inline render (IIFE 内 1 行化) を emitter に追加
+- 検証: 全テスト 676 green (fallback 例を method group 参照へ差し替え)。samples 実測 31/31 bodies (100%) が IL 経由 (T214a 時点 67%)
+- 判断: IIFE 形は legacy と同形を維持 (M1 は挙動不変が契約)。statement 化 (examples 決定 2) は M1 完了後に IL 上で行う
+- 残課題: T214c — ctor/accessor/operator/top-level 文の body も IL 経由へ、fallback は診断 method のみに

@@ -58,17 +58,21 @@ public class IlPipelineTests
     [Fact]
     public void UnsupportedConstructBody_FallsBackToLegacy()
     {
+        // method group 参照 (bare 識別子の delegate 化) は IL 未対応 → legacy
         var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
             public class T
             {
-                public static string Classify(object x)
+                public static void M() { }
+                public static object Grab()
                 {
-                    return x switch { int v => $"int:{v}", _ => "other" };
+                    Action a = M;
+                    return a;
                 }
             }
             """]);
         Assert.True(result.Success);
-        Assert.Equal(0, result.IlBodies);
+        Assert.Equal(1, result.IlBodies); // M は空 body で IL
         Assert.Equal(1, result.LegacyBodies);
     }
 
@@ -76,8 +80,8 @@ public class IlPipelineTests
     public void MixedClass_SplitsPerMethod()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
             using System.Collections.Generic;
-            using System.Linq;
             public class T
             {
                 public static int Sum(List<int> xs)
@@ -86,10 +90,11 @@ public class IlPipelineTests
                     foreach (var x in xs) { sum += x; }
                     return sum;
                 }
-                public static bool HasBig(List<int> xs)
+                public static object Pick(List<int> xs)
                 {
-                    // lambda は未対応 → この method だけ legacy
-                    return xs.Any(x => x > 10);
+                    // method group 参照は未対応 → この method だけ legacy
+                    Func<List<int>, int> f = Sum;
+                    return f;
                 }
             }
             """]);

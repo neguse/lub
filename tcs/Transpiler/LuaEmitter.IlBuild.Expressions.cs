@@ -83,9 +83,65 @@ public partial class LuaEmitter
                 return new IlLit(type != null
                     ? GetDefaultValueForType(type) : "nil");
             }
+            case SwitchExpressionSyntax switchExpr:
+                return BuildSwitchExpression(model, switchExpr);
+            case IsPatternExpressionSyntax isPattern:
+                return BuildIsPattern(model, isPattern);
+            case ConditionalAccessExpressionSyntax condAccess:
+                return BuildConditionalAccess(model, condAccess);
+            case SimpleLambdaExpressionSyntax or
+                ParenthesizedLambdaExpressionSyntax:
+                return BuildLambda(model, expr);
+            case ArrayCreationExpressionSyntax arr:
+                return BuildArrayItems(model, arr.Initializer);
+            case ImplicitArrayCreationExpressionSyntax implArr:
+                return BuildArrayItems(model, implArr.Initializer);
+            case WithExpressionSyntax withExpr:
+                return BuildWithExpr(model, withExpr);
+            case MemberBindingExpressionSyntax mb:
+                return new IlField(new IlVar("__tcs_ca"),
+                    mb.Name.Identifier.ValueText);
+            case DeclarationExpressionSyntax declaration:
+                return new IlVar(VisitDeclarationExpression(declaration));
+            case PredefinedTypeSyntax predefined:
+                return new IlVar(ResolvePredefinedType(predefined));
+            case BaseExpressionSyntax:
+                return new IlVar("self");
             default:
                 return null;
         }
+    }
+
+    private IlExpr? BuildArrayItems(SemanticModel model,
+        InitializerExpressionSyntax? initializer)
+    {
+        if (initializer == null) return new IlTable([]);
+        var items = new List<IlTableEntry>();
+        foreach (var e in initializer.Expressions)
+        {
+            var built = BuildExpr(model, e);
+            if (built == null) return null;
+            items.Add(new IlTableEntry(null, built));
+        }
+        return new IlTable([.. items]);
+    }
+
+    private IlExpr? BuildWithExpr(SemanticModel model,
+        WithExpressionSyntax withExpr)
+    {
+        var src = BuildExpr(model, withExpr.Expression);
+        if (src == null) return null;
+        var overrides = new List<(string, IlExpr)>();
+        foreach (var assign in withExpr.Initializer.Expressions)
+        {
+            if (assign is not AssignmentExpressionSyntax
+                { Left: IdentifierNameSyntax id } a)
+                continue; // legacy も非対応 entry は黙って skip する
+            var value = BuildExpr(model, a.Right);
+            if (value == null) return null;
+            overrides.Add((id.Identifier.ValueText, value));
+        }
+        return new IlWith(src, [.. overrides]);
     }
 
     // legacy ResolveIdentifier の写像 (bare method group と custom property は
@@ -99,7 +155,10 @@ public partial class LuaEmitter
             case IMethodSymbol:
                 return null;
             case IPropertySymbol custom when IsCustomProperty(custom):
-                return null;
+                return custom.IsStatic
+                    ? new IlDynCall(new IlField(
+                        new IlVar(custom.ContainingType.Name), $"get_{name}"), [])
+                    : new IlInvoke(new IlVar("self"), $"get_{name}", []);
             case IFieldSymbol { IsStatic: false }
                 or IPropertySymbol { IsStatic: false }:
                 return new IlField(new IlVar("self"), name);
@@ -118,7 +177,18 @@ public partial class LuaEmitter
 
     private IlExpr? BuildBinary(SemanticModel model, BinaryExpressionSyntax bin)
     {
-        if (bin.IsKind(SyntaxKind.IsExpression)) return null;
+        // designation なしの `x is Type` (legacy VisitBinary の IsExpression 経路)
+        if (bin.IsKind(SyntaxKind.IsExpression))
+        {
+            var operand = BuildExpr(model, bin.Left);
+            if (operand == null) return null;
+            var patternType = model.GetTypeInfo(bin.Right).Type;
+            var typeRef = bin.Right is TypeSyntax typeSyntax
+                ? FormatTypeReference(typeSyntax)
+                : BuildTypeRefText(model, bin.Right);
+            var check = BuildTypeCheck(operand, patternType, typeRef);
+            return check == null ? null : new IlParen(check);
+        }
 
         var left = BuildExpr(model, bin.Left);
         var right = BuildExpr(model, bin.Right);
@@ -136,11 +206,16 @@ public partial class LuaEmitter
                 return new IlCall("math.fmod", [left, right]);
         }
 
-        // bool の ?? は IIFE 経路 (legacy) — fallback
+        // bool の ?? は false を fallback しない明示 nil 判定 IIFE (legacy 同形)
         if (bin.IsKind(SyntaxKind.CoalesceExpression)
             && UnwrapNullable(model.GetTypeInfo(bin.Left).Type)?.SpecialType
                 == SpecialType.System_Boolean)
-            return null;
+            return new IlIife([
+                new IlLocal("__tcs_lhs", left),
+                new IlIf([(new IlBin(IlBinOp.Ne, new IlVar("__tcs_lhs"),
+                        new IlLit("nil")),
+                    new IlBlock([new IlReturn(new IlVar("__tcs_lhs"))]))], null),
+                new IlReturn(right)]);
 
         var isStringConcat = bin.Kind() == SyntaxKind.AddExpression &&
             (model.GetTypeInfo(bin.Left).Type?.SpecialType == SpecialType.System_String ||
@@ -237,6 +312,23 @@ public partial class LuaEmitter
     private IlExpr? BuildInvocation(SemanticModel model,
         InvocationExpressionSyntax invocation)
     {
+        // out 引数を取る経路 (user method multi-return / Dict.TryGetValue) は
+        // 通常の引数構築より先に分岐する
+        if (invocation.Expression is MemberAccessExpressionSyntax maEarly
+            && model.GetSymbolInfo(maEarly).Symbol is IMethodSymbol earlyMethod)
+        {
+            if (earlyMethod.Parameters.Any(p => p.RefKind == RefKind.Out)
+                && earlyMethod.DeclaringSyntaxReferences
+                    .Any(r => ReferenceTrees.Contains(r.SyntaxTree)))
+                return BuildRefMultiReturnExpr(model, invocation, maEarly,
+                    earlyMethod);
+            if (maEarly.Name.Identifier.ValueText == "TryGetValue"
+                && IsDictType(model.GetTypeInfo(maEarly.Expression).Type
+                    ?.OriginalDefinition.ToDisplayString() ?? ""))
+                return BuildDictTryGetValue(model, invocation, maEarly,
+                    earlyMethod);
+        }
+
         if (invocation.ArgumentList.Arguments
             .Any(a => !a.RefKindKeyword.IsKind(SyntaxKind.None)))
             return null;
@@ -254,19 +346,16 @@ public partial class LuaEmitter
             var symbol = model.GetSymbolInfo(ma).Symbol;
             var methodName = ma.Name.Identifier.ValueText;
 
-            if (ma.Expression is BaseExpressionSyntax) return null;
+            if (ma.Expression is BaseExpressionSyntax
+                && symbol is IMethodSymbol baseMethod)
+                return new IlCall(
+                    $"{baseMethod.ContainingType.Name}.{methodName}",
+                    [new IlVar("self"), .. argArr]);
 
             if (symbol is IMethodSymbol { IsStatic: true } staticFacade
                 && IsTinySystemFacade(staticFacade.ContainingType))
                 return new IlCall(
                     $"{staticFacade.ContainingType.Name}.{methodName}", argArr);
-
-            // --ref out 引数 multi-return は fallback
-            if (symbol is IMethodSymbol refMethod
-                && refMethod.Parameters.Any(p => p.RefKind == RefKind.Out)
-                && refMethod.DeclaringSyntaxReferences
-                    .Any(r => ReferenceTrees.Contains(r.SyntaxTree)))
-                return null;
 
             if (symbol is IMethodSymbol collectionMethod
                 && TryBuildCollectionCall(model, ma, collectionMethod,
@@ -276,7 +365,23 @@ public partial class LuaEmitter
             if (methodName == "GetValueOrDefault" && symbol is IMethodSymbol gvd
                 && gvd.ContainingType.OriginalDefinition.SpecialType
                     == SpecialType.System_Nullable_T)
-                return null;
+            {
+                var obj = BuildExpr(model, ma.Expression);
+                if (obj == null) return null;
+                if (argArr.Length == 1)
+                    return new IlIife([
+                        new IlLocal("__tcs_val", obj),
+                        new IlLocal("__tcs_fb", argArr[0]),
+                        new IlIf([(new IlBin(IlBinOp.Ne, new IlVar("__tcs_val"),
+                                new IlLit("nil")),
+                            new IlBlock([new IlReturn(new IlVar("__tcs_val"))]))],
+                            null),
+                        new IlReturn(new IlVar("__tcs_fb"))]);
+                var underlying = ((INamedTypeSymbol)gvd.ContainingType)
+                    .TypeArguments[0];
+                return new IlParen(new IlBin(IlBinOp.Or, obj,
+                    new IlLit(GetDefaultValueForType(underlying))));
+            }
 
             if (methodName == "WriteLine" && symbol is IMethodSymbol console
                 && console.ContainingType.ToDisplayString() == "System.Console")
@@ -359,10 +464,24 @@ public partial class LuaEmitter
         var typeDef = receiverType.OriginalDefinition.ToDisplayString();
         if (IsDictType(typeDef))
         {
-            // Dict は Add が代入形など statement 依存 — method fallback
-            result = null;
-            return methodName is "Add" or "Remove" or "ContainsKey"
-                or "TryGetValue" or "Clear";
+            var recvD = BuildExpr(model, ma.Expression);
+            if (recvD == null)
+                return methodName is "Add" or "Remove" or "ContainsKey";
+            switch (methodName)
+            {
+                case "Remove":
+                    result = new IlCall("Dict.Remove", [recvD, args[0]]);
+                    return true;
+                case "ContainsKey":
+                    result = new IlParen(new IlBin(IlBinOp.Ne,
+                        new IlIndex(recvD, args[0], false), new IlLit("nil")));
+                    return true;
+                case "Add":
+                    // 代入形は statement 側 (BuildDictAddStatInto) が扱う
+                    return true;
+                default:
+                    return false;
+            }
         }
         if (!IsListType(typeDef))
         {
@@ -393,7 +512,14 @@ public partial class LuaEmitter
                     [recv, new IlBin(IlBinOp.AddNum, args[0], new IlLit("1"))]);
                 return true;
             case "Clear":
-                return true; // IIFE — fallback
+                result = new IlIife([
+                    new IlLocal("__tcs_obj", recv),
+                    new IlForPairs("k", null, new IlVar("__tcs_obj"),
+                        new IlBlock([new IlAssign(
+                            new IlIndex(new IlVar("__tcs_obj"),
+                                new IlVar("k"), false),
+                            new IlLit("nil"))]))]);
+                return true;
             case "Sort":
                 result = new IlCall("List.Sort", [recv, .. args]);
                 return true;
@@ -475,7 +601,12 @@ public partial class LuaEmitter
                 && (receiverType?.SpecialType == SpecialType.System_String
                     || receiverType is IArrayTypeSymbol))
                 return new IlLen(obj);
-            if (IsCustomProperty(propSym)) return null;
+            if (IsCustomProperty(propSym))
+                return propSym.IsStatic
+                    ? new IlDynCall(new IlField(
+                        new IlVar(propSym.ContainingType.Name),
+                        $"get_{member}"), [])
+                    : new IlInvoke(obj, $"get_{member}", []);
             return new IlField(obj, member);
         }
 
@@ -532,8 +663,7 @@ public partial class LuaEmitter
             return new IlTable([.. entries]);
         }
 
-        if (typeSymbol == null || IsReferenceOnlyType(typeSymbol)) return null;
-        if (initializer != null) return null;
+        if (typeSymbol == null) return null;
         var args = new List<IlExpr>();
         foreach (var a in argumentList ?? [])
         {
@@ -542,7 +672,47 @@ public partial class LuaEmitter
             if (built == null) return null;
             args.Add(built);
         }
-        return new IlNewObj(typeSymbol.Name, [.. args]);
+        if (IsReferenceOnlyType(typeSymbol))
+            // ctor 引数つきは legacy が警告する経路 — fallback
+            return args.Count > 0
+                ? null : BuildRefTypeTable(model, initializer);
+        var ctor = new IlNewObj(typeSymbol.Name, [.. args]);
+        return initializer != null
+            ? BuildObjectInitializerExpr(model, ctor, initializer)
+            : ctor;
+    }
+
+    // Dictionary.TryGetValue(key, out v) — legacy IIFE の写像
+    private IlExpr? BuildDictTryGetValue(SemanticModel model,
+        InvocationExpressionSyntax invocation, MemberAccessExpressionSyntax ma,
+        IMethodSymbol methodSym)
+    {
+        if (invocation.ArgumentList.Arguments.Count != 2) return null;
+        var keyArg = invocation.ArgumentList.Arguments[0];
+        var outArg = invocation.ArgumentList.Arguments[1];
+        if (!keyArg.RefKindKeyword.IsKind(SyntaxKind.None)) return null;
+        var key = BuildExpr(model, keyArg.Expression);
+        var recv = BuildExpr(model, ma.Expression);
+        if (key == null || recv == null) return null;
+        IlExpr? target = outArg.Expression switch
+        {
+            DeclarationExpressionSyntax decl =>
+                new IlVar(VisitDeclarationExpression(decl)),
+            IdentifierNameSyntax id => new IlVar(id.Identifier.ValueText),
+            _ => null,
+        };
+        if (target == null) return null;
+        var defaultValue = GetDefaultValueForType(
+            methodSym.Parameters.Length > 1
+                ? methodSym.Parameters[1].Type : null);
+        return new IlIife([
+            new IlLocal("__tcs_value", new IlIndex(recv, key, false)),
+            new IlIf([(new IlBin(IlBinOp.Ne, new IlVar("__tcs_value"),
+                    new IlLit("nil")),
+                new IlBlock([new IlAssign(target, new IlVar("__tcs_value")),
+                    new IlReturn(new IlLit("true"))]))],
+                new IlBlock([new IlAssign(target, new IlLit(defaultValue)),
+                    new IlReturn(new IlLit("false"))]))]);
     }
 
     // legacy VisitInterpolatedString の写像 (alignment はリテラルのみ対応)

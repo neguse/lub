@@ -32,9 +32,11 @@ public partial class LuaEmitter
     private bool BuildStatInto(SemanticModel model, StatementSyntax stmt,
         List<IlStat> acc)
     {
-        // out var / is-pattern designation の前宣言が要る文は fallback
-        if (stmt is not BlockSyntax && CollectPreDeclNames(stmt).Count > 0)
-            return false;
+        // out var / is-pattern designation の前宣言 (legacy
+        // EmitOutVarDeclarations と同じ位置・同じ名前集合)
+        if (stmt is not BlockSyntax)
+            foreach (var name in CollectPreDeclNames(stmt))
+                acc.Add(new IlLocal(name, null) { Origin = stmt });
 
         switch (stmt)
         {
@@ -47,13 +49,30 @@ public partial class LuaEmitter
                 acc.Add(new IlReturn(value) { Origin = stmt });
                 return true;
             }
+            case LocalDeclarationStatementSyntax decon
+                when decon.Declaration.Variables.Count == 1
+                && decon.Declaration.Variables[0].Initializer?.Value
+                    is AssignmentExpressionSyntax
+                    {
+                        Left: DeclarationExpressionSyntax declExpr,
+                        Right: var rhs
+                    }:
+            {
+                // legacy VisitDeconstruction: 非 paren designation は無出力
+                if (declExpr.Designation is not
+                    ParenthesizedVariableDesignationSyntax pvd)
+                    return true;
+                var targets = pvd.Variables
+                    .Select(IlExpr (v) => new IlVar(
+                        v is SingleVariableDesignationSyntax sv
+                            ? sv.Identifier.ValueText : "_"))
+                    .ToList();
+                return BuildDeconstructionInto(model, rhs, targets,
+                    declare: true, stmt, acc);
+            }
             case LocalDeclarationStatementSyntax local:
             {
                 if (local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword))
-                    return false;
-                if (local.Declaration.Variables.Any(v =>
-                        v.Initializer?.Value is AssignmentExpressionSyntax
-                        { Left: DeclarationExpressionSyntax }))
                     return false;
                 foreach (var v in local.Declaration.Variables)
                 {
@@ -116,6 +135,8 @@ public partial class LuaEmitter
                 acc.Add(new IlRepeat(body, cond) { Origin = stmt });
                 return true;
             }
+            case SwitchStatementSyntax switchStmt:
+                return BuildSwitchStatInto(model, switchStmt, acc);
             default:
                 return false;
         }
@@ -179,12 +200,65 @@ public partial class LuaEmitter
         {
             case AssignmentExpressionSyntax
             {
-                Left: DeclarationExpressionSyntax or TupleExpressionSyntax
+                Left: DeclarationExpressionSyntax declExpr,
+                Right: var rhs,
             }:
-                return false;
+            {
+                if (declExpr.Designation is not
+                    ParenthesizedVariableDesignationSyntax pvd)
+                    return true; // legacy 同様に無出力
+                var targets = pvd.Variables
+                    .Select(IlExpr (v) => new IlVar(
+                        v is SingleVariableDesignationSyntax sv
+                            ? sv.Identifier.ValueText : "_"))
+                    .ToList();
+                return BuildDeconstructionInto(model, rhs, targets,
+                    declare: true, origin, acc);
+            }
+            case AssignmentExpressionSyntax
+            {
+                Left: TupleExpressionSyntax tuple,
+                Right: var tupleRhs,
+                RawKind: (int)SyntaxKind.SimpleAssignmentExpression,
+            }:
+            {
+                var targets = new List<IlExpr>();
+                foreach (var arg in tuple.Arguments)
+                {
+                    // 混在形 (var a, b) は legacy が警告 → fallback
+                    if (arg.Expression is DeclarationExpressionSyntax)
+                        return false;
+                    var built = BuildExpr(model, arg.Expression);
+                    if (built == null) return false;
+                    targets.Add(built);
+                }
+                return BuildDeconstructionInto(model, tupleRhs, targets,
+                    declare: false, origin, acc);
+            }
+            case AssignmentExpressionSyntax assign
+                when IsCustomPropertyTarget(model, assign.Left):
+                return BuildPropAssignInto(model, assign, origin, acc);
+            case AssignmentExpressionSyntax coalesce
+                when coalesce.IsKind(SyntaxKind.CoalesceAssignmentExpression):
+                return BuildCoalesceAssignInto(model, coalesce, origin, acc);
+            case AssignmentExpressionSyntax lowered
+                when !lowered.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                    && NeedsLoweredLvalue(lowered.Left):
+                return BuildLoweredCompoundInto(model, lowered, origin, acc);
             case AssignmentExpressionSyntax assign:
                 return BuildAssignInto(model, assign, origin, acc);
-            case InvocationExpressionSyntax:
+            case InvocationExpressionSyntax invocation:
+            {
+                if (BuildDictAddStatInto(model, invocation, origin, acc))
+                    return true;
+                if (BuildRefMultiReturnStatInto(model, invocation, origin, acc))
+                    return true;
+                var call = BuildExpr(model, expr);
+                if (call == null) return false;
+                acc.Add(new IlCallStat(call) { Origin = origin });
+                return true;
+            }
+            case ConditionalAccessExpressionSyntax:
             {
                 var call = BuildExpr(model, expr);
                 if (call == null) return false;
@@ -196,12 +270,39 @@ public partial class LuaEmitter
         }
     }
 
+    // Dictionary.Add は Lua では代入形 (legacy TryMapCollectionMethod)
+    private bool BuildDictAddStatInto(SemanticModel model,
+        InvocationExpressionSyntax invocation, StatementSyntax origin,
+        List<IlStat> acc)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax ma
+            || ma.Name.Identifier.ValueText != "Add")
+            return false;
+        var typeDef = model.GetTypeInfo(ma.Expression).Type
+            ?.OriginalDefinition.ToDisplayString() ?? "";
+        if (!IsDictType(typeDef)) return false;
+        if (invocation.ArgumentList.Arguments.Count != 2) return false;
+        if (invocation.ArgumentList.Arguments
+            .Any(a => !a.RefKindKeyword.IsKind(SyntaxKind.None)))
+            return false;
+        var recv = BuildExpr(model, ma.Expression);
+        var key = BuildExpr(model,
+            invocation.ArgumentList.Arguments[0].Expression);
+        var value = BuildExpr(model,
+            invocation.ArgumentList.Arguments[1].Expression);
+        if (recv == null || key == null || value == null) return false;
+        acc.Add(new IlAssign(new IlIndex(recv, key, false), value)
+            { Origin = origin });
+        return true;
+    }
+
     private bool BuildIncrementInto(SemanticModel model,
         ExpressionSyntax operand, bool increment, StatementSyntax origin,
         List<IlStat> acc)
     {
-        if (IsCustomPropertyTarget(model, operand)) return false;
-        if (NeedsLoweredLvalue(operand)) return false;
+        if (IsCustomPropertyTarget(model, operand) || NeedsLoweredLvalue(operand))
+            return BuildLoweredIncrementInto(model, operand, increment,
+                origin, acc);
         var target = BuildExpr(model, operand);
         if (target == null) return false;
         acc.Add(new IlAssign(target,
@@ -215,9 +316,6 @@ public partial class LuaEmitter
         AssignmentExpressionSyntax assign, StatementSyntax origin,
         List<IlStat> acc)
     {
-        if (IsCustomPropertyTarget(model, assign.Left)) return false;
-        if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression)) return false;
-
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
             var target = BuildExpr(model, assign.Left);
