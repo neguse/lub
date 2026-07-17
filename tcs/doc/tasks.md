@@ -17,7 +17,6 @@
 
 C2 spec differential の発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T196** [P1] static constructor が silent 欠落、static field 初期化順の意味論差 (StaticConstructors1/2, StaticFieldInitialization2) — cctor は TCS1001、初期化順は個別判断
 - **T197** [P1] 式文脈の increment/decrement の副作用が消える・引数評価順 (Run-timeEvalOfArgLists1) — emitter 調査・修正
 - **T199** [P1] インスタンス field の default 値が nil になる経路 (VariableInitializers2) — 調査・修正
 - **T198** [P2] 補間文字列の alignment / format specifier が無視される (DeclCustomHandler1) — 対応 or 診断

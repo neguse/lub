@@ -1101,3 +1101,8 @@
 ### T194: メソッド overload の TCS1001 診断化 ✓ (2026-07-18)
 - Lua table は同名 key を 1 つしか持てず、overload が last-write-wins の silent 誤 dispatch になっていた。同一型内の 2 個目以降の同名メソッド宣言を TCS1001 で拒否 (MultipleConstructors と同じ方針)
 - 検証: dotnet test 639/639 + run-tests.sh 全ゲート green (samples に overload 使用なし)、spec baseline で ParameterArrays3 ほかが Diag へ
+
+### T196: static constructor の TCS1001 診断化 ✓ (2026-07-18)
+- static constructor は「初回アクセス時に一度だけ」の実行タイミング意味論を持ち、eager な class table 生成では再現できず silent 欠落していた。TCS1001 で拒否
+- 検証: dotnet test 640/640 green、spec baseline で StaticConstructors1/2 と StaticFieldInitialization2 (いずれも static ctor を含む) が Bug → Diag。残 Bug 5
+- 判断: static field 初期化「順序」自体の意味論差 (宣言順 eager vs 初回アクセス) は、cctor なしの純粋な発現例が corpus に無いため個別タスク化しない。需要が出たら support-matrix の既知差異に記載

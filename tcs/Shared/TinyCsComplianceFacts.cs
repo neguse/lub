@@ -151,6 +151,11 @@ public static partial class TinyCsComplianceFacts
             ParameterSyntax param
                 when param.Modifiers.Any(SyntaxKind.RefKeyword)
                     => "RefParameter",
+            // static constructor は「初回アクセス時に一度だけ」の実行タイミング
+            // 意味論を持ち、eager な class table 生成では再現できない。
+            ConstructorDeclarationSyntax staticCtor
+                when staticCtor.Modifiers.Any(SyntaxKind.StaticKeyword)
+                    => "StaticConstructor",
             // constructor chaining は未対応。this(...) と 2 個目以降の
             // constructor は黙って別意味にせず診断する (emit は先頭 ctor)。
             ConstructorInitializerSyntax init

@@ -625,10 +625,10 @@
     "category": "CsErr"
   },
   "classes.md:StaticConstructors1": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:StaticConstructors2": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:StaticConstructors3": {
     "category": "Diag"
@@ -637,7 +637,7 @@
     "category": "InRun"
   },
   "classes.md:StaticFieldInitialization2": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:StaticReadonlyFieldsAsConstants": {
     "category": "InCompile"

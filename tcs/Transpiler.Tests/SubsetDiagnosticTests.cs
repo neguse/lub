@@ -171,6 +171,21 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void StaticConstructor_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                static T() { }
+
+                public static int Test() => 1;
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "StaticConstructor");
+    }
+
+    [Fact]
     public void MethodOverloads_ReportWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
