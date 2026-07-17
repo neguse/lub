@@ -1,8 +1,9 @@
 # 仕様ベース conformance / differential testing 設計
 
-> Status: C0-C2 (spec 側) 完了 — T182-T184、発見 T188-T208 修正済み。全 642 例で
-> Bug 0、InRun 36/36 が実 .NET オラクルと出力一致。残: T206 (既存 corpus 裏取り)、
-> C3-C5 (T185-T187)
+> Status: **全フェーズ完了** (C0-C5 = T182-T187 + T206、発見 T188-T209 修正済み)。
+> 仕様例 642 全数分類で Bug 0、InRun 36/36 と既存 corpus 253 呼び出しが実 .NET
+> オラクルと一致、sweep + differential + fuzz smoke は run-tests 恒常ゲート、
+> deep fuzz は run-fuzz.sh (seed 再現 + 自動縮小)
 >
 > Date: 2026-07-17
 >

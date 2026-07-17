@@ -14,7 +14,6 @@
 設計正本: `doc/spec-conformance-design.md`。C0→C1→C2→C3 直列、C4/C5 は C2 後に並行可。
 
 
-- **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly
 
 ---
 

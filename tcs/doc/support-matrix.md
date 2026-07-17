@@ -930,3 +930,15 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | string | string | UTF-8 前提 |
 | null | nil | |
 | class instance | table | metatable 付き |
+
+## 27. 既知の意味論差 (実行可能な正本)
+
+C# と Lua 出力の意味論差のうち、正規化 (bool 表記・浮動小数の指数表記) で吸収できない
+例別の受容差異は `Transpiler.Tests/SpecConformance/known-differences.json` に理由付きで
+登録し、spec conformance sweep が実行時に参照する。代表例:
+
+- string の参照等価: Lua の string は intern される値のため、別インスタンス比較で
+  C# (false) と異なり true になる
+- 文字列長: C# は UTF-16 code unit 数、Lua は byte 数 (UTF-8)
+- 数値表示: Lua は integer/float を区別し `4` / `4.0`、C# double は `4`。
+  differential は数値等価で比較する

@@ -1160,3 +1160,14 @@
 - branch coverage (主要ファイル): LuaEmitter.cs 94% / Invocations 93% / Expressions 86% / Statements 86% / **Objects 68.5%** / **Patterns 70.7%**、Shared facts 83-97%。CLI 系は Program.cs 67% / FileIdentity 50% (watch・stacktrace 注釈の分岐)
 - 判断: カバレッジ率目標は置かない (design 方針)。corpus 追加の需要判定として、Objects (with 式 / initializer 系) と Patterns (switch 式 / null 条件) の未踏分岐が最有力候補。CLI 分岐は CliRuntimeTests の粒度で妥当
 - 検証: dotnet test 662/662 green (collector 追加後)
+
+### T186: [C4] サブセット内 AST 生成 fuzz ✓ (2026-07-18)
+- FuzzGenerator (seed 決定的): int/bool/string/List<int> の宣言、算術 (非ゼロ定数除数の除算/剰余込み)、比較・論理、if/else、有界 for、文字列連結、Console 出力を生成。32bit overflow (C# wrap vs Lua 64bit の既知差) は ±50 初期値と有界ループで生成側から回避
+- FuzzRunner: 生成物に TCS 診断が出たら生成器バグとして fail → tcs → Lua 実行と実 .NET 実行 (SpecDotnetExecutor 再利用) を行単位比較 (正規化 + 数値等価)。失敗時は文単位 greedy 縮小で最小再現を作り seed とともに報告
+- 検出網の自己検証: Lua への故障注入 (余分な print) を必ず検出することをテストで常設 (design §17 C4 gate 相当)。縮小の機構検証も常設
+- run-tests に smoke (20 seeds、+5 秒) を常設、`run-fuzz.sh [count] [seed]` で deep 実行 (既定 500)
+- 検証: 単体 3/3 green、50 seeds 全一致、run-tests.sh 全ゲート 45 秒 exit 0 (666/666)
+- 判断: nightly の cron 配線は CI 未整備のため持たない — smoke が恒常ゲートにあり、deep はスクリプト一発で足りる
+
+### C0-C5 受入条件の充足確認 ✓ (2026-07-18)
+- design doc §8 の 5 項目: (1) 仕様例全数分類 + Bug 0 + 章別レポート ✓ (2) 既存 corpus differential の allowlist 外差異 0 ✓ (253 match / mismatch 0) (3) 後退検知ゲート常設 ✓ (run-tests = pre-commit hook 経由で毎コミット) (4) fuzz の seed 再現 + 自動縮小 ✓ (nightly は run-fuzz.sh、判断は T186 参照) (5) known-differences ↔ support-matrix 相互参照 ✓ (support-matrix §27 を新設)
