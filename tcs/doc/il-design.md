@@ -115,7 +115,10 @@ CLOS（CLHS 4.3.6 Redefining Classes）の語彙を踏襲する。
 | M4 | i32/f32 数値モデル移行（`LUA_32BITS`） | 全テストが 32bit ビルドで通過 |
 | M5 | struct / record struct のサブセット追加 | TCS1001 解除、値意味論の semantic テスト |
 
-M4 / M5 の順序は入れ替え可。M1 は純リファクタリングであり、
+実施順は M1 → M4 → M2 → M3 ∥ M5（表の並びと異なり M4 を M3 より前に置く。
+double 前提の digest baseline で IL→C backend を書き始める手戻りを封じるため）。
+タスク分解は `doc/tasks.md` の IL トラック（T210-T220）。
+M1 は純リファクタリングであり、
 `doc/incremental-module-compilation-design.md` の常駐 session /
 revision 単位 apply の構成を壊さないことを完了条件に含める。
 
