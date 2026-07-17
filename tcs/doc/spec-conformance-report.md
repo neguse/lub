@@ -6,24 +6,24 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | Markdown file | InRun | InCompile | Diag | CsErr | Unextracted | Bug | Total |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | arrays.md | 3 | 0 | 4 | 2 | 2 | 0 | 11 |
-| attributes.md | 3 | 15 | 16 | 5 | 1 | 0 | 40 |
-| basic-concepts.md | 2 | 6 | 14 | 10 | 0 | 0 | 32 |
+| attributes.md | 2 | 15 | 16 | 5 | 1 | 1 | 40 |
+| basic-concepts.md | 1 | 6 | 14 | 10 | 0 | 1 | 32 |
 | classes.md | 13 | 56 | 49 | 28 | 1 | 0 | 147 |
 | conversions.md | 4 | 1 | 10 | 7 | 0 | 0 | 22 |
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
 | documentation-comments.md | 0 | 16 | 10 | 2 | 2 | 0 | 30 |
 | enums.md | 1 | 3 | 0 | 2 | 0 | 0 | 6 |
-| expressions.md | 9 | 8 | 55 | 19 | 2 | 0 | 93 |
-| interfaces.md | 4 | 30 | 2 | 7 | 0 | 0 | 43 |
+| expressions.md | 8 | 8 | 55 | 19 | 2 | 1 | 93 |
+| interfaces.md | 3 | 30 | 2 | 7 | 0 | 1 | 43 |
 | lexical-structure.md | 6 | 14 | 1 | 1 | 1 | 0 | 23 |
 | namespaces.md | 0 | 15 | 3 | 10 | 7 | 0 | 35 |
 | patterns.md | 3 | 0 | 16 | 0 | 1 | 0 | 20 |
 | statements.md | 0 | 0 | 30 | 5 | 0 | 0 | 35 |
 | structs.md | 0 | 0 | 13 | 8 | 3 | 0 | 24 |
-| types.md | 4 | 4 | 12 | 2 | 4 | 0 | 26 |
+| types.md | 3 | 4 | 12 | 2 | 4 | 1 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 55 | 171 | 248 | 119 | 49 | 0 | 642 |
+| **Total** | 50 | 171 | 248 | 119 | 49 | 5 | 642 |
 
 ## Unextracted reasons
 
@@ -36,6 +36,49 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | unsupported-template:expected-exception | 9 |
 | unsupported-template:extern-lib | 7 |
 
+## Execution (C1: expectedOutput / ignoreOutput)
+
+Executed 12 InRun examples with an output contract; passed 7 (1 via known-differences allowlist). Failures are reclassified as Bug below.
+
+## Unexpected extraction details
+
+- `attributes.md:AttributeCantBeGeneric` (expected-error-not-raised): <no details>
+- `documentation-comments.md:IDStringsFields` (unexpected-compile-error): (21,29): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `documentation-comments.md:IDStringsMethods` (unexpected-compile-error): (19,28): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `patterns.md:LogicalPattern3` (unexpected-compile-error): (19,1): error CS0841: Cannot use local variable 'result' before it is declared
+- `structs.md:Constructors2` (expected-error-not-raised): <no details>
+- `structs.md:RecordStructEqualityMembers2` (unexpected-compile-error): (32,59): error CS1513: } expected
+- `structs.md:RecordStructPrimaryConstructor2` (expected-error-mismatch): missing: CS0171
+- `unsafe-code.md:Address-ofOperator` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:Fixed-sizeBuffers1` (unexpected-compile-error): (1,15): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:Fixed-sizeBuffers2` (unexpected-compile-error): (1,15): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:Fixed-sizeBuffersInExpressions` (unexpected-compile-error): (1,15): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FixedStatement1` (unexpected-compile-error): (6,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FixedStatement2` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FixedStatement3` (unexpected-compile-error): (3,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FixedStatement4` (unexpected-compile-error): (18,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FixedStatement5` (unexpected-compile-error): (23,32): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FunctionPointers1` (unexpected-compile-error): (1,14): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:FunctionPointers2` (unexpected-compile-error): (1,14): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerArithmetic` (unexpected-compile-error): (18,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerConversions1` (unexpected-compile-error): (1,20): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerConversions2` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerElementAccess1` (unexpected-compile-error): (5,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerElementAccess2` (unexpected-compile-error): (5,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerMemberAccess1` (unexpected-compile-error): (26,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerMemberAccess2` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerTypes1` (unexpected-compile-error): (7,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:PointerTypes2` (unexpected-compile-error): (1,20): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:UnsafeContexts2` (unexpected-compile-error): (4,25): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:UnsafeContexts3` (unexpected-compile-error): (3,32): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:UnsafeContexts4` (unexpected-compile-error): (1,21): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:UnsafeModifierOnStruct` (unexpected-compile-error): (1,22): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:UnsafeStackAllocation2` (unexpected-compile-error): (23,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+
 ## Bugs
 
-None.
+- `attributes.md:ConditionalMethods4`: output mismatch<br>expected: Class2.M executed<br>actual:   Class2.M executed | Class1.M executed
+- `basic-concepts.md:TopLevelStatements2A`: Lua execution failed: Lua exited with code 1:<br>/home/neguse/ghq/github.com/neguse/tcs/deps/lua/lua: /tmp/tmpKwWXEC.tmp:24: attempt to get length of a nil value (global 'args')<br>stack traceback:<br>	/tmp/tmpKwWXEC.tmp:24: in main chunk<br>	[C]: in ?<br><br>--- script ---<br>local TinySystem = dofile("/home/neguse/ghq/github.com/neguse/tcs/runtime/tinysystem.lua")<br>List = TinySystem.List<br>Dict = TinySystem.Dict<br>Math = TinySystem.Math<br>String = TinySystem.String<br>Random = TinySystem.Random<br>-- Generated by TinyC# transpiler<br>local function __tcs_idiv(a, b)<br>  local q = a // b<br>  if a % b ~= 0 and (a < 0) ~= (b < 0) then q = q + 1 end<br>  return q<br>end<br>local function __tcs_irem(a, b)<br>  return a - __tcs_idiv(a, b) * b<br>end<br>C = {}<br>C.__index = C<br><br>function C.new()<br>  local self = setmetatable({}, C)<br>  return self<br>end<br><br>print("cmd-line args length = " .. tostring(#args))<br>local c = C.new()<br><br>
+- `expressions.md:AdditionOperator`: Lua execution failed: Lua exited with code 1:<br>/home/neguse/ghq/github.com/neguse/tcs/deps/lua/lua: /tmp/tmpmvvxNI.tmp:26: attempt to concatenate a nil value (local 's')<br>stack traceback:<br>	/tmp/tmpmvvxNI.tmp:26: in field 'Main'<br>	/tmp/tmpmvvxNI.tmp:35: in main chunk<br>	[C]: in ?<br><br>--- script ---<br>local TinySystem = dofile("/home/neguse/ghq/github.com/neguse/tcs/runtime/tinysystem.lua")<br>List = TinySystem.List<br>Dict = TinySystem.Dict<br>Math = TinySystem.Math<br>String = TinySystem.String<br>Random = TinySystem.Random<br>-- Generated by TinyC# transpiler<br>local function __tcs_idiv(a, b)<br>  local q = a // b<br>  if a % b ~= 0 and (a < 0) ~= (b < 0) then q = q + 1 end<br>  return q<br>end<br>local function __tcs_irem(a, b)<br>  return a - __tcs_idiv(a, b) * b<br>end<br>Test = {}<br>Test.__index = Test<br><br>function Test.new()<br>  local self = setmetatable({}, Test)<br>  return self<br>end<br><br>function Test.Main()<br>  local s = nil<br>  print("s = >" .. s .. "<")<br>  local i = 1<br>  print("i = " .. i)<br>  local f = 1.2300E+15<br>  print("f = " .. f)<br>  local d = 2.900<br>  print("d = " .. d)<br>end<br><br>Test.Main()
+- `interfaces.md:InterfaceMember`: Lua execution failed: Lua exited with code 1:<br>/home/neguse/ghq/github.com/neguse/tcs/deps/lua/lua: /tmp/tmpfOU18p.tmp:34: attempt to call a nil value (method 'M')<br>stack traceback:<br>	/tmp/tmpfOU18p.tmp:34: in field 'Main'<br>	/tmp/tmpfOU18p.tmp:39: in main chunk<br>	[C]: in ?<br><br>--- script ---<br>local TinySystem = dofile("/home/neguse/ghq/github.com/neguse/tcs/runtime/tinysystem.lua")<br>List = TinySystem.List<br>Dict = TinySystem.Dict<br>Math = TinySystem.Math<br>String = TinySystem.String<br>Random = TinySystem.Random<br>-- Generated by TinyC# transpiler<br>local function __tcs_idiv(a, b)<br>  local q = a // b<br>  if a % b ~= 0 and (a < 0) ~= (b < 0) then q = q + 1 end<br>  return q<br>end<br>local function __tcs_irem(a, b)<br>  return a - __tcs_idiv(a, b) * b<br>end<br>C = {}<br>C.__index = C<br><br>function C.new()<br>  local self = setmetatable({}, C)<br>  return self<br>end<br><br>Test = {}<br>Test.__index = Test<br><br>function Test.new()<br>  local self = setmetatable({}, Test)<br>  return self<br>end<br><br>function Test.Main()<br>  local c = C.new()<br>  ;(c):M()<br>  print("IA.P = " .. tostring((c):get_P()))<br>  print("IB.P = " .. tostring((c):get_P()))<br>end<br><br>Test.Main()
+- `types.md:TupleTypes5`: Lua execution failed: Lua exited with code 1:<br>/home/neguse/ghq/github.com/neguse/tcs/deps/lua/lua: /tmp/tmpSsCGFS.tmp:16: attempt to index a nil value (global 'ValueTuple')<br>stack traceback:<br>	/tmp/tmpSsCGFS.tmp:16: in main chunk<br>	[C]: in ?<br><br>--- script ---<br>local TinySystem = dofile("/home/neguse/ghq/github.com/neguse/tcs/runtime/tinysystem.lua")<br>List = TinySystem.List<br>Dict = TinySystem.Dict<br>Math = TinySystem.Math<br>String = TinySystem.String<br>Random = TinySystem.Random<br>-- Generated by TinyC# transpiler<br>local function __tcs_idiv(a, b)<br>  local q = a // b<br>  if a % b ~= 0 and (a < 0) ~= (b < 0) then q = q + 1 end<br>  return q<br>end<br>local function __tcs_irem(a, b)<br>  return a - __tcs_idiv(a, b) * b<br>end<br>local a = ValueTuple.new("Bert", 42)<br>local b = a<br>print(tostring(b.name) .. " is " .. tostring(b.age) .. " years old")<br><br>

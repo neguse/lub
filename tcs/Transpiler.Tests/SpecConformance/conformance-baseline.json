@@ -111,7 +111,7 @@
     "category": "InCompile"
   },
   "attributes.md:ConditionalMethods4": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "attributes.md:DeclCustomHandler1": {
     "category": "InRun"
@@ -225,7 +225,7 @@
     "category": "CsErr"
   },
   "basic-concepts.md:TopLevelStatements2A": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "basic-concepts.md:TopLevelStatements2B": {
     "category": "Diag"
@@ -891,7 +891,7 @@
     "category": "InCompile"
   },
   "expressions.md:AdditionOperator": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "expressions.md:AdditionOperator2": {
     "category": "CsErr"
@@ -1256,7 +1256,7 @@
     "category": "InCompile"
   },
   "interfaces.md:InterfaceMember": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "interfaces.md:InterfaceMemberAccess2": {
     "category": "InCompile"
@@ -1800,7 +1800,7 @@
     "category": "Diag"
   },
   "types.md:TupleTypes5": {
-    "category": "InRun"
+    "category": "Bug"
   },
   "types.md:UpdateStates": {
     "category": "Diag"

@@ -93,13 +93,20 @@ internal sealed record SpecExpansion(
 internal sealed record SpecClassificationResult(
     SpecClassification Category,
     string? Reason = null,
-    string? Details = null);
+    string? Details = null,
+    string? Lua = null);
 
 internal sealed record ClassifiedSpecExample(
     SpecExample Example,
     SpecClassificationResult Result);
 
+internal sealed record SpecExecutionStats(
+    int Executed,
+    int Passed,
+    int KnownDifferences);
+
 internal sealed record SpecSweepResult(
     IReadOnlyList<SpecExample> Examples,
     IReadOnlyList<ClassifiedSpecExample> Classified,
-    string? BaselineDifference);
+    string? BaselineDifference,
+    SpecExecutionStats Execution);

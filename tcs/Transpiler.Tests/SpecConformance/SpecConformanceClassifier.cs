@@ -85,7 +85,7 @@ internal sealed partial class SpecConformanceClassifier
 
             return new SpecClassificationResult(expansion.IsExecutable
                 ? SpecClassification.InRun
-                : SpecClassification.InCompile);
+                : SpecClassification.InCompile, Lua: result.Lua);
         }
         catch (Exception exception)
         {

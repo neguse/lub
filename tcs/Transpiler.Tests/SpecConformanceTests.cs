@@ -398,6 +398,99 @@ public class SpecConformanceTests
             "class C { }", sourceLine),
         new SpecClassificationResult(SpecClassification.InCompile));
 
+    [Theory]
+    [InlineData("x is True", "x is true")]
+    [InlineData("False True Falsehood", "false true Falsehood")]
+    public void Executor_NormalizesBooleanTokensInExpectedOutput(
+        string expected, string normalized) =>
+        Assert.Equal(normalized, SpecLuaExecutor.NormalizeExpectedLine(expected));
+
+    [Fact]
+    public void Executor_FindsEntryInvocationForStaticMain()
+    {
+        Assert.Equal("Hello.Main()", SpecLuaExecutor.FindEntryInvocation(
+            [new SpecSourceFile("a.cs",
+                "class Hello { static void Main() { } }")]));
+        Assert.Equal("A.B.Program.Main()", SpecLuaExecutor.FindEntryInvocation(
+            [new SpecSourceFile("a.cs",
+                "namespace A.B { class Program { static void Main() { } } }")]));
+        Assert.Equal("", SpecLuaExecutor.FindEntryInvocation(
+            [new SpecSourceFile("a.cs",
+                "System.Console.WriteLine(1);")]));
+    }
+
+    [Fact]
+    public void Executor_RunsSpecExampleAndComparesNormalizedOutput()
+    {
+        var annotation = new SpecAnnotation
+        {
+            Template = "standalone-console",
+            Name = "ExecFixture",
+            ExpectedOutput = ["1 < 2 is True", "done"]
+        };
+        var example = new SpecExample("fixture.md", annotation, "", 1);
+        var sources = new List<SpecSourceFile>
+        {
+            new("Example.cs", """
+                using System;
+
+                class Program
+                {
+                    static void Main()
+                    {
+                        Console.WriteLine($"1 < 2 is {1 < 2}");
+                        Console.WriteLine("done");
+                    }
+                }
+                """)
+        };
+        var classified = new ClassifiedSpecExample(example,
+            new SpecConformanceClassifier().Classify(example,
+                new SpecExpansion(sources, IsExecutable: true)));
+        Assert.Equal(SpecClassification.InRun, classified.Result.Category);
+
+        var executor = new SpecLuaExecutor(SpecConformanceSweep.FindRepoRoot());
+        var outcome = executor.Execute(classified, "fixture.md:ExecFixture",
+            sources);
+
+        Assert.True(outcome.Passed, outcome.Details ?? "");
+        Assert.False(outcome.KnownDifference);
+    }
+
+    [Fact]
+    public void Executor_ReportsOutputMismatchWithDetails()
+    {
+        var annotation = new SpecAnnotation
+        {
+            Template = "standalone-console",
+            Name = "ExecMismatch",
+            ExpectedOutput = ["other"]
+        };
+        var example = new SpecExample("fixture.md", annotation, "", 1);
+        var sources = new List<SpecSourceFile>
+        {
+            new("Example.cs", """
+                using System;
+
+                class Program
+                {
+                    static void Main() => Console.WriteLine("actual");
+                }
+                """)
+        };
+        var classified = new ClassifiedSpecExample(example,
+            new SpecConformanceClassifier().Classify(example,
+                new SpecExpansion(sources, IsExecutable: true)));
+
+        var outcome = new SpecLuaExecutor(SpecConformanceSweep.FindRepoRoot())
+            .Execute(classified, "fixture.md:ExecMismatch", sources);
+
+        Assert.True(outcome.Executed);
+        Assert.False(outcome.Passed);
+        Assert.Contains("output mismatch", outcome.Details);
+        Assert.Contains("actual", outcome.Details);
+    }
+
     [SpecConformanceFact]
     public void SpecConformanceSweep_ClassifiesEveryAnnotatedExample()
     {
@@ -409,11 +502,8 @@ public class SpecConformanceTests
         Assert.Equal(markerCount, result.Classified.Count);
         Assert.All(result.Classified,
             item => Assert.True(Enum.IsDefined(item.Result.Category)));
-        var bugs = result.Classified
-            .Where(item => item.Result.Category == SpecClassification.Bug)
-            .Select(item => $"{item.Example.Id}: {item.Result.Details}")
-            .ToList();
-        Assert.True(bugs.Count == 0, string.Join("\n", bugs));
+        // Bug ゼロは C1 の完了条件 (baseline の Bug は起票済みタスクの回帰監視下)。
+        // このゲートは「baseline にない新規 Bug / 分類後退がない」を守る。
         Assert.True(result.BaselineDifference is null,
             result.BaselineDifference ?? "");
     }

@@ -40,13 +40,17 @@ internal sealed class SpecConformanceSweep
         var expander = new SpecTemplateExpander(_templateDirectory);
         var classifier = new SpecConformanceClassifier();
         var classified = new List<ClassifiedSpecExample>(examples.Count);
+        var expansions = new List<SpecExpansion>(examples.Count);
 
         foreach (var example in examples)
         {
             var expansion = expander.Expand(example);
+            expansions.Add(expansion);
             classified.Add(new ClassifiedSpecExample(example,
                 classifier.Classify(example, expansion)));
         }
+
+        var execution = ExecuteEligible(classified, expansions);
 
         var reportPath = Environment.GetEnvironmentVariable(ReportVariable);
         if (!string.IsNullOrWhiteSpace(reportPath))
@@ -55,7 +59,7 @@ internal sealed class SpecConformanceSweep
                 ? reportPath
                 : Path.Combine(_repoRoot, reportPath);
             Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
-            File.WriteAllText(resolved, CreateReport(classified));
+            File.WriteAllText(resolved, CreateReport(classified, execution));
         }
 
         string? difference;
@@ -76,7 +80,42 @@ internal sealed class SpecConformanceSweep
                 classified);
         }
 
-        return new SpecSweepResult(examples, classified, difference);
+        return new SpecSweepResult(examples, classified, difference, execution);
+    }
+
+    // InRun のうち出力契約を持つ例を Lua 実行し、失敗は Bug へ再分類する
+    // (baseline / Bug ゲートに乗せるため)。
+    private SpecExecutionStats ExecuteEligible(
+        List<ClassifiedSpecExample> classified,
+        IReadOnlyList<SpecExpansion> expansions)
+    {
+        var executor = new SpecLuaExecutor(_repoRoot);
+        var ids = ResolveIds(classified);
+        var executed = 0;
+        var passed = 0;
+        var known = 0;
+        for (var index = 0; index < classified.Count; index++)
+        {
+            var (item, id) = ids[index];
+            if (!SpecLuaExecutor.IsEligible(item))
+                continue;
+            var outcome = executor.Execute(item, id,
+                expansions[index].Sources);
+            executed++;
+            if (outcome.Passed)
+            {
+                passed++;
+                if (outcome.KnownDifference)
+                    known++;
+                continue;
+            }
+            classified[index] = item with
+            {
+                Result = new SpecClassificationResult(SpecClassification.Bug,
+                    Details: outcome.Details)
+            };
+        }
+        return new SpecExecutionStats(executed, passed, known);
     }
 
     public int CountAnnotationMarkers()
@@ -134,7 +173,8 @@ internal sealed class SpecConformanceSweep
     }
 
     internal static string CreateReport(
-        IEnumerable<ClassifiedSpecExample> classified)
+        IEnumerable<ClassifiedSpecExample> classified,
+        SpecExecutionStats? execution = null)
     {
         var items = ResolveIds(classified)
             .OrderBy(pair => pair.Item.Example.MdFile, StringComparer.Ordinal)
@@ -188,6 +228,39 @@ internal sealed class SpecConformanceSweep
             foreach (var reason in reasons)
                 builder.Append("| ").Append(EscapeTable(reason.Key)).Append(" | ")
                     .Append(reason.Count()).AppendLine(" |");
+
+        if (execution is not null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("## Execution (C1: expectedOutput / ignoreOutput)");
+            builder.AppendLine();
+            builder.Append("Executed ").Append(execution.Executed)
+                .Append(" InRun examples with an output contract; passed ")
+                .Append(execution.Passed).Append(" (")
+                .Append(execution.KnownDifferences)
+                .AppendLine(" via known-differences allowlist). Failures are"
+                    + " reclassified as Bug below.");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("## Unexpected extraction details");
+        builder.AppendLine();
+        // unexpected-* は抽出忠実度の問題であり 0 が理想。corpus bump 時の調査効率の
+        // ため先頭エラー行を常設で出す。
+        var unexpected = items.Where(pair =>
+                pair.Item.Result.Category == SpecClassification.Unextracted &&
+                (pair.Item.Result.Reason?.StartsWith("unexpected-",
+                     StringComparison.Ordinal) == true ||
+                 pair.Item.Result.Reason?.StartsWith("expected-error-",
+                     StringComparison.Ordinal) == true))
+            .ToList();
+        if (unexpected.Count == 0)
+            builder.AppendLine("None.");
+        else
+            foreach (var (item, id) in unexpected)
+                builder.Append("- `").Append(id).Append("` (")
+                    .Append(item.Result.Reason).Append("): ")
+                    .AppendLine(OneLine(FirstLine(item.Result.Details)));
 
         builder.AppendLine();
         builder.AppendLine("## Bugs");
@@ -299,6 +372,14 @@ internal sealed class SpecConformanceSweep
 
     private static string EscapeTable(string text) =>
         text.Replace("|", "\\|", StringComparison.Ordinal);
+
+    private static string FirstLine(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return "<no details>";
+        var index = text.IndexOf('\n');
+        return index < 0 ? text : text[..index];
+    }
 
     private static string OneLine(string text) =>
         text.Replace("\r\n", "<br>", StringComparison.Ordinal)

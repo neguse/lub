@@ -1,0 +1,5 @@
+{
+  "expressions.md:ReferenceTypeEqualityOperators3": {
+    "reason": "accepted: C# は別インスタンス string の参照比較で false になるが、Lua の string は intern される値型で同一になる (doc/support-matrix.md の文字列既知差異)。参照同一性の観測はサブセットの保証外"
+  }
+}

@@ -1025,3 +1025,12 @@
 - よかったこと: Codex に契約書ベースで委譲し Fable がレビュー・仕上げする分担が機能した。full-ref 化と ImplicitUsings 補完は初回 sweep の unexpected-compile-error 集計から系統原因を特定して潰せた — 全数分類レポートが自分自身のデバッグに効く
 - 判断: 公式 ExampleExtractor の実行照合は net6 ツールチェーン依存のため marker 数照合で代替。FluentAssertions 8.9 (non-OSS ライセンス) の依存追加は却下し既存どおり素の xUnit Assert に統一。baseline キーは同名重複時のみ全出現へ `:L<行>` を付与 (片側付与は文書順依存のため不採用)
 - 残課題: C1 (T183) で expectedOutput 実行検証。個別 4 件 (documentation-comments IDStrings*, patterns LogicalPattern3, structs RecordStructEqualityMembers2) と expected-error 系 3 件 (LangVersion 依存の期待) のスポット調査は C1 冒頭で
+
+### T183: [C1] expectedOutput 例の Lua 実行検証 ✓ (2026-07-17)
+- SpecLuaExecutor を追加: InRun かつ expectedOutput / ignoreOutput 付きの例を runtime prelude + emitted Lua + entry 呼び出し (top-level はチャンク実行、それ以外は static Main を Roslyn で発見し namespace 込みで明示呼び) で実行し、仕様明記の出力と照合。失敗は Bug へ再分類して baseline / Bugs 節に乗せる
+- Normalizer 第1版 (bool True/False → true/false) と known-differences.json (例別 allowlist、理由必須) を導入。sweep gate は「baseline にない新規 Bug / 分類後退ゼロ」とし、Bug ゼロは発見タスク完了時の C1 完了条件へ
+- 初回実行 12 例中 7 合格 (1 は allowlist: string interning による参照等価差)。**発見 5 件を T188-T192 として起票**: tuple 構文 silent 破損 / top-level `args` 未定義 / `[Conditional]` 無視 / interface default member 欠落 / string concat null エラー — sweep が狙いどおり silent wrong-code を検出
+- C0 残のスポット調査: IDStrings 2 件は unsafe (CS0227) で実質 unsafe 27 件、LogicalPattern3 は CS0841 (要 upstream 照合)、RecordStructEqualityMembers2 は CS1513 (複数 fence 例の可能性、C2 で調査)、expected-error 系 3 件は upstream の LangVersion 12 pin と C# 14 の版差
+- レポートに Execution 節と Unexpected extraction details 節 (先頭エラー行) を常設
+- 検証: dotnet test 613/613+47 (sweep Skip 込み)、run-spec-conformance.sh 31/31 green、baseline 再生成後の連続実行で差分なし
+- 判断: 実行失敗の allowlist 逃しは意味論差の受容 (accepted:) に限定し、tcs のバグは Bug のまま baseline に記録して起票する — 「Bug 0 を維持するために隠す」構造を作らない

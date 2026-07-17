@@ -13,8 +13,15 @@
 
 設計正本: `doc/spec-conformance-design.md`。C0→C1→C2→C3 直列、C4/C5 は C2 後に並行可。
 
-- **T183** [P1] C1: expectedOutput 付き例の Lua 実行検証 + Normalizer 第1版。冒頭で C0 残の個別 7 件 (IDStrings* / LogicalPattern3 / RecordStructEqualityMembers2 / expected-error 系 3 件) をスポット調査
 - **T184** [P1] C2: in-memory dotnet differential (仕様例 + 既存 TranspileAndRun corpus) + known-differences.json
+
+C1 実行フェーズの発見 (baseline に Bug として記録済み、修正で baseline 更新):
+
+- **T188** [P1] tuple 構文が診断なしで壊れた Lua を emit (types.md:TupleTypes5) — TCS1001 へ追加
+- **T189** [P1] top-level statements の `args` 参照が未定義 global で実行時エラー (basic-concepts.md:TopLevelStatements2A) — 診断化
+- **T190** [P1] `[Conditional]` メソッド呼び出しが常に実行される (attributes.md:ConditionalMethods4) — 診断化
+- **T191** [P1] interface の default member / explicit implementation が silent 欠落 (interfaces.md:InterfaceMember) — TCS1001 へ追加
+- **T192** [P1] string concat の null オペランドが Lua error (expressions.md:AdditionOperator) — C# は空文字列扱い。あわせて浮動小数の指数表記 E/e 差の Normalizer 対応を判断
 - **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
 - **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly
 - **T187** [P2] C5: coverlet で emitter 未踏分岐の可視化
