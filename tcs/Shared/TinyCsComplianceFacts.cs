@@ -69,6 +69,15 @@ public static partial class TinyCsComplianceFacts
             TypeDeclarationSyntax type
                 when type.Modifiers.Any(SyntaxKind.PartialKeyword)
                     => "PartialTypeDeclaration",
+            // nested class は Lua 出力に emit されず、参照時に実行時 nil の
+            // silent wrong-code になる (T215 で実測 → T227)
+            ClassDeclarationSyntax nested
+                when nested.Parent is TypeDeclarationSyntax
+                    => "NestedTypeDeclaration",
+            RecordDeclarationSyntax nestedRecord
+                when nestedRecord.Parent is TypeDeclarationSyntax
+                    && nestedRecord.Kind() == SyntaxKind.RecordDeclaration
+                    => "NestedTypeDeclaration",
             LockStatementSyntax => "LockStatement",
             TryStatementSyntax => "TryStatement",
             ThrowStatementSyntax => "ThrowStatement",

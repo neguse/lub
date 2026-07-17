@@ -1278,3 +1278,7 @@
 - `doc/il-reference.md` を新設: 全 IL ノードのカタログ (意味論は il-spec 参照、Lua render は参考情報)、API、C backend の義務、digest 検証の接続 (DigestKernels ↔ spike CONTRACT)
 - 検証: IlExportTests 3 本 green (metadata/IL body 形/layout hash 性質/未対応 null)
 - 判断: シリアライズ形式は定義しない (il-spec §1 の v0 決定どおり in-memory)。class 骨格 (ctor/accessor/field initializer) の IL 本文は T224 で拡張
+
+### T227: nested class の診断化 ✓ (2026-07-18)
+- class 内の class / record class 宣言を TCS1001 (NestedTypeDeclaration) で拒否。emit されず参照時に実行時 nil になる silent wrong-code (T215 で実測) の封鎖
+- 検証: SubsetDiagnosticTests 追加 1 本 green、run-tests 全ゲート green (conformance baseline 影響なし)

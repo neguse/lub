@@ -38,8 +38,6 @@
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 
-- [ ] **T227** (P1): nested class の診断化 — class 内 class が Lua 出力に
-      emit されず参照時に実行時 nil になる (T215 で実測)。TCS1001 で拒否する
 - [ ] **T226** (P2): double / long のサブセット外化 — il-design §4 の
       診断化 (TCS1001) とテスト/サンプル資産の f32 リテラル移行。
       fuzz の 32bit overflow 回避制約の撤廃 (int32 wrap が .NET と一致した)

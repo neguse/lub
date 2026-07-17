@@ -510,4 +510,18 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings,
             w => w.Contains("LoneSurrogateLiteral"));
     }
+
+    // T227: nested class は emit されず参照時に実行時 nil になる
+    [Fact]
+    public void NestedClass_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Outer
+            {
+                public class Inner { public int V; }
+                public static object Make() { return new Inner(); }
+            }
+            """]);
+        AssertUnsupportedWarning(result, "NestedTypeDeclaration");
+    }
 }
