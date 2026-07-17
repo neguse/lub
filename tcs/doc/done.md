@@ -1106,3 +1106,8 @@
 - static constructor は「初回アクセス時に一度だけ」の実行タイミング意味論を持ち、eager な class table 生成では再現できず silent 欠落していた。TCS1001 で拒否
 - 検証: dotnet test 640/640 green、spec baseline で StaticConstructors1/2 と StaticFieldInitialization2 (いずれも static ctor を含む) が Bug → Diag。残 Bug 5
 - 判断: static field 初期化「順序」自体の意味論差 (宣言順 eager vs 初回アクセス) は、cctor なしの純粋な発現例が corpus に無いため個別タスク化しない。需要が出たら support-matrix の既知差異に記載
+
+### T199: static field の default 値 pre-zero ✓ (2026-07-18)
+- C# は static field を default 値で事前初期化してから initializer を宣言順に実行するが、tcs は initializer を宣言順に直接代入しており、循環参照 (`a = b + 1; b = a + 1`) や後方 field 参照が nil arithmetic になっていた。class table 宣言直後に非 nil default の pre-zero を emit し、DeclRanges に載せて hot apply の define チャンクから除外 (live static 値を上書きしない)
+- instance field は CS0236 (initializer から他 field 参照不可) が守るため対応不要
+- 検証: dotnet test 641/641 green (module artifact / transaction テスト含む)、spec baseline で classes.md:VariableInitializers2 が Bug → InRun (dotnet differential 一致)

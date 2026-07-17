@@ -277,4 +277,22 @@ public class ClassTests
             """);
         Assert.Equal("1,2", result);
     }
+
+    [Fact]
+    public void StaticFieldInitializers_SeeDefaultValuesOfLaterFields()
+    {
+        // C# は static field を default 値で事前初期化してから initializer を
+        // 宣言順に実行する (循環参照でも nil にならない)
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                static int a = b + 1;
+                static int b = a + 1;
+
+                public static string Test() => a + "," + b;
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("1,2", result);
+    }
 }

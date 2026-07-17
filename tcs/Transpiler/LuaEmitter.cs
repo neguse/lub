@@ -195,6 +195,20 @@ public partial class LuaEmitter
             }
         }
 
+        // C# は static field を default 値で事前初期化してから initializer を
+        // 宣言順に実行する (循環参照 `a = b + 1; b = a + 1` が nil にならない)。
+        // pre-zero は declare 側の意味論なので DeclRanges に載せ、hot apply の
+        // define チャンクに含めない (live 値を上書きしないため)。
+        var preZeroStart = _sb.Length;
+        foreach (var (fieldName, _, type) in staticFieldInits)
+        {
+            var defaultValue = GetDefaultValueForType(type!);
+            if (defaultValue != "nil")
+                AppendLine($"{name}.{fieldName} = {defaultValue}");
+        }
+        if (_sb.Length > preZeroStart)
+            info.DeclRanges.Add((preZeroStart, _sb.Length - preZeroStart));
+
         // Emit static fields on the class table
         foreach (var (fieldName, init, type) in staticFieldInits)
         {
