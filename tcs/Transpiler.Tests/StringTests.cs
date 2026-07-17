@@ -82,7 +82,8 @@ public class StringTests
                 }
             }
             """,
-            "S.Test()");
+            "S.Test()",
+            differential: false); // Length は C# UTF-16 / Lua byte の既知差異
         // C#: "\x9Good..." = tab + "Good text" (10 chars)、
         //     "\x9Bad..." = U+9BAD + " text" (6 chars → UTF-8 では 3+5 bytes)、
         //     "\01" = NUL + '1' (2 chars)。Lua 側は byte 長。

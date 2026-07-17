@@ -13,8 +13,6 @@
 
 設計正本: `doc/spec-conformance-design.md`。C0→C1→C2→C3 直列、C4/C5 は C2 後に並行可。
 
-- **T206** [P1] C2 後半: 既存 TranspileAndRun corpus (326 箇所) の dotnet differential 裏取り (TestHelper 拡張 + opt-out 設計)
-
 
 - **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
 - **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly

@@ -126,17 +126,26 @@ public static class TestHelper
                      "String = TinySystem.String\n" +
                      "Random = TinySystem.Random\n" +
                      $"{lua}\nprint({luaExpr})";
-        return RunLua(script, timeout).Trim();
+        var result = RunLua(script, timeout).Trim();
+        SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr, result);
+        return result;
     }
 
     /// <summary>
     /// Transpile C# source, wrap with a Lua expression to evaluate, run in Lua VM, return stdout.
     /// </summary>
-    public static string TranspileAndRun(string csharpSource, string luaExpr)
+    /// <param name="differential">false で dotnet differential を対象外にする
+    /// (文字列長 UTF-16 vs byte など既知の意味論差を検証するテスト専用)</param>
+    public static string TranspileAndRun(string csharpSource, string luaExpr,
+        bool differential = true)
     {
         var lua = Transpiler.Transpile(csharpSource);
         var script = $"{lua}\nprint({luaExpr})";
-        return RunLua(script).Trim();
+        var result = RunLua(script).Trim();
+        if (differential)
+            SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr,
+                result);
+        return result;
     }
 
     /// <summary>

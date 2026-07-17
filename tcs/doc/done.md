@@ -1140,3 +1140,11 @@
 - dotnet 側 RuntimeFacades が全 member no-op スタブで、CLAUDE.md の設計「dotnet 側では System 名前空間の型に委譲」と乖離していた。Math/String/List/Dict/Random 全 member を System 相当へ委譲 (Dict.Add は Lua wire format に合わせ indexer 代入 = duplicate 上書き、T153 判断と整合)
 - これによりユーザーは純粋ゲームロジックを dotnet 単体テストで検証でき、corpus differential が facade parity を検証できる
 - 検証: dotnet test 661/661 green、differential で facade 系 5 mismatch が全て解消
+
+### T206: [C2 後半] 既存 TranspileAndRun corpus の dotnet differential ✓ (2026-07-18)
+- TestHelper.TranspileAndRun(WithRuntime) に differential フックを追加 (TCS_DIFFERENTIAL=1 で有効)。luaExpr を C# 式へ自動翻訳できる呼び出し (単純な static 呼び / tostring ラップ / 'str'→"str" / nil→null) は実 .NET で in-memory 評価し、Lua 形式へ整形して実行結果と突き合わせる。IIFE / `..` / `#` / Lua 演算子は skip として集計 (silent drop なし、TCS_DIFFERENTIAL_LOG に内訳)
+- 比較は正規化 (bool/指数) + 数値等価 fallback (C# double 4.0 と Lua integer 4 は既知の表現差)。Random 使用ソースと文字列長系 (UTF-16 vs byte、opt-out 引数) は対象外
+- 結果: **253 呼び出しが実 .NET と一致、mismatch 0** (初回検出の 24 件は全てハーネス整形差と facade no-op → T209 で解消)。skip 44 (untranslatable 26 / compile 14 / random 4)
+- `run-differential.sh` で再現実行 + 内訳表示
+- 検証: dotnet test 661/661 green (env なしでは従来動作)、run-differential.sh exit 0
+- 判断: 手書き期待値そのものの裏取りは「Lua 実行値 vs .NET 実行値」の一致で担保 (期待値が両者とずれれば従来 Assert が落ちる)。翻訳器を汎用化するより skip を可視化して集計する方が誤検出ゼロで保守が軽い
