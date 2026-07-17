@@ -180,10 +180,10 @@
     "category": "InCompile"
   },
   "basic-concepts.md:HidingInherit2": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "basic-concepts.md:HidingInherit3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "basic-concepts.md:HidingNesting1": {
     "category": "Diag"
@@ -529,7 +529,7 @@
     "category": "InCompile"
   },
   "classes.md:OverrideMethods4": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "classes.md:OverrideMethods5": {
     "category": "InCompile"
@@ -586,7 +586,7 @@
     "category": "CsErr"
   },
   "classes.md:PropertyReservedSignatures": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:RecordDeconstruct": {
     "category": "Diag"
@@ -682,10 +682,10 @@
     "category": "InCompile"
   },
   "classes.md:VirtualMethods1": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:VirtualMethods2": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "classes.md:VirtualOverrideAccessors": {
     "category": "InCompile"
@@ -1211,10 +1211,10 @@
     "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance2": {
-    "category": "InRun"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance3": {
     "category": "InCompile"
@@ -1244,7 +1244,7 @@
     "category": "InCompile"
   },
   "interfaces.md:InterfaceMapping5": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMapping6": {
     "category": "Diag"
@@ -1253,7 +1253,7 @@
     "category": "Diag"
   },
   "interfaces.md:InterfaceMapping8": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMember": {
     "category": "Diag"
@@ -1262,7 +1262,7 @@
     "category": "InCompile"
   },
   "interfaces.md:InterfaceMemberAccess3": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceMethods1": {
     "category": "CsErr"

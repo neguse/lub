@@ -171,6 +171,27 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void NewMemberHiding_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class A
+            {
+                public void F() { }
+                public virtual void G() { }
+            }
+
+            public class B : A
+            {
+                public new void F() { }
+                public override void G() { }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "NewMemberHiding");
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("G"));
+    }
+
+    [Fact]
     public void InterfaceConstField_ReportsWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""

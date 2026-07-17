@@ -17,8 +17,7 @@
 
 C2 spec differential の発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T194** [P1] メソッド overload / property lowering 名衝突が last-write-wins で silent 誤 dispatch (ParameterArrays3, PropertyReservedSignatures) — TCS1001 (同名 member 衝突)
-- **T195** [P1] `new` member hiding が metatable の dynamic dispatch に負ける (VirtualMethods1/2) — TCS1001 (new modifier)
+- **T194** [P1] メソッド overload が last-write-wins で silent 誤 dispatch (ParameterArrays3。PropertyReservedSignatures は T195 で解消) — TCS1001 (同名 member 衝突)
 - **T196** [P1] static constructor が silent 欠落、static field 初期化順の意味論差 (StaticConstructors1/2, StaticFieldInitialization2) — cctor は TCS1001、初期化順は個別判断
 - **T197** [P1] 式文脈の increment/decrement の副作用が消える・引数評価順 (Run-timeEvalOfArgLists1) — emitter 調査・修正
 - **T199** [P1] インスタンス field の default 値が nil になる経路 (VariableInitializers2) — 調査・修正

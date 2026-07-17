@@ -100,6 +100,11 @@ public static partial class TinyCsComplianceFacts
                             accessor.Body is not null
                             || accessor.ExpressionBody is not null) == true)
                     => "InterfaceDefaultMember",
+            // `new` による member hiding は静的型でディスパッチが変わる意味論で、
+            // metatable の動的ディスパッチでは表現できない (override は対応済み)。
+            MemberDeclarationSyntax hiding
+                when hiding.Modifiers.Any(SyntaxKind.NewKeyword)
+                    => "NewMemberHiding",
             // delegate 型宣言と event は Lua 表現を持たない (`D.new` は存在せず、
             // multicast はサブセット外)。callback は BCL の Action/Func を使う。
             DelegateDeclarationSyntax => "DelegateDeclaration",

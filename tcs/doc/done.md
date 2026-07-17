@@ -1093,3 +1093,7 @@
 ### T201: interface の field/const 宣言を TCS1001 診断化 ✓ (2026-07-18)
 - interface 内 field/const が silent 欠落し `IX.A` が実行時 nil になっていた。FieldDeclaration (parent が interface) を TCS1001 で拒否
 - 検証: dotnet test 636/636 green、spec baseline で interfaces.md:InterfaceFields が Bug → Diag
+
+### T195: `new` member hiding の TCS1001 診断化 ✓ (2026-07-18)
+- `new` modifier による member hiding は静的型でディスパッチが変わる意味論で、metatable の動的ディスパッチでは表現できず silent 誤 dispatch になっていた。`new` modifier 付き member 宣言を TCS1001 で一括拒否 (override は従来どおり対応)
+- 検証: dotnet test 637/637 green、spec baseline で VirtualMethods1/2 と PropertyReservedSignatures (CS0109 の new 宣言含む例) が Bug → Diag。残 Bug 9
