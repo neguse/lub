@@ -1135,3 +1135,8 @@
 - ExtensionMethodInvocations2 の失敗は tcs 側でなくハーネス側: entry 探索が `N2.Test.Main()` と namespace 込みで呼んでいた (tcs は T155 のとおり型を flat 名で emit)。型名チェーンのみで entry を組むよう修正
 - 結果、user 拡張メソッドの static call lowering + using ベースの解決が dotnet differential と一致することを確認 — **C2 differential も Bug 0 達成**
 - 検証: SpecConformance 35/35 green、sweep baseline 一致、Executed 全 InRun で failures ゼロ
+
+### T209: TinySystem facade を System 委譲実装へ ✓ (2026-07-18)
+- dotnet 側 RuntimeFacades が全 member no-op スタブで、CLAUDE.md の設計「dotnet 側では System 名前空間の型に委譲」と乖離していた。Math/String/List/Dict/Random 全 member を System 相当へ委譲 (Dict.Add は Lua wire format に合わせ indexer 代入 = duplicate 上書き、T153 判断と整合)
+- これによりユーザーは純粋ゲームロジックを dotnet 単体テストで検証でき、corpus differential が facade parity を検証できる
+- 検証: dotnet test 661/661 green、differential で facade 系 5 mismatch が全て解消
