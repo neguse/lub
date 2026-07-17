@@ -50,6 +50,18 @@ public partial class LuaEmitter
             AppendLine("local function __tcs_irem(a, b)");
             AppendLine("  return a - __tcs_idiv(a, b) * b");
             AppendLine("end");
+            // C# の `is T` は「T またはその派生」(il-spec §9)。継承は
+            // instance の metatable = class table、class table の
+            // metatable.__index = base で表現しているため chain を辿る。
+            AppendLine("local function __tcs_is(x, T)");
+            AppendLine("  local mt = getmetatable(x)");
+            AppendLine("  while mt do");
+            AppendLine("    if mt == T then return true end");
+            AppendLine("    local link = getmetatable(mt)");
+            AppendLine("    mt = link and link.__index");
+            AppendLine("  end");
+            AppendLine("  return false");
+            AppendLine("end");
             _headerEmitted = true;
         }
         var root = tree.GetCompilationUnitRoot();

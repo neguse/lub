@@ -138,7 +138,7 @@ public partial class LuaEmitter
         string typeRef) =>
         LuaTypeNameFor(patternType) is { } luaType
             ? $"type({expr}) == \"{luaType}\""
-            : $"getmetatable({expr}) == {typeRef}";
+            : $"__tcs_is({expr}, {typeRef})";
 
     private string VisitPattern(SemanticModel model, PatternSyntax pattern,
         string governing)

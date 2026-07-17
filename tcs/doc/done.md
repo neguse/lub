@@ -1203,3 +1203,9 @@
 - il-spec §6 に fp モードを定義: strict (既定、digest 一致ゲート適用) と relaxed-fp (出荷ビルド単位の明示 opt-in。縮約/再結合/中間精度昇格を許可)
 - 判断: relaxed でも NaN/Inf/−0 の意味論は維持 (finite-math 系は不許可 — 精度は緩めても制御フローの意味は壊さない)。既定を緩めない理由は dev/release 対称性 (digest ゲート) がこの設計の商品価値であるため。Cortex-M7 は SIMD なしで fast-math の旨味は実質 fma 縮約のみ、strict のコストは spike (T212、-ffp-contract=off で測る) が定量化する
 - 検証: 文書のみの変更
+
+### T222: `is` / switch 型判定の継承対応 ✓ (2026-07-18)
+- EmitTypeCheck の `getmetatable(x) == T` 完全一致を `__tcs_is(x, T)` (metatable chain 走査) へ置換。chunk-local helper (idiv と同方式、--no-runtime でも動く) + TinySystem.instanceof + module mode の _G 配線
+- il-spec §9 の規範 (T またはその派生、null は偽) に準拠。多段継承・無関係型・null・designation 束縛・switch arm 順を semantic テスト 5 本で固定
+- 検証: InheritanceTypeTestTests 5/5 green (Red 4 件を確認してから実装)、コミット時 pre-commit で全ゲート
+- 判断: Operators.cs の overload dispatch (getmetatable 完全一致) は今回のスコープ外 — 派生型を base 引数の演算子に流す挙動は別途需要が出た時に判断

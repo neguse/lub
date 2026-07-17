@@ -451,4 +451,17 @@ function TinySystem.irem(a, b)
   return a - TinySystem.idiv(a, b) * b
 end
 
+-- C# の `is T` は「T またはその派生」。継承は instance の metatable =
+-- class table、class table の metatable.__index = base で表現しているため
+-- chain を辿る。生成コードは __tcs_is global 経由でこちらを使う。
+function TinySystem.instanceof(x, T)
+  local mt = getmetatable(x)
+  while mt do
+    if mt == T then return true end
+    local link = getmetatable(mt)
+    mt = link and link.__index
+  end
+  return false
+end
+
 return TinySystem

@@ -24,10 +24,6 @@
       C# は全反復で 1 変数（実測 `3 3 3`）、現行出力は numeric for のため
       反復ごと（実測 `0 1 2`）。修正は while + block への脱糖（M1 の
       lowering 決定と同型）。M1 に先行して直すか M1 に畳むかは着手時に判断
-- [ ] **T222** (P0, バグ): `is` / switch 型判定が継承で偽 —
-      `getmetatable(x) == T` の完全一致比較のため、派生インスタンスへの
-      `is Base` が C# `true` / 現行出力 `false`（実測）。metatable chain を
-      辿る runtime helper へ置換。M1 と独立に修正可能
 - [ ] **T223** (P1): interface を対象とする type test / cast の診断化 —
       interface は実行時表現を持たないため `x is I` は偽陰性になる
       （il-spec §2 で診断化を決定）。孤立 surrogate を含む string literal の
