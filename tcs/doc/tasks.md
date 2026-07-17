@@ -38,14 +38,12 @@
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 
+- [ ] **T227** (P1): nested class の診断化 — class 内 class が Lua 出力に
+      emit されず参照時に実行時 nil になる (T215 で実測)。TCS1001 で拒否する
 - [ ] **T226** (P2): double / long のサブセット外化 — il-design §4 の
       診断化 (TCS1001) とテスト/サンプル資産の f32 リテラル移行。
       fuzz の 32bit overflow 回避制約の撤廃 (int32 wrap が .NET と一致した)
       もここで
-- [ ] **T215** (P1): digest harness — spike と同じ 3 kernel を TinyC# で記述し
-      （particles は struct 前提のため M5 までは class 版）、f32 量子化値の
-      FNV digest を run-tests ゲート化。2 backend 一致テストの正本になる。
-      baseline は 32bit ビルド（T216 後）で記録
 - [ ] **T217** (P1): M2 IL 仕様の文書化 + metadata 出力。
       合格基準: luo 側が LuaEmitter を読まずに IL 文書だけで実装着手できる
 

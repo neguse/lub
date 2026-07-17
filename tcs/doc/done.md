@@ -1266,3 +1266,9 @@
 - 移行の爆風半径は 3 件のみ: double 精度前提テスト 2 件を f32/double 両立形へ適正化 (1e308→1e30、epsilon 1e-9→1e-6)、spec 例 VariableInitializers1 (Math.Sqrt の double 全桁表示) を known-differences へ理由付き登録
 - 検証: run-tests.sh 全ゲート exit 0 (conformance sweep + differential + fuzz smoke 込み、694 tests)
 - 判断: double/long の診断化 (il-design §4 の完全なサブセット外化) は分離 — T216 の完了条件 (32bit ビルドで全ゲート green + differential f32 比較) は満たしており、ソース資産の一括 f32 リテラル移行は独立タスクとして需要と合わせて判断する (tasks.md T226 起票)
+
+### T215: digest harness — spike 3 kernel の f32 FNV digest ゲート ✓ (2026-07-18)
+- ../luo/spike/CONTRACT.md と同一仕様 (LCG / 演算列 / FNV-1a) の 3 kernel を TinyC# で記述 (Transpiler.Tests/DigestKernels/、particles は M5 まで class SoA 形)。lua32 実行の出力 f32 を bit 列で FNV し、期待値を恒常ゲート化 (DigestHarnessTests、+約 2.5 秒)
+- 実測 digest: sprite_update e8814b32 / spawn_churn 4e5bf016 / particles 8bf97e09。CONTRACT へ追記済みで、luo spike の全変種 (interp/aot-hash/aot-slot/native) はこれと一致すべき — 2 backend 一致検証の tcs 側正本
+- 検証: 3/3 green。spawn_churn の CONTRACT 未規定分 (初期空・spawn→update 順・ring 順序) は解釈を明文化
+- 副次発見: nested class は Lua 出力に emit されず実行時 nil (診断もなし)。要診断化 — T227 起票

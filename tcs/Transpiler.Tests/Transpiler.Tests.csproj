@@ -10,6 +10,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- digest kernel (T215) はトランスパイル入力データであり、
+         test assembly のソースではない (Main が entry point 衝突する) -->
+    <Compile Remove="DigestKernels/**/*.cs" />
+    <None Include="DigestKernels/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
