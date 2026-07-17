@@ -31,23 +31,16 @@
 - [ ] **T213** (P1): LUA_32BITS ビルド整備（tcs 側）— CMake で 32bit 変種を
       選択ビルド可能に。spike（T212）と M4（T216）の共有基盤
 
-### Phase 1 — M1: 挙動不変の内部再編
+### Phase 1 — M1: 挙動不変の内部再編 ✓ (T214a-c 完、done.md 参照)
 
-- [ ] **T214** (P0): Transpiler を syntax 走査 → IL → Lua に再編
-      （ストラングラー方式・method 粒度 fallback で常時 green）。
-      完了条件: 全テスト green、増分コンパイル session と両立、
-      fuzz / differential / conformance ゲート不変
-  - [x] T214a: IL 核（`Il.cs` / `LuaEmitter.IlBuild*` / `LuaEmitter.IlEmit`）。
-        statements 全種 + 式コア（算術 idiv/irem・比較・論理・concat・補間・
-        List 操作・呼び出し・new・元素アクセス）を IL 経由化。
-        `TranspileResult.IlBodies/LegacyBodies` で計測、`TCS_IL=off` で退行診断。
-        samples 実測 67% (21/31 bodies)
-  - [ ] T214b: 残構文の IL 化 — lambda/closure、パターン（is/switch 式/文)、
-        `?.` `??` `??=`、custom property、object/array initializer、Dict 操作、
-        out var、deconstruction、base 呼び出し、with 式
-  - [ ] T214c: legacy visitor 経路の削除（全 method で IlBodies、legacy 0）。
-        IIFE の statement 化などの出力改善（examples 決定 2）は削除後に
-        IL 上で実施
+- [ ] **T224** (P2): legacy visitor の縮退 — fallback に残る構文
+      （method group 参照、混在 tuple 分解、lock、using 宣言、
+      非リテラル alignment、TCS 診断構文）の IL 化 or 診断化を進め、
+      fallback を診断 method のみに絞ったうえで legacy 削除を判断。
+      class 骨格 / field initializer 式の IL 化（program 構造の IL 化、
+      M2 で luo 入力契約を決める際に形を確定）もここ
+- [ ] **T225** (P2): IIFE の statement 化（examples 決定 2）— IL 上の
+      出力改善。M1 の挙動不変契約から切り離して実施
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 

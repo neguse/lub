@@ -93,7 +93,7 @@ public partial class LuaEmitter
 
     // legacy EmitPropertyAssignment の写像 (statement 位置)
     private bool BuildPropAssignInto(SemanticModel model,
-        AssignmentExpressionSyntax assign, StatementSyntax origin,
+        AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
         if (BuildPropTarget(model, assign.Left) is not { } prop) return false;
@@ -150,7 +150,7 @@ public partial class LuaEmitter
 
     // legacy EmitIncrement の custom property / lowered lvalue 経路
     private bool BuildLoweredIncrementInto(SemanticModel model,
-        ExpressionSyntax operand, bool increment, StatementSyntax origin,
+        ExpressionSyntax operand, bool increment, SyntaxNode? origin,
         List<IlStat> acc)
     {
         var op = increment ? IlBinOp.AddNum : IlBinOp.Sub;
@@ -182,7 +182,7 @@ public partial class LuaEmitter
 
     // ??= (statement 位置、custom property 以外)
     private bool BuildCoalesceAssignInto(SemanticModel model,
-        AssignmentExpressionSyntax assign, StatementSyntax origin,
+        AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
         var right = BuildExpr(model, assign.Right);
@@ -207,7 +207,7 @@ public partial class LuaEmitter
 
     // compound + lowered lvalue (statement 位置): IIFE 形の写像
     private bool BuildLoweredCompoundInto(SemanticModel model,
-        AssignmentExpressionSyntax assign, StatementSyntax origin,
+        AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
         if (BuildLoweredTarget(model, assign.Left) is not { } lowered)
@@ -228,7 +228,7 @@ public partial class LuaEmitter
     // legacy EmitDeconstruction の写像
     private bool BuildDeconstructionInto(SemanticModel model,
         ExpressionSyntax rhs, List<IlExpr> targets, bool declare,
-        StatementSyntax origin, List<IlStat> acc)
+        SyntaxNode? origin, List<IlStat> acc)
     {
         var rhsBuilt = BuildExpr(model, rhs);
         if (rhsBuilt == null) return false;
@@ -296,7 +296,7 @@ public partial class LuaEmitter
     }
 
     private bool BuildRefMultiReturnStatInto(SemanticModel model,
-        InvocationExpressionSyntax invocation, StatementSyntax origin,
+        InvocationExpressionSyntax invocation, SyntaxNode? origin,
         List<IlStat> acc)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax ma)

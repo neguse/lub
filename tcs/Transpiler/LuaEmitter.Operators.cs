@@ -111,12 +111,20 @@ public partial class LuaEmitter
 
         if (op.Body != null)
         {
-            foreach (var stmt in op.Body.Statements)
-                VisitStatement(model, stmt);
+            if (!TryEmitStatsViaIl(model, op.Body.Statements))
+            {
+                LegacyBodies++;
+                foreach (var stmt in op.Body.Statements)
+                    VisitStatement(model, stmt);
+            }
         }
         else if (op.ExpressionBody != null)
         {
-            AppendLine($"return {VisitExpression(model, op.ExpressionBody.Expression)}");
+            if (!TryEmitReturnViaIl(model, op.ExpressionBody.Expression))
+            {
+                LegacyBodies++;
+                AppendLine($"return {VisitExpression(model, op.ExpressionBody.Expression)}");
+            }
         }
 
         _indent--;

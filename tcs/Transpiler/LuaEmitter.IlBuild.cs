@@ -21,6 +21,40 @@ public partial class LuaEmitter
             ? new IlBlock([.. stats]) : null;
     }
 
+    // ---- 共通フック (T214c): 文列 / return 式 / 文位置式を IL 経由で emit ----
+
+    private bool TryEmitStatsViaIl(SemanticModel model,
+        IEnumerable<StatementSyntax> statements)
+    {
+        if (IlDisabled) return false;
+        var acc = new List<IlStat>();
+        if (!BuildStatsInto(model, statements, acc)) return false;
+        IlBodies++;
+        EmitIlBlock(new IlBlock([.. acc]));
+        return true;
+    }
+
+    private bool TryEmitReturnViaIl(SemanticModel model, ExpressionSyntax expr)
+    {
+        if (IlDisabled) return false;
+        var built = BuildExpr(model, expr);
+        if (built == null) return false;
+        IlBodies++;
+        AppendLine($"return {RenderIl(built)}");
+        return true;
+    }
+
+    private bool TryEmitExprStatViaIl(SemanticModel model,
+        ExpressionSyntax expr)
+    {
+        if (IlDisabled) return false;
+        var acc = new List<IlStat>();
+        if (!BuildExprStatInto(model, expr, null, acc)) return false;
+        IlBodies++;
+        foreach (var stat in acc) EmitIlStat(stat);
+        return true;
+    }
+
     private bool BuildStatsInto(SemanticModel model,
         IEnumerable<StatementSyntax> statements, List<IlStat> acc)
     {
@@ -179,7 +213,7 @@ public partial class LuaEmitter
 
     // 文位置の式。legacy VisitExpressionAsStatement を写像する。
     private bool BuildExprStatInto(SemanticModel model, ExpressionSyntax expr,
-        StatementSyntax origin, List<IlStat> acc)
+        SyntaxNode? origin, List<IlStat> acc)
     {
         if (expr is PostfixUnaryExpressionSyntax
             {
@@ -272,7 +306,7 @@ public partial class LuaEmitter
 
     // Dictionary.Add は Lua では代入形 (legacy TryMapCollectionMethod)
     private bool BuildDictAddStatInto(SemanticModel model,
-        InvocationExpressionSyntax invocation, StatementSyntax origin,
+        InvocationExpressionSyntax invocation, SyntaxNode? origin,
         List<IlStat> acc)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax ma
@@ -297,7 +331,7 @@ public partial class LuaEmitter
     }
 
     private bool BuildIncrementInto(SemanticModel model,
-        ExpressionSyntax operand, bool increment, StatementSyntax origin,
+        ExpressionSyntax operand, bool increment, SyntaxNode? origin,
         List<IlStat> acc)
     {
         if (IsCustomPropertyTarget(model, operand) || NeedsLoweredLvalue(operand))
@@ -313,7 +347,7 @@ public partial class LuaEmitter
     }
 
     private bool BuildAssignInto(SemanticModel model,
-        AssignmentExpressionSyntax assign, StatementSyntax origin,
+        AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))

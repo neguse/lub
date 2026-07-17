@@ -1230,3 +1230,10 @@
 - 検証: 全テスト 676 green (fallback 例を method group 参照へ差し替え)。samples 実測 31/31 bodies (100%) が IL 経由 (T214a 時点 67%)
 - 判断: IIFE 形は legacy と同形を維持 (M1 は挙動不変が契約)。statement 化 (examples 決定 2) は M1 完了後に IL 上で行う
 - 残課題: T214c — ctor/accessor/operator/top-level 文の body も IL 経由へ、fallback は診断 method のみに
+
+### T214c: [M1] ctor / accessor / operator / top-level 文の IL 経由化 — M1 完 ✓ (2026-07-18)
+- TryEmitStatsViaIl / TryEmitReturnViaIl / TryEmitExprStatViaIl の共通フックを追加し、method body 以外の 4 emit 地点 (constructor body、custom property accessor body/expression body、operator body、top-level 文) を IL 経由化。origin を SyntaxNode? に統一
+- samples 実測 37/37 bodies (100%、ctor/accessor 込み) が IL 経由、legacy 0。M1 の完了条件 (全テスト green・増分コンパイル session 両立・fuzz/differential/conformance ゲート不変) を充足
+- 検証: 全テスト 676 green、deep fuzz 100 seeds 全一致 (生成プログラムの IL 経路を実 .NET と行単位比較)、コミット時 pre-commit 全ゲート
+- 判断: legacy visitor のコード削除は見送り — fallback は診断構文・method group 参照等の残構文が使い、挙動不変の保険としても機能する。縮退は T224 (P2)、IIFE statement 化は T225 (P2) として M1 契約から分離
+- 残課題: T224/T225、M2 (T217) で luo 向け入力契約 (program 構造の IL 化を含む)

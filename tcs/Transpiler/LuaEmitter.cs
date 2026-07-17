@@ -134,8 +134,12 @@ public partial class LuaEmitter
     }
 
     private void VisitGlobalStatement(SemanticModel model,
-        GlobalStatementSyntax global) =>
+        GlobalStatementSyntax global)
+    {
+        if (TryEmitStatsViaIl(model, [global.Statement])) return;
+        LegacyBodies++;
         VisitStatement(model, global.Statement);
+    }
 
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
@@ -335,12 +339,20 @@ public partial class LuaEmitter
 
         if (ctor?.Body != null)
         {
-            foreach (var stmt in ctor.Body.Statements)
-                VisitStatement(model, stmt);
+            if (!TryEmitStatsViaIl(model, ctor.Body.Statements))
+            {
+                LegacyBodies++;
+                foreach (var stmt in ctor.Body.Statements)
+                    VisitStatement(model, stmt);
+            }
         }
         else if (ctor?.ExpressionBody != null)
         {
-            AppendLine(VisitExpression(model, ctor.ExpressionBody.Expression));
+            if (!TryEmitExprStatViaIl(model, ctor.ExpressionBody.Expression))
+            {
+                LegacyBodies++;
+                AppendLine(VisitExpression(model, ctor.ExpressionBody.Expression));
+            }
         }
 
         AppendLine("return self");
@@ -364,12 +376,26 @@ public partial class LuaEmitter
             AppendLine($"function {className}{separator}{prefix}{propName}({extraParam})");
             _indent++;
             if (accessor.Body != null)
-                foreach (var s in accessor.Body.Statements) VisitStatement(model, s);
+            {
+                if (!TryEmitStatsViaIl(model, accessor.Body.Statements))
+                {
+                    LegacyBodies++;
+                    foreach (var s in accessor.Body.Statements)
+                        VisitStatement(model, s);
+                }
+            }
             else if (accessor.ExpressionBody != null)
             {
-                var expr = VisitExpression(model, accessor.ExpressionBody.Expression);
-                AppendLine(accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
-                    ? $"return {expr}" : expr);
+                var viaIl = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
+                    ? TryEmitReturnViaIl(model, accessor.ExpressionBody.Expression)
+                    : TryEmitExprStatViaIl(model, accessor.ExpressionBody.Expression);
+                if (!viaIl)
+                {
+                    LegacyBodies++;
+                    var expr = VisitExpression(model, accessor.ExpressionBody.Expression);
+                    AppendLine(accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
+                        ? $"return {expr}" : expr);
+                }
             }
             _indent--;
             AppendLine("end");
