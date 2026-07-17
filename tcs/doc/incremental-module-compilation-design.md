@@ -781,7 +781,6 @@ playground の client-only / offline-capable 方針と異なり、network latenc
 ## 20. 関連文書
 
 - [プロジェクト目的](../objective.md)
-- [現在の実装状態](current.md)
 - [browser-wasm feasibility spike](wasm-playground-spike.md)
 - [lub script 層ギャップ分析](lub-gap-analysis.md)
 - [未実装タスク](tasks.md)

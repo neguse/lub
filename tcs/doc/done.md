@@ -1008,3 +1008,11 @@
 - 変更ファイル: doc/support-matrix.md, doc/current.md, doc/tasks.md (空化)
 - 判断: HotReload の概念的言及 (async を Out にする理由の「ホットリロード可能な」) は lume.hotswap / module registry でも成立するため据え置き
 - 残課題: なし — tasks.md は空
+
+### 働き方改革: doc/current.md の粉砕とワークフロー簡素化 ✓ (2026-07-17)
+- doc/current.md を削除。ralph loop 時代の「セッション跨ぎ進捗スナップショット」であり、1 タスクをセッション内で完遂できる現在は不要と判断 (ユーザー決定)。残作業は tasks.md、直近文脈は done.md 末尾 + git log、仕様の正本は support-matrix / README / design doc に一本化
+- 粉砕前に各節を照合し、他に無かった記述だけ README へ移設: `--entry` の解決規則 (T155 仕様) と output/入力の同一実体エラー。Dictionary wire format / String edge 挙動 / run-lub 手順は support-matrix / lub-gap-analysis が既に正本
+- CLAUDE.md の作業手順を 9 step → 5 step へ (current.md の確認・更新を廃止)。完了ログ形式から「変更ファイル」を廃止 (commit が正本) し「検証」を明示化
+- 検証: 全ドキュメントの current.md 参照を除去 (design doc の関連文書リンク含む)
+- 判断: GitHub Issues への移行は見送り — ローカル grep 性・オフライン性・エージェントの読み書き速度で doc/ 運用が勝つ。ralph loop に戻る場合は必要な形の状態ファイルをその時に再設計する
+- 残課題: なし
