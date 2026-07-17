@@ -1,7 +1,8 @@
 # 仕様ベース conformance / differential testing 設計
 
-> Status: C0-C1 完了 (T182-T183、発見 T188-T193 修正済みで Bug 0 達成)。
-> C2 以降は doc/tasks.md の T184-T187
+> Status: C0-C2 (spec 側) 完了 — T182-T184、発見 T188-T208 修正済み。全 642 例で
+> Bug 0、InRun 36/36 が実 .NET オラクルと出力一致。残: T206 (既存 corpus 裏取り)、
+> C3-C5 (T185-T187)
 >
 > Date: 2026-07-17
 >
