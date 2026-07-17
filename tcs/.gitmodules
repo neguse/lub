@@ -1,3 +1,7 @@
 [submodule "deps/lua"]
 	path = deps/lua
 	url = https://github.com/lua/lua
+[submodule "deps/csharpstandard"]
+	path = deps/csharpstandard
+	url = https://github.com/dotnet/csharpstandard.git
+	branch = draft-v12

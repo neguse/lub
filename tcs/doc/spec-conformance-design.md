@@ -1,6 +1,6 @@
 # 仕様ベース conformance / differential testing 設計
 
-> Status: 提案（未着手。着手時に C0 から順にタスク起票する）
+> Status: C0 実装済み (T182)。C1 以降は doc/tasks.md の T183-T187
 >
 > Date: 2026-07-17
 >

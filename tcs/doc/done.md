@@ -1016,3 +1016,12 @@
 - 検証: 全ドキュメントの current.md 参照を除去 (design doc の関連文書リンク含む)
 - 判断: GitHub Issues への移行は見送り — ローカル grep 性・オフライン性・エージェントの読み書き速度で doc/ 運用が勝つ。ralph loop に戻る場合は必要な形の状態ファイルをその時に再設計する
 - 残課題: なし
+
+### T182: [C0] 仕様 corpus 取り込みと分類 sweep ✓ (2026-07-17)
+- deps/csharpstandard (draft-v12) を submodule 追加し、注釈付き例 642 件の全数分類を実装: 注釈パーサ (bare-key JSON) / 公式 template 展開 ($example-code + additional-files + inline `// File`) / 分類パイプライン / baseline 照合 / 章別レポート生成。sweep は TCS_SPEC_CONFORMANCE=1 ゲート、`run-spec-conformance.sh` で実行
+- 分類は analyzer 視点で行う: `TranspileWithDiagnostics` に references 注入口を追加して TPA フル参照でコンパイルし、SDK ImplicitUsings 相当を referenceSources で補完。これでサブセット外 API が compile error でなく TCS 診断として観測され、unexpected-compile-error 238→29 (残りは unsafe 25 + 個別 4)
+- 集計: InRun 55 / InCompile 171 / Diag 248 / CsErr 119 / Unextracted 49 / **Bug 0**
+- 検証: `dotnet test` 608+47 green (sweep は通常実行では Skip)、`bash run-spec-conformance.sh` exit 0 で report/baseline 再現、注釈数の突き合わせ (grep 651 のうち 9 件は upstream が `Incomplete$`/`NeedsReview$` で無効化しており正味 642 で一致)
+- よかったこと: Codex に契約書ベースで委譲し Fable がレビュー・仕上げする分担が機能した。full-ref 化と ImplicitUsings 補完は初回 sweep の unexpected-compile-error 集計から系統原因を特定して潰せた — 全数分類レポートが自分自身のデバッグに効く
+- 判断: 公式 ExampleExtractor の実行照合は net6 ツールチェーン依存のため marker 数照合で代替。FluentAssertions 8.9 (non-OSS ライセンス) の依存追加は却下し既存どおり素の xUnit Assert に統一。baseline キーは同名重複時のみ全出現へ `:L<行>` を付与 (片側付与は文書順依存のため不採用)
+- 残課題: C1 (T183) で expectedOutput 実行検証。個別 4 件 (documentation-comments IDStrings*, patterns LogicalPattern3, structs RecordStructEqualityMembers2) と expected-error 系 3 件 (LangVersion 依存の期待) のスポット調査は C1 冒頭で

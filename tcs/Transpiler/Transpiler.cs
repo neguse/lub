@@ -54,7 +54,8 @@ public static class Transpiler
 
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
-        string? entryClass = null, bool checkNaming = true)
+        string? entryClass = null, bool checkNaming = true,
+        MetadataReference[]? references = null)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -68,7 +69,7 @@ public static class Transpiler
         // 性能影響なし。
         var compilation = CSharpCompilation.Create("TinyCs",
             allTrees,
-            References,
+            references ?? References,
             new CSharpCompilationOptions(hasTopLevelStatements
                     ? OutputKind.ConsoleApplication
                     : OutputKind.DynamicallyLinkedLibrary,

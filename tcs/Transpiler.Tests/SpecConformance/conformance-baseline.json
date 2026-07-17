@@ -1,0 +1,1977 @@
+{
+  "arrays.md:Arrayinitializers1": {
+    "category": "Diag"
+  },
+  "arrays.md:Arrayinitializers2": {
+    "category": "InRun"
+  },
+  "arrays.md:Arrayinitializers4": {
+    "category": "Diag"
+  },
+  "arrays.md:Arrayinitializers5": {
+    "category": "InRun"
+  },
+  "arrays.md:Arrayinitializers7": {
+    "category": "Diag"
+  },
+  "arrays.md:Arrayinitializers8": {
+    "category": "InRun"
+  },
+  "arrays.md:Arrayinitializers9": {
+    "category": "CsErr"
+  },
+  "arrays.md:ArraysGenericCollection": {
+    "category": "CsErr"
+  },
+  "arrays.md:ArraysOfArrays": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "arrays.md:CovarianceException": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "arrays.md:PascalArrayDeclarations": {
+    "category": "Diag"
+  },
+  "attributes.md:AllowNullAttribute": {
+    "category": "InCompile"
+  },
+  "attributes.md:AsyncEnumeratorCancellation": {
+    "category": "Diag"
+  },
+  "attributes.md:AttributeCantBeGeneric": {
+    "category": "Unextracted",
+    "reason": "expected-error-not-raised"
+  },
+  "attributes.md:AttributeSpecification1": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributeSpecification2": {
+    "category": "CsErr"
+  },
+  "attributes.md:AttributeSpecification3": {
+    "category": "CsErr"
+  },
+  "attributes.md:AttributeSpecification4": {
+    "category": "CsErr"
+  },
+  "attributes.md:AttributeSpecification5": {
+    "category": "CsErr"
+  },
+  "attributes.md:AttributeSpecification6": {
+    "category": "Diag"
+  },
+  "attributes.md:AttributeSpecification7": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributeUsage1": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributeUsage2": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributeUsage4": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributeUsage6": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributeUsage7": {
+    "category": "InCompile"
+  },
+  "attributes.md:AttributesForInteroperation": {
+    "category": "Diag"
+  },
+  "attributes.md:CallerArgumentAttr1": {
+    "category": "InCompile"
+  },
+  "attributes.md:CallerArgumentAttr2": {
+    "category": "Diag"
+  },
+  "attributes.md:CallerInfoAttributes": {
+    "category": "Diag"
+  },
+  "attributes.md:CallerMemberName1": {
+    "category": "Diag"
+  },
+  "attributes.md:ConditionalAttributeClasses1": {
+    "category": "InCompile"
+  },
+  "attributes.md:ConditionalAttributeClasses2": {
+    "category": "InCompile"
+  },
+  "attributes.md:ConditionalMethods1": {
+    "category": "InCompile"
+  },
+  "attributes.md:ConditionalMethods2": {
+    "category": "InCompile"
+  },
+  "attributes.md:ConditionalMethods3": {
+    "category": "InCompile"
+  },
+  "attributes.md:ConditionalMethods4": {
+    "category": "InRun"
+  },
+  "attributes.md:DeclCustomHandler1": {
+    "category": "InRun"
+  },
+  "attributes.md:DeclCustomHandler2": {
+    "category": "Diag"
+  },
+  "attributes.md:DisallowNullAttribute": {
+    "category": "Diag"
+  },
+  "attributes.md:DoesNotReturnAttribute": {
+    "category": "Diag"
+  },
+  "attributes.md:DoesNotReturnIfAttribute": {
+    "category": "Diag"
+  },
+  "attributes.md:MaybeNull2Attribute": {
+    "category": "Diag"
+  },
+  "attributes.md:MemberNotNullAttribute": {
+    "category": "Diag"
+  },
+  "attributes.md:NotNullAttribute": {
+    "category": "Diag"
+  },
+  "attributes.md:NotNullIfNotNull1Attribute": {
+    "category": "Diag"
+  },
+  "attributes.md:NotNullIfNotNull2Attribute": {
+    "category": "Diag"
+  },
+  "attributes.md:NotNullWhenAttribute": {
+    "category": "Diag"
+  },
+  "attributes.md:ObsoleteAttribute": {
+    "category": "InRun"
+  },
+  "attributes.md:PositionalAndNamedParameters1": {
+    "category": "InCompile"
+  },
+  "attributes.md:SetsRequiredMembers": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:AccessibilityConstraints1": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:AccessibilityConstraints2": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:AccessibilityDomains": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:AccessibilityDomainsNot": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:Declarations1": {
+    "category": "InCompile"
+  },
+  "basic-concepts.md:Declarations2": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:FullyQualifiedNames": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:HidingInherit1": {
+    "category": "InCompile"
+  },
+  "basic-concepts.md:HidingInherit2": {
+    "category": "InCompile"
+  },
+  "basic-concepts.md:HidingInherit3": {
+    "category": "InCompile"
+  },
+  "basic-concepts.md:HidingNesting1": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:HidingNesting2": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:MemoryManagement1": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:MemoryManagement2": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:MultipleNested": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:ProtectedAccess1": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:ProtectedAccess2": {
+    "category": "InCompile"
+  },
+  "basic-concepts.md:ProtectedAccess3": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:ScopeGeneral1": {
+    "category": "InCompile"
+  },
+  "basic-concepts.md:ScopeGeneral2": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:ScopeGeneral3": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:SignatureOverloading": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:SwitchSurprise": {
+    "category": "CsErr"
+  },
+  "basic-concepts.md:TopLevelStatements2A": {
+    "category": "InRun"
+  },
+  "basic-concepts.md:TopLevelStatements2B": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:TopLevelStatements3A": {
+    "category": "InRun"
+  },
+  "basic-concepts.md:TopLevelStatements3B": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:TopLevelStatements4A": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:TopLevelStatements4B": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:TopLevelStatements5A": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:TopLevelStatements5B": {
+    "category": "Diag"
+  },
+  "basic-concepts.md:TopLevelStatements6": {
+    "category": "Diag"
+  },
+  "classes.md:AbstractMethodImplementation": {
+    "category": "InCompile"
+  },
+  "classes.md:AbstractMethods1": {
+    "category": "InCompile"
+  },
+  "classes.md:AbstractMethods2": {
+    "category": "CsErr"
+  },
+  "classes.md:AbstractMethods3": {
+    "category": "InCompile"
+  },
+  "classes.md:AccessToPrivateAndProtectedMembers1": {
+    "category": "Diag"
+  },
+  "classes.md:AccessToPrivateAndProtectedMembers2": {
+    "category": "Diag"
+  },
+  "classes.md:Accessibility1": {
+    "category": "CsErr"
+  },
+  "classes.md:Accessibility2": {
+    "category": "InCompile"
+  },
+  "classes.md:Accessors1": {
+    "category": "InCompile"
+  },
+  "classes.md:Accessors2": {
+    "category": "CsErr"
+  },
+  "classes.md:Accessors3": {
+    "category": "CsErr"
+  },
+  "classes.md:Accessors4": {
+    "category": "InCompile"
+  },
+  "classes.md:Accessors5": {
+    "category": "InCompile"
+  },
+  "classes.md:Accessors6": {
+    "category": "InCompile"
+  },
+  "classes.md:Accessors7": {
+    "category": "Diag"
+  },
+  "classes.md:AccessorsInit1": {
+    "category": "Diag"
+  },
+  "classes.md:AccessorsInit2": {
+    "category": "Diag"
+  },
+  "classes.md:AccessorsInit3": {
+    "category": "CsErr"
+  },
+  "classes.md:AccessorsInit4": {
+    "category": "InCompile"
+  },
+  "classes.md:AccessorsInit5": {
+    "category": "InCompile"
+  },
+  "classes.md:AccessorsInit6": {
+    "category": "CsErr"
+  },
+  "classes.md:AccessorsInit7": {
+    "category": "CsErr"
+  },
+  "classes.md:AccessorsInit8": {
+    "category": "CsErr"
+  },
+  "classes.md:AccessorsInit9": {
+    "category": "CsErr"
+  },
+  "classes.md:AsyncFunctions1": {
+    "category": "Diag"
+  },
+  "classes.md:AutomaticProperties1": {
+    "category": "InCompile"
+  },
+  "classes.md:AutomaticProperties2": {
+    "category": "InCompile"
+  },
+  "classes.md:AutomaticProperties3": {
+    "category": "InCompile"
+  },
+  "classes.md:AutomaticProperties4": {
+    "category": "InCompile"
+  },
+  "classes.md:AutomaticProperties5": {
+    "category": "InCompile"
+  },
+  "classes.md:AutomaticProperties6": {
+    "category": "InCompile"
+  },
+  "classes.md:CircularBaseClass1": {
+    "category": "CsErr"
+  },
+  "classes.md:CircularBaseClass2": {
+    "category": "CsErr"
+  },
+  "classes.md:ClassMembers": {
+    "category": "CsErr"
+  },
+  "classes.md:ClassesInterfaceImplementations1": {
+    "category": "Diag"
+  },
+  "classes.md:ClassesInterfaceImplementations2": {
+    "category": "Diag"
+  },
+  "classes.md:ClassesInterfaceImplementations3": {
+    "category": "InCompile"
+  },
+  "classes.md:ConsoleOutWriteLine": {
+    "category": "Diag"
+  },
+  "classes.md:Constants1": {
+    "category": "InCompile"
+  },
+  "classes.md:Constants2": {
+    "category": "InCompile"
+  },
+  "classes.md:Constants3": {
+    "category": "InCompile"
+  },
+  "classes.md:ConstructorExecution1": {
+    "category": "InCompile"
+  },
+  "classes.md:ConstructorExecution2": {
+    "category": "Diag"
+  },
+  "classes.md:ConstructorInitializers": {
+    "category": "InCompile"
+  },
+  "classes.md:ConversionOperators1": {
+    "category": "CsErr"
+  },
+  "classes.md:ConversionOperators2": {
+    "category": "Diag"
+  },
+  "classes.md:ConversionOperators3": {
+    "category": "CsErr"
+  },
+  "classes.md:ConversionOperators4": {
+    "category": "Diag"
+  },
+  "classes.md:ConversionOperators5": {
+    "category": "Diag"
+  },
+  "classes.md:CopyConstructors1": {
+    "category": "InCompile"
+  },
+  "classes.md:CopyConstructors2": {
+    "category": "InCompile"
+  },
+  "classes.md:DeclaredAccessibility": {
+    "category": "Diag"
+  },
+  "classes.md:DefaultConstructors3": {
+    "category": "InCompile"
+  },
+  "classes.md:DefaultConstructors4": {
+    "category": "InCompile"
+  },
+  "classes.md:DeriveFromSealedClass": {
+    "category": "CsErr"
+  },
+  "classes.md:DirectBaseClass": {
+    "category": "InCompile"
+  },
+  "classes.md:DirectBaseClasses": {
+    "category": "InCompile"
+  },
+  "classes.md:EventAccessors": {
+    "category": "Diag"
+  },
+  "classes.md:Events": {
+    "category": "Diag"
+  },
+  "classes.md:ExtensionMethods1": {
+    "category": "Diag"
+  },
+  "classes.md:ExtensionMethods2": {
+    "category": "Diag"
+  },
+  "classes.md:ExtensionMethods3": {
+    "category": "Diag"
+  },
+  "classes.md:ExternalMethods": {
+    "category": "InCompile"
+  },
+  "classes.md:FieldInitialization": {
+    "category": "InRun"
+  },
+  "classes.md:FieldlikeEvents1": {
+    "category": "Diag"
+  },
+  "classes.md:FieldlikeEvents2": {
+    "category": "Diag"
+  },
+  "classes.md:FieldlikeEvents3": {
+    "category": "Diag"
+  },
+  "classes.md:Fields1": {
+    "category": "InCompile"
+  },
+  "classes.md:Fields2": {
+    "category": "InCompile"
+  },
+  "classes.md:Finalizers1": {
+    "category": "Diag"
+  },
+  "classes.md:Finalizers2": {
+    "category": "CsErr"
+  },
+  "classes.md:Finalizers3": {
+    "category": "InCompile"
+  },
+  "classes.md:GenericBaseClass": {
+    "category": "InCompile"
+  },
+  "classes.md:Hiding": {
+    "category": "Diag"
+  },
+  "classes.md:Indexers1": {
+    "category": "Diag"
+  },
+  "classes.md:Indexers2": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:execution-args"
+  },
+  "classes.md:Indexers3": {
+    "category": "Diag"
+  },
+  "classes.md:Inheritance": {
+    "category": "InCompile"
+  },
+  "classes.md:InstanceFieldInitialization": {
+    "category": "CsErr"
+  },
+  "classes.md:InstanceType": {
+    "category": "Diag"
+  },
+  "classes.md:MembersOfConstructedTypes": {
+    "category": "InCompile"
+  },
+  "classes.md:MethodBody": {
+    "category": "CsErr"
+  },
+  "classes.md:MethodParameters": {
+    "category": "Diag"
+  },
+  "classes.md:NestedClassDependency": {
+    "category": "Diag"
+  },
+  "classes.md:NestedTypes": {
+    "category": "Diag"
+  },
+  "classes.md:NestedTypesInGenericClasses1": {
+    "category": "CsErr"
+  },
+  "classes.md:NestedTypesInGenericClasses2": {
+    "category": "Diag"
+  },
+  "classes.md:OutputParameters": {
+    "category": "Diag"
+  },
+  "classes.md:OverrideAccessors": {
+    "category": "InCompile"
+  },
+  "classes.md:OverrideMethods1": {
+    "category": "CsErr"
+  },
+  "classes.md:OverrideMethods2": {
+    "category": "InCompile"
+  },
+  "classes.md:OverrideMethods3": {
+    "category": "InCompile"
+  },
+  "classes.md:OverrideMethods4": {
+    "category": "InCompile"
+  },
+  "classes.md:OverrideMethods5": {
+    "category": "InCompile"
+  },
+  "classes.md:OverrideMethods6": {
+    "category": "InCompile"
+  },
+  "classes.md:ParameterArrays1": {
+    "category": "Diag"
+  },
+  "classes.md:ParameterArrays3": {
+    "category": "InRun"
+  },
+  "classes.md:ParameterArrays4": {
+    "category": "InRun"
+  },
+  "classes.md:ParameterArrays5": {
+    "category": "Diag"
+  },
+  "classes.md:PartialDeclarations1": {
+    "category": "Diag"
+  },
+  "classes.md:PartialDeclarations2": {
+    "category": "InCompile"
+  },
+  "classes.md:PartialMethods1": {
+    "category": "CsErr"
+  },
+  "classes.md:PartialMethods2": {
+    "category": "Diag"
+  },
+  "classes.md:PartialMethods3": {
+    "category": "Diag"
+  },
+  "classes.md:PartialMethods4": {
+    "category": "InCompile"
+  },
+  "classes.md:PartialMethods5": {
+    "category": "Diag"
+  },
+  "classes.md:PartialMethods6": {
+    "category": "InCompile"
+  },
+  "classes.md:PrimaryConstructor": {
+    "category": "Diag"
+  },
+  "classes.md:PrintingMembers1": {
+    "category": "Diag"
+  },
+  "classes.md:PrintingMembers2": {
+    "category": "InCompile"
+  },
+  "classes.md:PrintingMembers3": {
+    "category": "CsErr"
+  },
+  "classes.md:PropertyReservedSignatures": {
+    "category": "InRun"
+  },
+  "classes.md:RecordDeconstruct": {
+    "category": "Diag"
+  },
+  "classes.md:RecordEqualityMembers1": {
+    "category": "InCompile"
+  },
+  "classes.md:RecordEqualityMembers2": {
+    "category": "Diag"
+  },
+  "classes.md:RecordProperties1": {
+    "category": "InCompile"
+  },
+  "classes.md:RecordProperties2": {
+    "category": "InCompile"
+  },
+  "classes.md:RecursiveBaseClassSpecification": {
+    "category": "CsErr"
+  },
+  "classes.md:ReferenceParameters1": {
+    "category": "Diag"
+  },
+  "classes.md:ReferenceParameters2": {
+    "category": "Diag"
+  },
+  "classes.md:RepeatedNullable": {
+    "category": "InCompile"
+  },
+  "classes.md:SealedMethods": {
+    "category": "InCompile"
+  },
+  "classes.md:SelfBaseClass": {
+    "category": "CsErr"
+  },
+  "classes.md:StaticAndInstanceMembers": {
+    "category": "CsErr"
+  },
+  "classes.md:StaticConstructors1": {
+    "category": "InRun"
+  },
+  "classes.md:StaticConstructors2": {
+    "category": "InRun"
+  },
+  "classes.md:StaticConstructors3": {
+    "category": "Diag"
+  },
+  "classes.md:StaticFieldInitialization1": {
+    "category": "InRun"
+  },
+  "classes.md:StaticFieldInitialization2": {
+    "category": "InRun"
+  },
+  "classes.md:StaticReadonlyFieldsAsConstants": {
+    "category": "InCompile"
+  },
+  "classes.md:ThisAccess": {
+    "category": "Diag"
+  },
+  "classes.md:TypeParameterConstraints0": {
+    "category": "InCompile"
+  },
+  "classes.md:TypeParameterConstraints1": {
+    "category": "InCompile"
+  },
+  "classes.md:TypeParameterConstraints2": {
+    "category": "CsErr"
+  },
+  "classes.md:TypeParameterConstraints3": {
+    "category": "CsErr"
+  },
+  "classes.md:TypeParameterConstraints4": {
+    "category": "InCompile"
+  },
+  "classes.md:TypeParameterConstraints5": {
+    "category": "Diag"
+  },
+  "classes.md:TypeParameterSubstitution": {
+    "category": "InRun"
+  },
+  "classes.md:TypeParameterUsedAsBaseClass": {
+    "category": "CsErr"
+  },
+  "classes.md:UnaryOperators": {
+    "category": "Diag"
+  },
+  "classes.md:VariableInitializers1": {
+    "category": "InRun"
+  },
+  "classes.md:VariableInitializers2": {
+    "category": "InRun"
+  },
+  "classes.md:VirtualAbstractAccessors": {
+    "category": "InCompile"
+  },
+  "classes.md:VirtualMethods1": {
+    "category": "InRun"
+  },
+  "classes.md:VirtualMethods2": {
+    "category": "InRun"
+  },
+  "classes.md:VirtualOverrideAccessors": {
+    "category": "InCompile"
+  },
+  "classes.md:VolatileFields": {
+    "category": "Diag"
+  },
+  "conversions.md:AnonFuncTypeConv1": {
+    "category": "Diag"
+  },
+  "conversions.md:AnonFuncTypeConv2": {
+    "category": "InRun"
+  },
+  "conversions.md:AnonymousFunctionsConv1": {
+    "category": "CsErr"
+  },
+  "conversions.md:AnonymousFunctionsConv2": {
+    "category": "Diag"
+  },
+  "conversions.md:AnonymousFunctionsConv3": {
+    "category": "CsErr"
+  },
+  "conversions.md:BoxingConversions1": {
+    "category": "Diag"
+  },
+  "conversions.md:BoxingConversions2": {
+    "category": "InRun"
+  },
+  "conversions.md:BoxingConversions2B": {
+    "category": "InRun"
+  },
+  "conversions.md:BoxingConversions3": {
+    "category": "Diag"
+  },
+  "conversions.md:BoxingConversions4": {
+    "category": "Diag"
+  },
+  "conversions.md:Conversions1": {
+    "category": "InRun"
+  },
+  "conversions.md:Conversions2": {
+    "category": "Diag"
+  },
+  "conversions.md:EvalAnonFunct": {
+    "category": "Diag"
+  },
+  "conversions.md:ExplicitConvWithTypeParams1": {
+    "category": "CsErr"
+  },
+  "conversions.md:ExplicitConvWithTypeParams2": {
+    "category": "InCompile"
+  },
+  "conversions.md:IdentityTupleConversion": {
+    "category": "Diag"
+  },
+  "conversions.md:ImplicitDynamic": {
+    "category": "CsErr"
+  },
+  "conversions.md:ImplicitTupleConversions": {
+    "category": "CsErr"
+  },
+  "conversions.md:MethodGroupConversions1": {
+    "category": "CsErr"
+  },
+  "conversions.md:MethodGroupConversions2": {
+    "category": "CsErr"
+  },
+  "conversions.md:Unboxing": {
+    "category": "Diag"
+  },
+  "conversions.md:Unboxing2": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateCompatibility1": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateCompatibility2": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateCompatibility3": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateDeclarations": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateInstantiation1": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateInstantiation2": {
+    "category": "Diag"
+  },
+  "delegates.md:DelegateInvocation": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:DCIntroduction": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:IDStringsBinaryOps": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:IDStringsConstructors": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:IDStringsConversionOps": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:IDStringsEvents": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:IDStringsFields": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "documentation-comments.md:IDStringsFinalizers": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:IDStringsMethods": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "documentation-comments.md:IDStringsPropertiesAndIndexers": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:IDStringsTypes": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:IDStringsUnaryOps": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:TagC": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagCode": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagException": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:TagInclude1": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagInclude2": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagList": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagPara": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagParam": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagParamref": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagPermission": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagRemarks": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagReturns": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagSee": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagSeealso": {
+    "category": "CsErr"
+  },
+  "documentation-comments.md:TagSummary": {
+    "category": "Diag"
+  },
+  "documentation-comments.md:TagTypeparam": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:TagTypeparamref": {
+    "category": "CsErr"
+  },
+  "documentation-comments.md:TagValue": {
+    "category": "InCompile"
+  },
+  "documentation-comments.md:WholePointClass": {
+    "category": "Diag"
+  },
+  "enums.md:ColorEnumWithInt64UnderlyingType": {
+    "category": "InCompile"
+  },
+  "enums.md:EnumWithCircularValues": {
+    "category": "CsErr"
+  },
+  "enums.md:EnumWithDuplicateValues": {
+    "category": "InCompile"
+  },
+  "enums.md:EnumWithUInt32UnderlyingTypeAndNegativeValues": {
+    "category": "CsErr"
+  },
+  "enums.md:PrintingEnumValues": {
+    "category": "InRun"
+  },
+  "enums.md:SimpleColorEnum": {
+    "category": "InCompile"
+  },
+  "expressions.md:AdditionOperator": {
+    "category": "InRun"
+  },
+  "expressions.md:AdditionOperator2": {
+    "category": "CsErr"
+  },
+  "expressions.md:AnonFunctExpressions": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample1": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample2": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample3": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample4": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample5": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample6": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample7": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonFunctionImplementationExample8": {
+    "category": "Diag"
+  },
+  "expressions.md:AnonymousObjectCreationExpressions": {
+    "category": "Diag"
+  },
+  "expressions.md:ApplicableFunctionMember": {
+    "category": "CsErr"
+  },
+  "expressions.md:ArrayCreationExpressions1": {
+    "category": "Diag"
+  },
+  "expressions.md:ArrayCreationExpressions2": {
+    "category": "Diag"
+  },
+  "expressions.md:ArrayCreationExpressions3": {
+    "category": "InRun"
+  },
+  "expressions.md:ArrayCreationExpressions4": {
+    "category": "CsErr"
+  },
+  "expressions.md:ArrayCreationExpressions5": {
+    "category": "InRun"
+  },
+  "expressions.md:ArrayCreationExpressions6": {
+    "category": "Diag"
+  },
+  "expressions.md:ArrayCreationExpressions7": {
+    "category": "CsErr"
+  },
+  "expressions.md:ArrayCreationExpressions8": {
+    "category": "Diag"
+  },
+  "expressions.md:AsOperator": {
+    "category": "CsErr"
+  },
+  "expressions.md:BetterParmPassingMode": {
+    "category": "InCompile"
+  },
+  "expressions.md:BinaryNumericPromotions1": {
+    "category": "CsErr"
+  },
+  "expressions.md:BinaryNumericPromotions2": {
+    "category": "Diag"
+  },
+  "expressions.md:BindingTime": {
+    "category": "Diag"
+  },
+  "expressions.md:CapturedOuterVariables": {
+    "category": "Diag"
+  },
+  "expressions.md:CheckedAndUncheckedOperators1": {
+    "category": "Diag"
+  },
+  "expressions.md:CheckedAndUncheckedOperators2": {
+    "category": "CsErr"
+  },
+  "expressions.md:CheckedAndUncheckedOperators3": {
+    "category": "Diag"
+  },
+  "expressions.md:CheckedAndUncheckedOperators4": {
+    "category": "Diag"
+  },
+  "expressions.md:CollectionInitializers1": {
+    "category": "InRun"
+  },
+  "expressions.md:CollectionInitializers2": {
+    "category": "Diag"
+  },
+  "expressions.md:CompoundAssignment": {
+    "category": "CsErr"
+  },
+  "expressions.md:ConstantExpressions": {
+    "category": "CsErr"
+  },
+  "expressions.md:ConstantOverflow": {
+    "category": "CsErr"
+  },
+  "expressions.md:DeclarationExpressions1": {
+    "category": "CsErr"
+  },
+  "expressions.md:DeclarationExpressions2": {
+    "category": "Diag"
+  },
+  "expressions.md:DeclarationExpressions3": {
+    "category": "CsErr"
+  },
+  "expressions.md:DelegateCreationExpressions": {
+    "category": "Diag"
+  },
+  "expressions.md:DelegateRemoval": {
+    "category": "Diag"
+  },
+  "expressions.md:DiscardExpressions1": {
+    "category": "Diag"
+  },
+  "expressions.md:DiscardExpressions2": {
+    "category": "Diag"
+  },
+  "expressions.md:DiscardExpressions3": {
+    "category": "CsErr"
+  },
+  "expressions.md:ExtensionMethodInvocations1": {
+    "category": "InCompile"
+  },
+  "expressions.md:ExtensionMethodInvocations2": {
+    "category": "InRun"
+  },
+  "expressions.md:IdenticalSimpleAndTypeNames": {
+    "category": "Diag"
+  },
+  "expressions.md:InferredReturnType1": {
+    "category": "Diag"
+  },
+  "expressions.md:InferredReturnType2": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables1": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables2": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables3": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables4": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables5": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables6": {
+    "category": "Diag"
+  },
+  "expressions.md:InstantiationOfLocalVariables7": {
+    "category": "Diag"
+  },
+  "expressions.md:InterpolatedStringExpressions": {
+    "category": "InRun"
+  },
+  "expressions.md:NameofExpressions": {
+    "category": "Diag"
+  },
+  "expressions.md:NullCoalescingGenerics": {
+    "category": "Diag"
+  },
+  "expressions.md:NullForgivingExpressions": {
+    "category": "Diag"
+  },
+  "expressions.md:ObjectInitializers1": {
+    "category": "InCompile"
+  },
+  "expressions.md:ObjectInitializers1User": {
+    "category": "Diag"
+  },
+  "expressions.md:ObjectInitializers1UserB": {
+    "category": "Diag"
+  },
+  "expressions.md:ObjectInitializers2": {
+    "category": "InCompile"
+  },
+  "expressions.md:ObjectInitializers2User": {
+    "category": "Diag"
+  },
+  "expressions.md:ObjectInitializers2UserB": {
+    "category": "Diag"
+  },
+  "expressions.md:ObjectInitializers3": {
+    "category": "InCompile"
+  },
+  "expressions.md:ObjectInitializers3User": {
+    "category": "Diag"
+  },
+  "expressions.md:ObjectInitializers3UserB": {
+    "category": "Diag"
+  },
+  "expressions.md:OverloadResolution1": {
+    "category": "InCompile"
+  },
+  "expressions.md:OverloadResolution2": {
+    "category": "InCompile"
+  },
+  "expressions.md:OverloadingInGenericClasses": {
+    "category": "Diag"
+  },
+  "expressions.md:PrimaryExpressions1": {
+    "category": "CsErr"
+  },
+  "expressions.md:PrimaryExpressions2": {
+    "category": "InRun"
+  },
+  "expressions.md:Query-expressionPattern": {
+    "category": "Diag"
+  },
+  "expressions.md:RefAssignment": {
+    "category": "CsErr"
+  },
+  "expressions.md:ReferenceTypeEqualityOperators1": {
+    "category": "Diag"
+  },
+  "expressions.md:ReferenceTypeEqualityOperators2": {
+    "category": "Diag"
+  },
+  "expressions.md:ReferenceTypeEqualityOperators3": {
+    "category": "InRun"
+  },
+  "expressions.md:RequiredMembers": {
+    "category": "CsErr"
+  },
+  "expressions.md:Run-timeEvalOfArgLists1": {
+    "category": "InRun"
+  },
+  "expressions.md:Run-timeEvalOfArgLists2": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "expressions.md:Run-timeEvalOfArgLists3": {
+    "category": "Diag"
+  },
+  "expressions.md:SimpleAssignment1": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "expressions.md:SimpleAssignment2": {
+    "category": "Diag"
+  },
+  "expressions.md:SimpleAssignment3": {
+    "category": "Diag"
+  },
+  "expressions.md:SimpleAssignment4": {
+    "category": "CsErr"
+  },
+  "expressions.md:StackAllocation": {
+    "category": "CsErr"
+  },
+  "expressions.md:SwitchExpression1": {
+    "category": "Diag"
+  },
+  "expressions.md:TupleExpressions1": {
+    "category": "CsErr"
+  },
+  "expressions.md:TypeInference": {
+    "category": "InCompile"
+  },
+  "expressions.md:TypeofOperator": {
+    "category": "Diag"
+  },
+  "expressions.md:WithExpression": {
+    "category": "Diag"
+  },
+  "interfaces.md:AbstractClassesAndInterfaces1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:AbstractClassesAndInterfaces2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:BaseInterfaces1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:BaseInterfaces2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:ExplicitInterfaceMemberImplementations1": {
+    "category": "Diag"
+  },
+  "interfaces.md:ExplicitInterfaceMemberImplementations2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:ExplicitInterfaceMemberImplementations3": {
+    "category": "CsErr"
+  },
+  "interfaces.md:ExplicitInterfaceMemberImplementations4": {
+    "category": "CsErr"
+  },
+  "interfaces.md:ExplicitInterfaceMemberImplementations5": {
+    "category": "InCompile"
+  },
+  "interfaces.md:ExplicitInterfaceMemberImplementations6": {
+    "category": "InCompile"
+  },
+  "interfaces.md:ImplementationOfGenericMethods1": {
+    "category": "CsErr"
+  },
+  "interfaces.md:ImplementationOfGenericMethods2": {
+    "category": "Diag"
+  },
+  "interfaces.md:InterfaceFields": {
+    "category": "InRun"
+  },
+  "interfaces.md:InterfaceImplementationInheritance1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceImplementationInheritance2": {
+    "category": "InRun"
+  },
+  "interfaces.md:InterfaceImplementationInheritance3": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceImplementationInheritance4": {
+    "category": "InRun"
+  },
+  "interfaces.md:InterfaceImplementationInheritance5": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceImplementations1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceImplementations2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceImplementations3": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping3": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping4": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping5": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping6": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping7": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMapping8": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMember": {
+    "category": "InRun"
+  },
+  "interfaces.md:InterfaceMemberAccess2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMemberAccess3": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMethods1": {
+    "category": "CsErr"
+  },
+  "interfaces.md:InterfaceMethods2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceMethods4": {
+    "category": "CsErr"
+  },
+  "interfaces.md:InterfaceNestedTypes": {
+    "category": "CsErr"
+  },
+  "interfaces.md:InterfaceRe-implementation1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceRe-implementation2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:InterfaceRe-implementation3": {
+    "category": "InCompile"
+  },
+  "interfaces.md:QualifiedInterfaceMemberNames1": {
+    "category": "InCompile"
+  },
+  "interfaces.md:QualifiedInterfaceMemberNames2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:UniquenessOfImplementedInterfaces1": {
+    "category": "CsErr"
+  },
+  "interfaces.md:UniquenessOfImplementedInterfaces2": {
+    "category": "InCompile"
+  },
+  "interfaces.md:VariantTypeParameterLists": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:CharacterLiterals": {
+    "category": "InRun"
+  },
+  "lexical-structure.md:HelloWorld1": {
+    "category": "InRun"
+  },
+  "lexical-structure.md:HelloWorld2": {
+    "category": "InRun"
+  },
+  "lexical-structure.md:IdentifierAtPrefix": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:InitialWarning": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "lexical-structure.md:ObjectReferenceEquality": {
+    "category": "InRun"
+  },
+  "lexical-structure.md:PreproConditionalCompilation": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproDefinitionDirectives1": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproDefinitionDirectives2": {
+    "category": "CsErr"
+  },
+  "lexical-structure.md:PreproDirectivesNotProcessed": {
+    "category": "InRun"
+  },
+  "lexical-structure.md:PreproErrorDirective": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproGeneral1": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproGeneral2": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproInvalidSkippedSource": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproSymbolRedefinition": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproSymbolUndef": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:PreproTokenStream": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:RawStringLiteral1": {
+    "category": "InRun"
+  },
+  "lexical-structure.md:Region1": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:Region2": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:StringLiterals": {
+    "category": "Diag"
+  },
+  "lexical-structure.md:UnicodeCharacterEscapeSequences": {
+    "category": "InCompile"
+  },
+  "lexical-structure.md:UnicodeCharacterEscapeSequencesNot": {
+    "category": "InCompile"
+  },
+  "namespaces.md:CompilationUnits": {
+    "category": "InCompile"
+  },
+  "namespaces.md:ExternAliasDirectives": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:FileScopedNamespaces1:L119": {
+    "category": "InCompile"
+  },
+  "namespaces.md:FileScopedNamespaces1:L174": {
+    "category": "InCompile"
+  },
+  "namespaces.md:FileScopedNamespaces2:L130": {
+    "category": "InCompile"
+  },
+  "namespaces.md:FileScopedNamespaces2:L185": {
+    "category": "InCompile"
+  },
+  "namespaces.md:NamespaceDeclarations1": {
+    "category": "InCompile"
+  },
+  "namespaces.md:NamespaceDeclarations2": {
+    "category": "InCompile"
+  },
+  "namespaces.md:NamespaceDeclarations3": {
+    "category": "InCompile"
+  },
+  "namespaces.md:QualifiedAliasMember1": {
+    "category": "Diag"
+  },
+  "namespaces.md:QualifiedAliasMember2": {
+    "category": "CsErr"
+  },
+  "namespaces.md:QualifiedAliasMember3": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UniquenessOfAliases": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingAliasDirectives1": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UsingAliasDirectives10": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:UsingAliasDirectives11": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UsingAliasDirectives12": {
+    "category": "Diag"
+  },
+  "namespaces.md:UsingAliasDirectives13": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingAliasDirectives2": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UsingAliasDirectives3": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:UsingAliasDirectives4": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:UsingAliasDirectives5": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:UsingAliasDirectives6": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:UsingAliasDirectives7": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:extern-lib"
+  },
+  "namespaces.md:UsingAliasDirectives8": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingAliasDirectives9": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingNamespaceDirectives1": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UsingNamespaceDirectives2": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingNamespaceDirectives3": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UsingNamespaceDirectives4": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingNamespaceDirectives5": {
+    "category": "InCompile"
+  },
+  "namespaces.md:UsingNamespaceDirectives6": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingStaticDirectives1": {
+    "category": "Diag"
+  },
+  "namespaces.md:UsingStaticDirectives2": {
+    "category": "CsErr"
+  },
+  "namespaces.md:UsingStaticDirectives3": {
+    "category": "CsErr"
+  },
+  "patterns.md: SlicePattern2": {
+    "category": "Diag"
+  },
+  "patterns.md:ConstantPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:DeclarationPattern1": {
+    "category": "InRun"
+  },
+  "patterns.md:DiscardPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:ListPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:ListPattern2": {
+    "category": "Diag"
+  },
+  "patterns.md:LogicalPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:LogicalPattern2": {
+    "category": "Diag"
+  },
+  "patterns.md:LogicalPattern3": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "patterns.md:PatternExhaustiveness1": {
+    "category": "Diag"
+  },
+  "patterns.md:PatternFormGen1": {
+    "category": "InRun"
+  },
+  "patterns.md:PatternFormGen2": {
+    "category": "InRun"
+  },
+  "patterns.md:PositionalPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:PositionalPattern2": {
+    "category": "Diag"
+  },
+  "patterns.md:PropertyPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:PropertyPattern2": {
+    "category": "Diag"
+  },
+  "patterns.md:PropertyPattern3": {
+    "category": "Diag"
+  },
+  "patterns.md:RelationalPattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:SlicePattern1": {
+    "category": "Diag"
+  },
+  "patterns.md:SwitchExprUnguardedSubsumption": {
+    "category": "Diag"
+  },
+  "statements.md:EmptyStatement1": {
+    "category": "Diag"
+  },
+  "statements.md:EmptyStatement2": {
+    "category": "Diag"
+  },
+  "statements.md:ForeachStatement1": {
+    "category": "Diag"
+  },
+  "statements.md:ForeachStatement2": {
+    "category": "Diag"
+  },
+  "statements.md:ForeachStatement3": {
+    "category": "Diag"
+  },
+  "statements.md:GotoStatement": {
+    "category": "Diag"
+  },
+  "statements.md:IfStatement1": {
+    "category": "Diag"
+  },
+  "statements.md:IfStatement2": {
+    "category": "Diag"
+  },
+  "statements.md:JumpStatements": {
+    "category": "Diag"
+  },
+  "statements.md:LabeledStatements": {
+    "category": "Diag"
+  },
+  "statements.md:LocalFunctionDeclarations1": {
+    "category": "Diag"
+  },
+  "statements.md:LocalFunctionDeclarations2": {
+    "category": "Diag"
+  },
+  "statements.md:LocalVariableDecls1": {
+    "category": "CsErr"
+  },
+  "statements.md:LocalVariableDecls2": {
+    "category": "Diag"
+  },
+  "statements.md:LocalVariableDecls3": {
+    "category": "Diag"
+  },
+  "statements.md:LocalVariableDecls4": {
+    "category": "Diag"
+  },
+  "statements.md:LocalVariableDecls5": {
+    "category": "Diag"
+  },
+  "statements.md:LocalVariableDecls6": {
+    "category": "Diag"
+  },
+  "statements.md:LocalVariableDecls7": {
+    "category": "CsErr"
+  },
+  "statements.md:Reachability1": {
+    "category": "Diag"
+  },
+  "statements.md:Reachability2": {
+    "category": "Diag"
+  },
+  "statements.md:Reachability3": {
+    "category": "Diag"
+  },
+  "statements.md:Reachability4": {
+    "category": "Diag"
+  },
+  "statements.md:Statements": {
+    "category": "CsErr"
+  },
+  "statements.md:SwitchStatement1": {
+    "category": "Diag"
+  },
+  "statements.md:SwitchStatement2": {
+    "category": "CsErr"
+  },
+  "statements.md:SwitchStatement3": {
+    "category": "Diag"
+  },
+  "statements.md:SwitchStatement4": {
+    "category": "Diag"
+  },
+  "statements.md:SwitchStatement5": {
+    "category": "Diag"
+  },
+  "statements.md:SwitchStatement6": {
+    "category": "Diag"
+  },
+  "statements.md:SwitchStatement7": {
+    "category": "Diag"
+  },
+  "statements.md:TryStatement1": {
+    "category": "Diag"
+  },
+  "statements.md:TryStatement2": {
+    "category": "Diag"
+  },
+  "statements.md:UsingStatement": {
+    "category": "Diag"
+  },
+  "statements.md:YieldStatement": {
+    "category": "CsErr"
+  },
+  "structs.md:Constructors1": {
+    "category": "Diag"
+  },
+  "structs.md:Constructors2": {
+    "category": "Unextracted",
+    "reason": "expected-error-not-raised"
+  },
+  "structs.md:Constructors3": {
+    "category": "Diag"
+  },
+  "structs.md:DeclarationExprSafeContext": {
+    "category": "CsErr"
+  },
+  "structs.md:DefaultValues1": {
+    "category": "Diag"
+  },
+  "structs.md:DefaultValues2": {
+    "category": "Diag"
+  },
+  "structs.md:FieldInitializers": {
+    "category": "Diag"
+  },
+  "structs.md:MeaningOfThis1": {
+    "category": "Diag"
+  },
+  "structs.md:MeaningOfThis2": {
+    "category": "Diag"
+  },
+  "structs.md:MethodArgsMustMatch": {
+    "category": "CsErr"
+  },
+  "structs.md:MethodInvocationSafeContext": {
+    "category": "CsErr"
+  },
+  "structs.md:ObjectInitializerSafeContext": {
+    "category": "CsErr"
+  },
+  "structs.md:ReadonlyMember": {
+    "category": "Diag"
+  },
+  "structs.md:RecordStructEqualityMembers1": {
+    "category": "Diag"
+  },
+  "structs.md:RecordStructEqualityMembers2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "structs.md:RecordStructPrimaryConstructor1": {
+    "category": "CsErr"
+  },
+  "structs.md:RecordStructPrimaryConstructor2": {
+    "category": "Unextracted",
+    "reason": "expected-error-mismatch"
+  },
+  "structs.md:RecordStructPrintingMembers1": {
+    "category": "Diag"
+  },
+  "structs.md:RecordStructPrintingMembers2": {
+    "category": "CsErr"
+  },
+  "structs.md:ValueSemantics1": {
+    "category": "CsErr"
+  },
+  "structs.md:ValueSemantics2": {
+    "category": "CsErr"
+  },
+  "structs.md:ValueSemantics3": {
+    "category": "Diag"
+  },
+  "structs.md:refFields1": {
+    "category": "Diag"
+  },
+  "structs.md:refFields2": {
+    "category": "Diag"
+  },
+  "types.md:ChainedAccess": {
+    "category": "InCompile"
+  },
+  "types.md:ConstructedTypes1": {
+    "category": "InCompile"
+  },
+  "types.md:ConstructedTypes2": {
+    "category": "Diag"
+  },
+  "types.md:DefaultConstructors": {
+    "category": "InCompile"
+  },
+  "types.md:ExpressionTreeTypes": {
+    "category": "InRun"
+  },
+  "types.md:LiftedOperator": {
+    "category": "Diag"
+  },
+  "types.md:NestedNullabilityConversionWarnings": {
+    "category": "Diag"
+  },
+  "types.md:NullAutoPropertyAnalysis": {
+    "category": "InRun"
+  },
+  "types.md:NullChecked": {
+    "category": "Diag"
+  },
+  "types.md:NullChecks": {
+    "category": "Diag"
+  },
+  "types.md:NullInvariance": {
+    "category": "Diag"
+  },
+  "types.md:NullPropertyAnalysis": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "types.md:NullVariance": {
+    "category": "Diag"
+  },
+  "types.md:NullableAnnotationContext1": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "types.md:NullableAnnotationContext2": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "types.md:NullableAnnotationContext3": {
+    "category": "Unextracted",
+    "reason": "unsupported-template:expected-exception"
+  },
+  "types.md:NullableAssignment": {
+    "category": "Diag"
+  },
+  "types.md:SatisfyingConstraints": {
+    "category": "InCompile"
+  },
+  "types.md:SimpleTypes": {
+    "category": "InRun"
+  },
+  "types.md:TopLevelNullabilityConversionWarnings": {
+    "category": "Diag"
+  },
+  "types.md:TupleTypes1": {
+    "category": "CsErr"
+  },
+  "types.md:TupleTypes2": {
+    "category": "CsErr"
+  },
+  "types.md:TupleTypes3": {
+    "category": "Diag"
+  },
+  "types.md:TupleTypes4": {
+    "category": "Diag"
+  },
+  "types.md:TupleTypes5": {
+    "category": "InRun"
+  },
+  "types.md:UpdateStates": {
+    "category": "Diag"
+  },
+  "unsafe-code.md:Address-ofOperator": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:Fixed-sizeBuffers1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:Fixed-sizeBuffers2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:Fixed-sizeBuffersInExpressions": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FixedStatement1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FixedStatement2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FixedStatement3": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FixedStatement4": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FixedStatement5": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FunctionPointers1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:FunctionPointers2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerArithmetic": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerConversions1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerConversions2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerElementAccess1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerElementAccess2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerMemberAccess1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerMemberAccess2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerTypes1": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:PointerTypes2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:UnsafeContexts2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:UnsafeContexts3": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:UnsafeContexts4": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:UnsafeModifierOnStruct": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:UnsafeStackAllocation1": {
+    "category": "CsErr"
+  },
+  "unsafe-code.md:UnsafeStackAllocation2": {
+    "category": "Unextracted",
+    "reason": "unexpected-compile-error"
+  },
+  "unsafe-code.md:UnsafeStackAllocation3": {
+    "category": "Diag"
+  },
+  "variables.md:AndAnd": {
+    "category": "InCompile"
+  },
+  "variables.md:AnonymousFunctions1": {
+    "category": "CsErr"
+  },
+  "variables.md:AnonymousFunctions2": {
+    "category": "CsErr"
+  },
+  "variables.md:ConstantExpressions1": {
+    "category": "InRun"
+  },
+  "variables.md:ConstantExpressions2": {
+    "category": "InRun"
+  },
+  "variables.md:DefAssignSwitch": {
+    "category": "InRun"
+  },
+  "variables.md:Discards1": {
+    "category": "Diag"
+  },
+  "variables.md:FieldsSafeContext": {
+    "category": "CsErr"
+  },
+  "variables.md:FunctionInvocation": {
+    "category": "CsErr"
+  },
+  "variables.md:LocalVariables": {
+    "category": "CsErr"
+  },
+  "variables.md:OrOr": {
+    "category": "InCompile"
+  },
+  "variables.md:ParameterRefSafeContext": {
+    "category": "CsErr"
+  },
+  "variables.md:ParameterScopeVariance": {
+    "category": "CsErr"
+  },
+  "variables.md:RefSafeContexts1": {
+    "category": "CsErr"
+  },
+  "variables.md:RefSafeContexts2": {
+    "category": "CsErr"
+  },
+  "variables.md:RefVarsAndReturns1": {
+    "category": "Diag"
+  },
+  "variables.md:RefVarsAndReturns2": {
+    "category": "Diag"
+  },
+  "variables.md:RulesForVarsInLocalFunctions": {
+    "category": "CsErr"
+  },
+  "variables.md:SimpleAssignment": {
+    "category": "InCompile"
+  },
+  "variables.md:TryCatchFinally": {
+    "category": "Diag"
+  },
+  "variables.md:VariableCategories": {
+    "category": "Diag"
+  }
+}
