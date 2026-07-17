@@ -1085,3 +1085,7 @@
 - delegate 型宣言が silent に `D.new(...)` (未定義) へ、event 宣言が silent 欠落へ落ちていた。DelegateDeclaration / EventDeclaration / EventFieldDeclaration を TCS1001 で拒否 (callback は BCL の Action/Func が正)
 - あわせて 800 行 gate 超過の DiagnosticTests.cs を分割 (spec conformance 由来の診断テストを SubsetDiagnosticTests.cs へ)
 - 検証: dotnet test 634/634 green、spec baseline で conversions.md:AnonFuncTypeConv2 ほかが Diag へ
+
+### T205: System.Random を TCS1002 未対応型へ ✓ (2026-07-18)
+- System.Random が allowlist 判定を素通りし `new Random()` が Lua で `Random.new` nil になっていた (乱数の正は TinySystem.Random static facade)。UnsupportedFullTypeNames へ追加
+- 検証: dotnet test 635/635 green、spec baseline で conversions.md:AnonFuncTypeConv2 が Bug → Diag

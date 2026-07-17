@@ -171,6 +171,24 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void SystemRandom_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static double Test()
+                {
+                    var r = new System.Random();
+                    return r.NextDouble();
+                }
+            }
+            """]);
+
+        Assert.Contains(result.Warnings,
+            w => w.Contains("TCS1002") && w.Contains("Random"));
+    }
+
+    [Fact]
     public void ConsoleWriteLine_IsNotFlagged()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""

@@ -24,6 +24,9 @@ public static partial class TinyCsComplianceFacts
             "System.DateTimeOffset",
             "System.TimeSpan",
             "System.Guid",
+            // 乱数は TinySystem.Random (static facade) が正。System.Random は
+            // instance API で Lua 側に対応物がなく `Random.new` が nil になる
+            "System.Random",
         };
 
     private static readonly HashSet<string> SupportedMathFields =

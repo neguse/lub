@@ -697,7 +697,7 @@
     "category": "Diag"
   },
   "conversions.md:AnonFuncTypeConv2": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "conversions.md:AnonymousFunctionsConv1": {
     "category": "CsErr"
@@ -1163,7 +1163,7 @@
     "category": "CsErr"
   },
   "expressions.md:TypeInference": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "expressions.md:TypeofOperator": {
     "category": "Diag"
