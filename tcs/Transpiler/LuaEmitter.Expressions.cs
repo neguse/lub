@@ -214,6 +214,11 @@ public partial class LuaEmitter
             (model.GetTypeInfo(bin.Left).Type?.SpecialType == SpecialType.System_String ||
              model.GetTypeInfo(bin.Right).Type?.SpecialType == SpecialType.System_String ||
              model.GetTypeInfo(bin).Type?.SpecialType == SpecialType.System_String);
+        if (isStringConcat)
+        {
+            left = NullSafeConcatOperand(model, bin.Left, left);
+            right = NullSafeConcatOperand(model, bin.Right, right);
+        }
         var op = bin.Kind() switch
         {
             SyntaxKind.AddExpression => isStringConcat ? ".." : "+",
@@ -242,6 +247,25 @@ public partial class LuaEmitter
             _ => WarnUnsupported(bin, $"binary expression: {bin.Kind()}")
         };
         return $"{left} {op} {right}";
+    }
+
+    // C# の string 連結は null を空文字列として扱うが、Lua の .. は nil で
+    // エラーになる。null になり得る string オペランドだけ `or ""` を付ける
+    // (リテラル・補間文字列・ネストした連結結果は non-null が確定)。
+    private static string NullSafeConcatOperand(SemanticModel model,
+        ExpressionSyntax expr, string rendered)
+    {
+        if (model.GetTypeInfo(expr).Type?.SpecialType
+                != SpecialType.System_String)
+            return rendered;
+        var unwrapped = expr;
+        while (unwrapped is ParenthesizedExpressionSyntax paren)
+            unwrapped = paren.Expression;
+        return unwrapped is LiteralExpressionSyntax
+            or InterpolatedStringExpressionSyntax
+            or BinaryExpressionSyntax { RawKind: (int)SyntaxKind.AddExpression }
+            ? rendered
+            : $"({rendered} or \"\")";
     }
 
     private static bool HasBoolOperand(SemanticModel model,
@@ -438,12 +462,11 @@ public partial class LuaEmitter
             "/" when IsIntegralType(type) => $"__tcs_idiv({read}, {right})",
             "%" when IsIntegralType(type) => $"__tcs_irem({read}, {right})",
             "%" when IsFloatingType(type) => $"math.fmod({read}, {right})",
+            // string += は C# 同様 null を空文字列扱いにする (nil .. はエラー)
+            ".." => $"({read} or \"\") .. ({right} or \"\")",
             _ => $"{read} {op} {right}",
         };
     }
-
-    // compound assignment の Lua 演算子。string の += は Lua `+` だと実行時
-    // エラーになるため `..` にする。bool の &=/|=/^= は未対応 (null → 診断)。
 
     // compound assignment の Lua 演算子。string の += は Lua `+` だと実行時
     // エラーになるため `..` にする。bool の &=/|=/^= は未対応 (null → 診断)。

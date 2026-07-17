@@ -32,6 +32,41 @@ public class StringTests
     }
 
     [Fact]
+    public void ConcatTreatsNullOperandAsEmptyString()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Wrap(string? s)
+                {
+                    return ">" + s + "<";
+                }
+            }
+            """,
+            "S.Wrap(nil)");
+        Assert.Equal("><", result);
+    }
+
+    [Fact]
+    public void CompoundConcatTreatsNullAsEmptyString()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Append(string? head, string? tail)
+                {
+                    string? acc = head;
+                    acc += "-";
+                    acc += tail;
+                    return acc;
+                }
+            }
+            """,
+            "S.Append(nil, nil)");
+        Assert.Equal("-", result);
+    }
+
+    [Fact]
     public void NullLiteral()
     {
         var result = TestHelper.TranspileAndRun("""

@@ -76,10 +76,16 @@ internal sealed class SpecLuaExecutor
     }
 
     // 正規化は全例共通の書式差のみ (design doc §5)。C# の bool 表記 True/False は
-    // Lua では true/false になる。意味論差は known-differences.json で例別に扱う。
-    internal static string NormalizeExpectedLine(string line) =>
-        System.Text.RegularExpressions.Regex.Replace(line, @"\b(True|False)\b",
+    // Lua では true/false、浮動小数の指数表記 E は Lua では e になる。
+    // 意味論差は known-differences.json で例別に扱う。
+    internal static string NormalizeExpectedLine(string line)
+    {
+        var normalized = System.Text.RegularExpressions.Regex.Replace(line,
+            @"\b(True|False)\b",
             match => match.Value == "True" ? "true" : "false");
+        return System.Text.RegularExpressions.Regex.Replace(normalized,
+            @"(\d)E([+-]?\d)", "$1e$2");
+    }
 
     private static string[] SplitOutput(string stdout)
     {

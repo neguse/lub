@@ -1054,3 +1054,9 @@
 - interface は Lua 出力を持たないため、実装付き interface member (DIM) と explicit interface implementation (`void IA.M()`) が silent 欠落し実行時 nil call になっていた。両方を TCS1001 で拒否 (宣言のみの interface 契約と通常の implicit 実装は従来どおり)
 - 検証: dotnet test 621/621 green、spec baseline で interfaces.md ほか 14 例が Diag へ
 - 判断: property は AccessorList の body/expression-body 有無で判定 (auto-property 宣言 `int P { get; }` は契約のみなので許容)
+
+### T192: string concat の null 安全化と指数表記 Normalizer ✓ (2026-07-18)
+- C# の string 連結は null を空文字列扱いするが、Lua の `..` は nil でエラーになっていた。binary `+` は null になり得る string オペランドへ `or ""` を付与 (リテラル・補間・ネスト連結は non-null 確定で素通し)、`+=` は read/right 両側を null 安全化
+- Normalizer に浮動小数の指数表記差 (C# `1.23E+15` / Lua `1.23e+15`) の正規化を追加
+- 検証: dotnet test 623/623 green。spec の AdditionOperator は残差が decimal スケール (`2.900` vs `2.9`) のみに縮小 (→ T193 decimal 診断化で解消予定)
+- 判断: 全 string オペランド一律ラップではなく non-null 確定形を除外 — 出力の可読性維持と no-op ラップ削減

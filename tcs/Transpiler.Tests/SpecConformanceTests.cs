@@ -401,7 +401,9 @@ public class SpecConformanceTests
     [Theory]
     [InlineData("x is True", "x is true")]
     [InlineData("False True Falsehood", "false true Falsehood")]
-    public void Executor_NormalizesBooleanTokensInExpectedOutput(
+    [InlineData("f = 1.23E+15", "f = 1.23e+15")]
+    [InlineData("EOF East 3E8", "EOF East 3e8")]
+    public void Executor_NormalizesBooleanAndExponentTokens(
         string expected, string normalized) =>
         Assert.Equal(normalized, SpecLuaExecutor.NormalizeExpectedLine(expected));
 

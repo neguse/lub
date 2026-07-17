@@ -17,7 +17,7 @@
 
 C1 実行フェーズの発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T192** [P1] string concat の null オペランドが Lua error (expressions.md:AdditionOperator) — C# は空文字列扱い。あわせて浮動小数の指数表記 E/e 差の Normalizer 対応を判断
+- **T193** [P1] decimal 型/リテラルが Lua number へ silent マップされスケール表示等の意味論差を生む (expressions.md:AdditionOperator の `2.900`) — TCS1001 診断化
 - **T185** [P2] C3: baseline 後退検知の恒常ゲート化 (配置は実測で決定)
 - **T186** [P2] C4: サブセット内 AST 生成 fuzz + 自動縮小 + nightly
 - **T187** [P2] C5: coverlet で emitter 未踏分岐の可視化
