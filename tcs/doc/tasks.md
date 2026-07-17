@@ -40,8 +40,13 @@
 
 ### Phase 3 — 価値の刈り取り（T218 と T219 は並行可）
 
-- [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は T212 の
-      合否解釈に従う。完了条件: digest harness で 2 backend 一致
+- [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は spike 決着
+      どおり IL-native。第一マイルストーン完了 (luoc/ 骨格、digest kernel
+      3/3 一致 — done.md 参照)。残り: 対応 IL ノードの全域化、
+      class 骨格/文字列/List/Dict runtime、静的 link 出荷形
+- [ ] **T228** (P1): IlExport の契約拡充 — method の型情報、配列の要素型と
+      長さ、field initializer を IL 側に載せる (T218 第一実装が Roslyn 再解析で
+      補完している部分の解消)
 - [ ] **T219** (P1): M5 struct / record struct のサブセット追加 —
       Lua 側表現（table of tables vs userdata 連続バッファ）は T212 の
       particles 実測で決定。TCS1001 解除、値意味論の semantic テスト、

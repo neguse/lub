@@ -1289,3 +1289,9 @@
 - 合否解釈: 「aot-* のみ予算落ち、native は通る」側 → **release-lowering は IL-native 表現 (struct / 連続配列) を採る** (il-design §8 の spike 待ち 2 項が決着: release class 表現 = native、Lua 側 struct 配列表現の需要は M5 実装時に再実測)
 - spawn_churn の CONTRACT 未規定分は spike 実装解釈 (開始時充填) に統一し、tcs kernel を追随 (digest 9274159d で一致確認)
 - 残課題: 実機 (Playdate) 測定は SDK 導入後。luo コミット済み (未 push)
+
+### T218 第一マイルストーン: luoc IL→C backend 骨格 ✓ (2026-07-18)
+- ../luo/luoc/ (net10.0 console、Transpiler を ProjectReference) が IlExport.Export を消費して C を生成。class=calloc struct、配列=型付き連続バッファ (spike 合否解釈の IL-native 表現)、strict f32 bit literal、null/bounds/除算 fault、未対応ノードは名前付きエラー (実装は Codex 委任、適用と受入検証は当方)
+- 受入: digest kernel 3 種の C 変換を指定 flags (gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard) でビルド・実行し、digest が Lua backend と 3/3 一致 (e8814b32 / 9274159d / 8bf97e09) — **M3 の核である 2 backend digest 一致が初成立**
+- 判断: IlExport v0 に無い宣言情報 (method 型、配列要素型/長さ、field initializer) は暫定で Roslyn 再解析により補完 → 契約拡充を T228 起票。式・制御フローは IL のみから生成
+- 残課題: T218 本体の全域化 (tasks.md 更新済み)、luo コミット済み (未 push)
