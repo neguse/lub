@@ -135,6 +135,32 @@ public class ForLoopTests
     }
 
     [Fact]
+    public void Continue_GeneralFor_LocalDeclaredAfterContinue()
+    {
+        // 一般 for lowering は continue label の後に incrementor が続くため、
+        // label が block 末尾に来ない。continue より後で宣言した local がある場合、
+        // goto が local スコープへ飛び込む形になり Lua が load を拒否する回帰の検証
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Limit = 5;
+                public static int Test()
+                {
+                    int sum = 0;
+                    for (int i = 0; i < Limit; i++)
+                    {
+                        if (i == 2) continue;
+                        int doubled = i * 2;
+                        sum = sum + doubled;
+                    }
+                    return sum;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("16", result); // (0+1+3+4)*2
+    }
+
+    [Fact]
     public void Continue_ForEach()
     {
         var result = TestHelper.TranspileAndRun("""

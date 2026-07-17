@@ -307,8 +307,11 @@ public partial class LuaEmitter
 
     private readonly HashSet<int> _usedContinueLabels = [];
 
-    private static bool ContainsContinue(StatementSyntax stmt) => stmt
-        .DescendantNodes()
+    // この loop 自身を対象とする continue の有無 (入れ子 loop 内の continue は
+    // その loop の label に束縛されるため降下しない)
+    private static bool ContainsDirectContinue(StatementSyntax stmt) => stmt
+        .DescendantNodes(n => n is not (ForStatementSyntax or WhileStatementSyntax
+            or DoStatementSyntax or ForEachStatementSyntax))
         .OfType<ContinueStatementSyntax>()
         .Any();
 
@@ -330,8 +333,23 @@ public partial class LuaEmitter
             ? VisitExpression(model, forStmt.Condition) : "true";
         AppendLine($"while {cond} do");
         _indent++;
+        // continue label の後に incrementor が続くため label が block 末尾に来ず、
+        // body 内で continue より後に宣言された local のスコープへ goto が飛び込むと
+        // Lua が load を拒否する。do..end で body と label を囲い block 末尾に揃える
+        var scopeBody = forStmt.Incrementors.Count > 0
+            && ContainsDirectContinue(forStmt.Statement);
+        if (scopeBody)
+        {
+            AppendLine("do");
+            _indent++;
+        }
         VisitBlock(model, forStmt.Statement);
         EmitContinueLabel(label);
+        if (scopeBody)
+        {
+            _indent--;
+            AppendLine("end");
+        }
         foreach (var inc in forStmt.Incrementors)
             VisitExpressionAsStatement(model, inc);
         _indent--;
