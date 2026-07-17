@@ -891,7 +891,7 @@
     "category": "InCompile"
   },
   "expressions.md:AdditionOperator": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "expressions.md:AdditionOperator2": {
     "category": "CsErr"

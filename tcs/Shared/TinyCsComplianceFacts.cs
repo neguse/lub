@@ -97,6 +97,16 @@ public static partial class TinyCsComplianceFacts
                             accessor.Body is not null
                             || accessor.ExpressionBody is not null) == true)
                     => "InterfaceDefaultMember",
+            // decimal は Lua number (binary float) で表現できず、スケール保存や
+            // 精度の意味論差が silent に出るため拒否する。
+            PredefinedTypeSyntax predefined
+                when predefined.Keyword.IsKind(SyntaxKind.DecimalKeyword)
+                    => "DecimalType",
+            LiteralExpressionSyntax literal
+                when literal.IsKind(SyntaxKind.NumericLiteralExpression)
+                    && literal.Token.Text.EndsWith("m",
+                        StringComparison.OrdinalIgnoreCase)
+                    => "DecimalLiteral",
             // tuple は Lua 表現を持たない (ValueTuple.new は存在しない)。
             // 分解代入の LHS `(x, y) = rhs` だけは deconstruction lowering が
             // 受け持つため除外する。

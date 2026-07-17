@@ -1,7 +1,7 @@
 # 仕様ベース conformance / differential testing 設計
 
-> Status: C0-C1 実装済み (T182-T183)。C1 の Bug ゼロ達成は発見タスク T188-T192 の
-> 完了時。C2 以降は doc/tasks.md の T184-T187
+> Status: C0-C1 完了 (T182-T183、発見 T188-T193 修正済みで Bug 0 達成)。
+> C2 以降は doc/tasks.md の T184-T187
 >
 > Date: 2026-07-17
 >

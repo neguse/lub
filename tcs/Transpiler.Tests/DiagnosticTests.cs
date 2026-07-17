@@ -696,4 +696,41 @@ public class DiagnosticTests
             w.Contains("InterfaceDefaultMember") ||
             w.Contains("ExplicitInterfaceImplementation"));
     }
+
+    [Fact]
+    public void DecimalTypeAndLiteral_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static decimal Test()
+                {
+                    var d = 2.900m;
+                    return d;
+                }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "DecimalType");
+        AssertUnsupportedWarning(result, "DecimalLiteral");
+    }
+
+    [Fact]
+    public void FloatAndDoubleLiterals_AreNotFlaggedAsDecimal()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static double Test()
+                {
+                    float f = 1.5f;
+                    double d = 2.5;
+                    return f + d;
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("Decimal"));
+    }
 }

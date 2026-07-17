@@ -1060,3 +1060,8 @@
 - Normalizer に浮動小数の指数表記差 (C# `1.23E+15` / Lua `1.23e+15`) の正規化を追加
 - 検証: dotnet test 623/623 green。spec の AdditionOperator は残差が decimal スケール (`2.900` vs `2.9`) のみに縮小 (→ T193 decimal 診断化で解消予定)
 - 判断: 全 string オペランド一律ラップではなく non-null 確定形を除外 — 出力の可読性維持と no-op ラップ削減
+
+### T193: decimal 型/リテラルの TCS1001 診断化 ✓ (2026-07-18)
+- decimal が Lua number (binary float) へ silent マップされ、スケール表示 (`2.900` → `2.9`) や精度の意味論差が診断なしで出ていた。PredefinedType の decimal keyword と `m` サフィックスリテラルを TCS1001 で拒否 (float/double は非対象)
+- 検証: dotnet test 627/627 green。**spec conformance の Bug 分類が 0 に到達 — C1 完了条件達成** (Executed 7/7 passed、集計: InRun 50 / InCompile 153 / Diag 271 / CsErr 119 / Unextracted 49 / Bug 0)
+- 判断: 数値意味論を近似で通すより DSL 契約として明示拒否 (struct と同じ扱い)。需要が出たら固定小数 helper で再検討
