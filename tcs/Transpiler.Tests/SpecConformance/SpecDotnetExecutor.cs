@@ -15,9 +15,36 @@ internal sealed class SpecDotnetExecutor
 {
     private static readonly TimeSpan ExecutionTimeout = TimeSpan.FromSeconds(10);
 
-    // Console.Out はプロセス全域の状態なので、差し替え中は排他する
-    // (xUnit の並列テストと交錯しないように)。
-    private static readonly object ConsoleLock = new();
+    // Console.Out はプロセス全域の状態。単純な SetOut 差し替えだと、xUnit の
+    // 並列テストが同時に書いた行 (FileSizeGate の warning 等) が capture に
+    // 混入する。AsyncLocal で「この実行の論理コールツリーからの書き込みだけ」
+    // を捕捉するルーティング writer を一度だけ挿す。
+    private static readonly AsyncLocal<StringWriter?> Capture = new();
+    private static readonly object InstallLock = new();
+    private static bool _writerInstalled;
+
+    private static void EnsureRoutingWriter()
+    {
+        if (_writerInstalled)
+            return;
+        lock (InstallLock)
+        {
+            if (_writerInstalled)
+                return;
+            Console.SetOut(new RoutingWriter(Console.Out));
+            _writerInstalled = true;
+        }
+    }
+
+    private sealed class RoutingWriter(TextWriter fallback) : TextWriter
+    {
+        public override System.Text.Encoding Encoding => fallback.Encoding;
+        private TextWriter Target => Capture.Value ?? fallback;
+        public override void Write(char value) => Target.Write(value);
+        public override void Write(string? value) => Target.Write(value);
+        public override void WriteLine(string? value) =>
+            Target.WriteLine(value);
+    }
 
     // classifier と同じく SDK ImplicitUsings 相当を補う (template csproj 前提)。
     private const string ImplicitUsingsSource = """
@@ -67,35 +94,33 @@ internal sealed class SpecDotnetExecutor
                 ? new object[] { Array.Empty<string>() }
                 : null;
 
-            lock (ConsoleLock)
+            EnsureRoutingWriter();
+            using var writer = new StringWriter();
+            Capture.Value = writer;
+            try
             {
-                var originalOut = Console.Out;
-                using var writer = new StringWriter();
-                Console.SetOut(writer);
-                try
-                {
-                    var invocation = Task.Run(() =>
-                        entry.Invoke(null, arguments));
-                    if (!invocation.Wait(ExecutionTimeout))
-                        return new SpecDotnetRun(false, "",
-                            $"dotnet execution timed out ({ExecutionTimeout})");
-                }
-                catch (AggregateException aggregate)
-                {
-                    var inner = aggregate.InnerException
-                        is TargetInvocationException target
-                        ? target.InnerException ?? target
-                        : aggregate.InnerException ?? aggregate;
+                // AsyncLocal は Task.Run の子へ流れる — この実行の書き込み
+                // だけが writer へ入り、並列テストの出力は fallback へ抜ける
+                var invocation = Task.Run(() => entry.Invoke(null, arguments));
+                if (!invocation.Wait(ExecutionTimeout))
                     return new SpecDotnetRun(false, "",
-                        $"dotnet execution threw: " +
-                        $"{inner.GetType().Name}: {inner.Message}");
-                }
-                finally
-                {
-                    Console.SetOut(originalOut);
-                }
-                return new SpecDotnetRun(true, writer.ToString(), null);
+                        $"dotnet execution timed out ({ExecutionTimeout})");
             }
+            catch (AggregateException aggregate)
+            {
+                var inner = aggregate.InnerException
+                    is TargetInvocationException target
+                    ? target.InnerException ?? target
+                    : aggregate.InnerException ?? aggregate;
+                return new SpecDotnetRun(false, "",
+                    $"dotnet execution threw: " +
+                    $"{inner.GetType().Name}: {inner.Message}");
+            }
+            finally
+            {
+                Capture.Value = null;
+            }
+            return new SpecDotnetRun(true, writer.ToString(), null);
         }
         finally
         {

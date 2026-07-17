@@ -1171,3 +1171,8 @@
 
 ### C0-C5 受入条件の充足確認 ✓ (2026-07-18)
 - design doc §8 の 5 項目: (1) 仕様例全数分類 + Bug 0 + 章別レポート ✓ (2) 既存 corpus differential の allowlist 外差異 0 ✓ (253 match / mismatch 0) (3) 後退検知ゲート常設 ✓ (run-tests = pre-commit hook 経由で毎コミット) (4) fuzz の seed 再現 + 自動縮小 ✓ (nightly は run-fuzz.sh、判断は T186 参照) (5) known-differences ↔ support-matrix 相互参照 ✓ (support-matrix §27 を新設)
+
+### CI flaky の根治: dotnet 実行 capture の Console 競合 ✓ (2026-07-18)
+- CI (2 vCPU) で FileSizeGate / FuzzSweep が不定に失敗。原因は SpecDotnetExecutor がグローバル Console.Out を StringWriter へ差し替えて capture する実装で、並列テストの出力 (FileSizeGate の 600 行超 warning 等) が (1) fuzz の期待出力へ混入、(2) dispose 済み writer への書き込み例外、の 2 形態で他テストを壊していた
+- AsyncLocal ルーティング writer を一度だけ挿し、「この実行の論理コールツリーからの書き込み」だけを capture、他スレッドは元の writer へ素通しする方式へ変更 (lock 不要)
+- 検証: ローカル全ゲート green (666/666)。CI は verbosity minimal 化 (失敗詳細の可視化) 済みで、以後の再発時はログに assert が出る
