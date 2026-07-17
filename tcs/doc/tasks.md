@@ -18,7 +18,7 @@
 3. **数値モデルの凍結を C backend 着手より前に** — double 前提で
    IL→C を書く手戻りを封じる
 
-### Phase 0 — 情報を買う（T211 と T212/T213 は並行可）
+### Phase 0 — 情報を買う + 発見バグ修正（並行可）
 
 - [ ] **T221** (P0, バグ): closure が捕捉する `for` 変数の意味論 —
       C# は全反復で 1 変数（実測 `3 3 3`）、現行出力は numeric for のため
@@ -28,10 +28,6 @@
       `getmetatable(x) == T` の完全一致比較のため、派生インスタンスへの
       `is Base` が C# `true` / 現行出力 `false`（実測）。metatable chain を
       辿る runtime helper へ置換。M1 と独立に修正可能
-- [ ] **T211** (P0): IL 意味論仕様 v0 — il-design.md §2 ギャップ表の各行を
-      「IL の条項 + 各 backend の義務」へ分解。評価順の固定・再結合禁止・
-      intrinsic（math 関数）集合・値型の copy 地点列挙を含む。
-      合格基準: Lua にも C にも言及せずに読める
 - [ ] **T212** (P0, luo 側): 性能上界 spike の PC 測定 —
       `../luo/docs/spike-ceiling.md` の kernels（sprite_update / spawn_churn /
       particles）を手書き C で実測し、aot-slot vs native 比を先に取る。

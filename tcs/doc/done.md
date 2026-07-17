@@ -1185,3 +1185,10 @@
 - よかったこと: コードを書く前の紙の演習で P0 バグ 2 件と設計判断 8 件が確定。IL 正本化の価値仮説 (ギャップの場当たり埋めが起きている) が実証された
 - 判断: IL builder の入力は IOperation へ移行せず syntax + SemanticModel を維持 — IL 化の価値は IL 側にあり、現行走査コードは資産。IIFE 廃止は意味論でなく性能・可読性判断 (closure 割当除去)
 - 残課題: T211 (仕様 v0)、バグ T221/T222 の修正時期 (M1 先行か畳むか)
+
+### T211: [IL] 意味論仕様 v0 ✓ (2026-07-18)
+- `doc/il-spec.md` を新設。il-design §2 ギャップ表の各行を「IL の条項 + backend の義務」へ分解し、意味論の正本を規範化: 厳密左→右評価・f32 再結合/縮約禁止 (§4 §6)、i32 wrap + C# 除算規則 + overflow fault (§5)、capture は変数単位 + ループ脱糖 (§7)、fault の決定性 (§12)、値型 copy 地点の列挙 (§10)、intrinsic の規範 = TinySystem dotnet facade + known-differences (§13)
+- 合格基準「本文が Lua にも C にも言及せず読める」を満たし、backend 義務は付録 A/B に分離。il-design §8 の未決 6 件中 3 件 (具体形 / 例外 / interop 境界) を決着、残 3 件 + 新規 3 件を il-spec 付録 C に同期
+- 検証: 文書のみの変更。規範の根拠事実は T210 の実測 (probe 2 本の Lua/.NET 突き合わせ) に依拠
+- 判断: string を UTF-8 バイト列で規範化 (出荷ターゲット表現を正に置き、.NET 実行側を既知差とする — 逆だと release backend が UTF-16 を背負う)。f32→i32 変換不能と INT_MIN/-1 は fault として決定的に定義 (C# 側が unspecified / 例外なので矛盾しない)。数学関数の規範は「同一プラットフォーム内一致」に留め、プラットフォーム間ビット一致は要求しない (spike の libm 排除方針と整合)
+- 残課題: gpt-5.6 second opinion review、M2 (T217) でシリアライズ形式と luo 向け入力契約
