@@ -122,14 +122,11 @@ public partial class LuaEmitter
         return result;
     }
 
-    private static string ConvertStringLiteral(LiteralExpressionSyntax lit)
-    {
-        // For verbatim (@"...") and raw ("""...""") strings, use ValueText to get resolved value
-        if (lit.Token.Text.StartsWith('@') || lit.Token.Text.StartsWith('"') &&
-            lit.Token.Text.Length >= 6 && lit.Token.Text.StartsWith("\"\"\""))
-            return EscapeLuaString(lit.Token.ValueText);
-        return lit.Token.Text;
-    }
+    // C# と Lua の escape 文法は互換ではない (\x の可変長 hex、\0 直後の数字、
+    // \u など)。raw text コピーはせず、常に解決済み ValueText を Lua 形式へ
+    // escape し直す。
+    private static string ConvertStringLiteral(LiteralExpressionSyntax lit) =>
+        EscapeLuaString(lit.Token.ValueText);
 
     private static string EscapeLuaString(string value)
     {
@@ -143,7 +140,11 @@ public partial class LuaEmitter
                 case '\n': sb.Append("\\n"); break;
                 case '\r': sb.Append("\\r"); break;
                 case '\t': sb.Append("\\t"); break;
-                case '\0': sb.Append("\\0"); break;
+                // 制御文字は 2 桁固定の \xXX (Lua は \x を 2 桁で読むため
+                // 後続文字と混ざらない。\0 も後続数字との連結事故を避ける)
+                case < ' ' or '\x7f':
+                    sb.Append($"\\x{(int)c:X2}");
+                    break;
                 default: sb.Append(c); break;
             }
         }

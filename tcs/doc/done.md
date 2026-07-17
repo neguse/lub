@@ -1072,3 +1072,7 @@
 - ハーネス修正 1 件: dotnet 側にも ImplicitUsings 補完 (classifier と対称)
 - 検証: SpecConformance 単体 34/34 green、sweep は baseline 一致 (Bug 17 は起票済み記録)、Executed 50 / passed 33
 - 判断: C2 後半 (既存 TranspileAndRun corpus の裏取り) は luaExpr → C# 翻訳の設計が必要なため T206 へ分割
+
+### T202: string literal escape の Lua 再変換 ✓ (2026-07-18)
+- 通常の `"..."` literal が C# の raw token text のまま Lua へコピーされていた (escape 文法は非互換: `\x` の可変長 hex、`\0` 直後の数字、`\u` など)。常に ValueText を Lua 形式へ escape し直す経路へ統一し、制御文字は 2 桁固定 `\xXX` で emit
+- 検証: dotnet test 630/630 green (バイト長セマンティクステスト追加)、spec baseline で lexical-structure.md:CharacterLiterals が Bug → InRun (dotnet differential 一致)

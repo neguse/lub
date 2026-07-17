@@ -1301,7 +1301,7 @@
     "category": "InCompile"
   },
   "lexical-structure.md:CharacterLiterals": {
-    "category": "Bug"
+    "category": "InRun"
   },
   "lexical-structure.md:HelloWorld1": {
     "category": "InRun"
