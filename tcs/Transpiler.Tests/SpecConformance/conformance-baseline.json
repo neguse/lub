@@ -1208,7 +1208,7 @@
     "category": "Diag"
   },
   "interfaces.md:InterfaceFields": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "interfaces.md:InterfaceImplementationInheritance1": {
     "category": "InCompile"

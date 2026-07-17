@@ -1089,3 +1089,7 @@
 ### T205: System.Random を TCS1002 未対応型へ ✓ (2026-07-18)
 - System.Random が allowlist 判定を素通りし `new Random()` が Lua で `Random.new` nil になっていた (乱数の正は TinySystem.Random static facade)。UnsupportedFullTypeNames へ追加
 - 検証: dotnet test 635/635 green、spec baseline で conversions.md:AnonFuncTypeConv2 が Bug → Diag
+
+### T201: interface の field/const 宣言を TCS1001 診断化 ✓ (2026-07-18)
+- interface 内 field/const が silent 欠落し `IX.A` が実行時 nil になっていた。FieldDeclaration (parent が interface) を TCS1001 で拒否
+- 検証: dotnet test 636/636 green、spec baseline で interfaces.md:InterfaceFields が Bug → Diag

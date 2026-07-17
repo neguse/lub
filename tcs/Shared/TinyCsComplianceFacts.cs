@@ -90,6 +90,9 @@ public static partial class TinyCsComplianceFacts
                 when dim.Parent is InterfaceDeclarationSyntax
                     && (dim.Body is not null || dim.ExpressionBody is not null)
                     => "InterfaceDefaultMember",
+            FieldDeclarationSyntax interfaceField
+                when interfaceField.Parent is InterfaceDeclarationSyntax
+                    => "InterfaceField",
             PropertyDeclarationSyntax dimProp
                 when dimProp.Parent is InterfaceDeclarationSyntax
                     && (dimProp.ExpressionBody is not null

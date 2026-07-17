@@ -171,6 +171,24 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
+    public void InterfaceConstField_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public interface IX
+            {
+                const int A = 1;
+            }
+
+            public class T
+            {
+                public static int Test() => IX.A;
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "InterfaceField");
+    }
+
+    [Fact]
     public void SystemRandom_ReportsWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
