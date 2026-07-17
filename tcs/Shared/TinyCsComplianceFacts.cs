@@ -146,6 +146,16 @@ public static partial class TinyCsComplianceFacts
                     && literal.Token.Text.EndsWith("m",
                         StringComparison.OrdinalIgnoreCase)
                     => "DecimalLiteral",
+            // 孤立 surrogate は UTF-8 octet 列 (il-spec §11 の string 規範) への
+            // 写像を持たない。対の surrogate (astral 文字) は許容する。
+            LiteralExpressionSyntax surrogateLit
+                when (surrogateLit.IsKind(SyntaxKind.StringLiteralExpression)
+                        || surrogateLit.IsKind(SyntaxKind.CharacterLiteralExpression))
+                    && ContainsLoneSurrogate(surrogateLit.Token.ValueText)
+                    => "LoneSurrogateLiteral",
+            InterpolatedStringTextSyntax interpText
+                when ContainsLoneSurrogate(interpText.TextToken.ValueText)
+                    => "LoneSurrogateLiteral",
             // tuple は Lua 表現を持たない (ValueTuple.new は存在しない)。
             // 分解代入の LHS `(x, y) = rhs` だけは deconstruction lowering が
             // 受け持つため除外する。
@@ -274,9 +284,57 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // interface は実行時表現を持たず (型チェックのみ)、interface を対象と
+        // する type test は常に偽の silent wrong-code になる (il-spec §2)。
+        if (IsInterfaceTypeTest(node, model))
+        {
+            syntaxName = "InterfaceTypeTest";
+            return true;
+        }
+
         return node is InvocationExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node),
                 out syntaxName);
+    }
+
+    private static bool IsInterfaceTypeTest(SyntaxNode node,
+        SemanticModel model) => node switch
+    {
+        BinaryExpressionSyntax bin
+            when bin.IsKind(SyntaxKind.IsExpression)
+                && bin.Right is TypeSyntax right =>
+            IsInterfaceType(model.GetTypeInfo(right).Type),
+        DeclarationPatternSyntax dp =>
+            IsInterfaceType(model.GetTypeInfo(dp.Type).Type),
+        TypePatternSyntax tp =>
+            IsInterfaceType(model.GetTypeInfo(tp.Type).Type),
+        RecursivePatternSyntax { Type: { } recType } =>
+            IsInterfaceType(model.GetTypeInfo(recType).Type),
+        ConstantPatternSyntax cp =>
+            model.GetSymbolInfo(cp.Expression).Symbol
+                is ITypeSymbol { TypeKind: TypeKind.Interface },
+        _ => false,
+    };
+
+    private static bool IsInterfaceType(ITypeSymbol? type) =>
+        type?.TypeKind == TypeKind.Interface;
+
+    private static bool ContainsLoneSurrogate(string value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (char.IsHighSurrogate(value[i]))
+            {
+                if (i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
+                    return true;
+                i++;
+            }
+            else if (char.IsLowSurrogate(value[i]))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Lua 予約語に加え、`self` (Lua method receiver) と `__tcs_` prefix

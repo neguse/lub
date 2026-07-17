@@ -444,4 +444,70 @@ public class SubsetDiagnosticTests
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Decimal"));
     }
+
+    // T223: interface は実行時表現を持たないため、interface を対象とする
+    // type test は常に偽になる (il-spec §2)。診断で拒否する。
+    [Fact]
+    public void InterfaceTypeTest_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public interface IShape { }
+            public class Circle : IShape { }
+            public class T
+            {
+                public static string Test(object x)
+                {
+                    if (x is IShape) return "shape";
+                    return x switch
+                    {
+                        IShape s => "pattern",
+                        _ => "other",
+                    };
+                }
+            }
+            """]);
+        AssertUnsupportedWarning(result, "InterfaceTypeTest");
+    }
+
+    [Fact]
+    public void ClassTypeTest_NoWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Animal { }
+            public class T
+            {
+                public static bool Test(object x) { return x is Animal; }
+            }
+            """]);
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("InterfaceTypeTest"));
+    }
+
+    // T223: 孤立 surrogate は UTF-8 octet 列への写像を持たない (il-spec §11)
+    [Fact]
+    public void LoneSurrogateLiteral_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static string Test() { return "bad\uD800end"; }
+            }
+            """]);
+        AssertUnsupportedWarning(result, "LoneSurrogateLiteral");
+    }
+
+    [Fact]
+    public void PairedSurrogateLiteral_NoWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static string Test() { return "ok\U0001F600end"; }
+            }
+            """]);
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("LoneSurrogateLiteral"));
+    }
 }

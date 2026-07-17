@@ -1250,3 +1250,8 @@
 - 判断: Microsoft.CodeAnalysis.Features は wasm バンドル肥大のため不使用 (SemanticModel の Lookup* で必要十分)。fork/SemanticModel はキャッシュしない (wasm ホストのメモリ膨張防止、tcs-main の指摘)。doc は source symbol の <summary> のみ (metadata 参照は XML doc を積んでいない)
 - 残課題: wasm 上の実レイテンシ計測は lub 側 (playground 統合) で行い、自動発火可否を判断する → lub verify A8 で実測 complete 47ms / hover 5ms (17_flappy、swiftshader headless)、恒常観測ログ化済み
 - レビュー反映 (PR #1): hover の対象を SimpleName 参照 / 宣言ノードに限定し、親式 walk による user-defined operator の誤 hover を排除
+
+### T223: interface type test と孤立 surrogate literal の診断化 ✓ (2026-07-18)
+- Shared/TinyCsComplianceFacts に 2 ルール追加: InterfaceTypeTest (is 式 / declaration・type・recursive・constant pattern の interface 対象 — 実行時表現が無く常に偽の silent wrong-code) と LoneSurrogateLiteral (string/char literal と補間テキストの孤立 surrogate — il-spec §11 の UTF-8 octet 規範へ写像不能)。対 surrogate (astral 文字) は許容
+- 診断一致 (analyzer / check / transpiler) は Shared 共有により自動で、恒常ゲートが担保
+- 検証: SubsetDiagnosticTests 4 本 (Red 2 → green、非対象 2 の非診断)、全テスト 692 + analyzer 47 green
