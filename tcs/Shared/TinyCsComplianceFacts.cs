@@ -164,6 +164,20 @@ public static partial class TinyCsComplianceFacts
         SemanticModel model, out string syntaxName)
     {
         if (TryGetUnsupportedSyntax(node, out syntaxName)) return true;
+
+        // top-level statements の暗黙パラメータ args。Lua 出力に定義が存在せず
+        // 実行時 nil になる (command line は host の責務)。lambda 等の自前
+        // parameter args は synthesized Main 判定で除外される。
+        if (node is IdentifierNameSyntax { Identifier.ValueText: "args" } id
+            && model.GetSymbolInfo(id).Symbol is IParameterSymbol
+            {
+                ContainingSymbol: IMethodSymbol { Name: "<Main>$" }
+            })
+        {
+            syntaxName = "TopLevelArgs";
+            return true;
+        }
+
         return node is InvocationExpressionSyntax
             && TryGetUnsupportedSyntax(model.GetOperation(node),
                 out syntaxName);

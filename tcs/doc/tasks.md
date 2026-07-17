@@ -17,7 +17,6 @@
 
 C1 実行フェーズの発見 (baseline に Bug として記録済み、修正で baseline 更新):
 
-- **T189** [P1] top-level statements の `args` 参照が未定義 global で実行時エラー (basic-concepts.md:TopLevelStatements2A) — 診断化
 - **T190** [P1] `[Conditional]` メソッド呼び出しが常に実行される (attributes.md:ConditionalMethods4) — 診断化
 - **T191** [P1] interface の default member / explicit implementation が silent 欠落 (interfaces.md:InterfaceMember) — TCS1001 へ追加
 - **T192** [P1] string concat の null オペランドが Lua error (expressions.md:AdditionOperator) — C# は空文字列扱い。あわせて浮動小数の指数表記 E/e 差の Normalizer 対応を判断

@@ -598,4 +598,27 @@ public class DiagnosticTests
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Tuple"));
     }
+
+    [Fact]
+    public void TopLevelArgsReference_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            System.Console.WriteLine(args.Length);
+            """]);
+
+        AssertUnsupportedWarning(result, "TopLevelArgs");
+    }
+
+    [Fact]
+    public void LambdaParameterNamedArgs_IsNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            System.Func<string[], int> f = args => args.Length;
+            System.Console.WriteLine(f(new[] { "a" }));
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("TopLevelArgs"));
+    }
 }

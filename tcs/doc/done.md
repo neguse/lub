@@ -1039,3 +1039,8 @@
 - `(string, int)` 型と tuple literal が診断なしで `ValueTuple.new(...)` (未定義) に emit されていた silent wrong-code を診断化。TupleType 全部と、分解代入 LHS `(x, y) = rhs` (deconstruction lowering が受け持つ) を除く TupleExpression を TCS1001 へ追加
 - 検証: dotnet test 615/615 green (分解宣言/分解代入の非退行テスト込み)、spec baseline で types.md:TupleTypes5 が Bug → Diag
 - 判断: ネスト tuple LHS `((a,b),c) = rhs` は最外殻だけ除外対象なので内側が診断される — 現行 lowering も非対応のため正しい
+
+### T189: top-level statements の args 参照を TCS1001 診断化 ✓ (2026-07-17)
+- 暗黙パラメータ `args` の参照が未定義 global として emit され実行時 nil エラーになる silent wrong-code を診断化。semantic model で synthesized `<Main>$` の parameter 判定 (lambda 等の自前 args は除外)
+- 検証: dotnet test 617/617 green、spec baseline で basic-concepts.md:TopLevelStatements2A が Bug → Diag
+- 判断: 空 table 供給ではなく診断 — command line は host の責務で、暗黙供給は「動くが常に空」という別の silent 差異を作るため

@@ -225,7 +225,7 @@
     "category": "CsErr"
   },
   "basic-concepts.md:TopLevelStatements2A": {
-    "category": "Bug"
+    "category": "Diag"
   },
   "basic-concepts.md:TopLevelStatements2B": {
     "category": "Diag"
