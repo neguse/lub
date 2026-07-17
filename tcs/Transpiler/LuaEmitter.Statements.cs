@@ -385,6 +385,13 @@ public partial class LuaEmitter
         if (!IsLoopInvariantBound(model, forStmt, cond.Right)) return false;
         if (IsAssignedWithin(forStmt.Statement, varName)) return false;
 
+        // C# の for 制御変数はループ全体で 1 個で closure は全反復で共有する
+        // (il-spec §7)。Lua numeric for は反復ごとに新しい変数のため、body 内の
+        // lambda が制御変数を参照するなら while lowering へ fallback する。
+        // 名前一致の過剰判定 (lambda 引数の shadowing 等) は fallback 側が
+        // 常に正しいので許容する。
+        if (IsCapturedByLambdaWithin(forStmt.Statement, varName)) return false;
+
         var end = VisitExpression(model, cond.Right);
         var limit = cond.Kind() switch
         {
@@ -425,6 +432,11 @@ public partial class LuaEmitter
                 or CompilationUnitSyntax) ?? forStmt;
         return !IsAssignedWithin(scope, id.Identifier.ValueText);
     }
+
+    private static bool IsCapturedByLambdaWithin(SyntaxNode scope, string name) =>
+        scope.DescendantNodes().OfType<AnonymousFunctionExpressionSyntax>()
+            .Any(fn => fn.DescendantNodes().OfType<IdentifierNameSyntax>()
+                .Any(id => id.Identifier.ValueText == name));
 
     private static bool IsAssignedWithin(SyntaxNode scope, string name) =>
         scope.DescendantNodes().Any(n => n switch

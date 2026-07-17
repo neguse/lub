@@ -1209,3 +1209,9 @@
 - il-spec §9 の規範 (T またはその派生、null は偽) に準拠。多段継承・無関係型・null・designation 束縛・switch arm 順を semantic テスト 5 本で固定
 - 検証: InheritanceTypeTestTests 5/5 green (Red 4 件を確認してから実装)、コミット時 pre-commit で全ゲート
 - 判断: Operators.cs の overload dispatch (getmetatable 完全一致) は今回のスコープ外 — 派生型を base 引数の演算子に流す挙動は別途需要が出た時に判断
+
+### T221: for 変数を捕捉する closure の意味論修正 ✓ (2026-07-18)
+- TryEmitSimpleFor に捕捉ガードを追加: body 内の lambda が制御変数名を参照するなら numeric for を諦めて while 脱糖へ fallback (local 1 個 = 全 closure が同一 upvalue 共有、C# `3 3 3` と一致)。名前一致の過剰判定は fallback が常に正しいので許容
+- foreach の反復変数が反復ごと (C# 5+ 準拠、Lua generic for と自然に一致) であることもテストでロック
+- 検証: ForLoopTests 19/19 green (Red 1 件確認後に実装)、コミット時 pre-commit で全ゲート
+- 判断: M1 に畳まず先行修正 — M1 は挙動不変が完了条件のため、意味論変更を分離してから内部再編に入る

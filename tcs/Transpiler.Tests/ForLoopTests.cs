@@ -407,4 +407,62 @@ public class ForLoopTests
             """, "T.Test()");
         Assert.Equal("11", result); // Executes once even though 10 >= 5
     }
+
+    // T221: C# の for 制御変数はループ全体で 1 個であり、closure は全反復で
+    // 同じ変数を共有する (il-spec §7)。Lua numeric for は反復ごとに新しい
+    // 変数のため、捕捉がある場合は while 脱糖で意味論を保つ。
+    [Fact]
+    public void CapturedForVariable_SharedAcrossIterations()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            using System;
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var fs = new List<Func<int>>();
+                    for (int i = 0; i < 3; i++)
+                    {
+                        fs.Add(() => i);
+                    }
+                    var s = "";
+                    foreach (var f in fs)
+                    {
+                        s = s + f() + ",";
+                    }
+                    return s;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("3,3,3,", result);
+    }
+
+    [Fact]
+    public void CapturedForeachVariable_FreshPerIteration()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            using System;
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var src = new List<int> { 10, 20 };
+                    var fs = new List<Func<int>>();
+                    foreach (var v in src)
+                    {
+                        fs.Add(() => v);
+                    }
+                    var s = "";
+                    foreach (var f in fs)
+                    {
+                        s = s + f() + ",";
+                    }
+                    return s;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("10,20,", result);
+    }
 }
