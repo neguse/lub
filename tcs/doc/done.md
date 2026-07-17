@@ -1198,3 +1198,8 @@
 - 採用 4 件: (1) string 規範を「任意の octet 列」へ修正 + 孤立 surrogate literal の診断化 (UTF-8 不変条件は byte slicing で破綻するため)、(2) 非網羅 switch 式の no-match を fault 種別に追加 (temp 未代入の穴。例外サブセット外なので fault が C# 実挙動と等価)、(3) f32 リテラルは IL が bit 値保持・backend は 16 進浮動小数表記 + excess precision 排除 (10 進→double→f32 の二重丸めで 1 bit ずれる反例)、(4) interface への type test は診断化で決着 (T223 起票)
 - 検証: 文書のみの変更。反例は Codex 提示の C# 仕様条項 (§8.2.5 / §12.12 / §6.4.5.4 / §12.15.12.1) と Lua 5.5 luaconf.h 参照
 - よかったこと: 反証限定 + 対象 6 決定の明示でニトピックゼロ、全指摘が本質だった。レビュー前に自前で付録 C へ落としていた interface 項も具体的な偽陰性反例で決断まで進んだ
+
+### T211 補遺2: relaxed-fp 出荷オプションの追加 ✓ (2026-07-18)
+- il-spec §6 に fp モードを定義: strict (既定、digest 一致ゲート適用) と relaxed-fp (出荷ビルド単位の明示 opt-in。縮約/再結合/中間精度昇格を許可)
+- 判断: relaxed でも NaN/Inf/−0 の意味論は維持 (finite-math 系は不許可 — 精度は緩めても制御フローの意味は壊さない)。既定を緩めない理由は dev/release 対称性 (digest ゲート) がこの設計の商品価値であるため。Cortex-M7 は SIMD なしで fast-math の旨味は実質 fma 縮約のみ、strict のコストは spike (T212、-ffp-contract=off で測る) が定量化する
+- 検証: 文書のみの変更
