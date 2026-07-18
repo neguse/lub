@@ -243,8 +243,12 @@ public partial class LuaEmitter
              model.GetTypeInfo(bin).Type?.SpecialType == SpecialType.System_String);
         if (isStringConcat)
         {
-            left = WrapConcatOperand(model, bin.Left, left);
-            right = WrapConcatOperand(model, bin.Right, right);
+            left = IsFloatingType(model.GetTypeInfo(bin.Left).Type)
+                ? new IlCall("__tcs_fstr", [left])
+                : WrapConcatOperand(model, bin.Left, left);
+            right = IsFloatingType(model.GetTypeInfo(bin.Right).Type)
+                ? new IlCall("__tcs_fstr", [right])
+                : WrapConcatOperand(model, bin.Right, right);
             return new IlBin(IlBinOp.Concat, left, right);
         }
 
@@ -276,6 +280,14 @@ public partial class LuaEmitter
         };
         return op == null ? null : new IlBin(op.Value, left, right);
     }
+
+    // f32 出力の shortest round-trip 化 (il-spec §13 / 付録 A)。
+    // 静的型が float/double の値の文字列化地点で __tcs_fstr を挟む
+    private IlExpr WrapFloatToString(SemanticModel model,
+        ExpressionSyntax src, IlExpr built) =>
+        IsFloatingType(model.GetTypeInfo(src).Type)
+            ? new IlCall("__tcs_fstr", [built])
+            : new IlCall("tostring", [built]);
 
     // legacy NullSafeConcatOperand の写像
     private static IlExpr WrapConcatOperand(SemanticModel model,
@@ -405,7 +417,16 @@ public partial class LuaEmitter
 
             if (methodName == "WriteLine" && symbol is IMethodSymbol console
                 && console.ContainingType.ToDisplayString() == "System.Console")
-                return new IlCall("print", argArr);
+            {
+                var printArgs = argArr.ToArray();
+                for (var i = 0; i < printArgs.Length; i++)
+                {
+                    if (IsFloatingType(model.GetTypeInfo(invocation.ArgumentList
+                            .Arguments[i].Expression).Type))
+                        printArgs[i] = new IlCall("__tcs_fstr", [printArgs[i]]);
+                }
+                return new IlCall("print", [.. printArgs]);
+            }
 
             if (symbol is IMethodSymbol mathMethod
                 && mathMethod.ContainingType.ToDisplayString() == "System.Math")
@@ -433,7 +454,7 @@ public partial class LuaEmitter
             {
                 var recvAny = BuildExpr(model, ma.Expression);
                 return recvAny == null
-                    ? null : new IlCall("tostring", [recvAny]);
+                    ? null : WrapFloatToString(model, ma.Expression, recvAny);
             }
 
             if (symbol is IMethodSymbol { IsExtensionMethod: true }) return null;
@@ -471,114 +492,6 @@ public partial class LuaEmitter
 
         return null;
     }
-
-    // legacy TryMapCollectionMethod の写像 (Dict と Clear の IIFE 経路は
-    // fallback)。戻り false は「この段は不一致 — funnel 続行」。
-    private bool TryBuildCollectionCall(SemanticModel model,
-        MemberAccessExpressionSyntax ma, IMethodSymbol methodSym,
-        string methodName, ImmutableArray<IlExpr> args, out IlExpr? result)
-    {
-        result = null;
-        var receiverType = model.GetTypeInfo(ma.Expression).Type;
-        if (receiverType == null) return false;
-        var typeDef = receiverType.OriginalDefinition.ToDisplayString();
-        if (IsDictType(typeDef))
-        {
-            var recvD = BuildExpr(model, ma.Expression);
-            if (recvD == null)
-                return methodName is "Add" or "Remove" or "ContainsKey";
-            switch (methodName)
-            {
-                case "Remove":
-                    result = new IlCall("Dict.Remove", [recvD, args[0]]);
-                    return true;
-                case "ContainsKey":
-                    result = new IlParen(new IlBin(IlBinOp.Ne,
-                        new IlIndex(recvD, args[0], false), new IlLit("nil")));
-                    return true;
-                case "Add":
-                    // 代入形は statement 側 (BuildDictAddStatInto) が扱う
-                    return true;
-                default:
-                    return false;
-            }
-        }
-        if (!IsListType(typeDef))
-        {
-            if (methodSym.IsExtensionMethod
-                && ListRuntimeMethods.Contains(methodName))
-            {
-                var recvExt = BuildExpr(model, ma.Expression);
-                if (recvExt == null) return true; // fallback
-                result = new IlCall($"List.{methodName}",
-                    [recvExt, .. args]);
-                return true;
-            }
-            return false;
-        }
-
-        var recv = BuildExpr(model, ma.Expression);
-        if (recv == null) return true; // List method だが受け手未対応 → fallback
-        switch (methodName)
-        {
-            case "Add":
-                result = new IlCall("table.insert", [recv, .. args]);
-                return true;
-            case "Remove":
-                result = new IlCall("List.Remove", [recv, .. args]);
-                return true;
-            case "RemoveAt":
-                result = new IlCall("table.remove",
-                    [recv, new IlBin(IlBinOp.AddNum, args[0], new IlLit("1"))]);
-                return true;
-            case "Clear":
-                result = new IlIife([
-                    new IlLocal("__tcs_obj", recv),
-                    new IlForPairs("k", null, new IlVar("__tcs_obj"),
-                        new IlBlock([new IlAssign(
-                            new IlIndex(new IlVar("__tcs_obj"),
-                                new IlVar("k"), false),
-                            new IlLit("nil"))]))]);
-                return true;
-            case "Sort":
-                result = new IlCall("List.Sort", [recv, .. args]);
-                return true;
-            case "FirstOrDefault":
-            case "LastOrDefault":
-            {
-                var predicate = args.Length > 0 ? args[0] : new IlLit("nil");
-                result = new IlCall($"List.{methodName}",
-                    [recv, predicate,
-                     new IlLit(GetDefaultValueForType(methodSym.ReturnType))]);
-                return true;
-            }
-        }
-        if (ListRuntimeMethods.Contains(methodName))
-        {
-            result = new IlCall($"List.{methodName}", [recv, .. args]);
-            return true;
-        }
-        return false;
-    }
-
-    // legacy MapStringMethodCall の写像 (default の `obj:m(...)` 形は不一致
-    // として null → funnel 続行)
-    private static IlExpr? TryBuildStringCall(IlExpr recv, string methodName,
-        ImmutableArray<IlExpr> args) => methodName switch
-    {
-        "Contains" => new IlCall("String.Contains", [recv, .. args]),
-        "IndexOf" => new IlCall("String.IndexOf", [recv, .. args]),
-        "Replace" => new IlCall("String.Replace", [recv, .. args]),
-        "StartsWith" => new IlCall("String.StartsWith", [recv, args[0]]),
-        "EndsWith" => new IlCall("String.EndsWith", [recv, args[0]]),
-        "Trim" => new IlCall("String.Trim", [recv]),
-        "Substring" => new IlCall("String.Substring", [recv, .. args]),
-        "ToUpper" => new IlCall("string.upper", [recv]),
-        "ToLower" => new IlCall("string.lower", [recv]),
-        "Split" => new IlCall("String.Split", [recv, .. args]),
-        "ToString" => new IlCall("tostring", [recv]),
-        _ => null,
-    };
 
     // legacy VisitMemberAccess の写像
     private IlExpr? BuildMemberAccess(SemanticModel model,
@@ -763,7 +676,8 @@ public partial class LuaEmitter
                     }
                     else
                     {
-                        rendered = new IlCall("tostring", [inner]);
+                        rendered = WrapFloatToString(model, hole.Expression,
+                            inner);
                     }
                     if (hole.AlignmentClause != null)
                     {

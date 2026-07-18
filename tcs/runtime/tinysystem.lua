@@ -471,4 +471,14 @@ function TinySystem.scopy(s)
   return c
 end
 
+-- f32 の shortest round-trip 10 進表記 (il-spec §13)
+function TinySystem.fstr(v)
+  if math.type(v) ~= "float" then return tostring(v) end
+  local s = string.format("%.6g", v)
+  if tonumber(s) == v then return s end
+  s = string.format("%.8g", v)
+  if tonumber(s) == v then return s end
+  return string.format("%.9g", v)
+end
+
 return TinySystem

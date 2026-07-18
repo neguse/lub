@@ -44,8 +44,7 @@
       どおり IL-native。第二マイルストーンまで完了 (string/List/instance
       method/型 test、Roslyn 再解析廃止 — done.md 参照)。残り: 継承 dispatch、
       Dict runtime、closure、ctor 本文 (T224 の class 骨格 IL 化に依存)、
-      静的 link 出荷形、Lua 側 f32 print の shortest round-trip helper
-      (il-spec 付録 A の義務、現状 %.14g)
+      静的 link 出荷形 (f32 print の shortest round-trip 化は 2026-07-18 完了)
 - [ ] **T219b** (P2): struct の残り — record struct、struct の
       method/property/ctor、struct 型 field、nested struct field。
       v1 (データ struct) の需要を見て拡張

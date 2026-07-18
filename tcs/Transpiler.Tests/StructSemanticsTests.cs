@@ -27,7 +27,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()", differential: false);
-        Assert.Equal("1.0|99.0", result);
+        Assert.Equal("1|99", result);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()", differential: false);
-        Assert.Equal("1.0|11.0", result);
+        Assert.Equal("1|11", result);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class StructSemanticsTests
                 }
             }
             """, "T.Test()", differential: false);
-        Assert.Equal("5.0|42.0", result);
+        Assert.Equal("5|42", result);
     }
 
     [Fact]

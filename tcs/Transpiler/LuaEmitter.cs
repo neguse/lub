@@ -62,6 +62,17 @@ public partial class LuaEmitter
             AppendLine("  end");
             AppendLine("  return false");
             AppendLine("end");
+            // f32 の shortest round-trip 10 進表記 (il-spec §13)。Lua 既定の
+            // %.14g は余分な桁を出すため、%.6g/%.8g/%.9g の順で round-trip
+            // する最短を選ぶ (binary32 は 9 桁で常に round-trip する)
+            AppendLine("local function __tcs_fstr(v)");
+            AppendLine("  if math.type(v) ~= \"float\" then return tostring(v) end");
+            AppendLine("  local s = string.format(\"%.6g\", v)");
+            AppendLine("  if tonumber(s) == v then return s end");
+            AppendLine("  s = string.format(\"%.8g\", v)");
+            AppendLine("  if tonumber(s) == v then return s end");
+            AppendLine("  return string.format(\"%.9g\", v)");
+            AppendLine("end");
             // 値型 (データ struct) の copy 地点用 shallow copy (il-spec §10)
             AppendLine("local function __tcs_scopy(s)");
             AppendLine("  local c = {}");

@@ -1316,3 +1316,8 @@
 - IlExport に IlCtorInfo (explicit ctor の params/型/本文 IL) と custom property accessor (get_/set_ 名の IlMethodInfo) を追加。luoc の「ctor 本文なし → positional 暫定」の契約ギャップを解消
 - レビュー指摘の docs 反映: il-reference に GNU statement expression の移植性制約、il-spec §12 に実装定義の資源 fault 許容を明記
 - 検証: IlExportTests +1 green、run-tests 全ゲート green
+
+### Lua 側 f32 印字の shortest round-trip 化 ✓ (2026-07-18)
+- __tcs_fstr (%.6g/%.8g/%.9g の round-trip 最短、il-spec §13) を導入し、builder が float 静的型既知の出力 4 地点 (WriteLine 引数 / 補間 hole / ToString / concat operand) で適用。C backend との stdout 完全一致の最後のギャップ (%.14g の余剰桁) を解消し、.NET の表示形 (1.0f → "1") とも一致
+- 付随: IlBuild.Expressions が 800 行超 → Invocations 系を分割。struct テスト期待 3 件を新表示形へ更新
+- 検証: run-tests 全ゲート green。object 型経由など動的値の tostring は対象外 (静的型でのみ適用 — 既知の限界として記録)
