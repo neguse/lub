@@ -27,10 +27,32 @@ internal sealed partial class CEmitter
 
     public CEmitter(IlExportResult program, bool digestF32)
     {
-        _program = program;
+        // T218-m3: ctor と top-level 文を合成 method として注入し、
+        // facts / prototype / EmitMethod の既存機構をそのまま通す
+        _program = Normalize(program);
         _digestF32 = digestF32;
-        _facts = new ContractFacts(program);
+        _facts = new ContractFacts(_program);
         _classes = new Dictionary<string, IlClassInfo>(_facts.Classes);
+    }
+
+    internal const string CtorMethodName = "__ctor";
+
+    private static IlExportResult Normalize(IlExportResult program)
+    {
+        var classes = program.Classes.Select(cls => cls.Ctor is { } ctor
+            ? cls with
+            {
+                Methods = [.. cls.Methods,
+                    new IlMethodInfo(CtorMethodName, false, ctor.Parameters,
+                        ctor.Body, "void", ctor.ParameterTypes)],
+            }
+            : cls).ToList();
+        if (program.TopLevel is { } topLevel)
+        {
+            classes.Add(new IlClassInfo("TopLevel", null, [], "0",
+                [new IlMethodInfo("Main", true, [], topLevel, "void", [])]));
+        }
+        return program with { Classes = [.. classes] };
     }
 
     public string Emit(string? requestedEntry)

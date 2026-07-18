@@ -290,6 +290,9 @@ internal sealed partial class CEmitter
                  (CType.I32, RenderExpr(call.Args[1]))]),
             "print" => RenderPrint(call),
             "tostring" => RenderToString(call.Args[0]),
+            // Lua backend の f32 shortest round-trip helper。C 側の
+            // to-string は元々 shortest round-trip なので同一経路で良い
+            "__tcs_fstr" => RenderToString(call.Args[0]),
             "table.insert" => RenderListAdd(call),
             _ => RenderUserCall(call),
         };
@@ -308,7 +311,7 @@ internal sealed partial class CEmitter
         {
             if (call.Args.Length == 0) return CType.Void;
             RequireArity(call.Callee, call.Args.Length, 1);
-            var argument = TypeOf(call.Args[0]);
+            var argument = TypeOf(UnwrapFstr(call.Args[0]));
             if (_digestF32)
                 RequireType(CType.F32, argument, "print/digest");
             else if (argument.Kind is not (CTypeKind.I32 or CTypeKind.F32
@@ -316,7 +319,7 @@ internal sealed partial class CEmitter
                 throw new LuocException($"print does not support {argument}");
             return CType.Void;
         }
-        if (call.Callee == "tostring")
+        if (call.Callee is "tostring" or "__tcs_fstr")
         {
             RequireArity(call.Callee, call.Args.Length, 1);
             var argument = TypeOf(call.Args[0]);
@@ -335,9 +338,17 @@ internal sealed partial class CEmitter
         return ValidateMethodCall(_facts.Method(cls, method), null, call.Args);
     }
 
+    // digest は f32 bit を直接食うため、Lua 向け整形 (__tcs_fstr) を剥がして
+    // 元の f32 を見る。通常 print は整形済み文字列のままで良いが、C 側の
+    // f32 印字は元々 shortest round-trip なので剥がして直接印字する (同値)
+    private static IlExpr UnwrapFstr(IlExpr expr) =>
+        expr is IlCall { Callee: "__tcs_fstr", Args.Length: 1 } fstr
+            ? fstr.Args[0] : expr;
+
     private string RenderPrint(IlCall call)
     {
         if (call.Args.Length == 0) return "tcs_print_newline()";
+        call = call with { Args = [UnwrapFstr(call.Args[0])] };
         var argument = TypeOf(call.Args[0]);
         var helper = _digestF32 ? "tcs_digest_float" : argument.Kind switch
         {
@@ -504,30 +515,38 @@ internal sealed partial class CEmitter
     {
         if (!_classes.TryGetValue(creation.TypeName, out var cls))
             throw new LuocException($"unknown class: {creation.TypeName}");
-        var fields = cls.Fields.Where(f => !f.IsStatic)
-            .Select(f => _facts.Field(cls.Name, f.Name)).ToArray();
-        if (creation.Args.Length != 0 && creation.Args.Length != fields.Length)
-            throw new LuocException($"simple positional constructor {cls.Name}: expected " +
-                $"0 or {fields.Length} arguments, got {creation.Args.Length}");
-        if (creation.Args.Length == 0) return $"{Names.New(cls.Name)}()";
-
+        // 契約に ctor 本文がある場合はそれを呼ぶ (T218-m3)。引数なし new は
+        // ctor が無ければ default 初期化のみ
+        if (cls.Ctor is not { } ctor)
+        {
+            if (creation.Args.Length != 0)
+                throw new LuocException(
+                    $"{cls.Name} has no constructor but got arguments");
+            return $"{Names.New(cls.Name)}()";
+        }
+        if (creation.Args.Length != ctor.Parameters.Length)
+            throw new LuocException($"constructor {cls.Name}: expected " +
+                $"{ctor.Parameters.Length} arguments, got {creation.Args.Length}");
+        var ctorFact = _facts.Method(cls.Name, CtorMethodName);
         var statements = new StringBuilder();
         var arguments = new List<string>();
         for (var i = 0; i < creation.Args.Length; i++)
         {
-            RequireAssignable(fields[i].Type, TypeOf(creation.Args[i]),
-                $"positional constructor argument {i} of {cls.Name}");
+            RequireAssignable(ctorFact.Parameters[i].Type,
+                TypeOf(creation.Args[i]),
+                $"constructor argument {i} of {cls.Name}");
             var temp = Temp("ctor_arg");
-            statements.Append(fields[i].Type.CName).Append(' ').Append(temp)
-                .Append(" = ").Append(RenderExpr(creation.Args[i])).Append("; ");
+            statements.Append(ctorFact.Parameters[i].Type.CName).Append(' ')
+                .Append(temp).Append(" = ")
+                .Append(RenderExpr(creation.Args[i])).Append("; ");
             arguments.Add(temp);
         }
         var objectName = Temp("object");
         statements.Append(Names.Class(cls.Name)).Append(" *").Append(objectName)
             .Append(" = ").Append(Names.New(cls.Name)).Append("(); ");
-        for (var i = 0; i < fields.Length; i++)
-            statements.Append(objectName).Append("->").Append(Names.Field(fields[i].Name))
-                .Append(" = ").Append(arguments[i]).Append("; ");
+        statements.Append(Names.Method(cls.Name, CtorMethodName))
+            .Append('(').Append(string.Join(", ",
+                new[] { objectName }.Concat(arguments))).Append("); ");
         return $"({{ {statements}{objectName}; }})";
     }
 
