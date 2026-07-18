@@ -7,6 +7,9 @@ obj/
 *.swp
 *~
 
+# ローカルエージェント設定 (agmsg が生成、マシン固有)
+.codex/
+
 # Lua build artifacts
 deps/lua/lua
 deps/lua/lua.exe
