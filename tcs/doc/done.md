@@ -1348,3 +1348,8 @@
 - IlExportResult.TopLevel (top-level 文の IL) と operator (metamethod 名 __add 等の static IlMethodInfo) を収載。program 構造の IL 契約はこれで完備 — luoc はエントリポイント込みの全体を IL のみから生成できる
 - 判断: legacy visitor のコード削除は行わない — 診断構文の出力経路と挙動不変の保険として保持し、fallback 面の縮小 (残構文の IL 化/診断化) のみ継続する
 - 検証: IlExportTests +1 green、run-tests 全ゲート green
+
+### T218 第三マイルストーン: ctor 本文と top-level 文の適用 (自作) ✓ (2026-07-18)
+- luoc に T224 で完備した契約を消化: ctor を __ctor 合成 instance method、top-level 文を TopLevel.Main 合成 static method として注入し、facts/prototype/EmitMethod の既存機構をそのまま通す。RenderNew は ctor 呼び出しへ置換 (positional 暫定を廃止、ctor 無し + 引数ありは明示エラー)
+- __tcs_fstr intrinsic (f32 印字改善で IL に増えた分) を luoc の to-string 経路へ写像。digest モードは unwrap して f32 bit を直接投入
+- 検証: digest 回帰 3/3 + ctor/string field initializer/concat/top-level 混在サンプルの stdout が lua32 と完全一致
