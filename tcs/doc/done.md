@@ -1295,3 +1295,8 @@
 - 受入: digest kernel 3 種の C 変換を指定 flags (gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard) でビルド・実行し、digest が Lua backend と 3/3 一致 (e8814b32 / 9274159d / 8bf97e09) — **M3 の核である 2 backend digest 一致が初成立**
 - 判断: IlExport v0 に無い宣言情報 (method 型、配列要素型/長さ、field initializer) は暫定で Roslyn 再解析により補完 → 契約拡充を T228 起票。式・制御フローは IL のみから生成
 - 残課題: T218 本体の全域化 (tasks.md 更新済み)、luo コミット済み (未 push)
+
+### T228: IlExport 契約拡充 ✓ (2026-07-18)
+- IlNewArray (要素型 + 長さ、il-spec §11 の固定長配列) を IL に追加 (Lua render は legacy 互換の {})。IlTable に要素型 metadata。IlMethodInfo に ReturnType/ParameterTypes、IlFieldInfo に Init (initializer の IL)。il-reference 更新
+- T218 第一実装が Roslyn 再解析で補完していた宣言情報が IL 契約に載った
+- 検証: IlExportTests +1 green、run-tests 全ゲート green (Lua 出力不変)

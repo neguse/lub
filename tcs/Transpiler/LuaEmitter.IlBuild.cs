@@ -33,6 +33,10 @@ public partial class LuaEmitter
         return null;
     }
 
+    // IlExport (T228) 用: 式の IL を出力せずに構築して返す (field initializer 等)
+    internal IlExpr? ExportExprIl(SemanticModel model, ExpressionSyntax expr) =>
+        BuildExpr(model, expr);
+
     // ---- 共通フック (T214c): 文列 / return 式 / 文位置式を IL 経由で emit ----
 
     private bool TryEmitStatsViaIl(SemanticModel model,

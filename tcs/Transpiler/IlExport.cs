@@ -17,7 +17,8 @@ public sealed record IlClassInfo(
     string LayoutHash,
     ImmutableArray<IlMethodInfo> Methods);
 
-public sealed record IlFieldInfo(string Name, string Type, bool IsStatic);
+public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
+    IlExpr? Init = null);
 
 /// <summary>method body の IL。Body が null なら IL 未対応 (診断構文等) で
 /// backend は対象外にできる。</summary>
@@ -25,7 +26,9 @@ public sealed record IlMethodInfo(
     string Name,
     bool IsStatic,
     ImmutableArray<string> Parameters,
-    IlBlock? Body);
+    IlBlock? Body,
+    string ReturnType = "void",
+    ImmutableArray<string> ParameterTypes = default);
 
 public sealed record IlExportResult(
     ImmutableArray<IlClassInfo> Classes,
@@ -78,10 +81,13 @@ public static class IlExport
             foreach (var v in field.Declaration.Variables)
             {
                 var fieldSymbol = model.GetDeclaredSymbol(v) as IFieldSymbol;
+                var init = v.Initializer != null
+                    ? emitter.ExportExprIl(model, v.Initializer.Value) : null;
                 fields.Add(new IlFieldInfo(
                     v.Identifier.ValueText,
                     fieldSymbol?.Type.ToDisplayString() ?? "?",
-                    fieldSymbol?.IsStatic ?? false));
+                    fieldSymbol?.IsStatic ?? false,
+                    init));
             }
         }
         // auto property は backing field 相当として layout に数える
@@ -100,12 +106,18 @@ public static class IlExport
         foreach (var method in cls.Members.OfType<MethodDeclarationSyntax>())
         {
             var body = emitter.ExportMethodIl(model, method);
+            var methodSymbol = model.GetDeclaredSymbol(method);
             methods.Add(new IlMethodInfo(
                 method.Identifier.ValueText,
                 method.Modifiers.Any(SyntaxKind.StaticKeyword),
                 [.. method.ParameterList.Parameters
                     .Select(p => p.Identifier.ValueText)],
-                body));
+                body,
+                methodSymbol?.ReturnType.ToDisplayString() ?? "void",
+                methodSymbol == null
+                    ? []
+                    : [.. methodSymbol.Parameters
+                        .Select(p => p.Type.ToDisplayString())]));
         }
 
         return new IlClassInfo(cls.Identifier.ValueText, baseName,

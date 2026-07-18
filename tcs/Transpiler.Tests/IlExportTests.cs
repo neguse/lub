@@ -81,4 +81,31 @@ public class IlExportTests
         var m = result.Classes[0].Methods.Single(x => x.Name == "M");
         Assert.NotNull(m.Body);
     }
+
+    // T228: 型情報・field initializer・配列生成の契約
+    [Fact]
+    public void Export_TypesInitializersAndArrays()
+    {
+        var result = IlExport.Export(["""
+            public class K
+            {
+                public float Dt = 1.0f / 50.0f;
+                public static float[] Make(int n)
+                {
+                    var xs = new float[n];
+                    return xs;
+                }
+            }
+            """]);
+        var k = result.Classes[0];
+        var dt = k.Fields.Single(f => f.Name == "Dt");
+        Assert.IsType<IlBin>(dt.Init);
+        var make = k.Methods.Single(m => m.Name == "Make");
+        Assert.Equal("float[]", make.ReturnType);
+        Assert.Equal("int", Assert.Single(make.ParameterTypes));
+        var local = Assert.IsType<IlLocal>(make.Body!.Stats[0]);
+        var arr = Assert.IsType<IlNewArray>(local.Init);
+        Assert.Equal("float", arr.ElementType);
+        Assert.Equal("n", Assert.IsType<IlVar>(arr.Length).Name);
+    }
 }

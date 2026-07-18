@@ -67,8 +67,14 @@ public sealed record IlInvoke(IlExpr Recv, string Method, ImmutableArray<IlExpr>
 public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args) : IlExpr;
 
 /// <summary>table 構築 (List / Dict リテラル / ref-type option table)。
-/// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。</summary>
-public sealed record IlTable(ImmutableArray<IlTableEntry> Entries) : IlExpr;
+/// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。
+/// ElementType は配列/List リテラルの要素型 (C backend 用 metadata、T228)。</summary>
+public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
+    string? ElementType = null) : IlExpr;
+
+/// <summary>固定長配列の生成: new T[n] (il-spec §11)。dev backend は
+/// 空 table (要素は使用時に埋まる)、release backend は連続バッファ確保。</summary>
+public sealed record IlNewArray(string ElementType, IlExpr Length) : IlExpr;
 
 public readonly record struct IlTableEntry(
     IlExpr? Key, IlExpr Value, string? NameKey = null);

@@ -11,10 +11,11 @@ var result = TinyCs.IlExport.Export(csharpSources);
 // result.Diagnostics: TCS 診断 (非空なら対象プログラムはサブセット外を含む)
 // result.Classes: IlClassInfo[]
 //   .Name / .BaseName            — 単一継承 (il-spec §9)
-//   .Fields: (Name, Type, IsStatic)  auto property は field として現れる
+//   .Fields: (Name, Type, IsStatic, Init)  auto property は field として
+//            現れる。Init は initializer の IL (無ければ null → default 値)
 //   .LayoutHash                  — migration metadata (il-spec §14)。
 //                                  instance field の (名前:型;) 列の FNV-1a
-//   .Methods: (Name, IsStatic, Parameters, Body)
+//   .Methods: (Name, IsStatic, Parameters, Body, ReturnType, ParameterTypes)
 //     Body == null は IL 未対応 method (診断構文等)。backend は拒否してよい
 ```
 
@@ -43,7 +44,8 @@ assembly 参照で直接消費する。
 | IlDynCall(callee, args) | 式 callee の呼び出し (delegate 変数等) | callee(args) |
 | IlInvoke(recv, m, args) | インスタンスメソッド (仮想解決は実行時型 §9) | recv:m(args) |
 | IlNewObj(type, args) | class 生成 (§9: default 初期化→ctor) | Type.new(args) |
-| IlTable(entries) | List/Dict/option table リテラル。entry = 配列項 / [k]=v / name=v | {…} |
+| IlTable(entries, elemType?) | List/Dict/option table リテラル。entry = 配列項 / [k]=v / name=v。elemType は配列/List の要素型 metadata | {…} |
+| IlNewArray(elemType, length) | 固定長配列生成 (§11)。release は連続バッファ確保 | {} |
 | IlIsType(e, typeRef) | class 型 test (T またはその派生、null 偽 §9) | \_\_tcs_is(e, T) |
 | IlIsLuaType(e, luaType) | プリミティブ型 test | type(e) == "…" |
 | IlIife(stats) | 式位置の逐次実行 (switch 式・?. 等の lowering 産物) | (function() … end)() |
@@ -80,5 +82,5 @@ bounds/null/zero check、fault の決定性）。object model は spike
 ## 未カバー（backend 側で拒否してよい）
 
 - Body == null の method（診断構文、method group 参照等 — tasks.md T224）
-- class 骨格の IL 化（field initializer 式・ctor/accessor は
-  IlExport v0 では metadata のみ。本文 IL 化は T224 で拡張）
+- class 骨格の IL 化（ctor/accessor 本文は IlExport v0 では metadata のみ。
+  field initializer は T228 で IL 化済み。残りは T224 で拡張）
