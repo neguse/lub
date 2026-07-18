@@ -30,16 +30,17 @@
 
 ### Phase 3 — 価値の刈り取り
 
-- [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は spike 決着
-      どおり IL-native。第四マイルストーンまで完了 (継承: 範囲型 ID /
-      chain flatten / 推論 dispatch / base 直呼び — done.md 参照)。
-      残り: Dict runtime、closure、ctor 連鎖 (base 初期化子の契約化)、
-      静的 link 出荷形
-- [ ] **T219b** (P2): struct の残り — record struct、struct の
-      method/property/ctor、struct 型 field、nested struct field。
-      v1 (データ struct) の需要を見て拡張
-- [ ] **T220** (P2): migration metadata（il-design.md §6）の実装 —
-      仕様は T217 で定義済み。実装は dev ホットリロードの需要と同期して着手
+- [x] T218 完 (2026-07-18): M3 IL→C backend (luoc)。継承 / Dict / closure /
+      ctor 連鎖 / 静的 link (--lib) まで全マイルストーン受入済み
+      (digest 3/3 + 全サンプル stdout 一致)。未対応構文は明示エラー方針で、
+      対応面の拡張は実利用の需要駆動 (done.md 第一〜第八参照)
+- [ ] **T219b** (P2、需要ゲート): struct の残り (record struct、struct の
+      member、struct 型 field)。判断 (2026-07-18): particles 級の実需要は
+      データ struct v1 で充足しており、拡張は具体需要が出た時点で着手
+- [ ] **T220** (P2、需要ゲート): migration metadata の実装。判断
+      (2026-07-18): スキーマと layout hash は T217 で契約済み。実装は
+      dev ホットリロードの実運用 (lub playground の reload 導線) が
+      決まった時点で着手 — 現時点で書くと検証面が無い
 
 ---
 

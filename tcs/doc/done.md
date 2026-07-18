@@ -1388,3 +1388,8 @@
 - luoc: capture-by-variable (il-spec §7) の C 実装 — escape 解析で捕捉 local/param を heap cell (T*) へ box、closure = lifted static 関数 + cells 配列 (TcsClosure)。static method group は thunk、closure 要素 List、一般 callee 式の呼び出し (fs[0]() 等) に対応。前方宣言はマーカー差し込み
 - tcs: BuildInvocation に一般 callee fallthrough を追加 (legacy `{expr}({args})` の写像 — fs[0]() が IL 化)
 - 受入: 共有変異 (2)・ループ捕捉 (9 = 3,3,3 の T221 意味論を C でも実証)・thunk (42)・後変異可視 (101) が lua32 と stdout 一致。全サンプル回帰 + digest 3/3
+
+### T218 完: 静的 link 出荷形 (--lib) と M3 クローズ ✓ (2026-07-18)
+- luoc --lib: main なしで tcs_lib_init / tcs_entry_<Class>_<Method> を外部 linkage 公開。ar で .a 化し外部 main から link 実行 → stdout が lua32 と一致 (il-design の「release AOT = 静的 link」の最小成立)
+- T218 (M3) はこれでクローズ: 継承 / Dict / closure / ctor 連鎖 / 静的 link の全残項目を受入済み。未対応構文は明示エラー方針を維持し、対応面の拡張は実利用需要で駆動する
+- T219b / T220 は需要ゲートの最終判断を tasks.md に記録 (検証面が立つまで書かない)
