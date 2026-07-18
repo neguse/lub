@@ -151,4 +151,36 @@ public class IlPipelineTests
             """, "T.Test()");
         Assert.Equal("y?", result);
     }
+
+    // T225 第二スライス: statement 位置の switch 式も IIFE を出さない
+    [Fact]
+    public void SwitchExpr_InStatementPositions_IsStatementized()
+    {
+        var lua = Transpiler.Transpile(["""
+            public class T
+            {
+                public static string Grade(int n)
+                {
+                    var g = n switch { > 80 => "A", > 50 => "B", _ => "C" };
+                    return g;
+                }
+                public static string Direct(int n) =>
+                    n switch { 0 => "zero", _ => "other" };
+            }
+            """]);
+        Assert.DoesNotContain("(function()", lua);
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = 90 switch { > 80 => "A", > 50 => "B", _ => "C" };
+                    string b;
+                    b = 60 switch { > 80 => "A", > 50 => "B", _ => "C" };
+                    return a + b + (10 switch { > 80 => "A", _ => "C" });
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("ABC", result);
+    }
 }

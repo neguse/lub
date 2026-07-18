@@ -1334,3 +1334,8 @@
 ### T225 第一スライス: ternary の statement 化 (local 初期化 / return) ✓ (2026-07-18)
 - 評価順が構造的に不変な 2 位置 (local 初期化子・return 式) の条件式を IIFE から if 文へ。closure 割当を最頻出位置で除去 (examples 決定 2 の実施開始)
 - 検証: 専用テスト (IIFE 不在 + 意味論) + run-tests 全ゲート green。代入 RHS 等の残り位置は評価順条件を tasks に明記
+
+### T225 第二スライス: switch 式の statement 化 + return 経路統一 ✓ (2026-07-18)
+- switch 式 IIFE の形 (前置 local 列 + return する if 連鎖) を認識し、local 初期化 / 純 local 代入 / return 位置で文へ inline (代入位置は return→代入へ書換)。return 位置の else 無し chain は「値なし return」化で print の 0 値/1 値差が出るため IIFE 維持
+- return 位置の statement 化を AddReturnStat に共通化し、method 式 body (VisitMethod)・operator/accessor (TryEmitReturnViaIl)・IlExport の 3 経路を統一
+- 検証: 専用テスト + run-tests 全ゲート green

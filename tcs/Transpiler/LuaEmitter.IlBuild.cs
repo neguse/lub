@@ -29,7 +29,11 @@ public partial class LuaEmitter
         if (method.Body != null) return TryBuildIlBody(model, method);
         if (method.ExpressionBody != null
             && BuildExpr(model, method.ExpressionBody.Expression) is { } expr)
-            return new IlBlock([new IlReturn(expr)]);
+        {
+            var acc = new List<IlStat>();
+            AddReturnStat(acc, expr, method.ExpressionBody.Expression);
+            return new IlBlock([.. acc]);
+        }
         return null;
     }
 
@@ -78,7 +82,9 @@ public partial class LuaEmitter
         var built = BuildExpr(model, expr);
         if (built == null) return false;
         IlBodies++;
-        AppendLine($"return {RenderIl(built)}");
+        var acc = new List<IlStat>();
+        AddReturnStat(acc, built, expr);
+        EmitIlBlock(new IlBlock([.. acc]));
         return true;
     }
 
@@ -122,15 +128,7 @@ public partial class LuaEmitter
                     value = WrapStructCopy(model, ret.Expression!, value);
                 // T225: return 位置の条件式は IIFE でなく if 文へ (closure
                 // 割当の除去。評価順は cond→分岐値のままで不変)
-                if (value is IlTernary ternary)
-                {
-                    acc.Add(new IlIf(
-                        [(ternary.Cond, new IlBlock([new IlReturn(ternary.T)]))],
-                        new IlBlock([new IlReturn(ternary.F)]))
-                        { Origin = stmt });
-                    return true;
-                }
-                acc.Add(new IlReturn(value) { Origin = stmt });
+                AddReturnStat(acc, value, stmt);
                 return true;
             }
             case LocalDeclarationStatementSyntax decon
@@ -176,6 +174,18 @@ public partial class LuaEmitter
                             [(lt.Cond, new IlBlock([new IlAssign(varNode, lt.T)]))],
                             new IlBlock([new IlAssign(varNode, lt.F)]))
                             { Origin = stmt });
+                        continue;
+                    }
+                    if (init is IlIife li
+                        && TryGetSwitchShape(li, out var liSetup, out var liChain))
+                    {
+                        var varNode = new IlVar(v.Identifier.ValueText);
+                        acc.Add(new IlLocal(v.Identifier.ValueText, null)
+                            { Origin = stmt });
+                        foreach (var st in liSetup)
+                            acc.Add(st with { Origin = stmt });
+                        acc.Add(SwitchChainAsAssigns(liChain, varNode)
+                            with { Origin = stmt });
                         continue;
                     }
                     acc.Add(new IlLocal(v.Identifier.ValueText, init)
@@ -420,6 +430,25 @@ public partial class LuaEmitter
             var value = BuildExpr(model, assign.Right);
             if (target == null || value == null) return false;
             value = WrapStructCopy(model, assign.Right, value);
+            // T225: target が純 local なら条件式 RHS を if 文へ (target の
+            // 評価が存在しないため cond 先行評価でも順序が変わらない)
+            if (value is IlTernary at && target is IlVar)
+            {
+                acc.Add(new IlIf(
+                    [(at.Cond, new IlBlock([new IlAssign(target, at.T)]))],
+                    new IlBlock([new IlAssign(target, at.F)]))
+                    { Origin = origin });
+                return true;
+            }
+            if (value is IlIife ai && target is IlVar
+                && TryGetSwitchShape(ai, out var aiSetup, out var aiChain))
+            {
+                foreach (var st in aiSetup)
+                    acc.Add(st with { Origin = origin });
+                acc.Add(SwitchChainAsAssigns(aiChain, target)
+                    with { Origin = origin });
+                return true;
+            }
             acc.Add(new IlAssign(target, value) { Origin = origin });
             return true;
         }
@@ -551,6 +580,61 @@ public partial class LuaEmitter
             _ => null,
         };
         return limit == null ? null : new IlNumericFor(varName, start, limit, body);
+    }
+
+    // T225: return 位置の値を statement 化込みで追加する共通経路
+    private void AddReturnStat(List<IlStat> acc, IlExpr? value,
+        SyntaxNode? origin)
+    {
+        if (value is IlTernary ternary)
+        {
+            acc.Add(new IlIf(
+                [(ternary.Cond, new IlBlock([new IlReturn(ternary.T)]))],
+                new IlBlock([new IlReturn(ternary.F)]))
+                { Origin = origin });
+            return;
+        }
+        // switch 式は inline (return がそのまま効く)。else 無しは
+        // 「値なし return」への変化 (print の 0 値/1 値差) を避け IIFE 維持
+        if (value is IlIife iife
+            && TryGetSwitchShape(iife, out var setup, out var chain)
+            && chain.Else != null)
+        {
+            foreach (var st in setup)
+                acc.Add(st with { Origin = origin });
+            acc.Add(chain with { Origin = origin });
+            return;
+        }
+        acc.Add(new IlReturn(value) { Origin = origin });
+    }
+
+    // T225: switch 式 IIFE の形 (前置 local 列 + return する if 連鎖) を認識
+    private static bool TryGetSwitchShape(IlIife iife,
+        out ImmutableArray<IlStat> setup, out IlIf chain)
+    {
+        setup = default; chain = null!;
+        if (iife.Stats.Length == 0
+            || iife.Stats[^1] is not IlIf tail) return false;
+        if (!iife.Stats[..^1].All(st => st is IlLocal)) return false;
+        if (!tail.Arms.All(a => a.Body.Stats is [IlReturn { Value: not null }]))
+            return false;
+        if (tail.Else is { Stats: not [IlReturn { Value: not null }] })
+            return false;
+        setup = iife.Stats[..^1];
+        chain = tail;
+        return true;
+    }
+
+    // return を target への代入に置換した if 連鎖を作る
+    private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
+    {
+        var arms = chain.Arms.Select(a => (a.Cond, new IlBlock(
+                [new IlAssign(target, ((IlReturn)a.Body.Stats[0]).Value!)])))
+            .ToImmutableArray();
+        var elseBlock = chain.Else is { } e
+            ? new IlBlock([new IlAssign(target, ((IlReturn)e.Stats[0]).Value!)])
+            : null;
+        return new IlIf(arms, elseBlock);
     }
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。

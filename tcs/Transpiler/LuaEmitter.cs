@@ -648,13 +648,7 @@ public partial class LuaEmitter
         }
         else if (method.ExpressionBody != null)
         {
-            if (!IlDisabled
-                && BuildExpr(model, method.ExpressionBody.Expression) is { } ilExpr)
-            {
-                IlBodies++;
-                AppendLine($"return {RenderIl(ilExpr)}");
-            }
-            else
+            if (!TryEmitReturnViaIl(model, method.ExpressionBody.Expression))
             {
                 LegacyBodies++;
                 AppendLine($"return {VisitExpression(model, method.ExpressionBody.Expression)}");
