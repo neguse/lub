@@ -628,52 +628,21 @@ internal sealed partial class CEmitter
     {
         if (!_classes.TryGetValue(creation.TypeName, out var cls))
             throw new LuocException($"unknown class: {creation.TypeName}");
-        // 契約に ctor 本文がある場合はそれを呼ぶ (T218-m3)。引数なし new は
-        // ctor が無ければ default 初期化のみ
-        // chain 上の最寄り explicit ctor を使う。ctor 連鎖 (derived と
-        // ancestor の両方に ctor) は契約に base 初期化子が無いため未対応
-        string? ctorClass = null;
-        for (string? cur = cls.Name; cur != null; cur = _classes[cur].BaseName)
-        {
-            if (_classes[cur].Ctor == null) continue;
-            if (ctorClass != null)
-                throw new LuocException(
-                    $"constructor chaining is not supported yet: {cls.Name}");
-            ctorClass = cur;
-        }
-        if (ctorClass is null)
-        {
-            if (creation.Args.Length != 0)
-                throw new LuocException(
-                    $"{cls.Name} has no constructor but got arguments");
-            return $"{Names.New(cls.Name)}()";
-        }
-        var ctor = _classes[ctorClass].Ctor!;
-        if (creation.Args.Length != ctor.Parameters.Length)
+        var paramFacts = CtorParamFacts(cls);
+        if (creation.Args.Length != paramFacts.Count)
             throw new LuocException($"constructor {cls.Name}: expected " +
-                $"{ctor.Parameters.Length} arguments, got {creation.Args.Length}");
-        var ctorFact = _facts.Method(ctorClass, CtorMethodName);
-        var statements = new StringBuilder();
-        var arguments = new List<string>();
+                $"{paramFacts.Count} arguments, got {creation.Args.Length}");
+        if (creation.Args.Length == 0) return $"{Names.New(cls.Name)}()";
+        var values = new List<(CType Type, string Value)>();
         for (var i = 0; i < creation.Args.Length; i++)
         {
-            RequireAssignable(ctorFact.Parameters[i].Type,
-                TypeOf(creation.Args[i]),
+            RequireAssignable(paramFacts[i].Type, TypeOf(creation.Args[i]),
                 $"constructor argument {i} of {cls.Name}");
-            var temp = Temp("ctor_arg");
-            statements.Append(ctorFact.Parameters[i].Type.CName).Append(' ')
-                .Append(temp).Append(" = ")
-                .Append(RenderExpr(creation.Args[i])).Append("; ");
-            arguments.Add(temp);
+            values.Add((paramFacts[i].Type,
+                RenderCoerced(creation.Args[i], paramFacts[i].Type)));
         }
-        var objectName = Temp("object");
-        statements.Append(Names.Class(cls.Name)).Append(" *").Append(objectName)
-            .Append(" = ").Append(Names.New(cls.Name)).Append("(); ");
-        statements.Append(Names.Method(ctorClass, CtorMethodName))
-            .Append('(').Append(string.Join(", ",
-                new[] { $"({Names.Class(ctorClass)} *){objectName}" }
-                    .Concat(arguments))).Append("); ");
-        return $"({{ {statements}{objectName}; }})";
+        return RenderOrderedCall(Names.New(cls.Name),
+            CType.Ref(cls.Name), values);
     }
 
     private CType TypeOfTable(IlTable table)

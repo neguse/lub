@@ -116,14 +116,7 @@ internal sealed partial class CEmitter
 
     private static IlExportResult Normalize(IlExportResult program)
     {
-        var classes = program.Classes.Select(cls => cls.Ctor is { } ctor
-            ? cls with
-            {
-                Methods = [.. cls.Methods,
-                    new IlMethodInfo(CtorMethodName, false, ctor.Parameters,
-                        ctor.Body, "void", ctor.ParameterTypes)],
-            }
-            : cls).ToList();
+        var classes = program.Classes.ToList();
         if (program.TopLevel is { } topLevel)
         {
             classes.Add(new IlClassInfo("TopLevel", null, [], "0",
@@ -272,7 +265,14 @@ internal sealed partial class CEmitter
     private void EmitMethodPrototypes()
     {
         foreach (var cls in _program.Classes)
-            Line($"static {Names.Class(cls.Name)} *{Names.New(cls.Name)}(void);");
+        {
+            var protoParams = CtorParamFacts(cls);
+            var signature = protoParams.Count == 0
+                ? "void"
+                : string.Join(", ", protoParams.Select(p => p.Type.CName));
+            Line($"static {Names.Class(cls.Name)} *" +
+                $"{Names.New(cls.Name)}({signature});");
+        }
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
         {
@@ -308,39 +308,89 @@ internal sealed partial class CEmitter
         return parameters.Count == 0 ? "void" : string.Join(", ", parameters);
     }
 
+    // Lua backend の Class.new と同順で構築する:
+    // base ctor → type_id (setmetatable 相当) → 自 class field init → ctor body
     private void EmitAllocators()
     {
         foreach (var cls in _program.Classes)
         {
             var cType = Names.Class(cls.Name);
-            Line($"static {cType} *");
-            Line($"{Names.New(cls.Name)}(void)");
-            Line("{");
-            _indent++;
-            Line($"{cType} *object = tcs_alloc(sizeof(*object));");
-            Line($"object->type_id = {Names.TypeId(cls.Name)};");
+            var ctor = cls.Ctor;
             _currentClass = cls;
             _scopes.Clear();
+            _continueTargets.Clear();
             PushScope();
-            AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
-            foreach (var link in ChainRootFirst(cls.Name))
-            foreach (var field in link.Fields.Where(f => !f.IsStatic))
+            var paramFacts = CtorParamFacts(cls);
+            for (var i = 0; i < paramFacts.Count; i++)
+                AddVariable(paramFacts[i].Name,
+                    new Variable($"v_{Names.Id(paramFacts[i].Name)}_{i}",
+                        paramFacts[i].Type));
+            var parameters = paramFacts.Count == 0
+                ? "void"
+                : string.Join(", ", paramFacts.Select((p, i) =>
+                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+            Line($"static {cType} *");
+            Line($"{Names.New(cls.Name)}({parameters})");
+            Line("{");
+            _indent++;
+            if (cls.BaseName is { } baseName)
             {
-                var fact = _facts.Field(link.Name, field.Name);
+                var baseParams = CtorParamFacts(_classes[baseName]);
+                var baseArgs = ctor?.BaseArgs.IsDefault == false
+                    ? ctor.BaseArgs : [];
+                if (baseArgs.Length != baseParams.Count)
+                    throw new LuocException(
+                        $"base constructor arity mismatch: {cls.Name}");
+                var rendered = new List<string>();
+                for (var i = 0; i < baseArgs.Length; i++)
+                {
+                    RequireAssignable(baseParams[i].Type, TypeOf(baseArgs[i]),
+                        $"base ctor argument {i} of {cls.Name}");
+                    var temp = Temp("base_arg");
+                    Line($"{baseParams[i].Type.CName} {temp} = " +
+                        $"{RenderCoerced(baseArgs[i], baseParams[i].Type)};");
+                    rendered.Add(temp);
+                }
+                Line($"{cType} *object = ({cType} *)" +
+                    $"{Names.New(baseName)}({string.Join(", ", rendered)});");
+            }
+            else
+            {
+                Line($"{cType} *object = tcs_alloc(sizeof(*object));");
+            }
+            Line($"object->type_id = {Names.TypeId(cls.Name)};");
+            AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
+            foreach (var field in cls.Fields.Where(f => !f.IsStatic))
+            {
+                var fact = _facts.Field(cls.Name, field.Name);
                 if (fact.Init is not null)
                 {
                     RequireAssignable(fact.Type, TypeOf(fact.Init),
-                        $"initializer of {link.Name}.{field.Name}");
+                        $"initializer of {cls.Name}.{field.Name}");
                     Line($"object->{Names.Field(field.Name)} = " +
                         $"{RenderExpr(fact.Init)};");
                 }
             }
-            PopScope();
+            if (ctor?.Body is { } body)
+                EmitStats(body.Stats);
+            else if (ctor is { Body: null })
+                throw new LuocException(
+                    $"constructor body is not IL-exportable: {cls.Name}");
             Line("return object;");
+            PopScope();
             _indent--;
             Line("}");
             Line();
         }
+    }
+
+    private List<ParameterFact> CtorParamFacts(IlClassInfo cls)
+    {
+        if (cls.Ctor is not { } ctor) return [];
+        if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
+            throw new LuocException($"ctor metadata mismatch: {cls.Name}");
+        return ctor.Parameters.Select((name, i) => new ParameterFact(
+            name, _facts.MapType(ctor.ParameterTypes[i]))).ToList();
     }
 
     private void EmitMethod(IlClassInfo cls, IlMethodInfo method)
