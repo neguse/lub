@@ -79,6 +79,11 @@ public partial class LuaEmitter
             AppendLine("  for k, v in pairs(s) do c[k] = v end");
             AppendLine("  return c");
             AppendLine("end");
+            // hot reload (il-design §6): 生存インスタンスの weak registry。
+            // reload chunk と共有するため global。key = instance (weak)、
+            // value = 構築時の class table (reload 後も identity 不変)
+            AppendLine("__tcs_instances = __tcs_instances or "
+                + "setmetatable({}, { __mode = \"k\" })");
             _headerEmitted = true;
         }
         var root = tree.GetCompilationUnitRoot();
@@ -403,6 +408,9 @@ public partial class LuaEmitter
         {
             AppendLine($"local self = setmetatable({{}}, {className})");
         }
+        // reload migration 用の登録。base ctor 経由でも最派生 class が勝つ
+        // (同一 key への上書き)
+        AppendLine($"__tcs_instances[self] = {className}");
 
         foreach (var (fieldName, init, type) in fieldInits)
         {
@@ -518,6 +526,7 @@ public partial class LuaEmitter
         AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
         _indent++;
         AppendLine($"local self = setmetatable({{}}, {name})");
+        AppendLine($"__tcs_instances[self] = {name}");
         foreach (var param in paramNames)
             AppendLine($"self.{param} = {param}");
         AppendLine("return self");

@@ -18,6 +18,11 @@ function M.new(host)
     wrapper = {}, -- thin entry wrapper (identity 安定)
     entry_type = nil,
   }, Registry)
+  -- hot reload 用の weak instance registry (il-design §6) は host 側で共有
+  -- する。define chunk 先頭の guard 代入 (`__tcs_instances = ... or ...`) を
+  -- 通すため、このキーのみ host への write を許す
+  host.__tcs_instances = host.__tcs_instances
+    or setmetatable({}, { __mode = "k" })
   -- module 専用 read-only _ENV。emitted type alias → host global の順で
   -- 解決し、未宣言 global への write は error (§11)。
   self.env = setmetatable({}, {
@@ -28,7 +33,11 @@ function M.new(host)
       end
       return host[k]
     end,
-    __newindex = function(_, k)
+    __newindex = function(_, k, v)
+      if k == "__tcs_instances" then
+        host[k] = v
+        return
+      end
       error("tcs registry: write to undeclared global: " .. tostring(k), 2)
     end,
   })

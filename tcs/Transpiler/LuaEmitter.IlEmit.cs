@@ -6,6 +6,10 @@ namespace TinyCs;
 // している)。出力は legacy visitor と同形 — M1 は挙動不変が完了条件。
 public partial class LuaEmitter
 {
+    /// <summary>reload chunk (HotReload.cs) が field initializer IL を
+    /// migration 式として render するための公開面。</summary>
+    public string RenderIlExpr(IlExpr expr) => RenderIl(expr);
+
     private void EmitIlBlock(IlBlock block)
     {
         foreach (var stat in block.Stats)

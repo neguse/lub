@@ -1443,3 +1443,10 @@
 - 文脈: ユーザー判断で T220 のゲート解除 — cold reload 安全弁止まりでなく CLOS 流 eager migration を実装する。検証面は同一 VM 2 版 reload のセマンティックテストで立てる方針 (tasks.md に段階 (b)(c) を記録)
 - 検証: IlExportTests +2 (embed 変更/改名の伝播、nested struct 伝播、同一レイアウト安定) 8/8 green
 - 判断: T219b の struct 型 field 解禁に先行して hash 契約だけ先に固めた (解禁時に hash 互換を壊さないため)
+
+### T220(b): hot reload runtime — weak registry + eager migration ✓ (2026-07-18)
+- 生成 Lua に weak instance registry (`__tcs_instances`、global 共有・weak key) と構築時登録を常設 (class new / record new。struct は identity なしなので対象外)。base ctor 連鎖は同一 key 上書きで最派生 class が勝つ
+- `HotReload.EmitReloadChunk(v1, v2)`: v2 定義 + eager migration の単一 Lua chunk を生成。旧 class table を捕獲 → v2 実行 → global を旧 identity へ復元 → method 全面差し替え (accessor/operator/new 込み、削除は nil) / static diff (retained は生存値保持・added は fresh 初期値・discarded 破棄) / 親付け替え (base 変更時) → registry walk で instance field diff (added=initializer render or 型 default / discarded=nil、継承 field は chain 判定で派生 instance にも適用) → OnReload を instance ごと 1 回
+- module mode: registry の strict _ENV が `__tcs_instances` guard 代入を弾いたため、host 所有 + 当該キーのみ write 許可に変更
+- 検証: HotReloadTests 4 本 (field migration + identity / static 保持 + method swap / 継承 field 伝播 / OnReload) green、全 721 green (module/snapshot 回帰込み)
+- 判断: reload chunk は自己完結 (helper を chunk 内 local 定義) — 将来 load() 経由の実 reload 導線にそのまま載る。record class は IlExport 対象外のため未移行 (対象化は需要待ち)。DigestKernels は class 構築を含まないため bench 数値への登録コスト影響なし

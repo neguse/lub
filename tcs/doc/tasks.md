@@ -44,7 +44,7 @@
       reload するセマンティックテストで立てる (lub 側導線は待たない)。段階:
       - [x] (a) layout hash の struct 推移展開 (IlExport — struct 内部変更が
             owner class の hash へ伝播。T219b の struct 型 field 解禁に先行)
-      - [ ] (b) reload runtime: weak registry + metadata diff 適用
+      - [x] (b) reload runtime: weak registry + metadata diff 適用
             (added=initializer / discarded=破棄 / retained 保持、in-place で
             identity 維持)、OnReload フック、reload は frame 境界
       - [ ] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
