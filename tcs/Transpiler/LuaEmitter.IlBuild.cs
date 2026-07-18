@@ -63,6 +63,8 @@ public partial class LuaEmitter
             ? new IlBlock([.. acc]) : null;
     }
 
+    private int _condHoist;
+
     // ---- 共通フック (T214c): 文列 / return 式 / 文位置式を IL 経由で emit ----
 
     private bool TryEmitStatsViaIl(SemanticModel model,
@@ -205,6 +207,28 @@ public partial class LuaEmitter
             {
                 var built = BuildIf(model, ifStmt);
                 if (built == null) return false;
+                // T225: root 条件の値返し IIFE は if の前へ hoist する
+                // (root 条件は無条件に最初へ評価されるため評価順不変。
+                // elseif 条件は前段が偽の時のみ評価されるので対象外)
+                if (built.Arms[0].Cond is IlIife condIife
+                    && TryGetValueChainShape(condIife, out var cSetup,
+                        out var cChain, out var cTail, out _))
+                {
+                    var condVar = new IlVar($"__tcs_cond{_condHoist++}");
+                    acc.Add(new IlLocal(condVar.Name, null, "bool")
+                        { Origin = stmt });
+                    foreach (var st in cSetup)
+                        acc.Add(st with { Origin = stmt });
+                    acc.Add(cChain != null
+                        ? SwitchChainAsAssigns(cChain, condVar)
+                            with { Origin = stmt }
+                        : new IlAssign(condVar, cTail!) { Origin = stmt });
+                    built = built with
+                    {
+                        Arms = [(condVar, built.Arms[0].Body),
+                            .. built.Arms[1..]],
+                    };
+                }
                 acc.Add(built with { Origin = stmt });
                 return true;
             }

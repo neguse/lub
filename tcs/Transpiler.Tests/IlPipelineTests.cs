@@ -223,4 +223,39 @@ public class IlPipelineTests
             """, "T.Test()");
         Assert.Equal("true:7:false:0:true", result);
     }
+
+    // T225: root if 条件の TryGetValue 等も IIFE を出さない
+    [Fact]
+    public void IfCondition_TryGetValue_IsHoisted()
+    {
+        var lua = Transpiler.Transpile(["""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static int Test(Dictionary<string, int> d)
+                {
+                    int v;
+                    if (d.TryGetValue("k", out v)) { return v; }
+                    return -1;
+                }
+            }
+            """]);
+        Assert.DoesNotContain("(function()", lua);
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var d = new Dictionary<string, int> { { "k", 5 } };
+                    int v;
+                    var a = "";
+                    if (d.TryGetValue("k", out v)) { a = a + v; }
+                    if (d.TryGetValue("x", out v)) { a = a + "!"; } else { a = a + v; }
+                    return a;
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("50", result);
+    }
 }

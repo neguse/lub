@@ -28,10 +28,7 @@
       非リテラル alignment、TCS 診断構文）の IL 化 or 診断化。
       判断済み: legacy visitor のコード削除はしない — 診断構文の出力と
       挙動不変の保険として保持し、fallback 面の縮小のみ続ける
-- [ ] **T225** (P2): IIFE の statement 化（examples 決定 2）— statement
-      位置 (local 初期化 / 純 local 代入 / return) の ternary / switch 式 /
-      ?. / ?? / TryGetValue 系は完了 (2026-07-18)。残り: 式中間位置
-      (評価順の温存設計が必要 — 左側 operand の temp 化と併走)
+
 
 ### Phase 3 — 価値の刈り取り
 

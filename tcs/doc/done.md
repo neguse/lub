@@ -1368,3 +1368,8 @@
 - luoc: TcsDict (chained hash、i32/string キー、8byte 値スロット)、literal/index get (不在 fault)・upsert/ContainsKey/TryGet (multi-assign)/Remove/Count/foreach-dict (KeyValuePair は Kvp 疑似型で .Key/.Value を node へ写像)。変数束縛を Lua と同じ後勝ち shadow へ
 - 受入: dict 総合サンプル (string/int キー、hit/miss、upsert、foreach) の stdout が lua32 と完全一致、継承/ctor サンプル回帰一致、digest 3/3
 - 教訓: python replace の空振り検証を必須化 (assert 追加で再発防止)
+
+### T225 完了: IIFE の statement 化 (設計範囲) ✓ (2026-07-18)
+- 最終ピース: root if 条件位置の値返し IIFE hoist (`if (d.TryGetValue(...))` 形 — root 条件は無条件先頭評価なので前置 hoist が評価順不変。elseif / while 条件は再評価・条件付き評価のため対象外)
+- 完了範囲: statement 位置 (local 初期化 / 純 local 代入 / return / root if 条件) の ternary / switch 式 / ?. / ?? / TryGetValue 系。式中間位置は「IIFE 維持」を設計判断として確定 — 除去には全 effectful 左 operand の temp 化枠組みが必要で、意味は既に正しく最適化のみの問題。必要になれば C backend 側の最適化 (statement expression は既に温存) で吸収する
+- 検証: 専用テスト + run-tests 全ゲート green
