@@ -5,9 +5,10 @@ namespace TinyCs.Luoc;
 
 internal sealed class LuocException(string message) : Exception(message);
 
-internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null }
+internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp }
 
-internal sealed record CType(CTypeKind Kind, string? Name = null, CType? Element = null)
+internal sealed record CType(CTypeKind Kind, string? Name = null,
+    CType? Element = null, CType? Key = null)
 {
     public static readonly CType Void = new(CTypeKind.Void);
     public static readonly CType I32 = new(CTypeKind.I32);
@@ -19,6 +20,10 @@ internal sealed record CType(CTypeKind Kind, string? Name = null, CType? Element
     public static CType Ref(string name) => new(CTypeKind.Ref, name);
     public static CType Array(CType element) => new(CTypeKind.Array, Element: element);
     public static CType List(CType? element) => new(CTypeKind.List, Element: element);
+    public static CType Dict(CType key, CType value) =>
+        new(CTypeKind.Dict, Element: value, Key: key);
+    public static CType Kvp(CType key, CType value) =>
+        new(CTypeKind.Kvp, Element: value, Key: key);
 
     public string CName => Kind switch
     {
@@ -30,6 +35,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null, CType? Element
         CTypeKind.Ref => $"Tcs_{Names.Id(Name!)} *",
         CTypeKind.Array => "TcsArray *",
         CTypeKind.List => "TcsList *",
+        CTypeKind.Dict => "TcsDict *",
         _ => throw new LuocException($"unsupported type: {this}"),
     };
 
@@ -43,10 +49,12 @@ internal sealed record CType(CTypeKind Kind, string? Name = null, CType? Element
         || (IsNullable && source.Kind == CTypeKind.Null)
         || (Kind == CTypeKind.List && source.Kind == CTypeKind.List
             && (Element is null || source.Element is null
-                || Element == source.Element));
+                || Element == source.Element))
+        || (Kind == CTypeKind.Dict && source.Kind == CTypeKind.Dict
+            && Element == source.Element && Key == source.Key);
 
     public bool IsNullable => Kind is CTypeKind.String or CTypeKind.Ref
-        or CTypeKind.Array or CTypeKind.List;
+        or CTypeKind.Array or CTypeKind.List or CTypeKind.Dict;
 
     public override string ToString() => Kind switch
     {

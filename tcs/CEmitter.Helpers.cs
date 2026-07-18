@@ -213,11 +213,10 @@ internal sealed partial class CEmitter
         throw new LuocException($"unbound IL variable: {name}");
     }
 
-    private void AddVariable(string name, Variable variable)
-    {
-        if (!_scopes.Peek().TryAdd(name, variable))
-            throw new LuocException($"duplicate local in one IL scope: {name}");
-    }
+    // Lua の local 再宣言 (shadow) と同じく後勝ちで束縛を差し替える。
+    // C 側は都度別名 (v_..._serial) を発行するため衝突しない
+    private void AddVariable(string name, Variable variable) =>
+        _scopes.Peek()[name] = variable;
 
     private void PushScope() => _scopes.Push(new Dictionary<string, Variable>());
     private void PopScope() => _scopes.Pop();

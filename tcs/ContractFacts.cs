@@ -86,6 +86,22 @@ internal sealed class ContractFacts
         if (text.EndsWith("[]", StringComparison.Ordinal))
             return CType.Array(MapType(text[..^2]));
 
+        const string genericDict = "System.Collections.Generic.Dictionary<";
+        if ((text.StartsWith(genericDict, StringComparison.Ordinal)
+             || text.StartsWith("Dictionary<", StringComparison.Ordinal))
+            && text.EndsWith('>'))
+        {
+            var inner = text[(text.IndexOf('<') + 1)..^1];
+            var comma = inner.IndexOf(',');
+            if (comma < 0)
+                throw new LuocException($"unsupported IL type: {displayName}");
+            var key = MapType(inner[..comma]);
+            if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
+                throw new LuocException(
+                    $"Dictionary key type not supported: {displayName}");
+            return CType.Dict(key, MapType(inner[(comma + 1)..]));
+        }
+
         const string genericList = "System.Collections.Generic.List<";
         if (text.StartsWith(genericList, StringComparison.Ordinal)
             && text.EndsWith('>'))

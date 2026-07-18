@@ -388,8 +388,10 @@ internal sealed partial class CEmitter
             case IlRepeat repeat: EmitRepeat(repeat); break;
             case IlNumericFor loop: EmitNumericFor(loop); break;
             case IlForeachList loop: EmitForeachList(loop); break;
+            case IlForeachDict loop: EmitForeachDict(loop); break;
             case IlBreak: Line("break;"); break;
             case IlContinue: EmitContinue(); break;
+            case IlMultiAssign multi: EmitMultiAssign(multi); break;
             case IlReturn ret: EmitReturn(ret); break;
             case IlDo block: EmitDo(block); break;
             default:
@@ -400,8 +402,20 @@ internal sealed partial class CEmitter
     private void EmitLocal(IlLocal local)
     {
         if (local.Init is null)
-            throw new LuocException($"local has no initializer and IlExport does not expose " +
-                $"its type: {_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
+        {
+            // 型は契約 (IlLocal.Type) から。C の zero 初期化 = default 値
+            if (local.Type is null)
+                throw new LuocException($"local has no initializer/type: " +
+                    $"{_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
+            var declared = _facts.MapType(local.Type);
+            var declaredVar = new Variable(
+                $"v_{Names.Id(local.Name)}_{_serial++}", declared);
+            AddVariable(local.Name, declaredVar);
+            Line($"{declared.CName} {declaredVar.CName} = {{0}};".Replace(
+                "= {0}", declared.Kind is CTypeKind.I32 or CTypeKind.F32
+                    or CTypeKind.Bool ? "= 0" : "= NULL"));
+            return;
+        }
         var type = TypeOf(local.Init);
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
             throw new LuocException($"cannot infer storage type of local {local.Name}: {type}");
@@ -434,6 +448,17 @@ internal sealed partial class CEmitter
                 Line($"{receiverType.CName} {temp} = ({receiverType.CName})" +
                     $"tcs_nonnull({RenderExpr(field.Recv)});");
                 Line($"{temp}->{Names.Field(field.Name)} = {value};");
+                return;
+            }
+            case IlIndex index when !index.PlusOne
+                && TypeOf(index.Recv).Kind == CTypeKind.Dict:
+            {
+                var slotType = RequireDict(index.Recv, out var dictType);
+                RequireAssignable(slotType, valueType, "dict store");
+                var dictTemp = Temp("dict");
+                Line($"TcsDict *{dictTemp} = {RenderExpr(index.Recv)};");
+                Line($"*({slotType.CName} *)tcs_dict_put({dictTemp}, " +
+                    $"{DictKeyArgs(dictType.Key!, index.Idx)}) = {value};");
                 return;
             }
             case IlIndex index:
@@ -593,6 +618,78 @@ internal sealed partial class CEmitter
             throw new LuocException("continue outside a loop");
         var target = _continueTargets.Peek();
         Line(target is null ? "continue;" : $"goto {target};");
+    }
+
+    // 現状 Dict.TryGet の (found, value) 形のみ (out 引数 multi-return は
+    // ref method 側で別対応)
+    private void EmitMultiAssign(IlMultiAssign multi)
+    {
+        if (multi.Values is not [IlCall { Callee: "Dict.TryGet" } tryGet]
+            || multi.Targets.Length != 2
+            || multi.Targets[0] is not IlVar foundVar
+            || multi.Targets[1] is not IlVar valueVar)
+            throw new LuocException(
+                "only Dict.TryGet multi-assign is supported");
+        RequireArity("Dict.TryGet", tryGet.Args.Length, 3);
+        var valueType = RequireDict(tryGet.Args[0], out var dictType);
+        RequireAssignable(dictType.Key!, TypeOf(tryGet.Args[1]),
+            "Dict.TryGet key");
+        RequireAssignable(valueType, TypeOf(tryGet.Args[2]),
+            "Dict.TryGet fallback");
+
+        Variable Declare(string name, CType type)
+        {
+            var variable = new Variable(
+                $"v_{Names.Id(name)}_{_serial++}", type);
+            AddVariable(name, variable);
+            Line($"{type.CName} {variable.CName};");
+            return variable;
+        }
+        var found = multi.Declare
+            ? Declare(foundVar.Name, CType.Bool) : Resolve(foundVar.Name);
+        var value = multi.Declare
+            ? Declare(valueVar.Name, valueType) : Resolve(valueVar.Name);
+        var dictTemp = Temp("dict");
+        var fallbackTemp = Temp("fallback");
+        Line($"TcsDict *{dictTemp} = {RenderExpr(tryGet.Args[0])};");
+        Line($"{valueType.CName} {fallbackTemp} = " +
+            $"{RenderCoerced(tryGet.Args[2], valueType)};");
+        Line($"{found.CName} = tcs_dict_tryget({dictTemp}, " +
+            $"{DictKeyArgs(dictType.Key!, tryGet.Args[1])}, " +
+            $"&{value.CName}, &{fallbackTemp});");
+    }
+
+    // Dictionary の foreach。反復順は Lua (pairs) と一致しない — どちらも
+    // 順序未規定 (順序依存の出力は backend 間一致の対象外)
+    private void EmitForeachDict(IlForeachDict loop)
+    {
+        var valueType = RequireDict(loop.Coll, out var dictType);
+        var dictTemp = Temp("dict");
+        var bucketTemp = Temp("bucket");
+        var nodeTemp = Temp("node");
+        Line("{");
+        _indent++;
+        PushScope();
+        Line($"TcsDict *{dictTemp} = ({{ TcsDict *d = " +
+            $"{RenderExpr(loop.Coll)}; (TcsDict *)tcs_nonnull(d); }});");
+        Line($"for (int32_t {bucketTemp} = 0; {bucketTemp} < TCS_DICT_BUCKETS; " +
+            $"{bucketTemp}++)");
+        Line($"for (TcsDictNode *{nodeTemp} = {dictTemp}->buckets[{bucketTemp}]; " +
+            $"{nodeTemp} != NULL; {nodeTemp} = {nodeTemp}->next)");
+        Line("{");
+        _indent++;
+        PushScope();
+        AddVariable(loop.Var, new Variable(nodeTemp,
+            CType.Kvp(dictType.Key!, valueType)));
+        _continueTargets.Push(null);
+        EmitStats(loop.Body.Stats);
+        _continueTargets.Pop();
+        PopScope();
+        _indent--;
+        Line("}");
+        PopScope();
+        _indent--;
+        Line("}");
     }
 
     private void EmitReturn(IlReturn ret)

@@ -41,6 +41,138 @@ internal sealed partial class CEmitter
 
         static uint32_t tcs_digest;
 
+        /* Dictionary: chained hash。key は i32 か string、value は 8 byte
+           slot に value_size 分を格納する。反復順は Lua と一致しない
+           (どちらも順序未規定)。 */
+        typedef struct TcsDictNode {
+            struct TcsDictNode *next;
+            int32_t key_i;
+            TcsString *key_s;
+            unsigned char value[8];
+        } TcsDictNode;
+
+        #define TCS_DICT_BUCKETS 64
+        typedef struct TcsDict {
+            TcsDictNode *buckets[TCS_DICT_BUCKETS];
+            int32_t count;
+            int32_t key_is_string;
+            size_t value_size;
+        } TcsDict;
+
+        /* dict 節は後方定義を参照するため前方宣言 */
+        static void *tcs_alloc(size_t size);
+        static void *tcs_nonnull(void *object);
+        static _Noreturn void tcs_fault(const char *kind);
+        static bool tcs_string_equal(TcsString *left, TcsString *right);
+
+        static TcsDict *
+        tcs_dict_new(int32_t key_is_string, size_t value_size)
+        {
+            TcsDict *dict = tcs_alloc(sizeof(*dict));
+            dict->key_is_string = key_is_string;
+            dict->value_size = value_size;
+            return dict;
+        }
+
+        static uint32_t
+        tcs_dict_hash(TcsDict *dict, int32_t key_i, TcsString *key_s)
+        {
+            uint32_t h = 2166136261u;
+            if (dict->key_is_string) {
+                for (size_t i = 0; i < key_s->length; i++)
+                    h = (h ^ (unsigned char)key_s->data[i]) * 16777619u;
+            } else {
+                for (int i = 0; i < 4; i++)
+                    h = (h ^ (((uint32_t)key_i >> (8 * i)) & 0xFF)) * 16777619u;
+            }
+            return h;
+        }
+
+        static TcsDictNode *
+        tcs_dict_find(TcsDict *dict, int32_t key_i, TcsString *key_s)
+        {
+            tcs_nonnull(dict);
+            if (dict->key_is_string) tcs_nonnull(key_s);
+            uint32_t bucket = tcs_dict_hash(dict, key_i, key_s)
+                % TCS_DICT_BUCKETS;
+            for (TcsDictNode *node = dict->buckets[bucket]; node != NULL;
+                 node = node->next) {
+                if (dict->key_is_string
+                        ? tcs_string_equal(node->key_s, key_s)
+                        : node->key_i == key_i)
+                    return node;
+            }
+            return NULL;
+        }
+
+        static void *
+        tcs_dict_put(TcsDict *dict, int32_t key_i, TcsString *key_s)
+        {
+            TcsDictNode *node = tcs_dict_find(dict, key_i, key_s);
+            if (node != NULL) return node->value;
+            uint32_t bucket = tcs_dict_hash(dict, key_i, key_s)
+                % TCS_DICT_BUCKETS;
+            node = tcs_alloc(sizeof(*node));
+            node->key_i = key_i;
+            node->key_s = key_s;
+            node->next = dict->buckets[bucket];
+            dict->buckets[bucket] = node;
+            dict->count++;
+            return node->value;
+        }
+
+        static void *
+        tcs_dict_at(TcsDict *dict, int32_t key_i, TcsString *key_s)
+        {
+            TcsDictNode *node = tcs_dict_find(dict, key_i, key_s);
+            if (node == NULL) tcs_fault("key-not-found");
+            return node->value;
+        }
+
+        static bool
+        tcs_dict_contains(TcsDict *dict, int32_t key_i, TcsString *key_s)
+        {
+            return tcs_dict_find(dict, key_i, key_s) != NULL;
+        }
+
+        static bool
+        tcs_dict_tryget(TcsDict *dict, int32_t key_i, TcsString *key_s,
+            void *out_value, const void *fallback)
+        {
+            TcsDictNode *node = tcs_dict_find(dict, key_i, key_s);
+            memcpy(out_value, node != NULL ? node->value : fallback,
+                dict->value_size);
+            return node != NULL;
+        }
+
+        static bool
+        tcs_dict_remove(TcsDict *dict, int32_t key_i, TcsString *key_s)
+        {
+            tcs_nonnull(dict);
+            if (dict->key_is_string) tcs_nonnull(key_s);
+            uint32_t bucket = tcs_dict_hash(dict, key_i, key_s)
+                % TCS_DICT_BUCKETS;
+            for (TcsDictNode **link = &dict->buckets[bucket]; *link != NULL;
+                 link = &(*link)->next) {
+                TcsDictNode *node = *link;
+                if (dict->key_is_string
+                        ? tcs_string_equal(node->key_s, key_s)
+                        : node->key_i == key_i) {
+                    *link = node->next;
+                    dict->count--;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static int32_t
+        tcs_dict_count(TcsDict *dict)
+        {
+            tcs_nonnull(dict);
+            return dict->count;
+        }
+
         static int
         tcs_type_in_range(uint32_t type_id, uint32_t first, uint32_t last)
         {

@@ -31,7 +31,9 @@ internal sealed partial class CEmitter
         IlLit literal => TypeOfLiteral(literal),
         IlVar variable => Resolve(variable.Name).Type,
         IlField field => TypeOfField(field),
-        IlIndex index => RequireSequence(index).Element!,
+        IlIndex index => index.PlusOne || TypeOf(index.Recv).Kind != CTypeKind.Dict
+            ? RequireSequence(index).Element!
+            : TypeOf(index.Recv).Element!,
         IlLen length => TypeOfLength(length),
         IlBin binary => TypeOfBinary(binary),
         IlUn { Op: IlUnOp.Not } => CType.Bool,
@@ -58,6 +60,18 @@ internal sealed partial class CEmitter
     {
         if (TryStaticField(field, out var staticName, out _)) return staticName;
         var receiver = TypeOf(field.Recv);
+        if (receiver.Kind == CTypeKind.Kvp && field.Recv is IlVar kvpVar)
+        {
+            var node = Resolve(kvpVar.Name).CName;
+            return field.Name switch
+            {
+                "Key" => receiver.Key!.Kind == CTypeKind.String
+                    ? $"{node}->key_s" : $"{node}->key_i",
+                "Value" => $"(*({receiver.Element!.CName} *){node}->value)",
+                _ => throw new LuocException(
+                    $"unknown KeyValuePair member: {field.Name}"),
+            };
+        }
         if (receiver.Kind != CTypeKind.Ref)
             throw new LuocException("field receiver is not a class reference");
         _ = FieldInChain(receiver.Name!, field.Name);
@@ -69,6 +83,14 @@ internal sealed partial class CEmitter
     {
         if (TryStaticField(field, out _, out var staticType)) return staticType;
         var receiver = TypeOf(field.Recv);
+        if (receiver.Kind == CTypeKind.Kvp)
+            return field.Name switch
+            {
+                "Key" => receiver.Key!,
+                "Value" => receiver.Element!,
+                _ => throw new LuocException(
+                    $"unknown KeyValuePair member: {field.Name}"),
+            };
         if (receiver.Kind != CTypeKind.Ref)
             throw new LuocException("field receiver is not a class reference");
         return FieldInChain(receiver.Name!, field.Name).Type;
@@ -91,8 +113,32 @@ internal sealed partial class CEmitter
         return false;
     }
 
+    // dict key を (key_i, key_s) の C 引数対に render する
+    private string DictKeyArgs(CType keyType, IlExpr key)
+    {
+        var rendered = RenderExpr(key);
+        return keyType.Kind == CTypeKind.String
+            ? $"0, {rendered}" : $"{rendered}, NULL";
+    }
+
+    private CType RequireDict(IlExpr recv, out CType dict)
+    {
+        dict = TypeOf(recv);
+        if (dict.Kind != CTypeKind.Dict)
+            throw new LuocException($"receiver is not a Dictionary: {dict}");
+        return dict.Element!;
+    }
+
     private string RenderIndex(IlIndex index)
     {
+        if (!index.PlusOne && TypeOf(index.Recv).Kind == CTypeKind.Dict)
+        {
+            var valueType = RequireDict(index.Recv, out var dictType);
+            var dictTemp = Temp("dict");
+            return $"({{ TcsDict *{dictTemp} = {RenderExpr(index.Recv)}; " +
+                $"*({valueType.CName} *)tcs_dict_at({dictTemp}, " +
+                $"{DictKeyArgs(dictType.Key!, index.Idx)}); }})";
+        }
         var sequenceType = RequireSequence(index);
         var sequence = Temp("index_sequence");
         var position = Temp("index");
@@ -290,6 +336,10 @@ internal sealed partial class CEmitter
                  (CType.I32, RenderExpr(call.Args[1]))]),
             "print" => RenderPrint(call),
             "tostring" => RenderToString(call.Args[0]),
+            "Dict.ContainsKey" => RenderDictSimple(call, "tcs_dict_contains"),
+            "Dict.Remove" => RenderDictSimple(call, "tcs_dict_remove"),
+            "Dict.Count" =>
+                $"tcs_dict_count({RenderExpr(call.Args[0])})",
             // Lua backend の f32 shortest round-trip helper。C 側の
             // to-string は元々 shortest round-trip なので同一経路で良い
             "__tcs_fstr" => RenderToString(call.Args[0]),
@@ -318,6 +368,29 @@ internal sealed partial class CEmitter
                 or CTypeKind.Bool or CTypeKind.String))
                 throw new LuocException($"print does not support {argument}");
             return CType.Void;
+        }
+        if (call.Callee == "Dict.ContainsKey")
+        {
+            RequireArity(call.Callee, call.Args.Length, 2);
+            var valueType0 = RequireDict(call.Args[0], out var dictType0);
+            _ = valueType0;
+            RequireAssignable(dictType0.Key!, TypeOf(call.Args[1]),
+                "Dict.ContainsKey key");
+            return CType.Bool;
+        }
+        if (call.Callee == "Dict.Remove")
+        {
+            RequireArity(call.Callee, call.Args.Length, 2);
+            _ = RequireDict(call.Args[0], out var dictTypeR);
+            RequireAssignable(dictTypeR.Key!, TypeOf(call.Args[1]),
+                "Dict.Remove key");
+            return CType.Bool;
+        }
+        if (call.Callee == "Dict.Count")
+        {
+            RequireArity(call.Callee, call.Args.Length, 1);
+            _ = RequireDict(call.Args[0], out _);
+            return CType.I32;
         }
         if (call.Callee is "tostring" or "__tcs_fstr")
         {
@@ -371,6 +444,15 @@ internal sealed partial class CEmitter
         };
         return RenderOrderedCall(helper, CType.Void,
             [(argument, RenderExpr(call.Args[0]))]);
+    }
+
+    private string RenderDictSimple(IlCall call, string function)
+    {
+        _ = TypeOfCall(call);
+        _ = RequireDict(call.Args[0], out var dictType);
+        var dictTemp = Temp("dict");
+        return $"({{ TcsDict *{dictTemp} = {RenderExpr(call.Args[0])}; " +
+            $"{function}({dictTemp}, {DictKeyArgs(dictType.Key!, call.Args[1])}); }})";
     }
 
     private string RenderToString(IlExpr argument)
@@ -596,8 +678,11 @@ internal sealed partial class CEmitter
 
     private CType TypeOfTable(IlTable table)
     {
-        if (table.Entries.Any(e => e.Key is not null || e.NameKey is not null))
-            throw new LuocException("only array-style IlTable entries are supported");
+        if (table.KeyType is not null
+            || table.Entries.Any(e => e.Key is not null))
+            return TypeOfDictTable(table);
+        if (table.Entries.Any(e => e.NameKey is not null))
+            throw new LuocException("option-table IlTable is not supported");
         CType? element = table.ElementType is null
             ? null : _facts.MapType(table.ElementType);
         foreach (var entry in table.Entries)
@@ -610,8 +695,53 @@ internal sealed partial class CEmitter
         return CType.List(element);
     }
 
+    private CType TypeOfDictTable(IlTable table)
+    {
+        if (table.Entries.Any(e => e.NameKey is not null || e.Key is null && table.Entries.Length > 0 && table.KeyType is null))
+            throw new LuocException("mixed IlTable entries are not supported");
+        CType? key = table.KeyType is null ? null : _facts.MapType(table.KeyType);
+        CType? value = table.ElementType is null
+            ? null : _facts.MapType(table.ElementType);
+        foreach (var entry in table.Entries)
+        {
+            if (entry.Key is null)
+                throw new LuocException("dict IlTable entry without key");
+            var k = TypeOf(entry.Key);
+            var v = TypeOf(entry.Value);
+            key = key is null ? k : CommonType(key, k, "dict keys");
+            value = value is null ? v : CommonType(value, v, "dict values");
+        }
+        if (key is null || value is null)
+            throw new LuocException(
+                "cannot infer Dictionary key/value types (no metadata)");
+        if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
+            throw new LuocException($"Dictionary key type not supported: {key}");
+        return CType.Dict(key, value);
+    }
+
+    private string RenderDictTable(IlTable table)
+    {
+        var type = TypeOfDictTable(table);
+        var dictTemp = Temp("dict");
+        var sb = new StringBuilder();
+        sb.Append($"TcsDict *{dictTemp} = tcs_dict_new(" +
+            $"{(type.Key!.Kind == CTypeKind.String ? 1 : 0)}, " +
+            $"sizeof({type.Element!.CName})); ");
+        foreach (var entry in table.Entries)
+        {
+            var valueTemp = Temp("dict_value");
+            sb.Append($"{type.Element!.CName} {valueTemp} = " +
+                $"{RenderCoerced(entry.Value, type.Element!)}; ");
+            sb.Append($"*({type.Element!.CName} *)tcs_dict_put({dictTemp}, " +
+                $"{DictKeyArgs(type.Key!, entry.Key!)}) = {valueTemp}; ");
+        }
+        return $"({{ {sb}{dictTemp}; }})";
+    }
+
     private string RenderTable(IlTable table)
     {
+        if (table.KeyType is not null || table.Entries.Any(e => e.Key is not null))
+            return RenderDictTable(table);
         var type = TypeOfTable(table);
         var list = Temp("list");
         var elementSize = type.Element is null ? "0" : $"sizeof({type.ElementCName})";
