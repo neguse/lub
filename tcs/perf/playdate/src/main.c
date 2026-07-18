@@ -96,7 +96,7 @@ update(void *userdata)
         }
         next_job++;
         if (next_job == JOB_COUNT) {
-            pd->system->logToConsole("perf: done (%d jobs)", JOB_COUNT);
+            perf_pd_log("perf: done (%d jobs)", JOB_COUNT);
         }
     }
 

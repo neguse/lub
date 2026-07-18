@@ -1415,3 +1415,9 @@
 - 残っていた spike 識別子・参照 (perf/*.c/h, CMake, run.sh, CONTRACT/results, root CMakeLists, Transpiler.Tests コメントの ../luo/spike stale パス) を perf 系へ全置換。CLAUDE.md に「spike 名称禁止」を明文化
 - 検証: ホスト perf 再ビルド + 各変種実行で digest 一致 (e8814b32/d4a095ee/0040a0c1/9274159d/8bf97e09)、デバイスビルドで tcs_perf_DEVICE.pdx (pdex.bin 165KB) 生成、`file` で ARM EABI5 確認。実機実行は未 (デバイス未接続)
 - 残課題: 実機での実行・results-playdate.md への記録。update 長時間ブロックが watchdog に当たる場合はフレーム分割が必要 (README に記載)
+
+### perf Playdate ハーネス: results.csv 出力 + シミュレータ検証 ✓ (2026-07-18)
+- perf_pd_log を console + `Data/<bundleID>/results.csv` の二重出力へ (job 毎 append+close — ヘッドレス実行と実機からの結果回収の正になる)
+- 検証: Xvfb + dbus-run-session でシミュレータをヘッドレス実行し、全 24 job (4 変種 × 6 workload) 完走、全 digest が results-pc.md と bit 一致 (interp = 埋め込み lua32 + os.clock/io.write 差し替えも含めて動作確認)
+- よかったこと: logToConsole はヘッドレスでは取れない — ファイル出力を結果の正としたことで実機でも同じ回収導線になる
+- 残課題: 実機実行のみ (README 記載)

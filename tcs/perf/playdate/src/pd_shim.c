@@ -4,6 +4,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "pd_shim.h"
 
@@ -32,14 +33,25 @@ perf_now_seconds(void)
     return (double)perf_pd->system->getElapsedTime();
 }
 
+/* console と Data/<bundleID>/results.csv の両方へ出す。ヘッドレスの
+   シミュレータや実機からの結果回収はファイル側が正 (job 毎に append +
+   close して途中クラッシュでも残るようにする) */
 void
 perf_pd_log(const char *format, ...)
 {
     char line[256];
     va_list args;
+    SDFile *file;
 
     va_start(args, format);
     vsnprintf(line, sizeof line, format, args);
     va_end(args);
     perf_pd->system->logToConsole("%s", line);
+
+    file = perf_pd->file->open("results.csv", kFileAppend);
+    if (file != NULL) {
+        perf_pd->file->write(file, line, (unsigned int)strlen(line));
+        perf_pd->file->write(file, "\n", 1);
+        perf_pd->file->close(file);
+    }
 }

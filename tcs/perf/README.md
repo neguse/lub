@@ -16,7 +16,9 @@
 - `results-pc.md` — PC 実測記録 (2026-07-18)
 - `playdate/` — Playdate 実機/シミュレータ用ハーネス。全変種
   (native / aot-hash / aot-slot / interp = 埋め込み lua32 + bench.lua) を
-  update 1 回 1 job で実行し、CSV を console log へ出す
+  update 1 回 1 job で実行し、CSV を console log と
+  `Data/dev.neguse.tcs.perf/results.csv` (シミュレータでは
+  `$PLAYDATE_SDK_PATH/Disk/Data/` 配下) の両方へ出す
 
 ## KPI floor (il-design の性能前提)
 
@@ -53,7 +55,8 @@ cmake --build build-sim
 
 - 実機 (Playdate) 測定: `tcs_perf_DEVICE.pdx` を実機で実行し、
   N=1024 が予算 10ms 内かを確認して結果を results-playdate.md に記録する
-  (ビルドは 2026-07-18 に確認済み、実機実行は未)
+  (2026-07-18: デバイスビルドと、シミュレータでの全 24 job 完走 +
+  全 digest の results-pc.md 一致まで確認済み。実機実行のみ未)
 - 実機の update watchdog: aot/interp 系は 1 job (1000 frame) が
   数十秒かかる見込みで、update 長時間ブロックで落ちる場合は
   フレーム分割 (複数 update に跨る実行) が必要になる
