@@ -99,29 +99,16 @@ public class ComplianceParityTests
             var inputPath = Path.Combine(tempDirectory, "input.cs");
             var outputPath = Path.Combine(tempDirectory, "output.lua");
             File.WriteAllText(inputPath, source);
-            var oldOut = Console.Out;
-            var oldErr = Console.Error;
-            using var stdout = new StringWriter();
-            using var stderr = new StringWriter();
-            try
-            {
-                Console.SetOut(stdout);
-                Console.SetError(stderr);
-                var args = check
-                    ? new List<string> { "check", inputPath }
-                    : [inputPath, "-o", outputPath, "--no-runtime"];
-                if (noNamingCheck) args.Add("--no-naming-check");
-                var exitCode = Program.Main([.. args]);
-                var lua = File.Exists(outputPath)
-                    ? File.ReadAllText(outputPath)
-                    : "";
-                return (exitCode, stdout.ToString(), stderr.ToString(), lua);
-            }
-            finally
-            {
-                Console.SetOut(oldOut);
-                Console.SetError(oldErr);
-            }
+            var args = check
+                ? new List<string> { "check", inputPath }
+                : [inputPath, "-o", outputPath, "--no-runtime"];
+            if (noNamingCheck) args.Add("--no-naming-check");
+            var (exitCode, stdoutText, stderrText) =
+                ConsoleCapture.Run(() => Program.Main([.. args]));
+            var lua = File.Exists(outputPath)
+                ? File.ReadAllText(outputPath)
+                : "";
+            return (exitCode, stdoutText, stderrText, lua);
         }
         finally
         {

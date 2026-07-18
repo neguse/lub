@@ -80,24 +80,6 @@ public class PreludeTests
     }
 
     private static (int ExitCode, string Stdout, string Stderr) RunCli(
-        params string[] args)
-    {
-        var oldOut = Console.Out;
-        var oldErr = Console.Error;
-        using var stdout = new StringWriter();
-        using var stderr = new StringWriter();
-
-        try
-        {
-            Console.SetOut(stdout);
-            Console.SetError(stderr);
-            var exitCode = Program.Main(args);
-            return (exitCode, stdout.ToString(), stderr.ToString());
-        }
-        finally
-        {
-            Console.SetOut(oldOut);
-            Console.SetError(oldErr);
-        }
-    }
+        params string[] args) =>
+        ConsoleCapture.Run(() => Program.Main(args));
 }

@@ -80,25 +80,9 @@ public class EntryClassTests
             File.WriteAllText(inputPath, AppSource);
             var outputPath = Path.Combine(tempDir, "app.lua");
 
-            var oldOut = Console.Out;
-            var oldErr = Console.Error;
-            int exitCode;
-            using (var stdout = new StringWriter())
-            using (var stderr = new StringWriter())
-            {
-                try
-                {
-                    Console.SetOut(stdout);
-                    Console.SetError(stderr);
-                    exitCode = Program.Main([inputPath, "-o", outputPath,
-                        "--entry", "App", "--no-runtime"]);
-                }
-                finally
-                {
-                    Console.SetOut(oldOut);
-                    Console.SetError(oldErr);
-                }
-            }
+            var (exitCode, _, _) = ConsoleCapture.Run(
+                () => Program.Main([inputPath, "-o", outputPath,
+                    "--entry", "App", "--no-runtime"]));
 
             Assert.Equal(0, exitCode);
             var script = $"""

@@ -1393,3 +1393,8 @@
 - luoc --lib: main なしで tcs_lib_init / tcs_entry_<Class>_<Method> を外部 linkage 公開。ar で .a 化し外部 main から link 実行 → stdout が lua32 と一致 (il-design の「release AOT = 静的 link」の最小成立)
 - T218 (M3) はこれでクローズ: 継承 / Dict / closure / ctor 連鎖 / 静的 link の全残項目を受入済み。未対応構文は明示エラー方針を維持し、対応面の拡張は実利用需要で駆動する
 - T219b / T220 は需要ゲートの最終判断を tasks.md に記録 (検証面が立つまで書かない)
+
+### CI flaky 根治 v2: 生 Console.SetOut の全廃 ✓ (2026-07-18)
+- CI (2 vCPU) で fuzz smoke が「dotnet 側 capture 空」で 1 回失敗 (seed 1004、master 先頭は green)。真因: CLI 系テスト 6 ファイルが生 SetOut/SetError で Console を全域差し替えており、並列中は SpecDotnetExecutor の AsyncLocal router が外れて in-proc 実行の出力が失われる (T209 対策の枠外)。ローカル再現なし・当該コミットでも再現なし → 競合タイミング依存を確認してから修正
+- 共有 ConsoleCapture (プロセス唯一の out/err ルーティング + AsyncLocal capture) を導入し、SpecDotnetExecutor / CliRuntimeTests / PreludeTests / ComplianceParityTests / EntryClassTests / NamingSuppressionTests / SnapshotCliTests を統一。生 SetOut はテストコードから全廃
+- 検証: run-tests 全ゲート green (並列実行込み)。縮小結果が無意味な断片だったのは「空 baseline への縮小」の帰結で、生成器の問題ではない

@@ -15,36 +15,9 @@ internal sealed class SpecDotnetExecutor
 {
     private static readonly TimeSpan ExecutionTimeout = TimeSpan.FromSeconds(10);
 
-    // Console.Out はプロセス全域の状態。単純な SetOut 差し替えだと、xUnit の
-    // 並列テストが同時に書いた行 (FileSizeGate の warning 等) が capture に
-    // 混入する。AsyncLocal で「この実行の論理コールツリーからの書き込みだけ」
-    // を捕捉するルーティング writer を一度だけ挿す。
-    private static readonly AsyncLocal<StringWriter?> Capture = new();
-    private static readonly object InstallLock = new();
-    private static bool _writerInstalled;
-
-    private static void EnsureRoutingWriter()
-    {
-        if (_writerInstalled)
-            return;
-        lock (InstallLock)
-        {
-            if (_writerInstalled)
-                return;
-            Console.SetOut(new RoutingWriter(Console.Out));
-            _writerInstalled = true;
-        }
-    }
-
-    private sealed class RoutingWriter(TextWriter fallback) : TextWriter
-    {
-        public override System.Text.Encoding Encoding => fallback.Encoding;
-        private TextWriter Target => Capture.Value ?? fallback;
-        public override void Write(char value) => Target.Write(value);
-        public override void Write(string? value) => Target.Write(value);
-        public override void WriteLine(string? value) =>
-            Target.WriteLine(value);
-    }
+    // capture は ConsoleCapture (プロセス唯一の AsyncLocal ルーティング) 経由。
+    // 他テストが生 SetOut で router を外すと空 capture になるため、SetOut は
+    // ConsoleCapture 以外で行わない。
 
     // classifier と同じく SDK ImplicitUsings 相当を補う (template csproj 前提)。
     private const string ImplicitUsingsSource = """
@@ -94,9 +67,8 @@ internal sealed class SpecDotnetExecutor
                 ? new object[] { Array.Empty<string>() }
                 : null;
 
-            EnsureRoutingWriter();
             using var writer = new StringWriter();
-            Capture.Value = writer;
+            using var scope = TinyCs.Tests.ConsoleCapture.BeginOut(writer);
             try
             {
                 // AsyncLocal は Task.Run の子へ流れる — この実行の書き込み
@@ -118,7 +90,7 @@ internal sealed class SpecDotnetExecutor
             }
             finally
             {
-                Capture.Value = null;
+                
             }
             return new SpecDotnetRun(true, writer.ToString(), null);
         }
