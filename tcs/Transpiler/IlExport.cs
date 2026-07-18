@@ -21,12 +21,14 @@ public sealed record IlClassInfo(
     ImmutableArray<IlMethodInfo> Methods,
     IlCtorInfo? Ctor = null);
 
-/// <summary>explicit constructor。Body は field default/initializer 適用後に
-/// 実行される本文 IL (il-spec §9)。</summary>
+/// <summary>explicit constructor。構築順は base ctor → 自 class の field
+/// default/initializer → Body (Lua backend と同順)。BaseArgs は base(...)
+/// 初期化子の引数 IL (無指定の暗黙 base() は空配列)。</summary>
 public sealed record IlCtorInfo(
     ImmutableArray<string> Parameters,
     ImmutableArray<string> ParameterTypes,
-    IlBlock? Body);
+    IlBlock? Body,
+    ImmutableArray<IlExpr> BaseArgs = default);
 
 public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
     IlExpr? Init = null);
@@ -132,6 +134,19 @@ public static class IlExport
                 .FirstOrDefault() is { } ctorDecl)
         {
             var ctorSymbol = model.GetDeclaredSymbol(ctorDecl);
+            var baseArgs = ImmutableArray<IlExpr>.Empty;
+            if (ctorDecl.Initializer is { } init
+                && init.IsKind(SyntaxKind.BaseConstructorInitializer))
+            {
+                var builtArgs = new List<IlExpr>();
+                foreach (var a in init.ArgumentList.Arguments)
+                {
+                    var built = emitter.ExportExprIl(model, a.Expression);
+                    if (built == null) { builtArgs = null; break; }
+                    builtArgs.Add(built);
+                }
+                baseArgs = builtArgs == null ? [] : [.. builtArgs];
+            }
             ctor = new IlCtorInfo(
                 [.. ctorDecl.ParameterList.Parameters
                     .Select(p => p.Identifier.ValueText)],
@@ -139,7 +154,8 @@ public static class IlExport
                     ? []
                     : [.. ctorSymbol.Parameters
                         .Select(p => p.Type.ToDisplayString())],
-                emitter.ExportStatsIl(model, ctorDecl.Body?.Statements));
+                emitter.ExportStatsIl(model, ctorDecl.Body?.Statements),
+                baseArgs);
         }
 
         var methods = new List<IlMethodInfo>();
