@@ -1,0 +1,1087 @@
+using System.Globalization;
+using System.Text;
+using TinyCs;
+
+namespace TinyCs.Luoc;
+
+internal sealed partial class CEmitter
+{
+    private readonly IlExportResult _program;
+    private readonly ContractFacts _facts;
+    private readonly Dictionary<string, IlClassInfo> _classes;
+    private readonly bool _digestF32;
+    private readonly StringBuilder _output = new();
+    private readonly Stack<Dictionary<string, Variable>> _scopes = new();
+    private readonly Stack<string?> _continueTargets = new();
+    private IlClassInfo _currentClass = null!;
+    private IlMethodInfo _currentMethod = null!;
+    private MethodFact _currentMethodFact = null!;
+    private int _indent;
+    private int _serial;
+
+    private readonly List<string> _pendingClosures = [];
+    private readonly List<string> _closureDecls = [];
+    private const string ClosureDeclMarker = "/*__LUOC_CLOSURE_DECLS__*/";
+    private readonly HashSet<string> _capturedNames = [];
+    private int _closureSerial;
+
+    private sealed class Variable(string cName, CType type)
+    {
+        public bool Boxed { get; init; }
+        public string CName { get; } = cName;
+        public CType Type { get; set; } = type;
+    }
+
+    public CEmitter(IlExportResult program, bool digestF32)
+    {
+        // T218-m3: ctor と top-level 文を合成 method として注入し、
+        // facts / prototype / EmitMethod の既存機構をそのまま通す
+        _program = Normalize(program);
+        _digestF32 = digestF32;
+        _facts = new ContractFacts(_program);
+        _classes = new Dictionary<string, IlClassInfo>(_facts.Classes);
+        BuildHierarchy();
+    }
+
+    internal const string CtorMethodName = "__ctor";
+
+    // ---- 継承 (T218-m4): DFS 範囲型 ID と chain 解決 ----
+    private readonly Dictionary<string, (int First, int Last)> _typeRange = new();
+
+    private void BuildHierarchy()
+    {
+        var children = new Dictionary<string, List<string>>();
+        var roots = new List<string>();
+        foreach (var cls in _program.Classes)
+        {
+            if (cls.BaseName is { } b)
+            {
+                if (!_classes.ContainsKey(b))
+                    throw new LuocException($"unknown base class: {cls.Name} : {b}");
+                (children.TryGetValue(b, out var list)
+                    ? list : children[b] = []).Add(cls.Name);
+            }
+            else
+            {
+                roots.Add(cls.Name);
+            }
+        }
+        var next = 1;
+        void Assign(string name)
+        {
+            if (_typeRange.ContainsKey(name))
+                throw new LuocException($"inheritance cycle at {name}");
+            var first = next++;
+            _typeRange[name] = (first, first);
+            foreach (var child in children.TryGetValue(name, out var cs)
+                ? cs : [])
+                Assign(child);
+            _typeRange[name] = (first, next - 1);
+        }
+        foreach (var root in roots) Assign(root);
+        if (_typeRange.Count != _program.Classes.Length)
+            throw new LuocException("inheritance cycle detected");
+    }
+
+    private IEnumerable<IlClassInfo> ChainRootFirst(string cls)
+    {
+        var chain = new List<IlClassInfo>();
+        for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
+            chain.Add(_classes[cur]);
+        chain.Reverse();
+        return chain;
+    }
+
+    internal bool IsAncestorOrSame(string ancestor, string derived)
+    {
+        for (string? cur = derived; cur != null; cur = _classes[cur].BaseName)
+            if (cur == ancestor) return true;
+        return false;
+    }
+
+    // name を宣言する最も近い chain 上の class (自身含む)
+    private string? FindDeclaringClass(string cls, string method)
+    {
+        for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
+            if (_classes[cur].Methods.Any(m => m.Name == method)) return cur;
+        return null;
+    }
+
+    private FieldFact FieldInChain(string cls, string name)
+    {
+        for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
+            if (_classes[cur].Fields.Any(f => f.Name == name))
+                return _facts.Field(cur, name);
+        throw new LuocException($"unknown field: {cls}.{name}");
+    }
+
+    // declaring で宣言された method を strict 子孫が再宣言しているか
+    private bool IsPolymorphic(string declaring, string method) =>
+        _program.Classes.Any(c => c.Name != declaring
+            && IsAncestorOrSame(declaring, c.Name)
+            && c.Methods.Any(m => m.Name == method));
+
+    private static IlExportResult Normalize(IlExportResult program)
+    {
+        var classes = program.Classes.ToList();
+        if (program.TopLevel is { } topLevel)
+        {
+            classes.Add(new IlClassInfo("TopLevel", null, [], "0",
+                [new IlMethodInfo("Main", true, [], topLevel, "void", [])]));
+        }
+        return program with { Classes = [.. classes] };
+    }
+
+    public string Emit(string? requestedEntry, bool lib = false)
+    {
+        ValidateProgram();
+        var entry = lib ? null : FindEntry(requestedEntry);
+
+        _output.Append(RuntimePrelude);
+        EmitClassDeclarations();
+        EmitStaticFields();
+        EmitMethodPrototypes();
+        EmitAllocators();
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods)
+            EmitMethod(cls, method);
+        EmitDispatchers();
+        EmitStaticInitializer();
+        if (lib)
+            EmitLibEntryPoints();
+        else
+            EmitEntryPoint(entry);
+        return _output.ToString().Replace(ClosureDeclMarker,
+            string.Join("\n", _closureDecls));
+    }
+
+    private void ValidateProgram()
+    {
+        if (_program.Diagnostics.Length > 0)
+            throw new LuocException("cannot emit a program with TinyC# diagnostics");
+        foreach (var cls in _program.Classes)
+        {
+            Names.Id(cls.Name);
+            foreach (var field in cls.Fields)
+            {
+                Names.Id(field.Name);
+                var fact = _facts.Field(cls.Name, field.Name);
+                EnsureSupportedStorageType(fact.Type,
+                    $"field {cls.Name}.{field.Name}");
+            }
+            var methodNames = new HashSet<string>();
+            foreach (var method in cls.Methods)
+            {
+                Names.Id(method.Name);
+                if (!methodNames.Add(method.Name))
+                    throw new LuocException($"method overloads are not supported: " +
+                        $"{cls.Name}.{method.Name}");
+                if (method.Body is null)
+                    throw new LuocException($"method has no IL body: {cls.Name}.{method.Name}");
+                var fact = _facts.Method(cls.Name, method.Name);
+                EnsureSupportedStorageType(fact.ReturnType,
+                    $"return type of {cls.Name}.{method.Name}", allowVoid: true);
+                foreach (var parameter in fact.Parameters)
+                    EnsureSupportedStorageType(parameter.Type,
+                        $"parameter {cls.Name}.{method.Name}.{parameter.Name}");
+            }
+        }
+    }
+
+    private static void EnsureSupportedStorageType(CType type, string where,
+        bool allowVoid = false)
+    {
+        if (type.Kind == CTypeKind.Void && allowVoid) return;
+        if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
+            or CTypeKind.String or CTypeKind.Ref) return;
+        if (type.Kind == CTypeKind.Array
+            && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
+                or CTypeKind.Ref) return;
+        if (type.Kind == CTypeKind.List
+            && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32) return;
+        throw new LuocException($"unsupported {where}: {type}");
+    }
+
+    private (IlClassInfo Class, IlMethodInfo Method)? FindEntry(string? requested)
+    {
+        var candidates = _program.Classes
+            .SelectMany(c => c.Methods.Select(m => (Class: c, Method: m)))
+            .Where(x => x.Method.Name == "Main" && x.Method.IsStatic
+                && x.Method.Parameters.Length == 0
+                && _facts.Method(x.Class.Name, x.Method.Name).ReturnType == CType.Void)
+            .Where(x => requested is null || x.Class.Name == requested)
+            .ToArray();
+        return candidates.Length switch
+        {
+            1 => candidates[0],
+            0 when requested is null && !_digestF32 => null,
+            0 => throw new LuocException(requested is null
+                ? "--digest-f32 requires a static void Main() entry point"
+                : $"no static void Main() entry point in {requested}"),
+            _ => throw new LuocException("multiple Main entry points; pass --entry CLASS"),
+        };
+    }
+
+    private void EmitClassDeclarations()
+    {
+        foreach (var cls in _program.Classes)
+            Line($"typedef struct {Names.Class(cls.Name)} {Names.Class(cls.Name)};");
+        Line();
+        Line("typedef struct TcsObjectHeader {");
+        _indent++;
+        Line("uint32_t type_id;");
+        _indent--;
+        Line("} TcsObjectHeader;");
+        Line();
+        Line("enum {");
+        _indent++;
+        foreach (var cls in _program.Classes)
+        {
+            var (first, last) = _typeRange[cls.Name];
+            Line($"{Names.TypeId(cls.Name)} = {first},");
+            Line($"{Names.TypeIdMax(cls.Name)} = {last},");
+        }
+        _indent--;
+        Line("};");
+        Line();
+        foreach (var cls in _program.Classes)
+        {
+            Line($"struct {Names.Class(cls.Name)} {{");
+            _indent++;
+            Line("uint32_t type_id;");
+            // 継承 chain を root から平坦化 (先頭 layout 一致で upcast 可能)
+            foreach (var link in ChainRootFirst(cls.Name))
+            foreach (var field in link.Fields.Where(f => !f.IsStatic))
+            {
+                var fact = _facts.Field(link.Name, field.Name);
+                Line($"{fact.Type.CName} {Names.Field(field.Name)};");
+            }
+            _indent--;
+            Line("};");
+            Line();
+        }
+    }
+
+    private void EmitStaticFields()
+    {
+        foreach (var cls in _program.Classes)
+        foreach (var field in cls.Fields.Where(f => f.IsStatic))
+        {
+            var fact = _facts.Field(cls.Name, field.Name);
+            Line($"static {fact.Type.CName} {Names.StaticField(cls.Name, field.Name)};");
+        }
+        Line();
+    }
+
+    private void EmitMethodPrototypes()
+    {
+        foreach (var cls in _program.Classes)
+        {
+            var protoParams = CtorParamFacts(cls);
+            var signature = protoParams.Count == 0
+                ? "void"
+                : string.Join(", ", protoParams.Select(p => p.Type.CName));
+            Line($"static {Names.Class(cls.Name)} *" +
+                $"{Names.New(cls.Name)}({signature});");
+        }
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods)
+        {
+            var fact = _facts.Method(cls.Name, method.Name);
+            Line($"static {fact.ReturnType.CName} {Names.Method(cls.Name, method.Name)}" +
+                $"({ParameterList(fact)});");
+        }
+        Line();
+        // dispatcher (T218-m4) の前方宣言
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods.Where(m => !m.IsStatic))
+        {
+            var declaring = _classes[cls.Name].BaseName is { } b
+                ? FindDeclaringClass(b, method.Name) : null;
+            if (declaring != null) continue;
+            if (!IsPolymorphic(cls.Name, method.Name)) continue;
+            var fact = _facts.Method(cls.Name, method.Name);
+            var parameters = string.Join(", ",
+                new[] { $"{Names.Class(cls.Name)} *" }
+                    .Concat(fact.Parameters.Select(p => p.Type.CName)));
+            Line($"static {fact.ReturnType.CName} " +
+                $"{Names.Dispatch(cls.Name, method.Name)}({parameters});");
+        }
+        Line(ClosureDeclMarker);
+    }
+
+    private static string ParameterList(MethodFact method)
+    {
+        var parameters = new List<string>();
+        if (!method.IsStatic)
+            parameters.Add($"{CType.Ref(method.ClassName).CName} v_self");
+        parameters.AddRange(method.Parameters.Select((p, i) =>
+            $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+        return parameters.Count == 0 ? "void" : string.Join(", ", parameters);
+    }
+
+    // Lua backend の Class.new と同順で構築する:
+    // base ctor → type_id (setmetatable 相当) → 自 class field init → ctor body
+    private void EmitAllocators()
+    {
+        foreach (var cls in _program.Classes)
+        {
+            var cType = Names.Class(cls.Name);
+            var ctor = cls.Ctor;
+            _currentClass = cls;
+            _scopes.Clear();
+            _continueTargets.Clear();
+            PushScope();
+            var paramFacts = CtorParamFacts(cls);
+            for (var i = 0; i < paramFacts.Count; i++)
+                AddVariable(paramFacts[i].Name,
+                    new Variable($"v_{Names.Id(paramFacts[i].Name)}_{i}",
+                        paramFacts[i].Type));
+            var parameters = paramFacts.Count == 0
+                ? "void"
+                : string.Join(", ", paramFacts.Select((p, i) =>
+                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+            Line($"static {cType} *");
+            Line($"{Names.New(cls.Name)}({parameters})");
+            Line("{");
+            _indent++;
+            if (cls.BaseName is { } baseName)
+            {
+                var baseParams = CtorParamFacts(_classes[baseName]);
+                var baseArgs = ctor?.BaseArgs.IsDefault == false
+                    ? ctor.BaseArgs : [];
+                if (baseArgs.Length != baseParams.Count)
+                    throw new LuocException(
+                        $"base constructor arity mismatch: {cls.Name}");
+                var rendered = new List<string>();
+                for (var i = 0; i < baseArgs.Length; i++)
+                {
+                    RequireAssignable(baseParams[i].Type, TypeOf(baseArgs[i]),
+                        $"base ctor argument {i} of {cls.Name}");
+                    var temp = Temp("base_arg");
+                    Line($"{baseParams[i].Type.CName} {temp} = " +
+                        $"{RenderCoerced(baseArgs[i], baseParams[i].Type)};");
+                    rendered.Add(temp);
+                }
+                Line($"{cType} *object = ({cType} *)" +
+                    $"{Names.New(baseName)}({string.Join(", ", rendered)});");
+            }
+            else
+            {
+                Line($"{cType} *object = tcs_alloc(sizeof(*object));");
+            }
+            Line($"object->type_id = {Names.TypeId(cls.Name)};");
+            AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
+            foreach (var field in cls.Fields.Where(f => !f.IsStatic))
+            {
+                var fact = _facts.Field(cls.Name, field.Name);
+                if (fact.Init is not null)
+                {
+                    RequireAssignable(fact.Type, TypeOf(fact.Init),
+                        $"initializer of {cls.Name}.{field.Name}");
+                    Line($"object->{Names.Field(field.Name)} = " +
+                        $"{RenderExpr(fact.Init)};");
+                }
+            }
+            if (ctor?.Body is { } body)
+                EmitStats(body.Stats);
+            else if (ctor is { Body: null })
+                throw new LuocException(
+                    $"constructor body is not IL-exportable: {cls.Name}");
+            Line("return object;");
+            PopScope();
+            _indent--;
+            Line("}");
+            Line();
+        }
+    }
+
+    private List<ParameterFact> CtorParamFacts(IlClassInfo cls)
+    {
+        if (cls.Ctor is not { } ctor) return [];
+        if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
+            throw new LuocException($"ctor metadata mismatch: {cls.Name}");
+        return ctor.Parameters.Select((name, i) => new ParameterFact(
+            name, _facts.MapType(ctor.ParameterTypes[i]))).ToList();
+    }
+
+    private void EmitMethod(IlClassInfo cls, IlMethodInfo method)
+    {
+        _currentClass = cls;
+        _currentMethod = method;
+        _currentMethodFact = _facts.Method(cls.Name, method.Name);
+        _scopes.Clear();
+        _continueTargets.Clear();
+        CollectCapturedNames(method.Body!);
+        PushScope();
+        if (!_currentMethodFact.IsStatic)
+            AddVariable("self", new Variable("v_self", CType.Ref(cls.Name)));
+        for (var i = 0; i < _currentMethodFact.Parameters.Count; i++)
+        {
+            var parameter = _currentMethodFact.Parameters[i];
+            AddVariable(parameter.Name,
+                new Variable($"v_{Names.Id(parameter.Name)}_{i}", parameter.Type));
+        }
+
+        Line($"static {_currentMethodFact.ReturnType.CName}");
+        Line($"{Names.Method(cls.Name, method.Name)}({ParameterList(_currentMethodFact)})");
+        Line("{");
+        _indent++;
+        BoxCapturedParameters();
+        EmitStats(method.Body!.Stats);
+        _indent--;
+        Line("}");
+        Line();
+        PopScope();
+        FlushPendingClosures();
+    }
+
+    // ---- closure (T218-m7): capture-by-variable (il-spec §7) ----
+    // 本体内のどこかの closure が参照する名前を集め、その local/param を
+    // heap cell (T *) へ box する。過剰 box は無害 (意味等価)
+    private void CollectCapturedNames(IlBlock body)
+    {
+        _capturedNames.Clear();
+        void Expr(IlExpr e)
+        {
+            switch (e)
+            {
+                case IlClosure closure:
+                    var bound = new HashSet<string>(closure.Params);
+                    void Inner(IlExpr ie)
+                    {
+                        switch (ie)
+                        {
+                            case IlVar v when !bound.Contains(v.Name):
+                                _capturedNames.Add(v.Name); break;
+                            case IlClosure nested:
+                                // ネストの param は shadow (過剰側で安全)
+                                Expr(nested); break;
+                            default: Walk(ie, Inner, InnerStat); break;
+                        }
+                    }
+                    void InnerStat(IlStat st)
+                    {
+                        if (st is IlLocal l) bound.Add(l.Name);
+                        WalkStat(st, Inner, InnerStat);
+                    }
+                    if (closure.ExprBody != null) Inner(closure.ExprBody);
+                    if (closure.Body != null)
+                        foreach (var st in closure.Body.Stats) InnerStat(st);
+                    break;
+                default:
+                    Walk(e, Expr, Stat);
+                    break;
+            }
+        }
+        void Stat(IlStat st) => WalkStat(st, Expr, Stat);
+        foreach (var st in body.Stats) Stat(st);
+    }
+
+    private static void Walk(IlExpr e, Action<IlExpr> expr, Action<IlStat> stat)
+    {
+        switch (e)
+        {
+            case IlField f: expr(f.Recv); break;
+            case IlIndex ix: expr(ix.Recv); expr(ix.Idx); break;
+            case IlLen l: expr(l.E); break;
+            case IlBin b: expr(b.L); expr(b.R); break;
+            case IlUn u: expr(u.E); break;
+            case IlParen p: expr(p.E); break;
+            case IlTernary t: expr(t.Cond); expr(t.T); expr(t.F); break;
+            case IlCall c: foreach (var a in c.Args) expr(a); break;
+            case IlDynCall d:
+                expr(d.Callee); foreach (var a in d.Args) expr(a); break;
+            case IlInvoke i:
+                expr(i.Recv); foreach (var a in i.Args) expr(a); break;
+            case IlNewObj n: foreach (var a in n.Args) expr(a); break;
+            case IlNewArray na: expr(na.Length); break;
+            case IlTable t:
+                foreach (var en in t.Entries)
+                {
+                    if (en.Key != null) expr(en.Key);
+                    expr(en.Value);
+                }
+                break;
+            case IlIsType it: expr(it.E); break;
+            case IlStructCopy sc: expr(sc.E); break;
+            case IlWith w:
+                expr(w.Src);
+                foreach (var o in w.Overrides) expr(o.Value);
+                break;
+            case IlIife iife: foreach (var st in iife.Stats) stat(st); break;
+        }
+    }
+
+    private static void WalkStat(IlStat st, Action<IlExpr> expr,
+        Action<IlStat> stat)
+    {
+        switch (st)
+        {
+            case IlLocal { Init: not null } l: expr(l.Init); break;
+            case IlAssign a: expr(a.Target); expr(a.Value); break;
+            case IlMultiAssign m:
+                foreach (var t in m.Targets) expr(t);
+                foreach (var v in m.Values) expr(v);
+                break;
+            case IlCallStat c: expr(c.Call); break;
+            case IlReturn { Value: not null } r: expr(r.Value); break;
+            case IlIf i:
+                foreach (var (cond, body) in i.Arms)
+                {
+                    expr(cond);
+                    foreach (var b in body.Stats) stat(b);
+                }
+                if (i.Else != null)
+                    foreach (var b in i.Else.Stats) stat(b);
+                break;
+            case IlWhile w:
+                expr(w.Cond);
+                foreach (var b in w.Body.Stats) stat(b);
+                if (w.Trailer != null)
+                    foreach (var b in w.Trailer.Stats) stat(b);
+                break;
+            case IlRepeat rp:
+                foreach (var b in rp.Body.Stats) stat(b);
+                expr(rp.Cond);
+                break;
+            case IlNumericFor nf:
+                expr(nf.Start); expr(nf.Limit);
+                foreach (var b in nf.Body.Stats) stat(b);
+                break;
+            case IlForeachList fl:
+                expr(fl.Coll);
+                foreach (var b in fl.Body.Stats) stat(b);
+                break;
+            case IlForeachDict fd:
+                expr(fd.Coll);
+                foreach (var b in fd.Body.Stats) stat(b);
+                break;
+            case IlForPairs fp:
+                expr(fp.Coll);
+                foreach (var b in fp.Body.Stats) stat(b);
+                break;
+            case IlDo d:
+                foreach (var b in d.Body.Stats) stat(b);
+                break;
+        }
+    }
+
+    private void BoxCapturedParameters()
+    {
+        foreach (var scopeEntry in _scopes.Peek().ToList())
+        {
+            if (!_capturedNames.Contains(scopeEntry.Key)) continue;
+            var old = scopeEntry.Value;
+            if (old.Boxed || old.Type.Kind == CTypeKind.Kvp) continue;
+            var cell = new Variable($"c_{old.CName}", old.Type)
+                { Boxed = true };
+            Line($"{old.Type.CName} *{cell.CName} = " +
+                $"tcs_alloc(sizeof(*{cell.CName}));");
+            Line($"*{cell.CName} = {old.CName};");
+            _scopes.Peek()[scopeEntry.Key] = cell;
+        }
+    }
+
+    private void FlushPendingClosures()
+    {
+        foreach (var code in _pendingClosures) _output.Append(code);
+        _pendingClosures.Clear();
+    }
+
+    private void EmitStats(IEnumerable<IlStat> stats)
+    {
+        foreach (var stat in stats) EmitStat(stat);
+    }
+
+    private void EmitStat(IlStat stat)
+    {
+        switch (stat)
+        {
+            case IlLocal local: EmitLocal(local); break;
+            case IlAssign assign: EmitAssign(assign); break;
+            case IlCallStat call: Line($"{RenderExpr(call.Call)};"); break;
+            case IlIf conditional: EmitIf(conditional); break;
+            case IlWhile loop: EmitWhile(loop); break;
+            case IlRepeat repeat: EmitRepeat(repeat); break;
+            case IlNumericFor loop: EmitNumericFor(loop); break;
+            case IlForeachList loop: EmitForeachList(loop); break;
+            case IlForeachDict loop: EmitForeachDict(loop); break;
+            case IlBreak: Line("break;"); break;
+            case IlContinue: EmitContinue(); break;
+            case IlMultiAssign multi: EmitMultiAssign(multi); break;
+            case IlReturn ret: EmitReturn(ret); break;
+            case IlDo block: EmitDo(block); break;
+            default:
+                throw Unsupported(stat);
+        }
+    }
+
+    private void EmitLocal(IlLocal local)
+    {
+        if (local.Init is null)
+        {
+            // 型は契約 (IlLocal.Type) から。C の zero 初期化 = default 値
+            if (local.Type is null)
+                throw new LuocException($"local has no initializer/type: " +
+                    $"{_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
+            var declared = _facts.MapType(local.Type);
+            var zero = declared.Kind is CTypeKind.I32 or CTypeKind.F32
+                or CTypeKind.Bool ? "0" : "NULL";
+            if (_capturedNames.Contains(local.Name))
+            {
+                var cell0 = new Variable(
+                    $"c_{Names.Id(local.Name)}_{_serial++}", declared)
+                    { Boxed = true };
+                AddVariable(local.Name, cell0);
+                Line($"{declared.CName} *{cell0.CName} = " +
+                    $"tcs_alloc(sizeof(*{cell0.CName}));");
+                Line($"*{cell0.CName} = {zero};");
+                return;
+            }
+            var declaredVar = new Variable(
+                $"v_{Names.Id(local.Name)}_{_serial++}", declared);
+            AddVariable(local.Name, declaredVar);
+            Line($"{declared.CName} {declaredVar.CName} = {zero};");
+            return;
+        }
+        // 宣言型が closure なら契約型を使う (IlClosure / method group は
+        // 単独で型付けできない)
+        CType? declaredClosure = null;
+        if (local.Type != null)
+        {
+            var mapped = _facts.TryMapType(local.Type);
+            if (mapped is { Kind: CTypeKind.Closure }) declaredClosure = mapped;
+        }
+        var type = declaredClosure ?? TypeOf(local.Init);
+        if (type.Kind is CTypeKind.Void or CTypeKind.Null)
+            throw new LuocException($"cannot infer storage type of local {local.Name}: {type}");
+        var rendered = RenderCoerced(local.Init, type);
+        if (_capturedNames.Contains(local.Name))
+        {
+            var cell = new Variable($"c_{Names.Id(local.Name)}_{_serial++}",
+                type) { Boxed = true };
+            AddVariable(local.Name, cell);
+            Line($"{type.CName} *{cell.CName} = tcs_alloc(sizeof(*{cell.CName}));");
+            Line($"*{cell.CName} = {rendered};");
+            return;
+        }
+        var variable = new Variable($"v_{Names.Id(local.Name)}_{_serial++}", type);
+        AddVariable(local.Name, variable);
+        Line($"{type.CName} {variable.CName} = {rendered};");
+    }
+
+    private void EmitAssign(IlAssign assign)
+    {
+        var targetType = TypeOfPlace(assign.Target);
+        var valueType = TypeOf(assign.Value);
+        RequireAssignable(targetType, valueType, "assignment");
+        var value = RenderCoerced(assign.Value, targetType);
+
+        switch (assign.Target)
+        {
+            case IlVar variable:
+            {
+                var target = Resolve(variable.Name);
+                Line(target.Boxed
+                    ? $"(*{target.CName}) = {value};"
+                    : $"{target.CName} = {value};");
+                return;
+            }
+            case IlField field when TryStaticField(field, out var staticName, out _):
+                Line($"{staticName} = {value};");
+                return;
+            case IlField field:
+            {
+                var receiverType = TypeOf(field.Recv);
+                if (receiverType.Kind != CTypeKind.Ref)
+                    throw new LuocException("field receiver is not a class reference");
+                var temp = Temp("object");
+                Line($"{receiverType.CName} {temp} = ({receiverType.CName})" +
+                    $"tcs_nonnull({RenderExpr(field.Recv)});");
+                Line($"{temp}->{Names.Field(field.Name)} = {value};");
+                return;
+            }
+            case IlIndex index when !index.PlusOne
+                && TypeOf(index.Recv).Kind == CTypeKind.Dict:
+            {
+                var slotType = RequireDict(index.Recv, out var dictType);
+                RequireAssignable(slotType, valueType, "dict store");
+                var dictTemp = Temp("dict");
+                Line($"TcsDict *{dictTemp} = {RenderExpr(index.Recv)};");
+                Line($"*({slotType.CName} *)tcs_dict_put({dictTemp}, " +
+                    $"{DictKeyArgs(dictType.Key!, index.Idx)}) = {value};");
+                return;
+            }
+            case IlIndex index:
+            {
+                var sequenceType = RequireSequence(index);
+                var sequence = Temp("sequence");
+                var idx = Temp("index");
+                var place = Temp("place");
+                Line($"{sequenceType.CName} {sequence} = {RenderExpr(index.Recv)};");
+                Line($"int32_t {idx} = {RenderExpr(index.Idx)};");
+                var at = sequenceType.Kind == CTypeKind.Array
+                    ? "tcs_array_at" : "tcs_list_at";
+                Line($"{sequenceType.ElementCName} *{place} = " +
+                    $"({sequenceType.ElementCName} *){at}({sequence}, {idx});");
+                Line($"*{place} = {value};");
+                return;
+            }
+            default:
+                throw new LuocException($"unsupported assignment place: " +
+                    assign.Target.GetType().Name);
+        }
+    }
+
+    private void EmitIf(IlIf conditional)
+    {
+        for (var i = 0; i < conditional.Arms.Length; i++)
+        {
+            var (condition, body) = conditional.Arms[i];
+            RequireType(CType.Bool, TypeOf(condition), "if condition");
+            Line($"{(i == 0 ? "if" : "else if")} ({RenderExpr(condition)}) {{");
+            _indent++;
+            PushScope();
+            EmitStats(body.Stats);
+            PopScope();
+            _indent--;
+            Line("}");
+        }
+        if (conditional.Else is not null)
+        {
+            Line("else {");
+            _indent++;
+            PushScope();
+            EmitStats(conditional.Else.Stats);
+            PopScope();
+            _indent--;
+            Line("}");
+        }
+    }
+
+    private void EmitNumericFor(IlNumericFor loop)
+    {
+        RequireType(CType.I32, TypeOf(loop.Start), "numeric for start");
+        RequireType(CType.I32, TypeOf(loop.Limit), "numeric for limit");
+        var start = Temp("for_start");
+        var limit = Temp("for_limit");
+        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}", CType.I32);
+        Line("{");
+        _indent++;
+        Line($"int32_t {start} = {RenderExpr(loop.Start)};");
+        Line($"int32_t {limit} = {RenderExpr(loop.Limit)};");
+        Line($"for (int32_t {variable.CName} = {start}; {variable.CName} <= {limit}; " +
+            $"{variable.CName} = {variable.CName} + INT32_C(1)) {{");
+        _indent++;
+        PushScope();
+        AddVariable(loop.Var, variable);
+        _continueTargets.Push(null);
+        EmitStats(loop.Body.Stats);
+        _continueTargets.Pop();
+        PopScope();
+        _indent--;
+        Line("}");
+        _indent--;
+        Line("}");
+    }
+
+    private void EmitForeachList(IlForeachList loop)
+    {
+        var sequenceType = TypeOf(loop.Coll);
+        if (sequenceType.Kind is not (CTypeKind.Array or CTypeKind.List)
+            || sequenceType.Element is null)
+            throw new LuocException($"IlForeachList requires a typed array/List, got " +
+                sequenceType);
+        var sequence = Temp("foreach_sequence");
+        var length = Temp("foreach_length");
+        var index = Temp("foreach_index");
+        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}",
+            sequenceType.Element);
+        var lengthFunction = sequenceType.Kind == CTypeKind.Array
+            ? "tcs_array_length" : "tcs_list_length";
+        var atFunction = sequenceType.Kind == CTypeKind.Array
+            ? "tcs_array_at" : "tcs_list_at";
+
+        Line("{");
+        _indent++;
+        Line($"{sequenceType.CName} {sequence} = {RenderExpr(loop.Coll)};");
+        Line($"int32_t {length} = {lengthFunction}({sequence});");
+        Line($"for (int32_t {index} = 0; {index} < {length}; {index}++) {{");
+        _indent++;
+        PushScope();
+        AddVariable(loop.Var, variable);
+        _continueTargets.Push(null);
+        Line($"{sequenceType.ElementCName} {variable.CName} = " +
+            $"*({sequenceType.ElementCName} *){atFunction}({sequence}, {index});");
+        EmitStats(loop.Body.Stats);
+        _continueTargets.Pop();
+        PopScope();
+        _indent--;
+        Line("}");
+        _indent--;
+        Line("}");
+    }
+
+    private void EmitWhile(IlWhile loop)
+    {
+        RequireType(CType.Bool, TypeOf(loop.Cond), "while condition");
+        var label = loop.Trailer is null ? null : Temp("continue");
+        Line($"while ({RenderExpr(loop.Cond)}) {{");
+        _indent++;
+        _continueTargets.Push(label);
+        PushScope();
+        if (label is not null) Line("{");
+        if (label is not null) _indent++;
+        EmitStats(loop.Body.Stats);
+        if (label is not null) _indent--;
+        if (label is not null) Line("}");
+        PopScope();
+        if (label is not null)
+        {
+            Line($"{label}:");
+            PushScope();
+            EmitStats(loop.Trailer!.Stats);
+            PopScope();
+            Line(";");
+        }
+        _continueTargets.Pop();
+        _indent--;
+        Line("}");
+    }
+
+    private void EmitRepeat(IlRepeat repeat)
+    {
+        RequireType(CType.Bool, TypeOf(repeat.Cond), "repeat condition");
+        Line("do {");
+        _indent++;
+        _continueTargets.Push(null);
+        PushScope();
+        EmitStats(repeat.Body.Stats);
+        PopScope();
+        _continueTargets.Pop();
+        _indent--;
+        Line($"}} while ({RenderExpr(repeat.Cond)});");
+    }
+
+    private void EmitContinue()
+    {
+        if (_continueTargets.Count == 0)
+            throw new LuocException("continue outside a loop");
+        var target = _continueTargets.Peek();
+        Line(target is null ? "continue;" : $"goto {target};");
+    }
+
+    // 現状 Dict.TryGet の (found, value) 形のみ (out 引数 multi-return は
+    // ref method 側で別対応)
+    private void EmitMultiAssign(IlMultiAssign multi)
+    {
+        if (multi.Values is not [IlCall { Callee: "Dict.TryGet" } tryGet]
+            || multi.Targets.Length != 2
+            || multi.Targets[0] is not IlVar foundVar
+            || multi.Targets[1] is not IlVar valueVar)
+            throw new LuocException(
+                "only Dict.TryGet multi-assign is supported");
+        RequireArity("Dict.TryGet", tryGet.Args.Length, 3);
+        var valueType = RequireDict(tryGet.Args[0], out var dictType);
+        RequireAssignable(dictType.Key!, TypeOf(tryGet.Args[1]),
+            "Dict.TryGet key");
+        RequireAssignable(valueType, TypeOf(tryGet.Args[2]),
+            "Dict.TryGet fallback");
+
+        Variable Declare(string name, CType type)
+        {
+            var variable = new Variable(
+                $"v_{Names.Id(name)}_{_serial++}", type);
+            AddVariable(name, variable);
+            Line($"{type.CName} {variable.CName};");
+            return variable;
+        }
+        var found = multi.Declare
+            ? Declare(foundVar.Name, CType.Bool) : Resolve(foundVar.Name);
+        var value = multi.Declare
+            ? Declare(valueVar.Name, valueType) : Resolve(valueVar.Name);
+        var dictTemp = Temp("dict");
+        var fallbackTemp = Temp("fallback");
+        Line($"TcsDict *{dictTemp} = {RenderExpr(tryGet.Args[0])};");
+        Line($"{valueType.CName} {fallbackTemp} = " +
+            $"{RenderCoerced(tryGet.Args[2], valueType)};");
+        Line($"{found.CName} = tcs_dict_tryget({dictTemp}, " +
+            $"{DictKeyArgs(dictType.Key!, tryGet.Args[1])}, " +
+            $"&{value.CName}, &{fallbackTemp});");
+    }
+
+    // Dictionary の foreach。反復順は Lua (pairs) と一致しない — どちらも
+    // 順序未規定 (順序依存の出力は backend 間一致の対象外)
+    private void EmitForeachDict(IlForeachDict loop)
+    {
+        var valueType = RequireDict(loop.Coll, out var dictType);
+        var dictTemp = Temp("dict");
+        var bucketTemp = Temp("bucket");
+        var nodeTemp = Temp("node");
+        Line("{");
+        _indent++;
+        PushScope();
+        Line($"TcsDict *{dictTemp} = ({{ TcsDict *d = " +
+            $"{RenderExpr(loop.Coll)}; (TcsDict *)tcs_nonnull(d); }});");
+        Line($"for (int32_t {bucketTemp} = 0; {bucketTemp} < TCS_DICT_BUCKETS; " +
+            $"{bucketTemp}++)");
+        Line($"for (TcsDictNode *{nodeTemp} = {dictTemp}->buckets[{bucketTemp}]; " +
+            $"{nodeTemp} != NULL; {nodeTemp} = {nodeTemp}->next)");
+        Line("{");
+        _indent++;
+        PushScope();
+        AddVariable(loop.Var, new Variable(nodeTemp,
+            CType.Kvp(dictType.Key!, valueType)));
+        _continueTargets.Push(null);
+        EmitStats(loop.Body.Stats);
+        _continueTargets.Pop();
+        PopScope();
+        _indent--;
+        Line("}");
+        PopScope();
+        _indent--;
+        Line("}");
+    }
+
+    private void EmitReturn(IlReturn ret)
+    {
+        if (ret.Value is null)
+        {
+            RequireType(CType.Void, _currentMethodFact.ReturnType, "return");
+            Line("return;");
+            return;
+        }
+        RequireAssignable(_currentMethodFact.ReturnType, TypeOf(ret.Value), "return");
+        Line($"return {RenderCoerced(ret.Value, _currentMethodFact.ReturnType)};");
+    }
+
+    private void EmitDo(IlDo block)
+    {
+        Line("{");
+        _indent++;
+        PushScope();
+        EmitStats(block.Body.Stats);
+        PopScope();
+        _indent--;
+        Line("}");
+    }
+
+    // 実行時型 dispatch (T218-m4): 「chain 最上位で宣言され、strict 子孫が
+    // 再宣言している」method ごとに type_id → 最寄り実装の switch を生成
+    private void EmitDispatchers()
+    {
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods.Where(m => !m.IsStatic))
+        {
+            var declaring = _classes[cls.Name].BaseName is { } b
+                ? FindDeclaringClass(b, method.Name) : null;
+            if (declaring != null) continue; // 再宣言側は root が担当
+            if (!IsPolymorphic(cls.Name, method.Name)) continue;
+            var fact = _facts.Method(cls.Name, method.Name);
+            var parameters = string.Join(", ",
+                new[] { $"{Names.Class(cls.Name)} *v_self" }
+                    .Concat(fact.Parameters.Select((p, i) =>
+                        $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
+            Line($"static {fact.ReturnType.CName}");
+            Line($"{Names.Dispatch(cls.Name, method.Name)}({parameters})");
+            Line("{");
+            _indent++;
+            Line("switch (((TcsObjectHeader *)v_self)->type_id) {");
+            foreach (var target in _program.Classes
+                .Where(c => IsAncestorOrSame(cls.Name, c.Name)))
+            {
+                var impl = FindDeclaringClass(target.Name, method.Name)!;
+                var call = $"{Names.Method(impl, method.Name)}(" +
+                    string.Join(", ",
+                        new[] { $"({Names.Class(impl)} *)v_self" }
+                            .Concat(fact.Parameters.Select((p, i) =>
+                                $"v_{Names.Id(p.Name)}_{i}"))) + ")";
+                Line($"case {Names.TypeId(target.Name)}: " +
+                    (fact.ReturnType == CType.Void
+                        ? $"{call}; return;" : $"return {call};"));
+            }
+            Line("default: tcs_fault(\"dispatch\");");
+            Line("}");
+            _indent--;
+            Line("}");
+            Line();
+        }
+    }
+
+    private void EmitStaticInitializer()
+    {
+        Line("static void");
+        Line("tcs_init_statics(void)");
+        Line("{");
+        _indent++;
+        foreach (var cls in _program.Classes)
+        {
+            _currentClass = cls;
+            _scopes.Clear();
+            PushScope();
+            foreach (var field in cls.Fields.Where(f => f.IsStatic))
+            {
+                var fact = _facts.Field(cls.Name, field.Name);
+                if (fact.Init is null) continue;
+                RequireAssignable(fact.Type, TypeOf(fact.Init),
+                    $"initializer of {cls.Name}.{field.Name}");
+                Line($"{Names.StaticField(cls.Name, field.Name)} = " +
+                    $"{RenderExpr(fact.Init)};");
+            }
+            PopScope();
+        }
+        _indent--;
+        Line("}");
+        Line();
+    }
+
+    // 静的 link 出荷形 (--lib): main を持たず、初期化と各 static void
+    // 引数なし public method を外部 linkage で公開する
+    private void EmitLibEntryPoints()
+    {
+        Line("void");
+        Line("tcs_lib_init(void)");
+        Line("{");
+        _indent++;
+        Line("tcs_init_statics();");
+        _indent--;
+        Line("}");
+        Line();
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods.Where(m => m.IsStatic
+            && m.Parameters.Length == 0
+            && _facts.Method(cls.Name, m.Name).ReturnType == CType.Void))
+        {
+            Line("void");
+            Line($"tcs_entry_{Names.Id(cls.Name)}_{Names.Id(method.Name)}(void)");
+            Line("{");
+            _indent++;
+            Line($"{Names.Method(cls.Name, method.Name)}();");
+            _indent--;
+            Line("}");
+            Line();
+        }
+    }
+
+    private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)
+    {
+        Line("int");
+        Line("main(void)");
+        Line("{");
+        _indent++;
+        Line("tcs_init_statics();");
+        if (_digestF32) Line("tcs_digest = UINT32_C(2166136261);");
+        if (entry is { } selected)
+            Line($"{Names.Method(selected.Class.Name, selected.Method.Name)}();");
+        if (_digestF32)
+            Line("printf(\"%08\" PRIx32 \"\\n\", tcs_digest);");
+        Line("return 0;");
+        _indent--;
+        Line("}");
+    }
+
+    private void Line(string text = "") =>
+        _output.Append(' ', _indent * 4).AppendLine(text);
+
+}
