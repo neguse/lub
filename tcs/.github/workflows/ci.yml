@@ -21,3 +21,24 @@ jobs:
 
       - name: Run tests and tcs checks
         run: bash run-tests.sh
+
+  bench-2backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # digest 相互一致 (dev=lua32 / release=luoc→C) が fail ゲート。
+      # 実行時間は step summary へのレポートのみ (runner の絶対時間は不安定)
+      - name: Run 2-backend bench
+        run: bash perf/bench-2backend.sh
+        env:
+          PERF_BENCH_RUNS: "5"

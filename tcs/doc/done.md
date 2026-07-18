@@ -1421,3 +1421,10 @@
 - 検証: Xvfb + dbus-run-session でシミュレータをヘッドレス実行し、全 24 job (4 変種 × 6 workload) 完走、全 digest が results-pc.md と bit 一致 (interp = 埋め込み lua32 + os.clock/io.write 差し替えも含めて動作確認)
 - よかったこと: logToConsole はヘッドレスでは取れない — ファイル出力を結果の正としたことで実機でも同じ回収導線になる
 - 残課題: 実機実行のみ (README 記載)
+
+### perf 2-backend bench: PC 実測 + CI 常設 ✓ (2026-07-18)
+- `perf/bench-2backend.sh`: 同一 TinyC# kernel (DigestKernels、frames=5000 へスケール) を dev (tcs→Lua→lua32) と release (tcs→IL→luoc→C, gcc -O2) で実行。digest 相互一致 = fail ゲート、ms/frame = レポート。GHA に bench-2backend job を追加し毎 push 実行 (step summary へ表出力)
+- PC 実測 (7-run median): dev/release = sprite_update 50x / spawn_churn 48x / particles 38x。release backend は手書き native 天井とほぼ同水準 (particles 0.015 vs 0.014 ms/f) — release-lowering の IL-native 表現判断を実パイプラインで裏付け
+- 発見: particles_struct は luoc 未対応 (`unsupported IL type: Particle`) — T219b (struct 拡張) への具体需要 1 件目。bench は dev のみで継続し、luoc が対応したら自動で比較に入る
+- 判断: CI では絶対時間の閾値ゲートを置かない (runner がぶれる)。決定的な digest 一致のみゲート
+- 検証: ローカルで GITHUB_STEP_SUMMARY 込み実行 green、digest 3 kernel 相互一致 + struct は dev digest が SoA 版と一致 (85ca3656)
