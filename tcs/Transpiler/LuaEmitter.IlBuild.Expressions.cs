@@ -357,7 +357,7 @@ public partial class LuaEmitter
         {
             var built = BuildExpr(model, a.Expression);
             if (built == null) return null;
-            args.Add(built);
+            args.Add(WrapStructCopy(model, a.Expression, built));
         }
         var argArr = args.ToImmutableArray();
 

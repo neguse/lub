@@ -28,18 +28,27 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task StructDeclaration_ReportsUnsupportedSyntax()
+    public async Task StructDeclaration_DataOnlyIsClean_MethodReports()
     {
-        var diagnostics = await AnalyzeAsync("""
+        // M5 (T219) v1: データ struct は許可、member (method 等) は拒否
+        var clean = await AnalyzeAsync("""
             public struct Vec2
             {
                 public int X;
             }
             """);
+        Assert.Empty(clean);
 
-        var diagnostic = Assert.Single(diagnostics);
+        var withMethod = await AnalyzeAsync("""
+            public struct Vec2
+            {
+                public int X;
+                public int Twice() { return X * 2; }
+            }
+            """);
+        var diagnostic = Assert.Single(withMethod);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
-        Assert.Contains("StructDeclaration", diagnostic.GetMessage());
+        Assert.Contains("StructMember", diagnostic.GetMessage());
     }
 
     [Fact]
@@ -108,11 +117,11 @@ public class TinyCsComplianceAnalyzerTests
 
         Assert.Equal(2, syntaxDiagnostics.Length);
         Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("StructDeclaration"));
+            d => d.GetMessage().Contains("PartialTypeDeclaration"));
         Assert.Contains(syntaxDiagnostics,
             d => d.GetMessage().Contains("RecordStructDeclaration"));
         Assert.DoesNotContain(syntaxDiagnostics,
-            d => d.GetMessage().Contains("PartialTypeDeclaration"));
+            d => d.GetMessage().Contains("StructDeclaration')")); // 二重報告なし
     }
 
     [Fact]

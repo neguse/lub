@@ -464,4 +464,11 @@ function TinySystem.instanceof(x, T)
   return false
 end
 
+-- 値型 (データ struct) の copy 地点用 shallow copy (il-spec §10)
+function TinySystem.scopy(s)
+  local c = {}
+  for k, v in pairs(s) do c[k] = v end
+  return c
+end
+
 return TinySystem

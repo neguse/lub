@@ -74,7 +74,7 @@ run_check "dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremen
   echo
   echo "## Expected Rider Diagnostics"
   echo
-  echo "- TCS1001 x5: StructDeclaration, LocalFunctionStatement, TryStatement, ThrowStatement, ListPattern"
+  echo "- TCS1001 x5: StructMember, LocalFunctionStatement, TryStatement, ThrowStatement, ListPattern"
   echo "- TCS1002 x1: System.IO.File.ReadAllText"
   echo "- TCS1003 x1: List<T> null storage"
 } >>"$SUMMARY"

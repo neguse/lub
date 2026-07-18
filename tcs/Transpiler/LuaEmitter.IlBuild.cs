@@ -96,6 +96,8 @@ public partial class LuaEmitter
                 if (ret.Expression != null
                     && (value = BuildExpr(model, ret.Expression)) == null)
                     return false;
+                if (value != null)
+                    value = WrapStructCopy(model, ret.Expression!, value);
                 acc.Add(new IlReturn(value) { Origin = stmt });
                 return true;
             }
@@ -130,6 +132,8 @@ public partial class LuaEmitter
                     if (v.Initializer != null
                         && (init = BuildExpr(model, v.Initializer.Value)) == null)
                         return false;
+                    if (init != null)
+                        init = WrapStructCopy(model, v.Initializer!.Value, init);
                     acc.Add(new IlLocal(v.Identifier.ValueText, init)
                         { Origin = stmt });
                 }
@@ -371,6 +375,7 @@ public partial class LuaEmitter
             var target = BuildExpr(model, assign.Left);
             var value = BuildExpr(model, assign.Right);
             if (target == null || value == null) return false;
+            value = WrapStructCopy(model, assign.Right, value);
             acc.Add(new IlAssign(target, value) { Origin = origin });
             return true;
         }
@@ -503,6 +508,14 @@ public partial class LuaEmitter
         };
         return limit == null ? null : new IlNumericFor(varName, start, limit, body);
     }
+
+    // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
+    // 生成直後 (IlNewObj / initializer IIFE / 既に copy 済み) は fresh で不要
+    private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
+        IlExpr built) =>
+        IsUserStruct(model.GetTypeInfo(src).Type)
+        && built is not (IlNewObj or IlIife or IlStructCopy)
+            ? new IlStructCopy(built) : built;
 
     // ---- 検出 helper (legacy の判定部だけを写し、render は行わない) ----
 

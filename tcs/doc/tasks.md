@@ -44,10 +44,9 @@
       どおり IL-native。第一マイルストーン完了 (luoc/ 骨格、digest kernel
       3/3 一致 — done.md 参照)。残り: 対応 IL ノードの全域化、
       class 骨格/文字列/List/Dict runtime、静的 link 出荷形
-- [ ] **T219** (P1): M5 struct / record struct のサブセット追加 —
-      Lua 側表現（table of tables vs userdata 連続バッファ）は T212 の
-      particles 実測で決定。TCS1001 解除、値意味論の semantic テスト、
-      digest harness へ particles struct 版を追加
+- [ ] **T219b** (P2): struct の残り — record struct、struct の
+      method/property/ctor、struct 型 field、nested struct field。
+      v1 (データ struct) の需要を見て拡張
 - [ ] **T220** (P2): migration metadata（il-design.md §6）の実装 —
       仕様は T217 で定義済み。実装は dev ホットリロードの需要と同期して着手
 

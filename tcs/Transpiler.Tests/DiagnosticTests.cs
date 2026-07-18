@@ -160,8 +160,9 @@ public class DiagnosticTests
     }
 
     [Fact]
-    public void UnsupportedStructDeclaration_ReportsWarning()
+    public void DataStruct_NoDiagnostic()
     {
+        // M5 (T219) v1: field のみのデータ struct はサブセット内
         var result = Transpiler.TranspileWithDiagnostics(["""
             public struct Vec2
             {
@@ -169,7 +170,9 @@ public class DiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "StructDeclaration");
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("StructDeclaration"));
     }
 
     [Fact]

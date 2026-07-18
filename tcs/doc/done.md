@@ -1300,3 +1300,9 @@
 - IlNewArray (要素型 + 長さ、il-spec §11 の固定長配列) を IL に追加 (Lua render は legacy 互換の {})。IlTable に要素型 metadata。IlMethodInfo に ReturnType/ParameterTypes、IlFieldInfo に Init (initializer の IL)。il-reference 更新
 - T218 第一実装が Roslyn 再解析で補完していた宣言情報が IL 契約に載った
 - 検証: IlExportTests +1 green、run-tests 全ゲート green (Lua 出力不変)
+
+### T219: [M5 v1] データ struct のサブセット追加 ✓ (2026-07-18)
+- field のみの struct を TCS1001 解除。値意味論は il-spec §10 の copy 地点 (代入/引数/return/値文脈読み) を IL builder が IlStructCopy 挿入で実装 — Lua は __tcs_scopy (metatable 無し plain table の shallow copy)、C backend は素の値代入に写る。place への部分書き込み (arr[i].X = v) は copy なし
+- 診断の再構成: struct member (method/ctor/property 等) は StructMember、nested struct は NestedTypeDeclaration、record struct は従来どおり。struct 値が legacy fallback 経路へ流れる場合は警告 (silent wrong-code 防止の安全網)
+- 検証: StructSemanticsTests 4 本 (copy 3 地点 + 診断)、**particles struct 版 digest = 8bf97e09 で SoA 版と一致** (値意味論込みで同一計算の実証)、run-tests 全ゲート green (analyzer-demo/CLI/analyzer テストの期待を StructMember へ更新)
+- 判断: v1 はデータ struct のみ — メソッド付き値型は metatable 無し表現と両立せず、需要も particles 型 kernel が field アクセスのみで満たされるため。残りは T219b (P2)

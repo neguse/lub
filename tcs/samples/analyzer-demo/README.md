@@ -7,7 +7,7 @@ Rider / Roslyn Analyzer PoC の実機確認用 project。
 
 `dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental` で以下が出ること。
 
-- `TCS1001` x5: `StructDeclaration`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`, `ListPattern`
+- `TCS1001` x5: `StructMember`, `LocalFunctionStatement`, `TryStatement`, `ThrowStatement`, `ListPattern`
 - `TCS1002` x1: `System.IO.File.ReadAllText`
 - `TCS1003` x1: `List<T>` への null 保存
 

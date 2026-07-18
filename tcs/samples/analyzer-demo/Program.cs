@@ -4,6 +4,7 @@ using System.IO;
 public struct Vec2
 {
     public int X;
+    public int Twice() { return X * 2; }
 }
 
 public class Demo

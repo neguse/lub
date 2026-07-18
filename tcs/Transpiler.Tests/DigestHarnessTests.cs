@@ -54,4 +54,12 @@ public class DigestHarnessTests
         var digest = Fnv1a32(RunKernel("particles.cs", "Particles"));
         Assert.Equal("8bf97e09", digest);
     }
+
+    // T219: struct 版 particles は SoA 版と同一演算列 → 同一 digest
+    [Fact]
+    public void ParticlesStruct_MatchesSoaDigest()
+    {
+        var digest = Fnv1a32(RunKernel("particles_struct.cs", "ParticlesStruct"));
+        Assert.Equal("8bf97e09", digest);
+    }
 }

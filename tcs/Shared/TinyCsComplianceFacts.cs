@@ -62,7 +62,16 @@ public static partial class TinyCsComplianceFacts
     {
         syntaxName = node switch
         {
-            StructDeclarationSyntax => "StructDeclaration",
+            // struct は M5 (T219) v1 でデータ struct (field のみ) を解除。
+            // ctor / method / property 等の member は引き続き拒否する
+            // (メソッド付き値型は metatable 無し表現と両立しないため)。
+            StructDeclarationSyntax nestedStruct
+                when nestedStruct.Parent is TypeDeclarationSyntax
+                    => "NestedTypeDeclaration",
+            MemberDeclarationSyntax structMember
+                when structMember.Parent is StructDeclarationSyntax
+                    && structMember is not FieldDeclarationSyntax
+                    => $"StructMember({structMember.Kind()})",
             RecordDeclarationSyntax record
                 when record.Kind() == SyntaxKind.RecordStructDeclaration
                     => "RecordStructDeclaration",

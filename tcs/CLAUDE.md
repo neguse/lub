@@ -136,7 +136,7 @@ support-matrix / README / design doc、歴史は done.md と git log。
 | C#                  | Lua 5.5                            |
 |---------------------|------------------------------------|
 | class               | table + metatable                  |
-| struct / record struct | TCS1001 未対応診断（class / record class で代替） |
+| struct (データのみ) | plain table + copy 地点で `__tcs_scopy`（M5 v1。member 付き struct / record struct は TCS1001） |
 | enum                | integer 定数テーブル                |
 | method              | function(self, ...)                |
 | static method       | function(...)                      |

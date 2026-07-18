@@ -47,7 +47,7 @@ function Assert-ExpectedDiagnosticTexts {
 
     $text = ($Output | ForEach-Object { "$_" }) -join "`n"
     $needles = @(
-        "StructDeclaration",
+        "StructMember",
         "LocalFunctionStatement",
         "TryStatement",
         "ThrowStatement",

@@ -95,6 +95,10 @@ public sealed record IlClosure(
     ImmutableArray<string> Params, IlBlock? Body, IlExpr? ExprBody,
     ImmutableArray<string> PatternLocals) : IlExpr;
 
+/// <summary>値型の copy 地点 (il-spec §10)。Lua backend は __tcs_scopy、
+/// C backend は素の値代入 (native struct) として扱う。</summary>
+public sealed record IlStructCopy(IlExpr E) : IlExpr;
+
 /// <summary>record with 式 (shallow copy + 上書き)。</summary>
 public sealed record IlWith(
     IlExpr Src, ImmutableArray<(string Name, IlExpr Value)> Overrides) : IlExpr;

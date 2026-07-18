@@ -112,6 +112,7 @@ public class CliRuntimeTests
             public struct Vec2
             {
                 public int X;
+                public int Twice() { return X * 2; }
             }
 
             public class T
@@ -128,7 +129,7 @@ public class CliRuntimeTests
         Assert.Equal(1, result.ExitCode);
         Assert.Empty(result.Stdout);
         Assert.Contains(TinyCsDiagnosticIds.UnsupportedSyntax, result.Stderr);
-        Assert.Contains("StructDeclaration", result.Stderr);
+        Assert.Contains("StructMember", result.Stderr);
         Assert.Contains(TinyCsDiagnosticIds.UnsupportedApi, result.Stderr);
         Assert.Contains("System.IO.File.ReadAllText", result.Stderr);
     }
@@ -171,7 +172,7 @@ public class CliRuntimeTests
             TinyCsDiagnosticIds.UnsupportedApi));
         Assert.Equal(1, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedCollectionNull));
-        Assert.Contains("StructDeclaration", result.Stderr);
+        Assert.Contains("StructMember", result.Stderr);
         Assert.Contains("LocalFunctionStatement", result.Stderr);
         Assert.Contains("TryStatement", result.Stderr);
         Assert.Contains("ThrowStatement", result.Stderr);

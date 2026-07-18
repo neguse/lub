@@ -62,6 +62,12 @@ public partial class LuaEmitter
             AppendLine("  end");
             AppendLine("  return false");
             AppendLine("end");
+            // 値型 (データ struct) の copy 地点用 shallow copy (il-spec §10)
+            AppendLine("local function __tcs_scopy(s)");
+            AppendLine("  local c = {}");
+            AppendLine("  for k, v in pairs(s) do c[k] = v end");
+            AppendLine("  return c");
+            AppendLine("end");
             _headerEmitted = true;
         }
         var root = tree.GetCompilationUnitRoot();
@@ -87,6 +93,61 @@ public partial class LuaEmitter
         }
     }
 
+    // データ struct (M5 v1、field のみ — member 制約は Shared facts が診断)。
+    // instance は metatable 無しの plain table で、copy (__tcs_scopy) と両立する。
+    private void VisitStruct(SemanticModel model, StructDeclarationSyntax structDecl)
+    {
+        SetSource(structDecl);
+        var name = structDecl.Identifier.ValueText;
+        AppendLine($"{name} = {{}}");
+        AppendLine();
+        _currentType?.DefinitionKeys.Add("new");
+        AppendLine($"function {name}.new()");
+        _indent++;
+        AppendLine("local self = {}");
+        foreach (var field in structDecl.Members.OfType<FieldDeclarationSyntax>())
+        {
+            foreach (var v in field.Declaration.Variables)
+            {
+                var type = (model.GetDeclaredSymbol(v) as IFieldSymbol)?.Type;
+                AppendLine($"self.{v.Identifier.ValueText} = " +
+                    $"{GetDefaultValueForType(type)}");
+            }
+        }
+        AppendLine("return self");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
+    }
+
+    // struct 値が legacy fallback 経路に流れると copy 意味論が消えるため、
+    // silent wrong-code にせず診断する (M5 v1 の安全網)
+    private void WarnIfStructInLegacyBody(SemanticModel model, SyntaxNode body)
+    {
+        var offender = body.DescendantNodesAndSelf()
+            .FirstOrDefault(n =>
+                (n is ObjectCreationExpressionSyntax or VariableDeclarationSyntax
+                    or ParameterSyntax)
+                && n switch
+                {
+                    ObjectCreationExpressionSyntax oc =>
+                        IsUserStruct(model.GetTypeInfo(oc).Type),
+                    VariableDeclarationSyntax vd =>
+                        IsUserStruct(model.GetTypeInfo(vd.Type).Type),
+                    ParameterSyntax { Type: { } pt } =>
+                        IsUserStruct(model.GetTypeInfo(pt).Type),
+                    _ => false,
+                });
+        if (offender != null)
+            _ = WarnUnsupported(offender, "struct value in legacy-emitted body");
+    }
+
+    internal static bool IsUserStruct(ITypeSymbol? type) =>
+        type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
+        && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T
+        && type.TypeKind != TypeKind.Enum
+        && type.Locations.Any(l => l.IsInSource);
+
     private void FlushPendingBaseLinks()
     {
         if (_pendingBaseLinks.Count == 0) return;
@@ -108,6 +169,9 @@ public partial class LuaEmitter
         {
             case NamespaceDeclarationSyntax ns:
                 foreach (var m in ns.Members) VisitMember(model, m);
+                break;
+            case StructDeclarationSyntax structDecl:
+                VisitStruct(model, structDecl);
                 break;
             case FileScopedNamespaceDeclarationSyntax ns:
                 foreach (var m in ns.Members) VisitMember(model, m);
@@ -566,6 +630,7 @@ public partial class LuaEmitter
             else
             {
                 LegacyBodies++;
+                WarnIfStructInLegacyBody(model, method.Body);
                 foreach (var stmt in method.Body.Statements)
                     VisitStatement(model, stmt);
             }

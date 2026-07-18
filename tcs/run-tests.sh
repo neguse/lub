@@ -123,7 +123,7 @@ assert_expected_diagnostic_texts() {
   local label="$1"
   local output="$2"
   for needle in \
-      "StructDeclaration" \
+      "StructMember" \
       "LocalFunctionStatement" \
       "TryStatement" \
       "ThrowStatement" \

@@ -104,7 +104,8 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
 - 仮想呼び出し: 単一継承、override は実行時型で解決
 - class の参照比較（operator 定義が無い `==`）は identity 比較
 
-## 10. place と値型（値型は M5 で有効化。意味論は先行定義）
+## 10. place と値型（M5 v1 で「データ struct」= field のみを有効化。
+member 付き struct / record struct は引き続きサブセット外）
 
 place = 格納場所。変数、フィールド path、配列/List 要素 path の 3 種。
 

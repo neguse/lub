@@ -46,6 +46,7 @@ assembly 参照で直接消費する。
 | IlNewObj(type, args) | class 生成 (§9: default 初期化→ctor) | Type.new(args) |
 | IlTable(entries, elemType?) | List/Dict/option table リテラル。entry = 配列項 / [k]=v / name=v。elemType は配列/List の要素型 metadata | {…} |
 | IlNewArray(elemType, length) | 固定長配列生成 (§11)。release は連続バッファ確保 | {} |
+| IlStructCopy(e) | 値型の copy 地点 (§10)。C backend は素の値代入で良い | \_\_tcs_scopy(e) |
 | IlIsType(e, typeRef) | class 型 test (T またはその派生、null 偽 §9) | \_\_tcs_is(e, T) |
 | IlIsLuaType(e, luaType) | プリミティブ型 test | type(e) == "…" |
 | IlIife(stats) | 式位置の逐次実行 (switch 式・?. 等の lowering 産物) | (function() … end)() |
