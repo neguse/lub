@@ -13,8 +13,8 @@ public class BclAllowlistExtensionTests
             public class T
             {
                 public static string Test() =>
-                    Math.Round(2.5) + ":" + Math.Round(3.5) + ":" +
-                    Math.Round(2.4) + ":" + Math.Round(-2.5) + ":" + Math.Round(-2.6);
+                    Math.Round(2.5f) + ":" + Math.Round(3.5f) + ":" +
+                    Math.Round(2.4f) + ":" + Math.Round(-2.5f) + ":" + Math.Round(-2.6f);
             }
             """, "T.Test()");
         Assert.Equal("2:4:2:-2:-3", result);
@@ -27,7 +27,7 @@ public class BclAllowlistExtensionTests
             using System;
             public class T
             {
-                public static double Test() => Math.Round(3.14159, 2);
+                public static float Test() => (float)Math.Round(3.14159f, 2);
             }
             """, "T.Test()");
         Assert.Equal("3.14", result);
@@ -41,7 +41,7 @@ public class BclAllowlistExtensionTests
             public class T
             {
                 public static string Test() =>
-                    Math.Sign(-12.5) + ":" + Math.Sign(0) + ":" + Math.Sign(3);
+                    Math.Sign(-12.5f) + ":" + Math.Sign(0) + ":" + Math.Sign(3);
             }
             """, "T.Test()");
         Assert.Equal("-1:0:1", result);
@@ -54,7 +54,7 @@ public class BclAllowlistExtensionTests
             using System;
             public class T
             {
-                public static bool Test() => Math.Abs(Math.Tan(Math.PI / 4) - 1.0) < 1e-9;
+                public static bool Test() => Math.Abs(Math.Tan(Math.PI / 4) - 1.0f) < 1e-9f;
             }
             """, "tostring(T.Test())");
         Assert.Equal("true", result);
@@ -68,8 +68,8 @@ public class BclAllowlistExtensionTests
             public class T
             {
                 public static bool Test() =>
-                    Math.Abs(Math.Log(Math.Exp(1.0)) - 1.0) < 1e-6
-                    && Math.Abs(Math.Log(8.0, 2.0) - 3.0) < 1e-6; // f32 精度 (M4)
+                    Math.Abs(Math.Log(Math.Exp(1.0f)) - 1.0f) < 1e-6f
+                    && Math.Abs(Math.Log(8.0f, 2.0f) - 3.0f) < 1e-6f; // f32 精度 (M4)
             }
             """, "tostring(T.Test())");
         Assert.Equal("true", result);
@@ -82,7 +82,7 @@ public class BclAllowlistExtensionTests
             using System;
             public class T
             {
-                public static bool Test() => Math.Abs(Math.Exp(1.0) - 2.718281828) < 1e-6;
+                public static bool Test() => Math.Abs(Math.Exp(1.0f) - 2.718281828f) < 1e-6f;
             }
             """, "tostring(T.Test())");
         Assert.Equal("true", result);
@@ -113,7 +113,7 @@ public class BclAllowlistExtensionTests
             {
                 public static bool Test(string s) =>
                     !string.IsNullOrEmpty(s)
-                    && Math.Round(Math.Log(Math.Exp(Math.Tan(0.5)))) >= Math.Sign(-1.0);
+                    && Math.Round(Math.Log(Math.Exp(Math.Tan(0.5f)))) >= Math.Sign(-1.0f);
             }
             """]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
@@ -128,7 +128,7 @@ public class BclAllowlistExtensionTests
             using System;
             public class T
             {
-                public static double Test() => Math.Log10(100.0);
+                public static float Test() => (float)Math.Log10(100.0f);
             }
             """]);
         Assert.True(result.Success, string.Join("\n", result.Errors));
@@ -144,11 +144,11 @@ public class BclAllowlistExtensionTests
             public class T
             {
                 public static bool Test() =>
-                    TinySystem.Math.Round(2.5) == 2.0
-                    && TinySystem.Math.Sign(-3.0) == -1
-                    && TinySystem.Math.Tan(0.0) == 0.0
-                    && TinySystem.Math.Log(1.0) == 0.0
-                    && TinySystem.Math.Exp(0.0) == 1.0
+                    TinySystem.Math.Round(2.5f) == 2.0f
+                    && TinySystem.Math.Sign(-3.0f) == -1
+                    && TinySystem.Math.Tan(0.0f) == 0.0f
+                    && TinySystem.Math.Log(1.0f) == 0.0f
+                    && TinySystem.Math.Exp(0.0f) == 1.0f
                     && TinySystem.String.IsNullOrEmpty("")
                     && !TinySystem.String.IsNullOrEmpty("x");
             }

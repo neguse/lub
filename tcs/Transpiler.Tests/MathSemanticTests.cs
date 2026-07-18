@@ -48,7 +48,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static double Test() => Math.Floor(3.7);
+                public static float Test() => (float)Math.Floor(3.7f);
             }
             """, "T.Test()");
         Assert.Equal("3", result);
@@ -61,7 +61,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static double Test() => Math.Ceiling(3.2);
+                public static float Test() => (float)Math.Ceiling(3.2f);
             }
             """, "T.Test()");
         Assert.Equal("4", result);
@@ -74,7 +74,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static double Test() => Math.Sin(0);
+                public static float Test() => (float)Math.Sin(0);
             }
             """, "T.Test()");
         Assert.Equal("0.0", result);
@@ -87,7 +87,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static double Test() => Math.Cos(0);
+                public static float Test() => (float)Math.Cos(0);
             }
             """, "T.Test()");
         Assert.Equal("1.0", result);
@@ -100,7 +100,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static double Test() => Math.Atan2(0, 1);
+                public static float Test() => (float)Math.Atan2(0, 1);
             }
             """, "T.Test()");
         Assert.Equal("0.0", result);
@@ -113,7 +113,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static bool Test() => Math.PI > 3.14 && Math.PI < 3.15;
+                public static bool Test() => Math.PI > 3.14f && Math.PI < 3.15f;
             }
             """, "tostring(T.Test())");
         Assert.Equal("true", result);
@@ -126,7 +126,7 @@ public class MathSemanticTests
             using System;
             public class T
             {
-                public static double Test() => Math.Pow(2, 5);
+                public static float Test() => (float)Math.Pow(2, 5);
             }
             """, "T.Test()");
         Assert.Equal("32.0", result);

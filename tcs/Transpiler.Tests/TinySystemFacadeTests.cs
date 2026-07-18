@@ -11,7 +11,7 @@ public class TinySystemFacadeTests
                 public static bool Test()
                 {
                     var f = TinySystem.Random.NextFloat();
-                    return f >= 0.0 && f < 1.0;
+                    return f >= 0.0f && f < 1.0f;
                 }
             }
             """,
@@ -29,7 +29,7 @@ public class TinySystemFacadeTests
                 public static bool Test()
                 {
                     return TinySystem.Math.Clamp(12, 0, 10) == 10
-                        && TinySystem.Math.PI > 3.14;
+                        && TinySystem.Math.PI > 3.14f;
                 }
             }
             """,

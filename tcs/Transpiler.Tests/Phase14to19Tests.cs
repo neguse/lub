@@ -381,7 +381,7 @@ public class Phase14to19Tests
             {
                 public static string Test()
                 {
-                    double pi = 3.14159;
+                    float pi = 3.14159f;
                     return $"{pi:F2}";
                 }
             }

@@ -44,6 +44,8 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.SingleVariableDesignation,
         SyntaxKind.ThisConstructorInitializer,
         SyntaxKind.ConstructorDeclaration,
+        SyntaxKind.PredefinedType,
+        SyntaxKind.NumericLiteralExpression,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -164,6 +166,21 @@ public static partial class TinyCsComplianceFacts
                     && literal.Token.Text.EndsWith("m",
                         StringComparison.OrdinalIgnoreCase)
                     => "DecimalLiteral",
+            // IL の数値モデルは i32/f32 のみ (il-design §4)。double と
+            // long/ulong は宣言型として拒否し、実数リテラルは f/F suffix を
+            // 必須にする。Token.Value の CLR 型を見ることで 1.5/1e3/1d のみを
+            // 捉え、1.5f や整数リテラルを巻き込まない。
+            PredefinedTypeSyntax predefined
+                when predefined.Keyword.IsKind(SyntaxKind.DoubleKeyword)
+                    => "DoubleType",
+            PredefinedTypeSyntax predefined
+                when predefined.Keyword.IsKind(SyntaxKind.LongKeyword)
+                    || predefined.Keyword.IsKind(SyntaxKind.ULongKeyword)
+                    => "LongType",
+            LiteralExpressionSyntax literal
+                when literal.IsKind(SyntaxKind.NumericLiteralExpression)
+                    && literal.Token.Value is double
+                    => "DoubleLiteral",
             // 孤立 surrogate は UTF-8 octet 列 (il-spec §11 の string 規範) への
             // 写像を持たない。対の surrogate (astral 文字) は許容する。
             LiteralExpressionSyntax surrogateLit

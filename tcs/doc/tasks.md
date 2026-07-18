@@ -33,18 +33,6 @@
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 
-- [ ] **T226** (P2): double / long のサブセット外化 — il-design §4 の
-      診断化 (TCS1001) とテスト/サンプル資産の f32 リテラル移行。
-      fuzz の 32bit overflow 回避制約の撤廃 (int32 wrap が .NET と一致した)
-      もここで
-
-### Phase 3 — 価値の刈り取り（T218 と T219 は並行可）
-
-- [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は spike 決着
-      どおり IL-native。第二マイルストーンまで完了 (string/List/instance
-      method/型 test、Roslyn 再解析廃止 — done.md 参照)。残り: 継承 dispatch、
-      Dict runtime、closure、ctor 本文 (T224 の class 骨格 IL 化に依存)、
-      静的 link 出荷形 (f32 print の shortest round-trip 化は 2026-07-18 完了)
 - [ ] **T219b** (P2): struct の残り — record struct、struct の
       method/property/ctor、struct 型 field、nested struct field。
       v1 (データ struct) の需要を見て拡張

@@ -37,7 +37,7 @@ public class ApiSignatureComplianceTests
     [InlineData("var c = new Dictionary<string, int>(4);", "Dictionary<TKey, TValue>")]
     [InlineData("dict.Remove(\"a\", out var removed);", "Dictionary<TKey, TValue>.Remove")]
     [InlineData("list.Sort(Comparer<int>.Default);", "List<T>.Sort")]
-    [InlineData("Math.Round(1.55, MidpointRounding.AwayFromZero);", "System.Math.Round")]
+    [InlineData("Math.Round(1.55f, MidpointRounding.AwayFromZero);", "System.Math.Round")]
     [InlineData("string.Join('-', \"a\", \"b\");", "string.Join")]
     public void UnimplementedOverload_ReportsTcs1002(string statement,
         string expectedApiName)
@@ -52,7 +52,7 @@ public class ApiSignatureComplianceTests
     [Theory]
     [InlineData("list.Sort(); list.Sort((a, b) => b - a);")]
     [InlineData("dict.TryGetValue(\"a\", out var value);")]
-    [InlineData("var r = Math.Round(1.234, 2) + Math.Log(8.0, 2.0);")]
+    [InlineData("var r = Math.Round(1.234f, 2) + Math.Log(8.0f, 2.0f);")]
     [InlineData("var parts = s.Split(\",\"); var all = s.Split();")]
     [InlineData("var i = s.IndexOf(\"a\", 1); var sub = s.Substring(1, 2);")]
     [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]

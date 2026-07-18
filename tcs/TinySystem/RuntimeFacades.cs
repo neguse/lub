@@ -18,35 +18,35 @@ public static class Random
 
 public static class Math
 {
-    public const double PI = System.Math.PI;
+    public const float PI = global::System.MathF.PI;
 
     public static int Min(int a, int b) => System.Math.Min(a, b);
-    public static double Min(double a, double b) => System.Math.Min(a, b);
+    public static float Min(float a, float b) => global::System.MathF.Min(a, b);
     public static int Max(int a, int b) => System.Math.Max(a, b);
-    public static double Max(double a, double b) => System.Math.Max(a, b);
+    public static float Max(float a, float b) => global::System.MathF.Max(a, b);
     public static int Clamp(int value, int min, int max) =>
         System.Math.Clamp(value, min, max);
-    public static double Clamp(double value, double min, double max) =>
-        System.Math.Clamp(value, min, max);
+    public static float Clamp(float value, float min, float max) =>
+        global::System.Math.Clamp(value, min, max);
     public static int Abs(int x) => System.Math.Abs(x);
-    public static double Abs(double x) => System.Math.Abs(x);
-    public static double Floor(double x) => System.Math.Floor(x);
-    public static double Ceil(double x) => System.Math.Ceiling(x);
-    public static double Sqrt(double x) => System.Math.Sqrt(x);
-    public static double Sin(double x) => System.Math.Sin(x);
-    public static double Cos(double x) => System.Math.Cos(x);
-    public static double Atan2(double y, double x) => System.Math.Atan2(y, x);
-    public static double Pow(double x, double y) => System.Math.Pow(x, y);
-    public static double Round(double x) => System.Math.Round(x);
-    public static double Round(double x, int digits) =>
-        System.Math.Round(x, digits);
+    public static float Abs(float x) => global::System.MathF.Abs(x);
+    public static float Floor(float x) => global::System.MathF.Floor(x);
+    public static float Ceil(float x) => global::System.MathF.Ceiling(x);
+    public static float Sqrt(float x) => global::System.MathF.Sqrt(x);
+    public static float Sin(float x) => global::System.MathF.Sin(x);
+    public static float Cos(float x) => global::System.MathF.Cos(x);
+    public static float Atan2(float y, float x) => global::System.MathF.Atan2(y, x);
+    public static float Pow(float x, float y) => global::System.MathF.Pow(x, y);
+    public static float Round(float x) => global::System.MathF.Round(x);
+    public static float Round(float x, int digits) =>
+        global::System.MathF.Round(x, digits);
     public static int Sign(int x) => System.Math.Sign(x);
-    public static int Sign(double x) => System.Math.Sign(x);
-    public static double Tan(double x) => System.Math.Tan(x);
-    public static double Log(double x) => System.Math.Log(x);
-    public static double Log(double x, double newBase) =>
-        System.Math.Log(x, newBase);
-    public static double Exp(double x) => System.Math.Exp(x);
+    public static int Sign(float x) => global::System.MathF.Sign(x);
+    public static float Tan(float x) => global::System.MathF.Tan(x);
+    public static float Log(float x) => global::System.MathF.Log(x);
+    public static float Log(float x, float newBase) =>
+        global::System.MathF.Log(x, newBase);
+    public static float Exp(float x) => global::System.MathF.Exp(x);
 }
 
 public static class String
@@ -177,8 +177,8 @@ public static class List
     public static int Sum(
         global::System.Collections.Generic.List<int> list) =>
         global::System.Linq.Enumerable.Sum(list);
-    public static double Sum(
-        global::System.Collections.Generic.List<double> list) =>
+    public static float Sum(
+        global::System.Collections.Generic.List<float> list) =>
         global::System.Linq.Enumerable.Sum(list);
     public static global::System.Collections.Generic.List<T> ToList<T>(
         global::System.Collections.Generic.List<T> list) => [.. list];

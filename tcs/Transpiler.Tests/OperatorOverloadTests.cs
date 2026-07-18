@@ -8,10 +8,10 @@ public class OperatorOverloadTests
     private const string Vec2Source = """
         public class Vec2
         {
-            public double X;
-            public double Y;
+            public float X;
+            public float Y;
 
-            public Vec2(double x, double y)
+            public Vec2(float x, float y)
             {
                 X = x;
                 Y = y;
@@ -21,10 +21,10 @@ public class OperatorOverloadTests
             public static Vec2 operator -(Vec2 a, Vec2 b) => new Vec2(a.X - b.X, a.Y - b.Y);
             public static Vec2 operator -(Vec2 a) => new Vec2(-a.X, -a.Y);
             public static Vec2 operator *(Vec2 a, Vec2 b) => new Vec2(a.X * b.X, a.Y * b.Y);
-            public static Vec2 operator *(Vec2 a, double s) => new Vec2(a.X * s, a.Y * s);
-            public static Vec2 operator *(double s, Vec2 a) => new Vec2(s * a.X, s * a.Y);
+            public static Vec2 operator *(Vec2 a, float s) => new Vec2(a.X * s, a.Y * s);
+            public static Vec2 operator *(float s, Vec2 a) => new Vec2(s * a.X, s * a.Y);
             public static Vec2 operator /(Vec2 a, Vec2 b) => new Vec2(a.X / b.X, a.Y / b.Y);
-            public static Vec2 operator /(Vec2 a, double s) => new Vec2(a.X / s, a.Y / s);
+            public static Vec2 operator /(Vec2 a, float s) => new Vec2(a.X / s, a.Y / s);
         }
         """;
 
@@ -34,7 +34,7 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var v = new Vec2(1, 2) + new Vec2(10, 20);
                     return v.X * 100 + v.Y;
@@ -50,7 +50,7 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var v = new Vec2(10, 20) - new Vec2(1, 2);
                     return v.X * 100 + v.Y;
@@ -66,7 +66,7 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var v = -new Vec2(3, -4);
                     return v.X * 100 + v.Y;
@@ -79,16 +79,16 @@ public class OperatorOverloadTests
     [Fact]
     public void MultiplyOverloads_DispatchOnOperandTypes()
     {
-        // Vec2*Vec2 / Vec2*double / double*Vec2 が同じ __mul に共存し、
+        // Vec2*Vec2 / Vec2*float / float*Vec2 が同じ __mul に共存し、
         // 実行時の operand 型で正しい overload に分岐する。
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var vv = new Vec2(2, 3) * new Vec2(4, 5);   // (8, 15)
-                    var vs = new Vec2(2, 3) * 10.0;             // (20, 30)
-                    var sv = 100.0 * new Vec2(2, 3);            // (200, 300)
+                    var vs = new Vec2(2, 3) * 10.0f;            // (20, 30)
+                    var sv = 100.0f * new Vec2(2, 3);           // (200, 300)
                     return vv.X + vv.Y + vs.X + vs.Y + sv.X + sv.Y;
                 }
             }
@@ -102,10 +102,10 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var vv = new Vec2(8, 15) / new Vec2(4, 5);  // (2, 3)
-                    var vs = new Vec2(20, 30) / 10.0;           // (2, 3)
+                    var vs = new Vec2(20, 30) / 10.0f;          // (2, 3)
                     return vv.X + vv.Y + vs.X + vs.Y;
                 }
             }
@@ -146,11 +146,11 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var v = new Vec2(1, 2);
                     v += new Vec2(10, 20);
-                    v *= 2.0;
+                    v *= 2.0f;
                     return v.X * 100 + v.Y;
                 }
             }
@@ -164,11 +164,11 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var a = new Vec2(1, 2);
                     var b = new Vec2(3, 4);
-                    var v = a + b * 2.0 - a;  // b * 2 = (6, 8)
+                    var v = a + b * 2.0f - a;  // b * 2 = (6, 8)
                     return v.X * 100 + v.Y;
                 }
             }
@@ -208,14 +208,14 @@ public class OperatorOverloadTests
     public void RecordClass_OperatorOverload()
     {
         var result = TestHelper.TranspileAndRun("""
-            public record Point(double X, double Y)
+            public record Point(float X, float Y)
             {
                 public static Point operator +(Point a, Point b) => new Point(a.X + b.X, a.Y + b.Y);
             }
 
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var p = new Point(1, 2) + new Point(10, 20);
                     return p.X * 100 + p.Y;
@@ -231,13 +231,13 @@ public class OperatorOverloadTests
         var result = TestHelper.TranspileAndRun(Vec2Source + """
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var v = new Vec2(3, 4) + new Vec2(0, 0);
                     return Dot(v, v);
                 }
 
-                private static double Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
+                private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
             }
             """, "T.Test()");
         Assert.Equal("25", result);
@@ -272,9 +272,9 @@ public class OperatorOverloadTests
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Meters
             {
-                public double Value;
+                public float Value;
 
-                public static implicit operator double(Meters m) => m.Value;
+                public static implicit operator float(Meters m) => m.Value;
             }
             """]);
         Assert.True(result.Success, string.Join("\n", result.Errors));

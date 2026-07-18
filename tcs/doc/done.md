@@ -1321,3 +1321,8 @@
 - __tcs_fstr (%.6g/%.8g/%.9g の round-trip 最短、il-spec §13) を導入し、builder が float 静的型既知の出力 4 地点 (WriteLine 引数 / 補間 hole / ToString / concat operand) で適用。C backend との stdout 完全一致の最後のギャップ (%.14g の余剰桁) を解消し、.NET の表示形 (1.0f → "1") とも一致
 - 付随: IlBuild.Expressions が 800 行超 → Invocations 系を分割。struct テスト期待 3 件を新表示形へ更新
 - 検証: run-tests 全ゲート green。object 型経由など動的値の tostring は対象外 (静的型でのみ適用 — 既知の限界として記録)
+
+### T226: double / long のサブセット外化 ✓ (2026-07-18)
+- TCS1001 に DoubleType / LongType (predefined type keyword) と DoubleLiteral (Token.Value is double — 1.5/1e3/1d を捉え 1.5f と整数を巻き込まない) を追加、analyzer 登録同期。TinySystem facade を MathF 委譲の float シグネチャへ移行 (dotnet 側単体テストと differential が f32 で計算し Lua32 と真正 parity)
+- テスト・サンプル資産を f suffix へ移行、spec 例 10 件が Diag へ (baseline 更新、VariableInitializers1 の known-difference 登録は Diag 化に伴い削除)。FuzzGenerator の 32bit overflow 回避制約を撤廃し、wrap 跨ぎ for (i != end 条件) と全域 int32 を生成 (CS0220 は片側変数化で回避)
+- 検証: run-tests 全ゲート green + deep fuzz 200 seeds 全一致。着手は Codex 委任だったが指示により中断し、診断コア/FuzzGenerator/facade/baseline を精査のうえ当方で完成・検証

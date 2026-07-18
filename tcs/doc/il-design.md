@@ -38,7 +38,7 @@ tcs 内部を「syntax 走査 → IL → Lua 出力」に再編し、**IL を意
 | 値型 (struct) | 代入=コピー、配列=連続 | なし（table は参照） | TCS1001 未対応 |
 | 配列 index | 0-based | 1-based | 生成コードで +1 |
 | 整数除算/剰余 | 切り捨て（符号は被除数） | floor | 生成コードで idiv/irem 補正済み |
-| 数値型 | int/float/double/long 区別 | integer/number | double 前提 |
+| 数値型 | int/float/double/long 区別 | integer/number | i32/f32 に統一済み (M4)、double/long は診断 (T226) |
 | 連続メモリ | `float[]`, struct 配列 | boxed TValue 列 | なし |
 | 型 test (`is`) と継承 | 派生インスタンスも真 | metatable 完全一致比較 | バグ (T222) |
 | ループ変数の capture | `for` 変数は全反復で共有 | numeric for は反復ごと | バグ (T221) |

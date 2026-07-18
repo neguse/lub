@@ -15,12 +15,12 @@ public static class Hello
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.end_pass();
     }

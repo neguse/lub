@@ -62,7 +62,7 @@ public class DiagnosticTests
 
     [Theory]
     [InlineData("public class T { public static int Test() { int x = \"oops\"; return x; } }", "CS0029")]
-    [InlineData("public class T { public static int Test() { int x = 1.5; return x; } }", "CS0266")]
+    [InlineData("public class T { public static int Test() { int x = 1.5f; return x; } }", "CS0266")]
     [InlineData("public class T { public static bool Test() => true + false; }", "CS0019")]
     [InlineData("public interface IRun { void Run(); } public class T : IRun { }", "CS0535")]
     public void OrdinaryErrors_WithTinyCsExceptionIds_AreRejected(
@@ -497,14 +497,14 @@ public class DiagnosticTests
 
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var values = new List<int> { 1 };
                     values.Reverse();
                     var one = values.Single();
                     var capacity = values.Capacity;
                     var empty = string.Empty;
-                    return Math.Cbrt(one) + Math.E + capacity + empty.Length;
+                    return (float)(Math.Cbrt(one) + Math.E + capacity + empty.Length);
                 }
             }
             """]);

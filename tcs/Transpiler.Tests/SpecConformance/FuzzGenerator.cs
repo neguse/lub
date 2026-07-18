@@ -4,8 +4,8 @@ namespace TinyCs.Tests.SpecConformance;
 
 /// <summary>
 /// サブセット内 C# プログラムの seed 決定的生成器 (C4)。診断対象の構文は
-/// 生成しない (生成物に TCS 診断が出たら生成器のバグ)。int は ±50 の初期値と
-/// 有界ループで 32bit overflow (C# wrap vs Lua 64bit の既知差) を回避する。
+/// 生成しない (生成物に TCS 診断が出たら生成器のバグ)。int32 wrap は .NET と
+/// Lua32 で一致するため、全域の値と wrap をまたぐ loop も生成する。
 /// </summary>
 internal sealed class FuzzGenerator
 {
@@ -66,7 +66,7 @@ internal sealed class FuzzGenerator
     {
         var name = NextVar();
         _intVars.Add(name);
-        return $"int {name} = {_rng.Next(-50, 51)};";
+        return $"int {name} = {NextInt32()};";
     }
 
     private string DeclareBool()
@@ -106,10 +106,13 @@ internal sealed class FuzzGenerator
     private string ForLoop()
     {
         var i = $"i{_loopCount++}";
+        var start = NextInt32();
+        var iterations = _rng.Next(1, 33);
+        var end = unchecked(start + iterations);
         var body = _rng.Next(2) == 0
             ? $"{PickIntVar()} += {i};"
-            : $"Console.WriteLine({i} * {_rng.Next(2, 5)});";
-        return $"for (int {i} = 0; {i} < {_rng.Next(1, 5)}; {i}++) {{ {body} }}";
+            : $"Console.WriteLine({i} * {NextInt32()});";
+        return $"for (int {i} = {start}; {i} != {end}; {i}++) {{ {body} }}";
     }
 
     private string IntExpr(int depth)
@@ -117,23 +120,29 @@ internal sealed class FuzzGenerator
         if (depth <= 0 || _rng.Next(3) == 0)
             return _rng.Next(2) == 0 && _intVars.Count > 0
                 ? PickReadableIntVar()
-                : _rng.Next(-50, 51).ToString();
+                : NextInt32().ToString();
         return _rng.Next(5) switch
         {
-            0 => $"({IntExpr(depth - 1)} + {IntExpr(depth - 1)})",
-            1 => $"({IntExpr(depth - 1)} - {IntExpr(depth - 1)})",
-            2 => $"({IntExpr(0)} * {_rng.Next(-4, 5)})",
+            // 片側を変数にして constant folding 時の CS0220 を避けつつ、
+            // 実行時の int32 wrap を踏む。
+            0 => $"({PickReadableIntVar()} + {IntExpr(depth - 1)})",
+            1 => $"({PickReadableIntVar()} - {IntExpr(depth - 1)})",
+            2 => $"({PickReadableIntVar()} * {IntExpr(depth - 1)})",
             // 除算/剰余は非ゼロ定数除数 (負も含む) — T145 の idiv/irem を踏む
-            3 => $"({IntExpr(depth - 1)} / {NonZeroDivisor()})",
-            _ => $"({IntExpr(depth - 1)} % {NonZeroDivisor()})",
+            3 => $"({PickReadableIntVar()} / {NonZeroDivisor()})",
+            _ => $"({PickReadableIntVar()} % {NonZeroDivisor()})",
         };
     }
 
     private string NonZeroDivisor()
     {
-        var value = _rng.Next(2, 8);
-        return (_rng.Next(2) == 0 ? value : -value).ToString();
+        int value;
+        do value = NextInt32(); while (value == 0);
+        return value.ToString();
     }
+
+    private int NextInt32() => unchecked((int)_rng.NextInt64(
+        int.MinValue, (long)int.MaxValue + 1));
 
     private string BoolExpr(int depth)
     {

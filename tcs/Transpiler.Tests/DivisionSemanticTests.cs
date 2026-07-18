@@ -50,10 +50,10 @@ public class DivisionSemanticTests
             {
                 public static string Test()
                 {
-                    var a = 5.0;
-                    var b = 2.0;
-                    var zero = 0.0;
-                    var isInf = a / zero > 1e30; // f32 数値モデルでも成立する閾値 (M4)
+                    var a = 5.0f;
+                    var b = 2.0f;
+                    var zero = 0.0f;
+                    var isInf = a / zero > 1e30f; // f32 数値モデルでも成立する閾値 (M4)
                     return $"{a / b}|{isInf}";
                 }
             }
@@ -69,8 +69,8 @@ public class DivisionSemanticTests
             {
                 public static string Test()
                 {
-                    var a = -5.5;
-                    var b = 2.0;
+                    var a = -5.5f;
+                    var b = 2.0f;
                     return $"{a % b}";
                 }
             }

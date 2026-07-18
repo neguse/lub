@@ -64,6 +64,41 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task DoubleAndLongTypesAndDoubleLiterals_ReportUnsupportedSyntax()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class NumericTypes
+            {
+                public double Field;
+                public long Signed;
+                public ulong Unsigned;
+
+                public static double Run(long value, ulong other)
+                {
+                    double result = 1.5;
+                    float supported = 2.5f;
+                    return result + value + other + supported;
+                }
+            }
+            """);
+
+        var syntaxDiagnostics = diagnostics
+            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
+            .ToArray();
+
+        Assert.Equal(8, syntaxDiagnostics.Length);
+        Assert.Equal(3, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("DoubleType")));
+        Assert.Equal(4, syntaxDiagnostics.Count(
+            d => d.GetMessage().Contains("LongType")));
+        Assert.Single(syntaxDiagnostics,
+            d => d.GetMessage().Contains("DoubleLiteral"));
+        Assert.DoesNotContain(syntaxDiagnostics,
+            d => d.Location.SourceTree?.GetText()
+                .ToString(d.Location.SourceSpan) == "2.5f");
+    }
+
+    [Fact]
     public async Task PartialTypesAndLock_ReportUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""
@@ -287,14 +322,14 @@ public class TinyCsComplianceAnalyzerTests
 
             public class Demo
             {
-                public static double Run()
+                public static float Run()
                 {
                     var values = new List<int> { 1 };
                     values.Reverse();
                     var one = values.Single();
                     var capacity = values.Capacity;
                     var empty = string.Empty;
-                    return Math.Cbrt(one) + Math.E + capacity + empty.Length;
+                    return (float)(Math.Cbrt(one) + Math.E + capacity + empty.Length);
                 }
             }
             """);
@@ -382,10 +417,10 @@ public class TinyCsComplianceAnalyzerTests
         var diagnostics = await AnalyzeAsync("""
             public class Vec2
             {
-                public double X;
-                public double Y;
+                public float X;
+                public float Y;
 
-                public Vec2(double x, double y)
+                public Vec2(float x, float y)
                 {
                     X = x;
                     Y = y;
@@ -394,9 +429,9 @@ public class TinyCsComplianceAnalyzerTests
                 public static Vec2 operator +(Vec2 a, Vec2 b) => new Vec2(a.X + b.X, a.Y + b.Y);
                 public static Vec2 operator -(Vec2 a, Vec2 b) => new Vec2(a.X - b.X, a.Y - b.Y);
                 public static Vec2 operator -(Vec2 a) => new Vec2(-a.X, -a.Y);
-                public static Vec2 operator *(Vec2 a, double s) => new Vec2(a.X * s, a.Y * s);
-                public static Vec2 operator *(double s, Vec2 a) => new Vec2(s * a.X, s * a.Y);
-                public static Vec2 operator /(Vec2 a, double s) => new Vec2(a.X / s, a.Y / s);
+                public static Vec2 operator *(Vec2 a, float s) => new Vec2(a.X * s, a.Y * s);
+                public static Vec2 operator *(float s, Vec2 a) => new Vec2(s * a.X, s * a.Y);
+                public static Vec2 operator /(Vec2 a, float s) => new Vec2(a.X / s, a.Y / s);
                 public static Vec2 operator %(Vec2 a, Vec2 b) => new Vec2(a.X % b.X, a.Y % b.Y);
             }
             """);
@@ -552,7 +587,7 @@ public class TinyCsComplianceAnalyzerTests
     [InlineData("var c = new Dictionary<string, int>(4);", "Dictionary<TKey, TValue>")]
     [InlineData("dict.Remove(\"a\", out var removed);", "Dictionary<TKey, TValue>.Remove")]
     [InlineData("list.Sort(Comparer<int>.Default);", "List<T>.Sort")]
-    [InlineData("Math.Round(1.55, MidpointRounding.AwayFromZero);", "System.Math.Round")]
+    [InlineData("Math.Round(1.55f, MidpointRounding.AwayFromZero);", "System.Math.Round")]
     [InlineData("string.Join('-', \"a\", \"b\");", "string.Join")]
     public async Task UnimplementedOverload_ReportsTcs1002(string statement,
         string expectedApiName)
@@ -567,7 +602,7 @@ public class TinyCsComplianceAnalyzerTests
     [Theory]
     [InlineData("list.Sort(); list.Sort((a, b) => b - a);")]
     [InlineData("dict.TryGetValue(\"a\", out var value);")]
-    [InlineData("var r = Math.Round(1.234, 2) + Math.Log(8.0, 2.0);")]
+    [InlineData("var r = Math.Round(1.234f, 2) + Math.Log(8.0f, 2.0f);")]
     [InlineData("var parts = s.Split(\",\"); var all = s.Split();")]
     [InlineData("var i = s.IndexOf(\"a\", 1); var sub = s.Substring(1, 2);")]
     [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]

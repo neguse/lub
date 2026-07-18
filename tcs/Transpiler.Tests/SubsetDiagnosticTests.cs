@@ -342,10 +342,10 @@ public class SubsetDiagnosticTests
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
             {
-                public static double Test()
+                public static float Test()
                 {
                     var r = new System.Random();
-                    return r.NextDouble();
+                    return (float)r.NextDouble();
                 }
             }
             """]);
@@ -424,6 +424,48 @@ public class SubsetDiagnosticTests
 
         AssertUnsupportedWarning(result, "DecimalType");
         AssertUnsupportedWarning(result, "DecimalLiteral");
+    }
+
+    [Fact]
+    public void DoubleAndLongTypesAndDoubleLiteral_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public double Field;
+                public long Signed;
+                public ulong Unsigned;
+
+                public static double Test(long value, ulong other)
+                {
+                    double result = 2.5;
+                    return result + value + other;
+                }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "DoubleType");
+        AssertUnsupportedWarning(result, "DoubleLiteral");
+        AssertUnsupportedWarning(result, "LongType");
+    }
+
+    [Fact]
+    public void FloatLiteral_DoesNotReportDoubleLiteral()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static float Test()
+                {
+                    float value = 1.5f;
+                    return value;
+                }
+            }
+            """]);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("DoubleType") || w.Contains("DoubleLiteral"));
     }
 
     [Fact]

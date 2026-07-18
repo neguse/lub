@@ -8,60 +8,60 @@ using System.Collections.Generic;
 
 public class Brick
 {
-    public double x0;
-    public double y0;
-    public double x1;
-    public double y1;
+    public float x0;
+    public float y0;
+    public float x1;
+    public float y1;
     public int row;
     public bool alive;
 }
 
 public static class Breakout
 {
-    const double DT = 1.0 / 60.0;
+    const float DT = 1.0f / 60.0f;
     const int STRIDE = 6; // pos.xy + color.rgba
 
     const int COLS = 11;
     const int ROWS = 6;
-    const double BRICK_GAP_X = 0.018;
-    const double BRICK_GAP_Y = 0.018;
-    const double BRICK_LEFT = -0.88;
-    const double BRICK_RIGHT = 0.88;
-    const double BRICK_TOP = 0.76;
-    const double BRICK_H = 0.06;
-    const double BRICK_W =
+    const float BRICK_GAP_X = 0.018f;
+    const float BRICK_GAP_Y = 0.018f;
+    const float BRICK_LEFT = -0.88f;
+    const float BRICK_RIGHT = 0.88f;
+    const float BRICK_TOP = 0.76f;
+    const float BRICK_H = 0.06f;
+    const float BRICK_W =
         (BRICK_RIGHT - BRICK_LEFT - BRICK_GAP_X * (COLS - 1)) / COLS;
 
-    const double PADDLE_Y = -0.78;
-    const double PADDLE_W = 0.34;
-    const double PADDLE_H = 0.045;
-    const double PADDLE_SPEED = 1.55;
+    const float PADDLE_Y = -0.78f;
+    const float PADDLE_W = 0.34f;
+    const float PADDLE_H = 0.045f;
+    const float PADDLE_SPEED = 1.55f;
 
-    const double BALL_R = 0.026;
-    const double BALL_SPEED_X = 0.55;
-    const double BALL_SPEED_Y = 0.83;
+    const float BALL_R = 0.026f;
+    const float BALL_SPEED_X = 0.55f;
+    const float BALL_SPEED_Y = 0.83f;
 
-    static List<double[]> rowColors = new List<double[]>
+    static List<float[]> rowColors = new List<float[]>
     {
-        new double[] { 0.93, 0.23, 0.25, 1.0 },
-        new double[] { 0.96, 0.62, 0.16, 1.0 },
-        new double[] { 0.98, 0.88, 0.24, 1.0 },
-        new double[] { 0.22, 0.72, 0.43, 1.0 },
-        new double[] { 0.14, 0.63, 0.86, 1.0 },
-        new double[] { 0.55, 0.42, 0.86, 1.0 },
+        new float[] { 0.93f, 0.23f, 0.25f, 1.0f },
+        new float[] { 0.96f, 0.62f, 0.16f, 1.0f },
+        new float[] { 0.98f, 0.88f, 0.24f, 1.0f },
+        new float[] { 0.22f, 0.72f, 0.43f, 1.0f },
+        new float[] { 0.14f, 0.63f, 0.86f, 1.0f },
+        new float[] { 0.55f, 0.42f, 0.86f, 1.0f },
     };
 
     static List<Brick> bricks = new List<Brick>();
-    static double paddleX = 0;
-    static double paddlePrevX = 0;
-    static double ballX = 0;
-    static double ballY = 0;
-    static double ballVx = BALL_SPEED_X;
-    static double ballVy = BALL_SPEED_Y;
+    static float paddleX = 0;
+    static float paddlePrevX = 0;
+    static float ballX = 0;
+    static float ballY = 0;
+    static float ballVx = BALL_SPEED_X;
+    static float ballVy = BALL_SPEED_Y;
     static bool ballStuck = true;
     static int lives = 3;
     static int score = 0;
-    static double launchTimer = 0;
+    static float launchTimer = 0;
     static int meshVersion = 0;
 
     public static void onInit()
@@ -79,7 +79,7 @@ public static class Breakout
     {
     }
 
-    static double Clamp(double v, double lo, double hi)
+    static float Clamp(float v, float lo, float hi)
     {
         if (v < lo) return lo;
         if (v > hi) return hi;
@@ -91,11 +91,11 @@ public static class Breakout
         bricks = new List<Brick>();
         for (int row = 1; row <= ROWS; row++)
         {
-            double y1 = BRICK_TOP - (row - 1) * (BRICK_H + BRICK_GAP_Y);
-            double y0 = y1 - BRICK_H;
+            float y1 = BRICK_TOP - (row - 1) * (BRICK_H + BRICK_GAP_Y);
+            float y0 = y1 - BRICK_H;
             for (int col = 1; col <= COLS; col++)
             {
-                double x0 = BRICK_LEFT + (col - 1) * (BRICK_W + BRICK_GAP_X);
+                float x0 = BRICK_LEFT + (col - 1) * (BRICK_W + BRICK_GAP_X);
                 bricks.Add(new Brick
                 {
                     x0 = x0,
@@ -112,7 +112,7 @@ public static class Breakout
     static void ResetBall()
     {
         ballX = paddleX;
-        ballY = PADDLE_Y + PADDLE_H * 0.5 + BALL_R + 0.01;
+        ballY = PADDLE_Y + PADDLE_H * 0.5f + BALL_R + 0.01f;
         ballVx = BALL_SPEED_X;
         ballVy = BALL_SPEED_Y;
         ballStuck = true;
@@ -147,19 +147,19 @@ public static class Breakout
         return n;
     }
 
-    static bool CircleHitsRect(double cx, double cy, double r,
-        double x0, double y0, double x1, double y1)
+    static bool CircleHitsRect(float cx, float cy, float r,
+        float x0, float y0, float x1, float y1)
     {
         return cx + r > x0 && cx - r < x1 && cy + r > y0 && cy - r < y1;
     }
 
     static void BounceFromRect(Brick rect)
     {
-        double left = ballX + BALL_R - rect.x0;
-        double right = rect.x1 - (ballX - BALL_R);
-        double bottom = ballY + BALL_R - rect.y0;
-        double top = rect.y1 - (ballY - BALL_R);
-        double m = Math.Min(Math.Min(left, right),
+        float left = ballX + BALL_R - rect.x0;
+        float right = rect.x1 - (ballX - BALL_R);
+        float bottom = ballY + BALL_R - rect.y0;
+        float top = rect.y1 - (ballY - BALL_R);
+        float m = Math.Min(Math.Min(left, right),
             Math.Min(bottom, top));
 
         if (m == left)
@@ -197,14 +197,14 @@ public static class Breakout
 
         paddlePrevX = paddleX;
         paddleX = Clamp(paddleX + move * PADDLE_SPEED * DT,
-            -1 + PADDLE_W * 0.5 + 0.03, 1 - PADDLE_W * 0.5 - 0.03);
+            -1 + PADDLE_W * 0.5f + 0.03f, 1 - PADDLE_W * 0.5f - 0.03f);
 
         if (ballStuck)
         {
             ballX = paddleX;
-            ballY = PADDLE_Y + PADDLE_H * 0.5 + BALL_R + 0.01;
+            ballY = PADDLE_Y + PADDLE_H * 0.5f + BALL_R + 0.01f;
             launchTimer = launchTimer + DT;
-            if (Input.key_down("space") || launchTimer > 1.0)
+            if (Input.key_down("space") || launchTimer > 1.0f)
             {
                 LaunchBall();
             }
@@ -214,31 +214,31 @@ public static class Breakout
         ballX = ballX + ballVx * DT;
         ballY = ballY + ballVy * DT;
 
-        if (ballX - BALL_R < -0.96)
+        if (ballX - BALL_R < -0.96f)
         {
-            ballX = -0.96 + BALL_R;
+            ballX = -0.96f + BALL_R;
             ballVx = Math.Abs(ballVx);
         }
-        else if (ballX + BALL_R > 0.96)
+        else if (ballX + BALL_R > 0.96f)
         {
-            ballX = 0.96 - BALL_R;
+            ballX = 0.96f - BALL_R;
             ballVx = -Math.Abs(ballVx);
         }
-        if (ballY + BALL_R > 0.90)
+        if (ballY + BALL_R > 0.90f)
         {
-            ballY = 0.90 - BALL_R;
+            ballY = 0.90f - BALL_R;
             ballVy = -Math.Abs(ballVy);
         }
 
-        double px0 = paddleX - PADDLE_W * 0.5;
-        double py0 = PADDLE_Y - PADDLE_H * 0.5;
-        double px1 = paddleX + PADDLE_W * 0.5;
-        double py1 = PADDLE_Y + PADDLE_H * 0.5;
+        float px0 = paddleX - PADDLE_W * 0.5f;
+        float py0 = PADDLE_Y - PADDLE_H * 0.5f;
+        float px1 = paddleX + PADDLE_W * 0.5f;
+        float py1 = PADDLE_Y + PADDLE_H * 0.5f;
         if (ballVy < 0 && CircleHitsRect(ballX, ballY, BALL_R, px0, py0, px1, py1))
         {
-            double hit = (ballX - paddleX) / (PADDLE_W * 0.5);
+            float hit = (ballX - paddleX) / (PADDLE_W * 0.5f);
             ballY = py1 + BALL_R;
-            ballVx = Clamp(hit * 0.85 + (paddleX - paddlePrevX) * 2.5, -0.95, 0.95);
+            ballVx = Clamp(hit * 0.85f + (paddleX - paddlePrevX) * 2.5f, -0.95f, 0.95f);
             ballVy = Math.Abs(ballVy);
         }
 
@@ -253,7 +253,7 @@ public static class Breakout
             }
         }
 
-        if (ballY + BALL_R < -1.0)
+        if (ballY + BALL_R < -1.0f)
         {
             lives = lives - 1;
             if (lives <= 0)
@@ -271,7 +271,7 @@ public static class Breakout
         }
     }
 
-    static void PushVertex(List<double> verts, double x, double y, double[] c)
+    static void PushVertex(List<float> verts, float x, float y, float[] c)
     {
         verts.Add(x);
         verts.Add(y);
@@ -281,8 +281,8 @@ public static class Breakout
         verts.Add(c[3]);
     }
 
-    static void AddRect(List<double> verts, double x0, double y0,
-        double x1, double y1, double[] c)
+    static void AddRect(List<float> verts, float x0, float y0,
+        float x1, float y1, float[] c)
     {
         PushVertex(verts, x0, y0, c);
         PushVertex(verts, x1, y0, c);
@@ -292,35 +292,35 @@ public static class Breakout
         PushVertex(verts, x0, y1, c);
     }
 
-    static void AddCircle(List<double> verts, double cx, double cy, double r,
-        double[] c)
+    static void AddCircle(List<float> verts, float cx, float cy, float r,
+        float[] c)
     {
         int segments = 20;
         for (int i = 0; i < segments; i++)
         {
-            double a0 = (double)i / segments * Math.PI * 2;
-            double a1 = (double)(i + 1) / segments * Math.PI * 2;
+            float a0 = (float)i / segments * (float)Math.PI * 2;
+            float a1 = (float)(i + 1) / segments * (float)Math.PI * 2;
             PushVertex(verts, cx, cy, c);
-            PushVertex(verts, cx + Math.Cos(a0) * r,
-                cy + Math.Sin(a0) * r, c);
-            PushVertex(verts, cx + Math.Cos(a1) * r,
-                cy + Math.Sin(a1) * r, c);
+            PushVertex(verts, cx + (float)Math.Cos(a0) * r,
+                cy + (float)Math.Sin(a0) * r, c);
+            PushVertex(verts, cx + (float)Math.Cos(a1) * r,
+                cy + (float)Math.Sin(a1) * r, c);
         }
     }
 
-    static List<double> BuildVertices()
+    static List<float> BuildVertices()
     {
-        var verts = new List<double>();
-        var rail = new double[] { 0.18, 0.22, 0.30, 1.0 };
-        var paddleColor = new double[] { 0.95, 0.96, 0.88, 1.0 };
-        var ballColor = new double[] { 1.0, 0.98, 0.78, 1.0 };
-        var liveColor = new double[] { 0.92, 0.34, 0.36, 1.0 };
-        var scoreColor = new double[] { 0.30, 0.82, 0.65, 1.0 };
-        var highlight = new double[] { 1.0, 1.0, 1.0, 0.20 };
+        var verts = new List<float>();
+        var rail = new float[] { 0.18f, 0.22f, 0.30f, 1.0f };
+        var paddleColor = new float[] { 0.95f, 0.96f, 0.88f, 1.0f };
+        var ballColor = new float[] { 1.0f, 0.98f, 0.78f, 1.0f };
+        var liveColor = new float[] { 0.92f, 0.34f, 0.36f, 1.0f };
+        var scoreColor = new float[] { 0.30f, 0.82f, 0.65f, 1.0f };
+        var highlight = new float[] { 1.0f, 1.0f, 1.0f, 0.20f };
 
-        AddRect(verts, -0.99, -0.98, -0.96, 0.93, rail);
-        AddRect(verts, 0.96, -0.98, 0.99, 0.93, rail);
-        AddRect(verts, -0.99, 0.90, 0.99, 0.93, rail);
+        AddRect(verts, -0.99f, -0.98f, -0.96f, 0.93f, rail);
+        AddRect(verts, 0.96f, -0.98f, 0.99f, 0.93f, rail);
+        AddRect(verts, -0.99f, 0.90f, 0.99f, 0.93f, rail);
 
         foreach (var b in bricks)
         {
@@ -328,30 +328,30 @@ public static class Breakout
             {
                 var c = rowColors[b.row - 1];
                 AddRect(verts, b.x0, b.y0, b.x1, b.y1, c);
-                AddRect(verts, b.x0 + 0.006, b.y1 - 0.012, b.x1 - 0.006,
-                    b.y1 - 0.006, highlight);
+                AddRect(verts, b.x0 + 0.006f, b.y1 - 0.012f, b.x1 - 0.006f,
+                    b.y1 - 0.006f, highlight);
             }
         }
 
-        AddRect(verts, paddleX - PADDLE_W * 0.5, PADDLE_Y - PADDLE_H * 0.5,
-            paddleX + PADDLE_W * 0.5, PADDLE_Y + PADDLE_H * 0.5, paddleColor);
+        AddRect(verts, paddleX - PADDLE_W * 0.5f, PADDLE_Y - PADDLE_H * 0.5f,
+            paddleX + PADDLE_W * 0.5f, PADDLE_Y + PADDLE_H * 0.5f, paddleColor);
         AddCircle(verts, ballX, ballY, BALL_R, ballColor);
 
         for (int i = 1; i <= lives; i++)
         {
-            AddCircle(verts, -0.86 + (i - 1) * 0.07, -0.92, 0.018, liveColor);
+            AddCircle(verts, -0.86f + (i - 1) * 0.07f, -0.92f, 0.018f, liveColor);
         }
         int scoreShow = score < 12 ? score : 12;
         for (int i = 1; i <= scoreShow; i++)
         {
-            double x = 0.48 + (i - 1) * 0.035;
-            AddRect(verts, x, -0.94, x + 0.018, -0.90, scoreColor);
+            float x = 0.48f + (i - 1) * 0.035f;
+            AddRect(verts, x, -0.94f, x + 0.018f, -0.90f, scoreColor);
         }
 
         return verts;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         UpdateGame();
 
@@ -370,7 +370,7 @@ public static class Breakout
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.035, 0.045, 0.065, 1.0 },
+            clear_color = new float[] { 0.035f, 0.045f, 0.065f, 1.0f },
         });
         Gfx.draw(verts.Count / STRIDE, new DrawBindings { verts = vbuf },
             new DrawOpts

@@ -63,7 +63,7 @@ public class ObjectInitializerTests
             public class Opts
             {
                 public int x;
-                public double[]? color;
+                public float[]? color;
             }
 
             public static class Host
@@ -76,7 +76,7 @@ public class ObjectInitializerTests
             {
                 public static void Run()
                 {
-                    Host.send(new Opts { x = 5, color = new double[] { 0.5, 1.0 } });
+                    Host.send(new Opts { x = 5, color = new float[] { 0.5f, 1.0f } });
                 }
             }
             """;

@@ -11,7 +11,7 @@ public class RandomSemanticTests
                 public static bool Test()
                 {
                     var f = TinySystem.Random.NextFloat();
-                    return f >= 0.0 && f < 1.0;
+                    return f >= 0.0f && f < 1.0f;
                 }
             }
             """, "tostring(T.Test())");

@@ -20,7 +20,7 @@ public class BufferRef
 public class PassOpts
 {
     public TextureRef? target;
-    public double[]? clear_color;
+    public float[]? clear_color;
 }
 
 public class DrawBindings
@@ -58,7 +58,7 @@ public static class Gfx
     }
 
     public static BufferRef? use_buffer(string key, int type,
-        System.Collections.Generic.List<double> data, int version)
+        System.Collections.Generic.List<float> data, int version)
     {
         return null;
     }

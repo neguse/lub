@@ -33,12 +33,12 @@ public class DictionaryWireFormatTests
                     var handle = Host.create();
                     var opts = new Dictionary<string, object>
                     {
-                        { "width", 640.0 },
+                        { "width", 640.0f },
                         { "title", "demo" },
                         { "vsync", true },
                         { "handle", handle! },
-                        { "nested", new Dictionary<string, object> { { "x", 1.5 } } },
-                        { "list", new List<double> { 1.0, 2.0 } },
+                        { "nested", new Dictionary<string, object> { { "x", 1.5f } } },
+                        { "list", new List<float> { 1.0f, 2.0f } },
                     };
                     return Host.inspect(opts);
                 }
@@ -90,7 +90,7 @@ public class DictionaryWireFormatTests
                 public static string Run()
                 {
                     var opts = new Dictionary<string, object>();
-                    opts.Add("num", 1.5);
+                    opts.Add("num", 1.5f);
                     opts["str"] = "s";
                     return Host.inspect(opts);
                 }
@@ -136,7 +136,7 @@ public class DictionaryWireFormatTests
                 public static string Test()
                 {
                     var d = new Dictionary<string, object>();
-                    d.Add("num", 1.5);
+                    d.Add("num", 1.5f);
                     d["str"] = "s";
                     d.Add("flag", true);
                     var before = d.Count;
