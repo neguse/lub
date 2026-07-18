@@ -26,7 +26,7 @@ for i in "${!kernels[@]}"; do
   c_file="$work_dir/${kernels[$i]}.c"
   executable="$work_dir/${kernels[$i]}"
 
-  "$dotnet_cmd" "$luoc_dll" --entry "${entries[$i]}" \
+  "$dotnet_cmd" "$luoc_dll" --digest-f32 --entry "${entries[$i]}" \
     "$source_file" -o "$c_file"
   "$cc_cmd" -O2 -ffp-contract=off -fwrapv \
     -fexcess-precision=standard "$c_file" -o "$executable"

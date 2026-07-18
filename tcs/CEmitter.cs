@@ -7,8 +7,9 @@ namespace TinyCs.Luoc;
 internal sealed partial class CEmitter
 {
     private readonly IlExportResult _program;
-    private readonly SourceFacts _facts;
+    private readonly ContractFacts _facts;
     private readonly Dictionary<string, IlClassInfo> _classes;
+    private readonly bool _digestF32;
     private readonly StringBuilder _output = new();
     private readonly Stack<Dictionary<string, Variable>> _scopes = new();
     private readonly Stack<string?> _continueTargets = new();
@@ -18,16 +19,18 @@ internal sealed partial class CEmitter
     private int _indent;
     private int _serial;
 
-    private sealed record Variable(string CName, CType Type);
+    private sealed class Variable(string cName, CType type)
+    {
+        public string CName { get; } = cName;
+        public CType Type { get; set; } = type;
+    }
 
-    public CEmitter(IlExportResult program, SourceFacts facts)
+    public CEmitter(IlExportResult program, bool digestF32)
     {
         _program = program;
-        _facts = facts;
-        _classes = new Dictionary<string, IlClassInfo>();
-        foreach (var cls in program.Classes)
-            if (!_classes.TryAdd(cls.Name, cls))
-                throw new LuocException($"duplicate class: {cls.Name}");
+        _digestF32 = digestF32;
+        _facts = new ContractFacts(program);
+        _classes = new Dictionary<string, IlClassInfo>(_facts.Classes);
     }
 
     public string Emit(string? requestedEntry)
@@ -44,7 +47,7 @@ internal sealed partial class CEmitter
         foreach (var method in cls.Methods)
             EmitMethod(cls, method);
         EmitStaticInitializer();
-        EmitEntryPoint(entry.Class, entry.Method);
+        EmitEntryPoint(entry);
         return _output.ToString();
     }
 
@@ -60,10 +63,8 @@ internal sealed partial class CEmitter
             foreach (var field in cls.Fields)
             {
                 Names.Id(field.Name);
-                var source = _facts.Field(cls.Name, field.Name);
-                if (source.IsStatic != field.IsStatic)
-                    throw new LuocException($"field metadata mismatch: {cls.Name}.{field.Name}");
-                EnsureSupportedStorageType(source.Type,
+                var fact = _facts.Field(cls.Name, field.Name);
+                EnsureSupportedStorageType(fact.Type,
                     $"field {cls.Name}.{field.Name}");
             }
             var methodNames = new HashSet<string>();
@@ -76,13 +77,6 @@ internal sealed partial class CEmitter
                 if (method.Body is null)
                     throw new LuocException($"method has no IL body: {cls.Name}.{method.Name}");
                 var fact = _facts.Method(cls.Name, method.Name);
-                if (!method.IsStatic || !fact.IsStatic)
-                    throw new LuocException($"instance methods are not supported yet: " +
-                        $"{cls.Name}.{method.Name}");
-                if (method.Parameters.Length != fact.Parameters.Count
-                    || method.Parameters.Where((p, i) => p != fact.Parameters[i].Name).Any())
-                    throw new LuocException($"method parameter metadata mismatch: " +
-                        $"{cls.Name}.{method.Name}");
                 EnsureSupportedStorageType(fact.ReturnType,
                     $"return type of {cls.Name}.{method.Name}", allowVoid: true);
                 foreach (var parameter in fact.Parameters)
@@ -97,14 +91,16 @@ internal sealed partial class CEmitter
     {
         if (type.Kind == CTypeKind.Void && allowVoid) return;
         if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-            or CTypeKind.Ref) return;
+            or CTypeKind.String or CTypeKind.Ref) return;
         if (type.Kind == CTypeKind.Array
             && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
                 or CTypeKind.Ref) return;
+        if (type.Kind == CTypeKind.List
+            && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32) return;
         throw new LuocException($"unsupported {where}: {type}");
     }
 
-    private (IlClassInfo Class, IlMethodInfo Method) FindEntry(string? requested)
+    private (IlClassInfo Class, IlMethodInfo Method)? FindEntry(string? requested)
     {
         var candidates = _program.Classes
             .SelectMany(c => c.Methods.Select(m => (Class: c, Method: m)))
@@ -116,8 +112,9 @@ internal sealed partial class CEmitter
         return candidates.Length switch
         {
             1 => candidates[0],
+            0 when requested is null && !_digestF32 => null,
             0 => throw new LuocException(requested is null
-                ? "no static void Main() entry point"
+                ? "--digest-f32 requires a static void Main() entry point"
                 : $"no static void Main() entry point in {requested}"),
             _ => throw new LuocException("multiple Main entry points; pass --entry CLASS"),
         };
@@ -128,13 +125,25 @@ internal sealed partial class CEmitter
         foreach (var cls in _program.Classes)
             Line($"typedef struct {Names.Class(cls.Name)} {Names.Class(cls.Name)};");
         Line();
+        Line("typedef struct TcsObjectHeader {");
+        _indent++;
+        Line("uint32_t type_id;");
+        _indent--;
+        Line("} TcsObjectHeader;");
+        Line();
+        Line("enum {");
+        _indent++;
+        for (var i = 0; i < _program.Classes.Length; i++)
+            Line($"{Names.TypeId(_program.Classes[i].Name)} = {i + 1},");
+        _indent--;
+        Line("};");
+        Line();
         foreach (var cls in _program.Classes)
         {
             Line($"struct {Names.Class(cls.Name)} {{");
             _indent++;
-            var instanceFields = cls.Fields.Where(f => !f.IsStatic).ToArray();
-            if (instanceFields.Length == 0) Line("unsigned char _empty;");
-            foreach (var field in instanceFields)
+            Line("uint32_t type_id;");
+            foreach (var field in cls.Fields.Where(f => !f.IsStatic))
             {
                 var fact = _facts.Field(cls.Name, field.Name);
                 Line($"{fact.Type.CName} {Names.Field(field.Name)};");
@@ -170,11 +179,15 @@ internal sealed partial class CEmitter
         Line();
     }
 
-    private static string ParameterList(MethodFact method) =>
-        method.Parameters.Count == 0
-            ? "void"
-            : string.Join(", ", method.Parameters.Select((p, i) =>
-                $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+    private static string ParameterList(MethodFact method)
+    {
+        var parameters = new List<string>();
+        if (!method.IsStatic)
+            parameters.Add($"{CType.Ref(method.ClassName).CName} v_self");
+        parameters.AddRange(method.Parameters.Select((p, i) =>
+            $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+        return parameters.Count == 0 ? "void" : string.Join(", ", parameters);
+    }
 
     private void EmitAllocators()
     {
@@ -186,13 +199,23 @@ internal sealed partial class CEmitter
             Line("{");
             _indent++;
             Line($"{cType} *object = tcs_alloc(sizeof(*object));");
+            Line($"object->type_id = {Names.TypeId(cls.Name)};");
+            _currentClass = cls;
+            _scopes.Clear();
+            PushScope();
+            AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
             foreach (var field in cls.Fields.Where(f => !f.IsStatic))
             {
                 var fact = _facts.Field(cls.Name, field.Name);
-                if (fact.HasInitializer)
+                if (fact.Init is not null)
+                {
+                    RequireAssignable(fact.Type, TypeOf(fact.Init),
+                        $"initializer of {cls.Name}.{field.Name}");
                     Line($"object->{Names.Field(field.Name)} = " +
-                        $"{RenderConstant(fact.Type, fact.ConstantInitializer)};");
+                        $"{RenderExpr(fact.Init)};");
+                }
             }
+            PopScope();
             Line("return object;");
             _indent--;
             Line("}");
@@ -208,6 +231,8 @@ internal sealed partial class CEmitter
         _scopes.Clear();
         _continueTargets.Clear();
         PushScope();
+        if (!_currentMethodFact.IsStatic)
+            AddVariable("self", new Variable("v_self", CType.Ref(cls.Name)));
         for (var i = 0; i < _currentMethodFact.Parameters.Count; i++)
         {
             var parameter = _currentMethodFact.Parameters[i];
@@ -242,6 +267,7 @@ internal sealed partial class CEmitter
             case IlWhile loop: EmitWhile(loop); break;
             case IlRepeat repeat: EmitRepeat(repeat); break;
             case IlNumericFor loop: EmitNumericFor(loop); break;
+            case IlForeachList loop: EmitForeachList(loop); break;
             case IlBreak: Line("break;"); break;
             case IlContinue: EmitContinue(); break;
             case IlReturn ret: EmitReturn(ret); break;
@@ -253,35 +279,15 @@ internal sealed partial class CEmitter
 
     private void EmitLocal(IlLocal local)
     {
-        var fact = _facts.Local(_currentClass.Name, _currentMethod.Name, local);
-        if (fact.ClassName != _currentClass.Name || fact.MethodName != _currentMethod.Name)
-            throw new LuocException($"local source mapping mismatch: {local.Name}");
-        var variable = new Variable($"v_{Names.Id(local.Name)}_{_serial++}", fact.Type);
-        AddVariable(local.Name, variable);
-
-        if (fact.Type.Kind == CTypeKind.Array)
-        {
-            if (local.Init is not IlTable { Entries.Length: 0 } || fact.ArrayLength is null)
-                throw new LuocException($"only new T[n] array locals are supported: {local.Name}");
-            var length = fact.ArrayLength.Constant is { } constant
-                ? Constants.I32(constant)
-                : Resolve(fact.ArrayLength.Variable!).CName;
-            if (fact.ArrayLength.Variable is not null
-                && Resolve(fact.ArrayLength.Variable).Type != CType.I32)
-                throw new LuocException($"array length is not i32: {local.Name}");
-            Line($"TcsArray *{variable.CName} = tcs_array_new({length}, " +
-                $"sizeof({fact.Type.ElementCName}));");
-            return;
-        }
-
         if (local.Init is null)
-        {
-            Line($"{fact.Type.CName} {variable.CName} = {DefaultValue(fact.Type)};");
-            return;
-        }
-        var initType = TypeOf(local.Init);
-        RequireAssignable(fact.Type, initType, $"initializer of {local.Name}");
-        Line($"{fact.Type.CName} {variable.CName} = {RenderExpr(local.Init)};");
+            throw new LuocException($"local has no initializer and IlExport does not expose " +
+                $"its type: {_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
+        var type = TypeOf(local.Init);
+        if (type.Kind is CTypeKind.Void or CTypeKind.Null)
+            throw new LuocException($"cannot infer storage type of local {local.Name}: {type}");
+        var variable = new Variable($"v_{Names.Id(local.Name)}_{_serial++}", type);
+        AddVariable(local.Name, variable);
+        Line($"{type.CName} {variable.CName} = {RenderExpr(local.Init)};");
     }
 
     private void EmitAssign(IlAssign assign)
@@ -312,14 +318,16 @@ internal sealed partial class CEmitter
             }
             case IlIndex index:
             {
-                var arrayType = RequireArray(index);
-                var array = Temp("array");
+                var sequenceType = RequireSequence(index);
+                var sequence = Temp("sequence");
                 var idx = Temp("index");
                 var place = Temp("place");
-                Line($"TcsArray *{array} = {RenderExpr(index.Recv)};");
+                Line($"{sequenceType.CName} {sequence} = {RenderExpr(index.Recv)};");
                 Line($"int32_t {idx} = {RenderExpr(index.Idx)};");
-                Line($"{arrayType.ElementCName} *{place} = " +
-                    $"({arrayType.ElementCName} *)tcs_array_at({array}, {idx});");
+                var at = sequenceType.Kind == CTypeKind.Array
+                    ? "tcs_array_at" : "tcs_list_at";
+                Line($"{sequenceType.ElementCName} *{place} = " +
+                    $"({sequenceType.ElementCName} *){at}({sequence}, {idx});");
                 Line($"*{place} = {value};");
                 return;
             }
@@ -372,6 +380,43 @@ internal sealed partial class CEmitter
         PushScope();
         AddVariable(loop.Var, variable);
         _continueTargets.Push(null);
+        EmitStats(loop.Body.Stats);
+        _continueTargets.Pop();
+        PopScope();
+        _indent--;
+        Line("}");
+        _indent--;
+        Line("}");
+    }
+
+    private void EmitForeachList(IlForeachList loop)
+    {
+        var sequenceType = TypeOf(loop.Coll);
+        if (sequenceType.Kind is not (CTypeKind.Array or CTypeKind.List)
+            || sequenceType.Element is null)
+            throw new LuocException($"IlForeachList requires a typed array/List, got " +
+                sequenceType);
+        var sequence = Temp("foreach_sequence");
+        var length = Temp("foreach_length");
+        var index = Temp("foreach_index");
+        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}",
+            sequenceType.Element);
+        var lengthFunction = sequenceType.Kind == CTypeKind.Array
+            ? "tcs_array_length" : "tcs_list_length";
+        var atFunction = sequenceType.Kind == CTypeKind.Array
+            ? "tcs_array_at" : "tcs_list_at";
+
+        Line("{");
+        _indent++;
+        Line($"{sequenceType.CName} {sequence} = {RenderExpr(loop.Coll)};");
+        Line($"int32_t {length} = {lengthFunction}({sequence});");
+        Line($"for (int32_t {index} = 0; {index} < {length}; {index}++) {{");
+        _indent++;
+        PushScope();
+        AddVariable(loop.Var, variable);
+        _continueTargets.Push(null);
+        Line($"{sequenceType.ElementCName} {variable.CName} = " +
+            $"*({sequenceType.ElementCName} *){atFunction}({sequence}, {index});");
         EmitStats(loop.Body.Stats);
         _continueTargets.Pop();
         PopScope();
@@ -460,28 +505,38 @@ internal sealed partial class CEmitter
         Line("{");
         _indent++;
         foreach (var cls in _program.Classes)
-        foreach (var field in cls.Fields.Where(f => f.IsStatic))
         {
-            var fact = _facts.Field(cls.Name, field.Name);
-            if (fact.HasInitializer)
+            _currentClass = cls;
+            _scopes.Clear();
+            PushScope();
+            foreach (var field in cls.Fields.Where(f => f.IsStatic))
+            {
+                var fact = _facts.Field(cls.Name, field.Name);
+                if (fact.Init is null) continue;
+                RequireAssignable(fact.Type, TypeOf(fact.Init),
+                    $"initializer of {cls.Name}.{field.Name}");
                 Line($"{Names.StaticField(cls.Name, field.Name)} = " +
-                    $"{RenderConstant(fact.Type, fact.ConstantInitializer)};");
+                    $"{RenderExpr(fact.Init)};");
+            }
+            PopScope();
         }
         _indent--;
         Line("}");
         Line();
     }
 
-    private void EmitEntryPoint(IlClassInfo cls, IlMethodInfo method)
+    private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)
     {
         Line("int");
         Line("main(void)");
         Line("{");
         _indent++;
         Line("tcs_init_statics();");
-        Line("tcs_digest = UINT32_C(2166136261);");
-        Line($"{Names.Method(cls.Name, method.Name)}();");
-        Line("printf(\"%08\" PRIx32 \"\\n\", tcs_digest);");
+        if (_digestF32) Line("tcs_digest = UINT32_C(2166136261);");
+        if (entry is { } selected)
+            Line($"{Names.Method(selected.Class.Name, selected.Method.Name)}();");
+        if (_digestF32)
+            Line("printf(\"%08\" PRIx32 \"\\n\", tcs_digest);");
         Line("return 0;");
         _indent--;
         Line("}");

@@ -20,8 +20,7 @@ static int Run(string[] args)
             throw new LuocException("TinyC# diagnostics:\n" +
                 string.Join("\n", exported.Diagnostics));
 
-        var facts = SourceFacts.Create(sources, options.Inputs);
-        var c = new CEmitter(exported, facts).Emit(options.EntryClass);
+        var c = new CEmitter(exported, options.DigestF32).Emit(options.EntryClass);
         if (options.OutputPath is null)
             Console.Write(c);
         else
@@ -44,16 +43,19 @@ file sealed record Options(
     IReadOnlyList<string> Inputs,
     string? OutputPath,
     string? EntryClass,
+    bool DigestF32,
     bool Help)
 {
     public const string Usage =
-        "usage: luoc [--entry CLASS] [-o OUTPUT.c] INPUT.cs [INPUT.cs ...]";
+        "usage: luoc [--entry CLASS] [--digest-f32] [-o OUTPUT.c] " +
+        "INPUT.cs [INPUT.cs ...]";
 
     public static Options Parse(string[] args)
     {
         var inputs = new List<string>();
         string? output = null;
         string? entry = null;
+        var digestF32 = false;
         var help = false;
 
         for (var i = 0; i < args.Length; i++)
@@ -69,6 +71,9 @@ file sealed record Options(
                 case "--entry":
                     entry = TakeValue(args, ref i);
                     break;
+                case "--digest-f32":
+                    digestF32 = true;
+                    break;
                 default:
                     if (args[i].StartsWith("-", StringComparison.Ordinal))
                         throw new LuocException($"unknown option: {args[i]}\n{Usage}");
@@ -79,7 +84,7 @@ file sealed record Options(
 
         if (!help && inputs.Count == 0)
             throw new LuocException(Usage);
-        return new Options(inputs, output, entry, help);
+        return new Options(inputs, output, entry, digestF32, help);
     }
 
     private static string TakeValue(string[] args, ref int i)

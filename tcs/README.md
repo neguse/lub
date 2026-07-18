@@ -1,54 +1,54 @@
-# luoc — TinyC# IL→C release backend (first milestone)
+# luoc — TinyC# IL→C release backend
 
-`luoc` は TinyC# source を `IlExport.Export` へ渡し、release 用の C source を
-生成する .NET 10 console application。class は `calloc` した素の C struct、
-array は型付き要素を持つ連続 allocation へ lower する。
+`luoc` は TinyC# source を `IlExport.Export` へ渡し、release 用の GNU C source
+を生成する .NET 10 console application。class は type id 付き `calloc` struct、
+array と `List<int>` / `List<float>` は型付き連続 buffer へ lower する。
 
 ## 使い方
 
 ```sh
-dotnet run --project luoc -- --entry SpriteUpdate \
-  ../tcs/Transpiler.Tests/DigestKernels/sprite_update.cs -o sprite_update.c
+dotnet run --project luoc -- ../tcs/samples/collision.cs -o collision.c
 gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
-  sprite_update.c -o sprite_update
-./sprite_update
+  collision.c -o collision
+./collision
 ```
 
-`--entry` は `static void Main()` が複数ある場合に必要。第一 milestone では
-`Console.WriteLine(float)` (`IlCall("print")`) を stdout 出力ではなく、f32 の
-bit 列を直接 FNV-1a digest へ投入する観測 sink として実装する。生成 executable
-は最後に 8 桁の digest を 1 行出力する。
+単一の `static void Main()` があれば生成 executable の entry にする。複数ある
+場合は `--entry CLASS` で選ぶ。class library sample のように `Main` が無い入力も
+全 method を C へ変換し、static initializer だけを実行する no-op entry を付ける。
 
-3 digest kernel の一括検証:
+## 対応 slice（第二 milestone）
+
+- static / instance method（exact class dispatch。virtual / inheritance は未対応）
+- `i32` / `f32` / `bool` / immutable byte-string / class reference
+- type id による exact `IlIsType`（null は false）
+- `IlNewArray` の固定長連続配列
+- `IlTable`、`List<int>` / `List<float>` の growable 連続 buffer、Add / Count /
+  0-based index / `IlForeachList`
+- `IlTernary`、string concat、`tostring`
+- `Console.WriteLine` (`IlCall("print")`): i32 10進、f32 shortest round-trip、
+  bool `true` / `false`、string byte 列
+- 第一 milestone の数値・制御 flow、bounds/null/division fault
+
+通常の `print` は stdout へ値を出す。digest kernel 回帰用だけは
+`--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
 
 ```sh
-bash luoc/verify-digests.sh
+TCS_ROOT=../tcs bash luoc/verify-digests.sh
 ```
 
-## 対応 slice
+## IlExport 契約
 
-- static method、`i32` / `f32` / `bool`、static/instance field
-- `IlLocal` / `IlAssign` / `IlIf` / `IlWhile` / `IlRepeat` /
-  `IlNumericFor` / `IlDo` / break / continue / return
-- 数値・比較・論理・bit 演算、`IlField`、0-based `IlIndex`、array Length
-- `IlCall`: 同一 program の static method、`__tcs_idiv`、`__tcs_irem`、`print`
-- 引数なし `IlNewObj`: zero initialization 後に constant field initializer を適用
-- 1 次元 `new T[n]`: `n` は i32 local または int constant
+型と初期化情報は T228 契約 (`IlMethodInfo.ReturnType` / `ParameterTypes`、
+`IlFieldInfo.Init`、`IlNewArray.ElementType` / `Length`、`IlTable.ElementType`) だけ
+から読む。第一 milestone の `SourceFacts` / Roslyn 再解析 bridge は廃止した。
 
-これ以外の node、継承、instance method、overload、引数つき constructor、
-List/Dictionary/string は node 名または対象を含む明示 error で拒否する。
+現契約には constructor 本文と local の宣言型が無い。そのためこの slice は、
+initializer 付き local の型を IL から推論し、引数付き `IlNewObj` は引数を宣言順の
+instance field へ代入する positional constructor に限定する（0 引数 default
+constructor も可）。initializer 無し local、positional で表せない constructor、
+method overload、継承、List の int/float 以外は対象を含む明示 error で拒否する。
 
-## IlExport v0 の暫定 bridge
-
-実行文と式は `IlExport` の IL だけから生成する。ただし v0 metadata には method
-の parameter/return type、`new T[n]` の element type/length、field initializer が
-無い。この 3 情報だけは、同じ入力 source を Roslyn で再度 bind した
-`SourceFacts` から補う。式や制御フローを source syntax から再生成しない。
-
-この bridge は `IlExport` が typed signature / typed array creation / initializer
-IL を公開した時点で削除対象。現在は constant field initializer と単純な array
-length 以外を安全側で拒否する。
-
-生成 C は strict f32 bit literal、null/bounds/division fault、C# shift count masking
-を runtime helper で実装する。複数の faultable operand の左→右評価には GCC/Clang
-statement expression を使うため、第一 milestone の C dialect は GNU C。
+生成 C は GNU statement expression で operand / argument の左→右評価を固定する。
+strict f32 build では `-ffp-contract=off`、`-fwrapv`、
+`-fexcess-precision=standard` を必須とする。
