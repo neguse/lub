@@ -14,12 +14,17 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   .Fields: (Name, Type, IsStatic, Init)  auto property は field として
 //            現れる。Init は initializer の IL (無ければ null → default 値)
 //   .LayoutHash                  — migration metadata (il-spec §14)。
-//                                  instance field の (名前:型;) 列の FNV-1a
+//                                  instance field の (名前:型;) 列の FNV-1a。
+//                                  struct 型 field は内部レイアウトへ再帰展開
+//                                  (struct 内部変更が owner の hash に伝播)
 //   .Methods: (Name, IsStatic, Parameters, Body, ReturnType, ParameterTypes)
 //     Body == null は IL 未対応 method (診断構文等)。backend は拒否してよい。
 //     custom property accessor は get_X/set_X 名でここに現れる (T224)
 //   .Ctor: explicit constructor (Parameters/ParameterTypes/Body)。null なら
 //     default 初期化のみ。Body は field default + initializer 適用後に実行
+// result.Structs: IlStructInfo[] — データ struct (M5 v1) の migration
+//   metadata (Name / Fields / LayoutHash)。struct 値は reload 時に owner
+//   経由で再直列化される (il-design §6、HotReload.cs)
 ```
 
 シリアライズ形式は定義しない（v0 決定 — il-spec §1）。luo は .NET から

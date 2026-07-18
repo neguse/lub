@@ -53,6 +53,25 @@ public class StructSemanticsTests
         Assert.Equal("1|11", result);
     }
 
+    // C# の struct 型 field の default は zero 初期化された struct 値
+    // (nil にすると member アクセスが実行時エラーになる)
+    [Fact]
+    public void ClassField_DefaultsToZeroedStruct()
+    {
+        var result = TestHelper.TranspileAndRun(Vec + """
+            public class Holder
+            {
+                public Vec2 Pos;
+                public static string Test()
+                {
+                    var h = new Holder();
+                    return $"{h.Pos.X}|{h.Pos.Y}";
+                }
+            }
+            """, "Holder.Test()", differential: false);
+        Assert.Equal("0|0", result);
+    }
+
     [Fact]
     public void ArrayElement_InPlaceWrite_AndReadCopies()
     {

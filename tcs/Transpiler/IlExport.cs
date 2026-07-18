@@ -43,12 +43,21 @@ public sealed record IlMethodInfo(
     string ReturnType = "void",
     ImmutableArray<string> ParameterTypes = default);
 
+/// <summary>データ struct (M5 v1) の migration metadata。field のみ
+/// (member は診断済み)。LayoutHash は class と同じ展開規則で、struct 値は
+/// reload 時に owner 経由で再直列化される (il-design §6)。</summary>
+public sealed record IlStructInfo(
+    string Name,
+    ImmutableArray<IlFieldInfo> Fields,
+    string LayoutHash);
+
 /// <summary>結果。TopLevel は top-level 文 (エントリポイント本文相当) の IL
 /// (無ければ null、IL 未対応構文を含めば null — Diagnostics で判別)。</summary>
 public sealed record IlExportResult(
     ImmutableArray<IlClassInfo> Classes,
     ImmutableArray<string> Diagnostics,
-    IlBlock? TopLevel = null);
+    IlBlock? TopLevel = null,
+    ImmutableArray<IlStructInfo> Structs = default);
 
 public static class IlExport
 {
@@ -70,8 +79,10 @@ public static class IlExport
                 TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
         }
 
-        // struct layout の収集 (owner class の layout hash へ推移的に展開する)
+        // struct layout の収集 (owner class の layout hash へ推移的に展開し、
+        // struct 自身も migration metadata として契約に載せる)
         var structLayouts = new Dictionary<string, List<(string Name, string Type)>>();
+        var structDecls = new List<(string Name, string Key)>();
         foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);
@@ -93,10 +104,20 @@ public static class IlExport
                 }
                 if (model.GetDeclaredSymbol(st) is { } stSymbol)
                 {
-                    structLayouts[stSymbol.ToDisplayString()] = layout;
+                    var key = stSymbol.ToDisplayString();
+                    structLayouts[key] = layout;
+                    structDecls.Add((st.Identifier.ValueText, key));
                 }
             }
         }
+        var structs = structDecls.Select(s =>
+        {
+            var fields = structLayouts[s.Key]
+                .Select(f => new IlFieldInfo(f.Name, f.Type, false))
+                .ToList();
+            return new IlStructInfo(s.Name, [.. fields],
+                LayoutHash(fields, structLayouts));
+        }).ToList();
 
         var classes = new List<IlClassInfo>();
         var emitter = new LuaEmitter();
@@ -120,7 +141,8 @@ public static class IlExport
         }
         var topLevelIl = topLevelModel != null
             ? emitter.ExportStatsIl(topLevelModel, topLevel) : null;
-        return new IlExportResult([.. classes], [.. diagnostics], topLevelIl);
+        return new IlExportResult([.. classes], [.. diagnostics], topLevelIl,
+            [.. structs]);
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,

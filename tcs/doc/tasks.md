@@ -47,7 +47,10 @@
       - [x] (b) reload runtime: weak registry + metadata diff 適用
             (added=initializer / discarded=破棄 / retained 保持、in-place で
             identity 維持)、OnReload フック、reload は frame 境界
-      - [ ] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
+      - [x] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
+      - 残: 実導線 (ファイル監視 → EmitReloadChunk → 実行中 VM へ適用) は
+        実利用トラックで接続。List/Dict 内 struct 値の再直列化と record class
+        の migration は需要待ち
 
 ---
 

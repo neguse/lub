@@ -1450,3 +1450,10 @@
 - module mode: registry の strict _ENV が `__tcs_instances` guard 代入を弾いたため、host 所有 + 当該キーのみ write 許可に変更
 - 検証: HotReloadTests 4 本 (field migration + identity / static 保持 + method swap / 継承 field 伝播 / OnReload) green、全 721 green (module/snapshot 回帰込み)
 - 判断: reload chunk は自己完結 (helper を chunk 内 local 定義) — 将来 load() 経由の実 reload 導線にそのまま載る。record class は IlExport 対象外のため未移行 (対象化は需要待ち)。DigestKernels は class 構築を含まないため bench 数値への登録コスト影響なし
+
+### T220(c): struct 値の再直列化 migration + struct field default 修正 ✓ (2026-07-18)
+- 発見バグ修正: struct 型 class field の default 初期化が `nil` で member アクセスが実行時エラーになる既存ギャップ (T219b 残の一因) を修正 — source 宣言のデータ struct は `{Struct}.new()` (zero 値) で初期化
+- IlExport 契約拡張: `Structs` (IlStructInfo: Name/Fields/LayoutHash) を追加、il-reference.md へ記載
+- HotReload: layout の変わった struct ごとに再直列化関数を生成し、owner (class instance field / static field、直接と配列の両形) 経由で新 layout の table に組み直す。retained field は旧値 (struct は再帰 migrate)、added は default (struct なら v2 の zero 値)、同名型変更は新型 default へ reset
+- 検証: HotReloadTests +3 (struct field 追加+削除 / 配列要素 / added struct field の zero 値)、StructSemanticsTests +1 (default init)、全 725+48 green
+- 残課題: List/Dict 内 struct 値の再直列化、record class の migration、実導線接続 (tasks.md 記載)
