@@ -70,6 +70,34 @@ public static class IlExport
                 TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
         }
 
+        // struct layout の収集 (owner class の layout hash へ推移的に展開する)
+        var structLayouts = new Dictionary<string, List<(string Name, string Type)>>();
+        foreach (var tree in trees)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            foreach (var st in tree.GetCompilationUnitRoot().DescendantNodes()
+                .OfType<StructDeclarationSyntax>())
+            {
+                var layout = new List<(string, string)>();
+                foreach (var field in st.Members.OfType<FieldDeclarationSyntax>())
+                {
+                    foreach (var v in field.Declaration.Variables)
+                    {
+                        if (model.GetDeclaredSymbol(v) is IFieldSymbol
+                            { IsStatic: false } fs)
+                        {
+                            layout.Add((v.Identifier.ValueText,
+                                fs.Type.ToDisplayString()));
+                        }
+                    }
+                }
+                if (model.GetDeclaredSymbol(st) is { } stSymbol)
+                {
+                    structLayouts[stSymbol.ToDisplayString()] = layout;
+                }
+            }
+        }
+
         var classes = new List<IlClassInfo>();
         var emitter = new LuaEmitter();
         var topLevel = new List<StatementSyntax>();
@@ -80,7 +108,7 @@ public static class IlExport
             foreach (var cls in tree.GetCompilationUnitRoot().DescendantNodes()
                 .OfType<ClassDeclarationSyntax>())
             {
-                classes.Add(ExportClass(emitter, model, cls));
+                classes.Add(ExportClass(emitter, model, cls, structLayouts));
             }
             var globals = tree.GetCompilationUnitRoot().Members
                 .OfType<GlobalStatementSyntax>().ToList();
@@ -96,7 +124,8 @@ public static class IlExport
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,
-        SemanticModel model, ClassDeclarationSyntax cls)
+        SemanticModel model, ClassDeclarationSyntax cls,
+        Dictionary<string, List<(string Name, string Type)>> structLayouts)
     {
         var symbol = model.GetDeclaredSymbol(cls);
         var baseName = symbol?.BaseType is { SpecialType: SpecialType.None } b
@@ -225,21 +254,56 @@ public static class IlExport
         }
 
         return new IlClassInfo(cls.Identifier.ValueText, baseName,
-            [.. fields], LayoutHash(fields), [.. methods], ctor);
+            [.. fields], LayoutHash(fields, structLayouts), [.. methods], ctor);
     }
 
     // layout version hash (il-spec §14): instance field の (名前, 型) 列の
-    // FNV-1a。field の追加・削除・改名・型変更で変わる。
-    private static string LayoutHash(List<IlFieldInfo> fields)
+    // FNV-1a。field の追加・削除・改名・型変更で変わる。struct 型の field は
+    // 内部レイアウトへ推移的に展開する — struct 値は reload 時に owner 経由で
+    // 再直列化される (il-design §6) ため、struct 内部の変更も owner の hash に
+    // 現れる必要がある。
+    private static string LayoutHash(List<IlFieldInfo> fields,
+        Dictionary<string, List<(string Name, string Type)>> structLayouts)
     {
         uint h = 2166136261;
         foreach (var f in fields.Where(f => !f.IsStatic))
         {
-            foreach (var ch in $"{f.Name}:{f.Type};")
+            foreach (var ch in $"{f.Name}:")
             {
                 h = (h ^ ch) * 16777619;
             }
+            h = HashType(h, f.Type, structLayouts, []);
+            h = (h ^ ';') * 16777619;
         }
         return h.ToString("x8");
+    }
+
+    private static uint HashType(uint h, string type,
+        Dictionary<string, List<(string Name, string Type)>> structLayouts,
+        HashSet<string> expanding)
+    {
+        // 循環 (C# では値型循環は CS0523 だが防御的に) は名前のみで打ち切る
+        if (!structLayouts.TryGetValue(type, out var layout)
+            || !expanding.Add(type))
+        {
+            foreach (var ch in type)
+            {
+                h = (h ^ ch) * 16777619;
+            }
+            return h;
+        }
+        h = (h ^ '{') * 16777619;
+        foreach (var (name, fieldType) in layout)
+        {
+            foreach (var ch in $"{name}:")
+            {
+                h = (h ^ ch) * 16777619;
+            }
+            h = HashType(h, fieldType, structLayouts, expanding);
+            h = (h ^ ';') * 16777619;
+        }
+        h = (h ^ '}') * 16777619;
+        expanding.Remove(type);
+        return h;
     }
 }

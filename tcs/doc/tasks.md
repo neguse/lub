@@ -34,13 +34,20 @@
       ctor 連鎖 / 静的 link (--lib) まで全マイルストーン受入済み
       (digest 3/3 + 全サンプル stdout 一致)。未対応構文は明示エラー方針で、
       対応面の拡張は実利用の需要駆動 (done.md 第一〜第八参照)
-- [ ] **T219b** (P2、需要ゲート): struct の残り (record struct、struct の
-      member、struct 型 field)。判断 (2026-07-18): particles 級の実需要は
-      データ struct v1 で充足しており、拡張は具体需要が出た時点で着手
-- [ ] **T220** (P2、需要ゲート): migration metadata の実装。判断
-      (2026-07-18): スキーマと layout hash は T217 で契約済み。実装は
-      dev ホットリロードの実運用 (lub playground の reload 導線) が
-      決まった時点で着手 — 現時点で書くと検証面が無い
+- [ ] **T219b** (P1 へ格上げ): struct の残り (record struct、struct の
+      member、struct 型 field)。需要シグナル: perf bench の particles_struct
+      が tcs2c 未対応で毎 push "-" 表示 (2026-07-18)。tcs2c 側の struct
+      対応も本タスクの範囲
+- [ ] **T220** (P1、ゲート解除 2026-07-18): hot reload の実装。ユーザー判断で
+      「cold reload 安全弁止まり」を却下し、il-design §6 の CLOS 流 eager
+      migration を実装対象とする。検証面は同一 VM 内で 2 版を transpile して
+      reload するセマンティックテストで立てる (lub 側導線は待たない)。段階:
+      - [x] (a) layout hash の struct 推移展開 (IlExport — struct 内部変更が
+            owner class の hash へ伝播。T219b の struct 型 field 解禁に先行)
+      - [ ] (b) reload runtime: weak registry + metadata diff 適用
+            (added=initializer / discarded=破棄 / retained 保持、in-place で
+            identity 維持)、OnReload フック、reload は frame 境界
+      - [ ] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
 
 ---
 

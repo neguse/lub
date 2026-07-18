@@ -61,6 +61,50 @@ public class IlExportTests
         Assert.NotEqual(baseHash, renamed);
     }
 
+    // struct 値は reload 時に owner 経由で再直列化されるため (il-design §6)、
+    // struct 内部のレイアウト変更は embed する class の hash に伝播する必要がある
+    [Fact]
+    public void Export_LayoutHashExpandsEmbeddedStructLayouts()
+    {
+        const string V1 = """
+            public struct Vec2 { public float X; public float Y; }
+            public class Player { public Vec2 Pos; public int Hp; }
+            """;
+        var baseHash = IlExport.Export([V1]).Classes[0].LayoutHash;
+
+        // struct への field 追加は owner class の hash を変える
+        var structGrown = IlExport.Export([V1.Replace(
+            "public float Y; }", "public float Y; public float Z; }")])
+            .Classes[0].LayoutHash;
+        Assert.NotEqual(baseHash, structGrown);
+
+        // struct 内 field の改名も伝播する
+        var structRenamed = IlExport.Export([V1.Replace(
+            "public float Y; }", "public float Y2; }")])
+            .Classes[0].LayoutHash;
+        Assert.NotEqual(baseHash, structRenamed);
+
+        // 同一レイアウトなら安定
+        var same = IlExport.Export([V1]).Classes[0].LayoutHash;
+        Assert.Equal(baseHash, same);
+    }
+
+    // struct in struct も推移的に伝播する
+    [Fact]
+    public void Export_LayoutHashExpandsNestedStructLayouts()
+    {
+        const string V1 = """
+            public struct Vec2 { public float X; public float Y; }
+            public struct Aabb { public Vec2 Min; public Vec2 Max; }
+            public class World { public Aabb Bounds; }
+            """;
+        var baseHash = IlExport.Export([V1]).Classes[0].LayoutHash;
+        var innerGrown = IlExport.Export([V1.Replace(
+            "public float Y; }", "public float Y; public float Z; }")])
+            .Classes[0].LayoutHash;
+        Assert.NotEqual(baseHash, innerGrown);
+    }
+
     [Fact]
     public void Export_UnsupportedBodyIsNull()
     {

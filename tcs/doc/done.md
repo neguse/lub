@@ -1437,3 +1437,9 @@
 ### bench 結果の workflow artifact 化 ✓ (2026-07-18)
 - CI の bench-2backend job で stdout CSV を `bench-results.csv` へ tee し、workflow artifact `bench-2backend-results` としてアップロード (if: always() — digest 不一致で fail しても部分結果を残す)
 - 検証: 軽量パラメータ (RUNS=1, FRAMES=100) で stdout が純 CSV であることを確認、push 後の CI 完走と artifact 生成を確認
+
+### T220(a): layout hash の struct 推移展開 ✓ (2026-07-18)
+- IlExport の LayoutHash を拡張: struct 型 field は内部レイアウト `{name:type;...}` へ再帰展開して hash する (struct in struct も推移、循環は防御的に名前で打ち切り)。struct 値は reload 時に owner 経由で再直列化される (il-design §6) ため、struct 内部の変更が owner class の hash に現れないと変更検知が漏れる穴を塞いだ
+- 文脈: ユーザー判断で T220 のゲート解除 — cold reload 安全弁止まりでなく CLOS 流 eager migration を実装する。検証面は同一 VM 2 版 reload のセマンティックテストで立てる方針 (tasks.md に段階 (b)(c) を記録)
+- 検証: IlExportTests +2 (embed 変更/改名の伝播、nested struct 伝播、同一レイアウト安定) 8/8 green
+- 判断: T219b の struct 型 field 解禁に先行して hash 契約だけ先に固めた (解禁時に hash 互換を壊さないため)
