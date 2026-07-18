@@ -1,4 +1,4 @@
-# AOT 性能上界 spike: PC 結果
+# perf PC 実測結果 (AOT 性能上界の決着データ)
 
 - 測定: kernel/variant ごとに 7 回実行した median（ms/frame）
 - 正当性: 各 workload について全変種・全 7 run の FNV-1a digest 一致を確認

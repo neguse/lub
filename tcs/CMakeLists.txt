@@ -74,8 +74,8 @@ set_target_properties(lua PROPERTIES
 )
 
 # --- lua32: LUA_32BITS 変種 (int32 + float32) ---
-# IL の数値モデル (il-design §4 / il-spec §5-6) と性能 spike
-# (../luo/docs/spike-ceiling.md) の実行基盤。M4 (T216) で既定へ切替予定。
+# IL の数値モデル (il-design §4 / il-spec §5-6) と性能実測
+# (perf/README.md) の実行基盤。
 option(TCS_LUA_32BITS_VARIANT "Build lua32 (LUA_32BITS) alongside lua" ON)
 if(TCS_LUA_32BITS_VARIANT)
     add_library(liblua32 STATIC ${LUA_CORE} ${LUA_LIB})

@@ -110,6 +110,11 @@ support-matrix / README / design doc、歴史は done.md と git log。
 
 ## コード規約
 
+### 命名
+
+- 「spike」という名称は使わない（識別子・ファイル名・新規ドキュメントとも）。
+  旧 spike 由来の実体はすべて `perf` 系の名前を使う
+
 ### C# (.NET 10 / C# 14)
 
 - `<TargetFramework>net10.0</TargetFramework>` / `<LangVersion>14</LangVersion>`

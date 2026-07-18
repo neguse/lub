@@ -17,3 +17,9 @@ deps/lua/*.o
 
 # CMake build directory
 build/
+
+# Playdate build artifacts (perf/playdate)
+perf/playdate/build*/
+perf/playdate/Source/pdex.*
+perf/playdate/*.pdx/
+perf/playdate/*.log

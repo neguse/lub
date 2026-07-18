@@ -3,18 +3,18 @@ set -euo pipefail
 export LC_ALL=C
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-BUILD_DIR=${SPIKE_BUILD_DIR:-"$SCRIPT_DIR/build"}
+BUILD_DIR=${PERF_BUILD_DIR:-"$SCRIPT_DIR/build"}
 RESULTS_FILE="$SCRIPT_DIR/results-pc.md"
-TCS_LUA_SRC=${SPIKE_TCS_LUA_SRC:-/home/neguse/ghq/github.com/neguse/tcs/deps/lua}
-LUA32_OVERRIDE=${SPIKE_LUA32:-"$TCS_LUA_SRC/lua32"}
+TCS_LUA_SRC=${PERF_TCS_LUA_SRC:-/home/neguse/ghq/github.com/neguse/tcs/deps/lua}
+LUA32_OVERRIDE=${PERF_LUA32:-"$TCS_LUA_SRC/lua32"}
 RUNS=7
 
 cmake_args=(
   -S "$SCRIPT_DIR"
   -B "$BUILD_DIR"
   -DCMAKE_BUILD_TYPE=Release
-  "-DSPIKE_TCS_LUA_SRC=$TCS_LUA_SRC"
-  "-DSPIKE_LUA32=$LUA32_OVERRIDE"
+  "-DPERF_TCS_LUA_SRC=$TCS_LUA_SRC"
+  "-DPERF_LUA32=$LUA32_OVERRIDE"
 )
 
 cmake "${cmake_args[@]}" >&2
@@ -53,10 +53,10 @@ if [[ $lua32_probe != "2147483647,4" ]]; then
   exit 1
 fi
 
-LUAJIT=${SPIKE_LUAJIT:-}
+LUAJIT=${PERF_LUAJIT:-}
 if [[ -n $LUAJIT ]]; then
   if [[ ! -x $LUAJIT ]]; then
-    printf 'SPIKE_LUAJIT is not executable: %s\n' "$LUAJIT" >&2
+    printf 'PERF_LUAJIT is not executable: %s\n' "$LUAJIT" >&2
     exit 1
   fi
 elif command -v luajit >/dev/null 2>&1; then
@@ -190,7 +190,7 @@ sprite_1024_slot_ratio=$(
 )
 
 if awk -v native="$sprite_1024_native" 'BEGIN { exit !(native >= 10.0) }'; then
-  interpretation="PC の sprite_update N=1024 でも native が 10ms/frame 以上のため、docs/spike-ceiling.md の「native も落ちる → workload/KPI の再交渉」側に該当する。"
+  interpretation="PC の sprite_update N=1024 でも native が 10ms/frame 以上のため、docs/perf-ceiling.md の「native も落ちる → workload/KPI の再交渉」側に該当する。"
 elif awk -v overhead="$sprite_1024_slot_ratio" \
     'BEGIN { exit !(overhead <= 1.3) }'; then
   interpretation="PC 比率では sprite_update N=1024 の aot-slot/native が ${sprite_1024_slot_ratio}x で 1.3x 以内のため、「Lua table object model を維持してよい」候補側に該当する（10ms 条件の最終判定は実機測定待ち）。"
@@ -198,7 +198,7 @@ else
   interpretation="PC 比率では sprite_update N=1024 の aot-slot/native が ${sprite_1024_slot_ratio}x で 1.3x 条件外のため、「release-lowering は IL-native 表現」側に該当する（10ms 条件の最終判定は実機測定待ち）。"
 fi
 
-RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/t212-spike.XXXXXX")
+RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/t212-perf.XXXXXX")
 cleanup() {
   rm -r -- "$RUN_TMP"
 }
@@ -206,7 +206,7 @@ trap cleanup EXIT
 summary="$RUN_TMP/results-pc.md"
 
 {
-  printf '# AOT 性能上界 spike: PC 結果\n\n'
+  printf '# AOT 性能上界 perf: PC 結果\n\n'
   printf -- '- 測定: kernel/variant ごとに 7 回実行した median（ms/frame）\n'
   printf -- '- 正当性: 各 workload について全変種・全 7 run の FNV-1a digest 一致を確認\n'
   printf -- '- Lua: `%s`（LUA_32BITS）\n' "$LUA32"

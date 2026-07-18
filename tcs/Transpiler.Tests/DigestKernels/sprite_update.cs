@@ -1,6 +1,6 @@
 using System;
 
-// digest kernel: sprite_update (../luo/spike/CONTRACT.md kernel 1)
+// digest kernel: sprite_update (perf/CONTRACT.md kernel 1)
 // 演算列・LCG・定数は CONTRACT と bit 一致必須。digest 対象値を 1 行 1 値で出力。
 public class SpriteUpdate
 {

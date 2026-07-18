@@ -1,44 +1,55 @@
-#ifndef SPIKE_COMMON_H
-#define SPIKE_COMMON_H
+#ifndef PERF_COMMON_H
+#define PERF_COMMON_H
 
 #include <stddef.h>
 #include <stdint.h>
 
 enum {
-    SPIKE_FRAMES = 1000,
-    SPIKE_SPAWN_CAPACITY = 1024,
-    SPIKE_SPAWN_PER_FRAME = 32,
-    SPIKE_PARTICLE_COUNT = 4096
+    PERF_FRAMES = 1000,
+    PERF_SPAWN_CAPACITY = 1024,
+    PERF_SPAWN_PER_FRAME = 32,
+    PERF_PARTICLE_COUNT = 4096
 };
 
-#define SPIKE_DT (1.0f / 50.0f)
+#define PERF_DT (1.0f / 50.0f)
 
-typedef struct SpikeRng {
+typedef struct PerfRng {
     uint32_t state;
-} SpikeRng;
+} PerfRng;
 
-typedef enum SpikeKernel {
-    SPIKE_SPRITE_UPDATE,
-    SPIKE_SPAWN_CHURN_NAIVE,
-    SPIKE_SPAWN_CHURN_POOL,
-    SPIKE_PARTICLES
-} SpikeKernel;
+typedef enum PerfKernel {
+    PERF_SPRITE_UPDATE,
+    PERF_SPAWN_CHURN_NAIVE,
+    PERF_SPAWN_CHURN_POOL,
+    PERF_PARTICLES
+} PerfKernel;
 
-typedef struct SpikeWorkload {
-    SpikeKernel kernel;
+typedef struct PerfWorkload {
+    PerfKernel kernel;
     const char *name;
     size_t count;
-} SpikeWorkload;
+} PerfWorkload;
 
-uint32_t spike_lcg(SpikeRng *rng);
-float spike_frand(SpikeRng *rng, float lo, float hi);
+typedef struct PerfRunResult {
+    double elapsed_seconds;
+    uint32_t digest;
+} PerfRunResult;
 
-uint32_t spike_digest_init(void);
-uint32_t spike_digest_float(uint32_t digest, float value);
+uint32_t perf_lcg(PerfRng *rng);
+float perf_frand(PerfRng *rng, float lo, float hi);
 
-double spike_now_seconds(void);
-int spike_parse_workload(int argc, char **argv, SpikeWorkload *workload);
-void spike_print_result(const SpikeWorkload *workload, const char *variant,
+uint32_t perf_digest_init(void);
+uint32_t perf_digest_float(uint32_t digest, float value);
+
+/* perf_now_seconds はホストでは common.c (POSIX clock)、Playdate では
+   perf/playdate/ の shim が提供する */
+double perf_now_seconds(void);
+int perf_parse_workload(int argc, char **argv, PerfWorkload *workload);
+void perf_print_result(const PerfWorkload *workload, const char *variant,
     double elapsed_seconds, uint32_t digest);
+
+PerfRunResult perf_native_dispatch(const PerfWorkload *workload);
+PerfRunResult perf_aot_hash_dispatch(const PerfWorkload *workload);
+PerfRunResult perf_aot_slot_dispatch(const PerfWorkload *workload);
 
 #endif

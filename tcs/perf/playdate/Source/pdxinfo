@@ -1,0 +1,6 @@
+name=tcs perf
+author=neguse
+description=tcs perf harness (kernel benchmarks)
+bundleID=dev.neguse.tcs.perf
+version=0.1
+buildNumber=1

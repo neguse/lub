@@ -1,3 +1,6 @@
+/* ホスト CLI 専用部 (POSIX clock / argv / stdout)。
+   OS 非依存の kernel 共通部は core.c */
+
 #define _POSIX_C_SOURCE 200809L
 
 #include "common.h"
@@ -9,47 +12,8 @@
 #include <string.h>
 #include <time.h>
 
-_Static_assert(sizeof(float) == 4, "the spike requires 32-bit float");
-_Static_assert(sizeof(uint32_t) == 4, "the spike requires 32-bit uint32_t");
-
-uint32_t
-spike_lcg(SpikeRng *rng)
-{
-    rng->state = (rng->state * UINT32_C(1103515245) + UINT32_C(12345))
-        & UINT32_C(0x3fffffff);
-    return rng->state;
-}
-
-float
-spike_frand(SpikeRng *rng, float lo, float hi)
-{
-    float scaled = (float)(spike_lcg(rng) % UINT32_C(1000))
-        * (1.0f / 1000.0f);
-    return lo + scaled * (hi - lo);
-}
-
-uint32_t
-spike_digest_init(void)
-{
-    return UINT32_C(2166136261);
-}
-
-uint32_t
-spike_digest_float(uint32_t digest, float value)
-{
-    uint32_t bits;
-    unsigned int shift;
-
-    memcpy(&bits, &value, sizeof(bits));
-    for (shift = 0; shift < 32; shift += 8) {
-        digest ^= (bits >> shift) & UINT32_C(0xff);
-        digest *= UINT32_C(16777619);
-    }
-    return digest;
-}
-
 double
-spike_now_seconds(void)
+perf_now_seconds(void)
 {
     struct timespec now;
 
@@ -76,7 +40,7 @@ parse_count(const char *text, size_t *count)
 }
 
 int
-spike_parse_workload(int argc, char **argv, SpikeWorkload *workload)
+perf_parse_workload(int argc, char **argv, PerfWorkload *workload)
 {
     size_t count;
 
@@ -92,22 +56,22 @@ spike_parse_workload(int argc, char **argv, SpikeWorkload *workload)
     workload->count = count;
     if (strcmp(argv[1], "sprite_update") == 0
         && (count == 256 || count == 1024 || count == 4096)) {
-        workload->kernel = SPIKE_SPRITE_UPDATE;
+        workload->kernel = PERF_SPRITE_UPDATE;
         return 1;
     }
     if (strcmp(argv[1], "spawn_churn_naive") == 0
-        && count == SPIKE_SPAWN_CAPACITY) {
-        workload->kernel = SPIKE_SPAWN_CHURN_NAIVE;
+        && count == PERF_SPAWN_CAPACITY) {
+        workload->kernel = PERF_SPAWN_CHURN_NAIVE;
         return 1;
     }
     if (strcmp(argv[1], "spawn_churn_pool") == 0
-        && count == SPIKE_SPAWN_CAPACITY) {
-        workload->kernel = SPIKE_SPAWN_CHURN_POOL;
+        && count == PERF_SPAWN_CAPACITY) {
+        workload->kernel = PERF_SPAWN_CHURN_POOL;
         return 1;
     }
     if (strcmp(argv[1], "particles") == 0
-        && count == SPIKE_PARTICLE_COUNT) {
-        workload->kernel = SPIKE_PARTICLES;
+        && count == PERF_PARTICLE_COUNT) {
+        workload->kernel = PERF_PARTICLES;
         return 1;
     }
 
@@ -116,10 +80,10 @@ spike_parse_workload(int argc, char **argv, SpikeWorkload *workload)
 }
 
 void
-spike_print_result(const SpikeWorkload *workload, const char *variant,
+perf_print_result(const PerfWorkload *workload, const char *variant,
     double elapsed_seconds, uint32_t digest)
 {
-    double ms_per_frame = elapsed_seconds * 1000.0 / SPIKE_FRAMES;
+    double ms_per_frame = elapsed_seconds * 1000.0 / PERF_FRAMES;
 
     printf("%s,%s,%zu,%.9f,%08" PRIx32 "\n",
         workload->name, variant, workload->count, ms_per_frame, digest);

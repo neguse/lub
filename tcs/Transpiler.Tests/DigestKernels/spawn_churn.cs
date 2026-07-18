@@ -1,7 +1,7 @@
 using System;
 
-// digest kernel: spawn_churn (../luo/spike/CONTRACT.md kernel 2)。
-// 解釈 (spike 実装と統一): 開始時に n 体を充填し、毎フレーム
+// digest kernel: spawn_churn (perf/CONTRACT.md kernel 2)。
+// 解釈 (perf 実装と統一): 開始時に n 体を充填し、毎フレーム
 // 「spawn 32 (最古を上書き) → 生存全体を最古→最新順に更新」。
 public class Entity
 {

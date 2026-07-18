@@ -1,6 +1,6 @@
-# spike 実装契約 (T212 PC 測定)
+# perf 実装契約 (T212 PC 測定)
 
-`docs/spike-ceiling.md` の PC 部分の実装仕様。全変種で bit 一致する digest を
+PC 測定の実装仕様 (背景・KPI floor は `perf/README.md`)。全変種で bit 一致する digest を
 出すため、演算列・定数・乱数を厳密にここで固定する。
 
 ## 共通
@@ -8,9 +8,9 @@
 - f32 演算のみ。libm 禁止。C は `-O2 -ffp-contract=off -fwrapv`、float 演算は
   すべて `float` 型 (excess precision 排除: `-fexcess-precision=standard`)
 - Lua 実行は LUA_32BITS ビルド (`deps/lua/lua32`。CMake 変数
-  `SPIKE_LUA32` で上書き可)。aot-hash / aot-slot の C 実装は同じ
+  `PERF_LUA32` で上書き可)。aot-hash / aot-slot の C 実装は同じ
   LUA_32BITS 構成の liblua を embed する (`deps/lua` のソースから
-  spike の CMake で LUA_32BITS 付きビルド)
+  perf の CMake で LUA_32BITS 付きビルド)
 - 乱数: LCG。`state = (state * 1103515245 + 12345) & 0x3FFFFFFF`、
   戻り値はその state。C は uint32_t で計算して & 後に int32 へ (Lua の
   整数 wrap + `&` と bit 一致)。初期 seed = 12345
@@ -61,7 +61,7 @@
   `if d2 < 400.0f then px = px + dx*0.1f; py = py + dy*0.1f end`
 - digest 対象: 全 i 順に px, py, vx, vy
 
-## 変種 (docs/spike-ceiling.md の表)
+## 変種
 
 - interp: 上記を素の Lua (sequence table / naive は table 生成)。
   sprite/particle は record 的 table `{x=..,y=..}` (hash access) で書く
@@ -79,14 +79,14 @@
 - 出力形式 (1 行 1 結果): `kernel,variant,N,ms_per_frame,digest`
 - 全変種の digest 一致を harness が検証し、不一致は exit 1
 - 成果物: `perf/` 以下に CMakeLists.txt + C ソース + lua ソース +
-  `run.sh` (ビルド→実行→表形式サマリ)。結果は `spike/results-pc.md` へ
+  `run.sh` (ビルド→実行→表形式サマリ)。結果は `perf/results-pc.md` へ
   (実測値表 + aot-slot/native 比 + 合否解釈のどちらに落ちたか)
 
 ## tcs 側実測 digest (T215 harness、lua32 実行)
 
-TinyC# → Lua (tcs transpiler) 経由の digest。spike 変種はこれと一致すべき:
+TinyC# → Lua (tcs transpiler) 経由の digest。perf 変種はこれと一致すべき:
 
-- sprite_update (N=256): `e8814b32` — spike 全変種と一致確認済み
+- sprite_update (N=256): `e8814b32` — perf 全変種と一致確認済み
 - spawn_churn: `9274159d` — 同上 (解釈統一: 開始時に n 体充填、毎フレーム
   spawn 32 で最古を上書き → 生存全体を最古→最新順に更新)
 - particles (N=4096): `8bf97e09` — 同上

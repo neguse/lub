@@ -7,14 +7,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if defined(SPIKE_AOT_HASH) == defined(SPIKE_AOT_SLOT)
+#if defined(PERF_AOT_HASH) == defined(PERF_AOT_SLOT)
 #error "define exactly one AOT layout"
 #endif
 
-#if defined(SPIKE_AOT_HASH)
-#define SPIKE_VARIANT "aot-hash"
+#if defined(PERF_AOT_HASH)
+#define PERF_VARIANT "aot-hash"
+#define PERF_AOT_DISPATCH perf_aot_hash_dispatch
 #else
-#define SPIKE_VARIANT "aot-slot"
+#define PERF_VARIANT "aot-slot"
+#define PERF_AOT_DISPATCH perf_aot_slot_dispatch
 #endif
 
 typedef struct Field {
@@ -30,10 +32,7 @@ static const Field FIELD_FRAME = { 5, "frame" };
 static const Field FIELD_PX = { 1, "px" };
 static const Field FIELD_PY = { 2, "py" };
 
-typedef struct RunResult {
-    double elapsed_seconds;
-    uint32_t digest;
-} RunResult;
+typedef PerfRunResult RunResult;
 
 static lua_State *
 new_state(void)
@@ -50,7 +49,7 @@ new_state(void)
 static void
 new_record(lua_State *state, int field_count)
 {
-#if defined(SPIKE_AOT_HASH)
+#if defined(PERF_AOT_HASH)
     lua_createtable(state, 0, field_count);
 #else
     lua_createtable(state, field_count, 0);
@@ -63,7 +62,7 @@ get_number(lua_State *state, int table_index, const Field *field)
     float value;
 
     table_index = lua_absindex(state, table_index);
-#if defined(SPIKE_AOT_HASH)
+#if defined(PERF_AOT_HASH)
     lua_getfield(state, table_index, field->key);
 #else
     lua_rawgeti(state, table_index, field->slot);
@@ -78,7 +77,7 @@ set_number(lua_State *state, int table_index, const Field *field, float value)
 {
     table_index = lua_absindex(state, table_index);
     lua_pushnumber(state, (lua_Number)value);
-#if defined(SPIKE_AOT_HASH)
+#if defined(PERF_AOT_HASH)
     lua_setfield(state, table_index, field->key);
 #else
     lua_rawseti(state, table_index, field->slot);
@@ -91,7 +90,7 @@ get_integer(lua_State *state, int table_index, const Field *field)
     lua_Integer value;
 
     table_index = lua_absindex(state, table_index);
-#if defined(SPIKE_AOT_HASH)
+#if defined(PERF_AOT_HASH)
     lua_getfield(state, table_index, field->key);
 #else
     lua_rawgeti(state, table_index, field->slot);
@@ -107,7 +106,7 @@ set_integer(lua_State *state, int table_index, const Field *field,
 {
     table_index = lua_absindex(state, table_index);
     lua_pushinteger(state, value);
-#if defined(SPIKE_AOT_HASH)
+#if defined(PERF_AOT_HASH)
     lua_setfield(state, table_index, field->key);
 #else
     lua_rawseti(state, table_index, field->slot);
@@ -115,16 +114,16 @@ set_integer(lua_State *state, int table_index, const Field *field,
 }
 
 static void
-initialize_entity(lua_State *state, int table_index, SpikeRng *rng)
+initialize_entity(lua_State *state, int table_index, PerfRng *rng)
 {
     set_number(state, table_index, &FIELD_X,
-        spike_frand(rng, 0.0f, 400.0f));
+        perf_frand(rng, 0.0f, 400.0f));
     set_number(state, table_index, &FIELD_Y,
-        spike_frand(rng, 0.0f, 240.0f));
+        perf_frand(rng, 0.0f, 240.0f));
     set_number(state, table_index, &FIELD_VX,
-        spike_frand(rng, -30.0f, 30.0f));
+        perf_frand(rng, -30.0f, 30.0f));
     set_number(state, table_index, &FIELD_VY,
-        spike_frand(rng, -30.0f, 30.0f));
+        perf_frand(rng, -30.0f, 30.0f));
 }
 
 static void
@@ -135,8 +134,8 @@ update_entity(lua_State *state, int table_index)
     float vx = get_number(state, table_index, &FIELD_VX);
     float vy = get_number(state, table_index, &FIELD_VY);
 
-    x = x + vx * SPIKE_DT;
-    y = y + vy * SPIKE_DT;
+    x = x + vx * PERF_DT;
+    y = y + vy * PERF_DT;
     if (x < 0.0f) {
         x = 0.0f;
         vx = -vx;
@@ -164,13 +163,13 @@ static uint32_t
 digest_record(lua_State *state, int table_index, uint32_t digest,
     const Field *position_x, const Field *position_y)
 {
-    digest = spike_digest_float(digest,
+    digest = perf_digest_float(digest,
         get_number(state, table_index, position_x));
-    digest = spike_digest_float(digest,
+    digest = perf_digest_float(digest,
         get_number(state, table_index, position_y));
-    digest = spike_digest_float(digest,
+    digest = perf_digest_float(digest,
         get_number(state, table_index, &FIELD_VX));
-    digest = spike_digest_float(digest,
+    digest = perf_digest_float(digest,
         get_number(state, table_index, &FIELD_VY));
     return digest;
 }
@@ -178,7 +177,7 @@ digest_record(lua_State *state, int table_index, uint32_t digest,
 static RunResult
 run_sprite_update(size_t count)
 {
-    SpikeRng rng = { UINT32_C(12345) };
+    PerfRng rng = { UINT32_C(12345) };
     lua_State *state = new_state();
     int root;
     size_t i;
@@ -191,21 +190,21 @@ run_sprite_update(size_t count)
     for (i = 0; i < count; ++i) {
         new_record(state, 5);
         set_number(state, -1, &FIELD_X,
-            spike_frand(&rng, 0.0f, 400.0f));
+            perf_frand(&rng, 0.0f, 400.0f));
         set_number(state, -1, &FIELD_Y,
-            spike_frand(&rng, 0.0f, 240.0f));
+            perf_frand(&rng, 0.0f, 240.0f));
         set_number(state, -1, &FIELD_VX,
-            spike_frand(&rng, -60.0f, 60.0f));
+            perf_frand(&rng, -60.0f, 60.0f));
         set_number(state, -1, &FIELD_VY,
-            spike_frand(&rng, -60.0f, 60.0f));
+            perf_frand(&rng, -60.0f, 60.0f));
         set_integer(state, -1, &FIELD_FRAME,
-            (lua_Integer)(spike_lcg(&rng) % UINT32_C(8)));
+            (lua_Integer)(perf_lcg(&rng) % UINT32_C(8)));
         lua_rawseti(state, root, (lua_Integer)i + 1);
     }
     (void)lua_gc(state, LUA_GCCOLLECT);
 
-    started = spike_now_seconds();
-    for (frame = 0; frame < SPIKE_FRAMES; ++frame) {
+    started = perf_now_seconds();
+    for (frame = 0; frame < PERF_FRAMES; ++frame) {
         for (i = 0; i < count; ++i) {
             int record;
             float x;
@@ -222,8 +221,8 @@ run_sprite_update(size_t count)
             vy = get_number(state, record, &FIELD_VY);
             sprite_frame = get_integer(state, record, &FIELD_FRAME);
 
-            x = x + vx * SPIKE_DT;
-            y = y + vy * SPIKE_DT;
+            x = x + vx * PERF_DT;
+            y = y + vy * PERF_DT;
             if (x < 0.0f) {
                 x = 0.0f;
                 vx = -vx;
@@ -250,9 +249,9 @@ run_sprite_update(size_t count)
             lua_pop(state, 1);
         }
     }
-    result.elapsed_seconds = spike_now_seconds() - started;
+    result.elapsed_seconds = perf_now_seconds() - started;
 
-    result.digest = spike_digest_init();
+    result.digest = perf_digest_init();
     for (i = 0; i < count; ++i) {
         lua_rawgeti(state, root, (lua_Integer)i + 1);
         result.digest = digest_record(state, -1, result.digest,
@@ -267,7 +266,7 @@ run_sprite_update(size_t count)
 static RunResult
 run_spawn_churn(int pooled)
 {
-    SpikeRng rng = { UINT32_C(12345) };
+    PerfRng rng = { UINT32_C(12345) };
     lua_State *state = new_state();
     int root;
     size_t head = 0;
@@ -276,19 +275,19 @@ run_spawn_churn(int pooled)
     double started;
     RunResult result;
 
-    lua_createtable(state, SPIKE_SPAWN_CAPACITY, 0);
+    lua_createtable(state, PERF_SPAWN_CAPACITY, 0);
     root = lua_gettop(state);
-    for (i = 0; i < SPIKE_SPAWN_CAPACITY; ++i) {
+    for (i = 0; i < PERF_SPAWN_CAPACITY; ++i) {
         new_record(state, 4);
         initialize_entity(state, -1, &rng);
         lua_rawseti(state, root, (lua_Integer)i + 1);
     }
     (void)lua_gc(state, LUA_GCCOLLECT);
 
-    started = spike_now_seconds();
-    for (frame = 0; frame < SPIKE_FRAMES; ++frame) {
-        for (i = 0; i < SPIKE_SPAWN_PER_FRAME; ++i) {
-            size_t slot = (head + i) % SPIKE_SPAWN_CAPACITY;
+    started = perf_now_seconds();
+    for (frame = 0; frame < PERF_FRAMES; ++frame) {
+        for (i = 0; i < PERF_SPAWN_PER_FRAME; ++i) {
+            size_t slot = (head + i) % PERF_SPAWN_CAPACITY;
 
             if (pooled) {
                 lua_rawgeti(state, root, (lua_Integer)slot + 1);
@@ -301,20 +300,20 @@ run_spawn_churn(int pooled)
                 lua_rawseti(state, root, (lua_Integer)slot + 1);
             }
         }
-        head = (head + SPIKE_SPAWN_PER_FRAME) % SPIKE_SPAWN_CAPACITY;
-        for (i = 0; i < SPIKE_SPAWN_CAPACITY; ++i) {
-            size_t slot = (head + i) % SPIKE_SPAWN_CAPACITY;
+        head = (head + PERF_SPAWN_PER_FRAME) % PERF_SPAWN_CAPACITY;
+        for (i = 0; i < PERF_SPAWN_CAPACITY; ++i) {
+            size_t slot = (head + i) % PERF_SPAWN_CAPACITY;
 
             lua_rawgeti(state, root, (lua_Integer)slot + 1);
             update_entity(state, -1);
             lua_pop(state, 1);
         }
     }
-    result.elapsed_seconds = spike_now_seconds() - started;
+    result.elapsed_seconds = perf_now_seconds() - started;
 
-    result.digest = spike_digest_init();
-    for (i = 0; i < SPIKE_SPAWN_CAPACITY; ++i) {
-        size_t slot = (head + i) % SPIKE_SPAWN_CAPACITY;
+    result.digest = perf_digest_init();
+    for (i = 0; i < PERF_SPAWN_CAPACITY; ++i) {
+        size_t slot = (head + i) % PERF_SPAWN_CAPACITY;
 
         lua_rawgeti(state, root, (lua_Integer)slot + 1);
         result.digest = digest_record(state, -1, result.digest,
@@ -329,7 +328,7 @@ run_spawn_churn(int pooled)
 static RunResult
 run_particles(void)
 {
-    SpikeRng rng = { UINT32_C(12345) };
+    PerfRng rng = { UINT32_C(12345) };
     lua_State *state = new_state();
     int root;
     size_t i;
@@ -337,25 +336,25 @@ run_particles(void)
     double started;
     RunResult result;
 
-    lua_createtable(state, SPIKE_PARTICLE_COUNT, 0);
+    lua_createtable(state, PERF_PARTICLE_COUNT, 0);
     root = lua_gettop(state);
-    for (i = 0; i < SPIKE_PARTICLE_COUNT; ++i) {
+    for (i = 0; i < PERF_PARTICLE_COUNT; ++i) {
         new_record(state, 4);
         set_number(state, -1, &FIELD_PX,
-            spike_frand(&rng, 100.0f, 300.0f));
+            perf_frand(&rng, 100.0f, 300.0f));
         set_number(state, -1, &FIELD_PY,
-            spike_frand(&rng, 50.0f, 200.0f));
+            perf_frand(&rng, 50.0f, 200.0f));
         set_number(state, -1, &FIELD_VX,
-            spike_frand(&rng, -40.0f, 40.0f));
+            perf_frand(&rng, -40.0f, 40.0f));
         set_number(state, -1, &FIELD_VY,
-            spike_frand(&rng, -40.0f, 40.0f));
+            perf_frand(&rng, -40.0f, 40.0f));
         lua_rawseti(state, root, (lua_Integer)i + 1);
     }
     (void)lua_gc(state, LUA_GCCOLLECT);
 
-    started = spike_now_seconds();
-    for (frame = 0; frame < SPIKE_FRAMES; ++frame) {
-        for (i = 0; i < SPIKE_PARTICLE_COUNT; ++i) {
+    started = perf_now_seconds();
+    for (frame = 0; frame < PERF_FRAMES; ++frame) {
+        for (i = 0; i < PERF_PARTICLE_COUNT; ++i) {
             int record;
             float px;
             float py;
@@ -372,9 +371,9 @@ run_particles(void)
             vx = get_number(state, record, &FIELD_VX);
             vy = get_number(state, record, &FIELD_VY);
 
-            vy = vy + 98.0f * SPIKE_DT;
-            px = px + vx * SPIKE_DT;
-            py = py + vy * SPIKE_DT;
+            vy = vy + 98.0f * PERF_DT;
+            px = px + vx * PERF_DT;
+            py = py + vy * PERF_DT;
             if (px < 0.0f) {
                 px = 0.0f;
                 vx = -vx * 0.9f;
@@ -406,10 +405,10 @@ run_particles(void)
             lua_pop(state, 1);
         }
     }
-    result.elapsed_seconds = spike_now_seconds() - started;
+    result.elapsed_seconds = perf_now_seconds() - started;
 
-    result.digest = spike_digest_init();
-    for (i = 0; i < SPIKE_PARTICLE_COUNT; ++i) {
+    result.digest = perf_digest_init();
+    for (i = 0; i < PERF_PARTICLE_COUNT; ++i) {
         lua_rawgeti(state, root, (lua_Integer)i + 1);
         result.digest = digest_record(state, -1, result.digest,
             &FIELD_PX, &FIELD_PY);
@@ -420,34 +419,36 @@ run_particles(void)
     return result;
 }
 
+RunResult
+PERF_AOT_DISPATCH(const PerfWorkload *workload)
+{
+    switch (workload->kernel) {
+    case PERF_SPRITE_UPDATE:
+        return run_sprite_update(workload->count);
+    case PERF_SPAWN_CHURN_NAIVE:
+        return run_spawn_churn(0);
+    case PERF_SPAWN_CHURN_POOL:
+        return run_spawn_churn(1);
+    case PERF_PARTICLES:
+    default:
+        return run_particles();
+    }
+}
+
+#ifndef PERF_NO_MAIN
 int
 main(int argc, char **argv)
 {
-    SpikeWorkload workload;
+    PerfWorkload workload;
     RunResult result;
 
-    if (!spike_parse_workload(argc, argv, &workload)) {
+    if (!perf_parse_workload(argc, argv, &workload)) {
         return EXIT_FAILURE;
     }
 
-    switch (workload.kernel) {
-    case SPIKE_SPRITE_UPDATE:
-        result = run_sprite_update(workload.count);
-        break;
-    case SPIKE_SPAWN_CHURN_NAIVE:
-        result = run_spawn_churn(0);
-        break;
-    case SPIKE_SPAWN_CHURN_POOL:
-        result = run_spawn_churn(1);
-        break;
-    case SPIKE_PARTICLES:
-        result = run_particles();
-        break;
-    default:
-        return EXIT_FAILURE;
-    }
-
-    spike_print_result(&workload, SPIKE_VARIANT, result.elapsed_seconds,
+    result = PERF_AOT_DISPATCH(&workload);
+    perf_print_result(&workload, PERF_VARIANT, result.elapsed_seconds,
         result.digest);
     return EXIT_SUCCESS;
 }
+#endif

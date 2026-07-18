@@ -1407,3 +1407,11 @@
 ### spike の名称整理 → perf/ ✓ (2026-07-18)
 - 合否決着済みの「spike」を恒久名 perf/ へ改称 (既存 bench/ = wasm E2E スクリプト群との衝突回避)。暫定正本だった spike-ceiling.md を解体し、恒久内容 (KPI floor / 変種 / 決着済み合否 / 実機残り) を perf/README.md へ、参照を全付け替え (done.md の歴史は当時のまま)
 - 判断: spike 名は「一時実験」を示唆し役割決着後は負債 — 実体は kernel 契約・性能回帰基盤・実機測定受け皿という恒久物
+
+### perf Playdate ハーネス: 実機/シミュレータビルド + spike 識別子の粉砕 ✓ (2026-07-18)
+- Playdate SDK 3.1.0 + arm-none-eabi toolchain (Arch pacman) を導入し、perf 全変種 (native / aot-hash / aot-slot / interp) を 1 つの .pdx で実行する `perf/playdate/` ハーネスを追加。デバイス (Cortex-M7) とシミュレータ (host .so) の両ビルドが green
+- 前提リファクタ: common.c を core.c (OS 非依存: LCG/frand/digest) とホスト CLI 部へ分離、native.c/aot.c に dispatch 関数 (`PERF_NO_MAIN` で main をガード)、aot.c は hash/slot を別 TU で 2 回コンパイル。ホストの digest 回帰 (全 kernel × 3 C 変種) は results-pc.md と bit 一致
+- Playdate 対応の要点: pd_api.h の独自 `lua_State` (void*) と本物の Lua ヘッダが衝突するため interp 実行を別 TU (interp_runner.c) へ分離。bench.lua は CMake で hex 埋め込み、os.clock/io.write を pd タイマー/console へ差し替え。newlib setjmp が引き込む ARM unwinder には空 exidx を defsym、`-nostartfiles` で欠ける `_init/_fini` は空 stub、malloc は SDK setup.c が pd realloc へ接続
+- 残っていた spike 識別子・参照 (perf/*.c/h, CMake, run.sh, CONTRACT/results, root CMakeLists, Transpiler.Tests コメントの ../luo/spike stale パス) を perf 系へ全置換。CLAUDE.md に「spike 名称禁止」を明文化
+- 検証: ホスト perf 再ビルド + 各変種実行で digest 一致 (e8814b32/d4a095ee/0040a0c1/9274159d/8bf97e09)、デバイスビルドで tcs_perf_DEVICE.pdx (pdex.bin 165KB) 生成、`file` で ARM EABI5 確認。実機実行は未 (デバイス未接続)
+- 残課題: 実機での実行・results-playdate.md への記録。update 長時間ブロックが watchdog に当たる場合はフレーム分割が必要 (README に記載)
