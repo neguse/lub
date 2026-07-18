@@ -1353,3 +1353,7 @@
 - luoc に T224 で完備した契約を消化: ctor を __ctor 合成 instance method、top-level 文を TopLevel.Main 合成 static method として注入し、facts/prototype/EmitMethod の既存機構をそのまま通す。RenderNew は ctor 呼び出しへ置換 (positional 暫定を廃止、ctor 無し + 引数ありは明示エラー)
 - __tcs_fstr intrinsic (f32 印字改善で IL に増えた分) を luoc の to-string 経路へ写像。digest モードは unwrap して f32 bit を直接投入
 - 検証: digest 回帰 3/3 + ctor/string field initializer/concat/top-level 混在サンプルの stdout が lua32 と完全一致
+
+### T218 第四マイルストーン: 継承 (自作) ✓ (2026-07-18)
+- luoc に継承を実装: DFS pre-order の範囲型 ID (`is` = type_id 範囲判定)、chain flatten による prefix layout 互換 upcast (中央 RenderCoerced で明示 cast)、同名再宣言の推論による type_id switch dispatcher (契約に virtual/override フラグ不要 — hiding/overload は診断済みなので同名 = override が健全)、base.M(self,...) 形は dispatcher を通さない直呼び、ctor は chain 最寄り (連鎖は base 初期化子が契約に無いため明示エラー → 契約拡張の需要として記録)
+- 受入: 仮想 dispatch / base 呼び / is (base 真・派生真・無関係偽) / 継承 field / 非仮想メソッド経由の多態を含むサンプルの stdout が lua32 と完全一致、digest 回帰 3/3、gcc エラーなし
