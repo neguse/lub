@@ -494,7 +494,9 @@ public partial class LuaEmitter
             return null;
         }
 
-        return null;
+        // 一般 callee 式 (fs[0]() 等) — legacy の `{expr}({args})` と同型
+        var callee = BuildExpr(model, invocation.Expression);
+        return callee == null ? null : new IlDynCall(callee, argArr);
     }
 
     // legacy VisitMemberAccess の写像

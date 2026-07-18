@@ -1383,3 +1383,8 @@
 - 契約: IlCtorInfo.BaseArgs (base(...) 初期化子の引数 IL、暗黙 base() は空)
 - luoc: 構築を Lua backend の Class.new と同順 (base ctor → type_id 上書き = setmetatable 相当 → 自 class field init → ctor body) の tcs_new_C(params) へ再構成。__ctor 合成と「連鎖未対応」制約を撤去
 - 受入: 2 段連鎖 (Puppy→Dog(base args)→Animal、field init と ctor body の交互実行順) の stdout が lua32 と一致、既存 3 サンプル回帰一致、digest 3/3
+
+### T218 第七マイルストーン: closure (自作) ✓ (2026-07-18)
+- luoc: capture-by-variable (il-spec §7) の C 実装 — escape 解析で捕捉 local/param を heap cell (T*) へ box、closure = lifted static 関数 + cells 配列 (TcsClosure)。static method group は thunk、closure 要素 List、一般 callee 式の呼び出し (fs[0]() 等) に対応。前方宣言はマーカー差し込み
+- tcs: BuildInvocation に一般 callee fallthrough を追加 (legacy `{expr}({args})` の写像 — fs[0]() が IL 化)
+- 受入: 共有変異 (2)・ループ捕捉 (9 = 3,3,3 の T221 意味論を C でも実証)・thunk (42)・後変異可視 (101) が lua32 と stdout 一致。全サンプル回帰 + digest 3/3
