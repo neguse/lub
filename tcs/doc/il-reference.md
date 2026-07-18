@@ -16,7 +16,10 @@ var result = TinyCs.IlExport.Export(csharpSources);
 //   .LayoutHash                  — migration metadata (il-spec §14)。
 //                                  instance field の (名前:型;) 列の FNV-1a
 //   .Methods: (Name, IsStatic, Parameters, Body, ReturnType, ParameterTypes)
-//     Body == null は IL 未対応 method (診断構文等)。backend は拒否してよい
+//     Body == null は IL 未対応 method (診断構文等)。backend は拒否してよい。
+//     custom property accessor は get_X/set_X 名でここに現れる (T224)
+//   .Ctor: explicit constructor (Parameters/ParameterTypes/Body)。null なら
+//     default 初期化のみ。Body は field default + initializer 適用後に実行
 ```
 
 シリアライズ形式は定義しない（v0 決定 — il-spec §1）。luo は .NET から
@@ -75,7 +78,9 @@ assembly 参照で直接消費する。
 ## C backend が負う義務
 
 il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、
-bounds/null/zero check、fault の決定性）。object model は spike
+bounds/null/zero check、fault の決定性）。現行 luoc は GNU statement
+expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc)
+では成立するが MSVC 非対応の移植性制約として明記する。object model は spike
 (`../luo/spike/`) の合否解釈に従う。digest 検証は
 `Transpiler.Tests/DigestKernels/` の 3 kernel（期待値は
 `../luo/spike/CONTRACT.md` 末尾）。
@@ -83,5 +88,5 @@ bounds/null/zero check、fault の決定性）。object model は spike
 ## 未カバー（backend 側で拒否してよい）
 
 - Body == null の method（診断構文、method group 参照等 — tasks.md T224）
-- class 骨格の IL 化（ctor/accessor 本文は IlExport v0 では metadata のみ。
-  field initializer は T228 で IL 化済み。残りは T224 で拡張）
+- top-level 文・operator 本文（IlExport 未収載。ctor/accessor/field
+  initializer は契約化済み）

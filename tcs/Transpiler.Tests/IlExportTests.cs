@@ -108,4 +108,39 @@ public class IlExportTests
         Assert.Equal("float", arr.ElementType);
         Assert.Equal("n", Assert.IsType<IlVar>(arr.Length).Name);
     }
+
+    // T224: class 骨格 (ctor / custom property accessor) の契約
+    [Fact]
+    public void Export_CtorAndAccessorBodies()
+    {
+        var result = IlExport.Export(["""
+            public class Timer
+            {
+                public float Elapsed;
+                private float _speed;
+
+                public Timer(float speed)
+                {
+                    _speed = speed;
+                }
+
+                public float Speed
+                {
+                    get { return _speed; }
+                    set { _speed = value; }
+                }
+            }
+            """]);
+        var timer = result.Classes[0];
+        Assert.NotNull(timer.Ctor);
+        Assert.Equal("speed", Assert.Single(timer.Ctor!.Parameters));
+        Assert.Equal("float", Assert.Single(timer.Ctor.ParameterTypes));
+        Assert.NotNull(timer.Ctor.Body);
+        var getter = timer.Methods.Single(m => m.Name == "get_Speed");
+        Assert.IsType<IlReturn>(Assert.Single(getter.Body!.Stats));
+        Assert.Equal("float", getter.ReturnType);
+        var setter = timer.Methods.Single(m => m.Name == "set_Speed");
+        Assert.Equal("value", Assert.Single(setter.Parameters));
+        Assert.IsType<IlAssign>(Assert.Single(setter.Body!.Stats));
+    }
 }

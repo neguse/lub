@@ -37,6 +37,28 @@ public partial class LuaEmitter
     internal IlExpr? ExportExprIl(SemanticModel model, ExpressionSyntax expr) =>
         BuildExpr(model, expr);
 
+    // IlExport (T224) 用: 文列 (ctor / accessor body)
+    internal IlBlock? ExportStatsIl(SemanticModel model,
+        IEnumerable<StatementSyntax>? statements)
+    {
+        if (statements == null) return null;
+        var acc = new List<IlStat>();
+        return BuildStatsInto(model, statements, acc)
+            ? new IlBlock([.. acc]) : null;
+    }
+
+    // accessor expression body: get は return 式、set は文位置式
+    internal IlBlock? ExportAccessorExprIl(SemanticModel model,
+        ExpressionSyntax expr, bool isGet)
+    {
+        if (isGet)
+            return BuildExpr(model, expr) is { } e
+                ? new IlBlock([new IlReturn(e)]) : null;
+        var acc = new List<IlStat>();
+        return BuildExprStatInto(model, expr, null, acc)
+            ? new IlBlock([.. acc]) : null;
+    }
+
     // ---- 共通フック (T214c): 文列 / return 式 / 文位置式を IL 経由で emit ----
 
     private bool TryEmitStatsViaIl(SemanticModel model,

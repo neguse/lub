@@ -1311,3 +1311,8 @@
 - luoc が string (immutable byte 列 + concat + 値別 WriteLine)、instance method、exact type-id の型 test、List<int>/<float> (連続 growable buffer)、IlNewArray/IlTable/IlForeachList/IlTernary に対応。T228 契約のみで生成 (第一実装の Roslyn 再解析を廃止)
 - 受入: collision の実行値 (hit,miss,hit) が lua32 実行と一致、追加 harness も f32 印字表記以外一致 (同一 binary32。Lua 側 %.14g が shortest でない既知課題 → tasks の T218 残りに記載)、digest 回帰 3/3 維持。実装 Codex 委任、適用と再検証は当方
 - 判断 (契約ギャップとして記録): ctor 本文なし → 宣言順 positional 扱い、local 型なし → initializer 推論、IlTable の array/List 種別なし → List 扱い。これらは T224 (class 骨格 IL 化) / T228 続きで契約側に載せる
+
+### T224 前半: class 骨格の IL 契約化 (ctor / accessor) ✓ (2026-07-18)
+- IlExport に IlCtorInfo (explicit ctor の params/型/本文 IL) と custom property accessor (get_/set_ 名の IlMethodInfo) を追加。luoc の「ctor 本文なし → positional 暫定」の契約ギャップを解消
+- レビュー指摘の docs 反映: il-reference に GNU statement expression の移植性制約、il-spec §12 に実装定義の資源 fault 許容を明記
+- 検証: IlExportTests +1 green、run-tests 全ゲート green

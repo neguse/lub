@@ -9,13 +9,24 @@ namespace TinyCs;
 // IL (doc/il-spec.md) と migration metadata (il-spec §14) を、Lua 出力を
 // 経由せずに公開する。契約の正本は doc/il-reference.md。
 
-/// <summary>class の migration metadata (il-spec §14)。</summary>
+/// <summary>class の migration metadata (il-spec §14) と骨格 IL (T224)。
+/// Ctor は explicit constructor (無ければ null — default 初期化のみ)。
+/// custom property の accessor は get_/set_ 名の IlMethodInfo として
+/// Methods に現れる。</summary>
 public sealed record IlClassInfo(
     string Name,
     string? BaseName,
     ImmutableArray<IlFieldInfo> Fields,
     string LayoutHash,
-    ImmutableArray<IlMethodInfo> Methods);
+    ImmutableArray<IlMethodInfo> Methods,
+    IlCtorInfo? Ctor = null);
+
+/// <summary>explicit constructor。Body は field default/initializer 適用後に
+/// 実行される本文 IL (il-spec §9)。</summary>
+public sealed record IlCtorInfo(
+    ImmutableArray<string> Parameters,
+    ImmutableArray<string> ParameterTypes,
+    IlBlock? Body);
 
 public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
     IlExpr? Init = null);
@@ -102,7 +113,47 @@ public static class IlExport
                 propSymbol?.IsStatic ?? false));
         }
 
+        IlCtorInfo? ctor = null;
+        if (cls.Members.OfType<ConstructorDeclarationSyntax>()
+                .FirstOrDefault() is { } ctorDecl)
+        {
+            var ctorSymbol = model.GetDeclaredSymbol(ctorDecl);
+            ctor = new IlCtorInfo(
+                [.. ctorDecl.ParameterList.Parameters
+                    .Select(p => p.Identifier.ValueText)],
+                ctorSymbol == null
+                    ? []
+                    : [.. ctorSymbol.Parameters
+                        .Select(p => p.Type.ToDisplayString())],
+                emitter.ExportStatsIl(model, ctorDecl.Body?.Statements));
+        }
+
         var methods = new List<IlMethodInfo>();
+        // custom property accessor は get_/set_ method として契約に載せる
+        foreach (var prop in cls.Members.OfType<PropertyDeclarationSyntax>()
+            .Where(p => p.AccessorList != null && p.AccessorList.Accessors
+                .Any(a => a.Body != null || a.ExpressionBody != null)))
+        {
+            var propSymbol = model.GetDeclaredSymbol(prop);
+            var propType = propSymbol?.Type.ToDisplayString() ?? "?";
+            var isStatic = propSymbol?.IsStatic ?? false;
+            foreach (var accessor in prop.AccessorList!.Accessors)
+            {
+                var isGet = accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
+                var name = $"{(isGet ? "get_" : "set_")}{prop.Identifier.ValueText}";
+                IlBlock? body = null;
+                if (accessor.Body != null)
+                    body = emitter.ExportStatsIl(model,
+                        accessor.Body.Statements);
+                else if (accessor.ExpressionBody != null)
+                    body = emitter.ExportAccessorExprIl(model,
+                        accessor.ExpressionBody.Expression, isGet);
+                methods.Add(new IlMethodInfo(name, isStatic,
+                    isGet ? [] : ["value"], body,
+                    isGet ? propType : "void",
+                    isGet ? [] : [propType]));
+            }
+        }
         foreach (var method in cls.Members.OfType<MethodDeclarationSyntax>())
         {
             var body = emitter.ExportMethodIl(model, method);
@@ -121,7 +172,7 @@ public static class IlExport
         }
 
         return new IlClassInfo(cls.Identifier.ValueText, baseName,
-            [.. fields], LayoutHash(fields), [.. methods]);
+            [.. fields], LayoutHash(fields), [.. methods], ctor);
     }
 
     // layout version hash (il-spec §14): instance field の (名前, 型) 列の

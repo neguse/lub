@@ -26,8 +26,8 @@
       （method group 参照、混在 tuple 分解、lock、using 宣言、
       非リテラル alignment、TCS 診断構文）の IL 化 or 診断化を進め、
       fallback を診断 method のみに絞ったうえで legacy 削除を判断。
-      class 骨格 / field initializer 式の IL 化（program 構造の IL 化、
-      M2 で luo 入力契約を決める際に形を確定）もここ
+      class 骨格の IL 化は ctor/accessor/field initializer まで契約化済み
+      (2026-07-18)。残りは top-level 文と operator 本文の IlExport 収載
 - [ ] **T225** (P2): IIFE の statement 化（examples 決定 2）— IL 上の
       出力改善。M1 の挙動不変契約から切り離して実施
 
