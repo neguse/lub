@@ -183,4 +183,44 @@ public class IlPipelineTests
             """, "T.Test()");
         Assert.Equal("ABC", result);
     }
+
+    // T225 第三スライス: ?. / ?? / TryGetValue の IIFE も statement 位置では出さない
+    [Fact]
+    public void CondAccessAndCoalesce_InStatementPositions_AreStatementized()
+    {
+        var lua = Transpiler.Transpile(["""
+            using System.Collections.Generic;
+            public class P { public int V; public int Get() { return V; } }
+            public class T
+            {
+                public static int Test(P? p, bool? f, Dictionary<string, int> d)
+                {
+                    var a = p?.Get();
+                    bool b = f ?? true;
+                    int v;
+                    var found = d.TryGetValue("k", out v);
+                    return found && b ? v : (a ?? 0);
+                }
+            }
+            """]);
+        Assert.DoesNotContain("(function()", lua);
+        var result = TestHelper.TranspileAndRun("""
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    var d = new Dictionary<string, int> { { "k", 7 } };
+                    int v;
+                    var hit = d.TryGetValue("k", out v);
+                    int w;
+                    var miss = d.TryGetValue("nope", out w);
+                    bool? none = null;
+                    var b = none ?? true;
+                    return $"{hit}:{v}:{miss}:{w}:{b}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("true:7:false:0:true", result);
+    }
 }

@@ -177,7 +177,8 @@ public partial class LuaEmitter
                         continue;
                     }
                     if (init is IlIife li
-                        && TryGetSwitchShape(li, out var liSetup, out var liChain))
+                        && TryGetValueChainShape(li, out var liSetup,
+                            out var liChain, out _))
                     {
                         var varNode = new IlVar(v.Identifier.ValueText);
                         acc.Add(new IlLocal(v.Identifier.ValueText, null)
@@ -441,7 +442,8 @@ public partial class LuaEmitter
                 return true;
             }
             if (value is IlIife ai && target is IlVar
-                && TryGetSwitchShape(ai, out var aiSetup, out var aiChain))
+                && TryGetValueChainShape(ai, out var aiSetup, out var aiChain,
+                    out _))
             {
                 foreach (var st in aiSetup)
                     acc.Add(st with { Origin = origin });
@@ -597,8 +599,9 @@ public partial class LuaEmitter
         // switch 式は inline (return がそのまま効く)。else 無しは
         // 「値なし return」への変化 (print の 0 値/1 値差) を避け IIFE 維持
         if (value is IlIife iife
-            && TryGetSwitchShape(iife, out var setup, out var chain)
-            && chain.Else != null)
+            && TryGetValueChainShape(iife, out var setup, out var chain,
+                out var complete)
+            && complete)
         {
             foreach (var st in setup)
                 acc.Add(st with { Origin = origin });
@@ -608,33 +611,52 @@ public partial class LuaEmitter
         acc.Add(new IlReturn(value) { Origin = origin });
     }
 
-    // T225: switch 式 IIFE の形 (前置 local 列 + return する if 連鎖) を認識
-    private static bool TryGetSwitchShape(IlIife iife,
-        out ImmutableArray<IlStat> setup, out IlIf chain)
+    // T225: 値を返す IIFE の形を認識する。対象は
+    //   [IlLocal*, IlIf(各 arm = 前置文* + 末尾 IlReturn, else 同形?), IlReturn?]
+    // (switch 式 / ?. / ?? / TryGetValue / GetValueOrDefault の lowering 産物)。
+    // 末尾 IlReturn は else へ正規化する (if が返らなければ落ちて返る形)。
+    // Complete = 全経路が値を返す (false なら不一致時 nil — return 位置では
+    // 「値なし return」化するため使えない)
+    private static bool TryGetValueChainShape(IlIife iife,
+        out ImmutableArray<IlStat> setup, out IlIf chain, out bool complete)
     {
-        setup = default; chain = null!;
-        if (iife.Stats.Length == 0
-            || iife.Stats[^1] is not IlIf tail) return false;
-        if (!iife.Stats[..^1].All(st => st is IlLocal)) return false;
-        if (!tail.Arms.All(a => a.Body.Stats is [IlReturn { Value: not null }]))
-            return false;
-        if (tail.Else is { Stats: not [IlReturn { Value: not null }] })
-            return false;
-        setup = iife.Stats[..^1];
-        chain = tail;
+        setup = default; chain = null!; complete = false;
+        var stats = iife.Stats;
+        IlReturn? trailing = null;
+        if (stats.Length > 0 && stats[^1] is IlReturn { Value: not null } tr)
+        {
+            trailing = tr;
+            stats = stats[..^1];
+        }
+        if (stats.Length == 0 || stats[^1] is not IlIf tail) return false;
+        if (!stats[..^1].All(st => st is IlLocal)) return false;
+        if (tail.Else != null && trailing != null) return false;
+        if (!tail.Arms.All(a => IsReturningBlock(a.Body))) return false;
+        if (tail.Else is { } e && !IsReturningBlock(e)) return false;
+        setup = stats[..^1];
+        chain = trailing != null
+            ? tail with { Else = new IlBlock([trailing]) }
+            : tail;
+        complete = tail.Else != null || trailing != null;
         return true;
     }
 
-    // return を target への代入に置換した if 連鎖を作る
+    private static bool IsReturningBlock(IlBlock block) =>
+        block.Stats.Length > 0
+        && block.Stats[^1] is IlReturn { Value: not null }
+        && block.Stats[..^1].All(st => st is not IlReturn);
+
+    // 各 arm の末尾 return を target への代入に置換した if 連鎖を作る
     private static IlIf SwitchChainAsAssigns(IlIf chain, IlExpr target)
     {
-        var arms = chain.Arms.Select(a => (a.Cond, new IlBlock(
-                [new IlAssign(target, ((IlReturn)a.Body.Stats[0]).Value!)])))
+        static IlBlock Rewrite(IlBlock body, IlExpr target) => new(
+            [.. body.Stats[..^1],
+             new IlAssign(target, ((IlReturn)body.Stats[^1]).Value!)]);
+        var arms = chain.Arms
+            .Select(a => (a.Cond, Rewrite(a.Body, target)))
             .ToImmutableArray();
-        var elseBlock = chain.Else is { } e
-            ? new IlBlock([new IlAssign(target, ((IlReturn)e.Stats[0]).Value!)])
-            : null;
-        return new IlIf(arms, elseBlock);
+        return new IlIf(arms,
+            chain.Else is { } e ? Rewrite(e, target) : null);
     }
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。

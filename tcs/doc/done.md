@@ -1339,3 +1339,7 @@
 - switch 式 IIFE の形 (前置 local 列 + return する if 連鎖) を認識し、local 初期化 / 純 local 代入 / return 位置で文へ inline (代入位置は return→代入へ書換)。return 位置の else 無し chain は「値なし return」化で print の 0 値/1 値差が出るため IIFE 維持
 - return 位置の statement 化を AddReturnStat に共通化し、method 式 body (VisitMethod)・operator/accessor (TryEmitReturnViaIl)・IlExport の 3 経路を統一
 - 検証: 専用テスト + run-tests 全ゲート green
+
+### T225 第三スライス: 値返し IIFE 形状の一般化 ✓ (2026-07-18)
+- 形状認識を [locals + IlIf(arm=前置文*+末尾return, else?) + 末尾return?] へ一般化し、?. / ?? / TryGetValue / GetValueOrDefault の IIFE も statement 位置で文へ。末尾 return は else へ正規化、arm 前置文 (TryGetValue の out 代入) は保存
+- 検証: 専用テスト (IIFE 不在 + hit/miss/?? 意味論) + run-tests 全ゲート green
