@@ -39,6 +39,13 @@ jobs:
       # digest 相互一致 (dev=lua32 / release=tcs2c→C) が fail ゲート。
       # 実行時間は step summary へのレポートのみ (runner の絶対時間は不安定)
       - name: Run 2-backend bench
-        run: bash perf/bench-2backend.sh
+        run: bash perf/bench-2backend.sh | tee bench-results.csv
         env:
           PERF_BENCH_RUNS: "5"
+
+      - name: Upload bench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-2backend-results
+          path: bench-results.csv

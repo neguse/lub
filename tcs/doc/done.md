@@ -1433,3 +1433,7 @@
 - IL→C release backend の luoc を tcs2c へ一括改名 (ディレクトリ / csproj / namespace TinyCs.Tcs2c / Tcs2cException / CLI usage / slnx / run-tests / verify-digests / bench-2backend / ドキュメント参照。done.md の歴史は当時のまま)
 - 判断: luoc は旧 luo リポジトリ由来で実体 (tcs IL → C) と乖離。tcs2c は安直だが「tcs 全体のリブランディングが控えている前提で tcs 系に暫定統一」というユーザー判断
 - 検証: verify-digests.sh 3/3 green (改名後の再ビルド込み)、luoc の残存参照ゼロ (grep、done.md 除く)
+
+### bench 結果の workflow artifact 化 ✓ (2026-07-18)
+- CI の bench-2backend job で stdout CSV を `bench-results.csv` へ tee し、workflow artifact `bench-2backend-results` としてアップロード (if: always() — digest 不一致で fail しても部分結果を残す)
+- 検証: 軽量パラメータ (RUNS=1, FRAMES=100) で stdout が純 CSV であることを確認、push 後の CI 完走と artifact 生成を確認
