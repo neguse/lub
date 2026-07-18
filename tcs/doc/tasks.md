@@ -22,12 +22,10 @@
 
 ### Phase 1 — M1: 挙動不変の内部再編 ✓ (T214a-c 完、done.md 参照)
 
-- [ ] **T224** (P2): legacy visitor の縮退 — IlExport 契約は完備
-      (top-level/operator 収載済み 2026-07-18)。残り: fallback に残る構文
-      （method group 参照、混在 tuple 分解、lock、using 宣言、
-      非リテラル alignment、TCS 診断構文）の IL 化 or 診断化。
-      判断済み: legacy visitor のコード削除はしない — 診断構文の出力と
-      挙動不変の保険として保持し、fallback 面の縮小のみ続ける
+- [x] T224 完 (2026-07-18): IlExport 契約完備、fallback 構文の整理
+      (static method group IL 化 / instance method group・定数式 alignment
+      診断化 / lock・using 等は既存診断)。legacy visitor は診断出力と
+      挙動不変の保険として恒久保持
 
 
 ### Phase 3 — 価値の刈り取り

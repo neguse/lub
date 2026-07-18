@@ -58,21 +58,22 @@ public class IlPipelineTests
     [Fact]
     public void UnsupportedConstructBody_FallsBackToLegacy()
     {
-        // method group 参照 (bare 識別子の delegate 化) は IL 未対応 → legacy
+        // instance method group (診断対象) は IL 未対応 → legacy fallback
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System;
             public class T
             {
-                public static void M() { }
-                public static object Grab()
+                public int V;
+                public int M() { return V; }
+                public object Grab()
                 {
-                    Action a = M;
+                    Func<int> a = M;
                     return a;
                 }
             }
             """]);
         Assert.True(result.Success);
-        Assert.Equal(1, result.IlBodies); // M は空 body で IL
+        Assert.Equal(1, result.IlBodies); // M は IL
         Assert.Equal(1, result.LegacyBodies);
     }
 
@@ -90,16 +91,18 @@ public class IlPipelineTests
                     foreach (var x in xs) { sum += x; }
                     return sum;
                 }
-                public static object Pick(List<int> xs)
+                public int Seed;
+                public int Pick()
                 {
-                    // method group 参照は未対応 → この method だけ legacy
-                    Func<List<int>, int> f = Sum;
-                    return f;
+                    // instance method group は未対応 → この method だけ legacy
+                    Func<int> f = Pick2;
+                    return f();
                 }
+                public int Pick2() { return Seed; }
             }
             """]);
         Assert.True(result.Success);
-        Assert.Equal(1, result.IlBodies);
+        Assert.Equal(2, result.IlBodies);
         Assert.Equal(1, result.LegacyBodies);
     }
 

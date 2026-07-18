@@ -64,20 +64,24 @@ public class IlExportTests
     [Fact]
     public void Export_UnsupportedBodyIsNull()
     {
+        // instance method group (診断対象) は IL 未対応 → Body null
         var result = IlExport.Export(["""
             using System;
             public class T
             {
-                public static void M() { }
-                public static object Grab()
+                public int V;
+                public int M() { return V; }
+                public object Grab()
                 {
-                    Action a = M; // method group 参照は IL 未対応
+                    Func<int> a = M;
                     return a;
                 }
             }
             """]);
         var grab = result.Classes[0].Methods.Single(m => m.Name == "Grab");
         Assert.Null(grab.Body);
+        Assert.Contains(result.Diagnostics,
+            d => d.Contains("InstanceMethodGroup"));
         var m = result.Classes[0].Methods.Single(x => x.Name == "M");
         Assert.NotNull(m.Body);
     }

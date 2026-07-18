@@ -1373,3 +1373,8 @@
 - 最終ピース: root if 条件位置の値返し IIFE hoist (`if (d.TryGetValue(...))` 形 — root 条件は無条件先頭評価なので前置 hoist が評価順不変。elseif / while 条件は再評価・条件付き評価のため対象外)
 - 完了範囲: statement 位置 (local 初期化 / 純 local 代入 / return / root if 条件) の ternary / switch 式 / ?. / ?? / TryGetValue 系。式中間位置は「IIFE 維持」を設計判断として確定 — 除去には全 effectful 左 operand の temp 化枠組みが必要で、意味は既に正しく最適化のみの問題。必要になれば C backend 側の最適化 (statement expression は既に温存) で吸収する
 - 検証: 専用テスト + run-tests 全ゲート green
+
+### T224 完: fallback 構文の整理 ✓ (2026-07-18)
+- static method group を IL 化 (IlField(Class, Method) = Lua の関数値と同型、Select(Twice) 等が IL 経由に)。instance method group を診断化 (InstanceMethodGroup — `self:Method` が値位置で不正 Lua になる silent wrong-code、bound closure は需要待ち)。補間 alignment の定数式 (非リテラル) を診断化 (NonConstantAlignment — format 文字列へ式テキストが埋まる。非定数は C# 自体が CS0150 で拒否と判明)
+- 進化に伴う期待更新: fallback 例を instance method group へ差し替え (method group が IL 対応になったため)
+- T224 はこれで完 — legacy visitor は診断構文の出力と挙動不変の保険として恒久保持 (削除しない判断は既録)

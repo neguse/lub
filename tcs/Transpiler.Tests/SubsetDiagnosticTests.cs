@@ -566,4 +566,50 @@ public class SubsetDiagnosticTests
             """]);
         AssertUnsupportedWarning(result, "NestedTypeDeclaration");
     }
+
+    // T224: instance method group / 非リテラル alignment は silent wrong-code
+    [Fact]
+    public void InstanceMethodGroupAndAlignment_ReportWarnings()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
+            public class T
+            {
+                public int V;
+                public int Get() { return V; }
+                public object Grab()
+                {
+                    Func<int> f = Get;
+                    return f;
+                }
+                public static string Fmt(int x) { return $"{x,5}|{x:D2}"; }
+                public static string Bad(int x) { return $"{x,2 + 3}"; }
+            }
+            """]);
+        Assert.True(result.Success);
+        AssertUnsupportedWarning(result, "InstanceMethodGroup");
+        AssertUnsupportedWarning(result, "NonConstantAlignment");
+        Assert.Single(result.Warnings, w => w.Contains("NonConstantAlignment"));
+    }
+
+    [Fact]
+    public void StaticMethodGroup_NoWarning_AndWorks()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System;
+            using System.Collections.Generic;
+            using System.Linq;
+            public class T
+            {
+                public static int Twice(int v) { return v * 2; }
+                public static string Test()
+                {
+                    var xs = new List<int> { 1, 2 };
+                    var ys = xs.Select(Twice).ToList();
+                    return $"{ys[0]}:{ys[1]}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("2:4", result);
+    }
 }

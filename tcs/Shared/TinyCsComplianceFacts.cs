@@ -319,6 +319,38 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        // instance method group の値化 (delegate 変換) は `self:Method` が
+        // Lua の値位置で不正構文になる silent wrong-code (bound closure 未対応)。
+        // 呼び出しの callee 位置 (parent が invocation) は対象外
+        if (node is IdentifierNameSyntax or MemberAccessExpressionSyntax
+            && node.Parent is not InvocationExpressionSyntax
+            && (node.Parent is not MemberAccessExpressionSyntax parentAccess
+                || parentAccess.Name != node)
+            && model.GetSymbolInfo(node).Symbol is IMethodSymbol
+            {
+                IsStatic: false, MethodKind: MethodKind.Ordinary
+            })
+        {
+            syntaxName = "InstanceMethodGroup";
+            return true;
+        }
+
+        // 補間 alignment の非リテラルは format 文字列へ式が埋め込まれる
+        // silent wrong-code
+        if (node is InterpolationSyntax
+            {
+                AlignmentClause.Value: not (LiteralExpressionSyntax
+                    or PrefixUnaryExpressionSyntax
+                    {
+                        RawKind: (int)SyntaxKind.UnaryMinusExpression,
+                        Operand: LiteralExpressionSyntax
+                    })
+            })
+        {
+            syntaxName = "NonConstantAlignment";
+            return true;
+        }
+
         // interface は実行時表現を持たず (型チェックのみ)、interface を対象と
         // する type test は常に偽の silent wrong-code になる (il-spec §2)。
         if (IsInterfaceTypeTest(node, model))

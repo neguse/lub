@@ -172,6 +172,10 @@ public partial class LuaEmitter
         var name = id.Identifier.ValueText;
         switch (symbol)
         {
+            case IMethodSymbol { IsStatic: true, ContainingType: not null } sm:
+                // static method group = 関数値 (Lua は Class.Method がそのまま
+                // 関数)。instance group は診断済み (InstanceMethodGroup)
+                return new IlField(new IlVar(sm.ContainingType.Name), sm.Name);
             case IMethodSymbol:
                 return null;
             case IPropertySymbol custom when IsCustomProperty(custom):
@@ -548,6 +552,9 @@ public partial class LuaEmitter
             var obj = BuildExpr(model, ma.Expression);
             return obj == null ? null : new IlField(obj, member);
         }
+
+        if (symbol is IMethodSymbol { IsStatic: true, ContainingType: not null } smg)
+            return new IlField(new IlVar(smg.ContainingType.Name), smg.Name);
 
         return null;
     }
