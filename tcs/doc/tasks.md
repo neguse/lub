@@ -41,9 +41,11 @@
 ### Phase 3 — 価値の刈り取り（T218 と T219 は並行可）
 
 - [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は spike 決着
-      どおり IL-native。第一マイルストーン完了 (luoc/ 骨格、digest kernel
-      3/3 一致 — done.md 参照)。残り: 対応 IL ノードの全域化、
-      class 骨格/文字列/List/Dict runtime、静的 link 出荷形
+      どおり IL-native。第二マイルストーンまで完了 (string/List/instance
+      method/型 test、Roslyn 再解析廃止 — done.md 参照)。残り: 継承 dispatch、
+      Dict runtime、closure、ctor 本文 (T224 の class 骨格 IL 化に依存)、
+      静的 link 出荷形、Lua 側 f32 print の shortest round-trip helper
+      (il-spec 付録 A の義務、現状 %.14g)
 - [ ] **T219b** (P2): struct の残り — record struct、struct の
       method/property/ctor、struct 型 field、nested struct field。
       v1 (データ struct) の需要を見て拡張

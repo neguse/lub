@@ -1306,3 +1306,8 @@
 - 診断の再構成: struct member (method/ctor/property 等) は StructMember、nested struct は NestedTypeDeclaration、record struct は従来どおり。struct 値が legacy fallback 経路へ流れる場合は警告 (silent wrong-code 防止の安全網)
 - 検証: StructSemanticsTests 4 本 (copy 3 地点 + 診断)、**particles struct 版 digest = 8bf97e09 で SoA 版と一致** (値意味論込みで同一計算の実証)、run-tests 全ゲート green (analyzer-demo/CLI/analyzer テストの期待を StructMember へ更新)
 - 判断: v1 はデータ struct のみ — メソッド付き値型は metatable 無し表現と両立せず、需要も particles 型 kernel が field アクセスのみで満たされるため。残りは T219b (P2)
+
+### T218 第二マイルストーン: luoc の string/List/instance method 対応 ✓ (2026-07-18)
+- luoc が string (immutable byte 列 + concat + 値別 WriteLine)、instance method、exact type-id の型 test、List<int>/<float> (連続 growable buffer)、IlNewArray/IlTable/IlForeachList/IlTernary に対応。T228 契約のみで生成 (第一実装の Roslyn 再解析を廃止)
+- 受入: collision の実行値 (hit,miss,hit) が lua32 実行と一致、追加 harness も f32 印字表記以外一致 (同一 binary32。Lua 側 %.14g が shortest でない既知課題 → tasks の T218 残りに記載)、digest 回帰 3/3 維持。実装 Codex 委任、適用と再検証は当方
+- 判断 (契約ギャップとして記録): ctor 本文なし → 宣言順 positional 扱い、local 型なし → initializer 推論、IlTable の array/List 種別なし → List 扱い。これらは T224 (class 骨格 IL 化) / T228 続きで契約側に載せる
