@@ -36,9 +36,10 @@
 ### Phase 3 — 価値の刈り取り
 
 - [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は spike 決着
-      どおり IL-native。第三マイルストーンまで完了 (ctor 本文 + top-level
-      文の適用、positional 暫定廃止 — done.md 参照)。残り: 継承 dispatch、
-      Dict runtime、closure、静的 link 出荷形
+      どおり IL-native。第四マイルストーンまで完了 (継承: 範囲型 ID /
+      chain flatten / 推論 dispatch / base 直呼び — done.md 参照)。
+      残り: Dict runtime、closure、ctor 連鎖 (base 初期化子の契約化)、
+      静的 link 出荷形
 - [ ] **T219b** (P2): struct の残り — record struct、struct の
       method/property/ctor、struct 型 field、nested struct field。
       v1 (データ struct) の需要を見て拡張
