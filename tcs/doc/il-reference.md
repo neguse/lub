@@ -78,7 +78,7 @@ assembly 参照で直接消費する。
 ## C backend が負う義務
 
 il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、
-bounds/null/zero check、fault の決定性）。現行 luoc は GNU statement
+bounds/null/zero check、fault の決定性）。現行 tcs2c は GNU statement
 expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc)
 では成立するが MSVC 非対応の移植性制約として明記する。object model は perf 実測
 (`perf/`) の合否解釈に従う。digest 検証は

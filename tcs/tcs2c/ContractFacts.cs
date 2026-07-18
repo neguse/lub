@@ -1,6 +1,6 @@
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed record ParameterFact(string Name, CType Type);
 
@@ -35,7 +35,7 @@ internal sealed class ContractFacts
         _classes = new Dictionary<string, IlClassInfo>();
         foreach (var cls in program.Classes)
             if (!_classes.TryAdd(cls.Name, cls))
-                throw new LuocException($"duplicate class: {cls.Name}");
+                throw new Tcs2cException($"duplicate class: {cls.Name}");
 
         foreach (var cls in program.Classes)
         {
@@ -44,23 +44,23 @@ internal sealed class ContractFacts
                 var fact = new FieldFact(cls.Name, field.Name, MapType(field.Type),
                     field.IsStatic, field.Init, field);
                 if (!_fields.TryAdd((cls.Name, field.Name), fact))
-                    throw new LuocException($"duplicate field: {cls.Name}.{field.Name}");
+                    throw new Tcs2cException($"duplicate field: {cls.Name}.{field.Name}");
             }
 
             foreach (var method in cls.Methods)
             {
                 if (method.ParameterTypes.IsDefault)
-                    throw new LuocException($"method is missing T228 parameter types: " +
+                    throw new Tcs2cException($"method is missing T228 parameter types: " +
                         $"{cls.Name}.{method.Name}");
                 if (method.Parameters.Length != method.ParameterTypes.Length)
-                    throw new LuocException($"method parameter metadata mismatch: " +
+                    throw new Tcs2cException($"method parameter metadata mismatch: " +
                         $"{cls.Name}.{method.Name}");
                 var parameters = method.Parameters.Select((name, i) =>
                     new ParameterFact(name, MapType(method.ParameterTypes[i]))).ToArray();
                 var fact = new MethodFact(cls.Name, method.Name, method.IsStatic,
                     MapType(method.ReturnType), parameters, method);
                 if (!_methods.TryAdd((cls.Name, method.Name), fact))
-                    throw new LuocException($"method overloads are not supported: " +
+                    throw new Tcs2cException($"method overloads are not supported: " +
                         $"{cls.Name}.{method.Name}");
             }
         }
@@ -71,12 +71,12 @@ internal sealed class ContractFacts
     public MethodFact Method(string cls, string name) =>
         _methods.TryGetValue((cls, name), out var fact)
             ? fact
-            : throw new LuocException($"unknown method: {cls}.{name}");
+            : throw new Tcs2cException($"unknown method: {cls}.{name}");
 
     public FieldFact Field(string cls, string name) =>
         _fields.TryGetValue((cls, name), out var fact)
             ? fact
-            : throw new LuocException($"unknown field: {cls}.{name}");
+            : throw new Tcs2cException($"unknown field: {cls}.{name}");
 
     // "A, B<C, D>, E" 形をトップレベルのカンマで分割する
     private static List<string> SplitTypeArgs(string text)
@@ -101,7 +101,7 @@ internal sealed class ContractFacts
     public CType? TryMapType(string displayName)
     {
         try { return MapType(displayName); }
-        catch (LuocException) { return null; }
+        catch (Tcs2cException) { return null; }
     }
 
     public CType MapType(string displayName)
@@ -143,10 +143,10 @@ internal sealed class ContractFacts
             var inner = text[(text.IndexOf('<') + 1)..^1];
             var comma = inner.IndexOf(',');
             if (comma < 0)
-                throw new LuocException($"unsupported IL type: {displayName}");
+                throw new Tcs2cException($"unsupported IL type: {displayName}");
             var key = MapType(inner[..comma]);
             if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
-                throw new LuocException(
+                throw new Tcs2cException(
                     $"Dictionary key type not supported: {displayName}");
             return CType.Dict(key, MapType(inner[(comma + 1)..]));
         }
@@ -167,7 +167,7 @@ internal sealed class ContractFacts
             "bool" or "System.Boolean" => CType.Bool,
             "string" or "System.String" => CType.String,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
-            _ => throw new LuocException($"unsupported IL type: {displayName}"),
+            _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),
         };
     }
 }

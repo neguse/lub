@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
@@ -172,7 +172,7 @@ internal sealed partial class CEmitter
     private string RenderClosure(IlClosure closure, CType target)
     {
         if (closure.Params.Length != target.Parameters!.Count)
-            throw new LuocException("closure arity mismatch with target type");
+            throw new Tcs2cException("closure arity mismatch with target type");
         var fnName = $"tcs_closure_{_closureSerial++}";
         // 捕捉 = closure 本体が参照する enclosing の boxed 変数
         var captured = new List<(string Name, Variable Cell)>();
@@ -269,7 +269,7 @@ internal sealed partial class CEmitter
     {
         var fact = _facts.Method(cls, method);
         if (fact.Parameters.Count != target.Parameters!.Count)
-            throw new LuocException($"method group arity mismatch: {cls}.{method}");
+            throw new Tcs2cException($"method group arity mismatch: {cls}.{method}");
         var key = $"{cls}.{method}";
         if (!_groupThunks.TryGetValue(key, out var fnName))
         {

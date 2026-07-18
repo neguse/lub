@@ -1428,3 +1428,8 @@
 - 発見: particles_struct は luoc 未対応 (`unsupported IL type: Particle`) — T219b (struct 拡張) への具体需要 1 件目。bench は dev のみで継続し、luoc が対応したら自動で比較に入る
 - 判断: CI では絶対時間の閾値ゲートを置かない (runner がぶれる)。決定的な digest 一致のみゲート
 - 検証: ローカルで GITHUB_STEP_SUMMARY 込み実行 green、digest 3 kernel 相互一致 + struct は dev digest が SoA 版と一致 (85ca3656)
+
+### luoc → tcs2c 改名 ✓ (2026-07-18)
+- IL→C release backend の luoc を tcs2c へ一括改名 (ディレクトリ / csproj / namespace TinyCs.Tcs2c / Tcs2cException / CLI usage / slnx / run-tests / verify-digests / bench-2backend / ドキュメント参照。done.md の歴史は当時のまま)
+- 判断: luoc は旧 luo リポジトリ由来で実体 (tcs IL → C) と乖離。tcs2c は安直だが「tcs 全体のリブランディングが控えている前提で tcs 系に暫定統一」というユーザー判断
+- 検証: verify-digests.sh 3/3 green (改名後の再ビルド込み)、luoc の残存参照ゼロ (grep、done.md 除く)

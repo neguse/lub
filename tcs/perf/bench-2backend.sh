@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PC 上で同一 TinyC# kernel を 2 backend で実行して比較する:
 #   dev     = tcs transpiler → Lua → lua32 (LUA_32BITS)
-#   release = tcs → IL → luoc → C → cc -O2
+#   release = tcs → IL → tcs2c → C → cc -O2
 # digest の相互一致が fail ゲート (数値意味論の一致)。実行時間はレポートのみ
 # (CI runner の絶対時間はぶれるため閾値ゲートにしない)。
 # 環境変数: PERF_BENCH_RUNS (default 7) / PERF_BENCH_FRAMES (default 5000)
@@ -26,14 +26,14 @@ fi
 
 "$DOTNET" build "$ROOT/Transpiler/Transpiler.csproj" \
   -p:NuGetAudit=false -v:minimal >/dev/null
-"$DOTNET" restore "$ROOT/luoc/luoc.csproj" \
+"$DOTNET" restore "$ROOT/tcs2c/tcs2c.csproj" \
   -p:TcsRoot="$ROOT" -p:NuGetAudit=false -v:minimal >/dev/null
-"$DOTNET" build "$ROOT/luoc/luoc.csproj" --no-restore \
+"$DOTNET" build "$ROOT/tcs2c/tcs2c.csproj" --no-restore \
   -p:TcsRoot="$ROOT" -p:BuildProjectReferences=false \
   -p:NuGetAudit=false -v:minimal >/dev/null
 
 TR_DLL="$ROOT/Transpiler/bin/Debug/net10.0/Transpiler.dll"
-LUOC_DLL="$ROOT/luoc/bin/Debug/net10.0/luoc.dll"
+TCS2C_DLL="$ROOT/tcs2c/bin/Debug/net10.0/tcs2c.dll"
 
 # bench 用コピー: frames を増やしてループ支配にする (digest 期待値は固定せず
 # 両 backend の相互一致で検証する)
@@ -91,9 +91,9 @@ for i in "${!kernels[@]}"; do
   dev_s=$(time_runs "$LUA32" "$WORK/$k.lua")
   dev_ms=$(python3 -c "print(f'{(float('$dev_s') - float('$lua_base')) * 1000.0 / $FRAMES:.6f}')")
 
-  # release backend。luoc 未対応 kernel (struct 系) は dev のみレポート
-  if "$DOTNET" "$LUOC_DLL" --digest-f32 --entry "$e" \
-      "$WORK/$k.cs" -o "$WORK/$k.c" 2> "$WORK/$k.luoc.err"; then
+  # release backend。tcs2c 未対応 kernel (struct 系) は dev のみレポート
+  if "$DOTNET" "$TCS2C_DLL" --digest-f32 --entry "$e" \
+      "$WORK/$k.cs" -o "$WORK/$k.c" 2> "$WORK/$k.tcs2c.err"; then
     "$CC_CMD" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
       "$WORK/$k.c" -o "$WORK/$k.bin"
     rel_digest=$("$WORK/$k.bin")
@@ -107,7 +107,7 @@ for i in "${!kernels[@]}"; do
   else
     rel_ms="-"
     ratio="-"
-    echo "note: $k は luoc 未対応のため dev のみ ($(head -1 "$WORK/$k.luoc.err"))" >&2
+    echo "note: $k は tcs2c 未対応のため dev のみ ($(head -1 "$WORK/$k.tcs2c.err"))" >&2
   fi
 
   rows+=( "$k,$dev_ms,$rel_ms,$ratio,$dev_digest" )

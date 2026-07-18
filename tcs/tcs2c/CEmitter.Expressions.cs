@@ -1,7 +1,7 @@
 using System.Text;
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
@@ -54,7 +54,7 @@ internal sealed partial class CEmitter
     private CType TypeOfPlace(IlExpr expr) => expr switch
     {
         IlVar or IlField or IlIndex => TypeOf(expr),
-        _ => throw new LuocException($"expression is not a place: {expr.GetType().Name}"),
+        _ => throw new Tcs2cException($"expression is not a place: {expr.GetType().Name}"),
     };
 
     private string RenderField(IlField field)
@@ -69,12 +69,12 @@ internal sealed partial class CEmitter
                 "Key" => receiver.Key!.Kind == CTypeKind.String
                     ? $"{node}->key_s" : $"{node}->key_i",
                 "Value" => $"(*({receiver.Element!.CName} *){node}->value)",
-                _ => throw new LuocException(
+                _ => throw new Tcs2cException(
                     $"unknown KeyValuePair member: {field.Name}"),
             };
         }
         if (receiver.Kind != CTypeKind.Ref)
-            throw new LuocException("field receiver is not a class reference");
+            throw new Tcs2cException("field receiver is not a class reference");
         _ = FieldInChain(receiver.Name!, field.Name);
         return $"(({receiver.CName})tcs_nonnull({RenderExpr(field.Recv)}))->" +
             Names.Field(field.Name);
@@ -89,11 +89,11 @@ internal sealed partial class CEmitter
             {
                 "Key" => receiver.Key!,
                 "Value" => receiver.Element!,
-                _ => throw new LuocException(
+                _ => throw new Tcs2cException(
                     $"unknown KeyValuePair member: {field.Name}"),
             };
         if (receiver.Kind != CTypeKind.Ref)
-            throw new LuocException("field receiver is not a class reference");
+            throw new Tcs2cException("field receiver is not a class reference");
         return FieldInChain(receiver.Name!, field.Name).Type;
     }
 
@@ -137,13 +137,13 @@ internal sealed partial class CEmitter
     private CType RequireSequence(IlIndex index)
     {
         if (!index.PlusOne)
-            throw new LuocException("only 0-based array/List indexing is supported");
+            throw new Tcs2cException("only 0-based array/List indexing is supported");
         RequireType(CType.I32, TypeOf(index.Idx), "sequence index");
         var sequence = TypeOf(index.Recv);
         if (sequence.Kind is not (CTypeKind.Array or CTypeKind.List))
-            throw new LuocException("index receiver is not an array/List");
+            throw new Tcs2cException("index receiver is not an array/List");
         if (sequence.Element is null)
-            throw new LuocException("cannot index a List with unknown element type");
+            throw new Tcs2cException("cannot index a List with unknown element type");
         return sequence;
     }
 
@@ -152,7 +152,7 @@ internal sealed partial class CEmitter
         var type = TypeOf(length.E);
         return type.Kind is CTypeKind.Array or CTypeKind.List or CTypeKind.String
             ? CType.I32
-            : throw new LuocException("length receiver is not an array/List/string");
+            : throw new Tcs2cException("length receiver is not an array/List/string");
     }
 
     private string RenderLength(IlLen length)
@@ -163,7 +163,7 @@ internal sealed partial class CEmitter
             CTypeKind.Array => "tcs_array_length",
             CTypeKind.List => "tcs_list_length",
             CTypeKind.String => "tcs_string_length",
-            _ => throw new LuocException("length receiver is not an array/List/string"),
+            _ => throw new Tcs2cException("length receiver is not an array/List/string"),
         };
         return $"{helper}({RenderExpr(length.E)})";
     }
@@ -235,7 +235,7 @@ internal sealed partial class CEmitter
         IlBinOp.BitXor => $"({left} ^ {right})",
         IlBinOp.Shl => $"tcs_shl({left}, {right})",
         IlBinOp.Shr => $"tcs_shr({left}, {right})",
-        _ => throw new LuocException($"unsupported binary operator: {op}"),
+        _ => throw new Tcs2cException($"unsupported binary operator: {op}"),
     };
 
     private CType TypeOfBinary(IlBin binary)
@@ -251,7 +251,7 @@ internal sealed partial class CEmitter
                     or CTypeKind.Bool or CTypeKind.String)
                     || right.Kind is not (CTypeKind.I32 or CTypeKind.F32
                         or CTypeKind.Bool or CTypeKind.String))
-                    throw new LuocException($"concat operands are not stringifiable: " +
+                    throw new Tcs2cException($"concat operands are not stringifiable: " +
                         $"{left}, {right}");
                 return CType.String;
             case IlBinOp.DivNum:
@@ -278,7 +278,7 @@ internal sealed partial class CEmitter
                 RequireType(CType.I32, right, "bitwise operand");
                 return CType.I32;
             default:
-                throw new LuocException($"unsupported binary operator: {binary.Op}");
+                throw new Tcs2cException($"unsupported binary operator: {binary.Op}");
         }
     }
 
@@ -291,7 +291,7 @@ internal sealed partial class CEmitter
             IlUnOp.Neg when type.Kind is CTypeKind.I32 or CTypeKind.F32 => $"(-{value})",
             IlUnOp.Not when type == CType.Bool => $"(!{value})",
             IlUnOp.BitNot when type == CType.I32 => $"(~{value})",
-            _ => throw new LuocException($"invalid unary operator {unary.Op} for {type}"),
+            _ => throw new Tcs2cException($"invalid unary operator {unary.Op} for {type}"),
         };
     }
 
@@ -351,7 +351,7 @@ internal sealed partial class CEmitter
                 RequireType(CType.F32, argument, "print/digest");
             else if (argument.Kind is not (CTypeKind.I32 or CTypeKind.F32
                 or CTypeKind.Bool or CTypeKind.String))
-                throw new LuocException($"print does not support {argument}");
+                throw new Tcs2cException($"print does not support {argument}");
             return CType.Void;
         }
         if (call.Callee == "Dict.ContainsKey")
@@ -383,7 +383,7 @@ internal sealed partial class CEmitter
             var argument = TypeOf(call.Args[0]);
             if (argument.Kind is not (CTypeKind.I32 or CTypeKind.F32
                 or CTypeKind.Bool or CTypeKind.String))
-                throw new LuocException($"tostring does not support {argument}");
+                throw new Tcs2cException($"tostring does not support {argument}");
             return CType.String;
         }
         if (call.Callee == "table.insert")
@@ -401,7 +401,7 @@ internal sealed partial class CEmitter
             var self = TypeOf(call.Args[0]);
             if (self.Kind != CTypeKind.Ref
                 || !IsAncestorOrSame(fact.ClassName, self.Name!))
-                throw new LuocException(
+                throw new Tcs2cException(
                     $"invalid receiver for {cls}.{method}");
             return ValidateMethodCall(fact, self, call.Args.Skip(1).ToArray());
         }
@@ -426,7 +426,7 @@ internal sealed partial class CEmitter
             CTypeKind.F32 => "tcs_print_f32",
             CTypeKind.Bool => "tcs_print_bool",
             CTypeKind.String => "tcs_print_string",
-            _ => throw new LuocException($"print does not support {argument}"),
+            _ => throw new Tcs2cException($"print does not support {argument}"),
         };
         return RenderOrderedCall(helper, CType.Void,
             [(argument, RenderExpr(call.Args[0]))]);
@@ -441,7 +441,7 @@ internal sealed partial class CEmitter
             CTypeKind.F32 => "tcs_string_f32",
             CTypeKind.Bool => "tcs_string_bool",
             CTypeKind.String => "tcs_string_tostring",
-            _ => throw new LuocException($"tostring does not support {type}"),
+            _ => throw new Tcs2cException($"tostring does not support {type}"),
         };
         return RenderOrderedCall(helper, CType.String, [(type, RenderExpr(argument))]);
     }
@@ -450,11 +450,11 @@ internal sealed partial class CEmitter
     {
         var listType = TypeOf(receiver);
         if (listType.Kind != CTypeKind.List)
-            throw new LuocException("table.insert receiver is not a List");
+            throw new Tcs2cException("table.insert receiver is not a List");
         if (listType.Element is null)
         {
             if (valueType is null)
-                throw new LuocException(
+                throw new Tcs2cException(
                     "cannot infer List element type for closure Add");
             listType = CType.List(valueType);
             if (receiver is IlVar variable) Resolve(variable.Name).Type = listType;
@@ -553,10 +553,10 @@ internal sealed partial class CEmitter
     {
         if (callee is not IlField { Recv: IlVar receiver } field
             || !_classes.ContainsKey(receiver.Name))
-            throw new LuocException("only type-qualified static IlDynCall is supported");
+            throw new Tcs2cException("only type-qualified static IlDynCall is supported");
         var fact = _facts.Method(receiver.Name, field.Name);
         if (!fact.IsStatic)
-            throw new LuocException($"dynamic call target is not static: " +
+            throw new Tcs2cException($"dynamic call target is not static: " +
                 $"{receiver.Name}.{field.Name}");
         return fact;
     }
@@ -564,9 +564,9 @@ internal sealed partial class CEmitter
     private MethodFact ResolveInvokeFact(CType receiver, string method)
     {
         if (receiver.Kind != CTypeKind.Ref)
-            throw new LuocException("IlInvoke receiver is not a class reference");
+            throw new Tcs2cException("IlInvoke receiver is not a class reference");
         var declaring = FindDeclaringClass(receiver.Name!, method)
-            ?? throw new LuocException(
+            ?? throw new Tcs2cException(
                 $"unknown method: {receiver.Name}.{method}");
         return _facts.Method(declaring, method);
     }
@@ -594,9 +594,9 @@ internal sealed partial class CEmitter
         IReadOnlyList<IlExpr> args)
     {
         if (receiver is null && !fact.IsStatic)
-            throw new LuocException($"call target is not static: {fact.ClassName}.{fact.Name}");
+            throw new Tcs2cException($"call target is not static: {fact.ClassName}.{fact.Name}");
         if (receiver is not null && fact.IsStatic)
-            throw new LuocException($"IlInvoke target is static: {fact.ClassName}.{fact.Name}");
+            throw new Tcs2cException($"IlInvoke target is static: {fact.ClassName}.{fact.Name}");
         RequireArity($"{fact.ClassName}.{fact.Name}", args.Count, fact.Parameters.Count);
         for (var i = 0; i < args.Count; i++)
             RequireAssignable(fact.Parameters[i].Type, TypeOf(args[i]),
@@ -643,21 +643,21 @@ internal sealed partial class CEmitter
     {
         var dot = callee.IndexOf('.');
         if (dot <= 0 || dot != callee.LastIndexOf('.') || dot == callee.Length - 1)
-            throw new LuocException($"unsupported intrinsic or callee: {callee}");
+            throw new Tcs2cException($"unsupported intrinsic or callee: {callee}");
         var cls = callee[..dot];
         var method = callee[(dot + 1)..];
         if (!_classes.ContainsKey(cls))
-            throw new LuocException($"unknown call target class: {callee}");
+            throw new Tcs2cException($"unknown call target class: {callee}");
         return (cls, method);
     }
 
     private string RenderNew(IlNewObj creation)
     {
         if (!_classes.TryGetValue(creation.TypeName, out var cls))
-            throw new LuocException($"unknown class: {creation.TypeName}");
+            throw new Tcs2cException($"unknown class: {creation.TypeName}");
         var paramFacts = CtorParamFacts(cls);
         if (creation.Args.Length != paramFacts.Count)
-            throw new LuocException($"constructor {cls.Name}: expected " +
+            throw new Tcs2cException($"constructor {cls.Name}: expected " +
                 $"{paramFacts.Count} arguments, got {creation.Args.Length}");
         if (creation.Args.Length == 0) return $"{Names.New(cls.Name)}()";
         var values = new List<(CType Type, string Value)>();
@@ -678,7 +678,7 @@ internal sealed partial class CEmitter
             || table.Entries.Any(e => e.Key is not null))
             return TypeOfDictTable(table);
         if (table.Entries.Any(e => e.NameKey is not null))
-            throw new LuocException("option-table IlTable is not supported");
+            throw new Tcs2cException("option-table IlTable is not supported");
         CType? element = table.ElementType is null
             ? null : _facts.MapType(table.ElementType);
         foreach (var entry in table.Entries)
@@ -690,7 +690,7 @@ internal sealed partial class CEmitter
             or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
             or CTypeKind.Ref or CTypeKind.Closure or CTypeKind.List
             or CTypeKind.Dict or CTypeKind.Array))
-            throw new LuocException($"unsupported List element type: {element}");
+            throw new Tcs2cException($"unsupported List element type: {element}");
         return CType.List(element);
     }
 

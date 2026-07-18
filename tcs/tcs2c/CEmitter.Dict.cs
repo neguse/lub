@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
@@ -18,7 +18,7 @@ internal sealed partial class CEmitter
     {
         dict = TypeOf(recv);
         if (dict.Kind != CTypeKind.Dict)
-            throw new LuocException($"receiver is not a Dictionary: {dict}");
+            throw new Tcs2cException($"receiver is not a Dictionary: {dict}");
         return dict.Element!;
     }
 
@@ -26,24 +26,24 @@ internal sealed partial class CEmitter
     private CType TypeOfDictTable(IlTable table)
     {
         if (table.Entries.Any(e => e.NameKey is not null || e.Key is null && table.Entries.Length > 0 && table.KeyType is null))
-            throw new LuocException("mixed IlTable entries are not supported");
+            throw new Tcs2cException("mixed IlTable entries are not supported");
         CType? key = table.KeyType is null ? null : _facts.MapType(table.KeyType);
         CType? value = table.ElementType is null
             ? null : _facts.MapType(table.ElementType);
         foreach (var entry in table.Entries)
         {
             if (entry.Key is null)
-                throw new LuocException("dict IlTable entry without key");
+                throw new Tcs2cException("dict IlTable entry without key");
             var k = TypeOf(entry.Key);
             var v = TypeOf(entry.Value);
             key = key is null ? k : CommonType(key, k, "dict keys");
             value = value is null ? v : CommonType(value, v, "dict values");
         }
         if (key is null || value is null)
-            throw new LuocException(
+            throw new Tcs2cException(
                 "cannot infer Dictionary key/value types (no metadata)");
         if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
-            throw new LuocException($"Dictionary key type not supported: {key}");
+            throw new Tcs2cException($"Dictionary key type not supported: {key}");
         return CType.Dict(key, value);
     }
 
@@ -84,7 +84,7 @@ internal sealed partial class CEmitter
             || multi.Targets.Length != 2
             || multi.Targets[0] is not IlVar foundVar
             || multi.Targets[1] is not IlVar valueVar)
-            throw new LuocException(
+            throw new Tcs2cException(
                 "only Dict.TryGet multi-assign is supported");
         RequireArity("Dict.TryGet", tryGet.Args.Length, 3);
         var valueType = RequireDict(tryGet.Args[0], out var dictType);

@@ -2,17 +2,17 @@ using System.Globalization;
 using System.Text;
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
     private CType TypeOfIsType(IlIsType typeTest)
     {
         if (!_classes.ContainsKey(typeTest.TypeRef))
-            throw new LuocException($"IlIsType target is not a class: {typeTest.TypeRef}");
+            throw new Tcs2cException($"IlIsType target is not a class: {typeTest.TypeRef}");
         var operand = TypeOf(typeTest.E);
         if (operand.Kind is not (CTypeKind.Ref or CTypeKind.Null))
-            throw new LuocException($"IlIsType operand is not a class reference: {operand}");
+            throw new Tcs2cException($"IlIsType operand is not a class reference: {operand}");
         return CType.Bool;
     }
 
@@ -49,7 +49,7 @@ internal sealed partial class CEmitter
         {
             if (!float.TryParse(text, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var value))
-                throw new LuocException($"invalid f32 literal: {text}");
+                throw new Tcs2cException($"invalid f32 literal: {text}");
             return Constants.F32(value);
         }
         int integer;
@@ -57,12 +57,12 @@ internal sealed partial class CEmitter
         {
             if (!uint.TryParse(text.AsSpan(2), NumberStyles.HexNumber,
                 CultureInfo.InvariantCulture, out var bits))
-                throw new LuocException($"invalid i32 literal: {text}");
+                throw new Tcs2cException($"invalid i32 literal: {text}");
             integer = unchecked((int)bits);
         }
         else if (!int.TryParse(text, NumberStyles.Integer,
             CultureInfo.InvariantCulture, out integer))
-            throw new LuocException($"invalid i32 literal: {text}");
+            throw new Tcs2cException($"invalid i32 literal: {text}");
         return Constants.I32(integer);
     }
 
@@ -77,7 +77,7 @@ internal sealed partial class CEmitter
     private static byte[] DecodeLuaString(string text)
     {
         if (text.Length < 2 || text[0] != '"' || text[^1] != '"')
-            throw new LuocException($"invalid Lua string literal: {text}");
+            throw new Tcs2cException($"invalid Lua string literal: {text}");
         var decoded = new StringBuilder();
         for (var i = 1; i < text.Length - 1; i++)
         {
@@ -88,7 +88,7 @@ internal sealed partial class CEmitter
                 continue;
             }
             if (++i >= text.Length - 1)
-                throw new LuocException($"invalid Lua string escape: {text}");
+                throw new Tcs2cException($"invalid Lua string escape: {text}");
             switch (text[i])
             {
                 case '\\': decoded.Append('\\'); break;
@@ -103,7 +103,7 @@ internal sealed partial class CEmitter
                     i += 2;
                     break;
                 default:
-                    throw new LuocException($"unsupported Lua string escape: \\{text[i]}");
+                    throw new Tcs2cException($"unsupported Lua string escape: \\{text[i]}");
             }
         }
         try
@@ -112,7 +112,7 @@ internal sealed partial class CEmitter
         }
         catch (EncoderFallbackException)
         {
-            throw new LuocException("string literal contains an isolated UTF-16 surrogate");
+            throw new Tcs2cException("string literal contains an isolated UTF-16 surrogate");
         }
     }
 
@@ -123,7 +123,7 @@ internal sealed partial class CEmitter
     {
         if (left.Kind is not (CTypeKind.I32 or CTypeKind.F32)
             || right.Kind is not (CTypeKind.I32 or CTypeKind.F32))
-            throw new LuocException($"{where} operands are not numeric: {left}, {right}");
+            throw new Tcs2cException($"{where} operands are not numeric: {left}, {right}");
         return left.Kind == CTypeKind.F32 || right.Kind == CTypeKind.F32
             ? CType.F32 : CType.I32;
     }
@@ -141,7 +141,7 @@ internal sealed partial class CEmitter
             if (left.Element is null) return right;
             if (right.Element is null) return left;
         }
-        throw new LuocException($"incompatible {where}: {left}, {right}");
+        throw new Tcs2cException($"incompatible {where}: {left}, {right}");
     }
 
     private static void RequireComparable(CType left, CType right, string where)
@@ -152,13 +152,13 @@ internal sealed partial class CEmitter
             or CTypeKind.Ref or CTypeKind.Array or CTypeKind.List) return;
         if (left.Kind == CTypeKind.Null && right.IsNullable
             || right.Kind == CTypeKind.Null && left.IsNullable) return;
-        throw new LuocException($"incompatible {where} operands: {left}, {right}");
+        throw new Tcs2cException($"incompatible {where} operands: {left}, {right}");
     }
 
     private static void RequireType(CType expected, CType actual, string where)
     {
         if (expected != actual)
-            throw new LuocException($"{where}: expected {expected}, got {actual}");
+            throw new Tcs2cException($"{where}: expected {expected}, got {actual}");
     }
 
     private void RequireAssignable(CType target, CType source, string where)
@@ -168,7 +168,7 @@ internal sealed partial class CEmitter
         if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
             && IsAncestorOrSame(target.Name!, source.Name!))
             return;
-        throw new LuocException($"{where}: cannot assign {source} to {target}");
+        throw new Tcs2cException($"{where}: cannot assign {source} to {target}");
     }
 
     // upcast が必要なら C の明示 cast を挟んで render する。
@@ -211,15 +211,15 @@ internal sealed partial class CEmitter
     private static void RequireArity(string callee, int actual, int expected)
     {
         if (actual != expected)
-            throw new LuocException($"{callee}: expected {expected} arguments, got {actual}");
+            throw new Tcs2cException($"{callee}: expected {expected} arguments, got {actual}");
     }
 
-    private static LuocException Unsupported(IlNode node) =>
+    private static Tcs2cException Unsupported(IlNode node) =>
         new($"unsupported IL node: {node.GetType().Name}");
 
     private Variable Resolve(string name) =>
         TryResolve(name)
-        ?? throw new LuocException($"unbound IL variable: {name}");
+        ?? throw new Tcs2cException($"unbound IL variable: {name}");
 
     private Variable? TryResolve(string name)
     {

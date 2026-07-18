@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
@@ -21,7 +21,7 @@ internal sealed partial class CEmitter
 
     private readonly List<string> _pendingClosures = [];
     private readonly List<string> _closureDecls = [];
-    private const string ClosureDeclMarker = "/*__LUOC_CLOSURE_DECLS__*/";
+    private const string ClosureDeclMarker = "/*__TCS2C_CLOSURE_DECLS__*/";
     private readonly HashSet<string> _capturedNames = [];
     private int _closureSerial;
 
@@ -57,7 +57,7 @@ internal sealed partial class CEmitter
             if (cls.BaseName is { } b)
             {
                 if (!_classes.ContainsKey(b))
-                    throw new LuocException($"unknown base class: {cls.Name} : {b}");
+                    throw new Tcs2cException($"unknown base class: {cls.Name} : {b}");
                 (children.TryGetValue(b, out var list)
                     ? list : children[b] = []).Add(cls.Name);
             }
@@ -70,7 +70,7 @@ internal sealed partial class CEmitter
         void Assign(string name)
         {
             if (_typeRange.ContainsKey(name))
-                throw new LuocException($"inheritance cycle at {name}");
+                throw new Tcs2cException($"inheritance cycle at {name}");
             var first = next++;
             _typeRange[name] = (first, first);
             foreach (var child in children.TryGetValue(name, out var cs)
@@ -80,7 +80,7 @@ internal sealed partial class CEmitter
         }
         foreach (var root in roots) Assign(root);
         if (_typeRange.Count != _program.Classes.Length)
-            throw new LuocException("inheritance cycle detected");
+            throw new Tcs2cException("inheritance cycle detected");
     }
 
     private IEnumerable<IlClassInfo> ChainRootFirst(string cls)
@@ -112,7 +112,7 @@ internal sealed partial class CEmitter
         for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
             if (_classes[cur].Fields.Any(f => f.Name == name))
                 return _facts.Field(cur, name);
-        throw new LuocException($"unknown field: {cls}.{name}");
+        throw new Tcs2cException($"unknown field: {cls}.{name}");
     }
 
     // declaring で宣言された method を strict 子孫が再宣言しているか
@@ -158,7 +158,7 @@ internal sealed partial class CEmitter
     private void ValidateProgram()
     {
         if (_program.Diagnostics.Length > 0)
-            throw new LuocException("cannot emit a program with TinyC# diagnostics");
+            throw new Tcs2cException("cannot emit a program with TinyC# diagnostics");
         foreach (var cls in _program.Classes)
         {
             Names.Id(cls.Name);
@@ -174,10 +174,10 @@ internal sealed partial class CEmitter
             {
                 Names.Id(method.Name);
                 if (!methodNames.Add(method.Name))
-                    throw new LuocException($"method overloads are not supported: " +
+                    throw new Tcs2cException($"method overloads are not supported: " +
                         $"{cls.Name}.{method.Name}");
                 if (method.Body is null)
-                    throw new LuocException($"method has no IL body: {cls.Name}.{method.Name}");
+                    throw new Tcs2cException($"method has no IL body: {cls.Name}.{method.Name}");
                 var fact = _facts.Method(cls.Name, method.Name);
                 EnsureSupportedStorageType(fact.ReturnType,
                     $"return type of {cls.Name}.{method.Name}", allowVoid: true);
@@ -199,7 +199,7 @@ internal sealed partial class CEmitter
                 or CTypeKind.Ref) return;
         if (type.Kind == CTypeKind.List
             && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32) return;
-        throw new LuocException($"unsupported {where}: {type}");
+        throw new Tcs2cException($"unsupported {where}: {type}");
     }
 
     private (IlClassInfo Class, IlMethodInfo Method)? FindEntry(string? requested)
@@ -215,10 +215,10 @@ internal sealed partial class CEmitter
         {
             1 => candidates[0],
             0 when requested is null && !_digestF32 => null,
-            0 => throw new LuocException(requested is null
+            0 => throw new Tcs2cException(requested is null
                 ? "--digest-f32 requires a static void Main() entry point"
                 : $"no static void Main() entry point in {requested}"),
-            _ => throw new LuocException("multiple Main entry points; pass --entry CLASS"),
+            _ => throw new Tcs2cException("multiple Main entry points; pass --entry CLASS"),
         };
     }
 
@@ -385,7 +385,7 @@ internal sealed partial class CEmitter
         {
             // 型は契約 (IlLocal.Type) から。C の zero 初期化 = default 値
             if (local.Type is null)
-                throw new LuocException($"local has no initializer/type: " +
+                throw new Tcs2cException($"local has no initializer/type: " +
                     $"{_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
             var declared = _facts.MapType(local.Type);
             var zero = declared.Kind is CTypeKind.I32 or CTypeKind.F32
@@ -417,7 +417,7 @@ internal sealed partial class CEmitter
         }
         var type = declaredClosure ?? TypeOf(local.Init);
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
-            throw new LuocException($"cannot infer storage type of local {local.Name}: {type}");
+            throw new Tcs2cException($"cannot infer storage type of local {local.Name}: {type}");
         var rendered = RenderCoerced(local.Init, type);
         if (_capturedNames.Contains(local.Name))
         {
@@ -457,7 +457,7 @@ internal sealed partial class CEmitter
             {
                 var receiverType = TypeOf(field.Recv);
                 if (receiverType.Kind != CTypeKind.Ref)
-                    throw new LuocException("field receiver is not a class reference");
+                    throw new Tcs2cException("field receiver is not a class reference");
                 var temp = Temp("object");
                 Line($"{receiverType.CName} {temp} = ({receiverType.CName})" +
                     $"tcs_nonnull({RenderExpr(field.Recv)});");
@@ -491,7 +491,7 @@ internal sealed partial class CEmitter
                 return;
             }
             default:
-                throw new LuocException($"unsupported assignment place: " +
+                throw new Tcs2cException($"unsupported assignment place: " +
                     assign.Target.GetType().Name);
         }
     }
@@ -553,7 +553,7 @@ internal sealed partial class CEmitter
         var sequenceType = TypeOf(loop.Coll);
         if (sequenceType.Kind is not (CTypeKind.Array or CTypeKind.List)
             || sequenceType.Element is null)
-            throw new LuocException($"IlForeachList requires a typed array/List, got " +
+            throw new Tcs2cException($"IlForeachList requires a typed array/List, got " +
                 sequenceType);
         var sequence = Temp("foreach_sequence");
         var length = Temp("foreach_length");
@@ -629,7 +629,7 @@ internal sealed partial class CEmitter
     private void EmitContinue()
     {
         if (_continueTargets.Count == 0)
-            throw new LuocException("continue outside a loop");
+            throw new Tcs2cException("continue outside a loop");
         var target = _continueTargets.Peek();
         Line(target is null ? "continue;" : $"goto {target};");
     }

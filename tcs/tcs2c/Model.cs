@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
-internal sealed class LuocException(string message) : Exception(message);
+internal sealed class Tcs2cException(string message) : Exception(message);
 
 internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure }
 
@@ -41,7 +41,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         CTypeKind.List => "TcsList *",
         CTypeKind.Dict => "TcsDict *",
         CTypeKind.Closure => "TcsClosure *",
-        _ => throw new LuocException($"unsupported type: {this}"),
+        _ => throw new Tcs2cException($"unsupported type: {this}"),
     };
 
     public string ElementCName => Kind is CTypeKind.Array or CTypeKind.List
@@ -85,7 +85,7 @@ internal static partial class Names
     public static string Id(string name)
     {
         if (!IdentifierRegex().IsMatch(name))
-            throw new LuocException($"identifier is not supported by the C backend: {name}");
+            throw new Tcs2cException($"identifier is not supported by the C backend: {name}");
         return name;
     }
 

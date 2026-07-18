@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using TinyCs;
 
-namespace TinyCs.Luoc;
+namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
@@ -37,7 +37,7 @@ internal sealed partial class CEmitter
                 var baseArgs = ctor?.BaseArgs.IsDefault == false
                     ? ctor.BaseArgs : [];
                 if (baseArgs.Length != baseParams.Count)
-                    throw new LuocException(
+                    throw new Tcs2cException(
                         $"base constructor arity mismatch: {cls.Name}");
                 var rendered = new List<string>();
                 for (var i = 0; i < baseArgs.Length; i++)
@@ -72,7 +72,7 @@ internal sealed partial class CEmitter
             if (ctor?.Body is { } body)
                 EmitStats(body.Stats);
             else if (ctor is { Body: null })
-                throw new LuocException(
+                throw new Tcs2cException(
                     $"constructor body is not IL-exportable: {cls.Name}");
             Line("return object;");
             PopScope();
@@ -86,7 +86,7 @@ internal sealed partial class CEmitter
     {
         if (cls.Ctor is not { } ctor) return [];
         if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
-            throw new LuocException($"ctor metadata mismatch: {cls.Name}");
+            throw new Tcs2cException($"ctor metadata mismatch: {cls.Name}");
         return ctor.Parameters.Select((name, i) => new ParameterFact(
             name, _facts.MapType(ctor.ParameterTypes[i]))).ToList();
     }

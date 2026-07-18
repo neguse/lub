@@ -1,5 +1,5 @@
 using TinyCs;
-using TinyCs.Luoc;
+using TinyCs.Tcs2c;
 
 return Run(args);
 
@@ -17,7 +17,7 @@ static int Run(string[] args)
         var sources = options.Inputs.Select(File.ReadAllText).ToArray();
         var exported = IlExport.Export(sources);
         if (exported.Diagnostics.Length > 0)
-            throw new LuocException("TinyC# diagnostics:\n" +
+            throw new Tcs2cException("TinyC# diagnostics:\n" +
                 string.Join("\n", exported.Diagnostics));
 
         var c = new CEmitter(exported, options.DigestF32)
@@ -28,14 +28,14 @@ static int Run(string[] args)
             File.WriteAllText(options.OutputPath, c);
         return 0;
     }
-    catch (LuocException ex)
+    catch (Tcs2cException ex)
     {
-        Console.Error.WriteLine($"luoc: {ex.Message}");
+        Console.Error.WriteLine($"tcs2c: {ex.Message}");
         return 1;
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {
-        Console.Error.WriteLine($"luoc: {ex.Message}");
+        Console.Error.WriteLine($"tcs2c: {ex.Message}");
         return 1;
     }
 }
@@ -49,7 +49,7 @@ file sealed record Options(
     bool Lib = false)
 {
     public const string Usage =
-        "usage: luoc [--entry CLASS] [--digest-f32] [--lib] [-o OUTPUT.c] " +
+        "usage: tcs2c [--entry CLASS] [--digest-f32] [--lib] [-o OUTPUT.c] " +
         "INPUT.cs [INPUT.cs ...]";
 
     public static Options Parse(string[] args)
@@ -82,21 +82,21 @@ file sealed record Options(
                     break;
                 default:
                     if (args[i].StartsWith("-", StringComparison.Ordinal))
-                        throw new LuocException($"unknown option: {args[i]}\n{Usage}");
+                        throw new Tcs2cException($"unknown option: {args[i]}\n{Usage}");
                     inputs.Add(args[i]);
                     break;
             }
         }
 
         if (!help && inputs.Count == 0)
-            throw new LuocException(Usage);
+            throw new Tcs2cException(Usage);
         return new Options(inputs, output, entry, digestF32, help, lib);
     }
 
     private static string TakeValue(string[] args, ref int i)
     {
         if (++i >= args.Length)
-            throw new LuocException($"missing value for {args[i - 1]}\n{Usage}");
+            throw new Tcs2cException($"missing value for {args[i - 1]}\n{Usage}");
         return args[i];
     }
 }

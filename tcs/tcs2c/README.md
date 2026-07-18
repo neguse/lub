@@ -1,13 +1,13 @@
-# luoc — TinyC# IL→C release backend
+# tcs2c — TinyC# IL→C release backend
 
-`luoc` は TinyC# source を `IlExport.Export` へ渡し、release 用の GNU C source
+`tcs2c` は TinyC# source を `IlExport.Export` へ渡し、release 用の GNU C source
 を生成する .NET 10 console application。class は type id 付き `calloc` struct、
 array と `List<int>` / `List<float>` は型付き連続 buffer へ lower する。
 
 ## 使い方
 
 ```sh
-dotnet run --project luoc -- ../tcs/samples/collision.cs -o collision.c
+dotnet run --project tcs2c -- ../tcs/samples/collision.cs -o collision.c
 gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   collision.c -o collision
 ./collision
@@ -34,7 +34,7 @@ gcc -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
 `--digest-f32` を付け、各 f32 の bit 列を FNV-1a へ直接投入する。
 
 ```sh
-TCS_ROOT=../tcs bash luoc/verify-digests.sh
+TCS_ROOT=../tcs bash tcs2c/verify-digests.sh
 ```
 
 ## IlExport 契約

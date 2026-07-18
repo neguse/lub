@@ -93,10 +93,10 @@ dotnet run --project "$SCRIPT_DIR/Transpiler" -- \
 
 # 2 backend digest 一致 (IL→C backend、cc がある環境のみ)
 if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
-  echo "Running luoc digest verification..."
-  bash "$SCRIPT_DIR/luoc/verify-digests.sh"
+  echo "Running tcs2c digest verification..."
+  bash "$SCRIPT_DIR/tcs2c/verify-digests.sh"
 else
-  echo "Skipping luoc digest verification (no C compiler)."
+  echo "Skipping tcs2c digest verification (no C compiler)."
 fi
 
 bash "$SCRIPT_DIR/samples/analyzer-demo/verify-rider-scripts.sh"

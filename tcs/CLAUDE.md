@@ -17,7 +17,7 @@ tcs/
 ├── doc/
 │   ├── tasks.md           # タスクリスト
 │   └── done.md            # 完了ログ
-├── luoc/                  # IL→C release backend (.NET、digest で Lua backend と一致検証)
+├── tcs2c/                 # IL→C release backend (.NET、digest で Lua backend と一致検証)
 ├── perf/                  # 性能実測ハーネス (kernel 契約 CONTRACT.md + 変種実装 + 実測記録)
 ├── Transpiler/            # トランスパイラ本体 (.NET)
 │   ├── Transpiler.csproj
@@ -218,7 +218,7 @@ Clang AST → TypeRegistry → ModuleSpec（既存IR）
 ## 参考リポジトリ（読み取り専用）
 
 - `../lub` — Haxe 代替検証 (T125-T127) の対象。C/C++ runtime + Lua 5.5 + Haxe script 層。readonly で、lub 側に変更が必要な場合は feature request を出す
-- `../luo` — 旧 AOT 方向のアーカイブ。IL→C backend (luoc) と性能ハーネス (perf) は 2026-07-18 に tcs へ取り込み済みで、以後 luo 側は変更しない
+- `../luo` — 旧 AOT 方向のアーカイブ。IL→C backend (tcs2c) と性能ハーネス (perf) は 2026-07-18 に tcs へ取り込み済みで、以後 luo 側は変更しない
 - `../lub3d` — 参考実装。直接対応先とは限らない
 - `../lubs` — Lua linter（開発ワークフローの参考）
 

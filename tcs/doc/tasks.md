@@ -30,7 +30,7 @@
 
 ### Phase 3 — 価値の刈り取り
 
-- [x] T218 完 (2026-07-18): M3 IL→C backend (luoc)。継承 / Dict / closure /
+- [x] T218 完 (2026-07-18): M3 IL→C backend (tcs2c)。継承 / Dict / closure /
       ctor 連鎖 / 静的 link (--lib) まで全マイルストーン受入済み
       (digest 3/3 + 全サンプル stdout 一致)。未対応構文は明示エラー方針で、
       対応面の拡張は実利用の需要駆動 (done.md 第一〜第八参照)
