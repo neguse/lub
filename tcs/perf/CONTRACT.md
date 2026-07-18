@@ -78,7 +78,7 @@
 - 実行時間: kernel×変種ごとに 7 回実行し median、ms/frame で出力
 - 出力形式 (1 行 1 結果): `kernel,variant,N,ms_per_frame,digest`
 - 全変種の digest 一致を harness が検証し、不一致は exit 1
-- 成果物: `spike/` 以下に CMakeLists.txt + C ソース + lua ソース +
+- 成果物: `perf/` 以下に CMakeLists.txt + C ソース + lua ソース +
   `run.sh` (ビルド→実行→表形式サマリ)。結果は `spike/results-pc.md` へ
   (実測値表 + aot-slot/native 比 + 合否解釈のどちらに落ちたか)
 

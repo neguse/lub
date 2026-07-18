@@ -1403,3 +1403,7 @@
 - git subtree (履歴保持) で ../luo から luoc/ と spike/ を取り込み。ProjectReference をリポジトリ内参照へ、slnx に luoc を追加、doc/spike-ceiling.md を移管し全参照を付け替え (done.md の歴史記述は当時のまま)
 - run-tests に luoc digest ゲートを常設 (cc 存在時) — **2 backend 一致が毎コミット・CI で守られる**ようになった (従来は手動)。ファイルサイズ規約の適用で CEmitter を 6 ファイルへ分割
 - 判断: 対称 2 backend は同一リポジトリが正 (契約ロックステップの解消、ゲート統合、bisect)。../luo は旧 AOT 方向のアーカイブとして以後変更しない (CLAUDE.md 記載)
+
+### spike の名称整理 → perf/ ✓ (2026-07-18)
+- 合否決着済みの「spike」を恒久名 perf/ へ改称 (既存 bench/ = wasm E2E スクリプト群との衝突回避)。暫定正本だった spike-ceiling.md を解体し、恒久内容 (KPI floor / 変種 / 決着済み合否 / 実機残り) を perf/README.md へ、参照を全付け替え (done.md の歴史は当時のまま)
+- 判断: spike 名は「一時実験」を示唆し役割決着後は負債 — 実体は kernel 契約・性能回帰基盤・実機測定受け皿という恒久物

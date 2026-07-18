@@ -58,7 +58,7 @@ function Program.Area(shape)
 end
 ```
 
-IL→C（object model は spike 合否解釈に従う。native 表現の場合の概形）:
+IL→C（object model は perf 実測で native 表現に決着。その概形）:
 
 ```c
 static float Program_Area(TcsObj *shape) {
@@ -156,7 +156,7 @@ store p.X, 99.0f                                          // p のみ変更
 
 IL→C: native struct / 連続配列へ直写（`ps[i].X += ps[i].VX * dt;`）。
 IL→Lua: 表現候補は table of tables（copy は clone helper）か userdata 連続
-バッファ。選択は `doc/spike-ceiling.md` の particles kernel 実測で
+バッファ。選択は `perf/` の particles kernel 実測で
 決める（T212 / T219）。IL 意味論は表現非依存に「要素は独立した place、
 copy 地点で値が分離する」とだけ定める。
 
