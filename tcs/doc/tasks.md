@@ -22,12 +22,12 @@
 
 ### Phase 1 — M1: 挙動不変の内部再編 ✓ (T214a-c 完、done.md 参照)
 
-- [ ] **T224** (P2): legacy visitor の縮退 — fallback に残る構文
+- [ ] **T224** (P2): legacy visitor の縮退 — IlExport 契約は完備
+      (top-level/operator 収載済み 2026-07-18)。残り: fallback に残る構文
       （method group 参照、混在 tuple 分解、lock、using 宣言、
-      非リテラル alignment、TCS 診断構文）の IL 化 or 診断化を進め、
-      fallback を診断 method のみに絞ったうえで legacy 削除を判断。
-      class 骨格の IL 化は ctor/accessor/field initializer まで契約化済み
-      (2026-07-18)。残りは top-level 文と operator 本文の IlExport 収載
+      非リテラル alignment、TCS 診断構文）の IL 化 or 診断化。
+      判断済み: legacy visitor のコード削除はしない — 診断構文の出力と
+      挙動不変の保険として保持し、fallback 面の縮小のみ続ける
 - [ ] **T225** (P2): IIFE の statement 化（examples 決定 2）— statement
       位置 (local 初期化 / 純 local 代入 / return) の ternary / switch 式 /
       ?. / ?? / TryGetValue 系は完了 (2026-07-18)。残り: 式中間位置

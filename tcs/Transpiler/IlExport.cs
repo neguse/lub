@@ -41,9 +41,12 @@ public sealed record IlMethodInfo(
     string ReturnType = "void",
     ImmutableArray<string> ParameterTypes = default);
 
+/// <summary>結果。TopLevel は top-level 文 (エントリポイント本文相当) の IL
+/// (無ければ null、IL 未対応構文を含めば null — Diagnostics で判別)。</summary>
 public sealed record IlExportResult(
     ImmutableArray<IlClassInfo> Classes,
-    ImmutableArray<string> Diagnostics);
+    ImmutableArray<string> Diagnostics,
+    IlBlock? TopLevel = null);
 
 public static class IlExport
 {
@@ -67,6 +70,8 @@ public static class IlExport
 
         var classes = new List<IlClassInfo>();
         var emitter = new LuaEmitter();
+        var topLevel = new List<StatementSyntax>();
+        SemanticModel? topLevelModel = null;
         foreach (var tree in trees)
         {
             var model = compilation.GetSemanticModel(tree);
@@ -75,8 +80,17 @@ public static class IlExport
             {
                 classes.Add(ExportClass(emitter, model, cls));
             }
+            var globals = tree.GetCompilationUnitRoot().Members
+                .OfType<GlobalStatementSyntax>().ToList();
+            if (globals.Count > 0)
+            {
+                topLevel.AddRange(globals.Select(g => g.Statement));
+                topLevelModel = model;
+            }
         }
-        return new IlExportResult([.. classes], [.. diagnostics]);
+        var topLevelIl = topLevelModel != null
+            ? emitter.ExportStatsIl(topLevelModel, topLevel) : null;
+        return new IlExportResult([.. classes], [.. diagnostics], topLevelIl);
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,
@@ -153,6 +167,29 @@ public static class IlExport
                     isGet ? propType : "void",
                     isGet ? [] : [propType]));
             }
+        }
+        // user-defined operator は metamethod 名の static method として収載
+        foreach (var op in cls.Members.OfType<OperatorDeclarationSyntax>())
+        {
+            if (!TinyCsComplianceFacts.TryGetOperatorMetamethod(op,
+                    out var metamethod))
+                continue;
+            IlBlock? opBody = null;
+            if (op.Body != null)
+                opBody = emitter.ExportStatsIl(model, op.Body.Statements);
+            else if (op.ExpressionBody != null)
+                opBody = emitter.ExportAccessorExprIl(model,
+                    op.ExpressionBody.Expression, isGet: true);
+            var opSymbol = model.GetDeclaredSymbol(op);
+            methods.Add(new IlMethodInfo(metamethod, true,
+                [.. op.ParameterList.Parameters
+                    .Select(p => p.Identifier.ValueText)],
+                opBody,
+                opSymbol?.ReturnType.ToDisplayString() ?? "?",
+                opSymbol == null
+                    ? []
+                    : [.. opSymbol.Parameters
+                        .Select(p => p.Type.ToDisplayString())]));
         }
         foreach (var method in cls.Members.OfType<MethodDeclarationSyntax>())
         {

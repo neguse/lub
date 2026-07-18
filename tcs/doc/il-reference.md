@@ -88,5 +88,5 @@ expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-e
 ## 未カバー（backend 側で拒否してよい）
 
 - Body == null の method（診断構文、method group 参照等 — tasks.md T224）
-- top-level 文・operator 本文（IlExport 未収載。ctor/accessor/field
-  initializer は契約化済み）
+(2026-07-18 時点で契約は完備: top-level 文は Result.TopLevel、operator は
+metamethod 名 (__add 等) の static IlMethodInfo として Methods に現れる)

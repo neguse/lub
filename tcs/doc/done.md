@@ -1343,3 +1343,8 @@
 ### T225 第三スライス: 値返し IIFE 形状の一般化 ✓ (2026-07-18)
 - 形状認識を [locals + IlIf(arm=前置文*+末尾return, else?) + 末尾return?] へ一般化し、?. / ?? / TryGetValue / GetValueOrDefault の IIFE も statement 位置で文へ。末尾 return は else へ正規化、arm 前置文 (TryGetValue の out 代入) は保存
 - 検証: 専用テスト (IIFE 不在 + hit/miss/?? 意味論) + run-tests 全ゲート green
+
+### T224 後半: IlExport 契約の完備 (top-level 文 / operator) ✓ (2026-07-18)
+- IlExportResult.TopLevel (top-level 文の IL) と operator (metamethod 名 __add 等の static IlMethodInfo) を収載。program 構造の IL 契約はこれで完備 — luoc はエントリポイント込みの全体を IL のみから生成できる
+- 判断: legacy visitor のコード削除は行わない — 診断構文の出力経路と挙動不変の保険として保持し、fallback 面の縮小 (残構文の IL 化/診断化) のみ継続する
+- 検証: IlExportTests +1 green、run-tests 全ゲート green

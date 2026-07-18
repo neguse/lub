@@ -143,4 +143,30 @@ public class IlExportTests
         Assert.Equal("value", Assert.Single(setter.Parameters));
         Assert.IsType<IlAssign>(Assert.Single(setter.Body!.Stats));
     }
+
+    // T224 後半: top-level 文と operator の契約
+    [Fact]
+    public void Export_TopLevelAndOperators()
+    {
+        var result = IlExport.Export(["""
+            using System;
+            var v = new Vec(1.0f) + new Vec(2.0f);
+            Console.WriteLine(v.X);
+
+            public class Vec
+            {
+                public float X;
+                public Vec(float x) { X = x; }
+                public static Vec operator +(Vec a, Vec b)
+                    => new Vec(a.X + b.X);
+            }
+            """]);
+        Assert.NotNull(result.TopLevel);
+        Assert.True(result.TopLevel!.Stats.Length >= 2);
+        var add = result.Classes.Single().Methods
+            .Single(m => m.Name == "__add");
+        Assert.True(add.IsStatic);
+        Assert.NotNull(add.Body);
+        Assert.Equal(2, add.ParameterTypes.Length);
+    }
 }
