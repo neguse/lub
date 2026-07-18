@@ -562,9 +562,13 @@ public partial class LuaEmitter
             : model.GetTypeInfo(creation).ConvertedType;
         var typeDef = typeSymbol?.OriginalDefinition.ToDisplayString() ?? "";
 
+        string? TypeArg(int i) =>
+            typeSymbol is INamedTypeSymbol { TypeArguments.Length: > 0 } named
+            && named.TypeArguments.Length > i
+                ? named.TypeArguments[i].ToDisplayString() : null;
         if (IsListType(typeDef))
         {
-            if (initializer == null) return new IlTable([]);
+            if (initializer == null) return new IlTable([], TypeArg(0));
             var items = new List<IlTableEntry>();
             foreach (var e in initializer.Expressions)
             {
@@ -572,11 +576,12 @@ public partial class LuaEmitter
                 if (built == null) return null;
                 items.Add(new IlTableEntry(null, built));
             }
-            return new IlTable([.. items]);
+            return new IlTable([.. items], TypeArg(0));
         }
         if (IsDictType(typeDef))
         {
-            if (initializer == null) return new IlTable([]);
+            if (initializer == null)
+                return new IlTable([], TypeArg(1), TypeArg(0));
             var entries = new List<IlTableEntry>();
             foreach (var e in initializer.Expressions)
             {
@@ -593,7 +598,7 @@ public partial class LuaEmitter
                     return null; // indexer initializer 等は fallback
                 }
             }
-            return new IlTable([.. entries]);
+            return new IlTable([.. entries], TypeArg(1), TypeArg(0));
         }
 
         if (typeSymbol == null) return null;

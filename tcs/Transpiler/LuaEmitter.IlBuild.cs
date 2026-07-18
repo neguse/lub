@@ -156,6 +156,9 @@ public partial class LuaEmitter
             {
                 if (local.UsingKeyword.IsKind(SyntaxKind.UsingKeyword))
                     return false;
+                var declaredType = (model.GetDeclaredSymbol(
+                        local.Declaration.Variables[0]) as ILocalSymbol)
+                    ?.Type.ToDisplayString();
                 foreach (var v in local.Declaration.Variables)
                 {
                     IlExpr? init = null;
@@ -168,8 +171,8 @@ public partial class LuaEmitter
                     if (init is IlTernary lt)
                     {
                         var varNode = new IlVar(v.Identifier.ValueText);
-                        acc.Add(new IlLocal(v.Identifier.ValueText, null)
-                            { Origin = stmt });
+                        acc.Add(new IlLocal(v.Identifier.ValueText, null,
+                            declaredType) { Origin = stmt });
                         acc.Add(new IlIf(
                             [(lt.Cond, new IlBlock([new IlAssign(varNode, lt.T)]))],
                             new IlBlock([new IlAssign(varNode, lt.F)]))
@@ -181,8 +184,8 @@ public partial class LuaEmitter
                             out var liChain, out var liTail, out _))
                     {
                         var varNode = new IlVar(v.Identifier.ValueText);
-                        acc.Add(new IlLocal(v.Identifier.ValueText, null)
-                            { Origin = stmt });
+                        acc.Add(new IlLocal(v.Identifier.ValueText, null,
+                            declaredType) { Origin = stmt });
                         foreach (var st in liSetup)
                             acc.Add(st with { Origin = stmt });
                         acc.Add(liChain != null
@@ -191,8 +194,8 @@ public partial class LuaEmitter
                             : new IlAssign(varNode, liTail!) { Origin = stmt });
                         continue;
                     }
-                    acc.Add(new IlLocal(v.Identifier.ValueText, init)
-                        { Origin = stmt });
+                    acc.Add(new IlLocal(v.Identifier.ValueText, init,
+                        declaredType) { Origin = stmt });
                 }
                 return true;
             }
@@ -717,10 +720,14 @@ public partial class LuaEmitter
             chain = elseIf;
         }
 
+        // out の宣言形 (out var x) のみ前宣言する。既存 local への out は
+        // 宣言済みなので不要 (かつての識別子 shadow は冗長だった)
         return stmt.DescendantNodes()
             .OfType<ArgumentSyntax>()
             .Where(arg => arg.Ancestors().OfType<StatementSyntax>()
-                .FirstOrDefault() == stmt)
+                .FirstOrDefault() == stmt
+                && arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)
+                && arg.Expression is DeclarationExpressionSyntax)
             .Select(TryGetOutArgumentName)
             .Where(name => !string.IsNullOrEmpty(name))
             .Select(name => name!)

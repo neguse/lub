@@ -30,8 +30,8 @@ public partial class LuaEmitter
                     result = new IlCall("Dict.Remove", [recvD, args[0]]);
                     return true;
                 case "ContainsKey":
-                    result = new IlParen(new IlBin(IlBinOp.Ne,
-                        new IlIndex(recvD, args[0], false), new IlLit("nil")));
+                    // backend 非依存の intrinsic call (il-spec §13)
+                    result = new IlCall("Dict.ContainsKey", [recvD, args[0]]);
                     return true;
                 case "Add":
                     // 代入形は statement 側 (BuildDictAddStatInto) が扱う

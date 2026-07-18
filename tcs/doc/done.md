@@ -1362,3 +1362,9 @@
 - ContainsKey を IlCall("Dict.ContainsKey")、TryGetValue を Dict.TryGet (found, value) の multi-return intrinsic + IlMultiAssign へ変更 — 「nil 比較 = 不在判定」の Lua 方言を IL から排除 (C backend は nil を型付けできない)。runtime に Dict.TryGet を追加
 - 線形 IIFE (分岐なし前置 + 末尾 return) と無条件前置 (代入/呼び出し) も statement 化対象へ拡張 → TryGetValue も statement 位置で IIFE 不要に
 - 判断: TryGetValue は runtime 必須へ (Dict.Remove 等と同格 — Dictionary は言語機能でなくライブラリ)。検証: run-tests 全ゲート green
+
+### T218 第五マイルストーン: Dict runtime + 契約補強 (自作) ✓ (2026-07-18)
+- 契約補強 (tcs): IlLocal.Type (宣言型 — 初期化なし local の型付け)、IlTable.KeyType (空 Dict リテラルの K/V 型)、ContainsKey の intrinsic call 化を実在箇所 (Invocations/Patterns — 前回コミットは置換空振りで無効だった) へ適用、out 前宣言を out var 形のみに削減 (既存 local への冗長 shadow を廃止)
+- luoc: TcsDict (chained hash、i32/string キー、8byte 値スロット)、literal/index get (不在 fault)・upsert/ContainsKey/TryGet (multi-assign)/Remove/Count/foreach-dict (KeyValuePair は Kvp 疑似型で .Key/.Value を node へ写像)。変数束縛を Lua と同じ後勝ち shadow へ
+- 受入: dict 総合サンプル (string/int キー、hit/miss、upsert、foreach) の stdout が lua32 と完全一致、継承/ctor サンプル回帰一致、digest 3/3
+- 教訓: python replace の空振り検証を必須化 (assert 追加で再発防止)

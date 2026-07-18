@@ -445,8 +445,8 @@ public partial class LuaEmitter
             return methodName switch
             {
                 "Remove" => new IlCall("Dict.Remove", [obj, argArr[0]]),
-                "ContainsKey" => new IlParen(new IlBin(IlBinOp.Ne,
-                    new IlIndex(obj, argArr[0], false), new IlLit("nil"))),
+                "ContainsKey" => new IlCall("Dict.ContainsKey",
+                    [obj, argArr[0]]),
                 "Add" or "TryGetValue" => null,
                 _ => new IlInvoke(obj, methodName, argArr),
             };
