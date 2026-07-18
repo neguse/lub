@@ -1326,3 +1326,11 @@
 - TCS1001 に DoubleType / LongType (predefined type keyword) と DoubleLiteral (Token.Value is double — 1.5/1e3/1d を捉え 1.5f と整数を巻き込まない) を追加、analyzer 登録同期。TinySystem facade を MathF 委譲の float シグネチャへ移行 (dotnet 側単体テストと differential が f32 で計算し Lua32 と真正 parity)
 - テスト・サンプル資産を f suffix へ移行、spec 例 10 件が Diag へ (baseline 更新、VariableInitializers1 の known-difference 登録は Diag 化に伴い削除)。FuzzGenerator の 32bit overflow 回避制約を撤廃し、wrap 跨ぎ for (i != end 条件) と全域 int32 を生成 (CS0220 は片側変数化で回避)
 - 検証: run-tests 全ゲート green + deep fuzz 200 seeds 全一致。着手は Codex 委任だったが指示により中断し、診断コア/FuzzGenerator/facade/baseline を精査のうえ当方で完成・検証
+
+### T225 第一スライス: ternary の statement 化 (local 初期化 / return) ✓ (2026-07-18)
+- 評価順が構造的に不変な 2 位置 (local 初期化子・return 式) の条件式を IIFE から if 文へ。closure 割当を最頻出位置で除去 (examples 決定 2 の実施開始)
+- 検証: 専用テスト (IIFE 不在 + 意味論) + run-tests 全ゲート green。代入 RHS 等の残り位置は評価順条件を tasks に明記
+
+### T225 第一スライス: ternary の statement 化 (local 初期化 / return) ✓ (2026-07-18)
+- 評価順が構造的に不変な 2 位置 (local 初期化子・return 式) の条件式を IIFE から if 文へ。closure 割当を最頻出位置で除去 (examples 決定 2 の実施開始)
+- 検証: 専用テスト (IIFE 不在 + 意味論) + run-tests 全ゲート green。代入 RHS 等の残り位置は評価順条件を tasks に明記

@@ -120,6 +120,16 @@ public partial class LuaEmitter
                     return false;
                 if (value != null)
                     value = WrapStructCopy(model, ret.Expression!, value);
+                // T225: return 位置の条件式は IIFE でなく if 文へ (closure
+                // 割当の除去。評価順は cond→分岐値のままで不変)
+                if (value is IlTernary ternary)
+                {
+                    acc.Add(new IlIf(
+                        [(ternary.Cond, new IlBlock([new IlReturn(ternary.T)]))],
+                        new IlBlock([new IlReturn(ternary.F)]))
+                        { Origin = stmt });
+                    return true;
+                }
                 acc.Add(new IlReturn(value) { Origin = stmt });
                 return true;
             }
@@ -156,6 +166,18 @@ public partial class LuaEmitter
                         return false;
                     if (init != null)
                         init = WrapStructCopy(model, v.Initializer!.Value, init);
+                    // T225: 初期化子の条件式を statement 化 (return 位置と同方針)
+                    if (init is IlTernary lt)
+                    {
+                        var varNode = new IlVar(v.Identifier.ValueText);
+                        acc.Add(new IlLocal(v.Identifier.ValueText, null)
+                            { Origin = stmt });
+                        acc.Add(new IlIf(
+                            [(lt.Cond, new IlBlock([new IlAssign(varNode, lt.T)]))],
+                            new IlBlock([new IlAssign(varNode, lt.F)]))
+                            { Origin = stmt });
+                        continue;
+                    }
                     acc.Add(new IlLocal(v.Identifier.ValueText, init)
                         { Origin = stmt });
                 }

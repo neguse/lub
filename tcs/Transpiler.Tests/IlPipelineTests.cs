@@ -123,4 +123,32 @@ public class IlPipelineTests
             """, "T.Test()");
         Assert.Equal("3:13:1", result);
     }
+
+    // T225: local 初期化 / return 位置の条件式は IIFE でなく if 文へ
+    [Fact]
+    public void Ternary_InLocalAndReturn_IsStatementized()
+    {
+        var lua = Transpiler.Transpile(["""
+            public class T
+            {
+                public static int Pick(bool c)
+                {
+                    var x = c ? 10 : 20;
+                    return x > 15 ? 1 : 0;
+                }
+            }
+            """]);
+        Assert.DoesNotContain("(function()", lua);
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = 1 > 0 ? "y" : "n";
+                    return 2 > 3 ? a + "!" : a + "?";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("y?", result);
+    }
 }

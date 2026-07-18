@@ -28,8 +28,10 @@
       fallback を診断 method のみに絞ったうえで legacy 削除を判断。
       class 骨格の IL 化は ctor/accessor/field initializer まで契約化済み
       (2026-07-18)。残りは top-level 文と operator 本文の IlExport 収載
-- [ ] **T225** (P2): IIFE の statement 化（examples 決定 2）— IL 上の
-      出力改善。M1 の挙動不変契約から切り離して実施
+- [ ] **T225** (P2): IIFE の statement 化（examples 決定 2）— 第一スライス
+      完了 (local 初期化 / return 位置の ternary、2026-07-18)。残り:
+      代入 RHS (target が純 local の場合)、switch 式、?. / ?? の statement
+      位置。式中間位置は評価順の温存設計が必要
 
 ### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
 
