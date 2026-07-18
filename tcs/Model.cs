@@ -5,10 +5,11 @@ namespace TinyCs.Luoc;
 
 internal sealed class LuocException(string message) : Exception(message);
 
-internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp }
+internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure }
 
 internal sealed record CType(CTypeKind Kind, string? Name = null,
-    CType? Element = null, CType? Key = null)
+    CType? Element = null, CType? Key = null,
+    IReadOnlyList<CType>? Parameters = null)
 {
     public static readonly CType Void = new(CTypeKind.Void);
     public static readonly CType I32 = new(CTypeKind.I32);
@@ -24,6 +25,9 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         new(CTypeKind.Dict, Element: value, Key: key);
     public static CType Kvp(CType key, CType value) =>
         new(CTypeKind.Kvp, Element: value, Key: key);
+    /// <summary>関数値。Element = 戻り型 (void 可)、Parameters = 引数型。</summary>
+    public static CType Closure(CType ret, IReadOnlyList<CType> parameters) =>
+        new(CTypeKind.Closure, Element: ret, Parameters: parameters);
 
     public string CName => Kind switch
     {
@@ -36,6 +40,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         CTypeKind.Array => "TcsArray *",
         CTypeKind.List => "TcsList *",
         CTypeKind.Dict => "TcsDict *",
+        CTypeKind.Closure => "TcsClosure *",
         _ => throw new LuocException($"unsupported type: {this}"),
     };
 
@@ -51,10 +56,15 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
             && (Element is null || source.Element is null
                 || Element == source.Element))
         || (Kind == CTypeKind.Dict && source.Kind == CTypeKind.Dict
-            && Element == source.Element && Key == source.Key);
+            && Element == source.Element && Key == source.Key)
+        || (Kind == CTypeKind.Closure && source.Kind == CTypeKind.Closure
+            && Element == source.Element
+            && Parameters!.Count == source.Parameters!.Count
+            && Parameters.Zip(source.Parameters).All(p => p.First == p.Second));
 
     public bool IsNullable => Kind is CTypeKind.String or CTypeKind.Ref
-        or CTypeKind.Array or CTypeKind.List or CTypeKind.Dict;
+        or CTypeKind.Array or CTypeKind.List or CTypeKind.Dict
+        or CTypeKind.Closure;
 
     public override string ToString() => Kind switch
     {

@@ -171,9 +171,20 @@ internal sealed partial class CEmitter
         throw new LuocException($"{where}: cannot assign {source} to {target}");
     }
 
-    // upcast が必要なら C の明示 cast を挟んで render する
+    // upcast が必要なら C の明示 cast を挟んで render する。
+    // closure は型付き文脈でのみ生成できる (IlClosure は引数型を持たない)
     private string RenderCoerced(IlExpr expr, CType target)
     {
+        if (target.Kind == CTypeKind.Closure)
+        {
+            if (expr is IlClosure closure)
+                return RenderClosure(closure, target);
+            if (expr is IlField { Recv: IlVar recvVar } group
+                && _classes.ContainsKey(recvVar.Name)
+                && _classes[recvVar.Name].Methods
+                    .Any(m => m.Name == group.Name && m.IsStatic))
+                return RenderStaticGroupThunk(recvVar.Name, group.Name, target);
+        }
         var source = TypeOf(expr);
         var rendered = RenderExpr(expr);
         if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
@@ -206,11 +217,15 @@ internal sealed partial class CEmitter
     private static LuocException Unsupported(IlNode node) =>
         new($"unsupported IL node: {node.GetType().Name}");
 
-    private Variable Resolve(string name)
+    private Variable Resolve(string name) =>
+        TryResolve(name)
+        ?? throw new LuocException($"unbound IL variable: {name}");
+
+    private Variable? TryResolve(string name)
     {
         foreach (var scope in _scopes)
             if (scope.TryGetValue(name, out var variable)) return variable;
-        throw new LuocException($"unbound IL variable: {name}");
+        return null;
     }
 
     // Lua の local 再宣言 (shadow) と同じく後勝ちで束縛を差し替える。

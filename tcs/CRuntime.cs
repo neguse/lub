@@ -41,6 +41,13 @@ internal sealed partial class CEmitter
 
         static uint32_t tcs_digest;
 
+        /* closure: fnptr + 捕捉変数 cell の配列。capture は変数単位
+           (il-spec §7) — 捕捉される local は heap cell へ box される */
+        typedef struct TcsClosure {
+            void *fn;
+            void *cells[];
+        } TcsClosure;
+
         /* Dictionary: chained hash。key は i32 か string、value は 8 byte
            slot に value_size 分を格納する。反復順は Lua と一致しない
            (どちらも順序未規定)。 */

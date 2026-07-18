@@ -19,8 +19,15 @@ internal sealed partial class CEmitter
     private int _indent;
     private int _serial;
 
+    private readonly List<string> _pendingClosures = [];
+    private readonly List<string> _closureDecls = [];
+    private const string ClosureDeclMarker = "/*__LUOC_CLOSURE_DECLS__*/";
+    private readonly HashSet<string> _capturedNames = [];
+    private int _closureSerial;
+
     private sealed class Variable(string cName, CType type)
     {
+        public bool Boxed { get; init; }
         public string CName { get; } = cName;
         public CType Type { get; set; } = type;
     }
@@ -141,7 +148,8 @@ internal sealed partial class CEmitter
         EmitDispatchers();
         EmitStaticInitializer();
         EmitEntryPoint(entry);
-        return _output.ToString();
+        return _output.ToString().Replace(ClosureDeclMarker,
+            string.Join("\n", _closureDecls));
     }
 
     private void ValidateProgram()
@@ -296,6 +304,7 @@ internal sealed partial class CEmitter
             Line($"static {fact.ReturnType.CName} " +
                 $"{Names.Dispatch(cls.Name, method.Name)}({parameters});");
         }
+        Line(ClosureDeclMarker);
     }
 
     private static string ParameterList(MethodFact method)
@@ -400,6 +409,7 @@ internal sealed partial class CEmitter
         _currentMethodFact = _facts.Method(cls.Name, method.Name);
         _scopes.Clear();
         _continueTargets.Clear();
+        CollectCapturedNames(method.Body!);
         PushScope();
         if (!_currentMethodFact.IsStatic)
             AddVariable("self", new Variable("v_self", CType.Ref(cls.Name)));
@@ -414,11 +424,166 @@ internal sealed partial class CEmitter
         Line($"{Names.Method(cls.Name, method.Name)}({ParameterList(_currentMethodFact)})");
         Line("{");
         _indent++;
+        BoxCapturedParameters();
         EmitStats(method.Body!.Stats);
         _indent--;
         Line("}");
         Line();
         PopScope();
+        FlushPendingClosures();
+    }
+
+    // ---- closure (T218-m7): capture-by-variable (il-spec §7) ----
+    // 本体内のどこかの closure が参照する名前を集め、その local/param を
+    // heap cell (T *) へ box する。過剰 box は無害 (意味等価)
+    private void CollectCapturedNames(IlBlock body)
+    {
+        _capturedNames.Clear();
+        void Expr(IlExpr e)
+        {
+            switch (e)
+            {
+                case IlClosure closure:
+                    var bound = new HashSet<string>(closure.Params);
+                    void Inner(IlExpr ie)
+                    {
+                        switch (ie)
+                        {
+                            case IlVar v when !bound.Contains(v.Name):
+                                _capturedNames.Add(v.Name); break;
+                            case IlClosure nested:
+                                // ネストの param は shadow (過剰側で安全)
+                                Expr(nested); break;
+                            default: Walk(ie, Inner, InnerStat); break;
+                        }
+                    }
+                    void InnerStat(IlStat st)
+                    {
+                        if (st is IlLocal l) bound.Add(l.Name);
+                        WalkStat(st, Inner, InnerStat);
+                    }
+                    if (closure.ExprBody != null) Inner(closure.ExprBody);
+                    if (closure.Body != null)
+                        foreach (var st in closure.Body.Stats) InnerStat(st);
+                    break;
+                default:
+                    Walk(e, Expr, Stat);
+                    break;
+            }
+        }
+        void Stat(IlStat st) => WalkStat(st, Expr, Stat);
+        foreach (var st in body.Stats) Stat(st);
+    }
+
+    private static void Walk(IlExpr e, Action<IlExpr> expr, Action<IlStat> stat)
+    {
+        switch (e)
+        {
+            case IlField f: expr(f.Recv); break;
+            case IlIndex ix: expr(ix.Recv); expr(ix.Idx); break;
+            case IlLen l: expr(l.E); break;
+            case IlBin b: expr(b.L); expr(b.R); break;
+            case IlUn u: expr(u.E); break;
+            case IlParen p: expr(p.E); break;
+            case IlTernary t: expr(t.Cond); expr(t.T); expr(t.F); break;
+            case IlCall c: foreach (var a in c.Args) expr(a); break;
+            case IlDynCall d:
+                expr(d.Callee); foreach (var a in d.Args) expr(a); break;
+            case IlInvoke i:
+                expr(i.Recv); foreach (var a in i.Args) expr(a); break;
+            case IlNewObj n: foreach (var a in n.Args) expr(a); break;
+            case IlNewArray na: expr(na.Length); break;
+            case IlTable t:
+                foreach (var en in t.Entries)
+                {
+                    if (en.Key != null) expr(en.Key);
+                    expr(en.Value);
+                }
+                break;
+            case IlIsType it: expr(it.E); break;
+            case IlStructCopy sc: expr(sc.E); break;
+            case IlWith w:
+                expr(w.Src);
+                foreach (var o in w.Overrides) expr(o.Value);
+                break;
+            case IlIife iife: foreach (var st in iife.Stats) stat(st); break;
+        }
+    }
+
+    private static void WalkStat(IlStat st, Action<IlExpr> expr,
+        Action<IlStat> stat)
+    {
+        switch (st)
+        {
+            case IlLocal { Init: not null } l: expr(l.Init); break;
+            case IlAssign a: expr(a.Target); expr(a.Value); break;
+            case IlMultiAssign m:
+                foreach (var t in m.Targets) expr(t);
+                foreach (var v in m.Values) expr(v);
+                break;
+            case IlCallStat c: expr(c.Call); break;
+            case IlReturn { Value: not null } r: expr(r.Value); break;
+            case IlIf i:
+                foreach (var (cond, body) in i.Arms)
+                {
+                    expr(cond);
+                    foreach (var b in body.Stats) stat(b);
+                }
+                if (i.Else != null)
+                    foreach (var b in i.Else.Stats) stat(b);
+                break;
+            case IlWhile w:
+                expr(w.Cond);
+                foreach (var b in w.Body.Stats) stat(b);
+                if (w.Trailer != null)
+                    foreach (var b in w.Trailer.Stats) stat(b);
+                break;
+            case IlRepeat rp:
+                foreach (var b in rp.Body.Stats) stat(b);
+                expr(rp.Cond);
+                break;
+            case IlNumericFor nf:
+                expr(nf.Start); expr(nf.Limit);
+                foreach (var b in nf.Body.Stats) stat(b);
+                break;
+            case IlForeachList fl:
+                expr(fl.Coll);
+                foreach (var b in fl.Body.Stats) stat(b);
+                break;
+            case IlForeachDict fd:
+                expr(fd.Coll);
+                foreach (var b in fd.Body.Stats) stat(b);
+                break;
+            case IlForPairs fp:
+                expr(fp.Coll);
+                foreach (var b in fp.Body.Stats) stat(b);
+                break;
+            case IlDo d:
+                foreach (var b in d.Body.Stats) stat(b);
+                break;
+        }
+    }
+
+    private void BoxCapturedParameters()
+    {
+        foreach (var scopeEntry in _scopes.Peek().ToList())
+        {
+            if (!_capturedNames.Contains(scopeEntry.Key)) continue;
+            var old = scopeEntry.Value;
+            if (old.Boxed || old.Type.Kind == CTypeKind.Kvp) continue;
+            var cell = new Variable($"c_{old.CName}", old.Type)
+                { Boxed = true };
+            Line($"{old.Type.CName} *{cell.CName} = " +
+                $"tcs_alloc(sizeof(*{cell.CName}));");
+            Line($"*{cell.CName} = {old.CName};");
+            _scopes.Peek()[scopeEntry.Key] = cell;
+        }
+    }
+
+    private void FlushPendingClosures()
+    {
+        foreach (var code in _pendingClosures) _output.Append(code);
+        _pendingClosures.Clear();
     }
 
     private void EmitStats(IEnumerable<IlStat> stats)
@@ -458,20 +623,49 @@ internal sealed partial class CEmitter
                 throw new LuocException($"local has no initializer/type: " +
                     $"{_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
             var declared = _facts.MapType(local.Type);
+            var zero = declared.Kind is CTypeKind.I32 or CTypeKind.F32
+                or CTypeKind.Bool ? "0" : "NULL";
+            if (_capturedNames.Contains(local.Name))
+            {
+                var cell0 = new Variable(
+                    $"c_{Names.Id(local.Name)}_{_serial++}", declared)
+                    { Boxed = true };
+                AddVariable(local.Name, cell0);
+                Line($"{declared.CName} *{cell0.CName} = " +
+                    $"tcs_alloc(sizeof(*{cell0.CName}));");
+                Line($"*{cell0.CName} = {zero};");
+                return;
+            }
             var declaredVar = new Variable(
                 $"v_{Names.Id(local.Name)}_{_serial++}", declared);
             AddVariable(local.Name, declaredVar);
-            Line($"{declared.CName} {declaredVar.CName} = {{0}};".Replace(
-                "= {0}", declared.Kind is CTypeKind.I32 or CTypeKind.F32
-                    or CTypeKind.Bool ? "= 0" : "= NULL"));
+            Line($"{declared.CName} {declaredVar.CName} = {zero};");
             return;
         }
-        var type = TypeOf(local.Init);
+        // 宣言型が closure なら契約型を使う (IlClosure / method group は
+        // 単独で型付けできない)
+        CType? declaredClosure = null;
+        if (local.Type != null)
+        {
+            var mapped = _facts.TryMapType(local.Type);
+            if (mapped is { Kind: CTypeKind.Closure }) declaredClosure = mapped;
+        }
+        var type = declaredClosure ?? TypeOf(local.Init);
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
             throw new LuocException($"cannot infer storage type of local {local.Name}: {type}");
+        var rendered = RenderCoerced(local.Init, type);
+        if (_capturedNames.Contains(local.Name))
+        {
+            var cell = new Variable($"c_{Names.Id(local.Name)}_{_serial++}",
+                type) { Boxed = true };
+            AddVariable(local.Name, cell);
+            Line($"{type.CName} *{cell.CName} = tcs_alloc(sizeof(*{cell.CName}));");
+            Line($"*{cell.CName} = {rendered};");
+            return;
+        }
         var variable = new Variable($"v_{Names.Id(local.Name)}_{_serial++}", type);
         AddVariable(local.Name, variable);
-        Line($"{type.CName} {variable.CName} = {RenderExpr(local.Init)};");
+        Line($"{type.CName} {variable.CName} = {rendered};");
     }
 
     private void EmitAssign(IlAssign assign)
@@ -484,8 +678,13 @@ internal sealed partial class CEmitter
         switch (assign.Target)
         {
             case IlVar variable:
-                Line($"{Resolve(variable.Name).CName} = {value};");
+            {
+                var target = Resolve(variable.Name);
+                Line(target.Boxed
+                    ? $"(*{target.CName}) = {value};"
+                    : $"{target.CName} = {value};");
                 return;
+            }
             case IlField field when TryStaticField(field, out var staticName, out _):
                 Line($"{staticName} = {value};");
                 return;

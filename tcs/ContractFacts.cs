@@ -78,6 +78,32 @@ internal sealed class ContractFacts
             ? fact
             : throw new LuocException($"unknown field: {cls}.{name}");
 
+    // "A, B<C, D>, E" 形をトップレベルのカンマで分割する
+    private static List<string> SplitTypeArgs(string text)
+    {
+        var parts = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '<') depth++;
+            else if (text[i] == '>') depth--;
+            else if (text[i] == ',' && depth == 0)
+            {
+                parts.Add(text[start..i]);
+                start = i + 1;
+            }
+        }
+        parts.Add(text[start..]);
+        return parts;
+    }
+
+    public CType? TryMapType(string displayName)
+    {
+        try { return MapType(displayName); }
+        catch (LuocException) { return null; }
+    }
+
     public CType MapType(string displayName)
     {
         var text = displayName.Trim();
@@ -85,6 +111,29 @@ internal sealed class ContractFacts
             text = text[8..];
         if (text.EndsWith("[]", StringComparison.Ordinal))
             return CType.Array(MapType(text[..^2]));
+
+        if (text == "System.Action" || text == "Action")
+            return CType.Closure(CType.Void, []);
+        foreach (var prefix in new[] { "System.Action<", "Action<" })
+        {
+            if (text.StartsWith(prefix, StringComparison.Ordinal)
+                && text.EndsWith('>'))
+            {
+                var args = SplitTypeArgs(text[prefix.Length..^1])
+                    .Select(MapType).ToList();
+                return CType.Closure(CType.Void, args);
+            }
+        }
+        foreach (var prefix in new[] { "System.Func<", "Func<" })
+        {
+            if (text.StartsWith(prefix, StringComparison.Ordinal)
+                && text.EndsWith('>'))
+            {
+                var args = SplitTypeArgs(text[prefix.Length..^1])
+                    .Select(MapType).ToList();
+                return CType.Closure(args[^1], args[..^1]);
+            }
+        }
 
         const string genericDict = "System.Collections.Generic.Dictionary<";
         if ((text.StartsWith(genericDict, StringComparison.Ordinal)

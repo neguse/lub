@@ -8,7 +8,8 @@ internal sealed partial class CEmitter
     private string RenderExpr(IlExpr expr) => expr switch
     {
         IlLit literal => RenderLiteral(literal),
-        IlVar variable => Resolve(variable.Name).CName,
+        IlVar variable => Resolve(variable.Name) is { Boxed: true } cell
+            ? $"(*{cell.CName})" : Resolve(variable.Name).CName,
         IlField field => RenderField(field),
         IlIndex index => RenderIndex(index),
         IlLen length => RenderLength(length),
@@ -404,7 +405,8 @@ internal sealed partial class CEmitter
         if (call.Callee == "table.insert")
         {
             RequireArity(call.Callee, call.Args.Length, 2);
-            _ = RequireListForAdd(call.Args[0], TypeOf(call.Args[1]));
+            _ = RequireListForAdd(call.Args[0],
+                call.Args[1] is IlClosure ? null : TypeOf(call.Args[1]));
             return CType.Void;
         }
         var (cls, method) = ParseUserCallee(call.Callee);
@@ -469,29 +471,34 @@ internal sealed partial class CEmitter
         return RenderOrderedCall(helper, CType.String, [(type, RenderExpr(argument))]);
     }
 
-    private CType RequireListForAdd(IlExpr receiver, CType valueType)
+    private CType RequireListForAdd(IlExpr receiver, CType? valueType)
     {
-        if (valueType.Kind is not (CTypeKind.I32 or CTypeKind.F32))
-            throw new LuocException($"List.Add supports only int/float, got {valueType}");
         var listType = TypeOf(receiver);
         if (listType.Kind != CTypeKind.List)
             throw new LuocException("table.insert receiver is not a List");
         if (listType.Element is null)
         {
+            if (valueType is null)
+                throw new LuocException(
+                    "cannot infer List element type for closure Add");
             listType = CType.List(valueType);
             if (receiver is IlVar variable) Resolve(variable.Name).Type = listType;
         }
-        RequireAssignable(listType.Element!, valueType, "List.Add argument");
+        if (valueType is not null)
+            RequireAssignable(listType.Element!, valueType, "List.Add argument");
         return listType;
     }
 
     private string RenderListAdd(IlCall call)
     {
-        var listType = RequireListForAdd(call.Args[0], TypeOf(call.Args[1]));
+        // closure 引数は要素型を target とした型付き render (TypeOf 不能)
+        var argType = call.Args[1] is IlClosure ? null : TypeOf(call.Args[1]);
+        var listType = RequireListForAdd(call.Args[0], argType);
         var list = Temp("list");
         var value = Temp("list_value");
         return $"({{ TcsList *{list} = {RenderExpr(call.Args[0])}; " +
-            $"{listType.ElementCName} {value} = {RenderExpr(call.Args[1])}; " +
+            $"{listType.ElementCName} {value} = " +
+            $"{RenderCoerced(call.Args[1], listType.Element!)}; " +
             $"tcs_list_add({list}, &{value}, sizeof({value})); }})";
     }
 
@@ -509,14 +516,196 @@ internal sealed partial class CEmitter
         return RenderMethodCall(fact, null, call.Args);
     }
 
+    private static string ClosureFnPtrType(CType closure, string name = "")
+    {
+        var parameters = string.Join(", ",
+            new[] { "void **" }.Concat(closure.Parameters!
+                .Select(p => p.CName)));
+        return $"{closure.Element!.CName} (*{name})({parameters})";
+    }
+
+    // IlClosure → lifted static 関数 + cell 束縛。closure 値は
+    // TcsClosure { fn, cells[] }
+    private string RenderClosure(IlClosure closure, CType target)
+    {
+        if (closure.Params.Length != target.Parameters!.Count)
+            throw new LuocException("closure arity mismatch with target type");
+        var fnName = $"tcs_closure_{_closureSerial++}";
+        // 捕捉 = closure 本体が参照する enclosing の boxed 変数
+        var captured = new List<(string Name, Variable Cell)>();
+        var bound = new HashSet<string>(closure.Params);
+        void Note(string name)
+        {
+            if (bound.Contains(name)) return;
+            if (captured.Any(c => c.Name == name)) return;
+            if (TryResolve(name) is { Boxed: true } cell)
+                captured.Add((name, cell));
+        }
+        void E(IlExpr e)
+        {
+            if (e is IlVar v) Note(v.Name);
+            else Walk(e, E, S);
+        }
+        void S(IlStat st)
+        {
+            if (st is IlLocal l) bound.Add(l.Name);
+            WalkStat(st, E, S);
+        }
+        if (closure.ExprBody != null) E(closure.ExprBody);
+        if (closure.Body != null)
+            foreach (var st in closure.Body.Stats) S(st);
+
+        // lifted 関数を側帯へ emit (現在の関数を汚さない)
+        var declParams = string.Join(", ", new[] { "void **" }
+            .Concat(target.Parameters.Select(p => p.CName)));
+        _closureDecls.Add(
+            $"static {target.Element!.CName} {fnName}({declParams});");
+        var saved = _output.Length;
+        var savedIndent = _indent;
+        _indent = 0;
+        Line($"static {target.Element!.CName}");
+        var paramList = string.Join(", ", new[] { "void **cells" }
+            .Concat(closure.Params.Select((p, i) =>
+                $"{target.Parameters[i].CName} v_{Names.Id(p)}_{i}")));
+        Line($"{fnName}({paramList})");
+        Line("{");
+        _indent++;
+        PushScope();
+        for (var i = 0; i < closure.Params.Length; i++)
+            AddVariable(closure.Params[i],
+                new Variable($"v_{Names.Id(closure.Params[i])}_{i}",
+                    target.Parameters[i]));
+        for (var i = 0; i < captured.Count; i++)
+        {
+            var cellVar = new Variable($"cell_{Names.Id(captured[i].Name)}",
+                captured[i].Cell.Type) { Boxed = true };
+            Line($"{captured[i].Cell.Type.CName} *{cellVar.CName} = " +
+                $"({captured[i].Cell.Type.CName} *)cells[{i}];");
+            AddVariable(captured[i].Name, cellVar);
+        }
+        if (closure.ExprBody != null)
+        {
+            if (target.Element == CType.Void)
+                Line($"{RenderExpr(closure.ExprBody)};");
+            else
+                Line($"return {RenderCoerced(closure.ExprBody, target.Element!)};");
+        }
+        else
+        {
+            var outerFact = _currentMethodFact;
+            _currentMethodFact = new MethodFact("<closure>", fnName, true,
+                target.Element!, [.. closure.Params.Select((p, i) =>
+                    new ParameterFact(p, target.Parameters[i]))], null!);
+            EmitStats(closure.Body!.Stats);
+            _currentMethodFact = outerFact;
+        }
+        PopScope();
+        _indent--;
+        Line("}");
+        Line();
+        _indent = savedIndent;
+        var code = _output.ToString(saved, _output.Length - saved);
+        _output.Length = saved;
+        _pendingClosures.Add(code);
+
+        var make = new StringBuilder();
+        var closTemp = Temp("closure");
+        make.Append($"TcsClosure *{closTemp} = tcs_alloc(sizeof(TcsClosure) " +
+            $"+ {Math.Max(captured.Count, 1)} * sizeof(void *)); ");
+        make.Append($"{closTemp}->fn = (void *){fnName}; ");
+        for (var i = 0; i < captured.Count; i++)
+            make.Append($"{closTemp}->cells[{i}] = (void *){captured[i].Cell.CName}; ");
+        return $"({{ {make}{closTemp}; }})";
+    }
+
+    private readonly Dictionary<string, string> _groupThunks = new();
+
+    // static method group → 引数素通しの thunk closure (cells 不使用)
+    private string RenderStaticGroupThunk(string cls, string method,
+        CType target)
+    {
+        var fact = _facts.Method(cls, method);
+        if (fact.Parameters.Count != target.Parameters!.Count)
+            throw new LuocException($"method group arity mismatch: {cls}.{method}");
+        var key = $"{cls}.{method}";
+        if (!_groupThunks.TryGetValue(key, out var fnName))
+        {
+            fnName = $"tcs_thunk_{Names.Id(cls)}_{Names.Id(method)}";
+            _groupThunks[key] = fnName;
+            _closureDecls.Add($"static {fact.ReturnType.CName} {fnName}(" +
+                string.Join(", ", new[] { "void **" }
+                    .Concat(fact.Parameters.Select(p => p.Type.CName))) + ");");
+            var parameters = string.Join(", ", new[] { "void **cells" }
+                .Concat(fact.Parameters.Select((p, i) =>
+                    $"{p.Type.CName} a{i}")));
+            var args = string.Join(", ",
+                fact.Parameters.Select((_, i) => $"a{i}"));
+            var call = $"{Names.Method(cls, method)}({args})";
+            var body = fact.ReturnType == CType.Void
+                ? $"(void)cells; {call};" : $"(void)cells; return {call};";
+            _pendingClosures.Add(
+                $"static {fact.ReturnType.CName}\n{fnName}({parameters})\n" +
+                "{\n    " + body + "\n}\n\n");
+        }
+        var closTemp = Temp("closure");
+        return $"({{ TcsClosure *{closTemp} = tcs_alloc(sizeof(TcsClosure) " +
+            $"+ sizeof(void *)); {closTemp}->fn = (void *){fnName}; " +
+            $"{closTemp}; }})";
+    }
+
     private CType TypeOfDynCall(IlDynCall call)
     {
+        if (TryTypeOfClosureCallee(call) is { } closureType)
+        {
+            RequireArity("closure call", call.Args.Length,
+                closureType.Parameters!.Count);
+            for (var i = 0; i < call.Args.Length; i++)
+                RequireAssignable(closureType.Parameters[i],
+                    TypeOf(call.Args[i]), $"closure argument {i}");
+            return closureType.Element!;
+        }
         var fact = ParseDynCallee(call.Callee);
         return ValidateMethodCall(fact, null, call.Args);
     }
 
+    // closure 値の callee (変数/フィールド等) なら closure 型を返す
+    private CType? TryTypeOfClosureCallee(IlDynCall call)
+    {
+        if (call.Callee is IlField { Recv: IlVar receiver }
+            && _classes.ContainsKey(receiver.Name))
+            return null; // 型修飾 static 呼び出し
+        var type = TypeOf(call.Callee);
+        return type.Kind == CTypeKind.Closure ? type : null;
+    }
+
     private string RenderDynCall(IlDynCall call)
     {
+        if (TryTypeOfClosureCallee(call) is { } closureType)
+        {
+            _ = TypeOfDynCall(call);
+            var values = new List<(CType Type, string Value)>
+            {
+                (closureType,
+                 $"(TcsClosure *)tcs_nonnull({RenderExpr(call.Callee)})"),
+            };
+            values.AddRange(call.Args.Select((arg, i) =>
+                (closureType.Parameters![i],
+                 RenderCoerced(arg, closureType.Parameters[i]))));
+            var closTemp = Temp("call_closure");
+            var argNames = new List<string>();
+            var declarations = new StringBuilder();
+            for (var i = 0; i < values.Count; i++)
+            {
+                var temp = i == 0 ? closTemp : Temp("closure_arg");
+                declarations.Append(
+                    $"{values[i].Type.CName} {temp} = {values[i].Value}; ");
+                if (i > 0) argNames.Add(temp);
+            }
+            var callArgs = string.Join(", ",
+                new[] { $"{closTemp}->cells" }.Concat(argNames));
+            return $"({{ {declarations}" +
+                $"(({ClosureFnPtrType(closureType)}){closTemp}->fn)({callArgs}); }})";
+        }
         var fact = ParseDynCallee(call.Callee);
         _ = ValidateMethodCall(fact, null, call.Args);
         return RenderMethodCall(fact, null, call.Args);
@@ -659,8 +848,11 @@ internal sealed partial class CEmitter
             var itemType = TypeOf(entry.Value);
             element = element is null ? itemType : CommonType(element, itemType, "IlTable items");
         }
-        if (element is not null && element.Kind is not (CTypeKind.I32 or CTypeKind.F32))
-            throw new LuocException($"List supports only int/float, got {element}");
+        if (element is not null && element.Kind is not (CTypeKind.I32
+            or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
+            or CTypeKind.Ref or CTypeKind.Closure or CTypeKind.List
+            or CTypeKind.Dict or CTypeKind.Array))
+            throw new LuocException($"unsupported List element type: {element}");
         return CType.List(element);
     }
 
