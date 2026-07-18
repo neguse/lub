@@ -4,4 +4,5 @@
   <Project Path="TinyCs.Analyzers/TinyCs.Analyzers.csproj" />
   <Project Path="TinyCs.Analyzers.Tests/TinyCs.Analyzers.Tests.csproj" />
   <Project Path="TinySystem/TinySystem.csproj" />
+  <Project Path="luoc/luoc.csproj" />
 </Solution>

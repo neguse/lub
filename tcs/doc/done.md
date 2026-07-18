@@ -1398,3 +1398,8 @@
 - CI (2 vCPU) で fuzz smoke が「dotnet 側 capture 空」で 1 回失敗 (seed 1004、master 先頭は green)。真因: CLI 系テスト 6 ファイルが生 SetOut/SetError で Console を全域差し替えており、並列中は SpecDotnetExecutor の AsyncLocal router が外れて in-proc 実行の出力が失われる (T209 対策の枠外)。ローカル再現なし・当該コミットでも再現なし → 競合タイミング依存を確認してから修正
 - 共有 ConsoleCapture (プロセス唯一の out/err ルーティング + AsyncLocal capture) を導入し、SpecDotnetExecutor / CliRuntimeTests / PreludeTests / ComplianceParityTests / EntryClassTests / NamingSuppressionTests / SnapshotCliTests を統一。生 SetOut はテストコードから全廃
 - 検証: run-tests 全ゲート green (並列実行込み)。縮小結果が無意味な断片だったのは「空 baseline への縮小」の帰結で、生成器の問題ではない
+
+### luoc / spike の tcs 取り込み ✓ (2026-07-18)
+- git subtree (履歴保持) で ../luo から luoc/ と spike/ を取り込み。ProjectReference をリポジトリ内参照へ、slnx に luoc を追加、doc/spike-ceiling.md を移管し全参照を付け替え (done.md の歴史記述は当時のまま)
+- run-tests に luoc digest ゲートを常設 (cc 存在時) — **2 backend 一致が毎コミット・CI で守られる**ようになった (従来は手動)。ファイルサイズ規約の適用で CEmitter を 6 ファイルへ分割
+- 判断: 対称 2 backend は同一リポジトリが正 (契約ロックステップの解消、ゲート統合、bisect)。../luo は旧 AOT 方向のアーカイブとして以後変更しない (CLAUDE.md 記載)

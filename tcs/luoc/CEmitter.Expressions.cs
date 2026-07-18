@@ -114,22 +114,6 @@ internal sealed partial class CEmitter
         return false;
     }
 
-    // dict key を (key_i, key_s) の C 引数対に render する
-    private string DictKeyArgs(CType keyType, IlExpr key)
-    {
-        var rendered = RenderExpr(key);
-        return keyType.Kind == CTypeKind.String
-            ? $"0, {rendered}" : $"{rendered}, NULL";
-    }
-
-    private CType RequireDict(IlExpr recv, out CType dict)
-    {
-        dict = TypeOf(recv);
-        if (dict.Kind != CTypeKind.Dict)
-            throw new LuocException($"receiver is not a Dictionary: {dict}");
-        return dict.Element!;
-    }
-
     private string RenderIndex(IlIndex index)
     {
         if (!index.PlusOne && TypeOf(index.Recv).Kind == CTypeKind.Dict)
@@ -448,15 +432,6 @@ internal sealed partial class CEmitter
             [(argument, RenderExpr(call.Args[0]))]);
     }
 
-    private string RenderDictSimple(IlCall call, string function)
-    {
-        _ = TypeOfCall(call);
-        _ = RequireDict(call.Args[0], out var dictType);
-        var dictTemp = Temp("dict");
-        return $"({{ TcsDict *{dictTemp} = {RenderExpr(call.Args[0])}; " +
-            $"{function}({dictTemp}, {DictKeyArgs(dictType.Key!, call.Args[1])}); }})";
-    }
-
     private string RenderToString(IlExpr argument)
     {
         var type = TypeOf(argument);
@@ -514,143 +489,6 @@ internal sealed partial class CEmitter
         }
         _ = ValidateMethodCall(fact, null, call.Args);
         return RenderMethodCall(fact, null, call.Args);
-    }
-
-    private static string ClosureFnPtrType(CType closure, string name = "")
-    {
-        var parameters = string.Join(", ",
-            new[] { "void **" }.Concat(closure.Parameters!
-                .Select(p => p.CName)));
-        return $"{closure.Element!.CName} (*{name})({parameters})";
-    }
-
-    // IlClosure → lifted static 関数 + cell 束縛。closure 値は
-    // TcsClosure { fn, cells[] }
-    private string RenderClosure(IlClosure closure, CType target)
-    {
-        if (closure.Params.Length != target.Parameters!.Count)
-            throw new LuocException("closure arity mismatch with target type");
-        var fnName = $"tcs_closure_{_closureSerial++}";
-        // 捕捉 = closure 本体が参照する enclosing の boxed 変数
-        var captured = new List<(string Name, Variable Cell)>();
-        var bound = new HashSet<string>(closure.Params);
-        void Note(string name)
-        {
-            if (bound.Contains(name)) return;
-            if (captured.Any(c => c.Name == name)) return;
-            if (TryResolve(name) is { Boxed: true } cell)
-                captured.Add((name, cell));
-        }
-        void E(IlExpr e)
-        {
-            if (e is IlVar v) Note(v.Name);
-            else Walk(e, E, S);
-        }
-        void S(IlStat st)
-        {
-            if (st is IlLocal l) bound.Add(l.Name);
-            WalkStat(st, E, S);
-        }
-        if (closure.ExprBody != null) E(closure.ExprBody);
-        if (closure.Body != null)
-            foreach (var st in closure.Body.Stats) S(st);
-
-        // lifted 関数を側帯へ emit (現在の関数を汚さない)
-        var declParams = string.Join(", ", new[] { "void **" }
-            .Concat(target.Parameters.Select(p => p.CName)));
-        _closureDecls.Add(
-            $"static {target.Element!.CName} {fnName}({declParams});");
-        var saved = _output.Length;
-        var savedIndent = _indent;
-        _indent = 0;
-        Line($"static {target.Element!.CName}");
-        var paramList = string.Join(", ", new[] { "void **cells" }
-            .Concat(closure.Params.Select((p, i) =>
-                $"{target.Parameters[i].CName} v_{Names.Id(p)}_{i}")));
-        Line($"{fnName}({paramList})");
-        Line("{");
-        _indent++;
-        PushScope();
-        for (var i = 0; i < closure.Params.Length; i++)
-            AddVariable(closure.Params[i],
-                new Variable($"v_{Names.Id(closure.Params[i])}_{i}",
-                    target.Parameters[i]));
-        for (var i = 0; i < captured.Count; i++)
-        {
-            var cellVar = new Variable($"cell_{Names.Id(captured[i].Name)}",
-                captured[i].Cell.Type) { Boxed = true };
-            Line($"{captured[i].Cell.Type.CName} *{cellVar.CName} = " +
-                $"({captured[i].Cell.Type.CName} *)cells[{i}];");
-            AddVariable(captured[i].Name, cellVar);
-        }
-        if (closure.ExprBody != null)
-        {
-            if (target.Element == CType.Void)
-                Line($"{RenderExpr(closure.ExprBody)};");
-            else
-                Line($"return {RenderCoerced(closure.ExprBody, target.Element!)};");
-        }
-        else
-        {
-            var outerFact = _currentMethodFact;
-            _currentMethodFact = new MethodFact("<closure>", fnName, true,
-                target.Element!, [.. closure.Params.Select((p, i) =>
-                    new ParameterFact(p, target.Parameters[i]))], null!);
-            EmitStats(closure.Body!.Stats);
-            _currentMethodFact = outerFact;
-        }
-        PopScope();
-        _indent--;
-        Line("}");
-        Line();
-        _indent = savedIndent;
-        var code = _output.ToString(saved, _output.Length - saved);
-        _output.Length = saved;
-        _pendingClosures.Add(code);
-
-        var make = new StringBuilder();
-        var closTemp = Temp("closure");
-        make.Append($"TcsClosure *{closTemp} = tcs_alloc(sizeof(TcsClosure) " +
-            $"+ {Math.Max(captured.Count, 1)} * sizeof(void *)); ");
-        make.Append($"{closTemp}->fn = (void *){fnName}; ");
-        for (var i = 0; i < captured.Count; i++)
-            make.Append($"{closTemp}->cells[{i}] = (void *){captured[i].Cell.CName}; ");
-        return $"({{ {make}{closTemp}; }})";
-    }
-
-    private readonly Dictionary<string, string> _groupThunks = new();
-
-    // static method group → 引数素通しの thunk closure (cells 不使用)
-    private string RenderStaticGroupThunk(string cls, string method,
-        CType target)
-    {
-        var fact = _facts.Method(cls, method);
-        if (fact.Parameters.Count != target.Parameters!.Count)
-            throw new LuocException($"method group arity mismatch: {cls}.{method}");
-        var key = $"{cls}.{method}";
-        if (!_groupThunks.TryGetValue(key, out var fnName))
-        {
-            fnName = $"tcs_thunk_{Names.Id(cls)}_{Names.Id(method)}";
-            _groupThunks[key] = fnName;
-            _closureDecls.Add($"static {fact.ReturnType.CName} {fnName}(" +
-                string.Join(", ", new[] { "void **" }
-                    .Concat(fact.Parameters.Select(p => p.Type.CName))) + ");");
-            var parameters = string.Join(", ", new[] { "void **cells" }
-                .Concat(fact.Parameters.Select((p, i) =>
-                    $"{p.Type.CName} a{i}")));
-            var args = string.Join(", ",
-                fact.Parameters.Select((_, i) => $"a{i}"));
-            var call = $"{Names.Method(cls, method)}({args})";
-            var body = fact.ReturnType == CType.Void
-                ? $"(void)cells; {call};" : $"(void)cells; return {call};";
-            _pendingClosures.Add(
-                $"static {fact.ReturnType.CName}\n{fnName}({parameters})\n" +
-                "{\n    " + body + "\n}\n\n");
-        }
-        var closTemp = Temp("closure");
-        return $"({{ TcsClosure *{closTemp} = tcs_alloc(sizeof(TcsClosure) " +
-            $"+ sizeof(void *)); {closTemp}->fn = (void *){fnName}; " +
-            $"{closTemp}; }})";
     }
 
     private CType TypeOfDynCall(IlDynCall call)
@@ -854,49 +692,6 @@ internal sealed partial class CEmitter
             or CTypeKind.Dict or CTypeKind.Array))
             throw new LuocException($"unsupported List element type: {element}");
         return CType.List(element);
-    }
-
-    private CType TypeOfDictTable(IlTable table)
-    {
-        if (table.Entries.Any(e => e.NameKey is not null || e.Key is null && table.Entries.Length > 0 && table.KeyType is null))
-            throw new LuocException("mixed IlTable entries are not supported");
-        CType? key = table.KeyType is null ? null : _facts.MapType(table.KeyType);
-        CType? value = table.ElementType is null
-            ? null : _facts.MapType(table.ElementType);
-        foreach (var entry in table.Entries)
-        {
-            if (entry.Key is null)
-                throw new LuocException("dict IlTable entry without key");
-            var k = TypeOf(entry.Key);
-            var v = TypeOf(entry.Value);
-            key = key is null ? k : CommonType(key, k, "dict keys");
-            value = value is null ? v : CommonType(value, v, "dict values");
-        }
-        if (key is null || value is null)
-            throw new LuocException(
-                "cannot infer Dictionary key/value types (no metadata)");
-        if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
-            throw new LuocException($"Dictionary key type not supported: {key}");
-        return CType.Dict(key, value);
-    }
-
-    private string RenderDictTable(IlTable table)
-    {
-        var type = TypeOfDictTable(table);
-        var dictTemp = Temp("dict");
-        var sb = new StringBuilder();
-        sb.Append($"TcsDict *{dictTemp} = tcs_dict_new(" +
-            $"{(type.Key!.Kind == CTypeKind.String ? 1 : 0)}, " +
-            $"sizeof({type.Element!.CName})); ");
-        foreach (var entry in table.Entries)
-        {
-            var valueTemp = Temp("dict_value");
-            sb.Append($"{type.Element!.CName} {valueTemp} = " +
-                $"{RenderCoerced(entry.Value, type.Element!)}; ");
-            sb.Append($"*({type.Element!.CName} *)tcs_dict_put({dictTemp}, " +
-                $"{DictKeyArgs(type.Key!, entry.Key!)}) = {valueTemp}; ");
-        }
-        return $"({{ {sb}{dictTemp}; }})";
     }
 
     private string RenderTable(IlTable table)

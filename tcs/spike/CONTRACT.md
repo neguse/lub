@@ -7,9 +7,9 @@
 
 - f32 演算のみ。libm 禁止。C は `-O2 -ffp-contract=off -fwrapv`、float 演算は
   すべて `float` 型 (excess precision 排除: `-fexcess-precision=standard`)
-- Lua 実行は LUA_32BITS ビルド (`../tcs/deps/lua/lua32`。CMake 変数
+- Lua 実行は LUA_32BITS ビルド (`deps/lua/lua32`。CMake 変数
   `SPIKE_LUA32` で上書き可)。aot-hash / aot-slot の C 実装は同じ
-  LUA_32BITS 構成の liblua を embed する (`../tcs/deps/lua` のソースから
+  LUA_32BITS 構成の liblua を embed する (`deps/lua` のソースから
   spike の CMake で LUA_32BITS 付きビルド)
 - 乱数: LCG。`state = (state * 1103515245 + 12345) & 0x3FFFFFFF`、
   戻り値はその state。C は uint32_t で計算して & 後に int32 へ (Lua の

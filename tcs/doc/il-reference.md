@@ -81,9 +81,9 @@ il-spec 付録 B（signed wrap、-ffp-contract=off、excess precision 排除、
 bounds/null/zero check、fault の決定性）。現行 luoc は GNU statement
 expression（gcc/clang 拡張）に依存する — 対象 toolchain (arm-none-eabi-gcc)
 では成立するが MSVC 非対応の移植性制約として明記する。object model は spike
-(`../luo/spike/`) の合否解釈に従う。digest 検証は
+(`spike/`) の合否解釈に従う。digest 検証は
 `Transpiler.Tests/DigestKernels/` の 3 kernel（期待値は
-`../luo/spike/CONTRACT.md` 末尾）。
+`spike/CONTRACT.md` 末尾）。
 
 ## 未カバー（backend 側で拒否してよい）
 

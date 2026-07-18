@@ -91,6 +91,14 @@ dotnet run --project "$SCRIPT_DIR/Transpiler" -- \
   check "$SCRIPT_DIR/samples/host_api_game.cs" \
   --ref "$SCRIPT_DIR/samples/host_api_stub.cs"
 
+# 2 backend digest 一致 (IL→C backend、cc がある環境のみ)
+if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
+  echo "Running luoc digest verification..."
+  bash "$SCRIPT_DIR/luoc/verify-digests.sh"
+else
+  echo "Skipping luoc digest verification (no C compiler)."
+fi
+
 bash "$SCRIPT_DIR/samples/analyzer-demo/verify-rider-scripts.sh"
 
 echo "Running analyzer demo build..."

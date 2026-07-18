@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NuGetAudit>false</NuGetAudit>
-    <TcsRoot Condition="'$(TcsRoot)' == ''">../../tcs</TcsRoot>
+    <TcsRoot Condition="'$(TcsRoot)' == ''">..</TcsRoot>
   </PropertyGroup>
 
   <ItemGroup>

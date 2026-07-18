@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-tcs_root="${TCS_ROOT:-$script_dir/../../tcs}"
+tcs_root="${TCS_ROOT:-$script_dir/..}"
 dotnet_cmd="${DOTNET:-dotnet}"
 cc_cmd="${CC:-gcc}"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/luoc-digests.XXXXXX")"

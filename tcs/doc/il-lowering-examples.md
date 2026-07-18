@@ -156,7 +156,7 @@ store p.X, 99.0f                                          // p のみ変更
 
 IL→C: native struct / 連続配列へ直写（`ps[i].X += ps[i].VX * dt;`）。
 IL→Lua: 表現候補は table of tables（copy は clone helper）か userdata 連続
-バッファ。選択は `../luo/docs/spike-ceiling.md` の particles kernel 実測で
+バッファ。選択は `doc/spike-ceiling.md` の particles kernel 実測で
 決める（T212 / T219）。IL 意味論は表現非依存に「要素は独立した place、
 copy 地点で値が分離する」とだけ定める。
 
