@@ -33,8 +33,12 @@
       ?. / ?? / TryGetValue 系は完了 (2026-07-18)。残り: 式中間位置
       (評価順の温存設計が必要 — 左側 operand の temp 化と併走)
 
-### Phase 2 — 契約の確立（luo が独立実装できる状態を作る）
+### Phase 3 — 価値の刈り取り
 
+- [ ] **T218** (P1, luo 側): M3 IL→C backend。object model は spike 決着
+      どおり IL-native。第三マイルストーンまで完了 (ctor 本文 + top-level
+      文の適用、positional 暫定廃止 — done.md 参照)。残り: 継承 dispatch、
+      Dict runtime、closure、静的 link 出荷形
 - [ ] **T219b** (P2): struct の残り — record struct、struct の
       method/property/ctor、struct 型 field、nested struct field。
       v1 (データ struct) の需要を見て拡張
