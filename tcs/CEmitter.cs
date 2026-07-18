@@ -132,10 +132,10 @@ internal sealed partial class CEmitter
         return program with { Classes = [.. classes] };
     }
 
-    public string Emit(string? requestedEntry)
+    public string Emit(string? requestedEntry, bool lib = false)
     {
         ValidateProgram();
-        var entry = FindEntry(requestedEntry);
+        var entry = lib ? null : FindEntry(requestedEntry);
 
         _output.Append(RuntimePrelude);
         EmitClassDeclarations();
@@ -147,7 +147,10 @@ internal sealed partial class CEmitter
             EmitMethod(cls, method);
         EmitDispatchers();
         EmitStaticInitializer();
-        EmitEntryPoint(entry);
+        if (lib)
+            EmitLibEntryPoints();
+        else
+            EmitEntryPoint(entry);
         return _output.ToString().Replace(ClosureDeclMarker,
             string.Join("\n", _closureDecls));
     }
@@ -1031,6 +1034,34 @@ internal sealed partial class CEmitter
         _indent--;
         Line("}");
         Line();
+    }
+
+    // 静的 link 出荷形 (--lib): main を持たず、初期化と各 static void
+    // 引数なし public method を外部 linkage で公開する
+    private void EmitLibEntryPoints()
+    {
+        Line("void");
+        Line("tcs_lib_init(void)");
+        Line("{");
+        _indent++;
+        Line("tcs_init_statics();");
+        _indent--;
+        Line("}");
+        Line();
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods.Where(m => m.IsStatic
+            && m.Parameters.Length == 0
+            && _facts.Method(cls.Name, m.Name).ReturnType == CType.Void))
+        {
+            Line("void");
+            Line($"tcs_entry_{Names.Id(cls.Name)}_{Names.Id(method.Name)}(void)");
+            Line("{");
+            _indent++;
+            Line($"{Names.Method(cls.Name, method.Name)}();");
+            _indent--;
+            Line("}");
+            Line();
+        }
     }
 
     private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)
