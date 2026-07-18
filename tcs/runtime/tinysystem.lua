@@ -464,6 +464,13 @@ function TinySystem.instanceof(x, T)
   return false
 end
 
+-- TryGetValue の lowering 先 (il-spec §13)。(found, value or default) を返す
+function Dict.TryGet(dict, key, default)
+  local v = dict[key]
+  if v ~= nil then return true, v end
+  return false, default
+end
+
 -- 値型 (データ struct) の copy 地点用 shallow copy (il-spec §10)
 function TinySystem.scopy(s)
   local c = {}

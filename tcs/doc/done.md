@@ -1357,3 +1357,8 @@
 ### T218 第四マイルストーン: 継承 (自作) ✓ (2026-07-18)
 - luoc に継承を実装: DFS pre-order の範囲型 ID (`is` = type_id 範囲判定)、chain flatten による prefix layout 互換 upcast (中央 RenderCoerced で明示 cast)、同名再宣言の推論による type_id switch dispatcher (契約に virtual/override フラグ不要 — hiding/overload は診断済みなので同名 = override が健全)、base.M(self,...) 形は dispatcher を通さない直呼び、ctor は chain 最寄り (連鎖は base 初期化子が契約に無いため明示エラー → 契約拡張の需要として記録)
 - 受入: 仮想 dispatch / base 呼び / is (base 真・派生真・無関係偽) / 継承 field / 非仮想メソッド経由の多態を含むサンプルの stdout が lua32 と完全一致、digest 回帰 3/3、gcc エラーなし
+
+### Dict lowering の契約クリーン化 (T218 Dict の前提) ✓ (2026-07-18)
+- ContainsKey を IlCall("Dict.ContainsKey")、TryGetValue を Dict.TryGet (found, value) の multi-return intrinsic + IlMultiAssign へ変更 — 「nil 比較 = 不在判定」の Lua 方言を IL から排除 (C backend は nil を型付けできない)。runtime に Dict.TryGet を追加
+- 線形 IIFE (分岐なし前置 + 末尾 return) と無条件前置 (代入/呼び出し) も statement 化対象へ拡張 → TryGetValue も statement 位置で IIFE 不要に
+- 判断: TryGetValue は runtime 必須へ (Dict.Remove 等と同格 — Dictionary は言語機能でなくライブラリ)。検証: run-tests 全ゲート green

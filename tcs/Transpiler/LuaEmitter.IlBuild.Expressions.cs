@@ -638,14 +638,16 @@ public partial class LuaEmitter
         var defaultValue = GetDefaultValueForType(
             methodSym.Parameters.Length > 1
                 ? methodSym.Parameters[1].Type : null);
+        // multi-return intrinsic (il-spec §13)。nil 比較の desugar を IL に
+        // 残さない (C backend が「nil = 不在」を型付けできないため)
         return new IlIife([
-            new IlLocal("__tcs_value", new IlIndex(recv, key, false)),
-            new IlIf([(new IlBin(IlBinOp.Ne, new IlVar("__tcs_value"),
-                    new IlLit("nil")),
-                new IlBlock([new IlAssign(target, new IlVar("__tcs_value")),
-                    new IlReturn(new IlLit("true"))]))],
-                new IlBlock([new IlAssign(target, new IlLit(defaultValue)),
-                    new IlReturn(new IlLit("false"))]))]);
+            new IlMultiAssign(
+                [new IlVar("__tcs_found"), new IlVar("__tcs_v")],
+                [new IlCall("Dict.TryGet",
+                    [recv, key, new IlLit(defaultValue)])],
+                Declare: true),
+            new IlAssign(target, new IlVar("__tcs_v")),
+            new IlReturn(new IlVar("__tcs_found"))]);
     }
 
     // legacy VisitInterpolatedString の写像 (alignment はリテラルのみ対応)

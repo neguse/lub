@@ -178,15 +178,17 @@ public partial class LuaEmitter
                     }
                     if (init is IlIife li
                         && TryGetValueChainShape(li, out var liSetup,
-                            out var liChain, out _))
+                            out var liChain, out var liTail, out _))
                     {
                         var varNode = new IlVar(v.Identifier.ValueText);
                         acc.Add(new IlLocal(v.Identifier.ValueText, null)
                             { Origin = stmt });
                         foreach (var st in liSetup)
                             acc.Add(st with { Origin = stmt });
-                        acc.Add(SwitchChainAsAssigns(liChain, varNode)
-                            with { Origin = stmt });
+                        acc.Add(liChain != null
+                            ? SwitchChainAsAssigns(liChain, varNode)
+                                with { Origin = stmt }
+                            : new IlAssign(varNode, liTail!) { Origin = stmt });
                         continue;
                     }
                     acc.Add(new IlLocal(v.Identifier.ValueText, init)
@@ -443,12 +445,14 @@ public partial class LuaEmitter
             }
             if (value is IlIife ai && target is IlVar
                 && TryGetValueChainShape(ai, out var aiSetup, out var aiChain,
-                    out _))
+                    out var aiTail, out _))
             {
                 foreach (var st in aiSetup)
                     acc.Add(st with { Origin = origin });
-                acc.Add(SwitchChainAsAssigns(aiChain, target)
-                    with { Origin = origin });
+                acc.Add(aiChain != null
+                    ? SwitchChainAsAssigns(aiChain, target)
+                        with { Origin = origin }
+                    : new IlAssign(target, aiTail!) { Origin = origin });
                 return true;
             }
             acc.Add(new IlAssign(target, value) { Origin = origin });
@@ -600,12 +604,13 @@ public partial class LuaEmitter
         // 「値なし return」への変化 (print の 0 値/1 値差) を避け IIFE 維持
         if (value is IlIife iife
             && TryGetValueChainShape(iife, out var setup, out var chain,
-                out var complete)
+                out var tailValue, out var complete)
             && complete)
         {
             foreach (var st in setup)
                 acc.Add(st with { Origin = origin });
-            acc.Add(chain with { Origin = origin });
+            if (chain != null) acc.Add(chain with { Origin = origin });
+            else acc.Add(new IlReturn(tailValue) { Origin = origin });
             return;
         }
         acc.Add(new IlReturn(value) { Origin = origin });
@@ -618,9 +623,10 @@ public partial class LuaEmitter
     // Complete = 全経路が値を返す (false なら不一致時 nil — return 位置では
     // 「値なし return」化するため使えない)
     private static bool TryGetValueChainShape(IlIife iife,
-        out ImmutableArray<IlStat> setup, out IlIf chain, out bool complete)
+        out ImmutableArray<IlStat> setup, out IlIf? chain,
+        out IlExpr? tailValue, out bool complete)
     {
-        setup = default; chain = null!; complete = false;
+        setup = default; chain = null; tailValue = null; complete = false;
         var stats = iife.Stats;
         IlReturn? trailing = null;
         if (stats.Length > 0 && stats[^1] is IlReturn { Value: not null } tr)
@@ -628,8 +634,20 @@ public partial class LuaEmitter
             trailing = tr;
             stats = stats[..^1];
         }
+        // 前置は無条件実行の宣言・代入・呼び出しのみ (hoist しても等価)
+        bool LeadingOk(ImmutableArray<IlStat> xs) => xs.All(
+            st => st is IlLocal or IlMultiAssign { Declare: true }
+                or IlAssign or IlCallStat);
+        // 線形形 (分岐なし): [前置宣言*, return v]
+        if (trailing != null && LeadingOk(stats))
+        {
+            setup = stats;
+            tailValue = trailing.Value;
+            complete = true;
+            return true;
+        }
         if (stats.Length == 0 || stats[^1] is not IlIf tail) return false;
-        if (!stats[..^1].All(st => st is IlLocal)) return false;
+        if (!LeadingOk(stats[..^1])) return false;
         if (tail.Else != null && trailing != null) return false;
         if (!tail.Arms.All(a => IsReturningBlock(a.Body))) return false;
         if (tail.Else is { } e && !IsReturningBlock(e)) return false;

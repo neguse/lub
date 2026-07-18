@@ -204,7 +204,7 @@ public class IlPipelineTests
             }
             """]);
         Assert.DoesNotContain("(function()", lua);
-        var result = TestHelper.TranspileAndRun("""
+        var result = TestHelper.TranspileAndRunWithRuntime("""
             using System.Collections.Generic;
             public class T
             {
