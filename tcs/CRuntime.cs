@@ -41,6 +41,12 @@ internal sealed partial class CEmitter
 
         static uint32_t tcs_digest;
 
+        static int
+        tcs_type_in_range(uint32_t type_id, uint32_t first, uint32_t last)
+        {
+            return type_id >= first && type_id <= last;
+        }
+
         static _Noreturn void
         tcs_fault(const char *kind)
         {

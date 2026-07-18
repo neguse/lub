@@ -33,9 +33,86 @@ internal sealed partial class CEmitter
         _digestF32 = digestF32;
         _facts = new ContractFacts(_program);
         _classes = new Dictionary<string, IlClassInfo>(_facts.Classes);
+        BuildHierarchy();
     }
 
     internal const string CtorMethodName = "__ctor";
+
+    // ---- 継承 (T218-m4): DFS 範囲型 ID と chain 解決 ----
+    private readonly Dictionary<string, (int First, int Last)> _typeRange = new();
+
+    private void BuildHierarchy()
+    {
+        var children = new Dictionary<string, List<string>>();
+        var roots = new List<string>();
+        foreach (var cls in _program.Classes)
+        {
+            if (cls.BaseName is { } b)
+            {
+                if (!_classes.ContainsKey(b))
+                    throw new LuocException($"unknown base class: {cls.Name} : {b}");
+                (children.TryGetValue(b, out var list)
+                    ? list : children[b] = []).Add(cls.Name);
+            }
+            else
+            {
+                roots.Add(cls.Name);
+            }
+        }
+        var next = 1;
+        void Assign(string name)
+        {
+            if (_typeRange.ContainsKey(name))
+                throw new LuocException($"inheritance cycle at {name}");
+            var first = next++;
+            _typeRange[name] = (first, first);
+            foreach (var child in children.TryGetValue(name, out var cs)
+                ? cs : [])
+                Assign(child);
+            _typeRange[name] = (first, next - 1);
+        }
+        foreach (var root in roots) Assign(root);
+        if (_typeRange.Count != _program.Classes.Length)
+            throw new LuocException("inheritance cycle detected");
+    }
+
+    private IEnumerable<IlClassInfo> ChainRootFirst(string cls)
+    {
+        var chain = new List<IlClassInfo>();
+        for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
+            chain.Add(_classes[cur]);
+        chain.Reverse();
+        return chain;
+    }
+
+    internal bool IsAncestorOrSame(string ancestor, string derived)
+    {
+        for (string? cur = derived; cur != null; cur = _classes[cur].BaseName)
+            if (cur == ancestor) return true;
+        return false;
+    }
+
+    // name を宣言する最も近い chain 上の class (自身含む)
+    private string? FindDeclaringClass(string cls, string method)
+    {
+        for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
+            if (_classes[cur].Methods.Any(m => m.Name == method)) return cur;
+        return null;
+    }
+
+    private FieldFact FieldInChain(string cls, string name)
+    {
+        for (string? cur = cls; cur != null; cur = _classes[cur].BaseName)
+            if (_classes[cur].Fields.Any(f => f.Name == name))
+                return _facts.Field(cur, name);
+        throw new LuocException($"unknown field: {cls}.{name}");
+    }
+
+    // declaring で宣言された method を strict 子孫が再宣言しているか
+    private bool IsPolymorphic(string declaring, string method) =>
+        _program.Classes.Any(c => c.Name != declaring
+            && IsAncestorOrSame(declaring, c.Name)
+            && c.Methods.Any(m => m.Name == method));
 
     private static IlExportResult Normalize(IlExportResult program)
     {
@@ -68,6 +145,7 @@ internal sealed partial class CEmitter
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
             EmitMethod(cls, method);
+        EmitDispatchers();
         EmitStaticInitializer();
         EmitEntryPoint(entry);
         return _output.ToString();
@@ -80,8 +158,6 @@ internal sealed partial class CEmitter
         foreach (var cls in _program.Classes)
         {
             Names.Id(cls.Name);
-            if (cls.BaseName is not null)
-                throw new LuocException($"inheritance is not supported yet: {cls.Name}");
             foreach (var field in cls.Fields)
             {
                 Names.Id(field.Name);
@@ -155,8 +231,12 @@ internal sealed partial class CEmitter
         Line();
         Line("enum {");
         _indent++;
-        for (var i = 0; i < _program.Classes.Length; i++)
-            Line($"{Names.TypeId(_program.Classes[i].Name)} = {i + 1},");
+        foreach (var cls in _program.Classes)
+        {
+            var (first, last) = _typeRange[cls.Name];
+            Line($"{Names.TypeId(cls.Name)} = {first},");
+            Line($"{Names.TypeIdMax(cls.Name)} = {last},");
+        }
         _indent--;
         Line("};");
         Line();
@@ -165,9 +245,11 @@ internal sealed partial class CEmitter
             Line($"struct {Names.Class(cls.Name)} {{");
             _indent++;
             Line("uint32_t type_id;");
-            foreach (var field in cls.Fields.Where(f => !f.IsStatic))
+            // 継承 chain を root から平坦化 (先頭 layout 一致で upcast 可能)
+            foreach (var link in ChainRootFirst(cls.Name))
+            foreach (var field in link.Fields.Where(f => !f.IsStatic))
             {
-                var fact = _facts.Field(cls.Name, field.Name);
+                var fact = _facts.Field(link.Name, field.Name);
                 Line($"{fact.Type.CName} {Names.Field(field.Name)};");
             }
             _indent--;
@@ -199,6 +281,21 @@ internal sealed partial class CEmitter
                 $"({ParameterList(fact)});");
         }
         Line();
+        // dispatcher (T218-m4) の前方宣言
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods.Where(m => !m.IsStatic))
+        {
+            var declaring = _classes[cls.Name].BaseName is { } b
+                ? FindDeclaringClass(b, method.Name) : null;
+            if (declaring != null) continue;
+            if (!IsPolymorphic(cls.Name, method.Name)) continue;
+            var fact = _facts.Method(cls.Name, method.Name);
+            var parameters = string.Join(", ",
+                new[] { $"{Names.Class(cls.Name)} *" }
+                    .Concat(fact.Parameters.Select(p => p.Type.CName)));
+            Line($"static {fact.ReturnType.CName} " +
+                $"{Names.Dispatch(cls.Name, method.Name)}({parameters});");
+        }
     }
 
     private static string ParameterList(MethodFact method)
@@ -226,13 +323,14 @@ internal sealed partial class CEmitter
             _scopes.Clear();
             PushScope();
             AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
-            foreach (var field in cls.Fields.Where(f => !f.IsStatic))
+            foreach (var link in ChainRootFirst(cls.Name))
+            foreach (var field in link.Fields.Where(f => !f.IsStatic))
             {
-                var fact = _facts.Field(cls.Name, field.Name);
+                var fact = _facts.Field(link.Name, field.Name);
                 if (fact.Init is not null)
                 {
                     RequireAssignable(fact.Type, TypeOf(fact.Init),
-                        $"initializer of {cls.Name}.{field.Name}");
+                        $"initializer of {link.Name}.{field.Name}");
                     Line($"object->{Names.Field(field.Name)} = " +
                         $"{RenderExpr(fact.Init)};");
                 }
@@ -317,7 +415,7 @@ internal sealed partial class CEmitter
         var targetType = TypeOfPlace(assign.Target);
         var valueType = TypeOf(assign.Value);
         RequireAssignable(targetType, valueType, "assignment");
-        var value = RenderExpr(assign.Value);
+        var value = RenderCoerced(assign.Value, targetType);
 
         switch (assign.Target)
         {
@@ -506,7 +604,7 @@ internal sealed partial class CEmitter
             return;
         }
         RequireAssignable(_currentMethodFact.ReturnType, TypeOf(ret.Value), "return");
-        Line($"return {RenderExpr(ret.Value)};");
+        Line($"return {RenderCoerced(ret.Value, _currentMethodFact.ReturnType)};");
     }
 
     private void EmitDo(IlDo block)
@@ -518,6 +616,48 @@ internal sealed partial class CEmitter
         PopScope();
         _indent--;
         Line("}");
+    }
+
+    // 実行時型 dispatch (T218-m4): 「chain 最上位で宣言され、strict 子孫が
+    // 再宣言している」method ごとに type_id → 最寄り実装の switch を生成
+    private void EmitDispatchers()
+    {
+        foreach (var cls in _program.Classes)
+        foreach (var method in cls.Methods.Where(m => !m.IsStatic))
+        {
+            var declaring = _classes[cls.Name].BaseName is { } b
+                ? FindDeclaringClass(b, method.Name) : null;
+            if (declaring != null) continue; // 再宣言側は root が担当
+            if (!IsPolymorphic(cls.Name, method.Name)) continue;
+            var fact = _facts.Method(cls.Name, method.Name);
+            var parameters = string.Join(", ",
+                new[] { $"{Names.Class(cls.Name)} *v_self" }
+                    .Concat(fact.Parameters.Select((p, i) =>
+                        $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
+            Line($"static {fact.ReturnType.CName}");
+            Line($"{Names.Dispatch(cls.Name, method.Name)}({parameters})");
+            Line("{");
+            _indent++;
+            Line("switch (((TcsObjectHeader *)v_self)->type_id) {");
+            foreach (var target in _program.Classes
+                .Where(c => IsAncestorOrSame(cls.Name, c.Name)))
+            {
+                var impl = FindDeclaringClass(target.Name, method.Name)!;
+                var call = $"{Names.Method(impl, method.Name)}(" +
+                    string.Join(", ",
+                        new[] { $"({Names.Class(impl)} *)v_self" }
+                            .Concat(fact.Parameters.Select((p, i) =>
+                                $"v_{Names.Id(p.Name)}_{i}"))) + ")";
+                Line($"case {Names.TypeId(target.Name)}: " +
+                    (fact.ReturnType == CType.Void
+                        ? $"{call}; return;" : $"return {call};"));
+            }
+            Line("default: tcs_fault(\"dispatch\");");
+            Line("}");
+            _indent--;
+            Line("}");
+            Line();
+        }
     }
 
     private void EmitStaticInitializer()

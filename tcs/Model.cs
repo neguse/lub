@@ -79,6 +79,9 @@ internal static partial class Names
         $"tcs_m_{Id(cls)}_{Id(name)}";
     public static string New(string cls) => $"tcs_new_{Id(cls)}";
     public static string TypeId(string cls) => $"TCS_TYPE_{Id(cls)}";
+    public static string TypeIdMax(string cls) => $"TCS_TYPE_MAX_{Id(cls)}";
+    public static string Dispatch(string cls, string method) =>
+        $"tcs_dispatch_{Id(cls)}_{Id(method)}";
 }
 
 internal static class Constants

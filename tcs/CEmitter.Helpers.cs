@@ -21,11 +21,13 @@ internal sealed partial class CEmitter
         _ = TypeOfIsType(typeTest);
         var value = RenderExpr(typeTest.E);
         if (!Effectful(typeTest.E))
-            return $"({value} != NULL && ((TcsObjectHeader *){value})->type_id == " +
-                $"{Names.TypeId(typeTest.TypeRef)})";
+            return $"({value} != NULL && tcs_type_in_range(" +
+                $"((TcsObjectHeader *){value})->type_id, " +
+                $"{Names.TypeId(typeTest.TypeRef)}, {Names.TypeIdMax(typeTest.TypeRef)}))";
         var temp = Temp("is_object");
         return $"({{ void *{temp} = {value}; {temp} != NULL && " +
-            $"((TcsObjectHeader *){temp})->type_id == {Names.TypeId(typeTest.TypeRef)}; }})";
+            $"tcs_type_in_range(((TcsObjectHeader *){temp})->type_id, " +
+            $"{Names.TypeId(typeTest.TypeRef)}, {Names.TypeIdMax(typeTest.TypeRef)}); }})";
     }
 
     private static CType TypeOfLiteral(IlLit literal)
@@ -159,10 +161,25 @@ internal sealed partial class CEmitter
             throw new LuocException($"{where}: expected {expected}, got {actual}");
     }
 
-    private static void RequireAssignable(CType target, CType source, string where)
+    private void RequireAssignable(CType target, CType source, string where)
     {
-        if (!target.CanAssignFrom(source))
-            throw new LuocException($"{where}: cannot assign {source} to {target}");
+        if (target.CanAssignFrom(source)) return;
+        // 継承 upcast: Derived → Base (il-spec §9)
+        if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
+            && IsAncestorOrSame(target.Name!, source.Name!))
+            return;
+        throw new LuocException($"{where}: cannot assign {source} to {target}");
+    }
+
+    // upcast が必要なら C の明示 cast を挟んで render する
+    private string RenderCoerced(IlExpr expr, CType target)
+    {
+        var source = TypeOf(expr);
+        var rendered = RenderExpr(expr);
+        if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
+            && target.Name != source.Name)
+            return $"(({target.CName}){rendered})";
+        return rendered;
     }
 
     private static bool Effectful(IlExpr expr) => expr switch

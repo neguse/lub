@@ -60,7 +60,7 @@ internal sealed partial class CEmitter
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind != CTypeKind.Ref)
             throw new LuocException("field receiver is not a class reference");
-        _ = _facts.Field(receiver.Name!, field.Name);
+        _ = FieldInChain(receiver.Name!, field.Name);
         return $"(({receiver.CName})tcs_nonnull({RenderExpr(field.Recv)}))->" +
             Names.Field(field.Name);
     }
@@ -71,7 +71,7 @@ internal sealed partial class CEmitter
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind != CTypeKind.Ref)
             throw new LuocException("field receiver is not a class reference");
-        return _facts.Field(receiver.Name!, field.Name).Type;
+        return FieldInChain(receiver.Name!, field.Name).Type;
     }
 
     private bool TryStaticField(IlField field, out string cName, out CType type)
@@ -335,7 +335,18 @@ internal sealed partial class CEmitter
             return CType.Void;
         }
         var (cls, method) = ParseUserCallee(call.Callee);
-        return ValidateMethodCall(_facts.Method(cls, method), null, call.Args);
+        var fact = _facts.Method(cls, method);
+        // base 呼び出し (IlCall "Base.M" with self 先頭) は非仮想の直呼び
+        if (!fact.IsStatic && call.Args.Length == fact.Parameters.Count + 1)
+        {
+            var self = TypeOf(call.Args[0]);
+            if (self.Kind != CTypeKind.Ref
+                || !IsAncestorOrSame(fact.ClassName, self.Name!))
+                throw new LuocException(
+                    $"invalid receiver for {cls}.{method}");
+            return ValidateMethodCall(fact, self, call.Args.Skip(1).ToArray());
+        }
+        return ValidateMethodCall(fact, null, call.Args);
     }
 
     // digest は f32 bit を直接食うため、Lua 向け整形 (__tcs_fstr) を剥がして
@@ -406,6 +417,12 @@ internal sealed partial class CEmitter
     {
         var (cls, method) = ParseUserCallee(call.Callee);
         var fact = _facts.Method(cls, method);
+        if (!fact.IsStatic && call.Args.Length == fact.Parameters.Count + 1)
+        {
+            // base 呼び出し: dispatcher を通さない直呼び
+            return RenderMethodCall(fact, call.Args[0],
+                call.Args.Skip(1).ToArray());
+        }
         _ = ValidateMethodCall(fact, null, call.Args);
         return RenderMethodCall(fact, null, call.Args);
     }
@@ -435,12 +452,20 @@ internal sealed partial class CEmitter
         return fact;
     }
 
+    private MethodFact ResolveInvokeFact(CType receiver, string method)
+    {
+        if (receiver.Kind != CTypeKind.Ref)
+            throw new LuocException("IlInvoke receiver is not a class reference");
+        var declaring = FindDeclaringClass(receiver.Name!, method)
+            ?? throw new LuocException(
+                $"unknown method: {receiver.Name}.{method}");
+        return _facts.Method(declaring, method);
+    }
+
     private CType TypeOfInvoke(IlInvoke invoke)
     {
         var receiver = TypeOf(invoke.Recv);
-        if (receiver.Kind != CTypeKind.Ref)
-            throw new LuocException("IlInvoke receiver is not a class reference");
-        var fact = _facts.Method(receiver.Name!, invoke.Method);
+        var fact = ResolveInvokeFact(receiver, invoke.Method);
         return ValidateMethodCall(fact, receiver, invoke.Args);
     }
 
@@ -448,7 +473,11 @@ internal sealed partial class CEmitter
     {
         _ = TypeOfInvoke(invoke);
         var receiver = TypeOf(invoke.Recv);
-        var fact = _facts.Method(receiver.Name!, invoke.Method);
+        var fact = ResolveInvokeFact(receiver, invoke.Method);
+        // 子孫に再宣言があれば実行時型で dispatch (il-spec §9)
+        if (IsPolymorphic(fact.ClassName, fact.Name))
+            return RenderMethodCall(fact, invoke.Recv, invoke.Args,
+                Names.Dispatch(fact.ClassName, fact.Name));
         return RenderMethodCall(fact, invoke.Recv, invoke.Args);
     }
 
@@ -467,7 +496,7 @@ internal sealed partial class CEmitter
     }
 
     private string RenderMethodCall(MethodFact fact, IlExpr? receiver,
-        IReadOnlyList<IlExpr> args)
+        IReadOnlyList<IlExpr> args, string? function = null)
     {
         var values = new List<(CType Type, string Value)>();
         if (receiver is not null)
@@ -477,8 +506,10 @@ internal sealed partial class CEmitter
                 $"({receiverType.CName})tcs_nonnull({RenderExpr(receiver)})"));
         }
         values.AddRange(args.Select((arg, i) =>
-            (fact.Parameters[i].Type, RenderExpr(arg))));
-        return RenderOrderedCall(Names.Method(fact.ClassName, fact.Name),
+            (fact.Parameters[i].Type,
+             RenderCoerced(arg, fact.Parameters[i].Type))));
+        return RenderOrderedCall(
+            function ?? Names.Method(fact.ClassName, fact.Name),
             fact.ReturnType, values);
     }
 
@@ -517,17 +548,29 @@ internal sealed partial class CEmitter
             throw new LuocException($"unknown class: {creation.TypeName}");
         // 契約に ctor 本文がある場合はそれを呼ぶ (T218-m3)。引数なし new は
         // ctor が無ければ default 初期化のみ
-        if (cls.Ctor is not { } ctor)
+        // chain 上の最寄り explicit ctor を使う。ctor 連鎖 (derived と
+        // ancestor の両方に ctor) は契約に base 初期化子が無いため未対応
+        string? ctorClass = null;
+        for (string? cur = cls.Name; cur != null; cur = _classes[cur].BaseName)
+        {
+            if (_classes[cur].Ctor == null) continue;
+            if (ctorClass != null)
+                throw new LuocException(
+                    $"constructor chaining is not supported yet: {cls.Name}");
+            ctorClass = cur;
+        }
+        if (ctorClass is null)
         {
             if (creation.Args.Length != 0)
                 throw new LuocException(
                     $"{cls.Name} has no constructor but got arguments");
             return $"{Names.New(cls.Name)}()";
         }
+        var ctor = _classes[ctorClass].Ctor!;
         if (creation.Args.Length != ctor.Parameters.Length)
             throw new LuocException($"constructor {cls.Name}: expected " +
                 $"{ctor.Parameters.Length} arguments, got {creation.Args.Length}");
-        var ctorFact = _facts.Method(cls.Name, CtorMethodName);
+        var ctorFact = _facts.Method(ctorClass, CtorMethodName);
         var statements = new StringBuilder();
         var arguments = new List<string>();
         for (var i = 0; i < creation.Args.Length; i++)
@@ -544,9 +587,10 @@ internal sealed partial class CEmitter
         var objectName = Temp("object");
         statements.Append(Names.Class(cls.Name)).Append(" *").Append(objectName)
             .Append(" = ").Append(Names.New(cls.Name)).Append("(); ");
-        statements.Append(Names.Method(cls.Name, CtorMethodName))
+        statements.Append(Names.Method(ctorClass, CtorMethodName))
             .Append('(').Append(string.Join(", ",
-                new[] { objectName }.Concat(arguments))).Append("); ");
+                new[] { $"({Names.Class(ctorClass)} *){objectName}" }
+                    .Concat(arguments))).Append("); ");
         return $"({{ {statements}{objectName}; }})";
     }
 
