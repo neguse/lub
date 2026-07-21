@@ -31,8 +31,10 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 ## 診断に出ない注意点
 
-- デフォルト引数値は呼び出し側に展開されない(省略した引数は Lua の
-  nil になる)。`double? x = null` + `x ?? 既定値` で書く
+- lub API(`cs-lib/lub_stub.cs` のような型チェック専用 stub)の呼び出しでは
+  デフォルト引数値が展開されない(省略した引数は Lua の nil になる)。
+  stub 側は `double? x = null` + `x ?? 既定値` で書く。自分で書いた
+  TinyC# メソッドの既定引数は通常どおり効く
 - static 初期化子から cs-lib のクラスを参照しない。生成 Lua はサンプル
   → cs-lib の順で定義されるため、ロード時に nil 呼び出しになる。
   `onInit` / `onFrame` で遅延生成する(リテラルだけの static は可)
