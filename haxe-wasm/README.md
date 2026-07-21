@@ -28,5 +28,5 @@ wasm 化し、`haxe.js` + `haxe.assets/*.wasm` + `std/` を `dist/` に抽出、
 ## 記録
 
 - [plan.md](plan.md) — 実現性検証の計画(2026-05)
-- [report.md](report.md) — 実施記録(2026-06-02、native golden と byte 一致・GO 確定)
-- [HANDOFF.md](HANDOFF.md) — 引き継ぎ(web playground 統合まで完了)
+- [report.md](report.md) — 実施記録(2026-06-02)
+- [HANDOFF.md](HANDOFF.md) — 引き継ぎ

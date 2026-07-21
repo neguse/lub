@@ -11,7 +11,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - `docs/roadmap.md` — Phase の定義と進捗(Phase 0/1 完了、Phase 2 Hakonotaiatari 進行中、Phase 3 未着手)
 - `docs/design.md` — 設計方針
 - `docs/api-glue.md` — 多言語 (Lua/Haxe/C#) binding の構成と実装ライブラリの供給方針
-- `haxe-wasm/README.md` — Haxe compiler の client-WASM 化(完遂: byte 一致 + web playground 統合)
+- `haxe-wasm/README.md` — Haxe compiler の client-WASM 化
 - `docs/serve.md` — `lub --serve`(HTTP + SSE で web ホットリロード)。外部リポからゲームを書くテンプレートは `templates/game/`
 - `git log` — 実装経緯
 
@@ -20,6 +20,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - **PR ベースで回す**。作業はブランチ → PR。マージ gate は PR CI(linux / windows / web の 3 workflow)で、deploy は master push 時に web workflow が同じ verify を通した上で行う。push は必ずユーザー承認後、merge は人間の act。
 - **テストの走り分け**: commit フック = format + 空白 + docs lint(秒)。フル検証は PR CI が担う(linux: `scripts/native-gate.sh` = docs lint/build/smoke/物理 Lua/golden/C# gate、windows: build + WARP golden、web: build + headless verify + web golden)。手元でフル検証したいときだけ `scripts/pre-push.sh`(CI と同内容の手動ゲート)。
 - **移植は理想設計で**。原典 (NGS 等) のコード構造・ファイル分割・抽象化は真似しない。Haxe + lub 哲学から導いた最良案で書く。忠実に写すのは gameplay rule (敵パターン・弾数・HP・速度・出現タイミング) だけ。ファイル分割は概念単位 (Scene, EntityWorld, Atlas, Font, DrawList)、state machine は interface/enum/class、entity は Array/Pool。
+- **ドキュメントは平易な語で現状だけを書く**。開発 jargon(spike 等)や完了注記(完遂・GO 確定 等)を現状ドキュメントに書かない。記録(`docs/log/` 等)の本文は当時のまま残す。
 - **フォーマッタはツール標準デフォルト**。既存スタイルに寄せる設定ファイル (`.clang-format` / `hxformat.json` / `.prettierrc`) は置かない。clang-format=LLVM default、haxe=default(tab)、prettier=default。整形は `scripts/format.sh`(`--check` で CI)。
 
 ## サンプル構成
