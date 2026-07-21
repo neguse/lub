@@ -222,4 +222,4 @@ lub を別リポのゲームから使うための Web 開発モード。native �
 - web playground がブラウザ内で使う **Haxe コンパイラ wasm は GPL-2.0-or-later**(改変版、
   ビルド用パッチは `haxe-wasm/patches/`)。ツールとしての同梱=集約で、lub 本体には伝播しない。
 - バンドル/リンクする第三者依存(SDL3 / Lua / Slang / Haxe std 等)は
-  `THIRD_PARTY_LICENSES.md` を参照。spike の内訳は `haxe-wasm/LICENSE`。
+  `THIRD_PARTY_LICENSES.md` を参照。Haxe コンパイラ wasm の内訳は `haxe-wasm/LICENSE`。

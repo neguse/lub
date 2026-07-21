@@ -1,6 +1,6 @@
 // wsoo 生成 glue (haxe.js) の wasm import `env` にある throw スタブ
 //   "name":()=>{throw new Error("name not implemented")}
-// を、実装で置換する後段パッチャ。再コンパイル不要で高速反復するための spike ツール。
+// を、実装で置換する後段パッチャ。再コンパイル不要で高速反復するための検証用ツール。
 //
 //   node patch_env.mjs <in haxe.js> <out haxe.patched.js>
 //

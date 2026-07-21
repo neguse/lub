@@ -11,7 +11,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - `docs/roadmap.md` — Phase の定義と進捗(Phase 0/1 完了、Phase 2 Hakonotaiatari 進行中、Phase 3 未着手)
 - `docs/design.md` — 設計方針
 - `docs/api-glue.md` — 多言語 (Lua/Haxe/C#) binding の構成と実装ライブラリの供給方針
-- `haxe-wasm/HANDOFF.md` — Haxe compiler の client-WASM 化(完遂: byte 一致 + web playground 統合)
+- `haxe-wasm/README.md` — Haxe compiler の client-WASM 化(完遂: byte 一致 + web playground 統合)
 - `docs/serve.md` — `lub --serve`(HTTP + SSE で web ホットリロード)。外部リポからゲームを書くテンプレートは `templates/game/`
 - `git log` — 実装経緯
 

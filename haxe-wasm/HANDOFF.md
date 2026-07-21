@@ -2,7 +2,7 @@
 
 > 記録: 2026-06-02 時点の引き継ぎ。web playground 統合まで完了済み。現状は [../web/README.md](../web/README.md) を参照。
 
-最終更新 2026-06-02。詳細な調査結果は [README.md](README.md) を参照。本書は spike の到達点と、
+最終更新 2026-06-02。詳細な調査結果は [report.md](report.md) を参照。本書は spike の到達点と、
 **この先(製品化)の作業手順**をまとめる。
 
 ## TL;DR
@@ -103,6 +103,6 @@ spike(実現性検証 + 成果物 + byte一致)は完了。**web playground へ�
 
 ## 参照
 
-- 調査全体と GO 根拠: [README.md](README.md)
+- 調査全体と GO 根拠: [report.md](report.md)
 - ブラウザ実機ハーネス: [harness/browser/README.md](harness/browser/README.md)
 - 記憶(プロジェクト横断): memory `project_wasm_spike_go`
