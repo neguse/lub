@@ -1,5 +1,7 @@
 # NGS Port Design (lub Phase 1)
 
+> 記録: 2026-05-29 時点の設計(workflow 産物)。現状は `samples/12_sfb/` を参照。
+
 `../ngs/` (NO GOOD SHOOTING, 2004 neguse 作の SDL シューティング、Ghidra で復元された SDL3 C ソース約 2700 行) を lub に移植する。lub Phase 1 (`docs/roadmap.md`) のゴールである「2D game の最小構成を core API の上で自然に書ける / title + basic game screen が動く / 描画結果を golden で固定できる」を満たす。
 
 設計は原典 C ソースの構造に縛られない。Haxe + lub の設計哲学から導いた理想形を採用する。Gameplay rule (敵パターン、bullet 速度、当たり判定、スコア進行、難易度) のみ忠実に再現する (= mechanical port)。

@@ -1,5 +1,7 @@
 # 2026-05-14 — Indexed draw 対応 設計
 
+> 記録: 2026-05-14 時点の設計(workflow 産物)。現状は [../manual/04-gfx.md](../manual/04-gfx.md) を参照。
+
 ## ゴール
 
 lub の描画経路に **indexed draw** を追加する。`use_buffer` の INDEX 型を実際に動作するパスにし、`draw` を indices 有無で内部分岐させる。両 backend (sokol / sdlgpu) で動作。golden 比較で決定的に固定。glTF メッシュ取扱いを始めとする後続作業の前提インフラ。

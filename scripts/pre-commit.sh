@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Fast local gate for commits: format (changed files only) and whitespace
-# checks. Seconds, not minutes — the merge gate is PR CI (linux / windows /
-# web workflows). scripts/pre-push.sh is the manual full local equivalent.
+# Fast local gate for commits: format (changed files only), whitespace,
+# and docs lint. Seconds, not minutes — the merge gate is PR CI (linux /
+# windows / web workflows). scripts/pre-push.sh is the manual full local
+# equivalent.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,7 +14,7 @@ case "${1:-}" in
 Usage: scripts/pre-commit.sh
 
 Runs the fast local pre-commit gate:
-  format (changed files only) and whitespace checks.
+  format (changed files only), whitespace, and docs lint.
 
 Builds and tests run in PR CI (linux / windows / web workflows);
 scripts/pre-push.sh is the manual full local equivalent.
@@ -58,6 +59,7 @@ if ! cmp -s "$format_before" "$format_after"; then
 fi
 run git diff --check
 run git diff --cached --check
+run scripts/docs-lint.sh
 
 echo
 echo "pre-commit gate OK (build/test gate: PR CI / scripts/pre-push.sh (手動))"

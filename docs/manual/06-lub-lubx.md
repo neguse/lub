@@ -21,7 +21,7 @@ core API にしない方針。既存エンジンとの API 互換も目標にし
 
 `lubx.*` は `lub.*` の上に **純粋な Haxe で書かれた**便利層。
 `Boot`(起動定型)、`SpriteBatch` / `Shapes` / `Text`(2D 描画)、
-`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。`docs/renderer3d.md`)、
+`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。設計記録は `docs/log/2026-07-12-renderer3d-design.md`)、
 `Camera2d` / `Camera3d`、`Assets` / `Png`、`Rand`、`Sfx` など。
 
 runtime の機能ではないので、ソースを読めばすべて `lub.*` の呼び出しに

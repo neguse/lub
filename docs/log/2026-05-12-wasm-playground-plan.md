@@ -1,5 +1,7 @@
 # WASM Playground Implementation Plan
 
+> 記録: 2026-05-12 時点の実装計画(workflow 産物)。現状は [../../web/README.md](../../web/README.md) を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** lub の sample 01〜07 をブラウザで走らせ、編集に応じて debounce auto-sync で即時反映する WebGPU playground を作る。
@@ -8,7 +10,7 @@
 
 **Tech Stack:** Emscripten, SDL3 (emscripten port), sokol_gfx (`SOKOL_WGPU`), Lua 5.5, lume.lua, `@shader-slang/slang-wasm`, Vite, TypeScript, CodeMirror 6.
 
-**Spec:** [`docs/superpowers/specs/2026-05-12-wasm-playground-design.md`](../specs/2026-05-12-wasm-playground-design.md)
+**Spec:** [`docs/log/2026-05-12-wasm-playground-design.md`](./2026-05-12-wasm-playground-design.md)
 
 ---
 
@@ -30,7 +32,7 @@
 | `web/playground/editor.ts` | CodeMirror multi-tab + dirty + debounce |
 | `web/playground/samples.ts` | `/samples/` fetch + Lua scan で tab 構築 |
 | `web/playground/slang-bridge.ts` | slang-wasm session init + WGSL compile expose |
-| `docs/superpowers/plans/2026-05-12-wasm-playground.md` | 本プラン |
+| `docs/log/2026-05-12-wasm-playground-plan.md` | 本プラン |
 
 ### 既存改修
 

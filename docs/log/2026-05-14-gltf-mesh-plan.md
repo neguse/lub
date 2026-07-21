@@ -1,12 +1,14 @@
 # glTF Mesh Loading Implementation Plan
 
+> 記録: 2026-05-14 時点の実装計画(workflow 産物)。現状は `samples/08_gltf/` を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- []`) syntax for tracking.
 
 **Goal:** lub に glTF 2.0 mesh (頂点 + index) ローダを追加し、Khronos `Box.glb` を法線可視化 shader で描画する sample 08 を sokol / sdlgpu / web の 3 系統で動作させる。
 
-**Architecture:** cgltf を single-header で vendor し、`src/gltf.{h,c}` に `lub_load_gltf(path)` を実装。`src/lua_api.c` で `load_gltf(path)` を Lua global にバインドし、戻り値は `{ positions, normals, uvs, indices, vert_count, index_count }` 形式の Lua table。`samples/lub_io.lua` に `load_png` と同形の `M.load_gltf` ラッパーと `M.interleave_pn` ヘルパを追加。sample 08 は `load_gltf` → `interleave_pn` → `use_buffer(VERTEX,...)` + `use_buffer(INDEX,...)` → `draw(count, {verts, indices}, ...)` の経路で box を描く。indexed draw は別フェーズで既に実装済み (`docs/superpowers/specs/2026-05-14-indexed-draw-design.md`)。
+**Architecture:** cgltf を single-header で vendor し、`src/gltf.{h,c}` に `lub_load_gltf(path)` を実装。`src/lua_api.c` で `load_gltf(path)` を Lua global にバインドし、戻り値は `{ positions, normals, uvs, indices, vert_count, index_count }` 形式の Lua table。`samples/lub_io.lua` に `load_png` と同形の `M.load_gltf` ラッパーと `M.interleave_pn` ヘルパを追加。sample 08 は `load_gltf` → `interleave_pn` → `use_buffer(VERTEX,...)` + `use_buffer(INDEX,...)` → `draw(count, {verts, indices}, ...)` の経路で box を描く。indexed draw は別フェーズで既に実装済み (`docs/log/2026-05-14-indexed-draw-design.md`)。
 
-**Tech Stack:** C11 / cgltf (MIT, single-header) / Lua 5.5 / Slang / sokol_gfx (Vulkan) / SDL3 GPU / WebGPU (web) / lavapipe + xvfb (CI/headless)。spec は `docs/superpowers/specs/2026-05-14-gltf-mesh-design.md`。
+**Tech Stack:** C11 / cgltf (MIT, single-header) / Lua 5.5 / Slang / sokol_gfx (Vulkan) / SDL3 GPU / WebGPU (web) / lavapipe + xvfb (CI/headless)。spec は `docs/log/2026-05-14-gltf-mesh-design.md`。
 
 ---
 

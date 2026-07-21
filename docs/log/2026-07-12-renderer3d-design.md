@@ -1,5 +1,7 @@
 # Renderer3d 設計
 
+> 記録: 2026-07-12 時点の実装前設計。実装済み。現状は `haxe-lib/lub/lubx/Renderer3d.hx` と `samples/26_renderer3d/` を見る。
+
 lubx に載せる小さな組み込み 3D レンダラ。目標は「メッシュを投げたら一発でいい絵」。
 サンプル 18/22/23/25 が毎回コピペしている lit shader・単位メッシュ・draw ラッパ・
 pose 変換と、19/22/24 の skinned 定型をライブラリに昇格し、その上に

@@ -8,10 +8,10 @@ directory:
 - **Current-state docs** (repo root, `docs/` top level, subproject READMEs)
   describe the repository as it is now. When a commit changes behavior,
   update the affected current-state docs in the same commit.
-- **Records** (`docs/log/`, `docs/superpowers/`, and completed feature
-  directories such as `haxe-wasm/`) are frozen snapshots with a leading
-  `> 記録:` banner. Do not rewrite their body; only update the banner's
-  pointers or fix broken links.
+- **Records** (`docs/log/` and completed feature directories such as
+  `haxe-wasm/`) are frozen snapshots with a leading `> 記録:` banner.
+  Do not rewrite their body; only update the banner's pointers or fix
+  broken links.
 
 A design doc written before implementation must not stay in between: once
 implemented, either rewrite it as a current-state doc or freeze it as a record.

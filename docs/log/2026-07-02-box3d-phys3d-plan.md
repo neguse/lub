@@ -1,5 +1,7 @@
 # Box3D Phys3d API + Coin Pusher Sample Implementation Plan
 
+> 記録: 2026-07-02 時点の実装計画(workflow 産物)。現状は `samples/18_coin_pusher/`(phys3d API) を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- []`) syntax for tracking.
 
 **Goal:** Box3D v0.1.0 (`third_party/box3d`, submodule pin 済み) を phys2d と同じ
@@ -10,7 +12,7 @@ web playground の両方で動かす。
 **Architecture:** `src/physics_box3d.{h,c}` に phys2d (`src/physics_box2d.c`) と
 同型の C 実装を置く。設計 semantics (key 宣言 + 差分 create/update/destroy、
 constructor hash / version rule、prune / tombstone、sentinel refs、event snapshot、
-single-thread step 固定) は `docs/superpowers/specs/2026-06-09-box2d-immediate-mode-design.md`
+single-thread step 固定) は `docs/log/2026-06-09-box2d-immediate-mode-design.md`
 をそのまま流用し、本 plan では 3D 化に伴う差分だけを規定する。
 
 **Tech Stack:** C17 / Box3D v0.1.0 (MIT) / Lua 5.5 / Haxe 5 / Slang /

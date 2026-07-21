@@ -1,5 +1,7 @@
 # 2026-05-12 — WASM Playground 設計
 
+> 記録: 2026-05-12 時点の設計(workflow 産物)。現状は [../../web/README.md](../../web/README.md) を参照。
+
 ## ゴール
 
 lub の sample 01〜07 を **ブラウザ上で走らせるデモページ** を作る。同ページ内に
@@ -58,7 +60,7 @@ lub/
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── tsconfig.json
-└── docs/superpowers/specs/2026-05-12-wasm-playground-design.md  -- 本書
+└── docs/log/2026-05-12-wasm-playground-design.md  -- 本書
 ```
 
 ## アーキテクチャ
