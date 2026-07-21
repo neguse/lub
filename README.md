@@ -10,9 +10,8 @@ runtime は C/C++ と既存ライブラリで組み、Lua を通して API を�
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
-native が プラットフォーム直接実装 (`native`、default — Windows: D3D12) と
-SDL3 GPU API (`sdlgpu` — Linux では `native` の代行)、
-web が webgpu.h 直接実装。
+native がプラットフォーム直接実装 (`native`、default — Windows: D3D12、
+Linux: Vulkan) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
 対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
 
 ## ドキュメント
@@ -30,11 +29,9 @@ web が webgpu.h 直接実装。
 ## ビルド
 
 依存:
-- CMake 3.20+
+- CMake 3.22+
 - C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
-- Vulkan SDK / loader
-  - Linux — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
-  - Windows — LunarG Vulkan SDK (`winget install KhronosGroup.VulkanSDK`)
+- Vulkan loader (Linux のみ) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
 
 Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
@@ -57,7 +54,6 @@ cmake --build build -j
 Windows (PowerShell, MSVC + Ninja):
 
 ```powershell
-$env:VULKAN_SDK = "C:\VulkanSDK\1.4.341.1"  # winget でインストールされた SDK
 & 'C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat'
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
@@ -80,8 +76,11 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 プロジェクト固有の設定ファイル (`.clang-format` / `hxformat.json` /
 `.prettierrc`) は意図的に置かず、ツール標準のスタイルに従う。
 
-- C/C++ — `clang-format` (LLVM default)
+- C/C++/Slang — `clang-format` (LLVM default、Slang は HLSL 扱い)
 - Haxe — `haxelib formatter` (要 `haxelib install formatter`)
+- Lua — `stylua` (`web/` で `npm install` 後に利用可)
+- C# — `dotnet format whitespace` (dotnet SDK 付属)
+- HXML — 末尾空白除去 + 終端 LF の正規化
 - Web TS — `prettier` (`web/` で `npm install` 後に利用可)
 
 ```sh
@@ -169,7 +168,7 @@ scripts/run-golden.sh --sample 01_triangle --backend sdlgpu
 
 プラットフォームごとに機材非依存の CPU rasterizer を強制するので capture が
 確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
-sdlgpu を、Windows (git bash) は WARP (`LUB_DX12_WARP=1`) で
+sdlgpu と native (Vulkan) を、Windows (git bash) は WARP (`LUB_DX12_WARP=1`) で
 native (D3D12) をチェックする。実 GPU でのドリフトは想定範囲外
 (tolerance 比較は別途)。
 
@@ -178,12 +177,12 @@ native (D3D12) をチェックする。実 GPU でのドリフトは想定範囲
 lub は内部に 3 つの GPU backend を持ち、同一 Lua API で動く:
 
 - `native` (default) — プラットフォームの最短距離実装。Windows は D3D12 直接
-  (設計は [docs/dx12-backend.md](docs/dx12-backend.md))、web は webgpu.h 直接
+  (設計は [docs/dx12-backend.md](docs/dx12-backend.md))、Linux は Vulkan 直接
+  (`src/backend_vk.c`)、web は webgpu.h 直接
   (設計記録は
-  [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md))、
-  Linux は直接実装ができるまで `sdlgpu` が代行する
-  (整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md))
-- `sdlgpu` — SDL3 GPU API (native 専用。現在 Vulkan で実装、将来 Metal / D3D12 にも展開可能)
+  [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、
+  整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md))
+- `sdlgpu` — SDL3 GPU API 経由の実装 (native 専用の代替 backend)
 - `webgpu` (web) — web build の実体。web では backend 指定は無視される
 
 切替は `Lub.config({backend: ...})`。サンプルは環境変数を見る

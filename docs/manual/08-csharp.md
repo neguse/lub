@@ -73,12 +73,12 @@ public static class Main
 (`Io.load_text` など) は `out` 引数で受ける。
 
 サンプルは Haxe 版と同じディレクトリに同居する (例:
-`samples/09_breakout/Breakout.cs` + `Breakout.csproj`)。playground では
+`samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。playground では
 画面上部の言語トグルで Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。
 native での実行は hxml と対称:
 
 ```
-lub samples/09_breakout/Breakout.csproj           # transpile + watch + hot reload
+lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload
 scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
 scripts/run-cs-sample.sh 09_breakout --build      # transpile のみ
 ```

@@ -38,7 +38,7 @@
 - 3D game の最小構成を、core API の上で自然に書ける。
 - depth、render target、camera、mesh-like draw、per-object parameter を一貫して扱える。
 - 3D helper は runtime core に押し込まず、core primitive の上で書ける。
-- Sokol と SDL3 GPU の違いが Lua core API に漏れない。
+- GPU backend (D3D12 / Vulkan / SDL_GPU / WebGPU) の違いが Lua core API に漏れない。
 - Haxe -> Lua を使う場合でも、3D の frame update と draw が破綻しない。
 - low-level gfx を直接使いたい場面と、高 level helper で十分な場面を分けられる。
 

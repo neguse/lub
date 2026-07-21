@@ -1,7 +1,7 @@
 # DX12 Native Backend
 
 Windows native 用の D3D12 backend。`RenderBackend` vtable (`src/backend.h`) の
-4 つ目の実装で、抽象は変更していない。明示同期・descriptor heap・
+実装の一つで、抽象は変更していない。明示同期・descriptor heap・
 resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` 内に閉じる。
 
 ## 選択と配置

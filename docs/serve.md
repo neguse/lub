@@ -79,8 +79,9 @@ const es = new EventSource('/events');
 es.addEventListener('files', (e) => {
   const {files} = JSON.parse(e.data);
   for (const [path, content] of Object.entries(files)) {
-    const full = path.startsWith('samples/') ? path : 'samples/' + path;
-    FS.writeFile(full, content);
+    // パスは entry ディレクトリからの相対。常に samples/<entry>/ 配下へ書く。
+    // 親ディレクトリを FS.mkdir で作り、既存ファイルは unlink してから書く
+    writeFileEnsureDir(FS, 'samples/' + ENTRY + '/' + path, content);
   }
 });
 ```
