@@ -10,14 +10,14 @@ runtime は C/C++ と既存ライブラリで組み、Lua を通して API を�
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
-native が **プラットフォーム直接実装 (`native`、default — Windows: D3D12)** と
-**SDL3 GPU API (`sdlgpu` — Linux では `native` の代行)**、
-web が **webgpu.h 直接実装**。
+native が プラットフォーム直接実装 (`native`、default — Windows: D3D12) と
+SDL3 GPU API (`sdlgpu` — Linux では `native` の代行)、
+web が webgpu.h 直接実装。
 対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
 
 ## ドキュメント
 
-- **[lub.neguse.net/docs](https://lub.neguse.net/docs)**: ゲームを書く人向けの
+- [lub.neguse.net/docs](https://lub.neguse.net/docs): ゲームを書く人向けの
   ガイド(基礎概念)+ API reference。ガイドの原稿は `docs/manual/`、API は
   `haxe-lib/lub/` の doc comment から生成。
 - [lub.neguse.net](https://lub.neguse.net): ブラウザで動く playground。
@@ -76,7 +76,7 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 
 ## コードフォーマット
 
-各フォーマッタの **デフォルト設定** で整形する。既存スタイルに寄せる
+各フォーマッタの デフォルト設定 で整形する。既存スタイルに寄せる
 プロジェクト固有の設定ファイル (`.clang-format` / `hxformat.json` /
 `.prettierrc`) は意図的に置かず、ツール標準のスタイルに従う。
 
@@ -101,7 +101,7 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 `.slang` / PNG / `*.verts.lua` などの data ファイルも同様に保存で即反映。
 
 依存:
-- **Haxe 5.0.0-preview.1**(`haxe --version` で確認)。web playground(client-only wasm
+- Haxe 5.0.0-preview.1(`haxe --version` で確認)。web playground(client-only wasm
   コンパイル)と native で版を揃える。`scripts/install-haxe5.sh` でローカル導入できる
   (system の haxe を壊さない)。
 - 1 回だけ extern を haxelib に登録: `haxelib dev lub <repo>/haxe-lib/lub`
@@ -218,8 +218,8 @@ lub を別リポのゲームから使うための Web 開発モード。native �
 
 ## ライセンス
 
-- lub 本体(C ランタイム / web playground / samples / `haxe-lib/lub`)は **MIT**(`LICENSE`)。
-- web playground がブラウザ内で使う **Haxe コンパイラ wasm は GPL-2.0-or-later**(改変版、
+- lub 本体(C ランタイム / web playground / samples / `haxe-lib/lub`)は MIT(`LICENSE`)。
+- web playground がブラウザ内で使う Haxe コンパイラ wasm は GPL-2.0-or-later(改変版、
   ビルド用パッチは `haxe-wasm/patches/`)。ツールとしての同梱=集約で、lub 本体には伝播しない。
 - バンドル/リンクする第三者依存(SDL3 / Lua / Slang / Haxe std 等)は
   `THIRD_PARTY_LICENSES.md` を参照。Haxe コンパイラ wasm の内訳は `haxe-wasm/LICENSE`。

@@ -4,6 +4,7 @@
 #   2. Links in docs/README.md resolve to existing files.
 #   3. docs/log/*.md are named YYYY-MM-DD-<slug>.md.
 #   4. docs/log/*.md carry a leading "> 記録:" banner.
+#   5. Current-state docs do not use ** (bold) emphasis.
 # Runs in the commit hook (scripts/pre-commit.sh) and in CI via
 # scripts/native-gate.sh. Whether a doc's content matches the
 # implementation cannot be checked here; that stays a review concern.
@@ -18,7 +19,8 @@ case "${1:-}" in
 Usage: scripts/docs-lint.sh
 
 Checks the mechanical part of the documentation policy (docs/README.md):
-index completeness, index link resolution, and docs/log/ naming + banner.
+index completeness, index link resolution, docs/log/ naming + banner,
+and no bold emphasis in current-state docs.
 EOF
     exit 0
     ;;
@@ -63,6 +65,18 @@ for f in docs/log/*.md; do
   fi
   if ! head -5 "$f" | grep -q "^> 記録:"; then
     err "$f has no leading '> 記録:' banner"
+  fi
+done
+
+# 5. Current-state docs ban ** (bold) emphasis. "**/" and "/**" glob
+#    patterns inside code spans are not emphasis and are ignored.
+current_docs=(README.md AGENTS.md CLAUDE.md tasks.md web/README.md
+  haxe-wasm/README.md docs/*.md docs/manual/*.md)
+for f in "${current_docs[@]}"; do
+  [[ -f "$f" ]] || continue
+  line="$(sed 's|\*\*/||g; s|/\*\*||g' "$f" | grep -n '\*\*' | head -1 || true)"
+  if [[ -n "$line" ]]; then
+    err "$f uses ** emphasis (line ${line%%:*}); current-state docs ban bold"
   fi
 done
 

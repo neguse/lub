@@ -5,10 +5,10 @@
 Follow the documentation policy in `docs/README.md`. Docs are split by
 directory:
 
-- **Current-state docs** (repo root, `docs/` top level, subproject READMEs)
+- Current-state docs (repo root, `docs/` top level, subproject READMEs)
   describe the repository as it is now. When a commit changes behavior,
   update the affected current-state docs in the same commit.
-- **Records** (`docs/log/` and completed feature directories such as
+- Records (`docs/log/` and completed feature directories such as
   `haxe-wasm/`) are frozen snapshots with a leading `> 記録:` banner.
   Do not rewrite their body; only update the banner's pointers or fix
   broken links.

@@ -1,12 +1,12 @@
 # lub とは
 
-lub は、細部までこだわったゲーム体験を作るための **code-centric** なゲーム制作
+lub は、細部までこだわったゲーム体験を作るための code-centric なゲーム制作
 runtime。最重要の価値は、ゲームを止めずに変更を反映し、トライアンドエラーを
 極限まで速くすること。
 
-- ゲームコードは **Haxe** で書き、**Lua** に transpile されて runtime 上で動く
-- **native**(SDL3 GPU / Sokol)と **web**(WASM + WebGPU)の両方で同じコードが動く
-- コード・アセットの変更は実行中のゲームに **hot reload** で即座に反映される
+- ゲームコードは Haxe で書き、Lua に transpile されて runtime 上で動く
+- native(SDL3 GPU / Sokol)と web(WASM + WebGPU)の両方で同じコードが動く
+- コード・アセットの変更は実行中のゲームに hot reload で即座に反映される
 
 GUI エディタや固定のアセットパイプラインは無い。asset、描画、入力、物理、音、
 診断情報をすべてコードから直接制御し、自分のゲームに必要なデータ構造と

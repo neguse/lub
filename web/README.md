@@ -1,7 +1,7 @@
 # lub playground (web)
 
-ブラウザで lub サンプルの **Haxe ソース(`.hx`)を編集 → client-only でその場コンパイル
-(WebAssembly 化した Haxe コンパイラ)→ player iframe にホットリロード**するプレイグラウンド。
+ブラウザで lub サンプルの Haxe ソース(`.hx`)を編集 → client-only でその場コンパイル
+(WebAssembly 化した Haxe コンパイラ)→ player iframe にホットリロードするプレイグラウンド。
 
 サーバ不要・完全静的。Haxe→Lua コンパイルもブラウザ内(Web Worker)で完結する。
 
@@ -95,9 +95,9 @@ npm run deploy    # build + wrangler deploy
 ## Browser requirements
 
 - WebGPU が利用可能なブラウザ:
-  - **Chrome / Edge** (primary、137+) — 既定で WebGPU 有効。
-  - **Safari** (iPadOS / iOS / macOS 26+) — WebGPU を利用可能。
-  - **Firefox Nightly** — `dom.webgpu.enabled` を `about:config` で有効化。
+  - Chrome / Edge (primary、137+) — 既定で WebGPU 有効。
+  - Safari (iPadOS / iOS / macOS 26+) — WebGPU を利用可能。
+  - Firefox Nightly — `dom.webgpu.enabled` を `about:config` で有効化。
 - ローカル開発: Vite dev server が emdawnwebgpu に必要な CORS/MIME 設定を済ませる。
 - production bundle (`npm run build`) は `web/dist/` 配下、`/wasm/`,
   `/slang/` への絶対パス前提なので site root に置く。
@@ -108,6 +108,6 @@ npm run deploy    # build + wrangler deploy
   iframe log に流すのみ (next save で復帰)。初回 compile 失敗のみ load を止める。
 - 300ms debounce: 入力後 300ms 静止してから `syncFiles` を送る。連打中は更新されない。
 - サンプル切替時に dirty な編集があると `confirm()` で警告する。
-- **`--capture` の swapchain capture は native のみ**。web (webgpu backend) では
+- `--capture` の swapchain capture は native のみ。web (webgpu backend) では
   任意 render target の readback (`Gfx.readback()`) を使う。
-- **sdlgpu backend は web 非対応**。web は `webgpu` のみ。
+- sdlgpu backend は web 非対応。web は `webgpu` のみ。
