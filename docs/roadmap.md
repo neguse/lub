@@ -37,6 +37,8 @@ runtime 需要を見て入れ替えてよい。
   バンドルを 1 コマンドで作れる。
 - 配信先(第一候補 itch.io)の実環境で WebGPU が動くことを最初に検証する。
 - ngs を製品品質にする: hiscore 永続化、fullscreen、起動・終了・エラー時の挙動。
+- 配信するゲーム本体を lub リポジトリに置き続けるか、別リポジトリへ分けるかを
+  決める(`docs/serve.md` の外部リポ運用が下地)。
 
 完了の目安:
 
@@ -47,7 +49,7 @@ runtime 需要を見て入れ替えてよい。
 
 達成したいこと:
 
-- 3D game の最小構成を core API の上で自然に書ける。
+- 3D game の最小構成を lub と lubx の上で自然に書ける(lubx は使ってよい)。
 - depth、render target、camera、mesh-like draw、per-object parameter を一貫して扱える。
 - マウス操作(カーソル表示の制御を含む)と効果音を gameplay loop の中で扱える。
 
@@ -59,9 +61,9 @@ runtime 需要を見て入れ替えてよい。
 
 達成したいこと:
 
-- action game の loop を core API の上で自然に書ける。
-- physics、contact、action input、camera、audio event を runtime core に
-  押し込まずに扱える。
+- action game の loop を lub と lubx の上で自然に書ける。
+- physics、contact、action input、camera、audio event を runtime に
+  game 固有の機能を足さずに扱える。
 - gameplay reload 時にも runtime resource lifetime が壊れない。
 - Tiled のような外部マップデータを asset として扱える。
 
@@ -74,8 +76,8 @@ runtime 需要を見て入れ替えてよい。
 達成したいこと:
 
 - パズルゲームを BGM 込みで扱える。
-- 原典はスマホブラウザ対応だが、lub の配布対象(`docs/design.md`)に合わせて
-  PC ブラウザ + マウスに限定するかを phase 開始時に判断する。
+- スマホブラウザ対応を必須とする。対象は WebGPU が動く端末のみでよい
+  (`docs/design.md` の配布対象と整合)。タッチ操作を扱える。
 
 完了の目安:
 
