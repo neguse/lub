@@ -16,13 +16,13 @@ graph TD
     S --> CS["実装ライブラリ C# 版<br/>cs-lib/*"]
 ```
 
-- **contract 層** — prelude が flat global を namespace table に組み立てる。
+- contract 層 — prelude が flat global を namespace table に組み立てる。
   全言語共通の正。末尾の `lub` table は Haxe の emit 形
   (`lub.Gfx.begin_pass`) 用 alias で実体は同一 table。
-- **binding 層** — 言語ごとの宣言のみ。実装を持たない。
-- **実装ライブラリ層** — サンプルの一部という位置付けのコード。ユーザーが
+- binding 層 — 言語ごとの宣言のみ。実装を持たない。
+- 実装ライブラリ層 — サンプルの一部という位置付けのコード。ユーザーが
   読み、hot reload で書き換えられることが lub の価値なので、runtime への
-  Lua 供給はせず**各言語で実装する**(Haxe / TinyC# の二重実装を許容)。
+  Lua 供給はせず各言語で実装する(Haxe / TinyC# の二重実装を許容)。
 
 ## 各層の対応
 
@@ -55,7 +55,7 @@ graph TD
 ## cs-lib 実装モジュールの供給規約
 
 `cs-lib/` 配下の `*.cs` のうち `lub_stub.cs` だけが `--ref`(宣言のみ、emit されない)。
-それ以外は実装ソースとして**全 C# サンプルのコンパイル入力に一律追加**される
+それ以外は実装ソースとして全 C# サンプルのコンパイル入力に一律追加される
 (lub CLI / `run-cs-sample.sh` / playground の 3 箇所とも。サンプル側での選択はしない)。
 配置は `cs-lib/lub/<Name>.cs` / `cs-lib/lubx/<Name>.cs` で `haxe-lib/lub` をミラー、
 namespace なしフラット(IDE 用の csproj は両ディレクトリを Compile Include する)。

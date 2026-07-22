@@ -25,8 +25,8 @@ Haxe はその性質を活かしたまま、より書きやすい script authori
 
 script authoring layer は複数言語を許す。Haxe に加えて TinyC#
 ([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler) を
-第二の authoring 言語とする。**全サンプルを Haxe / C# の両言語で提供することを
-ゴールとする**。サンプル番号は言語で分けず、同一サンプルディレクトリに両言語の
+第二の authoring 言語とする。全サンプルを Haxe / C# の両言語で提供する
+(番号付きサンプルは両対応済み)。サンプル番号は言語で分けず、同一サンプルディレクトリに両言語の
 ソースを同居させ、開く言語を選ぶ (対応状況の正は `web/playground/samples.ts` の
 CS_SAMPLES と `samples/*/<Entry>.cs` の有無)。web playground は Haxe と C# の
 両方を動く状態に保つ: コンパイラは言語別に分離し、player・Lua API 面
@@ -113,9 +113,9 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 
 - macOS は未対応。
 - sdlgpu backend は native 専用。web は webgpu backend のみ。
-- DX12 backend (`native`) は Windows 専用で実装済み。CI golden は WARP で回す
-  (`docs/dx12-backend.md`)。backend 構成の整理方針は
-  `docs/log/2026-07-07-backend-consolidation.md`。
+- `native` はプラットフォーム直接実装 (Windows: D3D12、Linux: Vulkan)。CI golden は
+  Windows は WARP、Linux は lavapipe で回す (`docs/dx12-backend.md`)。backend 構成の
+  整理方針は `docs/log/2026-07-07-backend-consolidation.md`。
 - swapchain capture (`--capture`) は native のみ。web は `Gfx.readback()` による
   render target readback のみ。
 - SDL GPU path は combined image sampler 周辺に制約がある。

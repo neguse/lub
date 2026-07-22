@@ -1,5 +1,7 @@
 # 2026-06-09 - Box2D v3 Immediate-Mode Physics API Design
 
+> 記録: 2026-06-09 時点の設計(workflow 産物)。現状は `samples/16_box2d/`(phys2d API) を参照。
+
 `lub` に Box2D v3 を組み込み、Lua から immediate-mode 風に 2D physics を宣言し、
 Haxe からは型付き extern で同じ API を呼べるようにする設計。
 

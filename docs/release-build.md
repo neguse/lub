@@ -52,7 +52,7 @@ bash scripts/build-release.sh --no-configure
 
 Linux prerequisites:
 
-- CMake 3.20+
+- CMake 3.22+
 - C11 / C++17 compiler
 - Vulkan loader and development headers
 - Ninja is preferred when installed; otherwise the default CMake generator is used

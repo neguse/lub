@@ -5,7 +5,7 @@ lub のゲームコードは Haxe のほかに C# でも書ける。使うのは
 transpile するコンパイラで、playground ではブラウザ内 (Roslyn の WASM 版)、
 native では `scripts/run-cs-sample.sh` 経由で動く。
 
-「フル C# が動く」わけではない。TinyC# は **C# 構文の DSL** であり、
+「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
 モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
 nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さな核だけを
 サポートする。
@@ -31,9 +31,11 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 ## 診断に出ない注意点
 
-- **デフォルト引数値は呼び出し側に展開されない**(省略した引数は Lua の
-  nil になる)。`double? x = null` + `x ?? 既定値` で書く
-- **static 初期化子から cs-lib のクラスを参照しない**。生成 Lua はサンプル
+- lub API(`cs-lib/lub_stub.cs` のような型チェック専用 stub)の呼び出しでは
+  デフォルト引数値が展開されない(省略した引数は Lua の nil になる)。
+  stub 側は `double? x = null` + `x ?? 既定値` で書く。自分で書いた
+  TinyC# メソッドの既定引数は通常どおり効く
+- static 初期化子から cs-lib のクラスを参照しない。生成 Lua はサンプル
   → cs-lib の順で定義されるため、ロード時に nil 呼び出しになる。
   `onInit` / `onFrame` で遅延生成する(リテラルだけの static は可)
 
@@ -73,12 +75,12 @@ public static class Main
 (`Io.load_text` など) は `out` 引数で受ける。
 
 サンプルは Haxe 版と同じディレクトリに同居する (例:
-`samples/09_breakout/Breakout.cs` + `Breakout.csproj`)。playground では
+`samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。playground では
 画面上部の言語トグルで Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。
 native での実行は hxml と対称:
 
 ```
-lub samples/09_breakout/Breakout.csproj           # transpile + watch + hot reload
+lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload
 scripts/run-cs-sample.sh 09_breakout --check      # 診断のみ
 scripts/run-cs-sample.sh 09_breakout --build      # transpile のみ
 ```

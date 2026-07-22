@@ -1,7 +1,7 @@
 # Phase 0 spike: Haxe compiler を WASM 化して web playground で client-only compile できるか
 
-> 記録: 2026-05 時点の spike 計画。結果は GO で web playground 統合まで完了済み。
-> 現状は [README.md](README.md)(実施記録)と [HANDOFF.md](HANDOFF.md)(引き継ぎ)を参照。
+> 記録: 2026-05 時点の実現性検証の計画。結果は GO で web playground 統合まで完了済み。
+> 現状は [report.md](report.md)(実施記録)と [HANDOFF.md](HANDOFF.md)(引き継ぎ)を参照。
 
 ## Context
 
@@ -78,7 +78,7 @@ spike** を先に1本通し、結果を見て (A)/(B) を最終決定する(ユ�
 
 ## spike の成果物 / 検証
 
-- `haxe-wasm/README.md`: missing primitive 一覧、実際に呼ばれた primitive、domain 判定、shim 量、バンドル
+- `haxe-wasm/report.md`: missing primitive 一覧、実際に呼ばれた primitive、domain 判定、shim 量、バンドル
   サイズ、レイテンシ、**GO/NO-GO 勧告**。
 - `haxe-wasm/`: ①haxe bytecode ビルド手順スクリプト ②wasm_of_ocaml 実行スクリプト ③`00_hello` を
   compile する Node-wasm ハーネス(出力を native ゴールデンと diff)。

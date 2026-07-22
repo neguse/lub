@@ -1,10 +1,12 @@
 # NGS Foundation + Title Implementation Plan
 
+> 記録: 2026-05-29 時点の実装計画(workflow 産物)。現状は `samples/12_sfb/` を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** lub Phase 1 (NGS port) の最初の出荷可能増分 — sprite 描画基盤・bitmap font・入力・scene framework を建て、NGS タイトル画面が描画され、cursor 操作と "start"→Play placeholder / "end"→quit が動き、golden で固定できる状態にする。
 
-**Architecture:** 設計 spec は `docs/superpowers/specs/2026-05-29-ngs-port-design.md`。フルゲーム (title→boss→game over) を 1 spec にまとめてあるが、実装は 4 plan に分割する。本 plan は **Plan 1 / 4 (Foundation + Title)**。Plan 2 = Player + 1 enemy、Plan 3 = full enemy roster、Plan 4 = Boss + game over (別 plan で起こす)。本 plan のスコープは「タイトルが遊べて golden が撮れる」まで。Play は player sprite を出すだけの placeholder に留め、enemy/spawner/collision は Plan 2 以降。
+**Architecture:** 設計 spec は `docs/log/2026-05-29-ngs-port-design.md`。フルゲーム (title→boss→game over) を 1 spec にまとめてあるが、実装は 4 plan に分割する。本 plan は **Plan 1 / 4 (Foundation + Title)**。Plan 2 = Player + 1 enemy、Plan 3 = full enemy roster、Plan 4 = Boss + game over (別 plan で起こす)。本 plan のスコープは「タイトルが遊べて golden が撮れる」まで。Play は player sprite を出すだけの placeholder に留め、enemy/spawner/collision は Plan 2 以降。
 
 **Tech Stack:** Haxe 4.3.7 → Lua 5.5 transpile (lub の `.hxml` pipeline)、slang shader (`LUB_TEXTURE2D`/`LUB_SAMPLE` macro)、lub `Gfx`/`Input`/`Io` extern、Python (asset 変換)、C (lub runtime: window size + quit)、golden = lavapipe + xvfb 下の PNG byte 一致。
 

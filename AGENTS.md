@@ -1,24 +1,26 @@
 # AGENTS.md
 
+Guidance for coding agents working in this repo. Shared rules live in the
+current-state docs; this file only adds agent-specific notes and pointers.
+
 ## Documentation
 
-Follow the documentation policy in `docs/README.md`. Docs are split by
-directory:
+Follow the documentation policy in `docs/README.md`: current-state docs vs
+frozen records split by directory, plain wording (no dev jargon, no
+completion notes, no bold emphasis). `scripts/docs-lint.sh` enforces the
+mechanical part and runs in the commit hook and linux CI.
 
-- **Current-state docs** (repo root, `docs/` top level, subproject READMEs)
-  describe the repository as it is now. When a commit changes behavior,
-  update the affected current-state docs in the same commit.
-- **Records** (`docs/log/`, `docs/superpowers/`, and completed feature
-  directories such as `haxe-wasm/`) are frozen snapshots with a leading
-  `> 記録:` banner. Do not rewrite their body; only update the banner's
-  pointers or fix broken links.
+## Workflow
 
-A design doc written before implementation must not stay in between: once
-implemented, either rewrite it as a current-state doc or freeze it as a record.
+Work flows branch → PR; the merge gate is PR CI (linux / windows / web).
+The commit hook (`scripts/pre-commit.sh`) runs format, whitespace, and docs
+lint. Full local verification is `scripts/pre-push.sh`. See `CLAUDE.md`
+(Japanese) for the complete working conventions.
 
 ## Release Build
 
-Do not hand-compose native Release build commands. Use the platform script:
+Do not hand-compose native Release build commands. Use the platform scripts
+described in `docs/release-build.md`:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
@@ -32,8 +34,7 @@ If the sandbox blocks Ninja, CMake, compiler, linker, resource compiler, or
 dependency tool execution, request approval for the same script command instead
 of asking the user to provide a build command. Run Release build and benchmark
 commands with a 2-hour process timeout; first-time dependency fetches and SDL
-builds can take several minutes. For benchmark tasks, use the benchmark script
-below; it delegates to `scripts\build-release.ps1`.
+builds can take several minutes.
 
 On this Windows host, Ubuntu WSL is available when commands are run outside the
 sandbox. Normal sandbox commands may report no WSL distributions. For Linux
@@ -45,38 +46,9 @@ wsl.exe -d Ubuntu --cd /mnt/d/github.com/neguse/lub -e bash -lc '<command>'
 
 ## Sprite Benchmark
 
-Do not hand-compose the Release build and run sequence for the sprite benchmark.
-Use the platform script:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1
-```
-
-```sh
-bash scripts/run-sprites-bench.sh
-```
-
-This is the canonical command for the `rsushi`-style sample. It configures
-`build-release` on Windows or `build-release-linux` on Linux, builds `lub`,
-runs `samples\13_sprites\13_sprites.hxml`, and waits for the
-`SPRITES13_SCORE ...` line.
-
-Common variants:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -NoBuild
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -Backend sdlgpu
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -Profile
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -ScoreFrame 7200 -Burst 1
-```
-
-```sh
-bash scripts/run-sprites-bench.sh --no-build
-bash scripts/run-sprites-bench.sh --backend sdlgpu
-bash scripts/run-sprites-bench.sh --profile
-bash scripts/run-sprites-bench.sh --score-frame 7200 --burst 1
-```
-
-When reporting benchmark results, include the exact command, backend, target
-FPS, score frame, burst, and the full `LUB_PROFILE` / `LUB_PROFILE_SCOPE` /
-`SPRITES13_SCORE` lines.
+Do not hand-compose the Release build and run sequence for the sprite
+benchmark. Use `scripts/run-sprites-bench.sh` /
+`scripts\run-sprites-bench.ps1`; flags and score reading are described in
+`docs/sprites-bench.md`. When reporting benchmark results, include the exact
+command, backend, target FPS, score frame, burst, and the full `LUB_PROFILE`
+/ `LUB_PROFILE_SCOPE` / `SPRITES13_SCORE` lines.

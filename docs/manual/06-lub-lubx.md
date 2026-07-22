@@ -6,10 +6,12 @@ API は 2 つのパッケージに分かれている。この境界は設計上�
 ## lub — core primitive
 
 `lub.*` は C runtime が Lua に公開する API への型付き extern。
-**runtime が所有しなければ一貫性を保てない primitive だけ**がここに入る:
+runtime が所有しなければ一貫性を保てない primitive だけがここに入る:
 
+- 起動 config と終了(`Lub`)
 - GPU 実行と frame lifecycle(`Gfx`)
 - 入力の frame 内 snapshot(`Input`)
+- hot reload 前提のファイル I/O(`Io`)
 - resource identity(key + version、reload の一貫性)
 - 物理・音声など native ライブラリの境界(`Phys2d` / `Phys3d` / `Audio`)
 - 診断情報(`Profiler`、`Sys`)
@@ -19,13 +21,13 @@ core API にしない方針。既存エンジンとの API 互換も目標にし
 
 ## lubx — Haxe ライブラリ層
 
-`lubx.*` は `lub.*` の上に **純粋な Haxe で書かれた**便利層。
-`Boot`(起動定型)、`SpriteBatch` / `Shapes` / `Text`(2D 描画)、
-`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。`docs/renderer3d.md`)、
+`lubx.*` は `lub.*` の上に 純粋な Haxe で書かれた便利層。
+`Boot`(起動定型)、`SpriteBatch` / `Atlas` / `Shapes` / `Text`(2D 描画)、
+`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。設計記録は `docs/log/2026-07-12-renderer3d-design.md`)、
 `Camera2d` / `Camera3d`、`Assets` / `Png`、`Rand`、`Sfx` など。
 
 runtime の機能ではないので、ソースを読めばすべて `lub.*` の呼び出しに
-分解できる。**挙動を変えたければ自分のプロジェクトに写して改造してよい**
+分解できる。挙動を変えたければ自分のプロジェクトに写して改造してよい
 層であり、lubx に無い機能は同じやり方で自作できる。
 
 ## 使い分けの目安

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Native regression gate: Release build, C smoke tests, physics Lua tests,
-# visual goldens (lavapipe), and the C# sample gate.
+# Native regression gate: docs lint, Release build, C smoke tests,
+# physics Lua tests, visual goldens (lavapipe), and the C# sample gate.
 # Single source of truth shared by linux CI (.github/workflows/linux.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
@@ -17,8 +17,8 @@ while [[ $# -gt 0 ]]; do
 Usage: scripts/native-gate.sh [--require-cs] [--skip-golden]
 
 Runs the native regression gate:
-  Release build, C smoke tests, physics Lua tests, visual goldens
-  (lavapipe), and the C# sample gate.
+  docs lint, Release build, C smoke tests, physics Lua tests,
+  visual goldens (lavapipe), and the C# sample gate.
 
 --require-cs makes a missing C# toolchain (dotnet / third_party/tcs) an
 error instead of a skip; CI passes it so the gate cannot silently narrow.
@@ -68,6 +68,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT INT TERM
+
+run scripts/docs-lint.sh
 
 run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"

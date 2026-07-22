@@ -1,12 +1,14 @@
 # Indexed draw Implementation Plan
 
+> 記録: 2026-05-14 時点の実装計画(workflow 産物)。現状は [../manual/04-gfx.md](../manual/04-gfx.md) を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- []`) syntax for tracking.
 
 **Goal:** lub の `draw` に indexed draw 経路を実装し、`use_buffer(INDEX, ...)` を実動作させて両 backend (sokol / sdlgpu) で u32 indexed draw を可能にする。
 
 **Architecture:** API surface は据え置き。`use_buffer` は `type==INDEX` の時のみ Lua 数値 table を `uint32_t` 配列として詰める。`draw(count, resources, options)` は `resources.indices` が INDEX 型 buffer ref なら `bind.ibuf` を設定し、pipeline cache に `is_indexed=true` を渡して indexed pipeline を取得、backend が分岐。`make_buffer` の `data` 型は `void *` に統一。検証は `tests/lua/test_indexed_draw.lua` + lavapipe + xvfb で sokol / sdlgpu 両 backend の golden を 1 枚ずつ固定。
 
-**Tech Stack:** C11 / Lua 5.5 / sokol_gfx (Vulkan) / SDL3 GPU / Slang / lavapipe + xvfb (CI/headless)。spec は `docs/superpowers/specs/2026-05-14-indexed-draw-design.md`。
+**Tech Stack:** C11 / Lua 5.5 / sokol_gfx (Vulkan) / SDL3 GPU / Slang / lavapipe + xvfb (CI/headless)。spec は `docs/log/2026-05-14-indexed-draw-design.md`。
 
 ---
 

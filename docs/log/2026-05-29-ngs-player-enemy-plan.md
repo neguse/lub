@@ -1,10 +1,12 @@
 # NGS Player + Enemy Implementation Plan (Phase 1, plan 2/4)
 
+> 記録: 2026-05-29 時点の実装計画(workflow 産物)。現状は `samples/12_sfb/` を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use `- [ ]` checkboxes.
 
 **Goal:** Plan 1 (title + Play placeholder) の上に、遊べる最小ゲームプレイを載せる — 自機の 8 方向移動・ショット・被弾死亡/復活、Normal 敵の出現と撃破、当たり判定、score/lives 表示。`Play` を placeholder から実装へ。
 
-**Architecture:** 設計 spec は `docs/superpowers/specs/2026-05-29-ngs-port-design.md` §5。Plan 1 で建てた `render`/`input`/`scenes`/`game` 基盤に `entities` package を追加。`Play` シーンが `World`(Faction 別 entity リスト)を保持し、毎フレーム update→collision→draw。原典 `../ngs/src/game.c`/`enemy.c` の gameplay 値を忠実に再現する。
+**Architecture:** 設計 spec は `docs/log/2026-05-29-ngs-port-design.md` §5。Plan 1 で建てた `render`/`input`/`scenes`/`game` 基盤に `entities` package を追加。`Play` シーンが `World`(Faction 別 entity リスト)を保持し、毎フレーム update→collision→draw。原典 `../ngs/src/game.c`/`enemy.c` の gameplay 値を忠実に再現する。
 
 **Tech Stack:** Plan 1 と同じ (Haxe→Lua, slang sprite shader, lub Gfx/Input/Io, golden = lavapipe+xvfb)。
 

@@ -1,5 +1,7 @@
 # Haxe -> Lua transpile / reload Implementation Plan
 
+> 記録: 2026-05-25 時点の実装計画(workflow 産物)。現状は [../manual/07-haxe-lua.md](../manual/07-haxe-lua.md) を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** lub に `.hxml` entry を渡すと、Haxe コンパイラを `--wait` で常駐させて hot reload 体験を成立させる toolchain を作り、01_triangle を Haxe で書き直して golden test まで通す。
@@ -8,7 +10,7 @@
 
 **Tech Stack:** C11 (lub runtime)、SDL3 (`SDL_CreateProcess`/`SDL_RenamePath`)、Lua 5.5 (`lume.hotswap`)、Haxe 5+ (`-lua` target、`--wait` / `--connect`)、CMake、既存 golden 経路 (`scripts/run-golden.sh` + `tests/golden/*.png`)。
 
-**Spec:** `docs/superpowers/specs/2026-05-25-haxe-lua-transpile-design.md` (commit `6789c0e`)。
+**Spec:** `docs/log/2026-05-25-haxe-lua-transpile-design.md` (commit `6789c0e`)。
 
 ---
 
@@ -1851,12 +1853,12 @@ pipeline. Golden output byte-identical to the pre-port Lua version."
 
 ---
 
-## Task 29: docs/superpowers/specs の「未解決事項」を spec 後 fixup
+## Task 29: docs/log/ の spec の「未解決事項」を spec 後 fixup
 
 実装中に解消した未解決事項を spec に反映する (`lua.PairTools.MultiReturn*` の確定形など)。
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-05-25-haxe-lua-transpile-design.md`
+- Modify: `docs/log/2026-05-25-haxe-lua-transpile-design.md`
 
 - [ ] **Step 1: 未解決事項 section を更新**
 
@@ -1865,7 +1867,7 @@ Task 27 で確定した `MultiReturn` の取り扱い方 (`untyped` か `@:multi
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-05-25-haxe-lua-transpile-design.md
+git add docs/log/2026-05-25-haxe-lua-transpile-design.md
 git commit -m "Lock down spec unresolved items from impl experience"
 ```
 

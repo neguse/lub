@@ -1,7 +1,7 @@
 # DX12 Native Backend
 
 Windows native 用の D3D12 backend。`RenderBackend` vtable (`src/backend.h`) の
-4 つ目の実装で、抽象は変更していない。明示同期・descriptor heap・
+実装の一つで、抽象は変更していない。明示同期・descriptor heap・
 resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` 内に閉じる。
 
 ## 選択と配置
@@ -23,18 +23,18 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
 `SHADER_TARGET_DX12`(`shader.cpp`)が `SLANG_DXIL`(sm_6_0)でコンパイル
 する。SPIR-V patching は行わず、reflection の slot がそのまま HLSL register。
 
-- **VS+FS は 1 つの slang program にリンクして compile する**
+- VS+FS は 1 つの slang program にリンクして compile する
   (`compile_dx12_graphics`)。DXIL はステージ間 varying を「レジスタ位置」で
   一致させる(SPIR-V の location matching と違う)ため、別々に compile
   すると署名がずれる。リンクの副作用として b/t/s/u register は
-  **program 全体で一意**になり、backend はそれを前提にする。
-- **varying 規約**: VS 出力構造体の `SV_Position` は最後に置く
+  program 全体で一意になり、backend はそれを前提にする。
+- varying 規約: VS 出力構造体の `SV_Position` は最後に置く
   (`docs/manual/04-gfx.md` 参照)。FS が VS 出力の先頭部分集合だけを
   宣言する lub のイディオムをレジスタ一致と両立させるため。
 - DXIL 生成は dxcompiler.dll(Slang が動的ロード)。Slang prebuilt には
   同梱されないため CMake が DXC release から取得して
   `third_party/slang/bin` に置く(ビルド時取得、コミットしない)。
-  **dxil.dll は不要**: DXC 1.8.2502 以降は validator hash がオープン
+  dxil.dll は不要: DXC 1.8.2502 以降は validator hash がオープン
   ソース化され dxcompiler.dll 単体で署名済み DXIL を出力する。
   ライセンスは University of Illinois/NCSA(LLVM Release License)。
 - compile 経路の smoke: `lub_shader_dx12_smoke`(Windows のみビルド)。
@@ -59,13 +59,13 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
 
 ## Binding model
 
-- **uniforms**: draw 毎に upload arena から 256B align で suballocate し
+- uniforms: draw 毎に upload arena から 256B align で suballocate し
   root CBV(GPU VA 直指定)。SDL_GPU の push uniform と等価。register は
   program 一意なので b 番号だけで root param が決まる。
-- **root signature**: shader ごとに `ShaderReflection` から生成。root CBV ×
+- root signature: shader ごとに `ShaderReflection` から生成。root CBV ×
   uniform block + SRV table(t0..N)+ sampler table(s0..N)、compute は
   + UAV table(u0..N)。すべて `SHADER_VISIBILITY_ALL`。
-- **texture/SRV/sampler**: `apply_bindings` / `dispatch` 時に per-frame
+- texture/SRV/sampler: `apply_bindings` / `dispatch` 時に per-frame
   shader-visible ring へ descriptor を直接 Create して table をセット。
   未使用 slot は null descriptor / default sampler で埋める。
   StructuredBuffer の stride は reflection の `elem_stride`。
@@ -83,9 +83,9 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
   (buffer は用途別 read state、texture は PSR|NPSR)へ戻す。
 - destroy は fence 値付きの遅延解放リストに積み、begin_frame で回収
   (GPU が最大 2 frame 参照し続けるため)。
-- **readback**: 同期(SDL_GPU backend と同じ意味論)。frame list を
+- readback: 同期(SDL_GPU backend と同じ意味論)。frame list を
   flush → wait → readback heap から copy、list を開き直して frame 続行。
-- **capture**: present 前に backbuffer を readback buffer へ copy して
+- capture: present 前に backbuffer を readback buffer へ copy して
   flush + wait(`capture_before_end_frame = true`)。end_frame は
   Present + Signal のみ行う。
 
@@ -98,7 +98,7 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
 ## Golden test
 
 `scripts/run-golden.sh` は Windows (git bash) では native backend を
-**WARP**(`LUB_DX12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
+WARP(`LUB_DX12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
 `tests/golden/<name>_native.png` と byte 比較する。lavapipe と同じく
 機材・ドライバ非依存の CPU rasterizer なので `cmp -s` の完全一致が成立する。
 実 GPU での動作確認は別途 capture 目視で行う。

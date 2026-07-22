@@ -1,5 +1,7 @@
 # NGS Boss + GameOver Implementation Plan (Phase 1 完了)
 
+> 記録: 2026-05-30 時点の実装計画(workflow 産物)。現状は `samples/12_sfb/` を参照。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** ボス戦と game over を実装し、NGS を title → 通常面 → ボス → game over まで通しで遊べる 1 本に仕上げる (lub Phase 1 ゴール)。

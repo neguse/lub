@@ -3,7 +3,7 @@
 ## Io.load* — 毎フレーム呼べるファイル入力
 
 `Io.loadText` / `loadFloats` / `loadGltf` は hot reload 前提の即時モード API。
-mtime の fast-path + コンテンツハッシュにより、**毎フレーム呼んでも安い**。
+mtime の fast-path + コンテンツハッシュにより、毎フレーム呼んでも安い。
 
 ```haxe
 var r = Io.loadText("samples/mygame/data/config.txt");
@@ -24,7 +24,7 @@ web ではファイル取得が非同期なので `"pending"` があり得る。
 
 ## パスの規約
 
-パスは **起動時の cwd 基準**。サンプルはリポジトリルートから
+パスは 起動時の cwd 基準。サンプルはリポジトリルートから
 `lub samples/<name>/<name>.hxml` のように起動するので、コード内のパスも
 `samples/<name>/data/...` と書く。
 

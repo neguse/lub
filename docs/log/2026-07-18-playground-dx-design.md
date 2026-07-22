@@ -1,5 +1,7 @@
 # playground DX: 診断表示・生成 Lua タブ・C# 補完/hover
 
+> 記録: 2026-07-18 時点の実装前設計。実装済み。現状は [../../web/README.md](../../web/README.md) と `web/playground/` を見る。
+
 web playground(`web/playground/`)の編集体験を「動かせる」から「書ける」に引き上げる。
 本書は次の 3 機能の設計。実装順もこの順。
 

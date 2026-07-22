@@ -1,5 +1,7 @@
 # Render Primitive Design for Upscaling-Friendly Pipelines
 
+> 記録: 2026-06-08 時点の設計(workflow 産物)。現状は [../manual/04-gfx.md](../manual/04-gfx.md) と `samples/15_render_primitives/` を参照。
+
 `lub` core に FSR/TAAU そのものを入れず、`lubx` が標準 3D pipeline や
 upscaler を組めるだけの低レベル描画 primitive を整える。目的は API surface を
 増やさず、sokol / SDL_GPU 互換を維持したまま、通常の post-process / lighting /

@@ -1,5 +1,7 @@
 # Haxe -> Lua transpile / reload (Phase 0)
 
+> 記録: 2026-05-25 時点の設計(workflow 産物)。現状は [../manual/07-haxe-lua.md](../manual/07-haxe-lua.md) を参照。
+
 roadmap.md の Phase 0 のうち **「Haxe -> Lua の transpile / reload 体験が最小構成で成立している」** を満たすための設計。
 
 ## 目的と非目的
