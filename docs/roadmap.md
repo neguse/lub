@@ -9,51 +9,113 @@
 - Phase 0: PoC 脱却
 - Phase 1: NGS
 
-## Phase 2: Hakonotaiatari (進行中)
+## 方針: 自作ゲーム 4 本を移植して配信する
+
+lub 開発の駆動力は、自作ゲーム 4 本の完全移植と配信に置く。
+どの phase も完了の定義は「win / web のビルド済みパッケージが配信されている」。
+移植の流儀(理想設計で書き、忠実に写すのは gameplay rule だけ)は CLAUDE.md のとおり。
+
+対象と原典(いずれも ghq に clone 済み):
+
+| ゲーム | 原典 | 内容 |
+| --- | --- | --- |
+| ngs | neguse/ngs (2004, C + SDL, 復元ソース) | 2D シューティング。samples/ngs に移植済み |
+| hakonotaiatari | neguse/hakonotaiatari (2012, C++ + DirectX, 約 2,700 行) | マウス操作のアクション。効果音あり |
+| SuperJumpAndDashMan | neguse/SuperJumpAndDashMan (LÖVE, Lua 約 2,900 行) | 2D プラットフォーマー。Tiled マップと効果音あり |
+| ld44 | neguse/ld44 (2019, Go + Ebiten, 約 1,000 行) | パズル cut'n'align。BGM と効果音あり |
+
+順序は出荷基盤を最短で通せる ngs を先頭にする。以降の順序は原典の規模と
+runtime 需要を見て入れ替えてよい。
+
+## Phase 2: 出荷パイプライン + ngs 配信
 
 達成したいこと:
 
-- 3D game の最小構成を、core API の上で自然に書ける。
+- native release パッケージ: Haxe compiler / watch / dev server に依存しない
+  単体実行物(exe + コンパイル済み Lua + assets)を 1 コマンドで作れる。
+- web release パッケージ: dev server 無しで静的ホスティングに置くだけで動く
+  バンドルを 1 コマンドで作れる。
+- 配信先(第一候補 itch.io)の実環境で WebGPU が動くことを最初に検証する。
+- ngs を製品品質にする: hiscore 永続化、fullscreen、起動・終了・エラー時の挙動。
+
+完了の目安:
+
+- ngs の win / web パッケージが配信されている。
+- パッケージ生成が CI で再現できる。
+
+## Phase 3: hakonotaiatari
+
+達成したいこと:
+
+- 3D game の最小構成を core API の上で自然に書ける。
 - depth、render target、camera、mesh-like draw、per-object parameter を一貫して扱える。
-- 3D helper は runtime core に押し込まず、core primitive の上で書ける。
-- GPU backend (D3D12 / Vulkan / SDL_GPU / WebGPU) の違いが Lua core API に漏れない。
-- Haxe -> Lua を使う場合でも、3D の frame update と draw が破綻しない。
-- low-level gfx を直接使いたい場面と、高 level helper で十分な場面を分けられる。
+- マウス操作(カーソル表示の制御を含む)と効果音を gameplay loop の中で扱える。
 
 完了の目安:
 
-- field、cubes、enemies、UI vector text、basic camera が動く。
-- depth / render target の挙動を standalone sample または golden で固定できる。
-- custom shader 用の low-level gfx 経路が残っている。
-- Haxe -> Lua 経由でも core API の形を変えずに 3D scene を更新できる。
+- hakonotaiatari の win / web パッケージが配信されている。
 
-## Phase 3: SuperJumpAndDashMan (未着手)
+## Phase 4: SuperJumpAndDashMan
 
 達成したいこと:
 
-- action game の loop を、core API の上で自然に書ける。
-- physics、contact、action input、camera、audio event を runtime core に押し込まずに扱える。
+- action game の loop を core API の上で自然に書ける。
+- physics、contact、action input、camera、audio event を runtime core に
+  押し込まずに扱える。
 - gameplay reload 時にも runtime resource lifetime が壊れない。
-- debug/diagnostics で gameplay state と runtime state を追える。
-- audio と 2D physics が gameplay loop の中で扱える。
-- Haxe -> Lua を使う場合でも、gameplay edit/run/debug cycle が破綻しない。
+- Tiled のような外部マップデータを asset として扱える。
 
 完了の目安:
 
-- movement、jump、dash、sensor、kill/goal/checkpoint contact が動く。
-- contact の扱いが game-specific hook なしで観測できる。
-- gameplay reload が runtime resource lifetime を壊さない。
-- Haxe -> Lua 経由でも runtime 側に gameplay-specific state を持ち込まずに済む。
+- SuperJumpAndDashMan の win / web パッケージが配信されている。
+
+## Phase 5: ld44 (cut'n'align)
+
+達成したいこと:
+
+- パズルゲームを BGM 込みで扱える。
+- 原典はスマホブラウザ対応だが、lub の配布対象(`docs/design.md`)に合わせて
+  PC ブラウザ + マウスに限定するかを phase 開始時に判断する。
+
+完了の目安:
+
+- ld44 の win / web パッケージが配信されている。
 
 ## Planned Areas
 
-このへんは今後扱う予定の領域として持っておく。
+このへんは今後扱う予定の領域として持っておく。各項目は上の 4 本のどれかが
+引くときに着手する。どのゲームも引かない項目は、需要が出るまで作らない。
 
-- Audio の将来の扉: レジスタ式の固定機能チップシンセ(audio callback 内
-  オンデマンド生成)、timestamp 付きイベントキューによるサンプル精度
-  シーケンス。いずれも需要が出るまで作らない。
-- Ozz Animation による animation。
-- Gamepad 入力。core の「外部状態の snapshot」として polling API を持つ:
+- Save 永続化(ngs の hiscore が引く)。前提となる web の実態: Safari は
+  「7日間未訪問で script-writable storage 全削除」が現役で `persist()` が
+  免除になるか Apple 未回答、itch.io 埋め込みは更新のたびに配信 origin が
+  変わり旧セーブに到達不能。よって「ブラウザ保存はキャッシュ、恒久保証は
+  ユーザー手元のファイル」と割り切る。core API は KV:
+  `save_write(key, bytes)` / `save_read(key) -> status, bytes`
+  (status は request_file と同型の pending/ready/missing/error)/
+  `save_delete(key)` / `save_keys()`。
+  native は save dir(ゲーム id ごと)に 1 key = 1 file で即 flush。
+  web は IndexedDB に 1 record で書き込み毎に即 commit、起動時に
+  `navigator.storage.persist()` を要求し全 key を先読み(実用上は起動直後に
+  ready)。localStorage は採らない(5MiB 制限で eviction 耐性は IndexedDB と
+  大差なく二重管理になるだけ)。export/import は core API にしない
+  (native は save dir を直接触れる。web の blob download / file picker は
+  app/JS 側の責務)。core の契約は「永続を保証する」ではなく
+  「プラットフォームの storage に書く」に留める。
+- Window 制御(ngs の fullscreen と hakonotaiatari のカーソル制御が引く)。
+  title / fullscreen / cursor(表示・グラブ)を実行中に動的に
+  変えられること(カーソルキャプチャは FPS カメラ系で必須)。API は宣言型
+  `window({title, fullscreen, cursor})` を毎フレーム宣言し、runtime が実状態を
+  収束させる(voice と同型、hot reload 後もコードが真)。ただし web の
+  fullscreen / Pointer Lock はユーザージェスチャ必須なので「宣言 = 要求」とし、
+  runtime は入力のあったフレームまで適用を保留、実状態は `window_info()`
+  snapshot(focused, fullscreen, width/height, dpi)で読む2層契約にする。
+  cursor は visible / hidden / grabbed(= relative mode / Pointer Lock)の3値。
+  native は SDL3 直、web は document.title / Fullscreen API / CSS cursor /
+  Pointer Lock に張る。vsync は native のみ config で(web は rAF 固定)。
+  初期 width/height/backend は従来どおり `config`(onInit 専用)に残す。
+- Gamepad 入力(SuperJumpAndDashMan が引く候補)。core の「外部状態の
+  snapshot」として polling API を持つ:
   `pads()`(接続 slot 一覧)、`pad_down/pressed/released(slot, button)`、
   `pad_axis(slot, axis)`、`pad_info(slot) -> {connected, mapping, name}`。
   button/axis 名は standard layout で正規化(`a/b/x/y`, `dpad_*`, `lb/rb`,
@@ -68,23 +130,13 @@
   途切れたら停止)。native=SDL_RumbleGamepad、web=vibrationActuator
   "dual-rumble" を feature-detect し Firefox/iOS では no-op。
   trigger-rumble・navigator.vibrate(iOS 不可で移植性なし)・raw joystick は作らない。
-- Save 永続化。前提となる web の実態: Safari は「7日間未訪問で script-writable
-  storage 全削除」が現役で `persist()` が免除になるか Apple 未回答、
-  itch.io 埋め込みは更新のたびに配信 origin が変わり旧セーブに到達不能。
-  よって「ブラウザ保存はキャッシュ、恒久保証はユーザー手元のファイル」と
-  割り切る。core API は KV:
-  `save_write(key, bytes)` / `save_read(key) -> status, bytes`
-  (status は request_file と同型の pending/ready/missing/error)/
-  `save_delete(key)` / `save_keys()`。
-  native は save dir(ゲーム id ごと)に 1 key = 1 file で即 flush。
-  web は IndexedDB に 1 record で書き込み毎に即 commit、起動時に
-  `navigator.storage.persist()` を要求し全 key を先読み(実用上は起動直後に
-  ready)。localStorage は採らない(5MiB 制限で eviction 耐性は IndexedDB と
-  大差なく二重管理になるだけ)。export/import は core API にしない
-  (native は save dir を直接触れる。web の blob download / file picker は
-  app/JS 側の責務)。core の契約は「永続を保証する」ではなく
-  「プラットフォームの storage に書く」に留める。
-- TTF フォントの残り(基盤の `lub.Font` / `lubx.Text` / `lubx.MeshText` は実装済み):
+- Audio の将来の扉: レジスタ式の固定機能チップシンセ(audio callback 内
+  オンデマンド生成)、timestamp 付きイベントキューによるサンプル精度
+  シーケンス。4 本の効果音・BGM はまず既存の audio 経路で賄い、
+  チップシンセは需要が出るまで作らない。
+- Ozz Animation による animation(引くゲームが今のところ無い)。
+- TTF フォントの残り(引くゲームが今のところ無い。基盤の `lub.Font` /
+  `lubx.Text` / `lubx.MeshText` は実装済み):
   - 行レイアウトの折返し・禁則: UAX #14 サブセットの禁則(日中)+
     単語折返し(FIGS/韓)。スコープの最大境界は「対応言語 = 表引き (cmap) で
     正しく出る言語」で、シェーピングが要る Arabic/Indic 等は非対応と明言する
@@ -97,14 +149,3 @@
   - 未解決課題: 動的 CCJK 前提だと同梱フォントが重い(Noto CJK 級)。
     native は許容できるが web 配信では言語別分割ロードや使用頻度サブセット
     + フォールバックの工夫が要る。
-- Window 制御。title / fullscreen / cursor(表示・グラブ)を実行中に動的に
-  変えられること(カーソルキャプチャは FPS カメラ系で必須)。API は宣言型
-  `window({title, fullscreen, cursor})` を毎フレーム宣言し、runtime が実状態を
-  収束させる(voice と同型、hot reload 後もコードが真)。ただし web の
-  fullscreen / Pointer Lock はユーザージェスチャ必須なので「宣言 = 要求」とし、
-  runtime は入力のあったフレームまで適用を保留、実状態は `window_info()`
-  snapshot(focused, fullscreen, width/height, dpi)で読む2層契約にする。
-  cursor は visible / hidden / grabbed(= relative mode / Pointer Lock)の3値。
-  native は SDL3 直、web は document.title / Fullscreen API / CSS cursor /
-  Pointer Lock に張る。vsync は native のみ config で(web は rAF 固定)。
-  初期 width/height/backend は従来どおり `config`(onInit 専用)に残す。

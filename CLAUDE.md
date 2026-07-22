@@ -8,7 +8,7 @@ game を書き、native (DX12 / Vulkan 直接実装 + SDL3 GPU) と web (WASM + 
 
 memory に状態を溜めない。現在地は常に以下を読む:
 
-- `docs/roadmap.md` — Phase の定義と進捗(Phase 0/1 完了、Phase 2 Hakonotaiatari 進行中、Phase 3 未着手)
+- `docs/roadmap.md` — Phase の定義と進捗(Phase 0/1 完了。以降は自作ゲーム 4 本 ngs/hakonotaiatari/SuperJumpAndDashMan/ld44 の移植と win/web 配信で駆動)
 - `docs/design.md` — 設計方針
 - `docs/api-glue.md` — 多言語 (Lua/Haxe/C#) binding の構成と実装ライブラリの供給方針
 - `haxe-wasm/README.md` — Haxe compiler の client-WASM 化
