@@ -43,6 +43,40 @@ cook でなく cache entry として表現できる。決定的でない生成
 `web/public/haxe-wasm/std-bundle.json` は冪等生成物のプリキャッシュである。
 場当たりの仕組みから content-addressed cache という一級の概念に昇格させる。
 
+### 具体例: シェーダコンパイル
+
+冪等キャッシュの主役はシェーダコンパイル。lub はシェーダを事前ビルド
+せず実行中に Slang でコンパイルする(native は in-process の Slang →
+DXIL / SPIR-V、web は slang-wasm → WGSL)。出力は入力に対して決定的
+なので cache entry の条件を満たす。キーは「slang ソースのハッシュ、
+target、entry とオプション、slang / DXC のバージョン」。SDL_GPU 向けの
+binding renumber のような後処理も生成器の一部としてキーに畳む。
+
+生成器(Slang)を player に同梱するかは、教義ではなくターゲットごとの
+費用対効果の選択で、アーキテクチャはどちらも許す。ここが cook との違い。
+
+- native は同梱を続けるのが自然。今すでにリンクしていて、外す動機が
+  バイナリサイズしかない。同梱しておくと、cache が cold でも起動する
+  (miss ならその場で生成)し、ランタイムでシェーダソースを合成する
+  遊びが残る(アセットのランタイム生成という勝ち筋の延長)。
+- web は外すのが自然。slang-wasm の同梱は数 MB と起動コストを払うので、
+  web player は生成器なしで shader cache が load-bearing になる。
+  「web ではシェーダ集合が export 時に閉じる」制約を受け入れる。
+  ランタイムシェーダ合成を web でやりたいゲームが出たら、そのゲーム
+  だけ同梱する選択も残る。
+
+export との交差点: export = runtime を 1 回走らせて cache を温める、
+なので「Linux 上で DXIL を温められるか」という問題がある。DXIL は
+DXC 依存で、DXC の Linux ビルドは存在するはずだが lub の現経路は
+dxcompiler.dll 前提なので要検証。ただしここで cache-not-cook の利点が
+効く: native player が生成器を同梱している限り、export 機が DXIL を
+温められなくても win パッケージは正しく動く(初回起動が少し遅いだけ)。
+温めの完成度は最適化の問題であって、正しさの問題にならない。cook 方式
+だとここが「Linux からは win 向けを出せない」という機能欠損になる。
+
+dev の挙動は変えない(今日と同じ実行時コンパイル + hot reload で、
+cache は開発中に勝手に温まっていく)。
+
 ### パッケージ = serve ペイロードの凍結
 
 lub の開発は「Lua のリビジョンを生きた runtime に流し込み続けるストリーム」
