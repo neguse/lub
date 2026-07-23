@@ -3,29 +3,28 @@
 > 記録: 2026-07-23 時点の設計議論の到達点。roadmap を「自作ゲーム 4 本の移植と
 > win/web 配信」駆動に切り替えた(PR #15)ことを受けて、配信パッケージの作り方を
 > 議論した。ここに書くのは方針の合意と、まだ案の段階のもの。実装はしていない。
-> 現状の記述はコードで確認した箇所にファイル位置を付けてある。
+> 現状の記述は 2026-07-23 時点のコードを読んで確認した挙動で、この文書
+> 単体で読めるように書く。
 
-## 現状のコード上の実体
+## 現状の実体
 
 構想の前に、今の lub が配信に対してどこまで来ているかの事実。
 
 - 生成 .lua の直パス entry は既にある。`lub path/to/entry.lua` は staging
-  なしで任意パスの .lua をロードし、監視は mtime poll だけで Haxe や
-  dev server を要求しない(`src/main.c:200-211`)。csproj entry も transpile
-  後は同じ経路に合流する(`src/main.c:195-199`)。
+  なしで任意パスの .lua をロードし、監視は entry ファイルの mtime poll
+  だけで Haxe や dev server を要求しない。csproj entry も transpile 後は
+  同じ経路に合流する。
 - boot と prelude は実ファイル。native は `samples/boot.lua` を cwd 優先、
-  無ければ `<exe>/../samples/boot.lua` で探す(`src/lua_api.c:2339-2374`)。
+  無ければ実行ファイル位置からの相対で探す。
   つまり runtime ライブラリの Lua(boot / lub_prelude / lub_io)は
   パッケージが同梱すべきファイル集合の一部で、binary には入っていない。
 - serve が web に送っているものは具体的で、初回 SSE は
-  「全ゲームデータファイル + 生成済み `.lub/<entry>.lua`」の中身を
-  `event: files` の JSON(rel_path → content)として流す
-  (`src/serve.c:359-427`)。HTTP 側は `/`(埋め込みページ)、
-  `/wasm/*`(lub.js / lub.wasm)、`/slang/*`(slang-wasm)、`/events` を
-  返すだけ(`src/serve.c:498-554`)。
+  「全ゲームデータファイル + 生成済み entry Lua」の中身を 1 つの JSON
+  (相対パス → ファイル内容)として流す。HTTP 側はページ本体、
+  wasm runtime(lub.js / lub.wasm)、slang-wasm、SSE 接続口を
+  返すだけ。
 - シェーダのディスクキャッシュは存在しない。native / web とも毎起動
-  Slang でコンパイルする(`src/shader.cpp`。cache 語は出てこない。
-  `src/pipeline.c` の PipelineCache はメモリ内のみ)。
+  Slang でコンパイルする。パイプラインキャッシュはあるがメモリ内のみ。
 - 冪等プリキャッシュの前例はあるが手動。`web/tcs-prebuilt/`(cold 起動
   0.5s の正体)と `web/public/haxe-wasm/std-bundle.json` は
   `npm run gen-tcs-prebuilt` / `gen-haxe` で人が再生成する。
@@ -94,8 +93,7 @@ cook でなく cache entry として表現できる。決定的でない生成
 無く毎起動コンパイルしている(前掲)。出力は入力に対して決定的なので
 cache entry の条件を満たす。キーは「slang ソースのハッシュ、target、
 entry とオプション、slang / DXC のバージョン」。SDL_GPU 向けの
-binding renumber(`src/shader.cpp` の renumber パッチ)のような後処理も
-生成器の一部としてキーに畳む。
+binding 番号の振り直しのような後処理も生成器の一部としてキーに畳む。
 
 生成器(Slang)を player に同梱するかは、教義ではなくターゲットごとの
 費用対効果の選択で、アーキテクチャはどちらも許す。ここが cook との違い。
@@ -151,9 +149,8 @@ dev の挙動は変えない(今日と同じ実行時コンパイル + hot reloa
 ネイティブ拡張ができるのは「ユーザの exe ごと emscripten でビルドする」
 この経路だけでもある。love2d はこの逃げ道を持たず、エンジンごと
 再ビルドするしかないのが長年の不満点になっている。
-現状の lub は `add_executable(lub ...)` の単一 exe ターゲットで
-ライブラリターゲットが無い(`CMakeLists.txt:213`)ので、ここは
-ライブラリ分割という実装を伴う。この層のパッケージングは各プロジェクトの
+現状の lub は単一の実行物ターゲットでライブラリターゲットが無いので、
+ここはライブラリ分割という実装を伴う。この層のパッケージングは各プロジェクトの
 管轄で、lub は snapshot 仕様だけ定義する。
 
 ## 案の段階のもの(未決)
