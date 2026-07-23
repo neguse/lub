@@ -3,6 +3,32 @@
 > 記録: 2026-07-23 時点の設計議論の到達点。roadmap を「自作ゲーム 4 本の移植と
 > win/web 配信」駆動に切り替えた(PR #15)ことを受けて、配信パッケージの作り方を
 > 議論した。ここに書くのは方針の合意と、まだ案の段階のもの。実装はしていない。
+> 現状の記述はコードで確認した箇所にファイル位置を付けてある。
+
+## 現状のコード上の実体
+
+構想の前に、今の lub が配信に対してどこまで来ているかの事実。
+
+- 生成 .lua の直パス entry は既にある。`lub path/to/entry.lua` は staging
+  なしで任意パスの .lua をロードし、監視は mtime poll だけで Haxe や
+  dev server を要求しない(`src/main.c:200-211`)。csproj entry も transpile
+  後は同じ経路に合流する(`src/main.c:195-199`)。
+- boot と prelude は実ファイル。native は `samples/boot.lua` を cwd 優先、
+  無ければ `<exe>/../samples/boot.lua` で探す(`src/lua_api.c:2339-2374`)。
+  つまり runtime ライブラリの Lua(boot / lub_prelude / lub_io)は
+  パッケージが同梱すべきファイル集合の一部で、binary には入っていない。
+- serve が web に送っているものは具体的で、初回 SSE は
+  「全ゲームデータファイル + 生成済み `.lub/<entry>.lua`」の中身を
+  `event: files` の JSON(rel_path → content)として流す
+  (`src/serve.c:359-427`)。HTTP 側は `/`(埋め込みページ)、
+  `/wasm/*`(lub.js / lub.wasm)、`/slang/*`(slang-wasm)、`/events` を
+  返すだけ(`src/serve.c:498-554`)。
+- シェーダのディスクキャッシュは存在しない。native / web とも毎起動
+  Slang でコンパイルする(`src/shader.cpp`。cache 語は出てこない。
+  `src/pipeline.c` の PipelineCache はメモリ内のみ)。
+- 冪等プリキャッシュの前例はあるが手動。`web/tcs-prebuilt/`(cold 起動
+  0.5s の正体)と `web/public/haxe-wasm/std-bundle.json` は
+  `npm run gen-tcs-prebuilt` / `gen-haxe` で人が再生成する。
 
 ## 前提にした調査
 
@@ -23,6 +49,25 @@
 
 ## 合意した方針
 
+### パッケージ = serve ペイロードの凍結
+
+serve の初回 SSE が流すファイル集合(生成済み entry Lua + ゲームデータ)は、
+「このリビジョンのゲームを動かすのに必要なファイルの閉包」を serve が
+既に計算しているということ。パッケージとはこの閉包をディスクに書き出し、
+更新が二度と来ない前提で起動できるようにしたもの。ビルドではなく凍結。
+
+- web パッケージの実体 = 初回 SSE の files を静的ファイルに展開したもの
+  + `/wasm/` 相当の runtime 資産 + 静的シェル(埋め込みページの購読なし版)。
+  差分は「SSE を購読する代わりに同じファイルを URL から読む」ローダー。
+- native パッケージの実体 = 同じファイル集合 + boot/prelude + 事前ビルド
+  済み player。`.lua` 直パス entry が既にあるので、残る差分は
+  「boot.lua の探索規約をパッケージ配置に合わせる」ことと
+  「アセットの基準パス規約」程度。mtime poll は残っても実害がない。
+- 正しさの定義: パッケージを起動して golden と byte 一致すること。
+  凍結がゲームを変えていないことを機械検査できる。
+- zip の形(win の exe 同梱 zip、itch.io 用の index.html がルートの zip、
+  fuse)は容れ物の話であり最外殻の些事。本体は上の閉包の仕様にある。
+
 ### cook を作らない
 
 事前にしか使えない変換パイプライン(cook)には投資しない。ランタイムが
@@ -30,27 +75,27 @@
 と別実装の事前変換を持つと二重実装になり、ランタイム生成という強みを
 自分で削ることになる。
 
-代わりに冪等キャッシュを使う。ランタイム自身の決定的な生成物を
-「入力のハッシュ + 生成器のバージョン」をキーに保存したもので、
-export 時に温めて同梱する。player は cache hit を読み、miss なら
+代わりに冪等キャッシュを作る(現状には無い。これが新規実装の本体)。
+ランタイム自身の決定的な生成物を「入力のハッシュ + 生成器のバージョン」を
+キーに保存する content-addressed store で、player は hit を読み、miss なら
 生成器が同梱されていれば同じコードで再生成する。cache は純粋な最適化で
 あって、必須の変換工程ではない。luac バイトコード化のような起動高速化も
 cook でなく cache entry として表現できる。決定的でない生成
 (math.random が絡むもの等)は cache 対象外としてランタイム専属に残す。
 この線引きが規律になる。
 
-前例は既にある: `web/tcs-prebuilt/`(cold 起動 0.5s の正体)と
-`web/public/haxe-wasm/std-bundle.json` は冪等生成物のプリキャッシュである。
-場当たりの仕組みから content-addressed cache という一級の概念に昇格させる。
+「開発中に cache が温まる」は現状の性質ではなく設計要件で、dev の実行時
+コンパイル経路をこの store への write-through にすることを指す。手動 regen
+している tcs-prebuilt / std-bundle をこの概念に取り込めるかは別途判断。
 
 ### 具体例: シェーダコンパイル
 
-冪等キャッシュの主役はシェーダコンパイル。lub はシェーダを事前ビルド
-せず実行中に Slang でコンパイルする(native は in-process の Slang →
-DXIL / SPIR-V、web は slang-wasm → WGSL)。出力は入力に対して決定的
-なので cache entry の条件を満たす。キーは「slang ソースのハッシュ、
-target、entry とオプション、slang / DXC のバージョン」。SDL_GPU 向けの
-binding renumber のような後処理も生成器の一部としてキーに畳む。
+冪等キャッシュの主役はシェーダコンパイル。現状はディスクキャッシュが
+無く毎起動コンパイルしている(前掲)。出力は入力に対して決定的なので
+cache entry の条件を満たす。キーは「slang ソースのハッシュ、target、
+entry とオプション、slang / DXC のバージョン」。SDL_GPU 向けの
+binding renumber(`src/shader.cpp` の renumber パッチ)のような後処理も
+生成器の一部としてキーに畳む。
 
 生成器(Slang)を player に同梱するかは、教義ではなくターゲットごとの
 費用対効果の選択で、アーキテクチャはどちらも許す。ここが cook との違い。
@@ -74,26 +119,8 @@ dxcompiler.dll 前提なので要検証。ただしここで cache-not-cook の�
 温めの完成度は最適化の問題であって、正しさの問題にならない。cook 方式
 だとここが「Linux からは win 向けを出せない」という機能欠損になる。
 
-dev の挙動は変えない(今日と同じ実行時コンパイル + hot reload で、
-cache は開発中に勝手に温まっていく)。
-
-### パッケージ = serve ペイロードの凍結
-
-lub の開発は「Lua のリビジョンを生きた runtime に流し込み続けるストリーム」
-(serve の snapshot 配信 → hotswap → commit ACK)。パッケージとは、その
-ストリームの 1 リビジョンを切り出して、watcher・コンパイラ・dev server
-なしで起動できるようにしたもの。ビルドではなく凍結。
-
-- パッケージの中身 = serve が既に流している「entry Lua 一式 + assets」を
-  self-contained に直列化したもの + 冪等キャッシュ。export は新しい
-  パイプラインではなく、serve の送信物のディスクへの直列化。
-- player = 購読をやめた runtime。同じバイナリが SSE でリビジョンを待つ
-  代わりにファイルから凍結リビジョンを読む。
-- 正しさの定義: パッケージを起動して golden と byte 一致すること。
-  凍結がゲームを変えていないことを機械検査できる。
-- zip の形(win の exe 同梱 zip、itch.io 用の index.html がルートの zip、
-  fuse)は容れ物の話であり最外殻の些事。本体は snapshot の仕様
-  (何を凍結すれば self-contained か)にある。
+dev の挙動は変えない(今日と同じ実行時コンパイル + hot reload。cache が
+できたら dev もそこへ write-through する)。
 
 ### デフォルト経路にビルドシステムを要求しない
 
@@ -124,8 +151,10 @@ lub の開発は「Lua のリビジョンを生きた runtime に流し込み続
 ネイティブ拡張ができるのは「ユーザの exe ごと emscripten でビルドする」
 この経路だけでもある。love2d はこの逃げ道を持たず、エンジンごと
 再ビルドするしかないのが長年の不満点になっている。
-この層のパッケージングは各プロジェクトの管轄で、lub は snapshot 仕様
-だけ定義する。
+現状の lub は `add_executable(lub ...)` の単一 exe ターゲットで
+ライブラリターゲットが無い(`CMakeLists.txt:213`)ので、ここは
+ライブラリ分割という実装を伴う。この層のパッケージングは各プロジェクトの
+管轄で、lub は snapshot 仕様だけ定義する。
 
 ## 案の段階のもの(未決)
 
@@ -150,6 +179,9 @@ lub の開発は「Lua のリビジョンを生きた runtime に流し込み続
 
 ## 次の一歩
 
-serve が配信している snapshot を手でディレクトリに保存し、native lub を
-そこに向けて watch なしで起動できるか確かめる。「固定エントリ Lua を
-watch なしで食う」経路の有無が snapshot 仕様の最初の設計材料になる。
+`.lua` 直パス entry と boot.lua 探索の現状(前掲)を使い、lub リポの外の
+ディレクトリに「boot/prelude + 生成済み entry Lua + assets」を手で並べて、
+事前ビルド済み lub がそれだけで起動するかを確かめる。通らない箇所
+(boot 探索、package.path、アセット基準パス)がそのまま snapshot 仕様の
+最初の項目になる。web 側は初回 SSE の files を静的展開した版で同じことを
+やる(購読なしローダーの要否と形が判明する)。
