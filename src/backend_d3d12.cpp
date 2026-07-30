@@ -1,7 +1,7 @@
 // D3D12 backend.
 //
 // Implements the RenderBackend vtable directly on D3D12 (no wrapper lib).
-// Design notes live in docs/dx12-backend.md. The short version:
+// Design notes live in docs/d3d12-backend.md. The short version:
 //
 //   * Single direct queue, kFramesInFlight = 2. One graphics command list is
 //     open from begin_frame to end_frame; passes, copies and compute all
@@ -12,7 +12,7 @@
 //     root CBVs (GPU VA, no descriptors) — the moral equivalent of SDL_GPU's
 //     push uniforms.
 //   * Root signatures are built per shader from ShaderReflection; the slots
-//     are Slang's HLSL register indices (see SHADER_TARGET_DX12).
+//     are Slang's HLSL register indices (see SHADER_TARGET_D3D12).
 //   * Resource states are tracked per resource and transitioned lazily.
 //
 // C++ because D3D12 is a COM API; the vtable itself is extern "C".
@@ -205,7 +205,7 @@ Dx12State g;
 void dx_drain_zombies();
 void dx_end_pass(App *app);
 
-// Dump pending debug-layer messages (no-op without LUB_DX12_DEBUG).
+// Dump pending debug-layer messages (no-op without LUB_D3D12_DEBUG).
 void dx_log_debug_messages(const char *context) {
   if (!g.info_queue)
     return;
@@ -219,7 +219,7 @@ void dx_log_debug_messages(const char *context) {
     if (!m)
       break;
     if (SUCCEEDED(g.info_queue->GetMessage(i, m, &len)))
-      SDL_Log("dx12[%s]: %s", context, m->pDescription);
+      SDL_Log("d3d12[%s]: %s", context, m->pDescription);
     free(m);
   }
   g.info_queue->ClearStoredMessages();
@@ -286,12 +286,12 @@ bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   if (FAILED(g.device->CreateCommittedResource(
           &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ,
           nullptr, IID_PPV_ARGS(&c.res)))) {
-    SDL_Log("dx12: upload chunk alloc failed (%zu bytes)", cap);
+    SDL_Log("d3d12: upload chunk alloc failed (%zu bytes)", cap);
     return false;
   }
   D3D12_RANGE no_read = {0, 0};
   if (FAILED(c.res->Map(0, &no_read, (void **)&c.map))) {
-    SDL_Log("dx12: upload chunk map failed");
+    SDL_Log("d3d12: upload chunk map failed");
     return false;
   }
   c.cap = cap;
@@ -354,7 +354,7 @@ void dx_release_swapchain_views() {
 bool dx_create_swapchain_views() {
   for (int i = 0; i < kSwapchainBuffers; ++i) {
     if (FAILED(g.swapchain->GetBuffer(i, IID_PPV_ARGS(&g.backbuffers[i])))) {
-      SDL_Log("dx12: GetBuffer(%d) failed", i);
+      SDL_Log("d3d12: GetBuffer(%d) failed", i);
       return false;
     }
     g.bb_rtv[i] = g.rtv_heap.alloc();
@@ -394,7 +394,7 @@ bool dx_ensure_default_depth(int w, int h) {
   if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
                                                D3D12_RESOURCE_STATE_DEPTH_WRITE,
                                                &cv, IID_PPV_ARGS(&g.depth)))) {
-    SDL_Log("dx12: default depth create failed (%dx%d)", w, h);
+    SDL_Log("d3d12: default depth create failed (%dx%d)", w, h);
     return false;
   }
   g.depth_dsv = g.dsv_heap.alloc();
@@ -410,7 +410,7 @@ bool dx_resize_swapchain() {
   dx_release_swapchain_views();
   if (FAILED(g.swapchain->ResizeBuffers(kSwapchainBuffers, 0, 0,
                                         kSwapchainFormat, 0))) {
-    SDL_Log("dx12: ResizeBuffers failed");
+    SDL_Log("d3d12: ResizeBuffers failed");
     return false;
   }
   if (!dx_create_swapchain_views())
@@ -424,7 +424,7 @@ bool dx_init(App *app) {
   g.app = app;
 
   UINT factory_flags = 0;
-  bool want_debug = getenv("LUB_DX12_DEBUG") != nullptr;
+  bool want_debug = getenv("LUB_D3D12_DEBUG") != nullptr;
 #if !defined(NDEBUG)
   want_debug = true;
 #endif
@@ -433,22 +433,22 @@ bool dx_init(App *app) {
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&dbg)))) {
       dbg->EnableDebugLayer();
       factory_flags |= DXGI_CREATE_FACTORY_DEBUG;
-      SDL_Log("dx12: debug layer enabled");
+      SDL_Log("d3d12: debug layer enabled");
     }
   }
 
   if (FAILED(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&g.factory)))) {
-    SDL_Log("dx12: CreateDXGIFactory2 failed");
+    SDL_Log("d3d12: CreateDXGIFactory2 failed");
     return false;
   }
 
   // Prefer the high-performance adapter when the OS knows the difference.
-  // LUB_DX12_WARP=1 forces the WARP software rasterizer — deterministic
+  // LUB_D3D12_WARP=1 forces the WARP software rasterizer — deterministic
   // CPU rendering for golden image tests (the lavapipe of D3D12).
   ComPtr<IDXGIAdapter1> adapter;
-  if (getenv("LUB_DX12_WARP") != nullptr) {
+  if (getenv("LUB_D3D12_WARP") != nullptr) {
     if (FAILED(g.factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter)))) {
-      SDL_Log("dx12: EnumWarpAdapter failed");
+      SDL_Log("d3d12: EnumWarpAdapter failed");
       return false;
     }
   } else {
@@ -462,7 +462,7 @@ bool dx_init(App *app) {
   }
   if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
                                IID_PPV_ARGS(&g.device)))) {
-    SDL_Log("dx12: D3D12CreateDevice failed");
+    SDL_Log("d3d12: D3D12CreateDevice failed");
     return false;
   }
   if (want_debug) {
@@ -474,24 +474,24 @@ bool dx_init(App *app) {
     char name[128] = {0};
     WideCharToMultiByte(CP_UTF8, 0, ad.Description, -1, name, sizeof(name) - 1,
                         nullptr, nullptr);
-    SDL_Log("dx12: adapter: %s", name);
+    SDL_Log("d3d12: adapter: %s", name);
   }
 
   D3D12_COMMAND_QUEUE_DESC qd = {};
   qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   if (FAILED(g.device->CreateCommandQueue(&qd, IID_PPV_ARGS(&g.queue)))) {
-    SDL_Log("dx12: CreateCommandQueue failed");
+    SDL_Log("d3d12: CreateCommandQueue failed");
     return false;
   }
 
   if (FAILED(g.device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
                                    IID_PPV_ARGS(&g.fence)))) {
-    SDL_Log("dx12: CreateFence failed");
+    SDL_Log("d3d12: CreateFence failed");
     return false;
   }
   g.fence_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   if (!g.fence_event) {
-    SDL_Log("dx12: CreateEvent failed");
+    SDL_Log("d3d12: CreateEvent failed");
     return false;
   }
 
@@ -499,14 +499,14 @@ bool dx_init(App *app) {
     if (FAILED(g.device->CreateCommandAllocator(
             D3D12_COMMAND_LIST_TYPE_DIRECT,
             IID_PPV_ARGS(&g.frames[i].alloc)))) {
-      SDL_Log("dx12: CreateCommandAllocator failed");
+      SDL_Log("d3d12: CreateCommandAllocator failed");
       return false;
     }
   }
   if (FAILED(g.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                          g.frames[0].alloc.Get(), nullptr,
                                          IID_PPV_ARGS(&g.cl)))) {
-    SDL_Log("dx12: CreateCommandList failed");
+    SDL_Log("d3d12: CreateCommandList failed");
     return false;
   }
   g.cl->Close();
@@ -516,7 +516,7 @@ bool dx_init(App *app) {
                        kRtvHeapCap) ||
       !g.dsv_heap.init(g.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
                        kDsvHeapCap)) {
-    SDL_Log("dx12: rtv/dsv heap create failed");
+    SDL_Log("d3d12: rtv/dsv heap create failed");
     return false;
   }
   {
@@ -525,7 +525,7 @@ bool dx_init(App *app) {
     d.NumDescriptors = kSrvHeapCapPerFrame * kFramesInFlight;
     d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g.srv_heap)))) {
-      SDL_Log("dx12: srv heap create failed");
+      SDL_Log("d3d12: srv heap create failed");
       return false;
     }
     g.srv_stride = g.device->GetDescriptorHandleIncrementSize(
@@ -533,7 +533,7 @@ bool dx_init(App *app) {
     d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     d.NumDescriptors = kSmpHeapCapPerFrame * kFramesInFlight;
     if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g.smp_heap)))) {
-      SDL_Log("dx12: sampler heap create failed");
+      SDL_Log("d3d12: sampler heap create failed");
       return false;
     }
     g.smp_stride = g.device->GetDescriptorHandleIncrementSize(
@@ -544,7 +544,7 @@ bool dx_init(App *app) {
       (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(app->window),
                                    SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
   if (!hwnd) {
-    SDL_Log("dx12: no HWND from SDL window");
+    SDL_Log("d3d12: no HWND from SDL window");
     return false;
   }
   DXGI_SWAP_CHAIN_DESC1 scd = {};
@@ -557,7 +557,7 @@ bool dx_init(App *app) {
   if (FAILED(g.factory->CreateSwapChainForHwnd(g.queue.Get(), hwnd, &scd,
                                                nullptr, nullptr, &sc1)) ||
       FAILED(sc1.As(&g.swapchain))) {
-    SDL_Log("dx12: CreateSwapChainForHwnd failed");
+    SDL_Log("d3d12: CreateSwapChainForHwnd failed");
     return false;
   }
   g.factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
@@ -567,7 +567,7 @@ bool dx_init(App *app) {
   if (!dx_ensure_default_depth(g.sw_w, g.sw_h))
     return false;
 
-  SDL_Log("dx12: initialized (%dx%d, %d frames in flight)", g.sw_w, g.sw_h,
+  SDL_Log("d3d12: initialized (%dx%d, %d frames in flight)", g.sw_w, g.sw_h,
           kFramesInFlight);
   return true;
 }
@@ -824,7 +824,7 @@ BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
   if (FAILED(g.device->CreateCommittedResource(
           &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_COMMON, nullptr,
           IID_PPV_ARGS(&buf->res)))) {
-    SDL_Log("dx12: make_buffer: create failed (%zu bytes)", bytes);
+    SDL_Log("d3d12: make_buffer: create failed (%zu bytes)", bytes);
     delete buf;
     return 0;
   }
@@ -947,7 +947,7 @@ bool dx_upload_image_bytes(DxImage *im, const void *data, size_t bytes) {
   int bpp = dx_bytes_per_pixel(im->fmt);
   size_t src_pitch = (size_t)im->w * bpp;
   if (bytes < src_pitch * (size_t)im->h) {
-    SDL_Log("dx12: image upload: %zu bytes < expected %zu", bytes,
+    SDL_Log("d3d12: image upload: %zu bytes < expected %zu", bytes,
             src_pitch * im->h);
     return false;
   }
@@ -1049,7 +1049,7 @@ BackendImage dx_make_image(const ImageDesc *d) {
   if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
                                                im->state, cvp,
                                                IID_PPV_ARGS(&im->res)))) {
-    SDL_Log("dx12: make_image: create failed (%dx%d fmt=%d)", d->w, d->h,
+    SDL_Log("d3d12: make_image: create failed (%dx%d fmt=%d)", d->w, d->h,
             (int)d->fmt);
     delete im;
     return 0;
@@ -1111,7 +1111,7 @@ void dx_destroy_image(BackendImage h) {
 // ------------------------------------------------
 
 // Register usage derived from reflection. Slots are Slang's HLSL register
-// indices; the DX12 shader-compile path links all stages into one program,
+// indices; the D3D12 shader-compile path links all stages into one program,
 // so registers are program-unique and one table per register class suffices
 // (bound with SHADER_VISIBILITY_ALL).
 struct StageTables {
@@ -1179,7 +1179,7 @@ bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
   for (int i = 0; i < sh->refl.ub_count; ++i) {
     const ShaderUniformBlock *ub = &sh->refl.ubs[i];
     if (ub->slot < 0 || ub->slot >= SGL_MAX_UNIFORM_BLOCKS) {
-      SDL_Log("dx12: ub '%s' register b%d out of range", ub->name, ub->slot);
+      SDL_Log("d3d12: ub '%s' register b%d out of range", ub->name, ub->slot);
       return false;
     }
     if (t->ub_root[ub->slot] >= 0)
@@ -1235,14 +1235,14 @@ bool dx_build_root_signature(DxShaderFull *sh, bool compute) {
   ComPtr<ID3DBlob> blob, err;
   if (FAILED(D3D12SerializeRootSignature(&rsd, D3D_ROOT_SIGNATURE_VERSION_1,
                                          &blob, &err))) {
-    SDL_Log("dx12: root signature serialize failed: %s",
+    SDL_Log("d3d12: root signature serialize failed: %s",
             err ? (const char *)err->GetBufferPointer() : "(no diag)");
     return false;
   }
   if (FAILED(g.device->CreateRootSignature(0, blob->GetBufferPointer(),
                                            blob->GetBufferSize(),
                                            IID_PPV_ARGS(&sh->root_sig)))) {
-    SDL_Log("dx12: CreateRootSignature failed");
+    SDL_Log("d3d12: CreateRootSignature failed");
     return false;
   }
   return true;
@@ -1266,7 +1266,7 @@ BackendShader dx_make_shader(const ShaderDesc *d) {
     pd.CS.BytecodeLength = d->cs_bytes;
     if (FAILED(g.device->CreateComputePipelineState(
             &pd, IID_PPV_ARGS(&sh->compute_pso)))) {
-      SDL_Log("dx12: CreateComputePipelineState failed");
+      SDL_Log("d3d12: CreateComputePipelineState failed");
       delete sh;
       return 0;
     }
@@ -1275,7 +1275,7 @@ BackendShader dx_make_shader(const ShaderDesc *d) {
   }
 
   if (!d->vs_spirv || !d->fs_spirv) {
-    SDL_Log("dx12: make_shader: missing vs/fs blob");
+    SDL_Log("d3d12: make_shader: missing vs/fs blob");
     delete sh;
     return 0;
   }
@@ -1359,7 +1359,7 @@ D3D12_RENDER_TARGET_BLEND_DESC dx_blend(SglBlend b) {
 BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
   DxShaderFull *sh = (DxShaderFull *)d->shader;
   if (!sh) {
-    SDL_Log("dx12: make_pipeline: null shader");
+    SDL_Log("d3d12: make_pipeline: null shader");
     return 0;
   }
   DxPipelineFull *p = new DxPipelineFull();
@@ -1370,7 +1370,7 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
 
   if (d->is_compute) {
     if (!sh->compute_pso) {
-      SDL_Log("dx12: make_pipeline: shader is not compute");
+      SDL_Log("d3d12: make_pipeline: shader is not compute");
       delete p;
       return 0;
     }
@@ -1468,7 +1468,7 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
   HRESULT hr =
       g.device->CreateGraphicsPipelineState(&pd, IID_PPV_ARGS(&p->pso));
   if (FAILED(hr)) {
-    SDL_Log("dx12: CreateGraphicsPipelineState failed (hr=0x%08x)",
+    SDL_Log("d3d12: CreateGraphicsPipelineState failed (hr=0x%08x)",
             (unsigned)hr);
     dx_log_debug_messages("make_pipeline");
     delete p;
@@ -1520,7 +1520,7 @@ bool dx_ring_alloc(bool sampler, UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
   if (*used + count > cap) {
     static bool warned = false;
     if (!warned) {
-      SDL_Log("dx12: %s descriptor ring overflow (%u + %u > %u)",
+      SDL_Log("d3d12: %s descriptor ring overflow (%u + %u > %u)",
               sampler ? "sampler" : "srv", *used, count, cap);
       warned = true;
     }
@@ -1738,12 +1738,12 @@ void dx_write_null_uav(D3D12_CPU_DESCRIPTOR_HANDLE at) {
 void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
   (void)app;
   if (!g.recording) {
-    SDL_Log("dx12: dispatch: no open frame");
+    SDL_Log("d3d12: dispatch: no open frame");
     return;
   }
   DxPipelineFull *p = (DxPipelineFull *)d->pipeline;
   if (!p || !p->is_compute || !p->compute_pso) {
-    SDL_Log("dx12: dispatch: not a compute pipeline");
+    SDL_Log("d3d12: dispatch: not a compute pipeline");
     return;
   }
   const StageTables *t = &p->tables;
@@ -1961,7 +1961,7 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
                            ReadbackResult *out) {
   int bpp = dx_readback_src_bpp(src_fmt);
   if (bpp == 0) {
-    SDL_Log("dx12: readback: unsupported format %d", (int)src_fmt);
+    SDL_Log("d3d12: readback: unsupported format %d", (int)src_fmt);
     return false;
   }
   size_t src_pitch = (size_t)w * bpp;
@@ -1982,7 +1982,7 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
   if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
                                                D3D12_RESOURCE_STATE_COPY_DEST,
                                                nullptr, IID_PPV_ARGS(&rb)))) {
-    SDL_Log("dx12: readback: alloc failed");
+    SDL_Log("d3d12: readback: alloc failed");
     return false;
   }
 
@@ -2050,7 +2050,7 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
   uint8_t *mapped = nullptr;
   D3D12_RANGE range = {0, row_pitch * (size_t)h};
   if (FAILED(rb->Map(0, &range, (void **)&mapped))) {
-    SDL_Log("dx12: readback: map failed");
+    SDL_Log("d3d12: readback: map failed");
     return false;
   }
   size_t dst_stride = (size_t)w * 4;
@@ -2139,7 +2139,7 @@ void dx_destroy_readback(BackendReadback h) {
 bool dx_capture(App *app, const char *path) {
   (void)app;
   if (!g.recording) {
-    SDL_Log("dx12: capture: no open frame");
+    SDL_Log("d3d12: capture: no open frame");
     return false;
   }
   int w = g.sw_w, h = g.sw_h;
@@ -2161,7 +2161,7 @@ bool dx_capture(App *app, const char *path) {
   if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
                                                D3D12_RESOURCE_STATE_COPY_DEST,
                                                nullptr, IID_PPV_ARGS(&rb)))) {
-    SDL_Log("dx12: capture: readback alloc failed");
+    SDL_Log("d3d12: capture: readback alloc failed");
     return false;
   }
 
@@ -2193,7 +2193,7 @@ bool dx_capture(App *app, const char *path) {
   uint8_t *mapped = nullptr;
   D3D12_RANGE range = {0, row_pitch * h};
   if (FAILED(rb->Map(0, &range, (void **)&mapped))) {
-    SDL_Log("dx12: capture: map failed");
+    SDL_Log("d3d12: capture: map failed");
     return false;
   }
   uint8_t *rgba = (uint8_t *)malloc(src_pitch * h);
@@ -2209,7 +2209,7 @@ bool dx_capture(App *app, const char *path) {
   int ok = stbi_write_png(path, w, h, 4, rgba, (int)src_pitch);
   free(rgba);
   if (!ok) {
-    SDL_Log("dx12: capture: stbi_write_png failed");
+    SDL_Log("d3d12: capture: stbi_write_png failed");
     return false;
   }
   return true;
@@ -2222,8 +2222,8 @@ SglPixelFormat dx_swapchain_color_format(App *app) {
 
 } // anonymous namespace
 
-extern "C" const RenderBackend g_backend_dx12 = {
-    "directx12",
+extern "C" const RenderBackend g_backend_d3d12 = {
+    "d3d12",
     dx_init,
     dx_shutdown,
     dx_begin_frame,

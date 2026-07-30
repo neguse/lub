@@ -14,7 +14,7 @@ const RenderBackend *g_backend = NULL;
 
 // 未指定時の既定 backend = そのプラットフォームの最短距離実装。
 #if defined(_WIN32)
-#define LUB_DEFAULT_BACKEND "directx12"
+#define LUB_DEFAULT_BACKEND "d3d12"
 #elif defined(__linux__)
 #define LUB_DEFAULT_BACKEND "vulkan"
 #else
@@ -23,11 +23,11 @@ const RenderBackend *g_backend = NULL;
 
 #ifndef __EMSCRIPTEN__
 // vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
-// directx12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
+// d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
 // (GPU 無しの CI 等) でも window を作れるようにする。
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
-  if (strcmp(backend_name, "directx12") != 0)
+  if (strcmp(backend_name, "d3d12") != 0)
     flags |= SDL_WINDOW_VULKAN;
   return flags;
 }
@@ -109,22 +109,22 @@ bool app_backend_init(App *app) {
 
   if (strcmp(app->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
-  } else if (strcmp(app->backend_name, "directx12") == 0) {
+  } else if (strcmp(app->backend_name, "d3d12") == 0) {
 #if defined(_WIN32)
-    g_backend = &g_backend_dx12;
+    g_backend = &g_backend_d3d12;
 #else
-    SDL_Log("backend 'directx12' is Windows-only");
+    SDL_Log("backend 'd3d12' is Windows-only");
     return false;
 #endif
   } else if (strcmp(app->backend_name, "vulkan") == 0) {
 #if defined(_WIN32) || defined(__linux__)
-    g_backend = &g_backend_vk;
+    g_backend = &g_backend_vulkan;
 #else
     SDL_Log("backend 'vulkan' is not supported on this platform");
     return false;
 #endif
   } else {
-    SDL_Log("unknown backend '%s' (expected 'directx12', 'vulkan' or 'sdlgpu')",
+    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan' or 'sdlgpu')",
             app->backend_name);
     return false;
   }

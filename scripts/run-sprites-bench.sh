@@ -19,7 +19,7 @@ Usage: bash scripts/run-sprites-bench.sh [options]
 
 Options:
   --build-dir DIR              Build directory (default: build-release-linux)
-  --backend NAME               Backend: directx12 / vulkan / sdlgpu (default: platform default)
+  --backend NAME               Backend: d3d12 / vulkan / sdlgpu (default: platform default)
   --score-frame N              Frame to print score and quit (default: 3600)
   --burst N                    Sprites spawned per accepted spawn tick (default: 1)
   --target-fps N               Target FPS threshold (default: 60)

@@ -69,9 +69,9 @@ static bool ui_gpu_init() {
 #if defined(__EMSCRIPTEN__)
   ShaderTargetBackend tgt = SHADER_TARGET_WGSL;
 #elif defined(_WIN32)
-  // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う。directx12 だけ DXIL。
+  // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う。d3d12 だけ DXIL。
   ShaderTargetBackend tgt =
-      (g_backend == &g_backend_dx12) ? SHADER_TARGET_DX12 : SHADER_TARGET_SDLGPU;
+      (g_backend == &g_backend_d3d12) ? SHADER_TARGET_D3D12 : SHADER_TARGET_SDLGPU;
 #else
   ShaderTargetBackend tgt = SHADER_TARGET_SDLGPU;
 #endif

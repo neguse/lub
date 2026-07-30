@@ -1084,8 +1084,8 @@ static ShaderTargetBackend shader_target_for_backend(void) {
   // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
   return SHADER_TARGET_WGSL;
 #elif defined(_WIN32)
-  if (g_backend == &g_backend_dx12)
-    return SHADER_TARGET_DX12;
+  if (g_backend == &g_backend_d3d12)
+    return SHADER_TARGET_D3D12;
   // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う
   // (descriptor set 規約が SDL_GPU 準拠のため)。
   return SHADER_TARGET_SDLGPU;
@@ -1808,10 +1808,10 @@ static int l_config(lua_State *L) {
   // (native と共用のサンプルが native 向け指定を持っていても壊さない)。
   name = "webgpu";
 #else
-  if (name && strcmp(name, "directx12") != 0 && strcmp(name, "vulkan") != 0 &&
+  if (name && strcmp(name, "d3d12") != 0 && strcmp(name, "vulkan") != 0 &&
       strcmp(name, "sdlgpu") != 0) {
     return luaL_error(
-        L, "config: backend must be 'directx12', 'vulkan' or 'sdlgpu', got '%s'",
+        L, "config: backend must be 'd3d12', 'vulkan' or 'sdlgpu', got '%s'",
         name);
   }
 #endif

@@ -1,29 +1,29 @@
-# DX12 Backend
+# D3D12 Backend
 
-Windows 用の D3D12 backend("directx12")。`RenderBackend` vtable
+Windows 用の D3D12 backend("d3d12")。`RenderBackend` vtable
 (`src/backend.h`) の実装の一つで、抽象は変更していない。明示同期・
-descriptor heap・resource state など DX12 固有の概念はすべて
-`src/backend_dx12.cpp` 内に閉じる。
+descriptor heap・resource state など D3D12 固有の概念はすべて
+`src/backend_d3d12.cpp` 内に閉じる。
 
 ## 選択と配置
 
-- 実装: `src/backend_dx12.cpp`(C++。D3D12 は COM のため)
-- 選択: `config({ backend = "directx12" })` / `LUB_BACKEND=directx12`。
+- 実装: `src/backend_d3d12.cpp`(C++。D3D12 は COM のため)
+- 選択: `config({ backend = "d3d12" })` / `LUB_BACKEND=d3d12`。
   Windows の既定 backend(未指定時に選ばれる。Windows 以外ではエラー)。
-  シンボル(`g_backend_dx12`)とファイル名は実装 API を表すので dx12 のまま。
+  シンボル(`g_backend_d3d12`)とファイル名は実装 API を表すので d3d12 のまま。
 - リンク: `d3d12.lib` `dxgi.lib` `dxguid.lib`(OS 標準)。CMake は `WIN32`
   のみソースを追加。
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。
-- Debug build または `LUB_DX12_DEBUG=1` で debug layer を有効化。
+- Debug build または `LUB_D3D12_DEBUG=1` で debug layer を有効化。
   validation メッセージは失敗時に `ID3D12InfoQueue` から SDL_Log へ流す。
 
 ## Shader 経路: Slang → DXIL
 
-`SHADER_TARGET_DX12`(`shader.cpp`)が `SLANG_DXIL`(sm_6_0)でコンパイル
+`SHADER_TARGET_D3D12`(`shader.cpp`)が `SLANG_DXIL`(sm_6_0)でコンパイル
 する。SPIR-V patching は行わず、reflection の slot がそのまま HLSL register。
 
 - VS+FS は 1 つの slang program にリンクして compile する
-  (`compile_dx12_graphics`)。DXIL はステージ間 varying を「レジスタ位置」で
+  (`compile_d3d12_graphics`)。DXIL はステージ間 varying を「レジスタ位置」で
   一致させる(SPIR-V の location matching と違う)ため、別々に compile
   すると署名がずれる。リンクの副作用として b/t/s/u register は
   program 全体で一意になり、backend はそれを前提にする。
@@ -36,7 +36,7 @@ descriptor heap・resource state など DX12 固有の概念はすべて
   dxil.dll は不要: DXC 1.8.2502 以降は validator hash がオープン
   ソース化され dxcompiler.dll 単体で署名済み DXIL を出力する。
   ライセンスは University of Illinois/NCSA(LLVM Release License)。
-- compile 経路の smoke: `lub_shader_dx12_smoke`(Windows のみビルド)。
+- compile 経路の smoke: `lub_shader_d3d12_smoke`(Windows のみビルド)。
 
 ## Frame model
 
@@ -96,8 +96,8 @@ descriptor heap・resource state など DX12 固有の概念はすべて
 
 ## Golden test
 
-`scripts/run-golden.sh` は Windows (git bash) では directx12 backend を
-WARP(`LUB_DX12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
-`tests/golden/<name>_directx12.png` と byte 比較する。lavapipe と同じく
+`scripts/run-golden.sh` は Windows (git bash) では d3d12 backend を
+WARP(`LUB_D3D12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
+`tests/golden/<name>_d3d12.png` と byte 比較する。lavapipe と同じく
 機材・ドライバ非依存の CPU rasterizer なので `cmp -s` の完全一致が成立する。
 実 GPU での動作確認は別途 capture 目視で行う。

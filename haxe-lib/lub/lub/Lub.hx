@@ -5,8 +5,8 @@ package lub;
 **/
 typedef ConfigOpts = {
 	/**
-		GPU backend。"directx12" (Windows のみ) / "vulkan" (Windows, Linux) /
-		"sdlgpu"。未指定ならプラットフォーム既定 — Windows: directx12 /
+		GPU backend。"d3d12" (Windows のみ) / "vulkan" (Windows, Linux) /
+		"sdlgpu"。未指定ならプラットフォーム既定 — Windows: d3d12 /
 		Linux: vulkan / web: webgpu。web (WASM) は webgpu のみで、指定は
 		無視される。
 	**/

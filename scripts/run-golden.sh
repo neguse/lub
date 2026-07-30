@@ -13,12 +13,12 @@
 #
 # Determinism relies on:
 #   - a machine-independent CPU rasterizer  - Linux: lavapipe (CPU Vulkan,
-#     run-headless.sh enforces it) / Windows: WARP via LUB_DX12_WARP=1
+#     run-headless.sh enforces it) / Windows: WARP via LUB_D3D12_WARP=1
 #   - fixed --capture-frame and --fixed-dt  - set below to FRAME and 1/60 s
 # Exit code is 0 only if every checked visual golden matches.
 #
 # Platform selects the backend set: Linux checks sdlgpu and vulkan
-# (Vulkan direct), Windows (git bash) checks directx12 (D3D12). On Linux
+# (Vulkan direct), Windows (git bash) checks d3d12 (D3D12). On Linux
 # both backends render through lavapipe and must produce byte-identical
 # output, so they share the *_sdlgpu.png goldens — a vulkan/sdlgpu
 # divergence is a test failure by design.
@@ -33,7 +33,7 @@ FRAME=30
 case "$(uname -s)" in
     MINGW* | MSYS*)
         windows=1
-        BACKENDS=(directx12)
+        BACKENDS=(d3d12)
         BINARY="${BINARY:-./build-release/lub.exe}"
         ;;
     *)
@@ -127,7 +127,7 @@ check_entry() {
     local run_ok=1
     if [[ $windows -eq 1 ]]; then
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
-        LUB_BACKEND="$backend" LUB_DX12_WARP=1 LUB_GOLDEN=1 \
+        LUB_BACKEND="$backend" LUB_D3D12_WARP=1 LUB_GOLDEN=1 \
             LUB_HAXE_PORT="$haxe_port" \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \

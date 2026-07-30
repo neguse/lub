@@ -2,7 +2,7 @@
 // LUB_BACKEND=vulkan / config({backend="vulkan"}) で選ぶ。
 //
 // Implements the RenderBackend vtable directly on Vulkan 1.3 — the
-// counterpart of backend_dx12.cpp, same design:
+// counterpart of backend_d3d12.cpp, same design:
 //
 //   * Single graphics queue, kFramesInFlight = 2. One command buffer is open
 //     from begin_frame to end_frame; passes, copies and compute all record
@@ -19,7 +19,7 @@
 //     and copies requested inside a pass suspend dynamic rendering and
 //     resume it with LOAD ops (D3D12 allows these mid-pass, Vulkan doesn't).
 //   * D3D-style clip conventions via negative viewport height; front face
-//     stays clockwise to match the dx12 backend.
+//     stays clockwise to match the d3d12 backend.
 #include "app.h"
 #include "backend.h"
 #include "gpu_stats.h"
@@ -191,7 +191,7 @@ typedef struct VkbState {
   VkRenderingAttachmentInfo pass_depth;
   bool pass_has_depth;
 
-  // Dummy resources for unbound descriptor slots (parity with the dx12
+  // Dummy resources for unbound descriptor slots (parity with the d3d12
   // backend's null SRV/UAV writes; Vulkan descriptors can't be null).
   VkbImage *dummy_tex;     // 1x1 white, SHADER_READ_ONLY
   VkbImage *dummy_storage; // 1x1, GENERAL
@@ -205,7 +205,7 @@ static VkbState g;
 static VkbPipeline *g_current_pip = NULL;
 static bool g_last_indexed = false;
 // Last-applied uniforms per stage (0=vertex 1=fragment) per slot; persist
-// across draws like root CBVs on dx12, re-bound through a fresh descriptor
+// across draws like root CBVs on d3d12, re-bound through a fresh descriptor
 // set when dirty.
 typedef struct UniformSlot {
   VkBuffer buf;
@@ -1155,7 +1155,7 @@ static bool vkb_init(App *app) {
   }
   vkGetDeviceQueue(g.device, g.qfam, 0, &g.queue);
 
-  // D24S8 where supported (matches the dx12 default), else D32S8.
+  // D24S8 where supported (matches the d3d12 default), else D32S8.
   {
     VkFormatProperties fp;
     vkGetPhysicalDeviceFormatProperties(g.phys, VK_FORMAT_D24_UNORM_S8_UINT,
@@ -1423,7 +1423,7 @@ static void vkb_end_frame(App *app) {
 // ------------------------------------------------------------------
 
 // D3D-style clip space: flip the viewport (negative height) so the front
-// face stays clockwise like the dx12 backend. Scissor stays top-left.
+// face stays clockwise like the d3d12 backend. Scissor stays top-left.
 static void vkb_set_viewport_scissor(VkCommandBuffer cmd, int w, int h) {
   VkViewport vp = {0.0f, (float)h, (float)w, -(float)h, 0.0f, 1.0f};
   VkRect2D sc = {{0, 0}, {(uint32_t)w, (uint32_t)h}};
@@ -2523,7 +2523,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
   vkb_pass_resume();
 
   // Unmatched bindings keep dummy descriptors — the moral equivalent of the
-  // dx12 backend's null SRV writes.
+  // d3d12 backend's null SRV writes.
   static const struct {
     int set_index;
     SglShaderStage stage;
@@ -3061,7 +3061,7 @@ static SglPixelFormat vkb_swapchain_color_format(App *app) {
   return g.sc_fmt_sgl ? g.sc_fmt_sgl : SGL_PF_RGBA8;
 }
 
-const RenderBackend g_backend_vk = {
+const RenderBackend g_backend_vulkan = {
     "vulkan",
     vkb_init,
     vkb_shutdown,

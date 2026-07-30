@@ -1,10 +1,10 @@
 # Windows regression CI. 普段の開発が Linux なので、Windows build と
-# directx12 (D3D12) backend の破壊をここで検知する:
+# d3d12 backend の破壊をここで検知する:
 #   build -> C smoke tests -> WARP golden (scripts/run-golden.sh)
 # WARP はソフトウェアラスタライザなので GPU の無い runner でも
-# tests/golden/*_directx12.png と byte 一致する。
+# tests/golden/*_d3d12.png と byte 一致する。
 # vulkan backend は runner に Vulkan driver が無いためビルドのみ検証
-# (動作 golden は Linux CI の lavapipe が同じ backend_vk.c を通す)。
+# (動作 golden は Linux CI の lavapipe が同じ backend_vulkan.c を通す)。
 name: windows
 
 on:
@@ -27,7 +27,7 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      # backend_vk.c のビルドに Vulkan headers + loader (vulkan-1.lib) が要る。
+      # backend_vulkan.c のビルドに Vulkan headers + loader (vulkan-1.lib) が要る。
       # runner に Vulkan SDK は無いので Khronos リポジトリから該当コンポーネント
       # だけ組み立てる (VULKAN_SDK env を設定し find_package(Vulkan) が拾う)。
       - name: Install Vulkan SDK components (headers + loader)
@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           cd build-release
-          ./lub_shader_dx12_smoke.exe
+          ./lub_shader_d3d12_smoke.exe
           ./lub_hxml_parse_test.exe
           ./lub_sdf_smoke.exe
           ./lub_surfacenets_smoke.exe
@@ -95,7 +95,7 @@ jobs:
           # 入れた haxe5 を PATH に足さないと "'haxelib' is not recognized" になる。
           cygpath -w "$HOME/haxe5" >> "$GITHUB_PATH"
 
-      - name: Golden image test (directx12 backend, WARP)
+      - name: Golden image test (d3d12 backend, WARP)
         shell: bash
         run: |
           export TMPDIR="${RUNNER_TEMP}/golden-tmp"

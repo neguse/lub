@@ -96,7 +96,7 @@ typedef struct App {
   uint64_t frame_prev_counter;
 
   // Backend selection. app_init sets phase = PRE_BACKEND and backend_name
-  // from env LUB_BACKEND (unset = platform default: Windows "directx12",
+  // from env LUB_BACKEND (unset = platform default: Windows "d3d12",
   // Linux "vulkan", wasm "webgpu", else "sdlgpu"). Lua's config() may
   // overwrite backend_name during onInit (PRE_BACKEND only).
   // app_backend_init flips phase to POST_BACKEND after init() succeeds.
