@@ -16,7 +16,7 @@ Usage: scripts/pre-commit.sh
 Runs the fast local pre-commit gate:
   format (changed files only), whitespace, and docs lint.
 
-Builds and tests run in PR CI (linux / windows / web workflows);
+Builds and tests run in PR CI (.github/workflows/ci.yml);
 scripts/pre-push.sh is the manual full local equivalent.
 EOF
     exit 0

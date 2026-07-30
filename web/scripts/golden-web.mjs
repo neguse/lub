@@ -52,11 +52,45 @@ for (let i = 2; i < process.argv.length; ++i) {
   }
 }
 
-const targets = SAMPLES.filter((s) => !sampleFilter || s === sampleFilter)
-if (targets.length === 0) {
+// LUB_GOLDEN_SHARD=k/n splits the sample list contiguously so CI can fan
+// the wall-clock out over jobs. Unset (or 1/1) runs everything.
+const SHARD = (() => {
+  const raw = process.env.LUB_GOLDEN_SHARD
+  if (!raw) return { k: 1, n: 1 }
+  const m = /^(\d+)\/(\d+)$/.exec(raw)
+  const k = m ? Number(m[1]) : 0
+  const n = m ? Number(m[2]) : 0
+  if (!m || k < 1 || n < 1 || k > n) {
+    console.error(`[golden-web] bad LUB_GOLDEN_SHARD: ${raw} (want k/n with 1 <= k <= n)`)
+    process.exit(2)
+  }
+  return { k, n }
+})()
+
+const filtered = SAMPLES.filter((s) => !sampleFilter || s === sampleFilter)
+if (filtered.length === 0) {
   console.error(`no such sample: ${sampleFilter}`)
   process.exit(2)
 }
+// shard 間の wall-clock を均すための概算コスト (秒)。frame 数が多い・
+// シーンが重いサンプルだけ個別に持ち、他は一律。
+const COST = { '16_box2d': 10, '18_coin_pusher': 16, '26_renderer3d': 20 }
+const costOf = (s) => COST[s] ?? 6
+// greedy: 重い順に、累積コストが最小の shard へ割り当てる。
+const targets = (() => {
+  if (SHARD.n === 1) return filtered
+  const byCost = filtered.map((s, i) => ({ s, i })).sort(
+    (a, b) => costOf(b.s) - costOf(a.s) || a.i - b.i)
+  const totals = Array(SHARD.n).fill(0)
+  const shards = Array.from({ length: SHARD.n }, () => [])
+  for (const { s, i } of byCost) {
+    let min = 0
+    for (let j = 1; j < SHARD.n; ++j) if (totals[j] < totals[min]) min = j
+    totals[min] += costOf(s)
+    shards[min].push({ s, i })
+  }
+  return shards[SHARD.k - 1].sort((a, b) => a.i - b.i).map((e) => e.s)
+})()
 
 // Goldens are chromium-version-specific, so ONLY the playwright-bundled
 // chromium (pinned by web/package-lock.json) is used — a system chrome found

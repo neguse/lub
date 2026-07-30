@@ -8,11 +8,12 @@ current-state docs; this file only adds agent-specific notes and pointers.
 Follow the documentation policy in `docs/README.md`: current-state docs vs
 frozen records split by directory, plain wording (no dev jargon, no
 completion notes, no bold emphasis). `scripts/docs-lint.sh` enforces the
-mechanical part and runs in the commit hook and linux CI.
+mechanical part and runs in the commit hook and the CI lint job.
 
 ## Workflow
 
-Work flows branch → PR; the merge gate is PR CI (linux / windows / web).
+Work flows branch → PR; the merge gate is PR CI (`.github/workflows/ci.yml`,
+required check = the aggregate `gate` job).
 The commit hook (`scripts/pre-commit.sh`) runs format, whitespace, and docs
 lint. Full local verification is `scripts/pre-push.sh`. See `CLAUDE.md`
 (Japanese) for the complete working conventions.
