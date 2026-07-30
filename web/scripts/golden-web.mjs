@@ -52,11 +52,28 @@ for (let i = 2; i < process.argv.length; ++i) {
   }
 }
 
-const targets = SAMPLES.filter((s) => !sampleFilter || s === sampleFilter)
-if (targets.length === 0) {
+// LUB_GOLDEN_SHARD=k/n splits the sample list contiguously so CI can fan
+// the wall-clock out over jobs. Unset (or 1/1) runs everything.
+const SHARD = (() => {
+  const raw = process.env.LUB_GOLDEN_SHARD
+  if (!raw) return { k: 1, n: 1 }
+  const m = /^(\d+)\/(\d+)$/.exec(raw)
+  const k = m ? Number(m[1]) : 0
+  const n = m ? Number(m[2]) : 0
+  if (!m || k < 1 || n < 1 || k > n) {
+    console.error(`[golden-web] bad LUB_GOLDEN_SHARD: ${raw} (want k/n with 1 <= k <= n)`)
+    process.exit(2)
+  }
+  return { k, n }
+})()
+
+const filtered = SAMPLES.filter((s) => !sampleFilter || s === sampleFilter)
+if (filtered.length === 0) {
   console.error(`no such sample: ${sampleFilter}`)
   process.exit(2)
 }
+const per = Math.ceil(filtered.length / SHARD.n)
+const targets = filtered.slice((SHARD.k - 1) * per, SHARD.k * per)
 
 // Goldens are chromium-version-specific, so ONLY the playwright-bundled
 // chromium (pinned by web/package-lock.json) is used — a system chrome found

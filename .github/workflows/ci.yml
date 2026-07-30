@@ -266,10 +266,21 @@ jobs:
         id: tcs
         run: echo "sha=$(git -C third_party/tcs rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - uses: mymindstorm/setup-emsdk@v14
+      # emsdk は固定パス (~/emsdk) に置く。setup-emsdk action は毎 run
+      # ランダムな temp パスに展開するため、コンパイラパスが変わって ccache
+      # が全ミスしていた (実測 hit 0.4%)。
+      - name: Cache emsdk
+        uses: actions/cache@v4
         with:
-          version: 5.0.2
-          actions-cache-folder: emsdk-cache
+          path: ~/emsdk
+          key: emsdk-5.0.2
+      - name: Install emsdk
+        run: |
+          if [ ! -x "$HOME/emsdk/emsdk" ]; then
+            git clone --depth 1 https://github.com/emscripten-core/emsdk "$HOME/emsdk"
+          fi
+          "$HOME/emsdk/emsdk" install 5.0.2
+          "$HOME/emsdk/emsdk" activate 5.0.2
 
       # neko = haxelib (setup-haxe5) のランタイム。gen-api が haxe を呼ぶ。
       - name: Install system deps
@@ -288,7 +299,9 @@ jobs:
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CCACHE_COMPILERCHECK: content
         run: |
+          source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake --preset wasm-release
           cmake --build build/wasm -j
           ccache -s | head -8 || true
@@ -440,6 +453,10 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -468,7 +485,7 @@ jobs:
         working-directory: web
         run: npx playwright install --with-deps chromium
 
-      - name: Web goldens (playwright + swiftshader)
+      - name: Web goldens (playwright + swiftshader, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         working-directory: web
         run: |
           npm run preview -- --port 4173 &
@@ -476,13 +493,13 @@ jobs:
             curl -sf http://localhost:4173/ >/dev/null && break
             sleep 1
           done
-          LUB_URL=http://localhost:4173/ npm run golden
+          LUB_URL=http://localhost:4173/ LUB_GOLDEN_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run golden
 
       - name: Upload golden failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: golden-failure-web
+          name: golden-failure-web-${{ matrix.shard }}
           path: /tmp/lub-golden-web
           if-no-files-found: ignore
 
