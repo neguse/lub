@@ -51,6 +51,24 @@ const DEBOUNCE_WAIT_MS = Number(process.env.DEBOUNCE_WAIT_MS || 1500)
 // rebuilt, the WASM module is reloaded, shaders are recompiled. Generous by
 // default; bump on slower CI machines.
 const SAMPLE_SWITCH_WAIT_MS = Number(process.env.SAMPLE_SWITCH_WAIT_MS || 6000)
+// LUB_VERIFY_SHARD=k/n splits the suite across independent processes so CI
+// can fan the wall-clock out over runners: shard 1 runs the edit-path
+// scenarios (A1-A4) and the C#-session scenarios (A6-A8 + Haxe diagnostics);
+// shards 2..n split the A5 sample sweep. Unset (or 1/1) runs everything.
+const SHARD = (() => {
+  const raw = process.env.LUB_VERIFY_SHARD
+  if (!raw) return { k: 1, n: 1 }
+  const m = /^(\d+)\/(\d+)$/.exec(raw)
+  const k = m ? Number(m[1]) : 0
+  const n = m ? Number(m[2]) : 0
+  if (!m || k < 1 || n < 1 || k > n) {
+    console.error(`[verify] bad LUB_VERIFY_SHARD: ${raw} (want k/n with 1 <= k <= n)`)
+    process.exit(2)
+  }
+  return { k, n }
+})()
+const RUN_EDIT = SHARD.k === 1
+const RUN_CS_SESSION = SHARD.k === 1
 
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true })
 
@@ -132,6 +150,21 @@ async function takeShot(name) {
   return p
 }
 
+// Poll screenshot + classify until pred(c) holds or capMs elapses; returns
+// the last classification. Replaces fixed sleeps: a typical sample settles in
+// a second or two, while the cap keeps the old worst-case tolerance for slow
+// cold starts (in-browser compile, C# .NET wasm boot).
+async function waitForPixels(handle, pngPath, pred, capMs, pollMs = 500) {
+  const deadline = Date.now() + capMs
+  for (;;) {
+    await handle.screenshot({ path: pngPath })
+    const c = classify(pngPath)
+    if (pred(c)) return c
+    if (Date.now() >= deadline) return c
+    await page.waitForTimeout(pollMs)
+  }
+}
+
 // Classify pixels in a PNG into a few buckets we care about. Each bucket is
 // expressed as a predicate over (r,g,b) so it stays trivially editable.
 // Note: the iframe is 640x561 while the canvas is 480x360 — the pixels outside
@@ -185,21 +218,23 @@ function check(label, ok, detail) {
 }
 
 let failures = 0
+let c1 = null // A1 result; read by A2/A2b (all RUN_EDIT-guarded together)
 
 // ===== Test A1: initial render ============================================
 
-console.log(`[verify] A1: waiting ${WAIT_MS}ms for shaders + frames...`)
-await page.waitForTimeout(WAIT_MS)
-
-const shot01 = await takeShot('01_initial.png')
-// Mirror to legacy /tmp/lub-iframe.png for back-compat with Phase 6.
-try { fs.copyFileSync(shot01, LEGACY_SCREENSHOT) } catch {}
-const c1 = classify(shot01)
-console.log('[verify] A1 buckets', c1)
-if (!check('A1 initial render (orange triangle)',
-           c1.orangeish / c1.total > 0.005,
-           `orange ratio ${(c1.orangeish/c1.total).toFixed(4)}`)) {
-  failures++
+if (RUN_EDIT) {
+  console.log(`[verify] A1: waiting up to ${WAIT_MS}ms for shaders + frames...`)
+  const shot01 = screenshotPath('01_initial.png')
+  c1 = await waitForPixels(
+    iframeHandle, shot01, (c) => c.orangeish / c.total > 0.005, WAIT_MS)
+  // Mirror to legacy /tmp/lub-iframe.png for back-compat with Phase 6.
+  try { fs.copyFileSync(shot01, LEGACY_SCREENSHOT) } catch {}
+  console.log('[verify] A1 buckets', c1)
+  if (!check('A1 initial render (orange triangle)',
+             c1.orangeish / c1.total > 0.005,
+             `orange ratio ${(c1.orangeish/c1.total).toFixed(4)}`)) {
+    failures++
+  }
 }
 
 // ===== Test A2: shader edit ===============================================
@@ -214,7 +249,7 @@ const originalShader = fs.readFileSync(
   'utf8'
 )
 
-try {
+if (RUN_EDIT) try {
   await selectTabAndReplace('01_triangle/data/01_triangle.fs.slang', greenShader)
   // 300ms debounce in main.ts; allow extra slack for shader recompile.
   await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
@@ -238,7 +273,7 @@ try {
 // regression where main.ts only synced dirty files; reverting to the original
 // content cleared the dirty bit, so the player kept running the edited shader.
 
-try {
+if (RUN_EDIT) try {
   await selectTabAndReplace(
     '01_triangle/data/01_triangle.fs.slang',
     originalShader
@@ -272,7 +307,7 @@ try {
 const triangleHx = fs.readFileSync(path.resolve('..', 'samples', '01_triangle', 'Triangle01.hx'), 'utf8')
 const redClearHx = triangleHx.replace('[0.1, 0.1, 0.2, 1.0]', '[0.9, 0.05, 0.05, 1.0]')
 
-try {
+if (RUN_EDIT) try {
   if (redClearHx === triangleHx) throw new Error('clear_color literal not found in Triangle01.hx')
   await selectTabAndReplace('Triangle01.hx', redClearHx)
   // 300ms debounce + wasm Haxe 再コンパイル + .lua hot-reload。コンパイルは数百 ms。
@@ -304,7 +339,7 @@ const smallVerts = `return {
 }
 `
 
-try {
+if (RUN_EDIT) try {
   await selectTabAndReplace('01_triangle/data/01_triangle.verts.lua', smallVerts)
   await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1500)
   const shot04 = await takeShot('04_verts_edit.png')
@@ -454,8 +489,26 @@ async function waitForPlayerReady(timeoutMs) {
 // fire `change`, so we manually drive Restart instead for that first sample.
 // For subsequent samples, selectOption changes the value AND fires change,
 // triggering main.ts's onchange handler.
+// shard 1 が edit / C#-session シナリオを担当するので、A5 は shards 2..n が
+// contiguous に分担する (haxe ブロック → cs ブロックの並び順を保ち、言語
+// トグルを shard あたり最大 1 回に抑える)。n=1 は全件。
+const a5Samples = (() => {
+  if (SHARD.n === 1) return samples
+  if (SHARD.k === 1) return []
+  const per = Math.ceil(samples.length / (SHARD.n - 1))
+  const start = (SHARD.k - 2) * per
+  return samples.slice(start, start + per)
+})()
+
+// Standalone A5 shards start right after page load: wait for the initial
+// player to settle once so the first selectOption's playerReady is the
+// switched player's, not the initial compile finishing late.
+if (!RUN_EDIT && a5Samples.length > 0) {
+  await waitForPlayerReady(60000).catch(() => {})
+}
+
 let firstIter = true
-for (const sample of samples) {
+for (const sample of a5Samples) {
   const name = sample.name
   const lang = sample.lang || 'haxe'
   const label = lang === 'cs' ? `${name} (C#)` : name
@@ -492,20 +545,15 @@ for (const sample of samples) {
       await langReadyP
     }
     firstIter = false
-    // playerReady fires before the first frame draws. Give the WASM time to
-    // compile + run a few frames.
-    await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
+    // playerReady fires before the first frame draws. Poll the canvas until
+    // pixels cross the threshold instead of sleeping a fixed window; the cap
+    // (2x the old fixed sleep) preserves the former sleep + retry tolerance.
     const handle = await page.waitForSelector('iframe', { timeout: 10000 })
     const p = screenshotPath(`A5_${name}${lang === 'cs' ? '_cs' : ''}.png`)
     const threshold = sample.minNonBlack
-    await handle.screenshot({ path: p })
-    let c = classify(p)
-    if (c.nonBlack / c.total <= threshold) {
-      console.warn(`[verify] A5 ${label} below threshold; waiting once more`)
-      await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
-      await handle.screenshot({ path: p })
-      c = classify(p)
-    }
+    const c = await waitForPixels(
+      handle, p, (cc) => cc.nonBlack / cc.total > threshold,
+      SAMPLE_SWITCH_WAIT_MS * 2)
     sampleResults[label] = c
     const ratio = c.nonBlack / c.total
     const drewSomething = ratio > threshold
@@ -540,7 +588,7 @@ for (const sample of samples) {
 // hotswap → runtime commit ACK (@@tcs_commit → #status "synced rev N")」まで
 // 貫通することを判定する。session/prebuilt 化で「compiler が動いていないのに
 // 前の絵で PASS」する偽陽性をここで塞ぐ。
-try {
+if (RUN_CS_SESSION) try {
   console.log('[verify] A6 C# incremental edit → commit ACK')
   const a6ReadyP = waitForPlayerReady(120000).catch(() => {})
   await page.selectOption('#sample-select', '17_flappy')
@@ -589,7 +637,7 @@ async function waitForDiagnostics(file, want, timeoutMs) {
   )
 }
 
-try {
+if (RUN_CS_SESSION) try {
   console.log('[verify] A7 diagnostics: C# (warm incremental path)')
   // A6 の続き (17_flappy / cs / synced)。未定義識別子で warm update を壊す。
   const flappySrc = fs.readFileSync(
@@ -615,7 +663,7 @@ try {
 // する。speculative content (`Gfx.` を挿した編集途中バッファ) で lub API の
 // member が引けること、allowlist フィルタで p95 レイテンシも観測ログに残す。
 
-try {
+if (RUN_CS_SESSION) try {
   console.log('[verify] A8 C# completion/hover (warm session)')
   await page.waitForFunction(
     () => {
@@ -664,7 +712,7 @@ try {
   failures++
 }
 
-try {
+if (RUN_CS_SESSION) try {
   console.log('[verify] A7 diagnostics: Haxe (full compile path)')
   const readyP = waitForPlayerReady(60000).catch(() => {})
   await page.selectOption('#sample-select', '01_triangle')
@@ -698,7 +746,7 @@ try {
 
 await browser.close()
 
-console.log('\n[verify] summary:')
+console.log(`\n[verify] summary (shard ${SHARD.k}/${SHARD.n}):`)
 console.log('  failures =', failures)
 console.log('  screenshots ->', SCREENSHOT_DIR)
 if (failures > 0) {

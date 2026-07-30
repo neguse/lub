@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
 # physics Lua tests, visual goldens (lavapipe), and the C# sample gate.
-# Single source of truth shared by linux CI (.github/workflows/linux.yml)
+# Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
 
@@ -135,14 +135,30 @@ fi
 # skip を fail に変える。
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
-  shopt -s nullglob
-  for cs_dir in samples/*/; do
-    cs_dir="${cs_dir%/}"
+  # dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒になるので、
+  # Transpiler を一度だけ build し、以後は run-cs-sample.sh が LUB_TCS_DLL
+  # の prebuilt DLL を直接実行する。
+  run dotnet build third_party/tcs/Transpiler -c Release -nologo
+  tcs_dll="$(find third_party/tcs/Transpiler/bin/Release -name Transpiler.dll -print -quit)"
+  if [[ -z "$tcs_dll" ]]; then
+    echo "Transpiler.dll not found under third_party/tcs/Transpiler/bin/Release" >&2
+    exit 1
+  fi
+  export LUB_TCS_DLL="$repo_root/$tcs_dll"
+
+  # 1 サンプル分の check / transpile / csproj build / capture / golden 比較。
+  # 並列 pool の 1 job として subshell で走るので、shopt はここで閉じる。
+  cs_gate_sample() {
+    local cs_dir="$1"
+    local slot="$2"
+    local cs_name cs_class cs_png cs_proj
+    local cs_files cs_projs
+    shopt -s nullglob
     cs_files=("$cs_dir"/*.cs)
-    ((${#cs_files[@]} == 0)) && continue
+    cs_projs=("$cs_dir"/*.csproj)
+    shopt -u nullglob
     cs_name="$(basename "$cs_dir")"
     # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
-    cs_projs=("$cs_dir"/*.csproj)
     if ((${#cs_projs[@]} >= 1)); then
       cs_class="$(basename "${cs_projs[0]}" .csproj)"
     else
@@ -155,7 +171,8 @@ if command -v dotnet >/dev/null 2>&1 \
     done
     cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.png"
     rm -f "$cs_png"
-    run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+    run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
+      scripts/run-headless.sh "$native_binary" \
       "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240 \
       --fixed-dt 0.0166666666666667
     # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
@@ -167,8 +184,55 @@ if command -v dotnet >/dev/null 2>&1 \
     else
       echo "==> golden skip (nondeterministic): ${cs_name}"
     fi
+  }
+
+  shopt -s nullglob
+  cs_dirs=()
+  for cs_dir in samples/*/; do
+    cs_dir="${cs_dir%/}"
+    cs_files=("$cs_dir"/*.cs)
+    ((${#cs_files[@]} == 0)) && continue
+    cs_dirs+=("$cs_dir")
   done
   shopt -u nullglob
+
+  # サンプルごとに独立 (dir が disjoint) なので pool で並列化する。
+  # XVFB display はスロットで分離 (400+)。status は run-golden.sh と同じく
+  # ファイル渡し: wait -n が reap した job は後から wait <pid> できないため。
+  cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
+  cs_tmp="$(mktemp -d)"
+  echo
+  echo "==> C# sample gate (${#cs_dirs[@]} samples, ${cs_jobs_max} in parallel)"
+  cs_running=0
+  for i in "${!cs_dirs[@]}"; do
+    (
+      if cs_gate_sample "${cs_dirs[$i]}" "$i" >"$cs_tmp/$i.log" 2>&1; then
+        echo pass >"$cs_tmp/$i.status"
+      else
+        echo fail >"$cs_tmp/$i.status"
+      fi
+    ) &
+    cs_running=$((cs_running + 1))
+    if ((cs_running >= cs_jobs_max)); then
+      wait -n || true
+      cs_running=$((cs_running - 1))
+    fi
+  done
+  wait
+  cs_failed=0
+  for i in "${!cs_dirs[@]}"; do
+    if [[ "$(cat "$cs_tmp/$i.status" 2>/dev/null)" == pass ]]; then
+      echo "PASS ${cs_dirs[$i]}"
+    else
+      echo "FAIL ${cs_dirs[$i]}"
+      sed 's/^/    /' "$cs_tmp/$i.log" 2>/dev/null || true
+      cs_failed=1
+    fi
+  done
+  rm -rf "$cs_tmp"
+  if [[ $cs_failed -ne 0 ]]; then
+    exit 1
+  fi
 elif [[ $require_cs -eq 1 ]]; then
   echo "C# sample gate required (--require-cs) but dotnet or third_party/tcs is missing" >&2
   exit 1

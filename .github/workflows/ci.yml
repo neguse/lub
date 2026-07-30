@@ -1,0 +1,545 @@
+# PR のマージ gate と master deploy を 1 workflow に統合した CI。
+# required check は gate job だけ: test job の増減やシャード数の変更で
+# branch protection を触らずに済む。
+#
+# 変更検知 (changes job) は保守的な 2 クラスだけ切る:
+#   - docs のみ (docs/** の manual 以外, *.md, .claude/**) → lint のみ
+#   - web サブツリーのみ (web/, haxe-wasm/, docs/manual/) → native をスキップ
+# それ以外は全 job 実行。依存の閉包が広い (src/ は wasm へ、haxe-lib/ は
+# 全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
+#
+# 速度は cache が本体:
+#   - ccache (linux native build / emcc wasm build)
+#   - tcs wasm assets / prebuilt snapshot (content key: tcs submodule SHA +
+#     cs-lib / samples の C# ソース)
+#   - haxe-wasm dist、slang prebuilt、haxe5、playwright browsers、npm
+# master push が cache を温め、PR はそれを読む (actions/cache の branch scope)。
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# PR は ref ごとに group を分け、同一 PR への連続 push は前の run を止める。
+# deploy 系 (master push / dispatch) は直列 (cancel しない)。
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      web_only: ${{ steps.classify.outputs.web_only }}
+    steps:
+      - name: Classify changed paths
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          docs_only=false
+          web_only=false
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+              --paginate --jq '.[].filename' > /tmp/changed.txt
+            docs_only=true
+            web_only=true
+            while IFS= read -r f; do
+              case "$f" in
+                docs/manual/*) docs_only=false ;; # playground の docs.html に焼き込まれる
+                docs/* | *.md | .claude/* | LICENSE) continue ;;
+                *) docs_only=false ;;
+              esac
+              case "$f" in
+                docs/manual/* | web/* | haxe-wasm/*) ;;
+                *) web_only=false ;;
+              esac
+            done < /tmp/changed.txt
+            if [ ! -s /tmp/changed.txt ]; then
+              docs_only=false
+              web_only=false
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "web_only=$web_only" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$docs_only web_only=$web_only"
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docs lint
+        run: bash scripts/docs-lint.sh
+
+  # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一
+  # ソース) で Release build -> C smoke tests -> physics Lua -> C# sample gate。
+  # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は
+  # mesa の version に依存し、runner の mesa はローカル生成の golden と一致
+  # しない。CI の視覚 golden gate は windows job (WARP)、lavapipe golden は
+  # ローカル pre-push の gate。mesa を container 等で pin できたら有効化する。
+  linux:
+    needs: changes
+    if: needs.changes.outputs.web_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # CMake configure が slang の prebuilt (~150MB) を落とすのでキャッシュする。
+      # key は取得 URL を持つ CMakeLists.txt に紐付け。
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ github.sha }}
+          restore-keys: ccache-linux-
+
+      # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
+      # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓、
+      # neko = haxelib (install-haxe5.sh) のランタイム。
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb neko \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev \
+            libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libdbus-1-dev libudev-dev
+
+      # C# sample gate 用。native-gate.sh --require-cs が skip を fail 扱いにする。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # golden と haxe_build_smoke がサンプルの .hxml を起動時にコンパイルする。
+      - uses: ./.github/actions/setup-haxe5
+
+      - name: Native gate (build, smokes, physics Lua, C# samples)
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/native-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/native-gate.sh --require-cs --skip-golden
+
+      - name: Upload golden failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failure-linux
+          path: ${{ runner.temp }}/native-gate-tmp
+          if-no-files-found: ignore
+
+  # Windows regression gate: build -> C smoke tests -> WARP golden。
+  # WARP はソフトウェアラスタライザなので GPU の無い runner でも
+  # tests/golden/*_d3d12.png と byte 一致する。vulkan backend は runner に
+  # Vulkan driver が無いためビルドのみ検証 (動作 golden は linux job の
+  # lavapipe が同じ backend_vulkan.c を通す)。
+  windows:
+    needs: changes
+    if: needs.changes.outputs.web_only != 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      # backend_vulkan.c のビルドに Vulkan headers + loader (vulkan-1.lib) が要る。
+      # runner に Vulkan SDK は無いので Khronos リポジトリから該当コンポーネント
+      # だけ組み立てる (VULKAN_SDK env を設定し find_package(Vulkan) が拾う)。
+      - name: Install Vulkan SDK components (headers + loader)
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
+        with:
+          vulkan-query-version: latest
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      # CMake configure が slang / dxc の prebuilt (~150MB) を落とすので
+      # third_party/slang をキャッシュする。key は取得 URL を持つ
+      # CMakeLists.txt に紐付け。
+      - name: Cache slang + dxc prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/slang/lib
+            third_party/slang/bin
+          key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-release
+
+      # smoke test の exe は SDL3 (shared) にリンクしている。SDL3.dll は
+      # build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の
+      # POST_BUILD 頼み。smoke exe と同じ dir に無いと loader が解決できず
+      # git-bash では起動前に落ちて exit 127 になるため、ここで明示的に staging。
+      - name: Stage runtime DLLs next to smoke tests
+        shell: bash
+        run: |
+          cd build-release
+          echo "== *.dll in build-release (before) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
+          if [ ! -f SDL3.dll ]; then
+            dll=$(find . -name SDL3.dll | head -1)
+            echo "SDL3.dll not at root; found at: ${dll:-<none>}"
+            [ -n "$dll" ] && cp "$dll" .
+          fi
+          echo "== *.dll in build-release (after) =="; ls -1 *.dll 2>/dev/null || echo "(none)"
+
+      - name: C smoke tests
+        shell: bash
+        run: |
+          cd build-release
+          ./lub_shader_d3d12_smoke.exe
+          ./lub_hxml_parse_test.exe
+          ./lub_sdf_smoke.exe
+          ./lub_surfacenets_smoke.exe
+          ./lub_physics_box2d_smoke.exe
+          ./lub_physics_box3d_smoke.exe
+
+      # golden はサンプルの .hxml を起動時にコンパイルするので Haxe 5 が要る。
+      - uses: ./.github/actions/setup-haxe5
+
+      - name: Golden image test (d3d12 backend, WARP)
+        shell: bash
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/golden-tmp"
+          mkdir -p "$TMPDIR"
+          scripts/run-golden.sh
+
+      - name: Upload golden failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failure-windows
+          path: ${{ runner.temp }}/golden-tmp
+          if-no-files-found: ignore
+
+  # web playground (lub.neguse.net) のアセット生成 + build。検証は下流の
+  # web-verify / web-golden が artifact (web-dist-test) に対して行う。
+  # 前提アセット3つ (web/README.md) の供給:
+  #   - lub player wasm: emsdk でこの job 内でビルド (emcc は ccache)
+  #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
+  #   - Haxe compiler wasm: haxe-wasm/dist を cache し、miss 時だけ docker で
+  #     再現ビルド (haxe-wasm/build.sh。key の入力が変わらない限り走らない)
+  web-build:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve tcs submodule revision (cache key)
+        id: tcs
+        run: echo "sha=$(git -C third_party/tcs rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 5.0.2
+          actions-cache-folder: emsdk-cache
+
+      # neko = haxelib (setup-haxe5) のランタイム。gen-api が haxe を呼ぶ。
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache neko
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-wasm-${{ github.sha }}
+          restore-keys: ccache-wasm-
+
+      - name: Build lub player wasm
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          emcmake cmake --preset wasm-release
+          cmake --build build/wasm -j
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci (postinstall が slang-wasm を fetch)
+        working-directory: web
+        run: npm ci
+
+      # tcs wasm assets / prebuilt snapshot は入力が tcs submodule と
+      # cs-lib / samples の C# ソースだけなので content key で cache し、
+      # 触らない PR では dotnet workload ごとスキップする。
+      - name: Cache tcs wasm assets
+        id: tcs-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: web/tcs-wasm-assets
+          key: tcs-wasm-${{ steps.tcs.outputs.sha }}-${{ hashFiles('web/scripts/gen-tcs-assets.mjs') }}
+
+      - name: Cache tcs prebuilt snapshots
+        id: tcs-prebuilt-cache
+        uses: actions/cache@v4
+        with:
+          path: web/tcs-prebuilt
+          key: tcs-prebuilt-${{ steps.tcs.outputs.sha }}-${{ hashFiles('cs-lib/**/*.cs', 'samples/**/*.cs', 'samples/**/*.csproj', 'web/scripts/gen-tcs-prebuilt.mjs') }}
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.tcs-wasm-cache.outputs.cache-hit != 'true' || steps.tcs-prebuilt-cache.outputs.cache-hit != 'true'
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install wasm-tools workload
+        if: steps.tcs-wasm-cache.outputs.cache-hit != 'true'
+        run: dotnet workload install wasm-tools
+
+      - name: Generate tcs wasm assets
+        if: steps.tcs-wasm-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm run gen-tcs -- --publish
+
+      - name: Generate tcs prebuilt snapshots
+        if: steps.tcs-prebuilt-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm run gen-tcs-prebuilt
+
+      - name: Cache haxe-wasm dist
+        id: haxe-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: haxe-wasm/dist
+          key: haxe-wasm-${{ hashFiles('haxe-wasm/Dockerfile', 'haxe-wasm/build.sh', 'haxe-wasm/patches/**', 'haxe-wasm/harness/patch_env.mjs') }}
+
+      - name: Build haxe-wasm (docker, cache miss only)
+        if: steps.haxe-wasm-cache.outputs.cache-hit != 'true'
+        run: bash haxe-wasm/build.sh
+
+      - name: Generate haxe wasm assets
+        working-directory: web
+        run: npm run gen-haxe
+
+      # gen-api (build に含まれる) が PATH の haxe を呼ぶ。
+      - uses: ./.github/actions/setup-haxe5
+
+      # verify が使う __lubTest hook (editor.ts) は dev/test mode 限定で
+      # production build には入らない。verify は test mode build に対して行い、
+      # deploy する production build は別 artifact として分ける。
+      - name: Build site (test mode for verify)
+        working-directory: web
+        run: |
+          npm run gen-api
+          npx vite build --mode test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-test
+          path: web/dist
+
+      - name: Build site (production)
+        if: github.event_name != 'pull_request'
+        working-directory: web
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: web-dist-prod
+          path: web/dist
+
+  # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
+  # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session
+  # (A6-A8)、shard 2..n = A5 全サンプル切替のスライス。
+  # verify は閾値判定なので runner の system chromium で足りる (golden の
+  # byte 比較だけ playwright の版固定 chromium を使う)。
+  web-verify:
+    needs: [changes, web-build]
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist-test
+          path: web/dist
+
+      - name: Verify headless (shard ${{ matrix.shard }}/4)
+        working-directory: web
+        run: |
+          npm run preview -- --port 4173 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4173/ >/dev/null && break
+            sleep 1
+          done
+          LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/4 npm run verify
+
+      - name: Upload verify screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-screenshots-${{ matrix.shard }}
+          path: /tmp/lub-verify
+          if-no-files-found: ignore
+
+  # web golden: native golden と同じ curation を wasm の --capture 経路で撮り、
+  # tests/golden/<name>_web.png と byte 比較。golden は swiftshader 固有なので
+  # playwright/chromium を上げたら npm run golden -- --update で再生成。
+  web-golden:
+    needs: [changes, web-build]
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist-test
+          path: web/dist
+
+      - name: Cache playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install chromium (playwright)
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Web goldens (playwright + swiftshader)
+        working-directory: web
+        run: |
+          npm run preview -- --port 4173 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4173/ >/dev/null && break
+            sleep 1
+          done
+          LUB_URL=http://localhost:4173/ npm run golden
+
+      - name: Upload golden failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failure-web
+          path: /tmp/lub-golden-web
+          if-no-files-found: ignore
+
+  # 唯一の required check。走った job が全部 success (skipped は changes の
+  # 判定による意図的な skip) なら green。changes / lint は必ず走る前提。
+  gate:
+    needs: [changes, lint, linux, windows, web-build, web-verify, web-golden]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check job results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS"
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[]
+            | select(.value.result != "success" and .value.result != "skipped")
+            | .key')
+          if [ -n "$bad" ]; then
+            echo "failed jobs: $bad" >&2
+            exit 1
+          fi
+          for must in changes lint; do
+            if [ "$(echo "$NEEDS" | jq -r --arg j "$must" '.[$j].result')" != "success" ]; then
+              echo "$must did not succeed" >&2
+              exit 1
+            fi
+          done
+
+  # master push / workflow_dispatch のみ。verify 済み artifact とは別に
+  # production build (web-dist-prod) を deploy する。
+  # local の `cd web && npm run deploy` は脱出ハッチとして残す。
+  deploy:
+    needs: [gate]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist-prod
+          path: web/dist
+
+      - name: Deploy (wrangler)
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy
