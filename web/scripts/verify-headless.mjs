@@ -491,13 +491,27 @@ async function waitForPlayerReady(timeoutMs) {
 // triggering main.ts's onchange handler.
 // shard 1 が edit / C#-session シナリオを担当するので、A5 は shards 2..n が
 // contiguous に分担する (haxe ブロック → cs ブロックの並び順を保ち、言語
-// トグルを shard あたり最大 1 回に抑える)。n=1 は全件。
+// トグルを shard あたり最大 1 回に抑える)。cs エントリは in-browser Roslyn
+// compile の分だけ重い (実測 ~9.5s vs ~7s) ので、重み付き累積で切って
+// shard 間の wall-clock を均す。n=1 は全件。
 const a5Samples = (() => {
   if (SHARD.n === 1) return samples
   if (SHARD.k === 1) return []
-  const per = Math.ceil(samples.length / (SHARD.n - 1))
-  const start = (SHARD.k - 2) * per
-  return samples.slice(start, start + per)
+  const weight = (s) => (s.lang === 'cs' ? 3 : 2)
+  const total = samples.reduce((a, s) => a + weight(s), 0)
+  const slices = SHARD.n - 1
+  const target = total / slices
+  const bounds = [0] // start index of each slice
+  let acc = 0
+  samples.forEach((s, i) => {
+    if (acc >= target * bounds.length && bounds.length < slices) bounds.push(i)
+    acc += weight(s)
+  })
+  while (bounds.length < slices) bounds.push(samples.length)
+  const idx = SHARD.k - 2
+  const start = bounds[idx]
+  const end = idx + 1 < bounds.length ? bounds[idx + 1] : samples.length
+  return samples.slice(start, end)
 })()
 
 // Standalone A5 shards start right after page load: wait for the initial

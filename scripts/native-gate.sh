@@ -146,29 +146,31 @@ if command -v dotnet >/dev/null 2>&1 \
   fi
   export LUB_TCS_DLL="$repo_root/$tcs_dll"
 
-  # 1 サンプル分の check / transpile / csproj build / capture / golden 比較。
-  # 並列 pool の 1 job として subshell で走るので、shopt はここで閉じる。
-  cs_gate_sample() {
-    local cs_dir="$1"
-    local slot="$2"
-    local cs_name cs_class cs_png cs_proj
-    local cs_files cs_projs
+  # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
+  cs_entry_class() {
+    local cs_dir="$1" cs_files cs_projs
     shopt -s nullglob
     cs_files=("$cs_dir"/*.cs)
     cs_projs=("$cs_dir"/*.csproj)
     shopt -u nullglob
-    cs_name="$(basename "$cs_dir")"
-    # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
     if ((${#cs_projs[@]} >= 1)); then
-      cs_class="$(basename "${cs_projs[0]}" .csproj)"
+      basename "${cs_projs[0]}" .csproj
     else
-      cs_class="$(basename "${cs_files[0]}" .cs)"
+      basename "${cs_files[0]}" .cs
     fi
+  }
+
+  cs_transpile() {
+    local cs_dir="$1" cs_name
+    cs_name="$(basename "$cs_dir")"
     run scripts/run-cs-sample.sh "$cs_name" --check
     run scripts/run-cs-sample.sh "$cs_name" --build
-    for cs_proj in "${cs_projs[@]}"; do
-      run dotnet build "$cs_proj" -nologo
-    done
+  }
+
+  cs_capture() {
+    local cs_dir="$1" slot="$2" cs_name cs_class cs_png
+    cs_name="$(basename "$cs_dir")"
+    cs_class="$(cs_entry_class "$cs_dir")"
     cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.png"
     rm -f "$cs_png"
     run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
@@ -186,6 +188,40 @@ if command -v dotnet >/dev/null 2>&1 \
     fi
   }
 
+  # サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。
+  # status はファイル渡し: wait -n が reap した job は後から wait <pid>
+  # できないため (run-golden.sh と同じ)。相ごとの所要時間を出力する。
+  cs_pool() {
+    local label="$1" fn="$2"
+    local t0=$SECONDS running=0 i failed=0 tmp
+    tmp="$(mktemp -d)"
+    for i in "${!cs_dirs[@]}"; do
+      (
+        if "$fn" "${cs_dirs[$i]}" "$i" >"$tmp/$i.log" 2>&1; then
+          echo pass >"$tmp/$i.status"
+        else
+          echo fail >"$tmp/$i.status"
+        fi
+      ) &
+      running=$((running + 1))
+      if ((running >= cs_jobs_max)); then
+        wait -n || true
+        running=$((running - 1))
+      fi
+    done
+    wait
+    for i in "${!cs_dirs[@]}"; do
+      if [[ "$(cat "$tmp/$i.status" 2>/dev/null)" != pass ]]; then
+        echo "FAIL ${label} ${cs_dirs[$i]}"
+        sed 's/^/    /' "$tmp/$i.log" 2>/dev/null || true
+        failed=1
+      fi
+    done
+    rm -rf "$tmp"
+    echo "==> C# ${label}: ${#cs_dirs[@]} samples in $((SECONDS - t0))s"
+    [[ $failed -eq 0 ]]
+  }
+
   shopt -s nullglob
   cs_dirs=()
   for cs_dir in samples/*/; do
@@ -196,43 +232,27 @@ if command -v dotnet >/dev/null 2>&1 \
   done
   shopt -u nullglob
 
-  # サンプルごとに独立 (dir が disjoint) なので pool で並列化する。
-  # XVFB display はスロットで分離 (400+)。status は run-golden.sh と同じく
-  # ファイル渡し: wait -n が reap した job は後から wait <pid> できないため。
   cs_jobs_max="${LUB_CS_JOBS:-$(nproc)}"
-  cs_tmp="$(mktemp -d)"
   echo
-  echo "==> C# sample gate (${#cs_dirs[@]} samples, ${cs_jobs_max} in parallel)"
-  cs_running=0
-  for i in "${!cs_dirs[@]}"; do
-    (
-      if cs_gate_sample "${cs_dirs[$i]}" "$i" >"$cs_tmp/$i.log" 2>&1; then
-        echo pass >"$cs_tmp/$i.status"
-      else
-        echo fail >"$cs_tmp/$i.status"
-      fi
-    ) &
-    cs_running=$((cs_running + 1))
-    if ((cs_running >= cs_jobs_max)); then
-      wait -n || true
-      cs_running=$((cs_running - 1))
-    fi
+  echo "==> C# sample gate (${#cs_dirs[@]} samples, pool=${cs_jobs_max})"
+
+  # 相分割: transpile (prebuilt DLL、軽量) と capture (lavapipe、内部並列)
+  # は pool、csproj の dotnet build は直列。並列にすると MSBuild/NuGet が
+  # 取り合いになり、warm な build server 直列の ~3s/proj より遅くなる。
+  cs_pool "transpile (check+build)" cs_transpile
+
+  cs_t0=$SECONDS
+  for cs_dir in "${cs_dirs[@]}"; do
+    shopt -s nullglob
+    cs_projs=("$cs_dir"/*.csproj)
+    shopt -u nullglob
+    for cs_proj in "${cs_projs[@]}"; do
+      run dotnet build "$cs_proj" -nologo
+    done
   done
-  wait
-  cs_failed=0
-  for i in "${!cs_dirs[@]}"; do
-    if [[ "$(cat "$cs_tmp/$i.status" 2>/dev/null)" == pass ]]; then
-      echo "PASS ${cs_dirs[$i]}"
-    else
-      echo "FAIL ${cs_dirs[$i]}"
-      sed 's/^/    /' "$cs_tmp/$i.log" 2>/dev/null || true
-      cs_failed=1
-    fi
-  done
-  rm -rf "$cs_tmp"
-  if [[ $cs_failed -ne 0 ]]; then
-    exit 1
-  fi
+  echo "==> C# csproj builds in $((SECONDS - cs_t0))s"
+
+  cs_pool "capture (+golden cmp)" cs_capture
 elif [[ $require_cs -eq 1 ]]; then
   echo "C# sample gate required (--require-cs) but dotnet or third_party/tcs is missing" >&2
   exit 1

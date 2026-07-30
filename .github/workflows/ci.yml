@@ -394,7 +394,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
 
@@ -413,7 +413,7 @@ jobs:
           name: web-dist-test
           path: web/dist
 
-      - name: Verify headless (shard ${{ matrix.shard }}/4)
+      - name: Verify headless (shard ${{ matrix.shard }}/${{ strategy.job-total }})
         working-directory: web
         run: |
           npm run preview -- --port 4173 &
@@ -421,7 +421,7 @@ jobs:
             curl -sf http://localhost:4173/ >/dev/null && break
             sleep 1
           done
-          LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/4 npm run verify
+          LUB_URL=http://localhost:4173/ LUB_VERIFY_SHARD=${{ matrix.shard }}/${{ strategy.job-total }} npm run verify
 
       - name: Upload verify screenshots
         if: failure()
