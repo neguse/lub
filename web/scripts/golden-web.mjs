@@ -72,8 +72,9 @@ if (filtered.length === 0) {
   console.error(`no such sample: ${sampleFilter}`)
   process.exit(2)
 }
-const per = Math.ceil(filtered.length / SHARD.n)
-const targets = filtered.slice((SHARD.k - 1) * per, SHARD.k * per)
+// round-robin: 重い frame のサンプル (16_box2d=120, 18_coin_pusher=240) が
+// リスト後半に隣接しているので、連続スライスだと片方の shard に偏る。
+const targets = filtered.filter((_, i) => i % SHARD.n === SHARD.k - 1)
 
 // Goldens are chromium-version-specific, so ONLY the playwright-bundled
 // chromium (pinned by web/package-lock.json) is used — a system chrome found
