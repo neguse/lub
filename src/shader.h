@@ -27,7 +27,7 @@ typedef enum SglShaderStage {
 typedef struct ShaderAttr {
   char name[32];
   // HLSL semantic (base name without trailing index + index), used by the
-  // dx12 backend's input layout. Empty on the wasm reflection path where
+  // d3d12 backend's input layout. Empty on the wasm reflection path where
   // only locations matter.
   char semantic[32];
   int semantic_index;
@@ -64,7 +64,7 @@ typedef struct ShaderStorageBuf {
   int slot;
   SglShaderStage stage;
   bool readonly;
-  // Element size in bytes of StructuredBuffer<T>. The dx12 backend needs it
+  // Element size in bytes of StructuredBuffer<T>. The d3d12 backend needs it
   // for D3D12_BUFFER_SRV/UAV StructureByteStride; 0 on paths that don't
   // populate it (wasm reflection JSON).
   int elem_stride;
@@ -103,7 +103,7 @@ typedef struct ShaderReflection {
 // Opaque shader byte-blob, owner = caller (free with shader_blob_free).
 //
 // On native builds this is the SPIR-V module bytes produced by Slang
-// (DXIL bytecode for the dx12 target), hence the historical field name
+// (DXIL bytecode for the d3d12 target), hence the historical field name
 // `spirv`. On the wasm build we instead stash WGSL source bytes into the
 // same buffer — see shader.cpp's EM_ASYNC_JS bridge. The field stays a
 // generic byte container so the same struct serves every target.
@@ -114,7 +114,7 @@ typedef struct ShaderBlob {
 
 // Target backend for shader codegen. SDL_GPU expects a per-stage Vulkan
 // descriptor-set layout (vs textures=0/UB=1, fs textures=2/UB=3) so the
-// SPIR-V emitted by Slang has to be rewritten to match. DX12 emits DXIL
+// SPIR-V emitted by Slang has to be rewritten to match. D3D12 emits DXIL
 // instead; no patching, the reflection slots are Slang's HLSL register
 // indices per register class (b/t/s/u). WGSL is the wasm build's only
 // target (webgpu backend, source via slang-wasm); bind slots follow the
@@ -122,7 +122,7 @@ typedef struct ShaderBlob {
 typedef enum ShaderTargetBackend {
   SHADER_TARGET_WGSL = 0,
   SHADER_TARGET_SDLGPU = 1,
-  SHADER_TARGET_DX12 = 2,
+  SHADER_TARGET_D3D12 = 2,
 } ShaderTargetBackend;
 
 bool shader_compile(const char *vs_src, const char *fs_src,

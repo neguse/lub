@@ -24,11 +24,11 @@
 #include <vector>
 
 // Per-target shader prelude. SDL_GPU wants textures and samplers as
-// VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER at a single binding; DX12 and
+// VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER at a single binding; D3D12 and
 // WGSL use separate texture + sampler declarations. The macros let one
 // shader source compile to both layouts without per-target #ifdef.
 //
-//   LUB_TEXTURE2D(diffuse);          // dx12/wgsl: Texture2D + SamplerState
+//   LUB_TEXTURE2D(diffuse);          // d3d12/wgsl: Texture2D + SamplerState
 //                                    // pair; sdlgpu: Sampler2D<float4>.
 //   color = LUB_SAMPLE(diffuse, uv); // expands to the right Sample() call.
 //
@@ -49,7 +49,7 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
            "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
   }
-  // wasm and dx12 use the separate texture+sampler form (D3D12 has no
+  // wasm and d3d12 use the separate texture+sampler form (D3D12 has no
   // combined image samplers; t/s registers are distinct classes).
   return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
          "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
@@ -98,7 +98,7 @@ static void configure_spirv_target(TargetDesc *target) {
 // see the DXC fetch in CMakeLists). dxcompiler >= 1.8.2502 signs the DXIL
 // itself, so no dxil.dll is needed.
 static void configure_target(TargetDesc *target, ShaderTargetBackend backend) {
-  if (backend == SHADER_TARGET_DX12) {
+  if (backend == SHADER_TARGET_D3D12) {
     target->format = SLANG_DXIL;
     target->profile = g_slang.dxil_profile;
     return;
@@ -267,7 +267,7 @@ bool fill_attrs_from_entry_point(EntryPointReflection *ep,
       ShaderAttr *a = &out->attrs[out->attr_count];
       copy_name(a->name, sizeof(a->name), name);
       // Canonicalize "TEXCOORD0" style semantics into base + index so the
-      // dx12 input layout matches the DXIL input signature.
+      // d3d12 input layout matches the DXIL input signature.
       copy_name(a->semantic, sizeof(a->semantic), semantic);
       a->semantic_index = (int)semantic_index;
       size_t sn = strlen(a->semantic);
@@ -1056,7 +1056,7 @@ static void merge_stage_reflection(ShaderReflection *dst,
   if (target == SHADER_TARGET_SDLGPU) {
     remap_stage_for_sdlgpu(&stage);
   }
-  // DX12: no remap. The slots are Slang's HLSL register indices and the
+  // D3D12: no remap. The slots are Slang's HLSL register indices and the
   // DXIL blob can't be re-numbered after the fact; the backend builds its
   // root signature from these values instead.
 
@@ -1094,20 +1094,20 @@ static void merge_stage_reflection(ShaderReflection *dst,
   }
 }
 
-// DX12 graphics path: VS+FS must be linked into ONE slang program. DXIL
+// D3D12 graphics path: VS+FS must be linked into ONE slang program. DXIL
 // matches varyings between stages by hardware register (not by location as
 // SPIR-V/Vulkan does), and separately-compiled programs pack their varying
 // signatures independently — e.g. VS emits SV_Position at o0 pushing COLOR
 // to o1 while the FS expects COLOR at v0. Linking both entry points lets
 // Slang lay out one consistent inter-stage signature. Side effect: b/t/s/u
-// registers become program-unique across stages, which the dx12 backend
+// registers become program-unique across stages, which the d3d12 backend
 // relies on (single root-signature tables with SHADER_VISIBILITY_ALL).
-bool compile_dx12_graphics(const char *vs_src, const char *fs_src,
+bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
                            ShaderBlob *out_vs, ShaderBlob *out_fs,
                            ShaderReflection *out_refl, char *err_buf,
                            size_t err_buf_size) {
   TargetDesc slang_target = {};
-  configure_target(&slang_target, SHADER_TARGET_DX12);
+  configure_target(&slang_target, SHADER_TARGET_D3D12);
   SessionDesc sd = {};
   sd.targets = &slang_target;
   sd.targetCount = 1;
@@ -1119,7 +1119,7 @@ bool compile_dx12_graphics(const char *vs_src, const char *fs_src,
     return false;
   }
 
-  const char *prelude = prelude_for_target(SHADER_TARGET_DX12);
+  const char *prelude = prelude_for_target(SHADER_TARGET_D3D12);
   auto load = [&](const char *src, const char *mod_name, const char *entry,
                   ComPtr<IModule> &mod, ComPtr<IEntryPoint> &ep) -> bool {
     std::string full(prelude);
@@ -1245,7 +1245,7 @@ bool compile_dx12_graphics(const char *vs_src, const char *fs_src,
   };
   if (!copy_code(vs_code.get(), out_vs) || !copy_code(fs_code.get(), out_fs)) {
     if (err_buf && err_buf_size)
-      snprintf(err_buf, err_buf_size, "OOM (dx12 blobs)");
+      snprintf(err_buf, err_buf_size, "OOM (d3d12 blobs)");
     return false;
   }
   return true;
@@ -1274,8 +1274,8 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
     return false;
   }
 
-  if (target == SHADER_TARGET_DX12) {
-    return compile_dx12_graphics(vs_src, fs_src, out_vs, out_fs, out_refl,
+  if (target == SHADER_TARGET_D3D12) {
+    return compile_d3d12_graphics(vs_src, fs_src, out_vs, out_fs, out_refl,
                                  err_buf, err_buf_size);
   }
 
@@ -1399,7 +1399,7 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   merge_stage_reflection(out_refl, &vs_refl, target);
   merge_stage_reflection(out_refl, &fs_refl, target);
 
-  if (target != SHADER_TARGET_DX12) {
+  if (target != SHADER_TARGET_D3D12) {
     patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes,
                                          SpvStage::Vertex, out_refl);
     patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes,
@@ -1522,7 +1522,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
   out_cs->bytes = cs_size;
 
-  if (target != SHADER_TARGET_DX12) {
+  if (target != SHADER_TARGET_D3D12) {
     patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes,
                                          SpvStage::Compute, out_refl);
     patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
@@ -2407,7 +2407,7 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
                                char *err_buf, size_t err_buf_size) {
   // wasm emits WGSL; descriptor-set patching N/A. But the LUB_TEXTURE2D /
   // LUB_SAMPLE macros still need expanding so the shader source can be
-  // shared with native sdlgpu/dx12 builds.
+  // shared with native sdlgpu/d3d12 builds.
   if (out_vs) {
     out_vs->spirv = nullptr;
     out_vs->bytes = 0;

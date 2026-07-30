@@ -94,7 +94,7 @@ public static class Sdf19
 
     public static void onInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
+        var backend = os.getenv("LUB_BACKEND");
         Lub.config(new ConfigOpts { backend = backend });
         mesh = new Mesh3d("sdf19");
         var r = new Renderer3d("sdf19");

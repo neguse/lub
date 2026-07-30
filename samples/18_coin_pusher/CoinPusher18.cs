@@ -86,7 +86,7 @@ public static class CoinPusher18
 
     public static void onInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
+        var backend = os.getenv("LUB_BACKEND");
         Lub.config(new ConfigOpts { backend = backend, width = 640, height = 360 });
         cubeMesh = new Mesh3d("cp_cube");
         cylMesh = new Mesh3d("cp_cyl");

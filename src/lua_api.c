@@ -1084,13 +1084,12 @@ static ShaderTargetBackend shader_target_for_backend(void) {
   // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
   return SHADER_TARGET_WGSL;
 #elif defined(_WIN32)
-  // dx12 の vtable name は "native"。
-  if (g_backend && g_backend->name && strcmp(g_backend->name, "native") == 0)
-    return SHADER_TARGET_DX12;
+  if (g_backend == &g_backend_d3d12)
+    return SHADER_TARGET_D3D12;
+  // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う
+  // (descriptor set 規約が SDL_GPU 準拠のため)。
   return SHADER_TARGET_SDLGPU;
 #else
-  // Linux の "native" (Vulkan 直接) も SDLGPU target の SPIR-V を食う
-  // (descriptor set 規約が SDL_GPU 準拠のため)。
   return SHADER_TARGET_SDLGPU;
 #endif
 }
@@ -1802,22 +1801,25 @@ static int l_config(lua_State *L) {
   lua_getfield(L, 1, "backend");
   const char *name =
       (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : NULL;
-  // "native" = そのプラットフォームの最短距離実装
-  // (Windows: D3D12 / web: webgpu / Linux: 当面 sdlgpu が代行)。
+  // 未指定 (nil) なら app_init が決めた既定 (env LUB_BACKEND、無ければ
+  // プラットフォーム既定) を維持する。
 #ifdef __EMSCRIPTEN__
-  // WASM: backend は webgpu 一択なので指定を無視する。
+  // WASM: backend は webgpu 一択なので指定を無視する
+  // (native と共用のサンプルが native 向け指定を持っていても壊さない)。
   name = "webgpu";
 #else
-  if (!name)
-    name = "native";
-  if (strcmp(name, "sdlgpu") != 0 && strcmp(name, "native") != 0) {
+  if (name && strcmp(name, "d3d12") != 0 && strcmp(name, "vulkan") != 0 &&
+      strcmp(name, "sdlgpu") != 0) {
     return luaL_error(
-        L, "config: backend must be 'native' or 'sdlgpu', got '%s'", name);
+        L, "config: backend must be 'd3d12', 'vulkan' or 'sdlgpu', got '%s'",
+        name);
   }
 #endif
-  strncpy(g_app_for_lua->backend_name, name,
-          sizeof(g_app_for_lua->backend_name) - 1);
-  g_app_for_lua->backend_name[sizeof(g_app_for_lua->backend_name) - 1] = '\0';
+  if (name) {
+    strncpy(g_app_for_lua->backend_name, name,
+            sizeof(g_app_for_lua->backend_name) - 1);
+    g_app_for_lua->backend_name[sizeof(g_app_for_lua->backend_name) - 1] = '\0';
+  }
   lua_pop(L, 1);
 
   lua_getfield(L, 1, "resource_sweep_after_frames");
