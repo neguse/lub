@@ -197,7 +197,9 @@ if [[ $cs_available -eq 1 ]]; then
       exit 1
     fi
     export LUB_TCS_DLL="$repo_root/$tcs_dll"
-    cs_pool "transpile (check+build)" cs_transpile
+    # transpile は dotnet プロセス起動のレイテンシ支配なので、コア数の
+    # 2 倍にオーバーコミットすると短くなる (CPU 律速ではない)。
+    cs_pool "transpile (check+build)" cs_transpile $((cs_jobs_max * 2))
     cs_t0=$SECONDS
     for cs_dir in "${cs_dirs[@]}"; do
       shopt -s nullglob

@@ -72,9 +72,25 @@ if (filtered.length === 0) {
   console.error(`no such sample: ${sampleFilter}`)
   process.exit(2)
 }
-// round-robin: 重い frame のサンプル (16_box2d=120, 18_coin_pusher=240) が
-// リスト後半に隣接しているので、連続スライスだと片方の shard に偏る。
-const targets = filtered.filter((_, i) => i % SHARD.n === SHARD.k - 1)
+// shard 間の wall-clock を均すための概算コスト (秒)。frame 数が多い・
+// シーンが重いサンプルだけ個別に持ち、他は一律。
+const COST = { '16_box2d': 10, '18_coin_pusher': 16, '26_renderer3d': 20 }
+const costOf = (s) => COST[s] ?? 6
+// greedy: 重い順に、累積コストが最小の shard へ割り当てる。
+const targets = (() => {
+  if (SHARD.n === 1) return filtered
+  const byCost = filtered.map((s, i) => ({ s, i })).sort(
+    (a, b) => costOf(b.s) - costOf(a.s) || a.i - b.i)
+  const totals = Array(SHARD.n).fill(0)
+  const shards = Array.from({ length: SHARD.n }, () => [])
+  for (const { s, i } of byCost) {
+    let min = 0
+    for (let j = 1; j < SHARD.n; ++j) if (totals[j] < totals[min]) min = j
+    totals[min] += costOf(s)
+    shards[min].push({ s, i })
+  }
+  return shards[SHARD.k - 1].sort((a, b) => a.i - b.i).map((e) => e.s)
+})()
 
 // Goldens are chromium-version-specific, so ONLY the playwright-bundled
 // chromium (pinned by web/package-lock.json) is used — a system chrome found
