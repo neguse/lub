@@ -291,6 +291,7 @@ jobs:
         run: |
           emcmake cmake --preset wasm-release
           cmake --build build/wasm -j
+          ccache -s | head -8 || true
 
       - uses: actions/setup-node@v4
         with:
@@ -394,7 +395,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@v4
 

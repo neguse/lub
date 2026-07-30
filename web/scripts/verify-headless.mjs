@@ -516,9 +516,16 @@ const a5Samples = (() => {
 
 // Standalone A5 shards start right after page load: wait for the initial
 // player to settle once so the first selectOption's playerReady is the
-// switched player's, not the initial compile finishing late.
+// switched player's, not the initial compile finishing late. playerReady
+// itself may have fired before we attach a listener (a blind wait would
+// just burn its timeout), so poll the canvas until the initial sample
+// draws instead.
 if (!RUN_EDIT && a5Samples.length > 0) {
-  await waitForPlayerReady(60000).catch(() => {})
+  try {
+    const h = await page.waitForSelector('iframe', { timeout: 20000 })
+    await waitForPixels(h, screenshotPath('A5_initial_settle.png'),
+      (c) => c.nonBlack / c.total > 0.005, 30000)
+  } catch { }
 }
 
 let firstIter = true
