@@ -191,8 +191,10 @@ if command -v dotnet >/dev/null 2>&1 \
   # サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。
   # status はファイル渡し: wait -n が reap した job は後から wait <pid>
   # できないため (run-golden.sh と同じ)。相ごとの所要時間を出力する。
+  # 第 3 引数で pool 幅を上書きできる (既定 cs_jobs_max)。
   cs_pool() {
     local label="$1" fn="$2"
+    local jobs_max="${3:-$cs_jobs_max}"
     local t0=$SECONDS running=0 i failed=0 tmp
     tmp="$(mktemp -d)"
     for i in "${!cs_dirs[@]}"; do
@@ -204,7 +206,7 @@ if command -v dotnet >/dev/null 2>&1 \
         fi
       ) &
       running=$((running + 1))
-      if ((running >= cs_jobs_max)); then
+      if ((running >= jobs_max)); then
         wait -n || true
         running=$((running - 1))
       fi
@@ -236,9 +238,10 @@ if command -v dotnet >/dev/null 2>&1 \
   echo
   echo "==> C# sample gate (${#cs_dirs[@]} samples, pool=${cs_jobs_max})"
 
-  # 相分割: transpile (prebuilt DLL、軽量) と capture (lavapipe、内部並列)
-  # は pool、csproj の dotnet build は直列。並列にすると MSBuild/NuGet が
-  # 取り合いになり、warm な build server 直列の ~3s/proj より遅くなる。
+  # 相分割: transpile (prebuilt DLL、軽量) は pool、csproj の dotnet build は
+  # 直列 (並列だと MSBuild/NuGet の取り合いで warm server 直列の ~2s/proj より
+  # 遅い)、capture も直列 (llvmpipe は 1 プロセスでコア数分のスレッドを立てる
+  # ので、多重化すると thread thrashing で 1s/件 → 30s/件級に劣化する)。
   cs_pool "transpile (check+build)" cs_transpile
 
   cs_t0=$SECONDS
@@ -252,7 +255,7 @@ if command -v dotnet >/dev/null 2>&1 \
   done
   echo "==> C# csproj builds in $((SECONDS - cs_t0))s"
 
-  cs_pool "capture (+golden cmp)" cs_capture
+  cs_pool "capture (+golden cmp)" cs_capture 1
 elif [[ $require_cs -eq 1 ]]; then
   echo "C# sample gate required (--require-cs) but dotnet or third_party/tcs is missing" >&2
   exit 1
