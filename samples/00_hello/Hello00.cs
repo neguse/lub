@@ -7,7 +7,7 @@ public static class Hello00
     public static void onInit()
     {
         Console.WriteLine("[lua] onInit");
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
+        var backend = os.getenv("LUB_BACKEND");
         Lub.config(new ConfigOpts { backend = backend });
         Console.WriteLine("config called");
         Console.WriteLine("VERTEX=" + Gfx.VERTEX + " RGBA8=" + Gfx.RGBA8

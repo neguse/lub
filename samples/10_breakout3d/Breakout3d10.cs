@@ -69,7 +69,7 @@ public static class Breakout3d10
 
     public static void onInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
+        var backend = os.getenv("LUB_BACKEND");
         Lub.config(new ConfigOpts { backend = backend });
         ResetGame();
     }

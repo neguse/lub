@@ -1,17 +1,16 @@
-# DX12 Native Backend
+# DX12 Backend
 
-Windows native 用の D3D12 backend。`RenderBackend` vtable (`src/backend.h`) の
-実装の一つで、抽象は変更していない。明示同期・descriptor heap・
-resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` 内に閉じる。
+Windows 用の D3D12 backend("directx12")。`RenderBackend` vtable
+(`src/backend.h`) の実装の一つで、抽象は変更していない。明示同期・
+descriptor heap・resource state など DX12 固有の概念はすべて
+`src/backend_dx12.cpp` 内に閉じる。
 
 ## 選択と配置
 
 - 実装: `src/backend_dx12.cpp`(C++。D3D12 は COM のため)
-- 選択: `config({ backend = "native" })` / `LUB_BACKEND=native`。
-  「native」= そのプラットフォームの直接実装 backend で、native build では
-  D3D12(Windows 以外は config でエラー)、web build では webgpu 直接実装の
-  別名。実装ファイル名とシンボル(`g_backend_dx12`)は実装 API を表すので
-  dx12 のまま。
+- 選択: `config({ backend = "directx12" })` / `LUB_BACKEND=directx12`。
+  Windows の既定 backend(未指定時に選ばれる。Windows 以外ではエラー)。
+  シンボル(`g_backend_dx12`)とファイル名は実装 API を表すので dx12 のまま。
 - リンク: `d3d12.lib` `dxgi.lib` `dxguid.lib`(OS 標準)。CMake は `WIN32`
   のみソースを追加。
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。
@@ -97,8 +96,8 @@ resource state など DX12 固有の概念はすべて `src/backend_dx12.cpp` �
 
 ## Golden test
 
-`scripts/run-golden.sh` は Windows (git bash) では native backend を
+`scripts/run-golden.sh` は Windows (git bash) では directx12 backend を
 WARP(`LUB_DX12_WARP=1`、Microsoft のソフトウェアラスタライザ)で回し、
-`tests/golden/<name>_native.png` と byte 比較する。lavapipe と同じく
+`tests/golden/<name>_directx12.png` と byte 比較する。lavapipe と同じく
 機材・ドライバ非依存の CPU rasterizer なので `cmp -s` の完全一致が成立する。
 実 GPU での動作確認は別途 capture 目視で行う。

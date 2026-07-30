@@ -46,7 +46,7 @@ commit フックと CI で確認する。
 - [manual/](manual/) — 利用者向けガイド(web の `/docs.html` に描画される)
 - [api-glue.md](api-glue.md) — 多言語 (Lua/Haxe/C#) binding の構成
 - [serve.md](serve.md) — `--serve` Web 開発モード
-- [dx12-backend.md](dx12-backend.md) — D3D12 native backend の構成
+- [dx12-backend.md](dx12-backend.md) — D3D12 backend の構成
 - [profile.md](profile.md) — 組み込み CPU profiler
 - [release-build.md](release-build.md) — Release build 手順
 - [sprites-bench.md](sprites-bench.md) — sprite benchmark

@@ -156,7 +156,7 @@ public static class CraneGame23
 
     public static void onInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
+        var backend = os.getenv("LUB_BACKEND");
         Lub.config(new ConfigOpts { backend = backend, width = 640, height = 360 });
         // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
         bears = new List<Bear>

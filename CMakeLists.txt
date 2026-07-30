@@ -203,10 +203,11 @@ if(NOT LUB_WASM)
   # HTTP + SSE dev server for `lub --serve game.hxml`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)
-    # D3D12 backend ("native" on Windows).
+    # D3D12 backend ("directx12", Windows 既定).
     list(APPEND LUB_SOURCES src/backend_dx12.cpp)
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Vulkan backend ("native" on Linux).
+  endif()
+  if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Vulkan backend ("vulkan", Linux 既定。Windows でも選択可).
     list(APPEND LUB_SOURCES src/backend_vk.c)
   endif()
 endif()
@@ -246,8 +247,9 @@ if(WIN32)
   # d3d12/dxgi/dxguid for the dx12 backend (all OS-provided).
   target_link_libraries(lub PRIVATE ws2_32 d3d12 dxgi dxguid)
 endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT LUB_WASM)
-  # Vulkan loader for backend_vk.c.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT LUB_WASM)
+  # Vulkan loader for backend_vk.c. Windows では Vulkan SDK が必要
+  # (VULKAN_SDK env を find_package が拾う)。
   find_package(Vulkan REQUIRED)
   target_link_libraries(lub PRIVATE Vulkan::Vulkan)
 endif()

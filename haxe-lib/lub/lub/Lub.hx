@@ -5,9 +5,10 @@ package lub;
 **/
 typedef ConfigOpts = {
 	/**
-		GPU backend。native では "native" (既定。このプラットフォームの
-		最短距離実装 — Windows: D3D12 / Linux: 当面 sdlgpu) か "sdlgpu"。
-		web (WASM) は webgpu のみで、指定は無視される。
+		GPU backend。"directx12" (Windows のみ) / "vulkan" (Windows, Linux) /
+		"sdlgpu"。未指定ならプラットフォーム既定 — Windows: directx12 /
+		Linux: vulkan / web: webgpu。web (WASM) は webgpu のみで、指定は
+		無視される。
 	**/
 	?backend:String,
 	/** ウィンドウ幅 (px)。`height` とセットで指定する。 **/

@@ -2222,11 +2222,8 @@ SglPixelFormat dx_swapchain_color_format(App *app) {
 
 } // anonymous namespace
 
-// User-facing name is "native" = このプラットフォームの直接実装 backend。
-// (web build では webgpu 直接実装が同じ位置付け。) 実装は D3D12 なので
-// ファイル名とシンボルは dx12 のまま。
 extern "C" const RenderBackend g_backend_dx12 = {
-    "native",
+    "directx12",
     dx_init,
     dx_shutdown,
     dx_begin_frame,

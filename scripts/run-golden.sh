@@ -17,11 +17,11 @@
 #   - fixed --capture-frame and --fixed-dt  - set below to FRAME and 1/60 s
 # Exit code is 0 only if every checked visual golden matches.
 #
-# Platform selects the backend set: Linux checks sdlgpu and native
-# (Vulkan direct), Windows (git bash) checks native (D3D12). On Linux both
-# backends render through lavapipe and must produce byte-identical output,
-# so they share the *_sdlgpu.png goldens — a native/sdlgpu divergence is a
-# test failure by design.
+# Platform selects the backend set: Linux checks sdlgpu and vulkan
+# (Vulkan direct), Windows (git bash) checks directx12 (D3D12). On Linux
+# both backends render through lavapipe and must produce byte-identical
+# output, so they share the *_sdlgpu.png goldens — a vulkan/sdlgpu
+# divergence is a test failure by design.
 
 set -euo pipefail
 
@@ -33,12 +33,12 @@ FRAME=30
 case "$(uname -s)" in
     MINGW* | MSYS*)
         windows=1
-        BACKENDS=(native)
+        BACKENDS=(directx12)
         BINARY="${BINARY:-./build-release/lub.exe}"
         ;;
     *)
         windows=0
-        BACKENDS=(sdlgpu native)
+        BACKENDS=(sdlgpu vulkan)
         BINARY="${BINARY:-./build/lub}"
         ;;
 esac
@@ -111,10 +111,10 @@ check_entry() {
         18_coin_pusher) frame=240 ;;
     esac
 
-    # Linux native (Vulkan) shares the sdlgpu goldens: same lavapipe
-    # rasterizer, byte-identical output is the contract between them.
+    # Linux vulkan shares the sdlgpu goldens: same lavapipe rasterizer,
+    # byte-identical output is the contract between them.
     local golden_backend="$backend"
-    if [[ $windows -eq 0 && "$backend" == native ]]; then
+    if [[ $windows -eq 0 && "$backend" == vulkan ]]; then
         golden_backend=sdlgpu
     fi
     local out="$tmpdir/${golden_name}_${backend}.png"
@@ -155,7 +155,7 @@ check_entry() {
 
     if [[ $update -eq 1 ]]; then
         if [[ "$golden_backend" != "$backend" ]]; then
-            # Shared golden (linux native -> sdlgpu): only the owning
+            # Shared golden (linux vulkan -> sdlgpu): only the owning
             # backend regenerates it; still verify below.
             :
         else

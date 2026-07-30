@@ -8,9 +8,9 @@ public static class Clear00b
 
     public static void onInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
+        var backend = os.getenv("LUB_BACKEND");
         Lub.config(new ConfigOpts { backend = backend });
-        Console.WriteLine("backend = " + backend);
+        Console.WriteLine("backend = " + (backend ?? "(default)"));
         Console.WriteLine("clear demo");
     }
 

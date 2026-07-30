@@ -1,6 +1,7 @@
-// Vulkan backend ("native" on Linux).
+// Vulkan backend (Windows / Linux)。Linux では既定、Windows では
+// LUB_BACKEND=vulkan / config({backend="vulkan"}) で選ぶ。
 //
-// Implements the RenderBackend vtable directly on Vulkan 1.3 — the Linux
+// Implements the RenderBackend vtable directly on Vulkan 1.3 — the
 // counterpart of backend_dx12.cpp, same design:
 //
 //   * Single graphics queue, kFramesInFlight = 2. One command buffer is open
@@ -3060,10 +3061,8 @@ static SglPixelFormat vkb_swapchain_color_format(App *app) {
   return g.sc_fmt_sgl ? g.sc_fmt_sgl : SGL_PF_RGBA8;
 }
 
-// User-facing name is "native" = このプラットフォームの直接実装 backend。
-// (Windows は backend_dx12.cpp、web は webgpu 直接実装が同じ位置付け。)
 const RenderBackend g_backend_vk = {
-    "native",
+    "vulkan",
     vkb_init,
     vkb_shutdown,
     vkb_begin_frame,
