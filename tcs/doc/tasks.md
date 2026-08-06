@@ -59,9 +59,14 @@
 方針 (ユーザー決定 2026-08-07): C# compat の differential fuzz を先に育てる。
 hot reload の fuzz は compat 文法の拡張が一巡してから独立に起こす。
 
-- [ ] **T233** (P1): fuzz 文法拡張 第2弾 — class/record 生成 (field /
-      property / instance method / 継承)、Dictionary、while/switch、pattern。
-      ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload) で対象外
+- [ ] **T233** (P1): fuzz 文法拡張 第2弾。ユーザー定義オーバーロードは
+      サブセット外 (TCS1001 MethodOverload) で対象外。段階:
+      - [x] (a) 制御フロー + コレクション: 有界 while / switch 文・式 /
+            break・continue / foreach / 三項 / 変数除数 (正数ガード) /
+            List indexer・Sort・RemoveAt / Dictionary (両キー型、列挙なし、
+            固定キープローブ)
+      - [ ] (b) class/record 生成 (field / property / instance method /
+            継承 / virtual dispatch)、pattern
 - [ ] **T234** (P2): fuzz 文法拡張 第3弾 — LINQ 小核 (allowlist 内)、
       struct copy セマンティクス (T219b 解禁後)
 - [ ] **T235** (P2): hot reload fuzz — v1/v2 型定義ペアを生成して reload し、

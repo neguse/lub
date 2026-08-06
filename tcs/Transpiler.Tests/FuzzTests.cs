@@ -31,6 +31,16 @@ public class FuzzTests
         Assert.Contains("static int F", corpus);
         Assert.Contains("static string F", corpus);
         Assert.Contains("static bool F", corpus);
+        Assert.Contains("while (", corpus);
+        Assert.Contains("switch", corpus);
+        Assert.Contains("foreach (var ", corpus);
+        Assert.Contains("break;", corpus);
+        Assert.Contains("continue;", corpus);
+        Assert.Contains("Dictionary<", corpus);
+        Assert.Contains(".ContainsKey(", corpus);
+        Assert.Contains(".TryGetValue(", corpus);
+        Assert.Contains(".Sort()", corpus);
+        Assert.Contains(".RemoveAt(", corpus);
     }
 
     // ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload —

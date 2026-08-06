@@ -1476,3 +1476,8 @@
 - 修正: 「末尾 block 連鎖の末尾 break = 暗黙終端」を再帰収集して suppress。それ以外の switch 束縛 break (条件付き早期 break) は legacy が switch 全体を `repeat ... until true` で包んで Lua break を switch 脱出に束縛 (C# と Lua の break 束縛規則が一致、生テキストで包むので continue label 機構は無傷)。IL 側は IlRepeat が do-while 用に continue label を積む設計のため早期 break を含む switch は IL 化せず legacy fallback
 - 検証: SwitchTests +4 (braced case in loop / 条件付き早期 break / nested loop の break 束縛 / switch 内 continue の外側 loop 束縛) Red→Green、既存 SwitchTests 10 本含め全 737+48 green、run-fuzz.sh 300 seeds 差分ゼロ (修正前 153/300 失敗)
 - 判断: repeat 包みは早期 break を含む switch のみ (needsBreakScope)。全 switch を包むと tcs2c 側の IlRepeat 対応が必要になり blast radius が大きい
+
+### T233(a): fuzz 文法拡張 第2弾 — 制御フロー + コレクション ✓ (2026-08-07)
+- FuzzGenerator に追加: 有界 while (カウンタは block スコープなので変数表に登録しない — 終了保証も兼ねる)、switch 文 (int/string、block 付き case)、switch 式 (定数 arm を先頭に置き CS8510 包摂を回避)、break/continue (増分先頭の while なので continue しても前進)、foreach (body はリスト不変更)、三項、正数ガード付き変数除数 (MinValue/-1 overflow も排除)、複合代入 -=/*=//=/%=、List indexer 読み書き・Sort・RemoveAt (全て Count ガード)、Dictionary int/string キー (Add は相異 pool キー、読みは ContainsKey ガード、TryGetValue out var、列挙は Lua と順序が異なるため生成せず固定キープローブで内容検証)
+- 検証: FuzzTests 6 本 green (coverage マーカー 19 種)、初回 300 seeds で 153 失敗 → 全て単一根 (T236 switch break) と特定、修正後 300 seeds 差分ゼロ、全 737+48 green
+- よかったこと: 「範囲内が呼び出し側契約の API は常にガード付きで生成」の原則 (Substring と同型) が List/Dict にそのまま延びた。early break の縮小 repro が switch 単体まで縮んで root cause 特定が数分で済んだ
