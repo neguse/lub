@@ -1498,3 +1498,8 @@
 - 分布調整: LINQ bool は BoolExpr の depth>0 arm だけだと出現が枯れる (BoolExpr は atom 直行しない構造) ため BoolAtom 側にも 1/5 ゲートで注入。ついでに BoolExpr の `_` arm が死んで helper-bool 呼び出しが消えていた事故を Next(13) 化で修正。coverage corpus は 200 seeds (固定シードなので実測で全マーカー出現を確認済み = 決定的)
 - 検証: FuzzTests 6 本 green (マーカー 37 種)、fuzz 即 5/500 seeds で T237 を検出 → 修正後 500 seeds 差分ゼロ、全 739+48 green
 - よかったこと: 生成器を単体 csproj で回してマーカー出現数を実測する手が分布デバッグに効いた (Any 21 / All 4 / Sum 3 / Where 31 / Join 12 / Split 79 を確認して確率でなく実測で固定)
+
+### T234(a) 追補: LINQ 即時評価の既知差異から fuzz 生成を隔離 ✓ (2026-08-07)
+- 大規模スイープ (seed 6355) が「Where 述語が捕捉した変数を foreach 本体が変異」で C# (遅延評価) と runtime (即時評価) の可視差を検出。これは support-matrix 明記の設計判断 (遅延評価は非目標) なのでバグでなく既知差異 — dict 列挙順と同じ扱いで、foreach 駆動の述語は捕捉なし (PurePredicate) に制約。単一評価点の式文脈では捕捉を維持 (closure emit のプローブは残る)
+- support-matrix の LINQ 節に可視差の条件 (捕捉変数の列挙中変異) を 1 文追記
+- 検証: seed 6355 を含む 2000 seeds (6000-7999) 差分ゼロ

@@ -11,7 +11,8 @@ internal sealed partial class FuzzGenerator
 {
     private string PickList() => _listVars[_rng.Next(_listVars.Count)];
 
-    // ラムダ述語。たまに外側変数を捕捉して closure emit を踏む
+    // ラムダ述語。たまに外側変数を捕捉して closure emit を踏む。
+    // 単一評価点の式文脈専用 — foreach 駆動には PurePredicate を使う
     private string Predicate(string v) => _rng.Next(5) switch
     {
         0 => $"{v} > {NextInt32()}",
@@ -19,6 +20,17 @@ internal sealed partial class FuzzGenerator
         2 => $"({v} % {_rng.Next(1, 10)}) == 0",
         3 => $"{v} != {NextInt32()}",
         _ => $"{v} > {PickReadableIntVar()}",
+    };
+
+    // 捕捉なし述語。runtime の LINQ は即時評価 (support-matrix 記載の
+    // 既知差異) なので、foreach 本体が捕捉変数を変異させると C# の
+    // 遅延評価と結果が分かれる — foreach 駆動の述語は捕捉を持たせない
+    private string PurePredicate(string v) => _rng.Next(4) switch
+    {
+        0 => $"{v} > {NextInt32()}",
+        1 => $"{v} < {NextInt32()}",
+        2 => $"({v} % {_rng.Next(1, 10)}) == 0",
+        _ => $"{v} != {NextInt32()}",
     };
 
     private string LinqIntOrElse(int depth, Func<string> fallback)
@@ -82,7 +94,7 @@ internal sealed partial class FuzzGenerator
         var body = _rng.Next(2) == 0
             ? $"{PickIntVar()} += {e};"
             : $"Console.WriteLine({e});";
-        return $"foreach (var {e} in {xs}.Where({v} => {Predicate(v)})) " +
+        return $"foreach (var {e} in {xs}.Where({v} => {PurePredicate(v)})) " +
             $"{{ {body} }}";
     }
 }
