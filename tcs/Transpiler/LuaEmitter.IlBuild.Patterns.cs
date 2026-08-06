@@ -196,6 +196,11 @@ public partial class LuaEmitter
     private bool BuildSwitchStatInto(SemanticModel model,
         SwitchStatementSyntax switchStmt, List<IlStat> acc)
     {
+        // 早期 break は repeat スコープが要る。IL には continue label を
+        // 積まない repeat 相当ノードがない (IlRepeat は do-while 用で
+        // continue を乗っ取る) ため legacy visitor へ fallback する
+        if (SwitchNeedsBreakScope(switchStmt))
+            return false;
         var governing = BuildExpr(model, switchStmt.Expression);
         if (governing == null) return false;
         var sw = new IlVar("__tcs_sw");
@@ -278,15 +283,38 @@ public partial class LuaEmitter
     }
 
     private IlBlock? BuildSwitchSectionBody(SemanticModel model,
-        IEnumerable<StatementSyntax> statements)
+        IReadOnlyList<StatementSyntax> statements)
     {
+        // 暗黙 break は末尾 block 連鎖の末尾にも現れる (case X: { ...; break; })。
+        // 早期 break は BuildSwitchStatInto 入口で legacy へ逃がしているので、
+        // ここに来る switch 束縛 break は terminal のみ
+        var terminal = new HashSet<StatementSyntax>();
+        CollectTerminalBreaks(statements, terminal);
         var acc = new List<IlStat>();
+        return BuildSectionStatsInto(model, statements, terminal, acc)
+            ? new IlBlock([.. acc])
+            : null;
+    }
+
+    private bool BuildSectionStatsInto(SemanticModel model,
+        IReadOnlyList<StatementSyntax> statements,
+        HashSet<StatementSyntax> terminal, List<IlStat> acc)
+    {
         foreach (var stmt in statements)
         {
-            if (stmt is BreakStatementSyntax) continue; // switch の暗黙 break
-            if (!BuildStatInto(model, stmt, acc)) return null;
+            if (terminal.Contains(stmt))
+                continue;
+            if (stmt is BlockSyntax block)
+            {
+                if (!BuildSectionStatsInto(model, block.Statements, terminal,
+                        acc))
+                    return false;
+                continue;
+            }
+            if (!BuildStatInto(model, stmt, acc))
+                return false;
         }
-        return new IlBlock([.. acc]);
+        return true;
     }
 
     // legacy VisitSimpleLambda / VisitParenthesizedLambda の写像

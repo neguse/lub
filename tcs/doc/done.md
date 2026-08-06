@@ -1470,3 +1470,9 @@
 - 検証: FuzzTests 6 本 green (決定性 / 文法枝の生存 / オーバーロード不生成 / subset invariant 30 seeds / 故障注入検出 / 縮小)、拡張直後の run-fuzz.sh で 4/200 seeds が実バグを検出 (→ T232 で修正済み)、修正後 1000 seeds (1000-1499 / 5000-5499) 差分ゼロ。run-tests の 20-seed smoke は自動で強化済み
 - よかったこと: 拡張初回の 200 seeds で silent wrong-code (補間 + Length) を掘り当てた — 手書き 733 テストと仕様 corpus 642 例が踏んでいなかった領域。縮小器は 4 件とも数文の repro まで縮めた
 - 判断: 方向はユーザー決定「C# compat が先」(2026-08-07)。hot reload fuzz は不変量オラクルの新設計になるため T235 として分離。第2弾 (class/record/pattern) は T233、LINQ/struct は T234
+
+### T236: switch-case break の Lua 素通し修正 (fuzz 発見) ✓ (2026-08-07)
+- T233(a) の拡張 fuzz が 153/300 seeds で検出。switch section の暗黙 break skip が「section 直下」しか見ておらず、block で包んだ case 本体 (`case X: { ...; break; }`) の break が Lua の `break` として素通し。switch が関数直下なら `break outside loop` で crash、**loop 内なら外側 loop を静かに脱出する silent wrong-code** (mismatch 系 3 seeds も同根)
+- 修正: 「末尾 block 連鎖の末尾 break = 暗黙終端」を再帰収集して suppress。それ以外の switch 束縛 break (条件付き早期 break) は legacy が switch 全体を `repeat ... until true` で包んで Lua break を switch 脱出に束縛 (C# と Lua の break 束縛規則が一致、生テキストで包むので continue label 機構は無傷)。IL 側は IlRepeat が do-while 用に continue label を積む設計のため早期 break を含む switch は IL 化せず legacy fallback
+- 検証: SwitchTests +4 (braced case in loop / 条件付き早期 break / nested loop の break 束縛 / switch 内 continue の外側 loop 束縛) Red→Green、既存 SwitchTests 10 本含め全 737+48 green、run-fuzz.sh 300 seeds 差分ゼロ (修正前 153/300 失敗)
+- 判断: repeat 包みは早期 break を含む switch のみ (needsBreakScope)。全 switch を包むと tcs2c 側の IlRepeat 対応が必要になり blast radius が大きい

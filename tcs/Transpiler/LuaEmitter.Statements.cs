@@ -76,8 +76,10 @@ public partial class LuaEmitter
                 foreach (var s in block.Statements)
                     VisitStatement(model, s);
                 break;
-            case BreakStatementSyntax:
-                AppendLine("break");
+            case BreakStatementSyntax brk:
+                // switch 終端の暗黙 break は emit しない (VisitSwitch が登録)
+                if (!_implicitSwitchBreaks.Contains(brk))
+                    AppendLine("break");
                 break;
             case ContinueStatementSyntax:
                 if (_continueStack.Count > 0)
@@ -444,8 +446,57 @@ public partial class LuaEmitter
             _ => false,
         });
 
+    // switch 終端の暗黙 break (section 末尾、末尾 block 連鎖の末尾も含む)
+    // は Lua へ emit しない。ここに登録されなかった switch 束縛 break は
+    // 「早期 break」で、switch を repeat..until true で包んで Lua break を
+    // switch 脱出として束縛させる (C# と Lua で break の束縛規則が一致する)。
+    private readonly HashSet<StatementSyntax> _implicitSwitchBreaks = [];
+
+    private static void CollectTerminalBreaks(
+        IReadOnlyList<StatementSyntax> statements,
+        HashSet<StatementSyntax> sink)
+    {
+        if (statements.Count == 0)
+            return;
+        switch (statements[^1])
+        {
+            case BreakStatementSyntax brk:
+                sink.Add(brk);
+                break;
+            case BlockSyntax block:
+                CollectTerminalBreaks(block.Statements, sink);
+                break;
+        }
+    }
+
+    // 早期 break (暗黙終端以外で、内側 loop/switch でなくこの switch に
+    // 束縛される break) を含むか。含む場合のみ repeat スコープが要る
+    private static bool SwitchNeedsBreakScope(SwitchStatementSyntax switchStmt)
+    {
+        var terminal = new HashSet<StatementSyntax>();
+        foreach (var section in switchStmt.Sections)
+            CollectTerminalBreaks(section.Statements, terminal);
+        foreach (var brk in switchStmt.DescendantNodes()
+            .OfType<BreakStatementSyntax>())
+        {
+            if (terminal.Contains(brk))
+                continue;
+            var target = brk.Ancestors().FirstOrDefault(a =>
+                a is ForStatementSyntax or WhileStatementSyntax
+                    or DoStatementSyntax or CommonForEachStatementSyntax
+                    or SwitchStatementSyntax);
+            if (target == switchStmt)
+                return true;
+        }
+        return false;
+    }
+
     private void VisitSwitch(SemanticModel model, SwitchStatementSyntax switchStmt)
     {
+        foreach (var section in switchStmt.Sections)
+            CollectTerminalBreaks(section.Statements, _implicitSwitchBreaks);
+        var needsBreakScope = SwitchNeedsBreakScope(switchStmt);
+
         // 対象式は local へ一度だけ評価する。ネストした switch は内側 block の
         // local が shadow する。
         var governing = VisitExpression(model, switchStmt.Expression);
@@ -470,6 +521,14 @@ public partial class LuaEmitter
             AppendLine($"local {sv.Identifier.ValueText} = __tcs_sw");
         }
 
+        // 生テキストで包む (IlRepeat/VisitDoWhile と違い continue label を
+        // 積まないので、switch 内の continue は外側 loop の label へ飛ぶ)
+        if (needsBreakScope)
+        {
+            AppendLine("repeat");
+            _indent++;
+        }
+
         bool first = true;
         foreach (var section in sections)
         {
@@ -490,11 +549,7 @@ public partial class LuaEmitter
             AppendLine($"{(first ? "if" : "elseif")} {cond} then");
             _indent++;
             foreach (var stmt in section.Statements)
-            {
-                // Skip break statements in switch (they're implicit in Lua if-elseif)
-                if (stmt is BreakStatementSyntax) continue;
                 VisitStatement(model, stmt);
-            }
             _indent--;
             first = false;
         }
@@ -504,14 +559,16 @@ public partial class LuaEmitter
             AppendLine(first ? "do" : "else");
             _indent++;
             foreach (var stmt in defaultSection.Statements)
-            {
-                if (stmt is BreakStatementSyntax) continue;
                 VisitStatement(model, stmt);
-            }
             _indent--;
         }
 
         AppendLine("end");
+        if (needsBreakScope)
+        {
+            _indent--;
+            AppendLine("until true");
+        }
     }
 
     private string FormatPatternLabel(SemanticModel model,

@@ -2,6 +2,125 @@ namespace TinyCs.Tests;
 
 public class SwitchTests
 {
+    // case 本体を block で包んだ末尾 break は switch の暗黙終端。
+    // Lua の break として素通しすると外側 loop を脱出してしまう
+    [Fact]
+    public void SwitchStatement_BracedCaseInsideLoop_DoesNotBreakLoop()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int acc = 0;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        switch (i)
+                        {
+                            case 0: { acc += 1; break; }
+                            default: { acc += 10; break; }
+                        }
+                    }
+                    return acc;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("21", result);
+    }
+
+    // 条件付き早期 break は switch だけを抜ける (後続 case 本体をスキップ)
+    [Fact]
+    public void SwitchStatement_ConditionalEarlyBreak_ExitsSwitchOnly()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int acc = 0;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        switch (i)
+                        {
+                            case 1:
+                                if (acc > 0) break;
+                                acc += 100;
+                                break;
+                            default:
+                                acc += 1;
+                                break;
+                        }
+                    }
+                    return acc;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("2", result);
+    }
+
+    // case 内の nested loop の break は loop に束縛され switch は続行する
+    [Fact]
+    public void SwitchStatement_BreakInNestedLoop_BindsToLoop()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int acc = 0;
+                    switch (acc)
+                    {
+                        case 0:
+                        {
+                            for (int j = 0; j < 5; j++)
+                            {
+                                if (j == 2) { break; }
+                                acc += 1;
+                            }
+                            acc += 100;
+                            break;
+                        }
+                        default: { acc = -1; break; }
+                    }
+                    return acc;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("102", result);
+    }
+
+    // switch 内の continue は外側 loop に束縛される
+    [Fact]
+    public void SwitchStatement_ContinueInsideSwitch_ContinuesOuterLoop()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int acc = 0;
+                    for (int i = 0; i < 5; i++)
+                    {
+                        switch (i)
+                        {
+                            case 2:
+                                if (i == 2) continue;
+                                break;
+                            default: { break; }
+                        }
+                        acc += 1;
+                    }
+                    return acc;
+                }
+            }
+            """,
+            "T.Test()");
+        Assert.Equal("4", result);
+    }
+
     [Fact]
     public void SwitchStatement_Basic()
     {
