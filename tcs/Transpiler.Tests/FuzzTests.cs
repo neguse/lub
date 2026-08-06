@@ -19,7 +19,7 @@ public class FuzzTests
     [Fact]
     public void Generator_CoversExtendedGrammar()
     {
-        var corpus = string.Join("\n", Enumerable.Range(0, 60)
+        var corpus = string.Join("\n", Enumerable.Range(0, 200)
             .Select(seed => new FuzzGenerator(seed).Generate()));
 
         Assert.Contains(".Substring(", corpus);
@@ -49,6 +49,16 @@ public class FuzzTests
         Assert.Contains(" with { ", corpus);
         Assert.Contains(" is C", corpus);
         Assert.Contains(" : C0", corpus);
+        Assert.Contains(".Where(", corpus);
+        Assert.Contains(".Sum()", corpus);
+        Assert.Contains(".Any(", corpus);
+        Assert.Contains(".All(", corpus);
+        Assert.Contains(".OrderBy", corpus);
+        Assert.Contains(".FirstOrDefault(", corpus);
+        Assert.Contains(".Take(", corpus);
+        Assert.Contains("string.Join(", corpus);
+        Assert.Contains(".Split(", corpus);
+        Assert.Contains("string.IsNullOrEmpty(", corpus);
     }
 
     // ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload —

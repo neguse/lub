@@ -68,8 +68,13 @@ hot reload の fuzz は compat 文法の拡張が一巡してから独立に起�
       - [x] (b) class/record 生成 (field / auto property / instance method /
             継承 / 実行時条件の virtual dispatch)、record with 式・値等価、
             is / is-designation / property pattern
-- [ ] **T234** (P2): fuzz 文法拡張 第3弾 — LINQ 小核 (allowlist 内)、
-      struct copy セマンティクス (T219b 解禁後)
+- [ ] **T234** (P2): fuzz 文法拡張 第3弾。段階:
+      - [x] (a) LINQ 小核 (Where/Select/Sum/Count/Min/Max/Any/All/
+            OrDefault 系/OrderBy/Take/Skip、例外安全形のみ) +
+            Split/Join/IsNullOrEmpty。Sum は要素 %1000 有界化 (C# の Sum は
+            checked で overflow throw)、ToDictionary はキー重複 throw のため
+            生成しない
+      - [ ] (b) struct copy セマンティクス (T219b 解禁後)
 - [ ] **T235** (P2): hot reload fuzz — v1/v2 型定義ペアを生成して reload し、
       不変量 (retained 保持 / added=initializer / identity 維持) を検証。
       differential でなく不変量オラクルの新設計になるため独立タスク

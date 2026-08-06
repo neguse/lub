@@ -108,6 +108,7 @@ internal sealed partial class FuzzGenerator
         var sb = new StringBuilder();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Linq;");
         sb.AppendLine();
         foreach (var type in types ?? [])
         {
@@ -245,7 +246,7 @@ internal sealed partial class FuzzGenerator
         ? d.MissKey
         : d.PoolKeys[_rng.Next(d.PoolKeys.Length)];
 
-    private string Statement(int depth) => _rng.Next(16) switch
+    private string Statement(int depth) => _rng.Next(17) switch
     {
         0 => SimpleAssign(),
         1 => $"{PickIntVar()} {Pick("+=", "-=", "*=")} {IntExpr(1)};",
@@ -264,6 +265,7 @@ internal sealed partial class FuzzGenerator
         12 => ForeachOverList(),
         13 => ObjStatement(),
         14 => RecordWithAssign(),
+        15 => LinqStatement(),
         _ => $"Console.WriteLine({(_rng.Next(2) == 0 ? IntExpr(2) : BoolExpr(1))});",
     };
 
@@ -412,6 +414,7 @@ internal sealed partial class FuzzGenerator
             10 => GuardedDictRead(depth),
             11 => ObjCallOrElse("int", depth, IntAtom),
             12 => IsDesignationOrElse(depth, IntAtom),
+            13 => LinqIntOrElse(depth, IntAtom),
             _ => SwitchExprInt(),
         };
     }
@@ -485,7 +488,7 @@ internal sealed partial class FuzzGenerator
     {
         if (depth <= 0)
             return BoolAtom();
-        return _rng.Next(12) switch
+        return _rng.Next(13) switch
         {
             0 => $"({BoolExpr(depth - 1)} && {BoolExpr(depth - 1)})",
             1 => $"({BoolExpr(depth - 1)} || {BoolExpr(depth - 1)})",
@@ -503,6 +506,7 @@ internal sealed partial class FuzzGenerator
             8 => IsTypeCheckOrElse(BoolAtom),
             9 => RecordEqualityOrElse(BoolAtom),
             10 => PropertyPatternOrElse(BoolAtom),
+            11 => LinqBoolOrElse(BoolAtom),
             _ => HelperCallOrElse("bool", depth, BoolAtom),
         };
     }
@@ -513,7 +517,16 @@ internal sealed partial class FuzzGenerator
         return $"{d.Name}.ContainsKey({DictKey(d)})";
     }
 
-    private string BoolAtom() =>
+    // LINQ bool は式木の leaf 到達率が高い atom 側にも注入する
+    // (BoolExpr の depth>0 arm だけでは出現率が枯れる)
+    private string BoolAtom()
+    {
+        if (_rng.Next(5) == 0 && _listVars.Count > 0)
+            return LinqBoolOrElse(BasicBoolAtom);
+        return BasicBoolAtom();
+    }
+
+    private string BasicBoolAtom() =>
         _rng.Next(3) == 0 && _boolVars.Count > 0
             ? _boolVars[_rng.Next(_boolVars.Count)]
             : $"({IntExpr(0)} {Comparison()} {IntExpr(0)})";
@@ -535,6 +548,7 @@ internal sealed partial class FuzzGenerator
             8 => $"({PickStringVar()} switch {{ \"{Needle()}\" => " +
                  $"{StringExpr(0)}, _ => {StringExpr(0)} }})",
             9 => ObjCallOrElse("string", depth, StringAtom),
+            10 => JoinOrElse(StringAtom),
             _ => HelperCallOrElse("string", depth, StringAtom),
         };
     }
