@@ -31,6 +31,56 @@ public class StringTests
         Assert.Equal("Hello Alice, age 30", result);
     }
 
+    // 補間文字列は `..` 連接で emit されるが、Lua の `#` は `..` より強く
+    // 結合するため、receiver 位置では括弧が必須
+    [Fact]
+    public void InterpolationLengthBindsWholeString()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static int Measure(int count)
+                {
+                    return $"n={count},tail".Length;
+                }
+            }
+            """,
+            "S.Measure(2)");
+        Assert.Equal("8", result);
+    }
+
+    [Fact]
+    public void InterpolationLengthInArithmetic()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static int Diff(int v)
+                {
+                    return v - $"i={v}".Length;
+                }
+            }
+            """,
+            "S.Diff(100)");
+        Assert.Equal("95", result);
+    }
+
+    [Fact]
+    public void EmptyInterpolationIsEmptyString()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Tag(string s)
+                {
+                    return $"" + s + $"";
+                }
+            }
+            """,
+            "S.Tag('x')");
+        Assert.Equal("x", result);
+    }
+
     [Fact]
     public void ConcatTreatsNullOperandAsEmptyString()
     {

@@ -196,7 +196,13 @@ public partial class LuaEmitter
                     break;
             }
         }
-        return string.Join(" .. ", parts);
+        if (parts.Count == 0)
+            return "\"\"";
+        // `..` 連接は atomic でない (`#` や member access が先頭要素にだけ
+        // 結合する) ため、receiver 位置でも安全なように括弧で閉じる
+        return parts.Count == 1
+            ? parts[0]
+            : "(" + string.Join(" .. ", parts) + ")";
     }
 
     private static string ConvertFormatSpecifier(string fmt)

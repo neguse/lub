@@ -1457,3 +1457,8 @@
 - HotReload: layout の変わった struct ごとに再直列化関数を生成し、owner (class instance field / static field、直接と配列の両形) 経由で新 layout の table に組み直す。retained field は旧値 (struct は再帰 migrate)、added は default (struct なら v2 の zero 値)、同名型変更は新型 default へ reset
 - 検証: HotReloadTests +3 (struct field 追加+削除 / 配列要素 / added struct field の zero 値)、StructSemanticsTests +1 (default init)、全 725+48 green
 - 残課題: List/Dict 内 struct 値の再直列化、record class の migration、実導線接続 (tasks.md 記載)
+
+### T232: 補間文字列 emit の atomicity 修正 (fuzz 発見) ✓ (2026-08-07)
+- T231 の拡張 fuzz が 4/200 seeds で即検出した同根バグの修正。補間文字列が括弧なしの `..` 連接チェーンで emit されるが、Lua は `#` が `..` より強く結合するため、`$"...".Length` が「先頭リテラルの長さに残りを連接した文字列」になる (crash 2 seeds / silent 誤出力 2 seeds)。legacy (`VisitInterpolatedString`) と IL (`BuildInterpolatedString`) の両経路を producer 側で括弧付けに修正。`$""` (空補間) が空文字列 emit になり構文エラーを生む隣接バグも同時修正
+- 検証: 新規 StringTests 3 本 (Length receiver / 算術文脈 / 空補間) Red→Green、全 733+48 green、run-fuzz.sh 500 seeds ×2 域 (1000-1499 / 5000-5499) 差分ゼロ
+- 判断: 修正は `#` 使用側の括弧補強でなく producer 側 — 「複合式は自己完結で emit する」という emitter の他経路と同じ不変条件に合わせた (IL 側も `IlParen` wrap で同形)

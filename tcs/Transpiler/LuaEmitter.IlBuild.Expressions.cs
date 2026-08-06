@@ -716,10 +716,12 @@ public partial class LuaEmitter
                     return null;
             }
         }
-        if (parts.Count == 0) return null;
+        if (parts.Count == 0) return new IlLit("\"\"");
         var result = parts[0];
         for (var i = 1; i < parts.Count; i++)
             result = new IlBin(IlBinOp.Concat, result, parts[i]);
-        return result;
+        // `..` 連接は atomic でない (IlLen / IlField が先頭要素にだけ結合する)
+        // ため、receiver 位置でも安全なように IlParen で閉じる
+        return parts.Count == 1 ? result : new IlParen(result);
     }
 }
