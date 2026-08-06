@@ -20,6 +20,44 @@ public class LinqSemanticTests
         Assert.Equal("true", result);
     }
 
+    // IEnumerable receiver (チェーン途中) でも default(T) が要る —
+    // List receiver 専用分岐だけ default を注入していた退行の再現
+    [Fact]
+    public void Linq_FirstOrDefault_EmptyChain_ReturnsIntDefault()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2 };
+                    return list.OrderBy(x => x).Skip(5).FirstOrDefault();
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void Linq_LastOrDefault_EmptyWhereChain_ReturnsIntDefault()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            using System.Linq;
+            public class T
+            {
+                public static int Test()
+                {
+                    var list = new List<int> { 1, 2 };
+                    return list.Where(x => x > 100).LastOrDefault();
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("0", result);
+    }
+
     [Fact]
     public void Linq_FirstOrDefault_Found()
     {

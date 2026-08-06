@@ -47,6 +47,18 @@ public partial class LuaEmitter
             {
                 var recvExt = BuildExpr(model, ma.Expression);
                 if (recvExt == null) return true; // fallback
+                // OrDefault 系は List receiver 分岐と同様に default(T) を渡す
+                if (methodName is "FirstOrDefault" or "LastOrDefault")
+                {
+                    var predicateExt = args.Length > 0
+                        ? args[0]
+                        : new IlLit("nil");
+                    result = new IlCall($"List.{methodName}",
+                        [recvExt, predicateExt,
+                         new IlLit(GetDefaultValueForType(
+                             methodSym.ReturnType))]);
+                    return true;
+                }
                 result = new IlCall($"List.{methodName}",
                     [recvExt, .. args]);
                 return true;

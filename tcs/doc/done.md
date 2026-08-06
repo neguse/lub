@@ -1487,3 +1487,8 @@
 - instance method body は field を平名でスコープ登録して既存の Statement/式生成器を再利用 (状態変化する field 書き込みも生成される)。record の直接 WriteLine は ToString 書式が C# と異なるため member 単位で出力
 - reducer は 型リストも greedy 削除対象に追加 (使用中の型は invalid C# ガードで保護)
 - 検証: FuzzTests coverage マーカー 27 種 green、subset invariant 30 seeds green (property pattern 含め全構文がサブセット内)、deep fuzz 2300 seeds (1000-1999 / 7000-7999 / 初回300) 差分ゼロ、全 737+48 green
+
+### T237: LINQ チェーンの FirstOrDefault/LastOrDefault が default(T) を返さない修正 (fuzz 発見) ✓ (2026-08-07)
+- T234(a) の LINQ fuzz が 5/500 seeds で検出。List receiver 直呼びの OrDefault 系は呼び出しサイトの型から default(T) を注入済みだったが、**IEnumerable 拡張メソッドの汎用 fallthrough (チェーン途中 — `xs.OrderBy(...).Skip(2).FirstOrDefault()` 等) が default を渡しておらず**、空列で nil が漏れる。int なら 0 のはずが nil → 後段の算術で crash、record field 経由なら `nil` 出力の silent wrong-code
+- 修正: legacy / IL 両経路の拡張メソッド fallthrough に OrDefault 特例を追加し、`methodSym.ReturnType` から default(T) を埋め込む (List receiver 分岐と同形)
+- 検証: LinqSemanticTests +2 (OrderBy.Skip 空列 / Where 空列) Red→Green、20/20 green、run-fuzz.sh 500 seeds 差分ゼロ (修正前 5/500 失敗)、全 739+48 green

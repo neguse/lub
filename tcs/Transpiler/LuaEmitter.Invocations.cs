@@ -249,6 +249,15 @@ public partial class LuaEmitter
         // LINQ extension methods on IEnumerable<T>
         if (methodSym.IsExtensionMethod && ListRuntimeMethods.Contains(methodName))
         {
+            // OrDefault 系は List receiver 分岐と同様に default(T) を渡す
+            // (渡さないと空列で nil が漏れて int の 0 と乖離する)
+            if (methodName is "FirstOrDefault" or "LastOrDefault")
+            {
+                var predicate = args.Count > 0 ? args[0] : "nil";
+                result = $"List.{methodName}({obj}, {predicate}, " +
+                    $"{GetDefaultValueForType(methodSym.ReturnType)})";
+                return true;
+            }
             var allArgs = new List<string> { obj };
             allArgs.AddRange(args);
             result = $"List.{methodName}({string.Join(", ", allArgs)})";
