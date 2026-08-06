@@ -10,12 +10,15 @@ namespace TinyCs.Tests.SpecConformance;
 /// 三項) / string 操作 (allowlist 全 API) / List / Dictionary /
 /// static helper メソッド (先行 helper のみ呼べるので再帰なし。
 /// オーバーロードは TCS1001 MethodOverload のため生成しない)。
+/// 型生成 (FuzzGenerator.TypeGen.cs): class (field / auto property /
+/// instance method / virtual dispatch / 継承) と positional record
+/// (with 式 / 値等価 / pattern)。
 /// 生成しないもの: 文字列は ASCII のみ、Dictionary の列挙 (Lua と順序が
 /// 異なる)、負数 bitwise / shift (support-matrix 記載の既知差異)。
 /// 部分式は常に自己完結 (括弧付き / ガード付き) で、実行時例外を踏む式
 /// (範囲外 Substring / indexer、ゼロ除算、MinValue/-1) は構造的に排除する。
 /// </summary>
-internal sealed class FuzzGenerator
+internal sealed partial class FuzzGenerator
 {
     private sealed record HelperInfo(string Name, string ReturnType,
         IReadOnlyList<string> ParamTypes);
@@ -47,9 +50,16 @@ internal sealed class FuzzGenerator
 
     public IReadOnlyList<string> LastHelpers { get; private set; } = [];
 
+    public IReadOnlyList<string> LastTypes { get; private set; } = [];
+
     public string Generate()
     {
         _helpers.Clear();
+        ResetTypes();
+        var typeTexts = new List<string>();
+        GenerateTypes(typeTexts);
+        LastTypes = typeTexts;
+
         var helperTexts = new List<string>();
         foreach (var _ in Enumerable.Range(0, _rng.Next(0, 4)))
             helperTexts.Add(GenerateHelper());
@@ -65,6 +75,7 @@ internal sealed class FuzzGenerator
             body.Add(DeclareList());
         if (_rng.Next(2) == 0)
             body.Add(DeclareDict());
+        DeclareObjects(body);
 
         foreach (var _ in Enumerable.Range(0, _rng.Next(5, 11)))
             body.Add(Statement(2));
@@ -84,18 +95,25 @@ internal sealed class FuzzGenerator
             foreach (var k in d.PoolKeys)
                 body.Add($"Console.WriteLine({d.Name}.ContainsKey({k}) " +
                     $"? {d.Name}[{k}] : -424242);");
+        ObjTailPrints(body);
 
         LastStatements = body;
-        return Assemble(body, helperTexts);
+        return Assemble(body, helperTexts, typeTexts);
     }
 
     internal static string Assemble(IReadOnlyList<string> statements,
-        IReadOnlyList<string>? helpers = null)
+        IReadOnlyList<string>? helpers = null,
+        IReadOnlyList<string>? types = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine();
+        foreach (var type in types ?? [])
+        {
+            sb.AppendLine(type);
+            sb.AppendLine();
+        }
         sb.AppendLine("public class Program");
         sb.AppendLine("{");
         foreach (var helper in helpers ?? [])
@@ -157,6 +175,8 @@ internal sealed class FuzzGenerator
         _stringVars.Clear();
         _listVars.Clear();
         _dicts.Clear();
+        _objVars.Clear();
+        _recordVars.Clear();
     }
 
     private string DeclareInt()
@@ -225,7 +245,7 @@ internal sealed class FuzzGenerator
         ? d.MissKey
         : d.PoolKeys[_rng.Next(d.PoolKeys.Length)];
 
-    private string Statement(int depth) => _rng.Next(14) switch
+    private string Statement(int depth) => _rng.Next(16) switch
     {
         0 => SimpleAssign(),
         1 => $"{PickIntVar()} {Pick("+=", "-=", "*=")} {IntExpr(1)};",
@@ -242,6 +262,8 @@ internal sealed class FuzzGenerator
         10 => ListStatement(),
         11 => DictStatement(),
         12 => ForeachOverList(),
+        13 => ObjStatement(),
+        14 => RecordWithAssign(),
         _ => $"Console.WriteLine({(_rng.Next(2) == 0 ? IntExpr(2) : BoolExpr(1))});",
     };
 
@@ -372,7 +394,7 @@ internal sealed class FuzzGenerator
     {
         if (depth <= 0 || _rng.Next(3) == 0)
             return IntAtom();
-        return _rng.Next(12) switch
+        return _rng.Next(14) switch
         {
             // 片側を変数にして constant folding 時の CS0220 を避けつつ、
             // 実行時の int32 wrap を踏む。
@@ -388,6 +410,8 @@ internal sealed class FuzzGenerator
             8 => GuardedVarDivision(),
             9 => GuardedListRead(depth),
             10 => GuardedDictRead(depth),
+            11 => ObjCallOrElse("int", depth, IntAtom),
+            12 => IsDesignationOrElse(depth, IntAtom),
             _ => SwitchExprInt(),
         };
     }
@@ -440,6 +464,8 @@ internal sealed class FuzzGenerator
         if (roll == 2 && _listVars.Count > 0)
             return $"{_listVars[_rng.Next(_listVars.Count)]}.IndexOf(" +
                 $"{(_rng.Next(2) == 0 ? PickReadableIntVar() : NextInt32().ToString())})";
+        if (roll == 3 && ObjMemberRead("int") is { } member)
+            return member;
         return _rng.Next(2) == 0 && _intVars.Count > 0
             ? PickReadableIntVar()
             : NextInt32().ToString();
@@ -459,7 +485,7 @@ internal sealed class FuzzGenerator
     {
         if (depth <= 0)
             return BoolAtom();
-        return _rng.Next(9) switch
+        return _rng.Next(12) switch
         {
             0 => $"({BoolExpr(depth - 1)} && {BoolExpr(depth - 1)})",
             1 => $"({BoolExpr(depth - 1)} || {BoolExpr(depth - 1)})",
@@ -474,6 +500,9 @@ internal sealed class FuzzGenerator
             7 => _dicts.Count > 0
                 ? ContainsKeyExpr()
                 : BoolAtom(),
+            8 => IsTypeCheckOrElse(BoolAtom),
+            9 => RecordEqualityOrElse(BoolAtom),
+            10 => PropertyPatternOrElse(BoolAtom),
             _ => HelperCallOrElse("bool", depth, BoolAtom),
         };
     }
@@ -493,7 +522,7 @@ internal sealed class FuzzGenerator
     {
         if (depth <= 0 || _rng.Next(3) == 0)
             return StringAtom();
-        return _rng.Next(10) switch
+        return _rng.Next(11) switch
         {
             0 => $"({StringExpr(depth - 1)} + {StringExpr(depth - 1)})",
             1 => $"({PickStringVar()} + {IntExpr(depth - 1)})",
@@ -505,14 +534,19 @@ internal sealed class FuzzGenerator
             7 => $"({BoolExpr(0)} ? {StringExpr(depth - 1)} : {StringExpr(depth - 1)})",
             8 => $"({PickStringVar()} switch {{ \"{Needle()}\" => " +
                  $"{StringExpr(0)}, _ => {StringExpr(0)} }})",
+            9 => ObjCallOrElse("string", depth, StringAtom),
             _ => HelperCallOrElse("string", depth, StringAtom),
         };
     }
 
-    private string StringAtom() =>
-        _rng.Next(2) == 0 && _stringVars.Count > 0
+    private string StringAtom()
+    {
+        if (_rng.Next(5) == 0 && ObjMemberRead("string") is { } member)
+            return member;
+        return _rng.Next(2) == 0 && _stringVars.Count > 0
             ? PickStringVar()
             : $"\"s{_rng.Next(100)}\"";
+    }
 
     // Substring は範囲外で C# が throw する (サブセットに try はない) ため
     // 常にガード付き。receiver はガードと本体で 2 回評価するので変数限定

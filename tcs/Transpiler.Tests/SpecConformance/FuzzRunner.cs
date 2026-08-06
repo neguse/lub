@@ -71,15 +71,17 @@ internal sealed class FuzzRunner
     }
 
     /// <summary>
-    /// 失敗した seed の文リストと helper リストを greedy に削って
+    /// 失敗した seed の文 / helper / 型リストを greedy に削って
     /// 最小再現ソースを返す。
     /// </summary>
     public string Reduce(IReadOnlyList<string> statements,
         Func<string, string>? mutateLua = null,
-        IReadOnlyList<string>? helpers = null)
+        IReadOnlyList<string>? helpers = null,
+        IReadOnlyList<string>? types = null)
     {
         var currentStatements = statements.ToList();
         var currentHelpers = (helpers ?? []).ToList();
+        var currentTypes = (types ?? []).ToList();
         var shrunk = true;
         while (shrunk)
         {
@@ -89,9 +91,8 @@ internal sealed class FuzzRunner
             {
                 var candidate = currentStatements
                     .Where((_, i) => i != index).ToList();
-                if (StillFailsSameWay(
-                    FuzzGenerator.Assemble(candidate, currentHelpers),
-                    mutateLua))
+                if (StillFailsSameWay(FuzzGenerator.Assemble(candidate,
+                        currentHelpers, currentTypes), mutateLua))
                 {
                     currentStatements = candidate;
                     shrunk = true;
@@ -101,16 +102,27 @@ internal sealed class FuzzRunner
             {
                 var candidate = currentHelpers
                     .Where((_, i) => i != index).ToList();
-                if (StillFailsSameWay(
-                    FuzzGenerator.Assemble(currentStatements, candidate),
-                    mutateLua))
+                if (StillFailsSameWay(FuzzGenerator.Assemble(currentStatements,
+                        candidate, currentTypes), mutateLua))
                 {
                     currentHelpers = candidate;
                     shrunk = true;
                 }
             }
+            for (var index = currentTypes.Count - 1; index >= 0; index--)
+            {
+                var candidate = currentTypes
+                    .Where((_, i) => i != index).ToList();
+                if (StillFailsSameWay(FuzzGenerator.Assemble(currentStatements,
+                        currentHelpers, candidate), mutateLua))
+                {
+                    currentTypes = candidate;
+                    shrunk = true;
+                }
+            }
         }
-        return FuzzGenerator.Assemble(currentStatements, currentHelpers);
+        return FuzzGenerator.Assemble(currentStatements, currentHelpers,
+            currentTypes);
     }
 
     // 使用中の変数/helper を消すと C# として不正になる。その候補を採用すると

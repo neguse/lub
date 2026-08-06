@@ -65,8 +65,9 @@ hot reload の fuzz は compat 文法の拡張が一巡してから独立に起�
             break・continue / foreach / 三項 / 変数除数 (正数ガード) /
             List indexer・Sort・RemoveAt / Dictionary (両キー型、列挙なし、
             固定キープローブ)
-      - [ ] (b) class/record 生成 (field / property / instance method /
-            継承 / virtual dispatch)、pattern
+      - [x] (b) class/record 生成 (field / auto property / instance method /
+            継承 / 実行時条件の virtual dispatch)、record with 式・値等価、
+            is / is-designation / property pattern
 - [ ] **T234** (P2): fuzz 文法拡張 第3弾 — LINQ 小核 (allowlist 内)、
       struct copy セマンティクス (T219b 解禁後)
 - [ ] **T235** (P2): hot reload fuzz — v1/v2 型定義ペアを生成して reload し、

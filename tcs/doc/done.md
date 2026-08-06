@@ -1481,3 +1481,9 @@
 - FuzzGenerator に追加: 有界 while (カウンタは block スコープなので変数表に登録しない — 終了保証も兼ねる)、switch 文 (int/string、block 付き case)、switch 式 (定数 arm を先頭に置き CS8510 包摂を回避)、break/continue (増分先頭の while なので continue しても前進)、foreach (body はリスト不変更)、三項、正数ガード付き変数除数 (MinValue/-1 overflow も排除)、複合代入 -=/*=//=/%=、List indexer 読み書き・Sort・RemoveAt (全て Count ガード)、Dictionary int/string キー (Add は相異 pool キー、読みは ContainsKey ガード、TryGetValue out var、列挙は Lua と順序が異なるため生成せず固定キープローブで内容検証)
 - 検証: FuzzTests 6 本 green (coverage マーカー 19 種)、初回 300 seeds で 153 失敗 → 全て単一根 (T236 switch break) と特定、修正後 300 seeds 差分ゼロ、全 737+48 green
 - よかったこと: 「範囲内が呼び出し側契約の API は常にガード付きで生成」の原則 (Substring と同型) が List/Dict にそのまま延びた。early break の縮小 repro が switch 単体まで縮んで root cause 特定が数分で済んだ
+
+### T233(b): fuzz 文法拡張 第2弾 — class/record 生成 ✓ (2026-08-07)
+- FuzzGenerator.TypeGen.cs (partial) を追加: class 生成 (int/string field initializer、auto property、instance method 0-2 引数、virtual + override、単一継承)、positional record (先頭 param は int 保証)。ctor は生成しない (MultipleConstructors 回避、object initializer で代替)。`Base o = (cond ? new Derived() : new Base());` の実行時条件 dispatch、is / is-designation 三項 / property pattern (record・auto property 両方)、record の with 再代入 (`r = r with {...}` — 宣言文にしないのは nested block スコープ事故防止)、値等価 ==/!=
+- instance method body は field を平名でスコープ登録して既存の Statement/式生成器を再利用 (状態変化する field 書き込みも生成される)。record の直接 WriteLine は ToString 書式が C# と異なるため member 単位で出力
+- reducer は 型リストも greedy 削除対象に追加 (使用中の型は invalid C# ガードで保護)
+- 検証: FuzzTests coverage マーカー 27 種 green、subset invariant 30 seeds green (property pattern 含め全構文がサブセット内)、deep fuzz 2300 seeds (1000-1999 / 7000-7999 / 初回300) 差分ゼロ、全 737+48 green

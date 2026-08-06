@@ -41,6 +41,14 @@ public class FuzzTests
         Assert.Contains(".TryGetValue(", corpus);
         Assert.Contains(".Sort()", corpus);
         Assert.Contains(".RemoveAt(", corpus);
+        Assert.Contains("public class C", corpus);
+        Assert.Contains("public record R", corpus);
+        Assert.Contains("public virtual int", corpus);
+        Assert.Contains("public override int", corpus);
+        Assert.Contains("{ get; set; }", corpus);
+        Assert.Contains(" with { ", corpus);
+        Assert.Contains(" is C", corpus);
+        Assert.Contains(" : C0", corpus);
     }
 
     // ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload —
@@ -108,11 +116,13 @@ public class FuzzTests
         generator.Generate();
         var statements = generator.LastStatements;
         var helpers = generator.LastHelpers;
+        var types = generator.LastTypes;
 
-        var reduced = runner.Reduce(statements, InjectFault, helpers);
+        var reduced = runner.Reduce(statements, InjectFault, helpers, types);
 
         Assert.True(reduced.Split('\n').Length <
-            FuzzGenerator.Assemble(statements, helpers).Split('\n').Length,
+            FuzzGenerator.Assemble(statements, helpers, types)
+                .Split('\n').Length,
             "reducer should shrink the program");
         Assert.False(runner.RunOne(reduced, InjectFault).Ok);
     }
@@ -138,7 +148,7 @@ public class FuzzTests
             if (outcome.Ok)
                 continue;
             var reduced = runner.Reduce(generator.LastStatements,
-                helpers: generator.LastHelpers);
+                helpers: generator.LastHelpers, types: generator.LastTypes);
             failures.Add($"seed {baseSeed + offset}: {outcome.Details}\n" +
                 $"--- reduced repro ---\n{reduced}");
         }
