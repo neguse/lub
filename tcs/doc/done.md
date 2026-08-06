@@ -1462,3 +1462,11 @@
 - T231 の拡張 fuzz が 4/200 seeds で即検出した同根バグの修正。補間文字列が括弧なしの `..` 連接チェーンで emit されるが、Lua は `#` が `..` より強く結合するため、`$"...".Length` が「先頭リテラルの長さに残りを連接した文字列」になる (crash 2 seeds / silent 誤出力 2 seeds)。legacy (`VisitInterpolatedString`) と IL (`BuildInterpolatedString`) の両経路を producer 側で括弧付けに修正。`$""` (空補間) が空文字列 emit になり構文エラーを生む隣接バグも同時修正
 - 検証: 新規 StringTests 3 本 (Length receiver / 算術文脈 / 空補間) Red→Green、全 733+48 green、run-fuzz.sh 500 seeds ×2 域 (1000-1499 / 5000-5499) 差分ゼロ
 - 判断: 修正は `#` 使用側の括弧補強でなく producer 側 — 「複合式は自己完結で emit する」という emitter の他経路と同じ不変条件に合わせた (IL 側も `IlParen` wrap で同形)
+
+### T231: fuzz 文法拡張 第1弾 — string 操作 + static helper ✓ (2026-08-07)
+- FuzzGenerator を拡張: string allowlist 全 API (Length / Contains / StartsWith / EndsWith / IndexOf / Replace / Trim / ToUpper / ToLower / ガード付き Substring)、文字列補間、static helper メソッド 0-3 個 (int/bool/string の型付きシグネチャ、先行 helper のみ呼べる非再帰構造、呼び出しは各型の式アトムとして合流)。文字列は ASCII のみ (UTF-16/バイト列既知差異を踏まない)
+- ユーザー定義オーバーロード生成は実装直後に TCS1001 (MethodOverload) と判明し撤去 — 新設した transpile-only の subset invariant テストが実行前に検出。「生成しないこと」のテストへ反転して固定
+- FuzzRunner.Reduce を helper 対応にし、「使用中 decl/helper の削除で compile error にすり替わった候補は採用しない」ガードを追加 (semantic bug の再現が invalid C# に化けるのを防ぐ)
+- 検証: FuzzTests 6 本 green (決定性 / 文法枝の生存 / オーバーロード不生成 / subset invariant 30 seeds / 故障注入検出 / 縮小)、拡張直後の run-fuzz.sh で 4/200 seeds が実バグを検出 (→ T232 で修正済み)、修正後 1000 seeds (1000-1499 / 5000-5499) 差分ゼロ。run-tests の 20-seed smoke は自動で強化済み
+- よかったこと: 拡張初回の 200 seeds で silent wrong-code (補間 + Length) を掘り当てた — 手書き 733 テストと仕様 corpus 642 例が踏んでいなかった領域。縮小器は 4 件とも数文の repro まで縮めた
+- 判断: 方向はユーザー決定「C# compat が先」(2026-08-07)。hot reload fuzz は不変量オラクルの新設計になるため T235 として分離。第2弾 (class/record/pattern) は T233、LINQ/struct は T234

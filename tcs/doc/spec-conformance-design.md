@@ -147,6 +147,8 @@ deps/csharpstandard (submodule, pin)
 
 - サブセット文法（式 / 文 / class / record / pattern / LINQ 小核）上の
   プログラム生成器。seed 固定・再現可能。数値は整数中心、浮動小数は正規化前提
+- 生成文法は段階拡張中 — 現状は式 / 文 / string 全 API / static helper。
+  残段階は tasks.md の Conformance / fuzz トラック参照
 - 生成 → tcs check → pass のみ dotnet / Lua differential → 差異発見時に
   自動縮小（reducer）して最小再現を保存
 - nightly 運用（実行時間 budget を決めて打ち切り）

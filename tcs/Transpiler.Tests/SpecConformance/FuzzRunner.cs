@@ -71,29 +71,56 @@ internal sealed class FuzzRunner
     }
 
     /// <summary>
-    /// 失敗した seed の文リストを greedy に削って最小再現ソースを返す。
+    /// 失敗した seed の文リストと helper リストを greedy に削って
+    /// 最小再現ソースを返す。
     /// </summary>
     public string Reduce(IReadOnlyList<string> statements,
-        Func<string, string>? mutateLua = null)
+        Func<string, string>? mutateLua = null,
+        IReadOnlyList<string>? helpers = null)
     {
-        var current = statements.ToList();
+        var currentStatements = statements.ToList();
+        var currentHelpers = (helpers ?? []).ToList();
         var shrunk = true;
-        while (shrunk && current.Count > 1)
+        while (shrunk)
         {
             shrunk = false;
-            for (var index = current.Count - 1; index >= 0; index--)
+            for (var index = currentStatements.Count - 1;
+                index >= 0 && currentStatements.Count > 1; index--)
             {
-                var candidate = current.Where((_, i) => i != index).ToList();
-                var outcome = RunOne(FuzzGenerator.Assemble(candidate),
-                    mutateLua);
-                if (!outcome.Ok)
+                var candidate = currentStatements
+                    .Where((_, i) => i != index).ToList();
+                if (StillFailsSameWay(
+                    FuzzGenerator.Assemble(candidate, currentHelpers),
+                    mutateLua))
                 {
-                    current = candidate;
+                    currentStatements = candidate;
+                    shrunk = true;
+                }
+            }
+            for (var index = currentHelpers.Count - 1; index >= 0; index--)
+            {
+                var candidate = currentHelpers
+                    .Where((_, i) => i != index).ToList();
+                if (StillFailsSameWay(
+                    FuzzGenerator.Assemble(currentStatements, candidate),
+                    mutateLua))
+                {
+                    currentHelpers = candidate;
                     shrunk = true;
                 }
             }
         }
-        return FuzzGenerator.Assemble(current);
+        return FuzzGenerator.Assemble(currentStatements, currentHelpers);
+    }
+
+    // 使用中の変数/helper を消すと C# として不正になる。その候補を採用すると
+    // semantic bug の再現が compile error へすり替わるため除外する
+    private bool StillFailsSameWay(string source,
+        Func<string, string>? mutateLua)
+    {
+        var outcome = RunOne(source, mutateLua);
+        return !outcome.Ok && !outcome.Details.StartsWith(
+            "generator produced invalid C#", StringComparison.Ordinal);
     }
 
     private static FuzzOutcome Mismatch(string[] dotnetLines,

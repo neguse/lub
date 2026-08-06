@@ -54,6 +54,22 @@
 
 ---
 
+## Conformance / fuzz トラック（spec-conformance-design.md C4 の継続拡張）
+
+方針 (ユーザー決定 2026-08-07): C# compat の differential fuzz を先に育てる。
+hot reload の fuzz は compat 文法の拡張が一巡してから独立に起こす。
+
+- [ ] **T233** (P1): fuzz 文法拡張 第2弾 — class/record 生成 (field /
+      property / instance method / 継承)、Dictionary、while/switch、pattern。
+      ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload) で対象外
+- [ ] **T234** (P2): fuzz 文法拡張 第3弾 — LINQ 小核 (allowlist 内)、
+      struct copy セマンティクス (T219b 解禁後)
+- [ ] **T235** (P2): hot reload fuzz — v1/v2 型定義ペアを生成して reload し、
+      不変量 (retained 保持 / added=initializer / identity 維持) を検証。
+      differential でなく不変量オラクルの新設計になるため独立タスク
+
+---
+
 - lub 検証トラックの追加サンプル移植・Useful 層追加は需要駆動
 - 診断一致 (analyzer / check / transpiler) とファイルサイズ (600/800 行) は
   run-tests の恒常ゲートで守る
