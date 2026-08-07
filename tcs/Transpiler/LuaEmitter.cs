@@ -141,7 +141,10 @@ public partial class LuaEmitter
                 VisitClass(model, cls);
                 break;
             case RecordDeclarationSyntax rec:
-                VisitRecord(model, rec);
+                if (rec.Kind() == SyntaxKind.RecordStructDeclaration)
+                    VisitRecordStruct(model, rec);
+                else
+                    VisitRecord(model, rec);
                 break;
             case EnumDeclarationSyntax enumDecl:
                 VisitEnum(model, enumDecl);

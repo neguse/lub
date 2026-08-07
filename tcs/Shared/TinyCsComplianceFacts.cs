@@ -70,17 +70,19 @@ public static partial class TinyCsComplianceFacts
             StructDeclarationSyntax nestedStruct
                 when nestedStruct.Parent is TypeDeclarationSyntax
                     => "NestedTypeDeclaration",
-            // T219b(a): instance method / property / 単一のパラメータ付き ctor
-            // は対応 (静的自由関数へ emit)。static member・operator・indexer
-            // 等は引き続きサブセット外
+            // T219b(a)(b): instance method / property / 単一のパラメータ付き
+            // ctor は対応 (静的自由関数へ emit)。record struct 本体の member も
+            // 同じ規則。static member・operator・indexer 等は引き続き
+            // サブセット外
             MemberDeclarationSyntax structMember
-                when structMember.Parent is StructDeclarationSyntax
+                when (structMember.Parent is StructDeclarationSyntax
+                        || structMember.Parent is RecordDeclarationSyntax
+                        {
+                            RawKind: (int)SyntaxKind.RecordStructDeclaration
+                        })
                     && structMember is not FieldDeclarationSyntax
                     && !IsSupportedStructMember(structMember)
                     => $"StructMember({structMember.Kind()})",
-            RecordDeclarationSyntax record
-                when record.Kind() == SyntaxKind.RecordStructDeclaration
-                    => "RecordStructDeclaration",
             TypeDeclarationSyntax type
                 when type.Modifiers.Any(SyntaxKind.PartialKeyword)
                     => "PartialTypeDeclaration",

@@ -585,11 +585,15 @@ public partial class LuaEmitter
 
     private static string GetDefaultValueForType(ITypeSymbol? type)
     {
-        // source 宣言のデータ struct (M5 v1) の default は zero 初期化された
+        // source 宣言の struct / record struct の default は zero 初期化された
         // struct 値 (C# 意味論)。nil にすると member アクセスが落ちる
         if (type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
             && type.DeclaringSyntaxReferences.Any(
-                r => r.GetSyntax() is StructDeclarationSyntax))
+                r => r.GetSyntax() is StructDeclarationSyntax
+                    or RecordDeclarationSyntax
+                    {
+                        RawKind: (int)SyntaxKind.RecordStructDeclaration
+                    }))
         {
             return $"{type.Name}.new()";
         }

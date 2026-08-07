@@ -19,11 +19,11 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | namespaces.md | 0 | 15 | 3 | 10 | 7 | 0 | 35 |
 | patterns.md | 1 | 0 | 18 | 0 | 1 | 0 | 20 |
 | statements.md | 0 | 0 | 30 | 5 | 0 | 0 | 35 |
-| structs.md | 1 | 1 | 11 | 8 | 3 | 0 | 24 |
+| structs.md | 1 | 3 | 9 | 8 | 3 | 0 | 24 |
 | types.md | 3 | 4 | 13 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 35 | 136 | 303 | 119 | 49 | 0 | 642 |
+| **Total** | 35 | 138 | 301 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 

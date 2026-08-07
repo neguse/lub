@@ -221,6 +221,21 @@ public partial class LuaEmitter
         var right = BuildExpr(model, bin.Right);
         if (left == null || right == null) return null;
 
+        // record struct の ==/!= は合成値等価へ (plain table の raw == は
+        // identity 比較になってしまう)
+        if ((bin.IsKind(SyntaxKind.EqualsExpression)
+                || bin.IsKind(SyntaxKind.NotEqualsExpression))
+            && model.GetTypeInfo(bin.Left).Type is INamedTypeSymbol
+                { IsRecord: true } eqType
+            && IsUserStruct(eqType))
+        {
+            var eqCall = new IlCall($"{eqType.Name}.op_Equality",
+                [left, right]);
+            return bin.IsKind(SyntaxKind.EqualsExpression)
+                ? eqCall
+                : new IlParen(new IlUn(IlUnOp.Not, eqCall));
+        }
+
         if (bin.IsKind(SyntaxKind.DivideExpression)
             && IsIntegralType(model.GetTypeInfo(bin).Type))
             return new IlCall("__tcs_idiv", [left, right]);

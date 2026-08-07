@@ -40,7 +40,14 @@
             単一のパラメータ付き ctor を静的自由関数へ emit。receiver 規則
             (変数=直渡し / rvalue=copy) 込み。static member・operator・
             indexer は引き続き診断
-      - [ ] (b) record struct (== / Equals / with を生成静的関数で)
+      - [x] (b) record struct 解禁 (2026-08-08): positional ctor / 値等価
+            op_Equality (ネスト struct は推移的 field 展開) / with 式 /
+            readonly record struct。Equals/GetHashCode 呼びと ToString は
+            対象外のまま
+      - 残 (d で扱う): __tcs_scopy は shallow のため struct-in-struct の
+        copy 経由部分書き込みが alias する潜在ギャップ (v1 由来) —
+        per-struct copy 関数の生成で解消する (IlStructCopy の型情報付与と
+        セット、tcs2c 契約と同時に)
       - [ ] (c) readonly (record) struct の copy 全省略
       - [ ] (d) tcs2c 側の struct member / record struct 対応
       設計方針 (2026-08-07 討議):

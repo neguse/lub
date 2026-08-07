@@ -1513,3 +1513,10 @@
 - override method (ToString/Equals/GetHashCode) は診断維持 — 呼び出しが tostring 等の動的経路に乗り metatable なしでは差し替え不能 (class 側も __tostring 未対応で、対応するなら両者一括の別タスク)。spec sweep の structs.md:Constructors1 が Diag→Bug になったことで検出
 - spec conformance baseline 更新: 診断緩和で 7 例が Diag → InCompile x5 / InRun x2 へ改善 (InRun は実 .NET オラクルと出力一致 — 仕様 corpus でも member 意味論を裏取り)
 - 検証: StructSemanticsTests +7 (Red→Green、receiver 3 形 / ctor / auto・custom property / static 診断維持)、analyzer・CLI・demo の診断期待を instance 解禁へ追随 (TCS1001 x5 維持)、spec sweep 642 例 Bug ゼロ、全 745+48 green、fuzz 300 seeds 差分ゼロ
+
+### T219b(b): record struct 解禁 ✓ (2026-08-08)
+- record struct / readonly record struct をサブセット解禁。emit は struct と同じ plain table + 自由関数の上に、positional primary ctor (`R.ctor` — zero → positional 代入 → field initializer 順、initializer は param 参照可) と値等価 `R.op_Equality` を合成。==/!= の呼び出しサイトは IlBuild が静的型 (INamedTypeSymbol.IsRecord + struct) から直接振り分け、!= は not 包み
+- 値等価はネストした struct 値を推移的に field 展開して比較 (struct は循環不能なので停止)。member 列挙は IFieldSymbol ベース (positional prop の backing field 込み) で明示 field / auto prop / positional を一様に拾う
+- with 式は既存 IlWith render がそのまま正しい (plain table では `setmetatable(copy, getmetatable(src))` が no-op)。`new R()` は zero 値 (ctor を通らない — C# と一致)。record struct 本体の member は struct と同じ規則 (instance のみ、override/static は診断)
+- 発見 (d 送り): __tcs_scopy が shallow のため struct-in-struct の copy 経由部分書き込みが alias する潜在ギャップ (v1 由来) を特定 — per-struct copy 関数生成で解消予定、tasks.md に記録
+- 検証: StructSemanticsTests +6 (positional/zero、値等価、with、代入 copy、ネスト値等価、readonly) Red→Green、DiagnosticTests/analyzer の record struct 期待を解禁へ追随、spec sweep で structs.md の RecordStruct 2 例が Diag→InCompile (baseline 更新、Bug ゼロ維持)、全 749+48 green、fuzz 300 seeds 差分ゼロ

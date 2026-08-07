@@ -175,14 +175,24 @@ public class DiagnosticTests
             w => w.Contains("StructDeclaration"));
     }
 
+    // T219b(b): record struct は対応済み。static member は struct と同じく
+    // サブセット外のまま
     [Fact]
-    public void UnsupportedRecordStructDeclaration_ReportsWarning()
+    public void RecordStruct_IsClean_StaticMemberReportsWarning()
     {
-        var result = Transpiler.TranspileWithDiagnostics(["""
+        var clean = Transpiler.TranspileWithDiagnostics(["""
             public readonly record struct Vec2(int X, int Y);
             """]);
+        Assert.DoesNotContain(clean.Warnings,
+            w => w.Contains("RecordStruct") || w.Contains("StructMember"));
 
-        AssertUnsupportedWarning(result, "RecordStructDeclaration");
+        var withStatic = Transpiler.TranspileWithDiagnostics(["""
+            public record struct Vec2(int X, int Y)
+            {
+                public static int Make() { return 1; }
+            }
+            """]);
+        AssertUnsupportedWarning(withStatic, "StructMember");
     }
 
     [Fact]

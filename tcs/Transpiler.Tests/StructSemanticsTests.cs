@@ -244,4 +244,125 @@ public class StructSemanticsTests
         Assert.Contains(result.Warnings,
             w => w.Contains("StructMember"));
     }
+
+    // ---- T219b(b): record struct ----
+
+    [Fact]
+    public void RecordStruct_PositionalCreate_AndNewIsZero()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record struct Pair(int A, string B);
+            public class T
+            {
+                public static string Test()
+                {
+                    var p = new Pair(3, "sx");
+                    var z = new Pair();
+                    return $"{p.A}|{p.B}|{z.A}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("3|sx|0", result);
+    }
+
+    [Fact]
+    public void RecordStruct_ValueEquality()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record struct Pair(int A, string B);
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = new Pair(1, "s");
+                    var b = new Pair(1, "s");
+                    var c = new Pair(2, "s");
+                    return $"{a == b}|{a == c}|{a != c}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("true|false|true", result);
+    }
+
+    [Fact]
+    public void RecordStruct_With_CopiesAndOverrides()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record struct Pair(int A, string B);
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = new Pair(1, "x");
+                    var c = a with { A = 9 };
+                    return $"{a.A}|{c.A}|{c.B}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("1|9|x", result);
+    }
+
+    [Fact]
+    public void RecordStruct_AssignmentCopies()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public record struct Pair(int A, string B);
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = new Pair(1, "x");
+                    var b = a;
+                    b.A = 5;
+                    return $"{a.A}|{b.A}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("1|5", result);
+    }
+
+    // ネストした struct 値は推移的フィールド展開で値比較する
+    [Fact]
+    public void RecordStruct_NestedStructValueEquality()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public struct Inner
+            {
+                public int V;
+            }
+            public record struct Outer(Inner I, int K);
+            public class T
+            {
+                public static string Test()
+                {
+                    var i = new Inner();
+                    i.V = 7;
+                    var a = new Outer(i, 1);
+                    var b = new Outer(i, 1);
+                    i.V = 8;
+                    var c = new Outer(i, 1);
+                    return $"{a == b}|{a == c}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("true|false", result);
+    }
+
+    [Fact]
+    public void ReadonlyRecordStruct_CreateReadEquality()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public readonly record struct Rp(int X, int Y);
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = new Rp(2, 3);
+                    var b = new Rp(2, 3);
+                    return $"{a.X + a.Y}|{a == b}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("5|true", result);
+    }
 }

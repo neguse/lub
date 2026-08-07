@@ -135,4 +135,128 @@ public partial class LuaEmitter
         && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T
         && type.TypeKind != TypeKind.Enum
         && type.Locations.Any(l => l.IsInSource);
+
+    // record struct (T219b(b))。struct と同じ plain table + 自由関数の上に
+    // positional primary ctor と値等価 (op_Equality) を合成する。== の
+    // 呼び出しサイトは IlBuild が静的型から直接 op_Equality へ振り分ける
+    private void VisitRecordStruct(SemanticModel model,
+        RecordDeclarationSyntax rec)
+    {
+        SetSource(rec);
+        var name = rec.Identifier.ValueText;
+        var symbol = model.GetDeclaredSymbol(rec);
+        AppendLine($"{name} = {{}}");
+        AppendLine();
+        _currentType?.DefinitionKeys.Add("new");
+        AppendLine($"function {name}.new()");
+        _indent++;
+        AppendLine("local self = {}");
+        foreach (var (memberName, memberType) in ValueMembers(symbol))
+            AppendLine($"self.{memberName} = " +
+                $"{GetDefaultValueForType(memberType)}");
+        AppendLine("return self");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
+
+        // positional primary ctor: zero → positional 代入 → initializer の順
+        // (initializer は primary ctor param を参照できる — param 名で解決)
+        if (rec.ParameterList is { Parameters.Count: > 0 } parameterList)
+        {
+            var paramNames = parameterList.Parameters
+                .Select(p => p.Identifier.ValueText).ToList();
+            _currentType?.DefinitionKeys.Add("ctor");
+            AppendLine($"function {name}.ctor({string.Join(", ", paramNames)})");
+            _indent++;
+            AppendLine($"local self = {name}.new()");
+            foreach (var p in paramNames)
+                AppendLine($"self.{p} = {p}");
+            foreach (var field in rec.Members.OfType<FieldDeclarationSyntax>())
+                foreach (var v in field.Declaration.Variables)
+                    if (v.Initializer != null)
+                        AppendLine($"self.{v.Identifier.ValueText} = " +
+                            $"{VisitExpression(model, v.Initializer.Value)}");
+            foreach (var prop in rec.Members.OfType<PropertyDeclarationSyntax>())
+                if (prop.Initializer != null)
+                    AppendLine($"self.{prop.Identifier.ValueText} = " +
+                        $"{VisitExpression(model, prop.Initializer.Value)}");
+            AppendLine("return self");
+            _indent--;
+            AppendLine("end");
+            AppendLine();
+        }
+
+        // 値等価。ネスト struct 値は推移的に field 展開する (struct は
+        // 循環できないので停止する)
+        _currentType?.DefinitionKeys.Add("op_Equality");
+        AppendLine($"function {name}.op_Equality(a, b)");
+        _indent++;
+        var parts = symbol == null
+            ? []
+            : ValueEqualityParts(symbol, "a", "b").ToList();
+        AppendLine(parts.Count == 0
+            ? "return true"
+            : $"return {string.Join(" and ", parts)}");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
+
+        foreach (var member in rec.Members)
+        {
+            switch (member)
+            {
+                case MethodDeclarationSyntax method
+                    when !method.Modifiers.Any(SyntaxKind.StaticKeyword)
+                        && !method.Modifiers.Any(SyntaxKind.OverrideKeyword):
+                    VisitMethod(model, name, method, explicitSelf: true);
+                    break;
+                case PropertyDeclarationSyntax prop
+                    when !IsAutoProperty(prop) && prop.AccessorList != null
+                        && !prop.Modifiers.Any(SyntaxKind.StaticKeyword):
+                    VisitCustomProperty(model, name, prop, explicitSelf: true);
+                    break;
+                case PropertyDeclarationSyntax prop
+                    when prop.ExpressionBody != null:
+                    VisitExpressionBodiedProperty(model, name, prop,
+                        explicitSelf: true);
+                    break;
+            }
+        }
+    }
+
+    // 値を構成する member (positional prop の backing field 込み、
+    // EqualityContract のような合成 property は field を持たないので除外される)
+    private static IEnumerable<(string Name, ITypeSymbol Type)> ValueMembers(
+        INamedTypeSymbol? type)
+    {
+        if (type == null) yield break;
+        foreach (var field in type.GetMembers().OfType<IFieldSymbol>())
+        {
+            if (field.IsStatic || field.IsConst) continue;
+            yield return field.AssociatedSymbol is IPropertySymbol prop
+                ? (prop.Name, field.Type)
+                : (field.Name, field.Type);
+        }
+    }
+
+    private static IEnumerable<string> ValueEqualityParts(ITypeSymbol type,
+        string a, string b)
+    {
+        foreach (var field in type.GetMembers().OfType<IFieldSymbol>())
+        {
+            if (field.IsStatic || field.IsConst) continue;
+            var n = field.AssociatedSymbol is IPropertySymbol prop
+                ? prop.Name : field.Name;
+            if (IsUserStruct(field.Type))
+            {
+                foreach (var inner in ValueEqualityParts(field.Type,
+                    $"{a}.{n}", $"{b}.{n}"))
+                    yield return inner;
+            }
+            else
+            {
+                yield return $"{a}.{n} == {b}.{n}";
+            }
+        }
+    }
 }

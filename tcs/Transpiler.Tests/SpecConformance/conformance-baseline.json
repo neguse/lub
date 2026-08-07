@@ -1689,7 +1689,7 @@
     "category": "Diag"
   },
   "structs.md:RecordStructEqualityMembers1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "structs.md:RecordStructEqualityMembers2": {
     "category": "Unextracted",
@@ -1703,7 +1703,7 @@
     "reason": "expected-error-mismatch"
   },
   "structs.md:RecordStructPrintingMembers1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "structs.md:RecordStructPrintingMembers2": {
     "category": "CsErr"

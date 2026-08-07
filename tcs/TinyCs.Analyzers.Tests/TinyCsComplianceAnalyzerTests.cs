@@ -56,15 +56,23 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task RecordStructDeclaration_ReportsUnsupportedSyntax()
+    public async Task RecordStruct_IsClean_StaticMemberReports()
     {
-        var diagnostics = await AnalyzeAsync("""
+        // T219b(b): record struct は対応済み。static member は struct と同じ規則
+        var clean = await AnalyzeAsync("""
             public readonly record struct Vec2(int X, int Y);
             """);
+        Assert.Empty(clean);
 
-        var diagnostic = Assert.Single(diagnostics);
+        var withStatic = await AnalyzeAsync("""
+            public record struct Vec2(int X, int Y)
+            {
+                public static int Make() { return 1; }
+            }
+            """);
+        var diagnostic = Assert.Single(withStatic);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
-        Assert.Contains("RecordStructDeclaration", diagnostic.GetMessage());
+        Assert.Contains("StructMember", diagnostic.GetMessage());
     }
 
     [Fact]
@@ -154,11 +162,11 @@ public class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
             .ToArray();
 
+        // record struct 解禁後は partial record struct も
+        // PartialTypeDeclaration の 1 診断のみ
         Assert.Equal(2, syntaxDiagnostics.Length);
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("PartialTypeDeclaration"));
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("RecordStructDeclaration"));
+        Assert.All(syntaxDiagnostics,
+            d => Assert.Contains("PartialTypeDeclaration", d.GetMessage()));
         Assert.DoesNotContain(syntaxDiagnostics,
             d => d.GetMessage().Contains("StructDeclaration')")); // 二重報告なし
     }
