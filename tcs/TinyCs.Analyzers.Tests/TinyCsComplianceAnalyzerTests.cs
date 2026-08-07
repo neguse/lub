@@ -28,25 +28,29 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
-    public async Task StructDeclaration_DataOnlyIsClean_MethodReports()
+    public async Task StructDeclaration_InstanceMembersClean_StaticReports()
     {
-        // M5 (T219) v1: データ struct は許可、member (method 等) は拒否
+        // T219b(a): instance member (method/property/ctor) は許可、
+        // static member は引き続き拒否
         var clean = await AnalyzeAsync("""
             public struct Vec2
             {
                 public int X;
+                public Vec2(int x) { X = x; }
+                public int Twice() { return X * 2; }
+                public int P { get; set; }
             }
             """);
         Assert.Empty(clean);
 
-        var withMethod = await AnalyzeAsync("""
+        var withStatic = await AnalyzeAsync("""
             public struct Vec2
             {
                 public int X;
-                public int Twice() { return X * 2; }
+                public static int Make() { return 1; }
             }
             """);
-        var diagnostic = Assert.Single(withMethod);
+        var diagnostic = Assert.Single(withStatic);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
         Assert.Contains("StructMember", diagnostic.GetMessage());
     }

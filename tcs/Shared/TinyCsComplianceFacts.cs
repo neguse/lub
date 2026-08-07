@@ -70,9 +70,13 @@ public static partial class TinyCsComplianceFacts
             StructDeclarationSyntax nestedStruct
                 when nestedStruct.Parent is TypeDeclarationSyntax
                     => "NestedTypeDeclaration",
+            // T219b(a): instance method / property / 単一のパラメータ付き ctor
+            // は対応 (静的自由関数へ emit)。static member・operator・indexer
+            // 等は引き続きサブセット外
             MemberDeclarationSyntax structMember
                 when structMember.Parent is StructDeclarationSyntax
                     && structMember is not FieldDeclarationSyntax
+                    && !IsSupportedStructMember(structMember)
                     => $"StructMember({structMember.Kind()})",
             RecordDeclarationSyntax record
                 when record.Kind() == SyntaxKind.RecordStructDeclaration
@@ -277,6 +281,25 @@ public static partial class TinyCsComplianceFacts
             && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
             && assignment.Left == node;
     }
+
+    // struct instance member は静的自由関数へ emit できる (T219b(a))。
+    // パラメータなし明示 ctor は `new S()` (zero 値) と衝突するため除外。
+    // override (ToString/Equals/GetHashCode) は呼び出しが tostring 等の
+    // 動的経路に乗り metatable なしでは差し替えられないため除外。
+    // static member / operator / indexer / event 等はサブセット外のまま
+    private static bool IsSupportedStructMember(MemberDeclarationSyntax member)
+        => member switch
+        {
+            MethodDeclarationSyntax m =>
+                !m.Modifiers.Any(SyntaxKind.StaticKeyword)
+                && !m.Modifiers.Any(SyntaxKind.OverrideKeyword),
+            PropertyDeclarationSyntax p =>
+                !p.Modifiers.Any(SyntaxKind.StaticKeyword),
+            ConstructorDeclarationSyntax c =>
+                !c.Modifiers.Any(SyntaxKind.StaticKeyword)
+                && c.ParameterList.Parameters.Count > 0,
+            _ => false,
+        };
 
     public static bool TryGetUnsupportedSyntax(IOperation? operation,
         out string syntaxName)

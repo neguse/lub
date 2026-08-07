@@ -34,10 +34,16 @@
       ctor 連鎖 / 静的 link (--lib) まで全マイルストーン受入済み
       (digest 3/3 + 全サンプル stdout 一致)。未対応構文は明示エラー方針で、
       対応面の拡張は実利用の需要駆動 (done.md 第一〜第八参照)
-- [ ] **T219b** (P1 へ格上げ): struct の残り (record struct、struct の
-      member、struct 型 field)。需要シグナル: perf bench の particles_struct
-      が tcs2c 未対応で毎 push "-" 表示 (2026-07-18)。tcs2c 側の struct
-      対応も本タスクの範囲。設計方針 (2026-08-07 討議):
+- [ ] **T219b** (P1 へ格上げ): struct の残り。需要シグナル: perf bench の
+      particles_struct が tcs2c 未対応で毎 push "-" 表示 (2026-07-18)。段階:
+      - [x] (a) instance member 解禁 (2026-08-08): method / property /
+            単一のパラメータ付き ctor を静的自由関数へ emit。receiver 規則
+            (変数=直渡し / rvalue=copy) 込み。static member・operator・
+            indexer は引き続き診断
+      - [ ] (b) record struct (== / Equals / with を生成静的関数で)
+      - [ ] (c) readonly (record) struct の copy 全省略
+      - [ ] (d) tcs2c 側の struct member / record struct 対応
+      設計方針 (2026-08-07 討議):
       - Lua 表現は v1 の plain table + copy 地点 scopy を不変のまま拡張する。
         metatable は導入しない
       - member (method/property/ctor) は静的自由関数へ emit — struct は

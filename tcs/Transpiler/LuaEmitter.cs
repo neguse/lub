@@ -109,61 +109,6 @@ public partial class LuaEmitter
         }
     }
 
-    // データ struct (M5 v1、field のみ — member 制約は Shared facts が診断)。
-    // instance は metatable 無しの plain table で、copy (__tcs_scopy) と両立する。
-    private void VisitStruct(SemanticModel model, StructDeclarationSyntax structDecl)
-    {
-        SetSource(structDecl);
-        var name = structDecl.Identifier.ValueText;
-        AppendLine($"{name} = {{}}");
-        AppendLine();
-        _currentType?.DefinitionKeys.Add("new");
-        AppendLine($"function {name}.new()");
-        _indent++;
-        AppendLine("local self = {}");
-        foreach (var field in structDecl.Members.OfType<FieldDeclarationSyntax>())
-        {
-            foreach (var v in field.Declaration.Variables)
-            {
-                var type = (model.GetDeclaredSymbol(v) as IFieldSymbol)?.Type;
-                AppendLine($"self.{v.Identifier.ValueText} = " +
-                    $"{GetDefaultValueForType(type)}");
-            }
-        }
-        AppendLine("return self");
-        _indent--;
-        AppendLine("end");
-        AppendLine();
-    }
-
-    // struct 値が legacy fallback 経路に流れると copy 意味論が消えるため、
-    // silent wrong-code にせず診断する (M5 v1 の安全網)
-    private void WarnIfStructInLegacyBody(SemanticModel model, SyntaxNode body)
-    {
-        var offender = body.DescendantNodesAndSelf()
-            .FirstOrDefault(n =>
-                (n is ObjectCreationExpressionSyntax or VariableDeclarationSyntax
-                    or ParameterSyntax)
-                && n switch
-                {
-                    ObjectCreationExpressionSyntax oc =>
-                        IsUserStruct(model.GetTypeInfo(oc).Type),
-                    VariableDeclarationSyntax vd =>
-                        IsUserStruct(model.GetTypeInfo(vd.Type).Type),
-                    ParameterSyntax { Type: { } pt } =>
-                        IsUserStruct(model.GetTypeInfo(pt).Type),
-                    _ => false,
-                });
-        if (offender != null)
-            _ = WarnUnsupported(offender, "struct value in legacy-emitted body");
-    }
-
-    internal static bool IsUserStruct(ITypeSymbol? type) =>
-        type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
-        && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T
-        && type.TypeKind != TypeKind.Enum
-        && type.Locations.Any(l => l.IsInSource);
-
     private void FlushPendingBaseLinks()
     {
         if (_pendingBaseLinks.Count == 0) return;
@@ -445,15 +390,18 @@ public partial class LuaEmitter
     }
 
     private void VisitCustomProperty(SemanticModel model, string className,
-        PropertyDeclarationSyntax prop)
+        PropertyDeclarationSyntax prop, bool explicitSelf = false)
     {
         var propName = prop.Identifier.ValueText;
         // static accessor は self を取らない class function
-        var separator = prop.Modifiers.Any(SyntaxKind.StaticKeyword) ? "." : ":";
+        var isStatic = prop.Modifiers.Any(SyntaxKind.StaticKeyword);
+        var separator = isStatic || explicitSelf ? "." : ":";
+        var selfParam = explicitSelf && !isStatic ? "self" : "";
         foreach (var accessor in prop.AccessorList!.Accessors)
         {
             var (prefix, extraParam) = accessor.IsKind(SyntaxKind.GetAccessorDeclaration)
-                ? ("get_", "") : ("set_", "value");
+                ? ("get_", selfParam)
+                : ("set_", selfParam.Length > 0 ? "self, value" : "value");
 
             _currentType?.DefinitionKeys.Add($"{prefix}{propName}");
             AppendLine($"function {className}{separator}{prefix}{propName}({extraParam})");
@@ -488,12 +436,15 @@ public partial class LuaEmitter
 
     // expression-bodied property (int D => expr;) は get-only custom property
     private void VisitExpressionBodiedProperty(SemanticModel model,
-        string className, PropertyDeclarationSyntax prop)
+        string className, PropertyDeclarationSyntax prop,
+        bool explicitSelf = false)
     {
         var propName = prop.Identifier.ValueText;
-        var separator = prop.Modifiers.Any(SyntaxKind.StaticKeyword) ? "." : ":";
+        var isStatic = prop.Modifiers.Any(SyntaxKind.StaticKeyword);
+        var separator = isStatic || explicitSelf ? "." : ":";
+        var selfParam = explicitSelf && !isStatic ? "self" : "";
         _currentType?.DefinitionKeys.Add($"get_{propName}");
-        AppendLine($"function {className}{separator}get_{propName}()");
+        AppendLine($"function {className}{separator}get_{propName}({selfParam})");
         _indent++;
         AppendLine($"return {VisitExpression(model, prop.ExpressionBody!.Expression)}");
         _indent--;
@@ -624,15 +575,19 @@ public partial class LuaEmitter
         return _sb.ToString();
     }
 
+    // explicitSelf: struct member 用 — metatable が無いので `:` 定義でなく
+    // 明示 self 引数の自由関数 (`function S.M(self, ...)`) にする
     private void VisitMethod(SemanticModel model, string className,
-        MethodDeclarationSyntax method)
+        MethodDeclarationSyntax method, bool explicitSelf = false)
     {
         SetSource(method);
         var methodName = method.Identifier.ValueText;
         var isStatic = method.Modifiers.Any(SyntaxKind.StaticKeyword);
         var paramNames = method.ParameterList.Parameters
             .Select(p => p.Identifier.ValueText).ToList();
-        var sep = isStatic ? "." : ":";
+        var sep = isStatic || explicitSelf ? "." : ":";
+        if (explicitSelf && !isStatic)
+            paramNames.Insert(0, "self");
         _currentType?.DefinitionKeys.Add(methodName);
         var rangeStart = _sb.Length;
 

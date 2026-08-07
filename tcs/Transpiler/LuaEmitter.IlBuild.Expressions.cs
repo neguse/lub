@@ -182,7 +182,10 @@ public partial class LuaEmitter
                 return custom.IsStatic
                     ? new IlDynCall(new IlField(
                         new IlVar(custom.ContainingType.Name), $"get_{name}"), [])
-                    : new IlInvoke(new IlVar("self"), $"get_{name}", []);
+                    : IsUserStruct(custom.ContainingType)
+                        ? new IlCall($"{custom.ContainingType.Name}.get_{name}",
+                            [new IlVar("self")])
+                        : new IlInvoke(new IlVar("self"), $"get_{name}", []);
             case IFieldSymbol { IsStatic: false }
                 or IPropertySymbol { IsStatic: false }:
                 return new IlField(new IlVar("self"), name);
@@ -463,11 +466,17 @@ public partial class LuaEmitter
 
             if (symbol is IMethodSymbol { IsExtensionMethod: true }) return null;
 
-            if (symbol is IMethodSymbol { IsStatic: false })
+            if (symbol is IMethodSymbol { IsStatic: false } instMethod)
             {
                 var recv = BuildExpr(model, ma.Expression);
-                return recv == null
-                    ? null : new IlInvoke(recv, methodName, argArr);
+                if (recv == null) return null;
+                // struct は metatable が無いので自由関数を静的ディスパッチ
+                if (IsUserStruct(model.GetTypeInfo(ma.Expression).Type))
+                    return new IlCall(
+                        $"{instMethod.ContainingType.Name}.{methodName}",
+                        [StructReceiverArg(model, ma.Expression, recv),
+                         .. argArr]);
+                return new IlInvoke(recv, methodName, argArr);
             }
 
             if (symbol is IMethodSymbol { IsStatic: true })
@@ -488,7 +497,10 @@ public partial class LuaEmitter
             if (symbol is IMethodSymbol { ContainingType: not null } method)
                 return method.IsStatic
                     ? new IlCall($"{method.ContainingType.Name}.{name}", argArr)
-                    : new IlInvoke(new IlVar("self"), name, argArr);
+                    : IsUserStruct(method.ContainingType)
+                        ? new IlCall($"{method.ContainingType.Name}.{name}",
+                            [new IlVar("self"), .. argArr])
+                        : new IlInvoke(new IlVar("self"), name, argArr);
             if (symbol is ILocalSymbol or IParameterSymbol)
                 return new IlDynCall(new IlVar(name), argArr);
             return null;
@@ -545,7 +557,11 @@ public partial class LuaEmitter
                     ? new IlDynCall(new IlField(
                         new IlVar(propSym.ContainingType.Name),
                         $"get_{member}"), [])
-                    : new IlInvoke(obj, $"get_{member}", []);
+                    : IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
+                        ? new IlCall(
+                            $"{propSym.ContainingType.Name}.get_{member}",
+                            [StructReceiverArg(model, ma.Expression, obj)])
+                        : new IlInvoke(obj, $"get_{member}", []);
             return new IlField(obj, member);
         }
 
@@ -617,13 +633,18 @@ public partial class LuaEmitter
             if (!a.RefKindKeyword.IsKind(SyntaxKind.None)) return null;
             var built = BuildExpr(model, a.Expression);
             if (built == null) return null;
-            args.Add(built);
+            // ctor 引数も by-value (il-spec §10 の引数 copy 地点)
+            args.Add(WrapStructCopy(model, a.Expression, built));
         }
         if (IsReferenceOnlyType(typeSymbol))
             // ctor 引数つきは legacy が警告する経路 — fallback
             return args.Count > 0
                 ? null : BuildRefTypeTable(model, initializer);
-        var ctor = new IlNewObj(typeSymbol.Name, [.. args]);
+        // struct の明示 ctor は S.ctor (zero 初期化 + 本文)。`new S()` は
+        // ctor を通らない zero 値なので S.new のまま
+        var ctor = IsUserStruct(typeSymbol) && args.Count > 0
+            ? (IlExpr)new IlCall($"{typeSymbol.Name}.ctor", [.. args])
+            : new IlNewObj(typeSymbol.Name, [.. args]);
         return initializer != null
             ? BuildObjectInitializerExpr(model, ctor, initializer)
             : ctor;

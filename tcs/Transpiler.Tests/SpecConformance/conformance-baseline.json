@@ -297,7 +297,7 @@
     "category": "Diag"
   },
   "classes.md:AccessorsInit1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "classes.md:AccessorsInit2": {
     "category": "Diag"
@@ -709,7 +709,7 @@
     "category": "CsErr"
   },
   "conversions.md:BoxingConversions1": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "conversions.md:BoxingConversions2": {
     "category": "InRun"
@@ -1029,7 +1029,7 @@
     "category": "InRun"
   },
   "expressions.md:IdenticalSimpleAndTypeNames": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:InferredReturnType1": {
     "category": "Diag"
@@ -1145,10 +1145,10 @@
     "reason": "unsupported-template:expected-exception"
   },
   "expressions.md:SimpleAssignment2": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:SimpleAssignment3": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "expressions.md:SimpleAssignment4": {
     "category": "CsErr"
@@ -1656,7 +1656,7 @@
     "reason": "expected-error-not-raised"
   },
   "structs.md:Constructors3": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "structs.md:DeclarationExprSafeContext": {
     "category": "CsErr"
@@ -1715,7 +1715,7 @@
     "category": "CsErr"
   },
   "structs.md:ValueSemantics3": {
-    "category": "Diag"
+    "category": "InRun"
   },
   "structs.md:refFields1": {
     "category": "Diag"

@@ -49,8 +49,10 @@ public partial class LuaEmitter
         }
     }
 
-    // custom property の (receiver ノード, 名前, 副作用有無, static か)
-    private (IlExpr Recv, string Name, bool SideEffect, bool IsStatic)?
+    // custom property の (receiver ノード, 名前, 副作用有無, static か,
+    // struct 所有型名 — struct accessor は自由関数呼びになる)
+    private (IlExpr Recv, string Name, bool SideEffect, bool IsStatic,
+        string? StructOwner)?
         BuildPropTarget(SemanticModel model, ExpressionSyntax left)
     {
         switch (left)
@@ -60,36 +62,47 @@ public partial class LuaEmitter
                     && IsCustomProperty(prop):
                 return prop.IsStatic
                     ? (new IlVar(prop.ContainingType.Name),
-                        id.Identifier.ValueText, false, true)
-                    : (new IlVar("self"), id.Identifier.ValueText, false, false);
+                        id.Identifier.ValueText, false, true, null)
+                    : (new IlVar("self"), id.Identifier.ValueText, false, false,
+                        IsUserStruct(prop.ContainingType)
+                            ? prop.ContainingType.Name : null);
             case MemberAccessExpressionSyntax ma
                 when model.GetSymbolInfo(ma).Symbol is IPropertySymbol prop
                     && IsCustomProperty(prop):
             {
                 if (prop.IsStatic)
                     return (new IlVar(prop.ContainingType.Name),
-                        ma.Name.Identifier.ValueText, false, true);
+                        ma.Name.Identifier.ValueText, false, true, null);
                 var recv = BuildExpr(model, ma.Expression);
                 return recv == null
                     ? null
                     : (recv, ma.Name.Identifier.ValueText,
-                        HasSideEffectSyntax(ma.Expression), false);
+                        HasSideEffectSyntax(ma.Expression), false,
+                        IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
+                            ? prop.ContainingType.Name : null);
             }
             default:
                 return null;
         }
     }
 
-    private IlExpr BuildPropGet(IlExpr recv, string name, bool isStatic) =>
-        isStatic
-            ? new IlDynCall(new IlField(recv, $"get_{name}"), [])
-            : new IlInvoke(recv, $"get_{name}", []);
+    // structOwner 非 null = struct の accessor (自由関数呼び。set の receiver
+    // は C# が変数を強制する — rvalue への property 代入は CS1612)
+    private IlExpr BuildPropGet(IlExpr recv, string name, bool isStatic,
+        string? structOwner = null) =>
+        structOwner != null
+            ? new IlCall($"{structOwner}.get_{name}", [recv])
+            : isStatic
+                ? new IlDynCall(new IlField(recv, $"get_{name}"), [])
+                : new IlInvoke(recv, $"get_{name}", []);
 
     private IlExpr BuildPropSet(IlExpr recv, string name, bool isStatic,
-        IlExpr value) =>
-        isStatic
-            ? new IlDynCall(new IlField(recv, $"set_{name}"), [value])
-            : new IlInvoke(recv, $"set_{name}", [value]);
+        IlExpr value, string? structOwner = null) =>
+        structOwner != null
+            ? new IlCall($"{structOwner}.set_{name}", [recv, value])
+            : isStatic
+                ? new IlDynCall(new IlField(recv, $"set_{name}"), [value])
+                : new IlInvoke(recv, $"set_{name}", [value]);
 
     // legacy EmitPropertyAssignment の写像 (statement 位置)
     private bool BuildPropAssignInto(SemanticModel model,
@@ -106,26 +119,31 @@ public partial class LuaEmitter
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
             body = new IlCallStat(
-                BuildPropSet(target, prop.Name, prop.IsStatic, right));
+                BuildPropSet(target, prop.Name, prop.IsStatic, right,
+                    prop.StructOwner));
         }
         else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
         {
             body = new IlIf([(new IlBin(IlBinOp.Eq,
-                    BuildPropGet(target, prop.Name, prop.IsStatic),
+                    BuildPropGet(target, prop.Name, prop.IsStatic,
+                        prop.StructOwner),
                     new IlLit("nil")),
                 new IlBlock([new IlCallStat(
-                    BuildPropSet(target, prop.Name, prop.IsStatic, right))]))],
+                    BuildPropSet(target, prop.Name, prop.IsStatic, right,
+                        prop.StructOwner))]))],
                 null);
             needsWrap = true; // legacy は if 形を常に IIFE で包む
         }
         else if (CompoundOperator(model, assign) is { } op)
         {
             var applied = BuildCompoundValue(model, assign, op,
-                BuildPropGet(target, prop.Name, prop.IsStatic),
+                BuildPropGet(target, prop.Name, prop.IsStatic,
+                    prop.StructOwner),
                 new IlParen(right));
             if (applied == null) return false;
             body = new IlCallStat(
-                BuildPropSet(target, prop.Name, prop.IsStatic, applied));
+                BuildPropSet(target, prop.Name, prop.IsStatic, applied,
+                    prop.StructOwner));
         }
         else
         {
@@ -159,8 +177,9 @@ public partial class LuaEmitter
             var target = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
             var body = new IlCallStat(BuildPropSet(target, prop.Name,
                 prop.IsStatic,
-                new IlBin(op, BuildPropGet(target, prop.Name, prop.IsStatic),
-                    new IlLit("1"))));
+                new IlBin(op, BuildPropGet(target, prop.Name, prop.IsStatic,
+                    prop.StructOwner), new IlLit("1")),
+                prop.StructOwner));
             if (prop.SideEffect)
                 acc.Add(new IlDo(new IlBlock([
                     new IlLocal("__tcs_obj", prop.Recv), body]))
@@ -343,8 +362,10 @@ public partial class LuaEmitter
             var init = new IlVar("__tcs_init");
             stats.Add(model.GetSymbolInfo(name).Symbol is IPropertySymbol prop
                     && IsCustomProperty(prop)
-                ? new IlCallStat(new IlInvoke(init,
-                    $"set_{name.Identifier.ValueText}", [value]))
+                ? new IlCallStat(BuildPropSet(init,
+                    name.Identifier.ValueText, isStatic: false, value,
+                    IsUserStruct(prop.ContainingType)
+                        ? prop.ContainingType.Name : null))
                 : new IlAssign(new IlField(init, name.Identifier.ValueText),
                     value));
         }

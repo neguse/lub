@@ -1503,3 +1503,13 @@
 - 大規模スイープ (seed 6355) が「Where 述語が捕捉した変数を foreach 本体が変異」で C# (遅延評価) と runtime (即時評価) の可視差を検出。これは support-matrix 明記の設計判断 (遅延評価は非目標) なのでバグでなく既知差異 — dict 列挙順と同じ扱いで、foreach 駆動の述語は捕捉なし (PurePredicate) に制約。単一評価点の式文脈では捕捉を維持 (closure emit のプローブは残る)
 - support-matrix の LINQ 節に可視差の条件 (捕捉変数の列挙中変異) を 1 文追記
 - 検証: seed 6355 を含む 2000 seeds (6000-7999) 差分ゼロ
+
+### T219b(a): struct instance member 解禁 — 静的自由関数 emit ✓ (2026-08-08)
+- struct の instance method / property (auto・custom・式本体) / 単一のパラメータ付き ctor をサブセット解禁。emit は設計方針どおり metatable なしを維持し、member は `function S.M(self, ...)` の静的自由関数、呼び出しサイトは Roslyn の静的型から `S.M(recv, ...)` へ直接ディスパッチ (struct は継承がなく動的ディスパッチ不要)
+- receiver 規則: C# の「変数」(local/param/field/配列要素/this) は直渡しで変異が残り、rvalue (property / List indexer / 呼び出し結果) は copy へ変異 = 捨てられる — `list[0].Inc()` が no-op になる C# の有名な挙動まで一致
+- 明示 ctor は `S.ctor(args)` (zero 初期化 → field initializer → 本文の順、C# 11 意味論)。`new S()` は ctor を通らず zero 値 (`S.new()`) のまま。ctor 引数の struct copy 漏れ (class ctor にもあった既存ギャップ) も同時修正
+- custom property は get_/set_ の自由関数化を BuildPropTarget の StructOwner 経由で compound 代入 / ??= / increment / object initializer まで一貫適用
+- LuaEmitter.cs が 800 行超過 → struct 節を LuaEmitter.Structs.cs (partial) へ分離
+- override method (ToString/Equals/GetHashCode) は診断維持 — 呼び出しが tostring 等の動的経路に乗り metatable なしでは差し替え不能 (class 側も __tostring 未対応で、対応するなら両者一括の別タスク)。spec sweep の structs.md:Constructors1 が Diag→Bug になったことで検出
+- spec conformance baseline 更新: 診断緩和で 7 例が Diag → InCompile x5 / InRun x2 へ改善 (InRun は実 .NET オラクルと出力一致 — 仕様 corpus でも member 意味論を裏取り)
+- 検証: StructSemanticsTests +7 (Red→Green、receiver 3 形 / ctor / auto・custom property / static 診断維持)、analyzer・CLI・demo の診断期待を instance 解禁へ追随 (TCS1001 x5 維持)、spec sweep 642 例 Bug ゼロ、全 745+48 green、fuzz 300 seeds 差分ゼロ
