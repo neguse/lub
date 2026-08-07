@@ -34,38 +34,8 @@
       ctor 連鎖 / 静的 link (--lib) まで全マイルストーン受入済み
       (digest 3/3 + 全サンプル stdout 一致)。未対応構文は明示エラー方針で、
       対応面の拡張は実利用の需要駆動 (done.md 第一〜第八参照)
-- [ ] **T219b** (P1 へ格上げ): struct の残り。需要シグナル: perf bench の
-      particles_struct が tcs2c 未対応で毎 push "-" 表示 (2026-07-18)。段階:
-      - [x] (a) instance member 解禁 (2026-08-08): method / property /
-            単一のパラメータ付き ctor を静的自由関数へ emit。receiver 規則
-            (変数=直渡し / rvalue=copy) 込み。static member・operator・
-            indexer は引き続き診断
-      - [x] (b) record struct 解禁 (2026-08-08): positional ctor / 値等価
-            op_Equality (ネスト struct は推移的 field 展開) / with 式 /
-            readonly record struct。Equals/GetHashCode 呼びと ToString は
-            対象外のまま
-      - [x] (c) readonly (record) struct の copy 全省略 (2026-08-08):
-            不変性で alias が観測不能なため WrapStructCopy (単一生成点) で
-            IsReadOnly 型の scopy を省略
-      - [x] (d) tcs2c のデータ struct 対応 + struct-in-struct copy の
-            型別 __copy 再帰化 (2026-08-08): particles_struct が bench の
-            release 列に載り digest が SoA 版と一致。struct member /
-            record struct の tcs2c 対応は明示エラーのまま需要駆動
-      設計方針 (2026-08-07 討議):
-      - Lua 表現は v1 の plain table + copy 地点 scopy を不変のまま拡張する。
-        metatable は導入しない
-      - member (method/property/ctor) は静的自由関数へ emit — struct は
-        継承がなく呼び出しサイトの静的型が常に確定するため動的ディスパッチ
-        不要。record struct の ==/Equals/with も生成静的関数で賄う
-      - `readonly struct` / `readonly record struct` は不変性により alias が
-        観測不能なので **scopy を全省略** (性能レバー。Roslyn が不変性を
-        コンパイル時保証)
-      - scalarization (局所 SROA / SoA 化) は観測等価な最適化 tier として
-        分離し、baseline のマッピングには混ぜない (bench 需要駆動)
-      - dev backend に C 層 struct (userdata) は持ち込まない — live 移行の
-        単純さを優先。逃げ道は struct 非依存の汎用 byte-buffer userdata
-        (offset は生成 Lua 側定数、reload で C 再コンパイル不要) で、採否は
-        spawn_churn 系 bench の実測が出てから
+- T219b 完 (done.md 参照): struct / record struct の値セマンティクス
+  対応一式。設計方針の正本は support-matrix / CLAUDE.md / il-spec §10
 - [ ] **T220** (P1、ゲート解除 2026-07-18): hot reload の実装。ユーザー判断で
       「cold reload 安全弁止まり」を却下し、il-design §6 の CLOS 流 eager
       migration を実装対象とする。検証面は同一 VM 内で 2 版を transpile して

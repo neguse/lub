@@ -31,7 +31,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 |------|:------:|------|
 | 基本型・nullable・リテラル | **Core** | 日常的な C# の型チェックと値表現を保つ |
 | class / enum / interface / record class | **Core** | editor 補完、型チェック、データ表現に必要 |
-| struct / record struct | **Useful** | 現時点は TCS1001 未対応診断。値セマンティクス需要が出るまで class/record class で代替 |
+| struct / record struct | **Core** | 値セマンティクス対応済み (T219b)。instance member / 値等価 / readonly copy 省略。C backend は素の C struct |
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
 | 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを Lua metamethod へ写像し、変換演算子と `==`/`!=`/比較系は対象外 |
 | LINQ メソッドチェーン | **Core** | `Where`/`Select`/`Any`/`All`/`First`/`Last`/`OrderBy`/`Take`/`Skip`/集計の小核だけ即時評価で提供 |
@@ -150,9 +150,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
 | `class` | **Y** | table + metatable | |
-| `struct` | **-** | | TCS1001。class / record class で代替 |
+| `struct` | **Y** | plain table (metatable なし) + copy 地点で型別 `__copy` | 値意味論 (il-spec §10)。instance member は静的自由関数。static member / operator / override はサブセット外 |
 | `record` / `record class` | **P** | table + metatable | positional record |
-| `record struct` | **-** | | TCS1001。record class で代替 |
+| `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= と with 式。readonly (record) struct は copy 全省略 |
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
 | `enum` | **Y** | 定数テーブル | |
 | `delegate` 型定義 | **N/A** | | Action/Func で代替 |
@@ -179,9 +179,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
 | `class` 宣言 | **Y** | |
-| `struct` 宣言 | **-** | TCS1001。class / record class で代替 |
+| `struct` 宣言 | **Y** | field / instance method / property / 単一のパラメータ付き ctor |
 | `record` 宣言 (C# 9) | **P** | positional record |
-| `record struct` 宣言 (C# 10) | **-** | TCS1001。record class で代替 |
+| `record struct` 宣言 (C# 10) | **Y** | readonly 含む。Equals/GetHashCode/ToString 呼びは対象外 |
 | `interface` 宣言 | **Y** | 出力なし |
 | `enum` 宣言 | **Y** | |
 | `delegate` 宣言 | **-** | |
