@@ -44,14 +44,13 @@
             op_Equality (ネスト struct は推移的 field 展開) / with 式 /
             readonly record struct。Equals/GetHashCode 呼びと ToString は
             対象外のまま
-      - 残 (d で扱う): __tcs_scopy は shallow のため struct-in-struct の
-        copy 経由部分書き込みが alias する潜在ギャップ (v1 由来) —
-        per-struct copy 関数の生成で解消する (IlStructCopy の型情報付与と
-        セット、tcs2c 契約と同時に)
       - [x] (c) readonly (record) struct の copy 全省略 (2026-08-08):
             不変性で alias が観測不能なため WrapStructCopy (単一生成点) で
             IsReadOnly 型の scopy を省略
-      - [ ] (d) tcs2c 側の struct member / record struct 対応
+      - [x] (d) tcs2c のデータ struct 対応 + struct-in-struct copy の
+            型別 __copy 再帰化 (2026-08-08): particles_struct が bench の
+            release 列に載り digest が SoA 版と一致。struct member /
+            record struct の tcs2c 対応は明示エラーのまま需要駆動
       設計方針 (2026-08-07 討議):
       - Lua 表現は v1 の plain table + copy 地点 scopy を不変のまま拡張する。
         metatable は導入しない
@@ -79,7 +78,8 @@
       - [x] (c) struct 値の再直列化 migration (owner walk 経由、il-design §6)
       - 残: 実導線 (ファイル監視 → EmitReloadChunk → 実行中 VM へ適用) は
         実利用トラックで接続。List/Dict 内 struct 値の再直列化と record class
-        の migration は需要待ち
+        の migration は需要待ち。record struct の IlExport (layout hash /
+        migration) も未対応 — 需要待ち
 
 ---
 

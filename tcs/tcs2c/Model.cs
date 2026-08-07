@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c;
 
 internal sealed class Tcs2cException(string message) : Exception(message);
 
-internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure }
+internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure, StructVal }
 
 internal sealed record CType(CTypeKind Kind, string? Name = null,
     CType? Element = null, CType? Key = null,
@@ -19,6 +19,8 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public static readonly CType Null = new(CTypeKind.Null);
 
     public static CType Ref(string name) => new(CTypeKind.Ref, name);
+    /// <summary>データ struct (T219b)。C では素の値型 (ポインタなし)。</summary>
+    public static CType Struct(string name) => new(CTypeKind.StructVal, name);
     public static CType Array(CType element) => new(CTypeKind.Array, Element: element);
     public static CType List(CType? element) => new(CTypeKind.List, Element: element);
     public static CType Dict(CType key, CType value) =>
@@ -37,6 +39,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         CTypeKind.Bool => "bool",
         CTypeKind.String => "TcsString *",
         CTypeKind.Ref => $"Tcs_{Names.Id(Name!)} *",
+        CTypeKind.StructVal => $"Tcs_{Names.Id(Name!)}",
         CTypeKind.Array => "TcsArray *",
         CTypeKind.List => "TcsList *",
         CTypeKind.Dict => "TcsDict *",
@@ -69,6 +72,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public override string ToString() => Kind switch
     {
         CTypeKind.Ref => $"ref {Name}",
+        CTypeKind.StructVal => $"struct {Name}",
         CTypeKind.Array => $"{Element}[]",
         CTypeKind.List => $"list<{Element?.ToString() ?? "?"}>",
         CTypeKind.String => "string",

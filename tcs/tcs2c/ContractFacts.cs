@@ -27,6 +27,7 @@ internal sealed record FieldFact(
 internal sealed class ContractFacts
 {
     private readonly Dictionary<string, IlClassInfo> _classes;
+    private readonly Dictionary<string, IlStructInfo> _structs = [];
     private readonly Dictionary<(string Class, string Method), MethodFact> _methods = [];
     private readonly Dictionary<(string Class, string Field), FieldFact> _fields = [];
 
@@ -36,6 +37,10 @@ internal sealed class ContractFacts
         foreach (var cls in program.Classes)
             if (!_classes.TryAdd(cls.Name, cls))
                 throw new Tcs2cException($"duplicate class: {cls.Name}");
+        if (!program.Structs.IsDefault)
+            foreach (var st in program.Structs)
+                if (!_structs.TryAdd(st.Name, st))
+                    throw new Tcs2cException($"duplicate struct: {st.Name}");
 
         foreach (var cls in program.Classes)
         {
@@ -167,7 +172,20 @@ internal sealed class ContractFacts
             "bool" or "System.Boolean" => CType.Bool,
             "string" or "System.String" => CType.String,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
+            _ when _structs.ContainsKey(text) => CType.Struct(text),
             _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),
         };
+    }
+
+    public IReadOnlyDictionary<string, IlStructInfo> Structs => _structs;
+
+    public CType StructField(string structName, string fieldName)
+    {
+        if (!_structs.TryGetValue(structName, out var st))
+            throw new Tcs2cException($"unknown struct: {structName}");
+        var field = st.Fields.FirstOrDefault(f => f.Name == fieldName)
+            ?? throw new Tcs2cException(
+                $"unknown struct field: {structName}.{fieldName}");
+        return MapType(field.Type);
     }
 }

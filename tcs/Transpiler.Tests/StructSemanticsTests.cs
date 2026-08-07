@@ -245,6 +245,35 @@ public class StructSemanticsTests
             w => w.Contains("StructMember"));
     }
 
+    // struct-in-struct の copy は再帰的でなければならない (shallow だと
+    // copy 経由の部分書き込みが alias する)
+    [Fact]
+    public void NestedStruct_CopyIsDeep()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public struct Inner
+            {
+                public int V;
+            }
+            public struct Outer
+            {
+                public Inner I;
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = new Outer();
+                    a.I.V = 1;
+                    var b = a;
+                    b.I.V = 99;
+                    return $"{a.I.V}|{b.I.V}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("1|99", result);
+    }
+
     // ---- T219b(b): record struct ----
 
     [Fact]
@@ -371,11 +400,11 @@ public class StructSemanticsTests
                 }
             }
             """;
-        // header の関数定義 (`local function __tcs_scopy(s)`) が常に 1 回
-        // 出るため、呼び出しサイトの有無は出現数で判定する
+        // copy 呼び出しは R.__copy(。定義 (function R.__copy(s)) が常に
+        // 1 回出るため、呼び出しサイトの有無は出現数で判定する
         static int CountCopies(string lua) =>
             System.Text.RegularExpressions.Regex.Matches(lua,
-                System.Text.RegularExpressions.Regex.Escape("__tcs_scopy("))
+                System.Text.RegularExpressions.Regex.Escape("R.__copy("))
                 .Count;
         Assert.Equal(1, CountCopies(Transpiler.Transpile(readonlySrc)));
 

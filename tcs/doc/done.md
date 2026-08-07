@@ -1530,3 +1530,9 @@
 - プローブ形: `var w = v;` の代入 copy ペア (片方の変異が漏れたら tail print で検出)、変数間再コピー、field 書き込み/複合代入、this 変異 method 呼び (receiver 規則)、record の with 再代入・positional set・値等価 ==/!=
 - T233 / T234 全段完了 — 生成文法は 式/文/制御フロー/string/List/Dictionary/class/record/継承/pattern/LINQ 小核/struct/record struct を差分オラクル + 自動縮小付きでカバー
 - 検証: coverage マーカー 40 種 green、subset invariant 30 seeds green、struct 込み deep fuzz 2000 seeds (1000-1999 / 6000-6999) 差分ゼロ、全 751+48 green
+
+### T219b(d): tcs2c のデータ struct 対応 + struct-in-struct copy の再帰化 ✓ (2026-08-08)
+- tcs2c: CTypeKind.StructVal を追加 (ポインタなしの素の C 値型)。struct typedef 生成 (struct-in-struct は完全型が要るため内側先の依存順)、IlNewObj → `(Tcs_S){0}` (zero 値)、IlStructCopy → 素通し (C の値代入が copy)、配列要素・ネスト field への読み書きは RenderStructPlace の lvalue 連鎖 (`(*(T*)tcs_array_at(a,i)).f = v`)。struct member / record struct / 明示 ctor の tcs2c 対応は明示エラーのまま需要駆動
+- Lua 側: __tcs_scopy (shallow) の struct-in-struct alias ギャップを型別 `S.__copy` 生成で解消 — struct-typed member は再帰 copy、readonly struct member は不変なので共有。IlStructCopy に TypeName を付与 (il-reference.md 更新)、無い場合は従来の __tcs_scopy に fallback
+- 検証: NestedStruct_CopyIsDeep Red→Green、**bench-2backend 完走 — particles_struct が初めて release 列に載り dev/release digest 一致 (85ca3656 = SoA 版 particles と同値)、72.1x**。release では AoS struct 版 (0.0119ms/frame) が SoA 版 (0.0156ms/frame) より速い。全 752+48 green、fuzz 500 seeds 差分ゼロ。CEmitter.cs が 800 行超過 → CEmitter.Structs.cs へ分離
+- 残課題: record struct の IlExport (layout hash / hot reload migration) は未対応 — T220 系の需要待ちとして tasks.md 記録

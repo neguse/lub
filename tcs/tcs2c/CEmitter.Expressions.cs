@@ -24,6 +24,8 @@ internal sealed partial class CEmitter
         IlTable table => RenderTable(table),
         IlNewArray array => RenderNewArray(array),
         IlIsType typeTest => RenderIsType(typeTest),
+        // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
+        IlStructCopy copy => RenderExpr(copy.E),
         _ => throw Unsupported(expr),
     };
 
@@ -44,10 +46,13 @@ internal sealed partial class CEmitter
         IlCall call => TypeOfCall(call),
         IlDynCall call => TypeOfDynCall(call),
         IlInvoke invoke => TypeOfInvoke(invoke),
-        IlNewObj creation => CType.Ref(creation.TypeName),
+        IlNewObj creation => _facts.Structs.ContainsKey(creation.TypeName)
+            ? CType.Struct(creation.TypeName)
+            : CType.Ref(creation.TypeName),
         IlTable table => TypeOfTable(table),
         IlNewArray array => TypeOfNewArray(array),
         IlIsType typeTest => TypeOfIsType(typeTest),
+        IlStructCopy copy => TypeOf(copy.E),
         _ => throw Unsupported(expr),
     };
 
@@ -73,11 +78,48 @@ internal sealed partial class CEmitter
                     $"unknown KeyValuePair member: {field.Name}"),
             };
         }
+        if (receiver.Kind == CTypeKind.StructVal)
+            return $"{RenderStructPlace(field.Recv)}.{Names.Field(field.Name)}";
         if (receiver.Kind != CTypeKind.Ref)
             throw new Tcs2cException("field receiver is not a class reference");
         _ = FieldInChain(receiver.Name!, field.Name);
         return $"(({receiver.CName})tcs_nonnull({RenderExpr(field.Recv)}))->" +
             Names.Field(field.Name);
+    }
+
+    // struct 値の lvalue 連鎖。receiver/添字は inline 評価 (temp を挟むと
+    // statement-expression になり lvalue 性が消える)
+    private string RenderStructPlace(IlExpr expr)
+    {
+        switch (expr)
+        {
+            case IlVar v:
+                var variable = Resolve(v.Name);
+                return variable.Boxed ? $"(*{variable.CName})" : variable.CName;
+            case IlIndex index:
+            {
+                var sequenceType = RequireSequence(index);
+                var at = sequenceType.Kind == CTypeKind.Array
+                    ? "tcs_array_at" : "tcs_list_at";
+                return $"(*({sequenceType.ElementCName} *){at}(" +
+                    $"{RenderExpr(index.Recv)}, {RenderExpr(index.Idx)}))";
+            }
+            case IlField field:
+            {
+                var receiverType = TypeOf(field.Recv);
+                if (receiverType.Kind == CTypeKind.StructVal)
+                    return $"{RenderStructPlace(field.Recv)}." +
+                        Names.Field(field.Name);
+                if (receiverType.Kind == CTypeKind.Ref)
+                    return $"(({receiverType.CName})tcs_nonnull(" +
+                        $"{RenderExpr(field.Recv)}))->{Names.Field(field.Name)}";
+                throw new Tcs2cException(
+                    "unsupported struct place receiver: " + receiverType);
+            }
+            default:
+                throw new Tcs2cException(
+                    $"unsupported struct place: {expr.GetType().Name}");
+        }
     }
 
     private CType TypeOfField(IlField field)
@@ -92,6 +134,8 @@ internal sealed partial class CEmitter
                 _ => throw new Tcs2cException(
                     $"unknown KeyValuePair member: {field.Name}"),
             };
+        if (receiver.Kind == CTypeKind.StructVal)
+            return _facts.StructField(receiver.Name!, field.Name);
         if (receiver.Kind != CTypeKind.Ref)
             throw new Tcs2cException("field receiver is not a class reference");
         return FieldInChain(receiver.Name!, field.Name).Type;
@@ -653,6 +697,16 @@ internal sealed partial class CEmitter
 
     private string RenderNew(IlNewObj creation)
     {
+        if (_facts.Structs.ContainsKey(creation.TypeName))
+        {
+            // struct の zero 値。明示 ctor 呼び (S.ctor) は IlCall 経由なので
+            // ここに args 付きでは来ない
+            if (creation.Args.Length != 0)
+                throw new Tcs2cException(
+                    $"struct constructor is not supported by the C backend: " +
+                    creation.TypeName);
+            return $"(({CType.Struct(creation.TypeName).CName}){{0}})";
+        }
         if (!_classes.TryGetValue(creation.TypeName, out var cls))
             throw new Tcs2cException($"unknown class: {creation.TypeName}");
         var paramFacts = CtorParamFacts(cls);

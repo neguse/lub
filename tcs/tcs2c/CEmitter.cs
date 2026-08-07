@@ -193,14 +193,15 @@ internal sealed partial class CEmitter
     {
         if (type.Kind == CTypeKind.Void && allowVoid) return;
         if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-            or CTypeKind.String or CTypeKind.Ref) return;
+            or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal) return;
         if (type.Kind == CTypeKind.Array
             && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-                or CTypeKind.Ref) return;
+                or CTypeKind.Ref or CTypeKind.StructVal) return;
         if (type.Kind == CTypeKind.List
             && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32) return;
         throw new Tcs2cException($"unsupported {where}: {type}");
     }
+
 
     private (IlClassInfo Class, IlMethodInfo Method)? FindEntry(string? requested)
     {
@@ -224,6 +225,7 @@ internal sealed partial class CEmitter
 
     private void EmitClassDeclarations()
     {
+        EmitStructTypedefs();
         foreach (var cls in _program.Classes)
             Line($"typedef struct {Names.Class(cls.Name)} {Names.Class(cls.Name)};");
         Line();
@@ -388,8 +390,12 @@ internal sealed partial class CEmitter
                 throw new Tcs2cException($"local has no initializer/type: " +
                     $"{_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
             var declared = _facts.MapType(local.Type);
-            var zero = declared.Kind is CTypeKind.I32 or CTypeKind.F32
-                or CTypeKind.Bool ? "0" : "NULL";
+            var zero = declared.Kind switch
+            {
+                CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool => "0",
+                CTypeKind.StructVal => $"({declared.CName}){{0}}",
+                _ => "NULL",
+            };
             if (_capturedNames.Contains(local.Name))
             {
                 var cell0 = new Variable(
@@ -452,6 +458,13 @@ internal sealed partial class CEmitter
             }
             case IlField field when TryStaticField(field, out var staticName, out _):
                 Line($"{staticName} = {value};");
+                return;
+            // struct place への field 書き込み (配列要素・ローカル・class field
+            // 経由)。C の lvalue 連鎖でそのまま書ける
+            case IlField field
+                when TypeOf(field.Recv).Kind == CTypeKind.StructVal:
+                Line($"{RenderStructPlace(field.Recv)}." +
+                    $"{Names.Field(field.Name)} = {value};");
                 return;
             case IlField field:
             {

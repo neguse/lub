@@ -714,7 +714,8 @@ public partial class LuaEmitter
         && model.GetTypeInfo(src).Type is not INamedTypeSymbol
             { IsReadOnly: true }
         && built is not (IlNewObj or IlIife or IlStructCopy)
-            ? new IlStructCopy(built) : built;
+            ? new IlStructCopy(built, model.GetTypeInfo(src).Type!.Name)
+            : built;
 
     // struct method/accessor の receiver 規則 (T219b(a)): C# の「変数」
     // (local / param / field / 配列要素 / this) なら直渡しで変異が変数に残り、

@@ -44,6 +44,8 @@ public partial class LuaEmitter
         AppendLine("end");
         AppendLine();
 
+        EmitStructCopyFunction(name, model.GetDeclaredSymbol(structDecl));
+
         var ctor = structDecl.Members.OfType<ConstructorDeclarationSyntax>()
             .FirstOrDefault(c => !c.Modifiers.Any(SyntaxKind.StaticKeyword)
                 && c.ParameterList.Parameters.Count > 0);
@@ -186,6 +188,8 @@ public partial class LuaEmitter
             AppendLine();
         }
 
+        EmitStructCopyFunction(name, symbol);
+
         // 値等価。ネスト struct 値は推移的に field 展開する (struct は
         // 循環できないので停止する)
         _currentType?.DefinitionKeys.Add("op_Equality");
@@ -222,6 +226,29 @@ public partial class LuaEmitter
                     break;
             }
         }
+    }
+
+    // 型別 copy 関数。struct-in-struct は再帰 copy (汎用 __tcs_scopy は
+    // shallow で、copy 経由の部分書き込みが alias する)。readonly struct の
+    // member は不変なので共有でよい
+    private void EmitStructCopyFunction(string name, INamedTypeSymbol? symbol)
+    {
+        _currentType?.DefinitionKeys.Add("__copy");
+        AppendLine($"function {name}.__copy(s)");
+        _indent++;
+        AppendLine("local c = {}");
+        foreach (var (memberName, memberType) in ValueMembers(symbol))
+        {
+            var deep = IsUserStruct(memberType)
+                && memberType is not INamedTypeSymbol { IsReadOnly: true };
+            AppendLine(deep
+                ? $"c.{memberName} = {memberType.Name}.__copy(s.{memberName})"
+                : $"c.{memberName} = s.{memberName}");
+        }
+        AppendLine("return c");
+        _indent--;
+        AppendLine("end");
+        AppendLine();
     }
 
     // 値を構成する member (positional prop の backing field 込み、

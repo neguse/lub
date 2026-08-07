@@ -97,7 +97,10 @@ public sealed record IlClosure(
 
 /// <summary>値型の copy 地点 (il-spec §10)。Lua backend は __tcs_scopy、
 /// C backend は素の値代入 (native struct) として扱う。</summary>
-public sealed record IlStructCopy(IlExpr E) : IlExpr;
+/// <summary>struct 値の copy 地点。TypeName があれば型別 copy 関数
+/// ({T}.__copy — struct-in-struct を再帰 copy) を、なければ汎用 shallow
+/// copy (__tcs_scopy) を使う。C backend は値代入なのでどちらも素通し。</summary>
+public sealed record IlStructCopy(IlExpr E, string? TypeName = null) : IlExpr;
 
 /// <summary>record with 式 (shallow copy + 上書き)。</summary>
 public sealed record IlWith(
