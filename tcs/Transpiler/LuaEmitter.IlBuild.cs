@@ -705,10 +705,14 @@ public partial class LuaEmitter
     }
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
-    // 生成直後 (IlNewObj / initializer IIFE / 既に copy 済み) は fresh で不要
+    // 生成直後 (IlNewObj / initializer IIFE / 既に copy 済み) は fresh で不要。
+    // readonly (record) struct は不変で alias が観測不能なため copy を
+    // 全省略する (T219b(c) — Roslyn が不変性をコンパイル時保証)
     private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
         IlExpr built) =>
         IsUserStruct(model.GetTypeInfo(src).Type)
+        && model.GetTypeInfo(src).Type is not INamedTypeSymbol
+            { IsReadOnly: true }
         && built is not (IlNewObj or IlIife or IlStructCopy)
             ? new IlStructCopy(built) : built;
 

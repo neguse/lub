@@ -348,6 +348,69 @@ public class StructSemanticsTests
         Assert.Equal("true|false", result);
     }
 
+    // ---- T219b(c): readonly struct の copy 省略 ----
+
+    // 不変なら alias しても観測不能 — copy 地点の __tcs_scopy を全省略する
+    [Fact]
+    public void ReadonlyStruct_ElidesCopies_MutableKeepsThem()
+    {
+        const string readonlySrc = """
+            public readonly struct R
+            {
+                public readonly int X;
+                public R(int x) { X = x; }
+            }
+            public class T
+            {
+                static int Take(R r) { return r.X; }
+                public static int Test()
+                {
+                    var a = new R(3);
+                    var b = a;
+                    return Take(b) + a.X;
+                }
+            }
+            """;
+        // header の関数定義 (`local function __tcs_scopy(s)`) が常に 1 回
+        // 出るため、呼び出しサイトの有無は出現数で判定する
+        static int CountCopies(string lua) =>
+            System.Text.RegularExpressions.Regex.Matches(lua,
+                System.Text.RegularExpressions.Regex.Escape("__tcs_scopy("))
+                .Count;
+        Assert.Equal(1, CountCopies(Transpiler.Transpile(readonlySrc)));
+
+        var mutableLua = Transpiler.Transpile(
+            readonlySrc.Replace("public readonly struct R",
+                "public struct R").Replace("public readonly int X",
+                "public int X"));
+        Assert.True(CountCopies(mutableLua) > 1,
+            "mutable struct should keep copy sites");
+    }
+
+    [Fact]
+    public void ReadonlyStruct_ValueFlowStaysCorrect()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public readonly struct R
+            {
+                public readonly int X;
+                public R(int x) { X = x; }
+                public int Plus(int d) { return X + d; }
+            }
+            public class T
+            {
+                static R Bump(R r) { return new R(r.X + 10); }
+                public static string Test()
+                {
+                    var a = new R(1);
+                    var b = Bump(a);
+                    return $"{a.X}|{b.X}|{b.Plus(5)}";
+                }
+            }
+            """, "T.Test()", differential: false);
+        Assert.Equal("1|11|16", result);
+    }
+
     [Fact]
     public void ReadonlyRecordStruct_CreateReadEquality()
     {

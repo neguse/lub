@@ -1520,3 +1520,7 @@
 - with 式は既存 IlWith render がそのまま正しい (plain table では `setmetatable(copy, getmetatable(src))` が no-op)。`new R()` は zero 値 (ctor を通らない — C# と一致)。record struct 本体の member は struct と同じ規則 (instance のみ、override/static は診断)
 - 発見 (d 送り): __tcs_scopy が shallow のため struct-in-struct の copy 経由部分書き込みが alias する潜在ギャップ (v1 由来) を特定 — per-struct copy 関数生成で解消予定、tasks.md に記録
 - 検証: StructSemanticsTests +6 (positional/zero、値等価、with、代入 copy、ネスト値等価、readonly) Red→Green、DiagnosticTests/analyzer の record struct 期待を解禁へ追随、spec sweep で structs.md の RecordStruct 2 例が Diag→InCompile (baseline 更新、Bug ゼロ維持)、全 749+48 green、fuzz 300 seeds 差分ゼロ
+
+### T219b(c): readonly (record) struct の copy 省略 ✓ (2026-08-08)
+- readonly struct / readonly record struct は不変で alias が観測不能なため、copy 地点の __tcs_scopy 挿入を全省略 (コピーコスト・GC 圧ゼロの性能レバー)。不変性は Roslyn がコンパイル時保証するので runtime 検査なし。実装は WrapStructCopy (IlStructCopy の単一生成点) に IsReadOnly 判定を足すだけ
+- 検証: 省略テスト (readonly = scopy 呼び出しサイトゼロ / mutable = 保持、header 定義分は出現数で除外) + 値フロー semantic テスト Red→Green、全 751+48 green

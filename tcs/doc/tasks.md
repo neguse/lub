@@ -48,7 +48,9 @@
         copy 経由部分書き込みが alias する潜在ギャップ (v1 由来) —
         per-struct copy 関数の生成で解消する (IlStructCopy の型情報付与と
         セット、tcs2c 契約と同時に)
-      - [ ] (c) readonly (record) struct の copy 全省略
+      - [x] (c) readonly (record) struct の copy 全省略 (2026-08-08):
+            不変性で alias が観測不能なため WrapStructCopy (単一生成点) で
+            IsReadOnly 型の scopy を省略
       - [ ] (d) tcs2c 側の struct member / record struct 対応
       設計方針 (2026-08-07 討議):
       - Lua 表現は v1 の plain table + copy 地点 scopy を不変のまま拡張する。
