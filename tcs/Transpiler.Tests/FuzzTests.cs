@@ -59,6 +59,9 @@ public class FuzzTests
         Assert.Contains("string.Join(", corpus);
         Assert.Contains(".Split(", corpus);
         Assert.Contains("string.IsNullOrEmpty(", corpus);
+        Assert.Contains("public struct FS", corpus);
+        Assert.Contains("public record struct FR", corpus);
+        Assert.Contains("readonly record struct", corpus);
     }
 
     // ユーザー定義オーバーロードはサブセット外 (TCS1001 MethodOverload —

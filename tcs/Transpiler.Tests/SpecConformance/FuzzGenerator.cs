@@ -178,6 +178,7 @@ internal sealed partial class FuzzGenerator
         _dicts.Clear();
         _objVars.Clear();
         _recordVars.Clear();
+        _structVars.Clear();
     }
 
     private string DeclareInt()
@@ -246,7 +247,7 @@ internal sealed partial class FuzzGenerator
         ? d.MissKey
         : d.PoolKeys[_rng.Next(d.PoolKeys.Length)];
 
-    private string Statement(int depth) => _rng.Next(17) switch
+    private string Statement(int depth) => _rng.Next(18) switch
     {
         0 => SimpleAssign(),
         1 => $"{PickIntVar()} {Pick("+=", "-=", "*=")} {IntExpr(1)};",
@@ -266,6 +267,7 @@ internal sealed partial class FuzzGenerator
         13 => ObjStatement(),
         14 => RecordWithAssign(),
         15 => LinqStatement(),
+        16 => StructStatement(),
         _ => $"Console.WriteLine({(_rng.Next(2) == 0 ? IntExpr(2) : BoolExpr(1))});",
     };
 
@@ -415,6 +417,7 @@ internal sealed partial class FuzzGenerator
             11 => ObjCallOrElse("int", depth, IntAtom),
             12 => IsDesignationOrElse(depth, IntAtom),
             13 => LinqIntOrElse(depth, IntAtom),
+            14 => StructCallOrElse(depth, IntAtom),
             _ => SwitchExprInt(),
         };
     }
@@ -488,7 +491,7 @@ internal sealed partial class FuzzGenerator
     {
         if (depth <= 0)
             return BoolAtom();
-        return _rng.Next(13) switch
+        return _rng.Next(14) switch
         {
             0 => $"({BoolExpr(depth - 1)} && {BoolExpr(depth - 1)})",
             1 => $"({BoolExpr(depth - 1)} || {BoolExpr(depth - 1)})",
@@ -507,6 +510,7 @@ internal sealed partial class FuzzGenerator
             9 => RecordEqualityOrElse(BoolAtom),
             10 => PropertyPatternOrElse(BoolAtom),
             11 => LinqBoolOrElse(BoolAtom),
+            12 => StructEqualityOrElse(BoolAtom),
             _ => HelperCallOrElse("bool", depth, BoolAtom),
         };
     }

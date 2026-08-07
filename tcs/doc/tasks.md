@@ -88,22 +88,8 @@
 方針 (ユーザー決定 2026-08-07): C# compat の differential fuzz を先に育てる。
 hot reload の fuzz は compat 文法の拡張が一巡してから独立に起こす。
 
-- [ ] **T233** (P1): fuzz 文法拡張 第2弾。ユーザー定義オーバーロードは
-      サブセット外 (TCS1001 MethodOverload) で対象外。段階:
-      - [x] (a) 制御フロー + コレクション: 有界 while / switch 文・式 /
-            break・continue / foreach / 三項 / 変数除数 (正数ガード) /
-            List indexer・Sort・RemoveAt / Dictionary (両キー型、列挙なし、
-            固定キープローブ)
-      - [x] (b) class/record 生成 (field / auto property / instance method /
-            継承 / 実行時条件の virtual dispatch)、record with 式・値等価、
-            is / is-designation / property pattern
-- [ ] **T234** (P2): fuzz 文法拡張 第3弾。段階:
-      - [x] (a) LINQ 小核 (Where/Select/Sum/Count/Min/Max/Any/All/
-            OrDefault 系/OrderBy/Take/Skip、例外安全形のみ) +
-            Split/Join/IsNullOrEmpty。Sum は要素 %1000 有界化 (C# の Sum は
-            checked で overflow throw)、ToDictionary はキー重複 throw のため
-            生成しない
-      - [ ] (b) struct copy セマンティクス (T219b 解禁後)
+- T233 / T234 完 (done.md 参照)。生成文法の現状は FuzzGenerator の
+  doc comment が正本
 - [ ] **T235** (P2): hot reload fuzz — v1/v2 型定義ペアを生成して reload し、
       不変量 (retained 保持 / added=initializer / identity 維持) を検証。
       differential でなく不変量オラクルの新設計になるため独立タスク

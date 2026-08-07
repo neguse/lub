@@ -28,20 +28,31 @@ internal sealed partial class FuzzGenerator
     private sealed record RecordInfo(string Name,
         IReadOnlyList<(string Name, string Type)> Params);
 
+    // struct (T234b)。member は int のみ — string member は zero 値が null で
+    // 出力時の nil/"" 差 (既知差異) を踏むため生成しない
+    private sealed record StructTypeInfo(string Name, bool IsRecord,
+        bool IsReadonly, IReadOnlyList<string> IntMembers,
+        string? MethodName, bool HasCtor);
+
     private readonly List<ClassInfo> _classes = [];
     private readonly List<RecordInfo> _records = [];
+    private readonly List<StructTypeInfo> _structTypes = [];
     private readonly List<(string Name, ClassInfo Type)> _objVars = [];
     private readonly List<(string Name, RecordInfo Type)> _recordVars = [];
+    private readonly List<(string Name, StructTypeInfo Type)> _structVars = [];
     private int _classCount;
     private int _recordCount;
+    private int _structCount;
     private int _memberCount;
 
     private void ResetTypes()
     {
         _classes.Clear();
         _records.Clear();
+        _structTypes.Clear();
         _classCount = 0;
         _recordCount = 0;
+        _structCount = 0;
         _memberCount = 0;
     }
 
@@ -59,6 +70,48 @@ internal sealed partial class FuzzGenerator
         }
         if (_rng.Next(3) == 0)
             sink.Add(GenerateRecord());
+        if (_rng.Next(2) == 0)
+            sink.Add(GenerateStructType());
+    }
+
+    private string GenerateStructType()
+    {
+        if (_rng.Next(2) == 0)
+        {
+            var name = $"FR{_structCount++}";
+            var ro = _rng.Next(2) == 0;
+            var members = Enumerable.Range(0, _rng.Next(1, 3))
+                .Select(_ => $"X{_memberCount++}").ToList();
+            _structTypes.Add(new StructTypeInfo(name, IsRecord: true, ro,
+                members, null, HasCtor: true));
+            return $"public {(ro ? "readonly " : "")}record struct {name}("
+                + string.Join(", ", members.Select(m => $"int {m}")) + ");";
+        }
+
+        var sname = $"FS{_structCount++}";
+        var fields = Enumerable.Range(0, _rng.Next(1, 3))
+            .Select(_ => $"f{_memberCount++}").ToList();
+        var lines = fields
+            .Select(f => $"public int {f};").ToList();
+        var hasCtor = _rng.Next(2) == 0;
+        if (hasCtor)
+        {
+            var p = $"p{_paramCount++}";
+            lines.Add($"public {sname}(int {p}) {{ {fields[0]} = {p}; }}");
+        }
+        string? methodName = null;
+        if (_rng.Next(2) == 0)
+        {
+            methodName = $"M{_memberCount++}";
+            var p = $"p{_paramCount++}";
+            // this を変異させて返す — receiver 規則 (変数/rvalue) を踏む
+            lines.Add($"public int {methodName}(int {p}) " +
+                $"{{ {fields[0]} += {p}; return {fields[0]}; }}");
+        }
+        _structTypes.Add(new StructTypeInfo(sname, IsRecord: false,
+            IsReadonly: false, fields, methodName, hasCtor));
+        return $"public struct {sname}\n{{\n"
+            + string.Join("\n", lines.Select(l => "    " + l)) + "\n}";
     }
 
     private ClassInfo GenerateClass(ClassInfo? baseClass, out string text)
@@ -209,6 +262,43 @@ internal sealed partial class FuzzGenerator
                 _recordVars.Add((r, rec));
             }
         }
+        if (_structTypes.Count > 0)
+        {
+            foreach (var _ in Enumerable.Range(0, _rng.Next(1, 3)))
+            {
+                var st = _structTypes[_rng.Next(_structTypes.Count)];
+                var v = NextVar();
+                if (st.IsRecord)
+                {
+                    var args = _rng.Next(4) == 0
+                        ? ""
+                        : string.Join(", ",
+                            st.IntMembers.Select(_ => IntExpr(1)));
+                    body.Add($"var {v} = new {st.Name}({args});");
+                }
+                else if (st.HasCtor && _rng.Next(2) == 0)
+                {
+                    body.Add($"var {v} = new {st.Name}({IntExpr(1)});");
+                }
+                else if (_rng.Next(2) == 0)
+                {
+                    body.Add($"var {v} = new {st.Name} " +
+                        $"{{ {st.IntMembers[0]} = {IntExpr(1)} }};");
+                }
+                else
+                {
+                    body.Add($"var {v} = new {st.Name}();");
+                }
+                _structVars.Add((v, st));
+                // 代入 copy のプローブ: 片方の変異がもう片方に漏れたら検出される
+                if (_rng.Next(2) == 0)
+                {
+                    var w = NextVar();
+                    body.Add($"var {w} = {v};");
+                    _structVars.Add((w, st));
+                }
+            }
+        }
     }
 
     private string PickIntMember(ClassInfo cls)
@@ -225,6 +315,9 @@ internal sealed partial class FuzzGenerator
         foreach (var (name, rec) in _recordVars)
             foreach (var (param, _) in rec.Params)
                 body.Add($"Console.WriteLine({name}.{param});");
+        foreach (var (name, st) in _structVars)
+            foreach (var member in st.IntMembers)
+                body.Add($"Console.WriteLine({name}.{member});");
     }
 
     private string? ObjMemberRead(string type)
@@ -238,9 +331,73 @@ internal sealed partial class FuzzGenerator
             foreach (var (param, paramType) in rec.Params)
                 if (paramType == type)
                     candidates.Add($"{name}.{param}");
+        if (type == "int")
+            foreach (var (name, st) in _structVars)
+                foreach (var member in st.IntMembers)
+                    candidates.Add($"{name}.{member}");
         return candidates.Count == 0
             ? null
             : candidates[_rng.Next(candidates.Count)];
+    }
+
+    // struct 変数への文: field 書き込み / method 呼び (this 変異) /
+    // 変数間の再コピー / record の with 再代入
+    private string StructStatement()
+    {
+        if (_structVars.Count == 0)
+            return SimpleAssign();
+        var (name, st) = _structVars[_rng.Next(_structVars.Count)];
+        if (st.IsRecord)
+        {
+            if (_rng.Next(3) == 0)
+            {
+                var sameType = _structVars
+                    .Where(v => v.Type == st).ToList();
+                var src = sameType[_rng.Next(sameType.Count)].Name;
+                return $"{name} = {src};";
+            }
+            var member = st.IntMembers[_rng.Next(st.IntMembers.Count)];
+            // readonly は positional set 不可 — with 再代入のみ
+            if (st.IsReadonly || _rng.Next(2) == 0)
+                return $"{name} = {name} with {{ {member} = {IntExpr(1)} }};";
+            return $"{name}.{member} = {IntExpr(1)};";
+        }
+        var roll = _rng.Next(4);
+        if (roll == 0 && st.MethodName != null)
+            return $"Console.WriteLine({name}.{st.MethodName}({IntExpr(0)}));";
+        if (roll == 1)
+        {
+            var sameType = _structVars.Where(v => v.Type == st).ToList();
+            var src = sameType[_rng.Next(sameType.Count)].Name;
+            return $"{name} = {src};";
+        }
+        var field = st.IntMembers[_rng.Next(st.IntMembers.Count)];
+        return _rng.Next(2) == 0
+            ? $"{name}.{field} = {IntExpr(2)};"
+            : $"{name}.{field} += {IntExpr(1)};";
+    }
+
+    private string StructCallOrElse(int depth, Func<string> fallback)
+    {
+        var candidates = _structVars
+            .Where(v => !v.Type.IsRecord && v.Type.MethodName != null)
+            .ToList();
+        if (candidates.Count == 0 || depth <= 0)
+            return fallback();
+        var (name, st) = candidates[_rng.Next(candidates.Count)];
+        return $"{name}.{st.MethodName}({IntExpr(Math.Min(depth - 1, 1))})";
+    }
+
+    private string StructEqualityOrElse(Func<string> fallback)
+    {
+        var groups = _structVars.Where(v => v.Type.IsRecord)
+            .GroupBy(v => v.Type.Name).Where(g => g.Count() >= 2).ToList();
+        if (groups.Count == 0)
+            return fallback();
+        var pair = groups[_rng.Next(groups.Count)].ToList();
+        var left = pair[_rng.Next(pair.Count)].Name;
+        var right = pair[_rng.Next(pair.Count)].Name;
+        return $"({left} {(_rng.Next(2) == 0 ? "==" : "!=")} {right})";
     }
 
     private string ObjCallOrElse(string returnType, int depth,

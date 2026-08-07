@@ -1524,3 +1524,9 @@
 ### T219b(c): readonly (record) struct の copy 省略 ✓ (2026-08-08)
 - readonly struct / readonly record struct は不変で alias が観測不能なため、copy 地点の __tcs_scopy 挿入を全省略 (コピーコスト・GC 圧ゼロの性能レバー)。不変性は Roslyn がコンパイル時保証するので runtime 検査なし。実装は WrapStructCopy (IlStructCopy の単一生成点) に IsReadOnly 判定を足すだけ
 - 検証: 省略テスト (readonly = scopy 呼び出しサイトゼロ / mutable = 保持、header 定義分は出現数で除外) + 値フロー semantic テスト Red→Green、全 751+48 green
+
+### T234(b): fuzz 文法拡張 — struct copy セマンティクス ✓ (2026-08-08)
+- FuzzGenerator に struct 生成を追加: mutable struct (int field 1-2、this 変異 method、単一 ctor、object initializer)、record struct / readonly record struct (positional int)。member は int のみ — string member は zero 値 null の出力 nil/"" 差 (既知差異) を踏むため生成しない
+- プローブ形: `var w = v;` の代入 copy ペア (片方の変異が漏れたら tail print で検出)、変数間再コピー、field 書き込み/複合代入、this 変異 method 呼び (receiver 規則)、record の with 再代入・positional set・値等価 ==/!=
+- T233 / T234 全段完了 — 生成文法は 式/文/制御フロー/string/List/Dictionary/class/record/継承/pattern/LINQ 小核/struct/record struct を差分オラクル + 自動縮小付きでカバー
+- 検証: coverage マーカー 40 種 green、subset invariant 30 seeds green、struct 込み deep fuzz 2000 seeds (1000-1999 / 6000-6999) 差分ゼロ、全 751+48 green
