@@ -96,6 +96,16 @@ release (AOT C) の reload は「するかどうか」ではなく「どのレ�
   restart」の二段になり、体感は dev reload に近づく
 - web release の更新 (live-ops 的な差し替え) にも流用できる
 
+### struct の位置づけ (レベル共通)
+
+サブセットに ref/out がなく interior pointer が存在しないため、struct 値は
+常に owner (変数 / field / 要素) への値埋め込みで identity を持たない。
+したがって release reload における struct の増分難度は小さい: L1 では layout
+編集は元々 restart 対象、L2 でも pointer map / 再タグ付けの対象は class
+instance 側で struct は owner 再構築に随伴するだけ、S では layout metadata
+(IlStructInfo) で直列化が閉じる。tcs2c が struct を C 値型に落とすこと自体は
+reload をどのレベルでも難しくしない。
+
 ### 判断材料 (D6)
 
 - Windows dev / web dev では dev backend の reload で開発ループが成立する

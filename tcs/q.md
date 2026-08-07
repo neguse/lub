@@ -4,6 +4,20 @@
 
 ---
 
+## Open
+
+### Q13: host 組込みの API/glue 構成 — script runtime ABI をどこに置くか
+- エンジンが公開する C API は 1 本とし、tier ごとに glue を生成する構図を
+  仮置きしている: dev は Lua binding (スタック marshalling、struct は
+  table ↔ C struct 詰め替え)、release は tcs2c からの直接呼び出し
+  (ゼロコピー)。lub3d の Generator (単一 IR → CBindingGen / LuaCatsGen)
+  と同型で、contract-gated に整合
+- host → script 方向 (init/update/reload 駆動) を tier 非依存にする薄い
+  「script runtime ABI」(entrypoint + callback 登録) を定義するか、それは
+  tcs 本体でなく host 側 (lub 等) の責務か — 実利用 (UC1) の接続時に判断
+- 判断材料: hot-reload-design.md §1 の UC 表、Q9 (エンジン直接対応は
+  前提にしない)
+
 ## Resolved
 
 ### Q12: Rider 上の Roslyn Analyzer PoC → go (2026-07-12)

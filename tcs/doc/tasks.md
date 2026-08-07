@@ -37,7 +37,21 @@
 - [ ] **T219b** (P1 へ格上げ): struct の残り (record struct、struct の
       member、struct 型 field)。需要シグナル: perf bench の particles_struct
       が tcs2c 未対応で毎 push "-" 表示 (2026-07-18)。tcs2c 側の struct
-      対応も本タスクの範囲
+      対応も本タスクの範囲。設計方針 (2026-08-07 討議):
+      - Lua 表現は v1 の plain table + copy 地点 scopy を不変のまま拡張する。
+        metatable は導入しない
+      - member (method/property/ctor) は静的自由関数へ emit — struct は
+        継承がなく呼び出しサイトの静的型が常に確定するため動的ディスパッチ
+        不要。record struct の ==/Equals/with も生成静的関数で賄う
+      - `readonly struct` / `readonly record struct` は不変性により alias が
+        観測不能なので **scopy を全省略** (性能レバー。Roslyn が不変性を
+        コンパイル時保証)
+      - scalarization (局所 SROA / SoA 化) は観測等価な最適化 tier として
+        分離し、baseline のマッピングには混ぜない (bench 需要駆動)
+      - dev backend に C 層 struct (userdata) は持ち込まない — live 移行の
+        単純さを優先。逃げ道は struct 非依存の汎用 byte-buffer userdata
+        (offset は生成 Lua 側定数、reload で C 再コンパイル不要) で、採否は
+        spawn_churn 系 bench の実測が出てから
 - [ ] **T220** (P1、ゲート解除 2026-07-18): hot reload の実装。ユーザー判断で
       「cold reload 安全弁止まり」を却下し、il-design §6 の CLOS 流 eager
       migration を実装対象とする。検証面は同一 VM 内で 2 版を transpile して
