@@ -60,9 +60,9 @@ hot reload の fuzz は compat 文法の拡張が一巡してから独立に起�
 
 - T233 / T234 完 (done.md 参照)。生成文法の現状は FuzzGenerator の
   doc comment が正本
-- [ ] **T235** (P2): hot reload fuzz — v1/v2 型定義ペアを生成して reload し、
-      不変量 (retained 保持 / added=initializer / identity 維持) を検証。
-      differential でなく不変量オラクルの新設計になるため独立タスク
+- T235 完 (done.md 参照): hot reload fuzz。v1/v2 ペア生成 + 不変量
+  オラクル、run-fuzz.sh / run-tests smoke に常設。拡張候補 (継承 reload /
+  record class migration の fuzz) は対象機能の実装が入ってから
 
 ---
 

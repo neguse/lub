@@ -1536,3 +1536,10 @@
 - Lua 側: __tcs_scopy (shallow) の struct-in-struct alias ギャップを型別 `S.__copy` 生成で解消 — struct-typed member は再帰 copy、readonly struct member は不変なので共有。IlStructCopy に TypeName を付与 (il-reference.md 更新)、無い場合は従来の __tcs_scopy に fallback
 - 検証: NestedStruct_CopyIsDeep Red→Green、**bench-2backend 完走 — particles_struct が初めて release 列に載り dev/release digest 一致 (85ca3656 = SoA 版 particles と同値)、72.1x**。release では AoS struct 版 (0.0119ms/frame) が SoA 版 (0.0156ms/frame) より速い。全 752+48 green、fuzz 500 seeds 差分ゼロ。CEmitter.cs が 800 行超過 → CEmitter.Structs.cs へ分離
 - 残課題: record struct の IlExport (layout hash / hot reload migration) は未対応 — T220 系の需要待ちとして tasks.md 記録
+
+### T235: hot reload fuzz — v1/v2 ペア生成 + 不変量オラクル ✓ (2026-08-08)
+- FuzzReloadGenerator: 単一 class (+ 任意で struct 型 field) の v1/v2 型定義ペアと状態構築 Lua・検証 Lua を seed 決定的に生成。mutation は field/static の retain・drop・add、struct layout 変更 (owner walk 再直列化を踏む)、method body 変更、static method 変更、OnReload フック。オラクルは differential でなく生成時計算の不変量: retained=live 値保持 / added=initializer / dropped=nil / instance・class identity / method swap / OnReload 1 回 / reload 後の新規構築は v2 shape
+- 検出網の自己検証: 毎シナリオ必ず「method body 変更 + added field」を含む構造にし、reload を適用しない fault 注入で不変量が破れることをテストで常設確認
+- 常設ゲート: 固定 10 seeds の不変量テスト (常時) + FuzzReloadSweep (TCS_FUZZ ゲート、run-tests smoke と run-fuzz.sh の filter に組み込み)
+- 検証: 3+1 テスト green、reload sweep 1300 seeds (1000-1299 / 5000-5999) 不変量違反ゼロ、全 755+48 green
+- 判断: record class / 継承の reload fuzz は migration 側が未対応 (需要待ち) のため生成対象外と明記。対象機能が入った時に生成器へ足す
