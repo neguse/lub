@@ -704,44 +704,6 @@ public partial class LuaEmitter
             chain.Else is { } e ? Rewrite(e, target) : null);
     }
 
-    // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
-    // 生成直後 (IlNewObj / initializer IIFE / 既に copy 済み) は fresh で不要。
-    // readonly (record) struct は不変で alias が観測不能なため copy を
-    // 全省略する (T219b(c) — Roslyn が不変性をコンパイル時保証)
-    private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
-        IlExpr built) =>
-        IsUserStruct(model.GetTypeInfo(src).Type)
-        && model.GetTypeInfo(src).Type is not INamedTypeSymbol
-            { IsReadOnly: true }
-        && built is not (IlNewObj or IlIife or IlStructCopy)
-            ? new IlStructCopy(built, model.GetTypeInfo(src).Type!.Name)
-            : built;
-
-    // struct method/accessor の receiver 規則 (T219b(a)): C# の「変数」
-    // (local / param / field / 配列要素 / this) なら直渡しで変異が変数に残り、
-    // rvalue (property / List indexer / 呼び出し結果等) はコピーへの変異 =
-    // 捨てられる。どちらも C# と一致する
-    private static bool IsStructVariableReceiver(SemanticModel model,
-        ExpressionSyntax expr) => expr switch
-    {
-        ThisExpressionSyntax => true,
-        IdentifierNameSyntax id => model.GetSymbolInfo(id).Symbol
-            is ILocalSymbol or IParameterSymbol or IFieldSymbol,
-        MemberAccessExpressionSyntax ma =>
-            model.GetSymbolInfo(ma).Symbol is IFieldSymbol,
-        ElementAccessExpressionSyntax ea =>
-            model.GetSymbolInfo(ea).Symbol is not IPropertySymbol,
-        ParenthesizedExpressionSyntax paren =>
-            IsStructVariableReceiver(model, paren.Expression),
-        _ => false,
-    };
-
-    private IlExpr StructReceiverArg(SemanticModel model,
-        ExpressionSyntax recvSyntax, IlExpr recv) =>
-        IsStructVariableReceiver(model, recvSyntax)
-            ? recv
-            : WrapStructCopy(model, recvSyntax, recv);
-
     // ---- 検出 helper (legacy の判定部だけを写し、render は行わない) ----
 
     private bool IsCustomPropertyTarget(SemanticModel model,

@@ -129,7 +129,6 @@ public static class ModuleLinker
         sb.Append("  _G.__tcs_idiv = TinySystem.idiv\n");
         sb.Append("  _G.__tcs_irem = TinySystem.irem\n");
         sb.Append("  _G.__tcs_is = TinySystem.instanceof\n");
-        sb.Append("  _G.__tcs_scopy = TinySystem.scopy\n");
         sb.Append("  _G.__tcs_fstr = TinySystem.fstr\n");
         sb.Append("  local __registry_mod = (function()\n");
         AppendIndented(sb, registryLua, "    ");

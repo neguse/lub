@@ -300,9 +300,7 @@ public partial class LuaEmitter
         IlTable table => RenderIlTable(table),
         IlNewArray => "{}",  // 長さは Lua 表現に現れない (legacy 互換)
         IlIsType isType => $"__tcs_is({RenderIl(isType.E)}, {isType.TypeRef})",
-        IlStructCopy copy => copy.TypeName != null
-            ? $"{copy.TypeName}.__copy({RenderIl(copy.E)})"
-            : $"__tcs_scopy({RenderIl(copy.E)})",
+        IlStructCopy copy => $"{copy.TypeName}.__copy({RenderIl(copy.E)})",
         IlIsLuaType isLua => $"type({RenderIl(isLua.E)}) == \"{isLua.LuaType}\"",
         IlIife iife => $"(function() {RenderIlStatsInline(iife.Stats)} end)()",
         IlClosure closure => RenderIlClosure(closure),

@@ -471,13 +471,6 @@ function Dict.TryGet(dict, key, default)
   return false, default
 end
 
--- 値型 (データ struct) の copy 地点用 shallow copy (il-spec §10)
-function TinySystem.scopy(s)
-  local c = {}
-  for k, v in pairs(s) do c[k] = v end
-  return c
-end
-
 -- f32 の shortest round-trip 10 進表記 (il-spec §13)
 function TinySystem.fstr(v)
   if math.type(v) ~= "float" then return tostring(v) end

@@ -54,7 +54,7 @@ assembly 参照で直接消費する。
 | IlNewObj(type, args) | class 生成 (§9: default 初期化→ctor) | Type.new(args) |
 | IlTable(entries, elemType?) | List/Dict/option table リテラル。entry = 配列項 / [k]=v / name=v。elemType は配列/List の要素型 metadata | {…} |
 | IlNewArray(elemType, length) | 固定長配列生成 (§11)。release は連続バッファ確保 | {} |
-| IlStructCopy(e, typeName?) | 値型の copy 地点 (§10)。typeName があれば型別 copy 関数 (struct-in-struct を再帰 copy)、なければ汎用 shallow copy。C backend はどちらも素の値代入で良い | typeName and typeName..".\_\_copy(e)" or \_\_tcs_scopy(e) |
+| IlStructCopy(e, typeName) | 値型の copy 地点 (§10)。型別 copy 関数で struct-in-struct を再帰 copy。C backend は素の値代入で良い | typeName..".\_\_copy(e)" |
 | IlIsType(e, typeRef) | class 型 test (T またはその派生、null 偽 §9) | \_\_tcs_is(e, T) |
 | IlIsLuaType(e, luaType) | プリミティブ型 test | type(e) == "…" |
 | IlIife(stats) | 式位置の逐次実行 (switch 式・?. 等の lowering 産物) | (function() … end)() |

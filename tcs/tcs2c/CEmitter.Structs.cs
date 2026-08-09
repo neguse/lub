@@ -32,4 +32,39 @@ internal sealed partial class CEmitter
             Line();
         }
     }
+
+    // struct 値の lvalue 連鎖。receiver/添字は inline 評価 (temp を挟むと
+    // statement-expression になり lvalue 性が消える)
+    private string RenderStructPlace(IlExpr expr)
+    {
+        switch (expr)
+        {
+            case IlVar v:
+                var variable = Resolve(v.Name);
+                return variable.Boxed ? $"(*{variable.CName})" : variable.CName;
+            case IlIndex index:
+            {
+                var sequenceType = RequireSequence(index);
+                var at = sequenceType.Kind == CTypeKind.Array
+                    ? "tcs_array_at" : "tcs_list_at";
+                return $"(*({sequenceType.ElementCName} *){at}(" +
+                    $"{RenderExpr(index.Recv)}, {RenderExpr(index.Idx)}))";
+            }
+            case IlField field:
+            {
+                var receiverType = TypeOf(field.Recv);
+                if (receiverType.Kind == CTypeKind.StructVal)
+                    return $"{RenderStructPlace(field.Recv)}." +
+                        Names.Field(field.Name);
+                if (receiverType.Kind == CTypeKind.Ref)
+                    return $"(({receiverType.CName})tcs_nonnull(" +
+                        $"{RenderExpr(field.Recv)}))->{Names.Field(field.Name)}";
+                throw new Tcs2cException(
+                    "unsupported struct place receiver: " + receiverType);
+            }
+            default:
+                throw new Tcs2cException(
+                    $"unsupported struct place: {expr.GetType().Name}");
+        }
+    }
 }

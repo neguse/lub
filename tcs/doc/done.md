@@ -1543,3 +1543,11 @@
 - 常設ゲート: 固定 10 seeds の不変量テスト (常時) + FuzzReloadSweep (TCS_FUZZ ゲート、run-tests smoke と run-fuzz.sh の filter に組み込み)
 - 検証: 3+1 テスト green、reload sweep 1300 seeds (1000-1299 / 5000-5999) 不変量違反ゼロ、全 755+48 green
 - 判断: record class / 継承の reload fuzz は migration 側が未対応 (需要待ち) のため生成対象外と明記。対象機能が入った時に生成器へ足す
+
+### push 前レビュー適用: struct emit の重複排除と dead code 粉砕 ✓ (2026-08-09)
+- 汎用 __tcs_scopy を粉砕: T219b(d) の型別 __copy 化で呼び出しが全滅していた fallback (IlEmit 分岐 / 生成 Lua ヘッダの関数定義 / module prelude の _G alias / runtime の TinySystem.scopy) を除去し、IlStructCopy.TypeName を必須化 (il-reference 更新)。生成 Lua が全ファイル 5 行軽くなり、二重 doc comment (Il.cs) も解消
+- 余剰 copy 2 種を除去: `new S(args)` (S.ctor 経由) と with 式の結果は常に fresh なのに WrapStructCopy が再 copy していた — fresh 除外 (BaseObjectCreation / IlWith) を追加。struct を返す一般メソッド呼び出しの call-site copy は残置 (List.FirstOrDefault 等 runtime 関数は要素 alias を返すため、除外には callee の由来判定が要る — 需要が出たら)
+- LuaEmitter.Structs.cs の重複排除: zero-init new / member dispatch / field initializer を struct・record struct 共通ヘルパー化。VisitStruct 側だけ override method を emit していた非対称も解消 (診断済み構文は emit しない)。ValueEqualityParts は ValueMembers 経由に統一
+- ファイルサイズ帯の是正: struct 系ヘルパーを LuaEmitter.IlBuild.cs (792→754) から Structs へ、RenderStructPlace を tcs2c/CEmitter.Expressions.cs (784→750) から CEmitter.Structs.cs へ移設。fuzz の record/struct 等価生成を共通化
+- 見送り (過剰化回避): BuildPropGet/Set の tri-state enum 化・struct dispatch 4 サイトの強制共通化・StructOwnerName ヘルパー・FuzzReloadGenerator の分割 — いずれも抽象の追加コストが重複コストを上回ると判断
+- 検証: 全 755+48 green、fuzz 1000 seeds (differential + reload) 差分ゼロ、bench-2backend digest 4/4 不変 (85ca3656 等) — copy 除去が意味論に影響していないことを確認

@@ -202,7 +202,6 @@ internal sealed partial class CEmitter
         throw new Tcs2cException($"unsupported {where}: {type}");
     }
 
-
     private (IlClassInfo Class, IlMethodInfo Method)? FindEntry(string? requested)
     {
         var candidates = _program.Classes

@@ -73,12 +73,6 @@ public partial class LuaEmitter
             AppendLine("  if tonumber(s) == v then return s end");
             AppendLine("  return string.format(\"%.9g\", v)");
             AppendLine("end");
-            // 値型 (データ struct) の copy 地点用 shallow copy (il-spec §10)
-            AppendLine("local function __tcs_scopy(s)");
-            AppendLine("  local c = {}");
-            AppendLine("  for k, v in pairs(s) do c[k] = v end");
-            AppendLine("  return c");
-            AppendLine("end");
             // hot reload (il-design §6): 生存インスタンスの weak registry。
             // reload chunk と共有するため global。key = instance (weak)、
             // value = 構築時の class table (reload 後も identity 不変)

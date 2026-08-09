@@ -379,7 +379,7 @@ public class StructSemanticsTests
 
     // ---- T219b(c): readonly struct の copy 省略 ----
 
-    // 不変なら alias しても観測不能 — copy 地点の __tcs_scopy を全省略する
+    // 不変なら alias しても観測不能 — copy 地点の型別 __copy を全省略する
     [Fact]
     public void ReadonlyStruct_ElidesCopies_MutableKeepsThem()
     {

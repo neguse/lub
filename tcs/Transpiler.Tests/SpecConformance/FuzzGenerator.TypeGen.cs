@@ -388,17 +388,10 @@ internal sealed partial class FuzzGenerator
         return $"{name}.{st.MethodName}({IntExpr(Math.Min(depth - 1, 1))})";
     }
 
-    private string StructEqualityOrElse(Func<string> fallback)
-    {
-        var groups = _structVars.Where(v => v.Type.IsRecord)
-            .GroupBy(v => v.Type.Name).Where(g => g.Count() >= 2).ToList();
-        if (groups.Count == 0)
-            return fallback();
-        var pair = groups[_rng.Next(groups.Count)].ToList();
-        var left = pair[_rng.Next(pair.Count)].Name;
-        var right = pair[_rng.Next(pair.Count)].Name;
-        return $"({left} {(_rng.Next(2) == 0 ? "==" : "!=")} {right})";
-    }
+    private string StructEqualityOrElse(Func<string> fallback) =>
+        ValueEqualityOrElse(
+            [.. _structVars.Where(v => v.Type.IsRecord)
+                .Select(v => (v.Name, v.Type.Name))], fallback);
 
     private string ObjCallOrElse(string returnType, int depth,
         Func<string> fallback)
@@ -442,9 +435,12 @@ internal sealed partial class FuzzGenerator
             $"? {x}.{field} : {IntExpr(depth - 1)})";
     }
 
-    private string RecordEqualityOrElse(Func<string> fallback)
+    // 同型の変数ペアから値等価式を作る (record class / record struct 共用)
+    private string ValueEqualityOrElse(
+        IReadOnlyList<(string Name, string TypeKey)> vars,
+        Func<string> fallback)
     {
-        var groups = _recordVars.GroupBy(r => r.Type.Name)
+        var groups = vars.GroupBy(v => v.TypeKey)
             .Where(g => g.Count() >= 2).ToList();
         if (groups.Count == 0)
             return fallback();
@@ -454,6 +450,10 @@ internal sealed partial class FuzzGenerator
         var op = _rng.Next(2) == 0 ? "==" : "!=";
         return $"({left} {op} {right})";
     }
+
+    private string RecordEqualityOrElse(Func<string> fallback) =>
+        ValueEqualityOrElse(
+            [.. _recordVars.Select(r => (r.Name, r.Type.Name))], fallback);
 
     private string PropertyPatternOrElse(Func<string> fallback)
     {
