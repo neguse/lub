@@ -10,14 +10,14 @@
 public class FpsMeter
 {
     /// <summary>直近の実測 FPS。tick() が更新する (呼び出し側は読み取り専用)。</summary>
-    public double fps;
+    public float fps;
 
-    public FpsMeter(double? initialFps = null)
+    public FpsMeter(float? initialFps = null)
     {
-        fps = initialFps ?? 60.0;
+        fps = initialFps ?? 60.0f;
     }
 
-    public double tick()
+    public float tick()
     {
         var measured = Sys.actual_fps();
         if (measured > 0)

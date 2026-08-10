@@ -2,9 +2,9 @@
 // Haxe 版の @:native("utf8")/("string") extern は stub の utf8 / @string class
 // で置き換える (@string は using static で取り込み len(s) と裸で呼ぶ)。
 // gm.positions / gm.indices は Haxe 版が Lua の 1-based 添字を直書きするが、
-// C# の List<double> は tcs の indexer が +1 するので 0-based で書く
+// C# の List<float> は tcs の indexer が +1 するので 0-based で書く
 // (Haxe の positions[i*3+1] と C# の positions[i*3] が同じ要素)。
-// typedef GlyphEntry は class に、lua.Table.fromArray は List<double> 直に。
+// typedef GlyphEntry は class に、lua.Table.fromArray は List<float> 直に。
 // Haxe 版の char() だけは同名にできない: char は C# 予約語で、@char は tcs が
 // 宣言をそのまま `function MeshText:@char` と emit して不正 Lua になるため
 // Char に改名している。
@@ -18,9 +18,9 @@ public class GlyphEntry
     public BufferRef? vb;
     public BufferRef? ib;
     public int count;
-    public double advance;
-    public double cx;
-    public double cy;
+    public float advance;
+    public float cx;
+    public float cy;
 }
 
 /// <summary>メッシュグリフ描画 (大サイズレジーム)。TTF 輪郭を三角形化して
@@ -104,22 +104,22 @@ public class MeshText
             {
                 count = 0,
                 advance = gm.advance,
-                cx = 0.0,
-                cy = 0.0,
+                cx = 0.0f,
+                cy = 0.0f,
             };
             glyphs[cp] = empty;
             return empty;
         }
-        var verts = new List<double>();
-        double minX = 1e9;
-        double minY = 1e9;
-        double maxX = -1e9;
-        double maxY = -1e9;
+        var verts = new List<float>();
+        float minX = 1e9f;
+        float minY = 1e9f;
+        float maxX = -1e9f;
+        float maxY = -1e9f;
         for (int i = 0; i < gm.vert_count; i++)
         {
             // vertex i の x, y (stride 3、z は捨てる)
-            double x = gm.positions[i * 3];
-            double y = gm.positions[i * 3 + 1];
+            float x = gm.positions[i * 3];
+            float y = gm.positions[i * 3 + 1];
             verts.Add(x);
             verts.Add(y);
             if (x < minX)
@@ -131,8 +131,8 @@ public class MeshText
             if (y > maxY)
                 maxY = y;
         }
-        // use_buffer は List<double> を取るので indices を詰め替える
-        var idx = new List<double>();
+        // use_buffer は List<float> を取るので indices を詰め替える
+        var idx = new List<float>();
         for (int i = 0; i < gm.index_count; i++)
             idx.Add(gm.indices[i]);
         var e = new GlyphEntry
@@ -141,8 +141,8 @@ public class MeshText
             ib = Gfx.use_buffer(key + "_i:" + cp, Gfx.INDEX, idx, version),
             count = gm.index_count,
             advance = gm.advance,
-            cx = (minX + maxX) * 0.5,
-            cy = (minY + maxY) * 0.5,
+            cx = (minX + maxX) * 0.5f,
+            cy = (minY + maxY) * 0.5f,
         };
         glyphs[cp] = e;
         return e;
@@ -150,14 +150,14 @@ public class MeshText
 
     private static Color colorOrWhite(Color? c)
     {
-        return c ?? Color.rgb(1.0, 1.0, 1.0);
+        return c ?? Color.rgb(1.0f, 1.0f, 1.0f);
     }
 
     /// <summary>グリフ 1 つ。(x, y) は centered=false ならベースライン原点、
     /// true なら bbox 中心を (x, y) に置く。size は px/em、angle は CCW
     /// ラジアン。</summary>
-    public void glyph(int cp, double x, double y, double size,
-        double? angle = null, Color? tint = null, bool? centered = null)
+    public void glyph(int cp, float x, float y, float size,
+        float? angle = null, Color? tint = null, bool? centered = null)
     {
         var sh = ensure();
         if (sh == null)
@@ -177,13 +177,13 @@ public class MeshText
             ["indices"] = ib,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["psr"] = new List<double> { x, y, size, angle ?? 0.0 },
-                ["tint"] = new List<double> { c.r, c.g, c.b, c.a },
-                ["screen"] = new List<double>
-                    { (double)logicalW, (double)logicalH, 0.0, 0.0 },
+                ["psr"] = new List<float> { x, y, size, angle ?? 0.0f },
+                ["tint"] = new List<float> { c.r, c.g, c.b, c.a },
+                ["screen"] = new List<float>
+                    { (float)logicalW, (float)logicalH, 0.0f, 0.0f },
                 ["center"] = ctr
-                    ? new List<double> { e.cx, e.cy, 0.0, 0.0 }
-                    : new List<double> { 0.0, 0.0, 0.0, 0.0 },
+                    ? new List<float> { e.cx, e.cy, 0.0f, 0.0f }
+                    : new List<float> { 0.0f, 0.0f, 0.0f, 0.0f },
             },
         }, new DrawOpts
         {
@@ -196,14 +196,14 @@ public class MeshText
 
     /// <summary>文字列の先頭グリフ 1 つを描く。glyph() の String 版
     /// (Haxe 版の char。C# では予約語のため Char)。</summary>
-    public void Char(string s, double x, double y, double size,
-        double? angle = null, Color? tint = null, bool? centered = null)
+    public void Char(string s, float x, float y, float size,
+        float? angle = null, Color? tint = null, bool? centered = null)
     {
         glyph(utf8.codepoint(s, 1), x, y, size, angle, tint, centered);
     }
 
     /// <summary>1 行をベースライン左端から。</summary>
-    public void text(string s, double x, double baselineY, double size,
+    public void text(string s, float x, float baselineY, float size,
         Color? tint = null)
     {
         var pen = x;
@@ -218,7 +218,7 @@ public class MeshText
             var e = glyphFor(cp);
             if (e != null)
             {
-                glyph(cp, pen, baselineY, size, 0.0, tint, false);
+                glyph(cp, pen, baselineY, size, 0.0f, tint, false);
                 pen += e.advance * size;
             }
             i = utf8.offset(s, 2, pos);
@@ -226,16 +226,16 @@ public class MeshText
     }
 
     /// <summary>1 行を中央揃えで (cx は中心)。</summary>
-    public void textCentered(string s, double cx, double baselineY, double size,
+    public void textCentered(string s, float cx, float baselineY, float size,
         Color? tint = null)
     {
-        text(s, cx - width(s, size) * 0.5, baselineY, size, tint);
+        text(s, cx - width(s, size) * 0.5f, baselineY, size, tint);
     }
 
     /// <summary>1 行の幅 (px)。advance の合計 × size。</summary>
-    public double width(string s, double size)
+    public float width(string s, float size)
     {
-        var sum = 0.0;
+        var sum = 0.0f;
         int n = len(s);
         int? i = 1;
         while (i != null)

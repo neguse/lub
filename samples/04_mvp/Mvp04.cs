@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 public static class Mvp04
 {
-    static double t = 0;
+    static float t = 0;
 
     public static void onInit()
     {
@@ -21,7 +21,7 @@ public static class Mvp04
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         t = t + dt;
         Io.load_text("samples/04_mvp/data/04_mvp.vs.slang",
@@ -39,7 +39,7 @@ public static class Mvp04
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.draw(3,
             new Dictionary<string, object>

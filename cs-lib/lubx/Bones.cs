@@ -2,10 +2,10 @@
 // Haxe 版の mesh.bones (Dynamic、1-based Lua table) は型消去 cast で受ける:
 // (List<object>) の要素を 0-based で引き (tcs の List indexer が +1 変換
 // するので Haxe 版の 1-based 走査と同じ実効添字)、各要素は
-// (Dictionary<string, object>) でキーアクセス、数値は (double) cast。
+// (Dictionary<string, object>) でキーアクセス、数値は (float) cast。
 // tcs の cast は透過 emit なので実行時はそのまま table アクセスになる。
 // Haxe 版の nil 番兵ループは List.Count (Lua の #) 上限に置き換える。
-// 関数型引数 resolve は Func<> delegate、lua.Table.fromArray は List<double>
+// 関数型引数 resolve は Func<> delegate、lua.Table.fromArray は List<float>
 // 直返しで不要。
 
 using System;
@@ -22,7 +22,7 @@ public static class Bones
 
     /// <summary>pivot (px, py, pz) 回りの回転 (model 空間)。
     /// T(p) · R · T(−p)。</summary>
-    public static Mat4 pivotRot(double px, double py, double pz, Mat4 rot)
+    public static Mat4 pivotRot(float px, float py, float pz, Mat4 rot)
     {
         return Mat4.translate(new Vec3(px, py, pz))
             * rot * Mat4.translate(new Vec3(-px, -py, -pz));
@@ -32,10 +32,10 @@ public static class Bones
     /// mat4 × 8 = 128 float に詰める。resolve が null を返した bone は
     /// 単位行列。(x, y, z) はその bone の pivot (pivotRot にそのまま
     /// 渡せる)。</summary>
-    public static List<double> pack(MeshData? mesh,
-        Func<string, double, double, double, Mat4?> resolve)
+    public static List<float> pack(MeshData? mesh,
+        Func<string, float, float, float, Mat4?> resolve)
     {
-        var arr = new List<double>();
+        var arr = new List<float>();
         int count = 0;
         if (mesh != null && mesh.bones != null)
         {
@@ -45,8 +45,8 @@ public static class Bones
             while (count < MAX && i < n)
             {
                 var b = (Dictionary<string, object>)bones[i];
-                var m = resolve((string)b["name"], (double)b["x"],
-                    (double)b["y"], (double)b["z"]);
+                var m = resolve((string)b["name"], (float)b["x"],
+                    (float)b["y"], (float)b["z"]);
                 if (m == null)
                     m = new Mat4();
                 foreach (var v in m.m)

@@ -21,33 +21,33 @@ public class SponzaPrim
 
 public static class Sponza14
 {
-    const double MODEL_SCALE = 0.002;
+    const float MODEL_SCALE = 0.002f;
     const int SHADOW_SIZE = 2048;
     const string ASSET_FULL = "samples/14_sponza/data/Sponza/Sponza.gltf";
 
     static int rtW = 1280;
     static int rtH = 720;
-    static double tAccum = 0.0;
+    static float tAccum = 0.0f;
 
     static int meshVersion = -1;
     static List<SponzaPrim> prims = new List<SponzaPrim>();
 
     // camera state。cs-lib の Vec3 を static 初期化子で作ると、emit 順
     // (サンプル → cs-lib) の都合で class 定義前の呼び出しになるため、
-    // 成分ごとの double で持ち、必要な所でだけ Vec3 を組む。
-    static double camEyeX = -1.5;
-    static double camEyeY = 0.25;
-    static double camEyeZ = 0.0;
-    static double camYaw = 1.5708;
-    static double camPitch = 0.0;
+    // 成分ごとの float で持ち、必要な所でだけ Vec3 を組む。
+    static float camEyeX = -1.5f;
+    static float camEyeY = 0.25f;
+    static float camEyeZ = 0.0f;
+    static float camYaw = 1.5708f;
+    static float camPitch = 0.0f;
     static Mat4? prevViewProj;
-    static double pcEyeX = -1.5;
-    static double pcEyeY = 0.25;
-    static double pcEyeZ = 0.0;
-    static double pcYaw = 1.5708;
-    static double pcPitch = 0.0;
+    static float pcEyeX = -1.5f;
+    static float pcEyeY = 0.25f;
+    static float pcEyeZ = 0.0f;
+    static float pcYaw = 1.5708f;
+    static float pcPitch = 0.0f;
 
-    static List<double> quadVerts = new List<double>
+    static List<float> quadVerts = new List<float>
     {
         -1, -1, 0, 0,
          1, -1, 1, 0,
@@ -57,7 +57,7 @@ public static class Sponza14
         -1,  1, 0, 1,
     };
 
-    static List<double> quadVertsFlip = new List<double>
+    static List<float> quadVertsFlip = new List<float>
     {
         -1, -1, 0, 1,
          1, -1, 1, 1,
@@ -67,8 +67,8 @@ public static class Sponza14
         -1,  1, 0, 0,
     };
 
-    static List<double> whitePx = new List<double> { 255, 255, 255, 255 };
-    static List<double> normalPx = new List<double> { 128, 128, 255, 255 };
+    static List<float> whitePx = new List<float> { 255, 255, 255, 255 };
+    static List<float> normalPx = new List<float> { 128, 128, 255, 255 };
 
     public static void onInit()
     {
@@ -84,7 +84,7 @@ public static class Sponza14
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         tAccum = tAccum + dt;
         Gfx.size(out var w, out var h);
@@ -164,18 +164,18 @@ public static class Sponza14
         }
 
         var view = UpdateCamera(dt);
-        var proj = Mat4.perspectiveLh(55.0, (double)rtW / rtH, 0.05, 80.0);
+        var proj = Mat4.perspectiveLh(55.0f, (float)rtW / rtH, 0.05f, 80.0f);
         proj.m[5] = -proj.m[5];
-        var model = Mat4.scaleTrans(MODEL_SCALE, new Vec3(0.0, 0.0, 0.0));
+        var model = Mat4.scaleTrans(MODEL_SCALE, new Vec3(0.0f, 0.0f, 0.0f));
 
-        var worldLight = new Vec3(-0.42, 0.92, -0.32).normalize();
-        var lightTarget = new Vec3(0.0, 1.1, 0.0);
-        var lightEye = new Vec3(lightTarget.x + worldLight.x * 7.0,
-            lightTarget.y + worldLight.y * 7.0,
-            lightTarget.z + worldLight.z * 7.0);
+        var worldLight = new Vec3(-0.42f, 0.92f, -0.32f).normalize();
+        var lightTarget = new Vec3(0.0f, 1.1f, 0.0f);
+        var lightEye = new Vec3(lightTarget.x + worldLight.x * 7.0f,
+            lightTarget.y + worldLight.y * 7.0f,
+            lightTarget.z + worldLight.z * 7.0f);
         var lightView = Mat4.lookAtLh(lightEye, lightTarget,
             new Vec3(0, 1, 0));
-        var lightMvp = Mat4.orthoLh(8.0, 8.0, 0.1, 15.0).mul(lightView);
+        var lightMvp = Mat4.orthoLh(8.0f, 8.0f, 0.1f, 15.0f).mul(lightView);
         var camEye = new Vec3(camEyeX, camEyeY, camEyeZ);
         var invView = view.rigidInverse(camEye);
         var viewToLight = lightMvp.mul(invView);
@@ -277,7 +277,7 @@ public static class Sponza14
             if (prim["indices"] != null && (int)prim["index_count"] > 0)
             {
                 p.ib = Gfx.use_buffer("sponza_ib_" + i, Gfx.INDEX,
-                    (List<double>)prim["indices"], version);
+                    (List<float>)prim["indices"], version);
                 p.count = (int)prim["index_count"];
             }
             else
@@ -296,8 +296,8 @@ public static class Sponza14
         {
             target = shadowMap,
             depth_target = shadowDepth,
-            clear_color = new double[] { 1.0, 1.0, 1.0, 1.0 },
-            clear_depth = 1.0,
+            clear_color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
+            clear_depth = 1.0f,
         });
         var lmvp = lightMvp.m;
         var mv = model.m;
@@ -342,13 +342,13 @@ public static class Sponza14
         {
             targets = new List<TextureRef> { gAlbedo, gNormal, gPosition },
             depth_target = gDepth,
-            clear_colors = new List<double[]>
+            clear_colors = new List<float[]>
             {
-                new double[] { 0.0, 0.0, 0.0, 1.0 },
-                new double[] { 0.5, 0.5, 1.0, 0.0 },
-                new double[] { 0.0, 0.0, 0.0, 0.0 },
+                new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
+                new float[] { 0.5f, 0.5f, 1.0f, 0.0f },
+                new float[] { 0.0f, 0.0f, 0.0f, 0.0f },
             },
-            clear_depth = 1.0,
+            clear_depth = 1.0f,
         });
 
         var pv = proj.m;
@@ -402,14 +402,14 @@ public static class Sponza14
         TextureRef gPosition, TextureRef shadowMap, TextureRef aoTex,
         Mat4 view, Mat4 viewToLight)
     {
-        var l0 = view.mat3MulVec3(new Vec3(-0.42, 0.92, -0.32).normalize())
+        var l0 = view.mat3MulVec3(new Vec3(-0.42f, 0.92f, -0.32f).normalize())
             .normalize();
-        var l1 = view.mat3MulVec3(new Vec3(0.58, 0.35, 0.22).normalize())
+        var l1 = view.mat3MulVec3(new Vec3(0.58f, 0.35f, 0.22f).normalize())
             .normalize();
         Gfx.begin_pass(new PassOpts
         {
             target = targ,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            clear_color = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
         var vl = viewToLight.m;
         Gfx.draw(6, new Dictionary<string, object>
@@ -422,13 +422,13 @@ public static class Sponza14
             ["ao_map"] = aoTex,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["light0"] = new List<double> { l0.x, l0.y, l0.z, 5.6 },
-                ["light1"] = new List<double> { l1.x, l1.y, l1.z, 0.7 },
-                ["params"] = new List<double> { 1.0, 0.050, 0.82, 0.85 },
-                ["vl0"] = new List<double> { vl[0], vl[1], vl[2], vl[3] },
-                ["vl1"] = new List<double> { vl[4], vl[5], vl[6], vl[7] },
-                ["vl2"] = new List<double> { vl[8], vl[9], vl[10], vl[11] },
-                ["vl3"] = new List<double> { vl[12], vl[13], vl[14], vl[15] },
+                ["light0"] = new List<float> { l0.x, l0.y, l0.z, 5.6f },
+                ["light1"] = new List<float> { l1.x, l1.y, l1.z, 0.7f },
+                ["params"] = new List<float> { 1.0f, 0.050f, 0.82f, 0.85f },
+                ["vl0"] = new List<float> { vl[0], vl[1], vl[2], vl[3] },
+                ["vl1"] = new List<float> { vl[4], vl[5], vl[6], vl[7] },
+                ["vl2"] = new List<float> { vl[8], vl[9], vl[10], vl[11] },
+                ["vl3"] = new List<float> { vl[12], vl[13], vl[14], vl[15] },
             },
         }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
         Gfx.end_pass();
@@ -502,12 +502,12 @@ public static class Sponza14
     }
 
     static void SsaoPass(TextureRef targ, ShaderRef shader, BufferRef quad,
-        TextureRef gNormal, TextureRef gPosition, double p00, double p11)
+        TextureRef gNormal, TextureRef gPosition, float p00, float p11)
     {
         Gfx.begin_pass(new PassOpts
         {
             target = targ,
-            clear_color = new double[] { 1.0, 1.0, 1.0, 1.0 },
+            clear_color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
         });
         Gfx.draw(6, new Dictionary<string, object>
         {
@@ -516,7 +516,7 @@ public static class Sponza14
             ["gpos"] = gPosition,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["params"] = new List<double> { p00, p11, 0.0, 0.0 },
+                ["params"] = new List<float> { p00, p11, 0.0f, 0.0f },
             },
         }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
         Gfx.end_pass();
@@ -534,10 +534,10 @@ public static class Sponza14
             ["gpos"] = gPosition,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["r0"] = new List<double> { mm[0], mm[1], mm[2], mm[3] },
-                ["r1"] = new List<double> { mm[4], mm[5], mm[6], mm[7] },
-                ["r2"] = new List<double> { mm[8], mm[9], mm[10], mm[11] },
-                ["r3"] = new List<double> { mm[12], mm[13], mm[14], mm[15] },
+                ["r0"] = new List<float> { mm[0], mm[1], mm[2], mm[3] },
+                ["r1"] = new List<float> { mm[4], mm[5], mm[6], mm[7] },
+                ["r2"] = new List<float> { mm[8], mm[9], mm[10], mm[11] },
+                ["r3"] = new List<float> { mm[12], mm[13], mm[14], mm[15] },
             },
         }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
         Gfx.end_pass();
@@ -553,7 +553,7 @@ public static class Sponza14
             ["scene"] = tex,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["params"] = new List<double> { mode, 0.0, 0.0, 0.0 },
+                ["params"] = new List<float> { mode, 0.0f, 0.0f, 0.0f },
             },
         }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
         Gfx.end_pass();
@@ -575,7 +575,7 @@ public static class Sponza14
     }
 
     static TextureRef? MaterialTexture(object? path, string suffix,
-        List<double> fallback)
+        List<float> fallback)
     {
         if (path != null)
         {
@@ -600,51 +600,51 @@ public static class Sponza14
         return mat[key];
     }
 
-    static List<double> BaseColorFactor(Dictionary<string, object>? mat)
+    static List<float> BaseColorFactor(Dictionary<string, object>? mat)
     {
         var bc = MatPath(mat, "base_color_factor");
         // Haxe 版の tableFloat(bc, 1..4) は Lua 1-based の直書き添字。
         // List<object> は 0-based (tcs が +1) なので 0..3 になる。
-        return new List<double>
+        return new List<float>
         {
-            TableFloat(bc, 0, 1.0),
-            TableFloat(bc, 1, 1.0),
-            TableFloat(bc, 2, 1.0),
-            TableFloat(bc, 3, 1.0),
+            TableFloat(bc, 0, 1.0f),
+            TableFloat(bc, 1, 1.0f),
+            TableFloat(bc, 2, 1.0f),
+            TableFloat(bc, 3, 1.0f),
         };
     }
 
-    static List<double> MaterialParams(Dictionary<string, object>? mat)
+    static List<float> MaterialParams(Dictionary<string, object>? mat)
     {
-        var metallic = MatNumber(mat, "metallic_factor", 1.0);
-        var roughness = MatNumber(mat, "roughness_factor", 1.0);
-        var cutoff = MatNumber(mat, "alpha_cutoff", 0.5);
-        var alphaMode = MatNumber(mat, "alpha_mode", 0.0);
-        return new List<double> { metallic, roughness, cutoff, alphaMode };
+        var metallic = MatNumber(mat, "metallic_factor", 1.0f);
+        var roughness = MatNumber(mat, "roughness_factor", 1.0f);
+        var cutoff = MatNumber(mat, "alpha_cutoff", 0.5f);
+        var alphaMode = MatNumber(mat, "alpha_mode", 0.0f);
+        return new List<float> { metallic, roughness, cutoff, alphaMode };
     }
 
-    static List<double> NormalParams(Dictionary<string, object>? mat)
+    static List<float> NormalParams(Dictionary<string, object>? mat)
     {
-        var scale = MatNumber(mat, "normal_scale", 1.0);
-        return new List<double> { scale, 0.0, 0.0, 0.0 };
+        var scale = MatNumber(mat, "normal_scale", 1.0f);
+        return new List<float> { scale, 0.0f, 0.0f, 0.0f };
     }
 
-    static double MatNumber(Dictionary<string, object>? mat, string key,
-        double def)
+    static float MatNumber(Dictionary<string, object>? mat, string key,
+        float def)
     {
         if (mat == null) return def;
         var v = mat[key];
         if (v == null) return def;
-        return (double)v;
+        return (float)v;
     }
 
-    static double TableFloat(object? t, int i, double def)
+    static float TableFloat(object? t, int i, float def)
     {
         if (t == null) return def;
         var list = (List<object>)t;
         var v = list[i];
         if (v == null) return def;
-        return (double)v;
+        return (float)v;
     }
 
     static TextureRef? Target(string key, int w, int h, int fmt, int filter)
@@ -669,9 +669,9 @@ public static class Sponza14
         return Gfx.use_shader(key, v, f, vv * 31 + fv);
     }
 
-    static double[] Black()
+    static float[] Black()
     {
-        return new double[] { 0.0, 0.0, 0.0, 1.0 };
+        return new float[] { 0.0f, 0.0f, 0.0f, 1.0f };
     }
 
     static int SponzaMode()
@@ -699,19 +699,19 @@ public static class Sponza14
         }
         var n = ParseNumber(s);
         if (n == null) return 0;
-        return (int)(double)n;
+        return (int)(float)n;
     }
 
     // tcs に tonumber / Parse 相当が無いので、env 値 ([-+]?digits[.digits])
     // を string.byte 走査で読む。読めない文字列は null (Haxe 版は NaN /
     // null になる系。ここでは代入をスキップする)。
-    static double? ParseNumber(string s)
+    static float? ParseNumber(string s)
     {
         var str = s.Trim();
         var n = len(str);
         if (n == 0) return null;
         var i = 1;
-        var sign = 1.0;
+        var sign = 1.0f;
         var c0 = @byte(str, 1);
         if (c0 == 43)
         {
@@ -719,28 +719,28 @@ public static class Sponza14
         }
         else if (c0 == 45)
         {
-            sign = -1.0;
+            sign = -1.0f;
             i = 2;
         }
         var any = false;
-        var value = 0.0;
+        var value = 0.0f;
         while (i <= n)
         {
             var d = @byte(str, i);
             if (d < 48 || d > 57) break;
-            value = value * 10.0 + (d - 48);
+            value = value * 10.0f + (d - 48);
             any = true;
             i = i + 1;
         }
         if (i <= n && @byte(str, i) == 46)
         {
             i = i + 1;
-            var scale = 1.0;
+            var scale = 1.0f;
             while (i <= n)
             {
                 var d = @byte(str, i);
                 if (d < 48 || d > 57) break;
-                scale = scale * 0.1;
+                scale = scale * 0.1f;
                 value = value + (d - 48) * scale;
                 any = true;
                 i = i + 1;
@@ -754,7 +754,7 @@ public static class Sponza14
     {
         var moved = Math.Abs(camEyeX - pcEyeX) + Math.Abs(camEyeY - pcEyeY)
             + Math.Abs(camEyeZ - pcEyeZ) + Math.Abs(camYaw - pcYaw)
-            + Math.Abs(camPitch - pcPitch) > 1e-6;
+            + Math.Abs(camPitch - pcPitch) > 1e-6f;
         pcEyeX = camEyeX;
         pcEyeY = camEyeY;
         pcEyeZ = camEyeZ;
@@ -763,7 +763,7 @@ public static class Sponza14
         return moved;
     }
 
-    static Mat4 UpdateCamera(double dt)
+    static Mat4 UpdateCamera(float dt)
     {
         var camStr = os.getenv("LUB_SPONZA_CAM");
         if (camStr != null)
@@ -776,31 +776,31 @@ public static class Sponza14
                 var ex = ParseNumber(p[2]);
                 var ey = ParseNumber(p[3]);
                 var ez = ParseNumber(p[4]);
-                if (yaw != null) camYaw = (double)yaw;
-                if (pitch != null) camPitch = (double)pitch;
-                if (ex != null) camEyeX = (double)ex;
-                if (ey != null) camEyeY = (double)ey;
-                if (ez != null) camEyeZ = (double)ez;
+                if (yaw != null) camYaw = (float)yaw;
+                if (pitch != null) camPitch = (float)pitch;
+                if (ex != null) camEyeX = (float)ex;
+                if (ey != null) camEyeY = (float)ey;
+                if (ez != null) camEyeZ = (float)ez;
             }
         }
         if (os.getenv("LUB_SPONZA_SPIN") != null)
         {
-            camYaw = Math.Sin(tAccum * 0.25) * 0.32;
+            camYaw = (float)Math.Sin(tAccum * 0.25f) * 0.32f;
         }
 
         Input.mouse_delta(out var mdx, out var mdy);
         if (Input.mouse_down(1))
         {
-            camYaw = camYaw + mdx * 0.003;
-            camPitch = camPitch - mdy * 0.003;
-            if (camPitch > 1.45) camPitch = 1.45;
-            if (camPitch < -1.45) camPitch = -1.45;
+            camYaw = camYaw + mdx * 0.003f;
+            camPitch = camPitch - mdy * 0.003f;
+            if (camPitch > 1.45f) camPitch = 1.45f;
+            if (camPitch < -1.45f) camPitch = -1.45f;
         }
 
         var up = new Vec3(0, 1, 0);
         var fwd = ForwardDir();
         var right = up.cross(fwd).normalize();
-        var spd = 2.6 * dt;
+        var spd = 2.6f * dt;
         if (Input.key_down("w"))
         {
             camEyeX = camEyeX + fwd.x * spd;
@@ -836,8 +836,8 @@ public static class Sponza14
 
     static Vec3 ForwardDir()
     {
-        var cp = Math.Cos(camPitch);
-        return new Vec3(Math.Sin(camYaw) * cp, Math.Sin(camPitch),
-            Math.Cos(camYaw) * cp);
+        var cp = (float)Math.Cos(camPitch);
+        return new Vec3((float)Math.Sin(camYaw) * cp, (float)Math.Sin(camPitch),
+            (float)Math.Cos(camYaw) * cp);
     }
 }

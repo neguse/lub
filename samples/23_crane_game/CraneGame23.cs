@@ -34,10 +34,10 @@ public class Bear
     public int gen;
     public int variant;
     public int respawn; // >0 = 獲得済み。0 になったら復活 (店員の補充)
-    public double x;
-    public double y;
-    public double z;
-    public double yaw;
+    public float x;
+    public float y;
+    public float z;
+    public float yaw;
 }
 
 /// <summary>フィールド上に生きているクマ (今フレームの物理 body 付き)。</summary>
@@ -73,39 +73,39 @@ public class Machine
 /// <summary>爪モーター指示 (右用の符号。左は反転)。</summary>
 public class ClawCommand
 {
-    public double speed;
-    public double torque;
+    public float speed;
+    public float torque;
 }
 
 public static class CraneGame23
 {
-    const double DT = 1.0 / 60.0;
+    const float DT = 1.0f / 60.0f;
 
     // --- 実寸パラメータ (フィールド 750×900mm、実機調査に基づく) ---------
-    const double FIELD_HX = 0.375; // フィールド半幅 (X)
-    const double FIELD_HZ = 0.45; // フィールド半奥行 (Z)。+Z が手前
-    const double CARRIAGE_Y = 0.78;
-    const double MOVE_SPEED = 0.15; // ガントリー移動 (m/s)
-    const double WINCH_SPEED = 0.20; // 昇降 (m/s)
-    const double WIRE_MIN = 0.15;
-    const double WIRE_MAX = 0.56;
-    const double OPEN_ANGLE = 0.85; // 爪の開き角 (rad)
-    const double HEAD_TOP = 0.06; // ヘッド原点→ワイヤー取付点
-    const double SHOULDER_X = 0.10; // 爪の肩関節 (ヘッド原点から)
-    const double SHOULDER_Y = -0.01;
-    const double HOME_X = -0.16; // 待機位置 = 獲得口の真上
-    const double HOME_Z = 0.275;
-    const double MAX_X = 0.15; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
-    const double MIN_Z = -0.30;
+    const float FIELD_HX = 0.375f; // フィールド半幅 (X)
+    const float FIELD_HZ = 0.45f; // フィールド半奥行 (Z)。+Z が手前
+    const float CARRIAGE_Y = 0.78f;
+    const float MOVE_SPEED = 0.15f; // ガントリー移動 (m/s)
+    const float WINCH_SPEED = 0.20f; // 昇降 (m/s)
+    const float WIRE_MIN = 0.15f;
+    const float WIRE_MAX = 0.56f;
+    const float OPEN_ANGLE = 0.85f; // 爪の開き角 (rad)
+    const float HEAD_TOP = 0.06f; // ヘッド原点→ワイヤー取付点
+    const float SHOULDER_X = 0.10f; // 爪の肩関節 (ヘッド原点から)
+    const float SHOULDER_Y = -0.01f;
+    const float HOME_X = -0.16f; // 待機位置 = 獲得口の真上
+    const float HOME_Z = 0.275f;
+    const float MAX_X = 0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
+    const float MIN_Z = -0.30f;
     // 獲得口 (シュート): 手前左の床穴。判定に使う内側 2 辺
-    const double CHUTE_X1 = -0.025;
-    const double CHUTE_Z0 = 0.10;
+    const float CHUTE_X1 = -0.025f;
+    const float CHUTE_Z0 = 0.10f;
 
     // アームパワー。実機の店側パワー設定に相当し、把持はトルク上限 × 摩擦で決まる。
     // 初動 1.2 N·m で約 330g のクマを掴め、保持 0.6 N·m は揺れ・加速で
     // 滑る境界値 (デモ実測でおよそ 4-5 回に 1 回獲得 = 実機並み)
-    static double grabTorque = 1.2;
-    static double holdTorque = 0.6;
+    static float grabTorque = 1.2f;
+    static float holdTorque = 0.6f;
 
     // --- 状態機械 (実機の自動シーケンス) ---------------------------------
     const int ST_IDLE = 0;
@@ -135,9 +135,9 @@ public static class CraneGame23
     static int frame = 0;
     static int state = ST_IDLE;
     static int stateT = 0;
-    static double cx = HOME_X;
-    static double cz = HOME_Z;
-    static double wireLen = WIRE_MIN;
+    static float cx = HOME_X;
+    static float cz = HOME_Z;
+    static float wireLen = WIRE_MIN;
     static int score = 0;
     static int plays = 0;
     static int payoutFlash = 0;
@@ -145,8 +145,8 @@ public static class CraneGame23
     // attract モード: 放置でクマを狙って自動プレイ (デモ兼ヘッドレス検証用)
     static bool autoPlay = false;
     static int autoIndex = 0;
-    static double autoX = 0.0;
-    static double autoZ = 0.0;
+    static float autoX = 0.0f;
+    static float autoZ = 0.0f;
     static int slackFrames = 0;
     static FixedStep? step = null;
     static int pendingPresses = 0;
@@ -161,11 +161,11 @@ public static class CraneGame23
         // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
         bears = new List<Bear>
         {
-            new Bear { gen = 1, variant = 0, respawn = 0, x = 0.08, y = 0.02, z = -0.05, yaw = 0.4 },
-            new Bear { gen = 1, variant = 1, respawn = 0, x = -0.14, y = 0.02, z = -0.26, yaw = -0.7 },
-            new Bear { gen = 1, variant = 2, respawn = 0, x = 0.15, y = 0.02, z = 0.18, yaw = 2.6 },
-            new Bear { gen = 1, variant = 0, respawn = 0, x = 0.06, y = 0.02, z = 0.18, yaw = 1.8 },
-            new Bear { gen = 1, variant = 1, respawn = 0, x = 0.16, y = 0.02, z = -0.24, yaw = -2.2 },
+            new Bear { gen = 1, variant = 0, respawn = 0, x = 0.08f, y = 0.02f, z = -0.05f, yaw = 0.4f },
+            new Bear { gen = 1, variant = 1, respawn = 0, x = -0.14f, y = 0.02f, z = -0.26f, yaw = -0.7f },
+            new Bear { gen = 1, variant = 2, respawn = 0, x = 0.15f, y = 0.02f, z = 0.18f, yaw = 2.6f },
+            new Bear { gen = 1, variant = 0, respawn = 0, x = 0.06f, y = 0.02f, z = 0.18f, yaw = 1.8f },
+            new Bear { gen = 1, variant = 1, respawn = 0, x = 0.16f, y = 0.02f, z = -0.24f, yaw = -2.2f },
         };
     }
 
@@ -180,34 +180,34 @@ public static class CraneGame23
     /// <summary>非負 int の剰余 (tcs は % を使わない規約なので floor 分解)。</summary>
     static int Mod(int a, int n)
     {
-        return (int)(a - Math.Floor((double)a / n) * n);
+        return (int)(a - (float)Math.Floor((float)a / n) * n);
     }
 
     // --- SDF モデル -------------------------------------------------------
     // クマ (約 30cm)。物理 compound (declareBearShapes) と寸法を揃えている
     static SdfNode bearModel(int fur, int belly)
     {
-        var body = Sdf.sphere(0.100).move(0, 0.100, 0);
-        var head = Sdf.sphere(0.072).move(0, 0.220, 0);
-        var ear = Sdf.sphere(0.026).move(0.050, 0.284, 0).mirrorX();
-        var arm = Sdf.capsule(new Vec3(0.080, 0.150, 0.010),
-            new Vec3(0.130, 0.075, 0.030), 0.027).mirrorX();
-        var leg = Sdf.capsule(new Vec3(0.050, 0.045, 0.020),
-            new Vec3(0.100, 0.035, 0.105), 0.033).mirrorX();
-        var muzzle = Sdf.sphere(0.030).move(0, 0.198, 0.058)
-            .paint(belly, 0.0, 0.9);
-        var tummy = Sdf.sphere(0.052).move(0, 0.090, 0.062)
-            .paint(belly, 0.0, 0.9);
-        var eye = Sdf.sphere(0.010).move(0.028, 0.238, 0.062).mirrorX()
-            .paint(0x1E2130, 0.0, 0.2);
-        return body.smin(head, 0.02)
-            .smin(ear, 0.012)
-            .smin(arm, 0.015)
-            .smin(leg, 0.015)
-            .paint(fur, 0.0, 0.9)
-            .smin(muzzle, 0.010)
-            .smin(tummy, 0.012)
-            .ssub(eye, 0.004);
+        var body = Sdf.sphere(0.100f).move(0, 0.100f, 0);
+        var head = Sdf.sphere(0.072f).move(0, 0.220f, 0);
+        var ear = Sdf.sphere(0.026f).move(0.050f, 0.284f, 0).mirrorX();
+        var arm = Sdf.capsule(new Vec3(0.080f, 0.150f, 0.010f),
+            new Vec3(0.130f, 0.075f, 0.030f), 0.027f).mirrorX();
+        var leg = Sdf.capsule(new Vec3(0.050f, 0.045f, 0.020f),
+            new Vec3(0.100f, 0.035f, 0.105f), 0.033f).mirrorX();
+        var muzzle = Sdf.sphere(0.030f).move(0, 0.198f, 0.058f)
+            .paint(belly, 0.0f, 0.9f);
+        var tummy = Sdf.sphere(0.052f).move(0, 0.090f, 0.062f)
+            .paint(belly, 0.0f, 0.9f);
+        var eye = Sdf.sphere(0.010f).move(0.028f, 0.238f, 0.062f).mirrorX()
+            .paint(0x1E2130, 0.0f, 0.2f);
+        return body.smin(head, 0.02f)
+            .smin(ear, 0.012f)
+            .smin(arm, 0.015f)
+            .smin(leg, 0.015f)
+            .paint(fur, 0.0f, 0.9f)
+            .smin(muzzle, 0.010f)
+            .smin(tummy, 0.012f)
+            .ssub(eye, 0.004f);
     }
 
     // 爪 1 本 (右用)。肩 (原点) → 肘 → 爪先の「反り 120°」形状。
@@ -215,20 +215,20 @@ public static class CraneGame23
     static SdfNode fingerModel()
     {
         var upper = Sdf.capsule(new Vec3(0, 0, 0),
-            new Vec3(0.050, -0.110, 0), 0.009);
-        var lower = Sdf.capsule(new Vec3(0.050, -0.110, 0),
-            new Vec3(-0.085, -0.215, 0), 0.008);
-        return upper.smin(lower, 0.010).paint(0xC9CED8, 0.9, 0.25);
+            new Vec3(0.050f, -0.110f, 0), 0.009f);
+        var lower = Sdf.capsule(new Vec3(0.050f, -0.110f, 0),
+            new Vec3(-0.085f, -0.215f, 0), 0.008f);
+        return upper.smin(lower, 0.010f).paint(0xC9CED8, 0.9f, 0.25f);
     }
 
     // ヘッド: ドーム + リング。原点はリング面の中心
     static SdfNode headModel()
     {
-        var dome = Sdf.sphere(0.105)
-            .intersect(Sdf.box(0.11, 0.055, 0.11).move(0, 0.055, 0))
-            .paint(0xF2F2F4, 0.1, 0.4);
-        var rim = Sdf.torus(0.095, 0.032).paint(0xE0405A, 0.2, 0.5);
-        return dome.smin(rim, 0.015);
+        var dome = Sdf.sphere(0.105f)
+            .intersect(Sdf.box(0.11f, 0.055f, 0.11f).move(0, 0.055f, 0))
+            .paint(0xF2F2F4, 0.1f, 0.4f);
+        var rim = Sdf.torus(0.095f, 0.032f).paint(0xE0405A, 0.2f, 0.5f);
+        return dome.smin(rim, 0.015f);
     }
 
     // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は
@@ -284,14 +284,14 @@ public static class CraneGame23
     // compound は static 専用なので、dynamic body には shape を複数ぶら下げる
     static void declareBearShapes(BodyRef3d body, int ver)
     {
-        double density = 50.0; // 密度 50kg/m³ → 約 330g
-        double friction = 0.6;
-        double restitution = 0.02;
+        float density = 50.0f; // 密度 50kg/m³ → 約 330g
+        float friction = 0.6f;
+        float restitution = 0.02f;
         Phys3d.phys3d_sphere(body, "torso", new SphereDesc3d
         {
             version = ver,
-            r = 0.100,
-            offset = new Vec3d { x = 0.0, y = 0.100, z = 0.0 },
+            r = 0.100f,
+            offset = new Vec3d { x = 0.0f, y = 0.100f, z = 0.0f },
             density = density,
             friction = friction,
             restitution = restitution,
@@ -299,8 +299,8 @@ public static class CraneGame23
         Phys3d.phys3d_sphere(body, "head", new SphereDesc3d
         {
             version = ver,
-            r = 0.072,
-            offset = new Vec3d { x = 0.0, y = 0.220, z = 0.0 },
+            r = 0.072f,
+            offset = new Vec3d { x = 0.0f, y = 0.220f, z = 0.0f },
             density = density,
             friction = friction,
             restitution = restitution,
@@ -308,9 +308,9 @@ public static class CraneGame23
         Phys3d.phys3d_capsule(body, "arm_r", new CapsuleDesc3d
         {
             version = ver,
-            a = new Vec3d { x = 0.080, y = 0.150, z = 0.010 },
-            b = new Vec3d { x = 0.130, y = 0.075, z = 0.030 },
-            r = 0.027,
+            a = new Vec3d { x = 0.080f, y = 0.150f, z = 0.010f },
+            b = new Vec3d { x = 0.130f, y = 0.075f, z = 0.030f },
+            r = 0.027f,
             density = density,
             friction = friction,
             restitution = restitution,
@@ -318,9 +318,9 @@ public static class CraneGame23
         Phys3d.phys3d_capsule(body, "arm_l", new CapsuleDesc3d
         {
             version = ver,
-            a = new Vec3d { x = -0.080, y = 0.150, z = 0.010 },
-            b = new Vec3d { x = -0.130, y = 0.075, z = 0.030 },
-            r = 0.027,
+            a = new Vec3d { x = -0.080f, y = 0.150f, z = 0.010f },
+            b = new Vec3d { x = -0.130f, y = 0.075f, z = 0.030f },
+            r = 0.027f,
             density = density,
             friction = friction,
             restitution = restitution,
@@ -328,9 +328,9 @@ public static class CraneGame23
         Phys3d.phys3d_capsule(body, "leg_r", new CapsuleDesc3d
         {
             version = ver,
-            a = new Vec3d { x = 0.050, y = 0.045, z = 0.020 },
-            b = new Vec3d { x = 0.100, y = 0.035, z = 0.105 },
-            r = 0.033,
+            a = new Vec3d { x = 0.050f, y = 0.045f, z = 0.020f },
+            b = new Vec3d { x = 0.100f, y = 0.035f, z = 0.105f },
+            r = 0.033f,
             density = density,
             friction = friction,
             restitution = restitution,
@@ -338,9 +338,9 @@ public static class CraneGame23
         Phys3d.phys3d_capsule(body, "leg_l", new CapsuleDesc3d
         {
             version = ver,
-            a = new Vec3d { x = -0.050, y = 0.045, z = 0.020 },
-            b = new Vec3d { x = -0.100, y = 0.035, z = 0.105 },
-            r = 0.033,
+            a = new Vec3d { x = -0.050f, y = 0.045f, z = 0.020f },
+            b = new Vec3d { x = -0.100f, y = 0.035f, z = 0.105f },
+            r = 0.033f,
             density = density,
             friction = friction,
             restitution = restitution,
@@ -348,42 +348,42 @@ public static class CraneGame23
     }
 
     // 爪 1 本の物理 (右用。左は sign = -1 で X 反転)
-    static void declareFingerShapes(BodyRef3d body, double sign)
+    static void declareFingerShapes(BodyRef3d body, float sign)
     {
         Phys3d.phys3d_capsule(body, "upper", new CapsuleDesc3d
         {
-            a = new Vec3d { x = 0.0, y = 0.0, z = 0.0 },
-            b = new Vec3d { x = sign * 0.050, y = -0.110, z = 0.0 },
-            r = 0.009,
-            density = 2000.0,
-            friction = 0.6,
+            a = new Vec3d { x = 0.0f, y = 0.0f, z = 0.0f },
+            b = new Vec3d { x = sign * 0.050f, y = -0.110f, z = 0.0f },
+            r = 0.009f,
+            density = 2000.0f,
+            friction = 0.6f,
         });
         Phys3d.phys3d_capsule(body, "lower", new CapsuleDesc3d
         {
-            a = new Vec3d { x = sign * 0.050, y = -0.110, z = 0.0 },
-            b = new Vec3d { x = sign * -0.085, y = -0.215, z = 0.0 },
-            r = 0.008,
-            density = 2000.0,
-            friction = 0.6,
+            a = new Vec3d { x = sign * 0.050f, y = -0.110f, z = 0.0f },
+            b = new Vec3d { x = sign * -0.085f, y = -0.215f, z = 0.0f },
+            r = 0.008f,
+            density = 2000.0f,
+            friction = 0.6f,
         });
     }
 
     // 静物: 床 (獲得口の穴あき) + アクリルフェンス + ガラス壁 + シュート筒
-    static List<double[]> STATICS = new List<double[]>
+    static List<float[]> STATICS = new List<float[]>
     {
         // x, y, z, hx, hy, hz
-        new double[] { 0.0, -0.02, -0.175, FIELD_HX, 0.02, 0.275 }, // 床 (奥側)
-        new double[] { 0.175, -0.02, 0.275, 0.20, 0.02, 0.175 }, // 床 (手前右)
-        new double[] { -0.20, 0.07, 0.10, 0.175, 0.07, 0.006 }, // フェンス (穴の奥側)
-        new double[] { -0.025, 0.07, 0.275, 0.006, 0.07, 0.175 }, // フェンス (穴の右側)
-        new double[] { -FIELD_HX - 0.006, 0.31, 0.0, 0.006, 0.31, FIELD_HZ }, // ガラス左
-        new double[] { FIELD_HX + 0.006, 0.31, 0.0, 0.006, 0.31, FIELD_HZ }, // ガラス右
-        new double[] { 0.0, 0.31, -FIELD_HZ - 0.006, FIELD_HX, 0.31, 0.006 }, // ガラス奥
-        new double[] { 0.0, 0.31, FIELD_HZ + 0.006, FIELD_HX, 0.31, 0.006 }, // ガラス手前
-        new double[] { -0.025, -0.25, 0.275, 0.006, 0.25, 0.175 }, // シュート筒 右
-        new double[] { -0.20, -0.25, 0.10, 0.175, 0.25, 0.006 }, // シュート筒 奥
-        new double[] { -FIELD_HX - 0.006, -0.25, 0.275, 0.006, 0.25, 0.175 }, // シュート筒 左
-        new double[] { -0.20, -0.25, FIELD_HZ + 0.006, 0.175, 0.25, 0.006 }, // シュート筒 手前
+        new float[] { 0.0f, -0.02f, -0.175f, FIELD_HX, 0.02f, 0.275f }, // 床 (奥側)
+        new float[] { 0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // 床 (手前右)
+        new float[] { -0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // フェンス (穴の奥側)
+        new float[] { -0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // フェンス (穴の右側)
+        new float[] { -FIELD_HX - 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, FIELD_HZ }, // ガラス左
+        new float[] { FIELD_HX + 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, FIELD_HZ }, // ガラス右
+        new float[] { 0.0f, 0.31f, -FIELD_HZ - 0.006f, FIELD_HX, 0.31f, 0.006f }, // ガラス奥
+        new float[] { 0.0f, 0.31f, FIELD_HZ + 0.006f, FIELD_HX, 0.31f, 0.006f }, // ガラス手前
+        new float[] { -0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 右
+        new float[] { -0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // シュート筒 奥
+        new float[] { -FIELD_HX - 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 左
+        new float[] { -0.20f, -0.25f, FIELD_HZ + 0.006f, 0.175f, 0.25f, 0.006f }, // シュート筒 手前
     };
 
     static void declareStatics(WorldRef3d world)
@@ -402,8 +402,8 @@ public static class CraneGame23
                 hx = s[3],
                 hy = s[4],
                 hz = s[5],
-                friction = 0.5,
-                restitution = 0.05,
+                friction = 0.5f,
+                restitution = 0.05f,
             });
         }
     }
@@ -427,22 +427,22 @@ public static class CraneGame23
 
         // ヘッド: ワイヤー 1 本吊り (実機の主流はワイヤー巻き取り式)。
         // damping は空力とワイヤー内部摩擦・捩り抵抗による実在の損失の近似
-        double headY0 = CARRIAGE_Y - WIRE_MIN - HEAD_TOP;
+        float headY0 = CARRIAGE_Y - WIRE_MIN - HEAD_TOP;
         var head = Phys3d.phys3d_body(world, "head", new BodyDesc3d
         {
             type = Phys3d.DYNAMIC,
-            linearDamping = 0.15,
-            angularDamping = 0.5,
+            linearDamping = 0.15f,
+            angularDamping = 0.5f,
             initial = new InitialState3d { x = HOME_X, y = headY0, z = HOME_Z },
         });
         if (head == null) return null;
         Phys3d.phys3d_cylinder(head, "solid", new CylinderDesc3d
         {
-            height = 0.08,
-            radius = 0.105,
-            yOffset = 0.02,
-            density = 400.0, // ヘッド質量 ≈ 1.1kg
-            friction = 0.3,
+            height = 0.08f,
+            radius = 0.105f,
+            yOffset = 0.02f,
+            density = 400.0f, // ヘッド質量 ≈ 1.1kg
+            friction = 0.3f,
         });
 
         // ワイヤー: バネ力 0 のバネ + 上限 limit = 引けるが押せないロープ。
@@ -455,10 +455,10 @@ public static class CraneGame23
             anchorA = new Vec3d { x = HOME_X, y = CARRIAGE_Y, z = HOME_Z },
             anchorB = new Vec3d { x = HOME_X, y = headY0 + HEAD_TOP, z = HOME_Z },
             enableSpring = true,
-            hertz = 0.0,
-            dampingRatio = 0.0,
+            hertz = 0.0f,
+            dampingRatio = 0.0f,
             enableLimit = true,
-            minLength = 0.02,
+            minLength = 0.02f,
             maxLength = wireLen,
             length = wireLen,
         });
@@ -472,13 +472,13 @@ public static class CraneGame23
             type = "motor",
             a = carriage,
             b = head,
-            maxVelocityForce = 0.0,
-            maxVelocityTorque = 0.0,
-            linearHertz = 0.0,
-            maxSpringForce = 0.0,
-            angularHertz = 1.2,
-            angularDampingRatio = 1.0,
-            maxSpringTorque = 2.5,
+            maxVelocityForce = 0.0f,
+            maxVelocityTorque = 0.0f,
+            linearHertz = 0.0f,
+            maxSpringForce = 0.0f,
+            angularHertz = 1.2f,
+            angularDampingRatio = 1.0f,
+            maxSpringTorque = 2.5f,
         });
 
         // 爪 2 本: 肩の revolute joint。モーターのトルク上限がアームパワー。
@@ -486,7 +486,7 @@ public static class CraneGame23
         var fr = Phys3d.phys3d_body(world, "finger:r", new BodyDesc3d
         {
             type = Phys3d.DYNAMIC,
-            angularDamping = 1.0,
+            angularDamping = 1.0f,
             initial = new InitialState3d
             {
                 x = HOME_X + SHOULDER_X,
@@ -495,11 +495,11 @@ public static class CraneGame23
             },
         });
         if (fr == null) return null;
-        declareFingerShapes(fr, 1.0);
+        declareFingerShapes(fr, 1.0f);
         var fl = Phys3d.phys3d_body(world, "finger:l", new BodyDesc3d
         {
             type = Phys3d.DYNAMIC,
-            angularDamping = 1.0,
+            angularDamping = 1.0f,
             initial = new InitialState3d
             {
                 x = HOME_X - SHOULDER_X,
@@ -508,7 +508,7 @@ public static class CraneGame23
             },
         });
         if (fl == null) return null;
-        declareFingerShapes(fl, -1.0);
+        declareFingerShapes(fl, -1.0f);
 
         var claw = clawCommand();
         Phys3d.phys3d_joint(world, "claw:r", new JointDesc3d
@@ -520,9 +520,9 @@ public static class CraneGame23
             { x = HOME_X + SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
             anchorB = new Vec3d
             { x = HOME_X + SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
-            axis = new Vec3d { x = 0.0, y = 0.0, z = 1.0 },
+            axis = new Vec3d { x = 0.0f, y = 0.0f, z = 1.0f },
             enableLimit = true,
-            lower = 0.0,
+            lower = 0.0f,
             upper = OPEN_ANGLE,
             enableMotor = true,
             motorSpeed = claw.speed,
@@ -537,10 +537,10 @@ public static class CraneGame23
             { x = HOME_X - SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
             anchorB = new Vec3d
             { x = HOME_X - SHOULDER_X, y = headY0 + SHOULDER_Y, z = HOME_Z },
-            axis = new Vec3d { x = 0.0, y = 0.0, z = 1.0 },
+            axis = new Vec3d { x = 0.0f, y = 0.0f, z = 1.0f },
             enableLimit = true,
             lower = -OPEN_ANGLE,
-            upper = 0.0,
+            upper = 0.0f,
             enableMotor = true,
             motorSpeed = -claw.speed,
             maxTorque = claw.torque,
@@ -556,14 +556,14 @@ public static class CraneGame23
         // プレイ開始 (移動) から降下まで開きっぱなし (実機と同じ)
         if (state == ST_MOVE_X || state == ST_WAIT2 || state == ST_MOVE_Z
             || state == ST_DESCEND)
-            return new ClawCommand { speed = 1.8, torque = 0.9 };
+            return new ClawCommand { speed = 1.8f, torque = 0.9f };
         if (state == ST_GRAB || state == ST_LIFT)
-            return new ClawCommand { speed = -2.0, torque = grabTorque }; // 初動 (掴む〜持ち上げ)
+            return new ClawCommand { speed = -2.0f, torque = grabTorque }; // 初動 (掴む〜持ち上げ)
         if (state == ST_CARRY)
-            return new ClawCommand { speed = -2.0, torque = holdTorque }; // 保持 (運搬中に弱まる)
+            return new ClawCommand { speed = -2.0f, torque = holdTorque }; // 保持 (運搬中に弱まる)
         if (state == ST_RELEASE)
-            return new ClawCommand { speed = 1.8, torque = 0.9 }; // 獲得口で開放
-        return new ClawCommand { speed = -1.5, torque = 0.5 }; // 待機は閉じ
+            return new ClawCommand { speed = 1.8f, torque = 0.9f }; // 獲得口で開放
+        return new ClawCommand { speed = -1.5f, torque = 0.5f }; // 待機は閉じ
     }
 
     static List<LiveBear> declareBears(WorldRef3d world)
@@ -578,14 +578,14 @@ public static class CraneGame23
             {
                 type = Phys3d.DYNAMIC,
                 version = b.gen,
-                linearDamping = 0.05,
-                angularDamping = 0.5, // 布と詰め物の内部損失の近似
+                linearDamping = 0.05f,
+                angularDamping = 0.5f, // 布と詰め物の内部損失の近似
                 initial = new InitialState3d
                 {
                     x = b.x,
                     y = b.y,
                     z = b.z,
-                    euler = new Vec3d { x = 0.0, y = b.yaw, z = 0.0 },
+                    euler = new Vec3d { x = 0.0f, y = b.yaw, z = 0.0f },
                 },
             });
             if (body == null) continue;
@@ -601,8 +601,8 @@ public static class CraneGame23
         if (autoPlay)
         {
             // attract: 目標座標に届くまで押し続ける動作を合成
-            if (state == ST_MOVE_X) return cx < autoX - 0.005;
-            if (state == ST_MOVE_Z) return cz > autoZ + 0.005;
+            if (state == ST_MOVE_X) return cx < autoX - 0.005f;
+            if (state == ST_MOVE_Z) return cz > autoZ + 0.005f;
             return false;
         }
         return Input.key_down("space")
@@ -705,8 +705,8 @@ public static class CraneGame23
                 var anchor = new Vec3(pose.x, pose.y, pose.z)
                     + new Quat(pose.qx, pose.qy, pose.qz, pose.qw)
                         .rotateVec3(new Vec3(0, HEAD_TOP, 0));
-                double dist = new Vec3(cx, CARRIAGE_Y, cz).distance(anchor);
-                slackFrames = (wireLen - dist > 0.03) ? slackFrames + 1 : 0;
+                float dist = new Vec3(cx, CARRIAGE_Y, cz).distance(anchor);
+                slackFrames = (wireLen - dist > 0.03f) ? slackFrames + 1 : 0;
                 if ((slackFrames >= 8 && stateT > 40) || wireLen >= WIRE_MAX)
                 {
                     enter(ST_GRAB);
@@ -726,11 +726,11 @@ public static class CraneGame23
         }
         else if (state == ST_CARRY)
         {
-            double dx = HOME_X - cx;
-            double dz = HOME_Z - cz;
+            float dx = HOME_X - cx;
+            float dz = HOME_Z - cz;
             cx += MathUtil.clamp(dx, -MOVE_SPEED * DT, MOVE_SPEED * DT);
             cz += MathUtil.clamp(dz, -MOVE_SPEED * DT, MOVE_SPEED * DT);
-            if (Math.Abs(dx) < 0.002 && Math.Abs(dz) < 0.002)
+            if (Math.Abs(dx) < 0.002f && Math.Abs(dz) < 0.002f)
                 enter(ST_RELEASE);
         }
         else if (state == ST_RELEASE)
@@ -757,7 +757,7 @@ public static class CraneGame23
             var pose = Phys3d.phys3d_pose(entry.body);
             if (pose == null)
                 continue;
-            if (pose.y < -0.32)
+            if (pose.y < -0.32f)
             {
                 entry.bear.respawn = 150;
                 if (pose.x < CHUTE_X1 && pose.z > CHUTE_Z0)
@@ -777,42 +777,42 @@ public static class CraneGame23
                 {
                     // 補充: フィールド奥へ落とす。位置は決定論的にずらす
                     b.gen++;
-                    b.x = 0.02 + Mod(b.gen * 53, 13) * 0.012;
-                    b.y = 0.35;
-                    b.z = -0.15 + Mod(b.gen * 31, 11) * 0.02;
-                    b.yaw = Mod(b.gen * 137, 63) * 0.1;
+                    b.x = 0.02f + Mod(b.gen * 53, 13) * 0.012f;
+                    b.y = 0.35f;
+                    b.z = -0.15f + Mod(b.gen * 31, 11) * 0.02f;
+                    b.yaw = Mod(b.gen * 137, 63) * 0.1f;
                 }
             }
         }
     }
 
     // --- 描画 --------------------------------------------------------------
-    static Mat4 boxMat(double x, double y, double z, double sx, double sy,
-        double sz)
+    static Mat4 boxMat(float x, float y, float z, float sx, float sy,
+        float sz)
     {
         return Mat4.translate(new Vec3(x, y, z))
             * Mat4.scale(new Vec3(sx, sy, sz));
     }
 
     // 2 点間に渡す細い箱 (ワイヤーとレール用)
-    static Mat4 segmentMat(Vec3 a, Vec3 b, double r)
+    static Mat4 segmentMat(Vec3 a, Vec3 b, float r)
     {
         var d = b - a;
-        double len = d.length();
-        var mid = (a + b) * 0.5;
+        float len = d.length();
+        var mid = (a + b) * 0.5f;
         var rot = new Mat4();
-        if (len > 1e-6)
+        if (len > 1e-6f)
         {
-            var dir = d * (1.0 / len);
+            var dir = d * (1.0f / len);
             var axis = Vec3.up().cross(dir);
-            double s = axis.length();
-            if (s > 1e-6)
-                rot = Quat.fromAxisAngle(axis * (1.0 / s),
-                    Math.Atan2(s, dir.y)).toMat4();
+            float s = axis.length();
+            if (s > 1e-6f)
+                rot = Quat.fromAxisAngle(axis * (1.0f / s),
+                    (float)Math.Atan2(s, dir.y)).toMat4();
             else if (dir.y < 0)
-                rot = Mat4.rotateX(Math.PI);
+                rot = Mat4.rotateX((float)Math.PI);
         }
-        return Mat4.translate(mid) * rot * Mat4.scale(new Vec3(r, len * 0.5, r));
+        return Mat4.translate(mid) * rot * Mat4.scale(new Vec3(r, len * 0.5f, r));
     }
 
     static void drawBox(Mat4 model, Color color, int? blend)
@@ -845,7 +845,7 @@ public static class CraneGame23
         frame++;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         build();
         if (meshDirty)
@@ -862,7 +862,7 @@ public static class CraneGame23
 
         var world = Phys3d.phys3d_world("crane_game", new WorldOpts3d
         {
-            gravity = new Vec3d { x = 0.0, y = -9.81, z = 0.0 },
+            gravity = new Vec3d { x = 0.0f, y = -9.81f, z = 0.0f },
             fixedDt = DT,
             substeps = 8,
             maxSteps = 1,
@@ -874,55 +874,55 @@ public static class CraneGame23
 
         // --- draw ---
         // ゲームセンターの薄暗い環境 + 筐体上部からの光
-        r.light.dir = new Vec3(-0.3, 1.0, 0.45);
-        r.light.intensity = 1.2;
-        r.sky.top = Color.rgb(0.35, 0.36, 0.45);
-        r.sky.bottom = Color.rgb(0.12, 0.11, 0.12);
-        r.sky.intensity = 0.45;
-        r.background = Color.rgb(0.10, 0.10, 0.13);
-        r.shadow.center = new Vec3(0, 0.3, 0);
-        r.shadow.extent = 1.2;
+        r.light.dir = new Vec3(-0.3f, 1.0f, 0.45f);
+        r.light.intensity = 1.2f;
+        r.sky.top = Color.rgb(0.35f, 0.36f, 0.45f);
+        r.sky.bottom = Color.rgb(0.12f, 0.11f, 0.12f);
+        r.sky.intensity = 0.45f;
+        r.background = Color.rgb(0.10f, 0.10f, 0.13f);
+        r.shadow.center = new Vec3(0, 0.3f, 0);
+        r.shadow.extent = 1.2f;
         r.begin(new Camera
         {
-            eye = new Vec3(0.02, 1.02, 1.95),
-            target = new Vec3(0.0, 0.30, 0.0),
+            eye = new Vec3(0.02f, 1.02f, 1.95f),
+            target = new Vec3(0.0f, 0.30f, 0.0f),
             fov = 40,
-            near = 0.1,
-            far = 50.0,
+            near = 0.1f,
+            far = 50.0f,
         });
 
         // 筐体 (描画のみ): 本体・上部飾り・柱・レール
-        var body = Color.rgb(0.93, 0.93, 0.95);
-        var accent = Color.rgb(0.88, 0.25, 0.42);
-        var dark = Color.rgb(0.22, 0.23, 0.27);
-        var felt = Color.rgb(0.32, 0.62, 0.46);
-        drawBox(boxMat(0.0, -0.33, 0.0, 0.42, 0.29, FIELD_HZ + 0.05), body, null);
-        drawBox(boxMat(0.0, -0.06, 0.0, 0.42, 0.022, FIELD_HZ + 0.05), accent, null);
-        drawBox(boxMat(0.0, 0.86, 0.0, 0.42, 0.075, FIELD_HZ + 0.05), accent, null);
+        var body = Color.rgb(0.93f, 0.93f, 0.95f);
+        var accent = Color.rgb(0.88f, 0.25f, 0.42f);
+        var dark = Color.rgb(0.22f, 0.23f, 0.27f);
+        var felt = Color.rgb(0.32f, 0.62f, 0.46f);
+        drawBox(boxMat(0.0f, -0.33f, 0.0f, 0.42f, 0.29f, FIELD_HZ + 0.05f), body, null);
+        drawBox(boxMat(0.0f, -0.06f, 0.0f, 0.42f, 0.022f, FIELD_HZ + 0.05f), accent, null);
+        drawBox(boxMat(0.0f, 0.86f, 0.0f, 0.42f, 0.075f, FIELD_HZ + 0.05f), accent, null);
         foreach (var sx in new List<int> { -1, 1 })
         {
             foreach (var sz in new List<int> { -1, 1 })
             {
-                drawBox(boxMat(sx * (FIELD_HX + 0.022), 0.31,
-                    sz * (FIELD_HZ + 0.028), 0.016, 0.315, 0.016), body, null);
+                drawBox(boxMat(sx * (FIELD_HX + 0.022f), 0.31f,
+                    sz * (FIELD_HZ + 0.028f), 0.016f, 0.315f, 0.016f), body, null);
             }
         }
         // 床 (フェルト) と穴の縁
-        drawBox(boxMat(0.0, -0.02, -0.175, FIELD_HX, 0.02, 0.275), felt, null);
-        drawBox(boxMat(0.175, -0.02, 0.275, 0.20, 0.02, 0.175), felt, null);
-        drawBox(boxMat(-0.20, -0.05, 0.275, 0.175, 0.05, 0.175), dark, null); // シュート内部
+        drawBox(boxMat(0.0f, -0.02f, -0.175f, FIELD_HX, 0.02f, 0.275f), felt, null);
+        drawBox(boxMat(0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
+        drawBox(boxMat(-0.20f, -0.05f, 0.275f, 0.175f, 0.05f, 0.175f), dark, null); // シュート内部
         // 払い出しの褒め演出: 獲得口の縁が光る (HDR 高輝度で bloom に乗せる)
         if (payoutFlash > 0)
         {
-            double k = payoutFlash / 60.0;
-            drawBox(boxMat(-0.20, 0.005, 0.275, 0.178, 0.006 + 0.02 * k, 0.178),
-                Color.rgb(1.6, 1.5, 0.7 + 0.7 * k), null);
+            float k = payoutFlash / 60.0f;
+            drawBox(boxMat(-0.20f, 0.005f, 0.275f, 0.178f, 0.006f + 0.02f * k, 0.178f),
+                Color.rgb(1.6f, 1.5f, 0.7f + 0.7f * k), null);
         }
         // レール: 固定 2 本 + キャリッジと動く梁
-        drawBox(boxMat(-0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark, null);
-        drawBox(boxMat(0.34, 0.76, 0.0, 0.012, 0.012, FIELD_HZ), dark, null);
-        drawBox(boxMat(0.0, 0.76, cz, 0.34, 0.010, 0.010), dark, null);
-        drawBox(boxMat(cx, 0.775, cz, 0.05, 0.025, 0.05), accent, null);
+        drawBox(boxMat(-0.34f, 0.76f, 0.0f, 0.012f, 0.012f, FIELD_HZ), dark, null);
+        drawBox(boxMat(0.34f, 0.76f, 0.0f, 0.012f, 0.012f, FIELD_HZ), dark, null);
+        drawBox(boxMat(0.0f, 0.76f, cz, 0.34f, 0.010f, 0.010f), dark, null);
+        drawBox(boxMat(cx, 0.775f, cz, 0.05f, 0.025f, 0.05f), accent, null);
 
         // ワイヤー + ヘッド + 爪 (物理の実 pose で描く)
         var headPose = Phys3d.phys3d_pose(world, "head");
@@ -931,7 +931,7 @@ public static class CraneGame23
             var anchor = new Vec3(headPose.x, headPose.y, headPose.z)
                 + new Quat(headPose.qx, headPose.qy, headPose.qz, headPose.qw)
                     .rotateVec3(new Vec3(0, HEAD_TOP, 0));
-            drawBox(segmentMat(new Vec3(cx, CARRIAGE_Y, cz), anchor, 0.005),
+            drawBox(segmentMat(new Vec3(cx, CARRIAGE_Y, cz), anchor, 0.005f),
                 dark, null);
             r.draw(hm, Renderer3d.poseMat(headPose));
         }
@@ -940,7 +940,7 @@ public static class CraneGame23
             r.draw(fm, Renderer3d.poseMat(frPose));
         var flPose = Phys3d.phys3d_pose(world, "finger:l");
         if (flPose != null)
-            r.draw(fm, Renderer3d.poseMat(flPose) * Mat4.rotateY(Math.PI));
+            r.draw(fm, Renderer3d.poseMat(flPose) * Mat4.rotateY((float)Math.PI));
 
         // ぬいぐるみ
         foreach (var i in renderBearIndices)
@@ -951,17 +951,17 @@ public static class CraneGame23
         }
 
         // ガラスとフェンス (半透明は opaque の後に自動で回る)
-        var glass = Color.rgb(0.75, 0.85, 0.95, 0.12);
-        var fence = Color.rgb(0.85, 0.9, 1.0, 0.25);
-        drawBox(boxMat(-FIELD_HX - 0.006, 0.31, 0.0, 0.005, 0.31, FIELD_HZ),
+        var glass = Color.rgb(0.75f, 0.85f, 0.95f, 0.12f);
+        var fence = Color.rgb(0.85f, 0.9f, 1.0f, 0.25f);
+        drawBox(boxMat(-FIELD_HX - 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, FIELD_HZ),
             glass, Gfx.ALPHA);
-        drawBox(boxMat(FIELD_HX + 0.006, 0.31, 0.0, 0.005, 0.31, FIELD_HZ),
+        drawBox(boxMat(FIELD_HX + 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, FIELD_HZ),
             glass, Gfx.ALPHA);
-        drawBox(boxMat(0.0, 0.31, -FIELD_HZ - 0.006, FIELD_HX, 0.31, 0.005),
+        drawBox(boxMat(0.0f, 0.31f, -FIELD_HZ - 0.006f, FIELD_HX, 0.31f, 0.005f),
             glass, Gfx.ALPHA);
-        drawBox(boxMat(-0.20, 0.07, 0.10, 0.175, 0.07, 0.005), fence, Gfx.ALPHA);
-        drawBox(boxMat(-0.025, 0.07, 0.275, 0.005, 0.07, 0.175), fence, Gfx.ALPHA);
-        drawBox(boxMat(0.0, 0.31, FIELD_HZ + 0.006, FIELD_HX, 0.31, 0.005),
+        drawBox(boxMat(-0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.ALPHA);
+        drawBox(boxMat(-0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.ALPHA);
+        drawBox(boxMat(0.0f, 0.31f, FIELD_HZ + 0.006f, FIELD_HX, 0.31f, 0.005f),
             glass, Gfx.ALPHA);
 
         r.End();
@@ -976,8 +976,8 @@ public static class CraneGame23
                 + (autoPlay ? " (auto)" : ""));
             Ui.ui_text("hold Space/click: right, then back");
             Ui.ui_separator();
-            grabTorque = Ui.ui_slider_float("grab power", grabTorque, 0.0, 2.0);
-            holdTorque = Ui.ui_slider_float("hold power", holdTorque, 0.0, 2.0);
+            grabTorque = Ui.ui_slider_float("grab power", grabTorque, 0.0f, 2.0f);
+            holdTorque = Ui.ui_slider_float("hold power", holdTorque, 0.0f, 2.0f);
         }
         Ui.ui_end();
         Ui.ui_render();

@@ -23,32 +23,32 @@ public static class Sdf19
     // mirror のまま)。
     static SdfNode Model()
     {
-        var body = Sdf.sphere(0.72).move(0, -0.42, 0)
-            .bone("body", new Vec3(0, -0.42, 0));
-        var head = Sdf.sphere(0.46).move(0, 0.48, 0)
-            .bone("head", new Vec3(0, 0.10, 0));
-        var armL = Sdf.capsule(new Vec3(0.56, -0.32, 0),
-            new Vec3(1.04, 0.24, 0), 0.13)
-            .bone("arm_l", new Vec3(0.56, -0.32, 0));
-        var armR = Sdf.capsule(new Vec3(-0.56, -0.32, 0),
-            new Vec3(-1.04, 0.24, 0), 0.13)
-            .bone("arm_r", new Vec3(-0.56, -0.32, 0));
+        var body = Sdf.sphere(0.72f).move(0, -0.42f, 0)
+            .bone("body", new Vec3(0, -0.42f, 0));
+        var head = Sdf.sphere(0.46f).move(0, 0.48f, 0)
+            .bone("head", new Vec3(0, 0.10f, 0));
+        var armL = Sdf.capsule(new Vec3(0.56f, -0.32f, 0),
+            new Vec3(1.04f, 0.24f, 0), 0.13f)
+            .bone("arm_l", new Vec3(0.56f, -0.32f, 0));
+        var armR = Sdf.capsule(new Vec3(-0.56f, -0.32f, 0),
+            new Vec3(-1.04f, 0.24f, 0), 0.13f)
+            .bone("arm_r", new Vec3(-0.56f, -0.32f, 0));
         // 目: 球で smooth にくり抜き (camera は -Z 側)。切断面には cutter の
         // 材質が出るので、目玉の色は「彫る球の paint」で決まる
-        var eye = Sdf.sphere(0.11).move(0.17, 0.56, -0.40).mirrorX()
-            .paint(0x1E2130, 0.0, 0.15);
-        return body.smin(head, 0.22).smin(armL, 0.10).smin(armR, 0.10)
-            .paint(0xE58B52).ssub(eye, 0.06);
+        var eye = Sdf.sphere(0.11f).move(0.17f, 0.56f, -0.40f).mirrorX()
+            .paint(0x1E2130, 0.0f, 0.15f);
+        return body.smin(head, 0.22f).smin(armL, 0.10f).smin(armR, 0.10f)
+            .paint(0xE58B52).ssub(eye, 0.06f);
     }
 
     // --- アニメーション -------------------------------------------------------
     static bool waveOn = true;
 
     // mesh.bones の順で 8 本分の行列を詰める (規約は lubx.Bones)
-    static List<double> PackBones(double t, MeshData? data)
+    static List<float> PackBones(float t, MeshData? data)
     {
-        double wave = waveOn ? Math.Sin(t * 4.0) * 0.5 : 0.0;
-        double nod = waveOn ? Math.Sin(t * 2.0) * 0.10 : 0.0;
+        float wave = waveOn ? (float)Math.Sin(t * 4.0f) * 0.5f : 0.0f;
+        float nod = waveOn ? (float)Math.Sin(t * 2.0f) * 0.10f : 0.0f;
         return Bones.pack(data, (name, x, y, z) =>
         {
             switch (name)
@@ -69,10 +69,10 @@ public static class Sdf19
     // mesh / ren は onInit で生成 (cs-lib クラスは static 初期化子で作らない)。
     static Mesh3d? mesh = null;
     static Renderer3d? ren = null;
-    static double tAccum = 0.0;
+    static float tAccum = 0.0f;
     // メタル変身 (0..1)。target を Space でトグルして毎フレーム補間
-    static double metalT = 0.0;
-    static double metalTarget = 0.0;
+    static float metalT = 0.0f;
+    static float metalTarget = 0.0f;
     // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価
     // (SdfPanel での編集時)。パネル編集はツリー (data) に直接乗るので、
     // リロードするまで生きる。
@@ -98,7 +98,7 @@ public static class Sdf19
         Lub.config(new ConfigOpts { backend = backend });
         mesh = new Mesh3d("sdf19");
         var r = new Renderer3d("sdf19");
-        r.background = Color.rgb(0.09, 0.09, 0.12);
+        r.background = Color.rgb(0.09f, 0.09f, 0.12f);
         ren = r;
     }
 
@@ -110,9 +110,9 @@ public static class Sdf19
         meshDirty = false;
     }
 
-    static int MatcapByte(double v)
+    static int MatcapByte(float v)
     {
-        return (int)Math.Floor(MathUtil.clamp(v, 0.0, 1.0) * 255.0);
+        return (int)Math.Floor(MathUtil.clamp(v, 0.0f, 1.0f) * 255.0f);
     }
 
     // メタルの映り込み用 matcap (sphere map) を手続き生成する。
@@ -121,33 +121,33 @@ public static class Sdf19
     static List<int> MakeMatcap(int size)
     {
         var px = new List<int>();
-        double lx = -0.45; // key light (正規化済み)
-        double ly = 0.65;
-        double lz = 0.61;
+        float lx = -0.45f; // key light (正規化済み)
+        float ly = 0.65f;
+        float lz = 0.61f;
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
-                double nx = (x + 0.5) / size * 2.0 - 1.0;
-                double ny = 1.0 - (y + 0.5) / size * 2.0; // 画像上方向 = +y
-                double d2 = nx * nx + ny * ny;
-                if (d2 > 1.0)
+                float nx = (x + 0.5f) / size * 2.0f - 1.0f;
+                float ny = 1.0f - (y + 0.5f) / size * 2.0f; // 画像上方向 = +y
+                float d2 = nx * nx + ny * ny;
+                if (d2 > 1.0f)
                 { // 円の外周は縁の値で延長 (LINEAR filter の黒縁防止)
-                    double d = Math.Sqrt(d2);
+                    float d = (float)Math.Sqrt(d2);
                     nx = nx / d;
                     ny = ny / d;
-                    d2 = 1.0;
+                    d2 = 1.0f;
                 }
-                double nz = Math.Sqrt(1.0 - d2);
+                float nz = (float)Math.Sqrt(1.0f - d2);
                 // chrome 風: 地平線でパキッと分かれる空/地面 + キーライト。
                 // 金属の説得力はコントラストで決まる
-                double horizon = MathUtil.smoothstep(-0.08, 0.12, ny);
-                double zen = Math.Max(0.0, ny);
-                double r = MathUtil.lerp(0.10, 0.60, horizon) + zen * 0.26;
-                double g = MathUtil.lerp(0.09, 0.70, horizon) + zen * 0.20;
-                double bl = MathUtil.lerp(0.11, 0.86, horizon) + zen * 0.13;
-                double ndl = Math.Max(0.0, nx * lx + ny * ly + nz * lz);
-                double spec = Math.Pow(ndl, 48.0) * 1.2;
+                float horizon = MathUtil.smoothstep(-0.08f, 0.12f, ny);
+                float zen = Math.Max(0.0f, ny);
+                float r = MathUtil.lerp(0.10f, 0.60f, horizon) + zen * 0.26f;
+                float g = MathUtil.lerp(0.09f, 0.70f, horizon) + zen * 0.20f;
+                float bl = MathUtil.lerp(0.11f, 0.86f, horizon) + zen * 0.13f;
+                float ndl = Math.Max(0.0f, nx * lx + ny * ly + nz * lz);
+                float spec = (float)Math.Pow(ndl, 48.0f) * 1.2f;
                 px.Add(MatcapByte(r + spec));
                 px.Add(MatcapByte(g + spec));
                 px.Add(MatcapByte(bl + spec));
@@ -157,12 +157,12 @@ public static class Sdf19
         return px;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
-        tAccum = tAccum + dt * 0.96;
+        tAccum = tAccum + dt * 0.96f;
         if (Input.key_pressed("space"))
-            metalTarget = 1.0 - metalTarget;
-        var metalBlend = 1.0 - Math.Pow(1.0 - 0.12, dt * 60.0);
+            metalTarget = 1.0f - metalTarget;
+        var metalBlend = 1.0f - (float)Math.Pow(1.0f - 0.12f, dt * 60.0f);
         metalT = metalT + (metalTarget - metalT) * metalBlend;
 
         Io.load_text("samples/19_sdf/data/19_sdf.vs.slang",
@@ -201,7 +201,7 @@ public static class Sdf19
                     meshDirty = true;
                 Ui.ui_separator();
                 metalTarget = Ui.ui_slider_float("metal (Space)", metalTarget,
-                    0.0, 1.0);
+                    0.0f, 1.0f);
                 waveOn = Ui.ui_checkbox("wave", waveOn);
                 var md = m.data;
                 if (m.ready() && md != null)
@@ -218,14 +218,14 @@ public static class Sdf19
         matcapDirty = false;
         var matcap = matcapTex;
 
-        var model = Mat4.rotateY(tAccum * 0.7);
+        var model = Mat4.rotateY(tAccum * 0.7f);
         r.begin(new Camera
         {
-            eye = new Vec3(0.0, 0.55, -3.1),
-            target = new Vec3(0, 0.05, 0),
-            fov = 45.0,
-            near = 0.1,
-            far = 100.0,
+            eye = new Vec3(0.0f, 0.55f, -3.1f),
+            target = new Vec3(0, 0.05f, 0),
+            fov = 45.0f,
+            near = 0.1f,
+            far = 100.0f,
         });
         // material は matcap shader に差し替え (ファイル編集で hot reload)。
         // 追加の view / params / matcap は opts 経由で渡す。
@@ -238,7 +238,7 @@ public static class Sdf19
                 {
                     ["view"] = vm.m,
                     // メタル変身の override。ジオメトリにも頂点にも触らない
-                    ["params"] = new List<double> { metalT, 0.0, 0.0, 0.0 },
+                    ["params"] = new List<float> { metalT, 0.0f, 0.0f, 0.0f },
                 },
                 bones = PackBones(tAccum, m.data),
             };

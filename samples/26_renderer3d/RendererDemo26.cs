@@ -15,7 +15,7 @@ using System.Collections.Generic;
 
 public static class RendererDemo26
 {
-    static double t = 0.0;
+    static float t = 0.0f;
 
     static Renderer3d? ren = null;
     static Mesh3d? cube = null;
@@ -41,22 +41,22 @@ public static class RendererDemo26
     // bone 付き SDF 雪だるま。腕を振る。
     static SdfNode charaModel()
     {
-        var body = Sdf.sphere(0.5).move(0, 0.5, 0)
-            .bone("body", new Vec3(0, 0.3, 0));
-        var head = Sdf.sphere(0.32).move(0, 1.05, 0)
-            .bone("head", new Vec3(0, 0.8, 0));
-        var armL = Sdf.capsule(new Vec3(0.42, 0.75, 0),
-            new Vec3(0.95, 1.05, 0), 0.09)
-            .bone("arm_l", new Vec3(0.42, 0.75, 0));
-        var armR = Sdf.capsule(new Vec3(-0.42, 0.75, 0),
-            new Vec3(-0.95, 1.05, 0), 0.09)
-            .bone("arm_r", new Vec3(-0.42, 0.75, 0));
-        var trunk = body.smin(head, 0.08).smin(armL, 0.05).smin(armR, 0.05)
+        var body = Sdf.sphere(0.5f).move(0, 0.5f, 0)
+            .bone("body", new Vec3(0, 0.3f, 0));
+        var head = Sdf.sphere(0.32f).move(0, 1.05f, 0)
+            .bone("head", new Vec3(0, 0.8f, 0));
+        var armL = Sdf.capsule(new Vec3(0.42f, 0.75f, 0),
+            new Vec3(0.95f, 1.05f, 0), 0.09f)
+            .bone("arm_l", new Vec3(0.42f, 0.75f, 0));
+        var armR = Sdf.capsule(new Vec3(-0.42f, 0.75f, 0),
+            new Vec3(-0.95f, 1.05f, 0), 0.09f)
+            .bone("arm_r", new Vec3(-0.42f, 0.75f, 0));
+        var trunk = body.smin(head, 0.08f).smin(armL, 0.05f).smin(armR, 0.05f)
             .paint(0xF2EEE6);
-        var eye = Sdf.sphere(0.045).move(0.11, 1.14, -0.27).mirrorX()
-            .paint(0x24211E, 0.0, 0.3);
-        var nose = Sdf.capsule(new Vec3(0, 1.02, -0.30),
-            new Vec3(0, 1.0, -0.48), 0.05).paint(0xE07830);
+        var eye = Sdf.sphere(0.045f).move(0.11f, 1.14f, -0.27f).mirrorX()
+            .paint(0x24211E, 0.0f, 0.3f);
+        var nose = Sdf.capsule(new Vec3(0, 1.02f, -0.30f),
+            new Vec3(0, 1.0f, -0.48f), 0.05f).paint(0xE07830);
         return trunk.union(eye).union(nose);
     }
 
@@ -79,7 +79,7 @@ public static class RendererDemo26
         built = true;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         t = t + dt;
         build();
@@ -92,68 +92,68 @@ public static class RendererDemo26
             || charaM == null)
             return;
 
-        r.shadow.extent = 7.0;
+        r.shadow.extent = 7.0f;
         if (os.getenv("LUB_R3D_NOSSAO") != null)
             r.ssao.enabled = false;
         r.debugView = os.getenv("LUB_R3D_DEBUG");
         if (os.getenv("LUB_R3D_STYLE") != null)
         {
-            r.fog = new Renderer3dFog(Color.rgb(0.55, 0.6, 0.7), 0.045);
-            r.outline = new Renderer3dOutline(Color.rgb(0.1, 0.08, 0.12), 0.4);
-            r.vignette = 0.35;
+            r.fog = new Renderer3dFog(Color.rgb(0.55f, 0.6f, 0.7f), 0.045f);
+            r.outline = new Renderer3dOutline(Color.rgb(0.1f, 0.08f, 0.12f), 0.4f);
+            r.vignette = 0.35f;
         }
         r.begin(new Camera
         {
-            eye = new Vec3(Math.Cos(t * 0.3) * 7.5, 4.2,
-                Math.Sin(t * 0.3) * 7.5),
-            target = new Vec3(0, 0.7, 0),
+            eye = new Vec3((float)Math.Cos(t * 0.3f) * 7.5f, 4.2f,
+                (float)Math.Sin(t * 0.3f) * 7.5f),
+            target = new Vec3(0, 0.7f, 0),
             fov = 42,
         });
 
         // 床 (薄い箱)
-        r.draw(cubeM, Mat4.translate(new Vec3(0, -0.1, 0))
-            * Mat4.scale(new Vec3(5.5, 0.1, 5.5)),
+        r.draw(cubeM, Mat4.translate(new Vec3(0, -0.1f, 0))
+            * Mat4.scale(new Vec3(5.5f, 0.1f, 5.5f)),
             new Draw3dOpts { tint = Color.hex(0x76816F) });
         // 箱・円柱・球
-        r.draw(cubeM, Mat4.translate(new Vec3(-2.2, 0.5, 1.2))
-            * Mat4.rotateY(t * 0.7) * Mat4.scale(new Vec3(0.5, 0.5, 0.5)),
+        r.draw(cubeM, Mat4.translate(new Vec3(-2.2f, 0.5f, 1.2f))
+            * Mat4.rotateY(t * 0.7f) * Mat4.scale(new Vec3(0.5f, 0.5f, 0.5f)),
             new Draw3dOpts { tint = Color.hex(0xE8A33D) });
-        r.draw(cylM, Mat4.translate(new Vec3(2.1, 0.6, 1.4))
-            * Mat4.scale(new Vec3(0.45, 1.2, 0.45)),
+        r.draw(cylM, Mat4.translate(new Vec3(2.1f, 0.6f, 1.4f))
+            * Mat4.scale(new Vec3(0.45f, 1.2f, 0.45f)),
             new Draw3dOpts { tint = Color.hex(0x4FB8C4) });
-        r.draw(sphM, Mat4.translate(new Vec3(1.6,
-            0.55 + Math.Abs(Math.Sin(t * 2.0)) * 0.8, -1.6))
-            * Mat4.scale(new Vec3(0.55, 0.55, 0.55)),
+        r.draw(sphM, Mat4.translate(new Vec3(1.6f,
+            0.55f + Math.Abs((float)Math.Sin(t * 2.0f)) * 0.8f, -1.6f))
+            * Mat4.scale(new Vec3(0.55f, 0.55f, 0.55f)),
             new Draw3dOpts { tint = Color.hex(0xE85C5C) });
         // 半透明の板
-        r.draw(cubeM, Mat4.translate(new Vec3(0, 0.9, 2.6))
-            * Mat4.scale(new Vec3(1.6, 0.9, 0.04)),
+        r.draw(cubeM, Mat4.translate(new Vec3(0, 0.9f, 2.6f))
+            * Mat4.scale(new Vec3(1.6f, 0.9f, 0.04f)),
             new Draw3dOpts
             {
-                tint = Color.rgb(0.55, 0.75, 0.95, 0.35),
+                tint = Color.rgb(0.55f, 0.75f, 0.95f, 0.35f),
                 blend = Gfx.ALPHA,
             });
 
         // 高輝度ランプ (bloom が拾う)
-        r.draw(sphM, Mat4.translate(new Vec3(-1.9, 2.6, -1.9))
-            * Mat4.scale(new Vec3(0.22, 0.22, 0.22)),
-            new Draw3dOpts { tint = Color.rgb(5.0, 4.2, 2.4) });
+        r.draw(sphM, Mat4.translate(new Vec3(-1.9f, 2.6f, -1.9f))
+            * Mat4.scale(new Vec3(0.22f, 0.22f, 0.22f)),
+            new Draw3dOpts { tint = Color.rgb(5.0f, 4.2f, 2.4f) });
 
         // skinned キャラ (腕振り)
-        double wave = Math.Sin(t * 3.0) * 0.5;
+        float wave = (float)Math.Sin(t * 3.0f) * 0.5f;
         var bones = Bones.pack(charaM.data, (name, x, y, z) =>
         {
             if (name == "arm_l")
-                return Bones.pivotRot(x, y, z, Mat4.rotateZ(0.3 + wave * 0.6));
+                return Bones.pivotRot(x, y, z, Mat4.rotateZ(0.3f + wave * 0.6f));
             if (name == "arm_r")
-                return Bones.pivotRot(x, y, z, Mat4.rotateZ(-0.3 + wave * 0.6));
+                return Bones.pivotRot(x, y, z, Mat4.rotateZ(-0.3f + wave * 0.6f));
             if (name == "head")
                 return Bones.pivotRot(x, y, z,
-                    Mat4.rotateX(Math.Sin(t * 1.7) * 0.12));
+                    Mat4.rotateX((float)Math.Sin(t * 1.7f) * 0.12f));
             return null;
         });
         r.draw(charaM, Mat4.translate(new Vec3(0, 0, 0))
-            * Mat4.rotateY(Math.PI), new Draw3dOpts { bones = bones });
+            * Mat4.rotateY((float)Math.PI), new Draw3dOpts { bones = bones });
 
         r.End();
     }

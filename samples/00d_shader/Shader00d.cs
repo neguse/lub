@@ -26,7 +26,7 @@ public static class Shader00d
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         var s = Gfx.use_shader("test", vs, fs, 1);
         if (!printed && s != null)
@@ -37,7 +37,7 @@ public static class Shader00d
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.end_pass();
     }

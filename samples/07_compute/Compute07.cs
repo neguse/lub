@@ -18,7 +18,7 @@ public static class Compute07
         Lub.config(new ConfigOpts { backend = backend });
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         Io.load_text("samples/07_compute/data/07_gen_verts.cs.slang",
             out var cs, out var csv, out _, out _);
@@ -40,7 +40,7 @@ public static class Compute07
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.05, 0.05, 0.1, 1.0 },
+            clear_color = new float[] { 0.05f, 0.05f, 0.1f, 1.0f },
         });
         Gfx.draw(3,
             new Dictionary<string, object> { ["verts"] = vbuf },

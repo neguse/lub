@@ -19,7 +19,7 @@ public static class VertexColor02
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         Io.load_text("samples/02_vertex_color/data/02_vcol.vs.slang",
             out var vs, out var vsv, out _, out _);
@@ -36,7 +36,7 @@ public static class VertexColor02
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.draw(3,
             new Dictionary<string, object> { ["verts"] = vbuf },

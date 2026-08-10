@@ -29,34 +29,34 @@ public class Pin
 {
     public int gen; // version (ラック再設置で上げる)
     public bool standing; // ラック上に残っている (倒れた分はスイープ済み)
-    public double x; // 定位置 (スポット)
-    public double z;
+    public float x; // 定位置 (スポット)
+    public float z;
 }
 
 public static class Bowling25
 {
     const int W = 960;
     const int H = 540;
-    const double DT = 1.0 / 60.0;
+    const float DT = 1.0f / 60.0f;
 
     // --- 実寸 (m) ----------------------------------------------------------
-    const double LANE_HW = 0.533; // レーン半幅 (41.5in)
-    const double GUTTER_W = 0.235; // ガター幅
-    const double PIN_Z = 18.29; // ファウルライン→1番ピン (60ft)
-    const double PIN_DX = 0.3048; // 隣接ピン間隔 (12in)
-    const double ROW_DZ = 0.2639; // 列間 (12in × sin60°)
-    const double DECK_END = 19.96; // ピンデッキ末端。ここからピット
-    const double PIT_END = 21.0; // ピット奥 (クッション)
-    const double OIL_END = 12.2; // オイルパターン終端 (40ft 相当)
-    const double BALL_R = 0.108; // ボール半径 (8.5in 径)
+    const float LANE_HW = 0.533f; // レーン半幅 (41.5in)
+    const float GUTTER_W = 0.235f; // ガター幅
+    const float PIN_Z = 18.29f; // ファウルライン→1番ピン (60ft)
+    const float PIN_DX = 0.3048f; // 隣接ピン間隔 (12in)
+    const float ROW_DZ = 0.2639f; // 列間 (12in × sin60°)
+    const float DECK_END = 19.96f; // ピンデッキ末端。ここからピット
+    const float PIT_END = 21.0f; // ピット奥 (クッション)
+    const float OIL_END = 12.2f; // オイルパターン終端 (40ft 相当)
+    const float BALL_R = 0.108f; // ボール半径 (8.5in 径)
 
     // 材質。摩擦の合成は sqrt(fA×fB) なので、ボール 0.2 に対して実効摩擦は
     // オイル上 ≈ 0.04、ドライ上 ≈ 0.17 と実物のレンジに合わせている
-    const double FRIC_OIL = 0.008;
-    const double FRIC_DRY = 0.15;
-    const double BALL_DENSITY = 1190.0; // 約 6.3kg (14lb 球)
-    const double PIN_DENSITY = 620.0; // 約 1.53kg
-    const double SKID = 0.5; // リリース時の転がり率 (1=完全転がり)
+    const float FRIC_OIL = 0.008f;
+    const float FRIC_DRY = 0.15f;
+    const float BALL_DENSITY = 1190.0f; // 約 6.3kg (14lb 球)
+    const float PIN_DENSITY = 620.0f; // 約 1.53kg
+    const float SKID = 0.5f; // リリース時の転がり率 (1=完全転がり)
 
     // --- 状態機械 -----------------------------------------------------------
     const int ST_AIM = 0; // 立ち位置 (マーカーが往復)
@@ -70,22 +70,22 @@ public static class Bowling25
 
     static int state = ST_AIM;
     static int stateT = 0;
-    static double tAccum = 0.0;
+    static float tAccum = 0.0f;
     static FixedStep? step = null;
     static int pendingPresses = 0;
 
     // 投球パラメータ (各段階でロック)
-    static double aimX = 0.0;
-    static double angle = 0.0; // rad。+ で右へ
-    static double hook = 0.0; // rad/s。+ で左に曲がる
-    static double power = 0.0; // 0..1
+    static float aimX = 0.0f;
+    static float angle = 0.0f; // rad。+ で右へ
+    static float hook = 0.0f; // rad/s。+ で左に曲がる
+    static float power = 0.0f; // 0..1
     static int throwGen = 0;
     static bool ballLive = false;
-    static double throwX = 0.0;
-    static double ballVX = 0.0;
-    static double ballVZ = 0.0;
-    static double ballWX = 0.0;
-    static double ballWZ = 0.0;
+    static float throwX = 0.0f;
+    static float ballVX = 0.0f;
+    static float ballVZ = 0.0f;
+    static float ballWX = 0.0f;
+    static float ballWZ = 0.0f;
     static int stallFrames = 0;
     static bool inGutter = false;
     static int standingBefore = 10;
@@ -93,10 +93,10 @@ public static class Bowling25
     // アトラクトモード (放置で自動投球。ヘッドレス検証兼デモ)
     static bool autoPlay = false;
     static int idleT = 0;
-    static double autoAimX = 0.0;
-    static double autoAngle = 0.0;
-    static double autoHook = 0.0;
-    static double autoPower = 0.85;
+    static float autoAimX = 0.0f;
+    static float autoAngle = 0.0f;
+    static float autoHook = 0.0f;
+    static float autoPower = 0.85f;
     static Rand? rng = null;
 
     // スコア (10 フレーム正式ルール)
@@ -132,7 +132,7 @@ public static class Bowling25
                 {
                     gen = 1,
                     standing = true,
-                    x = (c - r * 0.5) * PIN_DX,
+                    x = (c - r * 0.5f) * PIN_DX,
                     z = PIN_Z + r * ROW_DZ,
                 });
             }
@@ -153,33 +153,33 @@ public static class Bowling25
     static SdfNode pinModel()
     {
         var white = 0xF2EFE6;
-        var base_ = Sdf.capsule(new Vec3(0, 0.030, 0), new Vec3(0, 0.090, 0),
-            0.051);
-        var belly = Sdf.sphere(0.0605).move(0, 0.155, 0);
-        var neck = Sdf.capsule(new Vec3(0, 0.20, 0), new Vec3(0, 0.30, 0),
-            0.032);
-        var head = Sdf.sphere(0.040).move(0, 0.335, 0);
-        var body = base_.smin(belly, 0.03).smin(neck, 0.035).smin(head, 0.02)
-            .paint(white, 0.0, 0.35);
-        var stripe1 = Sdf.torus(0.034, 0.006).move(0, 0.265, 0)
-            .paint(0xC2263D, 0.0, 0.4);
-        var stripe2 = Sdf.torus(0.035, 0.006).move(0, 0.298, 0)
-            .paint(0xC2263D, 0.0, 0.4);
-        return body.smin(stripe1, 0.006).smin(stripe2, 0.006);
+        var base_ = Sdf.capsule(new Vec3(0, 0.030f, 0), new Vec3(0, 0.090f, 0),
+            0.051f);
+        var belly = Sdf.sphere(0.0605f).move(0, 0.155f, 0);
+        var neck = Sdf.capsule(new Vec3(0, 0.20f, 0), new Vec3(0, 0.30f, 0),
+            0.032f);
+        var head = Sdf.sphere(0.040f).move(0, 0.335f, 0);
+        var body = base_.smin(belly, 0.03f).smin(neck, 0.035f).smin(head, 0.02f)
+            .paint(white, 0.0f, 0.35f);
+        var stripe1 = Sdf.torus(0.034f, 0.006f).move(0, 0.265f, 0)
+            .paint(0xC2263D, 0.0f, 0.4f);
+        var stripe2 = Sdf.torus(0.035f, 0.006f).move(0, 0.298f, 0)
+            .paint(0xC2263D, 0.0f, 0.4f);
+        return body.smin(stripe1, 0.006f).smin(stripe2, 0.006f);
     }
 
     // ボール: 指穴 3 つ + 飾りリング (回転が見えるように)
     static SdfNode ballModel()
     {
-        var body = Sdf.sphere(BALL_R).paint(0x2B55A8, 0.15, 0.25);
-        var ring = Sdf.torus(BALL_R, 0.0035)
-            .rotate(new Vec3(1, 0, 0.35).normalize(), 1.0)
-            .paint(0xD9A441, 0.3, 0.3);
-        var withRing = body.smin(ring, 0.002);
-        var h1 = Sdf.sphere(0.015).move(0.024, 0.098, 0.027);
-        var h2 = Sdf.sphere(0.015).move(-0.024, 0.098, 0.027);
-        var h3 = Sdf.sphere(0.018).move(0.0, 0.102, -0.020);
-        return withRing.ssub(h1, 0.002).ssub(h2, 0.002).ssub(h3, 0.002);
+        var body = Sdf.sphere(BALL_R).paint(0x2B55A8, 0.15f, 0.25f);
+        var ring = Sdf.torus(BALL_R, 0.0035f)
+            .rotate(new Vec3(1, 0, 0.35f).normalize(), 1.0f)
+            .paint(0xD9A441, 0.3f, 0.3f);
+        var withRing = body.smin(ring, 0.002f);
+        var h1 = Sdf.sphere(0.015f).move(0.024f, 0.098f, 0.027f);
+        var h2 = Sdf.sphere(0.015f).move(-0.024f, 0.098f, 0.027f);
+        var h3 = Sdf.sphere(0.018f).move(0.0f, 0.102f, -0.020f);
+        return withRing.ssub(h1, 0.002f).ssub(h2, 0.002f).ssub(h3, 0.002f);
     }
 
     // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
@@ -196,59 +196,59 @@ public static class Bowling25
 
     // --- 物理宣言 ------------------------------------------------------------
     // 静物: x, y, z, hx, hy, hz, friction, restitution
-    static List<double[]> STATICS = new List<double[]>
+    static List<float[]> STATICS = new List<float[]>
     {
         // アプローチ
-        new double[]
-            { 0, -0.06, -1.25, LANE_HW + GUTTER_W + 0.12, 0.06, 1.25, 0.3, 0.1 },
+        new float[]
+            { 0, -0.06f, -1.25f, LANE_HW + GUTTER_W + 0.12f, 0.06f, 1.25f, 0.3f, 0.1f },
         // レーン (オイル)
-        new double[]
-            { 0, -0.06, OIL_END * 0.5, LANE_HW, 0.06, OIL_END * 0.5, FRIC_OIL, 0.08 },
+        new float[]
+            { 0, -0.06f, OIL_END * 0.5f, LANE_HW, 0.06f, OIL_END * 0.5f, FRIC_OIL, 0.08f },
         // レーン (ドライ) + ピンデッキ
-        new double[]
+        new float[]
         {
-            0, -0.06, (OIL_END + DECK_END) * 0.5, LANE_HW, 0.06,
-            (DECK_END - OIL_END) * 0.5, FRIC_DRY, 0.08,
+            0, -0.06f, (OIL_END + DECK_END) * 0.5f, LANE_HW, 0.06f,
+            (DECK_END - OIL_END) * 0.5f, FRIC_DRY, 0.08f,
         },
         // ガター左
-        new double[]
+        new float[]
         {
-            -(LANE_HW + GUTTER_W * 0.5), -0.104, DECK_END * 0.5, GUTTER_W * 0.5,
-            0.05, DECK_END * 0.5, 0.3, 0.1,
+            -(LANE_HW + GUTTER_W * 0.5f), -0.104f, DECK_END * 0.5f, GUTTER_W * 0.5f,
+            0.05f, DECK_END * 0.5f, 0.3f, 0.1f,
         },
         // ガター右
-        new double[]
+        new float[]
         {
-            LANE_HW + GUTTER_W * 0.5, -0.104, DECK_END * 0.5, GUTTER_W * 0.5,
-            0.05, DECK_END * 0.5, 0.3, 0.1,
+            LANE_HW + GUTTER_W * 0.5f, -0.104f, DECK_END * 0.5f, GUTTER_W * 0.5f,
+            0.05f, DECK_END * 0.5f, 0.3f, 0.1f,
         },
         // 側壁左
-        new double[]
+        new float[]
         {
-            -(LANE_HW + GUTTER_W + 0.03), 0.08, PIT_END * 0.5, 0.03, 0.22,
-            PIT_END * 0.5, 0.2, 0.3,
+            -(LANE_HW + GUTTER_W + 0.03f), 0.08f, PIT_END * 0.5f, 0.03f, 0.22f,
+            PIT_END * 0.5f, 0.2f, 0.3f,
         },
         // 側壁右
-        new double[]
+        new float[]
         {
-            LANE_HW + GUTTER_W + 0.03, 0.08, PIT_END * 0.5, 0.03, 0.22,
-            PIT_END * 0.5, 0.2, 0.3,
+            LANE_HW + GUTTER_W + 0.03f, 0.08f, PIT_END * 0.5f, 0.03f, 0.22f,
+            PIT_END * 0.5f, 0.2f, 0.3f,
         },
         // ピット床
-        new double[]
+        new float[]
         {
-            0, -0.58, (DECK_END + PIT_END) * 0.5, LANE_HW + GUTTER_W + 0.06,
-            0.05, (PIT_END - DECK_END) * 0.5 + 0.2, 0.9, 0.02,
+            0, -0.58f, (DECK_END + PIT_END) * 0.5f, LANE_HW + GUTTER_W + 0.06f,
+            0.05f, (PIT_END - DECK_END) * 0.5f + 0.2f, 0.9f, 0.02f,
         },
         // ピットクッション
-        new double[]
+        new float[]
         {
-            0, -0.15, PIT_END + 0.05, LANE_HW + GUTTER_W + 0.06, 0.45, 0.05,
-            0.6, 0.05,
+            0, -0.15f, PIT_END + 0.05f, LANE_HW + GUTTER_W + 0.06f, 0.45f, 0.05f,
+            0.6f, 0.05f,
         },
         // マスキング (跳ねたピンが当たる)
-        new double[]
-            { 0, 0.95, 19.3, LANE_HW + GUTTER_W + 0.06, 0.35, 1.0, 0.3, 0.1 },
+        new float[]
+            { 0, 0.95f, 19.3f, LANE_HW + GUTTER_W + 0.06f, 0.35f, 1.0f, 0.3f, 0.1f },
     };
 
     static void declareStatics(WorldRef3d world)
@@ -277,14 +277,14 @@ public static class Bowling25
     // 台座が太いぶん重心は実物並み (床から約 0.16m) に落ちる
     static void declarePinShapes(BodyRef3d body, int ver)
     {
-        var f = 0.35;
-        var rest = 0.3;
+        var f = 0.35f;
+        var rest = 0.3f;
         Phys3d.phys3d_cylinder(body, "base", new CylinderDesc3d
         {
             version = ver,
-            height = 0.10,
-            radius = 0.051,
-            yOffset = 0.0,
+            height = 0.10f,
+            radius = 0.051f,
+            yOffset = 0.0f,
             density = PIN_DENSITY,
             friction = f,
             restitution = rest,
@@ -292,8 +292,8 @@ public static class Bowling25
         Phys3d.phys3d_sphere(body, "belly", new SphereDesc3d
         {
             version = ver,
-            r = 0.0605,
-            offset = new Vec3d { x = 0.0, y = 0.155, z = 0.0 },
+            r = 0.0605f,
+            offset = new Vec3d { x = 0.0f, y = 0.155f, z = 0.0f },
             density = PIN_DENSITY,
             friction = f,
             restitution = rest,
@@ -301,9 +301,9 @@ public static class Bowling25
         Phys3d.phys3d_capsule(body, "neck", new CapsuleDesc3d
         {
             version = ver,
-            a = new Vec3d { x = 0.0, y = 0.21, z = 0.0 },
-            b = new Vec3d { x = 0.0, y = 0.31, z = 0.0 },
-            r = 0.032,
+            a = new Vec3d { x = 0.0f, y = 0.21f, z = 0.0f },
+            b = new Vec3d { x = 0.0f, y = 0.31f, z = 0.0f },
+            r = 0.032f,
             density = PIN_DENSITY,
             friction = f,
             restitution = rest,
@@ -311,8 +311,8 @@ public static class Bowling25
         Phys3d.phys3d_sphere(body, "head", new SphereDesc3d
         {
             version = ver,
-            r = 0.040,
-            offset = new Vec3d { x = 0.0, y = 0.335, z = 0.0 },
+            r = 0.040f,
+            offset = new Vec3d { x = 0.0f, y = 0.335f, z = 0.0f },
             density = PIN_DENSITY,
             friction = f,
             restitution = rest,
@@ -329,9 +329,9 @@ public static class Bowling25
             {
                 type = Phys3d.DYNAMIC,
                 version = p.gen,
-                linearDamping = 0.02,
-                angularDamping = 0.05,
-                initial = new InitialState3d { x = p.x, y = 0.001, z = p.z },
+                linearDamping = 0.02f,
+                angularDamping = 0.05f,
+                initial = new InitialState3d { x = p.x, y = 0.001f, z = p.z },
             });
             if (body == null) continue;
             declarePinShapes(body, p.gen);
@@ -346,12 +346,12 @@ public static class Bowling25
             type = Phys3d.DYNAMIC,
             version = throwGen,
             bullet = true,
-            angularDamping = 0.02,
+            angularDamping = 0.02f,
             initial = new InitialState3d
             {
                 x = throwX,
-                y = BALL_R + 0.001,
-                z = 0.0,
+                y = BALL_R + 0.001f,
+                z = 0.0f,
                 vx = ballVX,
                 vz = ballVZ,
                 wx = ballWX,
@@ -364,8 +364,8 @@ public static class Bowling25
             version = throwGen,
             r = BALL_R,
             density = BALL_DENSITY,
-            friction = 0.2,
-            restitution = 0.03,
+            friction = 0.2f,
+            restitution = 0.03f,
         });
     }
 
@@ -375,9 +375,9 @@ public static class Bowling25
         throwGen++;
         ballLive = true;
         throwX = aimX;
-        var spd = 5.6 + 3.9 * power;
-        var dx = Math.Sin(angle);
-        var dz = Math.Cos(angle);
+        var spd = 5.6f + 3.9f * power;
+        var dx = (float)Math.Sin(angle);
+        var dz = (float)Math.Cos(angle);
         ballVX = dx * spd;
         ballVZ = dz * spd;
         // 転がり不足 (スキッド) + フック軸回転。フックはオイル上ではほぼ
@@ -411,14 +411,14 @@ public static class Bowling25
         }
         else
         {
-            if (Math.Abs(pose.x) > LANE_HW + 0.02 && pose.y < 0.09)
+            if (Math.Abs(pose.x) > LANE_HW + 0.02f && pose.y < 0.09f)
                 inGutter = true;
-            var sp = Math.Sqrt(pose.vx * pose.vx + pose.vz * pose.vz);
-            if (pose.y < -0.25) // ピットに落ちた
+            var sp = (float)Math.Sqrt(pose.vx * pose.vx + pose.vz * pose.vz);
+            if (pose.y < -0.25f) // ピットに落ちた
             {
                 done = true;
             }
-            else if (sp < 0.12 && pose.z < DECK_END - 0.6)
+            else if (sp < 0.12f && pose.z < DECK_END - 0.6f)
             {
                 stallFrames++; // レーン上で失速 (デッドボール)
                 if (stallFrames > 50) done = true;
@@ -434,17 +434,17 @@ public static class Bowling25
 
     static void updateSettle(WorldRef3d world)
     {
-        var maxSp = 0.0;
+        var maxSp = 0.0f;
         for (int i = 0; i < pins.Count; i++)
         {
             if (!pins[i].standing) continue;
             var pose = Phys3d.phys3d_pose(world, "pin:" + i);
             if (pose == null) continue;
-            var sp = Math.Sqrt(pose.vx * pose.vx + pose.vy * pose.vy
+            var sp = (float)Math.Sqrt(pose.vx * pose.vx + pose.vy * pose.vy
                 + pose.vz * pose.vz);
             if (sp > maxSp) maxSp = sp;
         }
-        if ((stateT > 45 && maxSp < 0.08) || stateT > 300)
+        if ((stateT > 45 && maxSp < 0.08f) || stateT > 300)
             countAndScore(world);
     }
 
@@ -460,9 +460,9 @@ public static class Bowling25
             if (!p.standing) continue;
             var pose = Phys3d.phys3d_pose(world, "pin:" + i);
             var upY = pose != null
-                ? 1.0 - 2.0 * (pose.qx * pose.qx + pose.qz * pose.qz)
-                : -1.0;
-            if (pose == null || upY < 0.72 || pose.y < -0.05 || pose.y > 0.15)
+                ? 1.0f - 2.0f * (pose.qx * pose.qx + pose.qz * pose.qz)
+                : -1.0f;
+            if (pose == null || upY < 0.72f || pose.y < -0.05f || pose.y > 0.15f)
             {
                 p.standing = false;
                 knocked++;
@@ -477,14 +477,14 @@ public static class Bowling25
         fr.Add(knocked);
 
         if (knocked == 10 && standingBefore == 10)
-            showEvent("STRIKE!", Color.rgb(1.0, 0.85, 0.3));
+            showEvent("STRIKE!", Color.rgb(1.0f, 0.85f, 0.3f));
         else if (stand == 0 && knocked > 0)
-            showEvent("SPARE!", Color.rgb(0.5, 0.9, 1.0));
+            showEvent("SPARE!", Color.rgb(0.5f, 0.9f, 1.0f));
         else if (knocked == 0)
             showEvent(inGutter ? "GUTTER" : "NO PINS",
-                Color.rgb(0.7, 0.72, 0.78));
+                Color.rgb(0.7f, 0.72f, 0.78f));
         else
-            showEvent(knocked + " PINS", Color.rgb(0.95, 0.93, 0.85));
+            showEvent(knocked + " PINS", Color.rgb(0.95f, 0.93f, 0.85f));
 
         rerackPending = false;
         gameOverPending = false;
@@ -655,19 +655,19 @@ public static class Bowling25
         autoPlay = true;
         idleT = 0;
         // 外に出してポケット (±0.075) へ曲げ戻すライン。乱数で毎回散らす
-        var side = r.nextFloat() < 0.5 ? 1.0 : -1.0;
-        autoAimX = side * (0.12 + r.nextFloat() * 0.06);
-        autoHook = side * (18.0 + r.nextFloat() * 4.0);
-        autoPower = 0.82 + r.nextFloat() * 0.08;
+        var side = r.nextFloat() < 0.5f ? 1.0f : -1.0f;
+        autoAimX = side * (0.12f + r.nextFloat() * 0.06f);
+        autoHook = side * (18.0f + r.nextFloat() * 4.0f);
+        autoPower = 0.82f + r.nextFloat() * 0.08f;
         // バックエンドの曲がり量 (ヘッドレス実測: 約 0.40m @ 球速 8.9m/s、
         // 遅いほど増える) から狙い角を逆算し、人間らしい誤差を足す
-        var spd = 5.6 + 3.9 * autoPower;
-        var drift = 0.40 + (8.9 - spd) * 0.3;
-        autoAngle = (side * (0.075 + drift) - autoAimX) / 18.3
-            + side * (r.nextFloat() * 0.006 - 0.003);
+        var spd = 5.6f + 3.9f * autoPower;
+        var drift = 0.40f + (8.9f - spd) * 0.3f;
+        autoAngle = (side * (0.075f + drift) - autoAimX) / 18.3f
+            + side * (r.nextFloat() * 0.006f - 0.003f);
     }
 
-    static bool autoNear(double v, double target, double eps)
+    static bool autoNear(float v, float target, float eps)
     {
         return autoPlay && Math.Abs(v - target) < eps;
     }
@@ -680,12 +680,12 @@ public static class Bowling25
         {
             if (autoPlay && stateT == 1)
                 startAuto(); // 投球ごとにラインを再抽選
-            aimX = 0.42 * Math.Sin(stateT * 0.030);
-            if (autoNear(aimX, autoAimX, 0.02)) pressed = true;
+            aimX = 0.42f * (float)Math.Sin(stateT * 0.030f);
+            if (autoNear(aimX, autoAimX, 0.02f)) pressed = true;
             if (pressed)
             {
-                angle = 0.0;
-                hook = 0.0;
+                angle = 0.0f;
+                hook = 0.0f;
                 enter(ST_ANGLE);
             }
             else if (!autoPlay)
@@ -696,20 +696,20 @@ public static class Bowling25
         }
         else if (state == ST_ANGLE)
         {
-            angle = 0.10 * Math.Sin(stateT * 0.045);
-            if (autoNear(angle, autoAngle, 0.006)) pressed = true;
+            angle = 0.10f * (float)Math.Sin(stateT * 0.045f);
+            if (autoNear(angle, autoAngle, 0.006f)) pressed = true;
             if (pressed && stateT > 8) enter(ST_HOOK);
         }
         else if (state == ST_HOOK)
         {
-            hook = 38.0 * Math.Sin(stateT * 0.05);
-            if (autoNear(hook, autoHook, 2.5)) pressed = true;
+            hook = 38.0f * (float)Math.Sin(stateT * 0.05f);
+            if (autoNear(hook, autoHook, 2.5f)) pressed = true;
             if (pressed && stateT > 8) enter(ST_POWER);
         }
         else if (state == ST_POWER)
         {
-            power = 0.5 - 0.5 * Math.Cos(stateT * 0.055);
-            if (autoNear(power, autoPower, 0.04)) pressed = true;
+            power = 0.5f - 0.5f * (float)Math.Cos(stateT * 0.055f);
+            if (autoNear(power, autoPower, 0.04f)) pressed = true;
             if (pressed && stateT > 8) throwBall();
         }
         else if (state == ST_ROLL)
@@ -751,46 +751,46 @@ public static class Bowling25
     // --- カメラ ------------------------------------------------------------------
     static Vec3? camEye = null; // 初期値は updateCamera が補う (遅延生成)
     static Vec3? camTgt = null;
-    static double camFov = 38.0;
+    static float camFov = 38.0f;
 
     static void updateCamera(WorldRef3d world)
     {
-        var eye = camEye ?? new Vec3(0, 0.62, -2.4);
-        var tgt = camTgt ?? new Vec3(0, 0.28, 6.0);
-        var de = new Vec3(aimX * 0.55, 0.62, -2.4);
-        var dtg = new Vec3(aimX * 0.25, 0.28, 6.0);
-        var dfov = 38.0;
+        var eye = camEye ?? new Vec3(0, 0.62f, -2.4f);
+        var tgt = camTgt ?? new Vec3(0, 0.28f, 6.0f);
+        var de = new Vec3(aimX * 0.55f, 0.62f, -2.4f);
+        var dtg = new Vec3(aimX * 0.25f, 0.28f, 6.0f);
+        var dfov = 38.0f;
         if (state == ST_ROLL)
         {
             var pose = Phys3d.phys3d_pose(world, "ball");
-            if (pose != null && pose.z < 14.0)
+            if (pose != null && pose.z < 14.0f)
             {
-                de = new Vec3(pose.x * 0.45, 1.0, pose.z - 3.2);
-                dtg = new Vec3(pose.x * 0.8, 0.12, pose.z + 4.5);
-                dfov = 42.0;
+                de = new Vec3(pose.x * 0.45f, 1.0f, pose.z - 3.2f);
+                dtg = new Vec3(pose.x * 0.8f, 0.12f, pose.z + 4.5f);
+                dfov = 42.0f;
             }
             else
             {
-                de = new Vec3(-1.05, 0.85, 15.2);
-                dtg = new Vec3(0.05, 0.25, PIN_Z + 0.3);
-                dfov = 30.0;
+                de = new Vec3(-1.05f, 0.85f, 15.2f);
+                dtg = new Vec3(0.05f, 0.25f, PIN_Z + 0.3f);
+                dfov = 30.0f;
             }
         }
         else if (state == ST_SETTLE || state == ST_SCORE)
         {
-            de = new Vec3(-1.05, 0.8, 15.6);
-            dtg = new Vec3(0.0, 0.22, PIN_Z + 0.3);
-            dfov = 28.0;
+            de = new Vec3(-1.05f, 0.8f, 15.6f);
+            dtg = new Vec3(0.0f, 0.22f, PIN_Z + 0.3f);
+            dfov = 28.0f;
         }
         else if (state == ST_END)
         {
-            var a = tAccum * 0.25;
-            de = new Vec3(Math.Sin(a) * 2.8, 1.5,
-                PIN_Z - 1.2 + Math.Cos(a) * 2.8);
-            dtg = new Vec3(0, 0.2, PIN_Z);
-            dfov = 45.0;
+            var a = tAccum * 0.25f;
+            de = new Vec3((float)Math.Sin(a) * 2.8f, 1.5f,
+                PIN_Z - 1.2f + (float)Math.Cos(a) * 2.8f);
+            dtg = new Vec3(0, 0.2f, PIN_Z);
+            dfov = 45.0f;
         }
-        var k = Math.Min(1.0, 5.0 * DT);
+        var k = Math.Min(1.0f, 5.0f * DT);
         camEye = eye.lerp(de, k);
         camTgt = tgt.lerp(dtg, k);
         camFov = MathUtil.lerp(camFov, dfov, k);
@@ -799,15 +799,15 @@ public static class Bowling25
     // --- 描画 --------------------------------------------------------------------
     static Renderer3d? ren = null;
 
-    static Mat4 boxMat(double x, double y, double z, double sx, double sy,
-        double sz)
+    static Mat4 boxMat(float x, float y, float z, float sx, float sy,
+        float sz)
     {
         return Mat4.translate(new Vec3(x, y, z))
             * Mat4.scale(new Vec3(sx, sy, sz));
     }
 
-    static Mat4 boxMatR(double x, double y, double z, double ry, double sx,
-        double sy, double sz)
+    static Mat4 boxMatR(float x, float y, float z, float ry, float sx,
+        float sy, float sz)
     {
         return Mat4.translate(new Vec3(x, y, z)) * Mat4.rotateY(ry)
             * Mat4.scale(new Vec3(sx, sy, sz));
@@ -824,52 +824,52 @@ public static class Bowling25
     // 静的な舞台 (物理 STATICS と目視で寸法を揃える)
     static void drawStage()
     {
-        var wood = Color.rgb(0.76, 0.60, 0.40);
-        var woodOil = Color.rgb(0.70, 0.57, 0.41);
-        var dark = Color.rgb(0.16, 0.17, 0.19);
-        var accentRed = Color.rgb(0.52, 0.15, 0.20);
-        var mark = Color.rgb(0.35, 0.20, 0.12);
+        var wood = Color.rgb(0.76f, 0.60f, 0.40f);
+        var woodOil = Color.rgb(0.70f, 0.57f, 0.41f);
+        var dark = Color.rgb(0.16f, 0.17f, 0.19f);
+        var accentRed = Color.rgb(0.52f, 0.15f, 0.20f);
+        var mark = Color.rgb(0.35f, 0.20f, 0.12f);
 
         // 周辺の床 (見た目のみ)
-        drawBox(boxMat(0, -0.7, 9.0, 6.0, 0.05, 14.0),
-            Color.rgb(0.10, 0.10, 0.13), null);
+        drawBox(boxMat(0, -0.7f, 9.0f, 6.0f, 0.05f, 14.0f),
+            Color.rgb(0.10f, 0.10f, 0.13f), null);
         // アプローチ
-        drawBox(boxMat(0, -0.06, -1.25, LANE_HW + GUTTER_W + 0.12, 0.06, 1.25),
-            Color.rgb(0.62, 0.51, 0.36), null);
+        drawBox(boxMat(0, -0.06f, -1.25f, LANE_HW + GUTTER_W + 0.12f, 0.06f, 1.25f),
+            Color.rgb(0.62f, 0.51f, 0.36f), null);
         // レーン (オイル / ドライ)
-        drawBox(boxMat(0, -0.06, OIL_END * 0.5, LANE_HW, 0.06, OIL_END * 0.5),
+        drawBox(boxMat(0, -0.06f, OIL_END * 0.5f, LANE_HW, 0.06f, OIL_END * 0.5f),
             woodOil, null);
-        drawBox(boxMat(0, -0.06, (OIL_END + DECK_END) * 0.5, LANE_HW, 0.06,
-            (DECK_END - OIL_END) * 0.5), wood, null);
+        drawBox(boxMat(0, -0.06f, (OIL_END + DECK_END) * 0.5f, LANE_HW, 0.06f,
+            (DECK_END - OIL_END) * 0.5f), wood, null);
         // ガター
-        drawBox(boxMat(-(LANE_HW + GUTTER_W * 0.5), -0.104, DECK_END * 0.5,
-            GUTTER_W * 0.5, 0.05, DECK_END * 0.5), dark, null);
-        drawBox(boxMat(LANE_HW + GUTTER_W * 0.5, -0.104, DECK_END * 0.5,
-            GUTTER_W * 0.5, 0.05, DECK_END * 0.5), dark, null);
+        drawBox(boxMat(-(LANE_HW + GUTTER_W * 0.5f), -0.104f, DECK_END * 0.5f,
+            GUTTER_W * 0.5f, 0.05f, DECK_END * 0.5f), dark, null);
+        drawBox(boxMat(LANE_HW + GUTTER_W * 0.5f, -0.104f, DECK_END * 0.5f,
+            GUTTER_W * 0.5f, 0.05f, DECK_END * 0.5f), dark, null);
         // 側壁
-        drawBox(boxMat(-(LANE_HW + GUTTER_W + 0.03), 0.08, PIT_END * 0.5, 0.03,
-            0.22, PIT_END * 0.5), Color.rgb(0.30, 0.31, 0.36), null);
-        drawBox(boxMat(LANE_HW + GUTTER_W + 0.03, 0.08, PIT_END * 0.5, 0.03,
-            0.22, PIT_END * 0.5), Color.rgb(0.30, 0.31, 0.36), null);
+        drawBox(boxMat(-(LANE_HW + GUTTER_W + 0.03f), 0.08f, PIT_END * 0.5f, 0.03f,
+            0.22f, PIT_END * 0.5f), Color.rgb(0.30f, 0.31f, 0.36f), null);
+        drawBox(boxMat(LANE_HW + GUTTER_W + 0.03f, 0.08f, PIT_END * 0.5f, 0.03f,
+            0.22f, PIT_END * 0.5f), Color.rgb(0.30f, 0.31f, 0.36f), null);
         // ピット (奥の暗がり) とマスキング
-        drawBox(boxMat(0, -0.58, (DECK_END + PIT_END) * 0.5,
-            LANE_HW + GUTTER_W + 0.06, 0.05, (PIT_END - DECK_END) * 0.5 + 0.2),
-            Color.rgb(0.05, 0.05, 0.07), null);
-        drawBox(boxMat(0, -0.15, PIT_END + 0.05, LANE_HW + GUTTER_W + 0.06,
-            0.45, 0.05), Color.rgb(0.08, 0.08, 0.10), null);
-        drawBox(boxMat(0, 0.95, 19.3, LANE_HW + GUTTER_W + 0.06, 0.35, 1.0),
+        drawBox(boxMat(0, -0.58f, (DECK_END + PIT_END) * 0.5f,
+            LANE_HW + GUTTER_W + 0.06f, 0.05f, (PIT_END - DECK_END) * 0.5f + 0.2f),
+            Color.rgb(0.05f, 0.05f, 0.07f), null);
+        drawBox(boxMat(0, -0.15f, PIT_END + 0.05f, LANE_HW + GUTTER_W + 0.06f,
+            0.45f, 0.05f), Color.rgb(0.08f, 0.08f, 0.10f), null);
+        drawBox(boxMat(0, 0.95f, 19.3f, LANE_HW + GUTTER_W + 0.06f, 0.35f, 1.0f),
             accentRed, null);
         // ファウルライン
-        drawBox(boxMat(0, 0.001, 0, LANE_HW, 0.0015, 0.012),
-            Color.rgb(0.15, 0.15, 0.17), null);
+        drawBox(boxMat(0, 0.001f, 0, LANE_HW, 0.0015f, 0.012f),
+            Color.rgb(0.15f, 0.15f, 0.17f), null);
         // ガイド: ドット (2.13m) とアロー (V 字に並ぶひし形)
         for (int i = 0; i < 7; i++)
         {
-            var x = (i - 3) * 0.1365;
-            drawBox(boxMatR(x, 0.001, 2.13, Math.PI / 4, 0.014, 0.0015, 0.014),
+            var x = (i - 3) * 0.1365f;
+            drawBox(boxMatR(x, 0.001f, 2.13f, (float)Math.PI / 4, 0.014f, 0.0015f, 0.014f),
                 mark, null);
-            drawBox(boxMatR(x, 0.001, 4.88 - Math.Abs(i - 3.0) * 0.406,
-                Math.PI / 4, 0.026, 0.0015, 0.026), mark, null);
+            drawBox(boxMatR(x, 0.001f, 4.88f - Math.Abs(i - 3.0f) * 0.406f,
+                (float)Math.PI / 4, 0.026f, 0.0015f, 0.026f), mark, null);
         }
     }
 
@@ -878,24 +878,24 @@ public static class Bowling25
     {
         if (state != ST_ANGLE && state != ST_HOOK && state != ST_POWER)
             return;
-        var n = state == ST_POWER ? 5 + (int)Math.Floor(power * 8.0) : 12;
+        var n = state == ST_POWER ? 5 + (int)Math.Floor(power * 8.0f) : 12;
         for (int k = 0; k < n; k++)
         {
-            var d = 1.0 + k * 1.15;
-            var x = aimX + Math.Sin(angle) * d
-                - hook * 1.3e-4 * Math.Pow(Math.Max(0.0, d - 6.0), 2.0);
+            var d = 1.0f + k * 1.15f;
+            var x = aimX + (float)Math.Sin(angle) * d
+                - hook * 1.3e-4f * (float)Math.Pow(Math.Max(0.0f, d - 6.0f), 2.0f);
             if (Math.Abs(x) > LANE_HW) break;
-            drawBox(boxMat(x, 0.004, d, 0.016, 0.002, 0.028),
-                Color.rgb(1.0, 1.0, 1.0, 0.4), Gfx.ALPHA);
+            drawBox(boxMat(x, 0.004f, d, 0.016f, 0.002f, 0.028f),
+                Color.rgb(1.0f, 1.0f, 1.0f, 0.4f), Gfx.ALPHA);
         }
         // パワーメーター (レーン右脇の柱)
         if (state == ST_POWER)
         {
-            drawBox(boxMat(0.95, 0.30, -0.2, 0.035, 0.28, 0.035),
-                Color.rgb(0.12, 0.12, 0.15), null);
-            var h = 0.26 * power;
-            drawBox(boxMat(0.95, 0.02 + h, -0.2, 0.026, h, 0.026),
-                Color.rgb(0.9, 0.25 + 0.5 * (1 - power), 0.15), null);
+            drawBox(boxMat(0.95f, 0.30f, -0.2f, 0.035f, 0.28f, 0.035f),
+                Color.rgb(0.12f, 0.12f, 0.15f), null);
+            var h = 0.26f * power;
+            drawBox(boxMat(0.95f, 0.02f + h, -0.2f, 0.026f, h, 0.026f),
+                Color.rgb(0.9f, 0.25f + 0.5f * (1 - power), 0.15f), null);
         }
     }
 
@@ -904,13 +904,13 @@ public static class Bowling25
     static int fontVersion = 0;
     static MeshText? mtext = null;
     static string eventText = "";
-    static double eventT = 99.0;
+    static float eventT = 99.0f;
     static Color? eventCol = null;
 
     static void showEvent(string s, Color c)
     {
         eventText = s;
-        eventT = 0.0;
+        eventT = 0.0f;
         eventCol = c;
     }
 
@@ -933,12 +933,12 @@ public static class Bowling25
         if (!ensureText()) return;
         var mt = mtext;
         if (mt == null) return;
-        var cream = Color.rgb(0.96, 0.95, 0.9);
-        var gray = Color.rgb(0.55, 0.57, 0.62);
-        var gold = Color.rgb(1.0, 0.85, 0.3);
+        var cream = Color.rgb(0.96f, 0.95f, 0.9f);
+        var gray = Color.rgb(0.55f, 0.57f, 0.62f);
+        var gold = Color.rgb(1.0f, 0.85f, 0.3f);
         // スコアボード: 10 フレームのマーク列 + 合計
-        var colW = 56.0;
-        var x0 = W * 0.5 - 4.5 * colW;
+        var colW = 56.0f;
+        var x0 = W * 0.5f - 4.5f * colW;
         for (int f = 0; f < 10; f++)
         {
             var cx = x0 + f * colW;
@@ -946,21 +946,21 @@ public static class Bowling25
             mt.textCentered("" + (f + 1), cx, 24, 11, cur ? gold : gray);
             mt.textCentered(markStr(f), cx, 46, 20, cream);
         }
-        mt.textCentered("SCORE " + totalScore(), W * 0.5, 76, 16, cream);
+        mt.textCentered("SCORE " + totalScore(), W * 0.5f, 76, 16, cream);
         // イベント (出現時にスケールが弾む)
         var ec = eventCol;
-        if (eventText != "" && eventT < 1.6 && ec != null)
+        if (eventText != "" && eventT < 1.6f && ec != null)
         {
-            var pop = 1.0 + 0.5 * Math.Exp(-eventT * 9.0);
-            var a = eventT > 1.25 ? 1.0 - (eventT - 1.25) / 0.35 : 1.0;
-            mt.textCentered(eventText, W * 0.5, 205, 48 * pop,
+            var pop = 1.0f + 0.5f * (float)Math.Exp(-eventT * 9.0f);
+            var a = eventT > 1.25f ? 1.0f - (eventT - 1.25f) / 0.35f : 1.0f;
+            mt.textCentered(eventText, W * 0.5f, 205, 48 * pop,
                 Color.rgb(ec.r, ec.g, ec.b, a));
         }
         // ゲーム終了
         if (state == ST_END)
         {
-            mt.textCentered("GAME SET", W * 0.5, 220, 44, gold);
-            mt.textCentered("SCORE " + totalScore(), W * 0.5, 268, 28, cream);
+            mt.textCentered("GAME SET", W * 0.5f, 220, 44, gold);
+            mt.textCentered("SCORE " + totalScore(), W * 0.5f, 268, 28, cream);
         }
         // 操作プロンプト
         var prompt = "";
@@ -971,14 +971,14 @@ public static class Bowling25
         if (prompt != "")
         {
             if (autoPlay) prompt = "AUTO PLAY - PRESS TO TAKE OVER";
-            mt.textCentered(prompt, W * 0.5, H - 28, 15,
-                Color.rgb(0.8, 0.82, 0.88));
-            mt.textCentered("SPACE / CLICK", W * 0.5, H - 10, 11, gray);
+            mt.textCentered(prompt, W * 0.5f, H - 28, 15,
+                Color.rgb(0.8f, 0.82f, 0.88f));
+            mt.textCentered("SPACE / CLICK", W * 0.5f, H - 10, 11, gray);
         }
     }
 
     // --- main loop ---------------------------------------------------------------
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         // cs-lib クラスは load 順の都合で遅延生成 (hot reload で null に戻り
         // 作り直し → meshDirty 再メッシュも走る)
@@ -1003,7 +1003,7 @@ public static class Bowling25
 
         var world = Phys3d.phys3d_world("bowling", new WorldOpts3d
         {
-            gravity = new Vec3d { x = 0.0, y = -9.81, z = 0.0 },
+            gravity = new Vec3d { x = 0.0f, y = -9.81f, z = 0.0f },
             fixedDt = DT,
             substeps = 8,
             maxSteps = 1,
@@ -1018,23 +1018,23 @@ public static class Bowling25
 
         // --- 描画 ---
         // 暗めの場内 + レーン主体のライティング
-        renNow.light.dir = new Vec3(-0.35, 1.0, -0.3);
-        renNow.light.intensity = 1.15;
-        renNow.sky.top = Color.rgb(0.30, 0.33, 0.42);
-        renNow.sky.bottom = Color.rgb(0.10, 0.09, 0.09);
-        renNow.sky.intensity = 0.38;
-        renNow.background = Color.rgb(0.05, 0.06, 0.09);
+        renNow.light.dir = new Vec3(-0.35f, 1.0f, -0.3f);
+        renNow.light.intensity = 1.15f;
+        renNow.sky.top = Color.rgb(0.30f, 0.33f, 0.42f);
+        renNow.sky.bottom = Color.rgb(0.10f, 0.09f, 0.09f);
+        renNow.sky.intensity = 0.38f;
+        renNow.background = Color.rgb(0.05f, 0.06f, 0.09f);
         // 影のオルソ範囲は注視点 (カメラターゲット) 周辺に寄せて解像度を稼ぐ
         renNow.shadow.center = new Vec3(0, 0,
-            MathUtil.clamp(tgtNow.z, 3.0, PIN_Z));
-        renNow.shadow.extent = 7.0;
+            MathUtil.clamp(tgtNow.z, 3.0f, PIN_Z));
+        renNow.shadow.extent = 7.0f;
         renNow.begin(new Camera
         {
             eye = eyeNow,
             target = tgtNow,
             fov = camFov,
-            near = 0.05,
-            far = 80.0,
+            near = 0.05f,
+            far = 80.0f,
         });
 
         drawStage();

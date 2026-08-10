@@ -53,9 +53,9 @@ public class PassOpts
     public TextureRef? target;
     public List<TextureRef>? targets;
     public TextureRef? depth_target;
-    public double[]? clear_color;
-    public List<double[]>? clear_colors;
-    public double? clear_depth;
+    public float[]? clear_color;
+    public List<float[]>? clear_colors;
+    public float? clear_depth;
     public int? load;
 }
 
@@ -177,7 +177,7 @@ public static class Gfx
 
     /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
     public static BufferRef? use_buffer(string key, int type,
-        List<double> data, int? version = null)
+        List<float> data, int? version = null)
     {
         return null;
     }
@@ -278,13 +278,13 @@ public static class Input
         return false;
     }
 
-    public static void mouse_pos(out double x, out double y)
+    public static void mouse_pos(out float x, out float y)
     {
         x = 0;
         y = 0;
     }
 
-    public static void mouse_delta(out double dx, out double dy)
+    public static void mouse_delta(out float dx, out float dy)
     {
         dx = 0;
         dy = 0;
@@ -312,7 +312,7 @@ public static class Io
     }
 
     /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
-    public static void load_floats(string path, out List<double>? data,
+    public static void load_floats(string path, out List<float>? data,
         out int version, out string? status, out string? error)
     {
         data = null;
@@ -330,29 +330,29 @@ public static class Io
         error = null;
     }
 
-    public static List<double> interleave_pn(object mesh)
+    public static List<float> interleave_pn(object mesh)
     {
-        return new List<double>();
+        return new List<float>();
     }
 
-    public static List<double> interleave_pncm(object mesh)
+    public static List<float> interleave_pncm(object mesh)
     {
-        return new List<double>();
+        return new List<float>();
     }
 
-    public static List<double> interleave_pncmw(object mesh)
+    public static List<float> interleave_pncmw(object mesh)
     {
-        return new List<double>();
+        return new List<float>();
     }
 
-    public static List<double> interleave_pnu(object mesh)
+    public static List<float> interleave_pnu(object mesh)
     {
-        return new List<double>();
+        return new List<float>();
     }
 
-    public static List<double> interleave_pnut(object mesh)
+    public static List<float> interleave_pnut(object mesh)
     {
-        return new List<double>();
+        return new List<float>();
     }
 }
 
@@ -361,32 +361,32 @@ public static class Io
 /// <summary>surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。</summary>
 public class MeshData
 {
-    public List<double> positions = new List<double>();
-    public List<double> normals = new List<double>();
+    public List<float> positions = new List<float>();
+    public List<float> normals = new List<float>();
     public List<int> indices = new List<int>();
     public int vert_count;
     public int index_count;
-    public List<double>? bounds_min;
-    public List<double>? bounds_max;
-    public double? cell;
-    public List<double>? colors;
-    public List<double>? metal_rough;
+    public List<float>? bounds_min;
+    public List<float>? bounds_max;
+    public float? cell;
+    public List<float>? colors;
+    public List<float>? metal_rough;
     public List<int>? joints;
-    public List<double>? weights;
+    public List<float>? weights;
     public List<object>? bones;
 }
 
 /// <summary>CPU メッシュ生成。</summary>
 public static class Mesh
 {
-    public static MeshData surface_nets(List<double> grid, int nx, int ny,
-        int nz, double? cell = null, double? ox = null, double? oy = null,
-        double? oz = null)
+    public static MeshData surface_nets(List<float> grid, int nx, int ny,
+        int nz, float? cell = null, float? ox = null, float? oy = null,
+        float? oz = null)
     {
         return new MeshData();
     }
 
-    public static MeshData sdf_mesh(object tree, int n, double? skinK = null)
+    public static MeshData sdf_mesh(object tree, int n, float? skinK = null)
     {
         return new MeshData();
     }
@@ -402,21 +402,21 @@ public class GlyphBitmap
     public int h;
     public int xoff;
     public int yoff;
-    public double advance;
+    public float advance;
     public string? bytes;
 }
 
 /// <summary>font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。</summary>
 public class GlyphMesh : MeshData
 {
-    public double advance;
+    public float advance;
 }
 
 public class FontMetrics
 {
-    public double ascent;
-    public double descent;
-    public double line_gap;
+    public float ascent;
+    public float descent;
+    public float line_gap;
 }
 
 /// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
@@ -427,18 +427,18 @@ public static class Font
         return new FontMetrics();
     }
 
-    public static GlyphBitmap? font_glyph(string ttf, int codepoint, double px)
+    public static GlyphBitmap? font_glyph(string ttf, int codepoint, float px)
     {
         return null;
     }
 
     public static GlyphMesh? font_glyph_mesh(string ttf, int codepoint,
-        double? tolerance = null)
+        float? tolerance = null)
     {
         return null;
     }
 
-    public static double font_kern(string ttf, int cp1, int cp2)
+    public static float font_kern(string ttf, int cp1, int cp2)
     {
         return 0;
     }
@@ -477,8 +477,8 @@ public static class Ui
         return false;
     }
 
-    public static double ui_slider_float(string label, double v, double min,
-        double max)
+    public static float ui_slider_float(string label, float v, float min,
+        float max)
     {
         return 0;
     }
@@ -488,14 +488,14 @@ public static class Ui
         return 0;
     }
 
-    public static double ui_drag_float(string label, double v,
-        double? speed = null, double? min = null, double? max = null)
+    public static float ui_drag_float(string label, float v,
+        float? speed = null, float? min = null, float? max = null)
     {
         return 0;
     }
 
-    public static void ui_color_edit3(string label, double r, double g,
-        double b, out double newR, out double newG, out double newB)
+    public static void ui_color_edit3(string label, float r, float g,
+        float b, out float newR, out float newG, out float newB)
     {
         newR = 0;
         newG = 0;
@@ -519,8 +519,8 @@ public static class Ui
     {
     }
 
-    public static void ui_set_next_window(double x, double y, double w,
-        double h)
+    public static void ui_set_next_window(float x, float y, float w,
+        float h)
     {
     }
 
@@ -557,9 +557,9 @@ public static class Host
 /// <summary>audio_play / audio_voice の再生パラメータ。</summary>
 public class PlayOpts
 {
-    public double? volume;
-    public double? pitch;
-    public double? pan;
+    public float? volume;
+    public float? pitch;
+    public float? pan;
 }
 
 public class VoiceOpts : PlayOpts
@@ -607,7 +607,7 @@ public static class Audio
         return false;
     }
 
-    public static void audio_master_volume(double volume)
+    public static void audio_master_volume(float volume)
     {
     }
 
@@ -622,7 +622,7 @@ public static class Audio
 public static class Sys
 {
     /// <summary>ファイルの mtime (秒)。存在しなければ null。</summary>
-    public static double? file_mtime(string path)
+    public static float? file_mtime(string path)
     {
         return null;
     }
@@ -639,7 +639,7 @@ public static class Sys
     }
 
     /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
-    public static double actual_fps()
+    public static float actual_fps()
     {
         return 0;
     }
@@ -677,8 +677,8 @@ public static class Profiler
 /// <summary>2D 物理の座標 wire format。</summary>
 public class Vec2d
 {
-    public double x;
-    public double y;
+    public float x;
+    public float y;
 }
 
 public class WorldRef
@@ -704,12 +704,12 @@ public class JointRef
 /// <summary>body 生成時の初期状態。</summary>
 public class InitialState
 {
-    public double? x;
-    public double? y;
-    public double? angle;
-    public double? vx;
-    public double? vy;
-    public double? w;
+    public float? x;
+    public float? y;
+    public float? angle;
+    public float? vx;
+    public float? vy;
+    public float? w;
     public bool? awake;
 }
 
@@ -718,20 +718,20 @@ public class WorldCallbacks
 {
     public Func<object, object, bool>? filter;
     public Func<object, bool>? preSolve;
-    public Func<object, object, double>? friction;
-    public Func<object, object, double>? restitution;
+    public Func<object, object, float>? friction;
+    public Func<object, object, float>? restitution;
 }
 
 public class WorldOpts
 {
     public int? version;
     public Vec2d? gravity;
-    public double? fixedDt;
+    public float? fixedDt;
     public int? substeps;
     public int? maxSteps;
     public bool? sleep;
     public bool? continuous;
-    public double? hitEventThreshold;
+    public float? hitEventThreshold;
     public WorldCallbacks? callbacks;
 }
 
@@ -749,10 +749,10 @@ public class BodyDesc
     public bool? enabled;
     public bool? awake;
     public bool? sleep;
-    public double? sleepThreshold;
-    public double? gravityScale;
-    public double? linearDamping;
-    public double? angularDamping;
+    public float? sleepThreshold;
+    public float? gravityScale;
+    public float? linearDamping;
+    public float? angularDamping;
     public InitialState? initial;
 }
 
@@ -769,9 +769,9 @@ public class FilterDesc
 public class ShapeDesc
 {
     public int? version;
-    public double? density;
-    public double? friction;
-    public double? restitution;
+    public float? density;
+    public float? friction;
+    public float? restitution;
     public string? tag;
     public object? material;
     public int? materialId;
@@ -786,45 +786,45 @@ public class ShapeDesc
 
 public class BoxDesc : ShapeDesc
 {
-    public double hx;
-    public double hy;
-    public double? cx;
-    public double? cy;
-    public double? angle;
+    public float hx;
+    public float hy;
+    public float? cx;
+    public float? cy;
+    public float? angle;
 }
 
 public class CircleDesc : ShapeDesc
 {
-    public double r;
-    public double? cx;
-    public double? cy;
+    public float r;
+    public float? cx;
+    public float? cy;
 }
 
 public class CapsuleDesc : ShapeDesc
 {
-    public double ax;
-    public double ay;
-    public double bx;
-    public double by;
-    public double r;
+    public float ax;
+    public float ay;
+    public float bx;
+    public float by;
+    public float r;
 }
 
 public class SegmentDesc : ShapeDesc
 {
-    public double ax;
-    public double ay;
-    public double bx;
-    public double by;
+    public float ax;
+    public float ay;
+    public float bx;
+    public float by;
 }
 
 public class PolygonDesc : ShapeDesc
 {
     public object? points;
-    public double? radius;
-    public double? r;
-    public double? cx;
-    public double? cy;
-    public double? angle;
+    public float? radius;
+    public float? r;
+    public float? cx;
+    public float? cy;
+    public float? angle;
 }
 
 public class ChainDesc
@@ -833,8 +833,8 @@ public class ChainDesc
     public object? points;
     public object? materials;
     public bool? loop;
-    public double? friction;
-    public double? restitution;
+    public float? friction;
+    public float? restitution;
     public string? tag;
     public object? material;
     public int? materialId;
@@ -859,23 +859,23 @@ public class JointDesc
     public Vec2d? localAnchorB;
     public Vec2d? axis;
     public Vec2d? localAxisA;
-    public double? referenceAngle;
+    public float? referenceAngle;
     public bool? collideConnected;
-    public double? length;
-    public double? minLength;
-    public double? maxLength;
-    public double? lower;
-    public double? upper;
-    public double? targetAngle;
-    public double? targetTranslation;
+    public float? length;
+    public float? minLength;
+    public float? maxLength;
+    public float? lower;
+    public float? upper;
+    public float? targetAngle;
+    public float? targetTranslation;
     public Vec2d? linearOffset;
-    public double? angularOffset;
-    public double? hertz;
-    public double? dampingRatio;
-    public double? maxForce;
-    public double? maxTorque;
-    public double? motorSpeed;
-    public double? correctionFactor;
+    public float? angularOffset;
+    public float? hertz;
+    public float? dampingRatio;
+    public float? maxForce;
+    public float? maxTorque;
+    public float? motorSpeed;
+    public float? correctionFactor;
     public object? spring;
     public object? limit;
     public object? motor;
@@ -886,112 +886,112 @@ public class CommandOpts
 {
     public bool? wake;
     public Vec2d? point;
-    public double? px;
-    public double? py;
-    public double? dt;
-    public double? timeStep;
+    public float? px;
+    public float? py;
+    public float? dt;
+    public float? timeStep;
 }
 
 public class VelocityDesc
 {
-    public double? x;
-    public double? y;
-    public double? vx;
-    public double? vy;
-    public double? w;
+    public float? x;
+    public float? y;
+    public float? vx;
+    public float? vy;
+    public float? w;
 }
 
 public class PoseDesc
 {
-    public double? x;
-    public double? y;
-    public double? angle;
+    public float? x;
+    public float? y;
+    public float? angle;
 }
 
 public class MassDataDesc
 {
-    public double? mass;
-    public double? inertia;
-    public double? rotationalInertia;
+    public float? mass;
+    public float? inertia;
+    public float? rotationalInertia;
     public Vec2d? center;
     public Vec2d? localCenter;
-    public double? cx;
-    public double? cy;
+    public float? cx;
+    public float? cy;
 }
 
 public class RaycastDesc
 {
-    public double? x;
-    public double? y;
-    public double? dx;
-    public double? dy;
+    public float? x;
+    public float? y;
+    public float? dx;
+    public float? dy;
     public Vec2d? origin;
     public Vec2d? translation;
     public Vec2d? delta;
     public Vec2d? to;
-    public double? maxFraction;
+    public float? maxFraction;
     public FilterDesc? filter;
 }
 
 public class AabbDesc
 {
-    public double minX;
-    public double minY;
-    public double maxX;
-    public double maxY;
+    public float minX;
+    public float minY;
+    public float maxX;
+    public float maxY;
     public FilterDesc? filter;
 }
 
 public class MoverDesc
 {
-    public double ax;
-    public double ay;
-    public double bx;
-    public double by;
-    public double r;
-    public double? dx;
-    public double? dy;
+    public float ax;
+    public float ay;
+    public float bx;
+    public float by;
+    public float r;
+    public float? dx;
+    public float? dy;
     public Vec2d? translation;
     public Vec2d? delta;
-    public double? maxFraction;
+    public float? maxFraction;
     public FilterDesc? filter;
 }
 
 public class ExplosionDesc
 {
-    public double? x;
-    public double? y;
+    public float? x;
+    public float? y;
     public Vec2d? position;
     public Vec2d? center;
-    public double? radius;
-    public double? r;
-    public double? falloff;
-    public double? impulsePerLength;
-    public double? impulse;
+    public float? radius;
+    public float? r;
+    public float? falloff;
+    public float? impulsePerLength;
+    public float? impulse;
     public FilterDesc? filter;
 }
 
 /// <summary>phys2d_pose の戻り値。</summary>
 public class Pose
 {
-    public double x;
-    public double y;
-    public double angle;
-    public double vx;
-    public double vy;
-    public double w;
+    public float x;
+    public float y;
+    public float angle;
+    public float vx;
+    public float vy;
+    public float w;
     public bool awake;
     public bool enabled;
     public bool sleep;
-    public double sleep_threshold;
+    public float sleep_threshold;
 }
 
 /// <summary>phys2d_velocity の戻り値。</summary>
 public class Velocity
 {
-    public double x;
-    public double y;
-    public double w;
+    public float x;
+    public float y;
+    public float w;
 }
 
 /// <summary>contact イベントの端点 (2D/3D 共通)。</summary>
@@ -1092,7 +1092,7 @@ public static class Phys2d
         return new Vec2d();
     }
 
-    public static double phys2d_joint_torque(JointRef joint)
+    public static float phys2d_joint_torque(JointRef joint)
     {
         return 0;
     }
@@ -1143,7 +1143,7 @@ public static class Phys2d
     {
     }
 
-    public static object? phys2d_step(WorldRef world, double dt)
+    public static object? phys2d_step(WorldRef world, float dt)
     {
         return null;
     }
@@ -1323,12 +1323,12 @@ public static class Phys2d
     {
     }
 
-    public static void phys2d_add_torque(BodyRef body, double torque,
+    public static void phys2d_add_torque(BodyRef body, float torque,
         CommandOpts? opts = null)
     {
     }
 
-    public static void phys2d_add_angular_impulse(BodyRef body, double impulse,
+    public static void phys2d_add_angular_impulse(BodyRef body, float impulse,
         CommandOpts? opts = null)
     {
     }
@@ -1359,18 +1359,18 @@ public static class Phys2d
 /// <summary>3D 物理の座標 wire format。</summary>
 public class Vec3d
 {
-    public double x;
-    public double y;
-    public double z;
+    public float x;
+    public float y;
+    public float z;
 }
 
 /// <summary>回転の wire format。</summary>
 public class Quat3d
 {
-    public double x;
-    public double y;
-    public double z;
-    public double w;
+    public float x;
+    public float y;
+    public float z;
+    public float w;
 }
 
 public class WorldRef3d
@@ -1391,17 +1391,17 @@ public class JointRef3d
 
 public class InitialState3d
 {
-    public double? x;
-    public double? y;
-    public double? z;
+    public float? x;
+    public float? y;
+    public float? z;
     public Quat3d? quat;
     public Vec3d? euler;
-    public double? vx;
-    public double? vy;
-    public double? vz;
-    public double? wx;
-    public double? wy;
-    public double? wz;
+    public float? vx;
+    public float? vy;
+    public float? vz;
+    public float? wx;
+    public float? wy;
+    public float? wz;
     public bool? awake;
 }
 
@@ -1419,20 +1419,20 @@ public class WorldCallbacks3d
 {
     public Func<object, object, bool>? filter;
     public Func<object, bool>? preSolve;
-    public Func<object, object, double>? friction;
-    public Func<object, object, double>? restitution;
+    public Func<object, object, float>? friction;
+    public Func<object, object, float>? restitution;
 }
 
 public class WorldOpts3d
 {
     public int? version;
     public Vec3d? gravity;
-    public double? fixedDt;
+    public float? fixedDt;
     public int? substeps;
     public int? maxSteps;
     public bool? sleep;
     public bool? continuous;
-    public double? hitEventThreshold;
+    public float? hitEventThreshold;
     public WorldCallbacks3d? callbacks;
 }
 
@@ -1450,10 +1450,10 @@ public class BodyDesc3d
     public bool? enabled;
     public bool? awake;
     public bool? sleep;
-    public double? sleepThreshold;
-    public double? gravityScale;
-    public double? linearDamping;
-    public double? angularDamping;
+    public float? sleepThreshold;
+    public float? gravityScale;
+    public float? linearDamping;
+    public float? angularDamping;
     public InitialState3d? initial;
 }
 
@@ -1470,9 +1470,9 @@ public class FilterDesc3d
 public class ShapeDesc3d
 {
     public int? version;
-    public double? density;
-    public double? friction;
-    public double? restitution;
+    public float? density;
+    public float? friction;
+    public float? restitution;
     public string? tag;
     public object? material;
     public int? materialId;
@@ -1487,15 +1487,15 @@ public class ShapeDesc3d
 
 public class SphereDesc3d : ShapeDesc3d
 {
-    public double r;
+    public float r;
     public Vec3d? offset;
 }
 
 public class BoxDesc3d : ShapeDesc3d
 {
-    public double hx;
-    public double hy;
-    public double hz;
+    public float hx;
+    public float hy;
+    public float hz;
     public Vec3d? offset;
     public Quat3d? quat;
 }
@@ -1504,22 +1504,22 @@ public class CapsuleDesc3d : ShapeDesc3d
 {
     public Vec3d a = new Vec3d();
     public Vec3d b = new Vec3d();
-    public double r;
+    public float r;
 }
 
 public class CylinderDesc3d : ShapeDesc3d
 {
-    public double height;
-    public double radius;
+    public float height;
+    public float radius;
     public int? sides;
-    public double? yOffset;
+    public float? yOffset;
 }
 
 public class ConeDesc3d : ShapeDesc3d
 {
-    public double height;
-    public double radius1;
-    public double? radius2;
+    public float height;
+    public float radius1;
+    public float? radius2;
     public int? slices;
 }
 
@@ -1536,13 +1536,13 @@ public class MeshDesc3d
     public object? indices;
     public Vec3d? scale;
     public bool? weldVertices;
-    public double? weldTolerance;
+    public float? weldTolerance;
     public bool? useMedianSplit;
     public bool? identifyEdges;
     public object? materials;
     public object? materialIndices;
-    public double? friction;
-    public double? restitution;
+    public float? friction;
+    public float? restitution;
     public string? tag;
     public object? material;
     public int? materialId;
@@ -1561,13 +1561,13 @@ public class HeightFieldDesc3d
     public object? heights;
     public int xCount;
     public int zCount;
-    public double? cellWidth;
+    public float? cellWidth;
     public Vec3d? scale;
-    public double? minHeight;
-    public double? maxHeight;
+    public float? minHeight;
+    public float? maxHeight;
     public bool? clockwiseWinding;
-    public double? friction;
-    public double? restitution;
+    public float? friction;
+    public float? restitution;
     public string? tag;
     public object? material;
     public int? materialId;
@@ -1584,9 +1584,9 @@ public class CompoundDesc3d
 {
     public int version;
     public object? children;
-    public double? density;
-    public double? friction;
-    public double? restitution;
+    public float? density;
+    public float? friction;
+    public float? restitution;
     public string? tag;
     public object? material;
     public int? materialId;
@@ -1605,39 +1605,39 @@ public class CommandOpts3d
 
 public class VelocityDesc3d
 {
-    public double? x;
-    public double? y;
-    public double? z;
-    public double? wx;
-    public double? wy;
-    public double? wz;
+    public float? x;
+    public float? y;
+    public float? z;
+    public float? wx;
+    public float? wy;
+    public float? wz;
 }
 
 public class PoseDesc3d
 {
-    public double? x;
-    public double? y;
-    public double? z;
+    public float? x;
+    public float? y;
+    public float? z;
     public Quat3d? quat;
     public Vec3d? euler;
 }
 
 public class TargetDesc3d
 {
-    public double? x;
-    public double? y;
-    public double? z;
+    public float? x;
+    public float? y;
+    public float? z;
     public Quat3d? quat;
     public Vec3d? euler;
-    public double? dt;
+    public float? dt;
     public bool? wake;
 }
 
 public class FrameDesc3d
 {
-    public double? x;
-    public double? y;
-    public double? z;
+    public float? x;
+    public float? y;
+    public float? z;
     public Quat3d? quat;
     public Vec3d? euler;
 }
@@ -1656,30 +1656,30 @@ public class JointDesc3d
     public FrameDesc3d? frameA;
     public FrameDesc3d? frameB;
     public bool? collideConnected;
-    public double? forceThreshold;
-    public double? torqueThreshold;
-    public double? constraintHertz;
-    public double? constraintDampingRatio;
-    public double? length;
-    public double? minLength;
-    public double? maxLength;
-    public double? lower;
-    public double? upper;
-    public double? hertz;
-    public double? dampingRatio;
-    public double? linearHertz;
-    public double? angularHertz;
-    public double? linearDampingRatio;
-    public double? angularDampingRatio;
-    public double? maxForce;
-    public double? maxTorque;
-    public double? maxVelocityForce;
-    public double? maxVelocityTorque;
-    public double? maxSpringForce;
-    public double? maxSpringTorque;
-    public double? motorSpeed;
-    public double? targetAngle;
-    public double? targetTranslation;
+    public float? forceThreshold;
+    public float? torqueThreshold;
+    public float? constraintHertz;
+    public float? constraintDampingRatio;
+    public float? length;
+    public float? minLength;
+    public float? maxLength;
+    public float? lower;
+    public float? upper;
+    public float? hertz;
+    public float? dampingRatio;
+    public float? linearHertz;
+    public float? angularHertz;
+    public float? linearDampingRatio;
+    public float? angularDampingRatio;
+    public float? maxForce;
+    public float? maxTorque;
+    public float? maxVelocityForce;
+    public float? maxVelocityTorque;
+    public float? maxSpringForce;
+    public float? maxSpringTorque;
+    public float? motorSpeed;
+    public float? targetAngle;
+    public float? targetTranslation;
     public object? targetRotation;
     public Vec3d? linearVelocity;
     public Vec3d? angularVelocity;
@@ -1687,11 +1687,11 @@ public class JointDesc3d
     public bool? enableSpring;
     public bool? enableLimit;
     public bool? enableMotor;
-    public double? coneAngle;
+    public float? coneAngle;
     public bool? enableConeLimit;
     public bool? enableTwistLimit;
-    public double? lowerTwistAngle;
-    public double? upperTwistAngle;
+    public float? lowerTwistAngle;
+    public float? upperTwistAngle;
     public object? spring;
     public object? limit;
     public object? motor;
@@ -1701,24 +1701,24 @@ public class MoverDesc3d
 {
     public Vec3d a = new Vec3d();
     public Vec3d b = new Vec3d();
-    public double r;
+    public float r;
     public Vec3d? translation;
-    public double? maxFraction;
+    public float? maxFraction;
     public FilterDesc3d? filter;
 }
 
 public class RaycastDesc3d
 {
-    public double? x;
-    public double? y;
-    public double? z;
+    public float? x;
+    public float? y;
+    public float? z;
     public Vec3d? origin;
-    public double? dx;
-    public double? dy;
-    public double? dz;
+    public float? dx;
+    public float? dy;
+    public float? dz;
     public Vec3d? delta;
     public Vec3d? to;
-    public double? maxFraction;
+    public float? maxFraction;
     public string? mode;
     public FilterDesc3d? filter;
 }
@@ -1727,12 +1727,12 @@ public class AabbDesc3d
 {
     public Vec3d? min;
     public Vec3d? max;
-    public double? minX;
-    public double? minY;
-    public double? minZ;
-    public double? maxX;
-    public double? maxY;
-    public double? maxZ;
+    public float? minX;
+    public float? minY;
+    public float? minZ;
+    public float? maxX;
+    public float? maxY;
+    public float? maxZ;
     public FilterDesc3d? filter;
 }
 
@@ -1742,41 +1742,41 @@ public class ShapeProxyDesc3d
     public object? box;
     public object? capsule;
     public Vec3d? translation;
-    public double? maxFraction;
+    public float? maxFraction;
     public FilterDesc3d? filter;
 }
 
 /// <summary>phys3d_pose の戻り値。</summary>
 public class Pose3d
 {
-    public double x;
-    public double y;
-    public double z;
-    public double qx;
-    public double qy;
-    public double qz;
-    public double qw;
-    public double vx;
-    public double vy;
-    public double vz;
-    public double wx;
-    public double wy;
-    public double wz;
+    public float x;
+    public float y;
+    public float z;
+    public float qx;
+    public float qy;
+    public float qz;
+    public float qw;
+    public float vx;
+    public float vy;
+    public float vz;
+    public float wx;
+    public float wy;
+    public float wz;
     public bool awake;
     public bool enabled;
     public bool sleep;
-    public double sleep_threshold;
+    public float sleep_threshold;
 }
 
 /// <summary>phys3d_velocity の戻り値。</summary>
 public class Velocity3d
 {
-    public double x;
-    public double y;
-    public double z;
-    public double wx;
-    public double wy;
-    public double wz;
+    public float x;
+    public float y;
+    public float z;
+    public float wx;
+    public float wy;
+    public float wz;
 }
 
 /// <summary>Box3D の即時モード API (詳細は Haxe extern lub.Phys3d)。</summary>
@@ -1943,7 +1943,7 @@ public static class Phys3d
         return new List<object>();
     }
 
-    public static object? phys3d_step(WorldRef3d world, double dt)
+    public static object? phys3d_step(WorldRef3d world, float dt)
     {
         return null;
     }

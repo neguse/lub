@@ -25,7 +25,7 @@ public class SdfNode
         this.data = data;
     }
 
-    public SdfNode move(double x, double y, double z) =>
+    public SdfNode move(float x, float y, float z) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "move",
@@ -36,7 +36,7 @@ public class SdfNode
         });
 
     /// <summary>`axis` 回りに `rad` ラジアン回す。</summary>
-    public SdfNode rotate(Vec3 axis, double rad)
+    public SdfNode rotate(Vec3 axis, float rad)
     {
         var q = Quat.fromAxisAngle(axis, rad);
         return new SdfNode(new Dictionary<string, object>
@@ -51,7 +51,7 @@ public class SdfNode
     }
 
     /// <summary>uniform スケール (`s` &gt; 0)。</summary>
-    public SdfNode scale(double s) =>
+    public SdfNode scale(float s) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "scale",
@@ -71,16 +71,16 @@ public class SdfNode
     /// innermost の paint が勝つ。`rgb` は 0xRRGGBB (metallic 省略で 0.0、
     /// roughness 省略で 0.8)。smin/ssub では距離と同じ blend で材質も混ざり、
     /// subtract/ssub の切断面には cutter の材質が出る。</summary>
-    public SdfNode paint(int rgb, double? metallic = null,
-        double? roughness = null) =>
+    public SdfNode paint(int rgb, float? metallic = null,
+        float? roughness = null) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "paint",
-            ["cr"] = Math.Floor(rgb / 65536.0) % 256 / 255.0,
-            ["cg"] = Math.Floor(rgb / 256.0) % 256 / 255.0,
-            ["cb"] = rgb % 256 / 255.0,
-            ["metallic"] = metallic ?? 0.0,
-            ["roughness"] = roughness ?? 0.8,
+            ["cr"] = (float)Math.Floor(rgb / 65536.0f) % 256 / 255.0f,
+            ["cg"] = (float)Math.Floor(rgb / 256.0f) % 256 / 255.0f,
+            ["cb"] = rgb % 256 / 255.0f,
+            ["metallic"] = metallic ?? 0.0f,
+            ["roughness"] = roughness ?? 0.8f,
             ["c"] = data,
         });
 
@@ -93,7 +93,7 @@ public class SdfNode
         });
 
     /// <summary>smooth union。`k` が blend 幅。</summary>
-    public SdfNode smin(SdfNode b, double k) =>
+    public SdfNode smin(SdfNode b, float k) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "smin",
@@ -112,7 +112,7 @@ public class SdfNode
         });
 
     /// <summary>smooth subtraction。`k` が縁の丸まり幅。</summary>
-    public SdfNode ssub(SdfNode b, double k) =>
+    public SdfNode ssub(SdfNode b, float k) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "ssub",
@@ -154,7 +154,7 @@ public class SdfNode
 /// </code></summary>
 public static class Sdf
 {
-    public static SdfNode sphere(double r) =>
+    public static SdfNode sphere(float r) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "sphere",
@@ -162,7 +162,7 @@ public static class Sdf
         });
 
     /// <summary>half extents の直方体。</summary>
-    public static SdfNode box(double hx, double hy, double hz) =>
+    public static SdfNode box(float hx, float hy, float hz) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "box",
@@ -172,7 +172,7 @@ public static class Sdf
         });
 
     /// <summary>線分 `a`-`b` を軸とする半径 `r` のカプセル。</summary>
-    public static SdfNode capsule(Vec3 a, Vec3 b, double r) =>
+    public static SdfNode capsule(Vec3 a, Vec3 b, float r) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "capsule",
@@ -186,7 +186,7 @@ public static class Sdf
         });
 
     /// <summary>XZ 平面に寝たトーラス。</summary>
-    public static SdfNode torus(double rMajor, double rMinor) =>
+    public static SdfNode torus(float rMajor, float rMinor) =>
         new SdfNode(new Dictionary<string, object>
         {
             ["op"] = "torus",
@@ -197,7 +197,7 @@ public static class Sdf
     /// <summary>ツリーをメッシュ化する。`n` は最長軸の cell 数 (bounds は
     /// 自動)。bone ノードがあれば skinning 情報も焼かれる
     /// (`skinK` = 重みの blend 幅)。</summary>
-    public static MeshData mesh(SdfNode root, int n, double? skinK = null) =>
+    public static MeshData mesh(SdfNode root, int n, float? skinK = null) =>
         Mesh.sdf_mesh(new Dictionary<string, object>
         {
             ["version"] = 1,

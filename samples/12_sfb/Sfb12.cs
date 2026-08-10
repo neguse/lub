@@ -23,9 +23,9 @@ public static class Sfb12
     // devices).
     static int RT_W = 1280;
     static int RT_H = 720;
-    const double WATER_Y = 0.12; // world height of the water plane
+    const float WATER_Y = 0.12f; // world height of the water plane
 
-    static double tAccum = 0;
+    static float tAccum = 0;
 
     public static void onInit()
     {
@@ -43,17 +43,17 @@ public static class Sfb12
 
     // Std.parseFloat 相当。tcs には数値 parse API が無いので、env 変数が使う
     // "-1.25" 形式 (符号 + 10 進小数) だけを自前で読む。
-    static double ParseNum(string s)
+    static float ParseNum(string s)
     {
         var n = len(s);
-        double sign = 1;
+        float sign = 1;
         var i = 1;
         if (n >= 1 && @byte(s, 1) == 45) // '-'
         {
             sign = -1;
             i = 2;
         }
-        double v = 0;
+        float v = 0;
         while (i <= n && @byte(s, i) >= 48 && @byte(s, i) <= 57)
         {
             v = v * 10 + (@byte(s, i) - 48);
@@ -62,11 +62,11 @@ public static class Sfb12
         if (i <= n && @byte(s, i) == 46) // '.'
         {
             i = i + 1;
-            var f = 0.1;
+            var f = 0.1f;
             while (i <= n && @byte(s, i) >= 48 && @byte(s, i) <= 57)
             {
                 v = v + (@byte(s, i) - 48) * f;
-                f = f * 0.1;
+                f = f * 0.1f;
                 i = i + 1;
             }
         }
@@ -75,30 +75,30 @@ public static class Sfb12
 
     // ---- geometry (world-space, model baked on CPU) ----
 
-    static void AddFloor(List<double> dst)
+    static void AddFloor(List<float> dst)
     {
-        var n = new List<double> { 0, 1, 0 };
-        Shapes.quad(dst, new List<double> { -2.3, 0, -1.55 },
-            new List<double> { 2.3, 0, -1.55 },
-            new List<double> { 2.3, 0, 1.75 },
-            new List<double> { -2.3, 0, 1.75 }, n,
-            new List<double> { 0.50, 0.55, 0.50, 1.0 });
-        var line = new List<double> { 0.36, 0.40, 0.37, 1.0 };
+        var n = new List<float> { 0, 1, 0 };
+        Shapes.quad(dst, new List<float> { -2.3f, 0, -1.55f },
+            new List<float> { 2.3f, 0, -1.55f },
+            new List<float> { 2.3f, 0, 1.75f },
+            new List<float> { -2.3f, 0, 1.75f }, n,
+            new List<float> { 0.50f, 0.55f, 0.50f, 1.0f });
+        var line = new List<float> { 0.36f, 0.40f, 0.37f, 1.0f };
         for (int i = -4; i < 5; i++)
         {
-            var x = i * 0.48;
-            Shapes.quad(dst, new List<double> { x - 0.005, 0.003, -1.55 },
-                new List<double> { x + 0.005, 0.003, -1.55 },
-                new List<double> { x + 0.005, 0.003, 1.75 },
-                new List<double> { x - 0.005, 0.003, 1.75 }, n, line);
+            var x = i * 0.48f;
+            Shapes.quad(dst, new List<float> { x - 0.005f, 0.003f, -1.55f },
+                new List<float> { x + 0.005f, 0.003f, -1.55f },
+                new List<float> { x + 0.005f, 0.003f, 1.75f },
+                new List<float> { x - 0.005f, 0.003f, 1.75f }, n, line);
         }
         for (int i = -3; i < 4; i++)
         {
-            var z = i * 0.48;
-            Shapes.quad(dst, new List<double> { -2.3, 0.003, z - 0.005 },
-                new List<double> { 2.3, 0.003, z - 0.005 },
-                new List<double> { 2.3, 0.003, z + 0.005 },
-                new List<double> { -2.3, 0.003, z + 0.005 }, n, line);
+            var z = i * 0.48f;
+            Shapes.quad(dst, new List<float> { -2.3f, 0.003f, z - 0.005f },
+                new List<float> { 2.3f, 0.003f, z - 0.005f },
+                new List<float> { 2.3f, 0.003f, z + 0.005f },
+                new List<float> { -2.3f, 0.003f, z + 0.005f }, n, line);
         }
     }
 
@@ -132,12 +132,12 @@ public static class Sfb12
                     albedoPx.Add(160);
                     albedoPx.Add(255);
                 }
-                var nx = Math.Sin((double)x / TEX_N * Math.PI * 8) * 0.6;
-                var ny = Math.Sin((double)y / TEX_N * Math.PI * 8) * 0.6;
-                var l = Math.Sqrt(nx * nx + ny * ny + 1.0);
-                normalPx.Add((int)Math.Floor((nx / l * 0.5 + 0.5) * 255));
-                normalPx.Add((int)Math.Floor((ny / l * 0.5 + 0.5) * 255));
-                normalPx.Add((int)Math.Floor((1.0 / l * 0.5 + 0.5) * 255));
+                var nx = (float)Math.Sin((float)x / TEX_N * (float)Math.PI * 8) * 0.6f;
+                var ny = (float)Math.Sin((float)y / TEX_N * (float)Math.PI * 8) * 0.6f;
+                var l = (float)Math.Sqrt(nx * nx + ny * ny + 1.0f);
+                normalPx.Add((int)Math.Floor((nx / l * 0.5f + 0.5f) * 255));
+                normalPx.Add((int)Math.Floor((ny / l * 0.5f + 0.5f) * 255));
+                normalPx.Add((int)Math.Floor((1.0f / l * 0.5f + 0.5f) * 255));
                 normalPx.Add(255);
             }
         }
@@ -158,19 +158,19 @@ public static class Sfb12
         {
             for (int x = 0; x < TEX_N; x++)
             {
-                var fx = 0.7;
-                var fy = 0.35 * Math.Sin((double)y / TEX_N * Math.PI * 2);
-                var fl = Math.Sqrt(fx * fx + fy * fy);
-                flowPx.Add((int)Math.Floor((fx / fl * 0.5 + 0.5) * 255));
-                flowPx.Add((int)Math.Floor((fy / fl * 0.5 + 0.5) * 255));
+                var fx = 0.7f;
+                var fy = 0.35f * (float)Math.Sin((float)y / TEX_N * (float)Math.PI * 2);
+                var fl = (float)Math.Sqrt(fx * fx + fy * fy);
+                flowPx.Add((int)Math.Floor((fx / fl * 0.5f + 0.5f) * 255));
+                flowPx.Add((int)Math.Floor((fy / fl * 0.5f + 0.5f) * 255));
                 flowPx.Add(128);
                 flowPx.Add(255);
-                var nx = Math.Sin((double)x / TEX_N * Math.PI * 12) * 0.4;
-                var ny = Math.Sin((double)y / TEX_N * Math.PI * 12 + 1.7) * 0.4;
-                var l = Math.Sqrt(nx * nx + ny * ny + 1.0);
-                waterNrmPx.Add((int)Math.Floor((nx / l * 0.5 + 0.5) * 255));
-                waterNrmPx.Add((int)Math.Floor((ny / l * 0.5 + 0.5) * 255));
-                waterNrmPx.Add((int)Math.Floor((1.0 / l * 0.5 + 0.5) * 255));
+                var nx = (float)Math.Sin((float)x / TEX_N * (float)Math.PI * 12) * 0.4f;
+                var ny = (float)Math.Sin((float)y / TEX_N * (float)Math.PI * 12 + 1.7f) * 0.4f;
+                var l = (float)Math.Sqrt(nx * nx + ny * ny + 1.0f);
+                waterNrmPx.Add((int)Math.Floor((nx / l * 0.5f + 0.5f) * 255));
+                waterNrmPx.Add((int)Math.Floor((ny / l * 0.5f + 0.5f) * 255));
+                waterNrmPx.Add((int)Math.Floor((1.0f / l * 0.5f + 0.5f) * 255));
                 waterNrmPx.Add(255);
             }
         }
@@ -188,15 +188,15 @@ public static class Sfb12
             {
                 for (int r = 0; r < LUT_N; r++)
                 {
-                    var rr = (double)r / (LUT_N - 1);
-                    var gg = (double)g / (LUT_N - 1);
-                    var bb = (double)b / (LUT_N - 1);
-                    var lum = rr * 0.2126 + gg * 0.7152 + bb * 0.0722;
-                    var shadow = 1.0 - lum;
+                    var rr = (float)r / (LUT_N - 1);
+                    var gg = (float)g / (LUT_N - 1);
+                    var bb = (float)b / (LUT_N - 1);
+                    var lum = rr * 0.2126f + gg * 0.7152f + bb * 0.0722f;
+                    var shadow = 1.0f - lum;
                     var high = lum;
-                    var nr = rr * 1.03 + high * 0.035 - shadow * 0.025;
-                    var ng = gg * 1.01 + shadow * 0.025 + high * 0.010;
-                    var nb = bb * 0.98 + shadow * 0.060 - high * 0.020;
+                    var nr = rr * 1.03f + high * 0.035f - shadow * 0.025f;
+                    var ng = gg * 1.01f + shadow * 0.025f + high * 0.010f;
+                    var nb = bb * 0.98f + shadow * 0.060f - high * 0.020f;
                     lutPx.Add((int)Math.Floor(MathUtil.saturate(nr) * 255));
                     lutPx.Add((int)Math.Floor(MathUtil.saturate(ng) * 255));
                     lutPx.Add((int)Math.Floor(MathUtil.saturate(nb) * 255));
@@ -206,33 +206,33 @@ public static class Sfb12
         }
     }
 
-    static void PushHero(List<double> dst, double cx, double cy, double cz,
-        double r, int seg, int ring, int segs, int rings)
+    static void PushHero(List<float> dst, float cx, float cy, float cz,
+        float r, int seg, int ring, int segs, int rings)
     {
-        var u0 = (double)seg / segs * Math.PI * 2;
-        var v0 = -Math.PI * 0.5 + (double)ring / rings * Math.PI;
-        var cv = Math.Cos(v0);
-        var nx = Math.Cos(u0) * cv;
-        var ny = Math.Sin(v0);
-        var nz = Math.Sin(u0) * cv;
+        var u0 = (float)seg / segs * (float)Math.PI * 2;
+        var v0 = -(float)Math.PI * 0.5f + (float)ring / rings * (float)Math.PI;
+        var cv = (float)Math.Cos(v0);
+        var nx = (float)Math.Cos(u0) * cv;
+        var ny = (float)Math.Sin(v0);
+        var nz = (float)Math.Sin(u0) * cv;
         dst.Add(cx + nx * r);
         dst.Add(cy + ny * r);
         dst.Add(cz + nz * r);
         dst.Add(nx);
         dst.Add(ny);
         dst.Add(nz);
-        dst.Add((double)seg / segs * 3.0);
-        dst.Add((double)ring / rings * 3.0);
+        dst.Add((float)seg / segs * 3.0f);
+        dst.Add((float)ring / rings * 3.0f);
     }
 
     // UV-sphere (pos.xyz, normal.xyz, uv.xy) for the material shader.
-    static List<double> BuildHero()
+    static List<float> BuildHero()
     {
-        var dst = new List<double>();
-        var cx = 0.1;
-        var cy = 0.5;
-        var cz = -0.95;
-        var r = 0.45;
+        var dst = new List<float>();
+        var cx = 0.1f;
+        var cy = 0.5f;
+        var cz = -0.95f;
+        var r = 0.45f;
         var rings = 24;
         var segs = 48;
         for (int ring = 0; ring < rings; ring++)
@@ -250,19 +250,19 @@ public static class Sfb12
         return dst;
     }
 
-    static List<double> BuildScene(double t)
+    static List<float> BuildScene(float t)
     {
-        var dst = new List<double>();
+        var dst = new List<float>();
         AddFloor(dst);
-        Shapes.box(dst, -0.05, 0.12, 0.48, 0.88, 0.24, 0.34,
-            new List<double> { 0.95, 0.76, 0.38, 1.0 });
-        Shapes.box(dst, -0.58, 0.52 + Math.Sin(t * 1.4) * 0.07, -0.12,
-            0.42, 0.42, 0.42, new List<double> { 0.18, 0.72, 0.78, 1.0 });
-        Shapes.sphere(dst, 0.62 + Math.Cos(t * 1.1) * 0.20,
-            0.58 + Math.Sin(t * 1.7) * 0.08, -0.18 + Math.Sin(t * 0.8) * 0.22,
-            0.22, new List<double> { 0.95, 0.28, 0.34, 1.0 }, 14, 28);
-        Shapes.box(dst, 0.92, 0.34, 0.36, 0.18, 0.68, 0.18,
-            new List<double> { 0.48, 0.39, 0.86, 1.0 });
+        Shapes.box(dst, -0.05f, 0.12f, 0.48f, 0.88f, 0.24f, 0.34f,
+            new List<float> { 0.95f, 0.76f, 0.38f, 1.0f });
+        Shapes.box(dst, -0.58f, 0.52f + (float)Math.Sin(t * 1.4f) * 0.07f, -0.12f,
+            0.42f, 0.42f, 0.42f, new List<float> { 0.18f, 0.72f, 0.78f, 1.0f });
+        Shapes.sphere(dst, 0.62f + (float)Math.Cos(t * 1.1f) * 0.20f,
+            0.58f + (float)Math.Sin(t * 1.7f) * 0.08f, -0.18f + (float)Math.Sin(t * 0.8f) * 0.22f,
+            0.22f, new List<float> { 0.95f, 0.28f, 0.34f, 1.0f }, 14, 28);
+        Shapes.box(dst, 0.92f, 0.34f, 0.36f, 0.18f, 0.68f, 0.18f,
+            new List<float> { 0.48f, 0.39f, 0.86f, 1.0f });
         return dst;
     }
 
@@ -273,29 +273,29 @@ public static class Sfb12
     // eye は Haxe 版では Vec3 field だが、static 初期化子で他ファイルの class
     // (Vec3) を new すると Lua emit の定義順で nil 参照になるため、スカラーで
     // 保持して使う箇所で Vec3 を組む。
-    static double camEyeX = 2.0;
-    static double camEyeY = 1.35;
-    static double camEyeZ = -2.85;
-    static double camYaw = -0.581; // looks toward the scene centre
-    static double camPitch = -0.277;
+    static float camEyeX = 2.0f;
+    static float camEyeY = 1.35f;
+    static float camEyeZ = -2.85f;
+    static float camYaw = -0.581f; // looks toward the scene centre
+    static float camPitch = -0.277f;
     static Mat4? prevViewProj = null; // last frame's proj*view (motion blur)
     // last frame's camera pose, to detect whether the camera actually moved
     // (motion blur only runs when it did, so a still camera stays a clean
     // no-op).
-    static double pcEyeX = 2.0;
-    static double pcEyeY = 1.35;
-    static double pcEyeZ = -2.85;
-    static double pcYaw = -0.581;
-    static double pcPitch = -0.277;
+    static float pcEyeX = 2.0f;
+    static float pcEyeY = 1.35f;
+    static float pcEyeZ = -2.85f;
+    static float pcYaw = -0.581f;
+    static float pcPitch = -0.277f;
 
     static Vec3 ForwardDir()
     {
-        var cp = Math.Cos(camPitch);
-        return new Vec3(Math.Sin(camYaw) * cp, Math.Sin(camPitch),
-            Math.Cos(camYaw) * cp);
+        var cp = (float)Math.Cos(camPitch);
+        return new Vec3((float)Math.Sin(camYaw) * cp, (float)Math.Sin(camPitch),
+            (float)Math.Cos(camYaw) * cp);
     }
 
-    static Mat4 UpdateCamera(double dt)
+    static Mat4 UpdateCamera(float dt)
     {
         var up = new Vec3(0, 1, 0);
 
@@ -319,7 +319,7 @@ public static class Sfb12
         // visible in a headless capture; default (unset) keeps the golden still.
         if (os.getenv("LUB_SFB_SPIN") != null)
         {
-            camYaw = camYaw + 1.2 * dt;
+            camYaw = camYaw + 1.2f * dt;
         }
 
         // Mouse look: consume the delta every frame (so it never jumps), apply
@@ -327,15 +327,15 @@ public static class Sfb12
         Input.mouse_delta(out var mdx, out var mdy);
         if (Input.mouse_down(1))
         {
-            camYaw = camYaw + mdx * 0.003;
-            camPitch = camPitch - mdy * 0.003;
-            if (camPitch > 1.5) camPitch = 1.5;
-            if (camPitch < -1.5) camPitch = -1.5;
+            camYaw = camYaw + mdx * 0.003f;
+            camPitch = camPitch - mdy * 0.003f;
+            if (camPitch > 1.5f) camPitch = 1.5f;
+            if (camPitch < -1.5f) camPitch = -1.5f;
         }
 
         var fwd = ForwardDir();
         var right = up.cross(fwd).normalize();
-        var spd = 2.0 * dt;
+        var spd = 2.0f * dt;
         if (Input.key_down("w"))
         {
             camEyeX += fwd.x * spd;
@@ -372,7 +372,7 @@ public static class Sfb12
     // ---- fullscreen quad (pos.xy, uv) ----
     // Quad used for the final present (offscreen -> swapchain). The runtime
     // y-flips the swapchain, so this maps clip y = -1 to uv.y = 0.
-    static List<double> quadVerts = new List<double>
+    static List<float> quadVerts = new List<float>
     {
         -1, -1, 0, 0,
         1, -1, 1, 0,
@@ -385,7 +385,7 @@ public static class Sfb12
     // Quad used for offscreen -> offscreen post passes. Offscreen targets are
     // not y-flipped, so we flip uv.y here to keep every intermediate blit an
     // identity (no orientation drift no matter how many passes we chain).
-    static List<double> quadVertsFlip = new List<double>
+    static List<float> quadVertsFlip = new List<float>
     {
         -1, -1, 0, 1,
         1, -1, 1, 1,
@@ -395,7 +395,7 @@ public static class Sfb12
         -1, 1, 0, 0,
     };
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         tAccum = tAccum + dt;
 
@@ -498,12 +498,12 @@ public static class Sfb12
                 heroBuf = Gfx.use_buffer("sfb_hero", Gfx.VERTEX,
                     Io.interleave_pnu(mesh), meshVer);
                 // MeshData.indices は List<int> だが use_buffer は
-                // List<double> を取る。tcs は型消去なので Lua では同じ table が
+                // List<float> を取る。tcs は型消去なので Lua では同じ table が
                 // そのまま渡る (cast は無変換)。
                 heroIdx = Gfx.use_buffer("sfb_heroIdx", Gfx.INDEX,
-                    (List<double>)(object)mesh.indices, meshVer);
+                    (List<float>)(object)mesh.indices, meshVer);
                 heroCount = mesh.index_count;
-                heroModel = Mat4.scaleTrans(8.5, new Vec3(0.1, 0.0, -0.7));
+                heroModel = Mat4.scaleTrans(8.5f, new Vec3(0.1f, 0.0f, -0.7f));
             }
         }
         if (heroBuf == null)
@@ -536,22 +536,22 @@ public static class Sfb12
         }
 
         var view = UpdateCamera(dt);
-        var proj = Mat4.perspectiveLh(52, (double)RT_W / RT_H, 0.1, 40.0);
+        var proj = Mat4.perspectiveLh(52, (float)RT_W / RT_H, 0.1f, 40.0f);
         // Offscreen targets are stored y-down vs the swapchain (the runtime
         // only y-flips the default framebuffer). Pre-flip clip-space Y so the
         // G-buffer is screen-oriented; cull is NONE so the winding change is
         // harmless.
         proj.m[5] = -proj.m[5];
         // direction toward the light
-        var worldLight = new Vec3(-0.48, 1.0, -0.32).normalize();
+        var worldLight = new Vec3(-0.48f, 1.0f, -0.32f).normalize();
         var lightView = view.mat3MulVec3(worldLight).normalize();
         // directional shadow: orthographic light camera looking at the scene
         // centre.
         var lightLook = Mat4.lookAtLh(
-            new Vec3(0.1 + worldLight.x * 6.0, 0.3 + worldLight.y * 6.0,
-                worldLight.z * 6.0),
-            new Vec3(0.1, 0.3, 0.0), new Vec3(0, 1, 0));
-        var lightMvp = Mat4.orthoLh(5.5, 5.5, 0.1, 12.0).mul(lightLook);
+            new Vec3(0.1f + worldLight.x * 6.0f, 0.3f + worldLight.y * 6.0f,
+                worldLight.z * 6.0f),
+            new Vec3(0.1f, 0.3f, 0.0f), new Vec3(0, 1, 0));
+        var lightMvp = Mat4.orthoLh(5.5f, 5.5f, 0.1f, 12.0f).mul(lightLook);
 
         // Reprojection for motion blur: maps a current view-space point to
         // last frame's clip space = prevViewProj * inverse(currentView). Still
@@ -563,7 +563,7 @@ public static class Sfb12
 
         var camMoved = Math.Abs(camEyeX - pcEyeX)
             + Math.Abs(camEyeY - pcEyeY) + Math.Abs(camEyeZ - pcEyeZ)
-            + Math.Abs(camYaw - pcYaw) + Math.Abs(camPitch - pcPitch) > 1e-6;
+            + Math.Abs(camYaw - pcYaw) + Math.Abs(camPitch - pcPitch) > 1e-6f;
         pcEyeX = camEyeX;
         pcEyeY = camEyeY;
         pcEyeZ = camEyeZ;
@@ -660,9 +660,9 @@ public static class Sfb12
         return Gfx.use_shader(key, vs, fs, vsv * 31 + fsv);
     }
 
-    static double[] Black()
+    static float[] Black()
     {
-        return new double[] { 0.0, 0.0, 0.0, 1.0 };
+        return new float[] { 0.0f, 0.0f, 0.0f, 1.0f };
     }
 
     // shadow depth pass: render flat + hero from the light's POV into
@@ -678,7 +678,7 @@ public static class Sfb12
         {
             target = shadowMap,
             depth_target = shadowDepth,
-            clear_color = new double[] { 1.0, 1.0, 1.0, 1.0 },
+            clear_color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
             clear_depth = 1,
         });
         Gfx.draw(count,
@@ -741,7 +741,7 @@ public static class Sfb12
         TextureRef gColor, TextureRef gNormal, TextureRef gPosition,
         TextureRef gDepth, Mat4 proj, Mat4 view, Vec3 lightView)
     {
-        var lt = new double[] { lightView.x, lightView.y, lightView.z, 0.0 };
+        var lt = new float[] { lightView.x, lightView.y, lightView.z, 0.0f };
         var pv = proj.m;
         var vv = view.m;
         var mv = heroModel.m;
@@ -750,11 +750,11 @@ public static class Sfb12
         {
             targets = new List<TextureRef> { gColor, gNormal, gPosition },
             depth_target = gDepth,
-            clear_colors = new List<double[]>
+            clear_colors = new List<float[]>
             {
-                new double[] { 0.09, 0.12, 0.15, 1.0 },
-                new double[] { 0.5, 0.5, 1.0, 0.0 },
-                new double[] { 0.0, 0.0, 0.0, 0.0 },
+                new float[] { 0.09f, 0.12f, 0.15f, 1.0f },
+                new float[] { 0.5f, 0.5f, 1.0f, 0.0f },
+                new float[] { 0.0f, 0.0f, 0.0f, 0.0f },
             },
             clear_depth = 1,
         });
@@ -909,7 +909,7 @@ public static class Sfb12
 
     static void SsaoPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef gColor, TextureRef gNormal, TextureRef gPosition,
-        double p00, double p11)
+        float p00, float p11)
     {
         Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
         Gfx.draw(6,
@@ -921,7 +921,7 @@ public static class Sfb12
                 ["gpos"] = gPosition,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["params"] = new double[] { p00, p11, 0.0, 0.0 },
+                    ["params"] = new float[] { p00, p11, 0.0f, 0.0f },
                 },
             },
             new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
@@ -939,7 +939,7 @@ public static class Sfb12
                 ["scene"] = tex,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["params"] = new double[] { mode, 0.004, 0.0, 0.0 },
+                    ["params"] = new float[] { mode, 0.004f, 0.0f, 0.0f },
                 },
             },
             new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
@@ -947,7 +947,7 @@ public static class Sfb12
     }
 
     static void GradePass(TextureRef targ, ShaderRef shader, BufferRef quad,
-        TextureRef tex, TextureRef lut, double time)
+        TextureRef tex, TextureRef lut, float time)
     {
         Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
         Gfx.draw(6,
@@ -958,7 +958,7 @@ public static class Sfb12
                 ["lut"] = lut,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["params"] = new double[] { time, 0.025, 0.65, 2.2 },
+                    ["params"] = new float[] { time, 0.025f, 0.65f, 2.2f },
                 },
             },
             new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
@@ -967,8 +967,8 @@ public static class Sfb12
 
     static void WaterPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef gPosition, TextureRef flowTex,
-        TextureRef wnTex, Mat4 iv, double time, double waterY, double p00,
-        double p11)
+        TextureRef wnTex, Mat4 iv, float time, float waterY, float p00,
+        float p11)
     {
         Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
         Gfx.draw(6,
@@ -981,10 +981,10 @@ public static class Sfb12
                 ["waternormal"] = wnTex,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["ir0"] = new double[] { iv.m[0], iv.m[1], iv.m[2], iv.m[3] },
-                    ["ir1"] = new double[] { iv.m[4], iv.m[5], iv.m[6], iv.m[7] },
-                    ["ir2"] = new double[] { iv.m[8], iv.m[9], iv.m[10], iv.m[11] },
-                    ["params"] = new double[] { time, waterY, p00, p11 },
+                    ["ir0"] = new float[] { iv.m[0], iv.m[1], iv.m[2], iv.m[3] },
+                    ["ir1"] = new float[] { iv.m[4], iv.m[5], iv.m[6], iv.m[7] },
+                    ["ir2"] = new float[] { iv.m[8], iv.m[9], iv.m[10], iv.m[11] },
+                    ["params"] = new float[] { time, waterY, p00, p11 },
                 },
             },
             new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
@@ -1003,10 +1003,10 @@ public static class Sfb12
                 ["gpos"] = gPosition,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["r0"] = new double[] { m.m[0], m.m[1], m.m[2], m.m[3] },
-                    ["r1"] = new double[] { m.m[4], m.m[5], m.m[6], m.m[7] },
-                    ["r2"] = new double[] { m.m[8], m.m[9], m.m[10], m.m[11] },
-                    ["r3"] = new double[] { m.m[12], m.m[13], m.m[14], m.m[15] },
+                    ["r0"] = new float[] { m.m[0], m.m[1], m.m[2], m.m[3] },
+                    ["r1"] = new float[] { m.m[4], m.m[5], m.m[6], m.m[7] },
+                    ["r2"] = new float[] { m.m[8], m.m[9], m.m[10], m.m[11] },
+                    ["r3"] = new float[] { m.m[12], m.m[13], m.m[14], m.m[15] },
                 },
             },
             new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });

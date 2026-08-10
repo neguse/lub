@@ -4,7 +4,7 @@
 // step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
 // gameplay rule と物理 desc の数値は Haxe 版に忠実。tcs 制約による置換:
 // typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、
-// 整数除算・剰余 → FloorDiv/Mod (double 経由、対象は非負)、
+// 整数除算・剰余 → FloorDiv/Mod (float 経由、対象は非負)、
 // Mesh3d/Renderer3d は static 初期化子で作れないため onInit で作る。
 
 using System;
@@ -17,9 +17,9 @@ public class Coin
     public int flash;
     public int value; // 1 = 通常, 5 = ボーナス (大型)
     public int born; // 投入フレーム。プール満杯時は最古を再利用する
-    public double spawnX;
-    public double spawnY;
-    public double spawnZ;
+    public float spawnX;
+    public float spawnY;
+    public float spawnZ;
 }
 
 /// <summary>declareCoins が返す 1 コイン分 (Haxe 版の匿名構造体相当)。</summary>
@@ -45,22 +45,22 @@ public class LiveCoin
 // - 投入はポインタ位置へ直接 (クリック/タップ = その真下に投入)。無限に出せる。
 public static class CoinPusher18
 {
-    const double DT = 1.0 / 60.0;
+    const float DT = 1.0f / 60.0f;
     const int MAX_COINS = 80;
-    const double COIN_R = 0.17;
-    const double COIN_H = 0.07;
-    const double BONUS_R = 0.27;
-    const double BONUS_H = 0.1;
+    const float COIN_R = 0.17f;
+    const float COIN_H = 0.07f;
+    const float BONUS_R = 0.27f;
+    const float BONUS_H = 0.1f;
     const int AUTO_INTERVAL = 75;
     const int BONUS_EVERY = 6; // 自動投入の何枚に 1 枚がボーナスか
-    const double DROP_Y = 1.35;
-    const double DROP_Z = -1.0;
+    const float DROP_Y = 1.35f;
+    const float DROP_Z = -1.0f;
 
     static int frame = 0;
     static List<Coin> coins = new List<Coin>();
     static int score = 0;
     static int autoCount = 0;
-    static double spawnX = 0.0;
+    static float spawnX = 0.0f;
     static int payoutFlash = 0;
     static int markerPulse = 0;
     static FixedStep? step = null;
@@ -70,13 +70,13 @@ public static class CoinPusher18
 
     // 壁 {x, y, z, hx, hy, hz}。物理と描画で共有する。
     // トレイ側面は前方 (z > 0.4) が開いていて、そこが側溝 = 没収ゾーン。
-    static List<double[]> WALLS = new List<double[]>
+    static List<float[]> WALLS = new List<float[]>
     {
-        new double[] { -1.58, 0.5, -1.7, 0.08, 0.5, 0.9 }, // shelf 側面 L
-        new double[] { 1.58, 0.5, -1.7, 0.08, 0.5, 0.9 }, // shelf 側面 R
-        new double[] { -1.58, 0.28, -0.35, 0.08, 0.28, 0.45 }, // tray 側面 L (前方は開放)
-        new double[] { 1.58, 0.28, -0.35, 0.08, 0.28, 0.45 }, // tray 側面 R (前方は開放)
-        new double[] { 0.0, 0.8, -2.68, 1.5, 0.8, 0.08 }, // 背面
+        new float[] { -1.58f, 0.5f, -1.7f, 0.08f, 0.5f, 0.9f }, // shelf 側面 L
+        new float[] { 1.58f, 0.5f, -1.7f, 0.08f, 0.5f, 0.9f }, // shelf 側面 R
+        new float[] { -1.58f, 0.28f, -0.35f, 0.08f, 0.28f, 0.45f }, // tray 側面 L (前方は開放)
+        new float[] { 1.58f, 0.28f, -0.35f, 0.08f, 0.28f, 0.45f }, // tray 側面 R (前方は開放)
+        new float[] { 0.0f, 0.8f, -2.68f, 1.5f, 0.8f, 0.08f }, // 背面
     };
 
     // --- procedural unit meshes (Shapes3d) -----------------------------------
@@ -100,7 +100,7 @@ public static class CoinPusher18
                 flash = 0,
                 value = 1,
                 born = 0,
-                spawnX = 0.0,
+                spawnX = 0.0f,
                 spawnY = DROP_Y,
                 spawnZ = DROP_Z,
             });
@@ -116,15 +116,15 @@ public static class CoinPusher18
     {
     }
 
-    // tcs は整数除算・剰余を出せないので double 経由で書く (v, n は非負前提)。
+    // tcs は整数除算・剰余を出せないので float 経由で書く (v, n は非負前提)。
     static int FloorDiv(int v, int n)
     {
-        return (int)Math.Floor(v / (double)n);
+        return (int)Math.Floor(v / (float)n);
     }
 
     static int Mod(int v, int n)
     {
-        return v - (int)Math.Floor(v / (double)n) * n;
+        return v - (int)Math.Floor(v / (float)n) * n;
     }
 
     // 空の台では最初の数分間なにも起きないので、起動時に台を埋めておく。
@@ -139,9 +139,9 @@ public static class CoinPusher18
             n = n + 1;
             c.active = true;
             c.gen = c.gen + 1;
-            c.spawnX = -1.2 + Mod(i, 5) * 0.6 + Mod(i * 137, 23) * 0.01;
-            c.spawnY = 0.75 + FloorDiv(i, 5) * 0.12;
-            c.spawnZ = -1.15 + FloorDiv(i, 5) * 0.28;
+            c.spawnX = -1.2f + Mod(i, 5) * 0.6f + Mod(i * 137, 23) * 0.01f;
+            c.spawnY = 0.75f + FloorDiv(i, 5) * 0.12f;
+            c.spawnZ = -1.15f + FloorDiv(i, 5) * 0.28f;
         }
         // tray はカーペット状に敷き詰める (3 列 x 6 枚 + 前縁ぎわ 4 枚)。
         // 密度があるほど 1 回の落下が前縁まで伝わり、序盤から払い出しが出る。
@@ -151,9 +151,9 @@ public static class CoinPusher18
             n = n + 1;
             c.active = true;
             c.gen = c.gen + 1;
-            c.spawnX = -1.1 + Mod(i, 6) * 0.44 + Mod(i * 251, 17) * 0.01;
-            c.spawnY = 0.25 + FloorDiv(i, 6) * 0.02;
-            c.spawnZ = -0.42 + FloorDiv(i, 6) * 0.36 + Mod(i * 89, 13) * 0.01;
+            c.spawnX = -1.1f + Mod(i, 6) * 0.44f + Mod(i * 251, 17) * 0.01f;
+            c.spawnY = 0.25f + FloorDiv(i, 6) * 0.02f;
+            c.spawnZ = -0.42f + FloorDiv(i, 6) * 0.36f + Mod(i * 89, 13) * 0.01f;
         }
         for (int i = 0; i < 4; i++)
         {
@@ -161,9 +161,9 @@ public static class CoinPusher18
             n = n + 1;
             c.active = true;
             c.gen = c.gen + 1;
-            c.spawnX = -0.85 + i * 0.57 + Mod(i * 173, 11) * 0.01;
-            c.spawnY = 0.22;
-            c.spawnZ = 0.34;
+            c.spawnX = -0.85f + i * 0.57f + Mod(i * 173, 11) * 0.01f;
+            c.spawnY = 0.22f;
+            c.spawnZ = 0.34f;
         }
     }
 
@@ -176,15 +176,15 @@ public static class CoinPusher18
         var shelf = Phys3d.phys3d_body(world, "shelf", new BodyDesc3d
         {
             type = Phys3d.STATIC,
-            initial = new InitialState3d { x = 0.0, y = 0.3, z = -1.7 },
+            initial = new InitialState3d { x = 0.0f, y = 0.3f, z = -1.7f },
         });
         if (shelf == null) return;
         Phys3d.phys3d_box(shelf, "solid", new BoxDesc3d
         {
-            hx = 1.5,
-            hy = 0.3,
-            hz = 0.9,
-            friction = 0.45,
+            hx = 1.5f,
+            hy = 0.3f,
+            hz = 0.9f,
+            friction = 0.45f,
             contact = true,
         });
 
@@ -193,15 +193,15 @@ public static class CoinPusher18
         var tray = Phys3d.phys3d_body(world, "tray", new BodyDesc3d
         {
             type = Phys3d.STATIC,
-            initial = new InitialState3d { x = 0.0, y = 0.05, z = -0.15 },
+            initial = new InitialState3d { x = 0.0f, y = 0.05f, z = -0.15f },
         });
         if (tray == null) return;
         Phys3d.phys3d_box(tray, "solid", new BoxDesc3d
         {
-            hx = 1.5,
-            hy = 0.05,
-            hz = 0.65,
-            friction = 0.22,
+            hx = 1.5f,
+            hy = 0.05f,
+            hz = 0.65f,
+            friction = 0.22f,
             contact = true,
         });
 
@@ -219,14 +219,14 @@ public static class CoinPusher18
                 hx = w[3],
                 hy = w[4],
                 hz = w[5],
-                friction = 0.2,
+                friction = 0.2f,
             });
         }
     }
 
-    static double PusherZ(double t)
+    static float PusherZ(float t)
     {
-        return -1.7 + 0.38 * Math.Sin(t * 1.35);
+        return -1.7f + 0.38f * (float)Math.Sin(t * 1.35f);
     }
 
     static void DeclarePusher(WorldRef3d world)
@@ -234,28 +234,28 @@ public static class CoinPusher18
         var pusher = Phys3d.phys3d_body(world, "pusher", new BodyDesc3d
         {
             type = Phys3d.KINEMATIC,
-            initial = new InitialState3d { x = 0.0, y = 0.82, z = PusherZ(0.0) },
+            initial = new InitialState3d { x = 0.0f, y = 0.82f, z = PusherZ(0.0f) },
         });
         if (pusher == null) return;
         Phys3d.phys3d_box(pusher, "solid", new BoxDesc3d
         {
-            hx = 1.45,
-            hy = 0.22,
-            hz = 0.55,
-            friction = 0.7,
+            hx = 1.45f,
+            hy = 0.22f,
+            hz = 0.55f,
+            friction = 0.7f,
             contact = true,
         });
         Phys3d.phys3d_set_target(pusher, new TargetDesc3d
         {
-            x = 0.0,
-            y = 0.82,
+            x = 0.0f,
+            y = 0.82f,
             z = PusherZ(frame * DT),
             dt = DT,
         });
     }
 
     // 投入。プールが満杯なら最古のコインを再利用する = 何枚でも出せる。
-    static void SpawnCoin(double x, int value)
+    static void SpawnCoin(float x, int value)
     {
         Coin? slot = null;
         foreach (var c in coins)
@@ -301,7 +301,7 @@ public static class CoinPusher18
                     x = c.spawnX,
                     y = c.spawnY,
                     z = c.spawnZ,
-                    euler = new Vec3d { x = 0.0, y = (i * 0.61803) % 6.283, z = 0.0 },
+                    euler = new Vec3d { x = 0.0f, y = (i * 0.61803f) % 6.283f, z = 0.0f },
                 },
             });
             if (body == null) continue;
@@ -311,8 +311,8 @@ public static class CoinPusher18
                 height = c.value > 1 ? BONUS_H : COIN_H,
                 radius = c.value > 1 ? BONUS_R : COIN_R,
                 sides = 20,
-                density = 1.0,
-                friction = 0.22,
+                density = 1.0f,
+                friction = 0.22f,
                 contact = true,
             });
             live.Add(new LiveCoin(c, body, i));
@@ -324,18 +324,18 @@ public static class CoinPusher18
     // スクリーン x → 投入ライン (y=DROP_Y, z=DROP_Z) 上の world x。
     // world x=±1 を NDC へ射影して線形逆写像するので、カメラの向きに
     // 依らず「ポインタの真下」に投入される (左右反転しない)。
-    static double ScreenToSpawnX(double px, Mat4 vp, double screenW)
+    static float ScreenToSpawnX(float px, Mat4 vp, float screenW)
     {
-        var a = vp.mulVec4(new Vec4(-1.0, DROP_Y, DROP_Z, 1.0));
-        var b = vp.mulVec4(new Vec4(1.0, DROP_Y, DROP_Z, 1.0));
-        double na = a.x / a.w;
-        double nb = b.x / b.w;
-        double n = px / screenW * 2.0 - 1.0;
-        double t = (n - na) / (nb - na);
-        return MathUtil.clamp(-1.0 + 2.0 * t, -1.3, 1.3);
+        var a = vp.mulVec4(new Vec4(-1.0f, DROP_Y, DROP_Z, 1.0f));
+        var b = vp.mulVec4(new Vec4(1.0f, DROP_Y, DROP_Z, 1.0f));
+        float na = a.x / a.w;
+        float nb = b.x / b.w;
+        float n = px / screenW * 2.0f - 1.0f;
+        float t = (n - na) / (nb - na);
+        return MathUtil.clamp(-1.0f + 2.0f * t, -1.3f, 1.3f);
     }
 
-    static void CaptureInput(Mat4 vp, double screenW)
+    static void CaptureInput(Mat4 vp, float screenW)
     {
         // ポインタが動いたらマーカーを追従させる。キー操作 (画面基準:
         // このカメラでは world +X が画面左) への変換は render ごとに行う。
@@ -357,9 +357,9 @@ public static class CoinPusher18
     {
         // held input は 60 Hz tick ごとに適用する。
         if (Input.key_down("left") || Input.key_down("a"))
-            spawnX = MathUtil.clamp(spawnX + 0.04, -1.3, 1.3);
+            spawnX = MathUtil.clamp(spawnX + 0.04f, -1.3f, 1.3f);
         if (Input.key_down("right") || Input.key_down("d"))
-            spawnX = MathUtil.clamp(spawnX - 0.04, -1.3, 1.3);
+            spawnX = MathUtil.clamp(spawnX - 0.04f, -1.3f, 1.3f);
 
         for (int i = 0; i < pendingSpawns; i++)
             SpawnCoin(spawnX, 1);
@@ -379,7 +379,7 @@ public static class CoinPusher18
 
         var nextWorld = Phys3d.phys3d_world("coin_pusher", new WorldOpts3d
         {
-            gravity = new Vec3d { x = 0.0, y = -10.0, z = 0.0 },
+            gravity = new Vec3d { x = 0.0f, y = -10.0f, z = 0.0f },
             fixedDt = DT,
             substeps = 4,
             maxSteps = 1,
@@ -398,7 +398,7 @@ public static class CoinPusher18
         {
             autoCount = autoCount + 1;
             int value = Mod(autoCount, BONUS_EVERY) == 0 ? 5 : 1;
-            SpawnCoin(-1.0 + Mod(frame * 7919, 2000) / 1000.0, value);
+            SpawnCoin(-1.0f + Mod(frame * 7919, 2000) / 1000.0f, value);
         }
 
         var live = DeclareCoins(nextWorld);
@@ -431,10 +431,10 @@ public static class CoinPusher18
         {
             var pose = Phys3d.phys3d_pose(entry.body);
             if (pose == null) continue;
-            if (pose.y < -1.2)
+            if (pose.y < -1.2f)
             {
                 entry.coin.active = false;
-                if (pose.z > 0.45)
+                if (pose.z > 0.45f)
                 {
                     score = score + entry.coin.value;
                     int f = entry.coin.value > 1 ? 45 : 16;
@@ -449,15 +449,15 @@ public static class CoinPusher18
 
     // --- rendering -----------------------------------------------------------
 
-    static Mat4 ModelMat(Pose3d pose, double sx, double sy, double sz)
+    static Mat4 ModelMat(Pose3d pose, float sx, float sy, float sz)
     {
         var rot = new Quat(pose.qx, pose.qy, pose.qz, pose.qw).toMat4();
         return Mat4.translate(new Vec3(pose.x, pose.y, pose.z)) * rot
             * Mat4.scale(new Vec3(sx, sy, sz));
     }
 
-    static Mat4 StaticModel(double x, double y, double z,
-        double sx, double sy, double sz)
+    static Mat4 StaticModel(float x, float y, float z,
+        float sx, float sy, float sz)
     {
         return Mat4.translate(new Vec3(x, y, z)) * Mat4.scale(new Vec3(sx, sy, sz));
     }
@@ -472,17 +472,17 @@ public static class CoinPusher18
         int units = Mod(score, 10);
         for (int i = 0; i < tens; i++)
         {
-            rn.draw(cyl, StaticModel(-1.25 + i * 0.21, -0.62, 1.08, 0.14, 0.05, 0.14),
-                new Draw3dOpts { tint = Color.rgb(1.0, 0.82, 0.25) });
+            rn.draw(cyl, StaticModel(-1.25f + i * 0.21f, -0.62f, 1.08f, 0.14f, 0.05f, 0.14f),
+                new Draw3dOpts { tint = Color.rgb(1.0f, 0.82f, 0.25f) });
         }
         for (int i = 0; i < units; i++)
         {
-            rn.draw(cyl, StaticModel(-1.25 + i * 0.19, -0.68, 1.45, 0.09, 0.035, 0.09),
-                new Draw3dOpts { tint = Color.rgb(0.85, 0.68, 0.2) });
+            rn.draw(cyl, StaticModel(-1.25f + i * 0.19f, -0.68f, 1.45f, 0.09f, 0.035f, 0.09f),
+                new Draw3dOpts { tint = Color.rgb(0.85f, 0.68f, 0.2f) });
         }
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         var rn = ren;
         var cube = cubeMesh;
@@ -495,21 +495,21 @@ public static class CoinPusher18
         }
 
         // ゲームセンターの暗がり + 筐体上の照明
-        rn.light.dir = new Vec3(-0.25, 1.0, 0.5);
-        rn.light.intensity = 1.2;
-        rn.sky.top = Color.rgb(0.32, 0.35, 0.44);
-        rn.sky.bottom = Color.rgb(0.10, 0.10, 0.12);
-        rn.sky.intensity = 0.45;
-        rn.background = Color.rgb(0.035, 0.045, 0.06);
+        rn.light.dir = new Vec3(-0.25f, 1.0f, 0.5f);
+        rn.light.intensity = 1.2f;
+        rn.sky.top = Color.rgb(0.32f, 0.35f, 0.44f);
+        rn.sky.bottom = Color.rgb(0.10f, 0.10f, 0.12f);
+        rn.sky.intensity = 0.45f;
+        rn.background = Color.rgb(0.035f, 0.045f, 0.06f);
         rn.shadow.center = new Vec3(0, 0, 0);
-        rn.shadow.extent = 3.0;
+        rn.shadow.extent = 3.0f;
         rn.begin(new Camera
         {
-            eye = new Vec3(0.0, 3.3, 4.4),
-            target = new Vec3(0.0, -0.35, -0.35),
+            eye = new Vec3(0.0f, 3.3f, 4.4f),
+            target = new Vec3(0.0f, -0.35f, -0.35f),
             fov = 44,
-            near = 0.1,
-            far = 50.0,
+            near = 0.1f,
+            far = 50.0f,
         });
         var vp = rn.viewProj;
         if (vp == null) return;
@@ -521,12 +521,12 @@ public static class CoinPusher18
         stepNow.frame(dt, _ => Tick());
 
         // --- draw ---
-        var gray = Color.rgb(0.42, 0.45, 0.5);
-        var dark = Color.rgb(0.22, 0.24, 0.28);
-        var cabinet = Color.rgb(0.16, 0.17, 0.21);
-        rn.draw(cube, StaticModel(0.0, 0.3, -1.7, 1.5, 0.3, 0.9),
+        var gray = Color.rgb(0.42f, 0.45f, 0.5f);
+        var dark = Color.rgb(0.22f, 0.24f, 0.28f);
+        var cabinet = Color.rgb(0.16f, 0.17f, 0.21f);
+        rn.draw(cube, StaticModel(0.0f, 0.3f, -1.7f, 1.5f, 0.3f, 0.9f),
             new Draw3dOpts { tint = gray });
-        rn.draw(cube, StaticModel(0.0, 0.05, -0.15, 1.5, 0.05, 0.65),
+        rn.draw(cube, StaticModel(0.0f, 0.05f, -0.15f, 1.5f, 0.05f, 0.65f),
             new Draw3dOpts { tint = gray });
         foreach (var w in WALLS)
         {
@@ -534,9 +534,9 @@ public static class CoinPusher18
                 new Draw3dOpts { tint = dark });
         }
         // 筐体 (描画のみ): 前面パネルと、スコアの山を置く受け皿。
-        rn.draw(cube, StaticModel(0.0, -0.55, 0.53, 1.58, 0.62, 0.05),
+        rn.draw(cube, StaticModel(0.0f, -0.55f, 0.53f, 1.58f, 0.62f, 0.05f),
             new Draw3dOpts { tint = cabinet });
-        rn.draw(cube, StaticModel(-0.82, -0.78, 1.28, 0.8, 0.05, 0.42),
+        rn.draw(cube, StaticModel(-0.82f, -0.78f, 1.28f, 0.8f, 0.05f, 0.42f),
             new Draw3dOpts { tint = dark });
 
         var drawWorld = world;
@@ -545,8 +545,8 @@ public static class CoinPusher18
             var pusherPose = Phys3d.phys3d_pose(drawWorld, "pusher");
             if (pusherPose != null)
             {
-                rn.draw(cube, ModelMat(pusherPose, 1.45, 0.22, 0.55),
-                    new Draw3dOpts { tint = Color.rgb(0.85, 0.45, 0.15) });
+                rn.draw(cube, ModelMat(pusherPose, 1.45f, 0.22f, 0.55f),
+                    new Draw3dOpts { tint = Color.rgb(0.85f, 0.45f, 0.15f) });
             }
 
             foreach (var index in renderCoinIndices)
@@ -554,13 +554,13 @@ public static class CoinPusher18
                 var coin = coins[index];
                 var pose = Phys3d.phys3d_pose(drawWorld, "coin:" + index);
                 if (pose == null) continue;
-                double hot = coin.flash > 0 ? 0.25 : 0.0;
+                float hot = coin.flash > 0 ? 0.25f : 0.0f;
                 bool bonus = coin.value > 1;
                 var color = bonus
-                    ? Color.rgb(1.0 + hot, 0.9 + hot, 0.35 + hot)
-                    : Color.rgb(0.85 + hot, 0.68 + hot, 0.2 + hot);
-                double r = bonus ? BONUS_R : COIN_R;
-                double h = bonus ? BONUS_H : COIN_H;
+                    ? Color.rgb(1.0f + hot, 0.9f + hot, 0.35f + hot)
+                    : Color.rgb(0.85f + hot, 0.68f + hot, 0.2f + hot);
+                float r = bonus ? BONUS_R : COIN_R;
+                float h = bonus ? BONUS_H : COIN_H;
                 rn.draw(cyl, ModelMat(pose, r, h, r),
                     new Draw3dOpts { tint = color });
             }
@@ -569,18 +569,18 @@ public static class CoinPusher18
         // 払い出しの褒め演出: 前縁のバーが光る (HDR 高輝度で bloom に乗る)。
         if (payoutFlash > 0)
         {
-            double k = payoutFlash / 45.0;
-            rn.draw(cube, StaticModel(0.0, 0.13, 0.53, 1.5, 0.025 + 0.06 * k, 0.05),
-                new Draw3dOpts { tint = Color.rgb(1.4, 1.3, 0.7 + 0.6 * k) });
+            float k = payoutFlash / 45.0f;
+            rn.draw(cube, StaticModel(0.0f, 0.13f, 0.53f, 1.5f, 0.025f + 0.06f * k, 0.05f),
+                new Draw3dOpts { tint = Color.rgb(1.4f, 1.3f, 0.7f + 0.6f * k) });
         }
 
         DrawScoreCoins(rn, cyl);
 
         // 投入マーカー: ポインタ追従のゴーストコイン。投入時にパルスする。
-        double pulse = 1.0 + markerPulse * 0.07;
+        float pulse = 1.0f + markerPulse * 0.07f;
         rn.draw(cyl, StaticModel(spawnX, DROP_Y, DROP_Z,
             COIN_R * pulse, COIN_H * pulse, COIN_R * pulse),
-            new Draw3dOpts { tint = Color.rgb(0.55, 0.78, 0.95, 0.55), blend = Gfx.ALPHA });
+            new Draw3dOpts { tint = Color.rgb(0.55f, 0.78f, 0.95f, 0.55f), blend = Gfx.ALPHA });
 
         rn.End();
     }
