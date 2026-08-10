@@ -736,14 +736,17 @@ public partial class LuaEmitter
             chain = elseIf;
         }
 
-        // out の宣言形 (out var x) のみ前宣言する。既存 local への out は
-        // 宣言済みなので不要 (かつての識別子 shadow は冗長だった)
+        // out の宣言形 (out var x) と bare discard (out _) を前宣言する。
+        // 既存 local への out は宣言済みなので不要 (かつての識別子 shadow は
+        // 冗長だった)。`_` は識別子形でも local を持たない discard なので、
+        // 前宣言を落とすと global 書き込みになり module _ENV に拒否される
         return stmt.DescendantNodes()
             .OfType<ArgumentSyntax>()
             .Where(arg => arg.Ancestors().OfType<StatementSyntax>()
                 .FirstOrDefault() == stmt
                 && arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)
-                && arg.Expression is DeclarationExpressionSyntax)
+                && arg.Expression is DeclarationExpressionSyntax
+                    or IdentifierNameSyntax { Identifier.ValueText: "_" })
             .Select(TryGetOutArgumentName)
             .Where(name => !string.IsNullOrEmpty(name))
             .Select(name => name!)

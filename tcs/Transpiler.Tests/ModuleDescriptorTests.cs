@@ -104,6 +104,50 @@ public class ModuleDescriptorTests
         Assert.Equal(["Hearts", "Spades"], suit.DefinitionKeys);
     }
 
+    // out _ (bare discard) は既存 local への out ではないので、out var と
+    // 同じく statement 前の local 宣言が要る。宣言を落とすと `_` への global
+    // 書き込みになり、plain 実行では黙って通るが undeclared global write を
+    // 拒否する module _ENV では実行時 error になる。
+    [Fact]
+    public void OutDiscardGetsLocalPreDeclUnderModuleEnv()
+    {
+        var session = new IncrementalCompilationSession(
+            [
+                """
+                public static class Io
+                {
+                    public static void load_text(string path, out string text,
+                        out int version, out string status)
+                    {
+                        text = "";
+                        version = 0;
+                        status = "";
+                    }
+                }
+                """,
+            ]);
+        session.OpenProject([("game.cs", """
+            public class Game
+            {
+                public static int Run()
+                {
+                    Io.load_text("x", out _, out var version, out _);
+                    return version;
+                }
+            }
+            """)]);
+        Assert.Empty(session.CollectDiagnostics().Errors);
+
+        var output = RunWithSnapshots(
+            """
+            Io = { load_text = function() return "t", 7, "s" end }
+            local w = dofile(snap1)
+            print(w.Run())
+            """,
+            Snapshot(session, "Game"));
+        Assert.Equal("7", output);
+    }
+
     [Fact]
     public void FreshSnapshotRunsEntryViaWrapper()
     {
