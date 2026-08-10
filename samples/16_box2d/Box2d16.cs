@@ -7,9 +7,9 @@ using System.Collections.Generic;
 
 public static class Box2d16
 {
-    const double DT = 1.0 / 60.0;
-    const double PPM_X = 4.0;
-    const double PPM_Y = 2.7;
+    const float DT = 1.0f / 60.0f;
+    const float PPM_X = 4.0f;
+    const float PPM_Y = 2.7f;
     static int contactFlash = 0;
     static FixedStep? step = null;
 
@@ -27,27 +27,27 @@ public static class Box2d16
     {
     }
 
-    static void PushVertex(List<double> verts, double x, double y,
-        double r, double g, double b, double a)
+    static void PushVertex(List<float> verts, float x, float y,
+        float r, float g, float b, float a)
     {
         verts.Add(x / PPM_X);
         verts.Add(y / PPM_Y);
-        verts.Add(0.0);
+        verts.Add(0.0f);
         verts.Add(r);
         verts.Add(g);
         verts.Add(b);
         verts.Add(a);
     }
 
-    static void PushBox(List<double> verts, Pose pose, double hx, double hy,
-        double[] color)
+    static void PushBox(List<float> verts, Pose pose, float hx, float hy,
+        float[] color)
     {
-        double c = Math.Cos(pose.angle);
-        double s = Math.Sin(pose.angle);
-        var cxs = new double[] { -hx, hx, hx, -hx };
-        var cys = new double[] { -hy, -hy, hy, hy };
-        var wx = new List<double>();
-        var wy = new List<double>();
+        float c = (float)Math.Cos(pose.angle);
+        float s = (float)Math.Sin(pose.angle);
+        var cxs = new float[] { -hx, hx, hx, -hx };
+        var cys = new float[] { -hy, -hy, hy, hy };
+        var wx = new List<float>();
+        var wy = new List<float>();
         for (int i = 0; i < 4; i++)
         {
             wx.Add(pose.x + c * cxs[i] - s * cys[i]);
@@ -68,15 +68,15 @@ public static class Box2d16
         var ground = Phys2d.phys2d_body(world, "ground", new BodyDesc
         {
             type = Phys2d.STATIC,
-            initial = new InitialState { x = 0.0, y = -1.55 },
+            initial = new InitialState { x = 0.0f, y = -1.55f },
         });
         if (ground == null) return;
         Phys2d.phys2d_box(ground, "floor", new BoxDesc
         {
-            hx = 3.4,
-            hy = 0.18,
-            density = 0.0,
-            friction = 0.85,
+            hx = 3.4f,
+            hy = 0.18f,
+            density = 0.0f,
+            friction = 0.85f,
             contact = true,
         });
 
@@ -88,18 +88,18 @@ public static class Box2d16
                 type = Phys2d.DYNAMIC,
                 initial = new InitialState
                 {
-                    x = even ? -0.18 : 0.18,
-                    y = -0.95 + i * 0.58,
-                    angle = (i - 1) * 0.08,
+                    x = even ? -0.18f : 0.18f,
+                    y = -0.95f + i * 0.58f,
+                    angle = (i - 1) * 0.08f,
                 },
             });
             if (b == null) return;
             Phys2d.phys2d_box(b, "solid", new BoxDesc
             {
-                hx = 0.26,
-                hy = 0.26,
-                density = 1.0,
-                friction = 0.65,
+                hx = 0.26f,
+                hy = 0.26f,
+                density = 1.0f,
+                friction = 0.65f,
                 contact = true,
             });
         }
@@ -111,11 +111,11 @@ public static class Box2d16
         if (contactFlash > 0) contactFlash = contactFlash - 1;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         var world = Phys2d.phys2d_world("box2d16", new WorldOpts
         {
-            gravity = new Vec2d { x = 0.0, y = -10.0 },
+            gravity = new Vec2d { x = 0.0f, y = -10.0f },
             fixedDt = DT,
             substeps = 4,
             maxSteps = 1,
@@ -126,19 +126,19 @@ public static class Box2d16
         step = stepNow;
         stepNow.frame(dt, _ => Simulate(world));
 
-        var verts = new List<double>();
+        var verts = new List<float>();
         var groundPose = Phys2d.phys2d_pose(world, "ground");
         if (groundPose == null) return;
-        PushBox(verts, groundPose, 3.4, 0.18,
-            new double[] { 0.28, 0.33, 0.36, 1.0 });
+        PushBox(verts, groundPose, 3.4f, 0.18f,
+            new float[] { 0.28f, 0.33f, 0.36f, 1.0f });
         int boxCount = 1;
         for (int i = 0; i < 4; i++)
         {
             var pose = Phys2d.phys2d_pose(world, "box:" + i);
             if (pose == null) continue;
-            double hot = contactFlash > 0 ? 0.12 : 0.0;
-            PushBox(verts, pose, 0.26, 0.26,
-                new double[] { 0.20 + hot, 0.62, 0.88, 1.0 });
+            float hot = contactFlash > 0 ? 0.12f : 0.0f;
+            PushBox(verts, pose, 0.26f, 0.26f,
+                new float[] { 0.20f + hot, 0.62f, 0.88f, 1.0f });
             boxCount = boxCount + 1;
         }
 
@@ -154,7 +154,7 @@ public static class Box2d16
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.03, 0.04, 0.055, 1.0 },
+            clear_color = new float[] { 0.03f, 0.04f, 0.055f, 1.0f },
         });
         Gfx.draw(boxCount * 6,
             new Dictionary<string, object> { ["verts"] = mesh },

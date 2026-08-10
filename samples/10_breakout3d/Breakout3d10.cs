@@ -9,63 +9,63 @@ using System.Collections.Generic;
 
 public class Brick
 {
-    public double x0;
-    public double y0;
-    public double x1;
-    public double y1;
+    public float x0;
+    public float y0;
+    public float x1;
+    public float y1;
     public int row;
     public bool alive;
 }
 
 public static class Breakout3d10
 {
-    const double DT = 1.0 / 60.0;
+    const float DT = 1.0f / 60.0f;
     const int STRIDE = 7; // pos.xyz + color.rgba
 
     const int COLS = 9;
     const int ROWS = 5;
-    const double BRICK_GAP_X = 0.035;
-    const double BRICK_GAP_Y = 0.03;
-    const double BRICK_LEFT = -0.83;
-    const double BRICK_RIGHT = 0.83;
-    const double BRICK_TOP = 0.70;
-    const double BRICK_H = 0.075;
-    const double BRICK_D = 0.16;
-    const double BRICK_W =
+    const float BRICK_GAP_X = 0.035f;
+    const float BRICK_GAP_Y = 0.03f;
+    const float BRICK_LEFT = -0.83f;
+    const float BRICK_RIGHT = 0.83f;
+    const float BRICK_TOP = 0.70f;
+    const float BRICK_H = 0.075f;
+    const float BRICK_D = 0.16f;
+    const float BRICK_W =
         (BRICK_RIGHT - BRICK_LEFT - BRICK_GAP_X * (COLS - 1)) / COLS;
 
-    const double PADDLE_Y = -0.76;
-    const double PADDLE_W = 0.38;
-    const double PADDLE_H = 0.055;
-    const double PADDLE_D = 0.24;
-    const double PADDLE_SPEED = 1.55;
+    const float PADDLE_Y = -0.76f;
+    const float PADDLE_W = 0.38f;
+    const float PADDLE_H = 0.055f;
+    const float PADDLE_D = 0.24f;
+    const float PADDLE_SPEED = 1.55f;
 
-    const double BALL_R = 0.035;
-    const double BALL_SPEED_X = 0.58;
-    const double BALL_SPEED_Y = 0.85;
+    const float BALL_R = 0.035f;
+    const float BALL_SPEED_X = 0.58f;
+    const float BALL_SPEED_Y = 0.85f;
 
-    static List<double[]> rowColors = new List<double[]>
+    static List<float[]> rowColors = new List<float[]>
     {
-        new double[] { 0.95, 0.24, 0.28, 1.0 },
-        new double[] { 0.98, 0.55, 0.15, 1.0 },
-        new double[] { 0.98, 0.86, 0.22, 1.0 },
-        new double[] { 0.22, 0.70, 0.40, 1.0 },
-        new double[] { 0.16, 0.58, 0.88, 1.0 },
+        new float[] { 0.95f, 0.24f, 0.28f, 1.0f },
+        new float[] { 0.98f, 0.55f, 0.15f, 1.0f },
+        new float[] { 0.98f, 0.86f, 0.22f, 1.0f },
+        new float[] { 0.22f, 0.70f, 0.40f, 1.0f },
+        new float[] { 0.16f, 0.58f, 0.88f, 1.0f },
     };
 
     static List<Brick> bricks = new List<Brick>();
-    static double paddleX = 0;
-    static double paddlePrevX = 0;
-    static double ballX = 0;
-    static double ballY = 0;
-    static double ballVx = BALL_SPEED_X;
-    static double ballVy = BALL_SPEED_Y;
+    static float paddleX = 0;
+    static float paddlePrevX = 0;
+    static float ballX = 0;
+    static float ballY = 0;
+    static float ballVx = BALL_SPEED_X;
+    static float ballVy = BALL_SPEED_Y;
     static bool ballStuck = true;
     static int lives = 3;
     static int score = 0;
-    static double launchTimer = 0;
+    static float launchTimer = 0;
     static FixedStep? step = null;
-    static double cameraT = 0;
+    static float cameraT = 0;
 
     public static void onInit()
     {
@@ -82,9 +82,9 @@ public static class Breakout3d10
     {
     }
 
-    static double[] Shade(double[] c, double k)
+    static float[] Shade(float[] c, float k)
     {
-        return new double[]
+        return new float[]
         {
             MathUtil.clamp(c[0] * k, 0, 1),
             MathUtil.clamp(c[1] * k, 0, 1),
@@ -98,11 +98,11 @@ public static class Breakout3d10
         bricks = new List<Brick>();
         for (int row = 1; row <= ROWS; row++)
         {
-            double y1 = BRICK_TOP - (row - 1) * (BRICK_H + BRICK_GAP_Y);
-            double y0 = y1 - BRICK_H;
+            float y1 = BRICK_TOP - (row - 1) * (BRICK_H + BRICK_GAP_Y);
+            float y0 = y1 - BRICK_H;
             for (int col = 1; col <= COLS; col++)
             {
-                double x0 = BRICK_LEFT + (col - 1) * (BRICK_W + BRICK_GAP_X);
+                float x0 = BRICK_LEFT + (col - 1) * (BRICK_W + BRICK_GAP_X);
                 bricks.Add(new Brick
                 {
                     x0 = x0,
@@ -119,7 +119,7 @@ public static class Breakout3d10
     static void ResetBall()
     {
         ballX = paddleX;
-        ballY = PADDLE_Y + PADDLE_H * 0.5 + BALL_R + 0.015;
+        ballY = PADDLE_Y + PADDLE_H * 0.5f + BALL_R + 0.015f;
         ballVx = BALL_SPEED_X;
         ballVy = BALL_SPEED_Y;
         ballStuck = true;
@@ -154,19 +154,19 @@ public static class Breakout3d10
         return n;
     }
 
-    static bool CircleHitsRect(double cx, double cy, double r,
-        double x0, double y0, double x1, double y1)
+    static bool CircleHitsRect(float cx, float cy, float r,
+        float x0, float y0, float x1, float y1)
     {
         return cx + r > x0 && cx - r < x1 && cy + r > y0 && cy - r < y1;
     }
 
     static void BounceFromRect(Brick rect)
     {
-        double left = ballX + BALL_R - rect.x0;
-        double right = rect.x1 - (ballX - BALL_R);
-        double bottom = ballY + BALL_R - rect.y0;
-        double top = rect.y1 - (ballY - BALL_R);
-        double m = Math.Min(Math.Min(left, right),
+        float left = ballX + BALL_R - rect.x0;
+        float right = rect.x1 - (ballX - BALL_R);
+        float bottom = ballY + BALL_R - rect.y0;
+        float top = rect.y1 - (ballY - BALL_R);
+        float m = Math.Min(Math.Min(left, right),
             Math.Min(bottom, top));
 
         if (m == left)
@@ -204,14 +204,14 @@ public static class Breakout3d10
 
         paddlePrevX = paddleX;
         paddleX = MathUtil.clamp(paddleX + move * PADDLE_SPEED * DT,
-            -1 + PADDLE_W * 0.5 + 0.05, 1 - PADDLE_W * 0.5 - 0.05);
+            -1 + PADDLE_W * 0.5f + 0.05f, 1f - PADDLE_W * 0.5f - 0.05f);
 
         if (ballStuck)
         {
             ballX = paddleX;
-            ballY = PADDLE_Y + PADDLE_H * 0.5 + BALL_R + 0.015;
+            ballY = PADDLE_Y + PADDLE_H * 0.5f + BALL_R + 0.015f;
             launchTimer = launchTimer + DT;
-            if (Input.key_down("space") || launchTimer > 1.0)
+            if (Input.key_down("space") || launchTimer > 1.0f)
             {
                 LaunchBall();
             }
@@ -221,32 +221,32 @@ public static class Breakout3d10
         ballX = ballX + ballVx * DT;
         ballY = ballY + ballVy * DT;
 
-        if (ballX - BALL_R < -0.95)
+        if (ballX - BALL_R < -0.95f)
         {
-            ballX = -0.95 + BALL_R;
+            ballX = -0.95f + BALL_R;
             ballVx = Math.Abs(ballVx);
         }
-        else if (ballX + BALL_R > 0.95)
+        else if (ballX + BALL_R > 0.95f)
         {
-            ballX = 0.95 - BALL_R;
+            ballX = 0.95f - BALL_R;
             ballVx = -Math.Abs(ballVx);
         }
-        if (ballY + BALL_R > 0.88)
+        if (ballY + BALL_R > 0.88f)
         {
-            ballY = 0.88 - BALL_R;
+            ballY = 0.88f - BALL_R;
             ballVy = -Math.Abs(ballVy);
         }
 
-        double px0 = paddleX - PADDLE_W * 0.5;
-        double py0 = PADDLE_Y - PADDLE_H * 0.5;
-        double px1 = paddleX + PADDLE_W * 0.5;
-        double py1 = PADDLE_Y + PADDLE_H * 0.5;
+        float px0 = paddleX - PADDLE_W * 0.5f;
+        float py0 = PADDLE_Y - PADDLE_H * 0.5f;
+        float px1 = paddleX + PADDLE_W * 0.5f;
+        float py1 = PADDLE_Y + PADDLE_H * 0.5f;
         if (ballVy < 0 && CircleHitsRect(ballX, ballY, BALL_R, px0, py0, px1, py1))
         {
-            double hit = (ballX - paddleX) / (PADDLE_W * 0.5);
+            float hit = (ballX - paddleX) / (PADDLE_W * 0.5f);
             ballY = py1 + BALL_R;
-            ballVx = MathUtil.clamp(hit * 0.9 + (paddleX - paddlePrevX) * 2.5,
-                -0.98, 0.98);
+            ballVx = MathUtil.clamp(hit * 0.9f + (paddleX - paddlePrevX) * 2.5f,
+                -0.98f, 0.98f);
             ballVy = Math.Abs(ballVy);
         }
 
@@ -261,7 +261,7 @@ public static class Breakout3d10
             }
         }
 
-        if (ballY + BALL_R < -1.0)
+        if (ballY + BALL_R < -1.0f)
         {
             lives = lives - 1;
             if (lives <= 0)
@@ -279,8 +279,8 @@ public static class Breakout3d10
         }
     }
 
-    static void PushVertex(List<double> verts, double x, double y, double z,
-        double[] c)
+    static void PushVertex(List<float> verts, float x, float y, float z,
+        float[] c)
     {
         verts.Add(x);
         verts.Add(y);
@@ -291,8 +291,8 @@ public static class Breakout3d10
         verts.Add(c[3]);
     }
 
-    static void Quad(List<double> verts, double[] a, double[] b, double[] c,
-        double[] d, double[] col)
+    static void Quad(List<float> verts, float[] a, float[] b, float[] c,
+        float[] d, float[] col)
     {
         PushVertex(verts, a[0], a[1], a[2], col);
         PushVertex(verts, b[0], b[1], b[2], col);
@@ -302,68 +302,68 @@ public static class Breakout3d10
         PushVertex(verts, d[0], d[1], d[2], col);
     }
 
-    static void AddBox(List<double> verts, double cx, double cy, double cz,
-        double sx, double sy, double sz, double[] baseColor)
+    static void AddBox(List<float> verts, float cx, float cy, float cz,
+        float sx, float sy, float sz, float[] baseColor)
     {
-        double x0 = cx - sx * 0.5;
-        double x1 = cx + sx * 0.5;
-        double y0 = cy - sy * 0.5;
-        double y1 = cy + sy * 0.5;
-        double z0 = cz - sz * 0.5;
-        double z1 = cz + sz * 0.5;
+        float x0 = cx - sx * 0.5f;
+        float x1 = cx + sx * 0.5f;
+        float y0 = cy - sy * 0.5f;
+        float y1 = cy + sy * 0.5f;
+        float z0 = cz - sz * 0.5f;
+        float z1 = cz + sz * 0.5f;
 
-        var p000 = new double[] { x0, y0, z0 };
-        var p100 = new double[] { x1, y0, z0 };
-        var p010 = new double[] { x0, y1, z0 };
-        var p110 = new double[] { x1, y1, z0 };
-        var p001 = new double[] { x0, y0, z1 };
-        var p101 = new double[] { x1, y0, z1 };
-        var p011 = new double[] { x0, y1, z1 };
-        var p111 = new double[] { x1, y1, z1 };
+        var p000 = new float[] { x0, y0, z0 };
+        var p100 = new float[] { x1, y0, z0 };
+        var p010 = new float[] { x0, y1, z0 };
+        var p110 = new float[] { x1, y1, z0 };
+        var p001 = new float[] { x0, y0, z1 };
+        var p101 = new float[] { x1, y0, z1 };
+        var p011 = new float[] { x0, y1, z1 };
+        var p111 = new float[] { x1, y1, z1 };
 
-        Quad(verts, p000, p100, p110, p010, Shade(baseColor, 1.05));
-        Quad(verts, p101, p001, p011, p111, Shade(baseColor, 0.58));
-        Quad(verts, p001, p000, p010, p011, Shade(baseColor, 0.72));
-        Quad(verts, p100, p101, p111, p110, Shade(baseColor, 0.82));
-        Quad(verts, p010, p110, p111, p011, Shade(baseColor, 1.22));
-        Quad(verts, p001, p101, p100, p000, Shade(baseColor, 0.48));
+        Quad(verts, p000, p100, p110, p010, Shade(baseColor, 1.05f));
+        Quad(verts, p101, p001, p011, p111, Shade(baseColor, 0.58f));
+        Quad(verts, p001, p000, p010, p011, Shade(baseColor, 0.72f));
+        Quad(verts, p100, p101, p111, p110, Shade(baseColor, 0.82f));
+        Quad(verts, p010, p110, p111, p011, Shade(baseColor, 1.22f));
+        Quad(verts, p001, p101, p100, p000, Shade(baseColor, 0.48f));
     }
 
-    static double[] SpherePoint(double cx, double cy, double cz, double r,
-        double u, double vv)
+    static float[] SpherePoint(float cx, float cy, float cz, float r,
+        float u, float vv)
     {
-        double cv = Math.Cos(vv);
-        return new double[]
+        float cv = (float)Math.Cos(vv);
+        return new float[]
         {
-            cx + Math.Cos(u) * cv * r,
-            cy + Math.Sin(vv) * r,
-            cz + Math.Sin(u) * cv * r,
-            Math.Cos(u) * cv,
-            Math.Sin(vv),
-            Math.Sin(u) * cv,
+            cx + (float)Math.Cos(u) * cv * r,
+            cy + (float)Math.Sin(vv) * r,
+            cz + (float)Math.Sin(u) * cv * r,
+            (float)Math.Cos(u) * cv,
+            (float)Math.Sin(vv),
+            (float)Math.Sin(u) * cv,
         };
     }
 
-    static double[] SphereCol(double[] baseColor, double[] pt)
+    static float[] SphereCol(float[] baseColor, float[] pt)
     {
-        double ny = pt[4] > 0 ? pt[4] : 0;
-        double nzNeg = -pt[5] > 0 ? -pt[5] : 0;
-        return Shade(baseColor, 0.70 + ny * 0.25 + nzNeg * 0.18);
+        float ny = pt[4] > 0 ? pt[4] : 0;
+        float nzNeg = -pt[5] > 0 ? -pt[5] : 0;
+        return Shade(baseColor, 0.70f + ny * 0.25f + nzNeg * 0.18f);
     }
 
-    static void AddSphere(List<double> verts, double cx, double cy, double cz,
-        double r, double[] baseColor)
+    static void AddSphere(List<float> verts, float cx, float cy, float cz,
+        float r, float[] baseColor)
     {
         int rings = 8;
         int segs = 16;
         for (int ring = 0; ring < rings; ring++)
         {
-            double v0 = -Math.PI * 0.5 + (double)ring / rings * Math.PI;
-            double v1 = -Math.PI * 0.5 + (double)(ring + 1) / rings * Math.PI;
+            float v0 = -(float)Math.PI * 0.5f + (float)ring / rings * (float)Math.PI;
+            float v1 = -(float)Math.PI * 0.5f + (float)(ring + 1) / rings * (float)Math.PI;
             for (int seg = 0; seg < segs; seg++)
             {
-                double u0 = (double)seg / segs * Math.PI * 2;
-                double u1 = (double)(seg + 1) / segs * Math.PI * 2;
+                float u0 = (float)seg / segs * (float)Math.PI * 2;
+                float u1 = (float)(seg + 1) / segs * (float)Math.PI * 2;
 
                 var a = SpherePoint(cx, cy, cz, r, u0, v0);
                 var b = SpherePoint(cx, cy, cz, r, u1, v0);
@@ -379,70 +379,70 @@ public static class Breakout3d10
         }
     }
 
-    static List<double> BuildVertices()
+    static List<float> BuildVertices()
     {
-        var verts = new List<double>();
-        AddBox(verts, 0, -0.04, 0.13, 2.05, 1.95, 0.04,
-            new double[] { 0.05, 0.07, 0.11, 1.0 });
-        AddBox(verts, -1.02, -0.02, -0.02, 0.05, 1.92, 0.28,
-            new double[] { 0.22, 0.27, 0.36, 1.0 });
-        AddBox(verts, 1.02, -0.02, -0.02, 0.05, 1.92, 0.28,
-            new double[] { 0.22, 0.27, 0.36, 1.0 });
-        AddBox(verts, 0, 0.93, -0.02, 2.09, 0.05, 0.28,
-            new double[] { 0.22, 0.27, 0.36, 1.0 });
+        var verts = new List<float>();
+        AddBox(verts, 0, -0.04f, 0.13f, 2.05f, 1.95f, 0.04f,
+            new float[] { 0.05f, 0.07f, 0.11f, 1.0f });
+        AddBox(verts, -1.02f, -0.02f, -0.02f, 0.05f, 1.92f, 0.28f,
+            new float[] { 0.22f, 0.27f, 0.36f, 1.0f });
+        AddBox(verts, 1.02f, -0.02f, -0.02f, 0.05f, 1.92f, 0.28f,
+            new float[] { 0.22f, 0.27f, 0.36f, 1.0f });
+        AddBox(verts, 0, 0.93f, -0.02f, 2.09f, 0.05f, 0.28f,
+            new float[] { 0.22f, 0.27f, 0.36f, 1.0f });
 
         foreach (var b in bricks)
         {
             if (b.alive)
             {
-                AddBox(verts, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, -0.03,
+                AddBox(verts, (b.x0 + b.x1) * 0.5f, (b.y0 + b.y1) * 0.5f, -0.03f,
                     b.x1 - b.x0, b.y1 - b.y0, BRICK_D, rowColors[b.row - 1]);
             }
         }
 
-        AddBox(verts, paddleX, PADDLE_Y, -0.10, PADDLE_W, PADDLE_H, PADDLE_D,
-            new double[] { 0.94, 0.96, 0.86, 1.0 });
-        AddSphere(verts, ballX, ballY, -0.20, BALL_R,
-            new double[] { 1.0, 0.95, 0.65, 1.0 });
+        AddBox(verts, paddleX, PADDLE_Y, -0.10f, PADDLE_W, PADDLE_H, PADDLE_D,
+            new float[] { 0.94f, 0.96f, 0.86f, 1.0f });
+        AddSphere(verts, ballX, ballY, -0.20f, BALL_R,
+            new float[] { 1.0f, 0.95f, 0.65f, 1.0f });
 
         for (int i = 1; i <= lives; i++)
         {
-            AddSphere(verts, -0.88 + (i - 1) * 0.08, -0.94, -0.15, 0.025,
-                new double[] { 0.95, 0.32, 0.36, 1.0 });
+            AddSphere(verts, -0.88f + (i - 1) * 0.08f, -0.94f, -0.15f, 0.025f,
+                new float[] { 0.95f, 0.32f, 0.36f, 1.0f });
         }
         int scoreShow = score < 12 ? score : 12;
         for (int i = 1; i <= scoreShow; i++)
         {
-            AddBox(verts, 0.48 + (i - 1) * 0.04, -0.94, -0.12, 0.022, 0.055,
-                0.04, new double[] { 0.26, 0.82, 0.62, 1.0 });
+            AddBox(verts, 0.48f + (i - 1) * 0.04f, -0.94f, -0.12f, 0.022f, 0.055f,
+                0.04f, new float[] { 0.26f, 0.82f, 0.62f, 1.0f });
         }
 
         return verts;
     }
 
-    static List<double> MakeMvp(double t)
+    static List<float> MakeMvp(float t)
     {
-        double yaw = -0.22 + Math.Sin(t * 0.35) * 0.025;
-        double pitch = -0.18;
+        float yaw = -0.22f + (float)Math.Sin(t * 0.35f) * 0.025f;
+        float pitch = -0.18f;
         var ry = Mat4.rotateY(-yaw);
         var rx = Mat4.rotateX(-pitch);
-        var view = Mat4.translate(new Vec3(0, -0.02, 3.15));
+        var view = Mat4.translate(new Vec3(0, -0.02f, 3.15f));
         // proj: perspective with focal length f=2.05 directly, aspect=16/9,
         // near=0.1, far=40
-        double f = 2.05;
-        double aspect = 16.0 / 9.0;
-        double nz = 0.1;
-        double fz = 40.0;
+        float f = 2.05f;
+        float aspect = 16.0f / 9.0f;
+        float nz = 0.1f;
+        float fz = 40.0f;
         var proj = Mat4.zero();
         proj.m[0] = f / aspect;
         proj.m[5] = f;
         proj.m[10] = fz / (fz - nz);
         proj.m[11] = -fz * nz / (fz - nz);
-        proj.m[14] = 1.0;
+        proj.m[14] = 1.0f;
         return proj.mul(view.mul(rx.mul(ry))).m;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         var stepNow = step ?? new FixedStep();
         step = stepNow;
@@ -467,7 +467,7 @@ public static class Breakout3d10
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.025, 0.032, 0.048, 1.0 },
+            clear_color = new float[] { 0.025f, 0.032f, 0.048f, 1.0f },
         });
         Gfx.draw(verts.Count / STRIDE,
             new Dictionary<string, object>

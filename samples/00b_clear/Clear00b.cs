@@ -4,7 +4,7 @@ using System;
 
 public static class Clear00b
 {
-    static double t = 0;
+    static float t = 0;
 
     public static void onInit()
     {
@@ -22,16 +22,16 @@ public static class Clear00b
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         t = t + dt;
-        var r = 0.5 + 0.5 * Math.Sin(t);
-        var g = 0.5 + 0.5 * Math.Sin(t + 2.0);
-        var b = 0.5 + 0.5 * Math.Sin(t + 4.0);
+        var r = 0.5f + 0.5f * (float)Math.Sin(t);
+        var g = 0.5f + 0.5f * (float)Math.Sin(t + 2.0f);
+        var b = 0.5f + 0.5f * (float)Math.Sin(t + 4.0f);
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { r, g, b, 1.0 },
+            clear_color = new float[] { r, g, b, 1.0f },
         });
         Gfx.end_pass();
     }

@@ -24,7 +24,7 @@ public static class Postprocess05
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         Io.load_text("samples/05_postprocess/data/05_offscreen.vs.slang",
             out var ovs, out var ovsv, out _, out _);
@@ -51,7 +51,7 @@ public static class Postprocess05
         Gfx.begin_pass(new PassOpts
         {
             target = rt,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.draw(3,
             new Dictionary<string, object> { ["verts"] = bOff },
@@ -64,7 +64,7 @@ public static class Postprocess05
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            clear_color = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
         Gfx.draw(6,
             new Dictionary<string, object> { ["verts"] = bPost, ["scene"] = rt },

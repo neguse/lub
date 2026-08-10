@@ -8,12 +8,12 @@
 /// <summary>RGBA カラー。各成分 0..1。生成は Color.rgb / Color.hex で。</summary>
 public class Color
 {
-    public double r;
-    public double g;
-    public double b;
-    public double a;
+    public float r;
+    public float g;
+    public float b;
+    public float a;
 
-    private Color(double r, double g, double b, double a)
+    private Color(float r, float g, float b, float a)
     {
         this.r = r;
         this.g = g;
@@ -22,18 +22,18 @@ public class Color
     }
 
     /// <summary>成分指定 (a 省略で 1.0)。</summary>
-    public static Color rgb(double r, double g, double b, double? a = null)
+    public static Color rgb(float r, float g, float b, float? a = null)
     {
-        return new Color(r, g, b, a ?? 1.0);
+        return new Color(r, g, b, a ?? 1.0f);
     }
 
     /// <summary>0xRRGGBB (a 省略で 1.0)。例: Color.hex(0xE85C5C)。</summary>
-    public static Color hex(int rgb, double? a = null)
+    public static Color hex(int rgb, float? a = null)
     {
         // tcs は bitwise 演算・整数除算未対応なので floor で分解する
-        double r = System.Math.Floor(rgb / 65536.0) % 256 / 255.0;
-        double g = System.Math.Floor(rgb / 256.0) % 256 / 255.0;
-        double b = rgb % 256 / 255.0;
-        return new Color(r, g, b, a ?? 1.0);
+        float r = (float)System.Math.Floor(rgb / 65536.0f) % 256 / 255.0f;
+        float g = (float)System.Math.Floor(rgb / 256.0f) % 256 / 255.0f;
+        float b = rgb % 256 / 255.0f;
+        return new Color(r, g, b, a ?? 1.0f);
     }
 }

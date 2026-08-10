@@ -10,7 +10,7 @@ public static class Texture03
         Lub.config(new ConfigOpts { backend = backend });
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         Io.load_text("samples/03_texture/data/03_tex.vs.slang",
             out var vs, out var vsv, out _, out _);
@@ -31,7 +31,7 @@ public static class Texture03
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.draw(3,
             new Dictionary<string, object> { ["verts"] = b, ["diffuse"] = t },

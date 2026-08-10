@@ -5,11 +5,11 @@ using System.Collections.Generic;
 
 public static class Buffer00c
 {
-    static List<double> data = new List<double>
+    static List<float> data = new List<float>
     {
-         0.0,  0.5, 0.0,
-        -0.5, -0.5, 0.0,
-         0.5, -0.5, 0.0,
+         0.0f,  0.5f, 0.0f,
+        -0.5f, -0.5f, 0.0f,
+         0.5f, -0.5f, 0.0f,
     };
 
     public static void onInit()
@@ -24,7 +24,7 @@ public static class Buffer00c
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         var b = Gfx.use_buffer("tri", Gfx.VERTEX, data, 1);
         if (b != null)
@@ -34,7 +34,7 @@ public static class Buffer00c
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.end_pass();
     }

@@ -32,9 +32,9 @@ public class Mesh3d
         skinned = data.bones != null;
         var verts = skinned ? Io.interleave_pncmw(data) : Io.interleave_pncm(data);
         vb = Gfx.use_buffer(key + "_vb", Gfx.VERTEX, verts);
-        // use_buffer は List<double> を取るので indices を詰め替える。
+        // use_buffer は List<float> を取るので indices を詰め替える。
         // Lua 上は同じ整数値の array table になり、wire data は変わらない。
-        var indices = new List<double>();
+        var indices = new List<float>();
         foreach (var i in data.indices)
         {
             indices.Add(i);

@@ -18,30 +18,30 @@ public class Ball
 {
     public int id;
     public int level;
-    public double spawnX; // 宣言用: initial は不変でないと body が作り直される
-    public double spawnY;
-    public double x;
-    public double y;
-    public double angle;
-    public double age;
-    public double overT;
+    public float spawnX; // 宣言用: initial は不変でないと body が作り直される
+    public float spawnY;
+    public float x;
+    public float y;
+    public float angle;
+    public float age;
+    public float overT;
 }
 
 public static class Iroha21
 {
     const int W = 640;
     const int H = 360;
-    const double PPM = 100.0; // physics m -> logical px
-    const double HALF_W = 1.15; // 容器の半幅 (m)
-    const double WALL_TOP = 3.2; // 壁の上端 (m)
-    const double LINE_Y = 2.45; // ゲームオーバー線 (m)
-    const double DROP_Y = 2.85; // 投下位置 (m)
+    const float PPM = 100.0f; // physics m -> logical px
+    const float HALF_W = 1.15f; // 容器の半幅 (m)
+    const float WALL_TOP = 3.2f; // 壁の上端 (m)
+    const float LINE_Y = 2.45f; // ゲームオーバー線 (m)
+    const float DROP_Y = 2.85f; // 投下位置 (m)
     const int LEVELS = 7;
 
     static string[] CHARS = new string[]
         { "い", "ろ", "は", "に", "ほ", "へ", "と" };
-    static double[] RADII = new double[]
-        { 0.13, 0.17, 0.22, 0.28, 0.36, 0.46, 0.58 };
+    static float[] RADII = new float[]
+        { 0.13f, 0.17f, 0.22f, 0.28f, 0.36f, 0.46f, 0.58f };
     static Color[]? COLORS = null; // onFrame 先頭で遅延生成
 
     static Camera2d? cam = null;
@@ -60,9 +60,9 @@ public static class Iroha21
     static int nextLevel = 0;
     static int score = 0;
     static int best = 0;
-    static double cooldown = 0.0;
+    static float cooldown = 0.0f;
     static bool over = false;
-    static double t = 0.0;
+    static float t = 0.0f;
     static Rand? rng = null;
 
     // LUB_IROHA_AUTO=1 で自動プレイ (ヘッドレス検証・デモ用)
@@ -101,7 +101,7 @@ public static class Iroha21
 
     // --- ゲーム -------------------------------------------------------------
 
-    static void spawn(double x, double y, int level)
+    static void spawn(float x, float y, int level)
     {
         balls.Add(new Ball
         {
@@ -111,9 +111,9 @@ public static class Iroha21
             spawnY = y,
             x = x,
             y = y,
-            angle = 0.0,
-            age = 0.0,
-            overT = 0.0,
+            angle = 0.0f,
+            age = 0.0f,
+            overT = 0.0f,
         });
         nextId++;
     }
@@ -123,20 +123,20 @@ public static class Iroha21
         balls = new List<Ball>();
         score = 0;
         over = false;
-        cooldown = 0.3;
+        cooldown = 0.3f;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         t += dt;
-        if (dt > 0.1)
-            dt = 0.1;
+        if (dt > 0.1f)
+            dt = 0.1f;
         if (!ensureAssets()) return;
         var hudNow = hud;
         var meshNow = mesh;
         if (hudNow == null || meshNow == null) return;
 
-        var camNow = cam ?? new Camera2d(W, H, PPM, 320.0, 344.0);
+        var camNow = cam ?? new Camera2d(W, H, PPM, 320.0f, 344.0f);
         cam = camNow;
         var batchNow = batch ?? new SpriteBatch(W, H);
         batch = batchNow;
@@ -150,13 +150,13 @@ public static class Iroha21
         {
             colors = new Color[]
             {
-                Color.rgb(0.91, 0.36, 0.36),
-                Color.rgb(0.93, 0.60, 0.34),
-                Color.rgb(0.93, 0.83, 0.36),
-                Color.rgb(0.49, 0.80, 0.42),
-                Color.rgb(0.36, 0.72, 0.91),
-                Color.rgb(0.50, 0.45, 0.93),
-                Color.rgb(0.83, 0.36, 0.91),
+                Color.rgb(0.91f, 0.36f, 0.36f),
+                Color.rgb(0.93f, 0.60f, 0.34f),
+                Color.rgb(0.93f, 0.83f, 0.36f),
+                Color.rgb(0.49f, 0.80f, 0.42f),
+                Color.rgb(0.36f, 0.72f, 0.91f),
+                Color.rgb(0.50f, 0.45f, 0.93f),
+                Color.rgb(0.83f, 0.36f, 0.91f),
             };
             COLORS = colors;
         }
@@ -170,30 +170,30 @@ public static class Iroha21
             dropX = HALF_W - dropR;
         cooldown -= dt;
         var click = Input.mouse_pressed() || Input.key_pressed("space");
-        if (auto && cooldown <= 0.0 && !over)
+        if (auto && cooldown <= 0.0f && !over)
         {
             click = true;
-            dropX = (rngNow.nextFloat() * 2.0 - 1.0) * (HALF_W - dropR);
+            dropX = (rngNow.nextFloat() * 2.0f - 1.0f) * (HALF_W - dropR);
         }
         if (over)
         {
             if (click)
                 reset();
         }
-        else if (click && cooldown <= 0.0)
+        else if (click && cooldown <= 0.0f)
         {
             spawn(dropX, DROP_Y, nextLevel);
             var pickTable = new int[] { 0, 0, 0, 1, 1, 2 };
-            nextLevel = pickTable[(int)Math.Floor(rngNow.nextFloat() * 6.0)];
-            cooldown = 0.45;
-            Audio.audio_play(Sfx.blip(420, 260, 0.06, 0.3));
+            nextLevel = pickTable[(int)Math.Floor(rngNow.nextFloat() * 6.0f)];
+            cooldown = 0.45f;
+            Audio.audio_play(Sfx.blip(420, 260, 0.06f, 0.3f));
         }
 
         // --- 物理 (immediate mode: 生きている玉だけ毎フレーム宣言する)
         var world = Phys2d.phys2d_world("iroha", new WorldOpts
         {
-            gravity = new Vec2d { x = 0.0, y = -10.0 },
-            fixedDt = 1.0 / 120.0,
+            gravity = new Vec2d { x = 0.0f, y = -10.0f },
+            fixedDt = 1.0f / 120.0f,
             substeps = 4,
             maxSteps = 4,
         });
@@ -203,31 +203,31 @@ public static class Iroha21
         var arena = Phys2d.phys2d_body(world, "arena", new BodyDesc
         {
             type = Phys2d.STATIC,
-            initial = new InitialState { x = 0.0, y = 0.0 },
+            initial = new InitialState { x = 0.0f, y = 0.0f },
         });
         if (arena == null) return;
         Phys2d.phys2d_box(arena, "floor", new BoxDesc
         {
-            hx = HALF_W + 0.3,
-            hy = 0.1,
-            cy = -0.1,
-            friction = 0.5,
+            hx = HALF_W + 0.3f,
+            hy = 0.1f,
+            cy = -0.1f,
+            friction = 0.5f,
         });
         Phys2d.phys2d_box(arena, "wall_l", new BoxDesc
         {
-            hx = 0.1,
-            hy = WALL_TOP * 0.5,
-            cx = -(HALF_W + 0.1),
-            cy = WALL_TOP * 0.5,
-            friction = 0.3,
+            hx = 0.1f,
+            hy = WALL_TOP * 0.5f,
+            cx = -(HALF_W + 0.1f),
+            cy = WALL_TOP * 0.5f,
+            friction = 0.3f,
         });
         Phys2d.phys2d_box(arena, "wall_r", new BoxDesc
         {
-            hx = 0.1,
-            hy = WALL_TOP * 0.5,
-            cx = HALF_W + 0.1,
-            cy = WALL_TOP * 0.5,
-            friction = 0.3,
+            hx = 0.1f,
+            hy = WALL_TOP * 0.5f,
+            cx = HALF_W + 0.1f,
+            cy = WALL_TOP * 0.5f,
+            friction = 0.3f,
         });
 
         var refs = new Dictionary<int, BodyRef>();
@@ -242,9 +242,9 @@ public static class Iroha21
             Phys2d.phys2d_circle(b, "c", new CircleDesc
             {
                 r = RADII[ball.level],
-                density = 1.0,
-                friction = 0.35,
-                restitution = 0.12,
+                density = 1.0f,
+                friction = 0.35f,
+                restitution = 0.12f,
                 contact = true,
             });
             refs[ball.id] = b;
@@ -284,12 +284,12 @@ public static class Iroha21
                 anyMerged = true;
                 var level = b1.level;
                 if (level < LEVELS - 1)
-                    spawn((b1.x + b2.x) * 0.5, (b1.y + b2.y) * 0.5, level + 1);
+                    spawn((b1.x + b2.x) * 0.5f, (b1.y + b2.y) * 0.5f, level + 1);
                 score += (level + 1) * (level + 1);
                 if (score > best)
                     best = score;
-                Audio.audio_play(Sfx.blip(400, 840, 0.12, 0.35),
-                    new PlayOpts { pitch = 1.0 + level * 0.15 });
+                Audio.audio_play(Sfx.blip(400, 840, 0.12f, 0.35f),
+                    new PlayOpts { pitch = 1.0f + level * 0.15f });
             }
             if (anyMerged)
             {
@@ -309,14 +309,14 @@ public static class Iroha21
             foreach (var ball in balls)
             {
                 var top = ball.y + RADII[ball.level];
-                if (top > LINE_Y && ball.age > 1.0)
+                if (top > LINE_Y && ball.age > 1.0f)
                     ball.overT += dt;
                 else
-                    ball.overT = 0.0;
-                if (ball.overT > 1.0)
+                    ball.overT = 0.0f;
+                if (ball.overT > 1.0f)
                 {
                     over = true;
-                    Audio.audio_play(Sfx.noise(0.4, 0.5, 0x2468ace));
+                    Audio.audio_play(Sfx.noise(0.4f, 0.5f, 0x2468ace));
                 }
             }
         }
@@ -325,12 +325,12 @@ public static class Iroha21
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.10, 0.09, 0.13, 1.0 },
+            clear_color = new float[] { 0.10f, 0.09f, 0.13f, 1.0f },
         });
         batchNow.begin();
 
         // 容器
-        var wallCol = Color.rgb(0.35, 0.32, 0.42);
+        var wallCol = Color.rgb(0.35f, 0.32f, 0.42f);
         batchNow.rect(camNow.sx(-HALF_W) - 8, camNow.sy(WALL_TOP), 8, WALL_TOP * PPM,
             wallCol);
         batchNow.rect(camNow.sx(HALF_W), camNow.sy(WALL_TOP), 8, WALL_TOP * PPM,
@@ -339,9 +339,9 @@ public static class Iroha21
             wallCol);
 
         // ゲームオーバー線
-        var lineBlink = over ? 1.0 : 0.25 + 0.15 * Math.Sin(t * 4.0);
+        var lineBlink = over ? 1.0f : 0.25f + 0.15f * (float)Math.Sin(t * 4.0f);
         batchNow.rect(camNow.sx(-HALF_W), camNow.sy(LINE_Y), HALF_W * 2 * PPM, 2,
-            Color.rgb(0.9, 0.3, 0.3, lineBlink));
+            Color.rgb(0.9f, 0.3f, 0.3f, lineBlink));
 
         // 玉 (sprite は本体、上に mesh グリフ)
         foreach (var ball in balls)
@@ -357,41 +357,41 @@ public static class Iroha21
             var r = dropR * PPM;
             var c = colors[nextLevel];
             batchNow.disc(camNow.sx(dropX), camNow.sy(DROP_Y), r,
-                Color.rgb(c.r, c.g, c.b, 0.5 + 0.2 * Math.Sin(t * 6.0)));
+                Color.rgb(c.r, c.g, c.b, 0.5f + 0.2f * (float)Math.Sin(t * 6.0f)));
         }
 
         // HUD (bitmap 小サイズレジーム)
         hudNow.draw(batchNow, "スコア " + score, 12, 26);
         hudNow.draw(batchNow, "ベスト " + best, 12, 50,
-            Color.rgb(0.8, 0.8, 0.8, 0.8));
+            Color.rgb(0.8f, 0.8f, 0.8f, 0.8f));
         hudNow.draw(batchNow, "いろはにほへと", 500, 26,
-            Color.rgb(0.7, 0.7, 0.8, 0.9), 0.8);
+            Color.rgb(0.7f, 0.7f, 0.8f, 0.9f), 0.8f);
 
         batchNow.flush();
 
         // mesh グリフ (拡大レジーム): 玉の文字は物理の回転ごと描く
-        var ink = Color.rgb(0.12, 0.10, 0.14, 0.9);
+        var ink = Color.rgb(0.12f, 0.10f, 0.14f, 0.9f);
         foreach (var ball in balls)
         {
             meshNow.Char(CHARS[ball.level], camNow.sx(ball.x), camNow.sy(ball.y),
-                RADII[ball.level] * PPM * 1.3, ball.angle, ink, true);
+                RADII[ball.level] * PPM * 1.3f, ball.angle, ink, true);
         }
         if (!over)
             meshNow.Char(CHARS[nextLevel], camNow.sx(dropX), camNow.sy(DROP_Y),
-                dropR * PPM * 1.3, 0.0,
-                Color.rgb(ink.r, ink.g, ink.b, 0.6), true);
+                dropR * PPM * 1.3f, 0.0f,
+                Color.rgb(ink.r, ink.g, ink.b, 0.6f), true);
 
         if (over)
         {
             // 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
             overlayNow.begin();
-            overlayNow.rect(0, 108, W, 132, Color.rgb(0.05, 0.04, 0.07, 0.85));
+            overlayNow.rect(0, 108, W, 132, Color.rgb(0.05f, 0.04f, 0.07f, 0.85f));
             var msg = "クリックでもういちど";
             hudNow.draw(overlayNow, msg,
-                camNow.originX - hudNow.width(msg) * 0.5, 222);
+                camNow.originX - hudNow.width(msg) * 0.5f, 222);
             overlayNow.flush();
             meshNow.textCentered("おしまい", camNow.originX, 190, 64,
-                Color.rgb(0.95, 0.92, 0.85));
+                Color.rgb(0.95f, 0.92f, 0.85f));
         }
 
         Gfx.end_pass();

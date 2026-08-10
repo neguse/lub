@@ -8,14 +8,14 @@
 /// </summary>
 public class Camera2d
 {
-    public double ppm;
-    public double originX;
-    public double originY;
-    public double logicalW;
-    public double logicalH;
+    public float ppm;
+    public float originX;
+    public float originY;
+    public float logicalW;
+    public float logicalH;
 
-    public Camera2d(double logicalW, double logicalH, double ppm,
-        double originX, double originY)
+    public Camera2d(float logicalW, float logicalH, float ppm,
+        float originX, float originY)
     {
         this.logicalW = logicalW;
         this.logicalH = logicalH;
@@ -25,25 +25,25 @@ public class Camera2d
     }
 
     /// <summary>world x → screen x</summary>
-    public double sx(double wx)
+    public float sx(float wx)
     {
         return originX + wx * ppm;
     }
 
     /// <summary>world y → screen y</summary>
-    public double sy(double wy)
+    public float sy(float wy)
     {
         return originY - wy * ppm;
     }
 
     /// <summary>screen x → world x</summary>
-    public double wx(double sxv)
+    public float wx(float sxv)
     {
         return (sxv - originX) / ppm;
     }
 
     /// <summary>screen y → world y</summary>
-    public double wy(double syv)
+    public float wy(float syv)
     {
         return (originY - syv) / ppm;
     }

@@ -16,10 +16,10 @@ using System;
 public class FixedStep
 {
     /// <summary>tick callback に渡される固定 dt (= 1/hz) 秒。</summary>
-    public double tickDt;
+    public float tickDt;
 
     private int maxCatchUp;
-    private double accumulator = 0;
+    private float accumulator = 0;
     private bool stopped = false;
 
     // lub.Input が公開する全キー名 (Key 定数 + a..z + 0..9)。
@@ -44,15 +44,15 @@ public class FixedStep
     /// <summary>hz: tick の周波数 (正の値、省略 = 60)。maxCatchUp: 1 回の
     /// frame() で走る tick 数の上限 (1 以上、省略 = 8)。tcs は default 値を
     /// Lua 側へ出さないので nullable + ?? で受ける (Rand と同じ)。</summary>
-    public FixedStep(double? hz = null, int? maxCatchUp = null)
+    public FixedStep(float? hz = null, int? maxCatchUp = null)
     {
-        tickDt = 1.0 / (hz ?? 60.0);
+        tickDt = 1.0f / (hz ?? 60.0f);
         this.maxCatchUp = maxCatchUp ?? 8;
     }
 
     /// <summary>onFrame から毎フレーム呼ぶ。実測 dt を積み、固定 tick を
     /// 0〜maxCatchUp 回実行する。tick は保持されない。</summary>
-    public void frame(double dt, Action<double> tick)
+    public void frame(float dt, Action<float> tick)
     {
         latchEdges();
         if (dt > 0)
@@ -61,7 +61,7 @@ public class FixedStep
         }
         stopped = false;
         int steps = 0;
-        while (accumulator + 1e-9 >= tickDt && steps < maxCatchUp && !stopped)
+        while (accumulator + 1e-9f >= tickDt && steps < maxCatchUp && !stopped)
         {
             tick(tickDt);
             clearPending();
@@ -111,9 +111,9 @@ public class FixedStep
     }
 
     /// <summary>直近の tick から次の tick までの経過割合 (0〜1)。補間用。</summary>
-    public double alpha()
+    public float alpha()
     {
-        return Math.Min(accumulator / tickDt, 1.0);
+        return Math.Min(accumulator / tickDt, 1.0f);
     }
 
     private static int keyIndex(string key)

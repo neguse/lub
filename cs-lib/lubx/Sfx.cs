@@ -1,5 +1,5 @@
 // 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Sfx.hx と対)。
-// Haxe 版の lua.Table.create + 1-based 直接代入は List<double>.Add で置き
+// Haxe 版の lua.Table.create + 1-based 直接代入は List<float>.Add で置き
 // 換える (TinyC# の List は最初から Lua array table)。Std.int は値が非負
 // なので Math.Floor で代替、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
 using System.Collections.Generic;
@@ -16,7 +16,7 @@ public static class Sfx
     private static Dictionary<string, int> cache = new Dictionary<string, int>();
 
     /// <summary>矩形波 blip。freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。snd handle を返す。</summary>
-    public static int blip(double freq0, double freq1, double dur, double vol)
+    public static int blip(float freq0, float freq1, float dur, float vol)
     {
         var key = "blip:" + freq0 + ":" + freq1 + ":" + dur + ":" + vol;
         if (cache.TryGetValue(key, out var cached))
@@ -24,15 +24,15 @@ public static class Sfx
             return cached;
         }
         var n = (int)System.Math.Floor(dur * RATE);
-        var samples = new List<double>();
-        var phase = 0.0;
+        var samples = new List<float>();
+        var phase = 0.0f;
         for (var i = 0; i < n; i++)
         {
-            var u = (double)i / n;
+            var u = (float)i / n;
             var freq = freq0 + (freq1 - freq0) * u;
             phase += freq / RATE;
-            var env = System.Math.Exp(-5.0 * u);
-            samples.Add((phase % 1.0 < 0.5 ? 1.0 : -1.0) * env * vol);
+            var env = (float)System.Math.Exp(-5.0f * u);
+            samples.Add((phase % 1.0f < 0.5f ? 1.0f : -1.0f) * env * vol);
         }
         var snd = Audio.audio_pcm(samples, 1, RATE);
         cache[key] = snd;
@@ -40,7 +40,7 @@ public static class Sfx
     }
 
     /// <summary>ノイズバースト。指数減衰 (exp(-4u))、16 sample ごとにホールド更新。snd handle を返す。</summary>
-    public static int noise(double dur, double vol, int? seed = null)
+    public static int noise(float dur, float vol, int? seed = null)
     {
         var s = seed ?? 0x12345678;
         var key = "noise:" + dur + ":" + vol + ":" + s;
@@ -49,17 +49,17 @@ public static class Sfx
             return cached;
         }
         var n = (int)System.Math.Floor(dur * RATE);
-        var samples = new List<double>();
+        var samples = new List<float>();
         var r = new Rand(s);
-        var hold = 0.0;
+        var hold = 0.0f;
         for (var i = 0; i < n; i++)
         {
             if ((i & 15) == 0)
             {
-                hold = r.nextFloat() * 2.0 - 1.0;
+                hold = r.nextFloat() * 2.0f - 1.0f;
             }
-            var u = (double)i / n;
-            samples.Add(hold * System.Math.Exp(-4.0 * u) * vol);
+            var u = (float)i / n;
+            samples.Add(hold * (float)System.Math.Exp(-4.0f * u) * vol);
         }
         var snd = Audio.audio_pcm(samples, 1, RATE);
         cache[key] = snd;

@@ -24,7 +24,7 @@ public static class Deferred06
     {
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
         Io.load_text("samples/06_deferred/data/06_gbuffer.vs.slang",
             out var gvs, out var gvsv, out _, out _);
@@ -58,10 +58,10 @@ public static class Deferred06
         Gfx.begin_pass(new PassOpts
         {
             targets = new List<TextureRef> { gbuf0, gbuf1 },
-            clear_colors = new List<double[]>
+            clear_colors = new List<float[]>
             {
-                new double[] { 0.1, 0.1, 0.15, 1.0 },
-                new double[] { 0.15, 0.1, 0.1, 1.0 },
+                new float[] { 0.1f, 0.1f, 0.15f, 1.0f },
+                new float[] { 0.15f, 0.1f, 0.1f, 1.0f },
             },
         });
         Gfx.draw(3,
@@ -78,7 +78,7 @@ public static class Deferred06
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            clear_color = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
         Gfx.draw(6,
             new Dictionary<string, object>
@@ -87,7 +87,7 @@ public static class Deferred06
                 ["gbuf"] = gbuf0,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["transform"] = new double[] { 0.5, 1.0, -0.5, 0.0 },
+                    ["transform"] = new float[] { 0.5f, 1.0f, -0.5f, 0.0f },
                 },
             },
             new DrawOpts { shader = shV, depth = false, cull = Gfx.NONE });
@@ -98,7 +98,7 @@ public static class Deferred06
                 ["gbuf"] = gbuf1,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["transform"] = new double[] { 0.5, 1.0, 0.5, 0.0 },
+                    ["transform"] = new float[] { 0.5f, 1.0f, 0.5f, 0.0f },
                 },
             },
             new DrawOpts { shader = shV, depth = false, cull = Gfx.NONE });

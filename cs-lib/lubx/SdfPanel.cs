@@ -27,10 +27,10 @@ public static class SdfPanel
     // ノードを畳んだとき後続の ID がズレて開閉状態が飛ぶ。
 
     private static bool num(Dictionary<string, object> n, string field,
-        double speed, string path)
+        float speed, string path)
     {
-        double v = (double)n[field];
-        double nv = Ui.ui_drag_float(field + "##" + path, v, speed);
+        float v = (float)n[field];
+        float nv = Ui.ui_drag_float(field + "##" + path, v, speed);
         if (nv == v)
             return false;
         n[field] = nv;
@@ -40,8 +40,8 @@ public static class SdfPanel
     private static bool num01(Dictionary<string, object> n, string field,
         string path)
     {
-        double v = (double)n[field];
-        double nv = Ui.ui_slider_float(field + "##" + path, v, 0, 1);
+        float v = (float)n[field];
+        float nv = Ui.ui_slider_float(field + "##" + path, v, 0, 1);
         if (nv == v)
             return false;
         n[field] = nv;
@@ -50,9 +50,9 @@ public static class SdfPanel
 
     private static bool color(Dictionary<string, object> n, string path)
     {
-        double cr = (double)n["cr"];
-        double cg = (double)n["cg"];
-        double cb = (double)n["cb"];
+        float cr = (float)n["cr"];
+        float cg = (float)n["cg"];
+        float cb = (float)n["cb"];
         Ui.ui_color_edit3("albedo##" + path, cr, cg, cb, out var r, out var g,
             out var b);
         if (r == cr && g == cg && b == cb)
@@ -69,34 +69,34 @@ public static class SdfPanel
         switch ((string)n["op"])
         {
             case "sphere":
-                changed = num(n, "r", 0.005, path);
+                changed = num(n, "r", 0.005f, path);
                 break;
             case "box":
-                changed = num(n, "hx", 0.005, path) || changed;
-                changed = num(n, "hy", 0.005, path) || changed;
-                changed = num(n, "hz", 0.005, path) || changed;
+                changed = num(n, "hx", 0.005f, path) || changed;
+                changed = num(n, "hy", 0.005f, path) || changed;
+                changed = num(n, "hz", 0.005f, path) || changed;
                 break;
             case "capsule":
                 foreach (var f in new List<string>
                     { "ax", "ay", "az", "bx", "by", "bz" })
-                    changed = num(n, f, 0.01, path) || changed;
-                changed = num(n, "r", 0.005, path) || changed;
+                    changed = num(n, f, 0.01f, path) || changed;
+                changed = num(n, "r", 0.005f, path) || changed;
                 break;
             case "torus":
-                changed = num(n, "rmajor", 0.005, path) || changed;
-                changed = num(n, "rminor", 0.005, path) || changed;
+                changed = num(n, "rmajor", 0.005f, path) || changed;
+                changed = num(n, "rminor", 0.005f, path) || changed;
                 break;
             case "move":
-                changed = num(n, "x", 0.01, path) || changed;
-                changed = num(n, "y", 0.01, path) || changed;
-                changed = num(n, "z", 0.01, path) || changed;
+                changed = num(n, "x", 0.01f, path) || changed;
+                changed = num(n, "y", 0.01f, path) || changed;
+                changed = num(n, "z", 0.01f, path) || changed;
                 break;
             case "scale":
-                changed = num(n, "s", 0.005, path);
+                changed = num(n, "s", 0.005f, path);
                 break;
             case "smin":
             case "ssub":
-                changed = num(n, "k", 0.002, path);
+                changed = num(n, "k", 0.002f, path);
                 break;
             case "paint":
                 changed = color(n, path) || changed;
@@ -104,9 +104,9 @@ public static class SdfPanel
                 changed = num01(n, "roughness", path) || changed;
                 break;
             case "bone":
-                changed = num(n, "px", 0.01, path) || changed;
-                changed = num(n, "py", 0.01, path) || changed;
-                changed = num(n, "pz", 0.01, path) || changed;
+                changed = num(n, "px", 0.01f, path) || changed;
+                changed = num(n, "py", 0.01f, path) || changed;
+                changed = num(n, "pz", 0.01f, path) || changed;
                 break;
             default:
                 // rotate (quat は直接いじらない) / mirror_x / union / ...

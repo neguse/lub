@@ -8,7 +8,7 @@ using System.Collections.Generic;
 
 public static class Gltf08
 {
-    static double tAccum = 0;
+    static float tAccum = 0;
 
     public static void onInit()
     {
@@ -24,32 +24,32 @@ public static class Gltf08
     {
     }
 
-    static List<double> MakeMvp(double t)
+    static List<float> MakeMvp(float t)
     {
         // model: Y 軸回転
         var model = Mat4.rotateY(-t);
         // view: translate z = +3 (D3D-style LH: camera at origin looks down +Z;
         // move world +Z so the box sits in front of the camera)
-        var view = Mat4.translate(new Vec3(0.0, 0.0, 3.0));
+        var view = Mat4.translate(new Vec3(0.0f, 0.0f, 3.0f));
         // proj: perspective with focal length f=2.0 directly (not an fov),
         // aspect=16/9, near=0.1, far=100
-        double f = 2.0;
-        double aspect = 16.0 / 9.0;
-        double nz = 0.1;
-        double fz = 100.0;
+        float f = 2.0f;
+        float aspect = 16.0f / 9.0f;
+        float nz = 0.1f;
+        float fz = 100.0f;
         var proj = Mat4.zero();
         proj.m[0] = f / aspect;
         proj.m[5] = f;
         proj.m[10] = fz / (fz - nz);
         proj.m[11] = -fz * nz / (fz - nz);
-        proj.m[14] = 1.0;
+        proj.m[14] = 1.0f;
         var pvm = proj.mul(view.mul(model));
         return pvm.m;
     }
 
-    public static void onFrame(double dt)
+    public static void onFrame(float dt)
     {
-        tAccum = tAccum + dt * 0.96;
+        tAccum = tAccum + dt * 0.96f;
 
         Io.load_text("samples/08_gltf/data/08_gltf.vs.slang",
             out var vs, out var verVs, out _, out _);
@@ -66,7 +66,7 @@ public static class Gltf08
         var verts = Io.interleave_pn(mesh);
         var vb = Gfx.use_buffer("gltf_vb", Gfx.VERTEX, verts, meshVer);
         var ib = Gfx.use_buffer("gltf_ib", Gfx.INDEX,
-            (List<double>)meshTbl["indices"], meshVer);
+            (List<float>)meshTbl["indices"], meshVer);
         if (shader == null || vb == null || ib == null) return;
 
         var mvp = MakeMvp(tAccum);
@@ -74,7 +74,7 @@ public static class Gltf08
         Gfx.begin_pass(new PassOpts
         {
             target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.15, 1.0 },
+            clear_color = new float[] { 0.1f, 0.1f, 0.15f, 1.0f },
         });
         Gfx.draw((int)meshTbl["index_count"],
             new Dictionary<string, object>
