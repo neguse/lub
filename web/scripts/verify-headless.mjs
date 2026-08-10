@@ -622,7 +622,8 @@ if (RUN_CS_SESSION) try {
   await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
   const flappySrc = fs.readFileSync(
     path.resolve('..', 'samples', '17_flappy', 'Flappy17.cs'), 'utf8')
-  const flappyEdited = flappySrc.replace('velocityY = 3.0;', 'velocityY = 3.25;')
+  const flappyEdited = flappySrc.replace(
+    'velocityY = 3.0f;', 'velocityY = 3.25f;')
   if (flappyEdited === flappySrc) throw new Error('A6 edit marker not found')
   await selectTabAndReplace('Flappy17.cs', flappyEdited)
   await page.waitForFunction(
@@ -664,7 +665,7 @@ if (RUN_CS_SESSION) try {
   const flappySrc = fs.readFileSync(
     path.resolve('..', 'samples', '17_flappy', 'Flappy17.cs'), 'utf8')
   const flappyBroken = flappySrc.replace(
-    'velocityY = 3.0;', 'velocityY = thisIsUndefined;')
+    'velocityY = 3.0f;', 'velocityY = thisIsUndefined;')
   if (flappyBroken === flappySrc) throw new Error('A7 C# edit marker not found')
   await selectTabAndReplace('Flappy17.cs', flappyBroken)
   await waitForDiagnostics('Flappy17.cs', 'error', 15000)
@@ -695,7 +696,7 @@ if (RUN_CS_SESSION) try {
   )
   const r = await page.evaluate(() => {
     const src = window.__lubTest.getContent('Flappy17.cs')
-    const marker = 'velocityY = 3.0;'
+    const marker = 'velocityY = 3.0f;'
     const at = src.indexOf(marker)
     if (at < 0) throw new Error('A8 marker not found')
     // 補完: marker 直後に `Gfx.` を挿した speculative 内容で member を引く
