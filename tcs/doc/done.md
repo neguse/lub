@@ -1551,3 +1551,11 @@
 - ファイルサイズ帯の是正: struct 系ヘルパーを LuaEmitter.IlBuild.cs (792→754) から Structs へ、RenderStructPlace を tcs2c/CEmitter.Expressions.cs (784→750) から CEmitter.Structs.cs へ移設。fuzz の record/struct 等価生成を共通化
 - 見送り (過剰化回避): BuildPropGet/Set の tri-state enum 化・struct dispatch 4 サイトの強制共通化・StructOwnerName ヘルパー・FuzzReloadGenerator の分割 — いずれも抽象の追加コストが重複コストを上回ると判断
 - 検証: 全 755+48 green、fuzz 1000 seeds (differential + reload) 差分ゼロ、bench-2backend digest 4/4 不変 (85ca3656 等) — copy 除去が意味論に影響していないことを確認
+
+### 開発 script の world-writable な /tmp 依存を除去 ✓ (2026-08-15)
+- verify-inspectcode.sh は `/tmp/tcs-jetbrains-tools/jb` を固定パスで実行していた。/tmp は world-writable なので、共有ホストでは別ユーザーが先回りして jb を置ける (実行されるのは script を動かした側の権限)。`[ ! -x "$JB" ]` ガードは install を *skip* する方向に働くため、仕込まれた方が優先される
+- 既定の作業ディレクトリを per-user cache (`${XDG_CACHE_HOME:-$HOME/.cache}/tcs/...`) に移し、rider-env.sh に `tcs_cache_dir` / `ensure_private_dir` を追加。使う前に「symlink でない」「自分の所有」を確認して 0700 を強制する。対象は verify-inspectcode.sh の tool/output と verify-rider-prechecks.sh の output
+- run-tests.sh の analyzer package consumer は `mktemp -d` (= /tmp 直下) の dir で `dotnet build` していた。MSBuild / NuGet は project の祖先を遡って Directory.Build.props / NuGet.Config を取り込むため、/tmp に置かれた props の `<Exec>` が開発者権限で走る。scratch root を同じ per-user cache 配下に移し、祖先から world-writable な dir を外した (mktemp のランダム名と cleanup trap はそのまま)
+- 検証: verify-rider-scripts.sh に ensure_private_dir の unit テスト (cache 既定パス / 0700 / symlink 拒否) と verify-inspectcode.sh の e2e ガードテストを追加。ガードを外した copy では symlink が通ることを確認 (Red) → 追加後 green。`bash run-tests.sh` 全通過 (758+48 green、tcs2c digest 3/3 不変、analyzer demo / package consumer / severity override 期待どおり)、`~/.cache/tcs/tmp` が 0700 で作られることを確認
+- 判断: PowerShell 版は据え置き。Windows の `%TEMP%` はユーザーごとで同じ攻撃が成立せず、この機械で検証もできないため。README には両者の差を明記
+- 注記: このマシンの .NET SDK が壊れており (`Workload set version 10.0.109.1 has missing manifests`、SDK 10.0.110)、run-tests.sh は `MSBuildEnableWorkloadResolver=false` を付けて実行した。`dotnet workload repair` が別途必要

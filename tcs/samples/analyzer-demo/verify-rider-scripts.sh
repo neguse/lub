@@ -3,7 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OPEN_RIDER="$SCRIPT_DIR/open-rider-demo.sh"
+VERIFY_INSPECTCODE="$SCRIPT_DIR/verify-inspectcode.sh"
 TEMP_DIR="$(mktemp -d)"
+
+source "$SCRIPT_DIR/rider-env.sh"
 
 cleanup() {
   rm -rf "$TEMP_DIR"
@@ -72,5 +75,45 @@ case "$(uname -s 2>/dev/null || true)" in
     assert_contains "open-rider-demo no-display path" "$no_display_output" "no GUI display"
     ;;
 esac
+
+cache_dir_default="$(XDG_CACHE_HOME= HOME="$TEMP_DIR/home" tcs_cache_dir jetbrains-tools)"
+if [ "$cache_dir_default" != "$TEMP_DIR/home/.cache/tcs/jetbrains-tools" ]; then
+  echo "Error: tcs_cache_dir did not fall back to the per-user cache: $cache_dir_default" >&2
+  exit 1
+fi
+
+private_dir="$TEMP_DIR/private"
+ensure_private_dir "$private_dir"
+private_mode="$(stat -c '%a' "$private_dir" 2>/dev/null || stat -f '%Lp' "$private_dir")"
+if [ "$private_mode" != "700" ]; then
+  echo "Error: ensure_private_dir left mode $private_mode on $private_dir" >&2
+  exit 1
+fi
+
+mkdir -p "$TEMP_DIR/link-target"
+ln -s "$TEMP_DIR/link-target" "$TEMP_DIR/tool-link"
+set +e
+symlink_output="$(ensure_private_dir "$TEMP_DIR/tool-link" 2>&1)"
+symlink_exit=$?
+set -e
+if [ "$symlink_exit" -eq 0 ]; then
+  echo "Error: ensure_private_dir accepted a symlinked directory" >&2
+  exit 1
+fi
+assert_contains "ensure_private_dir symlink path" "$symlink_output" "is a symlink"
+
+set +e
+inspectcode_output="$(
+  TCS_JETBRAINS_TOOL_DIR="$TEMP_DIR/tool-link" \
+  TCS_INSPECTCODE_OUTPUT_DIR="$TEMP_DIR/inspectcode-output" \
+  bash "$VERIFY_INSPECTCODE" 2>&1
+)"
+inspectcode_exit=$?
+set -e
+if [ "$inspectcode_exit" -eq 0 ]; then
+  echo "Error: verify-inspectcode.sh accepted an untrusted tool directory" >&2
+  exit 1
+fi
+assert_contains "verify-inspectcode tool dir guard" "$inspectcode_output" "is a symlink"
 
 echo "Rider helper script tests passed."

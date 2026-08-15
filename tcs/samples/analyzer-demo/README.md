@@ -42,9 +42,10 @@ Windows PowerShell:
 .\samples\analyzer-demo\verify-inspectcode.ps1
 ```
 
-script は必要なら `/tmp/tcs-jetbrains-tools` に JetBrains ReSharper GlobalTools 2026.1.3 を install し、結果を `/tmp/tcs-inspectcode-analyzer-demo/` に出す。
+script は必要なら `${XDG_CACHE_HOME:-$HOME/.cache}/tcs/jetbrains-tools` に JetBrains ReSharper GlobalTools 2026.1.3 を install し、結果を `${XDG_CACHE_HOME:-$HOME/.cache}/tcs/inspectcode-analyzer-demo/` に出す。
+どちらもユーザー専用 (0700) で、他人所有のディレクトリだった場合は実行せずに落ちる。`TCS_JETBRAINS_TOOL_DIR` / `TCS_INSPECTCODE_OUTPUT_DIR` で変更できる。
 PackageReference consumer は script 内で local nupkg を pack して同じ出力ディレクトリ配下に作る。
-PowerShell 版は `%TEMP%\tcs-jetbrains-tools` と `%TEMP%\tcs-inspectcode-analyzer-demo\` を使う。
+PowerShell 版は `%TEMP%\tcs-jetbrains-tools` と `%TEMP%\tcs-inspectcode-analyzer-demo\` を使う (Windows の `%TEMP%` はユーザーごと)。
 
 ## Rider pre-check
 
@@ -61,7 +62,7 @@ Windows PowerShell:
 ```
 
 script は `TCS_RIDER_COMMAND` / Rider command / display 環境情報と、この shell から Rider UI を起動できる状態かを記録し、`bash run-tests.sh`、`samples/analyzer-demo/verify-inspectcode.sh`、`dotnet build samples/analyzer-demo/analyzer-demo.csproj --no-incremental` を実行する。
-結果とログパスは `/tmp/tcs-rider-verification-precheck/summary.md` に出す。
+結果とログパスは `${XDG_CACHE_HOME:-$HOME/.cache}/tcs/rider-verification-precheck/summary.md` に出す (`TCS_RIDER_PRECHECK_OUTPUT_DIR` で変更できる)。
 Rider の自動検出に失敗する場合は `TCS_RIDER_COMMAND=/path/to/rider.sh` を指定する。
 PowerShell 版は `.\run-tests.ps1`、`.\samples\analyzer-demo\verify-inspectcode.ps1`、`dotnet build` を実行し、結果を `%TEMP%\tcs-rider-verification-precheck\summary.md` に出す。
 Rider を自動検出できない場合は `$env:TCS_RIDER_COMMAND = "C:\path\to\rider64.exe"` を指定する。

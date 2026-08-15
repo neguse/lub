@@ -152,8 +152,22 @@ fi
 assert_expected_diagnostic_texts "analyzer demo" "$analyzer_output"
 
 echo "Running analyzer package consumer build..."
-package_dir="$(mktemp -d)"
-consumer_dir="$(mktemp -d)"
+# MSBuild / NuGet は project の祖先ディレクトリを遡って Directory.Build.props や
+# NuGet.Config を取り込む。scratch dir を /tmp 直下に作ると、そこに置かれたものを
+# build の一部として実行してしまうため、自分専用の temp root の下に作る。
+TEMP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/tcs/tmp"
+if [ -L "$TEMP_ROOT" ]; then
+  echo "Error: $TEMP_ROOT is a symlink; refusing to use it." >&2
+  exit 1
+fi
+if [ -e "$TEMP_ROOT" ] && [ ! -O "$TEMP_ROOT" ]; then
+  echo "Error: $TEMP_ROOT is not owned by the current user; refusing to use it." >&2
+  exit 1
+fi
+mkdir -p "$TEMP_ROOT"
+chmod 700 "$TEMP_ROOT"
+package_dir="$(mktemp -d "$TEMP_ROOT/analyzer-package.XXXXXX")"
+consumer_dir="$(mktemp -d "$TEMP_ROOT/analyzer-consumer.XXXXXX")"
 TEMP_DIRS+=("$package_dir" "$consumer_dir")
 dotnet pack "$SCRIPT_DIR/TinyCs.Analyzers/TinyCs.Analyzers.csproj" \
   -c Release \

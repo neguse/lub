@@ -4,8 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TOOL_VERSION="2026.1.3"
-TOOL_DIR="${TCS_JETBRAINS_TOOL_DIR:-/tmp/tcs-jetbrains-tools}"
-OUTPUT_DIR="${TCS_INSPECTCODE_OUTPUT_DIR:-/tmp/tcs-inspectcode-analyzer-demo}"
+
+source "$SCRIPT_DIR/rider-env.sh"
+
+TOOL_DIR="${TCS_JETBRAINS_TOOL_DIR:-$(tcs_cache_dir jetbrains-tools)}"
+OUTPUT_DIR="${TCS_INSPECTCODE_OUTPUT_DIR:-$(tcs_cache_dir inspectcode-analyzer-demo)}"
 JB="$TOOL_DIR/jb"
 PROJECT_REFERENCE_SARIF="$OUTPUT_DIR/project-reference.sarif"
 PROJECT_REFERENCE_STDOUT_LOG="$OUTPUT_DIR/project-reference.stdout"
@@ -17,15 +20,17 @@ PACKAGE_REFERENCE_STDOUT_LOG="$OUTPUT_DIR/package-reference.stdout"
 PACKAGE_REFERENCE_OVERRIDE_SARIF="$OUTPUT_DIR/package-reference-severity-override.sarif"
 PACKAGE_REFERENCE_OVERRIDE_STDOUT_LOG="$OUTPUT_DIR/package-reference-severity-override.stdout"
 
+# $JB は下で実行するので、TOOL_DIR が自分の所有であることを確かめてから信頼する
+ensure_private_dir "$TOOL_DIR"
 if [ ! -x "$JB" ]; then
-  mkdir -p "$TOOL_DIR"
   dotnet tool install JetBrains.ReSharper.GlobalTools \
     --tool-path "$TOOL_DIR" \
     --version "$TOOL_VERSION"
 fi
 
 rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR" "$PACKAGE_DIR" "$PACKAGE_CONSUMER_DIR"
+ensure_private_dir "$OUTPUT_DIR"
+mkdir -p "$PACKAGE_DIR" "$PACKAGE_CONSUMER_DIR"
 
 run_inspectcode() {
   local project="$1"

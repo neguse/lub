@@ -1,5 +1,27 @@
 #!/bin/bash
 
+# 作業ディレクトリの既定位置。/tmp のような world-writable な場所に固定名で置くと、
+# 別ユーザーが先回りして中身 (実行される tool を含む) を仕込める。
+tcs_cache_dir() {
+  local name="$1"
+  printf '%s/tcs/%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}" "$name"
+}
+
+# 自分だけが書けるディレクトリを用意する。他人の所有物や symlink はそのまま使わない。
+ensure_private_dir() {
+  local dir="$1"
+  if [ -L "$dir" ]; then
+    echo "Error: $dir is a symlink; refusing to use it." >&2
+    return 1
+  fi
+  if [ -e "$dir" ] && [ ! -O "$dir" ]; then
+    echo "Error: $dir is not owned by the current user; refusing to use it." >&2
+    return 1
+  fi
+  mkdir -p "$dir"
+  chmod 700 "$dir"
+}
+
 value_or_unset() {
   local value="$1"
   if [ -n "$value" ]; then
