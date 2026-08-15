@@ -1559,3 +1559,10 @@
 - 検証: verify-rider-scripts.sh に ensure_private_dir の unit テスト (cache 既定パス / 0700 / symlink 拒否) と verify-inspectcode.sh の e2e ガードテストを追加。ガードを外した copy では symlink が通ることを確認 (Red) → 追加後 green。`bash run-tests.sh` 全通過 (758+48 green、tcs2c digest 3/3 不変、analyzer demo / package consumer / severity override 期待どおり)、`~/.cache/tcs/tmp` が 0700 で作られることを確認
 - 判断: PowerShell 版は据え置き。Windows の `%TEMP%` はユーザーごとで同じ攻撃が成立せず、この機械で検証もできないため。README には両者の差を明記
 - 注記: このマシンの .NET SDK が壊れており (`Workload set version 10.0.109.1 has missing manifests`、SDK 10.0.110)、run-tests.sh は `MSBuildEnableWorkloadResolver=false` を付けて実行した。`dotnet workload repair` が別途必要
+
+### .NET SDK の版管理を global.json pin + Dependabot に移行 ✓ (2026-08-15)
+- 背景: Arch の pacman dotnet と `dotnet workload install` (wasm-tools、lub の gen-tcs 用) が `/usr/share/dotnet` に同居し、pacman 更新のたびに workload set の pin (`sdk-manifests/.../workloadsets`、pacman 管理外) が参照する manifest だけ消えて resolver が例外 → `dotnet build/test` 全滅、が再発していた (3月にも repair 履歴)
+- `global.json` で SDK 10.0.111 を pin、`.github/dependabot.yml` に `dotnet-sdk` ecosystem を追加 (新版が出たら pin bump の PR が来て、CI が run-tests で検証してからマージ)。CI の setup-dotnet は `dotnet-version: 10.0.x` → `global-json-file: global.json` に変更し、CI とローカルが同じ正本を読むようにした
+- マシン側は dotnet-install.sh の per-user install (`~/.dotnet` + DOTNET_ROOT/PATH) に一本化し、SDK と workload の所有者を一人にした。README / CLAUDE.md に方針を明記
+- 検証: `~/.dotnet` の SDK 10.0.111 で pre-commit ゲート (run-tests.sh) 全通過 — MSBuildEnableWorkloadResolver 無効化なしで通ることを確認 (壊れた pacman 側 resolver を踏んでいない証明)。SDK 暗黙参照の追随で WasmCompiler の packages.lock.json が 10.0.11 に上がる (別コミット)
+- 残課題: workload set 版の pin (`sdk.workloadVersion`) は wasm-tools を実際に要求する lub 側で行う。Dependabot は workloadVersion の bump 未対応 (dependabot-core#13216) のため、workload set は SDK bump PR に乗せて手動更新

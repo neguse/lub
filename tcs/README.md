@@ -7,7 +7,7 @@ Roslyn で C# を解析し、Lua のテーブル + メタテーブル OOP に変
 
 ## 必要なもの
 
-- .NET 10 SDK
+- .NET 10 SDK (版は `global.json` で固定。導入は `dotnet-install.sh --jsonfile global.json` を推奨 — distro package は workload と版がずれるため混ぜない)
 - CMake 3.12+ (Lua ビルド用)
 - C コンパイラ (MSVC / GCC / Clang)
 

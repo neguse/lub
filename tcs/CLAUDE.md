@@ -45,7 +45,9 @@ tcs/
 
 ### 前提
 
-- .NET 10 SDK / C# 14
+- .NET 10 SDK / C# 14 — SDK 版は `global.json` で固定し、Dependabot (`dotnet-sdk`) が
+  bump PR を出す。マシンへの導入は `dotnet-install.sh --jsonfile global.json` の
+  per-user install (distro package と混ぜると workload manifest が更新で消えて壊れる)
 - CMake 3.12+ / C compiler (Lua 5.5 build)
 - Lua 5.5 (`deps/lua/lua` or `deps/lua/lua.exe`)
 
