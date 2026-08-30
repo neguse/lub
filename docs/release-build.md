@@ -29,7 +29,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Vcvar
 ```
 
 The Windows script imports the Visual Studio x64 developer environment, then
-configures and builds `build-release`.
+configures and builds `build-release`. D3D12 is the default backend. CMake also
+builds the optional Vulkan backend when it finds a Vulkan SDK through
+`VULKAN_SDK`; the SDK is not required for a D3D12 build.
 
 ## Linux
 

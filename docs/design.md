@@ -112,8 +112,8 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 ## Current Constraints
 
 - macOS は未対応。
-- backend は `d3d12` (Windows) / `vulkan` (Windows, Linux) / `sdlgpu`
-  (native 全般) / `webgpu` (web のみ)。未指定時の既定は Windows: d3d12、
+- backend は `d3d12` (Windows) / `vulkan` (Linux、SDK が見つかる Windows) /
+  `sdlgpu` (native 全般) / `webgpu` (web のみ)。未指定時の既定は Windows: d3d12、
   Linux: vulkan、web: webgpu。CI golden は Windows は WARP、Linux は lavapipe
   で回す (`docs/d3d12-backend.md`)。backend 構成の整理方針は
   `docs/log/2026-07-07-backend-consolidation.md`。

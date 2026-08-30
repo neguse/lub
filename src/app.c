@@ -117,10 +117,10 @@ bool app_backend_init(App *app) {
     return false;
 #endif
   } else if (strcmp(app->backend_name, "vulkan") == 0) {
-#if defined(_WIN32) || defined(__linux__)
+#if defined(LUB_HAS_VULKAN)
     g_backend = &g_backend_vulkan;
 #else
-    SDL_Log("backend 'vulkan' is not supported on this platform");
+    SDL_Log("backend 'vulkan' is not available in this build");
     return false;
 #endif
   } else {
