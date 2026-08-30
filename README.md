@@ -31,7 +31,8 @@ Linux: Vulkan) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
 依存:
 - CMake 3.22+
 - C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
-- Vulkan loader (Linux のみ) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
+- Vulkan loader と開発 header (Linux 必須) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
+- Vulkan SDK (Windows 任意) — SDK が見つかった場合だけ `vulkan` backend を組み込む
 
 Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する

@@ -157,6 +157,24 @@ if(NOT LUB_WASM)
   endif()
 endif()
 
+# Linux uses Vulkan as its default native backend, so its loader and headers
+# remain required. Windows defaults to D3D12 and adds the Vulkan backend only
+# when the SDK is available.
+set(LUB_HAS_VULKAN OFF)
+if(NOT LUB_WASM)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Vulkan REQUIRED)
+    set(LUB_HAS_VULKAN ON)
+  elseif(WIN32)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+      set(LUB_HAS_VULKAN ON)
+    else()
+      message(STATUS "Vulkan SDK not found; Windows Vulkan backend is disabled")
+    endif()
+  endif()
+endif()
+
 # Source list. capture.c itself is backend-agnostic (uses g_backend->capture)
 # and compiles everywhere. backend_sdlgpu.c / backend_d3d12.cpp are
 # native-only; wasm builds ship the webgpu backend alone.
@@ -206,12 +224,15 @@ if(NOT LUB_WASM)
     # D3D12 backend ("d3d12", Windows 既定).
     list(APPEND LUB_SOURCES src/backend_d3d12.cpp)
   endif()
-  if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Vulkan backend ("vulkan", Linux 既定。Windows でも選択可).
+  if(LUB_HAS_VULKAN)
+    # Vulkan backend ("vulkan", Linux 既定。Windows では SDK 検出時のみ).
     list(APPEND LUB_SOURCES src/backend_vulkan.c)
   endif()
 endif()
 add_executable(lub ${LUB_SOURCES})
+if(LUB_HAS_VULKAN)
+  target_compile_definitions(lub PRIVATE LUB_HAS_VULKAN=1)
+endif()
 
 target_include_directories(lub PRIVATE
   third_party/slang/include
@@ -247,10 +268,7 @@ if(WIN32)
   # d3d12/dxgi/dxguid for the d3d12 backend (all OS-provided).
   target_link_libraries(lub PRIVATE ws2_32 d3d12 dxgi dxguid)
 endif()
-if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT LUB_WASM)
-  # Vulkan loader for backend_vulkan.c. Windows では Vulkan SDK が必要
-  # (VULKAN_SDK env を find_package が拾う)。
-  find_package(Vulkan REQUIRED)
+if(LUB_HAS_VULKAN)
   target_link_libraries(lub PRIVATE Vulkan::Vulkan)
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)

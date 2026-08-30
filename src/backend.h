@@ -201,7 +201,7 @@ extern const RenderBackend g_backend_webgpu;
 #ifdef _WIN32
 extern const RenderBackend g_backend_d3d12; // backend_d3d12.cpp, Windows-only
 #endif
-#if defined(_WIN32) || defined(__linux__)
+#if defined(LUB_HAS_VULKAN)
 extern const RenderBackend g_backend_vulkan; // backend_vulkan.c ("vulkan")
 #endif
 
