@@ -1,5 +1,5 @@
 // Iframe-side glue for the lub playground. Replaces the inline <script>
-// block that lived in public/player.html through Phase 5. Vite picks
+// block that used to live in public/player.html. Vite picks
 // player.html up as a secondary HTML entry (see vite.config.ts) and bundles
 // this module alongside.
 //
@@ -154,8 +154,7 @@ let pendingFiles: Record<string, string> | null = null;
 let pendingEntry: string | null = null;
 let wasmStarted = false;
 // FS (window.FS は wasm main 内で代入) が使えるまでの syncFiles を溜める。
-// 以前は無言で捨てていたが、module mode の runtimeReady 分離に合わせて
-// queue + flush に変更 (tcs design doc §14.1)。
+// 捨てると runtimeReady 前の編集が失われるので queue + flush する。
 const pendingSyncBatches: Record<string, string>[] = [];
 
 function writeSyncBatch(FS: any, files: Record<string, string>) {

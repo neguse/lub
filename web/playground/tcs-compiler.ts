@@ -124,9 +124,9 @@ export type TcsSession = {
   update(path: string, content: string): TcsUpdateResult;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
   linkSnapshot(): string | null;
-  /** 補完 (T230)。content はエディタの現在バッファ (speculative、session 不変)。 */
+  /** 補完。content はエディタの現在バッファ (speculative、session 不変)。 */
   complete(path: string, content: string, offset: number): TcsCompletionItem[];
-  /** hover (T230)。同上。 */
+  /** hover。同上。 */
   hover(path: string, content: string, offset: number): TcsHoverResult;
 };
 

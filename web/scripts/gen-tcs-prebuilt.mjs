@@ -1,6 +1,6 @@
 // gen-tcs-prebuilt.mjs — C# サンプルの prebuilt bridge snapshot を生成する。
 // playground は起動時にまず prebuilt snapshot で player を立ち上げ、.NET
-// (Roslyn) session は背景で温める (tcs design doc §14.1 cold path)。
+// (Roslyn) session は背景で温める。
 // 出力: web/tcs-prebuilt/<sample>.lua (gitignore。vite が /tcs-prebuilt で配信)。
 //
 // module ID の契約: in-browser session (tcs-compiler.ts) が使う ID

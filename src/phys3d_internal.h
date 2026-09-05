@@ -1,6 +1,5 @@
-// phys3d の core が使う内部の型。段階 3 の手書き header の形をそのまま内部に
-// 移したもので、公開 API (include/lub/lub_api.h、生成物) との詰め替えは
-// physics_box3d.c の末尾で行う。
+// phys3d の core が使う内部の型。公開 API (include/lub/lub_api.h) は生成物
+// なので core はそれに依存させず、詰め替えは physics_box3d.c の末尾で行う。
 #pragma once
 #include "lub/lub_api.h"
 #include <stdbool.h>

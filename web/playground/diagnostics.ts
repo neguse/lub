@@ -1,7 +1,7 @@
 /*
  * diagnostics.ts — コンパイラのエラー/警告文字列を位置付き診断へパースする。
  * コンパイラ側は変更せず、既存の stderr / errors[] の行を正規表現で解釈する
- * (docs/playground-dx.md §1)。マッチしない行は null(ログパネルのみに出す)。
+ * マッチしない行は null(ログパネルのみに出す)。
  */
 
 export type PlaygroundDiagnostic = {

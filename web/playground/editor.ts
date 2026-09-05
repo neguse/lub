@@ -44,7 +44,7 @@ function readOnlyExt(readOnly: boolean) {
   return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
 }
 
-// C# の補完/hover provider (docs/playground-dx.md §3)。main.ts が tcs 常駐
+// C# の補完/hover provider。main.ts が tcs 常駐
 // session の warm/cold に合わせて登録・解除する。cold 中は null で、補完は
 // 静かに無効 (エラーにしない)。
 export type CsLanguageProvider = {

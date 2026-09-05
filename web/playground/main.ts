@@ -166,7 +166,7 @@ window.addEventListener("message", (e) => {
   }
 });
 
-/** registry の commit ACK (§13.1)。待っている revision だけ状態を進める。 */
+/** registry の commit ACK。待っている revision だけ状態を進める。 */
 function handleTcsCommitAck(json: string) {
   let ack: {
     revision: number;
@@ -197,7 +197,7 @@ attachEditor(
   (path, _content) => {
     pendingSyncPaths.add(path);
     if (syncTimer) clearTimeout(syncTimer);
-    // 増分 path は compile が 100ms 級なので debounce も短い (§14.2)
+    // 増分 path は compile が 100ms 級なので debounce も短い
     syncTimer = window.setTimeout(syncDirtyNow, 75);
   },
 );
@@ -348,7 +348,7 @@ async function loadCompileRun(name: string) {
   if (warmAfterBoot && gen === loadGen) void warmTcsSession(gen);
 }
 
-/** prebuilt 起動後に増分 session を背景で開く (§14.1 background prewarm)。
+/** prebuilt 起動後に増分 session を背景で開く。
  * Open は main thread 同期呼び出しのため数秒〜十数秒 UI が固まるが、player は
  * 既に prebuilt で動いている。完了時に queue された編集を flush する。 */
 async function warmTcsSession(gen: number) {
@@ -454,7 +454,7 @@ function waitForAckFrom(
   });
 }
 
-/** requiresRestart 編集の二相 handoff (§14.2)。hidden player を lastLua で
+/** requiresRestart 編集の二相 handoff。hidden player を lastLua で
  * 起動し、runtime の初回 commit ACK を確認してから表示を swap する。
  * 失敗時は旧 player に触れず false を返す。 */
 async function restartTwoPhase(): Promise<boolean> {
@@ -528,7 +528,7 @@ async function syncDirtyNow() {
       if (tcsSession) {
         // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
         // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh
-        // player を snapshot で起動する (§14.2)。
+        // player を snapshot で起動する。
         $status.textContent = "compiling…";
         let requiresRestart = false;
         for (const [p, f] of changed) {
@@ -558,7 +558,7 @@ async function syncDirtyNow() {
         setVirtualFile(genLuaTabPath(), lua);
         if (requiresRestart) {
           // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK
-          // を確認してから表示を swap する。失敗時は旧 player を残す (§14.2)。
+          // を確認してから表示を swap する。失敗時は旧 player を残す。
           const ok = await restartTwoPhase();
           if (!ok) {
             addLog("two-phase restart failed; keeping current player", "err");
@@ -589,7 +589,7 @@ async function syncDirtyNow() {
       if (!current || current.content === content) pendingSyncPaths.delete(p);
     }
     if (ackRevision > 0) {
-      // synced 表示は runtime の commit ACK を受けてから (§13.1)
+      // synced 表示は runtime の commit ACK を受けてから
       clearPendingAck();
       pendingAck = { revision: ackRevision, t0, retries: 0, timer: 0, files };
       scheduleAckRetry();

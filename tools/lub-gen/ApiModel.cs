@@ -8,7 +8,7 @@ namespace LubGen;
 
 // cs-lib/lub_stub.cs から読んだ API 面。名前は C# 名 (中立表記) と、tcs の
 // LuaNaming で導いた Lua 側の名前を両方持つ。C の名前と型は CHeader が規則で
-// 導く (docs/log/2026-09-05-language-architecture-plan.md の段階 4)。
+// 導く。
 
 public enum LubTypeKind
 {

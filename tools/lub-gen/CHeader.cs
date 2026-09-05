@@ -3,8 +3,7 @@ using TinyCs;
 
 namespace LubGen;
 
-/// <summary>stub から C API の header (include/lub/lub_api.h) を導く。規則は
-/// docs/log/2026-09-05-language-architecture-plan.md の「段階 4 で決めたこと」。
+/// <summary>stub から C API の header (include/lub/lub_api.h) を導く。
 /// C の関数は stub の関数と 1 対 1、struct は class と 1 対 1。</summary>
 public static class CHeader
 {
@@ -12,7 +11,7 @@ public static class CHeader
         // lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で
         // 編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
         //
-        // 規則 (docs/log/2026-09-05-language-architecture-plan.md 段階 4):
+        // 規則:
         //   - context を第 1 引数に取り、失敗しうる関数は LubStatus を返す。
         //     失敗は LUB_ERROR と lub_last_error() の文字列、問い合わせの対象が
         //     無いときは LUB_NOT_FOUND (last_error は書かない)。

@@ -1,10 +1,9 @@
-// Phase 7 visual verification: launch headless chromium with WebGPU
+// Visual verification: launch headless chromium with WebGPU
 // enabled, load the playground at http://localhost:5173/ and exercise the
-// full edit -> auto-sync -> render path on top of Phase 6's initial render
-// check.
+// full edit -> auto-sync -> render path on top of the initial render check.
 //
 // What this covers:
-//   1. Sample 01_triangle initial render (Phase 6 baseline). Expect dark
+//   1. Sample 01_triangle initial render. Expect dark
 //      blue clear + orange triangle.
 //   2. Shader edit. Patch the fragment colour literal in the .fs.slang tab,
 //      wait one debounce window + frame, assert the orange triangle is no
@@ -40,7 +39,7 @@ const HEAD = process.env.HEADLESS !== '0'
 const WAIT_MS = Number(process.env.WAIT_MS || 20000)
 const VERBOSE = process.env.VERBOSE === '1'
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/lub-verify'
-// Single-file legacy SCREENSHOT path (Phase 6) — written as the first
+// Single-file legacy SCREENSHOT path — written as the first
 // shot to keep external tooling that grep'd /tmp/lub-iframe.png happy.
 const LEGACY_SCREENSHOT = process.env.SCREENSHOT || '/tmp/lub-iframe.png'
 // How long to wait after a debounced edit for the next frame to draw with
@@ -227,7 +226,7 @@ if (RUN_EDIT) {
   const shot01 = screenshotPath('01_initial.png')
   c1 = await waitForPixels(
     iframeHandle, shot01, (c) => c.orangeish / c.total > 0.005, WAIT_MS)
-  // Mirror to legacy /tmp/lub-iframe.png for back-compat with Phase 6.
+  // Mirror to legacy /tmp/lub-iframe.png for back-compat.
   try { fs.copyFileSync(shot01, LEGACY_SCREENSHOT) } catch {}
   console.log('[verify] A1 buckets', c1)
   if (!check('A1 initial render (orange triangle)',
@@ -386,7 +385,7 @@ function greenAppearedRef() {
 // ===== Test A5: all-samples render ========================================
 // For each currently-gated web sample, switch + screenshot + assert non-black.
 // We confirm the user-visible "compile something and draw it" path works for
-// each one, but don't pixel-validate content (Phase 8's job).
+// each one, but don't pixel-validate content (the golden test's job).
 //
 // Note: switching samples discards our edits via the dirty-check confirm
 // dialog. We dismiss the dialog by re-opening the sample first; or just
@@ -656,7 +655,7 @@ if (RUN_CS_SESSION) try {
 }
 
 // ---------------------------------------------------------------------------
-// A8. C# 補完/hover (T230)。A7-C# の warm session を再利用し、__lubTest.csQuery
+// A8. C# 補完/hover。A7-C# の warm session を再利用し、__lubTest.csQuery
 // (エディタの provider 直叩き = 実 wasm SessionExports.Complete/Hover) を検証
 // する。speculative content (`Gfx.` を挿した編集途中バッファ) で lub API の
 // member が引けること、allowlist フィルタで p95 レイテンシも観測ログに残す。

@@ -1,7 +1,7 @@
 // lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で
 // 編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
 //
-// 規則 (docs/log/2026-09-05-language-architecture-plan.md 段階 4):
+// 規則:
 //   - context を第 1 引数に取り、失敗しうる関数は LubStatus を返す。
 //     失敗は LUB_ERROR と lub_last_error() の文字列、問い合わせの対象が
 //     無いときは LUB_NOT_FOUND (last_error は書かない)。
