@@ -112,6 +112,11 @@ typedef struct App {
   // Lua config({ readback_depth = N }) during onInit.
   int readback_depth;
 
+  // C API (include/lub/lub_api.h) の状態。last_error は直近の LUB_ERROR の
+  // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
+  char last_error[512];
+  struct GfxReadbackQueues *readbacks;
+
 #ifndef __EMSCRIPTEN__
   // SDL3 GPU backend state. Owned/used by backend_sdlgpu.c only.
   SDL_GPUDevice *gpu_device;

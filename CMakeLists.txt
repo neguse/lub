@@ -164,6 +164,8 @@ set(LUB_SOURCES
   src/main.c
   src/app.c
   src/lua_api.c
+  src/api_core.c
+  src/api_gfx.c
   src/enums_lua.c
   src/pass.c
   src/profile.c
@@ -213,6 +215,7 @@ endif()
 add_executable(lub ${LUB_SOURCES})
 
 target_include_directories(lub PRIVATE
+  include
   third_party/slang/include
   third_party/stb
   third_party/cgltf

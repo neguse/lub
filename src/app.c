@@ -1,4 +1,5 @@
 #include "app.h"
+#include "api_internal.h"
 #include "backend.h"
 #include "gpu_stats.h"
 #include "lua_api.h"
@@ -191,6 +192,7 @@ void app_frame_end(App *app) {
 void app_shutdown(App *app) {
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
+  api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

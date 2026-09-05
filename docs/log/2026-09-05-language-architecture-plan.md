@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 未 |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx の実装(`src/api_gfx.c`)。Lua binding は詰め替えだけに |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -64,3 +64,22 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 - lavapipe の golden はこの機械の mesa が golden 生成時と違うため、Haxe 版も
   C# 版も同じサンプル(11_shadow / 12_sfb 等)で LSB 差が出る。C# 版の golden の
   正否は CI(windows WARP)で見る。
+
+## 段階 3 で決めたこと
+
+- C API の header は `include/lub/lub_api.h`。段階 4 で生成物にするまでは
+  手書きで、subsystem ごとに順に移す(3a = gfx、以降 input / audio /
+  physics / ...)。実装は `src/api_<subsystem>.c`、共有 helper は
+  `src/api_internal.h`。`LubContext` は `App` そのもの。
+- C の enum メンバ名は `LUB_<NS>_<ENUM>_<MEMBER>`(`LUB_GFX_BLEND_NONE`)。
+  Lua の平らな定数と違い C は enum を跨いで同じ名前を置けないので、
+  enum 名を挟む。関数は `lub_<ns>_<member>`、構造体は `Lub<Ns><Name>`。
+- handle は entry(key)の寿命に結ぶ(sweep されるまで同じ値。version が
+  変わっても handle は変わらない)。設計記録の「key + version に結ぶ」より
+  緩いが、facade が version 変化のたびに再解決する必要が無くなる。stale
+  handle は `lub_last_error` に回る。Lua 面の sentinel table は `handle`
+  field を持ち、stale なら key から引き直す。
+- readback は runtime が key で持つ queue になり、結果は frame 有効の view で
+  返す。Lua binding は従来の `Bytes`(所有)に copy して返し、frame を跨いで
+  持てる従来の契約を保つ(zero copy 化は所有権の規則を Lua 面に入れるとき)。
+- version の面は int32(runtime 内部は int64 のまま)。
