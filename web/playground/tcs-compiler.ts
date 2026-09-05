@@ -26,10 +26,6 @@ for (const [path, src] of Object.entries(IMPL_GLOB)) {
   IMPL_SOURCES[rel] = src;
 }
 
-export type TcsCompileResult =
-  | { ok: true; lua: string; stderr: string; warnings: string[]; code: 0 }
-  | { ok: false; lua: null; stderr: string; warnings: string[]; code: number };
-
 // dotnet ランタイムの assembly exports (CompilerExports / SessionExports)
 let readyPromise: Promise<any> | null = null;
 let stub = "";
@@ -47,44 +43,6 @@ function ensureRuntime(): Promise<any> {
     return await getAssemblyExports(getConfig().mainAssemblyName);
   })();
   return readyPromise;
-}
-
-/**
- * `.cs` ソース一式を entryClass で compile し、player が読める完全な `.lua` を返す。
- * lub core API の参照は cs-lib/lub_stub.cs を自動で --ref 相当として渡し、
- * cs-lib 実装ソース (lubx/*) も自動で compile 入力に加える。
- */
-export async function compileTcs(
-  files: Record<string, string>,
-  entryClass: string,
-): Promise<TcsCompileResult> {
-  const exports = await ensureRuntime();
-  const res = JSON.parse(
-    exports.CompilerExports.Compile(
-      JSON.stringify({
-        files: { ...IMPL_SOURCES, ...files },
-        refs: { "lub_stub.cs": stub },
-        entryClass,
-        checkNaming: false,
-      }),
-    ),
-  );
-  if (res.ok && typeof res.lua === "string") {
-    return {
-      ok: true,
-      lua: res.lua,
-      stderr: "",
-      warnings: res.warnings ?? [],
-      code: 0,
-    };
-  }
-  return {
-    ok: false,
-    lua: null,
-    stderr: (res.errors ?? []).join("\n"),
-    warnings: res.warnings ?? [],
-    code: 1,
-  };
 }
 
 /*

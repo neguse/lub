@@ -33,9 +33,10 @@ for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then
     if ! diff -q "$src" "$dst" > /dev/null; then
-      # formatter の版違い (clang-format の折り返し等) は内容の差ではない。
-      # 空白を全部落として同じなら通す。
-      if [ "$(tr -d '[:space:]' < "$src" | sha256sum)" = "$(tr -d '[:space:]' < "$dst" | sha256sum)" ]; then
+      # C の 2 ファイルは clang-format の版で折り返しが変わる。内容の差では
+      # ないので、空白を落として同じなら通す (他の生成物は完全一致を要求)。
+      case "$dst" in *.h|*.c) ws_tolerant=1 ;; *) ws_tolerant=0 ;; esac
+      if [ "$ws_tolerant" = 1 ] && [ "$(tr -d '[:space:]' < "$src" | sha256sum)" = "$(tr -d '[:space:]' < "$dst" | sha256sum)" ]; then
         echo "gen-api: $dst differs only in formatting (formatter version); ok"
       else
         echo "gen-api: $dst is stale (run scripts/gen-api.sh)"

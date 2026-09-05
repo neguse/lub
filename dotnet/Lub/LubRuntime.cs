@@ -350,8 +350,12 @@ internal static unsafe class LubRuntime
 
         public float* Floats(IReadOnlyList<float>? l, out int n)
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<float>(n);
             for (var i = 0; i < n; i++) p[i] = (float)l[i];
             return p;
@@ -359,8 +363,12 @@ internal static unsafe class LubRuntime
 
         public int* Ints<T>(IReadOnlyList<T>? l, out int n) where T : unmanaged
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<int>(n);
             for (var i = 0; i < n; i++)
             {
@@ -372,8 +380,12 @@ internal static unsafe class LubRuntime
 
         public bool* Bools(IReadOnlyList<bool>? l, out int n)
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<bool>(n);
             for (var i = 0; i < n; i++) p[i] = l[i];
             return p;
@@ -381,8 +393,12 @@ internal static unsafe class LubRuntime
 
         public LubNative.LubStr* Strs(IReadOnlyList<string>? l, out int n)
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<LubNative.LubStr>(n);
             for (var i = 0; i < n; i++) p[i] = Str(l[i]);
             return p;
@@ -390,8 +406,12 @@ internal static unsafe class LubRuntime
 
         public int* Handles<T>(IReadOnlyList<T>? l, out int n, Func<T, int> handle)
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<int>(n);
             for (var i = 0; i < n; i++) p[i] = handle(l[i]);
             return p;
@@ -401,8 +421,12 @@ internal static unsafe class LubRuntime
         // して渡す (C 側は pointer の有無で欠損を見る)。
         public float* FloatRows(IReadOnlyList<float[]>? l, out int n, int width)
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<float>(n * width);
             for (var i = 0; i < n; i++)
             {
@@ -414,8 +438,12 @@ internal static unsafe class LubRuntime
 
         public N* Records<T, N>(IReadOnlyList<T>? l, out int n, delegate*<T, Arena, N*, void> to) where N : unmanaged
         {
-            n = l?.Count ?? 0;
-            if (n == 0) return null;
+            if (l == null || l.Count == 0)
+            {
+                n = 0;
+                return null;
+            }
+            n = l.Count;
             var p = Alloc<N>(n);
             for (var i = 0; i < n; i++) to(l[i], this, &p[i]);
             return p;

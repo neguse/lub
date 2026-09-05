@@ -252,9 +252,9 @@ jobs:
           export LUB_D3D12_WARP=1
           export LUB_NATIVE_LIB="$(cygpath -m "$PWD/build-release/lub.dll")"
           scripts/run-cs-sample.sh 00_hello --build
-          ./build-release/lub.exe samples/00_hello/.lub/Hello00.lua --capture "$RUNNER_TEMP/cs.png" --capture-frame 60 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
+          ./build-release/lub.exe samples/00_hello/.lub/Hello00.lua --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
           dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
-          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 60 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
+          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
           cmp "$RUNNER_TEMP/cs.digest" "$RUNNER_TEMP/dn.digest"
 
       - name: Upload golden failure artifacts

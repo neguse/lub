@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
 # physics Lua tests, visual goldens (lavapipe), the C# sample gate
-# (tcs→Lua と .NET 実行の両方、digest 比較つき)、ngs scenario golden、raw Lua
-# サンプル。
+# (tcs→Lua と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、
+# ngs scenario golden、raw Lua サンプル。
 # Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
@@ -116,8 +116,8 @@ cs_capture() {
   cs_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.digest"
   rm -f "$cs_png" "$cs_digest"
   # 視覚 golden は scripts/run-golden.sh (curation と frame はそちら)。ここは
-  # capture まで通ることの検証 (クラッシュ検出) と digest の材料。--skip-golden
-  # (CI) は .NET golden の cmp をしないので 30 frame (digest 比較の範囲) で足りる。
+  # .NET 実行と突き合わせる材料 (digest と capture)。CI (--skip-golden) は
+  # digest 比較の範囲 (30 frame) で足りる。
   cs_frame=240
   [[ $skip_golden -eq 1 ]] && cs_frame=30
   run_timed env LUB_BACKEND=sdlgpu LUB_XVFB_SERVERNUM=$((400 + slot)) \
@@ -127,8 +127,8 @@ cs_capture() {
   grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
 
   # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
-  # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と
-  # 一致することと、実行形ごとの golden (<name>_dotnet_sdlgpu.png) を確かめる。
+  # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) と capture が
+  # tcs→Lua と一致することを確かめる。数値は両方 f32 なので絵は byte 一致する。
   # SampleRunner の出力は Sample ごとに別 dir なので build は capture の直前。
   run_timed dotnet build dotnet/SampleRunner -p:Sample="$cs_name" -nologo -v q
   dn_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.png"
@@ -144,16 +144,11 @@ cs_capture() {
     echo ".NET run of ${cs_name} logged errors" >&2
     return 1
   fi
-  # 比較は最初の 30 frame。game state が実行形の数値差で割れる前の範囲で、
-  # facade の詰め替えの違いはここに出る。
+  # digest は最初の 30 frame (CI の capture 長)。facade の詰め替えの違いは
+  # ここに出る。capture は同じ machine の同じ rasterizer で撮った 2 枚なので
+  # golden を持たず直接比べる。
   run cmp <(head -30 "$cs_digest") <(head -30 "$dn_digest")
-  if [[ $skip_golden -eq 1 ]]; then
-    echo "==> .NET golden cmp skipped (--skip-golden): ${cs_name}"
-  elif [[ -f "tests/golden/${cs_name}_dotnet_sdlgpu.png" ]]; then
-    run cmp "$dn_png" "tests/golden/${cs_name}_dotnet_sdlgpu.png"
-  else
-    echo "==> .NET golden skip (nondeterministic): ${cs_name}"
-  fi
+  run cmp "$cs_png" "$dn_png"
 }
 
 # サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。

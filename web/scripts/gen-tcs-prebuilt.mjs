@@ -71,10 +71,21 @@ const implFiles = listCsFiles(CS_LIB)
   .filter((rel) => rel !== "lub_stub.cs")
   .sort();
 
-// C# サンプル一覧: samples/<name>/<Entry>.csproj (basename = entry class)
+// 対象は playground が出すサンプルだけ (一覧の正は samples.ts の CS_SAMPLES)。
+// ngs のように native 専用のサンプルは snapshot を作っても誰も読まない。
 const SAMPLES = join(REPO, "samples");
+const samplesTs = readFileSync(join(WEB, "playground", "samples.ts"), "utf8");
+const csSamplesBlock = /const CS_SAMPLES[^{]*\{([\s\S]*?)\};/.exec(samplesTs);
+if (!csSamplesBlock) {
+  console.error("gen-tcs-prebuilt: CS_SAMPLES not found in playground/samples.ts");
+  process.exit(1);
+}
+const playgroundSamples = new Set(
+  [...csSamplesBlock[1].matchAll(/"([^"]+)"\s*:/g)].map((m) => m[1]),
+);
 const targets = [];
 for (const name of readdirSync(SAMPLES).sort()) {
+  if (!playgroundSamples.has(name)) continue;
   const dir = join(SAMPLES, name);
   if (!statSync(dir).isDirectory()) continue;
   const csproj = readdirSync(dir).find((f) => f.endsWith(".csproj"));

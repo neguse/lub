@@ -110,7 +110,7 @@ bool lub_input_key_down(LubContext *ctx, LubStr key) {
     return false;
   int key_count = 0;
   const bool *state = SDL_GetKeyboardState(&key_count);
-  return state && sc >= 0 && sc < key_count && state[sc];
+  return state && (int)sc < key_count && state[sc];
 }
 
 bool lub_input_key_pressed(LubContext *ctx, LubStr key) {

@@ -36,9 +36,9 @@ C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が ho
 動かす dev の経路) と .NET 実行 (実 .NET が `dotnet/Lub` の facade から
 共有 library の C API を P/Invoke で叩く経路、host は `Lub.Run(typeof(Game), args)`)。
 同じソースが両方で通ることが契約で、CI は各サンプルを両方で headless に
-回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
-golden 画像は実行形ごとに別ファイル (tcs→Lua は `_sdlgpu.png`、.NET は
-`_dotnet_sdlgpu.png`) で、float の差を許す。
+回し、frame ごとの digest (C API 呼び出しの構造の hash) と capture を
+突き合わせる。数値は両方 f32 なので絵も byte 一致する。golden 画像は
+tcs→Lua の分 (`_sdlgpu.png`) だけを持つ。
 
 ## Non-Goals
 
