@@ -44,6 +44,57 @@ public sealed class LubLuaNameAttribute : Attribute
     }
 }
 
+/// <summary>key で参照する runtime の resource (readback queue)。Lua 面は
+/// sentinel table、C は key の文字列で受ける。</summary>
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class LubKeyedAttribute : Attribute
+{
+}
+
+/// <summary>固定長の配列。List / 配列の field を C では `T x[n]` にする。</summary>
+[AttributeUsage(AttributeTargets.Field)]
+public sealed class LubArrayAttribute : Attribute
+{
+    public int Length { get; }
+
+    public LubArrayAttribute(int length)
+    {
+        Length = length;
+    }
+}
+
+/// <summary>失敗しない関数。C では status でなく値を直接返す。</summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class LubNoFailAttribute : Attribute
+{
+}
+
+/// <summary>class の戻り値の null が「対象が無い」でなく通常の結果
+/// (raycast の hit 無し等)。C では `bool *has` で返す。</summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class LubMaybeAttribute : Attribute
+{
+}
+
+/// <summary>Lua 面では小文字の文字列で持つ enum (`"revolute"`)。C# と C は
+/// 整数の enum。</summary>
+[AttributeUsage(AttributeTargets.Enum)]
+public sealed class LubLuaStringAttribute : Attribute
+{
+}
+
+/// <summary>64 bit の bit mask。Lua 面は hex 文字列、C は uint64_t。</summary>
+[AttributeUsage(AttributeTargets.Field)]
+public sealed class LubBitsAttribute : Attribute
+{
+}
+
+/// <summary>Lua / C# 面だけにある関数 (C の対応物は無い)。</summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class LubNoCAttribute : Attribute
+{
+}
+
 // ---------------------------------------------------------------- handles
 
 /// <summary>use_texture / main_tex の不透明ハンドル。version は stored
@@ -90,7 +141,9 @@ public class PassOpts
     public TextureRef? Target;
     public List<TextureRef>? Targets;
     public TextureRef? DepthTarget;
+    [LubArray(4)]
     public double[]? ClearColor;
+    [LubArray(4)]
     public List<double[]>? ClearColors;
     public double? ClearDepth;
     public Lub.Gfx.LoadAction? Load;
@@ -127,27 +180,9 @@ public class TextureOpts
 /// Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で
 /// 宣言する resource で、poll が途切れると sweep される。
 /// </summary>
+[LubKeyed]
 public class Readback
 {
-    // Lua 側は (status, bytes, width, height, format, stride, id, dropped,
-    // error) の 9 値 multi-return
-    // id は要求ごとの int32 token (0 は無し)。resultId / dropped は対応する
-    // token、無ければ 0。bytes は frame 有効の view。
-    public void ReadTexture(TextureRef tex, int? id, out string? status,
-        out Bytes? bytes, out int width, out int height, out int format,
-        out int stride, out int resultId, out int dropped,
-        out string? error)
-    {
-        status = null;
-        bytes = null;
-        width = 0;
-        height = 0;
-        format = 0;
-        stride = 0;
-        resultId = 0;
-        dropped = 0;
-        error = null;
-    }
 }
 
 // -------------------------------------------------------------------- Lub
@@ -202,6 +237,10 @@ public static class Lub
         /// <summary>sampler の wrap (use_texture の opts)。</summary>
         public enum Wrap { Repeat = 1, Clamp = 2 }
 
+        /// <summary>read_texture の結果。</summary>
+        [LubLuaString]
+        public enum ReadbackStatus { Processing = 0, Ready = 1, Error = 2, Dropped = 3 }
+
         public static void BeginPass(PassOpts opts)
         {
         }
@@ -229,9 +268,10 @@ public static class Lub
             return null;
         }
 
-        /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。</summary>
-        public static BufferRef? UseBuffer(string key, BufferType type, int count,
-            int? version = null)
+        /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
+        /// 同じ use_buffer。</summary>
+        public static BufferRef? UseBufferEmpty(string key, BufferType type,
+            int count, int? version = null)
         {
             return null;
         }
@@ -254,9 +294,31 @@ public static class Lub
             return null;
         }
 
+        [LubNoC]
         public static Readback? Readback(string key)
         {
             return null;
+        }
+
+        /// <summary>readback queue を poll し、id (int32 の user token) 付きなら
+        /// tex の読み戻しを積む。結果は要求順に届く: status が Ready なら
+        /// bytes (frame 有効の view) と resultId、Dropped なら dropped に積め
+        /// なかった token。Lua 面は rb:read_texture(tex, id) の 9 値
+        /// multi-return。</summary>
+        public static void ReadTexture(Readback rb, TextureRef tex, int? id,
+            out ReadbackStatus status, out Bytes? bytes, out int width,
+            out int height, out PixelFormat format, out int stride,
+            out int resultId, out int dropped, out string? error)
+        {
+            status = ReadbackStatus.Processing;
+            bytes = null;
+            width = 0;
+            height = 0;
+            format = PixelFormat.Rgba8;
+            stride = 0;
+            resultId = 0;
+            dropped = 0;
+            error = null;
         }
 
         public static void Draw(int count, Dictionary<string, object> bindings,
@@ -270,6 +332,7 @@ public static class Lub
         }
 
         /// <summary>現在の drawable サイズ (px)。</summary>
+        [LubNoFail]
         public static void Size(out int w, out int h)
         {
             w = 0;
@@ -281,42 +344,50 @@ public static class Lub
     /// button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
     public static class Input
     {
+        [LubNoFail]
         public static bool KeyDown(string key)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool KeyPressed(string key)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool KeyReleased(string key)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool MouseDown(int? button = null)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool MousePressed(int? button = null)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool MouseReleased(int? button = null)
         {
             return false;
         }
 
+        [LubNoFail]
         public static void MousePos(out double x, out double y)
         {
             x = 0;
             y = 0;
         }
 
+        [LubNoFail]
         public static void MouseDelta(out double dx, out double dy)
         {
             dx = 0;
@@ -329,35 +400,35 @@ public static class Lub
     /// 本体は status = "ready" になるまで null。</summary>
     public static class Io
     {
-        public const string Pending = "pending";
-        public const string Ready = "ready";
-        public const string Error = "error";
+        /// <summary>load_* の状態。Lua 面は "pending" / "ready" / "error"。</summary>
+        [LubLuaString]
+        public enum Status { Pending = 0, Ready = 1, Error = 2 }
 
         public static void LoadText(string path, out string? text,
-            out int version, out string? status, out string? error)
+            out int version, out Status status, out string? error)
         {
             text = null;
             version = 0;
-            status = null;
+            status = Status.Pending;
             error = null;
         }
 
         /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
         public static void LoadFloats(string path, out List<double>? data,
-            out int version, out string? status, out string? error)
+            out int version, out Status status, out string? error)
         {
             data = null;
             version = 0;
-            status = null;
+            status = Status.Pending;
             error = null;
         }
 
         public static void LoadGltf(string path, out GltfMesh? mesh,
-            out int version, out string? status, out string? error)
+            out int version, out Status status, out string? error)
         {
             mesh = null;
             version = 0;
-            status = null;
+            status = Status.Pending;
             error = null;
         }
 
@@ -434,11 +505,13 @@ public static class Lub
             return new FontMetrics();
         }
 
+        [LubMaybe]
         public static GlyphBitmap? Glyph(string ttf, int codepoint, double px)
         {
             return null;
         }
 
+        [LubMaybe]
         public static GlyphMesh? GlyphMesh(string ttf, int codepoint,
             double? tolerance = null)
         {
@@ -459,46 +532,55 @@ public static class Lub
         {
         }
 
+        [LubNoFail]
         public static bool BeginWindow(string title)
         {
             return false;
         }
 
+        [LubNoFail]
         public static void EndWindow()
         {
         }
 
+        [LubNoFail]
         public static void Text(string s)
         {
         }
 
+        [LubNoFail]
         public static bool Button(string label)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool Checkbox(string label, bool v)
         {
             return false;
         }
 
+        [LubNoFail]
         public static double SliderFloat(string label, double v, double min,
             double max)
         {
             return 0;
         }
 
+        [LubNoFail]
         public static int SliderInt(string label, int v, int min, int max)
         {
             return 0;
         }
 
+        [LubNoFail]
         public static double DragFloat(string label, double v,
             double? speed = null, double? min = null, double? max = null)
         {
             return 0;
         }
 
+        [LubNoFail]
         public static void ColorEdit3(string label, double r, double g,
             double b, out double newR, out double newG, out double newB)
         {
@@ -507,28 +589,34 @@ public static class Lub
             newB = 0;
         }
 
+        [LubNoFail]
         public static void Separator()
         {
         }
 
+        [LubNoFail]
         public static void SameLine()
         {
         }
 
+        [LubNoFail]
         public static bool TreeNode(string label, bool? defaultOpen = null)
         {
             return false;
         }
 
+        [LubNoFail]
         public static void TreePop()
         {
         }
 
+        [LubNoFail]
         public static void SetNextWindow(double x, double y, double w,
             double h)
         {
         }
 
+        [LubNoFail]
         public static bool WantCaptureMouse()
         {
             return false;
@@ -538,11 +626,13 @@ public static class Lub
     /// <summary>ホストページとの汎用メッセージブリッジ (web 専用)。</summary>
     public static class Host
     {
+        [LubNoFail]
         public static bool Available()
         {
             return false;
         }
 
+        [LubNoFail]
         public static void Send(string topic, string payload)
         {
         }
@@ -588,20 +678,24 @@ public static class Lub
             rate = 0;
         }
 
+        [LubNoFail]
         public static bool Play(int snd, PlayOpts? opts = null)
         {
             return false;
         }
 
+        [LubNoFail]
         public static bool Voice(string key, int snd, VoiceOpts? opts = null)
         {
             return false;
         }
 
+        [LubNoFail]
         public static void MasterVolume(double volume)
         {
         }
 
+        [LubNoFail]
         public static AudioInfo Info()
         {
             return new AudioInfo();
@@ -616,18 +710,21 @@ public static class Lub
             return null;
         }
 
+        [LubNoFail]
         public static bool IsWeb()
         {
             return false;
         }
 
         /// <summary>文字列の FNV-1a 64bit ハッシュ (version 生成用)。</summary>
+        [LubNoFail]
         public static int Fnv1a64(string s)
         {
             return 0;
         }
 
         /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
+        [LubNoFail]
         public static double ActualFps()
         {
             return 0;
@@ -637,23 +734,28 @@ public static class Lub
     /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
     public static class Profiler
     {
+        [LubNoFail]
         public static bool Enabled()
         {
             return false;
         }
 
+        [LubNoFail]
         public static void BeginScope(string name)
         {
         }
 
+        [LubNoFail]
         public static void EndScope(string name)
         {
         }
 
+        [LubNoFail]
         public static void Reset()
         {
         }
 
+        [LubNoFail]
         public static void Report(string label)
         {
         }
@@ -663,6 +765,33 @@ public static class Lub
     public static class Phys2d
     {
         public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
+
+        /// <summary>shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。</summary>
+        [LubLuaString]
+        public enum ShapeKind
+        {
+            Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
+            ChainSegment = 6,
+        }
+
+        /// <summary>joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。</summary>
+        [LubLuaString]
+        public enum JointType
+        {
+            Distance = 1, Filter = 2, Motor = 3, Mouse = 4, Prismatic = 5,
+            Revolute = 6, Weld = 7, Wheel = 8,
+        }
+
+        /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+        [LubLuaString]
+        public enum EventKind { Begin = 0, End = 1, Hit = 2 }
+
+        /// <summary>shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。</summary>
+        [LubLuaString]
+        public enum ProxyKind
+        {
+            Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
+        }
 
         public static WorldRef? World(string key, WorldOpts? opts = null)
         {
@@ -857,6 +986,7 @@ public static class Lub
             return false;
         }
 
+        [LubMaybe]
         public static ShapeRayHit? ShapeRaycast(ShapeRef shape,
             RaycastDesc query)
         {
@@ -890,9 +1020,9 @@ public static class Lub
         {
         }
 
-        /// <summary>kind = "begin" (既定) / "end" / "hit"。</summary>
+        /// <summary>kind は Begin (既定) / End / Hit。</summary>
         public static List<ContactEvent> Contacts(WorldRef world,
-            string? kind = null)
+            EventKind? kind = null)
         {
             return new List<ContactEvent>();
         }
@@ -903,7 +1033,7 @@ public static class Lub
         }
 
         public static List<SensorEvent> Sensors(WorldRef world,
-            string? kind = null)
+            EventKind? kind = null)
         {
             return new List<SensorEvent>();
         }
@@ -911,8 +1041,8 @@ public static class Lub
         /// <summary>visitor 無しは最も近い hit (無ければ null)。visitor は
         /// Box2D の規約で続行を返す (-1 = 無視、0 = 打ち切り、fraction =
         /// ここまでに詰める、1 = 続行)。</summary>
-        public static RayHit? Raycast(WorldRef world, RaycastDesc query,
-            Func<RayHit, double>? visitor = null)
+        [LubMaybe]
+        public static RayHit? Raycast(WorldRef world, RaycastDesc query)
         {
             return null;
         }
@@ -932,6 +1062,7 @@ public static class Lub
             return new List<ShapeView>();
         }
 
+        [LubMaybe]
         public static RayHit? ShapeCast(WorldRef world, ShapeCastDesc query)
         {
             return null;
@@ -944,6 +1075,7 @@ public static class Lub
             return new List<RayHit>();
         }
 
+        [LubMaybe]
         public static MoverCast? CastMover(WorldRef world, MoverDesc query)
         {
             return null;
@@ -1029,6 +1161,26 @@ public static class Lub
     public static class Phys3d
     {
         public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
+
+        /// <summary>shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。</summary>
+        [LubLuaString]
+        public enum ShapeKind
+        {
+            Sphere = 1, Box = 2, Capsule = 3, Cylinder = 4, Cone = 5, Hull = 6,
+            Mesh = 7, HeightField = 8, Compound = 9,
+        }
+
+        /// <summary>joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。</summary>
+        [LubLuaString]
+        public enum JointType
+        {
+            Distance = 1, Filter = 2, Motor = 3, Parallel = 4, Prismatic = 5,
+            Revolute = 6, Spherical = 7, Weld = 8, Wheel = 9,
+        }
+
+        /// <summary>contact / sensor event の種類。Lua 面は "begin" 等の文字列。</summary>
+        [LubLuaString]
+        public enum EventKind { Begin = 0, End = 1, Hit = 2 }
 
         public static WorldRef3d? World(string key, WorldOpts3d? opts = null)
         {
@@ -1158,6 +1310,7 @@ public static class Lub
         }
 
         /// <summary>spherical の motor torque (vector)。</summary>
+        [LubMaybe]
         public static Vec3d? JointMotorTorqueVector(JointRef3d joint)
         {
             return null;
@@ -1179,11 +1332,12 @@ public static class Lub
         {
         }
 
-        public static List<JointView> BodyJoints(BodyRef3d body)
+        public static List<JointView3d> BodyJoints(BodyRef3d body)
         {
-            return new List<JointView>();
+            return new List<JointView3d>();
         }
 
+        [LubMaybe]
         public static MoverCast3d? CastMover(WorldRef3d world, MoverDesc3d query)
         {
             return null;
@@ -1284,10 +1438,10 @@ public static class Lub
         }
 
         /// <summary>kind = "begin" (既定) / "end" / "hit"。</summary>
-        public static List<ContactEvent> Contacts(WorldRef3d world,
-            string? kind = null)
+        public static List<ContactEvent3d> Contacts(WorldRef3d world,
+            EventKind? kind = null)
         {
-            return new List<ContactEvent>();
+            return new List<ContactEvent3d>();
         }
 
         public static List<BodyEvent3d> BodyEvents(WorldRef3d world)
@@ -1295,10 +1449,10 @@ public static class Lub
             return new List<BodyEvent3d>();
         }
 
-        public static List<SensorEvent> Sensors(WorldRef3d world,
-            string? kind = null)
+        public static List<SensorEvent3d> Sensors(WorldRef3d world,
+            EventKind? kind = null)
         {
-            return new List<SensorEvent>();
+            return new List<SensorEvent3d>();
         }
 
         public static List<JointEvent3d> JointEvents(WorldRef3d world)
@@ -1308,6 +1462,7 @@ public static class Lub
 
         /// <summary>visitor 無しは最も近い hit (Mode = "all" なら全部を
         /// RaycastAll で)。visitor は Box3D の規約で続行を返す。</summary>
+        [LubMaybe]
         public static RayHit3d? Raycast(WorldRef3d world, RaycastDesc3d query)
         {
             return null;
@@ -1333,6 +1488,7 @@ public static class Lub
             return new List<ShapeView3d>();
         }
 
+        [LubMaybe]
         public static RayHit3d? ShapeCast(WorldRef3d world,
             ShapeProxyDesc3d query)
         {
@@ -1356,6 +1512,7 @@ public static class Lub
             return new List<ContactData3d>();
         }
 
+        [LubMaybe]
         public static ShapeRayHit3d? ShapeRaycast(ShapeRef3d shape,
             RaycastDesc3d query)
         {
@@ -1410,10 +1567,10 @@ public static class Lub
     {
         public static void Load(string path, out Bytes? bytes, out int width,
             out int height, out int format, out int stride, out int version,
-            out string? status, out string? error)
+            out Lub.Io.Status status, out string? error)
         {
             bytes = null; width = 0; height = 0; format = 0; stride = 0;
-            version = 0; status = null; error = null;
+            version = 0; status = Lub.Io.Status.Pending; error = null;
         }
 
         public static bool Write(string path, Bytes bytes, int width, int height,
@@ -1479,6 +1636,7 @@ public class SdfNodeDesc
     public Lub.Mesh.SdfOp Op;
     public int A = -1;
     public int B = -1;
+    [LubArray(8)]
     public List<double> Params = new List<double>();
     public string? Name;
 }
@@ -1629,11 +1787,11 @@ public class ShapeView
     public string? Chain;
     public bool? Segment;
     public string? MaterialName;
-    public int? UserMaterialId;
-    public string? Kind;
-    public int? Category;
+    public int? MaterialId;
+    public Lub.Phys2d.ShapeKind? Kind;
+    [LubBits]
     public string? CategoryBits;
-    public List<int>? Mask;
+    [LubBits]
     public string? MaskBits;
     public int? Group;
     public bool Valid;
@@ -1645,7 +1803,7 @@ public class MaterialView
 {
     public double? Friction;
     public double? Restitution;
-    public int Material;
+    public int MaterialId;
 }
 
 public class ManifoldPoint
@@ -1728,9 +1886,9 @@ public class BodyDesc
 /// CategoryBits / MaskBits は 64 bit の hex 文字列。</summary>
 public class FilterDesc
 {
-    public int? Category;
-    public List<int>? Mask;
+    [LubBits]
     public string? CategoryBits;
+    [LubBits]
     public string? MaskBits;
     public int? Group;
 }
@@ -1744,9 +1902,8 @@ public class ShapeDesc
     public double? Friction;
     public double? Restitution;
     public string? Tag;
-    public string? Material;
+    public string? MaterialName;
     public int? MaterialId;
-    public int? UserMaterialId;
     public bool? Sensor;
     public bool? Contact;
     public bool? Hit;
@@ -1793,7 +1950,6 @@ public class PolygonDesc : ShapeDesc
 {
     public List<double> Points = new List<double>();
     public double? Radius;
-    public double? R;
     public double? Cx;
     public double? Cy;
     public double? Angle;
@@ -1804,8 +1960,7 @@ public class ChainMaterial
 {
     public double? Friction;
     public double? Restitution;
-    public int? Material;
-    public int? UserMaterialId;
+    public int? MaterialId;
 }
 
 /// <summary>chain。Points は x, y の組 (4 点以上)。Materials は 1 個か
@@ -1819,9 +1974,8 @@ public class ChainDesc
     public double? Friction;
     public double? Restitution;
     public string? Tag;
-    public string? Material;
+    public string? MaterialName;
     public int? MaterialId;
-    public int? UserMaterialId;
     public bool? SensorEvents;
     public FilterDesc? Filter;
 }
@@ -1833,8 +1987,6 @@ public class JointSpringDesc
     public bool? Enabled;
     public double? Hertz;
     public double? DampingRatio;
-    public double? TargetAngle;
-    public double? TargetTranslation;
     public double? LinearHertz;
     public double? LinearDampingRatio;
     public double? AngularHertz;
@@ -1847,8 +1999,6 @@ public class JointLimitDesc
     public bool? Enabled;
     public double? Lower;
     public double? Upper;
-    public double? Min;
-    public double? Max;
     public double? MinLength;
     public double? MaxLength;
 }
@@ -1870,7 +2020,6 @@ public class JointMotorDesc
 /// Translation、revolute は Angle、motor は LinearOffset / AngularOffset。</summary>
 public class JointTargetDesc
 {
-    public Vec2d? Target;
     public double? X;
     public double? Y;
     public double? Translation;
@@ -1884,16 +2033,13 @@ public class JointTargetDesc
 public class JointDesc
 {
     public int? Version;
-    public string? Type;
-    public BodyRef? A;
-    public BodyRef? B;
+    public Lub.Phys2d.JointType? Type;
     public BodyRef? BodyA;
     public BodyRef? BodyB;
     public Vec2d? AnchorA;
     public Vec2d? AnchorB;
     public Vec2d? LocalAnchorA;
     public Vec2d? LocalAnchorB;
-    public Vec2d? Axis;
     public Vec2d? LocalAxisA;
     public double? ReferenceAngle;
     public bool? CollideConnected;
@@ -1922,16 +2068,11 @@ public class CommandOpts
 {
     public bool? Wake;
     public Vec2d? Point;
-    public double? Px;
-    public double? Py;
-    public double? Dt;
     public double? TimeStep;
 }
 
 public class VelocityDesc
 {
-    public double? X;
-    public double? Y;
     public double? Vx;
     public double? Vy;
     public double? W;
@@ -1948,11 +2089,7 @@ public class MassDataDesc
 {
     public double? Mass;
     public double? Inertia;
-    public double? RotationalInertia;
-    public Vec2d? Center;
     public Vec2d? LocalCenter;
-    public double? Cx;
-    public double? Cy;
 }
 
 /// <summary>ShapeSetMaterial。Material は名前、MaterialId は整数の id。</summary>
@@ -1961,9 +2098,8 @@ public class MaterialDesc
     public double? Density;
     public double? Friction;
     public double? Restitution;
-    public string? Material;
+    public string? MaterialName;
     public int? MaterialId;
-    public int? UserMaterialId;
 }
 
 /// <summary>ShapeSetEvents。sensor は実行時に変えられない。</summary>
@@ -1981,10 +2117,6 @@ public class RaycastDesc
     public double? Y;
     public double? Dx;
     public double? Dy;
-    public Vec2d? Origin;
-    public Vec2d? Translation;
-    public Vec2d? Delta;
-    public Vec2d? To;
     public double? MaxFraction;
     public FilterDesc? Filter;
 }
@@ -2002,11 +2134,10 @@ public class AabbDesc
 /// segment / box / polygon。</summary>
 public class ShapeCastDesc
 {
-    public string? Type;
+    public Lub.Phys2d.ProxyKind? Kind;
     public double? X;
     public double? Y;
     public double? Angle;
-    public double? R;
     public double? Radius;
     public double? Cx;
     public double? Cy;
@@ -2019,7 +2150,6 @@ public class ShapeCastDesc
     public List<double>? Points;
     public double? Dx;
     public double? Dy;
-    public Vec2d? Translation;
     public double? MaxFraction;
     public FilterDesc? Filter;
 }
@@ -2033,8 +2163,6 @@ public class MoverDesc
     public double R;
     public double? Dx;
     public double? Dy;
-    public Vec2d? Translation;
-    public Vec2d? Delta;
     public double? MaxFraction;
     public FilterDesc? Filter;
 }
@@ -2043,13 +2171,9 @@ public class ExplosionDesc
 {
     public double? X;
     public double? Y;
-    public Vec2d? Position;
-    public Vec2d? Center;
     public double? Radius;
-    public double? R;
     public double? Falloff;
     public double? ImpulsePerLength;
-    public double? Impulse;
     public FilterDesc? Filter;
 }
 
@@ -2110,7 +2234,6 @@ public class MassData
 {
     public double Mass;
     public double Inertia;
-    public double RotationalInertia;
     public Vec2d Center = new Vec2d();
     public Vec2d LocalCenter = new Vec2d();
 }
@@ -2125,12 +2248,11 @@ public class Aabb
 
 public class FilterInfo
 {
+    [LubBits]
     public string CategoryBits = "";
+    [LubBits]
     public string MaskBits = "";
-    public int? Category;
-    public List<int> Mask = new List<int>();
     public int Group;
-    public int GroupIndex;
 }
 
 public class ShapeInfo : ShapeView
@@ -2170,8 +2292,6 @@ public class WorldInfo
     public int PendingCommands;
     public WorldCallbackInfo Callbacks = new WorldCallbackInfo();
     public Vec2d? Gravity;
-    public double? Gx;
-    public double? Gy;
     public bool? Sleep;
     public bool? Continuous;
     public bool? WarmStarting;
@@ -2199,7 +2319,7 @@ public class StepInfo
 public class JointView
 {
     public string Joint = "";
-    public string Type = "";
+    public Lub.Phys2d.JointType Type;
     public string A = "";
     public string B = "";
     public bool Valid;
@@ -2232,35 +2352,23 @@ public class ContactData
 }
 
 /// <summary>contact イベントの端点 (2D/3D 共通)。</summary>
-public class ContactEnd
-{
-    public string Body = "";
-    public string Shape = "";
-    public string? Tag;
-    public string? MaterialName;
-    public int? UserMaterialId;
-    public bool Valid;
-}
 
-/// <summary>phys2d_contacts / phys3d_contacts の要素。Nz / Z は 3D。</summary>
 public class ContactEvent
 {
-    public ContactEnd A = new ContactEnd();
-    public ContactEnd B = new ContactEnd();
+    public ShapeView A = new ShapeView();
+    public ShapeView B = new ShapeView();
     public double Nx;
     public double Ny;
-    public double? Nz;
     public int PointCount;
     public double X;
     public double Y;
-    public double? Z;
     public double? ApproachSpeed;
 }
 
 public class SensorEvent
 {
-    public ContactEnd Sensor = new ContactEnd();
-    public ContactEnd Visitor = new ContactEnd();
+    public ShapeView Sensor = new ShapeView();
+    public ShapeView Visitor = new ShapeView();
 }
 
 public class BodyEvent
@@ -2350,6 +2458,7 @@ public class Counters
     public int TreeHeight;
     public int ByteCount;
     public int TaskCount;
+    [LubArray(12)]
     public List<int> ColorCounts = new List<int>();
 }
 
@@ -2425,11 +2534,11 @@ public class ShapeView3d
     public string Shape = "";
     public string? Tag;
     public string? MaterialName;
-    public int? UserMaterialId;
-    public string? Kind;
-    public int? Category;
+    public int? MaterialId;
+    public Lub.Phys3d.ShapeKind? Kind;
+    [LubBits]
     public string? CategoryBits;
-    public List<int>? Mask;
+    [LubBits]
     public string? MaskBits;
     public int? Group;
     public bool Valid;
@@ -2492,9 +2601,9 @@ public class BodyDesc3d
 
 public class FilterDesc3d
 {
-    public int? Category;
-    public List<int>? Mask;
+    [LubBits]
     public string? CategoryBits;
+    [LubBits]
     public string? MaskBits;
     public int? Group;
 }
@@ -2507,9 +2616,8 @@ public class ShapeDesc3d
     public double? Friction;
     public double? Restitution;
     public string? Tag;
-    public string? Material;
+    public string? MaterialName;
     public int? MaterialId;
-    public int? UserMaterialId;
     public bool? Sensor;
     public bool? Contact;
     public bool? Hit;
@@ -2568,8 +2676,7 @@ public class SurfaceMaterial3d
 {
     public double? Friction;
     public double? Restitution;
-    public int? Material;
-    public int? UserMaterialId;
+    public int? MaterialId;
 }
 
 /// <summary>三角形メッシュ。Positions は x, y, z の組、Indices は 0 始まりの
@@ -2626,8 +2733,7 @@ public class CompoundChild3d
     public FrameDesc3d? Pose;
     public double? Friction;
     public double? Restitution;
-    public int? Material;
-    public int? UserMaterialId;
+    public int? MaterialId;
     public CompoundSphere3d? Sphere;
     public CompoundBox3d? Box;
     public CompoundCapsule3d? Capsule;
@@ -2647,9 +2753,9 @@ public class CommandOpts3d
 
 public class VelocityDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public double? Vx;
+    public double? Vy;
+    public double? Vz;
     public double? Wx;
     public double? Wy;
     public double? Wz;
@@ -2671,7 +2777,7 @@ public class TargetDesc3d
     public double? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
-    public double? Dt;
+    public double? TimeStep;
     public bool? Wake;
 }
 
@@ -2689,8 +2795,6 @@ public class JointSpringDesc3d
     public bool? Enabled;
     public double? Hertz;
     public double? DampingRatio;
-    public double? TargetAngle;
-    public double? TargetTranslation;
     public double? LinearHertz;
     public double? LinearDampingRatio;
     public double? AngularHertz;
@@ -2703,8 +2807,6 @@ public class JointLimitDesc3d
     public bool? Enabled;
     public double? Lower;
     public double? Upper;
-    public double? Min;
-    public double? Max;
     public double? MinLength;
     public double? MaxLength;
     public double? ConeAngle;
@@ -2719,7 +2821,6 @@ public class JointMotorDesc3d
     public double? MaxForce;
     public double? MaxTorque;
     public Vec3d? Velocity;
-    public Vec3d? MotorVelocity;
     public Vec3d? LinearVelocity;
     public Vec3d? AngularVelocity;
     public double? MaxVelocityForce;
@@ -2733,7 +2834,6 @@ public class JointTargetDesc3d
     public double? Translation;
     public double? Angle;
     public double? SteeringAngle;
-    public Quat3d? Rotation;
     public Quat3d? Quat;
     public Vec3d? Euler;
     public Vec3d? LinearVelocity;
@@ -2745,9 +2845,9 @@ public class JointTargetDesc3d
 public class JointDesc3d
 {
     public int? Version;
-    public string? Type;
-    public BodyRef3d? A;
-    public BodyRef3d? B;
+    public Lub.Phys3d.JointType? Type;
+    public BodyRef3d? BodyA;
+    public BodyRef3d? BodyB;
     public Vec3d? AnchorA;
     public Vec3d? AnchorB;
     public Vec3d? Axis;
@@ -2800,9 +2900,8 @@ public class MaterialDesc3d
     public double? Density;
     public double? Friction;
     public double? Restitution;
-    public string? Material;
+    public string? MaterialName;
     public int? MaterialId;
-    public int? UserMaterialId;
 }
 
 public class ShapeEventsDesc3d
@@ -2818,7 +2917,9 @@ public class MoverDesc3d
     public Vec3d A = new Vec3d();
     public Vec3d B = new Vec3d();
     public double R;
-    public Vec3d? Translation;
+    public double? Dx;
+    public double? Dy;
+    public double? Dz;
     public double? MaxFraction;
     public FilterDesc3d? Filter;
 }
@@ -2828,27 +2929,21 @@ public class RaycastDesc3d
     public double? X;
     public double? Y;
     public double? Z;
-    public Vec3d? Origin;
     public double? Dx;
     public double? Dy;
     public double? Dz;
-    public Vec3d? Delta;
-    public Vec3d? To;
     public double? MaxFraction;
-    public string? Mode;
     public FilterDesc3d? Filter;
 }
 
 public class AabbDesc3d
 {
-    public Vec3d? Min;
-    public Vec3d? Max;
-    public double? MinX;
-    public double? MinY;
-    public double? MinZ;
-    public double? MaxX;
-    public double? MaxY;
-    public double? MaxZ;
+    public double MinX;
+    public double MinY;
+    public double MinZ;
+    public double MaxX;
+    public double MaxY;
+    public double MaxZ;
     public FilterDesc3d? Filter;
 }
 
@@ -2881,7 +2976,9 @@ public class ShapeProxyDesc3d
     public SphereProxy3d? Sphere;
     public BoxProxy3d? Box;
     public CapsuleProxy3d? Capsule;
-    public Vec3d? Translation;
+    public double? Dx;
+    public double? Dy;
+    public double? Dz;
     public double? MaxFraction;
     public FilterDesc3d? Filter;
 }
@@ -2975,9 +3072,6 @@ public class WorldInfo3d
     public double Accumulator;
     public int PendingCommands;
     public Vec3d? Gravity;
-    public double? Gx;
-    public double? Gy;
-    public double? Gz;
     public bool? Sleep;
     public bool? Continuous;
     public bool? WarmStarting;
@@ -3003,7 +3097,17 @@ public class Frame3d
     public double Qw;
 }
 
-public class JointInfo3d : JointView
+/// <summary>3D joint の識別 (BodyJoints / JointEvents)。</summary>
+public class JointView3d
+{
+    public string Joint = "";
+    public Lub.Phys3d.JointType Type;
+    public string A = "";
+    public string B = "";
+    public bool Valid;
+}
+
+public class JointInfo3d : JointView3d
 {
     public bool CollideConnected;
     public Vec3d Force = new Vec3d();
@@ -3029,6 +3133,28 @@ public class ContactData3d
     public double? Separation;
 }
 
+/// <summary>3D の contact event (Contacts)。</summary>
+public class ContactEvent3d
+{
+    public ShapeView3d A = new ShapeView3d();
+    public ShapeView3d B = new ShapeView3d();
+    public double Nx;
+    public double Ny;
+    public double Nz;
+    public int PointCount;
+    public double X;
+    public double Y;
+    public double Z;
+    public double? ApproachSpeed;
+}
+
+/// <summary>3D の sensor event (Sensors)。</summary>
+public class SensorEvent3d
+{
+    public ShapeView3d Sensor = new ShapeView3d();
+    public ShapeView3d Visitor = new ShapeView3d();
+}
+
 public class BodyEvent3d
 {
     public string Body = "";
@@ -3043,7 +3169,7 @@ public class BodyEvent3d
     public bool FellAsleep;
 }
 
-public class JointEvent3d : JointView
+public class JointEvent3d : JointView3d
 {
 }
 
@@ -3144,7 +3270,9 @@ public class Counters3d
     public int DistanceIterations;
     public int PushBackIterations;
     public int RootIterations;
+    [LubArray(24)]
     public List<int> ColorCounts = new List<int>();
+    [LubArray(8)]
     public List<int> ManifoldCounts = new List<int>();
 }
 

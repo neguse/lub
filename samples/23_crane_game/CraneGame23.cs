@@ -423,7 +423,7 @@ public static class CraneGame23
             X = cx,
             Y = carriageY,
             Z = cz,
-            Dt = dt,
+            TimeStep = dt,
         });
 
         // ヘッド: ワイヤー 1 本吊り (実機の主流はワイヤー巻き取り式)。
@@ -450,9 +450,9 @@ public static class CraneGame23
         // 巻き上げ機は maxLength を増減するだけ (実機のスプール相当)
         Phys3d.Joint(world, "wire", new JointDesc3d
         {
-            Type = "distance",
-            A = carriage,
-            B = head,
+            Type = Phys3d.JointType.Distance,
+            BodyA = carriage,
+            BodyB = head,
             AnchorA = new Vec3d { X = homeX, Y = carriageY, Z = homeZ },
             AnchorB = new Vec3d { X = homeX, Y = headY0 + headTop, Z = homeZ },
             EnableSpring = true,
@@ -470,9 +470,9 @@ public static class CraneGame23
         // 上限を超える外力ではちゃんと傾く (着地時など)
         Phys3d.Joint(world, "harness", new JointDesc3d
         {
-            Type = "motor",
-            A = carriage,
-            B = head,
+            Type = Phys3d.JointType.Motor,
+            BodyA = carriage,
+            BodyB = head,
             MaxVelocityForce = 0.0,
             MaxVelocityTorque = 0.0,
             LinearHertz = 0.0,
@@ -514,9 +514,9 @@ public static class CraneGame23
         var claw = ClawCommand();
         Phys3d.Joint(world, "claw:r", new JointDesc3d
         {
-            Type = "revolute",
-            A = head,
-            B = fr,
+            Type = Phys3d.JointType.Revolute,
+            BodyA = head,
+            BodyB = fr,
             AnchorA = new Vec3d
             { X = homeX + shoulderX, Y = headY0 + shoulderY, Z = homeZ },
             AnchorB = new Vec3d
@@ -531,9 +531,9 @@ public static class CraneGame23
         });
         Phys3d.Joint(world, "claw:l", new JointDesc3d
         {
-            Type = "revolute",
-            A = head,
-            B = fl,
+            Type = Phys3d.JointType.Revolute,
+            BodyA = head,
+            BodyB = fl,
             AnchorA = new Vec3d
             { X = homeX - shoulderX, Y = headY0 + shoulderY, Z = homeZ },
             AnchorB = new Vec3d

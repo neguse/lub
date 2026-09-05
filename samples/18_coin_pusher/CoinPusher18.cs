@@ -251,7 +251,7 @@ public static class CoinPusher18
             X = 0.0,
             Y = 0.82,
             Z = PusherZ(frame * dt),
-            Dt = dt,
+            TimeStep = dt,
         });
     }
 
@@ -410,7 +410,7 @@ public static class CoinPusher18
         Phys3d.Step(nextWorld, dt);
 
         // Contact begin events light coins up for a few frames.
-        foreach (var contact in Phys3d.Contacts(nextWorld, "begin"))
+        foreach (var contact in Phys3d.Contacts(nextWorld, Phys3d.EventKind.Begin))
         {
             foreach (var entry in live)
             {

@@ -107,7 +107,7 @@ public static class Box2d16
 
         Phys2d.Step(world, dt);
 
-        var contacts = Phys2d.Contacts(world, "begin");
+        var contacts = Phys2d.Contacts(world, Phys2d.EventKind.Begin);
         if (contacts.Count > 0) contactFlash = 12;
         if (contactFlash > 0) contactFlash = contactFlash - 1;
     }

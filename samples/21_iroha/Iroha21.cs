@@ -270,7 +270,7 @@ public static class Iroha21
         // --- 合体: 同じ文字同士の contact begin で次の文字へ
         if (!over)
         {
-            var contacts = Phys2d.Contacts(world, "begin");
+            var contacts = Phys2d.Contacts(world, Phys2d.EventKind.Begin);
             var merged = new Dictionary<int, bool>();
             bool anyMerged = false;
             foreach (var c in contacts)

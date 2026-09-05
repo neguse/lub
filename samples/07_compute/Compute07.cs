@@ -30,7 +30,7 @@ public static class Compute07
             out var fs, out var fsv, out _, out _);
         if (cs == null || vs == null || fs == null) return;
 
-        var vbuf = Gfx.UseBuffer("compute_verts", Gfx.BufferType.Storage, vertFloats, 1);
+        var vbuf = Gfx.UseBufferEmpty("compute_verts", Gfx.BufferType.Storage, vertFloats, 1);
         var shC = Gfx.UseShaderCompute("gen", cs, csv);
         var shR = Gfx.UseShader("render", vs, fs, vsv * 31 + fsv);
         if (vbuf == null || shC == null || shR == null) return;

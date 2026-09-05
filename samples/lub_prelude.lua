@@ -16,11 +16,18 @@ Gfx = {
 	use_shader = use_shader,
 	use_shader_compute = use_shader_compute,
 	use_buffer = use_buffer,
+	use_buffer_empty = use_buffer,
 	use_texture = use_texture,
 	use_texture_bytes = use_texture,
 	draw = draw,
 	dispatch = dispatch,
 	readback = readback,
+	read_texture = read_texture,
+	-- read_texture の status (Lua 面は文字列)
+	PROCESSING = "processing",
+	READY = "ready",
+	ERROR = "error",
+	DROPPED = "dropped",
 	main_tex = main_tex,
 	size = gfx_size,
 	VERTEX = VERTEX,
@@ -370,6 +377,37 @@ Png = {
 }
 
 lub = lub or {}
+-- 文字列で持つ enum (C# の enum は Lua 面ではこの文字列に落ちる)
+Io.PENDING = "pending"
+Io.READY = "ready"
+Io.ERROR = "error"
+for _, name in ipairs({ "box", "circle", "capsule", "segment", "polygon", "chain_segment" }) do
+	Phys2d[string.upper(name)] = name
+end
+for _, name in ipairs({ "distance", "filter", "motor", "mouse", "prismatic", "revolute", "weld", "wheel" }) do
+	Phys2d[string.upper(name)] = name
+end
+for _, name in ipairs({ "begin", "end", "hit" }) do
+	Phys2d[string.upper(name)] = name
+	Phys3d[string.upper(name)] = name
+end
+for _, name in ipairs({ "sphere", "box", "capsule", "cylinder", "cone", "hull", "mesh", "height_field", "compound" }) do
+	Phys3d[string.upper(name)] = name
+end
+for _, name in ipairs({
+	"distance",
+	"filter",
+	"motor",
+	"parallel",
+	"prismatic",
+	"revolute",
+	"spherical",
+	"weld",
+	"wheel",
+}) do
+	Phys3d[string.upper(name)] = name
+end
+
 lub.config = config
 lub.quit = quit
 lub.gfx = Gfx

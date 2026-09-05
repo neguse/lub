@@ -1909,6 +1909,8 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "draw");
   lua_pushcfunction(L, l_readback_new);
   lua_setglobal(L, "readback");
+  lua_pushcfunction(L, l_readback_read_texture);
+  lua_setglobal(L, "read_texture");
   lua_pushcfunction(L, l_key_down);
   lua_setglobal(L, "key_down");
   lua_pushcfunction(L, l_mouse_delta);

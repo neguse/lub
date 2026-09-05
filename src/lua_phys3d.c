@@ -524,6 +524,7 @@ static void push_material_view(lua_State *L, const char *field, float value,
   lua_newtable(L);
   set_number(L, field, value);
   set_integer(L, "material", material);
+  set_integer(L, "material_id", material);
 }
 
 static float call_mixer(LuaCallbacks *cb, int ref, bool *logged,
@@ -807,7 +808,9 @@ static void parse_shape_desc(lua_State *L, int idx, LubPhys3dShapeDesc *d) {
   d->pre_solve = table_bool(L, idx, "pre_solve", "preSolve", d->pre_solve);
   parse_filter_field(L, idx, &d->filter);
   d->tag = table_str(L, idx, "tag");
-  d->material_name = table_str(L, idx, "material");
+  d->material_name = table_str(L, idx, "material_name");
+  if (lstr_empty(d->material_name))
+    d->material_name = table_str(L, idx, "material");
 }
 
 static int push_shape_result(lua_State *L, LubStatus st, LubStr key,
@@ -2185,6 +2188,7 @@ static void push_shape_part(lua_State *L, const LubPhys3dShapePart *p,
     }
     lua_setfield(L, -2, "material");
     set_integer(L, "user_material_id", p->material_id);
+    set_integer(L, "material_id", p->material_id);
     if (!lstr_empty(p->material_name)) {
       push_lstr(L, p->material_name);
       lua_setfield(L, -2, "material_name");
@@ -2323,6 +2327,11 @@ static int l_phys3d_shape_set_material(lua_State *L) {
     d.has_friction = table_number_optional(L, 2, "friction", NULL, &d.friction);
     d.has_restitution =
         table_number_optional(L, 2, "restitution", NULL, &d.restitution);
+    if (table_get_any(L, 2, "material_name", NULL)) {
+      d.material_name = table_str(L, 2, "material_name");
+      d.has_material_name = true;
+      lua_pop(L, 1);
+    }
     if (table_get_any(L, 2, "material", NULL)) {
       if (lua_type(L, -1) == LUA_TSTRING) {
         d.material_name = table_str(L, 2, "material");
