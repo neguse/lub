@@ -45,7 +45,7 @@ public class Text
     /// <summary>行送り (px)。読み取り専用。</summary>
     public double LineHeight;
 
-    private string ttf;
+    private string ttfPath;
     private Atlas atlas;
     private int atlasW;
     private int atlasH;
@@ -57,10 +57,11 @@ public class Text
     private int penY = 1;
     private int rowH = 0;
 
-    /// <summary>atlasSize 省略で 256。</summary>
-    public Text(string key, string ttf, double px, int? atlasSize = null)
+    /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの
+    /// 時点で ready であること)。atlasSize 省略で 256。</summary>
+    public Text(string key, string ttfPath, double px, int? atlasSize = null)
     {
-        this.ttf = ttf;
+        this.ttfPath = ttfPath;
         this.Px = px;
         int size = atlasSize ?? 256;
         atlasW = size;
@@ -68,11 +69,18 @@ public class Text
         pixels = new List<int>();
         for (int i = 0; i < atlasW * atlasH * 4; i++)
             pixels.Add(0);
-        var m = Font.Metrics(ttf);
+        var m = Font.Metrics(Ttf());
         Ascent = m.Ascent * px;
         Descent = m.Descent * px;
         LineHeight = (m.Ascent - m.Descent + m.LineGap) * px;
         atlas = Atlas.FromPixels(key, atlasW, atlasH, pixels);
+    }
+
+    // font の byte 列は frame 有効の view なので、使うたびに cache から引く
+    private Bytes Ttf()
+    {
+        Io.LoadBytes(ttfPath, out var b, out _, out _, out _);
+        return b!;
     }
 
     private static void EachCodepoint(string s, Action<int> f)
@@ -87,7 +95,7 @@ public class Text
             return cached;
         if (missing.ContainsKey(cp))
             return null;
-        var gb = Font.Glyph(ttf, cp, Px);
+        var gb = Font.Glyph(Ttf(), cp, Px);
         if (gb == null)
         {
             missing[cp] = true;
@@ -118,7 +126,7 @@ public class Text
                 int dst = ((v + row) * atlasW + u) * 4;
                 for (int i = 0; i < gb.W; i++)
                 {
-                    int a = (int)gb.Bytes![src];
+                    int a = gb.Bytes!.Get(src);
                     src++;
                     pixels[dst] = 255;
                     pixels[dst + 1] = 255;
@@ -157,7 +165,7 @@ public class Text
             if (g == null)
                 return;
             if (prev >= 0)
-                sum += Font.Kern(ttf, prev, cp) * Px;
+                sum += Font.Kern(Ttf(), prev, cp) * Px;
             sum += g.Advance;
             prev = cp;
         });
@@ -178,7 +186,7 @@ public class Text
             if (g == null)
                 return;
             if (prev >= 0)
-                pen += Font.Kern(ttf, prev, cp) * Px * sc;
+                pen += Font.Kern(Ttf(), prev, cp) * Px * sc;
             if (g.W > 0)
                 batch.Quad(atlas, new Rect(g.U, g.V, g.W, g.H),
                     pen + g.Xoff * sc, y + g.Yoff * sc, g.W * sc, g.H * sc,

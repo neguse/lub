@@ -21,3 +21,8 @@ samples/*/bin/
 samples/*/obj/
 tools/*/bin/
 tools/*/obj/
+# .NET 実行 (facade / host / runner) とテンプレートの dotnet build 生成物
+dotnet/*/bin/
+dotnet/*/obj/
+templates/game/bin/
+templates/game/obj/

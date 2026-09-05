@@ -324,7 +324,15 @@ Mesh = compat(lub.mesh, nil, {
 		return sdf_mesh(...)
 	end,
 })
-Font = compat(lub.font, "font_")
+-- glyph の bytes は view。Haxe の Text は string.byte で読むので文字列にする
+local function font_glyph(...)
+	local g = lub.font.glyph(...)
+	if g and g.bytes then
+		g.bytes = tostring(g.bytes)
+	end
+	return g
+end
+Font = compat(lub.font, "font_", { glyph = font_glyph, font_glyph = font_glyph })
 Ui = compat(lub.ui, "ui_", { ui_begin = lub.ui.begin_window, ui_end = lub.ui.end_window })
 Host = compat(lub.host, "host_")
 Audio = compat(lub.audio, "audio_", { snd = audio_snd, audio_snd = audio_snd, snd_bytes = audio_snd })

@@ -271,9 +271,7 @@ public static class Sponza14
                 version);
             if (prim.IndexCount > 0)
             {
-                // Indices は List<int>。tcs は型消去なので同じ table が渡る。
-                p.Ib = Gfx.UseBuffer("sponza_ib_" + i, Gfx.BufferType.Index,
-                    (List<double>)(object)prim.Indices, version);
+                p.Ib = Gfx.UseBufferInts("sponza_ib_" + i, Gfx.BufferType.Index, prim.Indices, version);
                 p.Count = prim.IndexCount;
             }
             else

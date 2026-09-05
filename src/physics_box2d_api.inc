@@ -743,6 +743,11 @@ LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
   P2StepInfo i;
   memset(out, 0, sizeof(*out));
   LubStatus st = p2_step(ctx, world, dt, &i);
+  if (lub_api_app(ctx)->digest.enabled) {
+    digest_tag(lub_api_app(ctx), "phys2d_step");
+    digest_i32(lub_api_app(ctx), world);
+    digest_i32(lub_api_app(ctx), st == LUB_OK ? i.steps : -1);
+  }
   if (st != LUB_OK)
     return st;
   out->steps = i.steps;

@@ -90,6 +90,24 @@ jobs:
           mkdir -p "$TMPDIR"
           scripts/run-golden.sh
 
+      # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から
+      # P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで
+      # 確かめる (golden は linux の lavapipe 分だけ)。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: .NET run (00_hello, digest vs tcs→Lua)
+        shell: bash
+        run: |
+          export LUB_DX12_WARP=1
+          export LUB_NATIVE_LIB="$(cygpath -m "$PWD/build-release/lub.dll")"
+          scripts/run-cs-sample.sh 00_hello --build
+          ./build-release/lub.exe samples/00_hello/.lub/Hello00.lua --capture "$RUNNER_TEMP/cs.png" --capture-frame 60 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
+          dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
+          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 60 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
+          cmp "$RUNNER_TEMP/cs.digest" "$RUNNER_TEMP/dn.digest"
+
       - name: Upload golden failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

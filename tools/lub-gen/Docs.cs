@@ -107,10 +107,10 @@ public static class Docs
         var lua = ns.LuaPath + ".";
         var members = new List<Member>();
         foreach (var c in ns.Consts)
-            members.Add(new Member(c.Name, "var", $"const {CsConstType(c.Value)} {c.Name} = {CsConst(c.Value)}",
+            members.Add(new Member(c.Name, "var", $"const {CsNames.ConstType(c.Value)} {c.Name} = {CsNames.Const(c.Value)}",
                 lua + c.LuaName, c.Doc));
         foreach (var f in ns.StaticFields)
-            members.Add(new Member(f.Name, "var", $"static {CsType(f.Type)} {f.Name}", lua + f.LuaName, f.Doc));
+            members.Add(new Member(f.Name, "var", $"static {CsNames.Type(f.Type)} {f.Name}", lua + f.LuaName, f.Doc));
         foreach (var f in ns.Functions)
             members.Add(new Member(f.Name, "method", "static " + Signature(f), lua + f.LuaName, f.Doc));
         return members;
@@ -125,7 +125,7 @@ public static class Docs
         var members = new List<Member>();
         foreach (var f in t.Fields)
         {
-            var sig = $"{CsType(f.Type)} {f.Name}";
+            var sig = $"{CsNames.Type(f.Type)} {f.Name}";
             if (f.ArrayLen != null) sig += $" ({f.ArrayLen} 個)";
             members.Add(new Member(f.Name, "field", sig, f.LuaName, f.Doc));
         }
@@ -138,44 +138,11 @@ public static class Docs
     {
         var ps = f.Params.Select(p =>
         {
-            var s = $"{CsType(p.Type)} {p.Name}";
+            var s = $"{CsNames.Type(p.Type)} {p.Name}";
             if (p.IsOut) s = "out " + s;
             if (p.Optional) s += " = null";
             return s;
         });
-        return $"{CsType(f.Return)} {f.Name}({string.Join(", ", ps)})";
+        return $"{CsNames.Type(f.Return)} {f.Name}({string.Join(", ", ps)})";
     }
-
-    private static string CsType(TypeRef t)
-    {
-        var s = t.Kind switch
-        {
-            LubTypeKind.Void => "void",
-            LubTypeKind.List => $"List<{CsType(t.Elem!)}>",
-            LubTypeKind.Array => $"{CsType(t.Elem!)}[]",
-            LubTypeKind.Dict => "Dictionary<string, object>",
-            LubTypeKind.Func => t.FuncReturn!.Kind == LubTypeKind.Void
-                ? (t.FuncParams!.Count == 0 ? "Action" : $"Action<{string.Join(", ", t.FuncParams!.Select(CsType))}>")
-                : $"Func<{string.Join(", ", t.FuncParams!.Select(CsType).Append(CsType(t.FuncReturn!)))}>",
-            _ => t.Name,
-        };
-        return t.Nullable ? s + "?" : s;
-    }
-
-    private static string CsConstType(object v) => v switch
-    {
-        int => "int",
-        double => "double",
-        bool => "bool",
-        string => "string",
-        _ => v.GetType().Name,
-    };
-
-    private static string CsConst(object v) => v switch
-    {
-        string s => $"\"{s}\"",
-        bool b => b ? "true" : "false",
-        double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        _ => Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) ?? "",
-    };
 }

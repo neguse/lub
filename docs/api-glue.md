@@ -9,7 +9,7 @@ runtime API 面を見るための接合部と、その上の実装ライブラ�
 
 ```mermaid
 graph TD
-    C["C runtime<br/>flat global: begin_pass, phys2d_* ..."] --> P["samples/lub_prelude.lua<br/>lub table: lub.gfx, lub.input ...(+ PascalCase alias)"]
+    C["C runtime<br/>生成 binding が lub table を作る: lub.gfx, lub.input ..."] --> P["samples/lub_prelude.lua<br/>Haxe 向け alias (PascalCase、flat global)"]
     P --> L[raw Lua]
     P --> S["C# stub<br/>cs-lib/lub_stub.cs (記述の正)"]
     P --> H["Haxe extern<br/>haxe-lib/lub/lub/*.hx (撤去まで維持)"]
@@ -17,12 +17,11 @@ graph TD
     H --> HX["実装ライブラリ Haxe 版<br/>lub.Math, lubx/*"]
 ```
 
-- contract 層 — prelude が flat global を `lub` table に組み立てる。
-  小文字の namespace(`lub.gfx.begin_pass`)が raw Lua と C# の面。
-  PascalCase の global(`Gfx.begin_pass`)と `lub.Gfx` は Haxe extern の emit
-  形用 alias で、実体は同一 table。`Phys2d` / `Phys3d` / `Ui` / `Audio` /
-  `Font` / `Host` は flat global 名(`phys2d_world`)と短名(`world`)の両方を
-  持ち、C# は短名側に落ちる。
+- contract 層 — 生成した Lua binding(`src/gen/lua_api_gen.c`)が `lub`
+  table を作る。小文字の namespace(`lub.gfx.begin_pass`)が raw Lua と C# の
+  面。PascalCase の global(`Gfx.begin_pass`)と `lub.Gfx` は Haxe extern の
+  emit 形用 alias で、prelude が組む(Haxe 撤去で消える)。.NET 実行は同じ
+  記述から生成した facade(`dotnet/Lub/Lub.g.cs`)が C API を P/Invoke する。
 - binding 層 — 言語ごとの宣言のみ。実装を持たない。C# stub は API 面の記述
   そのもので、tcs が名前を規則で Lua に写す。
 - 実装ライブラリ層 — サンプルの一部という位置付けのコード。ユーザーが
@@ -73,7 +72,7 @@ static class(`Gfx`, `Input`, ...)と nested enum を置き、ゲームは
 | `haxe-lib/lub/lubx/` | 実装ライブラリ Haxe 版(凍結) |
 | `web/playground/tcs-compiler.ts` | playground が stub を fetch し `--ref` 相当で渡す |
 | `scripts/run-cs-sample.sh` | CLI 外での check / build |
-| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`surface-test`(`tests/lua/test_api_surface.lua`: prelude が全 member を持つかの Lua テスト) |
+| `tools/lub-gen/` | stub を記述として読む generator。`check`(名前の規則・衝突)、`model`(JSON)、`header`(`include/lub/lub_api.h`)、`lua`(`src/gen/lua_api_gen.c`)、`facade`(`dotnet/Lub/Lub.g.cs`、.NET 実行の P/Invoke)、`docs`(`web/gen/lub-api-docs.json`)、`surface-test`(`tests/lua/test_api_surface.lua`)。まとめて `scripts/gen-api.sh` |
 
 ## cs-lib 実装モジュールの供給規約
 

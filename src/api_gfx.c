@@ -201,6 +201,13 @@ LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                              const float *data, int32_t data_count,
                              const int32_t *version, LubHandle *out) {
   App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "use_buffer");
+    digest_str(app, key);
+    digest_i32(app, type);
+    digest_i32(app, data_count);
+    digest_i32(app, version ? *version : 0);
+  }
   if (!data || data_count <= 0)
     return lub_api_fail(app, "use_buffer: empty data");
   if (type == SGL_BUFFER_INDEX) {
@@ -219,10 +226,47 @@ LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                          data_count * (int32_t)sizeof(float), version, out);
 }
 
+LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,
+                                  const int32_t *data, int32_t data_count,
+                                  const int32_t *version, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "use_buffer_ints");
+    digest_str(app, key);
+    digest_i32(app, type);
+    digest_i32(app, data_count);
+    digest_i32(app, version ? *version : 0);
+  }
+  if (!data || data_count <= 0)
+    return lub_api_fail(app, "use_buffer_ints: empty data");
+  if (type == SGL_BUFFER_INDEX) {
+    // index は u32。int32 の bit 列をそのまま使う
+    return use_buffer_impl(app, key, type, data,
+                           data_count * (int32_t)sizeof(uint32_t), version,
+                           out);
+  }
+  float *f = (float *)malloc(sizeof(float) * (size_t)data_count);
+  if (!f)
+    return lub_api_fail(app, "use_buffer_ints: out of memory");
+  for (int32_t i = 0; i < data_count; ++i)
+    f[i] = (float)data[i];
+  LubStatus st = use_buffer_impl(
+      app, key, type, f, data_count * (int32_t)sizeof(float), version, out);
+  free(f);
+  return st;
+}
+
 LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
                                    int32_t count, const int32_t *version,
                                    LubHandle *out) {
   App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "use_buffer_empty");
+    digest_str(app, key);
+    digest_i32(app, type);
+    digest_i32(app, count);
+    digest_i32(app, version ? *version : 0);
+  }
   if (count <= 0)
     return lub_api_fail(app, "use_buffer: count must be > 0");
   return use_buffer_impl(app, key, type, NULL, count * (int32_t)sizeof(float),
@@ -375,6 +419,16 @@ LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
                                     int32_t px_len, const int32_t *version,
                                     const LubTextureOpts *opts,
                                     LubHandle *out) {
+  if (lub_api_app(ctx)->digest.enabled) {
+    App *app = lub_api_app(ctx);
+    digest_tag(app, "use_texture");
+    digest_str(app, key);
+    digest_i32(app, w);
+    digest_i32(app, h);
+    digest_i32(app, fmt);
+    digest_i32(app, px_len);
+    digest_i32(app, version ? *version : 0);
+  }
   App *app = lub_api_app(ctx);
   TextureDesc d;
   texture_desc_init(&d, w, h, fmt, opts);
@@ -389,6 +443,15 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
                               const int32_t *version,
                               const LubTextureOpts *opts, LubHandle *out) {
   App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "use_texture");
+    digest_str(app, key);
+    digest_i32(app, w);
+    digest_i32(app, h);
+    digest_i32(app, fmt);
+    digest_i32(app, px_count);
+    digest_i32(app, version ? *version : 0);
+  }
   uint8_t *bytes = NULL;
   if (px) {
     bytes = (uint8_t *)malloc((size_t)(px_count > 0 ? px_count : 1));
@@ -506,6 +569,11 @@ static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
 LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs, LubStr fs,
                              const int32_t *version, LubHandle *out) {
   LubStr none = {NULL, 0};
+  if (lub_api_app(ctx)->digest.enabled) {
+    digest_tag(lub_api_app(ctx), "use_shader");
+    digest_str(lub_api_app(ctx), key);
+    digest_i32(lub_api_app(ctx), version ? *version : 0);
+  }
   return use_shader_impl(lub_api_app(ctx), "use_shader", key, vs, fs, none,
                          version, out);
 }
@@ -513,6 +581,11 @@ LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs, LubStr fs,
 LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key, LubStr cs,
                                      const int32_t *version, LubHandle *out) {
   LubStr none = {NULL, 0};
+  if (lub_api_app(ctx)->digest.enabled) {
+    digest_tag(lub_api_app(ctx), "use_shader_compute");
+    digest_str(lub_api_app(ctx), key);
+    digest_i32(lub_api_app(ctx), version ? *version : 0);
+  }
   if (!cs.ptr)
     return lub_api_fail(lub_api_app(ctx),
                         "use_shader_compute: source required");
@@ -595,6 +668,12 @@ static LubStatus pass_desc_from_opts(App *app, const LubPassOpts *o,
 
 LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "begin_pass");
+    digest_i32(app, opts ? opts->target : 0);
+    digest_i32(app, opts ? opts->targets_count : 0);
+    digest_i32(app, opts ? opts->depth_target : 0);
+  }
   if (!opts)
     return lub_api_fail(app, "begin_pass: opts required");
   if (pass_state_in_pass(&app->pass))
@@ -692,6 +771,8 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
 }
 
 LubStatus lub_gfx_end_pass(LubContext *ctx) {
+  if (lub_api_app(ctx)->digest.enabled)
+    digest_tag(lub_api_app(ctx), "end_pass");
   App *app = lub_api_app(ctx);
   if (!pass_state_in_pass(&app->pass))
     return lub_api_fail(app, "end_pass: no pass is active");
@@ -790,10 +871,38 @@ static bool refl_has_storage_texture(const ShaderReflection *refl,
   return false;
 }
 
+// bindings の並びは実行形で違う (Lua の table は順不同) ので、項目ごとの
+// hash の和で順序に依らない値にする。
+static void digest_bindings(App *app, const LubBinding *bindings,
+                            int32_t bindings_count) {
+  digest_i32(app, bindings_count);
+  uint64_t acc = 0;
+  for (int32_t i = 0; i < bindings_count; ++i) {
+    uint64_t h = 1469598103934665603ULL;
+    for (int32_t j = 0; j < bindings[i].name.len; ++j) {
+      h ^= (uint8_t)bindings[i].name.ptr[j];
+      h *= 1099511628211ULL;
+    }
+    h ^= (uint64_t)(uint32_t)bindings[i].handle;
+    h *= 1099511628211ULL;
+    h ^= (uint64_t)(uint32_t)bindings[i].count;
+    h *= 1099511628211ULL;
+    acc += h;
+  }
+  digest_i32(app, (int32_t)(acc & 0xffffffffu));
+  digest_i32(app, (int32_t)(acc >> 32));
+}
+
 LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                        const LubBinding *bindings, int32_t bindings_count,
                        const LubDrawOpts *d) {
   App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "draw");
+    digest_i32(app, count);
+    digest_i32(app, d ? d->shader : 0);
+    digest_bindings(app, bindings, bindings_count);
+  }
   if (!d)
     return lub_api_fail(app, "draw: opts required");
   if (!pass_state_in_pass(&app->pass))
@@ -896,6 +1005,14 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
                            const LubBinding *bindings, int32_t bindings_count,
                            const LubDispatchOpts *d) {
   App *app = lub_api_app(ctx);
+  if (app->digest.enabled) {
+    digest_tag(app, "dispatch");
+    digest_i32(app, x);
+    digest_i32(app, y);
+    digest_i32(app, z);
+    digest_i32(app, d ? d->shader : 0);
+    digest_bindings(app, bindings, bindings_count);
+  }
   if (!d)
     return lub_api_fail(app, "dispatch: opts required");
   if (pass_state_in_pass(&app->pass))

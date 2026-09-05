@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
-# physics Lua tests, visual goldens (lavapipe), and the C# sample gate.
+# physics Lua tests, visual goldens (lavapipe), and the C# sample gate
+# (tcs→Lua と .NET 実行の両方、digest 比較つき).
 # Single source of truth shared by linux CI (.github/workflows/linux.yml)
 # and the manual full gate (scripts/pre-push.sh).
 set -euo pipefail
@@ -140,6 +141,9 @@ if command -v dotnet >/dev/null 2>&1 \
   # surface test) が記述と一致していることの確認。差分が出たら
   # scripts/gen-api.sh で再生成する。
   run scripts/gen-api.sh --check
+  # .NET 実行の共有 library と facade
+  run_timed bash scripts/build-release.sh --target lub_shared --no-configure
+  run_timed dotnet build dotnet/Lub -nologo -v q
   shopt -s nullglob
   for cs_dir in samples/*/; do
     cs_dir="${cs_dir%/}"
@@ -159,10 +163,12 @@ if command -v dotnet >/dev/null 2>&1 \
       run dotnet build "$cs_proj" -nologo
     done
     cs_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.png"
-    rm -f "$cs_png"
+    cs_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_cs.digest"
+    rm -f "$cs_png" "$cs_digest"
     run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
       "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240 \
-      --fixed-dt 0.0166666666666667
+      --fixed-dt 0.0166666666666667 --digest | tee "${cs_digest}.log"
+    grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
     # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
     # golden が無いサンプルも capture 実行までは検証される (クラッシュ検出)。
     if [[ $skip_golden -eq 1 ]]; then
@@ -171,6 +177,33 @@ if command -v dotnet >/dev/null 2>&1 \
       run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
     else
       echo "==> golden skip (nondeterministic): ${cs_name}"
+    fi
+
+    # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
+    # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と
+    # 一致することと、実行形ごとの golden (<name>_dotnet_sdlgpu.png) を確かめる。
+    run_timed dotnet build dotnet/SampleRunner -p:Sample="$cs_name" -nologo -v q
+    dn_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.png"
+    dn_digest="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.digest"
+    rm -f "$dn_png" "$dn_digest"
+    run_timed env LUB_BACKEND=sdlgpu LUB_NATIVE_LIB="$PWD/build-release-linux/liblub.so" \
+      scripts/run-headless.sh "./dotnet/SampleRunner/bin/${cs_name}/lub-sample-${cs_name}" \
+      --capture "$dn_png" --capture-frame 240 --fixed-dt 0.0166666666666667 --digest \
+      | tee "${dn_digest}.log"
+    grep '^digest ' "${dn_digest}.log" > "$dn_digest" || true
+    if grep -q "lub: error" "${dn_digest}.log"; then
+      echo ".NET run of ${cs_name} logged errors" >&2
+      exit 1
+    fi
+    # 比較は最初の 30 frame。ゲーム内の float (Lua) と double (.NET) の差で
+    # game state が割れる前の範囲で、facade の詰め替えの違いはここに出る。
+    run cmp <(head -30 "$cs_digest") <(head -30 "$dn_digest")
+    if [[ $skip_golden -eq 1 ]]; then
+      echo "==> .NET golden cmp skipped (--skip-golden): ${cs_name}"
+    elif [[ -f "tests/golden/${cs_name}_dotnet_sdlgpu.png" ]]; then
+      run cmp "$dn_png" "tests/golden/${cs_name}_dotnet_sdlgpu.png"
+    else
+      echo "==> .NET golden skip (nondeterministic): ${cs_name}"
     fi
   done
   shopt -u nullglob

@@ -286,21 +286,21 @@ public static class Tonton22
     }
 
     // --- テキスト (かなサブセット TTF) --------------------------------------
-    static string? ttf = null;
+    const string FontPath = "samples/22_tonton/data/MPLUS1p-subset.ttf";
+    static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;
 
     static MeshText? EnsureText()
     {
-        Io.LoadText("samples/22_tonton/data/MPLUS1p-subset.ttf",
-            out var text, out var version, out _, out _);
-        if (text == null)
+        Io.LoadBytes(FontPath, out var bytes, out var version, out _, out _);
+        if (bytes == null)
             return null;
-        if (ttf == null || fontVersion != version)
+        if (!fontLoaded || fontVersion != version)
         {
-            ttf = text;
+            fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("tonton_mtext", text, version, w, h);
+            mtext = new MeshText("tonton_mtext", FontPath, version, w, h);
         }
         return mtext;
     }

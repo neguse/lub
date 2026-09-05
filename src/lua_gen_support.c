@@ -136,6 +136,8 @@ static int view_len(lua_State *L) {
   return 1;
 }
 
+static int view_get(lua_State *L);
+
 static int view_index(lua_State *L) {
   View *v = view_check(L, 1);
   if (lua_isinteger(L, 2)) {
@@ -163,7 +165,43 @@ static int view_index(lua_State *L) {
     lua_pushinteger(L, v->count);
     return 1;
   }
+  if (key && strcmp(key, "get") == 0) {
+    lua_pushcfunction(L, view_get);
+    return 1;
+  }
   lua_pushnil(L);
+  return 1;
+}
+
+// view:get(i): 0 始まりの要素 (stub の Bytes.Get と同じ)。
+static int view_get(lua_State *L) {
+  View *v = view_check(L, 1);
+  lua_Integer i = luaL_checkinteger(L, 2);
+  if (i < 0 || i >= v->count)
+    return luaL_error(L, "view:get: index %d out of range (0..%d)", (int)i,
+                      (int)v->count - 1);
+  switch (v->kind) {
+  case VIEW_FLOAT:
+    lua_pushnumber(L, ((const float *)v->data)[i]);
+    break;
+  case VIEW_INT:
+    lua_pushinteger(L, ((const int32_t *)v->data)[i]);
+    break;
+  default:
+    lua_pushinteger(L, ((const uint8_t *)v->data)[i]);
+    break;
+  }
+  return 1;
+}
+
+// tostring(view): 中身の byte 列を Lua の文字列に写す (Haxe 互換の prelude が
+// 使う)。
+static int view_tostring(lua_State *L) {
+  View *v = view_check(L, 1);
+  size_t elem = v->kind == VIEW_FLOAT ? sizeof(float)
+                : v->kind == VIEW_INT ? sizeof(int32_t)
+                                      : 1;
+  lua_pushlstring(L, (const char *)v->data, (size_t)v->count * elem);
   return 1;
 }
 
@@ -173,6 +211,8 @@ static void view_register(lua_State *L) {
     lua_setfield(L, -2, "__len");
     lua_pushcfunction(L, view_index);
     lua_setfield(L, -2, "__index");
+    lua_pushcfunction(L, view_tostring);
+    lua_setfield(L, -2, "__tostring");
   }
   lua_pop(L, 1);
 }

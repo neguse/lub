@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- lub の .NET 実行: C API (共有 library liblub / lub.dll) の facade と host。
+       Lub.g.cs は cs-lib/lub_stub.cs からの生成物 (scripts/gen-api.sh)。
+       ゲームはこの project を参照し、cs-lib/lub と cs-lib/lubx を compile に
+       含める (templates/game/Game.csproj)。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace></RootNamespace>
+    <AssemblyName>Lub</AssemblyName>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

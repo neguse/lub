@@ -194,6 +194,7 @@ void app_frame_end(App *app) {
   for (int i = 0; i < app->frame_garbage_count; ++i)
     free(app->frame_garbage[i]);
   app->frame_garbage_count = 0;
+  digest_frame_end(app);
   app->frame_index++;
   gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
 }

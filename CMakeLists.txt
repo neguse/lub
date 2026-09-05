@@ -192,6 +192,7 @@ set(LUB_SOURCES
   src/shader.cpp
   src/pipeline.c
   src/capture.c
+  src/digest.c
   src/stb_impl.c
   src/audio.c
   src/miniaudio_impl.c
@@ -416,6 +417,7 @@ if(NOT LUB_WASM)
     tests/c/physics_box2d_smoke.c
     src/physics_box2d.c
     src/api_core.c
+    src/digest.c
   )
   target_link_libraries(lub_physics_box2d_smoke PRIVATE
     SDL3::SDL3
@@ -431,6 +433,7 @@ if(NOT LUB_WASM)
     tests/c/physics_box3d_smoke.c
     src/physics_box3d.c
     src/api_core.c
+    src/digest.c
   )
   target_link_libraries(lub_physics_box3d_smoke PRIVATE
     SDL3::SDL3

@@ -138,20 +138,29 @@ while running:
 
 ## template-game
 
-lub リポ内の `templates/game/` がテンプレート。
+lub リポ内の `templates/game/` がテンプレート。C# のゲームが 2 つの実行形で
+動く (`--serve` は Haxe の hxml だけを受けるので、この雛形は native 向け)。
 
 ```
 templates/game/
-├── CMakeLists.txt       # add_subdirectory(../lub lub_build)
-├── Game.hx              # 立方体フラッピーバード (3D)
-├── game.hxml
+├── Game.csproj          # entry 指定 (lub) 兼 .NET 実行の project (dotnet)
+├── Game.cs              # 立方体フラッピーバード (3D)
+├── host/Program.cs      # .NET 実行の入口 (Lub.Run(typeof(Game), args))
 └── data/
     ├── cube.vs.slang    # 最小 3D シェーダー (MVP + 単色)
     ├── cube.fs.slang
     └── cube.verts.lua
 ```
 
-`cp -r lub/templates/game ../mygame` でコピーして使い始める。
+```sh
+cd templates/game
+../../build-release-linux/lub Game.csproj   # tcs→Lua (transpile + watch + hot reload)
+dotnet run                                  # .NET 実行 (共有 library を P/Invoke)
+```
+
+`cp -r lub/templates/game ../mygame` でコピーして使い始める。コピー先では
+`Game.csproj` の `LubRoot` (lub の checkout) と `LubNativeDir` (共有 library の
+場所) を合わせる。
 
 ## Web デプロイ
 

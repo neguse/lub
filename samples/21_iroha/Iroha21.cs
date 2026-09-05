@@ -53,7 +53,8 @@ public static class Iroha21
     static SpriteBatch? overlay = null;
     static Text? hud = null;
     static MeshText? mesh = null;
-    static string? ttf = null;
+    const string FontPath = "samples/21_iroha/data/MPLUS1p-subset.ttf";
+    static bool fontLoaded = false;
     static int fontVersion = 0;
 
     static List<Ball> balls = new List<Ball>();
@@ -87,17 +88,16 @@ public static class Iroha21
 
     static bool EnsureAssets()
     {
-        Io.LoadText("samples/21_iroha/data/MPLUS1p-subset.ttf",
-            out var text, out var version, out _, out _);
-        if (text == null) return false;
-        if (ttf == null || fontVersion != version)
+        Io.LoadBytes(FontPath, out var bytes, out var version, out _, out _);
+        if (bytes == null) return false;
+        if (!fontLoaded || fontVersion != version)
         {
-            ttf = text;
+            fontLoaded = true;
             fontVersion = version;
-            hud = new Text("iroha_hud", text, 20);
-            mesh = new MeshText("iroha_mesh", text, fontVersion, w, h);
+            hud = new Text("iroha_hud", FontPath, 20);
+            mesh = new MeshText("iroha_mesh", FontPath, fontVersion, w, h);
         }
-        return ttf != null && mesh != null;
+        return fontLoaded && mesh != null;
     }
 
     // --- ゲーム -------------------------------------------------------------

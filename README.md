@@ -213,7 +213,7 @@ lub を別リポのゲームから使うための Web 開発モード。native �
 ./build/lub --serve mygame/game.hxml   # http://localhost:8080 (--port N で変更)
 ```
 
-雛形は `templates/game/` を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
+雛形は `templates/game/` (C#、tcs→Lua と .NET 実行の両方で動く) を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
 
 ## ライセンス
 

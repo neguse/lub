@@ -12,7 +12,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - `docs/design.md` — 設計方針
 - `docs/api-glue.md` — 多言語 (Lua/Haxe/C#) binding の構成と実装ライブラリの供給方針
 - `haxe-wasm/README.md` — Haxe compiler の client-WASM 化
-- `docs/serve.md` — `lub --serve`(HTTP + SSE で web ホットリロード)。外部リポからゲームを書くテンプレートは `templates/game/`
+- `docs/serve.md` — `lub --serve`(HTTP + SSE で web ホットリロード)。外部リポからゲームを書くテンプレートは `templates/game/`(C# の csproj。tcs→Lua と .NET 実行)
 - `git log` — 実装経緯
 
 ## 流儀
@@ -33,8 +33,9 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - 生成 Lua は `samples/<name>/.lub/<name>.lua`(`.lub/` は gitignore)
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
 - C# (TinyC#) は同一サンプルの言語違いとして `samples/<name>/<Entry>.cs` を Haxe 版と同居させる(番号は分けない。全サンプル両対応がゴール、対応状況の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.csproj`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。csproj は basename = entry class の規約で、lub は MSBuild 評価をしない(IDE 型チェック用の実ファイル)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`(root class `Lub` の下に `Gfx` / `Input` / ... と enum。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`)。C# は通常の命名(PascalCase)で書き、tcs が Lua の snake_case(`lub.gfx.begin_pass`)に写す。API 面は `samples/lub_prelude.lua` が注入する `lub` table で Haxe と共通。stub の検査と生成物は `tools/lub-gen`(`docs/api-glue.md`)。web は playground の言語トグル(`#lang=cs`)
+- .NET 実行: 同じ C# ソースを実 .NET で動かす経路。`dotnet/Lub`(生成した facade + host、`Lub.Run(typeof(Game), args)`)が共有 library(`build-release-linux/liblub.so`、CMake の `lub_shared`)を P/Invoke する。サンプルは `dotnet run --project dotnet/SampleRunner -p:Sample=<name> -- --capture out.png`(要 `LUB_NATIVE_LIB` か出力隣の共有 library)。native gate が tcs→Lua と .NET の frame digest(`--digest`、C API 呼び出しの構造の hash)を比較する。
 - haxe-lib (lub/lubx) もサンプルの一部という位置付けで、実装モジュール(lub.Math, lubx)は C# でも実装する。多言語 binding の構成は `docs/api-glue.md`
-- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、surface test、API docs のデータ(`web/gen/lub-api-docs.json`)は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Haxe 向けの互換(flat global、別名 field)は `samples/lub_prelude.lua`
+- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、surface test、API docs のデータ(`web/gen/lub-api-docs.json`)、.NET 実行の facade(`dotnet/Lub/Lub.g.cs`)は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Haxe 向けの互換(flat global、別名 field)は `samples/lub_prelude.lua`
 
 ## web / WASM verify
 

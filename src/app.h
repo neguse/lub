@@ -11,6 +11,7 @@
 #endif
 #include "audio.h"
 #include "capture.h"
+#include "digest.h"
 #include "lua_api.h"
 #include "pass.h"
 #include "physics_box2d.h"
@@ -60,6 +61,7 @@ typedef struct App {
 
   // Offscreen capture
   CaptureState capture;
+  DigestState digest;     // --digest (host opts)
   bool capture_then_exit; // set by app_frame_end after a successful capture
   int last_w, last_h;     // last extents seen by app_frame_begin
   int cfg_w, cfg_h; // config({width,height}) で要求された窓サイズ。0 = 既定維持

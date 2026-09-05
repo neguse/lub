@@ -163,6 +163,10 @@ static void play_opts(const LubPlayOpts *o, float *volume, float *pitch,
 }
 
 bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
+  if (lub_api_app(ctx)->digest.enabled) {
+    digest_tag(lub_api_app(ctx), "audio_play");
+    digest_i32(lub_api_app(ctx), snd);
+  }
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (!st)
     return false;

@@ -131,6 +131,12 @@ public class BufferRef
 public class Bytes
 {
     public int Length;
+
+    /// <summary>index (0 始まり) の byte 値。Lua 面は view の get(i)。</summary>
+    public int Get(int index)
+    {
+        return 0;
+    }
 }
 
 // -------------------------------------------------------------------- Gfx
@@ -273,6 +279,14 @@ public static class Lub
         /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
             List<double> data, int? version = null)
+        {
+            return null;
+        }
+
+        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の
+        /// STORAGE)。version の規約は UseBuffer と同じ。</summary>
+        public static BufferRef? UseBufferInts(string key, BufferType type, List<int> data,
+            int? version = null)
         {
             return null;
         }
@@ -451,6 +465,17 @@ public static class Lub
             error = null;
         }
 
+        /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や
+        /// 音の data のような binary 用。</summary>
+        public static void LoadBytes(string path, out Bytes? bytes,
+            out int version, out Status status, out string? error)
+        {
+            bytes = null;
+            version = 0;
+            status = Status.Pending;
+            error = null;
+        }
+
         /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
         public static void LoadFloats(string path, out List<double>? data,
             out int version, out Status status, out string? error)
@@ -538,25 +563,25 @@ public static class Lub
     /// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
     public static class Font
     {
-        public static FontMetrics Metrics(string ttf)
+        public static FontMetrics Metrics(Bytes ttf)
         {
             return new FontMetrics();
         }
 
         [LubMaybe]
-        public static GlyphBitmap? Glyph(string ttf, int codepoint, double px)
+        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, double px)
         {
             return null;
         }
 
         [LubMaybe]
-        public static GlyphMesh? GlyphMesh(string ttf, int codepoint,
+        public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint,
             double? tolerance = null)
         {
             return null;
         }
 
-        public static double Kern(string ttf, int cp1, int cp2)
+        public static double Kern(Bytes ttf, int cp1, int cp2)
         {
             return 0;
         }
@@ -1770,7 +1795,8 @@ public class GlyphBitmap
     public int Xoff;
     public int Yoff;
     public double Advance;
-    public string? Bytes;
+    /// <summary>w × h の alpha (frame 有効の view)。</summary>
+    public Bytes? Bytes;
 }
 
 /// <summary>font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。</summary>

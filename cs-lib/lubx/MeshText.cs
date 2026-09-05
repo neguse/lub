@@ -66,18 +66,19 @@ public class MeshText
         + "[shader(\"fragment\")] float4 fs_main(FSIn i) : SV_Target { return i.color; }\n";
 
     private string key;
-    private string ttf;
+    private string ttfPath;
     private int version;
     private int logicalW;
     private int logicalH;
     private Dictionary<int, GlyphEntry> glyphs = new Dictionary<int, GlyphEntry>();
     private ShaderRef? shader = null;
 
-    public MeshText(string key, string ttf, int version, int logicalW,
+    /// <summary>ttfPath は Io.LoadBytes で読める font file の path。</summary>
+    public MeshText(string key, string ttfPath, int version, int logicalW,
         int logicalH)
     {
         this.key = key;
-        this.ttf = ttf;
+        this.ttfPath = ttfPath;
         this.version = version;
         this.logicalW = logicalW;
         this.logicalH = logicalH;
@@ -93,6 +94,9 @@ public class MeshText
     {
         if (glyphs.TryGetValue(cp, out var cached))
             return cached;
+        Io.LoadBytes(ttfPath, out var ttf, out _, out _, out _);
+        if (ttf == null)
+            return null;
         var gm = Font.GlyphMesh(ttf, cp);
         if (gm == null)
             return null;

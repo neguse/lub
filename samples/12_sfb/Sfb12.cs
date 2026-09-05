@@ -471,11 +471,7 @@ public static class Sfb12
                 var mesh = meshObj;
                 heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Vertex,
                     Io.InterleavePnu(mesh), meshVer);
-                // MeshData.indices は List<int> だが use_buffer は
-                // List<double> を取る。tcs は型消去なので Lua では同じ table が
-                // そのまま渡る (cast は無変換)。
-                heroIdx = Gfx.UseBuffer("sfb_heroIdx", Gfx.BufferType.Index,
-                    (List<double>)(object)mesh.Indices, meshVer);
+                heroIdx = Gfx.UseBufferInts("sfb_heroIdx", Gfx.BufferType.Index, mesh.Indices, meshVer);
                 heroCount = mesh.IndexCount;
                 heroModel = Mat4.ScaleTrans(8.5, new Vec3(0.1, 0.0, -0.7));
             }

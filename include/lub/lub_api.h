@@ -439,7 +439,7 @@ typedef struct LubGlyphBitmap {
   int32_t xoff;
   int32_t yoff;
   float advance;
-  LubStr bytes; // len 0 = 無し
+  LubView bytes; // w × h の alpha (frame 有効の view)。
 } LubGlyphBitmap;
 
 // font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。
@@ -2387,6 +2387,14 @@ LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
 
+// 整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version
+// の規約は UseBuffer と同じ。
+LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,
+                                          int32_t type, const int32_t *data,
+                                          int32_t data_count,
+                                          const int32_t *version,
+                                          LubHandle *out);
+
 // STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。
 LUB_API LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key,
                                            int32_t type, int32_t count,
@@ -2473,6 +2481,12 @@ LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
 
+// ファイルを byte 列 (frame 有効の view) として読む。font や音の data のよう
+// な binary 用。
+LUB_API LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path,
+                                    LubView *bytes, int32_t *version,
+                                    int32_t *status, LubStr *error);
+
 // `return { ... }` 形式の Lua ファイルを float 配列として読む。
 LUB_API LubStatus lub_io_load_floats(LubContext *ctx, LubStr path,
                                      const float **data, int32_t *data_count,
@@ -2525,18 +2539,21 @@ LUB_API LubStatus lub_mesh_sdf_mesh(LubContext *ctx,
 // ------------------------------------------------------------------ font
 // TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。
 
-LUB_API LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf,
-                                   LubFontMetrics *out);
+LUB_API LubStatus lub_font_metrics(LubContext *ctx, const uint8_t *ttf,
+                                   int32_t ttf_len, LubFontMetrics *out);
 
-LUB_API LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                                 float px, LubGlyphBitmap *out, bool *has);
+LUB_API LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf,
+                                 int32_t ttf_len, int32_t codepoint, float px,
+                                 LubGlyphBitmap *out, bool *has);
 
-LUB_API LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf,
-                                      int32_t codepoint, const float *tolerance,
-                                      LubGlyphMesh *out, bool *has);
+LUB_API LubStatus lub_font_glyph_mesh(LubContext *ctx, const uint8_t *ttf,
+                                      int32_t ttf_len, int32_t codepoint,
+                                      const float *tolerance, LubGlyphMesh *out,
+                                      bool *has);
 
-LUB_API LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1,
-                                int32_t cp2, float *out);
+LUB_API LubStatus lub_font_kern(LubContext *ctx, const uint8_t *ttf,
+                                int32_t ttf_len, int32_t cp1, int32_t cp2,
+                                float *out);
 
 // -------------------------------------------------------------------- ui
 // Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼

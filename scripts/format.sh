@@ -67,7 +67,7 @@ mapfile -d '' HAXE_FILES < <(git_files 'haxe-lib/**/*.hx' 'samples/**/*.hx')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/**/*.slang' 'tests/**/*.slang')
 mapfile -d '' LUA_FILES < <(git_files '*.lua')
 mapfile -d '' HXML_FILES < <(git_files '*.hxml')
-mapfile -d '' CS_FILES < <(git_files 'samples/**/*.cs' 'cs-lib/**/*.cs')
+mapfile -d '' CS_FILES < <(git_files 'samples/**/*.cs' 'cs-lib/**/*.cs' 'dotnet/**/*.cs' 'templates/**/*.cs')
 mapfile -d '' WEB_FILES < <(git_files \
     'web/*.html' \
     'web/*.json' \

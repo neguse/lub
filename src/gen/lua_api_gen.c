@@ -2239,8 +2239,10 @@ static void fill_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v) {
   lgen_set_int(L, "xoff", v->xoff);
   lgen_set_int(L, "yoff", v->yoff);
   lgen_set_num(L, "advance", v->advance);
-  if (v->bytes.len > 0)
-    lgen_set_str(L, "bytes", v->bytes);
+  if (v->bytes.ptr) {
+    lgen_push_bytes_view(L, v->bytes);
+    lua_setfield(L, -2, "bytes");
+  }
   (void)L;
   (void)v;
 }
@@ -3891,6 +3893,37 @@ static int l_gfx_use_buffer(lua_State *L) {
   return 1;
 }
 
+static int l_gfx_use_buffer_ints(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  int32_t type = (int32_t)luaL_checkinteger(L, 2);
+  int32_t data_count = 0;
+  const int32_t *data = lgen_ints_arg(L, 3, &data_count, true);
+  int32_t version_v = 0;
+  const int32_t *version = NULL;
+  if (!lua_isnoneornil(L, 4)) {
+    version_v = (int32_t)luaL_checkinteger(L, 4);
+    version = &version_v;
+  }
+  LubHandle out = 0;
+  LubStatus st = lub_gfx_use_buffer_ints(lgen_ctx(), key, type, data,
+                                         data_count, version, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref_keyed(L, "buffer", out, 0, key);
+  return 1;
+}
+
 static int l_gfx_use_buffer_empty(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -4303,6 +4336,39 @@ static int l_io_load_text(lua_State *L) {
   return 4;
 }
 
+static int l_io_load_bytes(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  LubView bytes = {NULL, 0, 0};
+  int32_t version = 0;
+  int32_t status = 0;
+  LubStr error = {NULL, 0};
+  LubStatus st =
+      lub_io_load_bytes(lgen_ctx(), path, &bytes, &version, &status, &error);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushnil(L);
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 4;
+  }
+  if (!bytes.ptr)
+    lua_pushnil(L);
+  else
+    lgen_push_bytes_view(L, bytes);
+  lua_pushinteger(L, version);
+  lua_pushstring(L, name_LubIoStatus(status) ? name_LubIoStatus(status) : "");
+  if (error.len == 0 && !error.ptr)
+    lua_pushnil(L);
+  else
+    lgen_push_str(L, error);
+  return 4;
+}
+
 static int l_io_load_floats(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -4573,10 +4639,11 @@ static int l_mesh_sdf_mesh(lua_State *L) {
 static int l_font_metrics(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
-  LubStr ttf = lgen_str_arg(L, 1);
+  int32_t ttf_len = 0;
+  const uint8_t *ttf = lgen_bytes_arg(L, 1, &ttf_len, true);
   LubFontMetrics out;
   memset(&out, 0, sizeof out);
-  LubStatus st = lub_font_metrics(lgen_ctx(), ttf, &out);
+  LubStatus st = lub_font_metrics(lgen_ctx(), ttf, ttf_len, &out);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -4592,13 +4659,15 @@ static int l_font_metrics(lua_State *L) {
 static int l_font_glyph(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
-  LubStr ttf = lgen_str_arg(L, 1);
+  int32_t ttf_len = 0;
+  const uint8_t *ttf = lgen_bytes_arg(L, 1, &ttf_len, true);
   int32_t codepoint = (int32_t)luaL_checkinteger(L, 2);
   float px = (float)luaL_checknumber(L, 3);
   LubGlyphBitmap out;
   memset(&out, 0, sizeof out);
   bool has = false;
-  LubStatus st = lub_font_glyph(lgen_ctx(), ttf, codepoint, px, &out, &has);
+  LubStatus st =
+      lub_font_glyph(lgen_ctx(), ttf, ttf_len, codepoint, px, &out, &has);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -4617,7 +4686,8 @@ static int l_font_glyph(lua_State *L) {
 static int l_font_glyph_mesh(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
-  LubStr ttf = lgen_str_arg(L, 1);
+  int32_t ttf_len = 0;
+  const uint8_t *ttf = lgen_bytes_arg(L, 1, &ttf_len, true);
   int32_t codepoint = (int32_t)luaL_checkinteger(L, 2);
   float tolerance_v = 0;
   const float *tolerance = NULL;
@@ -4628,8 +4698,8 @@ static int l_font_glyph_mesh(lua_State *L) {
   LubGlyphMesh out;
   memset(&out, 0, sizeof out);
   bool has = false;
-  LubStatus st =
-      lub_font_glyph_mesh(lgen_ctx(), ttf, codepoint, tolerance, &out, &has);
+  LubStatus st = lub_font_glyph_mesh(lgen_ctx(), ttf, ttf_len, codepoint,
+                                     tolerance, &out, &has);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -4648,11 +4718,12 @@ static int l_font_glyph_mesh(lua_State *L) {
 static int l_font_kern(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
-  LubStr ttf = lgen_str_arg(L, 1);
+  int32_t ttf_len = 0;
+  const uint8_t *ttf = lgen_bytes_arg(L, 1, &ttf_len, true);
   int32_t cp1 = (int32_t)luaL_checkinteger(L, 2);
   int32_t cp2 = (int32_t)luaL_checkinteger(L, 3);
   float out = 0;
-  LubStatus st = lub_font_kern(lgen_ctx(), ttf, cp1, cp2, &out);
+  LubStatus st = lub_font_kern(lgen_ctx(), ttf, ttf_len, cp1, cp2, &out);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -8610,6 +8681,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "use_shader_compute");
   lua_pushcfunction(L, l_gfx_use_buffer);
   lua_setfield(L, -2, "use_buffer");
+  lua_pushcfunction(L, l_gfx_use_buffer_ints);
+  lua_setfield(L, -2, "use_buffer_ints");
   lua_pushcfunction(L, l_gfx_use_buffer_empty);
   lua_setfield(L, -2, "use_buffer_empty");
   lua_pushcfunction(L, l_gfx_use_texture);
@@ -8736,6 +8809,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_newtable(L); // lub.io
   lua_pushcfunction(L, l_io_load_text);
   lua_setfield(L, -2, "load_text");
+  lua_pushcfunction(L, l_io_load_bytes);
+  lua_setfield(L, -2, "load_bytes");
   lua_pushcfunction(L, l_io_load_floats);
   lua_setfield(L, -2, "load_floats");
   lua_pushcfunction(L, l_io_load_gltf);

@@ -101,3 +101,21 @@ csproj は lub にとっては entry 指定 (basename = entry class、入力 = �
 ディレクトリの全 `*.cs`) でしかないが、dotnet 側 (Rider / VS Code) では
 本物のプロジェクトとして機能する: stub と TinySystem を参照し、TinyC#
 サブセット逸脱は Roslyn Analyzer が IDE 上で TCS 診断として出す。
+
+## .NET で実行する
+
+同じソースを実 .NET で動かせる (.NET Hot Reload や本物のデバッガを使いたい
+とき)。`dotnet/Lub` が lub の C API の facade と host で、共有 library
+(`build-release-linux/liblub.so`、CMake の `lub_shared`) を P/Invoke する。
+雛形は `templates/game/` (`dotnet run` で .NET 実行、`lub Game.csproj` で
+tcs→Lua。入口は `Lub.Run(typeof(Game), args)`)。サンプルは runner で回す:
+
+```
+dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.png
+```
+
+共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
+引数は player と同じ (`--backend` / `--fixed-dt` / `--capture` /
+`--capture-frame` / `--digest`)。`Bytes` (view) は `AsSpan()` で読め、frame を
+跨いで持つと例外になる。数値は .NET の型どおり (double) なので、tcs→Lua
+(float) とは描画結果の低位 bit が違いうる。

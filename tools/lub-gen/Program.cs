@@ -11,6 +11,7 @@ using TinyCs;
 //   lub-gen header [-o file]          C API の header (include/lub/lub_api.h)
 //   lub-gen lua [-o file]             Lua binding (src/gen/lua_api_gen.c)
 //   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
+//   lub-gen facade [-o file]          .NET 実行の facade (dotnet/Lub/Lub.g.cs)
 // 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
 
 var verb = args.Length > 0 ? args[0] : "check";
@@ -81,6 +82,11 @@ switch (verb)
     case "docs":
         {
             Emit(outPath, Docs.Generate(model, stubPath));
+            return 0;
+        }
+    case "facade":
+        {
+            Emit(outPath, Facade.Generate(model));
             return 0;
         }
     default:

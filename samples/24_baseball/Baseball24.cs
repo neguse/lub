@@ -1515,21 +1515,21 @@ public static class Baseball24
     }
 
     // --- HUD ------------------------------------------------------------------------
-    static string? ttf = null;
+    const string FontPath = "samples/24_baseball/data/MPLUS1p-subset.ttf";
+    static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;
 
     static bool EnsureText()
     {
-        Io.LoadText("samples/24_baseball/data/MPLUS1p-subset.ttf",
-            out var text, out var version, out _, out _);
-        if (text == null)
+        Io.LoadBytes(FontPath, out var bytes, out var version, out _, out _);
+        if (bytes == null)
             return false;
-        if (ttf == null || fontVersion != version)
+        if (!fontLoaded || fontVersion != version)
         {
-            ttf = text;
+            fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("bb24_text", text, version, w, h);
+            mtext = new MeshText("bb24_text", FontPath, version, w, h);
         }
         return mtext != null;
     }

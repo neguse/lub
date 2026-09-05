@@ -559,6 +559,21 @@ LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
   return LUB_OK;
 }
 
+LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
+                            int32_t *version, int32_t *status, LubStr *error) {
+  App *app = lub_api_app(ctx);
+  IoResult r;
+  memset(bytes, 0, sizeof(*bytes));
+  IoEntry *e = io_refresh(app, path, IO_TEXT, &r);
+  if (e) {
+    bytes->ptr = e->bytes;
+    bytes->len = (int32_t)e->bytes_len;
+    bytes->frame = (int32_t)app->frame_index;
+  }
+  io_tail(&r, version, status, error);
+  return LUB_OK;
+}
+
 LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
                              int32_t *data_count, int32_t *version,
                              int32_t *status, LubStr *error) {
@@ -678,16 +693,26 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
   if (!mesh || stride == 0 || mesh->vert_count < 0 || !mesh->positions)
     return 0;
   int32_t n = mesh->vert_count;
+  if (mesh->positions_count < n * 3)
+    return 0;
   int32_t need = n * stride;
   if (!out || cap < need)
     return need;
+  // 省略可能な配列は個数が足りるときだけ使う (短い / 空の配列は欠損扱い)
+  bool has_normals = mesh->normals && mesh->normals_count >= n * 3;
+  bool has_uvs = mesh->uvs && mesh->uvs_count >= n * 2;
+  bool has_tangents = mesh->tangents && mesh->tangents_count >= n * 4;
+  bool has_colors = mesh->colors && mesh->colors_count >= n * 3;
+  bool has_mr = mesh->metal_rough && mesh->metal_rough_count >= n * 2;
+  bool has_skin = mesh->joints && mesh->weights &&
+                  mesh->joints_count >= n * 2 && mesh->weights_count >= n * 2;
   float *o = out;
   for (int32_t i = 0; i < n; ++i) {
     const float *p = mesh->positions + i * 3;
     *o++ = p[0];
     *o++ = p[1];
     *o++ = p[2];
-    if (mesh->normals) {
+    if (has_normals) {
       const float *nm = mesh->normals + i * 3;
       *o++ = nm[0];
       *o++ = nm[1];
@@ -698,7 +723,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
       *o++ = 1;
     }
     if (layout == LUB_MESH_LAYOUT_PNU || layout == LUB_MESH_LAYOUT_PNUT) {
-      if (mesh->uvs) {
+      if (has_uvs) {
         *o++ = mesh->uvs[i * 2];
         *o++ = mesh->uvs[i * 2 + 1];
       } else {
@@ -708,7 +733,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
     }
     if (layout == LUB_MESH_LAYOUT_PNUT) {
       // tangent 欠損時は w=0 にして shader 側が derivative TBN に fallback する
-      if (mesh->tangents) {
+      if (has_tangents) {
         const float *t = mesh->tangents + i * 4;
         *o++ = t[0];
         *o++ = t[1];
@@ -723,7 +748,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
     }
     if (layout == LUB_MESH_LAYOUT_PNCM || layout == LUB_MESH_LAYOUT_PNCMW) {
       // colors 欠損は 0.8 グレー、metal_rough 欠損は (0, 0.8)
-      if (mesh->colors) {
+      if (has_colors) {
         const float *c = mesh->colors + i * 3;
         *o++ = c[0];
         *o++ = c[1];
@@ -733,7 +758,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
         *o++ = 0.8f;
         *o++ = 0.8f;
       }
-      if (mesh->metal_rough) {
+      if (has_mr) {
         *o++ = mesh->metal_rough[i * 2];
         *o++ = mesh->metal_rough[i * 2 + 1];
       } else {
@@ -743,7 +768,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
     }
     if (layout == LUB_MESH_LAYOUT_PNCMW) {
       // joints/weights 欠損は「bone 0 に重み 1」
-      if (mesh->joints && mesh->weights) {
+      if (has_skin) {
         *o++ = mesh->joints[i * 2];
         *o++ = mesh->weights[i * 2];
         *o++ = mesh->joints[i * 2 + 1];
@@ -766,7 +791,8 @@ static LubStatus interleave_view(LubContext *ctx, const LubMeshData *mesh,
   App *app = lub_api_app(ctx);
   *out = NULL;
   *out_count = 0;
-  if (!mesh || !mesh->positions || mesh->vert_count <= 0)
+  if (!mesh || !mesh->positions || mesh->vert_count <= 0 ||
+      mesh->positions_count < mesh->vert_count * 3)
     return lub_api_fail(app, "%s: mesh has no positions", fn);
   int32_t need = interleave(mesh, layout, NULL, 0);
   float *buf = (float *)malloc(sizeof(float) * (size_t)(need > 0 ? need : 1));

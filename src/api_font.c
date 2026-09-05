@@ -40,7 +40,9 @@ static bool font_arg(App *app, LubStr ttf, const char *fn) {
   return true;
 }
 
-LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out) {
+LubStatus lub_font_metrics(LubContext *ctx, const uint8_t *ttf_ptr,
+                           int32_t ttf_len, LubFontMetrics *out) {
+  LubStr ttf = {(const char *)ttf_ptr, ttf_len};
   App *app = lub_api_app(ctx);
   if (!font_arg(app, ttf, "font_metrics"))
     return LUB_ERROR;
@@ -50,8 +52,10 @@ LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out) {
   return LUB_OK;
 }
 
-LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                         float px, LubGlyphBitmap *out, bool *has) {
+LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf_ptr,
+                         int32_t ttf_len, int32_t codepoint, float px,
+                         LubGlyphBitmap *out, bool *has) {
+  LubStr ttf = {(const char *)ttf_ptr, ttf_len};
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   *has = false;
@@ -80,17 +84,20 @@ LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
   out->yoff = yo;
   out->advance = adv;
   if (bytes) {
-    out->bytes.ptr = (const char *)bytes;
+    out->bytes.ptr = bytes;
     out->bytes.len = w * h;
+    out->bytes.frame = (int32_t)app->frame_index;
   }
   return LUB_OK;
 }
 
 void lub_mesh_view_from_sn(const SnMesh *m, LubMeshData *out);
 
-LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
+LubStatus lub_font_glyph_mesh(LubContext *ctx, const uint8_t *ttf_ptr,
+                              int32_t ttf_len, int32_t codepoint,
                               const float *tolerance_p, LubGlyphMesh *out,
                               bool *has) {
+  LubStr ttf = {(const char *)ttf_ptr, ttf_len};
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   *has = false;
@@ -116,8 +123,9 @@ LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
   return LUB_OK;
 }
 
-LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1, int32_t cp2,
-                        float *out) {
+LubStatus lub_font_kern(LubContext *ctx, const uint8_t *ttf_ptr,
+                        int32_t ttf_len, int32_t cp1, int32_t cp2, float *out) {
+  LubStr ttf = {(const char *)ttf_ptr, ttf_len};
   App *app = lub_api_app(ctx);
   *out = 0;
   if (!font_arg(app, ttf, "font_kern"))

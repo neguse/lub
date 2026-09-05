@@ -27,6 +27,7 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
     return NULL;
   }
   if (opts) {
+    app->digest.enabled = opts->digest;
     if (opts->backend.len > 0)
       lub_str_copy(opts->backend, app->backend_name, sizeof(app->backend_name));
     app->fixed_frame_dt = opts->fixed_dt > 0.0f ? (double)opts->fixed_dt : 0.0;

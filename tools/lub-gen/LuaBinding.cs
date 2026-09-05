@@ -228,7 +228,12 @@ public static class LuaBinding
                         sb.Append($"  o->{n} = lgen_keyed(L, idx, {q}, \"{Kind(tr)}\");\n");
                         break;
                     case LubTypeKind.View:
-                        throw new InvalidOperationException($"{t.Name}.{f.Name}: Bytes field in a desc is not supported");
+                        // 文字列か view userdata。frame は今の frame (Lua 側で作った
+                        // 文字列は frame を持たない)
+                        sb.Append($"  if (lgen_has(L, idx, {q})) {{\n    lua_getfield(L, idx, {q});\n");
+                        sb.Append($"    int32_t {n}_len = 0;\n    o->{n}.ptr = lgen_bytes_arg(L, lua_gettop(L), &{n}_len, true);\n");
+                        sb.Append($"    o->{n}.len = {n}_len;\n    o->{n}.frame = lub_frame_index(lgen_ctx());\n    lua_pop(L, 1);\n  }}\n");
+                        break;
                     case LubTypeKind.Record:
                         sb.Append($"  if (lgen_has(L, idx, {q})) {{\n");
                         sb.Append($"    lua_getfield(L, idx, {q});\n");
