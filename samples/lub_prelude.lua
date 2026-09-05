@@ -328,7 +328,7 @@ Font = compat(lub.font, "font_")
 Ui = compat(lub.ui, "ui_", { ui_begin = lub.ui.begin_window, ui_end = lub.ui.end_window })
 Host = compat(lub.host, "host_")
 Audio = compat(lub.audio, "audio_", { snd = audio_snd, audio_snd = audio_snd, snd_bytes = audio_snd })
-Sys = compat(lub.sys, nil, { file_mtime = file_mtime, request_file = request_file })
+Sys = compat(lub.sys, nil, { request_file = request_file })
 Io = compat(io, "io_")
 Png = compat(png, "png_", { PENDING = io.PENDING, READY = io.READY, ERROR = io.ERROR })
 lub.Lub = lub

@@ -66,6 +66,9 @@ list(REMOVE_ITEM LUA_SRC
 )
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
+# Lua の数値は int32 + float (C API の面と C# の int / float に揃える)。
+# lua.h を include する側も同じ定義を見る必要があるので PUBLIC。
+target_compile_definitions(lua_static PUBLIC LUA_32BITS)
 
 # libtess2 (glyph outline tessellation for font_glyph_mesh)
 add_library(tess2 STATIC

@@ -88,6 +88,8 @@ API の細かいシグネチャや binding の制約は、この文書ではな�
 一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の
 header(`include/lub/lub_api.h`)と Lua binding(`src/gen/lua_api_gen.c`)は
 `tools/lub-gen` がそこから生成する(`scripts/gen-api.sh`)。
+Lua の数値は `LUA_32BITS`(整数 32 bit、実数 float)で、C API の面
+(int32_t / float)と C# の int / float に揃える。64 bit の値は面に出さない。
 
 ## Runtime Shape
 

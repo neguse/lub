@@ -28,8 +28,8 @@ static App *g_app_for_lua = NULL;
 
 // ---------------------------------------------------------------------------
 // API 面は src/gen/lua_api_gen.c (cs-lib/lub_stub.cs からの生成物) が lub
-// table に登録する。ここに残るのは Lua VM の glue と、Haxe の lub_io.lua が
-// 使う file_mtime / request_file だけ。
+// table に登録する。ここに残るのは Lua VM の glue と、Haxe 向けの
+// request_file だけ。
 
 int64_t app_file_mtime_ns(const char *path) {
   if (!path)
@@ -49,20 +49,6 @@ int64_t app_file_mtime_ns(const char *path) {
   return (int64_t)st.st_mtim.tv_sec * 1000000000LL +
          (int64_t)st.st_mtim.tv_nsec;
 #endif
-}
-
-static int l_file_mtime(lua_State *L) {
-  const char *path = luaL_checkstring(L, 1);
-  int64_t ns = app_file_mtime_ns(path);
-  if (ns == 0) {
-    // Preserve the original binding contract: nil for "not found / error"
-    // so samples/lub_io.lua's `if not mtime then return nil end` keeps
-    // working unchanged.
-    lua_pushnil(L);
-    return 1;
-  }
-  lua_pushinteger(L, (lua_Integer)ns);
-  return 1;
 }
 
 static int l_request_file(lua_State *L) {
@@ -90,8 +76,6 @@ void lua_api_register(lua_State *L) {
   lua_pushstring(L, "main_tex");
   lua_setfield(L, -2, "__lub_kind");
   lua_setglobal(L, "main_tex");
-  lua_pushcfunction(L, l_file_mtime);
-  lua_setglobal(L, "file_mtime");
   lua_pushcfunction(L, l_request_file);
   lua_setglobal(L, "request_file");
 }

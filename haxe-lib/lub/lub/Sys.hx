@@ -1,9 +1,6 @@
 package lub;
 
 extern class Sys {
-	/** ファイルの mtime (秒)。存在しなければ null。hot reload の変更検知用。 **/
-	@:native("file_mtime") public static function fileMtime(path:String):Null<Float>;
-
 	/** WASM (web) 上で動いているか。 **/
 	@:native("is_web") public static function isWeb():Bool;
 
