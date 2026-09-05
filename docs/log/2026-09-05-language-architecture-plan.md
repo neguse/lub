@@ -19,7 +19,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | host API(`include/lub/lub_host.h`、手書き)と共有 library(CMake `lub_shared`、object library を player と共有)。facade は生成物(`dotnet/Lub/Lub.g.cs`、`tools/lub-gen -- facade`)、土台と host は手書き(`dotnet/Lub/LubRuntime.cs`、`LubHost.cs`、`Lub.Run(typeof(Game), args)`)。サンプルは `dotnet/SampleRunner`。`--digest` で frame ごとの C API 呼び出しの構造を hash し、native gate が tcs→Lua と .NET で比較する。`templates/game/` は csproj(tcs→Lua と .NET の両方)。golden は `_dotnet_sdlgpu.png`。windows CI の .NET step(lub.dll、digest 比較)は手元で確かめられないので CI で見る |
 | 7 | tcs のモジュール Lua 出力、lubx の生成 Lua、raw Lua サンプル | tcs に `--module`(定義した型の table を返す)を足した。`samples/lubx.lua` は cs-lib から `scripts/gen-lubx-lua.sh` が生成する checkin 済みの Lua で、native gate が `--check` で差分を検査する。raw Lua サンプルは `samples/27_lua_triangle`(lub table だけ)と `samples/28_lua_sprites`(`require("lubx")` で SpriteBatch)。golden は `<name>_lua_sdlgpu.png` |
 | 8 | 全サンプルと ngs の C# 移植、API docs の生成元移行、Haxe 撤去 | ngs を C# に移植(5 scenario の capture が Haxe 版と byte 一致)。API docs の生成元を stub の XML doc に移した(Haxe の doc comment 95 件のうち名前で対応が取れた 54 件を stub に写した。`gen-api-docs.mjs` は stub の JSON だけを読む)。Haxe を撤去した: haxe-lib / haxe-wasm / 全 .hx と .hxml / native の haxe pipeline(`--serve` は csproj を受ける)/ prelude と PascalCase alias / playground の Haxe コンパイラと言語トグル。Lua の面は生成 binding の `lub` table だけになり、tests/lua と golden の Lua テストはその名前に書き直した。golden(`_sdlgpu.png` / `_web.png`)は C# 版で撮り直し、`_cs_sdlgpu.png` は役目を終えて削除 |
-| 9 | tcs→C(tcs の M3 待ち) | 未 |
+| 9 | tcs→C(tcs の M3 待ち) | 未。lub 側の前提(C API、`LUA_32BITS` ビルド、`include/lub/lub_api.h` の生成)は 3 と 5 で済んでいる。残りは tcs の M3 = IL→C backend(tcs の tasks.md の T218、luo 側で実装、未着手)で、lub 側にできることが無い |
 
 ## 段階 2 で決めたこと
 
