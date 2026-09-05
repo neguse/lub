@@ -658,7 +658,7 @@ public static class CraneGame23
                     }
                     if (target != null)
                     {
-                        var pose = Phys3d.Pose(world, "bear:" + targetIndex);
+                        var pose = Phys3d.PoseByKey(world, "bear:" + targetIndex);
                         autoX = MathUtil.Clamp(pose != null ? pose.X : target.X,
                             homeX, maxX);
                         autoZ = MathUtil.Clamp(pose != null ? pose.Z : target.Z,
@@ -926,7 +926,7 @@ public static class CraneGame23
         DrawBox(BoxMat(cx, 0.775, cz, 0.05, 0.025, 0.05), accent, null);
 
         // ワイヤー + ヘッド + 爪 (物理の実 pose で描く)
-        var headPose = Phys3d.Pose(world, "head");
+        var headPose = Phys3d.PoseByKey(world, "head");
         if (headPose != null)
         {
             var anchor = new Vec3(headPose.X, headPose.Y, headPose.Z)
@@ -936,17 +936,17 @@ public static class CraneGame23
                 dark, null);
             r.Draw(hm, Renderer3d.PoseMat(headPose));
         }
-        var frPose = Phys3d.Pose(world, "finger:r");
+        var frPose = Phys3d.PoseByKey(world, "finger:r");
         if (frPose != null)
             r.Draw(fm, Renderer3d.PoseMat(frPose));
-        var flPose = Phys3d.Pose(world, "finger:l");
+        var flPose = Phys3d.PoseByKey(world, "finger:l");
         if (flPose != null)
             r.Draw(fm, Renderer3d.PoseMat(flPose) * Mat4.RotateY(Math.PI));
 
         // ぬいぐるみ
         foreach (var i in renderBearIndices)
         {
-            var pose = Phys3d.Pose(world, "bear:" + i);
+            var pose = Phys3d.PoseByKey(world, "bear:" + i);
             if (pose != null)
                 r.Draw(bm[bears[i].Variant], Renderer3d.PoseMat(pose));
         }

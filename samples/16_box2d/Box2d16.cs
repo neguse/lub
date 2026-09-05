@@ -128,14 +128,14 @@ public static class Box2d16
         stepNow.Frame(dt, _ => Simulate(world));
 
         var verts = new List<double>();
-        var groundPose = Phys2d.Pose(world, "ground");
+        var groundPose = Phys2d.PoseByKey(world, "ground");
         if (groundPose == null) return;
         PushBox(verts, groundPose, 3.4, 0.18,
             new double[] { 0.28, 0.33, 0.36, 1.0 });
         int boxCount = 1;
         for (int i = 0; i < 4; i++)
         {
-            var pose = Phys2d.Pose(world, "box:" + i);
+            var pose = Phys2d.PoseByKey(world, "box:" + i);
             if (pose == null) continue;
             double hot = contactFlash > 0 ? 0.12 : 0.0;
             PushBox(verts, pose, 0.26, 0.26,

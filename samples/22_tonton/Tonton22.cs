@@ -957,7 +957,7 @@ public static class Tonton22
         var drawWorld = world;
         Pose3d? dp = null;
         if (drawWorld != null)
-            dp = Phys3d.Pose(drawWorld, "dohyo");
+            dp = Phys3d.PoseByKey(drawWorld, "dohyo");
         if (dp != null)
         {
             var dm = Renderer3d.PoseMat(dp);
@@ -986,11 +986,11 @@ public static class Tonton22
             var mesh = darumaNow[i];
             if (drawWorld == null)
                 continue;
-            var pose = Phys3d.Pose(drawWorld, "rikishi:" + i);
+            var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
             if (pose == null || !mesh.Ready())
                 continue;
             double sq = f.SquashT / 8.0 * 0.22;
-            var op = Phys3d.Pose(drawWorld, "rikishi:" + (1 - i));
+            var op = Phys3d.PoseByKey(drawWorld, "rikishi:" + (1 - i));
             double fx = op != null ? op.X - pose.X : -pose.X;
             double fz = op != null ? op.Z - pose.Z : -pose.Z;
             double yaw = Math.Atan2(fx, fz); // model の -Z を相手へ向ける
@@ -1043,7 +1043,7 @@ public static class Tonton22
                     var f = fighters[i];
                     if (drawWorld == null)
                         continue;
-                    var pose = Phys3d.Pose(drawWorld, "rikishi:" + i);
+                    var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
                     if (pose == null)
                         continue;
                     var sp = ScreenPos(vp, pose.X, pose.Y + 1.5, pose.Z);

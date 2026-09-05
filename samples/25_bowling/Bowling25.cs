@@ -404,7 +404,7 @@ public static class Bowling25
 
     static void UpdateRoll(WorldRef3d world)
     {
-        var pose = Phys3d.Pose(world, "ball");
+        var pose = Phys3d.PoseByKey(world, "ball");
         var done = false;
         if (pose == null)
         {
@@ -439,7 +439,7 @@ public static class Bowling25
         for (int i = 0; i < pins.Count; i++)
         {
             if (!pins[i].Standing) continue;
-            var pose = Phys3d.Pose(world, "pin:" + i);
+            var pose = Phys3d.PoseByKey(world, "pin:" + i);
             if (pose == null) continue;
             var sp = Math.Sqrt(pose.Vx * pose.Vx + pose.Vy * pose.Vy
                 + pose.Vz * pose.Vz);
@@ -459,7 +459,7 @@ public static class Bowling25
         {
             var p = pins[i];
             if (!p.Standing) continue;
-            var pose = Phys3d.Pose(world, "pin:" + i);
+            var pose = Phys3d.PoseByKey(world, "pin:" + i);
             var upY = pose != null
                 ? 1.0 - 2.0 * (pose.Qx * pose.Qx + pose.Qz * pose.Qz)
                 : -1.0;
@@ -763,7 +763,7 @@ public static class Bowling25
         var dfov = 38.0;
         if (state == stRoll)
         {
-            var pose = Phys3d.Pose(world, "ball");
+            var pose = Phys3d.PoseByKey(world, "ball");
             if (pose != null && pose.Z < 14.0)
             {
                 de = new Vec3(pose.X * 0.45, 1.0, pose.Z - 3.2);
@@ -1044,14 +1044,14 @@ public static class Bowling25
         for (int i = 0; i < pins.Count; i++)
         {
             if (!pins[i].Standing) continue;
-            var pose = Phys3d.Pose(world, "pin:" + i);
+            var pose = Phys3d.PoseByKey(world, "pin:" + i);
             if (pose != null)
                 renNow.Draw(pinM, Renderer3d.PoseMat(pose));
         }
         // ボール (投球前は構え位置のプレビュー)
         if (ballLive)
         {
-            var pose = Phys3d.Pose(world, "ball");
+            var pose = Phys3d.PoseByKey(world, "ball");
             if (pose != null)
                 renNow.Draw(ballM, Renderer3d.PoseMat(pose));
         }

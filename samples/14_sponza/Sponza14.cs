@@ -2,10 +2,9 @@
 // 実行: lub samples/14_sponza/Sponza14.csproj (transpile + watch + hot reload)
 // glTF シーンのマルチパスレンダラ: shadow → G-buffer (MRT) → SSAO →
 // lighting → fog → bloom → outline → DoF → motion blur → present。
-// load_gltf の mesh / material は動的な Lua table なので、tcs の型消去 cast
-// ((Dictionary<string, object>) / (List<object>) 等) で素の table アクセスに
-// 写す。Haxe 版の 4 本の並列配列は、List に null を置けない (Lua sequence
-// table) ため per-primitive の class SponzaPrim 1 本にまとめる。
+// load_gltf の mesh / material は typed な GltfMesh / GltfMaterial で受ける。
+// Haxe 版の 4 本の並列配列は、List に null を置けない (Lua sequence table)
+// ため per-primitive の class SponzaPrim 1 本にまとめる。
 using System;
 using System.Collections.Generic;
 using static Lub;
@@ -16,7 +15,7 @@ public class SponzaPrim
     public BufferRef? Vb;
     public BufferRef? Ib;
     public int Count;
-    public Dictionary<string, object>? Mat;
+    public GltfMaterial? Mat;
 }
 
 public static class Sponza14
@@ -67,8 +66,8 @@ public static class Sponza14
         -1,  1, 0, 0,
     };
 
-    static List<double> whitePx = new List<double> { 255, 255, 255, 255 };
-    static List<double> normalPx = new List<double> { 128, 128, 255, 255 };
+    static List<int> whitePx = new List<int> { 255, 255, 255, 255 };
+    static List<int> normalPx = new List<int> { 128, 128, 255, 255 };
 
     public static void OnInit()
     {
@@ -256,35 +255,32 @@ public static class Sponza14
         Present(pShader, quad, outTex);
     }
 
-    static void EnsureMesh(object mesh, int version)
+    static void EnsureMesh(GltfMesh mesh, int version)
     {
         if (meshVersion == version) return;
         meshVersion = version;
         prims = new List<SponzaPrim>();
 
-        var meshTbl = (Dictionary<string, object>)mesh;
-        var primList = (List<object>)meshTbl["primitives"];
-        var n = (int)meshTbl["primitive_count"];
+        var n = mesh.PrimitiveCount;
         for (var i = 0; i < n; i++)
         {
-            // Haxe 版の prims[i + 1] (Lua 1-based)。List<object> の
-            // 0-based index は tcs が +1 して emit する。
-            var prim = (Dictionary<string, object>)primList[i];
+            var prim = mesh.Primitives[i];
             var verts = Io.InterleavePnut(prim);
             var p = new SponzaPrim();
             p.Vb = Gfx.UseBuffer("sponza_vb_" + i, Gfx.BufferType.Vertex, verts,
                 version);
-            if (prim["indices"] != null && (int)prim["index_count"] > 0)
+            if (prim.IndexCount > 0)
             {
+                // Indices は List<int>。tcs は型消去なので同じ table が渡る。
                 p.Ib = Gfx.UseBuffer("sponza_ib_" + i, Gfx.BufferType.Index,
-                    (List<double>)prim["indices"], version);
-                p.Count = (int)prim["index_count"];
+                    (List<double>)(object)prim.Indices, version);
+                p.Count = prim.IndexCount;
             }
             else
             {
-                p.Count = (int)prim["vert_count"];
+                p.Count = prim.VertCount;
             }
-            p.Mat = (Dictionary<string, object>?)prim["material"];
+            p.Mat = prim.Material;
             prims.Add(p);
         }
     }
@@ -306,7 +302,7 @@ public static class Sponza14
             var vb = p.Vb;
             if (vb == null) continue;
             var mat = p.Mat;
-            var baseTex = MaterialTexture(MatPath(mat, "base_color_path"),
+            var baseTex = MaterialTexture(MatBase(mat),
                 "bc", whitePx);
             if (baseTex == null) continue;
             var bindings = new Dictionary<string, object>
@@ -360,11 +356,11 @@ public static class Sponza14
             var vb = p.Vb;
             if (vb == null) continue;
             var mat = p.Mat;
-            var baseTex = MaterialTexture(MatPath(mat, "base_color_path"),
+            var baseTex = MaterialTexture(MatBase(mat),
                 "bc", whitePx);
             var mrTex = MaterialTexture(
-                MatPath(mat, "metallic_roughness_path"), "mr", whitePx);
-            var nTex = MaterialTexture(MatPath(mat, "normal_path"), "n",
+                MatMr(mat), "mr", whitePx);
+            var nTex = MaterialTexture(MatNormal(mat), "n",
                 normalPx);
             if (baseTex == null || mrTex == null || nTex == null) continue;
             var bindings = new Dictionary<string, object>
@@ -574,17 +570,17 @@ public static class Sponza14
         Gfx.EndPass();
     }
 
-    static TextureRef? MaterialTexture(object? path, string suffix,
-        List<double> fallback)
+    static TextureRef? MaterialTexture(string? path, string suffix,
+        List<int> fallback)
     {
         if (path != null)
         {
-            var p = (string)path;
+            var p = path;
             Png.Load(p, out var bytes, out var pw, out var ph, out var pfmt,
                 out _, out var pver, out _, out _);
             if (bytes != null)
             {
-                return Gfx.UseTexture("sponza_tex_" + suffix + "_" + p, pw,
+                return Gfx.UseTextureBytes("sponza_tex_" + suffix + "_" + p, pw,
                     ph, (Gfx.PixelFormat)pfmt, bytes, pver,
                     new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
             }
@@ -593,58 +589,48 @@ public static class Sponza14
             fallback, 1, new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
     }
 
-    /// <summary>material table のキーを読む。mat 無し / キー無しは null。</summary>
-    static object? MatPath(Dictionary<string, object>? mat, string key)
+    // material 無しは null (default texture)。
+    static string? MatBase(GltfMaterial? mat)
     {
         if (mat == null) return null;
-        return mat[key];
+        return mat.BaseColorPath;
     }
 
-    static List<double> BaseColorFactor(Dictionary<string, object>? mat)
+    static string? MatMr(GltfMaterial? mat)
     {
-        var bc = MatPath(mat, "base_color_factor");
-        // Haxe 版の tableFloat(bc, 1..4) は Lua 1-based の直書き添字。
-        // List<object> は 0-based (tcs が +1) なので 0..3 になる。
+        if (mat == null) return null;
+        return mat.MetallicRoughnessPath;
+    }
+
+    static string? MatNormal(GltfMaterial? mat)
+    {
+        if (mat == null) return null;
+        return mat.NormalPath;
+    }
+
+    static List<double> BaseColorFactor(GltfMaterial? mat)
+    {
+        if (mat == null || mat.BaseColorFactor.Count < 4)
+            return new List<double> { 1.0, 1.0, 1.0, 1.0 };
+        var bc = mat.BaseColorFactor;
+        return new List<double> { bc[0], bc[1], bc[2], bc[3] };
+    }
+
+    static List<double> MaterialParams(GltfMaterial? mat)
+    {
+        if (mat == null)
+            return new List<double> { 1.0, 1.0, 0.5, 0.0 };
         return new List<double>
         {
-            TableFloat(bc, 0, 1.0),
-            TableFloat(bc, 1, 1.0),
-            TableFloat(bc, 2, 1.0),
-            TableFloat(bc, 3, 1.0),
+            mat.MetallicFactor, mat.RoughnessFactor, mat.AlphaCutoff,
+            mat.AlphaMode,
         };
     }
 
-    static List<double> MaterialParams(Dictionary<string, object>? mat)
+    static List<double> NormalParams(GltfMaterial? mat)
     {
-        var metallic = MatNumber(mat, "metallic_factor", 1.0);
-        var roughness = MatNumber(mat, "roughness_factor", 1.0);
-        var cutoff = MatNumber(mat, "alpha_cutoff", 0.5);
-        var alphaMode = MatNumber(mat, "alpha_mode", 0.0);
-        return new List<double> { metallic, roughness, cutoff, alphaMode };
-    }
-
-    static List<double> NormalParams(Dictionary<string, object>? mat)
-    {
-        var scale = MatNumber(mat, "normal_scale", 1.0);
+        var scale = mat == null ? 1.0 : mat.NormalScale;
         return new List<double> { scale, 0.0, 0.0, 0.0 };
-    }
-
-    static double MatNumber(Dictionary<string, object>? mat, string key,
-        double def)
-    {
-        if (mat == null) return def;
-        var v = mat[key];
-        if (v == null) return def;
-        return (double)v;
-    }
-
-    static double TableFloat(object? t, int i, double def)
-    {
-        if (t == null) return def;
-        var list = (List<object>)t;
-        var v = list[i];
-        if (v == null) return def;
-        return (double)v;
     }
 
     static TextureRef? Target(string key, int w, int h, Gfx.PixelFormat fmt,

@@ -1865,6 +1865,10 @@ static void push_shape_part(lua_State *L, const LubPhys2dShapePart *p,
     lua_setfield(L, -2, "material");
     lua_pushinteger(L, p->material_id);
     lua_setfield(L, -2, "user_material_id");
+    if (!lstr_empty(p->material_name)) {
+      push_lstr(L, p->material_name);
+      lua_setfield(L, -2, "material_name");
+    }
   }
   if (p->has_filter)
     push_filter_fields(L, &p->filter);

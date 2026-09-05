@@ -62,12 +62,13 @@ public static class Gltf08
         Io.LoadGltf("samples/08_gltf/data/08_box.glb",
             out var mesh, out var meshVer, out _, out _);
         if (mesh == null) return;
-        var meshTbl = (Dictionary<string, object>)mesh;
 
         var verts = Io.InterleavePn(mesh);
         var vb = Gfx.UseBuffer("gltf_vb", Gfx.BufferType.Vertex, verts, meshVer);
+        // MeshData.Indices は List<int> だが use_buffer は List<double> を取る。
+        // tcs は型消去なので Lua では同じ table がそのまま渡る。
         var ib = Gfx.UseBuffer("gltf_ib", Gfx.BufferType.Index,
-            (List<double>)meshTbl["indices"], meshVer);
+            (List<double>)(object)mesh.Indices, meshVer);
         if (shader == null || vb == null || ib == null) return;
 
         var mvp = MakeMvp(tAccum);
@@ -77,7 +78,7 @@ public static class Gltf08
             Target = Gfx.MainTex,
             ClearColor = new double[] { 0.1, 0.1, 0.15, 1.0 },
         });
-        Gfx.Draw((int)meshTbl["index_count"],
+        Gfx.Draw(mesh.IndexCount,
             new Dictionary<string, object>
             {
                 ["verts"] = vb,

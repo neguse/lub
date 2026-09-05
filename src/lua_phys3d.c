@@ -162,6 +162,7 @@ static int l_phys3d_joint_speed(lua_State *L);
 static int l_phys3d_joint_length(lua_State *L);
 static int l_phys3d_joint_motor_force(lua_State *L);
 static int l_phys3d_joint_motor_torque(lua_State *L);
+static int l_phys3d_joint_motor_torque_vector(lua_State *L);
 static int l_phys3d_joint_set_motor(lua_State *L);
 static int l_phys3d_joint_set_limit(lua_State *L);
 static int l_phys3d_joint_set_spring(lua_State *L);
@@ -304,6 +305,7 @@ static void push_joint_ref(lua_State *L, LubStr world_key, LubStr joint_key,
   set_cfunc_field(L, "length", l_phys3d_joint_length);
   set_cfunc_field(L, "motor_force", l_phys3d_joint_motor_force);
   set_cfunc_field(L, "motor_torque", l_phys3d_joint_motor_torque);
+  set_cfunc_field(L, "motor_torque_vector", l_phys3d_joint_motor_torque_vector);
   set_cfunc_field(L, "set_motor", l_phys3d_joint_set_motor);
   set_cfunc_field(L, "set_limit", l_phys3d_joint_set_limit);
   set_cfunc_field(L, "set_spring", l_phys3d_joint_set_spring);
@@ -1721,15 +1723,29 @@ static int l_phys3d_joint_motor_torque(lua_State *L) {
   if (lub_phys3d_joint_motor_torque(g_ctx, j, &v, &has, &vec, &has_vec) !=
       LUB_OK)
     return push_not_found(L);
-  if (has_vec) {
-    push_vec3(L, vec);
-    return 1;
-  }
   if (!has) {
     lua_pushnil(L);
     return 1;
   }
   lua_pushnumber(L, v);
+  return 1;
+}
+
+// spherical の motor torque (vector)。他の joint は nil。
+static int l_phys3d_joint_motor_torque_vector(lua_State *L) {
+  LubHandle j = ref_joint(L, 1);
+  float v = 0;
+  bool has = false;
+  LubVec3 vec;
+  bool has_vec = false;
+  if (lub_phys3d_joint_motor_torque(g_ctx, j, &v, &has, &vec, &has_vec) !=
+      LUB_OK)
+    return push_not_found(L);
+  if (!has_vec) {
+    lua_pushnil(L);
+    return 1;
+  }
+  push_vec3(L, vec);
   return 1;
 }
 
@@ -2169,6 +2185,10 @@ static void push_shape_part(lua_State *L, const LubPhys3dShapePart *p,
     }
     lua_setfield(L, -2, "material");
     set_integer(L, "user_material_id", p->material_id);
+    if (!lstr_empty(p->material_name)) {
+      push_lstr(L, p->material_name);
+      lua_setfield(L, -2, "material_name");
+    }
   }
   if (p->has_filter)
     push_filter_bits(L, p->filter.category_bits, p->filter.mask_bits,
@@ -3015,6 +3035,7 @@ void phys3d_lua_register(lua_State *L, LubContext *ctx) {
       {"phys3d_joint_length", l_phys3d_joint_length},
       {"phys3d_joint_motor_force", l_phys3d_joint_motor_force},
       {"phys3d_joint_motor_torque", l_phys3d_joint_motor_torque},
+      {"phys3d_joint_motor_torque_vector", l_phys3d_joint_motor_torque_vector},
       {"phys3d_joint_set_motor", l_phys3d_joint_set_motor},
       {"phys3d_joint_set_limit", l_phys3d_joint_set_limit},
       {"phys3d_joint_set_spring", l_phys3d_joint_set_spring},

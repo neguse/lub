@@ -468,7 +468,7 @@ public static class Sfb12
                 out var meshObj, out var meshVer, out _, out _);
             if (meshObj != null)
             {
-                var mesh = (MeshData)meshObj;
+                var mesh = meshObj;
                 heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Vertex,
                     Io.InterleavePnu(mesh), meshVer);
                 // MeshData.indices は List<int> だが use_buffer は

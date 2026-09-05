@@ -1,12 +1,7 @@
 // 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Bones.hx と対)。
-// Haxe 版の mesh.bones (Dynamic、1-based Lua table) は型消去 cast で受ける:
-// (List<object>) の要素を 0-based で引き (tcs の List indexer が +1 変換
-// するので Haxe 版の 1-based 走査と同じ実効添字)、各要素は
-// (Dictionary<string, object>) でキーアクセス、数値は (double) cast。
-// tcs の cast は透過 emit なので実行時はそのまま table アクセスになる。
-// Haxe 版の nil 番兵ループは List.Count (Lua の #) 上限に置き換える。
-// 関数型引数 resolve は Func<> delegate、lua.Table.fromArray は List<double>
-// 直返しで不要。
+// mesh.Bones は typed な List<SdfBone> (Haxe 版の 1-based Lua table と同じ
+// 実効添字で tcs が引く)。Haxe 版の nil 番兵ループは List.Count 上限に
+// 置き換え、resolve は Func<> delegate で受ける。
 
 using System;
 using System.Collections.Generic;
@@ -45,9 +40,8 @@ public static class Bones
             int i = 0;
             while (count < Max && i < n)
             {
-                var b = (Dictionary<string, object>)bones[i];
-                var m = resolve((string)b["name"], (double)b["x"],
-                    (double)b["y"], (double)b["z"]);
+                var b = bones[i];
+                var m = resolve(b.Name, b.X, b.Y, b.Z);
                 if (m == null)
                     m = new Mat4();
                 foreach (var v in m.M)

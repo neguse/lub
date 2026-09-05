@@ -27,7 +27,7 @@ public static class Texture03
 
         var s = Gfx.UseShader("tex_shader", vs, fs, vsv * 31 + fsv);
         var b = Gfx.UseBuffer("tex_verts", Gfx.BufferType.Vertex, verts, vv);
-        var t = Gfx.UseTexture("tex_chk", w, h, (Gfx.PixelFormat)fmt, px, pv);
+        var t = Gfx.UseTextureBytes("tex_chk", w, h, (Gfx.PixelFormat)fmt, px, pv);
         if (s == null || b == null || t == null) return;
 
         Gfx.BeginPass(new PassOpts

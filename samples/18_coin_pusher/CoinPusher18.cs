@@ -543,7 +543,7 @@ public static class CoinPusher18
         var drawWorld = world;
         if (drawWorld != null)
         {
-            var pusherPose = Phys3d.Pose(drawWorld, "pusher");
+            var pusherPose = Phys3d.PoseByKey(drawWorld, "pusher");
             if (pusherPose != null)
             {
                 rn.Draw(cube, ModelMat(pusherPose, 1.45, 0.22, 0.55),
@@ -553,7 +553,7 @@ public static class CoinPusher18
             foreach (var index in renderCoinIndices)
             {
                 var coin = coins[index];
-                var pose = Phys3d.Pose(drawWorld, "coin:" + index);
+                var pose = Phys3d.PoseByKey(drawWorld, "coin:" + index);
                 if (pose == null) continue;
                 double hot = coin.Flash > 0 ? 0.25 : 0.0;
                 bool bonus = coin.Value > 1;

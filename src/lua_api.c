@@ -1793,63 +1793,136 @@ static void push_vec3_table(lua_State *L, const float v[3]) {
 }
 
 // sdf_mesh(tree, n [, skin_k]) -> mesh
-static int l_sdf_mesh(lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  int32_t n = (int32_t)luaL_checkinteger(L, 2);
-  float skin_k = (float)luaL_optnumber(L, 3, 0.1);
-  lua_getfield(L, 1, "version");
-  if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) != 1)
-    return luaL_error(L, "sdf_mesh: tree.version must be 1");
-  lua_pop(L, 1);
-  lua_getfield(L, 1, "root");
-  if (!lua_istable(L, -1))
-    return luaL_error(L, "sdf_mesh: tree.root must be a node table");
-  // NOTE: flatten raises Lua errors on invalid trees; b.nodes leaks on that
-  // path. Acceptable: authoring-time errors are rare and small.
-  SdfFlatten b = {0};
-  int root = sdf_flatten(L, &b, -1);
-  lua_pop(L, 1);
-  LubSdfMesh m;
-  LubStatus st = lub_mesh_sdf(api_ctx(), b.nodes, b.len, root, n, skin_k, &m);
-  free(b.nodes);
-  if (st != LUB_OK)
-    return api_raise(L);
+static void push_sdf_mesh_result(lua_State *L, const LubSdfMesh *m) {
   lua_createtable(L, 0, 12);
-  push_mesh_fields(L, &m.mesh);
-  push_float_table(L, m.mesh.colors, m.mesh.vert_count * 3);
+  push_mesh_fields(L, &m->mesh);
+  push_float_table(L, m->mesh.colors, m->mesh.vert_count * 3);
   lua_setfield(L, -2, "colors");
-  push_float_table(L, m.mesh.metal_rough, m.mesh.vert_count * 2);
+  push_float_table(L, m->mesh.metal_rough, m->mesh.vert_count * 2);
   lua_setfield(L, -2, "metal_rough");
-  if (m.bone_count > 0) {
-    lua_createtable(L, m.mesh.vert_count * 2, 0);
-    for (int32_t i = 0; i < m.mesh.vert_count * 2; ++i) {
-      lua_pushinteger(L, (lua_Integer)m.mesh.joints[i]);
+  if (m->bone_count > 0) {
+    lua_createtable(L, m->mesh.vert_count * 2, 0);
+    for (int32_t i = 0; i < m->mesh.vert_count * 2; ++i) {
+      lua_pushinteger(L, (lua_Integer)m->mesh.joints[i]);
       lua_rawseti(L, -2, i + 1);
     }
     lua_setfield(L, -2, "joints");
-    push_float_table(L, m.mesh.weights, m.mesh.vert_count * 2);
+    push_float_table(L, m->mesh.weights, m->mesh.vert_count * 2);
     lua_setfield(L, -2, "weights");
-    lua_createtable(L, m.bone_count, 0);
-    for (int32_t i = 0; i < m.bone_count; ++i) {
+    lua_createtable(L, m->bone_count, 0);
+    for (int32_t i = 0; i < m->bone_count; ++i) {
       lua_createtable(L, 0, 4);
-      lua_pushlstring(L, m.bones[i].name.ptr, (size_t)m.bones[i].name.len);
+      lua_pushlstring(L, m->bones[i].name.ptr, (size_t)m->bones[i].name.len);
       lua_setfield(L, -2, "name");
-      lua_pushnumber(L, m.bones[i].pivot[0]);
+      lua_pushnumber(L, m->bones[i].pivot[0]);
       lua_setfield(L, -2, "x");
-      lua_pushnumber(L, m.bones[i].pivot[1]);
+      lua_pushnumber(L, m->bones[i].pivot[1]);
       lua_setfield(L, -2, "y");
-      lua_pushnumber(L, m.bones[i].pivot[2]);
+      lua_pushnumber(L, m->bones[i].pivot[2]);
       lua_setfield(L, -2, "z");
       lua_rawseti(L, -2, i + 1);
     }
     lua_setfield(L, -2, "bones");
   }
-  push_vec3_table(L, m.bounds_min);
+  push_vec3_table(L, m->bounds_min);
   lua_setfield(L, -2, "bounds_min");
-  push_vec3_table(L, m.bounds_max);
+  push_vec3_table(L, m->bounds_max);
   lua_setfield(L, -2, "bounds_max");
-  lua_pushnumber(L, m.cell);
+  lua_pushnumber(L, m->cell);
   lua_setfield(L, -2, "cell");
+}
+
+// 平らな node 配列 (C# の List<SdfNodeDesc>: { op, a, b, params, name })。
+// 子の index は 0 始まり。文字列は配列が生きている間 (呼び出しの間) 有効。
+static LubSdfNode *sdf_read_flat(lua_State *L, int t, int *out_count) {
+  int count = (int)lua_rawlen(L, t);
+  if (count <= 0 || count > 4096)
+    luaL_error(L, "sdf_mesh: nodes must hold 1..4096 nodes");
+  LubSdfNode *nodes = (LubSdfNode *)calloc((size_t)count, sizeof(LubSdfNode));
+  if (!nodes)
+    luaL_error(L, "sdf_mesh: out of memory");
+  for (int i = 0; i < count; ++i) {
+    lua_rawgeti(L, t, i + 1);
+    if (!lua_istable(L, -1)) {
+      free(nodes);
+      luaL_error(L, "sdf_mesh: node %d must be a table", i);
+    }
+    int nt = lua_gettop(L);
+    LubSdfNode *node = &nodes[i];
+    lua_getfield(L, nt, "op");
+    node->op = (int32_t)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_getfield(L, nt, "a");
+    node->a = lua_isinteger(L, -1) ? (int32_t)lua_tointeger(L, -1) : -1;
+    lua_pop(L, 1);
+    lua_getfield(L, nt, "b");
+    node->b = lua_isinteger(L, -1) ? (int32_t)lua_tointeger(L, -1) : -1;
+    lua_pop(L, 1);
+    lua_getfield(L, nt, "params");
+    if (lua_istable(L, -1)) {
+      int pn = (int)lua_rawlen(L, -1);
+      if (pn > 8)
+        pn = 8;
+      for (int k = 0; k < pn; ++k) {
+        lua_rawgeti(L, -1, k + 1);
+        node->params[k] = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+      }
+    }
+    lua_pop(L, 1);
+    lua_getfield(L, nt, "name");
+    if (lua_type(L, -1) == LUA_TSTRING) {
+      size_t nl = 0;
+      node->name.ptr = lua_tolstring(L, -1, &nl);
+      node->name.len = (int32_t)nl;
+    }
+    lua_pop(L, 1);
+    lua_pop(L, 1);
+  }
+  *out_count = count;
+  return nodes;
+}
+
+static int l_sdf_mesh(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_rawgeti(L, 1, 1);
+  bool flat = lua_istable(L, -1);
+  lua_pop(L, 1);
+  LubSdfNode *nodes = NULL;
+  int count = 0;
+  int32_t root = 0;
+  int32_t n = 0;
+  float skin_k = 0.1f;
+  if (flat) {
+    nodes = sdf_read_flat(L, 1, &count);
+    root = (int32_t)luaL_checkinteger(L, 2);
+    n = (int32_t)luaL_checkinteger(L, 3);
+    skin_k = (float)luaL_optnumber(L, 4, 0.1);
+  } else {
+    // 入れ子の木 { version = 1, root = node } (Haxe の Sdf 向け)
+    n = (int32_t)luaL_checkinteger(L, 2);
+    skin_k = (float)luaL_optnumber(L, 3, 0.1);
+    lua_getfield(L, 1, "version");
+    if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) != 1)
+      return luaL_error(L, "sdf_mesh: tree.version must be 1");
+    lua_pop(L, 1);
+    lua_getfield(L, 1, "root");
+    if (!lua_istable(L, -1))
+      return luaL_error(L, "sdf_mesh: tree.root must be a node table");
+    // NOTE: flatten raises Lua errors on invalid trees; b.nodes leaks on that
+    // path. Acceptable: authoring-time errors are rare and small.
+    SdfFlatten b = {0};
+    root = sdf_flatten(L, &b, -1);
+    lua_pop(L, 1);
+    nodes = b.nodes;
+    count = b.len;
+  }
+  LubSdfMesh m;
+  LubStatus st = lub_mesh_sdf(api_ctx(), nodes, count, root, n, skin_k, &m);
+  free(nodes);
+  if (st != LUB_OK)
+    return api_raise(L);
+  push_sdf_mesh_result(L, &m);
   return 1;
 }
 

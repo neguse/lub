@@ -112,8 +112,8 @@ public class Atlas
         }
         W = pw;
         H = ph;
-        Texture = Gfx.UseTexture(Key, pw, ph, (Gfx.PixelFormat)pfmt, bytes, pv,
-            TextureOpts());
+        Texture = Gfx.UseTextureBytes(Key, pw, ph, (Gfx.PixelFormat)pfmt, bytes,
+            pv, TextureOpts());
         return true;
     }
 }

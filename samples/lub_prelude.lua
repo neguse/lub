@@ -17,6 +17,7 @@ Gfx = {
 	use_shader_compute = use_shader_compute,
 	use_buffer = use_buffer,
 	use_texture = use_texture,
+	use_texture_bytes = use_texture,
 	draw = draw,
 	dispatch = dispatch,
 	readback = readback,
@@ -132,6 +133,10 @@ do
 		P["phys2d_" .. n] = _G["phys2d_" .. n]
 		P[n] = _G["phys2d_" .. n]
 	end
+	-- C# の stub で分けた名前 (Lua 面は同じ関数)
+	P.pose_by_key = P.pose
+	P.raycast_all = P.raycast
+	P.shape_cast_all = P.shape_cast
 	P.STATIC = STATIC
 	P.KINEMATIC = KINEMATIC
 	P.DYNAMIC = DYNAMIC
@@ -164,6 +169,7 @@ do
 		"joint_length",
 		"joint_motor_force",
 		"joint_motor_torque",
+		"joint_motor_torque_vector",
 		"joint_set_motor",
 		"joint_set_limit",
 		"joint_set_spring",
@@ -211,6 +217,9 @@ do
 		P["phys3d_" .. n] = _G["phys3d_" .. n]
 		P[n] = _G["phys3d_" .. n]
 	end
+	P.pose_by_key = P.pose
+	P.raycast_all = P.raycast
+	P.shape_cast_all = P.shape_cast
 	P.STATIC = STATIC
 	P.KINEMATIC = KINEMATIC
 	P.DYNAMIC = DYNAMIC
@@ -236,7 +245,26 @@ Profiler = {
 	report = profile_report,
 }
 
-Mesh = { surface_nets = surface_nets, sdf_mesh = sdf_mesh }
+Mesh = {
+	surface_nets = surface_nets,
+	sdf_mesh = sdf_mesh,
+	-- SdfNodeDesc.op (lub_api.h の LubSdfOp)
+	SPHERE = 1,
+	BOX = 2,
+	CAPSULE = 3,
+	TORUS = 4,
+	MOVE = 5,
+	ROTATE = 6,
+	SCALE = 7,
+	MIRROR_X = 8,
+	PAINT = 9,
+	BONE = 10,
+	UNION = 11,
+	SMIN = 12,
+	SUBTRACT = 13,
+	SSUB = 14,
+	INTERSECT = 15,
+}
 
 Font = {
 	font_metrics = font_metrics,
@@ -302,6 +330,7 @@ Audio = {
 	audio_master_volume = audio_master_volume,
 	audio_info = audio_info,
 	pcm = audio_pcm,
+	pcm_bytes = audio_pcm,
 	decode = audio_decode,
 	play = audio_play,
 	voice = audio_voice,

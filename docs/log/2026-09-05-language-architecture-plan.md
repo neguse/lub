@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。Lua binding は詰め替えだけに。残り: `object` 引数の型付け、所有権の規則 (Bytes / Readback / view)、wire の整理 |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。3f: stub の `object` 引数と戻り値を typed な class にする(残る `object` は draw / dispatch の bindings の `Dictionary<string, object>` だけ)。Lua binding は詰め替えだけに。残り: 所有権の規則 (Bytes / Readback / view)、wire の整理 |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -117,3 +117,26 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   丸めが変わり、18_coin_pusher の golden がずれた)。
 - 問い合わせの対象が無い/live でないときは `LUB_NOT_FOUND`(last_error は
   書かない)。Lua 面は従来どおり `nil, "not found"`。
+- stub の `object` は typed な class に置き換えた。desc は Lua 面の table の
+  形をそのまま class にし(field 名は snake_case に写像される)、戻り値も
+  class にする(`WorldInfo`, `ShapeView`, `RayHit`, `JointInfo` 等、3D は
+  `...3d`)。Lua 面が値の型で分岐していたところは C# の名前を分ける:
+  `Pose(body)` と `PoseByKey(world, key)`、`UseTexture(List<int>)` と
+  `UseTextureBytes(Bytes)`、`Pcm(List<double>)` と `PcmBytes(Bytes)`、
+  `Raycast` / `ShapeCast`(最寄り)と `RaycastAll` / `ShapeCastAll`(visitor
+  付き)、3D の `JointMotorTorque`(数値)と `JointMotorTorqueVector`
+  (spherical)。Lua 面は prelude の alias(`pose_by_key = pose` 等)で同じ
+  関数を指す。
+- 2 値の material(名前か整数)は Lua 面に `material_name` を足して
+  `MaterialName` / `UserMaterialId` に分け、`material` は Haxe 向けに残す。
+- visitor は C API の規約で型を付ける: raycast / shape_cast は
+  `Func<RayHit, double>`(-1 = 無視、0 = 打ち切り、fraction、1 = 続行)、
+  overlap / collide_mover は `Func<ShapeView, bool>`。
+- sdf の木は C# 側で typed な `SdfNode`(op / params / 子参照)にし、
+  `Sdf.Mesh` が C API の平らな配列(`SdfNodeDesc`: op, a, b, params, name)に
+  落として `Lub.Mesh.SdfMesh(nodes, root, n, skinK)` を呼ぶ。Lua binding は
+  平らな配列と入れ子の table(Haxe の Sdf)の両方を受ける。op の enum は
+  `Lub.Mesh.SdfOp`(Lua は `lub.mesh.SPHERE` 等の定数)。
+- texture の px は byte 値の `List<int>`(Lua binding は 0..255 に丸める)。
+- glTF は `GltfMesh` / `GltfPrimitive` / `GltfMaterial`(MeshData 派生)で
+  受け、`Interleave*` は `MeshData` を取る。
