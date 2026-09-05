@@ -1,9 +1,14 @@
+// phys3d の C smoke: App を最小限に組み、Lua 面 (src/lua_phys3d.c) 経由で
+// C API を回す。
+#include "api_internal.h"
+#include "lua_phys.h"
 #include "physics_box3d.h"
 
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
 #include <stdio.h>
+#include <string.h>
 
 static const char *SCRIPT =
     "local function check(cond, msg)\n"
@@ -526,30 +531,30 @@ static const char *SCRIPT =
     "return false, 300, y\n";
 
 int main(void) {
-  Phys3dState phys;
-  phys3d_state_init(&phys);
+  static App app;
+  memset(&app, 0, sizeof(app));
+  phys3d_state_init(&app.phys3);
 
   lua_State *L = luaL_newstate();
   if (!L) {
     fprintf(stderr, "luaL_newstate failed\n");
-    phys3d_state_shutdown(&phys);
+    phys3d_state_shutdown(&app.phys3);
     return 1;
   }
 
   luaL_openlibs(L);
-  phys3d_lua_set_state(&phys);
-  phys3d_lua_register(L);
+  phys3d_lua_register(L, lub_api_ctx(&app));
 
   if (luaL_loadstring(L, SCRIPT) != LUA_OK) {
     fprintf(stderr, "load failed: %s\n", lua_tostring(L, -1));
-    phys3d_state_shutdown(&phys);
+    phys3d_state_shutdown(&app.phys3);
     lua_close(L);
     return 1;
   }
 
   if (lua_pcall(L, 0, 3, 0) != LUA_OK) {
     fprintf(stderr, "script failed: %s\n", lua_tostring(L, -1));
-    phys3d_state_shutdown(&phys);
+    phys3d_state_shutdown(&app.phys3);
     lua_close(L);
     return 1;
   }
@@ -559,7 +564,7 @@ int main(void) {
   double y = lua_tonumber(L, -1);
   lua_pop(L, 3);
 
-  phys3d_state_shutdown(&phys);
+  phys3d_state_shutdown(&app.phys3);
   lua_close(L);
 
   if (!ok) {

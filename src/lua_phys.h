@@ -5,3 +5,4 @@
 #include <lua.h>
 
 void phys2d_lua_register(lua_State *L, LubContext *ctx);
+void phys3d_lua_register(lua_State *L, LubContext *ctx);

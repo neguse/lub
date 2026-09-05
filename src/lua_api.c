@@ -2001,7 +2001,7 @@ void lua_api_register(lua_State *L) {
     lua_setglobal(L, ui_fns[i].name);
   }
   phys2d_lua_register(L, lub_api_ctx(g_app_for_lua));
-  phys3d_lua_register(L);
+  phys3d_lua_register(L, lub_api_ctx(g_app_for_lua));
 }
 
 static void push_event_table(lua_State *L, const SDL_Event *e) {
@@ -2056,7 +2056,6 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   }
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
-  phys3d_lua_set_state(&app->phys3);
   lua_api_register(ctx->L);
   return true;
 }

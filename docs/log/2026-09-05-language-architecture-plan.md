@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。Lua binding は詰め替えだけに。残り: phys2d / phys3d |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。Lua binding は詰め替えだけに。残り: `object` 引数の型付け、所有権の規則 (Bytes / Readback / view)、wire の整理 |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -100,3 +100,20 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   木も同じ配列に落とす(段階 3 の残りで `object` 引数を typed にするとき)。
 - ui は `lub_ui_*` を C API そのものにする(`src/ui.cpp` の `extern "C"`)。
   Lua binding の `Ui` table は C API を 1 対 1 で包む。
+- 物理の handle は world / body / shape / chain / joint の entry ごとに
+  `PhysHandles`(`src/phys_common.h`)で振り、entry が prune されると stale。
+  Lua 面の sentinel は従来どおり key(world / body / key)を持ち、呼び出しの
+  たびに key で引き直す(handle は情報)。手で作った sentinel table も動く。
+- callback(filter / pre_solve / friction / restitution)は C の関数ポインタ
+  + user で world desc に渡す。Lua 面は world ごとの closure を registry に
+  持ち、trampoline が pcall して error は 1 回 log して既定値で続ける
+  (旧実装と同じ)。再入の拒否は core の `callback_depth` で、callback 内の
+  変更 API は LUB_ERROR(Lua 面は "physics mutation is not allowed" の
+  error)。query の visitor も同じ trampoline の形。
+- 物理の filter bit は Box2D / Box3D の 64 bit mask をそのまま uint64 で持つ
+  (面は int32 / float の原則の例外。Lua 面は hex 文字列、C# は ulong)。
+- 3d の四元数は正規化済みが C API の契約。Lua 面の正規化と euler の合成は
+  Box3D の inline 関数を使い、core で正規化し直さない(二重に正規化すると
+  丸めが変わり、18_coin_pusher の golden がずれた)。
+- 問い合わせの対象が無い/live でないときは `LUB_NOT_FOUND`(last_error は
+  書かない)。Lua 面は従来どおり `nil, "not found"`。

@@ -2,6 +2,7 @@
 // table に写す。参照は sentinel table { __lub_kind, key, world, body, handle }
 // で、解決は key で行う (handle は情報)。
 #include "lua_phys.h"
+#include "lua_phys_table.h"
 
 #include <SDL3/SDL.h>
 #include <float.h>
@@ -12,120 +13,13 @@
 
 static LubContext *g_ctx = NULL;
 
+static int raise_last(lua_State *L) {
+  return luaL_error(L, "%s", lub_last_error(g_ctx));
+}
+
 // ------------------------------------------------------------ table read
 
-static int abs_index(lua_State *L, int idx) {
-  if (idx < 0)
-    return lua_gettop(L) + idx + 1;
-  return idx;
-}
-
-static bool table_get_any(lua_State *L, int idx, const char *a, const char *b) {
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, a);
-  if (!lua_isnil(L, -1))
-    return true;
-  lua_pop(L, 1);
-  if (b) {
-    lua_getfield(L, idx, b);
-    if (!lua_isnil(L, -1))
-      return true;
-    lua_pop(L, 1);
-  }
-  return false;
-}
-
-static float table_number(lua_State *L, int idx, const char *a, const char *b,
-                          float def) {
-  float out = def;
-  if (table_get_any(L, idx, a, b)) {
-    if (lua_isnumber(L, -1))
-      out = (float)lua_tonumber(L, -1);
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static bool table_number_optional(lua_State *L, int idx, const char *a,
-                                  const char *b, float *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isnumber(L, -1);
-  if (ok)
-    *out = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return ok;
-}
-
-static int table_int(lua_State *L, int idx, const char *a, const char *b,
-                     int def) {
-  int out = def;
-  if (table_get_any(L, idx, a, b)) {
-    if (lua_isinteger(L, -1) || lua_isnumber(L, -1))
-      out = (int)lua_tointeger(L, -1);
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static bool table_int_optional(lua_State *L, int idx, const char *a,
-                               const char *b, int *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isinteger(L, -1) || lua_isnumber(L, -1);
-  if (ok)
-    *out = (int)lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  return ok;
-}
-
-static bool table_bool(lua_State *L, int idx, const char *a, const char *b,
-                       bool def) {
-  bool out = def;
-  if (table_get_any(L, idx, a, b)) {
-    if (lua_isboolean(L, -1))
-      out = lua_toboolean(L, -1) != 0;
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static bool table_bool_optional(lua_State *L, int idx, const char *a,
-                                const char *b, bool *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isboolean(L, -1);
-  if (ok)
-    *out = lua_toboolean(L, -1) != 0;
-  lua_pop(L, 1);
-  return ok;
-}
-
-static bool table_has_int(lua_State *L, int idx, const char *a, const char *b,
-                          int32_t *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isinteger(L, -1) || lua_isnumber(L, -1);
-  if (ok)
-    *out = (int32_t)lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  return ok;
-}
-
 // 文字列 field への view。table が stack にある間だけ有効。
-static LubStr table_str(lua_State *L, int idx, const char *a) {
-  LubStr out = {NULL, 0};
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, a);
-  if (lua_type(L, -1) == LUA_TSTRING) {
-    size_t n = 0;
-    out.ptr = lua_tolstring(L, -1, &n);
-    out.len = (int32_t)n;
-  }
-  lua_pop(L, 1);
-  return out;
-}
-
 static LubVec2 read_vec2_at(lua_State *L, int t, LubVec2 out, bool *has_x,
                             bool *has_y) {
   lua_getfield(L, t, "x");
@@ -183,74 +77,7 @@ static LubVec2 value_vec2_optional(lua_State *L, int idx, LubVec2 def,
   return read_vec2_at(L, abs_index(L, idx), def, has_x, has_y);
 }
 
-static bool opt_wake(lua_State *L, int idx, bool def) {
-  if (!lua_istable(L, idx))
-    return def;
-  return table_bool(L, idx, "wake", NULL, def);
-}
-
-static LubStr lstr_arg(lua_State *L, int idx) {
-  size_t n = 0;
-  const char *s = luaL_checklstring(L, idx, &n);
-  LubStr r = {s, (int32_t)n};
-  return r;
-}
-
-static void push_lstr(lua_State *L, LubStr s) {
-  lua_pushlstring(L, s.ptr ? s.ptr : "", s.ptr ? (size_t)s.len : 0);
-}
-
-static bool lstr_empty(LubStr s) { return !s.ptr || s.len <= 0; }
-
-static int raise_last(lua_State *L) {
-  return luaL_error(L, "%s", lub_last_error(g_ctx));
-}
-
-static int push_not_found(lua_State *L) {
-  lua_pushnil(L);
-  lua_pushstring(L, "not found");
-  return 2;
-}
-
 // ------------------------------------------------------------------ refs
-
-static bool is_ref(lua_State *L, int idx, const char *kind) {
-  if (!lua_istable(L, idx))
-    return false;
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, "__lub_kind");
-  bool ok = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), kind) == 0;
-  lua_pop(L, 1);
-  return ok;
-}
-
-static LubStr ref_field(lua_State *L, int idx, const char *field) {
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, field);
-  LubStr out = {NULL, 0};
-  if (lua_type(L, -1) == LUA_TSTRING) {
-    size_t n = 0;
-    out.ptr = lua_tolstring(L, -1, &n);
-    out.len = (int32_t)n;
-  }
-  lua_pop(L, 1);
-  return out;
-}
-
-static void set_cfunc_field(lua_State *L, const char *name, lua_CFunction fn) {
-  lua_pushcfunction(L, fn);
-  lua_setfield(L, -2, name);
-}
-
-static void set_str_field(lua_State *L, const char *name, LubStr s) {
-  push_lstr(L, s);
-  lua_setfield(L, -2, name);
-}
-
-static void set_handle_field(lua_State *L, LubHandle h) {
-  lua_pushinteger(L, (lua_Integer)h);
-  lua_setfield(L, -2, "handle");
-}
 
 static int l_phys2d_begin(lua_State *L);
 static int l_phys2d_step(lua_State *L);
@@ -973,100 +800,13 @@ static int l_phys2d_body(lua_State *L) {
 
 // ---------------------------------------------------------------- filter
 
-static uint64_t parse_hex_u64(lua_State *L, const char *s,
-                              const char *field_name) {
-  uint64_t value = 0;
-  const char *p = s;
-  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
-    p += 2;
-  if (*p == '\0')
-    luaL_error(L, "phys2d filter %s: empty hex string", field_name);
-  while (*p) {
-    char c = *p++;
-    int d = 0;
-    if (c >= '0' && c <= '9')
-      d = c - '0';
-    else if (c >= 'a' && c <= 'f')
-      d = 10 + c - 'a';
-    else if (c >= 'A' && c <= 'F')
-      d = 10 + c - 'A';
-    else
-      luaL_error(L, "phys2d filter %s: invalid hex digit", field_name);
-    value = (value << 4) | (uint64_t)d;
-  }
-  return value;
-}
-
-static uint64_t parse_bit_list(lua_State *L, int idx, const char *field_name) {
-  idx = abs_index(L, idx);
-  uint64_t bits = 0;
-  lua_getfield(L, idx, "length");
-  int n = 0;
-  bool zero_based = false;
-  if (lua_isinteger(L, -1) || lua_isnumber(L, -1)) {
-    n = (int)lua_tointeger(L, -1);
-    zero_based = true;
-  } else {
-    n = (int)lua_rawlen(L, idx);
-  }
-  lua_pop(L, 1);
-  for (int i = 0; i < n; ++i) {
-    lua_Integer raw_index = zero_based ? i : i + 1;
-    lua_rawgeti(L, idx, raw_index);
-    int bit = (int)luaL_checkinteger(L, -1);
-    lua_pop(L, 1);
-    if (bit < 0 || bit > 63)
-      luaL_error(L, "phys2d filter %s bit index out of range: %d", field_name,
-                 bit);
-    bits |= (uint64_t)1 << bit;
-  }
-  return bits;
-}
-
-static void parse_filter_table(lua_State *L, int f, uint64_t *category_bits,
-                               uint64_t *mask_bits, int32_t *group_index) {
-  f = abs_index(L, f);
-  if (table_get_any(L, f, "category", NULL)) {
-    int bit = (int)luaL_checkinteger(L, -1);
-    lua_pop(L, 1);
-    if (bit < 0 || bit > 63)
-      luaL_error(L, "phys2d filter category bit index out of range: %d", bit);
-    *category_bits = (uint64_t)1 << bit;
-  }
-  if (table_get_any(L, f, "category_bits", "categoryBits")) {
-    if (lua_isstring(L, -1))
-      *category_bits = parse_hex_u64(L, lua_tostring(L, -1), "category_bits");
-    lua_pop(L, 1);
-  }
-  if (table_get_any(L, f, "mask", NULL)) {
-    if (lua_isstring(L, -1)) {
-      const char *s = lua_tostring(L, -1);
-      if (strcmp(s, "all") == 0) {
-        *mask_bits = UINT64_MAX;
-      } else {
-        *mask_bits = parse_hex_u64(L, s, "mask");
-      }
-    } else if (lua_istable(L, -1)) {
-      *mask_bits = parse_bit_list(L, lua_gettop(L), "mask");
-    }
-    lua_pop(L, 1);
-  }
-  if (table_get_any(L, f, "mask_bits", "maskBits")) {
-    if (lua_isstring(L, -1))
-      *mask_bits = parse_hex_u64(L, lua_tostring(L, -1), "mask_bits");
-    lua_pop(L, 1);
-  }
-  if (group_index)
-    *group_index = table_int(L, f, "group", NULL, *group_index);
-}
-
 // desc.filter = { ... } があれば上書きする。
 static void parse_filter_field(lua_State *L, int idx, LubPhys2dFilter *f) {
   if (!table_get_any(L, idx, "filter", NULL))
     return;
   if (lua_istable(L, -1))
-    parse_filter_table(L, lua_gettop(L), &f->category_bits, &f->mask_bits,
-                       &f->group_index);
+    parse_filter_table(L, "phys2d", lua_gettop(L), &f->category_bits,
+                       &f->mask_bits, &f->group_index);
   lua_pop(L, 1);
 }
 
@@ -1076,11 +816,11 @@ static LubPhys2dQueryFilter parse_query_filter(lua_State *L, int idx) {
     return f;
   if (table_get_any(L, idx, "filter", NULL)) {
     if (lua_istable(L, -1))
-      parse_filter_table(L, lua_gettop(L), &f.category_bits, &f.mask_bits,
-                         NULL);
+      parse_filter_table(L, "phys2d", lua_gettop(L), &f.category_bits,
+                         &f.mask_bits, NULL);
     lua_pop(L, 1);
   } else {
-    parse_filter_table(L, idx, &f.category_bits, &f.mask_bits, NULL);
+    parse_filter_table(L, "phys2d", idx, &f.category_bits, &f.mask_bits, NULL);
   }
   return f;
 }
@@ -2066,48 +1806,8 @@ static int l_phys2d_velocity_at(lua_State *L) {
 
 // ----------------------------------------------------------- shape parts
 
-static void push_u64_hex_field(lua_State *L, const char *name, uint64_t value) {
-  char buf[17];
-  SDL_snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)value);
-  lua_pushstring(L, buf);
-  lua_setfield(L, -2, name);
-}
-
-static int single_bit_index(uint64_t bits) {
-  if (bits == 0 || (bits & (bits - 1)) != 0)
-    return -1;
-  for (int i = 0; i < 64; ++i) {
-    if ((bits & ((uint64_t)1 << i)) != 0)
-      return i;
-  }
-  return -1;
-}
-
-static void push_bit_indices(lua_State *L, uint64_t bits) {
-  lua_newtable(L);
-  int out = 1;
-  for (int i = 0; i < 64; ++i) {
-    if ((bits & ((uint64_t)1 << i)) != 0) {
-      lua_pushinteger(L, i);
-      lua_rawseti(L, -2, out++);
-    }
-  }
-}
-
 static void push_filter_fields(lua_State *L, const LubPhys2dFilter *f) {
-  push_u64_hex_field(L, "category_bits", f->category_bits);
-  push_u64_hex_field(L, "mask_bits", f->mask_bits);
-  int category = single_bit_index(f->category_bits);
-  if (category >= 0) {
-    lua_pushinteger(L, category);
-    lua_setfield(L, -2, "category");
-  }
-  push_bit_indices(L, f->mask_bits);
-  lua_setfield(L, -2, "mask");
-  lua_pushinteger(L, f->group_index);
-  lua_setfield(L, -2, "group");
-  lua_pushinteger(L, f->group_index);
-  lua_setfield(L, -2, "group_index");
+  push_filter_bits(L, f->category_bits, f->mask_bits, f->group_index);
 }
 
 static void push_aabb(lua_State *L, const LubPhys2dAabb *a) {
@@ -2348,11 +2048,12 @@ static int l_phys2d_shape_set_filter(lua_State *L) {
   LubPhys2dFilter f = info.part.filter;
   if (table_get_any(L, 2, "filter", NULL)) {
     if (lua_istable(L, -1))
-      parse_filter_table(L, lua_gettop(L), &f.category_bits, &f.mask_bits,
-                         &f.group_index);
+      parse_filter_table(L, "phys2d", lua_gettop(L), &f.category_bits,
+                         &f.mask_bits, &f.group_index);
     lua_pop(L, 1);
   } else {
-    parse_filter_table(L, 2, &f.category_bits, &f.mask_bits, &f.group_index);
+    parse_filter_table(L, "phys2d", 2, &f.category_bits, &f.mask_bits,
+                       &f.group_index);
   }
   if (lub_phys2d_shape_set_filter(g_ctx, s, &f) != LUB_OK)
     return raise_last(L);
@@ -2591,123 +2292,8 @@ static int l_phys2d_body_events(lua_State *L) {
 // visitor は results table に hit を積みつつ Lua の関数を呼ぶ。Lua 側の
 // error は貯めて query を打ち切り、nil, "fn visitor: msg" にする。
 
-typedef struct Visit {
-  lua_State *L;
-  int results_ref;
-  int visitor_ref;
-  int count;
-  char *error;
-} Visit;
-
-static void visit_init(Visit *v, lua_State *L, int visitor_idx) {
-  v->L = L;
-  lua_newtable(L);
-  v->results_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  v->visitor_ref = LUA_NOREF;
-  if (lua_isfunction(L, visitor_idx)) {
-    lua_pushvalue(L, visitor_idx);
-    v->visitor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
-  v->count = 0;
-  v->error = NULL;
-}
-
-// 結果 (results table か nil, error) を push して ref を解放する。
-static int visit_finish(Visit *v, const char *fn_name, bool push_results,
-                        const LubPhys2dTreeStats *stats) {
-  lua_State *L = v->L;
-  int nret = 0;
-  if (v->error) {
-    lua_pushnil(L);
-    lua_pushfstring(L, "%s visitor: %s", fn_name, v->error);
-    SDL_free(v->error);
-    nret = 2;
-  } else if (push_results) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, v->results_ref);
-    if (stats) {
-      lua_pushinteger(L, stats->node_visits);
-      lua_setfield(L, -2, "node_visits");
-      lua_pushinteger(L, stats->leaf_visits);
-      lua_setfield(L, -2, "leaf_visits");
-    }
-    nret = 1;
-  }
-  luaL_unref(L, LUA_REGISTRYINDEX, v->results_ref);
-  if (v->visitor_ref != LUA_NOREF)
-    luaL_unref(L, LUA_REGISTRYINDEX, v->visitor_ref);
-  return nret;
-}
-
-static bool query_result_is_string(lua_State *L, int idx, const char *s) {
-  return lua_isstring(L, idx) && strcmp(lua_tostring(L, idx), s) == 0;
-}
-
-static bool parse_overlap_visitor_result(lua_State *L, int idx, bool *include) {
-  if (lua_isboolean(L, idx) && !lua_toboolean(L, idx))
-    return false;
-  if (query_result_is_string(L, idx, "stop"))
-    return false;
-  if (query_result_is_string(L, idx, "ignore")) {
-    *include = false;
-    return true;
-  }
-  return true;
-}
-
-static float parse_raycast_visitor_result(lua_State *L, int idx, float fraction,
-                                          bool *include) {
-  if (lua_isnumber(L, idx))
-    return (float)lua_tonumber(L, idx);
-  if (lua_isboolean(L, idx)) {
-    if (!lua_toboolean(L, idx))
-      return 0.0f;
-    return fraction;
-  }
-  if (lua_isnil(L, idx))
-    return fraction;
-  if (query_result_is_string(L, idx, "continue"))
-    return 1.0f;
-  if (query_result_is_string(L, idx, "ignore")) {
-    *include = false;
-    return -1.0f;
-  }
-  if (query_result_is_string(L, idx, "stop"))
-    return 0.0f;
-  if (query_result_is_string(L, idx, "clip"))
-    return fraction;
-  return fraction;
-}
-
-// stack: results, item。visitor を呼び、include なら results に積む。
-// 戻り値は visitor の生の結果 (stack の上、caller が pop) を残すかどうか。
-static bool visit_call(Visit *v, bool *include) {
-  lua_State *L = v->L;
-  *include = true;
-  if (v->visitor_ref == LUA_NOREF)
-    return false;
-  lua_rawgeti(L, LUA_REGISTRYINDEX, v->visitor_ref);
-  lua_pushvalue(L, -2);
-  if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-    v->error =
-        SDL_strdup(lua_tostring(L, -1) ? lua_tostring(L, -1) : "unknown error");
-    lua_pop(L, 3);
-    return false;
-  }
-  return true;
-}
-
-static void visit_store(Visit *v, bool include) {
-  lua_State *L = v->L;
-  if (include) {
-    lua_rawseti(L, -2, ++v->count);
-  } else {
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-}
-
 static bool overlap_visit(void *user, const LubPhys2dShapePart *shape) {
-  Visit *v = (Visit *)user;
+  LuaPhysVisit *v = (LuaPhysVisit *)user;
   lua_State *L = v->L;
   if (v->error)
     return false;
@@ -2715,7 +2301,7 @@ static bool overlap_visit(void *user, const LubPhys2dShapePart *shape) {
   push_shape_part(L, shape, false);
   bool include = true;
   bool keep_going = true;
-  if (visit_call(v, &include)) {
+  if (visit_call(v)) {
     keep_going = parse_overlap_visitor_result(L, -1, &include);
     lua_pop(L, 1);
   } else if (v->error) {
@@ -2740,7 +2326,7 @@ static void push_ray_hit(lua_State *L, const LubPhys2dRayHit *hit) {
 }
 
 static float ray_visit(void *user, const LubPhys2dRayHit *hit) {
-  Visit *v = (Visit *)user;
+  LuaPhysVisit *v = (LuaPhysVisit *)user;
   lua_State *L = v->L;
   if (v->error)
     return 0.0f;
@@ -2748,7 +2334,7 @@ static float ray_visit(void *user, const LubPhys2dRayHit *hit) {
   push_ray_hit(L, hit);
   bool include = true;
   float result = hit->fraction;
-  if (visit_call(v, &include)) {
+  if (visit_call(v)) {
     result = parse_raycast_visitor_result(L, -1, hit->fraction, &include);
     lua_pop(L, 1);
   } else if (v->error) {
@@ -2759,7 +2345,7 @@ static float ray_visit(void *user, const LubPhys2dRayHit *hit) {
 }
 
 static bool plane_visit(void *user, const LubPhys2dMoverPlane *plane) {
-  Visit *v = (Visit *)user;
+  LuaPhysVisit *v = (LuaPhysVisit *)user;
   lua_State *L = v->L;
   if (v->error)
     return false;
@@ -2779,7 +2365,7 @@ static bool plane_visit(void *user, const LubPhys2dMoverPlane *plane) {
   lua_setfield(L, -2, "offset");
   bool include = true;
   bool keep_going = true;
-  if (visit_call(v, &include)) {
+  if (visit_call(v)) {
     keep_going = parse_overlap_visitor_result(L, -1, &include);
     lua_pop(L, 1);
   } else if (v->error) {
@@ -2815,20 +2401,21 @@ static int l_phys2d_raycast(lua_State *L) {
     lua_setfield(L, -2, "leaf_visits");
     return 1;
   }
-  Visit v;
+  LuaPhysVisit v;
   visit_init(&v, L, 3);
   LubPhys2dTreeStats stats;
   LubStatus st =
       lub_phys2d_raycast(g_ctx, w, &ray, &filter, ray_visit, &v, &stats);
   if (st == LUB_NOT_FOUND) {
-    visit_finish(&v, "phys2d_raycast", false, NULL);
+    visit_finish(&v, "phys2d_raycast", false, false, 0, 0);
     return push_not_found(L);
   }
   if (st != LUB_OK) {
-    visit_finish(&v, "phys2d_raycast", false, NULL);
+    visit_finish(&v, "phys2d_raycast", false, false, 0, 0);
     return raise_last(L);
   }
-  return visit_finish(&v, "phys2d_raycast", true, &stats);
+  return visit_finish(&v, "phys2d_raycast", true, true, stats.node_visits,
+                      stats.leaf_visits);
 }
 
 static int l_phys2d_overlap_aabb(lua_State *L) {
@@ -2839,20 +2426,21 @@ static int l_phys2d_overlap_aabb(lua_State *L) {
                         table_number(L, 2, "max_x", "maxX", 0.0f),
                         table_number(L, 2, "max_y", "maxY", 0.0f)};
   LubPhys2dQueryFilter filter = parse_query_filter(L, 2);
-  Visit v;
+  LuaPhysVisit v;
   visit_init(&v, L, 3);
   LubPhys2dTreeStats stats;
   LubStatus st = lub_phys2d_overlap_aabb(g_ctx, w, &aabb, &filter,
                                          overlap_visit, &v, &stats);
   if (st == LUB_NOT_FOUND) {
-    visit_finish(&v, "phys2d_overlap_aabb", false, NULL);
+    visit_finish(&v, "phys2d_overlap_aabb", false, false, 0, 0);
     return push_not_found(L);
   }
   if (st != LUB_OK) {
-    visit_finish(&v, "phys2d_overlap_aabb", false, NULL);
+    visit_finish(&v, "phys2d_overlap_aabb", false, false, 0, 0);
     return raise_last(L);
   }
-  return visit_finish(&v, "phys2d_overlap_aabb", true, &stats);
+  return visit_finish(&v, "phys2d_overlap_aabb", true, true, stats.node_visits,
+                      stats.leaf_visits);
 }
 
 static void parse_shape_proxy(lua_State *L, int idx, LubPhys2dShapeProxy *p,
@@ -2929,24 +2517,24 @@ static int l_phys2d_shape_cast(lua_State *L) {
   parse_shape_proxy(L, 2, &proxy, &owned);
   LubVec2 t = parse_translation(L, 2, "phys2d_shape_cast");
   LubPhys2dQueryFilter filter = parse_query_filter(L, 2);
-  Visit v;
+  LuaPhysVisit v;
   visit_init(&v, L, 3);
   LubPhys2dTreeStats stats;
   LubStatus st = lub_phys2d_shape_cast(g_ctx, w, &proxy, t.x, t.y, &filter,
                                        ray_visit, &v, &stats);
   SDL_free(owned);
   if (st == LUB_NOT_FOUND) {
-    visit_finish(&v, "phys2d_shape_cast", false, NULL);
+    visit_finish(&v, "phys2d_shape_cast", false, false, 0, 0);
     return push_not_found(L);
   }
   if (st != LUB_OK) {
-    visit_finish(&v, "phys2d_shape_cast", false, NULL);
+    visit_finish(&v, "phys2d_shape_cast", false, false, 0, 0);
     return raise_last(L);
   }
   if (v.visitor_ref == LUA_NOREF && !v.error) {
     // visitor 無しは最後 (最も近い) の hit だけ返す。
     if (v.count == 0) {
-      visit_finish(&v, "phys2d_shape_cast", false, NULL);
+      visit_finish(&v, "phys2d_shape_cast", false, false, 0, 0);
       lua_pushnil(L);
       return 1;
     }
@@ -2957,10 +2545,11 @@ static int l_phys2d_shape_cast(lua_State *L) {
     lua_pushinteger(L, stats.leaf_visits);
     lua_setfield(L, -2, "leaf_visits");
     lua_remove(L, -2);
-    visit_finish(&v, "phys2d_shape_cast", false, NULL);
+    visit_finish(&v, "phys2d_shape_cast", false, false, 0, 0);
     return 1;
   }
-  return visit_finish(&v, "phys2d_shape_cast", true, &stats);
+  return visit_finish(&v, "phys2d_shape_cast", true, true, stats.node_visits,
+                      stats.leaf_visits);
 }
 
 static void parse_mover(lua_State *L, int idx, LubPhys2dMover *m) {
@@ -3001,19 +2590,19 @@ static int l_phys2d_collide_mover(lua_State *L) {
   LubPhys2dMover mover;
   parse_mover(L, 2, &mover);
   LubPhys2dQueryFilter filter = parse_query_filter(L, 2);
-  Visit v;
+  LuaPhysVisit v;
   visit_init(&v, L, 3);
   LubStatus st =
       lub_phys2d_collide_mover(g_ctx, w, &mover, &filter, plane_visit, &v);
   if (st == LUB_NOT_FOUND) {
-    visit_finish(&v, "phys2d_collide_mover", false, NULL);
+    visit_finish(&v, "phys2d_collide_mover", false, false, 0, 0);
     return push_not_found(L);
   }
   if (st != LUB_OK) {
-    visit_finish(&v, "phys2d_collide_mover", false, NULL);
+    visit_finish(&v, "phys2d_collide_mover", false, false, 0, 0);
     return raise_last(L);
   }
-  return visit_finish(&v, "phys2d_collide_mover", true, NULL);
+  return visit_finish(&v, "phys2d_collide_mover", true, false, 0, 0);
 }
 
 static int l_phys2d_explode(lua_State *L) {
@@ -3039,14 +2628,6 @@ static int l_phys2d_explode(lua_State *L) {
 }
 
 // ----------------------------------------------------------------- debug
-
-static void push_float_array(lua_State *L, const float *items, int32_t count) {
-  lua_newtable(L);
-  for (int32_t i = 0; i < count; ++i) {
-    lua_pushnumber(L, items[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
 
 static int l_phys2d_debug(lua_State *L) {
   LubHandle w = ref_world(L, 1);
@@ -3103,11 +2684,6 @@ static int l_phys2d_debug(lua_State *L) {
   return 1;
 }
 
-static void set_number(lua_State *L, const char *key, float value) {
-  lua_pushnumber(L, value);
-  lua_setfield(L, -2, key);
-}
-
 static int l_phys2d_profile(lua_State *L) {
   LubHandle w = ref_world(L, 1);
   LubPhys2dProfile p;
@@ -3137,11 +2713,6 @@ static int l_phys2d_profile(lua_State *L) {
   set_number(L, "sleep_islands", p.sleep_islands);
   set_number(L, "sensors", p.sensors);
   return 1;
-}
-
-static void set_integer(lua_State *L, const char *key, int value) {
-  lua_pushinteger(L, value);
-  lua_setfield(L, -2, key);
 }
 
 static int l_phys2d_counters(lua_State *L) {

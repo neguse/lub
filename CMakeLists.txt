@@ -179,6 +179,7 @@ set(LUB_SOURCES
   src/physics_box2d.c
   src/lua_phys2d.c
   src/physics_box3d.c
+  src/lua_phys3d.c
   src/shader.cpp
   src/pipeline.c
   src/capture.c
@@ -406,6 +407,8 @@ if(NOT LUB_WASM)
   add_executable(lub_physics_box3d_smoke
     tests/c/physics_box3d_smoke.c
     src/physics_box3d.c
+    src/lua_phys3d.c
+    src/api_core.c
   )
   target_link_libraries(lub_physics_box3d_smoke PRIVATE
     SDL3::SDL3
@@ -415,7 +418,7 @@ if(NOT LUB_WASM)
   if(UNIX AND NOT APPLE)
     target_link_libraries(lub_physics_box3d_smoke PRIVATE m dl)
   endif()
-  target_include_directories(lub_physics_box3d_smoke PRIVATE src)
+  target_include_directories(lub_physics_box3d_smoke PRIVATE src include)
 
   add_executable(lub_surfacenets_smoke
     tests/c/surfacenets_smoke.c

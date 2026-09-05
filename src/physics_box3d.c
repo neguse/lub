@@ -1,11 +1,16 @@
+// Box3D の即時モード層。key で宣言する world / body / shape / joint の table
+// と、C API (include/lub/lub_api.h の lub_phys3d_*) の実装。Lua には触らない
+// (Lua 面は src/lua_phys3d.c)。
 #include "physics_box3d.h"
+
+#include "api_internal.h"
+#include "phys_common.h"
 
 #include <SDL3/SDL.h>
 #include <box3d/box3d.h>
 #include <box3d/collision.h>
 #include <box3d/math_functions.h>
 #include <float.h>
-#include <lauxlib.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -16,32 +21,21 @@
 #define PHYS3D_JOINT_BUCKETS 128
 #define PHYS3D_TOMBSTONE_BUCKETS 256
 
-typedef enum Phys3dShapeKind {
-  PHYS3D_SHAPE_SPHERE = 1,
-  PHYS3D_SHAPE_BOX = 2,
-  PHYS3D_SHAPE_CAPSULE = 3,
-  PHYS3D_SHAPE_CYLINDER = 4,
-  PHYS3D_SHAPE_CONE = 5,
-  PHYS3D_SHAPE_HULL = 6,
-  PHYS3D_SHAPE_MESH = 7,
-  PHYS3D_SHAPE_HEIGHT_FIELD = 8,
-  PHYS3D_SHAPE_COMPOUND = 9,
-} Phys3dShapeKind;
-
 typedef struct Phys3dShape {
   char *key;
   char *tag;
   char *material_name;
   struct Phys3dBody *body;
   b3ShapeId id;
+  int32_t handle;
   uint64_t seen_generation;
   uint64_t desc_hash;
   uint64_t constructor_hash;
   bool constructor_warned;
   int material_id;
-  Phys3dShapeKind kind;
-  // Heavy geometry data referenced (not copied) by the box3d shape; owned by
-  // this struct and freed after the box3d shape is destroyed.
+  int kind; // LubPhys3dShapeKind
+  // box3d の shape が参照する (copy しない) 重い geometry。この struct が
+  // 所有し、box3d の shape を壊したあとに解放する。
   b3MeshData *mesh_data;
   b3HeightFieldData *height_field_data;
   b3CompoundData *compound_data;
@@ -52,6 +46,7 @@ typedef struct Phys3dBody {
   char *key;
   struct Phys3dWorld *world;
   b3BodyId id;
+  int32_t handle;
   uint64_t seen_generation;
   int64_t version;
   uint64_t constructor_hash;
@@ -60,29 +55,18 @@ typedef struct Phys3dBody {
   struct Phys3dBody *next;
 } Phys3dBody;
 
-typedef enum Phys3dJointKind {
-  PHYS3D_JOINT_DISTANCE = 1,
-  PHYS3D_JOINT_FILTER = 2,
-  PHYS3D_JOINT_MOTOR = 3,
-  PHYS3D_JOINT_PARALLEL = 4,
-  PHYS3D_JOINT_PRISMATIC = 5,
-  PHYS3D_JOINT_REVOLUTE = 6,
-  PHYS3D_JOINT_SPHERICAL = 7,
-  PHYS3D_JOINT_WELD = 8,
-  PHYS3D_JOINT_WHEEL = 9,
-} Phys3dJointKind;
-
 typedef struct Phys3dJoint {
   char *key;
   struct Phys3dWorld *world;
   Phys3dBody *body_a;
   Phys3dBody *body_b;
   b3JointId id;
+  int32_t handle;
   uint64_t seen_generation;
   int64_t version;
   uint64_t constructor_hash;
   bool constructor_warned;
-  Phys3dJointKind kind;
+  int kind; // LubPhys3dJointType
   struct Phys3dJoint *next;
 } Phys3dJoint;
 
@@ -164,7 +148,7 @@ typedef struct Phys3dJointEventSnapshot {
   char *joint;
   char *body_a;
   char *body_b;
-  const char *type;
+  int type; // LubPhys3dJointType
   bool valid;
 } Phys3dJointEventSnapshot;
 
@@ -202,21 +186,11 @@ typedef struct Phys3dShapeTombstone {
   struct Phys3dShapeTombstone *next;
 } Phys3dShapeTombstone;
 
-typedef struct Phys3dCallbacks {
-  lua_State *L;
-  int filter_ref;
-  int pre_solve_ref;
-  int friction_ref;
-  int restitution_ref;
-  bool filter_error_logged;
-  bool pre_solve_error_logged;
-  bool friction_error_logged;
-  bool restitution_error_logged;
-} Phys3dCallbacks;
-
 struct Phys3dWorld {
   char *key;
+  Phys3dState *state;
   b3WorldId id;
+  int32_t handle;
   double accumulator;
   float fixed_dt;
   int substeps;
@@ -231,139 +205,13 @@ struct Phys3dWorld {
   Phys3dShapeTombstone *shape_tombstones[PHYS3D_TOMBSTONE_BUCKETS];
   Phys3dEventBuffer events;
   Phys3dCommandQueue commands;
-  Phys3dCallbacks callbacks;
+  LubPhys3dCallbacks callbacks;
   bool callbacks_pending;
   uint64_t callbacks_generation;
   struct Phys3dWorld *next;
 };
 
-typedef struct Phys3dWorldOpts {
-  int64_t version;
-  bool has_version;
-  b3Vec3 gravity;
-  float fixed_dt;
-  int substeps;
-  int max_steps;
-  bool sleep;
-  bool continuous;
-  bool has_hit_event_threshold;
-  float hit_event_threshold;
-} Phys3dWorldOpts;
-
-typedef struct Phys3dBodyDesc {
-  int64_t version;
-  bool has_version;
-  b3BodyType type;
-  b3MotionLocks motion_locks;
-  bool bullet;
-  bool enabled;
-  bool has_enabled;
-  bool awake;
-  bool has_awake;
-  bool sleep;
-  bool has_sleep;
-  float gravity_scale;
-  float linear_damping;
-  float angular_damping;
-  float sleep_threshold;
-  bool has_sleep_threshold;
-  b3Vec3 initial_pos;
-  b3Quat initial_rot;
-  b3Vec3 initial_vel;
-  b3Vec3 initial_w;
-  bool initial_awake;
-} Phys3dBodyDesc;
-
-typedef struct Phys3dShapeDesc {
-  int64_t version;
-  bool has_version;
-  float density;
-  bool has_density;
-  float friction;
-  float restitution;
-  int material_id;
-  bool sensor;
-  bool contact;
-  bool hit;
-  bool sensor_events;
-  bool pre_solve;
-  uint64_t category_bits;
-  uint64_t mask_bits;
-  int group_index;
-} Phys3dShapeDesc;
-
-typedef struct Phys3dJointDesc {
-  int64_t version;
-  bool has_version;
-  Phys3dJointKind kind;
-  Phys3dBody *body_a;
-  Phys3dBody *body_b;
-  b3Transform local_frame_a;
-  b3Transform local_frame_b;
-  // Raw anchor/axis/frame inputs; the constructor hash covers these instead
-  // of the derived local frames so world-space anchors on moving bodies do
-  // not recreate the joint every declare.
-  bool has_axis;
-  b3Vec3 axis;
-  bool has_anchor_a;
-  bool has_anchor_b;
-  b3Vec3 anchor_a;
-  b3Vec3 anchor_b;
-  bool has_frame_a;
-  bool has_frame_b;
-  float force_threshold;
-  float torque_threshold;
-  bool has_constraint_tuning;
-  float constraint_hertz;
-  float constraint_damping_ratio;
-  bool collide_connected;
-  float length;
-  float min_length;
-  float max_length;
-  float lower;
-  float upper;
-  float hertz;
-  float damping_ratio;
-  float linear_hertz;
-  float angular_hertz;
-  float linear_damping_ratio;
-  float angular_damping_ratio;
-  float max_force;
-  float max_torque;
-  float motor_speed;
-  float target_angle;
-  float target_translation;
-  bool enable_spring;
-  bool enable_limit;
-  bool enable_motor;
-  float lower_spring_force;
-  float upper_spring_force;
-  b3Vec3 linear_velocity;
-  b3Vec3 angular_velocity;
-  float max_velocity_force;
-  float max_velocity_torque;
-  float max_spring_force;
-  float max_spring_torque;
-  b3Quat target_rotation;
-  bool enable_cone_limit;
-  float cone_angle;
-  bool enable_twist_limit;
-  float lower_twist_angle;
-  float upper_twist_angle;
-  b3Vec3 motor_velocity;
-  bool enable_steering;
-  float steering_hertz;
-  float steering_damping_ratio;
-  float target_steering_angle;
-  float max_steering_torque;
-  bool enable_steering_limit;
-  float lower_steering_limit;
-  float upper_steering_limit;
-} Phys3dJointDesc;
-
-static Phys3dState *g_phys3d_state = NULL;
-static Phys3dWorld *g_phys3d_mixer_world = NULL;
-static int g_phys3d_callback_depth = 0;
+static Phys3dWorld *g_mixer_world = NULL;
 
 static bool body_is_live(Phys3dBody *b);
 static bool shape_is_live(Phys3dShape *s);
@@ -379,658 +227,71 @@ static float phys3d_restitution_callback(float restitution_a,
                                          uint64_t material_a,
                                          float restitution_b,
                                          uint64_t material_b);
-static void push_shape_id_view(lua_State *L, b3ShapeId shape_id);
+static void fill_shape_part(LubPhys3dShapePart *out, b3ShapeId shape_id);
 
-static uint32_t hash_str32(const char *s) {
-  uint32_t h = 2166136261u;
-  while (*s) {
-    h ^= (uint8_t)*s++;
-    h *= 16777619u;
-  }
-  return h;
+static LubStr str_or_empty(const char *s) { return phys_str(s); }
+
+static b3Vec3 vec3_of(LubVec3 v) { return (b3Vec3){v.x, v.y, v.z}; }
+static LubVec3 lub_vec3(b3Vec3 v) { return (LubVec3){v.x, v.y, v.z}; }
+static LubVec3 lub_pos(b3Pos p) {
+  return (LubVec3){(float)p.x, (float)p.y, (float)p.z};
 }
-
-static uint64_t hash_init(void) { return 1469598103934665603ull; }
-
-static uint64_t hash_u64(uint64_t h, uint64_t v) {
-  for (int i = 0; i < 8; ++i) {
-    h ^= (uint8_t)(v & 0xffu);
-    h *= 1099511628211ull;
-    v >>= 8;
-  }
-  return h;
-}
-
-static uint64_t hash_i64(uint64_t h, int64_t v) {
-  return hash_u64(h, (uint64_t)v);
-}
-
-static uint64_t hash_f32(uint64_t h, float f) {
-  uint32_t bits = 0;
-  memcpy(&bits, &f, sizeof(bits));
-  return hash_u64(h, bits);
-}
-
-static uint64_t hash_bool(uint64_t h, bool b) { return hash_u64(h, b ? 1 : 0); }
-
-static uint64_t hash_cstr(uint64_t h, const char *s) {
-  if (!s)
-    s = "";
-  while (*s) {
-    h ^= (uint8_t)*s++;
-    h *= 1099511628211ull;
-  }
-  return h;
-}
-
-static char *phys_strdup(const char *s) {
-  if (!s)
-    s = "";
-  return SDL_strdup(s);
-}
-
-static void owned_string_clear(char **dst) {
-  SDL_free(*dst);
-  *dst = NULL;
-}
-
-static void owned_string_set_lua(lua_State *L, char **dst, const char *value,
-                                 const char *fn_name) {
-  if (value && value[0] == '\0')
-    value = NULL;
-  if (!*dst && !value)
-    return;
-  if (*dst && value && strcmp(*dst, value) == 0)
-    return;
-  char *copy = value ? phys_strdup(value) : NULL;
-  if (value && !copy)
-    luaL_error(L, "%s: out of memory", fn_name);
-  SDL_free(*dst);
-  *dst = copy;
-}
-
-static int abs_index(lua_State *L, int idx) {
-  if (idx < 0)
-    return lua_gettop(L) + idx + 1;
-  return idx;
-}
-
-static bool table_get_any(lua_State *L, int idx, const char *a, const char *b) {
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, a);
-  if (!lua_isnil(L, -1))
-    return true;
-  lua_pop(L, 1);
-  if (b) {
-    lua_getfield(L, idx, b);
-    if (!lua_isnil(L, -1))
-      return true;
-    lua_pop(L, 1);
-  }
-  return false;
-}
-
-static float table_number(lua_State *L, int idx, const char *a, const char *b,
-                          float def) {
-  float out = def;
-  if (table_get_any(L, idx, a, b)) {
-    if (lua_isnumber(L, -1))
-      out = (float)lua_tonumber(L, -1);
-    lua_pop(L, 1);
-  }
+// 面の四元数は正規化済みが契約 (Lua 面は value_quat で正規化する)。ここで
+// 正規化し直すと丸めが変わるので、そのまま使う。
+static b3Quat quat_of(LubQuat q) {
+  b3Quat out = {{q.x, q.y, q.z}, q.w};
   return out;
 }
-
-static bool table_number_optional(lua_State *L, int idx, const char *a,
-                                  const char *b, float *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isnumber(L, -1);
-  if (ok)
-    *out = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return ok;
+static LubQuat lub_quat(b3Quat q) {
+  return (LubQuat){q.v.x, q.v.y, q.v.z, q.s};
 }
 
-static int table_int(lua_State *L, int idx, const char *a, const char *b,
-                     int def) {
-  int out = def;
-  if (table_get_any(L, idx, a, b)) {
-    if (lua_isinteger(L, -1) || lua_isnumber(L, -1))
-      out = (int)lua_tointeger(L, -1);
-    lua_pop(L, 1);
-  }
-  return out;
-}
+// ------------------------------------------------------------- callbacks
 
-static bool table_bool(lua_State *L, int idx, const char *a, const char *b,
-                       bool def) {
-  bool out = def;
-  if (table_get_any(L, idx, a, b)) {
-    if (lua_isboolean(L, -1))
-      out = lua_toboolean(L, -1) != 0;
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static bool table_int_optional(lua_State *L, int idx, const char *a,
-                               const char *b, int *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isinteger(L, -1) || lua_isnumber(L, -1);
-  if (ok)
-    *out = (int)lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  return ok;
-}
-
-static bool table_bool_optional(lua_State *L, int idx, const char *a,
-                                const char *b, bool *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isboolean(L, -1);
-  if (ok)
-    *out = lua_toboolean(L, -1) != 0;
-  lua_pop(L, 1);
-  return ok;
-}
-
-static bool table_has_int(lua_State *L, int idx, const char *a, const char *b,
-                          int64_t *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_isinteger(L, -1) || lua_isnumber(L, -1);
-  if (ok)
-    *out = (int64_t)lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  return ok;
-}
-
-static b3Vec3 value_vec3(lua_State *L, int idx, b3Vec3 def) {
-  b3Vec3 out = def;
-  if (!lua_istable(L, idx))
-    return out;
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, "x");
-  if (lua_isnumber(L, -1))
-    out.x = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "y");
-  if (lua_isnumber(L, -1))
-    out.y = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "z");
-  if (lua_isnumber(L, -1))
-    out.z = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 1);
-  if (lua_isnumber(L, -1))
-    out.x = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 2);
-  if (lua_isnumber(L, -1))
-    out.y = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 3);
-  if (lua_isnumber(L, -1))
-    out.z = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return out;
-}
-
-static b3Vec3 value_vec3_optional(lua_State *L, int idx, b3Vec3 def,
-                                  bool *has_x, bool *has_y, bool *has_z) {
-  b3Vec3 out = def;
-  if (!lua_istable(L, idx))
-    return out;
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, "x");
-  if (lua_isnumber(L, -1)) {
-    out.x = (float)lua_tonumber(L, -1);
-    *has_x = true;
-  }
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "y");
-  if (lua_isnumber(L, -1)) {
-    out.y = (float)lua_tonumber(L, -1);
-    *has_y = true;
-  }
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "z");
-  if (lua_isnumber(L, -1)) {
-    out.z = (float)lua_tonumber(L, -1);
-    *has_z = true;
-  }
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 1);
-  if (lua_isnumber(L, -1)) {
-    out.x = (float)lua_tonumber(L, -1);
-    *has_x = true;
-  }
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 2);
-  if (lua_isnumber(L, -1)) {
-    out.y = (float)lua_tonumber(L, -1);
-    *has_y = true;
-  }
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 3);
-  if (lua_isnumber(L, -1)) {
-    out.z = (float)lua_tonumber(L, -1);
-    *has_z = true;
-  }
-  lua_pop(L, 1);
-  return out;
-}
-
-static b3Vec3 table_vec3(lua_State *L, int idx, const char *a, const char *b,
-                         b3Vec3 def) {
-  b3Vec3 out = def;
-  if (!table_get_any(L, idx, a, b))
-    return out;
-  if (lua_istable(L, -1))
-    out = value_vec3(L, lua_gettop(L), def);
-  lua_pop(L, 1);
-  return out;
-}
-
-static b3Quat value_quat(lua_State *L, int idx, b3Quat def) {
-  b3Quat out = def;
-  if (!lua_istable(L, idx))
-    return out;
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, "x");
-  if (lua_isnumber(L, -1))
-    out.v.x = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "y");
-  if (lua_isnumber(L, -1))
-    out.v.y = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "z");
-  if (lua_isnumber(L, -1))
-    out.v.z = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_getfield(L, idx, "w");
-  if (lua_isnumber(L, -1))
-    out.s = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 1);
-  if (lua_isnumber(L, -1))
-    out.v.x = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 2);
-  if (lua_isnumber(L, -1))
-    out.v.y = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 3);
-  if (lua_isnumber(L, -1))
-    out.v.z = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  lua_rawgeti(L, idx, 4);
-  if (lua_isnumber(L, -1))
-    out.s = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return b3NormalizeQuat(out);
-}
-
-// Box3D has no euler helper; compose per-axis quats in XYZ intrinsic order.
-static b3Quat quat_from_euler_xyz(b3Vec3 euler) {
-  b3Quat qx = b3MakeQuatFromAxisAngle(b3Vec3_axisX, euler.x);
-  b3Quat qy = b3MakeQuatFromAxisAngle(b3Vec3_axisY, euler.y);
-  b3Quat qz = b3MakeQuatFromAxisAngle(b3Vec3_axisZ, euler.z);
-  return b3NormalizeQuat(b3MulQuat(b3MulQuat(qx, qy), qz));
-}
-
-static bool table_rotation(lua_State *L, int idx, b3Quat *out) {
-  idx = abs_index(L, idx);
-  if (table_get_any(L, idx, "quat", NULL)) {
-    bool ok = lua_istable(L, -1);
-    if (ok)
-      *out = value_quat(L, lua_gettop(L), b3Quat_identity);
-    lua_pop(L, 1);
-    if (ok)
-      return true;
-  }
-  if (table_get_any(L, idx, "euler", NULL)) {
-    bool ok = lua_istable(L, -1);
-    if (ok)
-      *out = quat_from_euler_xyz(value_vec3(L, lua_gettop(L), b3Vec3_zero));
-    lua_pop(L, 1);
-    if (ok)
-      return true;
-  }
-  return false;
-}
-
-static bool opt_wake(lua_State *L, int idx, bool def) {
-  if (!lua_istable(L, idx))
-    return def;
-  return table_bool(L, idx, "wake", NULL, def);
-}
-
-static bool is_ref(lua_State *L, int idx, const char *kind) {
-  if (!lua_istable(L, idx))
-    return false;
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, "__lub_kind");
-  bool ok = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), kind) == 0;
-  lua_pop(L, 1);
-  return ok;
-}
-
-static const char *ref_string(lua_State *L, int idx, const char *field) {
-  idx = abs_index(L, idx);
-  lua_getfield(L, idx, field);
-  const char *s = lua_tostring(L, -1);
-  lua_pop(L, 1);
-  return s;
-}
-
-static void set_cfunc_field(lua_State *L, const char *name, lua_CFunction fn) {
-  lua_pushcfunction(L, fn);
-  lua_setfield(L, -2, name);
-}
-
-static bool phys_in_callback(lua_State *L, const char *fn) {
-  if (g_phys3d_callback_depth <= 0)
-    return false;
-  luaL_error(L, "%s: physics mutation is not allowed inside phys3d callback",
-             fn);
-  return true;
-}
-
-static bool callback_ref_is_set(int ref) {
-  return ref != LUA_NOREF && ref != LUA_REFNIL;
-}
-
-static void callbacks_init(Phys3dCallbacks *callbacks) {
-  callbacks->L = NULL;
-  callbacks->filter_ref = LUA_NOREF;
-  callbacks->pre_solve_ref = LUA_NOREF;
-  callbacks->friction_ref = LUA_NOREF;
-  callbacks->restitution_ref = LUA_NOREF;
-  callbacks->filter_error_logged = false;
-  callbacks->pre_solve_error_logged = false;
-  callbacks->friction_error_logged = false;
-  callbacks->restitution_error_logged = false;
-}
-
-static void callback_unref(lua_State *L, int *ref) {
-  if (L && callback_ref_is_set(*ref))
-    luaL_unref(L, LUA_REGISTRYINDEX, *ref);
-  *ref = LUA_NOREF;
-}
-
-static bool callbacks_any(const Phys3dCallbacks *callbacks) {
-  return callback_ref_is_set(callbacks->filter_ref) ||
-         callback_ref_is_set(callbacks->pre_solve_ref) ||
-         callback_ref_is_set(callbacks->friction_ref) ||
-         callback_ref_is_set(callbacks->restitution_ref);
+static bool callbacks_any(const LubPhys3dCallbacks *cb) {
+  return cb->filter || cb->pre_solve || cb->friction || cb->restitution;
 }
 
 static void callbacks_install(Phys3dWorld *w) {
   if (!w || B3_IS_NULL(w->id) || !b3World_IsValid(w->id))
     return;
   b3World_SetCustomFilterCallback(
-      w->id,
-      callback_ref_is_set(w->callbacks.filter_ref)
-          ? phys3d_custom_filter_callback
-          : NULL,
-      callback_ref_is_set(w->callbacks.filter_ref) ? w : NULL);
+      w->id, w->callbacks.filter ? phys3d_custom_filter_callback : NULL,
+      w->callbacks.filter ? w : NULL);
   b3World_SetPreSolveCallback(
-      w->id,
-      callback_ref_is_set(w->callbacks.pre_solve_ref)
-          ? phys3d_pre_solve_callback
-          : NULL,
-      callback_ref_is_set(w->callbacks.pre_solve_ref) ? w : NULL);
-  b3World_SetFrictionCallback(w->id,
-                              callback_ref_is_set(w->callbacks.friction_ref)
-                                  ? phys3d_friction_callback
-                                  : NULL);
+      w->id, w->callbacks.pre_solve ? phys3d_pre_solve_callback : NULL,
+      w->callbacks.pre_solve ? w : NULL);
+  b3World_SetFrictionCallback(
+      w->id, w->callbacks.friction ? phys3d_friction_callback : NULL);
   b3World_SetRestitutionCallback(
-      w->id, callback_ref_is_set(w->callbacks.restitution_ref)
-                 ? phys3d_restitution_callback
-                 : NULL);
+      w->id, w->callbacks.restitution ? phys3d_restitution_callback : NULL);
 }
 
-static void callbacks_clear(lua_State *L, Phys3dWorld *w) {
+static void callbacks_clear(Phys3dWorld *w) {
   if (!w)
     return;
-  callback_unref(L, &w->callbacks.filter_ref);
-  callback_unref(L, &w->callbacks.pre_solve_ref);
-  callback_unref(L, &w->callbacks.friction_ref);
-  callback_unref(L, &w->callbacks.restitution_ref);
-  w->callbacks.L = NULL;
-  w->callbacks.filter_error_logged = false;
-  w->callbacks.pre_solve_error_logged = false;
-  w->callbacks.friction_error_logged = false;
-  w->callbacks.restitution_error_logged = false;
+  memset(&w->callbacks, 0, sizeof(w->callbacks));
   w->callbacks_pending = false;
   w->callbacks_generation = 0;
   callbacks_install(w);
 }
 
-static void callback_store_field(lua_State *L, int idx, const char *a,
-                                 const char *b, int *ref) {
-  if (!table_get_any(L, idx, a, b))
+static void callbacks_replace(Phys3dWorld *w, const LubPhys3dCallbacks *cb) {
+  callbacks_clear(w);
+  if (!cb || !callbacks_any(cb))
     return;
-  if (lua_isfunction(L, -1)) {
-    lua_pushvalue(L, -1);
-    *ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
-  lua_pop(L, 1);
-}
-
-static void callbacks_replace_from_opts(lua_State *L, Phys3dWorld *w,
-                                        int opts_idx) {
-  callbacks_clear(L, w);
-  if (!lua_istable(L, opts_idx))
-    return;
-  if (!table_get_any(L, opts_idx, "callbacks", NULL))
-    return;
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    return;
-  }
-
-  int cidx = lua_gettop(L);
-  callback_store_field(L, cidx, "filter", NULL, &w->callbacks.filter_ref);
-  callback_store_field(L, cidx, "pre_solve", "preSolve",
-                       &w->callbacks.pre_solve_ref);
-  callback_store_field(L, cidx, "friction", NULL, &w->callbacks.friction_ref);
-  callback_store_field(L, cidx, "restitution", NULL,
-                       &w->callbacks.restitution_ref);
-  lua_pop(L, 1);
-
-  if (!callbacks_any(&w->callbacks))
-    return;
-  w->callbacks.L = L;
+  w->callbacks = *cb;
   w->callbacks_pending = !w->begun;
   w->callbacks_generation = w->begun ? w->generation : 0;
   callbacks_install(w);
 }
 
-static int l_phys3d_begin(lua_State *L);
-static int l_phys3d_step(lua_State *L);
-static int l_phys3d_world_info(lua_State *L);
-static int l_phys3d_body(lua_State *L);
-static int l_phys3d_sphere(lua_State *L);
-static int l_phys3d_box(lua_State *L);
-static int l_phys3d_capsule(lua_State *L);
-static int l_phys3d_cylinder(lua_State *L);
-static int l_phys3d_cone(lua_State *L);
-static int l_phys3d_hull(lua_State *L);
-static int l_phys3d_mesh(lua_State *L);
-static int l_phys3d_height_field(lua_State *L);
-static int l_phys3d_compound(lua_State *L);
-static int l_phys3d_joint(lua_State *L);
-static int l_phys3d_joint_info(lua_State *L);
-static int l_phys3d_joint_force(lua_State *L);
-static int l_phys3d_joint_torque(lua_State *L);
-static int l_phys3d_joint_angle(lua_State *L);
-static int l_phys3d_joint_translation(lua_State *L);
-static int l_phys3d_joint_speed(lua_State *L);
-static int l_phys3d_joint_length(lua_State *L);
-static int l_phys3d_joint_motor_force(lua_State *L);
-static int l_phys3d_joint_motor_torque(lua_State *L);
-static int l_phys3d_joint_set_motor(lua_State *L);
-static int l_phys3d_joint_set_limit(lua_State *L);
-static int l_phys3d_joint_set_spring(lua_State *L);
-static int l_phys3d_joint_set_target(lua_State *L);
-static int l_phys3d_body_joints(lua_State *L);
-static int l_phys3d_cast_mover(lua_State *L);
-static int l_phys3d_collide_mover(lua_State *L);
-static int l_phys3d_pose(lua_State *L);
-static int l_phys3d_velocity(lua_State *L);
-static int l_phys3d_mass(lua_State *L);
-static int l_phys3d_center(lua_State *L);
-static int l_phys3d_world_point(lua_State *L);
-static int l_phys3d_local_point(lua_State *L);
-static int l_phys3d_velocity_at(lua_State *L);
-static int l_phys3d_add_force(lua_State *L);
-static int l_phys3d_add_force_center(lua_State *L);
-static int l_phys3d_add_impulse(lua_State *L);
-static int l_phys3d_add_impulse_center(lua_State *L);
-static int l_phys3d_add_torque(lua_State *L);
-static int l_phys3d_add_angular_impulse(lua_State *L);
-static int l_phys3d_set_velocity(lua_State *L);
-static int l_phys3d_teleport(lua_State *L);
-static int l_phys3d_set_target(lua_State *L);
-static int l_phys3d_body_shapes(lua_State *L);
-static int l_phys3d_body_contacts(lua_State *L);
-static int l_phys3d_shape_raycast(lua_State *L);
-static int l_phys3d_shape_closest_point(lua_State *L);
-static int l_phys3d_shape_aabb(lua_State *L);
-static int l_phys3d_shape_info(lua_State *L);
-static int l_phys3d_shape_set_material(lua_State *L);
-static int l_phys3d_shape_set_filter(lua_State *L);
-static int l_phys3d_shape_set_events(lua_State *L);
-static int l_phys3d_contacts(lua_State *L);
-static int l_phys3d_body_events(lua_State *L);
-static int l_phys3d_sensors(lua_State *L);
-static int l_phys3d_joint_events(lua_State *L);
-static int l_phys3d_raycast(lua_State *L);
-static int l_phys3d_overlap_aabb(lua_State *L);
-static int l_phys3d_overlap_shape(lua_State *L);
-static int l_phys3d_shape_cast(lua_State *L);
-static int l_phys3d_profile(lua_State *L);
-static int l_phys3d_counters(lua_State *L);
-
-static void push_world_ref(lua_State *L, const char *key) {
-  lua_newtable(L);
-  lua_pushstring(L, "phys3d_world");
-  lua_setfield(L, -2, "__lub_kind");
-  lua_pushstring(L, key);
-  lua_setfield(L, -2, "key");
-  set_cfunc_field(L, "begin", l_phys3d_begin);
-  set_cfunc_field(L, "step", l_phys3d_step);
-  set_cfunc_field(L, "info", l_phys3d_world_info);
-  set_cfunc_field(L, "body", l_phys3d_body);
-  set_cfunc_field(L, "joint", l_phys3d_joint);
-  set_cfunc_field(L, "pose", l_phys3d_pose);
-  set_cfunc_field(L, "cast_mover", l_phys3d_cast_mover);
-  set_cfunc_field(L, "collide_mover", l_phys3d_collide_mover);
-  set_cfunc_field(L, "contacts", l_phys3d_contacts);
-  set_cfunc_field(L, "body_events", l_phys3d_body_events);
-  set_cfunc_field(L, "sensors", l_phys3d_sensors);
-  set_cfunc_field(L, "joint_events", l_phys3d_joint_events);
-  set_cfunc_field(L, "raycast", l_phys3d_raycast);
-  set_cfunc_field(L, "overlap_aabb", l_phys3d_overlap_aabb);
-  set_cfunc_field(L, "overlap_shape", l_phys3d_overlap_shape);
-  set_cfunc_field(L, "shape_cast", l_phys3d_shape_cast);
-  set_cfunc_field(L, "profile", l_phys3d_profile);
-  set_cfunc_field(L, "counters", l_phys3d_counters);
-}
-
-static void push_body_ref(lua_State *L, const char *world_key,
-                          const char *body_key) {
-  lua_newtable(L);
-  lua_pushstring(L, "phys3d_body");
-  lua_setfield(L, -2, "__lub_kind");
-  lua_pushstring(L, world_key);
-  lua_setfield(L, -2, "world");
-  lua_pushstring(L, body_key);
-  lua_setfield(L, -2, "key");
-  set_cfunc_field(L, "sphere", l_phys3d_sphere);
-  set_cfunc_field(L, "box", l_phys3d_box);
-  set_cfunc_field(L, "capsule", l_phys3d_capsule);
-  set_cfunc_field(L, "cylinder", l_phys3d_cylinder);
-  set_cfunc_field(L, "cone", l_phys3d_cone);
-  set_cfunc_field(L, "hull", l_phys3d_hull);
-  set_cfunc_field(L, "mesh", l_phys3d_mesh);
-  set_cfunc_field(L, "height_field", l_phys3d_height_field);
-  set_cfunc_field(L, "compound", l_phys3d_compound);
-  set_cfunc_field(L, "pose", l_phys3d_pose);
-  set_cfunc_field(L, "velocity", l_phys3d_velocity);
-  set_cfunc_field(L, "mass", l_phys3d_mass);
-  set_cfunc_field(L, "center", l_phys3d_center);
-  set_cfunc_field(L, "world_point", l_phys3d_world_point);
-  set_cfunc_field(L, "local_point", l_phys3d_local_point);
-  set_cfunc_field(L, "velocity_at", l_phys3d_velocity_at);
-  set_cfunc_field(L, "shapes", l_phys3d_body_shapes);
-  set_cfunc_field(L, "joints", l_phys3d_body_joints);
-  set_cfunc_field(L, "contacts", l_phys3d_body_contacts);
-  set_cfunc_field(L, "add_force", l_phys3d_add_force);
-  set_cfunc_field(L, "add_force_center", l_phys3d_add_force_center);
-  set_cfunc_field(L, "add_impulse", l_phys3d_add_impulse);
-  set_cfunc_field(L, "add_impulse_center", l_phys3d_add_impulse_center);
-  set_cfunc_field(L, "add_torque", l_phys3d_add_torque);
-  set_cfunc_field(L, "add_angular_impulse", l_phys3d_add_angular_impulse);
-  set_cfunc_field(L, "set_velocity", l_phys3d_set_velocity);
-  set_cfunc_field(L, "teleport", l_phys3d_teleport);
-  set_cfunc_field(L, "set_target", l_phys3d_set_target);
-}
-
-static void push_shape_ref(lua_State *L, const char *world_key,
-                           const char *body_key, const char *shape_key) {
-  lua_newtable(L);
-  lua_pushstring(L, "phys3d_shape");
-  lua_setfield(L, -2, "__lub_kind");
-  lua_pushstring(L, world_key);
-  lua_setfield(L, -2, "world");
-  lua_pushstring(L, body_key);
-  lua_setfield(L, -2, "body");
-  lua_pushstring(L, shape_key);
-  lua_setfield(L, -2, "key");
-  set_cfunc_field(L, "raycast", l_phys3d_shape_raycast);
-  set_cfunc_field(L, "closest_point", l_phys3d_shape_closest_point);
-  set_cfunc_field(L, "aabb", l_phys3d_shape_aabb);
-  set_cfunc_field(L, "info", l_phys3d_shape_info);
-  set_cfunc_field(L, "set_material", l_phys3d_shape_set_material);
-  set_cfunc_field(L, "set_filter", l_phys3d_shape_set_filter);
-  set_cfunc_field(L, "set_events", l_phys3d_shape_set_events);
-}
-
-static void push_joint_ref(lua_State *L, const char *world_key,
-                           const char *joint_key) {
-  lua_newtable(L);
-  lua_pushstring(L, "phys3d_joint");
-  lua_setfield(L, -2, "__lub_kind");
-  lua_pushstring(L, world_key);
-  lua_setfield(L, -2, "world");
-  lua_pushstring(L, joint_key);
-  lua_setfield(L, -2, "key");
-  set_cfunc_field(L, "info", l_phys3d_joint_info);
-  set_cfunc_field(L, "force", l_phys3d_joint_force);
-  set_cfunc_field(L, "torque", l_phys3d_joint_torque);
-  set_cfunc_field(L, "angle", l_phys3d_joint_angle);
-  set_cfunc_field(L, "translation", l_phys3d_joint_translation);
-  set_cfunc_field(L, "speed", l_phys3d_joint_speed);
-  set_cfunc_field(L, "length", l_phys3d_joint_length);
-  set_cfunc_field(L, "motor_force", l_phys3d_joint_motor_force);
-  set_cfunc_field(L, "motor_torque", l_phys3d_joint_motor_torque);
-  set_cfunc_field(L, "set_motor", l_phys3d_joint_set_motor);
-  set_cfunc_field(L, "set_limit", l_phys3d_joint_set_limit);
-  set_cfunc_field(L, "set_spring", l_phys3d_joint_set_spring);
-  set_cfunc_field(L, "set_target", l_phys3d_joint_set_target);
-}
+// --------------------------------------------------------------- lookups
 
 static Phys3dWorld *world_get(Phys3dState *state, const char *key) {
   if (!state || !key)
     return NULL;
-  uint32_t i = hash_str32(key) & (PHYS3D_WORLD_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_WORLD_BUCKETS - 1);
   for (Phys3dWorld *w = state->worlds[i]; w; w = w->next) {
     if (strcmp(w->key, key) == 0)
       return w;
@@ -1042,7 +303,7 @@ static Phys3dWorld *world_get_or_create(Phys3dState *state, const char *key) {
   Phys3dWorld *w = world_get(state, key);
   if (w)
     return w;
-  uint32_t i = hash_str32(key) & (PHYS3D_WORLD_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_WORLD_BUCKETS - 1);
   w = (Phys3dWorld *)SDL_calloc(1, sizeof(Phys3dWorld));
   if (!w)
     return NULL;
@@ -1051,13 +312,14 @@ static Phys3dWorld *world_get_or_create(Phys3dState *state, const char *key) {
     SDL_free(w);
     return NULL;
   }
+  w->state = state;
   w->fixed_dt = 1.0f / 60.0f;
   w->substeps = 4;
   w->max_steps = 4;
   w->prune = true;
   w->version = INT64_MIN;
   w->id = b3_nullWorldId;
-  callbacks_init(&w->callbacks);
+  w->handle = phys_handle_alloc(&state->handles, w, PHYS_HANDLE_WORLD);
   w->next = state->worlds[i];
   state->worlds[i] = w;
   return w;
@@ -1066,7 +328,7 @@ static Phys3dWorld *world_get_or_create(Phys3dState *state, const char *key) {
 static Phys3dBody *body_get(Phys3dWorld *w, const char *key) {
   if (!w || !key)
     return NULL;
-  uint32_t i = hash_str32(key) & (PHYS3D_BODY_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_BODY_BUCKETS - 1);
   for (Phys3dBody *b = w->bodies[i]; b; b = b->next) {
     if (strcmp(b->key, key) == 0)
       return b;
@@ -1078,7 +340,7 @@ static Phys3dBody *body_get_or_create(Phys3dWorld *w, const char *key) {
   Phys3dBody *b = body_get(w, key);
   if (b)
     return b;
-  uint32_t i = hash_str32(key) & (PHYS3D_BODY_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_BODY_BUCKETS - 1);
   b = (Phys3dBody *)SDL_calloc(1, sizeof(Phys3dBody));
   if (!b)
     return NULL;
@@ -1090,6 +352,7 @@ static Phys3dBody *body_get_or_create(Phys3dWorld *w, const char *key) {
   b->world = w;
   b->id = b3_nullBodyId;
   b->version = INT64_MIN;
+  b->handle = phys_handle_alloc(&w->state->handles, b, PHYS_HANDLE_BODY);
   b->next = w->bodies[i];
   w->bodies[i] = b;
   return b;
@@ -1098,7 +361,7 @@ static Phys3dBody *body_get_or_create(Phys3dWorld *w, const char *key) {
 static Phys3dShape *shape_get(Phys3dBody *b, const char *key) {
   if (!b || !key)
     return NULL;
-  uint32_t i = hash_str32(key) & (PHYS3D_SHAPE_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_SHAPE_BUCKETS - 1);
   for (Phys3dShape *s = b->shapes[i]; s; s = s->next) {
     if (strcmp(s->key, key) == 0)
       return s;
@@ -1110,7 +373,7 @@ static Phys3dShape *shape_get_or_create(Phys3dBody *b, const char *key) {
   Phys3dShape *s = shape_get(b, key);
   if (s)
     return s;
-  uint32_t i = hash_str32(key) & (PHYS3D_SHAPE_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_SHAPE_BUCKETS - 1);
   s = (Phys3dShape *)SDL_calloc(1, sizeof(Phys3dShape));
   if (!s)
     return NULL;
@@ -1121,6 +384,8 @@ static Phys3dShape *shape_get_or_create(Phys3dBody *b, const char *key) {
   }
   s->body = b;
   s->id = b3_nullShapeId;
+  s->handle =
+      phys_handle_alloc(&b->world->state->handles, s, PHYS_HANDLE_SHAPE);
   s->next = b->shapes[i];
   b->shapes[i] = s;
   return s;
@@ -1129,7 +394,7 @@ static Phys3dShape *shape_get_or_create(Phys3dBody *b, const char *key) {
 static Phys3dJoint *joint_get(Phys3dWorld *w, const char *key) {
   if (!w || !key)
     return NULL;
-  uint32_t i = hash_str32(key) & (PHYS3D_JOINT_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_JOINT_BUCKETS - 1);
   for (Phys3dJoint *j = w->joints[i]; j; j = j->next) {
     if (strcmp(j->key, key) == 0)
       return j;
@@ -1141,7 +406,7 @@ static Phys3dJoint *joint_get_or_create(Phys3dWorld *w, const char *key) {
   Phys3dJoint *j = joint_get(w, key);
   if (j)
     return j;
-  uint32_t i = hash_str32(key) & (PHYS3D_JOINT_BUCKETS - 1);
+  uint32_t i = phys_hash_str32(key) & (PHYS3D_JOINT_BUCKETS - 1);
   j = (Phys3dJoint *)SDL_calloc(1, sizeof(Phys3dJoint));
   if (!j)
     return NULL;
@@ -1153,10 +418,13 @@ static Phys3dJoint *joint_get_or_create(Phys3dWorld *w, const char *key) {
   j->world = w;
   j->id = b3_nullJointId;
   j->version = INT64_MIN;
+  j->handle = phys_handle_alloc(&w->state->handles, j, PHYS_HANDLE_JOINT);
   j->next = w->joints[i];
   w->joints[i] = j;
   return j;
 }
+
+// ------------------------------------------------------------ tombstones
 
 static uint32_t shape_tombstone_bucket(uint64_t id_key) {
   return (uint32_t)(id_key ^ (id_key >> 32)) & (PHYS3D_TOMBSTONE_BUCKETS - 1);
@@ -1181,7 +449,6 @@ static void shape_tombstone_put(Phys3dWorld *w, b3ShapeId shape_id,
                                 int material_id) {
   if (!w || B3_IS_NULL(shape_id))
     return;
-
   char *body_copy = phys_strdup(body ? body : "");
   char *shape_copy = phys_strdup(shape ? shape : "");
   char *tag_copy = phys_strdup(tag ? tag : "");
@@ -1193,7 +460,6 @@ static void shape_tombstone_put(Phys3dWorld *w, b3ShapeId shape_id,
     SDL_free(material_copy);
     return;
   }
-
   uint64_t id_key = b3StoreShapeId(shape_id);
   uint32_t bucket = shape_tombstone_bucket(id_key);
   Phys3dShapeTombstone *t = shape_tombstone_get(w, shape_id);
@@ -1210,7 +476,6 @@ static void shape_tombstone_put(Phys3dWorld *w, b3ShapeId shape_id,
     t->next = w->shape_tombstones[bucket];
     w->shape_tombstones[bucket] = t;
   }
-
   SDL_free(t->body);
   SDL_free(t->shape);
   SDL_free(t->tag);
@@ -1232,16 +497,6 @@ static void shape_tombstone_update_shape(Phys3dShape *shape) {
       (int)b3Shape_GetSurfaceMaterial(shape->id).userMaterialId);
 }
 
-static void shape_tombstone_clear(Phys3dShapeTombstone *t) {
-  if (!t)
-    return;
-  SDL_free(t->body);
-  SDL_free(t->shape);
-  SDL_free(t->tag);
-  SDL_free(t->material);
-  SDL_free(t);
-}
-
 static void shape_tombstone_clear_all(Phys3dWorld *w) {
   if (!w)
     return;
@@ -1249,12 +504,18 @@ static void shape_tombstone_clear_all(Phys3dWorld *w) {
     Phys3dShapeTombstone *t = w->shape_tombstones[i];
     while (t) {
       Phys3dShapeTombstone *next = t->next;
-      shape_tombstone_clear(t);
+      SDL_free(t->body);
+      SDL_free(t->shape);
+      SDL_free(t->tag);
+      SDL_free(t->material);
+      SDL_free(t);
       t = next;
     }
     w->shape_tombstones[i] = NULL;
   }
 }
+
+// ---------------------------------------------------------------- events
 
 static void snapshot_clear_one(Phys3dContactSnapshot *e) {
   SDL_free(e->a_body);
@@ -1265,18 +526,6 @@ static void snapshot_clear_one(Phys3dContactSnapshot *e) {
   SDL_free(e->b_shape);
   SDL_free(e->b_tag);
   SDL_free(e->b_material);
-  memset(e, 0, sizeof(*e));
-}
-
-static void body_snapshot_clear_one(Phys3dBodyEventSnapshot *e) {
-  SDL_free(e->body);
-  memset(e, 0, sizeof(*e));
-}
-
-static void joint_snapshot_clear_one(Phys3dJointEventSnapshot *e) {
-  SDL_free(e->joint);
-  SDL_free(e->body_a);
-  SDL_free(e->body_b);
   memset(e, 0, sizeof(*e));
 }
 
@@ -1291,10 +540,16 @@ static void event_buffer_clear(Phys3dEventBuffer *events) {
     snapshot_clear_one(&events->sensor_begins[i]);
   for (int i = 0; i < events->sensor_end_count; ++i)
     snapshot_clear_one(&events->sensor_ends[i]);
-  for (int i = 0; i < events->move_count; ++i)
-    body_snapshot_clear_one(&events->moves[i]);
-  for (int i = 0; i < events->joint_count; ++i)
-    joint_snapshot_clear_one(&events->joints[i]);
+  for (int i = 0; i < events->move_count; ++i) {
+    SDL_free(events->moves[i].body);
+    memset(&events->moves[i], 0, sizeof(events->moves[i]));
+  }
+  for (int i = 0; i < events->joint_count; ++i) {
+    SDL_free(events->joints[i].joint);
+    SDL_free(events->joints[i].body_a);
+    SDL_free(events->joints[i].body_b);
+    memset(&events->joints[i], 0, sizeof(events->joints[i]));
+  }
   events->begin_count = 0;
   events->end_count = 0;
   events->hit_count = 0;
@@ -1316,68 +571,39 @@ static void event_buffer_free(Phys3dEventBuffer *events) {
   memset(events, 0, sizeof(*events));
 }
 
+// 配列の末尾に 1 要素ぶん (zero) を確保する。失敗は NULL。
+static void *event_push_raw(void **items, int *count, int *cap,
+                            size_t item_size, int first_cap) {
+  if (*count >= *cap) {
+    int new_cap = *cap ? *cap * 2 : first_cap;
+    void *new_items = SDL_realloc(*items, item_size * (size_t)new_cap);
+    if (!new_items)
+      return NULL;
+    memset((char *)new_items + item_size * (size_t)*cap, 0,
+           item_size * (size_t)(new_cap - *cap));
+    *items = new_items;
+    *cap = new_cap;
+  }
+  void *out = (char *)*items + item_size * (size_t)(*count)++;
+  memset(out, 0, item_size);
+  return out;
+}
+
 static Phys3dContactSnapshot *event_push(Phys3dContactSnapshot **items,
                                          int *count, int *cap) {
-  if (*count >= *cap) {
-    int new_cap = *cap ? *cap * 2 : 8;
-    Phys3dContactSnapshot *new_items =
-        (Phys3dContactSnapshot *)SDL_realloc(*items, sizeof(**items) * new_cap);
-    if (!new_items)
-      return NULL;
-    memset(new_items + *cap, 0, sizeof(**items) * (new_cap - *cap));
-    *items = new_items;
-    *cap = new_cap;
-  }
-  Phys3dContactSnapshot *out = &(*items)[(*count)++];
-  memset(out, 0, sizeof(*out));
-  return out;
+  return (Phys3dContactSnapshot *)event_push_raw(
+      (void **)items, count, cap, sizeof(Phys3dContactSnapshot), 8);
 }
 
-static Phys3dBodyEventSnapshot *body_event_push(Phys3dBodyEventSnapshot **items,
-                                                int *count, int *cap) {
-  if (*count >= *cap) {
-    int new_cap = *cap ? *cap * 2 : 16;
-    Phys3dBodyEventSnapshot *new_items = (Phys3dBodyEventSnapshot *)SDL_realloc(
-        *items, sizeof(**items) * new_cap);
-    if (!new_items)
-      return NULL;
-    memset(new_items + *cap, 0, sizeof(**items) * (new_cap - *cap));
-    *items = new_items;
-    *cap = new_cap;
-  }
-  Phys3dBodyEventSnapshot *out = &(*items)[(*count)++];
-  memset(out, 0, sizeof(*out));
-  return out;
-}
-
-static Phys3dJointEventSnapshot *
-joint_event_push(Phys3dJointEventSnapshot **items, int *count, int *cap) {
-  if (*count >= *cap) {
-    int new_cap = *cap ? *cap * 2 : 8;
-    Phys3dJointEventSnapshot *new_items =
-        (Phys3dJointEventSnapshot *)SDL_realloc(*items,
-                                                sizeof(**items) * new_cap);
-    if (!new_items)
-      return NULL;
-    memset(new_items + *cap, 0, sizeof(**items) * (new_cap - *cap));
-    *items = new_items;
-    *cap = new_cap;
-  }
-  Phys3dJointEventSnapshot *out = &(*items)[(*count)++];
-  memset(out, 0, sizeof(*out));
-  return out;
-}
-
-static void command_clear(Phys3dCommand *cmd) {
-  SDL_free(cmd->body_key);
-  memset(cmd, 0, sizeof(*cmd));
-}
+// -------------------------------------------------------------- commands
 
 static void command_queue_clear(Phys3dCommandQueue *queue) {
   if (!queue)
     return;
-  for (int i = 0; i < queue->count; ++i)
-    command_clear(&queue->items[i]);
+  for (int i = 0; i < queue->count; ++i) {
+    SDL_free(queue->items[i].body_key);
+    memset(&queue->items[i], 0, sizeof(queue->items[i]));
+  }
   queue->count = 0;
 }
 
@@ -1389,18 +615,17 @@ static void command_queue_free(Phys3dCommandQueue *queue) {
   memset(queue, 0, sizeof(*queue));
 }
 
-static Phys3dCommand *command_queue_push(lua_State *L, Phys3dWorld *w,
-                                         Phys3dBody *b, Phys3dCommandKind kind,
-                                         const char *fn) {
+static Phys3dCommand *command_queue_push(Phys3dWorld *w, Phys3dBody *b,
+                                         Phys3dCommandKind kind) {
   if (!w || !b || !b->key)
-    luaL_error(L, "%s: missing body", fn);
+    return NULL;
   Phys3dCommandQueue *queue = &w->commands;
   if (queue->count >= queue->cap) {
     int new_cap = queue->cap ? queue->cap * 2 : 32;
     Phys3dCommand *new_items = (Phys3dCommand *)SDL_realloc(
         queue->items, sizeof(*queue->items) * new_cap);
     if (!new_items)
-      luaL_error(L, "%s: out of memory", fn);
+      return NULL;
     memset(new_items + queue->cap, 0,
            sizeof(*queue->items) * (new_cap - queue->cap));
     queue->items = new_items;
@@ -1411,41 +636,39 @@ static Phys3dCommand *command_queue_push(lua_State *L, Phys3dWorld *w,
   cmd->body_key = phys_strdup(b->key);
   if (!cmd->body_key) {
     queue->count--;
-    luaL_error(L, "%s: out of memory", fn);
+    return NULL;
   }
   cmd->kind = kind;
   if (B3_IS_NON_NULL(b->id) && b3Body_IsValid(b->id))
     cmd->body_id_key = b3StoreBodyId(b->id);
   cmd->wake = true;
+  cmd->transform.q = b3Quat_identity;
   return cmd;
 }
 
-// Box3D references (does not copy) mesh/height-field/compound data, so the
-// owned data may only be released after the box3d shape is gone.
+// ------------------------------------------------------------------ free
+
 static void shape_free_heavy_data(Phys3dShape *s) {
-  if (s->mesh_data) {
+  if (s->mesh_data)
     b3DestroyMesh(s->mesh_data);
-    s->mesh_data = NULL;
-  }
-  if (s->height_field_data) {
+  if (s->height_field_data)
     b3DestroyHeightField(s->height_field_data);
-    s->height_field_data = NULL;
-  }
-  if (s->compound_data) {
+  if (s->compound_data)
     b3DestroyCompound(s->compound_data);
-    s->compound_data = NULL;
-  }
+  s->mesh_data = NULL;
+  s->height_field_data = NULL;
+  s->compound_data = NULL;
 }
 
 static void shape_free(Phys3dShape *s, bool destroy_id) {
   if (!s)
     return;
-  if (destroy_id && B3_IS_NON_NULL(s->id) && b3Shape_IsValid(s->id)) {
+  if (destroy_id && B3_IS_NON_NULL(s->id) && b3Shape_IsValid(s->id))
     b3DestroyShape(s->id, true);
-  }
   shape_free_heavy_data(s);
-  owned_string_clear(&s->tag);
-  owned_string_clear(&s->material_name);
+  phys_handle_release(&s->body->world->state->handles, s->handle);
+  phys_owned_string_clear(&s->tag);
+  phys_owned_string_clear(&s->material_name);
   SDL_free(s->key);
   SDL_free(s);
 }
@@ -1453,9 +676,9 @@ static void shape_free(Phys3dShape *s, bool destroy_id) {
 static void joint_free(Phys3dJoint *j, bool destroy_id) {
   if (!j)
     return;
-  if (destroy_id && B3_IS_NON_NULL(j->id) && b3Joint_IsValid(j->id)) {
+  if (destroy_id && B3_IS_NON_NULL(j->id) && b3Joint_IsValid(j->id))
     b3DestroyJoint(j->id, true);
-  }
+  phys_handle_release(&j->world->state->handles, j->handle);
   SDL_free(j->key);
   SDL_free(j);
 }
@@ -1502,6 +725,7 @@ static void body_free(Phys3dBody *b, bool destroy_id) {
   } else {
     body_free_shapes(b, destroy_id);
   }
+  phys_handle_release(&b->world->state->handles, b->handle);
   SDL_free(b->key);
   SDL_free(b);
 }
@@ -1551,15 +775,19 @@ static void world_destroy_box3d_and_contents(Phys3dWorld *w) {
 static void world_free(Phys3dWorld *w) {
   if (!w)
     return;
-  callbacks_clear(w->callbacks.L, w);
+  callbacks_clear(w);
   world_destroy_box3d_and_contents(w);
   event_buffer_free(&w->events);
   command_queue_free(&w->commands);
+  phys_handle_release(&w->state->handles, w->handle);
   SDL_free(w->key);
   SDL_free(w);
 }
 
-void phys3d_state_init(Phys3dState *state) { memset(state, 0, sizeof(*state)); }
+void phys3d_state_init(Phys3dState *state) {
+  memset(state, 0, sizeof(*state));
+  phys_handles_init(&state->handles);
+}
 
 void phys3d_state_shutdown(Phys3dState *state) {
   if (!state)
@@ -1573,116 +801,91 @@ void phys3d_state_shutdown(Phys3dState *state) {
     }
     state->worlds[i] = NULL;
   }
+  phys_handles_free(&state->handles);
+  phys_scratch_free(&state->scratch);
+  memset(state, 0, sizeof(*state));
 }
 
-void phys3d_lua_set_state(Phys3dState *state) { g_phys3d_state = state; }
+// -------------------------------------------------------- handle resolve
 
-static Phys3dWorld *check_world(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_world"))
-    luaL_error(L, "expected Phys3d WorldRef");
-  const char *key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, key);
+static Phys3dState *phys_state(App *app) { return &app->phys3; }
+
+static Phys3dWorld *world_from_handle(App *app, LubHandle h) {
+  return (Phys3dWorld *)phys_handle_get(&phys_state(app)->handles, h,
+                                        PHYS_HANDLE_WORLD);
+}
+
+static Phys3dBody *body_from_handle(App *app, LubHandle h) {
+  return (Phys3dBody *)phys_handle_get(&phys_state(app)->handles, h,
+                                       PHYS_HANDLE_BODY);
+}
+
+static Phys3dShape *shape_from_handle(App *app, LubHandle h) {
+  return (Phys3dShape *)phys_handle_get(&phys_state(app)->handles, h,
+                                        PHYS_HANDLE_SHAPE);
+}
+
+static Phys3dJoint *joint_from_handle(App *app, LubHandle h) {
+  return (Phys3dJoint *)phys_handle_get(&phys_state(app)->handles, h,
+                                        PHYS_HANDLE_JOINT);
+}
+
+static Phys3dWorld *check_world(App *app, LubHandle h, const char *fn) {
+  Phys3dWorld *w = world_from_handle(app, h);
   if (!w)
-    luaL_error(L, "phys3d world not found: %s", key ? key : "?");
+    lub_api_fail(app, "%s: phys3d world not found", fn);
   return w;
 }
 
-static Phys3dWorld *query_world_ref(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_world"))
-    luaL_error(L, "expected Phys3d WorldRef");
-  const char *key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, key);
+static Phys3dBody *check_body(App *app, LubHandle h, const char *fn) {
+  Phys3dBody *b = body_from_handle(app, h);
+  if (!b)
+    lub_api_fail(app, "%s: phys3d body not found", fn);
+  return b;
+}
+
+static Phys3dShape *check_shape(App *app, LubHandle h, const char *fn) {
+  Phys3dShape *s = shape_from_handle(app, h);
+  if (!s)
+    lub_api_fail(app, "%s: phys3d shape not found", fn);
+  return s;
+}
+
+static Phys3dJoint *check_joint(App *app, LubHandle h, const char *fn) {
+  Phys3dJoint *j = joint_from_handle(app, h);
+  if (!j)
+    lub_api_fail(app, "%s: phys3d joint not found", fn);
+  return j;
+}
+
+static Phys3dWorld *query_world(App *app, LubHandle h) {
+  Phys3dWorld *w = world_from_handle(app, h);
   if (!w || B3_IS_NULL(w->id) || !b3World_IsValid(w->id))
     return NULL;
   return w;
 }
 
-static Phys3dBody *check_body(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_body"))
-    luaL_error(L, "expected Phys3d BodyRef");
-  const char *world_key = ref_string(L, idx, "world");
-  const char *body_key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-  Phys3dBody *b = w ? body_get(w, body_key) : NULL;
-  if (!b)
-    luaL_error(L, "phys3d body not found: %s/%s", world_key ? world_key : "?",
-               body_key ? body_key : "?");
-  return b;
-}
-
-static Phys3dBody *query_body_ref(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_body"))
-    luaL_error(L, "expected Phys3d BodyRef");
-  const char *world_key = ref_string(L, idx, "world");
-  const char *body_key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-  Phys3dBody *b = w ? body_get(w, body_key) : NULL;
+static Phys3dBody *query_body(App *app, LubHandle h) {
+  Phys3dBody *b = body_from_handle(app, h);
   return body_is_live(b) ? b : NULL;
 }
 
-static int push_not_found(lua_State *L) {
-  lua_pushnil(L);
-  lua_pushstring(L, "not found");
-  return 2;
-}
-
-static Phys3dShape *check_shape(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_shape"))
-    luaL_error(L, "expected Phys3d ShapeRef");
-  const char *world_key = ref_string(L, idx, "world");
-  const char *body_key = ref_string(L, idx, "body");
-  const char *shape_key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-  Phys3dBody *b = w ? body_get(w, body_key) : NULL;
-  Phys3dShape *s = b ? shape_get(b, shape_key) : NULL;
-  if (!s)
-    luaL_error(L, "phys3d shape not found: %s/%s/%s",
-               world_key ? world_key : "?", body_key ? body_key : "?",
-               shape_key ? shape_key : "?");
-  return s;
-}
-
-static Phys3dShape *query_shape_ref(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_shape"))
-    luaL_error(L, "expected Phys3d ShapeRef");
-  const char *world_key = ref_string(L, idx, "world");
-  const char *body_key = ref_string(L, idx, "body");
-  const char *shape_key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-  Phys3dBody *b = w ? body_get(w, body_key) : NULL;
-  Phys3dShape *s = b ? shape_get(b, shape_key) : NULL;
+static Phys3dShape *query_shape(App *app, LubHandle h) {
+  Phys3dShape *s = shape_from_handle(app, h);
   return shape_is_live(s) ? s : NULL;
 }
 
-static Phys3dJoint *check_joint(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_joint"))
-    luaL_error(L, "expected Phys3d JointRef");
-  const char *world_key = ref_string(L, idx, "world");
-  const char *joint_key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-  Phys3dJoint *j = w ? joint_get(w, joint_key) : NULL;
-  if (!j)
-    luaL_error(L, "phys3d joint not found: %s/%s", world_key ? world_key : "?",
-               joint_key ? joint_key : "?");
-  return j;
+static Phys3dJoint *query_joint(App *app, LubHandle h) {
+  Phys3dJoint *j = joint_from_handle(app, h);
+  return joint_is_live(j) ? j : NULL;
 }
 
-static Phys3dJoint *query_joint_ref(lua_State *L, int idx) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  if (!is_ref(L, idx, "phys3d_joint"))
-    luaL_error(L, "expected Phys3d JointRef");
-  const char *world_key = ref_string(L, idx, "world");
-  const char *joint_key = ref_string(L, idx, "key");
-  Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-  Phys3dJoint *j = w ? joint_get(w, joint_key) : NULL;
-  return joint_is_live(j) ? j : NULL;
+static bool in_callback(App *app, const char *fn) {
+  if (phys_state(app)->callback_depth <= 0)
+    return false;
+  lub_api_fail(
+      app, "%s: physics mutation is not allowed inside phys3d callback", fn);
+  return true;
 }
 
 static bool body_is_live(Phys3dBody *b) {
@@ -1693,113 +896,162 @@ static bool shape_is_live(Phys3dShape *s) {
   return s && B3_IS_NON_NULL(s->id) && b3Shape_IsValid(s->id);
 }
 
-static void check_live_body(lua_State *L, Phys3dBody *b, const char *fn) {
-  if (!body_is_live(b))
-    luaL_error(L, "%s: body is not live", fn);
-}
-
-static void check_live_shape(lua_State *L, Phys3dShape *s, const char *fn) {
-  if (!shape_is_live(s))
-    luaL_error(L, "%s: shape is not live", fn);
-}
-
 static bool joint_is_live(Phys3dJoint *j) {
   return j && B3_IS_NON_NULL(j->id) && b3Joint_IsValid(j->id);
 }
 
-static void check_live_joint(lua_State *L, Phys3dJoint *j, const char *fn) {
-  if (!joint_is_live(j))
-    luaL_error(L, "%s: joint is not live", fn);
-}
-
-static void parse_world_opts(lua_State *L, int idx, Phys3dWorldOpts *opts) {
-  opts->version = 0;
-  opts->has_version = false;
-  opts->gravity = (b3Vec3){0.0f, -9.8f, 0.0f};
-  opts->fixed_dt = 1.0f / 60.0f;
-  opts->substeps = 4;
-  opts->max_steps = 4;
-  opts->sleep = true;
-  opts->continuous = true;
-  opts->has_hit_event_threshold = false;
-  opts->hit_event_threshold = 0.0f;
-
-  if (!lua_istable(L, idx))
-    return;
-  int64_t v = 0;
-  if (table_has_int(L, idx, "version", NULL, &v)) {
-    opts->version = v;
-    opts->has_version = true;
+static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
+                     const char *fn) {
+  if (!key.ptr || key.len <= 0) {
+    lub_api_fail(app, "%s: key required", fn);
+    return false;
   }
-  opts->gravity = table_vec3(L, idx, "gravity", NULL, opts->gravity);
-  opts->fixed_dt = table_number(L, idx, "fixed_dt", "fixedDt", opts->fixed_dt);
-  opts->substeps = table_int(L, idx, "substeps", NULL, opts->substeps);
-  opts->max_steps = table_int(L, idx, "max_steps", "maxSteps", opts->max_steps);
-  opts->sleep = table_bool(L, idx, "sleep", NULL, opts->sleep);
-  opts->continuous = table_bool(L, idx, "continuous", NULL, opts->continuous);
-  if (table_get_any(L, idx, "hit_event_threshold", "hitEventThreshold")) {
-    if (lua_isnumber(L, -1)) {
-      opts->has_hit_event_threshold = true;
-      opts->hit_event_threshold = (float)lua_tonumber(L, -1);
-    }
-    lua_pop(L, 1);
+  if (!lub_str_copy(key, buf, cap)) {
+    lub_api_fail(app, "%s: key too long", fn);
+    return false;
   }
-  if (opts->fixed_dt <= 0.0f)
-    opts->fixed_dt = 1.0f / 60.0f;
-  if (opts->substeps <= 0)
-    opts->substeps = 4;
-  if (opts->max_steps <= 0)
-    opts->max_steps = 4;
-}
-
-static bool world_create_or_recreate(lua_State *L, Phys3dWorld *w,
-                                     const Phys3dWorldOpts *opts) {
-  int64_t version = opts->has_version ? opts->version : 0;
-  bool needs_create =
-      B3_IS_NULL(w->id) || !b3World_IsValid(w->id) || w->version != version;
-  if (needs_create) {
-    callbacks_clear(L, w);
-    world_destroy_box3d_and_contents(w);
-    b3WorldDef def = b3DefaultWorldDef();
-    def.gravity = opts->gravity;
-    def.enableSleep = opts->sleep;
-    w->id = b3CreateWorld(&def);
-    if (B3_IS_NULL(w->id))
-      return luaL_error(L, "phys3d_world: b3CreateWorld failed"), false;
-    w->version = version;
-  } else {
-    b3World_SetGravity(w->id, opts->gravity);
-    b3World_EnableSleeping(w->id, opts->sleep);
-  }
-  b3World_EnableContinuous(w->id, opts->continuous);
-  if (opts->has_hit_event_threshold)
-    b3World_SetHitEventThreshold(w->id, opts->hit_event_threshold);
-  w->fixed_dt = opts->fixed_dt;
-  w->substeps = opts->substeps;
-  w->max_steps = opts->max_steps;
   return true;
 }
 
-static int l_phys3d_world(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_world"))
-    return 0;
-  const char *key = luaL_checkstring(L, 1);
-  Phys3dWorldOpts opts;
-  parse_world_opts(L, 2, &opts);
-  Phys3dWorld *w = world_get_or_create(g_phys3d_state, key);
-  if (!w)
-    return luaL_error(L, "phys3d_world: out of memory");
-  if (!world_create_or_recreate(L, w, &opts))
-    return 0;
-  callbacks_replace_from_opts(L, w, 2);
-  push_world_ref(L, key);
-  return 1;
+static void *scratch_alloc(App *app, size_t bytes) {
+  return phys_scratch_alloc(&phys_state(app)->scratch, bytes);
 }
 
-static int l_phys3d_begin(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_begin"))
+// ------------------------------------------------------------ desc init
+
+void lub_phys3d_world_desc_init(LubPhys3dWorldDesc *desc) {
+  memset(desc, 0, sizeof(*desc));
+  desc->gravity = (LubVec3){0.0f, -9.8f, 0.0f};
+  desc->fixed_dt = 1.0f / 60.0f;
+  desc->substeps = 4;
+  desc->max_steps = 4;
+  desc->sleep = true;
+  desc->continuous = true;
+}
+
+void lub_phys3d_body_desc_init(LubPhys3dBodyDesc *desc) {
+  memset(desc, 0, sizeof(*desc));
+  desc->type = LUB_PHYS3D_BODY_TYPE_STATIC;
+  desc->enabled = true;
+  desc->awake = true;
+  desc->sleep = true;
+  desc->gravity_scale = 1.0f;
+  desc->rotation = (LubQuat){0, 0, 0, 1};
+  desc->initial_awake = true;
+}
+
+void lub_phys3d_shape_desc_init(LubPhys3dShapeDesc *desc) {
+  memset(desc, 0, sizeof(*desc));
+  desc->density = 1.0f;
+  desc->friction = 0.6f;
+  desc->filter.category_bits = 1u;
+  desc->filter.mask_bits = UINT64_MAX;
+}
+
+void lub_phys3d_joint_desc_init(LubPhys3dJointDesc *desc, int32_t type) {
+  memset(desc, 0, sizeof(*desc));
+  desc->type = type;
+  desc->frame_a_rotation = (LubQuat){0, 0, 0, 1};
+  desc->frame_b_rotation = (LubQuat){0, 0, 0, 1};
+  desc->axis = (LubVec3){0, 0, 1};
+  desc->force_threshold = FLT_MAX;
+  desc->torque_threshold = FLT_MAX;
+  desc->length = 1.0f;
+  desc->max_length = FLT_MAX;
+  desc->lower_spring_force = -FLT_MAX;
+  desc->upper_spring_force = FLT_MAX;
+  desc->target_rotation = (LubQuat){0, 0, 0, 1};
+  switch (type) {
+  case LUB_PHYS3D_JOINT_TYPE_PARALLEL:
+    desc->hertz = 1.0f;
+    desc->damping_ratio = 1.0f;
+    desc->max_torque = FLT_MAX;
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
+    desc->enable_spring = true;
+    desc->hertz = 1.0f;
+    desc->damping_ratio = 0.7f;
+    desc->steering_hertz = 1.0f;
+    desc->steering_damping_ratio = 0.7f;
+    break;
+  default:
+    break;
+  }
+}
+
+// ----------------------------------------------------------------- world
+
+static bool world_create_or_recreate(App *app, Phys3dWorld *w,
+                                     const LubPhys3dWorldDesc *desc) {
+  int64_t version = desc->has_version ? desc->version : 0;
+  bool needs_create =
+      B3_IS_NULL(w->id) || !b3World_IsValid(w->id) || w->version != version;
+  b3Vec3 gravity = vec3_of(desc->gravity);
+  if (needs_create) {
+    callbacks_clear(w);
+    world_destroy_box3d_and_contents(w);
+    b3WorldDef def = b3DefaultWorldDef();
+    def.gravity = gravity;
+    def.enableSleep = desc->sleep;
+    w->id = b3CreateWorld(&def);
+    if (B3_IS_NULL(w->id)) {
+      lub_api_fail(app, "phys3d_world: b3CreateWorld failed");
+      return false;
+    }
+    w->version = version;
+  } else {
+    b3World_SetGravity(w->id, gravity);
+    b3World_EnableSleeping(w->id, desc->sleep);
+  }
+  b3World_EnableContinuous(w->id, desc->continuous);
+  if (desc->has_hit_event_threshold)
+    b3World_SetHitEventThreshold(w->id, desc->hit_event_threshold);
+  w->fixed_dt = desc->fixed_dt > 0.0f ? desc->fixed_dt : 1.0f / 60.0f;
+  w->substeps = desc->substeps > 0 ? desc->substeps : 4;
+  w->max_steps = desc->max_steps > 0 ? desc->max_steps : 4;
+  return true;
+}
+
+LubStatus lub_phys3d_world(LubContext *ctx, LubStr key,
+                           const LubPhys3dWorldDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (in_callback(app, "phys3d_world"))
+    return LUB_ERROR;
+  char kbuf[PHYS_KEY_MAX];
+  if (!key_copy(app, key, kbuf, sizeof(kbuf), "phys3d_world"))
+    return LUB_ERROR;
+  LubPhys3dWorldDesc def;
+  if (!desc) {
+    lub_phys3d_world_desc_init(&def);
+    desc = &def;
+  }
+  Phys3dWorld *w = world_get_or_create(phys_state(app), kbuf);
+  if (!w)
+    return lub_api_fail(app, "phys3d_world: out of memory");
+  if (!world_create_or_recreate(app, w, desc))
+    return LUB_ERROR;
+  callbacks_replace(w, &desc->callbacks);
+  *out = w->handle;
+  return LUB_OK;
+}
+
+LubHandle lub_phys3d_world_find(LubContext *ctx, LubStr key) {
+  App *app = lub_api_app(ctx);
+  char kbuf[PHYS_KEY_MAX];
+  if (!key.ptr || key.len <= 0 || !lub_str_copy(key, kbuf, sizeof(kbuf)))
     return 0;
-  Phys3dWorld *w = check_world(L, 1);
+  Phys3dWorld *w = world_get(phys_state(app), kbuf);
+  return w ? w->handle : 0;
+}
+
+LubStatus lub_phys3d_begin(LubContext *ctx, LubHandle world, bool prune) {
+  App *app = lub_api_app(ctx);
+  if (in_callback(app, "phys3d_begin"))
+    return LUB_ERROR;
+  Phys3dWorld *w = check_world(app, world, "phys3d_begin");
+  if (!w)
+    return LUB_ERROR;
   w->generation++;
   if (w->generation == 0)
     w->generation = 1;
@@ -1808,164 +1060,69 @@ static int l_phys3d_begin(lua_State *L) {
     w->callbacks_pending = false;
   } else if (callbacks_any(&w->callbacks) &&
              w->callbacks_generation != w->generation) {
-    callbacks_clear(L, w);
+    callbacks_clear(w);
   }
-  w->prune = lua_istable(L, 2) ? table_bool(L, 2, "prune", NULL, true) : true;
+  w->prune = prune;
   w->begun = true;
-  return 0;
+  return LUB_OK;
 }
 
-static b3BodyType parse_body_type(lua_State *L, int idx) {
-  int type = (int)luaL_checkinteger(L, idx);
-  switch (type) {
-  case PHYS3D_STATIC:
-    return b3_staticBody;
-  case PHYS3D_KINEMATIC:
-    return b3_kinematicBody;
-  case PHYS3D_DYNAMIC:
-    return b3_dynamicBody;
-  default:
-    luaL_error(L, "phys3d_body: unknown body type %d", type);
-    return b3_staticBody;
-  }
+LubStatus lub_phys3d_world_info(LubContext *ctx, LubHandle world,
+                                LubPhys3dWorldInfo *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  bool valid = B3_IS_NON_NULL(w->id) && b3World_IsValid(w->id);
+  out->key = str_or_empty(w->key);
+  out->valid = valid;
+  out->version = (int32_t)w->version;
+  out->generation = (int32_t)w->generation;
+  out->begun = w->begun;
+  out->prune = w->prune;
+  out->fixed_dt = w->fixed_dt;
+  out->substeps = w->substeps;
+  out->max_steps = w->max_steps;
+  out->accumulator = (float)w->accumulator;
+  out->pending_commands = w->commands.count;
+  out->callback_filter = w->callbacks.filter != NULL;
+  out->callback_pre_solve = w->callbacks.pre_solve != NULL;
+  out->callback_friction = w->callbacks.friction != NULL;
+  out->callback_restitution = w->callbacks.restitution != NULL;
+  if (!valid)
+    return LUB_OK;
+  out->gravity = lub_vec3(b3World_GetGravity(w->id));
+  out->sleep = b3World_IsSleepingEnabled(w->id);
+  out->continuous = b3World_IsContinuousEnabled(w->id);
+  out->warm_starting = b3World_IsWarmStartingEnabled(w->id);
+  out->restitution_threshold = b3World_GetRestitutionThreshold(w->id);
+  out->hit_event_threshold = b3World_GetHitEventThreshold(w->id);
+  out->maximum_linear_speed = b3World_GetMaximumLinearSpeed(w->id);
+  out->awake_body_count = b3World_GetAwakeBodyCount(w->id);
+  return LUB_OK;
 }
 
-static void parse_initial(lua_State *L, int idx, Phys3dBodyDesc *desc) {
-  if (!table_get_any(L, idx, "initial", NULL))
-    return;
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    return;
-  }
-  int t = lua_gettop(L);
-  desc->initial_pos.x = table_number(L, t, "x", NULL, desc->initial_pos.x);
-  desc->initial_pos.y = table_number(L, t, "y", NULL, desc->initial_pos.y);
-  desc->initial_pos.z = table_number(L, t, "z", NULL, desc->initial_pos.z);
-  table_rotation(L, t, &desc->initial_rot);
-  desc->initial_vel.x = table_number(L, t, "vx", NULL, desc->initial_vel.x);
-  desc->initial_vel.y = table_number(L, t, "vy", NULL, desc->initial_vel.y);
-  desc->initial_vel.z = table_number(L, t, "vz", NULL, desc->initial_vel.z);
-  desc->initial_w.x = table_number(L, t, "wx", NULL, desc->initial_w.x);
-  desc->initial_w.y = table_number(L, t, "wy", NULL, desc->initial_w.y);
-  desc->initial_w.z = table_number(L, t, "wz", NULL, desc->initial_w.z);
-  desc->initial_awake = table_bool(L, t, "awake", NULL, desc->initial_awake);
-  lua_pop(L, 1);
-}
+// ------------------------------------------------------------------ body
 
-static void parse_motion_locks(lua_State *L, int idx, Phys3dBodyDesc *desc) {
-  if (!table_get_any(L, idx, "motion_locks", "motionLocks"))
-    return;
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    return;
-  }
-  int t = lua_gettop(L);
-  desc->motion_locks.linearX = table_bool(L, t, "linear_x", NULL, false);
-  desc->motion_locks.linearY = table_bool(L, t, "linear_y", NULL, false);
-  desc->motion_locks.linearZ = table_bool(L, t, "linear_z", NULL, false);
-  desc->motion_locks.angularX = table_bool(L, t, "angular_x", NULL, false);
-  desc->motion_locks.angularY = table_bool(L, t, "angular_y", NULL, false);
-  desc->motion_locks.angularZ = table_bool(L, t, "angular_z", NULL, false);
-  lua_pop(L, 1);
-}
-
-static void parse_body_desc(lua_State *L, int idx, Phys3dBodyDesc *desc) {
-  desc->version = 0;
-  desc->has_version = false;
-  desc->type = b3_staticBody;
-  desc->motion_locks =
-      (b3MotionLocks){false, false, false, false, false, false};
-  desc->bullet = false;
-  desc->enabled = true;
-  desc->has_enabled = false;
-  desc->awake = true;
-  desc->has_awake = false;
-  desc->sleep = true;
-  desc->has_sleep = false;
-  desc->gravity_scale = 1.0f;
-  desc->linear_damping = 0.0f;
-  desc->angular_damping = 0.0f;
-  desc->sleep_threshold = 0.0f;
-  desc->has_sleep_threshold = false;
-  desc->initial_pos = b3Vec3_zero;
-  desc->initial_rot = b3Quat_identity;
-  desc->initial_vel = b3Vec3_zero;
-  desc->initial_w = b3Vec3_zero;
-  desc->initial_awake = true;
-
-  luaL_checktype(L, idx, LUA_TTABLE);
-  int64_t v = 0;
-  if (table_has_int(L, idx, "version", NULL, &v)) {
-    desc->version = v;
-    desc->has_version = true;
-  }
-  if (table_get_any(L, idx, "type", NULL)) {
-    desc->type = parse_body_type(L, lua_gettop(L));
-    lua_pop(L, 1);
-  }
-  parse_motion_locks(L, idx, desc);
-  desc->bullet = table_bool(L, idx, "bullet", NULL, false);
-  if (table_get_any(L, idx, "enabled", NULL)) {
-    if (lua_isboolean(L, -1)) {
-      desc->enabled = lua_toboolean(L, -1);
-      desc->has_enabled = true;
-    }
-    lua_pop(L, 1);
-  }
-  if (table_get_any(L, idx, "awake", NULL)) {
-    if (lua_isboolean(L, -1)) {
-      desc->awake = lua_toboolean(L, -1);
-      desc->has_awake = true;
-    }
-    lua_pop(L, 1);
-  }
-  if (table_get_any(L, idx, "sleep", "enableSleep")) {
-    if (lua_isboolean(L, -1)) {
-      desc->sleep = lua_toboolean(L, -1);
-      desc->has_sleep = true;
-    }
-    lua_pop(L, 1);
-  }
-  desc->gravity_scale =
-      table_number(L, idx, "gravity_scale", "gravityScale", 1.0f);
-  desc->linear_damping =
-      table_number(L, idx, "linear_damping", "linearDamping", 0.0f);
-  desc->angular_damping =
-      table_number(L, idx, "angular_damping", "angularDamping", 0.0f);
-  if (table_get_any(L, idx, "sleep_threshold", "sleepThreshold")) {
-    if (lua_isnumber(L, -1)) {
-      desc->sleep_threshold = (float)lua_tonumber(L, -1);
-      desc->has_sleep_threshold = true;
-    }
-    lua_pop(L, 1);
-  }
-  if (desc->sleep_threshold < 0.0f)
-    luaL_error(L, "phys3d_body: sleep_threshold must be >= 0");
-  parse_initial(L, idx, desc);
-}
-
-static uint64_t body_constructor_hash(const Phys3dBodyDesc *desc) {
-  uint64_t h = hash_init();
-  h = hash_f32(h, desc->initial_pos.x);
-  h = hash_f32(h, desc->initial_pos.y);
-  h = hash_f32(h, desc->initial_pos.z);
-  h = hash_f32(h, desc->initial_rot.v.x);
-  h = hash_f32(h, desc->initial_rot.v.y);
-  h = hash_f32(h, desc->initial_rot.v.z);
-  h = hash_f32(h, desc->initial_rot.s);
-  h = hash_f32(h, desc->initial_vel.x);
-  h = hash_f32(h, desc->initial_vel.y);
-  h = hash_f32(h, desc->initial_vel.z);
-  h = hash_f32(h, desc->initial_w.x);
-  h = hash_f32(h, desc->initial_w.y);
-  h = hash_f32(h, desc->initial_w.z);
-  h = hash_bool(h, desc->initial_awake);
+static uint64_t body_constructor_hash(const LubPhys3dBodyDesc *d) {
+  uint64_t h = phys_hash_init();
+  h = phys_hash_f32(h, d->position.x);
+  h = phys_hash_f32(h, d->position.y);
+  h = phys_hash_f32(h, d->position.z);
+  b3Quat q = quat_of(d->rotation);
+  h = phys_hash_f32(h, q.v.x);
+  h = phys_hash_f32(h, q.v.y);
+  h = phys_hash_f32(h, q.v.z);
+  h = phys_hash_f32(h, q.s);
+  h = phys_hash_f32(h, d->linear_velocity.x);
+  h = phys_hash_f32(h, d->linear_velocity.y);
+  h = phys_hash_f32(h, d->linear_velocity.z);
+  h = phys_hash_f32(h, d->angular_velocity.x);
+  h = phys_hash_f32(h, d->angular_velocity.y);
+  h = phys_hash_f32(h, d->angular_velocity.z);
+  h = phys_hash_bool(h, d->initial_awake);
   return h;
-}
-
-static int64_t body_effective_version(const Phys3dBodyDesc *desc,
-                                      uint64_t fallback_hash) {
-  return desc->has_version ? desc->version : (int64_t)fallback_hash;
 }
 
 static void log_body_constructor_drift(Phys3dBody *b, uint64_t hash) {
@@ -1976,52 +1133,73 @@ static void log_body_constructor_drift(Phys3dBody *b, uint64_t hash) {
   b->constructor_warned = true;
 }
 
-static void body_create(lua_State *L, Phys3dBody *b, const Phys3dBodyDesc *desc,
+static b3BodyType body_type_from(int32_t type) {
+  switch (type) {
+  case LUB_PHYS3D_BODY_TYPE_KINEMATIC:
+    return b3_kinematicBody;
+  case LUB_PHYS3D_BODY_TYPE_DYNAMIC:
+    return b3_dynamicBody;
+  default:
+    return b3_staticBody;
+  }
+}
+
+static b3MotionLocks motion_locks_of(const LubPhys3dBodyDesc *d) {
+  b3MotionLocks locks = {d->lock_linear_x,  d->lock_linear_y,
+                         d->lock_linear_z,  d->lock_angular_x,
+                         d->lock_angular_y, d->lock_angular_z};
+  return locks;
+}
+
+static bool body_create(App *app, Phys3dBody *b, const LubPhys3dBodyDesc *d,
                         uint64_t constructor_hash, int64_t version) {
   b3BodyDef def = b3DefaultBodyDef();
-  def.type = desc->type;
-  def.position = b3ToPos(desc->initial_pos);
-  def.rotation = desc->initial_rot;
-  def.linearVelocity = desc->initial_vel;
-  def.angularVelocity = desc->initial_w;
-  def.motionLocks = desc->motion_locks;
-  def.isBullet = desc->bullet;
-  def.gravityScale = desc->gravity_scale;
-  def.linearDamping = desc->linear_damping;
-  def.angularDamping = desc->angular_damping;
-  def.isAwake = desc->initial_awake;
-  if (desc->has_enabled)
-    def.isEnabled = desc->enabled;
-  if (desc->has_sleep)
-    def.enableSleep = desc->sleep;
-  if (desc->has_sleep_threshold)
-    def.sleepThreshold = desc->sleep_threshold;
+  def.type = body_type_from(d->type);
+  def.position = b3ToPos(vec3_of(d->position));
+  def.rotation = quat_of(d->rotation);
+  def.linearVelocity = vec3_of(d->linear_velocity);
+  def.angularVelocity = vec3_of(d->angular_velocity);
+  def.motionLocks = motion_locks_of(d);
+  def.isBullet = d->bullet;
+  def.gravityScale = d->gravity_scale;
+  def.linearDamping = d->linear_damping;
+  def.angularDamping = d->angular_damping;
+  def.isAwake = d->initial_awake;
+  if (d->has_enabled)
+    def.isEnabled = d->enabled;
+  if (d->has_sleep)
+    def.enableSleep = d->sleep;
+  if (d->has_sleep_threshold)
+    def.sleepThreshold = d->sleep_threshold;
   def.userData = b;
   b->id = b3CreateBody(b->world->id, &def);
-  if (B3_IS_NULL(b->id))
-    luaL_error(L, "phys3d_body: b3CreateBody failed");
-  if (desc->has_awake)
-    b3Body_SetAwake(b->id, desc->awake);
+  if (B3_IS_NULL(b->id)) {
+    lub_api_fail(app, "phys3d_body: b3CreateBody failed");
+    return false;
+  }
+  if (d->has_awake)
+    b3Body_SetAwake(b->id, d->awake);
   b->version = version;
   b->constructor_hash = constructor_hash;
   b->constructor_warned = false;
+  return true;
 }
 
-static void body_apply_runtime(Phys3dBody *b, const Phys3dBodyDesc *desc) {
-  b3Body_SetType(b->id, desc->type);
-  b3Body_SetMotionLocks(b->id, desc->motion_locks);
-  b3Body_SetBullet(b->id, desc->bullet);
-  b3Body_SetGravityScale(b->id, desc->gravity_scale);
-  b3Body_SetLinearDamping(b->id, desc->linear_damping);
-  b3Body_SetAngularDamping(b->id, desc->angular_damping);
-  if (desc->has_awake)
-    b3Body_SetAwake(b->id, desc->awake);
-  if (desc->has_sleep)
-    b3Body_EnableSleep(b->id, desc->sleep);
-  if (desc->has_sleep_threshold)
-    b3Body_SetSleepThreshold(b->id, desc->sleep_threshold);
-  if (desc->has_enabled && b3Body_IsEnabled(b->id) != desc->enabled) {
-    if (desc->enabled) {
+static void body_apply_runtime(Phys3dBody *b, const LubPhys3dBodyDesc *d) {
+  b3Body_SetType(b->id, body_type_from(d->type));
+  b3Body_SetMotionLocks(b->id, motion_locks_of(d));
+  b3Body_SetBullet(b->id, d->bullet);
+  b3Body_SetGravityScale(b->id, d->gravity_scale);
+  b3Body_SetLinearDamping(b->id, d->linear_damping);
+  b3Body_SetAngularDamping(b->id, d->angular_damping);
+  if (d->has_awake)
+    b3Body_SetAwake(b->id, d->awake);
+  if (d->has_sleep)
+    b3Body_EnableSleep(b->id, d->sleep);
+  if (d->has_sleep_threshold)
+    b3Body_SetSleepThreshold(b->id, d->sleep_threshold);
+  if (d->has_enabled && b3Body_IsEnabled(b->id) != d->enabled) {
+    if (d->enabled) {
       b3Body_Enable(b->id);
     } else {
       b3Body_Disable(b->id);
@@ -2029,208 +1207,73 @@ static void body_apply_runtime(Phys3dBody *b, const Phys3dBodyDesc *desc) {
   }
 }
 
-static int l_phys3d_body(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_body"))
-    return 0;
-  Phys3dWorld *w = check_world(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  Phys3dBodyDesc desc;
-  parse_body_desc(L, 3, &desc);
+LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
+                          const LubPhys3dBodyDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (in_callback(app, "phys3d_body"))
+    return LUB_ERROR;
+  Phys3dWorld *w = check_world(app, world, "phys3d_body");
+  if (!w)
+    return LUB_ERROR;
+  char kbuf[PHYS_KEY_MAX];
+  if (!key_copy(app, key, kbuf, sizeof(kbuf), "phys3d_body"))
+    return LUB_ERROR;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_body: desc required");
+  if (desc->type < LUB_PHYS3D_BODY_TYPE_STATIC ||
+      desc->type > LUB_PHYS3D_BODY_TYPE_DYNAMIC)
+    return lub_api_fail(app, "phys3d_body: unknown body type %d",
+                        (int)desc->type);
+  if (desc->has_sleep_threshold && desc->sleep_threshold < 0.0f)
+    return lub_api_fail(app, "phys3d_body: sleep_threshold must be >= 0");
   if (!w->begun)
-    return luaL_error(L, "phys3d_body: call phys3d_begin(world) first");
-  Phys3dBody *b = body_get_or_create(w, key);
+    return lub_api_fail(app, "phys3d_body: call phys3d_begin(world) first");
+  Phys3dBody *b = body_get_or_create(w, kbuf);
   if (!b)
-    return luaL_error(L, "phys3d_body: out of memory");
-  uint64_t constructor_hash = body_constructor_hash(&desc);
-  int64_t version = body_effective_version(&desc, constructor_hash);
+    return lub_api_fail(app, "phys3d_body: out of memory");
+  uint64_t constructor_hash = body_constructor_hash(desc);
+  int64_t version =
+      desc->has_version ? (int64_t)desc->version : (int64_t)constructor_hash;
   if (B3_IS_NULL(b->id) || !b3Body_IsValid(b->id) || b->version != version) {
     if (B3_IS_NON_NULL(b->id) && b3Body_IsValid(b->id)) {
       b3DestroyBody(b->id);
       body_free_shapes(b, false);
       b->id = b3_nullBodyId;
     }
-    body_create(L, b, &desc, constructor_hash, version);
+    if (!body_create(app, b, desc, constructor_hash, version))
+      return LUB_ERROR;
   } else {
-    if (desc.has_version)
+    if (desc->has_version)
       log_body_constructor_drift(b, constructor_hash);
     b->constructor_hash = constructor_hash;
-    body_apply_runtime(b, &desc);
+    body_apply_runtime(b, desc);
   }
   b->seen_generation = w->generation;
-  push_body_ref(L, w->key, b->key);
-  return 1;
+  *out = b->handle;
+  return LUB_OK;
 }
 
-static uint64_t parse_hex_u64(lua_State *L, const char *s,
-                              const char *field_name) {
-  uint64_t value = 0;
-  const char *p = s;
-  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
-    p += 2;
-  if (*p == '\0')
-    luaL_error(L, "phys3d filter %s: empty hex string", field_name);
-  while (*p) {
-    char c = *p++;
-    int d = 0;
-    if (c >= '0' && c <= '9')
-      d = c - '0';
-    else if (c >= 'a' && c <= 'f')
-      d = 10 + c - 'a';
-    else if (c >= 'A' && c <= 'F')
-      d = 10 + c - 'A';
-    else
-      luaL_error(L, "phys3d filter %s: invalid hex digit", field_name);
-    value = (value << 4) | (uint64_t)d;
-  }
-  return value;
+LubHandle lub_phys3d_body_find(LubContext *ctx, LubHandle world, LubStr key) {
+  App *app = lub_api_app(ctx);
+  Phys3dWorld *w = world_from_handle(app, world);
+  char kbuf[PHYS_KEY_MAX];
+  if (!w || !key.ptr || key.len <= 0 || !lub_str_copy(key, kbuf, sizeof(kbuf)))
+    return 0;
+  Phys3dBody *b = body_get(w, kbuf);
+  return b ? b->handle : 0;
 }
 
-static uint64_t parse_bit_list(lua_State *L, int idx, const char *field_name) {
-  idx = abs_index(L, idx);
-  uint64_t bits = 0;
-  lua_getfield(L, idx, "length");
-  int n = 0;
-  bool zero_based = false;
-  if (lua_isinteger(L, -1) || lua_isnumber(L, -1)) {
-    n = (int)lua_tointeger(L, -1);
-    zero_based = true;
-  } else {
-    n = (int)lua_rawlen(L, idx);
-  }
-  lua_pop(L, 1);
-  for (int i = 0; i < n; ++i) {
-    lua_Integer raw_index = zero_based ? i : i + 1;
-    lua_rawgeti(L, idx, raw_index);
-    int bit = (int)luaL_checkinteger(L, -1);
-    lua_pop(L, 1);
-    if (bit < 0 || bit > 63)
-      luaL_error(L, "phys3d filter %s bit index out of range: %d", field_name,
-                 bit);
-    bits |= (uint64_t)1 << bit;
-  }
-  return bits;
-}
-
-static void parse_filter_table(lua_State *L, int f, uint64_t *category_bits,
-                               uint64_t *mask_bits, int *group_index) {
-  f = abs_index(L, f);
-  if (table_get_any(L, f, "category", NULL)) {
-    int bit = (int)luaL_checkinteger(L, -1);
-    lua_pop(L, 1);
-    if (bit < 0 || bit > 63)
-      luaL_error(L, "phys3d filter category bit index out of range: %d", bit);
-    *category_bits = (uint64_t)1 << bit;
-  }
-  if (table_get_any(L, f, "category_bits", "categoryBits")) {
-    if (lua_isstring(L, -1))
-      *category_bits = parse_hex_u64(L, lua_tostring(L, -1), "category_bits");
-    lua_pop(L, 1);
-  }
-  if (table_get_any(L, f, "mask", NULL)) {
-    if (lua_isstring(L, -1)) {
-      const char *s = lua_tostring(L, -1);
-      if (strcmp(s, "all") == 0) {
-        *mask_bits = UINT64_MAX;
-      } else {
-        *mask_bits = parse_hex_u64(L, s, "mask");
-      }
-    } else if (lua_istable(L, -1)) {
-      *mask_bits = parse_bit_list(L, lua_gettop(L), "mask");
-    }
-    lua_pop(L, 1);
-  }
-  if (table_get_any(L, f, "mask_bits", "maskBits")) {
-    if (lua_isstring(L, -1))
-      *mask_bits = parse_hex_u64(L, lua_tostring(L, -1), "mask_bits");
-    lua_pop(L, 1);
-  }
-  if (group_index)
-    *group_index = table_int(L, f, "group", NULL, *group_index);
-}
-
-static void parse_filter(lua_State *L, int idx, Phys3dShapeDesc *desc) {
-  if (!table_get_any(L, idx, "filter", NULL))
-    return;
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    return;
-  }
-  parse_filter_table(L, lua_gettop(L), &desc->category_bits, &desc->mask_bits,
-                     &desc->group_index);
-  lua_pop(L, 1);
-}
-
-static void parse_shape_desc(lua_State *L, int idx, Phys3dShapeDesc *desc) {
-  desc->version = 0;
-  desc->has_version = false;
-  desc->density = 1.0f;
-  desc->has_density = false;
-  desc->friction = 0.6f;
-  desc->restitution = 0.0f;
-  desc->material_id = 0;
-  desc->sensor = false;
-  desc->contact = false;
-  desc->hit = false;
-  desc->sensor_events = false;
-  desc->pre_solve = false;
-  desc->category_bits = 1u;
-  desc->mask_bits = UINT64_MAX;
-  desc->group_index = 0;
-  int64_t v = 0;
-  if (table_has_int(L, idx, "version", NULL, &v)) {
-    desc->version = v;
-    desc->has_version = true;
-  }
-  desc->has_density =
-      table_number_optional(L, idx, "density", NULL, &desc->density);
-  desc->friction = table_number(L, idx, "friction", NULL, desc->friction);
-  desc->restitution =
-      table_number(L, idx, "restitution", NULL, desc->restitution);
-  desc->material_id =
-      table_int(L, idx, "material", "materialId", desc->material_id);
-  desc->material_id = table_int(L, idx, "material_id", NULL, desc->material_id);
-  desc->material_id = table_int(L, idx, "user_material_id", "userMaterialId",
-                                desc->material_id);
-  desc->sensor = table_bool(L, idx, "sensor", NULL, desc->sensor);
-  desc->contact = table_bool(L, idx, "contact", NULL, desc->contact);
-  desc->hit = table_bool(L, idx, "hit", NULL, desc->hit);
-  desc->sensor_events =
-      table_bool(L, idx, "sensor_events", "sensorEvents", desc->sensor_events);
-  desc->pre_solve =
-      table_bool(L, idx, "pre_solve", "preSolve", desc->pre_solve);
-  parse_filter(L, idx, desc);
-}
+// ----------------------------------------------------------------- shape
 
 static void shape_apply_density_default(Phys3dBody *body,
-                                        Phys3dShapeDesc *desc) {
+                                        LubPhys3dShapeDesc *desc) {
   if (!body || !desc || desc->has_density || !body_is_live(body))
     return;
   desc->density = b3Body_GetType(body->id) == b3_dynamicBody ? 1.0f : 0.0f;
 }
 
-static void shape_update_metadata(lua_State *L, Phys3dShape *shape, int idx,
-                                  int material_id) {
-  const char *tag = NULL;
-  if (table_get_any(L, idx, "tag", NULL)) {
-    if (lua_type(L, -1) == LUA_TSTRING)
-      tag = lua_tostring(L, -1);
-    owned_string_set_lua(L, &shape->tag, tag, "phys3d shape metadata");
-    lua_pop(L, 1);
-  } else {
-    owned_string_set_lua(L, &shape->tag, NULL, "phys3d shape metadata");
-  }
-
-  const char *material_name = NULL;
-  lua_getfield(L, abs_index(L, idx), "material");
-  if (lua_type(L, -1) == LUA_TSTRING)
-    material_name = lua_tostring(L, -1);
-  owned_string_set_lua(L, &shape->material_name, material_name,
-                       "phys3d shape metadata");
-  lua_pop(L, 1);
-  shape->material_id = material_id;
-}
-
-static b3ShapeDef make_shape_def(const Phys3dShapeDesc *desc,
+static b3ShapeDef make_shape_def(const LubPhys3dShapeDesc *desc,
                                  Phys3dShape *shape) {
   b3ShapeDef def = b3DefaultShapeDef();
   def.userData = shape;
@@ -2239,37 +1282,35 @@ static b3ShapeDef make_shape_def(const Phys3dShapeDesc *desc,
   def.baseMaterial.restitution = desc->restitution;
   def.baseMaterial.userMaterialId = (uint64_t)desc->material_id;
   def.isSensor = desc->sensor;
-  // Box3D only invokes the custom filter callback when a shape opts in;
-  // phys2d applies the world filter callback to every shape, so opt in
-  // unconditionally (box3d checks the callback pointer first, so this is
-  // free when no callback is installed).
+  // Box3D は shape が opt in したときだけ custom filter を呼ぶ。phys2d と
+  // 同じく world の filter callback を全 shape に効かせるので常に opt in
+  // (callback が無ければ box3d 側で素通りする)。
   def.enableCustomFiltering = true;
   def.enableContactEvents = desc->contact;
   def.enableHitEvents = desc->hit;
   def.enableSensorEvents = desc->sensor_events;
   def.enablePreSolveEvents = desc->pre_solve;
-  def.filter.categoryBits = desc->category_bits;
-  def.filter.maskBits = desc->mask_bits;
-  def.filter.groupIndex = desc->group_index;
+  def.filter.categoryBits = desc->filter.category_bits;
+  def.filter.maskBits = desc->filter.mask_bits;
+  def.filter.groupIndex = desc->filter.group_index;
   return def;
 }
 
-static uint64_t shape_base_hash(const Phys3dShapeDesc *desc,
-                                Phys3dShapeKind kind) {
-  uint64_t h = hash_init();
-  h = hash_u64(h, (uint64_t)kind);
-  h = hash_bool(h, desc->sensor);
-  h = hash_u64(h, desc->category_bits);
-  h = hash_u64(h, desc->mask_bits);
-  h = hash_i64(h, desc->group_index);
+static uint64_t shape_base_hash(const LubPhys3dShapeDesc *desc, int kind) {
+  uint64_t h = phys_hash_init();
+  h = phys_hash_u64(h, (uint64_t)kind);
+  h = phys_hash_bool(h, desc->sensor);
+  h = phys_hash_u64(h, desc->filter.category_bits);
+  h = phys_hash_u64(h, desc->filter.mask_bits);
+  h = phys_hash_i64(h, desc->filter.group_index);
   return h;
 }
 
 static void shape_apply_runtime_desc(Phys3dShape *shape,
-                                     const Phys3dShapeDesc *desc) {
+                                     const LubPhys3dShapeDesc *desc) {
   b3Shape_SetDensity(shape->id, desc->density, true);
-  // Box3D has no per-field userMaterialId setter, so round-trip the surface
-  // material for friction/restitution/material id in one go.
+  // Box3D には field ごとの setter が無いので surface material をまとめて
+  // 書き戻す。
   b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(shape->id);
   material.friction = desc->friction;
   material.restitution = desc->restitution;
@@ -2281,11 +1322,6 @@ static void shape_apply_runtime_desc(Phys3dShape *shape,
   b3Shape_EnableHitEvents(shape->id, desc->hit);
 }
 
-static int64_t shape_effective_version(const Phys3dShapeDesc *desc,
-                                       uint64_t fallback_hash) {
-  return desc->has_version ? desc->version : (int64_t)fallback_hash;
-}
-
 static void log_shape_constructor_drift(const char *fn, Phys3dShape *shape,
                                         uint64_t hash) {
   if (shape->constructor_hash == hash || shape->constructor_warned)
@@ -2295,12 +1331,25 @@ static void log_shape_constructor_drift(const char *fn, Phys3dShape *shape,
   shape->constructor_warned = true;
 }
 
-static void shape_mark_declared(Phys3dShape *shape, Phys3dShapeKind kind,
+static bool shape_update_metadata(App *app, Phys3dShape *shape,
+                                  const LubPhys3dShapeDesc *desc) {
+  if (!phys_owned_string_set(&shape->tag, desc->tag) ||
+      !phys_owned_string_set(&shape->material_name, desc->material_name)) {
+    lub_api_fail(app, "phys3d shape metadata: out of memory");
+    return false;
+  }
+  shape->material_id = desc->material_id;
+  return true;
+}
+
+static void shape_mark_declared(Phys3dShape *shape, int kind,
                                 uint64_t fallback_hash,
-                                const Phys3dShapeDesc *desc, bool recreated) {
+                                const LubPhys3dShapeDesc *desc,
+                                bool recreated) {
   if (recreated)
     shape->kind = kind;
-  shape->desc_hash = (uint64_t)shape_effective_version(desc, fallback_hash);
+  shape->desc_hash =
+      desc->has_version ? (uint64_t)(int64_t)desc->version : fallback_hash;
   shape->constructor_hash = fallback_hash;
   if (recreated)
     shape->constructor_warned = false;
@@ -2308,768 +1357,536 @@ static void shape_mark_declared(Phys3dShape *shape, Phys3dShapeKind kind,
   shape_tombstone_update_shape(shape);
 }
 
-static int l_phys3d_sphere(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_sphere"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
+// 共通の宣言手順。explicit_version は hull / mesh / height_field / compound
+// (version 必須、geometry の hash では再生成しない)。create は recreated の
+// ときだけ呼ばれ、shape->id (と heavy data) を作る。
+typedef struct ShapeDeclare {
+  const char *fn;
+  int kind;
+  LubHandle body;
+  LubStr key;
+  const LubPhys3dShapeDesc *desc;
+  bool explicit_version;
+  uint64_t geometry_hash;
+  const void *geom;
+  bool (*create)(App *app, Phys3dBody *b, Phys3dShape *shape,
+                 const b3ShapeDef *def, const void *geom);
+} ShapeDeclare;
+
+static LubStatus shape_declare(App *app, const ShapeDeclare *d,
+                               LubHandle *out) {
+  *out = 0;
+  if (in_callback(app, d->fn))
+    return LUB_ERROR;
+  Phys3dBody *b = check_body(app, d->body, d->fn);
+  if (!b)
+    return LUB_ERROR;
+  char kbuf[PHYS_KEY_MAX];
+  if (!key_copy(app, d->key, kbuf, sizeof(kbuf), d->fn))
+    return LUB_ERROR;
+  LubPhys3dShapeDesc desc = *d->desc;
+  if (d->explicit_version && !desc.has_version)
+    return lub_api_fail(app, "%s: explicit version is required", d->fn);
   shape_apply_density_default(b, &desc);
-  float r = table_number(L, 3, "r", "radius", 0.0f);
-  if (r <= 0.0f)
-    return luaL_error(L, "phys3d_sphere: r must be > 0");
-  b3Vec3 offset = table_vec3(L, 3, "offset", NULL, b3Vec3_zero);
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_SPHERE);
-  h = hash_f32(h, r);
-  h = hash_f32(h, offset.x);
-  h = hash_f32(h, offset.y);
-  h = hash_f32(h, offset.z);
-  int64_t version = shape_effective_version(&desc, h);
-  Phys3dShape *shape = shape_get_or_create(b, key);
+  uint64_t h = shape_base_hash(&desc, d->kind);
+  h = phys_hash_u64(h, d->geometry_hash);
+  uint64_t version = desc.has_version ? (uint64_t)(int64_t)desc.version : h;
+  Phys3dShape *shape = shape_get_or_create(b, kbuf);
   if (!shape)
-    return luaL_error(L, "phys3d_sphere: out of memory");
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version ||
-                   (!desc.has_version && shape->kind != PHYS3D_SHAPE_SPHERE);
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    b3Sphere sphere = {.center = offset, .radius = r};
-    shape->id = b3CreateSphereShape(b->id, &def, &sphere);
-  } else {
-    if (desc.has_version)
-      log_shape_constructor_drift("phys3d_sphere", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_SPHERE, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
-}
-
-static int l_phys3d_box(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_box"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  float hx = table_number(L, 3, "hx", NULL, 0.0f);
-  float hy = table_number(L, 3, "hy", NULL, 0.0f);
-  float hz = table_number(L, 3, "hz", NULL, 0.0f);
-  if (hx <= 0.0f || hy <= 0.0f || hz <= 0.0f)
-    return luaL_error(L, "phys3d_box: hx, hy and hz must be > 0");
-  b3Vec3 offset = table_vec3(L, 3, "offset", NULL, b3Vec3_zero);
-  b3Quat rotation = b3Quat_identity;
-  bool has_rotation = false;
-  if (table_get_any(L, 3, "quat", NULL)) {
-    if (lua_istable(L, -1)) {
-      rotation = value_quat(L, lua_gettop(L), b3Quat_identity);
-      has_rotation = true;
-    }
-    lua_pop(L, 1);
-  }
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_BOX);
-  h = hash_f32(h, hx);
-  h = hash_f32(h, hy);
-  h = hash_f32(h, hz);
-  h = hash_f32(h, offset.x);
-  h = hash_f32(h, offset.y);
-  h = hash_f32(h, offset.z);
-  h = hash_f32(h, rotation.v.x);
-  h = hash_f32(h, rotation.v.y);
-  h = hash_f32(h, rotation.v.z);
-  h = hash_f32(h, rotation.s);
-  int64_t version = shape_effective_version(&desc, h);
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape)
-    return luaL_error(L, "phys3d_box: out of memory");
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version ||
-                   (!desc.has_version && shape->kind != PHYS3D_SHAPE_BOX);
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    b3BoxHull hull;
-    if (has_rotation) {
-      b3Transform transform = {offset, rotation};
-      hull = b3MakeTransformedBoxHull(hx, hy, hz, transform);
-    } else if (offset.x != 0.0f || offset.y != 0.0f || offset.z != 0.0f) {
-      hull = b3MakeOffsetBoxHull(hx, hy, hz, offset);
-    } else {
-      hull = b3MakeBoxHull(hx, hy, hz);
-    }
-    shape->id = b3CreateHullShape(b->id, &def, &hull.base);
-  } else {
-    if (desc.has_version)
-      log_shape_constructor_drift("phys3d_box", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_BOX, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
-}
-
-static int l_phys3d_capsule(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_capsule"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  b3Vec3 a = table_vec3(L, 3, "a", NULL, b3Vec3_zero);
-  b3Vec3 c = table_vec3(L, 3, "b", NULL, b3Vec3_zero);
-  float r = table_number(L, 3, "r", "radius", 0.0f);
-  if (r <= 0.0f)
-    return luaL_error(L, "phys3d_capsule: r must be > 0");
-  if (b3DistanceSquared(a, c) <= 1e-12f)
-    return luaL_error(L, "phys3d_capsule: endpoints must be distinct");
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_CAPSULE);
-  h = hash_f32(h, a.x);
-  h = hash_f32(h, a.y);
-  h = hash_f32(h, a.z);
-  h = hash_f32(h, c.x);
-  h = hash_f32(h, c.y);
-  h = hash_f32(h, c.z);
-  h = hash_f32(h, r);
-  int64_t version = shape_effective_version(&desc, h);
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape)
-    return luaL_error(L, "phys3d_capsule: out of memory");
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version ||
-                   (!desc.has_version && shape->kind != PHYS3D_SHAPE_CAPSULE);
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    b3Capsule capsule = {.center1 = a, .center2 = c, .radius = r};
-    shape->id = b3CreateCapsuleShape(b->id, &def, &capsule);
-  } else {
-    if (desc.has_version)
-      log_shape_constructor_drift("phys3d_capsule", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_CAPSULE, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
-}
-
-static int l_phys3d_cylinder(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_cylinder"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  float height = table_number(L, 3, "height", NULL, 0.0f);
-  float radius = table_number(L, 3, "radius", "r", 0.0f);
-  if (height <= 0.0f || radius <= 0.0f)
-    return luaL_error(L, "phys3d_cylinder: height and radius must be > 0");
-  int sides = table_int(L, 3, "sides", NULL, 16);
-  if (sides < 3 || sides > 32)
-    return luaL_error(L, "phys3d_cylinder: sides must be between 3 and 32");
-  // b3CreateCylinder spans y in [yOffset, yOffset + height] (see
-  // third_party/box3d/src/hull.c); default y_offset = -height/2 keeps the
-  // hull centered on the body origin like sphere/box.
-  float y_offset = table_number(L, 3, "y_offset", "yOffset", -0.5f * height);
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_CYLINDER);
-  h = hash_f32(h, height);
-  h = hash_f32(h, radius);
-  h = hash_f32(h, y_offset);
-  h = hash_i64(h, sides);
-  int64_t version = shape_effective_version(&desc, h);
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape)
-    return luaL_error(L, "phys3d_cylinder: out of memory");
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version ||
-                   (!desc.has_version && shape->kind != PHYS3D_SHAPE_CYLINDER);
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    b3HullData *hull = b3CreateCylinder(height, radius, y_offset, sides);
-    if (!hull)
-      return luaL_error(L, "phys3d_cylinder: b3CreateCylinder failed");
-    shape->id = b3CreateHullShape(b->id, &def, hull);
-    // b3CreateHullShape copies the hull into a world-owned hull database
-    // (b3AddHullToDatabase -> b3CloneHull), so the temporary can be freed.
-    b3DestroyHull(hull);
-  } else {
-    if (desc.has_version)
-      log_shape_constructor_drift("phys3d_cylinder", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_CYLINDER, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
-}
-
-static int l_phys3d_cone(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_cone"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  float height = table_number(L, 3, "height", NULL, 0.0f);
-  float radius1 = table_number(L, 3, "radius1", NULL, 0.0f);
-  float radius2 = table_number(L, 3, "radius2", NULL, 0.0f);
-  if (height <= 0.0f || radius1 <= 0.0f)
-    return luaL_error(L, "phys3d_cone: height and radius1 must be > 0");
-  if (radius2 < 0.0f)
-    return luaL_error(L, "phys3d_cone: radius2 must be >= 0");
-  // b3CreateCone asserts radius2 > 0 (see third_party/box3d/src/hull.c), so a
-  // zero top radius is clamped to a tiny cap that still hulls cleanly.
-  if (radius2 <= 0.0f)
-    radius2 = radius1 * 1e-3f;
-  int slices = table_int(L, 3, "slices", NULL, 16);
-  if (slices < 4 || slices > 32)
-    return luaL_error(L, "phys3d_cone: slices must be between 4 and 32");
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_CONE);
-  h = hash_f32(h, height);
-  h = hash_f32(h, radius1);
-  h = hash_f32(h, radius2);
-  h = hash_i64(h, slices);
-  int64_t version = shape_effective_version(&desc, h);
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape)
-    return luaL_error(L, "phys3d_cone: out of memory");
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version ||
-                   (!desc.has_version && shape->kind != PHYS3D_SHAPE_CONE);
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    b3HullData *hull = b3CreateCone(height, radius1, radius2, slices);
-    if (!hull)
-      return luaL_error(L, "phys3d_cone: b3CreateCone failed");
-    shape->id = b3CreateHullShape(b->id, &def, hull);
-    // b3CreateHullShape copies the hull (see phys3d_cylinder note).
-    b3DestroyHull(hull);
-  } else {
-    if (desc.has_version)
-      log_shape_constructor_drift("phys3d_cone", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_CONE, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
-}
-
-// Reads { points = {{x,y,z},...} } or flat { points = {x1,y1,z1,...} }.
-static b3Vec3 *read_hull_points(lua_State *L, int idx, int *out_count) {
-  if (!table_get_any(L, idx, "points", NULL))
-    luaL_error(L, "phys3d_hull: points table is required");
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_hull: points must be a table");
-  }
-  int pidx = lua_gettop(L);
-  int raw_len = (int)lua_rawlen(L, pidx);
-  bool flat_numbers = false;
-  if (raw_len > 0) {
-    lua_rawgeti(L, pidx, 1);
-    flat_numbers = lua_isnumber(L, -1);
-    lua_pop(L, 1);
-  }
-  if (flat_numbers && (raw_len % 3) != 0)
-    luaL_error(L, "phys3d_hull: flat points must have x/y/z triples");
-  int count = flat_numbers ? raw_len / 3 : raw_len;
-  if (count < 4)
-    luaL_error(L, "phys3d_hull: at least 4 points are required");
-  b3Vec3 *points = (b3Vec3 *)SDL_malloc(sizeof(*points) * count);
-  if (!points)
-    luaL_error(L, "phys3d_hull: out of memory");
-  if (flat_numbers) {
-    for (int i = 0; i < count; ++i) {
-      lua_rawgeti(L, pidx, i * 3 + 1);
-      points[i].x = (float)luaL_checknumber(L, -1);
-      lua_pop(L, 1);
-      lua_rawgeti(L, pidx, i * 3 + 2);
-      points[i].y = (float)luaL_checknumber(L, -1);
-      lua_pop(L, 1);
-      lua_rawgeti(L, pidx, i * 3 + 3);
-      points[i].z = (float)luaL_checknumber(L, -1);
-      lua_pop(L, 1);
-    }
-  } else {
-    for (int i = 0; i < count; ++i) {
-      lua_rawgeti(L, pidx, i + 1);
-      luaL_checktype(L, -1, LUA_TTABLE);
-      points[i] = value_vec3(L, lua_gettop(L), b3Vec3_zero);
-      lua_pop(L, 1);
-    }
-  }
-  lua_pop(L, 1);
-  *out_count = count;
-  return points;
-}
-
-static int l_phys3d_hull(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_hull"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  if (!desc.has_version)
-    return luaL_error(L, "phys3d_hull: explicit version is required");
-  int64_t version = desc.version;
-  int point_count = 0;
-  b3Vec3 *points = read_hull_points(L, 3, &point_count);
-  // b3CreateHull clamps maxVertexCount to [4, 255] internally.
-  int max_vertices = table_int(L, 3, "max_vertices", "maxVertices", 255);
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_HULL);
-  for (int i = 0; i < point_count; ++i) {
-    h = hash_f32(h, points[i].x);
-    h = hash_f32(h, points[i].y);
-    h = hash_f32(h, points[i].z);
-  }
-  h = hash_i64(h, max_vertices);
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape) {
-    SDL_free(points);
-    return luaL_error(L, "phys3d_hull: out of memory");
-  }
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version;
+    return lub_api_fail(app, "%s: out of memory", d->fn);
+  bool recreated =
+      B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
+      shape->desc_hash != version ||
+      (!d->explicit_version && !desc.has_version && shape->kind != d->kind);
   if (recreated) {
     if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
       b3DestroyShape(shape->id, true);
     shape_free_heavy_data(shape);
     b3ShapeDef def = make_shape_def(&desc, shape);
-    b3HullData *hull = b3CreateHull(points, point_count, max_vertices);
-    if (!hull) {
-      SDL_free(points);
-      return luaL_error(L, "phys3d_hull: b3CreateHull failed (degenerate or "
-                           "coplanar points?)");
-    }
-    shape->id = b3CreateHullShape(b->id, &def, hull);
-    // b3CreateHullShape copies the hull into a world-owned hull database
-    // (b3AddHullToDatabase -> b3CloneHull), so the temporary can be freed.
-    b3DestroyHull(hull);
+    if (!d->create(app, b, shape, &def, d->geom))
+      return LUB_ERROR;
+    if (B3_IS_NULL(shape->id))
+      return lub_api_fail(app, "%s: shape creation failed", d->fn);
   } else {
-    log_shape_constructor_drift("phys3d_hull", shape, h);
+    if (desc.has_version)
+      log_shape_constructor_drift(d->fn, shape, h);
     shape_apply_runtime_desc(shape, &desc);
   }
-  SDL_free(points);
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_HULL, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
+  if (!shape_update_metadata(app, shape, &desc))
+    return LUB_ERROR;
+  shape_mark_declared(shape, d->kind, h, &desc, recreated);
+  *out = shape->handle;
+  return LUB_OK;
 }
 
-static float *read_flat_numbers(lua_State *L, int idx, const char *fn,
-                                const char *field_a, const char *field_b,
-                                int *out_count) {
-  if (!table_get_any(L, idx, field_a, field_b)) {
-    luaL_error(L, "%s: %s array is required", fn, field_a);
-    return NULL;
-  }
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    luaL_error(L, "%s: %s must be a table", fn, field_a);
-    return NULL;
-  }
-  int t = lua_gettop(L);
-  int count = (int)lua_rawlen(L, t);
-  if (count <= 0) {
-    lua_pop(L, 1);
-    luaL_error(L, "%s: %s must not be empty", fn, field_a);
-    return NULL;
-  }
-  float *values = (float *)SDL_malloc(sizeof(*values) * count);
-  if (!values) {
-    lua_pop(L, 1);
-    luaL_error(L, "%s: out of memory", fn);
-    return NULL;
-  }
-  for (int i = 0; i < count; ++i) {
-    lua_rawgeti(L, t, i + 1);
-    values[i] = (float)luaL_checknumber(L, -1);
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-  *out_count = count;
-  return values;
+static uint64_t hash_vec3(uint64_t h, LubVec3 v) {
+  h = phys_hash_f32(h, v.x);
+  h = phys_hash_f32(h, v.y);
+  h = phys_hash_f32(h, v.z);
+  return h;
 }
 
-static int32_t *read_flat_ints(lua_State *L, int idx, const char *fn,
-                               const char *field_a, const char *field_b,
-                               bool required, int *out_count) {
-  *out_count = 0;
-  if (!table_get_any(L, idx, field_a, field_b)) {
-    if (required)
-      luaL_error(L, "%s: %s array is required", fn, field_a);
-    return NULL;
-  }
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    luaL_error(L, "%s: %s must be a table", fn, field_a);
-    return NULL;
-  }
-  int t = lua_gettop(L);
-  int count = (int)lua_rawlen(L, t);
-  if (count <= 0) {
-    lua_pop(L, 1);
-    if (required)
-      luaL_error(L, "%s: %s must not be empty", fn, field_a);
-    return NULL;
-  }
-  int32_t *values = (int32_t *)SDL_malloc(sizeof(*values) * count);
-  if (!values) {
-    lua_pop(L, 1);
-    luaL_error(L, "%s: out of memory", fn);
-    return NULL;
-  }
-  for (int i = 0; i < count; ++i) {
-    lua_rawgeti(L, t, i + 1);
-    values[i] = (int32_t)luaL_checkinteger(L, -1);
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-  *out_count = count;
-  return values;
+static uint64_t hash_quat(uint64_t h, b3Quat q) {
+  h = phys_hash_f32(h, q.v.x);
+  h = phys_hash_f32(h, q.v.y);
+  h = phys_hash_f32(h, q.v.z);
+  h = phys_hash_f32(h, q.s);
+  return h;
 }
 
-static b3SurfaceMaterial *read_mesh_materials(lua_State *L, int idx,
-                                              const Phys3dShapeDesc *desc,
-                                              int *out_count) {
-  *out_count = 0;
-  if (!table_get_any(L, idx, "materials", NULL))
-    return NULL;
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_mesh: materials must be a table");
-    return NULL;
+static bool create_sphere(App *app, Phys3dBody *b, Phys3dShape *shape,
+                          const b3ShapeDef *def, const void *geom) {
+  (void)app;
+  const LubPhys3dSphereDesc *g = (const LubPhys3dSphereDesc *)geom;
+  b3Sphere sphere = {.center = vec3_of(g->offset), .radius = g->r};
+  shape->id = b3CreateSphereShape(b->id, def, &sphere);
+  return true;
+}
+
+LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
+                            const LubPhys3dSphereDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_sphere: desc required");
+  if (desc->r <= 0.0f)
+    return lub_api_fail(app, "phys3d_sphere: r must be > 0");
+  uint64_t h = phys_hash_init();
+  h = phys_hash_f32(h, desc->r);
+  h = hash_vec3(h, desc->offset);
+  ShapeDeclare d = {"phys3d_sphere",
+                    LUB_PHYS3D_SHAPE_KIND_SPHERE,
+                    body,
+                    key,
+                    &desc->shape,
+                    false,
+                    h,
+                    desc,
+                    create_sphere};
+  return shape_declare(app, &d, out);
+}
+
+static bool create_box(App *app, Phys3dBody *b, Phys3dShape *shape,
+                       const b3ShapeDef *def, const void *geom) {
+  (void)app;
+  const LubPhys3dBoxDesc *g = (const LubPhys3dBoxDesc *)geom;
+  b3Vec3 offset = vec3_of(g->offset);
+  b3BoxHull hull;
+  if (g->has_rotation) {
+    b3Transform transform = {offset, quat_of(g->rotation)};
+    hull = b3MakeTransformedBoxHull(g->hx, g->hy, g->hz, transform);
+  } else if (offset.x != 0.0f || offset.y != 0.0f || offset.z != 0.0f) {
+    hull = b3MakeOffsetBoxHull(g->hx, g->hy, g->hz, offset);
+  } else {
+    hull = b3MakeBoxHull(g->hx, g->hy, g->hz);
   }
-  int materials_idx = lua_gettop(L);
-  int count = (int)lua_rawlen(L, materials_idx);
-  if (count < 1 || count > 255) {
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_mesh: materials length must be in [1, 255]");
-    return NULL;
+  shape->id = b3CreateHullShape(b->id, def, &hull.base);
+  return true;
+}
+
+LubStatus lub_phys3d_box(LubContext *ctx, LubHandle body, LubStr key,
+                         const LubPhys3dBoxDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_box: desc required");
+  if (desc->hx <= 0.0f || desc->hy <= 0.0f || desc->hz <= 0.0f)
+    return lub_api_fail(app, "phys3d_box: hx, hy and hz must be > 0");
+  b3Quat rotation =
+      desc->has_rotation ? quat_of(desc->rotation) : b3Quat_identity;
+  uint64_t h = phys_hash_init();
+  h = phys_hash_f32(h, desc->hx);
+  h = phys_hash_f32(h, desc->hy);
+  h = phys_hash_f32(h, desc->hz);
+  h = hash_vec3(h, desc->offset);
+  h = hash_quat(h, rotation);
+  ShapeDeclare d = {"phys3d_box",
+                    LUB_PHYS3D_SHAPE_KIND_BOX,
+                    body,
+                    key,
+                    &desc->shape,
+                    false,
+                    h,
+                    desc,
+                    create_box};
+  return shape_declare(app, &d, out);
+}
+
+static bool create_capsule(App *app, Phys3dBody *b, Phys3dShape *shape,
+                           const b3ShapeDef *def, const void *geom) {
+  (void)app;
+  const LubPhys3dCapsuleDesc *g = (const LubPhys3dCapsuleDesc *)geom;
+  b3Capsule capsule = {
+      .center1 = vec3_of(g->a), .center2 = vec3_of(g->b), .radius = g->r};
+  shape->id = b3CreateCapsuleShape(b->id, def, &capsule);
+  return true;
+}
+
+LubStatus lub_phys3d_capsule(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubPhys3dCapsuleDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_capsule: desc required");
+  if (desc->r <= 0.0f)
+    return lub_api_fail(app, "phys3d_capsule: r must be > 0");
+  if (b3DistanceSquared(vec3_of(desc->a), vec3_of(desc->b)) <= 1e-12f)
+    return lub_api_fail(app, "phys3d_capsule: endpoints must be distinct");
+  uint64_t h = phys_hash_init();
+  h = hash_vec3(h, desc->a);
+  h = hash_vec3(h, desc->b);
+  h = phys_hash_f32(h, desc->r);
+  ShapeDeclare d = {"phys3d_capsule",
+                    LUB_PHYS3D_SHAPE_KIND_CAPSULE,
+                    body,
+                    key,
+                    &desc->shape,
+                    false,
+                    h,
+                    desc,
+                    create_capsule};
+  return shape_declare(app, &d, out);
+}
+
+static bool create_cylinder(App *app, Phys3dBody *b, Phys3dShape *shape,
+                            const b3ShapeDef *def, const void *geom) {
+  const LubPhys3dCylinderDesc *g = (const LubPhys3dCylinderDesc *)geom;
+  b3HullData *hull =
+      b3CreateCylinder(g->height, g->radius, g->y_offset, g->sides);
+  if (!hull) {
+    lub_api_fail(app, "phys3d_cylinder: b3CreateCylinder failed");
+    return false;
   }
-  b3SurfaceMaterial *materials =
-      (b3SurfaceMaterial *)SDL_malloc(sizeof(*materials) * count);
-  if (!materials) {
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_mesh: out of memory");
-    return NULL;
+  shape->id = b3CreateHullShape(b->id, def, hull);
+  // b3CreateHullShape は hull を world 所有の database に copy するので、
+  // 一時の hull は解放してよい。
+  b3DestroyHull(hull);
+  return true;
+}
+
+LubStatus lub_phys3d_cylinder(LubContext *ctx, LubHandle body, LubStr key,
+                              const LubPhys3dCylinderDesc *desc,
+                              LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_cylinder: desc required");
+  if (desc->height <= 0.0f || desc->radius <= 0.0f)
+    return lub_api_fail(app, "phys3d_cylinder: height and radius must be > 0");
+  if (desc->sides < 3 || desc->sides > 32)
+    return lub_api_fail(app, "phys3d_cylinder: sides must be between 3 and 32");
+  uint64_t h = phys_hash_init();
+  h = phys_hash_f32(h, desc->height);
+  h = phys_hash_f32(h, desc->radius);
+  h = phys_hash_f32(h, desc->y_offset);
+  h = phys_hash_i64(h, desc->sides);
+  ShapeDeclare d = {"phys3d_cylinder",
+                    LUB_PHYS3D_SHAPE_KIND_CYLINDER,
+                    body,
+                    key,
+                    &desc->shape,
+                    false,
+                    h,
+                    desc,
+                    create_cylinder};
+  return shape_declare(app, &d, out);
+}
+
+typedef struct ConeGeom {
+  float height, radius1, radius2;
+  int slices;
+} ConeGeom;
+
+static bool create_cone(App *app, Phys3dBody *b, Phys3dShape *shape,
+                        const b3ShapeDef *def, const void *geom) {
+  const ConeGeom *g = (const ConeGeom *)geom;
+  b3HullData *hull = b3CreateCone(g->height, g->radius1, g->radius2, g->slices);
+  if (!hull) {
+    lub_api_fail(app, "phys3d_cone: b3CreateCone failed");
+    return false;
   }
-  for (int i = 0; i < count; ++i) {
-    materials[i] = b3DefaultSurfaceMaterial();
-    materials[i].friction = desc->friction;
-    materials[i].restitution = desc->restitution;
-    materials[i].userMaterialId = (uint64_t)desc->material_id;
-    lua_rawgeti(L, materials_idx, i + 1);
-    if (lua_istable(L, -1)) {
-      int m = lua_gettop(L);
-      materials[i].friction =
-          table_number(L, m, "friction", NULL, materials[i].friction);
-      materials[i].restitution =
-          table_number(L, m, "restitution", NULL, materials[i].restitution);
-      materials[i].userMaterialId = (uint64_t)table_int(
-          L, m, "material", "materialId", (int)materials[i].userMaterialId);
-      materials[i].userMaterialId =
-          (uint64_t)table_int(L, m, "user_material_id", "userMaterialId",
-                              (int)materials[i].userMaterialId);
-    } else if (lua_isinteger(L, -1) || lua_isnumber(L, -1)) {
-      materials[i].userMaterialId = (uint64_t)lua_tointeger(L, -1);
+  shape->id = b3CreateHullShape(b->id, def, hull);
+  b3DestroyHull(hull);
+  return true;
+}
+
+LubStatus lub_phys3d_cone(LubContext *ctx, LubHandle body, LubStr key,
+                          const LubPhys3dConeDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_cone: desc required");
+  if (desc->height <= 0.0f || desc->radius1 <= 0.0f)
+    return lub_api_fail(app, "phys3d_cone: height and radius1 must be > 0");
+  if (desc->radius2 < 0.0f)
+    return lub_api_fail(app, "phys3d_cone: radius2 must be >= 0");
+  if (desc->slices < 4 || desc->slices > 32)
+    return lub_api_fail(app, "phys3d_cone: slices must be between 4 and 32");
+  ConeGeom g = {desc->height, desc->radius1, desc->radius2, desc->slices};
+  // b3CreateCone は radius2 > 0 を assert するので、0 は小さな cap に丸める。
+  if (g.radius2 <= 0.0f)
+    g.radius2 = g.radius1 * 1e-3f;
+  uint64_t h = phys_hash_init();
+  h = phys_hash_f32(h, g.height);
+  h = phys_hash_f32(h, g.radius1);
+  h = phys_hash_f32(h, g.radius2);
+  h = phys_hash_i64(h, g.slices);
+  ShapeDeclare d = {"phys3d_cone",
+                    LUB_PHYS3D_SHAPE_KIND_CONE,
+                    body,
+                    key,
+                    &desc->shape,
+                    false,
+                    h,
+                    &g,
+                    create_cone};
+  return shape_declare(app, &d, out);
+}
+
+static bool create_hull(App *app, Phys3dBody *b, Phys3dShape *shape,
+                        const b3ShapeDef *def, const void *geom) {
+  const LubPhys3dHullDesc *g = (const LubPhys3dHullDesc *)geom;
+  // b3CreateHull は maxVertexCount を [4, 255] に丸める。
+  b3HullData *hull =
+      b3CreateHull((const b3Vec3 *)g->points, g->point_count, g->max_vertices);
+  if (!hull) {
+    lub_api_fail(app, "phys3d_hull: b3CreateHull failed (degenerate or "
+                      "coplanar points?)");
+    return false;
+  }
+  shape->id = b3CreateHullShape(b->id, def, hull);
+  b3DestroyHull(hull);
+  return true;
+}
+
+LubStatus lub_phys3d_hull(LubContext *ctx, LubHandle body, LubStr key,
+                          const LubPhys3dHullDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_hull: desc required");
+  if (!desc->points || desc->point_count < 4)
+    return lub_api_fail(app, "phys3d_hull: at least 4 points are required");
+  uint64_t h = phys_hash_init();
+  for (int i = 0; i < desc->point_count * 3; ++i)
+    h = phys_hash_f32(h, desc->points[i]);
+  h = phys_hash_i64(h, desc->max_vertices);
+  ShapeDeclare d = {"phys3d_hull",
+                    LUB_PHYS3D_SHAPE_KIND_HULL,
+                    body,
+                    key,
+                    &desc->shape,
+                    true,
+                    h,
+                    desc,
+                    create_hull};
+  return shape_declare(app, &d, out);
+}
+
+typedef struct MeshGeom {
+  const LubPhys3dMeshDesc *desc;
+  b3SurfaceMaterial *materials;
+  uint8_t *material_indices;
+  int triangle_count;
+} MeshGeom;
+
+static bool create_mesh(App *app, Phys3dBody *b, Phys3dShape *shape,
+                        const b3ShapeDef *def_in, const void *geom) {
+  const MeshGeom *g = (const MeshGeom *)geom;
+  const LubPhys3dMeshDesc *m = g->desc;
+  b3MeshDef mesh_def = {0};
+  mesh_def.vertices = (b3Vec3 *)m->positions;
+  mesh_def.vertexCount = m->vertex_count;
+  mesh_def.indices = (int32_t *)m->indices;
+  mesh_def.triangleCount = g->triangle_count;
+  mesh_def.materialIndices = g->material_indices;
+  mesh_def.weldVertices = m->weld_vertices;
+  mesh_def.weldTolerance = m->weld_tolerance;
+  mesh_def.useMedianSplit = m->use_median_split;
+  mesh_def.identifyEdges = m->identify_edges;
+  int degenerate[16];
+  for (int i = 0; i < 16; ++i)
+    degenerate[i] = -1;
+  // b3CreateMesh は入力を自前の blob に clone する。
+  b3MeshData *mesh = b3CreateMesh(&mesh_def, degenerate, 16);
+  for (int i = 0; i < 16 && degenerate[i] >= 0; ++i)
+    SDL_Log("phys3d_mesh('%s/%s'): degenerate triangle %d skipped", b->key,
+            shape->key, degenerate[i]);
+  if (!mesh) {
+    lub_api_fail(app, "phys3d_mesh: b3CreateMesh failed");
+    return false;
+  }
+  b3ShapeDef def = *def_in;
+  if (g->materials) {
+    // b3CreateShapeInternal は material 配列を shape に copy する。
+    def.materials = g->materials;
+    def.materialCount = m->material_count;
+  }
+  shape->id = b3CreateMeshShape(b->id, &def, mesh, vec3_of(m->scale));
+  // b3CreateMeshShape は mesh の pointer を持つだけなので、この shape が
+  // box3d の shape を壊すまで所有する。
+  shape->mesh_data = mesh;
+  return true;
+}
+
+LubStatus lub_phys3d_mesh(LubContext *ctx, LubHandle body, LubStr key,
+                          const LubPhys3dMeshDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_mesh: desc required");
+  if (!desc->positions || desc->vertex_count < 3)
+    return lub_api_fail(
+        app, "phys3d_mesh: positions must hold at least 3 x/y/z triples");
+  if (!desc->indices || desc->index_count <= 0 || (desc->index_count % 3) != 0)
+    return lub_api_fail(app, "phys3d_mesh: indices must hold index triples");
+  int triangle_count = desc->index_count / 3;
+  for (int i = 0; i < desc->index_count; ++i) {
+    if (desc->indices[i] < 0 || desc->indices[i] >= desc->vertex_count)
+      return lub_api_fail(app, "phys3d_mesh: index out of range (0-based)");
+  }
+  int material_count = desc->materials ? desc->material_count : 0;
+  if (desc->materials && (material_count < 1 || material_count > 255))
+    return lub_api_fail(app,
+                        "phys3d_mesh: materials length must be in [1, 255]");
+  MeshGeom g = {desc, NULL, NULL, triangle_count};
+  if (material_count > 0) {
+    g.materials = (b3SurfaceMaterial *)SDL_malloc(sizeof(*g.materials) *
+                                                  (size_t)material_count);
+    if (!g.materials)
+      return lub_api_fail(app, "phys3d_mesh: out of memory");
+    for (int i = 0; i < material_count; ++i) {
+      g.materials[i] = b3DefaultSurfaceMaterial();
+      g.materials[i].friction = desc->materials[i].friction;
+      g.materials[i].restitution = desc->materials[i].restitution;
+      g.materials[i].userMaterialId = (uint64_t)desc->materials[i].material_id;
     }
-    lua_pop(L, 1);
   }
-  lua_pop(L, 1);
-  *out_count = count;
-  return materials;
-}
-
-static int l_phys3d_mesh(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_mesh"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  if (!desc.has_version)
-    return luaL_error(L, "phys3d_mesh: explicit version is required");
-  int64_t version = desc.version;
-  int position_count = 0;
-  float *positions = read_flat_numbers(L, 3, "phys3d_mesh", "positions", NULL,
-                                       &position_count);
-  if ((position_count % 3) != 0 || position_count < 9) {
-    SDL_free(positions);
-    return luaL_error(
-        L, "phys3d_mesh: positions must hold at least 3 x/y/z triples");
-  }
-  int vertex_count = position_count / 3;
-  int index_count = 0;
-  // Indices are 0-based, matching the raw glTF accessor values that
-  // load_gltf (src/gltf.c push_index_table) hands to Lua.
-  int32_t *indices =
-      read_flat_ints(L, 3, "phys3d_mesh", "indices", NULL, true, &index_count);
-  if ((index_count % 3) != 0) {
-    SDL_free(positions);
-    SDL_free(indices);
-    return luaL_error(L, "phys3d_mesh: indices must hold index triples");
-  }
-  int triangle_count = index_count / 3;
-  for (int i = 0; i < index_count; ++i) {
-    if (indices[i] < 0 || indices[i] >= vertex_count) {
-      SDL_free(positions);
-      SDL_free(indices);
-      return luaL_error(L, "phys3d_mesh: index out of range (0-based)");
+  if (desc->material_indices) {
+    if (desc->material_index_count != triangle_count) {
+      SDL_free(g.materials);
+      return lub_api_fail(
+          app,
+          "phys3d_mesh: material_indices length must match triangle count");
     }
-  }
-  b3Vec3 scale = table_vec3(L, 3, "scale", NULL, b3Vec3_one);
-  bool weld_vertices = table_bool(L, 3, "weld_vertices", "weldVertices", false);
-  float weld_tolerance =
-      table_number(L, 3, "weld_tolerance", "weldTolerance", 0.0f);
-  bool use_median_split =
-      table_bool(L, 3, "use_median_split", "useMedianSplit", false);
-  bool identify_edges =
-      table_bool(L, 3, "identify_edges", "identifyEdges", true);
-  int material_count = 0;
-  b3SurfaceMaterial *materials =
-      read_mesh_materials(L, 3, &desc, &material_count);
-  int material_index_count = 0;
-  int32_t *material_index_values =
-      read_flat_ints(L, 3, "phys3d_mesh", "material_indices", "materialIndices",
-                     false, &material_index_count);
-  uint8_t *material_indices = NULL;
-  if (material_index_values) {
-    if (material_index_count != triangle_count) {
-      SDL_free(positions);
-      SDL_free(indices);
-      SDL_free(materials);
-      SDL_free(material_index_values);
-      return luaL_error(
-          L, "phys3d_mesh: material_indices length must match triangle count");
-    }
-    material_indices =
-        (uint8_t *)SDL_malloc(sizeof(*material_indices) * triangle_count);
-    if (!material_indices) {
-      SDL_free(positions);
-      SDL_free(indices);
-      SDL_free(materials);
-      SDL_free(material_index_values);
-      return luaL_error(L, "phys3d_mesh: out of memory");
+    g.material_indices =
+        (uint8_t *)SDL_malloc(sizeof(uint8_t) * (size_t)triangle_count);
+    if (!g.material_indices) {
+      SDL_free(g.materials);
+      return lub_api_fail(app, "phys3d_mesh: out of memory");
     }
     int limit = material_count > 0 ? material_count : 1;
     for (int i = 0; i < triangle_count; ++i) {
-      int32_t m = material_index_values[i];
+      int32_t m = desc->material_indices[i];
       if (m < 0 || m >= limit) {
-        SDL_free(positions);
-        SDL_free(indices);
-        SDL_free(materials);
-        SDL_free(material_index_values);
-        SDL_free(material_indices);
-        return luaL_error(L, "phys3d_mesh: material index out of range");
+        SDL_free(g.materials);
+        SDL_free(g.material_indices);
+        return lub_api_fail(app, "phys3d_mesh: material index out of range");
       }
-      material_indices[i] = (uint8_t)m;
+      g.material_indices[i] = (uint8_t)m;
     }
   }
-  SDL_free(material_index_values);
-
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_MESH);
-  for (int i = 0; i < position_count; ++i)
-    h = hash_f32(h, positions[i]);
-  for (int i = 0; i < index_count; ++i)
-    h = hash_i64(h, indices[i]);
-  h = hash_f32(h, scale.x);
-  h = hash_f32(h, scale.y);
-  h = hash_f32(h, scale.z);
-  h = hash_bool(h, weld_vertices);
-  h = hash_f32(h, weld_tolerance);
-  h = hash_bool(h, identify_edges);
-
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape) {
-    SDL_free(positions);
-    SDL_free(indices);
-    SDL_free(materials);
-    SDL_free(material_indices);
-    return luaL_error(L, "phys3d_mesh: out of memory");
-  }
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version;
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    shape_free_heavy_data(shape);
-    b3MeshDef mesh_def = {0};
-    mesh_def.vertices = (b3Vec3 *)positions;
-    mesh_def.vertexCount = vertex_count;
-    mesh_def.indices = indices;
-    mesh_def.triangleCount = triangle_count;
-    mesh_def.materialIndices = material_indices;
-    mesh_def.weldVertices = weld_vertices;
-    mesh_def.weldTolerance = weld_tolerance;
-    mesh_def.useMedianSplit = use_median_split;
-    mesh_def.identifyEdges = identify_edges;
-    int degenerate[16];
-    for (int i = 0; i < 16; ++i)
-      degenerate[i] = -1;
-    // b3CreateMesh clones the input arrays into its own blob.
-    b3MeshData *mesh = b3CreateMesh(&mesh_def, degenerate, 16);
-    for (int i = 0; i < 16 && degenerate[i] >= 0; ++i)
-      SDL_Log("phys3d_mesh('%s/%s'): degenerate triangle %d skipped", b->key,
-              key, degenerate[i]);
-    if (!mesh) {
-      SDL_free(positions);
-      SDL_free(indices);
-      SDL_free(materials);
-      SDL_free(material_indices);
-      return luaL_error(L, "phys3d_mesh: b3CreateMesh failed");
-    }
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    if (materials) {
-      // b3CreateShapeInternal copies the material array into the shape.
-      def.materials = materials;
-      def.materialCount = material_count;
-    }
-    shape->id = b3CreateMeshShape(b->id, &def, mesh, scale);
-    // b3CreateMeshShape stores the mesh pointer without copying, so this
-    // shape owns the data until the box3d shape is destroyed.
-    shape->mesh_data = mesh;
-  } else {
-    log_shape_constructor_drift("phys3d_mesh", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  SDL_free(positions);
-  SDL_free(indices);
-  SDL_free(materials);
-  SDL_free(material_indices);
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_MESH, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
+  uint64_t h = phys_hash_init();
+  for (int i = 0; i < desc->vertex_count * 3; ++i)
+    h = phys_hash_f32(h, desc->positions[i]);
+  for (int i = 0; i < desc->index_count; ++i)
+    h = phys_hash_i64(h, desc->indices[i]);
+  h = hash_vec3(h, desc->scale);
+  h = phys_hash_bool(h, desc->weld_vertices);
+  h = phys_hash_f32(h, desc->weld_tolerance);
+  h = phys_hash_bool(h, desc->identify_edges);
+  ShapeDeclare d = {"phys3d_mesh",
+                    LUB_PHYS3D_SHAPE_KIND_MESH,
+                    body,
+                    key,
+                    &desc->shape,
+                    true,
+                    h,
+                    &g,
+                    create_mesh};
+  LubStatus st = shape_declare(app, &d, out);
+  SDL_free(g.materials);
+  SDL_free(g.material_indices);
+  return st;
 }
 
-static int l_phys3d_height_field(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_height_field"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  if (!desc.has_version)
-    return luaL_error(L, "phys3d_height_field: explicit version is required");
-  int64_t version = desc.version;
-  int x_count = table_int(L, 3, "x_count", "xCount", 0);
-  int z_count = table_int(L, 3, "z_count", "zCount", 0);
-  if (x_count < 2 || z_count < 2)
-    return luaL_error(L, "phys3d_height_field: x_count and z_count must be "
-                         ">= 2");
-  int height_count = 0;
-  float *heights = read_flat_numbers(L, 3, "phys3d_height_field", "heights",
-                                     NULL, &height_count);
-  if (height_count != x_count * z_count) {
-    SDL_free(heights);
-    return luaL_error(
-        L, "phys3d_height_field: heights length must be x_count * z_count");
+typedef struct HeightFieldGeom {
+  const LubPhys3dHeightFieldDesc *desc;
+  float min_height, max_height;
+} HeightFieldGeom;
+
+static bool create_height_field(App *app, Phys3dBody *b, Phys3dShape *shape,
+                                const b3ShapeDef *def, const void *geom) {
+  const HeightFieldGeom *g = (const HeightFieldGeom *)geom;
+  b3HeightFieldDef hf_def = {0};
+  hf_def.heights = (float *)g->desc->heights;
+  hf_def.scale = vec3_of(g->desc->scale);
+  hf_def.countX = g->desc->x_count;
+  hf_def.countZ = g->desc->z_count;
+  hf_def.globalMinimumHeight = g->min_height;
+  hf_def.globalMaximumHeight = g->max_height;
+  hf_def.clockwiseWinding = g->desc->clockwise_winding;
+  // b3CreateHeightField は heights を量子化して自前の blob に持つ。
+  b3HeightFieldData *hf = b3CreateHeightField(&hf_def);
+  if (!hf) {
+    lub_api_fail(app, "phys3d_height_field: b3CreateHeightField failed");
+    return false;
   }
-  float cell_width = table_number(L, 3, "cell_width", "cellWidth", 1.0f);
-  b3Vec3 scale = {cell_width, 1.0f, cell_width};
-  scale = table_vec3(L, 3, "scale", NULL, scale);
-  if (scale.x <= 0.0f || scale.y <= 0.0f || scale.z <= 0.0f) {
-    SDL_free(heights);
-    return luaL_error(L, "phys3d_height_field: scale must be positive");
-  }
-  float min_height = heights[0];
-  float max_height = heights[0];
+  shape->id = b3CreateHeightFieldShape(b->id, def, hf);
+  shape->height_field_data = hf;
+  return true;
+}
+
+LubStatus lub_phys3d_height_field(LubContext *ctx, LubHandle body, LubStr key,
+                                  const LubPhys3dHeightFieldDesc *desc,
+                                  LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_height_field: desc required");
+  if (desc->x_count < 2 || desc->z_count < 2)
+    return lub_api_fail(
+        app, "phys3d_height_field: x_count and z_count must be >= 2");
+  int height_count = desc->x_count * desc->z_count;
+  if (!desc->heights)
+    return lub_api_fail(app, "phys3d_height_field: heights array is required");
+  if (desc->scale.x <= 0.0f || desc->scale.y <= 0.0f || desc->scale.z <= 0.0f)
+    return lub_api_fail(app, "phys3d_height_field: scale must be positive");
+  HeightFieldGeom g = {desc, desc->heights[0], desc->heights[0]};
   for (int i = 1; i < height_count; ++i) {
-    if (heights[i] < min_height)
-      min_height = heights[i];
-    if (heights[i] > max_height)
-      max_height = heights[i];
+    if (desc->heights[i] < g.min_height)
+      g.min_height = desc->heights[i];
+    if (desc->heights[i] > g.max_height)
+      g.max_height = desc->heights[i];
   }
-  min_height = table_number(L, 3, "min_height", "minHeight", min_height);
-  max_height = table_number(L, 3, "max_height", "maxHeight", max_height);
-  if (max_height - min_height < 1e-6f)
-    max_height = min_height + 1.0f;
-  bool clockwise =
-      table_bool(L, 3, "clockwise_winding", "clockwiseWinding", false);
-
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_HEIGHT_FIELD);
+  if (desc->has_min_height)
+    g.min_height = desc->min_height;
+  if (desc->has_max_height)
+    g.max_height = desc->max_height;
+  if (g.max_height - g.min_height < 1e-6f)
+    g.max_height = g.min_height + 1.0f;
+  uint64_t h = phys_hash_init();
   for (int i = 0; i < height_count; ++i)
-    h = hash_f32(h, heights[i]);
-  h = hash_i64(h, x_count);
-  h = hash_i64(h, z_count);
-  h = hash_f32(h, scale.x);
-  h = hash_f32(h, scale.y);
-  h = hash_f32(h, scale.z);
-  h = hash_f32(h, min_height);
-  h = hash_f32(h, max_height);
-  h = hash_bool(h, clockwise);
-
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape) {
-    SDL_free(heights);
-    return luaL_error(L, "phys3d_height_field: out of memory");
-  }
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version;
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    shape_free_heavy_data(shape);
-    b3HeightFieldDef hf_def = {0};
-    hf_def.heights = heights;
-    hf_def.scale = scale;
-    hf_def.countX = x_count;
-    hf_def.countZ = z_count;
-    hf_def.globalMinimumHeight = min_height;
-    hf_def.globalMaximumHeight = max_height;
-    hf_def.clockwiseWinding = clockwise;
-    // b3CreateHeightField quantizes the heights into its own blob, so the
-    // temporary array can be freed after creation.
-    b3HeightFieldData *hf = b3CreateHeightField(&hf_def);
-    if (!hf) {
-      SDL_free(heights);
-      return luaL_error(L, "phys3d_height_field: b3CreateHeightField failed");
-    }
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    shape->id = b3CreateHeightFieldShape(b->id, &def, hf);
-    // b3CreateHeightFieldShape stores the data pointer without copying.
-    shape->height_field_data = hf;
-  } else {
-    log_shape_constructor_drift("phys3d_height_field", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  SDL_free(heights);
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_HEIGHT_FIELD, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
+    h = phys_hash_f32(h, desc->heights[i]);
+  h = phys_hash_i64(h, desc->x_count);
+  h = phys_hash_i64(h, desc->z_count);
+  h = hash_vec3(h, desc->scale);
+  h = phys_hash_f32(h, g.min_height);
+  h = phys_hash_f32(h, g.max_height);
+  h = phys_hash_bool(h, desc->clockwise_winding);
+  ShapeDeclare d = {"phys3d_height_field",
+                    LUB_PHYS3D_SHAPE_KIND_HEIGHT_FIELD,
+                    body,
+                    key,
+                    &desc->shape,
+                    true,
+                    h,
+                    &g,
+                    create_height_field};
+  return shape_declare(app, &d, out);
 }
 
-typedef struct Phys3dCompoundChildren {
+typedef struct CompoundGeom {
   b3CompoundSphereDef *spheres;
   int sphere_count;
   b3CompoundCapsuleDef *capsules;
@@ -3077,734 +1894,306 @@ typedef struct Phys3dCompoundChildren {
   b3CompoundHullDef *hulls;
   b3BoxHull *box_hulls;
   int hull_count;
-} Phys3dCompoundChildren;
+} CompoundGeom;
 
-static void compound_children_free(Phys3dCompoundChildren *children) {
-  SDL_free(children->spheres);
-  SDL_free(children->capsules);
-  SDL_free(children->hulls);
-  SDL_free(children->box_hulls);
-  memset(children, 0, sizeof(*children));
-}
-
-static b3Transform parse_child_pose(lua_State *L, int idx) {
-  b3Transform pose = {b3Vec3_zero, b3Quat_identity};
-  if (!table_get_any(L, idx, "pose", NULL))
-    return pose;
-  if (lua_istable(L, -1)) {
-    int t = lua_gettop(L);
-    pose.p.x = table_number(L, t, "x", NULL, 0.0f);
-    pose.p.y = table_number(L, t, "y", NULL, 0.0f);
-    pose.p.z = table_number(L, t, "z", NULL, 0.0f);
-    table_rotation(L, t, &pose.q);
-  }
-  lua_pop(L, 1);
-  return pose;
-}
-
-static b3SurfaceMaterial parse_child_material(lua_State *L, int idx,
-                                              const Phys3dShapeDesc *desc) {
-  b3SurfaceMaterial material = b3DefaultSurfaceMaterial();
-  material.friction = table_number(L, idx, "friction", NULL, desc->friction);
-  material.restitution =
-      table_number(L, idx, "restitution", NULL, desc->restitution);
-  int material_id =
-      table_int(L, idx, "material", "materialId", desc->material_id);
-  material_id =
-      table_int(L, idx, "user_material_id", "userMaterialId", material_id);
-  material.userMaterialId = (uint64_t)material_id;
-  return material;
+static void compound_geom_free(CompoundGeom *g) {
+  SDL_free(g->spheres);
+  SDL_free(g->capsules);
+  SDL_free(g->hulls);
+  SDL_free(g->box_hulls);
+  memset(g, 0, sizeof(*g));
 }
 
 static uint64_t hash_surface_material(uint64_t h,
                                       const b3SurfaceMaterial *material) {
-  h = hash_f32(h, material->friction);
-  h = hash_f32(h, material->restitution);
-  h = hash_u64(h, material->userMaterialId);
+  h = phys_hash_f32(h, material->friction);
+  h = phys_hash_f32(h, material->restitution);
+  h = phys_hash_u64(h, material->userMaterialId);
   return h;
 }
 
 static uint64_t hash_transform(uint64_t h, b3Transform t) {
-  h = hash_f32(h, t.p.x);
-  h = hash_f32(h, t.p.y);
-  h = hash_f32(h, t.p.z);
-  h = hash_f32(h, t.q.v.x);
-  h = hash_f32(h, t.q.v.y);
-  h = hash_f32(h, t.q.v.z);
-  h = hash_f32(h, t.q.s);
-  return h;
+  h = phys_hash_f32(h, t.p.x);
+  h = phys_hash_f32(h, t.p.y);
+  h = phys_hash_f32(h, t.p.z);
+  return hash_quat(h, t.q);
 }
 
-// Parses desc.children into compound child defs. Supported child kinds are
-// sphere / box / capsule; each child takes an optional pose and material
-// overrides. Returns the accumulated constructor hash.
-static uint64_t read_compound_children(lua_State *L, int idx,
-                                       const Phys3dShapeDesc *desc, uint64_t h,
-                                       Phys3dCompoundChildren *children) {
-  memset(children, 0, sizeof(*children));
-  if (!table_get_any(L, idx, "children", NULL))
-    luaL_error(L, "phys3d_compound: children table is required");
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_compound: children must be a table");
+// children を compound の child def に写す。戻り値は constructor hash。
+static bool compound_children_build(App *app, const LubPhys3dCompoundDesc *desc,
+                                    CompoundGeom *g, uint64_t *hash) {
+  memset(g, 0, sizeof(*g));
+  int count = desc->child_count;
+  if (!desc->children || count <= 0) {
+    lub_api_fail(app, "phys3d_compound: children must not be empty");
+    return false;
   }
-  int cidx = lua_gettop(L);
-  int count = (int)lua_rawlen(L, cidx);
-  if (count <= 0) {
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_compound: children must not be empty");
+  g->spheres = (b3CompoundSphereDef *)SDL_calloc(count, sizeof(*g->spheres));
+  g->capsules = (b3CompoundCapsuleDef *)SDL_calloc(count, sizeof(*g->capsules));
+  g->hulls = (b3CompoundHullDef *)SDL_calloc(count, sizeof(*g->hulls));
+  g->box_hulls = (b3BoxHull *)SDL_calloc(count, sizeof(*g->box_hulls));
+  if (!g->spheres || !g->capsules || !g->hulls || !g->box_hulls) {
+    compound_geom_free(g);
+    lub_api_fail(app, "phys3d_compound: out of memory");
+    return false;
   }
-  children->spheres =
-      (b3CompoundSphereDef *)SDL_calloc(count, sizeof(*children->spheres));
-  children->capsules =
-      (b3CompoundCapsuleDef *)SDL_calloc(count, sizeof(*children->capsules));
-  children->hulls =
-      (b3CompoundHullDef *)SDL_calloc(count, sizeof(*children->hulls));
-  children->box_hulls =
-      (b3BoxHull *)SDL_calloc(count, sizeof(*children->box_hulls));
-  if (!children->spheres || !children->capsules || !children->hulls ||
-      !children->box_hulls) {
-    compound_children_free(children);
-    lua_pop(L, 1);
-    luaL_error(L, "phys3d_compound: out of memory");
-  }
-  h = hash_u64(h, (uint64_t)count);
+  uint64_t h = phys_hash_u64(*hash, (uint64_t)count);
   for (int i = 0; i < count; ++i) {
-    lua_rawgeti(L, cidx, i + 1);
-    if (!lua_istable(L, -1)) {
-      compound_children_free(children);
-      luaL_error(L, "phys3d_compound: child %d must be a table", i + 1);
+    const LubPhys3dCompoundChild *c = &desc->children[i];
+    b3Transform pose = {vec3_of(c->position), quat_of(c->rotation)};
+    b3SurfaceMaterial material = b3DefaultSurfaceMaterial();
+    material.friction = c->material.friction;
+    material.restitution = c->material.restitution;
+    material.userMaterialId = (uint64_t)c->material.material_id;
+    switch (c->kind) {
+    case LUB_PHYS3D_COMPOUND_CHILD_KIND_SPHERE: {
+      if (c->r <= 0.0f) {
+        compound_geom_free(g);
+        lub_api_fail(app, "phys3d_compound: sphere r must be > 0");
+        return false;
+      }
+      b3CompoundSphereDef *out = &g->spheres[g->sphere_count++];
+      out->sphere.center = b3TransformPoint(pose, vec3_of(c->center));
+      out->sphere.radius = c->r;
+      out->material = material;
+      h = phys_hash_u64(h, 1);
+      h = hash_vec3(h, lub_vec3(out->sphere.center));
+      h = phys_hash_f32(h, c->r);
+      break;
     }
-    int child = lua_gettop(L);
-    b3Transform pose = parse_child_pose(L, child);
-    b3SurfaceMaterial material = parse_child_material(L, child, desc);
-    if (table_get_any(L, child, "sphere", NULL)) {
-      if (!lua_istable(L, -1)) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: sphere child must be a table");
+    case LUB_PHYS3D_COMPOUND_CHILD_KIND_CAPSULE: {
+      if (c->r <= 0.0f) {
+        compound_geom_free(g);
+        lub_api_fail(app, "phys3d_compound: capsule r must be > 0");
+        return false;
       }
-      int t = lua_gettop(L);
-      float r = table_number(L, t, "r", "radius", 0.0f);
-      if (r <= 0.0f) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: sphere r must be > 0");
+      if (b3DistanceSquared(vec3_of(c->a), vec3_of(c->b)) <= 1e-12f) {
+        compound_geom_free(g);
+        lub_api_fail(app,
+                     "phys3d_compound: capsule endpoints must be distinct");
+        return false;
       }
-      b3Vec3 center = table_vec3(L, t, "center", NULL, b3Vec3_zero);
-      lua_pop(L, 1);
-      b3CompoundSphereDef *out = &children->spheres[children->sphere_count++];
-      out->sphere.center = b3TransformPoint(pose, center);
-      out->sphere.radius = r;
+      b3CompoundCapsuleDef *out = &g->capsules[g->capsule_count++];
+      out->capsule.center1 = b3TransformPoint(pose, vec3_of(c->a));
+      out->capsule.center2 = b3TransformPoint(pose, vec3_of(c->b));
+      out->capsule.radius = c->r;
       out->material = material;
-      h = hash_u64(h, 1);
-      h = hash_f32(h, out->sphere.center.x);
-      h = hash_f32(h, out->sphere.center.y);
-      h = hash_f32(h, out->sphere.center.z);
-      h = hash_f32(h, r);
-    } else if (table_get_any(L, child, "capsule", NULL)) {
-      if (!lua_istable(L, -1)) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: capsule child must be a table");
+      h = phys_hash_u64(h, 2);
+      h = hash_vec3(h, lub_vec3(out->capsule.center1));
+      h = hash_vec3(h, lub_vec3(out->capsule.center2));
+      h = phys_hash_f32(h, c->r);
+      break;
+    }
+    case LUB_PHYS3D_COMPOUND_CHILD_KIND_BOX: {
+      if (c->hx <= 0.0f || c->hy <= 0.0f || c->hz <= 0.0f) {
+        compound_geom_free(g);
+        lub_api_fail(app, "phys3d_compound: box hx, hy and hz must be > 0");
+        return false;
       }
-      int t = lua_gettop(L);
-      b3Vec3 a = table_vec3(L, t, "a", NULL, b3Vec3_zero);
-      b3Vec3 c = table_vec3(L, t, "b", NULL, b3Vec3_zero);
-      float r = table_number(L, t, "r", "radius", 0.0f);
-      lua_pop(L, 1);
-      if (r <= 0.0f) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: capsule r must be > 0");
-      }
-      if (b3DistanceSquared(a, c) <= 1e-12f) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: capsule endpoints must be distinct");
-      }
-      b3CompoundCapsuleDef *out =
-          &children->capsules[children->capsule_count++];
-      out->capsule.center1 = b3TransformPoint(pose, a);
-      out->capsule.center2 = b3TransformPoint(pose, c);
-      out->capsule.radius = r;
-      out->material = material;
-      h = hash_u64(h, 2);
-      h = hash_f32(h, out->capsule.center1.x);
-      h = hash_f32(h, out->capsule.center1.y);
-      h = hash_f32(h, out->capsule.center1.z);
-      h = hash_f32(h, out->capsule.center2.x);
-      h = hash_f32(h, out->capsule.center2.y);
-      h = hash_f32(h, out->capsule.center2.z);
-      h = hash_f32(h, r);
-    } else if (table_get_any(L, child, "box", NULL)) {
-      if (!lua_istable(L, -1)) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: box child must be a table");
-      }
-      int t = lua_gettop(L);
-      float hx = table_number(L, t, "hx", NULL, 0.0f);
-      float hy = table_number(L, t, "hy", NULL, 0.0f);
-      float hz = table_number(L, t, "hz", NULL, 0.0f);
-      lua_pop(L, 1);
-      if (hx <= 0.0f || hy <= 0.0f || hz <= 0.0f) {
-        compound_children_free(children);
-        luaL_error(L, "phys3d_compound: box hx, hy and hz must be > 0");
-      }
-      int hull_index = children->hull_count++;
-      children->box_hulls[hull_index] = b3MakeBoxHull(hx, hy, hz);
-      b3CompoundHullDef *out = &children->hulls[hull_index];
-      out->hull = &children->box_hulls[hull_index].base;
+      int hull_index = g->hull_count++;
+      g->box_hulls[hull_index] = b3MakeBoxHull(c->hx, c->hy, c->hz);
+      b3CompoundHullDef *out = &g->hulls[hull_index];
+      out->hull = &g->box_hulls[hull_index].base;
       out->transform = pose;
       out->material = material;
-      h = hash_u64(h, 3);
-      h = hash_f32(h, hx);
-      h = hash_f32(h, hy);
-      h = hash_f32(h, hz);
+      h = phys_hash_u64(h, 3);
+      h = phys_hash_f32(h, c->hx);
+      h = phys_hash_f32(h, c->hy);
+      h = phys_hash_f32(h, c->hz);
       h = hash_transform(h, pose);
-    } else {
-      compound_children_free(children);
-      luaL_error(L,
-                 "phys3d_compound: child %d must have sphere, box, or "
-                 "capsule",
-                 i + 1);
+      break;
+    }
+    default:
+      compound_geom_free(g);
+      lub_api_fail(
+          app, "phys3d_compound: child %d must have sphere, box, or capsule",
+          i + 1);
+      return false;
     }
     h = hash_surface_material(h, &material);
-    lua_pop(L, 1);
   }
-  lua_pop(L, 1);
-  return h;
+  *hash = h;
+  return true;
 }
 
-static int l_phys3d_compound(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_compound"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  luaL_checktype(L, 3, LUA_TTABLE);
-  Phys3dShapeDesc desc;
-  parse_shape_desc(L, 3, &desc);
-  shape_apply_density_default(b, &desc);
-  if (!desc.has_version)
-    return luaL_error(L, "phys3d_compound: explicit version is required");
-  int64_t version = desc.version;
-  // Box3D asserts that compounds live on static, non-sensor bodies.
+static bool create_compound(App *app, Phys3dBody *b, Phys3dShape *shape,
+                            const b3ShapeDef *def, const void *geom) {
+  const CompoundGeom *g = (const CompoundGeom *)geom;
+  b3CompoundDef compound_def = {0};
+  compound_def.spheres = g->spheres;
+  compound_def.sphereCount = g->sphere_count;
+  compound_def.capsules = g->capsules;
+  compound_def.capsuleCount = g->capsule_count;
+  compound_def.hulls = g->hulls;
+  compound_def.hullCount = g->hull_count;
+  // b3CreateCompound は入力を全部 clone する。
+  b3CompoundData *compound = b3CreateCompound(&compound_def);
+  if (!compound) {
+    lub_api_fail(app, "phys3d_compound: b3CreateCompound failed");
+    return false;
+  }
+  b3ShapeDef def_copy = *def;
+  shape->id = b3CreateCompoundShape(b->id, &def_copy, compound);
+  shape->compound_data = compound;
+  return true;
+}
+
+LubStatus lub_phys3d_compound(LubContext *ctx, LubHandle body, LubStr key,
+                              const LubPhys3dCompoundDesc *desc,
+                              LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_compound: desc required");
+  if (!desc->shape.has_version)
+    return lub_api_fail(app, "phys3d_compound: explicit version is required");
+  Phys3dBody *b = body_from_handle(app, body);
+  // Box3D は compound を static で sensor でない body に限る。
   if (!body_is_live(b) || b3Body_GetType(b->id) != b3_staticBody)
-    return luaL_error(L, "phys3d_compound: body must be static");
-  if (desc.sensor)
-    return luaL_error(L, "phys3d_compound: compound cannot be a sensor");
-
-  uint64_t h = shape_base_hash(&desc, PHYS3D_SHAPE_COMPOUND);
-  Phys3dCompoundChildren children;
-  h = read_compound_children(L, 3, &desc, h, &children);
-
-  Phys3dShape *shape = shape_get_or_create(b, key);
-  if (!shape) {
-    compound_children_free(&children);
-    return luaL_error(L, "phys3d_compound: out of memory");
-  }
-  bool recreated = B3_IS_NULL(shape->id) || !b3Shape_IsValid(shape->id) ||
-                   shape->desc_hash != (uint64_t)version;
-  if (recreated) {
-    if (B3_IS_NON_NULL(shape->id) && b3Shape_IsValid(shape->id))
-      b3DestroyShape(shape->id, true);
-    shape_free_heavy_data(shape);
-    b3CompoundDef compound_def = {0};
-    compound_def.spheres = children.spheres;
-    compound_def.sphereCount = children.sphere_count;
-    compound_def.capsules = children.capsules;
-    compound_def.capsuleCount = children.capsule_count;
-    compound_def.hulls = children.hulls;
-    compound_def.hullCount = children.hull_count;
-    // b3CreateCompound clones all input data, so the child defs (and the
-    // temporary box hulls they point at) can be freed after this call.
-    b3CompoundData *compound = b3CreateCompound(&compound_def);
-    if (!compound) {
-      compound_children_free(&children);
-      return luaL_error(L, "phys3d_compound: b3CreateCompound failed");
-    }
-    b3ShapeDef def = make_shape_def(&desc, shape);
-    shape->id = b3CreateCompoundShape(b->id, &def, compound);
-    // b3CreateCompoundShape stores the data pointer without copying.
-    shape->compound_data = compound;
-  } else {
-    log_shape_constructor_drift("phys3d_compound", shape, h);
-    shape_apply_runtime_desc(shape, &desc);
-  }
-  compound_children_free(&children);
-  shape_update_metadata(L, shape, 3, desc.material_id);
-  shape_mark_declared(shape, PHYS3D_SHAPE_COMPOUND, h, &desc, recreated);
-  push_shape_ref(L, b->world->key, b->key, shape->key);
-  return 1;
+    return lub_api_fail(app, "phys3d_compound: body must be static");
+  if (desc->shape.sensor)
+    return lub_api_fail(app, "phys3d_compound: compound cannot be a sensor");
+  CompoundGeom g;
+  uint64_t h = phys_hash_init();
+  if (!compound_children_build(app, desc, &g, &h))
+    return LUB_ERROR;
+  ShapeDeclare d = {"phys3d_compound",
+                    LUB_PHYS3D_SHAPE_KIND_COMPOUND,
+                    body,
+                    key,
+                    &desc->shape,
+                    true,
+                    h,
+                    &g,
+                    create_compound};
+  LubStatus st = shape_declare(app, &d, out);
+  compound_geom_free(&g);
+  return st;
 }
 
-static const char *joint_kind_name(Phys3dJointKind kind) {
+LubHandle lub_phys3d_shape_find(LubContext *ctx, LubHandle body, LubStr key) {
+  App *app = lub_api_app(ctx);
+  Phys3dBody *b = body_from_handle(app, body);
+  char kbuf[PHYS_KEY_MAX];
+  if (!b || !key.ptr || key.len <= 0 || !lub_str_copy(key, kbuf, sizeof(kbuf)))
+    return 0;
+  Phys3dShape *s = shape_get(b, kbuf);
+  return s ? s->handle : 0;
+}
+
+// ----------------------------------------------------------------- joint
+
+static const char *joint_kind_name(int kind) {
   switch (kind) {
-  case PHYS3D_JOINT_DISTANCE:
+  case LUB_PHYS3D_JOINT_TYPE_DISTANCE:
     return "distance";
-  case PHYS3D_JOINT_FILTER:
+  case LUB_PHYS3D_JOINT_TYPE_FILTER:
     return "filter";
-  case PHYS3D_JOINT_MOTOR:
+  case LUB_PHYS3D_JOINT_TYPE_MOTOR:
     return "motor";
-  case PHYS3D_JOINT_PARALLEL:
+  case LUB_PHYS3D_JOINT_TYPE_PARALLEL:
     return "parallel";
-  case PHYS3D_JOINT_PRISMATIC:
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
     return "prismatic";
-  case PHYS3D_JOINT_REVOLUTE:
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE:
     return "revolute";
-  case PHYS3D_JOINT_SPHERICAL:
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL:
     return "spherical";
-  case PHYS3D_JOINT_WELD:
+  case LUB_PHYS3D_JOINT_TYPE_WELD:
     return "weld";
-  case PHYS3D_JOINT_WHEEL:
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
     return "wheel";
   default:
     return "unknown";
   }
 }
 
-static Phys3dJointKind parse_joint_kind(lua_State *L, int idx) {
-  const char *type = "revolute";
-  if (table_get_any(L, idx, "type", "kind")) {
-    if (lua_isstring(L, -1))
-      type = lua_tostring(L, -1);
-    lua_pop(L, 1);
+static int joint_type_from_b3(b3JointType type) {
+  switch (type) {
+  case b3_parallelJoint:
+    return LUB_PHYS3D_JOINT_TYPE_PARALLEL;
+  case b3_distanceJoint:
+    return LUB_PHYS3D_JOINT_TYPE_DISTANCE;
+  case b3_filterJoint:
+    return LUB_PHYS3D_JOINT_TYPE_FILTER;
+  case b3_motorJoint:
+    return LUB_PHYS3D_JOINT_TYPE_MOTOR;
+  case b3_prismaticJoint:
+    return LUB_PHYS3D_JOINT_TYPE_PRISMATIC;
+  case b3_revoluteJoint:
+    return LUB_PHYS3D_JOINT_TYPE_REVOLUTE;
+  case b3_sphericalJoint:
+    return LUB_PHYS3D_JOINT_TYPE_SPHERICAL;
+  case b3_weldJoint:
+    return LUB_PHYS3D_JOINT_TYPE_WELD;
+  case b3_wheelJoint:
+    return LUB_PHYS3D_JOINT_TYPE_WHEEL;
+  default:
+    return 0;
   }
-  if (strcmp(type, "distance") == 0)
-    return PHYS3D_JOINT_DISTANCE;
-  if (strcmp(type, "filter") == 0)
-    return PHYS3D_JOINT_FILTER;
-  if (strcmp(type, "motor") == 0)
-    return PHYS3D_JOINT_MOTOR;
-  if (strcmp(type, "parallel") == 0)
-    return PHYS3D_JOINT_PARALLEL;
-  if (strcmp(type, "prismatic") == 0)
-    return PHYS3D_JOINT_PRISMATIC;
-  if (strcmp(type, "revolute") == 0 || strcmp(type, "hinge") == 0)
-    return PHYS3D_JOINT_REVOLUTE;
-  if (strcmp(type, "spherical") == 0)
-    return PHYS3D_JOINT_SPHERICAL;
-  if (strcmp(type, "weld") == 0)
-    return PHYS3D_JOINT_WELD;
-  if (strcmp(type, "wheel") == 0)
-    return PHYS3D_JOINT_WHEEL;
-  luaL_error(L, "phys3d_joint: unknown joint type '%s'", type);
-  return PHYS3D_JOINT_REVOLUTE;
 }
 
-static float nested_number(lua_State *L, int idx, const char *table_name,
-                           const char *a, const char *b, float def) {
-  float out = def;
-  if (table_get_any(L, idx, table_name, NULL)) {
-    if (lua_istable(L, -1))
-      out = table_number(L, lua_gettop(L), a, b, out);
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static bool nested_bool(lua_State *L, int idx, const char *table_name,
-                        const char *a, const char *b, bool def) {
-  bool out = def;
-  if (table_get_any(L, idx, table_name, NULL)) {
-    if (lua_istable(L, -1))
-      out = table_bool(L, lua_gettop(L), a, b, out);
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static b3Vec3 nested_vec3(lua_State *L, int idx, const char *table_name,
-                          const char *a, const char *b, b3Vec3 def) {
-  b3Vec3 out = def;
-  if (table_get_any(L, idx, table_name, NULL)) {
-    if (lua_istable(L, -1))
-      out = table_vec3(L, lua_gettop(L), a, b, out);
-    lua_pop(L, 1);
-  }
-  return out;
-}
-
-static Phys3dBody *joint_body_from_value(lua_State *L, Phys3dWorld *w, int idx,
-                                         const char *field_name) {
-  Phys3dBody *b = NULL;
-  if (is_ref(L, idx, "phys3d_body")) {
-    b = check_body(L, idx);
-  } else if (lua_isstring(L, idx)) {
-    b = body_get(w, lua_tostring(L, idx));
-  }
-  if (!b)
-    luaL_error(L, "phys3d_joint: missing body field '%s'", field_name);
-  if (b->world != w)
-    luaL_error(L, "phys3d_joint: body '%s' belongs to another world", b->key);
-  if (!body_is_live(b) || b->seen_generation != w->generation)
-    luaL_error(L, "phys3d_joint: declare live body '%s' before joint", b->key);
-  return b;
-}
-
-static Phys3dBody *joint_body_field(lua_State *L, Phys3dWorld *w, int idx,
-                                    const char *a, const char *b,
-                                    const char *c) {
-  if (!table_get_any(L, idx, a, b)) {
-    if (!c || !table_get_any(L, idx, c, NULL))
-      luaL_error(L, "phys3d_joint: missing body field '%s'", a);
-  }
-  Phys3dBody *body = joint_body_from_value(L, w, lua_gettop(L), a);
-  lua_pop(L, 1);
-  return body;
-}
-
-// The joint axis is expressed by rotating the joint's canonical local axis
-// (frame A local x for slide axes, local z for hinge/cone axes) onto the
-// given world axis.
-static b3Vec3 joint_canonical_axis(Phys3dJointKind kind) {
+// 軸は joint の正準軸 (slide 軸は frame A の x、hinge / cone 軸は z) を
+// 世界座標の axis に回して表す。
+static b3Vec3 joint_canonical_axis(int kind) {
   switch (kind) {
-  case PHYS3D_JOINT_PRISMATIC:
-  case PHYS3D_JOINT_WHEEL:
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
     return b3Vec3_axisX;
   default:
     return b3Vec3_axisZ;
   }
 }
 
-// Reads a local joint frame { x, y, z, quat = {..} | euler = {..} }.
-static bool table_local_frame(lua_State *L, int idx, const char *a,
-                              const char *b, b3Transform *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_istable(L, -1);
-  if (ok) {
-    int t = lua_gettop(L);
-    b3Transform frame = {b3Vec3_zero, b3Quat_identity};
-    frame.p.x = table_number(L, t, "x", NULL, 0.0f);
-    frame.p.y = table_number(L, t, "y", NULL, 0.0f);
-    frame.p.z = table_number(L, t, "z", NULL, 0.0f);
-    table_rotation(L, t, &frame.q);
-    *out = frame;
-  }
-  lua_pop(L, 1);
-  return ok;
-}
-
-static bool table_world_anchor(lua_State *L, int idx, const char *a,
-                               const char *b, b3Vec3 *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_istable(L, -1);
-  if (ok)
-    *out = value_vec3(L, lua_gettop(L), b3Vec3_zero);
-  lua_pop(L, 1);
-  return ok;
-}
-
-// Builds the local joint frame for one body: world anchor + world axis are
-// localized against the body transform; an explicit local frame_a/frame_b
-// wins over both. The raw inputs are recorded for the constructor hash.
-static void joint_frame_for_body(lua_State *L, int idx, Phys3dBody *body,
-                                 const char *anchor_a, const char *anchor_b,
-                                 const char *frame_a, const char *frame_b,
-                                 bool has_axis, b3Quat world_rot,
-                                 b3Transform *out, bool *has_anchor,
-                                 b3Vec3 *anchor, bool *has_frame) {
+// body の local frame: 世界座標の anchor と axis を body の transform で
+// local 化する。明示の frame があればそれが勝つ。
+static b3Transform joint_frame_for_body(Phys3dBody *body, bool has_axis,
+                                        b3Quat world_rot, bool has_anchor,
+                                        LubVec3 anchor, bool has_frame,
+                                        LubVec3 frame_position,
+                                        LubQuat frame_rotation) {
   b3WorldTransform body_transform = b3Body_GetTransform(body->id);
-  out->p = b3Vec3_zero;
-  out->q = has_axis ? b3NormalizeQuat(b3InvMulQuat(body_transform.q, world_rot))
-                    : b3Quat_identity;
-  *anchor = b3Vec3_zero;
-  *has_anchor = table_world_anchor(L, idx, anchor_a, anchor_b, anchor);
-  if (*has_anchor)
-    out->p = b3Body_GetLocalPoint(body->id, b3ToPos(*anchor));
-  *has_frame = table_local_frame(L, idx, frame_a, frame_b, out);
+  b3Transform out = {b3Vec3_zero, b3Quat_identity};
+  out.q = has_axis ? b3NormalizeQuat(b3InvMulQuat(body_transform.q, world_rot))
+                   : b3Quat_identity;
+  if (has_anchor)
+    out.p = b3Body_GetLocalPoint(body->id, b3ToPos(vec3_of(anchor)));
+  if (has_frame) {
+    out.p = vec3_of(frame_position);
+    out.q = quat_of(frame_rotation);
+  }
+  return out;
 }
 
-static bool table_quat_field(lua_State *L, int idx, const char *a,
-                             const char *b, b3Quat *out) {
-  if (!table_get_any(L, idx, a, b))
-    return false;
-  bool ok = lua_istable(L, -1);
-  if (ok) {
-    int t = lua_gettop(L);
-    if (!table_rotation(L, t, out))
-      *out = value_quat(L, t, *out);
-  }
-  lua_pop(L, 1);
-  return ok;
-}
+typedef struct JointFrames {
+  b3Transform a, b;
+  b3Vec3 axis;
+} JointFrames;
 
-static void parse_joint_desc(lua_State *L, Phys3dWorld *w, int idx,
-                             Phys3dJointDesc *desc) {
-  luaL_checktype(L, idx, LUA_TTABLE);
-  memset(desc, 0, sizeof(*desc));
-  desc->kind = parse_joint_kind(L, idx);
-  desc->local_frame_a = (b3Transform){b3Vec3_zero, b3Quat_identity};
-  desc->local_frame_b = (b3Transform){b3Vec3_zero, b3Quat_identity};
-  desc->force_threshold = FLT_MAX;
-  desc->torque_threshold = FLT_MAX;
-  desc->length = 1.0f;
-  desc->max_length = FLT_MAX;
-  desc->lower_spring_force = -FLT_MAX;
-  desc->upper_spring_force = FLT_MAX;
-  desc->target_rotation = b3Quat_identity;
-  switch (desc->kind) {
-  case PHYS3D_JOINT_PARALLEL:
-    desc->hertz = 1.0f;
-    desc->damping_ratio = 1.0f;
-    desc->max_torque = FLT_MAX;
-    break;
-  case PHYS3D_JOINT_WHEEL:
-    desc->enable_spring = true;
-    desc->hertz = 1.0f;
-    desc->damping_ratio = 0.7f;
-    desc->steering_hertz = 1.0f;
-    desc->steering_damping_ratio = 0.7f;
-    break;
-  default:
-    break;
-  }
-
-  int64_t v = 0;
-  if (table_has_int(L, idx, "version", NULL, &v)) {
-    desc->version = v;
-    desc->has_version = true;
-  }
-  desc->body_a = joint_body_field(L, w, idx, "a", "body_a", "bodyA");
-  desc->body_b = joint_body_field(L, w, idx, "b", "body_b", "bodyB");
-
-  bool has_axis = false;
-  b3Vec3 axis = b3Vec3_axisZ;
-  if (table_get_any(L, idx, "axis", NULL)) {
-    if (lua_istable(L, -1)) {
-      axis = value_vec3(L, lua_gettop(L), b3Vec3_zero);
-      has_axis = true;
-    }
-    lua_pop(L, 1);
-  }
-  b3Quat world_rot = b3Quat_identity;
-  if (has_axis) {
-    if (b3LengthSquared(axis) <= 1e-12f)
-      luaL_error(L, "phys3d_joint: axis must be non-zero");
-    axis = b3Normalize(axis);
-    world_rot =
-        b3ComputeQuatBetweenUnitVectors(joint_canonical_axis(desc->kind), axis);
-  }
-  desc->has_axis = has_axis;
-  desc->axis = axis;
-  joint_frame_for_body(L, idx, desc->body_a, "anchor_a", "anchorA", "frame_a",
-                       "frameA", has_axis, world_rot, &desc->local_frame_a,
-                       &desc->has_anchor_a, &desc->anchor_a,
-                       &desc->has_frame_a);
-  joint_frame_for_body(L, idx, desc->body_b, "anchor_b", "anchorB", "frame_b",
-                       "frameB", has_axis, world_rot, &desc->local_frame_b,
-                       &desc->has_anchor_b, &desc->anchor_b,
-                       &desc->has_frame_b);
-
-  desc->collide_connected =
-      table_bool(L, idx, "collide_connected", "collideConnected", false);
-  desc->force_threshold = table_number(L, idx, "force_threshold",
-                                       "forceThreshold", desc->force_threshold);
-  desc->torque_threshold = table_number(
-      L, idx, "torque_threshold", "torqueThreshold", desc->torque_threshold);
-  float tuning = 0.0f;
-  if (table_number_optional(L, idx, "constraint_hertz", "constraintHertz",
-                            &tuning)) {
-    desc->has_constraint_tuning = true;
-    desc->constraint_hertz = tuning;
-    desc->constraint_damping_ratio = 2.0f;
-  }
-  if (table_number_optional(L, idx, "constraint_damping_ratio",
-                            "constraintDampingRatio", &tuning)) {
-    if (!desc->has_constraint_tuning) {
-      desc->has_constraint_tuning = true;
-      desc->constraint_hertz = 60.0f;
-    }
-    desc->constraint_damping_ratio = tuning;
-  }
-
-  desc->length = table_number(L, idx, "length", NULL, desc->length);
-  desc->min_length =
-      table_number(L, idx, "min_length", "minLength", desc->min_length);
-  desc->max_length =
-      table_number(L, idx, "max_length", "maxLength", desc->max_length);
-  desc->lower = table_number(L, idx, "lower", NULL, desc->lower);
-  desc->upper = table_number(L, idx, "upper", NULL, desc->upper);
-  desc->hertz = table_number(L, idx, "hertz", NULL, desc->hertz);
-  desc->damping_ratio = table_number(L, idx, "damping_ratio", "dampingRatio",
-                                     desc->damping_ratio);
-  desc->linear_hertz =
-      table_number(L, idx, "linear_hertz", "linearHertz", desc->linear_hertz);
-  desc->angular_hertz = table_number(L, idx, "angular_hertz", "angularHertz",
-                                     desc->angular_hertz);
-  desc->linear_damping_ratio =
-      table_number(L, idx, "linear_damping_ratio", "linearDampingRatio",
-                   desc->linear_damping_ratio);
-  desc->angular_damping_ratio =
-      table_number(L, idx, "angular_damping_ratio", "angularDampingRatio",
-                   desc->angular_damping_ratio);
-  desc->max_force =
-      table_number(L, idx, "max_force", "maxForce", desc->max_force);
-  desc->max_torque =
-      table_number(L, idx, "max_torque", "maxTorque", desc->max_torque);
-  desc->motor_speed =
-      table_number(L, idx, "motor_speed", "motorSpeed", desc->motor_speed);
-  desc->target_angle =
-      table_number(L, idx, "target_angle", "targetAngle", desc->target_angle);
-  desc->target_translation =
-      table_number(L, idx, "target_translation", "targetTranslation",
-                   desc->target_translation);
-  desc->enable_spring =
-      table_bool(L, idx, "enable_spring", "enableSpring", desc->enable_spring);
-  desc->enable_limit =
-      table_bool(L, idx, "enable_limit", "enableLimit", desc->enable_limit);
-  desc->enable_motor =
-      table_bool(L, idx, "enable_motor", "enableMotor", desc->enable_motor);
-  desc->lower_spring_force =
-      table_number(L, idx, "lower_spring_force", "lowerSpringForce",
-                   desc->lower_spring_force);
-  desc->upper_spring_force =
-      table_number(L, idx, "upper_spring_force", "upperSpringForce",
-                   desc->upper_spring_force);
-  desc->linear_velocity = table_vec3(L, idx, "linear_velocity",
-                                     "linearVelocity", desc->linear_velocity);
-  desc->angular_velocity = table_vec3(
-      L, idx, "angular_velocity", "angularVelocity", desc->angular_velocity);
-  desc->max_velocity_force =
-      table_number(L, idx, "max_velocity_force", "maxVelocityForce",
-                   desc->max_velocity_force);
-  desc->max_velocity_torque =
-      table_number(L, idx, "max_velocity_torque", "maxVelocityTorque",
-                   desc->max_velocity_torque);
-  desc->max_spring_force = table_number(
-      L, idx, "max_spring_force", "maxSpringForce", desc->max_spring_force);
-  desc->max_spring_torque = table_number(
-      L, idx, "max_spring_torque", "maxSpringTorque", desc->max_spring_torque);
-  table_quat_field(L, idx, "target_rotation", "targetRotation",
-                   &desc->target_rotation);
-  desc->enable_cone_limit = table_bool(
-      L, idx, "enable_cone_limit", "enableConeLimit", desc->enable_cone_limit);
-  desc->cone_angle =
-      table_number(L, idx, "cone_angle", "coneAngle", desc->cone_angle);
-  desc->enable_twist_limit =
-      table_bool(L, idx, "enable_twist_limit", "enableTwistLimit",
-                 desc->enable_twist_limit);
-  desc->lower_twist_angle = table_number(
-      L, idx, "lower_twist_angle", "lowerTwistAngle", desc->lower_twist_angle);
-  desc->upper_twist_angle = table_number(
-      L, idx, "upper_twist_angle", "upperTwistAngle", desc->upper_twist_angle);
-  desc->motor_velocity = table_vec3(L, idx, "motor_velocity", "motorVelocity",
-                                    desc->motor_velocity);
-
-  // Wheel joints alias the generic spring/limit/motor names onto the
-  // suspension and spin motor; the box3d-specific names below win.
-  desc->enable_spring =
-      table_bool(L, idx, "enable_suspension_spring", "enableSuspensionSpring",
-                 desc->enable_spring);
-  desc->hertz =
-      table_number(L, idx, "suspension_hertz", "suspensionHertz", desc->hertz);
-  desc->damping_ratio =
-      table_number(L, idx, "suspension_damping_ratio", "suspensionDampingRatio",
-                   desc->damping_ratio);
-  desc->enable_limit = table_bool(L, idx, "enable_suspension_limit",
-                                  "enableSuspensionLimit", desc->enable_limit);
-  desc->lower = table_number(L, idx, "lower_suspension_limit",
-                             "lowerSuspensionLimit", desc->lower);
-  desc->upper = table_number(L, idx, "upper_suspension_limit",
-                             "upperSuspensionLimit", desc->upper);
-  desc->enable_motor = table_bool(L, idx, "enable_spin_motor",
-                                  "enableSpinMotor", desc->enable_motor);
-  desc->max_torque = table_number(L, idx, "max_spin_torque", "maxSpinTorque",
-                                  desc->max_torque);
-  desc->motor_speed =
-      table_number(L, idx, "spin_speed", "spinSpeed", desc->motor_speed);
-  desc->enable_steering = table_bool(L, idx, "enable_steering",
-                                     "enableSteering", desc->enable_steering);
-  desc->steering_hertz = table_number(L, idx, "steering_hertz", "steeringHertz",
-                                      desc->steering_hertz);
-  desc->steering_damping_ratio =
-      table_number(L, idx, "steering_damping_ratio", "steeringDampingRatio",
-                   desc->steering_damping_ratio);
-  desc->target_steering_angle =
-      table_number(L, idx, "target_steering_angle", "targetSteeringAngle",
-                   desc->target_steering_angle);
-  desc->max_steering_torque =
-      table_number(L, idx, "max_steering_torque", "maxSteeringTorque",
-                   desc->max_steering_torque);
-  desc->enable_steering_limit =
-      table_bool(L, idx, "enable_steering_limit", "enableSteeringLimit",
-                 desc->enable_steering_limit);
-  desc->lower_steering_limit =
-      table_number(L, idx, "lower_steering_limit", "lowerSteeringLimit",
-                   desc->lower_steering_limit);
-  desc->upper_steering_limit =
-      table_number(L, idx, "upper_steering_limit", "upperSteeringLimit",
-                   desc->upper_steering_limit);
-
-  desc->enable_spring =
-      nested_bool(L, idx, "spring", "enabled", NULL, desc->enable_spring);
-  desc->hertz = nested_number(L, idx, "spring", "hertz", NULL, desc->hertz);
-  desc->damping_ratio = nested_number(L, idx, "spring", "damping_ratio",
-                                      "dampingRatio", desc->damping_ratio);
-  desc->target_angle = nested_number(L, idx, "spring", "target_angle",
-                                     "targetAngle", desc->target_angle);
-  desc->target_translation =
-      nested_number(L, idx, "spring", "target_translation", "targetTranslation",
-                    desc->target_translation);
-
-  desc->enable_limit =
-      nested_bool(L, idx, "limit", "enabled", NULL, desc->enable_limit);
-  desc->lower = nested_number(L, idx, "limit", "lower", NULL, desc->lower);
-  desc->upper = nested_number(L, idx, "limit", "upper", NULL, desc->upper);
-  desc->min_length =
-      nested_number(L, idx, "limit", "min", "min_length", desc->min_length);
-  desc->max_length =
-      nested_number(L, idx, "limit", "max", "max_length", desc->max_length);
-  desc->cone_angle = nested_number(L, idx, "limit", "cone_angle", "coneAngle",
-                                   desc->cone_angle);
-
-  desc->enable_motor =
-      nested_bool(L, idx, "motor", "enabled", NULL, desc->enable_motor);
-  desc->motor_speed =
-      nested_number(L, idx, "motor", "speed", NULL, desc->motor_speed);
-  desc->max_force =
-      nested_number(L, idx, "motor", "max_force", "maxForce", desc->max_force);
-  desc->max_torque = nested_number(L, idx, "motor", "max_torque", "maxTorque",
-                                   desc->max_torque);
-  desc->motor_velocity = nested_vec3(L, idx, "motor", "velocity",
-                                     "motor_velocity", desc->motor_velocity);
-}
-
-static uint64_t joint_constructor_hash(const Phys3dJointDesc *desc) {
-  uint64_t h = hash_init();
-  h = hash_u64(h, (uint64_t)desc->kind);
-  h = hash_cstr(h, desc->body_a ? desc->body_a->key : "");
-  h = hash_cstr(h, desc->body_b ? desc->body_b->key : "");
-  h = hash_bool(h, desc->collide_connected);
-  h = hash_bool(h, desc->has_axis);
-  if (desc->has_axis) {
-    h = hash_f32(h, desc->axis.x);
-    h = hash_f32(h, desc->axis.y);
-    h = hash_f32(h, desc->axis.z);
-  }
-  h = hash_bool(h, desc->has_anchor_a);
-  if (desc->has_anchor_a) {
-    h = hash_f32(h, desc->anchor_a.x);
-    h = hash_f32(h, desc->anchor_a.y);
-    h = hash_f32(h, desc->anchor_a.z);
-  }
-  h = hash_bool(h, desc->has_anchor_b);
-  if (desc->has_anchor_b) {
-    h = hash_f32(h, desc->anchor_b.x);
-    h = hash_f32(h, desc->anchor_b.y);
-    h = hash_f32(h, desc->anchor_b.z);
-  }
-  h = hash_bool(h, desc->has_frame_a);
-  if (desc->has_frame_a)
-    h = hash_transform(h, desc->local_frame_a);
-  h = hash_bool(h, desc->has_frame_b);
-  if (desc->has_frame_b)
-    h = hash_transform(h, desc->local_frame_b);
+static uint64_t joint_constructor_hash(const LubPhys3dJointDesc *d,
+                                       const Phys3dBody *a, const Phys3dBody *b,
+                                       b3Vec3 axis, const JointFrames *frames) {
+  uint64_t h = phys_hash_init();
+  h = phys_hash_u64(h, (uint64_t)d->type);
+  h = phys_hash_cstr(h, a ? a->key : "");
+  h = phys_hash_cstr(h, b ? b->key : "");
+  h = phys_hash_bool(h, d->collide_connected);
+  h = phys_hash_bool(h, d->has_axis);
+  if (d->has_axis)
+    h = hash_vec3(h, lub_vec3(axis));
+  h = phys_hash_bool(h, d->has_anchor_a);
+  if (d->has_anchor_a)
+    h = hash_vec3(h, d->anchor_a);
+  h = phys_hash_bool(h, d->has_anchor_b);
+  if (d->has_anchor_b)
+    h = hash_vec3(h, d->anchor_b);
+  h = phys_hash_bool(h, d->has_frame_a);
+  if (d->has_frame_a)
+    h = hash_transform(h, frames->a);
+  h = phys_hash_bool(h, d->has_frame_b);
+  if (d->has_frame_b)
+    h = hash_transform(h, frames->b);
   return h;
-}
-
-static int64_t joint_effective_version(const Phys3dJointDesc *desc,
-                                       uint64_t fallback_hash) {
-  if (desc->has_version)
-    return desc->version;
-  return (int64_t)fallback_hash;
 }
 
 static void log_joint_constructor_drift(Phys3dJoint *j, uint64_t hash) {
@@ -3816,450 +2205,835 @@ static void log_joint_constructor_drift(Phys3dJoint *j, uint64_t hash) {
   j->constructor_warned = true;
 }
 
-static void joint_mark_declared(Phys3dJoint *j, const Phys3dJointDesc *desc,
+static void joint_mark_declared(Phys3dJoint *j, const LubPhys3dJointDesc *d,
+                                Phys3dBody *a, Phys3dBody *b,
                                 uint64_t constructor_hash, int64_t version,
                                 bool recreated) {
   if (recreated) {
-    j->kind = desc->kind;
-    j->body_a = desc->body_a;
-    j->body_b = desc->body_b;
+    j->kind = d->type;
+    j->body_a = a;
+    j->body_b = b;
     j->constructor_warned = false;
   }
   j->version = version;
   j->constructor_hash = constructor_hash;
 }
 
-static void joint_apply_runtime(Phys3dJoint *j, const Phys3dJointDesc *desc) {
-  switch (desc->kind) {
-  case PHYS3D_JOINT_DISTANCE:
-    b3DistanceJoint_SetLength(j->id, desc->length);
-    b3DistanceJoint_EnableSpring(j->id, desc->enable_spring);
-    b3DistanceJoint_SetSpringHertz(j->id, desc->hertz);
-    b3DistanceJoint_SetSpringDampingRatio(j->id, desc->damping_ratio);
-    b3DistanceJoint_SetSpringForceRange(j->id, desc->lower_spring_force,
-                                        desc->upper_spring_force);
-    b3DistanceJoint_EnableLimit(j->id, desc->enable_limit);
-    b3DistanceJoint_SetLengthRange(j->id, desc->min_length, desc->max_length);
-    b3DistanceJoint_EnableMotor(j->id, desc->enable_motor);
-    b3DistanceJoint_SetMotorSpeed(j->id, desc->motor_speed);
-    b3DistanceJoint_SetMaxMotorForce(j->id, desc->max_force);
+static void joint_apply_runtime(Phys3dJoint *j, const LubPhys3dJointDesc *d) {
+  switch (d->type) {
+  case LUB_PHYS3D_JOINT_TYPE_DISTANCE:
+    b3DistanceJoint_SetLength(j->id, d->length);
+    b3DistanceJoint_EnableSpring(j->id, d->enable_spring);
+    b3DistanceJoint_SetSpringHertz(j->id, d->hertz);
+    b3DistanceJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    b3DistanceJoint_SetSpringForceRange(j->id, d->lower_spring_force,
+                                        d->upper_spring_force);
+    b3DistanceJoint_EnableLimit(j->id, d->enable_limit);
+    b3DistanceJoint_SetLengthRange(j->id, d->min_length, d->max_length);
+    b3DistanceJoint_EnableMotor(j->id, d->enable_motor);
+    b3DistanceJoint_SetMotorSpeed(j->id, d->motor_speed);
+    b3DistanceJoint_SetMaxMotorForce(j->id, d->max_force);
     break;
-  case PHYS3D_JOINT_MOTOR:
-    b3MotorJoint_SetLinearVelocity(j->id, desc->linear_velocity);
-    b3MotorJoint_SetAngularVelocity(j->id, desc->angular_velocity);
-    b3MotorJoint_SetMaxVelocityForce(j->id, desc->max_velocity_force);
-    b3MotorJoint_SetMaxVelocityTorque(j->id, desc->max_velocity_torque);
-    b3MotorJoint_SetLinearHertz(j->id, desc->linear_hertz);
-    b3MotorJoint_SetLinearDampingRatio(j->id, desc->linear_damping_ratio);
-    b3MotorJoint_SetAngularHertz(j->id, desc->angular_hertz);
-    b3MotorJoint_SetAngularDampingRatio(j->id, desc->angular_damping_ratio);
-    b3MotorJoint_SetMaxSpringForce(j->id, desc->max_spring_force);
-    b3MotorJoint_SetMaxSpringTorque(j->id, desc->max_spring_torque);
+  case LUB_PHYS3D_JOINT_TYPE_MOTOR:
+    b3MotorJoint_SetLinearVelocity(j->id, vec3_of(d->linear_velocity));
+    b3MotorJoint_SetAngularVelocity(j->id, vec3_of(d->angular_velocity));
+    b3MotorJoint_SetMaxVelocityForce(j->id, d->max_velocity_force);
+    b3MotorJoint_SetMaxVelocityTorque(j->id, d->max_velocity_torque);
+    b3MotorJoint_SetLinearHertz(j->id, d->linear_hertz);
+    b3MotorJoint_SetLinearDampingRatio(j->id, d->linear_damping_ratio);
+    b3MotorJoint_SetAngularHertz(j->id, d->angular_hertz);
+    b3MotorJoint_SetAngularDampingRatio(j->id, d->angular_damping_ratio);
+    b3MotorJoint_SetMaxSpringForce(j->id, d->max_spring_force);
+    b3MotorJoint_SetMaxSpringTorque(j->id, d->max_spring_torque);
     break;
-  case PHYS3D_JOINT_PARALLEL:
-    b3ParallelJoint_SetSpringHertz(j->id, desc->hertz);
-    b3ParallelJoint_SetSpringDampingRatio(j->id, desc->damping_ratio);
-    b3ParallelJoint_SetMaxTorque(j->id, desc->max_torque);
+  case LUB_PHYS3D_JOINT_TYPE_PARALLEL:
+    b3ParallelJoint_SetSpringHertz(j->id, d->hertz);
+    b3ParallelJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    b3ParallelJoint_SetMaxTorque(j->id, d->max_torque);
     break;
-  case PHYS3D_JOINT_PRISMATIC:
-    b3PrismaticJoint_EnableSpring(j->id, desc->enable_spring);
-    b3PrismaticJoint_SetSpringHertz(j->id, desc->hertz);
-    b3PrismaticJoint_SetSpringDampingRatio(j->id, desc->damping_ratio);
-    b3PrismaticJoint_SetTargetTranslation(j->id, desc->target_translation);
-    b3PrismaticJoint_EnableLimit(j->id, desc->enable_limit);
-    b3PrismaticJoint_SetLimits(j->id, desc->lower, desc->upper);
-    b3PrismaticJoint_EnableMotor(j->id, desc->enable_motor);
-    b3PrismaticJoint_SetMotorSpeed(j->id, desc->motor_speed);
-    b3PrismaticJoint_SetMaxMotorForce(j->id, desc->max_force);
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
+    b3PrismaticJoint_EnableSpring(j->id, d->enable_spring);
+    b3PrismaticJoint_SetSpringHertz(j->id, d->hertz);
+    b3PrismaticJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    b3PrismaticJoint_SetTargetTranslation(j->id, d->target_translation);
+    b3PrismaticJoint_EnableLimit(j->id, d->enable_limit);
+    b3PrismaticJoint_SetLimits(j->id, d->lower, d->upper);
+    b3PrismaticJoint_EnableMotor(j->id, d->enable_motor);
+    b3PrismaticJoint_SetMotorSpeed(j->id, d->motor_speed);
+    b3PrismaticJoint_SetMaxMotorForce(j->id, d->max_force);
     break;
-  case PHYS3D_JOINT_REVOLUTE:
-    b3RevoluteJoint_EnableSpring(j->id, desc->enable_spring);
-    b3RevoluteJoint_SetSpringHertz(j->id, desc->hertz);
-    b3RevoluteJoint_SetSpringDampingRatio(j->id, desc->damping_ratio);
-    b3RevoluteJoint_SetTargetAngle(j->id, desc->target_angle);
-    b3RevoluteJoint_EnableLimit(j->id, desc->enable_limit);
-    b3RevoluteJoint_SetLimits(j->id, desc->lower, desc->upper);
-    b3RevoluteJoint_EnableMotor(j->id, desc->enable_motor);
-    b3RevoluteJoint_SetMotorSpeed(j->id, desc->motor_speed);
-    b3RevoluteJoint_SetMaxMotorTorque(j->id, desc->max_torque);
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE:
+    b3RevoluteJoint_EnableSpring(j->id, d->enable_spring);
+    b3RevoluteJoint_SetSpringHertz(j->id, d->hertz);
+    b3RevoluteJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    b3RevoluteJoint_SetTargetAngle(j->id, d->target_angle);
+    b3RevoluteJoint_EnableLimit(j->id, d->enable_limit);
+    b3RevoluteJoint_SetLimits(j->id, d->lower, d->upper);
+    b3RevoluteJoint_EnableMotor(j->id, d->enable_motor);
+    b3RevoluteJoint_SetMotorSpeed(j->id, d->motor_speed);
+    b3RevoluteJoint_SetMaxMotorTorque(j->id, d->max_torque);
     break;
-  case PHYS3D_JOINT_SPHERICAL:
-    b3SphericalJoint_EnableSpring(j->id, desc->enable_spring);
-    b3SphericalJoint_SetSpringHertz(j->id, desc->hertz);
-    b3SphericalJoint_SetSpringDampingRatio(j->id, desc->damping_ratio);
-    b3SphericalJoint_SetTargetRotation(j->id, desc->target_rotation);
-    b3SphericalJoint_EnableConeLimit(j->id, desc->enable_cone_limit);
-    b3SphericalJoint_SetConeLimit(j->id, desc->cone_angle);
-    b3SphericalJoint_EnableTwistLimit(j->id, desc->enable_twist_limit);
-    b3SphericalJoint_SetTwistLimits(j->id, desc->lower_twist_angle,
-                                    desc->upper_twist_angle);
-    b3SphericalJoint_EnableMotor(j->id, desc->enable_motor);
-    b3SphericalJoint_SetMotorVelocity(j->id, desc->motor_velocity);
-    b3SphericalJoint_SetMaxMotorTorque(j->id, desc->max_torque);
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL:
+    b3SphericalJoint_EnableSpring(j->id, d->enable_spring);
+    b3SphericalJoint_SetSpringHertz(j->id, d->hertz);
+    b3SphericalJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    b3SphericalJoint_SetTargetRotation(j->id, quat_of(d->target_rotation));
+    b3SphericalJoint_EnableConeLimit(j->id, d->enable_cone_limit);
+    b3SphericalJoint_SetConeLimit(j->id, d->cone_angle);
+    b3SphericalJoint_EnableTwistLimit(j->id, d->enable_twist_limit);
+    b3SphericalJoint_SetTwistLimits(j->id, d->lower_twist_angle,
+                                    d->upper_twist_angle);
+    b3SphericalJoint_EnableMotor(j->id, d->enable_motor);
+    b3SphericalJoint_SetMotorVelocity(j->id, vec3_of(d->motor_velocity));
+    b3SphericalJoint_SetMaxMotorTorque(j->id, d->max_torque);
     break;
-  case PHYS3D_JOINT_WELD:
-    b3WeldJoint_SetLinearHertz(j->id, desc->linear_hertz);
-    b3WeldJoint_SetLinearDampingRatio(j->id, desc->linear_damping_ratio);
-    b3WeldJoint_SetAngularHertz(j->id, desc->angular_hertz);
-    b3WeldJoint_SetAngularDampingRatio(j->id, desc->angular_damping_ratio);
+  case LUB_PHYS3D_JOINT_TYPE_WELD:
+    b3WeldJoint_SetLinearHertz(j->id, d->linear_hertz);
+    b3WeldJoint_SetLinearDampingRatio(j->id, d->linear_damping_ratio);
+    b3WeldJoint_SetAngularHertz(j->id, d->angular_hertz);
+    b3WeldJoint_SetAngularDampingRatio(j->id, d->angular_damping_ratio);
     break;
-  case PHYS3D_JOINT_WHEEL:
-    b3WheelJoint_EnableSuspension(j->id, desc->enable_spring);
-    b3WheelJoint_SetSuspensionHertz(j->id, desc->hertz);
-    b3WheelJoint_SetSuspensionDampingRatio(j->id, desc->damping_ratio);
-    b3WheelJoint_EnableSuspensionLimit(j->id, desc->enable_limit);
-    b3WheelJoint_SetSuspensionLimits(j->id, desc->lower, desc->upper);
-    b3WheelJoint_EnableSpinMotor(j->id, desc->enable_motor);
-    b3WheelJoint_SetSpinMotorSpeed(j->id, desc->motor_speed);
-    b3WheelJoint_SetMaxSpinTorque(j->id, desc->max_torque);
-    b3WheelJoint_EnableSteering(j->id, desc->enable_steering);
-    b3WheelJoint_SetSteeringHertz(j->id, desc->steering_hertz);
-    b3WheelJoint_SetSteeringDampingRatio(j->id, desc->steering_damping_ratio);
-    b3WheelJoint_SetTargetSteeringAngle(j->id, desc->target_steering_angle);
-    b3WheelJoint_SetMaxSteeringTorque(j->id, desc->max_steering_torque);
-    b3WheelJoint_EnableSteeringLimit(j->id, desc->enable_steering_limit);
-    b3WheelJoint_SetSteeringLimits(j->id, desc->lower_steering_limit,
-                                   desc->upper_steering_limit);
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
+    b3WheelJoint_EnableSuspension(j->id, d->enable_spring);
+    b3WheelJoint_SetSuspensionHertz(j->id, d->hertz);
+    b3WheelJoint_SetSuspensionDampingRatio(j->id, d->damping_ratio);
+    b3WheelJoint_EnableSuspensionLimit(j->id, d->enable_limit);
+    b3WheelJoint_SetSuspensionLimits(j->id, d->lower, d->upper);
+    b3WheelJoint_EnableSpinMotor(j->id, d->enable_motor);
+    b3WheelJoint_SetSpinMotorSpeed(j->id, d->motor_speed);
+    b3WheelJoint_SetMaxSpinTorque(j->id, d->max_torque);
+    b3WheelJoint_EnableSteering(j->id, d->enable_steering);
+    b3WheelJoint_SetSteeringHertz(j->id, d->steering_hertz);
+    b3WheelJoint_SetSteeringDampingRatio(j->id, d->steering_damping_ratio);
+    b3WheelJoint_SetTargetSteeringAngle(j->id, d->target_steering_angle);
+    b3WheelJoint_SetMaxSteeringTorque(j->id, d->max_steering_torque);
+    b3WheelJoint_EnableSteeringLimit(j->id, d->enable_steering_limit);
+    b3WheelJoint_SetSteeringLimits(j->id, d->lower_steering_limit,
+                                   d->upper_steering_limit);
     break;
-  case PHYS3D_JOINT_FILTER:
+  case LUB_PHYS3D_JOINT_TYPE_FILTER:
   default:
     break;
   }
-  b3Joint_SetForceThreshold(j->id, desc->force_threshold);
-  b3Joint_SetTorqueThreshold(j->id, desc->torque_threshold);
-  if (desc->has_constraint_tuning)
-    b3Joint_SetConstraintTuning(j->id, desc->constraint_hertz,
-                                desc->constraint_damping_ratio);
+  b3Joint_SetForceThreshold(j->id, d->force_threshold);
+  b3Joint_SetTorqueThreshold(j->id, d->torque_threshold);
+  if (d->has_constraint_tuning)
+    b3Joint_SetConstraintTuning(j->id, d->constraint_hertz,
+                                d->constraint_damping_ratio);
 }
 
 static void joint_def_apply_base(b3JointDef *base, Phys3dJoint *j,
-                                 const Phys3dJointDesc *desc) {
+                                 const LubPhys3dJointDesc *d, Phys3dBody *a,
+                                 Phys3dBody *b, const JointFrames *frames) {
   base->userData = j;
-  base->bodyIdA = desc->body_a->id;
-  base->bodyIdB = desc->body_b->id;
-  base->localFrameA = desc->local_frame_a;
-  base->localFrameB = desc->local_frame_b;
-  base->forceThreshold = desc->force_threshold;
-  base->torqueThreshold = desc->torque_threshold;
-  base->collideConnected = desc->collide_connected;
-  if (desc->has_constraint_tuning) {
-    base->constraintHertz = desc->constraint_hertz;
-    base->constraintDampingRatio = desc->constraint_damping_ratio;
+  base->bodyIdA = a->id;
+  base->bodyIdB = b->id;
+  base->localFrameA = frames->a;
+  base->localFrameB = frames->b;
+  base->forceThreshold = d->force_threshold;
+  base->torqueThreshold = d->torque_threshold;
+  base->collideConnected = d->collide_connected;
+  if (d->has_constraint_tuning) {
+    base->constraintHertz = d->constraint_hertz;
+    base->constraintDampingRatio = d->constraint_damping_ratio;
   }
 }
 
-static void joint_create(lua_State *L, Phys3dWorld *w, Phys3dJoint *j,
-                         const Phys3dJointDesc *desc, uint64_t constructor_hash,
-                         int64_t version) {
-  switch (desc->kind) {
-  case PHYS3D_JOINT_DISTANCE: {
+static bool joint_create(App *app, Phys3dWorld *w, Phys3dJoint *j,
+                         const LubPhys3dJointDesc *d, Phys3dBody *a,
+                         Phys3dBody *b, const JointFrames *frames,
+                         uint64_t constructor_hash, int64_t version) {
+  switch (d->type) {
+  case LUB_PHYS3D_JOINT_TYPE_DISTANCE: {
     b3DistanceJointDef def = b3DefaultDistanceJointDef();
-    joint_def_apply_base(&def.base, j, desc);
-    def.length = desc->length;
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
+    def.length = d->length;
     j->id = b3CreateDistanceJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_FILTER: {
+  case LUB_PHYS3D_JOINT_TYPE_FILTER: {
     b3FilterJointDef def = b3DefaultFilterJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateFilterJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_MOTOR: {
+  case LUB_PHYS3D_JOINT_TYPE_MOTOR: {
     b3MotorJointDef def = b3DefaultMotorJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateMotorJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_PARALLEL: {
+  case LUB_PHYS3D_JOINT_TYPE_PARALLEL: {
     b3ParallelJointDef def = b3DefaultParallelJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateParallelJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_PRISMATIC: {
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC: {
     b3PrismaticJointDef def = b3DefaultPrismaticJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreatePrismaticJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_REVOLUTE: {
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE: {
     b3RevoluteJointDef def = b3DefaultRevoluteJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateRevoluteJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_SPHERICAL: {
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL: {
     b3SphericalJointDef def = b3DefaultSphericalJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateSphericalJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_WELD: {
+  case LUB_PHYS3D_JOINT_TYPE_WELD: {
     b3WeldJointDef def = b3DefaultWeldJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateWeldJoint(w->id, &def);
     break;
   }
-  case PHYS3D_JOINT_WHEEL: {
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL: {
     b3WheelJointDef def = b3DefaultWheelJointDef();
-    joint_def_apply_base(&def.base, j, desc);
+    joint_def_apply_base(&def.base, j, d, a, b, frames);
     j->id = b3CreateWheelJoint(w->id, &def);
     break;
   }
   default:
     break;
   }
-  if (B3_IS_NULL(j->id) || !b3Joint_IsValid(j->id))
-    luaL_error(L, "phys3d_joint: b3Create%sJoint failed",
-               joint_kind_name(desc->kind));
+  if (B3_IS_NULL(j->id) || !b3Joint_IsValid(j->id)) {
+    lub_api_fail(app, "phys3d_joint: b3Create%sJoint failed",
+                 joint_kind_name(d->type));
+    return false;
+  }
   b3Joint_SetUserData(j->id, j);
-  joint_mark_declared(j, desc, constructor_hash, version, true);
-  joint_apply_runtime(j, desc);
+  joint_mark_declared(j, d, a, b, constructor_hash, version, true);
+  joint_apply_runtime(j, d);
+  return true;
 }
 
-static int l_phys3d_joint(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_joint"))
-    return 0;
-  Phys3dWorld *w = check_world(L, 1);
-  const char *key = luaL_checkstring(L, 2);
-  Phys3dJointDesc desc;
-  parse_joint_desc(L, w, 3, &desc);
+static Phys3dBody *joint_body(App *app, Phys3dWorld *w, LubHandle h,
+                              const char *field) {
+  Phys3dBody *b = body_from_handle(app, h);
+  if (!b) {
+    lub_api_fail(app, "phys3d_joint: missing body field '%s'", field);
+    return NULL;
+  }
+  if (b->world != w) {
+    lub_api_fail(app, "phys3d_joint: body '%s' belongs to another world",
+                 b->key);
+    return NULL;
+  }
+  if (!body_is_live(b) || b->seen_generation != w->generation) {
+    lub_api_fail(app, "phys3d_joint: declare live body '%s' before joint",
+                 b->key);
+    return NULL;
+  }
+  return b;
+}
+
+LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
+                           const LubPhys3dJointDesc *desc, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  if (in_callback(app, "phys3d_joint"))
+    return LUB_ERROR;
+  Phys3dWorld *w = check_world(app, world, "phys3d_joint");
+  if (!w)
+    return LUB_ERROR;
+  char kbuf[PHYS_KEY_MAX];
+  if (!key_copy(app, key, kbuf, sizeof(kbuf), "phys3d_joint"))
+    return LUB_ERROR;
+  if (!desc)
+    return lub_api_fail(app, "phys3d_joint: desc required");
+  if (desc->type < LUB_PHYS3D_JOINT_TYPE_DISTANCE ||
+      desc->type > LUB_PHYS3D_JOINT_TYPE_WHEEL)
+    return lub_api_fail(app, "phys3d_joint: unknown joint type %d",
+                        (int)desc->type);
+  Phys3dBody *a = joint_body(app, w, desc->body_a, "a");
+  if (!a)
+    return LUB_ERROR;
+  Phys3dBody *b = joint_body(app, w, desc->body_b, "b");
+  if (!b)
+    return LUB_ERROR;
+  b3Vec3 axis = b3Vec3_axisZ;
+  b3Quat world_rot = b3Quat_identity;
+  if (desc->has_axis) {
+    axis = vec3_of(desc->axis);
+    if (b3LengthSquared(axis) <= 1e-12f)
+      return lub_api_fail(app, "phys3d_joint: axis must be non-zero");
+    axis = b3Normalize(axis);
+    world_rot =
+        b3ComputeQuatBetweenUnitVectors(joint_canonical_axis(desc->type), axis);
+  }
+  JointFrames frames;
+  frames.axis = axis;
+  frames.a = joint_frame_for_body(
+      a, desc->has_axis, world_rot, desc->has_anchor_a, desc->anchor_a,
+      desc->has_frame_a, desc->frame_a_position, desc->frame_a_rotation);
+  frames.b = joint_frame_for_body(
+      b, desc->has_axis, world_rot, desc->has_anchor_b, desc->anchor_b,
+      desc->has_frame_b, desc->frame_b_position, desc->frame_b_rotation);
   if (!w->begun)
-    return luaL_error(L, "phys3d_joint: call phys3d_begin(world) first");
-  Phys3dJoint *j = joint_get_or_create(w, key);
+    return lub_api_fail(app, "phys3d_joint: call phys3d_begin(world) first");
+  Phys3dJoint *j = joint_get_or_create(w, kbuf);
   if (!j)
-    return luaL_error(L, "phys3d_joint: out of memory");
-  uint64_t constructor_hash = joint_constructor_hash(&desc);
-  int64_t version = joint_effective_version(&desc, constructor_hash);
-  bool endpoints_changed = j->body_a != desc.body_a || j->body_b != desc.body_b;
-  bool kind_changed = j->kind != desc.kind;
+    return lub_api_fail(app, "phys3d_joint: out of memory");
+  uint64_t constructor_hash = joint_constructor_hash(desc, a, b, axis, &frames);
+  int64_t version =
+      desc->has_version ? (int64_t)desc->version : (int64_t)constructor_hash;
+  bool endpoints_changed = j->body_a != a || j->body_b != b;
+  bool kind_changed = j->kind != desc->type;
   bool recreated = !joint_is_live(j) || j->version != version ||
-                   (!desc.has_version && (kind_changed || endpoints_changed));
+                   (!desc->has_version && (kind_changed || endpoints_changed));
   if (recreated) {
     if (joint_is_live(j))
       b3DestroyJoint(j->id, true);
     j->id = b3_nullJointId;
-    joint_create(L, w, j, &desc, constructor_hash, version);
+    if (!joint_create(app, w, j, desc, a, b, &frames, constructor_hash,
+                      version))
+      return LUB_ERROR;
   } else {
-    if (desc.has_version)
+    if (desc->has_version)
       log_joint_constructor_drift(j, constructor_hash);
-    joint_mark_declared(j, &desc, constructor_hash, version, false);
+    joint_mark_declared(j, desc, a, b, constructor_hash, version, false);
     if (!kind_changed)
-      joint_apply_runtime(j, &desc);
+      joint_apply_runtime(j, desc);
   }
   j->seen_generation = w->generation;
-  push_joint_ref(L, w->key, j->key);
-  return 1;
+  *out = j->handle;
+  return LUB_OK;
 }
 
-static void command_read_point(lua_State *L, int idx, Phys3dBody *b,
-                               Phys3dCommand *cmd) {
-  if (!lua_istable(L, idx))
-    return;
-  b3Vec3 point = b3ToVec3(b3Body_GetWorldCenterOfMass(b->id));
-  bool has_point = false;
-  if (table_get_any(L, idx, "point", NULL)) {
-    if (lua_istable(L, -1)) {
-      point = value_vec3(L, lua_gettop(L), point);
-      has_point = true;
+LubHandle lub_phys3d_joint_find(LubContext *ctx, LubHandle world, LubStr key) {
+  App *app = lub_api_app(ctx);
+  Phys3dWorld *w = world_from_handle(app, world);
+  char kbuf[PHYS_KEY_MAX];
+  if (!w || !key.ptr || key.len <= 0 || !lub_str_copy(key, kbuf, sizeof(kbuf)))
+    return 0;
+  Phys3dJoint *j = joint_get(w, kbuf);
+  return j ? j->handle : 0;
+}
+
+static void fill_joint_view(LubPhys3dJointView *out, Phys3dJoint *j) {
+  memset(out, 0, sizeof(*out));
+  out->joint = j ? j->handle : 0;
+  out->key = str_or_empty(j ? j->key : NULL);
+  out->type = j ? j->kind : 0;
+  out->a = str_or_empty(j && j->body_a ? j->body_a->key : NULL);
+  out->b = str_or_empty(j && j->body_b ? j->body_b->key : NULL);
+  out->valid = joint_is_live(j);
+}
+
+static LubPhys3dFrame frame_of(b3Transform t) {
+  LubPhys3dFrame f = {lub_vec3(t.p), lub_quat(t.q)};
+  return f;
+}
+
+LubStatus lub_phys3d_joint_info(LubContext *ctx, LubHandle joint,
+                                LubPhys3dJointInfo *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  fill_joint_view(&out->view, j);
+  out->collide_connected = b3Joint_GetCollideConnected(j->id);
+  out->force = lub_vec3(b3Joint_GetConstraintForce(j->id));
+  out->torque = lub_vec3(b3Joint_GetConstraintTorque(j->id));
+  out->linear_separation = b3Joint_GetLinearSeparation(j->id);
+  out->angular_separation = b3Joint_GetAngularSeparation(j->id);
+  out->local_frame_a = frame_of(b3Joint_GetLocalFrameA(j->id));
+  out->local_frame_b = frame_of(b3Joint_GetLocalFrameB(j->id));
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_force(LubContext *ctx, LubHandle joint,
+                                 LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  *out = lub_vec3(b3Joint_GetConstraintForce(j->id));
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_torque(LubContext *ctx, LubHandle joint,
+                                  LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  *out = lub_vec3(b3Joint_GetConstraintTorque(j->id));
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  *has = false;
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  if (j->kind == LUB_PHYS3D_JOINT_TYPE_REVOLUTE) {
+    *out = b3RevoluteJoint_GetAngle(j->id);
+    *has = true;
+  }
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_translation(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  *has = false;
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  if (j->kind == LUB_PHYS3D_JOINT_TYPE_PRISMATIC) {
+    *out = b3PrismaticJoint_GetTranslation(j->id);
+    *has = true;
+  }
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  *has = false;
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  if (j->kind == LUB_PHYS3D_JOINT_TYPE_PRISMATIC) {
+    *out = b3PrismaticJoint_GetSpeed(j->id);
+    *has = true;
+  } else if (j->kind == LUB_PHYS3D_JOINT_TYPE_WHEEL) {
+    *out = b3WheelJoint_GetSpinSpeed(j->id);
+    *has = true;
+  }
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_length(LubContext *ctx, LubHandle joint, float *out,
+                                  bool *has) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  *has = false;
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  if (j->kind == LUB_PHYS3D_JOINT_TYPE_DISTANCE) {
+    *out = b3DistanceJoint_GetCurrentLength(j->id);
+    *has = true;
+  }
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  *has = false;
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  if (j->kind == LUB_PHYS3D_JOINT_TYPE_DISTANCE) {
+    *out = b3DistanceJoint_GetMotorForce(j->id);
+    *has = true;
+  } else if (j->kind == LUB_PHYS3D_JOINT_TYPE_PRISMATIC) {
+    *out = b3PrismaticJoint_GetMotorForce(j->id);
+    *has = true;
+  }
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx, LubHandle joint,
+                                        float *out, bool *has, LubVec3 *vector,
+                                        bool *has_vector) {
+  App *app = lub_api_app(ctx);
+  *out = 0;
+  *has = false;
+  memset(vector, 0, sizeof(*vector));
+  *has_vector = false;
+  Phys3dJoint *j = query_joint(app, joint);
+  if (!j)
+    return LUB_NOT_FOUND;
+  if (j->kind == LUB_PHYS3D_JOINT_TYPE_REVOLUTE) {
+    *out = b3RevoluteJoint_GetMotorTorque(j->id);
+    *has = true;
+  } else if (j->kind == LUB_PHYS3D_JOINT_TYPE_WHEEL) {
+    *out = b3WheelJoint_GetSpinTorque(j->id);
+    *has = true;
+  } else if (j->kind == LUB_PHYS3D_JOINT_TYPE_SPHERICAL) {
+    *vector = lub_vec3(b3SphericalJoint_GetMotorTorque(j->id));
+    *has_vector = true;
+  }
+  return LUB_OK;
+}
+
+static Phys3dJoint *check_live_joint(App *app, LubHandle h, const char *fn) {
+  if (in_callback(app, fn))
+    return NULL;
+  Phys3dJoint *j = check_joint(app, h, fn);
+  if (!j)
+    return NULL;
+  if (!joint_is_live(j)) {
+    lub_api_fail(app, "%s: joint is not live", fn);
+    return NULL;
+  }
+  return j;
+}
+
+LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                     const LubPhys3dJointMotor *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dJoint *j = check_live_joint(app, joint, "phys3d_joint_set_motor");
+  if (!j)
+    return LUB_ERROR;
+  switch (j->kind) {
+  case LUB_PHYS3D_JOINT_TYPE_DISTANCE:
+    b3DistanceJoint_EnableMotor(j->id, d->enabled);
+    b3DistanceJoint_SetMotorSpeed(j->id, d->speed);
+    b3DistanceJoint_SetMaxMotorForce(j->id, d->max_force);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
+    b3PrismaticJoint_EnableMotor(j->id, d->enabled);
+    b3PrismaticJoint_SetMotorSpeed(j->id, d->speed);
+    b3PrismaticJoint_SetMaxMotorForce(j->id, d->max_force);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE:
+    b3RevoluteJoint_EnableMotor(j->id, d->enabled);
+    b3RevoluteJoint_SetMotorSpeed(j->id, d->speed);
+    b3RevoluteJoint_SetMaxMotorTorque(j->id, d->max_torque);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL:
+    b3SphericalJoint_EnableMotor(j->id, d->enabled);
+    b3SphericalJoint_SetMotorVelocity(
+        j->id, d->has_velocity ? vec3_of(d->velocity)
+                               : b3SphericalJoint_GetMotorVelocity(j->id));
+    b3SphericalJoint_SetMaxMotorTorque(j->id, d->max_torque);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
+    b3WheelJoint_EnableSpinMotor(j->id, d->enabled);
+    b3WheelJoint_SetSpinMotorSpeed(j->id, d->speed);
+    b3WheelJoint_SetMaxSpinTorque(j->id, d->max_torque);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_MOTOR:
+    b3MotorJoint_SetLinearVelocity(
+        j->id, d->has_linear_velocity ? vec3_of(d->linear_velocity)
+                                      : b3MotorJoint_GetLinearVelocity(j->id));
+    b3MotorJoint_SetAngularVelocity(
+        j->id, d->has_angular_velocity
+                   ? vec3_of(d->angular_velocity)
+                   : b3MotorJoint_GetAngularVelocity(j->id));
+    b3MotorJoint_SetMaxVelocityForce(
+        j->id, d->has_max_velocity_force
+                   ? d->max_velocity_force
+                   : b3MotorJoint_GetMaxVelocityForce(j->id));
+    b3MotorJoint_SetMaxVelocityTorque(
+        j->id, d->has_max_velocity_torque
+                   ? d->max_velocity_torque
+                   : b3MotorJoint_GetMaxVelocityTorque(j->id));
+    break;
+  default:
+    return lub_api_fail(app, "phys3d_joint_set_motor: unsupported joint type");
+  }
+  b3Joint_WakeBodies(j->id);
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                     const LubPhys3dJointLimit *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dJoint *j = check_live_joint(app, joint, "phys3d_joint_set_limit");
+  if (!j)
+    return LUB_ERROR;
+  switch (j->kind) {
+  case LUB_PHYS3D_JOINT_TYPE_DISTANCE:
+    b3DistanceJoint_EnableLimit(j->id, d->enabled);
+    b3DistanceJoint_SetLengthRange(j->id, d->min_length, d->max_length);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
+    b3PrismaticJoint_EnableLimit(j->id, d->enabled);
+    b3PrismaticJoint_SetLimits(j->id, d->lower, d->upper);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE:
+    b3RevoluteJoint_EnableLimit(j->id, d->enabled);
+    b3RevoluteJoint_SetLimits(j->id, d->lower, d->upper);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL:
+    if (d->has_cone_angle) {
+      b3SphericalJoint_EnableConeLimit(j->id, d->enabled);
+      b3SphericalJoint_SetConeLimit(j->id, d->cone_angle);
     }
-    lua_pop(L, 1);
+    if (d->has_twist) {
+      b3SphericalJoint_EnableTwistLimit(j->id, d->enabled);
+      b3SphericalJoint_SetTwistLimits(j->id, d->lower, d->upper);
+    }
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
+    b3WheelJoint_EnableSuspensionLimit(j->id, d->enabled);
+    b3WheelJoint_SetSuspensionLimits(j->id, d->lower, d->upper);
+    break;
+  default:
+    return lub_api_fail(app, "phys3d_joint_set_limit: unsupported joint type");
   }
-  float out = 0.0f;
-  if (table_number_optional(L, idx, "px", NULL, &out)) {
-    point.x = out;
-    has_point = true;
-  }
-  if (table_number_optional(L, idx, "py", NULL, &out)) {
-    point.y = out;
-    has_point = true;
-  }
-  if (table_number_optional(L, idx, "pz", NULL, &out)) {
-    point.z = out;
-    has_point = true;
-  }
-  cmd->point = point;
-  cmd->has_point = has_point;
+  b3Joint_WakeBodies(j->id);
+  return LUB_OK;
 }
 
-static int l_phys3d_add_force(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_add_force"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_add_force");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  Phys3dCommand *cmd = command_queue_push(
-      L, b->world, b, PHYS3D_COMMAND_ADD_FORCE, "phys3d_add_force");
-  cmd->vector = value_vec3(L, 2, b3Vec3_zero);
-  command_read_point(L, 3, b, cmd);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
+LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                      const LubPhys3dJointSpring *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dJoint *j = check_live_joint(app, joint, "phys3d_joint_set_spring");
+  if (!j)
+    return LUB_ERROR;
+  switch (j->kind) {
+  case LUB_PHYS3D_JOINT_TYPE_DISTANCE:
+    b3DistanceJoint_EnableSpring(j->id, d->enabled);
+    b3DistanceJoint_SetSpringHertz(j->id, d->hertz);
+    b3DistanceJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
+    b3PrismaticJoint_EnableSpring(j->id, d->enabled);
+    b3PrismaticJoint_SetSpringHertz(j->id, d->hertz);
+    b3PrismaticJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE:
+    b3RevoluteJoint_EnableSpring(j->id, d->enabled);
+    b3RevoluteJoint_SetSpringHertz(j->id, d->hertz);
+    b3RevoluteJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL:
+    b3SphericalJoint_EnableSpring(j->id, d->enabled);
+    b3SphericalJoint_SetSpringHertz(j->id, d->hertz);
+    b3SphericalJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_PARALLEL:
+    b3ParallelJoint_SetSpringHertz(j->id, d->hertz);
+    b3ParallelJoint_SetSpringDampingRatio(j->id, d->damping_ratio);
+    b3ParallelJoint_SetMaxTorque(
+        j->id, d->has_max_torque ? d->max_torque
+                                 : b3ParallelJoint_GetMaxTorque(j->id));
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
+    b3WheelJoint_EnableSuspension(j->id, d->enabled);
+    b3WheelJoint_SetSuspensionHertz(j->id, d->hertz);
+    b3WheelJoint_SetSuspensionDampingRatio(j->id, d->damping_ratio);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_WELD:
+    b3WeldJoint_SetLinearHertz(j->id, d->linear_hertz);
+    b3WeldJoint_SetLinearDampingRatio(j->id, d->linear_damping_ratio);
+    b3WeldJoint_SetAngularHertz(j->id, d->angular_hertz);
+    b3WeldJoint_SetAngularDampingRatio(j->id, d->angular_damping_ratio);
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_MOTOR:
+    b3MotorJoint_SetLinearHertz(j->id, d->linear_hertz);
+    b3MotorJoint_SetLinearDampingRatio(j->id, d->linear_damping_ratio);
+    b3MotorJoint_SetAngularHertz(j->id, d->angular_hertz);
+    b3MotorJoint_SetAngularDampingRatio(j->id, d->angular_damping_ratio);
+    break;
+  default:
+    return lub_api_fail(app, "phys3d_joint_set_spring: unsupported joint type");
+  }
+  b3Joint_WakeBodies(j->id);
+  return LUB_OK;
 }
 
-static int l_phys3d_add_force_center(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_add_force_center"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_add_force_center");
-  luaL_checktype(L, 2, LUA_TTABLE);
+LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                      const LubPhys3dJointTarget *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dJoint *j = check_live_joint(app, joint, "phys3d_joint_set_target");
+  if (!j)
+    return LUB_ERROR;
+  switch (j->kind) {
+  case LUB_PHYS3D_JOINT_TYPE_PRISMATIC:
+    b3PrismaticJoint_SetTargetTranslation(
+        j->id, d->has_translation
+                   ? d->translation
+                   : b3PrismaticJoint_GetTargetTranslation(j->id));
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_REVOLUTE:
+    b3RevoluteJoint_SetTargetAngle(
+        j->id, d->has_angle ? d->angle : b3RevoluteJoint_GetTargetAngle(j->id));
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_SPHERICAL: {
+    b3Quat target = d->has_rotation ? quat_of(d->rotation)
+                                    : b3SphericalJoint_GetTargetRotation(j->id);
+    b3SphericalJoint_SetTargetRotation(j->id, b3NormalizeQuat(target));
+    break;
+  }
+  case LUB_PHYS3D_JOINT_TYPE_WHEEL:
+    b3WheelJoint_SetTargetSteeringAngle(
+        j->id,
+        d->has_angle ? d->angle : b3WheelJoint_GetTargetSteeringAngle(j->id));
+    break;
+  case LUB_PHYS3D_JOINT_TYPE_MOTOR:
+    b3MotorJoint_SetLinearVelocity(
+        j->id, d->has_linear_velocity ? vec3_of(d->linear_velocity)
+                                      : b3MotorJoint_GetLinearVelocity(j->id));
+    b3MotorJoint_SetAngularVelocity(
+        j->id, d->has_angular_velocity
+                   ? vec3_of(d->angular_velocity)
+                   : b3MotorJoint_GetAngularVelocity(j->id));
+    break;
+  default:
+    return lub_api_fail(app, "phys3d_joint_set_target: unsupported joint type");
+  }
+  b3Joint_WakeBodies(j->id);
+  return LUB_OK;
+}
+
+// -------------------------------------------------------------- commands
+
+static Phys3dBody *check_live_body(App *app, LubHandle h, const char *fn) {
+  if (in_callback(app, fn))
+    return NULL;
+  Phys3dBody *b = check_body(app, h, fn);
+  if (!b)
+    return NULL;
+  if (!body_is_live(b)) {
+    lub_api_fail(app, "%s: body is not live", fn);
+    return NULL;
+  }
+  return b;
+}
+
+static Phys3dCommand *push_command(App *app, Phys3dBody *b,
+                                   Phys3dCommandKind kind, const char *fn) {
+  Phys3dCommand *cmd = command_queue_push(b->world, b, kind);
+  if (!cmd)
+    lub_api_fail(app, "%s: out of memory", fn);
+  return cmd;
+}
+
+static LubStatus vector_command(LubContext *ctx, LubHandle body, LubVec3 v,
+                                const LubVec3 *point, bool wake,
+                                Phys3dCommandKind kind, const char *fn) {
+  App *app = lub_api_app(ctx);
+  Phys3dBody *b = check_live_body(app, body, fn);
+  if (!b)
+    return LUB_ERROR;
+  Phys3dCommand *cmd = push_command(app, b, kind, fn);
+  if (!cmd)
+    return LUB_ERROR;
+  cmd->vector = vec3_of(v);
+  if (point) {
+    cmd->point = vec3_of(*point);
+    cmd->has_point = true;
+  }
+  cmd->wake = wake;
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_add_force(LubContext *ctx, LubHandle body, LubVec3 force,
+                               const LubVec3 *point, bool wake) {
+  return vector_command(ctx, body, force, point, wake, PHYS3D_COMMAND_ADD_FORCE,
+                        "phys3d_add_force");
+}
+
+LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
+                                      LubVec3 force, bool wake) {
+  return vector_command(ctx, body, force, NULL, wake,
+                        PHYS3D_COMMAND_ADD_FORCE_CENTER,
+                        "phys3d_add_force_center");
+}
+
+LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
+                                 LubVec3 impulse, const LubVec3 *point,
+                                 bool wake) {
+  return vector_command(ctx, body, impulse, point, wake,
+                        PHYS3D_COMMAND_ADD_IMPULSE, "phys3d_add_impulse");
+}
+
+LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                        LubVec3 impulse, bool wake) {
+  return vector_command(ctx, body, impulse, NULL, wake,
+                        PHYS3D_COMMAND_ADD_IMPULSE_CENTER,
+                        "phys3d_add_impulse_center");
+}
+
+LubStatus lub_phys3d_add_torque(LubContext *ctx, LubHandle body, LubVec3 torque,
+                                bool wake) {
+  return vector_command(ctx, body, torque, NULL, wake,
+                        PHYS3D_COMMAND_ADD_TORQUE, "phys3d_add_torque");
+}
+
+LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx, LubHandle body,
+                                         LubVec3 impulse, bool wake) {
+  return vector_command(ctx, body, impulse, NULL, wake,
+                        PHYS3D_COMMAND_ADD_ANGULAR_IMPULSE,
+                        "phys3d_add_angular_impulse");
+}
+
+LubStatus lub_phys3d_set_velocity(LubContext *ctx, LubHandle body,
+                                  const LubPhys3dSetVelocity *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dBody *b = check_live_body(app, body, "phys3d_set_velocity");
+  if (!b)
+    return LUB_ERROR;
   Phys3dCommand *cmd =
-      command_queue_push(L, b->world, b, PHYS3D_COMMAND_ADD_FORCE_CENTER,
-                         "phys3d_add_force_center");
-  cmd->vector = value_vec3(L, 2, b3Vec3_zero);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
+      push_command(app, b, PHYS3D_COMMAND_SET_VELOCITY, "phys3d_set_velocity");
+  if (!cmd)
+    return LUB_ERROR;
+  cmd->vector = vec3_of(d->linear);
+  cmd->angular = vec3_of(d->angular);
+  cmd->has_x = d->has_vx;
+  cmd->has_y = d->has_vy;
+  cmd->has_z = d->has_vz;
+  cmd->has_wx = d->has_wx;
+  cmd->has_wy = d->has_wy;
+  cmd->has_wz = d->has_wz;
+  cmd->wake = d->wake;
+  return LUB_OK;
 }
 
-static int l_phys3d_add_impulse(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_add_impulse"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_add_impulse");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  Phys3dCommand *cmd = command_queue_push(
-      L, b->world, b, PHYS3D_COMMAND_ADD_IMPULSE, "phys3d_add_impulse");
-  cmd->vector = value_vec3(L, 2, b3Vec3_zero);
-  command_read_point(L, 3, b, cmd);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
-}
-
-static int l_phys3d_add_impulse_center(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_add_impulse_center"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_add_impulse_center");
-  luaL_checktype(L, 2, LUA_TTABLE);
+LubStatus lub_phys3d_teleport(LubContext *ctx, LubHandle body,
+                              const LubPhys3dTeleport *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dBody *b = check_live_body(app, body, "phys3d_teleport");
+  if (!b)
+    return LUB_ERROR;
   Phys3dCommand *cmd =
-      command_queue_push(L, b->world, b, PHYS3D_COMMAND_ADD_IMPULSE_CENTER,
-                         "phys3d_add_impulse_center");
-  cmd->vector = value_vec3(L, 2, b3Vec3_zero);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
+      push_command(app, b, PHYS3D_COMMAND_TELEPORT, "phys3d_teleport");
+  if (!cmd)
+    return LUB_ERROR;
+  cmd->transform.p = vec3_of(d->position);
+  cmd->has_x = d->has_x;
+  cmd->has_y = d->has_y;
+  cmd->has_z = d->has_z;
+  cmd->has_rotation = d->has_rotation;
+  if (d->has_rotation)
+    cmd->transform.q = quat_of(d->rotation);
+  cmd->wake = d->wake;
+  return LUB_OK;
 }
 
-static int l_phys3d_add_torque(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_add_torque"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_add_torque");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  Phys3dCommand *cmd = command_queue_push(
-      L, b->world, b, PHYS3D_COMMAND_ADD_TORQUE, "phys3d_add_torque");
-  cmd->vector = value_vec3(L, 2, b3Vec3_zero);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
-}
-
-static int l_phys3d_add_angular_impulse(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_add_angular_impulse"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_add_angular_impulse");
-  luaL_checktype(L, 2, LUA_TTABLE);
+LubStatus lub_phys3d_set_target(LubContext *ctx, LubHandle body,
+                                const LubPhys3dSetTarget *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dBody *b = check_live_body(app, body, "phys3d_set_target");
+  if (!b)
+    return LUB_ERROR;
   Phys3dCommand *cmd =
-      command_queue_push(L, b->world, b, PHYS3D_COMMAND_ADD_ANGULAR_IMPULSE,
-                         "phys3d_add_angular_impulse");
-  cmd->vector = value_vec3(L, 2, b3Vec3_zero);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
-}
-
-static int l_phys3d_set_velocity(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_set_velocity"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_set_velocity");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  Phys3dCommand *cmd = command_queue_push(
-      L, b->world, b, PHYS3D_COMMAND_SET_VELOCITY, "phys3d_set_velocity");
-  cmd->vector = value_vec3_optional(L, 2, b3Vec3_zero, &cmd->has_x, &cmd->has_y,
-                                    &cmd->has_z);
-  float out = 0.0f;
-  if (table_number_optional(L, 2, "vx", NULL, &out)) {
-    cmd->vector.x = out;
-    cmd->has_x = true;
-  }
-  if (table_number_optional(L, 2, "vy", NULL, &out)) {
-    cmd->vector.y = out;
-    cmd->has_y = true;
-  }
-  if (table_number_optional(L, 2, "vz", NULL, &out)) {
-    cmd->vector.z = out;
-    cmd->has_z = true;
-  }
-  if (table_number_optional(L, 2, "wx", NULL, &out)) {
-    cmd->angular.x = out;
-    cmd->has_wx = true;
-  }
-  if (table_number_optional(L, 2, "wy", NULL, &out)) {
-    cmd->angular.y = out;
-    cmd->has_wy = true;
-  }
-  if (table_number_optional(L, 2, "wz", NULL, &out)) {
-    cmd->angular.z = out;
-    cmd->has_wz = true;
-  }
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
-}
-
-static int l_phys3d_teleport(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_teleport"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_teleport");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  Phys3dCommand *cmd = command_queue_push(
-      L, b->world, b, PHYS3D_COMMAND_TELEPORT, "phys3d_teleport");
-  float out = 0.0f;
-  if (table_number_optional(L, 2, "x", NULL, &out)) {
-    cmd->transform.p.x = out;
-    cmd->has_x = true;
-  }
-  if (table_number_optional(L, 2, "y", NULL, &out)) {
-    cmd->transform.p.y = out;
-    cmd->has_y = true;
-  }
-  if (table_number_optional(L, 2, "z", NULL, &out)) {
-    cmd->transform.p.z = out;
-    cmd->has_z = true;
-  }
-  cmd->has_rotation = table_rotation(L, 2, &cmd->transform.q);
-  cmd->wake = opt_wake(L, 3, true);
-  return 0;
-}
-
-static int l_phys3d_set_target(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_set_target"))
-    return 0;
-  Phys3dBody *b = check_body(L, 1);
-  check_live_body(L, b, "phys3d_set_target");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  Phys3dCommand *cmd = command_queue_push(
-      L, b->world, b, PHYS3D_COMMAND_SET_TARGET, "phys3d_set_target");
-  float out = 0.0f;
-  if (table_number_optional(L, 2, "x", NULL, &out)) {
-    cmd->transform.p.x = out;
-    cmd->has_x = true;
-  }
-  if (table_number_optional(L, 2, "y", NULL, &out)) {
-    cmd->transform.p.y = out;
-    cmd->has_y = true;
-  }
-  if (table_number_optional(L, 2, "z", NULL, &out)) {
-    cmd->transform.p.z = out;
-    cmd->has_z = true;
-  }
-  cmd->has_rotation = table_rotation(L, 2, &cmd->transform.q);
-  cmd->time_step = b->world ? b->world->fixed_dt : 1.0f / 60.0f;
-  cmd->time_step = table_number(L, 2, "dt", NULL, cmd->time_step);
-  cmd->time_step = table_number(L, 2, "time_step", "timeStep", cmd->time_step);
-  if (cmd->time_step <= 0.0f)
-    cmd->time_step = b->world ? b->world->fixed_dt : 1.0f / 60.0f;
-  cmd->wake = table_bool(L, 2, "wake", NULL, true);
-  return 0;
+      push_command(app, b, PHYS3D_COMMAND_SET_TARGET, "phys3d_set_target");
+  if (!cmd)
+    return LUB_ERROR;
+  cmd->transform.p = vec3_of(d->position);
+  cmd->has_x = d->has_x;
+  cmd->has_y = d->has_y;
+  cmd->has_z = d->has_z;
+  cmd->has_rotation = d->has_rotation;
+  if (d->has_rotation)
+    cmd->transform.q = quat_of(d->rotation);
+  cmd->time_step = d->time_step > 0.0f ? d->time_step : b->world->fixed_dt;
+  cmd->wake = d->wake;
+  return LUB_OK;
 }
 
 static bool apply_body_command(Phys3dWorld *w, const Phys3dCommand *cmd) {
@@ -4271,7 +3045,6 @@ static bool apply_body_command(Phys3dWorld *w, const Phys3dCommand *cmd) {
             cmd->body_key ? cmd->body_key : "?");
     return false;
   }
-
   switch (cmd->kind) {
   case PHYS3D_COMMAND_ADD_FORCE: {
     b3Pos point = cmd->has_point ? b3ToPos(cmd->point)
@@ -4351,7 +3124,6 @@ static bool apply_body_command(Phys3dWorld *w, const Phys3dCommand *cmd) {
   default:
     return false;
   }
-  return false;
 }
 
 static int apply_body_commands(Phys3dWorld *w) {
@@ -4361,6 +3133,8 @@ static int apply_body_commands(Phys3dWorld *w) {
   command_queue_clear(&w->commands);
   return count;
 }
+
+// ----------------------------------------------------------------- prune
 
 static void prune_shapes(Phys3dBody *b) {
   uint64_t gen = b->world->generation;
@@ -4418,6 +3192,8 @@ static void prune_world(Phys3dWorld *w) {
   }
 }
 
+// ---------------------------------------------------------- event capture
+
 static void fill_shape_snapshot(Phys3dWorld *w, Phys3dContactSnapshot *out,
                                 bool is_a, b3ShapeId shape_id) {
   bool valid = B3_IS_NON_NULL(shape_id) && b3Shape_IsValid(shape_id);
@@ -4464,13 +3240,6 @@ static void fill_shape_snapshot(Phys3dWorld *w, Phys3dContactSnapshot *out,
   }
 }
 
-static void fill_sensor_snapshot(Phys3dWorld *w, Phys3dContactSnapshot *out,
-                                 b3ShapeId sensor_shape_id,
-                                 b3ShapeId visitor_shape_id) {
-  fill_shape_snapshot(w, out, true, sensor_shape_id);
-  fill_shape_snapshot(w, out, false, visitor_shape_id);
-}
-
 static void snapshot_fill_manifold(Phys3dContactSnapshot *dst,
                                    b3ShapeId shape_id_a,
                                    const b3Manifold *manifold) {
@@ -4482,8 +3251,8 @@ static void snapshot_fill_manifold(Phys3dContactSnapshot *dst,
   dst->point_count = manifold->pointCount;
   if (manifold->pointCount > 0 && B3_IS_NON_NULL(shape_id_a) &&
       b3Shape_IsValid(shape_id_a)) {
-    // Manifold anchors are relative to the body center of mass in world
-    // space, so rebuild the world point from body A.
+    // manifold の anchor は body の重心相対 (world 向き) なので body A の
+    // 重心から world の点を作る。
     b3Pos com = b3Body_GetWorldCenterOfMass(b3Shape_GetBody(shape_id_a));
     b3Vec3 anchor = manifold->points[0].anchorA;
     dst->x = (float)(com.x + anchor.x);
@@ -4502,7 +3271,7 @@ static void capture_contact_events(Phys3dWorld *w) {
       continue;
     fill_shape_snapshot(w, dst, true, src->shapeIdA);
     fill_shape_snapshot(w, dst, false, src->shapeIdB);
-    // Box3D begin events carry no manifold; pull it from the contact id.
+    // Box3D の begin event は manifold を持たないので contact id から引く。
     if (b3Contact_IsValid(src->contactId)) {
       b3ContactData data = b3Contact_GetData(src->contactId);
       if (data.manifoldCount > 0 && data.manifolds)
@@ -4546,7 +3315,8 @@ static void capture_sensor_events(Phys3dWorld *w) {
                    &w->events.sensor_begin_cap);
     if (!dst)
       continue;
-    fill_sensor_snapshot(w, dst, src->sensorShapeId, src->visitorShapeId);
+    fill_shape_snapshot(w, dst, true, src->sensorShapeId);
+    fill_shape_snapshot(w, dst, false, src->visitorShapeId);
   }
   for (int i = 0; i < ev.endCount; ++i) {
     b3SensorEndTouchEvent *src = &ev.endEvents[i];
@@ -4555,7 +3325,8 @@ static void capture_sensor_events(Phys3dWorld *w) {
                    &w->events.sensor_end_cap);
     if (!dst)
       continue;
-    fill_sensor_snapshot(w, dst, src->sensorShapeId, src->visitorShapeId);
+    fill_shape_snapshot(w, dst, true, src->sensorShapeId);
+    fill_shape_snapshot(w, dst, false, src->visitorShapeId);
   }
 }
 
@@ -4564,8 +3335,9 @@ static void capture_body_events(Phys3dWorld *w) {
   for (int i = 0; i < ev.moveCount; ++i) {
     b3BodyMoveEvent *src = &ev.moveEvents[i];
     Phys3dBody *body = (Phys3dBody *)src->userData;
-    Phys3dBodyEventSnapshot *dst = body_event_push(
-        &w->events.moves, &w->events.move_count, &w->events.move_cap);
+    Phys3dBodyEventSnapshot *dst = (Phys3dBodyEventSnapshot *)event_push_raw(
+        (void **)&w->events.moves, &w->events.move_count, &w->events.move_cap,
+        sizeof(Phys3dBodyEventSnapshot), 16);
     if (!dst)
       continue;
     bool valid = B3_IS_NON_NULL(src->bodyId) && b3Body_IsValid(src->bodyId) &&
@@ -4584,46 +3356,22 @@ static void capture_body_events(Phys3dWorld *w) {
   }
 }
 
-static const char *joint_type_name(b3JointType type) {
-  switch (type) {
-  case b3_parallelJoint:
-    return "parallel";
-  case b3_distanceJoint:
-    return "distance";
-  case b3_filterJoint:
-    return "filter";
-  case b3_motorJoint:
-    return "motor";
-  case b3_prismaticJoint:
-    return "prismatic";
-  case b3_revoluteJoint:
-    return "revolute";
-  case b3_sphericalJoint:
-    return "spherical";
-  case b3_weldJoint:
-    return "weld";
-  case b3_wheelJoint:
-    return "wheel";
-  default:
-    return "unknown";
-  }
-}
-
 static void capture_joint_events(Phys3dWorld *w) {
   b3JointEvents ev = b3World_GetJointEvents(w->id);
   for (int i = 0; i < ev.count; ++i) {
     b3JointEvent *src = &ev.jointEvents[i];
-    Phys3dJointEventSnapshot *dst = joint_event_push(
-        &w->events.joints, &w->events.joint_count, &w->events.joint_cap);
+    Phys3dJointEventSnapshot *dst = (Phys3dJointEventSnapshot *)event_push_raw(
+        (void **)&w->events.joints, &w->events.joint_count,
+        &w->events.joint_cap, sizeof(Phys3dJointEventSnapshot), 8);
     if (!dst)
       continue;
     bool valid = B3_IS_NON_NULL(src->jointId) && b3Joint_IsValid(src->jointId);
     const char *joint_key = "";
     const char *a_key = "";
     const char *b_key = "";
-    dst->type = "unknown";
+    dst->type = 0;
     if (valid) {
-      dst->type = joint_type_name(b3Joint_GetType(src->jointId));
+      dst->type = joint_type_from_b3(b3Joint_GetType(src->jointId));
       Phys3dJoint *joint = (Phys3dJoint *)b3Joint_GetUserData(src->jointId);
       if (joint && joint->key)
         joint_key = joint->key;
@@ -4658,11 +3406,15 @@ static void capture_step_events(Phys3dWorld *w) {
   capture_joint_events(w);
 }
 
-static int l_phys3d_step(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_step"))
-    return 0;
-  Phys3dWorld *w = check_world(L, 1);
-  float dt = (float)luaL_checknumber(L, 2);
+LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
+                          LubPhys3dStepInfo *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  if (in_callback(app, "phys3d_step"))
+    return LUB_ERROR;
+  Phys3dWorld *w = check_world(app, world, "phys3d_step");
+  if (!w)
+    return LUB_ERROR;
   if (dt < 0.0f)
     dt = 0.0f;
   if (!w->begun && !w->step_without_begin_logged) {
@@ -4677,7 +3429,7 @@ static int l_phys3d_step(lua_State *L) {
   }
   if (callbacks_any(&w->callbacks) &&
       w->callbacks_generation != w->generation) {
-    callbacks_clear(L, w);
+    callbacks_clear(w);
   }
   if (w->prune)
     prune_world(w);
@@ -4686,10 +3438,10 @@ static int l_phys3d_step(lua_State *L) {
   w->accumulator += dt;
   int steps = 0;
   while (w->accumulator + 1e-9 >= (double)w->fixed_dt && steps < w->max_steps) {
-    Phys3dWorld *prev_mixer_world = g_phys3d_mixer_world;
-    g_phys3d_mixer_world = callbacks_any(&w->callbacks) ? w : NULL;
+    Phys3dWorld *prev_mixer_world = g_mixer_world;
+    g_mixer_world = callbacks_any(&w->callbacks) ? w : NULL;
     b3World_Step(w->id, w->fixed_dt, w->substeps);
-    g_phys3d_mixer_world = prev_mixer_world;
+    g_mixer_world = prev_mixer_world;
     capture_step_events(w);
     w->accumulator -= (double)w->fixed_dt;
     steps++;
@@ -4700,387 +3452,128 @@ static int l_phys3d_step(lua_State *L) {
     dropped = true;
   }
   // move は最終姿勢だけあればよいので最後のステップぶんのみ。
-  // steps == 0 のフレームで前ステップの残骸を再回収しない。
   if (steps > 0)
     capture_body_events(w);
   w->begun = false;
-  callbacks_clear(L, w);
-  lua_newtable(L);
-  lua_pushinteger(L, steps);
-  lua_setfield(L, -2, "steps");
-  lua_pushinteger(L, command_count);
-  lua_setfield(L, -2, "commands");
-  lua_pushnumber(L, w->fixed_dt > 0.0f ? w->accumulator / w->fixed_dt : 0.0);
-  lua_setfield(L, -2, "alpha");
-  lua_pushboolean(L, dropped);
-  lua_setfield(L, -2, "dropped");
-  lua_pushinteger(L, w->events.begin_count);
-  lua_setfield(L, -2, "contact_begins");
-  lua_pushinteger(L, w->events.end_count);
-  lua_setfield(L, -2, "contact_ends");
-  lua_pushinteger(L, w->events.hit_count);
-  lua_setfield(L, -2, "contact_hits");
-  lua_pushinteger(L, w->events.sensor_begin_count);
-  lua_setfield(L, -2, "sensor_begins");
-  lua_pushinteger(L, w->events.sensor_end_count);
-  lua_setfield(L, -2, "sensor_ends");
-  lua_pushinteger(L, w->events.move_count);
-  lua_setfield(L, -2, "body_moves");
-  lua_pushinteger(L, w->events.move_count);
-  lua_setfield(L, -2, "body_events");
-  lua_pushinteger(L, w->events.joint_count);
-  lua_setfield(L, -2, "joint_events");
-  return 1;
+  callbacks_clear(w);
+  out->steps = steps;
+  out->commands = command_count;
+  out->alpha =
+      w->fixed_dt > 0.0f ? (float)(w->accumulator / (double)w->fixed_dt) : 0.0f;
+  out->dropped = dropped;
+  out->contact_begins = w->events.begin_count;
+  out->contact_ends = w->events.end_count;
+  out->contact_hits = w->events.hit_count;
+  out->sensor_begins = w->events.sensor_begin_count;
+  out->sensor_ends = w->events.sensor_end_count;
+  out->body_moves = w->events.move_count;
+  out->joint_events = w->events.joint_count;
+  return LUB_OK;
 }
 
-static void push_pose(lua_State *L, Phys3dBody *b) {
-  b3Pos p = b3Body_GetPosition(b->id);
-  b3Quat q = b3Body_GetRotation(b->id);
-  b3Vec3 v = b3Body_GetLinearVelocity(b->id);
-  b3Vec3 w = b3Body_GetAngularVelocity(b->id);
-  lua_newtable(L);
-  lua_pushnumber(L, p.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, p.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, p.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, q.v.x);
-  lua_setfield(L, -2, "qx");
-  lua_pushnumber(L, q.v.y);
-  lua_setfield(L, -2, "qy");
-  lua_pushnumber(L, q.v.z);
-  lua_setfield(L, -2, "qz");
-  lua_pushnumber(L, q.s);
-  lua_setfield(L, -2, "qw");
-  lua_pushnumber(L, v.x);
-  lua_setfield(L, -2, "vx");
-  lua_pushnumber(L, v.y);
-  lua_setfield(L, -2, "vy");
-  lua_pushnumber(L, v.z);
-  lua_setfield(L, -2, "vz");
-  lua_pushnumber(L, w.x);
-  lua_setfield(L, -2, "wx");
-  lua_pushnumber(L, w.y);
-  lua_setfield(L, -2, "wy");
-  lua_pushnumber(L, w.z);
-  lua_setfield(L, -2, "wz");
-  lua_pushboolean(L, b3Body_IsAwake(b->id));
-  lua_setfield(L, -2, "awake");
-  lua_pushboolean(L, b3Body_IsEnabled(b->id));
-  lua_setfield(L, -2, "enabled");
-  lua_pushboolean(L, b3Body_IsSleepEnabled(b->id));
-  lua_setfield(L, -2, "sleep");
-  lua_pushnumber(L, b3Body_GetSleepThreshold(b->id));
-  lua_setfield(L, -2, "sleep_threshold");
-}
+// ---------------------------------------------------------- body getters
 
-static int l_phys3d_pose(lua_State *L) {
-  Phys3dBody *b = NULL;
-  if (is_ref(L, 1, "phys3d_body")) {
-    const char *world_key = ref_string(L, 1, "world");
-    const char *body_key = ref_string(L, 1, "key");
-    Phys3dWorld *w = world_get(g_phys3d_state, world_key);
-    b = w ? body_get(w, body_key) : NULL;
-  } else if (is_ref(L, 1, "phys3d_world")) {
-    Phys3dWorld *w = query_world_ref(L, 1);
-    if (!w)
-      return push_not_found(L);
-    const char *body_key = luaL_checkstring(L, 2);
-    b = body_get(w, body_key);
-  } else {
-    return luaL_error(L, "phys3d_pose: expected BodyRef or WorldRef, key");
-  }
-  if (!b || B3_IS_NULL(b->id) || !b3Body_IsValid(b->id)) {
-    lua_pushnil(L);
-    lua_pushstring(L, "not found");
-    return 2;
-  }
-  push_pose(L, b);
-  return 1;
-}
-
-static void push_vec3(lua_State *L, b3Vec3 v) {
-  lua_newtable(L);
-  lua_pushnumber(L, v.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, v.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, v.z);
-  lua_setfield(L, -2, "z");
-}
-
-static int l_phys3d_world_info(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  bool valid = B3_IS_NON_NULL(w->id) && b3World_IsValid(w->id);
-
-  lua_newtable(L);
-  lua_pushstring(L, w->key ? w->key : "");
-  lua_setfield(L, -2, "key");
-  lua_pushboolean(L, valid);
-  lua_setfield(L, -2, "valid");
-  lua_pushinteger(L, (lua_Integer)w->version);
-  lua_setfield(L, -2, "version");
-  lua_pushinteger(L, (lua_Integer)w->generation);
-  lua_setfield(L, -2, "generation");
-  lua_pushboolean(L, w->begun);
-  lua_setfield(L, -2, "begun");
-  lua_pushboolean(L, w->prune);
-  lua_setfield(L, -2, "prune");
-  lua_pushnumber(L, w->fixed_dt);
-  lua_setfield(L, -2, "fixed_dt");
-  lua_pushinteger(L, w->substeps);
-  lua_setfield(L, -2, "substeps");
-  lua_pushinteger(L, w->max_steps);
-  lua_setfield(L, -2, "max_steps");
-  lua_pushnumber(L, w->accumulator);
-  lua_setfield(L, -2, "accumulator");
-  lua_pushinteger(L, w->commands.count);
-  lua_setfield(L, -2, "pending_commands");
-
-  if (!valid)
-    return 1;
-
-  b3Vec3 gravity = b3World_GetGravity(w->id);
-  push_vec3(L, gravity);
-  lua_setfield(L, -2, "gravity");
-  lua_pushnumber(L, gravity.x);
-  lua_setfield(L, -2, "gx");
-  lua_pushnumber(L, gravity.y);
-  lua_setfield(L, -2, "gy");
-  lua_pushnumber(L, gravity.z);
-  lua_setfield(L, -2, "gz");
-  lua_pushboolean(L, b3World_IsSleepingEnabled(w->id));
-  lua_setfield(L, -2, "sleep");
-  lua_pushboolean(L, b3World_IsContinuousEnabled(w->id));
-  lua_setfield(L, -2, "continuous");
-  lua_pushboolean(L, b3World_IsWarmStartingEnabled(w->id));
-  lua_setfield(L, -2, "warm_starting");
-  lua_pushnumber(L, b3World_GetRestitutionThreshold(w->id));
-  lua_setfield(L, -2, "restitution_threshold");
-  lua_pushnumber(L, b3World_GetHitEventThreshold(w->id));
-  lua_setfield(L, -2, "hit_event_threshold");
-  lua_pushnumber(L, b3World_GetMaximumLinearSpeed(w->id));
-  lua_setfield(L, -2, "maximum_linear_speed");
-  lua_pushinteger(L, b3World_GetAwakeBodyCount(w->id));
-  lua_setfield(L, -2, "awake_body_count");
-  return 1;
-}
-
-static int l_phys3d_velocity(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
+LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body, LubPhys3dPose *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
   if (!b)
-    return push_not_found(L);
-  b3Vec3 v = b3Body_GetLinearVelocity(b->id);
-  b3Vec3 w = b3Body_GetAngularVelocity(b->id);
-  lua_newtable(L);
-  lua_pushnumber(L, v.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, v.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, v.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, w.x);
-  lua_setfield(L, -2, "wx");
-  lua_pushnumber(L, w.y);
-  lua_setfield(L, -2, "wy");
-  lua_pushnumber(L, w.z);
-  lua_setfield(L, -2, "wz");
-  return 1;
+    return LUB_NOT_FOUND;
+  out->position = lub_pos(b3Body_GetPosition(b->id));
+  out->rotation = lub_quat(b3Body_GetRotation(b->id));
+  out->linear_velocity = lub_vec3(b3Body_GetLinearVelocity(b->id));
+  out->angular_velocity = lub_vec3(b3Body_GetAngularVelocity(b->id));
+  out->awake = b3Body_IsAwake(b->id);
+  out->enabled = b3Body_IsEnabled(b->id);
+  out->sleep = b3Body_IsSleepEnabled(b->id);
+  out->sleep_threshold = b3Body_GetSleepThreshold(b->id);
+  return LUB_OK;
 }
 
-static int l_phys3d_mass(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
+LubStatus lub_phys3d_velocity(LubContext *ctx, LubHandle body,
+                              LubPhys3dVelocity *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
   if (!b)
-    return push_not_found(L);
-  b3MassData mass_data = b3Body_GetMassData(b->id);
-  b3Pos center = b3Body_GetWorldCenterOfMass(b->id);
-  lua_newtable(L);
-  lua_pushnumber(L, mass_data.mass);
-  lua_setfield(L, -2, "mass");
-  push_vec3(L, b3ToVec3(center));
-  lua_setfield(L, -2, "center");
-  push_vec3(L, mass_data.center);
-  lua_setfield(L, -2, "local_center");
-  // Unique components of the symmetric inertia tensor about the local center.
-  lua_newtable(L);
-  lua_pushnumber(L, mass_data.inertia.cx.x);
-  lua_setfield(L, -2, "xx");
-  lua_pushnumber(L, mass_data.inertia.cy.y);
-  lua_setfield(L, -2, "yy");
-  lua_pushnumber(L, mass_data.inertia.cz.z);
-  lua_setfield(L, -2, "zz");
-  lua_pushnumber(L, mass_data.inertia.cy.x);
-  lua_setfield(L, -2, "xy");
-  lua_pushnumber(L, mass_data.inertia.cz.x);
-  lua_setfield(L, -2, "xz");
-  lua_pushnumber(L, mass_data.inertia.cz.y);
-  lua_setfield(L, -2, "yz");
-  lua_setfield(L, -2, "inertia");
-  return 1;
+    return LUB_NOT_FOUND;
+  out->linear = lub_vec3(b3Body_GetLinearVelocity(b->id));
+  out->angular = lub_vec3(b3Body_GetAngularVelocity(b->id));
+  return LUB_OK;
 }
 
-static int l_phys3d_center(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
+LubStatus lub_phys3d_mass(LubContext *ctx, LubHandle body,
+                          LubPhys3dMassData *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
   if (!b)
-    return push_not_found(L);
-  b3Pos center = b3Body_GetWorldCenterOfMass(b->id);
-  push_vec3(L, b3ToVec3(center));
-  return 1;
+    return LUB_NOT_FOUND;
+  b3MassData md = b3Body_GetMassData(b->id);
+  out->mass = md.mass;
+  out->center = lub_pos(b3Body_GetWorldCenterOfMass(b->id));
+  out->local_center = lub_vec3(md.center);
+  out->xx = md.inertia.cx.x;
+  out->yy = md.inertia.cy.y;
+  out->zz = md.inertia.cz.z;
+  out->xy = md.inertia.cy.x;
+  out->xz = md.inertia.cz.x;
+  out->yz = md.inertia.cz.y;
+  return LUB_OK;
 }
 
-static int l_phys3d_world_point(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
+LubStatus lub_phys3d_center(LubContext *ctx, LubHandle body, LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
   if (!b)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 local = value_vec3(L, 2, b3Vec3_zero);
-  push_vec3(L, b3ToVec3(b3Body_GetWorldPoint(b->id, local)));
-  return 1;
+    return LUB_NOT_FOUND;
+  *out = lub_pos(b3Body_GetWorldCenterOfMass(b->id));
+  return LUB_OK;
 }
 
-static int l_phys3d_local_point(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
+LubStatus lub_phys3d_world_point(LubContext *ctx, LubHandle body, LubVec3 local,
+                                 LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
   if (!b)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 world = value_vec3(L, 2, b3Vec3_zero);
-  push_vec3(L, b3Body_GetLocalPoint(b->id, b3ToPos(world)));
-  return 1;
+    return LUB_NOT_FOUND;
+  *out = lub_pos(b3Body_GetWorldPoint(b->id, vec3_of(local)));
+  return LUB_OK;
 }
 
-static int l_phys3d_velocity_at(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
+LubStatus lub_phys3d_local_point(LubContext *ctx, LubHandle body, LubVec3 world,
+                                 LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
   if (!b)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 world = value_vec3(L, 2, b3Vec3_zero);
-  push_vec3(L, b3Body_GetWorldPointVelocity(b->id, b3ToPos(world)));
-  return 1;
+    return LUB_NOT_FOUND;
+  *out = lub_vec3(b3Body_GetLocalPoint(b->id, b3ToPos(vec3_of(world))));
+  return LUB_OK;
 }
 
-static void push_u64_hex_field(lua_State *L, const char *name, uint64_t value) {
-  char buf[17];
-  SDL_snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)value);
-  lua_pushstring(L, buf);
-  lua_setfield(L, -2, name);
+LubStatus lub_phys3d_velocity_at(LubContext *ctx, LubHandle body, LubVec3 world,
+                                 LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dBody *b = query_body(app, body);
+  if (!b)
+    return LUB_NOT_FOUND;
+  *out = lub_vec3(b3Body_GetWorldPointVelocity(b->id, b3ToPos(vec3_of(world))));
+  return LUB_OK;
 }
 
-static int single_bit_index(uint64_t bits) {
-  if (bits == 0 || (bits & (bits - 1)) != 0)
-    return -1;
-  for (int i = 0; i < 64; ++i) {
-    if ((bits & ((uint64_t)1 << i)) != 0)
-      return i;
-  }
-  return -1;
+// ------------------------------------------------------------ shape parts
+
+static LubPhys3dFilter filter_of(b3Filter f) {
+  LubPhys3dFilter out = {f.categoryBits, f.maskBits, f.groupIndex};
+  return out;
 }
 
-static void push_bit_indices(lua_State *L, uint64_t bits) {
-  lua_newtable(L);
-  int out = 1;
-  for (int i = 0; i < 64; ++i) {
-    if ((bits & ((uint64_t)1 << i)) != 0) {
-      lua_pushinteger(L, i);
-      lua_rawseti(L, -2, out++);
-    }
-  }
-}
-
-static void push_filter_fields(lua_State *L, b3Filter filter) {
-  push_u64_hex_field(L, "category_bits", filter.categoryBits);
-  push_u64_hex_field(L, "mask_bits", filter.maskBits);
-  int category = single_bit_index(filter.categoryBits);
-  if (category >= 0) {
-    lua_pushinteger(L, category);
-    lua_setfield(L, -2, "category");
-  }
-  push_bit_indices(L, filter.maskBits);
-  lua_setfield(L, -2, "mask");
-  lua_pushinteger(L, filter.groupIndex);
-  lua_setfield(L, -2, "group");
-  lua_pushinteger(L, filter.groupIndex);
-  lua_setfield(L, -2, "group_index");
-}
-
-static void push_filter_info(lua_State *L, b3Filter filter) {
-  lua_newtable(L);
-  push_filter_fields(L, filter);
-}
-
-static void push_aabb(lua_State *L, b3AABB aabb) {
-  lua_newtable(L);
-  lua_pushnumber(L, aabb.lowerBound.x);
-  lua_setfield(L, -2, "min_x");
-  lua_pushnumber(L, aabb.lowerBound.y);
-  lua_setfield(L, -2, "min_y");
-  lua_pushnumber(L, aabb.lowerBound.z);
-  lua_setfield(L, -2, "min_z");
-  lua_pushnumber(L, aabb.upperBound.x);
-  lua_setfield(L, -2, "max_x");
-  lua_pushnumber(L, aabb.upperBound.y);
-  lua_setfield(L, -2, "max_y");
-  lua_pushnumber(L, aabb.upperBound.z);
-  lua_setfield(L, -2, "max_z");
-}
-
-static const char *shape_kind_name(Phys3dShapeKind kind) {
-  switch (kind) {
-  case PHYS3D_SHAPE_SPHERE:
-    return "sphere";
-  case PHYS3D_SHAPE_BOX:
-    return "box";
-  case PHYS3D_SHAPE_CAPSULE:
-    return "capsule";
-  case PHYS3D_SHAPE_CYLINDER:
-    return "cylinder";
-  case PHYS3D_SHAPE_CONE:
-    return "cone";
-  case PHYS3D_SHAPE_HULL:
-    return "hull";
-  case PHYS3D_SHAPE_MESH:
-    return "mesh";
-  case PHYS3D_SHAPE_HEIGHT_FIELD:
-    return "height_field";
-  case PHYS3D_SHAPE_COMPOUND:
-    return "compound";
-  default:
-    return "unknown";
-  }
-}
-
-static void push_shape_event_part(lua_State *L, const char *body,
-                                  const char *shape, const char *tag,
-                                  const char *material_name, int material_id,
-                                  bool valid) {
-  lua_newtable(L);
-  lua_pushstring(L, body ? body : "");
-  lua_setfield(L, -2, "body");
-  lua_pushstring(L, shape ? shape : "");
-  lua_setfield(L, -2, "shape");
-  if (tag && tag[0] != '\0') {
-    lua_pushstring(L, tag);
-    lua_setfield(L, -2, "tag");
-  }
-  bool has_identity = (body && body[0] != '\0') || (shape && shape[0] != '\0');
-  if (valid || has_identity || (material_name && material_name[0] != '\0') ||
-      material_id != 0) {
-    if (material_name && material_name[0] != '\0') {
-      lua_pushstring(L, material_name);
-    } else {
-      lua_pushinteger(L, material_id);
-    }
-    lua_setfield(L, -2, "material");
-    lua_pushinteger(L, material_id);
-    lua_setfield(L, -2, "user_material_id");
-  }
-  lua_pushboolean(L, valid);
-  lua_setfield(L, -2, "valid");
-}
-
-static void push_shape_id_view(lua_State *L, b3ShapeId shape_id) {
+static void fill_shape_part(LubPhys3dShapePart *out, b3ShapeId shape_id) {
+  memset(out, 0, sizeof(*out));
   bool valid = B3_IS_NON_NULL(shape_id) && b3Shape_IsValid(shape_id);
   Phys3dShape *shape =
       valid ? (Phys3dShape *)b3Shape_GetUserData(shape_id) : NULL;
@@ -5093,86 +3586,53 @@ static void push_shape_id_view(lua_State *L, b3ShapeId shape_id) {
     shape_key = shape->key;
     tag = shape->tag;
     material_name = shape->material_name;
+    out->shape = shape->handle;
+    out->body = shape->body->handle;
+    out->kind = shape->kind;
   }
-  lua_newtable(L);
-  lua_pushstring(L, body_key ? body_key : "");
-  lua_setfield(L, -2, "body");
-  lua_pushstring(L, shape_key ? shape_key : "");
-  lua_setfield(L, -2, "shape");
-  if (tag && tag[0] != '\0') {
-    lua_pushstring(L, tag);
-    lua_setfield(L, -2, "tag");
-  }
+  out->body_key = str_or_empty(body_key);
+  out->shape_key = str_or_empty(shape_key);
+  out->tag = str_or_empty(tag);
+  out->material_name = str_or_empty(material_name);
   if (valid) {
-    int material_id = (int)b3Shape_GetSurfaceMaterial(shape_id).userMaterialId;
-    if (material_name && material_name[0] != '\0') {
-      lua_pushstring(L, material_name);
-    } else {
-      lua_pushinteger(L, material_id);
-    }
-    lua_setfield(L, -2, "material");
-    lua_pushinteger(L, material_id);
-    lua_setfield(L, -2, "user_material_id");
-    push_filter_fields(L, b3Shape_GetFilter(shape_id));
+    out->material_id = (int)b3Shape_GetSurfaceMaterial(shape_id).userMaterialId;
+    out->has_material = true;
+    out->has_filter = true;
+    out->filter = filter_of(b3Shape_GetFilter(shape_id));
   }
-  lua_pushboolean(L, valid && shape && shape->body && shape->key);
-  lua_setfield(L, -2, "valid");
+  out->valid = valid && shape && shape->body && shape->key;
 }
 
-static void callback_log_error_once(Phys3dWorld *w, bool *logged,
-                                    const char *name, lua_State *L) {
-  if (!w || !logged || *logged)
-    return;
-  const char *message = lua_tostring(L, -1);
-  SDL_Log("phys3d %s callback error: %s", name,
-          message ? message : "unknown error");
-  *logged = true;
+static void fill_snapshot_part(LubPhys3dShapePart *out, const char *body,
+                               const char *shape, const char *tag,
+                               const char *material_name, int material_id,
+                               bool valid) {
+  memset(out, 0, sizeof(*out));
+  out->body_key = str_or_empty(body);
+  out->shape_key = str_or_empty(shape);
+  out->tag = str_or_empty(tag);
+  out->material_name = str_or_empty(material_name);
+  out->material_id = material_id;
+  bool has_identity = (body && body[0] != '\0') || (shape && shape[0] != '\0');
+  out->has_material = valid || has_identity ||
+                      (material_name && material_name[0] != '\0') ||
+                      material_id != 0;
+  out->valid = valid;
 }
 
-// Box3D pre-solve callbacks carry a single point and normal (no manifold)
-// because they are also used during CCD.
-static void push_pre_solve_contact(lua_State *L, b3ShapeId shape_id_a,
-                                   b3ShapeId shape_id_b, b3Pos point,
-                                   b3Vec3 normal) {
-  lua_newtable(L);
-  push_shape_id_view(L, shape_id_a);
-  lua_setfield(L, -2, "a");
-  push_shape_id_view(L, shape_id_b);
-  lua_setfield(L, -2, "b");
-  lua_pushnumber(L, point.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, point.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, point.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, normal.x);
-  lua_setfield(L, -2, "nx");
-  lua_pushnumber(L, normal.y);
-  lua_setfield(L, -2, "ny");
-  lua_pushnumber(L, normal.z);
-  lua_setfield(L, -2, "nz");
-}
+// -------------------------------------------------------------- callbacks
 
 static bool phys3d_custom_filter_callback(b3ShapeId shape_id_a,
                                           b3ShapeId shape_id_b, void *context) {
   Phys3dWorld *w = (Phys3dWorld *)context;
-  if (!w || !w->callbacks.L || !callback_ref_is_set(w->callbacks.filter_ref))
+  if (!w || !w->callbacks.filter)
     return true;
-  lua_State *L = w->callbacks.L;
-  int top = lua_gettop(L);
-  lua_rawgeti(L, LUA_REGISTRYINDEX, w->callbacks.filter_ref);
-  push_shape_id_view(L, shape_id_a);
-  push_shape_id_view(L, shape_id_b);
-  g_phys3d_callback_depth++;
-  int status = lua_pcall(L, 2, 1, 0);
-  g_phys3d_callback_depth--;
-  if (status != LUA_OK) {
-    callback_log_error_once(w, &w->callbacks.filter_error_logged, "filter", L);
-    lua_settop(L, top);
-    return true;
-  }
-  bool collide = !lua_isboolean(L, -1) || lua_toboolean(L, -1) != 0;
-  lua_settop(L, top);
+  LubPhys3dShapePart a, b;
+  fill_shape_part(&a, shape_id_a);
+  fill_shape_part(&b, shape_id_b);
+  w->state->callback_depth++;
+  bool collide = w->callbacks.filter(w->callbacks.user, &a, &b);
+  w->state->callback_depth--;
   return collide;
 }
 
@@ -5180,69 +3640,37 @@ static bool phys3d_pre_solve_callback(b3ShapeId shape_id_a,
                                       b3ShapeId shape_id_b, b3Pos point,
                                       b3Vec3 normal, void *context) {
   Phys3dWorld *w = (Phys3dWorld *)context;
-  if (!w || !w->callbacks.L || !callback_ref_is_set(w->callbacks.pre_solve_ref))
+  if (!w || !w->callbacks.pre_solve)
     return true;
-  lua_State *L = w->callbacks.L;
-  int top = lua_gettop(L);
-  lua_rawgeti(L, LUA_REGISTRYINDEX, w->callbacks.pre_solve_ref);
-  push_pre_solve_contact(L, shape_id_a, shape_id_b, point, normal);
-  g_phys3d_callback_depth++;
-  int status = lua_pcall(L, 1, 1, 0);
-  g_phys3d_callback_depth--;
-  if (status != LUA_OK) {
-    callback_log_error_once(w, &w->callbacks.pre_solve_error_logged,
-                            "pre_solve", L);
-    lua_settop(L, top);
-    return true;
-  }
-  bool solve = !lua_isboolean(L, -1) || lua_toboolean(L, -1) != 0;
-  lua_settop(L, top);
+  LubPhys3dPreSolve c;
+  memset(&c, 0, sizeof(c));
+  fill_shape_part(&c.a, shape_id_a);
+  fill_shape_part(&c.b, shape_id_b);
+  c.x = (float)point.x;
+  c.y = (float)point.y;
+  c.z = (float)point.z;
+  c.nx = normal.x;
+  c.ny = normal.y;
+  c.nz = normal.z;
+  w->state->callback_depth++;
+  bool solve = w->callbacks.pre_solve(w->callbacks.user, &c);
+  w->state->callback_depth--;
   return solve;
-}
-
-static float default_friction(float friction_a, float friction_b) {
-  if (friction_a < 0.0f)
-    friction_a = 0.0f;
-  if (friction_b < 0.0f)
-    friction_b = 0.0f;
-  return sqrtf(friction_a * friction_b);
-}
-
-static float default_restitution(float restitution_a, float restitution_b) {
-  return restitution_a > restitution_b ? restitution_a : restitution_b;
-}
-
-static void push_material_view(lua_State *L, const char *field, float value,
-                               uint64_t material) {
-  lua_newtable(L);
-  lua_pushnumber(L, value);
-  lua_setfield(L, -2, field);
-  lua_pushinteger(L, (lua_Integer)material);
-  lua_setfield(L, -2, "material");
 }
 
 static float phys3d_friction_callback(float friction_a, uint64_t material_a,
                                       float friction_b, uint64_t material_b) {
-  float fallback = default_friction(friction_a, friction_b);
-  Phys3dWorld *w = g_phys3d_mixer_world;
-  if (!w || !w->callbacks.L || !callback_ref_is_set(w->callbacks.friction_ref))
+  float fa = friction_a < 0.0f ? 0.0f : friction_a;
+  float fb = friction_b < 0.0f ? 0.0f : friction_b;
+  float fallback = sqrtf(fa * fb);
+  Phys3dWorld *w = g_mixer_world;
+  if (!w || !w->callbacks.friction)
     return fallback;
-  lua_State *L = w->callbacks.L;
-  int top = lua_gettop(L);
-  lua_rawgeti(L, LUA_REGISTRYINDEX, w->callbacks.friction_ref);
-  push_material_view(L, "friction", friction_a, material_a);
-  push_material_view(L, "friction", friction_b, material_b);
-  g_phys3d_callback_depth++;
-  int status = lua_pcall(L, 2, 1, 0);
-  g_phys3d_callback_depth--;
-  if (status != LUA_OK) {
-    callback_log_error_once(w, &w->callbacks.friction_error_logged, "friction",
-                            L);
-    lua_settop(L, top);
-    return fallback;
-  }
-  float out = lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : fallback;
-  lua_settop(L, top);
+  w->state->callback_depth++;
+  float out =
+      w->callbacks.friction(w->callbacks.user, friction_a, (int32_t)material_a,
+                            friction_b, (int32_t)material_b);
+  w->state->callback_depth--;
   return out;
 }
 
@@ -5250,1784 +3678,817 @@ static float phys3d_restitution_callback(float restitution_a,
                                          uint64_t material_a,
                                          float restitution_b,
                                          uint64_t material_b) {
-  float fallback = default_restitution(restitution_a, restitution_b);
-  Phys3dWorld *w = g_phys3d_mixer_world;
-  if (!w || !w->callbacks.L ||
-      !callback_ref_is_set(w->callbacks.restitution_ref))
+  float fallback =
+      restitution_a > restitution_b ? restitution_a : restitution_b;
+  Phys3dWorld *w = g_mixer_world;
+  if (!w || !w->callbacks.restitution)
     return fallback;
-  lua_State *L = w->callbacks.L;
-  int top = lua_gettop(L);
-  lua_rawgeti(L, LUA_REGISTRYINDEX, w->callbacks.restitution_ref);
-  push_material_view(L, "restitution", restitution_a, material_a);
-  push_material_view(L, "restitution", restitution_b, material_b);
-  g_phys3d_callback_depth++;
-  int status = lua_pcall(L, 2, 1, 0);
-  g_phys3d_callback_depth--;
-  if (status != LUA_OK) {
-    callback_log_error_once(w, &w->callbacks.restitution_error_logged,
-                            "restitution", L);
-    lua_settop(L, top);
-    return fallback;
-  }
-  float out = lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : fallback;
-  lua_settop(L, top);
+  w->state->callback_depth++;
+  float out = w->callbacks.restitution(w->callbacks.user, restitution_a,
+                                       (int32_t)material_a, restitution_b,
+                                       (int32_t)material_b);
+  w->state->callback_depth--;
   return out;
 }
 
-static void parse_ray_query(lua_State *L, int idx, const char *fn_name,
-                            b3Vec3 *origin, b3Vec3 *translation) {
-  b3Vec3 o = {table_number(L, idx, "x", NULL, 0.0f),
-              table_number(L, idx, "y", NULL, 0.0f),
-              table_number(L, idx, "z", NULL, 0.0f)};
-  o = table_vec3(L, idx, "origin", "from", o);
-  b3Vec3 d = {table_number(L, idx, "dx", NULL, 0.0f),
-              table_number(L, idx, "dy", NULL, 0.0f),
-              table_number(L, idx, "dz", NULL, 0.0f)};
-  d = table_vec3(L, idx, "translation", "delta", d);
-  if (table_get_any(L, idx, "to", NULL)) {
-    if (lua_istable(L, -1)) {
-      b3Vec3 to = value_vec3(L, lua_gettop(L), o);
-      d = b3Sub(to, o);
-    }
-    lua_pop(L, 1);
-  }
-  float max_fraction =
-      table_number(L, idx, "max_fraction", "maxFraction", 1.0f);
-  if (max_fraction < 0.0f)
-    max_fraction = 0.0f;
-  d = b3MulSV(max_fraction, d);
-  if (d.x * d.x + d.y * d.y + d.z * d.z <= 1e-12f)
-    luaL_error(L, "%s: ray translation must be non-zero", fn_name);
-  *origin = o;
-  *translation = d;
-}
+// ---------------------------------------------------------- shape queries
 
-static int l_phys3d_shape_raycast(lua_State *L) {
-  Phys3dShape *s = query_shape_ref(L, 1);
-  if (!s)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 origin;
-  b3Vec3 translation;
-  parse_ray_query(L, 2, "phys3d_shape_raycast", &origin, &translation);
-  b3WorldCastOutput hit = b3Shape_RayCast(s->id, b3ToPos(origin), translation);
-  if (!hit.hit) {
-    lua_pushnil(L);
-    return 1;
-  }
-  b3Vec3 point = b3ToVec3(hit.point);
-  lua_newtable(L);
-  lua_pushnumber(L, point.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, point.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, point.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, hit.normal.x);
-  lua_setfield(L, -2, "nx");
-  lua_pushnumber(L, hit.normal.y);
-  lua_setfield(L, -2, "ny");
-  lua_pushnumber(L, hit.normal.z);
-  lua_setfield(L, -2, "nz");
-  lua_pushnumber(L, hit.fraction);
-  lua_setfield(L, -2, "fraction");
-  lua_pushinteger(L, hit.iterations);
-  lua_setfield(L, -2, "iterations");
-  lua_pushinteger(L, hit.triangleIndex);
-  lua_setfield(L, -2, "triangle_index");
-  lua_pushinteger(L, hit.childIndex);
-  lua_setfield(L, -2, "child_index");
-  return 1;
-}
-
-static int l_phys3d_shape_closest_point(lua_State *L) {
-  Phys3dShape *s = query_shape_ref(L, 1);
-  if (!s)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 target = value_vec3(L, 2, b3Vec3_zero);
-  push_vec3(L, b3Shape_GetClosestPoint(s->id, target));
-  return 1;
-}
-
-static int l_phys3d_shape_aabb(lua_State *L) {
-  Phys3dShape *s = query_shape_ref(L, 1);
-  if (!s)
-    return push_not_found(L);
-  push_aabb(L, b3Shape_GetAABB(s->id));
-  return 1;
-}
-
-static int l_phys3d_shape_info(lua_State *L) {
-  Phys3dShape *s = query_shape_ref(L, 1);
-  if (!s)
-    return push_not_found(L);
-
-  push_shape_id_view(L, s->id);
-  lua_pushstring(L, shape_kind_name(s->kind));
-  lua_setfield(L, -2, "kind");
-  lua_pushnumber(L, b3Shape_GetDensity(s->id));
-  lua_setfield(L, -2, "density");
-  b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(s->id);
-  lua_pushnumber(L, material.friction);
-  lua_setfield(L, -2, "friction");
-  lua_pushnumber(L, material.restitution);
-  lua_setfield(L, -2, "restitution");
-  lua_pushboolean(L, b3Shape_IsSensor(s->id));
-  lua_setfield(L, -2, "sensor");
-  lua_pushboolean(L, b3Shape_AreSensorEventsEnabled(s->id));
-  lua_setfield(L, -2, "sensor_events");
-  lua_pushboolean(L, b3Shape_AreContactEventsEnabled(s->id));
-  lua_setfield(L, -2, "contact");
-  lua_pushboolean(L, b3Shape_ArePreSolveEventsEnabled(s->id));
-  lua_setfield(L, -2, "pre_solve");
-  lua_pushboolean(L, b3Shape_AreHitEventsEnabled(s->id));
-  lua_setfield(L, -2, "hit");
-  push_filter_info(L, b3Shape_GetFilter(s->id));
-  lua_setfield(L, -2, "filter");
-  push_aabb(L, b3Shape_GetAABB(s->id));
-  lua_setfield(L, -2, "aabb");
-  return 1;
-}
-
-static int l_phys3d_shape_set_material(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_shape_set_material"))
-    return 0;
-  Phys3dShape *s = check_shape(L, 1);
-  check_live_shape(L, s, "phys3d_shape_set_material");
-
-  // Box3D has no per-field material setters, so round-trip the surface
-  // material for friction/restitution/material id in one go.
-  b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(s->id);
-  int material_id = (int)material.userMaterialId;
-  bool set_material_id = false;
-  bool set_material_name = false;
-  bool material_dirty = false;
-  const char *material_name = NULL;
-
-  if (lua_istable(L, 2)) {
-    float density = 0.0f;
-    if (table_number_optional(L, 2, "density", NULL, &density))
-      b3Shape_SetDensity(s->id, density, true);
-    float friction = 0.0f;
-    if (table_number_optional(L, 2, "friction", NULL, &friction)) {
-      material.friction = friction;
-      material_dirty = true;
-    }
-    float restitution = 0.0f;
-    if (table_number_optional(L, 2, "restitution", NULL, &restitution)) {
-      material.restitution = restitution;
-      material_dirty = true;
-    }
-
-    if (table_get_any(L, 2, "material", NULL)) {
-      if (lua_type(L, -1) == LUA_TSTRING) {
-        material_name = lua_tostring(L, -1);
-        set_material_name = true;
-      } else if (lua_isinteger(L, -1) || lua_isnumber(L, -1)) {
-        material_id = (int)lua_tointeger(L, -1);
-        set_material_id = true;
-        set_material_name = true;
-      }
-      lua_pop(L, 1);
-    }
-    if (table_int_optional(L, 2, "material_id", "materialId", &material_id))
-      set_material_id = true;
-    if (table_int_optional(L, 2, "user_material_id", "userMaterialId",
-                           &material_id))
-      set_material_id = true;
-  } else if (lua_isinteger(L, 2) || lua_isnumber(L, 2)) {
-    material_id = (int)lua_tointeger(L, 2);
-    set_material_id = true;
-    set_material_name = true;
-  } else if (lua_type(L, 2) == LUA_TSTRING) {
-    material_name = lua_tostring(L, 2);
-    set_material_name = true;
-  } else {
-    return luaL_error(
-        L, "phys3d_shape_set_material: expected table, number, or string");
-  }
-
-  if (set_material_id) {
-    material.userMaterialId = (uint64_t)material_id;
-    material_dirty = true;
-    s->material_id = material_id;
-  }
-  if (material_dirty)
-    b3Shape_SetSurfaceMaterial(s->id, material);
-  if (set_material_name)
-    owned_string_set_lua(L, &s->material_name, material_name,
-                         "phys3d_shape_set_material");
-  shape_tombstone_update_shape(s);
-  return 0;
-}
-
-static int l_phys3d_shape_set_filter(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_shape_set_filter"))
-    return 0;
-  Phys3dShape *s = check_shape(L, 1);
-  check_live_shape(L, s, "phys3d_shape_set_filter");
-  luaL_checktype(L, 2, LUA_TTABLE);
-
-  b3Filter filter = b3Shape_GetFilter(s->id);
-  int group = filter.groupIndex;
-  if (table_get_any(L, 2, "filter", NULL)) {
-    if (lua_istable(L, -1)) {
-      parse_filter_table(L, lua_gettop(L), &filter.categoryBits,
-                         &filter.maskBits, &group);
-      filter.groupIndex = group;
-    }
-    lua_pop(L, 1);
-  } else {
-    parse_filter_table(L, 2, &filter.categoryBits, &filter.maskBits, &group);
-    filter.groupIndex = group;
-  }
-  b3Shape_SetFilter(s->id, filter, true);
-  shape_tombstone_update_shape(s);
-  return 0;
-}
-
-static int l_phys3d_shape_set_events(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_shape_set_events"))
-    return 0;
-  Phys3dShape *s = check_shape(L, 1);
-  check_live_shape(L, s, "phys3d_shape_set_events");
-  luaL_checktype(L, 2, LUA_TTABLE);
-
-  bool flag = false;
-  if (table_bool_optional(L, 2, "sensor", NULL, &flag))
-    return luaL_error(
-        L, "phys3d_shape_set_events: sensor cannot change at runtime");
-  if (table_bool_optional(L, 2, "sensor_events", "sensorEvents", &flag))
-    b3Shape_EnableSensorEvents(s->id, flag);
-  if (table_bool_optional(L, 2, "contact", "contactEvents", &flag) ||
-      table_bool_optional(L, 2, "contact_events", "contactEvents", &flag))
-    b3Shape_EnableContactEvents(s->id, flag);
-  if (table_bool_optional(L, 2, "pre_solve", "preSolve", &flag))
-    b3Shape_EnablePreSolveEvents(s->id, flag);
-  if (table_bool_optional(L, 2, "hit", "hitEvents", &flag) ||
-      table_bool_optional(L, 2, "hit_events", "hitEvents", &flag))
-    b3Shape_EnableHitEvents(s->id, flag);
-  shape_tombstone_update_shape(s);
-  return 0;
-}
-
-static int l_phys3d_body_shapes(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
-  if (!b)
-    return push_not_found(L);
-  int capacity = b3Body_GetShapeCount(b->id);
-  lua_newtable(L);
-  if (capacity <= 0)
-    return 1;
-  b3ShapeId *ids = (b3ShapeId *)SDL_malloc(sizeof(*ids) * capacity);
-  if (!ids)
-    return luaL_error(L, "phys3d_body_shapes: out of memory");
-  int count = b3Body_GetShapes(b->id, ids, capacity);
-  for (int i = 0; i < count; ++i) {
-    push_shape_id_view(L, ids[i]);
-    if (B3_IS_NON_NULL(ids[i]) && b3Shape_IsValid(ids[i])) {
-      Phys3dShape *shape = (Phys3dShape *)b3Shape_GetUserData(ids[i]);
-      if (shape) {
-        lua_pushstring(L, shape_kind_name(shape->kind));
-        lua_setfield(L, -2, "kind");
-      }
-    }
-    lua_rawseti(L, -2, i + 1);
-  }
-  SDL_free(ids);
-  return 1;
-}
-
-static void push_contact_data(lua_State *L, const b3ContactData *contact) {
-  lua_newtable(L);
-  push_shape_id_view(L, contact->shapeIdA);
-  lua_setfield(L, -2, "a");
-  push_shape_id_view(L, contact->shapeIdB);
-  lua_setfield(L, -2, "b");
-  const b3Manifold *manifold = contact->manifoldCount > 0 && contact->manifolds
-                                   ? &contact->manifolds[0]
-                                   : NULL;
-  lua_pushnumber(L, manifold ? manifold->normal.x : 0.0f);
-  lua_setfield(L, -2, "nx");
-  lua_pushnumber(L, manifold ? manifold->normal.y : 0.0f);
-  lua_setfield(L, -2, "ny");
-  lua_pushnumber(L, manifold ? manifold->normal.z : 0.0f);
-  lua_setfield(L, -2, "nz");
-  lua_pushinteger(L, contact->manifoldCount);
-  lua_setfield(L, -2, "manifold_count");
-  lua_pushinteger(L, manifold ? manifold->pointCount : 0);
-  lua_setfield(L, -2, "point_count");
-  if (manifold && manifold->pointCount > 0 &&
-      B3_IS_NON_NULL(contact->shapeIdA) && b3Shape_IsValid(contact->shapeIdA)) {
-    // Manifold anchors are relative to the body center of mass in world
-    // space, so rebuild the world point from body A.
-    b3Pos com = b3Body_GetWorldCenterOfMass(b3Shape_GetBody(contact->shapeIdA));
-    b3Vec3 anchor = manifold->points[0].anchorA;
-    lua_pushnumber(L, com.x + anchor.x);
-    lua_setfield(L, -2, "x");
-    lua_pushnumber(L, com.y + anchor.y);
-    lua_setfield(L, -2, "y");
-    lua_pushnumber(L, com.z + anchor.z);
-    lua_setfield(L, -2, "z");
-    lua_pushnumber(L, manifold->points[0].separation);
-    lua_setfield(L, -2, "separation");
-  }
-}
-
-static int l_phys3d_body_contacts(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
-  if (!b)
-    return push_not_found(L);
-  int capacity = b3Body_GetContactCapacity(b->id);
-  lua_newtable(L);
-  if (capacity <= 0)
-    return 1;
-  b3ContactData *items = (b3ContactData *)SDL_malloc(sizeof(*items) * capacity);
-  if (!items)
-    return luaL_error(L, "phys3d_body_contacts: out of memory");
-  int count = b3Body_GetContactData(b->id, items, capacity);
-  for (int i = 0; i < count; ++i) {
-    push_contact_data(L, &items[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  SDL_free(items);
-  return 1;
-}
-
-static void push_joint_view(lua_State *L, Phys3dJoint *j) {
-  bool valid = joint_is_live(j);
-  lua_newtable(L);
-  lua_pushstring(L, j && j->key ? j->key : "");
-  lua_setfield(L, -2, "joint");
-  lua_pushstring(L, j ? joint_kind_name(j->kind) : "unknown");
-  lua_setfield(L, -2, "type");
-  lua_pushstring(L, j && j->body_a && j->body_a->key ? j->body_a->key : "");
-  lua_setfield(L, -2, "a");
-  lua_pushstring(L, j && j->body_b && j->body_b->key ? j->body_b->key : "");
-  lua_setfield(L, -2, "b");
-  lua_pushboolean(L, valid);
-  lua_setfield(L, -2, "valid");
-}
-
-static void push_joint_id_view(lua_State *L, b3JointId joint_id) {
-  Phys3dJoint *j = B3_IS_NON_NULL(joint_id) && b3Joint_IsValid(joint_id)
-                       ? (Phys3dJoint *)b3Joint_GetUserData(joint_id)
-                       : NULL;
-  push_joint_view(L, j);
-}
-
-static int l_phys3d_body_joints(lua_State *L) {
-  Phys3dBody *b = query_body_ref(L, 1);
-  if (!b)
-    return push_not_found(L);
-  int capacity = b3Body_GetJointCount(b->id);
-  lua_newtable(L);
-  if (capacity <= 0)
-    return 1;
-  b3JointId *ids = (b3JointId *)SDL_malloc(sizeof(*ids) * capacity);
-  if (!ids)
-    return luaL_error(L, "phys3d_body_joints: out of memory");
-  int count = b3Body_GetJoints(b->id, ids, capacity);
-  for (int i = 0; i < count; ++i) {
-    push_joint_id_view(L, ids[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  SDL_free(ids);
-  return 1;
-}
-
-static void push_local_frame(lua_State *L, b3Transform frame) {
-  lua_newtable(L);
-  lua_pushnumber(L, frame.p.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, frame.p.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, frame.p.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, frame.q.v.x);
-  lua_setfield(L, -2, "qx");
-  lua_pushnumber(L, frame.q.v.y);
-  lua_setfield(L, -2, "qy");
-  lua_pushnumber(L, frame.q.v.z);
-  lua_setfield(L, -2, "qz");
-  lua_pushnumber(L, frame.q.s);
-  lua_setfield(L, -2, "qw");
-}
-
-static int l_phys3d_joint_info(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  push_joint_view(L, j);
-  lua_pushboolean(L, b3Joint_GetCollideConnected(j->id));
-  lua_setfield(L, -2, "collide_connected");
-  push_vec3(L, b3Joint_GetConstraintForce(j->id));
-  lua_setfield(L, -2, "force");
-  push_vec3(L, b3Joint_GetConstraintTorque(j->id));
-  lua_setfield(L, -2, "torque");
-  lua_pushnumber(L, b3Joint_GetLinearSeparation(j->id));
-  lua_setfield(L, -2, "linear_separation");
-  lua_pushnumber(L, b3Joint_GetAngularSeparation(j->id));
-  lua_setfield(L, -2, "angular_separation");
-  push_local_frame(L, b3Joint_GetLocalFrameA(j->id));
-  lua_setfield(L, -2, "local_frame_a");
-  push_local_frame(L, b3Joint_GetLocalFrameB(j->id));
-  lua_setfield(L, -2, "local_frame_b");
-  return 1;
-}
-
-static int l_phys3d_joint_force(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  push_vec3(L, b3Joint_GetConstraintForce(j->id));
-  return 1;
-}
-
-static int l_phys3d_joint_torque(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  push_vec3(L, b3Joint_GetConstraintTorque(j->id));
-  return 1;
-}
-
-static int l_phys3d_joint_angle(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  if (j->kind != PHYS3D_JOINT_REVOLUTE) {
-    lua_pushnil(L);
-    return 1;
-  }
-  lua_pushnumber(L, b3RevoluteJoint_GetAngle(j->id));
-  return 1;
-}
-
-static int l_phys3d_joint_translation(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  if (j->kind != PHYS3D_JOINT_PRISMATIC) {
-    lua_pushnil(L);
-    return 1;
-  }
-  lua_pushnumber(L, b3PrismaticJoint_GetTranslation(j->id));
-  return 1;
-}
-
-static int l_phys3d_joint_speed(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  if (j->kind == PHYS3D_JOINT_PRISMATIC) {
-    lua_pushnumber(L, b3PrismaticJoint_GetSpeed(j->id));
-    return 1;
-  }
-  if (j->kind == PHYS3D_JOINT_WHEEL) {
-    lua_pushnumber(L, b3WheelJoint_GetSpinSpeed(j->id));
-    return 1;
-  }
-  lua_pushnil(L);
-  return 1;
-}
-
-static int l_phys3d_joint_length(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  if (j->kind != PHYS3D_JOINT_DISTANCE) {
-    lua_pushnil(L);
-    return 1;
-  }
-  lua_pushnumber(L, b3DistanceJoint_GetCurrentLength(j->id));
-  return 1;
-}
-
-static int l_phys3d_joint_motor_force(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  if (j->kind == PHYS3D_JOINT_DISTANCE) {
-    lua_pushnumber(L, b3DistanceJoint_GetMotorForce(j->id));
-    return 1;
-  }
-  if (j->kind == PHYS3D_JOINT_PRISMATIC) {
-    lua_pushnumber(L, b3PrismaticJoint_GetMotorForce(j->id));
-    return 1;
-  }
-  lua_pushnil(L);
-  return 1;
-}
-
-static int l_phys3d_joint_motor_torque(lua_State *L) {
-  Phys3dJoint *j = query_joint_ref(L, 1);
-  if (!j)
-    return push_not_found(L);
-  if (j->kind == PHYS3D_JOINT_REVOLUTE) {
-    lua_pushnumber(L, b3RevoluteJoint_GetMotorTorque(j->id));
-    return 1;
-  }
-  if (j->kind == PHYS3D_JOINT_WHEEL) {
-    lua_pushnumber(L, b3WheelJoint_GetSpinTorque(j->id));
-    return 1;
-  }
-  if (j->kind == PHYS3D_JOINT_SPHERICAL) {
-    // The spherical motor torque is a vector in box3d.
-    push_vec3(L, b3SphericalJoint_GetMotorTorque(j->id));
-    return 1;
-  }
-  lua_pushnil(L);
-  return 1;
-}
-
-static int l_phys3d_joint_set_motor(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_joint_set_motor"))
-    return 0;
-  Phys3dJoint *j = check_joint(L, 1);
-  check_live_joint(L, j, "phys3d_joint_set_motor");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  bool enabled = table_bool(L, 2, "enabled", NULL, true);
-  float speed = table_number(L, 2, "speed", "motor_speed", 0.0f);
-  float max_force = table_number(L, 2, "max_force", "maxForce", 0.0f);
-  float max_torque = table_number(L, 2, "max_torque", "maxTorque", 0.0f);
-  switch (j->kind) {
-  case PHYS3D_JOINT_DISTANCE:
-    b3DistanceJoint_EnableMotor(j->id, enabled);
-    b3DistanceJoint_SetMotorSpeed(j->id, speed);
-    b3DistanceJoint_SetMaxMotorForce(j->id, max_force);
-    break;
-  case PHYS3D_JOINT_PRISMATIC:
-    b3PrismaticJoint_EnableMotor(j->id, enabled);
-    b3PrismaticJoint_SetMotorSpeed(j->id, speed);
-    b3PrismaticJoint_SetMaxMotorForce(j->id, max_force);
-    break;
-  case PHYS3D_JOINT_REVOLUTE:
-    b3RevoluteJoint_EnableMotor(j->id, enabled);
-    b3RevoluteJoint_SetMotorSpeed(j->id, speed);
-    b3RevoluteJoint_SetMaxMotorTorque(j->id, max_torque);
-    break;
-  case PHYS3D_JOINT_SPHERICAL:
-    b3SphericalJoint_EnableMotor(j->id, enabled);
-    b3SphericalJoint_SetMotorVelocity(
-        j->id, table_vec3(L, 2, "velocity", "motor_velocity",
-                          b3SphericalJoint_GetMotorVelocity(j->id)));
-    b3SphericalJoint_SetMaxMotorTorque(j->id, max_torque);
-    break;
-  case PHYS3D_JOINT_WHEEL:
-    b3WheelJoint_EnableSpinMotor(j->id, enabled);
-    b3WheelJoint_SetSpinMotorSpeed(j->id, speed);
-    b3WheelJoint_SetMaxSpinTorque(j->id, max_torque);
-    break;
-  case PHYS3D_JOINT_MOTOR:
-    b3MotorJoint_SetLinearVelocity(
-        j->id, table_vec3(L, 2, "linear_velocity", "linearVelocity",
-                          b3MotorJoint_GetLinearVelocity(j->id)));
-    b3MotorJoint_SetAngularVelocity(
-        j->id, table_vec3(L, 2, "angular_velocity", "angularVelocity",
-                          b3MotorJoint_GetAngularVelocity(j->id)));
-    b3MotorJoint_SetMaxVelocityForce(
-        j->id, table_number(L, 2, "max_velocity_force", "maxVelocityForce",
-                            b3MotorJoint_GetMaxVelocityForce(j->id)));
-    b3MotorJoint_SetMaxVelocityTorque(
-        j->id, table_number(L, 2, "max_velocity_torque", "maxVelocityTorque",
-                            b3MotorJoint_GetMaxVelocityTorque(j->id)));
-    break;
-  default:
-    return luaL_error(L, "phys3d_joint_set_motor: unsupported joint type");
-  }
-  b3Joint_WakeBodies(j->id);
-  return 0;
-}
-
-static int l_phys3d_joint_set_limit(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_joint_set_limit"))
-    return 0;
-  Phys3dJoint *j = check_joint(L, 1);
-  check_live_joint(L, j, "phys3d_joint_set_limit");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  bool enabled = table_bool(L, 2, "enabled", NULL, true);
-  float lower = table_number(L, 2, "lower", NULL, 0.0f);
-  float upper = table_number(L, 2, "upper", NULL, 0.0f);
-  switch (j->kind) {
-  case PHYS3D_JOINT_DISTANCE: {
-    float min_length = table_number(L, 2, "min", "min_length", 0.0f);
-    float max_length = table_number(L, 2, "max", "max_length", FLT_MAX);
-    b3DistanceJoint_EnableLimit(j->id, enabled);
-    b3DistanceJoint_SetLengthRange(j->id, min_length, max_length);
-    break;
-  }
-  case PHYS3D_JOINT_PRISMATIC:
-    b3PrismaticJoint_EnableLimit(j->id, enabled);
-    b3PrismaticJoint_SetLimits(j->id, lower, upper);
-    break;
-  case PHYS3D_JOINT_REVOLUTE:
-    b3RevoluteJoint_EnableLimit(j->id, enabled);
-    b3RevoluteJoint_SetLimits(j->id, lower, upper);
-    break;
-  case PHYS3D_JOINT_SPHERICAL: {
-    float cone_angle = 0.0f;
-    if (table_number_optional(L, 2, "cone_angle", "coneAngle", &cone_angle)) {
-      b3SphericalJoint_EnableConeLimit(j->id, enabled);
-      b3SphericalJoint_SetConeLimit(j->id, cone_angle);
-    }
-    bool has_lower = table_get_any(L, 2, "lower", "lower_twist_angle");
-    if (has_lower)
-      lua_pop(L, 1);
-    bool has_upper = table_get_any(L, 2, "upper", "upper_twist_angle");
-    if (has_upper)
-      lua_pop(L, 1);
-    if (has_lower || has_upper) {
-      lower = table_number(L, 2, "lower_twist_angle", "lowerTwistAngle", lower);
-      upper = table_number(L, 2, "upper_twist_angle", "upperTwistAngle", upper);
-      b3SphericalJoint_EnableTwistLimit(j->id, enabled);
-      b3SphericalJoint_SetTwistLimits(j->id, lower, upper);
-    }
-    break;
-  }
-  case PHYS3D_JOINT_WHEEL:
-    b3WheelJoint_EnableSuspensionLimit(j->id, enabled);
-    b3WheelJoint_SetSuspensionLimits(j->id, lower, upper);
-    break;
-  default:
-    return luaL_error(L, "phys3d_joint_set_limit: unsupported joint type");
-  }
-  b3Joint_WakeBodies(j->id);
-  return 0;
-}
-
-static int l_phys3d_joint_set_spring(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_joint_set_spring"))
-    return 0;
-  Phys3dJoint *j = check_joint(L, 1);
-  check_live_joint(L, j, "phys3d_joint_set_spring");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  bool enabled = table_bool(L, 2, "enabled", NULL, true);
-  float hertz = table_number(L, 2, "hertz", NULL, 0.0f);
-  float damping = table_number(L, 2, "damping_ratio", "dampingRatio", 0.0f);
-  switch (j->kind) {
-  case PHYS3D_JOINT_DISTANCE:
-    b3DistanceJoint_EnableSpring(j->id, enabled);
-    b3DistanceJoint_SetSpringHertz(j->id, hertz);
-    b3DistanceJoint_SetSpringDampingRatio(j->id, damping);
-    break;
-  case PHYS3D_JOINT_PRISMATIC:
-    b3PrismaticJoint_EnableSpring(j->id, enabled);
-    b3PrismaticJoint_SetSpringHertz(j->id, hertz);
-    b3PrismaticJoint_SetSpringDampingRatio(j->id, damping);
-    break;
-  case PHYS3D_JOINT_REVOLUTE:
-    b3RevoluteJoint_EnableSpring(j->id, enabled);
-    b3RevoluteJoint_SetSpringHertz(j->id, hertz);
-    b3RevoluteJoint_SetSpringDampingRatio(j->id, damping);
-    break;
-  case PHYS3D_JOINT_SPHERICAL:
-    b3SphericalJoint_EnableSpring(j->id, enabled);
-    b3SphericalJoint_SetSpringHertz(j->id, hertz);
-    b3SphericalJoint_SetSpringDampingRatio(j->id, damping);
-    break;
-  case PHYS3D_JOINT_PARALLEL:
-    b3ParallelJoint_SetSpringHertz(j->id, hertz);
-    b3ParallelJoint_SetSpringDampingRatio(j->id, damping);
-    b3ParallelJoint_SetMaxTorque(
-        j->id, table_number(L, 2, "max_torque", "maxTorque",
-                            b3ParallelJoint_GetMaxTorque(j->id)));
-    break;
-  case PHYS3D_JOINT_WHEEL:
-    b3WheelJoint_EnableSuspension(j->id, enabled);
-    b3WheelJoint_SetSuspensionHertz(j->id, hertz);
-    b3WheelJoint_SetSuspensionDampingRatio(j->id, damping);
-    break;
-  case PHYS3D_JOINT_WELD:
-    b3WeldJoint_SetLinearHertz(
-        j->id, table_number(L, 2, "linear_hertz", "linearHertz", hertz));
-    b3WeldJoint_SetLinearDampingRatio(
-        j->id, table_number(L, 2, "linear_damping_ratio", "linearDampingRatio",
-                            damping));
-    b3WeldJoint_SetAngularHertz(
-        j->id, table_number(L, 2, "angular_hertz", "angularHertz", hertz));
-    b3WeldJoint_SetAngularDampingRatio(
-        j->id, table_number(L, 2, "angular_damping_ratio",
-                            "angularDampingRatio", damping));
-    break;
-  case PHYS3D_JOINT_MOTOR:
-    b3MotorJoint_SetLinearHertz(
-        j->id, table_number(L, 2, "linear_hertz", "linearHertz", hertz));
-    b3MotorJoint_SetLinearDampingRatio(
-        j->id, table_number(L, 2, "linear_damping_ratio", "linearDampingRatio",
-                            damping));
-    b3MotorJoint_SetAngularHertz(
-        j->id, table_number(L, 2, "angular_hertz", "angularHertz", hertz));
-    b3MotorJoint_SetAngularDampingRatio(
-        j->id, table_number(L, 2, "angular_damping_ratio",
-                            "angularDampingRatio", damping));
-    break;
-  default:
-    return luaL_error(L, "phys3d_joint_set_spring: unsupported joint type");
-  }
-  b3Joint_WakeBodies(j->id);
-  return 0;
-}
-
-static int l_phys3d_joint_set_target(lua_State *L) {
-  if (phys_in_callback(L, "phys3d_joint_set_target"))
-    return 0;
-  Phys3dJoint *j = check_joint(L, 1);
-  check_live_joint(L, j, "phys3d_joint_set_target");
-  luaL_checktype(L, 2, LUA_TTABLE);
-  switch (j->kind) {
-  case PHYS3D_JOINT_PRISMATIC:
-    b3PrismaticJoint_SetTargetTranslation(
-        j->id, table_number(L, 2, "translation", "target_translation",
-                            b3PrismaticJoint_GetTargetTranslation(j->id)));
-    break;
-  case PHYS3D_JOINT_REVOLUTE:
-    b3RevoluteJoint_SetTargetAngle(
-        j->id, table_number(L, 2, "angle", "target_angle",
-                            b3RevoluteJoint_GetTargetAngle(j->id)));
-    break;
-  case PHYS3D_JOINT_SPHERICAL: {
-    b3Quat target = b3SphericalJoint_GetTargetRotation(j->id);
-    if (!table_quat_field(L, 2, "rotation", "target_rotation", &target))
-      table_rotation(L, 2, &target);
-    b3SphericalJoint_SetTargetRotation(j->id, b3NormalizeQuat(target));
-    break;
-  }
-  case PHYS3D_JOINT_WHEEL:
-    b3WheelJoint_SetTargetSteeringAngle(
-        j->id, table_number(L, 2, "angle", "steering_angle",
-                            b3WheelJoint_GetTargetSteeringAngle(j->id)));
-    break;
-  case PHYS3D_JOINT_MOTOR:
-    b3MotorJoint_SetLinearVelocity(
-        j->id, table_vec3(L, 2, "linear_velocity", "linearVelocity",
-                          b3MotorJoint_GetLinearVelocity(j->id)));
-    b3MotorJoint_SetAngularVelocity(
-        j->id, table_vec3(L, 2, "angular_velocity", "angularVelocity",
-                          b3MotorJoint_GetAngularVelocity(j->id)));
-    break;
-  default:
-    return luaL_error(L, "phys3d_joint_set_target: unsupported joint type");
-  }
-  b3Joint_WakeBodies(j->id);
-  return 0;
-}
-
-static void push_contact_list(lua_State *L, Phys3dContactSnapshot *items,
-                              int count) {
-  lua_newtable(L);
-  for (int i = 0; i < count; ++i) {
-    Phys3dContactSnapshot *e = &items[i];
-    lua_newtable(L);
-    push_shape_event_part(L, e->a_body, e->a_shape, e->a_tag, e->a_material,
-                          e->a_material_id, e->a_valid);
-    lua_setfield(L, -2, "a");
-    push_shape_event_part(L, e->b_body, e->b_shape, e->b_tag, e->b_material,
-                          e->b_material_id, e->b_valid);
-    lua_setfield(L, -2, "b");
-    lua_pushnumber(L, e->nx);
-    lua_setfield(L, -2, "nx");
-    lua_pushnumber(L, e->ny);
-    lua_setfield(L, -2, "ny");
-    lua_pushnumber(L, e->nz);
-    lua_setfield(L, -2, "nz");
-    lua_pushinteger(L, e->point_count);
-    lua_setfield(L, -2, "point_count");
-    lua_pushnumber(L, e->x);
-    lua_setfield(L, -2, "x");
-    lua_pushnumber(L, e->y);
-    lua_setfield(L, -2, "y");
-    lua_pushnumber(L, e->z);
-    lua_setfield(L, -2, "z");
-    if (e->approach_speed != 0.0f) {
-      lua_pushnumber(L, e->approach_speed);
-      lua_setfield(L, -2, "approach_speed");
-    }
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void push_sensor_list(lua_State *L, Phys3dContactSnapshot *items,
-                             int count) {
-  lua_newtable(L);
-  for (int i = 0; i < count; ++i) {
-    Phys3dContactSnapshot *e = &items[i];
-    lua_newtable(L);
-    push_shape_event_part(L, e->a_body, e->a_shape, e->a_tag, e->a_material,
-                          e->a_material_id, e->a_valid);
-    lua_setfield(L, -2, "sensor");
-    push_shape_event_part(L, e->b_body, e->b_shape, e->b_tag, e->b_material,
-                          e->b_material_id, e->b_valid);
-    lua_setfield(L, -2, "visitor");
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void push_body_event_list(lua_State *L, Phys3dBodyEventSnapshot *items,
-                                 int count) {
-  lua_newtable(L);
-  for (int i = 0; i < count; ++i) {
-    Phys3dBodyEventSnapshot *e = &items[i];
-    lua_newtable(L);
-    lua_pushstring(L, e->body ? e->body : "");
-    lua_setfield(L, -2, "body");
-    lua_pushboolean(L, e->valid);
-    lua_setfield(L, -2, "valid");
-    lua_pushnumber(L, e->x);
-    lua_setfield(L, -2, "x");
-    lua_pushnumber(L, e->y);
-    lua_setfield(L, -2, "y");
-    lua_pushnumber(L, e->z);
-    lua_setfield(L, -2, "z");
-    lua_pushnumber(L, e->qx);
-    lua_setfield(L, -2, "qx");
-    lua_pushnumber(L, e->qy);
-    lua_setfield(L, -2, "qy");
-    lua_pushnumber(L, e->qz);
-    lua_setfield(L, -2, "qz");
-    lua_pushnumber(L, e->qw);
-    lua_setfield(L, -2, "qw");
-    lua_pushboolean(L, e->fell_asleep);
-    lua_setfield(L, -2, "fell_asleep");
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void push_joint_event_list(lua_State *L, Phys3dJointEventSnapshot *items,
-                                  int count) {
-  lua_newtable(L);
-  for (int i = 0; i < count; ++i) {
-    Phys3dJointEventSnapshot *e = &items[i];
-    lua_newtable(L);
-    lua_pushstring(L, e->joint ? e->joint : "");
-    lua_setfield(L, -2, "joint");
-    lua_pushstring(L, e->type ? e->type : "unknown");
-    lua_setfield(L, -2, "type");
-    lua_pushstring(L, e->body_a ? e->body_a : "");
-    lua_setfield(L, -2, "a");
-    lua_pushstring(L, e->body_b ? e->body_b : "");
-    lua_setfield(L, -2, "b");
-    lua_pushboolean(L, e->valid);
-    lua_setfield(L, -2, "valid");
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static int l_phys3d_contacts(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  const char *kind = luaL_optstring(L, 2, "begin");
-  if (strcmp(kind, "begin") == 0) {
-    push_contact_list(L, w->events.begins, w->events.begin_count);
-  } else if (strcmp(kind, "end") == 0) {
-    push_contact_list(L, w->events.ends, w->events.end_count);
-  } else if (strcmp(kind, "hit") == 0) {
-    push_contact_list(L, w->events.hits, w->events.hit_count);
-  } else {
-    return luaL_error(L, "phys3d_contacts: kind must be begin, end, or hit");
-  }
-  return 1;
-}
-
-static int l_phys3d_body_events(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  push_body_event_list(L, w->events.moves, w->events.move_count);
-  return 1;
-}
-
-static int l_phys3d_sensors(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  const char *kind = luaL_optstring(L, 2, "begin");
-  if (strcmp(kind, "begin") == 0) {
-    push_sensor_list(L, w->events.sensor_begins, w->events.sensor_begin_count);
-  } else if (strcmp(kind, "end") == 0) {
-    push_sensor_list(L, w->events.sensor_ends, w->events.sensor_end_count);
-  } else {
-    return luaL_error(L, "phys3d_sensors: kind must be begin or end");
-  }
-  return 1;
-}
-
-static int l_phys3d_joint_events(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  push_joint_event_list(L, w->events.joints, w->events.joint_count);
-  return 1;
-}
-
-static b3QueryFilter parse_query_filter(lua_State *L, int idx) {
-  b3QueryFilter filter = b3DefaultQueryFilter();
-  if (!lua_istable(L, idx))
-    return filter;
-  if (table_get_any(L, idx, "filter", NULL)) {
-    if (lua_istable(L, -1))
-      parse_filter_table(L, lua_gettop(L), &filter.categoryBits,
-                         &filter.maskBits, NULL);
-    lua_pop(L, 1);
-  } else {
-    parse_filter_table(L, idx, &filter.categoryBits, &filter.maskBits, NULL);
-  }
-  return filter;
-}
-
-static void push_raycast_hit(lua_State *L, b3ShapeId shape_id, b3Pos point,
-                             b3Vec3 normal, float fraction,
-                             uint64_t user_material_id, int triangle_index,
-                             int child_index) {
-  push_shape_id_view(L, shape_id);
-  b3Vec3 p = b3ToVec3(point);
-  lua_pushnumber(L, p.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, p.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, p.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, normal.x);
-  lua_setfield(L, -2, "nx");
-  lua_pushnumber(L, normal.y);
-  lua_setfield(L, -2, "ny");
-  lua_pushnumber(L, normal.z);
-  lua_setfield(L, -2, "nz");
-  lua_pushnumber(L, fraction);
-  lua_setfield(L, -2, "fraction");
-  lua_pushinteger(L, (lua_Integer)user_material_id);
-  lua_setfield(L, -2, "hit_material_id");
-  lua_pushinteger(L, triangle_index);
-  lua_setfield(L, -2, "triangle_index");
-  lua_pushinteger(L, child_index);
-  lua_setfield(L, -2, "child_index");
-}
-
-typedef struct Phys3dQueryContext {
-  lua_State *L;
-  int results_ref;
-  int visitor_ref;
-  int count;
-  bool continue_all;
-  char *error;
-} Phys3dQueryContext;
-
-static int push_visitor_error(lua_State *L, const char *fn_name,
-                              char *message) {
-  lua_pushnil(L);
-  lua_pushfstring(L, "%s visitor: %s", fn_name,
-                  message ? message : "unknown error");
-  SDL_free(message);
-  return 2;
-}
-
-static bool query_result_is_string(lua_State *L, int idx, const char *s) {
-  return lua_isstring(L, idx) && strcmp(lua_tostring(L, idx), s) == 0;
-}
-
-static bool parse_overlap_visitor_result(lua_State *L, int idx, bool *include) {
-  if (lua_isboolean(L, idx) && !lua_toboolean(L, idx))
+static bool ray_valid(App *app, const LubPhys3dRay *ray, const char *fn) {
+  b3Vec3 d = vec3_of(ray->translation);
+  if (d.x * d.x + d.y * d.y + d.z * d.z <= 1e-12f) {
+    lub_api_fail(app, "%s: ray translation must be non-zero", fn);
     return false;
-  if (query_result_is_string(L, idx, "stop"))
-    return false;
-  if (query_result_is_string(L, idx, "ignore")) {
-    *include = false;
-    return true;
   }
   return true;
 }
 
-static float parse_raycast_visitor_result(lua_State *L, int idx, float fraction,
-                                          bool *include) {
-  if (lua_isnumber(L, idx))
-    return (float)lua_tonumber(L, idx);
-  if (lua_isboolean(L, idx)) {
-    if (!lua_toboolean(L, idx))
-      return 0.0f;
-    return fraction;
-  }
-  if (lua_isnil(L, idx))
-    return fraction;
-  if (query_result_is_string(L, idx, "continue"))
-    return 1.0f;
-  if (query_result_is_string(L, idx, "ignore")) {
-    *include = false;
-    return -1.0f;
-  }
-  if (query_result_is_string(L, idx, "stop"))
-    return 0.0f;
-  if (query_result_is_string(L, idx, "clip"))
-    return fraction;
-  return fraction;
+LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
+                                   const LubPhys3dRay *ray,
+                                   LubPhys3dRayHit *out, bool *hit) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  *hit = false;
+  Phys3dShape *s = query_shape(app, shape);
+  if (!s)
+    return LUB_NOT_FOUND;
+  if (!ray_valid(app, ray, "phys3d_shape_raycast"))
+    return LUB_ERROR;
+  b3WorldCastOutput r = b3Shape_RayCast(s->id, b3ToPos(vec3_of(ray->origin)),
+                                        vec3_of(ray->translation));
+  if (!r.hit)
+    return LUB_OK;
+  *hit = true;
+  out->point = lub_pos(r.point);
+  out->normal = lub_vec3(r.normal);
+  out->fraction = r.fraction;
+  out->iterations = r.iterations;
+  out->triangle_index = r.triangleIndex;
+  out->child_index = r.childIndex;
+  return LUB_OK;
 }
 
-static bool overlap_result_callback(b3ShapeId shape_id, void *context) {
-  Phys3dQueryContext *ctx = (Phys3dQueryContext *)context;
-  lua_State *L = ctx->L;
-  if (ctx->error)
-    return false;
+LubStatus lub_phys3d_shape_closest_point(LubContext *ctx, LubHandle shape,
+                                         LubVec3 point, LubVec3 *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dShape *s = query_shape(app, shape);
+  if (!s)
+    return LUB_NOT_FOUND;
+  *out = lub_vec3(b3Shape_GetClosestPoint(s->id, vec3_of(point)));
+  return LUB_OK;
+}
 
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->results_ref);
-  push_shape_id_view(L, shape_id);
-  bool include = true;
-  bool keep_going = true;
+static LubPhys3dAabb aabb_of(b3AABB a) {
+  LubPhys3dAabb out = {lub_vec3(a.lowerBound), lub_vec3(a.upperBound)};
+  return out;
+}
 
-  if (ctx->visitor_ref != LUA_NOREF) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->visitor_ref);
-    lua_pushvalue(L, -2);
-    g_phys3d_callback_depth++;
-    int status = lua_pcall(L, 1, 1, 0);
-    g_phys3d_callback_depth--;
-    if (status != LUA_OK) {
-      ctx->error = phys_strdup(lua_tostring(L, -1));
-      lua_pop(L, 3);
-      return false;
+LubStatus lub_phys3d_shape_aabb(LubContext *ctx, LubHandle shape,
+                                LubPhys3dAabb *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dShape *s = query_shape(app, shape);
+  if (!s)
+    return LUB_NOT_FOUND;
+  *out = aabb_of(b3Shape_GetAABB(s->id));
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
+                                LubPhys3dShapeInfo *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dShape *s = query_shape(app, shape);
+  if (!s)
+    return LUB_NOT_FOUND;
+  fill_shape_part(&out->part, s->id);
+  out->part.kind = s->kind;
+  out->density = b3Shape_GetDensity(s->id);
+  b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(s->id);
+  out->friction = material.friction;
+  out->restitution = material.restitution;
+  out->sensor = b3Shape_IsSensor(s->id);
+  out->sensor_events = b3Shape_AreSensorEventsEnabled(s->id);
+  out->contact = b3Shape_AreContactEventsEnabled(s->id);
+  out->pre_solve = b3Shape_ArePreSolveEventsEnabled(s->id);
+  out->hit = b3Shape_AreHitEventsEnabled(s->id);
+  out->aabb = aabb_of(b3Shape_GetAABB(s->id));
+  return LUB_OK;
+}
+
+static Phys3dShape *check_live_shape(App *app, LubHandle h, const char *fn) {
+  if (in_callback(app, fn))
+    return NULL;
+  Phys3dShape *s = check_shape(app, h, fn);
+  if (!s)
+    return NULL;
+  if (!shape_is_live(s)) {
+    lub_api_fail(app, "%s: shape is not live", fn);
+    return NULL;
+  }
+  return s;
+}
+
+LubStatus lub_phys3d_shape_set_material(LubContext *ctx, LubHandle shape,
+                                        const LubPhys3dMaterialDesc *d) {
+  App *app = lub_api_app(ctx);
+  Phys3dShape *s = check_live_shape(app, shape, "phys3d_shape_set_material");
+  if (!s)
+    return LUB_ERROR;
+  if (d->has_density)
+    b3Shape_SetDensity(s->id, d->density, true);
+  b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial(s->id);
+  bool dirty = false;
+  if (d->has_friction) {
+    material.friction = d->friction;
+    dirty = true;
+  }
+  if (d->has_restitution) {
+    material.restitution = d->restitution;
+    dirty = true;
+  }
+  if (d->has_material_id) {
+    material.userMaterialId = (uint64_t)d->material_id;
+    s->material_id = d->material_id;
+    dirty = true;
+  }
+  if (dirty)
+    b3Shape_SetSurfaceMaterial(s->id, material);
+  if (d->has_material_name &&
+      !phys_owned_string_set(&s->material_name, d->material_name))
+    return lub_api_fail(app, "phys3d_shape_set_material: out of memory");
+  shape_tombstone_update_shape(s);
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                      const LubPhys3dFilter *filter) {
+  App *app = lub_api_app(ctx);
+  Phys3dShape *s = check_live_shape(app, shape, "phys3d_shape_set_filter");
+  if (!s)
+    return LUB_ERROR;
+  b3Filter f = b3Shape_GetFilter(s->id);
+  f.categoryBits = filter->category_bits;
+  f.maskBits = filter->mask_bits;
+  f.groupIndex = filter->group_index;
+  b3Shape_SetFilter(s->id, f, true);
+  shape_tombstone_update_shape(s);
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_shape_set_events(LubContext *ctx, LubHandle shape,
+                                      const LubPhys3dEventFlags *flags) {
+  App *app = lub_api_app(ctx);
+  Phys3dShape *s = check_live_shape(app, shape, "phys3d_shape_set_events");
+  if (!s)
+    return LUB_ERROR;
+  if (flags->has_sensor_events)
+    b3Shape_EnableSensorEvents(s->id, flags->sensor_events);
+  if (flags->has_contact)
+    b3Shape_EnableContactEvents(s->id, flags->contact);
+  if (flags->has_pre_solve)
+    b3Shape_EnablePreSolveEvents(s->id, flags->pre_solve);
+  if (flags->has_hit)
+    b3Shape_EnableHitEvents(s->id, flags->hit);
+  shape_tombstone_update_shape(s);
+  return LUB_OK;
+}
+
+// ------------------------------------------------------------- body lists
+
+LubStatus lub_phys3d_body_shapes(LubContext *ctx, LubHandle body,
+                                 const LubPhys3dShapePart **items,
+                                 int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dBody *b = query_body(app, body);
+  if (!b)
+    return LUB_NOT_FOUND;
+  int capacity = b3Body_GetShapeCount(b->id);
+  if (capacity <= 0)
+    return LUB_OK;
+  b3ShapeId *ids = (b3ShapeId *)SDL_malloc(sizeof(*ids) * capacity);
+  if (!ids)
+    return lub_api_fail(app, "phys3d_body_shapes: out of memory");
+  int n = b3Body_GetShapes(b->id, ids, capacity);
+  LubPhys3dShapePart *parts = (LubPhys3dShapePart *)scratch_alloc(
+      app, sizeof(LubPhys3dShapePart) * (size_t)(n > 0 ? n : 1));
+  if (!parts) {
+    SDL_free(ids);
+    return lub_api_fail(app, "phys3d_body_shapes: out of memory");
+  }
+  for (int i = 0; i < n; ++i)
+    fill_shape_part(&parts[i], ids[i]);
+  SDL_free(ids);
+  *items = parts;
+  *count = n;
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_body_joints(LubContext *ctx, LubHandle body,
+                                 const LubPhys3dJointView **items,
+                                 int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dBody *b = query_body(app, body);
+  if (!b)
+    return LUB_NOT_FOUND;
+  int capacity = b3Body_GetJointCount(b->id);
+  if (capacity <= 0)
+    return LUB_OK;
+  b3JointId *ids = (b3JointId *)SDL_malloc(sizeof(*ids) * capacity);
+  if (!ids)
+    return lub_api_fail(app, "phys3d_body_joints: out of memory");
+  int n = b3Body_GetJoints(b->id, ids, capacity);
+  LubPhys3dJointView *views = (LubPhys3dJointView *)scratch_alloc(
+      app, sizeof(LubPhys3dJointView) * (size_t)(n > 0 ? n : 1));
+  if (!views) {
+    SDL_free(ids);
+    return lub_api_fail(app, "phys3d_body_joints: out of memory");
+  }
+  for (int i = 0; i < n; ++i) {
+    Phys3dJoint *j = B3_IS_NON_NULL(ids[i]) && b3Joint_IsValid(ids[i])
+                         ? (Phys3dJoint *)b3Joint_GetUserData(ids[i])
+                         : NULL;
+    fill_joint_view(&views[i], j);
+  }
+  SDL_free(ids);
+  *items = views;
+  *count = n;
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_body_contacts(LubContext *ctx, LubHandle body,
+                                   const LubPhys3dContactData **items,
+                                   int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dBody *b = query_body(app, body);
+  if (!b)
+    return LUB_NOT_FOUND;
+  int capacity = b3Body_GetContactCapacity(b->id);
+  if (capacity <= 0)
+    return LUB_OK;
+  b3ContactData *data = (b3ContactData *)SDL_malloc(sizeof(*data) * capacity);
+  if (!data)
+    return lub_api_fail(app, "phys3d_body_contacts: out of memory");
+  int n = b3Body_GetContactData(b->id, data, capacity);
+  LubPhys3dContactData *out = (LubPhys3dContactData *)scratch_alloc(
+      app, sizeof(LubPhys3dContactData) * (size_t)(n > 0 ? n : 1));
+  if (!out) {
+    SDL_free(data);
+    return lub_api_fail(app, "phys3d_body_contacts: out of memory");
+  }
+  for (int i = 0; i < n; ++i) {
+    const b3ContactData *c = &data[i];
+    fill_shape_part(&out[i].a, c->shapeIdA);
+    fill_shape_part(&out[i].b, c->shapeIdB);
+    const b3Manifold *manifold =
+        c->manifoldCount > 0 && c->manifolds ? &c->manifolds[0] : NULL;
+    out[i].normal = manifold ? lub_vec3(manifold->normal) : (LubVec3){0, 0, 0};
+    out[i].manifold_count = c->manifoldCount;
+    out[i].point_count = manifold ? manifold->pointCount : 0;
+    if (manifold && manifold->pointCount > 0 && B3_IS_NON_NULL(c->shapeIdA) &&
+        b3Shape_IsValid(c->shapeIdA)) {
+      b3Pos com = b3Body_GetWorldCenterOfMass(b3Shape_GetBody(c->shapeIdA));
+      b3Vec3 anchor = manifold->points[0].anchorA;
+      out[i].has_point = true;
+      out[i].point =
+          (LubVec3){(float)(com.x + anchor.x), (float)(com.y + anchor.y),
+                    (float)(com.z + anchor.z)};
+      out[i].separation = manifold->points[0].separation;
     }
-    keep_going = parse_overlap_visitor_result(L, -1, &include);
-    lua_pop(L, 1);
   }
-
-  if (include) {
-    lua_rawseti(L, -2, ++ctx->count);
-  } else {
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-  return keep_going;
+  SDL_free(data);
+  *items = out;
+  *count = n;
+  return LUB_OK;
 }
 
-static float raycast_result_callback(b3ShapeId shape_id, b3Pos point,
-                                     b3Vec3 normal, float fraction,
-                                     uint64_t user_material_id,
-                                     int triangle_index, int child_index,
-                                     void *context) {
-  Phys3dQueryContext *ctx = (Phys3dQueryContext *)context;
-  lua_State *L = ctx->L;
-  if (ctx->error)
-    return 0.0f;
+// ------------------------------------------------------------ step events
 
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->results_ref);
-  push_raycast_hit(L, shape_id, point, normal, fraction, user_material_id,
-                   triangle_index, child_index);
-  bool include = true;
-  float result = ctx->continue_all ? 1.0f : fraction;
-
-  if (ctx->visitor_ref != LUA_NOREF) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->visitor_ref);
-    lua_pushvalue(L, -2);
-    g_phys3d_callback_depth++;
-    int status = lua_pcall(L, 1, 1, 0);
-    g_phys3d_callback_depth--;
-    if (status != LUA_OK) {
-      ctx->error = phys_strdup(lua_tostring(L, -1));
-      lua_pop(L, 3);
-      return 0.0f;
-    }
-    result = parse_raycast_visitor_result(L, -1, fraction, &include);
-    lua_pop(L, 1);
+static LubStatus contact_list(App *app, Phys3dContactSnapshot *src, int n,
+                              const LubPhys3dContact **items, int32_t *count) {
+  LubPhys3dContact *out = (LubPhys3dContact *)scratch_alloc(
+      app, sizeof(LubPhys3dContact) * (size_t)(n > 0 ? n : 1));
+  if (!out)
+    return lub_api_fail(app, "phys3d_contacts: out of memory");
+  for (int i = 0; i < n; ++i) {
+    Phys3dContactSnapshot *e = &src[i];
+    fill_snapshot_part(&out[i].a, e->a_body, e->a_shape, e->a_tag,
+                       e->a_material, e->a_material_id, e->a_valid);
+    fill_snapshot_part(&out[i].b, e->b_body, e->b_shape, e->b_tag,
+                       e->b_material, e->b_material_id, e->b_valid);
+    out[i].normal = (LubVec3){e->nx, e->ny, e->nz};
+    out[i].point_count = e->point_count;
+    out[i].point = (LubVec3){e->x, e->y, e->z};
+    out[i].approach_speed = e->approach_speed;
   }
-
-  if (include) {
-    lua_rawseti(L, -2, ++ctx->count);
-  } else {
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-  return result;
+  *items = out;
+  *count = n;
+  return LUB_OK;
 }
 
-static void set_tree_stats(lua_State *L, b3TreeStats stats) {
-  lua_pushinteger(L, stats.nodeVisits);
-  lua_setfield(L, -2, "node_visits");
-  lua_pushinteger(L, stats.leafVisits);
-  lua_setfield(L, -2, "leaf_visits");
-}
-
-static bool parse_raycast_mode_all(lua_State *L, int idx, const char *fn_name) {
-  bool all = false;
-  if (!table_get_any(L, idx, "mode", NULL))
-    return false;
-  if (lua_isstring(L, -1)) {
-    const char *mode = lua_tostring(L, -1);
-    if (strcmp(mode, "all") == 0) {
-      all = true;
-    } else if (strcmp(mode, "closest") != 0) {
-      luaL_error(L, "%s: mode must be closest or all", fn_name);
-    }
-  }
-  lua_pop(L, 1);
-  return all;
-}
-
-static int l_phys3d_raycast(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
+LubStatus lub_phys3d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
+                              const LubPhys3dContact **items, int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dWorld *w = query_world(app, world);
   if (!w)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 origin;
-  b3Vec3 translation;
-  parse_ray_query(L, 2, "phys3d_raycast", &origin, &translation);
-  b3QueryFilter filter = parse_query_filter(L, 2);
-  bool collect_all = parse_raycast_mode_all(L, 2, "phys3d_raycast");
-
-  if (!lua_isfunction(L, 3) && !collect_all) {
-    b3RayResult hit =
-        b3World_CastRayClosest(w->id, b3ToPos(origin), translation, filter);
-    if (!hit.hit) {
-      lua_pushnil(L);
-      return 1;
-    }
-    push_raycast_hit(L, hit.shapeId, hit.point, hit.normal, hit.fraction,
-                     hit.userMaterialId, hit.triangleIndex, hit.childIndex);
-    lua_pushinteger(L, hit.nodeVisits);
-    lua_setfield(L, -2, "node_visits");
-    lua_pushinteger(L, hit.leafVisits);
-    lua_setfield(L, -2, "leaf_visits");
-    return 1;
+    return LUB_NOT_FOUND;
+  switch (kind) {
+  case LUB_PHYS3D_EVENT_KIND_BEGIN:
+    return contact_list(app, w->events.begins, w->events.begin_count, items,
+                        count);
+  case LUB_PHYS3D_EVENT_KIND_END:
+    return contact_list(app, w->events.ends, w->events.end_count, items, count);
+  case LUB_PHYS3D_EVENT_KIND_HIT:
+    return contact_list(app, w->events.hits, w->events.hit_count, items, count);
+  default:
+    return lub_api_fail(app,
+                        "phys3d_contacts: kind must be begin, end, or hit");
   }
-
-  lua_newtable(L);
-  int results_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  int visitor_ref = LUA_NOREF;
-  if (lua_isfunction(L, 3)) {
-    lua_pushvalue(L, 3);
-    visitor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
-  Phys3dQueryContext ctx = {.L = L,
-                            .results_ref = results_ref,
-                            .visitor_ref = visitor_ref,
-                            .count = 0,
-                            .continue_all =
-                                collect_all && visitor_ref == LUA_NOREF,
-                            .error = NULL};
-  b3TreeStats stats = b3World_CastRay(w->id, b3ToPos(origin), translation,
-                                      filter, raycast_result_callback, &ctx);
-  if (ctx.error) {
-    luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-    if (visitor_ref != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-    return push_visitor_error(L, "phys3d_raycast", ctx.error);
-  }
-  lua_rawgeti(L, LUA_REGISTRYINDEX, results_ref);
-  set_tree_stats(L, stats);
-  luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-  if (visitor_ref != LUA_NOREF)
-    luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-  return 1;
 }
 
-static int l_phys3d_overlap_aabb(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
+LubStatus lub_phys3d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
+                             const LubPhys3dContact **items, int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dWorld *w = query_world(app, world);
   if (!w)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 lower = {table_number(L, 2, "min_x", "minX", 0.0f),
-                  table_number(L, 2, "min_y", "minY", 0.0f),
-                  table_number(L, 2, "min_z", "minZ", 0.0f)};
-  lower = table_vec3(L, 2, "min", NULL, lower);
-  b3Vec3 upper = {table_number(L, 2, "max_x", "maxX", 0.0f),
-                  table_number(L, 2, "max_y", "maxY", 0.0f),
-                  table_number(L, 2, "max_z", "maxZ", 0.0f)};
-  upper = table_vec3(L, 2, "max", NULL, upper);
-  if (lower.x > upper.x || lower.y > upper.y || lower.z > upper.z)
-    return luaL_error(L, "phys3d_overlap_aabb: min must be <= max");
-  b3AABB aabb = {lower, upper};
-  b3QueryFilter filter = parse_query_filter(L, 2);
+    return LUB_NOT_FOUND;
+  switch (kind) {
+  case LUB_PHYS3D_EVENT_KIND_BEGIN:
+    return contact_list(app, w->events.sensor_begins,
+                        w->events.sensor_begin_count, items, count);
+  case LUB_PHYS3D_EVENT_KIND_END:
+    return contact_list(app, w->events.sensor_ends, w->events.sensor_end_count,
+                        items, count);
+  default:
+    return lub_api_fail(app, "phys3d_sensors: kind must be begin or end");
+  }
+}
 
-  lua_newtable(L);
-  int results_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  int visitor_ref = LUA_NOREF;
-  if (lua_isfunction(L, 3)) {
-    lua_pushvalue(L, 3);
-    visitor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
+                                 const LubPhys3dBodyEvent **items,
+                                 int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  int n = w->events.move_count;
+  LubPhys3dBodyEvent *out = (LubPhys3dBodyEvent *)scratch_alloc(
+      app, sizeof(LubPhys3dBodyEvent) * (size_t)(n > 0 ? n : 1));
+  if (!out)
+    return lub_api_fail(app, "phys3d_body_events: out of memory");
+  for (int i = 0; i < n; ++i) {
+    Phys3dBodyEventSnapshot *e = &w->events.moves[i];
+    out[i].body = str_or_empty(e->body);
+    out[i].valid = e->valid;
+    out[i].position = (LubVec3){e->x, e->y, e->z};
+    out[i].rotation = (LubQuat){e->qx, e->qy, e->qz, e->qw};
+    out[i].fell_asleep = e->fell_asleep;
   }
-  Phys3dQueryContext ctx = {.L = L,
-                            .results_ref = results_ref,
-                            .visitor_ref = visitor_ref,
-                            .count = 0,
-                            .continue_all = false,
-                            .error = NULL};
-  b3TreeStats stats =
-      b3World_OverlapAABB(w->id, aabb, filter, overlap_result_callback, &ctx);
-  if (ctx.error) {
-    luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-    if (visitor_ref != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-    return push_visitor_error(L, "phys3d_overlap_aabb", ctx.error);
+  *items = out;
+  *count = n;
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
+                                  const LubPhys3dJointEvent **items,
+                                  int32_t *count) {
+  App *app = lub_api_app(ctx);
+  *items = NULL;
+  *count = 0;
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  int n = w->events.joint_count;
+  LubPhys3dJointEvent *out = (LubPhys3dJointEvent *)scratch_alloc(
+      app, sizeof(LubPhys3dJointEvent) * (size_t)(n > 0 ? n : 1));
+  if (!out)
+    return lub_api_fail(app, "phys3d_joint_events: out of memory");
+  for (int i = 0; i < n; ++i) {
+    Phys3dJointEventSnapshot *e = &w->events.joints[i];
+    out[i].joint = str_or_empty(e->joint);
+    out[i].type = e->type;
+    out[i].a = str_or_empty(e->body_a);
+    out[i].b = str_or_empty(e->body_b);
+    out[i].valid = e->valid;
   }
-  lua_rawgeti(L, LUA_REGISTRYINDEX, results_ref);
-  set_tree_stats(L, stats);
-  luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-  if (visitor_ref != LUA_NOREF)
-    luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-  return 1;
+  *items = out;
+  *count = n;
+  return LUB_OK;
+}
+
+// ---------------------------------------------------------- world queries
+
+static b3QueryFilter query_filter_of(const LubPhys3dQueryFilter *f) {
+  b3QueryFilter out = b3DefaultQueryFilter();
+  if (f) {
+    out.categoryBits = f->category_bits;
+    out.maskBits = f->mask_bits;
+  }
+  return out;
+}
+
+typedef struct QueryCtx {
+  Phys3dState *state;
+  b3Pos origin; // collide_mover の plane を world に戻すため
+  LubPhys3dOverlapFn overlap;
+  LubPhys3dRayFn ray;
+  LubPhys3dPlaneFn plane;
+  void *user;
+} QueryCtx;
+
+static bool overlap_trampoline(b3ShapeId shape_id, void *context) {
+  QueryCtx *q = (QueryCtx *)context;
+  LubPhys3dShapePart part;
+  fill_shape_part(&part, shape_id);
+  q->state->callback_depth++;
+  bool keep = q->overlap(q->user, &part);
+  q->state->callback_depth--;
+  return keep;
+}
+
+static float ray_trampoline(b3ShapeId shape_id, b3Pos point, b3Vec3 normal,
+                            float fraction, uint64_t user_material_id,
+                            int triangle_index, int child_index,
+                            void *context) {
+  QueryCtx *q = (QueryCtx *)context;
+  LubPhys3dRayHit hit;
+  memset(&hit, 0, sizeof(hit));
+  fill_shape_part(&hit.shape, shape_id);
+  hit.point = lub_pos(point);
+  hit.normal = lub_vec3(normal);
+  hit.fraction = fraction;
+  hit.hit_material_id = (int32_t)user_material_id;
+  hit.triangle_index = triangle_index;
+  hit.child_index = child_index;
+  q->state->callback_depth++;
+  float r = q->ray(q->user, &hit);
+  q->state->callback_depth--;
+  return r;
+}
+
+static LubPhys3dTreeStats stats_of(b3TreeStats s) {
+  LubPhys3dTreeStats out = {s.nodeVisits, s.leafVisits};
+  return out;
+}
+
+LubStatus lub_phys3d_raycast_closest(LubContext *ctx, LubHandle world,
+                                     const LubPhys3dRay *ray,
+                                     const LubPhys3dQueryFilter *filter,
+                                     LubPhys3dRayHit *out, bool *hit) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  *hit = false;
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  if (!ray_valid(app, ray, "phys3d_raycast"))
+    return LUB_ERROR;
+  b3RayResult r = b3World_CastRayClosest(w->id, b3ToPos(vec3_of(ray->origin)),
+                                         vec3_of(ray->translation),
+                                         query_filter_of(filter));
+  if (!r.hit)
+    return LUB_OK;
+  *hit = true;
+  fill_shape_part(&out->shape, r.shapeId);
+  out->point = lub_pos(r.point);
+  out->normal = lub_vec3(r.normal);
+  out->fraction = r.fraction;
+  out->hit_material_id = (int32_t)r.userMaterialId;
+  out->triangle_index = r.triangleIndex;
+  out->child_index = r.childIndex;
+  out->node_visits = r.nodeVisits;
+  out->leaf_visits = r.leafVisits;
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
+                             const LubPhys3dRay *ray,
+                             const LubPhys3dQueryFilter *filter,
+                             LubPhys3dRayFn fn, void *user,
+                             LubPhys3dTreeStats *stats) {
+  App *app = lub_api_app(ctx);
+  memset(stats, 0, sizeof(*stats));
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  if (!ray_valid(app, ray, "phys3d_raycast"))
+    return LUB_ERROR;
+  if (!fn)
+    return lub_api_fail(app, "phys3d_raycast: visitor required");
+  QueryCtx q = {phys_state(app), b3ToPos(b3Vec3_zero), NULL, fn, NULL, user};
+  b3TreeStats s = b3World_CastRay(w->id, b3ToPos(vec3_of(ray->origin)),
+                                  vec3_of(ray->translation),
+                                  query_filter_of(filter), ray_trampoline, &q);
+  *stats = stats_of(s);
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                  const LubPhys3dAabb *aabb,
+                                  const LubPhys3dQueryFilter *filter,
+                                  LubPhys3dOverlapFn fn, void *user,
+                                  LubPhys3dTreeStats *stats) {
+  App *app = lub_api_app(ctx);
+  memset(stats, 0, sizeof(*stats));
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  if (aabb->min.x > aabb->max.x || aabb->min.y > aabb->max.y ||
+      aabb->min.z > aabb->max.z)
+    return lub_api_fail(app, "phys3d_overlap_aabb: min must be <= max");
+  if (!fn)
+    return lub_api_fail(app, "phys3d_overlap_aabb: visitor required");
+  b3AABB box = {vec3_of(aabb->min), vec3_of(aabb->max)};
+  QueryCtx q = {phys_state(app), b3ToPos(b3Vec3_zero), fn, NULL, NULL, user};
+  b3TreeStats s = b3World_OverlapAABB(w->id, box, query_filter_of(filter),
+                                      overlap_trampoline, &q);
+  *stats = stats_of(s);
+  return LUB_OK;
 }
 
 #define PHYS3D_PROXY_MAX_POINTS 8
 
-// Parses { sphere = { r, center } } | { box = { hx, hy, hz, center, quat } } |
-// { capsule = { a, b, r } } into a shape proxy. The proxy points are relative
-// to the returned origin so the query stays precise far from the world origin.
-static b3Pos parse_shape_proxy(lua_State *L, int idx, const char *fn_name,
-                               b3Vec3 *points, b3ShapeProxy *proxy) {
-  idx = abs_index(L, idx);
-  if (table_get_any(L, idx, "sphere", NULL)) {
-    if (!lua_istable(L, -1))
-      luaL_error(L, "%s: sphere must be a table", fn_name);
-    int t = lua_gettop(L);
-    float r = table_number(L, t, "r", "radius", 0.0f);
-    if (r <= 0.0f)
-      luaL_error(L, "%s: sphere r must be > 0", fn_name);
-    b3Vec3 center = table_vec3(L, t, "center", NULL, b3Vec3_zero);
-    lua_pop(L, 1);
+// proxy の点は origin 相対にする (world 原点から遠くても精度を保つ)。
+static bool make_proxy(App *app, const LubPhys3dShapeProxy *p, const char *fn,
+                       b3Vec3 *points, b3ShapeProxy *proxy, b3Pos *origin) {
+  switch (p->kind) {
+  case LUB_PHYS3D_PROXY_KIND_SPHERE:
+    if (p->r <= 0.0f) {
+      lub_api_fail(app, "%s: sphere r must be > 0", fn);
+      return false;
+    }
     points[0] = b3Vec3_zero;
     proxy->points = points;
     proxy->count = 1;
-    proxy->radius = r;
-    return b3ToPos(center);
-  }
-  if (table_get_any(L, idx, "box", NULL)) {
-    if (!lua_istable(L, -1))
-      luaL_error(L, "%s: box must be a table", fn_name);
-    int t = lua_gettop(L);
-    float hx = table_number(L, t, "hx", NULL, 0.0f);
-    float hy = table_number(L, t, "hy", NULL, 0.0f);
-    float hz = table_number(L, t, "hz", NULL, 0.0f);
-    if (hx <= 0.0f || hy <= 0.0f || hz <= 0.0f)
-      luaL_error(L, "%s: box hx, hy and hz must be > 0", fn_name);
-    float radius = table_number(L, t, "radius", "r", 0.0f);
-    if (radius < 0.0f)
-      luaL_error(L, "%s: box radius must be >= 0", fn_name);
-    b3Vec3 center = table_vec3(L, t, "center", NULL, b3Vec3_zero);
-    b3Quat rotation = b3Quat_identity;
-    bool has_rotation = false;
-    if (table_get_any(L, t, "quat", NULL)) {
-      if (lua_istable(L, -1)) {
-        rotation = value_quat(L, lua_gettop(L), b3Quat_identity);
-        has_rotation = true;
-      }
-      lua_pop(L, 1);
+    proxy->radius = p->r;
+    *origin = b3ToPos(vec3_of(p->center));
+    return true;
+  case LUB_PHYS3D_PROXY_KIND_BOX: {
+    if (p->hx <= 0.0f || p->hy <= 0.0f || p->hz <= 0.0f) {
+      lub_api_fail(app, "%s: box hx, hy and hz must be > 0", fn);
+      return false;
     }
-    lua_pop(L, 1);
+    if (p->r < 0.0f) {
+      lub_api_fail(app, "%s: box radius must be >= 0", fn);
+      return false;
+    }
+    b3Quat rotation = p->has_rotation ? quat_of(p->rotation) : b3Quat_identity;
     int count = 0;
     for (int ix = -1; ix <= 1; ix += 2) {
       for (int iy = -1; iy <= 1; iy += 2) {
         for (int iz = -1; iz <= 1; iz += 2) {
-          b3Vec3 corner = {hx * (float)ix, hy * (float)iy, hz * (float)iz};
+          b3Vec3 corner = {p->hx * (float)ix, p->hy * (float)iy,
+                           p->hz * (float)iz};
           points[count++] =
-              has_rotation ? b3RotateVector(rotation, corner) : corner;
+              p->has_rotation ? b3RotateVector(rotation, corner) : corner;
         }
       }
     }
     proxy->points = points;
     proxy->count = count;
-    proxy->radius = radius;
-    return b3ToPos(center);
+    proxy->radius = p->r;
+    *origin = b3ToPos(vec3_of(p->center));
+    return true;
   }
-  if (table_get_any(L, idx, "capsule", NULL)) {
-    if (!lua_istable(L, -1))
-      luaL_error(L, "%s: capsule must be a table", fn_name);
-    int t = lua_gettop(L);
-    b3Vec3 a = table_vec3(L, t, "a", NULL, b3Vec3_zero);
-    b3Vec3 c = table_vec3(L, t, "b", NULL, b3Vec3_zero);
-    float r = table_number(L, t, "r", "radius", 0.0f);
-    if (r <= 0.0f)
-      luaL_error(L, "%s: capsule r must be > 0", fn_name);
-    if (b3DistanceSquared(a, c) <= 1e-12f)
-      luaL_error(L, "%s: capsule endpoints must be distinct", fn_name);
-    lua_pop(L, 1);
+  case LUB_PHYS3D_PROXY_KIND_CAPSULE: {
+    b3Vec3 a = vec3_of(p->a);
+    b3Vec3 c = vec3_of(p->b);
+    if (p->r <= 0.0f) {
+      lub_api_fail(app, "%s: capsule r must be > 0", fn);
+      return false;
+    }
+    if (b3DistanceSquared(a, c) <= 1e-12f) {
+      lub_api_fail(app, "%s: capsule endpoints must be distinct", fn);
+      return false;
+    }
     b3Vec3 mid = b3MulSV(0.5f, b3Add(a, c));
     points[0] = b3Sub(a, mid);
     points[1] = b3Sub(c, mid);
     proxy->points = points;
     proxy->count = 2;
-    proxy->radius = r;
-    return b3ToPos(mid);
+    proxy->radius = p->r;
+    *origin = b3ToPos(mid);
+    return true;
   }
-  luaL_error(L, "%s: expected sphere, box, or capsule", fn_name);
-  return b3ToPos(b3Vec3_zero);
-}
-
-static b3Vec3 parse_translation(lua_State *L, int idx, const char *fn_name) {
-  b3Vec3 translation = {table_number(L, idx, "dx", NULL, 0.0f),
-                        table_number(L, idx, "dy", NULL, 0.0f),
-                        table_number(L, idx, "dz", NULL, 0.0f)};
-  translation = table_vec3(L, idx, "translation", "delta", translation);
-  float max_fraction =
-      table_number(L, idx, "max_fraction", "maxFraction", 1.0f);
-  if (max_fraction < 0.0f)
-    max_fraction = 0.0f;
-  translation = b3MulSV(max_fraction, translation);
-  if (translation.x * translation.x + translation.y * translation.y +
-          translation.z * translation.z <=
-      1e-12f)
-    luaL_error(L, "%s: translation must be non-zero", fn_name);
-  return translation;
-}
-
-static int l_phys3d_overlap_shape(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 points[PHYS3D_PROXY_MAX_POINTS];
-  b3ShapeProxy proxy;
-  b3Pos origin =
-      parse_shape_proxy(L, 2, "phys3d_overlap_shape", points, &proxy);
-  b3QueryFilter filter = parse_query_filter(L, 2);
-
-  lua_newtable(L);
-  int results_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  int visitor_ref = LUA_NOREF;
-  if (lua_isfunction(L, 3)) {
-    lua_pushvalue(L, 3);
-    visitor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
-  Phys3dQueryContext ctx = {.L = L,
-                            .results_ref = results_ref,
-                            .visitor_ref = visitor_ref,
-                            .count = 0,
-                            .continue_all = false,
-                            .error = NULL};
-  b3TreeStats stats = b3World_OverlapShape(w->id, origin, &proxy, filter,
-                                           overlap_result_callback, &ctx);
-  if (ctx.error) {
-    luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-    if (visitor_ref != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-    return push_visitor_error(L, "phys3d_overlap_shape", ctx.error);
-  }
-  lua_rawgeti(L, LUA_REGISTRYINDEX, results_ref);
-  set_tree_stats(L, stats);
-  luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-  if (visitor_ref != LUA_NOREF)
-    luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-  return 1;
-}
-
-static int l_phys3d_shape_cast(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Vec3 points[PHYS3D_PROXY_MAX_POINTS];
-  b3ShapeProxy proxy;
-  b3Pos origin = parse_shape_proxy(L, 2, "phys3d_shape_cast", points, &proxy);
-  b3Vec3 translation = parse_translation(L, 2, "phys3d_shape_cast");
-  b3QueryFilter filter = parse_query_filter(L, 2);
-
-  lua_newtable(L);
-  int results_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  int visitor_ref = LUA_NOREF;
-  if (lua_isfunction(L, 3)) {
-    lua_pushvalue(L, 3);
-    visitor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
-  Phys3dQueryContext ctx = {.L = L,
-                            .results_ref = results_ref,
-                            .visitor_ref = visitor_ref,
-                            .count = 0,
-                            .continue_all = false,
-                            .error = NULL};
-  b3TreeStats stats = b3World_CastShape(w->id, origin, &proxy, translation,
-                                        filter, raycast_result_callback, &ctx);
-  if (ctx.error) {
-    luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-    if (visitor_ref != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-    return push_visitor_error(L, "phys3d_shape_cast", ctx.error);
-  }
-
-  if (visitor_ref == LUA_NOREF) {
-    if (ctx.count == 0) {
-      luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-      lua_pushnil(L);
-      return 1;
-    }
-    lua_rawgeti(L, LUA_REGISTRYINDEX, results_ref);
-    lua_rawgeti(L, -1, ctx.count);
-    set_tree_stats(L, stats);
-    lua_remove(L, -2);
-    luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-    return 1;
-  }
-
-  lua_rawgeti(L, LUA_REGISTRYINDEX, results_ref);
-  set_tree_stats(L, stats);
-  luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-  luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-  return 1;
-}
-
-// Parses the mover capsule { a = {x,y,z}, b = {x,y,z}, r }. The capsule is
-// returned relative to the midpoint origin so the query stays precise far
-// from the world origin.
-static b3Pos parse_mover_capsule(lua_State *L, int idx, const char *fn_name,
-                                 b3Capsule *mover) {
-  b3Vec3 a = table_vec3(L, idx, "a", NULL, b3Vec3_zero);
-  b3Vec3 c = table_vec3(L, idx, "b", NULL, b3Vec3_zero);
-  mover->radius = table_number(L, idx, "r", "radius", 0.0f);
-  if (b3DistanceSquared(a, c) <= 1e-12f)
-    luaL_error(L, "%s: mover endpoints must be distinct", fn_name);
-  if (mover->radius <= 0.011f)
-    luaL_error(L, "%s: mover radius must be > 0.011", fn_name);
-  b3Vec3 mid = b3MulSV(0.5f, b3Add(a, c));
-  mover->center1 = b3Sub(a, mid);
-  mover->center2 = b3Sub(c, mid);
-  return b3ToPos(mid);
-}
-
-static int l_phys3d_cast_mover(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
-  if (!w)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Capsule mover;
-  b3Pos origin = parse_mover_capsule(L, 2, "phys3d_cast_mover", &mover);
-  b3Vec3 translation = parse_translation(L, 2, "phys3d_cast_mover");
-  b3QueryFilter filter = parse_query_filter(L, 2);
-  float fraction =
-      b3World_CastMover(w->id, origin, &mover, translation, filter, NULL, NULL);
-
-  lua_newtable(L);
-  lua_pushnumber(L, fraction);
-  lua_setfield(L, -2, "fraction");
-  lua_pushnumber(L, translation.x * fraction);
-  lua_setfield(L, -2, "dx");
-  lua_pushnumber(L, translation.y * fraction);
-  lua_setfield(L, -2, "dy");
-  lua_pushnumber(L, translation.z * fraction);
-  lua_setfield(L, -2, "dz");
-  return 1;
-}
-
-typedef struct Phys3dMoverContext {
-  lua_State *L;
-  b3Pos origin;
-  int results_ref;
-  int visitor_ref;
-  int count;
-  char *error;
-} Phys3dMoverContext;
-
-static void push_mover_plane(lua_State *L, b3Pos origin, b3ShapeId shape_id,
-                             const b3PlaneResult *plane, int plane_count) {
-  push_shape_id_view(L, shape_id);
-  // The plane result is relative to the query origin; convert back to world.
-  lua_pushnumber(L, origin.x + plane->point.x);
-  lua_setfield(L, -2, "x");
-  lua_pushnumber(L, origin.y + plane->point.y);
-  lua_setfield(L, -2, "y");
-  lua_pushnumber(L, origin.z + plane->point.z);
-  lua_setfield(L, -2, "z");
-  lua_pushnumber(L, plane->plane.normal.x);
-  lua_setfield(L, -2, "nx");
-  lua_pushnumber(L, plane->plane.normal.y);
-  lua_setfield(L, -2, "ny");
-  lua_pushnumber(L, plane->plane.normal.z);
-  lua_setfield(L, -2, "nz");
-  lua_pushnumber(L, plane->plane.offset + plane->plane.normal.x * origin.x +
-                        plane->plane.normal.y * origin.y +
-                        plane->plane.normal.z * origin.z);
-  lua_setfield(L, -2, "offset");
-  lua_pushinteger(L, plane_count);
-  lua_setfield(L, -2, "plane_count");
-}
-
-static bool mover_plane_callback(b3ShapeId shape_id, const b3PlaneResult *plane,
-                                 int plane_count, void *context) {
-  Phys3dMoverContext *ctx = (Phys3dMoverContext *)context;
-  lua_State *L = ctx->L;
-  if (ctx->error)
+  default:
+    lub_api_fail(app, "%s: expected sphere, box, or capsule", fn);
     return false;
-
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->results_ref);
-  push_mover_plane(L, ctx->origin, shape_id, plane, plane_count);
-  bool include = true;
-  bool keep_going = true;
-
-  if (ctx->visitor_ref != LUA_NOREF) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->visitor_ref);
-    lua_pushvalue(L, -2);
-    g_phys3d_callback_depth++;
-    int status = lua_pcall(L, 1, 1, 0);
-    g_phys3d_callback_depth--;
-    if (status != LUA_OK) {
-      ctx->error = phys_strdup(lua_tostring(L, -1));
-      lua_pop(L, 3);
-      return false;
-    }
-    keep_going = parse_overlap_visitor_result(L, -1, &include);
-    lua_pop(L, 1);
   }
-
-  if (include) {
-    lua_rawseti(L, -2, ++ctx->count);
-  } else {
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-  return keep_going;
 }
 
-static int l_phys3d_collide_mover(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
+LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
+                                   const LubPhys3dShapeProxy *proxy,
+                                   const LubPhys3dQueryFilter *filter,
+                                   LubPhys3dOverlapFn fn, void *user,
+                                   LubPhys3dTreeStats *stats) {
+  App *app = lub_api_app(ctx);
+  memset(stats, 0, sizeof(*stats));
+  Phys3dWorld *w = query_world(app, world);
   if (!w)
-    return push_not_found(L);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  b3Capsule mover;
-  b3Pos origin = parse_mover_capsule(L, 2, "phys3d_collide_mover", &mover);
-  b3QueryFilter filter = parse_query_filter(L, 2);
-
-  lua_newtable(L);
-  int results_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  int visitor_ref = LUA_NOREF;
-  if (lua_isfunction(L, 3)) {
-    lua_pushvalue(L, 3);
-    visitor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
-  Phys3dMoverContext ctx = {.L = L,
-                            .origin = origin,
-                            .results_ref = results_ref,
-                            .visitor_ref = visitor_ref,
-                            .count = 0,
-                            .error = NULL};
-  b3World_CollideMover(w->id, origin, &mover, filter, mover_plane_callback,
-                       &ctx);
-  if (ctx.error) {
-    luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-    if (visitor_ref != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-    return push_visitor_error(L, "phys3d_collide_mover", ctx.error);
-  }
-  lua_rawgeti(L, LUA_REGISTRYINDEX, results_ref);
-  luaL_unref(L, LUA_REGISTRYINDEX, results_ref);
-  if (visitor_ref != LUA_NOREF)
-    luaL_unref(L, LUA_REGISTRYINDEX, visitor_ref);
-  return 1;
+    return LUB_NOT_FOUND;
+  b3Vec3 points[PHYS3D_PROXY_MAX_POINTS];
+  b3ShapeProxy p;
+  b3Pos origin;
+  if (!make_proxy(app, proxy, "phys3d_overlap_shape", points, &p, &origin))
+    return LUB_ERROR;
+  if (!fn)
+    return lub_api_fail(app, "phys3d_overlap_shape: visitor required");
+  QueryCtx q = {phys_state(app), b3ToPos(b3Vec3_zero), fn, NULL, NULL, user};
+  b3TreeStats s = b3World_OverlapShape(
+      w->id, origin, &p, query_filter_of(filter), overlap_trampoline, &q);
+  *stats = stats_of(s);
+  return LUB_OK;
 }
 
-static void set_profile_number(lua_State *L, const char *key, float value) {
-  lua_pushnumber(L, value);
-  lua_setfield(L, -2, key);
-}
-
-static int l_phys3d_profile(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
+LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
+                                const LubPhys3dShapeProxy *proxy,
+                                LubVec3 translation,
+                                const LubPhys3dQueryFilter *filter,
+                                LubPhys3dRayFn fn, void *user,
+                                LubPhys3dTreeStats *stats) {
+  App *app = lub_api_app(ctx);
+  memset(stats, 0, sizeof(*stats));
+  Phys3dWorld *w = query_world(app, world);
   if (!w)
-    return push_not_found(L);
+    return LUB_NOT_FOUND;
+  b3Vec3 points[PHYS3D_PROXY_MAX_POINTS];
+  b3ShapeProxy p;
+  b3Pos origin;
+  if (!make_proxy(app, proxy, "phys3d_shape_cast", points, &p, &origin))
+    return LUB_ERROR;
+  b3Vec3 t = vec3_of(translation);
+  if (b3LengthSquared(t) <= 1e-12f)
+    return lub_api_fail(app, "phys3d_shape_cast: translation must be non-zero");
+  if (!fn)
+    return lub_api_fail(app, "phys3d_shape_cast: visitor required");
+  QueryCtx q = {phys_state(app), b3ToPos(b3Vec3_zero), NULL, fn, NULL, user};
+  b3TreeStats s = b3World_CastShape(
+      w->id, origin, &p, t, query_filter_of(filter), ray_trampoline, &q);
+  *stats = stats_of(s);
+  return LUB_OK;
+}
+
+static bool mover_of(App *app, const LubPhys3dMover *m, const char *fn,
+                     b3Capsule *out, b3Pos *origin) {
+  b3Vec3 a = vec3_of(m->a);
+  b3Vec3 c = vec3_of(m->b);
+  out->radius = m->r;
+  if (b3DistanceSquared(a, c) <= 1e-12f) {
+    lub_api_fail(app, "%s: mover endpoints must be distinct", fn);
+    return false;
+  }
+  if (out->radius <= 0.011f) {
+    lub_api_fail(app, "%s: mover radius must be > 0.011", fn);
+    return false;
+  }
+  b3Vec3 mid = b3MulSV(0.5f, b3Add(a, c));
+  out->center1 = b3Sub(a, mid);
+  out->center2 = b3Sub(c, mid);
+  *origin = b3ToPos(mid);
+  return true;
+}
+
+LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
+                                const LubPhys3dMover *mover,
+                                LubVec3 translation,
+                                const LubPhys3dQueryFilter *filter,
+                                float *fraction) {
+  App *app = lub_api_app(ctx);
+  *fraction = 0;
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  b3Capsule capsule;
+  b3Pos origin;
+  if (!mover_of(app, mover, "phys3d_cast_mover", &capsule, &origin))
+    return LUB_ERROR;
+  b3Vec3 t = vec3_of(translation);
+  if (b3LengthSquared(t) <= 1e-12f)
+    return lub_api_fail(app, "phys3d_cast_mover: translation must be non-zero");
+  *fraction = b3World_CastMover(w->id, origin, &capsule, t,
+                                query_filter_of(filter), NULL, NULL);
+  return LUB_OK;
+}
+
+static bool plane_trampoline(b3ShapeId shape_id, const b3PlaneResult *plane,
+                             int plane_count, void *context) {
+  QueryCtx *q = (QueryCtx *)context;
+  LubPhys3dMoverPlane p;
+  memset(&p, 0, sizeof(p));
+  fill_shape_part(&p.shape, shape_id);
+  // plane の結果は query の origin 相対なので world に戻す。
+  p.point = (LubVec3){(float)(q->origin.x + plane->point.x),
+                      (float)(q->origin.y + plane->point.y),
+                      (float)(q->origin.z + plane->point.z)};
+  p.normal = lub_vec3(plane->plane.normal);
+  p.offset = (float)(plane->plane.offset + plane->plane.normal.x * q->origin.x +
+                     plane->plane.normal.y * q->origin.y +
+                     plane->plane.normal.z * q->origin.z);
+  p.plane_count = plane_count;
+  q->state->callback_depth++;
+  bool keep = q->plane(q->user, &p);
+  q->state->callback_depth--;
+  return keep;
+}
+
+LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
+                                   const LubPhys3dMover *mover,
+                                   const LubPhys3dQueryFilter *filter,
+                                   LubPhys3dPlaneFn fn, void *user) {
+  App *app = lub_api_app(ctx);
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
+  b3Capsule capsule;
+  b3Pos origin;
+  if (!mover_of(app, mover, "phys3d_collide_mover", &capsule, &origin))
+    return LUB_ERROR;
+  if (!fn)
+    return lub_api_fail(app, "phys3d_collide_mover: visitor required");
+  QueryCtx q = {phys_state(app), origin, NULL, NULL, fn, user};
+  b3World_CollideMover(w->id, origin, &capsule, query_filter_of(filter),
+                       plane_trampoline, &q);
+  return LUB_OK;
+}
+
+LubStatus lub_phys3d_profile(LubContext *ctx, LubHandle world,
+                             LubPhys3dProfile *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dWorld *w = query_world(app, world);
+  if (!w)
+    return LUB_NOT_FOUND;
   b3Profile p = b3World_GetProfile(w->id);
-  lua_newtable(L);
-  set_profile_number(L, "step", p.step);
-  set_profile_number(L, "pairs", p.pairs);
-  set_profile_number(L, "collide", p.collide);
-  set_profile_number(L, "solve", p.solve);
-  set_profile_number(L, "solver_setup", p.solverSetup);
-  set_profile_number(L, "constraints", p.constraints);
-  set_profile_number(L, "prepare_constraints", p.prepareConstraints);
-  set_profile_number(L, "integrate_velocities", p.integrateVelocities);
-  set_profile_number(L, "warm_start", p.warmStart);
-  set_profile_number(L, "solve_impulses", p.solveImpulses);
-  set_profile_number(L, "integrate_positions", p.integratePositions);
-  set_profile_number(L, "relax_impulses", p.relaxImpulses);
-  set_profile_number(L, "apply_restitution", p.applyRestitution);
-  set_profile_number(L, "store_impulses", p.storeImpulses);
-  set_profile_number(L, "split_islands", p.splitIslands);
-  set_profile_number(L, "transforms", p.transforms);
-  set_profile_number(L, "sensor_hits", p.sensorHits);
-  set_profile_number(L, "joint_events", p.jointEvents);
-  set_profile_number(L, "hit_events", p.hitEvents);
-  set_profile_number(L, "refit", p.refit);
-  set_profile_number(L, "bullets", p.bullets);
-  set_profile_number(L, "sleep_islands", p.sleepIslands);
-  set_profile_number(L, "sensors", p.sensors);
-  return 1;
+  out->step = p.step;
+  out->pairs = p.pairs;
+  out->collide = p.collide;
+  out->solve = p.solve;
+  out->solver_setup = p.solverSetup;
+  out->constraints = p.constraints;
+  out->prepare_constraints = p.prepareConstraints;
+  out->integrate_velocities = p.integrateVelocities;
+  out->warm_start = p.warmStart;
+  out->solve_impulses = p.solveImpulses;
+  out->integrate_positions = p.integratePositions;
+  out->relax_impulses = p.relaxImpulses;
+  out->apply_restitution = p.applyRestitution;
+  out->store_impulses = p.storeImpulses;
+  out->split_islands = p.splitIslands;
+  out->transforms = p.transforms;
+  out->sensor_hits = p.sensorHits;
+  out->joint_events = p.jointEvents;
+  out->hit_events = p.hitEvents;
+  out->refit = p.refit;
+  out->bullets = p.bullets;
+  out->sleep_islands = p.sleepIslands;
+  out->sensors = p.sensors;
+  return LUB_OK;
 }
 
-static void set_counter_integer(lua_State *L, const char *key, int value) {
-  lua_pushinteger(L, value);
-  lua_setfield(L, -2, key);
-}
-
-static int l_phys3d_counters(lua_State *L) {
-  Phys3dWorld *w = query_world_ref(L, 1);
+LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
+                              LubPhys3dCounters *out) {
+  App *app = lub_api_app(ctx);
+  memset(out, 0, sizeof(*out));
+  Phys3dWorld *w = query_world(app, world);
   if (!w)
-    return push_not_found(L);
+    return LUB_NOT_FOUND;
   b3Counters c = b3World_GetCounters(w->id);
-  lua_newtable(L);
-  set_counter_integer(L, "body_count", c.bodyCount);
-  set_counter_integer(L, "shape_count", c.shapeCount);
-  set_counter_integer(L, "contact_count", c.contactCount);
-  set_counter_integer(L, "joint_count", c.jointCount);
-  set_counter_integer(L, "island_count", c.islandCount);
-  set_counter_integer(L, "stack_used", c.stackUsed);
-  set_counter_integer(L, "arena_capacity", c.arenaCapacity);
-  set_counter_integer(L, "static_tree_height", c.staticTreeHeight);
-  set_counter_integer(L, "tree_height", c.treeHeight);
-  set_counter_integer(L, "sat_call_count", c.satCallCount);
-  set_counter_integer(L, "sat_cache_hit_count", c.satCacheHitCount);
-  set_counter_integer(L, "byte_count", c.byteCount);
-  set_counter_integer(L, "task_count", c.taskCount);
-  set_counter_integer(L, "awake_contact_count", c.awakeContactCount);
-  set_counter_integer(L, "recycled_contact_count", c.recycledContactCount);
-  set_counter_integer(L, "distance_iterations", c.distanceIterations);
-  set_counter_integer(L, "push_back_iterations", c.pushBackIterations);
-  set_counter_integer(L, "root_iterations", c.rootIterations);
-  lua_newtable(L);
-  for (int i = 0; i < 24; ++i) {
-    lua_pushinteger(L, c.colorCounts[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  lua_setfield(L, -2, "color_counts");
-  lua_newtable(L);
-  for (int i = 0; i < B3_CONTACT_MANIFOLD_COUNT_BUCKETS; ++i) {
-    lua_pushinteger(L, c.manifoldCounts[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  lua_setfield(L, -2, "manifold_counts");
-  return 1;
-}
-
-void phys3d_lua_register(lua_State *L) {
-  lua_pushinteger(L, PHYS3D_STATIC);
-  lua_setglobal(L, "STATIC");
-  lua_pushinteger(L, PHYS3D_KINEMATIC);
-  lua_setglobal(L, "KINEMATIC");
-  lua_pushinteger(L, PHYS3D_DYNAMIC);
-  lua_setglobal(L, "DYNAMIC");
-
-  lua_pushcfunction(L, l_phys3d_world);
-  lua_setglobal(L, "phys3d_world");
-  lua_pushcfunction(L, l_phys3d_begin);
-  lua_setglobal(L, "phys3d_begin");
-  lua_pushcfunction(L, l_phys3d_world_info);
-  lua_setglobal(L, "phys3d_world_info");
-  lua_pushcfunction(L, l_phys3d_body);
-  lua_setglobal(L, "phys3d_body");
-  lua_pushcfunction(L, l_phys3d_sphere);
-  lua_setglobal(L, "phys3d_sphere");
-  lua_pushcfunction(L, l_phys3d_box);
-  lua_setglobal(L, "phys3d_box");
-  lua_pushcfunction(L, l_phys3d_capsule);
-  lua_setglobal(L, "phys3d_capsule");
-  lua_pushcfunction(L, l_phys3d_cylinder);
-  lua_setglobal(L, "phys3d_cylinder");
-  lua_pushcfunction(L, l_phys3d_cone);
-  lua_setglobal(L, "phys3d_cone");
-  lua_pushcfunction(L, l_phys3d_hull);
-  lua_setglobal(L, "phys3d_hull");
-  lua_pushcfunction(L, l_phys3d_mesh);
-  lua_setglobal(L, "phys3d_mesh");
-  lua_pushcfunction(L, l_phys3d_height_field);
-  lua_setglobal(L, "phys3d_height_field");
-  lua_pushcfunction(L, l_phys3d_compound);
-  lua_setglobal(L, "phys3d_compound");
-  lua_pushcfunction(L, l_phys3d_joint);
-  lua_setglobal(L, "phys3d_joint");
-  lua_pushcfunction(L, l_phys3d_joint_info);
-  lua_setglobal(L, "phys3d_joint_info");
-  lua_pushcfunction(L, l_phys3d_joint_force);
-  lua_setglobal(L, "phys3d_joint_force");
-  lua_pushcfunction(L, l_phys3d_joint_torque);
-  lua_setglobal(L, "phys3d_joint_torque");
-  lua_pushcfunction(L, l_phys3d_joint_angle);
-  lua_setglobal(L, "phys3d_joint_angle");
-  lua_pushcfunction(L, l_phys3d_joint_translation);
-  lua_setglobal(L, "phys3d_joint_translation");
-  lua_pushcfunction(L, l_phys3d_joint_speed);
-  lua_setglobal(L, "phys3d_joint_speed");
-  lua_pushcfunction(L, l_phys3d_joint_length);
-  lua_setglobal(L, "phys3d_joint_length");
-  lua_pushcfunction(L, l_phys3d_joint_motor_force);
-  lua_setglobal(L, "phys3d_joint_motor_force");
-  lua_pushcfunction(L, l_phys3d_joint_motor_torque);
-  lua_setglobal(L, "phys3d_joint_motor_torque");
-  lua_pushcfunction(L, l_phys3d_joint_set_motor);
-  lua_setglobal(L, "phys3d_joint_set_motor");
-  lua_pushcfunction(L, l_phys3d_joint_set_limit);
-  lua_setglobal(L, "phys3d_joint_set_limit");
-  lua_pushcfunction(L, l_phys3d_joint_set_spring);
-  lua_setglobal(L, "phys3d_joint_set_spring");
-  lua_pushcfunction(L, l_phys3d_joint_set_target);
-  lua_setglobal(L, "phys3d_joint_set_target");
-  lua_pushcfunction(L, l_phys3d_body_joints);
-  lua_setglobal(L, "phys3d_body_joints");
-  lua_pushcfunction(L, l_phys3d_cast_mover);
-  lua_setglobal(L, "phys3d_cast_mover");
-  lua_pushcfunction(L, l_phys3d_collide_mover);
-  lua_setglobal(L, "phys3d_collide_mover");
-  lua_pushcfunction(L, l_phys3d_step);
-  lua_setglobal(L, "phys3d_step");
-  lua_pushcfunction(L, l_phys3d_pose);
-  lua_setglobal(L, "phys3d_pose");
-  lua_pushcfunction(L, l_phys3d_velocity);
-  lua_setglobal(L, "phys3d_velocity");
-  lua_pushcfunction(L, l_phys3d_mass);
-  lua_setglobal(L, "phys3d_mass");
-  lua_pushcfunction(L, l_phys3d_center);
-  lua_setglobal(L, "phys3d_center");
-  lua_pushcfunction(L, l_phys3d_world_point);
-  lua_setglobal(L, "phys3d_world_point");
-  lua_pushcfunction(L, l_phys3d_local_point);
-  lua_setglobal(L, "phys3d_local_point");
-  lua_pushcfunction(L, l_phys3d_velocity_at);
-  lua_setglobal(L, "phys3d_velocity_at");
-  lua_pushcfunction(L, l_phys3d_body_shapes);
-  lua_setglobal(L, "phys3d_body_shapes");
-  lua_pushcfunction(L, l_phys3d_body_contacts);
-  lua_setglobal(L, "phys3d_body_contacts");
-  lua_pushcfunction(L, l_phys3d_shape_raycast);
-  lua_setglobal(L, "phys3d_shape_raycast");
-  lua_pushcfunction(L, l_phys3d_shape_closest_point);
-  lua_setglobal(L, "phys3d_shape_closest_point");
-  lua_pushcfunction(L, l_phys3d_shape_aabb);
-  lua_setglobal(L, "phys3d_shape_aabb");
-  lua_pushcfunction(L, l_phys3d_shape_info);
-  lua_setglobal(L, "phys3d_shape_info");
-  lua_pushcfunction(L, l_phys3d_shape_set_material);
-  lua_setglobal(L, "phys3d_shape_set_material");
-  lua_pushcfunction(L, l_phys3d_shape_set_filter);
-  lua_setglobal(L, "phys3d_shape_set_filter");
-  lua_pushcfunction(L, l_phys3d_shape_set_events);
-  lua_setglobal(L, "phys3d_shape_set_events");
-  lua_pushcfunction(L, l_phys3d_contacts);
-  lua_setglobal(L, "phys3d_contacts");
-  lua_pushcfunction(L, l_phys3d_body_events);
-  lua_setglobal(L, "phys3d_body_events");
-  lua_pushcfunction(L, l_phys3d_sensors);
-  lua_setglobal(L, "phys3d_sensors");
-  lua_pushcfunction(L, l_phys3d_joint_events);
-  lua_setglobal(L, "phys3d_joint_events");
-  lua_pushcfunction(L, l_phys3d_raycast);
-  lua_setglobal(L, "phys3d_raycast");
-  lua_pushcfunction(L, l_phys3d_overlap_aabb);
-  lua_setglobal(L, "phys3d_overlap_aabb");
-  lua_pushcfunction(L, l_phys3d_overlap_shape);
-  lua_setglobal(L, "phys3d_overlap_shape");
-  lua_pushcfunction(L, l_phys3d_shape_cast);
-  lua_setglobal(L, "phys3d_shape_cast");
-  lua_pushcfunction(L, l_phys3d_profile);
-  lua_setglobal(L, "phys3d_profile");
-  lua_pushcfunction(L, l_phys3d_counters);
-  lua_setglobal(L, "phys3d_counters");
-  lua_pushcfunction(L, l_phys3d_add_force);
-  lua_setglobal(L, "phys3d_add_force");
-  lua_pushcfunction(L, l_phys3d_add_force_center);
-  lua_setglobal(L, "phys3d_add_force_center");
-  lua_pushcfunction(L, l_phys3d_add_impulse);
-  lua_setglobal(L, "phys3d_add_impulse");
-  lua_pushcfunction(L, l_phys3d_add_impulse_center);
-  lua_setglobal(L, "phys3d_add_impulse_center");
-  lua_pushcfunction(L, l_phys3d_add_torque);
-  lua_setglobal(L, "phys3d_add_torque");
-  lua_pushcfunction(L, l_phys3d_add_angular_impulse);
-  lua_setglobal(L, "phys3d_add_angular_impulse");
-  lua_pushcfunction(L, l_phys3d_set_velocity);
-  lua_setglobal(L, "phys3d_set_velocity");
-  lua_pushcfunction(L, l_phys3d_teleport);
-  lua_setglobal(L, "phys3d_teleport");
-  lua_pushcfunction(L, l_phys3d_set_target);
-  lua_setglobal(L, "phys3d_set_target");
+  out->body_count = c.bodyCount;
+  out->shape_count = c.shapeCount;
+  out->contact_count = c.contactCount;
+  out->joint_count = c.jointCount;
+  out->island_count = c.islandCount;
+  out->stack_used = c.stackUsed;
+  out->arena_capacity = c.arenaCapacity;
+  out->static_tree_height = c.staticTreeHeight;
+  out->tree_height = c.treeHeight;
+  out->sat_call_count = c.satCallCount;
+  out->sat_cache_hit_count = c.satCacheHitCount;
+  out->byte_count = c.byteCount;
+  out->task_count = c.taskCount;
+  out->awake_contact_count = c.awakeContactCount;
+  out->recycled_contact_count = c.recycledContactCount;
+  out->distance_iterations = c.distanceIterations;
+  out->push_back_iterations = c.pushBackIterations;
+  out->root_iterations = c.rootIterations;
+  for (int i = 0; i < 24; ++i)
+    out->color_counts[i] = c.colorCounts[i];
+  _Static_assert(LUB_PHYS3D_MANIFOLD_COUNT_BUCKETS ==
+                     B3_CONTACT_MANIFOLD_COUNT_BUCKETS,
+                 "manifold bucket count must match box3d");
+  for (int i = 0; i < LUB_PHYS3D_MANIFOLD_COUNT_BUCKETS; ++i)
+    out->manifold_counts[i] = c.manifoldCounts[i];
+  return LUB_OK;
 }

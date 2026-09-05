@@ -1215,6 +1215,726 @@ LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
                                    const LubPhys2dMassDataDesc *desc,
                                    bool wake);
 
+// ---------------------------------------------------------------- phys3d
+// Box3D の即時モード API。宣言 / prune / handle / callback の規則は phys2d と
+// 同じ。位置は float (Box3D の倍精度位置は面に出さない)。回転は
+// 正規化した四元数。
+
+typedef enum LubPhys3dBodyType {
+  LUB_PHYS3D_BODY_TYPE_STATIC = 0,
+  LUB_PHYS3D_BODY_TYPE_KINEMATIC = 1,
+  LUB_PHYS3D_BODY_TYPE_DYNAMIC = 2,
+} LubPhys3dBodyType;
+
+typedef enum LubPhys3dShapeKind {
+  LUB_PHYS3D_SHAPE_KIND_SPHERE = 1,
+  LUB_PHYS3D_SHAPE_KIND_BOX = 2,
+  LUB_PHYS3D_SHAPE_KIND_CAPSULE = 3,
+  LUB_PHYS3D_SHAPE_KIND_CYLINDER = 4,
+  LUB_PHYS3D_SHAPE_KIND_CONE = 5,
+  LUB_PHYS3D_SHAPE_KIND_HULL = 6,
+  LUB_PHYS3D_SHAPE_KIND_MESH = 7,
+  LUB_PHYS3D_SHAPE_KIND_HEIGHT_FIELD = 8,
+  LUB_PHYS3D_SHAPE_KIND_COMPOUND = 9,
+} LubPhys3dShapeKind;
+
+typedef enum LubPhys3dJointType {
+  LUB_PHYS3D_JOINT_TYPE_DISTANCE = 1,
+  LUB_PHYS3D_JOINT_TYPE_FILTER = 2,
+  LUB_PHYS3D_JOINT_TYPE_MOTOR = 3,
+  LUB_PHYS3D_JOINT_TYPE_PARALLEL = 4,
+  LUB_PHYS3D_JOINT_TYPE_PRISMATIC = 5,
+  LUB_PHYS3D_JOINT_TYPE_REVOLUTE = 6,
+  LUB_PHYS3D_JOINT_TYPE_SPHERICAL = 7,
+  LUB_PHYS3D_JOINT_TYPE_WELD = 8,
+  LUB_PHYS3D_JOINT_TYPE_WHEEL = 9,
+} LubPhys3dJointType;
+
+typedef enum LubPhys3dEventKind {
+  LUB_PHYS3D_EVENT_KIND_BEGIN = 0,
+  LUB_PHYS3D_EVENT_KIND_END = 1,
+  LUB_PHYS3D_EVENT_KIND_HIT = 2,
+} LubPhys3dEventKind;
+
+typedef enum LubPhys3dProxyKind {
+  LUB_PHYS3D_PROXY_KIND_SPHERE = 1,
+  LUB_PHYS3D_PROXY_KIND_BOX = 2,
+  LUB_PHYS3D_PROXY_KIND_CAPSULE = 3,
+} LubPhys3dProxyKind;
+
+typedef enum LubPhys3dCompoundChildKind {
+  LUB_PHYS3D_COMPOUND_CHILD_KIND_SPHERE = 1,
+  LUB_PHYS3D_COMPOUND_CHILD_KIND_CAPSULE = 2,
+  LUB_PHYS3D_COMPOUND_CHILD_KIND_BOX = 3,
+} LubPhys3dCompoundChildKind;
+
+typedef struct LubPhys3dFilter {
+  uint64_t category_bits; // 既定 1
+  uint64_t mask_bits;     // 既定 全 bit
+  int32_t group_index;
+} LubPhys3dFilter;
+
+typedef struct LubPhys3dShapePart {
+  LubHandle shape; // 0 = 無し
+  LubHandle body;
+  LubStr body_key;
+  LubStr shape_key;
+  LubStr tag;
+  LubStr material_name;
+  int32_t material_id;
+  int32_t kind; // LubPhys3dShapeKind。0 = 不明
+  bool valid;
+  bool has_material;
+  bool has_filter;
+  LubPhys3dFilter filter;
+} LubPhys3dShapePart;
+
+// Box3D の pre-solve は manifold を持たず、点と法線が 1 つ。
+typedef struct LubPhys3dPreSolve {
+  LubPhys3dShapePart a, b;
+  float x, y, z;
+  float nx, ny, nz;
+} LubPhys3dPreSolve;
+
+typedef struct LubPhys3dCallbacks {
+  void *user;
+  bool (*filter)(void *user, const LubPhys3dShapePart *a,
+                 const LubPhys3dShapePart *b);
+  bool (*pre_solve)(void *user, const LubPhys3dPreSolve *contact);
+  float (*friction)(void *user, float friction_a, int32_t material_a,
+                    float friction_b, int32_t material_b);
+  float (*restitution)(void *user, float restitution_a, int32_t material_a,
+                       float restitution_b, int32_t material_b);
+} LubPhys3dCallbacks;
+
+typedef struct LubPhys3dWorldDesc {
+  bool has_version;
+  int32_t version;
+  LubVec3 gravity; // 既定 (0, -9.8, 0)
+  float fixed_dt;  // 既定 1/60
+  int32_t substeps;
+  int32_t max_steps;
+  bool sleep;
+  bool continuous;
+  bool has_hit_event_threshold;
+  float hit_event_threshold;
+  LubPhys3dCallbacks callbacks;
+} LubPhys3dWorldDesc;
+
+typedef struct LubPhys3dBodyDesc {
+  bool has_version;
+  int32_t version;
+  int32_t type; // LubPhys3dBodyType
+  bool lock_linear_x, lock_linear_y, lock_linear_z;
+  bool lock_angular_x, lock_angular_y, lock_angular_z;
+  bool bullet;
+  bool has_enabled, enabled;
+  bool has_awake, awake;
+  bool has_sleep, sleep;
+  float gravity_scale; // 既定 1
+  float linear_damping, angular_damping;
+  bool has_sleep_threshold;
+  float sleep_threshold;
+  // initial (再生成のときだけ使う)
+  LubVec3 position;
+  LubQuat rotation; // 既定 identity
+  LubVec3 linear_velocity;
+  LubVec3 angular_velocity;
+  bool initial_awake; // 既定 true
+} LubPhys3dBodyDesc;
+
+typedef struct LubPhys3dShapeDesc {
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density;
+  float friction; // 既定 0.6
+  float restitution;
+  int32_t material_id;
+  LubStr material_name;
+  LubStr tag;
+  bool sensor, contact, hit, sensor_events, pre_solve;
+  LubPhys3dFilter filter;
+} LubPhys3dShapeDesc;
+
+typedef struct LubPhys3dSphereDesc {
+  LubPhys3dShapeDesc shape;
+  float r;
+  LubVec3 offset;
+} LubPhys3dSphereDesc;
+
+typedef struct LubPhys3dBoxDesc {
+  LubPhys3dShapeDesc shape;
+  float hx, hy, hz;
+  LubVec3 offset;
+  bool has_rotation;
+  LubQuat rotation;
+} LubPhys3dBoxDesc;
+
+typedef struct LubPhys3dCapsuleDesc {
+  LubPhys3dShapeDesc shape;
+  LubVec3 a, b;
+  float r;
+} LubPhys3dCapsuleDesc;
+
+typedef struct LubPhys3dCylinderDesc {
+  LubPhys3dShapeDesc shape;
+  float height, radius;
+  int32_t sides;  // 3..32、既定 16
+  float y_offset; // 既定 -height / 2 (胴を原点中心に)
+} LubPhys3dCylinderDesc;
+
+typedef struct LubPhys3dConeDesc {
+  LubPhys3dShapeDesc shape;
+  float height, radius1, radius2;
+  int32_t slices; // 4..32、既定 16
+} LubPhys3dConeDesc;
+
+typedef struct LubPhys3dHullDesc {
+  LubPhys3dShapeDesc shape; // version 必須
+  const float *points;      // x, y, z の組。4 点以上
+  int32_t point_count;
+  int32_t max_vertices; // 既定 255
+} LubPhys3dHullDesc;
+
+typedef struct LubPhys3dSurfaceMaterial {
+  float friction, restitution;
+  int32_t material_id;
+} LubPhys3dSurfaceMaterial;
+
+typedef struct LubPhys3dMeshDesc {
+  LubPhys3dShapeDesc shape; // version 必須
+  const float *positions;   // x, y, z の組
+  int32_t vertex_count;
+  const int32_t *indices; // 0 始まり、3 の倍数
+  int32_t index_count;
+  LubVec3 scale; // 既定 (1, 1, 1)
+  bool weld_vertices;
+  float weld_tolerance;
+  bool use_median_split;
+  bool identify_edges;                       // 既定 true
+  const LubPhys3dSurfaceMaterial *materials; // NULL = 無し。1..255
+  int32_t material_count;
+  const int32_t *material_indices; // NULL = 無し。三角形ごと
+  int32_t material_index_count;
+} LubPhys3dMeshDesc;
+
+typedef struct LubPhys3dHeightFieldDesc {
+  LubPhys3dShapeDesc shape; // version 必須
+  int32_t x_count, z_count; // >= 2
+  const float *heights;     // x_count * z_count
+  LubVec3 scale;            // 既定 (cell_width, 1, cell_width)
+  bool has_min_height, has_max_height;
+  float min_height, max_height; // 無ければ heights から
+  bool clockwise_winding;
+} LubPhys3dHeightFieldDesc;
+
+typedef struct LubPhys3dCompoundChild {
+  int32_t kind; // LubPhys3dCompoundChildKind
+  LubVec3 position;
+  LubQuat rotation; // 既定 identity
+  LubPhys3dSurfaceMaterial material;
+  float r;          // sphere / capsule
+  LubVec3 center;   // sphere
+  LubVec3 a, b;     // capsule
+  float hx, hy, hz; // box
+} LubPhys3dCompoundChild;
+
+typedef struct LubPhys3dCompoundDesc {
+  LubPhys3dShapeDesc shape; // version 必須。static body 限定、sensor 不可
+  const LubPhys3dCompoundChild *children;
+  int32_t child_count;
+} LubPhys3dCompoundDesc;
+
+typedef struct LubPhys3dJointDesc {
+  bool has_version;
+  int32_t version;
+  int32_t type; // LubPhys3dJointType
+  LubHandle body_a, body_b;
+  // 世界座標の axis / anchor から local frame を作る。frame_a / frame_b を
+  // 明示すればそちらが勝つ。
+  bool has_axis;
+  LubVec3 axis;
+  bool has_anchor_a, has_anchor_b;
+  LubVec3 anchor_a, anchor_b;
+  bool has_frame_a, has_frame_b;
+  LubVec3 frame_a_position, frame_b_position;
+  LubQuat frame_a_rotation, frame_b_rotation;
+  float force_threshold, torque_threshold; // 既定 FLT_MAX
+  bool has_constraint_tuning;
+  float constraint_hertz, constraint_damping_ratio;
+  bool collide_connected;
+  float length;     // 既定 1
+  float min_length; // 既定 0
+  float max_length; // 既定 FLT_MAX
+  float lower, upper;
+  float hertz, damping_ratio;
+  float linear_hertz, angular_hertz;
+  float linear_damping_ratio, angular_damping_ratio;
+  float max_force, max_torque, motor_speed;
+  float target_angle, target_translation;
+  bool enable_spring, enable_limit, enable_motor;
+  float lower_spring_force, upper_spring_force; // 既定 -FLT_MAX / FLT_MAX
+  LubVec3 linear_velocity, angular_velocity;    // motor
+  float max_velocity_force, max_velocity_torque;
+  float max_spring_force, max_spring_torque;
+  LubQuat target_rotation; // spherical。既定 identity
+  bool enable_cone_limit;
+  float cone_angle;
+  bool enable_twist_limit;
+  float lower_twist_angle, upper_twist_angle;
+  LubVec3 motor_velocity;
+  bool enable_steering; // wheel
+  float steering_hertz, steering_damping_ratio;
+  float target_steering_angle, max_steering_torque;
+  bool enable_steering_limit;
+  float lower_steering_limit, upper_steering_limit;
+} LubPhys3dJointDesc;
+
+void lub_phys3d_world_desc_init(LubPhys3dWorldDesc *desc);
+void lub_phys3d_body_desc_init(LubPhys3dBodyDesc *desc);
+void lub_phys3d_shape_desc_init(LubPhys3dShapeDesc *desc);
+// type ごとの既定値 (parallel / wheel は spring が既定で有効) を入れる。
+void lub_phys3d_joint_desc_init(LubPhys3dJointDesc *desc, int32_t type);
+
+typedef struct LubPhys3dWorldInfo {
+  LubStr key;
+  bool valid;
+  int32_t version;
+  int32_t generation;
+  bool begun, prune;
+  float fixed_dt;
+  int32_t substeps, max_steps;
+  float accumulator;
+  int32_t pending_commands;
+  bool callback_filter, callback_pre_solve, callback_friction,
+      callback_restitution;
+  LubVec3 gravity;
+  bool sleep, continuous, warm_starting;
+  float restitution_threshold, hit_event_threshold, maximum_linear_speed;
+  int32_t awake_body_count;
+} LubPhys3dWorldInfo;
+
+typedef struct LubPhys3dStepInfo {
+  int32_t steps;
+  int32_t commands;
+  float alpha;
+  bool dropped;
+  int32_t contact_begins, contact_ends, contact_hits;
+  int32_t sensor_begins, sensor_ends;
+  int32_t body_moves;
+  int32_t joint_events;
+} LubPhys3dStepInfo;
+
+typedef struct LubPhys3dPose {
+  LubVec3 position;
+  LubQuat rotation;
+  LubVec3 linear_velocity, angular_velocity;
+  bool awake, enabled, sleep;
+  float sleep_threshold;
+} LubPhys3dPose;
+
+typedef struct LubPhys3dVelocity {
+  LubVec3 linear, angular;
+} LubPhys3dVelocity;
+
+typedef struct LubPhys3dMassData {
+  float mass;
+  LubVec3 center; // world
+  LubVec3 local_center;
+  // 慣性テンソル (local center まわり、対称) の成分
+  float xx, yy, zz, xy, xz, yz;
+} LubPhys3dMassData;
+
+typedef struct LubPhys3dAabb {
+  LubVec3 min, max;
+} LubPhys3dAabb;
+
+typedef struct LubPhys3dShapeInfo {
+  LubPhys3dShapePart part;
+  float density, friction, restitution;
+  bool sensor, sensor_events, contact, pre_solve, hit;
+  LubPhys3dAabb aabb;
+} LubPhys3dShapeInfo;
+
+typedef struct LubPhys3dJointView {
+  LubHandle joint;
+  LubStr key;
+  int32_t type; // LubPhys3dJointType。0 = 不明
+  LubStr a, b;
+  bool valid;
+} LubPhys3dJointView;
+
+typedef struct LubPhys3dFrame {
+  LubVec3 position;
+  LubQuat rotation;
+} LubPhys3dFrame;
+
+typedef struct LubPhys3dJointInfo {
+  LubPhys3dJointView view;
+  bool collide_connected;
+  LubVec3 force, torque;
+  float linear_separation, angular_separation;
+  LubPhys3dFrame local_frame_a, local_frame_b;
+} LubPhys3dJointInfo;
+
+typedef struct LubPhys3dContact {
+  LubPhys3dShapePart a, b;
+  LubVec3 normal;
+  int32_t point_count;
+  LubVec3 point;
+  float approach_speed;
+} LubPhys3dContact;
+
+typedef struct LubPhys3dBodyEvent {
+  LubStr body;
+  bool valid;
+  LubVec3 position;
+  LubQuat rotation;
+  bool fell_asleep;
+} LubPhys3dBodyEvent;
+
+typedef struct LubPhys3dJointEvent {
+  LubStr joint;
+  int32_t type; // LubPhys3dJointType。0 = 不明
+  LubStr a, b;
+  bool valid;
+} LubPhys3dJointEvent;
+
+typedef struct LubPhys3dContactData {
+  LubPhys3dShapePart a, b;
+  LubVec3 normal;
+  int32_t manifold_count;
+  int32_t point_count;
+  bool has_point;
+  LubVec3 point;
+  float separation;
+} LubPhys3dContactData;
+
+typedef struct LubPhys3dRay {
+  LubVec3 origin;
+  LubVec3 translation; // max_fraction を掛けた後の値
+} LubPhys3dRay;
+
+typedef struct LubPhys3dRayHit {
+  LubPhys3dShapePart shape; // world query のとき
+  LubVec3 point, normal;
+  float fraction;
+  int32_t iterations; // shape raycast のとき
+  int32_t hit_material_id;
+  int32_t triangle_index, child_index;
+  int32_t node_visits, leaf_visits; // raycast_closest のとき
+} LubPhys3dRayHit;
+
+typedef struct LubPhys3dTreeStats {
+  int32_t node_visits, leaf_visits;
+} LubPhys3dTreeStats;
+
+typedef struct LubPhys3dQueryFilter {
+  uint64_t category_bits;
+  uint64_t mask_bits;
+} LubPhys3dQueryFilter;
+
+typedef struct LubPhys3dShapeProxy {
+  int32_t kind;   // LubPhys3dProxyKind
+  float r;        // sphere / capsule / box の丸め
+  LubVec3 center; // sphere / box
+  float hx, hy, hz;
+  bool has_rotation;
+  LubQuat rotation; // box
+  LubVec3 a, b;     // capsule
+} LubPhys3dShapeProxy;
+
+typedef struct LubPhys3dMover {
+  LubVec3 a, b;
+  float r;
+} LubPhys3dMover;
+
+typedef struct LubPhys3dMoverPlane {
+  LubPhys3dShapePart shape;
+  LubVec3 point, normal; // world
+  float offset;
+  int32_t plane_count;
+} LubPhys3dMoverPlane;
+
+typedef struct LubPhys3dProfile {
+  float step, pairs, collide, solve, solver_setup, constraints,
+      prepare_constraints, integrate_velocities, warm_start, solve_impulses,
+      integrate_positions, relax_impulses, apply_restitution, store_impulses,
+      split_islands, transforms, sensor_hits, joint_events, hit_events, refit,
+      bullets, sleep_islands, sensors;
+} LubPhys3dProfile;
+
+#define LUB_PHYS3D_MANIFOLD_COUNT_BUCKETS 8
+
+typedef struct LubPhys3dCounters {
+  int32_t body_count, shape_count, contact_count, joint_count, island_count,
+      stack_used, arena_capacity, static_tree_height, tree_height,
+      sat_call_count, sat_cache_hit_count, byte_count, task_count,
+      awake_contact_count, recycled_contact_count, distance_iterations,
+      push_back_iterations, root_iterations;
+  int32_t color_counts[24];
+  int32_t manifold_counts[LUB_PHYS3D_MANIFOLD_COUNT_BUCKETS];
+} LubPhys3dCounters;
+
+typedef struct LubPhys3dSetVelocity {
+  bool has_vx, has_vy, has_vz;
+  bool has_wx, has_wy, has_wz;
+  LubVec3 linear, angular;
+  bool wake;
+} LubPhys3dSetVelocity;
+
+typedef struct LubPhys3dTeleport {
+  bool has_x, has_y, has_z;
+  LubVec3 position;
+  bool has_rotation;
+  LubQuat rotation;
+  bool wake;
+} LubPhys3dTeleport;
+
+typedef struct LubPhys3dSetTarget {
+  bool has_x, has_y, has_z;
+  LubVec3 position;
+  bool has_rotation;
+  LubQuat rotation;
+  float time_step; // <= 0 で world の fixed_dt
+  bool wake;
+} LubPhys3dSetTarget;
+
+typedef struct LubPhys3dJointMotor {
+  bool enabled;
+  float speed, max_force, max_torque;
+  bool has_velocity; // spherical
+  LubVec3 velocity;
+  bool has_linear_velocity, has_angular_velocity; // motor
+  LubVec3 linear_velocity, angular_velocity;
+  bool has_max_velocity_force, has_max_velocity_torque;
+  float max_velocity_force, max_velocity_torque;
+} LubPhys3dJointMotor;
+
+typedef struct LubPhys3dJointLimit {
+  bool enabled;
+  float lower, upper;
+  float min_length, max_length; // distance。max の既定 FLT_MAX
+  bool has_cone_angle;          // spherical
+  float cone_angle;
+  bool has_twist; // spherical: lower / upper を twist に使う
+} LubPhys3dJointLimit;
+
+typedef struct LubPhys3dJointSpring {
+  bool enabled;
+  float hertz, damping_ratio;
+  float linear_hertz, linear_damping_ratio; // weld / motor
+  float angular_hertz, angular_damping_ratio;
+  bool has_max_torque; // parallel
+  float max_torque;
+} LubPhys3dJointSpring;
+
+typedef struct LubPhys3dJointTarget {
+  bool has_translation; // prismatic
+  float translation;
+  bool has_angle; // revolute / wheel (steering)
+  float angle;
+  bool has_rotation; // spherical
+  LubQuat rotation;
+  bool has_linear_velocity, has_angular_velocity; // motor
+  LubVec3 linear_velocity, angular_velocity;
+} LubPhys3dJointTarget;
+
+typedef struct LubPhys3dMaterialDesc {
+  bool has_density, has_friction, has_restitution, has_material_id,
+      has_material_name;
+  float density, friction, restitution;
+  int32_t material_id;
+  LubStr material_name;
+} LubPhys3dMaterialDesc;
+
+typedef struct LubPhys3dEventFlags {
+  bool has_sensor_events, sensor_events;
+  bool has_contact, contact;
+  bool has_pre_solve, pre_solve;
+  bool has_hit, hit;
+} LubPhys3dEventFlags;
+
+typedef bool (*LubPhys3dOverlapFn)(void *user, const LubPhys3dShapePart *shape);
+typedef float (*LubPhys3dRayFn)(void *user, const LubPhys3dRayHit *hit);
+typedef bool (*LubPhys3dPlaneFn)(void *user, const LubPhys3dMoverPlane *plane);
+
+LubStatus lub_phys3d_world(LubContext *ctx, LubStr key,
+                           const LubPhys3dWorldDesc *desc, LubHandle *out);
+LubHandle lub_phys3d_world_find(LubContext *ctx, LubStr key);
+LubStatus lub_phys3d_begin(LubContext *ctx, LubHandle world, bool prune);
+LubStatus lub_phys3d_world_info(LubContext *ctx, LubHandle world,
+                                LubPhys3dWorldInfo *out);
+LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
+                          LubPhys3dStepInfo *out);
+
+LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
+                          const LubPhys3dBodyDesc *desc, LubHandle *out);
+LubHandle lub_phys3d_body_find(LubContext *ctx, LubHandle world, LubStr key);
+LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
+                            const LubPhys3dSphereDesc *desc, LubHandle *out);
+LubStatus lub_phys3d_box(LubContext *ctx, LubHandle body, LubStr key,
+                         const LubPhys3dBoxDesc *desc, LubHandle *out);
+LubStatus lub_phys3d_capsule(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubPhys3dCapsuleDesc *desc, LubHandle *out);
+LubStatus lub_phys3d_cylinder(LubContext *ctx, LubHandle body, LubStr key,
+                              const LubPhys3dCylinderDesc *desc,
+                              LubHandle *out);
+LubStatus lub_phys3d_cone(LubContext *ctx, LubHandle body, LubStr key,
+                          const LubPhys3dConeDesc *desc, LubHandle *out);
+LubStatus lub_phys3d_hull(LubContext *ctx, LubHandle body, LubStr key,
+                          const LubPhys3dHullDesc *desc, LubHandle *out);
+LubStatus lub_phys3d_mesh(LubContext *ctx, LubHandle body, LubStr key,
+                          const LubPhys3dMeshDesc *desc, LubHandle *out);
+LubStatus lub_phys3d_height_field(LubContext *ctx, LubHandle body, LubStr key,
+                                  const LubPhys3dHeightFieldDesc *desc,
+                                  LubHandle *out);
+LubStatus lub_phys3d_compound(LubContext *ctx, LubHandle body, LubStr key,
+                              const LubPhys3dCompoundDesc *desc,
+                              LubHandle *out);
+LubHandle lub_phys3d_shape_find(LubContext *ctx, LubHandle body, LubStr key);
+
+LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
+                           const LubPhys3dJointDesc *desc, LubHandle *out);
+LubHandle lub_phys3d_joint_find(LubContext *ctx, LubHandle world, LubStr key);
+LubStatus lub_phys3d_joint_info(LubContext *ctx, LubHandle joint,
+                                LubPhys3dJointInfo *out);
+LubStatus lub_phys3d_joint_force(LubContext *ctx, LubHandle joint,
+                                 LubVec3 *out);
+LubStatus lub_phys3d_joint_torque(LubContext *ctx, LubHandle joint,
+                                  LubVec3 *out);
+LubStatus lub_phys3d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has);
+LubStatus lub_phys3d_joint_translation(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has);
+LubStatus lub_phys3d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has);
+LubStatus lub_phys3d_joint_length(LubContext *ctx, LubHandle joint, float *out,
+                                  bool *has);
+LubStatus lub_phys3d_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has);
+// spherical は vector (has_vector)、revolute / wheel は scalar (has)。
+LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx, LubHandle joint,
+                                        float *out, bool *has, LubVec3 *vector,
+                                        bool *has_vector);
+LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                     const LubPhys3dJointMotor *desc);
+LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                     const LubPhys3dJointLimit *desc);
+LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                      const LubPhys3dJointSpring *desc);
+LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                      const LubPhys3dJointTarget *desc);
+
+LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body, LubPhys3dPose *out);
+LubStatus lub_phys3d_velocity(LubContext *ctx, LubHandle body,
+                              LubPhys3dVelocity *out);
+LubStatus lub_phys3d_mass(LubContext *ctx, LubHandle body,
+                          LubPhys3dMassData *out);
+LubStatus lub_phys3d_center(LubContext *ctx, LubHandle body, LubVec3 *out);
+LubStatus lub_phys3d_world_point(LubContext *ctx, LubHandle body, LubVec3 local,
+                                 LubVec3 *out);
+LubStatus lub_phys3d_local_point(LubContext *ctx, LubHandle body, LubVec3 world,
+                                 LubVec3 *out);
+LubStatus lub_phys3d_velocity_at(LubContext *ctx, LubHandle body, LubVec3 world,
+                                 LubVec3 *out);
+LubStatus lub_phys3d_body_shapes(LubContext *ctx, LubHandle body,
+                                 const LubPhys3dShapePart **items,
+                                 int32_t *count);
+LubStatus lub_phys3d_body_joints(LubContext *ctx, LubHandle body,
+                                 const LubPhys3dJointView **items,
+                                 int32_t *count);
+LubStatus lub_phys3d_body_contacts(LubContext *ctx, LubHandle body,
+                                   const LubPhys3dContactData **items,
+                                   int32_t *count);
+
+LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
+                                   const LubPhys3dRay *ray,
+                                   LubPhys3dRayHit *out, bool *hit);
+LubStatus lub_phys3d_shape_closest_point(LubContext *ctx, LubHandle shape,
+                                         LubVec3 point, LubVec3 *out);
+LubStatus lub_phys3d_shape_aabb(LubContext *ctx, LubHandle shape,
+                                LubPhys3dAabb *out);
+LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
+                                LubPhys3dShapeInfo *out);
+LubStatus lub_phys3d_shape_set_material(LubContext *ctx, LubHandle shape,
+                                        const LubPhys3dMaterialDesc *desc);
+LubStatus lub_phys3d_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                      const LubPhys3dFilter *filter);
+LubStatus lub_phys3d_shape_set_events(LubContext *ctx, LubHandle shape,
+                                      const LubPhys3dEventFlags *flags);
+
+LubStatus lub_phys3d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
+                              const LubPhys3dContact **items, int32_t *count);
+LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
+                                 const LubPhys3dBodyEvent **items,
+                                 int32_t *count);
+LubStatus lub_phys3d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
+                             const LubPhys3dContact **items, int32_t *count);
+LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
+                                  const LubPhys3dJointEvent **items,
+                                  int32_t *count);
+
+LubStatus lub_phys3d_raycast_closest(LubContext *ctx, LubHandle world,
+                                     const LubPhys3dRay *ray,
+                                     const LubPhys3dQueryFilter *filter,
+                                     LubPhys3dRayHit *out, bool *hit);
+LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
+                             const LubPhys3dRay *ray,
+                             const LubPhys3dQueryFilter *filter,
+                             LubPhys3dRayFn fn, void *user,
+                             LubPhys3dTreeStats *stats);
+LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                  const LubPhys3dAabb *aabb,
+                                  const LubPhys3dQueryFilter *filter,
+                                  LubPhys3dOverlapFn fn, void *user,
+                                  LubPhys3dTreeStats *stats);
+LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
+                                   const LubPhys3dShapeProxy *proxy,
+                                   const LubPhys3dQueryFilter *filter,
+                                   LubPhys3dOverlapFn fn, void *user,
+                                   LubPhys3dTreeStats *stats);
+LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
+                                const LubPhys3dShapeProxy *proxy,
+                                LubVec3 translation,
+                                const LubPhys3dQueryFilter *filter,
+                                LubPhys3dRayFn fn, void *user,
+                                LubPhys3dTreeStats *stats);
+LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
+                                const LubPhys3dMover *mover,
+                                LubVec3 translation,
+                                const LubPhys3dQueryFilter *filter,
+                                float *fraction);
+LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
+                                   const LubPhys3dMover *mover,
+                                   const LubPhys3dQueryFilter *filter,
+                                   LubPhys3dPlaneFn fn, void *user);
+LubStatus lub_phys3d_profile(LubContext *ctx, LubHandle world,
+                             LubPhys3dProfile *out);
+LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
+                              LubPhys3dCounters *out);
+
+LubStatus lub_phys3d_add_force(LubContext *ctx, LubHandle body, LubVec3 force,
+                               const LubVec3 *point, bool wake);
+LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
+                                      LubVec3 force, bool wake);
+LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
+                                 LubVec3 impulse, const LubVec3 *point,
+                                 bool wake);
+LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                        LubVec3 impulse, bool wake);
+LubStatus lub_phys3d_add_torque(LubContext *ctx, LubHandle body, LubVec3 torque,
+                                bool wake);
+LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx, LubHandle body,
+                                         LubVec3 impulse, bool wake);
+LubStatus lub_phys3d_set_velocity(LubContext *ctx, LubHandle body,
+                                  const LubPhys3dSetVelocity *desc);
+LubStatus lub_phys3d_teleport(LubContext *ctx, LubHandle body,
+                              const LubPhys3dTeleport *desc);
+LubStatus lub_phys3d_set_target(LubContext *ctx, LubHandle body,
+                                const LubPhys3dSetTarget *desc);
+
 #ifdef __cplusplus
 }
 #endif
