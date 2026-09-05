@@ -12,18 +12,15 @@
 //                                       // payload arrives as Uint8Array
 //   };
 //
-// Lua API (globals, mirrored by haxe-lib lub.Host):
-//
-//   host_available() -> bool
-//   host_send(topic, payload)          -- payload is a binary-safe string
-//   host_poll() -> topic, payload      -- one message; nil when queue empty
+// C API (include/lub/lub_api.h): lub_host_available / lub_host_send /
+// lub_host_poll。Lua binding は src/lua_api.c にあり、haxe-lib lub.Host が
+// 同じ面を写す。
 //
 // Native builds have no hosting page: available() is false, send drops,
-// poll returns nil. (A native host could later be provided via
+// poll returns false. (A native host could later be provided via
 // package.loadlib without touching this file.)
 
-#include "host.h"
-#include <lauxlib.h>
+#include "api_internal.h"
 #include <stdlib.h>
 
 #ifdef __EMSCRIPTEN__
@@ -81,49 +78,58 @@ EM_JS(unsigned char *, lub_host_poll_js, (int *topic_len, int *payload_len), {
 // clang-format on
 #endif
 
-static int l_host_available(lua_State *L) {
+bool lub_host_available(LubContext *ctx) {
+  (void)ctx;
 #ifdef __EMSCRIPTEN__
-  lua_pushboolean(L, lub_host_available_js());
+  return lub_host_available_js() != 0;
 #else
-  lua_pushboolean(L, 0);
+  return false;
 #endif
-  return 1;
 }
 
-static int l_host_send(lua_State *L) {
-  size_t payload_len = 0;
-  const char *topic = luaL_checkstring(L, 1);
-  const char *payload = luaL_checklstring(L, 2, &payload_len);
+void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload) {
+  (void)ctx;
 #ifdef __EMSCRIPTEN__
-  lub_host_send_js(topic, (const unsigned char *)payload, (int)payload_len);
+  char tbuf[256];
+  if (!lub_str_copy(topic, tbuf, sizeof(tbuf)))
+    return;
+  lub_host_send_js(tbuf, (const unsigned char *)payload.ptr, payload.len);
 #else
   (void)topic;
   (void)payload;
 #endif
-  return 0;
 }
 
-static int l_host_poll(lua_State *L) {
+bool lub_host_poll(LubContext *ctx, LubView *topic, LubView *payload) {
+  App *app = lub_api_app(ctx);
+  // 直前の poll の buffer (view の実体) は次の poll で解放する。
+  free(app->host_poll_buf);
+  app->host_poll_buf = NULL;
 #ifdef __EMSCRIPTEN__
   int topic_len = 0;
   int payload_len = 0;
   unsigned char *buf = lub_host_poll_js(&topic_len, &payload_len);
   if (buf) {
-    lua_pushlstring(L, (const char *)buf, (size_t)topic_len);
-    lua_pushlstring(L, (const char *)buf + topic_len, (size_t)payload_len);
-    free(buf);
-    return 2;
+    app->host_poll_buf = buf;
+    if (topic) {
+      topic->ptr = buf;
+      topic->len = topic_len;
+      topic->frame = (int32_t)app->frame_index;
+    }
+    if (payload) {
+      payload->ptr = buf + topic_len;
+      payload->len = payload_len;
+      payload->frame = (int32_t)app->frame_index;
+    }
+    return true;
   }
 #endif
-  lua_pushnil(L);
-  return 1;
+  (void)topic;
+  (void)payload;
+  return false;
 }
 
-void host_lua_register(lua_State *L) {
-  lua_pushcfunction(L, l_host_available);
-  lua_setglobal(L, "host_available");
-  lua_pushcfunction(L, l_host_send);
-  lua_setglobal(L, "host_send");
-  lua_pushcfunction(L, l_host_poll);
-  lua_setglobal(L, "host_poll");
+void api_host_shutdown(App *app) {
+  free(app->host_poll_buf);
+  app->host_poll_buf = NULL;
 }

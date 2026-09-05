@@ -14,9 +14,9 @@
 //     だけ持つ。
 //   - main thread 限定。
 //
-// 段階 3 の途中の形: いまは gfx だけがこの API を通る。他の subsystem
-// (input / audio / physics / ...) は順に移す。段階 4 でこの header は
-// cs-lib/lub_stub.cs からの生成物になる。
+// 段階 3 の途中の形: gfx / input / sys / profiler / host / audio がこの API を
+// 通る。残り (io / png / mesh / font / ui / physics) は順に移す。段階 4 で
+// この header は cs-lib/lub_stub.cs からの生成物になる。
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -54,6 +54,83 @@ const char *lub_last_error(LubContext *ctx);
 
 // 現在の frame 番号 (LubView.frame と比較する)。
 int32_t lub_frame_index(LubContext *ctx);
+
+// ------------------------------------------------------------------ core
+
+// config は on_init の中でだけ呼べる。省略は「変えない」: backend は len 0、
+// width / height は 0、resource_sweep_after_frames / readback_depth は -1。
+typedef struct LubConfigDesc {
+  LubStr backend; // "native" / "sdlgpu" (web は無視して webgpu)
+  int32_t width, height;
+  int32_t resource_sweep_after_frames; // 0 = sweep しない
+  int32_t readback_depth;              // 1..32
+} LubConfigDesc;
+
+LubStatus lub_config(LubContext *ctx, const LubConfigDesc *desc);
+void lub_quit(LubContext *ctx);
+
+// ----------------------------------------------------------------- input
+
+// key は "space" / "a".."z" / "left" 等の名前。未知の名前は常に false。
+bool lub_input_key_down(LubContext *ctx, LubStr key);
+bool lub_input_key_pressed(LubContext *ctx, LubStr key);
+bool lub_input_key_released(LubContext *ctx, LubStr key);
+// button は SDL 準拠の 1 始まり (1 = 左、2 = 中、3 = 右)。
+bool lub_input_mouse_down(LubContext *ctx, int32_t button);
+bool lub_input_mouse_pressed(LubContext *ctx, int32_t button);
+bool lub_input_mouse_released(LubContext *ctx, int32_t button);
+void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
+void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
+
+// ------------------------------------------------------------------- sys
+
+float lub_sys_actual_fps(LubContext *ctx);
+bool lub_sys_is_web(LubContext *ctx);
+
+// -------------------------------------------------------------- profiler
+
+bool lub_profiler_enabled(LubContext *ctx);
+void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
+// name は len 0 で「直近の scope」。
+void lub_profiler_end_scope(LubContext *ctx, LubStr name);
+void lub_profiler_reset(LubContext *ctx);
+void lub_profiler_report(LubContext *ctx, LubStr label);
+
+// ------------------------------------------------------------------ host
+
+bool lub_host_available(LubContext *ctx);
+void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload);
+// queue から 1 件取り出す。無ければ false。view は次の poll まで有効。
+bool lub_host_poll(LubContext *ctx, LubView *topic, LubView *payload);
+
+// ----------------------------------------------------------------- audio
+
+typedef struct LubAudioPlayDesc {
+  float volume; // 既定 1
+  float pitch;  // 既定 1。0 = 停止、負 = 逆再生
+  float pan;    // 既定 0
+  bool loop;    // voice のみ
+} LubAudioPlayDesc;
+
+typedef struct LubAudioInfo {
+  bool device;
+  int32_t rate;
+  int32_t voices;
+  int32_t snds;
+} LubAudioInfo;
+
+// interleaved f32 PCM から snd を作る。samples は count 個 (channels の倍数)。
+LubStatus lub_audio_pcm(LubContext *ctx, const float *samples, int32_t count,
+                        int32_t channels, int32_t rate, int32_t *out_snd);
+// file format bytes → f32 PCM の view (次の decode まで有効)。
+LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
+                           LubView *pcm, int32_t *channels, int32_t *rate);
+bool lub_audio_play(LubContext *ctx, int32_t snd, const LubAudioPlayDesc *desc);
+bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
+                     const LubAudioPlayDesc *desc);
+bool lub_audio_free(LubContext *ctx, int32_t snd);
+void lub_audio_master_volume(LubContext *ctx, float volume);
+void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
 
 // ------------------------------------------------------------------- gfx
 

@@ -32,5 +32,7 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   return true;
 }
 
-// api_gfx.c 所有の状態 (readback queue) を解放する。app_shutdown が呼ぶ。
+// api_*.c 所有の状態 (readback queue、decode / poll の view) を解放する。
+// app_shutdown が呼ぶ。
 void api_gfx_shutdown(App *app);
+void api_audio_shutdown(App *app);

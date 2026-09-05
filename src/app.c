@@ -2,6 +2,7 @@
 #include "api_internal.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "host.h"
 #include "lua_api.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -193,6 +194,8 @@ void app_shutdown(App *app) {
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
   api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
+  api_audio_shutdown(app);
+  api_host_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

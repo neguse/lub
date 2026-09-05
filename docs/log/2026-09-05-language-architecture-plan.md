@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx の実装(`src/api_gfx.c`)。Lua binding は詰め替えだけに |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。Lua binding は詰め替えだけに。残り: io / png / mesh / font / ui / phys2d / phys3d |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |

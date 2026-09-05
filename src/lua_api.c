@@ -6,7 +6,6 @@
 #include "enums_lua.h"
 #include "font.h"
 #include "gltf.h"
-#include "host.h"
 #include "pass.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -819,144 +818,65 @@ static void lub_readback_register(lua_State *L) {
   lua_pop(L, 1);
 }
 
-static SDL_Scancode scancode_from_name(const char *name) {
-  if (!name || !name[0])
-    return SDL_SCANCODE_UNKNOWN;
-
-  char key[32];
-  size_t n = strlen(name);
-  if (n >= sizeof(key))
-    n = sizeof(key) - 1;
-  for (size_t i = 0; i < n; ++i) {
-    key[i] = (char)tolower((unsigned char)name[i]);
-  }
-  key[n] = '\0';
-
-  if (n == 1) {
-    if (key[0] >= 'a' && key[0] <= 'z') {
-      return (SDL_Scancode)(SDL_SCANCODE_A + (key[0] - 'a'));
-    }
-    if (key[0] >= '1' && key[0] <= '9') {
-      return (SDL_Scancode)(SDL_SCANCODE_1 + (key[0] - '1'));
-    }
-    if (key[0] == '0')
-      return SDL_SCANCODE_0;
-  }
-
-  if (strcmp(key, "left") == 0 || strcmp(key, "arrowleft") == 0) {
-    return SDL_SCANCODE_LEFT;
-  }
-  if (strcmp(key, "right") == 0 || strcmp(key, "arrowright") == 0) {
-    return SDL_SCANCODE_RIGHT;
-  }
-  if (strcmp(key, "up") == 0 || strcmp(key, "arrowup") == 0) {
-    return SDL_SCANCODE_UP;
-  }
-  if (strcmp(key, "down") == 0 || strcmp(key, "arrowdown") == 0) {
-    return SDL_SCANCODE_DOWN;
-  }
-  if (strcmp(key, "space") == 0 || strcmp(key, "spacebar") == 0) {
-    return SDL_SCANCODE_SPACE;
-  }
-  if (strcmp(key, "enter") == 0 || strcmp(key, "return") == 0) {
-    return SDL_SCANCODE_RETURN;
-  }
-  if (strcmp(key, "escape") == 0 || strcmp(key, "esc") == 0) {
-    return SDL_SCANCODE_ESCAPE;
-  }
-  if (strcmp(key, "tab") == 0)
-    return SDL_SCANCODE_TAB;
-  if (strcmp(key, "backspace") == 0)
-    return SDL_SCANCODE_BACKSPACE;
-  return SDL_SCANCODE_UNKNOWN;
-}
+// ----------------------------------------------------------------------
+// input / sys / profiler / config: C API への詰め替え。
 
 static int l_key_down(lua_State *L) {
-  const char *name = luaL_checkstring(L, 1);
-  SDL_Scancode sc = scancode_from_name(name);
-  if (sc == SDL_SCANCODE_UNKNOWN) {
-    lua_pushboolean(L, 0);
-    return 1;
-  }
-
-  int key_count = 0;
-  const bool *state = SDL_GetKeyboardState(&key_count);
-  lua_pushboolean(L, state && sc >= 0 && sc < key_count && state[sc]);
+  lua_pushboolean(L, lub_input_key_down(api_ctx(), lstr_check(L, 1)));
   return 1;
 }
 
-// mouse_delta() -> dx, dy : relative motion (window pixels) accumulated over
-// the current frame. Idempotent within a frame; the latch is cleared by the
-// runtime after onFrame.
-static int l_mouse_delta(lua_State *L) {
-  lua_pushnumber(L, (lua_Number)g_app_for_lua->mouse_rel_x);
-  lua_pushnumber(L, (lua_Number)g_app_for_lua->mouse_rel_y);
-  return 2;
+static int l_key_pressed(lua_State *L) {
+  lua_pushboolean(L, lub_input_key_pressed(api_ctx(), lstr_check(L, 1)));
+  return 1;
 }
 
-static int check_mouse_button(lua_State *L, const char *fn) {
+static int l_key_released(lua_State *L) {
+  lua_pushboolean(L, lub_input_key_released(api_ctx(), lstr_check(L, 1)));
+  return 1;
+}
+
+static int mouse_button_arg(lua_State *L, const char *fn) {
   int btn = (int)luaL_optinteger(L, 1, 1);
   if (btn < 1)
     luaL_error(L, "%s: button must be >= 1 (1=left, 2=middle, 3=right)", fn);
   return btn;
 }
 
-// mouse_down(button) -> bool. button: 1=left (default), 2=middle, 3=right.
 static int l_mouse_down(lua_State *L) {
-  int btn = check_mouse_button(L, "mouse_down");
-  SDL_MouseButtonFlags mask = SDL_GetMouseState(NULL, NULL);
-  lua_pushboolean(L, (mask & SDL_BUTTON_MASK(btn)) != 0);
+  int btn = mouse_button_arg(L, "mouse_down");
+  lua_pushboolean(L, lub_input_mouse_down(api_ctx(), btn));
   return 1;
 }
 
-// mouse_pressed(button) -> bool : pressed during the current frame (latched).
 static int l_mouse_pressed(lua_State *L) {
-  int btn = check_mouse_button(L, "mouse_pressed");
-  lua_pushboolean(
-      L, (g_app_for_lua->mouse_pressed_mask & SDL_BUTTON_MASK(btn)) != 0);
+  int btn = mouse_button_arg(L, "mouse_pressed");
+  lua_pushboolean(L, lub_input_mouse_pressed(api_ctx(), btn));
   return 1;
 }
 
-// mouse_released(button) -> bool : released during the current frame
-// (latched).
 static int l_mouse_released(lua_State *L) {
-  int btn = check_mouse_button(L, "mouse_released");
-  lua_pushboolean(
-      L, (g_app_for_lua->mouse_released_mask & SDL_BUTTON_MASK(btn)) != 0);
+  int btn = mouse_button_arg(L, "mouse_released");
+  lua_pushboolean(L, lub_input_mouse_released(api_ctx(), btn));
   return 1;
 }
 
-// mouse_pos() -> x, y : absolute cursor position in window pixels.
 static int l_mouse_pos(lua_State *L) {
-  float x = 0.0f, y = 0.0f;
-  SDL_GetMouseState(&x, &y);
+  float x = 0, y = 0;
+  lub_input_mouse_pos(api_ctx(), &x, &y);
   lua_pushnumber(L, (lua_Number)x);
   lua_pushnumber(L, (lua_Number)y);
   return 2;
 }
 
-// key_pressed(name) -> bool : pressed during the current frame (latched, so
-// a press shorter than one frame is still observed).
-static int l_key_pressed(lua_State *L) {
-  const char *name = luaL_checkstring(L, 1);
-  SDL_Scancode sc = scancode_from_name(name);
-  lua_pushboolean(L, sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
-                         g_app_for_lua->key_pressed[sc]);
-  return 1;
+static int l_mouse_delta(lua_State *L) {
+  float x = 0, y = 0;
+  lub_input_mouse_delta(api_ctx(), &x, &y);
+  lua_pushnumber(L, (lua_Number)x);
+  lua_pushnumber(L, (lua_Number)y);
+  return 2;
 }
 
-// key_released(name) -> bool : released during the current frame (latched).
-static int l_key_released(lua_State *L) {
-  const char *name = luaL_checkstring(L, 1);
-  SDL_Scancode sc = scancode_from_name(name);
-  lua_pushboolean(L, sc != SDL_SCANCODE_UNKNOWN && sc < SDL_SCANCODE_COUNT &&
-                         g_app_for_lua->key_released[sc]);
-  return 1;
-}
-
-// gfx_size() -> w, h : current drawable size in pixels (the swapchain /
-// canvas). Lets a sample size its offscreen render targets to the real output
-// so it can render at a chosen resolution (e.g. smaller for weak devices).
 static int l_gfx_size(lua_State *L) {
   int32_t w = 0, h = 0;
   lub_gfx_size(api_ctx(), &w, &h);
@@ -965,145 +885,89 @@ static int l_gfx_size(lua_State *L) {
   return 2;
 }
 
-// actual_fps() -> measured frames per second, updated about once per second
-// after the backend presents the frame.
 static int l_actual_fps(lua_State *L) {
-  double fps = g_app_for_lua ? g_app_for_lua->actual_fps : 0.0;
-  lua_pushnumber(L, (lua_Number)fps);
+  lua_pushnumber(L, (lua_Number)lub_sys_actual_fps(api_ctx()));
   return 1;
 }
 
 static int l_profile_enabled(lua_State *L) {
-  lua_pushboolean(L, g_app_for_lua && g_app_for_lua->profile.enabled);
+  lua_pushboolean(L, lub_profiler_enabled(api_ctx()));
   return 1;
 }
 
 static int l_profile_begin(lua_State *L) {
-  const char *name = luaL_checkstring(L, 1);
-  if (g_app_for_lua)
-    profile_begin_scope(&g_app_for_lua->profile, name);
+  lub_profiler_begin_scope(api_ctx(), lstr_check(L, 1));
   return 0;
 }
 
 static int l_profile_end(lua_State *L) {
-  const char *name = luaL_optstring(L, 1, NULL);
-  if (g_app_for_lua)
-    profile_end_scope(&g_app_for_lua->profile, name);
+  LubStr name = {NULL, 0};
+  if (!lua_isnoneornil(L, 1))
+    name = lstr_check(L, 1);
+  lub_profiler_end_scope(api_ctx(), name);
   return 0;
 }
 
 static int l_profile_reset(lua_State *L) {
   (void)L;
-  if (g_app_for_lua)
-    profile_reset(&g_app_for_lua->profile);
+  lub_profiler_reset(api_ctx());
   return 0;
 }
 
 static int l_profile_report(lua_State *L) {
-  const char *label = luaL_optstring(L, 1, "manual");
-  if (g_app_for_lua)
-    profile_report(&g_app_for_lua->profile, label);
+  LubStr label = {NULL, 0};
+  if (!lua_isnoneornil(L, 1))
+    label = lstr_check(L, 1);
+  lub_profiler_report(api_ctx(), label);
   return 0;
 }
 
+static int32_t opt_int_field(lua_State *L, int idx, const char *key,
+                             const char *fn, int32_t missing) {
+  lua_getfield(L, idx, key);
+  if (lua_isnoneornil(L, -1)) {
+    lua_pop(L, 1);
+    return missing;
+  }
+  if (!lua_isinteger(L, -1)) {
+    lua_pop(L, 1);
+    luaL_error(L, "%s: %s must be integer", fn, key);
+  }
+  int32_t v = (int32_t)lua_tointeger(L, -1);
+  lua_pop(L, 1);
+  return v;
+}
+
 static int l_config(lua_State *L) {
-  if (g_app_for_lua->phase != APP_PHASE_PRE_BACKEND) {
-    return luaL_error(L, "config: must be called inside onInit");
-  }
   luaL_checktype(L, 1, LUA_TTABLE);
+  LubConfigDesc d = {0};
+  d.resource_sweep_after_frames = -1;
+  d.readback_depth = -1;
   lua_getfield(L, 1, "backend");
-  const char *name =
-      (lua_type(L, -1) == LUA_TSTRING) ? lua_tostring(L, -1) : NULL;
-  // "native" = そのプラットフォームの最短距離実装
-  // (Windows: D3D12 / web: webgpu / Linux: 当面 sdlgpu が代行)。
-#ifdef __EMSCRIPTEN__
-  // WASM: backend は webgpu 一択なので指定を無視する。
-  name = "webgpu";
-#else
-  if (!name)
-    name = "native";
-  if (strcmp(name, "sdlgpu") != 0 && strcmp(name, "native") != 0) {
-    return luaL_error(
-        L, "config: backend must be 'native' or 'sdlgpu', got '%s'", name);
+  if (lua_type(L, -1) == LUA_TSTRING) {
+    size_t n = 0;
+    d.backend.ptr = lua_tolstring(L, -1, &n);
+    d.backend.len = (int32_t)n;
   }
-#endif
-  strncpy(g_app_for_lua->backend_name, name,
-          sizeof(g_app_for_lua->backend_name) - 1);
-  g_app_for_lua->backend_name[sizeof(g_app_for_lua->backend_name) - 1] = '\0';
+  // backend 文字列は table が生きている間有効 (引数 1 の table から参照)
   lua_pop(L, 1);
-
-  lua_getfield(L, 1, "resource_sweep_after_frames");
-  if (!lua_isnoneornil(L, -1)) {
-    if (!lua_isinteger(L, -1)) {
-      lua_pop(L, 1);
-      return luaL_error(L,
-                        "config: resource_sweep_after_frames must be integer");
-    }
-    lua_Integer v = lua_tointeger(L, -1);
-    if (v < 0) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: resource_sweep_after_frames must be >= 0");
-    }
-    g_app_for_lua->resource_sweep_after_frames = (int)v;
-  }
-  lua_pop(L, 1);
-
-  lua_getfield(L, 1, "readback_depth");
-  if (!lua_isnoneornil(L, -1)) {
-    if (!lua_isinteger(L, -1)) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: readback_depth must be integer");
-    }
-    lua_Integer v = lua_tointeger(L, -1);
-    if (v < 1 || v > LUB_READBACK_MAX_DEPTH) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: readback_depth out of range (1..%d)",
-                        LUB_READBACK_MAX_DEPTH);
-    }
-    g_app_for_lua->readback_depth = (int)v;
-  }
-  lua_pop(L, 1);
-
-  lua_getfield(L, 1, "width");
-  if (!lua_isnoneornil(L, -1)) {
-    if (!lua_isinteger(L, -1)) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: width must be integer");
-    }
-    lua_Integer w = lua_tointeger(L, -1);
-    if (w <= 0 || w > 32767) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: width out of range (1..32767)");
-    }
-    g_app_for_lua->cfg_w = (int)w;
-  }
-  lua_pop(L, 1);
-
-  lua_getfield(L, 1, "height");
-  if (!lua_isnoneornil(L, -1)) {
-    if (!lua_isinteger(L, -1)) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: height must be integer");
-    }
-    lua_Integer h = lua_tointeger(L, -1);
-    if (h <= 0 || h > 32767) {
-      lua_pop(L, 1);
-      return luaL_error(L, "config: height out of range (1..32767)");
-    }
-    g_app_for_lua->cfg_h = (int)h;
-  }
-  lua_pop(L, 1);
-  if ((g_app_for_lua->cfg_w == 0) != (g_app_for_lua->cfg_h == 0)) {
-    return luaL_error(
-        L, "config: width and height must both be specified or neither");
-  }
+  d.resource_sweep_after_frames =
+      opt_int_field(L, 1, "resource_sweep_after_frames", "config", -1);
+  if (d.resource_sweep_after_frames < -1)
+    return luaL_error(L, "config: resource_sweep_after_frames must be >= 0");
+  d.readback_depth = opt_int_field(L, 1, "readback_depth", "config", -1);
+  d.width = opt_int_field(L, 1, "width", "config", 0);
+  d.height = opt_int_field(L, 1, "height", "config", 0);
+  if (d.width < 0 || d.height < 0)
+    return luaL_error(L, "config: width/height must be positive");
+  if (lub_config(api_ctx(), &d) != LUB_OK)
+    return api_raise(L);
   return 0;
 }
 
 static int l_quit(lua_State *L) {
   (void)L;
-  if (g_app_for_lua)
-    g_app_for_lua->quit_requested = true;
+  lub_quit(api_ctx());
   return 0;
 }
 
@@ -1165,11 +1029,7 @@ static int l_request_file(lua_State *L) {
 }
 
 static int l_is_web(lua_State *L) {
-#ifdef __EMSCRIPTEN__
-  lua_pushboolean(L, 1);
-#else
-  lua_pushboolean(L, 0);
-#endif
+  lua_pushboolean(L, lub_sys_is_web(api_ctx()));
   return 1;
 }
 
@@ -1225,32 +1085,19 @@ static int l_png_write(lua_State *L) {
 }
 
 // ---------------------------------------------------------------------------
-// audio: raw PCM だけを受ける core 契約 (docs/roadmap.md)。decode は
-// png_load と同格の純関数 utility で snd handle を作らない。
-
-static AudioState *audio_state_lazy(lua_State *L) {
-  if (!g_app_for_lua)
-    luaL_error(L, "audio: no app");
-  if (!g_app_for_lua->audio) {
-    g_app_for_lua->audio = audio_state_create();
-    if (!g_app_for_lua->audio)
-      luaL_error(L, "audio: state create failed");
-  }
-  return g_app_for_lua->audio;
-}
+// audio / host: C API への詰め替え。
 
 // (data, channels, rate) -> snd。data は f32 の LubBytes / string、または
 // サンプル値の table (コードで波形を作る経路)。
 static int l_audio_pcm(lua_State *L) {
-  AudioState *st = audio_state_lazy(L);
-  uint32_t channels = (uint32_t)luaL_checkinteger(L, 2);
-  uint32_t rate = (uint32_t)luaL_checkinteger(L, 3);
+  int32_t channels = (int32_t)luaL_checkinteger(L, 2);
+  int32_t rate = (int32_t)luaL_checkinteger(L, 3);
   const float *pcm = NULL;
   float *tmp = NULL;
   size_t samples = 0;
   if (lua_istable(L, 1)) {
     samples = lua_rawlen(L, 1);
-    tmp = (float *)malloc(samples * sizeof(float));
+    tmp = (float *)malloc((samples ? samples : 1) * sizeof(float));
     if (!tmp)
       return luaL_error(L, "audio_pcm: out of memory");
     for (size_t i = 0; i < samples; i++) {
@@ -1275,17 +1122,13 @@ static int l_audio_pcm(lua_State *L) {
     pcm = (const float *)data;
     samples = len / sizeof(float);
   }
-  if (channels == 0 || samples == 0 || samples % channels != 0) {
-    free(tmp);
-    return luaL_error(L, "audio_pcm: %zu samples not divisible by %u channels",
-                      samples, (unsigned)channels);
-  }
-  int id = audio_snd_from_pcm(st, pcm, (uint32_t)(samples / channels), channels,
-                              rate);
+  int32_t snd = 0;
+  LubStatus st =
+      lub_audio_pcm(api_ctx(), pcm, (int32_t)samples, channels, rate, &snd);
   free(tmp);
-  if (id == 0)
-    return luaL_error(L, "audio_pcm: rejected (registry full or bad args)");
-  lua_pushinteger(L, id);
+  if (st != LUB_OK)
+    return api_raise(L);
+  lua_pushinteger(L, snd);
   return 1;
 }
 
@@ -1300,93 +1143,115 @@ static int l_audio_decode(lua_State *L) {
   } else {
     data = luaL_checklstring(L, 1, &len);
   }
-  uint32_t frames = 0, ch = 0, rate = 0;
-  float *pcm = audio_decode_bytes(data, len, &frames, &ch, &rate);
-  if (!pcm) {
+  LubView pcm = {0};
+  int32_t ch = 0, rate = 0;
+  if (lub_audio_decode(api_ctx(), (const uint8_t *)data, (int32_t)len, &pcm,
+                       &ch, &rate) != LUB_OK) {
     lua_pushnil(L);
     return 1;
   }
-  lub_bytes_push(L, (uint8_t *)pcm, (size_t)frames * ch * sizeof(float));
+  // view を Bytes (所有) に写す。frame を跨いで持てる従来の契約を保つ。
+  uint8_t *copy = (uint8_t *)malloc(pcm.len > 0 ? (size_t)pcm.len : 1);
+  if (!copy)
+    return luaL_error(L, "audio_decode: out of memory");
+  if (pcm.len > 0)
+    memcpy(copy, pcm.ptr, (size_t)pcm.len);
+  lub_bytes_push(L, copy, (size_t)pcm.len);
   lua_pushinteger(L, ch);
   lua_pushinteger(L, rate);
   return 3;
 }
 
-static void audio_read_opts(lua_State *L, int idx, bool *loop, float *volume,
-                            float *pitch, float *pan) {
-  *volume = 1.0f;
-  *pitch = 1.0f;
-  *pan = 0.0f;
-  if (loop)
-    *loop = false;
+static void audio_read_opts(lua_State *L, int idx, LubAudioPlayDesc *d) {
+  d->volume = 1.0f;
+  d->pitch = 1.0f;
+  d->pan = 0.0f;
+  d->loop = false;
   if (lua_isnoneornil(L, idx))
     return;
   luaL_checktype(L, idx, LUA_TTABLE);
   lua_getfield(L, idx, "volume");
   if (!lua_isnil(L, -1))
-    *volume = (float)lua_tonumber(L, -1);
+    d->volume = (float)lua_tonumber(L, -1);
   lua_pop(L, 1);
   lua_getfield(L, idx, "pitch");
   if (!lua_isnil(L, -1))
-    *pitch = (float)lua_tonumber(L, -1);
+    d->pitch = (float)lua_tonumber(L, -1);
   lua_pop(L, 1);
   lua_getfield(L, idx, "pan");
   if (!lua_isnil(L, -1))
-    *pan = (float)lua_tonumber(L, -1);
+    d->pan = (float)lua_tonumber(L, -1);
   lua_pop(L, 1);
-  if (loop) {
-    lua_getfield(L, idx, "loop");
-    *loop = lua_toboolean(L, -1);
-    lua_pop(L, 1);
-  }
+  lua_getfield(L, idx, "loop");
+  d->loop = lua_toboolean(L, -1);
+  lua_pop(L, 1);
 }
 
 static int l_audio_play(lua_State *L) {
-  AudioState *st = audio_state_lazy(L);
-  int snd = (int)luaL_checkinteger(L, 1);
-  float volume, pitch, pan;
-  audio_read_opts(L, 2, NULL, &volume, &pitch, &pan);
-  lua_pushboolean(L, audio_play(st, snd, volume, pitch, pan));
+  int32_t snd = (int32_t)luaL_checkinteger(L, 1);
+  LubAudioPlayDesc d;
+  audio_read_opts(L, 2, &d);
+  lua_pushboolean(L, lub_audio_play(api_ctx(), snd, &d));
   return 1;
 }
 
 static int l_audio_voice(lua_State *L) {
-  AudioState *st = audio_state_lazy(L);
-  const char *key = luaL_checkstring(L, 1);
-  int snd = (int)luaL_checkinteger(L, 2);
-  bool loop;
-  float volume, pitch, pan;
-  audio_read_opts(L, 3, &loop, &volume, &pitch, &pan);
-  lua_pushboolean(L, audio_voice(st, key, snd, loop, volume, pitch, pan));
+  LubStr key = lstr_check(L, 1);
+  int32_t snd = (int32_t)luaL_checkinteger(L, 2);
+  LubAudioPlayDesc d;
+  audio_read_opts(L, 3, &d);
+  lua_pushboolean(L, lub_audio_voice(api_ctx(), key, snd, &d));
   return 1;
 }
 
 static int l_audio_free(lua_State *L) {
-  AudioState *st = audio_state_lazy(L);
-  lua_pushboolean(L, audio_snd_free(st, (int)luaL_checkinteger(L, 1)));
+  lua_pushboolean(L,
+                  lub_audio_free(api_ctx(), (int32_t)luaL_checkinteger(L, 1)));
   return 1;
 }
 
 static int l_audio_master_volume(lua_State *L) {
-  AudioState *st = audio_state_lazy(L);
-  audio_master_volume(st, (float)luaL_checknumber(L, 1));
+  lub_audio_master_volume(api_ctx(), (float)luaL_checknumber(L, 1));
   return 0;
 }
 
 static int l_audio_info(lua_State *L) {
-  AudioState *st = audio_state_lazy(L);
-  AudioInfo info;
-  audio_state_info(st, &info);
+  LubAudioInfo info;
+  lub_audio_info(api_ctx(), &info);
   lua_newtable(L);
-  lua_pushboolean(L, info.device_ok);
+  lua_pushboolean(L, info.device);
   lua_setfield(L, -2, "device");
   lua_pushinteger(L, info.rate);
   lua_setfield(L, -2, "rate");
-  lua_pushinteger(L, info.active_voices);
+  lua_pushinteger(L, info.voices);
   lua_setfield(L, -2, "voices");
   lua_pushinteger(L, info.snds);
   lua_setfield(L, -2, "snds");
   return 1;
+}
+
+static int l_host_available(lua_State *L) {
+  lua_pushboolean(L, lub_host_available(api_ctx()));
+  return 1;
+}
+
+static int l_host_send(lua_State *L) {
+  LubStr topic = lstr_check(L, 1);
+  LubStr payload = lstr_check(L, 2);
+  lub_host_send(api_ctx(), topic, payload);
+  return 0;
+}
+
+// host_poll() -> topic, payload。queue が空なら nil。
+static int l_host_poll(lua_State *L) {
+  LubView topic = {0}, payload = {0};
+  if (!lub_host_poll(api_ctx(), &topic, &payload)) {
+    lua_pushnil(L);
+    return 1;
+  }
+  lua_pushlstring(L, (const char *)topic.ptr, (size_t)topic.len);
+  lua_pushlstring(L, (const char *)payload.ptr, (size_t)payload.len);
+  return 2;
 }
 
 void lua_api_register(lua_State *L) {
@@ -1491,7 +1356,12 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "font_glyph_mesh");
   lua_pushcfunction(L, lub_font_kern);
   lua_setglobal(L, "font_kern");
-  host_lua_register(L);
+  lua_pushcfunction(L, l_host_available);
+  lua_setglobal(L, "host_available");
+  lua_pushcfunction(L, l_host_send);
+  lua_setglobal(L, "host_send");
+  lua_pushcfunction(L, l_host_poll);
+  lua_setglobal(L, "host_poll");
   ui_register_lua(L);
   phys2d_lua_register(L);
   phys3d_lua_register(L);
