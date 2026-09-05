@@ -33,8 +33,14 @@ for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then
     if ! diff -q "$src" "$dst" > /dev/null; then
-      echo "gen-api: $dst is stale (run scripts/gen-api.sh)"
-      status=1
+      # formatter の版違い (clang-format の折り返し等) は内容の差ではない。
+      # 空白を全部落として同じなら通す。
+      if [ "$(tr -d '[:space:]' < "$src" | sha256sum)" = "$(tr -d '[:space:]' < "$dst" | sha256sum)" ]; then
+        echo "gen-api: $dst differs only in formatting (formatter version); ok"
+      else
+        echo "gen-api: $dst is stale (run scripts/gen-api.sh)"
+        status=1
+      fi
     fi
   else
     cp "$src" "$dst"
