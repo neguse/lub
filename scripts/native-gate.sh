@@ -127,8 +127,10 @@ cs_capture() {
   grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
 
   # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
-  # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) と capture が
-  # tcs→Lua と一致することを確かめる。数値は両方 f32 なので絵は byte 一致する。
+  # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と
+  # 一致することを確かめる。数値は両方 f32 なので絵も揃うが、libm の実装差
+  # (sinf と (float)sin の丸め等) で LSB が違いうるので、capture の一致は
+  # golden と同じく手元の gate でだけ見る。
   # SampleRunner の出力は Sample ごとに別 dir なので build は capture の直前。
   run_timed dotnet build dotnet/SampleRunner -p:Sample="$cs_name" -nologo -v q
   dn_png="${TMPDIR:-/tmp}/lub-native-gate-${cs_name}_dotnet.png"
@@ -145,10 +147,13 @@ cs_capture() {
     return 1
   fi
   # digest は最初の 30 frame (CI の capture 長)。facade の詰め替えの違いは
-  # ここに出る。capture は同じ machine の同じ rasterizer で撮った 2 枚なので
-  # golden を持たず直接比べる。
+  # ここに出る。
   run cmp <(head -30 "$cs_digest") <(head -30 "$dn_digest")
-  run cmp "$cs_png" "$dn_png"
+  if [[ $skip_golden -eq 1 ]]; then
+    echo "==> .NET capture cmp skipped (--skip-golden): ${cs_name}"
+  else
+    run cmp "$cs_png" "$dn_png"
+  fi
 }
 
 # サンプルごとに独立 (dir が disjoint) な処理を pool で並列化する。
