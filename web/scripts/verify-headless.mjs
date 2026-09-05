@@ -501,6 +501,16 @@ if (!RUN_EDIT && a5Samples.length > 0) {
     const h = await page.waitForSelector('iframe', { timeout: 20000 })
     await waitForPixels(h, screenshotPath('A5_initial_settle.png'),
       (c) => c.nonBlack / c.total > 0.005, 30000)
+    // 初期サンプルの C# session (.NET wasm の cold start + compile) は main
+    // thread を塞ぐので、開き終わるまで待ってから切替に入る。遅い runner だと
+    // 切替の handler が遅れて iframe が出ない。
+    await page.waitForFunction(
+      () => {
+        const q = window.__lubTest && window.__lubTest.csQuery
+        return !!q && q.ready()
+      },
+      { timeout: 90000, polling: 500 },
+    ).catch(() => {})
   } catch { }
 }
 
@@ -535,7 +545,9 @@ for (const sample of a5Samples) {
     // playerReady fires before the first frame draws. Poll the canvas until
     // pixels cross the threshold instead of sleeping a fixed window; the cap
     // (2x the old fixed sleep) preserves the former sleep + retry tolerance.
-    const handle = await page.waitForSelector('iframe', { timeout: 10000 })
+    // 切替直前のサンプルの session compile が main thread を塞ぐことがある
+    // (大きいサンプル + 遅い runner) ので、iframe の出現は長めに待つ。
+    const handle = await page.waitForSelector('iframe', { timeout: 30000 })
     const p = screenshotPath(`A5_${name}.png`)
     const threshold = sample.minNonBlack
     const c = await waitForPixels(
