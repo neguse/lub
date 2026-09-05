@@ -14,9 +14,9 @@
 //     だけ持つ。
 //   - main thread 限定。
 //
-// 段階 3 の途中の形: gfx / input / sys / profiler / host / audio / io / png
-// がこの API を通る。残り (mesh / font / ui / physics) は順に移す。段階 4 で
-// この header は cs-lib/lub_stub.cs からの生成物になる。
+// 段階 3 の途中の形: gfx / input / sys / profiler / host / audio / io / png /
+// font / ui / mesh がこの API を通る。残り (phys2d / phys3d) は順に移す。段階 4
+// で この header は cs-lib/lub_stub.cs からの生成物になる。
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -222,6 +222,124 @@ LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *pixels,
                        LubIoResult *r);
 LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *pixels,
                         int32_t len, int32_t w, int32_t h, int32_t stride);
+
+// ------------------------------------------------------------------ mesh
+
+// SDF 木のノード (docs/log/2026-07-04-sdf-tree-design.md)。木は node の配列と
+// index で平らに渡す。params の意味は op ごと:
+//   SPHERE r / BOX hx hy hz / CAPSULE ax ay az bx by bz r /
+//   TORUS rmajor rminor / MOVE x y z / ROTATE qx qy qz qw / SCALE s /
+//   PAINT cr cg cb metallic roughness / BONE px py pz (name 必須) /
+//   SMIN k / SSUB k。a は xform / mirror / paint / bone の子、combine は a と
+//   b。
+typedef enum LubSdfOp {
+  LUB_SDF_OP_SPHERE = 1,
+  LUB_SDF_OP_BOX = 2,
+  LUB_SDF_OP_CAPSULE = 3,
+  LUB_SDF_OP_TORUS = 4,
+  LUB_SDF_OP_MOVE = 5,
+  LUB_SDF_OP_ROTATE = 6,
+  LUB_SDF_OP_SCALE = 7,
+  LUB_SDF_OP_MIRROR_X = 8,
+  LUB_SDF_OP_PAINT = 9,
+  LUB_SDF_OP_BONE = 10,
+  LUB_SDF_OP_UNION = 11,
+  LUB_SDF_OP_SMIN = 12,
+  LUB_SDF_OP_SUBTRACT = 13,
+  LUB_SDF_OP_SSUB = 14,
+  LUB_SDF_OP_INTERSECT = 15,
+} LubSdfOp;
+
+typedef struct LubSdfNode {
+  int32_t op; // LubSdfOp
+  float params[8];
+  int32_t a, b; // 子の index。-1 = 無し
+  LubStr name;  // BONE の名前
+} LubSdfNode;
+
+typedef struct LubSdfBone {
+  LubStr name;
+  float pivot[3];
+} LubSdfBone;
+
+// sdf のメッシュ。mesh は positions / normals / indices に加えて colors
+// (vec3) / metal_rough (vec2)、bone があれば joints / weights も持つ。
+typedef struct LubSdfMesh {
+  LubMeshData mesh;
+  const LubSdfBone *bones;
+  int32_t bone_count;
+  float bounds_min[3];
+  float bounds_max[3];
+  float cell;
+} LubSdfMesh;
+
+// grid は nx*ny*nz の signed distance (x が最速)。結果の view は次の mesh_*
+// 呼び出しまで有効。
+LubStatus lub_mesh_surface_nets(LubContext *ctx, const float *grid, int32_t nx,
+                                int32_t ny, int32_t nz, float cell, float ox,
+                                float oy, float oz, LubMeshData *out);
+// n は最長軸の cell 数 (4..512)。skin_k は bone の重みの blend 幅 (0 = 0.1)。
+LubStatus lub_mesh_sdf(LubContext *ctx, const LubSdfNode *nodes, int32_t count,
+                       int32_t root, int32_t n, float skin_k, LubSdfMesh *out);
+
+// ------------------------------------------------------------------ font
+
+// TTF glyph の純関数 utility。ttf は font ファイルの byte 列で毎回渡す。
+typedef struct LubFontMetrics {
+  float ascent, descent, line_gap; // em 単位
+} LubFontMetrics;
+
+typedef struct LubFontGlyph {
+  bool found;   // false = glyph が無い (呼び出し側が他の font に fallback)
+  int32_t w, h; // bitmap の大きさ (空 glyph は 0)
+  int32_t xoff, yoff; // baseline 原点からの左上 offset (px、y-down)
+  float advance;      // px
+  LubView bytes;      // w*h の R8 coverage (行優先、上から)。空 glyph は len 0
+} LubFontGlyph;
+
+typedef struct LubFontGlyphMesh {
+  bool found;
+  LubMeshData mesh; // em 単位、y-up、baseline 原点、z = 0、normal +z
+  float advance;    // em
+} LubFontGlyphMesh;
+
+LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out);
+// px は 1 em あたりの pixel 数。view は次の font_* 呼び出しまで有効。
+LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
+                         float px, LubFontGlyph *out);
+// tolerance は曲線の平坦化誤差 (em)。0 = 既定 0.002。
+LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
+                              float tolerance, LubFontGlyphMesh *out);
+LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1, int32_t cp2,
+                        float *out);
+
+// -------------------------------------------------------------------- ui
+
+// Dear ImGui の debug UI (immediate mode)。frame が開いていないときの widget
+// 呼び出しは既定値を返して何もしない。render は begin_pass の中で 1 回。
+LubStatus lub_ui_render(LubContext *ctx);
+bool lub_ui_begin_window(LubContext *ctx, LubStr title);
+void lub_ui_end_window(LubContext *ctx);
+void lub_ui_text(LubContext *ctx, LubStr text);
+bool lub_ui_button(LubContext *ctx, LubStr label);
+bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool value);
+float lub_ui_slider_float(LubContext *ctx, LubStr label, float value, float min,
+                          float max);
+int32_t lub_ui_slider_int(LubContext *ctx, LubStr label, int32_t value,
+                          int32_t min, int32_t max);
+// speed / min / max は 0 で既定 (speed 1、範囲無し)。
+float lub_ui_drag_float(LubContext *ctx, LubStr label, float value, float speed,
+                        float min, float max);
+// rgb は in/out。
+void lub_ui_color_edit3(LubContext *ctx, LubStr label, float rgb[3]);
+void lub_ui_separator(LubContext *ctx);
+void lub_ui_same_line(LubContext *ctx);
+bool lub_ui_tree_node(LubContext *ctx, LubStr label, bool default_open);
+void lub_ui_tree_pop(LubContext *ctx);
+// 初回配置だけ指定する (ユーザのドラッグは活かす)。
+void lub_ui_set_next_window(LubContext *ctx, float x, float y, float w,
+                            float h);
+bool lub_ui_want_capture_mouse(LubContext *ctx);
 
 // ------------------------------------------------------------------- gfx
 

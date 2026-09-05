@@ -169,6 +169,8 @@ set(LUB_SOURCES
   src/api_sys.c
   src/api_audio.c
   src/api_io.c
+  src/api_font.c
+  src/api_mesh.c
   src/enums_lua.c
   src/pass.c
   src/profile.c
@@ -416,22 +418,20 @@ if(NOT LUB_WASM)
     tests/c/surfacenets_smoke.c
     src/surfacenets.c
   )
-  target_link_libraries(lub_surfacenets_smoke PRIVATE lua_static)
   if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_surfacenets_smoke PRIVATE m dl)
+    target_link_libraries(lub_surfacenets_smoke PRIVATE m)
   endif()
-  target_include_directories(lub_surfacenets_smoke PRIVATE src)
+  target_include_directories(lub_surfacenets_smoke PRIVATE src include)
 
   add_executable(lub_sdf_smoke
     tests/c/sdf_smoke.c
     src/sdf.c
     src/surfacenets.c
   )
-  target_link_libraries(lub_sdf_smoke PRIVATE lua_static)
   if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_sdf_smoke PRIVATE m dl)
+    target_link_libraries(lub_sdf_smoke PRIVATE m)
   endif()
-  target_include_directories(lub_sdf_smoke PRIVATE src)
+  target_include_directories(lub_sdf_smoke PRIVATE src include)
 
   # Slang -> DXIL compile smoke (Windows only; needs dxcompiler.dll from the
   # DXC fetch above, resolved from the build dir where the slang DLLs are

@@ -37,6 +37,8 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
 void api_gfx_shutdown(App *app);
 void api_audio_shutdown(App *app);
 void api_io_shutdown(App *app);
+void api_font_shutdown(App *app);
+void api_mesh_shutdown(App *app);
 
 // file の取得状態: 0 = pending (web で fetch 中)、1 = ready、2 = missing。
 int lub_io_request_file(const char *path);

@@ -116,9 +116,11 @@ typedef struct App {
   // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
-  float *audio_decode_view;     // lub_audio_decode の view の実体
-  struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
-  unsigned char *host_poll_buf; // lub_host_poll の view の実体
+  float *audio_decode_view;         // lub_audio_decode の view の実体
+  struct IoCache *io_cache;         // lub_io_* / lub_png_load の file cache
+  struct FontScratch *font_scratch; // lub_font_* の view の実体
+  struct MeshScratch *mesh_scratch; // lub_mesh_* の view の実体
+  unsigned char *host_poll_buf;     // lub_host_poll の view の実体
 
 #ifndef __EMSCRIPTEN__
   // SDL3 GPU backend state. Owned/used by backend_sdlgpu.c only.

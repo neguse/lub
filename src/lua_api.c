@@ -4,15 +4,12 @@
 #include "backend.h"
 #include "enums.h"
 #include "enums_lua.h"
-#include "font.h"
 #include "pass.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
 #include "pipeline.h"
 #include "resources.h"
-#include "sdf.h"
 #include "shader.h"
-#include "surfacenets.h"
 #include "ui.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
@@ -1421,6 +1418,441 @@ static int l_host_poll(lua_State *L) {
   return 2;
 }
 
+// ---------------------------------------------------------------------------
+// font / ui: C API への詰め替え。
+
+static LubStr bytes_arg(lua_State *L, int idx) {
+  size_t len = 0;
+  const uint8_t *data = lub_bytes_arg(L, idx, &len);
+  LubStr r = {(const char *)data, (int32_t)len};
+  return r;
+}
+
+static int l_font_metrics(lua_State *L) {
+  LubFontMetrics m;
+  if (lub_font_metrics(api_ctx(), bytes_arg(L, 1), &m) != LUB_OK)
+    return api_raise(L);
+  lua_createtable(L, 0, 3);
+  lua_pushnumber(L, m.ascent);
+  lua_setfield(L, -2, "ascent");
+  lua_pushnumber(L, m.descent);
+  lua_setfield(L, -2, "descent");
+  lua_pushnumber(L, m.line_gap);
+  lua_setfield(L, -2, "line_gap");
+  return 1;
+}
+
+// font_glyph(ttf, codepoint, px) -> nil | { w, h, xoff, yoff, advance, bytes }
+static int l_font_glyph(lua_State *L) {
+  LubStr ttf = bytes_arg(L, 1);
+  int32_t cp = (int32_t)luaL_checkinteger(L, 2);
+  float px = (float)luaL_checknumber(L, 3);
+  LubFontGlyph g;
+  if (lub_font_glyph(api_ctx(), ttf, cp, px, &g) != LUB_OK)
+    return api_raise(L);
+  if (!g.found) {
+    lua_pushnil(L);
+    return 1;
+  }
+  lua_createtable(L, 0, 6);
+  lua_pushinteger(L, g.w);
+  lua_setfield(L, -2, "w");
+  lua_pushinteger(L, g.h);
+  lua_setfield(L, -2, "h");
+  lua_pushinteger(L, g.xoff);
+  lua_setfield(L, -2, "xoff");
+  lua_pushinteger(L, g.yoff);
+  lua_setfield(L, -2, "yoff");
+  lua_pushnumber(L, g.advance);
+  lua_setfield(L, -2, "advance");
+  if (g.bytes.ptr && g.bytes.len > 0) {
+    // Lua string: readable from script (string.byte) so the atlas blit can
+    // happen outside the core.
+    lua_pushlstring(L, (const char *)g.bytes.ptr, (size_t)g.bytes.len);
+    lua_setfield(L, -2, "bytes");
+  }
+  return 1;
+}
+
+// font_glyph_mesh(ttf, codepoint [, tolerance]) -> nil | mesh table + advance
+static int l_font_glyph_mesh(lua_State *L) {
+  LubStr ttf = bytes_arg(L, 1);
+  int32_t cp = (int32_t)luaL_checkinteger(L, 2);
+  float tol = (float)luaL_optnumber(L, 3, 0.002);
+  LubFontGlyphMesh gm;
+  if (lub_font_glyph_mesh(api_ctx(), ttf, cp, tol, &gm) != LUB_OK)
+    return api_raise(L);
+  if (!gm.found) {
+    lua_pushnil(L);
+    return 1;
+  }
+  lua_createtable(L, 0, 6);
+  push_mesh_fields(L, &gm.mesh);
+  lua_pushnumber(L, gm.advance);
+  lua_setfield(L, -2, "advance");
+  return 1;
+}
+
+static int l_font_kern(lua_State *L) {
+  LubStr ttf = bytes_arg(L, 1);
+  int32_t cp1 = (int32_t)luaL_checkinteger(L, 2);
+  int32_t cp2 = (int32_t)luaL_checkinteger(L, 3);
+  float k = 0;
+  if (lub_font_kern(api_ctx(), ttf, cp1, cp2, &k) != LUB_OK)
+    return api_raise(L);
+  lua_pushnumber(L, k);
+  return 1;
+}
+
+static int l_ui_render(lua_State *L) {
+  if (lub_ui_render(api_ctx()) != LUB_OK)
+    return api_raise(L);
+  return 0;
+}
+
+static int l_ui_begin(lua_State *L) {
+  lua_pushboolean(L, lub_ui_begin_window(api_ctx(), lstr_check(L, 1)));
+  return 1;
+}
+
+static int l_ui_end(lua_State *L) {
+  (void)L;
+  lub_ui_end_window(api_ctx());
+  return 0;
+}
+
+static int l_ui_text(lua_State *L) {
+  lub_ui_text(api_ctx(), lstr_check(L, 1));
+  return 0;
+}
+
+static int l_ui_button(lua_State *L) {
+  lua_pushboolean(L, lub_ui_button(api_ctx(), lstr_check(L, 1)));
+  return 1;
+}
+
+static int l_ui_checkbox(lua_State *L) {
+  LubStr label = lstr_check(L, 1);
+  bool v = lua_toboolean(L, 2) != 0;
+  lua_pushboolean(L, lub_ui_checkbox(api_ctx(), label, v));
+  return 1;
+}
+
+static int l_ui_slider_float(lua_State *L) {
+  LubStr label = lstr_check(L, 1);
+  float v = (float)luaL_checknumber(L, 2);
+  float lo = (float)luaL_checknumber(L, 3);
+  float hi = (float)luaL_checknumber(L, 4);
+  lua_pushnumber(L, lub_ui_slider_float(api_ctx(), label, v, lo, hi));
+  return 1;
+}
+
+static int l_ui_slider_int(lua_State *L) {
+  LubStr label = lstr_check(L, 1);
+  int32_t v = (int32_t)luaL_checkinteger(L, 2);
+  int32_t lo = (int32_t)luaL_checkinteger(L, 3);
+  int32_t hi = (int32_t)luaL_checkinteger(L, 4);
+  lua_pushinteger(L, lub_ui_slider_int(api_ctx(), label, v, lo, hi));
+  return 1;
+}
+
+static int l_ui_drag_float(lua_State *L) {
+  LubStr label = lstr_check(L, 1);
+  float v = (float)luaL_checknumber(L, 2);
+  float speed = (float)luaL_optnumber(L, 3, 1.0);
+  float lo = (float)luaL_optnumber(L, 4, 0.0);
+  float hi = (float)luaL_optnumber(L, 5, 0.0);
+  lua_pushnumber(L, lub_ui_drag_float(api_ctx(), label, v, speed, lo, hi));
+  return 1;
+}
+
+static int l_ui_color_edit3(lua_State *L) {
+  LubStr label = lstr_check(L, 1);
+  float c[3] = {(float)luaL_checknumber(L, 2), (float)luaL_checknumber(L, 3),
+                (float)luaL_checknumber(L, 4)};
+  lub_ui_color_edit3(api_ctx(), label, c);
+  lua_pushnumber(L, c[0]);
+  lua_pushnumber(L, c[1]);
+  lua_pushnumber(L, c[2]);
+  return 3;
+}
+
+static int l_ui_separator(lua_State *L) {
+  (void)L;
+  lub_ui_separator(api_ctx());
+  return 0;
+}
+
+static int l_ui_same_line(lua_State *L) {
+  (void)L;
+  lub_ui_same_line(api_ctx());
+  return 0;
+}
+
+static int l_ui_tree_node(lua_State *L) {
+  LubStr label = lstr_check(L, 1);
+  bool def_open = lua_toboolean(L, 2) != 0;
+  lua_pushboolean(L, lub_ui_tree_node(api_ctx(), label, def_open));
+  return 1;
+}
+
+static int l_ui_tree_pop(lua_State *L) {
+  (void)L;
+  lub_ui_tree_pop(api_ctx());
+  return 0;
+}
+
+static int l_ui_set_next_window(lua_State *L) {
+  float x = (float)luaL_checknumber(L, 1);
+  float y = (float)luaL_checknumber(L, 2);
+  float w = (float)luaL_checknumber(L, 3);
+  float h = (float)luaL_checknumber(L, 4);
+  lub_ui_set_next_window(api_ctx(), x, y, w, h);
+  return 0;
+}
+
+static int l_ui_want_capture_mouse(lua_State *L) {
+  lua_pushboolean(L, lub_ui_want_capture_mouse(api_ctx()));
+  return 1;
+}
+
+// ---------------------------------------------------------------------------
+// mesh (surface_nets / sdf_mesh): C API への詰め替え。
+
+// surface_nets(grid, nx, ny, nz [, cell [, ox, oy, oz]]) -> mesh
+static int l_surface_nets(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  int32_t nx = (int32_t)luaL_checkinteger(L, 2);
+  int32_t ny = (int32_t)luaL_checkinteger(L, 3);
+  int32_t nz = (int32_t)luaL_checkinteger(L, 4);
+  float cell = (float)luaL_optnumber(L, 5, 1.0);
+  float ox = (float)luaL_optnumber(L, 6, 0.0);
+  float oy = (float)luaL_optnumber(L, 7, 0.0);
+  float oz = (float)luaL_optnumber(L, 8, 0.0);
+  if (nx < 2 || ny < 2 || nz < 2)
+    return luaL_error(L, "surface_nets: grid dims must be >= 2 (got %dx%dx%d)",
+                      nx, ny, nz);
+  size_t total = (size_t)nx * (size_t)ny * (size_t)nz;
+  if (total > (size_t)1 << 27)
+    return luaL_error(L, "surface_nets: grid too large (%dx%dx%d)", nx, ny, nz);
+  if (lua_rawlen(L, 1) < total)
+    return luaL_error(L,
+                      "surface_nets: grid has %d entries, need nx*ny*nz = %d",
+                      (int)lua_rawlen(L, 1), (int)total);
+  float *g = (float *)malloc(total * sizeof(float));
+  if (!g)
+    return luaL_error(L, "surface_nets: out of memory");
+  for (size_t i = 0; i < total; ++i) {
+    lua_rawgeti(L, 1, (lua_Integer)(i + 1));
+    g[i] = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+  }
+  LubMeshData m;
+  LubStatus st =
+      lub_mesh_surface_nets(api_ctx(), g, nx, ny, nz, cell, ox, oy, oz, &m);
+  free(g);
+  if (st != LUB_OK)
+    return api_raise(L);
+  lua_createtable(L, 0, 5);
+  push_mesh_fields(L, &m);
+  return 1;
+}
+
+// sdf の木 (table) を LubSdfNode の配列に平らにする。
+typedef struct SdfFlatten {
+  LubSdfNode *nodes;
+  int len, cap;
+  int depth;
+} SdfFlatten;
+
+static const struct {
+  const char *name;
+  int op;
+  const char *params[8];
+  int n_params;
+  int n_children; // 0 / 1 (c) / 2 (a, b)
+} SDF_OPS[] = {
+    {"sphere", LUB_SDF_OP_SPHERE, {"r"}, 1, 0},
+    {"box", LUB_SDF_OP_BOX, {"hx", "hy", "hz"}, 3, 0},
+    {"capsule",
+     LUB_SDF_OP_CAPSULE,
+     {"ax", "ay", "az", "bx", "by", "bz", "r"},
+     7,
+     0},
+    {"torus", LUB_SDF_OP_TORUS, {"rmajor", "rminor"}, 2, 0},
+    {"move", LUB_SDF_OP_MOVE, {"x", "y", "z"}, 3, 1},
+    {"rotate", LUB_SDF_OP_ROTATE, {"qx", "qy", "qz", "qw"}, 4, 1},
+    {"scale", LUB_SDF_OP_SCALE, {"s"}, 1, 1},
+    {"mirror_x", LUB_SDF_OP_MIRROR_X, {NULL}, 0, 1},
+    {"paint", LUB_SDF_OP_PAINT, {"cr", "cg", "cb"}, 3, 1},
+    {"bone", LUB_SDF_OP_BONE, {"px", "py", "pz"}, 3, 1},
+    {"union", LUB_SDF_OP_UNION, {NULL}, 0, 2},
+    {"smin", LUB_SDF_OP_SMIN, {"k"}, 1, 2},
+    {"subtract", LUB_SDF_OP_SUBTRACT, {NULL}, 0, 2},
+    {"ssub", LUB_SDF_OP_SSUB, {"k"}, 1, 2},
+    {"intersect", LUB_SDF_OP_INTERSECT, {NULL}, 0, 2},
+};
+
+static float sdf_need_num(lua_State *L, int t, const char *op, const char *k) {
+  lua_getfield(L, t, k);
+  if (!lua_isnumber(L, -1))
+    luaL_error(L, "sdf_mesh: node '%s' needs number field '%s'", op, k);
+  float v = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  return v;
+}
+
+static float sdf_opt_num(lua_State *L, int t, const char *k, float def) {
+  lua_getfield(L, t, k);
+  float v = lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : def;
+  lua_pop(L, 1);
+  return v;
+}
+
+static int sdf_flatten(lua_State *L, SdfFlatten *b, int t) {
+  t = lua_absindex(L, t);
+  if (++b->depth > 64)
+    luaL_error(L, "sdf_mesh: tree deeper than 64");
+  luaL_checkstack(L, 8, "sdf_mesh");
+  if (b->len >= 4096)
+    luaL_error(L, "sdf_mesh: tree has more than 4096 nodes");
+  if (b->len >= b->cap) {
+    int cap = b->cap ? b->cap * 2 : 64;
+    LubSdfNode *grown =
+        (LubSdfNode *)realloc(b->nodes, (size_t)cap * sizeof(LubSdfNode));
+    if (!grown)
+      luaL_error(L, "sdf_mesh: out of memory");
+    b->nodes = grown;
+    b->cap = cap;
+  }
+  int ni = b->len++;
+  lua_getfield(L, t, "op");
+  const char *op = lua_tostring(L, -1);
+  if (!op)
+    luaL_error(L, "sdf_mesh: node without string field 'op'");
+  int oi = -1;
+  for (size_t i = 0; i < sizeof(SDF_OPS) / sizeof(SDF_OPS[0]); ++i)
+    if (strcmp(SDF_OPS[i].name, op) == 0)
+      oi = (int)i;
+  if (oi < 0)
+    luaL_error(L, "sdf_mesh: unknown op '%s'", op);
+  LubSdfNode node = {0};
+  node.op = SDF_OPS[oi].op;
+  node.a = -1;
+  node.b = -1;
+  for (int i = 0; i < SDF_OPS[oi].n_params; ++i)
+    node.params[i] = sdf_need_num(L, t, op, SDF_OPS[oi].params[i]);
+  if (node.op == LUB_SDF_OP_PAINT) {
+    node.params[3] = sdf_opt_num(L, t, "metallic", 0.0f);
+    node.params[4] = sdf_opt_num(L, t, "roughness", 0.8f);
+  }
+  if (node.op == LUB_SDF_OP_BONE) {
+    lua_getfield(L, t, "name");
+    size_t nl = 0;
+    const char *bn = lua_tolstring(L, -1, &nl);
+    if (!bn)
+      luaL_error(L, "sdf_mesh: bone needs string field 'name'");
+    // 文字列は木の table が生きている間 (呼び出しの間) 有効
+    node.name.ptr = bn;
+    node.name.len = (int32_t)nl;
+    lua_pop(L, 1);
+  }
+  b->nodes[ni] = node;
+  if (SDF_OPS[oi].n_children == 1) {
+    lua_getfield(L, t, "c");
+    if (!lua_istable(L, -1))
+      luaL_error(L, "sdf_mesh: node '%s' needs child table 'c'", op);
+    int a = sdf_flatten(L, b, lua_gettop(L));
+    lua_pop(L, 1);
+    b->nodes[ni].a = a;
+  } else if (SDF_OPS[oi].n_children == 2) {
+    lua_getfield(L, t, "a");
+    if (!lua_istable(L, -1))
+      luaL_error(L, "sdf_mesh: node '%s' needs child table 'a'", op);
+    int a = sdf_flatten(L, b, lua_gettop(L));
+    lua_pop(L, 1);
+    lua_getfield(L, t, "b");
+    if (!lua_istable(L, -1))
+      luaL_error(L, "sdf_mesh: node '%s' needs child table 'b'", op);
+    int c = sdf_flatten(L, b, lua_gettop(L));
+    lua_pop(L, 1);
+    b->nodes[ni].a = a;
+    b->nodes[ni].b = c;
+  }
+  lua_pop(L, 1); // op string (kept anchored for the error messages above)
+  --b->depth;
+  return ni;
+}
+
+static void push_vec3_table(lua_State *L, const float v[3]) {
+  lua_createtable(L, 3, 0);
+  for (int i = 0; i < 3; ++i) {
+    lua_pushnumber(L, v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
+// sdf_mesh(tree, n [, skin_k]) -> mesh
+static int l_sdf_mesh(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  int32_t n = (int32_t)luaL_checkinteger(L, 2);
+  float skin_k = (float)luaL_optnumber(L, 3, 0.1);
+  lua_getfield(L, 1, "version");
+  if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) != 1)
+    return luaL_error(L, "sdf_mesh: tree.version must be 1");
+  lua_pop(L, 1);
+  lua_getfield(L, 1, "root");
+  if (!lua_istable(L, -1))
+    return luaL_error(L, "sdf_mesh: tree.root must be a node table");
+  // NOTE: flatten raises Lua errors on invalid trees; b.nodes leaks on that
+  // path. Acceptable: authoring-time errors are rare and small.
+  SdfFlatten b = {0};
+  int root = sdf_flatten(L, &b, -1);
+  lua_pop(L, 1);
+  LubSdfMesh m;
+  LubStatus st = lub_mesh_sdf(api_ctx(), b.nodes, b.len, root, n, skin_k, &m);
+  free(b.nodes);
+  if (st != LUB_OK)
+    return api_raise(L);
+  lua_createtable(L, 0, 12);
+  push_mesh_fields(L, &m.mesh);
+  push_float_table(L, m.mesh.colors, m.mesh.vert_count * 3);
+  lua_setfield(L, -2, "colors");
+  push_float_table(L, m.mesh.metal_rough, m.mesh.vert_count * 2);
+  lua_setfield(L, -2, "metal_rough");
+  if (m.bone_count > 0) {
+    lua_createtable(L, m.mesh.vert_count * 2, 0);
+    for (int32_t i = 0; i < m.mesh.vert_count * 2; ++i) {
+      lua_pushinteger(L, (lua_Integer)m.mesh.joints[i]);
+      lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "joints");
+    push_float_table(L, m.mesh.weights, m.mesh.vert_count * 2);
+    lua_setfield(L, -2, "weights");
+    lua_createtable(L, m.bone_count, 0);
+    for (int32_t i = 0; i < m.bone_count; ++i) {
+      lua_createtable(L, 0, 4);
+      lua_pushlstring(L, m.bones[i].name.ptr, (size_t)m.bones[i].name.len);
+      lua_setfield(L, -2, "name");
+      lua_pushnumber(L, m.bones[i].pivot[0]);
+      lua_setfield(L, -2, "x");
+      lua_pushnumber(L, m.bones[i].pivot[1]);
+      lua_setfield(L, -2, "y");
+      lua_pushnumber(L, m.bones[i].pivot[2]);
+      lua_setfield(L, -2, "z");
+      lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "bones");
+  }
+  push_vec3_table(L, m.bounds_min);
+  lua_setfield(L, -2, "bounds_min");
+  push_vec3_table(L, m.bounds_max);
+  lua_setfield(L, -2, "bounds_max");
+  lua_pushnumber(L, m.cell);
+  lua_setfield(L, -2, "cell");
+  return 1;
+}
+
 void lua_api_register(lua_State *L) {
   lub_bytes_register(L);
   lub_readback_register(L);
@@ -1525,17 +1957,17 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "io_interleave_pncm");
   lua_pushcfunction(L, l_io_interleave_pncmw);
   lua_setglobal(L, "io_interleave_pncmw");
-  lua_pushcfunction(L, lub_surface_nets);
+  lua_pushcfunction(L, l_surface_nets);
   lua_setglobal(L, "surface_nets");
-  lua_pushcfunction(L, lub_sdf_mesh);
+  lua_pushcfunction(L, l_sdf_mesh);
   lua_setglobal(L, "sdf_mesh");
-  lua_pushcfunction(L, lub_font_metrics);
+  lua_pushcfunction(L, l_font_metrics);
   lua_setglobal(L, "font_metrics");
-  lua_pushcfunction(L, lub_font_glyph);
+  lua_pushcfunction(L, l_font_glyph);
   lua_setglobal(L, "font_glyph");
-  lua_pushcfunction(L, lub_font_glyph_mesh);
+  lua_pushcfunction(L, l_font_glyph_mesh);
   lua_setglobal(L, "font_glyph_mesh");
-  lua_pushcfunction(L, lub_font_kern);
+  lua_pushcfunction(L, l_font_kern);
   lua_setglobal(L, "font_kern");
   lua_pushcfunction(L, l_host_available);
   lua_setglobal(L, "host_available");
@@ -1543,7 +1975,31 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "host_send");
   lua_pushcfunction(L, l_host_poll);
   lua_setglobal(L, "host_poll");
-  ui_register_lua(L);
+  static const struct {
+    const char *name;
+    lua_CFunction fn;
+  } ui_fns[] = {
+      {"ui_render", l_ui_render},
+      {"ui_begin", l_ui_begin},
+      {"ui_end", l_ui_end},
+      {"ui_text", l_ui_text},
+      {"ui_button", l_ui_button},
+      {"ui_checkbox", l_ui_checkbox},
+      {"ui_slider_float", l_ui_slider_float},
+      {"ui_slider_int", l_ui_slider_int},
+      {"ui_drag_float", l_ui_drag_float},
+      {"ui_color_edit3", l_ui_color_edit3},
+      {"ui_separator", l_ui_separator},
+      {"ui_same_line", l_ui_same_line},
+      {"ui_tree_node", l_ui_tree_node},
+      {"ui_tree_pop", l_ui_tree_pop},
+      {"ui_set_next_window", l_ui_set_next_window},
+      {"ui_want_capture_mouse", l_ui_want_capture_mouse},
+  };
+  for (size_t i = 0; i < sizeof(ui_fns) / sizeof(ui_fns[0]); ++i) {
+    lua_pushcfunction(L, ui_fns[i].fn);
+    lua_setglobal(L, ui_fns[i].name);
+  }
   phys2d_lua_register(L);
   phys3d_lua_register(L);
 }

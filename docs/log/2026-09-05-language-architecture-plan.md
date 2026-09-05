@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。Lua binding は詰め替えだけに。残り: mesh / font / ui / phys2d / phys3d |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。Lua binding は詰め替えだけに。残り: phys2d / phys3d |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -90,3 +90,13 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   `LubGltfView`(primitive ごとの平らな配列 + material)で返し、Lua 面の
   table は binding が組み立てる。interleave は C の `lub_mesh_interleave`
   で、Lua 面は table を配列に写してから呼ぶ。
+- font / mesh の結果(glyph bitmap、glyph mesh、surface_nets / sdf の
+  mesh)は runtime が同じ subsystem の次の呼び出しまで持つ view で返す
+  (`LubView` / `LubMeshData`)。Lua binding は従来どおり table や `Bytes` に
+  写して返す。`src/font.c` / `src/sdf.c` / `src/surfacenets.c` は Lua を
+  含まない純関数にし、`tests/c/*_smoke.c` は C の関数を直接叩く。
+- sdf の木は C では平らな `LubSdfNode` 配列(op、子の index、params、bone
+  名)で受ける。Lua 面の入れ子 table は binding が平らにしてから渡す。C# の
+  木も同じ配列に落とす(段階 3 の残りで `object` 引数を typed にするとき)。
+- ui は `lub_ui_*` を C API そのものにする(`src/ui.cpp` の `extern "C"`)。
+  Lua binding の `Ui` table は C API を 1 対 1 で包む。

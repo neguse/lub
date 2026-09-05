@@ -197,6 +197,8 @@ void app_shutdown(App *app) {
   api_audio_shutdown(app);
   api_host_shutdown(app);
   api_io_shutdown(app);
+  api_font_shutdown(app);
+  api_mesh_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

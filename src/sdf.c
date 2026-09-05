@@ -1,260 +1,19 @@
 #include "sdf.h"
 
+#include "lub/lub_api.h"
 #include "surfacenets.h"
 
-#include <lauxlib.h>
-#include <lua.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// The Lua tree is flattened once into this array (validating as we go), so
-// the per-grid-point evaluation never touches the Lua API. Evaluation is a
-// small recursion over node indices: transforms rewrite the point on the way
-// down, combinators merge child distances on the way up.
-
-enum {
-  OP_SPHERE,
-  OP_BOX,
-  OP_CAPSULE,
-  OP_TORUS,
-  OP_MOVE,
-  OP_ROTATE,
-  OP_SCALE,
-  OP_MIRROR_X,
-  OP_PAINT,
-  OP_BONE,
-  OP_UNION,
-  OP_SMIN,
-  OP_SUBTRACT,
-  OP_SSUB,
-  OP_INTERSECT,
-};
-
-// per-vertex material: albedo rgb + metallic + roughness
-#define SDF_MAT_N 5
-// skinning parts (bone nodes) per tree
-#define SDF_MAX_PARTS 8
-
-#define SDF_MAX_DEPTH 64
-#define SDF_MAX_NODES 4096
-
-typedef struct {
-  int op;
-  int a, b; // flat child indices, -1 = none; xform/mirror child in a
-  // params. capsule: ax ay az bax bay baz r inv_baba;
-  // rotate: forward rotation matrix, row-major (eval applies the transpose)
-  float p[10];
-} SdfNode;
-
-// bone ノードが宣言する skinning 部位。path は root からその bone までに
-// 通過した xform/mirror ノードの flat index 列で、頂点の部位距離を測るとき
-// 同じ点変換を再現するのに使う。
-typedef struct {
-  int node; // OP_BONE の flat index (距離評価はここから子へ)
-  char name[32];
-  float pivot[3];
-  int path[SDF_MAX_DEPTH];
-  int path_len;
-} SdfPart;
-
-typedef struct {
-  lua_State *L;
-  SdfNode *nodes;
-  int len, cap;
-  int depth;
-  SdfPart parts[SDF_MAX_PARTS];
-  int part_count;
-  int xpath[SDF_MAX_DEPTH]; // 現在の再帰位置までの xform/mirror ノード列
-  int xpath_len;
-} SdfBuild;
-
-static float need_num(lua_State *L, int t, const char *op, const char *k) {
-  lua_getfield(L, t, k);
-  if (!lua_isnumber(L, -1))
-    luaL_error(L, "sdf_mesh: node '%s' needs number field '%s'", op, k);
-  float v = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return v;
-}
-
-static float opt_num(lua_State *L, int t, const char *k, float def) {
-  lua_getfield(L, t, k);
-  float v = lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : def;
-  lua_pop(L, 1);
-  return v;
-}
-
-static int node_append(SdfBuild *b) {
-  if (b->len >= SDF_MAX_NODES)
-    luaL_error(b->L, "sdf_mesh: tree has more than %d nodes", SDF_MAX_NODES);
-  if (b->len >= b->cap) {
-    int cap = b->cap ? b->cap * 2 : 64;
-    SdfNode *p = (SdfNode *)realloc(b->nodes, (size_t)cap * sizeof(SdfNode));
-    if (!p)
-      luaL_error(b->L, "sdf_mesh: out of memory");
-    b->nodes = p;
-    b->cap = cap;
-  }
-  SdfNode *n = &b->nodes[b->len];
-  memset(n, 0, sizeof(*n));
-  n->a = n->b = -1;
-  return b->len++;
-}
-
-static int flatten(SdfBuild *b, int t);
-
-static int need_child(SdfBuild *b, int t, const char *op, const char *k) {
-  lua_State *L = b->L;
-  lua_getfield(L, t, k);
-  if (!lua_istable(L, -1))
-    luaL_error(L, "sdf_mesh: node '%s' needs child table '%s'", op, k);
-  int child = flatten(b, lua_gettop(L));
-  lua_pop(L, 1);
-  return child;
-}
-
-static int flatten(SdfBuild *b, int t) {
-  lua_State *L = b->L;
-  t = lua_absindex(L, t);
-  if (++b->depth > SDF_MAX_DEPTH)
-    luaL_error(L, "sdf_mesh: tree deeper than %d", SDF_MAX_DEPTH);
-  luaL_checkstack(L, 8, "sdf_mesh");
-
-  lua_getfield(L, t, "op");
-  const char *op = lua_tostring(L, -1);
-  if (!op)
-    luaL_error(L, "sdf_mesh: node without string field 'op'");
-  int ni = node_append(b);
-  SdfNode *n = &b->nodes[ni]; // valid until the next node_append
-
-  if (strcmp(op, "sphere") == 0) {
-    n->op = OP_SPHERE;
-    n->p[0] = need_num(L, t, op, "r");
-  } else if (strcmp(op, "box") == 0) {
-    n->op = OP_BOX;
-    n->p[0] = need_num(L, t, op, "hx");
-    n->p[1] = need_num(L, t, op, "hy");
-    n->p[2] = need_num(L, t, op, "hz");
-  } else if (strcmp(op, "capsule") == 0) {
-    n->op = OP_CAPSULE;
-    float ax = need_num(L, t, op, "ax");
-    float ay = need_num(L, t, op, "ay");
-    float az = need_num(L, t, op, "az");
-    float bx = need_num(L, t, op, "bx");
-    float by = need_num(L, t, op, "by");
-    float bz = need_num(L, t, op, "bz");
-    n->p[0] = ax;
-    n->p[1] = ay;
-    n->p[2] = az;
-    n->p[3] = bx - ax;
-    n->p[4] = by - ay;
-    n->p[5] = bz - az;
-    n->p[6] = need_num(L, t, op, "r");
-    float baba = n->p[3] * n->p[3] + n->p[4] * n->p[4] + n->p[5] * n->p[5];
-    n->p[7] = baba > 0 ? 1.0f / baba : 0; // a == b degenerates to a sphere
-  } else if (strcmp(op, "torus") == 0) {
-    n->op = OP_TORUS;
-    n->p[0] = need_num(L, t, op, "rmajor");
-    n->p[1] = need_num(L, t, op, "rminor");
-  } else if (strcmp(op, "move") == 0) {
-    n->op = OP_MOVE;
-    n->p[0] = need_num(L, t, op, "x");
-    n->p[1] = need_num(L, t, op, "y");
-    n->p[2] = need_num(L, t, op, "z");
-  } else if (strcmp(op, "rotate") == 0) {
-    n->op = OP_ROTATE;
-    float qx = need_num(L, t, op, "qx");
-    float qy = need_num(L, t, op, "qy");
-    float qz = need_num(L, t, op, "qz");
-    float qw = need_num(L, t, op, "qw");
-    float ql = sqrtf(qx * qx + qy * qy + qz * qz + qw * qw);
-    if (ql <= 0)
-      luaL_error(L, "sdf_mesh: rotate quaternion has zero length");
-    qx /= ql;
-    qy /= ql;
-    qz /= ql;
-    qw /= ql;
-    n->p[0] = 1 - 2 * (qy * qy + qz * qz);
-    n->p[1] = 2 * (qx * qy - qz * qw);
-    n->p[2] = 2 * (qx * qz + qy * qw);
-    n->p[3] = 2 * (qx * qy + qz * qw);
-    n->p[4] = 1 - 2 * (qx * qx + qz * qz);
-    n->p[5] = 2 * (qy * qz - qx * qw);
-    n->p[6] = 2 * (qx * qz - qy * qw);
-    n->p[7] = 2 * (qy * qz + qx * qw);
-    n->p[8] = 1 - 2 * (qx * qx + qy * qy);
-  } else if (strcmp(op, "scale") == 0) {
-    n->op = OP_SCALE;
-    n->p[0] = need_num(L, t, op, "s");
-    if (n->p[0] <= 0)
-      luaL_error(L, "sdf_mesh: scale 's' must be > 0");
-  } else if (strcmp(op, "mirror_x") == 0) {
-    n->op = OP_MIRROR_X;
-  } else if (strcmp(op, "paint") == 0) {
-    n->op = OP_PAINT;
-    n->p[0] = need_num(L, t, op, "cr");
-    n->p[1] = need_num(L, t, op, "cg");
-    n->p[2] = need_num(L, t, op, "cb");
-    n->p[3] = opt_num(L, t, "metallic", 0.0f);
-    n->p[4] = opt_num(L, t, "roughness", 0.8f);
-  } else if (strcmp(op, "bone") == 0) {
-    n->op = OP_BONE;
-    n->p[0] = need_num(L, t, op, "px");
-    n->p[1] = need_num(L, t, op, "py");
-    n->p[2] = need_num(L, t, op, "pz");
-    if (b->part_count >= SDF_MAX_PARTS)
-      luaL_error(L, "sdf_mesh: more than %d bones", SDF_MAX_PARTS);
-    lua_getfield(L, t, "name");
-    const char *bn = lua_tostring(L, -1);
-    if (!bn)
-      luaL_error(L, "sdf_mesh: bone needs string field 'name'");
-    SdfPart *part = &b->parts[b->part_count++];
-    part->node = ni;
-    strncpy(part->name, bn, sizeof(part->name) - 1);
-    part->name[sizeof(part->name) - 1] = '\0';
-    part->pivot[0] = n->p[0];
-    part->pivot[1] = n->p[1];
-    part->pivot[2] = n->p[2];
-    memcpy(part->path, b->xpath, (size_t)b->xpath_len * sizeof(int));
-    part->path_len = b->xpath_len;
-    lua_pop(L, 1);
-  } else if (strcmp(op, "union") == 0) {
-    n->op = OP_UNION;
-  } else if (strcmp(op, "smin") == 0 || strcmp(op, "ssub") == 0) {
-    n->op = op[1] == 'm' ? OP_SMIN : OP_SSUB;
-    n->p[0] = need_num(L, t, op, "k");
-    if (n->p[0] <= 0)
-      luaL_error(L, "sdf_mesh: node '%s' needs 'k' > 0", op);
-  } else if (strcmp(op, "subtract") == 0) {
-    n->op = OP_SUBTRACT;
-  } else if (strcmp(op, "intersect") == 0) {
-    n->op = OP_INTERSECT;
-  } else {
-    luaL_error(L, "sdf_mesh: unknown op '%s'", op);
-  }
-
-  int kind = b->nodes[ni].op;
-  if (kind == OP_MOVE || kind == OP_ROTATE || kind == OP_SCALE ||
-      kind == OP_MIRROR_X || kind == OP_PAINT || kind == OP_BONE) {
-    bool is_xform = kind != OP_PAINT && kind != OP_BONE;
-    if (is_xform)
-      b->xpath[b->xpath_len++] = ni;
-    int a = need_child(b, t, op, "c");
-    b->nodes[ni].a = a;
-    if (is_xform)
-      --b->xpath_len;
-  } else if (kind >= OP_UNION) {
-    int a = need_child(b, t, op, "a");
-    int c = need_child(b, t, op, "b");
-    b->nodes[ni].a = a;
-    b->nodes[ni].b = c;
-  }
-  lua_pop(L, 1); // op string (kept anchored for the error messages above)
-  --b->depth;
-  return ni;
-}
+// The tree arrives already flat (LubSdfNode array from the C API); it is
+// converted once into SdfNode (validating and precomputing as we go), so the
+// per-grid-point evaluation is a small recursion over node indices:
+// transforms rewrite the point on the way down, combinators merge child
+// distances on the way up.
 
 static float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
@@ -551,37 +310,247 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
   }
 }
 
-static void push_vec3_table(lua_State *L, const float v[3]) {
-  lua_createtable(L, 3, 0);
-  for (int i = 0; i < 3; ++i) {
-    lua_pushnumber(L, v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
+// ---------------------------------------------------------------------------
+// convert (LubSdfNode -> SdfNode, bone parts)
+
+typedef struct {
+  const LubSdfNode *in;
+  int count;
+  SdfTree *t;
+  int depth;
+  int xpath[SDF_MAX_DEPTH];
+  int xpath_len;
+  char *err;
+  size_t err_size;
+} SdfConv;
+
+static bool conv_fail(SdfConv *c, const char *fmt, const char *arg) {
+  snprintf(c->err, c->err_size, fmt, arg);
+  return false;
 }
 
-int lub_sdf_mesh(lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  int n = (int)luaL_checkinteger(L, 2);
-  if (n < 4 || n > 512)
-    return luaL_error(L, "sdf_mesh: n must be in [4, 512] (got %d)", n);
+static const char *op_name(int op) {
+  static const char *const names[] = {
+      "sphere", "box",   "capsule",  "torus", "move",
+      "rotate", "scale", "mirror_x", "paint", "bone",
+      "union",  "smin",  "subtract", "ssub",  "intersect"};
+  return op >= 0 && op < (int)(sizeof(names) / sizeof(names[0])) ? names[op]
+                                                                 : "?";
+}
 
-  lua_getfield(L, 1, "version");
-  if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) != 1)
-    return luaL_error(L, "sdf_mesh: tree.version must be 1");
-  lua_pop(L, 1);
-  lua_getfield(L, 1, "root");
-  if (!lua_istable(L, -1))
-    return luaL_error(L, "sdf_mesh: tree.root must be a node table");
+// in[i] を t->nodes[i] に変換する。子は再帰 (index はそのまま)。
+static bool conv_node(SdfConv *c, int i) {
+  if (i < 0 || i >= c->count)
+    return conv_fail(c, "sdf_mesh: node index out of range%s", "");
+  if (++c->depth > SDF_MAX_DEPTH)
+    return conv_fail(c, "sdf_mesh: tree deeper than the limit%s", "");
+  const LubSdfNode *in = &c->in[i];
+  SdfNode *n = &c->t->nodes[i];
+  const float *q = in->params;
+  memset(n, 0, sizeof(*n));
+  n->a = -1;
+  n->b = -1;
+  switch (in->op) {
+  case LUB_SDF_OP_SPHERE:
+    n->op = OP_SPHERE;
+    n->p[0] = q[0];
+    break;
+  case LUB_SDF_OP_BOX:
+    n->op = OP_BOX;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    n->p[2] = q[2];
+    break;
+  case LUB_SDF_OP_CAPSULE: {
+    n->op = OP_CAPSULE;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    n->p[2] = q[2];
+    n->p[3] = q[3] - q[0];
+    n->p[4] = q[4] - q[1];
+    n->p[5] = q[5] - q[2];
+    n->p[6] = q[6];
+    float baba = n->p[3] * n->p[3] + n->p[4] * n->p[4] + n->p[5] * n->p[5];
+    n->p[7] = baba > 0 ? 1.0f / baba : 0; // a == b degenerates to a sphere
+    break;
+  }
+  case LUB_SDF_OP_TORUS:
+    n->op = OP_TORUS;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    break;
+  case LUB_SDF_OP_MOVE:
+    n->op = OP_MOVE;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    n->p[2] = q[2];
+    break;
+  case LUB_SDF_OP_ROTATE: {
+    n->op = OP_ROTATE;
+    float qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+    float ql = sqrtf(qx * qx + qy * qy + qz * qz + qw * qw);
+    if (ql <= 0)
+      return conv_fail(c, "sdf_mesh: rotate quaternion has zero length%s", "");
+    qx /= ql;
+    qy /= ql;
+    qz /= ql;
+    qw /= ql;
+    n->p[0] = 1 - 2 * (qy * qy + qz * qz);
+    n->p[1] = 2 * (qx * qy - qz * qw);
+    n->p[2] = 2 * (qx * qz + qy * qw);
+    n->p[3] = 2 * (qx * qy + qz * qw);
+    n->p[4] = 1 - 2 * (qx * qx + qz * qz);
+    n->p[5] = 2 * (qy * qz - qx * qw);
+    n->p[6] = 2 * (qx * qz - qy * qw);
+    n->p[7] = 2 * (qy * qz + qx * qw);
+    n->p[8] = 1 - 2 * (qx * qx + qy * qy);
+    break;
+  }
+  case LUB_SDF_OP_SCALE:
+    n->op = OP_SCALE;
+    n->p[0] = q[0];
+    if (n->p[0] <= 0)
+      return conv_fail(c, "sdf_mesh: scale 's' must be > 0%s", "");
+    break;
+  case LUB_SDF_OP_MIRROR_X:
+    n->op = OP_MIRROR_X;
+    break;
+  case LUB_SDF_OP_PAINT:
+    n->op = OP_PAINT;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    n->p[2] = q[2];
+    n->p[3] = q[3];
+    n->p[4] = q[4];
+    break;
+  case LUB_SDF_OP_BONE: {
+    n->op = OP_BONE;
+    n->p[0] = q[0];
+    n->p[1] = q[1];
+    n->p[2] = q[2];
+    if (c->t->part_count >= SDF_MAX_PARTS)
+      return conv_fail(c, "sdf_mesh: more than the bone limit%s", "");
+    if (!in->name.ptr || in->name.len <= 0)
+      return conv_fail(c, "sdf_mesh: bone needs a name%s", "");
+    SdfPart *part = &c->t->parts[c->t->part_count++];
+    part->node = i;
+    {
+      size_t nl = (size_t)in->name.len;
+      if (nl >= sizeof(part->name))
+        nl = sizeof(part->name) - 1;
+      memcpy(part->name, in->name.ptr, nl);
+      part->name[nl] = '\0';
+    }
+    part->pivot[0] = n->p[0];
+    part->pivot[1] = n->p[1];
+    part->pivot[2] = n->p[2];
+    memcpy(part->path, c->xpath, (size_t)c->xpath_len * sizeof(int));
+    part->path_len = c->xpath_len;
+    break;
+  }
+  case LUB_SDF_OP_UNION:
+    n->op = OP_UNION;
+    break;
+  case LUB_SDF_OP_SMIN:
+  case LUB_SDF_OP_SSUB:
+    n->op = in->op == LUB_SDF_OP_SMIN ? OP_SMIN : OP_SSUB;
+    n->p[0] = q[0];
+    if (n->p[0] <= 0)
+      return conv_fail(c, "sdf_mesh: node '%s' needs 'k' > 0", op_name(n->op));
+    break;
+  case LUB_SDF_OP_SUBTRACT:
+    n->op = OP_SUBTRACT;
+    break;
+  case LUB_SDF_OP_INTERSECT:
+    n->op = OP_INTERSECT;
+    break;
+  default:
+    return conv_fail(c, "sdf_mesh: unknown op%s", "");
+  }
 
-  // NOTE: flatten raises Lua errors on invalid trees; b.nodes leaks on that
-  // path. Acceptable: authoring-time errors are rare and small, and keeping
-  // flatten free of pcall plumbing keeps the code simple.
-  SdfBuild b = {L, NULL, 0, 0, 0};
-  int root = flatten(&b, -1);
-  lua_pop(L, 1); // root table
+  int kind = n->op;
+  if (kind == OP_MOVE || kind == OP_ROTATE || kind == OP_SCALE ||
+      kind == OP_MIRROR_X || kind == OP_PAINT || kind == OP_BONE) {
+    bool is_xform = kind != OP_PAINT && kind != OP_BONE;
+    if (in->a < 0)
+      return conv_fail(c, "sdf_mesh: node '%s' needs a child", op_name(kind));
+    if (is_xform)
+      c->xpath[c->xpath_len++] = i;
+    bool ok = conv_node(c, in->a);
+    if (is_xform)
+      --c->xpath_len;
+    if (!ok)
+      return false;
+    c->t->nodes[i].a = in->a;
+  } else if (kind >= OP_UNION) {
+    if (in->a < 0 || in->b < 0)
+      return conv_fail(c, "sdf_mesh: node '%s' needs two children",
+                       op_name(kind));
+    if (!conv_node(c, in->a) || !conv_node(c, in->b))
+      return false;
+    c->t->nodes[i].a = in->a;
+    c->t->nodes[i].b = in->b;
+  }
+  --c->depth;
+  return true;
+}
 
+bool sdf_tree_convert(const LubSdfNode *nodes, int count, int root,
+                      SdfTree *out, char *err, size_t err_size) {
+  memset(out, 0, sizeof(*out));
+  if (!nodes || count <= 0 || root < 0 || root >= count) {
+    snprintf(err, err_size, "sdf_mesh: empty tree");
+    return false;
+  }
+  if (count > SDF_MAX_NODES) {
+    snprintf(err, err_size, "sdf_mesh: tree has more than %d nodes",
+             SDF_MAX_NODES);
+    return false;
+  }
+  out->nodes = (SdfNode *)calloc((size_t)count, sizeof(SdfNode));
+  if (!out->nodes) {
+    snprintf(err, err_size, "sdf_mesh: out of memory");
+    return false;
+  }
+  out->len = count;
+  out->root = root;
+  SdfConv c = {nodes, count, out, 0, {0}, 0, err, err_size};
+  if (!conv_node(&c, root)) {
+    sdf_tree_free(out);
+    return false;
+  }
+  return true;
+}
+
+void sdf_tree_free(SdfTree *t) {
+  free(t->nodes);
+  t->nodes = NULL;
+  t->len = 0;
+}
+
+// ---------------------------------------------------------------------------
+// build
+
+void sdf_mesh_out_free(SdfMeshOut *o) {
+  sn_mesh_free(&o->mesh);
+  free(o->colors);
+  free(o->metal_rough);
+  free(o->joints);
+  free(o->weights);
+  memset(o, 0, sizeof(*o));
+}
+
+bool sdf_mesh_build(const SdfTree *t, int n, float skin_k, SdfMeshOut *out,
+                    char *err, size_t err_size) {
+  memset(out, 0, sizeof(*out));
+  if (n < 4 || n > 512) {
+    snprintf(err, err_size, "sdf_mesh: n must be in [4, 512] (got %d)", n);
+    return false;
+  }
+  const SdfNode *nodes = t->nodes;
+  int root = t->root;
   float mn[3], mx[3];
-  sdf_aabb(b.nodes, root, mn, mx);
+  sdf_aabb(nodes, root, mn, mx);
   float ext[3], extmax = 0;
   for (int i = 0; i < 3; ++i) {
     ext[i] = mx[i] - mn[i];
@@ -604,14 +573,14 @@ int lub_sdf_mesh(lua_State *L) {
       total *= (size_t)cnt[i];
     }
     if (total > (size_t)1 << 27) {
-      free(b.nodes);
-      return luaL_error(L, "sdf_mesh: grid too large (%dx%dx%d)", cnt[0],
-                        cnt[1], cnt[2]);
+      snprintf(err, err_size, "sdf_mesh: grid too large (%dx%dx%d)", cnt[0],
+               cnt[1], cnt[2]);
+      return false;
     }
     float *grid = (float *)malloc(total * sizeof(float));
     if (!grid) {
-      free(b.nodes);
-      return luaL_error(L, "sdf_mesh: out of memory");
+      snprintf(err, err_size, "sdf_mesh: out of memory");
+      return false;
     }
     size_t gi = 0;
     for (int z = 0; z < cnt[2]; ++z) {
@@ -619,57 +588,61 @@ int lub_sdf_mesh(lua_State *L) {
       for (int y = 0; y < cnt[1]; ++y) {
         float py = org[1] + (float)y * cell;
         for (int x = 0; x < cnt[0]; ++x)
-          grid[gi++] =
-              sdf_eval(b.nodes, root, org[0] + (float)x * cell, py, pz);
+          grid[gi++] = sdf_eval(nodes, root, org[0] + (float)x * cell, py, pz);
       }
     }
     int ok = sn_mesh_from_grid(grid, cnt[0], cnt[1], cnt[2], cell, org[0],
                                org[1], org[2], &m);
     free(grid);
     if (!ok) {
-      free(b.nodes);
-      return luaL_error(L, "sdf_mesh: out of memory");
+      snprintf(err, err_size, "sdf_mesh: out of memory");
+      return false;
     }
   }
-  sn_mesh_push(L, &m);
+  out->mesh = m;
+  size_t vc = m.vert_count;
 
   // bake per-vertex materials (albedo rgb + metallic/roughness) by
   // re-evaluating the tree with materials at each vertex position
   static const float DEFAULT_MAT[SDF_MAT_N] = {0.8f, 0.8f, 0.8f, 0.0f, 0.8f};
-  lua_createtable(L, (int)(m.vert_count * 3), 0);
-  lua_createtable(L, (int)(m.vert_count * 2), 0);
-  for (size_t v = 0; v < m.vert_count; ++v) {
-    float mat[SDF_MAT_N];
-    sdf_eval_mat(b.nodes, root, m.positions[v * 3], m.positions[v * 3 + 1],
-                 m.positions[v * 3 + 2], DEFAULT_MAT, mat);
-    for (int i = 0; i < 3; ++i) {
-      lua_pushnumber(L, mat[i]);
-      lua_rawseti(L, -3, (int)(v * 3 + i + 1));
-    }
-    for (int i = 0; i < 2; ++i) {
-      lua_pushnumber(L, mat[3 + i]);
-      lua_rawseti(L, -2, (int)(v * 2 + i + 1));
-    }
+  out->colors = (float *)malloc((vc ? vc : 1) * 3 * sizeof(float));
+  out->metal_rough = (float *)malloc((vc ? vc : 1) * 2 * sizeof(float));
+  if (!out->colors || !out->metal_rough) {
+    sdf_mesh_out_free(out);
+    snprintf(err, err_size, "sdf_mesh: out of memory");
+    return false;
   }
-  lua_setfield(L, -3, "metal_rough");
-  lua_setfield(L, -2, "colors");
+  for (size_t v = 0; v < vc; ++v) {
+    float mat[SDF_MAT_N];
+    sdf_eval_mat(nodes, root, m.positions[v * 3], m.positions[v * 3 + 1],
+                 m.positions[v * 3 + 2], DEFAULT_MAT, mat);
+    out->colors[v * 3] = mat[0];
+    out->colors[v * 3 + 1] = mat[1];
+    out->colors[v * 3 + 2] = mat[2];
+    out->metal_rough[v * 2] = mat[3];
+    out->metal_rough[v * 2 + 1] = mat[4];
+  }
 
   // skinning: bone ノードがあれば頂点ごとに最寄り 2 部位の重みを焼く。
   // w0 = softmax(-d/k) の 2 部位版 = 1 / (1 + e^((d0-d1)/k))。k が blend 幅。
-  if (b.part_count > 0) {
-    float skin_k = (float)luaL_optnumber(L, 3, 0.1);
+  if (t->part_count > 0) {
     if (skin_k <= 0)
       skin_k = 0.1f;
-    lua_createtable(L, (int)(m.vert_count * 2), 0); // joints (0-based index)
-    lua_createtable(L, (int)(m.vert_count * 2), 0); // weights
-    for (size_t v = 0; v < m.vert_count; ++v) {
+    out->joints = (float *)malloc((vc ? vc : 1) * 2 * sizeof(float));
+    out->weights = (float *)malloc((vc ? vc : 1) * 2 * sizeof(float));
+    if (!out->joints || !out->weights) {
+      sdf_mesh_out_free(out);
+      snprintf(err, err_size, "sdf_mesh: out of memory");
+      return false;
+    }
+    for (size_t v = 0; v < vc; ++v) {
       float px = m.positions[v * 3];
       float py = m.positions[v * 3 + 1];
       float pz = m.positions[v * 3 + 2];
       int j0 = 0, j1 = 0;
       float d0 = 1e30f, d1 = 1e30f;
-      for (int pi = 0; pi < b.part_count; ++pi) {
-        float d = sdf_eval_part(b.nodes, &b.parts[pi], px, py, pz);
+      for (int pi = 0; pi < t->part_count; ++pi) {
+        float d = sdf_eval_part(nodes, &t->parts[pi], px, py, pz);
         if (d < d0) {
           d1 = d0;
           j1 = j0;
@@ -681,42 +654,15 @@ int lub_sdf_mesh(lua_State *L) {
         }
       }
       float w0 =
-          b.part_count > 1 ? 1.0f / (1.0f + expf((d0 - d1) / skin_k)) : 1.0f;
-      lua_pushinteger(L, j0);
-      lua_rawseti(L, -3, (int)(v * 2 + 1));
-      lua_pushinteger(L, j1);
-      lua_rawseti(L, -3, (int)(v * 2 + 2));
-      lua_pushnumber(L, w0);
-      lua_rawseti(L, -2, (int)(v * 2 + 1));
-      lua_pushnumber(L, 1.0f - w0);
-      lua_rawseti(L, -2, (int)(v * 2 + 2));
+          t->part_count > 1 ? 1.0f / (1.0f + expf((d0 - d1) / skin_k)) : 1.0f;
+      out->joints[v * 2] = (float)j0;
+      out->joints[v * 2 + 1] = (float)j1;
+      out->weights[v * 2] = w0;
+      out->weights[v * 2 + 1] = 1.0f - w0;
     }
-    lua_setfield(L, -3, "weights");
-    lua_setfield(L, -2, "joints");
-
-    lua_createtable(L, b.part_count, 0);
-    for (int pi = 0; pi < b.part_count; ++pi) {
-      lua_createtable(L, 0, 4);
-      lua_pushstring(L, b.parts[pi].name);
-      lua_setfield(L, -2, "name");
-      lua_pushnumber(L, b.parts[pi].pivot[0]);
-      lua_setfield(L, -2, "x");
-      lua_pushnumber(L, b.parts[pi].pivot[1]);
-      lua_setfield(L, -2, "y");
-      lua_pushnumber(L, b.parts[pi].pivot[2]);
-      lua_setfield(L, -2, "z");
-      lua_rawseti(L, -2, pi + 1);
-    }
-    lua_setfield(L, -2, "bones");
   }
-
-  free(b.nodes);
-  sn_mesh_free(&m);
-  push_vec3_table(L, mn);
-  lua_setfield(L, -2, "bounds_min");
-  push_vec3_table(L, mx);
-  lua_setfield(L, -2, "bounds_max");
-  lua_pushnumber(L, cell);
-  lua_setfield(L, -2, "cell");
-  return 1;
+  memcpy(out->mn, mn, sizeof(mn));
+  memcpy(out->mx, mx, sizeof(mx));
+  out->cell = cell;
+  return true;
 }
