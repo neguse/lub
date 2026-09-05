@@ -2,8 +2,11 @@
 -- C runtime が expose する flat global (begin_pass, phys2d_*, ...) を
 -- namespace table に組み立てる。boot.lua が entry require の前に読み込むため、
 -- 全 authoring 言語 (raw Lua / Haxe / TinyC#) が同じ面を見る。
--- 末尾の `lub` table は Haxe extern の emit 形 (lub.Gfx.begin_pass) 用 alias で、
--- 実体は同一 table。
+-- 末尾の `lub` table が正の入口で、小文字の namespace (lub.gfx.begin_pass) が
+-- C# (tcs) と raw Lua の面。PascalCase の global (Gfx.begin_pass) と
+-- lub.Gfx は Haxe extern の emit 形用 alias で、実体は同一 table。
+-- Phys2d / Phys3d / Ui / Audio / Font / Host は flat global 名 (phys2d_world)
+-- と短名 (world) の両方を持つ。C# は短名側に落ちる。
 
 Lub = { config = config, quit = quit }
 
@@ -37,6 +40,7 @@ Gfx = {
 	CLEAR = CLEAR,
 	LOAD = LOAD,
 	DONTCARE = DONTCARE,
+	DONT_CARE = DONTCARE,
 	STORE = STORE,
 	NONE = NONE,
 	ALPHA = ALPHA,
@@ -126,6 +130,7 @@ do
 		"set_mass_data",
 	}) do
 		P["phys2d_" .. n] = _G["phys2d_" .. n]
+		P[n] = _G["phys2d_" .. n]
 	end
 	P.STATIC = STATIC
 	P.KINEMATIC = KINEMATIC
@@ -204,6 +209,7 @@ do
 		"set_target",
 	}) do
 		P["phys3d_" .. n] = _G["phys3d_" .. n]
+		P[n] = _G["phys3d_" .. n]
 	end
 	P.STATIC = STATIC
 	P.KINEMATIC = KINEMATIC
@@ -237,6 +243,10 @@ Font = {
 	font_glyph = font_glyph,
 	font_glyph_mesh = font_glyph_mesh,
 	font_kern = font_kern,
+	metrics = font_metrics,
+	glyph = font_glyph,
+	glyph_mesh = font_glyph_mesh,
+	kern = font_kern,
 }
 
 Ui = {
@@ -256,12 +266,31 @@ Ui = {
 	ui_tree_pop = ui_tree_pop,
 	ui_set_next_window = ui_set_next_window,
 	ui_want_capture_mouse = ui_want_capture_mouse,
+	render = ui_render,
+	begin_window = ui_begin,
+	end_window = ui_end,
+	text = ui_text,
+	button = ui_button,
+	checkbox = ui_checkbox,
+	slider_float = ui_slider_float,
+	slider_int = ui_slider_int,
+	drag_float = ui_drag_float,
+	color_edit3 = ui_color_edit3,
+	separator = ui_separator,
+	same_line = ui_same_line,
+	tree_node = ui_tree_node,
+	tree_pop = ui_tree_pop,
+	set_next_window = ui_set_next_window,
+	want_capture_mouse = ui_want_capture_mouse,
 }
 
 Host = {
 	host_available = host_available,
 	host_send = host_send,
 	host_poll = host_poll,
+	available = host_available,
+	send = host_send,
+	poll = host_poll,
 }
 
 Audio = {
@@ -272,6 +301,13 @@ Audio = {
 	audio_free = audio_free,
 	audio_master_volume = audio_master_volume,
 	audio_info = audio_info,
+	pcm = audio_pcm,
+	decode = audio_decode,
+	play = audio_play,
+	voice = audio_voice,
+	free = audio_free,
+	master_volume = audio_master_volume,
+	info = audio_info,
 }
 
 Sys = {
@@ -288,6 +324,22 @@ Io = require("lub_io")
 Png = require("lubx_png")
 
 lub = lub or {}
+lub.config = config
+lub.quit = quit
+lub.gfx = Gfx
+lub.phys2d = Phys2d
+lub.phys3d = Phys3d
+lub.input = Input
+lub.profiler = Profiler
+lub.mesh = Mesh
+lub.font = Font
+lub.ui = Ui
+lub.host = Host
+lub.audio = Audio
+lub.sys = Sys
+lub.io = Io
+lub.png = Png
+-- Haxe extern の emit 形 (lub.Gfx.begin_pass) 用 alias
 lub.Lub = Lub
 lub.Gfx = Gfx
 lub.Phys2d = Phys2d

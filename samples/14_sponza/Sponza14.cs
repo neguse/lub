@@ -8,22 +8,22 @@
 // table) ため per-primitive の class SponzaPrim 1 本にまとめる。
 using System;
 using System.Collections.Generic;
-using static @string;
+using static Lub;
 
 /// <summary>glTF primitive 1 つ分の GPU リソースと material table。</summary>
 public class SponzaPrim
 {
-    public BufferRef? vb;
-    public BufferRef? ib;
-    public int count;
-    public Dictionary<string, object>? mat;
+    public BufferRef? Vb;
+    public BufferRef? Ib;
+    public int Count;
+    public Dictionary<string, object>? Mat;
 }
 
 public static class Sponza14
 {
-    const double MODEL_SCALE = 0.002;
-    const int SHADOW_SIZE = 2048;
-    const string ASSET_FULL = "samples/14_sponza/data/Sponza/Sponza.gltf";
+    const double modelScale = 0.002;
+    const int shadowSize = 2048;
+    const string assetFull = "samples/14_sponza/data/Sponza/Sponza.gltf";
 
     static int rtW = 1280;
     static int rtH = 720;
@@ -70,24 +70,24 @@ public static class Sponza14
     static List<double> whitePx = new List<double> { 255, 255, 255, 255 };
     static List<double> normalPx = new List<double> { 128, 128, 255, 255 };
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void onEvent(EventData e)
-    {
-    }
-
-    public static void onQuit()
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onFrame(double dt)
+    public static void OnQuit()
+    {
+    }
+
+    public static void OnFrame(double dt)
     {
         tAccum = tAccum + dt;
-        Gfx.size(out var w, out var h);
+        Gfx.Size(out var w, out var h);
         rtW = w;
         rtH = h;
 
@@ -128,31 +128,31 @@ public static class Sponza14
             return;
         }
 
-        Io.load_gltf(ASSET_FULL, out var mesh, out var meshVer, out _, out _);
+        Io.LoadGltf(assetFull, out var mesh, out var meshVer, out _, out _);
         if (mesh == null) return;
         EnsureMesh(mesh, meshVer);
 
-        var gAlbedo = Target("sponza_g_albedo", rtW, rtH, Gfx.RGBA8,
-            Gfx.NEAREST);
-        var gNormal = Target("sponza_g_normal", rtW, rtH, Gfx.RGBA16F,
-            Gfx.NEAREST);
-        var gPosition = Target("sponza_g_position", rtW, rtH, Gfx.RGBA16F,
-            Gfx.NEAREST);
-        var gDepth = Target("sponza_g_depth", rtW, rtH, Gfx.DEPTH32F,
-            Gfx.NEAREST);
-        var aoTex = Target("sponza_ao", rtW, rtH, Gfx.RGBA8, Gfx.LINEAR);
-        var shadowMap = Target("sponza_shadow_map", SHADOW_SIZE, SHADOW_SIZE,
-            Gfx.RGBA8, Gfx.NEAREST);
-        var shadowDepth = Target("sponza_shadow_depth", SHADOW_SIZE,
-            SHADOW_SIZE, Gfx.DEPTH32F, Gfx.NEAREST);
-        var texA = Target("sponza_texA", rtW, rtH, Gfx.RGBA16F, Gfx.LINEAR);
-        var texB = Target("sponza_texB", rtW, rtH, Gfx.RGBA16F, Gfx.LINEAR);
-        var bloomA = Target("sponza_bloomA", rtW, rtH, Gfx.RGBA16F,
-            Gfx.LINEAR);
-        var bloomB = Target("sponza_bloomB", rtW, rtH, Gfx.RGBA16F,
-            Gfx.LINEAR);
-        var quad = Gfx.use_buffer("sponza_quad", Gfx.VERTEX, quadVerts, 1);
-        var quadF = Gfx.use_buffer("sponza_quadF", Gfx.VERTEX, quadVertsFlip,
+        var gAlbedo = Target("sponza_g_albedo", rtW, rtH, Gfx.PixelFormat.Rgba8,
+            Gfx.Filter.Nearest);
+        var gNormal = Target("sponza_g_normal", rtW, rtH, Gfx.PixelFormat.Rgba16f,
+            Gfx.Filter.Nearest);
+        var gPosition = Target("sponza_g_position", rtW, rtH, Gfx.PixelFormat.Rgba16f,
+            Gfx.Filter.Nearest);
+        var gDepth = Target("sponza_g_depth", rtW, rtH, Gfx.PixelFormat.Depth32f,
+            Gfx.Filter.Nearest);
+        var aoTex = Target("sponza_ao", rtW, rtH, Gfx.PixelFormat.Rgba8, Gfx.Filter.Linear);
+        var shadowMap = Target("sponza_shadow_map", shadowSize, shadowSize,
+            Gfx.PixelFormat.Rgba8, Gfx.Filter.Nearest);
+        var shadowDepth = Target("sponza_shadow_depth", shadowSize,
+            shadowSize, Gfx.PixelFormat.Depth32f, Gfx.Filter.Nearest);
+        var texA = Target("sponza_texA", rtW, rtH, Gfx.PixelFormat.Rgba16f, Gfx.Filter.Linear);
+        var texB = Target("sponza_texB", rtW, rtH, Gfx.PixelFormat.Rgba16f, Gfx.Filter.Linear);
+        var bloomA = Target("sponza_bloomA", rtW, rtH, Gfx.PixelFormat.Rgba16f,
+            Gfx.Filter.Linear);
+        var bloomB = Target("sponza_bloomB", rtW, rtH, Gfx.PixelFormat.Rgba16f,
+            Gfx.Filter.Linear);
+        var quad = Gfx.UseBuffer("sponza_quad", Gfx.BufferType.Vertex, quadVerts, 1);
+        var quadF = Gfx.UseBuffer("sponza_quadF", Gfx.BufferType.Vertex, quadVertsFlip,
             1);
         if (gAlbedo == null || gNormal == null || gPosition == null
             || gDepth == null || aoTex == null || shadowMap == null
@@ -164,33 +164,33 @@ public static class Sponza14
         }
 
         var view = UpdateCamera(dt);
-        var proj = Mat4.perspectiveLh(55.0, (double)rtW / rtH, 0.05, 80.0);
-        proj.m[5] = -proj.m[5];
-        var model = Mat4.scaleTrans(MODEL_SCALE, new Vec3(0.0, 0.0, 0.0));
+        var proj = Mat4.PerspectiveLh(55.0, (double)rtW / rtH, 0.05, 80.0);
+        proj.M[5] = -proj.M[5];
+        var model = Mat4.ScaleTrans(modelScale, new Vec3(0.0, 0.0, 0.0));
 
-        var worldLight = new Vec3(-0.42, 0.92, -0.32).normalize();
+        var worldLight = new Vec3(-0.42, 0.92, -0.32).Normalize();
         var lightTarget = new Vec3(0.0, 1.1, 0.0);
-        var lightEye = new Vec3(lightTarget.x + worldLight.x * 7.0,
-            lightTarget.y + worldLight.y * 7.0,
-            lightTarget.z + worldLight.z * 7.0);
-        var lightView = Mat4.lookAtLh(lightEye, lightTarget,
+        var lightEye = new Vec3(lightTarget.X + worldLight.X * 7.0,
+            lightTarget.Y + worldLight.Y * 7.0,
+            lightTarget.Z + worldLight.Z * 7.0);
+        var lightView = Mat4.LookAtLh(lightEye, lightTarget,
             new Vec3(0, 1, 0));
-        var lightMvp = Mat4.orthoLh(8.0, 8.0, 0.1, 15.0).mul(lightView);
+        var lightMvp = Mat4.OrthoLh(8.0, 8.0, 0.1, 15.0).Mul(lightView);
         var camEye = new Vec3(camEyeX, camEyeY, camEyeZ);
-        var invView = view.rigidInverse(camEye);
-        var viewToLight = lightMvp.mul(invView);
+        var invView = view.RigidInverse(camEye);
+        var viewToLight = lightMvp.Mul(invView);
 
-        var viewProj = proj.mul(view);
+        var viewProj = proj.Mul(view);
         var pvp = prevViewProj;
-        var reproj = (pvp == null ? viewProj : pvp).mul(invView);
+        var reproj = (pvp == null ? viewProj : pvp).Mul(invView);
         prevViewProj = viewProj;
         var camMoved = CameraMoved();
 
         ShadowPass(shadowShader, shadowMap, shadowDepth, model, lightMvp);
         GeometryPass(gShader, gAlbedo, gNormal, gPosition, gDepth, proj,
             view, model, lightMvp);
-        SsaoPass(aoTex, ssaoShader, quadF, gNormal, gPosition, proj.m[0],
-            proj.m[5]);
+        SsaoPass(aoTex, ssaoShader, quadF, gNormal, gPosition, proj.M[0],
+            proj.M[5]);
         LightingPass(texA, lightShader, quadF, gAlbedo, gNormal, gPosition,
             shadowMap, aoTex, view, viewToLight);
 
@@ -200,7 +200,7 @@ public static class Sponza14
         Blit(bloomA, blurVShader, quadF, bloomB);
         BlitCombine(texA, combineShader, quadF, texB, bloomA);
 
-        if (os.getenv("LUB_SPONZA_NO_OUTLINE") == null)
+        if (Environment.GetEnvironmentVariable("LUB_SPONZA_NO_OUTLINE") == null)
         {
             BlitOutline(texB, outlineShader, quadF, texA, gNormal, gPosition);
         }
@@ -209,7 +209,7 @@ public static class Sponza14
             Blit(texB, copyShader, quadF, texA);
         }
 
-        if (os.getenv("LUB_SPONZA_NO_DOF") == null)
+        if (Environment.GetEnvironmentVariable("LUB_SPONZA_NO_DOF") == null)
         {
             Blit(bloomB, blurHShader, quadF, texB);
             Blit(bloomA, blurVShader, quadF, bloomB);
@@ -222,7 +222,7 @@ public static class Sponza14
 
         var beauty = texA;
         var outTex = texB;
-        if (camMoved && os.getenv("LUB_SPONZA_NO_MOTION") == null)
+        if (camMoved && Environment.GetEnvironmentVariable("LUB_SPONZA_NO_MOTION") == null)
         {
             MotionPass(texB, motionShader, quadF, texA, gPosition, reproj);
             beauty = texB;
@@ -270,21 +270,21 @@ public static class Sponza14
             // Haxe 版の prims[i + 1] (Lua 1-based)。List<object> の
             // 0-based index は tcs が +1 して emit する。
             var prim = (Dictionary<string, object>)primList[i];
-            var verts = Io.interleave_pnut(prim);
+            var verts = Io.InterleavePnut(prim);
             var p = new SponzaPrim();
-            p.vb = Gfx.use_buffer("sponza_vb_" + i, Gfx.VERTEX, verts,
+            p.Vb = Gfx.UseBuffer("sponza_vb_" + i, Gfx.BufferType.Vertex, verts,
                 version);
             if (prim["indices"] != null && (int)prim["index_count"] > 0)
             {
-                p.ib = Gfx.use_buffer("sponza_ib_" + i, Gfx.INDEX,
+                p.Ib = Gfx.UseBuffer("sponza_ib_" + i, Gfx.BufferType.Index,
                     (List<double>)prim["indices"], version);
-                p.count = (int)prim["index_count"];
+                p.Count = (int)prim["index_count"];
             }
             else
             {
-                p.count = (int)prim["vert_count"];
+                p.Count = (int)prim["vert_count"];
             }
-            p.mat = (Dictionary<string, object>?)prim["material"];
+            p.Mat = (Dictionary<string, object>?)prim["material"];
             prims.Add(p);
         }
     }
@@ -292,20 +292,20 @@ public static class Sponza14
     static void ShadowPass(ShaderRef shader, TextureRef shadowMap,
         TextureRef shadowDepth, Mat4 model, Mat4 lightMvp)
     {
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = shadowMap,
-            depth_target = shadowDepth,
-            clear_color = new double[] { 1.0, 1.0, 1.0, 1.0 },
-            clear_depth = 1.0,
+            Target = shadowMap,
+            DepthTarget = shadowDepth,
+            ClearColor = new double[] { 1.0, 1.0, 1.0, 1.0 },
+            ClearDepth = 1.0,
         });
-        var lmvp = lightMvp.m;
-        var mv = model.m;
+        var lmvp = lightMvp.M;
+        var mv = model.M;
         foreach (var p in prims)
         {
-            var vb = p.vb;
+            var vb = p.Vb;
             if (vb == null) continue;
-            var mat = p.mat;
+            var mat = p.Mat;
             var baseTex = MaterialTexture(MatPath(mat, "base_color_path"),
                 "bc", whitePx);
             if (baseTex == null) continue;
@@ -321,45 +321,45 @@ public static class Sponza14
                     ["material"] = MaterialParams(mat),
                 },
             };
-            var ib = p.ib;
+            var ib = p.Ib;
             if (ib != null) bindings["indices"] = ib;
-            Gfx.draw(p.count, bindings, new DrawOpts
+            Gfx.Draw(p.Count, bindings, new DrawOpts
             {
-                shader = shader,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = shader,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 
     static void GeometryPass(ShaderRef shader, TextureRef gAlbedo,
         TextureRef gNormal, TextureRef gPosition, TextureRef gDepth,
         Mat4 proj, Mat4 view, Mat4 model, Mat4 lightMvp)
     {
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            targets = new List<TextureRef> { gAlbedo, gNormal, gPosition },
-            depth_target = gDepth,
-            clear_colors = new List<double[]>
+            Targets = new List<TextureRef> { gAlbedo, gNormal, gPosition },
+            DepthTarget = gDepth,
+            ClearColors = new List<double[]>
             {
                 new double[] { 0.0, 0.0, 0.0, 1.0 },
                 new double[] { 0.5, 0.5, 1.0, 0.0 },
                 new double[] { 0.0, 0.0, 0.0, 0.0 },
             },
-            clear_depth = 1.0,
+            ClearDepth = 1.0,
         });
 
-        var pv = proj.m;
-        var vv = view.m;
-        var mv = model.m;
-        var lmvp = lightMvp.m;
+        var pv = proj.M;
+        var vv = view.M;
+        var mv = model.M;
+        var lmvp = lightMvp.M;
         foreach (var p in prims)
         {
-            var vb = p.vb;
+            var vb = p.Vb;
             if (vb == null) continue;
-            var mat = p.mat;
+            var mat = p.Mat;
             var baseTex = MaterialTexture(MatPath(mat, "base_color_path"),
                 "bc", whitePx);
             var mrTex = MaterialTexture(
@@ -384,17 +384,17 @@ public static class Sponza14
                     ["normal_params"] = NormalParams(mat),
                 },
             };
-            var ib = p.ib;
+            var ib = p.Ib;
             if (ib != null) bindings["indices"] = ib;
-            Gfx.draw(p.count, bindings, new DrawOpts
+            Gfx.Draw(p.Count, bindings, new DrawOpts
             {
-                shader = shader,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = shader,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 
     static void LightingPass(TextureRef targ, ShaderRef shader,
@@ -402,17 +402,17 @@ public static class Sponza14
         TextureRef gPosition, TextureRef shadowMap, TextureRef aoTex,
         Mat4 view, Mat4 viewToLight)
     {
-        var l0 = view.mat3MulVec3(new Vec3(-0.42, 0.92, -0.32).normalize())
-            .normalize();
-        var l1 = view.mat3MulVec3(new Vec3(0.58, 0.35, 0.22).normalize())
-            .normalize();
-        Gfx.begin_pass(new PassOpts
+        var l0 = view.Mat3MulVec3(new Vec3(-0.42, 0.92, -0.32).Normalize())
+            .Normalize();
+        var l1 = view.Mat3MulVec3(new Vec3(0.58, 0.35, 0.22).Normalize())
+            .Normalize();
+        Gfx.BeginPass(new PassOpts
         {
-            target = targ,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            Target = targ,
+            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
         });
-        var vl = viewToLight.m;
-        Gfx.draw(6, new Dictionary<string, object>
+        var vl = viewToLight.M;
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["g_albedo"] = gAlbedo,
@@ -422,94 +422,94 @@ public static class Sponza14
             ["ao_map"] = aoTex,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["light0"] = new List<double> { l0.x, l0.y, l0.z, 5.6 },
-                ["light1"] = new List<double> { l1.x, l1.y, l1.z, 0.7 },
+                ["light0"] = new List<double> { l0.X, l0.Y, l0.Z, 5.6 },
+                ["light1"] = new List<double> { l1.X, l1.Y, l1.Z, 0.7 },
                 ["params"] = new List<double> { 1.0, 0.050, 0.82, 0.85 },
                 ["vl0"] = new List<double> { vl[0], vl[1], vl[2], vl[3] },
                 ["vl1"] = new List<double> { vl[4], vl[5], vl[6], vl[7] },
                 ["vl2"] = new List<double> { vl[8], vl[9], vl[10], vl[11] },
                 ["vl3"] = new List<double> { vl[12], vl[13], vl[14], vl[15] },
             },
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void Blit(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitFog(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef gPosition)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
             ["gpos"] = gPosition,
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitCombine(TextureRef targ, ShaderRef shader,
         BufferRef quad, TextureRef baseTex, TextureRef bloom)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = baseTex,
             ["bloom"] = bloom,
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitOutline(TextureRef targ, ShaderRef shader,
         BufferRef quad, TextureRef tex, TextureRef gNormal,
         TextureRef gPosition)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
             ["gnormal"] = gNormal,
             ["gpos"] = gPosition,
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitDof(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef blurred, TextureRef gPosition)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
             ["blurred"] = blurred,
             ["gpos"] = gPosition,
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void SsaoPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef gNormal, TextureRef gPosition, double p00, double p11)
     {
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = targ,
-            clear_color = new double[] { 1.0, 1.0, 1.0, 1.0 },
+            Target = targ,
+            ClearColor = new double[] { 1.0, 1.0, 1.0, 1.0 },
         });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["gnormal"] = gNormal,
@@ -518,16 +518,16 @@ public static class Sponza14
             {
                 ["params"] = new List<double> { p00, p11, 0.0, 0.0 },
             },
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void MotionPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef gPosition, Mat4 m)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        var mm = m.m;
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        var mm = m.M;
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
@@ -539,15 +539,15 @@ public static class Sponza14
                 ["r2"] = new List<double> { mm[8], mm[9], mm[10], mm[11] },
                 ["r3"] = new List<double> { mm[12], mm[13], mm[14], mm[15] },
             },
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void ScreenPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, int mode)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
@@ -555,23 +555,23 @@ public static class Sponza14
             {
                 ["params"] = new List<double> { mode, 0.0, 0.0, 0.0 },
             },
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void Present(ShaderRef shader, BufferRef quad, TextureRef tex)
     {
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = Black(),
+            Target = Gfx.MainTex,
+            ClearColor = Black(),
         });
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = quad,
             ["scene"] = tex,
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static TextureRef? MaterialTexture(object? path, string suffix,
@@ -580,17 +580,17 @@ public static class Sponza14
         if (path != null)
         {
             var p = (string)path;
-            Png.load(p, out var bytes, out var pw, out var ph, out var pfmt,
+            Png.Load(p, out var bytes, out var pw, out var ph, out var pfmt,
                 out _, out var pver, out _, out _);
             if (bytes != null)
             {
-                return Gfx.use_texture("sponza_tex_" + suffix + "_" + p, pw,
-                    ph, pfmt, bytes, pver,
-                    new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.REPEAT });
+                return Gfx.UseTexture("sponza_tex_" + suffix + "_" + p, pw,
+                    ph, (Gfx.PixelFormat)pfmt, bytes, pver,
+                    new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
             }
         }
-        return Gfx.use_texture("sponza_default_" + suffix, 1, 1, Gfx.RGBA8,
-            fallback, 1, new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.REPEAT });
+        return Gfx.UseTexture("sponza_default_" + suffix, 1, 1, Gfx.PixelFormat.Rgba8,
+            fallback, 1, new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
     }
 
     /// <summary>material table のキーを読む。mat 無し / キー無しは null。</summary>
@@ -647,11 +647,12 @@ public static class Sponza14
         return (double)v;
     }
 
-    static TextureRef? Target(string key, int w, int h, int fmt, int filter)
+    static TextureRef? Target(string key, int w, int h, Gfx.PixelFormat fmt,
+        Gfx.Filter filter)
     {
-        var ver = w * 100000 + h * 100 + fmt;
-        return Gfx.use_texture(key, w, h, fmt, null, ver,
-            new TextureOpts { target = true, filter = filter, wrap = Gfx.CLAMP });
+        var ver = w * 100000 + h * 100 + (int)fmt;
+        return Gfx.UseTexture(key, w, h, fmt, null, ver,
+            new TextureOpts { Target = true, Filter = filter, Wrap = Gfx.Wrap.Clamp });
     }
 
     static ShaderRef? FsShader(string key, string fsPath)
@@ -661,12 +662,12 @@ public static class Sponza14
 
     static ShaderRef? Shader2(string key, string vsPath, string fsPath)
     {
-        Io.load_text("samples/14_sponza/data/" + vsPath,
+        Io.LoadText("samples/14_sponza/data/" + vsPath,
             out var v, out var vv, out _, out _);
-        Io.load_text("samples/14_sponza/data/" + fsPath,
+        Io.LoadText("samples/14_sponza/data/" + fsPath,
             out var f, out var fv, out _, out _);
         if (v == null || f == null) return null;
-        return Gfx.use_shader(key, v, f, vv * 31 + fv);
+        return Gfx.UseShader(key, v, f, vv * 31 + fv);
     }
 
     static double[] Black()
@@ -676,7 +677,7 @@ public static class Sponza14
 
     static int SponzaMode()
     {
-        var s = os.getenv("LUB_SPONZA_MODE");
+        var s = Environment.GetEnvironmentVariable("LUB_SPONZA_MODE");
         if (s == null) return 0;
         switch (s.ToLower())
         {
@@ -702,43 +703,42 @@ public static class Sponza14
         return (int)(double)n;
     }
 
-    // tcs に tonumber / Parse 相当が無いので、env 値 ([-+]?digits[.digits])
-    // を string.byte 走査で読む。読めない文字列は null (Haxe 版は NaN /
-    // null になる系。ここでは代入をスキップする)。
+    // env 値 ([-+]?digits[.digits]) を読む。読めない文字列は null (Haxe 版は
+    // NaN / null になる系。ここでは代入をスキップする)。
     static double? ParseNumber(string s)
     {
         var str = s.Trim();
-        var n = len(str);
+        var n = str.Length;
         if (n == 0) return null;
-        var i = 1;
+        var i = 0;
         var sign = 1.0;
-        var c0 = @byte(str, 1);
+        var c0 = (int)str[0];
         if (c0 == 43)
         {
-            i = 2;
+            i = 1;
         }
         else if (c0 == 45)
         {
             sign = -1.0;
-            i = 2;
+            i = 1;
         }
         var any = false;
         var value = 0.0;
-        while (i <= n)
+        while (i < n)
         {
-            var d = @byte(str, i);
+            var d = (int)str[i];
             if (d < 48 || d > 57) break;
             value = value * 10.0 + (d - 48);
             any = true;
             i = i + 1;
         }
-        if (i <= n && @byte(str, i) == 46)
+        if (i < n && (int)str[i] == 46)
         {
             i = i + 1;
             var scale = 1.0;
-            while (i <= n)
+            while (i < n)
             {
-                var d = @byte(str, i);
+                var d = (int)str[i];
                 if (d < 48 || d > 57) break;
                 scale = scale * 0.1;
                 value = value + (d - 48) * scale;
@@ -746,7 +746,7 @@ public static class Sponza14
                 i = i + 1;
             }
         }
-        if (!any || i <= n) return null;
+        if (!any || i < n) return null;
         return sign * value;
     }
 
@@ -765,7 +765,7 @@ public static class Sponza14
 
     static Mat4 UpdateCamera(double dt)
     {
-        var camStr = os.getenv("LUB_SPONZA_CAM");
+        var camStr = Environment.GetEnvironmentVariable("LUB_SPONZA_CAM");
         if (camStr != null)
         {
             var p = camStr.Split(",");
@@ -783,13 +783,13 @@ public static class Sponza14
                 if (ez != null) camEyeZ = (double)ez;
             }
         }
-        if (os.getenv("LUB_SPONZA_SPIN") != null)
+        if (Environment.GetEnvironmentVariable("LUB_SPONZA_SPIN") != null)
         {
             camYaw = Math.Sin(tAccum * 0.25) * 0.32;
         }
 
-        Input.mouse_delta(out var mdx, out var mdy);
-        if (Input.mouse_down(1))
+        Input.MouseDelta(out var mdx, out var mdy);
+        if (Input.MouseDown(1))
         {
             camYaw = camYaw + mdx * 0.003;
             camPitch = camPitch - mdy * 0.003;
@@ -799,39 +799,39 @@ public static class Sponza14
 
         var up = new Vec3(0, 1, 0);
         var fwd = ForwardDir();
-        var right = up.cross(fwd).normalize();
+        var right = up.Cross(fwd).Normalize();
         var spd = 2.6 * dt;
-        if (Input.key_down("w"))
+        if (Input.KeyDown("w"))
         {
-            camEyeX = camEyeX + fwd.x * spd;
-            camEyeY = camEyeY + fwd.y * spd;
-            camEyeZ = camEyeZ + fwd.z * spd;
+            camEyeX = camEyeX + fwd.X * spd;
+            camEyeY = camEyeY + fwd.Y * spd;
+            camEyeZ = camEyeZ + fwd.Z * spd;
         }
-        if (Input.key_down("s"))
+        if (Input.KeyDown("s"))
         {
-            camEyeX = camEyeX - fwd.x * spd;
-            camEyeY = camEyeY - fwd.y * spd;
-            camEyeZ = camEyeZ - fwd.z * spd;
+            camEyeX = camEyeX - fwd.X * spd;
+            camEyeY = camEyeY - fwd.Y * spd;
+            camEyeZ = camEyeZ - fwd.Z * spd;
         }
-        if (Input.key_down("d"))
+        if (Input.KeyDown("d"))
         {
-            camEyeX = camEyeX + right.x * spd;
-            camEyeY = camEyeY + right.y * spd;
-            camEyeZ = camEyeZ + right.z * spd;
+            camEyeX = camEyeX + right.X * spd;
+            camEyeY = camEyeY + right.Y * spd;
+            camEyeZ = camEyeZ + right.Z * spd;
         }
-        if (Input.key_down("a"))
+        if (Input.KeyDown("a"))
         {
-            camEyeX = camEyeX - right.x * spd;
-            camEyeY = camEyeY - right.y * spd;
-            camEyeZ = camEyeZ - right.z * spd;
+            camEyeX = camEyeX - right.X * spd;
+            camEyeY = camEyeY - right.Y * spd;
+            camEyeZ = camEyeZ - right.Z * spd;
         }
-        if (Input.key_down("e")) camEyeY = camEyeY + spd;
-        if (Input.key_down("q")) camEyeY = camEyeY - spd;
+        if (Input.KeyDown("e")) camEyeY = camEyeY + spd;
+        if (Input.KeyDown("q")) camEyeY = camEyeY - spd;
 
         var eye = new Vec3(camEyeX, camEyeY, camEyeZ);
-        var target = new Vec3(camEyeX + fwd.x, camEyeY + fwd.y,
-            camEyeZ + fwd.z);
-        return Mat4.lookAtLh(eye, target, up);
+        var target = new Vec3(camEyeX + fwd.X, camEyeY + fwd.Y,
+            camEyeZ + fwd.Z);
+        return Mat4.LookAtLh(eye, target, up);
     }
 
     static Vec3 ForwardDir()

@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 public static class Flappy17
 {
@@ -16,41 +17,41 @@ public static class Flappy17
     static int score = 0;
     static bool dead = false;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void onEvent(EventData e)
-    {
-    }
-
-    public static void onQuit()
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onFrame(double dt)
+    public static void OnQuit()
+    {
+    }
+
+    public static void OnFrame(double dt)
     {
         t = t + dt;
 
-        var s = Assets.shader("cube_shader",
+        var s = Assets.Shader("cube_shader",
             "samples/17_flappy/data/cube.vs.slang",
             "samples/17_flappy/data/cube.fs.slang");
-        var b = Assets.floats("cube_verts", Gfx.VERTEX,
+        var b = Assets.Floats("cube_verts", Gfx.BufferType.Vertex,
             "samples/17_flappy/data/cube.verts.lua");
         if (s == null || b == null) return;
 
         // key_pressed / mouse_pressed はフレームラッチされたエッジ検出。
         // タップ (web) は SDL の合成でマウス左ボタンとして届く。
 
-        var flap = Input.key_pressed("space") || Input.mouse_pressed();
+        var flap = Input.KeyPressed("space") || Input.MousePressed();
         if (!dead)
         {
             if (flap)
             {
                 velocityY = 3.0;
-                Audio.audio_play(Sfx.blip(300, 700, 0.09, 0.4));
+                Audio.Play(Sfx.Blip(300, 700, 0.09, 0.4));
             }
             velocityY = velocityY - 8.0 * dt;
             playerY = playerY + velocityY * dt;
@@ -61,7 +62,7 @@ public static class Flappy17
                 pipeX = 5.0;
                 gapY = Math.Sin(t * 1.7) * 1.5;
                 score = score + 1;
-                Audio.audio_play(Sfx.blip(660, 990, 0.12, 0.35));
+                Audio.Play(Sfx.Blip(660, 990, 0.12, 0.35));
             }
 
             if (playerY < -3.0 || playerY > 3.0)
@@ -77,17 +78,17 @@ public static class Flappy17
             }
             if (dead)
             {
-                Audio.audio_play(Sfx.noise(0.3, 0.5));
+                Audio.Play(Sfx.Noise(0.3, 0.5));
             }
 
             // 落下速度に pitch が追従する風切り音 (毎フレーム宣言する声)。
             // 宣言をやめれば fade out するので stop 管理は要らない。
             var wind = Math.Min(1.0, Math.Abs(velocityY) * 0.25);
-            Audio.audio_voice("wind", Sfx.noise(0.3, 0.5), new VoiceOpts
+            Audio.Voice("wind", Sfx.Noise(0.3, 0.5), new VoiceOpts
             {
-                loop = true,
-                volume = 0.05 * wind,
-                pitch = 0.5 + wind,
+                Loop = true,
+                Volume = 0.05 * wind,
+                Pitch = 0.5 + wind,
             });
         }
         else
@@ -102,62 +103,62 @@ public static class Flappy17
             }
         }
 
-        var vp = Camera3d.vp(new Camera3dOpts
+        var vp = Camera3d.Vp(new Camera3dOpts
         {
-            eye = new Vec3(0, 0, -8),
-            target = new Vec3(0, 0, 0),
+            Eye = new Vec3(0, 0, -8),
+            Target = new Vec3(0, 0, 0),
         });
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.05, 0.05, 0.15, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.05, 0.05, 0.15, 1.0 },
         });
 
         var drawOpts = new DrawOpts
         {
-            shader = s,
-            depth = true,
-            cull = Gfx.NONE,
+            Shader = s,
+            Depth = true,
+            Cull = Gfx.Cull.None,
         };
 
-        var playerModel = Mat4.translate(new Vec3(-2.0, playerY, 0))
-            * Mat4.rotateY(t * 3.0) * Mat4.scale(new Vec3(0.4, 0.4, 0.4));
+        var playerModel = Mat4.Translate(new Vec3(-2.0, playerY, 0))
+            * Mat4.RotateY(t * 3.0) * Mat4.Scale(new Vec3(0.4, 0.4, 0.4));
         var playerMvp = vp * playerModel;
-        Gfx.draw(36, new Dictionary<string, object>
+        Gfx.Draw(36, new Dictionary<string, object>
         {
             ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["mvp"] = playerMvp.m,
+                ["mvp"] = playerMvp.M,
             },
         }, drawOpts);
 
-        var pipeScale = Mat4.scale(new Vec3(0.8, 5.0, 0.8));
-        var topModel = Mat4.translate(new Vec3(pipeX, gapY + 3.5, 0))
+        var pipeScale = Mat4.Scale(new Vec3(0.8, 5.0, 0.8));
+        var topModel = Mat4.Translate(new Vec3(pipeX, gapY + 3.5, 0))
             * pipeScale;
         var topMvp = vp * topModel;
-        Gfx.draw(36, new Dictionary<string, object>
+        Gfx.Draw(36, new Dictionary<string, object>
         {
             ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["mvp"] = topMvp.m,
+                ["mvp"] = topMvp.M,
             },
         }, drawOpts);
 
-        var botModel = Mat4.translate(new Vec3(pipeX, gapY - 3.5, 0))
+        var botModel = Mat4.Translate(new Vec3(pipeX, gapY - 3.5, 0))
             * pipeScale;
         var botMvp = vp * botModel;
-        Gfx.draw(36, new Dictionary<string, object>
+        Gfx.Draw(36, new Dictionary<string, object>
         {
             ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["mvp"] = botMvp.m,
+                ["mvp"] = botMvp.M,
             },
         }, drawOpts);
 
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

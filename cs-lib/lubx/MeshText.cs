@@ -9,18 +9,18 @@
 // 宣言をそのまま `function MeshText:@char` と emit して不正 Lua になるため
 // Char に改名している。
 using System.Collections.Generic;
-using static @string;
+using static Lub;
 
 /// <summary>MeshText の glyph キャッシュ 1 エントリ (内部用)。空グリフは
 /// vb/ib = null, count = 0 で advance だけ持つ。</summary>
 public class GlyphEntry
 {
-    public BufferRef? vb;
-    public BufferRef? ib;
-    public int count;
-    public double advance;
-    public double cx;
-    public double cy;
+    public BufferRef? Vb;
+    public BufferRef? Ib;
+    public int Count;
+    public double Advance;
+    public double Cx;
+    public double Cy;
 }
 
 /// <summary>メッシュグリフ描画 (大サイズレジーム)。TTF 輪郭を三角形化して
@@ -28,7 +28,7 @@ public class GlyphEntry
 /// 使うこと。座標は論理解像度 px、y は下向き、(x, y) はベースライン。</summary>
 public class MeshText
 {
-    private static string VS = "struct Uniforms {\n"
+    private static string vs = "struct Uniforms {\n"
         + "  float4\n"
         + "      psr; // x, y (screen px), scale (px per em), rotation (rad, CCW in y-up)\n"
         + "  float4 tint;\n"
@@ -59,7 +59,7 @@ public class MeshText
         + "  return o;\n"
         + "}\n";
 
-    private static string FS = "struct FSIn {\n"
+    private static string fs = "struct FSIn {\n"
         + "  float4 color : COLOR;\n"
         + "};\n"
         + "\n"
@@ -83,29 +83,29 @@ public class MeshText
         this.logicalH = logicalH;
     }
 
-    private ShaderRef? ensure()
+    private ShaderRef? Ensure()
     {
-        shader = Gfx.use_shader(key + "_shader", VS, FS, 1);
+        shader = Gfx.UseShader(key + "_shader", vs, fs, 1);
         return shader;
     }
 
-    private GlyphEntry? glyphFor(int cp)
+    private GlyphEntry? GlyphFor(int cp)
     {
         if (glyphs.TryGetValue(cp, out var cached))
             return cached;
-        var gm = Font.font_glyph_mesh(ttf, cp);
+        var gm = Font.GlyphMesh(ttf, cp);
         if (gm == null)
             return null;
-        if (gm.vert_count == 0)
+        if (gm.VertCount == 0)
         {
             // 空グリフ (スペース等) も advance を持つのでキャッシュする
             // (vb/ib は field 既定の null のまま)
             var empty = new GlyphEntry
             {
-                count = 0,
-                advance = gm.advance,
-                cx = 0.0,
-                cy = 0.0,
+                Count = 0,
+                Advance = gm.Advance,
+                Cx = 0.0,
+                Cy = 0.0,
             };
             glyphs[cp] = empty;
             return empty;
@@ -115,11 +115,11 @@ public class MeshText
         double minY = 1e9;
         double maxX = -1e9;
         double maxY = -1e9;
-        for (int i = 0; i < gm.vert_count; i++)
+        for (int i = 0; i < gm.VertCount; i++)
         {
             // vertex i の x, y (stride 3、z は捨てる)
-            double x = gm.positions[i * 3];
-            double y = gm.positions[i * 3 + 1];
+            double x = gm.Positions[i * 3];
+            double y = gm.Positions[i * 3 + 1];
             verts.Add(x);
             verts.Add(y);
             if (x < minX)
@@ -133,64 +133,64 @@ public class MeshText
         }
         // use_buffer は List<double> を取るので indices を詰め替える
         var idx = new List<double>();
-        for (int i = 0; i < gm.index_count; i++)
-            idx.Add(gm.indices[i]);
+        for (int i = 0; i < gm.IndexCount; i++)
+            idx.Add(gm.Indices[i]);
         var e = new GlyphEntry
         {
-            vb = Gfx.use_buffer(key + "_v:" + cp, Gfx.VERTEX, verts, version),
-            ib = Gfx.use_buffer(key + "_i:" + cp, Gfx.INDEX, idx, version),
-            count = gm.index_count,
-            advance = gm.advance,
-            cx = (minX + maxX) * 0.5,
-            cy = (minY + maxY) * 0.5,
+            Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Vertex, verts, version),
+            Ib = Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index, idx, version),
+            Count = gm.IndexCount,
+            Advance = gm.Advance,
+            Cx = (minX + maxX) * 0.5,
+            Cy = (minY + maxY) * 0.5,
         };
         glyphs[cp] = e;
         return e;
     }
 
-    private static Color colorOrWhite(Color? c)
+    private static Color ColorOrWhite(Color? c)
     {
-        return c ?? Color.rgb(1.0, 1.0, 1.0);
+        return c ?? Color.Rgb(1.0, 1.0, 1.0);
     }
 
     /// <summary>グリフ 1 つ。(x, y) は centered=false ならベースライン原点、
     /// true なら bbox 中心を (x, y) に置く。size は px/em、angle は CCW
     /// ラジアン。</summary>
-    public void glyph(int cp, double x, double y, double size,
+    public void Glyph(int cp, double x, double y, double size,
         double? angle = null, Color? tint = null, bool? centered = null)
     {
-        var sh = ensure();
+        var sh = Ensure();
         if (sh == null)
             return;
-        var e = glyphFor(cp);
-        if (e == null || e.count == 0)
+        var e = GlyphFor(cp);
+        if (e == null || e.Count == 0)
             return;
-        var vb = e.vb;
-        var ib = e.ib;
+        var vb = e.Vb;
+        var ib = e.Ib;
         if (vb == null || ib == null)
             return;
-        var c = colorOrWhite(tint);
+        var c = ColorOrWhite(tint);
         bool ctr = centered ?? false;
-        Gfx.draw(e.count, new Dictionary<string, object>
+        Gfx.Draw(e.Count, new Dictionary<string, object>
         {
             ["verts"] = vb,
             ["indices"] = ib,
             ["uniforms"] = new Dictionary<string, object>
             {
                 ["psr"] = new List<double> { x, y, size, angle ?? 0.0 },
-                ["tint"] = new List<double> { c.r, c.g, c.b, c.a },
+                ["tint"] = new List<double> { c.R, c.G, c.B, c.A },
                 ["screen"] = new List<double>
                     { (double)logicalW, (double)logicalH, 0.0, 0.0 },
                 ["center"] = ctr
-                    ? new List<double> { e.cx, e.cy, 0.0, 0.0 }
+                    ? new List<double> { e.Cx, e.Cy, 0.0, 0.0 }
                     : new List<double> { 0.0, 0.0, 0.0, 0.0 },
             },
         }, new DrawOpts
         {
-            shader = sh,
-            depth = false,
-            cull = Gfx.NONE,
-            blend = Gfx.ALPHA,
+            Shader = sh,
+            Depth = false,
+            Cull = Gfx.Cull.None,
+            Blend = Gfx.Blend.Alpha,
         });
     }
 
@@ -199,54 +199,46 @@ public class MeshText
     public void Char(string s, double x, double y, double size,
         double? angle = null, Color? tint = null, bool? centered = null)
     {
-        glyph(utf8.codepoint(s, 1), x, y, size, angle, tint, centered);
+        foreach (var r in s.EnumerateRunes())
+        {
+            Glyph(r.Value, x, y, size, angle, tint, centered);
+            return;
+        }
     }
 
     /// <summary>1 行をベースライン左端から。</summary>
-    public void text(string s, double x, double baselineY, double size,
+    public void Text(string s, double x, double baselineY, double size,
         Color? tint = null)
     {
         var pen = x;
-        int n = len(s);
-        int? i = 1;
-        while (i != null)
+        foreach (var r in s.EnumerateRunes())
         {
-            int pos = i ?? 0;
-            if (pos > n)
-                break;
-            int cp = utf8.codepoint(s, pos);
-            var e = glyphFor(cp);
+            int cp = r.Value;
+            var e = GlyphFor(cp);
             if (e != null)
             {
-                glyph(cp, pen, baselineY, size, 0.0, tint, false);
-                pen += e.advance * size;
+                Glyph(cp, pen, baselineY, size, 0.0, tint, false);
+                pen += e.Advance * size;
             }
-            i = utf8.offset(s, 2, pos);
         }
     }
 
     /// <summary>1 行を中央揃えで (cx は中心)。</summary>
-    public void textCentered(string s, double cx, double baselineY, double size,
+    public void TextCentered(string s, double cx, double baselineY, double size,
         Color? tint = null)
     {
-        text(s, cx - width(s, size) * 0.5, baselineY, size, tint);
+        Text(s, cx - Width(s, size) * 0.5, baselineY, size, tint);
     }
 
     /// <summary>1 行の幅 (px)。advance の合計 × size。</summary>
-    public double width(string s, double size)
+    public double Width(string s, double size)
     {
         var sum = 0.0;
-        int n = len(s);
-        int? i = 1;
-        while (i != null)
+        foreach (var r in s.EnumerateRunes())
         {
-            int pos = i ?? 0;
-            if (pos > n)
-                break;
-            var e = glyphFor(utf8.codepoint(s, pos));
+            var e = GlyphFor(r.Value);
             if (e != null)
-                sum += e.advance;
-            i = utf8.offset(s, 2, pos);
+                sum += e.Advance;
         }
         return sum * size;
     }

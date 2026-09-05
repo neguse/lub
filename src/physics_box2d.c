@@ -2088,6 +2088,7 @@ static void parse_shape_desc(lua_State *L, int idx, PhysShapeDesc *desc) {
       table_number(L, idx, "restitution", NULL, desc->restitution);
   desc->material_id =
       table_int(L, idx, "material", "materialId", desc->material_id);
+  desc->material_id = table_int(L, idx, "material_id", NULL, desc->material_id);
   desc->material_id = table_int(L, idx, "user_material_id", "userMaterialId",
                                 desc->material_id);
   desc->sensor = table_bool(L, idx, "sensor", NULL, desc->sensor);

@@ -14,63 +14,37 @@
 
 using System;
 using System.Collections.Generic;
-using static @string;
+using static Lub;
 
 public static class Sfb12
 {
     // render-target size; set from Gfx.size() each frame so the whole post
     // chain runs at the real drawable resolution (smaller = faster on weak
     // devices).
-    static int RT_W = 1280;
-    static int RT_H = 720;
-    const double WATER_Y = 0.12; // world height of the water plane
+    static int rtW = 1280;
+    static int rtH = 720;
+    const double waterY = 0.12; // world height of the water plane
 
     static double tAccum = 0;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void onEvent(EventData e)
-    {
-    }
-
-    public static void onQuit()
+    public static void OnEvent(EventData e)
     {
     }
 
-    // Std.parseFloat 相当。tcs には数値 parse API が無いので、env 変数が使う
-    // "-1.25" 形式 (符号 + 10 進小数) だけを自前で読む。
+    public static void OnQuit()
+    {
+    }
+
+    // Std.parseFloat 相当 (env 変数の "-1.25" 形式)。
     static double ParseNum(string s)
     {
-        var n = len(s);
-        double sign = 1;
-        var i = 1;
-        if (n >= 1 && @byte(s, 1) == 45) // '-'
-        {
-            sign = -1;
-            i = 2;
-        }
-        double v = 0;
-        while (i <= n && @byte(s, i) >= 48 && @byte(s, i) <= 57)
-        {
-            v = v * 10 + (@byte(s, i) - 48);
-            i = i + 1;
-        }
-        if (i <= n && @byte(s, i) == 46) // '.'
-        {
-            i = i + 1;
-            var f = 0.1;
-            while (i <= n && @byte(s, i) >= 48 && @byte(s, i) <= 57)
-            {
-                v = v + (@byte(s, i) - 48) * f;
-                f = f * 0.1;
-                i = i + 1;
-            }
-        }
-        return sign * v;
+        return double.Parse(s);
     }
 
     // ---- geometry (world-space, model baked on CPU) ----
@@ -78,7 +52,7 @@ public static class Sfb12
     static void AddFloor(List<double> dst)
     {
         var n = new List<double> { 0, 1, 0 };
-        Shapes.quad(dst, new List<double> { -2.3, 0, -1.55 },
+        Shapes.Quad(dst, new List<double> { -2.3, 0, -1.55 },
             new List<double> { 2.3, 0, -1.55 },
             new List<double> { 2.3, 0, 1.75 },
             new List<double> { -2.3, 0, 1.75 }, n,
@@ -87,7 +61,7 @@ public static class Sfb12
         for (int i = -4; i < 5; i++)
         {
             var x = i * 0.48;
-            Shapes.quad(dst, new List<double> { x - 0.005, 0.003, -1.55 },
+            Shapes.Quad(dst, new List<double> { x - 0.005, 0.003, -1.55 },
                 new List<double> { x + 0.005, 0.003, -1.55 },
                 new List<double> { x + 0.005, 0.003, 1.75 },
                 new List<double> { x - 0.005, 0.003, 1.75 }, n, line);
@@ -95,7 +69,7 @@ public static class Sfb12
         for (int i = -3; i < 4; i++)
         {
             var z = i * 0.48;
-            Shapes.quad(dst, new List<double> { -2.3, 0.003, z - 0.005 },
+            Shapes.Quad(dst, new List<double> { -2.3, 0.003, z - 0.005 },
                 new List<double> { 2.3, 0.003, z - 0.005 },
                 new List<double> { 2.3, 0.003, z + 0.005 },
                 new List<double> { -2.3, 0.003, z + 0.005 }, n, line);
@@ -103,7 +77,7 @@ public static class Sfb12
     }
 
     // ---- textured hero object (material demo) ----
-    const int TEX_N = 64;
+    const int texN = 64;
     static List<int>? albedoPx = null;
     static List<int>? normalPx = null;
 
@@ -113,9 +87,9 @@ public static class Sfb12
         if (albedoPx != null) return;
         albedoPx = new List<int>();
         normalPx = new List<int>();
-        for (int y = 0; y < TEX_N; y++)
+        for (int y = 0; y < texN; y++)
         {
-            for (int x = 0; x < TEX_N; x++)
+            for (int x = 0; x < texN; x++)
             {
                 var c = (((x >> 3) + (y >> 3)) & 1) == 0;
                 if (c)
@@ -132,8 +106,8 @@ public static class Sfb12
                     albedoPx.Add(160);
                     albedoPx.Add(255);
                 }
-                var nx = Math.Sin((double)x / TEX_N * Math.PI * 8) * 0.6;
-                var ny = Math.Sin((double)y / TEX_N * Math.PI * 8) * 0.6;
+                var nx = Math.Sin((double)x / texN * Math.PI * 8) * 0.6;
+                var ny = Math.Sin((double)y / texN * Math.PI * 8) * 0.6;
                 var l = Math.Sqrt(nx * nx + ny * ny + 1.0);
                 normalPx.Add((int)Math.Floor((nx / l * 0.5 + 0.5) * 255));
                 normalPx.Add((int)Math.Floor((ny / l * 0.5 + 0.5) * 255));
@@ -146,7 +120,7 @@ public static class Sfb12
     static List<int>? flowPx = null;
     static List<int>? waterNrmPx = null;
     static List<int>? lutPx = null;
-    const int LUT_N = 16;
+    const int lutN = 16;
 
     // Flow map (RG = flow direction) + ripple normal map for the water surface.
     static void GenWaterTextures()
@@ -154,19 +128,19 @@ public static class Sfb12
         if (flowPx != null) return;
         flowPx = new List<int>();
         waterNrmPx = new List<int>();
-        for (int y = 0; y < TEX_N; y++)
+        for (int y = 0; y < texN; y++)
         {
-            for (int x = 0; x < TEX_N; x++)
+            for (int x = 0; x < texN; x++)
             {
                 var fx = 0.7;
-                var fy = 0.35 * Math.Sin((double)y / TEX_N * Math.PI * 2);
+                var fy = 0.35 * Math.Sin((double)y / texN * Math.PI * 2);
                 var fl = Math.Sqrt(fx * fx + fy * fy);
                 flowPx.Add((int)Math.Floor((fx / fl * 0.5 + 0.5) * 255));
                 flowPx.Add((int)Math.Floor((fy / fl * 0.5 + 0.5) * 255));
                 flowPx.Add(128);
                 flowPx.Add(255);
-                var nx = Math.Sin((double)x / TEX_N * Math.PI * 12) * 0.4;
-                var ny = Math.Sin((double)y / TEX_N * Math.PI * 12 + 1.7) * 0.4;
+                var nx = Math.Sin((double)x / texN * Math.PI * 12) * 0.4;
+                var ny = Math.Sin((double)y / texN * Math.PI * 12 + 1.7) * 0.4;
                 var l = Math.Sqrt(nx * nx + ny * ny + 1.0);
                 waterNrmPx.Add((int)Math.Floor((nx / l * 0.5 + 0.5) * 255));
                 waterNrmPx.Add((int)Math.Floor((ny / l * 0.5 + 0.5) * 255));
@@ -182,24 +156,24 @@ public static class Sfb12
     {
         if (lutPx != null) return;
         lutPx = new List<int>();
-        for (int g = 0; g < LUT_N; g++)
+        for (int g = 0; g < lutN; g++)
         {
-            for (int b = 0; b < LUT_N; b++)
+            for (int b = 0; b < lutN; b++)
             {
-                for (int r = 0; r < LUT_N; r++)
+                for (int r = 0; r < lutN; r++)
                 {
-                    var rr = (double)r / (LUT_N - 1);
-                    var gg = (double)g / (LUT_N - 1);
-                    var bb = (double)b / (LUT_N - 1);
+                    var rr = (double)r / (lutN - 1);
+                    var gg = (double)g / (lutN - 1);
+                    var bb = (double)b / (lutN - 1);
                     var lum = rr * 0.2126 + gg * 0.7152 + bb * 0.0722;
                     var shadow = 1.0 - lum;
                     var high = lum;
                     var nr = rr * 1.03 + high * 0.035 - shadow * 0.025;
                     var ng = gg * 1.01 + shadow * 0.025 + high * 0.010;
                     var nb = bb * 0.98 + shadow * 0.060 - high * 0.020;
-                    lutPx.Add((int)Math.Floor(MathUtil.saturate(nr) * 255));
-                    lutPx.Add((int)Math.Floor(MathUtil.saturate(ng) * 255));
-                    lutPx.Add((int)Math.Floor(MathUtil.saturate(nb) * 255));
+                    lutPx.Add((int)Math.Floor(MathUtil.Saturate(nr) * 255));
+                    lutPx.Add((int)Math.Floor(MathUtil.Saturate(ng) * 255));
+                    lutPx.Add((int)Math.Floor(MathUtil.Saturate(nb) * 255));
                     lutPx.Add(255);
                 }
             }
@@ -254,14 +228,14 @@ public static class Sfb12
     {
         var dst = new List<double>();
         AddFloor(dst);
-        Shapes.box(dst, -0.05, 0.12, 0.48, 0.88, 0.24, 0.34,
+        Shapes.Box(dst, -0.05, 0.12, 0.48, 0.88, 0.24, 0.34,
             new List<double> { 0.95, 0.76, 0.38, 1.0 });
-        Shapes.box(dst, -0.58, 0.52 + Math.Sin(t * 1.4) * 0.07, -0.12,
+        Shapes.Box(dst, -0.58, 0.52 + Math.Sin(t * 1.4) * 0.07, -0.12,
             0.42, 0.42, 0.42, new List<double> { 0.18, 0.72, 0.78, 1.0 });
-        Shapes.sphere(dst, 0.62 + Math.Cos(t * 1.1) * 0.20,
+        Shapes.Sphere(dst, 0.62 + Math.Cos(t * 1.1) * 0.20,
             0.58 + Math.Sin(t * 1.7) * 0.08, -0.18 + Math.Sin(t * 0.8) * 0.22,
             0.22, new List<double> { 0.95, 0.28, 0.34, 1.0 }, 14, 28);
-        Shapes.box(dst, 0.92, 0.34, 0.36, 0.18, 0.68, 0.18,
+        Shapes.Box(dst, 0.92, 0.34, 0.36, 0.18, 0.68, 0.18,
             new List<double> { 0.48, 0.39, 0.86, 1.0 });
         return dst;
     }
@@ -301,7 +275,7 @@ public static class Sfb12
 
         // LUB_SFB_CAM="yaw,pitch,ex,ey,ez" pins the camera to a fixed pose
         // (testing).
-        var camStr = os.getenv("LUB_SFB_CAM");
+        var camStr = Environment.GetEnvironmentVariable("LUB_SFB_CAM");
         if (camStr != null)
         {
             var p = camStr.Split(",");
@@ -317,15 +291,15 @@ public static class Sfb12
 
         // LUB_SFB_SPIN auto-orbits the camera (deterministic) so motion blur is
         // visible in a headless capture; default (unset) keeps the golden still.
-        if (os.getenv("LUB_SFB_SPIN") != null)
+        if (Environment.GetEnvironmentVariable("LUB_SFB_SPIN") != null)
         {
             camYaw = camYaw + 1.2 * dt;
         }
 
         // Mouse look: consume the delta every frame (so it never jumps), apply
         // only while the left button is held.
-        Input.mouse_delta(out var mdx, out var mdy);
-        if (Input.mouse_down(1))
+        Input.MouseDelta(out var mdx, out var mdy);
+        if (Input.MouseDown(1))
         {
             camYaw = camYaw + mdx * 0.003;
             camPitch = camPitch - mdy * 0.003;
@@ -334,39 +308,39 @@ public static class Sfb12
         }
 
         var fwd = ForwardDir();
-        var right = up.cross(fwd).normalize();
+        var right = up.Cross(fwd).Normalize();
         var spd = 2.0 * dt;
-        if (Input.key_down("w"))
+        if (Input.KeyDown("w"))
         {
-            camEyeX += fwd.x * spd;
-            camEyeY += fwd.y * spd;
-            camEyeZ += fwd.z * spd;
+            camEyeX += fwd.X * spd;
+            camEyeY += fwd.Y * spd;
+            camEyeZ += fwd.Z * spd;
         }
-        if (Input.key_down("s"))
+        if (Input.KeyDown("s"))
         {
-            camEyeX -= fwd.x * spd;
-            camEyeY -= fwd.y * spd;
-            camEyeZ -= fwd.z * spd;
+            camEyeX -= fwd.X * spd;
+            camEyeY -= fwd.Y * spd;
+            camEyeZ -= fwd.Z * spd;
         }
-        if (Input.key_down("d"))
+        if (Input.KeyDown("d"))
         {
-            camEyeX += right.x * spd;
-            camEyeY += right.y * spd;
-            camEyeZ += right.z * spd;
+            camEyeX += right.X * spd;
+            camEyeY += right.Y * spd;
+            camEyeZ += right.Z * spd;
         }
-        if (Input.key_down("a"))
+        if (Input.KeyDown("a"))
         {
-            camEyeX -= right.x * spd;
-            camEyeY -= right.y * spd;
-            camEyeZ -= right.z * spd;
+            camEyeX -= right.X * spd;
+            camEyeY -= right.Y * spd;
+            camEyeZ -= right.Z * spd;
         }
-        if (Input.key_down("e")) camEyeY += spd;
-        if (Input.key_down("q")) camEyeY -= spd;
+        if (Input.KeyDown("e")) camEyeY += spd;
+        if (Input.KeyDown("q")) camEyeY -= spd;
 
         var eye = new Vec3(camEyeX, camEyeY, camEyeZ);
-        var target = new Vec3(camEyeX + fwd.x, camEyeY + fwd.y,
-            camEyeZ + fwd.z);
-        return Mat4.lookAtLh(eye, target, up);
+        var target = new Vec3(camEyeX + fwd.X, camEyeY + fwd.Y,
+            camEyeZ + fwd.Z);
+        return Mat4.LookAtLh(eye, target, up);
     }
 
     // ---- fullscreen quad (pos.xy, uv) ----
@@ -395,14 +369,14 @@ public static class Sfb12
         -1, 1, 0, 0,
     };
 
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
         tAccum = tAccum + dt;
 
         // size the offscreen chain to the real drawable (canvas/swapchain).
-        Gfx.size(out var szw, out var szh);
-        RT_W = szw;
-        RT_H = szh;
+        Gfx.Size(out var szw, out var szh);
+        rtW = szw;
+        rtH = szh;
 
         var gShader = Shader2("sfb_gbuf", "12_gbuffer.vs.slang",
             "12_gbuffer.fs.slang");
@@ -445,25 +419,25 @@ public static class Sfb12
         // effect isolation mode (LUB_SFB_MODE): 0=composite, 1=posterize,
         // 2=pixelize, 3=chromatic, 4=sharpen, 5=dilation, 6=normal, 7=depth,
         // 8=shadow map. (LUB_SFB_NOWATER=1 skips the water plane.)
-        var modeStr = os.getenv("LUB_SFB_MODE");
+        var modeStr = Environment.GetEnvironmentVariable("LUB_SFB_MODE");
         var mode = modeStr == null ? 0 : (int)ParseNum(modeStr);
 
         // G-buffer + work targets.
-        var gColor = Target("sfb_gColor", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
-        var gNormal = Target("sfb_gNormal", RT_W, RT_H, Gfx.RGBA16F,
-            Gfx.NEAREST);
-        var gPosition = Target("sfb_gPosition", RT_W, RT_H, Gfx.RGBA16F,
-            Gfx.NEAREST);
-        var gDepth = Target("sfb_gDepth", RT_W, RT_H, Gfx.DEPTH32F,
-            Gfx.NEAREST);
-        var shadowMap = Target("sfb_shadow", 1024, 1024, Gfx.RGBA8,
-            Gfx.NEAREST);
-        var shadowDepth = Target("sfb_shadowD", 1024, 1024, Gfx.DEPTH32F,
-            Gfx.NEAREST);
-        var texA = Target("sfb_texA", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
-        var texB = Target("sfb_texB", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
-        var bloomA = Target("sfb_bloomA", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
-        var bloomB = Target("sfb_bloomB", RT_W, RT_H, Gfx.RGBA8, Gfx.LINEAR);
+        var gColor = Target("sfb_gColor", rtW, rtH, Gfx.PixelFormat.Rgba8, Gfx.Filter.Linear);
+        var gNormal = Target("sfb_gNormal", rtW, rtH, Gfx.PixelFormat.Rgba16f,
+            Gfx.Filter.Nearest);
+        var gPosition = Target("sfb_gPosition", rtW, rtH, Gfx.PixelFormat.Rgba16f,
+            Gfx.Filter.Nearest);
+        var gDepth = Target("sfb_gDepth", rtW, rtH, Gfx.PixelFormat.Depth32f,
+            Gfx.Filter.Nearest);
+        var shadowMap = Target("sfb_shadow", 1024, 1024, Gfx.PixelFormat.Rgba8,
+            Gfx.Filter.Nearest);
+        var shadowDepth = Target("sfb_shadowD", 1024, 1024, Gfx.PixelFormat.Depth32f,
+            Gfx.Filter.Nearest);
+        var texA = Target("sfb_texA", rtW, rtH, Gfx.PixelFormat.Rgba8, Gfx.Filter.Linear);
+        var texB = Target("sfb_texB", rtW, rtH, Gfx.PixelFormat.Rgba8, Gfx.Filter.Linear);
+        var bloomA = Target("sfb_bloomA", rtW, rtH, Gfx.PixelFormat.Rgba8, Gfx.Filter.Linear);
+        var bloomB = Target("sfb_bloomB", rtW, rtH, Gfx.PixelFormat.Rgba8, Gfx.Filter.Linear);
         if (gColor == null || gNormal == null || gPosition == null
             || gDepth == null || shadowMap == null || shadowDepth == null
             || texA == null || texB == null || bloomA == null
@@ -474,9 +448,9 @@ public static class Sfb12
 
         // Scene + camera.
         var scene = BuildScene(tAccum);
-        var sceneBuf = Gfx.use_buffer("sfb_scene", Gfx.VERTEX, scene);
-        var quadBuf = Gfx.use_buffer("sfb_quad", Gfx.VERTEX, quadVerts, 1);
-        var quadBufF = Gfx.use_buffer("sfb_quadF", Gfx.VERTEX, quadVertsFlip,
+        var sceneBuf = Gfx.UseBuffer("sfb_scene", Gfx.BufferType.Vertex, scene);
+        var quadBuf = Gfx.UseBuffer("sfb_quad", Gfx.BufferType.Vertex, quadVerts, 1);
+        var quadBufF = Gfx.UseBuffer("sfb_quadF", Gfx.BufferType.Vertex, quadVertsFlip,
             1);
 
         // Textured hero (material demo): generated albedo + normal map. The
@@ -487,47 +461,47 @@ public static class Sfb12
         BufferRef? heroBuf = null;
         BufferRef? heroIdx = null;
         var heroCount = 0;
-        var heroModel = Mat4.identity();
-        if (os.getenv("LUB_SFB_GLTF") != null)
+        var heroModel = Mat4.Identity();
+        if (Environment.GetEnvironmentVariable("LUB_SFB_GLTF") != null)
         {
-            Io.load_gltf("samples/12_sfb/data/12_avocado.gltf",
+            Io.LoadGltf("samples/12_sfb/data/12_avocado.gltf",
                 out var meshObj, out var meshVer, out _, out _);
             if (meshObj != null)
             {
                 var mesh = (MeshData)meshObj;
-                heroBuf = Gfx.use_buffer("sfb_hero", Gfx.VERTEX,
-                    Io.interleave_pnu(mesh), meshVer);
+                heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Vertex,
+                    Io.InterleavePnu(mesh), meshVer);
                 // MeshData.indices は List<int> だが use_buffer は
                 // List<double> を取る。tcs は型消去なので Lua では同じ table が
                 // そのまま渡る (cast は無変換)。
-                heroIdx = Gfx.use_buffer("sfb_heroIdx", Gfx.INDEX,
-                    (List<double>)(object)mesh.indices, meshVer);
-                heroCount = mesh.index_count;
-                heroModel = Mat4.scaleTrans(8.5, new Vec3(0.1, 0.0, -0.7));
+                heroIdx = Gfx.UseBuffer("sfb_heroIdx", Gfx.BufferType.Index,
+                    (List<double>)(object)mesh.Indices, meshVer);
+                heroCount = mesh.IndexCount;
+                heroModel = Mat4.ScaleTrans(8.5, new Vec3(0.1, 0.0, -0.7));
             }
         }
         if (heroBuf == null)
         {
             var heroMesh = BuildHero();
-            heroBuf = Gfx.use_buffer("sfb_hero", Gfx.VERTEX, heroMesh, 1);
+            heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Vertex, heroMesh, 1);
             heroCount = heroMesh.Count / 8;
         }
-        var albedoTex = Gfx.use_texture("sfb_albedo", TEX_N, TEX_N, Gfx.RGBA8,
-            albedoPx, 1, new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.REPEAT });
-        var normalTex = Gfx.use_texture("sfb_normalmap", TEX_N, TEX_N,
-            Gfx.RGBA8, normalPx, 1,
-            new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.REPEAT });
+        var albedoTex = Gfx.UseTexture("sfb_albedo", texN, texN, Gfx.PixelFormat.Rgba8,
+            albedoPx, 1, new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
+        var normalTex = Gfx.UseTexture("sfb_normalmap", texN, texN,
+            Gfx.PixelFormat.Rgba8, normalPx, 1,
+            new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
 
         GenWaterTextures();
-        var flowTex = Gfx.use_texture("sfb_flow", TEX_N, TEX_N, Gfx.RGBA8,
-            flowPx, 1, new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.REPEAT });
-        var waterNrmTex = Gfx.use_texture("sfb_waternrm", TEX_N, TEX_N,
-            Gfx.RGBA8, waterNrmPx, 1,
-            new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.REPEAT });
+        var flowTex = Gfx.UseTexture("sfb_flow", texN, texN, Gfx.PixelFormat.Rgba8,
+            flowPx, 1, new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
+        var waterNrmTex = Gfx.UseTexture("sfb_waternrm", texN, texN,
+            Gfx.PixelFormat.Rgba8, waterNrmPx, 1,
+            new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });
         GenLut();
-        var lutTex = Gfx.use_texture("sfb_lut", LUT_N * LUT_N, LUT_N,
-            Gfx.RGBA8, lutPx, 1,
-            new TextureOpts { filter = Gfx.LINEAR, wrap = Gfx.CLAMP });
+        var lutTex = Gfx.UseTexture("sfb_lut", lutN * lutN, lutN,
+            Gfx.PixelFormat.Rgba8, lutPx, 1,
+            new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (sceneBuf == null || quadBuf == null || quadBufF == null
             || heroBuf == null || albedoTex == null || normalTex == null
             || flowTex == null || waterNrmTex == null || lutTex == null)
@@ -536,29 +510,29 @@ public static class Sfb12
         }
 
         var view = UpdateCamera(dt);
-        var proj = Mat4.perspectiveLh(52, (double)RT_W / RT_H, 0.1, 40.0);
+        var proj = Mat4.PerspectiveLh(52, (double)rtW / rtH, 0.1, 40.0);
         // Offscreen targets are stored y-down vs the swapchain (the runtime
         // only y-flips the default framebuffer). Pre-flip clip-space Y so the
         // G-buffer is screen-oriented; cull is NONE so the winding change is
         // harmless.
-        proj.m[5] = -proj.m[5];
+        proj.M[5] = -proj.M[5];
         // direction toward the light
-        var worldLight = new Vec3(-0.48, 1.0, -0.32).normalize();
-        var lightView = view.mat3MulVec3(worldLight).normalize();
+        var worldLight = new Vec3(-0.48, 1.0, -0.32).Normalize();
+        var lightView = view.Mat3MulVec3(worldLight).Normalize();
         // directional shadow: orthographic light camera looking at the scene
         // centre.
-        var lightLook = Mat4.lookAtLh(
-            new Vec3(0.1 + worldLight.x * 6.0, 0.3 + worldLight.y * 6.0,
-                worldLight.z * 6.0),
+        var lightLook = Mat4.LookAtLh(
+            new Vec3(0.1 + worldLight.X * 6.0, 0.3 + worldLight.Y * 6.0,
+                worldLight.Z * 6.0),
             new Vec3(0.1, 0.3, 0.0), new Vec3(0, 1, 0));
-        var lightMvp = Mat4.orthoLh(5.5, 5.5, 0.1, 12.0).mul(lightLook);
+        var lightMvp = Mat4.OrthoLh(5.5, 5.5, 0.1, 12.0).Mul(lightLook);
 
         // Reprojection for motion blur: maps a current view-space point to
         // last frame's clip space = prevViewProj * inverse(currentView). Still
         // camera => reproj == proj => zero velocity.
-        var viewProj = proj.mul(view);
-        var invView = view.rigidInverse(new Vec3(camEyeX, camEyeY, camEyeZ));
-        var reproj = (prevViewProj ?? viewProj).mul(invView);
+        var viewProj = proj.Mul(view);
+        var invView = view.RigidInverse(new Vec3(camEyeX, camEyeY, camEyeZ));
+        var reproj = (prevViewProj ?? viewProj).Mul(invView);
         prevViewProj = viewProj;
 
         var camMoved = Math.Abs(camEyeX - pcEyeX)
@@ -573,10 +547,10 @@ public static class Sfb12
         // shadow depth pass (light POV) -> shadowMap, then the G-buffer
         // samples it.
         ShadowPass(shadowMap, shadowDepth, shFlatShader, sceneBuf,
-            scene.Count / Shapes.STRIDE, shHeroShader, heroBuf, heroCount,
+            scene.Count / Shapes.Stride, shHeroShader, heroBuf, heroCount,
             heroIdx, heroModel, lightMvp);
 
-        GeometryPass(gShader, sceneBuf, scene.Count / Shapes.STRIDE, matShader,
+        GeometryPass(gShader, sceneBuf, scene.Count / Shapes.Stride, matShader,
             heroBuf, heroCount, heroIdx, heroModel, albedoTex, normalTex,
             shadowMap, lightMvp, gColor, gNormal, gPosition, gDepth, proj,
             view, lightView);
@@ -585,7 +559,7 @@ public static class Sfb12
         // look. (proj[0], proj[5]) are the two projection scalars SSAO needs
         // to project a view-space sample point back to uv.
         SsaoPass(texA, ssaoShader, quadBufF, gColor, gNormal, gPosition,
-            proj.m[0], proj.m[5]);
+            proj.M[0], proj.M[5]);
         BlitFog(texB, fogShader, quadBufF, texA, gPosition);
         Blit(bloomA, brightShader, quadBufF, texB);
         Blit(bloomB, blurHShader, quadBufF, bloomA);
@@ -597,14 +571,14 @@ public static class Sfb12
         // Water: composite a flow-mapped, refracting, foaming plane at
         // y = WATER_Y over the scene (reflection/refraction/foam/flow).
         // texB -> texA.
-        if (os.getenv("LUB_SFB_NOWATER") != null)
+        if (Environment.GetEnvironmentVariable("LUB_SFB_NOWATER") != null)
         {
             Blit(texA, pShader, quadBufF, texB);
         }
         else
         {
             WaterPass(texA, waterShader, quadBufF, texB, gPosition, flowTex,
-                waterNrmTex, invView, tAccum, WATER_Y, proj.m[0], proj.m[5]);
+                waterNrmTex, invView, tAccum, waterY, proj.M[0], proj.M[5]);
         }
 
         // Depth of field: blur a copy of the beauty (texA) through the bloom
@@ -639,10 +613,11 @@ public static class Sfb12
     // ---- resource + pass helpers (kept out of onFrame to stay under Lua's
     // 200-locals-per-function limit) ----
 
-    static TextureRef? Target(string key, int w, int h, int fmt, int filter)
+    static TextureRef? Target(string key, int w, int h, Gfx.PixelFormat fmt,
+        Gfx.Filter filter)
     {
-        return Gfx.use_texture(key, w, h, fmt, null, 1,
-            new TextureOpts { target = true, filter = filter, wrap = Gfx.CLAMP });
+        return Gfx.UseTexture(key, w, h, fmt, null, 1,
+            new TextureOpts { Target = true, Filter = filter, Wrap = Gfx.Wrap.Clamp });
     }
 
     static ShaderRef? FsShader(string key, string fsPath)
@@ -652,12 +627,12 @@ public static class Sfb12
 
     static ShaderRef? Shader2(string key, string vsPath, string fsPath)
     {
-        Io.load_text("samples/12_sfb/data/" + vsPath,
+        Io.LoadText("samples/12_sfb/data/" + vsPath,
             out var vs, out var vsv, out _, out _);
-        Io.load_text("samples/12_sfb/data/" + fsPath,
+        Io.LoadText("samples/12_sfb/data/" + fsPath,
             out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return null;
-        return Gfx.use_shader(key, vs, fs, vsv * 31 + fsv);
+        return Gfx.UseShader(key, vs, fs, vsv * 31 + fsv);
     }
 
     static double[] Black()
@@ -672,16 +647,16 @@ public static class Sfb12
         ShaderRef heroShader, BufferRef heroBuf, int heroCount,
         BufferRef? heroIdx, Mat4 heroModel, Mat4 lightMvp)
     {
-        var lmvp = lightMvp.m;
-        var mv = heroModel.m;
-        Gfx.begin_pass(new PassOpts
+        var lmvp = lightMvp.M;
+        var mv = heroModel.M;
+        Gfx.BeginPass(new PassOpts
         {
-            target = shadowMap,
-            depth_target = shadowDepth,
-            clear_color = new double[] { 1.0, 1.0, 1.0, 1.0 },
-            clear_depth = 1,
+            Target = shadowMap,
+            DepthTarget = shadowDepth,
+            ClearColor = new double[] { 1.0, 1.0, 1.0, 1.0 },
+            ClearDepth = 1,
         });
-        Gfx.draw(count,
+        Gfx.Draw(count,
             new Dictionary<string, object>
             {
                 ["verts"] = sceneBuf,
@@ -692,21 +667,21 @@ public static class Sfb12
             },
             new DrawOpts
             {
-                shader = flatShader,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = flatShader,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
         var opts = new DrawOpts
         {
-            shader = heroShader,
-            depth = true,
-            depth_write = true,
-            cull = Gfx.NONE,
+            Shader = heroShader,
+            Depth = true,
+            DepthWrite = true,
+            Cull = Gfx.Cull.None,
         };
         if (heroIdx != null)
         {
-            Gfx.draw(heroCount,
+            Gfx.Draw(heroCount,
                 new Dictionary<string, object>
                 {
                     ["verts"] = heroBuf,
@@ -720,7 +695,7 @@ public static class Sfb12
         }
         else
         {
-            Gfx.draw(heroCount,
+            Gfx.Draw(heroCount,
                 new Dictionary<string, object>
                 {
                     ["verts"] = heroBuf,
@@ -731,7 +706,7 @@ public static class Sfb12
                     },
                 }, opts);
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 
     static void GeometryPass(ShaderRef shader, BufferRef sceneBuf, int count,
@@ -741,25 +716,25 @@ public static class Sfb12
         TextureRef gColor, TextureRef gNormal, TextureRef gPosition,
         TextureRef gDepth, Mat4 proj, Mat4 view, Vec3 lightView)
     {
-        var lt = new double[] { lightView.x, lightView.y, lightView.z, 0.0 };
-        var pv = proj.m;
-        var vv = view.m;
-        var mv = heroModel.m;
-        var lmvp = lightMvp.m;
-        Gfx.begin_pass(new PassOpts
+        var lt = new double[] { lightView.X, lightView.Y, lightView.Z, 0.0 };
+        var pv = proj.M;
+        var vv = view.M;
+        var mv = heroModel.M;
+        var lmvp = lightMvp.M;
+        Gfx.BeginPass(new PassOpts
         {
-            targets = new List<TextureRef> { gColor, gNormal, gPosition },
-            depth_target = gDepth,
-            clear_colors = new List<double[]>
+            Targets = new List<TextureRef> { gColor, gNormal, gPosition },
+            DepthTarget = gDepth,
+            ClearColors = new List<double[]>
             {
                 new double[] { 0.09, 0.12, 0.15, 1.0 },
                 new double[] { 0.5, 0.5, 1.0, 0.0 },
                 new double[] { 0.0, 0.0, 0.0, 0.0 },
             },
-            clear_depth = 1,
+            ClearDepth = 1,
         });
         // flat-shaded scene objects
-        Gfx.draw(count,
+        Gfx.Draw(count,
             new Dictionary<string, object>
             {
                 ["verts"] = sceneBuf,
@@ -774,23 +749,23 @@ public static class Sfb12
             },
             new DrawOpts
             {
-                shader = shader,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = shader,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
         // textured + normal-mapped hero (same G-buffer); indexed for glTF
         // meshes.
         var opts = new DrawOpts
         {
-            shader = matShader,
-            depth = true,
-            depth_write = true,
-            cull = Gfx.NONE,
+            Shader = matShader,
+            Depth = true,
+            DepthWrite = true,
+            Cull = Gfx.Cull.None,
         };
         if (heroIdx != null)
         {
-            Gfx.draw(heroCount,
+            Gfx.Draw(heroCount,
                 new Dictionary<string, object>
                 {
                     ["verts"] = heroBuf,
@@ -810,7 +785,7 @@ public static class Sfb12
         }
         else
         {
-            Gfx.draw(heroCount,
+            Gfx.Draw(heroCount,
                 new Dictionary<string, object>
                 {
                     ["verts"] = heroBuf,
@@ -827,59 +802,59 @@ public static class Sfb12
                     },
                 }, opts);
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 
     // single-texture blit, no uniform block (bright / blur / passthrough).
     static void Blit(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
                 ["scene"] = tex,
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitFog(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef gPosition)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
                 ["scene"] = tex,
                 ["gpos"] = gPosition,
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitCombine(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef baseTex, TextureRef bloom)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
                 ["scene"] = baseTex,
                 ["bloom"] = bloom,
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitOutline(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef gNormal, TextureRef gPosition)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -887,15 +862,15 @@ public static class Sfb12
                 ["gnormal"] = gNormal,
                 ["gpos"] = gPosition,
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void BlitDof(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef blurred, TextureRef gPosition)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -903,16 +878,16 @@ public static class Sfb12
                 ["blurred"] = blurred,
                 ["gpos"] = gPosition,
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void SsaoPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef gColor, TextureRef gNormal, TextureRef gPosition,
         double p00, double p11)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -924,15 +899,15 @@ public static class Sfb12
                     ["params"] = new double[] { p00, p11, 0.0, 0.0 },
                 },
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void ScreenPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, int mode)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -942,15 +917,15 @@ public static class Sfb12
                     ["params"] = new double[] { mode, 0.004, 0.0, 0.0 },
                 },
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void GradePass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef lut, double time)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -961,8 +936,8 @@ public static class Sfb12
                     ["params"] = new double[] { time, 0.025, 0.65, 2.2 },
                 },
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void WaterPass(TextureRef targ, ShaderRef shader, BufferRef quad,
@@ -970,8 +945,8 @@ public static class Sfb12
         TextureRef wnTex, Mat4 iv, double time, double waterY, double p00,
         double p11)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -981,21 +956,21 @@ public static class Sfb12
                 ["waternormal"] = wnTex,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["ir0"] = new double[] { iv.m[0], iv.m[1], iv.m[2], iv.m[3] },
-                    ["ir1"] = new double[] { iv.m[4], iv.m[5], iv.m[6], iv.m[7] },
-                    ["ir2"] = new double[] { iv.m[8], iv.m[9], iv.m[10], iv.m[11] },
+                    ["ir0"] = new double[] { iv.M[0], iv.M[1], iv.M[2], iv.M[3] },
+                    ["ir1"] = new double[] { iv.M[4], iv.M[5], iv.M[6], iv.M[7] },
+                    ["ir2"] = new double[] { iv.M[8], iv.M[9], iv.M[10], iv.M[11] },
                     ["params"] = new double[] { time, waterY, p00, p11 },
                 },
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void MotionPass(TextureRef targ, ShaderRef shader, BufferRef quad,
         TextureRef tex, TextureRef gPosition, Mat4 m)
     {
-        Gfx.begin_pass(new PassOpts { target = targ, clear_color = Black() });
-        Gfx.draw(6,
+        Gfx.BeginPass(new PassOpts { Target = targ, ClearColor = Black() });
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
@@ -1003,30 +978,30 @@ public static class Sfb12
                 ["gpos"] = gPosition,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["r0"] = new double[] { m.m[0], m.m[1], m.m[2], m.m[3] },
-                    ["r1"] = new double[] { m.m[4], m.m[5], m.m[6], m.m[7] },
-                    ["r2"] = new double[] { m.m[8], m.m[9], m.m[10], m.m[11] },
-                    ["r3"] = new double[] { m.m[12], m.m[13], m.m[14], m.m[15] },
+                    ["r0"] = new double[] { m.M[0], m.M[1], m.M[2], m.M[3] },
+                    ["r1"] = new double[] { m.M[4], m.M[5], m.M[6], m.M[7] },
+                    ["r2"] = new double[] { m.M[8], m.M[9], m.M[10], m.M[11] },
+                    ["r3"] = new double[] { m.M[12], m.M[13], m.M[14], m.M[15] },
                 },
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 
     static void Present(ShaderRef shader, BufferRef quad, TextureRef tex)
     {
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = Black(),
+            Target = Gfx.MainTex,
+            ClearColor = Black(),
         });
-        Gfx.draw(6,
+        Gfx.Draw(6,
             new Dictionary<string, object>
             {
                 ["verts"] = quad,
                 ["scene"] = tex,
             },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 }

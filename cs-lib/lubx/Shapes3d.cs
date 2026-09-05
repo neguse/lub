@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>単位プリミティブを MeshData 形式 (indexed、positions + normals +
 /// 白色) で生成する。Mesh3d.rebuild() にそのまま渡せて、SDF / glTF メッシュと
@@ -15,7 +16,7 @@ using System.Collections.Generic;
 /// 別物。</summary>
 public static class Shapes3d
 {
-    private static MeshData mesh(List<double> positions, List<double> normals,
+    private static MeshData Mesh(List<double> positions, List<double> normals,
         List<int> indices)
     {
         // 頂点色は白 (interleave 既定は 0.8 グレー)。draw 側の tint がそのまま
@@ -26,19 +27,19 @@ public static class Shapes3d
             colors.Add(1.0);
         return new MeshData
         {
-            positions = positions,
-            normals = normals,
-            colors = colors,
-            indices = indices,
-            vert_count = n,
-            index_count = indices.Count,
+            Positions = positions,
+            Normals = normals,
+            Colors = colors,
+            Indices = indices,
+            VertCount = n,
+            IndexCount = indices.Count,
         };
     }
 
     /// <summary>Shapes (stride 10: pos3 + normal3 + rgba) の生成結果を MeshData
     /// に変換する。既存の Shapes.box/quad/sphere で組んだジオメトリを
     /// Mesh3d / Renderer3d に載せるためのブリッジ。alpha は落ちる。</summary>
-    public static MeshData fromInterleaved(List<double> v)
+    public static MeshData FromInterleaved(List<double> v)
     {
         int n = (int)Math.Floor(v.Count / 10.0);
         var pos = new List<double>();
@@ -61,17 +62,17 @@ public static class Shapes3d
         }
         return new MeshData
         {
-            positions = pos,
-            normals = nrm,
-            colors = col,
-            indices = indices,
-            vert_count = n,
-            index_count = n,
+            Positions = pos,
+            Normals = nrm,
+            Colors = col,
+            Indices = indices,
+            VertCount = n,
+            IndexCount = n,
         };
     }
 
     /// <summary>辺長 2 の立方体 (中心原点、±1)。scale は model 行列で。</summary>
-    public static MeshData cube()
+    public static MeshData Cube()
     {
         var pos = new List<double>();
         var nrm = new List<double>();
@@ -102,11 +103,11 @@ public static class Shapes3d
             foreach (var idx in new List<int> { 0, 1, 2, 0, 2, 3 })
                 indices.Add(baseIdx + idx);
         }
-        return mesh(pos, nrm, indices);
+        return Mesh(pos, nrm, indices);
     }
 
     /// <summary>高さ 1 (y = ±0.5)、半径 1 の円柱。</summary>
-    public static MeshData cylinder(int sides)
+    public static MeshData Cylinder(int sides)
     {
         var pos = new List<double>();
         var nrm = new List<double>();
@@ -177,11 +178,11 @@ public static class Shapes3d
                 }
             }
         }
-        return mesh(pos, nrm, indices);
+        return Mesh(pos, nrm, indices);
     }
 
     /// <summary>半径 1 の UV 球。</summary>
-    public static MeshData sphere(int stacks, int slices)
+    public static MeshData Sphere(int stacks, int slices)
     {
         var pos = new List<double>();
         var nrm = new List<double>();
@@ -214,6 +215,6 @@ public static class Shapes3d
                     indices.Add(idx);
             }
         }
-        return mesh(pos, nrm, indices);
+        return Mesh(pos, nrm, indices);
     }
 }

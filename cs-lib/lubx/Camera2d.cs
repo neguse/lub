@@ -6,55 +6,57 @@
 /// 2D ワールド座標 (任意単位, y 上向き) と論理スクリーン px (y 下向き) の相互変換。
 /// ppm は 1 ワールド単位あたりの px。(originX, originY) はワールド原点のスクリーン位置。
 /// </summary>
+using static Lub;
+
 public class Camera2d
 {
-    public double ppm;
-    public double originX;
-    public double originY;
-    public double logicalW;
-    public double logicalH;
+    public double Ppm;
+    public double OriginX;
+    public double OriginY;
+    public double LogicalW;
+    public double LogicalH;
 
     public Camera2d(double logicalW, double logicalH, double ppm,
         double originX, double originY)
     {
-        this.logicalW = logicalW;
-        this.logicalH = logicalH;
-        this.ppm = ppm;
-        this.originX = originX;
-        this.originY = originY;
+        this.LogicalW = logicalW;
+        this.LogicalH = logicalH;
+        this.Ppm = ppm;
+        this.OriginX = originX;
+        this.OriginY = originY;
     }
 
     /// <summary>world x → screen x</summary>
-    public double sx(double wx)
+    public double Sx(double wx)
     {
-        return originX + wx * ppm;
+        return OriginX + wx * Ppm;
     }
 
     /// <summary>world y → screen y</summary>
-    public double sy(double wy)
+    public double Sy(double wy)
     {
-        return originY - wy * ppm;
+        return OriginY - wy * Ppm;
     }
 
     /// <summary>screen x → world x</summary>
-    public double wx(double sxv)
+    public double Wx(double sxv)
     {
-        return (sxv - originX) / ppm;
+        return (sxv - OriginX) / Ppm;
     }
 
     /// <summary>screen y → world y</summary>
-    public double wy(double syv)
+    public double Wy(double syv)
     {
-        return (originY - syv) / ppm;
+        return (OriginY - syv) / Ppm;
     }
 
     /// <summary>マウス位置をワールド座標で。実ウィンドウ px → 論理 px 換算込み。</summary>
-    public Vec2d mouseWorld()
+    public Vec2d MouseWorld()
     {
-        Gfx.size(out var gw, out var gh);
-        Input.mouse_pos(out var mx, out var my);
-        var lx = mx * logicalW / gw;
-        var ly = my * logicalH / gh;
-        return new Vec2d { x = wx(lx), y = wy(ly) };
+        Gfx.Size(out var gw, out var gh);
+        Input.MousePos(out var mx, out var my);
+        var lx = mx * LogicalW / gw;
+        var ly = my * LogicalH / gh;
+        return new Vec2d { X = Wx(lx), Y = Wy(ly) };
     }
 }

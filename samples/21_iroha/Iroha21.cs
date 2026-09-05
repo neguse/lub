@@ -12,37 +12,38 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>玉 1 個 (Haxe 版 typedef Ball と対)。</summary>
 public class Ball
 {
-    public int id;
-    public int level;
-    public double spawnX; // 宣言用: initial は不変でないと body が作り直される
-    public double spawnY;
-    public double x;
-    public double y;
-    public double angle;
-    public double age;
-    public double overT;
+    public int Id;
+    public int Level;
+    public double SpawnX; // 宣言用: initial は不変でないと body が作り直される
+    public double SpawnY;
+    public double X;
+    public double Y;
+    public double Angle;
+    public double Age;
+    public double OverT;
 }
 
 public static class Iroha21
 {
-    const int W = 640;
-    const int H = 360;
-    const double PPM = 100.0; // physics m -> logical px
-    const double HALF_W = 1.15; // 容器の半幅 (m)
-    const double WALL_TOP = 3.2; // 壁の上端 (m)
-    const double LINE_Y = 2.45; // ゲームオーバー線 (m)
-    const double DROP_Y = 2.85; // 投下位置 (m)
-    const int LEVELS = 7;
+    const int w = 640;
+    const int h = 360;
+    const double ppm = 100.0; // physics m -> logical px
+    const double halfW = 1.15; // 容器の半幅 (m)
+    const double wallTop = 3.2; // 壁の上端 (m)
+    const double lineY = 2.45; // ゲームオーバー線 (m)
+    const double dropY = 2.85; // 投下位置 (m)
+    const int levels = 7;
 
-    static string[] CHARS = new string[]
+    static string[] chars = new string[]
         { "い", "ろ", "は", "に", "ほ", "へ", "と" };
-    static double[] RADII = new double[]
+    static double[] radii = new double[]
         { 0.13, 0.17, 0.22, 0.28, 0.36, 0.46, 0.58 };
-    static Color[]? COLORS = null; // onFrame 先頭で遅延生成
+    static Color[]? _colors = null; // onFrame 先頭で遅延生成
 
     static Camera2d? cam = null;
 
@@ -66,27 +67,27 @@ public static class Iroha21
     static Rand? rng = null;
 
     // LUB_IROHA_AUTO=1 で自動プレイ (ヘッドレス検証・デモ用)
-    static bool auto = os.getenv("LUB_IROHA_AUTO") != null;
+    static bool auto = Environment.GetEnvironmentVariable("LUB_IROHA_AUTO") != null;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend, width = W, height = H });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
-    public static void onEvent(EventData e)
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onQuit()
+    public static void OnQuit()
     {
     }
 
     // --- アセット -----------------------------------------------------------
 
-    static bool ensureAssets()
+    static bool EnsureAssets()
     {
-        Io.load_text("samples/21_iroha/data/MPLUS1p-subset.ttf",
+        Io.LoadText("samples/21_iroha/data/MPLUS1p-subset.ttf",
             out var text, out var version, out _, out _);
         if (text == null) return false;
         if (ttf == null || fontVersion != version)
@@ -94,31 +95,31 @@ public static class Iroha21
             ttf = text;
             fontVersion = version;
             hud = new Text("iroha_hud", text, 20);
-            mesh = new MeshText("iroha_mesh", text, fontVersion, W, H);
+            mesh = new MeshText("iroha_mesh", text, fontVersion, w, h);
         }
         return ttf != null && mesh != null;
     }
 
     // --- ゲーム -------------------------------------------------------------
 
-    static void spawn(double x, double y, int level)
+    static void Spawn(double x, double y, int level)
     {
         balls.Add(new Ball
         {
-            id = nextId,
-            level = level,
-            spawnX = x,
-            spawnY = y,
-            x = x,
-            y = y,
-            angle = 0.0,
-            age = 0.0,
-            overT = 0.0,
+            Id = nextId,
+            Level = level,
+            SpawnX = x,
+            SpawnY = y,
+            X = x,
+            Y = y,
+            Angle = 0.0,
+            Age = 0.0,
+            OverT = 0.0,
         });
         nextId++;
     }
 
-    static void reset()
+    static void Reset()
     {
         balls = new List<Ball>();
         score = 0;
@@ -126,177 +127,177 @@ public static class Iroha21
         cooldown = 0.3;
     }
 
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
         t += dt;
         if (dt > 0.1)
             dt = 0.1;
-        if (!ensureAssets()) return;
+        if (!EnsureAssets()) return;
         var hudNow = hud;
         var meshNow = mesh;
         if (hudNow == null || meshNow == null) return;
 
-        var camNow = cam ?? new Camera2d(W, H, PPM, 320.0, 344.0);
+        var camNow = cam ?? new Camera2d(w, h, ppm, 320.0, 344.0);
         cam = camNow;
-        var batchNow = batch ?? new SpriteBatch(W, H);
+        var batchNow = batch ?? new SpriteBatch(w, h);
         batch = batchNow;
         var overlayNow = overlay
-            ?? new SpriteBatch(W, H, "lubx_sprite", "iroha_overlay");
+            ?? new SpriteBatch(w, h, "lubx_sprite", "iroha_overlay");
         overlay = overlayNow;
         var rngNow = rng ?? new Rand(0x1234567);
         rng = rngNow;
-        var colors = COLORS;
+        var colors = _colors;
         if (colors == null)
         {
             colors = new Color[]
             {
-                Color.rgb(0.91, 0.36, 0.36),
-                Color.rgb(0.93, 0.60, 0.34),
-                Color.rgb(0.93, 0.83, 0.36),
-                Color.rgb(0.49, 0.80, 0.42),
-                Color.rgb(0.36, 0.72, 0.91),
-                Color.rgb(0.50, 0.45, 0.93),
-                Color.rgb(0.83, 0.36, 0.91),
+                Color.Rgb(0.91, 0.36, 0.36),
+                Color.Rgb(0.93, 0.60, 0.34),
+                Color.Rgb(0.93, 0.83, 0.36),
+                Color.Rgb(0.49, 0.80, 0.42),
+                Color.Rgb(0.36, 0.72, 0.91),
+                Color.Rgb(0.50, 0.45, 0.93),
+                Color.Rgb(0.83, 0.36, 0.91),
             };
-            COLORS = colors;
+            _colors = colors;
         }
 
         // --- 入力
-        var dropR = RADII[nextLevel];
-        var dropX = camNow.mouseWorld().x;
-        if (dropX < -(HALF_W - dropR))
-            dropX = -(HALF_W - dropR);
-        if (dropX > HALF_W - dropR)
-            dropX = HALF_W - dropR;
+        var dropR = radii[nextLevel];
+        var dropX = camNow.MouseWorld().X;
+        if (dropX < -(halfW - dropR))
+            dropX = -(halfW - dropR);
+        if (dropX > halfW - dropR)
+            dropX = halfW - dropR;
         cooldown -= dt;
-        var click = Input.mouse_pressed() || Input.key_pressed("space");
+        var click = Input.MousePressed() || Input.KeyPressed("space");
         if (auto && cooldown <= 0.0 && !over)
         {
             click = true;
-            dropX = (rngNow.nextFloat() * 2.0 - 1.0) * (HALF_W - dropR);
+            dropX = (rngNow.NextFloat() * 2.0 - 1.0) * (halfW - dropR);
         }
         if (over)
         {
             if (click)
-                reset();
+                Reset();
         }
         else if (click && cooldown <= 0.0)
         {
-            spawn(dropX, DROP_Y, nextLevel);
+            Spawn(dropX, dropY, nextLevel);
             var pickTable = new int[] { 0, 0, 0, 1, 1, 2 };
-            nextLevel = pickTable[(int)Math.Floor(rngNow.nextFloat() * 6.0)];
+            nextLevel = pickTable[(int)Math.Floor(rngNow.NextFloat() * 6.0)];
             cooldown = 0.45;
-            Audio.audio_play(Sfx.blip(420, 260, 0.06, 0.3));
+            Audio.Play(Sfx.Blip(420, 260, 0.06, 0.3));
         }
 
         // --- 物理 (immediate mode: 生きている玉だけ毎フレーム宣言する)
-        var world = Phys2d.phys2d_world("iroha", new WorldOpts
+        var world = Phys2d.World("iroha", new WorldOpts
         {
-            gravity = new Vec2d { x = 0.0, y = -10.0 },
-            fixedDt = 1.0 / 120.0,
-            substeps = 4,
-            maxSteps = 4,
+            Gravity = new Vec2d { X = 0.0, Y = -10.0 },
+            FixedDt = 1.0 / 120.0,
+            Substeps = 4,
+            MaxSteps = 4,
         });
         if (world == null) return;
-        Phys2d.phys2d_begin(world);
+        Phys2d.Begin(world);
 
-        var arena = Phys2d.phys2d_body(world, "arena", new BodyDesc
+        var arena = Phys2d.Body(world, "arena", new BodyDesc
         {
-            type = Phys2d.STATIC,
-            initial = new InitialState { x = 0.0, y = 0.0 },
+            Type = Phys2d.BodyType.Static,
+            Initial = new InitialState { X = 0.0, Y = 0.0 },
         });
         if (arena == null) return;
-        Phys2d.phys2d_box(arena, "floor", new BoxDesc
+        Phys2d.Box(arena, "floor", new BoxDesc
         {
-            hx = HALF_W + 0.3,
-            hy = 0.1,
-            cy = -0.1,
-            friction = 0.5,
+            Hx = halfW + 0.3,
+            Hy = 0.1,
+            Cy = -0.1,
+            Friction = 0.5,
         });
-        Phys2d.phys2d_box(arena, "wall_l", new BoxDesc
+        Phys2d.Box(arena, "wall_l", new BoxDesc
         {
-            hx = 0.1,
-            hy = WALL_TOP * 0.5,
-            cx = -(HALF_W + 0.1),
-            cy = WALL_TOP * 0.5,
-            friction = 0.3,
+            Hx = 0.1,
+            Hy = wallTop * 0.5,
+            Cx = -(halfW + 0.1),
+            Cy = wallTop * 0.5,
+            Friction = 0.3,
         });
-        Phys2d.phys2d_box(arena, "wall_r", new BoxDesc
+        Phys2d.Box(arena, "wall_r", new BoxDesc
         {
-            hx = 0.1,
-            hy = WALL_TOP * 0.5,
-            cx = HALF_W + 0.1,
-            cy = WALL_TOP * 0.5,
-            friction = 0.3,
+            Hx = 0.1,
+            Hy = wallTop * 0.5,
+            Cx = halfW + 0.1,
+            Cy = wallTop * 0.5,
+            Friction = 0.3,
         });
 
         var refs = new Dictionary<int, BodyRef>();
         foreach (var ball in balls)
         {
-            var b = Phys2d.phys2d_body(world, "ball:" + ball.id, new BodyDesc
+            var b = Phys2d.Body(world, "ball:" + ball.Id, new BodyDesc
             {
-                type = Phys2d.DYNAMIC,
-                initial = new InitialState { x = ball.spawnX, y = ball.spawnY },
+                Type = Phys2d.BodyType.Dynamic,
+                Initial = new InitialState { X = ball.SpawnX, Y = ball.SpawnY },
             });
             if (b == null) return;
-            Phys2d.phys2d_circle(b, "c", new CircleDesc
+            Phys2d.Circle(b, "c", new CircleDesc
             {
-                r = RADII[ball.level],
-                density = 1.0,
-                friction = 0.35,
-                restitution = 0.12,
-                contact = true,
+                R = radii[ball.Level],
+                Density = 1.0,
+                Friction = 0.35,
+                Restitution = 0.12,
+                Contact = true,
             });
-            refs[ball.id] = b;
+            refs[ball.Id] = b;
         }
 
-        Phys2d.phys2d_step(world, dt);
+        Phys2d.Step(world, dt);
 
         // contact の body key ("ball:<id>") からの逆引き用
         var byKey = new Dictionary<string, Ball>();
         foreach (var ball in balls)
         {
-            byKey["ball:" + ball.id] = ball;
-            if (!refs.TryGetValue(ball.id, out var bodyRef)) continue;
-            var p = Phys2d.phys2d_pose(bodyRef);
+            byKey["ball:" + ball.Id] = ball;
+            if (!refs.TryGetValue(ball.Id, out var bodyRef)) continue;
+            var p = Phys2d.Pose(bodyRef);
             if (p == null) continue;
-            ball.x = p.x;
-            ball.y = p.y;
-            ball.angle = p.angle;
-            ball.age += dt;
+            ball.X = p.X;
+            ball.Y = p.Y;
+            ball.Angle = p.Angle;
+            ball.Age += dt;
         }
 
         // --- 合体: 同じ文字同士の contact begin で次の文字へ
         if (!over)
         {
-            var contacts = Phys2d.phys2d_contacts(world, "begin");
+            var contacts = Phys2d.Contacts(world, "begin");
             var merged = new Dictionary<int, bool>();
             bool anyMerged = false;
             foreach (var c in contacts)
             {
-                if (!byKey.TryGetValue(c.a.body, out var b1)) continue;
-                if (!byKey.TryGetValue(c.b.body, out var b2)) continue;
-                if (b1.level != b2.level) continue;
-                if (merged.ContainsKey(b1.id) || merged.ContainsKey(b2.id))
+                if (!byKey.TryGetValue(c.A.Body, out var b1)) continue;
+                if (!byKey.TryGetValue(c.B.Body, out var b2)) continue;
+                if (b1.Level != b2.Level) continue;
+                if (merged.ContainsKey(b1.Id) || merged.ContainsKey(b2.Id))
                     continue;
-                merged[b1.id] = true;
-                merged[b2.id] = true;
+                merged[b1.Id] = true;
+                merged[b2.Id] = true;
                 anyMerged = true;
-                var level = b1.level;
-                if (level < LEVELS - 1)
-                    spawn((b1.x + b2.x) * 0.5, (b1.y + b2.y) * 0.5, level + 1);
+                var level = b1.Level;
+                if (level < levels - 1)
+                    Spawn((b1.X + b2.X) * 0.5, (b1.Y + b2.Y) * 0.5, level + 1);
                 score += (level + 1) * (level + 1);
                 if (score > best)
                     best = score;
-                Audio.audio_play(Sfx.blip(400, 840, 0.12, 0.35),
-                    new PlayOpts { pitch = 1.0 + level * 0.15 });
+                Audio.Play(Sfx.Blip(400, 840, 0.12, 0.35),
+                    new PlayOpts { Pitch = 1.0 + level * 0.15 });
             }
             if (anyMerged)
             {
                 var kept = new List<Ball>();
                 foreach (var ball in balls)
                 {
-                    if (!merged.ContainsKey(ball.id))
+                    if (!merged.ContainsKey(ball.Id))
                         kept.Add(ball);
                 }
                 balls = kept;
@@ -308,92 +309,92 @@ public static class Iroha21
         {
             foreach (var ball in balls)
             {
-                var top = ball.y + RADII[ball.level];
-                if (top > LINE_Y && ball.age > 1.0)
-                    ball.overT += dt;
+                var top = ball.Y + radii[ball.Level];
+                if (top > lineY && ball.Age > 1.0)
+                    ball.OverT += dt;
                 else
-                    ball.overT = 0.0;
-                if (ball.overT > 1.0)
+                    ball.OverT = 0.0;
+                if (ball.OverT > 1.0)
                 {
                     over = true;
-                    Audio.audio_play(Sfx.noise(0.4, 0.5, 0x2468ace));
+                    Audio.Play(Sfx.Noise(0.4, 0.5, 0x2468ace));
                 }
             }
         }
 
         // --- 描画
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.10, 0.09, 0.13, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.10, 0.09, 0.13, 1.0 },
         });
-        batchNow.begin();
+        batchNow.Begin();
 
         // 容器
-        var wallCol = Color.rgb(0.35, 0.32, 0.42);
-        batchNow.rect(camNow.sx(-HALF_W) - 8, camNow.sy(WALL_TOP), 8, WALL_TOP * PPM,
+        var wallCol = Color.Rgb(0.35, 0.32, 0.42);
+        batchNow.Rect(camNow.Sx(-halfW) - 8, camNow.Sy(wallTop), 8, wallTop * ppm,
             wallCol);
-        batchNow.rect(camNow.sx(HALF_W), camNow.sy(WALL_TOP), 8, WALL_TOP * PPM,
+        batchNow.Rect(camNow.Sx(halfW), camNow.Sy(wallTop), 8, wallTop * ppm,
             wallCol);
-        batchNow.rect(camNow.sx(-HALF_W) - 8, camNow.originY, HALF_W * 2 * PPM + 16, 8,
+        batchNow.Rect(camNow.Sx(-halfW) - 8, camNow.OriginY, halfW * 2 * ppm + 16, 8,
             wallCol);
 
         // ゲームオーバー線
         var lineBlink = over ? 1.0 : 0.25 + 0.15 * Math.Sin(t * 4.0);
-        batchNow.rect(camNow.sx(-HALF_W), camNow.sy(LINE_Y), HALF_W * 2 * PPM, 2,
-            Color.rgb(0.9, 0.3, 0.3, lineBlink));
+        batchNow.Rect(camNow.Sx(-halfW), camNow.Sy(lineY), halfW * 2 * ppm, 2,
+            Color.Rgb(0.9, 0.3, 0.3, lineBlink));
 
         // 玉 (sprite は本体、上に mesh グリフ)
         foreach (var ball in balls)
         {
-            var r = RADII[ball.level] * PPM;
-            var c = colors[ball.level];
-            batchNow.disc(camNow.sx(ball.x), camNow.sy(ball.y), r, c);
+            var r = radii[ball.Level] * ppm;
+            var c = colors[ball.Level];
+            batchNow.Disc(camNow.Sx(ball.X), camNow.Sy(ball.Y), r, c);
         }
 
         // 投下プレビュー
         if (!over)
         {
-            var r = dropR * PPM;
+            var r = dropR * ppm;
             var c = colors[nextLevel];
-            batchNow.disc(camNow.sx(dropX), camNow.sy(DROP_Y), r,
-                Color.rgb(c.r, c.g, c.b, 0.5 + 0.2 * Math.Sin(t * 6.0)));
+            batchNow.Disc(camNow.Sx(dropX), camNow.Sy(dropY), r,
+                Color.Rgb(c.R, c.G, c.B, 0.5 + 0.2 * Math.Sin(t * 6.0)));
         }
 
         // HUD (bitmap 小サイズレジーム)
-        hudNow.draw(batchNow, "スコア " + score, 12, 26);
-        hudNow.draw(batchNow, "ベスト " + best, 12, 50,
-            Color.rgb(0.8, 0.8, 0.8, 0.8));
-        hudNow.draw(batchNow, "いろはにほへと", 500, 26,
-            Color.rgb(0.7, 0.7, 0.8, 0.9), 0.8);
+        hudNow.Draw(batchNow, "スコア " + score, 12, 26);
+        hudNow.Draw(batchNow, "ベスト " + best, 12, 50,
+            Color.Rgb(0.8, 0.8, 0.8, 0.8));
+        hudNow.Draw(batchNow, "いろはにほへと", 500, 26,
+            Color.Rgb(0.7, 0.7, 0.8, 0.9), 0.8);
 
-        batchNow.flush();
+        batchNow.Flush();
 
         // mesh グリフ (拡大レジーム): 玉の文字は物理の回転ごと描く
-        var ink = Color.rgb(0.12, 0.10, 0.14, 0.9);
+        var ink = Color.Rgb(0.12, 0.10, 0.14, 0.9);
         foreach (var ball in balls)
         {
-            meshNow.Char(CHARS[ball.level], camNow.sx(ball.x), camNow.sy(ball.y),
-                RADII[ball.level] * PPM * 1.3, ball.angle, ink, true);
+            meshNow.Char(chars[ball.Level], camNow.Sx(ball.X), camNow.Sy(ball.Y),
+                radii[ball.Level] * ppm * 1.3, ball.Angle, ink, true);
         }
         if (!over)
-            meshNow.Char(CHARS[nextLevel], camNow.sx(dropX), camNow.sy(DROP_Y),
-                dropR * PPM * 1.3, 0.0,
-                Color.rgb(ink.r, ink.g, ink.b, 0.6), true);
+            meshNow.Char(chars[nextLevel], camNow.Sx(dropX), camNow.Sy(dropY),
+                dropR * ppm * 1.3, 0.0,
+                Color.Rgb(ink.R, ink.G, ink.B, 0.6), true);
 
         if (over)
         {
             // 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
-            overlayNow.begin();
-            overlayNow.rect(0, 108, W, 132, Color.rgb(0.05, 0.04, 0.07, 0.85));
+            overlayNow.Begin();
+            overlayNow.Rect(0, 108, w, 132, Color.Rgb(0.05, 0.04, 0.07, 0.85));
             var msg = "クリックでもういちど";
-            hudNow.draw(overlayNow, msg,
-                camNow.originX - hudNow.width(msg) * 0.5, 222);
-            overlayNow.flush();
-            meshNow.textCentered("おしまい", camNow.originX, 190, 64,
-                Color.rgb(0.95, 0.92, 0.85));
+            hudNow.Draw(overlayNow, msg,
+                camNow.OriginX - hudNow.Width(msg) * 0.5, 222);
+            overlayNow.Flush();
+            meshNow.TextCentered("おしまい", camNow.OriginX, 190, 64,
+                Color.Rgb(0.95, 0.92, 0.85));
         }
 
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

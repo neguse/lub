@@ -6,29 +6,31 @@
 // 呼び出し側に埋めないが、Lua の省略引数 = nil が null に落ちるのを利用)。
 
 /// <summary>RGBA カラー。各成分 0..1。生成は Color.rgb / Color.hex で。</summary>
+using static Lub;
+
 public class Color
 {
-    public double r;
-    public double g;
-    public double b;
-    public double a;
+    public double R;
+    public double G;
+    public double B;
+    public double A;
 
     private Color(double r, double g, double b, double a)
     {
-        this.r = r;
-        this.g = g;
-        this.b = b;
-        this.a = a;
+        this.R = r;
+        this.G = g;
+        this.B = b;
+        this.A = a;
     }
 
     /// <summary>成分指定 (a 省略で 1.0)。</summary>
-    public static Color rgb(double r, double g, double b, double? a = null)
+    public static Color Rgb(double r, double g, double b, double? a = null)
     {
         return new Color(r, g, b, a ?? 1.0);
     }
 
     /// <summary>0xRRGGBB (a 省略で 1.0)。例: Color.hex(0xE85C5C)。</summary>
-    public static Color hex(int rgb, double? a = null)
+    public static Color Hex(int rgb, double? a = null)
     {
         // tcs は bitwise 演算・整数除算未対応なので floor で分解する
         double r = System.Math.Floor(rgb / 65536.0) % 256 / 255.0;

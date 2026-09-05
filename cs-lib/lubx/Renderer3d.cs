@@ -28,135 +28,136 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>`Renderer3d.draw()` の per-draw オプション。</summary>
 public class Draw3dOpts
 {
     /// <summary>頂点色に乗じる色 (省略時白)。a &lt; 1 でも自動では blend に
     /// ならない。</summary>
-    public Color? tint;
+    public Color? Tint;
 
     /// <summary>`Gfx.ALPHA` 等。指定すると opaque 群の後に描かれ、影を
     /// 落とさない。</summary>
-    public int? blend;
+    public Gfx.Blend? Blend;
 
     /// <summary>skinned メッシュ用。`Bones.pack()` の 128 float。</summary>
-    public List<double>? bones;
+    public List<double>? Bones;
 
     /// <summary>material 差し替え。頂点レイアウトと uniform 名は既定 shader
     /// と同じ契約 (必要な uniform 名だけ宣言すればよい)。</summary>
-    public ShaderRef? shader;
+    public ShaderRef? Shader;
 
     /// <summary>差し替え shader 用の追加テクスチャ (名前 → TextureRef)。</summary>
-    public Dictionary<string, TextureRef>? textures;
+    public Dictionary<string, TextureRef>? Textures;
 
     /// <summary>差し替え shader 用の追加 uniform (名前 → List&lt;double&gt;)。
     /// 既定名と衝突したら上書き。</summary>
-    public Dictionary<string, object>? uniforms;
+    public Dictionary<string, object>? Uniforms;
 }
 
 /// <summary>`Renderer3d.begin()` のカメラ。`Camera3d.vp` と同じ形。
 /// eye / target は必須、他は省略可。</summary>
 public class Camera
 {
-    public Vec3 eye = new Vec3(0, 0, 0);
-    public Vec3 target = new Vec3(0, 0, 0);
-    public Vec3? up;
+    public Vec3 Eye = new Vec3(0, 0, 0);
+    public Vec3 Target = new Vec3(0, 0, 0);
+    public Vec3? Up;
 
     /// <summary>度。省略時 60。</summary>
-    public double? fov;
+    public double? Fov;
 
-    public double? near;
-    public double? far;
+    public double? Near;
+    public double? Far;
 }
 
 /// <summary>Renderer3d の per-draw 記録 (内部用)。</summary>
 public class Renderer3dDrawCmd
 {
-    public Mesh3d mesh;
-    public Mat4 model;
-    public List<double> tint;
-    public int blend;
-    public List<double>? bones;
-    public ShaderRef? shader;
-    public Dictionary<string, TextureRef>? textures;
-    public Dictionary<string, object>? uniforms;
+    public Mesh3d Mesh;
+    public Mat4 Model;
+    public List<double> Tint;
+    public Gfx.Blend Blend;
+    public List<double>? Bones;
+    public ShaderRef? Shader;
+    public Dictionary<string, TextureRef>? Textures;
+    public Dictionary<string, object>? Uniforms;
 
     public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, List<double> tint,
-        int blend, List<double>? bones, ShaderRef? shader,
+        Gfx.Blend blend, List<double>? bones, ShaderRef? shader,
         Dictionary<string, TextureRef>? textures,
         Dictionary<string, object>? uniforms)
     {
-        this.mesh = mesh;
-        this.model = model;
-        this.tint = tint;
-        this.blend = blend;
-        this.bones = bones;
-        this.shader = shader;
-        this.textures = textures;
-        this.uniforms = uniforms;
+        this.Mesh = mesh;
+        this.Model = model;
+        this.Tint = tint;
+        this.Blend = blend;
+        this.Bones = bones;
+        this.Shader = shader;
+        this.Textures = textures;
+        this.Uniforms = uniforms;
     }
 }
 
 /// <summary>平行光源。`dir` は光へ向かうベクトル (正規化不要)。</summary>
 public class Renderer3dLight
 {
-    public Vec3 dir = new Vec3(-0.4, 1.0, -0.55);
-    public Color color = Color.rgb(1.0, 0.96, 0.9);
-    public double intensity = 1.25;
+    public Vec3 Dir = new Vec3(-0.4, 1.0, -0.55);
+    public Color Color = Color.Rgb(1.0, 0.96, 0.9);
+    public double Intensity = 1.25;
 }
 
 /// <summary>hemispheric ambient の空色 (上) / 地面色 (下) と強度。</summary>
 public class Renderer3dSky
 {
-    public Color top = Color.rgb(0.42, 0.48, 0.58);
-    public Color bottom = Color.rgb(0.20, 0.18, 0.16);
-    public double intensity = 0.55;
+    public Color Top = Color.Rgb(0.42, 0.48, 0.58);
+    public Color Bottom = Color.Rgb(0.20, 0.18, 0.16);
+    public double Intensity = 0.55;
 }
 
 /// <summary>shadow map。`center`/`extent` は光のオルソ範囲 (world)。</summary>
 public class Renderer3dShadow
 {
-    public bool enabled = true;
-    public int size = 2048;
-    public Vec3 center = new Vec3(0, 0, 0);
-    public double extent = 12.0;
-    public double bias = 0.004;
+    public bool Enabled = true;
+    public int Size = 2048;
+    public Vec3 Center = new Vec3(0, 0, 0);
+    public double Extent = 12.0;
+    public double Bias = 0.004;
 }
 
 /// <summary>SSAO (半解像度、depth 由来)。`radius` は view 空間。</summary>
 public class Renderer3dSsao
 {
-    public bool enabled = true;
-    public double radius = 0.6;
-    public double strength = 0.85;
+    public bool Enabled = true;
+    public double Radius = 0.6;
+    public double Strength = 0.85;
 }
 
 /// <summary>bloom。`threshold` は HDR 輝度、`strength` は合成量。</summary>
 public class Renderer3dBloom
 {
-    public bool enabled = true;
-    public double threshold = 1.0;
-    public double strength = 0.35;
+    public bool Enabled = true;
+    public double Threshold = 1.0;
+    public double Strength = 0.35;
 }
 
 /// <summary>ポスト AA (FXAA)。</summary>
 public class Renderer3dAa
 {
-    public bool enabled = true;
+    public bool Enabled = true;
 }
 
 /// <summary>距離 fog (`Renderer3d.fog` に代入して opt-in)。`density` は
 /// 1/距離スケール。</summary>
 public class Renderer3dFog
 {
-    public Color color;
-    public double density;
+    public Color Color;
+    public double Density;
 
     public Renderer3dFog(Color color, double density)
     {
-        this.color = color;
-        this.density = density;
+        this.Color = color;
+        this.Density = density;
     }
 }
 
@@ -164,13 +165,13 @@ public class Renderer3dFog
 /// `threshold` は view 距離差。</summary>
 public class Renderer3dOutline
 {
-    public Color color;
-    public double threshold;
+    public Color Color;
+    public double Threshold;
 
     public Renderer3dOutline(Color color, double threshold)
     {
-        this.color = color;
-        this.threshold = threshold;
+        this.Color = color;
+        this.Threshold = threshold;
     }
 }
 
@@ -200,7 +201,7 @@ public class Renderer3d
     // --- 埋め込み shader (pncm / pncmw 頂点レイアウト契約) -------------------
     // NOTE: slang の WGSL 出力は TEXCOORDn を @location(n) に割り当てるので、
     // TEXCOORD の番号は宣言位置に合わせる (ズレると wasm で attr が崩れる)。
-    private static string LIT_VS_COMMON = """
+    private static string litVsCommon = """
 
         struct Uniforms {
           float4x4 mvp;
@@ -210,7 +211,7 @@ public class Renderer3d
 
         """;
 
-    private static string LIT_VS_BODY = """
+    private static string litVsBody = """
 
         struct VSOut {
           float3 wn : TEXCOORD0;
@@ -223,7 +224,7 @@ public class Renderer3d
 
         """;
 
-    private static string LIT_STATIC_VS = LIT_VS_COMMON
+    private static string litStaticVs = litVsCommon
         + """
         };
         ConstantBuffer<Uniforms> u;
@@ -234,7 +235,7 @@ public class Renderer3d
           float2 mr : TEXCOORD3;
         };
         """
-        + LIT_VS_BODY
+        + litVsBody
         + """
 
         [shader("vertex")] VSOut vs_main(VSIn i) {
@@ -254,7 +255,7 @@ public class Renderer3d
 
         """;
 
-    private static string LIT_SKINNED_VS = LIT_VS_COMMON
+    private static string litSkinnedVs = litVsCommon
         + """
           float4x4 bones[8];
         };
@@ -267,7 +268,7 @@ public class Renderer3d
           float4 skin : TEXCOORD4; // j0, w0, j1, w1
         };
         """
-        + LIT_VS_BODY
+        + litVsBody
         + """
 
         [shader("vertex")] VSOut vs_main(VSIn i) {
@@ -294,7 +295,7 @@ public class Renderer3d
 
     // 誘電体/金属の分岐は 23_crane_game 由来。光方向・環境光を uniform 化し、
     // 平行光成分に shadow を掛ける。出力は HDR (クランプしない)。
-    private static string LIT_FS = """
+    private static string litFs = """
 
         LUB_TEXTURE2D(shadow_map);
         struct FsU {
@@ -365,7 +366,7 @@ public class Renderer3d
 
         """;
 
-    private static string SHADOW_STATIC_VS = """
+    private static string shadowStaticVs = """
 
         struct U {
           float4x4 light_mvp;
@@ -389,7 +390,7 @@ public class Renderer3d
 
         """;
 
-    private static string SHADOW_SKINNED_VS = """
+    private static string shadowSkinnedVs = """
 
         struct U {
           float4x4 light_mvp;
@@ -422,7 +423,7 @@ public class Renderer3d
 
     // depth-only pass: color attachment が無いので出力は捨てられる
     // (webgpu は fragment stage 自体が省かれる)。
-    private static string SHADOW_FS = """
+    private static string shadowFs = """
 
         [shader("fragment")] float4 fs_main() : SV_Target {
           return float4(0.0, 0.0, 0.0, 1.0);
@@ -431,7 +432,7 @@ public class Renderer3d
         """;
 
     // 全 offscreen ポストパス共通の flip quad (uv が source texture と同向)。
-    private static List<double> FLIP_QUAD = new List<double>
+    private static List<double> flipQuad = new List<double>
     {
         -1, -1, 0, 1,
          1, -1, 1, 1,
@@ -443,7 +444,7 @@ public class Renderer3d
 
     // SSAO: depth から view 位置を復元し、面法線は depth 微分から。半解像度。
     // カーネルは固定 12 サンプルの渦巻き (乱数なし = 決定的)。
-    private static string SSAO_FS = """
+    private static string ssaoFs = """
 
         LUB_TEXTURE2D(depth_tex);
         struct FsU {
@@ -491,7 +492,7 @@ public class Renderer3d
         """;
 
     // bloom 抽出: soft-knee threshold。
-    private static string BRIGHT_FS = """
+    private static string brightFs = """
 
         LUB_TEXTURE2D(scene);
         struct FsU {
@@ -514,7 +515,7 @@ public class Renderer3d
         """;
 
     // 縮小/拡大 (LINEAR サンプラ + 4 tap tent)。up は ADDITIVE blend で描く。
-    private static string BLIT_TENT_FS = """
+    private static string blitTentFs = """
 
         LUB_TEXTURE2D(scene);
         struct FsU {
@@ -536,7 +537,7 @@ public class Renderer3d
         """;
 
     // composite: scene * AO + bloom、fog、outline (どちらも opt-in、HDR 空間)。
-    private static string COMPOSITE_FS = """
+    private static string compositeFs = """
 
         LUB_TEXTURE2D(scene);
         LUB_TEXTURE2D(ao_tex);
@@ -586,7 +587,7 @@ public class Renderer3d
         """;
 
     // FXAA (console 風の簡易版)。LDR に対して。
-    private static string FXAA_FS = """
+    private static string fxaaFs = """
 
         LUB_TEXTURE2D(scene);
         struct FsU {
@@ -624,7 +625,7 @@ public class Renderer3d
         """;
 
     // 素の blit (FXAA off 時の present)。
-    private static string PRESENT_FS = """
+    private static string presentFs = """
 
         LUB_TEXTURE2D(scene);
         struct FSIn {
@@ -636,7 +637,7 @@ public class Renderer3d
 
         """;
 
-    private static string QUAD_VS = """
+    private static string quadVs = """
 
         struct VSIn {
           float2 pos : POSITION;
@@ -656,7 +657,7 @@ public class Renderer3d
         """;
 
     // AgX (minimal fit)。HDR → display。exposure は stop (2^n)。
-    private static string TONEMAP_FS = """
+    private static string tonemapFs = """
 
         LUB_TEXTURE2D(scene);
         struct FsU {
@@ -709,7 +710,7 @@ public class Renderer3d
 
     // swapchain 向け present quad (clip y = -1 → uv.y = 0)。offscreen 側は
     // proj.m[5] 反転で screen 向きに描かれているので、この 1 枚で向きが合う。
-    private static List<double> PRESENT_QUAD = new List<double>
+    private static List<double> presentQuad = new List<double>
     {
         -1, -1, 0, 0,
          1, -1, 1, 0,
@@ -722,52 +723,52 @@ public class Renderer3d
     // --- 公開オプション -------------------------------------------------------
 
     /// <summary>平行光源。`dir` は光へ向かうベクトル (正規化不要)。</summary>
-    public Renderer3dLight light = new Renderer3dLight();
+    public Renderer3dLight Light = new Renderer3dLight();
 
     /// <summary>hemispheric ambient の空色 (上) / 地面色 (下) と強度。</summary>
-    public Renderer3dSky sky = new Renderer3dSky();
+    public Renderer3dSky Sky = new Renderer3dSky();
 
     /// <summary>shadow map。`center`/`extent` は光のオルソ範囲 (world)。</summary>
-    public Renderer3dShadow shadow = new Renderer3dShadow();
+    public Renderer3dShadow Shadow = new Renderer3dShadow();
 
     /// <summary>露出 (stop)。+1 で 2 倍明るい。</summary>
-    public double exposure = 0.0;
+    public double Exposure = 0.0;
 
     /// <summary>HDR クリア色 (背景)。</summary>
-    public Color background = Color.rgb(0.09, 0.12, 0.15);
+    public Color Background = Color.Rgb(0.09, 0.12, 0.15);
 
     /// <summary>SSAO (半解像度、depth 由来)。`radius` は view 空間。</summary>
-    public Renderer3dSsao ssao = new Renderer3dSsao();
+    public Renderer3dSsao Ssao = new Renderer3dSsao();
 
     /// <summary>bloom。`threshold` は HDR 輝度、`strength` は合成量。</summary>
-    public Renderer3dBloom bloom = new Renderer3dBloom();
+    public Renderer3dBloom Bloom = new Renderer3dBloom();
 
     /// <summary>ポスト AA (FXAA)。</summary>
-    public Renderer3dAa aa = new Renderer3dAa();
+    public Renderer3dAa Aa = new Renderer3dAa();
 
     /// <summary>8bit バンディング対策の triangular dither。</summary>
-    public bool dither = true;
+    public bool Dither = true;
 
     /// <summary>周辺減光 0..1 (0 = off)。</summary>
-    public double vignette = 0.0;
+    public double Vignette = 0.0;
 
     /// <summary>距離 fog (opt-in)。`density` は 1/距離スケール。</summary>
-    public Renderer3dFog? fog = null;
+    public Renderer3dFog? Fog = null;
 
     /// <summary>depth エッジの輪郭線 (opt-in)。`threshold` は view 距離差。</summary>
-    public Renderer3dOutline? outline = null;
+    public Renderer3dOutline? Outline = null;
 
     /// <summary>中間バッファの確認用: "ao" / "bloom" / "hdr" を swapchain に
     /// 直接出す。</summary>
-    public string? debugView = null;
+    public string? DebugView = null;
 
     /// <summary>world → clip (y-flip なし)。スクリーン座標への投影 (HUD 追従等)
     /// 用。begin() が設定する。利用側は読み取り専用。</summary>
-    public Mat4? viewProj = null;
+    public Mat4? ViewProj = null;
 
     /// <summary>view 行列 (begin() で確定)。差し替え shader の view-space
     /// 計算用。利用側は読み取り専用。</summary>
-    public Mat4? viewMat = null;
+    public Mat4? ViewMat = null;
 
     private string key;
     private List<Renderer3dDrawCmd> draws = new List<Renderer3dDrawCmd>();
@@ -783,31 +784,31 @@ public class Renderer3d
     }
 
     /// <summary>Phys3d の pose (x,y,z,qx,qy,qz,qw) → model 行列。</summary>
-    public static Mat4 poseMat(Pose3d pose)
+    public static Mat4 PoseMat(Pose3d pose)
     {
-        return Mat4.translate(new Vec3(pose.x, pose.y, pose.z))
-            * new Quat(pose.qx, pose.qy, pose.qz, pose.qw).toMat4();
+        return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
+            * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
     }
 
     /// <summary>フレーム開始。カメラを確定し draw 列を空にする。</summary>
-    public void begin(Camera cam)
+    public void Begin(Camera cam)
     {
-        var up = cam.up ?? new Vec3(0, 1, 0);
-        var fov = cam.fov ?? 60.0;
-        var near = cam.near ?? 0.1;
-        var far = cam.far ?? 100.0;
-        Gfx.size(out var w, out var h);
-        var p = Mat4.perspectiveLh(fov, (double)w / h, near, far);
-        var v = Mat4.lookAtLh(cam.eye, cam.target, up);
+        var up = cam.Up ?? new Vec3(0, 1, 0);
+        var fov = cam.Fov ?? 60.0;
+        var near = cam.Near ?? 0.1;
+        var far = cam.Far ?? 100.0;
+        Gfx.Size(out var w, out var h);
+        var p = Mat4.PerspectiveLh(fov, (double)w / h, near, far);
+        var v = Mat4.LookAtLh(cam.Eye, cam.Target, up);
         view = v;
-        viewMat = v;
-        viewProj = p * v;
+        ViewMat = v;
+        ViewProj = p * v;
         // offscreen target は swapchain と違い y-flip されないので、clip y を
         // あらかじめ反転して screen 向きで描く (present quad と対)。
-        p.m[5] = -p.m[5];
+        p.M[5] = -p.M[5];
         proj = p;
         vp = p * v;
-        eye = cam.eye;
+        eye = cam.Eye;
         // Haxe 版の draws.resize(0) 相当。List.Clear() は tcs が
         // `(function() ... end)()` を emit し、直前の代入文と連結されて
         // 関数呼び出しに誤解釈される (Lua の文区切り曖昧性) ため使わない。
@@ -815,157 +816,158 @@ public class Renderer3d
     }
 
     /// <summary>描画を記録する (実行は `End()`)。</summary>
-    public void draw(Mesh3d? mesh, Mat4 model, Draw3dOpts? opts = null)
+    public void Draw(Mesh3d? mesh, Mat4 model, Draw3dOpts? opts = null)
     {
-        if (mesh == null || !mesh.ready())
+        if (mesh == null || !mesh.Ready())
             return;
         var tint = new List<double> { 1.0, 1.0, 1.0, 1.0 };
-        var blend = Gfx.NONE;
+        var blend = Gfx.Blend.None;
         List<double>? bones = null;
         ShaderRef? shader = null;
         Dictionary<string, TextureRef>? textures = null;
         Dictionary<string, object>? uniforms = null;
         if (opts != null)
         {
-            var t = opts.tint;
+            var t = opts.Tint;
             if (t != null)
-                tint = new List<double> { t.r, t.g, t.b, t.a };
-            blend = opts.blend ?? Gfx.NONE;
-            bones = opts.bones;
-            shader = opts.shader;
-            textures = opts.textures;
-            uniforms = opts.uniforms;
+                tint = new List<double> { t.R, t.G, t.B, t.A };
+            blend = opts.Blend ?? Gfx.Blend.None;
+            bones = opts.Bones;
+            shader = opts.Shader;
+            textures = opts.Textures;
+            uniforms = opts.Uniforms;
         }
         draws.Add(new Renderer3dDrawCmd(mesh, model, tint, blend, bones,
             shader, textures, uniforms));
     }
 
-    private Mat4 lightMvp()
+    private Mat4 LightMvp()
     {
-        var len = Math.Sqrt(light.dir.x * light.dir.x
-            + light.dir.y * light.dir.y + light.dir.z * light.dir.z);
+        var len = Math.Sqrt(Light.Dir.X * Light.Dir.X
+            + Light.Dir.Y * Light.Dir.Y + Light.Dir.Z * Light.Dir.Z);
         var inv = len > 1e-6 ? 1.0 / len : 1.0;
-        var dist = shadow.extent * 1.6;
-        var leye = new Vec3(shadow.center.x + light.dir.x * inv * dist,
-            shadow.center.y + light.dir.y * inv * dist,
-            shadow.center.z + light.dir.z * inv * dist);
+        var dist = Shadow.Extent * 1.6;
+        var leye = new Vec3(Shadow.Center.X + Light.Dir.X * inv * dist,
+            Shadow.Center.Y + Light.Dir.Y * inv * dist,
+            Shadow.Center.Z + Light.Dir.Z * inv * dist);
         // dir が真上のときの up 退避
-        var up = Math.Abs(light.dir.y) * inv > 0.99
+        var up = Math.Abs(Light.Dir.Y) * inv > 0.99
             ? new Vec3(0, 0, 1)
             : new Vec3(0, 1, 0);
-        var lview = Mat4.lookAtLh(leye, shadow.center, up);
-        return Mat4.orthoLh(shadow.extent * 2.0, shadow.extent * 2.0, 0.1,
+        var lview = Mat4.LookAtLh(leye, Shadow.Center, up);
+        return Mat4.OrthoLh(Shadow.Extent * 2.0, Shadow.Extent * 2.0, 0.1,
             dist * 2.0) * lview;
     }
 
     // Haxe 版の Bones.pack(null, null) 相当。mesh が null なら resolve は
     // 呼ばれないが、Bones.pack の契約 (resolve 非 null) を保つためダミーを渡す。
-    private static List<double> identityBones()
+    private static List<double> IdentityBones()
     {
-        return Bones.pack(null, (name, px, py, pz) => null);
+        return Bones.Pack(null, (name, px, py, pz) => null);
     }
 
-    private void shadowPass(Mat4 lmvp, ShaderRef shStatic, ShaderRef shSkinned,
+    private void ShadowPass(Mat4 lmvp, ShaderRef shStatic, ShaderRef shSkinned,
         TextureRef shadowMap)
     {
-        Gfx.begin_pass(new PassOpts { depth_target = shadowMap, clear_depth = 1.0 });
-        var lm = lmvp.m;
+        Gfx.BeginPass(new PassOpts { DepthTarget = shadowMap, ClearDepth = 1.0 });
+        var lm = lmvp.M;
         foreach (var d in draws)
         {
-            if (d.blend != Gfx.NONE)
+            if (d.Blend != Gfx.Blend.None)
                 continue; // 半透明は影を落とさない
-            var vb = d.mesh.vb;
-            var ib = d.mesh.ib;
+            var vb = d.Mesh.Vb;
+            var ib = d.Mesh.Ib;
             if (vb == null || ib == null)
                 continue;
             var u = new Dictionary<string, object>
             {
                 ["light_mvp"] = lm,
-                ["model"] = d.model.m,
+                ["model"] = d.Model.M,
             };
-            if (d.mesh.skinned)
-                u["bones"] = d.bones ?? identityBones();
-            Gfx.draw(d.mesh.indexCount, new Dictionary<string, object>
+            if (d.Mesh.Skinned)
+                u["bones"] = d.Bones ?? IdentityBones();
+            Gfx.Draw(d.Mesh.IndexCount, new Dictionary<string, object>
             {
                 ["verts"] = vb,
                 ["indices"] = ib,
                 ["uniforms"] = u,
             }, new DrawOpts
             {
-                shader = d.mesh.skinned ? shSkinned : shStatic,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = d.Mesh.Skinned ? shSkinned : shStatic,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 
-    private Dictionary<string, object> litUniforms(Renderer3dDrawCmd d,
+    private Dictionary<string, object> LitUniforms(Renderer3dDrawCmd d,
         Mat4 vp, Mat4 lmvp, double texel)
     {
         // (差し替え shader の追加 uniform は末尾でマージ)
         var u = new Dictionary<string, object>
         {
-            ["mvp"] = (vp * d.model).m,
-            ["model"] = d.model.m,
-            ["light_mvp"] = lmvp.m,
-            ["tint"] = d.tint,
-            ["light_dir"] = lightDirTable(),
+            ["mvp"] = (vp * d.Model).M,
+            ["model"] = d.Model.M,
+            ["light_mvp"] = lmvp.M,
+            ["tint"] = d.Tint,
+            ["light_dir"] = LightDirTable(),
             ["light_col"] = new List<double>
             {
-                light.color.r * light.intensity,
-                light.color.g * light.intensity,
-                light.color.b * light.intensity,
+                Light.Color.R * Light.Intensity,
+                Light.Color.G * Light.Intensity,
+                Light.Color.B * Light.Intensity,
                 0.0,
             },
             ["sky_col"] = new List<double>
-                { sky.top.r, sky.top.g, sky.top.b, sky.intensity },
+                { Sky.Top.R, Sky.Top.G, Sky.Top.B, Sky.Intensity },
             ["ground_col"] = new List<double>
-                { sky.bottom.r, sky.bottom.g, sky.bottom.b, 0.0 },
-            ["cam_pos"] = new List<double> { eye.x, eye.y, eye.z, 0.0 },
+                { Sky.Bottom.R, Sky.Bottom.G, Sky.Bottom.B, 0.0 },
+            ["cam_pos"] = new List<double> { eye.X, eye.Y, eye.Z, 0.0 },
             ["shadow_p"] = new List<double>
-                { texel, shadow.bias, shadow.enabled ? 1.0 : 0.0, 0.0 },
+                { texel, Shadow.Bias, Shadow.Enabled ? 1.0 : 0.0, 0.0 },
         };
-        if (d.mesh.skinned)
-            u["bones"] = d.bones ?? identityBones();
-        if (d.uniforms != null)
+        if (d.Mesh.Skinned)
+            u["bones"] = d.Bones ?? IdentityBones();
+        if (d.Uniforms != null)
         {
-            foreach (var kv in d.uniforms)
+            foreach (var kv in d.Uniforms)
                 u[kv.Key] = kv.Value;
         }
         return u;
     }
 
-    private List<double> lightDirTable()
+    private List<double> LightDirTable()
     {
-        var len = Math.Sqrt(light.dir.x * light.dir.x
-            + light.dir.y * light.dir.y + light.dir.z * light.dir.z);
+        var len = Math.Sqrt(Light.Dir.X * Light.Dir.X
+            + Light.Dir.Y * Light.Dir.Y + Light.Dir.Z * Light.Dir.Z);
         var inv = len > 1e-6 ? 1.0 / len : 1.0;
         return new List<double>
-            { light.dir.x * inv, light.dir.y * inv, light.dir.z * inv, 0.0 };
+            { Light.Dir.X * inv, Light.Dir.Y * inv, Light.Dir.Z * inv, 0.0 };
     }
 
     // flip quad で target 全面に 1 パス描く。
-    private void blit(TextureRef target, ShaderRef shader,
-        Dictionary<string, object> bindings, int? load = null, int? blend = null)
+    private void Blit(TextureRef target, ShaderRef shader,
+        Dictionary<string, object> bindings, Gfx.LoadAction? load = null,
+        Gfx.Blend? blend = null)
     {
         var fq = flipQuadBuf;
         if (fq == null)
             return;
-        var opts = new PassOpts { target = target };
+        var opts = new PassOpts { Target = target };
         if (load != null)
-            opts.load = load;
-        Gfx.begin_pass(opts);
+            opts.Load = load;
+        Gfx.BeginPass(opts);
         bindings["verts"] = fq;
-        Gfx.draw(6, bindings, new DrawOpts
+        Gfx.Draw(6, bindings, new DrawOpts
         {
-            shader = shader,
-            depth = false,
-            cull = Gfx.NONE,
-            blend = blend ?? Gfx.NONE,
+            Shader = shader,
+            Depth = false,
+            Cull = Gfx.Cull.None,
+            Blend = blend ?? Gfx.Blend.None,
         });
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 
     /// <summary>記録した draw 列を実行して swapchain まで出す
@@ -976,119 +978,119 @@ public class Renderer3d
         var proj = this.proj;
         if (vp == null || proj == null)
             return;
-        Gfx.size(out var w, out var h);
+        Gfx.Size(out var w, out var h);
         var rtVer = w * 65536 + h;
 
-        var litStatic = Gfx.use_shader(key + "_lit_s", LIT_STATIC_VS, LIT_FS, 1);
-        var litSkinned = Gfx.use_shader(key + "_lit_k", LIT_SKINNED_VS, LIT_FS, 1);
-        var shStatic = Gfx.use_shader(key + "_sh_s", SHADOW_STATIC_VS, SHADOW_FS, 1);
-        var shSkinned = Gfx.use_shader(key + "_sh_k", SHADOW_SKINNED_VS, SHADOW_FS, 1);
-        var tonemap = Gfx.use_shader(key + "_tm", QUAD_VS, TONEMAP_FS, 1);
-        var ssaoSh = Gfx.use_shader(key + "_ssao", QUAD_VS, SSAO_FS, 1);
-        var brightSh = Gfx.use_shader(key + "_br", QUAD_VS, BRIGHT_FS, 1);
-        var tentSh = Gfx.use_shader(key + "_tent", QUAD_VS, BLIT_TENT_FS, 1);
-        var compSh = Gfx.use_shader(key + "_comp", QUAD_VS, COMPOSITE_FS, 1);
-        var fxaaSh = Gfx.use_shader(key + "_fxaa", QUAD_VS, FXAA_FS, 1);
-        var presentSh = Gfx.use_shader(key + "_pr", QUAD_VS, PRESENT_FS, 1);
+        var litStatic = Gfx.UseShader(key + "_lit_s", litStaticVs, litFs, 1);
+        var litSkinned = Gfx.UseShader(key + "_lit_k", litSkinnedVs, litFs, 1);
+        var shStatic = Gfx.UseShader(key + "_sh_s", shadowStaticVs, shadowFs, 1);
+        var shSkinned = Gfx.UseShader(key + "_sh_k", shadowSkinnedVs, shadowFs, 1);
+        var tonemap = Gfx.UseShader(key + "_tm", quadVs, tonemapFs, 1);
+        var ssaoSh = Gfx.UseShader(key + "_ssao", quadVs, ssaoFs, 1);
+        var brightSh = Gfx.UseShader(key + "_br", quadVs, brightFs, 1);
+        var tentSh = Gfx.UseShader(key + "_tent", quadVs, blitTentFs, 1);
+        var compSh = Gfx.UseShader(key + "_comp", quadVs, compositeFs, 1);
+        var fxaaSh = Gfx.UseShader(key + "_fxaa", quadVs, fxaaFs, 1);
+        var presentSh = Gfx.UseShader(key + "_pr", quadVs, presentFs, 1);
         if (litStatic == null || litSkinned == null || shStatic == null
             || shSkinned == null || tonemap == null || ssaoSh == null
             || brightSh == null || tentSh == null || compSh == null
             || fxaaSh == null || presentSh == null)
             return;
 
-        var hdr = Gfx.use_texture(key + "_hdr", w, h, Gfx.RGBA16F, null, rtVer,
-            new TextureOpts { target = true, filter = Gfx.LINEAR, wrap = Gfx.CLAMP });
-        var depth = Gfx.use_texture(key + "_depth", w, h, Gfx.DEPTH32F, null,
-            rtVer, new TextureOpts { target = true, wrap = Gfx.CLAMP });
-        var shadowMap = Gfx.use_texture(key + "_sm", shadow.size, shadow.size,
-            Gfx.DEPTH32F, null, shadow.size,
-            new TextureOpts { target = true, wrap = Gfx.CLAMP });
-        var quad = Gfx.use_buffer(key + "_quad", Gfx.VERTEX, PRESENT_QUAD, 1);
-        flipQuadBuf = Gfx.use_buffer(key + "_fquad", Gfx.VERTEX, FLIP_QUAD, 1);
+        var hdr = Gfx.UseTexture(key + "_hdr", w, h, Gfx.PixelFormat.Rgba16f, null, rtVer,
+            new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
+        var depth = Gfx.UseTexture(key + "_depth", w, h, Gfx.PixelFormat.Depth32f, null,
+            rtVer, new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
+        var shadowMap = Gfx.UseTexture(key + "_sm", Shadow.Size, Shadow.Size,
+            Gfx.PixelFormat.Depth32f, null, Shadow.Size,
+            new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
+        var quad = Gfx.UseBuffer(key + "_quad", Gfx.BufferType.Vertex, presentQuad, 1);
+        flipQuadBuf = Gfx.UseBuffer(key + "_fquad", Gfx.BufferType.Vertex, flipQuad, 1);
         if (hdr == null || depth == null || shadowMap == null || quad == null
             || flipQuadBuf == null)
             return;
 
-        var lmvp = lightMvp();
-        if (shadow.enabled)
-            shadowPass(lmvp, shStatic, shSkinned, shadowMap);
-        var texel = 1.0 / shadow.size;
+        var lmvp = LightMvp();
+        if (Shadow.Enabled)
+            ShadowPass(lmvp, shStatic, shSkinned, shadowMap);
+        var texel = 1.0 / Shadow.Size;
 
         // forward pass (HDR)
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = hdr,
-            depth_target = depth,
+            Target = hdr,
+            DepthTarget = depth,
             // background も sRGB authoring → linear で HDR に置く
-            clear_color = new double[]
+            ClearColor = new double[]
             {
-                Math.Pow(background.r, 2.2),
-                Math.Pow(background.g, 2.2),
-                Math.Pow(background.b, 2.2),
+                Math.Pow(Background.R, 2.2),
+                Math.Pow(Background.G, 2.2),
+                Math.Pow(Background.B, 2.2),
                 1.0,
             },
-            clear_depth = 1.0,
+            ClearDepth = 1.0,
         });
         // opaque → blend の順
         for (int phase = 0; phase < 2; phase++)
         {
             foreach (var d in draws)
             {
-                bool isBlend = d.blend != Gfx.NONE;
+                bool isBlend = d.Blend != Gfx.Blend.None;
                 if ((phase == 0) == isBlend)
                     continue;
-                var vb = d.mesh.vb;
-                var ib = d.mesh.ib;
+                var vb = d.Mesh.Vb;
+                var ib = d.Mesh.Ib;
                 if (vb == null || ib == null)
                     continue;
-                var shader = d.shader
-                    ?? (d.mesh.skinned ? litSkinned : litStatic);
+                var shader = d.Shader
+                    ?? (d.Mesh.Skinned ? litSkinned : litStatic);
                 var bindings = new Dictionary<string, object>
                 {
                     ["verts"] = vb,
                     ["indices"] = ib,
                     ["shadow_map"] = shadowMap,
-                    ["uniforms"] = litUniforms(d, vp, lmvp, texel),
+                    ["uniforms"] = LitUniforms(d, vp, lmvp, texel),
                 };
-                if (d.textures != null)
+                if (d.Textures != null)
                 {
-                    foreach (var kv in d.textures)
+                    foreach (var kv in d.Textures)
                         bindings[kv.Key] = kv.Value;
                 }
-                Gfx.draw(d.mesh.indexCount, bindings, new DrawOpts
+                Gfx.Draw(d.Mesh.IndexCount, bindings, new DrawOpts
                 {
-                    shader = shader,
-                    depth = true,
-                    depth_write = !isBlend,
-                    cull = Gfx.NONE,
-                    blend = d.blend,
+                    Shader = shader,
+                    Depth = true,
+                    DepthWrite = !isBlend,
+                    Cull = Gfx.Cull.None,
+                    Blend = d.Blend,
                 });
             }
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
 
         // proj は m[5] を反転済みなので |m5| を渡す
         var projP = new List<double>
-            { proj.m[0], Math.Abs(proj.m[5]), proj.m[10], proj.m[11] };
+            { proj.M[0], Math.Abs(proj.M[5]), proj.M[10], proj.M[11] };
 
         // SSAO (半解像度)
         TextureRef? aoTex = null;
-        if (ssao.enabled)
+        if (Ssao.Enabled)
         {
             int aw = (int)Math.Floor(w / 2.0);
             int ah = (int)Math.Floor(h / 2.0);
-            aoTex = Gfx.use_texture(key + "_ao", aw, ah, Gfx.R8, null, rtVer,
-                new TextureOpts { target = true, filter = Gfx.LINEAR, wrap = Gfx.CLAMP });
+            aoTex = Gfx.UseTexture(key + "_ao", aw, ah, Gfx.PixelFormat.R8, null, rtVer,
+                new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
             if (aoTex != null)
             {
-                blit(aoTex, ssaoSh, new Dictionary<string, object>
+                Blit(aoTex, ssaoSh, new Dictionary<string, object>
                 {
                     ["depth_tex"] = depth,
                     ["uniforms"] = new Dictionary<string, object>
                     {
                         ["pp"] = projP,
                         ["ao_p"] = new List<double>
-                            { ssao.radius, ssao.strength, 1.0 / aw, 1.0 / ah },
+                            { Ssao.Radius, Ssao.Strength, 1.0 / aw, 1.0 / ah },
                     },
                 });
             }
@@ -1096,7 +1098,7 @@ public class Renderer3d
 
         // bloom: bright → 縮小 3 段 → ADDITIVE で逆順に戻す
         TextureRef? bloomTex = null;
-        if (bloom.enabled)
+        if (Bloom.Enabled)
         {
             int levels = 4;
             var texs = new List<TextureRef>();
@@ -1110,9 +1112,9 @@ public class Renderer3d
                 bh = (int)Math.Floor(bh / 2.0);
                 if (bw < 8 || bh < 8)
                     break;
-                var t = Gfx.use_texture(key + "_bl" + li, bw, bh, Gfx.RGBA16F,
+                var t = Gfx.UseTexture(key + "_bl" + li, bw, bh, Gfx.PixelFormat.Rgba16f,
                     null, rtVer,
-                    new TextureOpts { target = true, filter = Gfx.LINEAR, wrap = Gfx.CLAMP });
+                    new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
                 if (t == null)
                     break;
                 ws.Add(bw);
@@ -1121,17 +1123,17 @@ public class Renderer3d
             }
             if (texs.Count > 0)
             {
-                blit(texs[0], brightSh, new Dictionary<string, object>
+                Blit(texs[0], brightSh, new Dictionary<string, object>
                 {
                     ["scene"] = hdr,
                     ["uniforms"] = new Dictionary<string, object>
                     {
-                        ["bl"] = new List<double> { bloom.threshold, 0.5, 0.0, 0.0 },
+                        ["bl"] = new List<double> { Bloom.Threshold, 0.5, 0.0, 0.0 },
                     },
                 });
                 for (int li = 1; li < texs.Count; li++)
                 {
-                    blit(texs[li], tentSh, new Dictionary<string, object>
+                    Blit(texs[li], tentSh, new Dictionary<string, object>
                     {
                         ["scene"] = texs[li - 1],
                         ["uniforms"] = new Dictionary<string, object>
@@ -1144,7 +1146,7 @@ public class Renderer3d
                 int j = texs.Count - 1;
                 while (j > 0)
                 {
-                    blit(texs[j - 1], tentSh, new Dictionary<string, object>
+                    Blit(texs[j - 1], tentSh, new Dictionary<string, object>
                     {
                         ["scene"] = texs[j],
                         ["uniforms"] = new Dictionary<string, object>
@@ -1152,7 +1154,7 @@ public class Renderer3d
                             ["st"] = new List<double>
                                 { 1.0 / ws[j], 1.0 / hs[j], 0.7, 0.0 },
                         },
-                    }, Gfx.LOAD, Gfx.ADDITIVE);
+                    }, Gfx.LoadAction.Load, Gfx.Blend.Additive);
                     j--;
                 }
                 bloomTex = texs[0];
@@ -1160,15 +1162,15 @@ public class Renderer3d
         }
 
         // composite (AO 乗算 + bloom 加算 + fog / outline)
-        var post = Gfx.use_texture(key + "_post", w, h, Gfx.RGBA16F, null,
-            rtVer, new TextureOpts { target = true, filter = Gfx.LINEAR, wrap = Gfx.CLAMP });
+        var post = Gfx.UseTexture(key + "_post", w, h, Gfx.PixelFormat.Rgba16f, null,
+            rtVer, new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (post == null)
             return;
-        var fog = this.fog;
-        var outline = this.outline;
+        var fog = this.Fog;
+        var outline = this.Outline;
         bool fogOn = fog != null;
         bool olOn = outline != null;
-        blit(post, compSh, new Dictionary<string, object>
+        Blit(post, compSh, new Dictionary<string, object>
         {
             ["scene"] = hdr,
             ["ao_tex"] = aoTex ?? hdr,
@@ -1180,26 +1182,26 @@ public class Renderer3d
                 ["en"] = new List<double>
                 {
                     aoTex != null ? 1.0 : 0.0,
-                    bloomTex != null ? bloom.strength : 0.0,
+                    bloomTex != null ? Bloom.Strength : 0.0,
                     fogOn ? 1.0 : 0.0,
                     olOn ? 1.0 : 0.0,
                 },
                 ["fog_col"] = fog != null
                     ? new List<double>
                     {
-                        Math.Pow(fog.color.r, 2.2),
-                        Math.Pow(fog.color.g, 2.2),
-                        Math.Pow(fog.color.b, 2.2),
-                        fog.density,
+                        Math.Pow(fog.Color.R, 2.2),
+                        Math.Pow(fog.Color.G, 2.2),
+                        Math.Pow(fog.Color.B, 2.2),
+                        fog.Density,
                     }
                     : new List<double> { 0.0, 0.0, 0.0, 0.0 },
                 ["ol"] = outline != null
                     ? new List<double>
                     {
-                        Math.Pow(outline.color.r, 2.2),
-                        Math.Pow(outline.color.g, 2.2),
-                        Math.Pow(outline.color.b, 2.2),
-                        outline.threshold,
+                        Math.Pow(outline.Color.R, 2.2),
+                        Math.Pow(outline.Color.G, 2.2),
+                        Math.Pow(outline.Color.B, 2.2),
+                        outline.Threshold,
                     }
                     : new List<double> { 0.0, 0.0, 0.0, 1.0 },
                 ["px"] = new List<double> { 1.0 / w, 1.0 / h, 0.0, 0.0 },
@@ -1207,24 +1209,24 @@ public class Renderer3d
         });
 
         // tonemap (+vignette +dither) → LDR
-        var ldr = Gfx.use_texture(key + "_ldr", w, h, Gfx.RGBA8, null, rtVer,
-            new TextureOpts { target = true, filter = Gfx.LINEAR, wrap = Gfx.CLAMP });
+        var ldr = Gfx.UseTexture(key + "_ldr", w, h, Gfx.PixelFormat.Rgba8, null, rtVer,
+            new TextureOpts { Target = true, Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Clamp });
         if (ldr == null)
             return;
-        blit(ldr, tonemap, new Dictionary<string, object>
+        Blit(ldr, tonemap, new Dictionary<string, object>
         {
             ["scene"] = post,
             ["uniforms"] = new Dictionary<string, object>
             {
                 ["grade"] = new List<double>
-                    { exposure, vignette, dither ? 1.0 : 0.0, h },
+                    { Exposure, Vignette, Dither ? 1.0 : 0.0, h },
             },
         });
 
         // FXAA (or 素通し) → swapchain
-        if (debugView != null)
+        if (DebugView != null)
         {
-            TextureRef? dbg = debugView switch
+            TextureRef? dbg = DebugView switch
             {
                 "ao" => aoTex,
                 "bloom" => bloomTex,
@@ -1233,18 +1235,18 @@ public class Renderer3d
             };
             if (dbg != null)
             {
-                Gfx.begin_pass(new PassOpts { target = Gfx.main_tex });
-                Gfx.draw(6, new Dictionary<string, object>
+                Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
+                Gfx.Draw(6, new Dictionary<string, object>
                 { ["verts"] = quad, ["scene"] = dbg },
-                    new DrawOpts { shader = presentSh, depth = false, cull = Gfx.NONE });
-                Gfx.end_pass();
+                    new DrawOpts { Shader = presentSh, Depth = false, Cull = Gfx.Cull.None });
+                Gfx.EndPass();
                 return;
             }
         }
-        Gfx.begin_pass(new PassOpts { target = Gfx.main_tex });
-        if (aa.enabled)
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex });
+        if (Aa.Enabled)
         {
-            Gfx.draw(6, new Dictionary<string, object>
+            Gfx.Draw(6, new Dictionary<string, object>
             {
                 ["verts"] = quad,
                 ["scene"] = ldr,
@@ -1252,14 +1254,14 @@ public class Renderer3d
                 {
                     ["px"] = new List<double> { 1.0 / w, 1.0 / h, 0.0, 0.0 },
                 },
-            }, new DrawOpts { shader = fxaaSh, depth = false, cull = Gfx.NONE });
+            }, new DrawOpts { Shader = fxaaSh, Depth = false, Cull = Gfx.Cull.None });
         }
         else
         {
-            Gfx.draw(6, new Dictionary<string, object>
+            Gfx.Draw(6, new Dictionary<string, object>
             { ["verts"] = quad, ["scene"] = ldr },
-                new DrawOpts { shader = presentSh, depth = false, cull = Gfx.NONE });
+                new DrawOpts { Shader = presentSh, Depth = false, Cull = Gfx.Cull.None });
         }
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

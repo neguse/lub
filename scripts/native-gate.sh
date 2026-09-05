@@ -95,6 +95,7 @@ physics_lua_tests=(
   tests/lua/test_resource_revision.lua
   tests/lua/test_audio.lua
   tests/lua/test_font.lua
+  tests/lua/test_api_surface.lua
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
@@ -135,6 +136,14 @@ fi
 # skip を fail に変える。
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
+  # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (tests/lua/test_api_surface.lua)
+  # が記述と一致していることの確認。差分が出たら `dotnet run --project tools/lub-gen
+  # -- surface-test -o tests/lua/test_api_surface.lua` で再生成する。
+  run dotnet run --project tools/lub-gen -- check
+  surface_gen="$(mktemp)"
+  cleanup_files+=("$surface_gen")
+  run dotnet run --project tools/lub-gen --no-build -- surface-test -o "$surface_gen"
+  run cmp "$surface_gen" tests/lua/test_api_surface.lua
   shopt -s nullglob
   for cs_dir in samples/*/; do
     cs_dir="${cs_dir%/}"

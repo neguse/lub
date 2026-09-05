@@ -3,18 +3,20 @@
 // public フィールド + 位置引数コンストラクタの素直な class にする。
 
 /// <summary>アトラス内の矩形 (px、左上原点)。SpriteBatch の src 指定に使う。</summary>
+using static Lub;
+
 public class Rect
 {
-    public int x;
-    public int y;
-    public int w;
-    public int h;
+    public int X;
+    public int Y;
+    public int W;
+    public int H;
 
     public Rect(int x, int y, int w, int h)
     {
-        this.x = x;
-        this.y = y;
-        this.w = w;
-        this.h = h;
+        this.X = x;
+        this.Y = y;
+        this.W = w;
+        this.H = h;
     }
 }

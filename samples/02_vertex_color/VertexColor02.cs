@@ -2,50 +2,51 @@
 // 実行: lub samples/02_vertex_color/VertexColor02.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 public static class VertexColor02
 {
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void onEvent(EventData e)
-    {
-    }
-
-    public static void onQuit()
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onFrame(double dt)
+    public static void OnQuit()
     {
-        Io.load_text("samples/02_vertex_color/data/02_vcol.vs.slang",
+    }
+
+    public static void OnFrame(double dt)
+    {
+        Io.LoadText("samples/02_vertex_color/data/02_vcol.vs.slang",
             out var vs, out var vsv, out _, out _);
-        Io.load_text("samples/02_vertex_color/data/02_vcol.fs.slang",
+        Io.LoadText("samples/02_vertex_color/data/02_vcol.fs.slang",
             out var fs, out var fsv, out _, out _);
-        Io.load_floats("samples/02_vertex_color/data/02_vcol.verts.lua",
+        Io.LoadFloats("samples/02_vertex_color/data/02_vcol.verts.lua",
             out var verts, out var vv, out _, out _);
         if (vs == null || fs == null || verts == null) return;
 
-        var shader = Gfx.use_shader("vc_shader", vs, fs, vsv * 31 + fsv);
-        var vbuf = Gfx.use_buffer("vc_verts", Gfx.VERTEX, verts, vv);
+        var shader = Gfx.UseShader("vc_shader", vs, fs, vsv * 31 + fsv);
+        var vbuf = Gfx.UseBuffer("vc_verts", Gfx.BufferType.Vertex, verts, vv);
         if (shader == null || vbuf == null) return;
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
         });
-        Gfx.draw(3,
+        Gfx.Draw(3,
             new Dictionary<string, object> { ["verts"] = vbuf },
             new DrawOpts
             {
-                shader = shader,
-                depth = false,
-                cull = Gfx.NONE,
+                Shader = shader,
+                Depth = false,
+                Cull = Gfx.Cull.None,
             });
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

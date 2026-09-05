@@ -19,3 +19,5 @@ web/public/lub.data
 # C# サンプルの dotnet build (IDE 型チェック) 生成物
 samples/*/bin/
 samples/*/obj/
+tools/*/bin/
+tools/*/obj/

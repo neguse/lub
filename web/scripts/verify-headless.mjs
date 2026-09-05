@@ -649,7 +649,7 @@ try {
   })
   console.log(`[verify] A8 complete ${Math.round(r.compMs)}ms, hover ${Math.round(r.hoverMs)}ms`)
   if (!check('A8 C# completion lists lub API member',
-             r.labels.includes('begin_pass') && r.labels.includes('VERTEX'),
+             r.labels.includes('BeginPass') && r.labels.includes('BufferType'),
              `labels[${r.labels.length}] sample: ${r.labels.slice(0, 8).join(',')}`)) {
     failures++
   }

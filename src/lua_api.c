@@ -2295,7 +2295,10 @@ static void push_event_table(lua_State *L, const SDL_Event *e) {
 // Fetches the entry module from the registry, looks up the named field, and
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
-static void call_module_field(LuaCtx *ctx, const char *name, int nargs) {
+// entry callback は snake_case (on_init 等、tcs の出力) を正とし、無ければ
+// camelCase (onInit 等、Haxe の出力) を引く。Haxe 撤去までの両対応。
+static void call_module_field(LuaCtx *ctx, const char *name,
+                              const char *legacy_name, int nargs) {
   lua_State *L = ctx->L;
   /* stack on entry: [..., arg1, arg2, ...] (nargs items on top) */
   if (ctx->module_ref == LUA_NOREF) {
@@ -2308,6 +2311,10 @@ static void call_module_field(LuaCtx *ctx, const char *name, int nargs) {
     return;
   }
   lua_getfield(L, -1, name); /* +1: fn */
+  if (!lua_isfunction(L, -1) && legacy_name) {
+    lua_pop(L, 1);
+    lua_getfield(L, -1, legacy_name); /* +1: fn */
+  }
   if (!lua_isfunction(L, -1)) {
     lua_pop(L, 2 + nargs);
     return;
@@ -2433,7 +2440,7 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
 void lua_ctx_call_init(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "onInit", 0);
+  call_module_field(ctx, "on_init", "onInit", 0);
 }
 void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
@@ -2441,19 +2448,19 @@ void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
-  call_module_field(ctx, "onFrame", 1);
+  call_module_field(ctx, "on_frame", "onFrame", 1);
 }
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "onQuit", 0);
+  call_module_field(ctx, "on_quit", "onQuit", 0);
 }
 
 void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e) {
   if (!ctx->L)
     return;
   push_event_table(ctx->L, e);
-  call_module_field(ctx, "onEvent", 1);
+  call_module_field(ctx, "on_event", "onEvent", 1);
 }
 
 // Stack discipline:

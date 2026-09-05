@@ -6,45 +6,47 @@
 // and draws a triangle whose vertex positions/colors came from the GPU.
 
 using System.Collections.Generic;
+using System;
+using static Lub;
 
 public static class Compute07
 {
     // 3 vertices * 4 floats (vec2 pos + vec2 col) = 12 floats.
-    const int VERT_FLOATS = 12;
+    const int vertFloats = 12;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
-        Io.load_text("samples/07_compute/data/07_gen_verts.cs.slang",
+        Io.LoadText("samples/07_compute/data/07_gen_verts.cs.slang",
             out var cs, out var csv, out _, out _);
-        Io.load_text("samples/07_compute/data/07_render.vs.slang",
+        Io.LoadText("samples/07_compute/data/07_render.vs.slang",
             out var vs, out var vsv, out _, out _);
-        Io.load_text("samples/07_compute/data/07_render.fs.slang",
+        Io.LoadText("samples/07_compute/data/07_render.fs.slang",
             out var fs, out var fsv, out _, out _);
         if (cs == null || vs == null || fs == null) return;
 
-        var vbuf = Gfx.use_buffer("compute_verts", Gfx.STORAGE, VERT_FLOATS, 1);
-        var shC = Gfx.use_shader_compute("gen", cs, csv);
-        var shR = Gfx.use_shader("render", vs, fs, vsv * 31 + fsv);
+        var vbuf = Gfx.UseBuffer("compute_verts", Gfx.BufferType.Storage, vertFloats, 1);
+        var shC = Gfx.UseShaderCompute("gen", cs, csv);
+        var shR = Gfx.UseShader("render", vs, fs, vsv * 31 + fsv);
         if (vbuf == null || shC == null || shR == null) return;
 
-        Gfx.dispatch(1, 1, 1,
+        Gfx.Dispatch(1, 1, 1,
             new Dictionary<string, object> { ["out_verts"] = vbuf },
-            new DispatchOpts { shader = shC });
+            new DispatchOpts { Shader = shC });
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.05, 0.05, 0.1, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.05, 0.05, 0.1, 1.0 },
         });
-        Gfx.draw(3,
+        Gfx.Draw(3,
             new Dictionary<string, object> { ["verts"] = vbuf },
-            new DrawOpts { shader = shR, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shR, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 }

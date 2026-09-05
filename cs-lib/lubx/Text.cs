@@ -4,25 +4,25 @@
 // typedef TextGlyph は class に。pixels は Haxe の Array<Int> (0-based) と
 // 同じ 0-based 添字 (dst) で List<int> に書く — tcs の indexer が +1 するので
 // Lua 上の実効添字は Haxe 版と一致する。glyph bitmap (gb.bytes) は Lua string
-// なので src = 1 始まりの @byte() 走査 (これも Haxe 版と同一)。
+// なので src の byte 走査 (これも Haxe 版と同一)。
 // デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
 // API 名は Haxe 版と全て同名 (予約語衝突なし、改名なし)。trace は
 // Console.WriteLine (Lua の print) で置き換える。
 using System;
 using System.Collections.Generic;
-using static @string;
+using static Lub;
 
 /// <summary>atlas 上のグリフ 1 枠 (内部用、Haxe 版 typedef TextGlyph と対)。
 /// u/v は atlas 内の左上 px、xoff/yoff はベースライン原点からの描画オフセット。</summary>
 public class TextGlyph
 {
-    public int u;
-    public int v;
-    public int w;
-    public int h;
-    public int xoff;
-    public int yoff;
-    public double advance;
+    public int U;
+    public int V;
+    public int W;
+    public int H;
+    public int Xoff;
+    public int Yoff;
+    public double Advance;
 }
 
 /// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.font_glyph を
@@ -34,16 +34,16 @@ public class TextGlyph
 public class Text
 {
     /// <summary>1em のピクセル数 (コンストラクタ指定)。</summary>
-    public double px;
+    public double Px;
 
     /// <summary>ベースラインから上端まで (px、正)。読み取り専用。</summary>
-    public double ascent;
+    public double Ascent;
 
     /// <summary>ベースラインから下端まで (px、負)。読み取り専用。</summary>
-    public double descent;
+    public double Descent;
 
     /// <summary>行送り (px)。読み取り専用。</summary>
-    public double lineHeight;
+    public double LineHeight;
 
     private string ttf;
     private Atlas atlas;
@@ -61,41 +61,33 @@ public class Text
     public Text(string key, string ttf, double px, int? atlasSize = null)
     {
         this.ttf = ttf;
-        this.px = px;
+        this.Px = px;
         int size = atlasSize ?? 256;
         atlasW = size;
         atlasH = size;
         pixels = new List<int>();
         for (int i = 0; i < atlasW * atlasH * 4; i++)
             pixels.Add(0);
-        var m = Font.font_metrics(ttf);
-        ascent = m.ascent * px;
-        descent = m.descent * px;
-        lineHeight = (m.ascent - m.descent + m.line_gap) * px;
-        atlas = Atlas.fromPixels(key, atlasW, atlasH, pixels);
+        var m = Font.Metrics(ttf);
+        Ascent = m.Ascent * px;
+        Descent = m.Descent * px;
+        LineHeight = (m.Ascent - m.Descent + m.LineGap) * px;
+        atlas = Atlas.FromPixels(key, atlasW, atlasH, pixels);
     }
 
-    private static void eachCodepoint(string s, Action<int> f)
+    private static void EachCodepoint(string s, Action<int> f)
     {
-        int n = len(s);
-        int? i = 1;
-        while (i != null)
-        {
-            int pos = i ?? 0;
-            if (pos > n)
-                break;
-            f(utf8.codepoint(s, pos));
-            i = utf8.offset(s, 2, pos);
-        }
+        foreach (var r in s.EnumerateRunes())
+            f(r.Value);
     }
 
-    private TextGlyph? ensureGlyph(int cp)
+    private TextGlyph? EnsureGlyph(int cp)
     {
         if (glyphs.TryGetValue(cp, out var cached))
             return cached;
         if (missing.ContainsKey(cp))
             return null;
-        var gb = Font.font_glyph(ttf, cp, px);
+        var gb = Font.Glyph(ttf, cp, Px);
         if (gb == null)
         {
             missing[cp] = true;
@@ -103,15 +95,15 @@ public class Text
         }
         int u = 0;
         int v = 0;
-        if (gb.bytes != null && gb.w > 0 && gb.h > 0)
+        if (gb.Bytes != null && gb.W > 0 && gb.H > 0)
         {
-            if (penX + gb.w + 1 > atlasW)
+            if (penX + gb.W + 1 > atlasW)
             {
                 penX = 1;
                 penY += rowH + 1;
                 rowH = 0;
             }
-            if (penY + gb.h + 1 > atlasH)
+            if (penY + gb.H + 1 > atlasH)
             {
                 Console.WriteLine(
                     "lubx.Text: atlas full, glyph dropped: " + cp);
@@ -120,13 +112,13 @@ public class Text
             }
             u = penX;
             v = penY;
-            int src = 1;
-            for (int row = 0; row < gb.h; row++)
+            int src = 0;
+            for (int row = 0; row < gb.H; row++)
             {
                 int dst = ((v + row) * atlasW + u) * 4;
-                for (int i = 0; i < gb.w; i++)
+                for (int i = 0; i < gb.W; i++)
                 {
-                    int a = @byte(gb.bytes, src);
+                    int a = (int)gb.Bytes![src];
                     src++;
                     pixels[dst] = 255;
                     pixels[dst + 1] = 255;
@@ -135,38 +127,38 @@ public class Text
                     dst += 4;
                 }
             }
-            penX += gb.w + 1;
-            if (gb.h > rowH)
-                rowH = gb.h;
-            atlas.updatePixels(pixels);
+            penX += gb.W + 1;
+            if (gb.H > rowH)
+                rowH = gb.H;
+            atlas.UpdatePixels(pixels);
         }
         var g = new TextGlyph
         {
-            u = u,
-            v = v,
-            w = gb.w,
-            h = gb.h,
-            xoff = gb.xoff,
-            yoff = gb.yoff,
-            advance = gb.advance,
+            U = u,
+            V = v,
+            W = gb.W,
+            H = gb.H,
+            Xoff = gb.Xoff,
+            Yoff = gb.Yoff,
+            Advance = gb.Advance,
         };
         glyphs[cp] = g;
         return g;
     }
 
     /// <summary>1行の描画幅 (px)。scale 省略で 1.0。</summary>
-    public double width(string s, double? scale = null)
+    public double Width(string s, double? scale = null)
     {
         var sum = 0.0;
         var prev = -1;
-        eachCodepoint(s, cp =>
+        EachCodepoint(s, cp =>
         {
-            var g = ensureGlyph(cp);
+            var g = EnsureGlyph(cp);
             if (g == null)
                 return;
             if (prev >= 0)
-                sum += Font.font_kern(ttf, prev, cp) * px;
-            sum += g.advance;
+                sum += Font.Kern(ttf, prev, cp) * Px;
+            sum += g.Advance;
             prev = cp;
         });
         return sum * (scale ?? 1.0);
@@ -174,24 +166,24 @@ public class Text
 
     /// <summary>1行描く。(x, y) はベースライン左端 (論理 px、左上原点)。
     /// scale 省略で 1.0。</summary>
-    public void draw(SpriteBatch batch, string s, double x, double y,
+    public void Draw(SpriteBatch batch, string s, double x, double y,
         Color? tint = null, double? scale = null)
     {
         double sc = scale ?? 1.0;
         var pen = x;
         var prev = -1;
-        eachCodepoint(s, cp =>
+        EachCodepoint(s, cp =>
         {
-            var g = ensureGlyph(cp);
+            var g = EnsureGlyph(cp);
             if (g == null)
                 return;
             if (prev >= 0)
-                pen += Font.font_kern(ttf, prev, cp) * px * sc;
-            if (g.w > 0)
-                batch.quad(atlas, new Rect(g.u, g.v, g.w, g.h),
-                    pen + g.xoff * sc, y + g.yoff * sc, g.w * sc, g.h * sc,
+                pen += Font.Kern(ttf, prev, cp) * Px * sc;
+            if (g.W > 0)
+                batch.Quad(atlas, new Rect(g.U, g.V, g.W, g.H),
+                    pen + g.Xoff * sc, y + g.Yoff * sc, g.W * sc, g.H * sc,
                     tint);
-            pen += g.advance * sc;
+            pen += g.Advance * sc;
             prev = cp;
         });
     }

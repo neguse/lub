@@ -7,16 +7,17 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>手続き 3D プリミティブの頂点生成。interleaved
 /// pos.xyz + normal.xyz + color.rgba (STRIDE=10) を dst に push する。
 /// Gfx.use_buffer にそのまま渡せる。</summary>
 public static class Shapes
 {
-    public const int STRIDE = 10; // pos.xyz + normal.xyz + color.rgba
+    public const int Stride = 10; // pos.xyz + normal.xyz + color.rgba
 
     /// <summary>頂点1つ。</summary>
-    public static void vertex(List<double> dst, double x, double y, double z,
+    public static void Vertex(List<double> dst, double x, double y, double z,
         double nx, double ny, double nz, List<double> col)
     {
         dst.Add(x);
@@ -32,25 +33,25 @@ public static class Shapes
     }
 
     /// <summary>三角形 (a, b, c は [x,y,z]、n は [nx,ny,nz])。</summary>
-    public static void tri(List<double> dst, List<double> a, List<double> b,
+    public static void Tri(List<double> dst, List<double> a, List<double> b,
         List<double> c, List<double> n, List<double> col)
     {
-        vertex(dst, a[0], a[1], a[2], n[0], n[1], n[2], col);
-        vertex(dst, b[0], b[1], b[2], n[0], n[1], n[2], col);
-        vertex(dst, c[0], c[1], c[2], n[0], n[1], n[2], col);
+        Vertex(dst, a[0], a[1], a[2], n[0], n[1], n[2], col);
+        Vertex(dst, b[0], b[1], b[2], n[0], n[1], n[2], col);
+        Vertex(dst, c[0], c[1], c[2], n[0], n[1], n[2], col);
     }
 
     /// <summary>四角形 = tri(a,b,c) + tri(a,c,d)。</summary>
-    public static void quad(List<double> dst, List<double> a, List<double> b,
+    public static void Quad(List<double> dst, List<double> a, List<double> b,
         List<double> c, List<double> d, List<double> n, List<double> col)
     {
-        tri(dst, a, b, c, n, col);
-        tri(dst, a, c, d, n, col);
+        Tri(dst, a, b, c, n, col);
+        Tri(dst, a, c, d, n, col);
     }
 
     /// <summary>中心 (cx,cy,cz)、辺長 (sx,sy,sz) の直方体。面の順序・法線は
     /// Haxe 版 (= Shadow11.addBox) と同一。</summary>
-    public static void box(List<double> dst, double cx, double cy, double cz,
+    public static void Box(List<double> dst, double cx, double cy, double cz,
         double sx, double sy, double sz, List<double> col)
     {
         double x0 = cx - sx * 0.5;
@@ -69,15 +70,15 @@ public static class Shapes
         var p011 = new List<double> { x0, y1, z1 };
         var p111 = new List<double> { x1, y1, z1 };
 
-        quad(dst, p000, p010, p110, p100, new List<double> { 0.0, 0.0, -1.0 }, col);
-        quad(dst, p001, p101, p111, p011, new List<double> { 0.0, 0.0, 1.0 }, col);
-        quad(dst, p000, p001, p011, p010, new List<double> { -1.0, 0.0, 0.0 }, col);
-        quad(dst, p100, p110, p111, p101, new List<double> { 1.0, 0.0, 0.0 }, col);
-        quad(dst, p010, p011, p111, p110, new List<double> { 0.0, 1.0, 0.0 }, col);
-        quad(dst, p000, p100, p101, p001, new List<double> { 0.0, -1.0, 0.0 }, col);
+        Quad(dst, p000, p010, p110, p100, new List<double> { 0.0, 0.0, -1.0 }, col);
+        Quad(dst, p001, p101, p111, p011, new List<double> { 0.0, 0.0, 1.0 }, col);
+        Quad(dst, p000, p001, p011, p010, new List<double> { -1.0, 0.0, 0.0 }, col);
+        Quad(dst, p100, p110, p111, p101, new List<double> { 1.0, 0.0, 0.0 }, col);
+        Quad(dst, p010, p011, p111, p110, new List<double> { 0.0, 1.0, 0.0 }, col);
+        Quad(dst, p000, p100, p101, p001, new List<double> { 0.0, -1.0, 0.0 }, col);
     }
 
-    private static List<double> spherePoint(double cx, double cy, double cz,
+    private static List<double> SpherePoint(double cx, double cy, double cz,
         double r, double u, double vv)
     {
         double cv = Math.Cos(vv);
@@ -90,7 +91,7 @@ public static class Shapes
     /// <summary>UV 球。rings/segs のデフォルトと頂点順は Haxe 版
     /// (= Shadow11.addSphere) と同一 (rings=12, segs=24)。省略時は
     /// Lua の nil が null に落ちるので nullable + ?? で受ける。</summary>
-    public static void sphere(List<double> dst, double cx, double cy, double cz,
+    public static void Sphere(List<double> dst, double cx, double cy, double cz,
         double r, List<double> col, int? rings = null, int? segs = null)
     {
         int ringCount = rings ?? 12;
@@ -103,16 +104,16 @@ public static class Shapes
             {
                 double u0 = (double)seg / segCount * Math.PI * 2;
                 double u1 = (double)(seg + 1) / segCount * Math.PI * 2;
-                var a = spherePoint(cx, cy, cz, r, u0, v0);
-                var b = spherePoint(cx, cy, cz, r, u1, v0);
-                var c = spherePoint(cx, cy, cz, r, u1, v1);
-                var d = spherePoint(cx, cy, cz, r, u0, v1);
-                vertex(dst, a[0], a[1], a[2], a[3], a[4], a[5], col);
-                vertex(dst, b[0], b[1], b[2], b[3], b[4], b[5], col);
-                vertex(dst, c[0], c[1], c[2], c[3], c[4], c[5], col);
-                vertex(dst, a[0], a[1], a[2], a[3], a[4], a[5], col);
-                vertex(dst, c[0], c[1], c[2], c[3], c[4], c[5], col);
-                vertex(dst, d[0], d[1], d[2], d[3], d[4], d[5], col);
+                var a = SpherePoint(cx, cy, cz, r, u0, v0);
+                var b = SpherePoint(cx, cy, cz, r, u1, v0);
+                var c = SpherePoint(cx, cy, cz, r, u1, v1);
+                var d = SpherePoint(cx, cy, cz, r, u0, v1);
+                Vertex(dst, a[0], a[1], a[2], a[3], a[4], a[5], col);
+                Vertex(dst, b[0], b[1], b[2], b[3], b[4], b[5], col);
+                Vertex(dst, c[0], c[1], c[2], c[3], c[4], c[5], col);
+                Vertex(dst, a[0], a[1], a[2], a[3], a[4], a[5], col);
+                Vertex(dst, c[0], c[1], c[2], c[3], c[4], c[5], col);
+                Vertex(dst, d[0], d[1], d[2], d[3], d[4], d[5], col);
             }
         }
     }

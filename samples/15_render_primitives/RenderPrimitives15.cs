@@ -5,40 +5,42 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 public static class RenderPrimitives15
 {
-    const int W = 640;
-    const int H = 360;
-    const int RTW = 160;
-    const int RTH = 90;
+    const int w = 640;
+    const int h = 360;
+    const int rtw = 160;
+    const int rth = 90;
 
     static BufferRef? quad;
     static BufferRef? tri;
     static double tAccum = 0.0;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend, width = W, height = H });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
-    public static void onEvent(EventData e)
-    {
-    }
-
-    public static void onQuit()
+    public static void OnEvent(EventData e)
     {
     }
 
-    static TextureRef? Target(string key, int fmt, int filter, bool storage)
+    public static void OnQuit()
     {
-        return Gfx.use_texture(key, RTW, RTH, fmt, null, 1, new TextureOpts
+    }
+
+    static TextureRef? Target(string key, Gfx.PixelFormat fmt, Gfx.Filter filter,
+        bool storage)
+    {
+        return Gfx.UseTexture(key, rtw, rth, fmt, null, 1, new TextureOpts
         {
-            target = true,
-            filter = filter,
-            wrap = Gfx.CLAMP,
-            storage = storage,
+            Target = true,
+            Filter = filter,
+            Wrap = Gfx.Wrap.Clamp,
+            Storage = storage,
         });
     }
 
@@ -46,7 +48,7 @@ public static class RenderPrimitives15
     {
         if (quad == null)
         {
-            quad = Gfx.use_buffer("rp15_quad", Gfx.VERTEX, new List<double>
+            quad = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Vertex, new List<double>
             {
                 -1.0, -1.0, 0.0, 1.0,
                 1.0, -1.0, 1.0, 1.0,
@@ -58,7 +60,7 @@ public static class RenderPrimitives15
         }
         if (tri == null)
         {
-            tri = Gfx.use_buffer("rp15_tri", Gfx.VERTEX, new List<double>
+            tri = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Vertex, new List<double>
             {
                 -0.75, -0.70, 0.25,
                 0.85, -0.65, 0.75,
@@ -69,27 +71,27 @@ public static class RenderPrimitives15
 
     static ShaderRef? Shader2(string key, string vsPath, string fsPath)
     {
-        Io.load_text("samples/15_render_primitives/data/" + vsPath,
+        Io.LoadText("samples/15_render_primitives/data/" + vsPath,
             out var vs, out var vsv, out _, out _);
-        Io.load_text("samples/15_render_primitives/data/" + fsPath,
+        Io.LoadText("samples/15_render_primitives/data/" + fsPath,
             out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return null;
-        return Gfx.use_shader(key, vs, fs, vsv * 31 + fsv);
+        return Gfx.UseShader(key, vs, fs, vsv * 31 + fsv);
     }
 
     static ShaderRef? ShaderC(string key, string csPath)
     {
-        Io.load_text("samples/15_render_primitives/data/" + csPath,
+        Io.LoadText("samples/15_render_primitives/data/" + csPath,
             out var cs, out var csv, out _, out _);
         if (cs == null) return null;
-        return Gfx.use_shader_compute(key, cs, csv);
+        return Gfx.UseShaderCompute(key, cs, csv);
     }
 
     static void DrawPanel(ShaderRef shader, TextureRef tex, BufferRef verts,
         double x, double y, double sx, double sy, List<double> tint,
         double mode)
     {
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = verts,
             ["scene"] = tex,
@@ -99,23 +101,23 @@ public static class RenderPrimitives15
                 ["tint"] = tint,
                 ["mode"] = new List<double> { mode, 0.0, 0.0, 0.0 },
             },
-        }, new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
+        }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
     }
 
     static void DrawFill(BufferRef verts, ShaderRef fill, double r, double g,
         double b)
     {
-        Gfx.draw(6, new Dictionary<string, object>
+        Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = verts,
             ["uniforms"] = new Dictionary<string, object>
             {
                 ["fill"] = new List<double> { r, g, b, 1.0 },
             },
-        }, new DrawOpts { shader = fill, depth = false, cull = Gfx.NONE });
+        }, new DrawOpts { Shader = fill, Depth = false, Cull = Gfx.Cull.None });
     }
 
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
         EnsureGeometry();
         tAccum = tAccum + dt;
@@ -131,73 +133,73 @@ public static class RenderPrimitives15
         if (fill == null || depthShader == null || present == null
             || compute == null || quadBuf == null || triBuf == null) return;
 
-        var r16 = Target("rp15_r16f", Gfx.R16F, Gfx.NEAREST, false);
-        var rg16 = Target("rp15_rg16f", Gfx.RG16F, Gfx.NEAREST, false);
-        var r32 = Target("rp15_r32f", Gfx.R32F, Gfx.NEAREST, false);
-        var depthColor = Target("rp15_depth_color", Gfx.RGBA8, Gfx.NEAREST,
+        var r16 = Target("rp15_r16f", Gfx.PixelFormat.R16f, Gfx.Filter.Nearest, false);
+        var rg16 = Target("rp15_rg16f", Gfx.PixelFormat.Rg16f, Gfx.Filter.Nearest, false);
+        var r32 = Target("rp15_r32f", Gfx.PixelFormat.R32f, Gfx.Filter.Nearest, false);
+        var depthColor = Target("rp15_depth_color", Gfx.PixelFormat.Rgba8, Gfx.Filter.Nearest,
             false);
-        var depthTex = Target("rp15_depth", Gfx.DEPTH32F, Gfx.NEAREST, false);
-        var storageTex = Target("rp15_storage", Gfx.RGBA32F, Gfx.LINEAR, true);
+        var depthTex = Target("rp15_depth", Gfx.PixelFormat.Depth32f, Gfx.Filter.Nearest, false);
+        var storageTex = Target("rp15_storage", Gfx.PixelFormat.Rgba32f, Gfx.Filter.Linear, true);
         if (r16 == null || rg16 == null || r32 == null || depthColor == null
             || depthTex == null || storageTex == null) return;
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = r16,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            Target = r16,
+            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
         });
         DrawFill(quadBuf, fill, 0.25, 0.0, 0.0);
-        Gfx.end_pass();
+        Gfx.EndPass();
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = rg16,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            Target = rg16,
+            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
         });
         DrawFill(quadBuf, fill, 0.1, 0.85, 0.0);
-        Gfx.end_pass();
+        Gfx.EndPass();
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = r32,
-            clear_color = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            Target = r32,
+            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
         });
         DrawFill(quadBuf, fill, 0.85, 0.0, 0.0);
-        Gfx.end_pass();
+        Gfx.EndPass();
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = depthColor,
-            depth_target = depthTex,
-            clear_color = new double[] { 0.02, 0.02, 0.04, 1.0 },
-            clear_depth = 1.0,
+            Target = depthColor,
+            DepthTarget = depthTex,
+            ClearColor = new double[] { 0.02, 0.02, 0.04, 1.0 },
+            ClearDepth = 1.0,
         });
-        Gfx.draw(3, new Dictionary<string, object> { ["verts"] = triBuf },
+        Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = triBuf },
             new DrawOpts
             {
-                shader = depthShader,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = depthShader,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
-        Gfx.end_pass();
+        Gfx.EndPass();
 
-        Gfx.dispatch((int)Math.Ceiling(RTW / 8.0),
-            (int)Math.Ceiling(RTH / 8.0), 1,
+        Gfx.Dispatch((int)Math.Ceiling(rtw / 8.0),
+            (int)Math.Ceiling(rth / 8.0), 1,
             new Dictionary<string, object>
             {
                 ["dst"] = storageTex,
                 ["uniforms"] = new Dictionary<string, object>
                 {
                     ["params"] = new List<double>
-                        { RTW, RTH, tAccum * 0.6, 0.0 },
+                        { rtw, rth, tAccum * 0.6, 0.0 },
                 },
-            }, new DispatchOpts { shader = compute });
+            }, new DispatchOpts { Shader = compute });
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.025, 0.03, 0.04, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.025, 0.03, 0.04, 1.0 },
         });
         DrawPanel(present, r16, quadBuf, -0.66, 0.47, 0.29, 0.42,
             new List<double> { 1.0, 0.35, 0.25, 1.0 }, 0.0);
@@ -209,6 +211,6 @@ public static class RenderPrimitives15
             new List<double> { 0.8, 0.9, 1.0, 1.0 }, 0.0);
         DrawPanel(present, storageTex, quadBuf, 0.34, -0.48, 0.29, 0.42,
             new List<double> { 1.0, 1.0, 1.0, 1.0 }, 0.0);
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

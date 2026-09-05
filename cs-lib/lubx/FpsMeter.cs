@@ -7,23 +7,25 @@
 /// Sys.actual_fps の値を保持するだけの小物。計測が入る前 (起動直後) は
 /// initialFps を返し続ける。毎フレーム tick() を呼ぶ。
 /// </summary>
+using static Lub;
+
 public class FpsMeter
 {
     /// <summary>直近の実測 FPS。tick() が更新する (呼び出し側は読み取り専用)。</summary>
-    public double fps;
+    public double Fps;
 
     public FpsMeter(double? initialFps = null)
     {
-        fps = initialFps ?? 60.0;
+        Fps = initialFps ?? 60.0;
     }
 
-    public double tick()
+    public double Tick()
     {
-        var measured = Sys.actual_fps();
+        var measured = Sys.ActualFps();
         if (measured > 0)
         {
-            fps = measured;
+            Fps = measured;
         }
-        return fps;
+        return Fps;
     }
 }

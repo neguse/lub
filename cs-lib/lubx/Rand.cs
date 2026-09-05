@@ -10,6 +10,8 @@
 /// 再現可能 (Math.random は reload のたびに列が変わるので使わない)。
 /// 同一シードで Haxe 版と同じ乱数列を生成する。
 /// </summary>
+using static Lub;
+
 public class Rand
 {
     private long state;
@@ -21,7 +23,7 @@ public class Rand
     }
 
     /// <summary>[0, 1) の一様乱数 (Haxe 版の float())。</summary>
-    public double nextFloat()
+    public double NextFloat()
     {
         state = (state ^ (state << 13)) & 0xFFFFFFFF;
         state = state ^ (state >> 17);
@@ -30,14 +32,14 @@ public class Rand
     }
 
     /// <summary>[0, n) の整数 (Haxe 版の int())。</summary>
-    public int nextInt(int n)
+    public int NextInt(int n)
     {
-        return (int)System.Math.Floor(nextFloat() * n);
+        return (int)System.Math.Floor(NextFloat() * n);
     }
 
     /// <summary>[min, max) の一様乱数。</summary>
-    public double range(double min, double max)
+    public double Range(double min, double max)
     {
-        return min + nextFloat() * (max - min);
+        return min + NextFloat() * (max - min);
     }
 }

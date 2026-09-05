@@ -52,14 +52,12 @@ TCS=(dotnet run --project third_party/tcs/Transpiler --)
 
 case "$MODE" in
 --check)
-    exec "${TCS[@]}" check "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs \
-        --no-naming-check
+    exec "${TCS[@]}" check "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs
     ;;
 --build)
     mkdir -p "$DIR/.lub"
     exec "${TCS[@]}" "${CS_FILES[@]}" --ref cs-lib/lub_stub.cs \
-        -o "$DIR/.lub/$ENTRY_CLASS.lua" --entry "$ENTRY_CLASS" \
-        --no-naming-check
+        -o "$DIR/.lub/$ENTRY_CLASS.lua" --entry "$ENTRY_CLASS"
     ;;
 *)
     echo "unknown mode: $MODE (--check | --build)" >&2

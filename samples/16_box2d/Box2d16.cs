@@ -4,34 +4,35 @@
 // 最新 pose を render frame ごとに頂点列へ焼いて 1 draw で描く。
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 public static class Box2d16
 {
-    const double DT = 1.0 / 60.0;
-    const double PPM_X = 4.0;
-    const double PPM_Y = 2.7;
+    const double dt = 1.0 / 60.0;
+    const double ppmX = 4.0;
+    const double ppmY = 2.7;
     static int contactFlash = 0;
     static FixedStep? step = null;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend, width = 640, height = 360 });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
     }
 
-    public static void onEvent(EventData e)
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onQuit()
+    public static void OnQuit()
     {
     }
 
     static void PushVertex(List<double> verts, double x, double y,
         double r, double g, double b, double a)
     {
-        verts.Add(x / PPM_X);
-        verts.Add(y / PPM_Y);
+        verts.Add(x / ppmX);
+        verts.Add(y / ppmY);
         verts.Add(0.0);
         verts.Add(r);
         verts.Add(g);
@@ -42,16 +43,16 @@ public static class Box2d16
     static void PushBox(List<double> verts, Pose pose, double hx, double hy,
         double[] color)
     {
-        double c = Math.Cos(pose.angle);
-        double s = Math.Sin(pose.angle);
+        double c = Math.Cos(pose.Angle);
+        double s = Math.Sin(pose.Angle);
         var cxs = new double[] { -hx, hx, hx, -hx };
         var cys = new double[] { -hy, -hy, hy, hy };
         var wx = new List<double>();
         var wy = new List<double>();
         for (int i = 0; i < 4; i++)
         {
-            wx.Add(pose.x + c * cxs[i] - s * cys[i]);
-            wy.Add(pose.y + s * cxs[i] + c * cys[i]);
+            wx.Add(pose.X + c * cxs[i] - s * cys[i]);
+            wy.Add(pose.Y + s * cxs[i] + c * cys[i]);
         }
         var idx = new int[] { 0, 1, 2, 0, 2, 3 };
         foreach (var i in idx)
@@ -63,78 +64,78 @@ public static class Box2d16
 
     static void Simulate(WorldRef world)
     {
-        Phys2d.phys2d_begin(world);
+        Phys2d.Begin(world);
 
-        var ground = Phys2d.phys2d_body(world, "ground", new BodyDesc
+        var ground = Phys2d.Body(world, "ground", new BodyDesc
         {
-            type = Phys2d.STATIC,
-            initial = new InitialState { x = 0.0, y = -1.55 },
+            Type = Phys2d.BodyType.Static,
+            Initial = new InitialState { X = 0.0, Y = -1.55 },
         });
         if (ground == null) return;
-        Phys2d.phys2d_box(ground, "floor", new BoxDesc
+        Phys2d.Box(ground, "floor", new BoxDesc
         {
-            hx = 3.4,
-            hy = 0.18,
-            density = 0.0,
-            friction = 0.85,
-            contact = true,
+            Hx = 3.4,
+            Hy = 0.18,
+            Density = 0.0,
+            Friction = 0.85,
+            Contact = true,
         });
 
         for (int i = 0; i < 4; i++)
         {
             bool even = i == 0 || i == 2;
-            var b = Phys2d.phys2d_body(world, "box:" + i, new BodyDesc
+            var b = Phys2d.Body(world, "box:" + i, new BodyDesc
             {
-                type = Phys2d.DYNAMIC,
-                initial = new InitialState
+                Type = Phys2d.BodyType.Dynamic,
+                Initial = new InitialState
                 {
-                    x = even ? -0.18 : 0.18,
-                    y = -0.95 + i * 0.58,
-                    angle = (i - 1) * 0.08,
+                    X = even ? -0.18 : 0.18,
+                    Y = -0.95 + i * 0.58,
+                    Angle = (i - 1) * 0.08,
                 },
             });
             if (b == null) return;
-            Phys2d.phys2d_box(b, "solid", new BoxDesc
+            Phys2d.Box(b, "solid", new BoxDesc
             {
-                hx = 0.26,
-                hy = 0.26,
-                density = 1.0,
-                friction = 0.65,
-                contact = true,
+                Hx = 0.26,
+                Hy = 0.26,
+                Density = 1.0,
+                Friction = 0.65,
+                Contact = true,
             });
         }
 
-        Phys2d.phys2d_step(world, DT);
+        Phys2d.Step(world, dt);
 
-        var contacts = Phys2d.phys2d_contacts(world, "begin");
+        var contacts = Phys2d.Contacts(world, "begin");
         if (contacts.Count > 0) contactFlash = 12;
         if (contactFlash > 0) contactFlash = contactFlash - 1;
     }
 
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
-        var world = Phys2d.phys2d_world("box2d16", new WorldOpts
+        var world = Phys2d.World("box2d16", new WorldOpts
         {
-            gravity = new Vec2d { x = 0.0, y = -10.0 },
-            fixedDt = DT,
-            substeps = 4,
-            maxSteps = 1,
+            Gravity = new Vec2d { X = 0.0, Y = -10.0 },
+            FixedDt = dt,
+            Substeps = 4,
+            MaxSteps = 1,
         });
         if (world == null) return;
 
         var stepNow = step ?? new FixedStep();
         step = stepNow;
-        stepNow.frame(dt, _ => Simulate(world));
+        stepNow.Frame(dt, _ => Simulate(world));
 
         var verts = new List<double>();
-        var groundPose = Phys2d.phys2d_pose(world, "ground");
+        var groundPose = Phys2d.Pose(world, "ground");
         if (groundPose == null) return;
         PushBox(verts, groundPose, 3.4, 0.18,
             new double[] { 0.28, 0.33, 0.36, 1.0 });
         int boxCount = 1;
         for (int i = 0; i < 4; i++)
         {
-            var pose = Phys2d.phys2d_pose(world, "box:" + i);
+            var pose = Phys2d.Pose(world, "box:" + i);
             if (pose == null) continue;
             double hot = contactFlash > 0 ? 0.12 : 0.0;
             PushBox(verts, pose, 0.26, 0.26,
@@ -142,23 +143,23 @@ public static class Box2d16
             boxCount = boxCount + 1;
         }
 
-        Io.load_text("samples/16_box2d/data/16_color.vs.slang",
+        Io.LoadText("samples/16_box2d/data/16_color.vs.slang",
             out var vs, out var vsv, out _, out _);
-        Io.load_text("samples/16_box2d/data/16_color.fs.slang",
+        Io.LoadText("samples/16_box2d/data/16_color.fs.slang",
             out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return;
-        var shader = Gfx.use_shader("box2d16_color", vs, fs, vsv * 31 + fsv);
-        var mesh = Gfx.use_buffer("box2d16_mesh", Gfx.VERTEX, verts);
+        var shader = Gfx.UseShader("box2d16_color", vs, fs, vsv * 31 + fsv);
+        var mesh = Gfx.UseBuffer("box2d16_mesh", Gfx.BufferType.Vertex, verts);
         if (shader == null || mesh == null) return;
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.03, 0.04, 0.055, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.03, 0.04, 0.055, 1.0 },
         });
-        Gfx.draw(boxCount * 6,
+        Gfx.Draw(boxCount * 6,
             new Dictionary<string, object> { ["verts"] = mesh },
-            new DrawOpts { shader = shader, depth = false, cull = Gfx.NONE });
-        Gfx.end_pass();
+            new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
+        Gfx.EndPass();
     }
 }

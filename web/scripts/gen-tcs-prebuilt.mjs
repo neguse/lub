@@ -111,7 +111,6 @@ try {
           "--entry",
           entry,
           "--snapshot",
-          "--no-naming-check",
           "-o",
           outPath,
         ],

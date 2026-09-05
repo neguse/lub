@@ -1,6 +1,7 @@
 // lub の samples/00d_shader (Haxe 版 Shader00d.hx) の TinyC# 版 entry。
 // 実行: lub samples/00d_shader/Shader00d.csproj (transpile + watch + hot reload)
 using System;
+using static Lub;
 
 public static class Shader00d
 {
@@ -14,31 +15,31 @@ public static class Shader00d
 
     static bool printed = false;
 
-    public static void onInit()
+    public static void OnInit()
     {
     }
 
-    public static void onEvent(EventData e)
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onQuit()
+    public static void OnQuit()
     {
     }
 
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
-        var s = Gfx.use_shader("test", vs, fs, 1);
+        var s = Gfx.UseShader("test", vs, fs, 1);
         if (!printed && s != null)
         {
             Console.WriteLine("shader compiled: test");
             printed = true;
         }
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            Target = Gfx.MainTex,
+            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
         });
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

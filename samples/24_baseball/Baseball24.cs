@@ -18,116 +18,117 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 // 走者。塁 index は 0=本塁(打席) 1..3=各塁 4=生還
 public class Runner
 {
-    public double x;
-    public double z;
-    public int atBase; // 今いる/直前の塁 (Haxe 版の base。C# 予約語のため改名)
-    public int to; // 目標の塁
-    public double runPhase = 0;
+    public double X;
+    public double Z;
+    public int AtBase; // 今いる/直前の塁 (Haxe 版の base。C# 予約語のため改名)
+    public int To; // 目標の塁
+    public double RunPhase = 0;
 
     public Runner(double x, double z, int atBase, int to)
     {
-        this.x = x;
-        this.z = z;
-        this.atBase = atBase;
-        this.to = to;
+        this.X = x;
+        this.Z = z;
+        this.AtBase = atBase;
+        this.To = to;
     }
 }
 
 // 野手。home* は定位置、(x,z) が現在地
 public class Fielder
 {
-    public double x;
-    public double z;
-    public double homeX;
-    public double homeZ;
-    public double yaw = 0;
-    public double runPhase = 0;
-    public int anim = 0; // Baseball24.AN_*
-    public double animT = 0;
+    public double X;
+    public double Z;
+    public double HomeX;
+    public double HomeZ;
+    public double Yaw = 0;
+    public double RunPhase = 0;
+    public int Anim = 0; // Baseball24.AN_*
+    public double AnimT = 0;
 
     public Fielder(double hx, double hz)
     {
-        homeX = hx;
-        homeZ = hz;
-        x = hx;
-        z = hz;
+        HomeX = hx;
+        HomeZ = hz;
+        X = hx;
+        Z = hz;
     }
 }
 
 // predictLanding の結果 (Haxe 版の匿名構造体を class に)
 public class Landing
 {
-    public double x;
-    public double z;
-    public double t;
-    public double peak;
+    public double X;
+    public double Z;
+    public double T;
+    public double Peak;
 }
 
 public static class Baseball24
 {
-    const int W = 960;
-    const int H = 540;
-    const double DT = 1.0 / 60.0;
+    const int w = 960;
+    const int h = 540;
+    const double dt = 1.0 / 60.0;
 
     // --- フィールド寸法 (m) -------------------------------------------------
-    const double BASE_D = 19.4; // 塁間 27.43m の対角成分
-    const double MOUND_Z = 18.44;
-    const double FENCE_R = 76.0;
-    const double FENCE_H = 3.0;
-    const double GRAV = 9.8;
-    const double BALL_R = 0.115;
-    const double DRAG = 0.0055; // 打球の空気抵抗 (終端速度 ~42m/s)
-    const double RUN_SPD = 7.2; // 走者/野手の走速
-    const double CATCH_R = 1.15; // 捕球半径 (グラブの届く範囲)
+    const double baseD = 19.4; // 塁間 27.43m の対角成分
+    const double moundZ = 18.44;
+    const double fenceR = 76.0;
+    const double fenceH = 3.0;
+    const double grav = 9.8;
+    const double ballR = 0.115;
+    const double dragCoef = 0.0055; // 打球の空気抵抗 (終端速度 ~42m/s)
+    const double runSpd = 7.2; // 走者/野手の走速
+    const double catchR = 1.15; // 捕球半径 (グラブの届く範囲)
 
     // --- 試合 state ---------------------------------------------------------
-    const int ST_INTRO = 0;
-    const int ST_PREPITCH = 1;
-    const int ST_WINDUP = 2;
-    const int ST_PITCH = 3;
-    const int ST_LIVE = 4;
-    const int ST_CALL = 5;
-    const int ST_CHANGE = 6;
-    const int ST_END = 7;
+    const int stIntro = 0;
+    const int stPrepitch = 1;
+    const int stWindup = 2;
+    const int stPitch = 3;
+    const int stLive = 4;
+    const int stCall = 5;
+    const int stChange = 6;
+    const int stEnd = 7;
 
     // キャラアニメ
-    public const int AN_IDLE = 0;
-    public const int AN_READY = 1;
-    public const int AN_RUN = 2;
-    public const int AN_WINDUP = 3;
-    public const int AN_SWING = 4;
-    public const int AN_REACH = 5;
-    public const int AN_CROUCH = 6;
-    public const int AN_THROW = 7;
+    public const int AnIdle = 0;
+    public const int AnReady = 1;
+    public const int AnRun = 2;
+    public const int AnWindup = 3;
+    public const int AnSwing = 4;
+    public const int AnReach = 5;
+    public const int AnCrouch = 6;
+    public const int AnThrow = 7;
 
     // 打球フェーズ (ST_LIVE 中)
-    const int PL_FLY = 0; // 打球が空中 (ノーバウンド)
-    const int PL_THROW1B = 2; // 一塁送球中
-    const int PL_SETTLE = 3; // 判定確定、走者が到達するのを待つ
-    const int PL_FOUL = 4;
+    const int plFly = 0; // 打球が空中 (ノーバウンド)
+    const int plThrow1b = 2; // 一塁送球中
+    const int plSettle = 3; // 判定確定、走者が到達するのを待つ
+    const int plFoul = 4;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND") ?? "native";
-        Lub.config(new ConfigOpts { backend = backend, width = W, height = H });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
-    public static void onEvent(EventData e)
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onQuit()
+    public static void OnQuit()
     {
     }
 
     // --- 乱数 (決定的 xorshift。Math.random は run ごとに列が変わる) ---------
     static Rand? rng = null;
 
-    static double rnd()
+    static double Rnd()
     {
         var r = rng;
         if (r == null)
@@ -135,12 +136,12 @@ public static class Baseball24
             r = new Rand(0x0B5EBA11);
             rng = r;
         }
-        return r.nextFloat();
+        return r.NextFloat();
     }
 
-    static double rrange(double a, double b)
+    static double Rrange(double a, double b)
     {
-        return a + (b - a) * rnd();
+        return a + (b - a) * Rnd();
     }
 
     // --- キャラメッシュ (SDF + bones) ---------------------------------------
@@ -148,51 +149,51 @@ public static class Baseball24
     static List<Mesh3d>? charMesh = null;
     static int[] teamRgb = new int[] { 0xD94038, 0x4073E0 };
 
-    const double TORSO_PX = 0.0;
-    const double TORSO_PY = 0.95;
-    const double HEAD_PY = 1.50;
-    const double ARM_PX = 0.24;
-    const double ARM_PY = 1.40;
-    const double LEG_PX = 0.10;
-    const double LEG_PY = 0.92;
+    const double torsoPx = 0.0;
+    const double torsoPy = 0.95;
+    const double headPy = 1.50;
+    const double armPx = 0.24;
+    const double armPy = 1.40;
+    const double legPx = 0.10;
+    const double legPy = 0.92;
 
-    static SdfNode charModel(int jersey)
+    static SdfNode CharModel(int jersey)
     {
         var white = jersey;
         var skin = 0xF5C29A;
         var pants = 0x3A3E4C;
-        var torso = Sdf.capsule(new Vec3(0, 0.92, 0), new Vec3(0, 1.42, 0), 0.19)
-            .paint(white)
-            .bone("torso", new Vec3(TORSO_PX, TORSO_PY, 0));
-        var head = Sdf.sphere(0.15)
-            .move(0, 1.62, 0)
-            .paint(skin)
-            .smin(Sdf.sphere(0.115).move(0, 1.72, 0).paint(white), 0.03)
-            .smin(Sdf.sphere(0.035).move(0, 1.60, 0.15).paint(skin), 0.02)
-            .bone("head", new Vec3(0, HEAD_PY, 0));
-        var armL = Sdf.capsule(new Vec3(0.24, 1.40, 0),
+        var torso = Sdf.Capsule(new Vec3(0, 0.92, 0), new Vec3(0, 1.42, 0), 0.19)
+            .Paint(white)
+            .Bone("torso", new Vec3(torsoPx, torsoPy, 0));
+        var head = Sdf.Sphere(0.15)
+            .Move(0, 1.62, 0)
+            .Paint(skin)
+            .Smin(Sdf.Sphere(0.115).Move(0, 1.72, 0).Paint(white), 0.03)
+            .Smin(Sdf.Sphere(0.035).Move(0, 1.60, 0.15).Paint(skin), 0.02)
+            .Bone("head", new Vec3(0, headPy, 0));
+        var armL = Sdf.Capsule(new Vec3(0.24, 1.40, 0),
             new Vec3(0.31, 1.00, 0.05), 0.065)
-            .paint(skin)
-            .bone("arm_l", new Vec3(ARM_PX, ARM_PY, 0));
-        var armR = Sdf.capsule(new Vec3(-0.24, 1.40, 0),
+            .Paint(skin)
+            .Bone("arm_l", new Vec3(armPx, armPy, 0));
+        var armR = Sdf.Capsule(new Vec3(-0.24, 1.40, 0),
             new Vec3(-0.31, 1.00, 0.05), 0.065)
-            .paint(skin)
-            .bone("arm_r", new Vec3(-ARM_PX, ARM_PY, 0));
-        var legL = Sdf.capsule(new Vec3(0.10, 0.92, 0),
+            .Paint(skin)
+            .Bone("arm_r", new Vec3(-armPx, armPy, 0));
+        var legL = Sdf.Capsule(new Vec3(0.10, 0.92, 0),
             new Vec3(0.11, 0.10, 0), 0.085)
-            .smin(Sdf.sphere(0.07).move(0.11, 0.07, 0.07), 0.05)
-            .paint(pants)
-            .bone("leg_l", new Vec3(LEG_PX, LEG_PY, 0));
-        var legR = Sdf.capsule(new Vec3(-0.10, 0.92, 0),
+            .Smin(Sdf.Sphere(0.07).Move(0.11, 0.07, 0.07), 0.05)
+            .Paint(pants)
+            .Bone("leg_l", new Vec3(legPx, legPy, 0));
+        var legR = Sdf.Capsule(new Vec3(-0.10, 0.92, 0),
             new Vec3(-0.11, 0.10, 0), 0.085)
-            .smin(Sdf.sphere(0.07).move(-0.11, 0.07, 0.07), 0.05)
-            .paint(pants)
-            .bone("leg_r", new Vec3(-LEG_PX, LEG_PY, 0));
-        return torso.smin(head, 0.05).smin(armL, 0.04).smin(armR, 0.04)
-            .smin(legL, 0.05).smin(legR, 0.05);
+            .Smin(Sdf.Sphere(0.07).Move(-0.11, 0.07, 0.07), 0.05)
+            .Paint(pants)
+            .Bone("leg_r", new Vec3(-legPx, legPy, 0));
+        return torso.Smin(head, 0.05).Smin(armL, 0.04).Smin(armR, 0.04)
+            .Smin(legL, 0.05).Smin(legR, 0.05);
     }
 
-    static void buildCharMesh()
+    static void BuildCharMesh()
     {
         var cm = charMesh;
         if (cm == null)
@@ -206,7 +207,7 @@ public static class Baseball24
         }
         for (int t = 0; t < 2; t++)
         {
-            cm[t].rebuild(Sdf.mesh(charModel(teamRgb[t]), 56));
+            cm[t].Rebuild(Sdf.Mesh(CharModel(teamRgb[t]), 56));
         }
     }
 
@@ -215,19 +216,19 @@ public static class Baseball24
     // Haxe 版の boneSlot 表 + 手詰めは Bones.pack (mesh.bones 順の resolve) に
     // 置き換え。pose: [twist, lean, tilt, toy, hx, hy, alx, alz, arx, arz,
     // llx, lrx]
-    static List<double> packBones(List<double> p)
+    static List<double> PackBones(List<double> p)
     {
-        var rTorso = Mat4.rotateY(p[0]) * (Mat4.rotateX(p[1]) * Mat4.rotateZ(p[2]));
-        var mTorso = Mat4.translate(new Vec3(0, p[3], 0))
-            * Bones.pivotRot(TORSO_PX, TORSO_PY, 0, rTorso);
+        var rTorso = Mat4.RotateY(p[0]) * (Mat4.RotateX(p[1]) * Mat4.RotateZ(p[2]));
+        var mTorso = Mat4.Translate(new Vec3(0, p[3], 0))
+            * Bones.PivotRot(torsoPx, torsoPy, 0, rTorso);
         var mHead = mTorso
-            * Bones.pivotRot(0, HEAD_PY, 0, Mat4.rotateY(p[5]) * Mat4.rotateX(p[4]));
+            * Bones.PivotRot(0, headPy, 0, Mat4.RotateY(p[5]) * Mat4.RotateX(p[4]));
         var mArmL = mTorso
-            * Bones.pivotRot(ARM_PX, ARM_PY, 0, Mat4.rotateZ(p[7]) * Mat4.rotateX(p[6]));
+            * Bones.PivotRot(armPx, armPy, 0, Mat4.RotateZ(p[7]) * Mat4.RotateX(p[6]));
         var mArmR = mTorso
-            * Bones.pivotRot(-ARM_PX, ARM_PY, 0, Mat4.rotateZ(p[9]) * Mat4.rotateX(p[8]));
-        var mLegL = Bones.pivotRot(LEG_PX, LEG_PY, 0, Mat4.rotateX(p[10]));
-        var mLegR = Bones.pivotRot(-LEG_PX, LEG_PY, 0, Mat4.rotateX(p[11]));
+            * Bones.PivotRot(-armPx, armPy, 0, Mat4.RotateZ(p[9]) * Mat4.RotateX(p[8]));
+        var mLegL = Bones.PivotRot(legPx, legPy, 0, Mat4.RotateX(p[10]));
+        var mLegR = Bones.PivotRot(-legPx, legPy, 0, Mat4.RotateX(p[11]));
         var mats = new Dictionary<string, Mat4>
         {
             ["torso"] = mTorso,
@@ -238,20 +239,20 @@ public static class Baseball24
             ["leg_r"] = mLegR,
         };
         var cm = charMesh;
-        var mesh = cm != null ? cm[0].data : null;
-        return Bones.pack(mesh, (name, px, py, pz) =>
+        var mesh = cm != null ? cm[0].Data : null;
+        return Bones.Pack(mesh, (name, px, py, pz) =>
             mats.ContainsKey(name) ? mats[name] : null);
     }
 
-    static List<double> zeroPose()
+    static List<double> ZeroPose()
     {
         return new List<double> { 0, 0, 0, 0, 0, 0, 0, -0.08, 0, 0.08, 0, 0 };
     }
 
     // クリップ。桜井メソッド: 構え/攻撃ポーズは極端に、中割りはほぼゼロ
-    static List<double> poseIdle(double t)
+    static List<double> PoseIdle(double t)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         var b = Math.Sin(t * 2.1);
         p[1] = 0.04 + b * 0.015;
         p[7] = 0.10 + b * 0.02;
@@ -259,9 +260,9 @@ public static class Baseball24
         return p;
     }
 
-    static List<double> poseReady(double t)
+    static List<double> PoseReady(double t)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         p[1] = 0.42; // 前傾
         p[3] = -0.08;
         p[4] = -0.35; // 顔は上げる
@@ -274,9 +275,9 @@ public static class Baseball24
         return p;
     }
 
-    static List<double> poseCrouch(double t)
+    static List<double> PoseCrouch(double t)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         p[3] = -0.30;
         p[1] = 0.38;
         p[4] = -0.55;
@@ -287,9 +288,9 @@ public static class Baseball24
         return p;
     }
 
-    static List<double> poseRun(double ph)
+    static List<double> PoseRun(double ph)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         var s = Math.Sin(ph);
         p[1] = 0.30;
         p[10] = s * 1.0;
@@ -301,47 +302,47 @@ public static class Baseball24
     }
 
     // 投球。ph 0..1、リリースは REL_PH
-    public const double REL_PH = 0.60;
+    public const double RelPh = 0.60;
 
-    static List<double> poseWindup(double ph)
+    static List<double> PoseWindup(double ph)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         // 1) 振りかぶり + 足上げ (前 = +Z = rotateX 正)
-        var k1 = MathUtil.smoothstep(0.0, 0.34, ph);
+        var k1 = MathUtil.Smoothstep(0.0, 0.34, ph);
         p[6] = -2.1 * k1;
         p[8] = -2.1 * k1;
         p[10] = 1.35 * k1;
         p[1] = -0.28 * k1;
         // 2) 踏み込み + 腕を極端に引き絞る
-        var k2 = MathUtil.smoothstep(0.38, 0.54, ph);
-        p[10] = MathUtil.lerp(p[10], 0.55, k2);
-        p[8] = MathUtil.lerp(p[8], -2.95, k2); // 右腕を頭の後ろまで
-        p[6] = MathUtil.lerp(p[6], -0.4, k2);
-        p[1] = MathUtil.lerp(p[1], -0.38, k2);
+        var k2 = MathUtil.Smoothstep(0.38, 0.54, ph);
+        p[10] = MathUtil.Lerp(p[10], 0.55, k2);
+        p[8] = MathUtil.Lerp(p[8], -2.95, k2); // 右腕を頭の後ろまで
+        p[6] = MathUtil.Lerp(p[6], -0.4, k2);
+        p[1] = MathUtil.Lerp(p[1], -0.38, k2);
         // 3) リリース: 一気に振り抜く (中割りなし)
-        var k3 = MathUtil.smoothstep(0.56, 0.62, ph);
-        p[8] = MathUtil.lerp(p[8], 0.9, k3);
-        p[1] = MathUtil.lerp(p[1], 0.62, k3);
+        var k3 = MathUtil.Smoothstep(0.56, 0.62, ph);
+        p[8] = MathUtil.Lerp(p[8], 0.9, k3);
+        p[1] = MathUtil.Lerp(p[1], 0.62, k3);
         p[0] = -0.45 * k3;
-        p[10] = MathUtil.lerp(p[10], 0.35, k3);
+        p[10] = MathUtil.Lerp(p[10], 0.35, k3);
         p[11] = -0.3 * k3;
         // 4) フォロースルーの余韻
-        var k4 = MathUtil.smoothstep(0.66, 1.0, ph);
-        p[8] = MathUtil.lerp(p[8], 0.5, k4);
-        p[1] = MathUtil.lerp(p[1], 0.45, k4);
+        var k4 = MathUtil.Smoothstep(0.66, 1.0, ph);
+        p[8] = MathUtil.Lerp(p[8], 0.5, k4);
+        p[1] = MathUtil.Lerp(p[1], 0.45, k4);
         return p;
     }
 
     // スイング。ph 0..1、ミートは SWING_HIT_PH
-    public const double SWING_HIT_PH = 0.52;
+    public const double SwingHitPh = 0.52;
 
-    static List<double> poseSwing(double ph)
+    static List<double> PoseSwing(double ph)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         p[5] = 0.9; // 顔は投手へ
         p[4] = -0.15;
         // 1) 溜め: 捕手側へ捻る
-        var k1 = MathUtil.smoothstep(0.0, 0.40, ph);
+        var k1 = MathUtil.Smoothstep(0.0, 0.40, ph);
         p[0] = -0.55 * k1;
         p[6] = -1.5 * k1;
         p[8] = -1.7 * k1;
@@ -349,25 +350,25 @@ public static class Baseball24
         p[9] = -0.4 * k1;
         p[10] = -0.35 * k1;
         // 2) 爆発: 1-2 フレームで振り抜く
-        var k2 = MathUtil.smoothstep(0.47, 0.54, ph);
-        p[0] = MathUtil.lerp(p[0], 1.55, k2);
-        p[6] = MathUtil.lerp(p[6], 0.6, k2);
-        p[8] = MathUtil.lerp(p[8], 0.6, k2);
-        p[7] = MathUtil.lerp(p[7], 0.3, k2);
-        p[9] = MathUtil.lerp(p[9], -1.1, k2);
+        var k2 = MathUtil.Smoothstep(0.47, 0.54, ph);
+        p[0] = MathUtil.Lerp(p[0], 1.55, k2);
+        p[6] = MathUtil.Lerp(p[6], 0.6, k2);
+        p[8] = MathUtil.Lerp(p[8], 0.6, k2);
+        p[7] = MathUtil.Lerp(p[7], 0.3, k2);
+        p[9] = MathUtil.Lerp(p[9], -1.1, k2);
         p[1] = 0.12 * k2;
-        p[10] = MathUtil.lerp(p[10], 0.4, k2);
+        p[10] = MathUtil.Lerp(p[10], 0.4, k2);
         p[11] = -0.5 * k2;
         // 3) フォロースルー: ウェイト破綻気味に大きく
-        var k3 = MathUtil.smoothstep(0.6, 1.0, ph);
-        p[0] = MathUtil.lerp(p[0], 1.85, k3);
-        p[4] = MathUtil.lerp(p[4], -0.3, k3);
+        var k3 = MathUtil.Smoothstep(0.6, 1.0, ph);
+        p[0] = MathUtil.Lerp(p[0], 1.85, k3);
+        p[4] = MathUtil.Lerp(p[4], -0.3, k3);
         return p;
     }
 
-    static List<double> poseReach(double t)
+    static List<double> PoseReach(double t)
     {
-        var p = zeroPose();
+        var p = ZeroPose();
         p[6] = 2.9;
         p[8] = 2.9;
         p[7] = 0.25;
@@ -376,29 +377,29 @@ public static class Baseball24
         return p;
     }
 
-    static List<double> poseThrow(double ph)
+    static List<double> PoseThrow(double ph)
     {
-        var p = zeroPose();
-        var k1 = MathUtil.smoothstep(0.0, 0.4, ph);
+        var p = ZeroPose();
+        var k1 = MathUtil.Smoothstep(0.0, 0.4, ph);
         p[8] = -2.6 * k1;
         p[0] = -0.4 * k1;
-        var k2 = MathUtil.smoothstep(0.45, 0.58, ph);
-        p[8] = MathUtil.lerp(p[8], 0.8, k2);
-        p[0] = MathUtil.lerp(p[0], 0.35, k2);
+        var k2 = MathUtil.Smoothstep(0.45, 0.58, ph);
+        p[8] = MathUtil.Lerp(p[8], 0.8, k2);
+        p[0] = MathUtil.Lerp(p[0], 0.35, k2);
         p[1] = 0.35 * k2;
         return p;
     }
 
-    static List<double> poseFor(int anim, double t, double runPhase)
+    static List<double> PoseFor(int anim, double t, double runPhase)
     {
-        if (anim == AN_READY) return poseReady(t);
-        if (anim == AN_RUN) return poseRun(runPhase);
-        if (anim == AN_WINDUP) return poseWindup(t);
-        if (anim == AN_SWING) return poseSwing(t);
-        if (anim == AN_REACH) return poseReach(t);
-        if (anim == AN_CROUCH) return poseCrouch(t);
-        if (anim == AN_THROW) return poseThrow(t);
-        return poseIdle(t);
+        if (anim == AnReady) return PoseReady(t);
+        if (anim == AnRun) return PoseRun(runPhase);
+        if (anim == AnWindup) return PoseWindup(t);
+        if (anim == AnSwing) return PoseSwing(t);
+        if (anim == AnReach) return PoseReach(t);
+        if (anim == AnCrouch) return PoseCrouch(t);
+        if (anim == AnThrow) return PoseThrow(t);
+        return PoseIdle(t);
     }
 
     // --- 静的メッシュ (Shapes) ----------------------------------------------
@@ -406,14 +407,14 @@ public static class Baseball24
     static Mesh3d? ballMesh = null;
     static Mesh3d? batMesh = null;
 
-    static void fan(List<double> dst, double cx, double cy, double cz,
+    static void Fan(List<double> dst, double cx, double cy, double cz,
         double r, double a0, double a1, int segs, List<double> col)
     {
         for (int i = 0; i < segs; i++)
         {
             var t0 = a0 + (a1 - a0) * i / segs;
             var t1 = a0 + (a1 - a0) * (i + 1) / segs;
-            Shapes.tri(dst, new List<double> { cx, cy, cz },
+            Shapes.Tri(dst, new List<double> { cx, cy, cz },
                 new List<double>
                     { cx + Math.Sin(t0) * r, cy, cz + Math.Cos(t0) * r },
                 new List<double>
@@ -422,7 +423,7 @@ public static class Baseball24
         }
     }
 
-    static void buildField()
+    static void BuildField()
     {
         var fm = fieldMesh ?? new Mesh3d("bb24_field");
         fieldMesh = fm;
@@ -441,31 +442,31 @@ public static class Baseball24
         var up = new List<double> { 0, 1, 0 };
 
         // 地面 (ファウルグラウンド込みの外周)
-        Shapes.quad(v, new List<double> { -95, 0, -20 },
+        Shapes.Quad(v, new List<double> { -95, 0, -20 },
             new List<double> { -95, 0, 95 }, new List<double> { 95, 0, 95 },
             new List<double> { 95, 0, -20 }, up, grass);
         // フェアグラウンドの扇形 (少し明るい緑)
-        fan(v, 0, 0.012, 0, FENCE_R, -Math.PI / 4, Math.PI / 4, 24, grassIn);
+        Fan(v, 0, 0.012, 0, fenceR, -Math.PI / 4, Math.PI / 4, 24, grassIn);
         // 内野ダート (ひし形)
-        Shapes.quad(v, new List<double> { 0, 0.024, -2.2 },
-            new List<double> { 24.5, 0.024, BASE_D },
+        Shapes.Quad(v, new List<double> { 0, 0.024, -2.2 },
+            new List<double> { 24.5, 0.024, baseD },
             new List<double> { 0, 0.024, 43.0 },
-            new List<double> { -24.5, 0.024, BASE_D }, up, dirt);
+            new List<double> { -24.5, 0.024, baseD }, up, dirt);
         // 内野の芝 (ダートの内側)
-        Shapes.quad(v, new List<double> { 0, 0.036, 4.2 },
-            new List<double> { 15.5, 0.036, BASE_D },
+        Shapes.Quad(v, new List<double> { 0, 0.036, 4.2 },
+            new List<double> { 15.5, 0.036, baseD },
             new List<double> { 0, 0.036, 34.6 },
-            new List<double> { -15.5, 0.036, BASE_D }, up, grassIn);
+            new List<double> { -15.5, 0.036, baseD }, up, grassIn);
         // マウンド (つぶれたドーム + ダート円)
-        fan(v, 0, 0.048, MOUND_Z, 2.9, -Math.PI, Math.PI, 16, dirt);
-        Shapes.sphere(v, 0, -2.35, MOUND_Z, 2.6, dirt, 8, 16);
+        Fan(v, 0, 0.048, moundZ, 2.9, -Math.PI, Math.PI, 16, dirt);
+        Shapes.Sphere(v, 0, -2.35, moundZ, 2.6, dirt, 8, 16);
         // 本塁と各塁
-        Shapes.box(v, 0, 0.03, 0, 0.55, 0.05, 0.55, lineW);
-        Shapes.box(v, BASE_D, 0.07, BASE_D, 0.55, 0.13, 0.55, lineW);
-        Shapes.box(v, 0, 0.07, BASE_D * 2, 0.55, 0.13, 0.55, lineW);
-        Shapes.box(v, -BASE_D, 0.07, BASE_D, 0.55, 0.13, 0.55, lineW);
+        Shapes.Box(v, 0, 0.03, 0, 0.55, 0.05, 0.55, lineW);
+        Shapes.Box(v, baseD, 0.07, baseD, 0.55, 0.13, 0.55, lineW);
+        Shapes.Box(v, 0, 0.07, baseD * 2, 0.55, 0.13, 0.55, lineW);
+        Shapes.Box(v, -baseD, 0.07, baseD, 0.55, 0.13, 0.55, lineW);
         // プレート (マウンド上)
-        Shapes.box(v, 0, 0.30, MOUND_Z, 0.61, 0.05, 0.15, lineW);
+        Shapes.Box(v, 0, 0.30, moundZ, 0.61, 0.05, 0.15, lineW);
         // ファウルライン
         var d = 0.70710678;
         foreach (var s in new List<double> { -1.0, 1.0 })
@@ -475,9 +476,9 @@ public static class Baseball24
             var half = 0.09;
             var x0 = s * 1.2 * d;
             var z0 = 1.2 * d;
-            var x1 = s * (FENCE_R - 0.6) * d;
-            var z1 = (FENCE_R - 0.6) * d;
-            Shapes.quad(v,
+            var x1 = s * (fenceR - 0.6) * d;
+            var z1 = (fenceR - 0.6) * d;
+            Shapes.Quad(v,
                 new List<double> { x0 - nx * half, 0.045, z0 - nz * half },
                 new List<double> { x1 - nx * half, 0.045, z1 - nz * half },
                 new List<double> { x1 + nx * half, 0.045, z1 + nz * half },
@@ -490,20 +491,20 @@ public static class Baseball24
         {
             var a0 = -Math.PI / 4 + Math.PI / 2 * i / segs;
             var a1 = -Math.PI / 4 + Math.PI / 2 * (i + 1) / segs;
-            var x0 = Math.Sin(a0) * FENCE_R;
-            var z0 = Math.Cos(a0) * FENCE_R;
-            var x1 = Math.Sin(a1) * FENCE_R;
-            var z1 = Math.Cos(a1) * FENCE_R;
+            var x0 = Math.Sin(a0) * fenceR;
+            var z0 = Math.Cos(a0) * fenceR;
+            var x1 = Math.Sin(a1) * fenceR;
+            var z1 = Math.Cos(a1) * fenceR;
             var am = (a0 + a1) * 0.5;
             var n = new List<double> { -Math.Sin(am), 0, -Math.Cos(am) };
-            Shapes.quad(v, new List<double> { x0, 0, z0 },
-                new List<double> { x0, FENCE_H, z0 },
-                new List<double> { x1, FENCE_H, z1 },
+            Shapes.Quad(v, new List<double> { x0, 0, z0 },
+                new List<double> { x0, fenceH, z0 },
+                new List<double> { x1, fenceH, z1 },
                 new List<double> { x1, 0, z1 }, n, wall);
-            Shapes.quad(v, new List<double> { x0, FENCE_H, z0 },
-                new List<double> { x0, FENCE_H + 0.18, z0 },
-                new List<double> { x1, FENCE_H + 0.18, z1 },
-                new List<double> { x1, FENCE_H, z1 }, n, wallTop);
+            Shapes.Quad(v, new List<double> { x0, fenceH, z0 },
+                new List<double> { x0, fenceH + 0.18, z0 },
+                new List<double> { x1, fenceH + 0.18, z1 },
+                new List<double> { x1, fenceH, z1 }, n, wallTop);
         }
         // バックストップ (本塁後方の低い壁)
         int bsegs = 10;
@@ -519,22 +520,22 @@ public static class Baseball24
             var z1 = Math.Cos(a1) * r;
             var am = (a0 + a1) * 0.5;
             var n = new List<double> { -Math.Sin(am), 0, -Math.Cos(am) };
-            Shapes.quad(v, new List<double> { x0, 0, z0 },
+            Shapes.Quad(v, new List<double> { x0, 0, z0 },
                 new List<double> { x0, 1.6, z0 },
                 new List<double> { x1, 1.6, z1 },
                 new List<double> { x1, 0, z1 }, n, bsCol);
         }
-        fm.rebuild(Shapes3d.fromInterleaved(v));
+        fm.Rebuild(Shapes3d.FromInterleaved(v));
 
         var ballVerts = new List<double>();
-        Shapes.sphere(ballVerts, 0, 0, 0, BALL_R,
+        Shapes.Sphere(ballVerts, 0, 0, 0, ballR,
             new List<double> { 0.96, 0.96, 0.94, 1.0 }, 8, 12);
-        bm.rebuild(Shapes3d.fromInterleaved(ballVerts));
+        bm.Rebuild(Shapes3d.FromInterleaved(ballVerts));
 
         var batVerts = new List<double>();
-        Shapes.box(batVerts, 0, 0, 0.44, 0.075, 0.075, 0.88,
+        Shapes.Box(batVerts, 0, 0, 0.44, 0.075, 0.075, 0.88,
             new List<double> { 0.85, 0.66, 0.40, 1.0 });
-        btm.rebuild(Shapes3d.fromInterleaved(batVerts));
+        btm.Rebuild(Shapes3d.FromInterleaved(batVerts));
     }
 
     // --- ボール ---------------------------------------------------------------
@@ -550,25 +551,25 @@ public static class Baseball24
     static bool isHomeRun = false;
 
     // 打球の 1 step (共通 integrator)。返り値: バウンドしたか
-    static bool stepBall(double dt, bool drag)
+    static bool StepBall(double dt, bool drag)
     {
         if (drag)
         {
             var sp = Math.Sqrt(bvx * bvx + bvy * bvy + bvz * bvz);
-            var f = 1.0 / (1.0 + DRAG * sp * dt);
+            var f = 1.0 / (1.0 + dragCoef * sp * dt);
             bvx *= f;
             bvy *= f;
             bvz *= f;
         }
-        bvy -= GRAV * dt;
+        bvy -= grav * dt;
         bx += bvx * dt;
         by += bvy * dt;
         bz += bvz * dt;
         var bounced = false;
         // 地面
-        if (by < BALL_R && bvy < 0)
+        if (by < ballR && bvy < 0)
         {
-            by = BALL_R;
+            by = ballR;
             if (Math.Abs(bvy) < 1.0)
             {
                 ballRolling = true;
@@ -585,7 +586,7 @@ public static class Baseball24
         }
         if (ballRolling)
         {
-            by = BALL_R;
+            by = ballR;
             bvy = 0;
             var sp = Math.Sqrt(bvx * bvx + bvz * bvz);
             if (sp > 0)
@@ -597,9 +598,9 @@ public static class Baseball24
         }
         // フェンス (フェア扇形内の円筒壁)。越えたら本塁打
         var hr = Math.Sqrt(bx * bx + bz * bz);
-        if (bz > 0 && Math.Abs(bx) < bz + 2 && hr > FENCE_R - BALL_R)
+        if (bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
         {
-            if (by > FENCE_H)
+            if (by > fenceH)
             {
                 if (!isHomeRun && ballBounces == 0)
                     isHomeRun = true;
@@ -614,8 +615,8 @@ public static class Baseball24
                 {
                     bvx -= 1.4 * vr * nx;
                     bvz -= 1.4 * vr * nz;
-                    bx = nx * (FENCE_R - BALL_R);
-                    bz = nz * (FENCE_R - BALL_R);
+                    bx = nx * (fenceR - ballR);
+                    bz = nz * (fenceR - ballR);
                     ballBounces++;
                 }
             }
@@ -624,7 +625,7 @@ public static class Baseball24
     }
 
     // 着地予測 (状態を退避してシミュレート)
-    static Landing predictLanding()
+    static Landing PredictLanding()
     {
         var sx = bx;
         var sy = by;
@@ -639,14 +640,14 @@ public static class Baseball24
         var peak = by;
         while (t < 12.0)
         {
-            stepBall(DT, true);
-            t += DT;
+            StepBall(dt, true);
+            t += dt;
             if (by > peak)
                 peak = by;
             if (ballBounces > sb || ballRolling)
                 break;
         }
-        var r = new Landing { x = bx, z = bz, t = t, peak = peak };
+        var r = new Landing { X = bx, Z = bz, T = t, Peak = peak };
         bx = sx;
         by = sy;
         bz = sz;
@@ -667,11 +668,11 @@ public static class Baseball24
     static Fielder? batter = null;
     static List<Runner>? runners = null;
 
-    static List<List<double>> fielderHomes()
+    static List<List<double>> FielderHomes()
     {
         return new List<List<double>>
         {
-            new List<double> { 0.0, MOUND_Z }, // P
+            new List<double> { 0.0, moundZ }, // P
             new List<double> { 0.0, -2.4 }, // C
             new List<double> { 21.0, 18.5 }, // 1B
             new List<double> { 11.0, 31.0 }, // 2B
@@ -683,18 +684,18 @@ public static class Baseball24
         };
     }
 
-    static List<double> basePos(int i)
+    static List<double> BasePos(int i)
     {
-        if (i == 1) return new List<double> { BASE_D, BASE_D };
-        if (i == 2) return new List<double> { 0.0, BASE_D * 2 };
-        if (i == 3) return new List<double> { -BASE_D, BASE_D };
+        if (i == 1) return new List<double> { baseD, baseD };
+        if (i == 2) return new List<double> { 0.0, baseD * 2 };
+        if (i == 3) return new List<double> { -baseD, baseD };
         return new List<double> { 0.0, 0.0 }; // 0 と 4 は本塁
     }
 
-    static void resetActors()
+    static void ResetActors()
     {
         var fs = new List<Fielder>();
-        foreach (var h in fielderHomes())
+        foreach (var h in FielderHomes())
             fs.Add(new Fielder(h[0], h[1]));
         fielders = fs;
         batter = new Fielder(-0.85, 0.0);
@@ -702,7 +703,7 @@ public static class Baseball24
     }
 
     // --- 試合状態 ---------------------------------------------------------------
-    static int state = ST_INTRO;
+    static int state = stIntro;
     static double stateT = 0.0;
     static int inning = 1;
     static int half = 0; // 0=表 (RED 攻撃) 1=裏
@@ -711,12 +712,12 @@ public static class Baseball24
     static int strikes = 0;
     static int outs = 0;
 
-    static int battingTeam()
+    static int BattingTeam()
     {
         return half == 0 ? 0 : 1;
     }
 
-    static int fieldingTeam()
+    static int FieldingTeam()
     {
         return half == 0 ? 1 : 0;
     }
@@ -733,7 +734,7 @@ public static class Baseball24
     static bool swingStarted = false;
 
     // ST_LIVE の進行
-    static int playPhase = PL_FLY;
+    static int playPhase = plFly;
     static int chaser = -1;
     static int ballHeldBy = -1; // 野手 index (-1 = フリー)
     static double liveT = 0.0;
@@ -753,50 +754,50 @@ public static class Baseball24
     static Color? eventCol = null;
     static double tAccum = 0.0;
 
-    static void showEvent(string s, Color? c)
+    static void ShowEvent(string s, Color? c)
     {
         eventText = s;
         eventT = 0.0;
-        eventCol = c ?? Color.rgb(1.0, 0.98, 0.9);
+        eventCol = c ?? Color.Rgb(1.0, 0.98, 0.9);
     }
 
-    static void setState(int s)
+    static void SetState(int s)
     {
         state = s;
         stateT = 0.0;
     }
 
     // --- 投球開始 -----------------------------------------------------------------
-    static void startPitch()
+    static void StartPitch()
     {
         var fs = fielders;
         if (fs == null)
             return;
         // 目標: ゾーン内/外を先に決めてから座標を出す
-        pitchInZone = rnd() < 0.62;
+        pitchInZone = Rnd() < 0.62;
         if (pitchInZone)
         {
-            pitchTX = rrange(-0.20, 0.20);
-            pitchTY = rrange(0.60, 1.10);
+            pitchTX = Rrange(-0.20, 0.20);
+            pitchTY = Rrange(0.60, 1.10);
         }
         else
         {
             // ゾーンの少し外
-            if (rnd() < 0.5)
+            if (Rnd() < 0.5)
             {
-                pitchTX = (rnd() < 0.5 ? -1.0 : 1.0) * rrange(0.28, 0.45);
-                pitchTY = rrange(0.45, 1.25);
+                pitchTX = (Rnd() < 0.5 ? -1.0 : 1.0) * Rrange(0.28, 0.45);
+                pitchTY = Rrange(0.45, 1.25);
             }
             else
             {
-                pitchTX = rrange(-0.35, 0.35);
-                pitchTY = rnd() < 0.5 ? rrange(0.15, 0.42) : rrange(1.28, 1.55);
+                pitchTX = Rrange(-0.35, 0.35);
+                pitchTY = Rnd() < 0.5 ? Rrange(0.15, 0.42) : Rrange(1.28, 1.55);
             }
         }
-        willSwing = rnd() < (pitchInZone ? 0.80 : 0.26);
+        willSwing = Rnd() < (pitchInZone ? 0.80 : 0.26);
         if (willSwing)
         {
-            var r = rnd();
+            var r = Rnd();
             if (r < 0.24)
                 swingOutcome = 0;
             else if (r < 0.58)
@@ -804,38 +805,38 @@ public static class Baseball24
             else
             {
                 swingOutcome = 2;
-                exitSpeed = 23.0 + 23.0 * Math.Pow(rnd(), 0.7);
-                exitLaunch = rrange(-6.0, 42.0);
-                exitSpray = rrange(-38.0, 38.0);
+                exitSpeed = 23.0 + 23.0 * Math.Pow(Rnd(), 0.7);
+                exitLaunch = Rrange(-6.0, 42.0);
+                exitSpray = Rrange(-38.0, 38.0);
             }
         }
         swingStarted = false;
-        setState(ST_WINDUP);
-        fs[0].anim = AN_WINDUP;
-        fs[0].animT = 0;
+        SetState(stWindup);
+        fs[0].Anim = AnWindup;
+        fs[0].AnimT = 0;
     }
 
     // リリース: ボールに初速を与える (重力補償で目標へ届ける)
-    static void releaseBall()
+    static void ReleaseBall()
     {
         bx = 0.35;
         by = 1.9;
-        bz = MOUND_Z - 0.55;
-        var speed = rrange(31.0, 40.0);
+        bz = moundZ - 0.55;
+        var speed = Rrange(31.0, 40.0);
         var dz = 0.42 - bz;
         var t = Math.Abs(dz) / speed;
         bvx = (pitchTX - bx) / t;
-        bvy = (pitchTY - by) / t + 0.5 * GRAV * t;
+        bvy = (pitchTY - by) / t + 0.5 * grav * t;
         bvz = dz / t;
         ballVisible = true;
         ballBounces = 0;
         ballRolling = false;
         isHomeRun = false;
-        setState(ST_PITCH);
+        SetState(stPitch);
     }
 
     // --- 打撃結果の解決 -------------------------------------------------------------
-    static void resolveContact()
+    static void ResolveContact()
     {
         var fs = fielders;
         var b = batter;
@@ -848,22 +849,22 @@ public static class Baseball24
             if (willSwing)
             {
                 strikes++;
-                showEvent("SWING & MISS", null);
+                ShowEvent("SWING & MISS", null);
             }
             else if (pitchInZone)
             {
                 strikes++;
-                showEvent("STRIKE", null);
+                ShowEvent("STRIKE", null);
             }
             else
             {
                 balls++;
-                showEvent("BALL", null);
+                ShowEvent("BALL", null);
             }
-            fs[1].anim = AN_REACH;
-            fs[1].animT = 0;
+            fs[1].Anim = AnReach;
+            fs[1].AnimT = 0;
             ballVisible = false;
-            afterCall();
+            AfterCall();
             return;
         }
         // バットに当たった。ヒットストップ + 画面振動
@@ -875,12 +876,12 @@ public static class Baseball24
         if (swingOutcome == 1)
         {
             // ファウル: 打球はラインの外か後方へ
-            speed = rrange(16.0, 34.0);
-            launch = rrange(15.0, 70.0);
-            spray = (rnd() < 0.5 ? -1.0 : 1.0) * rrange(50.0, 130.0);
+            speed = Rrange(16.0, 34.0);
+            launch = Rrange(15.0, 70.0);
+            spray = (Rnd() < 0.5 ? -1.0 : 1.0) * Rrange(50.0, 130.0);
         }
-        var la = MathUtil.radians(launch);
-        var sa = MathUtil.radians(spray);
+        var la = MathUtil.Radians(launch);
+        var sa = MathUtil.Radians(spray);
         bx = 0.0;
         by = 1.0;
         bz = 0.35;
@@ -890,29 +891,29 @@ public static class Baseball24
         ballBounces = 0;
         ballRolling = false;
         isHomeRun = false;
-        var land = predictLanding();
+        var land = PredictLanding();
         landing = land;
         liveT = 0.0;
         ballHeldBy = -1;
         if (swingOutcome == 1)
         {
-            playPhase = PL_FOUL;
-            setState(ST_LIVE);
+            playPhase = plFoul;
+            SetState(stLive);
             return;
         }
         // 打者走者スタート
-        var br = new Runner(b.x, b.z, 0, 1);
+        var br = new Runner(b.X, b.Z, 0, 1);
         batterRunner = br;
         rns.Add(br);
-        b.anim = AN_SWING; // 走り出しはスイングの続きから
+        b.Anim = AnSwing; // 走り出しはスイングの続きから
         // 最寄りの野手が追う
-        chaser = nearestFielder(land.x, land.z);
-        playPhase = PL_FLY;
+        chaser = NearestFielder(land.X, land.Z);
+        playPhase = plFly;
         camCut = true;
-        setState(ST_LIVE);
+        SetState(stLive);
     }
 
-    static int nearestFielder(double x, double z)
+    static int NearestFielder(double x, double z)
     {
         var fs = fielders;
         if (fs == null)
@@ -923,7 +924,7 @@ public static class Baseball24
         for (int i = 2; i < 9; i++)
         {
             var f = fs[i];
-            var d = (f.x - x) * (f.x - x) + (f.z - z) * (f.z - z);
+            var d = (f.X - x) * (f.X - x) + (f.Z - z) * (f.Z - z);
             if (d < bd)
             {
                 bd = d;
@@ -934,32 +935,32 @@ public static class Baseball24
     }
 
     // 打席の結果が確定 (カウント系)。四球/三振/次打者を処理
-    static void afterCall()
+    static void AfterCall()
     {
-        setState(ST_CALL);
+        SetState(stCall);
         var b = batter;
         var rns = runners;
         if (b == null || rns == null)
             return;
         if (strikes >= 3)
         {
-            showEvent("STRIKE OUT!", Color.rgb(1.0, 0.5, 0.3));
+            ShowEvent("STRIKE OUT!", Color.Rgb(1.0, 0.5, 0.3));
             outs++;
             newBatterPending = true;
         }
         else if (balls >= 4)
         {
-            showEvent("WALK", Color.rgb(0.5, 0.9, 1.0));
+            ShowEvent("WALK", Color.Rgb(0.5, 0.9, 1.0));
             // 押し出し: 1塁から連続で埋まっている走者だけ 1 つ進む
             var occ = new Dictionary<int, Runner>();
             foreach (var r in rns)
-                occ[r.to] = r;
+                occ[r.To] = r;
             int free = 1;
             while (occ.ContainsKey(free))
                 free++;
             for (int bs = 1; bs < free; bs++)
-                occ[bs].to = bs + 1;
-            rns.Add(new Runner(b.x, b.z, 0, 1));
+                occ[bs].To = bs + 1;
+            rns.Add(new Runner(b.X, b.Z, 0, 1));
             newBatterPending = true;
         }
     }
@@ -967,155 +968,155 @@ public static class Baseball24
     static bool newBatterPending = false;
 
     // --- 野手 AI (ST_LIVE) ------------------------------------------------------------
-    static bool moveTowards(Fielder f, double tx, double tz, double dt,
+    static bool MoveTowards(Fielder f, double tx, double tz, double dt,
         double spd)
     {
-        var dx = tx - f.x;
-        var dz = tz - f.z;
+        var dx = tx - f.X;
+        var dz = tz - f.Z;
         var d = Math.Sqrt(dx * dx + dz * dz);
         if (d < 0.15)
         {
-            if (f.anim == AN_RUN)
-                f.anim = AN_READY;
+            if (f.Anim == AnRun)
+                f.Anim = AnReady;
             return true;
         }
         var mv = Math.Min(d, spd * dt);
-        f.x += dx / d * mv;
-        f.z += dz / d * mv;
-        f.yaw = Math.Atan2(dx, dz);
-        f.anim = AN_RUN;
-        f.runPhase += dt * 11.0;
+        f.X += dx / d * mv;
+        f.Z += dz / d * mv;
+        f.Yaw = Math.Atan2(dx, dz);
+        f.Anim = AnRun;
+        f.RunPhase += dt * 11.0;
         return false;
     }
 
-    static void updateLive(double dt)
+    static void UpdateLive(double dt)
     {
         var fs = fielders;
         var rns = runners;
         if (fs == null || rns == null)
             return;
         liveT += dt;
-        stepBall(dt, true);
+        StepBall(dt, true);
 
-        if (playPhase == PL_FOUL)
+        if (playPhase == plFoul)
         {
             if (liveT > 1.25)
             {
                 if (strikes < 2)
                     strikes++;
-                showEvent("FOUL", null);
+                ShowEvent("FOUL", null);
                 ballVisible = false;
                 var brf = batterRunner;
                 if (brf != null)
                     rns.Remove(brf);
                 batterRunner = null;
-                afterCall();
+                AfterCall();
             }
             return;
         }
 
-        if (isHomeRun && playPhase == PL_FLY)
+        if (isHomeRun && playPhase == plFly)
         {
-            showEvent("HOME RUN!", Color.rgb(1.0, 0.85, 0.25));
+            ShowEvent("HOME RUN!", Color.Rgb(1.0, 0.85, 0.25));
             shakeAmp = 0.35;
             foreach (var r in rns)
-                r.to = 4;
-            playPhase = PL_SETTLE;
+                r.To = 4;
+            playPhase = plSettle;
         }
 
         // 走者更新
-        updateRunners(dt, 1.0);
+        UpdateRunners(dt, 1.0);
 
         // 野手: 追走者は打球へ、一塁手はベースカバー、他は定位置へ
         for (int i = 0; i < 9; i++)
         {
             var f = fs[i];
-            if (state != ST_LIVE)
+            if (state != stLive)
                 break;
-            if (i == chaser && ballHeldBy < 0 && playPhase != PL_SETTLE)
+            if (i == chaser && ballHeldBy < 0 && playPhase != plSettle)
             {
                 // 落下点 (フライ) or 転がるボールの少し先 (ゴロ)
                 var land = landing;
                 var flying = ballBounces == 0 && !ballRolling;
-                var tx = flying && land != null ? land.x : bx + bvx * 0.35;
-                var tz = flying && land != null ? land.z : bz + bvz * 0.35;
-                var arrived = moveTowards(f, tx, tz, dt, RUN_SPD);
-                var dx = f.x - bx;
-                var dz = f.z - bz;
+                var tx = flying && land != null ? land.X : bx + bvx * 0.35;
+                var tz = flying && land != null ? land.Z : bz + bvz * 0.35;
+                var arrived = MoveTowards(f, tx, tz, dt, runSpd);
+                var dx = f.X - bx;
+                var dz = f.Z - bz;
                 var dist = Math.Sqrt(dx * dx + dz * dz);
-                if (flying && by < 2.6 && bvy < 0 && dist < CATCH_R)
+                if (flying && by < 2.6 && bvy < 0 && dist < catchR)
                 {
                     // ノーバウンド捕球 → アウト
-                    fielderCaught(i, true);
+                    FielderCaught(i, true);
                 }
                 else if ((ballBounces > 0 || ballRolling)
-                    && dist < CATCH_R * 0.8 && by < 1.2)
+                    && dist < catchR * 0.8 && by < 1.2)
                 {
-                    fielderCaught(i, false);
+                    FielderCaught(i, false);
                 }
                 else if (arrived && (ballBounces > 0 || ballRolling))
                 {
-                    f.anim = AN_READY;
+                    f.Anim = AnReady;
                 }
             }
-            else if (i == 2 && playPhase != PL_SETTLE && batterRunner != null)
+            else if (i == 2 && playPhase != plSettle && batterRunner != null)
             {
                 // 一塁手はベースへ (自分が追走者でなければ)
                 if (i != chaser)
-                    moveTowards(f, BASE_D - 0.4, BASE_D - 0.4, dt, RUN_SPD);
+                    MoveTowards(f, baseD - 0.4, baseD - 0.4, dt, runSpd);
             }
             else if (i != chaser)
             {
-                moveTowards(f, f.homeX, f.homeZ, dt, RUN_SPD * 0.8);
+                MoveTowards(f, f.HomeX, f.HomeZ, dt, runSpd * 0.8);
             }
         }
 
         // 一塁送球の到達判定
-        if (playPhase == PL_THROW1B)
+        if (playPhase == plThrow1b)
         {
             throwT += dt;
             var k = Math.Min(1.0, throwT / throwDur);
             // 送球は放物線 (見た目用に手計算)
-            bx = MathUtil.lerp(throwFromX, BASE_D, k);
-            bz = MathUtil.lerp(throwFromZ, BASE_D, k);
-            by = MathUtil.lerp(throwFromY, 1.2, k) + Math.Sin(k * Math.PI) * 1.4;
+            bx = MathUtil.Lerp(throwFromX, baseD, k);
+            bz = MathUtil.Lerp(throwFromZ, baseD, k);
+            by = MathUtil.Lerp(throwFromY, 1.2, k) + Math.Sin(k * Math.PI) * 1.4;
             if (k >= 1.0)
             {
                 // 封殺 or セーフ: 走者の進塁具合と競争
                 var br = batterRunner;
-                if (br != null && br.atBase < 1)
+                if (br != null && br.AtBase < 1)
                 {
                     outs++;
-                    showEvent("OUT!", Color.rgb(1.0, 0.5, 0.3));
+                    ShowEvent("OUT!", Color.Rgb(1.0, 0.5, 0.3));
                     rns.Remove(br);
                     // 他の走者は 1 つ進む
                     foreach (var r in rns)
-                        if (r.to < 3)
-                            r.to++;
+                        if (r.To < 3)
+                            r.To++;
                 }
                 else
                 {
-                    showEvent("SAFE!", Color.rgb(0.5, 1.0, 0.6));
+                    ShowEvent("SAFE!", Color.Rgb(0.5, 1.0, 0.6));
                 }
                 batterRunner = null;
                 ballHeldBy = 2;
                 ballVisible = false;
-                playPhase = PL_SETTLE;
+                playPhase = plSettle;
             }
         }
 
         // 決着: 走者が全員目標に着いたら打席交代
-        if (playPhase == PL_SETTLE)
+        if (playPhase == plSettle)
         {
             var settled = true;
             foreach (var r in rns)
-                if (r.atBase < r.to)
+                if (r.AtBase < r.To)
                     settled = false;
             if (settled && liveT > 1.0)
             {
                 ballVisible = false;
                 newBatterPending = true;
-                setState(ST_CALL);
+                SetState(stCall);
             }
         }
         // 保険: 異常に長引いたら打ち切り
@@ -1123,12 +1124,12 @@ public static class Baseball24
         {
             ballVisible = false;
             newBatterPending = true;
-            setState(ST_CALL);
+            SetState(stCall);
         }
     }
 
     // 捕球した。fly=ノーバウンド (アウト)
-    static void fielderCaught(int i, bool fly)
+    static void FielderCaught(int i, bool fly)
     {
         var fs = fielders;
         var rns = runners;
@@ -1136,36 +1137,36 @@ public static class Baseball24
             return;
         ballHeldBy = i;
         var f = fs[i];
-        f.anim = fly ? AN_REACH : AN_READY;
-        f.animT = 0;
+        f.Anim = fly ? AnReach : AnReady;
+        f.AnimT = 0;
         if (fly)
         {
             outs++;
-            showEvent("CAUGHT!", Color.rgb(1.0, 0.6, 0.3));
+            ShowEvent("CAUGHT!", Color.Rgb(1.0, 0.6, 0.3));
             // 打者アウト。走者は帰塁 (簡略: その場から戻る)
             var br = batterRunner;
             if (br != null)
                 rns.Remove(br);
             batterRunner = null;
             foreach (var r in rns)
-                r.to = r.atBase;
+                r.To = r.AtBase;
             ballVisible = false;
-            playPhase = PL_SETTLE;
+            playPhase = plSettle;
             return;
         }
         // ゴロ/落ちたフライ: 一塁封殺が間に合いそうなら送球、無理ならヒット確定
-        var gatherDist = Math.Sqrt(f.x * f.x + f.z * f.z);
+        var gatherDist = Math.Sqrt(f.X * f.X + f.Z * f.Z);
         var brg = batterRunner;
-        if (brg != null && brg.atBase < 1 && gatherDist < 34)
+        if (brg != null && brg.AtBase < 1 && gatherDist < 34)
         {
-            f.anim = AN_THROW;
-            f.animT = 0;
-            playPhase = PL_THROW1B;
+            f.Anim = AnThrow;
+            f.AnimT = 0;
+            playPhase = plThrow1b;
             throwFromX = bx;
             throwFromY = Math.Max(by, 1.3);
             throwFromZ = bz;
-            var d = Math.Sqrt((BASE_D - bx) * (BASE_D - bx)
-                + (BASE_D - bz) * (BASE_D - bz));
+            var d = Math.Sqrt((baseD - bx) * (baseD - bx)
+                + (baseD - bz) * (baseD - bz));
             throwDur = Math.Max(0.25, d / 30.0);
             throwT = 0.0;
             return;
@@ -1176,16 +1177,16 @@ public static class Baseball24
             bases = 2;
         if (gatherDist > 72 && liveT > 5.5)
             bases = 3;
-        showEvent(bases == 1 ? "HIT!" : bases == 2 ? "DOUBLE!" : "TRIPLE!",
-            Color.rgb(0.55, 1.0, 0.6));
+        ShowEvent(bases == 1 ? "HIT!" : bases == 2 ? "DOUBLE!" : "TRIPLE!",
+            Color.Rgb(0.55, 1.0, 0.6));
         foreach (var r in rns)
-            r.to = r == batterRunner ? bases : Math.Min(4, r.atBase + bases);
+            r.To = r == batterRunner ? bases : Math.Min(4, r.AtBase + bases);
         batterRunner = null;
         ballVisible = false;
-        playPhase = PL_SETTLE;
+        playPhase = plSettle;
     }
 
-    static void updateRunners(double dt, double spdScale)
+    static void UpdateRunners(double dt, double spdScale)
     {
         var rns = runners;
         if (rns == null)
@@ -1194,60 +1195,60 @@ public static class Baseball24
         while (i >= 0)
         {
             var r = rns[i];
-            if (r.atBase < r.to)
+            if (r.AtBase < r.To)
             {
-                int nextBase = r.atBase + 1;
-                var np = basePos(nextBase == 4 ? 0 : nextBase);
-                var dx = np[0] - r.x;
-                var dz = np[1] - r.z;
+                int nextBase = r.AtBase + 1;
+                var np = BasePos(nextBase == 4 ? 0 : nextBase);
+                var dx = np[0] - r.X;
+                var dz = np[1] - r.Z;
                 var d = Math.Sqrt(dx * dx + dz * dz);
-                var mv = RUN_SPD * spdScale * dt;
+                var mv = runSpd * spdScale * dt;
                 if (d <= mv)
                 {
-                    r.x = np[0];
-                    r.z = np[1];
-                    r.atBase = nextBase;
+                    r.X = np[0];
+                    r.Z = np[1];
+                    r.AtBase = nextBase;
                     if (nextBase >= 4)
                     {
-                        score[battingTeam()] = score[battingTeam()] + 1;
-                        showEvent("RUN SCORED!", Color.rgb(1.0, 0.9, 0.4));
+                        score[BattingTeam()] = score[BattingTeam()] + 1;
+                        ShowEvent("RUN SCORED!", Color.Rgb(1.0, 0.9, 0.4));
                         rns.RemoveAt(i);
                     }
                 }
                 else
                 {
-                    r.x += dx / d * mv;
-                    r.z += dz / d * mv;
+                    r.X += dx / d * mv;
+                    r.Z += dz / d * mv;
                 }
-                r.runPhase += dt * 11.0;
+                r.RunPhase += dt * 11.0;
             }
-            else if (r.atBase > r.to)
+            else if (r.AtBase > r.To)
             {
                 // 帰塁
-                var np = basePos(r.to);
-                var dx = np[0] - r.x;
-                var dz = np[1] - r.z;
+                var np = BasePos(r.To);
+                var dx = np[0] - r.X;
+                var dz = np[1] - r.Z;
                 var d = Math.Sqrt(dx * dx + dz * dz);
-                var mv = RUN_SPD * dt;
+                var mv = runSpd * dt;
                 if (d <= mv)
                 {
-                    r.x = np[0];
-                    r.z = np[1];
-                    r.atBase = r.to;
+                    r.X = np[0];
+                    r.Z = np[1];
+                    r.AtBase = r.To;
                 }
                 else
                 {
-                    r.x += dx / d * mv;
-                    r.z += dz / d * mv;
+                    r.X += dx / d * mv;
+                    r.Z += dz / d * mv;
                 }
-                r.runPhase += dt * 11.0;
+                r.RunPhase += dt * 11.0;
             }
             i--;
         }
     }
 
     // --- state machine 本体 ----------------------------------------------------------
-    static void updateGame(double dt)
+    static void UpdateGame(double dt)
     {
         stateT += dt;
         eventT += dt;
@@ -1256,29 +1257,29 @@ public static class Baseball24
         var b = batter;
         if (fs == null || rns == null || b == null)
             return;
-        if (state == ST_INTRO)
+        if (state == stIntro)
         {
             if (stateT > 1.8)
             {
-                showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
-                setState(ST_PREPITCH);
+                ShowEvent("PLAY BALL!", Color.Rgb(1.0, 0.95, 0.5));
+                SetState(stPrepitch);
             }
         }
-        else if (state == ST_PREPITCH)
+        else if (state == stPrepitch)
         {
             // 全員が定位置に戻るのを待つ (テンポ優先で上限 1.4s)
             for (int i = 0; i < 9; i++)
             {
                 var f = fs[i];
                 if (i != 1)
-                    moveTowards(f, f.homeX, f.homeZ, dt, RUN_SPD * 0.8);
+                    MoveTowards(f, f.HomeX, f.HomeZ, dt, runSpd * 0.8);
             }
-            updateRunners(dt, 1.0);
+            UpdateRunners(dt, 1.0);
             if (newBatterPending)
             {
-                b.x = -0.85;
-                b.z = 0.0;
-                b.anim = AN_IDLE;
+                b.X = -0.85;
+                b.Z = 0.0;
+                b.Anim = AnIdle;
                 balls = 0;
                 strikes = 0;
                 newBatterPending = false;
@@ -1286,74 +1287,74 @@ public static class Baseball24
             // 走者が塁に着くまでは投げない (四球の押し出し等)。上限つき
             var settled = true;
             foreach (var r in rns)
-                if (r.atBase != r.to)
+                if (r.AtBase != r.To)
                     settled = false;
             if (stateT > 1.05 && (settled || stateT > 6.0))
             {
                 if (outs >= 3)
                 {
-                    setState(ST_CHANGE);
-                    showEvent("CHANGE", Color.rgb(0.9, 0.9, 0.95));
+                    SetState(stChange);
+                    ShowEvent("CHANGE", Color.Rgb(0.9, 0.9, 0.95));
                 }
                 else
                 {
-                    startPitch();
+                    StartPitch();
                 }
             }
         }
-        else if (state == ST_WINDUP)
+        else if (state == stWindup)
         {
-            fs[0].animT += dt / 1.1;
-            if (fs[0].animT >= REL_PH)
-                releaseBall();
+            fs[0].AnimT += dt / 1.1;
+            if (fs[0].AnimT >= RelPh)
+                ReleaseBall();
         }
-        else if (state == ST_PITCH)
+        else if (state == stPitch)
         {
-            fs[0].animT = Math.Min(1.0, fs[0].animT + dt / 1.1);
+            fs[0].AnimT = Math.Min(1.0, fs[0].AnimT + dt / 1.1);
             // 投球は無抵抗の放物線 (短距離なので誤差は無視できる)
-            bvy -= GRAV * dt;
+            bvy -= grav * dt;
             bx += bvx * dt;
             by += bvy * dt;
             bz += bvz * dt;
             // スイング開始タイミング (ミートの瞬間に SWING_HIT_PH が来るよう逆算)
             var tToPlate = bvz != 0 ? (0.42 - bz) / bvz : 0.0;
-            if (willSwing && !swingStarted && tToPlate < SWING_HIT_PH * 0.55)
+            if (willSwing && !swingStarted && tToPlate < SwingHitPh * 0.55)
             {
-                b.anim = AN_SWING;
-                b.animT = 0;
+                b.Anim = AnSwing;
+                b.AnimT = 0;
                 swingStarted = true;
             }
-            if (b.anim == AN_SWING)
-                b.animT = Math.Min(1.0, b.animT + dt / 0.55);
+            if (b.Anim == AnSwing)
+                b.AnimT = Math.Min(1.0, b.AnimT + dt / 0.55);
             if (bz <= 0.42)
-                resolveContact();
+                ResolveContact();
         }
-        else if (state == ST_LIVE)
+        else if (state == stLive)
         {
-            if (b.anim == AN_SWING)
+            if (b.Anim == AnSwing)
             {
-                b.animT = Math.Min(1.0, b.animT + dt / 0.55);
-                if (b.animT >= 1.0)
-                    b.anim = AN_IDLE;
+                b.AnimT = Math.Min(1.0, b.AnimT + dt / 0.55);
+                if (b.AnimT >= 1.0)
+                    b.Anim = AnIdle;
             }
             foreach (var f in fs)
-                if (f.anim == AN_THROW || f.anim == AN_REACH)
-                    f.animT = Math.Min(1.0, f.animT + dt / 0.45);
-            updateLive(dt);
+                if (f.Anim == AnThrow || f.Anim == AnReach)
+                    f.AnimT = Math.Min(1.0, f.AnimT + dt / 0.45);
+            UpdateLive(dt);
         }
-        else if (state == ST_CALL)
+        else if (state == stCall)
         {
-            if (b.anim == AN_SWING)
+            if (b.Anim == AnSwing)
             {
-                b.animT = Math.Min(1.0, b.animT + dt / 0.55);
-                if (b.animT >= 1.0)
-                    b.anim = AN_IDLE;
+                b.AnimT = Math.Min(1.0, b.AnimT + dt / 0.55);
+                if (b.AnimT >= 1.0)
+                    b.Anim = AnIdle;
             }
-            updateRunners(dt, 1.0);
+            UpdateRunners(dt, 1.0);
             if (stateT > 0.95)
-                setState(ST_PREPITCH);
+                SetState(stPrepitch);
         }
-        else if (state == ST_CHANGE)
+        else if (state == stChange)
         {
             if (stateT > 1.8)
             {
@@ -1374,25 +1375,25 @@ public static class Baseball24
                 var over = (inning > 3 && score[0] != score[1]) || inning > 5;
                 if (over)
                 {
-                    setState(ST_END);
+                    SetState(stEnd);
                     if (score[0] == score[1])
-                        showEvent("DRAW", Color.rgb(0.9, 0.9, 0.95));
+                        ShowEvent("DRAW", Color.Rgb(0.9, 0.9, 0.95));
                     else
                     {
                         var w = score[0] > score[1] ? 0 : 1;
-                        showEvent("GAME SET  " + teamName[w] + " WINS!",
-                            Color.rgb(1.0, 0.9, 0.4));
+                        ShowEvent("GAME SET  " + teamName[w] + " WINS!",
+                            Color.Rgb(1.0, 0.9, 0.4));
                     }
                 }
                 else
                 {
-                    resetActors();
+                    ResetActors();
                     newBatterPending = true;
-                    setState(ST_PREPITCH);
+                    SetState(stPrepitch);
                 }
             }
         }
-        else if (state == ST_END)
+        else if (state == stEnd)
         {
             if (stateT > 5.0)
             {
@@ -1403,10 +1404,10 @@ public static class Baseball24
                 outs = 0;
                 balls = 0;
                 strikes = 0;
-                resetActors();
+                ResetActors();
                 newBatterPending = true;
-                showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
-                setState(ST_PREPITCH);
+                ShowEvent("PLAY BALL!", Color.Rgb(1.0, 0.95, 0.5));
+                SetState(stPrepitch);
             }
         }
     }
@@ -1417,7 +1418,7 @@ public static class Baseball24
     static double camFov = 34.0;
     static bool camCut = false;
 
-    static void updateCamera(double dt)
+    static void UpdateCamera(double dt)
     {
         var eye = camEye;
         var tgt = camTarget;
@@ -1426,10 +1427,10 @@ public static class Baseball24
         var de = new Vec3(4.6, 3.1, 29.0); // センター後方の中継カメラ
         var dtg = new Vec3(-0.3, 1.1, 1.2);
         var dfov = 30.0;
-        if (state == ST_LIVE && playPhase != PL_FOUL)
+        if (state == stLive && playPhase != plFoul)
         {
             var land = landing;
-            if (land != null && (land.peak > 7.0 || isHomeRun)
+            if (land != null && (land.Peak > 7.0 || isHomeRun)
                 && (ballBounces == 0 && !ballRolling || isHomeRun))
             {
                 // フライ追従: 打球の後方上空から
@@ -1450,7 +1451,7 @@ public static class Baseball24
                 dfov = 50.0;
             }
         }
-        else if (state == ST_INTRO || state == ST_CHANGE || state == ST_END)
+        else if (state == stIntro || state == stChange || state == stEnd)
         {
             var a = tAccum * 0.12;
             de = new Vec3(Math.Sin(a) * 46.0, 17.0, 24.0 + Math.Cos(a) * 30.0);
@@ -1459,15 +1460,15 @@ public static class Baseball24
         }
         var k = camCut ? 1.0 : Math.Min(1.0, 7.0 * dt);
         camCut = false;
-        eye = eye.lerp(de, k);
-        tgt = tgt.lerp(dtg, k);
-        camFov = MathUtil.lerp(camFov, dfov, k);
+        eye = eye.Lerp(de, k);
+        tgt = tgt.Lerp(dtg, k);
+        camFov = MathUtil.Lerp(camFov, dfov, k);
         // 画面振動 (ヒットの手応え)。減衰付きで eye だけ揺らす
         if (shakeAmp > 0.003)
         {
             var s = shakeAmp;
-            eye = new Vec3(eye.x + Math.Sin(tAccum * 71.0) * s * 0.25,
-                eye.y + Math.Sin(tAccum * 93.0 + 1.7) * s * 0.2, eye.z);
+            eye = new Vec3(eye.X + Math.Sin(tAccum * 71.0) * s * 0.25,
+                eye.Y + Math.Sin(tAccum * 93.0 + 1.7) * s * 0.2, eye.Z);
             shakeAmp *= Math.Pow(0.001, dt); // ~0.7s で収束
         }
         camEye = eye;
@@ -1480,37 +1481,37 @@ public static class Baseball24
 
     static Renderer3d? ren = null;
 
-    static void drawChar(double x, double z, double yaw, int team,
+    static void DrawChar(double x, double z, double yaw, int team,
         List<double> pose)
     {
         var renNow = ren;
         var cm = charMesh;
         if (renNow == null || cm == null)
             return;
-        var model = Mat4.translate(new Vec3(x, 0, z)) * Mat4.rotateY(yaw);
-        renNow.draw(cm[team], model, new Draw3dOpts { bones = packBones(pose) });
+        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(yaw);
+        renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackBones(pose) });
     }
 
     // バット。スイング位相から向きを決める (打者ローカル)
-    static Mat4 batMatrix(double ph)
+    static Mat4 BatMatrix(double ph)
     {
         // 溜め → 一気に振り抜き → フォロー (rotateX は +θ で +Z が下向きに回る)
         var ang = -2.35; // 構え: 後方上
         var tilt = 1.05;
-        var k2 = MathUtil.smoothstep(0.47, 0.56, ph);
-        ang = MathUtil.lerp(ang, 1.15, k2);
-        tilt = MathUtil.lerp(tilt, -0.05, k2);
-        var k3 = MathUtil.smoothstep(0.6, 1.0, ph);
-        ang = MathUtil.lerp(ang, 1.9, k3);
-        tilt = MathUtil.lerp(tilt, 0.45, k3);
+        var k2 = MathUtil.Smoothstep(0.47, 0.56, ph);
+        ang = MathUtil.Lerp(ang, 1.15, k2);
+        tilt = MathUtil.Lerp(tilt, -0.05, k2);
+        var k3 = MathUtil.Smoothstep(0.6, 1.0, ph);
+        ang = MathUtil.Lerp(ang, 1.9, k3);
+        tilt = MathUtil.Lerp(tilt, 0.45, k3);
         // Haxe 版の変数名 local は Lua キーワードで emit が不正になるため改名
-        var batLocal = Mat4.translate(new Vec3(-0.12, 1.45, -0.15))
-            * (Mat4.rotateY(ang) * Mat4.rotateX(tilt));
+        var batLocal = Mat4.Translate(new Vec3(-0.12, 1.45, -0.15))
+            * (Mat4.RotateY(ang) * Mat4.RotateX(tilt));
         var b = batter;
-        var px = b != null ? b.x : 0.0;
-        var pz = b != null ? b.z : 0.0;
-        return Mat4.translate(new Vec3(px, 0, pz))
-            * (Mat4.rotateY(Math.PI / 2) * batLocal);
+        var px = b != null ? b.X : 0.0;
+        var pz = b != null ? b.Z : 0.0;
+        return Mat4.Translate(new Vec3(px, 0, pz))
+            * (Mat4.RotateY(Math.PI / 2) * batLocal);
     }
 
     // --- HUD ------------------------------------------------------------------------
@@ -1518,9 +1519,9 @@ public static class Baseball24
     static int fontVersion = 0;
     static MeshText? mtext = null;
 
-    static bool ensureText()
+    static bool EnsureText()
     {
-        Io.load_text("samples/24_baseball/data/MPLUS1p-subset.ttf",
+        Io.LoadText("samples/24_baseball/data/MPLUS1p-subset.ttf",
             out var text, out var version, out _, out _);
         if (text == null)
             return false;
@@ -1528,38 +1529,38 @@ public static class Baseball24
         {
             ttf = text;
             fontVersion = version;
-            mtext = new MeshText("bb24_text", text, version, W, H);
+            mtext = new MeshText("bb24_text", text, version, w, h);
         }
         return mtext != null;
     }
 
-    static void drawHud()
+    static void DrawHud()
     {
-        if (!ensureText())
+        if (!EnsureText())
             return;
         var mt = mtext;
         if (mt == null)
             return;
-        var cream = Color.rgb(0.97, 0.96, 0.9);
-        var red = Color.rgb(1.0, 0.5, 0.45);
-        var blue = Color.rgb(0.55, 0.7, 1.0);
+        var cream = Color.Rgb(0.97, 0.96, 0.9);
+        var red = Color.Rgb(1.0, 0.5, 0.45);
+        var blue = Color.Rgb(0.55, 0.7, 1.0);
         // スコア (チーム名は各チーム色)
         var sL = teamName[0] + " ";
         var sM = score[0] + " - " + score[1];
         var sR = " " + teamName[1];
         var size = 26.0;
-        var total = mt.width(sL, size) + mt.width(sM, size)
-            + mt.width(sR, size);
-        var x = W * 0.5 - total * 0.5;
-        mt.text(sL, x, 38, size, red);
-        mt.text(sM, x + mt.width(sL, size), 38, size, cream);
-        mt.text(sR, x + mt.width(sL, size) + mt.width(sM, size), 38, size,
+        var total = mt.Width(sL, size) + mt.Width(sM, size)
+            + mt.Width(sR, size);
+        var x = w * 0.5 - total * 0.5;
+        mt.Text(sL, x, 38, size, red);
+        mt.Text(sM, x + mt.Width(sL, size), 38, size, cream);
+        mt.Text(sR, x + mt.Width(sL, size) + mt.Width(sM, size), 38, size,
             blue);
         // イニングとカウント
         var halfMark = half == 0 ? "TOP" : "BOT";
-        mt.textCentered("INN " + inning + " " + halfMark + "   B" + balls
-            + " S" + strikes + " O" + outs, W * 0.5, 64, 15,
-            Color.rgb(0.85, 0.87, 0.9));
+        mt.TextCentered("INN " + inning + " " + halfMark + "   B" + balls
+            + " S" + strikes + " O" + outs, w * 0.5, 64, 15,
+            Color.Rgb(0.85, 0.87, 0.9));
         // イベントテキスト (出現時にスケールが弾む)
         if (eventText != "" && eventT < 1.6)
         {
@@ -1568,42 +1569,42 @@ public static class Baseball24
                 return;
             var pop = 1.0 + 0.6 * Math.Exp(-eventT * 9.0);
             var a = eventT > 1.25 ? 1.0 - (eventT - 1.25) / 0.35 : 1.0;
-            var c = Color.rgb(ec.r, ec.g, ec.b, a);
-            mt.textCentered(eventText, W * 0.5, 190, 52 * pop, c);
+            var c = Color.Rgb(ec.R, ec.G, ec.B, a);
+            mt.TextCentered(eventText, w * 0.5, 190, 52 * pop, c);
         }
     }
 
-    static void simulateTick()
+    static void SimulateTick()
     {
-        tAccum += DT;
+        tAccum += dt;
         // ヒットストップ: その間シミュレーションだけ止める
         if (hitstopT > 0)
         {
-            hitstopT -= DT;
+            hitstopT -= dt;
         }
         else
         {
-            updateGame(DT);
+            UpdateGame(dt);
         }
-        updateCamera(DT);
+        UpdateCamera(dt);
 
         var fs = fielders;
         if (fs == null) return;
         // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
-        if (fs[1].anim == AN_REACH)
+        if (fs[1].Anim == AnReach)
         {
-            fs[1].animT += DT;
-            if (fs[1].animT > 0.5)
-                fs[1].anim = AN_CROUCH;
+            fs[1].AnimT += dt;
+            if (fs[1].AnimT > 0.5)
+                fs[1].Anim = AnCrouch;
         }
         else
         {
-            fs[1].anim = AN_CROUCH;
+            fs[1].Anim = AnCrouch;
         }
     }
 
     // --- main loop --------------------------------------------------------------------
-    public static void onFrame(double dt)
+    public static void OnFrame(double dt)
     {
         if (reloaded)
         {
@@ -1612,18 +1613,18 @@ public static class Baseball24
             camEye = new Vec3(5.5, 3.4, 30.0);
             camTarget = new Vec3(0, 1.3, 0);
             camFov = 34.0;
-            buildCharMesh();
-            buildField();
-            resetActors();
-            state = ST_INTRO;
+            BuildCharMesh();
+            BuildField();
+            ResetActors();
+            state = stIntro;
             stateT = 0;
             reloaded = false;
-            showEvent("PLAY BALL!", Color.rgb(1.0, 0.95, 0.5));
+            ShowEvent("PLAY BALL!", Color.Rgb(1.0, 0.95, 0.5));
         }
 
         var stepNow = step ?? new FixedStep();
         step = stepNow;
-        stepNow.frame(dt, _ => simulateTick());
+        stepNow.Frame(dt, _ => SimulateTick());
 
         var fs = fielders;
         var renNow = ren;
@@ -1636,64 +1637,64 @@ public static class Baseball24
 
         // --- 描画 ---
         // 屋外デーゲーム: 高い太陽 + 空色の環境光
-        renNow.light.dir = new Vec3(0.35, 1.0, -0.25);
-        renNow.light.intensity = 1.3;
-        renNow.light.color = Color.rgb(1.0, 0.98, 0.92);
-        renNow.sky.top = Color.rgb(0.55, 0.65, 0.80);
-        renNow.sky.bottom = Color.rgb(0.22, 0.28, 0.20);
-        renNow.sky.intensity = 0.55;
-        renNow.background = Color.rgb(0.50, 0.68, 0.87);
+        renNow.Light.Dir = new Vec3(0.35, 1.0, -0.25);
+        renNow.Light.Intensity = 1.3;
+        renNow.Light.Color = Color.Rgb(1.0, 0.98, 0.92);
+        renNow.Sky.Top = Color.Rgb(0.55, 0.65, 0.80);
+        renNow.Sky.Bottom = Color.Rgb(0.22, 0.28, 0.20);
+        renNow.Sky.Intensity = 0.55;
+        renNow.Background = Color.Rgb(0.50, 0.68, 0.87);
         // 影はカメラターゲット周辺 (フィールド全体 100m は 1 枚に入れない)
-        renNow.shadow.center = new Vec3(tgtNow.x, 0, tgtNow.z);
-        renNow.shadow.extent = 30.0;
-        renNow.begin(new Camera
+        renNow.Shadow.Center = new Vec3(tgtNow.X, 0, tgtNow.Z);
+        renNow.Shadow.Extent = 30.0;
+        renNow.Begin(new Camera
         {
-            eye = eyeNow,
-            target = tgtNow,
-            fov = camFov,
-            near = 0.1,
-            far = 400.0,
+            Eye = eyeNow,
+            Target = tgtNow,
+            Fov = camFov,
+            Near = 0.1,
+            Far = 400.0,
         });
 
-        renNow.draw(fieldMesh, new Mat4());
+        renNow.Draw(fieldMesh, new Mat4());
 
         // 野手 (守備側チーム色)
-        var ft = fieldingTeam();
+        var ft = FieldingTeam();
         for (int i = 0; i < 9; i++)
         {
             var f = fs[i];
-            var pose = poseFor(f.anim,
-                f.anim == AN_WINDUP || f.anim == AN_THROW || f.anim == AN_REACH
-                    ? f.animT
+            var pose = PoseFor(f.Anim,
+                f.Anim == AnWindup || f.Anim == AnThrow || f.Anim == AnReach
+                    ? f.AnimT
                     : t,
-                f.runPhase);
-            var yaw = f.anim == AN_RUN
-                ? f.yaw
-                : Math.Atan2(0 - f.x, 0 - f.z); // 待機中は本塁を向く
+                f.RunPhase);
+            var yaw = f.Anim == AnRun
+                ? f.Yaw
+                : Math.Atan2(0 - f.X, 0 - f.Z); // 待機中は本塁を向く
             if (i == 0)
                 yaw = Math.PI; // 投手は打者へ正対
             if (i == 1)
                 yaw = 0; // 捕手は投手へ
-            drawChar(f.x, f.z, f.anim == AN_RUN ? f.yaw : yaw, ft, pose);
+            DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose);
         }
         // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
-        var bt = battingTeam();
+        var bt = BattingTeam();
         var b = batter;
         if (batterRunner == null && b != null)
         {
             // 構え = スイングの溜め位相を静止で使う (バットの持ち手と一致する)
-            var stance = b.anim == AN_SWING ? b.animT : 0.30;
-            var inSwingPose = b.anim == AN_SWING
-                || state == ST_PREPITCH
-                || state == ST_WINDUP
-                || state == ST_PITCH
-                || state == ST_CALL;
-            drawChar(b.x, b.z, Math.PI / 2, bt,
-                inSwingPose ? poseSwing(stance) : poseIdle(t));
+            var stance = b.Anim == AnSwing ? b.AnimT : 0.30;
+            var inSwingPose = b.Anim == AnSwing
+                || state == stPrepitch
+                || state == stWindup
+                || state == stPitch
+                || state == stCall;
+            DrawChar(b.X, b.Z, Math.PI / 2, bt,
+                inSwingPose ? PoseSwing(stance) : PoseIdle(t));
             // バット
-            if (state == ST_PREPITCH || state == ST_WINDUP || state == ST_PITCH
-                || state == ST_CALL || b.anim == AN_SWING)
-                renNow.draw(batMesh, batMatrix(stance));
+            if (state == stPrepitch || state == stWindup || state == stPitch
+                || state == stCall || b.Anim == AnSwing)
+                renNow.Draw(batMesh, BatMatrix(stance));
         }
         // 走者 (塁上で止まっているときは待機ポーズ)
         var rns = runners;
@@ -1701,25 +1702,25 @@ public static class Baseball24
         {
             foreach (var r in rns)
             {
-                var np = basePos(r.to == 4 ? 0 : r.to);
-                var moving = r.atBase != r.to;
-                drawChar(r.x, r.z,
+                var np = BasePos(r.To == 4 ? 0 : r.To);
+                var moving = r.AtBase != r.To;
+                DrawChar(r.X, r.Z,
                     moving
-                        ? Math.Atan2(np[0] - r.x, np[1] - r.z)
-                        : Math.Atan2(-r.x, -r.z),
-                    bt, moving ? poseRun(r.runPhase) : poseIdle(t));
+                        ? Math.Atan2(np[0] - r.X, np[1] - r.Z)
+                        : Math.Atan2(-r.X, -r.Z),
+                    bt, moving ? PoseRun(r.RunPhase) : PoseIdle(t));
             }
         }
 
         // ボール
         if (ballVisible)
-            renNow.draw(ballMesh, Mat4.translate(new Vec3(bx, by, bz)));
+            renNow.Draw(ballMesh, Mat4.Translate(new Vec3(bx, by, bz)));
 
         renNow.End();
 
         // HUD は tonemap 後の swapchain に重ね描き (load = LOAD)
-        Gfx.begin_pass(new PassOpts { target = Gfx.main_tex, load = Gfx.LOAD });
-        drawHud();
-        Gfx.end_pass();
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
+        DrawHud();
+        Gfx.EndPass();
     }
 }

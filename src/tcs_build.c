@@ -197,7 +197,6 @@ bool tcs_pipeline_start(TcsPipeline *p, const char *cs_path, char *out_lua,
   argv[n++] = out_lua;
   argv[n++] = "--entry";
   argv[n++] = base;
-  argv[n++] = "--no-naming-check";
   argv[n++] = "--watch";
   argv[n] = NULL;
 

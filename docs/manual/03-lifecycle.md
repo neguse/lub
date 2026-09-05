@@ -11,6 +11,9 @@
 | `onFrame(dt:Float)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
 | `onReload()`(任意) | C#(playground)で編集が生きたまま反映された直後に 1 回(後述) |
 
+C# では同じ callback を `OnInit` / `OnEvent` / `OnFrame` / `OnQuit` /
+`OnReload` と書く(tcs が Lua の `on_init` 等に写す)。
+
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
 ウィンドウサイズや backend の指定は `Lub.config`(または env 補完付きの
 `lubx.Boot.config`)で行う。
