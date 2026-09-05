@@ -196,6 +196,7 @@ void app_shutdown(App *app) {
   api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
   api_audio_shutdown(app);
   api_host_shutdown(app);
+  api_io_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);

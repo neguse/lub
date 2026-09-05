@@ -117,6 +117,7 @@ typedef struct App {
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
   float *audio_decode_view;     // lub_audio_decode の view の実体
+  struct IoCache *io_cache;     // lub_io_* / lub_png_load の file cache
   unsigned char *host_poll_buf; // lub_host_poll の view の実体
 
 #ifndef __EMSCRIPTEN__

@@ -5,7 +5,6 @@
 #include "enums.h"
 #include "enums_lua.h"
 #include "font.h"
-#include "gltf.h"
 #include "pass.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -13,14 +12,9 @@
 #include "resources.h"
 #include "sdf.h"
 #include "shader.h"
-#include "stb_image.h"
-#include "stb_image_write.h"
 #include "surfacenets.h"
 #include "ui.h"
 #include <SDL3/SDL.h>
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
 #include <ctype.h>
 #include <lauxlib.h>
 #include <lua.h>
@@ -105,74 +99,6 @@ static void lub_bytes_register(lua_State *L) {
   }
   lua_pop(L, 1);
 }
-
-#ifdef __EMSCRIPTEN__
-enum {
-  LUB_FILE_PENDING = 0,
-  LUB_FILE_READY = 1,
-  LUB_FILE_ERROR = 2,
-};
-
-// EM_JS bodies are JavaScript (see shader.cpp's bridge note).
-// clang-format off
-EM_JS(int, lub_web_request_file_js, (const char *c_path), {
-  var raw = UTF8ToString(c_path);
-  if (!raw || raw.length == 0)
-    return 2;
-
-  var path = raw.charAt(0) == "/" ? raw.substring(1) : raw;
-  var fs = Module["FS"];
-  if (!fs && typeof FS != "undefined")
-    fs = FS;
-  if (!fs)
-    return 2;
-
-  try {
-    fs.stat(path);
-    return 1;
-  }
-  catch(e) {}
-
-  var requests = Module["__lubFileRequests"];
-  if (!requests)
-    requests = Module["__lubFileRequests"] = Object.create(null);
-
-  var req = requests[path];
-  if (req)
-    return req.status;
-
-  req = requests[path] = {status : 0};
-  fetch("/" + path)
-      .then(function(response) {
-        if (!response.ok)
-          throw new Error(response.status + " " + response.statusText);
-        return response.arrayBuffer();
-      })
-      .then(function(buffer) {
-        var parts = path.split("/");
-        var cur = "";
-        for (var i = 0; i < parts.length - 1; ++i) {
-          if (!parts[i])
-            continue;
-          cur = cur ? cur + "/" + parts[i] : parts[i];
-          try { fs.mkdir(cur); }
-          catch(e) {}
-        }
-        try { fs.unlink(path); }
-        catch(e) {}
-        fs.writeFile(path, new Uint8Array(buffer));
-        req.status = 1;
-      })
-      .catch(function(e) {
-        req.status = 2;
-        req.error = String((e && e.message) || e);
-        if (typeof console != "undefined" && console.error)
-          console.error("[lub] request_file failed:", path, req.error);
-      });
-  return 0;
-})
-// clang-format on
-#endif
 
 // Helper: check if value at stack index is a sentinel table with __lub_kind ==
 // kind
@@ -1007,22 +933,15 @@ static int l_file_mtime(lua_State *L) {
 
 static int l_request_file(lua_State *L) {
   const char *path = luaL_checkstring(L, 1);
-#ifdef __EMSCRIPTEN__
-  int status = lub_web_request_file_js(path);
-  if (status == LUB_FILE_READY) {
+  int status = lub_io_request_file(path);
+  if (status == 1) {
     lua_pushstring(L, "ready");
     return 1;
   }
-  if (status == LUB_FILE_PENDING) {
+  if (status == 0) {
     lua_pushstring(L, "pending");
     return 1;
   }
-#else
-  if (app_file_mtime_ns(path) != 0) {
-    lua_pushstring(L, "ready");
-    return 1;
-  }
-#endif
   lua_pushstring(L, "error");
   lua_pushstring(L, "missing");
   return 2;
@@ -1035,52 +954,300 @@ static int l_is_web(lua_State *L) {
 
 static int l_fnv1a64(lua_State *L) {
   size_t n;
-  const char *s = luaL_checklstring(L, 1, &n);
-  uint64_t h = 0xcbf29ce484222325ULL; // FNV offset basis
-  for (size_t i = 0; i < n; ++i) {
-    h ^= (unsigned char)s[i];
-    h *= 0x100000001b3ULL; // FNV prime
-  }
-  lua_pushinteger(L, (lua_Integer)h); // Lua 5.5 integers are 64-bit signed
+  const char *str = luaL_checklstring(L, 1, &n);
+  lua_pushinteger(L, (lua_Integer)lub_io_fnv1a64(str, n));
   return 1;
 }
 
-static int l_png_load(lua_State *L) {
-  const char *path = luaL_checkstring(L, 1);
-  int w, h;
-  unsigned char *pixels = stbi_load(path, &w, &h, NULL, STBI_rgb_alpha);
-  if (!pixels) {
-    SDL_Log("png_load: %s: %s", path, stbi_failure_reason());
+// ---------------------------------------------------------------------------
+// io / png: C API への詰め替え。Lua 面は lub_io.lua / lubx_png.lua と同じ
+// multi-return (本体, version, status, error)。
+
+static const char *io_status_name(int32_t st) {
+  return st == LUB_IO_STATUS_READY     ? "ready"
+         : st == LUB_IO_STATUS_PENDING ? "pending"
+                                       : "error";
+}
+
+// (version, status, error) を push する (本体は呼び出し側が先に push)。
+static int push_io_tail(lua_State *L, const LubIoResult *r) {
+  lua_pushinteger(L, (lua_Integer)r->version);
+  lua_pushstring(L, io_status_name(r->status));
+  if (r->error.ptr && r->error.len > 0)
+    lua_pushlstring(L, r->error.ptr, (size_t)r->error.len);
+  else
     lua_pushnil(L);
-    return 1;
+  return 4;
+}
+
+static int l_io_load_text(lua_State *L) {
+  LubView text;
+  LubIoResult r;
+  lub_io_load_text(api_ctx(), lstr_check(L, 1), &text, &r);
+  if (text.ptr)
+    lua_pushlstring(L, (const char *)text.ptr, (size_t)text.len);
+  else
+    lua_pushnil(L);
+  return push_io_tail(L, &r);
+}
+
+static int l_io_load_floats(lua_State *L) {
+  const float *data = NULL;
+  int32_t n = 0;
+  LubIoResult r;
+  lub_io_load_floats(api_ctx(), lstr_check(L, 1), &data, &n, &r);
+  if (data) {
+    lua_createtable(L, n, 0);
+    for (int32_t i = 0; i < n; ++i) {
+      lua_pushnumber(L, (lua_Number)data[i]);
+      lua_rawseti(L, -2, i + 1);
+    }
+  } else {
+    lua_pushnil(L);
   }
-  size_t n = (size_t)w * (size_t)h * STBI_rgb_alpha;
-  lub_bytes_push(L, pixels, n);
+  return push_io_tail(L, &r);
+}
+
+static void push_float_table(lua_State *L, const float *v, int32_t n) {
+  lua_createtable(L, n, 0);
+  for (int32_t i = 0; i < n; ++i) {
+    lua_pushnumber(L, (lua_Number)v[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+}
+
+static void push_material_table(lua_State *L, const LubGltfMaterial *m) {
+  static const LubGltfMaterial defaults = {
+      .base_color_factor = {1, 1, 1, 1},
+      .metallic_factor = 1.0f,
+      .roughness_factor = 1.0f,
+      .alpha_cutoff = 0.5f,
+      .normal_scale = 1.0f,
+  };
+  if (!m)
+    m = &defaults;
+  lua_createtable(L, 0, 11);
+  push_float_table(L, m->base_color_factor, 4);
+  lua_setfield(L, -2, "base_color_factor");
+  lua_pushnumber(L, m->metallic_factor);
+  lua_setfield(L, -2, "metallic_factor");
+  lua_pushnumber(L, m->roughness_factor);
+  lua_setfield(L, -2, "roughness_factor");
+  lua_pushinteger(L, m->alpha_mode);
+  lua_setfield(L, -2, "alpha_mode");
+  lua_pushnumber(L, m->alpha_cutoff);
+  lua_setfield(L, -2, "alpha_cutoff");
+  lua_pushboolean(L, m->double_sided);
+  lua_setfield(L, -2, "double_sided");
+  lua_pushnumber(L, m->normal_scale);
+  lua_setfield(L, -2, "normal_scale");
+  const struct {
+    const char *field;
+    LubStr value;
+  } paths[] = {
+      {"base_color_path", m->base_color_path},
+      {"metallic_roughness_path", m->metallic_roughness_path},
+      {"normal_path", m->normal_path},
+      {"name", m->name},
+  };
+  for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); ++i) {
+    if (paths[i].value.ptr && paths[i].value.len > 0) {
+      lua_pushlstring(L, paths[i].value.ptr, (size_t)paths[i].value.len);
+      lua_setfield(L, -2, paths[i].field);
+    }
+  }
+}
+
+static void push_mesh_fields(lua_State *L, const LubMeshData *m) {
+  push_float_table(L, m->positions, m->vert_count * 3);
+  lua_setfield(L, -2, "positions");
+  if (m->normals) {
+    push_float_table(L, m->normals, m->vert_count * 3);
+    lua_setfield(L, -2, "normals");
+  }
+  if (m->uvs) {
+    push_float_table(L, m->uvs, m->vert_count * 2);
+    lua_setfield(L, -2, "uvs");
+  }
+  if (m->tangents) {
+    push_float_table(L, m->tangents, m->vert_count * 4);
+    lua_setfield(L, -2, "tangents");
+  }
+  if (m->indices) {
+    lua_createtable(L, m->index_count, 0);
+    for (int32_t i = 0; i < m->index_count; ++i) {
+      lua_pushinteger(L, (lua_Integer)m->indices[i]);
+      lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "indices");
+  }
+  lua_pushinteger(L, m->vert_count);
+  lua_setfield(L, -2, "vert_count");
+  lua_pushinteger(L, m->index_count);
+  lua_setfield(L, -2, "index_count");
+}
+
+// load_gltf の Lua table: top-level は primitives[1] の写し + primitives /
+// primitive_count (samples/lub_io.lua 時代と同じ形)。
+static int l_io_load_gltf(lua_State *L) {
+  LubGltfView v;
+  LubIoResult r;
+  lub_io_load_gltf(api_ctx(), lstr_check(L, 1), &v, &r);
+  if (!v.primitives || v.primitive_count <= 0) {
+    lua_pushnil(L);
+    return push_io_tail(L, &r);
+  }
+  lua_createtable(L, 0, 10);
+  int result = lua_gettop(L);
+  lua_createtable(L, v.primitive_count, 0);
+  for (int32_t i = 0; i < v.primitive_count; ++i) {
+    const LubGltfPrimitive *p = &v.primitives[i];
+    lua_createtable(L, 0, 10);
+    push_mesh_fields(L, &p->mesh);
+    lua_pushinteger(L, p->material_index);
+    lua_setfield(L, -2, "material_index");
+    push_material_table(L, p->material_index >= 0 &&
+                                   p->material_index < v.material_count
+                               ? &v.materials[p->material_index]
+                               : NULL);
+    lua_setfield(L, -2, "material");
+    lua_rawseti(L, -2, i + 1);
+  }
+  lua_setfield(L, result, "primitives");
+  lua_pushinteger(L, v.primitive_count);
+  lua_setfield(L, result, "primitive_count");
+  static const char *const mirrored[] = {
+      "positions", "normals",    "uvs",         "tangents",
+      "indices",   "vert_count", "index_count", "material",
+  };
+  lua_getfield(L, result, "primitives");
+  lua_rawgeti(L, -1, 1);
+  for (size_t i = 0; i < sizeof(mirrored) / sizeof(mirrored[0]); ++i) {
+    lua_getfield(L, -1, mirrored[i]);
+    lua_setfield(L, result, mirrored[i]);
+  }
+  lua_pop(L, 2);
+  return push_io_tail(L, &r);
+}
+
+// mesh table (positions / normals / ...) の配列 field を float 配列に写す。
+// n_expected 個未満なら NULL 扱い (欠損)。
+static float *mesh_field_floats(lua_State *L, int idx, const char *field,
+                                int32_t n_expected) {
+  lua_getfield(L, idx, field);
+  if (!lua_istable(L, -1) || (int32_t)lua_rawlen(L, -1) < n_expected ||
+      n_expected <= 0) {
+    lua_pop(L, 1);
+    return NULL;
+  }
+  float *out = (float *)malloc((size_t)n_expected * sizeof(float));
+  if (out) {
+    for (int32_t i = 0; i < n_expected; ++i) {
+      lua_rawgeti(L, -1, i + 1);
+      out[i] = (float)lua_tonumber(L, -1);
+      lua_pop(L, 1);
+    }
+  }
+  lua_pop(L, 1);
+  return out;
+}
+
+static int io_interleave(lua_State *L, int32_t layout) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_getfield(L, 1, "vert_count");
+  int32_t n = (int32_t)lua_tointeger(L, -1);
+  lua_pop(L, 1);
+  LubMeshData m = {0};
+  m.vert_count = n;
+  float *pos = mesh_field_floats(L, 1, "positions", n * 3);
+  float *nrm = mesh_field_floats(L, 1, "normals", n * 3);
+  float *uv = mesh_field_floats(L, 1, "uvs", n * 2);
+  float *tan = mesh_field_floats(L, 1, "tangents", n * 4);
+  float *col = mesh_field_floats(L, 1, "colors", n * 3);
+  float *mr = mesh_field_floats(L, 1, "metal_rough", n * 2);
+  float *jt = mesh_field_floats(L, 1, "joints", n * 2);
+  float *wt = mesh_field_floats(L, 1, "weights", n * 2);
+  m.positions = pos;
+  m.normals = nrm;
+  m.uvs = uv;
+  m.tangents = tan;
+  m.colors = col;
+  m.metal_rough = mr;
+  m.joints = jt;
+  m.weights = wt;
+  int32_t need = pos ? lub_mesh_interleave(api_ctx(), &m, layout, NULL, 0) : 0;
+  float *out = need > 0 ? (float *)malloc((size_t)need * sizeof(float)) : NULL;
+  if (out)
+    lub_mesh_interleave(api_ctx(), &m, layout, out, need);
+  lua_createtable(L, need, 0);
+  for (int32_t i = 0; out && i < need; ++i) {
+    lua_pushnumber(L, (lua_Number)out[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+  free(out);
+  free(pos);
+  free(nrm);
+  free(uv);
+  free(tan);
+  free(col);
+  free(mr);
+  free(jt);
+  free(wt);
+  return 1;
+}
+
+static int l_io_interleave_pn(lua_State *L) {
+  return io_interleave(L, LUB_MESH_LAYOUT_PN);
+}
+static int l_io_interleave_pnu(lua_State *L) {
+  return io_interleave(L, LUB_MESH_LAYOUT_PNU);
+}
+static int l_io_interleave_pnut(lua_State *L) {
+  return io_interleave(L, LUB_MESH_LAYOUT_PNUT);
+}
+static int l_io_interleave_pncm(lua_State *L) {
+  return io_interleave(L, LUB_MESH_LAYOUT_PNCM);
+}
+static int l_io_interleave_pncmw(lua_State *L) {
+  return io_interleave(L, LUB_MESH_LAYOUT_PNCMW);
+}
+
+// png_load(path) -> bytes, w, h, fmt, stride, version, status, error
+static int l_png_load(lua_State *L) {
+  LubView px;
+  int32_t w = 0, h = 0, fmt = 0, stride = 0;
+  LubIoResult r;
+  lub_png_load(api_ctx(), lstr_check(L, 1), &px, &w, &h, &fmt, &stride, &r);
+  if (!px.ptr) {
+    for (int i = 0; i < 5; ++i)
+      lua_pushnil(L);
+    push_io_tail(L, &r);
+    return 8;
+  }
+  // view を Bytes (所有) に写す。frame を跨いで持てる従来の契約を保つ。
+  uint8_t *copy = (uint8_t *)malloc(px.len > 0 ? (size_t)px.len : 1);
+  if (!copy)
+    return luaL_error(L, "png_load: out of memory");
+  memcpy(copy, px.ptr, (size_t)px.len);
+  lub_bytes_push(L, copy, (size_t)px.len);
   lua_pushinteger(L, w);
   lua_pushinteger(L, h);
-  lua_pushinteger(L, SGL_PF_RGBA8);
-  lua_pushinteger(L, w * STBI_rgb_alpha);
-  return 5; // (bytes, w, h, fmt, stride)
+  lua_pushinteger(L, fmt);
+  lua_pushinteger(L, stride);
+  push_io_tail(L, &r);
+  return 8;
 }
 
 static int l_png_write(lua_State *L) {
-  const char *path = luaL_checkstring(L, 1);
+  LubStr path = lstr_check(L, 1);
   LubBytes *bytes = lub_bytes_check(L, 2);
-  int w = (int)luaL_checkinteger(L, 3);
-  int h = (int)luaL_checkinteger(L, 4);
-  int stride = (int)luaL_optinteger(L, 5, w * 4);
-  if (w <= 0 || h <= 0)
-    return luaL_error(L, "png_write: invalid size %dx%d", w, h);
-  if (stride < w * 4)
-    return luaL_error(L, "png_write: stride %d is smaller than width*4 %d",
-                      stride, w * 4);
-  size_t needed = (size_t)stride * (size_t)h;
-  if (bytes->len < needed) {
-    return luaL_error(L, "png_write: byte buffer too small: got %zu, need %zu",
-                      bytes->len, needed);
-  }
-  int ok = stbi_write_png(path, w, h, 4, bytes->data, stride);
-  lua_pushboolean(L, ok != 0);
+  int32_t w = (int32_t)luaL_checkinteger(L, 3);
+  int32_t h = (int32_t)luaL_checkinteger(L, 4);
+  int32_t stride = (int32_t)luaL_optinteger(L, 5, 0);
+  if (lub_png_write(api_ctx(), path, bytes->data, (int32_t)bytes->len, w, h,
+                    stride) != LUB_OK)
+    return api_raise(L);
+  lua_pushboolean(L, 1);
   return 1;
 }
 
@@ -1342,8 +1509,22 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "audio_master_volume");
   lua_pushcfunction(L, l_audio_info);
   lua_setglobal(L, "audio_info");
-  lua_pushcfunction(L, lub_load_gltf);
-  lua_setglobal(L, "load_gltf");
+  lua_pushcfunction(L, l_io_load_text);
+  lua_setglobal(L, "io_load_text");
+  lua_pushcfunction(L, l_io_load_floats);
+  lua_setglobal(L, "io_load_floats");
+  lua_pushcfunction(L, l_io_load_gltf);
+  lua_setglobal(L, "io_load_gltf");
+  lua_pushcfunction(L, l_io_interleave_pn);
+  lua_setglobal(L, "io_interleave_pn");
+  lua_pushcfunction(L, l_io_interleave_pnu);
+  lua_setglobal(L, "io_interleave_pnu");
+  lua_pushcfunction(L, l_io_interleave_pnut);
+  lua_setglobal(L, "io_interleave_pnut");
+  lua_pushcfunction(L, l_io_interleave_pncm);
+  lua_setglobal(L, "io_interleave_pncm");
+  lua_pushcfunction(L, l_io_interleave_pncmw);
+  lua_setglobal(L, "io_interleave_pncmw");
   lua_pushcfunction(L, lub_surface_nets);
   lua_setglobal(L, "surface_nets");
   lua_pushcfunction(L, lub_sdf_mesh);

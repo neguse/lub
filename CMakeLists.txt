@@ -168,6 +168,7 @@ set(LUB_SOURCES
   src/api_gfx.c
   src/api_sys.c
   src/api_audio.c
+  src/api_io.c
   src/enums_lua.c
   src/pass.c
   src/profile.c

@@ -14,8 +14,8 @@
 //     だけ持つ。
 //   - main thread 限定。
 //
-// 段階 3 の途中の形: gfx / input / sys / profiler / host / audio がこの API を
-// 通る。残り (io / png / mesh / font / ui / physics) は順に移す。段階 4 で
+// 段階 3 の途中の形: gfx / input / sys / profiler / host / audio / io / png
+// がこの API を通る。残り (mesh / font / ui / physics) は順に移す。段階 4 で
 // この header は cs-lib/lub_stub.cs からの生成物になる。
 #pragma once
 #include <stdbool.h>
@@ -131,6 +131,97 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
 bool lub_audio_free(LubContext *ctx, int32_t snd);
 void lub_audio_master_volume(LubContext *ctx, float volume);
 void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
+
+// -------------------------------------------------------------------- io
+
+// file の load は毎フレーム呼べる即時モード API。runtime が path を key に
+// cache し (mtime の fast path + 内容 hash)、結果は frame 有効の view。
+typedef enum LubIoStatus {
+  LUB_IO_STATUS_PENDING = 0, // web で取得中
+  LUB_IO_STATUS_READY = 1,
+  LUB_IO_STATUS_ERROR = 2,
+} LubIoStatus;
+
+typedef struct LubIoResult {
+  int32_t status;  // LubIoStatus
+  int32_t version; // 内容の hash。use_* の version にそのまま渡せる
+  LubStr error;    // ERROR のとき
+} LubIoResult;
+
+// 平らな配列のメッシュ。vert_count 頂点、positions は vec3、normals vec3、
+// uvs vec2、tangents vec4、colors vec3、metal_rough vec2、joints / weights は
+// 頂点あたり 2 つ。NULL の配列は「無し」。indices は index_count 個。
+typedef struct LubMeshData {
+  const float *positions;
+  const float *normals;
+  const float *uvs;
+  const float *tangents;
+  const float *colors;
+  const float *metal_rough;
+  const float *joints;
+  const float *weights;
+  const uint32_t *indices;
+  int32_t vert_count;
+  int32_t index_count;
+} LubMeshData;
+
+typedef struct LubGltfMaterial {
+  float base_color_factor[4];
+  float metallic_factor;
+  float roughness_factor;
+  int32_t alpha_mode; // 0 = opaque, 1 = mask, 2 = blend
+  float alpha_cutoff;
+  bool double_sided;
+  float normal_scale;
+  LubStr base_color_path; // len 0 = 無し
+  LubStr metallic_roughness_path;
+  LubStr normal_path;
+  LubStr name;
+} LubGltfMaterial;
+
+typedef struct LubGltfPrimitive {
+  LubMeshData mesh;
+  int32_t material_index; // -1 = 無し
+} LubGltfPrimitive;
+
+typedef struct LubGltfView {
+  const LubGltfPrimitive *primitives;
+  int32_t primitive_count;
+  const LubGltfMaterial *materials;
+  int32_t material_count;
+} LubGltfView;
+
+// interleave の頂点レイアウト。P = position、N = normal、U = uv、T = tangent、
+// C = color、M = metal/rough、W = skin (j0, w0, j1, w1)。
+typedef enum LubMeshLayout {
+  LUB_MESH_LAYOUT_PN = 1,    // stride 6
+  LUB_MESH_LAYOUT_PNU = 2,   // stride 8
+  LUB_MESH_LAYOUT_PNUT = 3,  // stride 12
+  LUB_MESH_LAYOUT_PNCM = 4,  // stride 11
+  LUB_MESH_LAYOUT_PNCMW = 5, // stride 15
+} LubMeshLayout;
+
+// 結果は r->status が READY のときだけ有効 (view は frame の終わりまで)。
+LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubView *text,
+                           LubIoResult *r);
+// `return { ... }` 形式の Lua ファイルを float 列として読む。
+LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
+                             int32_t *count, LubIoResult *r);
+LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfView *mesh,
+                           LubIoResult *r);
+// mesh を layout で interleave して out に書く。戻り値は必要な float 数で、
+// out == NULL か cap が足りなければ書かずに必要数だけ返す。
+int32_t lub_mesh_interleave(LubContext *ctx, const LubMeshData *mesh,
+                            int32_t layout, float *out, int32_t cap);
+
+// ------------------------------------------------------------------- png
+
+// RGBA8 に decode した画像。format は常に LUB_GFX_PIXEL_FORMAT_RGBA8。
+LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *pixels,
+                       int32_t *w, int32_t *h, int32_t *format, int32_t *stride,
+                       LubIoResult *r);
+LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *pixels,
+                        int32_t len, int32_t w, int32_t h, int32_t stride);
 
 // ------------------------------------------------------------------- gfx
 

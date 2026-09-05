@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。Lua binding は詰め替えだけに。残り: io / png / mesh / font / ui / phys2d / phys3d |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。Lua binding は詰め替えだけに。残り: mesh / font / ui / phys2d / phys3d |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -83,3 +83,10 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   返す。Lua binding は従来の `Bytes`(所有)に copy して返し、frame を跨いで
   持てる従来の契約を保つ(zero copy 化は所有権の規則を Lua 面に入れるとき)。
 - version の面は int32(runtime 内部は int64 のまま)。
+- io の file cache は runtime が path で持つ(`src/api_io.c`)。mtime の fast
+  path と内容 hash の version は `lub_io.lua` と同じ意味論で、version は
+  hash を int32 に畳んだ値。`load_floats` は `return { 数値, ... }` だけを
+  受ける小さな parser で読む(Lua の `load` は使わない)。gltf は typed な
+  `LubGltfView`(primitive ごとの平らな配列 + material)で返し、Lua 面の
+  table は binding が組み立てる。interleave は C の `lub_mesh_interleave`
+  で、Lua 面は table を配列に写してから呼ぶ。

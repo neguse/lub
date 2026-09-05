@@ -318,10 +318,30 @@ Sys = {
 	actual_fps = actual_fps,
 }
 
-Io = require("lub_io")
--- lubx_png は Haxe だと @:luaRequire で個別 require されるが、
--- TinyC# / raw Lua には global で見せる (C# stub の Png class が対応)
-Png = require("lubx_png")
+-- Io / Png は C runtime (src/api_io.c) が持つ file cache と loader。
+-- Haxe extern は @:luaRequire("lub_io") / ("lubx_png") で同じ table を引く
+-- (samples/lub_io.lua と samples/lubx_png.lua はその alias)。
+Io = {
+	PENDING = "pending",
+	READY = "ready",
+	ERROR = "error",
+	load_text = io_load_text,
+	load_floats = io_load_floats,
+	load_gltf = io_load_gltf,
+	interleave_pn = io_interleave_pn,
+	interleave_pnu = io_interleave_pnu,
+	interleave_pnut = io_interleave_pnut,
+	interleave_pncm = io_interleave_pncm,
+	interleave_pncmw = io_interleave_pncmw,
+}
+
+Png = {
+	PENDING = "pending",
+	READY = "ready",
+	ERROR = "error",
+	load = png_load,
+	write = png_write,
+}
 
 lub = lub or {}
 lub.config = config
