@@ -1,6 +1,8 @@
 -- audio core API の lifecycle テスト。実デバイスが無い環境では miniaudio の
 -- null backend にフォールバックし、mixer は同じように回る。音を出さないよう
 -- 全 voice を volume 0 で扱う (lifecycle は volume と独立)。
+-- snd は key で毎フレーム宣言する resource で、宣言が途切れると
+-- resource_sweep_after_frames 後に sweep される。
 local M = {}
 
 local frame = 0
@@ -48,13 +50,35 @@ local function make_wav(samples, rate)
 		.. data
 end
 
-local snd_long -- 2s loop 用
-local snd_short -- ~2ms oneshot
-local snd_freed
+local SWEEP_FRAMES = 10
+
+local pcm_long -- 2s loop 用
+local pcm_short -- ~2ms oneshot
+local wav -- decode 純関数の入力
+local snd_long
+local snd_short
+local snd_decoded
+local snd_swept
 local baseline_voices = 0
 
 function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+	config({
+		backend = os.getenv("LUB_BACKEND") or "sdlgpu",
+		width = 320,
+		height = 180,
+		resource_sweep_after_frames = SWEEP_FRAMES,
+	})
+	pcm_long = sine(220, 48000, 96000)
+	pcm_short = sine(440, 48000, 100)
+	wav = make_wav(sine(330, 22050, 2205), 22050)
+end
+
+-- 毎フレームの宣言。version が同じなら runtime は data を読まない。
+local function declare_snds()
+	snd_long = audio_snd("long", pcm_long, 1, 48000, 1)
+	snd_short = audio_snd("short", pcm_short, 1, 48000, 1)
+	local bytes, ch, rate = audio_decode(wav)
+	snd_decoded = audio_snd("decoded", bytes, ch, rate, 1)
 end
 
 local function set_phase(next_phase)
@@ -67,25 +91,23 @@ function M.onFrame()
 	phase_frame = phase_frame + 1
 	begin_pass({ target = main_tex, clear_color = { 0.02, 0.03, 0.04, 1.0 } })
 	end_pass()
+	declare_snds()
 
 	if phase == "init" then
-		snd_long = audio_pcm(sine(220, 48000, 96000), 1, 48000)
-		snd_short = audio_pcm(sine(440, 48000, 100), 1, 48000)
 		expect(snd_long ~= 0 and snd_short ~= 0, "snd creation failed")
 		expect(snd_long ~= snd_short, "distinct content must get distinct snd")
-		-- 内容 dedupe: 同じ波形を作り直しても同じ handle (hot reload の要)
-		local again = audio_pcm(sine(220, 48000, 96000), 1, 48000)
+		-- 内容 dedupe: 別 key で同じ波形を宣言しても同じ handle (hot reload の要)
+		local again = audio_snd("long_again", sine(220, 48000, 96000), 1, 48000)
 		expect(again == snd_long, "content dedupe failed: " .. tostring(again) .. " vs " .. tostring(snd_long))
 		expect(audio_play(999999) == false, "play with bogus snd must fail")
 
-		-- decode 純関数: wav bytes -> pcm -> snd
-		local wav = make_wav(sine(330, 22050, 2205), 22050)
+		-- decode 純関数: wav bytes -> pcm (frame 有効の view) -> snd
 		local bytes, ch, rate = audio_decode(wav)
 		expect(bytes ~= nil, "decode failed")
 		expect(ch == 1 and rate == 22050, "decode meta mismatch: ch=" .. tostring(ch) .. " rate=" .. tostring(rate))
-		local snd_decoded = audio_pcm(bytes, ch, rate)
-		expect(snd_decoded ~= 0, "pcm from decoded bytes failed")
+		expect(snd_decoded ~= 0, "snd from decoded bytes failed")
 		expect(audio_decode("not a sound file") == nil, "bogus decode must return nil")
+		expect(audio_info().snds == 3, "expected 3 snds, got " .. audio_info().snds)
 
 		local info = audio_info()
 		print("AUDIO_SMOKE_INFO device=" .. tostring(info.device) .. " rate=" .. tostring(info.rate))
@@ -164,32 +186,38 @@ function M.onFrame()
 		audio_voice("blip", snd_short, { volume = 0 })
 		expect(audio_info().voices == 1, "ended declared key must not retrigger: voices=" .. audio_info().voices)
 		if phase_frame >= 60 then
-			set_phase("free")
+			-- "long_again" は init 以来宣言していないが、同じ snd を "long" が
+			-- 宣言し続けているので sweep されても snd は生きている
+			expect(audio_info().snds == 3, "shared snd must survive: snds=" .. audio_info().snds)
+			set_phase("sweep")
 		end
 		return
 	end
 
-	if phase == "free" then
+	if phase == "sweep" then
 		audio_voice("bgm", snd_long, { loop = true, volume = 0 })
 		if phase_frame == 1 then
-			snd_freed = audio_pcm(sine(550, 48000, 4800), 1, 48000)
-			expect(snd_freed ~= 0, "snd for free test failed")
-			expect(audio_play(snd_freed, { volume = 0 }), "play before free failed")
-			expect(audio_free(snd_freed), "free failed")
-			expect(audio_play(snd_freed) == false, "play after free must fail")
-			expect(audio_free(snd_freed) == false, "double free must fail")
+			-- 1 frame だけ宣言して鳴らす。宣言が途切れた snd は sweep で退役し、
+			-- 鳴っている voice が終わってから PCM が回収される
+			snd_swept = audio_snd("swept", sine(550, 48000, 4800), 1, 48000)
+			expect(snd_swept ~= 0, "snd for sweep test failed")
+			expect(audio_play(snd_swept, { volume = 0 }), "play before sweep failed")
+			expect(audio_info().snds == 4, "expected 4 snds, got " .. audio_info().snds)
 			return
 		end
-		-- freed snd を参照していた voice は audio 側で落ち、PCM は frame_end で
-		-- 回収されて snds 数が戻る
+		if phase_frame <= SWEEP_FRAMES then
+			expect(audio_play(snd_swept, { volume = 0 }), "play within the sweep window must succeed")
+			return
+		end
 		local info = audio_info()
 		if info.voices == 1 and info.snds == 3 then
+			expect(audio_play(snd_swept) == false, "play after sweep must fail")
 			print("AUDIO_SMOKE_OK frame=" .. frame)
 			quit()
 			return
 		end
 		if phase_frame > 600 then
-			fail("freed snd not reclaimed: voices=" .. info.voices .. " snds=" .. info.snds)
+			fail("swept snd not reclaimed: voices=" .. info.voices .. " snds=" .. info.snds)
 		end
 		return
 	end

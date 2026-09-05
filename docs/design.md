@@ -116,6 +116,6 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 - `native` はプラットフォーム直接実装 (Windows: D3D12、Linux: Vulkan)。CI golden は
   Windows は WARP、Linux は lavapipe で回す (`docs/dx12-backend.md`)。backend 構成の
   整理方針は `docs/log/2026-07-07-backend-consolidation.md`。
-- swapchain capture (`--capture`) は native のみ。web は `Gfx.readback()` による
+- swapchain capture (`--capture`) は native のみ。web は `Gfx.readback(key)` による
   render target readback のみ。
 - SDL GPU path は combined image sampler 周辺に制約がある。

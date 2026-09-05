@@ -32,6 +32,12 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   return true;
 }
 
+// frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
+void api_gfx_frame_end(App *app);
+void api_audio_frame_end(App *app);
+// frame 有効の view の実体を預ける。app_frame_end が free する。
+void app_frame_garbage_push(App *app, void *ptr);
+
 // api_*.c 所有の状態 (readback queue、decode / poll の view) を解放する。
 // app_shutdown が呼ぶ。
 void api_gfx_shutdown(App *app);

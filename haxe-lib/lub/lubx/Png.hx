@@ -15,7 +15,8 @@ import lub.Bytes;
 
 /**
 	PNG の読み書き。`load` は `Io.load*` と同じ status/version 規約
-	(web では "pending" があり得る。`bytes` が null の間は待つ)。
+	(web では "pending" があり得る。`bytes` が null の間は待つ)。`bytes` は
+	frame 有効の view なので毎フレーム `load` し直す (cache は runtime が持つ)。
 **/
 @:luaRequire("lubx_png")
 extern class Png {

@@ -110,27 +110,29 @@ typedef TextureOpts = {
 	var height:Int;
 	var format:Int;
 	var stride:Int;
-	var id:Dynamic;
-	var dropped:Dynamic;
+	var id:Int;
+	var dropped:Int;
 	var error:String;
 }
 
 /**
-	render target の GPU → CPU 読み戻し。`Gfx.readback` で handle を作り、
-	`id` 付きで request してから次 call 以降で結果を drain する:
+	render target の GPU → CPU 読み戻し。`Gfx.readback(key)` で queue を参照し、
+	`id` (int token) 付きで request してから次 call 以降で結果を drain する:
 
 	```haxe
-	var rb = Gfx.readback();
+	var rb = Gfx.readback("shot");
 	var r = rb.readTexture(tex, frame == 30 ? 30 : null);
 	if (r.status == "ready" && r.id == 30) {
 		lubx.Png.write(path, r.bytes, r.width, r.height, r.stride);
 	}
 	```
 
-	queue depth は既定 8。必要なら `Lub.config({readback_depth: N})` (1..32)。
+	queue は key で宣言する resource で、poll が途切れると sweep される。
+	`bytes` はその frame の終わりまで有効な view。queue depth は既定 8。
+	必要なら `Lub.config({readback_depth: N})` (1..32)。
 **/
 extern class Readback {
-	@:native("read_texture") public function readTexture(tex:TextureRef, ?id:Dynamic):ReadTextureResult;
+	@:native("read_texture") public function readTexture(tex:TextureRef, ?id:Int):ReadTextureResult;
 }
 
 /**
@@ -182,7 +184,7 @@ extern class Gfx {
 	/** version の意味論は `useBuffer` を参照。 **/
 	@:native("use_texture") public static function useTexture(key:String, w:Int, h:Int, fmt:Int, px:Dynamic, ?version:Int, ?opts:TextureOpts):TextureRef;
 
-	@:native("readback") public static function readback():Readback;
+	@:native("readback") public static function readback(key:String):Readback;
 	// commands
 	@:native("draw") public static function draw(count:Int, bindings:Dynamic, opts:DrawOpts):Void;
 	@:native("dispatch") public static function dispatch(x:Int, y:Int, z:Int, bindings:Dynamic, opts:DispatchOpts):Void;

@@ -108,7 +108,7 @@ typedef struct App {
   // config({ resource_sweep_after_frames = N }) during onInit.
   int resource_sweep_after_frames;
 
-  // Default readback queue depth for Gfx.readback() handles. Configurable via
+  // Default readback queue depth for Gfx.readback(key) queues. Configurable via
   // Lua config({ readback_depth = N }) during onInit.
   int readback_depth;
 
@@ -116,11 +116,15 @@ typedef struct App {
   // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
-  float *audio_decode_view;         // lub_audio_decode の view の実体
+  struct AudioSnds *audio_snds;     // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;         // lub_io_* / lub_png_load の file cache
   struct FontScratch *font_scratch; // lub_font_* の view の実体
   struct MeshScratch *mesh_scratch; // lub_mesh_* の view の実体
   unsigned char *host_poll_buf;     // lub_host_poll の view の実体
+  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM)。
+  // app_frame_end が free する。
+  void **frame_garbage;
+  int frame_garbage_count, frame_garbage_cap;
 
 #ifndef __EMSCRIPTEN__
   // SDL3 GPU backend state. Owned/used by backend_sdlgpu.c only.

@@ -128,5 +128,5 @@ npm run deploy            # build + wrangler deploy
 - 300ms debounce: 入力後 300ms 静止してから `syncFiles` を送る。連打中は更新されない。
 - サンプル切替時に dirty な編集があると `confirm()` で警告する。
 - `--capture` の swapchain capture は native のみ。web (webgpu backend) では
-  任意 render target の readback (`Gfx.readback()`) を使う。
+  任意 render target の readback (`Gfx.readback(key)`) を使う。
 - sdlgpu backend は web 非対応。web は `webgpu` のみ。

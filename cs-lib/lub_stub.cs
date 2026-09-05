@@ -71,7 +71,11 @@ public class BufferRef
     public int Version;
 }
 
-/// <summary>ランタイム所有のバイト列ハンドル (readback / audio_decode 等)。</summary>
+/// <summary>
+/// ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の
+/// 結果)。返された frame の終わりまで有効で、古い view を API に渡すと
+/// error になる。frame を跨いで持ちたい内容は自分の memory に写す。
+/// </summary>
 [LubView]
 public class Bytes
 {
@@ -119,13 +123,16 @@ public class TextureOpts
     public bool? Storage;
 }
 
-/// <summary>Gfx.readback() が返す GPU→CPU 読み戻しハンドル。</summary>
+/// <summary>
+/// Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で
+/// 宣言する resource で、poll が途切れると sweep される。
+/// </summary>
 public class Readback
 {
     // Lua 側は (status, bytes, width, height, format, stride, id, dropped,
     // error) の 9 値 multi-return
-    // id は要求ごとの整数 token (0 は無し)。resultId / dropped は対応する
-    // token、無ければ 0。
+    // id は要求ごとの int32 token (0 は無し)。resultId / dropped は対応する
+    // token、無ければ 0。bytes は frame 有効の view。
     public void ReadTexture(TextureRef tex, int? id, out string? status,
         out Bytes? bytes, out int width, out int height, out int format,
         out int stride, out int resultId, out int dropped,
@@ -247,7 +254,7 @@ public static class Lub
             return null;
         }
 
-        public static Readback? Readback()
+        public static Readback? Readback(string key)
         {
             return null;
         }
@@ -548,21 +555,31 @@ public static class Lub
         }
     }
 
-    /// <summary>音の core API。snd handle は audio_pcm が生む。</summary>
+    /// <summary>
+    /// 音の core API。snd は key で宣言する resource で、宣言が途切れると
+    /// sweep される (鳴っている voice は最後まで鳴る)。
+    /// </summary>
     public static class Audio
     {
-        /// <summary>interleaved なサンプル値 (-1..1) から snd を作る。</summary>
-        public static int Pcm(List<double> data, int channels, int rate)
+        /// <summary>
+        /// interleaved なサンプル値 (-1..1) から snd を宣言する。version の
+        /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。
+        /// 同じ内容は同じ snd に dedupe される。
+        /// </summary>
+        public static int Snd(string key, List<double> data, int channels,
+            int rate, int? version = null)
         {
             return 0;
         }
 
-        /// <summary>f32 PCM の bytes から snd を作る。Lua 面は同じ pcm。</summary>
-        public static int PcmBytes(Bytes data, int channels, int rate)
+        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
+        public static int SndBytes(string key, Bytes data, int channels,
+            int rate, int? version = null)
         {
             return 0;
         }
 
+        /// <summary>file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。</summary>
         public static void Decode(Bytes data, out Bytes? bytes,
             out int channels, out int rate)
         {
@@ -577,11 +594,6 @@ public static class Lub
         }
 
         public static bool Voice(string key, int snd, VoiceOpts? opts = null)
-        {
-            return false;
-        }
-
-        public static bool Free(int snd)
         {
             return false;
         }

@@ -4,8 +4,9 @@ import lubx.Boot;
 import lub.Ui;
 
 // サウンドラボ: ImGui で波形パラメータを調整しながら音を作る。
-// - 波形はコード合成 (raw PCM → Audio.pcm)。パラメータが変わったら作り直し、
-//   古い snd は少し待ってから Audio.free する (fade 中の voice を殺さないため)。
+// - 波形はコード合成 (raw PCM → Audio.snd)。key "lab" で毎フレーム宣言し、
+//   パラメータが変わったら version を進めて作り直す。古い snd は runtime が
+//   退役させ、fade 中の voice が終わってから回収する。
 // - oneshot は play ボタン、継続音は "loop voice" を ON にすると毎フレーム
 //   宣言される。pitch は負値 (逆再生) や 0 (停止) も試せる。
 class AudioLab20 {
@@ -29,8 +30,8 @@ class AudioLab20 {
 
 	static var snd = 0;
 	static var lastKey = "";
-	// 差し替えた snd の遅延 free (fade out が終わる猶予を置く)
-	static var retired:Array<{snd:Int, remaining:Float}> = [];
+	static var samples:lua.Table<Int, Float> = null;
+	static var version = 0;
 
 	static final waveNames = ["square", "saw", "triangle", "sine", "noise"];
 
@@ -70,32 +71,19 @@ class AudioLab20 {
 		return out;
 	}
 
-	// パラメータが変わっていたら snd を作り直す。内容 dedupe があるので
-	// 同じパラメータに戻せば同じ handle が返り、free 済みなら作り直される。
+	// パラメータが変わっていたら波形を作り直して version を進める。snd は毎
+	// フレーム同じ key で宣言する (version が同じなら runtime は波形を読まない)。
+	// 内容 dedupe があるので同じパラメータに戻せば同じ handle が返る。
 	static function ensureSnd():Bool {
 		var key = wave + ":" + freq0 + ":" + freq1 + ":" + duration + ":" + decay + ":" + duty;
-		if (key == lastKey && snd != 0)
-			return false;
-		if (snd != 0)
-			retired.push({snd: snd, remaining: 0.5});
-		snd = Audio.pcm(synth(), 1, RATE);
-		lastKey = key;
-		return true;
-	}
-
-	static function sweepRetired(dt:Float) {
-		var i = retired.length - 1;
-		while (i >= 0) {
-			retired[i].remaining -= dt;
-			if (retired[i].remaining <= 0) {
-				// 差し替え後も同じ内容で作り直されて現役に戻っている
-				// (dedupe で同じ handle) 場合は free しない
-				if (retired[i].snd != snd)
-					Audio.free(retired[i].snd);
-				retired.splice(i, 1);
-			}
-			i--;
+		var changed = key != lastKey || samples == null;
+		if (changed) {
+			samples = synth();
+			version++;
+			lastKey = key;
 		}
+		snd = Audio.snd("lab", samples, 1, RATE, version);
+		return changed;
 	}
 
 	public static function onFrame(dt:Float) {
@@ -142,7 +130,6 @@ class AudioLab20 {
 				pitch: pitch,
 				pan: pan
 			});
-		sweepRetired(dt);
 
 		Gfx.beginPass({
 			target: Gfx.mainTex,

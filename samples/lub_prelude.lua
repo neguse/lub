@@ -322,19 +322,17 @@ Host = {
 }
 
 Audio = {
-	audio_pcm = audio_pcm,
+	audio_snd = audio_snd,
 	audio_decode = audio_decode,
 	audio_play = audio_play,
 	audio_voice = audio_voice,
-	audio_free = audio_free,
 	audio_master_volume = audio_master_volume,
 	audio_info = audio_info,
-	pcm = audio_pcm,
-	pcm_bytes = audio_pcm,
+	snd = audio_snd,
+	snd_bytes = audio_snd,
 	decode = audio_decode,
 	play = audio_play,
 	voice = audio_voice,
-	free = audio_free,
 	master_volume = audio_master_volume,
 	info = audio_info,
 }

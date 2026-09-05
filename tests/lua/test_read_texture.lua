@@ -5,7 +5,7 @@ local rb = nil
 
 function M.onInit()
 	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu" })
-	rb = readback()
+	rb = readback("test")
 end
 
 function M.onFrame()

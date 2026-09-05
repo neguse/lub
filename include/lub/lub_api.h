@@ -133,16 +133,21 @@ typedef struct LubAudioInfo {
   int32_t snds;
 } LubAudioInfo;
 
-// interleaved f32 PCM から snd を作る。samples は count 個 (channels の倍数)。
-LubStatus lub_audio_pcm(LubContext *ctx, const float *samples, int32_t count,
-                        int32_t channels, int32_t rate, int32_t *out_snd);
-// file format bytes → f32 PCM の view (次の decode まで有効)。
+// snd を key で宣言する。samples は interleaved f32 PCM で count 個 (channels
+// の倍数)。version の意味論は use_buffer と同じ (NULL = 内容が変わった宣言、
+// 同じ version なら samples は読まない)。宣言が resource_sweep_after_frames
+// の間途切れた snd は sweep され、鳴っている voice が終わってから PCM を
+// 回収する。同じ内容の PCM は同じ snd に dedupe されるので、hot reload で
+// 作り直しても鳴っている voice は途切れない。
+LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
+                        int32_t count, int32_t channels, int32_t rate,
+                        const int32_t *version, int32_t *out_snd);
+// file format bytes → f32 PCM の view (frame の終わりまで有効)。
 LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
                            LubView *pcm, int32_t *channels, int32_t *rate);
 bool lub_audio_play(LubContext *ctx, int32_t snd, const LubAudioPlayDesc *desc);
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
                      const LubAudioPlayDesc *desc);
-bool lub_audio_free(LubContext *ctx, int32_t snd);
 void lub_audio_master_volume(LubContext *ctx, float volume);
 void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
 
@@ -495,7 +500,7 @@ typedef enum LubGfxReadbackStatus {
 
 typedef struct LubGfxReadbackResult {
   int32_t status; // LubGfxReadbackStatus
-  LubView pixels; // READY のとき。次の lub_gfx_readback か frame の終わりまで
+  LubView pixels; // READY のとき。frame の終わりまで
   int32_t w, h;
   int32_t format; // LubGfxPixelFormat
   int32_t stride;
@@ -536,6 +541,8 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *desc);
 // readback queue `key` を poll し、has_request なら (tex, token) を積む。
 // 完了した先頭があればそれを返し (READY / ERROR)、無ければ PROCESSING。
 // queue が満杯で積めなかったときは DROPPED (token は積めなかった要求のもの)。
+// token はゲームが決める int32 の user token。queue は key で宣言する
+// resource で、resource_sweep_after_frames の間 poll されなければ sweep。
 LubStatus lub_gfx_readback(LubContext *ctx, LubStr key, bool has_request,
                            LubHandle tex, int32_t token,
                            LubGfxReadbackResult *out);

@@ -31,9 +31,9 @@ typedef AudioInfo = {
 }
 
 /**
-	音の core API。snd を生むのは `pcm` (raw f32 PCM) だけで、file format は
-	core に入らない。wav 等は `decode` (純関数 utility) で PCM に落としてから
-	`pcm` に渡す。
+	音の core API。snd を生むのは `snd` (raw f32 PCM を key で宣言) だけで、
+	file format は core に入らない。wav 等は `decode` (純関数 utility) で PCM に
+	落としてから `snd` に渡す。
 
 	- `play`: oneshot。撃ちっぱなしでサンプル末尾まで鳴って勝手に消える。
 	- `voice`: 毎フレーム宣言する継続音。宣言が途切れたら fade out、
@@ -41,17 +41,24 @@ typedef AudioInfo = {
 	  (pitch 追従)、スクラッチ (loop なし + pitch 追従、retrigger は key を
 	  変える) はすべてこれの使い方の違い。
 
-	同じ内容の PCM は同じ snd handle に dedupe されるので、hot reload で
+	snd は他の resource と同じく key で宣言し、宣言が途切れたら
+	(`resource_sweep_after_frames`) sweep される。鳴っている voice は最後まで
+	鳴る。同じ内容の PCM は同じ snd handle に dedupe されるので、hot reload で
 	波形を作り直しても鳴っている voice は途切れない。
 **/
 extern class Audio {
-	/** data はサンプル値の table (`lua.Table.fromArray`)、または f32 の `Bytes`/string。 **/
-	@:native("audio_pcm") public static function pcm(data:Dynamic, channels:Int, rate:Int):Int;
+	/**
+		key で snd を宣言する。data はサンプル値の table
+		(`lua.Table.fromArray`)、または f32 の `Bytes`/string。version の規約は
+		`Gfx.useBuffer` と同じで、同じ version なら data は読まない。
+	**/
+	@:native("audio_snd") public static function snd(key:String, data:Dynamic, channels:Int, rate:Int, ?version:Int):Int;
 
+	/** file format の bytes を f32 PCM に落とす。`bytes` は frame 有効の view。 **/
 	@:native("audio_decode") public static function decode(data:Dynamic):AudioDecodeResult;
+
 	@:native("audio_play") public static function play(snd:Int, ?opts:PlayOpts):Bool;
 	@:native("audio_voice") public static function voice(key:String, snd:Int, ?opts:VoiceOpts):Bool;
-	@:native("audio_free") public static function free(snd:Int):Bool;
 	@:native("audio_master_volume") public static function masterVolume(volume:Float):Void;
 	@:native("audio_info") public static function info():AudioInfo;
 }

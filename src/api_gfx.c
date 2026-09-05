@@ -811,10 +811,8 @@ typedef struct RbItem {
 typedef struct RbQueue {
   char key[64];
   int depth, head, count;
+  int64_t last_seen_frame; // 最後に poll された frame。途切れたら sweep
   RbItem items[RB_MAX_DEPTH];
-  // 直近に返した view の実体。次の呼び出しか shutdown で解放する。
-  uint8_t *view_data;
-  char *view_error;
 } RbQueue;
 
 struct GfxReadbackQueues {
@@ -833,24 +831,40 @@ static void rb_item_clear(RbItem *it) {
   it->state = RB_EMPTY;
 }
 
-static void rb_queue_drop_view(RbQueue *q) {
-  free(q->view_data);
-  q->view_data = NULL;
-  free(q->view_error);
-  q->view_error = NULL;
+static void rb_queue_clear(RbQueue *q) {
+  for (int k = 0; k < RB_MAX_DEPTH; ++k)
+    rb_item_clear(&q->items[k]);
+  q->head = 0;
+  q->count = 0;
 }
 
 void api_gfx_shutdown(App *app) {
   struct GfxReadbackQueues *qs = app->readbacks;
   if (!qs)
     return;
-  for (int i = 0; i < qs->n; ++i) {
-    for (int k = 0; k < RB_MAX_DEPTH; ++k)
-      rb_item_clear(&qs->q[i].items[k]);
-    rb_queue_drop_view(&qs->q[i]);
-  }
+  for (int i = 0; i < qs->n; ++i)
+    rb_queue_clear(&qs->q[i]);
   free(qs);
   app->readbacks = NULL;
+}
+
+// poll が resource_sweep_after_frames の間途切れた queue を捨てる。
+void api_gfx_frame_end(App *app) {
+  struct GfxReadbackQueues *qs = app->readbacks;
+  if (!qs || app->resource_sweep_after_frames <= 0)
+    return;
+  int64_t cf = (int64_t)app->frame_index;
+  int64_t thr = (int64_t)app->resource_sweep_after_frames;
+  for (int i = 0; i < qs->n;) {
+    if (cf - qs->q[i].last_seen_frame > thr) {
+      rb_queue_clear(&qs->q[i]);
+      qs->q[i] = qs->q[qs->n - 1];
+      memset(&qs->q[qs->n - 1], 0, sizeof(RbQueue));
+      qs->n--;
+    } else {
+      ++i;
+    }
+  }
 }
 
 static RbQueue *rb_queue_get(App *app, LubStr key) {
@@ -864,8 +878,10 @@ static RbQueue *rb_queue_get(App *app, LubStr key) {
   }
   struct GfxReadbackQueues *qs = app->readbacks;
   for (int i = 0; i < qs->n; ++i)
-    if (lub_str_eq(key, qs->q[i].key))
+    if (lub_str_eq(key, qs->q[i].key)) {
+      qs->q[i].last_seen_frame = (int64_t)app->frame_index;
       return &qs->q[i];
+    }
   if (qs->n >= RB_MAX_QUEUES) {
     lub_api_fail(app, "readback: too many readback queues (max %d)",
                  RB_MAX_QUEUES);
@@ -884,6 +900,7 @@ static RbQueue *rb_queue_get(App *app, LubStr key) {
   q->depth = depth;
   q->head = 0;
   q->count = 0;
+  q->last_seen_frame = (int64_t)app->frame_index;
   qs->n++;
   return q;
 }
@@ -952,22 +969,23 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   it->state = RB_PENDING;
 }
 
-// 完了した item を out に写し、view の実体を queue に預けて item を空にする。
-static void rb_take(App *app, RbQueue *q, RbItem *it,
-                    LubGfxReadbackResult *out) {
-  rb_queue_drop_view(q);
+// 完了した item を out に写し、view の実体を frame の終わりまで預けて item を
+// 空にする。
+static void rb_take(App *app, RbItem *it, LubGfxReadbackResult *out) {
   memset(out, 0, sizeof(*out));
   out->token = it->token;
   if (it->state == RB_ERROR || it->error) {
     out->status = LUB_GFX_READBACK_STATUS_ERROR;
-    q->view_error = it->error ? it->error : SDL_strdup("read_texture: error");
+    char *err = it->error ? it->error : SDL_strdup("read_texture: error");
     it->error = NULL;
-    out->error = lub_str_c(q->view_error);
+    app_frame_garbage_push(app, err);
+    out->error = lub_str_c(err);
   } else {
     out->status = LUB_GFX_READBACK_STATUS_READY;
-    q->view_data = it->rb.data;
+    uint8_t *data = it->rb.data;
     it->rb.data = NULL;
-    out->pixels.ptr = q->view_data;
+    app_frame_garbage_push(app, data);
+    out->pixels.ptr = data;
     out->pixels.len = (int32_t)it->rb.data_bytes;
     out->pixels.frame = (int32_t)app->frame_index;
     out->w = it->rb.w;
@@ -997,7 +1015,7 @@ LubStatus lub_gfx_readback(LubContext *ctx, LubStr key, bool has_request,
     q->count--;
     if (has_request && q->count < q->depth)
       rb_enqueue(app, q, tex, token);
-    rb_take(app, q, &q->items[idx], out);
+    rb_take(app, &q->items[idx], out);
     return LUB_OK;
   }
   if (has_request) {

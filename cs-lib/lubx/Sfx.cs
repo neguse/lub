@@ -7,14 +7,16 @@ using static Lub;
 
 /// <summary>
 /// 効果音の即席合成。同じパラメータからは常に同じ波形を生成する (決定的) ので、
-/// Audio.pcm の内容 dedupe と合わせて hot reload しても snd handle が安定する。
-/// 結果は内部 cache するので毎フレーム宣言的に呼んでよい。
+/// Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
+/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime
+/// は波形を読まない) ので毎フレーム宣言的に呼んでよい。sweep された snd は
+/// 次に呼んだとき cache の波形から作り直される。
 /// </summary>
 public static class Sfx
 {
     public const int Rate = 44100;
 
-    private static Dictionary<string, int> cache = new Dictionary<string, int>();
+    private static Dictionary<string, List<double>> cache = new Dictionary<string, List<double>>();
 
     /// <summary>矩形波 blip。freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。snd handle を返す。</summary>
     public static int Blip(double freq0, double freq1, double dur, double vol)
@@ -22,7 +24,7 @@ public static class Sfx
         var key = "blip:" + freq0 + ":" + freq1 + ":" + dur + ":" + vol;
         if (cache.TryGetValue(key, out var cached))
         {
-            return cached;
+            return Audio.Snd(key, cached, 1, Rate, 1);
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<double>();
@@ -35,9 +37,8 @@ public static class Sfx
             var env = System.Math.Exp(-5.0 * u);
             samples.Add((phase % 1.0 < 0.5 ? 1.0 : -1.0) * env * vol);
         }
-        var snd = Audio.Pcm(samples, 1, Rate);
-        cache[key] = snd;
-        return snd;
+        cache[key] = samples;
+        return Audio.Snd(key, samples, 1, Rate, 1);
     }
 
     /// <summary>ノイズバースト。指数減衰 (exp(-4u))、16 sample ごとにホールド更新。snd handle を返す。</summary>
@@ -47,7 +48,7 @@ public static class Sfx
         var key = "noise:" + dur + ":" + vol + ":" + s;
         if (cache.TryGetValue(key, out var cached))
         {
-            return cached;
+            return Audio.Snd(key, cached, 1, Rate, 1);
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<double>();
@@ -62,8 +63,7 @@ public static class Sfx
             var u = (double)i / n;
             samples.Add(hold * System.Math.Exp(-4.0 * u) * vol);
         }
-        var snd = Audio.Pcm(samples, 1, Rate);
-        cache[key] = snd;
-        return snd;
+        cache[key] = samples;
+        return Audio.Snd(key, samples, 1, Rate, 1);
     }
 }

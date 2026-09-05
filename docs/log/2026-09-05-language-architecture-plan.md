@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。3f: stub の `object` 引数と戻り値を typed な class にする(残る `object` は draw / dispatch の bindings の `Dictionary<string, object>` だけ)。Lua binding は詰め替えだけに。残り: 所有権の規則 (Bytes / Readback / view)、wire の整理 |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。3f: stub の `object` 引数と戻り値を typed な class にする(残る `object` は draw / dispatch の bindings の `Dictionary<string, object>` だけ)。3g: 所有権の規則(Bytes は frame 有効の view、readback と snd は key で宣言する resource)。Lua binding は詰め替えだけに。残り: wire の整理 |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -80,8 +80,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   handle は `lub_last_error` に回る。Lua 面の sentinel table は `handle`
   field を持ち、stale なら key から引き直す。
 - readback は runtime が key で持つ queue になり、結果は frame 有効の view で
-  返す。Lua binding は従来の `Bytes`(所有)に copy して返し、frame を跨いで
-  持てる従来の契約を保つ(zero copy 化は所有権の規則を Lua 面に入れるとき)。
+  返す。Lua binding は 3g までは従来の `Bytes`(所有)に copy して返した。
 - version の面は int32(runtime 内部は int64 のまま)。
 - io の file cache は runtime が path で持つ(`src/api_io.c`)。mtime の fast
   path と内容 hash の version は `lub_io.lua` と同じ意味論で、version は
@@ -140,3 +139,24 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 - texture の px は byte 値の `List<int>`(Lua binding は 0..255 に丸める)。
 - glTF は `GltfMesh` / `GltfPrimitive` / `GltfMaterial`(MeshData 派生)で
   受け、`Interleave*` は `MeshData` を取る。
+- 所有権の規則(設計記録の 3 規則)を Lua 面まで入れた(3g)。`Bytes` は
+  frame 番号つきの view userdata で `__gc` を持たず、png_load / readback /
+  audio_decode の結果を zero copy で指す。古い frame の view を渡された API
+  (use_texture / png_write / audio_snd / font)と `.length` は error にする。
+  view の実体は `App.frame_garbage` に預けて `app_frame_end` で free する
+  (readback の pixel、decode の PCM)。png の pixel は io cache の entry が
+  持つ。
+- readback は `readback(key)` の sentinel table(`__lub_kind = "readback"`)
+  で、id は int32 の user token をそのまま runtime の token にする(Lua 値の
+  対応表は消えた)。queue は最後に poll された frame を持ち、
+  `resource_sweep_after_frames` の間 poll が途切れると sweep。
+- audio の snd は `audio_snd(key, data, channels, rate, version)` で宣言する
+  resource になり、`audio_pcm` / `audio_free` は消えた。version の規約は
+  use_buffer と同じで、同じ version なら data を読まない(Lua binding は
+  table の変換もしない)。宣言が途切れた key は sweep で snd を退役させ
+  (`audio_snd_retire`)、鳴っている voice が離れてから frame_end で PCM を
+  回収する。内容 dedupe はそのままなので複数の key が同じ snd を指しうる。
+  退役は他の key が指していないときだけ。同じ内容で宣言し直せば退役が
+  解ける。lubx の `Sfx` は波形を cache して呼ぶたびに version 1 で宣言し直す。
+  20_audio は key "lab" を毎フレーム宣言し、パラメータが変わったら version
+  を進める(遅延 free の仕組みは消えた)。

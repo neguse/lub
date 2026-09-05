@@ -33,6 +33,7 @@ typedef struct Snd {
   uint64_t hash; // 内容 dedupe 用 (bytes + channels + rate)
   uint32_t gen;  // handle の世代。free で進めて stale handle を弾く
   bool in_use;
+  bool retired;        // 宣言が切れた。lookup は失敗、voice が離れたら回収
   SDL_AtomicInt alive; // 0 = freed。audio thread は参照 voice を落とす
   SDL_AtomicInt refs;  // attach されている voice 数
 } Snd;
@@ -244,7 +245,8 @@ static Snd *snd_lookup(AudioState *st, int id) {
   int idx = (id - 1) % AUDIO_MAX_SNDS;
   uint32_t gen = (uint32_t)((id - 1) / AUDIO_MAX_SNDS);
   Snd *snd = &st->snds[idx];
-  if (!snd->in_use || snd->gen != gen || !SDL_GetAtomicInt(&snd->alive))
+  if (!snd->in_use || snd->gen != gen || snd->retired ||
+      !SDL_GetAtomicInt(&snd->alive))
     return NULL;
   return snd;
 }
@@ -273,8 +275,10 @@ int audio_snd_from_pcm(AudioState *st, const float *interleaved,
     }
     if (SDL_GetAtomicInt(&snd->alive) && snd->hash == h &&
         snd->frames == frames && snd->channels == channels &&
-        snd->rate == rate && memcmp(snd->pcm, interleaved, bytes) == 0)
-      return snd_id(st, snd); // 内容一致 → 同じ handle (hot reload 継続の要)
+        snd->rate == rate && memcmp(snd->pcm, interleaved, bytes) == 0) {
+      snd->retired = false; // 内容一致 → 同じ handle (hot reload 継続の要)
+      return snd_id(st, snd);
+    }
   }
   if (!free_slot) {
     SDL_Log("audio: snd registry full (%d)", AUDIO_MAX_SNDS);
@@ -290,17 +294,17 @@ int audio_snd_from_pcm(AudioState *st, const float *interleaved,
   free_slot->rate = rate;
   free_slot->hash = h;
   free_slot->in_use = true;
+  free_slot->retired = false;
   SDL_SetAtomicInt(&free_slot->refs, 0);
   SDL_SetAtomicInt(&free_slot->alive, 1);
   return snd_id(st, free_slot);
 }
 
-bool audio_snd_free(AudioState *st, int id) {
+bool audio_snd_retire(AudioState *st, int id) {
   Snd *snd = snd_lookup(st, id);
   if (!snd)
     return false;
-  SDL_SetAtomicInt(&snd->alive, 0);
-  snd->gen++; // 以後の handle lookup を無効化。PCM 回収は frame_end で
+  snd->retired = true;
   return true;
 }
 
@@ -444,14 +448,17 @@ void audio_state_frame_end(AudioState *st) {
     }
     d->in_use = false;
   }
-  // freed snd の PCM 回収 (attach していた voice が全部離れてから)
+  // 退役した snd の PCM 回収 (attach していた voice が全部離れてから)。
+  // alive を落として gen を進め、handle を完全に無効化する。
   for (int i = 0; i < AUDIO_MAX_SNDS; i++) {
     Snd *snd = &st->snds[i];
-    if (snd->in_use && !SDL_GetAtomicInt(&snd->alive) &&
-        SDL_GetAtomicInt(&snd->refs) == 0) {
+    if (snd->in_use && snd->retired && SDL_GetAtomicInt(&snd->refs) == 0) {
+      SDL_SetAtomicInt(&snd->alive, 0);
+      snd->gen++;
       free(snd->pcm);
       snd->pcm = NULL;
       snd->in_use = false;
+      snd->retired = false;
     }
   }
   st->frame++;
@@ -465,7 +472,8 @@ void audio_state_info(AudioState *st, AudioInfo *out) {
     if (SDL_GetAtomicInt(&st->voices[i].state) != V_FREE)
       out->active_voices++;
   for (int i = 0; i < AUDIO_MAX_SNDS; i++)
-    if (st->snds[i].in_use && SDL_GetAtomicInt(&st->snds[i].alive))
+    if (st->snds[i].in_use && !st->snds[i].retired &&
+        SDL_GetAtomicInt(&st->snds[i].alive))
       out->snds++;
 }
 

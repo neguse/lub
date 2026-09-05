@@ -175,6 +175,10 @@ void app_frame_end(App *app) {
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
+  // key で宣言する snd / readback queue の sweep。退役した snd の PCM 回収は
+  // この後の audio_state_frame_end が行う。
+  api_audio_frame_end(app);
+  api_gfx_frame_end(app);
   if (app->audio) {
     audio_state_frame_end(app->audio);
   }
@@ -186,6 +190,10 @@ void app_frame_end(App *app) {
     pipeline_cache_sweep(&app->pip_cache, cf, thr);
     res_table_sweep(&app->res, cf, thr, app_on_shader_release, app);
   }
+  // frame 有効の view の実体を回収する
+  for (int i = 0; i < app->frame_garbage_count; ++i)
+    free(app->frame_garbage[i]);
+  app->frame_garbage_count = 0;
   app->frame_index++;
   gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
 }
@@ -195,6 +203,11 @@ void app_shutdown(App *app) {
   pipeline_cache_shutdown(&app->pip_cache);
   api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
   api_audio_shutdown(app);
+  for (int i = 0; i < app->frame_garbage_count; ++i)
+    free(app->frame_garbage[i]);
+  free(app->frame_garbage);
+  app->frame_garbage = NULL;
+  app->frame_garbage_count = app->frame_garbage_cap = 0;
   api_host_shutdown(app);
   api_io_shutdown(app);
   api_font_shutdown(app);

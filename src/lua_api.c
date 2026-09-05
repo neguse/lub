@@ -22,50 +22,58 @@
 
 static App *g_app_for_lua = NULL;
 
+// Bytes: runtime が所有する byte 列への view (所有権の規則 2)。返した frame の
+// 終わりまで有効で、古い view を渡された API は stale として error にする。
+// 跨いで持ちたい内容はゲームが自分の memory に写す。
 typedef struct LubBytes {
-  uint8_t *data;
+  const uint8_t *data;
   size_t len;
+  int32_t frame; // 返した frame。今の frame と違えば stale
 } LubBytes;
 
 #define LUB_BYTES_MT "lub.Bytes"
 #define LUB_READBACK_MT "lub.Readback"
-#define LUB_READBACK_MAX_DEPTH 32
 
 static int is_sentinel(lua_State *L, int idx, const char *kind);
+
+static int32_t frame_now(void) { return (int32_t)g_app_for_lua->frame_index; }
 
 static LubBytes *lub_bytes_test(lua_State *L, int idx) {
   return (LubBytes *)luaL_testudata(L, idx, LUB_BYTES_MT);
 }
 
-static LubBytes *lub_bytes_check(lua_State *L, int idx) {
-  return (LubBytes *)luaL_checkudata(L, idx, LUB_BYTES_MT);
+// Bytes なら stale 検査をして返す。Bytes でなければ NULL。
+static LubBytes *lub_bytes_live(lua_State *L, int idx) {
+  LubBytes *b = lub_bytes_test(L, idx);
+  if (b && b->frame != frame_now())
+    luaL_error(L,
+               "stale Bytes view: returned in frame %d, now frame %d (a view "
+               "is valid until the end of its frame; copy what you keep)",
+               (int)b->frame, (int)frame_now());
+  return b;
 }
 
-static void lub_bytes_push(lua_State *L, uint8_t *data, size_t len) {
+static LubBytes *lub_bytes_check(lua_State *L, int idx) {
+  luaL_checkudata(L, idx, LUB_BYTES_MT);
+  return lub_bytes_live(L, idx);
+}
+
+static void lub_bytes_push(lua_State *L, const uint8_t *data, size_t len) {
   LubBytes *b = (LubBytes *)lua_newuserdatauv(L, sizeof(LubBytes), 0);
   b->data = data;
   b->len = len;
+  b->frame = frame_now();
   luaL_getmetatable(L, LUB_BYTES_MT);
   lua_setmetatable(L, -2);
 }
 
 const uint8_t *lub_bytes_arg(lua_State *L, int idx, size_t *len) {
-  LubBytes *b = lub_bytes_test(L, idx);
+  LubBytes *b = lub_bytes_live(L, idx);
   if (b) {
     *len = b->len;
     return b->data;
   }
   return (const uint8_t *)luaL_checklstring(L, idx, len);
-}
-
-static int l_bytes_gc(lua_State *L) {
-  LubBytes *b = lub_bytes_check(L, 1);
-  if (b->data) {
-    free(b->data);
-    b->data = NULL;
-  }
-  b->len = 0;
-  return 0;
 }
 
 static int l_bytes_len(lua_State *L) {
@@ -87,8 +95,6 @@ static int l_bytes_index(lua_State *L) {
 
 static void lub_bytes_register(lua_State *L) {
   if (luaL_newmetatable(L, LUB_BYTES_MT)) {
-    lua_pushcfunction(L, l_bytes_gc);
-    lua_setfield(L, -2, "__gc");
     lua_pushcfunction(L, l_bytes_len);
     lua_setfield(L, -2, "__len");
     lua_pushcfunction(L, l_bytes_index);
@@ -288,7 +294,7 @@ static int l_use_texture(lua_State *L) {
   }
   uint8_t *owned = NULL;
   if (!lua_isnoneornil(L, 5)) {
-    LubBytes *b = lub_bytes_test(L, 5);
+    LubBytes *b = lub_bytes_live(L, 5);
     if (b) {
       d.pixels = b->data;
       d.pixels_len = (int32_t)b->len;
@@ -616,80 +622,53 @@ static int l_dispatch(lua_State *L) {
   return 0;
 }
 
-// Readback: runtime の readback queue (key で宣言) の上に、Lua の id 値を
-// token に結ぶ小さな表を載せる。
-typedef struct LubReadback {
-  char key[32];
-  int32_t next_token;
-  int id_refs[LUB_READBACK_MAX_DEPTH];
-} LubReadback;
-
-static int g_readback_serial = 0;
-
-static LubReadback *lub_readback_check(lua_State *L, int idx) {
-  return (LubReadback *)luaL_checkudata(L, idx, LUB_READBACK_MT);
-}
-
-static int rb_slot(int32_t token) {
-  return (int)((uint32_t)token % LUB_READBACK_MAX_DEPTH);
-}
-
-static void rb_push_id(lua_State *L, LubReadback *rb, int32_t token) {
-  int slot = rb_slot(token);
-  if (rb->id_refs[slot] != LUA_NOREF) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, rb->id_refs[slot]);
-    luaL_unref(L, LUA_REGISTRYINDEX, rb->id_refs[slot]);
-    rb->id_refs[slot] = LUA_NOREF;
-  } else {
-    lua_pushnil(L);
-  }
+// Readback: key で宣言する runtime の readback queue (所有権の規則 3)。Lua 面は
+// sentinel table { __lub_kind = "readback", key } で、id は int32 の user
+// token。結果の pixel は frame 有効の Bytes view。
+static LubStr readback_key(lua_State *L, int idx) {
+  if (!is_sentinel(L, idx, "readback"))
+    luaL_argerror(L, idx, "readback expected (readback(key))");
+  lua_getfield(L, idx, "key");
+  size_t n = 0;
+  const char *k = lua_tolstring(L, -1, &n);
+  lua_pop(L, 1); // 文字列は sentinel table が参照し続ける
+  if (!k)
+    luaL_argerror(L, idx, "readback key missing");
+  LubStr r = {k, (int32_t)n};
+  return r;
 }
 
 // read_texture(rb, tex, id) -> status, bytes, w, h, format, stride, id,
 // dropped, error (9 値)
 static int l_readback_read_texture(lua_State *L) {
-  LubReadback *rb = lub_readback_check(L, 1);
+  LubStr key = readback_key(L, 1);
   bool has_id = !lua_isnoneornil(L, 3);
   LubHandle tex = 0;
   int32_t token = 0;
   if (has_id) {
     tex = ref_handle(L, 2, "texture");
-    token = rb->next_token++;
-    int slot = rb_slot(token);
-    if (rb->id_refs[slot] != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, rb->id_refs[slot]);
-    lua_pushvalue(L, 3);
-    rb->id_refs[slot] = luaL_ref(L, LUA_REGISTRYINDEX);
+    token = (int32_t)luaL_checkinteger(L, 3);
   }
   LubGfxReadbackResult r;
-  LubStr key = lub_str_c(rb->key);
   if (lub_gfx_readback(api_ctx(), key, has_id, tex, token, &r) != LUB_OK)
     return api_raise(L);
   switch (r.status) {
-  case LUB_GFX_READBACK_STATUS_READY: {
+  case LUB_GFX_READBACK_STATUS_READY:
     lua_pushstring(L, "ready");
-    // view を Bytes (所有) に写す。frame を跨いで持てる従来の契約を保つ。
-    uint8_t *copy =
-        (uint8_t *)malloc(r.pixels.len > 0 ? (size_t)r.pixels.len : 1);
-    if (!copy)
-      return luaL_error(L, "read_texture: out of memory");
-    if (r.pixels.len > 0)
-      memcpy(copy, r.pixels.ptr, (size_t)r.pixels.len);
-    lub_bytes_push(L, copy, (size_t)r.pixels.len);
+    lub_bytes_push(L, r.pixels.ptr, (size_t)r.pixels.len);
     lua_pushinteger(L, r.w);
     lua_pushinteger(L, r.h);
     lua_pushinteger(L, r.format);
     lua_pushinteger(L, r.stride);
-    rb_push_id(L, rb, r.token);
+    lua_pushinteger(L, r.token);
     lua_pushnil(L);
     lua_pushnil(L);
     return 9;
-  }
   case LUB_GFX_READBACK_STATUS_ERROR:
     lua_pushstring(L, "error");
     for (int i = 0; i < 5; ++i)
       lua_pushnil(L);
-    rb_push_id(L, rb, r.token);
+    lua_pushinteger(L, r.token);
     lua_pushnil(L);
     lua_pushlstring(L, r.error.ptr ? r.error.ptr : "", (size_t)r.error.len);
     return 9;
@@ -697,7 +676,7 @@ static int l_readback_read_texture(lua_State *L) {
     lua_pushstring(L, "dropped");
     for (int i = 0; i < 6; ++i)
       lua_pushnil(L);
-    rb_push_id(L, rb, r.token);
+    lua_pushinteger(L, r.token);
     lua_pushnil(L);
     return 9;
   default:
@@ -708,22 +687,15 @@ static int l_readback_read_texture(lua_State *L) {
   }
 }
 
-static int l_readback_gc(lua_State *L) {
-  LubReadback *rb = lub_readback_check(L, 1);
-  for (int i = 0; i < LUB_READBACK_MAX_DEPTH; ++i) {
-    if (rb->id_refs[i] != LUA_NOREF)
-      luaL_unref(L, LUA_REGISTRYINDEX, rb->id_refs[i]);
-    rb->id_refs[i] = LUA_NOREF;
-  }
-  return 0;
-}
-
+// readback(key) -> sentinel。runtime には触らない (queue は最初の
+// read_texture で作られ、poll が途切れると sweep される)。
 static int l_readback_new(lua_State *L) {
-  LubReadback *rb = (LubReadback *)lua_newuserdatauv(L, sizeof(LubReadback), 0);
-  SDL_snprintf(rb->key, sizeof(rb->key), "lua#%d", ++g_readback_serial);
-  rb->next_token = 1;
-  for (int i = 0; i < LUB_READBACK_MAX_DEPTH; ++i)
-    rb->id_refs[i] = LUA_NOREF;
+  LubStr key = lstr_check(L, 1);
+  lua_newtable(L);
+  lua_pushstring(L, "readback");
+  lua_setfield(L, -2, "__lub_kind");
+  lua_pushlstring(L, key.ptr, (size_t)key.len);
+  lua_setfield(L, -2, "key");
   luaL_getmetatable(L, LUB_READBACK_MT);
   lua_setmetatable(L, -2);
   return 1;
@@ -731,8 +703,6 @@ static int l_readback_new(lua_State *L) {
 
 static void lub_readback_register(lua_State *L) {
   if (luaL_newmetatable(L, LUB_READBACK_MT)) {
-    lua_pushcfunction(L, l_readback_gc);
-    lua_setfield(L, -2, "__gc");
     lua_newtable(L);
     lua_pushcfunction(L, l_readback_read_texture);
     lua_setfield(L, -2, "read_texture");
@@ -1221,12 +1191,7 @@ static int l_png_load(lua_State *L) {
     push_io_tail(L, &r);
     return 8;
   }
-  // view を Bytes (所有) に写す。frame を跨いで持てる従来の契約を保つ。
-  uint8_t *copy = (uint8_t *)malloc(px.len > 0 ? (size_t)px.len : 1);
-  if (!copy)
-    return luaL_error(L, "png_load: out of memory");
-  memcpy(copy, px.ptr, (size_t)px.len);
-  lub_bytes_push(L, copy, (size_t)px.len);
+  lub_bytes_push(L, px.ptr, (size_t)px.len);
   lua_pushinteger(L, w);
   lua_pushinteger(L, h);
   lua_pushinteger(L, fmt);
@@ -1251,44 +1216,53 @@ static int l_png_write(lua_State *L) {
 // ---------------------------------------------------------------------------
 // audio / host: C API への詰め替え。
 
-// (data, channels, rate) -> snd。data は f32 の LubBytes / string、または
-// サンプル値の table (コードで波形を作る経路)。
-static int l_audio_pcm(lua_State *L) {
-  int32_t channels = (int32_t)luaL_checkinteger(L, 2);
-  int32_t rate = (int32_t)luaL_checkinteger(L, 3);
+// audio_snd(key, data, channels, rate, version) -> snd。data は f32 の
+// Bytes / string、またはサンプル値の table (コードで波形を作る経路)。
+// version が前回と同じなら data は読まない (use_texture と同じ規約)。
+static int l_audio_snd(lua_State *L) {
+  LubStr key = lstr_check(L, 1);
+  int32_t channels = (int32_t)luaL_checkinteger(L, 3);
+  int32_t rate = (int32_t)luaL_checkinteger(L, 4);
+  int32_t vstore = 0;
+  const int32_t *ver = version_arg(L, 5, &vstore);
+  int32_t snd = 0;
+  if (ver) {
+    LubStatus st =
+        lub_audio_snd(api_ctx(), key, NULL, 0, channels, rate, ver, &snd);
+    if (st == LUB_OK) {
+      lua_pushinteger(L, snd);
+      return 1;
+    }
+    if (st == LUB_ERROR)
+      return api_raise(L);
+  }
+  if (lua_isnoneornil(L, 2))
+    return luaL_error(L, "audio_snd: data required (no snd for this version)");
   const float *pcm = NULL;
   float *tmp = NULL;
   size_t samples = 0;
-  if (lua_istable(L, 1)) {
-    samples = lua_rawlen(L, 1);
+  if (lua_istable(L, 2)) {
+    samples = lua_rawlen(L, 2);
     tmp = (float *)malloc((samples ? samples : 1) * sizeof(float));
     if (!tmp)
-      return luaL_error(L, "audio_pcm: out of memory");
+      return luaL_error(L, "audio_snd: out of memory");
     for (size_t i = 0; i < samples; i++) {
-      lua_rawgeti(L, 1, (lua_Integer)i + 1);
+      lua_rawgeti(L, 2, (lua_Integer)i + 1);
       tmp[i] = (float)lua_tonumber(L, -1);
       lua_pop(L, 1);
     }
     pcm = tmp;
   } else {
-    LubBytes *b = lub_bytes_test(L, 1);
-    const void *data;
-    size_t len;
-    if (b) {
-      data = b->data;
-      len = b->len;
-    } else {
-      data = luaL_checklstring(L, 1, &len);
-    }
+    size_t len = 0;
+    const uint8_t *data = lub_bytes_arg(L, 2, &len);
     if (len % sizeof(float) != 0)
-      return luaL_error(L, "audio_pcm: byte length %zu is not f32-aligned",
+      return luaL_error(L, "audio_snd: byte length %zu is not f32-aligned",
                         len);
     pcm = (const float *)data;
     samples = len / sizeof(float);
   }
-  int32_t snd = 0;
-  LubStatus st =
-      lub_audio_pcm(api_ctx(), pcm, (int32_t)samples, channels, rate, &snd);
+  LubStatus st = lub_audio_snd(api_ctx(), key, pcm, (int32_t)samples, channels,
+                               rate, ver, &snd);
   free(tmp);
   if (st != LUB_OK)
     return api_raise(L);
@@ -1296,31 +1270,18 @@ static int l_audio_pcm(lua_State *L) {
   return 1;
 }
 
-// (bytes|string) -> (bytes, channels, rate) | nil
+// (bytes|string) -> (bytes, channels, rate) | nil。bytes は frame 有効の view。
 static int l_audio_decode(lua_State *L) {
-  const void *data;
-  size_t len;
-  LubBytes *b = lub_bytes_test(L, 1);
-  if (b) {
-    data = b->data;
-    len = b->len;
-  } else {
-    data = luaL_checklstring(L, 1, &len);
-  }
+  size_t len = 0;
+  const uint8_t *data = lub_bytes_arg(L, 1, &len);
   LubView pcm = {0};
   int32_t ch = 0, rate = 0;
-  if (lub_audio_decode(api_ctx(), (const uint8_t *)data, (int32_t)len, &pcm,
-                       &ch, &rate) != LUB_OK) {
+  if (lub_audio_decode(api_ctx(), data, (int32_t)len, &pcm, &ch, &rate) !=
+      LUB_OK) {
     lua_pushnil(L);
     return 1;
   }
-  // view を Bytes (所有) に写す。frame を跨いで持てる従来の契約を保つ。
-  uint8_t *copy = (uint8_t *)malloc(pcm.len > 0 ? (size_t)pcm.len : 1);
-  if (!copy)
-    return luaL_error(L, "audio_decode: out of memory");
-  if (pcm.len > 0)
-    memcpy(copy, pcm.ptr, (size_t)pcm.len);
-  lub_bytes_push(L, copy, (size_t)pcm.len);
+  lub_bytes_push(L, pcm.ptr, (size_t)pcm.len);
   lua_pushinteger(L, ch);
   lua_pushinteger(L, rate);
   return 3;
@@ -1365,12 +1326,6 @@ static int l_audio_voice(lua_State *L) {
   LubAudioPlayDesc d;
   audio_read_opts(L, 3, &d);
   lua_pushboolean(L, lub_audio_voice(api_ctx(), key, snd, &d));
-  return 1;
-}
-
-static int l_audio_free(lua_State *L) {
-  lua_pushboolean(L,
-                  lub_audio_free(api_ctx(), (int32_t)luaL_checkinteger(L, 1)));
   return 1;
 }
 
@@ -2000,16 +1955,14 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "png_load");
   lua_pushcfunction(L, l_png_write);
   lua_setglobal(L, "png_write");
-  lua_pushcfunction(L, l_audio_pcm);
-  lua_setglobal(L, "audio_pcm");
+  lua_pushcfunction(L, l_audio_snd);
+  lua_setglobal(L, "audio_snd");
   lua_pushcfunction(L, l_audio_decode);
   lua_setglobal(L, "audio_decode");
   lua_pushcfunction(L, l_audio_play);
   lua_setglobal(L, "audio_play");
   lua_pushcfunction(L, l_audio_voice);
   lua_setglobal(L, "audio_voice");
-  lua_pushcfunction(L, l_audio_free);
-  lua_setglobal(L, "audio_free");
   lua_pushcfunction(L, l_audio_master_volume);
   lua_setglobal(L, "audio_master_volume");
   lua_pushcfunction(L, l_audio_info);

@@ -1,20 +1,14 @@
 // lub の samples/20_audio (Haxe 版 AudioLab20.hx) の TinyC# 版 entry。
 // 実行: lub samples/20_audio/AudioLab20.csproj (transpile + watch + hot reload)
 // サウンドラボ: ImGui で波形パラメータを調整しながら音を作る。
-// - 波形はコード合成 (raw PCM → audio_pcm)。パラメータが変わったら作り直し、
-//   古い snd は少し待ってから audio_free する (fade 中の voice を殺さないため)。
+// - 波形はコード合成 (raw PCM → Audio.Snd)。key "lab" で毎フレーム宣言し、
+//   パラメータが変わったら version を進めて作り直す。古い snd は runtime が
+//   退役させ、fade 中の voice が終わってから回収する。
 // - oneshot は play ボタン、継続音は "loop voice" を ON にすると毎フレーム
 //   宣言される。pitch は負値 (逆再生) や 0 (停止) も試せる。
 using System;
 using System.Collections.Generic;
 using static Lub;
-
-// 差し替えた snd の遅延 free 待ちエントリ (fade out が終わる猶予を置く)
-public class RetiredSnd
-{
-    public int Snd;
-    public double Remaining;
-}
 
 public static class AudioLab20
 {
@@ -38,7 +32,8 @@ public static class AudioLab20
 
     static int snd = 0;
     static string lastKey = "";
-    static List<RetiredSnd> retired = new List<RetiredSnd>();
+    static List<double>? samples = null;
+    static int version = 0;
 
     static string[] waveNames = new string[]
     {
@@ -87,38 +82,21 @@ public static class AudioLab20
         return samples;
     }
 
-    // パラメータが変わっていたら snd を作り直す。内容 dedupe があるので
-    // 同じパラメータに戻せば同じ handle が返り、free 済みなら作り直される。
+    // パラメータが変わっていたら波形を作り直して version を進める。snd は毎
+    // フレーム同じ key で宣言する (version が同じなら runtime は波形を読まない)。
+    // 内容 dedupe があるので同じパラメータに戻せば同じ handle が返る。
     static bool EnsureSnd()
     {
         string key = $"{wave}:{freq0}:{freq1}:{duration}:{decay}:{duty}";
-        if (key == lastKey && snd != 0) return false;
-        if (snd != 0)
+        bool changed = key != lastKey || samples == null;
+        if (changed)
         {
-            retired.Add(new RetiredSnd { Snd = snd, Remaining = 0.5 });
+            samples = Synth();
+            version = version + 1;
+            lastKey = key;
         }
-        snd = Audio.Pcm(Synth(), 1, rate);
-        lastKey = key;
-        return true;
-    }
-
-    static void SweepRetired(double dt)
-    {
-        for (int i = retired.Count - 1; i >= 0; i--)
-        {
-            var r = retired[i];
-            r.Remaining = r.Remaining - dt;
-            if (r.Remaining <= 0)
-            {
-                // 差し替え後も同じ内容で作り直されて現役に戻っている
-                // (dedupe で同じ handle) 場合は free しない
-                if (r.Snd != snd)
-                {
-                    Audio.Free(r.Snd);
-                }
-                retired.RemoveAt(i);
-            }
-        }
+        snd = Audio.Snd("lab", samples!, 1, rate, version);
+        return changed;
     }
 
     public static void OnFrame(double dt)
@@ -180,7 +158,6 @@ public static class AudioLab20
                 Pan = pan,
             });
         }
-        SweepRetired(dt);
 
         Gfx.BeginPass(new PassOpts
         {
