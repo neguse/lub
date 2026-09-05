@@ -31,7 +31,6 @@
   },
   "devDependencies": {
     "@johnnymorganz/stylua-bin": "^2.5.2",
-    "fast-xml-parser": "^5.9.3",
     "markdown-it": "^14.3.0",
     "playwright": "^1.58.0",
     "pngjs": "^7.0.0",

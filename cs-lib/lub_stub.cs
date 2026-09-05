@@ -103,6 +103,7 @@ public sealed class LubNoCAttribute : Attribute
 [LubHandle]
 public class TextureRef
 {
+    /// <summary>stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
     public int Version;
 }
 
@@ -111,6 +112,7 @@ public class TextureRef
 [LubHandle]
 public class ShaderRef
 {
+    /// <summary>stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
     public int Version;
 }
 
@@ -119,6 +121,7 @@ public class ShaderRef
 [LubHandle]
 public class BufferRef
 {
+    /// <summary>stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
     public int Version;
 }
 
@@ -147,11 +150,19 @@ public class PassOpts
     public TextureRef? Target;
     public List<TextureRef>? Targets;
     public TextureRef? DepthTarget;
+    /// <summary>クリア色 [r, g, b, a]。省略時 {0, 0, 0, 1}。</summary>
     [LubArray(4)]
     public double[]? ClearColor;
+    /// <summary>MRT 用。targets[i] に対応するクリア色の配列。</summary>
     [LubArray(4)]
     public List<double[]>? ClearColors;
+    /// <summary>省略時 1.0。</summary>
     public double? ClearDepth;
+    /// <summary>
+    /// `Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth)
+    /// の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提
+    /// (フレーム最初のパスで使うと内容は不定)。
+    /// </summary>
     public Lub.Gfx.LoadAction? Load;
 }
 
@@ -159,11 +170,19 @@ public class PassOpts
 public class DrawOpts
 {
     public ShaderRef Shader = new ShaderRef();
+    /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。</summary>
     public Lub.Gfx.Blend? Blend;
+    /// <summary>`Gfx.NONE` / `BACK` / `FRONT`。</summary>
     public Lub.Gfx.Cull? Cull;
+    /// <summary>
+    /// `Gfx.TRIANGLES` / `TRIANGLE_STRIP` / `LINES` / `LINE_STRIP` /
+    /// `POINTS`。
+    /// </summary>
     public Lub.Gfx.Primitive? Primitive;
+    /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
     public bool? DepthWrite;
+    /// <summary>0 以下を渡すと draw 自体がスキップされる。</summary>
     public int? InstanceCount;
 }
 
@@ -176,9 +195,13 @@ public class DispatchOpts
 /// <summary>Gfx.use_texture のオプション。</summary>
 public class TextureOpts
 {
+    /// <summary>`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。</summary>
     public Lub.Gfx.Filter? Filter;
+    /// <summary>`Gfx.REPEAT` / `CLAMP`。省略時 CLAMP。</summary>
     public Lub.Gfx.Wrap? Wrap;
+    /// <summary>render target として使う。</summary>
     public bool? Target;
+    /// <summary>compute の storage image として使う。</summary>
     public bool? Storage;
 }
 
@@ -205,10 +228,12 @@ public static class Lub
         MouseMotion = 6, MouseWheel = 7, WindowResize = 8, Other = 9,
     }
 
+    /// <summary>ランタイム設定。`OnInit` 内でのみ有効。</summary>
     public static void Config(ConfigOpts opts)
     {
     }
 
+    /// <summary>アプリ終了を要求する。</summary>
     [LubNoFail]
     public static void Quit()
     {
@@ -264,12 +289,14 @@ public static class Lub
         {
         }
 
+        /// <summary>version の意味論は `UseBuffer` を参照。</summary>
         public static ShaderRef? UseShader(string key, string vs, string fs,
             int? version = null)
         {
             return null;
         }
 
+        /// <summary>version の意味論は `UseBuffer` を参照。</summary>
         public static ShaderRef? UseShaderCompute(string key, string src,
             int? version = null)
         {
@@ -432,6 +459,7 @@ public static class Lub
             return false;
         }
 
+        /// <summary>カーソルの絶対座標 (window px)。</summary>
         [LubNoFail]
         public static void MousePos(out double x, out double y)
         {
@@ -439,6 +467,7 @@ public static class Lub
             y = 0;
         }
 
+        /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
         [LubNoFail]
         public static void MouseDelta(out double dx, out double dy)
         {
@@ -456,6 +485,7 @@ public static class Lub
         [LubLuaString]
         public enum Status { Pending = 0, Ready = 1, Error = 2 }
 
+        /// <summary>テキストファイルを読む (シェーダソースなど)。</summary>
         public static void LoadText(string path, out string? text,
             out int version, out Status status, out string? error)
         {
@@ -486,6 +516,7 @@ public static class Lub
             error = null;
         }
 
+        /// <summary>glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。</summary>
         public static void LoadGltf(string path, out GltfMesh? mesh,
             out int version, out Status status, out string? error)
         {
@@ -495,26 +526,34 @@ public static class Lub
             error = null;
         }
 
+        /// <summary>mesh を position + normal で interleave した頂点列にする。</summary>
         public static List<double> InterleavePn(MeshData mesh)
         {
             return new List<double>();
         }
 
+        /// <summary>
+        /// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh`
+        /// 用)。
+        /// </summary>
         public static List<double> InterleavePncm(MeshData mesh)
         {
             return new List<double>();
         }
 
+        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。</summary>
         public static List<double> InterleavePncmw(MeshData mesh)
         {
             return new List<double>();
         }
 
+        /// <summary>position + normal + uv。</summary>
         public static List<double> InterleavePnu(MeshData mesh)
         {
             return new List<double>();
         }
 
+        /// <summary>position + normal + uv + tangent。</summary>
         public static List<double> InterleavePnut(MeshData mesh)
         {
             return new List<double>();
@@ -563,17 +602,23 @@ public static class Lub
     /// <summary>TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。</summary>
     public static class Font
     {
+        /// <summary>ascent/descent/line_gap を em 単位で返す (descent は負)。</summary>
         public static FontMetrics Metrics(Bytes ttf)
         {
             return new FontMetrics();
         }
 
+        /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
         [LubMaybe]
         public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, double px)
         {
             return null;
         }
 
+        /// <summary>
+        /// グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定
+        /// 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。
+        /// </summary>
         [LubMaybe]
         public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint,
             double? tolerance = null)
@@ -581,6 +626,7 @@ public static class Lub
             return null;
         }
 
+        /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
         public static double Kern(Bytes ttf, int cp1, int cp2)
         {
             return 0;
@@ -591,6 +637,7 @@ public static class Lub
     /// begin_pass 中に 1 回呼ぶ。</summary>
     public static class Ui
     {
+        /// <summary>draw list を発行する。`BeginPass` 中に呼ぶこと。</summary>
         public static void Render()
         {
         }
@@ -662,6 +709,7 @@ public static class Lub
         {
         }
 
+        /// <summary>階層ノード。true が返ったら子を描いて `treePop()` する。</summary>
         [LubNoFail]
         public static bool TreeNode(string label, bool? defaultOpen = null)
         {
@@ -673,12 +721,14 @@ public static class Lub
         {
         }
 
+        /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
         [LubNoFail]
         public static void SetNextWindow(double x, double y, double w,
             double h)
         {
         }
 
+        /// <summary>UI がマウスを取っている間 true。ゲーム入力の無視判定に。</summary>
         [LubNoFail]
         public static bool WantCaptureMouse()
         {
@@ -767,6 +817,7 @@ public static class Lub
 
     public static class Sys
     {
+        /// <summary>WASM (web) 上で動いているか。</summary>
         [LubNoFail]
         public static bool IsWeb()
         {
@@ -791,6 +842,7 @@ public static class Lub
     /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
     public static class Profiler
     {
+        /// <summary>profiler が有効か (`LUB_PROFILE=1`)。</summary>
         [LubNoFail]
         public static bool Enabled()
         {
@@ -807,11 +859,13 @@ public static class Lub
         {
         }
 
+        /// <summary>集計をリセットする。</summary>
         [LubNoFail]
         public static void Reset()
         {
         }
 
+        /// <summary>`label` 付きで集計をログ出力する。</summary>
         [LubNoFail]
         public static void Report(string label)
         {
@@ -1696,10 +1750,18 @@ public static class Lub
 /// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
+    /// <summary>
+    /// GPU backend。native では "native" (既定。このプラットフォームの最短距離実装 — Windows: D3D12
+    /// / Linux: 当面 sdlgpu) か "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。
+    /// </summary>
     public string? Backend;
+    /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>
     public int? Width;
+    /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
     public int? Height;
+    /// <summary>`use*` されなくなったリソースを何フレーム後に破棄するか。</summary>
     public int? ResourceSweepAfterFrames;
+    /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;
 }
 
@@ -1961,6 +2023,11 @@ public class WorldCallbacks
     public Func<MaterialView, MaterialView, double>? Restitution;
 }
 
+/// <summary>
+/// world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4)
+/// がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep
+/// し、1 回の step での消化は `maxSteps` 回まで。
+/// </summary>
 public class WorldOpts
 {
     public int? Version;
@@ -1974,11 +2041,19 @@ public class WorldOpts
     public WorldCallbacks? Callbacks;
 }
 
+/// <summary>
+/// `Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった
+/// body/shape/joint の自動削除を止める。
+/// </summary>
 public class BeginOpts
 {
     public bool? Prune;
 }
 
+/// <summary>
+/// body の宣言。`type` は `Phys2d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定
+/// STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。
+/// </summary>
 public class BodyDesc
 {
     public int? Version;
@@ -2614,6 +2689,10 @@ public class JointRef3d
 {
 }
 
+/// <summary>
+/// body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの値が適用される。回転は `quat` か
+/// `euler` (ラジアン) のどちらか。 `wx/wy/wz` は角速度 (rad/s)。
+/// </summary>
 public class InitialState3d
 {
     public double? X;
@@ -2678,6 +2757,11 @@ public class WorldCallbacks3d
     public Func<MaterialView, MaterialView, double>? Restitution;
 }
 
+/// <summary>
+/// world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4)
+/// がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep
+/// し、1 回の step での消化は `maxSteps` 回まで。
+/// </summary>
 public class WorldOpts3d
 {
     public int? Version;
@@ -2691,11 +2775,19 @@ public class WorldOpts3d
     public WorldCallbacks3d? Callbacks;
 }
 
+/// <summary>
+/// `Begin` のオプション。`prune` (既定 true) を false にすると、このフレームで宣言されなかった
+/// body/shape/joint の自動削除を止める。
+/// </summary>
 public class BeginOpts3d
 {
     public bool? Prune;
 }
 
+/// <summary>
+/// body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定
+/// STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの定型)。
+/// </summary>
 public class BodyDesc3d
 {
     public int? Version;
@@ -2739,6 +2831,13 @@ public class ShapeDesc3d
     public FilterDesc3d? Filter;
 }
 
+/// <summary>
+/// shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density` (既定 1) / `friction`
+/// / `restitution`: 材質。 - `sensor`: 接触応答なしの検知専用。イベントは `sensorEvents` で有効化。 -
+/// `contact`: begin/end の contact イベントを出す。 - `hit`: 衝撃イベント (閾値は
+/// `WorldOpts3d.hitEventThreshold`)。 - `preSolve`:
+/// `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。
+/// </summary>
 public class SphereDesc3d : ShapeDesc3d
 {
     public double R;

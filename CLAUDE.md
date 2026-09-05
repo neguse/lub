@@ -49,4 +49,4 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - haxe-lib を変えたら `cd web && npm run gen-haxe`: in-browser コンパイラの lub ライブラリは `web/public/haxe-wasm/std-bundle.json`(gitignore)に焼き込みなので、再生成しないと web 側だけ古い lubx でコンパイルされる(A5 は nonBlack 判定が甘く、コンパイル失敗しても前サンプルの絵で PASS しうる。playerReady timeout 警告が出たら疑う)。
 - verify が「compiling…」のままハングしたら vite dev server の詰まりを疑って再起動(長時間稼働 + 大量ファイル変更で worker モジュール変換が無音で止まることがある)。
 - lub.js 構文チェック: `node --check build/wasm/lub.js`。
-- docs サイト (`/docs.html`): ガイドは `docs/manual/*.md`、API reference は haxe doc comment が single source of truth。`web/scripts/gen-api-docs.mjs`(`npm run gen-api`、dev/build に組み込み済、要 haxe CLI)が `haxe --xml` から `web/public/api-docs.json`(gitignore)を生成し、`web/playground/docs.ts` が描画する。`--source stub` で stub の XML doc(`web/gen/lub-api-docs.json`)から同じ形を作る(Haxe 撤去時に既定にする)。
+- docs サイト (`/docs.html`): ガイドは `docs/manual/*.md`、API reference は `cs-lib/lub_stub.cs` の XML doc が single source of truth。`scripts/gen-api.sh` が `web/gen/lub-api-docs.json` に固め、`web/scripts/gen-api-docs.mjs`(`npm run gen-api`、dev/build に組み込み済)が markdown を HTML にして `web/public/api-docs.json`(gitignore)を作り、`web/playground/docs.ts` が描画する。

@@ -288,30 +288,36 @@ typedef struct LubPassOpts {
   int32_t targets_count;
   LubHandle depth_target; // 0 = 無し
   bool has_clear_color;
-  float clear_color[4];
+  float clear_color[4]; // クリア色 [r, g, b, a]。省略時 {0, 0, 0, 1}。
   const float (*clear_colors)[4];
-  int32_t clear_colors_count;
+  int32_t clear_colors_count; // MRT 用。targets[i] に対応するクリア色の配列。
   bool has_clear_depth;
-  float clear_depth;
+  float clear_depth; // 省略時 1.0。
   bool has_load;
-  int32_t load; // LubGfxLoadAction
+  int32_t
+      load; // LubGfxLoadAction。`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD
+            // は全アタッチメント (color + depth)
+            // の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提
+            // (フレーム最初のパスで使うと内容は不定)。
 } LubPassOpts;
 
 // Gfx.draw のオプション。shader 以外は省略可。
 typedef struct LubDrawOpts {
   LubHandle shader;
   bool has_blend;
-  int32_t blend; // LubGfxBlend
+  int32_t
+      blend; // LubGfxBlend。`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。
   bool has_cull;
-  int32_t cull; // LubGfxCull
+  int32_t cull; // LubGfxCull。`Gfx.NONE` / `BACK` / `FRONT`。
   bool has_primitive;
-  int32_t primitive; // LubGfxPrimitive
+  int32_t primitive; // LubGfxPrimitive。`Gfx.TRIANGLES` / `TRIANGLE_STRIP` /
+                     // `LINES` / `LINE_STRIP` / `POINTS`。
   bool has_depth;
-  bool depth;
+  bool depth; // depth test の有効/無効。
   bool has_depth_write;
   bool depth_write;
   bool has_instance_count;
-  int32_t instance_count;
+  int32_t instance_count; // 0 以下を渡すと draw 自体がスキップされる。
 } LubDrawOpts;
 
 // Gfx.dispatch のオプション。
@@ -322,26 +328,31 @@ typedef struct LubDispatchOpts {
 // Gfx.use_texture のオプション。
 typedef struct LubTextureOpts {
   bool has_filter;
-  int32_t filter; // LubGfxFilter
+  int32_t filter; // LubGfxFilter。`Gfx.LINEAR` / `NEAREST`。省略時 LINEAR。
   bool has_wrap;
-  int32_t wrap; // LubGfxWrap
+  int32_t wrap; // LubGfxWrap。`Gfx.REPEAT` / `CLAMP`。省略時 CLAMP。
   bool has_target;
-  bool target;
+  bool target; // render target として使う。
   bool has_storage;
-  bool storage;
+  bool storage; // compute の storage image として使う。
 } LubTextureOpts;
 
 // Lub.config のオプション (onInit 内でのみ有効)。
 typedef struct LubConfigOpts {
-  LubStr backend; // len 0 = 無し
+  LubStr backend; // len 0 = 無し // GPU backend。native では "native"
+                  // (既定。このプラットフォームの最短距離実装 — Windows: D3D12
+                  // / Linux: 当面 sdlgpu) か "sdlgpu"。 web (WASM) は webgpu
+                  // のみで、指定は無視される。
   bool has_width;
-  int32_t width;
+  int32_t width; // ウィンドウ幅 (px)。`height` とセットで指定する。
   bool has_height;
-  int32_t height;
+  int32_t height; // ウィンドウ高さ (px)。`width` とセットで指定する。
   bool has_resource_sweep_after_frames;
-  int32_t resource_sweep_after_frames;
+  int32_t
+      resource_sweep_after_frames; // `use*`
+                                   // されなくなったリソースを何フレーム後に破棄するか。
   bool has_readback_depth;
-  int32_t readback_depth;
+  int32_t readback_depth; // readback リングの深さ (1..)。
 } LubConfigOpts;
 
 // sdf_mesh の bone (skinning 部位)。X / Y / Z は pivot。
@@ -585,6 +596,9 @@ typedef struct LubWorldCallbacks {
                        const LubMaterialView *b);
 } LubWorldCallbacks;
 
+// world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュ
+// レーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超え
+// るたびに substep し、1 回の step での消化は `maxSteps` 回まで。
 typedef struct LubWorldOpts {
   bool has_version;
   int32_t version;
@@ -606,11 +620,16 @@ typedef struct LubWorldOpts {
   LubWorldCallbacks callbacks;
 } LubWorldOpts;
 
+// `Begin` のオプション。`prune` (既定 true) を false にすると、このフレーム
+// で宣言されなかった body/shape/joint の自動削除を止める。
 typedef struct LubBeginOpts {
   bool has_prune;
   bool prune;
 } LubBeginOpts;
 
+// body の宣言。`type` は `Phys2d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定
+// STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの
+// 定型)。
 typedef struct LubBodyDesc {
   bool has_version;
   int32_t version;
@@ -1367,6 +1386,9 @@ typedef struct LubQuat3d {
   float w;
 } LubQuat3d;
 
+// body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの
+// 値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。 `wx/wy/wz`
+// は角速度 (rad/s)。
 typedef struct LubInitialState3d {
   bool has_x;
   float x;
@@ -1453,6 +1475,9 @@ typedef struct LubWorldCallbacks3d {
                        const LubMaterialView *b);
 } LubWorldCallbacks3d;
 
+// world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュ
+// レーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超え
+// るたびに substep し、1 回の step での消化は `maxSteps` 回まで。
 typedef struct LubWorldOpts3d {
   bool has_version;
   int32_t version;
@@ -1474,11 +1499,16 @@ typedef struct LubWorldOpts3d {
   LubWorldCallbacks3d callbacks;
 } LubWorldOpts3d;
 
+// `Begin` のオプション。`prune` (既定 true) を false にすると、このフレーム
+// で宣言されなかった body/shape/joint の自動削除を止める。
 typedef struct LubBeginOpts3d {
   bool has_prune;
   bool prune;
 } LubBeginOpts3d;
 
+// body の宣言。`type` は `Phys3d.STATIC` / `KINEMATIC` / `DYNAMIC` (既定
+// STATIC)。`version` を上げると `initial` の状態で作り直される (リスポーンの
+// 定型)。
 typedef struct LubBodyDesc3d {
   bool has_version;
   int32_t version;
@@ -1543,6 +1573,12 @@ typedef struct LubShapeDesc3d {
   LubFilterDesc3d filter;
 } LubShapeDesc3d;
 
+// shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density`
+// (既定 1) / `friction` / `restitution`: 材質。 - `sensor`: 接触応答なしの検
+// 知専用。イベントは `sensorEvents` で有効化。 - `contact`: begin/end の
+// contact イベントを出す。 - `hit`: 衝撃イベント (閾値は
+// `WorldOpts3d.hitEventThreshold`)。 - `preSolve`:
+// `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。
 typedef struct LubSphereDesc3d {
   LubShapeDesc3d base;
   float r;
@@ -2360,8 +2396,10 @@ typedef struct LubEventData {
 // lub の runtime API。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`
 // と書く。Lua 側は `lub.gfx.begin_pass`。
 
+// ランタイム設定。`OnInit` 内でのみ有効。
 LUB_API LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
 
+// アプリ終了を要求する。
 LUB_API void lub_quit(LubContext *ctx);
 
 // ------------------------------------------------------------------- gfx
@@ -2374,10 +2412,12 @@ LUB_API LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts);
 
 LUB_API LubStatus lub_gfx_end_pass(LubContext *ctx);
 
+// version の意味論は `UseBuffer` を参照。
 LUB_API LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs,
                                      LubStr fs, const int32_t *version,
                                      LubHandle *out);
 
+// version の意味論は `UseBuffer` を参照。
 LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
                                              LubStr src, const int32_t *version,
                                              LubHandle *out);
@@ -2468,8 +2508,11 @@ LUB_API bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button);
 
 LUB_API bool lub_input_mouse_released(LubContext *ctx, const int32_t *button);
 
+// カーソルの絶対座標 (window px)。
 LUB_API void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
 
+// このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ
+// 値。
 LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 
 // -------------------------------------------------------------------- io
@@ -2477,6 +2520,7 @@ LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 // status, error) の 4 値 multi-return で、本体は status = "ready" になるまで
 // null。
 
+// テキストファイルを読む (シェーダソースなど)。
 LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
@@ -2493,27 +2537,33 @@ LUB_API LubStatus lub_io_load_floats(LubContext *ctx, LubStr path,
                                      int32_t *version, int32_t *status,
                                      LubStr *error);
 
+// glTF (.gltf / .glb) を読む。結果の mesh は interleave 系に渡す。
 LUB_API LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path,
                                    LubGltfMesh *mesh, bool *has_mesh,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
 
+// mesh を position + normal で interleave した頂点列にする。
 LUB_API LubStatus lub_io_interleave_pn(LubContext *ctx, const LubMeshData *mesh,
                                        const float **out, int32_t *out_count);
 
+// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。
 LUB_API LubStatus lub_io_interleave_pncm(LubContext *ctx,
                                          const LubMeshData *mesh,
                                          const float **out, int32_t *out_count);
 
+// interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。
 LUB_API LubStatus lub_io_interleave_pncmw(LubContext *ctx,
                                           const LubMeshData *mesh,
                                           const float **out,
                                           int32_t *out_count);
 
+// position + normal + uv。
 LUB_API LubStatus lub_io_interleave_pnu(LubContext *ctx,
                                         const LubMeshData *mesh,
                                         const float **out, int32_t *out_count);
 
+// position + normal + uv + tangent。
 LUB_API LubStatus lub_io_interleave_pnut(LubContext *ctx,
                                          const LubMeshData *mesh,
                                          const float **out, int32_t *out_count);
@@ -2539,18 +2589,24 @@ LUB_API LubStatus lub_mesh_sdf_mesh(LubContext *ctx,
 // ------------------------------------------------------------------ font
 // TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。
 
+// ascent/descent/line_gap を em 単位で返す (descent は負)。
 LUB_API LubStatus lub_font_metrics(LubContext *ctx, const uint8_t *ttf,
                                    int32_t ttf_len, LubFontMetrics *out);
 
+// グリフを px サイズでラスタライズ。フォントに無い codepoint は null。
 LUB_API LubStatus lub_font_glyph(LubContext *ctx, const uint8_t *ttf,
                                  int32_t ttf_len, int32_t codepoint, float px,
                                  LubGlyphBitmap *out, bool *has);
 
+// グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化
+// の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに
+// 無い codepoint は null。
 LUB_API LubStatus lub_font_glyph_mesh(LubContext *ctx, const uint8_t *ttf,
                                       int32_t ttf_len, int32_t codepoint,
                                       const float *tolerance, LubGlyphMesh *out,
                                       bool *has);
 
+// ペアカーニング (em 単位、無ければ 0)。
 LUB_API LubStatus lub_font_kern(LubContext *ctx, const uint8_t *ttf,
                                 int32_t ttf_len, int32_t cp1, int32_t cp2,
                                 float *out);
@@ -2559,6 +2615,7 @@ LUB_API LubStatus lub_font_kern(LubContext *ctx, const uint8_t *ttf,
 // Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼
 // ぶ。
 
+// draw list を発行する。`BeginPass` 中に呼ぶこと。
 LUB_API LubStatus lub_ui_render(LubContext *ctx);
 
 LUB_API bool lub_ui_begin_window(LubContext *ctx, LubStr title);
@@ -2589,14 +2646,17 @@ LUB_API void lub_ui_separator(LubContext *ctx);
 
 LUB_API void lub_ui_same_line(LubContext *ctx);
 
+// 階層ノード。true が返ったら子を描いて `treePop()` する。
 LUB_API bool lub_ui_tree_node(LubContext *ctx, LubStr label,
                               const bool *default_open);
 
 LUB_API void lub_ui_tree_pop(LubContext *ctx);
 
+// 次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。
 LUB_API void lub_ui_set_next_window(LubContext *ctx, float x, float y, float w,
                                     float h);
 
+// UI がマウスを取っている間 true。ゲーム入力の無視判定に。
 LUB_API bool lub_ui_want_capture_mouse(LubContext *ctx);
 
 // ------------------------------------------------------------------ host
@@ -2645,6 +2705,7 @@ LUB_API void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
 
 // ------------------------------------------------------------------- sys
 
+// WASM (web) 上で動いているか。
 LUB_API bool lub_sys_is_web(LubContext *ctx);
 
 // 文字列の FNV-1a 64bit ハッシュ (version 生成用)。
@@ -2656,14 +2717,17 @@ LUB_API float lub_sys_actual_fps(LubContext *ctx);
 // -------------------------------------------------------------- profiler
 // 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
 
+// profiler が有効か (`LUB_PROFILE=1`)。
 LUB_API bool lub_profiler_enabled(LubContext *ctx);
 
 LUB_API void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
 
 LUB_API void lub_profiler_end_scope(LubContext *ctx, LubStr name);
 
+// 集計をリセットする。
 LUB_API void lub_profiler_reset(LubContext *ctx);
 
+// `label` 付きで集計をログ出力する。
 LUB_API void lub_profiler_report(LubContext *ctx, LubStr label);
 
 // ---------------------------------------------------------------- phys2d
