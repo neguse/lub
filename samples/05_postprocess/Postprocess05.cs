@@ -1,4 +1,4 @@
-// lub の samples/05_postprocess (Haxe 版 Postprocess05.hx) の TinyC# 版 entry。
+// lub の samples/05_postprocess の entry。
 // 実行: lub samples/05_postprocess/Postprocess05.csproj (transpile + watch + hot reload)
 // オフスクリーン RT に三角形を描き、post シェーダで全画面に貼る 2 パス構成。
 

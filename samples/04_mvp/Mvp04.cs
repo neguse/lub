@@ -1,4 +1,4 @@
-// lub の samples/04_mvp (Haxe 版 Mvp04.hx) の TinyC# 版 entry。
+// lub の samples/04_mvp の entry。
 // 実行: lub samples/04_mvp/Mvp04.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;

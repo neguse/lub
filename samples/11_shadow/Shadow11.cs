@@ -1,4 +1,4 @@
-// lub の samples/11_shadow (Haxe 版 Shadow11.hx) の TinyC# 版 entry。
+// lub の samples/11_shadow の entry。
 // 実行: lub samples/11_shadow/Shadow11.csproj (transpile + watch + hot reload)
 // Shadow mapping: render light-space depth into an offscreen target with
 // a depth attachment, then use it as a comparison sampler in the scene pass.
@@ -110,7 +110,7 @@ public static class Shadow11
             shadowSize, Gfx.PixelFormat.Depth16, null, 1,
             new TextureOpts { Target = true, Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp });
 
-        // Haxe 版 buildMeshes 相当: scene は floor + casters。
+        // scene は floor + casters。
         var casters = new List<double>();
         var scene = new List<double>();
         AddFloor(scene);

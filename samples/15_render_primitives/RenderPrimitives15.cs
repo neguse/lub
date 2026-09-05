@@ -1,4 +1,4 @@
-// lub の samples/15_render_primitives (Haxe 版 RenderPrimitives15.hx) の TinyC# 版 entry。
+// lub の samples/15_render_primitives の entry。
 // 実行: lub samples/15_render_primitives/RenderPrimitives15.csproj (transpile + watch + hot reload)
 // R16F/RG16F/R32F の色 target、depth target 付きパス、compute の storage 書き込みを
 // 5 枚のパネルとして main_tex に並べる。

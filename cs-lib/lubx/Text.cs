@@ -1,18 +1,16 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Text.hx と対)。
-// Haxe 版の @:native("utf8")/("string") extern は stub の utf8 / @string class
-// で置き換える (@string は using static で取り込み byte/len を裸で呼ぶ)。
-// typedef TextGlyph は class に。pixels は Haxe の Array<Int> (0-based) と
-// 同じ 0-based 添字 (dst) で List<int> に書く — tcs の indexer が +1 するので
-// Lua 上の実効添字は Haxe 版と一致する。glyph bitmap (gb.bytes) は Lua string
-// なので src の byte 走査 (これも Haxe 版と同一)。
+// 実装ライブラリ lubx の Text。
+// utf8 / string 関数は stub の utf8 / @string class で呼ぶ (@string は
+// using static で取り込み byte/len を裸で呼ぶ)。
+// pixels は 0-based 添字 (dst) で List<int> に書く (tcs の indexer が +1 して
+// Lua の 1-based に写る)。glyph bitmap (gb.Bytes) は view なので Get(src) で
+// byte 走査する。
 // デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
-// API 名は Haxe 版と全て同名 (予約語衝突なし、改名なし)。trace は
-// Console.WriteLine (Lua の print) で置き換える。
+// trace 相当は Console.WriteLine (Lua の print)。
 using System;
 using System.Collections.Generic;
 using static Lub;
 
-/// <summary>atlas 上のグリフ 1 枠 (内部用、Haxe 版 typedef TextGlyph と対)。
+/// <summary>atlas 上のグリフ 1 枠 (内部用)。
 /// u/v は atlas 内の左上 px、xoff/yoff はベースライン原点からの描画オフセット。</summary>
 public class TextGlyph
 {

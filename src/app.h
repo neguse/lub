@@ -21,9 +21,6 @@
 #include "resources.h"
 #include <stdbool.h>
 #include <stdint.h>
-#ifndef __EMSCRIPTEN__
-#include "haxe_pipeline.h"
-#endif
 
 typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 
@@ -146,16 +143,6 @@ typedef struct App {
   char entry_module_name[128]; // e.g. "01_triangle"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
                                // first poll"
-
-#ifndef __EMSCRIPTEN__
-  // Haxe pipeline state. .hxml entry path のとき main.c が haxe_enabled = true
-  // に し、haxe_pipeline_start で server + initial build + watch
-  // を一括起動する。 app_shutdown が haxe_enabled ガード下で haxe_pipeline_stop
-  // を呼ぶ。 WASM ビルドでは子プロセスを spawn
-  // しないためフィールドごと存在しない。
-  HaxePipeline haxe;
-  bool haxe_enabled;
-#endif
 } App;
 
 bool app_init(App *app);
@@ -168,5 +155,5 @@ void app_shutdown(App *app);
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision on
 // POSIX, seconds * 1e9 on Windows). Returns 0 if the file does not exist or
 // stat fails. Used by both the C-side entry-Lua mtime poll in app_frame_begin
-// and the `file_mtime` Lua binding consumed by samples/lub_io.lua.
+// (hot reload of the entry Lua).
 int64_t app_file_mtime_ns(const char *path);

@@ -15,33 +15,30 @@ lub は GUI editor や特定 asset pipeline を中心に据えず、開発者が
 - ゲームをコード中心に組み立てられる。
 - 実行中のゲームを止めずに、コードや asset の変更を即座に反映できる。
 - runtime 基盤は C/C++ と既存ライブラリを再利用し、移植性と native integration を保つ。
-- Lua を runtime API の接点にし、Haxe は Lua を生成する script authoring layer として扱う。
+- Lua を runtime API の接点にし、C# は Lua を生成する script authoring layer として扱う。
 - 3D graphics を標準の描画基盤として持ち、2D game もその上で自然に扱える。
 - core API は最小の固い primitive に絞る。
 - core API の外側は runtime 外の Lua library と app code が担う。
 
 Lua を使う理由として、reload 時に data shape の変化へ追従しやすいことを重視する。
-Haxe はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
+C# はその性質を活かしたまま、より書きやすい script authoring を提供するために使う。
 
-script authoring layer は複数言語を許す。Haxe に加えて TinyC#
-([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler) を
-第二の authoring 言語とする。全サンプルを Haxe / C# の両言語で提供する
-(番号付きサンプルは両対応済み)。サンプル番号は言語で分けず、同一サンプルディレクトリに両言語の
-ソースを同居させ、開く言語を選ぶ (対応状況の正は `web/playground/samples.ts` の
-CS_SAMPLES と `samples/*/<Entry>.cs` の有無)。web playground は Haxe と C# の
-両方を動く状態に保つ: コンパイラは言語別に分離し、player・Lua API 面
-(prelude)・hot reload セマンティクスは言語間で共有する。native CLI も対称で、
-`lub <sample>.hxml` と `lub <sample>/<Entry>.csproj` が同じ DX
-(build + watch + hotswap) を持つ。csproj は IDE 用の実プロジェクト
-でもあり、lub は basename (= entry class) しか読まない。
+script authoring layer は TinyC#
+([tcs](https://github.com/neguse/tcs)、C# サブセット → Lua transpiler) と
+raw Lua。全サンプルを C# で提供し (一覧の正は `web/playground/samples.ts` の
+CS_SAMPLES)、raw Lua のサンプルも少数置く。web playground と native CLI
+(`lub <sample>/<Entry>.csproj`) は同じ DX (build + watch + hotswap) を持ち、
+player・Lua API 面 (生成 binding)・hot reload セマンティクスを共有する。
+csproj は IDE 用の実プロジェクトでもあり、lub は basename (= entry class)
+しか読まない。
 
 C# のゲームは 2 つの実行形で動く。tcs→Lua (lub の player が hotswap で
 動かす dev の経路) と .NET 実行 (実 .NET が `dotnet/Lub` の facade から
 共有 library の C API を P/Invoke で叩く経路、host は `Lub.Run(typeof(Game), args)`)。
 同じソースが両方で通ることが契約で、CI は各サンプルを両方で headless に
 回し、frame ごとの digest (C API 呼び出しの構造の hash) を突き合わせる。
-golden 画像は実行形ごとに別ファイル (`_cs_sdlgpu.png` / `_dotnet_sdlgpu.png`)
-で、float の差を許す。
+golden 画像は実行形ごとに別ファイル (tcs→Lua は `_sdlgpu.png`、.NET は
+`_dotnet_sdlgpu.png`) で、float の差を許す。
 
 ## Non-Goals
 
@@ -84,13 +81,9 @@ runtime invariant、resource lifetime、backend abstraction、hot reload、diagn
 
 - C runtime が expose する flat global (`begin_pass`, `phys2d_*`, ...) は wire ABI
   であり、公式 API 面ではない。
-- 公式面は namespace table (`Gfx` / `Input` / `Phys2d` / ...)。
-  `samples/lub_prelude.lua` が flat global から組み立て、boot.lua が entry
-  require の前に注入する。全 authoring 言語 (raw Lua / Haxe / TinyC#) が
-  同じ面を見る。
-- `lub.Gfx` 等の `lub.*` は Haxe extern の emit 形のための alias で、実体は
-  同一 table。Haxe 固有の互換層 (lua-utf8 / bit32 / math.atan2) だけが
-  HAXE_PRELUDE (`src/embedded_prelude.h`) に残る。
+- 公式面は `lub` table の namespace (`lub.gfx` / `lub.input` / `lub.phys2d`
+  / ...)。生成した Lua binding (`src/gen/lua_api_gen.c`) が作り、全
+  authoring 言語 (raw Lua / TinyC#) が同じ面を見る。
 
 API の細かいシグネチャや binding の制約は、この文書ではなく記述側に置く。
 一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の

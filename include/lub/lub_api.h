@@ -852,7 +852,7 @@ typedef struct LubJointTargetDesc {
   float angular_offset;
 } LubJointTargetDesc;
 
-// joint の宣言。有効フィールドは type ごとに異なる (Haxe extern の doc 参照)。
+// joint の宣言。有効フィールドは type ごとに異なる。
 typedef struct LubJointDesc {
   bool has_version;
   int32_t version;
@@ -1872,8 +1872,7 @@ typedef struct LubJointTargetDesc3d {
   LubVec3d angular_velocity;
 } LubJointTargetDesc3d;
 
-// joint の宣言。有効フィールドは type ごとに異なる (Haxe extern の doc 参
-// 照)。anchor はワールド座標。
+// joint の宣言。有効フィールドは type ごとに異なる。anchor はワールド座標。
 typedef struct LubJointDesc3d {
   bool has_version;
   int32_t version;
@@ -2731,7 +2730,7 @@ LUB_API void lub_profiler_reset(LubContext *ctx);
 LUB_API void lub_profiler_report(LubContext *ctx, LubStr label);
 
 // ---------------------------------------------------------------- phys2d
-// Box2D の即時モード API (詳細は Haxe extern lub.Phys2d)。
+// Box2D の即時モード API。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
@@ -3014,7 +3013,7 @@ LUB_API LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
                                            const LubCommandOpts *opts);
 
 // ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API (詳細は Haxe extern lub.Phys3d)。
+// Box3D の即時モード API。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
 LUB_API LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);
@@ -3305,8 +3304,8 @@ LUB_API LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
                                       LubCounters3d *out);
 
 // ------------------------------------------------------------------- png
-// PNG の読み書き (lubx_png、prelude が global Png として注入)。 load は
-// Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
+// PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では
+// "pending" があり得る)。
 
 LUB_API LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *bytes,
                                int32_t *width, int32_t *height, int32_t *format,

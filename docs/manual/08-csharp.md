@@ -1,9 +1,9 @@
 # C# (TinyC#) で書く
 
-lub のゲームコードは Haxe のほかに C# でも書ける。使うのは
+lub のゲームコードは C# で書く。使うのは
 [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを Lua に
 transpile するコンパイラで、playground ではブラウザ内 (Roslyn の WASM 版)、
-native では `scripts/run-cs-sample.sh` 経由で動く。
+native では lub が `third_party/tcs` を dotnet で動かす。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
 モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
@@ -82,10 +82,8 @@ public static class Main
 `double.Parse`、文字列の codepoint 走査は `s.EnumerateRunes()` と、実 .NET
 でも通る書き方をする(Lua 標準ライブラリを直接呼ぶ stub は無い)。
 
-サンプルは Haxe 版と同じディレクトリに同居する (例:
-`samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。playground では
-画面上部の言語トグルで Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。
-native での実行は hxml と対称:
+サンプルは `samples/<name>/<Entry>.cs` + `<Entry>.csproj` (例:
+`samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。native での実行:
 
 ```
 lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload

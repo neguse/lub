@@ -1,10 +1,10 @@
-// lub の samples/14_sponza (Haxe 版 Sponza14.hx) の TinyC# 版 entry。
+// lub の samples/14_sponza の entry。
 // 実行: lub samples/14_sponza/Sponza14.csproj (transpile + watch + hot reload)
 // glTF シーンのマルチパスレンダラ: shadow → G-buffer (MRT) → SSAO →
 // lighting → fog → bloom → outline → DoF → motion blur → present。
 // load_gltf の mesh / material は typed な GltfMesh / GltfMaterial で受ける。
-// Haxe 版の 4 本の並列配列は、List に null を置けない (Lua sequence table)
-// ため per-primitive の class SponzaPrim 1 本にまとめる。
+// List に null を置けない (Lua sequence table) ため、primitive ごとの情報は
+// class SponzaPrim 1 本にまとめる。
 using System;
 using System.Collections.Generic;
 using static Lub;
@@ -687,8 +687,8 @@ public static class Sponza14
         return (int)(double)n;
     }
 
-    // env 値 ([-+]?digits[.digits]) を読む。読めない文字列は null (Haxe 版は
-    // NaN / null になる系。ここでは代入をスキップする)。
+    // env 値 ([-+]?digits[.digits]) を読む。読めない文字列は null
+    // (呼び出し側は代入をスキップする)。
     static double? ParseNumber(string s)
     {
         var str = s.Trim();

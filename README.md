@@ -5,7 +5,8 @@
 コアな価値に置く。
 
 runtime は C/C++ と既存ライブラリで組み、Lua を通して API を呼び出す。
-上位の script layer は Haxe で書き、Lua に transpile して hot reload する想定。
+上位の script layer は C# (TinyC# サブセット) で書き、Lua に transpile して
+hot reload する。同じ C# を実 .NET で動かす経路もある。
 特定のアセット形式や GUI editor に依存せず、ゲームを構成する状態、描画、
 入力、物理、音、debug 情報をコードから制御できる環境を目指す。
 
@@ -18,7 +19,7 @@ Linux: Vulkan) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
 
 - [lub.neguse.net/docs](https://lub.neguse.net/docs): ゲームを書く人向けの
   ガイド(基礎概念)+ API reference。ガイドの原稿は `docs/manual/`、API は
-  `haxe-lib/lub/` の doc comment から生成。
+  `cs-lib/lub_stub.cs` の doc comment から生成。
 - [lub.neguse.net](https://lub.neguse.net): ブラウザで動く playground。
 - [docs/README.md](docs/README.md): ドキュメント索引と方針。
 - [docs/design.md](docs/design.md): lub の why / to-be / 設計原則。
@@ -73,14 +74,11 @@ CMake の POST_BUILD で `SDL3.dll` と Slang ランタイム DLL 群が `lub.ex
 ## コードフォーマット
 
 各フォーマッタの デフォルト設定 で整形する。既存スタイルに寄せる
-プロジェクト固有の設定ファイル (`.clang-format` / `hxformat.json` /
-`.prettierrc`) は意図的に置かず、ツール標準のスタイルに従う。
+プロジェクト固有の設定ファイル (`.clang-format` / `.prettierrc`) は意図的に置かず、ツール標準のスタイルに従う。
 
 - C/C++/Slang — `clang-format` (LLVM default、Slang は HLSL 扱い)
-- Haxe — `haxelib formatter` (要 `haxelib install formatter`)
 - Lua — `stylua` (`web/` で `npm install` 後に利用可)
 - C# — `dotnet format whitespace` (dotnet SDK 付属)
-- HXML — 末尾空白除去 + 終端 LF の正規化
 - Web TS — `prettier` (`web/` で `npm install` 後に利用可)
 
 ```sh
@@ -91,37 +89,31 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 ## 実行
 
 ```sh
-./build/lub samples/01_triangle/01_triangle.hxml
+./build/lub samples/01_triangle/Triangle01.csproj
 ```
 
-(Windows は `.\build\lub.exe samples\01_triangle\01_triangle.hxml` 形式)
+(Windows は `.\build\lub.exe samples\01_triangle\Triangle01.csproj` 形式)
 
-`.hx` を編集して保存すると、走っている game に即反映される(hot reload)。
+`.cs` を編集して保存すると、走っている game に即反映される(hot reload)。
 `.slang` / PNG / `*.verts.lua` などの data ファイルも同様に保存で即反映。
 
 依存:
-- Haxe 5.0.0-preview.1(`haxe --version` で確認)。web playground(client-only wasm
-  コンパイル)と native で版を揃える。`scripts/install-haxe5.sh` でローカル導入できる
-  (system の haxe を壊さない)。
-- 1 回だけ extern を haxelib に登録: `haxelib dev lub <repo>/haxe-lib/lub`
+- dotnet SDK。C# → Lua の transpiler(TinyC#、`third_party/tcs` submodule)を
+  lub が dotnet で動かす。
 
-```sh
-# 別バイナリ(例: scripts/install-haxe5.sh で入れた ~/haxe5)を使う場合:
-export LUB_HAXE="$HOME/haxe5/haxe"   # native player が spawn する haxe。
-                                     # HAXE_STD_PATH は隣の std/ から自動補完される。
-./build/lub samples/01_triangle/01_triangle.hxml
-```
+raw Lua で書いたゲームは transpile なしで起動できる
+(`./build/lub samples/27_lua_triangle/27_lua_triangle.lua`)。
 
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
-(`<ClassName>.hx` + `-cp/-lib/-main` の 3 行 `<name>.hxml` + `data/`)。
-ゲームの書き方(ライフサイクル、座標系、描画モデル、Haxe→Lua の注意点)は
+(`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
+ゲームの書き方(ライフサイクル、座標系、描画モデル、C#→Lua の注意点)は
 [lub.neguse.net/docs](https://lub.neguse.net/docs) のガイドを参照。
 
 Linux ヘッドレス (Mesa lavapipe = CPU Vulkan):
 
 ```sh
 # 事前: sudo pacman -S vulkan-swrast (Arch) / sudo apt install mesa-vulkan-drivers (Debian)
-scripts/run-headless.sh samples/01_triangle/01_triangle.hxml
+scripts/run-headless.sh samples/01_triangle/Triangle01.csproj
 ```
 
 `scripts/run-headless.sh` は `VK_ICD_FILENAMES` で lavapipe ICD を強制し、
@@ -134,20 +126,20 @@ Windows 用のヘッドレス wrapper は無く、実 GPU で動かす前提。
 
 ```sh
 # 30 フレーム描画後にキャプチャして即終了
-scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30
+scripts/run-headless.sh samples/01_triangle/Triangle01.csproj --capture out.png --capture-frame 30
 
 # golden test 用: 各 render frame の dt も 1/60 秒に固定
-scripts/run-headless.sh samples/01_triangle/01_triangle.hxml --capture out.png --capture-frame 30 --fixed-dt 0.0166666666666667
+scripts/run-headless.sh samples/01_triangle/Triangle01.csproj --capture out.png --capture-frame 30 --fixed-dt 0.0166666666666667
 ```
 
-通常の `onFrame(dt)` と UI には実測のフレーム間隔が渡る。`--capture-frame` は
+通常の `OnFrame(dt)` と UI には実測のフレーム間隔が渡る。`--capture-frame` は
 capture する render frame 番号だけを固定し、経過時間は固定しない。
 `--fixed-dt <seconds>` は golden / replay テスト専用で、指定すると実測値の代わりに
 同じ `dt` を毎フレーム渡す(有限かつ `0 < dt <= 0.25` の値のみ)。通常プレイの
 速度制限や FPS 制限には使わない。
 
-Lua/Haxe 側から任意の render target を保存する場合は `Gfx.readback()` を使う
-([API reference](https://lub.neguse.net/docs#lub.Gfx) 参照)。
+ゲーム側から任意の render target を保存する場合は `Gfx.Readback()` を使う
+([API reference](https://lub.neguse.net/docs) 参照)。
 
 ### Sprite benchmark (Release)
 
@@ -185,18 +177,18 @@ lub は内部に 3 つの GPU backend を持ち、同一 Lua API で動く:
 - `sdlgpu` — SDL3 GPU API 経由の実装 (native 専用の代替 backend)
 - `webgpu` (web) — web build の実体。web では backend 指定は無視される
 
-切替は `Lub.config({backend: ...})`。サンプルは環境変数を見る
-`lubx.Boot.config` を使っているので CLI から切り替えられる:
+切替は `Sys.Config` の `Backend`。サンプルは環境変数 `LUB_BACKEND` を読んで
+渡しているので CLI から切り替えられる:
 
 ```sh
-LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/01_triangle.hxml
+LUB_BACKEND=sdlgpu ./build/lub samples/01_triangle/Triangle01.csproj
 ```
 
 ## WASM playground (web)
 
 ブラウザ上で動く playground を `web/` 配下に同梱し、
-[lub.neguse.net](https://lub.neguse.net) で公開している。`.hx` は WASM 化した
-Haxe コンパイラでブラウザ内 (Web Worker) で Lua に compile され、native と
+[lub.neguse.net](https://lub.neguse.net) で公開している。`.cs` は .NET wasm 化した
+TinyC# コンパイラでブラウザ内で Lua に compile され、native と
 同じ hot reload 経路で player に反映される。ガイド + API reference の
 docs サイト (`/docs`) も同じサイトに同居する。
 
@@ -205,20 +197,18 @@ docs サイト (`/docs`) も同じサイトに同居する。
 
 ## 外部プロジェクトから使う (--serve)
 
-lub を別リポのゲームから使うための Web 開発モード。native の `lub game.hxml` と
-対称に、ブラウザをレンダリング先として `.hx` / `.slang` / `data/` のホットリロード
+lub を別リポのゲームから使うための Web 開発モード。native の `lub Game.csproj` と
+対称に、ブラウザをレンダリング先として `.cs` / `.slang` / `data/` のホットリロード
 開発ができる:
 
 ```sh
-./build/lub --serve mygame/game.hxml   # http://localhost:8080 (--port N で変更)
+./build/lub --serve mygame/Game.csproj   # http://localhost:8080 (--port N で変更)
 ```
 
 雛形は `templates/game/` (C#、tcs→Lua と .NET 実行の両方で動く) を `cp -r` して使う。詳細は [docs/serve.md](docs/serve.md)。
 
 ## ライセンス
 
-- lub 本体(C ランタイム / web playground / samples / `haxe-lib/lub`)は MIT(`LICENSE`)。
-- web playground がブラウザ内で使う Haxe コンパイラ wasm は GPL-2.0-or-later(改変版、
-  ビルド用パッチは `haxe-wasm/patches/`)。ツールとしての同梱=集約で、lub 本体には伝播しない。
-- バンドル/リンクする第三者依存(SDL3 / Lua / Slang / Haxe std 等)は
-  `THIRD_PARTY_LICENSES.md` を参照。Haxe コンパイラ wasm の内訳は `haxe-wasm/LICENSE`。
+- lub 本体(C ランタイム / web playground / samples / `cs-lib`)は MIT(`LICENSE`)。
+- バンドル/リンクする第三者依存(SDL3 / Lua / Slang 等)は
+  `THIRD_PARTY_LICENSES.md` を参照。

@@ -549,7 +549,7 @@ public class JointTargetDesc
     public double? AngularOffset;
 }
 
-/// <summary>joint の宣言。有効フィールドは type ごとに異なる (Haxe extern の doc 参照)。</summary>
+/// <summary>joint の宣言。有効フィールドは type ごとに異なる。</summary>
 public class JointDesc
 {
     public int? Version;
@@ -1330,7 +1330,7 @@ public class JointTargetDesc3d
     public Vec3d? AngularVelocity;
 }
 
-/// <summary>joint の宣言。有効フィールドは type ごとに異なる (Haxe extern の doc 参照)。anchor はワールド座標。</summary>
+/// <summary>joint の宣言。有効フィールドは type ごとに異なる。anchor はワールド座標。</summary>
 public class JointDesc3d
 {
     public int? Version;
@@ -3471,7 +3471,7 @@ public static unsafe partial class Lub
 
     }
 
-    /// <summary>Box2D の即時モード API (詳細は Haxe extern lub.Phys2d)。</summary>
+    /// <summary>Box2D の即時モード API。</summary>
     public static unsafe class Phys2d
     {
         public enum BodyType
@@ -5271,7 +5271,7 @@ public static unsafe partial class Lub
 
     }
 
-    /// <summary>Box3D の即時モード API (詳細は Haxe extern lub.Phys3d)。</summary>
+    /// <summary>Box3D の即時モード API。</summary>
     public static unsafe class Phys3d
     {
         public enum BodyType
@@ -7067,7 +7067,7 @@ public static unsafe partial class Lub
 
     }
 
-    /// <summary>PNG の読み書き (lubx_png、prelude が global Png として注入)。 load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。</summary>
+    /// <summary>PNG の読み書き。 load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。</summary>
     public static unsafe class Png
     {
         public static void Load(string path, out Bytes? bytes, out int width, out int height, out int format, out int stride, out int version, out Lub.Io.Status status, out string? error)

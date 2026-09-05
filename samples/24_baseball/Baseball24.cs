@@ -1,4 +1,4 @@
-// lub の samples/24_baseball (Haxe 版 Baseball24.hx) の TinyC# 版 entry。
+// lub の samples/24_baseball の entry。
 // 実行: lub samples/24_baseball/Baseball24.csproj (transpile + watch + hot reload)
 //
 // 全自動野球シミュレーション。ユーザーは観るだけ。
@@ -10,7 +10,6 @@
 //   野手と走者の実際の位置と時間で決まる (結果の先取りをしない)
 // - 演出: バット接触ヒットストップ + 画面振動、状況別自動カメラ
 //
-// gameplay rule (投球・打撃・守備・走塁・スコア) は Haxe 版に忠実。
 // boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の
 // resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
 // cs-lib のクラスは生成 Lua でサンプルより後に定義されるため static 初期化子
@@ -25,7 +24,7 @@ public class Runner
 {
     public double X;
     public double Z;
-    public int AtBase; // 今いる/直前の塁 (Haxe 版の base。C# 予約語のため改名)
+    public int AtBase; // 今いる/直前の塁 (base は C# 予約語のため AtBase)
     public int To; // 目標の塁
     public double RunPhase = 0;
 
@@ -59,7 +58,7 @@ public class Fielder
     }
 }
 
-// predictLanding の結果 (Haxe 版の匿名構造体を class に)
+// predictLanding の結果
 public class Landing
 {
     public double X;
@@ -213,8 +212,8 @@ public static class Baseball24
 
     // --- ポーズ → ボーン行列 ------------------------------------------------
     // torso が親、head/arms が子、legs は独立。回転はすべて pivot 回り。
-    // Haxe 版の boneSlot 表 + 手詰めは Bones.pack (mesh.bones 順の resolve) に
-    // 置き換え。pose: [twist, lean, tilt, toy, hx, hy, alx, alz, arx, arz,
+    // bone 行列の詰めは Bones.pack (mesh.bones 順の resolve) に
+    // 任せる。pose: [twist, lean, tilt, toy, hx, hy, alx, alz, arx, arz,
     // llx, lrx]
     static List<double> PackBones(List<double> p)
     {
@@ -1504,7 +1503,7 @@ public static class Baseball24
         var k3 = MathUtil.Smoothstep(0.6, 1.0, ph);
         ang = MathUtil.Lerp(ang, 1.9, k3);
         tilt = MathUtil.Lerp(tilt, 0.45, k3);
-        // Haxe 版の変数名 local は Lua キーワードで emit が不正になるため改名
+        // local は Lua キーワードで emit が不正になるため batLocal
         var batLocal = Mat4.Translate(new Vec3(-0.12, 1.45, -0.15))
             * (Mat4.RotateY(ang) * Mat4.RotateX(tilt));
         var b = batter;

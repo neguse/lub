@@ -1,12 +1,10 @@
-// haxe-lib/lub/lub/Math.hx の TinyC# 版。
-// Haxe 版は匿名構造体を包む abstract + @:op だが、C# 版は public class +
-// operator オーバーロード (tcs が Lua metamethod に写像) で同じ演算子面を出す。
-// @:commutative のスカラー倍は (v * s) / (s * v) の両 overload を明示定義する。
+// lub の数学ライブラリ。public class + operator オーバーロード (tcs が Lua
+// metamethod に写像) で演算子面を出す。スカラー倍は (v * s) / (s * v) の
+// 両 overload を明示定義する。
 // モジュール名は System.Math と衝突するため class Math は作らず、
 // Vec2 / Vec3 / Vec4 / Quat / Mat4 / MathUtil をフラットに置く。
-// Haxe 版が持つ匿名構造体との暗黙互換 (Phys2d/Phys3d 座標) は C# には無いので、
-// wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire() で明示変換する。
-// メンバー名は Haxe 版 API と揃える (--no-naming-check でビルドされる)。
+// Phys2d/Phys3d の wire 型 (Vec2d / Vec3d / Quat3d) とは wire() / fromWire()
+// で明示変換する。
 
 using System;
 using System.Collections.Generic;
@@ -101,7 +99,7 @@ public class Vec2
     /// <summary>+X 軸からの角度 (ラジアン)。</summary>
     public double Angle() => Math.Atan2(Y, X);
 
-    /// <summary>Phys2d の wire 型へ変換する (Haxe 版の暗黙変換の代わり)。</summary>
+    /// <summary>Phys2d の wire 型へ変換する。</summary>
     public Vec2d Wire() => new Vec2d { X = this.X, Y = this.Y };
 
     /// <summary>Phys2d の wire 型から変換する。</summary>
@@ -207,7 +205,7 @@ public class Vec3
     /// <summary>normal (正規化済みであること) に対する反射ベクトル。</summary>
     public Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0 * Dot(normal)));
 
-    /// <summary>Phys3d の wire 型へ変換する (Haxe 版の暗黙変換の代わり)。</summary>
+    /// <summary>Phys3d の wire 型へ変換する。</summary>
     public Vec3d Wire() => new Vec3d { X = this.X, Y = this.Y, Z = this.Z };
 
     /// <summary>Phys3d の wire 型から変換する。</summary>
@@ -467,7 +465,7 @@ public class Quat
         }
     }
 
-    /// <summary>Phys3d の wire 型へ変換する (Haxe 版の暗黙変換の代わり)。</summary>
+    /// <summary>Phys3d の wire 型へ変換する。</summary>
     public Quat3d Wire() =>
         new Quat3d { X = this.X, Y = this.Y, Z = this.Z, W = this.W };
 

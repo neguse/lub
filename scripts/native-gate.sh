@@ -76,8 +76,6 @@ run_timed bash scripts/build-release.sh
 native_binary="${LUB_PRECOMMIT_BINARY:-./build-release-linux/lub}"
 run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
   --fixed-dt 0.0125
-run_timed bash scripts/build-release.sh --target lub_haxe_build_smoke --no-configure
-run_timed ./build-release-linux/lub_haxe_build_smoke
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
 run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
@@ -172,15 +170,8 @@ if command -v dotnet >/dev/null 2>&1 \
       "$cs_dir/.lub/$cs_class.lua" --capture "$cs_png" --capture-frame 240 \
       --fixed-dt 0.0166666666666667 --digest | tee "${cs_digest}.log"
     grep '^digest ' "${cs_digest}.log" > "$cs_digest" || true
-    # golden 比較は Haxe 側と同じ curation (frame 240 が決定的なサンプルのみ)。
-    # golden が無いサンプルも capture 実行までは検証される (クラッシュ検出)。
-    if [[ $skip_golden -eq 1 ]]; then
-      echo "==> golden cmp skipped (--skip-golden): ${cs_name}"
-    elif [[ -f "tests/golden/${cs_name}_cs_sdlgpu.png" ]]; then
-      run cmp "$cs_png" "tests/golden/${cs_name}_cs_sdlgpu.png"
-    else
-      echo "==> golden skip (nondeterministic): ${cs_name}"
-    fi
+    # 視覚 golden は scripts/run-golden.sh (curation と frame はそちら)。ここは
+    # capture まで通ることの検証 (クラッシュ検出) と digest の材料。
 
     # .NET 実行 (dotnet/SampleRunner): 同じソースを facade + 共有 library で
     # 動かし、frame ごとの digest (C API 呼び出しの構造、--digest) が tcs→Lua と

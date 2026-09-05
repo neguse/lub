@@ -1,4 +1,4 @@
-// lub の samples/00_hello (Haxe 版 Hello00.hx) の TinyC# 版 entry。
+// lub の samples/00_hello の entry。
 // 実行: lub samples/00_hello/Hello00.csproj (transpile + watch + hot reload)
 using System;
 using static Lub;

@@ -1,5 +1,5 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Camera2d.hx と対)。
-// Haxe 版の匿名戻り値 {x, y} は stub の座標 wire format (Vec2d) で返す。
+// 実装ライブラリ lubx の Camera2d。
+// 座標の戻り値は stub の座標 wire format (Vec2d)。
 // Gfx.size / Input.mouse_pos の multi-return は out 引数で受ける。
 
 /// <summary>

@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef __EMSCRIPTEN__
-#include "haxe_build.h" // path_basename_noext / path_dirname
+#include "path_util.h"
 #include "serve.h"
 #include "tcs_build.h"
 #endif
@@ -69,8 +69,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         script = argv[i];
       }
     }
-    if (!script || !has_extension(script, ".hxml")) {
-      SDL_Log("FATAL: --serve requires a .hxml path");
+    if (!script || !has_extension(script, ".csproj")) {
+      SDL_Log("FATAL: --serve requires a .csproj path");
       return SDL_APP_FAILURE;
     }
 
@@ -156,33 +156,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
   char modbuf[256] = {0};
 
-#ifdef __EMSCRIPTEN__
-  if (has_extension(entry_path, ".hxml")) {
-    SDL_Log("FATAL: .hxml entry not supported on WASM");
-    return SDL_APP_FAILURE;
-  }
-#else
-  if (has_extension(entry_path, ".hxml")) {
-    if (!haxe_pipeline_start(&g_app->haxe, entry_path)) {
-      SDL_Log("FATAL: haxe pipeline start failed");
-      return SDL_APP_FAILURE;
-    }
-    g_app->haxe_enabled = true;
-    path_basename_noext(entry_path, modbuf, sizeof(modbuf));
-    SDL_snprintf(g_app->entry_module_name, sizeof(g_app->entry_module_name),
-                 "%s", modbuf);
-    char dir[512];
-    path_dirname(entry_path, dir, sizeof(dir));
-    char lua_path[768];
-    SDL_snprintf(lua_path, sizeof(lua_path), "%s/.lub/%s.lua", dir, modbuf);
-    SDL_snprintf(g_app->entry_path, sizeof(g_app->entry_path), "%s", lua_path);
-    g_app->entry_mtime_cache = 0;
-    lua_ctx_add_package_path(&g_app->lua, dir);
-  }
-#endif
-
 #ifndef __EMSCRIPTEN__
-  // .csproj entry (hxml 対称の C# プロジェクト記述): tcs で transpile + watch
+  // .csproj entry: tcs で transpile + watch
   // し、以降は生成 .lua の直パス entry と同じ扱いにする (mtime poll が
   // hotswap を担う)。
   char cs_out[768];
@@ -205,7 +180,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     lua_ctx_add_package_dir(&g_app->lua, dir);
   } else
 #endif
-      if (!has_extension(entry_path, ".hxml")) {
+  {
     const char *raw = entry_path;
     const char *base = strrchr(raw, '/');
     base = base ? base + 1 : raw;

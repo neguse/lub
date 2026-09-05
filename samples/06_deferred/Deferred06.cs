@@ -1,4 +1,4 @@
-// lub の samples/06_deferred (Haxe 版 Deferred06.hx) の TinyC# 版 entry。
+// lub の samples/06_deferred の entry。
 // 実行: lub samples/06_deferred/Deferred06.csproj (transpile + watch + hot reload)
 // G-buffer pass (MRT: SV_Target0 -> gbuf0, SV_Target1 -> gbuf1) の後、
 // view pass で左半分に gbuf0、右半分に gbuf1 を貼って可視化する。

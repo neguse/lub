@@ -104,7 +104,6 @@ check_entry() {
     local golden_name="$3"
     local backend="$4"
     local display_num="$5"
-    local haxe_port="$6"
     local frame="$FRAME"
     case "$golden_name" in
         16_box2d) frame=120 ;;
@@ -128,14 +127,12 @@ check_entry() {
     if [[ $windows -eq 1 ]]; then
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
         LUB_BACKEND="$backend" LUB_DX12_WARP=1 LUB_GOLDEN=1 \
-            LUB_HAXE_PORT="$haxe_port" \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
             --fixed-dt 0.0166666666666667 \
             >"$log" 2>&1 || run_ok=0
     else
         LUB_BACKEND="$backend" LUB_XVFB_SERVERNUM="$display_num" LUB_GOLDEN=1 \
-            LUB_HAXE_PORT="$haxe_port" \
             scripts/run-headless.sh "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
             --fixed-dt 0.0166666666666667 \
@@ -181,9 +178,8 @@ check_entry() {
     fi
 }
 
-# Both backends of one entry share the generated Lua artifacts, so they
-# must not run concurrently (the second compile hotswaps under the first
-# run). Backends run serially inside one background job per entry.
+# Both backends of one entry run serially inside one background job per
+# entry (the captures of one sample share its generated Lua).
 run_entry_backends() {
     local label="$1"
     local entry="$2"
@@ -193,11 +189,10 @@ run_entry_backends() {
     local backend
     for backend in "${BACKENDS[@]}"; do
         if [[ -z "$backend_filter" || "$backend" == "$backend_filter" ]]; then
-            # Unique X display + haxe --wait port per run: concurrent jobs
-            # must not race for xvfb display numbers (run-headless.sh) or
-            # the 7400..7410 haxe server probe range (src/haxe_server.c).
+            # Unique X display per run: concurrent jobs must not race for
+            # xvfb display numbers (run-headless.sh).
             check_entry "$label" "$entry" "$golden_name" "$backend" \
-                $((100 + base * 2 + bi)) $((7500 + base * 2 + bi))
+                $((100 + base * 2 + bi))
         fi
         bi=$((bi + 1))
     done
@@ -223,11 +218,31 @@ elif [[ -n "$test_filter" && -z "$sample_filter" ]]; then
     run_samples=0
 fi
 
+# サンプルは C# (tcs)。先に transpile して samples/<name>/.lub/<Entry>.lua を
+# 作る (entry class = csproj の basename)。
+entry_lua_for() {
+    local sample="$1"
+    local proj
+    proj=$(ls "samples/$sample"/*.csproj | head -1)
+    local cls
+    cls=$(basename "$proj" .csproj)
+    echo "samples/$sample/.lub/$cls.lua"
+}
+
 if [[ $run_samples -eq 1 ]]; then
     for sample in "${SAMPLES[@]}"; do
         [[ -n "$sample_filter" && "$sample" != "$sample_filter" ]] && continue
-        # Each sample is self-contained at samples/<name>/<name>.hxml.
-        launch_entry "$sample" "samples/${sample}/${sample}.hxml" "$sample"
+        scripts/run-cs-sample.sh "$sample" --build >"$tmpdir/${sample}_transpile.log" 2>&1 || {
+            echo "FAIL ${sample}: transpile failed (see $tmpdir/${sample}_transpile.log)"
+            keep_tmpdir=1
+            echo fail >"$tmpdir/${sample}_transpile.status"
+            continue
+        }
+    done
+    for sample in "${SAMPLES[@]}"; do
+        [[ -n "$sample_filter" && "$sample" != "$sample_filter" ]] && continue
+        [[ -f "$tmpdir/${sample}_transpile.status" ]] && continue
+        launch_entry "$sample" "$(entry_lua_for "$sample")" "$sample"
     done
 fi
 

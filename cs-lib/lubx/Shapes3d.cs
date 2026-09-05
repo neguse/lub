@@ -1,6 +1,6 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Shapes3d.hx と対)。
-// Haxe 版の lua.Table.fromArray は不要 — List<double>/List<int> がそのまま
-// Lua array table。MeshData の匿名構造リテラルは stub (cs-lib/lub_stub.cs) の
+// 実装ライブラリ lubx の Shapes3d。
+// List<double>/List<int> はそのまま Lua array table。MeshData は stub
+// (cs-lib/lub_stub.cs) の
 // MeshData class の object initializer で構築 (--ref 型は plain table に落ちる)。
 // Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、
 // (i + 1) % sides の剰余は wrap 分岐 (i は 0..sides-1) で書く。
@@ -78,7 +78,7 @@ public static class Shapes3d
         var nrm = new List<double>();
         var indices = new List<int>();
         // 各面の { 法線 n, 面内基底 u, v } を n.xyz, u.xyz, v.xyz の 9 要素で
-        // 並べたもの (Haxe 版の匿名 {n, u, v} 相当)。
+        // 並べたもの。
         var faces = new List<List<double>>
         {
             new List<double> { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 },

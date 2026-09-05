@@ -10,7 +10,7 @@ $env:LUB_PROFILE_START_FRAME = "300"
 $env:LUB_PROFILE_FRAME = "600"
 $env:LUB_PROFILE_LABEL = "my-run"
 $env:LUB_PROFILE_EVERY = "300"
-.\build-release\lub.exe samples\13_sprites\13_sprites.hxml
+.\build-release\lub.exe samples\13_sprites\Sprites13.csproj
 ```
 
 Linux:
@@ -21,7 +21,7 @@ LUB_PROFILE_START_FRAME=300 \
 LUB_PROFILE_FRAME=600 \
 LUB_PROFILE_LABEL=my-run \
 LUB_PROFILE_EVERY=300 \
-./build-release-linux/lub samples/13_sprites/13_sprites.hxml
+./build-release-linux/lub samples/13_sprites/Sprites13.csproj
 ```
 
 When using `scripts/build-release.sh`, the default Linux binary is
@@ -34,15 +34,15 @@ The runtime always records these scopes when profiling is enabled:
 - `runtime.pass_guard`
 - `runtime.end_frame`
 
-Haxe samples can add their own scopes:
+Game code can add its own scopes:
 
-```haxe
-import lub.Profiler;
+```csharp
+using static Lub;
 
-Profiler.beginScope("game.update");
-update();
-Profiler.endScope("game.update");
-Profiler.report("my-sample");
+Profiler.BeginScope("game.update");
+Update();
+Profiler.EndScope("game.update");
+Profiler.Report("my-sample");
 ```
 
 The profiler prints:

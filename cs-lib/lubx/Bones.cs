@@ -1,7 +1,6 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Bones.hx と対)。
-// mesh.Bones は typed な List<SdfBone> (Haxe 版の 1-based Lua table と同じ
-// 実効添字で tcs が引く)。Haxe 版の nil 番兵ループは List.Count 上限に
-// 置き換え、resolve は Func<> delegate で受ける。
+// 実装ライブラリ lubx の Bones。
+// mesh.Bones は typed な List<SdfBone>。走査は List.Count 上限、resolve は
+// Func<> delegate で受ける。
 
 using System;
 using System.Collections.Generic;

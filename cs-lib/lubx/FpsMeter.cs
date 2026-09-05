@@ -1,5 +1,5 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/FpsMeter.hx と対)。
-// Haxe 版の fps(default, null) 相当の read-only 性は field + doc comment で表す。
+// 実装ライブラリ lubx の FpsMeter。
+// fps の read-only 性は field + doc comment で表す。
 // initialFps はデフォルト引数でなく nullable + ?? で受ける (tcs はデフォルト
 // 引数値を呼び出し側に埋めないが、Lua の省略引数 = nil が null に落ちる)。
 

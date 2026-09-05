@@ -1,7 +1,7 @@
 #ifndef LUB_SERVE_H
 #define LUB_SERVE_H
 
-#include "haxe_pipeline.h"
+#include "tcs_build.h"
 #include <SDL3/SDL_stdinc.h>
 #include <stdbool.h>
 
@@ -35,8 +35,8 @@ typedef struct ServeState {
   ServeConn conns[SERVE_MAX_CONNS];
   int conn_count;
 
-  HaxePipeline haxe;
-  char hxml_path[768];
+  TcsPipeline tcs;
+  char entry_path[768]; // .csproj
   char game_dir[768];
   char entry_name[128];
 
@@ -46,7 +46,10 @@ typedef struct ServeState {
   char slang_dir[768];
 } ServeState;
 
-bool serve_start(ServeState *s, const char *hxml_path, const char *wasm_dir,
+// entry_path は .csproj (entry class = basename、入力 = 同 dir の *.cs)。tcs が
+// transpile + watch し、生成 Lua (.lub/<Entry>.lua) と data file の変更を SSE
+// で ブラウザへ送る。
+bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port);
 bool serve_tick(ServeState *s);
 void serve_stop(ServeState *s);

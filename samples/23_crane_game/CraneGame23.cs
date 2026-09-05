@@ -1,14 +1,13 @@
-// lub の samples/23_crane_game (Haxe 版 CraneGame23.hx) の TinyC# 版 entry。
+// lub の samples/23_crane_game の entry。
 // 実行: lub samples/23_crane_game/CraneGame23.csproj (transpile + watch + hot reload)
 //
-// gameplay rule (クレーン操作・アーム・景品・実寸パラメータ) は Haxe 版に忠実。
-// Haxe 版との対応:
+// 型と tcs 制約:
 // - typedef Bear / 匿名構造体 {bear, body, index} {head, fr, fl}
 //   {speed, torque} は class Bear / LiveBear / Machine / ClawCommand 化。
 // - Renderer3d / Mesh3d は static 初期化子でなく onFrame からの build() で
 //   遅延生成する (cs-lib クラスは load 順の都合で static 初期化子から呼べない)。
 // - 整数剰余 % は Mod() (floor 分解) で代替、switch は if 連鎖。
-// - Phys3d の body/world 取得は null ガード (Haxe 版は Dynamic のまま)。
+// - Phys3d の body/world 取得は null ガード。
 //
 // 3D クレーンゲーム (2 本爪プライズ機)。実機の機構を実寸スケールで再現し、
 // 補助力なしの現実の物理 (拘束 + モーター + 摩擦 + 重力) だけで成立させる:

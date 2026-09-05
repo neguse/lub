@@ -3,11 +3,9 @@
 # master push / workflow_dispatch では同じ verify を通した上でデプロイする。
 # local の `cd web && npm run deploy` は脱出ハッチとして残す。
 #
-# 前提アセット3つ (web/README.md) の供給:
+# 前提アセット (web/README.md) の供給:
 #   - lub player wasm: emsdk でこの job 内でビルド
 #   - tcs WasmCompiler: dotnet wasm-tools で publish (gen-tcs --publish)
-#   - Haxe compiler wasm: haxe-wasm/dist を actions/cache し、cache miss 時だけ
-#     docker で再現ビルド (haxe-wasm/build.sh、~1h。key の入力が変わらない限り走らない)
 name: web
 
 on:
@@ -48,26 +46,6 @@ jobs:
       - name: Install wasm-tools workload
         run: dotnet workload install wasm-tools
 
-      - name: Cache haxe-wasm dist
-        id: haxe-wasm-cache
-        uses: actions/cache@v4
-        with:
-          path: haxe-wasm/dist
-          key: haxe-wasm-${{ hashFiles('haxe-wasm/Dockerfile', 'haxe-wasm/build.sh', 'haxe-wasm/patches/**', 'haxe-wasm/harness/patch_env.mjs') }}
-
-      - name: Build haxe-wasm (docker, cache miss only)
-        if: steps.haxe-wasm-cache.outputs.cache-hit != 'true'
-        run: bash haxe-wasm/build.sh
-
-      # gen-api (npm run build に含まれる) が PATH の haxe を呼ぶ。
-      # 同梱 haxelib は neko 製バイナリなので libneko (neko パッケージ) が要る。
-      - name: Install Haxe 5
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends neko
-          scripts/install-haxe5.sh "$HOME/haxe5"
-          echo "$HOME/haxe5" >> "$GITHUB_PATH"
-
       - uses: actions/setup-node@v4
         with:
           node-version: 26
@@ -85,10 +63,6 @@ jobs:
       - name: Generate tcs prebuilt snapshots
         working-directory: web
         run: npm run gen-tcs-prebuilt
-
-      - name: Generate haxe wasm assets
-        working-directory: web
-        run: npm run gen-haxe
 
       # verify が使う __lubTest hook (editor.ts) は dev/test mode 限定で
       # production build には入らない。verify は test mode build に対して行い、

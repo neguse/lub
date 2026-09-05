@@ -1,16 +1,13 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/SpriteBatch.hx と対)。
-// Haxe 版の typedef SpriteBucket は class に、Dynamic フィールドは
-// ShaderRef / BufferRef の型付きに。untyped の配列直書き (perf イディオム) は
-// List<double>.Add の逐次追加に置換 (格納順は Haxe 版の out[i]..out[i+n] と
-// 同一)。lua.Table.fromArray は List<double> がそのまま Lua array table
-// なので不要。デフォルト引数値は nullable + ?? で受ける (tcs は call site
-// 展開しない)。
+// 実装ライブラリ lubx の SpriteBatch。
+// バケットは class SpriteBucket、フィールドは ShaderRef / BufferRef の型付き。
+// 頂点は List<double>.Add の逐次追加 (そのまま Lua array table)。
+// デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
 
 using System;
 using System.Collections.Generic;
 using static Lub;
 
-/// <summary>アトラスごとの頂点バケット (Haxe 版 typedef SpriteBucket と対)。</summary>
+/// <summary>アトラスごとの頂点バケット。</summary>
 public class SpriteBucket
 {
     public Atlas Atlas;
@@ -152,8 +149,7 @@ public class SpriteBatch
             c.R, c.G, c.B, c.A);
     }
 
-    // Haxe 版は untyped out[i]..out[i+13] の直書き。Add の逐次追加でも
-    // Lua 上は同じ array table への同順 append になる。
+    // Add の逐次追加は Lua 上では array table への同順 append になる。
     private void PushInstanceColor(List<double> verts, double cx, double cy,
         double w, double h, double cr, double sr, double u0, double v0,
         double u1, double v1, double r, double g, double b, double alpha)

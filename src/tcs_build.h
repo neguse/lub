@@ -1,6 +1,6 @@
 #pragma once
 // tcs (TinyC#) pipeline: .cs entry の transpile + watch を lub が駆動する。
-// hxml (haxe_pipeline) と対称の DX。実装は tcs_build.c。
+// 実装は tcs_build.c。
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 

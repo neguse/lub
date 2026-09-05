@@ -1,9 +1,9 @@
-// lub の samples/21_iroha (Haxe 版 Iroha21.hx) の TinyC# 版 entry。
+// lub の samples/21_iroha の entry。
 // 実行: lub samples/21_iroha/Iroha21.csproj (transpile + watch + hot reload)
 // いろはスイカ: 同じ文字の玉がぶつかると「い→ろ→は→に→ほ→へ→と」の
 // 順に育つスイカゲーム風サンプル。玉の文字は font_glyph_mesh の
 // 三角形化グリフ (MeshText)、HUD は lubx.Text の動的 glyph atlas。
-// gameplay rule と物理 desc の数値は Haxe 版に忠実。typedef Ball は class に、
+// 玉 1 個は class Ball で持ち、
 // contact の body key 逆引きは substr + parseInt でなく Dictionary<string, Ball>
 // で行う (機能は同一)。
 // cs-lib のクラス (Color / Camera2d / SpriteBatch / Rand) は生成 Lua で
@@ -14,7 +14,7 @@ using System;
 using System.Collections.Generic;
 using static Lub;
 
-/// <summary>玉 1 個 (Haxe 版 typedef Ball と対)。</summary>
+/// <summary>玉 1 個。</summary>
 public class Ball
 {
     public int Id;

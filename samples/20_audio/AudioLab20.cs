@@ -1,4 +1,4 @@
-// lub の samples/20_audio (Haxe 版 AudioLab20.hx) の TinyC# 版 entry。
+// lub の samples/20_audio の entry。
 // 実行: lub samples/20_audio/AudioLab20.csproj (transpile + watch + hot reload)
 // サウンドラボ: ImGui で波形パラメータを調整しながら音を作る。
 // - 波形はコード合成 (raw PCM → Audio.Snd)。key "lab" で毎フレーム宣言し、
@@ -51,7 +51,7 @@ public static class AudioLab20
         int n = (int)Math.Floor(duration * rate);
         var samples = new List<double>();
         double phase = 0.0;
-        // xorshift は Haxe (32bit Int) と同じ列にするため & 0xFFFFFFFF で
+        // xorshift は 32bit 整数の列に固定する (golden 互換) ため & 0xFFFFFFFF で
         // 32bit にマスクする (Lua 整数は 64bit 幅)
         long seed = 0x2F6E2B1;
         double hold = 0.0;

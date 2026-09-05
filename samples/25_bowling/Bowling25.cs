@@ -1,4 +1,4 @@
-// lub の samples/25_bowling (Haxe 版 Bowling25.hx) の TinyC# 版 entry。
+// lub の samples/25_bowling の entry。
 // 実行: lub samples/25_bowling/Bowling25.csproj (transpile + watch + hot reload)
 //
 // 3D ボウリング。実寸レーンと実重量比のボール/ピンを Phys3d に載せ、
@@ -15,9 +15,7 @@
 //   放置でアトラクトモードが自動投球する
 // - スコア: 10 フレームの正式ルール (ストライク/スペア/10 フレーム目 3 投)
 //
-// gameplay rule (投球・ピン配置・スコアリング) と物理 desc の数値は
-// Haxe 版に忠実。typedef Pin は class に、アトラクトの Math.random は
-// 決定的な lubx.Rand に置き換える。cs-lib のクラス (Mesh3d / Renderer3d /
+// ピンは class Pin、アトラクトの乱数は決定的な lubx.Rand を使う。cs-lib のクラス (Mesh3d / Renderer3d /
 // Rand 等) は生成 Lua でサンプルより後に定義されるため static 初期化子で
 // 参照できず、onFrame / 使用箇所で遅延生成する。
 
@@ -25,7 +23,7 @@ using System;
 using System.Collections.Generic;
 using static Lub;
 
-/// <summary>ピン 1 本 (Haxe 版 typedef Pin と対)。</summary>
+/// <summary>ピン 1 本。</summary>
 public class Pin
 {
     public int Gen; // version (ラック再設置で上げる)
@@ -646,7 +644,7 @@ public static class Bowling25
 
     static void StartAuto()
     {
-        // Haxe 版の Math.random() は決定的な Rand に置き換える
+        // アトラクトの乱数は決定的な Rand
         var r = rng;
         if (r == null)
         {

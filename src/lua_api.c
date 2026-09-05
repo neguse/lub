@@ -3,7 +3,6 @@
 #include "app.h"
 #include "backend.h"
 #include "enums.h"
-#include "enums_lua.h"
 #include "lua_gen_support.h"
 #include "pass.h"
 #include "physics_box3d.h"
@@ -28,8 +27,7 @@ static App *g_app_for_lua = NULL;
 
 // ---------------------------------------------------------------------------
 // API 面は src/gen/lua_api_gen.c (cs-lib/lub_stub.cs からの生成物) が lub
-// table に登録する。ここに残るのは Lua VM の glue と、Haxe 向けの
-// request_file だけ。
+// table に登録する。ここに残るのは Lua VM の glue だけ。
 
 int64_t app_file_mtime_ns(const char *path) {
   if (!path)
@@ -37,7 +35,7 @@ int64_t app_file_mtime_ns(const char *path) {
 #ifdef _WIN32
   // MSVC's struct _stat64 has only seconds resolution in st_mtime.
   // sub-second changes are still caught by the content-hash fallback
-  // in samples/lub_io.lua, so seconds-precision mtime is fine here.
+  // for the entry hot-reload poll, so seconds-precision mtime is fine here.
   struct _stat64 st;
   if (_stat64(path, &st) != 0)
     return 0;
@@ -51,40 +49,15 @@ int64_t app_file_mtime_ns(const char *path) {
 #endif
 }
 
-static int l_request_file(lua_State *L) {
-  const char *path = luaL_checkstring(L, 1);
-  int status = lub_io_request_file(path);
-  if (status == 1) {
-    lua_pushstring(L, "ready");
-    return 1;
-  }
-  if (status == 0) {
-    lua_pushstring(L, "pending");
-    return 1;
-  }
-  lua_pushstring(L, "error");
-  lua_pushstring(L, "missing");
-  return 2;
-}
-
 void lua_api_register(lua_State *L) {
   lub_api_gen_register(L);
   lgen_support_register(L, lub_api_ctx(g_app_for_lua));
-  enums_register(L);
-  // main_tex は { __lub_kind = "main_tex" } という sentinel テーブル (Haxe 用)
-  lua_newtable(L);
-  lua_pushstring(L, "main_tex");
-  lua_setfield(L, -2, "__lub_kind");
-  lua_setglobal(L, "main_tex");
-  lua_pushcfunction(L, l_request_file);
-  lua_setglobal(L, "request_file");
 }
 
 // Fetches the entry module from the registry, looks up the named field, and
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
-// entry callback は snake_case (on_init 等、tcs の出力) を正とし、無ければ
-// camelCase (onInit 等、Haxe の出力) を引く。Haxe 撤去までの両対応。
+// entry callback は snake_case (on_init 等)。
 static void call_module_field(LuaCtx *ctx, const char *name,
                               const char *legacy_name, int nargs) {
   lua_State *L = ctx->L;
@@ -226,7 +199,7 @@ void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir) {
 void lua_ctx_call_init(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "on_init", "onInit", 0);
+  call_module_field(ctx, "on_init", NULL, 0);
 }
 void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
@@ -234,19 +207,19 @@ void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
-  call_module_field(ctx, "on_frame", "onFrame", 1);
+  call_module_field(ctx, "on_frame", NULL, 1);
 }
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)
     return;
-  call_module_field(ctx, "on_quit", "onQuit", 0);
+  call_module_field(ctx, "on_quit", NULL, 0);
 }
 
 void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e) {
   if (!ctx->L)
     return;
   lub_lua_push_event(ctx->L, e);
-  call_module_field(ctx, "on_event", "onEvent", 1);
+  call_module_field(ctx, "on_event", NULL, 1);
 }
 
 // Stack discipline:

@@ -285,7 +285,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
   g_backend->apply_pipeline(pip);
 
   // 2D ortho (framebuffer px, y down)。row-major で mul(u.proj, v) 形式
-  // (Haxe Mat4 と同じ渡し方)。
+  // (lub.Math の Mat4 と同じ渡し方)。
   float W = dd->DisplaySize.x > 0 ? dd->DisplaySize.x : 1;
   float H = dd->DisplaySize.y > 0 ? dd->DisplaySize.y : 1;
   const float proj[16] = {

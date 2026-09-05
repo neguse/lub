@@ -1,6 +1,5 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Sdf.hx と対)。
-// Haxe 版は abstract SdfNode(Dynamic) で「値そのものが wire table」だが、
-// C# 版は typed な木 (op / params / 子参照) を持ち、Sdf.Mesh で C API の
+// 実装ライブラリ lubx の Sdf。
+// typed な木 (op / params / 子参照) を持ち、Sdf.Mesh で C API の
 // 平らな node 配列 (Lub.Mesh.SdfMesh の SdfNodeDesc) に落とす。
 // paint の bit 演算 (rgb >> 16 & 0xFF) は tcs 未対応なので Color.hex と
 // 同じ Math.Floor 分解で書く。

@@ -1,4 +1,4 @@
-// tcs (TinyC#) pipeline: .csproj entry を hxml と対称の DX で動かす。
+// tcs (TinyC#) pipeline: .csproj entry の transpile + watch を lub が駆動する。
 // 起動時に tcs を --watch で spawn し、初回出力 (.lub/<Base>.lua) を待って
 // entry にする。以後の .cs 保存は tcs --watch が再変換し、既存の entry mtime
 // poll (app.c) が hotswap する。lub 側は子プロセスの lifecycle だけ持つ。
@@ -7,8 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// haxe_build.c の path helpers を借りる
-#include "haxe_build.h"
+#include "path_util.h"
 
 static bool file_exists(const char *path) {
   SDL_PathInfo info;

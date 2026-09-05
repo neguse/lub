@@ -1,7 +1,5 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Color.hx と対)。
-// Haxe 版は abstract + 構造体リテラルの暗黙変換だが、C# には無い機能なので
-// static factory (rgb / hex) + public フィールドの素直な設計にする。
-// メンバー名は Haxe 版 API と揃える (--no-naming-check でビルドされる)。
+// 実装ライブラリ lubx の Color。
+// static factory (rgb / hex) + public フィールドの素直な設計。
 // a はデフォルト引数でなく nullable + ?? で受ける (tcs はデフォルト引数値を
 // 呼び出し側に埋めないが、Lua の省略引数 = nil が null に落ちるのを利用)。
 

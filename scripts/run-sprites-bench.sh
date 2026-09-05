@@ -82,7 +82,7 @@ done
 
 build_path="$repo_root/$build_dir"
 exe="$build_path/lub"
-sample="$repo_root/samples/13_sprites/13_sprites.hxml"
+sample="$repo_root/samples/13_sprites/Sprites13.csproj"
 
 if [[ "$no_build" -eq 0 ]]; then
   bash "$repo_root/scripts/build-release.sh" \
@@ -96,20 +96,8 @@ if [[ ! -x "$exe" && ! -f "$exe" ]]; then
   exit 1
 fi
 
-if [[ -n "${LUB_HAXE:-}" ]]; then
-  if [[ ! -x "$LUB_HAXE" ]]; then
-    echo "LUB_HAXE points to a missing haxe executable: $LUB_HAXE" >&2
-    exit 1
-  fi
-  haxe_dir="$(cd "$(dirname "$LUB_HAXE")" && pwd)"
-  export PATH="$haxe_dir:$PATH"
-elif ! command -v haxe >/dev/null 2>&1; then
-  echo "haxe was not found. Install Haxe 5 or set LUB_HAXE before running the .hxml benchmark." >&2
-  exit 1
-fi
-
-if ! command -v haxelib >/dev/null 2>&1; then
-  echo "haxelib was not found. Put haxelib in PATH or set LUB_HAXE to a Haxe install that contains haxelib." >&2
+if ! command -v dotnet >/dev/null 2>&1; then
+  echo "dotnet was not found. The sample is C# (tcs), so the dotnet SDK is required." >&2
   exit 1
 fi
 

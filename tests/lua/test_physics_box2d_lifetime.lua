@@ -42,54 +42,54 @@ end
 local function check_missing_world_queries()
 	local missing_world = { __lub_kind = "world", key = "missing_world" }
 	expect_not_found("missing world info", function()
-		return phys2d_world_info(missing_world)
+		return lub.phys2d.world_info(missing_world)
 	end)
 	expect_not_found("missing world pose", function()
-		return phys2d_pose(missing_world, "body")
+		return lub.phys2d.pose_by_key(missing_world, "body")
 	end)
 	expect_not_found("missing world contacts", function()
-		return phys2d_contacts(missing_world, "begin")
+		return lub.phys2d.contacts(missing_world, "begin")
 	end)
 	expect_not_found("missing world body events", function()
-		return phys2d_body_events(missing_world)
+		return lub.phys2d.body_events(missing_world)
 	end)
 	expect_not_found("missing world sensors", function()
-		return phys2d_sensors(missing_world, "begin")
+		return lub.phys2d.sensors(missing_world, "begin")
 	end)
 	expect_not_found("missing world raycast", function()
-		return phys2d_raycast(missing_world, { x = 0, y = 0, dx = 1, dy = 0 })
+		return lub.phys2d.raycast(missing_world, { x = 0, y = 0, dx = 1, dy = 0 })
 	end)
 	expect_not_found("missing world overlap", function()
-		return phys2d_overlap_aabb(missing_world, { min_x = -1, min_y = -1, max_x = 1, max_y = 1 })
+		return lub.phys2d.overlap_aabb(missing_world, { min_x = -1, min_y = -1, max_x = 1, max_y = 1 })
 	end)
 	expect_not_found("missing world shape cast", function()
-		return phys2d_shape_cast(missing_world, { type = "circle", x = 0, y = 0, r = 0.1, dx = 1, dy = 0 })
+		return lub.phys2d.shape_cast(missing_world, { kind = "circle", x = 0, y = 0, radius = 0.1, dx = 1, dy = 0 })
 	end)
 	expect_not_found("missing world cast mover", function()
-		return phys2d_cast_mover(missing_world, { ax = 0, ay = 0, bx = 0, by = 1, r = 0.1, dx = 1, dy = 0 })
+		return lub.phys2d.cast_mover(missing_world, { ax = 0, ay = 0, bx = 0, by = 1, r = 0.1, dx = 1, dy = 0 })
 	end)
 	expect_not_found("missing world collide mover", function()
-		return phys2d_collide_mover(missing_world, { ax = 0, ay = 0, bx = 0, by = 1, r = 0.1 })
+		return lub.phys2d.collide_mover(missing_world, { ax = 0, ay = 0, bx = 0, by = 1, r = 0.1 })
 	end)
 	expect_not_found("missing world debug", function()
-		return phys2d_debug(missing_world, { shapes = true })
+		return lub.phys2d.debug(missing_world, { shapes = true })
 	end)
 	expect_not_found("missing world profile", function()
-		return phys2d_profile(missing_world)
+		return lub.phys2d.profile(missing_world)
 	end)
 	expect_not_found("missing world counters", function()
-		return phys2d_counters(missing_world)
+		return lub.phys2d.counters(missing_world)
 	end)
 end
 
-function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+function M.on_init()
+	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.onFrame()
+function M.on_frame()
 	frame = frame + 1
 
-	local world = phys2d_world("lifetime", {
+	local world = lub.phys2d.world("lifetime", {
 		gravity = { x = 0, y = 0 },
 		fixed_dt = 1 / 60,
 		substeps = 4,
@@ -99,72 +99,67 @@ function M.onFrame()
 	if frame == 1 then
 		world:begin({ prune = false })
 		local kept = world:body("kept", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 1, y = 2 },
 		})
 		kept_ref = kept
 		kept_shape_ref = kept:box("solid", { hx = 0.1, hy = 0.1 })
 		local recreate = world:body("recreate", {
 			version = 1,
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 3, y = 0 },
 		})
 		recreate_ref = recreate
 		recreate:box("solid", { hx = 0.1, hy = 0.1 })
 		local joint_a = world:body("joint_a", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 10, y = 0 },
 		})
 		local joint_b = world:body("joint_b", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 12, y = 0 },
 		})
 		stale_joint_ref = world:joint("stale_joint", {
 			type = "distance",
-			a = joint_a,
-			b = joint_b,
+			body_a = joint_a,
+			body_b = joint_b,
 			length = 2,
 		})
 		local versioned_joint_a = world:body("versioned_joint_a", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 14, y = 0 },
 		})
 		local versioned_joint_b = world:body("versioned_joint_b", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 16, y = 0 },
 		})
 		world:joint("versioned_joint", {
 			version = 1,
 			type = "distance",
-			a = versioned_joint_a,
-			b = versioned_joint_b,
+			body_a = versioned_joint_a,
+			body_b = versioned_joint_b,
 			length = 2,
 			collide_connected = false,
 		})
 		local chain_body = world:body("chain_body", {
-			type = STATIC,
+			type = lub.phys2d.STATIC,
 			initial = { x = 0, y = -2 },
 		})
 		stale_chain_ref = chain_body:chain("terrain", {
 			version = 1,
-			points = {
-				{ x = -2, y = 0 },
-				{ x = -1, y = 0 },
-				{ x = 1, y = 0 },
-				{ x = 2, y = 0 },
-			},
+			points = { -2, 0, -1, 0, 1, 0, 2, 0 },
 		})
 		world:body("hash_body", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = -1, y = 0 },
 		})
 		world:body("explicit_body", {
 			version = 1,
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = -3, y = 0 },
 		})
 		local versioned_shape_body = world:body("versioned_shape", {
-			type = STATIC,
+			type = lub.phys2d.STATIC,
 			initial = { x = -5, y = 0 },
 		})
 		versioned_shape_body:box("solid", {
@@ -178,7 +173,7 @@ function M.onFrame()
 		})
 
 		local wall = world:body("wall", {
-			type = STATIC,
+			type = lub.phys2d.STATIC,
 			initial = { x = 0, y = 0 },
 		})
 		wall:box("solid", {
@@ -189,7 +184,7 @@ function M.onFrame()
 			material_id = 10,
 		})
 		local crate = world:body("crate", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 0, y = 0 },
 		})
 		crate:box("solid", {
@@ -201,7 +196,7 @@ function M.onFrame()
 		})
 
 		local sensor = world:body("sensor", {
-			type = STATIC,
+			type = lub.phys2d.STATIC,
 			initial = { x = 1, y = 0 },
 		})
 		sensor:box("zone", {
@@ -213,7 +208,7 @@ function M.onFrame()
 			material_id = 12,
 		})
 		local visitor = world:body("visitor", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 1, y = 0 },
 		})
 		visitor:box("solid", {
@@ -227,40 +222,40 @@ function M.onFrame()
 		world:step(1 / 60)
 	elseif frame == 2 then
 		world:begin({ prune = false })
-		recreate_ref:set_velocity({ x = 5, y = 0 })
+		recreate_ref:set_velocity({ vx = 5, vy = 0 })
 		local recreated = world:body("recreate", {
 			version = 2,
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 3, y = 0 },
 		})
 		recreated:box("solid", { hx = 0.1, hy = 0.1 })
 		world:body("hash_body", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = -2, y = 0 },
 		})
 		world:body("explicit_body", {
 			version = 1,
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = -4, y = 0 },
 		})
 		local versioned_joint_a = world:body("versioned_joint_a", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 14, y = 0 },
 		})
 		local versioned_joint_b = world:body("versioned_joint_b", {
-			type = DYNAMIC,
+			type = lub.phys2d.DYNAMIC,
 			initial = { x = 16, y = 0 },
 		})
 		local versioned_joint = world:joint("versioned_joint", {
 			version = 1,
 			type = "distance",
-			a = versioned_joint_a,
-			b = versioned_joint_b,
+			body_a = versioned_joint_a,
+			body_b = versioned_joint_b,
 			length = 2,
 			collide_connected = true,
 		})
 		local versioned_shape_body = world:body("versioned_shape", {
-			type = STATIC,
+			type = lub.phys2d.STATIC,
 			initial = { x = -5, y = 0 },
 		})
 		local versioned_shape = versioned_shape_body:box("solid", {
@@ -276,15 +271,15 @@ function M.onFrame()
 		if info.commands ~= 0 then
 			fail("queued command applied to recreated body")
 		end
-		local recreated_pose = world:pose("recreate")
+		local recreated_pose = world:pose_by_key("recreate")
 		if not recreated_pose or math.abs(recreated_pose.vx) > 0.001 then
 			fail("stale command mutated recreated body")
 		end
-		local hash_pose = world:pose("hash_body")
+		local hash_pose = world:pose_by_key("hash_body")
 		if not hash_pose or hash_pose.x < -2.01 or hash_pose.x > -1.99 then
 			fail("omitted body version did not hash initial state")
 		end
-		local explicit_pose = world:pose("explicit_body")
+		local explicit_pose = world:pose_by_key("explicit_body")
 		if not explicit_pose or explicit_pose.x < -3.01 or explicit_pose.x > -2.99 then
 			fail("explicit body version did not preserve initial state")
 		end
@@ -306,19 +301,19 @@ function M.onFrame()
 		then
 			fail("explicit shape version did not apply runtime event flags")
 		end
-		local pose = world:pose("kept")
+		local pose = world:pose_by_key("kept")
 		if not pose or pose.x < 0.99 or pose.x > 1.01 then
 			fail("prune=false did not preserve undeclared body")
 		end
 	elseif frame == 3 then
 		check_missing_world_queries()
 		world:begin()
-		kept_ref:set_velocity({ x = 4, y = 0 })
+		kept_ref:set_velocity({ vx = 4, vy = 0 })
 		local info = world:step(1 / 60)
 		if info.commands ~= 0 then
 			fail("queued command applied to pruned body")
 		end
-		local pose, err = world:pose("kept")
+		local pose, err = world:pose_by_key("kept")
 		if pose ~= nil or err ~= "not found" then
 			fail("prune=true did not remove undeclared body")
 		end
@@ -356,15 +351,15 @@ function M.onFrame()
 		if not saw_sensor_end then
 			fail("destroyed sensor end did not retain tombstone keys")
 		end
-		begin_pass({ target = main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
-		end_pass()
+		lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
+		lub.gfx.end_pass()
 		print("PHYS2D_LIFETIME_OK")
-		quit()
+		lub.quit()
 		return
 	end
 
-	begin_pass({ target = main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
-	end_pass()
+	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
+	lub.gfx.end_pass()
 end
 
 return M

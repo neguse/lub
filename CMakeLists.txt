@@ -47,7 +47,7 @@ endif()
 add_subdirectory(third_party/SDL)
 
 # Box2D v3 is C17. Only the library is used; the upstream sample/test/benchmark
-# applications are intentionally disabled because lub exposes its own Lua/Haxe
+# applications are intentionally disabled because lub exposes its own
 # sample surface.
 set(BOX2D_SAMPLES OFF CACHE BOOL "" FORCE)
 set(BOX2D_UNIT_TESTS OFF CACHE BOOL "" FORCE)
@@ -180,7 +180,6 @@ set(LUB_SOURCES
   src/api_io.c
   src/api_font.c
   src/api_mesh.c
-  src/enums_lua.c
   src/pass.c
   src/profile.c
   src/gpu_stats.c
@@ -210,16 +209,10 @@ set(LUB_SOURCES
 list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
-  # haxe --wait child process management; WASM ビルドでは process spawn が無いので除外。
-  list(APPEND LUB_SOURCES src/haxe_server.c)
-  # hxml parse + haxe --connect 呼び出し + prelude/postlude concat (atomic write)。
-  # haxe_pipeline_{start,stop,tick} もこの TU に同居している (haxe_build.c 末尾)。
-  list(APPEND LUB_SOURCES src/haxe_build.c)
-  # `*.hx` の recursive mtime watcher (50ms debounce)。
-  list(APPEND LUB_SOURCES src/haxe_watch.c)
   # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)
   list(APPEND LUB_SOURCES src/tcs_build.c)
-  # HTTP + SSE dev server for `lub --serve game.hxml`.
+  list(APPEND LUB_SOURCES src/path_util.c)
+  # HTTP + SSE dev server for `lub --serve Game.csproj`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)
     # D3D12 backend ("native" on Windows).
@@ -354,58 +347,20 @@ if(LUB_WASM)
     # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)
     "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_io.lua@/samples/lub_io.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_prelude.lua@/samples/lub_prelude.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lubx_png.lua@/samples/lubx_png.lua"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/third_party/lume@/lume"
   )
   set_property(TARGET lub APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/samples/boot.lua"
-    "${CMAKE_SOURCE_DIR}/samples/lub_io.lua"
-    "${CMAKE_SOURCE_DIR}/samples/lub_prelude.lua"
-    "${CMAKE_SOURCE_DIR}/samples/lubx_png.lua"
   )
 endif()
 
-# Haxe pipeline C-side smoke tests (native only — spawn は wasm に存在しない).
+# C-side smoke tests (native only — spawn は wasm に存在しない).
 if(NOT LUB_WASM)
-  add_executable(lub_haxe_server_smoke
-    tests/c/haxe_server_smoke.c
-    src/haxe_server.c
-  )
-  target_link_libraries(lub_haxe_server_smoke PRIVATE SDL3::SDL3)
-  target_include_directories(lub_haxe_server_smoke PRIVATE src)
-
-  # hxml parser 単体 unit test (haxe 子プロセスは spawn しない)。
-  # haxe_build.c は pipeline 実装も同居しており haxe_server / haxe_watch の
-  # 関数を参照するため、test 自体が parser しか呼ばなくても両者を link する。
-  add_executable(lub_hxml_parse_test
-    tests/c/hxml_parse_test.c
-    src/haxe_build.c
-    src/haxe_server.c
-    src/haxe_watch.c
-  )
-  target_link_libraries(lub_hxml_parse_test PRIVATE SDL3::SDL3)
-  target_include_directories(lub_hxml_parse_test PRIVATE src)
-
-  # haxe_build end-to-end smoke (haxe --wait → --connect → atomic write の貫通)。
-  # haxe_build.c は pipeline 実装 (haxe_watch.h を含む) も持つので、
-  # smoke 自体が watch を呼ばなくても haxe_watch.c を link する必要がある。
-  add_executable(lub_haxe_build_smoke
-    tests/c/haxe_build_smoke.c
-    src/haxe_build.c
-    src/haxe_server.c
-    src/haxe_watch.c
-  )
-  target_link_libraries(lub_haxe_build_smoke PRIVATE SDL3::SDL3)
-  target_include_directories(lub_haxe_build_smoke PRIVATE src)
-
   add_executable(lub_serve_smoke
     tests/c/serve_smoke.c
     src/serve.c
-    src/haxe_build.c
-    src/haxe_server.c
-    src/haxe_watch.c
+    src/tcs_build.c
+    src/path_util.c
   )
   target_link_libraries(lub_serve_smoke PRIVATE SDL3::SDL3)
   if(WIN32)

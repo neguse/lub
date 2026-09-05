@@ -1,11 +1,10 @@
 # lub playground (web)
 
-ブラウザで lub サンプルの Haxe / C# ソースを編集 → client-only でその場コンパイル
-(WebAssembly 化した Haxe コンパイラ / .NET wasm 化した TinyC# コンパイラ)→
-player iframe にホットリロードするプレイグラウンド。言語は画面上部のトグル
-(URL は `#lang=cs`)で切り替える。
+ブラウザで lub サンプルの C# ソースを編集 → client-only でその場コンパイル
+(.NET wasm 化した TinyC# コンパイラ)→ player iframe にホットリロードする
+プレイグラウンド。
 
-サーバ不要・完全静的。Haxe→Lua / C#→Lua コンパイルもブラウザ内で完結する。
+サーバ不要・完全静的。C#→Lua コンパイルもブラウザ内で完結する。
 
 ## 前提アセット(ローカルビルド由来・gitignore)
 
@@ -18,33 +17,20 @@ emcmake cmake -S . -B build/wasm        # WGPU + emdawnwebgpu port が configure
 cmake --build build/wasm -j             # lub.{js,wasm,data} が生成
 # 2. slang-wasm(web/public/slang/…) … シェーダコンパイラ
 npm run fetch-slang          # postinstall でも走る
-# 3. Haxe コンパイラ wasm 一式(web/public/haxe-wasm/…) … haxe-wasm/ のビルド成果物から生成
-#    先に haxe-wasm/ をビルドしておくこと(haxe-wasm/build.sh または haxe-wasm/harness/iter.sh)。
-npm run gen-haxe             # haxe-wasm/dist or haxe-wasm/build から glue+wasm+std+prelude を固める
-# 4. TinyC# コンパイラ wasm 一式(web/tcs-wasm-assets/ と web/tcs-prebuilt/)
+# 3. TinyC# コンパイラ wasm 一式(web/tcs-wasm-assets/ と web/tcs-prebuilt/)
 #    要 dotnet SDK + wasm-tools workload + third_party/tcs submodule
 npm run gen-tcs -- --publish # tcs の .NET wasm bundle を web/tcs-wasm-assets/ に固める
 npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サンプル変更時も再生成)
 ```
 
-`npm run gen-haxe`(`scripts/gen-haxe-assets.mjs`)は `haxe-wasm/` が出力した
-`haxe.js`(patched glue)+ `code-*.wasm` + Haxe std + lub externs + prelude を
-`public/haxe-wasm/{haxe.js, *.wasm, std-bundle.json, manifest.json}` に固める(~18MB、gitignore)。
-
 ## コンパイルの流れ
 
-- `playground/haxe-compiler.ts` … main-thread API。`compileHaxe(files, mainClass)` で
-  Web Worker(`haxe-compiler.worker.ts`)に投げ、native の `haxe_build.c` と同じ連結
-  (`HAXE_PRELUDE + raw + "\nreturn <Main>\n"`)で player が読める `.lua` を返す。
-- worker は未改変の wsoo glue を「Node 擬装(`process`/`require`)+ in-memory VFS(node:fs sync
-  サブセット)」で動かす(`haxe-wasm/harness/browser/` の検証と同方式)。WebAssembly.Module は
-  1 回だけコンパイルしてキャッシュ、compile ごとに fresh instance を起こす。
-- `playground/tcs-compiler.ts` … C# 経路。.NET wasm 化した TinyC#(tcs)を増分 session
+- `playground/tcs-compiler.ts` … .NET wasm 化した TinyC#(tcs)を増分 session
   (`SessionExports`)で動かし、変更 `.cs` のみ Update → registry apply する単一 entry Lua を返す。
   補完・hover・診断も同じ session が提供する。
-- `playground/diagnostics.ts` … Haxe / C# の診断をパースしてエディタ内に表示。
-- `playground/samples.ts` … `.hx`/`.hxml`/`.cs` をロードし、compile 後の `.lua` を scan して data files
-  (slang 等)を解決。C# 対応状況の正は `CS_SAMPLES`。
+- `playground/diagnostics.ts` … tcs の診断をパースしてエディタ内に表示。
+- `playground/samples.ts` … `.cs` をロードし、compile 後の `.lua` を scan して data files
+  (slang 等)を解決。サンプル一覧の正は `CS_SAMPLES`。
 - `playground/main.ts` … boot とサンプル切替で compile→player 起動、ソース編集を debounce→
   再 compile→`syncFiles`。data(slang)編集は compile 不要で直接 sync。
 
@@ -56,7 +42,7 @@ npm run gen-tcs-prebuilt     # cold 起動用 prebuilt snapshot(cs-lib / C# サ�
             │ CodeMirror editor          │   setFiles  │ slang-bridge.ts                  │
             │   path -> content table    │  ────────▶  │   window.slangCompile() を export │
             │ sample dropdown / restart  │  syncFiles  │ WebGPU device 取得 → preinit     │
-            │ debounce 300ms             │  ────────▶  │ lub.js (Emscripten module)     │
+            │ debounce 75ms              │  ────────▶  │ lub.js (Emscripten module)     │
             └────────────────────────────┘  ◀─player──│   ↑ EM_ASYNC_JS bridge            │
                                             Ready/log │   ↑ FS.writeFile で MEMFS overlay │
                                                        │ backend_webgpu — canvas へ描画   │
@@ -83,11 +69,10 @@ hook)。実行中の `syncFiles` も同じ `FS.writeFile` 経路で、C 側は�
 
 ```bash
 npm run dev               # Vite dev server (http://localhost:5173/)
-npm run build             # 本番ビルド -> dist/(public/haxe-wasm も同梱)
+npm run build             # 本番ビルド -> dist/
 npm run verify            # headless Chromium で end-to-end 検証(別ターミナルで dev を起動しておく)
 npm run golden            # web golden(native と同 curation を wasm --capture 経路で byte 比較)
 npm run gen-api           # docs サイト用 API reference JSON を再生成(dev/build にも組み込み済)
-npm run gen-haxe          # Haxe コンパイラ wasm アセットを再生成(haxe-lib 変更時も)
 npm run gen-tcs -- --publish  # TinyC# コンパイラ wasm を再生成(tcs 変更時)
 npm run gen-tcs-prebuilt  # C# prebuilt snapshot を再生成(cs-lib / C# サンプル変更時)
 npm run format            # prettier(format:check は CI 用)
@@ -101,11 +86,11 @@ npm run deploy            # build + wrangler deploy
 
 1. sample 01 の初期描画 (orange triangle on dark blue clear) を pixel bucket で確認
 2. fragment shader を編集 → green になる
-3. `.hx` の clear_color を編集 → 再 compile → 背景が red になる
+3. `.cs` の ClearColor を編集 → 再 compile → 背景が red になる
 4. verts を縮小編集 → green pixel 数が減る
 5. 登録済み sample を順に切替 → 各サンプルの非黒描画を確認
 6. C# 増分編集が runtime の commit ACK(synced rev 表示)まで貫通する
-7. C# / Haxe の診断がエディタ内に表示される
+7. C# の診断がエディタ内に表示される
 8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
 
 スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
@@ -125,7 +110,7 @@ npm run deploy            # build + wrangler deploy
 
 - shader に syntax error がある場合: 既存の shader を維持して Slang diagnostic を
   iframe log に流すのみ (next save で復帰)。初回 compile 失敗のみ load を止める。
-- 300ms debounce: 入力後 300ms 静止してから `syncFiles` を送る。連打中は更新されない。
+- 75ms debounce: 入力後 75ms 静止してから `syncFiles` を送る。連打中は更新されない。
 - サンプル切替時に dirty な編集があると `confirm()` で警告する。
 - `--capture` の swapchain capture は native のみ。web (webgpu backend) では
   任意 render target の readback (`Gfx.readback(key)`) を使う。

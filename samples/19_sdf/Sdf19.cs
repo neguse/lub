@@ -1,4 +1,4 @@
-// lub の samples/19_sdf (Haxe 版 Sdf19.hx) の TinyC# 版 entry。
+// lub の samples/19_sdf の entry。
 // 実行: lub samples/19_sdf/Sdf19.csproj (transpile + watch + hot reload)
 //
 // SDF モデリング: lubx.Sdf の builder でツリーを組み、C 側 (sdf_mesh) が
@@ -243,7 +243,7 @@ public static class Sdf19
                 },
                 Bones = PackBones(tAccum, m.Data),
             };
-            // shader / matcap が null なら Haxe 版同様、組み込み lit shader に
+            // shader / matcap が null なら組み込み lit shader に
             // フォールバックする (フィールド未設定 = Lua 側でキー無し)
             if (s != null)
                 opts.Shader = s;

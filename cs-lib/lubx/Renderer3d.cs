@@ -1,30 +1,21 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Renderer3d.hx と対)。
-// Haxe 版からの写し方:
-// - typedef (Draw3dOpts / Camera) と匿名構造体フィールド (light / sky /
-//   shadow / ssao / bloom / aa / fog / outline) は options class 化。
-//   optional は nullable フィールド + ??、必須 2 フィールドの fog / outline
-//   だけはコンストラクタで受ける。private typedef DrawCmd は
+// 実装ライブラリ lubx の Renderer3d。
+// 設計メモ:
+// - Draw3dOpts / Camera と light / sky / shadow / ssao / bloom / aa / fog /
+//   outline は options class。optional は nullable フィールド + ??、必須 2
+//   フィールドの fog / outline だけはコンストラクタで受ける。draw 列は
 //   Renderer3dDrawCmd (内部用)。
-// - Reflect.fields/field/setField による uniform / texture の動的マージは
-//   Dictionary<string, object> / Dictionary<string, TextureRef> の foreach で
-//   bindings dict へ代入する (tcs の Dictionary は素の Lua table なので
-//   wire format はそのまま)。
-// - lua.Table.fromArray は List<double> 直。Mat4.m (List<double>) も直渡し。
-// - Dynamic は ShaderRef / TextureRef / BufferRef / List / Dictionary /
-//   Pose3d に型付け。bones は Bones.pack() の返す List<double>。
-// - Haxe 版の Bones.pack(null, null) は resolve が null 許容でないので
-//   identityBones() (ダミー resolve の lambda) に置き換える。
+// - uniform / texture の動的マージは Dictionary<string, object> /
+//   Dictionary<string, TextureRef> の foreach で bindings dict へ代入する
+//   (tcs の Dictionary は素の Lua table なので wire format はそのまま)。
+// - Mat4.m (List<double>) は直渡し。bones は Bones.pack() の返す List<double>
+//   で、mesh が null のときは identityBones() (ダミー resolve の lambda)。
 // - sz.w >> 1 等の bit shift は tcs 未対応なので Math.Floor(x / 2.0)。
 // - use_texture / use_buffer / mesh.vb の null は早期 return / continue で
-//   ガードする (cs-lib 慣例。Haxe 版は nil のまま突っ込んで実行時に落ちる)。
-// - viewProj / viewMat は Haxe の (default, null) に対応する機構が無いので
-//   public フィールド (書くのは begin() だけ、利用側は読み取り専用扱い)。
-// - shadowPass の未使用引数 shadowSize は削除。litUniforms は nullable の
-//   フィールド vp を使う代わりに End() で narrow 済みの vp を引数で受ける。
-// メンバー名は Haxe 版 API と揃える (--no-naming-check でビルドされる)。
-// Haxe 版の end() だけは同名にできない: end は Lua キーワードで、tcs が
-// 宣言をそのまま `function Renderer3d:end` と emit して不正 Lua になるため
-// End に改名している (MeshText の char → Char と同じ扱い)。
+//   ガードする (cs-lib 慣例)。
+// - viewProj / viewMat は public フィールド (書くのは begin() だけ、利用側は
+//   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
+// end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と
+// emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
 
 using System;
 using System.Collections.Generic;
@@ -809,7 +800,7 @@ public class Renderer3d
         proj = p;
         vp = p * v;
         eye = cam.Eye;
-        // Haxe 版の draws.resize(0) 相当。List.Clear() は tcs が
+        // draws を空にする。List.Clear() は tcs が
         // `(function() ... end)()` を emit し、直前の代入文と連結されて
         // 関数呼び出しに誤解釈される (Lua の文区切り曖昧性) ため使わない。
         draws = new List<Renderer3dDrawCmd>();
@@ -859,7 +850,7 @@ public class Renderer3d
             dist * 2.0) * lview;
     }
 
-    // Haxe 版の Bones.pack(null, null) 相当。mesh が null なら resolve は
+    // mesh が null なら resolve は
     // 呼ばれないが、Bones.pack の契約 (resolve 非 null) を保つためダミーを渡す。
     private static List<double> IdentityBones()
     {
@@ -971,7 +962,7 @@ public class Renderer3d
     }
 
     /// <summary>記録した draw 列を実行して swapchain まで出す
-    /// (Haxe 版の end。Lua キーワードのため End)。</summary>
+    /// (end は Lua キーワードのため End)。</summary>
     public void End()
     {
         var vp = this.vp;

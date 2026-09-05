@@ -13,8 +13,7 @@
 //   };
 //
 // C API (include/lub/lub_api.h): lub_host_available / lub_host_send /
-// lub_host_poll。Lua binding は src/lua_api.c にあり、haxe-lib lub.Host が
-// 同じ面を写す。
+// lub_host_poll。Lua / C# 面は cs-lib/lub_stub.cs の Host から生成する。
 //
 // Native builds have no hosting page: available() is false, send drops,
 // poll returns false. (A native host could later be provided via

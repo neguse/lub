@@ -1,4 +1,4 @@
-// lub の samples/00d_shader (Haxe 版 Shader00d.hx) の TinyC# 版 entry。
+// lub の samples/00d_shader の entry。
 // 実行: lub samples/00d_shader/Shader00d.csproj (transpile + watch + hot reload)
 using System;
 using static Lub;

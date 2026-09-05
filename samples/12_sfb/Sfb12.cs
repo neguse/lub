@@ -1,4 +1,4 @@
-// lub の samples/12_sfb (Haxe 版 Sfb12.hx) の TinyC# 版 entry。
+// lub の samples/12_sfb の entry。
 // 実行: lub samples/12_sfb/Sfb12.csproj (transpile + watch + hot reload)
 //
 // 3D-game-shaders-for-beginners style showcase.
@@ -244,7 +244,7 @@ public static class Sfb12
     // ---- free-fly camera (WASD move, Q/E down/up, left-drag to look) ----
     // Persists across frames. With no input (headless golden) it stays at the
     // initial pose, so captures remain deterministic.
-    // eye は Haxe 版では Vec3 field だが、static 初期化子で他ファイルの class
+    // eye は static 初期化子で他ファイルの class
     // (Vec3) を new すると Lua emit の定義順で nil 参照になるため、スカラーで
     // 保持して使う箇所で Vec3 を組む。
     static double camEyeX = 2.0;

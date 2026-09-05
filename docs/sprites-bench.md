@@ -1,7 +1,7 @@
 # Sprite Benchmark
 
 Use the platform script for the `rsushi`-style Release benchmark. It builds
-Release when needed, runs `samples/13_sprites/13_sprites.hxml`, prints a
+Release when needed, runs `samples/13_sprites/Sprites13.csproj`, prints a
 `SPRITES13_SCORE ...` line, and exits.
 
 The normal interactive sample advances its animation on a 60 Hz fixed
@@ -12,9 +12,8 @@ workload contract, not elapsed wall-clock time.
 
 Automation should run these commands with a 2-hour process timeout.
 
-The benchmark entry is `.hxml`, so Haxe must be available in `PATH` or via
-`LUB_HAXE`. When `LUB_HAXE` is set, the scripts add that directory to `PATH`
-so the matching `haxelib` command can resolve `-lib lub`.
+The benchmark entry is a C# project, so the dotnet SDK must be in `PATH`
+(lub runs the TinyC# transpiler from `third_party/tcs` with it).
 
 ## Windows
 
@@ -44,16 +43,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -S
 bash scripts/run-sprites-bench.sh
 ```
 
-The Linux script uses `build-release-linux` by default. If Haxe 5 is not in
-`PATH`, install the local Haxe bundle once and set `LUB_HAXE`:
-
-```sh
-bash scripts/install-haxe5.sh
-export LUB_HAXE="$HOME/haxe5/haxe"
-```
-
-The installer also initializes a user-local haxelib repository when needed and
-registers `haxe-lib/lub` as the `lub` development library.
+The Linux script uses `build-release-linux` by default.
 
 Useful variants:
 

@@ -1,4 +1,4 @@
-// lub の samples/03_texture (Haxe 版 Texture03.hx) の TinyC# 版 entry。
+// lub の samples/03_texture の entry。
 // 実行: lub samples/03_texture/Texture03.csproj (transpile + watch + hot reload)
 using System.Collections.Generic;
 using System;

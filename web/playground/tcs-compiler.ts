@@ -1,8 +1,7 @@
 /*
  * tcs-compiler.ts — client-only な C#→Lua コンパイラ(tcs WasmCompiler)の API。
- * haxe-compiler.ts と同じ形の CompileResult を返す。
  * 出力 Lua は TinySystem runtime prelude + transpile 結果 + `return <Entry>` で、
- * そのまま player の entry に使える (lub API 面は runtime の lub_prelude が注入)。
+ * そのまま player の entry に使える (lub API 面は runtime が生成 binding で注入)。
  *
  * TODO: .NET ランタイムは main thread で動かしている。dotnet.create() が
  * dedicated worker 内でダウンロード完了後に resolve しない事象があり
@@ -14,8 +13,7 @@ const ASSET_BASE = "/tcs-wasm/";
 const STUB_URL = "/cs-lib/lub_stub.cs";
 
 // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律 compile 入力に足す。
-// haxe 側が std-bundle.json に lub ライブラリを焼き込むのと同様、build 時に
-// バンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。
+// build 時にバンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。
 const IMPL_GLOB = import.meta.glob("../../cs-lib/**/*.cs", {
   query: "?raw",
   import: "default",

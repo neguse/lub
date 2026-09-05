@@ -1,6 +1,5 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Atlas.hx と対)。
-// Haxe 版は pixels を lua.Table.fromArray で変換してキャッシュするが、
-// TinyC# の List<int> は最初から Lua array table なので変換もキャッシュも不要。
+// 実装ライブラリ lubx の Atlas。
+// pixels の List<int> は最初から Lua array table なので変換もキャッシュも不要。
 using System.Collections.Generic;
 using static Lub;
 

@@ -1,22 +1,22 @@
 # ファイル入力とアセット
 
-## Io.load* — 毎フレーム呼べるファイル入力
+## Io.Load* — 毎フレーム呼べるファイル入力
 
-`Io.loadText` / `loadFloats` / `loadGltf` は hot reload 前提の即時モード API。
+`Io.LoadText` / `LoadFloats` / `LoadGltf` は hot reload 前提の即時モード API。
 mtime の fast-path + コンテンツハッシュにより、毎フレーム呼んでも安い。
 
-```haxe
-var r = Io.loadText("samples/mygame/data/config.txt");
-if (r.text == null) return; // ready になるまで待つ
+```csharp
+Io.LoadText("samples/mygame/data/config.txt", out var text, out var version, out var status, out var error);
+if (text == null) return; // ready になるまで待つ
 ```
 
-戻り値は共通パターン(Lua multi-return):
+戻り値は共通パターン(`out` 引数。Lua では multi-return):
 
-| フィールド | 意味 |
+| 値 | 意味 |
 | --- | --- |
 | `text` / `data` / `mesh` | 本体。ready になるまで null |
-| `version` | 内容の FNV-1a ハッシュ。`Gfx.use*` の version にそのまま渡せる |
-| `status` | `"ready"` / `"pending"` / `"error"`。native は pending にならない |
+| `version` | 内容の FNV-1a ハッシュ。`Gfx.Use*` の version にそのまま渡せる |
+| `status` | `Io.Status.Ready` / `Pending` / `Error`(Lua では `"ready"` 等の文字列)。native は pending にならない |
 | `error` | status が error のときの理由 |
 
 web ではファイル取得が非同期なので `"pending"` があり得る。null チェックで
@@ -25,15 +25,15 @@ web ではファイル取得が非同期なので `"pending"` があり得る。
 ## パスの規約
 
 パスは 起動時の cwd 基準。サンプルはリポジトリルートから
-`lub samples/<name>/<name>.hxml` のように起動するので、コード内のパスも
+`lub samples/<name>/<Entry>.csproj` のように起動するので、コード内のパスも
 `samples/<name>/data/...` と書く。
 
 ## ファイル形式
 
-- `loadText`: 任意のテキスト(シェーダソース、設定など)
-- `loadFloats`: `return { 1.0, 2.0, ... }` 形式の Lua ファイルを Float 配列に
-- `loadGltf`: glTF (.gltf / .glb)。結果は `Io.interleavePn` 等で頂点列にして
-  `Gfx.useBuffer` へ
+- `LoadText`: 任意のテキスト(シェーダソース、設定など)
+- `LoadFloats`: `return { 1.0, 2.0, ... }` 形式の Lua ファイルを double 配列に
+- `LoadGltf`: glTF (.gltf / .glb)。結果は `Io.InterleavePn` 等で頂点列にして
+  `Gfx.UseBuffer` へ
 
-PNG 画像は `lubx.Png`、TTF フォントは `lub.Font` / `lubx.Text`、音声は
-`lub.Audio` / `lubx.Sfx` を参照。
+PNG 画像は `Png`、TTF フォントは `Font` / `lubx.Text`、音声は
+`Audio` / `lubx.Sfx` を参照。

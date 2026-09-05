@@ -1,11 +1,11 @@
 # lub --serve
 
 lub を外部リポのゲームプロジェクトから使うための Web 開発モード。
-ネイティブの `lub game.hxml` と対称的に、Web ブラウザをレンダリング先としてホットリロード開発を行う。
+ネイティブの `lub Game.csproj` と対称的に、Web ブラウザをレンダリング先としてホットリロード開発を行う。
 
 ## 動機
 
-lub のゲームコンテンツを別リポで管理したい。ネイティブ開発は `lub game.hxml` で完結するが、Web では WASM 成果物の配信とファイル同期の仕組みが必要。
+lub のゲームコンテンツを別リポで管理したい。ネイティブ開発は `lub Game.csproj` で完結するが、Web では WASM 成果物の配信とファイル同期の仕組みが必要。
 
 ## ディレクトリ構成
 
@@ -16,25 +16,25 @@ lub のゲームコンテンツを別リポで管理したい。ネイティブ�
 ├── lub/
 └── mygame/
     ├── CMakeLists.txt    # add_subdirectory(../lub lub_build)
-    ├── Main.hx
-    ├── game.hxml
+    ├── Game.cs
+    ├── Game.csproj
     └── data/
         └── cube.slang
 ```
 
-ゲームの CMakeLists.txt は lub のビルドだけを担当する。Haxe コンパイルは lub が実行時に行う。
+ゲームの CMakeLists.txt は lub のビルドだけを担当する。C# → Lua の transpile は lub が実行時に行う(dotnet SDK が要る)。
 
 ## 使い方
 
 ```bash
-# ネイティブ開発 (今まで通り)
-./build/lub mygame/game.hxml
+# ネイティブ開発
+./build/lub mygame/Game.csproj
 
 # Web 開発
-./build/lub --serve mygame/game.hxml
+./build/lub --serve mygame/Game.csproj
 # → http://localhost:8080 で配信開始 (--port N で変更)
 # → ブラウザで開く → ゲーム全画面表示
-# → .hx や .slang を編集 → 自動リロード
+# → .cs や .slang を編集 → 自動リロード
 ```
 
 WASM 成果物 (`build/wasm/lub.{js,wasm,data}`) と slang-wasm (`web/public/slang/`) は
@@ -44,7 +44,7 @@ WASM 成果物 (`build/wasm/lub.{js,wasm,data}`) と slang-wasm (`web/public/sla
 ## アーキテクチャ
 
 ```
-lub --serve game.hxml
+lub --serve Game.csproj
   │
   ├─ HTTP server (localhost:PORT)
   │   GET /              → HTML (全画面 canvas + SSE クライアント JS)
@@ -52,11 +52,11 @@ lub --serve game.hxml
   │   GET /events        → SSE ストリーム
   │   POST /...          → (将来) プロファイル等
   │
-  ├─ haxe_pipeline (既存)
-  │   haxe --wait server + .hx 監視 + コンパイル
+  ├─ tcs pipeline (src/tcs_build.c)
+  │   tcs を watch 起動: .cs 監視 + transpile → .lub/Game.lua
   │
-  └─ file_watch (拡張)
-      ディレクトリ全体を監視 (.hx, .slang, data/ 内全部)
+  └─ file_watch
+      ディレクトリ全体を監視 (.lub/*.lua, .slang, data/ 内全部。.cs は tcs が担当)
 ```
 
 ## ファイル同期プロトコル (SSE)
@@ -91,7 +91,7 @@ lub WASM の C 側が mtime ポーリングで変更を検知し、リロード�
 ### 変更検知フロー
 
 1. ファイル監視がディレクトリ全体の mtime を 50ms debounce でチェック
-2. .hx が変更された場合 → haxe_pipeline でコンパイル → 生成された .lua を含める
+2. .cs の変更は tcs の watch が transpile し、生成された .lub/Game.lua の更新をファイル監視が拾う
 3. .slang, data/ 等は変更されたファイルの中身をそのまま含める
 4. 変更ファイル群を 1 メッセージで SSE 送信
 
@@ -129,8 +129,8 @@ window.lubHost = {
 while running:
   accept new HTTP connections
   handle HTTP requests
-  haxe_pipeline_tick()       # .hx 監視 + コンパイル (既存)
-  file_watch_tick()          # data/ 等の監視 (拡張)
+  data_watch_tick()          # .lub/*.lua, .slang, data/ 等の監視
+                             # (.cs → .lub/Game.lua は tcs の watch プロセスが書く)
   if changes:
     send SSE to all connected clients
   sleep or poll
@@ -139,7 +139,7 @@ while running:
 ## template-game
 
 lub リポ内の `templates/game/` がテンプレート。C# のゲームが 2 つの実行形で
-動く (`--serve` は Haxe の hxml だけを受けるので、この雛形は native 向け)。
+動き、`--serve` にも同じ csproj を渡す。
 
 ```
 templates/game/
@@ -154,8 +154,9 @@ templates/game/
 
 ```sh
 cd templates/game
-../../build-release-linux/lub Game.csproj   # tcs→Lua (transpile + watch + hot reload)
-dotnet run                                  # .NET 実行 (共有 library を P/Invoke)
+../../build-release-linux/lub Game.csproj           # tcs→Lua (transpile + watch + hot reload)
+../../build-release-linux/lub --serve Game.csproj   # 同じものをブラウザで
+dotnet run                                          # .NET 実行 (共有 library を P/Invoke)
 ```
 
 `cp -r lub/templates/game ../mygame` でコピーして使い始める。コピー先では
@@ -167,8 +168,8 @@ dotnet run                                  # .NET 実行 (共有 library を P/
 開発時は `--serve` でホットリロード。デプロイ時は静的ファイルとして配る。
 
 ```bash
-haxe game.hxml                    # .hx → .lua
-# lub WASM 成果物 + game.lua + data/ + index.html を配置
+# lub Game.csproj が書き出した .lub/Game.lua (transpile 結果) と
+# lub WASM 成果物 + data/ + index.html を配置
 ```
 
 実装は `src/serve.c` (HTTP + SSE) と `src/embedded_serve_page.h` (埋め込み HTML/JS)。

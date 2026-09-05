@@ -1,7 +1,7 @@
-// lub の samples/13_sprites (Haxe 版 Sprites13.hx) の TinyC# 版 entry。
+// lub の samples/13_sprites の entry。
 // 実行: lub samples/13_sprites/Sprites13.csproj (transpile + watch + hot reload)
-// スコアリング (LCG rand01 / spawn 閾値 / SPRITES13_SCORE の書式) は Haxe 版と
-// 同一。tcs 制約による置換: Std.parseFloat/parseInt → parseDec (@byte 走査の
+// スコアリング (LCG rand01 / spawn 閾値 / SPRITES13_SCORE の書式) は
+// docs/sprites-bench.md の契約。tcs 制約による置換: 数値 parse → parseDec (@byte 走査の
 // 10 進 leading parse、out は extern stub 専用なので結果は class で返す)、
 // tick % n == 0 → everyN (floor)、Std.int → Math.Floor (対象値は常に非負)。
 // spriteRects/whiteRect は static 初期化子で作れない (Lua 出力は sample →
@@ -141,7 +141,7 @@ public static class Sprites13
 
     // Std.parseFloat/parseInt 相当 (読めたかどうかを返すので手書き)。
     // 先頭の [+-]?digits[.digits] を読み、後続の文字は無視する。ok=false は
-    // 数字ゼロ個 (Haxe 版の NaN / null 判定と対)。10 進のみ (hex/指数は無し)。
+    // 数字ゼロ個 (parse 失敗)。10 進のみ (hex/指数は無し)。
     static ParsedDec13 ParseDec(string s)
     {
         var res = new ParsedDec13();
@@ -238,7 +238,7 @@ public static class Sprites13
             (int)Math.Floor(Rand01() * spriteRects.Count)));
     }
 
-    // Haxe 版の tick % n == 0 相当 (整数剰余は使わない)。v >= 0 前提。
+    // tick % n == 0 相当 (整数剰余は使わない)。v >= 0 前提。
     static bool EveryN(int v, int n)
     {
         return Math.Floor(v / (double)n) * n == v;
@@ -259,7 +259,7 @@ public static class Sprites13
                 write = write + 1;
             }
         }
-        // Haxe 版 sprites.resize(write) 相当 (末尾から縮める)
+        // sprites を write 個に縮める (末尾から)
         while (sprites.Count > write)
             sprites.RemoveAt(sprites.Count - 1);
 

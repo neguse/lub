@@ -1,4 +1,4 @@
-// lub の samples/00b_clear (Haxe 版 Clear00b.hx) の TinyC# 版 entry。
+// lub の samples/00b_clear の entry。
 // 実行: lub samples/00b_clear/Clear00b.csproj (transpile + watch + hot reload)
 using System;
 using static Lub;

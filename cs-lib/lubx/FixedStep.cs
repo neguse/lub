@@ -1,6 +1,5 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/FixedStep.hx と対)。
-// pending 集合は SCAN_KEYS と平行な bool 配列で持つ (Haxe 版の Map 相当)。
-// API 名は Haxe 版と同名。
+// 実装ライブラリ lubx の FixedStep。
+// pending 集合は SCAN_KEYS と平行な bool 配列で持つ。
 
 using System;
 using static Lub;

@@ -1,8 +1,8 @@
-// lub の samples/18_coin_pusher (Haxe 版 CoinPusher18.hx) の TinyC# 版 entry。
+// lub の samples/18_coin_pusher の entry。
 // 実行: lub samples/18_coin_pusher/CoinPusher18.csproj (transpile + watch + hot reload)
 // Phys3d の即時モード API で shelf/tray/pusher/coin を毎フレーム宣言し、
 // step 後の pose を Renderer3d (lit + shadow + bloom) で描く。
-// gameplay rule と物理 desc の数値は Haxe 版に忠実。tcs 制約による置換:
+// tcs 制約による置換:
 // typedef Coin → class Coin、匿名 {coin, body, index} → class LiveCoin、
 // 整数除算・剰余 → FloorDiv/Mod (double 経由、対象は非負)、
 // Mesh3d/Renderer3d は static 初期化子で作れないため onInit で作る。
@@ -23,7 +23,7 @@ public class Coin
     public double SpawnZ;
 }
 
-/// <summary>declareCoins が返す 1 コイン分 (Haxe 版の匿名構造体相当)。</summary>
+/// <summary>declareCoins が返す 1 コイン分。</summary>
 public class LiveCoin
 {
     public Coin Coin;

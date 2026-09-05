@@ -1,13 +1,10 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/MeshText.hx と対)。
-// Haxe 版の @:native("utf8")/("string") extern は stub の utf8 / @string class
-// で置き換える (@string は using static で取り込み len(s) と裸で呼ぶ)。
-// gm.positions / gm.indices は Haxe 版が Lua の 1-based 添字を直書きするが、
-// C# の List<double> は tcs の indexer が +1 するので 0-based で書く
-// (Haxe の positions[i*3+1] と C# の positions[i*3] が同じ要素)。
-// typedef GlyphEntry は class に、lua.Table.fromArray は List<double> 直に。
-// Haxe 版の char() だけは同名にできない: char は C# 予約語で、@char は tcs が
-// 宣言をそのまま `function MeshText:@char` と emit して不正 Lua になるため
-// Char に改名している。
+// 実装ライブラリ lubx の MeshText。
+// utf8 / string 関数は stub の utf8 / @string class で呼ぶ (@string は
+// using static で取り込み len(s) と裸で呼ぶ)。
+// gm.positions / gm.indices は List<double> を 0-based で書く (tcs の
+// indexer が +1 して Lua の 1-based に写る)。
+// char は C# 予約語で、@char は tcs が宣言をそのまま `function MeshText:@char`
+// と emit して不正 Lua になるため Char にしている。
 using System.Collections.Generic;
 using static Lub;
 
@@ -199,7 +196,7 @@ public class MeshText
     }
 
     /// <summary>文字列の先頭グリフ 1 つを描く。glyph() の String 版
-    /// (Haxe 版の char。C# では予約語のため Char)。</summary>
+    /// (char は C# の予約語のため Char)。</summary>
     public void Char(string s, double x, double y, double size,
         double? angle = null, Color? tint = null, bool? centered = null)
     {

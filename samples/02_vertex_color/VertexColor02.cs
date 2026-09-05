@@ -1,4 +1,4 @@
-// lub の samples/02_vertex_color (Haxe 版 VertexColor02.hx) の TinyC# 版 entry。
+// lub の samples/02_vertex_color の entry。
 // 実行: lub samples/02_vertex_color/VertexColor02.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;

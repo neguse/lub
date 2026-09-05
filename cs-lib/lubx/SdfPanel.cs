@@ -1,7 +1,6 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/SdfPanel.hx と対)。
-// Haxe 版の Reflect.field/setField によるスキーマ走査は、typed な SdfNode の
-// Params (op ごとの数値列) の in-place 書き換えに置き換える。
-// フィールド列挙は Haxe 版と同じくコード内の固定順なので widget 並びも同一。
+// 実装ライブラリ lubx の SdfPanel。
+// widget は typed な SdfNode の Params (op ごとの数値列) を in-place に
+// 書き換える。フィールド列挙はコード内の固定順なので widget 並びも固定。
 using System.Collections.Generic;
 using static Lub;
 

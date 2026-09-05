@@ -1,6 +1,6 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Camera3d.hx と対)。
-// Haxe 版の匿名 opts 引数 (optional 7 フィールド) は options class
-// (Camera3dOpts) にする (stub の PassOpts / DrawOpts と同じ流儀)。
+// 実装ライブラリ lubx の Camera3d。
+// opts は options class (Camera3dOpts) で受ける (stub の PassOpts / DrawOpts
+// と同じ流儀)。
 // optional は nullable フィールド + ?? で受ける。Gfx.size の multi-return は
 // out 引数で受け、aspect の除算は (double) cast で整数除算を避ける。
 

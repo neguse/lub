@@ -82,8 +82,8 @@ for (const name of readdirSync(SAMPLES).sort()) {
   targets.push({ name, entry: basename(csproj, ".csproj") });
 }
 
-// staging: temp/ に lubx/... + lub_stub.cs を置き、サンプルごとに Entry.cs を
-// 差し替えて tcs --snapshot を回す
+// staging: temp/ に lubx/... + lub_stub.cs を置き、サンプルごとにそのディレクトリの
+// *.cs を差し替えて tcs --snapshot を回す
 const temp = mkdtempSync(join(tmpdir(), "tcs-prebuilt-"));
 try {
   for (const rel of implFiles.concat("lub_stub.cs")) {
@@ -96,8 +96,10 @@ try {
 
   let failures = 0;
   for (const { name, entry } of targets) {
-    const csName = `${entry}.cs`;
-    copyFileSync(join(SAMPLES, name, csName), join(temp, csName));
+    const csFiles = readdirSync(join(SAMPLES, name))
+      .filter((f) => f.endsWith(".cs"))
+      .sort();
+    for (const f of csFiles) copyFileSync(join(SAMPLES, name, f), join(temp, f));
     const outPath = join(OUT, `${name}.lua`);
     try {
       execFileSync(
@@ -105,7 +107,7 @@ try {
         [
           TCS_DLL,
           ...implFiles,
-          csName,
+          ...csFiles,
           "--ref",
           "lub_stub.cs",
           "--entry",
@@ -121,7 +123,7 @@ try {
       failures++;
       console.error(`prebuilt FAILED ${name}: ${e.stderr?.toString() ?? e}`);
     } finally {
-      rmSync(join(temp, csName), { force: true });
+      for (const f of csFiles) rmSync(join(temp, f), { force: true });
     }
   }
   const count = readdirSync(OUT).length;

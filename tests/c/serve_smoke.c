@@ -151,10 +151,10 @@ int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
 
-  const char *hxml = "samples/00_hello/00_hello.hxml";
+  const char *entry = "samples/00_hello/Hello00.csproj";
   SDL_PathInfo info;
-  if (!SDL_GetPathInfo(hxml, &info)) {
-    SDL_Log("SKIP: %s not found (run from lub root)", hxml);
+  if (!SDL_GetPathInfo(entry, &info)) {
+    SDL_Log("SKIP: %s not found (run from lub root)", entry);
     return 0;
   }
 
@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
 
   ServeState s;
   int port = 18080;
-  if (!serve_start(&s, hxml, wasm_dir, slang_dir, port)) {
+  if (!serve_start(&s, entry, wasm_dir, slang_dir, port)) {
     SDL_Log("FAIL: serve_start failed");
     return 1;
   }

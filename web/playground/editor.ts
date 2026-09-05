@@ -14,7 +14,6 @@ import {
 import { hoverTooltip } from "@codemirror/view";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
 import { c as clike, csharp } from "@codemirror/legacy-modes/mode/clike";
-import { haxe } from "@codemirror/legacy-modes/mode/haxe";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { numberScrubber } from "./scrub";
 import type { PlaygroundDiagnostic } from "./diagnostics";
@@ -138,10 +137,8 @@ function csToolsExt(path: string | null) {
   return [autocompletion({ override: [csCompletionSource] }), csHoverTooltip];
 }
 
-// langFor is the picker for .hx / .cs vs .slang vs .lua highlight modes.
+// langFor is the picker for .cs vs .slang vs .lua highlight modes.
 function langFor(path: string | null) {
-  if (path?.endsWith(".hx") || path?.endsWith(".hxml"))
-    return StreamLanguage.define(haxe);
   if (path?.endsWith(".cs")) return StreamLanguage.define(csharp);
   if (path?.endsWith(".slang")) return StreamLanguage.define(clike);
   return StreamLanguage.define(lua);

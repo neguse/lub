@@ -1,6 +1,6 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Assets.hx と対)。
-// Haxe 版の Dynamic 戻り値は stub のハンドル型 (ShaderRef / BufferRef) に
-// 型付けし直す。Io.load_* の multi-return は out 引数で受ける。
+// 実装ライブラリ lubx の Assets。
+// 戻り値は stub のハンドル型 (ShaderRef / BufferRef)。Io.load_* の
+// multi-return は out 引数で受ける。
 
 using System.Collections.Generic;
 using static Lub;

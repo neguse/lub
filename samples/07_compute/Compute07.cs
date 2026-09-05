@@ -1,4 +1,4 @@
-// lub の samples/07_compute (Haxe 版 Compute07.hx) の TinyC# 版 entry。
+// lub の samples/07_compute の entry。
 // 実行: lub samples/07_compute/Compute07.csproj (transpile + watch + hot reload)
 //
 // Compute writes 3 vertices (vec4 = position.xy + color.rg) into a storage

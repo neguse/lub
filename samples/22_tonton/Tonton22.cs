@@ -1,4 +1,4 @@
-// lub の samples/22_tonton (Haxe 版 Tonton22.hx) の TinyC# 版 entry。
+// lub の samples/22_tonton の entry。
 // 実行: lub samples/22_tonton/Tonton22.csproj (transpile + watch + hot reload)
 //
 // とんとん相撲: AI 力士同士の紙相撲。人間は土俵をトントンするだけ。
@@ -13,8 +13,7 @@
 //   しない。引き・いなしで支えを外した瞬間に勝負が動く。個性 (counter
 //   確率・前傾の深さ) の違いが取り口の違いになる。
 //
-// Haxe 版との対応: gameplay rule (力士の挙動・投げ判定・土俵) は忠実。
-// typedef Rikishi は class、screenPos の匿名構造体戻りは class ScreenPos、
+// 力士は class Rikishi、screenPos の戻りは class ScreenPos、
 // Phys3d の desc 匿名構造体は lub_stub の desc class。end() は End()、
 // char() は Char()。Renderer3d / Mesh3d / MeshText は cs-lib の load 順の
 // 都合で static 初期化子から呼べないため onFrame で遅延生成する。
@@ -24,7 +23,7 @@ using System;
 using System.Collections.Generic;
 using static Lub;
 
-/// <summary>力士 1 体 (Haxe 版 typedef Rikishi と対)。</summary>
+/// <summary>力士 1 体。</summary>
 public class Rikishi
 {
     public int Gen; // 再宣言 (respawn) 用 version
@@ -49,7 +48,7 @@ public class Rikishi
     public double SideSign; // いなしの回り込み方向
 }
 
-/// <summary>world 座標 → 論理スクリーン座標 (Haxe 版の匿名構造体戻り)。</summary>
+/// <summary>world 座標 → 論理スクリーン座標。</summary>
 public class ScreenPos
 {
     public double X;

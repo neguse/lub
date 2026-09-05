@@ -1,11 +1,11 @@
 // lub core API の参照専用 stub (--ref)。Lua 出力には含めない。
 // C# 側の記述が API 面の正で、tcs が名前を規則で Lua の snake_case に写す
 // (Gfx.BeginPass → lub.gfx.begin_pass、enum メンバ Rgba8 → lub.gfx.RGBA8)。
-// 実行時は lub runtime の samples/lub_prelude.lua が同じ面を lub table
-// (lub.gfx / lub.input / ...) に組み立てる。ゲーム側は `using static Lub;` で
+// 実行時は lub runtime の生成 binding (src/gen/lua_api_gen.c) が同じ面を
+// lub table (lub.gfx / lub.input / ...) に組み立てる。ゲーム側は `using static Lub;` で
 // `Gfx.BeginPass(...)` と書く。
 // out 引数は Lua multi-return を宣言順に受ける。
-// API reference の正は Haxe extern (haxe-lib/lub/lub/*.hx) の doc comment。
+// API reference (web/gen/lub-api-docs.json) はこの stub の doc comment から生成する。
 // TCS1001 (out パラメータ) は --ref 型の multi-return 契約そのものなので
 // この stub に限り抑制する (transpile/check 経路は元々 --ref 扱いで無警告)。
 #pragma warning disable TCS1001
@@ -872,7 +872,7 @@ public static class Lub
         }
     }
 
-    /// <summary>Box2D の即時モード API (詳細は Haxe extern lub.Phys2d)。</summary>
+    /// <summary>Box2D の即時モード API。</summary>
     public static class Phys2d
     {
         public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
@@ -1299,7 +1299,7 @@ public static class Lub
         }
     }
 
-    /// <summary>Box3D の即時モード API (詳細は Haxe extern lub.Phys3d)。</summary>
+    /// <summary>Box3D の即時モード API。</summary>
     public static class Phys3d
     {
         public enum BodyType { Static = 0, Kinematic = 1, Dynamic = 2 }
@@ -1727,7 +1727,7 @@ public static class Lub
     }
 
     /// <summary>
-    /// PNG の読み書き (lubx_png、prelude が global Png として注入)。
+    /// PNG の読み書き。
     /// load は Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
     /// </summary>
     public static class Png
@@ -2216,8 +2216,7 @@ public class JointTargetDesc
     public double? AngularOffset;
 }
 
-/// <summary>joint の宣言。有効フィールドは type ごとに異なる
-/// (Haxe extern の doc 参照)。</summary>
+/// <summary>joint の宣言。有効フィールドは type ごとに異なる。</summary>
 public class JointDesc
 {
     public int? Version;
@@ -3052,8 +3051,7 @@ public class JointTargetDesc3d
     public Vec3d? AngularVelocity;
 }
 
-/// <summary>joint の宣言。有効フィールドは type ごとに異なる
-/// (Haxe extern の doc 参照)。anchor はワールド座標。</summary>
+/// <summary>joint の宣言。有効フィールドは type ごとに異なる。anchor はワールド座標。</summary>
 public class JointDesc3d
 {
     public int? Version;

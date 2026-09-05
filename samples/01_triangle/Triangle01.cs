@@ -1,4 +1,4 @@
-// lub の samples/01_triangle (Haxe 版 Triangle01.hx) の TinyC# 版 entry。
+// lub の samples/01_triangle の entry。
 // 実行: lub samples/01_triangle/Triangle01.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;

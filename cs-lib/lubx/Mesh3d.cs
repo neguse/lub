@@ -1,4 +1,4 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Mesh3d.hx と対)。
+// 実装ライブラリ lubx の Mesh3d。
 using System.Collections.Generic;
 using static Lub;
 

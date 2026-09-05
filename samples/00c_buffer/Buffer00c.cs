@@ -1,4 +1,4 @@
-// lub の samples/00c_buffer (Haxe 版 Buffer00c.hx) の TinyC# 版 entry。
+// lub の samples/00c_buffer の entry。
 // 実行: lub samples/00c_buffer/Buffer00c.csproj (transpile + watch + hot reload)
 using System;
 using System.Collections.Generic;

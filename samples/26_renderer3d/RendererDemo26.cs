@@ -5,8 +5,8 @@
 // skinned SDF キャラを投げるだけで、影 + hemispheric ambient + AgX tonemap
 // の絵が出ることを見せる。ポーズは時刻からの決定的アニメ (乱数なし)。
 //
-// Haxe 版との対応: 匿名構造体は Camera / Draw3dOpts / Renderer3dFog /
-// Renderer3dOutline の options class、end() は End()。Renderer3d や Mesh3d
+// options は Camera / Draw3dOpts / Renderer3dFog / Renderer3dOutline の
+// class で渡す。Renderer3d や Mesh3d
 // は static 初期化子でなく onFrame からの build() で遅延生成する
 // (cs-lib クラスは load 順の都合で static 初期化子から呼べない)。
 

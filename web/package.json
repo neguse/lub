@@ -10,7 +10,6 @@
     "gen-api": "node scripts/gen-api-docs.mjs",
     "preview": "vite preview",
     "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
-    "gen-haxe": "node scripts/gen-haxe-assets.mjs",
     "gen-tcs": "node scripts/gen-tcs-assets.mjs",
     "gen-tcs-prebuilt": "node scripts/gen-tcs-prebuilt.mjs",
     "verify": "node scripts/verify-headless.mjs",

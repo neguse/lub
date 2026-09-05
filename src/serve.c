@@ -1,6 +1,6 @@
 #include "serve.h"
 #include "embedded_serve_page.h"
-#include "haxe_build.h"
+#include "path_util.h"
 #include "sock_compat.h"
 #include <SDL3/SDL.h>
 #include <errno.h>
@@ -218,11 +218,10 @@ static SDL_EnumerationResult SDLCALL watch_enum_cb(void *userdata,
     SDL_EnumerateDirectory(full, watch_enum_cb, userdata);
   } else if (info.type == SDL_PATHTYPE_FILE) {
     size_t n = strlen(fname);
-    // skip .hx files (handled by haxe_pipeline)
-    if (n > 3 && SDL_strcasecmp(fname + n - 3, ".hx") == 0)
+    // C# のソースは tcs が読む (ブラウザには生成 Lua を送る)
+    if (n > 3 && SDL_strcasecmp(fname + n - 3, ".cs") == 0)
       return SDL_ENUM_CONTINUE;
-    // skip .hxml files
-    if (n > 5 && SDL_strcasecmp(fname + n - 5, ".hxml") == 0)
+    if (n > 7 && SDL_strcasecmp(fname + n - 7, ".csproj") == 0)
       return SDL_ENUM_CONTINUE;
 
     const char *rel = full + ctx->base_len;
@@ -279,7 +278,7 @@ static int data_watch_tick(ServeDataWatch *w, int *changed_indices) {
   return changed;
 }
 
-// Re-scan directory for new files (e.g., after haxe creates .lub/)
+// Re-scan directory for new files (e.g., after tcs creates .lub/)
 static void data_watch_rescan(ServeDataWatch *w, const char *game_dir) {
   // Save old entries to detect truly new files
   int old_count = w->count;
@@ -558,42 +557,42 @@ static void handle_request(ServeState *s, int conn_idx) {
 
 // ---- serve lifecycle --------------------------------------------------------
 
-bool serve_start(ServeState *s, const char *hxml_path, const char *wasm_dir,
+bool serve_start(ServeState *s, const char *entry_path, const char *wasm_dir,
                  const char *slang_dir, int port) {
-  if (!s || !hxml_path)
+  if (!s || !entry_path)
     return false;
   SDL_zerop(s);
   s->port = port;
 
-  SDL_strlcpy(s->hxml_path, hxml_path, sizeof(s->hxml_path));
-  path_dirname(hxml_path, s->game_dir, sizeof(s->game_dir));
-  path_basename_noext(hxml_path, s->entry_name, sizeof(s->entry_name));
+  SDL_strlcpy(s->entry_path, entry_path, sizeof(s->entry_path));
+  path_dirname(entry_path, s->game_dir, sizeof(s->game_dir));
+  path_basename_noext(entry_path, s->entry_name, sizeof(s->entry_name));
 
   SDL_strlcpy(s->wasm_dir, wasm_dir, sizeof(s->wasm_dir));
   SDL_strlcpy(s->slang_dir, slang_dir, sizeof(s->slang_dir));
 
-  // Start haxe pipeline (server + initial build + .hx watch)
-  if (!haxe_pipeline_start(&s->haxe, hxml_path)) {
-    SDL_Log("[serve] haxe pipeline start failed");
+  // tcs pipeline (initial transpile + .cs watch)。生成 Lua は .lub/<Entry>.lua
+  // で、data watch が拾って SSE で送る。
+  char out_lua[768];
+  if (!tcs_pipeline_start(&s->tcs, entry_path, out_lua, sizeof(out_lua))) {
+    SDL_Log("[serve] tcs pipeline start failed");
     return false;
   }
 
-  // Init data file watcher (all non-.hx files in game dir)
+  // Init data file watcher (all non-source files in game dir, .lub/ 込み)
   data_watch_init(&s->data_watch, s->game_dir);
-  // Rescan to pick up .lub/ created by initial build
-  data_watch_rescan(&s->data_watch, s->game_dir);
 
   // Start listening
   if (!sock_startup()) {
     SDL_Log("[serve] socket startup failed");
-    haxe_pipeline_stop(&s->haxe);
+    tcs_pipeline_stop(&s->tcs);
     data_watch_shutdown(&s->data_watch);
     return false;
   }
   s->listen_fd = create_listen_socket(port);
   if (s->listen_fd < 0) {
     SDL_Log("[serve] failed to listen on port %d: %s", port, strerror(errno));
-    haxe_pipeline_stop(&s->haxe);
+    tcs_pipeline_stop(&s->tcs);
     data_watch_shutdown(&s->data_watch);
     return false;
   }
@@ -684,20 +683,7 @@ bool serve_tick(ServeState *s) {
     }
   }
 
-  // Tick haxe pipeline
-  bool haxe_rebuilt = haxe_pipeline_tick(&s->haxe);
-  if (haxe_rebuilt) {
-    SDL_Log("[serve] haxe rebuild complete, sending .lua");
-    // Rescan to pick up newly created files
-    data_watch_rescan(&s->data_watch, s->game_dir);
-    char *msg = build_sse_message(s, NULL, 0, true);
-    if (msg) {
-      send_sse_to_all(s, msg);
-      free(msg);
-    }
-  }
-
-  // Tick data watch
+  // Tick data watch (tcs --watch が書き直す .lub/<Entry>.lua もここで拾う)
   int *changed =
       (int *)SDL_malloc((size_t)(s->data_watch.count + 1) * sizeof(int));
   if (changed) {
@@ -726,7 +712,7 @@ void serve_stop(ServeState *s) {
     sock_close(s->listen_fd);
     s->listen_fd = -1;
   }
-  haxe_pipeline_stop(&s->haxe);
+  tcs_pipeline_stop(&s->tcs);
   data_watch_shutdown(&s->data_watch);
   SDL_Log("[serve] stopped");
 }

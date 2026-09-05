@@ -31,7 +31,7 @@ runtime 需要を見て入れ替えてよい。
 
 達成したいこと:
 
-- native release パッケージ: Haxe compiler / watch / dev server に依存しない
+- native release パッケージ: transpiler / watch / dev server に依存しない
   単体実行物(exe + コンパイル済み Lua + assets)を 1 コマンドで作れる。
 - web release パッケージ: dev server 無しで静的ホスティングに置くだけで動く
   バンドルを 1 コマンドで作れる。

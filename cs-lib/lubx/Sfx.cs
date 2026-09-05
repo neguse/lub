@@ -1,7 +1,7 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Sfx.hx と対)。
-// Haxe 版の lua.Table.create + 1-based 直接代入は List<double>.Add で置き
-// 換える (TinyC# の List は最初から Lua array table)。Std.int は値が非負
-// なので Math.Floor で代替、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
+// 実装ライブラリ lubx の Sfx。
+// 波形は List<double>.Add で積む (TinyC# の List は最初から Lua array table)。
+// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて
+// (i & 15) == 0。
 using System.Collections.Generic;
 using static Lub;
 

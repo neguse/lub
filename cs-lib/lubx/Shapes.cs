@@ -1,9 +1,8 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Shapes.hx と対)。
-// Haxe の Array<Float> は List<double> がそのまま Lua array table になる。
-// 頂点 push 先の引数名は Haxe 版では out だが C# の予約語のため dst
-// (Lua 呼び出しは位置引数なので互換)。Int / Int の除算は C# では切り捨てに
-// なるので、Haxe と同じ実数除算になるよう (double) キャスト (tcs は型消去で
-// Lua 出力は素の `/` のまま) で書く。
+// 実装ライブラリ lubx の Shapes。
+// 頂点は List<double> (そのまま Lua array table) に push する。push 先の
+// 引数名は out が C# の予約語のため dst。Int / Int の除算は C# では切り捨てに
+// なるので、実数除算にしたい所は (double) キャスト (tcs は型消去で Lua 出力は
+// 素の `/` のまま) で書く。
 
 using System;
 using System.Collections.Generic;
@@ -50,7 +49,7 @@ public static class Shapes
     }
 
     /// <summary>中心 (cx,cy,cz)、辺長 (sx,sy,sz) の直方体。面の順序・法線は
-    /// Haxe 版 (= Shadow11.addBox) と同一。</summary>
+    /// 固定 (golden 互換)。</summary>
     public static void Box(List<double> dst, double cx, double cy, double cz,
         double sx, double sy, double sz, List<double> col)
     {
@@ -88,8 +87,8 @@ public static class Shapes
         return new List<double> { cx + nx * r, cy + ny * r, cz + nz * r, nx, ny, nz };
     }
 
-    /// <summary>UV 球。rings/segs のデフォルトと頂点順は Haxe 版
-    /// (= Shadow11.addSphere) と同一 (rings=12, segs=24)。省略時は
+    /// <summary>UV 球。rings/segs のデフォルトと頂点順は固定
+    /// (rings=12, segs=24)。省略時は
     /// Lua の nil が null に落ちるので nullable + ?? で受ける。</summary>
     public static void Sphere(List<double> dst, double cx, double cy, double cz,
         double r, List<double> col, int? rings = null, int? segs = null)
