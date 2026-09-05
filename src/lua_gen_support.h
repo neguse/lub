@@ -149,6 +149,8 @@ const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count);
 
 // 生成した binding を lub table に登録する (src/gen/lua_api_gen.c)。
 void lub_api_gen_register(lua_State *L);
+// entry の on_event に渡す table (src/gen/lua_api_gen.c)。
+void lub_lua_push_event(lua_State *L, const LubEventData *e);
 // 生成物に無い Lua 面 (readback(key) の sentinel、view userdata の metatable、
 // Bytes)。lub_api_gen_register の後に呼ぶ。
 void lgen_support_register(lua_State *L, LubContext *ctx);

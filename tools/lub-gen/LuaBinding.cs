@@ -70,6 +70,9 @@ public static class LuaBinding
                 foreach (var f in ns.Functions.Where(f => !f.NoC))
                     EmitFunction(ns, f);
             EmitRegister();
+            // entry の on_event の引数。player (src/lua_api.c) が呼ぶ。
+            if (types.ContainsKey("EventData"))
+                sb.Append("void lub_lua_push_event(lua_State *L, const LubEventData *e) {\n  push_LubEventData(L, e);\n}\n");
             var roots = sb.ToString();
             var used = Reachable(roots);
             var outSb = new StringBuilder();
@@ -107,7 +110,7 @@ public static class LuaBinding
 
         private static string CType(string csName) => "Lub" + csName;
 
-        private static string EnumC(string qualified) => "Lub" + string.Concat(qualified.Split('.'));
+        private static string EnumC(string qualified) => CHeader.EnumName(qualified);
 
         private static string FnName(ApiNamespace ns, string luaName)
         {

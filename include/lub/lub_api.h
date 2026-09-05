@@ -22,6 +22,16 @@
 extern "C" {
 #endif
 
+// 共有 library (lub_shared) の export。Windows で dll を作るときだけ
+// LUB_BUILD_SHARED が立つ。
+#ifndef LUB_API
+#if defined(_WIN32) && defined(LUB_BUILD_SHARED)
+#define LUB_API __declspec(dllexport)
+#else
+#define LUB_API
+#endif
+#endif
+
 typedef struct LubContext LubContext;
 
 typedef enum LubStatus {
@@ -58,10 +68,24 @@ typedef struct LubBinding {
 } LubBinding;
 
 // 直近の LUB_ERROR の message。次の API 呼び出しまで有効。
-const char *lub_last_error(LubContext *ctx);
+LUB_API const char *lub_last_error(LubContext *ctx);
 
 // 現在の frame 番号 (LubView.frame と比較する)。
-int32_t lub_frame_index(LubContext *ctx);
+LUB_API int32_t lub_frame_index(LubContext *ctx);
+// OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。
+// Lua 面では小文字の文字列 ("quit" 等)。
+typedef enum LubEventKind {
+  LUB_EVENT_KIND_QUIT = 1,
+  LUB_EVENT_KIND_KEY_DOWN = 2,
+  LUB_EVENT_KIND_KEY_UP = 3,
+  LUB_EVENT_KIND_MOUSE_BUTTON_DOWN = 4,
+  LUB_EVENT_KIND_MOUSE_BUTTON_UP = 5,
+  LUB_EVENT_KIND_MOUSE_MOTION = 6,
+  LUB_EVENT_KIND_MOUSE_WHEEL = 7,
+  LUB_EVENT_KIND_WINDOW_RESIZE = 8,
+  LUB_EVENT_KIND_OTHER = 9,
+} LubEventKind;
+
 // use_buffer の種別。
 typedef enum LubGfxBufferType {
   LUB_GFX_BUFFER_TYPE_VERTEX = 1,
@@ -2318,222 +2342,256 @@ typedef struct LubCounters3d {
   int32_t manifold_counts_count;
 } LubCounters3d;
 
+// OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる: key_down
+// / key_up は Key (scancode)、mouse_button_* は Button と X / Y、
+// mouse_motion は X / Y と Dx / Dy、mouse_wheel は Dx / Dy、window_resize は
+// X / Y (pixel size)。
 typedef struct LubEventData {
-  LubStr type; // len 0 = 無し
+  int32_t kind; // LubEventKind
+  int32_t key;
+  int32_t button;
+  float x;
+  float y;
+  float dx;
+  float dy;
 } LubEventData;
 
 // ------------------------------------------------------------------ core
 // lub の runtime API。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`
 // と書く。Lua 側は `lub.gfx.begin_pass`。
 
-LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
+LUB_API LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
 
-void lub_quit(LubContext *ctx);
+LUB_API void lub_quit(LubContext *ctx);
 
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ
 // ル (Dictionary<string, object>)。
 
-LubHandle lub_gfx_main_tex(LubContext *ctx);
+LUB_API LubHandle lub_gfx_main_tex(LubContext *ctx);
 
-LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts);
+LUB_API LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts);
 
-LubStatus lub_gfx_end_pass(LubContext *ctx);
+LUB_API LubStatus lub_gfx_end_pass(LubContext *ctx);
 
-LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs, LubStr fs,
-                             const int32_t *version, LubHandle *out);
+LUB_API LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs,
+                                     LubStr fs, const int32_t *version,
+                                     LubHandle *out);
 
-LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key, LubStr src,
-                                     const int32_t *version, LubHandle *out);
+LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
+                                             LubStr src, const int32_t *version,
+                                             LubHandle *out);
 
 // VERTEX/INDEX/STORAGE バッファ (データ渡し)。
-LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
-                             const float *data, int32_t data_count,
-                             const int32_t *version, LubHandle *out);
+LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
+                                     const float *data, int32_t data_count,
+                                     const int32_t *version, LubHandle *out);
 
 // STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。
-LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
-                                   int32_t count, const int32_t *version,
-                                   LubHandle *out);
+LUB_API LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key,
+                                           int32_t type, int32_t count,
+                                           const int32_t *version,
+                                           LubHandle *out);
 
 // px は byte 値 (0..255) の列、null で target / storage 用の空 texture。
-LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
-                              int32_t fmt, const int32_t *px, int32_t px_count,
-                              const int32_t *version,
-                              const LubTextureOpts *opts, LubHandle *out);
+LUB_API LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w,
+                                      int32_t h, int32_t fmt, const int32_t *px,
+                                      int32_t px_count, const int32_t *version,
+                                      const LubTextureOpts *opts,
+                                      LubHandle *out);
 
 // px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ
 // use_texture。
-LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
-                                    int32_t h, int32_t fmt, const uint8_t *px,
-                                    int32_t px_len, const int32_t *version,
-                                    const LubTextureOpts *opts, LubHandle *out);
+LUB_API LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key,
+                                            int32_t w, int32_t h, int32_t fmt,
+                                            const uint8_t *px, int32_t px_len,
+                                            const int32_t *version,
+                                            const LubTextureOpts *opts,
+                                            LubHandle *out);
 
 // key から handle を引く (無ければ null)。stale な参照の再解決用。
-LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key);
+LUB_API LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key);
 
-LubHandle lub_gfx_lookup_shader(LubContext *ctx, LubStr key);
+LUB_API LubHandle lub_gfx_lookup_shader(LubContext *ctx, LubStr key);
 
-LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key);
+LUB_API LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key);
 
 // handle の key と実効 version。handle が stale なら false。
-bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
-                           int32_t *version);
+LUB_API bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
+                                   int32_t *version);
 
 // readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻
 // しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の
 // view) と resultId、Dropped なら dropped に積めなかった token。Lua 面は
 // rb:read_texture(tex, id) の 9 値 multi-return。
-LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb, LubHandle tex,
-                               const int32_t *id, int32_t *status,
-                               LubView *bytes, int32_t *width, int32_t *height,
-                               int32_t *format, int32_t *stride,
-                               int32_t *result_id, int32_t *dropped,
-                               LubStr *error);
+LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
+                                       LubHandle tex, const int32_t *id,
+                                       int32_t *status, LubView *bytes,
+                                       int32_t *width, int32_t *height,
+                                       int32_t *format, int32_t *stride,
+                                       int32_t *result_id, int32_t *dropped,
+                                       LubStr *error);
 
-LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
-                       const LubBinding *bindings, int32_t bindings_count,
-                       const LubDrawOpts *opts);
+LUB_API LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
+                               const LubBinding *bindings,
+                               int32_t bindings_count, const LubDrawOpts *opts);
 
-LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
-                           const LubBinding *bindings, int32_t bindings_count,
-                           const LubDispatchOpts *opts);
+LUB_API LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y,
+                                   int32_t z, const LubBinding *bindings,
+                                   int32_t bindings_count,
+                                   const LubDispatchOpts *opts);
 
 // 現在の drawable サイズ (px)。
-void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
+LUB_API void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
 
 // ----------------------------------------------------------------- input
 // フレームラッチ付きポーリング入力。key は "space" / "a".."z" 等、 button は
 // SDL 準拠 1 始まり (省略時 1 = 左)。
 
-bool lub_input_key_down(LubContext *ctx, LubStr key);
+LUB_API bool lub_input_key_down(LubContext *ctx, LubStr key);
 
-bool lub_input_key_pressed(LubContext *ctx, LubStr key);
+LUB_API bool lub_input_key_pressed(LubContext *ctx, LubStr key);
 
-bool lub_input_key_released(LubContext *ctx, LubStr key);
+LUB_API bool lub_input_key_released(LubContext *ctx, LubStr key);
 
-bool lub_input_mouse_down(LubContext *ctx, const int32_t *button);
+LUB_API bool lub_input_mouse_down(LubContext *ctx, const int32_t *button);
 
-bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button);
+LUB_API bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button);
 
-bool lub_input_mouse_released(LubContext *ctx, const int32_t *button);
+LUB_API bool lub_input_mouse_released(LubContext *ctx, const int32_t *button);
 
-void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
+LUB_API void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
 
-void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
+LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 
 // -------------------------------------------------------------------- io
 // ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version,
 // status, error) の 4 値 multi-return で、本体は status = "ready" になるまで
 // null。
 
-LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
-                           int32_t *version, int32_t *status, LubStr *error);
+LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
+                                   int32_t *version, int32_t *status,
+                                   LubStr *error);
 
 // `return { ... }` 形式の Lua ファイルを float 配列として読む。
-LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
-                             int32_t *data_count, int32_t *version,
-                             int32_t *status, LubStr *error);
+LUB_API LubStatus lub_io_load_floats(LubContext *ctx, LubStr path,
+                                     const float **data, int32_t *data_count,
+                                     int32_t *version, int32_t *status,
+                                     LubStr *error);
 
-LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
-                           bool *has_mesh, int32_t *version, int32_t *status,
-                           LubStr *error);
+LUB_API LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path,
+                                   LubGltfMesh *mesh, bool *has_mesh,
+                                   int32_t *version, int32_t *status,
+                                   LubStr *error);
 
-LubStatus lub_io_interleave_pn(LubContext *ctx, const LubMeshData *mesh,
-                               const float **out, int32_t *out_count);
+LUB_API LubStatus lub_io_interleave_pn(LubContext *ctx, const LubMeshData *mesh,
+                                       const float **out, int32_t *out_count);
 
-LubStatus lub_io_interleave_pncm(LubContext *ctx, const LubMeshData *mesh,
-                                 const float **out, int32_t *out_count);
+LUB_API LubStatus lub_io_interleave_pncm(LubContext *ctx,
+                                         const LubMeshData *mesh,
+                                         const float **out, int32_t *out_count);
 
-LubStatus lub_io_interleave_pncmw(LubContext *ctx, const LubMeshData *mesh,
-                                  const float **out, int32_t *out_count);
+LUB_API LubStatus lub_io_interleave_pncmw(LubContext *ctx,
+                                          const LubMeshData *mesh,
+                                          const float **out,
+                                          int32_t *out_count);
 
-LubStatus lub_io_interleave_pnu(LubContext *ctx, const LubMeshData *mesh,
-                                const float **out, int32_t *out_count);
+LUB_API LubStatus lub_io_interleave_pnu(LubContext *ctx,
+                                        const LubMeshData *mesh,
+                                        const float **out, int32_t *out_count);
 
-LubStatus lub_io_interleave_pnut(LubContext *ctx, const LubMeshData *mesh,
-                                 const float **out, int32_t *out_count);
+LUB_API LubStatus lub_io_interleave_pnut(LubContext *ctx,
+                                         const LubMeshData *mesh,
+                                         const float **out, int32_t *out_count);
 
 // ------------------------------------------------------------------ mesh
 // CPU メッシュ生成。
 
-LubStatus lub_mesh_surface_nets(LubContext *ctx, const float *grid,
-                                int32_t grid_count, int32_t nx, int32_t ny,
-                                int32_t nz, const float *cell, const float *ox,
-                                const float *oy, const float *oz,
-                                LubMeshData *out);
+LUB_API LubStatus lub_mesh_surface_nets(LubContext *ctx, const float *grid,
+                                        int32_t grid_count, int32_t nx,
+                                        int32_t ny, int32_t nz,
+                                        const float *cell, const float *ox,
+                                        const float *oy, const float *oz,
+                                        LubMeshData *out);
 
 // 平らな node 配列 (子は index で参照) をメッシュ化する。木の組み立ては lubx
 // の Sdf が行う。
-LubStatus lub_mesh_sdf_mesh(LubContext *ctx, const LubSdfNodeDesc *nodes,
-                            int32_t nodes_count, int32_t root, int32_t n,
-                            const float *skin_k, LubMeshData *out);
+LUB_API LubStatus lub_mesh_sdf_mesh(LubContext *ctx,
+                                    const LubSdfNodeDesc *nodes,
+                                    int32_t nodes_count, int32_t root,
+                                    int32_t n, const float *skin_k,
+                                    LubMeshData *out);
 
 // ------------------------------------------------------------------ font
 // TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。
 
-LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out);
+LUB_API LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf,
+                                   LubFontMetrics *out);
 
-LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                         float px, LubGlyphBitmap *out, bool *has);
+LUB_API LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
+                                 float px, LubGlyphBitmap *out, bool *has);
 
-LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                              const float *tolerance, LubGlyphMesh *out,
-                              bool *has);
+LUB_API LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf,
+                                      int32_t codepoint, const float *tolerance,
+                                      LubGlyphMesh *out, bool *has);
 
-LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1, int32_t cp2,
-                        float *out);
+LUB_API LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1,
+                                int32_t cp2, float *out);
 
 // -------------------------------------------------------------------- ui
 // Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼
 // ぶ。
 
-LubStatus lub_ui_render(LubContext *ctx);
+LUB_API LubStatus lub_ui_render(LubContext *ctx);
 
-bool lub_ui_begin_window(LubContext *ctx, LubStr title);
+LUB_API bool lub_ui_begin_window(LubContext *ctx, LubStr title);
 
-void lub_ui_end_window(LubContext *ctx);
+LUB_API void lub_ui_end_window(LubContext *ctx);
 
-void lub_ui_text(LubContext *ctx, LubStr s);
+LUB_API void lub_ui_text(LubContext *ctx, LubStr s);
 
-bool lub_ui_button(LubContext *ctx, LubStr label);
+LUB_API bool lub_ui_button(LubContext *ctx, LubStr label);
 
-bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool v);
+LUB_API bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool v);
 
-float lub_ui_slider_float(LubContext *ctx, LubStr label, float v, float min,
-                          float max);
+LUB_API float lub_ui_slider_float(LubContext *ctx, LubStr label, float v,
+                                  float min, float max);
 
-int32_t lub_ui_slider_int(LubContext *ctx, LubStr label, int32_t v, int32_t min,
-                          int32_t max);
+LUB_API int32_t lub_ui_slider_int(LubContext *ctx, LubStr label, int32_t v,
+                                  int32_t min, int32_t max);
 
-float lub_ui_drag_float(LubContext *ctx, LubStr label, float v,
-                        const float *speed, const float *min, const float *max);
+LUB_API float lub_ui_drag_float(LubContext *ctx, LubStr label, float v,
+                                const float *speed, const float *min,
+                                const float *max);
 
-void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r, float g,
-                        float b, float *new_r, float *new_g, float *new_b);
+LUB_API void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r, float g,
+                                float b, float *new_r, float *new_g,
+                                float *new_b);
 
-void lub_ui_separator(LubContext *ctx);
+LUB_API void lub_ui_separator(LubContext *ctx);
 
-void lub_ui_same_line(LubContext *ctx);
+LUB_API void lub_ui_same_line(LubContext *ctx);
 
-bool lub_ui_tree_node(LubContext *ctx, LubStr label, const bool *default_open);
+LUB_API bool lub_ui_tree_node(LubContext *ctx, LubStr label,
+                              const bool *default_open);
 
-void lub_ui_tree_pop(LubContext *ctx);
+LUB_API void lub_ui_tree_pop(LubContext *ctx);
 
-void lub_ui_set_next_window(LubContext *ctx, float x, float y, float w,
-                            float h);
+LUB_API void lub_ui_set_next_window(LubContext *ctx, float x, float y, float w,
+                                    float h);
 
-bool lub_ui_want_capture_mouse(LubContext *ctx);
+LUB_API bool lub_ui_want_capture_mouse(LubContext *ctx);
 
 // ------------------------------------------------------------------ host
 // ホストページとの汎用メッセージブリッジ (web 専用)。
 
-bool lub_host_available(LubContext *ctx);
+LUB_API bool lub_host_available(LubContext *ctx);
 
-void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload);
+LUB_API void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload);
 
 // 1 件ずつ取り出す。キューが空なら topic = null。
-LubStatus lub_host_poll(LubContext *ctx, LubStr *topic, LubStr *payload);
+LUB_API LubStatus lub_host_poll(LubContext *ctx, LubStr *topic,
+                                LubStr *payload);
 
 // ----------------------------------------------------------------- audio
 // 音の core API。snd は key で宣言する resource で、宣言が途切れると sweep
@@ -2542,595 +2600,642 @@ LubStatus lub_host_poll(LubContext *ctx, LubStr *topic, LubStr *payload);
 // interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は
 // Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ
 // snd に dedupe される。
-LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
-                        int32_t data_count, int32_t channels, int32_t rate,
-                        const int32_t *version, int32_t *out);
+LUB_API LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
+                                int32_t data_count, int32_t channels,
+                                int32_t rate, const int32_t *version,
+                                int32_t *out);
 
 // f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。
-LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
-                              int32_t data_len, int32_t channels, int32_t rate,
-                              const int32_t *version, int32_t *out);
+LUB_API LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key,
+                                      const uint8_t *data, int32_t data_len,
+                                      int32_t channels, int32_t rate,
+                                      const int32_t *version, int32_t *out);
 
 // file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。
-LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data,
-                           int32_t data_len, LubView *bytes, int32_t *channels,
-                           int32_t *rate);
+LUB_API LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data,
+                                   int32_t data_len, LubView *bytes,
+                                   int32_t *channels, int32_t *rate);
 
-bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts);
+LUB_API bool lub_audio_play(LubContext *ctx, int32_t snd,
+                            const LubPlayOpts *opts);
 
-bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
-                     const LubVoiceOpts *opts);
+LUB_API bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
+                             const LubVoiceOpts *opts);
 
-void lub_audio_master_volume(LubContext *ctx, float volume);
+LUB_API void lub_audio_master_volume(LubContext *ctx, float volume);
 
-void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
+LUB_API void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
 
 // ------------------------------------------------------------------- sys
 
-bool lub_sys_is_web(LubContext *ctx);
+LUB_API bool lub_sys_is_web(LubContext *ctx);
 
 // 文字列の FNV-1a 64bit ハッシュ (version 生成用)。
-int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
+LUB_API int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
 
 // 実測 FPS (約 1 秒ごとの平滑値)。
-float lub_sys_actual_fps(LubContext *ctx);
+LUB_API float lub_sys_actual_fps(LubContext *ctx);
 
 // -------------------------------------------------------------- profiler
 // 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
 
-bool lub_profiler_enabled(LubContext *ctx);
+LUB_API bool lub_profiler_enabled(LubContext *ctx);
 
-void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
+LUB_API void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
 
-void lub_profiler_end_scope(LubContext *ctx, LubStr name);
+LUB_API void lub_profiler_end_scope(LubContext *ctx, LubStr name);
 
-void lub_profiler_reset(LubContext *ctx);
+LUB_API void lub_profiler_reset(LubContext *ctx);
 
-void lub_profiler_report(LubContext *ctx, LubStr label);
+LUB_API void lub_profiler_report(LubContext *ctx, LubStr label);
 
 // ---------------------------------------------------------------- phys2d
 // Box2D の即時モード API (詳細は Haxe extern lub.Phys2d)。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
-LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
+LUB_API LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
 
-LubHandle lub_phys2d_find_body(LubContext *ctx, LubHandle world, LubStr key);
+LUB_API LubHandle lub_phys2d_find_body(LubContext *ctx, LubHandle world,
+                                       LubStr key);
 
-LubHandle lub_phys2d_find_shape(LubContext *ctx, LubHandle body, LubStr key);
+LUB_API LubHandle lub_phys2d_find_shape(LubContext *ctx, LubHandle body,
+                                        LubStr key);
 
-LubHandle lub_phys2d_find_chain(LubContext *ctx, LubHandle body, LubStr key);
+LUB_API LubHandle lub_phys2d_find_chain(LubContext *ctx, LubHandle body,
+                                        LubStr key);
 
-LubHandle lub_phys2d_find_joint(LubContext *ctx, LubHandle world, LubStr key);
+LUB_API LubHandle lub_phys2d_find_joint(LubContext *ctx, LubHandle world,
+                                        LubStr key);
 
-LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
-                           const LubWorldOpts *opts, LubHandle *out);
+LUB_API LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
+                                   const LubWorldOpts *opts, LubHandle *out);
 
-LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world,
-                           const LubBeginOpts *opts);
+LUB_API LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world,
+                                   const LubBeginOpts *opts);
 
-LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
-                                LubWorldInfo *out);
+LUB_API LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
+                                        LubWorldInfo *out);
 
-LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
-                          const LubBodyDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
+                                  const LubBodyDesc *desc, LubHandle *out);
 
-LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
-                         const LubBoxDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
+                                 const LubBoxDesc *desc, LubHandle *out);
 
-LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
-                            const LubCircleDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
+                                    const LubCircleDesc *desc, LubHandle *out);
 
-LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubCapsuleDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body,
+                                     LubStr key, const LubCapsuleDesc *desc,
+                                     LubHandle *out);
 
-LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubSegmentDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body,
+                                     LubStr key, const LubSegmentDesc *desc,
+                                     LubHandle *out);
 
-LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPolygonDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body,
+                                     LubStr key, const LubPolygonDesc *desc,
+                                     LubHandle *out);
 
-LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
-                           const LubChainDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
+                                   const LubChainDesc *desc, LubHandle *out);
 
-LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
-                                    const LubShapeView **out,
-                                    int32_t *out_count);
+LUB_API LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
+                                            const LubShapeView **out,
+                                            int32_t *out_count);
 
-LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
-                           const LubJointDesc *desc, LubHandle *out);
+LUB_API LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
+                                   const LubJointDesc *desc, LubHandle *out);
 
-LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
-                                LubJointInfo *out);
+LUB_API LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
+                                        LubJointInfo *out);
 
-LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint,
-                                 LubVec2d *out);
+LUB_API LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint,
+                                         LubVec2d *out);
 
-LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint, float *out);
+LUB_API LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint,
+                                          float *out);
 
-LubStatus lub_phys2d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
-                                 bool *has);
+LUB_API LubStatus lub_phys2d_joint_angle(LubContext *ctx, LubHandle joint,
+                                         float *out, bool *has);
 
-LubStatus lub_phys2d_joint_translation(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has);
+LUB_API LubStatus lub_phys2d_joint_translation(LubContext *ctx, LubHandle joint,
+                                               float *out, bool *has);
 
-LubStatus lub_phys2d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
-                                 bool *has);
+LUB_API LubStatus lub_phys2d_joint_speed(LubContext *ctx, LubHandle joint,
+                                         float *out, bool *has);
 
-LubStatus lub_phys2d_joint_length(LubContext *ctx, LubHandle joint, float *out,
-                                  bool *has);
+LUB_API LubStatus lub_phys2d_joint_length(LubContext *ctx, LubHandle joint,
+                                          float *out, bool *has);
 
-LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has);
+LUB_API LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                               float *out, bool *has);
 
-LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx, LubHandle joint,
-                                        float *out, bool *has);
+LUB_API LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx,
+                                                LubHandle joint, float *out,
+                                                bool *has);
 
-LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
-                                     const LubJointMotorDesc *desc);
+LUB_API LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                             const LubJointMotorDesc *desc);
 
-LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
-                                     const LubJointLimitDesc *desc);
+LUB_API LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                             const LubJointLimitDesc *desc);
 
-LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
-                                      const LubJointSpringDesc *desc);
+LUB_API LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                              const LubJointSpringDesc *desc);
 
-LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
-                                      const LubJointTargetDesc *desc);
+LUB_API LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                              const LubJointTargetDesc *desc);
 
-LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
-                          LubStepInfo *out);
+LUB_API LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
+                                  LubStepInfo *out);
 
-LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body, LubPose *out);
+LUB_API LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body,
+                                  LubPose *out);
 
 // key で引く Pose。Lua 面は同じ pose。
-LubStatus lub_phys2d_pose_by_key(LubContext *ctx, LubHandle world, LubStr key,
-                                 LubPose *out);
+LUB_API LubStatus lub_phys2d_pose_by_key(LubContext *ctx, LubHandle world,
+                                         LubStr key, LubPose *out);
 
-LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
-                              LubVelocity *out);
+LUB_API LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
+                                      LubVelocity *out);
 
-LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body, LubMassData *out);
+LUB_API LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body,
+                                  LubMassData *out);
 
-LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, LubVec2d *out);
+LUB_API LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body,
+                                    LubVec2d *out);
 
-LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *local_point, LubVec2d *out);
+LUB_API LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body,
+                                         const LubVec2d *local_point,
+                                         LubVec2d *out);
 
-LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *world_point, LubVec2d *out);
+LUB_API LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body,
+                                         const LubVec2d *world_point,
+                                         LubVec2d *out);
 
-LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *world_point, LubVec2d *out);
+LUB_API LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body,
+                                         const LubVec2d *world_point,
+                                         LubVec2d *out);
 
-LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
-                                 const LubShapeView **out, int32_t *out_count);
+LUB_API LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
+                                         const LubShapeView **out,
+                                         int32_t *out_count);
 
-LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
-                                 const LubJointView **out, int32_t *out_count);
+LUB_API LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
+                                         const LubJointView **out,
+                                         int32_t *out_count);
 
-LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
-                                   const LubContactData **out,
-                                   int32_t *out_count);
+LUB_API LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
+                                           const LubContactData **out,
+                                           int32_t *out_count);
 
-LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape,
-                                      const LubVec2d *point, bool *out);
+LUB_API LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape,
+                                              const LubVec2d *point, bool *out);
 
-LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
-                                   const LubRaycastDesc *query,
-                                   LubShapeRayHit *out, bool *has);
+LUB_API LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
+                                           const LubRaycastDesc *query,
+                                           LubShapeRayHit *out, bool *has);
 
-LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
-                                         const LubVec2d *point, LubVec2d *out);
+LUB_API LubStatus lub_phys2d_shape_closest_point(LubContext *ctx,
+                                                 LubHandle shape,
+                                                 const LubVec2d *point,
+                                                 LubVec2d *out);
 
-LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape, LubAabb *out);
+LUB_API LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
+                                        LubAabb *out);
 
-LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
-                                LubShapeInfo *out);
+LUB_API LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
+                                        LubShapeInfo *out);
 
-LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
-                                        const LubMaterialDesc *desc);
+LUB_API LubStatus lub_phys2d_shape_set_material(LubContext *ctx,
+                                                LubHandle shape,
+                                                const LubMaterialDesc *desc);
 
-LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
-                                      const LubFilterDesc *filter);
+LUB_API LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                              const LubFilterDesc *filter);
 
-LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
-                                      const LubShapeEventsDesc *desc);
+LUB_API LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
+                                              const LubShapeEventsDesc *desc);
 
 // kind は Begin (既定) / End / Hit。
-LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world,
-                              const int32_t *kind, const LubContactEvent **out,
-                              int32_t *out_count);
+LUB_API LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world,
+                                      const int32_t *kind,
+                                      const LubContactEvent **out,
+                                      int32_t *out_count);
 
-LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
-                                 const LubBodyEvent **out, int32_t *out_count);
+LUB_API LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
+                                         const LubBodyEvent **out,
+                                         int32_t *out_count);
 
-LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world,
-                             const int32_t *kind, const LubSensorEvent **out,
-                             int32_t *out_count);
+LUB_API LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world,
+                                     const int32_t *kind,
+                                     const LubSensorEvent **out,
+                                     int32_t *out_count);
 
 // visitor 無しは最も近い hit (無ければ null)。visitor は Box2D の規約で続行
 // を返す (-1 = 無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行)。
-LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
-                             const LubRaycastDesc *query, LubRayHit *out,
-                             bool *has);
+LUB_API LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
+                                     const LubRaycastDesc *query,
+                                     LubRayHit *out, bool *has);
 
 typedef float (*LubPhys2dRaycastAllVisitorFn)(void *user, const LubRayHit *a);
 // visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。
-LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
-                                 const LubRaycastDesc *query,
-                                 LubPhys2dRaycastAllVisitorFn visitor,
-                                 void *visitor_user, const LubRayHit **out,
-                                 int32_t *out_count);
+LUB_API LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
+                                         const LubRaycastDesc *query,
+                                         LubPhys2dRaycastAllVisitorFn visitor,
+                                         void *visitor_user,
+                                         const LubRayHit **out,
+                                         int32_t *out_count);
 
 typedef bool (*LubPhys2dOverlapAabbVisitorFn)(void *user,
                                               const LubShapeView *a);
 // visitor は false で打ち切り。
-LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
-                                  const LubAabbDesc *query,
-                                  LubPhys2dOverlapAabbVisitorFn visitor,
-                                  void *visitor_user, const LubShapeView **out,
-                                  int32_t *out_count);
+LUB_API LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                          const LubAabbDesc *query,
+                                          LubPhys2dOverlapAabbVisitorFn visitor,
+                                          void *visitor_user,
+                                          const LubShapeView **out,
+                                          int32_t *out_count);
 
-LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
-                                const LubShapeCastDesc *query, LubRayHit *out,
-                                bool *has);
+LUB_API LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
+                                        const LubShapeCastDesc *query,
+                                        LubRayHit *out, bool *has);
 
 typedef float (*LubPhys2dShapeCastAllVisitorFn)(void *user, const LubRayHit *a);
 // visitor 付きの ShapeCast。Lua 面は同じ shape_cast。
-LubStatus lub_phys2d_shape_cast_all(LubContext *ctx, LubHandle world,
-                                    const LubShapeCastDesc *query,
-                                    LubPhys2dShapeCastAllVisitorFn visitor,
-                                    void *visitor_user, const LubRayHit **out,
-                                    int32_t *out_count);
+LUB_API LubStatus lub_phys2d_shape_cast_all(
+    LubContext *ctx, LubHandle world, const LubShapeCastDesc *query,
+    LubPhys2dShapeCastAllVisitorFn visitor, void *visitor_user,
+    const LubRayHit **out, int32_t *out_count);
 
-LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
-                                const LubMoverDesc *query, LubMoverCast *out,
-                                bool *has);
+LUB_API LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
+                                        const LubMoverDesc *query,
+                                        LubMoverCast *out, bool *has);
 
 typedef bool (*LubPhys2dCollideMoverVisitorFn)(void *user,
                                                const LubMoverPlane *a);
-LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
-                                   const LubMoverDesc *query,
-                                   LubPhys2dCollideMoverVisitorFn visitor,
-                                   void *visitor_user,
-                                   const LubMoverPlane **out,
-                                   int32_t *out_count);
+LUB_API LubStatus lub_phys2d_collide_mover(
+    LubContext *ctx, LubHandle world, const LubMoverDesc *query,
+    LubPhys2dCollideMoverVisitorFn visitor, void *visitor_user,
+    const LubMoverPlane **out, int32_t *out_count);
 
-LubStatus lub_phys2d_explode(LubContext *ctx, LubHandle world,
-                             const LubExplosionDesc *desc);
+LUB_API LubStatus lub_phys2d_explode(LubContext *ctx, LubHandle world,
+                                     const LubExplosionDesc *desc);
 
-LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
-                           const LubDebugOpts *opts, LubDebugData *out);
+LUB_API LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
+                                   const LubDebugOpts *opts, LubDebugData *out);
 
-LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world, LubProfile *out);
+LUB_API LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world,
+                                     LubProfile *out);
 
-LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
-                              LubCounters *out);
+LUB_API LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
+                                      LubCounters *out);
 
-LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body,
-                               const LubVec2d *force,
-                               const LubCommandOpts *opts);
+LUB_API LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body,
+                                       const LubVec2d *force,
+                                       const LubCommandOpts *opts);
 
-LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body,
-                                      const LubVec2d *force,
-                                      const LubCommandOpts *opts);
+LUB_API LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body,
+                                              const LubVec2d *force,
+                                              const LubCommandOpts *opts);
 
-LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body,
-                                 const LubVec2d *impulse,
-                                 const LubCommandOpts *opts);
-
-LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                        const LubVec2d *impulse,
-                                        const LubCommandOpts *opts);
-
-LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body, float torque,
-                                const LubCommandOpts *opts);
-
-LubStatus lub_phys2d_add_angular_impulse(LubContext *ctx, LubHandle body,
-                                         float impulse,
+LUB_API LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body,
+                                         const LubVec2d *impulse,
                                          const LubCommandOpts *opts);
 
-LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
-                                  const LubVelocityDesc *velocity,
-                                  const LubCommandOpts *opts);
+LUB_API LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                                const LubVec2d *impulse,
+                                                const LubCommandOpts *opts);
 
-LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
-                              const LubPoseDesc *pose,
-                              const LubCommandOpts *opts);
+LUB_API LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body,
+                                        float torque,
+                                        const LubCommandOpts *opts);
 
-LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
-                                const LubPoseDesc *target,
-                                const LubCommandOpts *opts);
+LUB_API LubStatus lub_phys2d_add_angular_impulse(LubContext *ctx,
+                                                 LubHandle body, float impulse,
+                                                 const LubCommandOpts *opts);
 
-LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
-                                   const LubMassDataDesc *mass_data,
-                                   const LubCommandOpts *opts);
+LUB_API LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
+                                          const LubVelocityDesc *velocity,
+                                          const LubCommandOpts *opts);
+
+LUB_API LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
+                                      const LubPoseDesc *pose,
+                                      const LubCommandOpts *opts);
+
+LUB_API LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
+                                        const LubPoseDesc *target,
+                                        const LubCommandOpts *opts);
+
+LUB_API LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
+                                           const LubMassDataDesc *mass_data,
+                                           const LubCommandOpts *opts);
 
 // ---------------------------------------------------------------- phys3d
 // Box3D の即時モード API (詳細は Haxe extern lub.Phys3d)。
 
 // key で引く (無ければ null)。sentinel の再解決にも使う。
-LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);
+LUB_API LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);
 
-LubHandle lub_phys3d_find_body(LubContext *ctx, LubHandle world, LubStr key);
+LUB_API LubHandle lub_phys3d_find_body(LubContext *ctx, LubHandle world,
+                                       LubStr key);
 
-LubHandle lub_phys3d_find_shape(LubContext *ctx, LubHandle body, LubStr key);
+LUB_API LubHandle lub_phys3d_find_shape(LubContext *ctx, LubHandle body,
+                                        LubStr key);
 
-LubHandle lub_phys3d_find_joint(LubContext *ctx, LubHandle world, LubStr key);
+LUB_API LubHandle lub_phys3d_find_joint(LubContext *ctx, LubHandle world,
+                                        LubStr key);
 
-LubStatus lub_phys3d_world(LubContext *ctx, LubStr key,
-                           const LubWorldOpts3d *opts, LubHandle *out);
+LUB_API LubStatus lub_phys3d_world(LubContext *ctx, LubStr key,
+                                   const LubWorldOpts3d *opts, LubHandle *out);
 
-LubStatus lub_phys3d_begin(LubContext *ctx, LubHandle world,
-                           const LubBeginOpts3d *opts);
+LUB_API LubStatus lub_phys3d_begin(LubContext *ctx, LubHandle world,
+                                   const LubBeginOpts3d *opts);
 
-LubStatus lub_phys3d_world_info(LubContext *ctx, LubHandle world,
-                                LubWorldInfo3d *out);
+LUB_API LubStatus lub_phys3d_world_info(LubContext *ctx, LubHandle world,
+                                        LubWorldInfo3d *out);
 
-LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
-                          const LubBodyDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
+                                  const LubBodyDesc3d *desc, LubHandle *out);
 
-LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
-                            const LubSphereDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
+                                    const LubSphereDesc3d *desc,
+                                    LubHandle *out);
 
-LubStatus lub_phys3d_box(LubContext *ctx, LubHandle body, LubStr key,
-                         const LubBoxDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_box(LubContext *ctx, LubHandle body, LubStr key,
+                                 const LubBoxDesc3d *desc, LubHandle *out);
 
-LubStatus lub_phys3d_capsule(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubCapsuleDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_capsule(LubContext *ctx, LubHandle body,
+                                     LubStr key, const LubCapsuleDesc3d *desc,
+                                     LubHandle *out);
 
-LubStatus lub_phys3d_cylinder(LubContext *ctx, LubHandle body, LubStr key,
-                              const LubCylinderDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_cylinder(LubContext *ctx, LubHandle body,
+                                      LubStr key, const LubCylinderDesc3d *desc,
+                                      LubHandle *out);
 
-LubStatus lub_phys3d_cone(LubContext *ctx, LubHandle body, LubStr key,
-                          const LubConeDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_cone(LubContext *ctx, LubHandle body, LubStr key,
+                                  const LubConeDesc3d *desc, LubHandle *out);
 
-LubStatus lub_phys3d_hull(LubContext *ctx, LubHandle body, LubStr key,
-                          const LubHullDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_hull(LubContext *ctx, LubHandle body, LubStr key,
+                                  const LubHullDesc3d *desc, LubHandle *out);
 
-LubStatus lub_phys3d_mesh(LubContext *ctx, LubHandle body, LubStr key,
-                          const LubMeshDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_mesh(LubContext *ctx, LubHandle body, LubStr key,
+                                  const LubMeshDesc3d *desc, LubHandle *out);
 
-LubStatus lub_phys3d_height_field(LubContext *ctx, LubHandle body, LubStr key,
-                                  const LubHeightFieldDesc3d *desc,
-                                  LubHandle *out);
+LUB_API LubStatus lub_phys3d_height_field(LubContext *ctx, LubHandle body,
+                                          LubStr key,
+                                          const LubHeightFieldDesc3d *desc,
+                                          LubHandle *out);
 
-LubStatus lub_phys3d_compound(LubContext *ctx, LubHandle body, LubStr key,
-                              const LubCompoundDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_compound(LubContext *ctx, LubHandle body,
+                                      LubStr key, const LubCompoundDesc3d *desc,
+                                      LubHandle *out);
 
-LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
-                           const LubJointDesc3d *desc, LubHandle *out);
+LUB_API LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
+                                   const LubJointDesc3d *desc, LubHandle *out);
 
-LubStatus lub_phys3d_joint_info(LubContext *ctx, LubHandle joint,
-                                LubJointInfo3d *out);
+LUB_API LubStatus lub_phys3d_joint_info(LubContext *ctx, LubHandle joint,
+                                        LubJointInfo3d *out);
 
-LubStatus lub_phys3d_joint_force(LubContext *ctx, LubHandle joint,
-                                 LubVec3d *out);
+LUB_API LubStatus lub_phys3d_joint_force(LubContext *ctx, LubHandle joint,
+                                         LubVec3d *out);
 
-LubStatus lub_phys3d_joint_torque(LubContext *ctx, LubHandle joint,
-                                  LubVec3d *out);
+LUB_API LubStatus lub_phys3d_joint_torque(LubContext *ctx, LubHandle joint,
+                                          LubVec3d *out);
 
-LubStatus lub_phys3d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
-                                 bool *has);
+LUB_API LubStatus lub_phys3d_joint_angle(LubContext *ctx, LubHandle joint,
+                                         float *out, bool *has);
 
-LubStatus lub_phys3d_joint_translation(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has);
+LUB_API LubStatus lub_phys3d_joint_translation(LubContext *ctx, LubHandle joint,
+                                               float *out, bool *has);
 
-LubStatus lub_phys3d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
-                                 bool *has);
+LUB_API LubStatus lub_phys3d_joint_speed(LubContext *ctx, LubHandle joint,
+                                         float *out, bool *has);
 
-LubStatus lub_phys3d_joint_length(LubContext *ctx, LubHandle joint, float *out,
-                                  bool *has);
+LUB_API LubStatus lub_phys3d_joint_length(LubContext *ctx, LubHandle joint,
+                                          float *out, bool *has);
 
-LubStatus lub_phys3d_joint_motor_force(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has);
+LUB_API LubStatus lub_phys3d_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                               float *out, bool *has);
 
 // revolute / wheel の motor torque。spherical は JointMotorTorqueVector。
-LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx, LubHandle joint,
-                                        float *out, bool *has);
+LUB_API LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx,
+                                                LubHandle joint, float *out,
+                                                bool *has);
 
 // spherical の motor torque (vector)。
-LubStatus lub_phys3d_joint_motor_torque_vector(LubContext *ctx, LubHandle joint,
-                                               LubVec3d *out, bool *has);
+LUB_API LubStatus lub_phys3d_joint_motor_torque_vector(LubContext *ctx,
+                                                       LubHandle joint,
+                                                       LubVec3d *out,
+                                                       bool *has);
 
-LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
-                                     const LubJointMotorDesc3d *desc);
+LUB_API LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                             const LubJointMotorDesc3d *desc);
 
-LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
-                                     const LubJointLimitDesc3d *desc);
+LUB_API LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                             const LubJointLimitDesc3d *desc);
 
-LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
-                                      const LubJointSpringDesc3d *desc);
+LUB_API LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                              const LubJointSpringDesc3d *desc);
 
-LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
-                                      const LubJointTargetDesc3d *desc);
+LUB_API LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                              const LubJointTargetDesc3d *desc);
 
-LubStatus lub_phys3d_body_joints(LubContext *ctx, LubHandle body,
-                                 const LubJointView3d **out,
-                                 int32_t *out_count);
+LUB_API LubStatus lub_phys3d_body_joints(LubContext *ctx, LubHandle body,
+                                         const LubJointView3d **out,
+                                         int32_t *out_count);
 
-LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
-                                const LubMoverDesc3d *query,
-                                LubMoverCast3d *out, bool *has);
+LUB_API LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
+                                        const LubMoverDesc3d *query,
+                                        LubMoverCast3d *out, bool *has);
 
 typedef bool (*LubPhys3dCollideMoverVisitorFn)(void *user,
                                                const LubMoverPlane3d *a);
-LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
-                                   const LubMoverDesc3d *query,
-                                   LubPhys3dCollideMoverVisitorFn visitor,
-                                   void *visitor_user,
-                                   const LubMoverPlane3d **out,
-                                   int32_t *out_count);
+LUB_API LubStatus lub_phys3d_collide_mover(
+    LubContext *ctx, LubHandle world, const LubMoverDesc3d *query,
+    LubPhys3dCollideMoverVisitorFn visitor, void *visitor_user,
+    const LubMoverPlane3d **out, int32_t *out_count);
 
-LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
-                          LubStepInfo3d *out);
+LUB_API LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
+                                  LubStepInfo3d *out);
 
-LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body, LubPose3d *out);
+LUB_API LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body,
+                                  LubPose3d *out);
 
 // key で引く Pose。Lua 面は同じ pose。
-LubStatus lub_phys3d_pose_by_key(LubContext *ctx, LubHandle world, LubStr key,
-                                 LubPose3d *out);
+LUB_API LubStatus lub_phys3d_pose_by_key(LubContext *ctx, LubHandle world,
+                                         LubStr key, LubPose3d *out);
 
-LubStatus lub_phys3d_velocity(LubContext *ctx, LubHandle body,
-                              LubVelocity3d *out);
+LUB_API LubStatus lub_phys3d_velocity(LubContext *ctx, LubHandle body,
+                                      LubVelocity3d *out);
 
-LubStatus lub_phys3d_mass(LubContext *ctx, LubHandle body, LubMassData3d *out);
+LUB_API LubStatus lub_phys3d_mass(LubContext *ctx, LubHandle body,
+                                  LubMassData3d *out);
 
-LubStatus lub_phys3d_center(LubContext *ctx, LubHandle body, LubVec3d *out);
+LUB_API LubStatus lub_phys3d_center(LubContext *ctx, LubHandle body,
+                                    LubVec3d *out);
 
-LubStatus lub_phys3d_world_point(LubContext *ctx, LubHandle body,
-                                 const LubVec3d *local_point, LubVec3d *out);
+LUB_API LubStatus lub_phys3d_world_point(LubContext *ctx, LubHandle body,
+                                         const LubVec3d *local_point,
+                                         LubVec3d *out);
 
-LubStatus lub_phys3d_local_point(LubContext *ctx, LubHandle body,
-                                 const LubVec3d *world_point, LubVec3d *out);
+LUB_API LubStatus lub_phys3d_local_point(LubContext *ctx, LubHandle body,
+                                         const LubVec3d *world_point,
+                                         LubVec3d *out);
 
-LubStatus lub_phys3d_velocity_at(LubContext *ctx, LubHandle body,
-                                 const LubVec3d *world_point, LubVec3d *out);
+LUB_API LubStatus lub_phys3d_velocity_at(LubContext *ctx, LubHandle body,
+                                         const LubVec3d *world_point,
+                                         LubVec3d *out);
 
-LubStatus lub_phys3d_add_force(LubContext *ctx, LubHandle body,
-                               const LubVec3d *force,
-                               const LubCommandOpts3d *opts);
+LUB_API LubStatus lub_phys3d_add_force(LubContext *ctx, LubHandle body,
+                                       const LubVec3d *force,
+                                       const LubCommandOpts3d *opts);
 
-LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
-                                      const LubVec3d *force,
-                                      const LubCommandOpts3d *opts);
+LUB_API LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
+                                              const LubVec3d *force,
+                                              const LubCommandOpts3d *opts);
 
-LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
-                                 const LubVec3d *impulse,
-                                 const LubCommandOpts3d *opts);
-
-LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                        const LubVec3d *impulse,
-                                        const LubCommandOpts3d *opts);
-
-LubStatus lub_phys3d_add_torque(LubContext *ctx, LubHandle body,
-                                const LubVec3d *torque,
-                                const LubCommandOpts3d *opts);
-
-LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx, LubHandle body,
+LUB_API LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
                                          const LubVec3d *impulse,
                                          const LubCommandOpts3d *opts);
 
-LubStatus lub_phys3d_set_velocity(LubContext *ctx, LubHandle body,
-                                  const LubVelocityDesc3d *desc);
+LUB_API LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                                const LubVec3d *impulse,
+                                                const LubCommandOpts3d *opts);
 
-LubStatus lub_phys3d_teleport(LubContext *ctx, LubHandle body,
-                              const LubPoseDesc3d *desc);
+LUB_API LubStatus lub_phys3d_add_torque(LubContext *ctx, LubHandle body,
+                                        const LubVec3d *torque,
+                                        const LubCommandOpts3d *opts);
 
-LubStatus lub_phys3d_set_target(LubContext *ctx, LubHandle body,
-                                const LubTargetDesc3d *desc);
+LUB_API LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx,
+                                                 LubHandle body,
+                                                 const LubVec3d *impulse,
+                                                 const LubCommandOpts3d *opts);
+
+LUB_API LubStatus lub_phys3d_set_velocity(LubContext *ctx, LubHandle body,
+                                          const LubVelocityDesc3d *desc);
+
+LUB_API LubStatus lub_phys3d_teleport(LubContext *ctx, LubHandle body,
+                                      const LubPoseDesc3d *desc);
+
+LUB_API LubStatus lub_phys3d_set_target(LubContext *ctx, LubHandle body,
+                                        const LubTargetDesc3d *desc);
 
 // kind = "begin" (既定) / "end" / "hit"。
-LubStatus lub_phys3d_contacts(LubContext *ctx, LubHandle world,
-                              const int32_t *kind,
-                              const LubContactEvent3d **out,
-                              int32_t *out_count);
+LUB_API LubStatus lub_phys3d_contacts(LubContext *ctx, LubHandle world,
+                                      const int32_t *kind,
+                                      const LubContactEvent3d **out,
+                                      int32_t *out_count);
 
-LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
-                                 const LubBodyEvent3d **out,
-                                 int32_t *out_count);
+LUB_API LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
+                                         const LubBodyEvent3d **out,
+                                         int32_t *out_count);
 
-LubStatus lub_phys3d_sensors(LubContext *ctx, LubHandle world,
-                             const int32_t *kind, const LubSensorEvent3d **out,
-                             int32_t *out_count);
+LUB_API LubStatus lub_phys3d_sensors(LubContext *ctx, LubHandle world,
+                                     const int32_t *kind,
+                                     const LubSensorEvent3d **out,
+                                     int32_t *out_count);
 
-LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
-                                  const LubJointEvent3d **out,
-                                  int32_t *out_count);
+LUB_API LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
+                                          const LubJointEvent3d **out,
+                                          int32_t *out_count);
 
 // visitor 無しは最も近い hit (Mode = "all" なら全部を RaycastAll で)。visitor
 // は Box3D の規約で続行を返す。
-LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
-                             const LubRaycastDesc3d *query, LubRayHit3d *out,
-                             bool *has);
+LUB_API LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
+                                     const LubRaycastDesc3d *query,
+                                     LubRayHit3d *out, bool *has);
 
 typedef float (*LubPhys3dRaycastAllVisitorFn)(void *user, const LubRayHit3d *a);
 // visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。
-LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
-                                 const LubRaycastDesc3d *query,
-                                 LubPhys3dRaycastAllVisitorFn visitor,
-                                 void *visitor_user, const LubRayHit3d **out,
-                                 int32_t *out_count);
+LUB_API LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
+                                         const LubRaycastDesc3d *query,
+                                         LubPhys3dRaycastAllVisitorFn visitor,
+                                         void *visitor_user,
+                                         const LubRayHit3d **out,
+                                         int32_t *out_count);
 
 typedef bool (*LubPhys3dOverlapAabbVisitorFn)(void *user,
                                               const LubShapeView3d *a);
-LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
-                                  const LubAabbDesc3d *query,
-                                  LubPhys3dOverlapAabbVisitorFn visitor,
-                                  void *visitor_user,
-                                  const LubShapeView3d **out,
-                                  int32_t *out_count);
+LUB_API LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                          const LubAabbDesc3d *query,
+                                          LubPhys3dOverlapAabbVisitorFn visitor,
+                                          void *visitor_user,
+                                          const LubShapeView3d **out,
+                                          int32_t *out_count);
 
 typedef bool (*LubPhys3dOverlapShapeVisitorFn)(void *user,
                                                const LubShapeView3d *a);
-LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
-                                   const LubShapeProxyDesc3d *query,
-                                   LubPhys3dOverlapShapeVisitorFn visitor,
-                                   void *visitor_user,
-                                   const LubShapeView3d **out,
-                                   int32_t *out_count);
+LUB_API LubStatus lub_phys3d_overlap_shape(
+    LubContext *ctx, LubHandle world, const LubShapeProxyDesc3d *query,
+    LubPhys3dOverlapShapeVisitorFn visitor, void *visitor_user,
+    const LubShapeView3d **out, int32_t *out_count);
 
-LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
-                                const LubShapeProxyDesc3d *query,
-                                LubRayHit3d *out, bool *has);
+LUB_API LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
+                                        const LubShapeProxyDesc3d *query,
+                                        LubRayHit3d *out, bool *has);
 
 typedef float (*LubPhys3dShapeCastAllVisitorFn)(void *user,
                                                 const LubRayHit3d *a);
 // visitor 付きの ShapeCast。Lua 面は同じ shape_cast。
-LubStatus lub_phys3d_shape_cast_all(LubContext *ctx, LubHandle world,
-                                    const LubShapeProxyDesc3d *query,
-                                    LubPhys3dShapeCastAllVisitorFn visitor,
-                                    void *visitor_user, const LubRayHit3d **out,
-                                    int32_t *out_count);
+LUB_API LubStatus lub_phys3d_shape_cast_all(
+    LubContext *ctx, LubHandle world, const LubShapeProxyDesc3d *query,
+    LubPhys3dShapeCastAllVisitorFn visitor, void *visitor_user,
+    const LubRayHit3d **out, int32_t *out_count);
 
-LubStatus lub_phys3d_body_shapes(LubContext *ctx, LubHandle body,
-                                 const LubShapeView3d **out,
-                                 int32_t *out_count);
+LUB_API LubStatus lub_phys3d_body_shapes(LubContext *ctx, LubHandle body,
+                                         const LubShapeView3d **out,
+                                         int32_t *out_count);
 
-LubStatus lub_phys3d_body_contacts(LubContext *ctx, LubHandle body,
-                                   const LubContactData3d **out,
-                                   int32_t *out_count);
+LUB_API LubStatus lub_phys3d_body_contacts(LubContext *ctx, LubHandle body,
+                                           const LubContactData3d **out,
+                                           int32_t *out_count);
 
-LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
-                                   const LubRaycastDesc3d *query,
-                                   LubShapeRayHit3d *out, bool *has);
+LUB_API LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
+                                           const LubRaycastDesc3d *query,
+                                           LubShapeRayHit3d *out, bool *has);
 
-LubStatus lub_phys3d_shape_closest_point(LubContext *ctx, LubHandle shape,
-                                         const LubVec3d *point, LubVec3d *out);
+LUB_API LubStatus lub_phys3d_shape_closest_point(LubContext *ctx,
+                                                 LubHandle shape,
+                                                 const LubVec3d *point,
+                                                 LubVec3d *out);
 
-LubStatus lub_phys3d_shape_aabb(LubContext *ctx, LubHandle shape,
-                                LubAabb3d *out);
+LUB_API LubStatus lub_phys3d_shape_aabb(LubContext *ctx, LubHandle shape,
+                                        LubAabb3d *out);
 
-LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
-                                LubShapeInfo3d *out);
+LUB_API LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
+                                        LubShapeInfo3d *out);
 
-LubStatus lub_phys3d_shape_set_material(LubContext *ctx, LubHandle shape,
-                                        const LubMaterialDesc3d *desc);
+LUB_API LubStatus lub_phys3d_shape_set_material(LubContext *ctx,
+                                                LubHandle shape,
+                                                const LubMaterialDesc3d *desc);
 
-LubStatus lub_phys3d_shape_set_filter(LubContext *ctx, LubHandle shape,
-                                      const LubFilterDesc3d *filter);
+LUB_API LubStatus lub_phys3d_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                              const LubFilterDesc3d *filter);
 
-LubStatus lub_phys3d_shape_set_events(LubContext *ctx, LubHandle shape,
-                                      const LubShapeEventsDesc3d *desc);
+LUB_API LubStatus lub_phys3d_shape_set_events(LubContext *ctx, LubHandle shape,
+                                              const LubShapeEventsDesc3d *desc);
 
-LubStatus lub_phys3d_profile(LubContext *ctx, LubHandle world,
-                             LubProfile3d *out);
+LUB_API LubStatus lub_phys3d_profile(LubContext *ctx, LubHandle world,
+                                     LubProfile3d *out);
 
-LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
-                              LubCounters3d *out);
+LUB_API LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
+                                      LubCounters3d *out);
 
 // ------------------------------------------------------------------- png
 // PNG の読み書き (lubx_png、prelude が global Png として注入)。 load は
 // Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
 
-LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *bytes,
-                       int32_t *width, int32_t *height, int32_t *format,
-                       int32_t *stride, int32_t *version, int32_t *status,
-                       LubStr *error);
+LUB_API LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *bytes,
+                               int32_t *width, int32_t *height, int32_t *format,
+                               int32_t *stride, int32_t *version,
+                               int32_t *status, LubStr *error);
 
-LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *bytes,
-                        int32_t bytes_len, int32_t width, int32_t height,
-                        const int32_t *stride);
+LUB_API LubStatus lub_png_write(LubContext *ctx, LubStr path,
+                                const uint8_t *bytes, int32_t bytes_len,
+                                int32_t width, int32_t height,
+                                const int32_t *stride);
 
 #ifdef __cplusplus
 }

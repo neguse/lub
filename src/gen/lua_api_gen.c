@@ -254,6 +254,26 @@ static void fill_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void push_LubProfile3d(lua_State *L, const LubProfile3d *v);
 static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
+static void fill_LubEventData(lua_State *L, const LubEventData *v);
+static void push_LubEventData(lua_State *L, const LubEventData *v);
+
+static const char *const names_LubEventKind[] = {"quit",
+                                                 "key_down",
+                                                 "key_up",
+                                                 "mouse_button_down",
+                                                 "mouse_button_up",
+                                                 "mouse_motion",
+                                                 "mouse_wheel",
+                                                 "window_resize",
+                                                 "other",
+                                                 NULL};
+static const int32_t values_LubEventKind[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+static const char *name_LubEventKind(int32_t v) {
+  for (int i = 0; names_LubEventKind[i]; ++i)
+    if (values_LubEventKind[i] == v)
+      return names_LubEventKind[i];
+  return NULL;
+}
 
 static const char *const names_LubGfxReadbackStatus[] = {
     "processing", "ready", "error", "dropped", NULL};
@@ -3584,6 +3604,26 @@ static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v) {
 static void push_LubCounters3d(lua_State *L, const LubCounters3d *v) {
   lua_createtable(L, 0, 20);
   fill_LubCounters3d(L, v);
+}
+
+static void fill_LubEventData(lua_State *L, const LubEventData *v) {
+  if (name_LubEventKind(v->kind)) {
+    lua_pushstring(L, name_LubEventKind(v->kind));
+    lua_setfield(L, -2, "kind");
+  }
+  lgen_set_int(L, "key", v->key);
+  lgen_set_int(L, "button", v->button);
+  lgen_set_num(L, "x", v->x);
+  lgen_set_num(L, "y", v->y);
+  lgen_set_num(L, "dx", v->dx);
+  lgen_set_num(L, "dy", v->dy);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubEventData(lua_State *L, const LubEventData *v) {
+  lua_createtable(L, 0, 7);
+  fill_LubEventData(L, v);
 }
 
 static float tramp_l_phys2d_raycast_all_visitor(void *user,
@@ -8541,6 +8581,24 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "config");
   lua_pushcfunction(L, l_quit);
   lua_setfield(L, -2, "quit");
+  lua_pushstring(L, "quit");
+  lua_setfield(L, -2, "QUIT");
+  lua_pushstring(L, "key_down");
+  lua_setfield(L, -2, "KEY_DOWN");
+  lua_pushstring(L, "key_up");
+  lua_setfield(L, -2, "KEY_UP");
+  lua_pushstring(L, "mouse_button_down");
+  lua_setfield(L, -2, "MOUSE_BUTTON_DOWN");
+  lua_pushstring(L, "mouse_button_up");
+  lua_setfield(L, -2, "MOUSE_BUTTON_UP");
+  lua_pushstring(L, "mouse_motion");
+  lua_setfield(L, -2, "MOUSE_MOTION");
+  lua_pushstring(L, "mouse_wheel");
+  lua_setfield(L, -2, "MOUSE_WHEEL");
+  lua_pushstring(L, "window_resize");
+  lua_setfield(L, -2, "WINDOW_RESIZE");
+  lua_pushstring(L, "other");
+  lua_setfield(L, -2, "OTHER");
   lua_newtable(L); // lub.gfx
   lua_pushcfunction(L, l_gfx_begin_pass);
   lua_setfield(L, -2, "begin_pass");
@@ -9572,4 +9630,7 @@ void lub_api_gen_register(lua_State *L) {
   lua_pop(L, 1);
   lua_setfield(L, -2, "__refs");
   lua_setglobal(L, "lub");
+}
+void lub_lua_push_event(lua_State *L, const LubEventData *e) {
+  push_LubEventData(L, e);
 }

@@ -191,6 +191,14 @@ public class Readback
 /// `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。</summary>
 public static class Lub
 {
+    /// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
+    [LubLuaString]
+    public enum EventKind
+    {
+        Quit = 1, KeyDown = 2, KeyUp = 3, MouseButtonDown = 4, MouseButtonUp = 5,
+        MouseMotion = 6, MouseWheel = 7, WindowResize = 8, Other = 9,
+    }
+
     public static void Config(ConfigOpts opts)
     {
     }
@@ -3357,7 +3365,19 @@ public class Counters3d
 
 // ------------------------------------------------------------------ misc
 
+/// <summary>
+/// OnEvent に 1 件ずつ届く入力 event。Kind ごとに使う field が決まる:
+/// key_down / key_up は Key (scancode)、mouse_button_* は Button と X / Y、
+/// mouse_motion は X / Y と Dx / Dy、mouse_wheel は Dx / Dy、window_resize は
+/// X / Y (pixel size)。
+/// </summary>
 public class EventData
 {
-    public string? Type;
+    public Lub.EventKind Kind;
+    public int Key;
+    public int Button;
+    public double X;
+    public double Y;
+    public double Dx;
+    public double Dy;
 }

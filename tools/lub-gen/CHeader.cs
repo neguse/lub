@@ -33,6 +33,16 @@ public static class CHeader
         extern "C" {
         #endif
 
+        // 共有 library (lub_shared) の export。Windows で dll を作るときだけ
+        // LUB_BUILD_SHARED が立つ。
+        #ifndef LUB_API
+        #if defined(_WIN32) && defined(LUB_BUILD_SHARED)
+        #define LUB_API __declspec(dllexport)
+        #else
+        #define LUB_API
+        #endif
+        #endif
+
         typedef struct LubContext LubContext;
 
         typedef enum LubStatus {
@@ -69,10 +79,10 @@ public static class CHeader
         } LubBinding;
 
         // 直近の LUB_ERROR の message。次の API 呼び出しまで有効。
-        const char *lub_last_error(LubContext *ctx);
+        LUB_API const char *lub_last_error(LubContext *ctx);
 
         // 現在の frame 番号 (LubView.frame と比較する)。
-        int32_t lub_frame_index(LubContext *ctx);
+        LUB_API int32_t lub_frame_index(LubContext *ctx);
 
         """;
 
@@ -83,6 +93,30 @@ public static class CHeader
         #endif
 
         """;
+
+    // ------------------------------------------------------------ names
+
+    public static string TypeName(string csName) => "Lub" + csName;
+
+    // root (Lub) の enum は namespace の段を持たない: Lub.EventKind →
+    // LubEventKind / LUB_EVENT_KIND_QUIT。
+    public static string EnumName(string qualified)
+    {
+        var parts = qualified.Split('.');
+        if (parts[0] == ApiModelLoader.RootClass) parts = parts[1..];
+        return "Lub" + string.Concat(parts);
+    }
+
+    public static string EnumMember(ApiEnum e, ApiEnumMember m) =>
+        e.Namespace == ApiModelLoader.RootClass
+            ? $"LUB_{LuaNaming.Const(e.Name)}_{m.LuaName}"
+            : $"LUB_{LuaNaming.Const(e.Namespace)}_{LuaNaming.Const(e.Name)}_{m.LuaName}";
+
+    public static string FunctionName(ApiNamespace ns, string luaName)
+    {
+        var prefix = ns.LuaPath == "lub" ? "lub" : "lub_" + ns.LuaPath["lub.".Length..].Replace('.', '_');
+        return prefix + "_" + luaName;
+    }
 
     public static string Generate(ApiModel model)
     {
@@ -104,25 +138,6 @@ public static class CHeader
                 EmitNamespaceFunctions(ns);
             sb.Append(Epilogue);
             return sb.ToString();
-        }
-
-        // ------------------------------------------------------------ names
-
-        public static string TypeName(string csName) => "Lub" + csName;
-
-        public static string EnumName(string qualified)
-        {
-            var parts = qualified.Split('.');
-            return "Lub" + string.Concat(parts);
-        }
-
-        public static string EnumMember(ApiEnum e, ApiEnumMember m) =>
-            $"LUB_{LuaNaming.Const(e.Namespace)}_{LuaNaming.Const(e.Name)}_{m.LuaName}";
-
-        public static string FunctionName(ApiNamespace ns, string luaName)
-        {
-            var prefix = ns.LuaPath == "lub" ? "lub" : "lub_" + ns.LuaPath["lub.".Length..].Replace('.', '_');
-            return prefix + "_" + luaName;
         }
 
         private static string FnTypedefName(ApiNamespace ns, ApiFunction f, ApiParam p) =>
@@ -375,7 +390,7 @@ public static class CHeader
             foreach (var f in ns.StaticFields)
             {
                 Comment(f.Doc);
-                sb.Append($"{ReturnCType(f.Type)} {FunctionName(ns, f.LuaName)}(LubContext *ctx);\n\n");
+                sb.Append($"LUB_API {ReturnCType(f.Type)} {FunctionName(ns, f.LuaName)}(LubContext *ctx);\n\n");
             }
             foreach (var f in ns.Functions)
             {
@@ -434,7 +449,7 @@ public static class CHeader
                         args.Add("bool *has");
                 }
             }
-            return Wrap($"{ret} {FunctionName(ns, f.LuaName)}(", string.Join(", ", args) + ");");
+            return Wrap($"LUB_API {ret} {FunctionName(ns, f.LuaName)}(", string.Join(", ", args) + ");");
         }
 
         private static IEnumerable<string> InParam(ApiNamespace ns, ApiFunction f, ApiParam p)

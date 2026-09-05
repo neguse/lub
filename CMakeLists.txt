@@ -29,6 +29,12 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
   message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")
 endif()
 
+# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を
+# PIC で作る (SDL / lua / box2d / box3d / tess2 / lub 本体)。
+if(NOT LUB_WASM)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # SDL3 build flags must be set BEFORE add_subdirectory. The Emscripten build
 # uses static SDL and disables pthreads/tests so the wasm artifact stays
 # self-contained.
@@ -164,8 +170,8 @@ endif()
 # and compiles everywhere. backend_sdlgpu.c / backend_dx12.cpp are
 # native-only; wasm builds ship the webgpu backend alone.
 set(LUB_SOURCES
-  src/main.c
   src/app.c
+  src/host_api.c
   src/lua_api.c
   src/api_core.c
   src/api_gfx.c
@@ -222,9 +228,22 @@ if(NOT LUB_WASM)
     list(APPEND LUB_SOURCES src/backend_vk.c)
   endif()
 endif()
-add_executable(lub ${LUB_SOURCES})
+# runtime 本体は object library にまとめ、player (lub) と共有 library
+# (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
+add_library(lub_objs OBJECT ${LUB_SOURCES})
+add_executable(lub src/main.c)
+target_link_libraries(lub PRIVATE lub_objs)
+if(NOT LUB_WASM)
+  add_library(lub_shared SHARED)
+  target_link_libraries(lub_shared PRIVATE lub_objs)
+  set_target_properties(lub_shared PROPERTIES OUTPUT_NAME lub)
+  if(WIN32)
+    # include/lub/lub_api.h の LUB_API を dllexport にする
+    target_compile_definitions(lub_objs PUBLIC LUB_BUILD_SHARED)
+  endif()
+endif()
 
-target_include_directories(lub PRIVATE
+target_include_directories(lub_objs PUBLIC
   include
   third_party/slang/include
   third_party/stb
@@ -234,12 +253,12 @@ target_include_directories(lub PRIVATE
   src
 )
 # backend の index buffer は u32 固定なので ImDrawIdx を 32bit にする。
-target_compile_definitions(lub PRIVATE ImDrawIdx=unsigned)
+target_compile_definitions(lub_objs PUBLIC ImDrawIdx=unsigned)
 if(NOT LUB_WASM)
-  target_link_directories(lub PRIVATE third_party/slang/lib)
+  target_link_directories(lub_objs PUBLIC third_party/slang/lib)
 endif()
 
-target_link_libraries(lub PRIVATE
+target_link_libraries(lub_objs PUBLIC
   SDL3::SDL3
   lua_static
   box2d
@@ -247,27 +266,27 @@ target_link_libraries(lub PRIVATE
   tess2
 )
 if(NOT LUB_WASM)
-  target_link_libraries(lub PRIVATE slang)
+  target_link_libraries(lub_objs PUBLIC slang)
 endif()
 if(UNIX AND NOT LUB_WASM)
   # libdl required by Lua dynamic loading, libm by Lua math (Linux/Mac).
   # Under emscripten the libc already provides both equivalents.
-  target_link_libraries(lub PRIVATE m dl)
+  target_link_libraries(lub_objs PUBLIC m dl)
 endif()
 if(WIN32)
   # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
   # d3d12/dxgi/dxguid for the dx12 backend (all OS-provided).
-  target_link_libraries(lub PRIVATE ws2_32 d3d12 dxgi dxguid)
+  target_link_libraries(lub_objs PUBLIC ws2_32 d3d12 dxgi dxguid)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT LUB_WASM)
   # Vulkan loader for backend_vk.c.
   find_package(Vulkan REQUIRED)
-  target_link_libraries(lub PRIVATE Vulkan::Vulkan)
+  target_link_libraries(lub_objs PUBLIC Vulkan::Vulkan)
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
   # discoverable at runtime so the smoke test doesn't need LD_LIBRARY_PATH.
-  set_target_properties(lub PROPERTIES
+  set_target_properties(lub lub_shared PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
       INSTALL_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
   )
@@ -289,10 +308,12 @@ if(WIN32)
     VERBATIM)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(lub PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
-    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
-  )
+  foreach(t lub_objs lub)
+    target_compile_options(${t} PRIVATE
+      $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+    )
+  endforeach()
   # miniaudio 本体の警告はこちらで直せないので実装 TU だけ抑制する。
   set_source_files_properties(src/miniaudio_impl.c PROPERTIES COMPILE_OPTIONS "-w")
 endif()
@@ -318,7 +339,7 @@ if(LUB_WASM)
   # If you upgrade emsdk and wgpu* calls suddenly stop compiling or
   # render-paths regress, revert to this SDK version or update backend_webgpu.c
   # to track the newer Dawn ABI.
-  target_compile_options(lub PRIVATE --use-port=emdawnwebgpu)
+  target_compile_options(lub_objs PUBLIC --use-port=emdawnwebgpu)
   # SHELL: keeps multi-token flags (`--preload-file PATH`) as one logical
   # unit so CMake doesn't dedupe / split them. Without SHELL the second
   # `--preload-file` got dropped during CMake's list deduplication and only

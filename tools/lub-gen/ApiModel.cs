@@ -97,12 +97,12 @@ public static class ApiModelLoader
 
         var namespaces = new List<ApiNamespace>
         {
-            LoadNamespace(root, includeNested: false),
+            LoadNamespace(root),
         };
         foreach (var nested in root.GetTypeMembers()
                      .Where(t => t.TypeKind == TypeKind.Class && t.IsStatic)
                      .OrderBy(t => t.Locations[0].SourceSpan.Start))
-            namespaces.Add(LoadNamespace(nested, includeNested: true));
+            namespaces.Add(LoadNamespace(nested));
 
         var types = new List<ApiType>();
         foreach (var t in global.GetTypeMembers()
@@ -114,18 +114,16 @@ public static class ApiModelLoader
         return new ApiModel(namespaces, types);
     }
 
-    private static ApiNamespace LoadNamespace(INamedTypeSymbol cls, bool includeNested)
+    private static ApiNamespace LoadNamespace(INamedTypeSymbol cls)
     {
         var luaPath = LuaNaming.RefTypePath(cls);
         var functions = cls.GetMembers().OfType<IMethodSymbol>()
             .Where(m => m.MethodKind == MethodKind.Ordinary && m.IsStatic
                 && m.DeclaredAccessibility == Accessibility.Public)
             .Select(LoadFunction).ToList();
-        var enums = includeNested
-            ? cls.GetTypeMembers().Where(t => t.TypeKind == TypeKind.Enum)
-                .OrderBy(t => t.Locations[0].SourceSpan.Start)
-                .Select(e => LoadEnum(e, cls.Name)).ToList()
-            : [];
+        var enums = cls.GetTypeMembers().Where(t => t.TypeKind == TypeKind.Enum)
+            .OrderBy(t => t.Locations[0].SourceSpan.Start)
+            .Select(e => LoadEnum(e, cls.Name)).ToList();
         var fields = cls.GetMembers().OfType<IFieldSymbol>()
             .Where(f => f.IsStatic && !f.IsConst
                 && f.DeclaredAccessibility == Accessibility.Public)

@@ -80,13 +80,6 @@ void lua_api_register(lua_State *L) {
   lua_setglobal(L, "request_file");
 }
 
-static void push_event_table(lua_State *L, const SDL_Event *e) {
-  lua_newtable(L);
-  lua_pushinteger(L, e->type);
-  lua_setfield(L, -2, "type");
-  // 詳細フィールドは後段で増やす
-}
-
 // Fetches the entry module from the registry, looks up the named field, and
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
@@ -249,10 +242,10 @@ void lua_ctx_call_quit(LuaCtx *ctx) {
   call_module_field(ctx, "on_quit", "onQuit", 0);
 }
 
-void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e) {
+void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e) {
   if (!ctx->L)
     return;
-  push_event_table(ctx->L, e);
+  lub_lua_push_event(ctx->L, e);
   call_module_field(ctx, "on_event", "onEvent", 1);
 }
 

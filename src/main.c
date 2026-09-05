@@ -1,9 +1,8 @@
 #define SDL_MAIN_USE_CALLBACKS 1
+#include "api_internal.h"
 #include "app.h"
-#include "capture.h"
+#include "host_api.h"
 #include "lua_api.h"
-#include "profile.h"
-#include "ui.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
@@ -15,8 +14,10 @@
 #include "tcs_build.h"
 #endif
 
-static App g_app;
-static bool g_app_initialized = false;
+// player の runtime。frame の骨格は host API (src/host_api.c) が持ち、ここは
+// entry の解決と Lua の呼び出しだけ。
+static LubContext *g_ctx;
+static App *g_app;
 #ifndef __EMSCRIPTEN__
 static TcsPipeline g_tcs;
 #endif
@@ -114,14 +115,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 #endif // !__EMSCRIPTEN__
 
   const char *script = NULL;
-  const char *capture_path = NULL;
-  uint64_t capture_frame = 30;
-  double fixed_frame_dt = 0.0;
+  LubHostOpts opts;
+  memset(&opts, 0, sizeof(opts));
+  opts.capture_frame = 30;
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) {
-      capture_path = argv[++i];
+      opts.capture_path = lub_str_c(argv[++i]);
     } else if (strcmp(argv[i], "--capture-frame") == 0 && i + 1 < argc) {
-      capture_frame = strtoull(argv[++i], NULL, 10);
+      opts.capture_frame = (int32_t)strtoul(argv[++i], NULL, 10);
+    } else if (strcmp(argv[i], "--digest") == 0) {
+      opts.digest = true;
     } else if (strcmp(argv[i], "--fixed-dt") == 0) {
       if (i + 1 >= argc) {
         SDL_Log("FATAL: --fixed-dt requires a value in (0, 0.25] seconds");
@@ -137,7 +140,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
                 value);
         return SDL_APP_FAILURE;
       }
-      fixed_frame_dt = fixed_dt;
+      opts.fixed_dt = (float)fixed_dt;
     } else {
       script = argv[i];
     }
@@ -145,20 +148,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
   // Normal mode: window + GPU. Parse test-clock arguments first so invalid
   // values fail without creating a window or partially initializing App.
-  if (!SDL_Init(SDL_INIT_VIDEO)) {
-    SDL_Log("SDL_Init failed: %s", SDL_GetError());
+  g_ctx = lub_host_create(&opts);
+  if (!g_ctx)
     return SDL_APP_FAILURE;
-  }
-  if (!app_init(&g_app))
-    return SDL_APP_FAILURE;
-  g_app_initialized = true;
-  g_app.fixed_frame_dt = fixed_frame_dt;
-  if (fixed_frame_dt > 0.0)
-    SDL_Log("fixed frame dt enabled: %.17g seconds", fixed_frame_dt);
+  g_app = lub_api_app(g_ctx);
   const char *entry_path = script ? script : "00_hello";
-
-  if (!lua_ctx_init(&g_app.lua, &g_app))
-    return SDL_APP_FAILURE;
 
   char modbuf[256] = {0};
 
@@ -169,21 +163,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
 #else
   if (has_extension(entry_path, ".hxml")) {
-    if (!haxe_pipeline_start(&g_app.haxe, entry_path)) {
+    if (!haxe_pipeline_start(&g_app->haxe, entry_path)) {
       SDL_Log("FATAL: haxe pipeline start failed");
       return SDL_APP_FAILURE;
     }
-    g_app.haxe_enabled = true;
+    g_app->haxe_enabled = true;
     path_basename_noext(entry_path, modbuf, sizeof(modbuf));
-    SDL_snprintf(g_app.entry_module_name, sizeof(g_app.entry_module_name), "%s",
-                 modbuf);
+    SDL_snprintf(g_app->entry_module_name, sizeof(g_app->entry_module_name),
+                 "%s", modbuf);
     char dir[512];
     path_dirname(entry_path, dir, sizeof(dir));
     char lua_path[768];
     SDL_snprintf(lua_path, sizeof(lua_path), "%s/.lub/%s.lua", dir, modbuf);
-    SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path), "%s", lua_path);
-    g_app.entry_mtime_cache = 0;
-    lua_ctx_add_package_path(&g_app.lua, dir);
+    SDL_snprintf(g_app->entry_path, sizeof(g_app->entry_path), "%s", lua_path);
+    g_app->entry_mtime_cache = 0;
+    lua_ctx_add_package_path(&g_app->lua, dir);
   }
 #endif
 
@@ -201,13 +195,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     // 任意パスの .lua entry。tcs 等の transpiler 出力を staging なしで
     // 直接ロードする。module 名は basename、実パスを mtime poll 対象にする。
     path_basename_noext(entry_path, modbuf, sizeof(modbuf));
-    SDL_strlcpy(g_app.entry_module_name, modbuf,
-                sizeof(g_app.entry_module_name));
-    SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path), "%s", entry_path);
-    g_app.entry_mtime_cache = 0;
+    SDL_strlcpy(g_app->entry_module_name, modbuf,
+                sizeof(g_app->entry_module_name));
+    SDL_snprintf(g_app->entry_path, sizeof(g_app->entry_path), "%s",
+                 entry_path);
+    g_app->entry_mtime_cache = 0;
     char dir[512];
     path_dirname(entry_path, dir, sizeof(dir));
-    lua_ctx_add_package_dir(&g_app.lua, dir);
+    lua_ctx_add_package_dir(&g_app->lua, dir);
   } else
 #endif
       if (!has_extension(entry_path, ".hxml")) {
@@ -222,30 +217,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     memcpy(modbuf, base, n);
     modbuf[n] = '\0';
 
-    SDL_strlcpy(g_app.entry_module_name, modbuf,
-                sizeof(g_app.entry_module_name));
+    SDL_strlcpy(g_app->entry_module_name, modbuf,
+                sizeof(g_app->entry_module_name));
     char sample_dir[512];
     SDL_snprintf(sample_dir, sizeof(sample_dir), "samples/%s", modbuf);
-    SDL_snprintf(g_app.entry_path, sizeof(g_app.entry_path), "%s/.lub/%s.lua",
+    SDL_snprintf(g_app->entry_path, sizeof(g_app->entry_path), "%s/.lub/%s.lua",
                  sample_dir, modbuf);
-    g_app.entry_mtime_cache = 0;
-    lua_ctx_add_package_path(&g_app.lua, sample_dir);
+    g_app->entry_mtime_cache = 0;
+    lua_ctx_add_package_path(&g_app->lua, sample_dir);
   }
 
-  if (!lua_ctx_load_entry(&g_app.lua, modbuf))
+  if (!lua_ctx_load_entry(&g_app->lua, modbuf))
     return SDL_APP_FAILURE;
-  lua_ctx_call_init(&g_app.lua);
-  if (g_app.cfg_w > 0 && g_app.cfg_h > 0) {
-    SDL_SetWindowSize(g_app.window, g_app.cfg_w, g_app.cfg_h);
-  }
-  if (!app_backend_init(&g_app))
+  lua_ctx_call_init(&g_app->lua);
+  if (lub_host_start(g_ctx) != LUB_OK)
     return SDL_APP_FAILURE;
-
-  if (capture_path) {
-    capture_schedule(&g_app.capture, capture_path, capture_frame);
-    SDL_Log("capture scheduled: path=%s at_frame=%llu", capture_path,
-            (unsigned long long)capture_frame);
-  }
   return SDL_APP_CONTINUE;
 }
 
@@ -258,50 +244,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     return SDL_APP_CONTINUE;
   }
 #endif
-  if (event->type == SDL_EVENT_QUIT)
+  LubEventData ev;
+  if (!lub_host_translate_event(g_app, event, &ev))
+    return SDL_APP_CONTINUE;
+  if (ev.kind == LUB_EVENT_KIND_QUIT)
     return SDL_APP_SUCCESS;
-  if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
-    g_app.pending_resize = true;
-  }
-  switch (event->type) {
-  case SDL_EVENT_KEY_DOWN:
-    if (!event->key.repeat && event->key.scancode < SDL_SCANCODE_COUNT)
-      g_app.key_pressed[event->key.scancode] = true;
-    break;
-  case SDL_EVENT_KEY_UP:
-    if (event->key.scancode < SDL_SCANCODE_COUNT)
-      g_app.key_released[event->key.scancode] = true;
-    break;
-  case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    g_app.mouse_pressed_mask |= SDL_BUTTON_MASK(event->button.button);
-    break;
-  case SDL_EVENT_MOUSE_BUTTON_UP:
-    g_app.mouse_released_mask |= SDL_BUTTON_MASK(event->button.button);
-    break;
-  case SDL_EVENT_MOUSE_MOTION:
-    g_app.mouse_rel_x += event->motion.xrel;
-    g_app.mouse_rel_y += event->motion.yrel;
-    break;
-  case SDL_EVENT_MOUSE_WHEEL:
-    g_app.mouse_wheel_x += event->wheel.x;
-    g_app.mouse_wheel_y += event->wheel.y;
-    break;
-  default:
-    break;
-  }
-  lua_ctx_call_event(&g_app.lua, event);
+  lua_ctx_call_event(&g_app->lua, &ev);
   return SDL_APP_CONTINUE;
-}
-
-static void input_latch_clear(App *app) {
-  memset(app->key_pressed, 0, sizeof(app->key_pressed));
-  memset(app->key_released, 0, sizeof(app->key_released));
-  app->mouse_pressed_mask = 0;
-  app->mouse_released_mask = 0;
-  app->mouse_rel_x = 0.0f;
-  app->mouse_rel_y = 0.0f;
-  app->mouse_wheel_x = 0.0f;
-  app->mouse_wheel_y = 0.0f;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
@@ -313,45 +262,14 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return SDL_APP_CONTINUE;
   }
 #endif
-  int w, h;
-  SDL_GetWindowSizeInPixels(g_app.window, &w, &h);
-  if (w == 0 || h == 0) {
+  float dt = 0.0f;
+  if (!lub_host_frame_begin(g_ctx, &dt)) {
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
   }
-  uint64_t now = SDL_GetPerformanceCounter();
-  if (g_app.fixed_frame_dt > 0.0) {
-    g_app.frame_dt = g_app.fixed_frame_dt;
-  } else if (g_app.frame_prev_counter != 0) {
-    g_app.frame_dt = (double)(now - g_app.frame_prev_counter) /
-                     (double)SDL_GetPerformanceFrequency();
-    if (g_app.frame_dt > 0.25)
-      g_app.frame_dt = 0.25;
-  } else {
-    g_app.frame_dt = 1.0 / 60.0;
-  }
-  g_app.frame_prev_counter = now;
-  uint64_t profile_frame = g_app.frame_index;
-  profile_frame_begin(&g_app.profile, profile_frame);
-  profile_begin_scope(&g_app.profile, "runtime.begin_frame");
-  app_frame_begin(&g_app, &w, &h);
-  profile_end_scope(&g_app.profile, "runtime.begin_frame");
-  ui_new_frame(&g_app, (float)g_app.frame_dt, w, h);
-  profile_begin_scope(&g_app.profile, "script.onFrame");
-  lua_ctx_call_frame(&g_app.lua, g_app.frame_dt);
-  profile_end_scope(&g_app.profile, "script.onFrame");
-  input_latch_clear(&g_app);
-  profile_begin_scope(&g_app.profile, "runtime.pass_guard");
-  if (pass_state_in_pass(&g_app.pass))
-    pass_state_end(&g_app.pass);
-  profile_end_scope(&g_app.profile, "runtime.pass_guard");
-  profile_begin_scope(&g_app.profile, "runtime.end_frame");
-  app_frame_end(&g_app);
-  profile_end_scope(&g_app.profile, "runtime.end_frame");
-  profile_frame_end(&g_app.profile, profile_frame);
-  if (g_app.quit_requested)
-    return SDL_APP_SUCCESS;
-  if (g_app.capture_then_exit)
+  lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
+  lub_host_frame_end(g_ctx);
+  if (lub_host_quit_requested(g_ctx))
     return SDL_APP_SUCCESS;
   return SDL_APP_CONTINUE;
 }
@@ -366,16 +284,15 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     return;
   }
 #endif
-  if (!g_app_initialized) {
+  if (!g_ctx) {
     SDL_Quit();
     return;
   }
-  lua_ctx_call_quit(&g_app.lua);
-  ui_shutdown();
-  app_shutdown(&g_app);
-  lua_ctx_shutdown(&g_app.lua);
+  lua_ctx_call_quit(&g_app->lua);
 #ifndef __EMSCRIPTEN__
   tcs_pipeline_stop(&g_tcs);
 #endif
-  SDL_Quit();
+  lub_host_destroy(g_ctx);
+  g_ctx = NULL;
+  g_app = NULL;
 }
