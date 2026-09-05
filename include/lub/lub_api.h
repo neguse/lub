@@ -14,9 +14,8 @@
 //     だけ持つ。
 //   - main thread 限定。
 //
-// 段階 3 の途中の形: gfx / input / sys / profiler / host / audio / io / png /
-// font / ui / mesh がこの API を通る。残り (phys2d / phys3d) は順に移す。段階 4
-// で この header は cs-lib/lub_stub.cs からの生成物になる。
+// 段階 3 の形: 全 subsystem がこの API を通る。段階 4 で この header は
+// cs-lib/lub_stub.cs からの生成物になる。
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,6 +29,9 @@ typedef struct LubContext LubContext;
 typedef enum LubStatus {
   LUB_OK = 0,
   LUB_ERROR = 1,
+  // 問い合わせの対象 (handle / key) が無い。想定内の結果なので last_error は
+  // 書かない。
+  LUB_NOT_FOUND = 2,
 } LubStatus;
 
 // UTF-8 の byte 列。ptr は len byte だけ有効で NUL 終端は要らない。
@@ -48,6 +50,18 @@ typedef struct LubView {
 // runtime 所有の resource への handle。0 = 無し。resource が sweep されるまで
 // 同じ値で、hot reload を跨いでも有効。
 typedef int32_t LubHandle;
+
+typedef struct LubVec2 {
+  float x, y;
+} LubVec2;
+
+typedef struct LubVec3 {
+  float x, y, z;
+} LubVec3;
+
+typedef struct LubQuat {
+  float x, y, z, w;
+} LubQuat;
 
 // 直近の LUB_ERROR の message。次の API 呼び出しまで有効。
 const char *lub_last_error(LubContext *ctx);
@@ -525,6 +539,681 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *desc);
 LubStatus lub_gfx_readback(LubContext *ctx, LubStr key, bool has_request,
                            LubHandle tex, int32_t token,
                            LubGfxReadbackResult *out);
+
+// ---------------------------------------------------------------- phys2d
+// Box2D の即時モード API。world / body / shape / chain / joint は key で毎
+// フレーム宣言し、begin から step までに宣言されなかったものは step で prune
+// される (begin の prune=false で抑止)。handle は entry の寿命に結ぶ:
+// prune されるまで同じ値で、prune 後は stale (find で引き直す)。
+// filter の bit は Box2D の 64 bit mask をそのまま持つ (Lua 面は hex 文字列、
+// C# は ulong)。
+//
+// callback (world desc の callbacks、query の visitor) は呼び出し元と同じ
+// thread で呼ばれ、渡す struct は呼び出しの間だけ有効。callback の中から
+// 物理を変える API を呼ぶと LUB_ERROR。
+
+typedef enum LubPhys2dBodyType {
+  LUB_PHYS2D_BODY_TYPE_STATIC = 0,
+  LUB_PHYS2D_BODY_TYPE_KINEMATIC = 1,
+  LUB_PHYS2D_BODY_TYPE_DYNAMIC = 2,
+} LubPhys2dBodyType;
+
+typedef enum LubPhys2dShapeKind {
+  LUB_PHYS2D_SHAPE_KIND_BOX = 1,
+  LUB_PHYS2D_SHAPE_KIND_CIRCLE = 2,
+  LUB_PHYS2D_SHAPE_KIND_CAPSULE = 3,
+  LUB_PHYS2D_SHAPE_KIND_SEGMENT = 4,
+  LUB_PHYS2D_SHAPE_KIND_POLYGON = 5,
+  LUB_PHYS2D_SHAPE_KIND_CHAIN_SEGMENT = 6,
+} LubPhys2dShapeKind;
+
+typedef enum LubPhys2dJointType {
+  LUB_PHYS2D_JOINT_TYPE_DISTANCE = 1,
+  LUB_PHYS2D_JOINT_TYPE_FILTER = 2,
+  LUB_PHYS2D_JOINT_TYPE_MOTOR = 3,
+  LUB_PHYS2D_JOINT_TYPE_MOUSE = 4,
+  LUB_PHYS2D_JOINT_TYPE_PRISMATIC = 5,
+  LUB_PHYS2D_JOINT_TYPE_REVOLUTE = 6,
+  LUB_PHYS2D_JOINT_TYPE_WELD = 7,
+  LUB_PHYS2D_JOINT_TYPE_WHEEL = 8,
+} LubPhys2dJointType;
+
+typedef enum LubPhys2dEventKind {
+  LUB_PHYS2D_EVENT_KIND_BEGIN = 0,
+  LUB_PHYS2D_EVENT_KIND_END = 1,
+  LUB_PHYS2D_EVENT_KIND_HIT = 2,
+} LubPhys2dEventKind;
+
+typedef enum LubPhys2dProxyKind {
+  LUB_PHYS2D_PROXY_KIND_CIRCLE = 1,
+  LUB_PHYS2D_PROXY_KIND_CAPSULE = 2,
+  LUB_PHYS2D_PROXY_KIND_SEGMENT = 3,
+  LUB_PHYS2D_PROXY_KIND_BOX = 4,
+  LUB_PHYS2D_PROXY_KIND_POLYGON = 5,
+} LubPhys2dProxyKind;
+
+typedef struct LubPhys2dFilter {
+  uint64_t category_bits; // 既定 1
+  uint64_t mask_bits;     // 既定 全 bit
+  int32_t group_index;
+} LubPhys2dFilter;
+
+// shape の識別。event / query / callback が返す。文字列は runtime が持ち、
+// その shape (か tombstone) が生きている間有効。
+typedef struct LubPhys2dShapePart {
+  LubHandle shape; // shape か chain の handle。0 = 無し
+  LubHandle body;
+  LubStr body_key;
+  LubStr shape_key;
+  LubStr chain_key; // len 0 = chain segment ではない
+  LubStr tag;
+  LubStr material_name;
+  int32_t material_id;
+  int32_t kind; // LubPhys2dShapeKind。0 = 不明
+  bool valid;   // shape が live
+  bool has_material;
+  bool has_filter;
+  LubPhys2dFilter filter;
+} LubPhys2dShapePart;
+
+typedef struct LubPhys2dManifoldPoint {
+  float x, y;
+  float anchor_a_x, anchor_a_y;
+  float anchor_b_x, anchor_b_y;
+  float separation;
+  float normal_impulse, tangent_impulse, total_normal_impulse;
+  float normal_velocity;
+  int32_t id;
+  bool persisted;
+} LubPhys2dManifoldPoint;
+
+typedef struct LubPhys2dPreSolve {
+  LubPhys2dShapePart a, b;
+  float nx, ny;
+  float rolling_impulse;
+  int32_t point_count; // 0..2
+  LubPhys2dManifoldPoint points[2];
+} LubPhys2dPreSolve;
+
+// 全部 NULL = callback 無し。生存期間は次の world 宣言か step まで。
+typedef struct LubPhys2dCallbacks {
+  void *user;
+  bool (*filter)(void *user, const LubPhys2dShapePart *a,
+                 const LubPhys2dShapePart *b);
+  bool (*pre_solve)(void *user, const LubPhys2dPreSolve *contact);
+  float (*friction)(void *user, float friction_a, int32_t material_a,
+                    float friction_b, int32_t material_b);
+  float (*restitution)(void *user, float restitution_a, int32_t material_a,
+                       float restitution_b, int32_t material_b);
+} LubPhys2dCallbacks;
+
+typedef struct LubPhys2dWorldDesc {
+  bool has_version;
+  int32_t version;
+  float gravity_x, gravity_y; // 既定 (0, -9.8)
+  float fixed_dt;             // 既定 1/60
+  int32_t substeps;           // 既定 4
+  int32_t max_steps;          // 既定 4
+  bool sleep;                 // 既定 true
+  bool continuous;            // 既定 true
+  bool has_hit_event_threshold;
+  float hit_event_threshold;
+  LubPhys2dCallbacks callbacks;
+} LubPhys2dWorldDesc;
+
+typedef struct LubPhys2dBodyDesc {
+  bool has_version;
+  int32_t version;
+  int32_t type; // LubPhys2dBodyType
+  bool fixed_rotation;
+  bool bullet;
+  bool has_enabled, enabled;
+  bool has_awake, awake;
+  bool has_sleep, sleep;
+  float gravity_scale; // 既定 1
+  float linear_damping, angular_damping;
+  bool has_sleep_threshold;
+  float sleep_threshold;
+  // initial (再生成のときだけ使う)
+  float x, y, angle;
+  float vx, vy, w;
+  bool initial_awake; // 既定 true
+} LubPhys2dBodyDesc;
+
+typedef struct LubPhys2dShapeDesc {
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density;  // 既定 dynamic 1 / それ以外 0
+  float friction; // 既定 0.6
+  float restitution;
+  int32_t material_id;
+  LubStr material_name; // len 0 = 無し
+  LubStr tag;           // len 0 = 無し
+  bool sensor, contact, hit, sensor_events, pre_solve;
+  LubPhys2dFilter filter;
+} LubPhys2dShapeDesc;
+
+typedef struct LubPhys2dBoxDesc {
+  LubPhys2dShapeDesc shape;
+  float hx, hy, cx, cy, angle;
+} LubPhys2dBoxDesc;
+
+typedef struct LubPhys2dCircleDesc {
+  LubPhys2dShapeDesc shape;
+  float r, cx, cy;
+} LubPhys2dCircleDesc;
+
+typedef struct LubPhys2dCapsuleDesc {
+  LubPhys2dShapeDesc shape;
+  float ax, ay, bx, by, r;
+} LubPhys2dCapsuleDesc;
+
+typedef struct LubPhys2dSegmentDesc {
+  LubPhys2dShapeDesc shape;
+  float ax, ay, bx, by;
+} LubPhys2dSegmentDesc;
+
+typedef struct LubPhys2dPolygonDesc {
+  LubPhys2dShapeDesc shape;
+  const float *points; // x, y の組。3..8 点
+  int32_t point_count;
+  float radius, cx, cy, angle;
+} LubPhys2dPolygonDesc;
+
+typedef struct LubPhys2dSurfaceMaterial {
+  float friction, restitution;
+  int32_t material_id;
+} LubPhys2dSurfaceMaterial;
+
+typedef struct LubPhys2dChainDesc {
+  int32_t version;     // 必須 (chain は version 無しの宣言を受けない)
+  const float *points; // x, y の組。4 点以上
+  int32_t point_count;
+  bool loop;
+  float friction; // 既定 0.6
+  float restitution;
+  int32_t material_id;
+  LubStr material_name;
+  LubStr tag;
+  bool sensor_events;
+  LubPhys2dFilter filter;
+  const LubPhys2dSurfaceMaterial *materials; // NULL = 無し
+  int32_t material_count;                    // 1 か point_count
+} LubPhys2dChainDesc;
+
+typedef struct LubPhys2dJointDesc {
+  bool has_version;
+  int32_t version;
+  int32_t type; // LubPhys2dJointType
+  LubHandle body_a, body_b;
+  LubVec2 local_anchor_a, local_anchor_b;
+  LubVec2 local_axis_a; // 既定 (1, 0)
+  LubVec2 linear_offset;
+  LubVec2 target;
+  float reference_angle;
+  float length;     // 既定 1
+  float min_length; // 既定 0
+  float max_length; // 既定 1
+  float lower;      // 既定 0
+  float upper;      // 既定 1
+  float target_angle, target_translation, angular_offset;
+  float hertz, damping_ratio;
+  float linear_hertz, angular_hertz;
+  float linear_damping_ratio, angular_damping_ratio;
+  float max_force;  // 既定 1
+  float max_torque; // 既定 1
+  float motor_speed;
+  float correction_factor; // 既定 0.3
+  float draw_size;         // 既定 0.25
+  bool collide_connected, enable_spring, enable_limit, enable_motor;
+} LubPhys2dJointDesc;
+
+// desc に既定値を入れる (callbacks / 文字列は空)。
+void lub_phys2d_world_desc_init(LubPhys2dWorldDesc *desc);
+void lub_phys2d_body_desc_init(LubPhys2dBodyDesc *desc);
+void lub_phys2d_shape_desc_init(LubPhys2dShapeDesc *desc);
+void lub_phys2d_chain_desc_init(LubPhys2dChainDesc *desc);
+void lub_phys2d_joint_desc_init(LubPhys2dJointDesc *desc);
+
+typedef struct LubPhys2dWorldInfo {
+  LubStr key;
+  bool valid;
+  int32_t version;
+  int32_t generation;
+  bool begun, prune;
+  float fixed_dt;
+  int32_t substeps, max_steps;
+  float accumulator;
+  int32_t pending_commands;
+  bool callback_filter, callback_pre_solve, callback_friction,
+      callback_restitution;
+  // 以下は valid のとき
+  float gravity_x, gravity_y;
+  bool sleep, continuous, warm_starting;
+  float restitution_threshold, hit_event_threshold, maximum_linear_speed;
+  int32_t awake_body_count;
+} LubPhys2dWorldInfo;
+
+typedef struct LubPhys2dStepInfo {
+  int32_t steps;
+  int32_t commands;
+  float alpha;
+  bool dropped;
+  int32_t contact_begins, contact_ends, contact_hits;
+  int32_t sensor_begins, sensor_ends;
+  int32_t body_moves;
+} LubPhys2dStepInfo;
+
+typedef struct LubPhys2dPose {
+  float x, y, angle;
+  float vx, vy, w;
+  bool awake, enabled, sleep;
+  float sleep_threshold;
+} LubPhys2dPose;
+
+typedef struct LubPhys2dVelocity {
+  float x, y, w;
+} LubPhys2dVelocity;
+
+typedef struct LubPhys2dMassData {
+  float mass, inertia;
+  float center_x, center_y; // world
+  float local_center_x, local_center_y;
+} LubPhys2dMassData;
+
+typedef struct LubPhys2dAabb {
+  float min_x, min_y, max_x, max_y;
+} LubPhys2dAabb;
+
+typedef struct LubPhys2dShapeInfo {
+  LubPhys2dShapePart part;
+  float density, friction, restitution;
+  bool sensor, sensor_events, contact, pre_solve, hit;
+  LubPhys2dAabb aabb;
+} LubPhys2dShapeInfo;
+
+typedef struct LubPhys2dJointView {
+  LubHandle joint;
+  LubStr key;
+  int32_t type; // LubPhys2dJointType。0 = 不明
+  LubStr a, b;  // body の key
+  bool valid;
+} LubPhys2dJointView;
+
+typedef struct LubPhys2dJointInfo {
+  LubPhys2dJointView view;
+  bool collide_connected;
+  float force_x, force_y, torque;
+  float linear_separation, angular_separation;
+  bool has_local_anchors;
+  LubVec2 local_anchor_a, local_anchor_b;
+  bool has_local_axis;
+  LubVec2 local_axis_a;
+  bool has_reference_angle;
+  float reference_angle;
+} LubPhys2dJointInfo;
+
+// step が集めた contact / sensor event。a / b の filter は無い。
+typedef struct LubPhys2dContact {
+  LubPhys2dShapePart a, b; // sensor event では a = sensor、b = visitor
+  float nx, ny;
+  int32_t point_count;
+  float x, y;
+  float approach_speed; // hit のとき
+} LubPhys2dContact;
+
+typedef struct LubPhys2dBodyEvent {
+  LubStr body;
+  bool valid;
+  float x, y, angle;
+  bool fell_asleep;
+} LubPhys2dBodyEvent;
+
+// body に今触れている contact (live)。
+typedef struct LubPhys2dContactData {
+  LubPhys2dShapePart a, b;
+  float nx, ny;
+  int32_t point_count;
+  float x, y, separation;
+} LubPhys2dContactData;
+
+typedef struct LubPhys2dRay {
+  float x, y;         // origin
+  float dx, dy;       // translation
+  float max_fraction; // 既定 1
+} LubPhys2dRay;
+
+typedef struct LubPhys2dRayHit {
+  LubPhys2dShapePart shape; // world query のとき
+  float x, y, nx, ny, fraction;
+  int32_t iterations;               // shape raycast のとき
+  int32_t node_visits, leaf_visits; // raycast_closest のとき
+} LubPhys2dRayHit;
+
+typedef struct LubPhys2dTreeStats {
+  int32_t node_visits, leaf_visits;
+} LubPhys2dTreeStats;
+
+typedef struct LubPhys2dQueryFilter {
+  uint64_t category_bits; // 既定 1
+  uint64_t mask_bits;     // 既定 全 bit
+} LubPhys2dQueryFilter;
+
+typedef struct LubPhys2dShapeProxy {
+  int32_t kind;         // LubPhys2dProxyKind
+  float x, y, angle;    // 配置
+  float r;              // circle / capsule / polygon / box の丸め
+  float cx, cy;         // circle / box の中心
+  float ax, ay, bx, by; // capsule / segment
+  float hx, hy;         // box
+  const float *points;  // polygon (x, y の組)
+  int32_t point_count;
+} LubPhys2dShapeProxy;
+
+typedef struct LubPhys2dMover {
+  float ax, ay, bx, by, r;
+} LubPhys2dMover;
+
+typedef struct LubPhys2dMoverPlane {
+  LubPhys2dShapePart shape;
+  bool hit;
+  float x, y, nx, ny, offset;
+} LubPhys2dMoverPlane;
+
+typedef struct LubPhys2dExplosionDesc {
+  float x, y;
+  float radius, falloff, impulse_per_length;
+  uint64_t mask_bits; // 既定 全 bit
+} LubPhys2dExplosionDesc;
+
+typedef struct LubPhys2dDebugDesc {
+  bool shapes; // 既定 true
+  bool joints, joint_extras, bounds, mass, body_names, contacts, graph_colors,
+      contact_normals, contact_impulses, contact_features, friction_impulses,
+      islands;
+  bool has_drawing_bounds;
+  LubPhys2dAabb drawing_bounds;
+} LubPhys2dDebugDesc;
+
+// 平らな float 配列。次の lub_phys2d_debug まで有効。色は r g b a。
+typedef struct LubPhys2dDebugData {
+  const float *segments; // x1 y1 x2 y2 + 色
+  int32_t segment_count; // float の個数
+  const float *circles;  // cx cy r + 色
+  int32_t circle_count;
+  const float *capsules; // x1 y1 x2 y2 r + 色
+  int32_t capsule_count;
+  const float *polygons; // n solid + 色 + x0 y0 ... (n 点)
+  int32_t polygon_count;
+  const float *points; // x y size + 色
+  int32_t point_count;
+} LubPhys2dDebugData;
+
+typedef struct LubPhys2dProfile {
+  float step, pairs, collide, solve, merge_islands, prepare_stages,
+      solve_constraints, prepare_constraints, integrate_velocities, warm_start,
+      solve_impulses, integrate_positions, relax_impulses, apply_restitution,
+      store_impulses, split_islands, transforms, hit_events, refit, bullets,
+      sleep_islands, sensors;
+} LubPhys2dProfile;
+
+typedef struct LubPhys2dCounters {
+  int32_t body_count, shape_count, contact_count, joint_count, island_count,
+      stack_used, static_tree_height, tree_height, byte_count, task_count;
+  int32_t color_counts[12];
+} LubPhys2dCounters;
+
+typedef struct LubPhys2dSetVelocity {
+  bool has_vx, has_vy, has_w;
+  float vx, vy, w;
+  bool wake;
+} LubPhys2dSetVelocity;
+
+typedef struct LubPhys2dTeleport {
+  bool has_x, has_y, has_angle;
+  float x, y, angle;
+  bool wake;
+} LubPhys2dTeleport;
+
+typedef struct LubPhys2dSetTarget {
+  bool has_x, has_y, has_angle;
+  float x, y, angle;
+  float time_step; // <= 0 で world の fixed_dt
+  bool wake;
+} LubPhys2dSetTarget;
+
+typedef struct LubPhys2dMassDataDesc {
+  float mass, inertia;
+  float center_x, center_y; // local
+} LubPhys2dMassDataDesc;
+
+typedef struct LubPhys2dJointMotor {
+  bool enabled;
+  float speed, max_force, max_torque;
+  bool has_correction_factor; // motor joint
+  float correction_factor;
+} LubPhys2dJointMotor;
+
+typedef struct LubPhys2dJointLimit {
+  bool enabled;
+  float lower, upper;           // prismatic / revolute / wheel
+  float min_length, max_length; // distance
+} LubPhys2dJointLimit;
+
+typedef struct LubPhys2dJointSpring {
+  bool enabled;
+  float hertz, damping_ratio;
+  float linear_hertz, linear_damping_ratio; // weld
+  float angular_hertz, angular_damping_ratio;
+} LubPhys2dJointSpring;
+
+typedef struct LubPhys2dJointTarget {
+  bool has_x, has_y; // mouse。無い成分は今の値
+  float x, y;
+  bool has_translation; // prismatic
+  float translation;
+  bool has_angle; // revolute
+  float angle;
+  bool has_linear_offset; // motor
+  float linear_offset_x, linear_offset_y;
+  bool has_angular_offset;
+  float angular_offset;
+} LubPhys2dJointTarget;
+
+typedef struct LubPhys2dMaterialDesc {
+  bool has_density, has_friction, has_restitution, has_material_id,
+      has_material_name;
+  float density, friction, restitution;
+  int32_t material_id;
+  LubStr material_name; // has_material_name で len 0 = 名前を消す
+} LubPhys2dMaterialDesc;
+
+typedef struct LubPhys2dEventFlags {
+  bool has_sensor_events, sensor_events;
+  bool has_contact, contact;
+  bool has_pre_solve, pre_solve;
+  bool has_hit, hit;
+} LubPhys2dEventFlags;
+
+// query の visitor。false / 0 で打ち切り。raycast は Box2D の規約:
+// -1 = この hit を無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行。
+typedef bool (*LubPhys2dOverlapFn)(void *user, const LubPhys2dShapePart *shape);
+typedef float (*LubPhys2dRayFn)(void *user, const LubPhys2dRayHit *hit);
+typedef bool (*LubPhys2dPlaneFn)(void *user, const LubPhys2dMoverPlane *plane);
+
+LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
+                           const LubPhys2dWorldDesc *desc, LubHandle *out);
+LubHandle lub_phys2d_world_find(LubContext *ctx, LubStr key);
+LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world, bool prune);
+LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
+                                LubPhys2dWorldInfo *out);
+LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
+                          LubPhys2dStepInfo *out);
+
+LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
+                          const LubPhys2dBodyDesc *desc, LubHandle *out);
+LubHandle lub_phys2d_body_find(LubContext *ctx, LubHandle world, LubStr key);
+LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
+                         const LubPhys2dBoxDesc *desc, LubHandle *out);
+LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
+                            const LubPhys2dCircleDesc *desc, LubHandle *out);
+LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubPhys2dCapsuleDesc *desc, LubHandle *out);
+LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubPhys2dSegmentDesc *desc, LubHandle *out);
+LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubPhys2dPolygonDesc *desc, LubHandle *out);
+LubHandle lub_phys2d_shape_find(LubContext *ctx, LubHandle body, LubStr key);
+LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
+                           const LubPhys2dChainDesc *desc, LubHandle *out);
+LubHandle lub_phys2d_chain_find(LubContext *ctx, LubHandle body, LubStr key);
+// 配列の view は同じ subsystem の次の呼び出しまで有効。
+LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
+                                    const LubPhys2dShapePart **items,
+                                    int32_t *count);
+
+LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
+                           const LubPhys2dJointDesc *desc, LubHandle *out);
+LubHandle lub_phys2d_joint_find(LubContext *ctx, LubHandle world, LubStr key);
+LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
+                                LubPhys2dJointInfo *out);
+LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint, float *x,
+                                 float *y);
+LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint, float *out);
+// joint の種類に無い量は has = false。
+LubStatus lub_phys2d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has);
+LubStatus lub_phys2d_joint_translation(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has);
+LubStatus lub_phys2d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has);
+LubStatus lub_phys2d_joint_length(LubContext *ctx, LubHandle joint, float *out,
+                                  bool *has);
+LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has);
+LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx, LubHandle joint,
+                                        float *out, bool *has);
+LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                     const LubPhys2dJointMotor *desc);
+LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                     const LubPhys2dJointLimit *desc);
+LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                      const LubPhys2dJointSpring *desc);
+LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                      const LubPhys2dJointTarget *desc);
+
+LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body, LubPhys2dPose *out);
+LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
+                              LubPhys2dVelocity *out);
+LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body,
+                          LubPhys2dMassData *out);
+LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, float *x,
+                            float *y);
+LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, float lx,
+                                 float ly, float *x, float *y);
+LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body, float wx,
+                                 float wy, float *x, float *y);
+LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body, float wx,
+                                 float wy, float *x, float *y);
+LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
+                                 const LubPhys2dShapePart **items,
+                                 int32_t *count);
+LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
+                                 const LubPhys2dJointView **items,
+                                 int32_t *count);
+LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
+                                   const LubPhys2dContactData **items,
+                                   int32_t *count);
+
+LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape, float x,
+                                      float y, bool *out);
+LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
+                                   const LubPhys2dRay *ray,
+                                   LubPhys2dRayHit *out, bool *hit);
+LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
+                                         float x, float y, float *ox,
+                                         float *oy);
+LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
+                                LubPhys2dAabb *out);
+LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
+                                LubPhys2dShapeInfo *out);
+LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
+                                        const LubPhys2dMaterialDesc *desc);
+LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                      const LubPhys2dFilter *filter);
+LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
+                                      const LubPhys2dEventFlags *flags);
+
+LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
+                              const LubPhys2dContact **items, int32_t *count);
+LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
+                                 const LubPhys2dBodyEvent **items,
+                                 int32_t *count);
+// kind は BEGIN / END。
+LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
+                             const LubPhys2dContact **items, int32_t *count);
+
+LubStatus lub_phys2d_raycast_closest(LubContext *ctx, LubHandle world,
+                                     const LubPhys2dRay *ray,
+                                     const LubPhys2dQueryFilter *filter,
+                                     LubPhys2dRayHit *out, bool *hit);
+LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
+                             const LubPhys2dRay *ray,
+                             const LubPhys2dQueryFilter *filter,
+                             LubPhys2dRayFn fn, void *user,
+                             LubPhys2dTreeStats *stats);
+LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                  const LubPhys2dAabb *aabb,
+                                  const LubPhys2dQueryFilter *filter,
+                                  LubPhys2dOverlapFn fn, void *user,
+                                  LubPhys2dTreeStats *stats);
+LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
+                                const LubPhys2dShapeProxy *proxy, float dx,
+                                float dy, const LubPhys2dQueryFilter *filter,
+                                LubPhys2dRayFn fn, void *user,
+                                LubPhys2dTreeStats *stats);
+LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
+                                const LubPhys2dMover *mover, float dx, float dy,
+                                const LubPhys2dQueryFilter *filter,
+                                float *fraction);
+LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
+                                   const LubPhys2dMover *mover,
+                                   const LubPhys2dQueryFilter *filter,
+                                   LubPhys2dPlaneFn fn, void *user);
+LubStatus lub_phys2d_explode(LubContext *ctx, LubHandle world,
+                             const LubPhys2dExplosionDesc *desc);
+LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
+                           const LubPhys2dDebugDesc *desc,
+                           LubPhys2dDebugData *out);
+LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world,
+                             LubPhys2dProfile *out);
+LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
+                              LubPhys2dCounters *out);
+
+// body への command。次の step の冒頭でまとめて適用する。point == NULL は
+// 重心。
+LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body, float fx,
+                               float fy, const LubVec2 *point, bool wake);
+LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body, float fx,
+                                      float fy, bool wake);
+LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body, float ix,
+                                 float iy, const LubVec2 *point, bool wake);
+LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                        float ix, float iy, bool wake);
+LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body, float torque,
+                                bool wake);
+LubStatus lub_phys2d_add_angular_impulse(LubContext *ctx, LubHandle body,
+                                         float impulse, bool wake);
+LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
+                                  const LubPhys2dSetVelocity *desc);
+LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
+                              const LubPhys2dTeleport *desc);
+LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
+                                const LubPhys2dSetTarget *desc);
+LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
+                                   const LubPhys2dMassDataDesc *desc,
+                                   bool wake);
 
 #ifdef __cplusplus
 }

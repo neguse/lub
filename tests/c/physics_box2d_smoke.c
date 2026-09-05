@@ -1,9 +1,14 @@
+// phys2d の C smoke: App を最小限に組み、Lua 面 (src/lua_phys2d.c) 経由で
+// C API を回す。GPU も window も要らない。
+#include "api_internal.h"
+#include "lua_phys.h"
 #include "physics_box2d.h"
 
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
 #include <stdio.h>
+#include <string.h>
 
 static const char *SCRIPT =
     "local function check(cond, msg)\n"
@@ -209,30 +214,30 @@ static const char *SCRIPT =
     "return false, 180, y\n";
 
 int main(void) {
-  PhysState phys;
-  phys2d_state_init(&phys);
+  static App app;
+  memset(&app, 0, sizeof(app));
+  phys2d_state_init(&app.phys);
 
   lua_State *L = luaL_newstate();
   if (!L) {
     fprintf(stderr, "luaL_newstate failed\n");
-    phys2d_state_shutdown(&phys);
+    phys2d_state_shutdown(&app.phys);
     return 1;
   }
 
   luaL_openlibs(L);
-  phys2d_lua_set_state(&phys);
-  phys2d_lua_register(L);
+  phys2d_lua_register(L, lub_api_ctx(&app));
 
   if (luaL_loadstring(L, SCRIPT) != LUA_OK) {
     fprintf(stderr, "load failed: %s\n", lua_tostring(L, -1));
-    phys2d_state_shutdown(&phys);
+    phys2d_state_shutdown(&app.phys);
     lua_close(L);
     return 1;
   }
 
   if (lua_pcall(L, 0, 3, 0) != LUA_OK) {
     fprintf(stderr, "script failed: %s\n", lua_tostring(L, -1));
-    phys2d_state_shutdown(&phys);
+    phys2d_state_shutdown(&app.phys);
     lua_close(L);
     return 1;
   }
@@ -242,7 +247,7 @@ int main(void) {
   double y = lua_tonumber(L, -1);
   lua_pop(L, 3);
 
-  phys2d_state_shutdown(&phys);
+  phys2d_state_shutdown(&app.phys);
   lua_close(L);
 
   if (!ok) {

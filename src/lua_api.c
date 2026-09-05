@@ -4,8 +4,8 @@
 #include "backend.h"
 #include "enums.h"
 #include "enums_lua.h"
+#include "lua_phys.h"
 #include "pass.h"
-#include "physics_box2d.h"
 #include "physics_box3d.h"
 #include "pipeline.h"
 #include "resources.h"
@@ -2000,7 +2000,7 @@ void lua_api_register(lua_State *L) {
     lua_pushcfunction(L, ui_fns[i].fn);
     lua_setglobal(L, ui_fns[i].name);
   }
-  phys2d_lua_register(L);
+  phys2d_lua_register(L, lub_api_ctx(g_app_for_lua));
   phys3d_lua_register(L);
 }
 
@@ -2056,7 +2056,6 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
   }
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
-  phys2d_lua_set_state(&app->phys);
   phys3d_lua_set_state(&app->phys3);
   lua_api_register(ctx->L);
   return true;
