@@ -31,14 +31,13 @@ void enums_register(lua_State *L) {
   set_int(L, "DEPTH24_STENCIL8", SGL_PF_DEPTH24_STENCIL8);
   set_int(L, "DEPTH32F", SGL_PF_DEPTH32F);
   // Load/store actions
-  // DONTCARE/STORE/LOAD/CLEAR share Lua names across SglLoadAction and
+  // DONT_CARE/STORE/LOAD/CLEAR share Lua names across SglLoadAction and
   // SglStoreAction. Each is registered once with the LOAD-side value. The
   // pipeline builder remaps values to the correct enum (SglStore* vs SglLoad*)
-  // based on the field they appear in (load_action vs store_action). This is by
-  // design — see tasks.md Task 4 step 2.
+  // based on the field they appear in (load_action vs store_action).
   set_int(L, "CLEAR", SGL_LOAD_CLEAR);
   set_int(L, "LOAD", SGL_LOAD_LOAD);
-  set_int(L, "DONTCARE", SGL_LOAD_DONTCARE);
+  set_int(L, "DONT_CARE", SGL_LOAD_DONTCARE);
   set_int(L, "STORE", SGL_STORE_STORE);
 
   // Blend / Cull

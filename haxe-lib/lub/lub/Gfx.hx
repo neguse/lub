@@ -214,7 +214,7 @@ extern class Gfx {
 	// load / store
 	@:native("CLEAR") public static var CLEAR(default, null):Int;
 	@:native("LOAD") public static var LOAD(default, null):Int;
-	@:native("DONTCARE") public static var DONTCARE(default, null):Int;
+	@:native("DONT_CARE") public static var DONTCARE(default, null):Int;
 	@:native("STORE") public static var STORE(default, null):Int;
 	// blend / cull
 	@:native("NONE") public static var NONE(default, null):Int;

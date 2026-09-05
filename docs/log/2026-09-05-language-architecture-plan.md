@@ -13,7 +13,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | --- | --- | --- |
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
-| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。3f: stub の `object` 引数と戻り値を typed な class にする(残る `object` は draw / dispatch の bindings の `Dictionary<string, object>` だけ)。3g: 所有権の規則(Bytes は frame 有効の view、readback と snd は key で宣言する resource)。Lua binding は詰め替えだけに。残り: wire の整理 |
+| 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。3f: stub の `object` 引数と戻り値を typed な class にする(残る `object` は draw / dispatch の bindings の `Dictionary<string, object>` だけ)。3g: 所有権の規則(Bytes は frame 有効の view、readback と snd は key で宣言する resource)。3h: wire の整理(`DONT_CARE`、desc の別名 field の統一、文字列 enum の enum 化)。Lua binding は詰め替えだけに。`lub` 単一 table 化と `onInit` fallback の撤去は Haxe 撤去(段階 8)まで残す |
 | 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
@@ -160,3 +160,59 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   解ける。lubx の `Sfx` は波形を cache して呼ぶたびに version 1 で宣言し直す。
   20_audio は key "lab" を毎フレーム宣言し、パラメータが変わったら version
   を進める(遅延 free の仕組みは消えた)。
+- wire の整理(3h)。`DONTCARE` は `DONT_CARE` に直した(Haxe extern は
+  `@:native("DONT_CARE")`)。C 名は `lub_<ns>_<member>` で揃っていて、root の
+  `Lub.Config` / `Lub.Quit` だけ namespace 無しの `lub_config` / `lub_quit`。
+  Lua の PascalCase global と `onInit` fallback は Haxe が使うので段階 8 まで
+  残す。desc の別名 field(`A` / `BodyA`、`X, Y, Dx, Dy` / `Origin` /
+  `Translation` / `Delta` / `To`、`Px, Py` / `Point`、`Material` /
+  `UserMaterialId` / `MaterialId` 等)は段階 4 の header 生成の前提として
+  1 概念 1 field に統一し、文字列で持っていた enum(joint の type、shape の
+  kind、event の kind、proxy の kind、io / readback の status)は C# の enum に
+  する。Lua 面は従来どおり文字列のまま(`[LubLuaString]`)。
+
+## 段階 4 で決めたこと
+
+- header は stub から規則で導く。stub は Lua の wire の形(C# のゲームコード
+  が呼ぶ形)を記述したままにし、C の形は規則と少数の attribute で決める。
+  desc を束ねる手書きの構造体(3 段階までの `LubGfxTextureDesc` 等)は
+  やめ、C の関数は stub の関数と 1 対 1 にする。これで Lua binding、.NET の
+  facade、tcs→C の生成がどれも同じ規則の詰め替えになる。
+- 型の写像: `int` → `int32_t`、`double` → `float`、`bool` → `bool`、`string` →
+  `LubStr`、enum → `int32_t`(C の typed enum は定数の宣言だけ)、
+  `[LubHandle]` → `LubHandle`、`Bytes` → 入力は `const uint8_t *, int32_t len`、
+  出力は `LubView`、`List<T>` → `const T *, int32_t count`(入力は借用、出力は
+  runtime 所有の view)、`[LubArray(n)]` の `List<T>` / `T[]` → 固定長配列
+  `T x[n]`(List は `x_count` 付き)、class → `struct`、継承は先頭に `base` と
+  して埋め込む、`Func<...>` の field → `void *user` + 関数 pointer、
+  `Dictionary<string, object>`(draw / dispatch の bindings)→ `LubBinding`
+  (name + handle か float 列)の配列。
+- 省略可能(nullable)の写像: 値・enum・入れ子 class の field は `bool has_x` +
+  `x`、handle の field は 0、string の field は len 0、引数は pointer
+  (NULL = 無し)。既定値は C の実装が `has_x` を見て入れる(`*_desc_init`
+  は消える)。
+- 関数の写像: `LubContext *ctx` を先頭に取り、戻り値は原則 `LubStatus`。
+  C# の戻り値と `out` は C の out pointer。`[LubNoFail]` を付けた関数だけ
+  bool / float / int32_t を直接返す(input / ui / profiler 等)。nullable の
+  戻り値は class なら `LUB_NOT_FOUND`(対象が無い)、scalar なら `bool *has`
+  (値が無い)。class の戻り値で「無い」が通常の結果(raycast の hit 等)は
+  `[LubMaybe]` で `bool *has` にする。`List<T>` の戻り値は runtime 所有の
+  view(`const T **items, int32_t *count`)。
+- 面ごとの attribute は `[LubArray(n)]`、`[LubNoFail]`、`[LubMaybe]`、
+  `[LubLuaString]`(enum を Lua 面では小文字の文字列で持つ)、`[LubBits]`
+  (string field を Lua 面は hex 文字列、C は `uint64_t` で持つ。LUA_32BITS
+  で 64 bit 整数を面に出さないため)、`[LubNoC]`(Lua / C# 面だけの関数。
+  `readback(key)` の sentinel 作成)。
+- C の名前: 型は `Lub` + C# の型名(`LubJointDesc`、`LubJointDesc3d`)、
+  enum のメンバは `LUB_<NS>_<ENUM>_<MEMBER>`、関数は `lub_<ns>_<member>`。
+  段階 3 の手書き header にあった `LubPhys2dXxx` の接頭辞や `LubVec2` は
+  規則の出力(`LubVec2d`)に合わせて実装側を直す。
+- overload は禁止(C 名が衝突する)。`UseBuffer` の空確保は `UseBufferEmpty`
+  にし、Lua 面は prelude の alias で同じ関数を指す。`Readback.ReadTexture`
+  は `Gfx.ReadTexture(rb, ...)` の関数にする(Lua 面の `rb:read_texture` は
+  sentinel の metatable が同じ関数を指す)。
+- 生成物: `include/lub/lub_api.h`(4a)、Lua binding の詰め替え(4b、
+  `src/gen/`。callback の trampoline や sentinel の解決は手書きの helper を
+  呼ぶ)、API docs の JSON(4c、stub の XML doc から)。再生成の差分検査は
+  native gate に置く。Haxe が使う別名や多値の互換は生成物の外の shim
+  (`samples/lub_compat.lua`)に寄せ、段階 8 で消す。
