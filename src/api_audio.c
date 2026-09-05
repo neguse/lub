@@ -120,6 +120,19 @@ void api_audio_frame_end(App *app) {
   }
 }
 
+// f32 PCM の byte 列で宣言する (Lua 面の Bytes / string 経路)。
+LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
+                              int32_t data_len, int32_t channels, int32_t rate,
+                              const int32_t *version, int32_t *out) {
+  App *app = lub_api_app(ctx);
+  if (data && data_len % (int32_t)sizeof(float) != 0)
+    return lub_api_fail(app, "audio_snd: byte length %d is not f32-aligned",
+                        data_len);
+  return lub_audio_snd(ctx, key, (const float *)data,
+                       data_len / (int32_t)sizeof(float), channels, rate,
+                       version, out);
+}
+
 LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
                            LubView *pcm, int32_t *channels, int32_t *rate) {
   App *app = lub_api_app(ctx);
@@ -128,7 +141,7 @@ LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
   uint32_t frames = 0, ch = 0, r = 0;
   float *out = audio_decode_bytes(data, (size_t)len, &frames, &ch, &r);
   if (!out)
-    return lub_api_fail(app, "audio_decode: unsupported or corrupt data");
+    return LUB_NOT_FOUND;           // 対応しない / 壊れた data は nil で返す
   app_frame_garbage_push(app, out); // view の実体は frame の終わりに回収
   if (pcm) {
     pcm->ptr = (const uint8_t *)out;
@@ -142,37 +155,32 @@ LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
   return LUB_OK;
 }
 
-static void play_desc_defaults(const LubAudioPlayDesc *d,
-                               LubAudioPlayDesc *out) {
-  if (d) {
-    *out = *d;
-  } else {
-    out->volume = 1.0f;
-    out->pitch = 1.0f;
-    out->pan = 0.0f;
-    out->loop = false;
-  }
+static void play_opts(const LubPlayOpts *o, float *volume, float *pitch,
+                      float *pan) {
+  *volume = o && o->has_volume ? o->volume : 1.0f;
+  *pitch = o && o->has_pitch ? o->pitch : 1.0f;
+  *pan = o && o->has_pan ? o->pan : 0.0f;
 }
 
-bool lub_audio_play(LubContext *ctx, int32_t snd,
-                    const LubAudioPlayDesc *desc) {
+bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (!st)
     return false;
-  LubAudioPlayDesc d;
-  play_desc_defaults(desc, &d);
-  return audio_play(st, snd, d.volume, d.pitch, d.pan);
+  float volume, pitch, pan;
+  play_opts(opts, &volume, &pitch, &pan);
+  return audio_play(st, snd, volume, pitch, pan);
 }
 
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
-                     const LubAudioPlayDesc *desc) {
+                     const LubVoiceOpts *opts) {
   AudioState *st = audio_lazy(lub_api_app(ctx));
   char kbuf[128];
   if (!st || !lub_str_copy(key, kbuf, sizeof(kbuf)))
     return false;
-  LubAudioPlayDesc d;
-  play_desc_defaults(desc, &d);
-  return audio_voice(st, kbuf, snd, d.loop, d.volume, d.pitch, d.pan);
+  float volume, pitch, pan;
+  play_opts(opts ? &opts->base : NULL, &volume, &pitch, &pan);
+  bool loop = opts && opts->has_loop && opts->loop;
+  return audio_voice(st, kbuf, snd, loop, volume, pitch, pan);
 }
 
 void lub_audio_master_volume(LubContext *ctx, float volume) {

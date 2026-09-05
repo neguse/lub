@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// The tree arrives already flat (LubSdfNode array from the C API); it is
-// converted once into SdfNode (validating and precomputing as we go), so the
+// The tree arrives already flat (LubSdfNodeDescDesc array from the C API); it
+// is converted once into SdfNode (validating and precomputing as we go), so the
 // per-grid-point evaluation is a small recursion over node indices:
 // transforms rewrite the point on the way down, combinators merge child
 // distances on the way up.
@@ -311,10 +311,10 @@ static void sdf_aabb(const SdfNode *ns, int ni, float mn[3], float mx[3]) {
 }
 
 // ---------------------------------------------------------------------------
-// convert (LubSdfNode -> SdfNode, bone parts)
+// convert (LubSdfNodeDescDesc -> SdfNode, bone parts)
 
 typedef struct {
-  const LubSdfNode *in;
+  const LubSdfNodeDesc *in;
   int count;
   SdfTree *t;
   int depth;
@@ -344,24 +344,24 @@ static bool conv_node(SdfConv *c, int i) {
     return conv_fail(c, "sdf_mesh: node index out of range%s", "");
   if (++c->depth > SDF_MAX_DEPTH)
     return conv_fail(c, "sdf_mesh: tree deeper than the limit%s", "");
-  const LubSdfNode *in = &c->in[i];
+  const LubSdfNodeDesc *in = &c->in[i];
   SdfNode *n = &c->t->nodes[i];
   const float *q = in->params;
   memset(n, 0, sizeof(*n));
   n->a = -1;
   n->b = -1;
   switch (in->op) {
-  case LUB_SDF_OP_SPHERE:
+  case LUB_MESH_SDF_OP_SPHERE:
     n->op = OP_SPHERE;
     n->p[0] = q[0];
     break;
-  case LUB_SDF_OP_BOX:
+  case LUB_MESH_SDF_OP_BOX:
     n->op = OP_BOX;
     n->p[0] = q[0];
     n->p[1] = q[1];
     n->p[2] = q[2];
     break;
-  case LUB_SDF_OP_CAPSULE: {
+  case LUB_MESH_SDF_OP_CAPSULE: {
     n->op = OP_CAPSULE;
     n->p[0] = q[0];
     n->p[1] = q[1];
@@ -374,18 +374,18 @@ static bool conv_node(SdfConv *c, int i) {
     n->p[7] = baba > 0 ? 1.0f / baba : 0; // a == b degenerates to a sphere
     break;
   }
-  case LUB_SDF_OP_TORUS:
+  case LUB_MESH_SDF_OP_TORUS:
     n->op = OP_TORUS;
     n->p[0] = q[0];
     n->p[1] = q[1];
     break;
-  case LUB_SDF_OP_MOVE:
+  case LUB_MESH_SDF_OP_MOVE:
     n->op = OP_MOVE;
     n->p[0] = q[0];
     n->p[1] = q[1];
     n->p[2] = q[2];
     break;
-  case LUB_SDF_OP_ROTATE: {
+  case LUB_MESH_SDF_OP_ROTATE: {
     n->op = OP_ROTATE;
     float qx = q[0], qy = q[1], qz = q[2], qw = q[3];
     float ql = sqrtf(qx * qx + qy * qy + qz * qz + qw * qw);
@@ -406,16 +406,16 @@ static bool conv_node(SdfConv *c, int i) {
     n->p[8] = 1 - 2 * (qx * qx + qy * qy);
     break;
   }
-  case LUB_SDF_OP_SCALE:
+  case LUB_MESH_SDF_OP_SCALE:
     n->op = OP_SCALE;
     n->p[0] = q[0];
     if (n->p[0] <= 0)
       return conv_fail(c, "sdf_mesh: scale 's' must be > 0%s", "");
     break;
-  case LUB_SDF_OP_MIRROR_X:
+  case LUB_MESH_SDF_OP_MIRROR_X:
     n->op = OP_MIRROR_X;
     break;
-  case LUB_SDF_OP_PAINT:
+  case LUB_MESH_SDF_OP_PAINT:
     n->op = OP_PAINT;
     n->p[0] = q[0];
     n->p[1] = q[1];
@@ -423,7 +423,7 @@ static bool conv_node(SdfConv *c, int i) {
     n->p[3] = q[3];
     n->p[4] = q[4];
     break;
-  case LUB_SDF_OP_BONE: {
+  case LUB_MESH_SDF_OP_BONE: {
     n->op = OP_BONE;
     n->p[0] = q[0];
     n->p[1] = q[1];
@@ -448,20 +448,20 @@ static bool conv_node(SdfConv *c, int i) {
     part->path_len = c->xpath_len;
     break;
   }
-  case LUB_SDF_OP_UNION:
+  case LUB_MESH_SDF_OP_UNION:
     n->op = OP_UNION;
     break;
-  case LUB_SDF_OP_SMIN:
-  case LUB_SDF_OP_SSUB:
-    n->op = in->op == LUB_SDF_OP_SMIN ? OP_SMIN : OP_SSUB;
+  case LUB_MESH_SDF_OP_SMIN:
+  case LUB_MESH_SDF_OP_SSUB:
+    n->op = in->op == LUB_MESH_SDF_OP_SMIN ? OP_SMIN : OP_SSUB;
     n->p[0] = q[0];
     if (n->p[0] <= 0)
       return conv_fail(c, "sdf_mesh: node '%s' needs 'k' > 0", op_name(n->op));
     break;
-  case LUB_SDF_OP_SUBTRACT:
+  case LUB_MESH_SDF_OP_SUBTRACT:
     n->op = OP_SUBTRACT;
     break;
-  case LUB_SDF_OP_INTERSECT:
+  case LUB_MESH_SDF_OP_INTERSECT:
     n->op = OP_INTERSECT;
     break;
   default:
@@ -495,7 +495,7 @@ static bool conv_node(SdfConv *c, int i) {
   return true;
 }
 
-bool sdf_tree_convert(const LubSdfNode *nodes, int count, int root,
+bool sdf_tree_convert(const LubSdfNodeDesc *nodes, int count, int root,
                       SdfTree *out, char *err, size_t err_size) {
   memset(out, 0, sizeof(*out));
   if (!nodes || count <= 0 || root < 0 || root >= count) {

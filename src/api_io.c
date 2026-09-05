@@ -226,7 +226,14 @@ static int32_t version_of(uint64_t hash) {
   return (int32_t)(uint32_t)(hash ^ (hash >> 32));
 }
 
-static void io_result(LubIoResult *r, int32_t status, int32_t version,
+// load_* の (version, status, error) の組。
+typedef struct IoResult {
+  int32_t status; // LubIoStatus
+  int32_t version;
+  LubStr error;
+} IoResult;
+
+static void io_result(IoResult *r, int32_t status, int32_t version,
                       const char *error) {
   r->status = status;
   r->version = version;
@@ -234,7 +241,7 @@ static void io_result(LubIoResult *r, int32_t status, int32_t version,
 }
 
 // request_file の結果を LubIoResult に写す (missing / pending)。
-static void io_result_request(App *app, LubIoResult *r, const char *path,
+static void io_result_request(App *app, IoResult *r, const char *path,
                               int32_t keep_version) {
   int st = lub_io_request_file(path);
   if (st == 0) {
@@ -327,7 +334,7 @@ static bool parse_floats(const char *src, size_t len, float **out,
 // gltf の外部 buffer (.bin / .glb) を web で先に request する。全部 ready
 // なら true。pending / error は r に書いて false。
 static bool gltf_deps_ready(App *app, const char *path, const uint8_t *src,
-                            size_t len, LubIoResult *r) {
+                            size_t len, IoResult *r) {
   (void)app;
   const char *base_end = strrchr(path, '/');
   size_t base_len = base_end ? (size_t)(base_end - path + 1) : 0;
@@ -380,23 +387,12 @@ static void gltf_build_view(IoEntry *e) {
       m->material_count ? m->material_count : 1, sizeof(LubGltfMaterial));
   if (!e->gltf_prims || !e->gltf_mats)
     return;
-  for (int i = 0; i < m->primitive_count; ++i) {
-    const GltfPrimitive *p = &m->primitives[i];
-    LubGltfPrimitive *v = &e->gltf_prims[i];
-    v->mesh.positions = p->positions;
-    v->mesh.normals = p->normals;
-    v->mesh.uvs = p->uvs;
-    v->mesh.tangents = p->tangents;
-    v->mesh.indices = p->indices;
-    v->mesh.vert_count = p->vert_count;
-    v->mesh.index_count = p->index_count;
-    v->material_index = p->material_index;
-  }
   for (int i = 0; i < m->material_count; ++i) {
     const GltfMaterial *g = &m->materials[i];
     LubGltfMaterial *v = &e->gltf_mats[i];
     memcpy(v->base_color_factor, g->base_color_factor,
            sizeof(v->base_color_factor));
+    v->base_color_factor_count = 4;
     v->metallic_factor = g->metallic_factor;
     v->roughness_factor = g->roughness_factor;
     v->alpha_mode = g->alpha_mode;
@@ -408,12 +404,32 @@ static void gltf_build_view(IoEntry *e) {
     v->normal_path = lub_str_c(g->normal_path);
     v->name = lub_str_c(g->name);
   }
+  for (int i = 0; i < m->primitive_count; ++i) {
+    const GltfPrimitive *p = &m->primitives[i];
+    LubGltfPrimitive *v = &e->gltf_prims[i];
+    v->base.positions = p->positions;
+    v->base.positions_count = p->vert_count * 3;
+    v->base.normals = p->normals;
+    v->base.normals_count = p->normals ? p->vert_count * 3 : 0;
+    v->base.uvs = p->uvs;
+    v->base.uvs_count = p->uvs ? p->vert_count * 2 : 0;
+    v->base.tangents = p->tangents;
+    v->base.tangents_count = p->tangents ? p->vert_count * 4 : 0;
+    v->base.indices = (const int32_t *)p->indices;
+    v->base.indices_count = p->indices ? p->index_count : 0;
+    v->base.vert_count = p->vert_count;
+    v->base.index_count = p->index_count;
+    v->material_index = p->material_index;
+    if (p->material_index >= 0 && p->material_index < m->material_count) {
+      v->has_material = true;
+      v->material = e->gltf_mats[p->material_index];
+    }
+  }
 }
 
 // 全 loader 共通の refresh。戻り値は entry (parsed_ok なら中身が使える) か
 // NULL。r には status / version / error が入る。
-static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind,
-                           LubIoResult *r) {
+static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind, IoResult *r) {
   char path[1024];
   if (!lub_str_copy(path_s, path, sizeof(path))) {
     io_result(r, LUB_IO_STATUS_ERROR, 0, "path too long");
@@ -521,71 +537,95 @@ static IoEntry *io_refresh(App *app, LubStr path_s, IoKind kind,
   return e;
 }
 
-LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubView *text,
-                           LubIoResult *r) {
+static void io_tail(const IoResult *r, int32_t *version, int32_t *status,
+                    LubStr *error) {
+  *version = r->version;
+  *status = r->status;
+  *error = r->error;
+}
+
+LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
+                           int32_t *version, int32_t *status, LubStr *error) {
   App *app = lub_api_app(ctx);
-  memset(text, 0, sizeof(*text));
-  IoEntry *e = io_refresh(app, path, IO_TEXT, r);
+  IoResult r;
+  text->ptr = NULL;
+  text->len = 0;
+  IoEntry *e = io_refresh(app, path, IO_TEXT, &r);
   if (e) {
-    text->ptr = e->bytes;
+    text->ptr = (const char *)e->bytes;
     text->len = (int32_t)e->bytes_len;
-    text->frame = (int32_t)app->frame_index;
   }
+  io_tail(&r, version, status, error);
   return LUB_OK;
 }
 
 LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
-                             int32_t *count, LubIoResult *r) {
+                             int32_t *data_count, int32_t *version,
+                             int32_t *status, LubStr *error) {
   App *app = lub_api_app(ctx);
+  IoResult r;
   *data = NULL;
-  *count = 0;
-  IoEntry *e = io_refresh(app, path, IO_FLOATS, r);
+  *data_count = 0;
+  IoEntry *e = io_refresh(app, path, IO_FLOATS, &r);
   if (e) {
     *data = e->floats;
-    *count = e->float_count;
+    *data_count = e->float_count;
   }
+  io_tail(&r, version, status, error);
   return LUB_OK;
 }
 
-LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfView *mesh,
-                           LubIoResult *r) {
+// top-level は primitives[1] の写し + primitives (lub_io.lua 時代と同じ形)。
+LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
+                           bool *has_mesh, int32_t *version, int32_t *status,
+                           LubStr *error) {
   App *app = lub_api_app(ctx);
+  IoResult r;
   memset(mesh, 0, sizeof(*mesh));
-  IoEntry *e = io_refresh(app, path, IO_GLTF, r);
-  if (e) {
+  *has_mesh = false;
+  IoEntry *e = io_refresh(app, path, IO_GLTF, &r);
+  if (e && e->gltf_prims && e->gltf->primitive_count > 0) {
     mesh->primitives = e->gltf_prims;
-    mesh->primitive_count = e->gltf->primitive_count;
-    mesh->materials = e->gltf_mats;
-    mesh->material_count = e->gltf->material_count;
+    mesh->primitives_count = e->gltf->primitive_count;
+    mesh->base = e->gltf_prims[0].base;
+    mesh->has_material = e->gltf_prims[0].has_material;
+    mesh->material = e->gltf_prims[0].material;
+    *has_mesh = true;
   }
+  io_tail(&r, version, status, error);
   return LUB_OK;
 }
 
-LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *pixels,
-                       int32_t *w, int32_t *h, int32_t *format, int32_t *stride,
-                       LubIoResult *r) {
+LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *bytes,
+                       int32_t *width, int32_t *height, int32_t *format,
+                       int32_t *stride, int32_t *version, int32_t *status,
+                       LubStr *error) {
   App *app = lub_api_app(ctx);
-  memset(pixels, 0, sizeof(*pixels));
-  *w = 0;
-  *h = 0;
+  IoResult r;
+  memset(bytes, 0, sizeof(*bytes));
+  *width = 0;
+  *height = 0;
   *format = 0;
   *stride = 0;
-  IoEntry *e = io_refresh(app, path, IO_PNG, r);
+  IoEntry *e = io_refresh(app, path, IO_PNG, &r);
   if (e) {
-    pixels->ptr = e->pixels;
-    pixels->len = e->stride * e->h;
-    pixels->frame = (int32_t)app->frame_index;
-    *w = e->w;
-    *h = e->h;
+    bytes->ptr = e->pixels;
+    bytes->len = e->stride * e->h;
+    bytes->frame = (int32_t)app->frame_index;
+    *width = e->w;
+    *height = e->h;
     *format = LUB_GFX_PIXEL_FORMAT_RGBA8;
     *stride = e->stride;
   }
+  io_tail(&r, version, status, error);
   return LUB_OK;
 }
 
 LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *pixels,
-                        int32_t len, int32_t w, int32_t h, int32_t stride) {
+                        int32_t len, int32_t w, int32_t h,
+                        const int32_t *stride_p) {
   App *app = lub_api_app(ctx);
+  int32_t stride = stride_p ? *stride_p : 0;
   char pbuf[1024];
   if (!lub_str_copy(path, pbuf, sizeof(pbuf)))
     return lub_api_fail(app, "png_write: path too long");
@@ -607,6 +647,14 @@ LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *pixels,
 
 // ------------------------------------------------------------ interleave
 
+enum {
+  LUB_MESH_LAYOUT_PN = 1,
+  LUB_MESH_LAYOUT_PNU = 2,
+  LUB_MESH_LAYOUT_PNUT = 3,
+  LUB_MESH_LAYOUT_PNCM = 4,
+  LUB_MESH_LAYOUT_PNCMW = 5,
+};
+
 static int32_t layout_stride(int32_t layout) {
   switch (layout) {
   case LUB_MESH_LAYOUT_PN:
@@ -624,9 +672,8 @@ static int32_t layout_stride(int32_t layout) {
   }
 }
 
-int32_t lub_mesh_interleave(LubContext *ctx, const LubMeshData *mesh,
-                            int32_t layout, float *out, int32_t cap) {
-  (void)ctx;
+static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
+                          int32_t cap) {
   int32_t stride = layout_stride(layout);
   if (!mesh || stride == 0 || mesh->vert_count < 0 || !mesh->positions)
     return 0;
@@ -710,4 +757,54 @@ int32_t lub_mesh_interleave(LubContext *ctx, const LubMeshData *mesh,
     }
   }
   return need;
+}
+
+// interleave の結果は frame の終わりまで有効な runtime 所有の配列。
+static LubStatus interleave_view(LubContext *ctx, const LubMeshData *mesh,
+                                 int32_t layout, const char *fn,
+                                 const float **out, int32_t *out_count) {
+  App *app = lub_api_app(ctx);
+  *out = NULL;
+  *out_count = 0;
+  if (!mesh || !mesh->positions || mesh->vert_count <= 0)
+    return lub_api_fail(app, "%s: mesh has no positions", fn);
+  int32_t need = interleave(mesh, layout, NULL, 0);
+  float *buf = (float *)malloc(sizeof(float) * (size_t)(need > 0 ? need : 1));
+  if (!buf)
+    return lub_api_fail(app, "%s: out of memory", fn);
+  interleave(mesh, layout, buf, need);
+  app_frame_garbage_push(app, buf);
+  *out = buf;
+  *out_count = need;
+  return LUB_OK;
+}
+
+LubStatus lub_io_interleave_pn(LubContext *ctx, const LubMeshData *mesh,
+                               const float **out, int32_t *out_count) {
+  return interleave_view(ctx, mesh, LUB_MESH_LAYOUT_PN, "interleave_pn", out,
+                         out_count);
+}
+
+LubStatus lub_io_interleave_pncm(LubContext *ctx, const LubMeshData *mesh,
+                                 const float **out, int32_t *out_count) {
+  return interleave_view(ctx, mesh, LUB_MESH_LAYOUT_PNCM, "interleave_pncm",
+                         out, out_count);
+}
+
+LubStatus lub_io_interleave_pncmw(LubContext *ctx, const LubMeshData *mesh,
+                                  const float **out, int32_t *out_count) {
+  return interleave_view(ctx, mesh, LUB_MESH_LAYOUT_PNCMW, "interleave_pncmw",
+                         out, out_count);
+}
+
+LubStatus lub_io_interleave_pnu(LubContext *ctx, const LubMeshData *mesh,
+                                const float **out, int32_t *out_count) {
+  return interleave_view(ctx, mesh, LUB_MESH_LAYOUT_PNU, "interleave_pnu", out,
+                         out_count);
+}
+
+LubStatus lub_io_interleave_pnut(LubContext *ctx, const LubMeshData *mesh,
+                                 const float **out, int32_t *out_count) {
+  return interleave_view(ctx, mesh, LUB_MESH_LAYOUT_PNUT, "interleave_pnut",
+                         out, out_count);
 }

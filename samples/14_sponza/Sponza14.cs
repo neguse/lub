@@ -261,7 +261,7 @@ public static class Sponza14
         meshVersion = version;
         prims = new List<SponzaPrim>();
 
-        var n = mesh.PrimitiveCount;
+        var n = mesh.Primitives.Count;
         for (var i = 0; i < n; i++)
         {
             var prim = mesh.Primitives[i];

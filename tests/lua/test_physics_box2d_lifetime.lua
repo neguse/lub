@@ -40,7 +40,7 @@ local function expect_not_found(label, fn)
 end
 
 local function check_missing_world_queries()
-	local missing_world = { __lub_kind = "phys2d_world", key = "missing_world" }
+	local missing_world = { __lub_kind = "world", key = "missing_world" }
 	expect_not_found("missing world info", function()
 		return phys2d_world_info(missing_world)
 	end)
@@ -185,8 +185,8 @@ function M.onFrame()
 			hx = 0.3,
 			hy = 0.3,
 			contact = true,
-			material = "wall",
-			user_material_id = 10,
+			material_name = "wall",
+			material_id = 10,
 		})
 		local crate = world:body("crate", {
 			type = DYNAMIC,
@@ -196,8 +196,8 @@ function M.onFrame()
 			hx = 0.2,
 			hy = 0.2,
 			contact = true,
-			material = "crate",
-			user_material_id = 11,
+			material_name = "crate",
+			material_id = 11,
 		})
 
 		local sensor = world:body("sensor", {
@@ -209,8 +209,8 @@ function M.onFrame()
 			hy = 0.3,
 			sensor = true,
 			sensor_events = true,
-			material = "zone",
-			user_material_id = 12,
+			material_name = "zone",
+			material_id = 12,
 		})
 		local visitor = world:body("visitor", {
 			type = DYNAMIC,
@@ -220,8 +220,8 @@ function M.onFrame()
 			hx = 0.2,
 			hy = 0.2,
 			sensor_events = true,
-			material = "visitor",
-			user_material_id = 13,
+			material_name = "visitor",
+			material_id = 13,
 		})
 
 		world:step(1 / 60)

@@ -7,10 +7,10 @@
 
 #define LUB_READBACK_DEPTH_MAX 32
 
-LubStatus lub_config(LubContext *ctx, const LubConfigDesc *d) {
+LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
-    return lub_api_fail(app, "config: desc required");
+    return lub_api_fail(app, "config: opts required");
   if (app->phase != APP_PHASE_PRE_BACKEND)
     return lub_api_fail(app, "config: must be called inside on_init");
 
@@ -33,19 +33,23 @@ LubStatus lub_config(LubContext *ctx, const LubConfigDesc *d) {
   strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
   app->backend_name[sizeof(app->backend_name) - 1] = '\0';
 
-  if (d->resource_sweep_after_frames >= 0)
+  if (d->has_resource_sweep_after_frames) {
+    if (d->resource_sweep_after_frames < 0)
+      return lub_api_fail(app,
+                          "config: resource_sweep_after_frames must be >= 0");
     app->resource_sweep_after_frames = d->resource_sweep_after_frames;
-  if (d->readback_depth >= 0) {
+  }
+  if (d->has_readback_depth) {
     if (d->readback_depth < 1 || d->readback_depth > LUB_READBACK_DEPTH_MAX)
       return lub_api_fail(app, "config: readback_depth out of range (1..%d)",
                           LUB_READBACK_DEPTH_MAX);
     app->readback_depth = d->readback_depth;
   }
-  if (d->width < 0 || d->height < 0)
+  if ((d->has_width && d->width < 0) || (d->has_height && d->height < 0))
     return lub_api_fail(app, "config: width/height must be >= 0");
-  if (d->width > 0)
+  if (d->has_width && d->width > 0)
     app->cfg_w = d->width;
-  if (d->height > 0)
+  if (d->has_height && d->height > 0)
     app->cfg_h = d->height;
   return LUB_OK;
 }
@@ -118,24 +122,32 @@ bool lub_input_key_released(LubContext *ctx, LubStr key) {
          app->key_released[sc];
 }
 
-bool lub_input_mouse_down(LubContext *ctx, int32_t button) {
+// button は省略で 1 (左)。
+static int32_t mouse_button(const int32_t *button) {
+  return button ? *button : 1;
+}
+
+bool lub_input_mouse_down(LubContext *ctx, const int32_t *button) {
   (void)ctx;
-  if (button < 1)
+  int32_t b = mouse_button(button);
+  if (b < 1)
     return false;
   SDL_MouseButtonFlags mask = SDL_GetMouseState(NULL, NULL);
-  return (mask & SDL_BUTTON_MASK(button)) != 0;
+  return (mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
-bool lub_input_mouse_pressed(LubContext *ctx, int32_t button) {
-  if (button < 1)
+bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button) {
+  int32_t b = mouse_button(button);
+  if (b < 1)
     return false;
-  return (lub_api_app(ctx)->mouse_pressed_mask & SDL_BUTTON_MASK(button)) != 0;
+  return (lub_api_app(ctx)->mouse_pressed_mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
-bool lub_input_mouse_released(LubContext *ctx, int32_t button) {
-  if (button < 1)
+bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
+  int32_t b = mouse_button(button);
+  if (b < 1)
     return false;
-  return (lub_api_app(ctx)->mouse_released_mask & SDL_BUTTON_MASK(button)) != 0;
+  return (lub_api_app(ctx)->mouse_released_mask & SDL_BUTTON_MASK(b)) != 0;
 }
 
 void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
@@ -161,6 +173,14 @@ void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy) {
 
 float lub_sys_actual_fps(LubContext *ctx) {
   return (float)lub_api_app(ctx)->actual_fps;
+}
+
+// 文字列の FNV-1a 64bit hash を int32 に畳む (version の identity claim 用)。
+int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s) {
+  (void)ctx;
+  uint64_t h =
+      lub_io_fnv1a64(s.ptr ? s.ptr : "", (size_t)(s.len > 0 ? s.len : 0));
+  return (int32_t)(uint32_t)(h ^ (h >> 32));
 }
 
 bool lub_sys_is_web(LubContext *ctx) {

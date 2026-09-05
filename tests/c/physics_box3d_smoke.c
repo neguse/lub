@@ -1,577 +1,135 @@
-// phys3d の C smoke: App を最小限に組み、Lua 面 (src/lua_phys3d.c) 経由で
-// C API を回す。
+// phys3d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を
+// 直接回す。落下と接触、euler の初期回転、raycast を確かめる。
 #include "api_internal.h"
-#include "lua_phys.h"
 #include "physics_box3d.h"
 
-#include <lauxlib.h>
-#include <lua.h>
-#include <lualib.h>
+#include <box3d/math_functions.h>
+
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-static const char *SCRIPT =
-    "local function check(cond, msg)\n"
-    "  if not cond then error(msg) end\n"
-    "end\n"
-    "local function near(a, b, tol)\n"
-    "  return math.abs(a - b) < (tol or 0.001)\n"
-    "end\n"
-    "do\n"
-    "  local world = phys3d_world('c_keymap', {\n"
-    "    gravity = { x = 0, y = 0, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "  })\n"
-    "  phys3d_begin(world, { prune = false })\n"
-    "  local body = phys3d_body(world, 'temp', {\n"
-    "    version = 1, type = DYNAMIC, initial = { x = 1, y = 0, z = 0 },\n"
-    "  })\n"
-    "  phys3d_sphere(body, 'solid', { version = 1, r = 0.1, density = 1 })\n"
-    "  phys3d_step(world, 0)\n"
-    "  phys3d_begin(world, { prune = false })\n"
-    "  body = phys3d_body(world, 'temp', {\n"
-    "    version = 1, type = DYNAMIC, initial = { x = 3, y = 0, z = 0 },\n"
-    "  })\n"
-    "  phys3d_sphere(body, 'solid', { version = 1, r = 0.1, density = 1 })\n"
-    "  phys3d_step(world, 0)\n"
-    "  local pose = phys3d_pose(world, 'temp')\n"
-    "  check(pose and near(pose.x, 1), 'key map update recreated "
-    "explicit-version body')\n"
-    "  phys3d_begin(world)\n"
-    "  phys3d_step(world, 0)\n"
-    "  local gone, err = phys3d_pose(world, 'temp')\n"
-    "  check(gone == nil and err == 'not found', 'key map prune did not "
-    "remove body')\n"
-    "end\n"
-    "do\n"
-    "  local world = phys3d_world('c_clamp', {\n"
-    "    gravity = { x = 0, y = 0, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "2,\n"
-    "  })\n"
-    "  phys3d_begin(world, { prune = false })\n"
-    "  local info = phys3d_step(world, 1.0)\n"
-    "  check(info.steps == 2 and info.dropped == true, 'accumulator clamp "
-    "did not drop leftover dt')\n"
-    "end\n"
-    "do\n"
-    "  local first = nil\n"
-    "  for frame = 1, 120 do\n"
-    "    local world = phys3d_world('c_locks', {\n"
-    "      gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps "
-    "= 1,\n"
-    "    })\n"
-    "    phys3d_begin(world)\n"
-    "    local body = phys3d_body(world, 'locked', {\n"
-    "      type = DYNAMIC, sleep = false,\n"
-    "      motion_locks = {\n"
-    "        linear_z = true,\n"
-    "        angular_x = true, angular_y = true, angular_z = true,\n"
-    "      },\n"
-    "      initial = { x = 0, y = 4, z = 0.5, euler = { x = 0.3, y = 0.2, z "
-    "= 0.1 } },\n"
-    "    })\n"
-    "    phys3d_box(body, 'solid', { hx = 0.2, hy = 0.2, hz = 0.2, density = "
-    "1 })\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "    local pose = phys3d_pose(body)\n"
-    "    if frame == 1 then\n"
-    "      first = pose\n"
-    "    end\n"
-    "  end\n"
-    "  local world = phys3d_world('c_locks', {\n"
-    "    gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "  })\n"
-    "  local pose = phys3d_pose(world, 'locked')\n"
-    "  check(pose and near(pose.z, first.z, 0.01), 'motion lock did not hold "
-    "z translation')\n"
-    "  check(near(pose.qx, first.qx, 0.01) and near(pose.qy, first.qy, "
-    "0.01) and\n"
-    "        near(pose.qz, first.qz, 0.01) and near(pose.qw, first.qw, "
-    "0.01),\n"
-    "    'motion lock did not hold rotation')\n"
-    "  check(pose.y < first.y, 'locked body did not fall along y')\n"
-    "end\n"
-    "do\n"
-    "  local world = phys3d_world('c_query', {\n"
-    "    gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "  })\n"
-    "  phys3d_begin(world)\n"
-    "  local floor_body = phys3d_body(world, 'floor', {\n"
-    "    type = STATIC, initial = { x = 0, y = -0.25, z = 0 },\n"
-    "  })\n"
-    "  local floor_shape = phys3d_box(floor_body, 'solid', {\n"
-    "    hx = 4, hy = 0.25, hz = 4, density = 0,\n"
-    "  })\n"
-    "  phys3d_step(world, 1 / 60)\n"
-    "  local hit = phys3d_raycast(world, {\n"
-    "    origin = { x = 0, y = 2, z = 0 }, delta = { x = 0, y = -3, z = 0 },\n"
-    "  })\n"
-    "  check(hit ~= nil, 'raycast did not hit floor')\n"
-    "  check(hit.body == 'floor' and hit.shape == 'solid',\n"
-    "    'raycast hit wrong shape')\n"
-    "  check(near(hit.fraction, 2 / 3, 0.05), 'raycast fraction out of "
-    "range')\n"
-    "  check(near(hit.ny, 1, 0.01), 'raycast normal is not up')\n"
-    "  local hits = phys3d_raycast(world, {\n"
-    "    origin = { x = 0, y = 2, z = 0 }, delta = { x = 0, y = -3, z = 0 },\n"
-    "    mode = 'all',\n"
-    "  })\n"
-    "  check(#hits == 1 and hits[1].body == 'floor',\n"
-    "    'raycast collect-all mismatch')\n"
-    "  local overlaps = phys3d_overlap_aabb(world, {\n"
-    "    min = { x = -1, y = -1, z = -1 }, max = { x = 1, y = 1, z = 1 },\n"
-    "  })\n"
-    "  check(#overlaps == 1 and overlaps[1].body == 'floor',\n"
-    "    'overlap_aabb missed floor')\n"
-    "  local around = phys3d_overlap_shape(world, {\n"
-    "    sphere = { r = 0.5, center = { x = 0, y = 0, z = 0 } },\n"
-    "  })\n"
-    "  check(#around == 1 and around[1].body == 'floor',\n"
-    "    'overlap_shape missed floor')\n"
-    "  local sweep = phys3d_shape_cast(world, {\n"
-    "    sphere = { r = 0.25, center = { x = 0, y = 2, z = 0 } },\n"
-    "    delta = { x = 0, y = -3, z = 0 },\n"
-    "  })\n"
-    "  check(sweep ~= nil and sweep.body == 'floor', 'shape_cast missed "
-    "floor')\n"
-    "  local shapes = phys3d_body_shapes(floor_body)\n"
-    "  check(#shapes == 1 and shapes[1].kind == 'box',\n"
-    "    'body_shapes did not list floor box')\n"
-    "  local aabb = phys3d_shape_aabb(floor_shape)\n"
-    "  check(aabb and near(aabb.max_y, 0, 0.1), 'shape_aabb top out of "
-    "range')\n"
-    "  local cp = phys3d_shape_closest_point(floor_shape, { x = 0, y = 2, z = "
-    "0 })\n"
-    "  check(cp and near(cp.y, 0, 0.05), 'shape_closest_point off surface')\n"
-    "  local sr = phys3d_shape_raycast(floor_shape, {\n"
-    "    origin = { x = 0, y = 2, z = 0 }, delta = { x = 0, y = -3, z = 0 },\n"
-    "  })\n"
-    "  check(sr and near(sr.fraction, 2 / 3, 0.05),\n"
-    "    'shape_raycast fraction out of range')\n"
-    "  phys3d_shape_set_material(floor_shape, { friction = 0.5 })\n"
-    "  check(near(phys3d_shape_info(floor_shape).friction, 0.5),\n"
-    "    'shape_set_material friction did not round-trip')\n"
-    "  local joints = phys3d_joint_events(world)\n"
-    "  check(#joints == 0, 'joint_events was not empty')\n"
-    "end\n"
-    "do\n"
-    "  local saw = false\n"
-    "  for frame = 1, 120 do\n"
-    "    local world = phys3d_world('c_sensor', {\n"
-    "      gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps "
-    "= 1,\n"
-    "    })\n"
-    "    phys3d_begin(world)\n"
-    "    local zone = phys3d_body(world, 'zone', {\n"
-    "      type = STATIC, initial = { x = 0, y = 1, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(zone, 'solid', {\n"
-    "      hx = 1, hy = 0.25, hz = 1, density = 0,\n"
-    "      sensor = true, sensor_events = true,\n"
-    "    })\n"
-    "    local ball = phys3d_body(world, 'ball', {\n"
-    "      type = DYNAMIC, initial = { x = 0, y = 2, z = 0 },\n"
-    "    })\n"
-    "    phys3d_sphere(ball, 'solid', {\n"
-    "      r = 0.25, density = 1, sensor_events = true,\n"
-    "    })\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "    for _, ev in ipairs(phys3d_sensors(world, 'begin')) do\n"
-    "      if ev.sensor.body == 'zone' and ev.visitor.body == 'ball' then\n"
-    "        saw = true\n"
-    "      end\n"
-    "    end\n"
-    "    if saw then break end\n"
-    "  end\n"
-    "  check(saw, 'sensor begin event was not captured')\n"
-    "end\n"
-    "do\n"
-    "  local world = phys3d_world('c_mover', {\n"
-    "    gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "  })\n"
-    "  phys3d_begin(world)\n"
-    "  local floor_body = phys3d_body(world, 'floor', {\n"
-    "    type = STATIC, initial = { x = 0, y = -0.25, z = 0 },\n"
-    "  })\n"
-    "  phys3d_box(floor_body, 'solid', { hx = 4, hy = 0.25, hz = 4, density = "
-    "0 })\n"
-    "  phys3d_step(world, 1 / 60)\n"
-    "  local cast = phys3d_cast_mover(world, {\n"
-    "    a = { x = 0, y = 2, z = 0 }, b = { x = 0, y = 2.5, z = 0 }, r = "
-    "0.3,\n"
-    "    delta = { x = 0, y = -3, z = 0 },\n"
-    "  })\n"
-    "  check(cast and cast.fraction < 1 and cast.fraction > 0.3,\n"
-    "    'cast_mover fraction out of range')\n"
-    "  local planes = phys3d_collide_mover(world, {\n"
-    "    a = { x = 0, y = 0.2, z = 0 }, b = { x = 0, y = 0.7, z = 0 }, r = "
-    "0.3,\n"
-    "  })\n"
-    "  check(#planes >= 1 and planes[1].body == 'floor',\n"
-    "    'collide_mover did not report floor plane')\n"
-    "  check(planes[1].ny > 0.9, 'collide_mover plane normal is not up')\n"
-    "end\n"
-    "do\n"
-    "  local len = nil\n"
-    "  local fy = nil\n"
-    "  for frame = 1, 120 do\n"
-    "    local world = phys3d_world('c_distance', {\n"
-    "      gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps "
-    "= 1,\n"
-    "    })\n"
-    "    phys3d_begin(world)\n"
-    "    local anchor = phys3d_body(world, 'anchor', {\n"
-    "      type = STATIC, initial = { x = 0, y = 2, z = 0 },\n"
-    "    })\n"
-    "    phys3d_sphere(anchor, 'solid', { r = 0.1, density = 0 })\n"
-    "    local bob = phys3d_body(world, 'bob', {\n"
-    "      type = DYNAMIC, sleep = false, initial = { x = 0, y = 0, z = 0 },\n"
-    "    })\n"
-    "    phys3d_sphere(bob, 'solid', { r = 0.2, density = 1 })\n"
-    "    local joint = phys3d_joint(world, 'rope', {\n"
-    "      type = 'distance', a = 'anchor', b = 'bob', length = 2,\n"
-    "      anchor_a = { x = 0, y = 2, z = 0 }, anchor_b = { x = 0, y = 0, z = "
-    "0 },\n"
-    "    })\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "    len = phys3d_joint_length(joint)\n"
-    "    local force = phys3d_joint_force(joint)\n"
-    "    fy = force and force.y or nil\n"
-    "    local info = phys3d_joint_info(joint)\n"
-    "    check(info and info.type == 'distance' and info.a == 'anchor' and\n"
-    "      info.b == 'bob' and info.valid, 'joint_info mismatch')\n"
-    "  end\n"
-    "  check(len and near(len, 2, 0.05), 'distance joint length drifted')\n"
-    "  check(fy and math.abs(fy) > 0.1, 'distance joint force is zero')\n"
-    "end\n"
-    "do\n"
-    "  local angle = 0\n"
-    "  local joint = nil\n"
-    "  for frame = 1, 60 do\n"
-    "    local world = phys3d_world('c_revolute', {\n"
-    "      gravity = { x = 0, y = 0, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "    })\n"
-    "    phys3d_begin(world)\n"
-    "    local base = phys3d_body(world, 'base', {\n"
-    "      type = STATIC, initial = { x = 0, y = 0, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(base, 'solid', { hx = 0.1, hy = 0.1, hz = 0.1, density = "
-    "0 })\n"
-    "    local rotor = phys3d_body(world, 'rotor', {\n"
-    "      type = DYNAMIC, sleep = false, initial = { x = 1, y = 0, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(rotor, 'solid', { hx = 0.5, hy = 0.1, hz = 0.1, density = "
-    "1 })\n"
-    "    joint = phys3d_joint(world, 'hinge', {\n"
-    "      type = 'revolute', a = 'base', b = 'rotor',\n"
-    "      anchor_a = { x = 0, y = 0, z = 0 }, anchor_b = { x = 0, y = 0, z = "
-    "0 },\n"
-    "      axis = { x = 0, y = 1, z = 0 },\n"
-    "      motor = { enabled = true, speed = 2, max_torque = 100 },\n"
-    "    })\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "    angle = phys3d_joint_angle(joint)\n"
-    "  end\n"
-    "  check(angle and math.abs(angle) > 0.2, 'revolute motor did not turn')\n"
-    "  check(type(phys3d_joint_motor_torque(joint)) == 'number',\n"
-    "    'revolute motor torque unavailable')\n"
-    "  local joints = phys3d_body_joints({ __lub_kind = 'phys3d_body',\n"
-    "    world = 'c_revolute', key = 'rotor' })\n"
-    "  check(#joints == 1 and joints[1].joint == 'hinge',\n"
-    "    'body_joints did not list hinge')\n"
-    "  local world = phys3d_world('c_revolute', {\n"
-    "    gravity = { x = 0, y = 0, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "  })\n"
-    "  phys3d_begin(world)\n"
-    "  phys3d_body(world, 'base', { type = STATIC })\n"
-    "  phys3d_body(world, 'rotor', {\n"
-    "    type = DYNAMIC, sleep = false, initial = { x = 1, y = 0, z = 0 },\n"
-    "  })\n"
-    "  phys3d_step(world, 1 / 60)\n"
-    "  local gone, err = phys3d_joint_info(joint)\n"
-    "  check(gone == nil and err == 'not found',\n"
-    "    'joint prune did not remove hinge')\n"
-    "end\n"
-    "do\n"
-    "  local pose = nil\n"
-    "  for frame = 1, 240 do\n"
-    "    local world = phys3d_world('c_hull', {\n"
-    "      gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps "
-    "= 1,\n"
-    "    })\n"
-    "    phys3d_begin(world)\n"
-    "    local floor_body = phys3d_body(world, 'floor', {\n"
-    "      type = STATIC, initial = { x = 0, y = -0.25, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(floor_body, 'solid', { hx = 4, hy = 0.25, hz = 4, density "
-    "= 0 })\n"
-    "    local rock = phys3d_body(world, 'rock', {\n"
-    "      type = DYNAMIC, initial = { x = 0, y = 2, z = 0 },\n"
-    "    })\n"
-    "    phys3d_hull(rock, 'solid', {\n"
-    "      version = 1, density = 1,\n"
-    "      points = {\n"
-    "        { x = 0, y = 0, z = 0 }, { x = 0.5, y = 0, z = 0 },\n"
-    "        { x = 0, y = 0.5, z = 0 }, { x = 0, y = 0, z = 0.5 },\n"
-    "      },\n"
-    "    })\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "    pose = phys3d_pose(rock)\n"
-    "    if frame == 60 then\n"
-    "      local shapes = phys3d_body_shapes(rock)\n"
-    "      check(#shapes == 1 and shapes[1].kind == 'hull',\n"
-    "        'body_shapes did not report hull')\n"
-    "    end\n"
-    "  end\n"
-    "  check(pose and pose.y < 1 and pose.y > -0.5,\n"
-    "    'hull did not come to rest on floor')\n"
-    "end\n"
-    "do\n"
-    "  local saw = false\n"
-    "  for frame = 1, 300 do\n"
-    "    local world = phys3d_world('c_mesh', {\n"
-    "      gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps "
-    "= 1,\n"
-    "    })\n"
-    "    phys3d_begin(world)\n"
-    "    local floor_body = phys3d_body(world, 'floor', {\n"
-    "      type = STATIC, initial = { x = 0, y = 0, z = 0 },\n"
-    "    })\n"
-    "    phys3d_mesh(floor_body, 'solid', {\n"
-    "      version = 1, contact = true,\n"
-    "      positions = { -2, 0, -2, 2, 0, -2, 2, 0, 2, -2, 0, 2 },\n"
-    "      indices = { 0, 2, 1, 0, 3, 2 },\n"
-    "    })\n"
-    "    local ball = phys3d_body(world, 'ball', {\n"
-    "      type = DYNAMIC, initial = { x = 0, y = 2, z = 0 },\n"
-    "    })\n"
-    "    phys3d_sphere(ball, 'solid', { r = 0.25, density = 1, contact = true "
-    "})\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "    for _, contact in ipairs(phys3d_contacts(world, 'begin')) do\n"
-    "      local a = contact.a.body\n"
-    "      local b = contact.b.body\n"
-    "      if (a == 'ball' and b == 'floor') or (a == 'floor' and b == "
-    "'ball') then\n"
-    "        saw = true\n"
-    "      end\n"
-    "    end\n"
-    "    if saw then break end\n"
-    "  end\n"
-    "  check(saw, 'mesh floor contact was not captured')\n"
-    "end\n"
-    "do\n"
-    "  local function declare(world)\n"
-    "    phys3d_begin(world)\n"
-    "    local ground = phys3d_body(world, 'ground', {\n"
-    "      type = STATIC, initial = { x = 0, y = -0.25, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(ground, 'solid', {\n"
-    "      hx = 4, hy = 0.25, hz = 4, density = 0, contact = true,\n"
-    "    })\n"
-    "    local ball = phys3d_body(world, 'ball', {\n"
-    "      type = DYNAMIC, initial = { x = 0, y = 2, z = 0 },\n"
-    "    })\n"
-    "    phys3d_sphere(ball, 'solid', { r = 0.25, density = 1, contact = true "
-    "})\n"
-    "  end\n"
-    "  local world = phys3d_world('c_multistep', {\n"
-    "    gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "240,\n"
-    "  })\n"
-    "  declare(world)\n"
-    "  local info = phys3d_step(world, 3.0)\n"
-    "  check(info.steps > 30, 'multi-step frame ran too few steps')\n"
-    "  check(#phys3d_contacts(world, 'begin') >= 1,\n"
-    "    'begin event from a non-final fixed step was lost')\n"
-    "  local stale = phys3d_world('c_stale', {\n"
-    "    gravity = { x = 0, y = -10, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1,\n"
-    "  })\n"
-    "  local saw = false\n"
-    "  for frame = 1, 120 do\n"
-    "    declare(stale)\n"
-    "    phys3d_step(stale, 1 / 60)\n"
-    "    if #phys3d_contacts(stale, 'begin') > 0 then\n"
-    "      saw = true\n"
-    "      break\n"
-    "    end\n"
-    "  end\n"
-    "  check(saw, 'stale-check setup: begin never fired')\n"
-    "  declare(stale)\n"
-    "  local zero = phys3d_step(stale, 0.0001)\n"
-    "  check(zero.steps == 0, 'stale-check setup: expected 0 steps')\n"
-    "  check(#phys3d_contacts(stale, 'begin') == 0,\n"
-    "    'begin event re-reported on a 0-step frame')\n"
-    "end\n"
-    "do\n"
-    "  local filter_errors = 0\n"
-    "  local pre_solve_errors = 0\n"
-    "  local friction_errors = 0\n"
-    "  local restitution_errors = 0\n"
-    "  local function bad_filter()\n"
-    "    filter_errors = filter_errors + 1\n"
-    "    error('c bad filter')\n"
-    "  end\n"
-    "  local function bad_pre_solve()\n"
-    "    pre_solve_errors = pre_solve_errors + 1\n"
-    "    error('c bad pre_solve')\n"
-    "  end\n"
-    "  local function bad_friction()\n"
-    "    friction_errors = friction_errors + 1\n"
-    "    error('c bad friction')\n"
-    "  end\n"
-    "  local function bad_restitution()\n"
-    "    restitution_errors = restitution_errors + 1\n"
-    "    error('c bad restitution')\n"
-    "  end\n"
-    "  local function declare_pair(world)\n"
-    "    phys3d_begin(world, { prune = false })\n"
-    "    local wall = phys3d_body(world, 'wall', {\n"
-    "      type = STATIC, initial = { x = 0, y = 0, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(wall, 'solid', {\n"
-    "      hx = 0.25, hy = 0.25, hz = 0.25, friction = 0.8, restitution = "
-    "0.1,\n"
-    "      contact = true, pre_solve = true,\n"
-    "    })\n"
-    "    local box = phys3d_body(world, 'box', {\n"
-    "      type = DYNAMIC, sleep = false, initial = { x = 0, y = 0, z = 0 },\n"
-    "    })\n"
-    "    phys3d_box(box, 'solid', {\n"
-    "      hx = 0.2, hy = 0.2, hz = 0.2, density = 1, friction = 0.2,\n"
-    "      restitution = 0.3, contact = true, pre_solve = true,\n"
-    "    })\n"
-    "    phys3d_step(world, 1 / 60)\n"
-    "  end\n"
-    "  local world = phys3d_world('c_callbacks', {\n"
-    "    gravity = { x = 0, y = 0, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1, sleep = false,\n"
-    "    callbacks = {\n"
-    "      filter = bad_filter, pre_solve = bad_pre_solve,\n"
-    "      friction = bad_friction, restitution = bad_restitution,\n"
-    "    },\n"
-    "  })\n"
-    "  declare_pair(world)\n"
-    "  check(filter_errors > 0 and pre_solve_errors > 0 and friction_errors "
-    "> 0 and restitution_errors > 0,\n"
-    "    'callback fallback smoke did not exercise all callbacks')\n"
-    "  local before = filter_errors + pre_solve_errors + friction_errors + "
-    "restitution_errors\n"
-    "  world = phys3d_world('c_callbacks', {\n"
-    "    gravity = { x = 0, y = 0, z = 0 }, fixed_dt = 1 / 60, max_steps = "
-    "1, sleep = false,\n"
-    "  })\n"
-    "  declare_pair(world)\n"
-    "  local after = filter_errors + pre_solve_errors + friction_errors + "
-    "restitution_errors\n"
-    "  check(after == before, 'callback refs were not cleared when callbacks "
-    "omitted')\n"
-    "end\n"
-    "phys3d_world('c_unstepped_callbacks', {\n"
-    "  callbacks = { filter = function() return true end },\n"
-    "})\n"
-    "local y = 0\n"
-    "for frame = 1, 300 do\n"
-    "  local world = phys3d_world('c_smoke', {\n"
-    "    gravity = { x = 0, y = -10, z = 0 },\n"
-    "    fixed_dt = 1 / 60,\n"
-    "    substeps = 4,\n"
-    "    max_steps = 1,\n"
-    "  })\n"
-    "  phys3d_begin(world)\n"
-    "  local ground = phys3d_body(world, 'ground', {\n"
-    "    type = STATIC,\n"
-    "    initial = { x = 0, y = -0.25, z = 0 },\n"
-    "  })\n"
-    "  local ground_shape = phys3d_box(ground, 'solid', {\n"
-    "    hx = 4,\n"
-    "    hy = 0.25,\n"
-    "    hz = 4,\n"
-    "    density = 0,\n"
-    "    friction = 0.8,\n"
-    "    contact = true,\n"
-    "    filter = { category = 63, mask_bits = '0x8000000000000000' },\n"
-    "  })\n"
-    "  local ball = phys3d_body(world, 'ball', {\n"
-    "    type = DYNAMIC,\n"
-    "    initial = { x = 0, y = 2.0, z = 0 },\n"
-    "  })\n"
-    "  local ball_shape = phys3d_sphere(ball, 'solid', {\n"
-    "    r = 0.25,\n"
-    "    density = 1,\n"
-    "    contact = true,\n"
-    "    filter = { category_bits = '0x8000000000000000', mask = { 63 } },\n"
-    "  })\n"
-    "  local gi = phys3d_shape_info(ground_shape).filter\n"
-    "  local bi = phys3d_shape_info(ball_shape).filter\n"
-    "  if gi.category_bits ~= '8000000000000000' or gi.mask_bits ~= "
-    "'8000000000000000' or\n"
-    "     bi.category_bits ~= '8000000000000000' or bi.mask_bits ~= "
-    "'8000000000000000' then\n"
-    "    error('bit 63 filter did not round-trip')\n"
-    "  end\n"
-    "  phys3d_step(world, 1 / 60)\n"
-    "  local pose = phys3d_pose(ball)\n"
-    "  y = pose.y\n"
-    "  for _, contact in ipairs(phys3d_contacts(world, 'begin')) do\n"
-    "    local a = contact.a.body .. '/' .. contact.a.shape\n"
-    "    local b = contact.b.body .. '/' .. contact.b.shape\n"
-    "    if (a == 'ball/solid' and b == 'ground/solid') or\n"
-    "       (a == 'ground/solid' and b == 'ball/solid') then\n"
-    "      return true, frame, y\n"
-    "    end\n"
-    "  end\n"
-    "end\n"
-    "return false, 300, y\n";
+static int g_failures;
+
+static void check(bool cond, const char *msg) {
+  if (!cond) {
+    fprintf(stderr, "FAIL: %s\n", msg);
+    g_failures++;
+  }
+}
+
+static LubStr S(const char *s) { return lub_str_c(s); }
+
+static LubHandle declare_body(LubContext *ctx, LubHandle world, const char *key,
+                              int32_t type, float x, float y, float z) {
+  LubBodyDesc3d d;
+  memset(&d, 0, sizeof(d));
+  d.has_type = true;
+  d.type = type;
+  d.has_initial = true;
+  d.initial.has_x = true;
+  d.initial.x = x;
+  d.initial.has_y = true;
+  d.initial.y = y;
+  d.initial.has_z = true;
+  d.initial.z = z;
+  d.initial.has_euler = true;
+  d.initial.euler.y = 0.5f;
+  LubHandle h = 0;
+  check(lub_phys3d_body(ctx, world, S(key), &d, &h) == LUB_OK && h != 0,
+        "phys3d_body");
+  return h;
+}
+
+static void declare_box(LubContext *ctx, LubHandle body, const char *key,
+                        float hx, float hy, float hz) {
+  LubBoxDesc3d d;
+  memset(&d, 0, sizeof(d));
+  d.base.has_density = true;
+  d.base.density = 1.0f;
+  d.base.has_contact = true;
+  d.base.contact = true;
+  d.hx = hx;
+  d.hy = hy;
+  d.hz = hz;
+  LubHandle h = 0;
+  check(lub_phys3d_box(ctx, body, S(key), &d, &h) == LUB_OK && h != 0,
+        "phys3d_box");
+}
 
 int main(void) {
   static App app;
   memset(&app, 0, sizeof(app));
   phys3d_state_init(&app.phys3);
+  LubContext *ctx = lub_api_ctx(&app);
 
-  lua_State *L = luaL_newstate();
-  if (!L) {
-    fprintf(stderr, "luaL_newstate failed\n");
-    phys3d_state_shutdown(&app.phys3);
-    return 1;
+  LubWorldOpts3d o;
+  memset(&o, 0, sizeof(o));
+  o.has_fixed_dt = true;
+  o.fixed_dt = 1.0f / 60.0f;
+  LubHandle w = 0;
+  check(lub_phys3d_world(ctx, S("c_fall"), &o, &w) == LUB_OK && w != 0,
+        "phys3d_world");
+
+  LubStepInfo3d info;
+  LubPose3d pose;
+  memset(&pose, 0, sizeof(pose));
+  bool touched = false;
+  LubHandle ball = 0;
+  for (int frame = 0; frame < 240 && !touched; ++frame) {
+    lub_phys3d_begin(ctx, w, NULL);
+    LubHandle ground = declare_body(ctx, w, "ground",
+                                    LUB_PHYS3D_BODY_TYPE_STATIC, 0, -0.25f, 0);
+    declare_box(ctx, ground, "solid", 4.0f, 0.25f, 4.0f);
+    ball =
+        declare_body(ctx, w, "ball", LUB_PHYS3D_BODY_TYPE_DYNAMIC, 0, 2.0f, 0);
+    declare_box(ctx, ball, "solid", 0.1f, 0.1f, 0.1f);
+    check(lub_phys3d_step(ctx, w, 1.0f / 60.0f, &info) == LUB_OK, "step");
+    const LubContactEvent3d *events = NULL;
+    int32_t n = 0;
+    check(lub_phys3d_contacts(ctx, w, NULL, &events, &n) == LUB_OK, "contacts");
+    for (int32_t i = 0; i < n; ++i)
+      if (lub_str_eq(events[i].a.body, "ball") ||
+          lub_str_eq(events[i].b.body, "ball"))
+        touched = true;
+    check(lub_phys3d_pose(ctx, ball, &pose) == LUB_OK, "pose");
+  }
+  check(touched, "ball never touched the ground");
+  check(pose.y < 1.0f, "ball did not fall");
+  // euler.y = 0.5 の初期回転が四元数に写っている (静止 body で確かめる)
+  LubPose3d gpose;
+  LubHandle ground = lub_phys3d_find_body(ctx, w, S("ground"));
+  check(ground != 0 && lub_phys3d_pose(ctx, ground, &gpose) == LUB_OK,
+        "ground pose");
+  // Box3D の近似 cos / sin で作った四元数と一致する (旧 Lua binding と同じ)
+  b3Quat expect = b3MakeQuatFromAxisAngle(b3Vec3_axisY, 0.5f);
+  if (!(fabsf(gpose.qy - expect.v.y) < 1e-6f &&
+        fabsf(gpose.qw - expect.s) < 1e-6f)) {
+    fprintf(stderr, "ground rotation: %f %f %f %f (expected 0 %f 0 %f)\n",
+            gpose.qx, gpose.qy, gpose.qz, gpose.qw, expect.v.y, expect.s);
+    check(false, "euler initial rotation");
   }
 
-  luaL_openlibs(L);
-  phys3d_lua_register(L, lub_api_ctx(&app));
-
-  if (luaL_loadstring(L, SCRIPT) != LUA_OK) {
-    fprintf(stderr, "load failed: %s\n", lua_tostring(L, -1));
-    phys3d_state_shutdown(&app.phys3);
-    lua_close(L);
-    return 1;
-  }
-
-  if (lua_pcall(L, 0, 3, 0) != LUA_OK) {
-    fprintf(stderr, "script failed: %s\n", lua_tostring(L, -1));
-    phys3d_state_shutdown(&app.phys3);
-    lua_close(L);
-    return 1;
-  }
-
-  int ok = lua_toboolean(L, -3);
-  int frame = (int)lua_tointeger(L, -2);
-  double y = lua_tonumber(L, -1);
-  lua_pop(L, 3);
+  // 上から下への raycast が地面に当たる
+  LubRaycastDesc3d ray;
+  memset(&ray, 0, sizeof(ray));
+  ray.has_x = ray.has_y = ray.has_z = true;
+  ray.x = 2.0f;
+  ray.y = 3.0f;
+  ray.z = 0.0f;
+  ray.has_dx = ray.has_dy = ray.has_dz = true;
+  ray.dy = -10.0f;
+  LubRayHit3d hit;
+  bool has = false;
+  check(lub_phys3d_raycast(ctx, w, &ray, &hit, &has) == LUB_OK && has,
+        "raycast hit");
+  check(has && lub_str_eq(hit.base.body, "ground"), "raycast hit ground");
 
   phys3d_state_shutdown(&app.phys3);
-  lua_close(L);
-
-  if (!ok) {
-    fprintf(stderr, "PHYS3D_C_SMOKE_FAIL frame=%d y=%.4f\n", frame, y);
+  if (g_failures) {
+    fprintf(stderr, "phys3d smoke: %d failure(s)\n", g_failures);
     return 1;
   }
-
-  printf("PHYS3D_C_SMOKE_OK frame=%d y=%.4f\n", frame, y);
+  printf("phys3d smoke OK\n");
   return 0;
 }

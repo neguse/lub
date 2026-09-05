@@ -2,6 +2,7 @@
 // の table と、C API (include/lub/lub_api.h の lub_phys2d_*) の実装。Lua には
 // 触らない (Lua 面は src/lua_phys2d.c)。
 #include "physics_box2d.h"
+#include "phys2d_internal.h"
 
 #include "api_internal.h"
 #include "phys_common.h"
@@ -33,7 +34,7 @@ typedef struct PhysShape {
   uint64_t constructor_hash;
   bool constructor_warned;
   int material_id;
-  int kind; // LubPhys2dShapeKind
+  int kind; // P2ShapeKind
   struct PhysShape *next;
 } PhysShape;
 
@@ -77,7 +78,7 @@ typedef struct PhysJoint {
   int64_t version;
   uint64_t constructor_hash;
   bool constructor_warned;
-  int kind; // LubPhys2dJointType
+  int kind; // P2JointType
   struct PhysJoint *next;
 } PhysJoint;
 
@@ -198,7 +199,7 @@ struct PhysWorld {
   PhysShapeTombstone *shape_tombstones[PHYS2D_TOMBSTONE_BUCKETS];
   PhysEventBuffer events;
   PhysCommandQueue commands;
-  LubPhys2dCallbacks callbacks;
+  P2Callbacks callbacks;
   bool callbacks_pending;
   uint64_t callbacks_generation;
   struct PhysWorld *next;
@@ -221,7 +222,7 @@ static float phys2d_friction_callback(float friction_a, int material_a,
                                       float friction_b, int material_b);
 static float phys2d_restitution_callback(float restitution_a, int material_a,
                                          float restitution_b, int material_b);
-static void fill_shape_part(PhysState *state, LubPhys2dShapePart *out,
+static void fill_shape_part(PhysState *state, P2ShapePart *out,
                             b2ShapeId shape_id);
 
 static LubStr str_or_empty(const char *s) { return phys_str(s); }
@@ -244,7 +245,7 @@ static void *scratch_alloc(PhysState *state, size_t bytes) {
 
 // ------------------------------------------------------------- callbacks
 
-static bool callbacks_any(const LubPhys2dCallbacks *cb) {
+static bool callbacks_any(const P2Callbacks *cb) {
   return cb->filter || cb->pre_solve || cb->friction || cb->restitution;
 }
 
@@ -266,13 +267,15 @@ static void callbacks_install(PhysWorld *w) {
 static void callbacks_clear(PhysWorld *w) {
   if (!w)
     return;
+  if (w->callbacks.release)
+    w->callbacks.release(w->callbacks.user);
   memset(&w->callbacks, 0, sizeof(w->callbacks));
   w->callbacks_pending = false;
   w->callbacks_generation = 0;
   callbacks_install(w);
 }
 
-static void callbacks_replace(PhysWorld *w, const LubPhys2dCallbacks *cb) {
+static void callbacks_replace(PhysWorld *w, const P2Callbacks *cb) {
   callbacks_clear(w);
   if (!cb || !callbacks_any(cb))
     return;
@@ -1017,7 +1020,7 @@ static bool key_copy(App *app, LubStr key, char *buf, size_t cap,
 
 // ------------------------------------------------------------ desc init
 
-void lub_phys2d_world_desc_init(LubPhys2dWorldDesc *desc) {
+static void p2_world_desc_init(P2WorldDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->gravity_x = 0.0f;
   desc->gravity_y = -9.8f;
@@ -1028,7 +1031,7 @@ void lub_phys2d_world_desc_init(LubPhys2dWorldDesc *desc) {
   desc->continuous = true;
 }
 
-void lub_phys2d_body_desc_init(LubPhys2dBodyDesc *desc) {
+static void p2_body_desc_init(P2BodyDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->type = LUB_PHYS2D_BODY_TYPE_STATIC;
   desc->enabled = true;
@@ -1038,7 +1041,7 @@ void lub_phys2d_body_desc_init(LubPhys2dBodyDesc *desc) {
   desc->initial_awake = true;
 }
 
-void lub_phys2d_shape_desc_init(LubPhys2dShapeDesc *desc) {
+static void p2_shape_desc_init(P2ShapeDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->density = 1.0f;
   desc->friction = 0.6f;
@@ -1046,14 +1049,14 @@ void lub_phys2d_shape_desc_init(LubPhys2dShapeDesc *desc) {
   desc->filter.mask_bits = UINT64_MAX;
 }
 
-void lub_phys2d_chain_desc_init(LubPhys2dChainDesc *desc) {
+static void p2_chain_desc_init(P2ChainDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->friction = 0.6f;
   desc->filter.category_bits = 1u;
   desc->filter.mask_bits = UINT64_MAX;
 }
 
-void lub_phys2d_joint_desc_init(LubPhys2dJointDesc *desc) {
+static void p2_joint_desc_init(P2JointDesc *desc) {
   memset(desc, 0, sizeof(*desc));
   desc->type = LUB_PHYS2D_JOINT_TYPE_REVOLUTE;
   desc->local_axis_a.x = 1.0f;
@@ -1069,7 +1072,7 @@ void lub_phys2d_joint_desc_init(LubPhys2dJointDesc *desc) {
 // ----------------------------------------------------------------- world
 
 static bool world_create_or_recreate(App *app, PhysWorld *w,
-                                     const LubPhys2dWorldDesc *desc) {
+                                     const P2WorldDesc *desc) {
   int64_t version = desc->has_version ? desc->version : 0;
   bool needs_create =
       B2_IS_NULL(w->id) || !b2World_IsValid(w->id) || w->version != version;
@@ -1099,8 +1102,8 @@ static bool world_create_or_recreate(App *app, PhysWorld *w,
   return true;
 }
 
-LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
-                           const LubPhys2dWorldDesc *desc, LubHandle *out) {
+static LubStatus p2_world(LubContext *ctx, LubStr key, const P2WorldDesc *desc,
+                          LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (in_callback(app, "phys2d_world"))
@@ -1108,9 +1111,9 @@ LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
   char kbuf[PHYS_KEY_MAX];
   if (!key_copy(app, key, kbuf, sizeof(kbuf), "phys2d_world"))
     return LUB_ERROR;
-  LubPhys2dWorldDesc def;
+  P2WorldDesc def;
   if (!desc) {
-    lub_phys2d_world_desc_init(&def);
+    p2_world_desc_init(&def);
     desc = &def;
   }
   PhysWorld *w = world_get_or_create(phys_state(app), kbuf);
@@ -1123,7 +1126,7 @@ LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
   return LUB_OK;
 }
 
-LubHandle lub_phys2d_world_find(LubContext *ctx, LubStr key) {
+static LubHandle p2_world_find(LubContext *ctx, LubStr key) {
   App *app = lub_api_app(ctx);
   char kbuf[PHYS_KEY_MAX];
   if (!key.ptr || key.len <= 0 || !lub_str_copy(key, kbuf, sizeof(kbuf)))
@@ -1132,7 +1135,7 @@ LubHandle lub_phys2d_world_find(LubContext *ctx, LubStr key) {
   return w ? w->handle : 0;
 }
 
-LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world, bool prune) {
+static LubStatus p2_begin(LubContext *ctx, LubHandle world, bool prune) {
   App *app = lub_api_app(ctx);
   if (in_callback(app, "phys2d_begin"))
     return LUB_ERROR;
@@ -1154,8 +1157,8 @@ LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world, bool prune) {
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
-                                LubPhys2dWorldInfo *out) {
+static LubStatus p2_world_info(LubContext *ctx, LubHandle world,
+                               P2WorldInfo *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysWorld *w = query_world(app, world);
@@ -1194,7 +1197,7 @@ LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
 
 // ------------------------------------------------------------------ body
 
-static uint64_t body_constructor_hash(const LubPhys2dBodyDesc *desc) {
+static uint64_t body_constructor_hash(const P2BodyDesc *desc) {
   uint64_t h = phys_hash_init();
   h = phys_hash_f32(h, desc->x);
   h = phys_hash_f32(h, desc->y);
@@ -1225,7 +1228,7 @@ static b2BodyType body_type_from(int32_t type) {
   }
 }
 
-static bool body_create(App *app, PhysBody *b, const LubPhys2dBodyDesc *desc,
+static bool body_create(App *app, PhysBody *b, const P2BodyDesc *desc,
                         uint64_t constructor_hash, int64_t version) {
   b2BodyDef def = b2DefaultBodyDef();
   def.type = body_type_from(desc->type);
@@ -1259,7 +1262,7 @@ static bool body_create(App *app, PhysBody *b, const LubPhys2dBodyDesc *desc,
   return true;
 }
 
-static void body_apply_runtime(PhysBody *b, const LubPhys2dBodyDesc *desc) {
+static void body_apply_runtime(PhysBody *b, const P2BodyDesc *desc) {
   b2Body_SetType(b->id, body_type_from(desc->type));
   b2Body_SetFixedRotation(b->id, desc->fixed_rotation);
   b2Body_SetBullet(b->id, desc->bullet);
@@ -1281,8 +1284,8 @@ static void body_apply_runtime(PhysBody *b, const LubPhys2dBodyDesc *desc) {
   }
 }
 
-LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
-                          const LubPhys2dBodyDesc *desc, LubHandle *out) {
+static LubStatus p2_body(LubContext *ctx, LubHandle world, LubStr key,
+                         const P2BodyDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (in_callback(app, "phys2d_body"))
@@ -1330,7 +1333,7 @@ LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
   return LUB_OK;
 }
 
-LubHandle lub_phys2d_body_find(LubContext *ctx, LubHandle world, LubStr key) {
+static LubHandle p2_body_find(LubContext *ctx, LubHandle world, LubStr key) {
   App *app = lub_api_app(ctx);
   PhysWorld *w = world_from_handle(app, world);
   char kbuf[PHYS_KEY_MAX];
@@ -1342,15 +1345,13 @@ LubHandle lub_phys2d_body_find(LubContext *ctx, LubHandle world, LubStr key) {
 
 // ----------------------------------------------------------------- shape
 
-static void shape_apply_density_default(PhysBody *body,
-                                        LubPhys2dShapeDesc *desc) {
+static void shape_apply_density_default(PhysBody *body, P2ShapeDesc *desc) {
   if (!body || !desc || desc->has_density || !body_is_live(body))
     return;
   desc->density = b2Body_GetType(body->id) == b2_dynamicBody ? 1.0f : 0.0f;
 }
 
-static b2ShapeDef make_shape_def(const LubPhys2dShapeDesc *desc,
-                                 PhysShape *shape) {
+static b2ShapeDef make_shape_def(const P2ShapeDesc *desc, PhysShape *shape) {
   b2ShapeDef def = b2DefaultShapeDef();
   def.userData = shape;
   def.density = desc->density;
@@ -1368,7 +1369,7 @@ static b2ShapeDef make_shape_def(const LubPhys2dShapeDesc *desc,
   return def;
 }
 
-static uint64_t shape_base_hash(const LubPhys2dShapeDesc *desc, int kind) {
+static uint64_t shape_base_hash(const P2ShapeDesc *desc, int kind) {
   uint64_t h = phys_hash_init();
   h = phys_hash_u64(h, (uint64_t)kind);
   h = phys_hash_bool(h, desc->sensor);
@@ -1379,7 +1380,7 @@ static uint64_t shape_base_hash(const LubPhys2dShapeDesc *desc, int kind) {
 }
 
 static void shape_apply_runtime_desc(PhysShape *shape,
-                                     const LubPhys2dShapeDesc *desc) {
+                                     const P2ShapeDesc *desc) {
   b2Shape_SetDensity(shape->id, desc->density, true);
   b2Shape_SetFriction(shape->id, desc->friction);
   b2Shape_SetRestitution(shape->id, desc->restitution);
@@ -1390,7 +1391,7 @@ static void shape_apply_runtime_desc(PhysShape *shape,
   b2Shape_EnableHitEvents(shape->id, desc->hit);
 }
 
-static int64_t shape_effective_version(const LubPhys2dShapeDesc *desc,
+static int64_t shape_effective_version(const P2ShapeDesc *desc,
                                        uint64_t fallback_hash) {
   return desc->has_version ? (int64_t)desc->version : (int64_t)fallback_hash;
 }
@@ -1405,7 +1406,7 @@ static void log_shape_constructor_drift(const char *fn, PhysShape *shape,
 }
 
 static bool shape_update_metadata(App *app, PhysShape *shape,
-                                  const LubPhys2dShapeDesc *desc) {
+                                  const P2ShapeDesc *desc) {
   if (!phys_owned_string_set(&shape->tag, desc->tag) ||
       !phys_owned_string_set(&shape->material_name, desc->material_name)) {
     lub_api_fail(app, "phys2d shape metadata: out of memory");
@@ -1416,8 +1417,7 @@ static bool shape_update_metadata(App *app, PhysShape *shape,
 }
 
 static void shape_mark_declared(PhysShape *shape, int kind,
-                                uint64_t fallback_hash,
-                                const LubPhys2dShapeDesc *desc,
+                                uint64_t fallback_hash, const P2ShapeDesc *desc,
                                 bool recreated) {
   if (recreated)
     shape->kind = kind;
@@ -1436,7 +1436,7 @@ typedef struct ShapeDeclare {
   int kind;
   LubHandle body;
   LubStr key;
-  const LubPhys2dShapeDesc *desc;
+  const P2ShapeDesc *desc;
   uint64_t geometry_hash;
   const void *geom;
   b2ShapeId (*create)(PhysBody *b, const b2ShapeDef *def, const void *geom);
@@ -1453,7 +1453,7 @@ static LubStatus shape_declare(App *app, const ShapeDeclare *d,
   char kbuf[PHYS_KEY_MAX];
   if (!key_copy(app, d->key, kbuf, sizeof(kbuf), d->fn))
     return LUB_ERROR;
-  LubPhys2dShapeDesc desc = *d->desc;
+  P2ShapeDesc desc = *d->desc;
   shape_apply_density_default(b, &desc);
   uint64_t h = shape_base_hash(&desc, d->kind);
   h = phys_hash_u64(h, d->geometry_hash);
@@ -1485,7 +1485,7 @@ static LubStatus shape_declare(App *app, const ShapeDeclare *d,
 
 static b2ShapeId create_box(PhysBody *b, const b2ShapeDef *def,
                             const void *geom) {
-  const LubPhys2dBoxDesc *g = (const LubPhys2dBoxDesc *)geom;
+  const P2BoxDesc *g = (const P2BoxDesc *)geom;
   b2Vec2 center = {g->cx, g->cy};
   b2Polygon polygon =
       (g->cx != 0.0f || g->cy != 0.0f || g->angle != 0.0f)
@@ -1494,8 +1494,8 @@ static b2ShapeId create_box(PhysBody *b, const b2ShapeDef *def,
   return b2CreatePolygonShape(b->id, def, &polygon);
 }
 
-LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
-                         const LubPhys2dBoxDesc *desc, LubHandle *out) {
+static LubStatus p2_box(LubContext *ctx, LubHandle body, LubStr key,
+                        const P2BoxDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (!desc)
@@ -1516,13 +1516,13 @@ LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
 
 static b2ShapeId create_circle(PhysBody *b, const b2ShapeDef *def,
                                const void *geom) {
-  const LubPhys2dCircleDesc *g = (const LubPhys2dCircleDesc *)geom;
+  const P2CircleDesc *g = (const P2CircleDesc *)geom;
   b2Circle circle = {.center = {g->cx, g->cy}, .radius = g->r};
   return b2CreateCircleShape(b->id, def, &circle);
 }
 
-LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
-                            const LubPhys2dCircleDesc *desc, LubHandle *out) {
+static LubStatus p2_circle(LubContext *ctx, LubHandle body, LubStr key,
+                           const P2CircleDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (!desc)
@@ -1546,14 +1546,14 @@ LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
 
 static b2ShapeId create_capsule(PhysBody *b, const b2ShapeDef *def,
                                 const void *geom) {
-  const LubPhys2dCapsuleDesc *g = (const LubPhys2dCapsuleDesc *)geom;
+  const P2CapsuleDesc *g = (const P2CapsuleDesc *)geom;
   b2Capsule capsule = {
       .center1 = {g->ax, g->ay}, .center2 = {g->bx, g->by}, .radius = g->r};
   return b2CreateCapsuleShape(b->id, def, &capsule);
 }
 
-LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys2dCapsuleDesc *desc, LubHandle *out) {
+static LubStatus p2_capsule(LubContext *ctx, LubHandle body, LubStr key,
+                            const P2CapsuleDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (!desc)
@@ -1583,13 +1583,13 @@ LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
 
 static b2ShapeId create_segment(PhysBody *b, const b2ShapeDef *def,
                                 const void *geom) {
-  const LubPhys2dSegmentDesc *g = (const LubPhys2dSegmentDesc *)geom;
+  const P2SegmentDesc *g = (const P2SegmentDesc *)geom;
   b2Segment segment = {.point1 = {g->ax, g->ay}, .point2 = {g->bx, g->by}};
   return b2CreateSegmentShape(b->id, def, &segment);
 }
 
-LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys2dSegmentDesc *desc, LubHandle *out) {
+static LubStatus p2_segment(LubContext *ctx, LubHandle body, LubStr key,
+                            const P2SegmentDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (!desc)
@@ -1652,8 +1652,8 @@ static bool read_points(App *app, const float *points, int32_t count, int min,
   return true;
 }
 
-LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys2dPolygonDesc *desc, LubHandle *out) {
+static LubStatus p2_polygon(LubContext *ctx, LubHandle body, LubStr key,
+                            const P2PolygonDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (!desc)
@@ -1692,7 +1692,7 @@ LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
   return shape_declare(app, &d, out);
 }
 
-LubHandle lub_phys2d_shape_find(LubContext *ctx, LubHandle body, LubStr key) {
+static LubHandle p2_shape_find(LubContext *ctx, LubHandle body, LubStr key) {
   App *app = lub_api_app(ctx);
   PhysBody *b = body_from_handle(app, body);
   char kbuf[PHYS_KEY_MAX];
@@ -1726,7 +1726,7 @@ static void chain_update_tombstones(PhysChain *chain) {
 }
 
 static uint64_t chain_constructor_hash(const b2Vec2 *points, int point_count,
-                                       const LubPhys2dChainDesc *desc,
+                                       const P2ChainDesc *desc,
                                        const b2SurfaceMaterial *materials,
                                        int material_count, bool has_materials) {
   uint64_t h = phys_hash_init();
@@ -1761,8 +1761,8 @@ static void log_chain_constructor_drift(PhysChain *chain, uint64_t hash) {
   chain->constructor_warned = true;
 }
 
-LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
-                           const LubPhys2dChainDesc *desc, LubHandle *out) {
+static LubStatus p2_chain(LubContext *ctx, LubHandle body, LubStr key,
+                          const P2ChainDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (in_callback(app, "phys2d_chain"))
@@ -1860,7 +1860,7 @@ LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
   return LUB_OK;
 }
 
-LubHandle lub_phys2d_chain_find(LubContext *ctx, LubHandle body, LubStr key) {
+static LubHandle p2_chain_find(LubContext *ctx, LubHandle body, LubStr key) {
   App *app = lub_api_app(ctx);
   PhysBody *b = body_from_handle(app, body);
   char kbuf[PHYS_KEY_MAX];
@@ -1870,9 +1870,8 @@ LubHandle lub_phys2d_chain_find(LubContext *ctx, LubHandle body, LubStr key) {
   return c ? c->handle : 0;
 }
 
-LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
-                                    const LubPhys2dShapePart **items,
-                                    int32_t *count) {
+static LubStatus p2_chain_segments(LubContext *ctx, LubHandle chain,
+                                   const P2ShapePart **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -1886,8 +1885,8 @@ LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
   if (!ids)
     return lub_api_fail(app, "phys2d_chain_segments: out of memory");
   int n = b2Chain_GetSegments(c->id, ids, capacity);
-  LubPhys2dShapePart *parts = (LubPhys2dShapePart *)scratch_alloc(
-      phys_state(app), sizeof(LubPhys2dShapePart) * (size_t)(n > 0 ? n : 1));
+  P2ShapePart *parts = (P2ShapePart *)scratch_alloc(
+      phys_state(app), sizeof(P2ShapePart) * (size_t)(n > 0 ? n : 1));
   if (!parts) {
     SDL_free(ids);
     return lub_api_fail(app, "phys2d_chain_segments: out of memory");
@@ -1927,9 +1926,9 @@ static const char *joint_kind_name(int kind) {
   }
 }
 
-static b2Vec2 vec2_of(LubVec2 v) { return (b2Vec2){v.x, v.y}; }
+static b2Vec2 vec2_of(LubVec2d v) { return (b2Vec2){v.x, v.y}; }
 
-static uint64_t joint_constructor_hash(const LubPhys2dJointDesc *desc,
+static uint64_t joint_constructor_hash(const P2JointDesc *desc,
                                        const PhysBody *a, const PhysBody *b,
                                        b2Vec2 axis) {
   uint64_t h = phys_hash_init();
@@ -1955,7 +1954,7 @@ static void log_joint_constructor_drift(PhysJoint *j, uint64_t hash) {
   j->constructor_warned = true;
 }
 
-static void joint_mark_declared(PhysJoint *j, const LubPhys2dJointDesc *desc,
+static void joint_mark_declared(PhysJoint *j, const P2JointDesc *desc,
                                 PhysBody *a, PhysBody *b,
                                 uint64_t constructor_hash, int64_t version,
                                 bool recreated) {
@@ -1969,7 +1968,7 @@ static void joint_mark_declared(PhysJoint *j, const LubPhys2dJointDesc *desc,
   j->constructor_hash = constructor_hash;
 }
 
-static void joint_apply_runtime(PhysJoint *j, const LubPhys2dJointDesc *desc) {
+static void joint_apply_runtime(PhysJoint *j, const P2JointDesc *desc) {
   switch (desc->type) {
   case LUB_PHYS2D_JOINT_TYPE_DISTANCE:
     b2DistanceJoint_SetLength(j->id, desc->length);
@@ -2040,8 +2039,8 @@ static void joint_apply_runtime(PhysJoint *j, const LubPhys2dJointDesc *desc) {
 }
 
 static bool joint_create(App *app, PhysWorld *w, PhysJoint *j,
-                         const LubPhys2dJointDesc *desc, PhysBody *a,
-                         PhysBody *b, b2Vec2 axis, uint64_t constructor_hash,
+                         const P2JointDesc *desc, PhysBody *a, PhysBody *b,
+                         b2Vec2 axis, uint64_t constructor_hash,
                          int64_t version) {
   b2Vec2 anchor_a = vec2_of(desc->local_anchor_a);
   b2Vec2 anchor_b = vec2_of(desc->local_anchor_b);
@@ -2177,8 +2176,8 @@ static PhysBody *joint_body(App *app, PhysWorld *w, LubHandle h,
   return b;
 }
 
-LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
-                           const LubPhys2dJointDesc *desc, LubHandle *out) {
+static LubStatus p2_joint(LubContext *ctx, LubHandle world, LubStr key,
+                          const P2JointDesc *desc, LubHandle *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   if (in_callback(app, "phys2d_joint"))
@@ -2235,7 +2234,7 @@ LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
   return LUB_OK;
 }
 
-LubHandle lub_phys2d_joint_find(LubContext *ctx, LubHandle world, LubStr key) {
+static LubHandle p2_joint_find(LubContext *ctx, LubHandle world, LubStr key) {
   App *app = lub_api_app(ctx);
   PhysWorld *w = world_from_handle(app, world);
   char kbuf[PHYS_KEY_MAX];
@@ -2245,7 +2244,7 @@ LubHandle lub_phys2d_joint_find(LubContext *ctx, LubHandle world, LubStr key) {
   return j ? j->handle : 0;
 }
 
-static void fill_joint_view(LubPhys2dJointView *out, PhysJoint *j) {
+static void fill_joint_view(P2JointView *out, PhysJoint *j) {
   memset(out, 0, sizeof(*out));
   out->joint = j ? j->handle : 0;
   out->key = str_or_empty(j ? j->key : NULL);
@@ -2255,8 +2254,8 @@ static void fill_joint_view(LubPhys2dJointView *out, PhysJoint *j) {
   out->valid = joint_is_live(j);
 }
 
-LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
-                                LubPhys2dJointInfo *out) {
+static LubStatus p2_joint_info(LubContext *ctx, LubHandle joint,
+                               P2JointInfo *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysJoint *j = query_joint(app, joint);
@@ -2278,14 +2277,14 @@ LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
     out->has_local_anchors = true;
     b2Vec2 a = b2Joint_GetLocalAnchorA(j->id);
     b2Vec2 b = b2Joint_GetLocalAnchorB(j->id);
-    out->local_anchor_a = (LubVec2){a.x, a.y};
-    out->local_anchor_b = (LubVec2){b.x, b.y};
+    out->local_anchor_a = (LubVec2d){a.x, a.y};
+    out->local_anchor_b = (LubVec2d){b.x, b.y};
   }
   if (k == LUB_PHYS2D_JOINT_TYPE_PRISMATIC ||
       k == LUB_PHYS2D_JOINT_TYPE_WHEEL) {
     out->has_local_axis = true;
     b2Vec2 ax = b2Joint_GetLocalAxisA(j->id);
-    out->local_axis_a = (LubVec2){ax.x, ax.y};
+    out->local_axis_a = (LubVec2d){ax.x, ax.y};
   }
   if (k == LUB_PHYS2D_JOINT_TYPE_PRISMATIC ||
       k == LUB_PHYS2D_JOINT_TYPE_REVOLUTE || k == LUB_PHYS2D_JOINT_TYPE_WELD) {
@@ -2295,8 +2294,8 @@ LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint, float *x,
-                                 float *y) {
+static LubStatus p2_joint_force(LubContext *ctx, LubHandle joint, float *x,
+                                float *y) {
   App *app = lub_api_app(ctx);
   *x = *y = 0;
   PhysJoint *j = query_joint(app, joint);
@@ -2308,8 +2307,7 @@ LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint, float *x,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint,
-                                  float *out) {
+static LubStatus p2_joint_torque(LubContext *ctx, LubHandle joint, float *out) {
   App *app = lub_api_app(ctx);
   *out = 0;
   PhysJoint *j = query_joint(app, joint);
@@ -2320,8 +2318,8 @@ LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint,
 }
 
 #define JOINT_MEASURE(name, KIND, GET)                                         \
-  LubStatus lub_phys2d_joint_##name(LubContext *ctx, LubHandle joint,          \
-                                    float *out, bool *has) {                   \
+  static LubStatus p2_joint_##name(LubContext *ctx, LubHandle joint,           \
+                                   float *out, bool *has) {                    \
     App *app = lub_api_app(ctx);                                               \
     *out = 0;                                                                  \
     *has = false;                                                              \
@@ -2342,8 +2340,8 @@ JOINT_MEASURE(speed, LUB_PHYS2D_JOINT_TYPE_PRISMATIC, b2PrismaticJoint_GetSpeed)
 JOINT_MEASURE(length, LUB_PHYS2D_JOINT_TYPE_DISTANCE,
               b2DistanceJoint_GetCurrentLength)
 
-LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has) {
+static LubStatus p2_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                      float *out, bool *has) {
   App *app = lub_api_app(ctx);
   *out = 0;
   *has = false;
@@ -2360,8 +2358,8 @@ LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx, LubHandle joint,
-                                        float *out, bool *has) {
+static LubStatus p2_joint_motor_torque(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has) {
   App *app = lub_api_app(ctx);
   *out = 0;
   *has = false;
@@ -2391,8 +2389,8 @@ static PhysJoint *check_live_joint(App *app, LubHandle h, const char *fn) {
   return j;
 }
 
-LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
-                                     const LubPhys2dJointMotor *d) {
+static LubStatus p2_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                    const P2JointMotor *d) {
   App *app = lub_api_app(ctx);
   PhysJoint *j = check_live_joint(app, joint, "phys2d_joint_set_motor");
   if (!j)
@@ -2433,8 +2431,8 @@ LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
-                                     const LubPhys2dJointLimit *d) {
+static LubStatus p2_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                    const P2JointLimit *d) {
   App *app = lub_api_app(ctx);
   PhysJoint *j = check_live_joint(app, joint, "phys2d_joint_set_limit");
   if (!j)
@@ -2463,8 +2461,8 @@ LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
-                                      const LubPhys2dJointSpring *d) {
+static LubStatus p2_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                     const P2JointSpring *d) {
   App *app = lub_api_app(ctx);
   PhysJoint *j = check_live_joint(app, joint, "phys2d_joint_set_spring");
   if (!j)
@@ -2503,8 +2501,8 @@ LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
-                                      const LubPhys2dJointTarget *d) {
+static LubStatus p2_joint_set_target(LubContext *ctx, LubHandle joint,
+                                     const P2JointTarget *d) {
   App *app = lub_api_app(ctx);
   PhysJoint *j = check_live_joint(app, joint, "phys2d_joint_set_target");
   if (!j)
@@ -2570,7 +2568,7 @@ static PhysCommand *push_command(App *app, PhysBody *b, PhysCommandKind kind,
 }
 
 static LubStatus add_vector_command(LubContext *ctx, LubHandle body, float x,
-                                    float y, const LubVec2 *point, bool wake,
+                                    float y, const LubVec2d *point, bool wake,
                                     PhysCommandKind kind, const char *fn) {
   App *app = lub_api_app(ctx);
   PhysBody *b = check_live_body(app, body, fn);
@@ -2588,27 +2586,27 @@ static LubStatus add_vector_command(LubContext *ctx, LubHandle body, float x,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body, float fx,
-                               float fy, const LubVec2 *point, bool wake) {
+static LubStatus p2_add_force(LubContext *ctx, LubHandle body, float fx,
+                              float fy, const LubVec2d *point, bool wake) {
   return add_vector_command(ctx, body, fx, fy, point, wake,
                             PHYS_COMMAND_ADD_FORCE, "phys2d_add_force");
 }
 
-LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body, float fx,
-                                      float fy, bool wake) {
+static LubStatus p2_add_force_center(LubContext *ctx, LubHandle body, float fx,
+                                     float fy, bool wake) {
   return add_vector_command(ctx, body, fx, fy, NULL, wake,
                             PHYS_COMMAND_ADD_FORCE_CENTER,
                             "phys2d_add_force_center");
 }
 
-LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body, float ix,
-                                 float iy, const LubVec2 *point, bool wake) {
+static LubStatus p2_add_impulse(LubContext *ctx, LubHandle body, float ix,
+                                float iy, const LubVec2d *point, bool wake) {
   return add_vector_command(ctx, body, ix, iy, point, wake,
                             PHYS_COMMAND_ADD_IMPULSE, "phys2d_add_impulse");
 }
 
-LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                        float ix, float iy, bool wake) {
+static LubStatus p2_add_impulse_center(LubContext *ctx, LubHandle body,
+                                       float ix, float iy, bool wake) {
   return add_vector_command(ctx, body, ix, iy, NULL, wake,
                             PHYS_COMMAND_ADD_IMPULSE_CENTER,
                             "phys2d_add_impulse_center");
@@ -2629,21 +2627,21 @@ static LubStatus add_scalar_command(LubContext *ctx, LubHandle body, float v,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body, float torque,
-                                bool wake) {
+static LubStatus p2_add_torque(LubContext *ctx, LubHandle body, float torque,
+                               bool wake) {
   return add_scalar_command(ctx, body, torque, wake, PHYS_COMMAND_ADD_TORQUE,
                             "phys2d_add_torque");
 }
 
-LubStatus lub_phys2d_add_angular_impulse(LubContext *ctx, LubHandle body,
-                                         float impulse, bool wake) {
+static LubStatus p2_add_angular_impulse(LubContext *ctx, LubHandle body,
+                                        float impulse, bool wake) {
   return add_scalar_command(ctx, body, impulse, wake,
                             PHYS_COMMAND_ADD_ANGULAR_IMPULSE,
                             "phys2d_add_angular_impulse");
 }
 
-LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
-                                  const LubPhys2dSetVelocity *d) {
+static LubStatus p2_set_velocity(LubContext *ctx, LubHandle body,
+                                 const P2SetVelocity *d) {
   App *app = lub_api_app(ctx);
   PhysBody *b = check_live_body(app, body, "phys2d_set_velocity");
   if (!b)
@@ -2661,8 +2659,8 @@ LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
-                              const LubPhys2dTeleport *d) {
+static LubStatus p2_teleport(LubContext *ctx, LubHandle body,
+                             const P2Teleport *d) {
   App *app = lub_api_app(ctx);
   PhysBody *b = check_live_body(app, body, "phys2d_teleport");
   if (!b)
@@ -2680,8 +2678,8 @@ LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
-                                const LubPhys2dSetTarget *d) {
+static LubStatus p2_set_target(LubContext *ctx, LubHandle body,
+                               const P2SetTarget *d) {
   App *app = lub_api_app(ctx);
   PhysBody *b = check_live_body(app, body, "phys2d_set_target");
   if (!b)
@@ -2700,8 +2698,8 @@ LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
-                                   const LubPhys2dMassDataDesc *d, bool wake) {
+static LubStatus p2_set_mass_data(LubContext *ctx, LubHandle body,
+                                  const P2MassDataDesc *d, bool wake) {
   App *app = lub_api_app(ctx);
   PhysBody *b = check_live_body(app, body, "phys2d_set_mass_data");
   if (!b)
@@ -3040,8 +3038,8 @@ static void capture_step_events(PhysWorld *w) {
   capture_sensor_events(w);
 }
 
-LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
-                          LubPhys2dStepInfo *out) {
+static LubStatus p2_step(LubContext *ctx, LubHandle world, float dt,
+                         P2StepInfo *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   if (in_callback(app, "phys2d_step"))
@@ -3107,7 +3105,7 @@ LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
 
 // ---------------------------------------------------------- body getters
 
-LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body, LubPhys2dPose *out) {
+static LubStatus p2_pose(LubContext *ctx, LubHandle body, P2Pose *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysBody *b = query_body(app, body);
@@ -3129,8 +3127,7 @@ LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body, LubPhys2dPose *out) {
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
-                              LubPhys2dVelocity *out) {
+static LubStatus p2_velocity(LubContext *ctx, LubHandle body, P2Velocity *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysBody *b = query_body(app, body);
@@ -3143,8 +3140,7 @@ LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body,
-                          LubPhys2dMassData *out) {
+static LubStatus p2_mass(LubContext *ctx, LubHandle body, P2MassData *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysBody *b = query_body(app, body);
@@ -3161,8 +3157,8 @@ LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, float *x,
-                            float *y) {
+static LubStatus p2_center(LubContext *ctx, LubHandle body, float *x,
+                           float *y) {
   App *app = lub_api_app(ctx);
   *x = *y = 0;
   PhysBody *b = query_body(app, body);
@@ -3174,8 +3170,8 @@ LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, float *x,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, float lx,
-                                 float ly, float *x, float *y) {
+static LubStatus p2_world_point(LubContext *ctx, LubHandle body, float lx,
+                                float ly, float *x, float *y) {
   App *app = lub_api_app(ctx);
   *x = *y = 0;
   PhysBody *b = query_body(app, body);
@@ -3187,8 +3183,8 @@ LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, float lx,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body, float wx,
-                                 float wy, float *x, float *y) {
+static LubStatus p2_local_point(LubContext *ctx, LubHandle body, float wx,
+                                float wy, float *x, float *y) {
   App *app = lub_api_app(ctx);
   *x = *y = 0;
   PhysBody *b = query_body(app, body);
@@ -3200,8 +3196,8 @@ LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body, float wx,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body, float wx,
-                                 float wy, float *x, float *y) {
+static LubStatus p2_velocity_at(LubContext *ctx, LubHandle body, float wx,
+                                float wy, float *x, float *y) {
   App *app = lub_api_app(ctx);
   *x = *y = 0;
   PhysBody *b = query_body(app, body);
@@ -3215,13 +3211,13 @@ LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body, float wx,
 
 // ------------------------------------------------------------ shape parts
 
-static LubPhys2dFilter filter_of(b2Filter f) {
-  LubPhys2dFilter out = {f.categoryBits, f.maskBits, f.groupIndex};
+static P2Filter filter_of(b2Filter f) {
+  P2Filter out = {f.categoryBits, f.maskBits, f.groupIndex};
   return out;
 }
 
 // live な shape id から識別を組む。chain segment は親 chain の識別になる。
-static void fill_shape_part(PhysState *state, LubPhys2dShapePart *out,
+static void fill_shape_part(PhysState *state, P2ShapePart *out,
                             b2ShapeId shape_id) {
   memset(out, 0, sizeof(*out));
   bool valid = B2_IS_NON_NULL(shape_id) && b2Shape_IsValid(shape_id);
@@ -3268,7 +3264,7 @@ static void fill_shape_part(PhysState *state, LubPhys2dShapePart *out,
 }
 
 // step の snapshot から識別を組む (filter 無し)。
-static void fill_snapshot_part(LubPhys2dShapePart *out, const char *body,
+static void fill_snapshot_part(P2ShapePart *out, const char *body,
                                const char *shape, const char *tag,
                                const char *material_name, int material_id,
                                bool valid) {
@@ -3293,7 +3289,7 @@ static bool phys2d_custom_filter_callback(b2ShapeId shape_id_a,
   PhysWorld *w = (PhysWorld *)context;
   if (!w || !w->callbacks.filter)
     return true;
-  LubPhys2dShapePart a, b;
+  P2ShapePart a, b;
   fill_shape_part(w->state, &a, shape_id_a);
   fill_shape_part(w->state, &b, shape_id_b);
   w->state->callback_depth++;
@@ -3302,7 +3298,7 @@ static bool phys2d_custom_filter_callback(b2ShapeId shape_id_a,
   return collide;
 }
 
-static void fill_manifold_point(LubPhys2dManifoldPoint *out,
+static void fill_manifold_point(P2ManifoldPoint *out,
                                 const b2ManifoldPoint *p) {
   out->x = p->point.x;
   out->y = p->point.y;
@@ -3325,7 +3321,7 @@ static bool phys2d_pre_solve_callback(b2ShapeId shape_id_a,
   PhysWorld *w = (PhysWorld *)context;
   if (!w || !w->callbacks.pre_solve)
     return true;
-  LubPhys2dPreSolve c;
+  P2PreSolve c;
   memset(&c, 0, sizeof(c));
   fill_shape_part(w->state, &c.a, shape_id_a);
   fill_shape_part(w->state, &c.b, shape_id_b);
@@ -3386,8 +3382,8 @@ static float phys2d_restitution_callback(float restitution_a, int material_a,
 
 // ---------------------------------------------------------- shape queries
 
-LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape, float x,
-                                      float y, bool *out) {
+static LubStatus p2_shape_test_point(LubContext *ctx, LubHandle shape, float x,
+                                     float y, bool *out) {
   App *app = lub_api_app(ctx);
   *out = false;
   PhysShape *s = query_shape(app, shape);
@@ -3397,9 +3393,8 @@ LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape, float x,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
-                                   const LubPhys2dRay *ray,
-                                   LubPhys2dRayHit *out, bool *hit) {
+static LubStatus p2_shape_raycast(LubContext *ctx, LubHandle shape,
+                                  const P2Ray *ray, P2RayHit *out, bool *hit) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   *hit = false;
@@ -3428,9 +3423,9 @@ LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
-                                         float x, float y, float *ox,
-                                         float *oy) {
+static LubStatus p2_shape_closest_point(LubContext *ctx, LubHandle shape,
+                                        float x, float y, float *ox,
+                                        float *oy) {
   App *app = lub_api_app(ctx);
   *ox = *oy = 0;
   PhysShape *s = query_shape(app, shape);
@@ -3442,14 +3437,12 @@ LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
   return LUB_OK;
 }
 
-static LubPhys2dAabb aabb_of(b2AABB a) {
-  LubPhys2dAabb out = {a.lowerBound.x, a.lowerBound.y, a.upperBound.x,
-                       a.upperBound.y};
+static P2Aabb aabb_of(b2AABB a) {
+  P2Aabb out = {a.lowerBound.x, a.lowerBound.y, a.upperBound.x, a.upperBound.y};
   return out;
 }
 
-LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
-                                LubPhys2dAabb *out) {
+static LubStatus p2_shape_aabb(LubContext *ctx, LubHandle shape, P2Aabb *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysShape *s = query_shape(app, shape);
@@ -3459,8 +3452,8 @@ LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
-                                LubPhys2dShapeInfo *out) {
+static LubStatus p2_shape_info(LubContext *ctx, LubHandle shape,
+                               P2ShapeInfo *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysShape *s = query_shape(app, shape);
@@ -3493,8 +3486,8 @@ static PhysShape *check_live_shape(App *app, LubHandle h, const char *fn) {
   return s;
 }
 
-LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
-                                        const LubPhys2dMaterialDesc *d) {
+static LubStatus p2_shape_set_material(LubContext *ctx, LubHandle shape,
+                                       const P2MaterialDesc *d) {
   App *app = lub_api_app(ctx);
   PhysShape *s = check_live_shape(app, shape, "phys2d_shape_set_material");
   if (!s)
@@ -3516,8 +3509,8 @@ LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
-                                      const LubPhys2dFilter *filter) {
+static LubStatus p2_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                     const P2Filter *filter) {
   App *app = lub_api_app(ctx);
   PhysShape *s = check_live_shape(app, shape, "phys2d_shape_set_filter");
   if (!s)
@@ -3531,8 +3524,8 @@ LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
-                                      const LubPhys2dEventFlags *flags) {
+static LubStatus p2_shape_set_events(LubContext *ctx, LubHandle shape,
+                                     const P2EventFlags *flags) {
   App *app = lub_api_app(ctx);
   PhysShape *s = check_live_shape(app, shape, "phys2d_shape_set_events");
   if (!s)
@@ -3551,9 +3544,8 @@ LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
 
 // ------------------------------------------------------------- body lists
 
-LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
-                                 const LubPhys2dShapePart **items,
-                                 int32_t *count) {
+static LubStatus p2_body_shapes(LubContext *ctx, LubHandle body,
+                                const P2ShapePart **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -3567,8 +3559,8 @@ LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
   if (!ids)
     return lub_api_fail(app, "phys2d_body_shapes: out of memory");
   int n = b2Body_GetShapes(b->id, ids, capacity);
-  LubPhys2dShapePart *parts = (LubPhys2dShapePart *)scratch_alloc(
-      phys_state(app), sizeof(LubPhys2dShapePart) * (size_t)(n > 0 ? n : 1));
+  P2ShapePart *parts = (P2ShapePart *)scratch_alloc(
+      phys_state(app), sizeof(P2ShapePart) * (size_t)(n > 0 ? n : 1));
   if (!parts) {
     SDL_free(ids);
     return lub_api_fail(app, "phys2d_body_shapes: out of memory");
@@ -3581,9 +3573,8 @@ LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
-                                 const LubPhys2dJointView **items,
-                                 int32_t *count) {
+static LubStatus p2_body_joints(LubContext *ctx, LubHandle body,
+                                const P2JointView **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -3597,8 +3588,8 @@ LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
   if (!ids)
     return lub_api_fail(app, "phys2d_body_joints: out of memory");
   int n = b2Body_GetJoints(b->id, ids, capacity);
-  LubPhys2dJointView *views = (LubPhys2dJointView *)scratch_alloc(
-      phys_state(app), sizeof(LubPhys2dJointView) * (size_t)(n > 0 ? n : 1));
+  P2JointView *views = (P2JointView *)scratch_alloc(
+      phys_state(app), sizeof(P2JointView) * (size_t)(n > 0 ? n : 1));
   if (!views) {
     SDL_free(ids);
     return lub_api_fail(app, "phys2d_body_joints: out of memory");
@@ -3615,9 +3606,8 @@ LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
-                                   const LubPhys2dContactData **items,
-                                   int32_t *count) {
+static LubStatus p2_body_contacts(LubContext *ctx, LubHandle body,
+                                  const P2ContactData **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -3631,8 +3621,8 @@ LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
   if (!data)
     return lub_api_fail(app, "phys2d_body_contacts: out of memory");
   int n = b2Body_GetContactData(b->id, data, capacity);
-  LubPhys2dContactData *out = (LubPhys2dContactData *)scratch_alloc(
-      phys_state(app), sizeof(LubPhys2dContactData) * (size_t)(n > 0 ? n : 1));
+  P2ContactData *out = (P2ContactData *)scratch_alloc(
+      phys_state(app), sizeof(P2ContactData) * (size_t)(n > 0 ? n : 1));
   if (!out) {
     SDL_free(data);
     return lub_api_fail(app, "phys2d_body_contacts: out of memory");
@@ -3658,9 +3648,9 @@ LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
 // ------------------------------------------------------------ step events
 
 static LubStatus contact_list(App *app, PhysContactSnapshot *src, int n,
-                              const LubPhys2dContact **items, int32_t *count) {
-  LubPhys2dContact *out = (LubPhys2dContact *)scratch_alloc(
-      phys_state(app), sizeof(LubPhys2dContact) * (size_t)(n > 0 ? n : 1));
+                              const P2Contact **items, int32_t *count) {
+  P2Contact *out = (P2Contact *)scratch_alloc(
+      phys_state(app), sizeof(P2Contact) * (size_t)(n > 0 ? n : 1));
   if (!out)
     return lub_api_fail(app, "phys2d_contacts: out of memory");
   for (int i = 0; i < n; ++i) {
@@ -3681,8 +3671,8 @@ static LubStatus contact_list(App *app, PhysContactSnapshot *src, int n,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
-                              const LubPhys2dContact **items, int32_t *count) {
+static LubStatus p2_contacts(LubContext *ctx, LubHandle world, int32_t kind,
+                             const P2Contact **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -3703,8 +3693,8 @@ LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
   }
 }
 
-LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
-                             const LubPhys2dContact **items, int32_t *count) {
+static LubStatus p2_sensors(LubContext *ctx, LubHandle world, int32_t kind,
+                            const P2Contact **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -3723,9 +3713,8 @@ LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
   }
 }
 
-LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
-                                 const LubPhys2dBodyEvent **items,
-                                 int32_t *count) {
+static LubStatus p2_body_events(LubContext *ctx, LubHandle world,
+                                const P2BodyEvent **items, int32_t *count) {
   App *app = lub_api_app(ctx);
   *items = NULL;
   *count = 0;
@@ -3733,8 +3722,8 @@ LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
   if (!w)
     return LUB_NOT_FOUND;
   int n = w->events.move_count;
-  LubPhys2dBodyEvent *out = (LubPhys2dBodyEvent *)scratch_alloc(
-      phys_state(app), sizeof(LubPhys2dBodyEvent) * (size_t)(n > 0 ? n : 1));
+  P2BodyEvent *out = (P2BodyEvent *)scratch_alloc(
+      phys_state(app), sizeof(P2BodyEvent) * (size_t)(n > 0 ? n : 1));
   if (!out)
     return lub_api_fail(app, "phys2d_body_events: out of memory");
   for (int i = 0; i < n; ++i) {
@@ -3753,7 +3742,7 @@ LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
 
 // ---------------------------------------------------------- world queries
 
-static b2QueryFilter query_filter_of(const LubPhys2dQueryFilter *f) {
+static b2QueryFilter query_filter_of(const P2QueryFilter *f) {
   b2QueryFilter out = b2DefaultQueryFilter();
   if (f) {
     out.categoryBits = f->category_bits;
@@ -3763,7 +3752,7 @@ static b2QueryFilter query_filter_of(const LubPhys2dQueryFilter *f) {
 }
 
 // world raycast の translation は max_fraction を掛けたもの。
-static bool ray_translation(App *app, const LubPhys2dRay *ray, b2Vec2 *out,
+static bool ray_translation(App *app, const P2Ray *ray, b2Vec2 *out,
                             const char *fn) {
   float mf = ray->max_fraction < 0.0f ? 0.0f : ray->max_fraction;
   out->x = ray->dx * mf;
@@ -3777,15 +3766,15 @@ static bool ray_translation(App *app, const LubPhys2dRay *ray, b2Vec2 *out,
 
 typedef struct QueryCtx {
   PhysState *state;
-  LubPhys2dOverlapFn overlap;
-  LubPhys2dRayFn ray;
-  LubPhys2dPlaneFn plane;
+  P2OverlapFn overlap;
+  P2RayFn ray;
+  P2PlaneFn plane;
   void *user;
 } QueryCtx;
 
 static bool overlap_trampoline(b2ShapeId shape_id, void *context) {
   QueryCtx *q = (QueryCtx *)context;
-  LubPhys2dShapePart part;
+  P2ShapePart part;
   fill_shape_part(q->state, &part, shape_id);
   q->state->callback_depth++;
   bool keep = q->overlap(q->user, &part);
@@ -3796,7 +3785,7 @@ static bool overlap_trampoline(b2ShapeId shape_id, void *context) {
 static float ray_trampoline(b2ShapeId shape_id, b2Vec2 point, b2Vec2 normal,
                             float fraction, void *context) {
   QueryCtx *q = (QueryCtx *)context;
-  LubPhys2dRayHit hit;
+  P2RayHit hit;
   memset(&hit, 0, sizeof(hit));
   fill_shape_part(q->state, &hit.shape, shape_id);
   hit.x = point.x;
@@ -3810,15 +3799,15 @@ static float ray_trampoline(b2ShapeId shape_id, b2Vec2 point, b2Vec2 normal,
   return r;
 }
 
-static LubPhys2dTreeStats stats_of(b2TreeStats s) {
-  LubPhys2dTreeStats out = {s.nodeVisits, s.leafVisits};
+static P2TreeStats stats_of(b2TreeStats s) {
+  P2TreeStats out = {s.nodeVisits, s.leafVisits};
   return out;
 }
 
-LubStatus lub_phys2d_raycast_closest(LubContext *ctx, LubHandle world,
-                                     const LubPhys2dRay *ray,
-                                     const LubPhys2dQueryFilter *filter,
-                                     LubPhys2dRayHit *out, bool *hit) {
+static LubStatus p2_raycast_closest(LubContext *ctx, LubHandle world,
+                                    const P2Ray *ray,
+                                    const P2QueryFilter *filter, P2RayHit *out,
+                                    bool *hit) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   *hit = false;
@@ -3844,11 +3833,9 @@ LubStatus lub_phys2d_raycast_closest(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
-                             const LubPhys2dRay *ray,
-                             const LubPhys2dQueryFilter *filter,
-                             LubPhys2dRayFn fn, void *user,
-                             LubPhys2dTreeStats *stats) {
+static LubStatus p2_raycast(LubContext *ctx, LubHandle world, const P2Ray *ray,
+                            const P2QueryFilter *filter, P2RayFn fn, void *user,
+                            P2TreeStats *stats) {
   App *app = lub_api_app(ctx);
   memset(stats, 0, sizeof(*stats));
   PhysWorld *w = query_world(app, world);
@@ -3866,11 +3853,10 @@ LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
-                                  const LubPhys2dAabb *aabb,
-                                  const LubPhys2dQueryFilter *filter,
-                                  LubPhys2dOverlapFn fn, void *user,
-                                  LubPhys2dTreeStats *stats) {
+static LubStatus p2_overlap_aabb(LubContext *ctx, LubHandle world,
+                                 const P2Aabb *aabb,
+                                 const P2QueryFilter *filter, P2OverlapFn fn,
+                                 void *user, P2TreeStats *stats) {
   App *app = lub_api_app(ctx);
   memset(stats, 0, sizeof(*stats));
   PhysWorld *w = query_world(app, world);
@@ -3888,12 +3874,11 @@ LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-static bool make_proxy(App *app, const LubPhys2dShapeProxy *p,
-                       b2ShapeProxy *out) {
+static bool make_proxy(App *app, const P2ShapeProxy *p, b2ShapeProxy *out) {
   b2Vec2 position = {p->x, p->y};
   b2Rot rot = b2MakeRot(p->angle);
   switch (p->kind) {
-  case LUB_PHYS2D_PROXY_KIND_CIRCLE: {
+  case P2_PROXY_CIRCLE: {
     if (p->r <= 0.0f) {
       lub_api_fail(app, "phys2d_shape_cast: circle r must be > 0");
       return false;
@@ -3902,9 +3887,9 @@ static bool make_proxy(App *app, const LubPhys2dShapeProxy *p,
     *out = b2MakeOffsetProxy(&center, 1, p->r, position, rot);
     return true;
   }
-  case LUB_PHYS2D_PROXY_KIND_CAPSULE:
-  case LUB_PHYS2D_PROXY_KIND_SEGMENT: {
-    bool capsule = p->kind == LUB_PHYS2D_PROXY_KIND_CAPSULE;
+  case P2_PROXY_CAPSULE:
+  case P2_PROXY_SEGMENT: {
+    bool capsule = p->kind == P2_PROXY_CAPSULE;
     if (capsule && p->r <= 0.0f) {
       lub_api_fail(app, "phys2d_shape_cast: capsule r must be > 0");
       return false;
@@ -3920,7 +3905,7 @@ static bool make_proxy(App *app, const LubPhys2dShapeProxy *p,
     *out = b2MakeOffsetProxy(points, 2, capsule ? p->r : 0.0f, position, rot);
     return true;
   }
-  case LUB_PHYS2D_PROXY_KIND_BOX: {
+  case P2_PROXY_BOX: {
     if (p->hx <= 0.0f || p->hy <= 0.0f) {
       lub_api_fail(app, "phys2d_shape_cast: box hx and hy must be > 0");
       return false;
@@ -3936,7 +3921,7 @@ static bool make_proxy(App *app, const LubPhys2dShapeProxy *p,
     *out = b2MakeOffsetProxy(points, 4, p->r, position, rot);
     return true;
   }
-  case LUB_PHYS2D_PROXY_KIND_POLYGON: {
+  case P2_PROXY_POLYGON: {
     b2Vec2 points[B2_MAX_POLYGON_VERTICES];
     if (!read_points(app, p->points, p->point_count, 3, B2_MAX_POLYGON_VERTICES,
                      points, "phys2d_shape_cast"))
@@ -3959,11 +3944,10 @@ static bool make_proxy(App *app, const LubPhys2dShapeProxy *p,
   }
 }
 
-LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
-                                const LubPhys2dShapeProxy *proxy, float dx,
-                                float dy, const LubPhys2dQueryFilter *filter,
-                                LubPhys2dRayFn fn, void *user,
-                                LubPhys2dTreeStats *stats) {
+static LubStatus p2_shape_cast(LubContext *ctx, LubHandle world,
+                               const P2ShapeProxy *proxy, float dx, float dy,
+                               const P2QueryFilter *filter, P2RayFn fn,
+                               void *user, P2TreeStats *stats) {
   App *app = lub_api_app(ctx);
   memset(stats, 0, sizeof(*stats));
   PhysWorld *w = query_world(app, world);
@@ -3983,7 +3967,7 @@ LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-static bool mover_of(App *app, const LubPhys2dMover *m, b2Capsule *out,
+static bool mover_of(App *app, const P2Mover *m, b2Capsule *out,
                      const char *fn) {
   out->center1 = (b2Vec2){m->ax, m->ay};
   out->center2 = (b2Vec2){m->bx, m->by};
@@ -4001,10 +3985,9 @@ static bool mover_of(App *app, const LubPhys2dMover *m, b2Capsule *out,
   return true;
 }
 
-LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
-                                const LubPhys2dMover *mover, float dx, float dy,
-                                const LubPhys2dQueryFilter *filter,
-                                float *fraction) {
+static LubStatus p2_cast_mover(LubContext *ctx, LubHandle world,
+                               const P2Mover *mover, float dx, float dy,
+                               const P2QueryFilter *filter, float *fraction) {
   App *app = lub_api_app(ctx);
   *fraction = 0;
   PhysWorld *w = query_world(app, world);
@@ -4023,7 +4006,7 @@ LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
 static bool plane_trampoline(b2ShapeId shape_id, const b2PlaneResult *plane,
                              void *context) {
   QueryCtx *q = (QueryCtx *)context;
-  LubPhys2dMoverPlane p;
+  P2MoverPlane p;
   memset(&p, 0, sizeof(p));
   fill_shape_part(q->state, &p.shape, shape_id);
   p.hit = plane->hit;
@@ -4038,10 +4021,10 @@ static bool plane_trampoline(b2ShapeId shape_id, const b2PlaneResult *plane,
   return keep;
 }
 
-LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
-                                   const LubPhys2dMover *mover,
-                                   const LubPhys2dQueryFilter *filter,
-                                   LubPhys2dPlaneFn fn, void *user) {
+static LubStatus p2_collide_mover(LubContext *ctx, LubHandle world,
+                                  const P2Mover *mover,
+                                  const P2QueryFilter *filter, P2PlaneFn fn,
+                                  void *user) {
   App *app = lub_api_app(ctx);
   PhysWorld *w = query_world(app, world);
   if (!w)
@@ -4057,8 +4040,8 @@ LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_explode(LubContext *ctx, LubHandle world,
-                             const LubPhys2dExplosionDesc *desc) {
+static LubStatus p2_explode(LubContext *ctx, LubHandle world,
+                            const P2ExplosionDesc *desc) {
   App *app = lub_api_app(ctx);
   if (in_callback(app, "phys2d_explode"))
     return LUB_ERROR;
@@ -4231,9 +4214,8 @@ static void debug_draw_point(b2Vec2 p, float size, b2HexColor color,
   debug_push_point((PhysDebugBuffer *)context, p, size, color);
 }
 
-LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
-                           const LubPhys2dDebugDesc *desc,
-                           LubPhys2dDebugData *out) {
+static LubStatus p2_debug(LubContext *ctx, LubHandle world,
+                          const P2DebugDesc *desc, P2DebugData *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysWorld *w = query_world(app, world);
@@ -4295,8 +4277,7 @@ LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world,
-                             LubPhys2dProfile *out) {
+static LubStatus p2_profile(LubContext *ctx, LubHandle world, P2Profile *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysWorld *w = query_world(app, world);
@@ -4328,8 +4309,8 @@ LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world,
   return LUB_OK;
 }
 
-LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
-                              LubPhys2dCounters *out) {
+static LubStatus p2_counters(LubContext *ctx, LubHandle world,
+                             P2Counters *out) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
   PhysWorld *w = query_world(app, world);
@@ -4350,3 +4331,5 @@ LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
     out->color_counts[i] = c.colorCounts[i];
   return LUB_OK;
 }
+
+#include "physics_box2d_api.inc"

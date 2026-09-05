@@ -1,21 +1,19 @@
-// lub の C API。runtime の immediate mode 層の上に引いた ABI で、Lua binding
-// (src/lua_api.c)、.NET 実行の P/Invoke facade、tcs→C の生成コードはどれも
-// この API への薄い詰め替えになる。設計は
-// docs/log/2026-09-04-language-architecture-design.md の「C API 層」。
+// lub の C API。cs-lib/lub_stub.cs から tools/lub-gen が生成する (手で
+// 編集しない。再生成: dotnet run --project tools/lub-gen -- header)。
 //
-// 規則:
-//   - context を第 1 引数に取り、typed な desc 構造体を受け、status を返す。
-//     検証はこの層で行い、失敗は LUB_ERROR と lub_last_error() の文字列。
+// 規則 (docs/log/2026-09-05-language-architecture-plan.md 段階 4):
+//   - context を第 1 引数に取り、失敗しうる関数は LubStatus を返す。
+//     失敗は LUB_ERROR と lub_last_error() の文字列、問い合わせの対象が
+//     無いときは LUB_NOT_FOUND (last_error は書かない)。
 //   - 型は int32 / float / bool / UTF-8 の byte 列だけ。文字列は LubStr
 //     (pointer + length、NUL 終端を要求しない)。
 //   - ゲームの memory は呼び出しの間だけ借用する。runtime の memory は
-//     LubView (frame の終わりまで有効) で返す。frame を跨いで生きるものは
-//     runtime 所有の keyed resource で、ゲームは key と int32 の handle
-//     だけ持つ。
+//     LubView か runtime 所有の配列 (frame の終わりまで有効) で返す。
+//     frame を跨いで生きるものは runtime 所有の keyed resource で、
+//     ゲームは key と int32 の handle だけ持つ。
+//   - 省略可能な field は has_x + x (実装が既定値を入れる)。省略可能な
+//     引数は pointer (NULL = 無し)。
 //   - main thread 限定。
-//
-// 段階 3 の形: 全 subsystem がこの API を通る。段階 4 で この header は
-// cs-lib/lub_stub.cs からの生成物になる。
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,8 +27,6 @@ typedef struct LubContext LubContext;
 typedef enum LubStatus {
   LUB_OK = 0,
   LUB_ERROR = 1,
-  // 問い合わせの対象 (handle / key) が無い。想定内の結果なので last_error は
-  // 書かない。
   LUB_NOT_FOUND = 2,
 } LubStatus;
 
@@ -51,317 +47,22 @@ typedef struct LubView {
 // 同じ値で、hot reload を跨いでも有効。
 typedef int32_t LubHandle;
 
-typedef struct LubVec2 {
-  float x, y;
-} LubVec2;
-
-typedef struct LubVec3 {
-  float x, y, z;
-} LubVec3;
-
-typedef struct LubQuat {
-  float x, y, z, w;
-} LubQuat;
+// draw / dispatch の bindings の 1 項目。name は shader の reflection 名。
+// handle が 0 でなければ buffer / texture の束縛、そうでなければ values
+// (count 個の float) の uniform 値。
+typedef struct LubBinding {
+  LubStr name;
+  LubHandle handle;
+  const float *values;
+  int32_t count;
+} LubBinding;
 
 // 直近の LUB_ERROR の message。次の API 呼び出しまで有効。
 const char *lub_last_error(LubContext *ctx);
 
 // 現在の frame 番号 (LubView.frame と比較する)。
 int32_t lub_frame_index(LubContext *ctx);
-
-// ------------------------------------------------------------------ core
-
-// config は on_init の中でだけ呼べる。省略は「変えない」: backend は len 0、
-// width / height は 0、resource_sweep_after_frames / readback_depth は -1。
-typedef struct LubConfigDesc {
-  LubStr backend; // "native" / "sdlgpu" (web は無視して webgpu)
-  int32_t width, height;
-  int32_t resource_sweep_after_frames; // 0 = sweep しない
-  int32_t readback_depth;              // 1..32
-} LubConfigDesc;
-
-LubStatus lub_config(LubContext *ctx, const LubConfigDesc *desc);
-void lub_quit(LubContext *ctx);
-
-// ----------------------------------------------------------------- input
-
-// key は "space" / "a".."z" / "left" 等の名前。未知の名前は常に false。
-bool lub_input_key_down(LubContext *ctx, LubStr key);
-bool lub_input_key_pressed(LubContext *ctx, LubStr key);
-bool lub_input_key_released(LubContext *ctx, LubStr key);
-// button は SDL 準拠の 1 始まり (1 = 左、2 = 中、3 = 右)。
-bool lub_input_mouse_down(LubContext *ctx, int32_t button);
-bool lub_input_mouse_pressed(LubContext *ctx, int32_t button);
-bool lub_input_mouse_released(LubContext *ctx, int32_t button);
-void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
-void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
-
-// ------------------------------------------------------------------- sys
-
-float lub_sys_actual_fps(LubContext *ctx);
-bool lub_sys_is_web(LubContext *ctx);
-
-// -------------------------------------------------------------- profiler
-
-bool lub_profiler_enabled(LubContext *ctx);
-void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
-// name は len 0 で「直近の scope」。
-void lub_profiler_end_scope(LubContext *ctx, LubStr name);
-void lub_profiler_reset(LubContext *ctx);
-void lub_profiler_report(LubContext *ctx, LubStr label);
-
-// ------------------------------------------------------------------ host
-
-bool lub_host_available(LubContext *ctx);
-void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload);
-// queue から 1 件取り出す。無ければ false。view は次の poll まで有効。
-bool lub_host_poll(LubContext *ctx, LubView *topic, LubView *payload);
-
-// ----------------------------------------------------------------- audio
-
-typedef struct LubAudioPlayDesc {
-  float volume; // 既定 1
-  float pitch;  // 既定 1。0 = 停止、負 = 逆再生
-  float pan;    // 既定 0
-  bool loop;    // voice のみ
-} LubAudioPlayDesc;
-
-typedef struct LubAudioInfo {
-  bool device;
-  int32_t rate;
-  int32_t voices;
-  int32_t snds;
-} LubAudioInfo;
-
-// snd を key で宣言する。samples は interleaved f32 PCM で count 個 (channels
-// の倍数)。version の意味論は use_buffer と同じ (NULL = 内容が変わった宣言、
-// 同じ version なら samples は読まない)。宣言が resource_sweep_after_frames
-// の間途切れた snd は sweep され、鳴っている voice が終わってから PCM を
-// 回収する。同じ内容の PCM は同じ snd に dedupe されるので、hot reload で
-// 作り直しても鳴っている voice は途切れない。
-LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
-                        int32_t count, int32_t channels, int32_t rate,
-                        const int32_t *version, int32_t *out_snd);
-// file format bytes → f32 PCM の view (frame の終わりまで有効)。
-LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
-                           LubView *pcm, int32_t *channels, int32_t *rate);
-bool lub_audio_play(LubContext *ctx, int32_t snd, const LubAudioPlayDesc *desc);
-bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
-                     const LubAudioPlayDesc *desc);
-void lub_audio_master_volume(LubContext *ctx, float volume);
-void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
-
-// -------------------------------------------------------------------- io
-
-// file の load は毎フレーム呼べる即時モード API。runtime が path を key に
-// cache し (mtime の fast path + 内容 hash)、結果は frame 有効の view。
-typedef enum LubIoStatus {
-  LUB_IO_STATUS_PENDING = 0, // web で取得中
-  LUB_IO_STATUS_READY = 1,
-  LUB_IO_STATUS_ERROR = 2,
-} LubIoStatus;
-
-typedef struct LubIoResult {
-  int32_t status;  // LubIoStatus
-  int32_t version; // 内容の hash。use_* の version にそのまま渡せる
-  LubStr error;    // ERROR のとき
-} LubIoResult;
-
-// 平らな配列のメッシュ。vert_count 頂点、positions は vec3、normals vec3、
-// uvs vec2、tangents vec4、colors vec3、metal_rough vec2、joints / weights は
-// 頂点あたり 2 つ。NULL の配列は「無し」。indices は index_count 個。
-typedef struct LubMeshData {
-  const float *positions;
-  const float *normals;
-  const float *uvs;
-  const float *tangents;
-  const float *colors;
-  const float *metal_rough;
-  const float *joints;
-  const float *weights;
-  const uint32_t *indices;
-  int32_t vert_count;
-  int32_t index_count;
-} LubMeshData;
-
-typedef struct LubGltfMaterial {
-  float base_color_factor[4];
-  float metallic_factor;
-  float roughness_factor;
-  int32_t alpha_mode; // 0 = opaque, 1 = mask, 2 = blend
-  float alpha_cutoff;
-  bool double_sided;
-  float normal_scale;
-  LubStr base_color_path; // len 0 = 無し
-  LubStr metallic_roughness_path;
-  LubStr normal_path;
-  LubStr name;
-} LubGltfMaterial;
-
-typedef struct LubGltfPrimitive {
-  LubMeshData mesh;
-  int32_t material_index; // -1 = 無し
-} LubGltfPrimitive;
-
-typedef struct LubGltfView {
-  const LubGltfPrimitive *primitives;
-  int32_t primitive_count;
-  const LubGltfMaterial *materials;
-  int32_t material_count;
-} LubGltfView;
-
-// interleave の頂点レイアウト。P = position、N = normal、U = uv、T = tangent、
-// C = color、M = metal/rough、W = skin (j0, w0, j1, w1)。
-typedef enum LubMeshLayout {
-  LUB_MESH_LAYOUT_PN = 1,    // stride 6
-  LUB_MESH_LAYOUT_PNU = 2,   // stride 8
-  LUB_MESH_LAYOUT_PNUT = 3,  // stride 12
-  LUB_MESH_LAYOUT_PNCM = 4,  // stride 11
-  LUB_MESH_LAYOUT_PNCMW = 5, // stride 15
-} LubMeshLayout;
-
-// 結果は r->status が READY のときだけ有効 (view は frame の終わりまで)。
-LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubView *text,
-                           LubIoResult *r);
-// `return { ... }` 形式の Lua ファイルを float 列として読む。
-LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
-                             int32_t *count, LubIoResult *r);
-LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfView *mesh,
-                           LubIoResult *r);
-// mesh を layout で interleave して out に書く。戻り値は必要な float 数で、
-// out == NULL か cap が足りなければ書かずに必要数だけ返す。
-int32_t lub_mesh_interleave(LubContext *ctx, const LubMeshData *mesh,
-                            int32_t layout, float *out, int32_t cap);
-
-// ------------------------------------------------------------------- png
-
-// RGBA8 に decode した画像。format は常に LUB_GFX_PIXEL_FORMAT_RGBA8。
-LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *pixels,
-                       int32_t *w, int32_t *h, int32_t *format, int32_t *stride,
-                       LubIoResult *r);
-LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *pixels,
-                        int32_t len, int32_t w, int32_t h, int32_t stride);
-
-// ------------------------------------------------------------------ mesh
-
-// SDF 木のノード (docs/log/2026-07-04-sdf-tree-design.md)。木は node の配列と
-// index で平らに渡す。params の意味は op ごと:
-//   SPHERE r / BOX hx hy hz / CAPSULE ax ay az bx by bz r /
-//   TORUS rmajor rminor / MOVE x y z / ROTATE qx qy qz qw / SCALE s /
-//   PAINT cr cg cb metallic roughness / BONE px py pz (name 必須) /
-//   SMIN k / SSUB k。a は xform / mirror / paint / bone の子、combine は a と
-//   b。
-typedef enum LubSdfOp {
-  LUB_SDF_OP_SPHERE = 1,
-  LUB_SDF_OP_BOX = 2,
-  LUB_SDF_OP_CAPSULE = 3,
-  LUB_SDF_OP_TORUS = 4,
-  LUB_SDF_OP_MOVE = 5,
-  LUB_SDF_OP_ROTATE = 6,
-  LUB_SDF_OP_SCALE = 7,
-  LUB_SDF_OP_MIRROR_X = 8,
-  LUB_SDF_OP_PAINT = 9,
-  LUB_SDF_OP_BONE = 10,
-  LUB_SDF_OP_UNION = 11,
-  LUB_SDF_OP_SMIN = 12,
-  LUB_SDF_OP_SUBTRACT = 13,
-  LUB_SDF_OP_SSUB = 14,
-  LUB_SDF_OP_INTERSECT = 15,
-} LubSdfOp;
-
-typedef struct LubSdfNode {
-  int32_t op; // LubSdfOp
-  float params[8];
-  int32_t a, b; // 子の index。-1 = 無し
-  LubStr name;  // BONE の名前
-} LubSdfNode;
-
-typedef struct LubSdfBone {
-  LubStr name;
-  float pivot[3];
-} LubSdfBone;
-
-// sdf のメッシュ。mesh は positions / normals / indices に加えて colors
-// (vec3) / metal_rough (vec2)、bone があれば joints / weights も持つ。
-typedef struct LubSdfMesh {
-  LubMeshData mesh;
-  const LubSdfBone *bones;
-  int32_t bone_count;
-  float bounds_min[3];
-  float bounds_max[3];
-  float cell;
-} LubSdfMesh;
-
-// grid は nx*ny*nz の signed distance (x が最速)。結果の view は次の mesh_*
-// 呼び出しまで有効。
-LubStatus lub_mesh_surface_nets(LubContext *ctx, const float *grid, int32_t nx,
-                                int32_t ny, int32_t nz, float cell, float ox,
-                                float oy, float oz, LubMeshData *out);
-// n は最長軸の cell 数 (4..512)。skin_k は bone の重みの blend 幅 (0 = 0.1)。
-LubStatus lub_mesh_sdf(LubContext *ctx, const LubSdfNode *nodes, int32_t count,
-                       int32_t root, int32_t n, float skin_k, LubSdfMesh *out);
-
-// ------------------------------------------------------------------ font
-
-// TTF glyph の純関数 utility。ttf は font ファイルの byte 列で毎回渡す。
-typedef struct LubFontMetrics {
-  float ascent, descent, line_gap; // em 単位
-} LubFontMetrics;
-
-typedef struct LubFontGlyph {
-  bool found;   // false = glyph が無い (呼び出し側が他の font に fallback)
-  int32_t w, h; // bitmap の大きさ (空 glyph は 0)
-  int32_t xoff, yoff; // baseline 原点からの左上 offset (px、y-down)
-  float advance;      // px
-  LubView bytes;      // w*h の R8 coverage (行優先、上から)。空 glyph は len 0
-} LubFontGlyph;
-
-typedef struct LubFontGlyphMesh {
-  bool found;
-  LubMeshData mesh; // em 単位、y-up、baseline 原点、z = 0、normal +z
-  float advance;    // em
-} LubFontGlyphMesh;
-
-LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out);
-// px は 1 em あたりの pixel 数。view は次の font_* 呼び出しまで有効。
-LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                         float px, LubFontGlyph *out);
-// tolerance は曲線の平坦化誤差 (em)。0 = 既定 0.002。
-LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                              float tolerance, LubFontGlyphMesh *out);
-LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1, int32_t cp2,
-                        float *out);
-
-// -------------------------------------------------------------------- ui
-
-// Dear ImGui の debug UI (immediate mode)。frame が開いていないときの widget
-// 呼び出しは既定値を返して何もしない。render は begin_pass の中で 1 回。
-LubStatus lub_ui_render(LubContext *ctx);
-bool lub_ui_begin_window(LubContext *ctx, LubStr title);
-void lub_ui_end_window(LubContext *ctx);
-void lub_ui_text(LubContext *ctx, LubStr text);
-bool lub_ui_button(LubContext *ctx, LubStr label);
-bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool value);
-float lub_ui_slider_float(LubContext *ctx, LubStr label, float value, float min,
-                          float max);
-int32_t lub_ui_slider_int(LubContext *ctx, LubStr label, int32_t value,
-                          int32_t min, int32_t max);
-// speed / min / max は 0 で既定 (speed 1、範囲無し)。
-float lub_ui_drag_float(LubContext *ctx, LubStr label, float value, float speed,
-                        float min, float max);
-// rgb は in/out。
-void lub_ui_color_edit3(LubContext *ctx, LubStr label, float rgb[3]);
-void lub_ui_separator(LubContext *ctx);
-void lub_ui_same_line(LubContext *ctx);
-bool lub_ui_tree_node(LubContext *ctx, LubStr label, bool default_open);
-void lub_ui_tree_pop(LubContext *ctx);
-// 初回配置だけ指定する (ユーザのドラッグは活かす)。
-void lub_ui_set_next_window(LubContext *ctx, float x, float y, float w,
-                            float h);
-bool lub_ui_want_capture_mouse(LubContext *ctx);
-
-// ------------------------------------------------------------------- gfx
-
+// use_buffer の種別。
 typedef enum LubGfxBufferType {
   LUB_GFX_BUFFER_TYPE_VERTEX = 1,
   LUB_GFX_BUFFER_TYPE_INDEX = 2,
@@ -369,6 +70,7 @@ typedef enum LubGfxBufferType {
   LUB_GFX_BUFFER_TYPE_STORAGE = 4,
 } LubGfxBufferType;
 
+// テクスチャ / render target の画素形式。
 typedef enum LubGfxPixelFormat {
   LUB_GFX_PIXEL_FORMAT_RGBA8 = 1,
   LUB_GFX_PIXEL_FORMAT_R8 = 2,
@@ -383,11 +85,18 @@ typedef enum LubGfxPixelFormat {
   LUB_GFX_PIXEL_FORMAT_DEPTH32F = 11,
 } LubGfxPixelFormat;
 
+// pass 開始時の color / depth の扱い。
 typedef enum LubGfxLoadAction {
   LUB_GFX_LOAD_ACTION_CLEAR = 1,
   LUB_GFX_LOAD_ACTION_LOAD = 2,
   LUB_GFX_LOAD_ACTION_DONT_CARE = 3,
 } LubGfxLoadAction;
+
+// pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。
+typedef enum LubGfxStoreAction {
+  LUB_GFX_STORE_ACTION_STORE = 1,
+  LUB_GFX_STORE_ACTION_DONT_CARE = 3,
+} LubGfxStoreAction;
 
 typedef enum LubGfxBlend {
   LUB_GFX_BLEND_NONE = 1,
@@ -410,87 +119,20 @@ typedef enum LubGfxPrimitive {
   LUB_GFX_PRIMITIVE_POINTS = 5,
 } LubGfxPrimitive;
 
+// sampler の filter (use_texture の opts)。
 typedef enum LubGfxFilter {
   LUB_GFX_FILTER_LINEAR = 1,
   LUB_GFX_FILTER_NEAREST = 2,
 } LubGfxFilter;
 
+// sampler の wrap (use_texture の opts)。
 typedef enum LubGfxWrap {
   LUB_GFX_WRAP_REPEAT = 1,
   LUB_GFX_WRAP_CLAMP = 2,
 } LubGfxWrap;
 
-#define LUB_GFX_MAX_COLOR_TARGETS 4
-
-// swapchain を指す特別な handle (lub_gfx_main_tex() が返す)。
-#define LUB_GFX_MAIN_TEX ((LubHandle) - 1)
-
-// pass の宣言。n_targets == 1 && targets[0] == LUB_GFX_MAIN_TEX で swapchain、
-// n_targets == 0 で depth-only (depth_target 必須)。
-typedef struct LubGfxPassDesc {
-  int32_t n_targets;
-  LubHandle targets[LUB_GFX_MAX_COLOR_TARGETS];
-  float clear_color[LUB_GFX_MAX_COLOR_TARGETS][4];
-  LubHandle depth_target; // 0 = 無し (swapchain pass は既定の depth を使う)
-  float clear_depth;      // 既定 1.0
-  int32_t load;           // LubGfxLoadAction。0 = CLEAR
-} LubGfxPassDesc;
-
-typedef struct LubGfxTextureDesc {
-  int32_t w, h;
-  int32_t format;        // LubGfxPixelFormat
-  const uint8_t *pixels; // NULL = data 無し。呼び出しの間だけ借用
-  int32_t pixels_len;
-  int32_t filter; // LubGfxFilter。0 = LINEAR (depth は NEAREST 固定)
-  int32_t wrap;   // LubGfxWrap。0 = REPEAT
-  bool target;    // render target として使う
-  bool storage;   // compute の storage texture として使う
-} LubGfxTextureDesc;
-
-// 名前つきの resource 束縛 (shader の reflection 名で結ぶ)。
-typedef struct LubGfxBinding {
-  LubStr name;
-  LubHandle handle;
-} LubGfxBinding;
-
-// uniform block のメンバ値。name は reflection のメンバ名。
-typedef struct LubGfxUniform {
-  LubStr name;
-  const float *values;
-  int32_t count;
-} LubGfxUniform;
-
-typedef struct LubGfxDrawDesc {
-  LubHandle shader;
-  int32_t vertex_count;
-  int32_t instance_count; // 0 = 1
-  int32_t blend;          // LubGfxBlend。0 = NONE
-  int32_t cull;           // LubGfxCull。0 = BACK
-  int32_t primitive;      // LubGfxPrimitive。0 = TRIANGLES
-  bool depth_test;        // 既定値 (true) の補完は binding 側の仕事
-  bool depth_write;
-  // buffers: name "indices" = index buffer、"instances" = per-instance の
-  // vertex buffer、それ以外 = vertex buffer。
-  const LubGfxBinding *buffers;
-  int32_t n_buffers;
-  const LubGfxBinding *textures;
-  int32_t n_textures;
-  const LubGfxUniform *uniforms;
-  int32_t n_uniforms;
-} LubGfxDrawDesc;
-
-typedef struct LubGfxDispatchDesc {
-  LubHandle shader;
-  int32_t groups_x, groups_y, groups_z;
-  const LubGfxBinding *buffers; // storage buffer
-  int32_t n_buffers;
-  const LubGfxBinding
-      *textures; // sampled / storage texture (reflection で判定)
-  int32_t n_textures;
-  const LubGfxUniform *uniforms;
-  int32_t n_uniforms;
-} LubGfxDispatchDesc;
-
+// read_texture の結果。
+// Lua 面では小文字の文字列 ("processing" 等)。
 typedef enum LubGfxReadbackStatus {
   LUB_GFX_READBACK_STATUS_PROCESSING = 0,
   LUB_GFX_READBACK_STATUS_READY = 1,
@@ -498,66 +140,32 @@ typedef enum LubGfxReadbackStatus {
   LUB_GFX_READBACK_STATUS_DROPPED = 3,
 } LubGfxReadbackStatus;
 
-typedef struct LubGfxReadbackResult {
-  int32_t status; // LubGfxReadbackStatus
-  LubView pixels; // READY のとき。frame の終わりまで
-  int32_t w, h;
-  int32_t format; // LubGfxPixelFormat
-  int32_t stride;
-  int32_t token; // READY / ERROR / DROPPED のとき、要求時に渡した token
-  LubStr error;  // ERROR のとき
-} LubGfxReadbackResult;
+// load_* の状態。Lua 面は "pending" / "ready" / "error"。
+// Lua 面では小文字の文字列 ("pending" 等)。
+typedef enum LubIoStatus {
+  LUB_IO_STATUS_PENDING = 0,
+  LUB_IO_STATUS_READY = 1,
+  LUB_IO_STATUS_ERROR = 2,
+} LubIoStatus;
 
-LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubGfxPassDesc *desc);
-LubStatus lub_gfx_end_pass(LubContext *ctx);
-LubHandle lub_gfx_main_tex(LubContext *ctx);
-void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
-
-// use_*: key で宣言し handle を返す。version は NULL で「内容が変わった」
-// 宣言 (runtime が新しい実効 version を発行)、非 NULL で「その version と
-// 同じなら upload を省略してよい」主張。
-LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs, LubStr fs,
-                             const int32_t *version, LubHandle *out);
-LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key, LubStr cs,
-                                     const int32_t *version, LubHandle *out);
-// data: VERTEX / STORAGE は float 列、INDEX は uint32 列 (bytes で渡す)。
-// data == NULL && bytes > 0 は STORAGE の空確保。
-LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
-                             const void *data, int32_t bytes,
-                             const int32_t *version, LubHandle *out);
-LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key,
-                              const LubGfxTextureDesc *desc,
-                              const int32_t *version, LubHandle *out);
-
-// handle の key と実効 version。handle が stale (sweep 済み) なら LUB_ERROR。
-LubStatus lub_gfx_resource_info(LubContext *ctx, LubHandle handle, LubStr *key,
-                                int32_t *version);
-// key から handle を引く。無ければ 0。
-LubHandle lub_gfx_lookup(LubContext *ctx, LubStr key);
-
-LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *desc);
-LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *desc);
-
-// readback queue `key` を poll し、has_request なら (tex, token) を積む。
-// 完了した先頭があればそれを返し (READY / ERROR)、無ければ PROCESSING。
-// queue が満杯で積めなかったときは DROPPED (token は積めなかった要求のもの)。
-// token はゲームが決める int32 の user token。queue は key で宣言する
-// resource で、resource_sweep_after_frames の間 poll されなければ sweep。
-LubStatus lub_gfx_readback(LubContext *ctx, LubStr key, bool has_request,
-                           LubHandle tex, int32_t token,
-                           LubGfxReadbackResult *out);
-
-// ---------------------------------------------------------------- phys2d
-// Box2D の即時モード API。world / body / shape / chain / joint は key で毎
-// フレーム宣言し、begin から step までに宣言されなかったものは step で prune
-// される (begin の prune=false で抑止)。handle は entry の寿命に結ぶ:
-// prune されるまで同じ値で、prune 後は stale (find で引き直す)。
-// filter の bit は Box2D の 64 bit mask をそのまま持つ (Lua 面は hex 文字列、
-// C# は ulong)。
-//
-// callback (world desc の callbacks、query の visitor) は呼び出し元と同じ
-// thread で呼ばれ、渡す struct は呼び出しの間だけ有効。callback の中から
-// 物理を変える API を呼ぶと LUB_ERROR。
+// sdf の演算 (SdfNodeDesc.Op)。Lua 面は lub.mesh.SPHERE 等。
+typedef enum LubMeshSdfOp {
+  LUB_MESH_SDF_OP_SPHERE = 1,
+  LUB_MESH_SDF_OP_BOX = 2,
+  LUB_MESH_SDF_OP_CAPSULE = 3,
+  LUB_MESH_SDF_OP_TORUS = 4,
+  LUB_MESH_SDF_OP_MOVE = 5,
+  LUB_MESH_SDF_OP_ROTATE = 6,
+  LUB_MESH_SDF_OP_SCALE = 7,
+  LUB_MESH_SDF_OP_MIRROR_X = 8,
+  LUB_MESH_SDF_OP_PAINT = 9,
+  LUB_MESH_SDF_OP_BONE = 10,
+  LUB_MESH_SDF_OP_UNION = 11,
+  LUB_MESH_SDF_OP_SMIN = 12,
+  LUB_MESH_SDF_OP_SUBTRACT = 13,
+  LUB_MESH_SDF_OP_SSUB = 14,
+  LUB_MESH_SDF_OP_INTERSECT = 15,
+} LubMeshSdfOp;
 
 typedef enum LubPhys2dBodyType {
   LUB_PHYS2D_BODY_TYPE_STATIC = 0,
@@ -565,6 +173,8 @@ typedef enum LubPhys2dBodyType {
   LUB_PHYS2D_BODY_TYPE_DYNAMIC = 2,
 } LubPhys2dBodyType;
 
+// shape の種類 (ShapeView.Kind)。Lua 面は "box" 等の文字列。
+// Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dShapeKind {
   LUB_PHYS2D_SHAPE_KIND_BOX = 1,
   LUB_PHYS2D_SHAPE_KIND_CIRCLE = 2,
@@ -574,6 +184,8 @@ typedef enum LubPhys2dShapeKind {
   LUB_PHYS2D_SHAPE_KIND_CHAIN_SEGMENT = 6,
 } LubPhys2dShapeKind;
 
+// joint の種類 (JointDesc.Type)。Lua 面は "revolute" 等の文字列。
+// Lua 面では小文字の文字列 ("distance" 等)。
 typedef enum LubPhys2dJointType {
   LUB_PHYS2D_JOINT_TYPE_DISTANCE = 1,
   LUB_PHYS2D_JOINT_TYPE_FILTER = 2,
@@ -585,647 +197,23 @@ typedef enum LubPhys2dJointType {
   LUB_PHYS2D_JOINT_TYPE_WHEEL = 8,
 } LubPhys2dJointType;
 
+// contact / sensor event の種類。Lua 面は "begin" 等の文字列。
+// Lua 面では小文字の文字列 ("begin" 等)。
 typedef enum LubPhys2dEventKind {
   LUB_PHYS2D_EVENT_KIND_BEGIN = 0,
   LUB_PHYS2D_EVENT_KIND_END = 1,
   LUB_PHYS2D_EVENT_KIND_HIT = 2,
 } LubPhys2dEventKind;
 
+// shape_cast の proxy の種類。Lua 面は "circle" 等の文字列。
+// Lua 面では小文字の文字列 ("box" 等)。
 typedef enum LubPhys2dProxyKind {
-  LUB_PHYS2D_PROXY_KIND_CIRCLE = 1,
-  LUB_PHYS2D_PROXY_KIND_CAPSULE = 2,
-  LUB_PHYS2D_PROXY_KIND_SEGMENT = 3,
-  LUB_PHYS2D_PROXY_KIND_BOX = 4,
+  LUB_PHYS2D_PROXY_KIND_BOX = 1,
+  LUB_PHYS2D_PROXY_KIND_CIRCLE = 2,
+  LUB_PHYS2D_PROXY_KIND_CAPSULE = 3,
+  LUB_PHYS2D_PROXY_KIND_SEGMENT = 4,
   LUB_PHYS2D_PROXY_KIND_POLYGON = 5,
 } LubPhys2dProxyKind;
-
-typedef struct LubPhys2dFilter {
-  uint64_t category_bits; // 既定 1
-  uint64_t mask_bits;     // 既定 全 bit
-  int32_t group_index;
-} LubPhys2dFilter;
-
-// shape の識別。event / query / callback が返す。文字列は runtime が持ち、
-// その shape (か tombstone) が生きている間有効。
-typedef struct LubPhys2dShapePart {
-  LubHandle shape; // shape か chain の handle。0 = 無し
-  LubHandle body;
-  LubStr body_key;
-  LubStr shape_key;
-  LubStr chain_key; // len 0 = chain segment ではない
-  LubStr tag;
-  LubStr material_name;
-  int32_t material_id;
-  int32_t kind; // LubPhys2dShapeKind。0 = 不明
-  bool valid;   // shape が live
-  bool has_material;
-  bool has_filter;
-  LubPhys2dFilter filter;
-} LubPhys2dShapePart;
-
-typedef struct LubPhys2dManifoldPoint {
-  float x, y;
-  float anchor_a_x, anchor_a_y;
-  float anchor_b_x, anchor_b_y;
-  float separation;
-  float normal_impulse, tangent_impulse, total_normal_impulse;
-  float normal_velocity;
-  int32_t id;
-  bool persisted;
-} LubPhys2dManifoldPoint;
-
-typedef struct LubPhys2dPreSolve {
-  LubPhys2dShapePart a, b;
-  float nx, ny;
-  float rolling_impulse;
-  int32_t point_count; // 0..2
-  LubPhys2dManifoldPoint points[2];
-} LubPhys2dPreSolve;
-
-// 全部 NULL = callback 無し。生存期間は次の world 宣言か step まで。
-typedef struct LubPhys2dCallbacks {
-  void *user;
-  bool (*filter)(void *user, const LubPhys2dShapePart *a,
-                 const LubPhys2dShapePart *b);
-  bool (*pre_solve)(void *user, const LubPhys2dPreSolve *contact);
-  float (*friction)(void *user, float friction_a, int32_t material_a,
-                    float friction_b, int32_t material_b);
-  float (*restitution)(void *user, float restitution_a, int32_t material_a,
-                       float restitution_b, int32_t material_b);
-} LubPhys2dCallbacks;
-
-typedef struct LubPhys2dWorldDesc {
-  bool has_version;
-  int32_t version;
-  float gravity_x, gravity_y; // 既定 (0, -9.8)
-  float fixed_dt;             // 既定 1/60
-  int32_t substeps;           // 既定 4
-  int32_t max_steps;          // 既定 4
-  bool sleep;                 // 既定 true
-  bool continuous;            // 既定 true
-  bool has_hit_event_threshold;
-  float hit_event_threshold;
-  LubPhys2dCallbacks callbacks;
-} LubPhys2dWorldDesc;
-
-typedef struct LubPhys2dBodyDesc {
-  bool has_version;
-  int32_t version;
-  int32_t type; // LubPhys2dBodyType
-  bool fixed_rotation;
-  bool bullet;
-  bool has_enabled, enabled;
-  bool has_awake, awake;
-  bool has_sleep, sleep;
-  float gravity_scale; // 既定 1
-  float linear_damping, angular_damping;
-  bool has_sleep_threshold;
-  float sleep_threshold;
-  // initial (再生成のときだけ使う)
-  float x, y, angle;
-  float vx, vy, w;
-  bool initial_awake; // 既定 true
-} LubPhys2dBodyDesc;
-
-typedef struct LubPhys2dShapeDesc {
-  bool has_version;
-  int32_t version;
-  bool has_density;
-  float density;  // 既定 dynamic 1 / それ以外 0
-  float friction; // 既定 0.6
-  float restitution;
-  int32_t material_id;
-  LubStr material_name; // len 0 = 無し
-  LubStr tag;           // len 0 = 無し
-  bool sensor, contact, hit, sensor_events, pre_solve;
-  LubPhys2dFilter filter;
-} LubPhys2dShapeDesc;
-
-typedef struct LubPhys2dBoxDesc {
-  LubPhys2dShapeDesc shape;
-  float hx, hy, cx, cy, angle;
-} LubPhys2dBoxDesc;
-
-typedef struct LubPhys2dCircleDesc {
-  LubPhys2dShapeDesc shape;
-  float r, cx, cy;
-} LubPhys2dCircleDesc;
-
-typedef struct LubPhys2dCapsuleDesc {
-  LubPhys2dShapeDesc shape;
-  float ax, ay, bx, by, r;
-} LubPhys2dCapsuleDesc;
-
-typedef struct LubPhys2dSegmentDesc {
-  LubPhys2dShapeDesc shape;
-  float ax, ay, bx, by;
-} LubPhys2dSegmentDesc;
-
-typedef struct LubPhys2dPolygonDesc {
-  LubPhys2dShapeDesc shape;
-  const float *points; // x, y の組。3..8 点
-  int32_t point_count;
-  float radius, cx, cy, angle;
-} LubPhys2dPolygonDesc;
-
-typedef struct LubPhys2dSurfaceMaterial {
-  float friction, restitution;
-  int32_t material_id;
-} LubPhys2dSurfaceMaterial;
-
-typedef struct LubPhys2dChainDesc {
-  int32_t version;     // 必須 (chain は version 無しの宣言を受けない)
-  const float *points; // x, y の組。4 点以上
-  int32_t point_count;
-  bool loop;
-  float friction; // 既定 0.6
-  float restitution;
-  int32_t material_id;
-  LubStr material_name;
-  LubStr tag;
-  bool sensor_events;
-  LubPhys2dFilter filter;
-  const LubPhys2dSurfaceMaterial *materials; // NULL = 無し
-  int32_t material_count;                    // 1 か point_count
-} LubPhys2dChainDesc;
-
-typedef struct LubPhys2dJointDesc {
-  bool has_version;
-  int32_t version;
-  int32_t type; // LubPhys2dJointType
-  LubHandle body_a, body_b;
-  LubVec2 local_anchor_a, local_anchor_b;
-  LubVec2 local_axis_a; // 既定 (1, 0)
-  LubVec2 linear_offset;
-  LubVec2 target;
-  float reference_angle;
-  float length;     // 既定 1
-  float min_length; // 既定 0
-  float max_length; // 既定 1
-  float lower;      // 既定 0
-  float upper;      // 既定 1
-  float target_angle, target_translation, angular_offset;
-  float hertz, damping_ratio;
-  float linear_hertz, angular_hertz;
-  float linear_damping_ratio, angular_damping_ratio;
-  float max_force;  // 既定 1
-  float max_torque; // 既定 1
-  float motor_speed;
-  float correction_factor; // 既定 0.3
-  float draw_size;         // 既定 0.25
-  bool collide_connected, enable_spring, enable_limit, enable_motor;
-} LubPhys2dJointDesc;
-
-// desc に既定値を入れる (callbacks / 文字列は空)。
-void lub_phys2d_world_desc_init(LubPhys2dWorldDesc *desc);
-void lub_phys2d_body_desc_init(LubPhys2dBodyDesc *desc);
-void lub_phys2d_shape_desc_init(LubPhys2dShapeDesc *desc);
-void lub_phys2d_chain_desc_init(LubPhys2dChainDesc *desc);
-void lub_phys2d_joint_desc_init(LubPhys2dJointDesc *desc);
-
-typedef struct LubPhys2dWorldInfo {
-  LubStr key;
-  bool valid;
-  int32_t version;
-  int32_t generation;
-  bool begun, prune;
-  float fixed_dt;
-  int32_t substeps, max_steps;
-  float accumulator;
-  int32_t pending_commands;
-  bool callback_filter, callback_pre_solve, callback_friction,
-      callback_restitution;
-  // 以下は valid のとき
-  float gravity_x, gravity_y;
-  bool sleep, continuous, warm_starting;
-  float restitution_threshold, hit_event_threshold, maximum_linear_speed;
-  int32_t awake_body_count;
-} LubPhys2dWorldInfo;
-
-typedef struct LubPhys2dStepInfo {
-  int32_t steps;
-  int32_t commands;
-  float alpha;
-  bool dropped;
-  int32_t contact_begins, contact_ends, contact_hits;
-  int32_t sensor_begins, sensor_ends;
-  int32_t body_moves;
-} LubPhys2dStepInfo;
-
-typedef struct LubPhys2dPose {
-  float x, y, angle;
-  float vx, vy, w;
-  bool awake, enabled, sleep;
-  float sleep_threshold;
-} LubPhys2dPose;
-
-typedef struct LubPhys2dVelocity {
-  float x, y, w;
-} LubPhys2dVelocity;
-
-typedef struct LubPhys2dMassData {
-  float mass, inertia;
-  float center_x, center_y; // world
-  float local_center_x, local_center_y;
-} LubPhys2dMassData;
-
-typedef struct LubPhys2dAabb {
-  float min_x, min_y, max_x, max_y;
-} LubPhys2dAabb;
-
-typedef struct LubPhys2dShapeInfo {
-  LubPhys2dShapePart part;
-  float density, friction, restitution;
-  bool sensor, sensor_events, contact, pre_solve, hit;
-  LubPhys2dAabb aabb;
-} LubPhys2dShapeInfo;
-
-typedef struct LubPhys2dJointView {
-  LubHandle joint;
-  LubStr key;
-  int32_t type; // LubPhys2dJointType。0 = 不明
-  LubStr a, b;  // body の key
-  bool valid;
-} LubPhys2dJointView;
-
-typedef struct LubPhys2dJointInfo {
-  LubPhys2dJointView view;
-  bool collide_connected;
-  float force_x, force_y, torque;
-  float linear_separation, angular_separation;
-  bool has_local_anchors;
-  LubVec2 local_anchor_a, local_anchor_b;
-  bool has_local_axis;
-  LubVec2 local_axis_a;
-  bool has_reference_angle;
-  float reference_angle;
-} LubPhys2dJointInfo;
-
-// step が集めた contact / sensor event。a / b の filter は無い。
-typedef struct LubPhys2dContact {
-  LubPhys2dShapePart a, b; // sensor event では a = sensor、b = visitor
-  float nx, ny;
-  int32_t point_count;
-  float x, y;
-  float approach_speed; // hit のとき
-} LubPhys2dContact;
-
-typedef struct LubPhys2dBodyEvent {
-  LubStr body;
-  bool valid;
-  float x, y, angle;
-  bool fell_asleep;
-} LubPhys2dBodyEvent;
-
-// body に今触れている contact (live)。
-typedef struct LubPhys2dContactData {
-  LubPhys2dShapePart a, b;
-  float nx, ny;
-  int32_t point_count;
-  float x, y, separation;
-} LubPhys2dContactData;
-
-typedef struct LubPhys2dRay {
-  float x, y;         // origin
-  float dx, dy;       // translation
-  float max_fraction; // 既定 1
-} LubPhys2dRay;
-
-typedef struct LubPhys2dRayHit {
-  LubPhys2dShapePart shape; // world query のとき
-  float x, y, nx, ny, fraction;
-  int32_t iterations;               // shape raycast のとき
-  int32_t node_visits, leaf_visits; // raycast_closest のとき
-} LubPhys2dRayHit;
-
-typedef struct LubPhys2dTreeStats {
-  int32_t node_visits, leaf_visits;
-} LubPhys2dTreeStats;
-
-typedef struct LubPhys2dQueryFilter {
-  uint64_t category_bits; // 既定 1
-  uint64_t mask_bits;     // 既定 全 bit
-} LubPhys2dQueryFilter;
-
-typedef struct LubPhys2dShapeProxy {
-  int32_t kind;         // LubPhys2dProxyKind
-  float x, y, angle;    // 配置
-  float r;              // circle / capsule / polygon / box の丸め
-  float cx, cy;         // circle / box の中心
-  float ax, ay, bx, by; // capsule / segment
-  float hx, hy;         // box
-  const float *points;  // polygon (x, y の組)
-  int32_t point_count;
-} LubPhys2dShapeProxy;
-
-typedef struct LubPhys2dMover {
-  float ax, ay, bx, by, r;
-} LubPhys2dMover;
-
-typedef struct LubPhys2dMoverPlane {
-  LubPhys2dShapePart shape;
-  bool hit;
-  float x, y, nx, ny, offset;
-} LubPhys2dMoverPlane;
-
-typedef struct LubPhys2dExplosionDesc {
-  float x, y;
-  float radius, falloff, impulse_per_length;
-  uint64_t mask_bits; // 既定 全 bit
-} LubPhys2dExplosionDesc;
-
-typedef struct LubPhys2dDebugDesc {
-  bool shapes; // 既定 true
-  bool joints, joint_extras, bounds, mass, body_names, contacts, graph_colors,
-      contact_normals, contact_impulses, contact_features, friction_impulses,
-      islands;
-  bool has_drawing_bounds;
-  LubPhys2dAabb drawing_bounds;
-} LubPhys2dDebugDesc;
-
-// 平らな float 配列。次の lub_phys2d_debug まで有効。色は r g b a。
-typedef struct LubPhys2dDebugData {
-  const float *segments; // x1 y1 x2 y2 + 色
-  int32_t segment_count; // float の個数
-  const float *circles;  // cx cy r + 色
-  int32_t circle_count;
-  const float *capsules; // x1 y1 x2 y2 r + 色
-  int32_t capsule_count;
-  const float *polygons; // n solid + 色 + x0 y0 ... (n 点)
-  int32_t polygon_count;
-  const float *points; // x y size + 色
-  int32_t point_count;
-} LubPhys2dDebugData;
-
-typedef struct LubPhys2dProfile {
-  float step, pairs, collide, solve, merge_islands, prepare_stages,
-      solve_constraints, prepare_constraints, integrate_velocities, warm_start,
-      solve_impulses, integrate_positions, relax_impulses, apply_restitution,
-      store_impulses, split_islands, transforms, hit_events, refit, bullets,
-      sleep_islands, sensors;
-} LubPhys2dProfile;
-
-typedef struct LubPhys2dCounters {
-  int32_t body_count, shape_count, contact_count, joint_count, island_count,
-      stack_used, static_tree_height, tree_height, byte_count, task_count;
-  int32_t color_counts[12];
-} LubPhys2dCounters;
-
-typedef struct LubPhys2dSetVelocity {
-  bool has_vx, has_vy, has_w;
-  float vx, vy, w;
-  bool wake;
-} LubPhys2dSetVelocity;
-
-typedef struct LubPhys2dTeleport {
-  bool has_x, has_y, has_angle;
-  float x, y, angle;
-  bool wake;
-} LubPhys2dTeleport;
-
-typedef struct LubPhys2dSetTarget {
-  bool has_x, has_y, has_angle;
-  float x, y, angle;
-  float time_step; // <= 0 で world の fixed_dt
-  bool wake;
-} LubPhys2dSetTarget;
-
-typedef struct LubPhys2dMassDataDesc {
-  float mass, inertia;
-  float center_x, center_y; // local
-} LubPhys2dMassDataDesc;
-
-typedef struct LubPhys2dJointMotor {
-  bool enabled;
-  float speed, max_force, max_torque;
-  bool has_correction_factor; // motor joint
-  float correction_factor;
-} LubPhys2dJointMotor;
-
-typedef struct LubPhys2dJointLimit {
-  bool enabled;
-  float lower, upper;           // prismatic / revolute / wheel
-  float min_length, max_length; // distance
-} LubPhys2dJointLimit;
-
-typedef struct LubPhys2dJointSpring {
-  bool enabled;
-  float hertz, damping_ratio;
-  float linear_hertz, linear_damping_ratio; // weld
-  float angular_hertz, angular_damping_ratio;
-} LubPhys2dJointSpring;
-
-typedef struct LubPhys2dJointTarget {
-  bool has_x, has_y; // mouse。無い成分は今の値
-  float x, y;
-  bool has_translation; // prismatic
-  float translation;
-  bool has_angle; // revolute
-  float angle;
-  bool has_linear_offset; // motor
-  float linear_offset_x, linear_offset_y;
-  bool has_angular_offset;
-  float angular_offset;
-} LubPhys2dJointTarget;
-
-typedef struct LubPhys2dMaterialDesc {
-  bool has_density, has_friction, has_restitution, has_material_id,
-      has_material_name;
-  float density, friction, restitution;
-  int32_t material_id;
-  LubStr material_name; // has_material_name で len 0 = 名前を消す
-} LubPhys2dMaterialDesc;
-
-typedef struct LubPhys2dEventFlags {
-  bool has_sensor_events, sensor_events;
-  bool has_contact, contact;
-  bool has_pre_solve, pre_solve;
-  bool has_hit, hit;
-} LubPhys2dEventFlags;
-
-// query の visitor。false / 0 で打ち切り。raycast は Box2D の規約:
-// -1 = この hit を無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行。
-typedef bool (*LubPhys2dOverlapFn)(void *user, const LubPhys2dShapePart *shape);
-typedef float (*LubPhys2dRayFn)(void *user, const LubPhys2dRayHit *hit);
-typedef bool (*LubPhys2dPlaneFn)(void *user, const LubPhys2dMoverPlane *plane);
-
-LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
-                           const LubPhys2dWorldDesc *desc, LubHandle *out);
-LubHandle lub_phys2d_world_find(LubContext *ctx, LubStr key);
-LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world, bool prune);
-LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
-                                LubPhys2dWorldInfo *out);
-LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
-                          LubPhys2dStepInfo *out);
-
-LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
-                          const LubPhys2dBodyDesc *desc, LubHandle *out);
-LubHandle lub_phys2d_body_find(LubContext *ctx, LubHandle world, LubStr key);
-LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
-                         const LubPhys2dBoxDesc *desc, LubHandle *out);
-LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
-                            const LubPhys2dCircleDesc *desc, LubHandle *out);
-LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys2dCapsuleDesc *desc, LubHandle *out);
-LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys2dSegmentDesc *desc, LubHandle *out);
-LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys2dPolygonDesc *desc, LubHandle *out);
-LubHandle lub_phys2d_shape_find(LubContext *ctx, LubHandle body, LubStr key);
-LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
-                           const LubPhys2dChainDesc *desc, LubHandle *out);
-LubHandle lub_phys2d_chain_find(LubContext *ctx, LubHandle body, LubStr key);
-// 配列の view は同じ subsystem の次の呼び出しまで有効。
-LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
-                                    const LubPhys2dShapePart **items,
-                                    int32_t *count);
-
-LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
-                           const LubPhys2dJointDesc *desc, LubHandle *out);
-LubHandle lub_phys2d_joint_find(LubContext *ctx, LubHandle world, LubStr key);
-LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
-                                LubPhys2dJointInfo *out);
-LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint, float *x,
-                                 float *y);
-LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint, float *out);
-// joint の種類に無い量は has = false。
-LubStatus lub_phys2d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
-                                 bool *has);
-LubStatus lub_phys2d_joint_translation(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has);
-LubStatus lub_phys2d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
-                                 bool *has);
-LubStatus lub_phys2d_joint_length(LubContext *ctx, LubHandle joint, float *out,
-                                  bool *has);
-LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
-                                       float *out, bool *has);
-LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx, LubHandle joint,
-                                        float *out, bool *has);
-LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
-                                     const LubPhys2dJointMotor *desc);
-LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
-                                     const LubPhys2dJointLimit *desc);
-LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
-                                      const LubPhys2dJointSpring *desc);
-LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
-                                      const LubPhys2dJointTarget *desc);
-
-LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body, LubPhys2dPose *out);
-LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
-                              LubPhys2dVelocity *out);
-LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body,
-                          LubPhys2dMassData *out);
-LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, float *x,
-                            float *y);
-LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body, float lx,
-                                 float ly, float *x, float *y);
-LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body, float wx,
-                                 float wy, float *x, float *y);
-LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body, float wx,
-                                 float wy, float *x, float *y);
-LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
-                                 const LubPhys2dShapePart **items,
-                                 int32_t *count);
-LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
-                                 const LubPhys2dJointView **items,
-                                 int32_t *count);
-LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
-                                   const LubPhys2dContactData **items,
-                                   int32_t *count);
-
-LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape, float x,
-                                      float y, bool *out);
-LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
-                                   const LubPhys2dRay *ray,
-                                   LubPhys2dRayHit *out, bool *hit);
-LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
-                                         float x, float y, float *ox,
-                                         float *oy);
-LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape,
-                                LubPhys2dAabb *out);
-LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
-                                LubPhys2dShapeInfo *out);
-LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
-                                        const LubPhys2dMaterialDesc *desc);
-LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
-                                      const LubPhys2dFilter *filter);
-LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
-                                      const LubPhys2dEventFlags *flags);
-
-LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
-                              const LubPhys2dContact **items, int32_t *count);
-LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
-                                 const LubPhys2dBodyEvent **items,
-                                 int32_t *count);
-// kind は BEGIN / END。
-LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
-                             const LubPhys2dContact **items, int32_t *count);
-
-LubStatus lub_phys2d_raycast_closest(LubContext *ctx, LubHandle world,
-                                     const LubPhys2dRay *ray,
-                                     const LubPhys2dQueryFilter *filter,
-                                     LubPhys2dRayHit *out, bool *hit);
-LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
-                             const LubPhys2dRay *ray,
-                             const LubPhys2dQueryFilter *filter,
-                             LubPhys2dRayFn fn, void *user,
-                             LubPhys2dTreeStats *stats);
-LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
-                                  const LubPhys2dAabb *aabb,
-                                  const LubPhys2dQueryFilter *filter,
-                                  LubPhys2dOverlapFn fn, void *user,
-                                  LubPhys2dTreeStats *stats);
-LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
-                                const LubPhys2dShapeProxy *proxy, float dx,
-                                float dy, const LubPhys2dQueryFilter *filter,
-                                LubPhys2dRayFn fn, void *user,
-                                LubPhys2dTreeStats *stats);
-LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
-                                const LubPhys2dMover *mover, float dx, float dy,
-                                const LubPhys2dQueryFilter *filter,
-                                float *fraction);
-LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
-                                   const LubPhys2dMover *mover,
-                                   const LubPhys2dQueryFilter *filter,
-                                   LubPhys2dPlaneFn fn, void *user);
-LubStatus lub_phys2d_explode(LubContext *ctx, LubHandle world,
-                             const LubPhys2dExplosionDesc *desc);
-LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
-                           const LubPhys2dDebugDesc *desc,
-                           LubPhys2dDebugData *out);
-LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world,
-                             LubPhys2dProfile *out);
-LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
-                              LubPhys2dCounters *out);
-
-// body への command。次の step の冒頭でまとめて適用する。point == NULL は
-// 重心。
-LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body, float fx,
-                               float fy, const LubVec2 *point, bool wake);
-LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body, float fx,
-                                      float fy, bool wake);
-LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body, float ix,
-                                 float iy, const LubVec2 *point, bool wake);
-LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                        float ix, float iy, bool wake);
-LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body, float torque,
-                                bool wake);
-LubStatus lub_phys2d_add_angular_impulse(LubContext *ctx, LubHandle body,
-                                         float impulse, bool wake);
-LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
-                                  const LubPhys2dSetVelocity *desc);
-LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
-                              const LubPhys2dTeleport *desc);
-LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
-                                const LubPhys2dSetTarget *desc);
-LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
-                                   const LubPhys2dMassDataDesc *desc,
-                                   bool wake);
-
-// ---------------------------------------------------------------- phys3d
-// Box3D の即時モード API。宣言 / prune / handle / callback の規則は phys2d と
-// 同じ。位置は float (Box3D の倍精度位置は面に出さない)。回転は
-// 正規化した四元数。
 
 typedef enum LubPhys3dBodyType {
   LUB_PHYS3D_BODY_TYPE_STATIC = 0,
@@ -1233,6 +221,8 @@ typedef enum LubPhys3dBodyType {
   LUB_PHYS3D_BODY_TYPE_DYNAMIC = 2,
 } LubPhys3dBodyType;
 
+// shape の種類 (ShapeView3d.Kind)。Lua 面は "sphere" 等の文字列。
+// Lua 面では小文字の文字列 ("sphere" 等)。
 typedef enum LubPhys3dShapeKind {
   LUB_PHYS3D_SHAPE_KIND_SPHERE = 1,
   LUB_PHYS3D_SHAPE_KIND_BOX = 2,
@@ -1245,6 +235,8 @@ typedef enum LubPhys3dShapeKind {
   LUB_PHYS3D_SHAPE_KIND_COMPOUND = 9,
 } LubPhys3dShapeKind;
 
+// joint の種類 (JointDesc3d.Type)。Lua 面は "revolute" 等の文字列。
+// Lua 面では小文字の文字列 ("distance" 等)。
 typedef enum LubPhys3dJointType {
   LUB_PHYS3D_JOINT_TYPE_DISTANCE = 1,
   LUB_PHYS3D_JOINT_TYPE_FILTER = 2,
@@ -1257,690 +249,2888 @@ typedef enum LubPhys3dJointType {
   LUB_PHYS3D_JOINT_TYPE_WHEEL = 9,
 } LubPhys3dJointType;
 
+// contact / sensor event の種類。Lua 面は "begin" 等の文字列。
+// Lua 面では小文字の文字列 ("begin" 等)。
 typedef enum LubPhys3dEventKind {
   LUB_PHYS3D_EVENT_KIND_BEGIN = 0,
   LUB_PHYS3D_EVENT_KIND_END = 1,
   LUB_PHYS3D_EVENT_KIND_HIT = 2,
 } LubPhys3dEventKind;
 
-typedef enum LubPhys3dProxyKind {
-  LUB_PHYS3D_PROXY_KIND_SPHERE = 1,
-  LUB_PHYS3D_PROXY_KIND_BOX = 2,
-  LUB_PHYS3D_PROXY_KIND_CAPSULE = 3,
-} LubPhys3dProxyKind;
+// Gfx.begin_pass のオプション。
+typedef struct LubPassOpts {
+  LubHandle target;         // 0 = 無し
+  const LubHandle *targets; // NULL = 無し
+  int32_t targets_count;
+  LubHandle depth_target; // 0 = 無し
+  bool has_clear_color;
+  float clear_color[4];
+  const float (*clear_colors)[4];
+  int32_t clear_colors_count;
+  bool has_clear_depth;
+  float clear_depth;
+  bool has_load;
+  int32_t load; // LubGfxLoadAction
+} LubPassOpts;
 
-typedef enum LubPhys3dCompoundChildKind {
-  LUB_PHYS3D_COMPOUND_CHILD_KIND_SPHERE = 1,
-  LUB_PHYS3D_COMPOUND_CHILD_KIND_CAPSULE = 2,
-  LUB_PHYS3D_COMPOUND_CHILD_KIND_BOX = 3,
-} LubPhys3dCompoundChildKind;
+// Gfx.draw のオプション。shader 以外は省略可。
+typedef struct LubDrawOpts {
+  LubHandle shader;
+  bool has_blend;
+  int32_t blend; // LubGfxBlend
+  bool has_cull;
+  int32_t cull; // LubGfxCull
+  bool has_primitive;
+  int32_t primitive; // LubGfxPrimitive
+  bool has_depth;
+  bool depth;
+  bool has_depth_write;
+  bool depth_write;
+  bool has_instance_count;
+  int32_t instance_count;
+} LubDrawOpts;
 
-typedef struct LubPhys3dFilter {
-  uint64_t category_bits; // 既定 1
-  uint64_t mask_bits;     // 既定 全 bit
-  int32_t group_index;
-} LubPhys3dFilter;
+// Gfx.dispatch のオプション。
+typedef struct LubDispatchOpts {
+  LubHandle shader;
+} LubDispatchOpts;
 
-typedef struct LubPhys3dShapePart {
-  LubHandle shape; // 0 = 無し
-  LubHandle body;
-  LubStr body_key;
-  LubStr shape_key;
-  LubStr tag;
-  LubStr material_name;
-  int32_t material_id;
-  int32_t kind; // LubPhys3dShapeKind。0 = 不明
-  bool valid;
-  bool has_material;
+// Gfx.use_texture のオプション。
+typedef struct LubTextureOpts {
   bool has_filter;
-  LubPhys3dFilter filter;
-} LubPhys3dShapePart;
+  int32_t filter; // LubGfxFilter
+  bool has_wrap;
+  int32_t wrap; // LubGfxWrap
+  bool has_target;
+  bool target;
+  bool has_storage;
+  bool storage;
+} LubTextureOpts;
 
-// Box3D の pre-solve は manifold を持たず、点と法線が 1 つ。
-typedef struct LubPhys3dPreSolve {
-  LubPhys3dShapePart a, b;
-  float x, y, z;
-  float nx, ny, nz;
-} LubPhys3dPreSolve;
+// Lub.config のオプション (onInit 内でのみ有効)。
+typedef struct LubConfigOpts {
+  LubStr backend; // len 0 = 無し
+  bool has_width;
+  int32_t width;
+  bool has_height;
+  int32_t height;
+  bool has_resource_sweep_after_frames;
+  int32_t resource_sweep_after_frames;
+  bool has_readback_depth;
+  int32_t readback_depth;
+} LubConfigOpts;
 
-typedef struct LubPhys3dCallbacks {
-  void *user;
-  bool (*filter)(void *user, const LubPhys3dShapePart *a,
-                 const LubPhys3dShapePart *b);
-  bool (*pre_solve)(void *user, const LubPhys3dPreSolve *contact);
-  float (*friction)(void *user, float friction_a, int32_t material_a,
-                    float friction_b, int32_t material_b);
-  float (*restitution)(void *user, float restitution_a, int32_t material_a,
-                       float restitution_b, int32_t material_b);
-} LubPhys3dCallbacks;
+// sdf_mesh の bone (skinning 部位)。X / Y / Z は pivot。
+typedef struct LubSdfBone {
+  LubStr name;
+  float x;
+  float y;
+  float z;
+} LubSdfBone;
 
-typedef struct LubPhys3dWorldDesc {
+// surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。
+typedef struct LubMeshData {
+  const float *positions;
+  int32_t positions_count;
+  const float *normals;
+  int32_t normals_count;
+  const int32_t *indices;
+  int32_t indices_count;
+  int32_t vert_count;
+  int32_t index_count;
+  const float *uvs; // NULL = 無し
+  int32_t uvs_count;
+  const float *tangents; // NULL = 無し
+  int32_t tangents_count;
+  const float *bounds_min; // NULL = 無し
+  int32_t bounds_min_count;
+  const float *bounds_max; // NULL = 無し
+  int32_t bounds_max_count;
+  bool has_cell;
+  float cell;
+  const float *colors; // NULL = 無し
+  int32_t colors_count;
+  const float *metal_rough; // NULL = 無し
+  int32_t metal_rough_count;
+  const int32_t *joints; // NULL = 無し
+  int32_t joints_count;
+  const float *weights; // NULL = 無し
+  int32_t weights_count;
+  const LubSdfBone *bones; // NULL = 無し
+  int32_t bones_count;
+} LubMeshData;
+
+// sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは
+// -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、 capsule: ax ay
+// az bx by bz r、torus: rmajor rminor、move: x y z、 rotate: qx qy qz
+// qw、scale: s、paint: cr cg cb metallic roughness、 bone: px py pz、smin /
+// ssub: k)。Name は bone。
+typedef struct LubSdfNodeDesc {
+  int32_t op; // LubMeshSdfOp
+  int32_t a;
+  int32_t b;
+  float params[8];
+  int32_t params_count;
+  LubStr name; // len 0 = 無し
+} LubSdfNodeDesc;
+
+// glTF の material。
+typedef struct LubGltfMaterial {
+  float base_color_factor[4];
+  int32_t base_color_factor_count;
+  float metallic_factor;
+  float roughness_factor;
+  int32_t alpha_mode;
+  float alpha_cutoff;
+  bool double_sided;
+  float normal_scale;
+  LubStr base_color_path;         // len 0 = 無し
+  LubStr metallic_roughness_path; // len 0 = 無し
+  LubStr normal_path;             // len 0 = 無し
+  LubStr name;                    // len 0 = 無し
+} LubGltfMaterial;
+
+// glTF の primitive 1 つ (MeshData + material)。
+typedef struct LubGltfPrimitive {
+  LubMeshData base;
+  int32_t material_index;
+  bool has_material;
+  LubGltfMaterial material;
+} LubGltfPrimitive;
+
+// Io.LoadGltf の結果。top-level は Primitives[0] の写し。
+typedef struct LubGltfMesh {
+  LubMeshData base;
+  const LubGltfPrimitive *primitives;
+  int32_t primitives_count;
+  bool has_material;
+  LubGltfMaterial material;
+} LubGltfMesh;
+
+// font_glyph が返すビットマップ。bytes は R8 coverage の Lua string
+// (string.byte で読む)。空グリフは bytes 無し。
+typedef struct LubGlyphBitmap {
+  int32_t w;
+  int32_t h;
+  int32_t xoff;
+  int32_t yoff;
+  float advance;
+  LubStr bytes; // len 0 = 無し
+} LubGlyphBitmap;
+
+// font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。
+typedef struct LubGlyphMesh {
+  LubMeshData base;
+  float advance;
+} LubGlyphMesh;
+
+typedef struct LubFontMetrics {
+  float ascent;
+  float descent;
+  float line_gap;
+} LubFontMetrics;
+
+// audio_play / audio_voice の再生パラメータ。
+typedef struct LubPlayOpts {
+  bool has_volume;
+  float volume;
+  bool has_pitch;
+  float pitch;
+  bool has_pan;
+  float pan;
+} LubPlayOpts;
+
+typedef struct LubVoiceOpts {
+  LubPlayOpts base;
+  bool has_loop;
+  bool loop;
+} LubVoiceOpts;
+
+typedef struct LubAudioInfo {
+  bool device;
+  int32_t rate;
+  int32_t voices;
+  int32_t snds;
+} LubAudioInfo;
+
+// 2D 物理の座標 wire format。
+typedef struct LubVec2d {
+  float x;
+  float y;
+} LubVec2d;
+
+// body 生成時の初期状態。
+typedef struct LubInitialState {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_angle;
+  float angle;
+  bool has_vx;
+  float vx;
+  bool has_vy;
+  float vy;
+  bool has_w;
+  float w;
+  bool has_awake;
+  bool awake;
+} LubInitialState;
+
+// event / query / callback が返す shape の識別。material は MaterialName (宣
+// 言時の名前) と UserMaterialId (整数) に分かれる。filter は live な shape
+// のときだけ入る。
+typedef struct LubShapeView {
+  LubStr body;
+  LubStr shape;
+  LubStr tag;   // len 0 = 無し
+  LubStr chain; // len 0 = 無し
+  bool has_segment;
+  bool segment;
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys2dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+  bool valid;
+} LubShapeView;
+
+// friction / restitution callback が受ける材質の view。値は callback の種類
+// に応じて Friction か Restitution に入る。
+typedef struct LubMaterialView {
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  int32_t material_id;
+} LubMaterialView;
+
+typedef struct LubManifoldPoint {
+  float x;
+  float y;
+  float anchor_a_x;
+  float anchor_a_y;
+  float anchor_b_x;
+  float anchor_b_y;
+  float separation;
+  float normal_impulse;
+  float tangent_impulse;
+  float total_normal_impulse;
+  float normal_velocity;
+  int32_t id;
+  bool persisted;
+} LubManifoldPoint;
+
+// pre_solve callback が受ける接触。
+typedef struct LubPreSolveContact {
+  LubShapeView a;
+  LubShapeView b;
+  float nx;
+  float ny;
+  float rolling_impulse;
+  int32_t point_count;
+  const LubManifoldPoint *points;
+  int32_t points_count;
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_separation;
+  float separation;
+  bool has_normal_velocity;
+  float normal_velocity;
+} LubPreSolveContact;
+
+// world callback。生存期間は次の world 宣言か step まで。
+typedef struct LubWorldCallbacks {
+  void *user; // callback に渡す
+  // runtime が callback を手放すとき (次の宣言で置き換える、resource が
+  // sweep される) に呼ぶ。NULL 可。
+  void (*user_release)(void *user);
+  bool (*filter)(void *user, const LubShapeView *a, const LubShapeView *b);
+  bool (*pre_solve)(void *user, const LubPreSolveContact *a);
+  float (*friction)(void *user, const LubMaterialView *a,
+                    const LubMaterialView *b);
+  float (*restitution)(void *user, const LubMaterialView *a,
+                       const LubMaterialView *b);
+} LubWorldCallbacks;
+
+typedef struct LubWorldOpts {
   bool has_version;
   int32_t version;
-  LubVec3 gravity; // 既定 (0, -9.8, 0)
-  float fixed_dt;  // 既定 1/60
+  bool has_gravity;
+  LubVec2d gravity;
+  bool has_fixed_dt;
+  float fixed_dt;
+  bool has_substeps;
   int32_t substeps;
+  bool has_max_steps;
   int32_t max_steps;
+  bool has_sleep;
   bool sleep;
+  bool has_continuous;
   bool continuous;
   bool has_hit_event_threshold;
   float hit_event_threshold;
-  LubPhys3dCallbacks callbacks;
-} LubPhys3dWorldDesc;
+  bool has_callbacks;
+  LubWorldCallbacks callbacks;
+} LubWorldOpts;
 
-typedef struct LubPhys3dBodyDesc {
+typedef struct LubBeginOpts {
+  bool has_prune;
+  bool prune;
+} LubBeginOpts;
+
+typedef struct LubBodyDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // LubPhys3dBodyType
-  bool lock_linear_x, lock_linear_y, lock_linear_z;
-  bool lock_angular_x, lock_angular_y, lock_angular_z;
+  bool has_type;
+  int32_t type; // LubPhys2dBodyType
+  bool has_fixed_rotation;
+  bool fixed_rotation;
+  bool has_bullet;
   bool bullet;
-  bool has_enabled, enabled;
-  bool has_awake, awake;
-  bool has_sleep, sleep;
-  float gravity_scale; // 既定 1
-  float linear_damping, angular_damping;
+  bool has_enabled;
+  bool enabled;
+  bool has_awake;
+  bool awake;
+  bool has_sleep;
+  bool sleep;
   bool has_sleep_threshold;
   float sleep_threshold;
-  // initial (再生成のときだけ使う)
-  LubVec3 position;
-  LubQuat rotation; // 既定 identity
-  LubVec3 linear_velocity;
-  LubVec3 angular_velocity;
-  bool initial_awake; // 既定 true
-} LubPhys3dBodyDesc;
+  bool has_gravity_scale;
+  float gravity_scale;
+  bool has_linear_damping;
+  float linear_damping;
+  bool has_angular_damping;
+  float angular_damping;
+  bool has_initial;
+  LubInitialState initial;
+} LubBodyDesc;
 
-typedef struct LubPhys3dShapeDesc {
+// collision filter。Category は bit 番号、Mask は bit 番号の列、 CategoryBits
+// / MaskBits は 64 bit の hex 文字列。
+typedef struct LubFilterDesc {
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+} LubFilterDesc;
+
+// shape 共通フィールド (各 shape Desc の基底)。Material は名前、 MaterialId
+// は整数の id。
+typedef struct LubShapeDesc {
   bool has_version;
   int32_t version;
   bool has_density;
   float density;
-  float friction; // 既定 0.6
+  bool has_friction;
+  float friction;
+  bool has_restitution;
   float restitution;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
   int32_t material_id;
-  LubStr material_name;
-  LubStr tag;
-  bool sensor, contact, hit, sensor_events, pre_solve;
-  LubPhys3dFilter filter;
-} LubPhys3dShapeDesc;
+  bool has_sensor;
+  bool sensor;
+  bool has_contact;
+  bool contact;
+  bool has_hit;
+  bool hit;
+  bool has_sensor_events;
+  bool sensor_events;
+  bool has_pre_solve;
+  bool pre_solve;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubShapeDesc;
 
-typedef struct LubPhys3dSphereDesc {
-  LubPhys3dShapeDesc shape;
+typedef struct LubBoxDesc {
+  LubShapeDesc base;
+  float hx;
+  float hy;
+  bool has_cx;
+  float cx;
+  bool has_cy;
+  float cy;
+  bool has_angle;
+  float angle;
+} LubBoxDesc;
+
+typedef struct LubCircleDesc {
+  LubShapeDesc base;
   float r;
-  LubVec3 offset;
-} LubPhys3dSphereDesc;
+  bool has_cx;
+  float cx;
+  bool has_cy;
+  float cy;
+} LubCircleDesc;
 
-typedef struct LubPhys3dBoxDesc {
-  LubPhys3dShapeDesc shape;
-  float hx, hy, hz;
-  LubVec3 offset;
-  bool has_rotation;
-  LubQuat rotation;
-} LubPhys3dBoxDesc;
-
-typedef struct LubPhys3dCapsuleDesc {
-  LubPhys3dShapeDesc shape;
-  LubVec3 a, b;
+typedef struct LubCapsuleDesc {
+  LubShapeDesc base;
+  float ax;
+  float ay;
+  float bx;
+  float by;
   float r;
-} LubPhys3dCapsuleDesc;
+} LubCapsuleDesc;
 
-typedef struct LubPhys3dCylinderDesc {
-  LubPhys3dShapeDesc shape;
-  float height, radius;
-  int32_t sides;  // 3..32、既定 16
-  float y_offset; // 既定 -height / 2 (胴を原点中心に)
-} LubPhys3dCylinderDesc;
+typedef struct LubSegmentDesc {
+  LubShapeDesc base;
+  float ax;
+  float ay;
+  float bx;
+  float by;
+} LubSegmentDesc;
 
-typedef struct LubPhys3dConeDesc {
-  LubPhys3dShapeDesc shape;
-  float height, radius1, radius2;
-  int32_t slices; // 4..32、既定 16
-} LubPhys3dConeDesc;
+// 凸多角形。Points は x, y の組 (3..8 点)。
+typedef struct LubPolygonDesc {
+  LubShapeDesc base;
+  const float *points;
+  int32_t points_count;
+  bool has_radius;
+  float radius;
+  bool has_cx;
+  float cx;
+  bool has_cy;
+  float cy;
+  bool has_angle;
+  float angle;
+} LubPolygonDesc;
 
-typedef struct LubPhys3dHullDesc {
-  LubPhys3dShapeDesc shape; // version 必須
-  const float *points;      // x, y, z の組。4 点以上
-  int32_t point_count;
-  int32_t max_vertices; // 既定 255
-} LubPhys3dHullDesc;
-
-typedef struct LubPhys3dSurfaceMaterial {
-  float friction, restitution;
+// chain の区間ごとの材質。
+typedef struct LubChainMaterial {
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  bool has_material_id;
   int32_t material_id;
-} LubPhys3dSurfaceMaterial;
+} LubChainMaterial;
 
-typedef struct LubPhys3dMeshDesc {
-  LubPhys3dShapeDesc shape; // version 必須
-  const float *positions;   // x, y, z の組
-  int32_t vertex_count;
-  const int32_t *indices; // 0 始まり、3 の倍数
-  int32_t index_count;
-  LubVec3 scale; // 既定 (1, 1, 1)
-  bool weld_vertices;
-  float weld_tolerance;
-  bool use_median_split;
-  bool identify_edges;                       // 既定 true
-  const LubPhys3dSurfaceMaterial *materials; // NULL = 無し。1..255
-  int32_t material_count;
-  const int32_t *material_indices; // NULL = 無し。三角形ごと
-  int32_t material_index_count;
-} LubPhys3dMeshDesc;
+// chain。Points は x, y の組 (4 点以上)。Materials は 1 個か点の数。
+typedef struct LubChainDesc {
+  int32_t version;
+  const float *points;
+  int32_t points_count;
+  const LubChainMaterial *materials; // NULL = 無し
+  int32_t materials_count;
+  bool has_loop;
+  bool loop;
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_sensor_events;
+  bool sensor_events;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubChainDesc;
 
-typedef struct LubPhys3dHeightFieldDesc {
-  LubPhys3dShapeDesc shape; // version 必須
-  int32_t x_count, z_count; // >= 2
-  const float *heights;     // x_count * z_count
-  LubVec3 scale;            // 既定 (cell_width, 1, cell_width)
-  bool has_min_height, has_max_height;
-  float min_height, max_height; // 無ければ heights から
-  bool clockwise_winding;
-} LubPhys3dHeightFieldDesc;
+// joint の spring。宣言 (JointDesc.Spring) と JointSetSpring で共用。Linear /
+// Angular 系は weld。
+typedef struct LubJointSpringDesc {
+  bool has_enabled;
+  bool enabled;
+  bool has_hertz;
+  float hertz;
+  bool has_damping_ratio;
+  float damping_ratio;
+  bool has_linear_hertz;
+  float linear_hertz;
+  bool has_linear_damping_ratio;
+  float linear_damping_ratio;
+  bool has_angular_hertz;
+  float angular_hertz;
+  bool has_angular_damping_ratio;
+  float angular_damping_ratio;
+} LubJointSpringDesc;
 
-typedef struct LubPhys3dCompoundChild {
-  int32_t kind; // LubPhys3dCompoundChildKind
-  LubVec3 position;
-  LubQuat rotation; // 既定 identity
-  LubPhys3dSurfaceMaterial material;
-  float r;          // sphere / capsule
-  LubVec3 center;   // sphere
-  LubVec3 a, b;     // capsule
-  float hx, hy, hz; // box
-} LubPhys3dCompoundChild;
+// joint の limit。Min / Max は distance。
+typedef struct LubJointLimitDesc {
+  bool has_enabled;
+  bool enabled;
+  bool has_lower;
+  float lower;
+  bool has_upper;
+  float upper;
+  bool has_min_length;
+  float min_length;
+  bool has_max_length;
+  float max_length;
+} LubJointLimitDesc;
 
-typedef struct LubPhys3dCompoundDesc {
-  LubPhys3dShapeDesc shape; // version 必須。static body 限定、sensor 不可
-  const LubPhys3dCompoundChild *children;
-  int32_t child_count;
-} LubPhys3dCompoundDesc;
+// joint の motor。LinearOffset / AngularOffset / CorrectionFactor は motor
+// joint。
+typedef struct LubJointMotorDesc {
+  bool has_enabled;
+  bool enabled;
+  bool has_speed;
+  float speed;
+  bool has_max_force;
+  float max_force;
+  bool has_max_torque;
+  float max_torque;
+  bool has_linear_offset;
+  LubVec2d linear_offset;
+  bool has_angular_offset;
+  float angular_offset;
+  bool has_correction_factor;
+  float correction_factor;
+} LubJointMotorDesc;
 
-typedef struct LubPhys3dJointDesc {
+// JointSetTarget。mouse は Target か X / Y、prismatic は
+// Translation、revolute は Angle、motor は LinearOffset / AngularOffset。
+typedef struct LubJointTargetDesc {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_translation;
+  float translation;
+  bool has_angle;
+  float angle;
+  bool has_linear_offset;
+  LubVec2d linear_offset;
+  bool has_angular_offset;
+  float angular_offset;
+} LubJointTargetDesc;
+
+// joint の宣言。有効フィールドは type ごとに異なる (Haxe extern の doc 参照)。
+typedef struct LubJointDesc {
   bool has_version;
   int32_t version;
-  int32_t type; // LubPhys3dJointType
-  LubHandle body_a, body_b;
-  // 世界座標の axis / anchor から local frame を作る。frame_a / frame_b を
-  // 明示すればそちらが勝つ。
-  bool has_axis;
-  LubVec3 axis;
-  bool has_anchor_a, has_anchor_b;
-  LubVec3 anchor_a, anchor_b;
-  bool has_frame_a, has_frame_b;
-  LubVec3 frame_a_position, frame_b_position;
-  LubQuat frame_a_rotation, frame_b_rotation;
-  float force_threshold, torque_threshold; // 既定 FLT_MAX
-  bool has_constraint_tuning;
-  float constraint_hertz, constraint_damping_ratio;
+  bool has_type;
+  int32_t type;     // LubPhys2dJointType
+  LubHandle body_a; // 0 = 無し
+  LubHandle body_b; // 0 = 無し
+  bool has_anchor_a;
+  LubVec2d anchor_a;
+  bool has_anchor_b;
+  LubVec2d anchor_b;
+  bool has_local_anchor_a;
+  LubVec2d local_anchor_a;
+  bool has_local_anchor_b;
+  LubVec2d local_anchor_b;
+  bool has_local_axis_a;
+  LubVec2d local_axis_a;
+  bool has_reference_angle;
+  float reference_angle;
+  bool has_collide_connected;
   bool collide_connected;
-  float length;     // 既定 1
-  float min_length; // 既定 0
-  float max_length; // 既定 FLT_MAX
-  float lower, upper;
-  float hertz, damping_ratio;
-  float linear_hertz, angular_hertz;
-  float linear_damping_ratio, angular_damping_ratio;
-  float max_force, max_torque, motor_speed;
-  float target_angle, target_translation;
-  bool enable_spring, enable_limit, enable_motor;
-  float lower_spring_force, upper_spring_force; // 既定 -FLT_MAX / FLT_MAX
-  LubVec3 linear_velocity, angular_velocity;    // motor
-  float max_velocity_force, max_velocity_torque;
-  float max_spring_force, max_spring_torque;
-  LubQuat target_rotation; // spherical。既定 identity
-  bool enable_cone_limit;
-  float cone_angle;
-  bool enable_twist_limit;
-  float lower_twist_angle, upper_twist_angle;
-  LubVec3 motor_velocity;
-  bool enable_steering; // wheel
-  float steering_hertz, steering_damping_ratio;
-  float target_steering_angle, max_steering_torque;
-  bool enable_steering_limit;
-  float lower_steering_limit, upper_steering_limit;
-} LubPhys3dJointDesc;
+  bool has_length;
+  float length;
+  bool has_min_length;
+  float min_length;
+  bool has_max_length;
+  float max_length;
+  bool has_lower;
+  float lower;
+  bool has_upper;
+  float upper;
+  bool has_target_angle;
+  float target_angle;
+  bool has_target_translation;
+  float target_translation;
+  bool has_linear_offset;
+  LubVec2d linear_offset;
+  bool has_angular_offset;
+  float angular_offset;
+  bool has_hertz;
+  float hertz;
+  bool has_damping_ratio;
+  float damping_ratio;
+  bool has_max_force;
+  float max_force;
+  bool has_max_torque;
+  float max_torque;
+  bool has_motor_speed;
+  float motor_speed;
+  bool has_correction_factor;
+  float correction_factor;
+  bool has_spring;
+  LubJointSpringDesc spring;
+  bool has_limit;
+  LubJointLimitDesc limit;
+  bool has_motor;
+  LubJointMotorDesc motor;
+  bool has_target;
+  LubVec2d target;
+} LubJointDesc;
 
-void lub_phys3d_world_desc_init(LubPhys3dWorldDesc *desc);
-void lub_phys3d_body_desc_init(LubPhys3dBodyDesc *desc);
-void lub_phys3d_shape_desc_init(LubPhys3dShapeDesc *desc);
-// type ごとの既定値 (parallel / wheel は spring が既定で有効) を入れる。
-void lub_phys3d_joint_desc_init(LubPhys3dJointDesc *desc, int32_t type);
+typedef struct LubCommandOpts {
+  bool has_wake;
+  bool wake;
+  bool has_point;
+  LubVec2d point;
+  bool has_time_step;
+  float time_step;
+} LubCommandOpts;
 
-typedef struct LubPhys3dWorldInfo {
+typedef struct LubVelocityDesc {
+  bool has_vx;
+  float vx;
+  bool has_vy;
+  float vy;
+  bool has_w;
+  float w;
+} LubVelocityDesc;
+
+typedef struct LubPoseDesc {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_angle;
+  float angle;
+} LubPoseDesc;
+
+typedef struct LubMassDataDesc {
+  bool has_mass;
+  float mass;
+  bool has_inertia;
+  float inertia;
+  bool has_local_center;
+  LubVec2d local_center;
+} LubMassDataDesc;
+
+// ShapeSetMaterial。Material は名前、MaterialId は整数の id。
+typedef struct LubMaterialDesc {
+  bool has_density;
+  float density;
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+} LubMaterialDesc;
+
+// ShapeSetEvents。sensor は実行時に変えられない。
+typedef struct LubShapeEventsDesc {
+  bool has_sensor_events;
+  bool sensor_events;
+  bool has_contact;
+  bool contact;
+  bool has_pre_solve;
+  bool pre_solve;
+  bool has_hit;
+  bool hit;
+} LubShapeEventsDesc;
+
+typedef struct LubRaycastDesc {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_dx;
+  float dx;
+  bool has_dy;
+  float dy;
+  bool has_max_fraction;
+  float max_fraction;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubRaycastDesc;
+
+typedef struct LubAabbDesc {
+  float min_x;
+  float min_y;
+  float max_x;
+  float max_y;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubAabbDesc;
+
+// ShapeCast の問い合わせ。Type は circle (既定) / capsule / segment / box /
+// polygon。
+typedef struct LubShapeCastDesc {
+  bool has_kind;
+  int32_t kind; // LubPhys2dProxyKind
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_angle;
+  float angle;
+  bool has_radius;
+  float radius;
+  bool has_cx;
+  float cx;
+  bool has_cy;
+  float cy;
+  bool has_ax;
+  float ax;
+  bool has_ay;
+  float ay;
+  bool has_bx;
+  float bx;
+  bool has_by;
+  float by;
+  bool has_hx;
+  float hx;
+  bool has_hy;
+  float hy;
+  const float *points; // NULL = 無し
+  int32_t points_count;
+  bool has_dx;
+  float dx;
+  bool has_dy;
+  float dy;
+  bool has_max_fraction;
+  float max_fraction;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubShapeCastDesc;
+
+typedef struct LubMoverDesc {
+  float ax;
+  float ay;
+  float bx;
+  float by;
+  float r;
+  bool has_dx;
+  float dx;
+  bool has_dy;
+  float dy;
+  bool has_max_fraction;
+  float max_fraction;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubMoverDesc;
+
+typedef struct LubExplosionDesc {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_radius;
+  float radius;
+  bool has_falloff;
+  float falloff;
+  bool has_impulse_per_length;
+  float impulse_per_length;
+  bool has_filter;
+  LubFilterDesc filter;
+} LubExplosionDesc;
+
+typedef struct LubDebugOpts {
+  bool has_shapes;
+  bool shapes;
+  bool has_joints;
+  bool joints;
+  bool has_joint_extras;
+  bool joint_extras;
+  bool has_bounds;
+  bool bounds;
+  bool has_mass;
+  bool mass;
+  bool has_body_names;
+  bool body_names;
+  bool has_contacts;
+  bool contacts;
+  bool has_graph_colors;
+  bool graph_colors;
+  bool has_contact_normals;
+  bool contact_normals;
+  bool has_contact_impulses;
+  bool contact_impulses;
+  bool has_contact_features;
+  bool contact_features;
+  bool has_friction_impulses;
+  bool friction_impulses;
+  bool has_islands;
+  bool islands;
+  bool has_drawing_bounds;
+  LubAabbDesc drawing_bounds;
+} LubDebugOpts;
+
+// Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 +
+// 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、 polygons は n
+// solid + 色 + 点列、points は x y size + 色。
+typedef struct LubDebugData {
+  const float *segments;
+  int32_t segments_count;
+  const float *circles;
+  int32_t circles_count;
+  const float *capsules;
+  int32_t capsules_count;
+  const float *polygons;
+  int32_t polygons_count;
+  const float *points;
+  int32_t points_count;
+} LubDebugData;
+
+// phys2d_pose の戻り値。
+typedef struct LubPose {
+  float x;
+  float y;
+  float angle;
+  float vx;
+  float vy;
+  float w;
+  bool awake;
+  bool enabled;
+  bool sleep;
+  float sleep_threshold;
+} LubPose;
+
+// phys2d_velocity の戻り値。
+typedef struct LubVelocity {
+  float x;
+  float y;
+  float w;
+} LubVelocity;
+
+typedef struct LubMassData {
+  float mass;
+  float inertia;
+  LubVec2d center;
+  LubVec2d local_center;
+} LubMassData;
+
+typedef struct LubAabb {
+  float min_x;
+  float min_y;
+  float max_x;
+  float max_y;
+} LubAabb;
+
+typedef struct LubFilterInfo {
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  uint64_t mask_bits;     // bit mask (Lua 面は hex 文字列)
+  int32_t group;
+} LubFilterInfo;
+
+typedef struct LubShapeInfo {
+  LubShapeView base;
+  float density;
+  float friction;
+  float restitution;
+  bool sensor;
+  bool sensor_events;
+  bool contact;
+  bool pre_solve;
+  bool hit;
+  LubFilterInfo filter;
+  LubAabb aabb;
+} LubShapeInfo;
+
+typedef struct LubWorldCallbackInfo {
+  bool filter;
+  bool pre_solve;
+  bool friction;
+  bool restitution;
+} LubWorldCallbackInfo;
+
+typedef struct LubWorldInfo {
   LubStr key;
   bool valid;
   int32_t version;
   int32_t generation;
-  bool begun, prune;
+  bool begun;
+  bool prune;
   float fixed_dt;
-  int32_t substeps, max_steps;
+  int32_t substeps;
+  int32_t max_steps;
   float accumulator;
   int32_t pending_commands;
-  bool callback_filter, callback_pre_solve, callback_friction,
-      callback_restitution;
-  LubVec3 gravity;
-  bool sleep, continuous, warm_starting;
-  float restitution_threshold, hit_event_threshold, maximum_linear_speed;
+  LubWorldCallbackInfo callbacks;
+  bool has_gravity;
+  LubVec2d gravity;
+  bool has_sleep;
+  bool sleep;
+  bool has_continuous;
+  bool continuous;
+  bool has_warm_starting;
+  bool warm_starting;
+  bool has_restitution_threshold;
+  float restitution_threshold;
+  bool has_hit_event_threshold;
+  float hit_event_threshold;
+  bool has_maximum_linear_speed;
+  float maximum_linear_speed;
+  bool has_awake_body_count;
   int32_t awake_body_count;
-} LubPhys3dWorldInfo;
+} LubWorldInfo;
 
-typedef struct LubPhys3dStepInfo {
+typedef struct LubStepInfo {
   int32_t steps;
   int32_t commands;
   float alpha;
   bool dropped;
-  int32_t contact_begins, contact_ends, contact_hits;
-  int32_t sensor_begins, sensor_ends;
+  int32_t contact_begins;
+  int32_t contact_ends;
+  int32_t contact_hits;
+  int32_t sensor_begins;
+  int32_t sensor_ends;
   int32_t body_moves;
-  int32_t joint_events;
-} LubPhys3dStepInfo;
+  int32_t body_events;
+} LubStepInfo;
 
-typedef struct LubPhys3dPose {
-  LubVec3 position;
-  LubQuat rotation;
-  LubVec3 linear_velocity, angular_velocity;
-  bool awake, enabled, sleep;
-  float sleep_threshold;
-} LubPhys3dPose;
-
-typedef struct LubPhys3dVelocity {
-  LubVec3 linear, angular;
-} LubPhys3dVelocity;
-
-typedef struct LubPhys3dMassData {
-  float mass;
-  LubVec3 center; // world
-  LubVec3 local_center;
-  // 慣性テンソル (local center まわり、対称) の成分
-  float xx, yy, zz, xy, xz, yz;
-} LubPhys3dMassData;
-
-typedef struct LubPhys3dAabb {
-  LubVec3 min, max;
-} LubPhys3dAabb;
-
-typedef struct LubPhys3dShapeInfo {
-  LubPhys3dShapePart part;
-  float density, friction, restitution;
-  bool sensor, sensor_events, contact, pre_solve, hit;
-  LubPhys3dAabb aabb;
-} LubPhys3dShapeInfo;
-
-typedef struct LubPhys3dJointView {
-  LubHandle joint;
-  LubStr key;
-  int32_t type; // LubPhys3dJointType。0 = 不明
-  LubStr a, b;
+typedef struct LubJointView {
+  LubStr joint;
+  int32_t type; // LubPhys2dJointType
+  LubStr a;
+  LubStr b;
   bool valid;
-} LubPhys3dJointView;
+} LubJointView;
 
-typedef struct LubPhys3dFrame {
-  LubVec3 position;
-  LubQuat rotation;
-} LubPhys3dFrame;
-
-typedef struct LubPhys3dJointInfo {
-  LubPhys3dJointView view;
+typedef struct LubJointInfo {
+  LubJointView base;
   bool collide_connected;
-  LubVec3 force, torque;
-  float linear_separation, angular_separation;
-  LubPhys3dFrame local_frame_a, local_frame_b;
-} LubPhys3dJointInfo;
+  LubVec2d force;
+  float torque;
+  float linear_separation;
+  float angular_separation;
+  bool has_local_anchor_a;
+  LubVec2d local_anchor_a;
+  bool has_local_anchor_b;
+  LubVec2d local_anchor_b;
+  bool has_local_axis_a;
+  LubVec2d local_axis_a;
+  bool has_reference_angle;
+  float reference_angle;
+} LubJointInfo;
 
-typedef struct LubPhys3dContact {
-  LubPhys3dShapePart a, b;
-  LubVec3 normal;
+// body に今触れている contact。
+typedef struct LubContactData {
+  LubShapeView a;
+  LubShapeView b;
+  float nx;
+  float ny;
   int32_t point_count;
-  LubVec3 point;
-  float approach_speed;
-} LubPhys3dContact;
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_separation;
+  float separation;
+} LubContactData;
 
-typedef struct LubPhys3dBodyEvent {
+// contact イベントの端点 (2D/3D 共通)。
+typedef struct LubContactEvent {
+  LubShapeView a;
+  LubShapeView b;
+  float nx;
+  float ny;
+  int32_t point_count;
+  float x;
+  float y;
+  bool has_approach_speed;
+  float approach_speed;
+} LubContactEvent;
+
+typedef struct LubSensorEvent {
+  LubShapeView sensor;
+  LubShapeView visitor;
+} LubSensorEvent;
+
+typedef struct LubBodyEvent {
   LubStr body;
   bool valid;
-  LubVec3 position;
-  LubQuat rotation;
+  float x;
+  float y;
+  float angle;
   bool fell_asleep;
-} LubPhys3dBodyEvent;
+} LubBodyEvent;
 
-typedef struct LubPhys3dJointEvent {
-  LubStr joint;
-  int32_t type; // LubPhys3dJointType。0 = 不明
-  LubStr a, b;
+typedef struct LubRayHit {
+  LubShapeView base;
+  float x;
+  float y;
+  float nx;
+  float ny;
+  float fraction;
+  bool has_node_visits;
+  int32_t node_visits;
+  bool has_leaf_visits;
+  int32_t leaf_visits;
+} LubRayHit;
+
+// ShapeRaycast の戻り値。
+typedef struct LubShapeRayHit {
+  float x;
+  float y;
+  float nx;
+  float ny;
+  float fraction;
+  int32_t iterations;
+} LubShapeRayHit;
+
+typedef struct LubMoverCast {
+  float fraction;
+  float dx;
+  float dy;
+} LubMoverCast;
+
+typedef struct LubMoverPlane {
+  LubShapeView base;
+  bool hit;
+  float x;
+  float y;
+  float nx;
+  float ny;
+  float offset;
+} LubMoverPlane;
+
+typedef struct LubProfile {
+  float step;
+  float pairs;
+  float collide;
+  float solve;
+  float merge_islands;
+  float prepare_stages;
+  float solve_constraints;
+  float prepare_constraints;
+  float integrate_velocities;
+  float warm_start;
+  float solve_impulses;
+  float integrate_positions;
+  float relax_impulses;
+  float apply_restitution;
+  float store_impulses;
+  float split_islands;
+  float transforms;
+  float hit_events;
+  float refit;
+  float bullets;
+  float sleep_islands;
+  float sensors;
+} LubProfile;
+
+typedef struct LubCounters {
+  int32_t body_count;
+  int32_t shape_count;
+  int32_t contact_count;
+  int32_t joint_count;
+  int32_t island_count;
+  int32_t stack_used;
+  int32_t static_tree_height;
+  int32_t tree_height;
+  int32_t byte_count;
+  int32_t task_count;
+  int32_t color_counts[12];
+  int32_t color_counts_count;
+} LubCounters;
+
+// 3D 物理の座標 wire format。
+typedef struct LubVec3d {
+  float x;
+  float y;
+  float z;
+} LubVec3d;
+
+// 回転の wire format。
+typedef struct LubQuat3d {
+  float x;
+  float y;
+  float z;
+  float w;
+} LubQuat3d;
+
+typedef struct LubInitialState3d {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_z;
+  float z;
+  bool has_quat;
+  LubQuat3d quat;
+  bool has_euler;
+  LubVec3d euler;
+  bool has_vx;
+  float vx;
+  bool has_vy;
+  float vy;
+  bool has_vz;
+  float vz;
+  bool has_wx;
+  float wx;
+  bool has_wy;
+  float wy;
+  bool has_wz;
+  float wz;
+  bool has_awake;
+  bool awake;
+} LubInitialState3d;
+
+typedef struct LubMotionLocks3d {
+  bool has_linear_x;
+  bool linear_x;
+  bool has_linear_y;
+  bool linear_y;
+  bool has_linear_z;
+  bool linear_z;
+  bool has_angular_x;
+  bool angular_x;
+  bool has_angular_y;
+  bool angular_y;
+  bool has_angular_z;
+  bool angular_z;
+} LubMotionLocks3d;
+
+// event / query / callback が返す shape の識別 (3D)。
+typedef struct LubShapeView3d {
+  LubStr body;
+  LubStr shape;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_kind;
+  int32_t kind; // LubPhys3dShapeKind
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
   bool valid;
-} LubPhys3dJointEvent;
+} LubShapeView3d;
 
-typedef struct LubPhys3dContactData {
-  LubPhys3dShapePart a, b;
-  LubVec3 normal;
+// pre_solve callback が受ける接触 (3D は点と法線が 1 つ)。
+typedef struct LubPreSolveContact3d {
+  LubShapeView3d a;
+  LubShapeView3d b;
+  float x;
+  float y;
+  float z;
+  float nx;
+  float ny;
+  float nz;
+} LubPreSolveContact3d;
+
+typedef struct LubWorldCallbacks3d {
+  void *user; // callback に渡す
+  // runtime が callback を手放すとき (次の宣言で置き換える、resource が
+  // sweep される) に呼ぶ。NULL 可。
+  void (*user_release)(void *user);
+  bool (*filter)(void *user, const LubShapeView3d *a, const LubShapeView3d *b);
+  bool (*pre_solve)(void *user, const LubPreSolveContact3d *a);
+  float (*friction)(void *user, const LubMaterialView *a,
+                    const LubMaterialView *b);
+  float (*restitution)(void *user, const LubMaterialView *a,
+                       const LubMaterialView *b);
+} LubWorldCallbacks3d;
+
+typedef struct LubWorldOpts3d {
+  bool has_version;
+  int32_t version;
+  bool has_gravity;
+  LubVec3d gravity;
+  bool has_fixed_dt;
+  float fixed_dt;
+  bool has_substeps;
+  int32_t substeps;
+  bool has_max_steps;
+  int32_t max_steps;
+  bool has_sleep;
+  bool sleep;
+  bool has_continuous;
+  bool continuous;
+  bool has_hit_event_threshold;
+  float hit_event_threshold;
+  bool has_callbacks;
+  LubWorldCallbacks3d callbacks;
+} LubWorldOpts3d;
+
+typedef struct LubBeginOpts3d {
+  bool has_prune;
+  bool prune;
+} LubBeginOpts3d;
+
+typedef struct LubBodyDesc3d {
+  bool has_version;
+  int32_t version;
+  bool has_type;
+  int32_t type; // LubPhys3dBodyType
+  bool has_motion_locks;
+  LubMotionLocks3d motion_locks;
+  bool has_bullet;
+  bool bullet;
+  bool has_enabled;
+  bool enabled;
+  bool has_awake;
+  bool awake;
+  bool has_sleep;
+  bool sleep;
+  bool has_sleep_threshold;
+  float sleep_threshold;
+  bool has_gravity_scale;
+  float gravity_scale;
+  bool has_linear_damping;
+  float linear_damping;
+  bool has_angular_damping;
+  float angular_damping;
+  bool has_initial;
+  LubInitialState3d initial;
+} LubBodyDesc3d;
+
+typedef struct LubFilterDesc3d {
+  bool has_category_bits;
+  uint64_t category_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_mask_bits;
+  uint64_t mask_bits; // bit mask (Lua 面は hex 文字列)
+  bool has_group;
+  int32_t group;
+} LubFilterDesc3d;
+
+// shape 共通フィールド (各 shape Desc の基底)。
+typedef struct LubShapeDesc3d {
+  bool has_version;
+  int32_t version;
+  bool has_density;
+  float density;
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  LubStr tag;           // len 0 = 無し
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+  bool has_sensor;
+  bool sensor;
+  bool has_contact;
+  bool contact;
+  bool has_hit;
+  bool hit;
+  bool has_sensor_events;
+  bool sensor_events;
+  bool has_pre_solve;
+  bool pre_solve;
+  bool has_filter;
+  LubFilterDesc3d filter;
+} LubShapeDesc3d;
+
+typedef struct LubSphereDesc3d {
+  LubShapeDesc3d base;
+  float r;
+  bool has_offset;
+  LubVec3d offset;
+} LubSphereDesc3d;
+
+typedef struct LubBoxDesc3d {
+  LubShapeDesc3d base;
+  float hx;
+  float hy;
+  float hz;
+  bool has_offset;
+  LubVec3d offset;
+  bool has_quat;
+  LubQuat3d quat;
+} LubBoxDesc3d;
+
+typedef struct LubCapsuleDesc3d {
+  LubShapeDesc3d base;
+  LubVec3d a;
+  LubVec3d b;
+  float r;
+} LubCapsuleDesc3d;
+
+typedef struct LubCylinderDesc3d {
+  LubShapeDesc3d base;
+  float height;
+  float radius;
+  bool has_sides;
+  int32_t sides;
+  bool has_y_offset;
+  float y_offset;
+} LubCylinderDesc3d;
+
+typedef struct LubConeDesc3d {
+  LubShapeDesc3d base;
+  float height;
+  float radius1;
+  bool has_radius2;
+  float radius2;
+  bool has_slices;
+  int32_t slices;
+} LubConeDesc3d;
+
+// 凸包。Points は x, y, z の組 (4 点以上)。Version 必須。
+typedef struct LubHullDesc3d {
+  LubShapeDesc3d base;
+  const float *points;
+  int32_t points_count;
+  bool has_max_vertices;
+  int32_t max_vertices;
+} LubHullDesc3d;
+
+// mesh / compound の区間ごとの材質。
+typedef struct LubSurfaceMaterial3d {
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  bool has_material_id;
+  int32_t material_id;
+} LubSurfaceMaterial3d;
+
+// 三角形メッシュ。Positions は x, y, z の組、Indices は 0 始まりの 3 の倍
+// 数。Version 必須。
+typedef struct LubMeshDesc3d {
+  LubShapeDesc3d base;
+  const float *positions;
+  int32_t positions_count;
+  const int32_t *indices;
+  int32_t indices_count;
+  bool has_scale;
+  LubVec3d scale;
+  bool has_weld_vertices;
+  bool weld_vertices;
+  bool has_weld_tolerance;
+  float weld_tolerance;
+  bool has_use_median_split;
+  bool use_median_split;
+  bool has_identify_edges;
+  bool identify_edges;
+  const LubSurfaceMaterial3d *materials; // NULL = 無し
+  int32_t materials_count;
+  const int32_t *material_indices; // NULL = 無し
+  int32_t material_indices_count;
+} LubMeshDesc3d;
+
+// height field。Heights は XCount * ZCount 個。Version 必須。
+typedef struct LubHeightFieldDesc3d {
+  LubShapeDesc3d base;
+  const float *heights;
+  int32_t heights_count;
+  int32_t x_count;
+  int32_t z_count;
+  bool has_cell_width;
+  float cell_width;
+  bool has_scale;
+  LubVec3d scale;
+  bool has_min_height;
+  float min_height;
+  bool has_max_height;
+  float max_height;
+  bool has_clockwise_winding;
+  bool clockwise_winding;
+} LubHeightFieldDesc3d;
+
+typedef struct LubCompoundSphere3d {
+  float r;
+  bool has_center;
+  LubVec3d center;
+} LubCompoundSphere3d;
+
+typedef struct LubCompoundBox3d {
+  float hx;
+  float hy;
+  float hz;
+} LubCompoundBox3d;
+
+typedef struct LubCompoundCapsule3d {
+  LubVec3d a;
+  LubVec3d b;
+  float r;
+} LubCompoundCapsule3d;
+
+typedef struct LubFrameDesc3d {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_z;
+  float z;
+  bool has_quat;
+  LubQuat3d quat;
+  bool has_euler;
+  LubVec3d euler;
+} LubFrameDesc3d;
+
+// compound の子。Sphere / Box / Capsule のどれか 1 つ。
+typedef struct LubCompoundChild3d {
+  bool has_pose;
+  LubFrameDesc3d pose;
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  bool has_material_id;
+  int32_t material_id;
+  bool has_sphere;
+  LubCompoundSphere3d sphere;
+  bool has_box;
+  LubCompoundBox3d box;
+  bool has_capsule;
+  LubCompoundCapsule3d capsule;
+} LubCompoundChild3d;
+
+// static body 限定の compound。Version 必須。
+typedef struct LubCompoundDesc3d {
+  LubShapeDesc3d base;
+  const LubCompoundChild3d *children;
+  int32_t children_count;
+} LubCompoundDesc3d;
+
+typedef struct LubCommandOpts3d {
+  bool has_wake;
+  bool wake;
+  bool has_point;
+  LubVec3d point;
+} LubCommandOpts3d;
+
+typedef struct LubVelocityDesc3d {
+  bool has_vx;
+  float vx;
+  bool has_vy;
+  float vy;
+  bool has_vz;
+  float vz;
+  bool has_wx;
+  float wx;
+  bool has_wy;
+  float wy;
+  bool has_wz;
+  float wz;
+} LubVelocityDesc3d;
+
+typedef struct LubPoseDesc3d {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_z;
+  float z;
+  bool has_quat;
+  LubQuat3d quat;
+  bool has_euler;
+  LubVec3d euler;
+} LubPoseDesc3d;
+
+typedef struct LubTargetDesc3d {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_z;
+  float z;
+  bool has_quat;
+  LubQuat3d quat;
+  bool has_euler;
+  LubVec3d euler;
+  bool has_time_step;
+  float time_step;
+  bool has_wake;
+  bool wake;
+} LubTargetDesc3d;
+
+typedef struct LubJointSpringDesc3d {
+  bool has_enabled;
+  bool enabled;
+  bool has_hertz;
+  float hertz;
+  bool has_damping_ratio;
+  float damping_ratio;
+  bool has_linear_hertz;
+  float linear_hertz;
+  bool has_linear_damping_ratio;
+  float linear_damping_ratio;
+  bool has_angular_hertz;
+  float angular_hertz;
+  bool has_angular_damping_ratio;
+  float angular_damping_ratio;
+  bool has_max_torque;
+  float max_torque;
+} LubJointSpringDesc3d;
+
+typedef struct LubJointLimitDesc3d {
+  bool has_enabled;
+  bool enabled;
+  bool has_lower;
+  float lower;
+  bool has_upper;
+  float upper;
+  bool has_min_length;
+  float min_length;
+  bool has_max_length;
+  float max_length;
+  bool has_cone_angle;
+  float cone_angle;
+  bool has_lower_twist_angle;
+  float lower_twist_angle;
+  bool has_upper_twist_angle;
+  float upper_twist_angle;
+} LubJointLimitDesc3d;
+
+typedef struct LubJointMotorDesc3d {
+  bool has_enabled;
+  bool enabled;
+  bool has_speed;
+  float speed;
+  bool has_max_force;
+  float max_force;
+  bool has_max_torque;
+  float max_torque;
+  bool has_velocity;
+  LubVec3d velocity;
+  bool has_linear_velocity;
+  LubVec3d linear_velocity;
+  bool has_angular_velocity;
+  LubVec3d angular_velocity;
+  bool has_max_velocity_force;
+  float max_velocity_force;
+  bool has_max_velocity_torque;
+  float max_velocity_torque;
+} LubJointMotorDesc3d;
+
+// JointSetTarget (3D)。prismatic は Translation、revolute と wheel は
+// Angle、spherical は Rotation / Quat / Euler、motor は速度。
+typedef struct LubJointTargetDesc3d {
+  bool has_translation;
+  float translation;
+  bool has_angle;
+  float angle;
+  bool has_steering_angle;
+  float steering_angle;
+  bool has_quat;
+  LubQuat3d quat;
+  bool has_euler;
+  LubVec3d euler;
+  bool has_linear_velocity;
+  LubVec3d linear_velocity;
+  bool has_angular_velocity;
+  LubVec3d angular_velocity;
+} LubJointTargetDesc3d;
+
+// joint の宣言。有効フィールドは type ごとに異なる (Haxe extern の doc 参
+// 照)。anchor はワールド座標。
+typedef struct LubJointDesc3d {
+  bool has_version;
+  int32_t version;
+  bool has_type;
+  int32_t type;     // LubPhys3dJointType
+  LubHandle body_a; // 0 = 無し
+  LubHandle body_b; // 0 = 無し
+  bool has_anchor_a;
+  LubVec3d anchor_a;
+  bool has_anchor_b;
+  LubVec3d anchor_b;
+  bool has_axis;
+  LubVec3d axis;
+  bool has_frame_a;
+  LubFrameDesc3d frame_a;
+  bool has_frame_b;
+  LubFrameDesc3d frame_b;
+  bool has_collide_connected;
+  bool collide_connected;
+  bool has_force_threshold;
+  float force_threshold;
+  bool has_torque_threshold;
+  float torque_threshold;
+  bool has_constraint_hertz;
+  float constraint_hertz;
+  bool has_constraint_damping_ratio;
+  float constraint_damping_ratio;
+  bool has_length;
+  float length;
+  bool has_min_length;
+  float min_length;
+  bool has_max_length;
+  float max_length;
+  bool has_lower;
+  float lower;
+  bool has_upper;
+  float upper;
+  bool has_hertz;
+  float hertz;
+  bool has_damping_ratio;
+  float damping_ratio;
+  bool has_linear_hertz;
+  float linear_hertz;
+  bool has_angular_hertz;
+  float angular_hertz;
+  bool has_linear_damping_ratio;
+  float linear_damping_ratio;
+  bool has_angular_damping_ratio;
+  float angular_damping_ratio;
+  bool has_max_force;
+  float max_force;
+  bool has_max_torque;
+  float max_torque;
+  bool has_max_velocity_force;
+  float max_velocity_force;
+  bool has_max_velocity_torque;
+  float max_velocity_torque;
+  bool has_max_spring_force;
+  float max_spring_force;
+  bool has_max_spring_torque;
+  float max_spring_torque;
+  bool has_motor_speed;
+  float motor_speed;
+  bool has_target_angle;
+  float target_angle;
+  bool has_target_translation;
+  float target_translation;
+  bool has_target_rotation;
+  LubQuat3d target_rotation;
+  bool has_linear_velocity;
+  LubVec3d linear_velocity;
+  bool has_angular_velocity;
+  LubVec3d angular_velocity;
+  bool has_motor_velocity;
+  LubVec3d motor_velocity;
+  bool has_enable_spring;
+  bool enable_spring;
+  bool has_enable_limit;
+  bool enable_limit;
+  bool has_enable_motor;
+  bool enable_motor;
+  bool has_cone_angle;
+  float cone_angle;
+  bool has_enable_cone_limit;
+  bool enable_cone_limit;
+  bool has_enable_twist_limit;
+  bool enable_twist_limit;
+  bool has_lower_twist_angle;
+  float lower_twist_angle;
+  bool has_upper_twist_angle;
+  float upper_twist_angle;
+  bool has_spring;
+  LubJointSpringDesc3d spring;
+  bool has_limit;
+  LubJointLimitDesc3d limit;
+  bool has_motor;
+  LubJointMotorDesc3d motor;
+} LubJointDesc3d;
+
+typedef struct LubMaterialDesc3d {
+  bool has_density;
+  float density;
+  bool has_friction;
+  float friction;
+  bool has_restitution;
+  float restitution;
+  LubStr material_name; // len 0 = 無し
+  bool has_material_id;
+  int32_t material_id;
+} LubMaterialDesc3d;
+
+typedef struct LubShapeEventsDesc3d {
+  bool has_sensor_events;
+  bool sensor_events;
+  bool has_contact;
+  bool contact;
+  bool has_pre_solve;
+  bool pre_solve;
+  bool has_hit;
+  bool hit;
+} LubShapeEventsDesc3d;
+
+typedef struct LubMoverDesc3d {
+  LubVec3d a;
+  LubVec3d b;
+  float r;
+  bool has_dx;
+  float dx;
+  bool has_dy;
+  float dy;
+  bool has_dz;
+  float dz;
+  bool has_max_fraction;
+  float max_fraction;
+  bool has_filter;
+  LubFilterDesc3d filter;
+} LubMoverDesc3d;
+
+typedef struct LubRaycastDesc3d {
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_z;
+  float z;
+  bool has_dx;
+  float dx;
+  bool has_dy;
+  float dy;
+  bool has_dz;
+  float dz;
+  bool has_max_fraction;
+  float max_fraction;
+  bool has_filter;
+  LubFilterDesc3d filter;
+} LubRaycastDesc3d;
+
+typedef struct LubAabbDesc3d {
+  float min_x;
+  float min_y;
+  float min_z;
+  float max_x;
+  float max_y;
+  float max_z;
+  bool has_filter;
+  LubFilterDesc3d filter;
+} LubAabbDesc3d;
+
+typedef struct LubSphereProxy3d {
+  float r;
+  bool has_center;
+  LubVec3d center;
+} LubSphereProxy3d;
+
+typedef struct LubBoxProxy3d {
+  float hx;
+  float hy;
+  float hz;
+  bool has_radius;
+  float radius;
+  bool has_center;
+  LubVec3d center;
+  bool has_quat;
+  LubQuat3d quat;
+} LubBoxProxy3d;
+
+typedef struct LubCapsuleProxy3d {
+  LubVec3d a;
+  LubVec3d b;
+  float r;
+} LubCapsuleProxy3d;
+
+// OverlapShape / ShapeCast の形。Sphere / Box / Capsule のどれか。
+typedef struct LubShapeProxyDesc3d {
+  bool has_sphere;
+  LubSphereProxy3d sphere;
+  bool has_box;
+  LubBoxProxy3d box;
+  bool has_capsule;
+  LubCapsuleProxy3d capsule;
+  bool has_dx;
+  float dx;
+  bool has_dy;
+  float dy;
+  bool has_dz;
+  float dz;
+  bool has_max_fraction;
+  float max_fraction;
+  bool has_filter;
+  LubFilterDesc3d filter;
+} LubShapeProxyDesc3d;
+
+// phys3d_pose の戻り値。
+typedef struct LubPose3d {
+  float x;
+  float y;
+  float z;
+  float qx;
+  float qy;
+  float qz;
+  float qw;
+  float vx;
+  float vy;
+  float vz;
+  float wx;
+  float wy;
+  float wz;
+  bool awake;
+  bool enabled;
+  bool sleep;
+  float sleep_threshold;
+} LubPose3d;
+
+// phys3d_velocity の戻り値。
+typedef struct LubVelocity3d {
+  float x;
+  float y;
+  float z;
+  float wx;
+  float wy;
+  float wz;
+} LubVelocity3d;
+
+typedef struct LubInertia3d {
+  float xx;
+  float yy;
+  float zz;
+  float xy;
+  float xz;
+  float yz;
+} LubInertia3d;
+
+typedef struct LubMassData3d {
+  float mass;
+  LubVec3d center;
+  LubVec3d local_center;
+  LubInertia3d inertia;
+} LubMassData3d;
+
+typedef struct LubAabb3d {
+  float min_x;
+  float min_y;
+  float min_z;
+  float max_x;
+  float max_y;
+  float max_z;
+} LubAabb3d;
+
+typedef struct LubShapeInfo3d {
+  LubShapeView3d base;
+  float density;
+  float friction;
+  float restitution;
+  bool sensor;
+  bool sensor_events;
+  bool contact;
+  bool pre_solve;
+  bool hit;
+  LubFilterInfo filter;
+  LubAabb3d aabb;
+} LubShapeInfo3d;
+
+typedef struct LubWorldInfo3d {
+  LubStr key;
+  bool valid;
+  int32_t version;
+  int32_t generation;
+  bool begun;
+  bool prune;
+  float fixed_dt;
+  int32_t substeps;
+  int32_t max_steps;
+  float accumulator;
+  int32_t pending_commands;
+  bool has_gravity;
+  LubVec3d gravity;
+  bool has_sleep;
+  bool sleep;
+  bool has_continuous;
+  bool continuous;
+  bool has_warm_starting;
+  bool warm_starting;
+  bool has_restitution_threshold;
+  float restitution_threshold;
+  bool has_hit_event_threshold;
+  float hit_event_threshold;
+  bool has_maximum_linear_speed;
+  float maximum_linear_speed;
+  bool has_awake_body_count;
+  int32_t awake_body_count;
+} LubWorldInfo3d;
+
+typedef struct LubStepInfo3d {
+  LubStepInfo base;
+  int32_t joint_events;
+} LubStepInfo3d;
+
+typedef struct LubFrame3d {
+  float x;
+  float y;
+  float z;
+  float qx;
+  float qy;
+  float qz;
+  float qw;
+} LubFrame3d;
+
+// 3D joint の識別 (BodyJoints / JointEvents)。
+typedef struct LubJointView3d {
+  LubStr joint;
+  int32_t type; // LubPhys3dJointType
+  LubStr a;
+  LubStr b;
+  bool valid;
+} LubJointView3d;
+
+typedef struct LubJointInfo3d {
+  LubJointView3d base;
+  bool collide_connected;
+  LubVec3d force;
+  LubVec3d torque;
+  float linear_separation;
+  float angular_separation;
+  LubFrame3d local_frame_a;
+  LubFrame3d local_frame_b;
+} LubJointInfo3d;
+
+typedef struct LubContactData3d {
+  LubShapeView3d a;
+  LubShapeView3d b;
+  float nx;
+  float ny;
+  float nz;
   int32_t manifold_count;
   int32_t point_count;
-  bool has_point;
-  LubVec3 point;
+  bool has_x;
+  float x;
+  bool has_y;
+  float y;
+  bool has_z;
+  float z;
+  bool has_separation;
   float separation;
-} LubPhys3dContactData;
+} LubContactData3d;
 
-typedef struct LubPhys3dRay {
-  LubVec3 origin;
-  LubVec3 translation; // max_fraction を掛けた後の値
-} LubPhys3dRay;
+// 3D の contact event (Contacts)。
+typedef struct LubContactEvent3d {
+  LubShapeView3d a;
+  LubShapeView3d b;
+  float nx;
+  float ny;
+  float nz;
+  int32_t point_count;
+  float x;
+  float y;
+  float z;
+  bool has_approach_speed;
+  float approach_speed;
+} LubContactEvent3d;
 
-typedef struct LubPhys3dRayHit {
-  LubPhys3dShapePart shape; // world query のとき
-  LubVec3 point, normal;
+// 3D の sensor event (Sensors)。
+typedef struct LubSensorEvent3d {
+  LubShapeView3d sensor;
+  LubShapeView3d visitor;
+} LubSensorEvent3d;
+
+typedef struct LubBodyEvent3d {
+  LubStr body;
+  bool valid;
+  float x;
+  float y;
+  float z;
+  float qx;
+  float qy;
+  float qz;
+  float qw;
+  bool fell_asleep;
+} LubBodyEvent3d;
+
+typedef struct LubJointEvent3d {
+  LubJointView3d base;
+} LubJointEvent3d;
+
+typedef struct LubRayHit3d {
+  LubShapeView3d base;
+  float x;
+  float y;
+  float z;
+  float nx;
+  float ny;
+  float nz;
   float fraction;
-  int32_t iterations; // shape raycast のとき
   int32_t hit_material_id;
-  int32_t triangle_index, child_index;
-  int32_t node_visits, leaf_visits; // raycast_closest のとき
-} LubPhys3dRayHit;
+  int32_t triangle_index;
+  int32_t child_index;
+  bool has_node_visits;
+  int32_t node_visits;
+  bool has_leaf_visits;
+  int32_t leaf_visits;
+} LubRayHit3d;
 
-typedef struct LubPhys3dTreeStats {
-  int32_t node_visits, leaf_visits;
-} LubPhys3dTreeStats;
+typedef struct LubShapeRayHit3d {
+  float x;
+  float y;
+  float z;
+  float nx;
+  float ny;
+  float nz;
+  float fraction;
+  int32_t iterations;
+  int32_t triangle_index;
+  int32_t child_index;
+} LubShapeRayHit3d;
 
-typedef struct LubPhys3dQueryFilter {
-  uint64_t category_bits;
-  uint64_t mask_bits;
-} LubPhys3dQueryFilter;
+typedef struct LubMoverCast3d {
+  float fraction;
+  float dx;
+  float dy;
+  float dz;
+} LubMoverCast3d;
 
-typedef struct LubPhys3dShapeProxy {
-  int32_t kind;   // LubPhys3dProxyKind
-  float r;        // sphere / capsule / box の丸め
-  LubVec3 center; // sphere / box
-  float hx, hy, hz;
-  bool has_rotation;
-  LubQuat rotation; // box
-  LubVec3 a, b;     // capsule
-} LubPhys3dShapeProxy;
-
-typedef struct LubPhys3dMover {
-  LubVec3 a, b;
-  float r;
-} LubPhys3dMover;
-
-typedef struct LubPhys3dMoverPlane {
-  LubPhys3dShapePart shape;
-  LubVec3 point, normal; // world
+typedef struct LubMoverPlane3d {
+  LubShapeView3d base;
+  float x;
+  float y;
+  float z;
+  float nx;
+  float ny;
+  float nz;
   float offset;
   int32_t plane_count;
-} LubPhys3dMoverPlane;
+} LubMoverPlane3d;
 
-typedef struct LubPhys3dProfile {
-  float step, pairs, collide, solve, solver_setup, constraints,
-      prepare_constraints, integrate_velocities, warm_start, solve_impulses,
-      integrate_positions, relax_impulses, apply_restitution, store_impulses,
-      split_islands, transforms, sensor_hits, joint_events, hit_events, refit,
-      bullets, sleep_islands, sensors;
-} LubPhys3dProfile;
+typedef struct LubProfile3d {
+  float step;
+  float pairs;
+  float collide;
+  float solve;
+  float solver_setup;
+  float constraints;
+  float prepare_constraints;
+  float integrate_velocities;
+  float warm_start;
+  float solve_impulses;
+  float integrate_positions;
+  float relax_impulses;
+  float apply_restitution;
+  float store_impulses;
+  float split_islands;
+  float transforms;
+  float sensor_hits;
+  float joint_events;
+  float hit_events;
+  float refit;
+  float bullets;
+  float sleep_islands;
+  float sensors;
+} LubProfile3d;
 
-#define LUB_PHYS3D_MANIFOLD_COUNT_BUCKETS 8
-
-typedef struct LubPhys3dCounters {
-  int32_t body_count, shape_count, contact_count, joint_count, island_count,
-      stack_used, arena_capacity, static_tree_height, tree_height,
-      sat_call_count, sat_cache_hit_count, byte_count, task_count,
-      awake_contact_count, recycled_contact_count, distance_iterations,
-      push_back_iterations, root_iterations;
+typedef struct LubCounters3d {
+  int32_t body_count;
+  int32_t shape_count;
+  int32_t contact_count;
+  int32_t joint_count;
+  int32_t island_count;
+  int32_t stack_used;
+  int32_t arena_capacity;
+  int32_t static_tree_height;
+  int32_t tree_height;
+  int32_t sat_call_count;
+  int32_t sat_cache_hit_count;
+  int32_t byte_count;
+  int32_t task_count;
+  int32_t awake_contact_count;
+  int32_t recycled_contact_count;
+  int32_t distance_iterations;
+  int32_t push_back_iterations;
+  int32_t root_iterations;
   int32_t color_counts[24];
-  int32_t manifold_counts[LUB_PHYS3D_MANIFOLD_COUNT_BUCKETS];
-} LubPhys3dCounters;
+  int32_t color_counts_count;
+  int32_t manifold_counts[8];
+  int32_t manifold_counts_count;
+} LubCounters3d;
 
-typedef struct LubPhys3dSetVelocity {
-  bool has_vx, has_vy, has_vz;
-  bool has_wx, has_wy, has_wz;
-  LubVec3 linear, angular;
-  bool wake;
-} LubPhys3dSetVelocity;
+typedef struct LubEventData {
+  LubStr type; // len 0 = 無し
+} LubEventData;
 
-typedef struct LubPhys3dTeleport {
-  bool has_x, has_y, has_z;
-  LubVec3 position;
-  bool has_rotation;
-  LubQuat rotation;
-  bool wake;
-} LubPhys3dTeleport;
+// ------------------------------------------------------------------ core
+// lub の runtime API。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`
+// と書く。Lua 側は `lub.gfx.begin_pass`。
 
-typedef struct LubPhys3dSetTarget {
-  bool has_x, has_y, has_z;
-  LubVec3 position;
-  bool has_rotation;
-  LubQuat rotation;
-  float time_step; // <= 0 で world の fixed_dt
-  bool wake;
-} LubPhys3dSetTarget;
+LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
 
-typedef struct LubPhys3dJointMotor {
-  bool enabled;
-  float speed, max_force, max_torque;
-  bool has_velocity; // spherical
-  LubVec3 velocity;
-  bool has_linear_velocity, has_angular_velocity; // motor
-  LubVec3 linear_velocity, angular_velocity;
-  bool has_max_velocity_force, has_max_velocity_torque;
-  float max_velocity_force, max_velocity_torque;
-} LubPhys3dJointMotor;
+void lub_quit(LubContext *ctx);
 
-typedef struct LubPhys3dJointLimit {
-  bool enabled;
-  float lower, upper;
-  float min_length, max_length; // distance。max の既定 FLT_MAX
-  bool has_cone_angle;          // spherical
-  float cone_angle;
-  bool has_twist; // spherical: lower / upper を twist に使う
-} LubPhys3dJointLimit;
+// ------------------------------------------------------------------- gfx
+// 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ
+// ル (Dictionary<string, object>)。
 
-typedef struct LubPhys3dJointSpring {
-  bool enabled;
-  float hertz, damping_ratio;
-  float linear_hertz, linear_damping_ratio; // weld / motor
-  float angular_hertz, angular_damping_ratio;
-  bool has_max_torque; // parallel
-  float max_torque;
-} LubPhys3dJointSpring;
+LubHandle lub_gfx_main_tex(LubContext *ctx);
 
-typedef struct LubPhys3dJointTarget {
-  bool has_translation; // prismatic
-  float translation;
-  bool has_angle; // revolute / wheel (steering)
-  float angle;
-  bool has_rotation; // spherical
-  LubQuat rotation;
-  bool has_linear_velocity, has_angular_velocity; // motor
-  LubVec3 linear_velocity, angular_velocity;
-} LubPhys3dJointTarget;
+LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts);
 
-typedef struct LubPhys3dMaterialDesc {
-  bool has_density, has_friction, has_restitution, has_material_id,
-      has_material_name;
-  float density, friction, restitution;
-  int32_t material_id;
-  LubStr material_name;
-} LubPhys3dMaterialDesc;
+LubStatus lub_gfx_end_pass(LubContext *ctx);
 
-typedef struct LubPhys3dEventFlags {
-  bool has_sensor_events, sensor_events;
-  bool has_contact, contact;
-  bool has_pre_solve, pre_solve;
-  bool has_hit, hit;
-} LubPhys3dEventFlags;
+LubStatus lub_gfx_use_shader(LubContext *ctx, LubStr key, LubStr vs, LubStr fs,
+                             const int32_t *version, LubHandle *out);
 
-typedef bool (*LubPhys3dOverlapFn)(void *user, const LubPhys3dShapePart *shape);
-typedef float (*LubPhys3dRayFn)(void *user, const LubPhys3dRayHit *hit);
-typedef bool (*LubPhys3dPlaneFn)(void *user, const LubPhys3dMoverPlane *plane);
+LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key, LubStr src,
+                                     const int32_t *version, LubHandle *out);
+
+// VERTEX/INDEX/STORAGE バッファ (データ渡し)。
+LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
+                             const float *data, int32_t data_count,
+                             const int32_t *version, LubHandle *out);
+
+// STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。
+LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
+                                   int32_t count, const int32_t *version,
+                                   LubHandle *out);
+
+// px は byte 値 (0..255) の列、null で target / storage 用の空 texture。
+LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
+                              int32_t fmt, const int32_t *px, int32_t px_count,
+                              const int32_t *version,
+                              const LubTextureOpts *opts, LubHandle *out);
+
+// px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ
+// use_texture。
+LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
+                                    int32_t h, int32_t fmt, const uint8_t *px,
+                                    int32_t px_len, const int32_t *version,
+                                    const LubTextureOpts *opts, LubHandle *out);
+
+// key から handle を引く (無ければ null)。stale な参照の再解決用。
+LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key);
+
+LubHandle lub_gfx_lookup_shader(LubContext *ctx, LubStr key);
+
+LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key);
+
+// handle の key と実効 version。handle が stale なら false。
+bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
+                           int32_t *version);
+
+// readback queue を poll し、id (int32 の user token) 付きなら tex の読み戻
+// しを積む。結果は要求順に届く: status が Ready なら bytes (frame 有効の
+// view) と resultId、Dropped なら dropped に積めなかった token。Lua 面は
+// rb:read_texture(tex, id) の 9 値 multi-return。
+LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb, LubHandle tex,
+                               const int32_t *id, int32_t *status,
+                               LubView *bytes, int32_t *width, int32_t *height,
+                               int32_t *format, int32_t *stride,
+                               int32_t *result_id, int32_t *dropped,
+                               LubStr *error);
+
+LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
+                       const LubBinding *bindings, int32_t bindings_count,
+                       const LubDrawOpts *opts);
+
+LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
+                           const LubBinding *bindings, int32_t bindings_count,
+                           const LubDispatchOpts *opts);
+
+// 現在の drawable サイズ (px)。
+void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
+
+// ----------------------------------------------------------------- input
+// フレームラッチ付きポーリング入力。key は "space" / "a".."z" 等、 button は
+// SDL 準拠 1 始まり (省略時 1 = 左)。
+
+bool lub_input_key_down(LubContext *ctx, LubStr key);
+
+bool lub_input_key_pressed(LubContext *ctx, LubStr key);
+
+bool lub_input_key_released(LubContext *ctx, LubStr key);
+
+bool lub_input_mouse_down(LubContext *ctx, const int32_t *button);
+
+bool lub_input_mouse_pressed(LubContext *ctx, const int32_t *button);
+
+bool lub_input_mouse_released(LubContext *ctx, const int32_t *button);
+
+void lub_input_mouse_pos(LubContext *ctx, float *x, float *y);
+
+void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
+
+// -------------------------------------------------------------------- io
+// ファイル入力 (毎フレーム呼べる即時モード API)。 load_* は (本体, version,
+// status, error) の 4 値 multi-return で、本体は status = "ready" になるまで
+// null。
+
+LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
+                           int32_t *version, int32_t *status, LubStr *error);
+
+// `return { ... }` 形式の Lua ファイルを float 配列として読む。
+LubStatus lub_io_load_floats(LubContext *ctx, LubStr path, const float **data,
+                             int32_t *data_count, int32_t *version,
+                             int32_t *status, LubStr *error);
+
+LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path, LubGltfMesh *mesh,
+                           bool *has_mesh, int32_t *version, int32_t *status,
+                           LubStr *error);
+
+LubStatus lub_io_interleave_pn(LubContext *ctx, const LubMeshData *mesh,
+                               const float **out, int32_t *out_count);
+
+LubStatus lub_io_interleave_pncm(LubContext *ctx, const LubMeshData *mesh,
+                                 const float **out, int32_t *out_count);
+
+LubStatus lub_io_interleave_pncmw(LubContext *ctx, const LubMeshData *mesh,
+                                  const float **out, int32_t *out_count);
+
+LubStatus lub_io_interleave_pnu(LubContext *ctx, const LubMeshData *mesh,
+                                const float **out, int32_t *out_count);
+
+LubStatus lub_io_interleave_pnut(LubContext *ctx, const LubMeshData *mesh,
+                                 const float **out, int32_t *out_count);
+
+// ------------------------------------------------------------------ mesh
+// CPU メッシュ生成。
+
+LubStatus lub_mesh_surface_nets(LubContext *ctx, const float *grid,
+                                int32_t grid_count, int32_t nx, int32_t ny,
+                                int32_t nz, const float *cell, const float *ox,
+                                const float *oy, const float *oz,
+                                LubMeshData *out);
+
+// 平らな node 配列 (子は index で参照) をメッシュ化する。木の組み立ては lubx
+// の Sdf が行う。
+LubStatus lub_mesh_sdf_mesh(LubContext *ctx, const LubSdfNodeDesc *nodes,
+                            int32_t nodes_count, int32_t root, int32_t n,
+                            const float *skin_k, LubMeshData *out);
+
+// ------------------------------------------------------------------ font
+// TTF glyph の純関数 utility。フォントの bytes (string) を毎回渡す。
+
+LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out);
+
+LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
+                         float px, LubGlyphBitmap *out, bool *has);
+
+LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
+                              const float *tolerance, LubGlyphMesh *out,
+                              bool *has);
+
+LubStatus lub_font_kern(LubContext *ctx, LubStr ttf, int32_t cp1, int32_t cp2,
+                        float *out);
+
+// -------------------------------------------------------------------- ui
+// Dear ImGui debug UI (immediate mode)。ui_render は begin_pass 中に 1 回呼
+// ぶ。
+
+LubStatus lub_ui_render(LubContext *ctx);
+
+bool lub_ui_begin_window(LubContext *ctx, LubStr title);
+
+void lub_ui_end_window(LubContext *ctx);
+
+void lub_ui_text(LubContext *ctx, LubStr s);
+
+bool lub_ui_button(LubContext *ctx, LubStr label);
+
+bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool v);
+
+float lub_ui_slider_float(LubContext *ctx, LubStr label, float v, float min,
+                          float max);
+
+int32_t lub_ui_slider_int(LubContext *ctx, LubStr label, int32_t v, int32_t min,
+                          int32_t max);
+
+float lub_ui_drag_float(LubContext *ctx, LubStr label, float v,
+                        const float *speed, const float *min, const float *max);
+
+void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r, float g,
+                        float b, float *new_r, float *new_g, float *new_b);
+
+void lub_ui_separator(LubContext *ctx);
+
+void lub_ui_same_line(LubContext *ctx);
+
+bool lub_ui_tree_node(LubContext *ctx, LubStr label, const bool *default_open);
+
+void lub_ui_tree_pop(LubContext *ctx);
+
+void lub_ui_set_next_window(LubContext *ctx, float x, float y, float w,
+                            float h);
+
+bool lub_ui_want_capture_mouse(LubContext *ctx);
+
+// ------------------------------------------------------------------ host
+// ホストページとの汎用メッセージブリッジ (web 専用)。
+
+bool lub_host_available(LubContext *ctx);
+
+void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload);
+
+// 1 件ずつ取り出す。キューが空なら topic = null。
+LubStatus lub_host_poll(LubContext *ctx, LubStr *topic, LubStr *payload);
+
+// ----------------------------------------------------------------- audio
+// 音の core API。snd は key で宣言する resource で、宣言が途切れると sweep
+// される (鳴っている voice は最後まで鳴る)。
+
+// interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は
+// Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ
+// snd に dedupe される。
+LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
+                        int32_t data_count, int32_t channels, int32_t rate,
+                        const int32_t *version, int32_t *out);
+
+// f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。
+LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
+                              int32_t data_len, int32_t channels, int32_t rate,
+                              const int32_t *version, int32_t *out);
+
+// file format の bytes を f32 PCM に落とす。bytes は frame 有効の view。
+LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data,
+                           int32_t data_len, LubView *bytes, int32_t *channels,
+                           int32_t *rate);
+
+bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts);
+
+bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
+                     const LubVoiceOpts *opts);
+
+void lub_audio_master_volume(LubContext *ctx, float volume);
+
+void lub_audio_info(LubContext *ctx, LubAudioInfo *out);
+
+// ------------------------------------------------------------------- sys
+
+bool lub_sys_is_web(LubContext *ctx);
+
+// 文字列の FNV-1a 64bit ハッシュ (version 生成用)。
+int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
+
+// 実測 FPS (約 1 秒ごとの平滑値)。
+float lub_sys_actual_fps(LubContext *ctx);
+
+// -------------------------------------------------------------- profiler
+// 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
+
+bool lub_profiler_enabled(LubContext *ctx);
+
+void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
+
+void lub_profiler_end_scope(LubContext *ctx, LubStr name);
+
+void lub_profiler_reset(LubContext *ctx);
+
+void lub_profiler_report(LubContext *ctx, LubStr label);
+
+// ---------------------------------------------------------------- phys2d
+// Box2D の即時モード API (詳細は Haxe extern lub.Phys2d)。
+
+// key で引く (無ければ null)。sentinel の再解決にも使う。
+LubHandle lub_phys2d_find_world(LubContext *ctx, LubStr key);
+
+LubHandle lub_phys2d_find_body(LubContext *ctx, LubHandle world, LubStr key);
+
+LubHandle lub_phys2d_find_shape(LubContext *ctx, LubHandle body, LubStr key);
+
+LubHandle lub_phys2d_find_chain(LubContext *ctx, LubHandle body, LubStr key);
+
+LubHandle lub_phys2d_find_joint(LubContext *ctx, LubHandle world, LubStr key);
+
+LubStatus lub_phys2d_world(LubContext *ctx, LubStr key,
+                           const LubWorldOpts *opts, LubHandle *out);
+
+LubStatus lub_phys2d_begin(LubContext *ctx, LubHandle world,
+                           const LubBeginOpts *opts);
+
+LubStatus lub_phys2d_world_info(LubContext *ctx, LubHandle world,
+                                LubWorldInfo *out);
+
+LubStatus lub_phys2d_body(LubContext *ctx, LubHandle world, LubStr key,
+                          const LubBodyDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_box(LubContext *ctx, LubHandle body, LubStr key,
+                         const LubBoxDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_circle(LubContext *ctx, LubHandle body, LubStr key,
+                            const LubCircleDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_capsule(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubCapsuleDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_segment(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubSegmentDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_polygon(LubContext *ctx, LubHandle body, LubStr key,
+                             const LubPolygonDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_chain(LubContext *ctx, LubHandle body, LubStr key,
+                           const LubChainDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_chain_segments(LubContext *ctx, LubHandle chain,
+                                    const LubShapeView **out,
+                                    int32_t *out_count);
+
+LubStatus lub_phys2d_joint(LubContext *ctx, LubHandle world, LubStr key,
+                           const LubJointDesc *desc, LubHandle *out);
+
+LubStatus lub_phys2d_joint_info(LubContext *ctx, LubHandle joint,
+                                LubJointInfo *out);
+
+LubStatus lub_phys2d_joint_force(LubContext *ctx, LubHandle joint,
+                                 LubVec2d *out);
+
+LubStatus lub_phys2d_joint_torque(LubContext *ctx, LubHandle joint, float *out);
+
+LubStatus lub_phys2d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has);
+
+LubStatus lub_phys2d_joint_translation(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has);
+
+LubStatus lub_phys2d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
+                                 bool *has);
+
+LubStatus lub_phys2d_joint_length(LubContext *ctx, LubHandle joint, float *out,
+                                  bool *has);
+
+LubStatus lub_phys2d_joint_motor_force(LubContext *ctx, LubHandle joint,
+                                       float *out, bool *has);
+
+LubStatus lub_phys2d_joint_motor_torque(LubContext *ctx, LubHandle joint,
+                                        float *out, bool *has);
+
+LubStatus lub_phys2d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                     const LubJointMotorDesc *desc);
+
+LubStatus lub_phys2d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                     const LubJointLimitDesc *desc);
+
+LubStatus lub_phys2d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                      const LubJointSpringDesc *desc);
+
+LubStatus lub_phys2d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                      const LubJointTargetDesc *desc);
+
+LubStatus lub_phys2d_step(LubContext *ctx, LubHandle world, float dt,
+                          LubStepInfo *out);
+
+LubStatus lub_phys2d_pose(LubContext *ctx, LubHandle body, LubPose *out);
+
+// key で引く Pose。Lua 面は同じ pose。
+LubStatus lub_phys2d_pose_by_key(LubContext *ctx, LubHandle world, LubStr key,
+                                 LubPose *out);
+
+LubStatus lub_phys2d_velocity(LubContext *ctx, LubHandle body,
+                              LubVelocity *out);
+
+LubStatus lub_phys2d_mass(LubContext *ctx, LubHandle body, LubMassData *out);
+
+LubStatus lub_phys2d_center(LubContext *ctx, LubHandle body, LubVec2d *out);
+
+LubStatus lub_phys2d_world_point(LubContext *ctx, LubHandle body,
+                                 const LubVec2d *local_point, LubVec2d *out);
+
+LubStatus lub_phys2d_local_point(LubContext *ctx, LubHandle body,
+                                 const LubVec2d *world_point, LubVec2d *out);
+
+LubStatus lub_phys2d_velocity_at(LubContext *ctx, LubHandle body,
+                                 const LubVec2d *world_point, LubVec2d *out);
+
+LubStatus lub_phys2d_body_shapes(LubContext *ctx, LubHandle body,
+                                 const LubShapeView **out, int32_t *out_count);
+
+LubStatus lub_phys2d_body_joints(LubContext *ctx, LubHandle body,
+                                 const LubJointView **out, int32_t *out_count);
+
+LubStatus lub_phys2d_body_contacts(LubContext *ctx, LubHandle body,
+                                   const LubContactData **out,
+                                   int32_t *out_count);
+
+LubStatus lub_phys2d_shape_test_point(LubContext *ctx, LubHandle shape,
+                                      const LubVec2d *point, bool *out);
+
+LubStatus lub_phys2d_shape_raycast(LubContext *ctx, LubHandle shape,
+                                   const LubRaycastDesc *query,
+                                   LubShapeRayHit *out, bool *has);
+
+LubStatus lub_phys2d_shape_closest_point(LubContext *ctx, LubHandle shape,
+                                         const LubVec2d *point, LubVec2d *out);
+
+LubStatus lub_phys2d_shape_aabb(LubContext *ctx, LubHandle shape, LubAabb *out);
+
+LubStatus lub_phys2d_shape_info(LubContext *ctx, LubHandle shape,
+                                LubShapeInfo *out);
+
+LubStatus lub_phys2d_shape_set_material(LubContext *ctx, LubHandle shape,
+                                        const LubMaterialDesc *desc);
+
+LubStatus lub_phys2d_shape_set_filter(LubContext *ctx, LubHandle shape,
+                                      const LubFilterDesc *filter);
+
+LubStatus lub_phys2d_shape_set_events(LubContext *ctx, LubHandle shape,
+                                      const LubShapeEventsDesc *desc);
+
+// kind は Begin (既定) / End / Hit。
+LubStatus lub_phys2d_contacts(LubContext *ctx, LubHandle world,
+                              const int32_t *kind, const LubContactEvent **out,
+                              int32_t *out_count);
+
+LubStatus lub_phys2d_body_events(LubContext *ctx, LubHandle world,
+                                 const LubBodyEvent **out, int32_t *out_count);
+
+LubStatus lub_phys2d_sensors(LubContext *ctx, LubHandle world,
+                             const int32_t *kind, const LubSensorEvent **out,
+                             int32_t *out_count);
+
+// visitor 無しは最も近い hit (無ければ null)。visitor は Box2D の規約で続行
+// を返す (-1 = 無視、0 = 打ち切り、fraction = ここまでに詰める、1 = 続行)。
+LubStatus lub_phys2d_raycast(LubContext *ctx, LubHandle world,
+                             const LubRaycastDesc *query, LubRayHit *out,
+                             bool *has);
+
+typedef float (*LubPhys2dRaycastAllVisitorFn)(void *user, const LubRayHit *a);
+// visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。
+LubStatus lub_phys2d_raycast_all(LubContext *ctx, LubHandle world,
+                                 const LubRaycastDesc *query,
+                                 LubPhys2dRaycastAllVisitorFn visitor,
+                                 void *visitor_user, const LubRayHit **out,
+                                 int32_t *out_count);
+
+typedef bool (*LubPhys2dOverlapAabbVisitorFn)(void *user,
+                                              const LubShapeView *a);
+// visitor は false で打ち切り。
+LubStatus lub_phys2d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                  const LubAabbDesc *query,
+                                  LubPhys2dOverlapAabbVisitorFn visitor,
+                                  void *visitor_user, const LubShapeView **out,
+                                  int32_t *out_count);
+
+LubStatus lub_phys2d_shape_cast(LubContext *ctx, LubHandle world,
+                                const LubShapeCastDesc *query, LubRayHit *out,
+                                bool *has);
+
+typedef float (*LubPhys2dShapeCastAllVisitorFn)(void *user, const LubRayHit *a);
+// visitor 付きの ShapeCast。Lua 面は同じ shape_cast。
+LubStatus lub_phys2d_shape_cast_all(LubContext *ctx, LubHandle world,
+                                    const LubShapeCastDesc *query,
+                                    LubPhys2dShapeCastAllVisitorFn visitor,
+                                    void *visitor_user, const LubRayHit **out,
+                                    int32_t *out_count);
+
+LubStatus lub_phys2d_cast_mover(LubContext *ctx, LubHandle world,
+                                const LubMoverDesc *query, LubMoverCast *out,
+                                bool *has);
+
+typedef bool (*LubPhys2dCollideMoverVisitorFn)(void *user,
+                                               const LubMoverPlane *a);
+LubStatus lub_phys2d_collide_mover(LubContext *ctx, LubHandle world,
+                                   const LubMoverDesc *query,
+                                   LubPhys2dCollideMoverVisitorFn visitor,
+                                   void *visitor_user,
+                                   const LubMoverPlane **out,
+                                   int32_t *out_count);
+
+LubStatus lub_phys2d_explode(LubContext *ctx, LubHandle world,
+                             const LubExplosionDesc *desc);
+
+LubStatus lub_phys2d_debug(LubContext *ctx, LubHandle world,
+                           const LubDebugOpts *opts, LubDebugData *out);
+
+LubStatus lub_phys2d_profile(LubContext *ctx, LubHandle world, LubProfile *out);
+
+LubStatus lub_phys2d_counters(LubContext *ctx, LubHandle world,
+                              LubCounters *out);
+
+LubStatus lub_phys2d_add_force(LubContext *ctx, LubHandle body,
+                               const LubVec2d *force,
+                               const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_add_force_center(LubContext *ctx, LubHandle body,
+                                      const LubVec2d *force,
+                                      const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_add_impulse(LubContext *ctx, LubHandle body,
+                                 const LubVec2d *impulse,
+                                 const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                        const LubVec2d *impulse,
+                                        const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_add_torque(LubContext *ctx, LubHandle body, float torque,
+                                const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_add_angular_impulse(LubContext *ctx, LubHandle body,
+                                         float impulse,
+                                         const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_set_velocity(LubContext *ctx, LubHandle body,
+                                  const LubVelocityDesc *velocity,
+                                  const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_teleport(LubContext *ctx, LubHandle body,
+                              const LubPoseDesc *pose,
+                              const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_set_target(LubContext *ctx, LubHandle body,
+                                const LubPoseDesc *target,
+                                const LubCommandOpts *opts);
+
+LubStatus lub_phys2d_set_mass_data(LubContext *ctx, LubHandle body,
+                                   const LubMassDataDesc *mass_data,
+                                   const LubCommandOpts *opts);
+
+// ---------------------------------------------------------------- phys3d
+// Box3D の即時モード API (詳細は Haxe extern lub.Phys3d)。
+
+// key で引く (無ければ null)。sentinel の再解決にも使う。
+LubHandle lub_phys3d_find_world(LubContext *ctx, LubStr key);
+
+LubHandle lub_phys3d_find_body(LubContext *ctx, LubHandle world, LubStr key);
+
+LubHandle lub_phys3d_find_shape(LubContext *ctx, LubHandle body, LubStr key);
+
+LubHandle lub_phys3d_find_joint(LubContext *ctx, LubHandle world, LubStr key);
 
 LubStatus lub_phys3d_world(LubContext *ctx, LubStr key,
-                           const LubPhys3dWorldDesc *desc, LubHandle *out);
-LubHandle lub_phys3d_world_find(LubContext *ctx, LubStr key);
-LubStatus lub_phys3d_begin(LubContext *ctx, LubHandle world, bool prune);
+                           const LubWorldOpts3d *opts, LubHandle *out);
+
+LubStatus lub_phys3d_begin(LubContext *ctx, LubHandle world,
+                           const LubBeginOpts3d *opts);
+
 LubStatus lub_phys3d_world_info(LubContext *ctx, LubHandle world,
-                                LubPhys3dWorldInfo *out);
-LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
-                          LubPhys3dStepInfo *out);
+                                LubWorldInfo3d *out);
 
 LubStatus lub_phys3d_body(LubContext *ctx, LubHandle world, LubStr key,
-                          const LubPhys3dBodyDesc *desc, LubHandle *out);
-LubHandle lub_phys3d_body_find(LubContext *ctx, LubHandle world, LubStr key);
+                          const LubBodyDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_sphere(LubContext *ctx, LubHandle body, LubStr key,
-                            const LubPhys3dSphereDesc *desc, LubHandle *out);
+                            const LubSphereDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_box(LubContext *ctx, LubHandle body, LubStr key,
-                         const LubPhys3dBoxDesc *desc, LubHandle *out);
+                         const LubBoxDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_capsule(LubContext *ctx, LubHandle body, LubStr key,
-                             const LubPhys3dCapsuleDesc *desc, LubHandle *out);
+                             const LubCapsuleDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_cylinder(LubContext *ctx, LubHandle body, LubStr key,
-                              const LubPhys3dCylinderDesc *desc,
-                              LubHandle *out);
+                              const LubCylinderDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_cone(LubContext *ctx, LubHandle body, LubStr key,
-                          const LubPhys3dConeDesc *desc, LubHandle *out);
+                          const LubConeDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_hull(LubContext *ctx, LubHandle body, LubStr key,
-                          const LubPhys3dHullDesc *desc, LubHandle *out);
+                          const LubHullDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_mesh(LubContext *ctx, LubHandle body, LubStr key,
-                          const LubPhys3dMeshDesc *desc, LubHandle *out);
+                          const LubMeshDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_height_field(LubContext *ctx, LubHandle body, LubStr key,
-                                  const LubPhys3dHeightFieldDesc *desc,
+                                  const LubHeightFieldDesc3d *desc,
                                   LubHandle *out);
+
 LubStatus lub_phys3d_compound(LubContext *ctx, LubHandle body, LubStr key,
-                              const LubPhys3dCompoundDesc *desc,
-                              LubHandle *out);
-LubHandle lub_phys3d_shape_find(LubContext *ctx, LubHandle body, LubStr key);
+                              const LubCompoundDesc3d *desc, LubHandle *out);
 
 LubStatus lub_phys3d_joint(LubContext *ctx, LubHandle world, LubStr key,
-                           const LubPhys3dJointDesc *desc, LubHandle *out);
-LubHandle lub_phys3d_joint_find(LubContext *ctx, LubHandle world, LubStr key);
+                           const LubJointDesc3d *desc, LubHandle *out);
+
 LubStatus lub_phys3d_joint_info(LubContext *ctx, LubHandle joint,
-                                LubPhys3dJointInfo *out);
+                                LubJointInfo3d *out);
+
 LubStatus lub_phys3d_joint_force(LubContext *ctx, LubHandle joint,
-                                 LubVec3 *out);
+                                 LubVec3d *out);
+
 LubStatus lub_phys3d_joint_torque(LubContext *ctx, LubHandle joint,
-                                  LubVec3 *out);
+                                  LubVec3d *out);
+
 LubStatus lub_phys3d_joint_angle(LubContext *ctx, LubHandle joint, float *out,
                                  bool *has);
+
 LubStatus lub_phys3d_joint_translation(LubContext *ctx, LubHandle joint,
                                        float *out, bool *has);
+
 LubStatus lub_phys3d_joint_speed(LubContext *ctx, LubHandle joint, float *out,
                                  bool *has);
+
 LubStatus lub_phys3d_joint_length(LubContext *ctx, LubHandle joint, float *out,
                                   bool *has);
+
 LubStatus lub_phys3d_joint_motor_force(LubContext *ctx, LubHandle joint,
                                        float *out, bool *has);
-// spherical は vector (has_vector)、revolute / wheel は scalar (has)。
-LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx, LubHandle joint,
-                                        float *out, bool *has, LubVec3 *vector,
-                                        bool *has_vector);
-LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
-                                     const LubPhys3dJointMotor *desc);
-LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
-                                     const LubPhys3dJointLimit *desc);
-LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
-                                      const LubPhys3dJointSpring *desc);
-LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
-                                      const LubPhys3dJointTarget *desc);
 
-LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body, LubPhys3dPose *out);
-LubStatus lub_phys3d_velocity(LubContext *ctx, LubHandle body,
-                              LubPhys3dVelocity *out);
-LubStatus lub_phys3d_mass(LubContext *ctx, LubHandle body,
-                          LubPhys3dMassData *out);
-LubStatus lub_phys3d_center(LubContext *ctx, LubHandle body, LubVec3 *out);
-LubStatus lub_phys3d_world_point(LubContext *ctx, LubHandle body, LubVec3 local,
-                                 LubVec3 *out);
-LubStatus lub_phys3d_local_point(LubContext *ctx, LubHandle body, LubVec3 world,
-                                 LubVec3 *out);
-LubStatus lub_phys3d_velocity_at(LubContext *ctx, LubHandle body, LubVec3 world,
-                                 LubVec3 *out);
-LubStatus lub_phys3d_body_shapes(LubContext *ctx, LubHandle body,
-                                 const LubPhys3dShapePart **items,
-                                 int32_t *count);
+// revolute / wheel の motor torque。spherical は JointMotorTorqueVector。
+LubStatus lub_phys3d_joint_motor_torque(LubContext *ctx, LubHandle joint,
+                                        float *out, bool *has);
+
+// spherical の motor torque (vector)。
+LubStatus lub_phys3d_joint_motor_torque_vector(LubContext *ctx, LubHandle joint,
+                                               LubVec3d *out, bool *has);
+
+LubStatus lub_phys3d_joint_set_motor(LubContext *ctx, LubHandle joint,
+                                     const LubJointMotorDesc3d *desc);
+
+LubStatus lub_phys3d_joint_set_limit(LubContext *ctx, LubHandle joint,
+                                     const LubJointLimitDesc3d *desc);
+
+LubStatus lub_phys3d_joint_set_spring(LubContext *ctx, LubHandle joint,
+                                      const LubJointSpringDesc3d *desc);
+
+LubStatus lub_phys3d_joint_set_target(LubContext *ctx, LubHandle joint,
+                                      const LubJointTargetDesc3d *desc);
+
 LubStatus lub_phys3d_body_joints(LubContext *ctx, LubHandle body,
-                                 const LubPhys3dJointView **items,
-                                 int32_t *count);
+                                 const LubJointView3d **out,
+                                 int32_t *out_count);
+
+LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
+                                const LubMoverDesc3d *query,
+                                LubMoverCast3d *out, bool *has);
+
+typedef bool (*LubPhys3dCollideMoverVisitorFn)(void *user,
+                                               const LubMoverPlane3d *a);
+LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
+                                   const LubMoverDesc3d *query,
+                                   LubPhys3dCollideMoverVisitorFn visitor,
+                                   void *visitor_user,
+                                   const LubMoverPlane3d **out,
+                                   int32_t *out_count);
+
+LubStatus lub_phys3d_step(LubContext *ctx, LubHandle world, float dt,
+                          LubStepInfo3d *out);
+
+LubStatus lub_phys3d_pose(LubContext *ctx, LubHandle body, LubPose3d *out);
+
+// key で引く Pose。Lua 面は同じ pose。
+LubStatus lub_phys3d_pose_by_key(LubContext *ctx, LubHandle world, LubStr key,
+                                 LubPose3d *out);
+
+LubStatus lub_phys3d_velocity(LubContext *ctx, LubHandle body,
+                              LubVelocity3d *out);
+
+LubStatus lub_phys3d_mass(LubContext *ctx, LubHandle body, LubMassData3d *out);
+
+LubStatus lub_phys3d_center(LubContext *ctx, LubHandle body, LubVec3d *out);
+
+LubStatus lub_phys3d_world_point(LubContext *ctx, LubHandle body,
+                                 const LubVec3d *local_point, LubVec3d *out);
+
+LubStatus lub_phys3d_local_point(LubContext *ctx, LubHandle body,
+                                 const LubVec3d *world_point, LubVec3d *out);
+
+LubStatus lub_phys3d_velocity_at(LubContext *ctx, LubHandle body,
+                                 const LubVec3d *world_point, LubVec3d *out);
+
+LubStatus lub_phys3d_add_force(LubContext *ctx, LubHandle body,
+                               const LubVec3d *force,
+                               const LubCommandOpts3d *opts);
+
+LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
+                                      const LubVec3d *force,
+                                      const LubCommandOpts3d *opts);
+
+LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
+                                 const LubVec3d *impulse,
+                                 const LubCommandOpts3d *opts);
+
+LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
+                                        const LubVec3d *impulse,
+                                        const LubCommandOpts3d *opts);
+
+LubStatus lub_phys3d_add_torque(LubContext *ctx, LubHandle body,
+                                const LubVec3d *torque,
+                                const LubCommandOpts3d *opts);
+
+LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx, LubHandle body,
+                                         const LubVec3d *impulse,
+                                         const LubCommandOpts3d *opts);
+
+LubStatus lub_phys3d_set_velocity(LubContext *ctx, LubHandle body,
+                                  const LubVelocityDesc3d *desc);
+
+LubStatus lub_phys3d_teleport(LubContext *ctx, LubHandle body,
+                              const LubPoseDesc3d *desc);
+
+LubStatus lub_phys3d_set_target(LubContext *ctx, LubHandle body,
+                                const LubTargetDesc3d *desc);
+
+// kind = "begin" (既定) / "end" / "hit"。
+LubStatus lub_phys3d_contacts(LubContext *ctx, LubHandle world,
+                              const int32_t *kind,
+                              const LubContactEvent3d **out,
+                              int32_t *out_count);
+
+LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
+                                 const LubBodyEvent3d **out,
+                                 int32_t *out_count);
+
+LubStatus lub_phys3d_sensors(LubContext *ctx, LubHandle world,
+                             const int32_t *kind, const LubSensorEvent3d **out,
+                             int32_t *out_count);
+
+LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
+                                  const LubJointEvent3d **out,
+                                  int32_t *out_count);
+
+// visitor 無しは最も近い hit (Mode = "all" なら全部を RaycastAll で)。visitor
+// は Box3D の規約で続行を返す。
+LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
+                             const LubRaycastDesc3d *query, LubRayHit3d *out,
+                             bool *has);
+
+typedef float (*LubPhys3dRaycastAllVisitorFn)(void *user, const LubRayHit3d *a);
+// visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。
+LubStatus lub_phys3d_raycast_all(LubContext *ctx, LubHandle world,
+                                 const LubRaycastDesc3d *query,
+                                 LubPhys3dRaycastAllVisitorFn visitor,
+                                 void *visitor_user, const LubRayHit3d **out,
+                                 int32_t *out_count);
+
+typedef bool (*LubPhys3dOverlapAabbVisitorFn)(void *user,
+                                              const LubShapeView3d *a);
+LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
+                                  const LubAabbDesc3d *query,
+                                  LubPhys3dOverlapAabbVisitorFn visitor,
+                                  void *visitor_user,
+                                  const LubShapeView3d **out,
+                                  int32_t *out_count);
+
+typedef bool (*LubPhys3dOverlapShapeVisitorFn)(void *user,
+                                               const LubShapeView3d *a);
+LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
+                                   const LubShapeProxyDesc3d *query,
+                                   LubPhys3dOverlapShapeVisitorFn visitor,
+                                   void *visitor_user,
+                                   const LubShapeView3d **out,
+                                   int32_t *out_count);
+
+LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
+                                const LubShapeProxyDesc3d *query,
+                                LubRayHit3d *out, bool *has);
+
+typedef float (*LubPhys3dShapeCastAllVisitorFn)(void *user,
+                                                const LubRayHit3d *a);
+// visitor 付きの ShapeCast。Lua 面は同じ shape_cast。
+LubStatus lub_phys3d_shape_cast_all(LubContext *ctx, LubHandle world,
+                                    const LubShapeProxyDesc3d *query,
+                                    LubPhys3dShapeCastAllVisitorFn visitor,
+                                    void *visitor_user, const LubRayHit3d **out,
+                                    int32_t *out_count);
+
+LubStatus lub_phys3d_body_shapes(LubContext *ctx, LubHandle body,
+                                 const LubShapeView3d **out,
+                                 int32_t *out_count);
+
 LubStatus lub_phys3d_body_contacts(LubContext *ctx, LubHandle body,
-                                   const LubPhys3dContactData **items,
-                                   int32_t *count);
+                                   const LubContactData3d **out,
+                                   int32_t *out_count);
 
 LubStatus lub_phys3d_shape_raycast(LubContext *ctx, LubHandle shape,
-                                   const LubPhys3dRay *ray,
-                                   LubPhys3dRayHit *out, bool *hit);
+                                   const LubRaycastDesc3d *query,
+                                   LubShapeRayHit3d *out, bool *has);
+
 LubStatus lub_phys3d_shape_closest_point(LubContext *ctx, LubHandle shape,
-                                         LubVec3 point, LubVec3 *out);
+                                         const LubVec3d *point, LubVec3d *out);
+
 LubStatus lub_phys3d_shape_aabb(LubContext *ctx, LubHandle shape,
-                                LubPhys3dAabb *out);
+                                LubAabb3d *out);
+
 LubStatus lub_phys3d_shape_info(LubContext *ctx, LubHandle shape,
-                                LubPhys3dShapeInfo *out);
+                                LubShapeInfo3d *out);
+
 LubStatus lub_phys3d_shape_set_material(LubContext *ctx, LubHandle shape,
-                                        const LubPhys3dMaterialDesc *desc);
+                                        const LubMaterialDesc3d *desc);
+
 LubStatus lub_phys3d_shape_set_filter(LubContext *ctx, LubHandle shape,
-                                      const LubPhys3dFilter *filter);
+                                      const LubFilterDesc3d *filter);
+
 LubStatus lub_phys3d_shape_set_events(LubContext *ctx, LubHandle shape,
-                                      const LubPhys3dEventFlags *flags);
+                                      const LubShapeEventsDesc3d *desc);
 
-LubStatus lub_phys3d_contacts(LubContext *ctx, LubHandle world, int32_t kind,
-                              const LubPhys3dContact **items, int32_t *count);
-LubStatus lub_phys3d_body_events(LubContext *ctx, LubHandle world,
-                                 const LubPhys3dBodyEvent **items,
-                                 int32_t *count);
-LubStatus lub_phys3d_sensors(LubContext *ctx, LubHandle world, int32_t kind,
-                             const LubPhys3dContact **items, int32_t *count);
-LubStatus lub_phys3d_joint_events(LubContext *ctx, LubHandle world,
-                                  const LubPhys3dJointEvent **items,
-                                  int32_t *count);
-
-LubStatus lub_phys3d_raycast_closest(LubContext *ctx, LubHandle world,
-                                     const LubPhys3dRay *ray,
-                                     const LubPhys3dQueryFilter *filter,
-                                     LubPhys3dRayHit *out, bool *hit);
-LubStatus lub_phys3d_raycast(LubContext *ctx, LubHandle world,
-                             const LubPhys3dRay *ray,
-                             const LubPhys3dQueryFilter *filter,
-                             LubPhys3dRayFn fn, void *user,
-                             LubPhys3dTreeStats *stats);
-LubStatus lub_phys3d_overlap_aabb(LubContext *ctx, LubHandle world,
-                                  const LubPhys3dAabb *aabb,
-                                  const LubPhys3dQueryFilter *filter,
-                                  LubPhys3dOverlapFn fn, void *user,
-                                  LubPhys3dTreeStats *stats);
-LubStatus lub_phys3d_overlap_shape(LubContext *ctx, LubHandle world,
-                                   const LubPhys3dShapeProxy *proxy,
-                                   const LubPhys3dQueryFilter *filter,
-                                   LubPhys3dOverlapFn fn, void *user,
-                                   LubPhys3dTreeStats *stats);
-LubStatus lub_phys3d_shape_cast(LubContext *ctx, LubHandle world,
-                                const LubPhys3dShapeProxy *proxy,
-                                LubVec3 translation,
-                                const LubPhys3dQueryFilter *filter,
-                                LubPhys3dRayFn fn, void *user,
-                                LubPhys3dTreeStats *stats);
-LubStatus lub_phys3d_cast_mover(LubContext *ctx, LubHandle world,
-                                const LubPhys3dMover *mover,
-                                LubVec3 translation,
-                                const LubPhys3dQueryFilter *filter,
-                                float *fraction);
-LubStatus lub_phys3d_collide_mover(LubContext *ctx, LubHandle world,
-                                   const LubPhys3dMover *mover,
-                                   const LubPhys3dQueryFilter *filter,
-                                   LubPhys3dPlaneFn fn, void *user);
 LubStatus lub_phys3d_profile(LubContext *ctx, LubHandle world,
-                             LubPhys3dProfile *out);
-LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
-                              LubPhys3dCounters *out);
+                             LubProfile3d *out);
 
-LubStatus lub_phys3d_add_force(LubContext *ctx, LubHandle body, LubVec3 force,
-                               const LubVec3 *point, bool wake);
-LubStatus lub_phys3d_add_force_center(LubContext *ctx, LubHandle body,
-                                      LubVec3 force, bool wake);
-LubStatus lub_phys3d_add_impulse(LubContext *ctx, LubHandle body,
-                                 LubVec3 impulse, const LubVec3 *point,
-                                 bool wake);
-LubStatus lub_phys3d_add_impulse_center(LubContext *ctx, LubHandle body,
-                                        LubVec3 impulse, bool wake);
-LubStatus lub_phys3d_add_torque(LubContext *ctx, LubHandle body, LubVec3 torque,
-                                bool wake);
-LubStatus lub_phys3d_add_angular_impulse(LubContext *ctx, LubHandle body,
-                                         LubVec3 impulse, bool wake);
-LubStatus lub_phys3d_set_velocity(LubContext *ctx, LubHandle body,
-                                  const LubPhys3dSetVelocity *desc);
-LubStatus lub_phys3d_teleport(LubContext *ctx, LubHandle body,
-                              const LubPhys3dTeleport *desc);
-LubStatus lub_phys3d_set_target(LubContext *ctx, LubHandle body,
-                                const LubPhys3dSetTarget *desc);
+LubStatus lub_phys3d_counters(LubContext *ctx, LubHandle world,
+                              LubCounters3d *out);
+
+// ------------------------------------------------------------------- png
+// PNG の読み書き (lubx_png、prelude が global Png として注入)。 load は
+// Io.load* と同じ status/version 規約 (web では "pending" があり得る)。
+
+LubStatus lub_png_load(LubContext *ctx, LubStr path, LubView *bytes,
+                       int32_t *width, int32_t *height, int32_t *format,
+                       int32_t *stride, int32_t *version, int32_t *status,
+                       LubStr *error);
+
+LubStatus lub_png_write(LubContext *ctx, LubStr path, const uint8_t *bytes,
+                        int32_t bytes_len, int32_t width, int32_t height,
+                        const int32_t *stride);
 
 #ifdef __cplusplus
 }

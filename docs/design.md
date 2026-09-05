@@ -84,8 +84,10 @@ runtime invariant、resource lifetime、backend abstraction、hot reload、diagn
   同一 table。Haxe 固有の互換層 (lua-utf8 / bit32 / math.atan2) だけが
   HAXE_PRELUDE (`src/embedded_prelude.h`) に残る。
 
-API の細かいシグネチャや binding の制約は、この文書ではなく実装側に置く。
-現時点の一次情報は `src/lua_api.c` と `src/enums_lua.c`。
+API の細かいシグネチャや binding の制約は、この文書ではなく記述側に置く。
+一次情報は `cs-lib/lub_stub.cs`(C# の stub が API の記述)で、C API の
+header(`include/lub/lub_api.h`)と Lua binding(`src/gen/lua_api_gen.c`)は
+`tools/lub-gen` がそこから生成する(`scripts/gen-api.sh`)。
 
 ## Runtime Shape
 

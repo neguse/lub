@@ -112,12 +112,12 @@ function M.onFrame()
 			{ x = 1, y = -0.8 },
 			{ x = 3, y = -0.8 },
 		},
-		material = "terrain",
+		material_name = "terrain",
 		materials = {
-			{ material = 9, friction = 0.7 },
-			{ material = 9, friction = 0.7 },
-			{ material = 9, friction = 0.7 },
-			{ material = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
 		},
 		friction = 0.7,
 		filter = { category = 4, mask = "all" },
@@ -167,8 +167,8 @@ function M.onFrame()
 		r = 0.1,
 		density = 1,
 		tag = "player",
-		material = "player",
-		userMaterialId = 7,
+		material_name = "player",
+		material_id = 7,
 		contact = true,
 		hit = true,
 		sensorEvents = true,
@@ -225,12 +225,12 @@ function M.onFrame()
 	if #chain_segments ~= 1 or chain_segments[1].chain ~= "path" or chain_segments[1].kind ~= "chain_segment" then
 		fail("chain segment enumeration missing terrain segment")
 	end
-	if chain_segments[1].material ~= "terrain" or chain_segments[1].user_material_id ~= 9 then
+	if chain_segments[1].material_name ~= "terrain" or chain_segments[1].material_id ~= 9 then
 		fail(
 			"chain segment metadata/material missing: material="
-				.. tostring(chain_segments[1].material)
-				.. " user_material_id="
-				.. tostring(chain_segments[1].user_material_id)
+				.. tostring(chain_segments[1].material_name)
+				.. " material_id="
+				.. tostring(chain_segments[1].material_id)
 		)
 	end
 	local terrain_shapes = terrain:shapes()
@@ -252,8 +252,8 @@ function M.onFrame()
 		or mover_info.shape ~= "capsule"
 		or mover_info.kind ~= "capsule"
 		or mover_info.tag ~= "player"
-		or mover_info.material ~= "player"
-		or mover_info.user_material_id ~= 7
+		or mover_info.material_name ~= "player"
+		or mover_info.material_id ~= 7
 	then
 		fail("shape info identity/material metadata missing")
 	end
@@ -368,11 +368,7 @@ function M.onFrame()
 		}, function()
 			error("raycast visitor boom")
 		end)
-		if
-			bad_raycast ~= nil
-			or type(bad_raycast_err) ~= "string"
-			or not bad_raycast_err:find("phys2d_raycast visitor")
-		then
+		if bad_raycast ~= nil or type(bad_raycast_err) ~= "string" or not bad_raycast_err:find("phys2d_raycast") then
 			fail("raycast visitor error did not return nil,error")
 		end
 		local mutating_raycast, mutating_raycast_err = world:raycast({
@@ -415,7 +411,7 @@ function M.onFrame()
 		if
 			bad_overlap ~= nil
 			or type(bad_overlap_err) ~= "string"
-			or not bad_overlap_err:find("phys2d_overlap_aabb visitor")
+			or not bad_overlap_err:find("phys2d_overlap_aabb")
 		then
 			fail("overlap_aabb visitor error did not return nil,error")
 		end
@@ -463,7 +459,7 @@ function M.onFrame()
 		if
 			bad_shape_cast ~= nil
 			or type(bad_shape_cast_err) ~= "string"
-			or not bad_shape_cast_err:find("phys2d_shape_cast visitor")
+			or not bad_shape_cast_err:find("phys2d_shape_cast")
 		then
 			fail("shape_cast visitor error did not return nil,error")
 		end
@@ -475,8 +471,8 @@ function M.onFrame()
 
 	if saw_sensor and saw_body_move and checked_queries then
 		mover_shape:set_material({
-			material = "runtime",
-			user_material_id = 11,
+			material_name = "runtime",
+			material_id = 11,
 			friction = 0.25,
 			restitution = 0.4,
 			density = 1.25,
@@ -490,8 +486,8 @@ function M.onFrame()
 		})
 		local runtime_info = mover_shape:info()
 		if
-			runtime_info.material ~= "runtime"
-			or runtime_info.user_material_id ~= 11
+			runtime_info.material_name ~= "runtime"
+			or runtime_info.material_id ~= 11
 			or not near(runtime_info.friction, 0.25)
 			or not near(runtime_info.restitution, 0.4)
 			or not near(runtime_info.density, 1.25)

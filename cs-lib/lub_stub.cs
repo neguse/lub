@@ -195,6 +195,7 @@ public static class Lub
     {
     }
 
+    [LubNoFail]
     public static void Quit()
     {
     }
@@ -292,6 +293,35 @@ public static class Lub
             TextureOpts? opts = null)
         {
             return null;
+        }
+
+        /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
+        [LubNoFail]
+        public static TextureRef? LookupTexture(string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static ShaderRef? LookupShader(string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static BufferRef? LookupBuffer(string key)
+        {
+            return null;
+        }
+
+        /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
+        [LubNoFail]
+        public static bool ResourceInfo(int handle, out string? key,
+            out int version)
+        {
+            key = null;
+            version = 0;
+            return false;
         }
 
         [LubNoC]
@@ -704,12 +734,6 @@ public static class Lub
 
     public static class Sys
     {
-        /// <summary>ファイルの mtime (秒)。存在しなければ null。</summary>
-        public static double? FileMtime(string path)
-        {
-            return null;
-        }
-
         [LubNoFail]
         public static bool IsWeb()
         {
@@ -791,6 +815,37 @@ public static class Lub
         public enum ProxyKind
         {
             Box = 1, Circle = 2, Capsule = 3, Segment = 4, Polygon = 5,
+        }
+
+        /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+        [LubNoFail]
+        public static WorldRef? FindWorld(string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static BodyRef? FindBody(WorldRef world, string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static ShapeRef? FindShape(BodyRef body, string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static ChainRef? FindChain(BodyRef body, string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static JointRef? FindJoint(WorldRef world, string key)
+        {
+            return null;
         }
 
         public static WorldRef? World(string key, WorldOpts? opts = null)
@@ -951,17 +1006,17 @@ public static class Lub
             return new Vec2d();
         }
 
-        public static Vec2d WorldPoint(BodyRef body, Vec2d local)
+        public static Vec2d WorldPoint(BodyRef body, Vec2d localPoint)
         {
             return new Vec2d();
         }
 
-        public static Vec2d LocalPoint(BodyRef body, Vec2d world)
+        public static Vec2d LocalPoint(BodyRef body, Vec2d worldPoint)
         {
             return new Vec2d();
         }
 
-        public static Vec2d VelocityAt(BodyRef body, Vec2d world)
+        public static Vec2d VelocityAt(BodyRef body, Vec2d worldPoint)
         {
             return new Vec2d();
         }
@@ -1182,6 +1237,31 @@ public static class Lub
         [LubLuaString]
         public enum EventKind { Begin = 0, End = 1, Hit = 2 }
 
+        /// <summary>key で引く (無ければ null)。sentinel の再解決にも使う。</summary>
+        [LubNoFail]
+        public static WorldRef3d? FindWorld(string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static BodyRef3d? FindBody(WorldRef3d world, string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static ShapeRef3d? FindShape(BodyRef3d body, string key)
+        {
+            return null;
+        }
+
+        [LubNoFail]
+        public static JointRef3d? FindJoint(WorldRef3d world, string key)
+        {
+            return null;
+        }
+
         public static WorldRef3d? World(string key, WorldOpts3d? opts = null)
         {
             return null;
@@ -1380,17 +1460,17 @@ public static class Lub
             return new Vec3d();
         }
 
-        public static Vec3d WorldPoint(BodyRef3d body, Vec3d local)
+        public static Vec3d WorldPoint(BodyRef3d body, Vec3d localPoint)
         {
             return new Vec3d();
         }
 
-        public static Vec3d LocalPoint(BodyRef3d body, Vec3d world)
+        public static Vec3d LocalPoint(BodyRef3d body, Vec3d worldPoint)
         {
             return new Vec3d();
         }
 
-        public static Vec3d VelocityAt(BodyRef3d body, Vec3d world)
+        public static Vec3d VelocityAt(BodyRef3d body, Vec3d worldPoint)
         {
             return new Vec3d();
         }
@@ -1573,10 +1653,9 @@ public static class Lub
             version = 0; status = Lub.Io.Status.Pending; error = null;
         }
 
-        public static bool Write(string path, Bytes bytes, int width, int height,
+        public static void Write(string path, Bytes bytes, int width, int height,
             int? stride = null)
         {
-            return false;
         }
     }
 }
@@ -1644,6 +1723,7 @@ public class SdfNodeDesc
 /// <summary>glTF の material。</summary>
 public class GltfMaterial
 {
+    [LubArray(4)]
     public List<double> BaseColorFactor = new List<double>();
     public double MetallicFactor;
     public double RoughnessFactor;
@@ -1668,7 +1748,6 @@ public class GltfPrimitive : MeshData
 public class GltfMesh : MeshData
 {
     public List<GltfPrimitive> Primitives = new List<GltfPrimitive>();
-    public int PrimitiveCount;
     public GltfMaterial? Material;
 }
 

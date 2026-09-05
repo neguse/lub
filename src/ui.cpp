@@ -404,20 +404,26 @@ extern "C" int32_t lub_ui_slider_int(LubContext *ctx, LubStr label,
 }
 
 extern "C" float lub_ui_drag_float(LubContext *ctx, LubStr label, float value,
-                                   float speed, float min, float max) {
+                                   const float *speed, const float *min,
+                                   const float *max) {
   (void)ctx;
   if (!g_frame_open)
     return value;
-  ImGui::DragFloat(ui_cstr(label), &value, speed > 0 ? speed : 1.0f, min, max);
+  ImGui::DragFloat(ui_cstr(label), &value, speed && *speed > 0 ? *speed : 1.0f,
+                   min ? *min : 0.0f, max ? *max : 0.0f);
   return value;
 }
 
-extern "C" void lub_ui_color_edit3(LubContext *ctx, LubStr label,
-                                   float rgb[3]) {
+extern "C" void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r,
+                                   float g, float b, float *new_r, float *new_g,
+                                   float *new_b) {
   (void)ctx;
-  if (!g_frame_open)
-    return;
-  ImGui::ColorEdit3(ui_cstr(label), rgb);
+  float rgb[3] = {r, g, b};
+  if (g_frame_open)
+    ImGui::ColorEdit3(ui_cstr(label), rgb);
+  *new_r = rgb[0];
+  *new_g = rgb[1];
+  *new_b = rgb[2];
 }
 
 extern "C" void lub_ui_separator(LubContext *ctx) {
@@ -434,12 +440,13 @@ extern "C" void lub_ui_same_line(LubContext *ctx) {
 
 // 階層 UI。true が返ったら子を描いて tree_pop を呼ぶ。
 extern "C" bool lub_ui_tree_node(LubContext *ctx, LubStr label,
-                                 bool default_open) {
+                                 const bool *default_open) {
   (void)ctx;
   if (!g_frame_open)
     return false;
-  return ImGui::TreeNodeEx(ui_cstr(label),
-                           default_open ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+  return ImGui::TreeNodeEx(ui_cstr(label), default_open && *default_open
+                                               ? ImGuiTreeNodeFlags_DefaultOpen
+                                               : 0);
 }
 
 extern "C" void lub_ui_tree_pop(LubContext *ctx) {

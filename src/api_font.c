@@ -51,9 +51,10 @@ LubStatus lub_font_metrics(LubContext *ctx, LubStr ttf, LubFontMetrics *out) {
 }
 
 LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                         float px, LubFontGlyph *out) {
+                         float px, LubGlyphBitmap *out, bool *has) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
+  *has = false;
   if (!font_arg(app, ttf, "font_glyph"))
     return LUB_ERROR;
   if (!(px > 0.0f) || px > 4096.0f)
@@ -70,26 +71,30 @@ LubStatus lub_font_glyph(LubContext *ctx, LubStr ttf, int32_t codepoint,
   if (r < 0)
     return lub_api_fail(app, "font: invalid font data");
   if (r == 0)
-    return LUB_OK; // found = false
+    return LUB_OK; // has = false
   s->bitmap = bytes;
-  out->found = true;
+  *has = true;
   out->w = w;
   out->h = h;
   out->xoff = xo;
   out->yoff = yo;
   out->advance = adv;
   if (bytes) {
-    out->bytes.ptr = bytes;
+    out->bytes.ptr = (const char *)bytes;
     out->bytes.len = w * h;
-    out->bytes.frame = (int32_t)app->frame_index;
   }
   return LUB_OK;
 }
 
+void lub_mesh_view_from_sn(const SnMesh *m, LubMeshData *out);
+
 LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
-                              float tolerance, LubFontGlyphMesh *out) {
+                              const float *tolerance_p, LubGlyphMesh *out,
+                              bool *has) {
   App *app = lub_api_app(ctx);
   memset(out, 0, sizeof(*out));
+  *has = false;
+  float tolerance = tolerance_p ? *tolerance_p : 0.0f;
   if (!font_arg(app, ttf, "font_glyph_mesh"))
     return LUB_ERROR;
   struct FontScratch *s = font_scratch(app);
@@ -105,13 +110,9 @@ LubStatus lub_font_glyph_mesh(LubContext *ctx, LubStr ttf, int32_t codepoint,
     return lub_api_fail(app, "%s", err);
   if (r == 0)
     return LUB_OK;
-  out->found = true;
+  *has = true;
   out->advance = adv;
-  out->mesh.positions = s->mesh.positions;
-  out->mesh.normals = s->mesh.normals;
-  out->mesh.indices = (const uint32_t *)s->mesh.indices;
-  out->mesh.vert_count = (int32_t)s->mesh.vert_count;
-  out->mesh.index_count = (int32_t)s->mesh.index_count;
+  lub_mesh_view_from_sn(&s->mesh, &out->base);
   return LUB_OK;
 }
 

@@ -136,14 +136,10 @@ fi
 # skip を fail に変える。
 if command -v dotnet >/dev/null 2>&1 \
   && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
-  # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (tests/lua/test_api_surface.lua)
-  # が記述と一致していることの確認。差分が出たら `dotnet run --project tools/lub-gen
-  # -- surface-test -o tests/lua/test_api_surface.lua` で再生成する。
-  run dotnet run --project tools/lub-gen -- check
-  surface_gen="$(mktemp)"
-  cleanup_files+=("$surface_gen")
-  run dotnet run --project tools/lub-gen --no-build -- surface-test -o "$surface_gen"
-  run cmp "$surface_gen" tests/lua/test_api_surface.lua
+  # API 面の記述 (cs-lib/lub_stub.cs) の検査と、生成物 (header / Lua binding /
+  # surface test) が記述と一致していることの確認。差分が出たら
+  # scripts/gen-api.sh で再生成する。
+  run scripts/gen-api.sh --check
   shopt -s nullglob
   for cs_dir in samples/*/; do
     cs_dir="${cs_dir%/}"

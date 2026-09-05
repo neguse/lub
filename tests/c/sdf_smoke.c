@@ -15,8 +15,8 @@ static int fail(const char *msg) {
   return 1;
 }
 
-static LubSdfNode node(int op, int a, int b, const float *p, int np) {
-  LubSdfNode n;
+static LubSdfNodeDesc node(int op, int a, int b, const float *p, int np) {
+  LubSdfNodeDesc n;
   memset(&n, 0, sizeof(n));
   n.op = op;
   n.a = a;
@@ -26,7 +26,7 @@ static LubSdfNode node(int op, int a, int b, const float *p, int np) {
   return n;
 }
 
-static int build(const LubSdfNode *nodes, int count, int root, int n,
+static int build(const LubSdfNodeDesc *nodes, int count, int root, int n,
                  float skin_k, SdfMeshOut *out, char *err, size_t err_size) {
   SdfTree t;
   if (!sdf_tree_convert(nodes, count, root, &t, err, err_size))
@@ -42,7 +42,7 @@ int main(void) {
   // sphere: analytic checks
   {
     float p[] = {r};
-    LubSdfNode nodes[] = {node(LUB_SDF_OP_SPHERE, -1, -1, p, 1)};
+    LubSdfNodeDesc nodes[] = {node(LUB_MESH_SDF_OP_SPHERE, -1, -1, p, 1)};
     SdfMeshOut m;
     if (!build(nodes, 1, 0, 32, 0, &m, err, sizeof(err)))
       return fail(err);
@@ -88,13 +88,13 @@ int main(void) {
     float prot[] = {0, 0, s2, s2};
     float pbox[] = {0.5f, 0.2f, 0.2f};
     float pcap[] = {0.3f, 0, 0, 0.9f, 0.5f, 0, 0.15f};
-    LubSdfNode nodes[] = {
-        node(LUB_SDF_OP_SMIN, 1, 4, pk, 1),        // 0
-        node(LUB_SDF_OP_MOVE, 2, -1, pmove, 3),    // 1
-        node(LUB_SDF_OP_ROTATE, 3, -1, prot, 4),   // 2
-        node(LUB_SDF_OP_BOX, -1, -1, pbox, 3),     // 3
-        node(LUB_SDF_OP_MIRROR_X, 5, -1, NULL, 0), // 4
-        node(LUB_SDF_OP_CAPSULE, -1, -1, pcap, 7), // 5
+    LubSdfNodeDesc nodes[] = {
+        node(LUB_MESH_SDF_OP_SMIN, 1, 4, pk, 1),        // 0
+        node(LUB_MESH_SDF_OP_MOVE, 2, -1, pmove, 3),    // 1
+        node(LUB_MESH_SDF_OP_ROTATE, 3, -1, prot, 4),   // 2
+        node(LUB_MESH_SDF_OP_BOX, -1, -1, pbox, 3),     // 3
+        node(LUB_MESH_SDF_OP_MIRROR_X, 5, -1, NULL, 0), // 4
+        node(LUB_MESH_SDF_OP_CAPSULE, -1, -1, pcap, 7), // 5
     };
     SdfMeshOut m;
     if (!build(nodes, 6, 0, 48, 0, &m, err, sizeof(err)))
@@ -119,8 +119,8 @@ int main(void) {
   {
     float ps[] = {2.0f};
     float pr[] = {0.25f};
-    LubSdfNode nodes[] = {node(LUB_SDF_OP_SCALE, 1, -1, ps, 1),
-                          node(LUB_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    LubSdfNodeDesc nodes[] = {node(LUB_MESH_SDF_OP_SCALE, 1, -1, ps, 1),
+                              node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
     SdfMeshOut m;
     if (!build(nodes, 2, 0, 24, 0, &m, err, sizeof(err)))
       return fail(err);
@@ -136,13 +136,13 @@ int main(void) {
     float pbig[] = {0.5f};
     float pmove[] = {0, 0, -0.5f};
     float psmall[] = {0.15f};
-    LubSdfNode nodes[] = {
-        node(LUB_SDF_OP_SSUB, 1, 3, pk, 1),         // 0
-        node(LUB_SDF_OP_PAINT, 2, -1, pred, 5),     // 1
-        node(LUB_SDF_OP_SPHERE, -1, -1, pbig, 1),   // 2
-        node(LUB_SDF_OP_PAINT, 4, -1, pblue, 5),    // 3
-        node(LUB_SDF_OP_MOVE, 5, -1, pmove, 3),     // 4
-        node(LUB_SDF_OP_SPHERE, -1, -1, psmall, 1), // 5
+    LubSdfNodeDesc nodes[] = {
+        node(LUB_MESH_SDF_OP_SSUB, 1, 3, pk, 1),         // 0
+        node(LUB_MESH_SDF_OP_PAINT, 2, -1, pred, 5),     // 1
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pbig, 1),   // 2
+        node(LUB_MESH_SDF_OP_PAINT, 4, -1, pblue, 5),    // 3
+        node(LUB_MESH_SDF_OP_MOVE, 5, -1, pmove, 3),     // 4
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, psmall, 1), // 5
     };
     SdfMeshOut m;
     if (!build(nodes, 6, 0, 40, 0, &m, err, sizeof(err)))
@@ -171,14 +171,14 @@ int main(void) {
     float pr_[] = {0.5f, 0, 0};
     float pmr[] = {0.5f, 0, 0};
     float ps[] = {0.3f};
-    LubSdfNode nodes[] = {
-        node(LUB_SDF_OP_UNION, 1, 4, NULL, 0),  // 0
-        node(LUB_SDF_OP_BONE, 2, -1, pl, 3),    // 1
-        node(LUB_SDF_OP_MOVE, 3, -1, pml, 3),   // 2
-        node(LUB_SDF_OP_SPHERE, -1, -1, ps, 1), // 3
-        node(LUB_SDF_OP_BONE, 5, -1, pr_, 3),   // 4
-        node(LUB_SDF_OP_MOVE, 6, -1, pmr, 3),   // 5
-        node(LUB_SDF_OP_SPHERE, -1, -1, ps, 1), // 6
+    LubSdfNodeDesc nodes[] = {
+        node(LUB_MESH_SDF_OP_UNION, 1, 4, NULL, 0),  // 0
+        node(LUB_MESH_SDF_OP_BONE, 2, -1, pl, 3),    // 1
+        node(LUB_MESH_SDF_OP_MOVE, 3, -1, pml, 3),   // 2
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, ps, 1), // 3
+        node(LUB_MESH_SDF_OP_BONE, 5, -1, pr_, 3),   // 4
+        node(LUB_MESH_SDF_OP_MOVE, 6, -1, pmr, 3),   // 5
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, ps, 1), // 6
     };
     nodes[1].name = (LubStr){"left", 4};
     nodes[4].name = (LubStr){"right", 5};
@@ -215,17 +215,18 @@ int main(void) {
   {
     float pk[] = {0.1f};
     float pr[] = {1.0f};
-    LubSdfNode bad_op[] = {node(99, -1, -1, NULL, 0)};
+    LubSdfNodeDesc bad_op[] = {node(99, -1, -1, NULL, 0)};
     SdfTree t;
     if (sdf_tree_convert(bad_op, 1, 0, &t, err, sizeof(err)))
       return fail("unknown op did not error");
-    LubSdfNode missing_child[] = {node(LUB_SDF_OP_SMIN, 1, -1, pk, 1),
-                                  node(LUB_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    LubSdfNodeDesc missing_child[] = {
+        node(LUB_MESH_SDF_OP_SMIN, 1, -1, pk, 1),
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
     if (sdf_tree_convert(missing_child, 2, 0, &t, err, sizeof(err)))
       return fail("missing child did not error");
     float pzero[] = {0.0f};
-    LubSdfNode bad_k[] = {node(LUB_SDF_OP_SMIN, 1, 1, pzero, 1),
-                          node(LUB_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    LubSdfNodeDesc bad_k[] = {node(LUB_MESH_SDF_OP_SMIN, 1, 1, pzero, 1),
+                              node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
     if (sdf_tree_convert(bad_k, 2, 0, &t, err, sizeof(err)))
       return fail("k <= 0 did not error");
   }

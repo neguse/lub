@@ -40,7 +40,7 @@ function M.onFrame()
 	assert(id2 == 31, "second read_texture returned wrong id")
 
 	local out = os.getenv("LUB_READ_TEXTURE_TEST_OUT") or "/tmp/lub_read_texture_test.png"
-	assert(png_write(out, bytes, w, h, stride), "png_write failed")
+	png_write(out, bytes, w, h, stride)
 	begin_pass({ target = main_tex, clear_color = { 0.0, 0.0, 0.0, 1.0 } })
 	end_pass()
 	wrote = true

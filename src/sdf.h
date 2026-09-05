@@ -1,6 +1,6 @@
 #pragma once
 // SDF tree -> triangle mesh (design: docs/log/2026-07-04-sdf-tree-design.md)。
-// 木は C API (include/lub/lub_api.h の LubSdfNode 配列) で受け、ここで
+// 木は C API (include/lub/lub_api.h の LubSdfNodeDesc 配列) で受け、ここで
 // 評価用の SdfNode に変換して surface nets で mesh にする。Lua には触らない
 // (Lua binding は src/lua_api.c)。
 //
@@ -77,7 +77,7 @@ typedef struct SdfMeshOut {
 
 // 公開形の木を評価用に変換する (検証・精度計算・bone path)。失敗は false
 // で err に理由。
-bool sdf_tree_convert(const LubSdfNode *nodes, int count, int root,
+bool sdf_tree_convert(const LubSdfNodeDesc *nodes, int count, int root,
                       SdfTree *out, char *err, size_t err_size);
 void sdf_tree_free(SdfTree *t);
 

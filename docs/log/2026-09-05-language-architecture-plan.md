@@ -14,7 +14,7 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
 | 1 | 記述形式(C# stub)の generator 骨組みと、handle / status / view の attribute 語彙 | `tools/lub-gen`(check / model / surface-test)と `[LubHandle]` / `[LubView]` / `[LubLuaName]` |
 | 2 | 写像規則を tcs の emit に入れ、`--no-naming-check` を消す | tcs T231 / T232、stub と全サンプルの PascalCase 化まで |
 | 3 | C API を定義する(wire の変更はここに集める) | 3a: `include/lub/lub_api.h` と gfx(`src/api_gfx.c`)。3b: config / quit / input / sys / profiler / host / audio(`src/api_sys.c`, `src/api_audio.c`, `src/host.c`)。3c: io / png を C に移す(`src/api_io.c`、`samples/lub_io.lua` と `lubx_png.lua` は Haxe 向けの alias だけ)。3d: font / ui / mesh(surface_nets / sdf)を C に移す(`src/api_font.c`, `src/api_mesh.c`、`src/ui.cpp` は C API を直接出す)。3e: phys2d / phys3d を C に移す(`src/physics_box2d.c` / `src/physics_box3d.c` は Lua を含まない core + C API、Lua 面は `src/lua_phys2d.c` / `src/lua_phys3d.c`)。3f: stub の `object` 引数と戻り値を typed な class にする(残る `object` は draw / dispatch の bindings の `Dictionary<string, object>` だけ)。3g: 所有権の規則(Bytes は frame 有効の view、readback と snd は key で宣言する resource)。3h: wire の整理(`DONT_CARE`、desc の別名 field の統一、文字列 enum の enum 化)。Lua binding は詰め替えだけに。`lub` 単一 table 化と `onInit` fallback の撤去は Haxe 撤去(段階 8)まで残す |
-| 4 | generator で header・Lua binding・API docs を生成物にする | 未 |
+| 4 | generator で header・Lua binding・API docs を生成物にする | 4a: `include/lub/lub_api.h` を stub から生成(`tools/lub-gen -- header`)。4b: Lua binding を生成(`src/gen/lua_api_gen.c`、土台は `src/lua_gen_support.c`)。物理の core は内部形との詰め替え(`src/physics_box2d_api.inc` / `physics_box3d_api.inc`)。再生成は `scripts/gen-api.sh`、差分検査は native gate。4c: API docs(未) |
 | 5 | `LUA_32BITS` に追従し golden を再生成 | 未 |
 | 6 | facade・C# host・テンプレート、.NET 実行の golden と digest 比較 | 未 |
 | 7 | tcs のモジュール Lua 出力、lubx の生成 Lua、raw Lua サンプル | 未 |
@@ -212,7 +212,43 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   は `Gfx.ReadTexture(rb, ...)` の関数にする(Lua 面の `rb:read_texture` は
   sentinel の metatable が同じ関数を指す)。
 - 生成物: `include/lub/lub_api.h`(4a)、Lua binding の詰め替え(4b、
-  `src/gen/`。callback の trampoline や sentinel の解決は手書きの helper を
-  呼ぶ)、API docs の JSON(4c、stub の XML doc から)。再生成の差分検査は
-  native gate に置く。Haxe が使う別名や多値の互換は生成物の外の shim
-  (`samples/lub_compat.lua`)に寄せ、段階 8 で消す。
+  `src/gen/lua_api_gen.c`。Lua の値の読み書き、sentinel、view userdata、
+  callback の土台は手書きの `src/lua_gen_support.c`)、API docs の JSON
+  (4c、stub の XML doc から)。再生成は `scripts/gen-api.sh`、差分検査は
+  `scripts/gen-api.sh --check` を native gate に置く。Haxe が使う別名や
+  多値の互換は `samples/lub_prelude.lua`(生成物の外)に寄せ、段階 8 で消す。
+- 生成した Lua binding の形。`lub` table は C が作り(namespace table、
+  関数、定数)、prelude は Haxe 向けの PascalCase table と flat global、
+  2 形の吸収(`phys2d_pose(world, key)`、visitor 付き `raycast`、空確保の
+  `use_buffer`、Bytes の `audio_snd`、入れ子の `sdf_mesh`)だけを持つ。
+  record は table、runtime 所有の数値配列(mesh の positions、debug の
+  segments 等)は frame 有効の view userdata(1 始まりの添字と `#` で
+  読める。table に写さないので大きい mesh を毎フレーム返せる)。desc の
+  数値配列は table でも view でも受ける(view なら zero copy)。
+- 物理の core(`src/physics_box2d.c` / `physics_box3d.c`)は段階 3 の手書き
+  header の形を内部の型(`src/phys2d_internal.h` / `phys3d_internal.h`、
+  `P2` / `P3` 接頭辞)としてそのまま持ち、公開 API との詰め替えを
+  `physics_box2d_api.inc` / `physics_box3d_api.inc` で行う。世界 anchor や
+  euler の変換、query の結果配列(runtime 所有、同じ関数の次の呼び出しまで
+  有効)、visitor の trampoline はここにある。callback の holder は
+  `user_release` で core が手放すときに解放する。
+- 2D の joint の `AnchorA` は `LocalAnchorA` の別名(旧 Lua 面の名前)。3D の
+  `AnchorA` は世界座標で core が local frame に変換する。
+- `Sys.FileMtime` は消した(絶対時刻は面に出さない。Haxe の `lub_io.lua` が
+  使う `file_mtime` / `request_file` は手書きの global として残す)。
+- gfx の `Lookup*` / `ResourceInfo` を stub に足した(sentinel の再解決と
+  `TextureRef.Version` に要る)。
+- 生成した binding は handle の sentinel に method table(`world:step(...)`
+  の形。第 1 引数がその handle の関数を、kind の接頭辞を落とした名前で持つ)
+  を付ける。`lub.__refs.<kind>` から引けるので、prelude が Haxe 時代の
+  2 形の method(`world:pose(key)` 等)を重ねる。
+- Haxe 向けの互換は `samples/lub_prelude.lua` に集めた: PascalCase の
+  namespace table は生成物の table を `__index` に持つ写しで、旧 flat 名
+  (`phys2d_world` / `ui_begin` 等)、camelCase の key の snake_case 化、
+  別名 field(`a` / `b`、`x` / `y` の速度、`center`、`type` / `r` の proxy、
+  `category` / `mask` の bit 番号、`dt`)、`points` の `{x, y}` 列、入れ子の
+  sdf 木を吸収する。C# (tcs) の面は生成物の table をそのまま使う。
+- query の visitor が error を投げたら `nil, "<関数名> visitor: <message>"`
+  で返す(従来の契約)。対象が無い問い合わせは `nil, "not found"`。
+- Lua のテスト(`tests/lua/test_physics_*.lua`)は正の名前(`material_name` /
+  `material_id`、`category_bits` / `mask_bits`、`body_a` 等)に書き換えた。

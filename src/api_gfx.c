@@ -12,6 +12,9 @@
 #include <string.h>
 
 #define LUB_KEY_MAX 256
+// swapchain を指す特別な handle (lub_gfx_main_tex() が返す)。
+#define LUB_GFX_MAIN_TEX ((LubHandle) - 1)
+#define LUB_GFX_MAX_COLOR_TARGETS SGL_MAX_COLOR_TARGETS
 
 static bool is_depth_format(SglPixelFormat fmt) {
   return fmt == SGL_PF_DEPTH16 || fmt == SGL_PF_DEPTH24_STENCIL8 ||
@@ -114,34 +117,43 @@ void lub_gfx_size(LubContext *ctx, int32_t *out_w, int32_t *out_h) {
     *out_h = h;
 }
 
-LubHandle lub_gfx_lookup(LubContext *ctx, LubStr key) {
-  App *app = lub_api_app(ctx);
+static LubHandle lookup_kind(App *app, LubStr key, ResKind kind) {
   if (key.len <= 0)
     return 0;
   ResEntry *e = res_table_get_n(&app->res, key.ptr, (size_t)key.len);
-  return e ? e->handle : 0;
+  return e && e->kind == kind ? e->handle : 0;
 }
 
-LubStatus lub_gfx_resource_info(LubContext *ctx, LubHandle handle, LubStr *key,
-                                int32_t *version) {
+LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key) {
+  return lookup_kind(lub_api_app(ctx), key, RES_TEXTURE);
+}
+
+LubHandle lub_gfx_lookup_shader(LubContext *ctx, LubStr key) {
+  return lookup_kind(lub_api_app(ctx), key, RES_SHADER);
+}
+
+LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key) {
+  return lookup_kind(lub_api_app(ctx), key, RES_BUFFER);
+}
+
+bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
+                           int32_t *version) {
   App *app = lub_api_app(ctx);
   ResEntry *e = res_table_get_by_handle(&app->res, handle);
   if (!e)
-    return lub_api_fail(app, "resource_info: handle %d is stale or invalid",
-                        (int)handle);
+    return false;
   if (key)
     *key = lub_str_c(e->key);
   if (version)
     *version = (int32_t)e->version;
-  return LUB_OK;
+  return true;
 }
 
 // ------------------------------------------------------------ resources
 
-LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
-                             const void *data, int32_t bytes,
-                             const int32_t *version, LubHandle *out) {
-  App *app = lub_api_app(ctx);
+static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
+                                 const void *data, int32_t bytes,
+                                 const int32_t *version, LubHandle *out) {
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_buffer"))
     return LUB_ERROR;
@@ -184,15 +196,54 @@ LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
   return LUB_OK;
 }
 
-LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key,
-                              const LubGfxTextureDesc *d,
-                              const int32_t *version, LubHandle *out) {
+// data は float 列。INDEX は uint32 に写してから渡す。
+LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
+                             const float *data, int32_t data_count,
+                             const int32_t *version, LubHandle *out) {
   App *app = lub_api_app(ctx);
+  if (!data || data_count <= 0)
+    return lub_api_fail(app, "use_buffer: empty data");
+  if (type == SGL_BUFFER_INDEX) {
+    uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
+    if (!idx)
+      return lub_api_fail(app, "use_buffer: out of memory");
+    for (int32_t i = 0; i < data_count; ++i)
+      idx[i] = (uint32_t)data[i];
+    LubStatus st =
+        use_buffer_impl(app, key, type, idx,
+                        data_count * (int32_t)sizeof(uint32_t), version, out);
+    free(idx);
+    return st;
+  }
+  return use_buffer_impl(app, key, type, data,
+                         data_count * (int32_t)sizeof(float), version, out);
+}
+
+LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
+                                   int32_t count, const int32_t *version,
+                                   LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  if (count <= 0)
+    return lub_api_fail(app, "use_buffer: count must be > 0");
+  return use_buffer_impl(app, key, type, NULL, count * (int32_t)sizeof(float),
+                         version, out);
+}
+
+// use_texture の本体。pixels は呼び出しの間だけ借用。
+typedef struct TextureDesc {
+  int32_t w, h;
+  int32_t format;
+  const uint8_t *pixels;
+  int32_t pixels_len;
+  int32_t filter, wrap;
+  bool target, storage;
+} TextureDesc;
+
+static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
+                                  const int32_t *version, LubHandle *out) {
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_texture"))
     return LUB_ERROR;
-  if (!d)
-    return lub_api_fail(app, "use_texture: desc required");
   if (!is_known_format(d->format))
     return lub_api_fail(app, "use_texture: format not supported "
                              "(RGBA8/R8/RG8/R16F/RG16F/R32F/RGBA16F/RGBA32F/"
@@ -303,6 +354,55 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key,
   e->version = ver;
   *out = e->handle;
   return LUB_OK;
+}
+
+static void texture_desc_init(TextureDesc *d, int32_t w, int32_t h, int32_t fmt,
+                              const LubTextureOpts *opts) {
+  memset(d, 0, sizeof(*d));
+  d->w = w;
+  d->h = h;
+  d->format = fmt;
+  if (opts) {
+    d->filter = opts->has_filter ? opts->filter : 0;
+    d->wrap = opts->has_wrap ? opts->wrap : 0;
+    d->target = opts->has_target && opts->target;
+    d->storage = opts->has_storage && opts->storage;
+  }
+}
+
+LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
+                                    int32_t h, int32_t fmt, const uint8_t *px,
+                                    int32_t px_len, const int32_t *version,
+                                    const LubTextureOpts *opts,
+                                    LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  TextureDesc d;
+  texture_desc_init(&d, w, h, fmt, opts);
+  d.pixels = px;
+  d.pixels_len = px ? px_len : 0;
+  return use_texture_impl(app, key, &d, version, out);
+}
+
+// px は byte 値 (0..255) の列。
+LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
+                              int32_t fmt, const int32_t *px, int32_t px_count,
+                              const int32_t *version,
+                              const LubTextureOpts *opts, LubHandle *out) {
+  App *app = lub_api_app(ctx);
+  uint8_t *bytes = NULL;
+  if (px) {
+    bytes = (uint8_t *)malloc((size_t)(px_count > 0 ? px_count : 1));
+    if (!bytes)
+      return lub_api_fail(app, "use_texture: out of memory");
+    for (int32_t i = 0; i < px_count; ++i) {
+      int32_t v = px[i];
+      bytes[i] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+    }
+  }
+  LubStatus st = lub_gfx_use_texture_bytes(ctx, key, w, h, fmt, bytes, px_count,
+                                           version, opts, out);
+  free(bytes);
+  return st;
 }
 
 // vs/fs (graphics) か cs (compute) の compile と入れ替え。失敗時、既存の
@@ -443,12 +543,66 @@ static ResEntry *color_target_entry(App *app, LubHandle h, int i) {
   return te;
 }
 
-LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubGfxPassDesc *d) {
+// pass の宣言を平らにしたもの。target / targets / clear_color / clear_colors
+// の組み合わせは opts の読み替えで吸収する。
+typedef struct PassDesc {
+  int32_t n_targets;
+  LubHandle targets[LUB_GFX_MAX_COLOR_TARGETS];
+  float clear_color[LUB_GFX_MAX_COLOR_TARGETS][4];
+  LubHandle depth_target;
+  float clear_depth;
+  int32_t load;
+} PassDesc;
+
+static LubStatus pass_desc_from_opts(App *app, const LubPassOpts *o,
+                                     PassDesc *d) {
+  memset(d, 0, sizeof(*d));
+  d->clear_depth = 1.0f;
+  if (o->targets) {
+    if (o->target != 0)
+      return lub_api_fail(app, "begin_pass: target and targets are exclusive");
+    if (o->targets_count > LUB_GFX_MAX_COLOR_TARGETS)
+      return lub_api_fail(app, "begin_pass: too many targets (%d > %d)",
+                          o->targets_count, LUB_GFX_MAX_COLOR_TARGETS);
+    d->n_targets = o->targets_count;
+    for (int32_t i = 0; i < o->targets_count; ++i)
+      d->targets[i] = o->targets[i];
+  } else if (o->target != 0) {
+    d->n_targets = 1;
+    d->targets[0] = o->target;
+  }
+  d->depth_target = o->depth_target;
+  if (o->has_clear_depth)
+    d->clear_depth = o->clear_depth;
+  if (o->has_load)
+    d->load = o->load;
+  // 既定の clear は黒不透明
+  for (int i = 0; i < LUB_GFX_MAX_COLOR_TARGETS; ++i) {
+    d->clear_color[i][0] = 0;
+    d->clear_color[i][1] = 0;
+    d->clear_color[i][2] = 0;
+    d->clear_color[i][3] = 1;
+  }
+  if (o->has_clear_color)
+    for (int i = 0; i < LUB_GFX_MAX_COLOR_TARGETS; ++i)
+      memcpy(d->clear_color[i], o->clear_color, sizeof(o->clear_color));
+  if (o->clear_colors)
+    for (int32_t i = 0;
+         i < o->clear_colors_count && i < LUB_GFX_MAX_COLOR_TARGETS; ++i)
+      memcpy(d->clear_color[i], o->clear_colors[i], sizeof(d->clear_color[i]));
+  return LUB_OK;
+}
+
+LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
   App *app = lub_api_app(ctx);
-  if (!d)
-    return lub_api_fail(app, "begin_pass: desc required");
+  if (!opts)
+    return lub_api_fail(app, "begin_pass: opts required");
   if (pass_state_in_pass(&app->pass))
     return lub_api_fail(app, "begin_pass: already inside a pass");
+  PassDesc desc;
+  if (pass_desc_from_opts(app, opts, &desc) != LUB_OK)
+    return LUB_ERROR;
+  const PassDesc *d = &desc;
   SglLoadAction load = SGL_LOAD_CLEAR;
   if (d->load != 0) {
     if (d->load != SGL_LOAD_CLEAR && d->load != SGL_LOAD_LOAD)
@@ -551,21 +705,67 @@ enum { UB_MAX_FLOATS = 256 };
 
 // reflection の uniform block を、名前つきの値の列から詰める。無い member は
 // 0 のまま。
+// bindings を種類で分ける (handle の種類は resource table で判定)。
+typedef struct Bindings {
+  const LubBinding *buffers[16];
+  ResEntry *buffer_entries[16];
+  int32_t n_buffers;
+  const LubBinding *textures[16];
+  ResEntry *texture_entries[16];
+  int32_t n_textures;
+  const LubBinding *uniforms[64];
+  int32_t n_uniforms;
+} Bindings;
+
+static LubStatus split_bindings(App *app, const char *fn,
+                                const LubBinding *bindings, int32_t n,
+                                Bindings *out) {
+  memset(out, 0, sizeof(*out));
+  for (int32_t i = 0; i < n; ++i) {
+    const LubBinding *b = &bindings[i];
+    if (b->handle == 0) {
+      if (out->n_uniforms >= 64)
+        return lub_api_fail(app, "%s: too many uniforms (max 64)", fn);
+      out->uniforms[out->n_uniforms++] = b;
+      continue;
+    }
+    ResEntry *e = res_table_get_by_handle(&app->res, b->handle);
+    if (!e)
+      return lub_api_fail(app, "%s: binding '%.*s' is stale or invalid", fn,
+                          b->name.len, b->name.ptr ? b->name.ptr : "");
+    if (e->kind == RES_BUFFER) {
+      if (out->n_buffers >= 16)
+        return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
+      out->buffer_entries[out->n_buffers] = e;
+      out->buffers[out->n_buffers++] = b;
+    } else if (e->kind == RES_TEXTURE) {
+      if (out->n_textures >= 16)
+        return lub_api_fail(app, "%s: too many textures (max 16)", fn);
+      out->texture_entries[out->n_textures] = e;
+      out->textures[out->n_textures++] = b;
+    } else {
+      return lub_api_fail(app, "%s: binding '%.*s' must be a buffer or texture",
+                          fn, b->name.len, b->name.ptr ? b->name.ptr : "");
+    }
+  }
+  return LUB_OK;
+}
+
 static void pack_uniform_block(const ShaderUniformBlock *ub,
-                               const LubGfxUniform *uniforms, int32_t n,
+                               const LubBinding *const *uniforms, int32_t n,
                                float *dst) {
   memset(dst, 0, (size_t)UB_MAX_FLOATS * sizeof(float));
   for (int m = 0; m < ub->member_count; ++m) {
     const ShaderUniformMember *mem = &ub->members[m];
     for (int32_t i = 0; i < n; ++i) {
-      if (!lub_str_eq(uniforms[i].name, mem->name))
+      if (!lub_str_eq(uniforms[i]->name, mem->name))
         continue;
-      int copy = uniforms[i].count < mem->comp_count ? uniforms[i].count
-                                                     : mem->comp_count;
+      int copy = uniforms[i]->count < mem->comp_count ? uniforms[i]->count
+                                                      : mem->comp_count;
       if (mem->offset_floats + copy > UB_MAX_FLOATS)
         copy = UB_MAX_FLOATS - mem->offset_floats;
       for (int j = 0; j < copy; ++j)
-        dst[mem->offset_floats + j] = uniforms[i].values[j];
+        dst[mem->offset_floats + j] = uniforms[i]->values[j];
       break;
     }
   }
@@ -590,10 +790,12 @@ static bool refl_has_storage_texture(const ShaderReflection *refl,
   return false;
 }
 
-LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *d) {
+LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
+                       const LubBinding *bindings, int32_t bindings_count,
+                       const LubDrawOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
-    return lub_api_fail(app, "draw: desc required");
+    return lub_api_fail(app, "draw: opts required");
   if (!pass_state_in_pass(&app->pass))
     return lub_api_fail(app, "draw: must be called inside begin_pass/end_pass");
   ResEntry *sh =
@@ -602,10 +804,16 @@ LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *d) {
     return LUB_ERROR;
   if (sh->u.sh.refl.is_compute)
     return lub_api_fail(app, "draw: shader '%s' is a compute shader", sh->key);
-  int instance_count = d->instance_count <= 0 ? 1 : d->instance_count;
-  int blend = d->blend ? d->blend : SGL_BLEND_NONE;
-  int cull = d->cull ? d->cull : SGL_CULL_BACK;
-  int prim = d->primitive ? d->primitive : SGL_PRIM_TRIANGLES;
+  Bindings bs;
+  if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
+    return LUB_ERROR;
+  int instance_count =
+      d->has_instance_count && d->instance_count > 0 ? d->instance_count : 1;
+  int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
+  int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
+  int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
+  bool depth_test = d->has_depth ? d->depth : true;
+  bool depth_write = d->has_depth_write ? d->depth_write : depth_test;
   if (blend < SGL_BLEND_NONE || blend > SGL_BLEND_MULTIPLY)
     return lub_api_fail(app, "draw: invalid blend %d", blend);
   if (cull < SGL_CULL_NONE || cull > SGL_CULL_FRONT)
@@ -617,12 +825,9 @@ LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *d) {
   bind.refl = &sh->u.sh.refl;
   uint8_t depth_tex_mask = 0;
   // buffers: name で役割を決める ("indices" / "instances" / それ以外は vertex)
-  for (int32_t i = 0; i < d->n_buffers; ++i) {
-    const LubGfxBinding *b = &d->buffers[i];
-    ResEntry *be =
-        entry_from_handle(app, b->handle, RES_BUFFER, "draw", "buffer");
-    if (!be)
-      return LUB_ERROR;
+  for (int32_t i = 0; i < bs.n_buffers; ++i) {
+    const LubBinding *b = bs.buffers[i];
+    ResEntry *be = bs.buffer_entries[i];
     if (lub_str_eq(b->name, "indices")) {
       if (be->u.buf.type != SGL_BUFFER_INDEX)
         return lub_api_fail(
@@ -642,12 +847,9 @@ LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *d) {
     }
   }
   const int max_tex = (int)(sizeof(bind.textures) / sizeof(bind.textures[0]));
-  for (int32_t i = 0; i < d->n_textures; ++i) {
-    const LubGfxBinding *t = &d->textures[i];
-    ResEntry *te =
-        entry_from_handle(app, t->handle, RES_TEXTURE, "draw", "texture");
-    if (!te)
-      return LUB_ERROR;
+  for (int32_t i = 0; i < bs.n_textures; ++i) {
+    const LubBinding *t = bs.textures[i];
+    ResEntry *te = bs.texture_entries[i];
     if (bind.texture_count >= max_tex)
       return lub_api_fail(app, "draw: too many textures (max %d)", max_tex);
     // name は shader の reflection 名 (NUL 終端の保証が要る)
@@ -662,15 +864,15 @@ LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *d) {
   }
 
   BackendPipeline pip = pipeline_cache_get(
-      &app->pip_cache, sh->u.sh.h, &sh->u.sh.refl, (SglBlend)blend,
-      d->depth_test, d->depth_write, (SglCull)cull, (SglPrimitive)prim,
+      &app->pip_cache, sh->u.sh.h, &sh->u.sh.refl, (SglBlend)blend, depth_test,
+      depth_write, (SglCull)cull, (SglPrimitive)prim,
       app->pass.current_n_color_targets, app->pass.current_color_fmts,
       app->pass.current_has_depth, app->pass.current_depth_fmt,
       (bind.ibuf != 0), depth_tex_mask, (int64_t)app->frame_index);
   g_backend->apply_pipeline(pip);
   g_backend->apply_bindings(&bind);
 
-  if (d->n_uniforms > 0 && sh->u.sh.refl.ub_count > 0) {
+  if (bs.n_uniforms > 0 && sh->u.sh.refl.ub_count > 0) {
     float buf[UB_MAX_FLOATS];
     for (int i = 0; i < sh->u.sh.refl.ub_count; ++i) {
       const ShaderUniformBlock *ub = &sh->u.sh.refl.ubs[i];
@@ -681,19 +883,21 @@ LubStatus lub_gfx_draw(LubContext *ctx, const LubGfxDrawDesc *d) {
         return lub_api_fail(app,
                             "draw: uniform block too large (%d floats > %d)",
                             size, UB_MAX_FLOATS);
-      pack_uniform_block(ub, d->uniforms, d->n_uniforms, buf);
+      pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf);
       g_backend->apply_uniforms(ub->stage, ub->slot, buf,
                                 (size_t)size * sizeof(float));
     }
   }
-  g_backend->draw(0, d->vertex_count, instance_count);
+  g_backend->draw(0, count, instance_count);
   return LUB_OK;
 }
 
-LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *d) {
+LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
+                           const LubBinding *bindings, int32_t bindings_count,
+                           const LubDispatchOpts *d) {
   App *app = lub_api_app(ctx);
   if (!d)
-    return lub_api_fail(app, "dispatch: desc required");
+    return lub_api_fail(app, "dispatch: opts required");
   if (pass_state_in_pass(&app->pass))
     return lub_api_fail(app,
                         "dispatch: must be called outside begin_pass/end_pass");
@@ -704,22 +908,22 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *d) {
   if (!sh->u.sh.refl.is_compute)
     return lub_api_fail(app, "dispatch: shader '%s' is not a compute shader",
                         sh->key);
+  Bindings bs;
+  if (split_bindings(app, "dispatch", bindings, bindings_count, &bs) != LUB_OK)
+    return LUB_ERROR;
   const ShaderReflection *refl = &sh->u.sh.refl;
   BackendPipeline pip = pipeline_cache_get_compute(
       &app->pip_cache, sh->u.sh.h, refl, (int64_t)app->frame_index);
   ComputeDispatchDesc dd = {0};
   dd.pipeline = pip;
   dd.refl = refl;
-  dd.groups_x = d->groups_x;
-  dd.groups_y = d->groups_y;
-  dd.groups_z = d->groups_z;
+  dd.groups_x = x;
+  dd.groups_y = y;
+  dd.groups_z = z;
 
-  for (int32_t i = 0; i < d->n_buffers; ++i) {
-    const LubGfxBinding *b = &d->buffers[i];
-    ResEntry *be =
-        entry_from_handle(app, b->handle, RES_BUFFER, "dispatch", "buffer");
-    if (!be)
-      return LUB_ERROR;
+  for (int32_t i = 0; i < bs.n_buffers; ++i) {
+    const LubBinding *b = bs.buffers[i];
+    ResEntry *be = bs.buffer_entries[i];
     if (be->u.buf.type != SGL_BUFFER_STORAGE)
       continue;
     for (int k = 0; k < refl->storage_buf_count; ++k) {
@@ -733,12 +937,9 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *d) {
       break;
     }
   }
-  for (int32_t i = 0; i < d->n_textures; ++i) {
-    const LubGfxBinding *t = &d->textures[i];
-    ResEntry *te =
-        entry_from_handle(app, t->handle, RES_TEXTURE, "dispatch", "texture");
-    if (!te)
-      return LUB_ERROR;
+  for (int32_t i = 0; i < bs.n_textures; ++i) {
+    const LubBinding *t = bs.textures[i];
+    ResEntry *te = bs.texture_entries[i];
     if (refl_has_storage_texture(refl, t->name)) {
       if (!te->u.tex.storage)
         return lub_api_fail(
@@ -773,7 +974,7 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *d) {
                                  "written in one dispatch");
 
   float ubufs[SGL_MAX_UNIFORM_BLOCKS][UB_MAX_FLOATS];
-  if (d->n_uniforms > 0 && refl->ub_count > 0) {
+  if (bs.n_uniforms > 0 && refl->ub_count > 0) {
     for (int i = 0;
          i < refl->ub_count && dd.uniform_count < SGL_MAX_UNIFORM_BLOCKS; ++i) {
       const ShaderUniformBlock *ub = &refl->ubs[i];
@@ -782,7 +983,7 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, const LubGfxDispatchDesc *d) {
         return lub_api_fail(
             app, "dispatch: uniform block too large (%d floats > %d)", size,
             UB_MAX_FLOATS);
-      pack_uniform_block(ub, d->uniforms, d->n_uniforms,
+      pack_uniform_block(ub, bs.uniforms, bs.n_uniforms,
                          ubufs[dd.uniform_count]);
       dd.uniforms[dd.uniform_count].stage = ub->stage;
       dd.uniforms[dd.uniform_count].slot = ub->slot;
@@ -971,7 +1172,15 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
 
 // 完了した item を out に写し、view の実体を frame の終わりまで預けて item を
 // 空にする。
-static void rb_take(App *app, RbItem *it, LubGfxReadbackResult *out) {
+typedef struct ReadbackTaken {
+  int32_t status;
+  LubView pixels;
+  int32_t w, h, format, stride;
+  int32_t token;
+  LubStr error;
+} ReadbackTaken;
+
+static void rb_take(App *app, RbItem *it, ReadbackTaken *out) {
   memset(out, 0, sizeof(*out));
   out->token = it->token;
   if (it->state == RB_ERROR || it->error) {
@@ -996,36 +1205,55 @@ static void rb_take(App *app, RbItem *it, LubGfxReadbackResult *out) {
   rb_item_clear(it);
 }
 
-LubStatus lub_gfx_readback(LubContext *ctx, LubStr key, bool has_request,
-                           LubHandle tex, int32_t token,
-                           LubGfxReadbackResult *out) {
+LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb, LubHandle tex,
+                               const int32_t *id, int32_t *status,
+                               LubView *bytes, int32_t *width, int32_t *height,
+                               int32_t *format, int32_t *stride,
+                               int32_t *result_id, int32_t *dropped,
+                               LubStr *error) {
   App *app = lub_api_app(ctx);
-  if (!out)
-    return lub_api_fail(app, "readback: out required");
   if (pass_state_in_pass(&app->pass))
     return lub_api_fail(app,
                         "read_texture: cannot read while a pass is active");
-  RbQueue *q = rb_queue_get(app, key);
+  RbQueue *q = rb_queue_get(app, rb);
   if (!q)
     return LUB_ERROR;
-  memset(out, 0, sizeof(*out));
+  bool has_request = id != NULL;
+  int32_t token = id ? *id : 0;
+  *status = LUB_GFX_READBACK_STATUS_PROCESSING;
+  memset(bytes, 0, sizeof(*bytes));
+  *width = *height = *format = *stride = 0;
+  *result_id = *dropped = 0;
+  error->ptr = NULL;
+  error->len = 0;
   if (q->count > 0 && rb_poll_item(&q->items[q->head])) {
     int idx = q->head;
     q->head = (q->head + 1) % RB_MAX_DEPTH;
     q->count--;
     if (has_request && q->count < q->depth)
       rb_enqueue(app, q, tex, token);
-    rb_take(app, &q->items[idx], out);
+    ReadbackTaken r;
+    rb_take(app, &q->items[idx], &r);
+    *status = r.status;
+    *result_id = r.token;
+    if (r.status == LUB_GFX_READBACK_STATUS_READY) {
+      *bytes = r.pixels;
+      *width = r.w;
+      *height = r.h;
+      *format = r.format;
+      *stride = r.stride;
+    } else {
+      *error = r.error;
+    }
     return LUB_OK;
   }
   if (has_request) {
     if (q->count >= q->depth) {
-      out->status = LUB_GFX_READBACK_STATUS_DROPPED;
-      out->token = token;
+      *status = LUB_GFX_READBACK_STATUS_DROPPED;
+      *dropped = token;
       return LUB_OK;
     }
     rb_enqueue(app, q, tex, token);
   }
-  out->status = LUB_GFX_READBACK_STATUS_PROCESSING;
   return LUB_OK;
 }

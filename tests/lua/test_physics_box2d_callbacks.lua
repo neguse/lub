@@ -37,17 +37,14 @@ local function on_filter(a, b)
 		saw_callback_metadata = saw_callback_metadata
 			or (
 				ghost.tag == "ghost_shape"
-				and ghost.material == "ghost_material"
-				and ghost.user_material_id == 5
-				and ghost.category == 5
+				and ghost.material_name == "ghost_material"
+				and ghost.material_id == 5
 				and ghost.category_bits == "0000000000000020"
-				and type(ghost.mask) == "table"
-				and ghost.mask[1] == 0
-				and ghost.mask[#ghost.mask] == 63
+				and ghost.mask_bits == "ffffffffffffffff"
 				and wall.tag == "wall_shape"
-				and wall.material == "wall_material"
-				and wall.user_material_id == 3
-				and wall.category == 0
+				and wall.material_name == "wall_material"
+				and wall.material_id == 3
+				and wall.category_bits == "0000000000000001"
 			)
 		return false
 	end
@@ -67,7 +64,7 @@ end
 
 local function mix_friction(a, b)
 	friction_calls = friction_calls + 1
-	if a.material == 7 or b.material == 7 then
+	if a.material_id == 7 or b.material_id == 7 then
 		return 0.25
 	end
 	return math.sqrt(a.friction * b.friction)
@@ -75,7 +72,7 @@ end
 
 local function mix_restitution(a, b)
 	restitution_calls = restitution_calls + 1
-	if a.material == 7 or b.material == 7 then
+	if a.material_id == 7 or b.material_id == 7 then
 		return 0.1
 	end
 	return math.max(a.restitution, b.restitution)
@@ -208,8 +205,8 @@ function M.onFrame()
 		tag = "wall_shape",
 		friction = 0.8,
 		restitution = 0.0,
-		material = "wall_material",
-		user_material_id = 3,
+		material_name = "wall_material",
+		material_id = 3,
 		contact = true,
 		pre_solve = true,
 	})
@@ -224,8 +221,8 @@ function M.onFrame()
 		hy = 0.08,
 		tag = "ghost_shape",
 		density = 1,
-		material = "ghost_material",
-		user_material_id = 5,
+		material_name = "ghost_material",
+		material_id = 5,
 		pre_solve = true,
 		filter = { category = 5, mask = "all" },
 	})
@@ -240,8 +237,8 @@ function M.onFrame()
 		hy = 0.08,
 		tag = "pass_shape",
 		density = 1,
-		material = "pass_material",
-		user_material_id = 6,
+		material_name = "pass_material",
+		material_id = 6,
 		pre_solve = true,
 	})
 
@@ -257,8 +254,8 @@ function M.onFrame()
 		density = 1,
 		friction = 0.2,
 		restitution = 0.3,
-		material = "mix_material",
-		user_material_id = 7,
+		material_name = "mix_material",
+		material_id = 7,
 		contact = true,
 		pre_solve = true,
 	})
@@ -271,8 +268,8 @@ function M.onFrame()
 			saw_event_metadata = saw_event_metadata
 				or (
 					mix_shape.tag == "mix_shape"
-					and mix_shape.material == "mix_material"
-					and mix_shape.user_material_id == 7
+					and mix_shape.material_name == "mix_material"
+					and mix_shape.material_id == 7
 				)
 		end
 	end
@@ -320,8 +317,8 @@ function M.onFrame()
 		if
 			hit.body == "wall"
 			and hit.tag == "wall_shape"
-			and hit.material == "wall_material"
-			and hit.user_material_id == 3
+			and hit.material_name == "wall_material"
+			and hit.material_id == 3
 		then
 			saw_query_metadata = true
 		end

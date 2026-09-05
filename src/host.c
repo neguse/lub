@@ -100,11 +100,19 @@ void lub_host_send(LubContext *ctx, LubStr topic, LubStr payload) {
 #endif
 }
 
-bool lub_host_poll(LubContext *ctx, LubView *topic, LubView *payload) {
+LubStatus lub_host_poll(LubContext *ctx, LubStr *topic, LubStr *payload) {
   App *app = lub_api_app(ctx);
   // 直前の poll の buffer (view の実体) は次の poll で解放する。
   free(app->host_poll_buf);
   app->host_poll_buf = NULL;
+  if (topic) {
+    topic->ptr = NULL;
+    topic->len = 0;
+  }
+  if (payload) {
+    payload->ptr = NULL;
+    payload->len = 0;
+  }
 #ifdef __EMSCRIPTEN__
   int topic_len = 0;
   int payload_len = 0;
@@ -112,21 +120,17 @@ bool lub_host_poll(LubContext *ctx, LubView *topic, LubView *payload) {
   if (buf) {
     app->host_poll_buf = buf;
     if (topic) {
-      topic->ptr = buf;
+      topic->ptr = (const char *)buf;
       topic->len = topic_len;
-      topic->frame = (int32_t)app->frame_index;
     }
     if (payload) {
-      payload->ptr = buf + topic_len;
+      payload->ptr = (const char *)buf + topic_len;
       payload->len = payload_len;
-      payload->frame = (int32_t)app->frame_index;
     }
-    return true;
+    return LUB_OK;
   }
 #endif
-  (void)topic;
-  (void)payload;
-  return false;
+  return LUB_NOT_FOUND;
 }
 
 void api_host_shutdown(App *app) {

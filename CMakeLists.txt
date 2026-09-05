@@ -177,9 +177,9 @@ set(LUB_SOURCES
   src/gpu_stats.c
   src/resources.c
   src/physics_box2d.c
-  src/lua_phys2d.c
   src/physics_box3d.c
-  src/lua_phys3d.c
+  src/gen/lua_api_gen.c
+  src/lua_gen_support.c
   src/shader.cpp
   src/pipeline.c
   src/capture.c
@@ -391,7 +391,6 @@ if(NOT LUB_WASM)
   add_executable(lub_physics_box2d_smoke
     tests/c/physics_box2d_smoke.c
     src/physics_box2d.c
-    src/lua_phys2d.c
     src/api_core.c
   )
   target_link_libraries(lub_physics_box2d_smoke PRIVATE
@@ -407,7 +406,6 @@ if(NOT LUB_WASM)
   add_executable(lub_physics_box3d_smoke
     tests/c/physics_box3d_smoke.c
     src/physics_box3d.c
-    src/lua_phys3d.c
     src/api_core.c
   )
   target_link_libraries(lub_physics_box3d_smoke PRIVATE

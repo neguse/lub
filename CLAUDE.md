@@ -34,6 +34,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
 - C# (TinyC#) は同一サンプルの言語違いとして `samples/<name>/<Entry>.cs` を Haxe 版と同居させる(番号は分けない。全サンプル両対応がゴール、対応状況の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.csproj`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。csproj は basename = entry class の規約で、lub は MSBuild 評価をしない(IDE 型チェック用の実ファイル)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`(root class `Lub` の下に `Gfx` / `Input` / ... と enum。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`)。C# は通常の命名(PascalCase)で書き、tcs が Lua の snake_case(`lub.gfx.begin_pass`)に写す。API 面は `samples/lub_prelude.lua` が注入する `lub` table で Haxe と共通。stub の検査と生成物は `tools/lub-gen`(`docs/api-glue.md`)。web は playground の言語トグル(`#lang=cs`)
 - haxe-lib (lub/lubx) もサンプルの一部という位置付けで、実装モジュール(lub.Math, lubx)は C# でも実装する。多言語 binding の構成は `docs/api-glue.md`
+- API の記述は `cs-lib/lub_stub.cs`。C API の header(`include/lub/lub_api.h`)、Lua binding(`src/gen/lua_api_gen.c`)、surface test は生成物で手で編集しない。stub を変えたら `scripts/gen-api.sh` で再生成する(native gate が `--check` で差分を検査)。Haxe 向けの互換(flat global、別名 field)は `samples/lub_prelude.lua`
 
 ## web / WASM verify
 

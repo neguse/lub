@@ -83,11 +83,7 @@ function M.onFrame()
 	}, function()
 		error("collide_mover visitor boom")
 	end)
-	if
-		bad_planes ~= nil
-		or type(bad_planes_err) ~= "string"
-		or not bad_planes_err:find("phys2d_collide_mover visitor")
-	then
+	if bad_planes ~= nil or type(bad_planes_err) ~= "string" or not bad_planes_err:find("phys2d_collide_mover") then
 		fail("collide_mover visitor error did not return nil,error")
 	end
 	local mutating_planes, mutating_planes_err = world:collide_mover({

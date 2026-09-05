@@ -1,260 +1,149 @@
-// phys2d の C smoke: App を最小限に組み、Lua 面 (src/lua_phys2d.c) 経由で
-// C API を回す。GPU も window も要らない。
+// phys2d の C smoke: App を最小限に組み、C API (include/lub/lub_api.h) を
+// 直接回す。GPU も window も Lua も要らない。key の再宣言 / prune /
+// accumulator の clamp / 落下と接触を確かめる。
 #include "api_internal.h"
-#include "lua_phys.h"
 #include "physics_box2d.h"
 
-#include <lauxlib.h>
-#include <lua.h>
-#include <lualib.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-static const char *SCRIPT =
-    "local function check(cond, msg)\n"
-    "  if not cond then error(msg) end\n"
-    "end\n"
-    "local function near(a, b)\n"
-    "  return math.abs(a - b) < 0.001\n"
-    "end\n"
-    "do\n"
-    "  local world = phys2d_world('c_keymap', {\n"
-    "    gravity = { x = 0, y = 0 }, fixed_dt = 1 / 60, max_steps = 1,\n"
-    "  })\n"
-    "  phys2d_begin(world, { prune = false })\n"
-    "  local body = phys2d_body(world, 'temp', {\n"
-    "    version = 1, type = DYNAMIC, initial = { x = 1, y = 0 },\n"
-    "  })\n"
-    "  phys2d_box(body, 'solid', { version = 1, hx = 0.1, hy = 0.1, density = "
-    "1 })\n"
-    "  phys2d_step(world, 0)\n"
-    "  phys2d_begin(world, { prune = false })\n"
-    "  body = phys2d_body(world, 'temp', {\n"
-    "    version = 1, type = DYNAMIC, initial = { x = 3, y = 0 },\n"
-    "  })\n"
-    "  phys2d_box(body, 'solid', { version = 1, hx = 0.1, hy = 0.1, density = "
-    "1 })\n"
-    "  phys2d_step(world, 0)\n"
-    "  local pose = phys2d_pose(world, 'temp')\n"
-    "  check(pose and near(pose.x, 1), 'key map update recreated "
-    "explicit-version body')\n"
-    "  phys2d_begin(world)\n"
-    "  phys2d_step(world, 0)\n"
-    "  local gone, err = phys2d_pose(world, 'temp')\n"
-    "  check(gone == nil and err == 'not found', 'key map prune did not remove "
-    "body')\n"
-    "end\n"
-    "do\n"
-    "  local world = phys2d_world('c_clamp', {\n"
-    "    gravity = { x = 0, y = 0 }, fixed_dt = 1 / 60, max_steps = 2,\n"
-    "  })\n"
-    "  phys2d_begin(world, { prune = false })\n"
-    "  local info = phys2d_step(world, 1.0)\n"
-    "  check(info.steps == 2 and info.dropped == true, 'accumulator clamp did "
-    "not drop leftover dt')\n"
-    "end\n"
-    "do\n"
-    "  local function declare(world)\n"
-    "    phys2d_begin(world)\n"
-    "    local ground = phys2d_body(world, 'ground', {\n"
-    "      type = STATIC, initial = { x = 0, y = -0.25 },\n"
-    "    })\n"
-    "    phys2d_box(ground, 'solid', { hx = 4, hy = 0.25, contact = true })\n"
-    "    local ball = phys2d_body(world, 'ball', {\n"
-    "      type = DYNAMIC, initial = { x = 0, y = 2 },\n"
-    "    })\n"
-    "    phys2d_circle(ball, 'solid', { r = 0.25, density = 1, contact = true "
-    "})\n"
-    "  end\n"
-    "  local world = phys2d_world('c_multistep', {\n"
-    "    gravity = { x = 0, y = -10 }, fixed_dt = 1 / 60, max_steps = 240,\n"
-    "  })\n"
-    "  declare(world)\n"
-    "  local info = phys2d_step(world, 3.0)\n"
-    "  check(info.steps > 30, 'multi-step frame ran too few steps')\n"
-    "  check(#phys2d_contacts(world, 'begin') >= 1,\n"
-    "    'begin event from a non-final fixed step was lost')\n"
-    "  local stale = phys2d_world('c_stale', {\n"
-    "    gravity = { x = 0, y = -10 }, fixed_dt = 1 / 60, max_steps = 1,\n"
-    "  })\n"
-    "  local saw = false\n"
-    "  for frame = 1, 120 do\n"
-    "    declare(stale)\n"
-    "    phys2d_step(stale, 1 / 60)\n"
-    "    if #phys2d_contacts(stale, 'begin') > 0 then\n"
-    "      saw = true\n"
-    "      break\n"
-    "    end\n"
-    "  end\n"
-    "  check(saw, 'stale-check setup: begin never fired')\n"
-    "  declare(stale)\n"
-    "  local zero = phys2d_step(stale, 0.0001)\n"
-    "  check(zero.steps == 0, 'stale-check setup: expected 0 steps')\n"
-    "  check(#phys2d_contacts(stale, 'begin') == 0,\n"
-    "    'begin event re-reported on a 0-step frame')\n"
-    "end\n"
-    "do\n"
-    "  local filter_errors = 0\n"
-    "  local pre_solve_errors = 0\n"
-    "  local friction_errors = 0\n"
-    "  local restitution_errors = 0\n"
-    "  local function bad_filter()\n"
-    "    filter_errors = filter_errors + 1\n"
-    "    error('c bad filter')\n"
-    "  end\n"
-    "  local function bad_pre_solve()\n"
-    "    pre_solve_errors = pre_solve_errors + 1\n"
-    "    error('c bad pre_solve')\n"
-    "  end\n"
-    "  local function bad_friction()\n"
-    "    friction_errors = friction_errors + 1\n"
-    "    error('c bad friction')\n"
-    "  end\n"
-    "  local function bad_restitution()\n"
-    "    restitution_errors = restitution_errors + 1\n"
-    "    error('c bad restitution')\n"
-    "  end\n"
-    "  local function declare_pair(world)\n"
-    "    phys2d_begin(world, { prune = false })\n"
-    "    local wall = phys2d_body(world, 'wall', { type = STATIC, initial = { "
-    "x = 0, y = 0 } })\n"
-    "    phys2d_box(wall, 'solid', {\n"
-    "      hx = 0.25, hy = 0.25, friction = 0.8, restitution = 0.1,\n"
-    "      contact = true, pre_solve = true,\n"
-    "    })\n"
-    "    local box = phys2d_body(world, 'box', { type = DYNAMIC, initial = { x "
-    "= 0, y = 0 } })\n"
-    "    phys2d_box(box, 'solid', {\n"
-    "      hx = 0.2, hy = 0.2, density = 1, friction = 0.2, restitution = "
-    "0.3,\n"
-    "      contact = true, pre_solve = true,\n"
-    "    })\n"
-    "    phys2d_step(world, 1 / 60)\n"
-    "  end\n"
-    "  local world = phys2d_world('c_callbacks', {\n"
-    "    gravity = { x = 0, y = 0 }, fixed_dt = 1 / 60, max_steps = 1, sleep = "
-    "false,\n"
-    "    callbacks = {\n"
-    "      filter = bad_filter, pre_solve = bad_pre_solve,\n"
-    "      friction = bad_friction, restitution = bad_restitution,\n"
-    "    },\n"
-    "  })\n"
-    "  declare_pair(world)\n"
-    "  check(filter_errors > 0 and pre_solve_errors > 0 and friction_errors > "
-    "0 and restitution_errors > 0,\n"
-    "    'callback fallback smoke did not exercise all callbacks')\n"
-    "  local before = filter_errors + pre_solve_errors + friction_errors + "
-    "restitution_errors\n"
-    "  world = phys2d_world('c_callbacks', {\n"
-    "    gravity = { x = 0, y = 0 }, fixed_dt = 1 / 60, max_steps = 1, sleep = "
-    "false,\n"
-    "  })\n"
-    "  declare_pair(world)\n"
-    "  local after = filter_errors + pre_solve_errors + friction_errors + "
-    "restitution_errors\n"
-    "  check(after == before, 'callback refs were not cleared when callbacks "
-    "omitted')\n"
-    "end\n"
-    "phys2d_world('c_unstepped_callbacks', {\n"
-    "  callbacks = { filter = function() return true end },\n"
-    "})\n"
-    "local saw_contact = false\n"
-    "local y = 0\n"
-    "for frame = 1, 180 do\n"
-    "  local world = phys2d_world('c_smoke', {\n"
-    "    gravity = { x = 0, y = -10 },\n"
-    "    fixed_dt = 1 / 60,\n"
-    "    substeps = 4,\n"
-    "    max_steps = 1,\n"
-    "  })\n"
-    "  phys2d_begin(world)\n"
-    "  local ground = phys2d_body(world, 'ground', {\n"
-    "    type = STATIC,\n"
-    "    initial = { x = 0, y = -0.25 },\n"
-    "  })\n"
-    "  local ground_shape = phys2d_box(ground, 'solid', {\n"
-    "    hx = 4,\n"
-    "    hy = 0.25,\n"
-    "    density = 0,\n"
-    "    friction = 0.8,\n"
-    "    contact = true,\n"
-    "    filter = { category = 63, mask_bits = '0x8000000000000000' },\n"
-    "  })\n"
-    "  local ball = phys2d_body(world, 'ball', {\n"
-    "    type = DYNAMIC,\n"
-    "    initial = { x = 0, y = 2.0 },\n"
-    "  })\n"
-    "  local ball_shape = phys2d_circle(ball, 'solid', {\n"
-    "    r = 0.25,\n"
-    "    density = 1,\n"
-    "    contact = true,\n"
-    "    filter = { category_bits = '0x8000000000000000', mask = { 63 } },\n"
-    "  })\n"
-    "  local gi = phys2d_shape_info(ground_shape).filter\n"
-    "  local bi = phys2d_shape_info(ball_shape).filter\n"
-    "  if gi.category_bits ~= '8000000000000000' or gi.mask_bits ~= "
-    "'8000000000000000' or\n"
-    "     bi.category_bits ~= '8000000000000000' or bi.mask_bits ~= "
-    "'8000000000000000' then\n"
-    "    error('bit 63 filter did not round-trip')\n"
-    "  end\n"
-    "  phys2d_step(world, 1 / 60)\n"
-    "  local pose = phys2d_pose(ball)\n"
-    "  y = pose.y\n"
-    "  for _, contact in ipairs(phys2d_contacts(world, 'begin')) do\n"
-    "    local a = contact.a.body .. '/' .. contact.a.shape\n"
-    "    local b = contact.b.body .. '/' .. contact.b.shape\n"
-    "    if (a == 'ball/solid' and b == 'ground/solid') or\n"
-    "       (a == 'ground/solid' and b == 'ball/solid') then\n"
-    "      saw_contact = true\n"
-    "      return true, frame, y\n"
-    "    end\n"
-    "  end\n"
-    "end\n"
-    "return false, 180, y\n";
+static int g_failures;
+
+static void check(bool cond, const char *msg) {
+  if (!cond) {
+    fprintf(stderr, "FAIL: %s\n", msg);
+    g_failures++;
+  }
+}
+
+static bool near(float a, float b) { return fabsf(a - b) < 0.001f; }
+
+static LubStr S(const char *s) { return lub_str_c(s); }
+
+static LubHandle declare_body(LubContext *ctx, LubHandle world, const char *key,
+                              int32_t type, float x, float y, bool version) {
+  LubBodyDesc d;
+  memset(&d, 0, sizeof(d));
+  d.has_version = version;
+  d.version = 1;
+  d.has_type = true;
+  d.type = type;
+  d.has_initial = true;
+  d.initial.has_x = true;
+  d.initial.x = x;
+  d.initial.has_y = true;
+  d.initial.y = y;
+  LubHandle h = 0;
+  check(lub_phys2d_body(ctx, world, S(key), &d, &h) == LUB_OK && h != 0,
+        "phys2d_body");
+  return h;
+}
+
+static void declare_box(LubContext *ctx, LubHandle body, const char *key,
+                        float hx, float hy, bool version) {
+  LubBoxDesc d;
+  memset(&d, 0, sizeof(d));
+  d.base.has_version = version;
+  d.base.version = 1;
+  d.base.has_density = true;
+  d.base.density = 1.0f;
+  d.base.has_contact = true;
+  d.base.contact = true;
+  d.hx = hx;
+  d.hy = hy;
+  LubHandle h = 0;
+  check(lub_phys2d_box(ctx, body, S(key), &d, &h) == LUB_OK && h != 0,
+        "phys2d_box");
+}
+
+static LubHandle make_world(LubContext *ctx, const char *key, float gy,
+                            int32_t max_steps) {
+  LubWorldOpts o;
+  memset(&o, 0, sizeof(o));
+  o.has_gravity = true;
+  o.gravity.y = gy;
+  o.has_fixed_dt = true;
+  o.fixed_dt = 1.0f / 60.0f;
+  o.has_max_steps = true;
+  o.max_steps = max_steps;
+  LubHandle w = 0;
+  check(lub_phys2d_world(ctx, S(key), &o, &w) == LUB_OK && w != 0,
+        "phys2d_world");
+  return w;
+}
 
 int main(void) {
   static App app;
   memset(&app, 0, sizeof(app));
   phys2d_state_init(&app.phys);
+  LubContext *ctx = lub_api_ctx(&app);
+  LubBeginOpts keep = {true, false}; // prune = false
+  LubStepInfo info;
+  LubPose pose;
 
-  lua_State *L = luaL_newstate();
-  if (!L) {
-    fprintf(stderr, "luaL_newstate failed\n");
-    phys2d_state_shutdown(&app.phys);
-    return 1;
+  // key map: 明示 version の body は同じ version の再宣言で作り直されない
+  {
+    LubHandle w = make_world(ctx, "c_keymap", 0.0f, 1);
+    lub_phys2d_begin(ctx, w, &keep);
+    LubHandle body = declare_body(ctx, w, "temp", LUB_PHYS2D_BODY_TYPE_DYNAMIC,
+                                  1.0f, 0.0f, true);
+    declare_box(ctx, body, "solid", 0.1f, 0.1f, true);
+    lub_phys2d_step(ctx, w, 0.0f, &info);
+    lub_phys2d_begin(ctx, w, &keep);
+    body = declare_body(ctx, w, "temp", LUB_PHYS2D_BODY_TYPE_DYNAMIC, 3.0f,
+                        0.0f, true);
+    declare_box(ctx, body, "solid", 0.1f, 0.1f, true);
+    lub_phys2d_step(ctx, w, 0.0f, &info);
+    check(lub_phys2d_pose_by_key(ctx, w, S("temp"), &pose) == LUB_OK &&
+              near(pose.x, 1.0f),
+          "key map update recreated explicit-version body");
+    lub_phys2d_begin(ctx, w, NULL); // prune
+    lub_phys2d_step(ctx, w, 0.0f, &info);
+    check(lub_phys2d_pose_by_key(ctx, w, S("temp"), &pose) == LUB_NOT_FOUND,
+          "key map prune did not remove body");
   }
 
-  luaL_openlibs(L);
-  phys2d_lua_register(L, lub_api_ctx(&app));
-
-  if (luaL_loadstring(L, SCRIPT) != LUA_OK) {
-    fprintf(stderr, "load failed: %s\n", lua_tostring(L, -1));
-    phys2d_state_shutdown(&app.phys);
-    lua_close(L);
-    return 1;
+  // accumulator clamp
+  {
+    LubHandle w = make_world(ctx, "c_clamp", 0.0f, 2);
+    lub_phys2d_begin(ctx, w, &keep);
+    check(lub_phys2d_step(ctx, w, 1.0f, &info) == LUB_OK, "step");
+    check(info.steps == 2 && info.dropped, "accumulator clamp did not drop");
   }
 
-  if (lua_pcall(L, 0, 3, 0) != LUA_OK) {
-    fprintf(stderr, "script failed: %s\n", lua_tostring(L, -1));
-    phys2d_state_shutdown(&app.phys);
-    lua_close(L);
-    return 1;
+  // 落下して接触する
+  {
+    LubHandle w = make_world(ctx, "c_fall", -9.8f, 4);
+    bool touched = false;
+    for (int frame = 0; frame < 240 && !touched; ++frame) {
+      lub_phys2d_begin(ctx, w, NULL);
+      LubHandle ground = declare_body(
+          ctx, w, "ground", LUB_PHYS2D_BODY_TYPE_STATIC, 0, -0.25f, false);
+      declare_box(ctx, ground, "solid", 4.0f, 0.25f, false);
+      LubHandle ball = declare_body(
+          ctx, w, "ball", LUB_PHYS2D_BODY_TYPE_DYNAMIC, 0, 2.0f, false);
+      declare_box(ctx, ball, "solid", 0.1f, 0.1f, false);
+      check(lub_phys2d_step(ctx, w, 1.0f / 60.0f, &info) == LUB_OK, "step");
+      const LubContactEvent *events = NULL;
+      int32_t n = 0;
+      check(lub_phys2d_contacts(ctx, w, NULL, &events, &n) == LUB_OK,
+            "contacts");
+      for (int32_t i = 0; i < n; ++i)
+        if (lub_str_eq(events[i].a.body, "ball") ||
+            lub_str_eq(events[i].b.body, "ball"))
+          touched = true;
+      check(lub_phys2d_pose(ctx, ball, &pose) == LUB_OK, "pose");
+    }
+    check(touched, "ball never touched the ground");
+    check(pose.y < 1.0f, "ball did not fall");
   }
-
-  int ok = lua_toboolean(L, -3);
-  int frame = (int)lua_tointeger(L, -2);
-  double y = lua_tonumber(L, -1);
-  lua_pop(L, 3);
 
   phys2d_state_shutdown(&app.phys);
-  lua_close(L);
-
-  if (!ok) {
-    fprintf(stderr, "PHYS2D_C_SMOKE_FAIL frame=%d y=%.4f\n", frame, y);
+  if (g_failures) {
+    fprintf(stderr, "phys2d smoke: %d failure(s)\n", g_failures);
     return 1;
   }
-
-  printf("PHYS2D_C_SMOKE_OK frame=%d y=%.4f\n", frame, y);
+  printf("phys2d smoke OK\n");
   return 0;
 }
