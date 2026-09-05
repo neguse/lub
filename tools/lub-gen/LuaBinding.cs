@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using TinyCs;
 
 namespace LubGen;
@@ -12,7 +13,45 @@ public static class LuaBinding
 
     private sealed class Gen(ApiModel model)
     {
-        private readonly StringBuilder sb = new();
+        private StringBuilder sb = new();
+
+        // 生成した helper (enum の表、trampoline、read_ / fill_ / push_ / push_list_)
+        // は断片として持ち、関数と登録から辿れるものだけを出す (使わない static
+        // 関数は warning になる)。
+        private sealed record Piece(IReadOnlyList<string> Names, string Proto, string Body);
+        private readonly List<Piece> fragments = new();
+
+        private void Fragment(string name, string proto, Action emit) => Fragment([name], proto, emit);
+
+        private void Fragment(IReadOnlyList<string> names, string proto, Action emit)
+        {
+            var saved = sb;
+            sb = new StringBuilder();
+            emit();
+            fragments.Add(new Piece(names, proto, sb.ToString()));
+            sb = saved;
+        }
+
+        private static readonly Regex HelperRef = new(
+            @"\b(?:names|values|name|read|fill|push_list|push)_Lub[A-Za-z0-9_]*|\btramp_[A-Za-z0-9_]+",
+            RegexOptions.Compiled);
+
+        private HashSet<Piece> Reachable(string roots)
+        {
+            var byName = new Dictionary<string, Piece>(StringComparer.Ordinal);
+            foreach (var f in fragments)
+                foreach (var n in f.Names) byName[n] = f;
+            var used = new HashSet<Piece>();
+            var work = new Queue<string>();
+            work.Enqueue(roots);
+            while (work.Count > 0)
+            {
+                foreach (Match m in HelperRef.Matches(work.Dequeue()))
+                    if (byName.TryGetValue(m.Value, out var f) && used.Add(f))
+                        work.Enqueue(f.Body);
+            }
+            return used;
+        }
         private readonly Dictionary<string, ApiType> types = model.Types.ToDictionary(t => t.Name);
         private readonly Dictionary<string, ApiEnum> enums =
             model.Namespaces.SelectMany(n => n.Enums.Select(e => (n.Name + "." + e.Name, e)))
@@ -23,7 +62,18 @@ public static class LuaBinding
         {
             foreach (var t in model.Types.Where(t => t.Kind is "handle" or "keyed"))
                 handleKinds[t.Name] = HandleKind(t.Name);
-            sb.Append("""
+            EmitEnumTables();
+            foreach (var t in Records()) EmitTrampolines(t);
+            foreach (var t in Records()) EmitReader(t);
+            foreach (var t in Records()) EmitPusher(t);
+            foreach (var ns in model.Namespaces)
+                foreach (var f in ns.Functions.Where(f => !f.NoC))
+                    EmitFunction(ns, f);
+            EmitRegister();
+            var roots = sb.ToString();
+            var used = Reachable(roots);
+            var outSb = new StringBuilder();
+            outSb.Append("""
                 // lub の Lua binding。cs-lib/lub_stub.cs から tools/lub-gen が生成する
                 // (手で編集しない。再生成: dotnet run --project tools/lub-gen -- lua)。
                 // C API (include/lub/lub_api.h) への詰め替えだけを持つ。Lua の値の
@@ -33,16 +83,11 @@ public static class LuaBinding
 
 
                 """);
-            EmitEnumTables();
-            EmitTypePrototypes();
-            foreach (var t in Records()) EmitTrampolines(t);
-            foreach (var t in Records()) EmitReader(t);
-            foreach (var t in Records()) EmitPusher(t);
-            foreach (var ns in model.Namespaces)
-                foreach (var f in ns.Functions.Where(f => !f.NoC))
-                    EmitFunction(ns, f);
-            EmitRegister();
-            return sb.ToString();
+            foreach (var f in fragments.Where(used.Contains)) outSb.Append(f.Proto);
+            outSb.Append('\n');
+            foreach (var f in fragments.Where(used.Contains)) outSb.Append(f.Body);
+            outSb.Append(roots);
+            return outSb.ToString();
         }
 
         private IEnumerable<ApiType> Records() => model.Types.Where(t => t.Kind == "record");
@@ -90,31 +135,24 @@ public static class LuaBinding
             foreach (var e in enums.Values.Where(e => e.LuaString))
             {
                 var c = EnumC(e.Namespace + "." + e.Name);
-                sb.Append($"static const char *const names_{c}[] = {{");
-                sb.Append(string.Join(", ", e.Members.Select(m => $"\"{m.LuaName.ToLowerInvariant()}\"")));
-                sb.Append(", NULL};\n");
-                sb.Append($"static const int32_t values_{c}[] = {{");
-                sb.Append(string.Join(", ", e.Members.Select(m => m.Value.ToString())));
-                sb.Append("};\n");
-                sb.Append($"static const char *name_{c}(int32_t v) {{\n");
-                sb.Append($"  for (int i = 0; names_{c}[i]; ++i)\n    if (values_{c}[i] == v)\n      return names_{c}[i];\n  return NULL;\n}}\n\n");
+                Fragment([$"names_{c}", $"values_{c}"], "", () =>
+                {
+                    sb.Append($"static const char *const names_{c}[] = {{");
+                    sb.Append(string.Join(", ", e.Members.Select(m => $"\"{m.LuaName.ToLowerInvariant()}\"")));
+                    sb.Append(", NULL};\n");
+                    sb.Append($"static const int32_t values_{c}[] = {{");
+                    sb.Append(string.Join(", ", e.Members.Select(m => m.Value.ToString())));
+                    sb.Append("};\n");
+                });
+                Fragment($"name_{c}", "", () =>
+                {
+                    sb.Append($"static const char *name_{c}(int32_t v) {{\n");
+                    sb.Append($"  for (int i = 0; names_{c}[i]; ++i)\n    if (values_{c}[i] == v)\n      return names_{c}[i];\n  return NULL;\n}}\n\n");
+                });
             }
         }
 
         // ------------------------------------------------------------ types
-
-        private void EmitTypePrototypes()
-        {
-            foreach (var t in Records())
-            {
-                var c = CType(t.Name);
-                sb.Append($"static void read_{c}(lua_State *L, int idx, void *out);\n");
-                sb.Append($"static void fill_{c}(lua_State *L, const {c} *v);\n");
-                sb.Append($"static void push_{c}(lua_State *L, const {c} *v);\n");
-                sb.Append($"static void push_list_{c}(lua_State *L, const {c} *v, int32_t n);\n");
-            }
-            sb.Append('\n');
-        }
 
         private IEnumerable<ApiField> AllFields(ApiType t)
         {
@@ -124,6 +162,12 @@ public static class LuaBinding
         }
 
         private void EmitReader(ApiType t)
+        {
+            var c = CType(t.Name);
+            Fragment($"read_{c}", $"static void read_{c}(lua_State *L, int idx, void *out);\n", () => EmitReaderBody(t));
+        }
+
+        private void EmitReaderBody(ApiType t)
         {
             var c = CType(t.Name);
             sb.Append($"static void read_{c}(lua_State *L, int idx, void *out_) {{\n");
@@ -252,6 +296,23 @@ public static class LuaBinding
         private void EmitPusher(ApiType t)
         {
             var c = CType(t.Name);
+            Fragment($"fill_{c}", $"static void fill_{c}(lua_State *L, const {c} *v);\n", () => EmitFillBody(t));
+            Fragment($"push_{c}", $"static void push_{c}(lua_State *L, const {c} *v);\n", () =>
+            {
+                sb.Append($"static void push_{c}(lua_State *L, const {c} *v) {{\n");
+                sb.Append($"  lua_createtable(L, 0, {AllFields(t).Count()});\n  fill_{c}(L, v);\n}}\n\n");
+            });
+            Fragment($"push_list_{c}", $"static void push_list_{c}(lua_State *L, const {c} *v, int32_t n);\n", () =>
+            {
+                sb.Append($"static void push_list_{c}(lua_State *L, const {c} *v, int32_t n) {{\n");
+                sb.Append("  lua_createtable(L, n, 0);\n  for (int32_t i = 0; i < n; ++i) {\n");
+                sb.Append($"    push_{c}(L, &v[i]);\n    lua_rawseti(L, -2, i + 1);\n  }}\n}}\n\n");
+            });
+        }
+
+        private void EmitFillBody(ApiType t)
+        {
+            var c = CType(t.Name);
             sb.Append($"static void fill_{c}(lua_State *L, const {c} *v) {{\n");
             if (t.Base != null)
                 sb.Append($"  fill_{CType(t.Base)}(L, &v->base);\n");
@@ -344,11 +405,6 @@ public static class LuaBinding
             }
             sb.Append("  (void)L;\n  (void)v;\n");
             sb.Append("}\n\n");
-            sb.Append($"static void push_{c}(lua_State *L, const {c} *v) {{\n");
-            sb.Append($"  lua_createtable(L, 0, {AllFields(t).Count()});\n  fill_{c}(L, v);\n}}\n\n");
-            sb.Append($"static void push_list_{c}(lua_State *L, const {c} *v, int32_t n) {{\n");
-            sb.Append("  lua_createtable(L, n, 0);\n  for (int32_t i = 0; i < n; ++i) {\n");
-            sb.Append($"    push_{c}(L, &v[i]);\n    lua_rawseti(L, -2, i + 1);\n  }}\n}}\n\n");
         }
 
         // -------------------------------------------------------- callbacks
@@ -361,7 +417,10 @@ public static class LuaBinding
                 EmitTrampoline($"tramp_{c}_{funcs[i].LuaName}", funcs[i].Type, i, funcs[i].LuaName);
         }
 
-        private void EmitTrampoline(string name, TypeRef fn, int slot, string what)
+        private void EmitTrampoline(string name, TypeRef fn, int slot, string what) =>
+            Fragment(name, "", () => EmitTrampolineBody(name, fn, slot, what));
+
+        private void EmitTrampolineBody(string name, TypeRef fn, int slot, string what)
         {
             var ret = fn.FuncReturn!;
             var retC = ret.Kind switch

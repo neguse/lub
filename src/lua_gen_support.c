@@ -434,21 +434,43 @@ void lgen_set_bits(lua_State *L, const char *key, uint64_t v) {
 
 // --------------------------------------------------------------- arrays
 
-// 配列らしい値 (table か view) の長さ。table は 1 始まり。
-static int32_t array_len(lua_State *L, int idx, bool *is_view) {
+// table の配列の長さと最初の index。1 始まりの sequence が基本。Haxe の Lua
+// 出力の Array は 0 始まりで数値の `length` を持つので、その形も受ける
+// (Haxe 撤去までの互換)。
+static int32_t table_len(lua_State *L, int idx, int32_t *base) {
+  idx = lua_absindex(L, idx);
+  *base = 1;
+  lua_getfield(L, idx, "length");
+  if (lua_isnumber(L, -1)) {
+    lua_Number n = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    if (n >= 0) {
+      *base = 0;
+      return (int32_t)n;
+    }
+    return 0;
+  }
+  lua_pop(L, 1);
+  return (int32_t)lua_rawlen(L, idx);
+}
+
+// 配列らしい値 (table か view) の長さ。
+static int32_t array_len(lua_State *L, int idx, bool *is_view, int32_t *base) {
   View *v = view_test(L, idx);
+  *base = 1;
   if (v) {
     *is_view = true;
     return v->count;
   }
   *is_view = false;
-  return (int32_t)lua_rawlen(L, idx);
+  return table_len(L, idx, base);
 }
 
 static const float *read_floats(lua_State *L, int idx, int32_t *count) {
   idx = lua_absindex(L, idx);
   bool is_view;
-  int32_t n = array_len(L, idx, &is_view);
+  int32_t base;
+  int32_t n = array_len(L, idx, &is_view, &base);
   *count = n;
   if (is_view) {
     View *v = (View *)lua_touserdata(L, idx);
@@ -462,7 +484,7 @@ static const float *read_floats(lua_State *L, int idx, int32_t *count) {
   }
   float *out = (float *)lgen_alloc(L, (size_t)(n ? n : 1) * sizeof(float));
   for (int32_t i = 0; i < n; ++i) {
-    lua_rawgeti(L, idx, i + 1);
+    lua_rawgeti(L, idx, i + base);
     out[i] = (float)lua_tonumber(L, -1);
     lua_pop(L, 1);
   }
@@ -472,7 +494,8 @@ static const float *read_floats(lua_State *L, int idx, int32_t *count) {
 static const int32_t *read_ints(lua_State *L, int idx, int32_t *count) {
   idx = lua_absindex(L, idx);
   bool is_view;
-  int32_t n = array_len(L, idx, &is_view);
+  int32_t base;
+  int32_t n = array_len(L, idx, &is_view, &base);
   *count = n;
   if (is_view) {
     View *v = (View *)lua_touserdata(L, idx);
@@ -488,7 +511,7 @@ static const int32_t *read_ints(lua_State *L, int idx, int32_t *count) {
   int32_t *out =
       (int32_t *)lgen_alloc(L, (size_t)(n ? n : 1) * sizeof(int32_t));
   for (int32_t i = 0; i < n; ++i) {
-    lua_rawgeti(L, idx, i + 1);
+    lua_rawgeti(L, idx, i + base);
     out[i] = (int32_t)lua_tointeger(L, -1);
     lua_pop(L, 1);
   }
@@ -599,11 +622,12 @@ const float *lgen_float_rows(lua_State *L, int idx, const char *key,
   if (!field_array(L, idx, key))
     return NULL;
   int t = lua_gettop(L);
-  int32_t n = (int32_t)lua_rawlen(L, t);
+  int32_t base;
+  int32_t n = table_len(L, t, &base);
   float *out = (float *)lgen_alloc(L, (size_t)(n ? n : 1) * (size_t)width *
                                           sizeof(float));
   for (int32_t i = 0; i < n; ++i) {
-    lua_rawgeti(L, t, i + 1);
+    lua_rawgeti(L, t, i + base);
     int32_t m = 0;
     const float *row = read_floats(L, -1, &m);
     if (m > width)
@@ -622,10 +646,11 @@ const LubStr *lgen_strs(lua_State *L, int idx, const char *key,
   if (!field_array(L, idx, key))
     return NULL;
   int t = lua_gettop(L);
-  int32_t n = (int32_t)lua_rawlen(L, t);
+  int32_t base;
+  int32_t n = table_len(L, t, &base);
   LubStr *out = (LubStr *)lgen_alloc(L, (size_t)(n ? n : 1) * sizeof(LubStr));
   for (int32_t i = 0; i < n; ++i) {
-    lua_rawgeti(L, t, i + 1);
+    lua_rawgeti(L, t, i + base);
     size_t len = 0;
     out[i].ptr = lua_tolstring(L, -1, &len);
     out[i].len = (int32_t)len;
@@ -642,11 +667,12 @@ const LubHandle *lgen_handles(lua_State *L, int idx, const char *key,
   if (!field_array(L, idx, key))
     return NULL;
   int t = lua_gettop(L);
-  int32_t n = (int32_t)lua_rawlen(L, t);
+  int32_t base;
+  int32_t n = table_len(L, t, &base);
   LubHandle *out =
       (LubHandle *)lgen_alloc(L, (size_t)(n ? n : 1) * sizeof(LubHandle));
   for (int32_t i = 0; i < n; ++i) {
-    lua_rawgeti(L, t, i + 1);
+    lua_rawgeti(L, t, i + base);
     out[i] = lgen_ref_arg(L, lua_gettop(L), kind, true);
     lua_pop(L, 1);
   }
@@ -658,14 +684,15 @@ const LubHandle *lgen_handles(lua_State *L, int idx, const char *key,
 static const void *read_records(lua_State *L, int t, size_t size,
                                 LgenReader reader, int32_t *count) {
   t = lua_absindex(L, t);
-  int32_t n = (int32_t)lua_rawlen(L, t);
+  int32_t base;
+  int32_t n = table_len(L, t, &base);
   unsigned char *out =
       (unsigned char *)lgen_alloc(L, (size_t)(n ? n : 1) * size);
   for (int32_t i = 0; i < n; ++i) {
-    lua_rawgeti(L, t, i + 1);
+    lua_rawgeti(L, t, i + base);
     if (lua_type(L, -1) != LUA_TTABLE) {
       lua_pop(L, 1);
-      luaL_error(L, "array element %d must be a table", (int)i + 1);
+      luaL_error(L, "array element %d must be a table", (int)i + base);
       return NULL;
     }
     reader(L, lua_gettop(L), out + (size_t)i * size);

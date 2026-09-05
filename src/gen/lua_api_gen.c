@@ -5,6 +5,256 @@
 #include "lua_gen_support.h"
 #include <string.h>
 
+static void read_LubPassOpts(lua_State *L, int idx, void *out);
+static void read_LubDrawOpts(lua_State *L, int idx, void *out);
+static void read_LubDispatchOpts(lua_State *L, int idx, void *out);
+static void read_LubTextureOpts(lua_State *L, int idx, void *out);
+static void read_LubConfigOpts(lua_State *L, int idx, void *out);
+static void read_LubMeshData(lua_State *L, int idx, void *out);
+static void read_LubSdfBone(lua_State *L, int idx, void *out);
+static void read_LubSdfNodeDesc(lua_State *L, int idx, void *out);
+static void read_LubPlayOpts(lua_State *L, int idx, void *out);
+static void read_LubVoiceOpts(lua_State *L, int idx, void *out);
+static void read_LubVec2d(lua_State *L, int idx, void *out);
+static void read_LubInitialState(lua_State *L, int idx, void *out);
+static void read_LubWorldCallbacks(lua_State *L, int idx, void *out);
+static void read_LubWorldOpts(lua_State *L, int idx, void *out);
+static void read_LubBeginOpts(lua_State *L, int idx, void *out);
+static void read_LubBodyDesc(lua_State *L, int idx, void *out);
+static void read_LubFilterDesc(lua_State *L, int idx, void *out);
+static void read_LubShapeDesc(lua_State *L, int idx, void *out);
+static void read_LubBoxDesc(lua_State *L, int idx, void *out);
+static void read_LubCircleDesc(lua_State *L, int idx, void *out);
+static void read_LubCapsuleDesc(lua_State *L, int idx, void *out);
+static void read_LubSegmentDesc(lua_State *L, int idx, void *out);
+static void read_LubPolygonDesc(lua_State *L, int idx, void *out);
+static void read_LubChainMaterial(lua_State *L, int idx, void *out);
+static void read_LubChainDesc(lua_State *L, int idx, void *out);
+static void read_LubJointSpringDesc(lua_State *L, int idx, void *out);
+static void read_LubJointLimitDesc(lua_State *L, int idx, void *out);
+static void read_LubJointMotorDesc(lua_State *L, int idx, void *out);
+static void read_LubJointTargetDesc(lua_State *L, int idx, void *out);
+static void read_LubJointDesc(lua_State *L, int idx, void *out);
+static void read_LubCommandOpts(lua_State *L, int idx, void *out);
+static void read_LubVelocityDesc(lua_State *L, int idx, void *out);
+static void read_LubPoseDesc(lua_State *L, int idx, void *out);
+static void read_LubMassDataDesc(lua_State *L, int idx, void *out);
+static void read_LubMaterialDesc(lua_State *L, int idx, void *out);
+static void read_LubShapeEventsDesc(lua_State *L, int idx, void *out);
+static void read_LubRaycastDesc(lua_State *L, int idx, void *out);
+static void read_LubAabbDesc(lua_State *L, int idx, void *out);
+static void read_LubShapeCastDesc(lua_State *L, int idx, void *out);
+static void read_LubMoverDesc(lua_State *L, int idx, void *out);
+static void read_LubExplosionDesc(lua_State *L, int idx, void *out);
+static void read_LubDebugOpts(lua_State *L, int idx, void *out);
+static void read_LubVec3d(lua_State *L, int idx, void *out);
+static void read_LubQuat3d(lua_State *L, int idx, void *out);
+static void read_LubInitialState3d(lua_State *L, int idx, void *out);
+static void read_LubMotionLocks3d(lua_State *L, int idx, void *out);
+static void read_LubWorldCallbacks3d(lua_State *L, int idx, void *out);
+static void read_LubWorldOpts3d(lua_State *L, int idx, void *out);
+static void read_LubBeginOpts3d(lua_State *L, int idx, void *out);
+static void read_LubBodyDesc3d(lua_State *L, int idx, void *out);
+static void read_LubFilterDesc3d(lua_State *L, int idx, void *out);
+static void read_LubShapeDesc3d(lua_State *L, int idx, void *out);
+static void read_LubSphereDesc3d(lua_State *L, int idx, void *out);
+static void read_LubBoxDesc3d(lua_State *L, int idx, void *out);
+static void read_LubCapsuleDesc3d(lua_State *L, int idx, void *out);
+static void read_LubCylinderDesc3d(lua_State *L, int idx, void *out);
+static void read_LubConeDesc3d(lua_State *L, int idx, void *out);
+static void read_LubHullDesc3d(lua_State *L, int idx, void *out);
+static void read_LubSurfaceMaterial3d(lua_State *L, int idx, void *out);
+static void read_LubMeshDesc3d(lua_State *L, int idx, void *out);
+static void read_LubHeightFieldDesc3d(lua_State *L, int idx, void *out);
+static void read_LubCompoundSphere3d(lua_State *L, int idx, void *out);
+static void read_LubCompoundBox3d(lua_State *L, int idx, void *out);
+static void read_LubCompoundCapsule3d(lua_State *L, int idx, void *out);
+static void read_LubCompoundChild3d(lua_State *L, int idx, void *out);
+static void read_LubCompoundDesc3d(lua_State *L, int idx, void *out);
+static void read_LubCommandOpts3d(lua_State *L, int idx, void *out);
+static void read_LubVelocityDesc3d(lua_State *L, int idx, void *out);
+static void read_LubPoseDesc3d(lua_State *L, int idx, void *out);
+static void read_LubTargetDesc3d(lua_State *L, int idx, void *out);
+static void read_LubFrameDesc3d(lua_State *L, int idx, void *out);
+static void read_LubJointSpringDesc3d(lua_State *L, int idx, void *out);
+static void read_LubJointLimitDesc3d(lua_State *L, int idx, void *out);
+static void read_LubJointMotorDesc3d(lua_State *L, int idx, void *out);
+static void read_LubJointTargetDesc3d(lua_State *L, int idx, void *out);
+static void read_LubJointDesc3d(lua_State *L, int idx, void *out);
+static void read_LubMaterialDesc3d(lua_State *L, int idx, void *out);
+static void read_LubShapeEventsDesc3d(lua_State *L, int idx, void *out);
+static void read_LubMoverDesc3d(lua_State *L, int idx, void *out);
+static void read_LubRaycastDesc3d(lua_State *L, int idx, void *out);
+static void read_LubAabbDesc3d(lua_State *L, int idx, void *out);
+static void read_LubSphereProxy3d(lua_State *L, int idx, void *out);
+static void read_LubBoxProxy3d(lua_State *L, int idx, void *out);
+static void read_LubCapsuleProxy3d(lua_State *L, int idx, void *out);
+static void read_LubShapeProxyDesc3d(lua_State *L, int idx, void *out);
+static void fill_LubMeshData(lua_State *L, const LubMeshData *v);
+static void push_LubMeshData(lua_State *L, const LubMeshData *v);
+static void fill_LubSdfBone(lua_State *L, const LubSdfBone *v);
+static void push_LubSdfBone(lua_State *L, const LubSdfBone *v);
+static void push_list_LubSdfBone(lua_State *L, const LubSdfBone *v, int32_t n);
+static void fill_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v);
+static void push_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v);
+static void fill_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v);
+static void push_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v);
+static void push_list_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v,
+                                       int32_t n);
+static void fill_LubGltfMesh(lua_State *L, const LubGltfMesh *v);
+static void push_LubGltfMesh(lua_State *L, const LubGltfMesh *v);
+static void fill_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v);
+static void push_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v);
+static void fill_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v);
+static void push_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v);
+static void fill_LubFontMetrics(lua_State *L, const LubFontMetrics *v);
+static void push_LubFontMetrics(lua_State *L, const LubFontMetrics *v);
+static void fill_LubAudioInfo(lua_State *L, const LubAudioInfo *v);
+static void push_LubAudioInfo(lua_State *L, const LubAudioInfo *v);
+static void fill_LubVec2d(lua_State *L, const LubVec2d *v);
+static void push_LubVec2d(lua_State *L, const LubVec2d *v);
+static void fill_LubShapeView(lua_State *L, const LubShapeView *v);
+static void push_LubShapeView(lua_State *L, const LubShapeView *v);
+static void push_list_LubShapeView(lua_State *L, const LubShapeView *v,
+                                   int32_t n);
+static void fill_LubMaterialView(lua_State *L, const LubMaterialView *v);
+static void push_LubMaterialView(lua_State *L, const LubMaterialView *v);
+static void fill_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v);
+static void push_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v);
+static void push_list_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v,
+                                       int32_t n);
+static void fill_LubPreSolveContact(lua_State *L, const LubPreSolveContact *v);
+static void push_LubPreSolveContact(lua_State *L, const LubPreSolveContact *v);
+static void fill_LubDebugData(lua_State *L, const LubDebugData *v);
+static void push_LubDebugData(lua_State *L, const LubDebugData *v);
+static void fill_LubPose(lua_State *L, const LubPose *v);
+static void push_LubPose(lua_State *L, const LubPose *v);
+static void fill_LubVelocity(lua_State *L, const LubVelocity *v);
+static void push_LubVelocity(lua_State *L, const LubVelocity *v);
+static void fill_LubMassData(lua_State *L, const LubMassData *v);
+static void push_LubMassData(lua_State *L, const LubMassData *v);
+static void fill_LubAabb(lua_State *L, const LubAabb *v);
+static void push_LubAabb(lua_State *L, const LubAabb *v);
+static void fill_LubFilterInfo(lua_State *L, const LubFilterInfo *v);
+static void push_LubFilterInfo(lua_State *L, const LubFilterInfo *v);
+static void fill_LubShapeInfo(lua_State *L, const LubShapeInfo *v);
+static void push_LubShapeInfo(lua_State *L, const LubShapeInfo *v);
+static void fill_LubWorldCallbackInfo(lua_State *L,
+                                      const LubWorldCallbackInfo *v);
+static void push_LubWorldCallbackInfo(lua_State *L,
+                                      const LubWorldCallbackInfo *v);
+static void fill_LubWorldInfo(lua_State *L, const LubWorldInfo *v);
+static void push_LubWorldInfo(lua_State *L, const LubWorldInfo *v);
+static void fill_LubStepInfo(lua_State *L, const LubStepInfo *v);
+static void push_LubStepInfo(lua_State *L, const LubStepInfo *v);
+static void fill_LubJointView(lua_State *L, const LubJointView *v);
+static void push_LubJointView(lua_State *L, const LubJointView *v);
+static void push_list_LubJointView(lua_State *L, const LubJointView *v,
+                                   int32_t n);
+static void fill_LubJointInfo(lua_State *L, const LubJointInfo *v);
+static void push_LubJointInfo(lua_State *L, const LubJointInfo *v);
+static void fill_LubContactData(lua_State *L, const LubContactData *v);
+static void push_LubContactData(lua_State *L, const LubContactData *v);
+static void push_list_LubContactData(lua_State *L, const LubContactData *v,
+                                     int32_t n);
+static void fill_LubContactEvent(lua_State *L, const LubContactEvent *v);
+static void push_LubContactEvent(lua_State *L, const LubContactEvent *v);
+static void push_list_LubContactEvent(lua_State *L, const LubContactEvent *v,
+                                      int32_t n);
+static void fill_LubSensorEvent(lua_State *L, const LubSensorEvent *v);
+static void push_LubSensorEvent(lua_State *L, const LubSensorEvent *v);
+static void push_list_LubSensorEvent(lua_State *L, const LubSensorEvent *v,
+                                     int32_t n);
+static void fill_LubBodyEvent(lua_State *L, const LubBodyEvent *v);
+static void push_LubBodyEvent(lua_State *L, const LubBodyEvent *v);
+static void push_list_LubBodyEvent(lua_State *L, const LubBodyEvent *v,
+                                   int32_t n);
+static void fill_LubRayHit(lua_State *L, const LubRayHit *v);
+static void push_LubRayHit(lua_State *L, const LubRayHit *v);
+static void push_list_LubRayHit(lua_State *L, const LubRayHit *v, int32_t n);
+static void fill_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v);
+static void push_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v);
+static void fill_LubMoverCast(lua_State *L, const LubMoverCast *v);
+static void push_LubMoverCast(lua_State *L, const LubMoverCast *v);
+static void fill_LubMoverPlane(lua_State *L, const LubMoverPlane *v);
+static void push_LubMoverPlane(lua_State *L, const LubMoverPlane *v);
+static void push_list_LubMoverPlane(lua_State *L, const LubMoverPlane *v,
+                                    int32_t n);
+static void fill_LubProfile(lua_State *L, const LubProfile *v);
+static void push_LubProfile(lua_State *L, const LubProfile *v);
+static void fill_LubCounters(lua_State *L, const LubCounters *v);
+static void push_LubCounters(lua_State *L, const LubCounters *v);
+static void fill_LubVec3d(lua_State *L, const LubVec3d *v);
+static void push_LubVec3d(lua_State *L, const LubVec3d *v);
+static void fill_LubShapeView3d(lua_State *L, const LubShapeView3d *v);
+static void push_LubShapeView3d(lua_State *L, const LubShapeView3d *v);
+static void push_list_LubShapeView3d(lua_State *L, const LubShapeView3d *v,
+                                     int32_t n);
+static void fill_LubPreSolveContact3d(lua_State *L,
+                                      const LubPreSolveContact3d *v);
+static void push_LubPreSolveContact3d(lua_State *L,
+                                      const LubPreSolveContact3d *v);
+static void fill_LubPose3d(lua_State *L, const LubPose3d *v);
+static void push_LubPose3d(lua_State *L, const LubPose3d *v);
+static void fill_LubVelocity3d(lua_State *L, const LubVelocity3d *v);
+static void push_LubVelocity3d(lua_State *L, const LubVelocity3d *v);
+static void fill_LubInertia3d(lua_State *L, const LubInertia3d *v);
+static void push_LubInertia3d(lua_State *L, const LubInertia3d *v);
+static void fill_LubMassData3d(lua_State *L, const LubMassData3d *v);
+static void push_LubMassData3d(lua_State *L, const LubMassData3d *v);
+static void fill_LubAabb3d(lua_State *L, const LubAabb3d *v);
+static void push_LubAabb3d(lua_State *L, const LubAabb3d *v);
+static void fill_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v);
+static void push_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v);
+static void fill_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v);
+static void push_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v);
+static void fill_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v);
+static void push_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v);
+static void fill_LubFrame3d(lua_State *L, const LubFrame3d *v);
+static void push_LubFrame3d(lua_State *L, const LubFrame3d *v);
+static void fill_LubJointView3d(lua_State *L, const LubJointView3d *v);
+static void push_LubJointView3d(lua_State *L, const LubJointView3d *v);
+static void push_list_LubJointView3d(lua_State *L, const LubJointView3d *v,
+                                     int32_t n);
+static void fill_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v);
+static void push_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v);
+static void fill_LubContactData3d(lua_State *L, const LubContactData3d *v);
+static void push_LubContactData3d(lua_State *L, const LubContactData3d *v);
+static void push_list_LubContactData3d(lua_State *L, const LubContactData3d *v,
+                                       int32_t n);
+static void fill_LubContactEvent3d(lua_State *L, const LubContactEvent3d *v);
+static void push_LubContactEvent3d(lua_State *L, const LubContactEvent3d *v);
+static void push_list_LubContactEvent3d(lua_State *L,
+                                        const LubContactEvent3d *v, int32_t n);
+static void fill_LubSensorEvent3d(lua_State *L, const LubSensorEvent3d *v);
+static void push_LubSensorEvent3d(lua_State *L, const LubSensorEvent3d *v);
+static void push_list_LubSensorEvent3d(lua_State *L, const LubSensorEvent3d *v,
+                                       int32_t n);
+static void fill_LubBodyEvent3d(lua_State *L, const LubBodyEvent3d *v);
+static void push_LubBodyEvent3d(lua_State *L, const LubBodyEvent3d *v);
+static void push_list_LubBodyEvent3d(lua_State *L, const LubBodyEvent3d *v,
+                                     int32_t n);
+static void fill_LubJointEvent3d(lua_State *L, const LubJointEvent3d *v);
+static void push_LubJointEvent3d(lua_State *L, const LubJointEvent3d *v);
+static void push_list_LubJointEvent3d(lua_State *L, const LubJointEvent3d *v,
+                                      int32_t n);
+static void fill_LubRayHit3d(lua_State *L, const LubRayHit3d *v);
+static void push_LubRayHit3d(lua_State *L, const LubRayHit3d *v);
+static void push_list_LubRayHit3d(lua_State *L, const LubRayHit3d *v,
+                                  int32_t n);
+static void fill_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v);
+static void push_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v);
+static void fill_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v);
+static void push_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v);
+static void fill_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v);
+static void push_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v);
+static void push_list_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v,
+                                      int32_t n);
+static void fill_LubProfile3d(lua_State *L, const LubProfile3d *v);
+static void push_LubProfile3d(lua_State *L, const LubProfile3d *v);
+static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
+static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
+
 static const char *const names_LubGfxReadbackStatus[] = {
     "processing", "ready", "error", "dropped", NULL};
 static const int32_t values_LubGfxReadbackStatus[] = {0, 1, 2, 3};
@@ -49,23 +299,9 @@ static const char *name_LubPhys2dJointType(int32_t v) {
 static const char *const names_LubPhys2dEventKind[] = {"begin", "end", "hit",
                                                        NULL};
 static const int32_t values_LubPhys2dEventKind[] = {0, 1, 2};
-static const char *name_LubPhys2dEventKind(int32_t v) {
-  for (int i = 0; names_LubPhys2dEventKind[i]; ++i)
-    if (values_LubPhys2dEventKind[i] == v)
-      return names_LubPhys2dEventKind[i];
-  return NULL;
-}
-
 static const char *const names_LubPhys2dProxyKind[] = {
     "box", "circle", "capsule", "segment", "polygon", NULL};
 static const int32_t values_LubPhys2dProxyKind[] = {1, 2, 3, 4, 5};
-static const char *name_LubPhys2dProxyKind(int32_t v) {
-  for (int i = 0; names_LubPhys2dProxyKind[i]; ++i)
-    if (values_LubPhys2dProxyKind[i] == v)
-      return names_LubPhys2dProxyKind[i];
-  return NULL;
-}
-
 static const char *const names_LubPhys3dShapeKind[] = {
     "sphere", "box",  "capsule",      "cylinder", "cone",
     "hull",   "mesh", "height_field", "compound", NULL};
@@ -91,761 +327,6 @@ static const char *name_LubPhys3dJointType(int32_t v) {
 static const char *const names_LubPhys3dEventKind[] = {"begin", "end", "hit",
                                                        NULL};
 static const int32_t values_LubPhys3dEventKind[] = {0, 1, 2};
-static const char *name_LubPhys3dEventKind(int32_t v) {
-  for (int i = 0; names_LubPhys3dEventKind[i]; ++i)
-    if (values_LubPhys3dEventKind[i] == v)
-      return names_LubPhys3dEventKind[i];
-  return NULL;
-}
-
-static void read_LubPassOpts(lua_State *L, int idx, void *out);
-static void fill_LubPassOpts(lua_State *L, const LubPassOpts *v);
-static void push_LubPassOpts(lua_State *L, const LubPassOpts *v);
-static void push_list_LubPassOpts(lua_State *L, const LubPassOpts *v,
-                                  int32_t n);
-static void read_LubDrawOpts(lua_State *L, int idx, void *out);
-static void fill_LubDrawOpts(lua_State *L, const LubDrawOpts *v);
-static void push_LubDrawOpts(lua_State *L, const LubDrawOpts *v);
-static void push_list_LubDrawOpts(lua_State *L, const LubDrawOpts *v,
-                                  int32_t n);
-static void read_LubDispatchOpts(lua_State *L, int idx, void *out);
-static void fill_LubDispatchOpts(lua_State *L, const LubDispatchOpts *v);
-static void push_LubDispatchOpts(lua_State *L, const LubDispatchOpts *v);
-static void push_list_LubDispatchOpts(lua_State *L, const LubDispatchOpts *v,
-                                      int32_t n);
-static void read_LubTextureOpts(lua_State *L, int idx, void *out);
-static void fill_LubTextureOpts(lua_State *L, const LubTextureOpts *v);
-static void push_LubTextureOpts(lua_State *L, const LubTextureOpts *v);
-static void push_list_LubTextureOpts(lua_State *L, const LubTextureOpts *v,
-                                     int32_t n);
-static void read_LubConfigOpts(lua_State *L, int idx, void *out);
-static void fill_LubConfigOpts(lua_State *L, const LubConfigOpts *v);
-static void push_LubConfigOpts(lua_State *L, const LubConfigOpts *v);
-static void push_list_LubConfigOpts(lua_State *L, const LubConfigOpts *v,
-                                    int32_t n);
-static void read_LubMeshData(lua_State *L, int idx, void *out);
-static void fill_LubMeshData(lua_State *L, const LubMeshData *v);
-static void push_LubMeshData(lua_State *L, const LubMeshData *v);
-static void push_list_LubMeshData(lua_State *L, const LubMeshData *v,
-                                  int32_t n);
-static void read_LubSdfBone(lua_State *L, int idx, void *out);
-static void fill_LubSdfBone(lua_State *L, const LubSdfBone *v);
-static void push_LubSdfBone(lua_State *L, const LubSdfBone *v);
-static void push_list_LubSdfBone(lua_State *L, const LubSdfBone *v, int32_t n);
-static void read_LubSdfNodeDesc(lua_State *L, int idx, void *out);
-static void fill_LubSdfNodeDesc(lua_State *L, const LubSdfNodeDesc *v);
-static void push_LubSdfNodeDesc(lua_State *L, const LubSdfNodeDesc *v);
-static void push_list_LubSdfNodeDesc(lua_State *L, const LubSdfNodeDesc *v,
-                                     int32_t n);
-static void read_LubGltfMaterial(lua_State *L, int idx, void *out);
-static void fill_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v);
-static void push_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v);
-static void push_list_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v,
-                                      int32_t n);
-static void read_LubGltfPrimitive(lua_State *L, int idx, void *out);
-static void fill_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v);
-static void push_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v);
-static void push_list_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v,
-                                       int32_t n);
-static void read_LubGltfMesh(lua_State *L, int idx, void *out);
-static void fill_LubGltfMesh(lua_State *L, const LubGltfMesh *v);
-static void push_LubGltfMesh(lua_State *L, const LubGltfMesh *v);
-static void push_list_LubGltfMesh(lua_State *L, const LubGltfMesh *v,
-                                  int32_t n);
-static void read_LubGlyphBitmap(lua_State *L, int idx, void *out);
-static void fill_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v);
-static void push_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v);
-static void push_list_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v,
-                                     int32_t n);
-static void read_LubGlyphMesh(lua_State *L, int idx, void *out);
-static void fill_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v);
-static void push_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v);
-static void push_list_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v,
-                                   int32_t n);
-static void read_LubFontMetrics(lua_State *L, int idx, void *out);
-static void fill_LubFontMetrics(lua_State *L, const LubFontMetrics *v);
-static void push_LubFontMetrics(lua_State *L, const LubFontMetrics *v);
-static void push_list_LubFontMetrics(lua_State *L, const LubFontMetrics *v,
-                                     int32_t n);
-static void read_LubPlayOpts(lua_State *L, int idx, void *out);
-static void fill_LubPlayOpts(lua_State *L, const LubPlayOpts *v);
-static void push_LubPlayOpts(lua_State *L, const LubPlayOpts *v);
-static void push_list_LubPlayOpts(lua_State *L, const LubPlayOpts *v,
-                                  int32_t n);
-static void read_LubVoiceOpts(lua_State *L, int idx, void *out);
-static void fill_LubVoiceOpts(lua_State *L, const LubVoiceOpts *v);
-static void push_LubVoiceOpts(lua_State *L, const LubVoiceOpts *v);
-static void push_list_LubVoiceOpts(lua_State *L, const LubVoiceOpts *v,
-                                   int32_t n);
-static void read_LubAudioInfo(lua_State *L, int idx, void *out);
-static void fill_LubAudioInfo(lua_State *L, const LubAudioInfo *v);
-static void push_LubAudioInfo(lua_State *L, const LubAudioInfo *v);
-static void push_list_LubAudioInfo(lua_State *L, const LubAudioInfo *v,
-                                   int32_t n);
-static void read_LubVec2d(lua_State *L, int idx, void *out);
-static void fill_LubVec2d(lua_State *L, const LubVec2d *v);
-static void push_LubVec2d(lua_State *L, const LubVec2d *v);
-static void push_list_LubVec2d(lua_State *L, const LubVec2d *v, int32_t n);
-static void read_LubInitialState(lua_State *L, int idx, void *out);
-static void fill_LubInitialState(lua_State *L, const LubInitialState *v);
-static void push_LubInitialState(lua_State *L, const LubInitialState *v);
-static void push_list_LubInitialState(lua_State *L, const LubInitialState *v,
-                                      int32_t n);
-static void read_LubShapeView(lua_State *L, int idx, void *out);
-static void fill_LubShapeView(lua_State *L, const LubShapeView *v);
-static void push_LubShapeView(lua_State *L, const LubShapeView *v);
-static void push_list_LubShapeView(lua_State *L, const LubShapeView *v,
-                                   int32_t n);
-static void read_LubMaterialView(lua_State *L, int idx, void *out);
-static void fill_LubMaterialView(lua_State *L, const LubMaterialView *v);
-static void push_LubMaterialView(lua_State *L, const LubMaterialView *v);
-static void push_list_LubMaterialView(lua_State *L, const LubMaterialView *v,
-                                      int32_t n);
-static void read_LubManifoldPoint(lua_State *L, int idx, void *out);
-static void fill_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v);
-static void push_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v);
-static void push_list_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v,
-                                       int32_t n);
-static void read_LubPreSolveContact(lua_State *L, int idx, void *out);
-static void fill_LubPreSolveContact(lua_State *L, const LubPreSolveContact *v);
-static void push_LubPreSolveContact(lua_State *L, const LubPreSolveContact *v);
-static void push_list_LubPreSolveContact(lua_State *L,
-                                         const LubPreSolveContact *v,
-                                         int32_t n);
-static void read_LubWorldCallbacks(lua_State *L, int idx, void *out);
-static void fill_LubWorldCallbacks(lua_State *L, const LubWorldCallbacks *v);
-static void push_LubWorldCallbacks(lua_State *L, const LubWorldCallbacks *v);
-static void push_list_LubWorldCallbacks(lua_State *L,
-                                        const LubWorldCallbacks *v, int32_t n);
-static void read_LubWorldOpts(lua_State *L, int idx, void *out);
-static void fill_LubWorldOpts(lua_State *L, const LubWorldOpts *v);
-static void push_LubWorldOpts(lua_State *L, const LubWorldOpts *v);
-static void push_list_LubWorldOpts(lua_State *L, const LubWorldOpts *v,
-                                   int32_t n);
-static void read_LubBeginOpts(lua_State *L, int idx, void *out);
-static void fill_LubBeginOpts(lua_State *L, const LubBeginOpts *v);
-static void push_LubBeginOpts(lua_State *L, const LubBeginOpts *v);
-static void push_list_LubBeginOpts(lua_State *L, const LubBeginOpts *v,
-                                   int32_t n);
-static void read_LubBodyDesc(lua_State *L, int idx, void *out);
-static void fill_LubBodyDesc(lua_State *L, const LubBodyDesc *v);
-static void push_LubBodyDesc(lua_State *L, const LubBodyDesc *v);
-static void push_list_LubBodyDesc(lua_State *L, const LubBodyDesc *v,
-                                  int32_t n);
-static void read_LubFilterDesc(lua_State *L, int idx, void *out);
-static void fill_LubFilterDesc(lua_State *L, const LubFilterDesc *v);
-static void push_LubFilterDesc(lua_State *L, const LubFilterDesc *v);
-static void push_list_LubFilterDesc(lua_State *L, const LubFilterDesc *v,
-                                    int32_t n);
-static void read_LubShapeDesc(lua_State *L, int idx, void *out);
-static void fill_LubShapeDesc(lua_State *L, const LubShapeDesc *v);
-static void push_LubShapeDesc(lua_State *L, const LubShapeDesc *v);
-static void push_list_LubShapeDesc(lua_State *L, const LubShapeDesc *v,
-                                   int32_t n);
-static void read_LubBoxDesc(lua_State *L, int idx, void *out);
-static void fill_LubBoxDesc(lua_State *L, const LubBoxDesc *v);
-static void push_LubBoxDesc(lua_State *L, const LubBoxDesc *v);
-static void push_list_LubBoxDesc(lua_State *L, const LubBoxDesc *v, int32_t n);
-static void read_LubCircleDesc(lua_State *L, int idx, void *out);
-static void fill_LubCircleDesc(lua_State *L, const LubCircleDesc *v);
-static void push_LubCircleDesc(lua_State *L, const LubCircleDesc *v);
-static void push_list_LubCircleDesc(lua_State *L, const LubCircleDesc *v,
-                                    int32_t n);
-static void read_LubCapsuleDesc(lua_State *L, int idx, void *out);
-static void fill_LubCapsuleDesc(lua_State *L, const LubCapsuleDesc *v);
-static void push_LubCapsuleDesc(lua_State *L, const LubCapsuleDesc *v);
-static void push_list_LubCapsuleDesc(lua_State *L, const LubCapsuleDesc *v,
-                                     int32_t n);
-static void read_LubSegmentDesc(lua_State *L, int idx, void *out);
-static void fill_LubSegmentDesc(lua_State *L, const LubSegmentDesc *v);
-static void push_LubSegmentDesc(lua_State *L, const LubSegmentDesc *v);
-static void push_list_LubSegmentDesc(lua_State *L, const LubSegmentDesc *v,
-                                     int32_t n);
-static void read_LubPolygonDesc(lua_State *L, int idx, void *out);
-static void fill_LubPolygonDesc(lua_State *L, const LubPolygonDesc *v);
-static void push_LubPolygonDesc(lua_State *L, const LubPolygonDesc *v);
-static void push_list_LubPolygonDesc(lua_State *L, const LubPolygonDesc *v,
-                                     int32_t n);
-static void read_LubChainMaterial(lua_State *L, int idx, void *out);
-static void fill_LubChainMaterial(lua_State *L, const LubChainMaterial *v);
-static void push_LubChainMaterial(lua_State *L, const LubChainMaterial *v);
-static void push_list_LubChainMaterial(lua_State *L, const LubChainMaterial *v,
-                                       int32_t n);
-static void read_LubChainDesc(lua_State *L, int idx, void *out);
-static void fill_LubChainDesc(lua_State *L, const LubChainDesc *v);
-static void push_LubChainDesc(lua_State *L, const LubChainDesc *v);
-static void push_list_LubChainDesc(lua_State *L, const LubChainDesc *v,
-                                   int32_t n);
-static void read_LubJointSpringDesc(lua_State *L, int idx, void *out);
-static void fill_LubJointSpringDesc(lua_State *L, const LubJointSpringDesc *v);
-static void push_LubJointSpringDesc(lua_State *L, const LubJointSpringDesc *v);
-static void push_list_LubJointSpringDesc(lua_State *L,
-                                         const LubJointSpringDesc *v,
-                                         int32_t n);
-static void read_LubJointLimitDesc(lua_State *L, int idx, void *out);
-static void fill_LubJointLimitDesc(lua_State *L, const LubJointLimitDesc *v);
-static void push_LubJointLimitDesc(lua_State *L, const LubJointLimitDesc *v);
-static void push_list_LubJointLimitDesc(lua_State *L,
-                                        const LubJointLimitDesc *v, int32_t n);
-static void read_LubJointMotorDesc(lua_State *L, int idx, void *out);
-static void fill_LubJointMotorDesc(lua_State *L, const LubJointMotorDesc *v);
-static void push_LubJointMotorDesc(lua_State *L, const LubJointMotorDesc *v);
-static void push_list_LubJointMotorDesc(lua_State *L,
-                                        const LubJointMotorDesc *v, int32_t n);
-static void read_LubJointTargetDesc(lua_State *L, int idx, void *out);
-static void fill_LubJointTargetDesc(lua_State *L, const LubJointTargetDesc *v);
-static void push_LubJointTargetDesc(lua_State *L, const LubJointTargetDesc *v);
-static void push_list_LubJointTargetDesc(lua_State *L,
-                                         const LubJointTargetDesc *v,
-                                         int32_t n);
-static void read_LubJointDesc(lua_State *L, int idx, void *out);
-static void fill_LubJointDesc(lua_State *L, const LubJointDesc *v);
-static void push_LubJointDesc(lua_State *L, const LubJointDesc *v);
-static void push_list_LubJointDesc(lua_State *L, const LubJointDesc *v,
-                                   int32_t n);
-static void read_LubCommandOpts(lua_State *L, int idx, void *out);
-static void fill_LubCommandOpts(lua_State *L, const LubCommandOpts *v);
-static void push_LubCommandOpts(lua_State *L, const LubCommandOpts *v);
-static void push_list_LubCommandOpts(lua_State *L, const LubCommandOpts *v,
-                                     int32_t n);
-static void read_LubVelocityDesc(lua_State *L, int idx, void *out);
-static void fill_LubVelocityDesc(lua_State *L, const LubVelocityDesc *v);
-static void push_LubVelocityDesc(lua_State *L, const LubVelocityDesc *v);
-static void push_list_LubVelocityDesc(lua_State *L, const LubVelocityDesc *v,
-                                      int32_t n);
-static void read_LubPoseDesc(lua_State *L, int idx, void *out);
-static void fill_LubPoseDesc(lua_State *L, const LubPoseDesc *v);
-static void push_LubPoseDesc(lua_State *L, const LubPoseDesc *v);
-static void push_list_LubPoseDesc(lua_State *L, const LubPoseDesc *v,
-                                  int32_t n);
-static void read_LubMassDataDesc(lua_State *L, int idx, void *out);
-static void fill_LubMassDataDesc(lua_State *L, const LubMassDataDesc *v);
-static void push_LubMassDataDesc(lua_State *L, const LubMassDataDesc *v);
-static void push_list_LubMassDataDesc(lua_State *L, const LubMassDataDesc *v,
-                                      int32_t n);
-static void read_LubMaterialDesc(lua_State *L, int idx, void *out);
-static void fill_LubMaterialDesc(lua_State *L, const LubMaterialDesc *v);
-static void push_LubMaterialDesc(lua_State *L, const LubMaterialDesc *v);
-static void push_list_LubMaterialDesc(lua_State *L, const LubMaterialDesc *v,
-                                      int32_t n);
-static void read_LubShapeEventsDesc(lua_State *L, int idx, void *out);
-static void fill_LubShapeEventsDesc(lua_State *L, const LubShapeEventsDesc *v);
-static void push_LubShapeEventsDesc(lua_State *L, const LubShapeEventsDesc *v);
-static void push_list_LubShapeEventsDesc(lua_State *L,
-                                         const LubShapeEventsDesc *v,
-                                         int32_t n);
-static void read_LubRaycastDesc(lua_State *L, int idx, void *out);
-static void fill_LubRaycastDesc(lua_State *L, const LubRaycastDesc *v);
-static void push_LubRaycastDesc(lua_State *L, const LubRaycastDesc *v);
-static void push_list_LubRaycastDesc(lua_State *L, const LubRaycastDesc *v,
-                                     int32_t n);
-static void read_LubAabbDesc(lua_State *L, int idx, void *out);
-static void fill_LubAabbDesc(lua_State *L, const LubAabbDesc *v);
-static void push_LubAabbDesc(lua_State *L, const LubAabbDesc *v);
-static void push_list_LubAabbDesc(lua_State *L, const LubAabbDesc *v,
-                                  int32_t n);
-static void read_LubShapeCastDesc(lua_State *L, int idx, void *out);
-static void fill_LubShapeCastDesc(lua_State *L, const LubShapeCastDesc *v);
-static void push_LubShapeCastDesc(lua_State *L, const LubShapeCastDesc *v);
-static void push_list_LubShapeCastDesc(lua_State *L, const LubShapeCastDesc *v,
-                                       int32_t n);
-static void read_LubMoverDesc(lua_State *L, int idx, void *out);
-static void fill_LubMoverDesc(lua_State *L, const LubMoverDesc *v);
-static void push_LubMoverDesc(lua_State *L, const LubMoverDesc *v);
-static void push_list_LubMoverDesc(lua_State *L, const LubMoverDesc *v,
-                                   int32_t n);
-static void read_LubExplosionDesc(lua_State *L, int idx, void *out);
-static void fill_LubExplosionDesc(lua_State *L, const LubExplosionDesc *v);
-static void push_LubExplosionDesc(lua_State *L, const LubExplosionDesc *v);
-static void push_list_LubExplosionDesc(lua_State *L, const LubExplosionDesc *v,
-                                       int32_t n);
-static void read_LubDebugOpts(lua_State *L, int idx, void *out);
-static void fill_LubDebugOpts(lua_State *L, const LubDebugOpts *v);
-static void push_LubDebugOpts(lua_State *L, const LubDebugOpts *v);
-static void push_list_LubDebugOpts(lua_State *L, const LubDebugOpts *v,
-                                   int32_t n);
-static void read_LubDebugData(lua_State *L, int idx, void *out);
-static void fill_LubDebugData(lua_State *L, const LubDebugData *v);
-static void push_LubDebugData(lua_State *L, const LubDebugData *v);
-static void push_list_LubDebugData(lua_State *L, const LubDebugData *v,
-                                   int32_t n);
-static void read_LubPose(lua_State *L, int idx, void *out);
-static void fill_LubPose(lua_State *L, const LubPose *v);
-static void push_LubPose(lua_State *L, const LubPose *v);
-static void push_list_LubPose(lua_State *L, const LubPose *v, int32_t n);
-static void read_LubVelocity(lua_State *L, int idx, void *out);
-static void fill_LubVelocity(lua_State *L, const LubVelocity *v);
-static void push_LubVelocity(lua_State *L, const LubVelocity *v);
-static void push_list_LubVelocity(lua_State *L, const LubVelocity *v,
-                                  int32_t n);
-static void read_LubMassData(lua_State *L, int idx, void *out);
-static void fill_LubMassData(lua_State *L, const LubMassData *v);
-static void push_LubMassData(lua_State *L, const LubMassData *v);
-static void push_list_LubMassData(lua_State *L, const LubMassData *v,
-                                  int32_t n);
-static void read_LubAabb(lua_State *L, int idx, void *out);
-static void fill_LubAabb(lua_State *L, const LubAabb *v);
-static void push_LubAabb(lua_State *L, const LubAabb *v);
-static void push_list_LubAabb(lua_State *L, const LubAabb *v, int32_t n);
-static void read_LubFilterInfo(lua_State *L, int idx, void *out);
-static void fill_LubFilterInfo(lua_State *L, const LubFilterInfo *v);
-static void push_LubFilterInfo(lua_State *L, const LubFilterInfo *v);
-static void push_list_LubFilterInfo(lua_State *L, const LubFilterInfo *v,
-                                    int32_t n);
-static void read_LubShapeInfo(lua_State *L, int idx, void *out);
-static void fill_LubShapeInfo(lua_State *L, const LubShapeInfo *v);
-static void push_LubShapeInfo(lua_State *L, const LubShapeInfo *v);
-static void push_list_LubShapeInfo(lua_State *L, const LubShapeInfo *v,
-                                   int32_t n);
-static void read_LubWorldCallbackInfo(lua_State *L, int idx, void *out);
-static void fill_LubWorldCallbackInfo(lua_State *L,
-                                      const LubWorldCallbackInfo *v);
-static void push_LubWorldCallbackInfo(lua_State *L,
-                                      const LubWorldCallbackInfo *v);
-static void push_list_LubWorldCallbackInfo(lua_State *L,
-                                           const LubWorldCallbackInfo *v,
-                                           int32_t n);
-static void read_LubWorldInfo(lua_State *L, int idx, void *out);
-static void fill_LubWorldInfo(lua_State *L, const LubWorldInfo *v);
-static void push_LubWorldInfo(lua_State *L, const LubWorldInfo *v);
-static void push_list_LubWorldInfo(lua_State *L, const LubWorldInfo *v,
-                                   int32_t n);
-static void read_LubStepInfo(lua_State *L, int idx, void *out);
-static void fill_LubStepInfo(lua_State *L, const LubStepInfo *v);
-static void push_LubStepInfo(lua_State *L, const LubStepInfo *v);
-static void push_list_LubStepInfo(lua_State *L, const LubStepInfo *v,
-                                  int32_t n);
-static void read_LubJointView(lua_State *L, int idx, void *out);
-static void fill_LubJointView(lua_State *L, const LubJointView *v);
-static void push_LubJointView(lua_State *L, const LubJointView *v);
-static void push_list_LubJointView(lua_State *L, const LubJointView *v,
-                                   int32_t n);
-static void read_LubJointInfo(lua_State *L, int idx, void *out);
-static void fill_LubJointInfo(lua_State *L, const LubJointInfo *v);
-static void push_LubJointInfo(lua_State *L, const LubJointInfo *v);
-static void push_list_LubJointInfo(lua_State *L, const LubJointInfo *v,
-                                   int32_t n);
-static void read_LubContactData(lua_State *L, int idx, void *out);
-static void fill_LubContactData(lua_State *L, const LubContactData *v);
-static void push_LubContactData(lua_State *L, const LubContactData *v);
-static void push_list_LubContactData(lua_State *L, const LubContactData *v,
-                                     int32_t n);
-static void read_LubContactEvent(lua_State *L, int idx, void *out);
-static void fill_LubContactEvent(lua_State *L, const LubContactEvent *v);
-static void push_LubContactEvent(lua_State *L, const LubContactEvent *v);
-static void push_list_LubContactEvent(lua_State *L, const LubContactEvent *v,
-                                      int32_t n);
-static void read_LubSensorEvent(lua_State *L, int idx, void *out);
-static void fill_LubSensorEvent(lua_State *L, const LubSensorEvent *v);
-static void push_LubSensorEvent(lua_State *L, const LubSensorEvent *v);
-static void push_list_LubSensorEvent(lua_State *L, const LubSensorEvent *v,
-                                     int32_t n);
-static void read_LubBodyEvent(lua_State *L, int idx, void *out);
-static void fill_LubBodyEvent(lua_State *L, const LubBodyEvent *v);
-static void push_LubBodyEvent(lua_State *L, const LubBodyEvent *v);
-static void push_list_LubBodyEvent(lua_State *L, const LubBodyEvent *v,
-                                   int32_t n);
-static void read_LubRayHit(lua_State *L, int idx, void *out);
-static void fill_LubRayHit(lua_State *L, const LubRayHit *v);
-static void push_LubRayHit(lua_State *L, const LubRayHit *v);
-static void push_list_LubRayHit(lua_State *L, const LubRayHit *v, int32_t n);
-static void read_LubShapeRayHit(lua_State *L, int idx, void *out);
-static void fill_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v);
-static void push_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v);
-static void push_list_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v,
-                                     int32_t n);
-static void read_LubMoverCast(lua_State *L, int idx, void *out);
-static void fill_LubMoverCast(lua_State *L, const LubMoverCast *v);
-static void push_LubMoverCast(lua_State *L, const LubMoverCast *v);
-static void push_list_LubMoverCast(lua_State *L, const LubMoverCast *v,
-                                   int32_t n);
-static void read_LubMoverPlane(lua_State *L, int idx, void *out);
-static void fill_LubMoverPlane(lua_State *L, const LubMoverPlane *v);
-static void push_LubMoverPlane(lua_State *L, const LubMoverPlane *v);
-static void push_list_LubMoverPlane(lua_State *L, const LubMoverPlane *v,
-                                    int32_t n);
-static void read_LubProfile(lua_State *L, int idx, void *out);
-static void fill_LubProfile(lua_State *L, const LubProfile *v);
-static void push_LubProfile(lua_State *L, const LubProfile *v);
-static void push_list_LubProfile(lua_State *L, const LubProfile *v, int32_t n);
-static void read_LubCounters(lua_State *L, int idx, void *out);
-static void fill_LubCounters(lua_State *L, const LubCounters *v);
-static void push_LubCounters(lua_State *L, const LubCounters *v);
-static void push_list_LubCounters(lua_State *L, const LubCounters *v,
-                                  int32_t n);
-static void read_LubVec3d(lua_State *L, int idx, void *out);
-static void fill_LubVec3d(lua_State *L, const LubVec3d *v);
-static void push_LubVec3d(lua_State *L, const LubVec3d *v);
-static void push_list_LubVec3d(lua_State *L, const LubVec3d *v, int32_t n);
-static void read_LubQuat3d(lua_State *L, int idx, void *out);
-static void fill_LubQuat3d(lua_State *L, const LubQuat3d *v);
-static void push_LubQuat3d(lua_State *L, const LubQuat3d *v);
-static void push_list_LubQuat3d(lua_State *L, const LubQuat3d *v, int32_t n);
-static void read_LubInitialState3d(lua_State *L, int idx, void *out);
-static void fill_LubInitialState3d(lua_State *L, const LubInitialState3d *v);
-static void push_LubInitialState3d(lua_State *L, const LubInitialState3d *v);
-static void push_list_LubInitialState3d(lua_State *L,
-                                        const LubInitialState3d *v, int32_t n);
-static void read_LubMotionLocks3d(lua_State *L, int idx, void *out);
-static void fill_LubMotionLocks3d(lua_State *L, const LubMotionLocks3d *v);
-static void push_LubMotionLocks3d(lua_State *L, const LubMotionLocks3d *v);
-static void push_list_LubMotionLocks3d(lua_State *L, const LubMotionLocks3d *v,
-                                       int32_t n);
-static void read_LubShapeView3d(lua_State *L, int idx, void *out);
-static void fill_LubShapeView3d(lua_State *L, const LubShapeView3d *v);
-static void push_LubShapeView3d(lua_State *L, const LubShapeView3d *v);
-static void push_list_LubShapeView3d(lua_State *L, const LubShapeView3d *v,
-                                     int32_t n);
-static void read_LubPreSolveContact3d(lua_State *L, int idx, void *out);
-static void fill_LubPreSolveContact3d(lua_State *L,
-                                      const LubPreSolveContact3d *v);
-static void push_LubPreSolveContact3d(lua_State *L,
-                                      const LubPreSolveContact3d *v);
-static void push_list_LubPreSolveContact3d(lua_State *L,
-                                           const LubPreSolveContact3d *v,
-                                           int32_t n);
-static void read_LubWorldCallbacks3d(lua_State *L, int idx, void *out);
-static void fill_LubWorldCallbacks3d(lua_State *L,
-                                     const LubWorldCallbacks3d *v);
-static void push_LubWorldCallbacks3d(lua_State *L,
-                                     const LubWorldCallbacks3d *v);
-static void push_list_LubWorldCallbacks3d(lua_State *L,
-                                          const LubWorldCallbacks3d *v,
-                                          int32_t n);
-static void read_LubWorldOpts3d(lua_State *L, int idx, void *out);
-static void fill_LubWorldOpts3d(lua_State *L, const LubWorldOpts3d *v);
-static void push_LubWorldOpts3d(lua_State *L, const LubWorldOpts3d *v);
-static void push_list_LubWorldOpts3d(lua_State *L, const LubWorldOpts3d *v,
-                                     int32_t n);
-static void read_LubBeginOpts3d(lua_State *L, int idx, void *out);
-static void fill_LubBeginOpts3d(lua_State *L, const LubBeginOpts3d *v);
-static void push_LubBeginOpts3d(lua_State *L, const LubBeginOpts3d *v);
-static void push_list_LubBeginOpts3d(lua_State *L, const LubBeginOpts3d *v,
-                                     int32_t n);
-static void read_LubBodyDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubBodyDesc3d(lua_State *L, const LubBodyDesc3d *v);
-static void push_LubBodyDesc3d(lua_State *L, const LubBodyDesc3d *v);
-static void push_list_LubBodyDesc3d(lua_State *L, const LubBodyDesc3d *v,
-                                    int32_t n);
-static void read_LubFilterDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubFilterDesc3d(lua_State *L, const LubFilterDesc3d *v);
-static void push_LubFilterDesc3d(lua_State *L, const LubFilterDesc3d *v);
-static void push_list_LubFilterDesc3d(lua_State *L, const LubFilterDesc3d *v,
-                                      int32_t n);
-static void read_LubShapeDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubShapeDesc3d(lua_State *L, const LubShapeDesc3d *v);
-static void push_LubShapeDesc3d(lua_State *L, const LubShapeDesc3d *v);
-static void push_list_LubShapeDesc3d(lua_State *L, const LubShapeDesc3d *v,
-                                     int32_t n);
-static void read_LubSphereDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubSphereDesc3d(lua_State *L, const LubSphereDesc3d *v);
-static void push_LubSphereDesc3d(lua_State *L, const LubSphereDesc3d *v);
-static void push_list_LubSphereDesc3d(lua_State *L, const LubSphereDesc3d *v,
-                                      int32_t n);
-static void read_LubBoxDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubBoxDesc3d(lua_State *L, const LubBoxDesc3d *v);
-static void push_LubBoxDesc3d(lua_State *L, const LubBoxDesc3d *v);
-static void push_list_LubBoxDesc3d(lua_State *L, const LubBoxDesc3d *v,
-                                   int32_t n);
-static void read_LubCapsuleDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubCapsuleDesc3d(lua_State *L, const LubCapsuleDesc3d *v);
-static void push_LubCapsuleDesc3d(lua_State *L, const LubCapsuleDesc3d *v);
-static void push_list_LubCapsuleDesc3d(lua_State *L, const LubCapsuleDesc3d *v,
-                                       int32_t n);
-static void read_LubCylinderDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubCylinderDesc3d(lua_State *L, const LubCylinderDesc3d *v);
-static void push_LubCylinderDesc3d(lua_State *L, const LubCylinderDesc3d *v);
-static void push_list_LubCylinderDesc3d(lua_State *L,
-                                        const LubCylinderDesc3d *v, int32_t n);
-static void read_LubConeDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubConeDesc3d(lua_State *L, const LubConeDesc3d *v);
-static void push_LubConeDesc3d(lua_State *L, const LubConeDesc3d *v);
-static void push_list_LubConeDesc3d(lua_State *L, const LubConeDesc3d *v,
-                                    int32_t n);
-static void read_LubHullDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubHullDesc3d(lua_State *L, const LubHullDesc3d *v);
-static void push_LubHullDesc3d(lua_State *L, const LubHullDesc3d *v);
-static void push_list_LubHullDesc3d(lua_State *L, const LubHullDesc3d *v,
-                                    int32_t n);
-static void read_LubSurfaceMaterial3d(lua_State *L, int idx, void *out);
-static void fill_LubSurfaceMaterial3d(lua_State *L,
-                                      const LubSurfaceMaterial3d *v);
-static void push_LubSurfaceMaterial3d(lua_State *L,
-                                      const LubSurfaceMaterial3d *v);
-static void push_list_LubSurfaceMaterial3d(lua_State *L,
-                                           const LubSurfaceMaterial3d *v,
-                                           int32_t n);
-static void read_LubMeshDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubMeshDesc3d(lua_State *L, const LubMeshDesc3d *v);
-static void push_LubMeshDesc3d(lua_State *L, const LubMeshDesc3d *v);
-static void push_list_LubMeshDesc3d(lua_State *L, const LubMeshDesc3d *v,
-                                    int32_t n);
-static void read_LubHeightFieldDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubHeightFieldDesc3d(lua_State *L,
-                                      const LubHeightFieldDesc3d *v);
-static void push_LubHeightFieldDesc3d(lua_State *L,
-                                      const LubHeightFieldDesc3d *v);
-static void push_list_LubHeightFieldDesc3d(lua_State *L,
-                                           const LubHeightFieldDesc3d *v,
-                                           int32_t n);
-static void read_LubCompoundSphere3d(lua_State *L, int idx, void *out);
-static void fill_LubCompoundSphere3d(lua_State *L,
-                                     const LubCompoundSphere3d *v);
-static void push_LubCompoundSphere3d(lua_State *L,
-                                     const LubCompoundSphere3d *v);
-static void push_list_LubCompoundSphere3d(lua_State *L,
-                                          const LubCompoundSphere3d *v,
-                                          int32_t n);
-static void read_LubCompoundBox3d(lua_State *L, int idx, void *out);
-static void fill_LubCompoundBox3d(lua_State *L, const LubCompoundBox3d *v);
-static void push_LubCompoundBox3d(lua_State *L, const LubCompoundBox3d *v);
-static void push_list_LubCompoundBox3d(lua_State *L, const LubCompoundBox3d *v,
-                                       int32_t n);
-static void read_LubCompoundCapsule3d(lua_State *L, int idx, void *out);
-static void fill_LubCompoundCapsule3d(lua_State *L,
-                                      const LubCompoundCapsule3d *v);
-static void push_LubCompoundCapsule3d(lua_State *L,
-                                      const LubCompoundCapsule3d *v);
-static void push_list_LubCompoundCapsule3d(lua_State *L,
-                                           const LubCompoundCapsule3d *v,
-                                           int32_t n);
-static void read_LubCompoundChild3d(lua_State *L, int idx, void *out);
-static void fill_LubCompoundChild3d(lua_State *L, const LubCompoundChild3d *v);
-static void push_LubCompoundChild3d(lua_State *L, const LubCompoundChild3d *v);
-static void push_list_LubCompoundChild3d(lua_State *L,
-                                         const LubCompoundChild3d *v,
-                                         int32_t n);
-static void read_LubCompoundDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubCompoundDesc3d(lua_State *L, const LubCompoundDesc3d *v);
-static void push_LubCompoundDesc3d(lua_State *L, const LubCompoundDesc3d *v);
-static void push_list_LubCompoundDesc3d(lua_State *L,
-                                        const LubCompoundDesc3d *v, int32_t n);
-static void read_LubCommandOpts3d(lua_State *L, int idx, void *out);
-static void fill_LubCommandOpts3d(lua_State *L, const LubCommandOpts3d *v);
-static void push_LubCommandOpts3d(lua_State *L, const LubCommandOpts3d *v);
-static void push_list_LubCommandOpts3d(lua_State *L, const LubCommandOpts3d *v,
-                                       int32_t n);
-static void read_LubVelocityDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubVelocityDesc3d(lua_State *L, const LubVelocityDesc3d *v);
-static void push_LubVelocityDesc3d(lua_State *L, const LubVelocityDesc3d *v);
-static void push_list_LubVelocityDesc3d(lua_State *L,
-                                        const LubVelocityDesc3d *v, int32_t n);
-static void read_LubPoseDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubPoseDesc3d(lua_State *L, const LubPoseDesc3d *v);
-static void push_LubPoseDesc3d(lua_State *L, const LubPoseDesc3d *v);
-static void push_list_LubPoseDesc3d(lua_State *L, const LubPoseDesc3d *v,
-                                    int32_t n);
-static void read_LubTargetDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubTargetDesc3d(lua_State *L, const LubTargetDesc3d *v);
-static void push_LubTargetDesc3d(lua_State *L, const LubTargetDesc3d *v);
-static void push_list_LubTargetDesc3d(lua_State *L, const LubTargetDesc3d *v,
-                                      int32_t n);
-static void read_LubFrameDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubFrameDesc3d(lua_State *L, const LubFrameDesc3d *v);
-static void push_LubFrameDesc3d(lua_State *L, const LubFrameDesc3d *v);
-static void push_list_LubFrameDesc3d(lua_State *L, const LubFrameDesc3d *v,
-                                     int32_t n);
-static void read_LubJointSpringDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubJointSpringDesc3d(lua_State *L,
-                                      const LubJointSpringDesc3d *v);
-static void push_LubJointSpringDesc3d(lua_State *L,
-                                      const LubJointSpringDesc3d *v);
-static void push_list_LubJointSpringDesc3d(lua_State *L,
-                                           const LubJointSpringDesc3d *v,
-                                           int32_t n);
-static void read_LubJointLimitDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubJointLimitDesc3d(lua_State *L,
-                                     const LubJointLimitDesc3d *v);
-static void push_LubJointLimitDesc3d(lua_State *L,
-                                     const LubJointLimitDesc3d *v);
-static void push_list_LubJointLimitDesc3d(lua_State *L,
-                                          const LubJointLimitDesc3d *v,
-                                          int32_t n);
-static void read_LubJointMotorDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubJointMotorDesc3d(lua_State *L,
-                                     const LubJointMotorDesc3d *v);
-static void push_LubJointMotorDesc3d(lua_State *L,
-                                     const LubJointMotorDesc3d *v);
-static void push_list_LubJointMotorDesc3d(lua_State *L,
-                                          const LubJointMotorDesc3d *v,
-                                          int32_t n);
-static void read_LubJointTargetDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubJointTargetDesc3d(lua_State *L,
-                                      const LubJointTargetDesc3d *v);
-static void push_LubJointTargetDesc3d(lua_State *L,
-                                      const LubJointTargetDesc3d *v);
-static void push_list_LubJointTargetDesc3d(lua_State *L,
-                                           const LubJointTargetDesc3d *v,
-                                           int32_t n);
-static void read_LubJointDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubJointDesc3d(lua_State *L, const LubJointDesc3d *v);
-static void push_LubJointDesc3d(lua_State *L, const LubJointDesc3d *v);
-static void push_list_LubJointDesc3d(lua_State *L, const LubJointDesc3d *v,
-                                     int32_t n);
-static void read_LubMaterialDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubMaterialDesc3d(lua_State *L, const LubMaterialDesc3d *v);
-static void push_LubMaterialDesc3d(lua_State *L, const LubMaterialDesc3d *v);
-static void push_list_LubMaterialDesc3d(lua_State *L,
-                                        const LubMaterialDesc3d *v, int32_t n);
-static void read_LubShapeEventsDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubShapeEventsDesc3d(lua_State *L,
-                                      const LubShapeEventsDesc3d *v);
-static void push_LubShapeEventsDesc3d(lua_State *L,
-                                      const LubShapeEventsDesc3d *v);
-static void push_list_LubShapeEventsDesc3d(lua_State *L,
-                                           const LubShapeEventsDesc3d *v,
-                                           int32_t n);
-static void read_LubMoverDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubMoverDesc3d(lua_State *L, const LubMoverDesc3d *v);
-static void push_LubMoverDesc3d(lua_State *L, const LubMoverDesc3d *v);
-static void push_list_LubMoverDesc3d(lua_State *L, const LubMoverDesc3d *v,
-                                     int32_t n);
-static void read_LubRaycastDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubRaycastDesc3d(lua_State *L, const LubRaycastDesc3d *v);
-static void push_LubRaycastDesc3d(lua_State *L, const LubRaycastDesc3d *v);
-static void push_list_LubRaycastDesc3d(lua_State *L, const LubRaycastDesc3d *v,
-                                       int32_t n);
-static void read_LubAabbDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubAabbDesc3d(lua_State *L, const LubAabbDesc3d *v);
-static void push_LubAabbDesc3d(lua_State *L, const LubAabbDesc3d *v);
-static void push_list_LubAabbDesc3d(lua_State *L, const LubAabbDesc3d *v,
-                                    int32_t n);
-static void read_LubSphereProxy3d(lua_State *L, int idx, void *out);
-static void fill_LubSphereProxy3d(lua_State *L, const LubSphereProxy3d *v);
-static void push_LubSphereProxy3d(lua_State *L, const LubSphereProxy3d *v);
-static void push_list_LubSphereProxy3d(lua_State *L, const LubSphereProxy3d *v,
-                                       int32_t n);
-static void read_LubBoxProxy3d(lua_State *L, int idx, void *out);
-static void fill_LubBoxProxy3d(lua_State *L, const LubBoxProxy3d *v);
-static void push_LubBoxProxy3d(lua_State *L, const LubBoxProxy3d *v);
-static void push_list_LubBoxProxy3d(lua_State *L, const LubBoxProxy3d *v,
-                                    int32_t n);
-static void read_LubCapsuleProxy3d(lua_State *L, int idx, void *out);
-static void fill_LubCapsuleProxy3d(lua_State *L, const LubCapsuleProxy3d *v);
-static void push_LubCapsuleProxy3d(lua_State *L, const LubCapsuleProxy3d *v);
-static void push_list_LubCapsuleProxy3d(lua_State *L,
-                                        const LubCapsuleProxy3d *v, int32_t n);
-static void read_LubShapeProxyDesc3d(lua_State *L, int idx, void *out);
-static void fill_LubShapeProxyDesc3d(lua_State *L,
-                                     const LubShapeProxyDesc3d *v);
-static void push_LubShapeProxyDesc3d(lua_State *L,
-                                     const LubShapeProxyDesc3d *v);
-static void push_list_LubShapeProxyDesc3d(lua_State *L,
-                                          const LubShapeProxyDesc3d *v,
-                                          int32_t n);
-static void read_LubPose3d(lua_State *L, int idx, void *out);
-static void fill_LubPose3d(lua_State *L, const LubPose3d *v);
-static void push_LubPose3d(lua_State *L, const LubPose3d *v);
-static void push_list_LubPose3d(lua_State *L, const LubPose3d *v, int32_t n);
-static void read_LubVelocity3d(lua_State *L, int idx, void *out);
-static void fill_LubVelocity3d(lua_State *L, const LubVelocity3d *v);
-static void push_LubVelocity3d(lua_State *L, const LubVelocity3d *v);
-static void push_list_LubVelocity3d(lua_State *L, const LubVelocity3d *v,
-                                    int32_t n);
-static void read_LubInertia3d(lua_State *L, int idx, void *out);
-static void fill_LubInertia3d(lua_State *L, const LubInertia3d *v);
-static void push_LubInertia3d(lua_State *L, const LubInertia3d *v);
-static void push_list_LubInertia3d(lua_State *L, const LubInertia3d *v,
-                                   int32_t n);
-static void read_LubMassData3d(lua_State *L, int idx, void *out);
-static void fill_LubMassData3d(lua_State *L, const LubMassData3d *v);
-static void push_LubMassData3d(lua_State *L, const LubMassData3d *v);
-static void push_list_LubMassData3d(lua_State *L, const LubMassData3d *v,
-                                    int32_t n);
-static void read_LubAabb3d(lua_State *L, int idx, void *out);
-static void fill_LubAabb3d(lua_State *L, const LubAabb3d *v);
-static void push_LubAabb3d(lua_State *L, const LubAabb3d *v);
-static void push_list_LubAabb3d(lua_State *L, const LubAabb3d *v, int32_t n);
-static void read_LubShapeInfo3d(lua_State *L, int idx, void *out);
-static void fill_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v);
-static void push_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v);
-static void push_list_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v,
-                                     int32_t n);
-static void read_LubWorldInfo3d(lua_State *L, int idx, void *out);
-static void fill_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v);
-static void push_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v);
-static void push_list_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v,
-                                     int32_t n);
-static void read_LubStepInfo3d(lua_State *L, int idx, void *out);
-static void fill_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v);
-static void push_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v);
-static void push_list_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v,
-                                    int32_t n);
-static void read_LubFrame3d(lua_State *L, int idx, void *out);
-static void fill_LubFrame3d(lua_State *L, const LubFrame3d *v);
-static void push_LubFrame3d(lua_State *L, const LubFrame3d *v);
-static void push_list_LubFrame3d(lua_State *L, const LubFrame3d *v, int32_t n);
-static void read_LubJointView3d(lua_State *L, int idx, void *out);
-static void fill_LubJointView3d(lua_State *L, const LubJointView3d *v);
-static void push_LubJointView3d(lua_State *L, const LubJointView3d *v);
-static void push_list_LubJointView3d(lua_State *L, const LubJointView3d *v,
-                                     int32_t n);
-static void read_LubJointInfo3d(lua_State *L, int idx, void *out);
-static void fill_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v);
-static void push_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v);
-static void push_list_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v,
-                                     int32_t n);
-static void read_LubContactData3d(lua_State *L, int idx, void *out);
-static void fill_LubContactData3d(lua_State *L, const LubContactData3d *v);
-static void push_LubContactData3d(lua_State *L, const LubContactData3d *v);
-static void push_list_LubContactData3d(lua_State *L, const LubContactData3d *v,
-                                       int32_t n);
-static void read_LubContactEvent3d(lua_State *L, int idx, void *out);
-static void fill_LubContactEvent3d(lua_State *L, const LubContactEvent3d *v);
-static void push_LubContactEvent3d(lua_State *L, const LubContactEvent3d *v);
-static void push_list_LubContactEvent3d(lua_State *L,
-                                        const LubContactEvent3d *v, int32_t n);
-static void read_LubSensorEvent3d(lua_State *L, int idx, void *out);
-static void fill_LubSensorEvent3d(lua_State *L, const LubSensorEvent3d *v);
-static void push_LubSensorEvent3d(lua_State *L, const LubSensorEvent3d *v);
-static void push_list_LubSensorEvent3d(lua_State *L, const LubSensorEvent3d *v,
-                                       int32_t n);
-static void read_LubBodyEvent3d(lua_State *L, int idx, void *out);
-static void fill_LubBodyEvent3d(lua_State *L, const LubBodyEvent3d *v);
-static void push_LubBodyEvent3d(lua_State *L, const LubBodyEvent3d *v);
-static void push_list_LubBodyEvent3d(lua_State *L, const LubBodyEvent3d *v,
-                                     int32_t n);
-static void read_LubJointEvent3d(lua_State *L, int idx, void *out);
-static void fill_LubJointEvent3d(lua_State *L, const LubJointEvent3d *v);
-static void push_LubJointEvent3d(lua_State *L, const LubJointEvent3d *v);
-static void push_list_LubJointEvent3d(lua_State *L, const LubJointEvent3d *v,
-                                      int32_t n);
-static void read_LubRayHit3d(lua_State *L, int idx, void *out);
-static void fill_LubRayHit3d(lua_State *L, const LubRayHit3d *v);
-static void push_LubRayHit3d(lua_State *L, const LubRayHit3d *v);
-static void push_list_LubRayHit3d(lua_State *L, const LubRayHit3d *v,
-                                  int32_t n);
-static void read_LubShapeRayHit3d(lua_State *L, int idx, void *out);
-static void fill_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v);
-static void push_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v);
-static void push_list_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v,
-                                       int32_t n);
-static void read_LubMoverCast3d(lua_State *L, int idx, void *out);
-static void fill_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v);
-static void push_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v);
-static void push_list_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v,
-                                     int32_t n);
-static void read_LubMoverPlane3d(lua_State *L, int idx, void *out);
-static void fill_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v);
-static void push_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v);
-static void push_list_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v,
-                                      int32_t n);
-static void read_LubProfile3d(lua_State *L, int idx, void *out);
-static void fill_LubProfile3d(lua_State *L, const LubProfile3d *v);
-static void push_LubProfile3d(lua_State *L, const LubProfile3d *v);
-static void push_list_LubProfile3d(lua_State *L, const LubProfile3d *v,
-                                   int32_t n);
-static void read_LubCounters3d(lua_State *L, int idx, void *out);
-static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v);
-static void push_LubCounters3d(lua_State *L, const LubCounters3d *v);
-static void push_list_LubCounters3d(lua_State *L, const LubCounters3d *v,
-                                    int32_t n);
-static void read_LubEventData(lua_State *L, int idx, void *out);
-static void fill_LubEventData(lua_State *L, const LubEventData *v);
-static void push_LubEventData(lua_State *L, const LubEventData *v);
-static void push_list_LubEventData(lua_State *L, const LubEventData *v,
-                                   int32_t n);
-
 static bool tramp_LubWorldCallbacks_filter(void *user, const LubShapeView *a,
                                            const LubShapeView *b) {
   LgenCallbacks *cb = (LgenCallbacks *)user;
@@ -1071,83 +552,6 @@ static void read_LubSdfNodeDesc(lua_State *L, int idx, void *out_) {
   o->name = lgen_str(L, idx, "name");
 }
 
-static void read_LubGltfMaterial(lua_State *L, int idx, void *out_) {
-  LubGltfMaterial *o = (LubGltfMaterial *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  lgen_floats_fixed(L, idx, "base_color_factor", o->base_color_factor, 4,
-                    &o->base_color_factor_count);
-  o->metallic_factor = lgen_num(L, idx, "metallic_factor", 0.0f);
-  o->roughness_factor = lgen_num(L, idx, "roughness_factor", 0.0f);
-  o->alpha_mode = lgen_int(L, idx, "alpha_mode", 0);
-  o->alpha_cutoff = lgen_num(L, idx, "alpha_cutoff", 0.0f);
-  o->double_sided = lgen_bool(L, idx, "double_sided", false);
-  o->normal_scale = lgen_num(L, idx, "normal_scale", 0.0f);
-  o->base_color_path = lgen_str(L, idx, "base_color_path");
-  o->metallic_roughness_path = lgen_str(L, idx, "metallic_roughness_path");
-  o->normal_path = lgen_str(L, idx, "normal_path");
-  o->name = lgen_str(L, idx, "name");
-}
-
-static void read_LubGltfPrimitive(lua_State *L, int idx, void *out_) {
-  LubGltfPrimitive *o = (LubGltfPrimitive *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubMeshData(L, idx, &o->base);
-  o->material_index = lgen_int(L, idx, "material_index", 0);
-  if (lgen_has(L, idx, "material")) {
-    lua_getfield(L, idx, "material");
-    read_LubGltfMaterial(L, -1, &o->material);
-    lua_pop(L, 1);
-    o->has_material = true;
-  }
-}
-
-static void read_LubGltfMesh(lua_State *L, int idx, void *out_) {
-  LubGltfMesh *o = (LubGltfMesh *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubMeshData(L, idx, &o->base);
-  o->primitives = (const LubGltfPrimitive *)lgen_records(
-      L, idx, "primitives", sizeof(LubGltfPrimitive), read_LubGltfPrimitive,
-      &o->primitives_count);
-  if (lgen_has(L, idx, "material")) {
-    lua_getfield(L, idx, "material");
-    read_LubGltfMaterial(L, -1, &o->material);
-    lua_pop(L, 1);
-    o->has_material = true;
-  }
-}
-
-static void read_LubGlyphBitmap(lua_State *L, int idx, void *out_) {
-  LubGlyphBitmap *o = (LubGlyphBitmap *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->w = lgen_int(L, idx, "w", 0);
-  o->h = lgen_int(L, idx, "h", 0);
-  o->xoff = lgen_int(L, idx, "xoff", 0);
-  o->yoff = lgen_int(L, idx, "yoff", 0);
-  o->advance = lgen_num(L, idx, "advance", 0.0f);
-  o->bytes = lgen_str(L, idx, "bytes");
-}
-
-static void read_LubGlyphMesh(lua_State *L, int idx, void *out_) {
-  LubGlyphMesh *o = (LubGlyphMesh *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubMeshData(L, idx, &o->base);
-  o->advance = lgen_num(L, idx, "advance", 0.0f);
-}
-
-static void read_LubFontMetrics(lua_State *L, int idx, void *out_) {
-  LubFontMetrics *o = (LubFontMetrics *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->ascent = lgen_num(L, idx, "ascent", 0.0f);
-  o->descent = lgen_num(L, idx, "descent", 0.0f);
-  o->line_gap = lgen_num(L, idx, "line_gap", 0.0f);
-}
-
 static void read_LubPlayOpts(lua_State *L, int idx, void *out_) {
   LubPlayOpts *o = (LubPlayOpts *)out_;
   idx = lua_absindex(L, idx);
@@ -1163,16 +567,6 @@ static void read_LubVoiceOpts(lua_State *L, int idx, void *out_) {
   (void)o;
   read_LubPlayOpts(L, idx, &o->base);
   o->has_loop = lgen_bool_opt(L, idx, "loop", &o->loop);
-}
-
-static void read_LubAudioInfo(lua_State *L, int idx, void *out_) {
-  LubAudioInfo *o = (LubAudioInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->device = lgen_bool(L, idx, "device", false);
-  o->rate = lgen_int(L, idx, "rate", 0);
-  o->voices = lgen_int(L, idx, "voices", 0);
-  o->snds = lgen_int(L, idx, "snds", 0);
 }
 
 static void read_LubVec2d(lua_State *L, int idx, void *out_) {
@@ -1194,82 +588,6 @@ static void read_LubInitialState(lua_State *L, int idx, void *out_) {
   o->has_vy = lgen_num_opt(L, idx, "vy", &o->vy);
   o->has_w = lgen_num_opt(L, idx, "w", &o->w);
   o->has_awake = lgen_bool_opt(L, idx, "awake", &o->awake);
-}
-
-static void read_LubShapeView(lua_State *L, int idx, void *out_) {
-  LubShapeView *o = (LubShapeView *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->body = lgen_str(L, idx, "body");
-  o->shape = lgen_str(L, idx, "shape");
-  o->tag = lgen_str(L, idx, "tag");
-  o->chain = lgen_str(L, idx, "chain");
-  o->has_segment = lgen_bool_opt(L, idx, "segment", &o->segment);
-  o->material_name = lgen_str(L, idx, "material_name");
-  o->has_material_id = lgen_int_opt(L, idx, "material_id", &o->material_id);
-  o->kind = lgen_enum_str(L, idx, "kind", names_LubPhys2dShapeKind,
-                          values_LubPhys2dShapeKind, "ShapeKind", &o->has_kind);
-  o->has_category_bits =
-      lgen_bits_opt(L, idx, "category_bits", &o->category_bits);
-  o->has_mask_bits = lgen_bits_opt(L, idx, "mask_bits", &o->mask_bits);
-  o->has_group = lgen_int_opt(L, idx, "group", &o->group);
-  o->valid = lgen_bool(L, idx, "valid", false);
-}
-
-static void read_LubMaterialView(lua_State *L, int idx, void *out_) {
-  LubMaterialView *o = (LubMaterialView *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->has_friction = lgen_num_opt(L, idx, "friction", &o->friction);
-  o->has_restitution = lgen_num_opt(L, idx, "restitution", &o->restitution);
-  o->material_id = lgen_int(L, idx, "material_id", 0);
-}
-
-static void read_LubManifoldPoint(lua_State *L, int idx, void *out_) {
-  LubManifoldPoint *o = (LubManifoldPoint *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->anchor_a_x = lgen_num(L, idx, "anchor_a_x", 0.0f);
-  o->anchor_a_y = lgen_num(L, idx, "anchor_a_y", 0.0f);
-  o->anchor_b_x = lgen_num(L, idx, "anchor_b_x", 0.0f);
-  o->anchor_b_y = lgen_num(L, idx, "anchor_b_y", 0.0f);
-  o->separation = lgen_num(L, idx, "separation", 0.0f);
-  o->normal_impulse = lgen_num(L, idx, "normal_impulse", 0.0f);
-  o->tangent_impulse = lgen_num(L, idx, "tangent_impulse", 0.0f);
-  o->total_normal_impulse = lgen_num(L, idx, "total_normal_impulse", 0.0f);
-  o->normal_velocity = lgen_num(L, idx, "normal_velocity", 0.0f);
-  o->id = lgen_int(L, idx, "id", 0);
-  o->persisted = lgen_bool(L, idx, "persisted", false);
-}
-
-static void read_LubPreSolveContact(lua_State *L, int idx, void *out_) {
-  LubPreSolveContact *o = (LubPreSolveContact *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "a")) {
-    lua_getfield(L, idx, "a");
-    read_LubShapeView(L, -1, &o->a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "b")) {
-    lua_getfield(L, idx, "b");
-    read_LubShapeView(L, -1, &o->b);
-    lua_pop(L, 1);
-  }
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->rolling_impulse = lgen_num(L, idx, "rolling_impulse", 0.0f);
-  o->point_count = lgen_int(L, idx, "point_count", 0);
-  o->points = (const LubManifoldPoint *)lgen_records(
-      L, idx, "points", sizeof(LubManifoldPoint), read_LubManifoldPoint,
-      &o->points_count);
-  o->has_x = lgen_num_opt(L, idx, "x", &o->x);
-  o->has_y = lgen_num_opt(L, idx, "y", &o->y);
-  o->has_separation = lgen_num_opt(L, idx, "separation", &o->separation);
-  o->has_normal_velocity =
-      lgen_num_opt(L, idx, "normal_velocity", &o->normal_velocity);
 }
 
 static void read_LubWorldCallbacks(lua_State *L, int idx, void *out_) {
@@ -1837,386 +1155,6 @@ static void read_LubDebugOpts(lua_State *L, int idx, void *out_) {
   }
 }
 
-static void read_LubDebugData(lua_State *L, int idx, void *out_) {
-  LubDebugData *o = (LubDebugData *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->segments = lgen_floats(L, idx, "segments", &o->segments_count);
-  o->circles = lgen_floats(L, idx, "circles", &o->circles_count);
-  o->capsules = lgen_floats(L, idx, "capsules", &o->capsules_count);
-  o->polygons = lgen_floats(L, idx, "polygons", &o->polygons_count);
-  o->points = lgen_floats(L, idx, "points", &o->points_count);
-}
-
-static void read_LubPose(lua_State *L, int idx, void *out_) {
-  LubPose *o = (LubPose *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->angle = lgen_num(L, idx, "angle", 0.0f);
-  o->vx = lgen_num(L, idx, "vx", 0.0f);
-  o->vy = lgen_num(L, idx, "vy", 0.0f);
-  o->w = lgen_num(L, idx, "w", 0.0f);
-  o->awake = lgen_bool(L, idx, "awake", false);
-  o->enabled = lgen_bool(L, idx, "enabled", false);
-  o->sleep = lgen_bool(L, idx, "sleep", false);
-  o->sleep_threshold = lgen_num(L, idx, "sleep_threshold", 0.0f);
-}
-
-static void read_LubVelocity(lua_State *L, int idx, void *out_) {
-  LubVelocity *o = (LubVelocity *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->w = lgen_num(L, idx, "w", 0.0f);
-}
-
-static void read_LubMassData(lua_State *L, int idx, void *out_) {
-  LubMassData *o = (LubMassData *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->mass = lgen_num(L, idx, "mass", 0.0f);
-  o->inertia = lgen_num(L, idx, "inertia", 0.0f);
-  if (lgen_has(L, idx, "center")) {
-    lua_getfield(L, idx, "center");
-    read_LubVec2d(L, -1, &o->center);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "local_center")) {
-    lua_getfield(L, idx, "local_center");
-    read_LubVec2d(L, -1, &o->local_center);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubAabb(lua_State *L, int idx, void *out_) {
-  LubAabb *o = (LubAabb *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->min_x = lgen_num(L, idx, "min_x", 0.0f);
-  o->min_y = lgen_num(L, idx, "min_y", 0.0f);
-  o->max_x = lgen_num(L, idx, "max_x", 0.0f);
-  o->max_y = lgen_num(L, idx, "max_y", 0.0f);
-}
-
-static void read_LubFilterInfo(lua_State *L, int idx, void *out_) {
-  LubFilterInfo *o = (LubFilterInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  lgen_bits_opt(L, idx, "category_bits", &o->category_bits);
-  lgen_bits_opt(L, idx, "mask_bits", &o->mask_bits);
-  o->group = lgen_int(L, idx, "group", 0);
-}
-
-static void read_LubShapeInfo(lua_State *L, int idx, void *out_) {
-  LubShapeInfo *o = (LubShapeInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubShapeView(L, idx, &o->base);
-  o->density = lgen_num(L, idx, "density", 0.0f);
-  o->friction = lgen_num(L, idx, "friction", 0.0f);
-  o->restitution = lgen_num(L, idx, "restitution", 0.0f);
-  o->sensor = lgen_bool(L, idx, "sensor", false);
-  o->sensor_events = lgen_bool(L, idx, "sensor_events", false);
-  o->contact = lgen_bool(L, idx, "contact", false);
-  o->pre_solve = lgen_bool(L, idx, "pre_solve", false);
-  o->hit = lgen_bool(L, idx, "hit", false);
-  if (lgen_has(L, idx, "filter")) {
-    lua_getfield(L, idx, "filter");
-    read_LubFilterInfo(L, -1, &o->filter);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "aabb")) {
-    lua_getfield(L, idx, "aabb");
-    read_LubAabb(L, -1, &o->aabb);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubWorldCallbackInfo(lua_State *L, int idx, void *out_) {
-  LubWorldCallbackInfo *o = (LubWorldCallbackInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->filter = lgen_bool(L, idx, "filter", false);
-  o->pre_solve = lgen_bool(L, idx, "pre_solve", false);
-  o->friction = lgen_bool(L, idx, "friction", false);
-  o->restitution = lgen_bool(L, idx, "restitution", false);
-}
-
-static void read_LubWorldInfo(lua_State *L, int idx, void *out_) {
-  LubWorldInfo *o = (LubWorldInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->key = lgen_str(L, idx, "key");
-  o->valid = lgen_bool(L, idx, "valid", false);
-  o->version = lgen_int(L, idx, "version", 0);
-  o->generation = lgen_int(L, idx, "generation", 0);
-  o->begun = lgen_bool(L, idx, "begun", false);
-  o->prune = lgen_bool(L, idx, "prune", false);
-  o->fixed_dt = lgen_num(L, idx, "fixed_dt", 0.0f);
-  o->substeps = lgen_int(L, idx, "substeps", 0);
-  o->max_steps = lgen_int(L, idx, "max_steps", 0);
-  o->accumulator = lgen_num(L, idx, "accumulator", 0.0f);
-  o->pending_commands = lgen_int(L, idx, "pending_commands", 0);
-  if (lgen_has(L, idx, "callbacks")) {
-    lua_getfield(L, idx, "callbacks");
-    read_LubWorldCallbackInfo(L, -1, &o->callbacks);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "gravity")) {
-    lua_getfield(L, idx, "gravity");
-    read_LubVec2d(L, -1, &o->gravity);
-    lua_pop(L, 1);
-    o->has_gravity = true;
-  }
-  o->has_sleep = lgen_bool_opt(L, idx, "sleep", &o->sleep);
-  o->has_continuous = lgen_bool_opt(L, idx, "continuous", &o->continuous);
-  o->has_warm_starting =
-      lgen_bool_opt(L, idx, "warm_starting", &o->warm_starting);
-  o->has_restitution_threshold =
-      lgen_num_opt(L, idx, "restitution_threshold", &o->restitution_threshold);
-  o->has_hit_event_threshold =
-      lgen_num_opt(L, idx, "hit_event_threshold", &o->hit_event_threshold);
-  o->has_maximum_linear_speed =
-      lgen_num_opt(L, idx, "maximum_linear_speed", &o->maximum_linear_speed);
-  o->has_awake_body_count =
-      lgen_int_opt(L, idx, "awake_body_count", &o->awake_body_count);
-}
-
-static void read_LubStepInfo(lua_State *L, int idx, void *out_) {
-  LubStepInfo *o = (LubStepInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->steps = lgen_int(L, idx, "steps", 0);
-  o->commands = lgen_int(L, idx, "commands", 0);
-  o->alpha = lgen_num(L, idx, "alpha", 0.0f);
-  o->dropped = lgen_bool(L, idx, "dropped", false);
-  o->contact_begins = lgen_int(L, idx, "contact_begins", 0);
-  o->contact_ends = lgen_int(L, idx, "contact_ends", 0);
-  o->contact_hits = lgen_int(L, idx, "contact_hits", 0);
-  o->sensor_begins = lgen_int(L, idx, "sensor_begins", 0);
-  o->sensor_ends = lgen_int(L, idx, "sensor_ends", 0);
-  o->body_moves = lgen_int(L, idx, "body_moves", 0);
-  o->body_events = lgen_int(L, idx, "body_events", 0);
-}
-
-static void read_LubJointView(lua_State *L, int idx, void *out_) {
-  LubJointView *o = (LubJointView *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->joint = lgen_str(L, idx, "joint");
-  o->type = lgen_enum_str(L, idx, "type", names_LubPhys2dJointType,
-                          values_LubPhys2dJointType, "JointType", NULL);
-  o->a = lgen_str(L, idx, "a");
-  o->b = lgen_str(L, idx, "b");
-  o->valid = lgen_bool(L, idx, "valid", false);
-}
-
-static void read_LubJointInfo(lua_State *L, int idx, void *out_) {
-  LubJointInfo *o = (LubJointInfo *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubJointView(L, idx, &o->base);
-  o->collide_connected = lgen_bool(L, idx, "collide_connected", false);
-  if (lgen_has(L, idx, "force")) {
-    lua_getfield(L, idx, "force");
-    read_LubVec2d(L, -1, &o->force);
-    lua_pop(L, 1);
-  }
-  o->torque = lgen_num(L, idx, "torque", 0.0f);
-  o->linear_separation = lgen_num(L, idx, "linear_separation", 0.0f);
-  o->angular_separation = lgen_num(L, idx, "angular_separation", 0.0f);
-  if (lgen_has(L, idx, "local_anchor_a")) {
-    lua_getfield(L, idx, "local_anchor_a");
-    read_LubVec2d(L, -1, &o->local_anchor_a);
-    lua_pop(L, 1);
-    o->has_local_anchor_a = true;
-  }
-  if (lgen_has(L, idx, "local_anchor_b")) {
-    lua_getfield(L, idx, "local_anchor_b");
-    read_LubVec2d(L, -1, &o->local_anchor_b);
-    lua_pop(L, 1);
-    o->has_local_anchor_b = true;
-  }
-  if (lgen_has(L, idx, "local_axis_a")) {
-    lua_getfield(L, idx, "local_axis_a");
-    read_LubVec2d(L, -1, &o->local_axis_a);
-    lua_pop(L, 1);
-    o->has_local_axis_a = true;
-  }
-  o->has_reference_angle =
-      lgen_num_opt(L, idx, "reference_angle", &o->reference_angle);
-}
-
-static void read_LubContactData(lua_State *L, int idx, void *out_) {
-  LubContactData *o = (LubContactData *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "a")) {
-    lua_getfield(L, idx, "a");
-    read_LubShapeView(L, -1, &o->a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "b")) {
-    lua_getfield(L, idx, "b");
-    read_LubShapeView(L, -1, &o->b);
-    lua_pop(L, 1);
-  }
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->point_count = lgen_int(L, idx, "point_count", 0);
-  o->has_x = lgen_num_opt(L, idx, "x", &o->x);
-  o->has_y = lgen_num_opt(L, idx, "y", &o->y);
-  o->has_separation = lgen_num_opt(L, idx, "separation", &o->separation);
-}
-
-static void read_LubContactEvent(lua_State *L, int idx, void *out_) {
-  LubContactEvent *o = (LubContactEvent *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "a")) {
-    lua_getfield(L, idx, "a");
-    read_LubShapeView(L, -1, &o->a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "b")) {
-    lua_getfield(L, idx, "b");
-    read_LubShapeView(L, -1, &o->b);
-    lua_pop(L, 1);
-  }
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->point_count = lgen_int(L, idx, "point_count", 0);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->has_approach_speed =
-      lgen_num_opt(L, idx, "approach_speed", &o->approach_speed);
-}
-
-static void read_LubSensorEvent(lua_State *L, int idx, void *out_) {
-  LubSensorEvent *o = (LubSensorEvent *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "sensor")) {
-    lua_getfield(L, idx, "sensor");
-    read_LubShapeView(L, -1, &o->sensor);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "visitor")) {
-    lua_getfield(L, idx, "visitor");
-    read_LubShapeView(L, -1, &o->visitor);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubBodyEvent(lua_State *L, int idx, void *out_) {
-  LubBodyEvent *o = (LubBodyEvent *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->body = lgen_str(L, idx, "body");
-  o->valid = lgen_bool(L, idx, "valid", false);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->angle = lgen_num(L, idx, "angle", 0.0f);
-  o->fell_asleep = lgen_bool(L, idx, "fell_asleep", false);
-}
-
-static void read_LubRayHit(lua_State *L, int idx, void *out_) {
-  LubRayHit *o = (LubRayHit *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubShapeView(L, idx, &o->base);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->fraction = lgen_num(L, idx, "fraction", 0.0f);
-  o->has_node_visits = lgen_int_opt(L, idx, "node_visits", &o->node_visits);
-  o->has_leaf_visits = lgen_int_opt(L, idx, "leaf_visits", &o->leaf_visits);
-}
-
-static void read_LubShapeRayHit(lua_State *L, int idx, void *out_) {
-  LubShapeRayHit *o = (LubShapeRayHit *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->fraction = lgen_num(L, idx, "fraction", 0.0f);
-  o->iterations = lgen_int(L, idx, "iterations", 0);
-}
-
-static void read_LubMoverCast(lua_State *L, int idx, void *out_) {
-  LubMoverCast *o = (LubMoverCast *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->fraction = lgen_num(L, idx, "fraction", 0.0f);
-  o->dx = lgen_num(L, idx, "dx", 0.0f);
-  o->dy = lgen_num(L, idx, "dy", 0.0f);
-}
-
-static void read_LubMoverPlane(lua_State *L, int idx, void *out_) {
-  LubMoverPlane *o = (LubMoverPlane *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubShapeView(L, idx, &o->base);
-  o->hit = lgen_bool(L, idx, "hit", false);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->offset = lgen_num(L, idx, "offset", 0.0f);
-}
-
-static void read_LubProfile(lua_State *L, int idx, void *out_) {
-  LubProfile *o = (LubProfile *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->step = lgen_num(L, idx, "step", 0.0f);
-  o->pairs = lgen_num(L, idx, "pairs", 0.0f);
-  o->collide = lgen_num(L, idx, "collide", 0.0f);
-  o->solve = lgen_num(L, idx, "solve", 0.0f);
-  o->merge_islands = lgen_num(L, idx, "merge_islands", 0.0f);
-  o->prepare_stages = lgen_num(L, idx, "prepare_stages", 0.0f);
-  o->solve_constraints = lgen_num(L, idx, "solve_constraints", 0.0f);
-  o->prepare_constraints = lgen_num(L, idx, "prepare_constraints", 0.0f);
-  o->integrate_velocities = lgen_num(L, idx, "integrate_velocities", 0.0f);
-  o->warm_start = lgen_num(L, idx, "warm_start", 0.0f);
-  o->solve_impulses = lgen_num(L, idx, "solve_impulses", 0.0f);
-  o->integrate_positions = lgen_num(L, idx, "integrate_positions", 0.0f);
-  o->relax_impulses = lgen_num(L, idx, "relax_impulses", 0.0f);
-  o->apply_restitution = lgen_num(L, idx, "apply_restitution", 0.0f);
-  o->store_impulses = lgen_num(L, idx, "store_impulses", 0.0f);
-  o->split_islands = lgen_num(L, idx, "split_islands", 0.0f);
-  o->transforms = lgen_num(L, idx, "transforms", 0.0f);
-  o->hit_events = lgen_num(L, idx, "hit_events", 0.0f);
-  o->refit = lgen_num(L, idx, "refit", 0.0f);
-  o->bullets = lgen_num(L, idx, "bullets", 0.0f);
-  o->sleep_islands = lgen_num(L, idx, "sleep_islands", 0.0f);
-  o->sensors = lgen_num(L, idx, "sensors", 0.0f);
-}
-
-static void read_LubCounters(lua_State *L, int idx, void *out_) {
-  LubCounters *o = (LubCounters *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->body_count = lgen_int(L, idx, "body_count", 0);
-  o->shape_count = lgen_int(L, idx, "shape_count", 0);
-  o->contact_count = lgen_int(L, idx, "contact_count", 0);
-  o->joint_count = lgen_int(L, idx, "joint_count", 0);
-  o->island_count = lgen_int(L, idx, "island_count", 0);
-  o->stack_used = lgen_int(L, idx, "stack_used", 0);
-  o->static_tree_height = lgen_int(L, idx, "static_tree_height", 0);
-  o->tree_height = lgen_int(L, idx, "tree_height", 0);
-  o->byte_count = lgen_int(L, idx, "byte_count", 0);
-  o->task_count = lgen_int(L, idx, "task_count", 0);
-  lgen_ints_fixed(L, idx, "color_counts", o->color_counts, 12,
-                  &o->color_counts_count);
-}
-
 static void read_LubVec3d(lua_State *L, int idx, void *out_) {
   LubVec3d *o = (LubVec3d *)out_;
   idx = lua_absindex(L, idx);
@@ -2274,46 +1212,6 @@ static void read_LubMotionLocks3d(lua_State *L, int idx, void *out_) {
   o->has_angular_x = lgen_bool_opt(L, idx, "angular_x", &o->angular_x);
   o->has_angular_y = lgen_bool_opt(L, idx, "angular_y", &o->angular_y);
   o->has_angular_z = lgen_bool_opt(L, idx, "angular_z", &o->angular_z);
-}
-
-static void read_LubShapeView3d(lua_State *L, int idx, void *out_) {
-  LubShapeView3d *o = (LubShapeView3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->body = lgen_str(L, idx, "body");
-  o->shape = lgen_str(L, idx, "shape");
-  o->tag = lgen_str(L, idx, "tag");
-  o->material_name = lgen_str(L, idx, "material_name");
-  o->has_material_id = lgen_int_opt(L, idx, "material_id", &o->material_id);
-  o->kind = lgen_enum_str(L, idx, "kind", names_LubPhys3dShapeKind,
-                          values_LubPhys3dShapeKind, "ShapeKind", &o->has_kind);
-  o->has_category_bits =
-      lgen_bits_opt(L, idx, "category_bits", &o->category_bits);
-  o->has_mask_bits = lgen_bits_opt(L, idx, "mask_bits", &o->mask_bits);
-  o->has_group = lgen_int_opt(L, idx, "group", &o->group);
-  o->valid = lgen_bool(L, idx, "valid", false);
-}
-
-static void read_LubPreSolveContact3d(lua_State *L, int idx, void *out_) {
-  LubPreSolveContact3d *o = (LubPreSolveContact3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "a")) {
-    lua_getfield(L, idx, "a");
-    read_LubShapeView3d(L, -1, &o->a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "b")) {
-    lua_getfield(L, idx, "b");
-    read_LubShapeView3d(L, -1, &o->b);
-    lua_pop(L, 1);
-  }
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->nz = lgen_num(L, idx, "nz", 0.0f);
 }
 
 static void read_LubWorldCallbacks3d(lua_State *L, int idx, void *out_) {
@@ -3159,582 +2057,6 @@ static void read_LubShapeProxyDesc3d(lua_State *L, int idx, void *out_) {
   }
 }
 
-static void read_LubPose3d(lua_State *L, int idx, void *out_) {
-  LubPose3d *o = (LubPose3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->qx = lgen_num(L, idx, "qx", 0.0f);
-  o->qy = lgen_num(L, idx, "qy", 0.0f);
-  o->qz = lgen_num(L, idx, "qz", 0.0f);
-  o->qw = lgen_num(L, idx, "qw", 0.0f);
-  o->vx = lgen_num(L, idx, "vx", 0.0f);
-  o->vy = lgen_num(L, idx, "vy", 0.0f);
-  o->vz = lgen_num(L, idx, "vz", 0.0f);
-  o->wx = lgen_num(L, idx, "wx", 0.0f);
-  o->wy = lgen_num(L, idx, "wy", 0.0f);
-  o->wz = lgen_num(L, idx, "wz", 0.0f);
-  o->awake = lgen_bool(L, idx, "awake", false);
-  o->enabled = lgen_bool(L, idx, "enabled", false);
-  o->sleep = lgen_bool(L, idx, "sleep", false);
-  o->sleep_threshold = lgen_num(L, idx, "sleep_threshold", 0.0f);
-}
-
-static void read_LubVelocity3d(lua_State *L, int idx, void *out_) {
-  LubVelocity3d *o = (LubVelocity3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->wx = lgen_num(L, idx, "wx", 0.0f);
-  o->wy = lgen_num(L, idx, "wy", 0.0f);
-  o->wz = lgen_num(L, idx, "wz", 0.0f);
-}
-
-static void read_LubInertia3d(lua_State *L, int idx, void *out_) {
-  LubInertia3d *o = (LubInertia3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->xx = lgen_num(L, idx, "xx", 0.0f);
-  o->yy = lgen_num(L, idx, "yy", 0.0f);
-  o->zz = lgen_num(L, idx, "zz", 0.0f);
-  o->xy = lgen_num(L, idx, "xy", 0.0f);
-  o->xz = lgen_num(L, idx, "xz", 0.0f);
-  o->yz = lgen_num(L, idx, "yz", 0.0f);
-}
-
-static void read_LubMassData3d(lua_State *L, int idx, void *out_) {
-  LubMassData3d *o = (LubMassData3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->mass = lgen_num(L, idx, "mass", 0.0f);
-  if (lgen_has(L, idx, "center")) {
-    lua_getfield(L, idx, "center");
-    read_LubVec3d(L, -1, &o->center);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "local_center")) {
-    lua_getfield(L, idx, "local_center");
-    read_LubVec3d(L, -1, &o->local_center);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "inertia")) {
-    lua_getfield(L, idx, "inertia");
-    read_LubInertia3d(L, -1, &o->inertia);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubAabb3d(lua_State *L, int idx, void *out_) {
-  LubAabb3d *o = (LubAabb3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->min_x = lgen_num(L, idx, "min_x", 0.0f);
-  o->min_y = lgen_num(L, idx, "min_y", 0.0f);
-  o->min_z = lgen_num(L, idx, "min_z", 0.0f);
-  o->max_x = lgen_num(L, idx, "max_x", 0.0f);
-  o->max_y = lgen_num(L, idx, "max_y", 0.0f);
-  o->max_z = lgen_num(L, idx, "max_z", 0.0f);
-}
-
-static void read_LubShapeInfo3d(lua_State *L, int idx, void *out_) {
-  LubShapeInfo3d *o = (LubShapeInfo3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubShapeView3d(L, idx, &o->base);
-  o->density = lgen_num(L, idx, "density", 0.0f);
-  o->friction = lgen_num(L, idx, "friction", 0.0f);
-  o->restitution = lgen_num(L, idx, "restitution", 0.0f);
-  o->sensor = lgen_bool(L, idx, "sensor", false);
-  o->sensor_events = lgen_bool(L, idx, "sensor_events", false);
-  o->contact = lgen_bool(L, idx, "contact", false);
-  o->pre_solve = lgen_bool(L, idx, "pre_solve", false);
-  o->hit = lgen_bool(L, idx, "hit", false);
-  if (lgen_has(L, idx, "filter")) {
-    lua_getfield(L, idx, "filter");
-    read_LubFilterInfo(L, -1, &o->filter);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "aabb")) {
-    lua_getfield(L, idx, "aabb");
-    read_LubAabb3d(L, -1, &o->aabb);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubWorldInfo3d(lua_State *L, int idx, void *out_) {
-  LubWorldInfo3d *o = (LubWorldInfo3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->key = lgen_str(L, idx, "key");
-  o->valid = lgen_bool(L, idx, "valid", false);
-  o->version = lgen_int(L, idx, "version", 0);
-  o->generation = lgen_int(L, idx, "generation", 0);
-  o->begun = lgen_bool(L, idx, "begun", false);
-  o->prune = lgen_bool(L, idx, "prune", false);
-  o->fixed_dt = lgen_num(L, idx, "fixed_dt", 0.0f);
-  o->substeps = lgen_int(L, idx, "substeps", 0);
-  o->max_steps = lgen_int(L, idx, "max_steps", 0);
-  o->accumulator = lgen_num(L, idx, "accumulator", 0.0f);
-  o->pending_commands = lgen_int(L, idx, "pending_commands", 0);
-  if (lgen_has(L, idx, "gravity")) {
-    lua_getfield(L, idx, "gravity");
-    read_LubVec3d(L, -1, &o->gravity);
-    lua_pop(L, 1);
-    o->has_gravity = true;
-  }
-  o->has_sleep = lgen_bool_opt(L, idx, "sleep", &o->sleep);
-  o->has_continuous = lgen_bool_opt(L, idx, "continuous", &o->continuous);
-  o->has_warm_starting =
-      lgen_bool_opt(L, idx, "warm_starting", &o->warm_starting);
-  o->has_restitution_threshold =
-      lgen_num_opt(L, idx, "restitution_threshold", &o->restitution_threshold);
-  o->has_hit_event_threshold =
-      lgen_num_opt(L, idx, "hit_event_threshold", &o->hit_event_threshold);
-  o->has_maximum_linear_speed =
-      lgen_num_opt(L, idx, "maximum_linear_speed", &o->maximum_linear_speed);
-  o->has_awake_body_count =
-      lgen_int_opt(L, idx, "awake_body_count", &o->awake_body_count);
-}
-
-static void read_LubStepInfo3d(lua_State *L, int idx, void *out_) {
-  LubStepInfo3d *o = (LubStepInfo3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubStepInfo(L, idx, &o->base);
-  o->joint_events = lgen_int(L, idx, "joint_events", 0);
-}
-
-static void read_LubFrame3d(lua_State *L, int idx, void *out_) {
-  LubFrame3d *o = (LubFrame3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->qx = lgen_num(L, idx, "qx", 0.0f);
-  o->qy = lgen_num(L, idx, "qy", 0.0f);
-  o->qz = lgen_num(L, idx, "qz", 0.0f);
-  o->qw = lgen_num(L, idx, "qw", 0.0f);
-}
-
-static void read_LubJointView3d(lua_State *L, int idx, void *out_) {
-  LubJointView3d *o = (LubJointView3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->joint = lgen_str(L, idx, "joint");
-  o->type = lgen_enum_str(L, idx, "type", names_LubPhys3dJointType,
-                          values_LubPhys3dJointType, "JointType", NULL);
-  o->a = lgen_str(L, idx, "a");
-  o->b = lgen_str(L, idx, "b");
-  o->valid = lgen_bool(L, idx, "valid", false);
-}
-
-static void read_LubJointInfo3d(lua_State *L, int idx, void *out_) {
-  LubJointInfo3d *o = (LubJointInfo3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubJointView3d(L, idx, &o->base);
-  o->collide_connected = lgen_bool(L, idx, "collide_connected", false);
-  if (lgen_has(L, idx, "force")) {
-    lua_getfield(L, idx, "force");
-    read_LubVec3d(L, -1, &o->force);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "torque")) {
-    lua_getfield(L, idx, "torque");
-    read_LubVec3d(L, -1, &o->torque);
-    lua_pop(L, 1);
-  }
-  o->linear_separation = lgen_num(L, idx, "linear_separation", 0.0f);
-  o->angular_separation = lgen_num(L, idx, "angular_separation", 0.0f);
-  if (lgen_has(L, idx, "local_frame_a")) {
-    lua_getfield(L, idx, "local_frame_a");
-    read_LubFrame3d(L, -1, &o->local_frame_a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "local_frame_b")) {
-    lua_getfield(L, idx, "local_frame_b");
-    read_LubFrame3d(L, -1, &o->local_frame_b);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubContactData3d(lua_State *L, int idx, void *out_) {
-  LubContactData3d *o = (LubContactData3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "a")) {
-    lua_getfield(L, idx, "a");
-    read_LubShapeView3d(L, -1, &o->a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "b")) {
-    lua_getfield(L, idx, "b");
-    read_LubShapeView3d(L, -1, &o->b);
-    lua_pop(L, 1);
-  }
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->nz = lgen_num(L, idx, "nz", 0.0f);
-  o->manifold_count = lgen_int(L, idx, "manifold_count", 0);
-  o->point_count = lgen_int(L, idx, "point_count", 0);
-  o->has_x = lgen_num_opt(L, idx, "x", &o->x);
-  o->has_y = lgen_num_opt(L, idx, "y", &o->y);
-  o->has_z = lgen_num_opt(L, idx, "z", &o->z);
-  o->has_separation = lgen_num_opt(L, idx, "separation", &o->separation);
-}
-
-static void read_LubContactEvent3d(lua_State *L, int idx, void *out_) {
-  LubContactEvent3d *o = (LubContactEvent3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "a")) {
-    lua_getfield(L, idx, "a");
-    read_LubShapeView3d(L, -1, &o->a);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "b")) {
-    lua_getfield(L, idx, "b");
-    read_LubShapeView3d(L, -1, &o->b);
-    lua_pop(L, 1);
-  }
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->nz = lgen_num(L, idx, "nz", 0.0f);
-  o->point_count = lgen_int(L, idx, "point_count", 0);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->has_approach_speed =
-      lgen_num_opt(L, idx, "approach_speed", &o->approach_speed);
-}
-
-static void read_LubSensorEvent3d(lua_State *L, int idx, void *out_) {
-  LubSensorEvent3d *o = (LubSensorEvent3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  if (lgen_has(L, idx, "sensor")) {
-    lua_getfield(L, idx, "sensor");
-    read_LubShapeView3d(L, -1, &o->sensor);
-    lua_pop(L, 1);
-  }
-  if (lgen_has(L, idx, "visitor")) {
-    lua_getfield(L, idx, "visitor");
-    read_LubShapeView3d(L, -1, &o->visitor);
-    lua_pop(L, 1);
-  }
-}
-
-static void read_LubBodyEvent3d(lua_State *L, int idx, void *out_) {
-  LubBodyEvent3d *o = (LubBodyEvent3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->body = lgen_str(L, idx, "body");
-  o->valid = lgen_bool(L, idx, "valid", false);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->qx = lgen_num(L, idx, "qx", 0.0f);
-  o->qy = lgen_num(L, idx, "qy", 0.0f);
-  o->qz = lgen_num(L, idx, "qz", 0.0f);
-  o->qw = lgen_num(L, idx, "qw", 0.0f);
-  o->fell_asleep = lgen_bool(L, idx, "fell_asleep", false);
-}
-
-static void read_LubJointEvent3d(lua_State *L, int idx, void *out_) {
-  LubJointEvent3d *o = (LubJointEvent3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubJointView3d(L, idx, &o->base);
-}
-
-static void read_LubRayHit3d(lua_State *L, int idx, void *out_) {
-  LubRayHit3d *o = (LubRayHit3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubShapeView3d(L, idx, &o->base);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->nz = lgen_num(L, idx, "nz", 0.0f);
-  o->fraction = lgen_num(L, idx, "fraction", 0.0f);
-  o->hit_material_id = lgen_int(L, idx, "hit_material_id", 0);
-  o->triangle_index = lgen_int(L, idx, "triangle_index", 0);
-  o->child_index = lgen_int(L, idx, "child_index", 0);
-  o->has_node_visits = lgen_int_opt(L, idx, "node_visits", &o->node_visits);
-  o->has_leaf_visits = lgen_int_opt(L, idx, "leaf_visits", &o->leaf_visits);
-}
-
-static void read_LubShapeRayHit3d(lua_State *L, int idx, void *out_) {
-  LubShapeRayHit3d *o = (LubShapeRayHit3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->nz = lgen_num(L, idx, "nz", 0.0f);
-  o->fraction = lgen_num(L, idx, "fraction", 0.0f);
-  o->iterations = lgen_int(L, idx, "iterations", 0);
-  o->triangle_index = lgen_int(L, idx, "triangle_index", 0);
-  o->child_index = lgen_int(L, idx, "child_index", 0);
-}
-
-static void read_LubMoverCast3d(lua_State *L, int idx, void *out_) {
-  LubMoverCast3d *o = (LubMoverCast3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->fraction = lgen_num(L, idx, "fraction", 0.0f);
-  o->dx = lgen_num(L, idx, "dx", 0.0f);
-  o->dy = lgen_num(L, idx, "dy", 0.0f);
-  o->dz = lgen_num(L, idx, "dz", 0.0f);
-}
-
-static void read_LubMoverPlane3d(lua_State *L, int idx, void *out_) {
-  LubMoverPlane3d *o = (LubMoverPlane3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  read_LubShapeView3d(L, idx, &o->base);
-  o->x = lgen_num(L, idx, "x", 0.0f);
-  o->y = lgen_num(L, idx, "y", 0.0f);
-  o->z = lgen_num(L, idx, "z", 0.0f);
-  o->nx = lgen_num(L, idx, "nx", 0.0f);
-  o->ny = lgen_num(L, idx, "ny", 0.0f);
-  o->nz = lgen_num(L, idx, "nz", 0.0f);
-  o->offset = lgen_num(L, idx, "offset", 0.0f);
-  o->plane_count = lgen_int(L, idx, "plane_count", 0);
-}
-
-static void read_LubProfile3d(lua_State *L, int idx, void *out_) {
-  LubProfile3d *o = (LubProfile3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->step = lgen_num(L, idx, "step", 0.0f);
-  o->pairs = lgen_num(L, idx, "pairs", 0.0f);
-  o->collide = lgen_num(L, idx, "collide", 0.0f);
-  o->solve = lgen_num(L, idx, "solve", 0.0f);
-  o->solver_setup = lgen_num(L, idx, "solver_setup", 0.0f);
-  o->constraints = lgen_num(L, idx, "constraints", 0.0f);
-  o->prepare_constraints = lgen_num(L, idx, "prepare_constraints", 0.0f);
-  o->integrate_velocities = lgen_num(L, idx, "integrate_velocities", 0.0f);
-  o->warm_start = lgen_num(L, idx, "warm_start", 0.0f);
-  o->solve_impulses = lgen_num(L, idx, "solve_impulses", 0.0f);
-  o->integrate_positions = lgen_num(L, idx, "integrate_positions", 0.0f);
-  o->relax_impulses = lgen_num(L, idx, "relax_impulses", 0.0f);
-  o->apply_restitution = lgen_num(L, idx, "apply_restitution", 0.0f);
-  o->store_impulses = lgen_num(L, idx, "store_impulses", 0.0f);
-  o->split_islands = lgen_num(L, idx, "split_islands", 0.0f);
-  o->transforms = lgen_num(L, idx, "transforms", 0.0f);
-  o->sensor_hits = lgen_num(L, idx, "sensor_hits", 0.0f);
-  o->joint_events = lgen_num(L, idx, "joint_events", 0.0f);
-  o->hit_events = lgen_num(L, idx, "hit_events", 0.0f);
-  o->refit = lgen_num(L, idx, "refit", 0.0f);
-  o->bullets = lgen_num(L, idx, "bullets", 0.0f);
-  o->sleep_islands = lgen_num(L, idx, "sleep_islands", 0.0f);
-  o->sensors = lgen_num(L, idx, "sensors", 0.0f);
-}
-
-static void read_LubCounters3d(lua_State *L, int idx, void *out_) {
-  LubCounters3d *o = (LubCounters3d *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->body_count = lgen_int(L, idx, "body_count", 0);
-  o->shape_count = lgen_int(L, idx, "shape_count", 0);
-  o->contact_count = lgen_int(L, idx, "contact_count", 0);
-  o->joint_count = lgen_int(L, idx, "joint_count", 0);
-  o->island_count = lgen_int(L, idx, "island_count", 0);
-  o->stack_used = lgen_int(L, idx, "stack_used", 0);
-  o->arena_capacity = lgen_int(L, idx, "arena_capacity", 0);
-  o->static_tree_height = lgen_int(L, idx, "static_tree_height", 0);
-  o->tree_height = lgen_int(L, idx, "tree_height", 0);
-  o->sat_call_count = lgen_int(L, idx, "sat_call_count", 0);
-  o->sat_cache_hit_count = lgen_int(L, idx, "sat_cache_hit_count", 0);
-  o->byte_count = lgen_int(L, idx, "byte_count", 0);
-  o->task_count = lgen_int(L, idx, "task_count", 0);
-  o->awake_contact_count = lgen_int(L, idx, "awake_contact_count", 0);
-  o->recycled_contact_count = lgen_int(L, idx, "recycled_contact_count", 0);
-  o->distance_iterations = lgen_int(L, idx, "distance_iterations", 0);
-  o->push_back_iterations = lgen_int(L, idx, "push_back_iterations", 0);
-  o->root_iterations = lgen_int(L, idx, "root_iterations", 0);
-  lgen_ints_fixed(L, idx, "color_counts", o->color_counts, 24,
-                  &o->color_counts_count);
-  lgen_ints_fixed(L, idx, "manifold_counts", o->manifold_counts, 8,
-                  &o->manifold_counts_count);
-}
-
-static void read_LubEventData(lua_State *L, int idx, void *out_) {
-  LubEventData *o = (LubEventData *)out_;
-  idx = lua_absindex(L, idx);
-  (void)o;
-  o->type = lgen_str(L, idx, "type");
-}
-
-static void fill_LubPassOpts(lua_State *L, const LubPassOpts *v) {
-  if (v->target) {
-    lgen_push_ref(L, "texture", v->target);
-    lua_setfield(L, -2, "target");
-  }
-  if (v->targets) {
-    lgen_push_handle_table(L, "texture", v->targets, v->targets_count);
-    lua_setfield(L, -2, "targets");
-  }
-  if (v->depth_target) {
-    lgen_push_ref(L, "texture", v->depth_target);
-    lua_setfield(L, -2, "depth_target");
-  }
-  if (v->has_clear_color) {
-    lgen_push_float_table(L, v->clear_color, 4);
-    lua_setfield(L, -2, "clear_color");
-  }
-  {
-    lgen_push_float_table(L, (const float *)v->clear_colors,
-                          v->clear_colors_count * 4);
-    lua_setfield(L, -2, "clear_colors");
-  }
-  if (v->has_clear_depth)
-    lgen_set_num(L, "clear_depth", v->clear_depth);
-  if (v->has_load)
-    lgen_set_int(L, "load", v->load);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubPassOpts(lua_State *L, const LubPassOpts *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubPassOpts(L, v);
-}
-
-static void push_list_LubPassOpts(lua_State *L, const LubPassOpts *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPassOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubDrawOpts(lua_State *L, const LubDrawOpts *v) {
-  if (v->shader) {
-    lgen_push_ref(L, "shader", v->shader);
-    lua_setfield(L, -2, "shader");
-  }
-  if (v->has_blend)
-    lgen_set_int(L, "blend", v->blend);
-  if (v->has_cull)
-    lgen_set_int(L, "cull", v->cull);
-  if (v->has_primitive)
-    lgen_set_int(L, "primitive", v->primitive);
-  if (v->has_depth)
-    lgen_set_bool(L, "depth", v->depth);
-  if (v->has_depth_write)
-    lgen_set_bool(L, "depth_write", v->depth_write);
-  if (v->has_instance_count)
-    lgen_set_int(L, "instance_count", v->instance_count);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubDrawOpts(lua_State *L, const LubDrawOpts *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubDrawOpts(L, v);
-}
-
-static void push_list_LubDrawOpts(lua_State *L, const LubDrawOpts *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubDrawOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubDispatchOpts(lua_State *L, const LubDispatchOpts *v) {
-  if (v->shader) {
-    lgen_push_ref(L, "shader", v->shader);
-    lua_setfield(L, -2, "shader");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubDispatchOpts(lua_State *L, const LubDispatchOpts *v) {
-  lua_createtable(L, 0, 1);
-  fill_LubDispatchOpts(L, v);
-}
-
-static void push_list_LubDispatchOpts(lua_State *L, const LubDispatchOpts *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubDispatchOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubTextureOpts(lua_State *L, const LubTextureOpts *v) {
-  if (v->has_filter)
-    lgen_set_int(L, "filter", v->filter);
-  if (v->has_wrap)
-    lgen_set_int(L, "wrap", v->wrap);
-  if (v->has_target)
-    lgen_set_bool(L, "target", v->target);
-  if (v->has_storage)
-    lgen_set_bool(L, "storage", v->storage);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubTextureOpts(lua_State *L, const LubTextureOpts *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubTextureOpts(L, v);
-}
-
-static void push_list_LubTextureOpts(lua_State *L, const LubTextureOpts *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubTextureOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubConfigOpts(lua_State *L, const LubConfigOpts *v) {
-  if (v->backend.len > 0)
-    lgen_set_str(L, "backend", v->backend);
-  if (v->has_width)
-    lgen_set_int(L, "width", v->width);
-  if (v->has_height)
-    lgen_set_int(L, "height", v->height);
-  if (v->has_resource_sweep_after_frames)
-    lgen_set_int(L, "resource_sweep_after_frames",
-                 v->resource_sweep_after_frames);
-  if (v->has_readback_depth)
-    lgen_set_int(L, "readback_depth", v->readback_depth);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubConfigOpts(lua_State *L, const LubConfigOpts *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubConfigOpts(L, v);
-}
-
-static void push_list_LubConfigOpts(lua_State *L, const LubConfigOpts *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubConfigOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubMeshData(lua_State *L, const LubMeshData *v) {
   if (v->positions) {
     lgen_push_float_view(L, v->positions, v->positions_count);
@@ -3797,15 +2119,6 @@ static void push_LubMeshData(lua_State *L, const LubMeshData *v) {
   fill_LubMeshData(L, v);
 }
 
-static void push_list_LubMeshData(lua_State *L, const LubMeshData *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMeshData(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubSdfBone(lua_State *L, const LubSdfBone *v) {
   lgen_set_str(L, "name", v->name);
   lgen_set_num(L, "x", v->x);
@@ -3824,34 +2137,6 @@ static void push_list_LubSdfBone(lua_State *L, const LubSdfBone *v, int32_t n) {
   lua_createtable(L, n, 0);
   for (int32_t i = 0; i < n; ++i) {
     push_LubSdfBone(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubSdfNodeDesc(lua_State *L, const LubSdfNodeDesc *v) {
-  lgen_set_int(L, "op", v->op);
-  lgen_set_int(L, "a", v->a);
-  lgen_set_int(L, "b", v->b);
-  {
-    lgen_push_float_table(L, v->params, v->params_count);
-    lua_setfield(L, -2, "params");
-  }
-  if (v->name.len > 0)
-    lgen_set_str(L, "name", v->name);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubSdfNodeDesc(lua_State *L, const LubSdfNodeDesc *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubSdfNodeDesc(L, v);
-}
-
-static void push_list_LubSdfNodeDesc(lua_State *L, const LubSdfNodeDesc *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubSdfNodeDesc(L, &v[i]);
     lua_rawseti(L, -2, i + 1);
   }
 }
@@ -3882,15 +2167,6 @@ static void fill_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v) {
 static void push_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v) {
   lua_createtable(L, 0, 11);
   fill_LubGltfMaterial(L, v);
-}
-
-static void push_list_LubGltfMaterial(lua_State *L, const LubGltfMaterial *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubGltfMaterial(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubGltfPrimitive(lua_State *L, const LubGltfPrimitive *v) {
@@ -3937,15 +2213,6 @@ static void push_LubGltfMesh(lua_State *L, const LubGltfMesh *v) {
   fill_LubGltfMesh(L, v);
 }
 
-static void push_list_LubGltfMesh(lua_State *L, const LubGltfMesh *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubGltfMesh(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v) {
   lgen_set_int(L, "w", v->w);
   lgen_set_int(L, "h", v->h);
@@ -3963,15 +2230,6 @@ static void push_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v) {
   fill_LubGlyphBitmap(L, v);
 }
 
-static void push_list_LubGlyphBitmap(lua_State *L, const LubGlyphBitmap *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubGlyphBitmap(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v) {
   fill_LubMeshData(L, &v->base);
   lgen_set_num(L, "advance", v->advance);
@@ -3982,15 +2240,6 @@ static void fill_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v) {
 static void push_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v) {
   lua_createtable(L, 0, 16);
   fill_LubGlyphMesh(L, v);
-}
-
-static void push_list_LubGlyphMesh(lua_State *L, const LubGlyphMesh *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubGlyphMesh(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubFontMetrics(lua_State *L, const LubFontMetrics *v) {
@@ -4004,62 +2253,6 @@ static void fill_LubFontMetrics(lua_State *L, const LubFontMetrics *v) {
 static void push_LubFontMetrics(lua_State *L, const LubFontMetrics *v) {
   lua_createtable(L, 0, 3);
   fill_LubFontMetrics(L, v);
-}
-
-static void push_list_LubFontMetrics(lua_State *L, const LubFontMetrics *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubFontMetrics(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubPlayOpts(lua_State *L, const LubPlayOpts *v) {
-  if (v->has_volume)
-    lgen_set_num(L, "volume", v->volume);
-  if (v->has_pitch)
-    lgen_set_num(L, "pitch", v->pitch);
-  if (v->has_pan)
-    lgen_set_num(L, "pan", v->pan);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubPlayOpts(lua_State *L, const LubPlayOpts *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubPlayOpts(L, v);
-}
-
-static void push_list_LubPlayOpts(lua_State *L, const LubPlayOpts *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPlayOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubVoiceOpts(lua_State *L, const LubVoiceOpts *v) {
-  fill_LubPlayOpts(L, &v->base);
-  if (v->has_loop)
-    lgen_set_bool(L, "loop", v->loop);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubVoiceOpts(lua_State *L, const LubVoiceOpts *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubVoiceOpts(L, v);
-}
-
-static void push_list_LubVoiceOpts(lua_State *L, const LubVoiceOpts *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVoiceOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubAudioInfo(lua_State *L, const LubAudioInfo *v) {
@@ -4076,15 +2269,6 @@ static void push_LubAudioInfo(lua_State *L, const LubAudioInfo *v) {
   fill_LubAudioInfo(L, v);
 }
 
-static void push_list_LubAudioInfo(lua_State *L, const LubAudioInfo *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubAudioInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubVec2d(lua_State *L, const LubVec2d *v) {
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -4095,47 +2279,6 @@ static void fill_LubVec2d(lua_State *L, const LubVec2d *v) {
 static void push_LubVec2d(lua_State *L, const LubVec2d *v) {
   lua_createtable(L, 0, 2);
   fill_LubVec2d(L, v);
-}
-
-static void push_list_LubVec2d(lua_State *L, const LubVec2d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVec2d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubInitialState(lua_State *L, const LubInitialState *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  if (v->has_vx)
-    lgen_set_num(L, "vx", v->vx);
-  if (v->has_vy)
-    lgen_set_num(L, "vy", v->vy);
-  if (v->has_w)
-    lgen_set_num(L, "w", v->w);
-  if (v->has_awake)
-    lgen_set_bool(L, "awake", v->awake);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubInitialState(lua_State *L, const LubInitialState *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubInitialState(L, v);
-}
-
-static void push_list_LubInitialState(lua_State *L, const LubInitialState *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubInitialState(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubShapeView(lua_State *L, const LubShapeView *v) {
@@ -4193,15 +2336,6 @@ static void fill_LubMaterialView(lua_State *L, const LubMaterialView *v) {
 static void push_LubMaterialView(lua_State *L, const LubMaterialView *v) {
   lua_createtable(L, 0, 3);
   fill_LubMaterialView(L, v);
-}
-
-static void push_list_LubMaterialView(lua_State *L, const LubMaterialView *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMaterialView(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubManifoldPoint(lua_State *L, const LubManifoldPoint *v) {
@@ -4270,1053 +2404,6 @@ static void push_LubPreSolveContact(lua_State *L, const LubPreSolveContact *v) {
   fill_LubPreSolveContact(L, v);
 }
 
-static void push_list_LubPreSolveContact(lua_State *L,
-                                         const LubPreSolveContact *v,
-                                         int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPreSolveContact(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubWorldCallbacks(lua_State *L, const LubWorldCallbacks *v) {
-  (void)L;
-  (void)v;
-}
-
-static void push_LubWorldCallbacks(lua_State *L, const LubWorldCallbacks *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubWorldCallbacks(L, v);
-}
-
-static void push_list_LubWorldCallbacks(lua_State *L,
-                                        const LubWorldCallbacks *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldCallbacks(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubWorldOpts(lua_State *L, const LubWorldOpts *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_gravity) {
-    push_LubVec2d(L, &v->gravity);
-    lua_setfield(L, -2, "gravity");
-  }
-  if (v->has_fixed_dt)
-    lgen_set_num(L, "fixed_dt", v->fixed_dt);
-  if (v->has_substeps)
-    lgen_set_int(L, "substeps", v->substeps);
-  if (v->has_max_steps)
-    lgen_set_int(L, "max_steps", v->max_steps);
-  if (v->has_sleep)
-    lgen_set_bool(L, "sleep", v->sleep);
-  if (v->has_continuous)
-    lgen_set_bool(L, "continuous", v->continuous);
-  if (v->has_hit_event_threshold)
-    lgen_set_num(L, "hit_event_threshold", v->hit_event_threshold);
-  if (v->has_callbacks) {
-    push_LubWorldCallbacks(L, &v->callbacks);
-    lua_setfield(L, -2, "callbacks");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubWorldOpts(lua_State *L, const LubWorldOpts *v) {
-  lua_createtable(L, 0, 9);
-  fill_LubWorldOpts(L, v);
-}
-
-static void push_list_LubWorldOpts(lua_State *L, const LubWorldOpts *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBeginOpts(lua_State *L, const LubBeginOpts *v) {
-  if (v->has_prune)
-    lgen_set_bool(L, "prune", v->prune);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBeginOpts(lua_State *L, const LubBeginOpts *v) {
-  lua_createtable(L, 0, 1);
-  fill_LubBeginOpts(L, v);
-}
-
-static void push_list_LubBeginOpts(lua_State *L, const LubBeginOpts *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBeginOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBodyDesc(lua_State *L, const LubBodyDesc *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_type)
-    lgen_set_int(L, "type", v->type);
-  if (v->has_fixed_rotation)
-    lgen_set_bool(L, "fixed_rotation", v->fixed_rotation);
-  if (v->has_bullet)
-    lgen_set_bool(L, "bullet", v->bullet);
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_awake)
-    lgen_set_bool(L, "awake", v->awake);
-  if (v->has_sleep)
-    lgen_set_bool(L, "sleep", v->sleep);
-  if (v->has_sleep_threshold)
-    lgen_set_num(L, "sleep_threshold", v->sleep_threshold);
-  if (v->has_gravity_scale)
-    lgen_set_num(L, "gravity_scale", v->gravity_scale);
-  if (v->has_linear_damping)
-    lgen_set_num(L, "linear_damping", v->linear_damping);
-  if (v->has_angular_damping)
-    lgen_set_num(L, "angular_damping", v->angular_damping);
-  if (v->has_initial) {
-    push_LubInitialState(L, &v->initial);
-    lua_setfield(L, -2, "initial");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBodyDesc(lua_State *L, const LubBodyDesc *v) {
-  lua_createtable(L, 0, 12);
-  fill_LubBodyDesc(L, v);
-}
-
-static void push_list_LubBodyDesc(lua_State *L, const LubBodyDesc *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBodyDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubFilterDesc(lua_State *L, const LubFilterDesc *v) {
-  if (v->has_category_bits)
-    lgen_set_bits(L, "category_bits", v->category_bits);
-  if (v->has_mask_bits)
-    lgen_set_bits(L, "mask_bits", v->mask_bits);
-  if (v->has_group)
-    lgen_set_int(L, "group", v->group);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubFilterDesc(lua_State *L, const LubFilterDesc *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubFilterDesc(L, v);
-}
-
-static void push_list_LubFilterDesc(lua_State *L, const LubFilterDesc *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubFilterDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubShapeDesc(lua_State *L, const LubShapeDesc *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_density)
-    lgen_set_num(L, "density", v->density);
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->tag.len > 0)
-    lgen_set_str(L, "tag", v->tag);
-  if (v->material_name.len > 0)
-    lgen_set_str(L, "material_name", v->material_name);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  if (v->has_sensor)
-    lgen_set_bool(L, "sensor", v->sensor);
-  if (v->has_contact)
-    lgen_set_bool(L, "contact", v->contact);
-  if (v->has_hit)
-    lgen_set_bool(L, "hit", v->hit);
-  if (v->has_sensor_events)
-    lgen_set_bool(L, "sensor_events", v->sensor_events);
-  if (v->has_pre_solve)
-    lgen_set_bool(L, "pre_solve", v->pre_solve);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubShapeDesc(lua_State *L, const LubShapeDesc *v) {
-  lua_createtable(L, 0, 13);
-  fill_LubShapeDesc(L, v);
-}
-
-static void push_list_LubShapeDesc(lua_State *L, const LubShapeDesc *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBoxDesc(lua_State *L, const LubBoxDesc *v) {
-  fill_LubShapeDesc(L, &v->base);
-  lgen_set_num(L, "hx", v->hx);
-  lgen_set_num(L, "hy", v->hy);
-  if (v->has_cx)
-    lgen_set_num(L, "cx", v->cx);
-  if (v->has_cy)
-    lgen_set_num(L, "cy", v->cy);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBoxDesc(lua_State *L, const LubBoxDesc *v) {
-  lua_createtable(L, 0, 18);
-  fill_LubBoxDesc(L, v);
-}
-
-static void push_list_LubBoxDesc(lua_State *L, const LubBoxDesc *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBoxDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCircleDesc(lua_State *L, const LubCircleDesc *v) {
-  fill_LubShapeDesc(L, &v->base);
-  lgen_set_num(L, "r", v->r);
-  if (v->has_cx)
-    lgen_set_num(L, "cx", v->cx);
-  if (v->has_cy)
-    lgen_set_num(L, "cy", v->cy);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCircleDesc(lua_State *L, const LubCircleDesc *v) {
-  lua_createtable(L, 0, 16);
-  fill_LubCircleDesc(L, v);
-}
-
-static void push_list_LubCircleDesc(lua_State *L, const LubCircleDesc *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCircleDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCapsuleDesc(lua_State *L, const LubCapsuleDesc *v) {
-  fill_LubShapeDesc(L, &v->base);
-  lgen_set_num(L, "ax", v->ax);
-  lgen_set_num(L, "ay", v->ay);
-  lgen_set_num(L, "bx", v->bx);
-  lgen_set_num(L, "by", v->by);
-  lgen_set_num(L, "r", v->r);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCapsuleDesc(lua_State *L, const LubCapsuleDesc *v) {
-  lua_createtable(L, 0, 18);
-  fill_LubCapsuleDesc(L, v);
-}
-
-static void push_list_LubCapsuleDesc(lua_State *L, const LubCapsuleDesc *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCapsuleDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubSegmentDesc(lua_State *L, const LubSegmentDesc *v) {
-  fill_LubShapeDesc(L, &v->base);
-  lgen_set_num(L, "ax", v->ax);
-  lgen_set_num(L, "ay", v->ay);
-  lgen_set_num(L, "bx", v->bx);
-  lgen_set_num(L, "by", v->by);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubSegmentDesc(lua_State *L, const LubSegmentDesc *v) {
-  lua_createtable(L, 0, 17);
-  fill_LubSegmentDesc(L, v);
-}
-
-static void push_list_LubSegmentDesc(lua_State *L, const LubSegmentDesc *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubSegmentDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubPolygonDesc(lua_State *L, const LubPolygonDesc *v) {
-  fill_LubShapeDesc(L, &v->base);
-  if (v->points) {
-    lgen_push_float_view(L, v->points, v->points_count);
-    lua_setfield(L, -2, "points");
-  }
-  if (v->has_radius)
-    lgen_set_num(L, "radius", v->radius);
-  if (v->has_cx)
-    lgen_set_num(L, "cx", v->cx);
-  if (v->has_cy)
-    lgen_set_num(L, "cy", v->cy);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubPolygonDesc(lua_State *L, const LubPolygonDesc *v) {
-  lua_createtable(L, 0, 18);
-  fill_LubPolygonDesc(L, v);
-}
-
-static void push_list_LubPolygonDesc(lua_State *L, const LubPolygonDesc *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPolygonDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubChainMaterial(lua_State *L, const LubChainMaterial *v) {
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubChainMaterial(lua_State *L, const LubChainMaterial *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubChainMaterial(L, v);
-}
-
-static void push_list_LubChainMaterial(lua_State *L, const LubChainMaterial *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubChainMaterial(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubChainDesc(lua_State *L, const LubChainDesc *v) {
-  lgen_set_int(L, "version", v->version);
-  if (v->points) {
-    lgen_push_float_view(L, v->points, v->points_count);
-    lua_setfield(L, -2, "points");
-  }
-  if (v->materials) {
-    push_list_LubChainMaterial(L, v->materials, v->materials_count);
-    lua_setfield(L, -2, "materials");
-  }
-  if (v->has_loop)
-    lgen_set_bool(L, "loop", v->loop);
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->tag.len > 0)
-    lgen_set_str(L, "tag", v->tag);
-  if (v->material_name.len > 0)
-    lgen_set_str(L, "material_name", v->material_name);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  if (v->has_sensor_events)
-    lgen_set_bool(L, "sensor_events", v->sensor_events);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubChainDesc(lua_State *L, const LubChainDesc *v) {
-  lua_createtable(L, 0, 11);
-  fill_LubChainDesc(L, v);
-}
-
-static void push_list_LubChainDesc(lua_State *L, const LubChainDesc *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubChainDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointSpringDesc(lua_State *L, const LubJointSpringDesc *v) {
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_hertz)
-    lgen_set_num(L, "hertz", v->hertz);
-  if (v->has_damping_ratio)
-    lgen_set_num(L, "damping_ratio", v->damping_ratio);
-  if (v->has_linear_hertz)
-    lgen_set_num(L, "linear_hertz", v->linear_hertz);
-  if (v->has_linear_damping_ratio)
-    lgen_set_num(L, "linear_damping_ratio", v->linear_damping_ratio);
-  if (v->has_angular_hertz)
-    lgen_set_num(L, "angular_hertz", v->angular_hertz);
-  if (v->has_angular_damping_ratio)
-    lgen_set_num(L, "angular_damping_ratio", v->angular_damping_ratio);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointSpringDesc(lua_State *L, const LubJointSpringDesc *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubJointSpringDesc(L, v);
-}
-
-static void push_list_LubJointSpringDesc(lua_State *L,
-                                         const LubJointSpringDesc *v,
-                                         int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointSpringDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointLimitDesc(lua_State *L, const LubJointLimitDesc *v) {
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_lower)
-    lgen_set_num(L, "lower", v->lower);
-  if (v->has_upper)
-    lgen_set_num(L, "upper", v->upper);
-  if (v->has_min_length)
-    lgen_set_num(L, "min_length", v->min_length);
-  if (v->has_max_length)
-    lgen_set_num(L, "max_length", v->max_length);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointLimitDesc(lua_State *L, const LubJointLimitDesc *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubJointLimitDesc(L, v);
-}
-
-static void push_list_LubJointLimitDesc(lua_State *L,
-                                        const LubJointLimitDesc *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointLimitDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointMotorDesc(lua_State *L, const LubJointMotorDesc *v) {
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_speed)
-    lgen_set_num(L, "speed", v->speed);
-  if (v->has_max_force)
-    lgen_set_num(L, "max_force", v->max_force);
-  if (v->has_max_torque)
-    lgen_set_num(L, "max_torque", v->max_torque);
-  if (v->has_linear_offset) {
-    push_LubVec2d(L, &v->linear_offset);
-    lua_setfield(L, -2, "linear_offset");
-  }
-  if (v->has_angular_offset)
-    lgen_set_num(L, "angular_offset", v->angular_offset);
-  if (v->has_correction_factor)
-    lgen_set_num(L, "correction_factor", v->correction_factor);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointMotorDesc(lua_State *L, const LubJointMotorDesc *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubJointMotorDesc(L, v);
-}
-
-static void push_list_LubJointMotorDesc(lua_State *L,
-                                        const LubJointMotorDesc *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointMotorDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointTargetDesc(lua_State *L, const LubJointTargetDesc *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_translation)
-    lgen_set_num(L, "translation", v->translation);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  if (v->has_linear_offset) {
-    push_LubVec2d(L, &v->linear_offset);
-    lua_setfield(L, -2, "linear_offset");
-  }
-  if (v->has_angular_offset)
-    lgen_set_num(L, "angular_offset", v->angular_offset);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointTargetDesc(lua_State *L, const LubJointTargetDesc *v) {
-  lua_createtable(L, 0, 6);
-  fill_LubJointTargetDesc(L, v);
-}
-
-static void push_list_LubJointTargetDesc(lua_State *L,
-                                         const LubJointTargetDesc *v,
-                                         int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointTargetDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointDesc(lua_State *L, const LubJointDesc *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_type && name_LubPhys2dJointType(v->type)) {
-    lua_pushstring(L, name_LubPhys2dJointType(v->type));
-    lua_setfield(L, -2, "type");
-  }
-  if (v->body_a) {
-    lgen_push_ref(L, "body", v->body_a);
-    lua_setfield(L, -2, "body_a");
-  }
-  if (v->body_b) {
-    lgen_push_ref(L, "body", v->body_b);
-    lua_setfield(L, -2, "body_b");
-  }
-  if (v->has_anchor_a) {
-    push_LubVec2d(L, &v->anchor_a);
-    lua_setfield(L, -2, "anchor_a");
-  }
-  if (v->has_anchor_b) {
-    push_LubVec2d(L, &v->anchor_b);
-    lua_setfield(L, -2, "anchor_b");
-  }
-  if (v->has_local_anchor_a) {
-    push_LubVec2d(L, &v->local_anchor_a);
-    lua_setfield(L, -2, "local_anchor_a");
-  }
-  if (v->has_local_anchor_b) {
-    push_LubVec2d(L, &v->local_anchor_b);
-    lua_setfield(L, -2, "local_anchor_b");
-  }
-  if (v->has_local_axis_a) {
-    push_LubVec2d(L, &v->local_axis_a);
-    lua_setfield(L, -2, "local_axis_a");
-  }
-  if (v->has_reference_angle)
-    lgen_set_num(L, "reference_angle", v->reference_angle);
-  if (v->has_collide_connected)
-    lgen_set_bool(L, "collide_connected", v->collide_connected);
-  if (v->has_length)
-    lgen_set_num(L, "length", v->length);
-  if (v->has_min_length)
-    lgen_set_num(L, "min_length", v->min_length);
-  if (v->has_max_length)
-    lgen_set_num(L, "max_length", v->max_length);
-  if (v->has_lower)
-    lgen_set_num(L, "lower", v->lower);
-  if (v->has_upper)
-    lgen_set_num(L, "upper", v->upper);
-  if (v->has_target_angle)
-    lgen_set_num(L, "target_angle", v->target_angle);
-  if (v->has_target_translation)
-    lgen_set_num(L, "target_translation", v->target_translation);
-  if (v->has_linear_offset) {
-    push_LubVec2d(L, &v->linear_offset);
-    lua_setfield(L, -2, "linear_offset");
-  }
-  if (v->has_angular_offset)
-    lgen_set_num(L, "angular_offset", v->angular_offset);
-  if (v->has_hertz)
-    lgen_set_num(L, "hertz", v->hertz);
-  if (v->has_damping_ratio)
-    lgen_set_num(L, "damping_ratio", v->damping_ratio);
-  if (v->has_max_force)
-    lgen_set_num(L, "max_force", v->max_force);
-  if (v->has_max_torque)
-    lgen_set_num(L, "max_torque", v->max_torque);
-  if (v->has_motor_speed)
-    lgen_set_num(L, "motor_speed", v->motor_speed);
-  if (v->has_correction_factor)
-    lgen_set_num(L, "correction_factor", v->correction_factor);
-  if (v->has_spring) {
-    push_LubJointSpringDesc(L, &v->spring);
-    lua_setfield(L, -2, "spring");
-  }
-  if (v->has_limit) {
-    push_LubJointLimitDesc(L, &v->limit);
-    lua_setfield(L, -2, "limit");
-  }
-  if (v->has_motor) {
-    push_LubJointMotorDesc(L, &v->motor);
-    lua_setfield(L, -2, "motor");
-  }
-  if (v->has_target) {
-    push_LubVec2d(L, &v->target);
-    lua_setfield(L, -2, "target");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointDesc(lua_State *L, const LubJointDesc *v) {
-  lua_createtable(L, 0, 30);
-  fill_LubJointDesc(L, v);
-}
-
-static void push_list_LubJointDesc(lua_State *L, const LubJointDesc *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCommandOpts(lua_State *L, const LubCommandOpts *v) {
-  if (v->has_wake)
-    lgen_set_bool(L, "wake", v->wake);
-  if (v->has_point) {
-    push_LubVec2d(L, &v->point);
-    lua_setfield(L, -2, "point");
-  }
-  if (v->has_time_step)
-    lgen_set_num(L, "time_step", v->time_step);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCommandOpts(lua_State *L, const LubCommandOpts *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubCommandOpts(L, v);
-}
-
-static void push_list_LubCommandOpts(lua_State *L, const LubCommandOpts *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCommandOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubVelocityDesc(lua_State *L, const LubVelocityDesc *v) {
-  if (v->has_vx)
-    lgen_set_num(L, "vx", v->vx);
-  if (v->has_vy)
-    lgen_set_num(L, "vy", v->vy);
-  if (v->has_w)
-    lgen_set_num(L, "w", v->w);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubVelocityDesc(lua_State *L, const LubVelocityDesc *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubVelocityDesc(L, v);
-}
-
-static void push_list_LubVelocityDesc(lua_State *L, const LubVelocityDesc *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVelocityDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubPoseDesc(lua_State *L, const LubPoseDesc *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubPoseDesc(lua_State *L, const LubPoseDesc *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubPoseDesc(L, v);
-}
-
-static void push_list_LubPoseDesc(lua_State *L, const LubPoseDesc *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPoseDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMassDataDesc(lua_State *L, const LubMassDataDesc *v) {
-  if (v->has_mass)
-    lgen_set_num(L, "mass", v->mass);
-  if (v->has_inertia)
-    lgen_set_num(L, "inertia", v->inertia);
-  if (v->has_local_center) {
-    push_LubVec2d(L, &v->local_center);
-    lua_setfield(L, -2, "local_center");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMassDataDesc(lua_State *L, const LubMassDataDesc *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubMassDataDesc(L, v);
-}
-
-static void push_list_LubMassDataDesc(lua_State *L, const LubMassDataDesc *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMassDataDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMaterialDesc(lua_State *L, const LubMaterialDesc *v) {
-  if (v->has_density)
-    lgen_set_num(L, "density", v->density);
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->material_name.len > 0)
-    lgen_set_str(L, "material_name", v->material_name);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMaterialDesc(lua_State *L, const LubMaterialDesc *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubMaterialDesc(L, v);
-}
-
-static void push_list_LubMaterialDesc(lua_State *L, const LubMaterialDesc *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMaterialDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubShapeEventsDesc(lua_State *L, const LubShapeEventsDesc *v) {
-  if (v->has_sensor_events)
-    lgen_set_bool(L, "sensor_events", v->sensor_events);
-  if (v->has_contact)
-    lgen_set_bool(L, "contact", v->contact);
-  if (v->has_pre_solve)
-    lgen_set_bool(L, "pre_solve", v->pre_solve);
-  if (v->has_hit)
-    lgen_set_bool(L, "hit", v->hit);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubShapeEventsDesc(lua_State *L, const LubShapeEventsDesc *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubShapeEventsDesc(L, v);
-}
-
-static void push_list_LubShapeEventsDesc(lua_State *L,
-                                         const LubShapeEventsDesc *v,
-                                         int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeEventsDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubRaycastDesc(lua_State *L, const LubRaycastDesc *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_dx)
-    lgen_set_num(L, "dx", v->dx);
-  if (v->has_dy)
-    lgen_set_num(L, "dy", v->dy);
-  if (v->has_max_fraction)
-    lgen_set_num(L, "max_fraction", v->max_fraction);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubRaycastDesc(lua_State *L, const LubRaycastDesc *v) {
-  lua_createtable(L, 0, 6);
-  fill_LubRaycastDesc(L, v);
-}
-
-static void push_list_LubRaycastDesc(lua_State *L, const LubRaycastDesc *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubRaycastDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubAabbDesc(lua_State *L, const LubAabbDesc *v) {
-  lgen_set_num(L, "min_x", v->min_x);
-  lgen_set_num(L, "min_y", v->min_y);
-  lgen_set_num(L, "max_x", v->max_x);
-  lgen_set_num(L, "max_y", v->max_y);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubAabbDesc(lua_State *L, const LubAabbDesc *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubAabbDesc(L, v);
-}
-
-static void push_list_LubAabbDesc(lua_State *L, const LubAabbDesc *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubAabbDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubShapeCastDesc(lua_State *L, const LubShapeCastDesc *v) {
-  if (v->has_kind && name_LubPhys2dProxyKind(v->kind)) {
-    lua_pushstring(L, name_LubPhys2dProxyKind(v->kind));
-    lua_setfield(L, -2, "kind");
-  }
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  if (v->has_radius)
-    lgen_set_num(L, "radius", v->radius);
-  if (v->has_cx)
-    lgen_set_num(L, "cx", v->cx);
-  if (v->has_cy)
-    lgen_set_num(L, "cy", v->cy);
-  if (v->has_ax)
-    lgen_set_num(L, "ax", v->ax);
-  if (v->has_ay)
-    lgen_set_num(L, "ay", v->ay);
-  if (v->has_bx)
-    lgen_set_num(L, "bx", v->bx);
-  if (v->has_by)
-    lgen_set_num(L, "by", v->by);
-  if (v->has_hx)
-    lgen_set_num(L, "hx", v->hx);
-  if (v->has_hy)
-    lgen_set_num(L, "hy", v->hy);
-  if (v->points) {
-    lgen_push_float_view(L, v->points, v->points_count);
-    lua_setfield(L, -2, "points");
-  }
-  if (v->has_dx)
-    lgen_set_num(L, "dx", v->dx);
-  if (v->has_dy)
-    lgen_set_num(L, "dy", v->dy);
-  if (v->has_max_fraction)
-    lgen_set_num(L, "max_fraction", v->max_fraction);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubShapeCastDesc(lua_State *L, const LubShapeCastDesc *v) {
-  lua_createtable(L, 0, 18);
-  fill_LubShapeCastDesc(L, v);
-}
-
-static void push_list_LubShapeCastDesc(lua_State *L, const LubShapeCastDesc *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeCastDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMoverDesc(lua_State *L, const LubMoverDesc *v) {
-  lgen_set_num(L, "ax", v->ax);
-  lgen_set_num(L, "ay", v->ay);
-  lgen_set_num(L, "bx", v->bx);
-  lgen_set_num(L, "by", v->by);
-  lgen_set_num(L, "r", v->r);
-  if (v->has_dx)
-    lgen_set_num(L, "dx", v->dx);
-  if (v->has_dy)
-    lgen_set_num(L, "dy", v->dy);
-  if (v->has_max_fraction)
-    lgen_set_num(L, "max_fraction", v->max_fraction);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMoverDesc(lua_State *L, const LubMoverDesc *v) {
-  lua_createtable(L, 0, 9);
-  fill_LubMoverDesc(L, v);
-}
-
-static void push_list_LubMoverDesc(lua_State *L, const LubMoverDesc *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMoverDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubExplosionDesc(lua_State *L, const LubExplosionDesc *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_radius)
-    lgen_set_num(L, "radius", v->radius);
-  if (v->has_falloff)
-    lgen_set_num(L, "falloff", v->falloff);
-  if (v->has_impulse_per_length)
-    lgen_set_num(L, "impulse_per_length", v->impulse_per_length);
-  if (v->has_filter) {
-    push_LubFilterDesc(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubExplosionDesc(lua_State *L, const LubExplosionDesc *v) {
-  lua_createtable(L, 0, 6);
-  fill_LubExplosionDesc(L, v);
-}
-
-static void push_list_LubExplosionDesc(lua_State *L, const LubExplosionDesc *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubExplosionDesc(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubDebugOpts(lua_State *L, const LubDebugOpts *v) {
-  if (v->has_shapes)
-    lgen_set_bool(L, "shapes", v->shapes);
-  if (v->has_joints)
-    lgen_set_bool(L, "joints", v->joints);
-  if (v->has_joint_extras)
-    lgen_set_bool(L, "joint_extras", v->joint_extras);
-  if (v->has_bounds)
-    lgen_set_bool(L, "bounds", v->bounds);
-  if (v->has_mass)
-    lgen_set_bool(L, "mass", v->mass);
-  if (v->has_body_names)
-    lgen_set_bool(L, "body_names", v->body_names);
-  if (v->has_contacts)
-    lgen_set_bool(L, "contacts", v->contacts);
-  if (v->has_graph_colors)
-    lgen_set_bool(L, "graph_colors", v->graph_colors);
-  if (v->has_contact_normals)
-    lgen_set_bool(L, "contact_normals", v->contact_normals);
-  if (v->has_contact_impulses)
-    lgen_set_bool(L, "contact_impulses", v->contact_impulses);
-  if (v->has_contact_features)
-    lgen_set_bool(L, "contact_features", v->contact_features);
-  if (v->has_friction_impulses)
-    lgen_set_bool(L, "friction_impulses", v->friction_impulses);
-  if (v->has_islands)
-    lgen_set_bool(L, "islands", v->islands);
-  if (v->has_drawing_bounds) {
-    push_LubAabbDesc(L, &v->drawing_bounds);
-    lua_setfield(L, -2, "drawing_bounds");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubDebugOpts(lua_State *L, const LubDebugOpts *v) {
-  lua_createtable(L, 0, 14);
-  fill_LubDebugOpts(L, v);
-}
-
-static void push_list_LubDebugOpts(lua_State *L, const LubDebugOpts *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubDebugOpts(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubDebugData(lua_State *L, const LubDebugData *v) {
   if (v->segments) {
     lgen_push_float_view(L, v->segments, v->segments_count);
@@ -5347,15 +2434,6 @@ static void push_LubDebugData(lua_State *L, const LubDebugData *v) {
   fill_LubDebugData(L, v);
 }
 
-static void push_list_LubDebugData(lua_State *L, const LubDebugData *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubDebugData(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubPose(lua_State *L, const LubPose *v) {
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -5376,14 +2454,6 @@ static void push_LubPose(lua_State *L, const LubPose *v) {
   fill_LubPose(L, v);
 }
 
-static void push_list_LubPose(lua_State *L, const LubPose *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPose(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubVelocity(lua_State *L, const LubVelocity *v) {
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -5395,15 +2465,6 @@ static void fill_LubVelocity(lua_State *L, const LubVelocity *v) {
 static void push_LubVelocity(lua_State *L, const LubVelocity *v) {
   lua_createtable(L, 0, 3);
   fill_LubVelocity(L, v);
-}
-
-static void push_list_LubVelocity(lua_State *L, const LubVelocity *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVelocity(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubMassData(lua_State *L, const LubMassData *v) {
@@ -5426,15 +2487,6 @@ static void push_LubMassData(lua_State *L, const LubMassData *v) {
   fill_LubMassData(L, v);
 }
 
-static void push_list_LubMassData(lua_State *L, const LubMassData *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMassData(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubAabb(lua_State *L, const LubAabb *v) {
   lgen_set_num(L, "min_x", v->min_x);
   lgen_set_num(L, "min_y", v->min_y);
@@ -5449,14 +2501,6 @@ static void push_LubAabb(lua_State *L, const LubAabb *v) {
   fill_LubAabb(L, v);
 }
 
-static void push_list_LubAabb(lua_State *L, const LubAabb *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubAabb(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubFilterInfo(lua_State *L, const LubFilterInfo *v) {
   lgen_set_bits(L, "category_bits", v->category_bits);
   lgen_set_bits(L, "mask_bits", v->mask_bits);
@@ -5468,15 +2512,6 @@ static void fill_LubFilterInfo(lua_State *L, const LubFilterInfo *v) {
 static void push_LubFilterInfo(lua_State *L, const LubFilterInfo *v) {
   lua_createtable(L, 0, 3);
   fill_LubFilterInfo(L, v);
-}
-
-static void push_list_LubFilterInfo(lua_State *L, const LubFilterInfo *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubFilterInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubShapeInfo(lua_State *L, const LubShapeInfo *v) {
@@ -5506,15 +2541,6 @@ static void push_LubShapeInfo(lua_State *L, const LubShapeInfo *v) {
   fill_LubShapeInfo(L, v);
 }
 
-static void push_list_LubShapeInfo(lua_State *L, const LubShapeInfo *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubWorldCallbackInfo(lua_State *L,
                                       const LubWorldCallbackInfo *v) {
   lgen_set_bool(L, "filter", v->filter);
@@ -5529,16 +2555,6 @@ static void push_LubWorldCallbackInfo(lua_State *L,
                                       const LubWorldCallbackInfo *v) {
   lua_createtable(L, 0, 4);
   fill_LubWorldCallbackInfo(L, v);
-}
-
-static void push_list_LubWorldCallbackInfo(lua_State *L,
-                                           const LubWorldCallbackInfo *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldCallbackInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubWorldInfo(lua_State *L, const LubWorldInfo *v) {
@@ -5584,15 +2600,6 @@ static void push_LubWorldInfo(lua_State *L, const LubWorldInfo *v) {
   fill_LubWorldInfo(L, v);
 }
 
-static void push_list_LubWorldInfo(lua_State *L, const LubWorldInfo *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubStepInfo(lua_State *L, const LubStepInfo *v) {
   lgen_set_int(L, "steps", v->steps);
   lgen_set_int(L, "commands", v->commands);
@@ -5612,15 +2619,6 @@ static void fill_LubStepInfo(lua_State *L, const LubStepInfo *v) {
 static void push_LubStepInfo(lua_State *L, const LubStepInfo *v) {
   lua_createtable(L, 0, 11);
   fill_LubStepInfo(L, v);
-}
-
-static void push_list_LubStepInfo(lua_State *L, const LubStepInfo *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubStepInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubJointView(lua_State *L, const LubJointView *v) {
@@ -5681,15 +2679,6 @@ static void fill_LubJointInfo(lua_State *L, const LubJointInfo *v) {
 static void push_LubJointInfo(lua_State *L, const LubJointInfo *v) {
   lua_createtable(L, 0, 14);
   fill_LubJointInfo(L, v);
-}
-
-static void push_list_LubJointInfo(lua_State *L, const LubJointInfo *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointInfo(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubContactData(lua_State *L, const LubContactData *v) {
@@ -5858,15 +2847,6 @@ static void push_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v) {
   fill_LubShapeRayHit(L, v);
 }
 
-static void push_list_LubShapeRayHit(lua_State *L, const LubShapeRayHit *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeRayHit(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubMoverCast(lua_State *L, const LubMoverCast *v) {
   lgen_set_num(L, "fraction", v->fraction);
   lgen_set_num(L, "dx", v->dx);
@@ -5878,15 +2858,6 @@ static void fill_LubMoverCast(lua_State *L, const LubMoverCast *v) {
 static void push_LubMoverCast(lua_State *L, const LubMoverCast *v) {
   lua_createtable(L, 0, 3);
   fill_LubMoverCast(L, v);
-}
-
-static void push_list_LubMoverCast(lua_State *L, const LubMoverCast *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMoverCast(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubMoverPlane(lua_State *L, const LubMoverPlane *v) {
@@ -5947,14 +2918,6 @@ static void push_LubProfile(lua_State *L, const LubProfile *v) {
   fill_LubProfile(L, v);
 }
 
-static void push_list_LubProfile(lua_State *L, const LubProfile *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubProfile(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubCounters(lua_State *L, const LubCounters *v) {
   lgen_set_int(L, "body_count", v->body_count);
   lgen_set_int(L, "shape_count", v->shape_count);
@@ -5979,15 +2942,6 @@ static void push_LubCounters(lua_State *L, const LubCounters *v) {
   fill_LubCounters(L, v);
 }
 
-static void push_list_LubCounters(lua_State *L, const LubCounters *v,
-                                  int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCounters(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubVec3d(lua_State *L, const LubVec3d *v) {
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -5999,114 +2953,6 @@ static void fill_LubVec3d(lua_State *L, const LubVec3d *v) {
 static void push_LubVec3d(lua_State *L, const LubVec3d *v) {
   lua_createtable(L, 0, 3);
   fill_LubVec3d(L, v);
-}
-
-static void push_list_LubVec3d(lua_State *L, const LubVec3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVec3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubQuat3d(lua_State *L, const LubQuat3d *v) {
-  lgen_set_num(L, "x", v->x);
-  lgen_set_num(L, "y", v->y);
-  lgen_set_num(L, "z", v->z);
-  lgen_set_num(L, "w", v->w);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubQuat3d(lua_State *L, const LubQuat3d *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubQuat3d(L, v);
-}
-
-static void push_list_LubQuat3d(lua_State *L, const LubQuat3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubQuat3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubInitialState3d(lua_State *L, const LubInitialState3d *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_z)
-    lgen_set_num(L, "z", v->z);
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  if (v->has_euler) {
-    push_LubVec3d(L, &v->euler);
-    lua_setfield(L, -2, "euler");
-  }
-  if (v->has_vx)
-    lgen_set_num(L, "vx", v->vx);
-  if (v->has_vy)
-    lgen_set_num(L, "vy", v->vy);
-  if (v->has_vz)
-    lgen_set_num(L, "vz", v->vz);
-  if (v->has_wx)
-    lgen_set_num(L, "wx", v->wx);
-  if (v->has_wy)
-    lgen_set_num(L, "wy", v->wy);
-  if (v->has_wz)
-    lgen_set_num(L, "wz", v->wz);
-  if (v->has_awake)
-    lgen_set_bool(L, "awake", v->awake);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubInitialState3d(lua_State *L, const LubInitialState3d *v) {
-  lua_createtable(L, 0, 12);
-  fill_LubInitialState3d(L, v);
-}
-
-static void push_list_LubInitialState3d(lua_State *L,
-                                        const LubInitialState3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubInitialState3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMotionLocks3d(lua_State *L, const LubMotionLocks3d *v) {
-  if (v->has_linear_x)
-    lgen_set_bool(L, "linear_x", v->linear_x);
-  if (v->has_linear_y)
-    lgen_set_bool(L, "linear_y", v->linear_y);
-  if (v->has_linear_z)
-    lgen_set_bool(L, "linear_z", v->linear_z);
-  if (v->has_angular_x)
-    lgen_set_bool(L, "angular_x", v->angular_x);
-  if (v->has_angular_y)
-    lgen_set_bool(L, "angular_y", v->angular_y);
-  if (v->has_angular_z)
-    lgen_set_bool(L, "angular_z", v->angular_z);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMotionLocks3d(lua_State *L, const LubMotionLocks3d *v) {
-  lua_createtable(L, 0, 6);
-  fill_LubMotionLocks3d(L, v);
-}
-
-static void push_list_LubMotionLocks3d(lua_State *L, const LubMotionLocks3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMotionLocks3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubShapeView3d(lua_State *L, const LubShapeView3d *v) {
@@ -6173,1412 +3019,6 @@ static void push_LubPreSolveContact3d(lua_State *L,
   fill_LubPreSolveContact3d(L, v);
 }
 
-static void push_list_LubPreSolveContact3d(lua_State *L,
-                                           const LubPreSolveContact3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPreSolveContact3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubWorldCallbacks3d(lua_State *L,
-                                     const LubWorldCallbacks3d *v) {
-  (void)L;
-  (void)v;
-}
-
-static void push_LubWorldCallbacks3d(lua_State *L,
-                                     const LubWorldCallbacks3d *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubWorldCallbacks3d(L, v);
-}
-
-static void push_list_LubWorldCallbacks3d(lua_State *L,
-                                          const LubWorldCallbacks3d *v,
-                                          int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldCallbacks3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubWorldOpts3d(lua_State *L, const LubWorldOpts3d *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_gravity) {
-    push_LubVec3d(L, &v->gravity);
-    lua_setfield(L, -2, "gravity");
-  }
-  if (v->has_fixed_dt)
-    lgen_set_num(L, "fixed_dt", v->fixed_dt);
-  if (v->has_substeps)
-    lgen_set_int(L, "substeps", v->substeps);
-  if (v->has_max_steps)
-    lgen_set_int(L, "max_steps", v->max_steps);
-  if (v->has_sleep)
-    lgen_set_bool(L, "sleep", v->sleep);
-  if (v->has_continuous)
-    lgen_set_bool(L, "continuous", v->continuous);
-  if (v->has_hit_event_threshold)
-    lgen_set_num(L, "hit_event_threshold", v->hit_event_threshold);
-  if (v->has_callbacks) {
-    push_LubWorldCallbacks3d(L, &v->callbacks);
-    lua_setfield(L, -2, "callbacks");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubWorldOpts3d(lua_State *L, const LubWorldOpts3d *v) {
-  lua_createtable(L, 0, 9);
-  fill_LubWorldOpts3d(L, v);
-}
-
-static void push_list_LubWorldOpts3d(lua_State *L, const LubWorldOpts3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldOpts3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBeginOpts3d(lua_State *L, const LubBeginOpts3d *v) {
-  if (v->has_prune)
-    lgen_set_bool(L, "prune", v->prune);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBeginOpts3d(lua_State *L, const LubBeginOpts3d *v) {
-  lua_createtable(L, 0, 1);
-  fill_LubBeginOpts3d(L, v);
-}
-
-static void push_list_LubBeginOpts3d(lua_State *L, const LubBeginOpts3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBeginOpts3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBodyDesc3d(lua_State *L, const LubBodyDesc3d *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_type)
-    lgen_set_int(L, "type", v->type);
-  if (v->has_motion_locks) {
-    push_LubMotionLocks3d(L, &v->motion_locks);
-    lua_setfield(L, -2, "motion_locks");
-  }
-  if (v->has_bullet)
-    lgen_set_bool(L, "bullet", v->bullet);
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_awake)
-    lgen_set_bool(L, "awake", v->awake);
-  if (v->has_sleep)
-    lgen_set_bool(L, "sleep", v->sleep);
-  if (v->has_sleep_threshold)
-    lgen_set_num(L, "sleep_threshold", v->sleep_threshold);
-  if (v->has_gravity_scale)
-    lgen_set_num(L, "gravity_scale", v->gravity_scale);
-  if (v->has_linear_damping)
-    lgen_set_num(L, "linear_damping", v->linear_damping);
-  if (v->has_angular_damping)
-    lgen_set_num(L, "angular_damping", v->angular_damping);
-  if (v->has_initial) {
-    push_LubInitialState3d(L, &v->initial);
-    lua_setfield(L, -2, "initial");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBodyDesc3d(lua_State *L, const LubBodyDesc3d *v) {
-  lua_createtable(L, 0, 12);
-  fill_LubBodyDesc3d(L, v);
-}
-
-static void push_list_LubBodyDesc3d(lua_State *L, const LubBodyDesc3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBodyDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubFilterDesc3d(lua_State *L, const LubFilterDesc3d *v) {
-  if (v->has_category_bits)
-    lgen_set_bits(L, "category_bits", v->category_bits);
-  if (v->has_mask_bits)
-    lgen_set_bits(L, "mask_bits", v->mask_bits);
-  if (v->has_group)
-    lgen_set_int(L, "group", v->group);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubFilterDesc3d(lua_State *L, const LubFilterDesc3d *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubFilterDesc3d(L, v);
-}
-
-static void push_list_LubFilterDesc3d(lua_State *L, const LubFilterDesc3d *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubFilterDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubShapeDesc3d(lua_State *L, const LubShapeDesc3d *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_density)
-    lgen_set_num(L, "density", v->density);
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->tag.len > 0)
-    lgen_set_str(L, "tag", v->tag);
-  if (v->material_name.len > 0)
-    lgen_set_str(L, "material_name", v->material_name);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  if (v->has_sensor)
-    lgen_set_bool(L, "sensor", v->sensor);
-  if (v->has_contact)
-    lgen_set_bool(L, "contact", v->contact);
-  if (v->has_hit)
-    lgen_set_bool(L, "hit", v->hit);
-  if (v->has_sensor_events)
-    lgen_set_bool(L, "sensor_events", v->sensor_events);
-  if (v->has_pre_solve)
-    lgen_set_bool(L, "pre_solve", v->pre_solve);
-  if (v->has_filter) {
-    push_LubFilterDesc3d(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubShapeDesc3d(lua_State *L, const LubShapeDesc3d *v) {
-  lua_createtable(L, 0, 13);
-  fill_LubShapeDesc3d(L, v);
-}
-
-static void push_list_LubShapeDesc3d(lua_State *L, const LubShapeDesc3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubSphereDesc3d(lua_State *L, const LubSphereDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  lgen_set_num(L, "r", v->r);
-  if (v->has_offset) {
-    push_LubVec3d(L, &v->offset);
-    lua_setfield(L, -2, "offset");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubSphereDesc3d(lua_State *L, const LubSphereDesc3d *v) {
-  lua_createtable(L, 0, 15);
-  fill_LubSphereDesc3d(L, v);
-}
-
-static void push_list_LubSphereDesc3d(lua_State *L, const LubSphereDesc3d *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubSphereDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBoxDesc3d(lua_State *L, const LubBoxDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  lgen_set_num(L, "hx", v->hx);
-  lgen_set_num(L, "hy", v->hy);
-  lgen_set_num(L, "hz", v->hz);
-  if (v->has_offset) {
-    push_LubVec3d(L, &v->offset);
-    lua_setfield(L, -2, "offset");
-  }
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBoxDesc3d(lua_State *L, const LubBoxDesc3d *v) {
-  lua_createtable(L, 0, 18);
-  fill_LubBoxDesc3d(L, v);
-}
-
-static void push_list_LubBoxDesc3d(lua_State *L, const LubBoxDesc3d *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBoxDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCapsuleDesc3d(lua_State *L, const LubCapsuleDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  {
-    push_LubVec3d(L, &v->a);
-    lua_setfield(L, -2, "a");
-  }
-  {
-    push_LubVec3d(L, &v->b);
-    lua_setfield(L, -2, "b");
-  }
-  lgen_set_num(L, "r", v->r);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCapsuleDesc3d(lua_State *L, const LubCapsuleDesc3d *v) {
-  lua_createtable(L, 0, 16);
-  fill_LubCapsuleDesc3d(L, v);
-}
-
-static void push_list_LubCapsuleDesc3d(lua_State *L, const LubCapsuleDesc3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCapsuleDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCylinderDesc3d(lua_State *L, const LubCylinderDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  lgen_set_num(L, "height", v->height);
-  lgen_set_num(L, "radius", v->radius);
-  if (v->has_sides)
-    lgen_set_int(L, "sides", v->sides);
-  if (v->has_y_offset)
-    lgen_set_num(L, "y_offset", v->y_offset);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCylinderDesc3d(lua_State *L, const LubCylinderDesc3d *v) {
-  lua_createtable(L, 0, 17);
-  fill_LubCylinderDesc3d(L, v);
-}
-
-static void push_list_LubCylinderDesc3d(lua_State *L,
-                                        const LubCylinderDesc3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCylinderDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubConeDesc3d(lua_State *L, const LubConeDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  lgen_set_num(L, "height", v->height);
-  lgen_set_num(L, "radius1", v->radius1);
-  if (v->has_radius2)
-    lgen_set_num(L, "radius2", v->radius2);
-  if (v->has_slices)
-    lgen_set_int(L, "slices", v->slices);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubConeDesc3d(lua_State *L, const LubConeDesc3d *v) {
-  lua_createtable(L, 0, 17);
-  fill_LubConeDesc3d(L, v);
-}
-
-static void push_list_LubConeDesc3d(lua_State *L, const LubConeDesc3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubConeDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubHullDesc3d(lua_State *L, const LubHullDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  if (v->points) {
-    lgen_push_float_view(L, v->points, v->points_count);
-    lua_setfield(L, -2, "points");
-  }
-  if (v->has_max_vertices)
-    lgen_set_int(L, "max_vertices", v->max_vertices);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubHullDesc3d(lua_State *L, const LubHullDesc3d *v) {
-  lua_createtable(L, 0, 15);
-  fill_LubHullDesc3d(L, v);
-}
-
-static void push_list_LubHullDesc3d(lua_State *L, const LubHullDesc3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubHullDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubSurfaceMaterial3d(lua_State *L,
-                                      const LubSurfaceMaterial3d *v) {
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubSurfaceMaterial3d(lua_State *L,
-                                      const LubSurfaceMaterial3d *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubSurfaceMaterial3d(L, v);
-}
-
-static void push_list_LubSurfaceMaterial3d(lua_State *L,
-                                           const LubSurfaceMaterial3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubSurfaceMaterial3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMeshDesc3d(lua_State *L, const LubMeshDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  if (v->positions) {
-    lgen_push_float_view(L, v->positions, v->positions_count);
-    lua_setfield(L, -2, "positions");
-  }
-  if (v->indices) {
-    lgen_push_int_view(L, v->indices, v->indices_count);
-    lua_setfield(L, -2, "indices");
-  }
-  if (v->has_scale) {
-    push_LubVec3d(L, &v->scale);
-    lua_setfield(L, -2, "scale");
-  }
-  if (v->has_weld_vertices)
-    lgen_set_bool(L, "weld_vertices", v->weld_vertices);
-  if (v->has_weld_tolerance)
-    lgen_set_num(L, "weld_tolerance", v->weld_tolerance);
-  if (v->has_use_median_split)
-    lgen_set_bool(L, "use_median_split", v->use_median_split);
-  if (v->has_identify_edges)
-    lgen_set_bool(L, "identify_edges", v->identify_edges);
-  if (v->materials) {
-    push_list_LubSurfaceMaterial3d(L, v->materials, v->materials_count);
-    lua_setfield(L, -2, "materials");
-  }
-  if (v->material_indices) {
-    lgen_push_int_view(L, v->material_indices, v->material_indices_count);
-    lua_setfield(L, -2, "material_indices");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMeshDesc3d(lua_State *L, const LubMeshDesc3d *v) {
-  lua_createtable(L, 0, 22);
-  fill_LubMeshDesc3d(L, v);
-}
-
-static void push_list_LubMeshDesc3d(lua_State *L, const LubMeshDesc3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMeshDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubHeightFieldDesc3d(lua_State *L,
-                                      const LubHeightFieldDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  if (v->heights) {
-    lgen_push_float_view(L, v->heights, v->heights_count);
-    lua_setfield(L, -2, "heights");
-  }
-  lgen_set_int(L, "x_count", v->x_count);
-  lgen_set_int(L, "z_count", v->z_count);
-  if (v->has_cell_width)
-    lgen_set_num(L, "cell_width", v->cell_width);
-  if (v->has_scale) {
-    push_LubVec3d(L, &v->scale);
-    lua_setfield(L, -2, "scale");
-  }
-  if (v->has_min_height)
-    lgen_set_num(L, "min_height", v->min_height);
-  if (v->has_max_height)
-    lgen_set_num(L, "max_height", v->max_height);
-  if (v->has_clockwise_winding)
-    lgen_set_bool(L, "clockwise_winding", v->clockwise_winding);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubHeightFieldDesc3d(lua_State *L,
-                                      const LubHeightFieldDesc3d *v) {
-  lua_createtable(L, 0, 21);
-  fill_LubHeightFieldDesc3d(L, v);
-}
-
-static void push_list_LubHeightFieldDesc3d(lua_State *L,
-                                           const LubHeightFieldDesc3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubHeightFieldDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCompoundSphere3d(lua_State *L,
-                                     const LubCompoundSphere3d *v) {
-  lgen_set_num(L, "r", v->r);
-  if (v->has_center) {
-    push_LubVec3d(L, &v->center);
-    lua_setfield(L, -2, "center");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCompoundSphere3d(lua_State *L,
-                                     const LubCompoundSphere3d *v) {
-  lua_createtable(L, 0, 2);
-  fill_LubCompoundSphere3d(L, v);
-}
-
-static void push_list_LubCompoundSphere3d(lua_State *L,
-                                          const LubCompoundSphere3d *v,
-                                          int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCompoundSphere3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCompoundBox3d(lua_State *L, const LubCompoundBox3d *v) {
-  lgen_set_num(L, "hx", v->hx);
-  lgen_set_num(L, "hy", v->hy);
-  lgen_set_num(L, "hz", v->hz);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCompoundBox3d(lua_State *L, const LubCompoundBox3d *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubCompoundBox3d(L, v);
-}
-
-static void push_list_LubCompoundBox3d(lua_State *L, const LubCompoundBox3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCompoundBox3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCompoundCapsule3d(lua_State *L,
-                                      const LubCompoundCapsule3d *v) {
-  {
-    push_LubVec3d(L, &v->a);
-    lua_setfield(L, -2, "a");
-  }
-  {
-    push_LubVec3d(L, &v->b);
-    lua_setfield(L, -2, "b");
-  }
-  lgen_set_num(L, "r", v->r);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCompoundCapsule3d(lua_State *L,
-                                      const LubCompoundCapsule3d *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubCompoundCapsule3d(L, v);
-}
-
-static void push_list_LubCompoundCapsule3d(lua_State *L,
-                                           const LubCompoundCapsule3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCompoundCapsule3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCompoundChild3d(lua_State *L, const LubCompoundChild3d *v) {
-  if (v->has_pose) {
-    push_LubFrameDesc3d(L, &v->pose);
-    lua_setfield(L, -2, "pose");
-  }
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  if (v->has_sphere) {
-    push_LubCompoundSphere3d(L, &v->sphere);
-    lua_setfield(L, -2, "sphere");
-  }
-  if (v->has_box) {
-    push_LubCompoundBox3d(L, &v->box);
-    lua_setfield(L, -2, "box");
-  }
-  if (v->has_capsule) {
-    push_LubCompoundCapsule3d(L, &v->capsule);
-    lua_setfield(L, -2, "capsule");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCompoundChild3d(lua_State *L, const LubCompoundChild3d *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubCompoundChild3d(L, v);
-}
-
-static void push_list_LubCompoundChild3d(lua_State *L,
-                                         const LubCompoundChild3d *v,
-                                         int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCompoundChild3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCompoundDesc3d(lua_State *L, const LubCompoundDesc3d *v) {
-  fill_LubShapeDesc3d(L, &v->base);
-  if (v->children) {
-    push_list_LubCompoundChild3d(L, v->children, v->children_count);
-    lua_setfield(L, -2, "children");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCompoundDesc3d(lua_State *L, const LubCompoundDesc3d *v) {
-  lua_createtable(L, 0, 14);
-  fill_LubCompoundDesc3d(L, v);
-}
-
-static void push_list_LubCompoundDesc3d(lua_State *L,
-                                        const LubCompoundDesc3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCompoundDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCommandOpts3d(lua_State *L, const LubCommandOpts3d *v) {
-  if (v->has_wake)
-    lgen_set_bool(L, "wake", v->wake);
-  if (v->has_point) {
-    push_LubVec3d(L, &v->point);
-    lua_setfield(L, -2, "point");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCommandOpts3d(lua_State *L, const LubCommandOpts3d *v) {
-  lua_createtable(L, 0, 2);
-  fill_LubCommandOpts3d(L, v);
-}
-
-static void push_list_LubCommandOpts3d(lua_State *L, const LubCommandOpts3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCommandOpts3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubVelocityDesc3d(lua_State *L, const LubVelocityDesc3d *v) {
-  if (v->has_vx)
-    lgen_set_num(L, "vx", v->vx);
-  if (v->has_vy)
-    lgen_set_num(L, "vy", v->vy);
-  if (v->has_vz)
-    lgen_set_num(L, "vz", v->vz);
-  if (v->has_wx)
-    lgen_set_num(L, "wx", v->wx);
-  if (v->has_wy)
-    lgen_set_num(L, "wy", v->wy);
-  if (v->has_wz)
-    lgen_set_num(L, "wz", v->wz);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubVelocityDesc3d(lua_State *L, const LubVelocityDesc3d *v) {
-  lua_createtable(L, 0, 6);
-  fill_LubVelocityDesc3d(L, v);
-}
-
-static void push_list_LubVelocityDesc3d(lua_State *L,
-                                        const LubVelocityDesc3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVelocityDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubPoseDesc3d(lua_State *L, const LubPoseDesc3d *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_z)
-    lgen_set_num(L, "z", v->z);
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  if (v->has_euler) {
-    push_LubVec3d(L, &v->euler);
-    lua_setfield(L, -2, "euler");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubPoseDesc3d(lua_State *L, const LubPoseDesc3d *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubPoseDesc3d(L, v);
-}
-
-static void push_list_LubPoseDesc3d(lua_State *L, const LubPoseDesc3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPoseDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubTargetDesc3d(lua_State *L, const LubTargetDesc3d *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_z)
-    lgen_set_num(L, "z", v->z);
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  if (v->has_euler) {
-    push_LubVec3d(L, &v->euler);
-    lua_setfield(L, -2, "euler");
-  }
-  if (v->has_time_step)
-    lgen_set_num(L, "time_step", v->time_step);
-  if (v->has_wake)
-    lgen_set_bool(L, "wake", v->wake);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubTargetDesc3d(lua_State *L, const LubTargetDesc3d *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubTargetDesc3d(L, v);
-}
-
-static void push_list_LubTargetDesc3d(lua_State *L, const LubTargetDesc3d *v,
-                                      int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubTargetDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubFrameDesc3d(lua_State *L, const LubFrameDesc3d *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_z)
-    lgen_set_num(L, "z", v->z);
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  if (v->has_euler) {
-    push_LubVec3d(L, &v->euler);
-    lua_setfield(L, -2, "euler");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubFrameDesc3d(lua_State *L, const LubFrameDesc3d *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubFrameDesc3d(L, v);
-}
-
-static void push_list_LubFrameDesc3d(lua_State *L, const LubFrameDesc3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubFrameDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointSpringDesc3d(lua_State *L,
-                                      const LubJointSpringDesc3d *v) {
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_hertz)
-    lgen_set_num(L, "hertz", v->hertz);
-  if (v->has_damping_ratio)
-    lgen_set_num(L, "damping_ratio", v->damping_ratio);
-  if (v->has_linear_hertz)
-    lgen_set_num(L, "linear_hertz", v->linear_hertz);
-  if (v->has_linear_damping_ratio)
-    lgen_set_num(L, "linear_damping_ratio", v->linear_damping_ratio);
-  if (v->has_angular_hertz)
-    lgen_set_num(L, "angular_hertz", v->angular_hertz);
-  if (v->has_angular_damping_ratio)
-    lgen_set_num(L, "angular_damping_ratio", v->angular_damping_ratio);
-  if (v->has_max_torque)
-    lgen_set_num(L, "max_torque", v->max_torque);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointSpringDesc3d(lua_State *L,
-                                      const LubJointSpringDesc3d *v) {
-  lua_createtable(L, 0, 8);
-  fill_LubJointSpringDesc3d(L, v);
-}
-
-static void push_list_LubJointSpringDesc3d(lua_State *L,
-                                           const LubJointSpringDesc3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointSpringDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointLimitDesc3d(lua_State *L,
-                                     const LubJointLimitDesc3d *v) {
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_lower)
-    lgen_set_num(L, "lower", v->lower);
-  if (v->has_upper)
-    lgen_set_num(L, "upper", v->upper);
-  if (v->has_min_length)
-    lgen_set_num(L, "min_length", v->min_length);
-  if (v->has_max_length)
-    lgen_set_num(L, "max_length", v->max_length);
-  if (v->has_cone_angle)
-    lgen_set_num(L, "cone_angle", v->cone_angle);
-  if (v->has_lower_twist_angle)
-    lgen_set_num(L, "lower_twist_angle", v->lower_twist_angle);
-  if (v->has_upper_twist_angle)
-    lgen_set_num(L, "upper_twist_angle", v->upper_twist_angle);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointLimitDesc3d(lua_State *L,
-                                     const LubJointLimitDesc3d *v) {
-  lua_createtable(L, 0, 8);
-  fill_LubJointLimitDesc3d(L, v);
-}
-
-static void push_list_LubJointLimitDesc3d(lua_State *L,
-                                          const LubJointLimitDesc3d *v,
-                                          int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointLimitDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointMotorDesc3d(lua_State *L,
-                                     const LubJointMotorDesc3d *v) {
-  if (v->has_enabled)
-    lgen_set_bool(L, "enabled", v->enabled);
-  if (v->has_speed)
-    lgen_set_num(L, "speed", v->speed);
-  if (v->has_max_force)
-    lgen_set_num(L, "max_force", v->max_force);
-  if (v->has_max_torque)
-    lgen_set_num(L, "max_torque", v->max_torque);
-  if (v->has_velocity) {
-    push_LubVec3d(L, &v->velocity);
-    lua_setfield(L, -2, "velocity");
-  }
-  if (v->has_linear_velocity) {
-    push_LubVec3d(L, &v->linear_velocity);
-    lua_setfield(L, -2, "linear_velocity");
-  }
-  if (v->has_angular_velocity) {
-    push_LubVec3d(L, &v->angular_velocity);
-    lua_setfield(L, -2, "angular_velocity");
-  }
-  if (v->has_max_velocity_force)
-    lgen_set_num(L, "max_velocity_force", v->max_velocity_force);
-  if (v->has_max_velocity_torque)
-    lgen_set_num(L, "max_velocity_torque", v->max_velocity_torque);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointMotorDesc3d(lua_State *L,
-                                     const LubJointMotorDesc3d *v) {
-  lua_createtable(L, 0, 9);
-  fill_LubJointMotorDesc3d(L, v);
-}
-
-static void push_list_LubJointMotorDesc3d(lua_State *L,
-                                          const LubJointMotorDesc3d *v,
-                                          int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointMotorDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointTargetDesc3d(lua_State *L,
-                                      const LubJointTargetDesc3d *v) {
-  if (v->has_translation)
-    lgen_set_num(L, "translation", v->translation);
-  if (v->has_angle)
-    lgen_set_num(L, "angle", v->angle);
-  if (v->has_steering_angle)
-    lgen_set_num(L, "steering_angle", v->steering_angle);
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  if (v->has_euler) {
-    push_LubVec3d(L, &v->euler);
-    lua_setfield(L, -2, "euler");
-  }
-  if (v->has_linear_velocity) {
-    push_LubVec3d(L, &v->linear_velocity);
-    lua_setfield(L, -2, "linear_velocity");
-  }
-  if (v->has_angular_velocity) {
-    push_LubVec3d(L, &v->angular_velocity);
-    lua_setfield(L, -2, "angular_velocity");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointTargetDesc3d(lua_State *L,
-                                      const LubJointTargetDesc3d *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubJointTargetDesc3d(L, v);
-}
-
-static void push_list_LubJointTargetDesc3d(lua_State *L,
-                                           const LubJointTargetDesc3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointTargetDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubJointDesc3d(lua_State *L, const LubJointDesc3d *v) {
-  if (v->has_version)
-    lgen_set_int(L, "version", v->version);
-  if (v->has_type && name_LubPhys3dJointType(v->type)) {
-    lua_pushstring(L, name_LubPhys3dJointType(v->type));
-    lua_setfield(L, -2, "type");
-  }
-  if (v->body_a) {
-    lgen_push_ref(L, "body3d", v->body_a);
-    lua_setfield(L, -2, "body_a");
-  }
-  if (v->body_b) {
-    lgen_push_ref(L, "body3d", v->body_b);
-    lua_setfield(L, -2, "body_b");
-  }
-  if (v->has_anchor_a) {
-    push_LubVec3d(L, &v->anchor_a);
-    lua_setfield(L, -2, "anchor_a");
-  }
-  if (v->has_anchor_b) {
-    push_LubVec3d(L, &v->anchor_b);
-    lua_setfield(L, -2, "anchor_b");
-  }
-  if (v->has_axis) {
-    push_LubVec3d(L, &v->axis);
-    lua_setfield(L, -2, "axis");
-  }
-  if (v->has_frame_a) {
-    push_LubFrameDesc3d(L, &v->frame_a);
-    lua_setfield(L, -2, "frame_a");
-  }
-  if (v->has_frame_b) {
-    push_LubFrameDesc3d(L, &v->frame_b);
-    lua_setfield(L, -2, "frame_b");
-  }
-  if (v->has_collide_connected)
-    lgen_set_bool(L, "collide_connected", v->collide_connected);
-  if (v->has_force_threshold)
-    lgen_set_num(L, "force_threshold", v->force_threshold);
-  if (v->has_torque_threshold)
-    lgen_set_num(L, "torque_threshold", v->torque_threshold);
-  if (v->has_constraint_hertz)
-    lgen_set_num(L, "constraint_hertz", v->constraint_hertz);
-  if (v->has_constraint_damping_ratio)
-    lgen_set_num(L, "constraint_damping_ratio", v->constraint_damping_ratio);
-  if (v->has_length)
-    lgen_set_num(L, "length", v->length);
-  if (v->has_min_length)
-    lgen_set_num(L, "min_length", v->min_length);
-  if (v->has_max_length)
-    lgen_set_num(L, "max_length", v->max_length);
-  if (v->has_lower)
-    lgen_set_num(L, "lower", v->lower);
-  if (v->has_upper)
-    lgen_set_num(L, "upper", v->upper);
-  if (v->has_hertz)
-    lgen_set_num(L, "hertz", v->hertz);
-  if (v->has_damping_ratio)
-    lgen_set_num(L, "damping_ratio", v->damping_ratio);
-  if (v->has_linear_hertz)
-    lgen_set_num(L, "linear_hertz", v->linear_hertz);
-  if (v->has_angular_hertz)
-    lgen_set_num(L, "angular_hertz", v->angular_hertz);
-  if (v->has_linear_damping_ratio)
-    lgen_set_num(L, "linear_damping_ratio", v->linear_damping_ratio);
-  if (v->has_angular_damping_ratio)
-    lgen_set_num(L, "angular_damping_ratio", v->angular_damping_ratio);
-  if (v->has_max_force)
-    lgen_set_num(L, "max_force", v->max_force);
-  if (v->has_max_torque)
-    lgen_set_num(L, "max_torque", v->max_torque);
-  if (v->has_max_velocity_force)
-    lgen_set_num(L, "max_velocity_force", v->max_velocity_force);
-  if (v->has_max_velocity_torque)
-    lgen_set_num(L, "max_velocity_torque", v->max_velocity_torque);
-  if (v->has_max_spring_force)
-    lgen_set_num(L, "max_spring_force", v->max_spring_force);
-  if (v->has_max_spring_torque)
-    lgen_set_num(L, "max_spring_torque", v->max_spring_torque);
-  if (v->has_motor_speed)
-    lgen_set_num(L, "motor_speed", v->motor_speed);
-  if (v->has_target_angle)
-    lgen_set_num(L, "target_angle", v->target_angle);
-  if (v->has_target_translation)
-    lgen_set_num(L, "target_translation", v->target_translation);
-  if (v->has_target_rotation) {
-    push_LubQuat3d(L, &v->target_rotation);
-    lua_setfield(L, -2, "target_rotation");
-  }
-  if (v->has_linear_velocity) {
-    push_LubVec3d(L, &v->linear_velocity);
-    lua_setfield(L, -2, "linear_velocity");
-  }
-  if (v->has_angular_velocity) {
-    push_LubVec3d(L, &v->angular_velocity);
-    lua_setfield(L, -2, "angular_velocity");
-  }
-  if (v->has_motor_velocity) {
-    push_LubVec3d(L, &v->motor_velocity);
-    lua_setfield(L, -2, "motor_velocity");
-  }
-  if (v->has_enable_spring)
-    lgen_set_bool(L, "enable_spring", v->enable_spring);
-  if (v->has_enable_limit)
-    lgen_set_bool(L, "enable_limit", v->enable_limit);
-  if (v->has_enable_motor)
-    lgen_set_bool(L, "enable_motor", v->enable_motor);
-  if (v->has_cone_angle)
-    lgen_set_num(L, "cone_angle", v->cone_angle);
-  if (v->has_enable_cone_limit)
-    lgen_set_bool(L, "enable_cone_limit", v->enable_cone_limit);
-  if (v->has_enable_twist_limit)
-    lgen_set_bool(L, "enable_twist_limit", v->enable_twist_limit);
-  if (v->has_lower_twist_angle)
-    lgen_set_num(L, "lower_twist_angle", v->lower_twist_angle);
-  if (v->has_upper_twist_angle)
-    lgen_set_num(L, "upper_twist_angle", v->upper_twist_angle);
-  if (v->has_spring) {
-    push_LubJointSpringDesc3d(L, &v->spring);
-    lua_setfield(L, -2, "spring");
-  }
-  if (v->has_limit) {
-    push_LubJointLimitDesc3d(L, &v->limit);
-    lua_setfield(L, -2, "limit");
-  }
-  if (v->has_motor) {
-    push_LubJointMotorDesc3d(L, &v->motor);
-    lua_setfield(L, -2, "motor");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubJointDesc3d(lua_State *L, const LubJointDesc3d *v) {
-  lua_createtable(L, 0, 49);
-  fill_LubJointDesc3d(L, v);
-}
-
-static void push_list_LubJointDesc3d(lua_State *L, const LubJointDesc3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMaterialDesc3d(lua_State *L, const LubMaterialDesc3d *v) {
-  if (v->has_density)
-    lgen_set_num(L, "density", v->density);
-  if (v->has_friction)
-    lgen_set_num(L, "friction", v->friction);
-  if (v->has_restitution)
-    lgen_set_num(L, "restitution", v->restitution);
-  if (v->material_name.len > 0)
-    lgen_set_str(L, "material_name", v->material_name);
-  if (v->has_material_id)
-    lgen_set_int(L, "material_id", v->material_id);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMaterialDesc3d(lua_State *L, const LubMaterialDesc3d *v) {
-  lua_createtable(L, 0, 5);
-  fill_LubMaterialDesc3d(L, v);
-}
-
-static void push_list_LubMaterialDesc3d(lua_State *L,
-                                        const LubMaterialDesc3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMaterialDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubShapeEventsDesc3d(lua_State *L,
-                                      const LubShapeEventsDesc3d *v) {
-  if (v->has_sensor_events)
-    lgen_set_bool(L, "sensor_events", v->sensor_events);
-  if (v->has_contact)
-    lgen_set_bool(L, "contact", v->contact);
-  if (v->has_pre_solve)
-    lgen_set_bool(L, "pre_solve", v->pre_solve);
-  if (v->has_hit)
-    lgen_set_bool(L, "hit", v->hit);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubShapeEventsDesc3d(lua_State *L,
-                                      const LubShapeEventsDesc3d *v) {
-  lua_createtable(L, 0, 4);
-  fill_LubShapeEventsDesc3d(L, v);
-}
-
-static void push_list_LubShapeEventsDesc3d(lua_State *L,
-                                           const LubShapeEventsDesc3d *v,
-                                           int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeEventsDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubMoverDesc3d(lua_State *L, const LubMoverDesc3d *v) {
-  {
-    push_LubVec3d(L, &v->a);
-    lua_setfield(L, -2, "a");
-  }
-  {
-    push_LubVec3d(L, &v->b);
-    lua_setfield(L, -2, "b");
-  }
-  lgen_set_num(L, "r", v->r);
-  if (v->has_dx)
-    lgen_set_num(L, "dx", v->dx);
-  if (v->has_dy)
-    lgen_set_num(L, "dy", v->dy);
-  if (v->has_dz)
-    lgen_set_num(L, "dz", v->dz);
-  if (v->has_max_fraction)
-    lgen_set_num(L, "max_fraction", v->max_fraction);
-  if (v->has_filter) {
-    push_LubFilterDesc3d(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubMoverDesc3d(lua_State *L, const LubMoverDesc3d *v) {
-  lua_createtable(L, 0, 8);
-  fill_LubMoverDesc3d(L, v);
-}
-
-static void push_list_LubMoverDesc3d(lua_State *L, const LubMoverDesc3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMoverDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubRaycastDesc3d(lua_State *L, const LubRaycastDesc3d *v) {
-  if (v->has_x)
-    lgen_set_num(L, "x", v->x);
-  if (v->has_y)
-    lgen_set_num(L, "y", v->y);
-  if (v->has_z)
-    lgen_set_num(L, "z", v->z);
-  if (v->has_dx)
-    lgen_set_num(L, "dx", v->dx);
-  if (v->has_dy)
-    lgen_set_num(L, "dy", v->dy);
-  if (v->has_dz)
-    lgen_set_num(L, "dz", v->dz);
-  if (v->has_max_fraction)
-    lgen_set_num(L, "max_fraction", v->max_fraction);
-  if (v->has_filter) {
-    push_LubFilterDesc3d(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubRaycastDesc3d(lua_State *L, const LubRaycastDesc3d *v) {
-  lua_createtable(L, 0, 8);
-  fill_LubRaycastDesc3d(L, v);
-}
-
-static void push_list_LubRaycastDesc3d(lua_State *L, const LubRaycastDesc3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubRaycastDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubAabbDesc3d(lua_State *L, const LubAabbDesc3d *v) {
-  lgen_set_num(L, "min_x", v->min_x);
-  lgen_set_num(L, "min_y", v->min_y);
-  lgen_set_num(L, "min_z", v->min_z);
-  lgen_set_num(L, "max_x", v->max_x);
-  lgen_set_num(L, "max_y", v->max_y);
-  lgen_set_num(L, "max_z", v->max_z);
-  if (v->has_filter) {
-    push_LubFilterDesc3d(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubAabbDesc3d(lua_State *L, const LubAabbDesc3d *v) {
-  lua_createtable(L, 0, 7);
-  fill_LubAabbDesc3d(L, v);
-}
-
-static void push_list_LubAabbDesc3d(lua_State *L, const LubAabbDesc3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubAabbDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubSphereProxy3d(lua_State *L, const LubSphereProxy3d *v) {
-  lgen_set_num(L, "r", v->r);
-  if (v->has_center) {
-    push_LubVec3d(L, &v->center);
-    lua_setfield(L, -2, "center");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubSphereProxy3d(lua_State *L, const LubSphereProxy3d *v) {
-  lua_createtable(L, 0, 2);
-  fill_LubSphereProxy3d(L, v);
-}
-
-static void push_list_LubSphereProxy3d(lua_State *L, const LubSphereProxy3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubSphereProxy3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubBoxProxy3d(lua_State *L, const LubBoxProxy3d *v) {
-  lgen_set_num(L, "hx", v->hx);
-  lgen_set_num(L, "hy", v->hy);
-  lgen_set_num(L, "hz", v->hz);
-  if (v->has_radius)
-    lgen_set_num(L, "radius", v->radius);
-  if (v->has_center) {
-    push_LubVec3d(L, &v->center);
-    lua_setfield(L, -2, "center");
-  }
-  if (v->has_quat) {
-    push_LubQuat3d(L, &v->quat);
-    lua_setfield(L, -2, "quat");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubBoxProxy3d(lua_State *L, const LubBoxProxy3d *v) {
-  lua_createtable(L, 0, 6);
-  fill_LubBoxProxy3d(L, v);
-}
-
-static void push_list_LubBoxProxy3d(lua_State *L, const LubBoxProxy3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubBoxProxy3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubCapsuleProxy3d(lua_State *L, const LubCapsuleProxy3d *v) {
-  {
-    push_LubVec3d(L, &v->a);
-    lua_setfield(L, -2, "a");
-  }
-  {
-    push_LubVec3d(L, &v->b);
-    lua_setfield(L, -2, "b");
-  }
-  lgen_set_num(L, "r", v->r);
-  (void)L;
-  (void)v;
-}
-
-static void push_LubCapsuleProxy3d(lua_State *L, const LubCapsuleProxy3d *v) {
-  lua_createtable(L, 0, 3);
-  fill_LubCapsuleProxy3d(L, v);
-}
-
-static void push_list_LubCapsuleProxy3d(lua_State *L,
-                                        const LubCapsuleProxy3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCapsuleProxy3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static void fill_LubShapeProxyDesc3d(lua_State *L,
-                                     const LubShapeProxyDesc3d *v) {
-  if (v->has_sphere) {
-    push_LubSphereProxy3d(L, &v->sphere);
-    lua_setfield(L, -2, "sphere");
-  }
-  if (v->has_box) {
-    push_LubBoxProxy3d(L, &v->box);
-    lua_setfield(L, -2, "box");
-  }
-  if (v->has_capsule) {
-    push_LubCapsuleProxy3d(L, &v->capsule);
-    lua_setfield(L, -2, "capsule");
-  }
-  if (v->has_dx)
-    lgen_set_num(L, "dx", v->dx);
-  if (v->has_dy)
-    lgen_set_num(L, "dy", v->dy);
-  if (v->has_dz)
-    lgen_set_num(L, "dz", v->dz);
-  if (v->has_max_fraction)
-    lgen_set_num(L, "max_fraction", v->max_fraction);
-  if (v->has_filter) {
-    push_LubFilterDesc3d(L, &v->filter);
-    lua_setfield(L, -2, "filter");
-  }
-  (void)L;
-  (void)v;
-}
-
-static void push_LubShapeProxyDesc3d(lua_State *L,
-                                     const LubShapeProxyDesc3d *v) {
-  lua_createtable(L, 0, 8);
-  fill_LubShapeProxyDesc3d(L, v);
-}
-
-static void push_list_LubShapeProxyDesc3d(lua_State *L,
-                                          const LubShapeProxyDesc3d *v,
-                                          int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeProxyDesc3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubPose3d(lua_State *L, const LubPose3d *v) {
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -7606,14 +3046,6 @@ static void push_LubPose3d(lua_State *L, const LubPose3d *v) {
   fill_LubPose3d(L, v);
 }
 
-static void push_list_LubPose3d(lua_State *L, const LubPose3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubPose3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubVelocity3d(lua_State *L, const LubVelocity3d *v) {
   lgen_set_num(L, "x", v->x);
   lgen_set_num(L, "y", v->y);
@@ -7630,15 +3062,6 @@ static void push_LubVelocity3d(lua_State *L, const LubVelocity3d *v) {
   fill_LubVelocity3d(L, v);
 }
 
-static void push_list_LubVelocity3d(lua_State *L, const LubVelocity3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubVelocity3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubInertia3d(lua_State *L, const LubInertia3d *v) {
   lgen_set_num(L, "xx", v->xx);
   lgen_set_num(L, "yy", v->yy);
@@ -7653,15 +3076,6 @@ static void fill_LubInertia3d(lua_State *L, const LubInertia3d *v) {
 static void push_LubInertia3d(lua_State *L, const LubInertia3d *v) {
   lua_createtable(L, 0, 6);
   fill_LubInertia3d(L, v);
-}
-
-static void push_list_LubInertia3d(lua_State *L, const LubInertia3d *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubInertia3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubMassData3d(lua_State *L, const LubMassData3d *v) {
@@ -7687,15 +3101,6 @@ static void push_LubMassData3d(lua_State *L, const LubMassData3d *v) {
   fill_LubMassData3d(L, v);
 }
 
-static void push_list_LubMassData3d(lua_State *L, const LubMassData3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMassData3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubAabb3d(lua_State *L, const LubAabb3d *v) {
   lgen_set_num(L, "min_x", v->min_x);
   lgen_set_num(L, "min_y", v->min_y);
@@ -7710,14 +3115,6 @@ static void fill_LubAabb3d(lua_State *L, const LubAabb3d *v) {
 static void push_LubAabb3d(lua_State *L, const LubAabb3d *v) {
   lua_createtable(L, 0, 6);
   fill_LubAabb3d(L, v);
-}
-
-static void push_list_LubAabb3d(lua_State *L, const LubAabb3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubAabb3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v) {
@@ -7745,15 +3142,6 @@ static void fill_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v) {
 static void push_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v) {
   lua_createtable(L, 0, 20);
   fill_LubShapeInfo3d(L, v);
-}
-
-static void push_list_LubShapeInfo3d(lua_State *L, const LubShapeInfo3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeInfo3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v) {
@@ -7795,15 +3183,6 @@ static void push_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v) {
   fill_LubWorldInfo3d(L, v);
 }
 
-static void push_list_LubWorldInfo3d(lua_State *L, const LubWorldInfo3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubWorldInfo3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v) {
   fill_LubStepInfo(L, &v->base);
   lgen_set_int(L, "joint_events", v->joint_events);
@@ -7814,15 +3193,6 @@ static void fill_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v) {
 static void push_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v) {
   lua_createtable(L, 0, 12);
   fill_LubStepInfo3d(L, v);
-}
-
-static void push_list_LubStepInfo3d(lua_State *L, const LubStepInfo3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubStepInfo3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubFrame3d(lua_State *L, const LubFrame3d *v) {
@@ -7840,14 +3210,6 @@ static void fill_LubFrame3d(lua_State *L, const LubFrame3d *v) {
 static void push_LubFrame3d(lua_State *L, const LubFrame3d *v) {
   lua_createtable(L, 0, 7);
   fill_LubFrame3d(L, v);
-}
-
-static void push_list_LubFrame3d(lua_State *L, const LubFrame3d *v, int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubFrame3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubJointView3d(lua_State *L, const LubJointView3d *v) {
@@ -7905,15 +3267,6 @@ static void fill_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v) {
 static void push_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v) {
   lua_createtable(L, 0, 12);
   fill_LubJointInfo3d(L, v);
-}
-
-static void push_list_LubJointInfo3d(lua_State *L, const LubJointInfo3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubJointInfo3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubContactData3d(lua_State *L, const LubContactData3d *v) {
@@ -8122,15 +3475,6 @@ static void push_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v) {
   fill_LubShapeRayHit3d(L, v);
 }
 
-static void push_list_LubShapeRayHit3d(lua_State *L, const LubShapeRayHit3d *v,
-                                       int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubShapeRayHit3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v) {
   lgen_set_num(L, "fraction", v->fraction);
   lgen_set_num(L, "dx", v->dx);
@@ -8143,15 +3487,6 @@ static void fill_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v) {
 static void push_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v) {
   lua_createtable(L, 0, 4);
   fill_LubMoverCast3d(L, v);
-}
-
-static void push_list_LubMoverCast3d(lua_State *L, const LubMoverCast3d *v,
-                                     int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubMoverCast3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
 }
 
 static void fill_LubMoverPlane3d(lua_State *L, const LubMoverPlane3d *v) {
@@ -8215,15 +3550,6 @@ static void push_LubProfile3d(lua_State *L, const LubProfile3d *v) {
   fill_LubProfile3d(L, v);
 }
 
-static void push_list_LubProfile3d(lua_State *L, const LubProfile3d *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubProfile3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
 static void fill_LubCounters3d(lua_State *L, const LubCounters3d *v) {
   lgen_set_int(L, "body_count", v->body_count);
   lgen_set_int(L, "shape_count", v->shape_count);
@@ -8260,34 +3586,130 @@ static void push_LubCounters3d(lua_State *L, const LubCounters3d *v) {
   fill_LubCounters3d(L, v);
 }
 
-static void push_list_LubCounters3d(lua_State *L, const LubCounters3d *v,
-                                    int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubCounters3d(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
+static float tramp_l_phys2d_raycast_all_visitor(void *user,
+                                                const LubRayHit *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return 1.0f;
+  push_LubRayHit(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return 1.0f;
+  float r = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  return r;
 }
 
-static void fill_LubEventData(lua_State *L, const LubEventData *v) {
-  if (v->type.len > 0)
-    lgen_set_str(L, "type", v->type);
-  (void)L;
-  (void)v;
+static bool tramp_l_phys2d_overlap_aabb_visitor(void *user,
+                                                const LubShapeView *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return true;
+  push_LubShapeView(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return true;
+  bool r = lua_toboolean(L, -1);
+  lua_pop(L, 1);
+  return r;
 }
 
-static void push_LubEventData(lua_State *L, const LubEventData *v) {
-  lua_createtable(L, 0, 1);
-  fill_LubEventData(L, v);
+static float tramp_l_phys2d_shape_cast_all_visitor(void *user,
+                                                   const LubRayHit *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return 1.0f;
+  push_LubRayHit(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return 1.0f;
+  float r = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  return r;
 }
 
-static void push_list_LubEventData(lua_State *L, const LubEventData *v,
-                                   int32_t n) {
-  lua_createtable(L, n, 0);
-  for (int32_t i = 0; i < n; ++i) {
-    push_LubEventData(L, &v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
+static bool tramp_l_phys2d_collide_mover_visitor(void *user,
+                                                 const LubMoverPlane *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return true;
+  push_LubMoverPlane(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return true;
+  bool r = lua_toboolean(L, -1);
+  lua_pop(L, 1);
+  return r;
+}
+
+static bool tramp_l_phys3d_collide_mover_visitor(void *user,
+                                                 const LubMoverPlane3d *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return true;
+  push_LubMoverPlane3d(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return true;
+  bool r = lua_toboolean(L, -1);
+  lua_pop(L, 1);
+  return r;
+}
+
+static float tramp_l_phys3d_raycast_all_visitor(void *user,
+                                                const LubRayHit3d *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return 1.0f;
+  push_LubRayHit3d(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return 1.0f;
+  float r = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  return r;
+}
+
+static bool tramp_l_phys3d_overlap_aabb_visitor(void *user,
+                                                const LubShapeView3d *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return true;
+  push_LubShapeView3d(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return true;
+  bool r = lua_toboolean(L, -1);
+  lua_pop(L, 1);
+  return r;
+}
+
+static bool tramp_l_phys3d_overlap_shape_visitor(void *user,
+                                                 const LubShapeView3d *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return true;
+  push_LubShapeView3d(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return true;
+  bool r = lua_toboolean(L, -1);
+  lua_pop(L, 1);
+  return r;
+}
+
+static float tramp_l_phys3d_shape_cast_all_visitor(void *user,
+                                                   const LubRayHit3d *a) {
+  LgenCallbacks *cb = (LgenCallbacks *)user;
+  lua_State *L = cb->L;
+  if (!lgen_callbacks_push(cb, 0))
+    return 1.0f;
+  push_LubRayHit3d(L, a);
+  if (!lgen_callbacks_call(cb, 0, 1, 1))
+    return 1.0f;
+  float r = (float)lua_tonumber(L, -1);
+  lua_pop(L, 1);
+  return r;
 }
 
 static int l_config(lua_State *L) {
@@ -10804,20 +6226,6 @@ static int l_phys2d_raycast(lua_State *L) {
   return 1;
 }
 
-static float tramp_l_phys2d_raycast_all_visitor(void *user,
-                                                const LubRayHit *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return 1.0f;
-  push_LubRayHit(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return 1.0f;
-  float r = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return r;
-}
-
 static int l_phys2d_raycast_all(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -10854,20 +6262,6 @@ static int l_phys2d_raycast_all(lua_State *L) {
   }
   push_list_LubRayHit(L, out, out_count);
   return 1;
-}
-
-static bool tramp_l_phys2d_overlap_aabb_visitor(void *user,
-                                                const LubShapeView *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return true;
-  push_LubShapeView(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return true;
-  bool r = lua_toboolean(L, -1);
-  lua_pop(L, 1);
-  return r;
 }
 
 static int l_phys2d_overlap_aabb(lua_State *L) {
@@ -10937,20 +6331,6 @@ static int l_phys2d_shape_cast(lua_State *L) {
   return 1;
 }
 
-static float tramp_l_phys2d_shape_cast_all_visitor(void *user,
-                                                   const LubRayHit *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return 1.0f;
-  push_LubRayHit(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return 1.0f;
-  float r = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return r;
-}
-
 static int l_phys2d_shape_cast_all(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -11016,20 +6396,6 @@ static int l_phys2d_cast_mover(lua_State *L) {
   else
     push_LubMoverCast(L, &out);
   return 1;
-}
-
-static bool tramp_l_phys2d_collide_mover_visitor(void *user,
-                                                 const LubMoverPlane *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return true;
-  push_LubMoverPlane(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return true;
-  bool r = lua_toboolean(L, -1);
-  lua_pop(L, 1);
-  return r;
 }
 
 static int l_phys2d_collide_mover(lua_State *L) {
@@ -12152,20 +7518,6 @@ static int l_phys3d_cast_mover(lua_State *L) {
   return 1;
 }
 
-static bool tramp_l_phys3d_collide_mover_visitor(void *user,
-                                                 const LubMoverPlane3d *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return true;
-  push_LubMoverPlane3d(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return true;
-  bool r = lua_toboolean(L, -1);
-  lua_pop(L, 1);
-  return r;
-}
-
 static int l_phys3d_collide_mover(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -12716,20 +8068,6 @@ static int l_phys3d_raycast(lua_State *L) {
   return 1;
 }
 
-static float tramp_l_phys3d_raycast_all_visitor(void *user,
-                                                const LubRayHit3d *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return 1.0f;
-  push_LubRayHit3d(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return 1.0f;
-  float r = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return r;
-}
-
 static int l_phys3d_raycast_all(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -12768,20 +8106,6 @@ static int l_phys3d_raycast_all(lua_State *L) {
   return 1;
 }
 
-static bool tramp_l_phys3d_overlap_aabb_visitor(void *user,
-                                                const LubShapeView3d *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return true;
-  push_LubShapeView3d(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return true;
-  bool r = lua_toboolean(L, -1);
-  lua_pop(L, 1);
-  return r;
-}
-
 static int l_phys3d_overlap_aabb(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -12818,20 +8142,6 @@ static int l_phys3d_overlap_aabb(lua_State *L) {
   }
   push_list_LubShapeView3d(L, out, out_count);
   return 1;
-}
-
-static bool tramp_l_phys3d_overlap_shape_visitor(void *user,
-                                                 const LubShapeView3d *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return true;
-  push_LubShapeView3d(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return true;
-  bool r = lua_toboolean(L, -1);
-  lua_pop(L, 1);
-  return r;
 }
 
 static int l_phys3d_overlap_shape(lua_State *L) {
@@ -12899,20 +8209,6 @@ static int l_phys3d_shape_cast(lua_State *L) {
   else
     push_LubRayHit3d(L, &out);
   return 1;
-}
-
-static float tramp_l_phys3d_shape_cast_all_visitor(void *user,
-                                                   const LubRayHit3d *a) {
-  LgenCallbacks *cb = (LgenCallbacks *)user;
-  lua_State *L = cb->L;
-  if (!lgen_callbacks_push(cb, 0))
-    return 1.0f;
-  push_LubRayHit3d(L, a);
-  if (!lgen_callbacks_call(cb, 0, 1, 1))
-    return 1.0f;
-  float r = (float)lua_tonumber(L, -1);
-  lua_pop(L, 1);
-  return r;
 }
 
 static int l_phys3d_shape_cast_all(lua_State *L) {
