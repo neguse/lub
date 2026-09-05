@@ -218,6 +218,13 @@ else
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
 fi
 
+# samples/ngs の scenario golden (scene と入力 script を固定した capture)
+if [[ $skip_golden -eq 1 ]]; then
+  echo "==> ngs scenario golden skipped (--skip-golden)"
+elif command -v dotnet >/dev/null 2>&1 && [[ -f third_party/tcs/Transpiler/Transpiler.csproj ]]; then
+  run_timed env BINARY="$native_binary" scripts/ngs-golden.sh
+fi
+
 # raw Lua サンプル (samples/<name>/<name>.lua): lub table と samples/lubx.lua
 # だけで動く。capture して golden (<name>_lua_sdlgpu.png) と比べる。
 shopt -s nullglob

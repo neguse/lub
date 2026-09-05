@@ -53,7 +53,7 @@ public static class Iroha21
     static SpriteBatch? overlay = null;
     static Text? hud = null;
     static MeshText? mesh = null;
-    const string FontPath = "samples/21_iroha/data/MPLUS1p-subset.ttf";
+    const string fontPath = "samples/21_iroha/data/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
 
@@ -88,14 +88,14 @@ public static class Iroha21
 
     static bool EnsureAssets()
     {
-        Io.LoadBytes(FontPath, out var bytes, out var version, out _, out _);
+        Io.LoadBytes(fontPath, out var bytes, out var version, out _, out _);
         if (bytes == null) return false;
         if (!fontLoaded || fontVersion != version)
         {
             fontLoaded = true;
             fontVersion = version;
-            hud = new Text("iroha_hud", FontPath, 20);
-            mesh = new MeshText("iroha_mesh", FontPath, fontVersion, w, h);
+            hud = new Text("iroha_hud", fontPath, 20);
+            mesh = new MeshText("iroha_mesh", fontPath, fontVersion, w, h);
         }
         return fontLoaded && mesh != null;
     }

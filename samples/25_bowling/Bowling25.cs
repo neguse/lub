@@ -901,7 +901,7 @@ public static class Bowling25
     }
 
     // --- HUD ------------------------------------------------------------------
-    const string FontPath = "samples/25_bowling/data/MPLUS1p-subset.ttf";
+    const string fontPath = "samples/25_bowling/data/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;
@@ -918,13 +918,13 @@ public static class Bowling25
 
     static bool EnsureText()
     {
-        Io.LoadBytes(FontPath, out var bytes, out var version, out _, out _);
+        Io.LoadBytes(fontPath, out var bytes, out var version, out _, out _);
         if (bytes == null) return false;
         if (!fontLoaded || fontVersion != version)
         {
             fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("bw25_text", FontPath, version, w, h);
+            mtext = new MeshText("bw25_text", fontPath, version, w, h);
         }
         return mtext != null;
     }
