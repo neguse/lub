@@ -10,7 +10,9 @@ runtime API 面を見るための接合部と、その上の実装ライブラ�
 ```mermaid
 graph TD
     C["C runtime<br/>生成 binding が lub table を作る: lub.gfx, lub.input ..."] --> P["samples/lub_prelude.lua<br/>Haxe 向け alias (PascalCase、flat global)"]
-    P --> L[raw Lua]
+    C --> L["raw Lua<br/>samples/<name>/<name>.lua"]
+    CS --> LX["samples/lubx.lua<br/>tcs --module の生成 Lua (checkin)"]
+    LX --> L
     P --> S["C# stub<br/>cs-lib/lub_stub.cs (記述の正)"]
     P --> H["Haxe extern<br/>haxe-lib/lub/lub/*.hx (撤去まで維持)"]
     S --> CS["実装ライブラリ C# 版<br/>cs-lib/*"]
@@ -26,7 +28,9 @@ graph TD
   そのもので、tcs が名前を規則で Lua に写す。
 - 実装ライブラリ層 — サンプルの一部という位置付けのコード。ユーザーが
   読み、hot reload で書き換えられることが lub の価値なので、runtime への
-  Lua 供給はせず各言語で実装する(Haxe 撤去までは二重実装を許容)。
+  Lua 供給はせず各言語で実装する(Haxe 撤去までは二重実装を許容)。正は
+  C# ソース(`cs-lib/`)で、raw Lua には tcs が生成した `samples/lubx.lua`
+  (`scripts/gen-lubx-lua.sh`)を checkin して届ける。
 
 ## 名前の規則
 

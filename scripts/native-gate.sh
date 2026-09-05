@@ -141,6 +141,9 @@ if command -v dotnet >/dev/null 2>&1 \
   # surface test) が記述と一致していることの確認。差分が出たら
   # scripts/gen-api.sh で再生成する。
   run scripts/gen-api.sh --check
+  # raw Lua 向けの lubx (cs-lib から tcs が生成)。差分が出たら
+  # scripts/gen-lubx-lua.sh で再生成する。
+  run scripts/gen-lubx-lua.sh --check
   # .NET 実行の共有 library と facade
   run_timed bash scripts/build-release.sh --target lub_shared --no-configure
   run_timed dotnet build dotnet/Lub -nologo -v q
@@ -214,6 +217,28 @@ else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
 fi
+
+# raw Lua サンプル (samples/<name>/<name>.lua): lub table と samples/lubx.lua
+# だけで動く。capture して golden (<name>_lua_sdlgpu.png) と比べる。
+shopt -s nullglob
+for lua_entry in samples/*/; do
+  lua_entry="${lua_entry%/}"
+  lua_name="$(basename "$lua_entry")"
+  [[ -f "$lua_entry/$lua_name.lua" ]] || continue
+  lua_png="${TMPDIR:-/tmp}/lub-native-gate-${lua_name}_lua.png"
+  rm -f "$lua_png"
+  run_timed env LUB_BACKEND=sdlgpu scripts/run-headless.sh "$native_binary" \
+    "$lua_entry/$lua_name.lua" --capture "$lua_png" --capture-frame 240 \
+    --fixed-dt 0.0166666666666667
+  if [[ $skip_golden -eq 1 ]]; then
+    echo "==> golden cmp skipped (--skip-golden): ${lua_name}"
+  elif [[ -f "tests/golden/${lua_name}_lua_sdlgpu.png" ]]; then
+    run cmp "$lua_png" "tests/golden/${lua_name}_lua_sdlgpu.png"
+  else
+    echo "==> golden skip (nondeterministic): ${lua_name}"
+  fi
+done
+shopt -u nullglob
 
 echo
 echo "native gate OK"
