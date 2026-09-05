@@ -15,10 +15,10 @@ using static Lub;
 /// negate) も使える。</summary>
 public class Vec2
 {
-    public double X;
-    public double Y;
+    public float X;
+    public float Y;
 
-    public Vec2(double x, double y)
+    public Vec2(float x, float y)
     {
         this.X = x;
         this.Y = y;
@@ -29,14 +29,14 @@ public class Vec2
     public static Vec2 One() => new Vec2(1, 1);
 
     /// <summary>全成分が v のベクトル。</summary>
-    public static Vec2 Splat(double v) => new Vec2(v, v);
+    public static Vec2 Splat(float v) => new Vec2(v, v);
 
     public Vec2 Add(Vec2 b) => new Vec2(X + b.X, Y + b.Y);
 
     public Vec2 Sub(Vec2 b) => new Vec2(X - b.X, Y - b.Y);
 
     /// <summary>スカラー倍。演算子は v * s と s * v の両方が使える。</summary>
-    public Vec2 Scale(double s) => new Vec2(X * s, Y * s);
+    public Vec2 Scale(float s) => new Vec2(X * s, Y * s);
 
     public Vec2 Negate() => new Vec2(-X, -Y);
 
@@ -52,22 +52,22 @@ public class Vec2
 
     public static Vec2 operator *(Vec2 a, Vec2 b) => a.Mul(b);
 
-    public static Vec2 operator *(Vec2 a, double s) => a.Scale(s);
+    public static Vec2 operator *(Vec2 a, float s) => a.Scale(s);
 
-    public static Vec2 operator *(double s, Vec2 a) => a.Scale(s);
+    public static Vec2 operator *(float s, Vec2 a) => a.Scale(s);
 
     public static Vec2 operator /(Vec2 a, Vec2 b) => a.Div(b);
 
-    public static Vec2 operator /(Vec2 a, double s) =>
+    public static Vec2 operator /(Vec2 a, float s) =>
         new Vec2(a.X / s, a.Y / s);
 
     public static Vec2 operator -(Vec2 a) => a.Negate();
 
-    public double Dot(Vec2 b) => X * b.X + Y * b.Y;
+    public float Dot(Vec2 b) => X * b.X + Y * b.Y;
 
-    public double LengthSq() => X * X + Y * Y;
+    public float LengthSq() => X * X + Y * Y;
 
-    public double Length() => Math.Sqrt(LengthSq());
+    public float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。零ベクトルは零ベクトルのまま返す。</summary>
     public Vec2 Normalize()
@@ -76,11 +76,11 @@ public class Vec2
         return len > 0 ? new Vec2(X / len, Y / len) : Zero();
     }
 
-    public double DistanceSq(Vec2 b) => Sub(b).LengthSq();
+    public float DistanceSq(Vec2 b) => Sub(b).LengthSq();
 
-    public double Distance(Vec2 b) => Math.Sqrt(DistanceSq(b));
+    public float Distance(Vec2 b) => (float)Math.Sqrt(DistanceSq(b));
 
-    public Vec2 Lerp(Vec2 b, double t) =>
+    public Vec2 Lerp(Vec2 b, float t) =>
         new Vec2(X + (b.X - X) * t, Y + (b.Y - Y) * t);
 
     public Vec2 Min(Vec2 b) =>
@@ -97,7 +97,7 @@ public class Vec2
     public Vec2 Perp() => new Vec2(-Y, X);
 
     /// <summary>+X 軸からの角度 (ラジアン)。</summary>
-    public double Angle() => Math.Atan2(Y, X);
+    public float Angle() => (float)Math.Atan2(Y, X);
 
     /// <summary>Phys2d の wire 型へ変換する。</summary>
     public Vec2d Wire() => new Vec2d { X = this.X, Y = this.Y };
@@ -111,11 +111,11 @@ public class Vec2
 /// negate) も使える。</summary>
 public class Vec3
 {
-    public double X;
-    public double Y;
-    public double Z;
+    public float X;
+    public float Y;
+    public float Z;
 
-    public Vec3(double x, double y, double z)
+    public Vec3(float x, float y, float z)
     {
         this.X = x;
         this.Y = y;
@@ -127,7 +127,7 @@ public class Vec3
     public static Vec3 One() => new Vec3(1, 1, 1);
 
     /// <summary>全成分が v のベクトル。</summary>
-    public static Vec3 Splat(double v) => new Vec3(v, v, v);
+    public static Vec3 Splat(float v) => new Vec3(v, v, v);
 
     public static Vec3 Up() => new Vec3(0, 1, 0);
 
@@ -141,7 +141,7 @@ public class Vec3
     public Vec3 Sub(Vec3 b) => new Vec3(X - b.X, Y - b.Y, Z - b.Z);
 
     /// <summary>スカラー倍。演算子は v * s と s * v の両方が使える。</summary>
-    public Vec3 Scale(double s) => new Vec3(X * s, Y * s, Z * s);
+    public Vec3 Scale(float s) => new Vec3(X * s, Y * s, Z * s);
 
     public Vec3 Negate() => new Vec3(-X, -Y, -Z);
 
@@ -157,25 +157,25 @@ public class Vec3
 
     public static Vec3 operator *(Vec3 a, Vec3 b) => a.Mul(b);
 
-    public static Vec3 operator *(Vec3 a, double s) => a.Scale(s);
+    public static Vec3 operator *(Vec3 a, float s) => a.Scale(s);
 
-    public static Vec3 operator *(double s, Vec3 a) => a.Scale(s);
+    public static Vec3 operator *(float s, Vec3 a) => a.Scale(s);
 
     public static Vec3 operator /(Vec3 a, Vec3 b) => a.Div(b);
 
-    public static Vec3 operator /(Vec3 a, double s) =>
+    public static Vec3 operator /(Vec3 a, float s) =>
         new Vec3(a.X / s, a.Y / s, a.Z / s);
 
     public static Vec3 operator -(Vec3 a) => a.Negate();
 
-    public double Dot(Vec3 b) => X * b.X + Y * b.Y + Z * b.Z;
+    public float Dot(Vec3 b) => X * b.X + Y * b.Y + Z * b.Z;
 
     public Vec3 Cross(Vec3 b) =>
         new Vec3(Y * b.Z - Z * b.Y, Z * b.X - X * b.Z, X * b.Y - Y * b.X);
 
-    public double LengthSq() => X * X + Y * Y + Z * Z;
+    public float LengthSq() => X * X + Y * Y + Z * Z;
 
-    public double Length() => Math.Sqrt(LengthSq());
+    public float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。零ベクトルは零ベクトルのまま返す。</summary>
     public Vec3 Normalize()
@@ -184,11 +184,11 @@ public class Vec3
         return len > 0 ? new Vec3(X / len, Y / len, Z / len) : Zero();
     }
 
-    public double DistanceSq(Vec3 b) => Sub(b).LengthSq();
+    public float DistanceSq(Vec3 b) => Sub(b).LengthSq();
 
-    public double Distance(Vec3 b) => Math.Sqrt(DistanceSq(b));
+    public float Distance(Vec3 b) => (float)Math.Sqrt(DistanceSq(b));
 
-    public Vec3 Lerp(Vec3 b, double t) =>
+    public Vec3 Lerp(Vec3 b, float t) =>
         new Vec3(X + (b.X - X) * t, Y + (b.Y - Y) * t, Z + (b.Z - Z) * t);
 
     public Vec3 Min(Vec3 b) => new Vec3(Math.Min(X, b.X),
@@ -203,7 +203,7 @@ public class Vec3
             Math.Max(lo.Z, Math.Min(hi.Z, Z)));
 
     /// <summary>normal (正規化済みであること) に対する反射ベクトル。</summary>
-    public Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0 * Dot(normal)));
+    public Vec3 Reflect(Vec3 normal) => Sub(normal.Scale(2.0f * Dot(normal)));
 
     /// <summary>Phys3d の wire 型へ変換する。</summary>
     public Vec3d Wire() => new Vec3d { X = this.X, Y = this.Y, Z = this.Z };
@@ -216,12 +216,12 @@ public class Vec3
 /// s*a / a/s / -a。</summary>
 public class Vec4
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double W;
+    public float X;
+    public float Y;
+    public float Z;
+    public float W;
 
-    public Vec4(double x, double y, double z, double w)
+    public Vec4(float x, float y, float z, float w)
     {
         this.X = x;
         this.Y = y;
@@ -234,14 +234,14 @@ public class Vec4
     public static Vec4 One() => new Vec4(1, 1, 1, 1);
 
     /// <summary>w を付与して Vec3 から拡張する。位置なら w=1、方向なら w=0。</summary>
-    public static Vec4 FromVec3(Vec3 v, double w) => new Vec4(v.X, v.Y, v.Z, w);
+    public static Vec4 FromVec3(Vec3 v, float w) => new Vec4(v.X, v.Y, v.Z, w);
 
     public Vec4 Add(Vec4 b) => new Vec4(X + b.X, Y + b.Y, Z + b.Z, W + b.W);
 
     public Vec4 Sub(Vec4 b) => new Vec4(X - b.X, Y - b.Y, Z - b.Z, W - b.W);
 
     /// <summary>スカラー倍。演算子は v * s と s * v の両方が使える。</summary>
-    public Vec4 Scale(double s) => new Vec4(X * s, Y * s, Z * s, W * s);
+    public Vec4 Scale(float s) => new Vec4(X * s, Y * s, Z * s, W * s);
 
     public Vec4 Negate() => new Vec4(-X, -Y, -Z, -W);
 
@@ -249,20 +249,20 @@ public class Vec4
 
     public static Vec4 operator -(Vec4 a, Vec4 b) => a.Sub(b);
 
-    public static Vec4 operator *(Vec4 a, double s) => a.Scale(s);
+    public static Vec4 operator *(Vec4 a, float s) => a.Scale(s);
 
-    public static Vec4 operator *(double s, Vec4 a) => a.Scale(s);
+    public static Vec4 operator *(float s, Vec4 a) => a.Scale(s);
 
-    public static Vec4 operator /(Vec4 a, double s) =>
+    public static Vec4 operator /(Vec4 a, float s) =>
         new Vec4(a.X / s, a.Y / s, a.Z / s, a.W / s);
 
     public static Vec4 operator -(Vec4 a) => a.Negate();
 
-    public double Dot(Vec4 b) => X * b.X + Y * b.Y + Z * b.Z + W * b.W;
+    public float Dot(Vec4 b) => X * b.X + Y * b.Y + Z * b.Z + W * b.W;
 
-    public double LengthSq() => X * X + Y * Y + Z * Z + W * W;
+    public float LengthSq() => X * X + Y * Y + Z * Z + W * W;
 
-    public double Length() => Math.Sqrt(LengthSq());
+    public float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。零ベクトルは零ベクトルのまま返す。</summary>
     public Vec4 Normalize()
@@ -271,7 +271,7 @@ public class Vec4
         return len > 0 ? new Vec4(X / len, Y / len, Z / len, W / len) : Zero();
     }
 
-    public Vec4 Lerp(Vec4 b, double t) => new Vec4(X + (b.X - X) * t,
+    public Vec4 Lerp(Vec4 b, float t) => new Vec4(X + (b.X - X) * t,
         Y + (b.Y - Y) * t, Z + (b.Z - Z) * t, W + (b.W - W) * t);
 
     public Vec3 Xyz() => new Vec3(X, Y, Z);
@@ -281,12 +281,12 @@ public class Vec4
 /// q * v (Vec3 の回転 = rotateVec3)。角度は全てラジアン。</summary>
 public class Quat
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double W;
+    public float X;
+    public float Y;
+    public float Z;
+    public float W;
 
-    public Quat(double x, double y, double z, double w)
+    public Quat(float x, float y, float z, float w)
     {
         this.X = x;
         this.Y = y;
@@ -297,24 +297,24 @@ public class Quat
     public static Quat Identity() => new Quat(0, 0, 0, 1);
 
     /// <summary>axis 回りに angle ラジアン回す回転。axis は内部で正規化される。</summary>
-    public static Quat FromAxisAngle(Vec3 axis, double angle)
+    public static Quat FromAxisAngle(Vec3 axis, float angle)
     {
-        var half = angle * 0.5;
-        var s = Math.Sin(half);
+        var half = angle * 0.5f;
+        var s = (float)Math.Sin(half);
         var n = axis.Normalize();
-        return new Quat(n.X * s, n.Y * s, n.Z * s, Math.Cos(half));
+        return new Quat(n.X * s, n.Y * s, n.Z * s, (float)Math.Cos(half));
     }
 
     /// <summary>オイラー角 (ラジアン) から生成。適用順は roll (Z) → pitch (X)
     /// → yaw (Y)。</summary>
-    public static Quat FromEuler(double yaw, double pitch, double roll)
+    public static Quat FromEuler(float yaw, float pitch, float roll)
     {
-        var cy = Math.Cos(yaw * 0.5);
-        var sy = Math.Sin(yaw * 0.5);
-        var cp = Math.Cos(pitch * 0.5);
-        var sp = Math.Sin(pitch * 0.5);
-        var cr = Math.Cos(roll * 0.5);
-        var sr = Math.Sin(roll * 0.5);
+        var cy = (float)Math.Cos(yaw * 0.5f);
+        var sy = (float)Math.Sin(yaw * 0.5f);
+        var cp = (float)Math.Cos(pitch * 0.5f);
+        var sp = (float)Math.Sin(pitch * 0.5f);
+        var cr = (float)Math.Cos(roll * 0.5f);
+        var sr = (float)Math.Sin(roll * 0.5f);
         return new Quat(sr * cp * cy - cr * sp * sy,
             cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy,
             cr * cp * cy + sr * sp * sy);
@@ -331,11 +331,11 @@ public class Quat
 
     public static Vec3 operator *(Quat q, Vec3 v) => q.RotateVec3(v);
 
-    public double Dot(Quat b) => X * b.X + Y * b.Y + Z * b.Z + W * b.W;
+    public float Dot(Quat b) => X * b.X + Y * b.Y + Z * b.Z + W * b.W;
 
-    public double LengthSq() => X * X + Y * Y + Z * Z + W * W;
+    public float LengthSq() => X * X + Y * Y + Z * Z + W * W;
 
-    public double Length() => Math.Sqrt(LengthSq());
+    public float Length() => (float)Math.Sqrt(LengthSq());
 
     /// <summary>正規化。零クォータニオンは identity を返す。</summary>
     public Quat Normalize()
@@ -352,18 +352,18 @@ public class Quat
         var lsq = LengthSq();
         if (lsq > 0)
         {
-            var inv = 1.0 / lsq;
+            var inv = 1.0f / lsq;
             return new Quat(-X * inv, -Y * inv, -Z * inv, W * inv);
         }
         return Identity();
     }
 
     /// <summary>成分の線形補間。正規化はしないので必要なら normalize を挟む。</summary>
-    public Quat Lerp(Quat b, double t) => new Quat(X + (b.X - X) * t,
+    public Quat Lerp(Quat b, float t) => new Quat(X + (b.X - X) * t,
         Y + (b.Y - Y) * t, Z + (b.Z - Z) * t, W + (b.W - W) * t);
 
     /// <summary>球面線形補間。</summary>
-    public Quat Slerp(Quat b, double t)
+    public Quat Slerp(Quat b, float t)
     {
         var d = Dot(b);
         var bx = b.X;
@@ -378,17 +378,17 @@ public class Quat
             bz = -bz;
             bw = -bw;
         }
-        if (d > 0.9995)
+        if (d > 0.9995f)
         {
             return new Quat(X + (bx - X) * t, Y + (by - Y) * t,
                 Z + (bz - Z) * t, W + (bw - W) * t).Normalize();
         }
         // tcs は Math.Acos 未対応なので等価な atan2 形で書く
         // (acos(d) == atan2(sqrt(1 - d^2), d) for |d| <= 1)
-        var theta = Math.Atan2(Math.Sqrt(1.0 - d * d), d);
-        var sinT = Math.Sin(theta);
-        var s0 = Math.Sin((1.0 - t) * theta) / sinT;
-        var s1 = Math.Sin(t * theta) / sinT;
+        var theta = (float)Math.Atan2((float)Math.Sqrt(1.0f - d * d), d);
+        var sinT = (float)Math.Sin(theta);
+        var s0 = (float)Math.Sin((1.0f - t) * theta) / sinT;
+        var s1 = (float)Math.Sin(t * theta) / sinT;
         return new Quat(X * s0 + bx * s1, Y * s0 + by * s1, Z * s0 + bz * s1,
             W * s0 + bw * s1);
     }
@@ -399,7 +399,7 @@ public class Quat
         var qv = new Vec3(X, Y, Z);
         var uv = qv.Cross(v);
         var uuv = qv.Cross(uv);
-        return v.Add(uv.Scale(2.0 * W).Add(uuv.Scale(2.0)));
+        return v.Add(uv.Scale(2.0f * W).Add(uuv.Scale(2.0f)));
     }
 
     public Mat4 ToMat4()
@@ -441,27 +441,27 @@ public class Quat
         var trace = m.M[0] + m.M[5] + m.M[10];
         if (trace > 0)
         {
-            var s = 0.5 / Math.Sqrt(trace + 1.0);
+            var s = 0.5f / (float)Math.Sqrt(trace + 1.0f);
             return new Quat((m.M[6] - m.M[9]) * s, (m.M[8] - m.M[2]) * s,
-                (m.M[1] - m.M[4]) * s, 0.25 / s);
+                (m.M[1] - m.M[4]) * s, 0.25f / s);
         }
         else if (m.M[0] > m.M[5] && m.M[0] > m.M[10])
         {
-            var s = 2.0 * Math.Sqrt(1.0 + m.M[0] - m.M[5] - m.M[10]);
-            return new Quat(0.25 * s, (m.M[1] + m.M[4]) / s,
+            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[0] - m.M[5] - m.M[10]);
+            return new Quat(0.25f * s, (m.M[1] + m.M[4]) / s,
                 (m.M[8] + m.M[2]) / s, (m.M[6] - m.M[9]) / s);
         }
         else if (m.M[5] > m.M[10])
         {
-            var s = 2.0 * Math.Sqrt(1.0 + m.M[5] - m.M[0] - m.M[10]);
-            return new Quat((m.M[1] + m.M[4]) / s, 0.25 * s,
+            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[5] - m.M[0] - m.M[10]);
+            return new Quat((m.M[1] + m.M[4]) / s, 0.25f * s,
                 (m.M[6] + m.M[9]) / s, (m.M[8] - m.M[2]) / s);
         }
         else
         {
-            var s = 2.0 * Math.Sqrt(1.0 + m.M[10] - m.M[0] - m.M[5]);
+            var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[10] - m.M[0] - m.M[5]);
             return new Quat((m.M[8] + m.M[2]) / s, (m.M[6] + m.M[9]) / s,
-                0.25 * s, (m.M[1] - m.M[4]) / s);
+                0.25f * s, (m.M[1] - m.M[4]) / s);
         }
     }
 
@@ -478,12 +478,12 @@ public class Quat
 /// proj * view * model の順。</summary>
 public class Mat4
 {
-    public List<double> M;
+    public List<float> M;
 
     /// <summary>単位行列で初期化する。</summary>
     public Mat4()
     {
-        M = new List<double>
+        M = new List<float>
         {
             1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
         };
@@ -578,7 +578,7 @@ public class Mat4
         return r;
     }
 
-    public double Determinant()
+    public float Determinant()
     {
         var a = M;
         var a00 = a[0];
@@ -651,7 +651,7 @@ public class Mat4
         {
             return Identity();
         }
-        var inv = 1.0 / det;
+        var inv = 1.0f / det;
         var r = Zero();
         r.M[0] = (a11 * b11 - a12 * b10 + a13 * b09) * inv;
         r.M[1] = (-a01 * b11 + a02 * b10 - a03 * b09) * inv;
@@ -716,7 +716,7 @@ public class Mat4
     }
 
     /// <summary>均一スケール s + 平行移動 t を 1 つの行列にまとめる。</summary>
-    public static Mat4 ScaleTrans(double s, Vec3 t)
+    public static Mat4 ScaleTrans(float s, Vec3 t)
     {
         var r = Zero();
         r.M[0] = s;
@@ -730,10 +730,10 @@ public class Mat4
     }
 
     /// <summary>X 軸回りの回転 (ラジアン)。</summary>
-    public static Mat4 RotateX(double angle)
+    public static Mat4 RotateX(float angle)
     {
-        var c = Math.Cos(angle);
-        var s = Math.Sin(angle);
+        var c = (float)Math.Cos(angle);
+        var s = (float)Math.Sin(angle);
         var r = new Mat4();
         r.M[5] = c;
         r.M[6] = s;
@@ -743,10 +743,10 @@ public class Mat4
     }
 
     /// <summary>Y 軸回りの回転 (ラジアン)。</summary>
-    public static Mat4 RotateY(double angle)
+    public static Mat4 RotateY(float angle)
     {
-        var c = Math.Cos(angle);
-        var s = Math.Sin(angle);
+        var c = (float)Math.Cos(angle);
+        var s = (float)Math.Sin(angle);
         var r = new Mat4();
         r.M[0] = c;
         r.M[2] = -s;
@@ -756,10 +756,10 @@ public class Mat4
     }
 
     /// <summary>Z 軸回りの回転 (ラジアン)。</summary>
-    public static Mat4 RotateZ(double angle)
+    public static Mat4 RotateZ(float angle)
     {
-        var c = Math.Cos(angle);
-        var s = Math.Sin(angle);
+        var c = (float)Math.Cos(angle);
+        var s = (float)Math.Sin(angle);
         var r = new Mat4();
         r.M[0] = c;
         r.M[1] = s;
@@ -769,7 +769,7 @@ public class Mat4
     }
 
     /// <summary>任意軸 axis 回りの回転 (ラジアン)。</summary>
-    public static Mat4 Rotate(double angle, Vec3 axis) =>
+    public static Mat4 Rotate(float angle, Vec3 axis) =>
         Quat.FromAxisAngle(axis, angle).ToMat4();
 
     public static Mat4 FromQuat(Quat q) => q.ToMat4();
@@ -801,10 +801,10 @@ public class Mat4
     }
 
     /// <summary>左手系の透視投影。fovDeg は垂直視野角 (度)。depth は [0, 1]。</summary>
-    public static Mat4 PerspectiveLh(double fovDeg, double aspect, double nz,
-        double fz)
+    public static Mat4 PerspectiveLh(float fovDeg, float aspect, float nz,
+        float fz)
     {
-        var f = 1.0 / Math.Tan(fovDeg * Math.PI / 360.0);
+        var f = 1.0f / (float)Math.Tan(fovDeg * (float)Math.PI / 360.0f);
         var r = Zero();
         r.M[0] = f / aspect;
         r.M[5] = f;
@@ -816,7 +816,7 @@ public class Mat4
 
     /// <summary>左手系の平行投影。w / h は view volume の幅と高さ。depth は
     /// [0, 1]。</summary>
-    public static Mat4 OrthoLh(double w, double h, double nz, double fz)
+    public static Mat4 OrthoLh(float w, float h, float nz, float fz)
     {
         var r = Zero();
         r.M[0] = 2 / w;
@@ -833,24 +833,24 @@ public class Mat4
 public static class MathUtil
 {
     /// <summary>度 → ラジアン。</summary>
-    public static double Radians(double deg) => deg * (Math.PI / 180.0);
+    public static float Radians(float deg) => deg * ((float)Math.PI / 180.0f);
 
     /// <summary>ラジアン → 度。</summary>
-    public static double Degrees(double rad) => rad * (180.0 / Math.PI);
+    public static float Degrees(float rad) => rad * (180.0f / (float)Math.PI);
 
-    public static double Clamp(double v, double lo, double hi) =>
+    public static float Clamp(float v, float lo, float hi) =>
         Math.Max(lo, Math.Min(hi, v));
 
-    public static double Saturate(double v) => Clamp(v, 0.0, 1.0);
+    public static float Saturate(float v) => Clamp(v, 0.0f, 1.0f);
 
-    public static double Lerp(double a, double b, double t) =>
+    public static float Lerp(float a, float b, float t) =>
         a + (b - a) * t;
 
-    public static double Smoothstep(double edge0, double edge1, double x)
+    public static float Smoothstep(float edge0, float edge1, float x)
     {
-        var t = Clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-        return t * t * (3.0 - 2.0 * t);
+        var t = Clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
     }
 
-    public static double Step(double edge, double x) => x < edge ? 0.0 : 1.0;
+    public static float Step(float edge, float x) => x < edge ? 0.0f : 1.0f;
 }

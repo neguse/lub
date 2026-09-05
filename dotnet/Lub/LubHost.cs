@@ -51,13 +51,13 @@ public static unsafe partial class Lub
         var flags = BindingFlags.Public | BindingFlags.Static;
         var onInit = entry.GetMethod("OnInit", flags, Type.EmptyTypes);
         var onEvent = entry.GetMethod("OnEvent", flags, new[] { typeof(EventData) });
-        var onFrame = entry.GetMethod("OnFrame", flags, new[] { typeof(double) })
-            ?? throw new ArgumentException($"{entry.Name}: static OnFrame(double) is required");
+        var onFrame = entry.GetMethod("OnFrame", flags, new[] { typeof(float) })
+            ?? throw new ArgumentException($"{entry.Name}: static OnFrame(float) is required");
         var onQuit = entry.GetMethod("OnQuit", flags, Type.EmptyTypes);
         return Run(
             onInit == null ? null : (Action)Delegate.CreateDelegate(typeof(Action), onInit),
             onEvent == null ? null : (Action<EventData>)Delegate.CreateDelegate(typeof(Action<EventData>), onEvent),
-            (Action<double>)Delegate.CreateDelegate(typeof(Action<double>), onFrame),
+            (Action<float>)Delegate.CreateDelegate(typeof(Action<float>), onFrame),
             onQuit == null ? null : (Action)Delegate.CreateDelegate(typeof(Action), onQuit),
             args);
     }
@@ -70,16 +70,16 @@ public static unsafe partial class Lub
         foreach (var t in assembly.GetTypes())
         {
             if (!t.IsClass || !t.IsAbstract || !t.IsSealed) continue; // static class
-            if (t.GetMethod("OnFrame", BindingFlags.Public | BindingFlags.Static, new[] { typeof(double) }) == null) continue;
+            if (t.GetMethod("OnFrame", BindingFlags.Public | BindingFlags.Static, new[] { typeof(float) }) == null) continue;
             if (found != null)
                 throw new ArgumentException($"entry class is ambiguous: {found.Name} and {t.Name}");
             found = t;
         }
-        if (found == null) throw new ArgumentException("no static class with OnFrame(double)");
+        if (found == null) throw new ArgumentException("no static class with OnFrame(float)");
         return Run(found, args);
     }
 
-    public static int Run(Action? onInit, Action<EventData>? onEvent, Action<double> onFrame,
+    public static int Run(Action? onInit, Action<EventData>? onEvent, Action<float> onFrame,
         Action? onQuit, string[]? args = null)
     {
         LubRuntime.EnsureNative();
@@ -153,7 +153,7 @@ public static unsafe partial class Lub
                     Thread.Sleep(16);
                     continue;
                 }
-                double dt = dtRaw;
+                float dt = dtRaw;
                 Guard(() => onFrame(dt), "OnFrame");
                 LubNative.lub_host_frame_end(ctx);
             }

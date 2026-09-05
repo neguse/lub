@@ -16,7 +16,7 @@ public class NgsNormal : INgsEnemy
     int y;
     readonly int originX;
     readonly int originY;
-    readonly double theta; // 照準方向 (上=0, ラジアン)
+    readonly float theta; // 照準方向 (上=0, ラジアン)
     int counter = 0;
     int anim = 0;
     int hp;
@@ -28,15 +28,15 @@ public class NgsNormal : INgsEnemy
     public const int H = 16;
 
     // spawn 時の自機 world 位置で照準を固定。
-    public NgsNormal(int sx, int sy, double playerCx, double playerCy, bool noGod)
+    public NgsNormal(int sx, int sy, float playerCx, float playerCy, bool noGod)
     {
         x = sx;
         y = sy;
         originX = sx;
         originY = sy;
-        double dxw = playerCx - (sx + W / 2.0);
-        double dyUp = -(playerCy - (sy + H / 2.0));
-        theta = Math.Atan2(dxw, dyUp); // 上=0 規約
+        float dxw = playerCx - (sx + W / 2.0f);
+        float dyUp = -(playerCy - (sy + H / 2.0f));
+        theta = (float)Math.Atan2(dxw, dyUp); // 上=0 規約
         hp = noGod ? 2 : 1;
         this.noGod = noGod;
     }
@@ -45,8 +45,8 @@ public class NgsNormal : INgsEnemy
     {
         if (Dead) return false; // 撃破済みは行動しない (墓場発砲の防止)
         // 原典: x = origin_x + sin(θ)*counter, y = origin_y - cos(θ)*counter (上=θ0)
-        x = originX + (int)Math.Round(Math.Sin(theta) * counter);
-        y = originY - (int)Math.Round(Math.Cos(theta) * counter);
+        x = originX + (int)Math.Round((float)Math.Sin(theta) * counter);
+        y = originY - (int)Math.Round((float)Math.Cos(theta) * counter);
         counter = counter + 2;
         if (counter == 10) FireAimed(world);
         if (counter == 22 && noGod) FireAimed(world); // 原典: 2 波目 (NO_GOD のみ)
@@ -61,12 +61,12 @@ public class NgsNormal : INgsEnemy
     // spawn 順は原典の射出順に一致させる (EnemyBullets list の draw 順を決定的に)。
     void FireAimed(NgsWorld world)
     {
-        double pcx = world.Player.X + 8.0;
-        double pcy = world.Player.Y + 8.0;
-        double u = Math.PI / 16; // 0x20
+        float pcx = world.Player.X + 8.0f;
+        float pcy = world.Player.Y + 8.0f;
+        float u = (float)Math.PI / 16; // 0x20
         if (noGod)
         {
-            double q = Math.PI / 4; // 0x80
+            float q = (float)Math.PI / 4; // 0x80
             Shot(world, pcx, pcy, q);
             Shot(world, pcx, pcy, -q);
         }
@@ -75,7 +75,7 @@ public class NgsNormal : INgsEnemy
         Shot(world, pcx, pcy, 0);
     }
 
-    void Shot(NgsWorld world, double pcx, double pcy, double off)
+    void Shot(NgsWorld world, float pcx, float pcy, float off)
     {
         world.Spawn(NgsFaction.EnemyBullets, new NgsAimed(x, y, pcx, pcy, off, noGod));
     }
@@ -198,8 +198,8 @@ public class NgsAimed : INgsEntity
     int y;
     readonly int originX;
     readonly int originY;
-    readonly double theta; // 照準方向 (上=0, rad) + spread offset
-    double dist = 0;
+    readonly float theta; // 照準方向 (上=0, rad) + spread offset
+    float dist = 0;
     int anim = 0;
     readonly int speed;
 
@@ -207,22 +207,22 @@ public class NgsAimed : INgsEntity
     public const int H = 7;
 
     // spawn 位置 (sx,sy) の中心から自機中心 (pcx,pcy) へ照準し offset(rad) を足す。
-    public NgsAimed(int sx, int sy, double pcx, double pcy, double offset, bool noGod)
+    public NgsAimed(int sx, int sy, float pcx, float pcy, float offset, bool noGod)
     {
         x = sx;
         y = sy;
         originX = sx;
         originY = sy;
-        double dxw = pcx - (sx + W / 2.0);
-        double dyUp = -(pcy - (sy + H / 2.0));
-        theta = Math.Atan2(dxw, dyUp) + offset; // 上=0 規約
+        float dxw = pcx - (sx + W / 2.0f);
+        float dyUp = -(pcy - (sy + H / 2.0f));
+        theta = (float)Math.Atan2(dxw, dyUp) + offset; // 上=0 規約
         speed = noGod ? 8 : 4;
     }
 
     public bool Update(NgsWorld world, NgsInputSnapshot input)
     {
-        x = originX + (int)Math.Round(Math.Sin(theta) * dist);
-        y = originY - (int)Math.Round(Math.Cos(theta) * dist);
+        x = originX + (int)Math.Round((float)Math.Sin(theta) * dist);
+        y = originY - (int)Math.Round((float)Math.Cos(theta) * dist);
         dist = dist + speed;
         anim = (anim + 1) & 7;
         return NgsWorld.Overlap(Bounds(), NgsViewport.Bounds());
@@ -244,8 +244,8 @@ public class NgsHoming : INgsEnemy
     int y;
     readonly int originX;
     readonly int originY;
-    readonly double theta; // spawn 時に与えられた角度 (1024単位→rad, 上=0)
-    double dist = 0;
+    readonly float theta; // spawn 時に与えられた角度 (1024単位→rad, 上=0)
+    float dist = 0;
     readonly int speed;
 
     public bool Dead { get; set; } = false;
@@ -260,15 +260,15 @@ public class NgsHoming : INgsEnemy
         y = sy;
         originX = sx;
         originY = sy;
-        theta = angle1024 * (2 * Math.PI / 1024);
+        theta = angle1024 * (2 * (float)Math.PI / 1024);
         speed = noGod ? 14 : 6;
     }
 
     public bool Update(NgsWorld world, NgsInputSnapshot input)
     {
         if (Dead) return false;
-        x = originX + (int)Math.Round(Math.Sin(theta) * dist);
-        y = originY - (int)Math.Round(Math.Cos(theta) * dist);
+        x = originX + (int)Math.Round((float)Math.Sin(theta) * dist);
+        y = originY - (int)Math.Round((float)Math.Cos(theta) * dist);
         dist = dist + speed;
         if (!NgsWorld.Overlap(Bounds(), NgsViewport.Bounds())) Dead = true;
         return !Dead;
@@ -372,9 +372,9 @@ public class NgsBoss : INgsEnemy
             case 1: // 上下動 + 弾
                 int r = noGod ? 64 : 1;
                 timer = (timer + (noGod ? 0x14 : 0x3c)) & 0x3ff;
-                double th = timer * (2 * Math.PI / 1024);
-                x = originX + (int)Math.Round(Math.Sin(th) * r);
-                y = originY - (int)Math.Round(Math.Cos(th) * 64);
+                float th = timer * (2 * (float)Math.PI / 1024);
+                x = originX + (int)Math.Round((float)Math.Sin(th) * r);
+                y = originY - (int)Math.Round((float)Math.Cos(th) * 64);
                 if (noGod)
                 {
                     anim = 0;
@@ -473,18 +473,18 @@ public class NgsBoss : INgsEnemy
     // phase1 で boss.anim から spread を決め、自機中心へ BossBullet を撃つ。
     void FireBullet(NgsWorld world)
     {
-        double off = BulletOffset();
-        world.Spawn(NgsFaction.EnemyBullets, new NgsBossBullet(x + 5, y + 5, world.Player.X + 8.0, world.Player.Y + 8.0, off, noGod));
+        float off = BulletOffset();
+        world.Spawn(NgsFaction.EnemyBullets, new NgsBossBullet(x + 5, y + 5, world.Player.X + 8.0f, world.Player.Y + 8.0f, off, noGod));
     }
 
-    double BulletOffset()
+    float BulletOffset()
     {
-        double u = Math.PI / 16; // 0x20
-        double w = 0x3c * (2 * Math.PI / 1024); // 0x3c
+        float u = (float)Math.PI / 16; // 0x20
+        float w = 0x3c * (2 * (float)Math.PI / 1024); // 0x3c
         if (!noGod) return anim == 0 ? -u : u;
         if (anim == 0) return w;
         if (anim == 1) return -w;
-        return 0.0;
+        return 0.0f;
     }
 
     static int SweepX(int dir, int t)
@@ -574,29 +574,29 @@ public class NgsBossBullet : INgsEntity
     int y;
     readonly int originX;
     readonly int originY;
-    readonly double theta;
-    double dist = 0;
+    readonly float theta;
+    float dist = 0;
     readonly int speed;
 
     public const int W = 3;
     public const int H = 3;
 
-    public NgsBossBullet(int sx, int sy, double pcx, double pcy, double offset, bool noGod)
+    public NgsBossBullet(int sx, int sy, float pcx, float pcy, float offset, bool noGod)
     {
         x = sx;
         y = sy;
         originX = sx;
         originY = sy;
-        double dxw = pcx - (sx + W / 2.0);
-        double dyUp = -(pcy - (sy + H / 2.0));
-        theta = Math.Atan2(dxw, dyUp) + offset;
+        float dxw = pcx - (sx + W / 2.0f);
+        float dyUp = -(pcy - (sy + H / 2.0f));
+        theta = (float)Math.Atan2(dxw, dyUp) + offset;
         speed = noGod ? 2 : 10;
     }
 
     public bool Update(NgsWorld world, NgsInputSnapshot input)
     {
-        x = originX + (int)Math.Round(Math.Sin(theta) * dist);
-        y = originY - (int)Math.Round(Math.Cos(theta) * dist);
+        x = originX + (int)Math.Round((float)Math.Sin(theta) * dist);
+        y = originY - (int)Math.Round((float)Math.Cos(theta) * dist);
         dist = dist + speed;
         return NgsWorld.Overlap(Bounds(), NgsViewport.Bounds());
     }

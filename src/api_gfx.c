@@ -44,13 +44,12 @@ static ShaderTargetBackend shader_target_for_backend(void) {
   // wasm: webgpu backend 一択。slang-wasm が WGSL を出す。
   return SHADER_TARGET_WGSL;
 #elif defined(_WIN32)
-  // dx12 の vtable name は "native"。
-  if (g_backend && g_backend->name && strcmp(g_backend->name, "native") == 0)
-    return SHADER_TARGET_DX12;
+  if (g_backend == &g_backend_d3d12)
+    return SHADER_TARGET_D3D12;
+  // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う
+  // (descriptor set 規約が SDL_GPU 準拠のため)。
   return SHADER_TARGET_SDLGPU;
 #else
-  // Linux の "native" (Vulkan 直接) も SDLGPU target の SPIR-V を食う
-  // (descriptor set 規約が SDL_GPU 準拠のため)。
   return SHADER_TARGET_SDLGPU;
 #endif
 }

@@ -6,11 +6,11 @@ using static Lub;
 
 public static class Mvp04
 {
-    static double t = 0;
+    static float t = 0;
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -22,7 +22,7 @@ public static class Mvp04
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         t = t + dt;
         Io.LoadText("samples/04_mvp/data/04_mvp.vs.slang",
@@ -40,7 +40,7 @@ public static class Mvp04
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.Draw(3,
             new Dictionary<string, object>

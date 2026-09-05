@@ -9,11 +9,11 @@ using static Lub;
 
 public static class Game
 {
-    static double t = 0;
-    static double playerY = 0;
-    static double velocityY = 0;
-    static double pipeX = 5.0;
-    static double gapY = 0;
+    static float t = 0;
+    static float playerY = 0;
+    static float velocityY = 0;
+    static float pipeX = 5.0f;
+    static float gapY = 0;
     static int score = 0;
     static bool dead = false;
 
@@ -23,7 +23,7 @@ public static class Game
     }
 
     // dt は直近 frame の実測秒。固定レート前提にせず dt でスケールする。
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         t = t + dt;
 
@@ -35,22 +35,22 @@ public static class Game
         var flap = Input.KeyPressed("space") || Input.MousePressed();
         if (!dead)
         {
-            if (flap) velocityY = 3.0;
-            velocityY = velocityY - 8.0 * dt;
+            if (flap) velocityY = 3.0f;
+            velocityY = velocityY - 8.0f * dt;
             playerY = playerY + velocityY * dt;
 
-            pipeX = pipeX - 2.0 * dt;
-            if (pipeX < -3.0)
+            pipeX = pipeX - 2.0f * dt;
+            if (pipeX < -3.0f)
             {
-                pipeX = 5.0;
-                gapY = Math.Sin(t * 1.7) * 1.5;
+                pipeX = 5.0f;
+                gapY = (float)Math.Sin(t * 1.7f) * 1.5f;
                 score = score + 1;
             }
 
-            if (playerY < -3.0 || playerY > 3.0) dead = true;
-            if (pipeX > -1.0 && pipeX < 1.0)
+            if (playerY < -3.0f || playerY > 3.0f) dead = true;
+            if (pipeX > -1.0f && pipeX < 1.0f)
             {
-                if (playerY > gapY + 1.0 || playerY < gapY - 1.0) dead = true;
+                if (playerY > gapY + 1.0f || playerY < gapY - 1.0f) dead = true;
             }
         }
         else if (flap)
@@ -58,7 +58,7 @@ public static class Game
             dead = false;
             playerY = 0;
             velocityY = 0;
-            pipeX = 5.0;
+            pipeX = 5.0f;
             score = 0;
         }
 
@@ -71,15 +71,15 @@ public static class Game
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.05, 0.05, 0.15, 1.0 },
+            ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
         });
         var drawOpts = new DrawOpts { Shader = s, Depth = true, Cull = Gfx.Cull.None };
 
-        DrawCube(b, vp * Mat4.Translate(new Vec3(-2.0, playerY, 0)) * Mat4.RotateY(t * 3.0)
-            * Mat4.Scale(new Vec3(0.4, 0.4, 0.4)), drawOpts);
-        var pipeScale = Mat4.Scale(new Vec3(0.8, 5.0, 0.8));
-        DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY + 3.5, 0)) * pipeScale, drawOpts);
-        DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY - 3.5, 0)) * pipeScale, drawOpts);
+        DrawCube(b, vp * Mat4.Translate(new Vec3(-2.0f, playerY, 0)) * Mat4.RotateY(t * 3.0f)
+            * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f)), drawOpts);
+        var pipeScale = Mat4.Scale(new Vec3(0.8f, 5.0f, 0.8f));
+        DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY + 3.5f, 0)) * pipeScale, drawOpts);
+        DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY - 3.5f, 0)) * pipeScale, drawOpts);
         Gfx.EndPass();
     }
 

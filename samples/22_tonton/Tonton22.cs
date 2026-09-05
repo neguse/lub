@@ -28,31 +28,31 @@ public class Rikishi
 {
     public int Gen; // 再宣言 (respawn) 用 version
     public string Name = ""; // 四股名 (かな)
-    public double HomeX;
-    public double[] Color = new double[] { 1.0, 1.0, 1.0, 1.0 };
+    public float HomeX;
+    public float[] Color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f };
     public int BodyRgb; // SDF に焼く体色
     public int DownFrames;
     public int SquashT; // 着地スカッシュの残りフレーム
-    public double PrevVy;
+    public float PrevVy;
     // --- 個性 ---
     // 押し合いは「相手が支え」の安定構造なので、押すだけでは永遠に倒れない。
     // 決着は支えを外す瞬間 (引き・いなし) に生まれる。個性はその使い分け。
-    public double PushK; // 押しの強さ
-    public double LeanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
-    public double PulseHz; // 押しの脈動周期
-    public double Phase;
-    public double Counter; // 相手の深い前傾に引き/いなしを合わせる確率
+    public float PushK; // 押しの強さ
+    public float LeanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
+    public float PulseHz; // 押しの脈動周期
+    public float Phase;
+    public float Counter; // 相手の深い前傾に引き/いなしを合わせる確率
     // --- 戦術状態 ---
     public int Tactic;
     public int TacticUntil;
-    public double SideSign; // いなしの回り込み方向
+    public float SideSign; // いなしの回り込み方向
 }
 
 /// <summary>world 座標 → 論理スクリーン座標。</summary>
 public class ScreenPos
 {
-    public double X;
-    public double Y;
+    public float X;
+    public float Y;
     public bool Ok;
 }
 
@@ -60,36 +60,36 @@ public static class Tonton22
 {
     const int w = 640;
     const int h = 360;
-    const double dt = 1.0 / 60.0;
+    const float dt = 1.0f / 60.0f;
 
-    const double dohyoR = 2.2;
-    const double dohyoH = 0.4;
-    const double dohyoY = 0.6; // 懸架時の中心高
-    const double topY = dohyoY + dohyoH * 0.5;
-    const double capR = 0.35;
+    const float dohyoR = 2.2f;
+    const float dohyoH = 0.4f;
+    const float dohyoY = 0.6f; // 懸架時の中心高
+    const float topY = dohyoY + dohyoH * 0.5f;
+    const float capR = 0.35f;
 
     // 土俵の質量と傾き慣性 (cylinder の解析値)。懸架 PD のゲインを
     // 「共振周波数 Hz と減衰比」で書くために使う。
-    const double dohyoMass = 3.14159 * dohyoR * dohyoR * dohyoH;
-    const double dohyoITilt =
-        dohyoMass * (3.0 * dohyoR * dohyoR + dohyoH * dohyoH) / 12.0;
+    const float dohyoMass = 3.14159f * dohyoR * dohyoR * dohyoH;
+    const float dohyoITilt =
+        dohyoMass * (3.0f * dohyoR * dohyoR + dohyoH * dohyoH) / 12.0f;
 
     // --- 調整パラメータ (hot reload でいじる) ------------------------------
-    static double suspLinHz = 3.0; // 土俵懸架ばね (上下・水平の戻り)
-    static double suspLinDamp = 0.15; // 減衰比。小さいほどトントンが弾む
-    static double suspAngHz = 1.4; // 傾きの戻り
-    static double suspAngDamp = 0.2;
-    static double balKp = 6.0; // 姿勢 PD: 立て直しトルク
-    static double balKd = 1.2; // 姿勢 PD: 角速度ダンピング
+    static float suspLinHz = 3.0f; // 土俵懸架ばね (上下・水平の戻り)
+    static float suspLinDamp = 0.15f; // 減衰比。小さいほどトントンが弾む
+    static float suspAngHz = 1.4f; // 傾きの戻り
+    static float suspAngDamp = 0.2f;
+    static float balKp = 6.0f; // 姿勢 PD: 立て直しトルク
+    static float balKd = 1.2f; // 姿勢 PD: 角速度ダンピング
     // 筋力上限。重力転倒トルク (≈2.7 sinθ) がこれを超える角度 (≈35°) から
     // 先は本当に倒れる。無限に強いバランスは相撲にならない。押しの前傾
     // (15〜25°) と臨界角の間が薄いほど、トントンと脈動が決定打になる。
-    static double balMax = 1.55;
-    static double holdK = 1.5; // 仕切り中の定位置ばね
-    static double holdKd = 0.8;
-    static double walkSpeed = 0.9; // 相手へ詰める速さ (m/s)
-    static double seekK = 1.5; // 速度サーボの強さ
-    static double tapImpulse = 12.0; // トントン 1 発の強さ
+    static float balMax = 1.55f;
+    static float holdK = 1.5f; // 仕切り中の定位置ばね
+    static float holdKd = 0.8f;
+    static float walkSpeed = 0.9f; // 相手へ詰める速さ (m/s)
+    static float seekK = 1.5f; // 速度サーボの強さ
+    static float tapImpulse = 12.0f; // トントン 1 発の強さ
     static int tapRepeat = 9; // 押しっぱなし連打の間隔 (frame)
 
     // --- 取組フロー ---------------------------------------------------------
@@ -110,9 +110,9 @@ public static class Tonton22
     const int taHiki = 1; // 引く: 支えを外して前傾の相手を落とす
     const int taInashi = 2; // いなす: 横へかわして空振りさせる
     const int taTame = 3; // ためる: 直立で耐える
-    static double hikiK = 5.0; // 引きの後退力
-    static double inashiK = 5.5; // いなしの横力
-    static double hatakiK = 3.2; // はたき込み (引き際に相手上体を引き倒すトルク)
+    static float hikiK = 5.0f; // 引きの後退力
+    static float inashiK = 5.5f; // いなしの横力
+    static float hatakiK = 3.2f; // はたき込み (引き際に相手上体を引き倒すトルク)
 
     // 赤 = 突貫 (強く深く押すが、引きに合わされやすい)
     // 青 = 後の先 (押しは控えめ、相手の前傾に引き/いなしを合わせる)
@@ -122,39 +122,39 @@ public static class Tonton22
         {
             Gen = 1,
             Name = "あか",
-            HomeX = -0.9,
-            Color = new double[] { 0.86, 0.28, 0.24, 1.0 },
+            HomeX = -0.9f,
+            Color = new float[] { 0.86f, 0.28f, 0.24f, 1.0f },
             BodyRgb = 0xC94434,
             DownFrames = 0,
             SquashT = 0,
-            PrevVy = 0.0,
-            PushK = 9.0,
-            LeanK = 2.0,
-            PulseHz = 2.2,
-            Phase = 0.0,
-            Counter = 0.25,
+            PrevVy = 0.0f,
+            PushK = 9.0f,
+            LeanK = 2.0f,
+            PulseHz = 2.2f,
+            Phase = 0.0f,
+            Counter = 0.25f,
             Tactic = taOsu,
             TacticUntil = 0,
-            SideSign = 1.0,
+            SideSign = 1.0f,
         },
         new Rikishi
         {
             Gen = 1,
             Name = "あお",
-            HomeX = 0.9,
-            Color = new double[] { 0.27, 0.47, 0.88, 1.0 },
+            HomeX = 0.9f,
+            Color = new float[] { 0.27f, 0.47f, 0.88f, 1.0f },
             BodyRgb = 0x3E6ED8,
             DownFrames = 0,
             SquashT = 0,
-            PrevVy = 0.0,
-            PushK = 7.5,
-            LeanK = 1.2,
-            PulseHz = 1.6,
-            Phase = 2.1,
-            Counter = 0.7,
+            PrevVy = 0.0f,
+            PushK = 7.5f,
+            LeanK = 1.2f,
+            PulseHz = 1.6f,
+            Phase = 2.1f,
+            Counter = 0.7f,
             Tactic = taOsu,
             TacticUntil = 0,
-            SideSign = -1.0,
+            SideSign = -1.0f,
         },
     };
 
@@ -163,11 +163,11 @@ public static class Tonton22
 
     // トントンの見た目フィードバック
     static int lastTap = -999;
-    static double markerX = 0.0;
-    static double markerY = 0.0;
-    static double markerZ = 0.0;
+    static float markerX = 0.0f;
+    static float markerY = 0.0f;
+    static float markerZ = 0.0f;
     static int markerT = 0;
-    static double shake = 0.0;
+    static float shake = 0.0f;
     static FixedStep? step = null;
     static WorldRef3d? world = null;
     static int renderFrame = 0;
@@ -177,11 +177,11 @@ public static class Tonton22
 
     // render ごとに取る実入力。pressed は位置とともに次 tick まで保持する。
     static bool pendingTap = false;
-    static double pendingTapX = 0.0;
-    static double pendingTapY = 0.0;
+    static float pendingTapX = 0.0f;
+    static float pendingTapY = 0.0f;
     static bool pointerDown = false;
-    static double pointerX = 0.0;
-    static double pointerY = 0.0;
+    static float pointerX = 0.0f;
+    static float pointerY = 0.0f;
 
     // --- procedural meshes (Shapes3d)。onFrame で遅延生成 --------------------
     static Mesh3d? cubeMesh = null;
@@ -190,7 +190,7 @@ public static class Tonton22
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
@@ -205,7 +205,7 @@ public static class Tonton22
     /// <summary>整数剰余 (tcs は % 未対応)。a, b > 0 前提。</summary>
     static int Imod(int a, int b)
     {
-        return a - (int)Math.Floor((double)a / (double)b) * b;
+        return a - (int)Math.Floor((float)a / (float)b) * b;
     }
 
     // --- SDF だるま力士 -----------------------------------------------------
@@ -224,25 +224,25 @@ public static class Tonton22
 
     static SdfNode DarumaModel(int bodyRgb)
     {
-        var body = Sdf.Sphere(0.50).Move(0, 0.52, 0)
-            .Bone("body", new Vec3(0, 0.25, 0));
-        var head = Sdf.Sphere(0.30).Move(0, 1.02, 0)
-            .Bone("head", new Vec3(0, 0.80, 0));
-        var armL = Sdf.Capsule(new Vec3(0.40, 0.76, -0.06),
-            new Vec3(0.60, 0.40, -0.30), 0.11)
-            .Bone("arm_l", new Vec3(0.40, 0.76, -0.06));
-        var armR = Sdf.Capsule(new Vec3(-0.40, 0.76, -0.06),
-            new Vec3(-0.60, 0.40, -0.30), 0.11)
-            .Bone("arm_r", new Vec3(-0.40, 0.76, -0.06));
-        var trunk = body.Smin(head, 0.12).Smin(armL, 0.06).Smin(armR, 0.06)
+        var body = Sdf.Sphere(0.50f).Move(0, 0.52f, 0)
+            .Bone("body", new Vec3(0, 0.25f, 0));
+        var head = Sdf.Sphere(0.30f).Move(0, 1.02f, 0)
+            .Bone("head", new Vec3(0, 0.80f, 0));
+        var armL = Sdf.Capsule(new Vec3(0.40f, 0.76f, -0.06f),
+            new Vec3(0.60f, 0.40f, -0.30f), 0.11f)
+            .Bone("arm_l", new Vec3(0.40f, 0.76f, -0.06f));
+        var armR = Sdf.Capsule(new Vec3(-0.40f, 0.76f, -0.06f),
+            new Vec3(-0.60f, 0.40f, -0.30f), 0.11f)
+            .Bone("arm_r", new Vec3(-0.40f, 0.76f, -0.06f));
+        var trunk = body.Smin(head, 0.12f).Smin(armL, 0.06f).Smin(armR, 0.06f)
             .Paint(bodyRgb);
         // 顔: 肌色の球を頭前面に沈めて smin (だるまの顔窓)
-        var face = Sdf.Sphere(0.20).Move(0, 1.02, -0.17).Paint(0xF2D1AC);
+        var face = Sdf.Sphere(0.20f).Move(0, 1.02f, -0.17f).Paint(0xF2D1AC);
         // まわし: 白帯の torus
-        var mawashi = Sdf.Torus(0.40, 0.10).Move(0, 0.24, 0).Paint(0xF2EEDC);
-        var eye = Sdf.Sphere(0.05).Move(0.10, 1.08, -0.30).MirrorX()
-            .Paint(0x241F1F, 0.0, 0.2);
-        return trunk.Smin(face, 0.04).Union(mawashi).Union(eye);
+        var mawashi = Sdf.Torus(0.40f, 0.10f).Move(0, 0.24f, 0).Paint(0xF2EEDC);
+        var eye = Sdf.Sphere(0.05f).Move(0.10f, 1.08f, -0.30f).MirrorX()
+            .Paint(0x241F1F, 0.0f, 0.2f);
+        return trunk.Smin(face, 0.04f).Union(mawashi).Union(eye);
     }
 
     static void EnsureDaruma(Mesh3d[] meshes)
@@ -256,28 +256,28 @@ public static class Tonton22
 
     // 手続きボーンアニメ。腕 = 戦術で構えが変わる + 転倒でバタバタ、
     // 頭 = 押しの脈動でうなずく。物理 (傾き・跳ね) は model 行列側。
-    static List<double> PackBones(int mi, Rikishi f, bool falling, double pulse,
+    static List<float> PackBones(int mi, Rikishi f, bool falling, float pulse,
         int logicalFrame, MeshData? data)
     {
-        double t = logicalFrame * dt;
-        double armSwing;
+        float t = logicalFrame * dt;
+        float armSwing;
         if (falling)
-            armSwing = Math.Sin(t * 16.0 + mi * 2.1) * 0.9;
+            armSwing = (float)Math.Sin(t * 16.0f + mi * 2.1f) * 0.9f;
         else if (f.Tactic == taHiki || f.Tactic == taInashi)
-            armSwing = 0.7;
+            armSwing = 0.7f;
         else
-            armSwing = -0.55 * pulse + Math.Sin(t * 2.3 + mi) * 0.08;
-        double nod = falling ? Math.Sin(t * 12.0) * 0.25 : pulse * 0.16;
+            armSwing = -0.55f * pulse + (float)Math.Sin(t * 2.3f + mi) * 0.08f;
+        float nod = falling ? (float)Math.Sin(t * 12.0f) * 0.25f : pulse * 0.16f;
         return Bones.Pack(data, (name, x, y, z) =>
         {
             if (name == "arm_l")
                 return Bones.PivotRot(x, y, z, Mat4.RotateX(armSwing)
                     .Mul(Mat4.RotateZ(
-                        falling ? Math.Sin(t * 13.0) * 0.5 : 0.12 * pulse)));
+                        falling ? (float)Math.Sin(t * 13.0f) * 0.5f : 0.12f * pulse)));
             if (name == "arm_r")
                 return Bones.PivotRot(x, y, z, Mat4.RotateX(armSwing)
                     .Mul(Mat4.RotateZ(
-                        falling ? -Math.Sin(t * 13.0) * 0.5 : -0.12 * pulse)));
+                        falling ? -(float)Math.Sin(t * 13.0f) * 0.5f : -0.12f * pulse)));
             if (name == "head")
                 return Bones.PivotRot(x, y, z, Mat4.RotateX(nod));
             return null;
@@ -305,15 +305,15 @@ public static class Tonton22
     }
 
     // world 座標 → 論理スクリーン座標
-    static ScreenPos ScreenPos(Mat4 vp, double wx, double wy, double wz)
+    static ScreenPos ScreenPos(Mat4 vp, float wx, float wy, float wz)
     {
-        var c = vp.MulVec4(new Vec4(wx, wy, wz, 1.0));
-        if (c.W <= 0.001)
-            return new ScreenPos { X = 0.0, Y = 0.0, Ok = false };
+        var c = vp.MulVec4(new Vec4(wx, wy, wz, 1.0f));
+        if (c.W <= 0.001f)
+            return new ScreenPos { X = 0.0f, Y = 0.0f, Ok = false };
         return new ScreenPos
         {
-            X = (c.X / c.W + 1.0) * 0.5 * w,
-            Y = (1.0 - c.Y / c.W) * 0.5 * h,
+            X = (c.X / c.W + 1.0f) * 0.5f * w,
+            Y = (1.0f - c.Y / c.W) * 0.5f * h,
             Ok = true,
         };
     }
@@ -324,7 +324,7 @@ public static class Tonton22
     {
         var world = Phys3d.World("tonton", new WorldOpts3d
         {
-            Gravity = new Vec3d { X = 0.0, Y = -10.0, Z = 0.0 },
+            Gravity = new Vec3d { X = 0.0f, Y = -10.0f, Z = 0.0f },
             FixedDt = dt,
             Substeps = 4,
             MaxSteps = 1,
@@ -341,28 +341,28 @@ public static class Tonton22
         var ground = Phys3d.Body(world, "ground", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Static,
-            Initial = new InitialState3d { X = 0.0, Y = -0.5, Z = 0.0 },
+            Initial = new InitialState3d { X = 0.0f, Y = -0.5f, Z = 0.0f },
         });
         if (ground != null)
             Phys3d.Box(ground, "solid", new BoxDesc3d
             {
-                Hx = 8.0,
-                Hy = 0.5,
-                Hz = 8.0,
-                Friction = 0.7,
+                Hx = 8.0f,
+                Hy = 0.5f,
+                Hz = 8.0f,
+                Friction = 0.7f,
             });
         var baseBody = Phys3d.Body(world, "base", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Static,
-            Initial = new InitialState3d { X = 0.0, Y = 0.15, Z = 0.0 },
+            Initial = new InitialState3d { X = 0.0f, Y = 0.15f, Z = 0.0f },
         });
         if (baseBody != null)
             Phys3d.Cylinder(baseBody, "solid", new CylinderDesc3d
             {
-                Height = 0.3,
-                Radius = 1.7,
+                Height = 0.3f,
+                Radius = 1.7f,
                 Sides = 24,
-                Friction = 0.6,
+                Friction = 0.6f,
             });
     }
 
@@ -374,8 +374,8 @@ public static class Tonton22
         var dohyo = Phys3d.Body(world, "dohyo", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
-            GravityScale = 0.0,
-            Initial = new InitialState3d { X = 0.0, Y = dohyoY, Z = 0.0 },
+            GravityScale = 0.0f,
+            Initial = new InitialState3d { X = 0.0f, Y = dohyoY, Z = 0.0f },
         });
         if (dohyo == null)
             return null;
@@ -384,8 +384,8 @@ public static class Tonton22
             Height = dohyoH,
             Radius = dohyoR,
             Sides = 28,
-            Density = 1.0,
-            Friction = 0.9,
+            Density = 1.0f,
+            Friction = 0.9f,
             Contact = true,
         });
         return dohyo;
@@ -398,19 +398,19 @@ public static class Tonton22
         var pose = Phys3d.Pose(dohyo);
         if (pose == null)
             return;
-        double wl = 2.0 * Math.PI * suspLinHz;
-        double cl = 2.0 * suspLinDamp * wl;
+        float wl = 2.0f * (float)Math.PI * suspLinHz;
+        float cl = 2.0f * suspLinDamp * wl;
         Phys3d.AddForceCenter(dohyo, new Vec3d
         {
-            X = dohyoMass * (wl * wl * (0.0 - pose.X) - cl * pose.Vx),
+            X = dohyoMass * (wl * wl * (0.0f - pose.X) - cl * pose.Vx),
             Y = dohyoMass * (wl * wl * (dohyoY - pose.Y) - cl * pose.Vy),
-            Z = dohyoMass * (wl * wl * (0.0 - pose.Z) - cl * pose.Vz),
+            Z = dohyoMass * (wl * wl * (0.0f - pose.Z) - cl * pose.Vz),
         });
         var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
         var up = q * Vec3.Up();
         var lean = up.Cross(Vec3.Up());
-        double wa = 2.0 * Math.PI * suspAngHz;
-        double ca = 2.0 * suspAngDamp * wa;
+        float wa = 2.0f * (float)Math.PI * suspAngHz;
+        float ca = 2.0f * suspAngDamp * wa;
         Phys3d.AddTorque(dohyo, new Vec3d
         {
             X = dohyoITilt * (wa * wa * lean.X - ca * pose.Wx),
@@ -425,35 +425,35 @@ public static class Tonton22
         {
             Type = Phys3d.BodyType.Dynamic,
             Version = f.Gen,
-            LinearDamping = 0.1,
-            AngularDamping = 0.5,
+            LinearDamping = 0.1f,
+            AngularDamping = 0.5f,
             // yaw を封じる: capsule は回転対称なので物理には影響せず、
             // 見た目の向き (相手に正対) をレンダリング側で自由に決められる
             MotionLocks = new MotionLocks3d { AngularY = true },
-            Initial = new InitialState3d { X = f.HomeX, Y = topY + 0.02, Z = 0.0 },
+            Initial = new InitialState3d { X = f.HomeX, Y = topY + 0.02f, Z = 0.0f },
         });
         if (body == null)
             return null;
         Phys3d.Capsule(body, "solid", new CapsuleDesc3d
         {
             Version = f.Gen,
-            A = new Vec3d { X = 0.0, Y = capR, Z = 0.0 },
-            B = new Vec3d { X = 0.0, Y = 0.95, Z = 0.0 },
+            A = new Vec3d { X = 0.0f, Y = capR, Z = 0.0f },
+            B = new Vec3d { X = 0.0f, Y = 0.95f, Z = 0.0f },
             R = capR,
-            Density = 1.0,
+            Density = 1.0f,
             // 高摩擦: 足が滑るより先に体が傾くように (押し倒しが決まる条件)。
             // 移動の自由は空中 (トントンで跳ねた瞬間) にある。
-            Friction = 0.85,
+            Friction = 0.85f,
             Contact = true,
         });
         return body;
     }
 
     // 決定論ハッシュ乱数 (シードは frame と力士 index)。リプレイ可能。
-    static double Rand01(int n)
+    static float Rand01(int n)
     {
-        double x = Math.Sin(n * 12.9898) * 43758.5453;
-        return x - Math.Floor(x);
+        float x = (float)Math.Sin(n * 12.9898f) * 43758.5453f;
+        return x - (float)Math.Floor(x);
     }
 
     // 戦術選択。反応間隔 (tacticUntil) ごとに再判断する。
@@ -467,29 +467,29 @@ public static class Tonton22
             return;
         var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
         var opUp = opQ * Vec3.Up();
-        double leanToMe = -(opUp.X * dir.X + opUp.Z * dir.Z); // 相手の前傾のこちら成分
-        double pushedBack = -(pose.Vx * dir.X + pose.Vz * dir.Z); // 押し込まれ速度
-        double rr = Math.Sqrt(pose.X * pose.X + pose.Z * pose.Z);
-        double backToEdge =
-            rr > 0.01 ? -(pose.X * dir.X + pose.Z * dir.Z) / rr : 0.0;
-        double edgeDanger = backToEdge > 0.0 ? rr / dohyoR * backToEdge : 0.0;
-        double r = Rand01(frame * 97 + i * 1013);
+        float leanToMe = -(opUp.X * dir.X + opUp.Z * dir.Z); // 相手の前傾のこちら成分
+        float pushedBack = -(pose.Vx * dir.X + pose.Vz * dir.Z); // 押し込まれ速度
+        float rr = (float)Math.Sqrt(pose.X * pose.X + pose.Z * pose.Z);
+        float backToEdge =
+            rr > 0.01f ? -(pose.X * dir.X + pose.Z * dir.Z) / rr : 0.0f;
+        float edgeDanger = backToEdge > 0.0f ? rr / dohyoR * backToEdge : 0.0f;
+        float r = Rand01(frame * 97 + i * 1013);
         // 引き/いなしの好機: 相手が前傾している、押し込まれている、または賭け
-        double chance = (leanToMe > 0.10 ? f.Counter : 0.0)
-            + (pushedBack > 0.12 ? f.Counter * 0.8 : 0.0) + f.Counter * 0.15;
-        if (engaged && r < chance && edgeDanger < 0.55)
+        float chance = (leanToMe > 0.10f ? f.Counter : 0.0f)
+            + (pushedBack > 0.12f ? f.Counter * 0.8f : 0.0f) + f.Counter * 0.15f;
+        if (engaged && r < chance && edgeDanger < 0.55f)
         {
-            f.Tactic = Rand01(frame * 131 + i * 71) < 0.5 ? taHiki : taInashi;
+            f.Tactic = Rand01(frame * 131 + i * 71) < 0.5f ? taHiki : taInashi;
             f.TacticUntil = frame + 18;
-            f.SideSign = Rand01(frame * 193 + i * 37) < 0.5 ? -1.0 : 1.0;
+            f.SideSign = Rand01(frame * 193 + i * 37) < 0.5f ? -1.0f : 1.0f;
         }
-        else if (edgeDanger > 0.62 && r < 0.8)
+        else if (edgeDanger > 0.62f && r < 0.8f)
         {
             f.Tactic = taInashi;
             f.TacticUntil = frame + 16;
-            f.SideSign = Rand01(frame * 193 + i * 37) < 0.5 ? -1.0 : 1.0;
+            f.SideSign = Rand01(frame * 193 + i * 37) < 0.5f ? -1.0f : 1.0f;
         }
-        else if (r > 0.9)
+        else if (r > 0.9f)
         {
             f.Tactic = taTame;
             f.TacticUntil = frame + 12;
@@ -497,7 +497,7 @@ public static class Tonton22
         else
         {
             f.Tactic = taOsu;
-            f.TacticUntil = frame + 18 + (int)Math.Floor(r * 22.0);
+            f.TacticUntil = frame + 18 + (int)Math.Floor(r * 22.0f);
         }
     }
 
@@ -512,50 +512,50 @@ public static class Tonton22
         var up = q * Vec3.Up();
         var lean = up.Cross(Vec3.Up()); // |lean| = sin(傾き)、方向 = 立て直す回転軸
         var spring = lean * balKp;
-        double mag = spring.Length();
+        float mag = spring.Length();
         // 筋力上限 (超えた傾きは救えない)。「ため」中は腰を落として踏ん張る
-        double maxEff = f.Tactic == taTame && state == stFight
-            ? balMax * 1.5 : balMax;
+        float maxEff = f.Tactic == taTame && state == stFight
+            ? balMax * 1.5f : balMax;
         if (mag > maxEff)
             spring = spring * (maxEff / mag);
         Phys3d.AddTorque(body, new Vec3d
         {
             X = spring.X - pose.Wx * balKd,
-            Y = 0.0, // yaw は motionLocks で封じている
+            Y = 0.0f, // yaw は motionLocks で封じている
             Z = spring.Z - pose.Wz * balKd,
         });
         // 倒れている間は操舵しない (勝敗の余韻でジタバタさせない)
-        if (up.Y < 0.5)
+        if (up.Y < 0.5f)
             return;
         if (state == stFight)
         {
             var op = Phys3d.Pose(opp);
             if (op == null)
                 return;
-            var toOpp = new Vec3(op.X - pose.X, 0.0, op.Z - pose.Z);
-            double dist = toOpp.Length();
+            var toOpp = new Vec3(op.X - pose.X, 0.0f, op.Z - pose.Z);
+            float dist = toOpp.Length();
             var dir = toOpp.Normalize();
-            bool engaged = dist < 2.0 * capR + 0.14;
+            bool engaged = dist < 2.0f * capR + 0.14f;
             Decide(i, f, pose, op, dir, engaged);
             if (f.Tactic == taHiki)
             {
                 // 支えを外す。前傾した相手はつんのめって落ちる (引き落とし)
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
-                    X = (-dir.X * 1.8 - pose.Vx) * hikiK,
-                    Y = 0.0,
-                    Z = (-dir.Z * 1.8 - pose.Vz) * hikiK,
+                    X = (-dir.X * 1.8f - pose.Vx) * hikiK,
+                    Y = 0.0f,
+                    Z = (-dir.Z * 1.8f - pose.Vz) * hikiK,
                 });
                 // はたき込み: 組んだまま引くときは相手の上体をこちらへ引き倒す
-                if (dist < 2.0 * capR + 0.55)
+                if (dist < 2.0f * capR + 0.55f)
                 {
                     var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
                     var opUp = opQ * Vec3.Up();
-                    var pullAxis = opUp.Cross(-1.0 * dir); // 相手の up をこちらへ倒す軸
+                    var pullAxis = opUp.Cross(-1.0f * dir); // 相手の up をこちらへ倒す軸
                     Phys3d.AddTorque(opp, new Vec3d
                     {
                         X = pullAxis.X * hatakiK,
-                        Y = 0.0,
+                        Y = 0.0f,
                         Z = pullAxis.Z * hatakiK,
                     });
                 }
@@ -563,24 +563,24 @@ public static class Tonton22
             else if (f.Tactic == taInashi)
             {
                 // 横へかわす。押しの軸を外して空振りさせる
-                var side = new Vec3(-dir.Z * f.SideSign, 0.0, dir.X * f.SideSign);
+                var side = new Vec3(-dir.Z * f.SideSign, 0.0f, dir.X * f.SideSign);
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
-                    X = (side.X * 2.3 - pose.Vx) * inashiK,
-                    Y = 0.0,
-                    Z = (side.Z * 2.3 - pose.Vz) * inashiK,
+                    X = (side.X * 2.3f - pose.Vx) * inashiK,
+                    Y = 0.0f,
+                    Z = (side.Z * 2.3f - pose.Vz) * inashiK,
                 });
                 // かわしながら相手の突進を前へ転がす (突き落とし)
-                if (dist < 2.0 * capR + 0.55)
+                if (dist < 2.0f * capR + 0.55f)
                 {
                     var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
                     var opUp = opQ * Vec3.Up();
-                    var rollAxis = opUp.Cross(-1.0 * dir);
+                    var rollAxis = opUp.Cross(-1.0f * dir);
                     Phys3d.AddTorque(opp, new Vec3d
                     {
-                        X = rollAxis.X * hatakiK * 0.7,
-                        Y = 0.0,
-                        Z = rollAxis.Z * hatakiK * 0.7,
+                        X = rollAxis.X * hatakiK * 0.7f,
+                        Y = 0.0f,
+                        Z = rollAxis.Z * hatakiK * 0.7f,
                     });
                 }
             }
@@ -590,7 +590,7 @@ public static class Tonton22
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
                     X = -pose.Vx * seekK,
-                    Y = 0.0,
+                    Y = 0.0f,
                     Z = -pose.Vz * seekK,
                 });
             }
@@ -598,33 +598,33 @@ public static class Tonton22
             {
                 // 押す: 前進方向にはブレーキをかけない速度サーボ。押し込み中に
                 // 相手が消えても止まれない = 突っ込むリスクが物理に乗る
-                double vAlong = pose.Vx * dir.X + pose.Vz * dir.Z;
-                double drive =
-                    vAlong < walkSpeed ? (walkSpeed - vAlong) * seekK : 0.0;
-                double perpX = pose.Vx - dir.X * vAlong;
-                double perpZ = pose.Vz - dir.Z * vAlong;
+                float vAlong = pose.Vx * dir.X + pose.Vz * dir.Z;
+                float drive =
+                    vAlong < walkSpeed ? (walkSpeed - vAlong) * seekK : 0.0f;
+                float perpX = pose.Vx - dir.X * vAlong;
+                float perpZ = pose.Vz - dir.Z * vAlong;
                 Phys3d.AddForceCenter(body, new Vec3d
                 {
                     X = dir.X * drive - perpX * seekK,
-                    Y = 0.0,
+                    Y = 0.0f,
                     Z = dir.Z * drive - perpZ * seekK,
                 });
                 if (engaged)
                 {
                     // 「のこった」の脈動で前傾して押し込む。重心を相手に預ける
-                    double pulse = Math.Max(0.0, Math.Sin(
-                        frame * dt * f.PulseHz * 2.0 * Math.PI + f.Phase));
+                    float pulse = Math.Max(0.0f, (float)Math.Sin(
+                        frame * dt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase));
                     Phys3d.AddForceCenter(body, new Vec3d
                     {
                         X = dir.X * f.PushK * pulse,
-                        Y = 0.0,
+                        Y = 0.0f,
                         Z = dir.Z * f.PushK * pulse,
                     });
                     var leanAxis = up.Cross(dir); // up を dir へ倒す = 前傾
                     Phys3d.AddTorque(body, new Vec3d
                     {
                         X = leanAxis.X * f.LeanK * pulse,
-                        Y = 0.0,
+                        Y = 0.0f,
                         Z = leanAxis.Z * f.LeanK * pulse,
                     });
                 }
@@ -635,8 +635,8 @@ public static class Tonton22
             Phys3d.AddForceCenter(body, new Vec3d
             {
                 X = (f.HomeX - pose.X) * holdK - pose.Vx * holdKd,
-                Y = 0.0,
-                Z = (0.0 - pose.Z) * holdK - pose.Vz * holdKd,
+                Y = 0.0f,
+                Z = (0.0f - pose.Z) * holdK - pose.Vz * holdKd,
             });
         }
     }
@@ -652,14 +652,14 @@ public static class Tonton22
                 state = stFight;
                 fightStart = frame;
                 engagedPrev = false;
-                Audio.Play(Sfx.Blip(2400, 2100, 0.05, 0.35)); // 拍子木
+                Audio.Play(Sfx.Blip(2400, 2100, 0.05f, 0.35f)); // 拍子木
             }
         }
         else if (state == stFight)
         {
             if (frame == fightStart + 9)
-                Audio.Play(Sfx.Blip(2400, 2100, 0.05, 0.35),
-                    new PlayOpts { Pitch = 0.93 });
+                Audio.Play(Sfx.Blip(2400, 2100, 0.05f, 0.35f),
+                    new PlayOpts { Pitch = 0.93f });
             var lost = new bool[] { false, false };
             var lostOut = new bool[] { false, false };
             for (int i = 0; i < fighters.Count; i++)
@@ -670,11 +670,11 @@ public static class Tonton22
                     continue;
                 var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
                 var up = q * Vec3.Up();
-                if (up.Y < 0.5) // 60° = 筋力上限の臨界角より深い。もう戻れない
+                if (up.Y < 0.5f) // 60° = 筋力上限の臨界角より深い。もう戻れない
                     f.DownFrames++;
                 else
                     f.DownFrames = 0;
-                lostOut[i] = pose.Y < 0.35
+                lostOut[i] = pose.Y < 0.35f
                     || pose.X * pose.X + pose.Z * pose.Z > dohyoR * dohyoR;
                 lost[i] = lostOut[i] || f.DownFrames > 20;
             }
@@ -699,9 +699,9 @@ public static class Tonton22
                 }
                 state = stKimari;
                 stateT = 90;
-                shake = 1.0;
-                Audio.Play(Sfx.Noise(0.7, 0.28, 0xbeef)); // 歓声がわり
-                Audio.Play(Sfx.Blip(520, 780, 0.22, 0.22));
+                shake = 1.0f;
+                Audio.Play(Sfx.Noise(0.7f, 0.28f, 0xbeef)); // 歓声がわり
+                Audio.Play(Sfx.Blip(520, 780, 0.22f, 0.22f));
                 if (auto)
                     Console.WriteLine("tonton: winner=" + winner
                         + " kimarite=" + kimarite + " stars=[" + stars[0] + ","
@@ -731,13 +731,13 @@ public static class Tonton22
     // クリック (押しっぱなしは連打) = トントン。カメラ ray を土俵上面の平面と
     // 交差させ、土俵の中なら下向き impulse。土俵が傾いていても上面 "あたり" に
     // 打てれば十分なので平面近似で済ませる。
-    static void TapAt(BodyRef3d dohyo, double px, double pz)
+    static void TapAt(BodyRef3d dohyo, float px, float pz)
     {
         lastTap = frame;
-        Audio.Play(Sfx.Blip(150, 45, 0.09, 0.5)); // トントンの「ドンッ」
-        Audio.Play(Sfx.Noise(0.05, 0.18));
+        Audio.Play(Sfx.Blip(150, 45, 0.09f, 0.5f)); // トントンの「ドンッ」
+        Audio.Play(Sfx.Noise(0.05f, 0.18f));
         Phys3d.AddImpulse(dohyo,
-            new Vec3d { X = 0.0, Y = -tapImpulse, Z = 0.0 },
+            new Vec3d { X = 0.0f, Y = -tapImpulse, Z = 0.0f },
             new CommandOpts3d
             {
                 Point = new Vec3d { X = px, Y = topY, Z = pz },
@@ -746,7 +746,7 @@ public static class Tonton22
         markerY = topY;
         markerZ = pz;
         markerT = 10;
-        shake = 1.0;
+        shake = 1.0f;
     }
 
     static void CaptureTapInput()
@@ -769,17 +769,17 @@ public static class Tonton22
         }
     }
 
-    static void UpdateTap(BodyRef3d dohyo, Vec3 eye, Vec3 target, double fovDeg,
-        double aspect, double w, double h)
+    static void UpdateTap(BodyRef3d dohyo, Vec3 eye, Vec3 target, float fovDeg,
+        float aspect, float w, float h)
     {
         // 自動トントン: 決定論の擬似乱数で縁寄りを叩き続ける (勝負中のみ)
         if (auto)
         {
             if (state != stFight || Imod(frame, 24) != 12)
                 return;
-            double aa = Imod(frame * 7919, 628) / 100.0;
-            double rr = dohyoR * (0.45 + Imod(frame * 337, 50) / 100.0);
-            TapAt(dohyo, Math.Cos(aa) * rr, Math.Sin(aa) * rr);
+            float aa = Imod(frame * 7919, 628) / 100.0f;
+            float rr = dohyoR * (0.45f + Imod(frame * 337, 50) / 100.0f);
+            TapAt(dohyo, (float)Math.Cos(aa) * rr, (float)Math.Sin(aa) * rr);
             return;
         }
         if (state != stFight)
@@ -789,43 +789,43 @@ public static class Tonton22
             return;
         }
         bool pressed = pendingTap;
-        double sx = pressed ? pendingTapX : pointerX;
-        double sy = pressed ? pendingTapY : pointerY;
+        float sx = pressed ? pendingTapX : pointerX;
+        float sy = pressed ? pendingTapY : pointerY;
         pendingTap = false;
         bool tap = pressed || (pointerDown && frame - lastTap >= tapRepeat);
         if (!tap)
             return;
-        double ndcX = sx / w * 2.0 - 1.0;
-        double ndcY = 1.0 - sy / h * 2.0;
+        float ndcX = sx / w * 2.0f - 1.0f;
+        float ndcY = 1.0f - sy / h * 2.0f;
         var fwd = (target - eye).Normalize();
         var right = Vec3.Up().Cross(fwd).Normalize();
         var upv = fwd.Cross(right);
-        double tanH = Math.Tan(fovDeg * Math.PI / 360.0);
+        float tanH = (float)Math.Tan(fovDeg * (float)Math.PI / 360.0f);
         var dir = (fwd + right * (ndcX * tanH * aspect) + upv * (ndcY * tanH))
             .Normalize();
-        if (dir.Y > -0.001)
+        if (dir.Y > -0.001f)
             return; // 上を向いた ray は土俵に届かない
-        double t = (topY - eye.Y) / dir.Y;
+        float t = (topY - eye.Y) / dir.Y;
         var p = eye + dir * t;
-        if (p.X * p.X + p.Z * p.Z > dohyoR * dohyoR * 1.1)
+        if (p.X * p.X + p.Z * p.Z > dohyoR * dohyoR * 1.1f)
             return;
         TapAt(dohyo, p.X, p.Z);
     }
 
-    static void Tick(double aspect, double w, double h)
+    static void Tick(float aspect, float w, float h)
     {
         // 従来の render frame 冒頭 / 末尾にあった演出カウントを
         // 60 Hz で進める。この後の tap / judge で始まる演出は全強度で描く。
-        if (shake > 0.001)
-            shake = shake * 0.85;
+        if (shake > 0.001f)
+            shake = shake * 0.85f;
         if (markerT > 0)
             markerT = markerT - 1;
         renderFrame = frame;
-        var tickEye = new Vec3(Math.Sin(frame * 1.7) * 0.05 * shake,
-            3.6 + Math.Sin(frame * 2.3) * 0.03 * shake, -5.4);
+        var tickEye = new Vec3((float)Math.Sin(frame * 1.7f) * 0.05f * shake,
+            3.6f + (float)Math.Sin(frame * 2.3f) * 0.03f * shake, -5.4f);
         renderEye = tickEye;
-        var lookAt = new Vec3(0.0, 0.4, 0.0);
-        double fovDeg = 40.0;
+        var lookAt = new Vec3(0.0f, 0.4f, 0.0f);
+        float fovDeg = 40.0f;
 
         var nextWorld = DeclareWorld();
         if (nextWorld == null)
@@ -857,16 +857,16 @@ public static class Tonton22
             var p1 = Phys3d.Pose(bodies[1]);
             if (state == stFight && p0 != null && p1 != null)
             {
-                double ddx = p1.X - p0.X;
-                double ddz = p1.Z - p0.Z;
-                double lim = 2.0 * capR + 0.14;
+                float ddx = p1.X - p0.X;
+                float ddz = p1.Z - p0.Z;
+                float lim = 2.0f * capR + 0.14f;
                 bool eng = ddx * ddx + ddz * ddz < lim * lim;
                 if (eng && !engagedPrev)
                 {
-                    Audio.Play(Sfx.Noise(0.12, 0.45));
-                    Audio.Play(Sfx.Blip(90, 55, 0.07, 0.3));
-                    if (shake < 0.6)
-                        shake = 0.6;
+                    Audio.Play(Sfx.Noise(0.12f, 0.45f));
+                    Audio.Play(Sfx.Blip(90, 55, 0.07f, 0.3f));
+                    if (shake < 0.6f)
+                        shake = 0.6f;
                 }
                 engagedPrev = eng;
             }
@@ -879,7 +879,7 @@ public static class Tonton22
             var pose = Phys3d.Pose(bodies[i]);
             if (pose == null)
                 continue;
-            if (f.PrevVy < -1.2 && pose.Vy > f.PrevVy + 0.8)
+            if (f.PrevVy < -1.2f && pose.Vy > f.PrevVy + 0.8f)
                 f.SquashT = 8;
             f.PrevVy = pose.Vy;
             if (f.SquashT > 0)
@@ -891,7 +891,7 @@ public static class Tonton22
 
     // --- rendering -------------------------------------------------------------
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         var renNow = ren ?? new Renderer3d("tt22");
         ren = renNow;
@@ -911,9 +911,9 @@ public static class Tonton22
         darumaMesh = darumaNow;
 
         Gfx.Size(out var sw, out var sh);
-        double aspect = (double)sw / sh;
-        double fovDeg = 40.0;
-        var lookAt = new Vec3(0.0, 0.4, 0.0);
+        float aspect = (float)sw / sh;
+        float fovDeg = 40.0f;
+        var lookAt = new Vec3(0.0f, 0.4f, 0.0f);
 
         CaptureTapInput();
         var stepNow = step ?? new FixedStep();
@@ -923,34 +923,34 @@ public static class Tonton22
         var eyeNow = renderEye;
         if (eyeNow == null)
         {
-            eyeNow = new Vec3(0.0, 3.6, -5.4);
+            eyeNow = new Vec3(0.0f, 3.6f, -5.4f);
             renderEye = eyeNow;
         }
 
         // --- draw ---
         // 屋外の明るい昼 (だるまの色がよく出るように空色強め)
-        renNow.Light.Dir = new Vec3(-0.4, 1.0, -0.55);
-        renNow.Sky.Top = Color.Rgb(0.45, 0.52, 0.62);
-        renNow.Sky.Bottom = Color.Rgb(0.16, 0.14, 0.13);
-        renNow.Background = Color.Rgb(0.05, 0.05, 0.08);
-        renNow.Shadow.Center = new Vec3(0, 0.3, 0);
-        renNow.Shadow.Extent = 3.5;
+        renNow.Light.Dir = new Vec3(-0.4f, 1.0f, -0.55f);
+        renNow.Sky.Top = Color.Rgb(0.45f, 0.52f, 0.62f);
+        renNow.Sky.Bottom = Color.Rgb(0.16f, 0.14f, 0.13f);
+        renNow.Background = Color.Rgb(0.05f, 0.05f, 0.08f);
+        renNow.Shadow.Center = new Vec3(0, 0.3f, 0);
+        renNow.Shadow.Extent = 3.5f;
         renNow.Begin(new Camera
         {
             Eye = eyeNow,
             Target = lookAt,
             Fov = fovDeg,
-            Near = 0.1,
-            Far = 50.0,
+            Near = 0.1f,
+            Far = 50.0f,
         });
 
         // 地面と台座
-        renNow.Draw(cubeNow, Mat4.Translate(new Vec3(0, -0.5, 0))
-            * Mat4.Scale(new Vec3(8, 0.5, 8)),
-            new Draw3dOpts { Tint = Color.Rgb(0.10, 0.10, 0.13) });
-        renNow.Draw(cylNow, Mat4.Translate(new Vec3(0, 0.15, 0))
-            * Mat4.Scale(new Vec3(1.7, 0.3, 1.7)),
-            new Draw3dOpts { Tint = Color.Rgb(0.16, 0.15, 0.19) });
+        renNow.Draw(cubeNow, Mat4.Translate(new Vec3(0, -0.5f, 0))
+            * Mat4.Scale(new Vec3(8, 0.5f, 8)),
+            new Draw3dOpts { Tint = Color.Rgb(0.10f, 0.10f, 0.13f) });
+        renNow.Draw(cylNow, Mat4.Translate(new Vec3(0, 0.15f, 0))
+            * Mat4.Scale(new Vec3(1.7f, 0.3f, 1.7f)),
+            new Draw3dOpts { Tint = Color.Rgb(0.16f, 0.15f, 0.19f) });
 
         // 土俵 (懸架で傾く)。上面に俵の白リングと仕切り線を重ねる。
         var drawWorld = world;
@@ -961,19 +961,19 @@ public static class Tonton22
         {
             var dm = Renderer3d.PoseMat(dp);
             renNow.Draw(cylNow, dm * Mat4.Scale(new Vec3(dohyoR, dohyoH, dohyoR)),
-                new Draw3dOpts { Tint = Color.Rgb(0.72, 0.55, 0.38) });
-            double topLocal = dohyoH * 0.5;
-            renNow.Draw(cylNow, dm * Mat4.Translate(new Vec3(0, topLocal + 0.005, 0))
-                * Mat4.Scale(new Vec3(dohyoR * 0.98, 0.01, dohyoR * 0.98)),
-                new Draw3dOpts { Tint = Color.Rgb(0.92, 0.88, 0.78) });
-            renNow.Draw(cylNow, dm * Mat4.Translate(new Vec3(0, topLocal + 0.015, 0))
-                * Mat4.Scale(new Vec3(dohyoR * 0.86, 0.01, dohyoR * 0.86)),
-                new Draw3dOpts { Tint = Color.Rgb(0.72, 0.55, 0.38) });
-            foreach (var sx in new double[] { -0.22, 0.22 })
+                new Draw3dOpts { Tint = Color.Rgb(0.72f, 0.55f, 0.38f) });
+            float topLocal = dohyoH * 0.5f;
+            renNow.Draw(cylNow, dm * Mat4.Translate(new Vec3(0, topLocal + 0.005f, 0))
+                * Mat4.Scale(new Vec3(dohyoR * 0.98f, 0.01f, dohyoR * 0.98f)),
+                new Draw3dOpts { Tint = Color.Rgb(0.92f, 0.88f, 0.78f) });
+            renNow.Draw(cylNow, dm * Mat4.Translate(new Vec3(0, topLocal + 0.015f, 0))
+                * Mat4.Scale(new Vec3(dohyoR * 0.86f, 0.01f, dohyoR * 0.86f)),
+                new Draw3dOpts { Tint = Color.Rgb(0.72f, 0.55f, 0.38f) });
+            foreach (var sx in new float[] { -0.22f, 0.22f })
                 renNow.Draw(cubeNow,
-                    dm * Mat4.Translate(new Vec3(sx, topLocal + 0.025, 0))
-                    * Mat4.Scale(new Vec3(0.02, 0.004, 0.3)),
-                    new Draw3dOpts { Tint = Color.Rgb(0.92, 0.88, 0.78) });
+                    dm * Mat4.Translate(new Vec3(sx, topLocal + 0.025f, 0))
+                    * Mat4.Scale(new Vec3(0.02f, 0.004f, 0.3f)),
+                    new Draw3dOpts { Tint = Color.Rgb(0.92f, 0.88f, 0.78f) });
         }
 
         // 力士: SDF だるま (skinning + 手続きボーンアニメ)。物理の pose に
@@ -988,20 +988,20 @@ public static class Tonton22
             var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
             if (pose == null || !mesh.Ready())
                 continue;
-            double sq = f.SquashT / 8.0 * 0.22;
+            float sq = f.SquashT / 8.0f * 0.22f;
             var op = Phys3d.PoseByKey(drawWorld, "rikishi:" + (1 - i));
-            double fx = op != null ? op.X - pose.X : -pose.X;
-            double fz = op != null ? op.Z - pose.Z : -pose.Z;
-            double yaw = Math.Atan2(fx, fz); // model の -Z を相手へ向ける
+            float fx = op != null ? op.X - pose.X : -pose.X;
+            float fz = op != null ? op.Z - pose.Z : -pose.Z;
+            float yaw = (float)Math.Atan2(fx, fz); // model の -Z を相手へ向ける
             var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
             var upv = q * Vec3.Up();
-            bool falling = upv.Y < 0.6;
-            double pulse = f.Tactic == taOsu
-                ? Math.Max(0.0, Math.Sin(
-                    renderFrame * dt * f.PulseHz * 2.0 * Math.PI + f.Phase))
-                : 0.0;
+            bool falling = upv.Y < 0.6f;
+            float pulse = f.Tactic == taOsu
+                ? Math.Max(0.0f, (float)Math.Sin(
+                    renderFrame * dt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase))
+                : 0.0f;
             var model = Renderer3d.PoseMat(pose) * Mat4.RotateY(yaw)
-                * Mat4.Scale(new Vec3(1.0 + sq * 0.6, 1.0 - sq, 1.0 + sq * 0.6));
+                * Mat4.Scale(new Vec3(1.0f + sq * 0.6f, 1.0f - sq, 1.0f + sq * 0.6f));
             renNow.Draw(mesh, model, new Draw3dOpts
             {
                 Bones = PackBones(i, f, falling, pulse, renderFrame, mesh.Data),
@@ -1011,11 +1011,11 @@ public static class Tonton22
         // トントンのマーカー (打った場所に一瞬リング。高輝度で bloom に乗る)
         if (markerT > 0)
         {
-            double k = markerT / 10.0;
+            float k = markerT / 10.0f;
             renNow.Draw(cylNow,
-                Mat4.Translate(new Vec3(markerX, markerY + 0.03, markerZ))
-                * Mat4.Scale(new Vec3(0.22 * (2.0 - k), 0.01, 0.22 * (2.0 - k))),
-                new Draw3dOpts { Tint = Color.Rgb(1.6, 1.5, 0.9) });
+                Mat4.Translate(new Vec3(markerX, markerY + 0.03f, markerZ))
+                * Mat4.Scale(new Vec3(0.22f * (2.0f - k), 0.01f, 0.22f * (2.0f - k))),
+                new Draw3dOpts { Tint = Color.Rgb(1.6f, 1.5f, 0.9f) });
         }
 
         renNow.End();
@@ -1025,14 +1025,14 @@ public static class Tonton22
         var mt = EnsureText();
         if (mt != null)
         {
-            var cream = Color.Rgb(0.95, 0.92, 0.85);
+            var cream = Color.Rgb(0.95f, 0.92f, 0.85f);
             mt.TextCentered("あか　" + stars[0] + " - " + stars[1] + "　あお",
-                w * 0.5, 348, 20, cream);
+                w * 0.5f, 348, 20, cream);
             if (state == stFight)
             {
                 if (renderFrame - fightStart < 50)
-                    mt.TextCentered("はっけよい", w * 0.5, 120, 44,
-                        Color.Rgb(0.98, 0.85, 0.4));
+                    mt.TextCentered("はっけよい", w * 0.5f, 120, 44,
+                        Color.Rgb(0.98f, 0.85f, 0.4f));
                 // 思考の可視化: 頭上に現在の戦術
                 var vp = renNow.ViewProj;
                 for (int i = 0; i < fighters.Count; i++)
@@ -1045,7 +1045,7 @@ public static class Tonton22
                     var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
                     if (pose == null)
                         continue;
-                    var sp = ScreenPos(vp, pose.X, pose.Y + 1.5, pose.Z);
+                    var sp = ScreenPos(vp, pose.X, pose.Y + 1.5f, pose.Z);
                     if (!sp.Ok)
                         continue;
                     string label;
@@ -1053,22 +1053,22 @@ public static class Tonton22
                     if (f.Tactic == taHiki)
                     {
                         label = "ひく";
-                        tint = Color.Rgb(0.35, 0.9, 0.9);
+                        tint = Color.Rgb(0.35f, 0.9f, 0.9f);
                     }
                     else if (f.Tactic == taInashi)
                     {
                         label = "いなす";
-                        tint = Color.Rgb(0.45, 0.9, 0.45);
+                        tint = Color.Rgb(0.45f, 0.9f, 0.45f);
                     }
                     else if (f.Tactic == taTame)
                     {
                         label = "ためる";
-                        tint = Color.Rgb(0.75, 0.75, 0.78);
+                        tint = Color.Rgb(0.75f, 0.75f, 0.78f);
                     }
                     else
                     {
                         label = "おす";
-                        tint = Color.Rgb(1.0, 0.66, 0.25);
+                        tint = Color.Rgb(1.0f, 0.66f, 0.25f);
                     }
                     mt.TextCentered(label, sp.X, sp.Y, 16, tint);
                 }
@@ -1078,14 +1078,14 @@ public static class Tonton22
                 if (winner >= 0)
                 {
                     var wf = fighters[winner];
-                    mt.TextCentered(wf.Name + "のかち", w * 0.5, 112, 36,
-                        Color.Rgb(wf.Color[0] * 0.4 + 0.6,
-                            wf.Color[1] * 0.4 + 0.6, wf.Color[2] * 0.4 + 0.6));
-                    mt.TextCentered(kimarite, w * 0.5, 150, 24, cream);
+                    mt.TextCentered(wf.Name + "のかち", w * 0.5f, 112, 36,
+                        Color.Rgb(wf.Color[0] * 0.4f + 0.6f,
+                            wf.Color[1] * 0.4f + 0.6f, wf.Color[2] * 0.4f + 0.6f));
+                    mt.TextCentered(kimarite, w * 0.5f, 150, 24, cream);
                 }
                 else
                 {
-                    mt.TextCentered("とりなおし", w * 0.5, 124, 32, cream);
+                    mt.TextCentered("とりなおし", w * 0.5f, 124, 32, cream);
                 }
             }
         }

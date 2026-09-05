@@ -28,34 +28,34 @@ public class Pin
 {
     public int Gen; // version (ラック再設置で上げる)
     public bool Standing; // ラック上に残っている (倒れた分はスイープ済み)
-    public double X; // 定位置 (スポット)
-    public double Z;
+    public float X; // 定位置 (スポット)
+    public float Z;
 }
 
 public static class Bowling25
 {
     const int w = 960;
     const int h = 540;
-    const double dt = 1.0 / 60.0;
+    const float dt = 1.0f / 60.0f;
 
     // --- 実寸 (m) ----------------------------------------------------------
-    const double laneHw = 0.533; // レーン半幅 (41.5in)
-    const double gutterW = 0.235; // ガター幅
-    const double pinZ = 18.29; // ファウルライン→1番ピン (60ft)
-    const double pinDx = 0.3048; // 隣接ピン間隔 (12in)
-    const double rowDz = 0.2639; // 列間 (12in × sin60°)
-    const double deckEnd = 19.96; // ピンデッキ末端。ここからピット
-    const double pitEnd = 21.0; // ピット奥 (クッション)
-    const double oilEnd = 12.2; // オイルパターン終端 (40ft 相当)
-    const double ballR = 0.108; // ボール半径 (8.5in 径)
+    const float laneHw = 0.533f; // レーン半幅 (41.5in)
+    const float gutterW = 0.235f; // ガター幅
+    const float pinZ = 18.29f; // ファウルライン→1番ピン (60ft)
+    const float pinDx = 0.3048f; // 隣接ピン間隔 (12in)
+    const float rowDz = 0.2639f; // 列間 (12in × sin60°)
+    const float deckEnd = 19.96f; // ピンデッキ末端。ここからピット
+    const float pitEnd = 21.0f; // ピット奥 (クッション)
+    const float oilEnd = 12.2f; // オイルパターン終端 (40ft 相当)
+    const float ballR = 0.108f; // ボール半径 (8.5in 径)
 
     // 材質。摩擦の合成は sqrt(fA×fB) なので、ボール 0.2 に対して実効摩擦は
     // オイル上 ≈ 0.04、ドライ上 ≈ 0.17 と実物のレンジに合わせている
-    const double fricOil = 0.008;
-    const double fricDry = 0.15;
-    const double ballDensity = 1190.0; // 約 6.3kg (14lb 球)
-    const double pinDensity = 620.0; // 約 1.53kg
-    const double skid = 0.5; // リリース時の転がり率 (1=完全転がり)
+    const float fricOil = 0.008f;
+    const float fricDry = 0.15f;
+    const float ballDensity = 1190.0f; // 約 6.3kg (14lb 球)
+    const float pinDensity = 620.0f; // 約 1.53kg
+    const float skid = 0.5f; // リリース時の転がり率 (1=完全転がり)
 
     // --- 状態機械 -----------------------------------------------------------
     const int stAim = 0; // 立ち位置 (マーカーが往復)
@@ -69,22 +69,22 @@ public static class Bowling25
 
     static int state = stAim;
     static int stateT = 0;
-    static double tAccum = 0.0;
+    static float tAccum = 0.0f;
     static FixedStep? step = null;
     static int pendingPresses = 0;
 
     // 投球パラメータ (各段階でロック)
-    static double aimX = 0.0;
-    static double angle = 0.0; // rad。+ で右へ
-    static double hook = 0.0; // rad/s。+ で左に曲がる
-    static double power = 0.0; // 0..1
+    static float aimX = 0.0f;
+    static float angle = 0.0f; // rad。+ で右へ
+    static float hook = 0.0f; // rad/s。+ で左に曲がる
+    static float power = 0.0f; // 0..1
     static int throwGen = 0;
     static bool ballLive = false;
-    static double throwX = 0.0;
-    static double ballVX = 0.0;
-    static double ballVZ = 0.0;
-    static double ballWX = 0.0;
-    static double ballWZ = 0.0;
+    static float throwX = 0.0f;
+    static float ballVX = 0.0f;
+    static float ballVZ = 0.0f;
+    static float ballWX = 0.0f;
+    static float ballWZ = 0.0f;
     static int stallFrames = 0;
     static bool inGutter = false;
     static int standingBefore = 10;
@@ -92,10 +92,10 @@ public static class Bowling25
     // アトラクトモード (放置で自動投球。ヘッドレス検証兼デモ)
     static bool autoPlay = false;
     static int idleT = 0;
-    static double autoAimX = 0.0;
-    static double autoAngle = 0.0;
-    static double autoHook = 0.0;
-    static double autoPower = 0.85;
+    static float autoAimX = 0.0f;
+    static float autoAngle = 0.0f;
+    static float autoHook = 0.0f;
+    static float autoPower = 0.85f;
     static Rand? rng = null;
 
     // スコア (10 フレーム正式ルール)
@@ -107,7 +107,7 @@ public static class Bowling25
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
@@ -131,7 +131,7 @@ public static class Bowling25
                 {
                     Gen = 1,
                     Standing = true,
-                    X = (c - r * 0.5) * pinDx,
+                    X = (c - r * 0.5f) * pinDx,
                     Z = pinZ + r * rowDz,
                 });
             }
@@ -152,33 +152,33 @@ public static class Bowling25
     static SdfNode PinModel()
     {
         var white = 0xF2EFE6;
-        var baseShape = Sdf.Capsule(new Vec3(0, 0.030, 0), new Vec3(0, 0.090, 0),
-            0.051);
-        var belly = Sdf.Sphere(0.0605).Move(0, 0.155, 0);
-        var neck = Sdf.Capsule(new Vec3(0, 0.20, 0), new Vec3(0, 0.30, 0),
-            0.032);
-        var head = Sdf.Sphere(0.040).Move(0, 0.335, 0);
-        var body = baseShape.Smin(belly, 0.03).Smin(neck, 0.035).Smin(head, 0.02)
-            .Paint(white, 0.0, 0.35);
-        var stripe1 = Sdf.Torus(0.034, 0.006).Move(0, 0.265, 0)
-            .Paint(0xC2263D, 0.0, 0.4);
-        var stripe2 = Sdf.Torus(0.035, 0.006).Move(0, 0.298, 0)
-            .Paint(0xC2263D, 0.0, 0.4);
-        return body.Smin(stripe1, 0.006).Smin(stripe2, 0.006);
+        var baseShape = Sdf.Capsule(new Vec3(0, 0.030f, 0), new Vec3(0, 0.090f, 0),
+            0.051f);
+        var belly = Sdf.Sphere(0.0605f).Move(0, 0.155f, 0);
+        var neck = Sdf.Capsule(new Vec3(0, 0.20f, 0), new Vec3(0, 0.30f, 0),
+            0.032f);
+        var head = Sdf.Sphere(0.040f).Move(0, 0.335f, 0);
+        var body = baseShape.Smin(belly, 0.03f).Smin(neck, 0.035f).Smin(head, 0.02f)
+            .Paint(white, 0.0f, 0.35f);
+        var stripe1 = Sdf.Torus(0.034f, 0.006f).Move(0, 0.265f, 0)
+            .Paint(0xC2263D, 0.0f, 0.4f);
+        var stripe2 = Sdf.Torus(0.035f, 0.006f).Move(0, 0.298f, 0)
+            .Paint(0xC2263D, 0.0f, 0.4f);
+        return body.Smin(stripe1, 0.006f).Smin(stripe2, 0.006f);
     }
 
     // ボール: 指穴 3 つ + 飾りリング (回転が見えるように)
     static SdfNode BallModel()
     {
-        var body = Sdf.Sphere(ballR).Paint(0x2B55A8, 0.15, 0.25);
-        var ring = Sdf.Torus(ballR, 0.0035)
-            .Rotate(new Vec3(1, 0, 0.35).Normalize(), 1.0)
-            .Paint(0xD9A441, 0.3, 0.3);
-        var withRing = body.Smin(ring, 0.002);
-        var h1 = Sdf.Sphere(0.015).Move(0.024, 0.098, 0.027);
-        var h2 = Sdf.Sphere(0.015).Move(-0.024, 0.098, 0.027);
-        var h3 = Sdf.Sphere(0.018).Move(0.0, 0.102, -0.020);
-        return withRing.Ssub(h1, 0.002).Ssub(h2, 0.002).Ssub(h3, 0.002);
+        var body = Sdf.Sphere(ballR).Paint(0x2B55A8, 0.15f, 0.25f);
+        var ring = Sdf.Torus(ballR, 0.0035f)
+            .Rotate(new Vec3(1, 0, 0.35f).Normalize(), 1.0f)
+            .Paint(0xD9A441, 0.3f, 0.3f);
+        var withRing = body.Smin(ring, 0.002f);
+        var h1 = Sdf.Sphere(0.015f).Move(0.024f, 0.098f, 0.027f);
+        var h2 = Sdf.Sphere(0.015f).Move(-0.024f, 0.098f, 0.027f);
+        var h3 = Sdf.Sphere(0.018f).Move(0.0f, 0.102f, -0.020f);
+        return withRing.Ssub(h1, 0.002f).Ssub(h2, 0.002f).Ssub(h3, 0.002f);
     }
 
     // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
@@ -195,59 +195,59 @@ public static class Bowling25
 
     // --- 物理宣言 ------------------------------------------------------------
     // 静物: x, y, z, hx, hy, hz, friction, restitution
-    static List<double[]> statics = new List<double[]>
+    static List<float[]> statics = new List<float[]>
     {
         // アプローチ
-        new double[]
-            { 0, -0.06, -1.25, laneHw + gutterW + 0.12, 0.06, 1.25, 0.3, 0.1 },
+        new float[]
+            { 0, -0.06f, -1.25f, laneHw + gutterW + 0.12f, 0.06f, 1.25f, 0.3f, 0.1f },
         // レーン (オイル)
-        new double[]
-            { 0, -0.06, oilEnd * 0.5, laneHw, 0.06, oilEnd * 0.5, fricOil, 0.08 },
+        new float[]
+            { 0, -0.06f, oilEnd * 0.5f, laneHw, 0.06f, oilEnd * 0.5f, fricOil, 0.08f },
         // レーン (ドライ) + ピンデッキ
-        new double[]
+        new float[]
         {
-            0, -0.06, (oilEnd + deckEnd) * 0.5, laneHw, 0.06,
-            (deckEnd - oilEnd) * 0.5, fricDry, 0.08,
+            0, -0.06f, (oilEnd + deckEnd) * 0.5f, laneHw, 0.06f,
+            (deckEnd - oilEnd) * 0.5f, fricDry, 0.08f,
         },
         // ガター左
-        new double[]
+        new float[]
         {
-            -(laneHw + gutterW * 0.5), -0.104, deckEnd * 0.5, gutterW * 0.5,
-            0.05, deckEnd * 0.5, 0.3, 0.1,
+            -(laneHw + gutterW * 0.5f), -0.104f, deckEnd * 0.5f, gutterW * 0.5f,
+            0.05f, deckEnd * 0.5f, 0.3f, 0.1f,
         },
         // ガター右
-        new double[]
+        new float[]
         {
-            laneHw + gutterW * 0.5, -0.104, deckEnd * 0.5, gutterW * 0.5,
-            0.05, deckEnd * 0.5, 0.3, 0.1,
+            laneHw + gutterW * 0.5f, -0.104f, deckEnd * 0.5f, gutterW * 0.5f,
+            0.05f, deckEnd * 0.5f, 0.3f, 0.1f,
         },
         // 側壁左
-        new double[]
+        new float[]
         {
-            -(laneHw + gutterW + 0.03), 0.08, pitEnd * 0.5, 0.03, 0.22,
-            pitEnd * 0.5, 0.2, 0.3,
+            -(laneHw + gutterW + 0.03f), 0.08f, pitEnd * 0.5f, 0.03f, 0.22f,
+            pitEnd * 0.5f, 0.2f, 0.3f,
         },
         // 側壁右
-        new double[]
+        new float[]
         {
-            laneHw + gutterW + 0.03, 0.08, pitEnd * 0.5, 0.03, 0.22,
-            pitEnd * 0.5, 0.2, 0.3,
+            laneHw + gutterW + 0.03f, 0.08f, pitEnd * 0.5f, 0.03f, 0.22f,
+            pitEnd * 0.5f, 0.2f, 0.3f,
         },
         // ピット床
-        new double[]
+        new float[]
         {
-            0, -0.58, (deckEnd + pitEnd) * 0.5, laneHw + gutterW + 0.06,
-            0.05, (pitEnd - deckEnd) * 0.5 + 0.2, 0.9, 0.02,
+            0, -0.58f, (deckEnd + pitEnd) * 0.5f, laneHw + gutterW + 0.06f,
+            0.05f, (pitEnd - deckEnd) * 0.5f + 0.2f, 0.9f, 0.02f,
         },
         // ピットクッション
-        new double[]
+        new float[]
         {
-            0, -0.15, pitEnd + 0.05, laneHw + gutterW + 0.06, 0.45, 0.05,
-            0.6, 0.05,
+            0, -0.15f, pitEnd + 0.05f, laneHw + gutterW + 0.06f, 0.45f, 0.05f,
+            0.6f, 0.05f,
         },
         // マスキング (跳ねたピンが当たる)
-        new double[]
-            { 0, 0.95, 19.3, laneHw + gutterW + 0.06, 0.35, 1.0, 0.3, 0.1 },
+        new float[]
+            { 0, 0.95f, 19.3f, laneHw + gutterW + 0.06f, 0.35f, 1.0f, 0.3f, 0.1f },
     };
 
     static void DeclareStatics(WorldRef3d world)
@@ -276,14 +276,14 @@ public static class Bowling25
     // 台座が太いぶん重心は実物並み (床から約 0.16m) に落ちる
     static void DeclarePinShapes(BodyRef3d body, int ver)
     {
-        var f = 0.35;
-        var rest = 0.3;
+        var f = 0.35f;
+        var rest = 0.3f;
         Phys3d.Cylinder(body, "base", new CylinderDesc3d
         {
             Version = ver,
-            Height = 0.10,
-            Radius = 0.051,
-            YOffset = 0.0,
+            Height = 0.10f,
+            Radius = 0.051f,
+            YOffset = 0.0f,
             Density = pinDensity,
             Friction = f,
             Restitution = rest,
@@ -291,8 +291,8 @@ public static class Bowling25
         Phys3d.Sphere(body, "belly", new SphereDesc3d
         {
             Version = ver,
-            R = 0.0605,
-            Offset = new Vec3d { X = 0.0, Y = 0.155, Z = 0.0 },
+            R = 0.0605f,
+            Offset = new Vec3d { X = 0.0f, Y = 0.155f, Z = 0.0f },
             Density = pinDensity,
             Friction = f,
             Restitution = rest,
@@ -300,9 +300,9 @@ public static class Bowling25
         Phys3d.Capsule(body, "neck", new CapsuleDesc3d
         {
             Version = ver,
-            A = new Vec3d { X = 0.0, Y = 0.21, Z = 0.0 },
-            B = new Vec3d { X = 0.0, Y = 0.31, Z = 0.0 },
-            R = 0.032,
+            A = new Vec3d { X = 0.0f, Y = 0.21f, Z = 0.0f },
+            B = new Vec3d { X = 0.0f, Y = 0.31f, Z = 0.0f },
+            R = 0.032f,
             Density = pinDensity,
             Friction = f,
             Restitution = rest,
@@ -310,8 +310,8 @@ public static class Bowling25
         Phys3d.Sphere(body, "head", new SphereDesc3d
         {
             Version = ver,
-            R = 0.040,
-            Offset = new Vec3d { X = 0.0, Y = 0.335, Z = 0.0 },
+            R = 0.040f,
+            Offset = new Vec3d { X = 0.0f, Y = 0.335f, Z = 0.0f },
             Density = pinDensity,
             Friction = f,
             Restitution = rest,
@@ -328,9 +328,9 @@ public static class Bowling25
             {
                 Type = Phys3d.BodyType.Dynamic,
                 Version = p.Gen,
-                LinearDamping = 0.02,
-                AngularDamping = 0.05,
-                Initial = new InitialState3d { X = p.X, Y = 0.001, Z = p.Z },
+                LinearDamping = 0.02f,
+                AngularDamping = 0.05f,
+                Initial = new InitialState3d { X = p.X, Y = 0.001f, Z = p.Z },
             });
             if (body == null) continue;
             DeclarePinShapes(body, p.Gen);
@@ -345,12 +345,12 @@ public static class Bowling25
             Type = Phys3d.BodyType.Dynamic,
             Version = throwGen,
             Bullet = true,
-            AngularDamping = 0.02,
+            AngularDamping = 0.02f,
             Initial = new InitialState3d
             {
                 X = throwX,
-                Y = ballR + 0.001,
-                Z = 0.0,
+                Y = ballR + 0.001f,
+                Z = 0.0f,
                 Vx = ballVX,
                 Vz = ballVZ,
                 Wx = ballWX,
@@ -363,8 +363,8 @@ public static class Bowling25
             Version = throwGen,
             R = ballR,
             Density = ballDensity,
-            Friction = 0.2,
-            Restitution = 0.03,
+            Friction = 0.2f,
+            Restitution = 0.03f,
         });
     }
 
@@ -374,9 +374,9 @@ public static class Bowling25
         throwGen++;
         ballLive = true;
         throwX = aimX;
-        var spd = 5.6 + 3.9 * power;
-        var dx = Math.Sin(angle);
-        var dz = Math.Cos(angle);
+        var spd = 5.6f + 3.9f * power;
+        var dx = (float)Math.Sin(angle);
+        var dz = (float)Math.Cos(angle);
         ballVX = dx * spd;
         ballVZ = dz * spd;
         // 転がり不足 (スキッド) + フック軸回転。フックはオイル上ではほぼ
@@ -410,14 +410,14 @@ public static class Bowling25
         }
         else
         {
-            if (Math.Abs(pose.X) > laneHw + 0.02 && pose.Y < 0.09)
+            if (Math.Abs(pose.X) > laneHw + 0.02f && pose.Y < 0.09f)
                 inGutter = true;
-            var sp = Math.Sqrt(pose.Vx * pose.Vx + pose.Vz * pose.Vz);
-            if (pose.Y < -0.25) // ピットに落ちた
+            var sp = (float)Math.Sqrt(pose.Vx * pose.Vx + pose.Vz * pose.Vz);
+            if (pose.Y < -0.25f) // ピットに落ちた
             {
                 done = true;
             }
-            else if (sp < 0.12 && pose.Z < deckEnd - 0.6)
+            else if (sp < 0.12f && pose.Z < deckEnd - 0.6f)
             {
                 stallFrames++; // レーン上で失速 (デッドボール)
                 if (stallFrames > 50) done = true;
@@ -433,17 +433,17 @@ public static class Bowling25
 
     static void UpdateSettle(WorldRef3d world)
     {
-        var maxSp = 0.0;
+        var maxSp = 0.0f;
         for (int i = 0; i < pins.Count; i++)
         {
             if (!pins[i].Standing) continue;
             var pose = Phys3d.PoseByKey(world, "pin:" + i);
             if (pose == null) continue;
-            var sp = Math.Sqrt(pose.Vx * pose.Vx + pose.Vy * pose.Vy
+            var sp = (float)Math.Sqrt(pose.Vx * pose.Vx + pose.Vy * pose.Vy
                 + pose.Vz * pose.Vz);
             if (sp > maxSp) maxSp = sp;
         }
-        if ((stateT > 45 && maxSp < 0.08) || stateT > 300)
+        if ((stateT > 45 && maxSp < 0.08f) || stateT > 300)
             CountAndScore(world);
     }
 
@@ -459,9 +459,9 @@ public static class Bowling25
             if (!p.Standing) continue;
             var pose = Phys3d.PoseByKey(world, "pin:" + i);
             var upY = pose != null
-                ? 1.0 - 2.0 * (pose.Qx * pose.Qx + pose.Qz * pose.Qz)
-                : -1.0;
-            if (pose == null || upY < 0.72 || pose.Y < -0.05 || pose.Y > 0.15)
+                ? 1.0f - 2.0f * (pose.Qx * pose.Qx + pose.Qz * pose.Qz)
+                : -1.0f;
+            if (pose == null || upY < 0.72f || pose.Y < -0.05f || pose.Y > 0.15f)
             {
                 p.Standing = false;
                 knocked++;
@@ -476,14 +476,14 @@ public static class Bowling25
         fr.Add(knocked);
 
         if (knocked == 10 && standingBefore == 10)
-            ShowEvent("STRIKE!", Color.Rgb(1.0, 0.85, 0.3));
+            ShowEvent("STRIKE!", Color.Rgb(1.0f, 0.85f, 0.3f));
         else if (stand == 0 && knocked > 0)
-            ShowEvent("SPARE!", Color.Rgb(0.5, 0.9, 1.0));
+            ShowEvent("SPARE!", Color.Rgb(0.5f, 0.9f, 1.0f));
         else if (knocked == 0)
             ShowEvent(inGutter ? "GUTTER" : "NO PINS",
-                Color.Rgb(0.7, 0.72, 0.78));
+                Color.Rgb(0.7f, 0.72f, 0.78f));
         else
-            ShowEvent(knocked + " PINS", Color.Rgb(0.95, 0.93, 0.85));
+            ShowEvent(knocked + " PINS", Color.Rgb(0.95f, 0.93f, 0.85f));
 
         rerackPending = false;
         gameOverPending = false;
@@ -654,19 +654,19 @@ public static class Bowling25
         autoPlay = true;
         idleT = 0;
         // 外に出してポケット (±0.075) へ曲げ戻すライン。乱数で毎回散らす
-        var side = r.NextFloat() < 0.5 ? 1.0 : -1.0;
-        autoAimX = side * (0.12 + r.NextFloat() * 0.06);
-        autoHook = side * (18.0 + r.NextFloat() * 4.0);
-        autoPower = 0.82 + r.NextFloat() * 0.08;
+        var side = r.NextFloat() < 0.5f ? 1.0f : -1.0f;
+        autoAimX = side * (0.12f + r.NextFloat() * 0.06f);
+        autoHook = side * (18.0f + r.NextFloat() * 4.0f);
+        autoPower = 0.82f + r.NextFloat() * 0.08f;
         // バックエンドの曲がり量 (ヘッドレス実測: 約 0.40m @ 球速 8.9m/s、
         // 遅いほど増える) から狙い角を逆算し、人間らしい誤差を足す
-        var spd = 5.6 + 3.9 * autoPower;
-        var drift = 0.40 + (8.9 - spd) * 0.3;
-        autoAngle = (side * (0.075 + drift) - autoAimX) / 18.3
-            + side * (r.NextFloat() * 0.006 - 0.003);
+        var spd = 5.6f + 3.9f * autoPower;
+        var drift = 0.40f + (8.9f - spd) * 0.3f;
+        autoAngle = (side * (0.075f + drift) - autoAimX) / 18.3f
+            + side * (r.NextFloat() * 0.006f - 0.003f);
     }
 
-    static bool AutoNear(double v, double target, double eps)
+    static bool AutoNear(float v, float target, float eps)
     {
         return autoPlay && Math.Abs(v - target) < eps;
     }
@@ -679,12 +679,12 @@ public static class Bowling25
         {
             if (autoPlay && stateT == 1)
                 StartAuto(); // 投球ごとにラインを再抽選
-            aimX = 0.42 * Math.Sin(stateT * 0.030);
-            if (AutoNear(aimX, autoAimX, 0.02)) pressed = true;
+            aimX = 0.42f * (float)Math.Sin(stateT * 0.030f);
+            if (AutoNear(aimX, autoAimX, 0.02f)) pressed = true;
             if (pressed)
             {
-                angle = 0.0;
-                hook = 0.0;
+                angle = 0.0f;
+                hook = 0.0f;
                 Enter(stAngle);
             }
             else if (!autoPlay)
@@ -695,20 +695,20 @@ public static class Bowling25
         }
         else if (state == stAngle)
         {
-            angle = 0.10 * Math.Sin(stateT * 0.045);
-            if (AutoNear(angle, autoAngle, 0.006)) pressed = true;
+            angle = 0.10f * (float)Math.Sin(stateT * 0.045f);
+            if (AutoNear(angle, autoAngle, 0.006f)) pressed = true;
             if (pressed && stateT > 8) Enter(stHook);
         }
         else if (state == stHook)
         {
-            hook = 38.0 * Math.Sin(stateT * 0.05);
-            if (AutoNear(hook, autoHook, 2.5)) pressed = true;
+            hook = 38.0f * (float)Math.Sin(stateT * 0.05f);
+            if (AutoNear(hook, autoHook, 2.5f)) pressed = true;
             if (pressed && stateT > 8) Enter(stPower);
         }
         else if (state == stPower)
         {
-            power = 0.5 - 0.5 * Math.Cos(stateT * 0.055);
-            if (AutoNear(power, autoPower, 0.04)) pressed = true;
+            power = 0.5f - 0.5f * (float)Math.Cos(stateT * 0.055f);
+            if (AutoNear(power, autoPower, 0.04f)) pressed = true;
             if (pressed && stateT > 8) ThrowBall();
         }
         else if (state == stRoll)
@@ -750,46 +750,46 @@ public static class Bowling25
     // --- カメラ ------------------------------------------------------------------
     static Vec3? camEye = null; // 初期値は updateCamera が補う (遅延生成)
     static Vec3? camTgt = null;
-    static double camFov = 38.0;
+    static float camFov = 38.0f;
 
     static void UpdateCamera(WorldRef3d world)
     {
-        var eye = camEye ?? new Vec3(0, 0.62, -2.4);
-        var tgt = camTgt ?? new Vec3(0, 0.28, 6.0);
-        var de = new Vec3(aimX * 0.55, 0.62, -2.4);
-        var dtg = new Vec3(aimX * 0.25, 0.28, 6.0);
-        var dfov = 38.0;
+        var eye = camEye ?? new Vec3(0, 0.62f, -2.4f);
+        var tgt = camTgt ?? new Vec3(0, 0.28f, 6.0f);
+        var de = new Vec3(aimX * 0.55f, 0.62f, -2.4f);
+        var dtg = new Vec3(aimX * 0.25f, 0.28f, 6.0f);
+        var dfov = 38.0f;
         if (state == stRoll)
         {
             var pose = Phys3d.PoseByKey(world, "ball");
-            if (pose != null && pose.Z < 14.0)
+            if (pose != null && pose.Z < 14.0f)
             {
-                de = new Vec3(pose.X * 0.45, 1.0, pose.Z - 3.2);
-                dtg = new Vec3(pose.X * 0.8, 0.12, pose.Z + 4.5);
-                dfov = 42.0;
+                de = new Vec3(pose.X * 0.45f, 1.0f, pose.Z - 3.2f);
+                dtg = new Vec3(pose.X * 0.8f, 0.12f, pose.Z + 4.5f);
+                dfov = 42.0f;
             }
             else
             {
-                de = new Vec3(-1.05, 0.85, 15.2);
-                dtg = new Vec3(0.05, 0.25, pinZ + 0.3);
-                dfov = 30.0;
+                de = new Vec3(-1.05f, 0.85f, 15.2f);
+                dtg = new Vec3(0.05f, 0.25f, pinZ + 0.3f);
+                dfov = 30.0f;
             }
         }
         else if (state == stSettle || state == stScore)
         {
-            de = new Vec3(-1.05, 0.8, 15.6);
-            dtg = new Vec3(0.0, 0.22, pinZ + 0.3);
-            dfov = 28.0;
+            de = new Vec3(-1.05f, 0.8f, 15.6f);
+            dtg = new Vec3(0.0f, 0.22f, pinZ + 0.3f);
+            dfov = 28.0f;
         }
         else if (state == stEnd)
         {
-            var a = tAccum * 0.25;
-            de = new Vec3(Math.Sin(a) * 2.8, 1.5,
-                pinZ - 1.2 + Math.Cos(a) * 2.8);
-            dtg = new Vec3(0, 0.2, pinZ);
-            dfov = 45.0;
+            var a = tAccum * 0.25f;
+            de = new Vec3((float)Math.Sin(a) * 2.8f, 1.5f,
+                pinZ - 1.2f + (float)Math.Cos(a) * 2.8f);
+            dtg = new Vec3(0, 0.2f, pinZ);
+            dfov = 45.0f;
         }
-        var k = Math.Min(1.0, 5.0 * dt);
+        var k = Math.Min(1.0f, 5.0f * dt);
         camEye = eye.Lerp(de, k);
         camTgt = tgt.Lerp(dtg, k);
         camFov = MathUtil.Lerp(camFov, dfov, k);
@@ -798,15 +798,15 @@ public static class Bowling25
     // --- 描画 --------------------------------------------------------------------
     static Renderer3d? ren = null;
 
-    static Mat4 BoxMat(double x, double y, double z, double sx, double sy,
-        double sz)
+    static Mat4 BoxMat(float x, float y, float z, float sx, float sy,
+        float sz)
     {
         return Mat4.Translate(new Vec3(x, y, z))
             * Mat4.Scale(new Vec3(sx, sy, sz));
     }
 
-    static Mat4 BoxMatR(double x, double y, double z, double ry, double sx,
-        double sy, double sz)
+    static Mat4 BoxMatR(float x, float y, float z, float ry, float sx,
+        float sy, float sz)
     {
         return Mat4.Translate(new Vec3(x, y, z)) * Mat4.RotateY(ry)
             * Mat4.Scale(new Vec3(sx, sy, sz));
@@ -823,52 +823,52 @@ public static class Bowling25
     // 静的な舞台 (物理 STATICS と目視で寸法を揃える)
     static void DrawStage()
     {
-        var wood = Color.Rgb(0.76, 0.60, 0.40);
-        var woodOil = Color.Rgb(0.70, 0.57, 0.41);
-        var dark = Color.Rgb(0.16, 0.17, 0.19);
-        var accentRed = Color.Rgb(0.52, 0.15, 0.20);
-        var mark = Color.Rgb(0.35, 0.20, 0.12);
+        var wood = Color.Rgb(0.76f, 0.60f, 0.40f);
+        var woodOil = Color.Rgb(0.70f, 0.57f, 0.41f);
+        var dark = Color.Rgb(0.16f, 0.17f, 0.19f);
+        var accentRed = Color.Rgb(0.52f, 0.15f, 0.20f);
+        var mark = Color.Rgb(0.35f, 0.20f, 0.12f);
 
         // 周辺の床 (見た目のみ)
-        DrawBox(BoxMat(0, -0.7, 9.0, 6.0, 0.05, 14.0),
-            Color.Rgb(0.10, 0.10, 0.13), null);
+        DrawBox(BoxMat(0, -0.7f, 9.0f, 6.0f, 0.05f, 14.0f),
+            Color.Rgb(0.10f, 0.10f, 0.13f), null);
         // アプローチ
-        DrawBox(BoxMat(0, -0.06, -1.25, laneHw + gutterW + 0.12, 0.06, 1.25),
-            Color.Rgb(0.62, 0.51, 0.36), null);
+        DrawBox(BoxMat(0, -0.06f, -1.25f, laneHw + gutterW + 0.12f, 0.06f, 1.25f),
+            Color.Rgb(0.62f, 0.51f, 0.36f), null);
         // レーン (オイル / ドライ)
-        DrawBox(BoxMat(0, -0.06, oilEnd * 0.5, laneHw, 0.06, oilEnd * 0.5),
+        DrawBox(BoxMat(0, -0.06f, oilEnd * 0.5f, laneHw, 0.06f, oilEnd * 0.5f),
             woodOil, null);
-        DrawBox(BoxMat(0, -0.06, (oilEnd + deckEnd) * 0.5, laneHw, 0.06,
-            (deckEnd - oilEnd) * 0.5), wood, null);
+        DrawBox(BoxMat(0, -0.06f, (oilEnd + deckEnd) * 0.5f, laneHw, 0.06f,
+            (deckEnd - oilEnd) * 0.5f), wood, null);
         // ガター
-        DrawBox(BoxMat(-(laneHw + gutterW * 0.5), -0.104, deckEnd * 0.5,
-            gutterW * 0.5, 0.05, deckEnd * 0.5), dark, null);
-        DrawBox(BoxMat(laneHw + gutterW * 0.5, -0.104, deckEnd * 0.5,
-            gutterW * 0.5, 0.05, deckEnd * 0.5), dark, null);
+        DrawBox(BoxMat(-(laneHw + gutterW * 0.5f), -0.104f, deckEnd * 0.5f,
+            gutterW * 0.5f, 0.05f, deckEnd * 0.5f), dark, null);
+        DrawBox(BoxMat(laneHw + gutterW * 0.5f, -0.104f, deckEnd * 0.5f,
+            gutterW * 0.5f, 0.05f, deckEnd * 0.5f), dark, null);
         // 側壁
-        DrawBox(BoxMat(-(laneHw + gutterW + 0.03), 0.08, pitEnd * 0.5, 0.03,
-            0.22, pitEnd * 0.5), Color.Rgb(0.30, 0.31, 0.36), null);
-        DrawBox(BoxMat(laneHw + gutterW + 0.03, 0.08, pitEnd * 0.5, 0.03,
-            0.22, pitEnd * 0.5), Color.Rgb(0.30, 0.31, 0.36), null);
+        DrawBox(BoxMat(-(laneHw + gutterW + 0.03f), 0.08f, pitEnd * 0.5f, 0.03f,
+            0.22f, pitEnd * 0.5f), Color.Rgb(0.30f, 0.31f, 0.36f), null);
+        DrawBox(BoxMat(laneHw + gutterW + 0.03f, 0.08f, pitEnd * 0.5f, 0.03f,
+            0.22f, pitEnd * 0.5f), Color.Rgb(0.30f, 0.31f, 0.36f), null);
         // ピット (奥の暗がり) とマスキング
-        DrawBox(BoxMat(0, -0.58, (deckEnd + pitEnd) * 0.5,
-            laneHw + gutterW + 0.06, 0.05, (pitEnd - deckEnd) * 0.5 + 0.2),
-            Color.Rgb(0.05, 0.05, 0.07), null);
-        DrawBox(BoxMat(0, -0.15, pitEnd + 0.05, laneHw + gutterW + 0.06,
-            0.45, 0.05), Color.Rgb(0.08, 0.08, 0.10), null);
-        DrawBox(BoxMat(0, 0.95, 19.3, laneHw + gutterW + 0.06, 0.35, 1.0),
+        DrawBox(BoxMat(0, -0.58f, (deckEnd + pitEnd) * 0.5f,
+            laneHw + gutterW + 0.06f, 0.05f, (pitEnd - deckEnd) * 0.5f + 0.2f),
+            Color.Rgb(0.05f, 0.05f, 0.07f), null);
+        DrawBox(BoxMat(0, -0.15f, pitEnd + 0.05f, laneHw + gutterW + 0.06f,
+            0.45f, 0.05f), Color.Rgb(0.08f, 0.08f, 0.10f), null);
+        DrawBox(BoxMat(0, 0.95f, 19.3f, laneHw + gutterW + 0.06f, 0.35f, 1.0f),
             accentRed, null);
         // ファウルライン
-        DrawBox(BoxMat(0, 0.001, 0, laneHw, 0.0015, 0.012),
-            Color.Rgb(0.15, 0.15, 0.17), null);
+        DrawBox(BoxMat(0, 0.001f, 0, laneHw, 0.0015f, 0.012f),
+            Color.Rgb(0.15f, 0.15f, 0.17f), null);
         // ガイド: ドット (2.13m) とアロー (V 字に並ぶひし形)
         for (int i = 0; i < 7; i++)
         {
-            var x = (i - 3) * 0.1365;
-            DrawBox(BoxMatR(x, 0.001, 2.13, Math.PI / 4, 0.014, 0.0015, 0.014),
+            var x = (i - 3) * 0.1365f;
+            DrawBox(BoxMatR(x, 0.001f, 2.13f, (float)Math.PI / 4, 0.014f, 0.0015f, 0.014f),
                 mark, null);
-            DrawBox(BoxMatR(x, 0.001, 4.88 - Math.Abs(i - 3.0) * 0.406,
-                Math.PI / 4, 0.026, 0.0015, 0.026), mark, null);
+            DrawBox(BoxMatR(x, 0.001f, 4.88f - Math.Abs(i - 3.0f) * 0.406f,
+                (float)Math.PI / 4, 0.026f, 0.0015f, 0.026f), mark, null);
         }
     }
 
@@ -877,24 +877,24 @@ public static class Bowling25
     {
         if (state != stAngle && state != stHook && state != stPower)
             return;
-        var n = state == stPower ? 5 + (int)Math.Floor(power * 8.0) : 12;
+        var n = state == stPower ? 5 + (int)Math.Floor(power * 8.0f) : 12;
         for (int k = 0; k < n; k++)
         {
-            var d = 1.0 + k * 1.15;
-            var x = aimX + Math.Sin(angle) * d
-                - hook * 1.3e-4 * Math.Pow(Math.Max(0.0, d - 6.0), 2.0);
+            var d = 1.0f + k * 1.15f;
+            var x = aimX + (float)Math.Sin(angle) * d
+                - hook * 1.3e-4f * (float)Math.Pow(Math.Max(0.0f, d - 6.0f), 2.0f);
             if (Math.Abs(x) > laneHw) break;
-            DrawBox(BoxMat(x, 0.004, d, 0.016, 0.002, 0.028),
-                Color.Rgb(1.0, 1.0, 1.0, 0.4), Gfx.Blend.Alpha);
+            DrawBox(BoxMat(x, 0.004f, d, 0.016f, 0.002f, 0.028f),
+                Color.Rgb(1.0f, 1.0f, 1.0f, 0.4f), Gfx.Blend.Alpha);
         }
         // パワーメーター (レーン右脇の柱)
         if (state == stPower)
         {
-            DrawBox(BoxMat(0.95, 0.30, -0.2, 0.035, 0.28, 0.035),
-                Color.Rgb(0.12, 0.12, 0.15), null);
-            var h = 0.26 * power;
-            DrawBox(BoxMat(0.95, 0.02 + h, -0.2, 0.026, h, 0.026),
-                Color.Rgb(0.9, 0.25 + 0.5 * (1 - power), 0.15), null);
+            DrawBox(BoxMat(0.95f, 0.30f, -0.2f, 0.035f, 0.28f, 0.035f),
+                Color.Rgb(0.12f, 0.12f, 0.15f), null);
+            var h = 0.26f * power;
+            DrawBox(BoxMat(0.95f, 0.02f + h, -0.2f, 0.026f, h, 0.026f),
+                Color.Rgb(0.9f, 0.25f + 0.5f * (1 - power), 0.15f), null);
         }
     }
 
@@ -904,13 +904,13 @@ public static class Bowling25
     static int fontVersion = 0;
     static MeshText? mtext = null;
     static string eventText = "";
-    static double eventT = 99.0;
+    static float eventT = 99.0f;
     static Color? eventCol = null;
 
     static void ShowEvent(string s, Color c)
     {
         eventText = s;
-        eventT = 0.0;
+        eventT = 0.0f;
         eventCol = c;
     }
 
@@ -932,12 +932,12 @@ public static class Bowling25
         if (!EnsureText()) return;
         var mt = mtext;
         if (mt == null) return;
-        var cream = Color.Rgb(0.96, 0.95, 0.9);
-        var gray = Color.Rgb(0.55, 0.57, 0.62);
-        var gold = Color.Rgb(1.0, 0.85, 0.3);
+        var cream = Color.Rgb(0.96f, 0.95f, 0.9f);
+        var gray = Color.Rgb(0.55f, 0.57f, 0.62f);
+        var gold = Color.Rgb(1.0f, 0.85f, 0.3f);
         // スコアボード: 10 フレームのマーク列 + 合計
-        var colW = 56.0;
-        var x0 = w * 0.5 - 4.5 * colW;
+        var colW = 56.0f;
+        var x0 = w * 0.5f - 4.5f * colW;
         for (int f = 0; f < 10; f++)
         {
             var cx = x0 + f * colW;
@@ -945,21 +945,21 @@ public static class Bowling25
             mt.TextCentered("" + (f + 1), cx, 24, 11, cur ? gold : gray);
             mt.TextCentered(MarkStr(f), cx, 46, 20, cream);
         }
-        mt.TextCentered("SCORE " + TotalScore(), w * 0.5, 76, 16, cream);
+        mt.TextCentered("SCORE " + TotalScore(), w * 0.5f, 76, 16, cream);
         // イベント (出現時にスケールが弾む)
         var ec = eventCol;
-        if (eventText != "" && eventT < 1.6 && ec != null)
+        if (eventText != "" && eventT < 1.6f && ec != null)
         {
-            var pop = 1.0 + 0.5 * Math.Exp(-eventT * 9.0);
-            var a = eventT > 1.25 ? 1.0 - (eventT - 1.25) / 0.35 : 1.0;
-            mt.TextCentered(eventText, w * 0.5, 205, 48 * pop,
+            var pop = 1.0f + 0.5f * (float)Math.Exp(-eventT * 9.0f);
+            var a = eventT > 1.25f ? 1.0f - (eventT - 1.25f) / 0.35f : 1.0f;
+            mt.TextCentered(eventText, w * 0.5f, 205, 48 * pop,
                 Color.Rgb(ec.R, ec.G, ec.B, a));
         }
         // ゲーム終了
         if (state == stEnd)
         {
-            mt.TextCentered("GAME SET", w * 0.5, 220, 44, gold);
-            mt.TextCentered("SCORE " + TotalScore(), w * 0.5, 268, 28, cream);
+            mt.TextCentered("GAME SET", w * 0.5f, 220, 44, gold);
+            mt.TextCentered("SCORE " + TotalScore(), w * 0.5f, 268, 28, cream);
         }
         // 操作プロンプト
         var prompt = "";
@@ -970,14 +970,14 @@ public static class Bowling25
         if (prompt != "")
         {
             if (autoPlay) prompt = "AUTO PLAY - PRESS TO TAKE OVER";
-            mt.TextCentered(prompt, w * 0.5, h - 28, 15,
-                Color.Rgb(0.8, 0.82, 0.88));
-            mt.TextCentered("SPACE / CLICK", w * 0.5, h - 10, 11, gray);
+            mt.TextCentered(prompt, w * 0.5f, h - 28, 15,
+                Color.Rgb(0.8f, 0.82f, 0.88f));
+            mt.TextCentered("SPACE / CLICK", w * 0.5f, h - 10, 11, gray);
         }
     }
 
     // --- main loop ---------------------------------------------------------------
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         // cs-lib クラスは load 順の都合で遅延生成 (hot reload で null に戻り
         // 作り直し → meshDirty 再メッシュも走る)
@@ -1002,7 +1002,7 @@ public static class Bowling25
 
         var world = Phys3d.World("bowling", new WorldOpts3d
         {
-            Gravity = new Vec3d { X = 0.0, Y = -9.81, Z = 0.0 },
+            Gravity = new Vec3d { X = 0.0f, Y = -9.81f, Z = 0.0f },
             FixedDt = dt,
             Substeps = 8,
             MaxSteps = 1,
@@ -1017,23 +1017,23 @@ public static class Bowling25
 
         // --- 描画 ---
         // 暗めの場内 + レーン主体のライティング
-        renNow.Light.Dir = new Vec3(-0.35, 1.0, -0.3);
-        renNow.Light.Intensity = 1.15;
-        renNow.Sky.Top = Color.Rgb(0.30, 0.33, 0.42);
-        renNow.Sky.Bottom = Color.Rgb(0.10, 0.09, 0.09);
-        renNow.Sky.Intensity = 0.38;
-        renNow.Background = Color.Rgb(0.05, 0.06, 0.09);
+        renNow.Light.Dir = new Vec3(-0.35f, 1.0f, -0.3f);
+        renNow.Light.Intensity = 1.15f;
+        renNow.Sky.Top = Color.Rgb(0.30f, 0.33f, 0.42f);
+        renNow.Sky.Bottom = Color.Rgb(0.10f, 0.09f, 0.09f);
+        renNow.Sky.Intensity = 0.38f;
+        renNow.Background = Color.Rgb(0.05f, 0.06f, 0.09f);
         // 影のオルソ範囲は注視点 (カメラターゲット) 周辺に寄せて解像度を稼ぐ
         renNow.Shadow.Center = new Vec3(0, 0,
-            MathUtil.Clamp(tgtNow.Z, 3.0, pinZ));
-        renNow.Shadow.Extent = 7.0;
+            MathUtil.Clamp(tgtNow.Z, 3.0f, pinZ));
+        renNow.Shadow.Extent = 7.0f;
         renNow.Begin(new Camera
         {
             Eye = eyeNow,
             Target = tgtNow,
             Fov = camFov,
-            Near = 0.05,
-            Far = 80.0,
+            Near = 0.05f,
+            Far = 80.0f,
         });
 
         DrawStage();

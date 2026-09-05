@@ -12,14 +12,14 @@ using static Lub;
 public class FpsMeter
 {
     /// <summary>直近の実測 FPS。tick() が更新する (呼び出し側は読み取り専用)。</summary>
-    public double Fps;
+    public float Fps;
 
-    public FpsMeter(double? initialFps = null)
+    public FpsMeter(float? initialFps = null)
     {
-        Fps = initialFps ?? 60.0;
+        Fps = initialFps ?? 60.0f;
     }
 
-    public double Tick()
+    public float Tick()
     {
         var measured = Sys.ActualFps();
         if (measured > 0)

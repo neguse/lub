@@ -212,7 +212,7 @@ public static class ApiModelLoader
         {
             case SpecialType.System_Void: return TypeRef.VoidType;
             case SpecialType.System_Int32: return new TypeRef(LubTypeKind.Int, "int", nullable, null, null, null);
-            case SpecialType.System_Double: return new TypeRef(LubTypeKind.Double, "double", nullable, null, null, null);
+            case SpecialType.System_Single: return new TypeRef(LubTypeKind.Double, "float", nullable, null, null, null);
             case SpecialType.System_Boolean: return new TypeRef(LubTypeKind.Bool, "bool", nullable, null, null, null);
             case SpecialType.System_String: return new TypeRef(LubTypeKind.String, "string", nullable, null, null, null);
         }

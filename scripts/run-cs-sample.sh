@@ -48,7 +48,14 @@ fi
 mapfile -t -O "${#CS_FILES[@]}" CS_FILES \
     < <(find cs-lib -name '*.cs' ! -name 'lub_stub.cs' | sort)
 
-TCS=(dotnet run --project third_party/tcs/Transpiler --)
+# dotnet run は呼び出しごとに MSBuild 評価が走り 1 回 ~5 秒かかる。
+# 呼び出し側 (native-gate.sh) が Transpiler を一度だけ build して
+# LUB_TCS_DLL を渡すと、以後は DLL 直接実行で起動コストを払わない。
+if [[ -n "${LUB_TCS_DLL:-}" ]]; then
+    TCS=(dotnet "$LUB_TCS_DLL")
+else
+    TCS=(dotnet run --project third_party/tcs/Transpiler --)
+fi
 
 case "$MODE" in
 --check)

@@ -22,11 +22,11 @@ public static class SdfPanel
 
     // ImGui の ID はツリー内のパスから作る (##/a/c 等)。訪問順カウンタだと
     // ノードを畳んだとき後続の ID がズレて開閉状態が飛ぶ。
-    private static bool Num(SdfNode n, int index, string field, double speed,
+    private static bool Num(SdfNode n, int index, string field, float speed,
         string path)
     {
-        double v = n.Params[index];
-        double nv = Ui.DragFloat(field + "##" + path, v, speed);
+        float v = n.Params[index];
+        float nv = Ui.DragFloat(field + "##" + path, v, speed);
         if (nv == v)
             return false;
         n.Params[index] = nv;
@@ -35,8 +35,8 @@ public static class SdfPanel
 
     private static bool Num01(SdfNode n, int index, string field, string path)
     {
-        double v = n.Params[index];
-        double nv = Ui.SliderFloat(field + "##" + path, v, 0, 1);
+        float v = n.Params[index];
+        float nv = Ui.SliderFloat(field + "##" + path, v, 0, 1);
         if (nv == v)
             return false;
         n.Params[index] = nv;
@@ -45,9 +45,9 @@ public static class SdfPanel
 
     private static bool Color(SdfNode n, string path)
     {
-        double cr = n.Params[0];
-        double cg = n.Params[1];
-        double cb = n.Params[2];
+        float cr = n.Params[0];
+        float cg = n.Params[1];
+        float cb = n.Params[2];
         Ui.ColorEdit3("albedo##" + path, cr, cg, cb, out var r, out var g,
             out var b);
         if (r == cr && g == cg && b == cb)
@@ -58,7 +58,7 @@ public static class SdfPanel
         return true;
     }
 
-    private static bool Nums(SdfNode n, List<string> fields, double speed,
+    private static bool Nums(SdfNode n, List<string> fields, float speed,
         string path)
     {
         bool changed = false;
@@ -73,32 +73,32 @@ public static class SdfPanel
         switch (n.Op)
         {
             case Lub.Mesh.SdfOp.Sphere:
-                changed = Num(n, 0, "r", 0.005, path);
+                changed = Num(n, 0, "r", 0.005f, path);
                 break;
             case Lub.Mesh.SdfOp.Box:
-                changed = Nums(n, new List<string> { "hx", "hy", "hz" }, 0.005,
+                changed = Nums(n, new List<string> { "hx", "hy", "hz" }, 0.005f,
                     path);
                 break;
             case Lub.Mesh.SdfOp.Capsule:
                 changed = Nums(n,
                     new List<string> { "ax", "ay", "az", "bx", "by", "bz" },
-                    0.01, path);
-                changed = Num(n, 6, "r", 0.005, path) || changed;
+                    0.01f, path);
+                changed = Num(n, 6, "r", 0.005f, path) || changed;
                 break;
             case Lub.Mesh.SdfOp.Torus:
                 changed = Nums(n, new List<string> { "rmajor", "rminor" },
-                    0.005, path);
+                    0.005f, path);
                 break;
             case Lub.Mesh.SdfOp.Move:
-                changed = Nums(n, new List<string> { "x", "y", "z" }, 0.01,
+                changed = Nums(n, new List<string> { "x", "y", "z" }, 0.01f,
                     path);
                 break;
             case Lub.Mesh.SdfOp.Scale:
-                changed = Num(n, 0, "s", 0.005, path);
+                changed = Num(n, 0, "s", 0.005f, path);
                 break;
             case Lub.Mesh.SdfOp.Smin:
             case Lub.Mesh.SdfOp.Ssub:
-                changed = Num(n, 0, "k", 0.002, path);
+                changed = Num(n, 0, "k", 0.002f, path);
                 break;
             case Lub.Mesh.SdfOp.Paint:
                 changed = Color(n, path) || changed;
@@ -106,7 +106,7 @@ public static class SdfPanel
                 changed = Num01(n, 4, "roughness", path) || changed;
                 break;
             case Lub.Mesh.SdfOp.Bone:
-                changed = Nums(n, new List<string> { "px", "py", "pz" }, 0.01,
+                changed = Nums(n, new List<string> { "px", "py", "pz" }, 0.01f,
                     path);
                 break;
             default:

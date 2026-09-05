@@ -20,7 +20,7 @@ public static class NgsViewport
 public class NgsBucket
 {
     public Atlas Atlas;
-    public List<double> Verts = new List<double>();
+    public List<float> Verts = new List<float>();
 
     public NgsBucket(Atlas atlas)
     {
@@ -49,7 +49,7 @@ public class NgsDrawList
         foreach (var k in order) buckets[k].Verts.Clear();
     }
 
-    List<double> BucketFor(Atlas a)
+    List<float> BucketFor(Atlas a)
     {
         if (!buckets.ContainsKey(a.Key))
         {
@@ -59,7 +59,7 @@ public class NgsDrawList
         return buckets[a.Key].Verts;
     }
 
-    static void Vtx(List<double> o, double x, double y, double u, double v, Color c)
+    static void Vtx(List<float> o, float x, float y, float u, float v, Color c)
     {
         o.Add(x);
         o.Add(y);
@@ -74,15 +74,15 @@ public class NgsDrawList
     // src = atlas 内 pixel rect、dst = logical 画面 pixel での左上 (dx, dy)。
     public void Sprite(Atlas a, Rect src, int dx, int dy, Color? tint = null)
     {
-        var c = tint ?? Color.Rgb(1.0, 1.0, 1.0, 1.0);
-        double u0 = (double)src.X / a.W;
-        double v0 = (double)src.Y / a.H;
-        double u1 = (double)(src.X + src.W) / a.W;
-        double v1 = (double)(src.Y + src.H) / a.H;
-        double x0 = dx;
-        double y0 = dy;
-        double x1 = dx + src.W;
-        double y1 = dy + src.H;
+        var c = tint ?? Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
+        float u0 = (float)src.X / a.W;
+        float v0 = (float)src.Y / a.H;
+        float u1 = (float)(src.X + src.W) / a.W;
+        float v1 = (float)(src.Y + src.H) / a.H;
+        float x0 = dx;
+        float y0 = dy;
+        float x1 = dx + src.W;
+        float y1 = dy + src.H;
         var o = BucketFor(a);
         Vtx(o, x0, y0, u0, v0, c);
         Vtx(o, x1, y0, u1, v0, c);
@@ -186,7 +186,7 @@ public class NgsGfx2d
 
     public void BeginFrame()
     {
-        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 } });
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f } });
         DrawList!.Begin();
     }
 

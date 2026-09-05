@@ -9,11 +9,11 @@ using static Lub;
 
 public static class Gltf08
 {
-    static double tAccum = 0;
+    static float tAccum = 0;
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -25,32 +25,32 @@ public static class Gltf08
     {
     }
 
-    static List<double> MakeMvp(double t)
+    static List<float> MakeMvp(float t)
     {
         // model: Y 軸回転
         var model = Mat4.RotateY(-t);
         // view: translate z = +3 (D3D-style LH: camera at origin looks down +Z;
         // move world +Z so the box sits in front of the camera)
-        var view = Mat4.Translate(new Vec3(0.0, 0.0, 3.0));
+        var view = Mat4.Translate(new Vec3(0.0f, 0.0f, 3.0f));
         // proj: perspective with focal length f=2.0 directly (not an fov),
         // aspect=16/9, near=0.1, far=100
-        double f = 2.0;
-        double aspect = 16.0 / 9.0;
-        double nz = 0.1;
-        double fz = 100.0;
+        float f = 2.0f;
+        float aspect = 16.0f / 9.0f;
+        float nz = 0.1f;
+        float fz = 100.0f;
         var proj = Mat4.Zero();
         proj.M[0] = f / aspect;
         proj.M[5] = f;
         proj.M[10] = fz / (fz - nz);
         proj.M[11] = -fz * nz / (fz - nz);
-        proj.M[14] = 1.0;
+        proj.M[14] = 1.0f;
         var pvm = proj.Mul(view.Mul(model));
         return pvm.M;
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
-        tAccum = tAccum + dt * 0.96;
+        tAccum = tAccum + dt * 0.96f;
 
         Io.LoadText("samples/08_gltf/data/08_gltf.vs.slang",
             out var vs, out var verVs, out _, out _);
@@ -73,7 +73,7 @@ public static class Gltf08
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.15, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.15f, 1.0f },
         });
         Gfx.Draw(mesh.IndexCount,
             new Dictionary<string, object>

@@ -12,7 +12,8 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 ## 使える主なもの
 
-- `class` / `record class` / `enum` / `interface`、メソッド・プロパティ・フィールド
+- `class` / `record class` / `struct` / `record struct` / `enum` /
+  `interface`、メソッド・プロパティ・フィールド
 - `if` / `for` / `foreach` / `while` / `switch` 式(パターンマッチング)
 - ラムダ、コレクション初期化子、string interpolation
 - `List<T>` / `Dictionary<K,V>`(Lua table に対応)
@@ -26,14 +27,16 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 - `async` / `await` / `Task`、`try` / `throw`、reflection、`dynamic`
 - ユーザー定義ジェネリクス
-- `struct` / `record struct`(`class` / `record class` で代替)
+- `double` / `long`(数値は `int` / `float` の 2 型。実数リテラルは
+  `1.5f` のように `f` を付ける。`Math.Sin` など double を返す BCL は
+  `(float)` cast で受ける)
 - LINQ クエリ構文(`from x in y select`)
 
 ## 診断に出ない注意点
 
 - lub API(`cs-lib/lub_stub.cs` のような型チェック専用 stub)の呼び出しでは
   デフォルト引数値が展開されない(省略した引数は Lua の nil になる)。
-  stub 側は `double? x = null` + `x ?? 既定値` で書く。自分で書いた
+  stub 側は `float? x = null` + `x ?? 既定値` で書く。自分で書いた
   TinyC# メソッドの既定引数は通常どおり効く
 - static 初期化子から cs-lib のクラスを参照しない。生成 Lua はサンプル
   → cs-lib の順で定義されるため、ロード時に nil 呼び出しになる。
@@ -63,12 +66,12 @@ public static class Main
         Config(new ConfigOpts { Width = 640, Height = 360 });
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.EndPass();
     }
@@ -79,7 +82,7 @@ public static class Main
 これを参照に加えると補完と型チェックが効く。Lua 側の multi-return
 (`Io.LoadText` など) は `out` 引数で受ける。環境変数は
 `Environment.GetEnvironmentVariable`、数値の parse は `int.Parse` /
-`double.Parse`、文字列の codepoint 走査は `s.EnumerateRunes()` と、実 .NET
+`float.Parse`、文字列の codepoint 走査は `s.EnumerateRunes()` と、実 .NET
 でも通る書き方をする(Lua 標準ライブラリを直接呼ぶ stub は無い)。
 
 サンプルは `samples/<name>/<Entry>.cs` + `<Entry>.csproj` (例:
@@ -115,5 +118,5 @@ dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.
 共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
 引数は player と同じ (`--backend` / `--fixed-dt` / `--capture` /
 `--capture-frame` / `--digest`)。`Bytes` (view) は `AsSpan()` で読め、frame を
-跨いで持つと例外になる。数値は .NET の型どおり (double) なので、tcs→Lua
-(float) とは描画結果の低位 bit が違いうる。
+跨いで持つと例外になる。数値は C# の `float` のまま .NET で計算する(BCL の
+double 演算は `(float)` で丸める)ので、Lua 側の f32 と同じ精度になる。

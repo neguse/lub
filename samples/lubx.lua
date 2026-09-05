@@ -576,6 +576,31 @@ do
 			return false
 		end
 
+		-- TryGetValue の lowering 先 (il-spec §13)。(found, value or default) を返す
+		function Dict.TryGet(dict, key, default)
+			local v = dict[key]
+			if v ~= nil then
+				return true, v
+			end
+			return false, default
+		end
+
+		-- f32 の shortest round-trip 10 進表記 (il-spec §13)
+		function TinySystem.fstr(v)
+			if math.type(v) ~= "float" then
+				return tostring(v)
+			end
+			local s = string.format("%.6g", v)
+			if tonumber(s) == v then
+				return s
+			end
+			s = string.format("%.8g", v)
+			if tonumber(s) == v then
+				return s
+			end
+			return string.format("%.9g", v)
+		end
+
 		return TinySystem
 	end)()
 	_G.TinySystem = TinySystem
@@ -608,11 +633,27 @@ local function __tcs_is(x, T)
 	end
 	return false
 end
+local function __tcs_fstr(v)
+	if math.type(v) ~= "float" then
+		return tostring(v)
+	end
+	local s = string.format("%.6g", v)
+	if tonumber(s) == v then
+		return s
+	end
+	s = string.format("%.8g", v)
+	if tonumber(s) == v then
+		return s
+	end
+	return string.format("%.9g", v)
+end
+__tcs_instances = __tcs_instances or setmetatable({}, { __mode = "k" })
 Vec2 = {}
 Vec2.__index = Vec2
 
 function Vec2.new(x, y)
 	local self = setmetatable({}, Vec2)
+	__tcs_instances[self] = Vec2
 	self.x = 0
 	self.y = 0
 	self.x = x
@@ -670,13 +711,11 @@ end
 
 function Vec2:normalize()
 	local len = self:length()
-	return (function()
-		if len > 0 then
-			return Vec2.new(self.x / len, self.y / len)
-		else
-			return Vec2.zero()
-		end
-	end)()
+	if len > 0 then
+		return Vec2.new(self.x / len, self.y / len)
+	else
+		return Vec2.zero()
+	end
 end
 
 function Vec2:distance_sq(b)
@@ -776,6 +815,7 @@ Vec3.__index = Vec3
 
 function Vec3.new(x, y, z)
 	local self = setmetatable({}, Vec3)
+	__tcs_instances[self] = Vec3
 	self.x = 0
 	self.y = 0
 	self.z = 0
@@ -851,13 +891,11 @@ end
 
 function Vec3:normalize()
 	local len = self:length()
-	return (function()
-		if len > 0 then
-			return Vec3.new(self.x / len, self.y / len, self.z / len)
-		else
-			return Vec3.zero()
-		end
-	end)()
+	if len > 0 then
+		return Vec3.new(self.x / len, self.y / len, self.z / len)
+	else
+		return Vec3.zero()
+	end
 end
 
 function Vec3:distance_sq(b)
@@ -957,6 +995,7 @@ Vec4.__index = Vec4
 
 function Vec4.new(x, y, z, w)
 	local self = setmetatable({}, Vec4)
+	__tcs_instances[self] = Vec4
 	self.x = 0
 	self.y = 0
 	self.z = 0
@@ -1010,13 +1049,11 @@ end
 
 function Vec4:normalize()
 	local len = self:length()
-	return (function()
-		if len > 0 then
-			return Vec4.new(self.x / len, self.y / len, self.z / len, self.w / len)
-		else
-			return Vec4.zero()
-		end
-	end)()
+	if len > 0 then
+		return Vec4.new(self.x / len, self.y / len, self.z / len, self.w / len)
+	else
+		return Vec4.zero()
+	end
 end
 
 function Vec4:lerp(b, t)
@@ -1070,6 +1107,7 @@ Quat.__index = Quat
 
 function Quat.new(x, y, z, w)
 	local self = setmetatable({}, Quat)
+	__tcs_instances[self] = Quat
 	self.x = 0
 	self.y = 0
 	self.z = 0
@@ -1130,13 +1168,11 @@ end
 
 function Quat:normalize()
 	local len = self:length()
-	return (function()
-		if len > 0 then
-			return Quat.new(self.x / len, self.y / len, self.z / len, self.w / len)
-		else
-			return Quat.identity()
-		end
-	end)()
+	if len > 0 then
+		return Quat.new(self.x / len, self.y / len, self.z / len, self.w / len)
+	else
+		return Quat.identity()
+	end
 end
 
 function Quat:conjugate()
@@ -1296,6 +1332,7 @@ Mat4.__index = Mat4
 
 function Mat4.new()
 	local self = setmetatable({}, Mat4)
+	__tcs_instances[self] = Mat4
 	self.m = nil
 	self.m = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
 	return self
@@ -1615,6 +1652,7 @@ MathUtil.__index = MathUtil
 
 function MathUtil.new()
 	local self = setmetatable({}, MathUtil)
+	__tcs_instances[self] = MathUtil
 	return self
 end
 
@@ -1644,13 +1682,11 @@ function MathUtil.smoothstep(edge0, edge1, x)
 end
 
 function MathUtil.step(edge, x)
-	return (function()
-		if x < edge then
-			return 0.0
-		else
-			return 1.0
-		end
-	end)()
+	if x < edge then
+		return 0.0
+	else
+		return 1.0
+	end
 end
 
 Assets = {}
@@ -1658,6 +1694,7 @@ Assets.__index = Assets
 
 function Assets.new()
 	local self = setmetatable({}, Assets)
+	__tcs_instances[self] = Assets
 	return self
 end
 
@@ -1692,6 +1729,7 @@ Atlas.__index = Atlas
 
 function Atlas.new(key)
 	local self = setmetatable({}, Atlas)
+	__tcs_instances[self] = Atlas
 	self.texture = nil
 	self.w = 0
 	self.h = 0
@@ -1792,6 +1830,7 @@ Bones.max = 8
 
 function Bones.new()
 	local self = setmetatable({}, Bones)
+	__tcs_instances[self] = Bones
 	return self
 end
 
@@ -1834,6 +1873,7 @@ Camera2d.__index = Camera2d
 
 function Camera2d.new(logicalW, logicalH, ppm, originX, originY)
 	local self = setmetatable({}, Camera2d)
+	__tcs_instances[self] = Camera2d
 	self.ppm = 0
 	self.origin_x = 0
 	self.origin_y = 0
@@ -1880,6 +1920,7 @@ Camera3dOpts.__index = Camera3dOpts
 
 function Camera3dOpts.new()
 	local self = setmetatable({}, Camera3dOpts)
+	__tcs_instances[self] = Camera3dOpts
 	self.eye = Vec3.new(0, 0, 0)
 	self.target = Vec3.new(0, 0, 0)
 	self.up = nil
@@ -1895,6 +1936,7 @@ Camera3d.__index = Camera3d
 
 function Camera3d.new()
 	local self = setmetatable({}, Camera3d)
+	__tcs_instances[self] = Camera3d
 	return self
 end
 
@@ -1922,6 +1964,7 @@ Color.__index = Color
 
 function Color.new(r, g, b, a)
 	local self = setmetatable({}, Color)
+	__tcs_instances[self] = Color
 	self.r = 0
 	self.g = 0
 	self.b = 0
@@ -1997,6 +2040,7 @@ FixedStep.scan_keys = {
 
 function FixedStep.new(hz, maxCatchUp)
 	local self = setmetatable({}, FixedStep)
+	__tcs_instances[self] = FixedStep
 	self.tick_dt = 0
 	self.max_catch_up = 0
 	self.accumulator = 0
@@ -2107,6 +2151,7 @@ FpsMeter.__index = FpsMeter
 
 function FpsMeter.new(initialFps)
 	local self = setmetatable({}, FpsMeter)
+	__tcs_instances[self] = FpsMeter
 	self.fps = 0
 	self.fps = initialFps or 60.0
 	return self
@@ -2125,6 +2170,7 @@ Mesh3d.__index = Mesh3d
 
 function Mesh3d.new(key)
 	local self = setmetatable({}, Mesh3d)
+	__tcs_instances[self] = Mesh3d
 	self.key = nil
 	self.data = nil
 	self.vb = nil
@@ -2138,13 +2184,12 @@ end
 function Mesh3d:rebuild(data)
 	self.data = data
 	self.skinned = data.bones ~= nil
-	local verts = (function()
-		if self.skinned then
-			return lub.io.interleave_pncmw(data)
-		else
-			return lub.io.interleave_pncm(data)
-		end
-	end)()
+	local verts
+	if self.skinned then
+		verts = lub.io.interleave_pncmw(data)
+	else
+		verts = lub.io.interleave_pncm(data)
+	end
 	self.vb = lub.gfx.use_buffer((self.key or "") .. "_vb", lub.gfx.VERTEX, verts)
 	local indices = {}
 	for _, i in ipairs(data.indices) do
@@ -2163,6 +2208,7 @@ GlyphEntry.__index = GlyphEntry
 
 function GlyphEntry.new()
 	local self = setmetatable({}, GlyphEntry)
+	__tcs_instances[self] = GlyphEntry
 	self.vb = nil
 	self.ib = nil
 	self.count = 0
@@ -2213,6 +2259,7 @@ MeshText.fs = "struct FSIn {\n"
 
 function MeshText.new(key, ttfPath, version, logicalW, logicalH)
 	local self = setmetatable({}, MeshText)
+	__tcs_instances[self] = MeshText
 	self.key = nil
 	self.ttf_path = nil
 	self.version = 0
@@ -2235,18 +2282,11 @@ end
 
 function MeshText:glyph_for(cp)
 	local cached
-	if
-		(function()
-			local __tcs_value = self.glyphs[cp]
-			if __tcs_value ~= nil then
-				cached = __tcs_value
-				return true
-			else
-				cached = nil
-				return false
-			end
-		end)()
-	then
+	local __tcs_cond0
+	local __tcs_found, __tcs_v = Dict.TryGet(self.glyphs, cp, nil)
+	cached = __tcs_v
+	__tcs_cond0 = __tcs_found
+	if __tcs_cond0 then
 		return cached
 	end
 	local ttf
@@ -2260,14 +2300,13 @@ function MeshText:glyph_for(cp)
 		return nil
 	end
 	if gm.vert_count == 0 then
-		local empty = (function()
-			local __tcs_init = GlyphEntry.new()
-			__tcs_init.count = 0
-			__tcs_init.advance = gm.advance
-			__tcs_init.cx = 0.0
-			__tcs_init.cy = 0.0
-			return __tcs_init
-		end)()
+		local empty
+		local __tcs_init = GlyphEntry.new()
+		__tcs_init.count = 0
+		__tcs_init.advance = gm.advance
+		__tcs_init.cx = 0.0
+		__tcs_init.cy = 0.0
+		empty = __tcs_init
 		self.glyphs[cp] = empty
 		return empty
 	end
@@ -2302,16 +2341,15 @@ function MeshText:glyph_for(cp)
 		table.insert(idx, gm.indices[i + 1])
 		i = i + 1
 	end
-	local e = (function()
-		local __tcs_init = GlyphEntry.new()
-		__tcs_init.vb = lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.VERTEX, verts, self.version)
-		__tcs_init.ib = lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, idx, self.version)
-		__tcs_init.count = gm.index_count
-		__tcs_init.advance = gm.advance
-		__tcs_init.cx = (minX + maxX) * 0.5
-		__tcs_init.cy = (minY + maxY) * 0.5
-		return __tcs_init
-	end)()
+	local e
+	local __tcs_init = GlyphEntry.new()
+	__tcs_init.vb = lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.VERTEX, verts, self.version)
+	__tcs_init.ib = lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, idx, self.version)
+	__tcs_init.count = gm.index_count
+	__tcs_init.advance = gm.advance
+	__tcs_init.cx = (minX + maxX) * 0.5
+	__tcs_init.cy = (minY + maxY) * 0.5
+	e = __tcs_init
 	self.glyphs[cp] = e
 	return e
 end
@@ -2399,22 +2437,23 @@ Rand.__index = Rand
 
 function Rand.new(seed)
 	local self = setmetatable({}, Rand)
+	__tcs_instances[self] = Rand
 	self.state = 0
 	local s = seed or 0x12345678
-	self.state = ((function()
+	self.state = (function()
 		if s == 0 then
 			return 0x12345678
 		else
 			return s
 		end
-	end)()) & 0xFFFFFFFF
+	end)()
 	return self
 end
 
 function Rand:next_float()
-	self.state = (self.state ~ (self.state << 13)) & 0xFFFFFFFF
-	self.state = self.state ~ (self.state >> 17)
-	self.state = (self.state ~ (self.state << 5)) & 0xFFFFFFFF
+	self.state = self.state ~ (self.state << 13)
+	self.state = self.state ~ ((self.state >> 17) & 0x7FFF)
+	self.state = self.state ~ (self.state << 5)
 	return (self.state & 0xffff) / 65536.0
 end
 
@@ -2431,6 +2470,7 @@ Rect.__index = Rect
 
 function Rect.new(x, y, w, h)
 	local self = setmetatable({}, Rect)
+	__tcs_instances[self] = Rect
 	self.x = 0
 	self.y = 0
 	self.w = 0
@@ -2447,6 +2487,7 @@ Draw3dOpts.__index = Draw3dOpts
 
 function Draw3dOpts.new()
 	local self = setmetatable({}, Draw3dOpts)
+	__tcs_instances[self] = Draw3dOpts
 	self.tint = nil
 	self.blend = nil
 	self.bones = nil
@@ -2461,6 +2502,7 @@ Camera.__index = Camera
 
 function Camera.new()
 	local self = setmetatable({}, Camera)
+	__tcs_instances[self] = Camera
 	self.eye = Vec3.new(0, 0, 0)
 	self.target = Vec3.new(0, 0, 0)
 	self.up = nil
@@ -2475,6 +2517,7 @@ Renderer3dDrawCmd.__index = Renderer3dDrawCmd
 
 function Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
 	local self = setmetatable({}, Renderer3dDrawCmd)
+	__tcs_instances[self] = Renderer3dDrawCmd
 	self.mesh = nil
 	self.model = nil
 	self.tint = nil
@@ -2499,6 +2542,7 @@ Renderer3dLight.__index = Renderer3dLight
 
 function Renderer3dLight.new()
 	local self = setmetatable({}, Renderer3dLight)
+	__tcs_instances[self] = Renderer3dLight
 	self.dir = Vec3.new(-0.4, 1.0, -0.55)
 	self.color = Color.rgb(1.0, 0.96, 0.9)
 	self.intensity = 1.25
@@ -2510,6 +2554,7 @@ Renderer3dSky.__index = Renderer3dSky
 
 function Renderer3dSky.new()
 	local self = setmetatable({}, Renderer3dSky)
+	__tcs_instances[self] = Renderer3dSky
 	self.top = Color.rgb(0.42, 0.48, 0.58)
 	self.bottom = Color.rgb(0.20, 0.18, 0.16)
 	self.intensity = 0.55
@@ -2521,6 +2566,7 @@ Renderer3dShadow.__index = Renderer3dShadow
 
 function Renderer3dShadow.new()
 	local self = setmetatable({}, Renderer3dShadow)
+	__tcs_instances[self] = Renderer3dShadow
 	self.enabled = true
 	self.size = 2048
 	self.center = Vec3.new(0, 0, 0)
@@ -2534,6 +2580,7 @@ Renderer3dSsao.__index = Renderer3dSsao
 
 function Renderer3dSsao.new()
 	local self = setmetatable({}, Renderer3dSsao)
+	__tcs_instances[self] = Renderer3dSsao
 	self.enabled = true
 	self.radius = 0.6
 	self.strength = 0.85
@@ -2545,6 +2592,7 @@ Renderer3dBloom.__index = Renderer3dBloom
 
 function Renderer3dBloom.new()
 	local self = setmetatable({}, Renderer3dBloom)
+	__tcs_instances[self] = Renderer3dBloom
 	self.enabled = true
 	self.threshold = 1.0
 	self.strength = 0.35
@@ -2556,6 +2604,7 @@ Renderer3dAa.__index = Renderer3dAa
 
 function Renderer3dAa.new()
 	local self = setmetatable({}, Renderer3dAa)
+	__tcs_instances[self] = Renderer3dAa
 	self.enabled = true
 	return self
 end
@@ -2565,6 +2614,7 @@ Renderer3dFog.__index = Renderer3dFog
 
 function Renderer3dFog.new(color, density)
 	local self = setmetatable({}, Renderer3dFog)
+	__tcs_instances[self] = Renderer3dFog
 	self.color = nil
 	self.density = 0
 	self.color = color
@@ -2577,6 +2627,7 @@ Renderer3dOutline.__index = Renderer3dOutline
 
 function Renderer3dOutline.new(color, threshold)
 	local self = setmetatable({}, Renderer3dOutline)
+	__tcs_instances[self] = Renderer3dOutline
 	self.color = nil
 	self.threshold = 0
 	self.color = color
@@ -2594,40 +2645,41 @@ Renderer3d.lit_vs_body =
 Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
 	.. "};\nConstantBuffer<Uniforms> u;\nstruct VSIn {\n  float3 pos : POSITION;\n  float3 normal : NORMAL;\n  float3 color : COLOR;\n  float2 mr : TEXCOORD3;\n};"
 	.. (Renderer3d.lit_vs_body or "")
-	.. '\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0));\n  o.wn = mul(u.model, float4(i.normal, 0.0)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2, 2.2, 2.2)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+	.. '\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
 Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
 	.. "  float4x4 bones[8];\n};\nConstantBuffer<Uniforms> u;\nstruct VSIn {\n  float3 pos : POSITION;\n  float3 normal : NORMAL;\n  float3 color : COLOR;\n  float2 mr : TEXCOORD3;\n  float4 skin : TEXCOORD4; // j0, w0, j1, w1\n};"
 	.. (Renderer3d.lit_vs_body or "")
-	.. '\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0));\n  o.pos = mul(u.mvp, float4(sp, 1.0));\n  o.wn = mul(u.model, float4(sn, 0.0)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2, 2.2, 2.2)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+	.. '\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
 Renderer3d.lit_fs =
-	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\nfloat shadow_factor(float4 lpos, float ndl) {\n  if (f.shadow_p.z < 0.5)\n    return 1.0;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5 + 0.5;\n  uv.y = 1.0 - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z < 0.0 ||\n      ndc.z > 1.0)\n    return 1.0;\n  float texel = f.shadow_p.x;\n  // slope-scaled: 面が光に平行なほど acne が出やすいので bias を増す\n  float bias = f.shadow_p.y * (1.0 + (1.0 - saturate(ndl)) * 3.0);\n  float lit = 0.0;\n  for (int y = -1; y <= 1; ++y)\n    for (int x = -1; x <= 1; ++x) {\n      float closest =\n          LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).r;\n      lit += (ndc.z - bias <= closest) ? 1.0 : 0.0;\n    }\n  return lit / 9.0;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float sh = shadow_factor(i.lpos, dot(n, l));\n  float up = n.y * 0.5 + 0.5;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: half-lambert + hemispheric ambient + roughness で絞る specular\n  float diff = dot(n, l) * 0.5 + 0.5;\n  float3 direct = f.light_col.rgb * (diff * diff) * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0), 32.0) * (1.0 - rough) * 0.5 * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8, f.sky_col.rgb * 1.6, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0, 1.0, 1.0), 0.5);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0), 64.0) * (1.0 - rough) * 1.2 * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
+	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\nfloat shadow_factor(float4 lpos, float ndl) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // slope-scaled: 面が光に平行なほど acne が出やすいので bias を増す\n  float bias = f.shadow_p.y * (1.0f + (1.0f - saturate(ndl)) * 3.0f);\n  float lit = 0.0f;\n  for (int y = -1; y <= 1; ++y)\n    for (int x = -1; x <= 1; ++x) {\n      float closest =\n          LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).r;\n      lit += (ndc.z - bias <= closest) ? 1.0f : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float sh = shadow_factor(i.lpos, dot(n, l));\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: half-lambert + hemispheric ambient + roughness で絞る specular\n  float diff = dot(n, l) * 0.5f + 0.5f;\n  float3 direct = f.light_col.rgb * (diff * diff) * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
 Renderer3d.shadow_static_vs =
-	'\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;\nstruct VSIn {\n  float3 pos : POSITION;\n  float3 normal : NORMAL;\n  float3 color : COLOR;\n  float2 mr : TEXCOORD3;\n};\nstruct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0)));\n  return o;\n}\n'
+	'\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;\nstruct VSIn {\n  float3 pos : POSITION;\n  float3 normal : NORMAL;\n  float3 color : COLOR;\n  float2 mr : TEXCOORD3;\n};\nstruct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
 Renderer3d.shadow_skinned_vs =
-	'\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[8];\n};\nConstantBuffer<U> u;\nstruct VSIn {\n  float3 pos : POSITION;\n  float3 normal : NORMAL;\n  float3 color : COLOR;\n  float2 mr : TEXCOORD3;\n  float4 skin : TEXCOORD4;\n};\nstruct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0)));\n  return o;\n}\n'
+	'\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[8];\n};\nConstantBuffer<U> u;\nstruct VSIn {\n  float3 pos : POSITION;\n  float3 normal : NORMAL;\n  float3 color : COLOR;\n  float2 mr : TEXCOORD3;\n  float4 skin : TEXCOORD4;\n};\nstruct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
 Renderer3d.shadow_fs =
-	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0, 0.0, 0.0, 1.0);\n}\n'
+	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
 Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
 Renderer3d.ssao_fs =
-	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6);\n  float x = (uv.x * 2.0 - 1.0) * vz / f.pp.x;\n  float y = (1.0 - uv.y * 2.0) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  float3 n = normalize(cross(ddy(p), ddx(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5; // 半径を uv スケールに\n  float occ = 0.0;\n  float ang = 2.399963; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5) / 12.0;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0 - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02) * range;\n  }\n  float ao = 1.0 - saturate(occ / 12.0 * 2.2) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6f);\n  float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;\n  float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  float3 n = normalize(cross(ddy(p), ddx(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに\n  float occ = 0.0f;\n  float ang = 2.399963f; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5f) / 12.0f;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6f));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0f - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02f) * range;\n  }\n  float ao = 1.0f - saturate(occ / 12.0f * 2.2f) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0f);\n}\n'
 Renderer3d.bright_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0 * max(knee, 1e-4));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4);\n  return float4(c * saturate(w), 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0f * max(knee, 1e-4f));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4f);\n  return float4(c * saturate(w), 1.0f);\n}\n'
 Renderer3d.blit_tent_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25 * f.st.z, 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25f * f.st.z, 1.0f);\n}\n'
 Renderer3d.composite_fs =
-	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0, -t.y));\n    float zs = view_z(i.uv + float2(0.0, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0));\n    float zw = view_z(i.uv + float2(-t.x, 0.0));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85);\n  }\n  if (f.en.z > 0.5) {\n    float fogf = 1.0 - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6f);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5f)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5f) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0f, -t.y));\n    float zs = view_z(i.uv + float2(0.0f, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0f));\n    float zw = view_z(i.uv + float2(-t.x, 0.0f));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85f);\n  }\n  if (f.en.z > 0.5f) {\n    float fogf = 1.0f - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0f);\n}\n'
 Renderer3d.fxaa_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312, lMax * 0.125))\n    return float4(cM, 1.0);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125, 0.0078125);\n  float rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0, -8.0), float2(8.0, 8.0)) * t;\n  float3 a = 0.5 * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0 / 3.0 - 0.5)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0 / 3.0 - 0.5)).rgb);\n  float3 b = a * 0.5 + 0.25 * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312f, lMax * 0.125f))\n    return float4(cM, 1.0f);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125f, 0.0078125f);\n  float rcpMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0f, -8.0f), float2(8.0f, 8.0f)) * t;\n  float3 a = 0.5f * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0f / 3.0f - 0.5f)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0f / 3.0f - 0.5f)).rgb);\n  float3 b = a * 0.5f + 0.25f * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5f).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5f).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0f);\n}\n'
 Renderer3d.present_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0f);\n}\n'
 Renderer3d.quad_vs =
-	'\nstruct VSIn {\n  float2 pos : POSITION;\n  float2 uv : TEXCOORD0;\n};\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  o.pos = float4(i.pos, 0.0, 1.0);\n  o.uv = i.uv;\n  return o;\n}\n'
+	'\nstruct VSIn {\n  float2 pos : POSITION;\n  float2 uv : TEXCOORD0;\n};\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(VSIn i) {\n  VSOut o;\n  o.pos = float4(i.pos, 0.0f, 1.0f);\n  o.uv = i.uv;\n  return o;\n}\n'
 Renderer3d.tonemap_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x +\n         0.4298 * x2 + 0.1191 * x - 0.00232;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479 * c.r + 0.0784336 * c.g + 0.0792237 * c.b,\n                    0.0423282 * c.r + 0.878468 * c.g + 0.0791661 * c.b,\n                    0.0423756 * c.r + 0.0784336 * c.g + 0.879142 * c.b);\n  // log2 encode\n  float min_ev = -12.47393;\n  float max_ev = 4.026069;\n  v = clamp(log2(max(v, 1e-10)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688 * v.r - 0.0980209 * v.g - 0.0990297 * v.b,\n                    -0.0528968 * v.r + 1.15190 * v.g - 0.0989612 * v.b,\n                    -0.0529716 * v.r - 0.0980434 * v.g + 1.15107 * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08, 1.08, 1.08));\n  float lum = dot(o, float3(0.2126, 0.7152, 0.0722));\n  o = lum + (o - lum) * 1.28;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5;\n  o *= 1.0 - dot(d2, d2) * 2.0 * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898, 78.233))) * 43758.5453);\n  o += (h - 0.5) * (2.0 / 255.0) * f.grade.z;\n  return float4(saturate(o), 1.0);\n}\n'
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
 Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
 
 function Renderer3d.new(key)
 	local self = setmetatable({}, Renderer3d)
+	__tcs_instances[self] = Renderer3d
 	self.light = Renderer3dLight.new()
 	self.sky = Renderer3dSky.new()
 	self.shadow = Renderer3dShadow.new()
@@ -2706,26 +2758,24 @@ function Renderer3d:light_mvp()
 	local len = Math.Sqrt(
 		self.light.dir.x * self.light.dir.x + self.light.dir.y * self.light.dir.y + self.light.dir.z * self.light.dir.z
 	)
-	local inv = (function()
-		if len > 1e-6 then
-			return 1.0 / len
-		else
-			return 1.0
-		end
-	end)()
+	local inv
+	if len > 1e-6 then
+		inv = 1.0 / len
+	else
+		inv = 1.0
+	end
 	local dist = self.shadow.extent * 1.6
 	local leye = Vec3.new(
 		self.shadow.center.x + self.light.dir.x * inv * dist,
 		self.shadow.center.y + self.light.dir.y * inv * dist,
 		self.shadow.center.z + self.light.dir.z * inv * dist
 	)
-	local up = (function()
-		if Math.Abs(self.light.dir.y) * inv > 0.99 then
-			return Vec3.new(0, 0, 1)
-		else
-			return Vec3.new(0, 1, 0)
-		end
-	end)()
+	local up
+	if Math.Abs(self.light.dir.y) * inv > 0.99 then
+		up = Vec3.new(0, 0, 1)
+	else
+		up = Vec3.new(0, 1, 0)
+	end
 	local lview = Mat4.look_at_lh(leye, self.shadow.center, up)
 	return Mat4.ortho_lh(self.shadow.extent * 2.0, self.shadow.extent * 2.0, 0.1, dist * 2.0) * lview
 end
@@ -2814,13 +2864,12 @@ function Renderer3d:light_dir_table()
 	local len = Math.Sqrt(
 		self.light.dir.x * self.light.dir.x + self.light.dir.y * self.light.dir.y + self.light.dir.z * self.light.dir.z
 	)
-	local inv = (function()
-		if len > 1e-6 then
-			return 1.0 / len
-		else
-			return 1.0
-		end
-	end)()
+	local inv
+	if len > 1e-6 then
+		inv = 1.0 / len
+	else
+		inv = 1.0
+	end
 	return { self.light.dir.x * inv, self.light.dir.y * inv, self.light.dir.z * inv, 0.0 }
 end
 
@@ -3201,6 +3250,7 @@ SdfNode.__index = SdfNode
 
 function SdfNode.new(op, parameters)
 	local self = setmetatable({}, SdfNode)
+	__tcs_instances[self] = SdfNode
 	self.op = nil
 	self.params = nil
 	self.name = nil
@@ -3283,6 +3333,7 @@ Sdf.__index = Sdf
 
 function Sdf.new()
 	local self = setmetatable({}, Sdf)
+	__tcs_instances[self] = Sdf
 	return self
 end
 
@@ -3370,6 +3421,7 @@ SdfPanel.__index = SdfPanel
 
 function SdfPanel.new()
 	local self = setmetatable({}, SdfPanel)
+	__tcs_instances[self] = SdfPanel
 	return self
 end
 
@@ -3486,24 +3538,25 @@ Sfx.cache = {}
 
 function Sfx.new()
 	local self = setmetatable({}, Sfx)
+	__tcs_instances[self] = Sfx
 	return self
 end
 
 function Sfx.blip(freq0, freq1, dur, vol)
-	local key = "blip:" .. freq0 .. ":" .. freq1 .. ":" .. dur .. ":" .. vol
+	local key = "blip:"
+		.. __tcs_fstr(freq0)
+		.. ":"
+		.. __tcs_fstr(freq1)
+		.. ":"
+		.. __tcs_fstr(dur)
+		.. ":"
+		.. __tcs_fstr(vol)
 	local cached
-	if
-		(function()
-			local __tcs_value = Sfx.cache[key]
-			if __tcs_value ~= nil then
-				cached = __tcs_value
-				return true
-			else
-				cached = nil
-				return false
-			end
-		end)()
-	then
+	local __tcs_cond1
+	local __tcs_found, __tcs_v = Dict.TryGet(Sfx.cache, key, nil)
+	cached = __tcs_v
+	__tcs_cond1 = __tcs_found
+	if __tcs_cond1 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
 	local n = Math.Floor(dur * 44100)
@@ -3528,20 +3581,13 @@ end
 
 function Sfx.noise(dur, vol, seed)
 	local s = seed or 0x12345678
-	local key = "noise:" .. dur .. ":" .. vol .. ":" .. s
+	local key = "noise:" .. __tcs_fstr(dur) .. ":" .. __tcs_fstr(vol) .. ":" .. s
 	local cached
-	if
-		(function()
-			local __tcs_value = Sfx.cache[key]
-			if __tcs_value ~= nil then
-				cached = __tcs_value
-				return true
-			else
-				cached = nil
-				return false
-			end
-		end)()
-	then
+	local __tcs_cond2
+	local __tcs_found, __tcs_v = Dict.TryGet(Sfx.cache, key, nil)
+	cached = __tcs_v
+	__tcs_cond2 = __tcs_found
+	if __tcs_cond2 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
 	local n = Math.Floor(dur * 44100)
@@ -3567,6 +3613,7 @@ Shapes.stride = 10
 
 function Shapes.new()
 	local self = setmetatable({}, Shapes)
+	__tcs_instances[self] = Shapes
 	return self
 end
 
@@ -3653,6 +3700,7 @@ Shapes3d.__index = Shapes3d
 
 function Shapes3d.new()
 	local self = setmetatable({}, Shapes3d)
+	__tcs_instances[self] = Shapes3d
 	return self
 end
 
@@ -3711,20 +3759,18 @@ function Shapes3d.cube()
 	for _, f in ipairs(faces) do
 		local baseIdx = Math.Floor(#pos / 3.0)
 		for i = 0, 4 - 1 do
-			local su = (function()
-				if i == 1 or i == 2 then
-					return 1.0
-				else
-					return -1.0
-				end
-			end)()
-			local sv = (function()
-				if i >= 2 then
-					return 1.0
-				else
-					return -1.0
-				end
-			end)()
+			local su
+			if i == 1 or i == 2 then
+				su = 1.0
+			else
+				su = -1.0
+			end
+			local sv
+			if i >= 2 then
+				sv = 1.0
+			else
+				sv = -1.0
+			end
 			for k = 0, 3 - 1 do
 				table.insert(pos, f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv)
 			end
@@ -3762,26 +3808,24 @@ function Shapes3d.cylinder(sides)
 	end
 	for i = 0, sides - 1 do
 		local b0 = i * 2
-		local i1 = (function()
-			if i + 1 == sides then
-				return 0
-			else
-				return i + 1
-			end
-		end)()
+		local i1
+		if i + 1 == sides then
+			i1 = 0
+		else
+			i1 = i + 1
+		end
 		local b1 = i1 * 2
 		for _, idx in ipairs({ b0, b0 + 1, b1 + 1, b0, b1 + 1, b1 }) do
 			table.insert(indices, idx)
 		end
 	end
 	for side = 0, 2 - 1 do
-		local ny = (function()
-			if side == 0 then
-				return 1.0
-			else
-				return -1.0
-			end
-		end)()
+		local ny
+		if side == 0 then
+			ny = 1.0
+		else
+			ny = -1.0
+		end
 		local y = ny * 0.5
 		local center = Math.Floor(#pos / 3.0)
 		table.insert(pos, 0.0)
@@ -3800,13 +3844,12 @@ function Shapes3d.cylinder(sides)
 			table.insert(nrm, 0.0)
 		end
 		for i = 0, sides - 1 do
-			local i1 = (function()
-				if i + 1 == sides then
-					return 0
-				else
-					return i + 1
-				end
-			end)()
+			local i1
+			if i + 1 == sides then
+				i1 = 0
+			else
+				i1 = i + 1
+			end
 			local r0 = center + 1 + i
 			local r1 = center + 1 + i1
 			if ny > 0 then
@@ -3864,6 +3907,7 @@ SpriteBucket.__index = SpriteBucket
 
 function SpriteBucket.new(atlas)
 	local self = setmetatable({}, SpriteBucket)
+	__tcs_instances[self] = SpriteBucket
 	self.atlas = nil
 	self.verts = {}
 	self.ready = false
@@ -3922,6 +3966,7 @@ SpriteBatch.disc_atlas = nil
 
 function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
 	local self = setmetatable({}, SpriteBatch)
+	__tcs_instances[self] = SpriteBatch
 	self.logical_w = 0
 	self.logical_h = 0
 	self.buckets = {}
@@ -3934,13 +3979,13 @@ function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
 	self.quad_data = nil
 	self.logical_w = logicalW
 	self.logical_h = logicalH
-	local inst = (function()
-		local __tcs_lhs = instanced
-		if __tcs_lhs ~= nil then
-			return __tcs_lhs
-		end
-		return true
-	end)()
+	local inst
+	local __tcs_lhs = instanced
+	if __tcs_lhs ~= nil then
+		inst = __tcs_lhs
+	else
+		inst = true
+	end
 	self.shader_key = ((shaderKey or "lubx_sprite") or "")
 		.. (((function()
 			if inst then
@@ -3987,14 +4032,9 @@ function SpriteBatch:bucket_for(a)
 	local b
 	if
 		not (function()
-			local __tcs_value = self.buckets[a.key]
-			if __tcs_value ~= nil then
-				b = __tcs_value
-				return true
-			else
-				b = nil
-				return false
-			end
+			local __tcs_found, __tcs_v = Dict.TryGet(self.buckets, a.key, nil)
+			b = __tcs_v
+			return __tcs_found
 		end)()
 	then
 		b = SpriteBucket.new(a)
@@ -4232,6 +4272,7 @@ TextGlyph.__index = TextGlyph
 
 function TextGlyph.new()
 	local self = setmetatable({}, TextGlyph)
+	__tcs_instances[self] = TextGlyph
 	self.u = 0
 	self.v = 0
 	self.w = 0
@@ -4247,6 +4288,7 @@ Text.__index = Text
 
 function Text.new(key, ttfPath, px, atlasSize)
 	local self = setmetatable({}, Text)
+	__tcs_instances[self] = Text
 	self.px = 0
 	self.ascent = 0
 	self.descent = 0
@@ -4295,21 +4337,14 @@ end
 
 function Text:ensure_glyph(cp)
 	local cached
-	if
-		(function()
-			local __tcs_value = self.glyphs[cp]
-			if __tcs_value ~= nil then
-				cached = __tcs_value
-				return true
-			else
-				cached = nil
-				return false
-			end
-		end)()
-	then
+	local __tcs_cond3
+	local __tcs_found, __tcs_v = Dict.TryGet(self.glyphs, cp, nil)
+	cached = __tcs_v
+	__tcs_cond3 = __tcs_found
+	if __tcs_cond3 then
 		return cached
 	end
-	if self.missing[cp] ~= nil then
+	if Dict.ContainsKey(self.missing, cp) then
 		return nil
 	end
 	local gb = lub.font.glyph(self:ttf(), cp, self.px)
@@ -4355,17 +4390,16 @@ function Text:ensure_glyph(cp)
 		end
 		self.atlas:update_pixels(self.pixels)
 	end
-	local g = (function()
-		local __tcs_init = TextGlyph.new()
-		__tcs_init.u = u
-		__tcs_init.v = v
-		__tcs_init.w = gb.w
-		__tcs_init.h = gb.h
-		__tcs_init.xoff = gb.xoff
-		__tcs_init.yoff = gb.yoff
-		__tcs_init.advance = gb.advance
-		return __tcs_init
-	end)()
+	local g
+	local __tcs_init = TextGlyph.new()
+	__tcs_init.u = u
+	__tcs_init.v = v
+	__tcs_init.w = gb.w
+	__tcs_init.h = gb.h
+	__tcs_init.xoff = gb.xoff
+	__tcs_init.yoff = gb.yoff
+	__tcs_init.advance = gb.advance
+	g = __tcs_init
 	self.glyphs[cp] = g
 	return g
 end

@@ -232,7 +232,7 @@ public static class Facade
         {
             LubTypeKind.Void => expr,
             LubTypeKind.Int => expr,
-            LubTypeKind.Double => $"(double){expr}",
+            LubTypeKind.Double => expr,
             LubTypeKind.Bool => $"({expr} != 0)",
             LubTypeKind.Enum => $"({EnumCs(tr)}){expr}",
             LubTypeKind.Handle => $"LubNative.H_{tr.Name}({expr})",
@@ -342,13 +342,12 @@ public static class Facade
                 case LubTypeKind.Enum:
                     if (tr.Nullable)
                     {
-                        b.Append($"{ind}{NScalar(tr)} {v} = {(tr.Kind == LubTypeKind.Double ? "(float)" : tr.Kind == LubTypeKind.Enum ? "(int)" : "")}({n} ?? default);\n");
+                        b.Append($"{ind}{NScalar(tr)} {v} = {(tr.Kind == LubTypeKind.Enum ? "(int)" : "")}({n} ?? default);\n");
                         yield return $"{n}.HasValue ? &{v} : null";
                     }
                     else
                         yield return tr.Kind switch
                         {
-                            LubTypeKind.Double => $"(float){n}",
                             LubTypeKind.Enum => $"(int){n}",
                             LubTypeKind.Bool => $"(byte)({n} ? 1 : 0)",
                             _ => n,
@@ -483,7 +482,7 @@ public static class Facade
                 case LubTypeKind.Int:
                     return tr.Nullable ? $"({guard}(int?){v})" : v;
                 case LubTypeKind.Double:
-                    return tr.Nullable ? $"({guard}(double?){v})" : $"(double){v}";
+                    return tr.Nullable ? $"({guard}(float?){v})" : v;
                 case LubTypeKind.Bool:
                     return tr.Nullable ? $"({guard}(bool?){v})" : v;
                 case LubTypeKind.Enum:
@@ -893,7 +892,7 @@ public static class Facade
                         sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? s->@{n} : null;\n" : $"        {v} = s->@{n};\n");
                         break;
                     case LubTypeKind.Double:
-                        sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? (double)s->@{n} : null;\n" : $"        {v} = s->@{n};\n");
+                        sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? s->@{n} : null;\n" : $"        {v} = s->@{n};\n");
                         break;
                     case LubTypeKind.Enum:
                         sb.Append(f.Optional ? $"        {v} = s->@has_{n} ? ({EnumCs(tr)})s->@{n} : null;\n" : $"        {v} = ({EnumCs(tr)})s->@{n};\n");
@@ -997,7 +996,7 @@ public static class Facade
                 {
                     LubTypeKind.Record => $"From_{C(p.Name)}({pn})",
                     LubTypeKind.Enum => $"({EnumCs(p)}){pn}",
-                    LubTypeKind.Double => $"(double){pn}",
+                    LubTypeKind.Double => pn.ToString(),
                     LubTypeKind.Bool => $"({pn} != 0)",
                     _ => pn.ToString(),
                 });

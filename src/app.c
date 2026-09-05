@@ -14,6 +14,27 @@
 // g_backend->xxx() after that point.
 const RenderBackend *g_backend = NULL;
 
+// 未指定時の既定 backend = そのプラットフォームの最短距離実装。
+#if defined(_WIN32)
+#define LUB_DEFAULT_BACKEND "d3d12"
+#elif defined(__linux__)
+#define LUB_DEFAULT_BACKEND "vulkan"
+#else
+#define LUB_DEFAULT_BACKEND "sdlgpu"
+#endif
+
+#ifndef __EMSCRIPTEN__
+// vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
+// d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
+// (GPU 無しの CI 等) でも window を作れるようにする。
+static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
+  SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
+  if (strcmp(backend_name, "d3d12") != 0)
+    flags |= SDL_WINDOW_VULKAN;
+  return flags;
+}
+#endif
+
 bool app_init(App *app) {
   memset(app, 0, sizeof(*app));
 
@@ -29,26 +50,17 @@ bool app_init(App *app) {
       strncpy(app->backend_name, env_b, sizeof(app->backend_name) - 1);
       app->backend_name[sizeof(app->backend_name) - 1] = '\0';
     } else {
-      strcpy(app->backend_name, "native");
+      strcpy(app->backend_name, LUB_DEFAULT_BACKEND);
     }
   }
 #endif
 
-  // Window creation flag: sdlgpu (Vulkan driver) は Vulkan-capable surface を
-  // 要求する。D3D12 直接実装 (Windows の "native") は Vulkan を使わないため
-  // flag を外し、Vulkan ICD の無い環境 (GPU 無しの CI 等) でも window を
-  // 作れるようにする。wasm は canvas-backed default のみ。
+  // wasm は canvas-backed default のみ。
 #ifdef __EMSCRIPTEN__
   app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
 #else
-  SDL_WindowFlags win_flags = SDL_WINDOW_RESIZABLE;
-#ifdef _WIN32
-  if (strcmp(app->backend_name, "native") != 0)
-    win_flags |= SDL_WINDOW_VULKAN;
-#else
-  win_flags |= SDL_WINDOW_VULKAN;
-#endif
-  app->window = SDL_CreateWindow("lub", 1280, 720, win_flags);
+  app->window = SDL_CreateWindow("lub", 1280, 720,
+                                 window_flags_for_backend(app->backend_name));
 #endif
   if (!app->window) {
     SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
@@ -81,20 +93,40 @@ bool app_init(App *app) {
 
 bool app_backend_init(App *app) {
 #ifndef __EMSCRIPTEN__
-  // "native" = このプラットフォームの最短距離実装。Windows は D3D12 直接、
-  // Linux は Vulkan 直接 (backend_vk.c)。それ以外は sdlgpu が代行する。
+  // config() が window 生成後に backend を上書きした場合、window に
+  // SDL_WINDOW_VULKAN が欠けていることがある。その時だけ作り直す
+  // (逆方向 — flag が余分に付いている — は無害なので放置)。
+  SDL_WindowFlags want = window_flags_for_backend(app->backend_name);
+  if ((want & SDL_WINDOW_VULKAN) &&
+      !(SDL_GetWindowFlags(app->window) & SDL_WINDOW_VULKAN)) {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(app->window, &w, &h);
+    SDL_DestroyWindow(app->window);
+    app->window = SDL_CreateWindow("lub", w, h, want);
+    if (!app->window) {
+      SDL_Log("SDL_CreateWindow (vulkan-capable) failed: %s", SDL_GetError());
+      return false;
+    }
+  }
+
   if (strcmp(app->backend_name, "sdlgpu") == 0) {
     g_backend = &g_backend_sdlgpu;
-  } else if (strcmp(app->backend_name, "native") == 0) {
+  } else if (strcmp(app->backend_name, "d3d12") == 0) {
 #if defined(_WIN32)
-    g_backend = &g_backend_dx12;
-#elif defined(__linux__)
-    g_backend = &g_backend_vk;
+    g_backend = &g_backend_d3d12;
 #else
-    g_backend = &g_backend_sdlgpu;
+    SDL_Log("backend 'd3d12' is Windows-only");
+    return false;
+#endif
+  } else if (strcmp(app->backend_name, "vulkan") == 0) {
+#if defined(LUB_HAS_VULKAN)
+    g_backend = &g_backend_vulkan;
+#else
+    SDL_Log("backend 'vulkan' is not available in this build");
+    return false;
 #endif
   } else {
-    SDL_Log("unknown backend '%s' (expected 'native' or 'sdlgpu')",
+    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan' or 'sdlgpu')",
             app->backend_name);
     return false;
   }

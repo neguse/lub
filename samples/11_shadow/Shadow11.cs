@@ -10,11 +10,11 @@ public static class Shadow11
 {
     const int shadowSize = 1024;
 
-    static double tAccum = 0;
+    static float tAccum = 0;
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -26,65 +26,65 @@ public static class Shadow11
     {
     }
 
-    static void AddFloor(List<double> dst)
+    static void AddFloor(List<float> dst)
     {
-        var n = new List<double> { 0, 1, 0 };
-        Shapes.Quad(dst, new List<double> { -2.3, 0, -1.55 },
-            new List<double> { 2.3, 0, -1.55 },
-            new List<double> { 2.3, 0, 1.75 },
-            new List<double> { -2.3, 0, 1.75 }, n,
-            new List<double> { 0.50, 0.55, 0.50, 1.0 });
+        var n = new List<float> { 0, 1, 0 };
+        Shapes.Quad(dst, new List<float> { -2.3f, 0, -1.55f },
+            new List<float> { 2.3f, 0, -1.55f },
+            new List<float> { 2.3f, 0, 1.75f },
+            new List<float> { -2.3f, 0, 1.75f }, n,
+            new List<float> { 0.50f, 0.55f, 0.50f, 1.0f });
 
-        var line = new List<double> { 0.38, 0.42, 0.39, 1.0 };
+        var line = new List<float> { 0.38f, 0.42f, 0.39f, 1.0f };
         for (int i = -4; i <= 4; i++)
         {
-            double x = i * 0.48;
-            Shapes.Quad(dst, new List<double> { x - 0.005, 0.003, -1.55 },
-                new List<double> { x + 0.005, 0.003, -1.55 },
-                new List<double> { x + 0.005, 0.003, 1.75 },
-                new List<double> { x - 0.005, 0.003, 1.75 }, n, line);
+            float x = i * 0.48f;
+            Shapes.Quad(dst, new List<float> { x - 0.005f, 0.003f, -1.55f },
+                new List<float> { x + 0.005f, 0.003f, -1.55f },
+                new List<float> { x + 0.005f, 0.003f, 1.75f },
+                new List<float> { x - 0.005f, 0.003f, 1.75f }, n, line);
         }
         for (int i = -3; i <= 3; i++)
         {
-            double z = i * 0.48;
-            Shapes.Quad(dst, new List<double> { -2.3, 0.003, z - 0.005 },
-                new List<double> { 2.3, 0.003, z - 0.005 },
-                new List<double> { 2.3, 0.003, z + 0.005 },
-                new List<double> { -2.3, 0.003, z + 0.005 }, n, line);
+            float z = i * 0.48f;
+            Shapes.Quad(dst, new List<float> { -2.3f, 0.003f, z - 0.005f },
+                new List<float> { 2.3f, 0.003f, z - 0.005f },
+                new List<float> { 2.3f, 0.003f, z + 0.005f },
+                new List<float> { -2.3f, 0.003f, z + 0.005f }, n, line);
         }
     }
 
-    static void AddCasters(List<double> dst, double t)
+    static void AddCasters(List<float> dst, float t)
     {
-        Shapes.Box(dst, -0.05, 0.12, 0.48, 0.88, 0.24, 0.34,
-            new List<double> { 0.95, 0.76, 0.38, 1.0 });
-        Shapes.Box(dst, -0.58, 0.52 + Math.Sin(t * 1.4) * 0.07, -0.12,
-            0.42, 0.42, 0.42, new List<double> { 0.18, 0.72, 0.78, 1.0 });
-        Shapes.Sphere(dst, 0.62 + Math.Cos(t * 1.1) * 0.20,
-            0.58 + Math.Sin(t * 1.7) * 0.08,
-            -0.18 + Math.Sin(t * 0.8) * 0.22, 0.22,
-            new List<double> { 0.95, 0.28, 0.34, 1.0 }, null, null);
-        Shapes.Box(dst, 0.92, 0.34, 0.36, 0.18, 0.68, 0.18,
-            new List<double> { 0.48, 0.39, 0.86, 1.0 });
+        Shapes.Box(dst, -0.05f, 0.12f, 0.48f, 0.88f, 0.24f, 0.34f,
+            new List<float> { 0.95f, 0.76f, 0.38f, 1.0f });
+        Shapes.Box(dst, -0.58f, 0.52f + (float)Math.Sin(t * 1.4f) * 0.07f, -0.12f,
+            0.42f, 0.42f, 0.42f, new List<float> { 0.18f, 0.72f, 0.78f, 1.0f });
+        Shapes.Sphere(dst, 0.62f + (float)Math.Cos(t * 1.1f) * 0.20f,
+            0.58f + (float)Math.Sin(t * 1.7f) * 0.08f,
+            -0.18f + (float)Math.Sin(t * 0.8f) * 0.22f, 0.22f,
+            new List<float> { 0.95f, 0.28f, 0.34f, 1.0f }, null, null);
+        Shapes.Box(dst, 0.92f, 0.34f, 0.36f, 0.18f, 0.68f, 0.18f,
+            new List<float> { 0.48f, 0.39f, 0.86f, 1.0f });
     }
 
-    static Mat4 CameraMvp(double t)
+    static Mat4 CameraMvp(float t)
     {
-        var eye = new Vec3(2.0 + Math.Sin(t * 0.25) * 0.12, 1.35, -2.85);
-        var view = Mat4.LookAtLh(eye, new Vec3(0.05, 0.34, 0.12),
+        var eye = new Vec3(2.0f + (float)Math.Sin(t * 0.25f) * 0.12f, 1.35f, -2.85f);
+        var view = Mat4.LookAtLh(eye, new Vec3(0.05f, 0.34f, 0.12f),
             new Vec3(0, 1, 0));
-        return Mat4.PerspectiveLh(52, 16.0 / 9.0, 0.1, 40.0).Mul(view);
+        return Mat4.PerspectiveLh(52, 16.0f / 9.0f, 0.1f, 40.0f).Mul(view);
     }
 
     static Mat4 LightMvp()
     {
-        var lightPos = new Vec3(-2.0, 3.3, -1.5);
-        var view = Mat4.LookAtLh(lightPos, new Vec3(0.08, 0.24, 0.08),
+        var lightPos = new Vec3(-2.0f, 3.3f, -1.5f);
+        var view = Mat4.LookAtLh(lightPos, new Vec3(0.08f, 0.24f, 0.08f),
             new Vec3(0, 1, 0));
-        return Mat4.OrthoLh(3.4, 3.4, 0.1, 7.0).Mul(view);
+        return Mat4.OrthoLh(3.4f, 3.4f, 0.1f, 7.0f).Mul(view);
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         tAccum = tAccum + dt;
 
@@ -111,8 +111,8 @@ public static class Shadow11
             new TextureOpts { Target = true, Filter = Gfx.Filter.Nearest, Wrap = Gfx.Wrap.Clamp });
 
         // scene は floor + casters。
-        var casters = new List<double>();
-        var scene = new List<double>();
+        var casters = new List<float>();
+        var scene = new List<float>();
         AddFloor(scene);
         AddCasters(casters, tAccum);
         foreach (var f in casters)
@@ -133,7 +133,7 @@ public static class Shadow11
         {
             Target = shadowMap,
             DepthTarget = shadowDepth,
-            ClearColor = new double[] { 1.0, 1.0, 1.0, 1.0 },
+            ClearColor = new float[] { 1.0f, 1.0f, 1.0f, 1.0f },
             ClearDepth = 1,
         });
         Gfx.Draw(casters.Count / Shapes.Stride,
@@ -157,7 +157,7 @@ public static class Shadow11
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.09, 0.12, 0.15, 1.0 },
+            ClearColor = new float[] { 0.09f, 0.12f, 0.15f, 1.0f },
         });
         Gfx.Draw(scene.Count / Shapes.Stride,
             new Dictionary<string, object>

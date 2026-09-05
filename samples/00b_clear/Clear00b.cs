@@ -5,11 +5,11 @@ using static Lub;
 
 public static class Clear00b
 {
-    static double t = 0;
+    static float t = 0;
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
         Console.WriteLine("backend = " + backend);
         Console.WriteLine("clear demo");
@@ -23,16 +23,16 @@ public static class Clear00b
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         t = t + dt;
-        var r = 0.5 + 0.5 * Math.Sin(t);
-        var g = 0.5 + 0.5 * Math.Sin(t + 2.0);
-        var b = 0.5 + 0.5 * Math.Sin(t + 4.0);
+        var r = 0.5f + 0.5f * (float)Math.Sin(t);
+        var g = 0.5f + 0.5f * (float)Math.Sin(t + 2.0f);
+        var b = 0.5f + 0.5f * (float)Math.Sin(t + 4.0f);
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { r, g, b, 1.0 },
+            ClearColor = new float[] { r, g, b, 1.0f },
         });
         Gfx.EndPass();
     }

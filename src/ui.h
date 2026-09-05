@@ -2,7 +2,7 @@
 #define LUB_UI_H
 
 // Dear ImGui debug UI. ImGui は backend 抽象 (g_backend) の一利用者として
-// 描画するので、統合は 1 系統で sdlgpu / dx12 / webgpu 全部に効く。
+// 描画するので、統合は 1 系統で sdlgpu / d3d12 / webgpu 全部に効く。
 //
 // - ui_new_frame: 毎フレーム onFrame の前に呼ぶ (main.c)。入力を ImGui に
 //   流して NewFrame する。ゲームが UI を使わないフレームは次の new_frame が

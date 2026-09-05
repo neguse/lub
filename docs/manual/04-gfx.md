@@ -56,7 +56,7 @@ VS→FS の varying には 2 つの規約がある:
 Gfx.BeginPass(new PassOpts
 {
     Target = Gfx.MainTex,
-    ClearColor = new double[] { 0.05, 0.05, 0.15, 1.0 },
+    ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
 });
 Gfx.Draw(36,
     new Dictionary<string, object>

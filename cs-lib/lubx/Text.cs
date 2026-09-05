@@ -20,7 +20,7 @@ public class TextGlyph
     public int H;
     public int Xoff;
     public int Yoff;
-    public double Advance;
+    public float Advance;
 }
 
 /// <summary>固定サイズの動的 glyph atlas + 1行テキスト描画。Font.font_glyph を
@@ -32,16 +32,16 @@ public class TextGlyph
 public class Text
 {
     /// <summary>1em のピクセル数 (コンストラクタ指定)。</summary>
-    public double Px;
+    public float Px;
 
     /// <summary>ベースラインから上端まで (px、正)。読み取り専用。</summary>
-    public double Ascent;
+    public float Ascent;
 
     /// <summary>ベースラインから下端まで (px、負)。読み取り専用。</summary>
-    public double Descent;
+    public float Descent;
 
     /// <summary>行送り (px)。読み取り専用。</summary>
-    public double LineHeight;
+    public float LineHeight;
 
     private string ttfPath;
     private Atlas atlas;
@@ -57,7 +57,7 @@ public class Text
 
     /// <summary>ttfPath は Io.LoadBytes で読める font file の path (呼び出しの
     /// 時点で ready であること)。atlasSize 省略で 256。</summary>
-    public Text(string key, string ttfPath, double px, int? atlasSize = null)
+    public Text(string key, string ttfPath, float px, int? atlasSize = null)
     {
         this.ttfPath = ttfPath;
         this.Px = px;
@@ -153,9 +153,9 @@ public class Text
     }
 
     /// <summary>1行の描画幅 (px)。scale 省略で 1.0。</summary>
-    public double Width(string s, double? scale = null)
+    public float Width(string s, float? scale = null)
     {
-        var sum = 0.0;
+        var sum = 0.0f;
         var prev = -1;
         EachCodepoint(s, cp =>
         {
@@ -167,15 +167,15 @@ public class Text
             sum += g.Advance;
             prev = cp;
         });
-        return sum * (scale ?? 1.0);
+        return sum * (scale ?? 1.0f);
     }
 
     /// <summary>1行描く。(x, y) はベースライン左端 (論理 px、左上原点)。
     /// scale 省略で 1.0。</summary>
-    public void Draw(SpriteBatch batch, string s, double x, double y,
-        Color? tint = null, double? scale = null)
+    public void Draw(SpriteBatch batch, string s, float x, float y,
+        Color? tint = null, float? scale = null)
     {
-        double sc = scale ?? 1.0;
+        float sc = scale ?? 1.0f;
         var pen = x;
         var prev = -1;
         EachCodepoint(s, cp =>

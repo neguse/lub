@@ -37,12 +37,12 @@ public static class Game
         Config(new ConfigOpts());
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.2, 0.3, 0.4, 1.0 },
+            ClearColor = new float[] { 0.2f, 0.3f, 0.4f, 1.0f },
         });
         Gfx.EndPass();
     }

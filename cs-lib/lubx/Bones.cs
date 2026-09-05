@@ -17,7 +17,7 @@ public static class Bones
 
     /// <summary>pivot (px, py, pz) 回りの回転 (model 空間)。
     /// T(p) · R · T(−p)。</summary>
-    public static Mat4 PivotRot(double px, double py, double pz, Mat4 rot)
+    public static Mat4 PivotRot(float px, float py, float pz, Mat4 rot)
     {
         return Mat4.Translate(new Vec3(px, py, pz))
             * rot * Mat4.Translate(new Vec3(-px, -py, -pz));
@@ -27,10 +27,10 @@ public static class Bones
     /// mat4 × 8 = 128 float に詰める。resolve が null を返した bone は
     /// 単位行列。(x, y, z) はその bone の pivot (pivotRot にそのまま
     /// 渡せる)。</summary>
-    public static List<double> Pack(MeshData? mesh,
-        Func<string, double, double, double, Mat4?> resolve)
+    public static List<float> Pack(MeshData? mesh,
+        Func<string, float, float, float, Mat4?> resolve)
     {
-        var arr = new List<double>();
+        var arr = new List<float>();
         int count = 0;
         if (mesh != null && mesh.Bones != null)
         {

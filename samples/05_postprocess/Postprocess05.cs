@@ -13,7 +13,7 @@ public static class Postprocess05
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -25,7 +25,7 @@ public static class Postprocess05
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Io.LoadText("samples/05_postprocess/data/05_offscreen.vs.slang",
             out var ovs, out var ovsv, out _, out _);
@@ -52,7 +52,7 @@ public static class Postprocess05
         Gfx.BeginPass(new PassOpts
         {
             Target = rt,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.Draw(3,
             new Dictionary<string, object> { ["verts"] = bOff },
@@ -65,7 +65,7 @@ public static class Postprocess05
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
         Gfx.Draw(6,
             new Dictionary<string, object> { ["verts"] = bPost, ["scene"] = rt },

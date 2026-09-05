@@ -16,11 +16,11 @@ public static class Compute07
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Io.LoadText("samples/07_compute/data/07_gen_verts.cs.slang",
             out var cs, out var csv, out _, out _);
@@ -42,7 +42,7 @@ public static class Compute07
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.05, 0.05, 0.1, 1.0 },
+            ClearColor = new float[] { 0.05f, 0.05f, 0.1f, 1.0f },
         });
         Gfx.Draw(3,
             new Dictionary<string, object> { ["verts"] = vbuf },

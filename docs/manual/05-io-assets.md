@@ -31,7 +31,7 @@ web ではファイル取得が非同期なので `"pending"` があり得る。
 ## ファイル形式
 
 - `LoadText`: 任意のテキスト(シェーダソース、設定など)
-- `LoadFloats`: `return { 1.0, 2.0, ... }` 形式の Lua ファイルを double 配列に
+- `LoadFloats`: `return { 1.0, 2.0, ... }` 形式の Lua ファイルを float 配列に
 - `LoadGltf`: glTF (.gltf / .glb)。結果は `Io.InterleavePn` 等で頂点列にして
   `Gfx.UseBuffer` へ
 

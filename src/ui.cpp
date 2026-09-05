@@ -68,12 +68,11 @@ static bool ui_gpu_init() {
 #if defined(__EMSCRIPTEN__)
   ShaderTargetBackend tgt = SHADER_TARGET_WGSL;
 #elif defined(_WIN32)
-  // dx12 の vtable name は "native"。
-  ShaderTargetBackend tgt = SHADER_TARGET_SDLGPU;
-  if (g_backend && g_backend->name && strcmp(g_backend->name, "native") == 0)
-    tgt = SHADER_TARGET_DX12;
+  // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う。d3d12 だけ DXIL。
+  ShaderTargetBackend tgt = (g_backend == &g_backend_d3d12)
+                                ? SHADER_TARGET_D3D12
+                                : SHADER_TARGET_SDLGPU;
 #else
-  // Linux の "native" (Vulkan 直接) も SDLGPU target の SPIR-V を食う。
   ShaderTargetBackend tgt = SHADER_TARGET_SDLGPU;
 #endif
   char err[1024];

@@ -113,11 +113,11 @@ public class PassOpts
     public List<TextureRef>? Targets;
     public TextureRef? DepthTarget;
     /// <summary>クリア色 [r, g, b, a]。省略時 {0, 0, 0, 1}。</summary>
-    public double[]? ClearColor;
+    public float[]? ClearColor;
     /// <summary>MRT 用。targets[i] に対応するクリア色の配列。</summary>
-    public List<double[]>? ClearColors;
+    public List<float[]>? ClearColors;
     /// <summary>省略時 1.0。</summary>
-    public double? ClearDepth;
+    public float? ClearDepth;
     /// <summary>`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
     public Lub.Gfx.LoadAction? Load;
 }
@@ -161,7 +161,7 @@ public class TextureOpts
 /// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
-    /// <summary>GPU backend。native では "native" (既定。このプラットフォームの最短距離実装 — Windows: D3D12 / Linux: 当面 sdlgpu) か "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。</summary>
+    /// <summary>GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
     public string? Backend;
     /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>
     public int? Width;
@@ -176,20 +176,20 @@ public class ConfigOpts
 /// <summary>surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。</summary>
 public class MeshData
 {
-    public List<double> Positions = new List<double>();
-    public List<double> Normals = new List<double>();
+    public List<float> Positions = new List<float>();
+    public List<float> Normals = new List<float>();
     public List<int> Indices = new List<int>();
     public int VertCount;
     public int IndexCount;
-    public List<double>? Uvs;
-    public List<double>? Tangents;
-    public List<double>? BoundsMin;
-    public List<double>? BoundsMax;
-    public double? Cell;
-    public List<double>? Colors;
-    public List<double>? MetalRough;
+    public List<float>? Uvs;
+    public List<float>? Tangents;
+    public List<float>? BoundsMin;
+    public List<float>? BoundsMax;
+    public float? Cell;
+    public List<float>? Colors;
+    public List<float>? MetalRough;
     public List<int>? Joints;
-    public List<double>? Weights;
+    public List<float>? Weights;
     public List<SdfBone>? Bones;
 }
 
@@ -197,9 +197,9 @@ public class MeshData
 public class SdfBone
 {
     public string Name;
-    public double X;
-    public double Y;
-    public double Z;
+    public float X;
+    public float Y;
+    public float Z;
 }
 
 /// <summary>sdf の木の node (平らな配列の要素)。A / B は子の index (0 始まり、無しは -1)。Params は op ごとの数値列 (sphere: r、box: hx hy hz、 capsule: ax ay az bx by bz r、torus: rmajor rminor、move: x y z、 rotate: qx qy qz qw、scale: s、paint: cr cg cb metallic roughness、 bone: px py pz、smin / ssub: k)。Name は bone。</summary>
@@ -208,20 +208,20 @@ public class SdfNodeDesc
     public Lub.Mesh.SdfOp Op;
     public int A;
     public int B;
-    public List<double> Params = new List<double>();
+    public List<float> Params = new List<float>();
     public string? Name;
 }
 
 /// <summary>glTF の material。</summary>
 public class GltfMaterial
 {
-    public List<double> BaseColorFactor = new List<double>();
-    public double MetallicFactor;
-    public double RoughnessFactor;
+    public List<float> BaseColorFactor = new List<float>();
+    public float MetallicFactor;
+    public float RoughnessFactor;
     public int AlphaMode;
-    public double AlphaCutoff;
+    public float AlphaCutoff;
     public bool DoubleSided;
-    public double NormalScale;
+    public float NormalScale;
     public string? BaseColorPath;
     public string? MetallicRoughnessPath;
     public string? NormalPath;
@@ -249,7 +249,7 @@ public class GlyphBitmap
     public int H;
     public int Xoff;
     public int Yoff;
-    public double Advance;
+    public float Advance;
     /// <summary>w × h の alpha (frame 有効の view)。</summary>
     public Bytes? Bytes;
 }
@@ -257,22 +257,22 @@ public class GlyphBitmap
 /// <summary>font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。</summary>
 public class GlyphMesh : MeshData
 {
-    public double Advance;
+    public float Advance;
 }
 
 public class FontMetrics
 {
-    public double Ascent;
-    public double Descent;
-    public double LineGap;
+    public float Ascent;
+    public float Descent;
+    public float LineGap;
 }
 
 /// <summary>audio_play / audio_voice の再生パラメータ。</summary>
 public class PlayOpts
 {
-    public double? Volume;
-    public double? Pitch;
-    public double? Pan;
+    public float? Volume;
+    public float? Pitch;
+    public float? Pan;
 }
 
 public class VoiceOpts : PlayOpts
@@ -291,19 +291,19 @@ public class AudioInfo
 /// <summary>2D 物理の座標 wire format。</summary>
 public class Vec2d
 {
-    public double X;
-    public double Y;
+    public float X;
+    public float Y;
 }
 
 /// <summary>body 生成時の初期状態。</summary>
 public class InitialState
 {
-    public double? X;
-    public double? Y;
-    public double? Angle;
-    public double? Vx;
-    public double? Vy;
-    public double? W;
+    public float? X;
+    public float? Y;
+    public float? Angle;
+    public float? Vx;
+    public float? Vy;
+    public float? W;
     public bool? Awake;
 }
 
@@ -327,24 +327,24 @@ public class ShapeView
 /// <summary>friction / restitution callback が受ける材質の view。値は callback の種類に応じて Friction か Restitution に入る。</summary>
 public class MaterialView
 {
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int MaterialId;
 }
 
 public class ManifoldPoint
 {
-    public double X;
-    public double Y;
-    public double AnchorAX;
-    public double AnchorAY;
-    public double AnchorBX;
-    public double AnchorBY;
-    public double Separation;
-    public double NormalImpulse;
-    public double TangentImpulse;
-    public double TotalNormalImpulse;
-    public double NormalVelocity;
+    public float X;
+    public float Y;
+    public float AnchorAX;
+    public float AnchorAY;
+    public float AnchorBX;
+    public float AnchorBY;
+    public float Separation;
+    public float NormalImpulse;
+    public float TangentImpulse;
+    public float TotalNormalImpulse;
+    public float NormalVelocity;
     public int Id;
     public bool Persisted;
 }
@@ -354,15 +354,15 @@ public class PreSolveContact
 {
     public ShapeView A;
     public ShapeView B;
-    public double Nx;
-    public double Ny;
-    public double RollingImpulse;
+    public float Nx;
+    public float Ny;
+    public float RollingImpulse;
     public int PointCount;
     public List<ManifoldPoint> Points = new List<ManifoldPoint>();
-    public double? X;
-    public double? Y;
-    public double? Separation;
-    public double? NormalVelocity;
+    public float? X;
+    public float? Y;
+    public float? Separation;
+    public float? NormalVelocity;
 }
 
 /// <summary>world callback。生存期間は次の world 宣言か step まで。</summary>
@@ -370,8 +370,8 @@ public class WorldCallbacks
 {
     public Func<ShapeView, ShapeView, bool>? Filter;
     public Func<PreSolveContact, bool>? PreSolve;
-    public Func<MaterialView, MaterialView, double>? Friction;
-    public Func<MaterialView, MaterialView, double>? Restitution;
+    public Func<MaterialView, MaterialView, float>? Friction;
+    public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
 /// <summary>world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。</summary>
@@ -379,12 +379,12 @@ public class WorldOpts
 {
     public int? Version;
     public Vec2d? Gravity;
-    public double? FixedDt;
+    public float? FixedDt;
     public int? Substeps;
     public int? MaxSteps;
     public bool? Sleep;
     public bool? Continuous;
-    public double? HitEventThreshold;
+    public float? HitEventThreshold;
     public WorldCallbacks? Callbacks;
 }
 
@@ -404,10 +404,10 @@ public class BodyDesc
     public bool? Enabled;
     public bool? Awake;
     public bool? Sleep;
-    public double? SleepThreshold;
-    public double? GravityScale;
-    public double? LinearDamping;
-    public double? AngularDamping;
+    public float? SleepThreshold;
+    public float? GravityScale;
+    public float? LinearDamping;
+    public float? AngularDamping;
     public InitialState? Initial;
 }
 
@@ -423,9 +423,9 @@ public class FilterDesc
 public class ShapeDesc
 {
     public int? Version;
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -439,52 +439,52 @@ public class ShapeDesc
 
 public class BoxDesc : ShapeDesc
 {
-    public double Hx;
-    public double Hy;
-    public double? Cx;
-    public double? Cy;
-    public double? Angle;
+    public float Hx;
+    public float Hy;
+    public float? Cx;
+    public float? Cy;
+    public float? Angle;
 }
 
 public class CircleDesc : ShapeDesc
 {
-    public double R;
-    public double? Cx;
-    public double? Cy;
+    public float R;
+    public float? Cx;
+    public float? Cy;
 }
 
 public class CapsuleDesc : ShapeDesc
 {
-    public double Ax;
-    public double Ay;
-    public double Bx;
-    public double By;
-    public double R;
+    public float Ax;
+    public float Ay;
+    public float Bx;
+    public float By;
+    public float R;
 }
 
 public class SegmentDesc : ShapeDesc
 {
-    public double Ax;
-    public double Ay;
-    public double Bx;
-    public double By;
+    public float Ax;
+    public float Ay;
+    public float Bx;
+    public float By;
 }
 
 /// <summary>凸多角形。Points は x, y の組 (3..8 点)。</summary>
 public class PolygonDesc : ShapeDesc
 {
-    public List<double> Points = new List<double>();
-    public double? Radius;
-    public double? Cx;
-    public double? Cy;
-    public double? Angle;
+    public List<float> Points = new List<float>();
+    public float? Radius;
+    public float? Cx;
+    public float? Cy;
+    public float? Angle;
 }
 
 /// <summary>chain の区間ごとの材質。</summary>
 public class ChainMaterial
 {
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int? MaterialId;
 }
 
@@ -492,11 +492,11 @@ public class ChainMaterial
 public class ChainDesc
 {
     public int Version;
-    public List<double> Points = new List<double>();
+    public List<float> Points = new List<float>();
     public List<ChainMaterial>? Materials;
     public bool? Loop;
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -508,45 +508,45 @@ public class ChainDesc
 public class JointSpringDesc
 {
     public bool? Enabled;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? LinearHertz;
-    public double? LinearDampingRatio;
-    public double? AngularHertz;
-    public double? AngularDampingRatio;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? LinearHertz;
+    public float? LinearDampingRatio;
+    public float? AngularHertz;
+    public float? AngularDampingRatio;
 }
 
 /// <summary>joint の limit。Min / Max は distance。</summary>
 public class JointLimitDesc
 {
     public bool? Enabled;
-    public double? Lower;
-    public double? Upper;
-    public double? MinLength;
-    public double? MaxLength;
+    public float? Lower;
+    public float? Upper;
+    public float? MinLength;
+    public float? MaxLength;
 }
 
 /// <summary>joint の motor。LinearOffset / AngularOffset / CorrectionFactor は motor joint。</summary>
 public class JointMotorDesc
 {
     public bool? Enabled;
-    public double? Speed;
-    public double? MaxForce;
-    public double? MaxTorque;
+    public float? Speed;
+    public float? MaxForce;
+    public float? MaxTorque;
     public Vec2d? LinearOffset;
-    public double? AngularOffset;
-    public double? CorrectionFactor;
+    public float? AngularOffset;
+    public float? CorrectionFactor;
 }
 
 /// <summary>JointSetTarget。mouse は Target か X / Y、prismatic は Translation、revolute は Angle、motor は LinearOffset / AngularOffset。</summary>
 public class JointTargetDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Translation;
-    public double? Angle;
+    public float? X;
+    public float? Y;
+    public float? Translation;
+    public float? Angle;
     public Vec2d? LinearOffset;
-    public double? AngularOffset;
+    public float? AngularOffset;
 }
 
 /// <summary>joint の宣言。有効フィールドは type ごとに異なる。</summary>
@@ -561,23 +561,23 @@ public class JointDesc
     public Vec2d? LocalAnchorA;
     public Vec2d? LocalAnchorB;
     public Vec2d? LocalAxisA;
-    public double? ReferenceAngle;
+    public float? ReferenceAngle;
     public bool? CollideConnected;
-    public double? Length;
-    public double? MinLength;
-    public double? MaxLength;
-    public double? Lower;
-    public double? Upper;
-    public double? TargetAngle;
-    public double? TargetTranslation;
+    public float? Length;
+    public float? MinLength;
+    public float? MaxLength;
+    public float? Lower;
+    public float? Upper;
+    public float? TargetAngle;
+    public float? TargetTranslation;
     public Vec2d? LinearOffset;
-    public double? AngularOffset;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? MaxForce;
-    public double? MaxTorque;
-    public double? MotorSpeed;
-    public double? CorrectionFactor;
+    public float? AngularOffset;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? MaxForce;
+    public float? MaxTorque;
+    public float? MotorSpeed;
+    public float? CorrectionFactor;
     public JointSpringDesc? Spring;
     public JointLimitDesc? Limit;
     public JointMotorDesc? Motor;
@@ -588,36 +588,36 @@ public class CommandOpts
 {
     public bool? Wake;
     public Vec2d? Point;
-    public double? TimeStep;
+    public float? TimeStep;
 }
 
 public class VelocityDesc
 {
-    public double? Vx;
-    public double? Vy;
-    public double? W;
+    public float? Vx;
+    public float? Vy;
+    public float? W;
 }
 
 public class PoseDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Angle;
+    public float? X;
+    public float? Y;
+    public float? Angle;
 }
 
 public class MassDataDesc
 {
-    public double? Mass;
-    public double? Inertia;
+    public float? Mass;
+    public float? Inertia;
     public Vec2d? LocalCenter;
 }
 
 /// <summary>ShapeSetMaterial。Material は名前、MaterialId は整数の id。</summary>
 public class MaterialDesc
 {
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? MaterialName;
     public int? MaterialId;
 }
@@ -633,20 +633,20 @@ public class ShapeEventsDesc
 
 public class RaycastDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Dx;
-    public double? Dy;
-    public double? MaxFraction;
+    public float? X;
+    public float? Y;
+    public float? Dx;
+    public float? Dy;
+    public float? MaxFraction;
     public FilterDesc? Filter;
 }
 
 public class AabbDesc
 {
-    public double MinX;
-    public double MinY;
-    public double MaxX;
-    public double MaxY;
+    public float MinX;
+    public float MinY;
+    public float MaxX;
+    public float MaxY;
     public FilterDesc? Filter;
 }
 
@@ -654,45 +654,45 @@ public class AabbDesc
 public class ShapeCastDesc
 {
     public Lub.Phys2d.ProxyKind? Kind;
-    public double? X;
-    public double? Y;
-    public double? Angle;
-    public double? Radius;
-    public double? Cx;
-    public double? Cy;
-    public double? Ax;
-    public double? Ay;
-    public double? Bx;
-    public double? By;
-    public double? Hx;
-    public double? Hy;
-    public List<double>? Points;
-    public double? Dx;
-    public double? Dy;
-    public double? MaxFraction;
+    public float? X;
+    public float? Y;
+    public float? Angle;
+    public float? Radius;
+    public float? Cx;
+    public float? Cy;
+    public float? Ax;
+    public float? Ay;
+    public float? Bx;
+    public float? By;
+    public float? Hx;
+    public float? Hy;
+    public List<float>? Points;
+    public float? Dx;
+    public float? Dy;
+    public float? MaxFraction;
     public FilterDesc? Filter;
 }
 
 public class MoverDesc
 {
-    public double Ax;
-    public double Ay;
-    public double Bx;
-    public double By;
-    public double R;
-    public double? Dx;
-    public double? Dy;
-    public double? MaxFraction;
+    public float Ax;
+    public float Ay;
+    public float Bx;
+    public float By;
+    public float R;
+    public float? Dx;
+    public float? Dy;
+    public float? MaxFraction;
     public FilterDesc? Filter;
 }
 
 public class ExplosionDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Radius;
-    public double? Falloff;
-    public double? ImpulsePerLength;
+    public float? X;
+    public float? Y;
+    public float? Radius;
+    public float? Falloff;
+    public float? ImpulsePerLength;
     public FilterDesc? Filter;
 }
 
@@ -717,50 +717,50 @@ public class DebugOpts
 /// <summary>Debug の戻り値。平らな float 列 (色は r g b a)。segments は x1 y1 x2 y2 + 色、circles は cx cy r + 色、capsules は x1 y1 x2 y2 r + 色、 polygons は n solid + 色 + 点列、points は x y size + 色。</summary>
 public class DebugData
 {
-    public List<double> Segments = new List<double>();
-    public List<double> Circles = new List<double>();
-    public List<double> Capsules = new List<double>();
-    public List<double> Polygons = new List<double>();
-    public List<double> Points = new List<double>();
+    public List<float> Segments = new List<float>();
+    public List<float> Circles = new List<float>();
+    public List<float> Capsules = new List<float>();
+    public List<float> Polygons = new List<float>();
+    public List<float> Points = new List<float>();
 }
 
 /// <summary>phys2d_pose の戻り値。</summary>
 public class Pose
 {
-    public double X;
-    public double Y;
-    public double Angle;
-    public double Vx;
-    public double Vy;
-    public double W;
+    public float X;
+    public float Y;
+    public float Angle;
+    public float Vx;
+    public float Vy;
+    public float W;
     public bool Awake;
     public bool Enabled;
     public bool Sleep;
-    public double SleepThreshold;
+    public float SleepThreshold;
 }
 
 /// <summary>phys2d_velocity の戻り値。</summary>
 public class Velocity
 {
-    public double X;
-    public double Y;
-    public double W;
+    public float X;
+    public float Y;
+    public float W;
 }
 
 public class MassData
 {
-    public double Mass;
-    public double Inertia;
+    public float Mass;
+    public float Inertia;
     public Vec2d Center;
     public Vec2d LocalCenter;
 }
 
 public class Aabb
 {
-    public double MinX;
-    public double MinY;
-    public double MaxX;
-    public double MaxY;
+    public float MinX;
+    public float MinY;
+    public float MaxX;
+    public float MaxY;
 }
 
 public class FilterInfo
@@ -772,9 +772,9 @@ public class FilterInfo
 
 public class ShapeInfo : ShapeView
 {
-    public double Density;
-    public double Friction;
-    public double Restitution;
+    public float Density;
+    public float Friction;
+    public float Restitution;
     public bool Sensor;
     public bool SensorEvents;
     public bool Contact;
@@ -800,19 +800,19 @@ public class WorldInfo
     public int Generation;
     public bool Begun;
     public bool Prune;
-    public double FixedDt;
+    public float FixedDt;
     public int Substeps;
     public int MaxSteps;
-    public double Accumulator;
+    public float Accumulator;
     public int PendingCommands;
     public WorldCallbackInfo Callbacks;
     public Vec2d? Gravity;
     public bool? Sleep;
     public bool? Continuous;
     public bool? WarmStarting;
-    public double? RestitutionThreshold;
-    public double? HitEventThreshold;
-    public double? MaximumLinearSpeed;
+    public float? RestitutionThreshold;
+    public float? HitEventThreshold;
+    public float? MaximumLinearSpeed;
     public int? AwakeBodyCount;
 }
 
@@ -820,7 +820,7 @@ public class StepInfo
 {
     public int Steps;
     public int Commands;
-    public double Alpha;
+    public float Alpha;
     public bool Dropped;
     public int ContactBegins;
     public int ContactEnds;
@@ -844,13 +844,13 @@ public class JointInfo : JointView
 {
     public bool CollideConnected;
     public Vec2d Force;
-    public double Torque;
-    public double LinearSeparation;
-    public double AngularSeparation;
+    public float Torque;
+    public float LinearSeparation;
+    public float AngularSeparation;
     public Vec2d? LocalAnchorA;
     public Vec2d? LocalAnchorB;
     public Vec2d? LocalAxisA;
-    public double? ReferenceAngle;
+    public float? ReferenceAngle;
 }
 
 /// <summary>body に今触れている contact。</summary>
@@ -858,12 +858,12 @@ public class ContactData
 {
     public ShapeView A;
     public ShapeView B;
-    public double Nx;
-    public double Ny;
+    public float Nx;
+    public float Ny;
     public int PointCount;
-    public double? X;
-    public double? Y;
-    public double? Separation;
+    public float? X;
+    public float? Y;
+    public float? Separation;
 }
 
 /// <summary>contact イベントの端点 (2D/3D 共通)。</summary>
@@ -871,12 +871,12 @@ public class ContactEvent
 {
     public ShapeView A;
     public ShapeView B;
-    public double Nx;
-    public double Ny;
+    public float Nx;
+    public float Ny;
     public int PointCount;
-    public double X;
-    public double Y;
-    public double? ApproachSpeed;
+    public float X;
+    public float Y;
+    public float? ApproachSpeed;
 }
 
 public class SensorEvent
@@ -889,19 +889,19 @@ public class BodyEvent
 {
     public string Body;
     public bool Valid;
-    public double X;
-    public double Y;
-    public double Angle;
+    public float X;
+    public float Y;
+    public float Angle;
     public bool FellAsleep;
 }
 
 public class RayHit : ShapeView
 {
-    public double X;
-    public double Y;
-    public double Nx;
-    public double Ny;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Nx;
+    public float Ny;
+    public float Fraction;
     public int? NodeVisits;
     public int? LeafVisits;
 }
@@ -909,55 +909,55 @@ public class RayHit : ShapeView
 /// <summary>ShapeRaycast の戻り値。</summary>
 public class ShapeRayHit
 {
-    public double X;
-    public double Y;
-    public double Nx;
-    public double Ny;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Nx;
+    public float Ny;
+    public float Fraction;
     public int Iterations;
 }
 
 public class MoverCast
 {
-    public double Fraction;
-    public double Dx;
-    public double Dy;
+    public float Fraction;
+    public float Dx;
+    public float Dy;
 }
 
 public class MoverPlane : ShapeView
 {
     public bool Hit;
-    public double X;
-    public double Y;
-    public double Nx;
-    public double Ny;
-    public double Offset;
+    public float X;
+    public float Y;
+    public float Nx;
+    public float Ny;
+    public float Offset;
 }
 
 public class Profile
 {
-    public double Step;
-    public double Pairs;
-    public double Collide;
-    public double Solve;
-    public double MergeIslands;
-    public double PrepareStages;
-    public double SolveConstraints;
-    public double PrepareConstraints;
-    public double IntegrateVelocities;
-    public double WarmStart;
-    public double SolveImpulses;
-    public double IntegratePositions;
-    public double RelaxImpulses;
-    public double ApplyRestitution;
-    public double StoreImpulses;
-    public double SplitIslands;
-    public double Transforms;
-    public double HitEvents;
-    public double Refit;
-    public double Bullets;
-    public double SleepIslands;
-    public double Sensors;
+    public float Step;
+    public float Pairs;
+    public float Collide;
+    public float Solve;
+    public float MergeIslands;
+    public float PrepareStages;
+    public float SolveConstraints;
+    public float PrepareConstraints;
+    public float IntegrateVelocities;
+    public float WarmStart;
+    public float SolveImpulses;
+    public float IntegratePositions;
+    public float RelaxImpulses;
+    public float ApplyRestitution;
+    public float StoreImpulses;
+    public float SplitIslands;
+    public float Transforms;
+    public float HitEvents;
+    public float Refit;
+    public float Bullets;
+    public float SleepIslands;
+    public float Sensors;
 }
 
 public class Counters
@@ -978,34 +978,34 @@ public class Counters
 /// <summary>3D 物理の座標 wire format。</summary>
 public class Vec3d
 {
-    public double X;
-    public double Y;
-    public double Z;
+    public float X;
+    public float Y;
+    public float Z;
 }
 
 /// <summary>回転の wire format。</summary>
 public class Quat3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double W;
+    public float X;
+    public float Y;
+    public float Z;
+    public float W;
 }
 
 /// <summary>body 生成時の初期状態。`BodyDesc3d.version` を上げて作り直したときにもこの値が適用される。回転は `quat` か `euler` (ラジアン) のどちらか。 `wx/wy/wz` は角速度 (rad/s)。</summary>
 public class InitialState3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
-    public double? Vx;
-    public double? Vy;
-    public double? Vz;
-    public double? Wx;
-    public double? Wy;
-    public double? Wz;
+    public float? Vx;
+    public float? Vy;
+    public float? Vz;
+    public float? Wx;
+    public float? Wy;
+    public float? Wz;
     public bool? Awake;
 }
 
@@ -1039,20 +1039,20 @@ public class PreSolveContact3d
 {
     public ShapeView3d A;
     public ShapeView3d B;
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
 }
 
 public class WorldCallbacks3d
 {
     public Func<ShapeView3d, ShapeView3d, bool>? Filter;
     public Func<PreSolveContact3d, bool>? PreSolve;
-    public Func<MaterialView, MaterialView, double>? Friction;
-    public Func<MaterialView, MaterialView, double>? Restitution;
+    public Func<MaterialView, MaterialView, float>? Friction;
+    public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
 /// <summary>world のパラメータ。`fixedDt` (既定 1/60) と `substeps` (既定 4) がシミュレーション刻み。`step(world, dt)` は内部の accumulator が `fixedDt` を超えるたびに substep し、1 回の step での消化は `maxSteps` 回まで。</summary>
@@ -1060,12 +1060,12 @@ public class WorldOpts3d
 {
     public int? Version;
     public Vec3d? Gravity;
-    public double? FixedDt;
+    public float? FixedDt;
     public int? Substeps;
     public int? MaxSteps;
     public bool? Sleep;
     public bool? Continuous;
-    public double? HitEventThreshold;
+    public float? HitEventThreshold;
     public WorldCallbacks3d? Callbacks;
 }
 
@@ -1085,10 +1085,10 @@ public class BodyDesc3d
     public bool? Enabled;
     public bool? Awake;
     public bool? Sleep;
-    public double? SleepThreshold;
-    public double? GravityScale;
-    public double? LinearDamping;
-    public double? AngularDamping;
+    public float? SleepThreshold;
+    public float? GravityScale;
+    public float? LinearDamping;
+    public float? AngularDamping;
     public InitialState3d? Initial;
 }
 
@@ -1103,9 +1103,9 @@ public class FilterDesc3d
 public class ShapeDesc3d
 {
     public int? Version;
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -1120,15 +1120,15 @@ public class ShapeDesc3d
 /// <summary>shape 共通フィールド (各 shape Desc はこれに寸法を足したもの)。 - `density` (既定 1) / `friction` / `restitution`: 材質。 - `sensor`: 接触応答なしの検知専用。イベントは `sensorEvents` で有効化。 - `contact`: begin/end の contact イベントを出す。 - `hit`: 衝撃イベント (閾値は `WorldOpts3d.hitEventThreshold`)。 - `preSolve`: `WorldCallbacks3d.preSolve` の対象にする。 - `tag`: イベントに載る識別子。</summary>
 public class SphereDesc3d : ShapeDesc3d
 {
-    public double R;
+    public float R;
     public Vec3d? Offset;
 }
 
 public class BoxDesc3d : ShapeDesc3d
 {
-    public double Hx;
-    public double Hy;
-    public double Hz;
+    public float Hx;
+    public float Hy;
+    public float Hz;
     public Vec3d? Offset;
     public Quat3d? Quat;
 }
@@ -1137,48 +1137,48 @@ public class CapsuleDesc3d : ShapeDesc3d
 {
     public Vec3d A;
     public Vec3d B;
-    public double R;
+    public float R;
 }
 
 public class CylinderDesc3d : ShapeDesc3d
 {
-    public double Height;
-    public double Radius;
+    public float Height;
+    public float Radius;
     public int? Sides;
-    public double? YOffset;
+    public float? YOffset;
 }
 
 public class ConeDesc3d : ShapeDesc3d
 {
-    public double Height;
-    public double Radius1;
-    public double? Radius2;
+    public float Height;
+    public float Radius1;
+    public float? Radius2;
     public int? Slices;
 }
 
 /// <summary>凸包。Points は x, y, z の組 (4 点以上)。Version 必須。</summary>
 public class HullDesc3d : ShapeDesc3d
 {
-    public List<double> Points = new List<double>();
+    public List<float> Points = new List<float>();
     public int? MaxVertices;
 }
 
 /// <summary>mesh / compound の区間ごとの材質。</summary>
 public class SurfaceMaterial3d
 {
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int? MaterialId;
 }
 
 /// <summary>三角形メッシュ。Positions は x, y, z の組、Indices は 0 始まりの 3 の倍数。Version 必須。</summary>
 public class MeshDesc3d : ShapeDesc3d
 {
-    public List<double> Positions = new List<double>();
+    public List<float> Positions = new List<float>();
     public List<int> Indices = new List<int>();
     public Vec3d? Scale;
     public bool? WeldVertices;
-    public double? WeldTolerance;
+    public float? WeldTolerance;
     public bool? UseMedianSplit;
     public bool? IdentifyEdges;
     public List<SurfaceMaterial3d>? Materials;
@@ -1188,42 +1188,42 @@ public class MeshDesc3d : ShapeDesc3d
 /// <summary>height field。Heights は XCount * ZCount 個。Version 必須。</summary>
 public class HeightFieldDesc3d : ShapeDesc3d
 {
-    public List<double> Heights = new List<double>();
+    public List<float> Heights = new List<float>();
     public int XCount;
     public int ZCount;
-    public double? CellWidth;
+    public float? CellWidth;
     public Vec3d? Scale;
-    public double? MinHeight;
-    public double? MaxHeight;
+    public float? MinHeight;
+    public float? MaxHeight;
     public bool? ClockwiseWinding;
 }
 
 public class CompoundSphere3d
 {
-    public double R;
+    public float R;
     public Vec3d? Center;
 }
 
 public class CompoundBox3d
 {
-    public double Hx;
-    public double Hy;
-    public double Hz;
+    public float Hx;
+    public float Hy;
+    public float Hz;
 }
 
 public class CompoundCapsule3d
 {
     public Vec3d A;
     public Vec3d B;
-    public double R;
+    public float R;
 }
 
 /// <summary>compound の子。Sphere / Box / Capsule のどれか 1 つ。</summary>
 public class CompoundChild3d
 {
     public FrameDesc3d? Pose;
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int? MaterialId;
     public CompoundSphere3d? Sphere;
     public CompoundBox3d? Box;
@@ -1244,39 +1244,39 @@ public class CommandOpts3d
 
 public class VelocityDesc3d
 {
-    public double? Vx;
-    public double? Vy;
-    public double? Vz;
-    public double? Wx;
-    public double? Wy;
-    public double? Wz;
+    public float? Vx;
+    public float? Vy;
+    public float? Vz;
+    public float? Wx;
+    public float? Wy;
+    public float? Wz;
 }
 
 public class PoseDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
 }
 
 public class TargetDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
-    public double? TimeStep;
+    public float? TimeStep;
     public bool? Wake;
 }
 
 public class FrameDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
 }
@@ -1284,46 +1284,46 @@ public class FrameDesc3d
 public class JointSpringDesc3d
 {
     public bool? Enabled;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? LinearHertz;
-    public double? LinearDampingRatio;
-    public double? AngularHertz;
-    public double? AngularDampingRatio;
-    public double? MaxTorque;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? LinearHertz;
+    public float? LinearDampingRatio;
+    public float? AngularHertz;
+    public float? AngularDampingRatio;
+    public float? MaxTorque;
 }
 
 public class JointLimitDesc3d
 {
     public bool? Enabled;
-    public double? Lower;
-    public double? Upper;
-    public double? MinLength;
-    public double? MaxLength;
-    public double? ConeAngle;
-    public double? LowerTwistAngle;
-    public double? UpperTwistAngle;
+    public float? Lower;
+    public float? Upper;
+    public float? MinLength;
+    public float? MaxLength;
+    public float? ConeAngle;
+    public float? LowerTwistAngle;
+    public float? UpperTwistAngle;
 }
 
 public class JointMotorDesc3d
 {
     public bool? Enabled;
-    public double? Speed;
-    public double? MaxForce;
-    public double? MaxTorque;
+    public float? Speed;
+    public float? MaxForce;
+    public float? MaxTorque;
     public Vec3d? Velocity;
     public Vec3d? LinearVelocity;
     public Vec3d? AngularVelocity;
-    public double? MaxVelocityForce;
-    public double? MaxVelocityTorque;
+    public float? MaxVelocityForce;
+    public float? MaxVelocityTorque;
 }
 
 /// <summary>JointSetTarget (3D)。prismatic は Translation、revolute と wheel は Angle、spherical は Rotation / Quat / Euler、motor は速度。</summary>
 public class JointTargetDesc3d
 {
-    public double? Translation;
-    public double? Angle;
-    public double? SteeringAngle;
+    public float? Translation;
+    public float? Angle;
+    public float? SteeringAngle;
     public Quat3d? Quat;
     public Vec3d? Euler;
     public Vec3d? LinearVelocity;
@@ -1343,30 +1343,30 @@ public class JointDesc3d
     public FrameDesc3d? FrameA;
     public FrameDesc3d? FrameB;
     public bool? CollideConnected;
-    public double? ForceThreshold;
-    public double? TorqueThreshold;
-    public double? ConstraintHertz;
-    public double? ConstraintDampingRatio;
-    public double? Length;
-    public double? MinLength;
-    public double? MaxLength;
-    public double? Lower;
-    public double? Upper;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? LinearHertz;
-    public double? AngularHertz;
-    public double? LinearDampingRatio;
-    public double? AngularDampingRatio;
-    public double? MaxForce;
-    public double? MaxTorque;
-    public double? MaxVelocityForce;
-    public double? MaxVelocityTorque;
-    public double? MaxSpringForce;
-    public double? MaxSpringTorque;
-    public double? MotorSpeed;
-    public double? TargetAngle;
-    public double? TargetTranslation;
+    public float? ForceThreshold;
+    public float? TorqueThreshold;
+    public float? ConstraintHertz;
+    public float? ConstraintDampingRatio;
+    public float? Length;
+    public float? MinLength;
+    public float? MaxLength;
+    public float? Lower;
+    public float? Upper;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? LinearHertz;
+    public float? AngularHertz;
+    public float? LinearDampingRatio;
+    public float? AngularDampingRatio;
+    public float? MaxForce;
+    public float? MaxTorque;
+    public float? MaxVelocityForce;
+    public float? MaxVelocityTorque;
+    public float? MaxSpringForce;
+    public float? MaxSpringTorque;
+    public float? MotorSpeed;
+    public float? TargetAngle;
+    public float? TargetTranslation;
     public Quat3d? TargetRotation;
     public Vec3d? LinearVelocity;
     public Vec3d? AngularVelocity;
@@ -1374,11 +1374,11 @@ public class JointDesc3d
     public bool? EnableSpring;
     public bool? EnableLimit;
     public bool? EnableMotor;
-    public double? ConeAngle;
+    public float? ConeAngle;
     public bool? EnableConeLimit;
     public bool? EnableTwistLimit;
-    public double? LowerTwistAngle;
-    public double? UpperTwistAngle;
+    public float? LowerTwistAngle;
+    public float? UpperTwistAngle;
     public JointSpringDesc3d? Spring;
     public JointLimitDesc3d? Limit;
     public JointMotorDesc3d? Motor;
@@ -1386,9 +1386,9 @@ public class JointDesc3d
 
 public class MaterialDesc3d
 {
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? MaterialName;
     public int? MaterialId;
 }
@@ -1405,49 +1405,49 @@ public class MoverDesc3d
 {
     public Vec3d A;
     public Vec3d B;
-    public double R;
-    public double? Dx;
-    public double? Dy;
-    public double? Dz;
-    public double? MaxFraction;
+    public float R;
+    public float? Dx;
+    public float? Dy;
+    public float? Dz;
+    public float? MaxFraction;
     public FilterDesc3d? Filter;
 }
 
 public class RaycastDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
-    public double? Dx;
-    public double? Dy;
-    public double? Dz;
-    public double? MaxFraction;
+    public float? X;
+    public float? Y;
+    public float? Z;
+    public float? Dx;
+    public float? Dy;
+    public float? Dz;
+    public float? MaxFraction;
     public FilterDesc3d? Filter;
 }
 
 public class AabbDesc3d
 {
-    public double MinX;
-    public double MinY;
-    public double MinZ;
-    public double MaxX;
-    public double MaxY;
-    public double MaxZ;
+    public float MinX;
+    public float MinY;
+    public float MinZ;
+    public float MaxX;
+    public float MaxY;
+    public float MaxZ;
     public FilterDesc3d? Filter;
 }
 
 public class SphereProxy3d
 {
-    public double R;
+    public float R;
     public Vec3d? Center;
 }
 
 public class BoxProxy3d
 {
-    public double Hx;
-    public double Hy;
-    public double Hz;
-    public double? Radius;
+    public float Hx;
+    public float Hy;
+    public float Hz;
+    public float? Radius;
     public Vec3d? Center;
     public Quat3d? Quat;
 }
@@ -1456,7 +1456,7 @@ public class CapsuleProxy3d
 {
     public Vec3d A;
     public Vec3d B;
-    public double R;
+    public float R;
 }
 
 /// <summary>OverlapShape / ShapeCast の形。Sphere / Box / Capsule のどれか。</summary>
@@ -1465,59 +1465,59 @@ public class ShapeProxyDesc3d
     public SphereProxy3d? Sphere;
     public BoxProxy3d? Box;
     public CapsuleProxy3d? Capsule;
-    public double? Dx;
-    public double? Dy;
-    public double? Dz;
-    public double? MaxFraction;
+    public float? Dx;
+    public float? Dy;
+    public float? Dz;
+    public float? MaxFraction;
     public FilterDesc3d? Filter;
 }
 
 /// <summary>phys3d_pose の戻り値。</summary>
 public class Pose3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Qx;
-    public double Qy;
-    public double Qz;
-    public double Qw;
-    public double Vx;
-    public double Vy;
-    public double Vz;
-    public double Wx;
-    public double Wy;
-    public double Wz;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Qx;
+    public float Qy;
+    public float Qz;
+    public float Qw;
+    public float Vx;
+    public float Vy;
+    public float Vz;
+    public float Wx;
+    public float Wy;
+    public float Wz;
     public bool Awake;
     public bool Enabled;
     public bool Sleep;
-    public double SleepThreshold;
+    public float SleepThreshold;
 }
 
 /// <summary>phys3d_velocity の戻り値。</summary>
 public class Velocity3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Wx;
-    public double Wy;
-    public double Wz;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Wx;
+    public float Wy;
+    public float Wz;
 }
 
 public class Inertia3d
 {
-    public double Xx;
-    public double Yy;
-    public double Zz;
-    public double Xy;
-    public double Xz;
-    public double Yz;
+    public float Xx;
+    public float Yy;
+    public float Zz;
+    public float Xy;
+    public float Xz;
+    public float Yz;
 }
 
 public class MassData3d
 {
-    public double Mass;
+    public float Mass;
     public Vec3d Center;
     public Vec3d LocalCenter;
     public Inertia3d Inertia;
@@ -1525,19 +1525,19 @@ public class MassData3d
 
 public class Aabb3d
 {
-    public double MinX;
-    public double MinY;
-    public double MinZ;
-    public double MaxX;
-    public double MaxY;
-    public double MaxZ;
+    public float MinX;
+    public float MinY;
+    public float MinZ;
+    public float MaxX;
+    public float MaxY;
+    public float MaxZ;
 }
 
 public class ShapeInfo3d : ShapeView3d
 {
-    public double Density;
-    public double Friction;
-    public double Restitution;
+    public float Density;
+    public float Friction;
+    public float Restitution;
     public bool Sensor;
     public bool SensorEvents;
     public bool Contact;
@@ -1555,18 +1555,18 @@ public class WorldInfo3d
     public int Generation;
     public bool Begun;
     public bool Prune;
-    public double FixedDt;
+    public float FixedDt;
     public int Substeps;
     public int MaxSteps;
-    public double Accumulator;
+    public float Accumulator;
     public int PendingCommands;
     public Vec3d? Gravity;
     public bool? Sleep;
     public bool? Continuous;
     public bool? WarmStarting;
-    public double? RestitutionThreshold;
-    public double? HitEventThreshold;
-    public double? MaximumLinearSpeed;
+    public float? RestitutionThreshold;
+    public float? HitEventThreshold;
+    public float? MaximumLinearSpeed;
     public int? AwakeBodyCount;
 }
 
@@ -1577,13 +1577,13 @@ public class StepInfo3d : StepInfo
 
 public class Frame3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Qx;
-    public double Qy;
-    public double Qz;
-    public double Qw;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Qx;
+    public float Qy;
+    public float Qz;
+    public float Qw;
 }
 
 /// <summary>3D joint の識別 (BodyJoints / JointEvents)。</summary>
@@ -1601,8 +1601,8 @@ public class JointInfo3d : JointView3d
     public bool CollideConnected;
     public Vec3d Force;
     public Vec3d Torque;
-    public double LinearSeparation;
-    public double AngularSeparation;
+    public float LinearSeparation;
+    public float AngularSeparation;
     public Frame3d LocalFrameA;
     public Frame3d LocalFrameB;
 }
@@ -1611,15 +1611,15 @@ public class ContactData3d
 {
     public ShapeView3d A;
     public ShapeView3d B;
-    public double Nx;
-    public double Ny;
-    public double Nz;
+    public float Nx;
+    public float Ny;
+    public float Nz;
     public int ManifoldCount;
     public int PointCount;
-    public double? X;
-    public double? Y;
-    public double? Z;
-    public double? Separation;
+    public float? X;
+    public float? Y;
+    public float? Z;
+    public float? Separation;
 }
 
 /// <summary>3D の contact event (Contacts)。</summary>
@@ -1627,14 +1627,14 @@ public class ContactEvent3d
 {
     public ShapeView3d A;
     public ShapeView3d B;
-    public double Nx;
-    public double Ny;
-    public double Nz;
+    public float Nx;
+    public float Ny;
+    public float Nz;
     public int PointCount;
-    public double X;
-    public double Y;
-    public double Z;
-    public double? ApproachSpeed;
+    public float X;
+    public float Y;
+    public float Z;
+    public float? ApproachSpeed;
 }
 
 /// <summary>3D の sensor event (Sensors)。</summary>
@@ -1648,13 +1648,13 @@ public class BodyEvent3d
 {
     public string Body;
     public bool Valid;
-    public double X;
-    public double Y;
-    public double Z;
-    public double Qx;
-    public double Qy;
-    public double Qz;
-    public double Qw;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Qx;
+    public float Qy;
+    public float Qz;
+    public float Qw;
     public bool FellAsleep;
 }
 
@@ -1664,13 +1664,13 @@ public class JointEvent3d : JointView3d
 
 public class RayHit3d : ShapeView3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
+    public float Fraction;
     public int HitMaterialId;
     public int TriangleIndex;
     public int ChildIndex;
@@ -1680,13 +1680,13 @@ public class RayHit3d : ShapeView3d
 
 public class ShapeRayHit3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
+    public float Fraction;
     public int Iterations;
     public int TriangleIndex;
     public int ChildIndex;
@@ -1694,49 +1694,49 @@ public class ShapeRayHit3d
 
 public class MoverCast3d
 {
-    public double Fraction;
-    public double Dx;
-    public double Dy;
-    public double Dz;
+    public float Fraction;
+    public float Dx;
+    public float Dy;
+    public float Dz;
 }
 
 public class MoverPlane3d : ShapeView3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
-    public double Offset;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
+    public float Offset;
     public int PlaneCount;
 }
 
 public class Profile3d
 {
-    public double Step;
-    public double Pairs;
-    public double Collide;
-    public double Solve;
-    public double SolverSetup;
-    public double Constraints;
-    public double PrepareConstraints;
-    public double IntegrateVelocities;
-    public double WarmStart;
-    public double SolveImpulses;
-    public double IntegratePositions;
-    public double RelaxImpulses;
-    public double ApplyRestitution;
-    public double StoreImpulses;
-    public double SplitIslands;
-    public double Transforms;
-    public double SensorHits;
-    public double JointEvents;
-    public double HitEvents;
-    public double Refit;
-    public double Bullets;
-    public double SleepIslands;
-    public double Sensors;
+    public float Step;
+    public float Pairs;
+    public float Collide;
+    public float Solve;
+    public float SolverSetup;
+    public float Constraints;
+    public float PrepareConstraints;
+    public float IntegrateVelocities;
+    public float WarmStart;
+    public float SolveImpulses;
+    public float IntegratePositions;
+    public float RelaxImpulses;
+    public float ApplyRestitution;
+    public float StoreImpulses;
+    public float SplitIslands;
+    public float Transforms;
+    public float SensorHits;
+    public float JointEvents;
+    public float HitEvents;
+    public float Refit;
+    public float Bullets;
+    public float SleepIslands;
+    public float Sensors;
 }
 
 public class Counters3d
@@ -1769,10 +1769,10 @@ public class EventData
     public Lub.EventKind Kind;
     public int Key;
     public int Button;
-    public double X;
-    public double Y;
-    public double Dx;
-    public double Dy;
+    public float X;
+    public float Y;
+    public float Dx;
+    public float Dy;
 }
 
 public static unsafe partial class Lub
@@ -2009,7 +2009,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
-        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<double> data, int? version = null)
+        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2415,7 +2415,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>カーソルの絶対座標 (window px)。</summary>
-        public static void MousePos(out double x, out double y)
+        public static void MousePos(out float x, out float y)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2423,8 +2423,8 @@ public static unsafe partial class Lub
                 float o_x = default;
                 float o_y = default;
                 LubNative.lub_input_mouse_pos(LubRuntime.Ctx, &o_x, &o_y);
-                x = (double)o_x;
-                y = (double)o_y;
+                x = o_x;
+                y = o_y;
             }
             finally
             {
@@ -2433,7 +2433,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
-        public static void MouseDelta(out double dx, out double dy)
+        public static void MouseDelta(out float dx, out float dy)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2441,8 +2441,8 @@ public static unsafe partial class Lub
                 float o_dx = default;
                 float o_dy = default;
                 LubNative.lub_input_mouse_delta(LubRuntime.Ctx, &o_dx, &o_dy);
-                dx = (double)o_dx;
-                dy = (double)o_dy;
+                dx = o_dx;
+                dy = o_dy;
             }
             finally
             {
@@ -2526,7 +2526,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
-        public static void LoadFloats(string path, out List<double>? data, out int version, out Lub.Io.Status status, out string? error)
+        public static void LoadFloats(string path, out List<float>? data, out int version, out Lub.Io.Status status, out string? error)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2590,7 +2590,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>mesh を position + normal で interleave した頂点列にする。</summary>
-        public static List<double> InterleavePn(MeshData mesh)
+        public static List<float> InterleavePn(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2618,7 +2618,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。</summary>
-        public static List<double> InterleavePncm(MeshData mesh)
+        public static List<float> InterleavePncm(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2646,7 +2646,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。</summary>
-        public static List<double> InterleavePncmw(MeshData mesh)
+        public static List<float> InterleavePncmw(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2674,7 +2674,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>position + normal + uv。</summary>
-        public static List<double> InterleavePnu(MeshData mesh)
+        public static List<float> InterleavePnu(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2702,7 +2702,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>position + normal + uv + tangent。</summary>
-        public static List<double> InterleavePnut(MeshData mesh)
+        public static List<float> InterleavePnut(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2754,17 +2754,17 @@ public static unsafe partial class Lub
             Intersect = 15,
         }
 
-        public static MeshData SurfaceNets(List<double> grid, int nx, int ny, int nz, double? cell = null, double? ox = null, double? oy = null, double? oz = null)
+        public static MeshData SurfaceNets(List<float> grid, int nx, int ny, int nz, float? cell = null, float? ox = null, float? oy = null, float? oz = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 int _grid_n = 0;
                 var _grid = a.Floats(grid, out _grid_n);
-                float _cell = (float)(cell ?? default);
-                float _ox = (float)(ox ?? default);
-                float _oy = (float)(oy ?? default);
-                float _oz = (float)(oz ?? default);
+                float _cell = (cell ?? default);
+                float _ox = (ox ?? default);
+                float _oy = (oy ?? default);
+                float _oz = (oz ?? default);
                 LubNative.LubMeshData o_out = default;
                 var st = LubNative.lub_mesh_surface_nets(LubRuntime.Ctx, _grid, _grid_n, nx, ny, nz, cell.HasValue ? &_cell : null, ox.HasValue ? &_ox : null, oy.HasValue ? &_oy : null, oz.HasValue ? &_oz : null, &o_out);
                 if (st == LubNative.LUB_NOT_FOUND)
@@ -2781,14 +2781,14 @@ public static unsafe partial class Lub
         }
 
         /// <summary>平らな node 配列 (子は index で参照) をメッシュ化する。木の組み立ては lubx の Sdf が行う。</summary>
-        public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n, double? skinK = null)
+        public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n, float? skinK = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 int _nodes_n = 0;
                 var _nodes = a.Records<SdfNodeDesc, LubNative.LubSdfNodeDesc>(nodes, out _nodes_n, &LubNative.To_LubSdfNodeDesc);
-                float _skin_k = (float)(skinK ?? default);
+                float _skin_k = (skinK ?? default);
                 LubNative.LubMeshData o_out = default;
                 var st = LubNative.lub_mesh_sdf_mesh(LubRuntime.Ctx, _nodes, _nodes_n, root, n, skinK.HasValue ? &_skin_k : null, &o_out);
                 if (st == LubNative.LUB_NOT_FOUND)
@@ -2832,7 +2832,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
-        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, double px)
+        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, float px)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2840,7 +2840,7 @@ public static unsafe partial class Lub
                 LubRuntime.CheckView(ttf.Frame);
                 LubNative.LubGlyphBitmap o_out = default;
                 bool has = false;
-                var st = LubNative.lub_font_glyph(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, (float)px, &o_out, &has);
+                var st = LubNative.lub_font_glyph(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, px, &o_out, &has);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     return null;
@@ -2855,13 +2855,13 @@ public static unsafe partial class Lub
         }
 
         /// <summary>グリフ輪郭を三角形化したメッシュ (em 単位、y-up)。`tolerance` は曲線平坦化の最大誤差 (em、既定 0.002)。空白は vert_count=0 の空メッシュ、フォントに無い codepoint は null。</summary>
-        public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, double? tolerance = null)
+        public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint, float? tolerance = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 LubRuntime.CheckView(ttf.Frame);
-                float _tolerance = (float)(tolerance ?? default);
+                float _tolerance = (tolerance ?? default);
                 LubNative.LubGlyphMesh o_out = default;
                 bool has = false;
                 var st = LubNative.lub_font_glyph_mesh(LubRuntime.Ctx, ttf.Ptr, ttf.Length, codepoint, tolerance.HasValue ? &_tolerance : null, &o_out, &has);
@@ -2879,7 +2879,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
-        public static double Kern(Bytes ttf, int cp1, int cp2)
+        public static float Kern(Bytes ttf, int cp1, int cp2)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -2892,7 +2892,7 @@ public static unsafe partial class Lub
                     throw new LubException("Font.Kern: not found");
                 }
                 LubRuntime.Check(st, "Font.Kern");
-                return (double)o_out;
+                return o_out;
             }
             finally
             {
@@ -2992,13 +2992,13 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double SliderFloat(string label, double v, double min, double max)
+        public static float SliderFloat(string label, float v, float min, float max)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                var r = LubNative.lub_ui_slider_float(LubRuntime.Ctx, a.Str(label), (float)v, (float)min, (float)max);
-                return (double)r;
+                var r = LubNative.lub_ui_slider_float(LubRuntime.Ctx, a.Str(label), v, min, max);
+                return r;
             }
             finally
             {
@@ -3020,16 +3020,16 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double DragFloat(string label, double v, double? speed = null, double? min = null, double? max = null)
+        public static float DragFloat(string label, float v, float? speed = null, float? min = null, float? max = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                float _speed = (float)(speed ?? default);
-                float _min = (float)(min ?? default);
-                float _max = (float)(max ?? default);
-                var r = LubNative.lub_ui_drag_float(LubRuntime.Ctx, a.Str(label), (float)v, speed.HasValue ? &_speed : null, min.HasValue ? &_min : null, max.HasValue ? &_max : null);
-                return (double)r;
+                float _speed = (speed ?? default);
+                float _min = (min ?? default);
+                float _max = (max ?? default);
+                var r = LubNative.lub_ui_drag_float(LubRuntime.Ctx, a.Str(label), v, speed.HasValue ? &_speed : null, min.HasValue ? &_min : null, max.HasValue ? &_max : null);
+                return r;
             }
             finally
             {
@@ -3037,7 +3037,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static void ColorEdit3(string label, double r, double g, double b, out double newR, out double newG, out double newB)
+        public static void ColorEdit3(string label, float r, float g, float b, out float newR, out float newG, out float newB)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -3045,10 +3045,10 @@ public static unsafe partial class Lub
                 float o_new_r = default;
                 float o_new_g = default;
                 float o_new_b = default;
-                LubNative.lub_ui_color_edit3(LubRuntime.Ctx, a.Str(label), (float)r, (float)g, (float)b, &o_new_r, &o_new_g, &o_new_b);
-                newR = (double)o_new_r;
-                newG = (double)o_new_g;
-                newB = (double)o_new_b;
+                LubNative.lub_ui_color_edit3(LubRuntime.Ctx, a.Str(label), r, g, b, &o_new_r, &o_new_g, &o_new_b);
+                newR = o_new_r;
+                newG = o_new_g;
+                newB = o_new_b;
             }
             finally
             {
@@ -3112,12 +3112,12 @@ public static unsafe partial class Lub
         }
 
         /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
-        public static void SetNextWindow(double x, double y, double w, double h)
+        public static void SetNextWindow(float x, float y, float w, float h)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                LubNative.lub_ui_set_next_window(LubRuntime.Ctx, (float)x, (float)y, (float)w, (float)h);
+                LubNative.lub_ui_set_next_window(LubRuntime.Ctx, x, y, w, h);
             }
             finally
             {
@@ -3203,7 +3203,7 @@ public static unsafe partial class Lub
     public static unsafe class Audio
     {
         /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ snd に dedupe される。</summary>
-        public static int Snd(string key, List<double> data, int channels, int rate, int? version = null)
+        public static int Snd(string key, List<float> data, int channels, int rate, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -3318,12 +3318,12 @@ public static unsafe partial class Lub
             }
         }
 
-        public static void MasterVolume(double volume)
+        public static void MasterVolume(float volume)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                LubNative.lub_audio_master_volume(LubRuntime.Ctx, (float)volume);
+                LubNative.lub_audio_master_volume(LubRuntime.Ctx, volume);
             }
             finally
             {
@@ -3381,13 +3381,13 @@ public static unsafe partial class Lub
         }
 
         /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
-        public static double ActualFps()
+        public static float ActualFps()
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 var r = LubNative.lub_sys_actual_fps(LubRuntime.Ctx);
-                return (double)r;
+                return r;
             }
             finally
             {
@@ -3933,7 +3933,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double JointTorque(JointRef joint)
+        public static float JointTorque(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -3945,7 +3945,7 @@ public static unsafe partial class Lub
                     throw new LubException("Phys2d.JointTorque: not found");
                 }
                 LubRuntime.Check(st, "Phys2d.JointTorque");
-                return (double)o_out;
+                return o_out;
             }
             finally
             {
@@ -3953,7 +3953,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointAngle(JointRef joint)
+        public static float? JointAngle(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -3966,7 +3966,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys2d.JointAngle");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -3974,7 +3974,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointTranslation(JointRef joint)
+        public static float? JointTranslation(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -3987,7 +3987,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys2d.JointTranslation");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -3995,7 +3995,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointSpeed(JointRef joint)
+        public static float? JointSpeed(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -4008,7 +4008,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys2d.JointSpeed");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -4016,7 +4016,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointLength(JointRef joint)
+        public static float? JointLength(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -4029,7 +4029,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys2d.JointLength");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -4037,7 +4037,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointMotorForce(JointRef joint)
+        public static float? JointMotorForce(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -4050,7 +4050,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys2d.JointMotorForce");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -4058,7 +4058,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointMotorTorque(JointRef joint)
+        public static float? JointMotorTorque(JointRef joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -4071,7 +4071,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys2d.JointMotorTorque");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -4175,13 +4175,13 @@ public static unsafe partial class Lub
             }
         }
 
-        public static StepInfo Step(WorldRef world, double dt)
+        public static StepInfo Step(WorldRef world, float dt)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 LubNative.LubStepInfo o_out = default;
-                var st = LubNative.lub_phys2d_step(LubRuntime.Ctx, world.H, (float)dt, &o_out);
+                var st = LubNative.lub_phys2d_step(LubRuntime.Ctx, world.H, dt, &o_out);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     throw new LubException("Phys2d.Step: not found");
@@ -4723,7 +4723,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。 Lua 面は同じ raycast。</summary>
-        public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query, Func<RayHit, double> visitor)
+        public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query, Func<RayHit, float> visitor)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -4808,7 +4808,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
-        public static List<RayHit> ShapeCastAll(WorldRef world, ShapeCastDesc query, Func<RayHit, double> visitor)
+        public static List<RayHit> ShapeCastAll(WorldRef world, ShapeCastDesc query, Func<RayHit, float> visitor)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5101,7 +5101,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static void AddTorque(BodyRef body, double torque, CommandOpts? opts = null)
+        public static void AddTorque(BodyRef body, float torque, CommandOpts? opts = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5112,7 +5112,7 @@ public static unsafe partial class Lub
                     _opts = a.Alloc<LubNative.LubCommandOpts>(1);
                     LubNative.To_LubCommandOpts(opts, a, _opts);
                 }
-                var st = LubNative.lub_phys2d_add_torque(LubRuntime.Ctx, body.H, (float)torque, _opts);
+                var st = LubNative.lub_phys2d_add_torque(LubRuntime.Ctx, body.H, torque, _opts);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     return;
@@ -5125,7 +5125,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static void AddAngularImpulse(BodyRef body, double impulse, CommandOpts? opts = null)
+        public static void AddAngularImpulse(BodyRef body, float impulse, CommandOpts? opts = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5136,7 +5136,7 @@ public static unsafe partial class Lub
                     _opts = a.Alloc<LubNative.LubCommandOpts>(1);
                     LubNative.To_LubCommandOpts(opts, a, _opts);
                 }
-                var st = LubNative.lub_phys2d_add_angular_impulse(LubRuntime.Ctx, body.H, (float)impulse, _opts);
+                var st = LubNative.lub_phys2d_add_angular_impulse(LubRuntime.Ctx, body.H, impulse, _opts);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     return;
@@ -5790,7 +5790,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointAngle(JointRef3d joint)
+        public static float? JointAngle(JointRef3d joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5803,7 +5803,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys3d.JointAngle");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -5811,7 +5811,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointTranslation(JointRef3d joint)
+        public static float? JointTranslation(JointRef3d joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5824,7 +5824,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys3d.JointTranslation");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -5832,7 +5832,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointSpeed(JointRef3d joint)
+        public static float? JointSpeed(JointRef3d joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5845,7 +5845,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys3d.JointSpeed");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -5853,7 +5853,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointLength(JointRef3d joint)
+        public static float? JointLength(JointRef3d joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5866,7 +5866,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys3d.JointLength");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -5874,7 +5874,7 @@ public static unsafe partial class Lub
             }
         }
 
-        public static double? JointMotorForce(JointRef3d joint)
+        public static float? JointMotorForce(JointRef3d joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5887,7 +5887,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys3d.JointMotorForce");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -5896,7 +5896,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>revolute / wheel の motor torque。spherical は JointMotorTorqueVector。</summary>
-        public static double? JointMotorTorque(JointRef3d joint)
+        public static float? JointMotorTorque(JointRef3d joint)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -5909,7 +5909,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Phys3d.JointMotorTorque");
-                return (!has ? null : (double?)o_out);
+                return (!has ? null : (float?)o_out);
             }
             finally
             {
@@ -6111,13 +6111,13 @@ public static unsafe partial class Lub
             }
         }
 
-        public static StepInfo3d Step(WorldRef3d world, double dt)
+        public static StepInfo3d Step(WorldRef3d world, float dt)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 LubNative.LubStepInfo3d o_out = default;
-                var st = LubNative.lub_phys3d_step(LubRuntime.Ctx, world.H, (float)dt, &o_out);
+                var st = LubNative.lub_phys3d_step(LubRuntime.Ctx, world.H, dt, &o_out);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     throw new LubException("Phys3d.Step: not found");
@@ -6678,7 +6678,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ raycast。</summary>
-        public static List<RayHit3d> RaycastAll(WorldRef3d world, RaycastDesc3d query, Func<RayHit3d, double>? visitor = null)
+        public static List<RayHit3d> RaycastAll(WorldRef3d world, RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -6790,7 +6790,7 @@ public static unsafe partial class Lub
         }
 
         /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
-        public static List<RayHit3d> ShapeCastAll(WorldRef3d world, ShapeProxyDesc3d query, Func<RayHit3d, double> visitor)
+        public static List<RayHit3d> ShapeCastAll(WorldRef3d world, ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
         {
             var a = LubRuntime.Arena.Begin();
             try
@@ -10136,7 +10136,7 @@ internal static unsafe partial class LubNative
         o.DepthTarget = H_TextureRef(s->@depth_target);
         o.ClearColor = s->@has_clear_color ? LubRuntime.FloatsArray(s->@clear_color, 4) : null;
         o.ClearColors = s->@clear_colors == null ? null! : LubRuntime.FloatRowList(s->@clear_colors, s->@clear_colors_count, 4);
-        o.ClearDepth = s->@has_clear_depth ? (double)s->@clear_depth : null;
+        o.ClearDepth = s->@has_clear_depth ? s->@clear_depth : null;
         o.Load = s->@has_load ? (Lub.Gfx.LoadAction)s->@load : null;
     }
 
@@ -10309,7 +10309,7 @@ internal static unsafe partial class LubNative
         o.Tangents = s->@tangents == null ? null! : LubRuntime.FloatList(s->@tangents, s->@tangents_count);
         o.BoundsMin = s->@bounds_min == null ? null! : LubRuntime.FloatList(s->@bounds_min, s->@bounds_min_count);
         o.BoundsMax = s->@bounds_max == null ? null! : LubRuntime.FloatList(s->@bounds_max, s->@bounds_max_count);
-        o.Cell = s->@has_cell ? (double)s->@cell : null;
+        o.Cell = s->@has_cell ? s->@cell : null;
         o.Colors = s->@colors == null ? null! : LubRuntime.FloatList(s->@colors, s->@colors_count);
         o.MetalRough = s->@metal_rough == null ? null! : LubRuntime.FloatList(s->@metal_rough, s->@metal_rough_count);
         o.Joints = s->@joints == null ? null! : LubRuntime.IntList(s->@joints, s->@joints_count);
@@ -10509,9 +10509,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubPlayOpts(PlayOpts o, LubPlayOpts* s)
     {
-        o.Volume = s->@has_volume ? (double)s->@volume : null;
-        o.Pitch = s->@has_pitch ? (double)s->@pitch : null;
-        o.Pan = s->@has_pan ? (double)s->@pan : null;
+        o.Volume = s->@has_volume ? s->@volume : null;
+        o.Pitch = s->@has_pitch ? s->@pitch : null;
+        o.Pan = s->@has_pan ? s->@pan : null;
     }
 
     internal static PlayOpts From_LubPlayOpts(LubPlayOpts* s)
@@ -10603,12 +10603,12 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubInitialState(InitialState o, LubInitialState* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
-        o.Vx = s->@has_vx ? (double)s->@vx : null;
-        o.Vy = s->@has_vy ? (double)s->@vy : null;
-        o.W = s->@has_w ? (double)s->@w : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
+        o.Vx = s->@has_vx ? s->@vx : null;
+        o.Vy = s->@has_vy ? s->@vy : null;
+        o.W = s->@has_w ? s->@w : null;
         o.Awake = s->@has_awake ? s->@awake : null;
     }
 
@@ -10675,8 +10675,8 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMaterialView(MaterialView o, LubMaterialView* s)
     {
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.MaterialId = s->@material_id;
     }
 
@@ -10756,10 +10756,10 @@ internal static unsafe partial class LubNative
         o.RollingImpulse = s->@rolling_impulse;
         o.PointCount = s->@point_count;
         o.Points = s->@points == null ? null! : LubRuntime.RecordList<ManifoldPoint, LubNative.LubManifoldPoint>(s->@points, s->@points_count, &LubNative.From_LubManifoldPoint);
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Separation = s->@has_separation ? (double)s->@separation : null;
-        o.NormalVelocity = s->@has_normal_velocity ? (double)s->@normal_velocity : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Separation = s->@has_separation ? s->@separation : null;
+        o.NormalVelocity = s->@has_normal_velocity ? s->@normal_velocity : null;
     }
 
     internal static PreSolveContact From_LubPreSolveContact(LubPreSolveContact* s)
@@ -10817,12 +10817,12 @@ internal static unsafe partial class LubNative
     {
         o.Version = s->@has_version ? s->@version : null;
         o.Gravity = s->@has_gravity ? From_LubVec2d(&s->@gravity) : null;
-        o.FixedDt = s->@has_fixed_dt ? (double)s->@fixed_dt : null;
+        o.FixedDt = s->@has_fixed_dt ? s->@fixed_dt : null;
         o.Substeps = s->@has_substeps ? s->@substeps : null;
         o.MaxSteps = s->@has_max_steps ? s->@max_steps : null;
         o.Sleep = s->@has_sleep ? s->@sleep : null;
         o.Continuous = s->@has_continuous ? s->@continuous : null;
-        o.HitEventThreshold = s->@has_hit_event_threshold ? (double)s->@hit_event_threshold : null;
+        o.HitEventThreshold = s->@has_hit_event_threshold ? s->@hit_event_threshold : null;
         o.Callbacks = s->@has_callbacks ? From_LubWorldCallbacks(&s->@callbacks) : null;
     }
 
@@ -10888,10 +10888,10 @@ internal static unsafe partial class LubNative
         o.Enabled = s->@has_enabled ? s->@enabled : null;
         o.Awake = s->@has_awake ? s->@awake : null;
         o.Sleep = s->@has_sleep ? s->@sleep : null;
-        o.SleepThreshold = s->@has_sleep_threshold ? (double)s->@sleep_threshold : null;
-        o.GravityScale = s->@has_gravity_scale ? (double)s->@gravity_scale : null;
-        o.LinearDamping = s->@has_linear_damping ? (double)s->@linear_damping : null;
-        o.AngularDamping = s->@has_angular_damping ? (double)s->@angular_damping : null;
+        o.SleepThreshold = s->@has_sleep_threshold ? s->@sleep_threshold : null;
+        o.GravityScale = s->@has_gravity_scale ? s->@gravity_scale : null;
+        o.LinearDamping = s->@has_linear_damping ? s->@linear_damping : null;
+        o.AngularDamping = s->@has_angular_damping ? s->@angular_damping : null;
         o.Initial = s->@has_initial ? From_LubInitialState(&s->@initial) : null;
     }
 
@@ -10957,9 +10957,9 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubShapeDesc(ShapeDesc o, LubShapeDesc* s)
     {
         o.Version = s->@has_version ? s->@version : null;
-        o.Density = s->@has_density ? (double)s->@density : null;
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.Tag = LubRuntime.StrOrNull(s->@tag);
         o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
@@ -10996,9 +10996,9 @@ internal static unsafe partial class LubNative
         Fill_LubShapeDesc(o, &s->@base);
         o.Hx = s->@hx;
         o.Hy = s->@hy;
-        o.Cx = s->@has_cx ? (double)s->@cx : null;
-        o.Cy = s->@has_cy ? (double)s->@cy : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
+        o.Cx = s->@has_cx ? s->@cx : null;
+        o.Cy = s->@has_cy ? s->@cy : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
     }
 
     internal static BoxDesc From_LubBoxDesc(LubBoxDesc* s)
@@ -11022,8 +11022,8 @@ internal static unsafe partial class LubNative
     {
         Fill_LubShapeDesc(o, &s->@base);
         o.R = s->@r;
-        o.Cx = s->@has_cx ? (double)s->@cx : null;
-        o.Cy = s->@has_cy ? (double)s->@cy : null;
+        o.Cx = s->@has_cx ? s->@cx : null;
+        o.Cy = s->@has_cy ? s->@cy : null;
     }
 
     internal static CircleDesc From_LubCircleDesc(LubCircleDesc* s)
@@ -11103,10 +11103,10 @@ internal static unsafe partial class LubNative
     {
         Fill_LubShapeDesc(o, &s->@base);
         o.Points = s->@points == null ? null! : LubRuntime.FloatList(s->@points, s->@points_count);
-        o.Radius = s->@has_radius ? (double)s->@radius : null;
-        o.Cx = s->@has_cx ? (double)s->@cx : null;
-        o.Cy = s->@has_cy ? (double)s->@cy : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
+        o.Radius = s->@has_radius ? s->@radius : null;
+        o.Cx = s->@has_cx ? s->@cx : null;
+        o.Cy = s->@has_cy ? s->@cy : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
     }
 
     internal static PolygonDesc From_LubPolygonDesc(LubPolygonDesc* s)
@@ -11128,8 +11128,8 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubChainMaterial(ChainMaterial o, LubChainMaterial* s)
     {
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
     }
 
@@ -11167,8 +11167,8 @@ internal static unsafe partial class LubNative
         o.Points = s->@points == null ? null! : LubRuntime.FloatList(s->@points, s->@points_count);
         o.Materials = s->@materials == null ? null! : LubRuntime.RecordList<ChainMaterial, LubNative.LubChainMaterial>(s->@materials, s->@materials_count, &LubNative.From_LubChainMaterial);
         o.Loop = s->@has_loop ? s->@loop : null;
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.Tag = LubRuntime.StrOrNull(s->@tag);
         o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
@@ -11204,12 +11204,12 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubJointSpringDesc(JointSpringDesc o, LubJointSpringDesc* s)
     {
         o.Enabled = s->@has_enabled ? s->@enabled : null;
-        o.Hertz = s->@has_hertz ? (double)s->@hertz : null;
-        o.DampingRatio = s->@has_damping_ratio ? (double)s->@damping_ratio : null;
-        o.LinearHertz = s->@has_linear_hertz ? (double)s->@linear_hertz : null;
-        o.LinearDampingRatio = s->@has_linear_damping_ratio ? (double)s->@linear_damping_ratio : null;
-        o.AngularHertz = s->@has_angular_hertz ? (double)s->@angular_hertz : null;
-        o.AngularDampingRatio = s->@has_angular_damping_ratio ? (double)s->@angular_damping_ratio : null;
+        o.Hertz = s->@has_hertz ? s->@hertz : null;
+        o.DampingRatio = s->@has_damping_ratio ? s->@damping_ratio : null;
+        o.LinearHertz = s->@has_linear_hertz ? s->@linear_hertz : null;
+        o.LinearDampingRatio = s->@has_linear_damping_ratio ? s->@linear_damping_ratio : null;
+        o.AngularHertz = s->@has_angular_hertz ? s->@angular_hertz : null;
+        o.AngularDampingRatio = s->@has_angular_damping_ratio ? s->@angular_damping_ratio : null;
     }
 
     internal static JointSpringDesc From_LubJointSpringDesc(LubJointSpringDesc* s)
@@ -11236,10 +11236,10 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubJointLimitDesc(JointLimitDesc o, LubJointLimitDesc* s)
     {
         o.Enabled = s->@has_enabled ? s->@enabled : null;
-        o.Lower = s->@has_lower ? (double)s->@lower : null;
-        o.Upper = s->@has_upper ? (double)s->@upper : null;
-        o.MinLength = s->@has_min_length ? (double)s->@min_length : null;
-        o.MaxLength = s->@has_max_length ? (double)s->@max_length : null;
+        o.Lower = s->@has_lower ? s->@lower : null;
+        o.Upper = s->@has_upper ? s->@upper : null;
+        o.MinLength = s->@has_min_length ? s->@min_length : null;
+        o.MaxLength = s->@has_max_length ? s->@max_length : null;
     }
 
     internal static JointLimitDesc From_LubJointLimitDesc(LubJointLimitDesc* s)
@@ -11270,12 +11270,12 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubJointMotorDesc(JointMotorDesc o, LubJointMotorDesc* s)
     {
         o.Enabled = s->@has_enabled ? s->@enabled : null;
-        o.Speed = s->@has_speed ? (double)s->@speed : null;
-        o.MaxForce = s->@has_max_force ? (double)s->@max_force : null;
-        o.MaxTorque = s->@has_max_torque ? (double)s->@max_torque : null;
+        o.Speed = s->@has_speed ? s->@speed : null;
+        o.MaxForce = s->@has_max_force ? s->@max_force : null;
+        o.MaxTorque = s->@has_max_torque ? s->@max_torque : null;
         o.LinearOffset = s->@has_linear_offset ? From_LubVec2d(&s->@linear_offset) : null;
-        o.AngularOffset = s->@has_angular_offset ? (double)s->@angular_offset : null;
-        o.CorrectionFactor = s->@has_correction_factor ? (double)s->@correction_factor : null;
+        o.AngularOffset = s->@has_angular_offset ? s->@angular_offset : null;
+        o.CorrectionFactor = s->@has_correction_factor ? s->@correction_factor : null;
     }
 
     internal static JointMotorDesc From_LubJointMotorDesc(LubJointMotorDesc* s)
@@ -11303,12 +11303,12 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubJointTargetDesc(JointTargetDesc o, LubJointTargetDesc* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Translation = s->@has_translation ? (double)s->@translation : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Translation = s->@has_translation ? s->@translation : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
         o.LinearOffset = s->@has_linear_offset ? From_LubVec2d(&s->@linear_offset) : null;
-        o.AngularOffset = s->@has_angular_offset ? (double)s->@angular_offset : null;
+        o.AngularOffset = s->@has_angular_offset ? s->@angular_offset : null;
     }
 
     internal static JointTargetDesc From_LubJointTargetDesc(LubJointTargetDesc* s)
@@ -11391,23 +11391,23 @@ internal static unsafe partial class LubNative
         o.LocalAnchorA = s->@has_local_anchor_a ? From_LubVec2d(&s->@local_anchor_a) : null;
         o.LocalAnchorB = s->@has_local_anchor_b ? From_LubVec2d(&s->@local_anchor_b) : null;
         o.LocalAxisA = s->@has_local_axis_a ? From_LubVec2d(&s->@local_axis_a) : null;
-        o.ReferenceAngle = s->@has_reference_angle ? (double)s->@reference_angle : null;
+        o.ReferenceAngle = s->@has_reference_angle ? s->@reference_angle : null;
         o.CollideConnected = s->@has_collide_connected ? s->@collide_connected : null;
-        o.Length = s->@has_length ? (double)s->@length : null;
-        o.MinLength = s->@has_min_length ? (double)s->@min_length : null;
-        o.MaxLength = s->@has_max_length ? (double)s->@max_length : null;
-        o.Lower = s->@has_lower ? (double)s->@lower : null;
-        o.Upper = s->@has_upper ? (double)s->@upper : null;
-        o.TargetAngle = s->@has_target_angle ? (double)s->@target_angle : null;
-        o.TargetTranslation = s->@has_target_translation ? (double)s->@target_translation : null;
+        o.Length = s->@has_length ? s->@length : null;
+        o.MinLength = s->@has_min_length ? s->@min_length : null;
+        o.MaxLength = s->@has_max_length ? s->@max_length : null;
+        o.Lower = s->@has_lower ? s->@lower : null;
+        o.Upper = s->@has_upper ? s->@upper : null;
+        o.TargetAngle = s->@has_target_angle ? s->@target_angle : null;
+        o.TargetTranslation = s->@has_target_translation ? s->@target_translation : null;
         o.LinearOffset = s->@has_linear_offset ? From_LubVec2d(&s->@linear_offset) : null;
-        o.AngularOffset = s->@has_angular_offset ? (double)s->@angular_offset : null;
-        o.Hertz = s->@has_hertz ? (double)s->@hertz : null;
-        o.DampingRatio = s->@has_damping_ratio ? (double)s->@damping_ratio : null;
-        o.MaxForce = s->@has_max_force ? (double)s->@max_force : null;
-        o.MaxTorque = s->@has_max_torque ? (double)s->@max_torque : null;
-        o.MotorSpeed = s->@has_motor_speed ? (double)s->@motor_speed : null;
-        o.CorrectionFactor = s->@has_correction_factor ? (double)s->@correction_factor : null;
+        o.AngularOffset = s->@has_angular_offset ? s->@angular_offset : null;
+        o.Hertz = s->@has_hertz ? s->@hertz : null;
+        o.DampingRatio = s->@has_damping_ratio ? s->@damping_ratio : null;
+        o.MaxForce = s->@has_max_force ? s->@max_force : null;
+        o.MaxTorque = s->@has_max_torque ? s->@max_torque : null;
+        o.MotorSpeed = s->@has_motor_speed ? s->@motor_speed : null;
+        o.CorrectionFactor = s->@has_correction_factor ? s->@correction_factor : null;
         o.Spring = s->@has_spring ? From_LubJointSpringDesc(&s->@spring) : null;
         o.Limit = s->@has_limit ? From_LubJointLimitDesc(&s->@limit) : null;
         o.Motor = s->@has_motor ? From_LubJointMotorDesc(&s->@motor) : null;
@@ -11435,7 +11435,7 @@ internal static unsafe partial class LubNative
     {
         o.Wake = s->@has_wake ? s->@wake : null;
         o.Point = s->@has_point ? From_LubVec2d(&s->@point) : null;
-        o.TimeStep = s->@has_time_step ? (double)s->@time_step : null;
+        o.TimeStep = s->@has_time_step ? s->@time_step : null;
     }
 
     internal static CommandOpts From_LubCommandOpts(LubCommandOpts* s)
@@ -11457,9 +11457,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubVelocityDesc(VelocityDesc o, LubVelocityDesc* s)
     {
-        o.Vx = s->@has_vx ? (double)s->@vx : null;
-        o.Vy = s->@has_vy ? (double)s->@vy : null;
-        o.W = s->@has_w ? (double)s->@w : null;
+        o.Vx = s->@has_vx ? s->@vx : null;
+        o.Vy = s->@has_vy ? s->@vy : null;
+        o.W = s->@has_w ? s->@w : null;
     }
 
     internal static VelocityDesc From_LubVelocityDesc(LubVelocityDesc* s)
@@ -11481,9 +11481,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubPoseDesc(PoseDesc o, LubPoseDesc* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
     }
 
     internal static PoseDesc From_LubPoseDesc(LubPoseDesc* s)
@@ -11505,8 +11505,8 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMassDataDesc(MassDataDesc o, LubMassDataDesc* s)
     {
-        o.Mass = s->@has_mass ? (double)s->@mass : null;
-        o.Inertia = s->@has_inertia ? (double)s->@inertia : null;
+        o.Mass = s->@has_mass ? s->@mass : null;
+        o.Inertia = s->@has_inertia ? s->@inertia : null;
         o.LocalCenter = s->@has_local_center ? From_LubVec2d(&s->@local_center) : null;
     }
 
@@ -11532,9 +11532,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMaterialDesc(MaterialDesc o, LubMaterialDesc* s)
     {
-        o.Density = s->@has_density ? (double)s->@density : null;
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
     }
@@ -11591,11 +11591,11 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubRaycastDesc(RaycastDesc o, LubRaycastDesc* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Dx = s->@has_dx ? (double)s->@dx : null;
-        o.Dy = s->@has_dy ? (double)s->@dy : null;
-        o.MaxFraction = s->@has_max_fraction ? (double)s->@max_fraction : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Dx = s->@has_dx ? s->@dx : null;
+        o.Dy = s->@has_dy ? s->@dy : null;
+        o.MaxFraction = s->@has_max_fraction ? s->@max_fraction : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
     }
 
@@ -11674,22 +11674,22 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubShapeCastDesc(ShapeCastDesc o, LubShapeCastDesc* s)
     {
         o.Kind = s->@has_kind ? (Lub.Phys2d.ProxyKind)s->@kind : null;
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
-        o.Radius = s->@has_radius ? (double)s->@radius : null;
-        o.Cx = s->@has_cx ? (double)s->@cx : null;
-        o.Cy = s->@has_cy ? (double)s->@cy : null;
-        o.Ax = s->@has_ax ? (double)s->@ax : null;
-        o.Ay = s->@has_ay ? (double)s->@ay : null;
-        o.Bx = s->@has_bx ? (double)s->@bx : null;
-        o.By = s->@has_by ? (double)s->@by : null;
-        o.Hx = s->@has_hx ? (double)s->@hx : null;
-        o.Hy = s->@has_hy ? (double)s->@hy : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
+        o.Radius = s->@has_radius ? s->@radius : null;
+        o.Cx = s->@has_cx ? s->@cx : null;
+        o.Cy = s->@has_cy ? s->@cy : null;
+        o.Ax = s->@has_ax ? s->@ax : null;
+        o.Ay = s->@has_ay ? s->@ay : null;
+        o.Bx = s->@has_bx ? s->@bx : null;
+        o.By = s->@has_by ? s->@by : null;
+        o.Hx = s->@has_hx ? s->@hx : null;
+        o.Hy = s->@has_hy ? s->@hy : null;
         o.Points = s->@points == null ? null! : LubRuntime.FloatList(s->@points, s->@points_count);
-        o.Dx = s->@has_dx ? (double)s->@dx : null;
-        o.Dy = s->@has_dy ? (double)s->@dy : null;
-        o.MaxFraction = s->@has_max_fraction ? (double)s->@max_fraction : null;
+        o.Dx = s->@has_dx ? s->@dx : null;
+        o.Dy = s->@has_dy ? s->@dy : null;
+        o.MaxFraction = s->@has_max_fraction ? s->@max_fraction : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
     }
 
@@ -11724,9 +11724,9 @@ internal static unsafe partial class LubNative
         o.Bx = s->@bx;
         o.By = s->@by;
         o.R = s->@r;
-        o.Dx = s->@has_dx ? (double)s->@dx : null;
-        o.Dy = s->@has_dy ? (double)s->@dy : null;
-        o.MaxFraction = s->@has_max_fraction ? (double)s->@max_fraction : null;
+        o.Dx = s->@has_dx ? s->@dx : null;
+        o.Dy = s->@has_dy ? s->@dy : null;
+        o.MaxFraction = s->@has_max_fraction ? s->@max_fraction : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
     }
 
@@ -11755,11 +11755,11 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubExplosionDesc(ExplosionDesc o, LubExplosionDesc* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Radius = s->@has_radius ? (double)s->@radius : null;
-        o.Falloff = s->@has_falloff ? (double)s->@falloff : null;
-        o.ImpulsePerLength = s->@has_impulse_per_length ? (double)s->@impulse_per_length : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Radius = s->@has_radius ? s->@radius : null;
+        o.Falloff = s->@has_falloff ? s->@falloff : null;
+        o.ImpulsePerLength = s->@has_impulse_per_length ? s->@impulse_per_length : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc(&s->@filter) : null;
     }
 
@@ -12085,9 +12085,9 @@ internal static unsafe partial class LubNative
         o.Sleep = s->@has_sleep ? s->@sleep : null;
         o.Continuous = s->@has_continuous ? s->@continuous : null;
         o.WarmStarting = s->@has_warm_starting ? s->@warm_starting : null;
-        o.RestitutionThreshold = s->@has_restitution_threshold ? (double)s->@restitution_threshold : null;
-        o.HitEventThreshold = s->@has_hit_event_threshold ? (double)s->@hit_event_threshold : null;
-        o.MaximumLinearSpeed = s->@has_maximum_linear_speed ? (double)s->@maximum_linear_speed : null;
+        o.RestitutionThreshold = s->@has_restitution_threshold ? s->@restitution_threshold : null;
+        o.HitEventThreshold = s->@has_hit_event_threshold ? s->@hit_event_threshold : null;
+        o.MaximumLinearSpeed = s->@has_maximum_linear_speed ? s->@maximum_linear_speed : null;
         o.AwakeBodyCount = s->@has_awake_body_count ? s->@awake_body_count : null;
     }
 
@@ -12189,7 +12189,7 @@ internal static unsafe partial class LubNative
         o.LocalAnchorA = s->@has_local_anchor_a ? From_LubVec2d(&s->@local_anchor_a) : null;
         o.LocalAnchorB = s->@has_local_anchor_b ? From_LubVec2d(&s->@local_anchor_b) : null;
         o.LocalAxisA = s->@has_local_axis_a ? From_LubVec2d(&s->@local_axis_a) : null;
-        o.ReferenceAngle = s->@has_reference_angle ? (double)s->@reference_angle : null;
+        o.ReferenceAngle = s->@has_reference_angle ? s->@reference_angle : null;
     }
 
     internal static JointInfo From_LubJointInfo(LubJointInfo* s)
@@ -12221,9 +12221,9 @@ internal static unsafe partial class LubNative
         o.Nx = s->@nx;
         o.Ny = s->@ny;
         o.PointCount = s->@point_count;
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Separation = s->@has_separation ? (double)s->@separation : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Separation = s->@has_separation ? s->@separation : null;
     }
 
     internal static ContactData From_LubContactData(LubContactData* s)
@@ -12255,7 +12255,7 @@ internal static unsafe partial class LubNative
         o.PointCount = s->@point_count;
         o.X = s->@x;
         o.Y = s->@y;
-        o.ApproachSpeed = s->@has_approach_speed ? (double)s->@approach_speed : null;
+        o.ApproachSpeed = s->@has_approach_speed ? s->@approach_speed : null;
     }
 
     internal static ContactEvent From_LubContactEvent(LubContactEvent* s)
@@ -12591,17 +12591,17 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubInitialState3d(InitialState3d o, LubInitialState3d* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Z = s->@has_z ? (double)s->@z : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Z = s->@has_z ? s->@z : null;
         o.Quat = s->@has_quat ? From_LubQuat3d(&s->@quat) : null;
         o.Euler = s->@has_euler ? From_LubVec3d(&s->@euler) : null;
-        o.Vx = s->@has_vx ? (double)s->@vx : null;
-        o.Vy = s->@has_vy ? (double)s->@vy : null;
-        o.Vz = s->@has_vz ? (double)s->@vz : null;
-        o.Wx = s->@has_wx ? (double)s->@wx : null;
-        o.Wy = s->@has_wy ? (double)s->@wy : null;
-        o.Wz = s->@has_wz ? (double)s->@wz : null;
+        o.Vx = s->@has_vx ? s->@vx : null;
+        o.Vy = s->@has_vy ? s->@vy : null;
+        o.Vz = s->@has_vz ? s->@vz : null;
+        o.Wx = s->@has_wx ? s->@wx : null;
+        o.Wy = s->@has_wy ? s->@wy : null;
+        o.Wz = s->@has_wz ? s->@wz : null;
         o.Awake = s->@has_awake ? s->@awake : null;
     }
 
@@ -12764,12 +12764,12 @@ internal static unsafe partial class LubNative
     {
         o.Version = s->@has_version ? s->@version : null;
         o.Gravity = s->@has_gravity ? From_LubVec3d(&s->@gravity) : null;
-        o.FixedDt = s->@has_fixed_dt ? (double)s->@fixed_dt : null;
+        o.FixedDt = s->@has_fixed_dt ? s->@fixed_dt : null;
         o.Substeps = s->@has_substeps ? s->@substeps : null;
         o.MaxSteps = s->@has_max_steps ? s->@max_steps : null;
         o.Sleep = s->@has_sleep ? s->@sleep : null;
         o.Continuous = s->@has_continuous ? s->@continuous : null;
-        o.HitEventThreshold = s->@has_hit_event_threshold ? (double)s->@hit_event_threshold : null;
+        o.HitEventThreshold = s->@has_hit_event_threshold ? s->@hit_event_threshold : null;
         o.Callbacks = s->@has_callbacks ? From_LubWorldCallbacks3d(&s->@callbacks) : null;
     }
 
@@ -12835,10 +12835,10 @@ internal static unsafe partial class LubNative
         o.Enabled = s->@has_enabled ? s->@enabled : null;
         o.Awake = s->@has_awake ? s->@awake : null;
         o.Sleep = s->@has_sleep ? s->@sleep : null;
-        o.SleepThreshold = s->@has_sleep_threshold ? (double)s->@sleep_threshold : null;
-        o.GravityScale = s->@has_gravity_scale ? (double)s->@gravity_scale : null;
-        o.LinearDamping = s->@has_linear_damping ? (double)s->@linear_damping : null;
-        o.AngularDamping = s->@has_angular_damping ? (double)s->@angular_damping : null;
+        o.SleepThreshold = s->@has_sleep_threshold ? s->@sleep_threshold : null;
+        o.GravityScale = s->@has_gravity_scale ? s->@gravity_scale : null;
+        o.LinearDamping = s->@has_linear_damping ? s->@linear_damping : null;
+        o.AngularDamping = s->@has_angular_damping ? s->@angular_damping : null;
         o.Initial = s->@has_initial ? From_LubInitialState3d(&s->@initial) : null;
     }
 
@@ -12904,9 +12904,9 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubShapeDesc3d(ShapeDesc3d o, LubShapeDesc3d* s)
     {
         o.Version = s->@has_version ? s->@version : null;
-        o.Density = s->@has_density ? (double)s->@density : null;
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.Tag = LubRuntime.StrOrNull(s->@tag);
         o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
@@ -13016,7 +13016,7 @@ internal static unsafe partial class LubNative
         o.Height = s->@height;
         o.Radius = s->@radius;
         o.Sides = s->@has_sides ? s->@sides : null;
-        o.YOffset = s->@has_y_offset ? (double)s->@y_offset : null;
+        o.YOffset = s->@has_y_offset ? s->@y_offset : null;
     }
 
     internal static CylinderDesc3d From_LubCylinderDesc3d(LubCylinderDesc3d* s)
@@ -13042,7 +13042,7 @@ internal static unsafe partial class LubNative
         Fill_LubShapeDesc3d(o, &s->@base);
         o.Height = s->@height;
         o.Radius1 = s->@radius1;
-        o.Radius2 = s->@has_radius2 ? (double)s->@radius2 : null;
+        o.Radius2 = s->@has_radius2 ? s->@radius2 : null;
         o.Slices = s->@has_slices ? s->@slices : null;
     }
 
@@ -13087,8 +13087,8 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubSurfaceMaterial3d(SurfaceMaterial3d o, LubSurfaceMaterial3d* s)
     {
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
     }
 
@@ -13125,7 +13125,7 @@ internal static unsafe partial class LubNative
         o.Indices = s->@indices == null ? null! : LubRuntime.IntList(s->@indices, s->@indices_count);
         o.Scale = s->@has_scale ? From_LubVec3d(&s->@scale) : null;
         o.WeldVertices = s->@has_weld_vertices ? s->@weld_vertices : null;
-        o.WeldTolerance = s->@has_weld_tolerance ? (double)s->@weld_tolerance : null;
+        o.WeldTolerance = s->@has_weld_tolerance ? s->@weld_tolerance : null;
         o.UseMedianSplit = s->@has_use_median_split ? s->@use_median_split : null;
         o.IdentifyEdges = s->@has_identify_edges ? s->@identify_edges : null;
         o.Materials = s->@materials == null ? null! : LubRuntime.RecordList<SurfaceMaterial3d, LubNative.LubSurfaceMaterial3d>(s->@materials, s->@materials_count, &LubNative.From_LubSurfaceMaterial3d);
@@ -13163,10 +13163,10 @@ internal static unsafe partial class LubNative
         o.Heights = s->@heights == null ? null! : LubRuntime.FloatList(s->@heights, s->@heights_count);
         o.XCount = s->@x_count;
         o.ZCount = s->@z_count;
-        o.CellWidth = s->@has_cell_width ? (double)s->@cell_width : null;
+        o.CellWidth = s->@has_cell_width ? s->@cell_width : null;
         o.Scale = s->@has_scale ? From_LubVec3d(&s->@scale) : null;
-        o.MinHeight = s->@has_min_height ? (double)s->@min_height : null;
-        o.MaxHeight = s->@has_max_height ? (double)s->@max_height : null;
+        o.MinHeight = s->@has_min_height ? s->@min_height : null;
+        o.MaxHeight = s->@has_max_height ? s->@max_height : null;
         o.ClockwiseWinding = s->@has_clockwise_winding ? s->@clockwise_winding : null;
     }
 
@@ -13255,9 +13255,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubFrameDesc3d(FrameDesc3d o, LubFrameDesc3d* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Z = s->@has_z ? (double)s->@z : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Z = s->@has_z ? s->@z : null;
         o.Quat = s->@has_quat ? From_LubQuat3d(&s->@quat) : null;
         o.Euler = s->@has_euler ? From_LubVec3d(&s->@euler) : null;
     }
@@ -13290,8 +13290,8 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubCompoundChild3d(CompoundChild3d o, LubCompoundChild3d* s)
     {
         o.Pose = s->@has_pose ? From_LubFrameDesc3d(&s->@pose) : null;
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
         o.Sphere = s->@has_sphere ? From_LubCompoundSphere3d(&s->@sphere) : null;
         o.Box = s->@has_box ? From_LubCompoundBox3d(&s->@box) : null;
@@ -13363,12 +13363,12 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubVelocityDesc3d(VelocityDesc3d o, LubVelocityDesc3d* s)
     {
-        o.Vx = s->@has_vx ? (double)s->@vx : null;
-        o.Vy = s->@has_vy ? (double)s->@vy : null;
-        o.Vz = s->@has_vz ? (double)s->@vz : null;
-        o.Wx = s->@has_wx ? (double)s->@wx : null;
-        o.Wy = s->@has_wy ? (double)s->@wy : null;
-        o.Wz = s->@has_wz ? (double)s->@wz : null;
+        o.Vx = s->@has_vx ? s->@vx : null;
+        o.Vy = s->@has_vy ? s->@vy : null;
+        o.Vz = s->@has_vz ? s->@vz : null;
+        o.Wx = s->@has_wx ? s->@wx : null;
+        o.Wy = s->@has_wy ? s->@wy : null;
+        o.Wz = s->@has_wz ? s->@wz : null;
     }
 
     internal static VelocityDesc3d From_LubVelocityDesc3d(LubVelocityDesc3d* s)
@@ -13394,9 +13394,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubPoseDesc3d(PoseDesc3d o, LubPoseDesc3d* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Z = s->@has_z ? (double)s->@z : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Z = s->@has_z ? s->@z : null;
         o.Quat = s->@has_quat ? From_LubQuat3d(&s->@quat) : null;
         o.Euler = s->@has_euler ? From_LubVec3d(&s->@euler) : null;
     }
@@ -13428,12 +13428,12 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubTargetDesc3d(TargetDesc3d o, LubTargetDesc3d* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Z = s->@has_z ? (double)s->@z : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Z = s->@has_z ? s->@z : null;
         o.Quat = s->@has_quat ? From_LubQuat3d(&s->@quat) : null;
         o.Euler = s->@has_euler ? From_LubVec3d(&s->@euler) : null;
-        o.TimeStep = s->@has_time_step ? (double)s->@time_step : null;
+        o.TimeStep = s->@has_time_step ? s->@time_step : null;
         o.Wake = s->@has_wake ? s->@wake : null;
     }
 
@@ -13467,13 +13467,13 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubJointSpringDesc3d(JointSpringDesc3d o, LubJointSpringDesc3d* s)
     {
         o.Enabled = s->@has_enabled ? s->@enabled : null;
-        o.Hertz = s->@has_hertz ? (double)s->@hertz : null;
-        o.DampingRatio = s->@has_damping_ratio ? (double)s->@damping_ratio : null;
-        o.LinearHertz = s->@has_linear_hertz ? (double)s->@linear_hertz : null;
-        o.LinearDampingRatio = s->@has_linear_damping_ratio ? (double)s->@linear_damping_ratio : null;
-        o.AngularHertz = s->@has_angular_hertz ? (double)s->@angular_hertz : null;
-        o.AngularDampingRatio = s->@has_angular_damping_ratio ? (double)s->@angular_damping_ratio : null;
-        o.MaxTorque = s->@has_max_torque ? (double)s->@max_torque : null;
+        o.Hertz = s->@has_hertz ? s->@hertz : null;
+        o.DampingRatio = s->@has_damping_ratio ? s->@damping_ratio : null;
+        o.LinearHertz = s->@has_linear_hertz ? s->@linear_hertz : null;
+        o.LinearDampingRatio = s->@has_linear_damping_ratio ? s->@linear_damping_ratio : null;
+        o.AngularHertz = s->@has_angular_hertz ? s->@angular_hertz : null;
+        o.AngularDampingRatio = s->@has_angular_damping_ratio ? s->@angular_damping_ratio : null;
+        o.MaxTorque = s->@has_max_torque ? s->@max_torque : null;
     }
 
     internal static JointSpringDesc3d From_LubJointSpringDesc3d(LubJointSpringDesc3d* s)
@@ -13506,13 +13506,13 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubJointLimitDesc3d(JointLimitDesc3d o, LubJointLimitDesc3d* s)
     {
         o.Enabled = s->@has_enabled ? s->@enabled : null;
-        o.Lower = s->@has_lower ? (double)s->@lower : null;
-        o.Upper = s->@has_upper ? (double)s->@upper : null;
-        o.MinLength = s->@has_min_length ? (double)s->@min_length : null;
-        o.MaxLength = s->@has_max_length ? (double)s->@max_length : null;
-        o.ConeAngle = s->@has_cone_angle ? (double)s->@cone_angle : null;
-        o.LowerTwistAngle = s->@has_lower_twist_angle ? (double)s->@lower_twist_angle : null;
-        o.UpperTwistAngle = s->@has_upper_twist_angle ? (double)s->@upper_twist_angle : null;
+        o.Lower = s->@has_lower ? s->@lower : null;
+        o.Upper = s->@has_upper ? s->@upper : null;
+        o.MinLength = s->@has_min_length ? s->@min_length : null;
+        o.MaxLength = s->@has_max_length ? s->@max_length : null;
+        o.ConeAngle = s->@has_cone_angle ? s->@cone_angle : null;
+        o.LowerTwistAngle = s->@has_lower_twist_angle ? s->@lower_twist_angle : null;
+        o.UpperTwistAngle = s->@has_upper_twist_angle ? s->@upper_twist_angle : null;
     }
 
     internal static JointLimitDesc3d From_LubJointLimitDesc3d(LubJointLimitDesc3d* s)
@@ -13547,14 +13547,14 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubJointMotorDesc3d(JointMotorDesc3d o, LubJointMotorDesc3d* s)
     {
         o.Enabled = s->@has_enabled ? s->@enabled : null;
-        o.Speed = s->@has_speed ? (double)s->@speed : null;
-        o.MaxForce = s->@has_max_force ? (double)s->@max_force : null;
-        o.MaxTorque = s->@has_max_torque ? (double)s->@max_torque : null;
+        o.Speed = s->@has_speed ? s->@speed : null;
+        o.MaxForce = s->@has_max_force ? s->@max_force : null;
+        o.MaxTorque = s->@has_max_torque ? s->@max_torque : null;
         o.Velocity = s->@has_velocity ? From_LubVec3d(&s->@velocity) : null;
         o.LinearVelocity = s->@has_linear_velocity ? From_LubVec3d(&s->@linear_velocity) : null;
         o.AngularVelocity = s->@has_angular_velocity ? From_LubVec3d(&s->@angular_velocity) : null;
-        o.MaxVelocityForce = s->@has_max_velocity_force ? (double)s->@max_velocity_force : null;
-        o.MaxVelocityTorque = s->@has_max_velocity_torque ? (double)s->@max_velocity_torque : null;
+        o.MaxVelocityForce = s->@has_max_velocity_force ? s->@max_velocity_force : null;
+        o.MaxVelocityTorque = s->@has_max_velocity_torque ? s->@max_velocity_torque : null;
     }
 
     internal static JointMotorDesc3d From_LubJointMotorDesc3d(LubJointMotorDesc3d* s)
@@ -13584,9 +13584,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubJointTargetDesc3d(JointTargetDesc3d o, LubJointTargetDesc3d* s)
     {
-        o.Translation = s->@has_translation ? (double)s->@translation : null;
-        o.Angle = s->@has_angle ? (double)s->@angle : null;
-        o.SteeringAngle = s->@has_steering_angle ? (double)s->@steering_angle : null;
+        o.Translation = s->@has_translation ? s->@translation : null;
+        o.Angle = s->@has_angle ? s->@angle : null;
+        o.SteeringAngle = s->@has_steering_angle ? s->@steering_angle : null;
         o.Quat = s->@has_quat ? From_LubQuat3d(&s->@quat) : null;
         o.Euler = s->@has_euler ? From_LubVec3d(&s->@euler) : null;
         o.LinearVelocity = s->@has_linear_velocity ? From_LubVec3d(&s->@linear_velocity) : null;
@@ -13712,30 +13712,30 @@ internal static unsafe partial class LubNative
         o.FrameA = s->@has_frame_a ? From_LubFrameDesc3d(&s->@frame_a) : null;
         o.FrameB = s->@has_frame_b ? From_LubFrameDesc3d(&s->@frame_b) : null;
         o.CollideConnected = s->@has_collide_connected ? s->@collide_connected : null;
-        o.ForceThreshold = s->@has_force_threshold ? (double)s->@force_threshold : null;
-        o.TorqueThreshold = s->@has_torque_threshold ? (double)s->@torque_threshold : null;
-        o.ConstraintHertz = s->@has_constraint_hertz ? (double)s->@constraint_hertz : null;
-        o.ConstraintDampingRatio = s->@has_constraint_damping_ratio ? (double)s->@constraint_damping_ratio : null;
-        o.Length = s->@has_length ? (double)s->@length : null;
-        o.MinLength = s->@has_min_length ? (double)s->@min_length : null;
-        o.MaxLength = s->@has_max_length ? (double)s->@max_length : null;
-        o.Lower = s->@has_lower ? (double)s->@lower : null;
-        o.Upper = s->@has_upper ? (double)s->@upper : null;
-        o.Hertz = s->@has_hertz ? (double)s->@hertz : null;
-        o.DampingRatio = s->@has_damping_ratio ? (double)s->@damping_ratio : null;
-        o.LinearHertz = s->@has_linear_hertz ? (double)s->@linear_hertz : null;
-        o.AngularHertz = s->@has_angular_hertz ? (double)s->@angular_hertz : null;
-        o.LinearDampingRatio = s->@has_linear_damping_ratio ? (double)s->@linear_damping_ratio : null;
-        o.AngularDampingRatio = s->@has_angular_damping_ratio ? (double)s->@angular_damping_ratio : null;
-        o.MaxForce = s->@has_max_force ? (double)s->@max_force : null;
-        o.MaxTorque = s->@has_max_torque ? (double)s->@max_torque : null;
-        o.MaxVelocityForce = s->@has_max_velocity_force ? (double)s->@max_velocity_force : null;
-        o.MaxVelocityTorque = s->@has_max_velocity_torque ? (double)s->@max_velocity_torque : null;
-        o.MaxSpringForce = s->@has_max_spring_force ? (double)s->@max_spring_force : null;
-        o.MaxSpringTorque = s->@has_max_spring_torque ? (double)s->@max_spring_torque : null;
-        o.MotorSpeed = s->@has_motor_speed ? (double)s->@motor_speed : null;
-        o.TargetAngle = s->@has_target_angle ? (double)s->@target_angle : null;
-        o.TargetTranslation = s->@has_target_translation ? (double)s->@target_translation : null;
+        o.ForceThreshold = s->@has_force_threshold ? s->@force_threshold : null;
+        o.TorqueThreshold = s->@has_torque_threshold ? s->@torque_threshold : null;
+        o.ConstraintHertz = s->@has_constraint_hertz ? s->@constraint_hertz : null;
+        o.ConstraintDampingRatio = s->@has_constraint_damping_ratio ? s->@constraint_damping_ratio : null;
+        o.Length = s->@has_length ? s->@length : null;
+        o.MinLength = s->@has_min_length ? s->@min_length : null;
+        o.MaxLength = s->@has_max_length ? s->@max_length : null;
+        o.Lower = s->@has_lower ? s->@lower : null;
+        o.Upper = s->@has_upper ? s->@upper : null;
+        o.Hertz = s->@has_hertz ? s->@hertz : null;
+        o.DampingRatio = s->@has_damping_ratio ? s->@damping_ratio : null;
+        o.LinearHertz = s->@has_linear_hertz ? s->@linear_hertz : null;
+        o.AngularHertz = s->@has_angular_hertz ? s->@angular_hertz : null;
+        o.LinearDampingRatio = s->@has_linear_damping_ratio ? s->@linear_damping_ratio : null;
+        o.AngularDampingRatio = s->@has_angular_damping_ratio ? s->@angular_damping_ratio : null;
+        o.MaxForce = s->@has_max_force ? s->@max_force : null;
+        o.MaxTorque = s->@has_max_torque ? s->@max_torque : null;
+        o.MaxVelocityForce = s->@has_max_velocity_force ? s->@max_velocity_force : null;
+        o.MaxVelocityTorque = s->@has_max_velocity_torque ? s->@max_velocity_torque : null;
+        o.MaxSpringForce = s->@has_max_spring_force ? s->@max_spring_force : null;
+        o.MaxSpringTorque = s->@has_max_spring_torque ? s->@max_spring_torque : null;
+        o.MotorSpeed = s->@has_motor_speed ? s->@motor_speed : null;
+        o.TargetAngle = s->@has_target_angle ? s->@target_angle : null;
+        o.TargetTranslation = s->@has_target_translation ? s->@target_translation : null;
         o.TargetRotation = s->@has_target_rotation ? From_LubQuat3d(&s->@target_rotation) : null;
         o.LinearVelocity = s->@has_linear_velocity ? From_LubVec3d(&s->@linear_velocity) : null;
         o.AngularVelocity = s->@has_angular_velocity ? From_LubVec3d(&s->@angular_velocity) : null;
@@ -13743,11 +13743,11 @@ internal static unsafe partial class LubNative
         o.EnableSpring = s->@has_enable_spring ? s->@enable_spring : null;
         o.EnableLimit = s->@has_enable_limit ? s->@enable_limit : null;
         o.EnableMotor = s->@has_enable_motor ? s->@enable_motor : null;
-        o.ConeAngle = s->@has_cone_angle ? (double)s->@cone_angle : null;
+        o.ConeAngle = s->@has_cone_angle ? s->@cone_angle : null;
         o.EnableConeLimit = s->@has_enable_cone_limit ? s->@enable_cone_limit : null;
         o.EnableTwistLimit = s->@has_enable_twist_limit ? s->@enable_twist_limit : null;
-        o.LowerTwistAngle = s->@has_lower_twist_angle ? (double)s->@lower_twist_angle : null;
-        o.UpperTwistAngle = s->@has_upper_twist_angle ? (double)s->@upper_twist_angle : null;
+        o.LowerTwistAngle = s->@has_lower_twist_angle ? s->@lower_twist_angle : null;
+        o.UpperTwistAngle = s->@has_upper_twist_angle ? s->@upper_twist_angle : null;
         o.Spring = s->@has_spring ? From_LubJointSpringDesc3d(&s->@spring) : null;
         o.Limit = s->@has_limit ? From_LubJointLimitDesc3d(&s->@limit) : null;
         o.Motor = s->@has_motor ? From_LubJointMotorDesc3d(&s->@motor) : null;
@@ -13775,9 +13775,9 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubMaterialDesc3d(MaterialDesc3d o, LubMaterialDesc3d* s)
     {
-        o.Density = s->@has_density ? (double)s->@density : null;
-        o.Friction = s->@has_friction ? (double)s->@friction : null;
-        o.Restitution = s->@has_restitution ? (double)s->@restitution : null;
+        o.Density = s->@has_density ? s->@density : null;
+        o.Friction = s->@has_friction ? s->@friction : null;
+        o.Restitution = s->@has_restitution ? s->@restitution : null;
         o.MaterialName = LubRuntime.StrOrNull(s->@material_name);
         o.MaterialId = s->@has_material_id ? s->@material_id : null;
     }
@@ -13838,10 +13838,10 @@ internal static unsafe partial class LubNative
         o.A = From_LubVec3d(&s->@a);
         o.B = From_LubVec3d(&s->@b);
         o.R = s->@r;
-        o.Dx = s->@has_dx ? (double)s->@dx : null;
-        o.Dy = s->@has_dy ? (double)s->@dy : null;
-        o.Dz = s->@has_dz ? (double)s->@dz : null;
-        o.MaxFraction = s->@has_max_fraction ? (double)s->@max_fraction : null;
+        o.Dx = s->@has_dx ? s->@dx : null;
+        o.Dy = s->@has_dy ? s->@dy : null;
+        o.Dz = s->@has_dz ? s->@dz : null;
+        o.MaxFraction = s->@has_max_fraction ? s->@max_fraction : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
     }
 
@@ -13874,13 +13874,13 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubRaycastDesc3d(RaycastDesc3d o, LubRaycastDesc3d* s)
     {
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Z = s->@has_z ? (double)s->@z : null;
-        o.Dx = s->@has_dx ? (double)s->@dx : null;
-        o.Dy = s->@has_dy ? (double)s->@dy : null;
-        o.Dz = s->@has_dz ? (double)s->@dz : null;
-        o.MaxFraction = s->@has_max_fraction ? (double)s->@max_fraction : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Z = s->@has_z ? s->@z : null;
+        o.Dx = s->@has_dx ? s->@dx : null;
+        o.Dy = s->@has_dy ? s->@dy : null;
+        o.Dz = s->@has_dz ? s->@dz : null;
+        o.MaxFraction = s->@has_max_fraction ? s->@max_fraction : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
     }
 
@@ -13959,7 +13959,7 @@ internal static unsafe partial class LubNative
         o.Hx = s->@hx;
         o.Hy = s->@hy;
         o.Hz = s->@hz;
-        o.Radius = s->@has_radius ? (double)s->@radius : null;
+        o.Radius = s->@has_radius ? s->@radius : null;
         o.Center = s->@has_center ? From_LubVec3d(&s->@center) : null;
         o.Quat = s->@has_quat ? From_LubQuat3d(&s->@quat) : null;
     }
@@ -14017,10 +14017,10 @@ internal static unsafe partial class LubNative
         o.Sphere = s->@has_sphere ? From_LubSphereProxy3d(&s->@sphere) : null;
         o.Box = s->@has_box ? From_LubBoxProxy3d(&s->@box) : null;
         o.Capsule = s->@has_capsule ? From_LubCapsuleProxy3d(&s->@capsule) : null;
-        o.Dx = s->@has_dx ? (double)s->@dx : null;
-        o.Dy = s->@has_dy ? (double)s->@dy : null;
-        o.Dz = s->@has_dz ? (double)s->@dz : null;
-        o.MaxFraction = s->@has_max_fraction ? (double)s->@max_fraction : null;
+        o.Dx = s->@has_dx ? s->@dx : null;
+        o.Dy = s->@has_dy ? s->@dy : null;
+        o.Dz = s->@has_dz ? s->@dz : null;
+        o.MaxFraction = s->@has_max_fraction ? s->@max_fraction : null;
         o.Filter = s->@has_filter ? From_LubFilterDesc3d(&s->@filter) : null;
     }
 
@@ -14269,9 +14269,9 @@ internal static unsafe partial class LubNative
         o.Sleep = s->@has_sleep ? s->@sleep : null;
         o.Continuous = s->@has_continuous ? s->@continuous : null;
         o.WarmStarting = s->@has_warm_starting ? s->@warm_starting : null;
-        o.RestitutionThreshold = s->@has_restitution_threshold ? (double)s->@restitution_threshold : null;
-        o.HitEventThreshold = s->@has_hit_event_threshold ? (double)s->@hit_event_threshold : null;
-        o.MaximumLinearSpeed = s->@has_maximum_linear_speed ? (double)s->@maximum_linear_speed : null;
+        o.RestitutionThreshold = s->@has_restitution_threshold ? s->@restitution_threshold : null;
+        o.HitEventThreshold = s->@has_hit_event_threshold ? s->@hit_event_threshold : null;
+        o.MaximumLinearSpeed = s->@has_maximum_linear_speed ? s->@maximum_linear_speed : null;
         o.AwakeBodyCount = s->@has_awake_body_count ? s->@awake_body_count : null;
     }
 
@@ -14414,10 +14414,10 @@ internal static unsafe partial class LubNative
         o.Nz = s->@nz;
         o.ManifoldCount = s->@manifold_count;
         o.PointCount = s->@point_count;
-        o.X = s->@has_x ? (double)s->@x : null;
-        o.Y = s->@has_y ? (double)s->@y : null;
-        o.Z = s->@has_z ? (double)s->@z : null;
-        o.Separation = s->@has_separation ? (double)s->@separation : null;
+        o.X = s->@has_x ? s->@x : null;
+        o.Y = s->@has_y ? s->@y : null;
+        o.Z = s->@has_z ? s->@z : null;
+        o.Separation = s->@has_separation ? s->@separation : null;
     }
 
     internal static ContactData3d From_LubContactData3d(LubContactData3d* s)
@@ -14453,7 +14453,7 @@ internal static unsafe partial class LubNative
         o.X = s->@x;
         o.Y = s->@y;
         o.Z = s->@z;
-        o.ApproachSpeed = s->@has_approach_speed ? (double)s->@approach_speed : null;
+        o.ApproachSpeed = s->@has_approach_speed ? s->@approach_speed : null;
     }
 
     internal static ContactEvent3d From_LubContactEvent3d(LubContactEvent3d* s)
@@ -14851,7 +14851,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_LubWorldCallbacks_friction(void* user, LubMaterialView* a, LubMaterialView* b)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<MaterialView, MaterialView, double>?)box.Slots[2];
+        var cb = (Func<MaterialView, MaterialView, float>?)box.Slots[2];
         if (cb == null) return 1.0f;
         try
         {
@@ -14868,7 +14868,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_LubWorldCallbacks_restitution(void* user, LubMaterialView* a, LubMaterialView* b)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<MaterialView, MaterialView, double>?)box.Slots[3];
+        var cb = (Func<MaterialView, MaterialView, float>?)box.Slots[3];
         if (cb == null) return 1.0f;
         try
         {
@@ -14919,7 +14919,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_LubWorldCallbacks3d_friction(void* user, LubMaterialView* a, LubMaterialView* b)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<MaterialView, MaterialView, double>?)box.Slots[2];
+        var cb = (Func<MaterialView, MaterialView, float>?)box.Slots[2];
         if (cb == null) return 1.0f;
         try
         {
@@ -14936,7 +14936,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_LubWorldCallbacks3d_restitution(void* user, LubMaterialView* a, LubMaterialView* b)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<MaterialView, MaterialView, double>?)box.Slots[3];
+        var cb = (Func<MaterialView, MaterialView, float>?)box.Slots[3];
         if (cb == null) return 1.0f;
         try
         {
@@ -14953,7 +14953,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_fn_RaycastAll_visitor(void* user, LubRayHit* a)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<RayHit, double>?)box.Slots[0];
+        var cb = (Func<RayHit, float>?)box.Slots[0];
         if (cb == null) return 1.0f;
         try
         {
@@ -14987,7 +14987,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_fn_ShapeCastAll_visitor(void* user, LubRayHit* a)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<RayHit, double>?)box.Slots[0];
+        var cb = (Func<RayHit, float>?)box.Slots[0];
         if (cb == null) return 1.0f;
         try
         {
@@ -15038,7 +15038,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_fn_RaycastAll_visitor(void* user, LubRayHit3d* a)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<RayHit3d, double>?)box.Slots[0];
+        var cb = (Func<RayHit3d, float>?)box.Slots[0];
         if (cb == null) return 1.0f;
         try
         {
@@ -15089,7 +15089,7 @@ internal static unsafe partial class LubNative
     internal static float Tramp_fn_ShapeCastAll_visitor(void* user, LubRayHit3d* a)
     {
         var box = LubRuntime.CallbackBox.From(user);
-        var cb = (Func<RayHit3d, double>?)box.Slots[0];
+        var cb = (Func<RayHit3d, float>?)box.Slots[0];
         if (cb == null) return 1.0f;
         try
         {

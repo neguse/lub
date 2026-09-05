@@ -16,23 +16,23 @@ public static class AudioLab20
 
     // --- 合成パラメータ (ImGui が直接いじる状態) ---------------------------
     static int wave = 0; // 0=square 1=saw 2=triangle 3=sine 4=noise
-    static double freq0 = 440.0;
-    static double freq1 = 440.0;
-    static double duration = 0.25;
-    static double decay = 5.0;
-    static double duty = 0.5;
+    static float freq0 = 440.0f;
+    static float freq1 = 440.0f;
+    static float duration = 0.25f;
+    static float decay = 5.0f;
+    static float duty = 0.5f;
 
     // --- 再生パラメータ ------------------------------------------------------
-    static double volume = 0.5;
-    static double pitch = 1.0;
-    static double pan = 0.0;
+    static float volume = 0.5f;
+    static float pitch = 1.0f;
+    static float pan = 0.0f;
     static bool playOnChange = true;
     static bool voiceOn = false;
-    static double master = 1.0;
+    static float master = 1.0f;
 
     static int snd = 0;
     static string lastKey = "";
-    static List<double>? samples = null;
+    static List<float>? samples = null;
     static int version = 0;
 
     static string[] waveNames = new string[]
@@ -42,42 +42,42 @@ public static class AudioLab20
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    static List<double> Synth()
+    static List<float> Synth()
     {
         int n = (int)Math.Floor(duration * rate);
-        var samples = new List<double>();
-        double phase = 0.0;
-        // xorshift は 32bit 整数の列に固定する (golden 互換) ため & 0xFFFFFFFF で
-        // 32bit にマスクする (Lua 整数は 64bit 幅)
-        long seed = 0x2F6E2B1;
-        double hold = 0.0;
+        var samples = new List<float>();
+        float phase = 0.0f;
+        // xorshift32: int32 wrap の << はそのまま、論理シフト >>> は算術シフト
+        // >> + 有効 15bit の & マスクで再現する (golden はこの列に依存する)
+        int seed = 0x2F6E2B1;
+        float hold = 0.0f;
         for (int i = 0; i < n; i++)
         {
-            double u = (double)i / n;
-            double freq = freq0 + (freq1 - freq0) * u;
+            float u = (float)i / n;
+            float freq = freq0 + (freq1 - freq0) * u;
             phase = phase + freq / rate;
-            if (phase >= 1.0)
+            if (phase >= 1.0f)
             {
-                phase = phase - 1.0;
+                phase = phase - 1.0f;
                 // noise は周期ごとに LFSR を進める sample & hold (pitched noise)
-                seed = (seed ^ (seed << 13)) & 0xFFFFFFFF;
-                seed = seed ^ (seed >> 17);
-                seed = (seed ^ (seed << 5)) & 0xFFFFFFFF;
-                hold = (seed & 0xFFFF) / 32768.0 - 1.0;
+                seed = seed ^ (seed << 13);
+                seed = seed ^ ((seed >> 17) & 0x7FFF);
+                seed = seed ^ (seed << 5);
+                hold = (seed & 0xFFFF) / 32768.0f - 1.0f;
             }
-            double s = wave switch
+            float s = wave switch
             {
-                0 => phase < duty ? 1.0 : -1.0,
-                1 => phase * 2.0 - 1.0,
-                2 => phase < 0.5 ? phase * 4.0 - 1.0 : 3.0 - phase * 4.0,
-                3 => Math.Sin(phase * 2.0 * Math.PI),
+                0 => phase < duty ? 1.0f : -1.0f,
+                1 => phase * 2.0f - 1.0f,
+                2 => phase < 0.5f ? phase * 4.0f - 1.0f : 3.0f - phase * 4.0f,
+                3 => (float)Math.Sin(phase * 2.0f * (float)Math.PI),
                 _ => hold,
             };
-            samples.Add(s * Math.Exp(-decay * u));
+            samples.Add(s * (float)Math.Exp(-decay * u));
         }
         return samples;
     }
@@ -99,7 +99,7 @@ public static class AudioLab20
         return changed;
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         if (Ui.BeginWindow("sound lab"))
         {
@@ -107,20 +107,20 @@ public static class AudioLab20
             wave = Ui.SliderInt("wave", wave, 0, 4);
             freq0 = Ui.SliderFloat("freq start (Hz)", freq0, 40, 2000);
             freq1 = Ui.SliderFloat("freq end (Hz)", freq1, 40, 2000);
-            duration = Ui.SliderFloat("duration (s)", duration, 0.02, 1.0);
-            decay = Ui.SliderFloat("decay", decay, 0.0, 12.0);
+            duration = Ui.SliderFloat("duration (s)", duration, 0.02f, 1.0f);
+            decay = Ui.SliderFloat("decay", decay, 0.0f, 12.0f);
             if (wave == 0)
             {
-                duty = Ui.SliderFloat("duty", duty, 0.05, 0.95);
+                duty = Ui.SliderFloat("duty", duty, 0.05f, 0.95f);
             }
             Ui.Separator();
 
             // pitch は oneshot では発火時に固定 (負値なら末尾から逆再生)、
             // loop voice では鳴っている間もリアルタイムに追従する。
             // 0 で停止、負値で逆再生 (ターンテーブルのつもりで)。
-            volume = Ui.SliderFloat("volume", volume, 0.0, 1.0);
-            pitch = Ui.SliderFloat("pitch", pitch, -2.0, 2.0);
-            pan = Ui.SliderFloat("pan", pan, -1.0, 1.0);
+            volume = Ui.SliderFloat("volume", volume, 0.0f, 1.0f);
+            pitch = Ui.SliderFloat("pitch", pitch, -2.0f, 2.0f);
+            pan = Ui.SliderFloat("pan", pan, -1.0f, 1.0f);
             bool changed = EnsureSnd();
             bool hit = Ui.Button("play");
             Ui.SameLine();
@@ -140,7 +140,7 @@ public static class AudioLab20
             voiceOn = Ui.Checkbox("loop voice", voiceOn);
             Ui.Separator();
 
-            master = Ui.SliderFloat("master", master, 0.0, 1.0);
+            master = Ui.SliderFloat("master", master, 0.0f, 1.0f);
             Audio.MasterVolume(master);
             var info = Audio.Info();
             Ui.Text("voices " + info.Voices + " / snds " + info.Snds
@@ -162,7 +162,7 @@ public static class AudioLab20
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.08, 0.06, 0.12, 1.0 },
+            ClearColor = new float[] { 0.08f, 0.06f, 0.12f, 1.0f },
         });
         Ui.Render();
         Gfx.EndPass();

@@ -137,7 +137,7 @@ if(NOT LUB_WASM)
   endif()
 
   # --- DXC (dxcompiler.dll) -------------------------------------------------
-  # The dx12 backend compiles Slang -> DXIL, and Slang delegates DXIL emission
+  # The d3d12 backend compiles Slang -> DXIL, and Slang delegates DXIL emission
   # to dxcompiler.dll, which the Slang prebuilt does not bundle. Fetch it from
   # the DirectXShaderCompiler release into third_party/slang/bin, which is
   # already copied next to lub.exe post-build. DXC >= 1.8.2502 signs DXIL with
@@ -166,8 +166,26 @@ if(NOT LUB_WASM)
   endif()
 endif()
 
+# Linux uses Vulkan as its default native backend, so its loader and headers
+# remain required. Windows defaults to D3D12 and adds the Vulkan backend only
+# when the SDK is available.
+set(LUB_HAS_VULKAN OFF)
+if(NOT LUB_WASM)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Vulkan REQUIRED)
+    set(LUB_HAS_VULKAN ON)
+  elseif(WIN32)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+      set(LUB_HAS_VULKAN ON)
+    else()
+      message(STATUS "Vulkan SDK not found; Windows Vulkan backend is disabled")
+    endif()
+  endif()
+endif()
+
 # Source list. capture.c itself is backend-agnostic (uses g_backend->capture)
-# and compiles everywhere. backend_sdlgpu.c / backend_dx12.cpp are
+# and compiles everywhere. backend_sdlgpu.c / backend_d3d12.cpp are
 # native-only; wasm builds ship the webgpu backend alone.
 set(LUB_SOURCES
   src/app.c
@@ -215,11 +233,12 @@ if(NOT LUB_WASM)
   # HTTP + SSE dev server for `lub --serve Game.csproj`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)
-    # D3D12 backend ("native" on Windows).
-    list(APPEND LUB_SOURCES src/backend_dx12.cpp)
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Vulkan backend ("native" on Linux).
-    list(APPEND LUB_SOURCES src/backend_vk.c)
+    # D3D12 backend ("d3d12", Windows 既定).
+    list(APPEND LUB_SOURCES src/backend_d3d12.cpp)
+  endif()
+  if(LUB_HAS_VULKAN)
+    # Vulkan backend ("vulkan", Linux 既定。Windows では SDK 検出時のみ).
+    list(APPEND LUB_SOURCES src/backend_vulkan.c)
   endif()
 endif()
 # runtime 本体は object library にまとめ、player (lub) と共有 library
@@ -227,6 +246,9 @@ endif()
 add_library(lub_objs OBJECT ${LUB_SOURCES})
 add_executable(lub src/main.c)
 target_link_libraries(lub PRIVATE lub_objs)
+if(LUB_HAS_VULKAN)
+  target_compile_definitions(lub_objs PUBLIC LUB_HAS_VULKAN=1)
+endif()
 if(NOT LUB_WASM)
   add_library(lub_shared SHARED)
   target_link_libraries(lub_shared PRIVATE lub_objs)
@@ -269,12 +291,10 @@ if(UNIX AND NOT LUB_WASM)
 endif()
 if(WIN32)
   # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
-  # d3d12/dxgi/dxguid for the dx12 backend (all OS-provided).
+  # d3d12/dxgi/dxguid for the d3d12 backend (all OS-provided).
   target_link_libraries(lub_objs PUBLIC ws2_32 d3d12 dxgi dxguid)
 endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT LUB_WASM)
-  # Vulkan loader for backend_vk.c.
-  find_package(Vulkan REQUIRED)
+if(LUB_HAS_VULKAN)
   target_link_libraries(lub_objs PUBLIC Vulkan::Vulkan)
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
@@ -423,16 +443,16 @@ if(NOT LUB_WASM)
   # DXC fetch above, resolved from the build dir where the slang DLLs are
   # copied post-build of lub).
   if(WIN32)
-    add_executable(lub_shader_dx12_smoke
-      tests/c/shader_dx12_smoke.c
+    add_executable(lub_shader_d3d12_smoke
+      tests/c/shader_d3d12_smoke.c
       src/shader.cpp
     )
-    target_include_directories(lub_shader_dx12_smoke PRIVATE
+    target_include_directories(lub_shader_d3d12_smoke PRIVATE
       src
       third_party/slang/include
     )
-    target_link_directories(lub_shader_dx12_smoke PRIVATE third_party/slang/lib)
-    target_link_libraries(lub_shader_dx12_smoke PRIVATE slang)
-    add_dependencies(lub_shader_dx12_smoke lub) # slang DLLs land via lub's post-build copy
+    target_link_directories(lub_shader_d3d12_smoke PRIVATE third_party/slang/lib)
+    target_link_libraries(lub_shader_d3d12_smoke PRIVATE slang)
+    add_dependencies(lub_shader_d3d12_smoke lub) # slang DLLs land via lub's post-build copy
   endif()
 endif()

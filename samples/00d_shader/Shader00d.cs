@@ -27,7 +27,7 @@ public static class Shader00d
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         var s = Gfx.UseShader("test", vs, fs, 1);
         if (!printed && s != null)
@@ -38,7 +38,7 @@ public static class Shader00d
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.EndPass();
     }

@@ -252,3 +252,20 @@ web)が通る状態で区切り、1 段階 = 1 PR を基本にする。
   で返す(従来の契約)。対象が無い問い合わせは `nil, "not found"`。
 - Lua のテスト(`tests/lua/test_physics_*.lua`)は正の名前(`material_name` /
   `material_id`、`category_bits` / `mask_bits`、`body_a` 等)に書き換えた。
+
+## master の取り込み
+
+ブランチは 7 月 23 日の master から分岐していたので、PR の前に master を取り込んだ。
+効いたのは次の 4 つ。
+
+- tcs の f32 数値モデル(T226)。C# の `double` / `long` はサブセット外になった
+  ので、stub / cs-lib / samples / .NET の host と facade を `float` / `int` に
+  落とした(設計記録の「面の float / int32 化」と同じ方向)。tcs→Lua の golden は
+  変わらず、.NET 実行の golden は float 計算になった分だけ撮り直した
+- CI の統合(`ci.yml`)。gate 追加分(gen-api / gen-lubx の check、.NET digest、
+  ngs、raw Lua)を master の `native-gate.sh` の並列構造に組み込み、Haxe の
+  段取りを ci.yml から落とした
+- backend 名の明示化(`d3d12` / `vulkan` / `sdlgpu`、`native` 廃止)。新しい
+  C API の config 検証と README に反映した
+- tcs の master(T218 の IL→C backend 完了を含む)。名前規則を struct / hot
+  reload / IL export / tcs2c の entry 探索まで通した

@@ -117,10 +117,11 @@ log、capture、resource dump、runtime state dump のような情報取得は�
 ## Current Constraints
 
 - macOS は未対応。
-- sdlgpu backend は native 専用。web は webgpu backend のみ。
-- `native` はプラットフォーム直接実装 (Windows: D3D12、Linux: Vulkan)。CI golden は
-  Windows は WARP、Linux は lavapipe で回す (`docs/dx12-backend.md`)。backend 構成の
-  整理方針は `docs/log/2026-07-07-backend-consolidation.md`。
-- swapchain capture (`--capture`) は native のみ。web は `Gfx.readback(key)` による
+- backend は `d3d12` (Windows) / `vulkan` (Linux、SDK が見つかる Windows) /
+  `sdlgpu` (native 全般) / `webgpu` (web のみ)。未指定時の既定は Windows: d3d12、
+  Linux: vulkan、web: webgpu。CI golden は Windows は WARP、Linux は lavapipe
+  で回す (`docs/d3d12-backend.md`)。backend 構成の整理方針は
+  `docs/log/2026-07-07-backend-consolidation.md`。
+- swapchain capture (`--capture`) は native のみ。web は `Gfx.Readback()` による
   render target readback のみ。
 - SDL GPU path は combined image sampler 周辺に制約がある。

@@ -24,32 +24,32 @@ public static class Sdf19
     // mirror のまま)。
     static SdfNode Model()
     {
-        var body = Sdf.Sphere(0.72).Move(0, -0.42, 0)
-            .Bone("body", new Vec3(0, -0.42, 0));
-        var head = Sdf.Sphere(0.46).Move(0, 0.48, 0)
-            .Bone("head", new Vec3(0, 0.10, 0));
-        var armL = Sdf.Capsule(new Vec3(0.56, -0.32, 0),
-            new Vec3(1.04, 0.24, 0), 0.13)
-            .Bone("arm_l", new Vec3(0.56, -0.32, 0));
-        var armR = Sdf.Capsule(new Vec3(-0.56, -0.32, 0),
-            new Vec3(-1.04, 0.24, 0), 0.13)
-            .Bone("arm_r", new Vec3(-0.56, -0.32, 0));
+        var body = Sdf.Sphere(0.72f).Move(0, -0.42f, 0)
+            .Bone("body", new Vec3(0, -0.42f, 0));
+        var head = Sdf.Sphere(0.46f).Move(0, 0.48f, 0)
+            .Bone("head", new Vec3(0, 0.10f, 0));
+        var armL = Sdf.Capsule(new Vec3(0.56f, -0.32f, 0),
+            new Vec3(1.04f, 0.24f, 0), 0.13f)
+            .Bone("arm_l", new Vec3(0.56f, -0.32f, 0));
+        var armR = Sdf.Capsule(new Vec3(-0.56f, -0.32f, 0),
+            new Vec3(-1.04f, 0.24f, 0), 0.13f)
+            .Bone("arm_r", new Vec3(-0.56f, -0.32f, 0));
         // 目: 球で smooth にくり抜き (camera は -Z 側)。切断面には cutter の
         // 材質が出るので、目玉の色は「彫る球の paint」で決まる
-        var eye = Sdf.Sphere(0.11).Move(0.17, 0.56, -0.40).MirrorX()
-            .Paint(0x1E2130, 0.0, 0.15);
-        return body.Smin(head, 0.22).Smin(armL, 0.10).Smin(armR, 0.10)
-            .Paint(0xE58B52).Ssub(eye, 0.06);
+        var eye = Sdf.Sphere(0.11f).Move(0.17f, 0.56f, -0.40f).MirrorX()
+            .Paint(0x1E2130, 0.0f, 0.15f);
+        return body.Smin(head, 0.22f).Smin(armL, 0.10f).Smin(armR, 0.10f)
+            .Paint(0xE58B52).Ssub(eye, 0.06f);
     }
 
     // --- アニメーション -------------------------------------------------------
     static bool waveOn = true;
 
     // mesh.bones の順で 8 本分の行列を詰める (規約は lubx.Bones)
-    static List<double> PackBones(double t, MeshData? data)
+    static List<float> PackBones(float t, MeshData? data)
     {
-        double wave = waveOn ? Math.Sin(t * 4.0) * 0.5 : 0.0;
-        double nod = waveOn ? Math.Sin(t * 2.0) * 0.10 : 0.0;
+        float wave = waveOn ? (float)Math.Sin(t * 4.0f) * 0.5f : 0.0f;
+        float nod = waveOn ? (float)Math.Sin(t * 2.0f) * 0.10f : 0.0f;
         return Bones.Pack(data, (name, x, y, z) =>
         {
             switch (name)
@@ -70,10 +70,10 @@ public static class Sdf19
     // mesh / ren は onInit で生成 (cs-lib クラスは static 初期化子で作らない)。
     static Mesh3d? mesh = null;
     static Renderer3d? ren = null;
-    static double tAccum = 0.0;
+    static float tAccum = 0.0f;
     // メタル変身 (0..1)。target を Space でトグルして毎フレーム補間
-    static double metalT = 0.0;
-    static double metalTarget = 0.0;
+    static float metalT = 0.0f;
+    static float metalTarget = 0.0f;
     // treeDirty = コードからツリーを再構築 (reload 時)、meshDirty = 再評価
     // (SdfPanel での編集時)。パネル編集はツリー (data) に直接乗るので、
     // リロードするまで生きる。
@@ -95,11 +95,11 @@ public static class Sdf19
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
         mesh = new Mesh3d("sdf19");
         var r = new Renderer3d("sdf19");
-        r.Background = Color.Rgb(0.09, 0.09, 0.12);
+        r.Background = Color.Rgb(0.09f, 0.09f, 0.12f);
         ren = r;
     }
 
@@ -111,9 +111,9 @@ public static class Sdf19
         meshDirty = false;
     }
 
-    static int MatcapByte(double v)
+    static int MatcapByte(float v)
     {
-        return (int)Math.Floor(MathUtil.Clamp(v, 0.0, 1.0) * 255.0);
+        return (int)Math.Floor(MathUtil.Clamp(v, 0.0f, 1.0f) * 255.0f);
     }
 
     // メタルの映り込み用 matcap (sphere map) を手続き生成する。
@@ -122,33 +122,33 @@ public static class Sdf19
     static List<int> MakeMatcap(int size)
     {
         var px = new List<int>();
-        double lx = -0.45; // key light (正規化済み)
-        double ly = 0.65;
-        double lz = 0.61;
+        float lx = -0.45f; // key light (正規化済み)
+        float ly = 0.65f;
+        float lz = 0.61f;
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
-                double nx = (x + 0.5) / size * 2.0 - 1.0;
-                double ny = 1.0 - (y + 0.5) / size * 2.0; // 画像上方向 = +y
-                double d2 = nx * nx + ny * ny;
-                if (d2 > 1.0)
+                float nx = (x + 0.5f) / size * 2.0f - 1.0f;
+                float ny = 1.0f - (y + 0.5f) / size * 2.0f; // 画像上方向 = +y
+                float d2 = nx * nx + ny * ny;
+                if (d2 > 1.0f)
                 { // 円の外周は縁の値で延長 (LINEAR filter の黒縁防止)
-                    double d = Math.Sqrt(d2);
+                    float d = (float)Math.Sqrt(d2);
                     nx = nx / d;
                     ny = ny / d;
-                    d2 = 1.0;
+                    d2 = 1.0f;
                 }
-                double nz = Math.Sqrt(1.0 - d2);
+                float nz = (float)Math.Sqrt(1.0f - d2);
                 // chrome 風: 地平線でパキッと分かれる空/地面 + キーライト。
                 // 金属の説得力はコントラストで決まる
-                double horizon = MathUtil.Smoothstep(-0.08, 0.12, ny);
-                double zen = Math.Max(0.0, ny);
-                double r = MathUtil.Lerp(0.10, 0.60, horizon) + zen * 0.26;
-                double g = MathUtil.Lerp(0.09, 0.70, horizon) + zen * 0.20;
-                double bl = MathUtil.Lerp(0.11, 0.86, horizon) + zen * 0.13;
-                double ndl = Math.Max(0.0, nx * lx + ny * ly + nz * lz);
-                double spec = Math.Pow(ndl, 48.0) * 1.2;
+                float horizon = MathUtil.Smoothstep(-0.08f, 0.12f, ny);
+                float zen = Math.Max(0.0f, ny);
+                float r = MathUtil.Lerp(0.10f, 0.60f, horizon) + zen * 0.26f;
+                float g = MathUtil.Lerp(0.09f, 0.70f, horizon) + zen * 0.20f;
+                float bl = MathUtil.Lerp(0.11f, 0.86f, horizon) + zen * 0.13f;
+                float ndl = Math.Max(0.0f, nx * lx + ny * ly + nz * lz);
+                float spec = (float)Math.Pow(ndl, 48.0f) * 1.2f;
                 px.Add(MatcapByte(r + spec));
                 px.Add(MatcapByte(g + spec));
                 px.Add(MatcapByte(bl + spec));
@@ -158,12 +158,12 @@ public static class Sdf19
         return px;
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
-        tAccum = tAccum + dt * 0.96;
+        tAccum = tAccum + dt * 0.96f;
         if (Input.KeyPressed("space"))
-            metalTarget = 1.0 - metalTarget;
-        var metalBlend = 1.0 - Math.Pow(1.0 - 0.12, dt * 60.0);
+            metalTarget = 1.0f - metalTarget;
+        var metalBlend = 1.0f - (float)Math.Pow(1.0f - 0.12f, dt * 60.0f);
         metalT = metalT + (metalTarget - metalT) * metalBlend;
 
         Io.LoadText("samples/19_sdf/data/19_sdf.vs.slang",
@@ -202,7 +202,7 @@ public static class Sdf19
                     meshDirty = true;
                 Ui.Separator();
                 metalTarget = Ui.SliderFloat("metal (Space)", metalTarget,
-                    0.0, 1.0);
+                    0.0f, 1.0f);
                 waveOn = Ui.Checkbox("wave", waveOn);
                 var md = m.Data;
                 if (m.Ready() && md != null)
@@ -219,14 +219,14 @@ public static class Sdf19
         matcapDirty = false;
         var matcap = matcapTex;
 
-        var model = Mat4.RotateY(tAccum * 0.7);
+        var model = Mat4.RotateY(tAccum * 0.7f);
         r.Begin(new Camera
         {
-            Eye = new Vec3(0.0, 0.55, -3.1),
-            Target = new Vec3(0, 0.05, 0),
-            Fov = 45.0,
-            Near = 0.1,
-            Far = 100.0,
+            Eye = new Vec3(0.0f, 0.55f, -3.1f),
+            Target = new Vec3(0, 0.05f, 0),
+            Fov = 45.0f,
+            Near = 0.1f,
+            Far = 100.0f,
         });
         // material は matcap shader に差し替え (ファイル編集で hot reload)。
         // 追加の view / params / matcap は opts 経由で渡す。
@@ -239,7 +239,7 @@ public static class Sdf19
                 {
                     ["view"] = vm.M,
                     // メタル変身の override。ジオメトリにも頂点にも触らない
-                    ["params"] = new List<double> { metalT, 0.0, 0.0, 0.0 },
+                    ["params"] = new List<float> { metalT, 0.0f, 0.0f, 0.0f },
                 },
                 Bones = PackBones(tAccum, m.Data),
             };

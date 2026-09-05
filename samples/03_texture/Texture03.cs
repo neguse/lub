@@ -8,11 +8,11 @@ public static class Texture03
 {
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Io.LoadText("samples/03_texture/data/03_tex.vs.slang",
             out var vs, out var vsv, out _, out _);
@@ -33,7 +33,7 @@ public static class Texture03
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.Draw(3,
             new Dictionary<string, object> { ["verts"] = b, ["diffuse"] = t },

@@ -1,5 +1,5 @@
 // Slang -> DXIL smoke: shader_compile / shader_compile_compute with
-// SHADER_TARGET_DX12 must produce signed DXIL containers and reflection whose
+// SHADER_TARGET_D3D12 must produce signed DXIL containers and reflection whose
 // slots are HLSL register indices. No D3D12 device involved; this only
 // exercises the compiler path (dxcompiler.dll must be loadable, see the DXC
 // fetch in CMakeLists.txt).
@@ -35,7 +35,7 @@ static void test_triangle(void) {
   ShaderBlob vsb = {0}, fsb = {0};
   ShaderReflection refl;
   char err[1024] = {0};
-  if (!shader_compile(vs, fs, SHADER_TARGET_DX12, &vsb, &fsb, &refl, err,
+  if (!shader_compile(vs, fs, SHADER_TARGET_D3D12, &vsb, &fsb, &refl, err,
                       sizeof(err))) {
     CHECK(0, "triangle: compile failed: %s", err);
     return;
@@ -69,7 +69,7 @@ static void test_uniforms_and_texture(void) {
   ShaderBlob vsb = {0}, fsb = {0};
   ShaderReflection refl;
   char err[1024] = {0};
-  if (!shader_compile(vs, fs, SHADER_TARGET_DX12, &vsb, &fsb, &refl, err,
+  if (!shader_compile(vs, fs, SHADER_TARGET_D3D12, &vsb, &fsb, &refl, err,
                       sizeof(err))) {
     CHECK(0, "ub+tex: compile failed: %s", err);
     return;
@@ -117,7 +117,7 @@ static void test_compute(void) {
   ShaderBlob csb = {0};
   ShaderReflection refl;
   char err[1024] = {0};
-  if (!shader_compile_compute(cs, SHADER_TARGET_DX12, &csb, &refl, err,
+  if (!shader_compile_compute(cs, SHADER_TARGET_D3D12, &csb, &refl, err,
                               sizeof(err))) {
     CHECK(0, "compute: compile failed: %s", err);
     return;
@@ -145,6 +145,6 @@ int main(void) {
     printf("%d check(s) failed\n", g_failures);
     return 1;
   }
-  printf("All shader dx12 smoke tests passed\n");
+  printf("All shader d3d12 smoke tests passed\n");
   return 0;
 }

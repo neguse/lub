@@ -10,14 +10,14 @@ using static Lub;
 
 public class Camera2d
 {
-    public double Ppm;
-    public double OriginX;
-    public double OriginY;
-    public double LogicalW;
-    public double LogicalH;
+    public float Ppm;
+    public float OriginX;
+    public float OriginY;
+    public float LogicalW;
+    public float LogicalH;
 
-    public Camera2d(double logicalW, double logicalH, double ppm,
-        double originX, double originY)
+    public Camera2d(float logicalW, float logicalH, float ppm,
+        float originX, float originY)
     {
         this.LogicalW = logicalW;
         this.LogicalH = logicalH;
@@ -27,25 +27,25 @@ public class Camera2d
     }
 
     /// <summary>world x → screen x</summary>
-    public double Sx(double wx)
+    public float Sx(float wx)
     {
         return OriginX + wx * Ppm;
     }
 
     /// <summary>world y → screen y</summary>
-    public double Sy(double wy)
+    public float Sy(float wy)
     {
         return OriginY - wy * Ppm;
     }
 
     /// <summary>screen x → world x</summary>
-    public double Wx(double sxv)
+    public float Wx(float sxv)
     {
         return (sxv - OriginX) / Ppm;
     }
 
     /// <summary>screen y → world y</summary>
-    public double Wy(double syv)
+    public float Wy(float syv)
     {
         return (OriginY - syv) / Ppm;
     }

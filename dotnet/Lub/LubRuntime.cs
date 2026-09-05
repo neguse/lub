@@ -137,9 +137,9 @@ internal static unsafe class LubRuntime
 
     // ------------------------------------------------------- lists (out)
 
-    internal static List<double> FloatList(float* p, int n)
+    internal static List<float> FloatList(float* p, int n)
     {
-        var l = new List<double>(n);
+        var l = new List<float>(n);
         for (var i = 0; i < n; i++) l.Add(p[i]);
         return l;
     }
@@ -186,21 +186,21 @@ internal static unsafe class LubRuntime
         return l;
     }
 
-    internal static List<double[]> FloatRowList(float* p, int n, int width)
+    internal static List<float[]> FloatRowList(float* p, int n, int width)
     {
-        var l = new List<double[]>(n);
+        var l = new List<float[]>(n);
         for (var i = 0; i < n; i++)
         {
-            var row = new double[width];
+            var row = new float[width];
             for (var j = 0; j < width; j++) row[j] = p[i * width + j];
             l.Add(row);
         }
         return l;
     }
 
-    internal static double[] FloatsArray(float* p, int len)
+    internal static float[] FloatsArray(float* p, int len)
     {
-        var a = new double[len];
+        var a = new float[len];
         for (var i = 0; i < len; i++) a[i] = p[i];
         return a;
     }
@@ -213,7 +213,7 @@ internal static unsafe class LubRuntime
     }
 
     // 固定長配列 (C の T x[n]) に写す。読んだ個数を返す。
-    internal static int FixedFloats(IReadOnlyList<double>? l, float* dst, int cap)
+    internal static int FixedFloats(IReadOnlyList<float>? l, float* dst, int cap)
     {
         var n = l == null ? 0 : Math.Min(l.Count, cap);
         for (var i = 0; i < cap; i++) dst[i] = i < n ? (float)l![i] : 0f;
@@ -348,7 +348,7 @@ internal static unsafe class LubRuntime
             return r;
         }
 
-        public float* Floats(IReadOnlyList<double>? l, out int n)
+        public float* Floats(IReadOnlyList<float>? l, out int n)
         {
             n = l?.Count ?? 0;
             if (n == 0) return null;
@@ -397,9 +397,9 @@ internal static unsafe class LubRuntime
             return p;
         }
 
-        // List<double[]> を [n][width] の float に写す。空の list は無し (NULL) と
+        // List<float[]> を [n][width] の float に写す。空の list は無し (NULL) と
         // して渡す (C 側は pointer の有無で欠損を見る)。
-        public float* FloatRows(IReadOnlyList<double[]>? l, out int n, int width)
+        public float* FloatRows(IReadOnlyList<float[]>? l, out int n, int width)
         {
             n = l?.Count ?? 0;
             if (n == 0) return null;
@@ -479,13 +479,6 @@ internal static unsafe class LubRuntime
         {
             switch (v)
             {
-                case double d:
-                    {
-                        var p = Alloc<float>(1);
-                        p[0] = (float)d;
-                        count = 1;
-                        return p;
-                    }
                 case float f:
                     {
                         var p = Alloc<float>(1);
@@ -500,15 +493,8 @@ internal static unsafe class LubRuntime
                         count = 1;
                         return p;
                     }
-                case IReadOnlyList<double> l:
+                case IReadOnlyList<float> l:
                     return Floats(l, out count);
-                case IReadOnlyList<float> fl:
-                    {
-                        count = fl.Count;
-                        var p = Alloc<float>(count);
-                        for (var i = 0; i < count; i++) p[i] = fl[i];
-                        return p;
-                    }
                 default:
                     throw new LubException($"bindings.uniforms.{key}: number or number array expected");
             }

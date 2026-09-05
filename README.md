@@ -32,7 +32,8 @@ Linux: Vulkan) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
 依存:
 - CMake 3.22+
 - C11 / C++17 対応コンパイラ (GCC / Clang / MSVC)
-- Vulkan loader (Linux のみ) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
+- Vulkan loader と開発 header (Linux 必須) — Arch: `vulkan-icd-loader`、Debian/Ubuntu: `libvulkan-dev`
+- Vulkan SDK (Windows 任意) — SDK が見つかった場合だけ `vulkan` backend を組み込む
 
 Slang prebuilt (`slang.dll` / `libslang.so` 等) は configure 時に
 `third_party/slang/lib/` に無ければ GitHub release から自動取得する
@@ -160,24 +161,25 @@ scripts/run-golden.sh --sample 01_triangle --backend sdlgpu
 
 プラットフォームごとに機材非依存の CPU rasterizer を強制するので capture が
 確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
-sdlgpu と native (Vulkan) を、Windows (git bash) は WARP (`LUB_DX12_WARP=1`) で
-native (D3D12) をチェックする。実 GPU でのドリフトは想定範囲外
+sdlgpu と vulkan を、Windows (git bash) は WARP (`LUB_D3D12_WARP=1`) で
+d3d12 をチェックする。実 GPU でのドリフトは想定範囲外
 (tolerance 比較は別途)。
 
 ## Backend 切替
 
-lub は内部に 3 つの GPU backend を持ち、同一 Lua API で動く:
+lub は 4 つの GPU backend を持ち、同一 API で動く:
 
-- `native` (default) — プラットフォームの最短距離実装。Windows は D3D12 直接
-  (設計は [docs/dx12-backend.md](docs/dx12-backend.md))、Linux は Vulkan 直接
-  (`src/backend_vk.c`)、web は webgpu.h 直接
-  (設計記録は
-  [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、
-  整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md))
-- `sdlgpu` — SDL3 GPU API 経由の実装 (native 専用の代替 backend)
-- `webgpu` (web) — web build の実体。web では backend 指定は無視される
+- `d3d12` — Windows の既定。D3D12 直接実装
+  (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
+- `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
+  Vulkan SDK が見つかる build では選べる
+- `sdlgpu` — SDL3 GPU API 経由の実装 (native 全般の代替 backend)
+- `webgpu` — web build の実体 (webgpu.h 直接)。web では backend 指定は無視される
 
-切替は `Sys.Config` の `Backend`。サンプルは環境変数 `LUB_BACKEND` を読んで
+設計記録は [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、
+整理方針は [docs/log/2026-07-07-backend-consolidation.md](docs/log/2026-07-07-backend-consolidation.md)。
+
+切替は `Config` の `Backend`。サンプルは環境変数 `LUB_BACKEND` を読んで
 渡しているので CLI から切り替えられる:
 
 ```sh

@@ -6,11 +6,11 @@ using static Lub;
 
 public static class Buffer00c
 {
-    static List<double> data = new List<double>
+    static List<float> data = new List<float>
     {
-         0.0,  0.5, 0.0,
-        -0.5, -0.5, 0.0,
-         0.5, -0.5, 0.0,
+         0.0f,  0.5f, 0.0f,
+        -0.5f, -0.5f, 0.0f,
+         0.5f, -0.5f, 0.0f,
     };
 
     public static void OnInit()
@@ -25,7 +25,7 @@ public static class Buffer00c
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         var b = Gfx.UseBuffer("tri", Gfx.BufferType.Vertex, data, 1);
         if (b != null)
@@ -35,7 +35,7 @@ public static class Buffer00c
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.EndPass();
     }

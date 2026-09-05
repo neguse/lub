@@ -22,7 +22,7 @@ public static class CsNames
     public static string ConstType(object v) => v switch
     {
         int => "int",
-        double => "double",
+        float => "float",
         bool => "bool",
         string => "string",
         _ => v.GetType().Name,
@@ -32,7 +32,11 @@ public static class CsNames
     {
         string s => $"\"{s}\"",
         bool b => b ? "true" : "false",
-        double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        float f => FloatLiteral(f),
         _ => Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) ?? "",
     };
+
+    // C# の float リテラル (1 → "1f"、0.5 → "0.5f")
+    private static string FloatLiteral(float f) =>
+        f.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f";
 }

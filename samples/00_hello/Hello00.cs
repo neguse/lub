@@ -8,7 +8,7 @@ public static class Hello00
     public static void OnInit()
     {
         Console.WriteLine("[lua] onInit");
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
         Console.WriteLine("config called");
         Console.WriteLine("VERTEX=" + Gfx.BufferType.Vertex + " RGBA8=" + Gfx.PixelFormat.Rgba8
@@ -19,12 +19,12 @@ public static class Hello00
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.EndPass();
     }

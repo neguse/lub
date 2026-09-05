@@ -16,7 +16,7 @@ public static class NgsMain
         NgsGame.Init();
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         NgsGame.Frame(dt);
     }

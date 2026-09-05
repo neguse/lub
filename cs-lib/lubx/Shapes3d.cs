@@ -1,5 +1,5 @@
 // 実装ライブラリ lubx の Shapes3d。
-// List<double>/List<int> はそのまま Lua array table。MeshData は stub
+// List<float>/List<int> はそのまま Lua array table。MeshData は stub
 // (cs-lib/lub_stub.cs) の
 // MeshData class の object initializer で構築 (--ref 型は plain table に落ちる)。
 // Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、
@@ -16,15 +16,15 @@ using static Lub;
 /// 別物。</summary>
 public static class Shapes3d
 {
-    private static MeshData Mesh(List<double> positions, List<double> normals,
+    private static MeshData Mesh(List<float> positions, List<float> normals,
         List<int> indices)
     {
         // 頂点色は白 (interleave 既定は 0.8 グレー)。draw 側の tint がそのまま
         // albedo になるように。
-        int n = (int)Math.Floor(positions.Count / 3.0);
-        var colors = new List<double>();
+        int n = (int)Math.Floor(positions.Count / 3.0f);
+        var colors = new List<float>();
         for (int i = 0; i < n * 3; i++)
-            colors.Add(1.0);
+            colors.Add(1.0f);
         return new MeshData
         {
             Positions = positions,
@@ -39,12 +39,12 @@ public static class Shapes3d
     /// <summary>Shapes (stride 10: pos3 + normal3 + rgba) の生成結果を MeshData
     /// に変換する。既存の Shapes.box/quad/sphere で組んだジオメトリを
     /// Mesh3d / Renderer3d に載せるためのブリッジ。alpha は落ちる。</summary>
-    public static MeshData FromInterleaved(List<double> v)
+    public static MeshData FromInterleaved(List<float> v)
     {
-        int n = (int)Math.Floor(v.Count / 10.0);
-        var pos = new List<double>();
-        var nrm = new List<double>();
-        var col = new List<double>();
+        int n = (int)Math.Floor(v.Count / 10.0f);
+        var pos = new List<float>();
+        var nrm = new List<float>();
+        var col = new List<float>();
         var indices = new List<int>();
         for (int i = 0; i < n; i++)
         {
@@ -74,27 +74,27 @@ public static class Shapes3d
     /// <summary>辺長 2 の立方体 (中心原点、±1)。scale は model 行列で。</summary>
     public static MeshData Cube()
     {
-        var pos = new List<double>();
-        var nrm = new List<double>();
+        var pos = new List<float>();
+        var nrm = new List<float>();
         var indices = new List<int>();
         // 各面の { 法線 n, 面内基底 u, v } を n.xyz, u.xyz, v.xyz の 9 要素で
         // 並べたもの。
-        var faces = new List<List<double>>
+        var faces = new List<List<float>>
         {
-            new List<double> { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 },
-            new List<double> { -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0 },
-            new List<double> { 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0 },
-            new List<double> { 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 },
-            new List<double> { 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 },
-            new List<double> { 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0 },
+            new List<float> { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f },
+            new List<float> { -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f },
+            new List<float> { 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f },
+            new List<float> { 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f },
+            new List<float> { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+            new List<float> { 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f },
         };
         foreach (var f in faces)
         {
-            int baseIdx = (int)Math.Floor(pos.Count / 3.0);
+            int baseIdx = (int)Math.Floor(pos.Count / 3.0f);
             for (int i = 0; i < 4; i++)
             {
-                double su = (i == 1 || i == 2) ? 1.0 : -1.0;
-                double sv = (i >= 2) ? 1.0 : -1.0;
+                float su = (i == 1 || i == 2) ? 1.0f : -1.0f;
+                float sv = (i >= 2) ? 1.0f : -1.0f;
                 for (int k = 0; k < 3; k++)
                     pos.Add(f[k] + f[3 + k] * su + f[6 + k] * sv);
                 for (int k = 0; k < 3; k++)
@@ -109,25 +109,25 @@ public static class Shapes3d
     /// <summary>高さ 1 (y = ±0.5)、半径 1 の円柱。</summary>
     public static MeshData Cylinder(int sides)
     {
-        var pos = new List<double>();
-        var nrm = new List<double>();
+        var pos = new List<float>();
+        var nrm = new List<float>();
         var indices = new List<int>();
         for (int i = 0; i < sides; i++)
         {
-            double a = (double)i / sides * Math.PI * 2.0;
-            double nx = Math.Cos(a);
-            double nz = Math.Sin(a);
+            float a = (float)i / sides * (float)Math.PI * 2.0f;
+            float nx = (float)Math.Cos(a);
+            float nz = (float)Math.Sin(a);
             pos.Add(nx);
-            pos.Add(-0.5);
+            pos.Add(-0.5f);
             pos.Add(nz);
             nrm.Add(nx);
-            nrm.Add(0.0);
+            nrm.Add(0.0f);
             nrm.Add(nz);
             pos.Add(nx);
-            pos.Add(0.5);
+            pos.Add(0.5f);
             pos.Add(nz);
             nrm.Add(nx);
-            nrm.Add(0.0);
+            nrm.Add(0.0f);
             nrm.Add(nz);
         }
         for (int i = 0; i < sides; i++)
@@ -140,24 +140,24 @@ public static class Shapes3d
         }
         for (int side = 0; side < 2; side++)
         {
-            double ny = side == 0 ? 1.0 : -1.0;
-            double y = ny * 0.5;
-            int center = (int)Math.Floor(pos.Count / 3.0);
-            pos.Add(0.0);
+            float ny = side == 0 ? 1.0f : -1.0f;
+            float y = ny * 0.5f;
+            int center = (int)Math.Floor(pos.Count / 3.0f);
+            pos.Add(0.0f);
             pos.Add(y);
-            pos.Add(0.0);
-            nrm.Add(0.0);
+            pos.Add(0.0f);
+            nrm.Add(0.0f);
             nrm.Add(ny);
-            nrm.Add(0.0);
+            nrm.Add(0.0f);
             for (int i = 0; i < sides; i++)
             {
-                double a = (double)i / sides * Math.PI * 2.0;
-                pos.Add(Math.Cos(a));
+                float a = (float)i / sides * (float)Math.PI * 2.0f;
+                pos.Add((float)Math.Cos(a));
                 pos.Add(y);
-                pos.Add(Math.Sin(a));
-                nrm.Add(0.0);
+                pos.Add((float)Math.Sin(a));
+                nrm.Add(0.0f);
                 nrm.Add(ny);
-                nrm.Add(0.0);
+                nrm.Add(0.0f);
             }
             for (int i = 0; i < sides; i++)
             {
@@ -184,19 +184,19 @@ public static class Shapes3d
     /// <summary>半径 1 の UV 球。</summary>
     public static MeshData Sphere(int stacks, int slices)
     {
-        var pos = new List<double>();
-        var nrm = new List<double>();
+        var pos = new List<float>();
+        var nrm = new List<float>();
         var indices = new List<int>();
         for (int st = 0; st < stacks + 1; st++)
         {
-            double phi = (double)st / stacks * Math.PI;
-            double y = Math.Cos(phi);
-            double r = Math.Sin(phi);
+            float phi = (float)st / stacks * (float)Math.PI;
+            float y = (float)Math.Cos(phi);
+            float r = (float)Math.Sin(phi);
             for (int sl = 0; sl < slices + 1; sl++)
             {
-                double th = (double)sl / slices * Math.PI * 2.0;
-                double x = r * Math.Cos(th);
-                double z = r * Math.Sin(th);
+                float th = (float)sl / slices * (float)Math.PI * 2.0f;
+                float x = r * (float)Math.Cos(th);
+                float z = r * (float)Math.Sin(th);
                 pos.Add(x);
                 pos.Add(y);
                 pos.Add(z);

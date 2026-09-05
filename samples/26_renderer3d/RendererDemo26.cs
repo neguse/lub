@@ -16,7 +16,7 @@ using static Lub;
 
 public static class RendererDemo26
 {
-    static double t = 0.0;
+    static float t = 0.0f;
 
     static Renderer3d? ren = null;
     static Mesh3d? cube = null;
@@ -27,7 +27,7 @@ public static class RendererDemo26
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -42,22 +42,22 @@ public static class RendererDemo26
     // bone 付き SDF 雪だるま。腕を振る。
     static SdfNode CharaModel()
     {
-        var body = Sdf.Sphere(0.5).Move(0, 0.5, 0)
-            .Bone("body", new Vec3(0, 0.3, 0));
-        var head = Sdf.Sphere(0.32).Move(0, 1.05, 0)
-            .Bone("head", new Vec3(0, 0.8, 0));
-        var armL = Sdf.Capsule(new Vec3(0.42, 0.75, 0),
-            new Vec3(0.95, 1.05, 0), 0.09)
-            .Bone("arm_l", new Vec3(0.42, 0.75, 0));
-        var armR = Sdf.Capsule(new Vec3(-0.42, 0.75, 0),
-            new Vec3(-0.95, 1.05, 0), 0.09)
-            .Bone("arm_r", new Vec3(-0.42, 0.75, 0));
-        var trunk = body.Smin(head, 0.08).Smin(armL, 0.05).Smin(armR, 0.05)
+        var body = Sdf.Sphere(0.5f).Move(0, 0.5f, 0)
+            .Bone("body", new Vec3(0, 0.3f, 0));
+        var head = Sdf.Sphere(0.32f).Move(0, 1.05f, 0)
+            .Bone("head", new Vec3(0, 0.8f, 0));
+        var armL = Sdf.Capsule(new Vec3(0.42f, 0.75f, 0),
+            new Vec3(0.95f, 1.05f, 0), 0.09f)
+            .Bone("arm_l", new Vec3(0.42f, 0.75f, 0));
+        var armR = Sdf.Capsule(new Vec3(-0.42f, 0.75f, 0),
+            new Vec3(-0.95f, 1.05f, 0), 0.09f)
+            .Bone("arm_r", new Vec3(-0.42f, 0.75f, 0));
+        var trunk = body.Smin(head, 0.08f).Smin(armL, 0.05f).Smin(armR, 0.05f)
             .Paint(0xF2EEE6);
-        var eye = Sdf.Sphere(0.045).Move(0.11, 1.14, -0.27).MirrorX()
-            .Paint(0x24211E, 0.0, 0.3);
-        var nose = Sdf.Capsule(new Vec3(0, 1.02, -0.30),
-            new Vec3(0, 1.0, -0.48), 0.05).Paint(0xE07830);
+        var eye = Sdf.Sphere(0.045f).Move(0.11f, 1.14f, -0.27f).MirrorX()
+            .Paint(0x24211E, 0.0f, 0.3f);
+        var nose = Sdf.Capsule(new Vec3(0, 1.02f, -0.30f),
+            new Vec3(0, 1.0f, -0.48f), 0.05f).Paint(0xE07830);
         return trunk.Union(eye).Union(nose);
     }
 
@@ -80,7 +80,7 @@ public static class RendererDemo26
         built = true;
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         t = t + dt;
         Build();
@@ -93,68 +93,68 @@ public static class RendererDemo26
             || charaM == null)
             return;
 
-        r.Shadow.Extent = 7.0;
+        r.Shadow.Extent = 7.0f;
         if (Environment.GetEnvironmentVariable("LUB_R3D_NOSSAO") != null)
             r.Ssao.Enabled = false;
         r.DebugView = Environment.GetEnvironmentVariable("LUB_R3D_DEBUG");
         if (Environment.GetEnvironmentVariable("LUB_R3D_STYLE") != null)
         {
-            r.Fog = new Renderer3dFog(Color.Rgb(0.55, 0.6, 0.7), 0.045);
-            r.Outline = new Renderer3dOutline(Color.Rgb(0.1, 0.08, 0.12), 0.4);
-            r.Vignette = 0.35;
+            r.Fog = new Renderer3dFog(Color.Rgb(0.55f, 0.6f, 0.7f), 0.045f);
+            r.Outline = new Renderer3dOutline(Color.Rgb(0.1f, 0.08f, 0.12f), 0.4f);
+            r.Vignette = 0.35f;
         }
         r.Begin(new Camera
         {
-            Eye = new Vec3(Math.Cos(t * 0.3) * 7.5, 4.2,
-                Math.Sin(t * 0.3) * 7.5),
-            Target = new Vec3(0, 0.7, 0),
+            Eye = new Vec3((float)Math.Cos(t * 0.3f) * 7.5f, 4.2f,
+                (float)Math.Sin(t * 0.3f) * 7.5f),
+            Target = new Vec3(0, 0.7f, 0),
             Fov = 42,
         });
 
         // 床 (薄い箱)
-        r.Draw(cubeM, Mat4.Translate(new Vec3(0, -0.1, 0))
-            * Mat4.Scale(new Vec3(5.5, 0.1, 5.5)),
+        r.Draw(cubeM, Mat4.Translate(new Vec3(0, -0.1f, 0))
+            * Mat4.Scale(new Vec3(5.5f, 0.1f, 5.5f)),
             new Draw3dOpts { Tint = Color.Hex(0x76816F) });
         // 箱・円柱・球
-        r.Draw(cubeM, Mat4.Translate(new Vec3(-2.2, 0.5, 1.2))
-            * Mat4.RotateY(t * 0.7) * Mat4.Scale(new Vec3(0.5, 0.5, 0.5)),
+        r.Draw(cubeM, Mat4.Translate(new Vec3(-2.2f, 0.5f, 1.2f))
+            * Mat4.RotateY(t * 0.7f) * Mat4.Scale(new Vec3(0.5f, 0.5f, 0.5f)),
             new Draw3dOpts { Tint = Color.Hex(0xE8A33D) });
-        r.Draw(cylM, Mat4.Translate(new Vec3(2.1, 0.6, 1.4))
-            * Mat4.Scale(new Vec3(0.45, 1.2, 0.45)),
+        r.Draw(cylM, Mat4.Translate(new Vec3(2.1f, 0.6f, 1.4f))
+            * Mat4.Scale(new Vec3(0.45f, 1.2f, 0.45f)),
             new Draw3dOpts { Tint = Color.Hex(0x4FB8C4) });
-        r.Draw(sphM, Mat4.Translate(new Vec3(1.6,
-            0.55 + Math.Abs(Math.Sin(t * 2.0)) * 0.8, -1.6))
-            * Mat4.Scale(new Vec3(0.55, 0.55, 0.55)),
+        r.Draw(sphM, Mat4.Translate(new Vec3(1.6f,
+            0.55f + Math.Abs((float)Math.Sin(t * 2.0f)) * 0.8f, -1.6f))
+            * Mat4.Scale(new Vec3(0.55f, 0.55f, 0.55f)),
             new Draw3dOpts { Tint = Color.Hex(0xE85C5C) });
         // 半透明の板
-        r.Draw(cubeM, Mat4.Translate(new Vec3(0, 0.9, 2.6))
-            * Mat4.Scale(new Vec3(1.6, 0.9, 0.04)),
+        r.Draw(cubeM, Mat4.Translate(new Vec3(0, 0.9f, 2.6f))
+            * Mat4.Scale(new Vec3(1.6f, 0.9f, 0.04f)),
             new Draw3dOpts
             {
-                Tint = Color.Rgb(0.55, 0.75, 0.95, 0.35),
+                Tint = Color.Rgb(0.55f, 0.75f, 0.95f, 0.35f),
                 Blend = Gfx.Blend.Alpha,
             });
 
         // 高輝度ランプ (bloom が拾う)
-        r.Draw(sphM, Mat4.Translate(new Vec3(-1.9, 2.6, -1.9))
-            * Mat4.Scale(new Vec3(0.22, 0.22, 0.22)),
-            new Draw3dOpts { Tint = Color.Rgb(5.0, 4.2, 2.4) });
+        r.Draw(sphM, Mat4.Translate(new Vec3(-1.9f, 2.6f, -1.9f))
+            * Mat4.Scale(new Vec3(0.22f, 0.22f, 0.22f)),
+            new Draw3dOpts { Tint = Color.Rgb(5.0f, 4.2f, 2.4f) });
 
         // skinned キャラ (腕振り)
-        double wave = Math.Sin(t * 3.0) * 0.5;
+        float wave = (float)Math.Sin(t * 3.0f) * 0.5f;
         var bones = Bones.Pack(charaM.Data, (name, x, y, z) =>
         {
             if (name == "arm_l")
-                return Bones.PivotRot(x, y, z, Mat4.RotateZ(0.3 + wave * 0.6));
+                return Bones.PivotRot(x, y, z, Mat4.RotateZ(0.3f + wave * 0.6f));
             if (name == "arm_r")
-                return Bones.PivotRot(x, y, z, Mat4.RotateZ(-0.3 + wave * 0.6));
+                return Bones.PivotRot(x, y, z, Mat4.RotateZ(-0.3f + wave * 0.6f));
             if (name == "head")
                 return Bones.PivotRot(x, y, z,
-                    Mat4.RotateX(Math.Sin(t * 1.7) * 0.12));
+                    Mat4.RotateX((float)Math.Sin(t * 1.7f) * 0.12f));
             return null;
         });
         r.Draw(charaM, Mat4.Translate(new Vec3(0, 0, 0))
-            * Mat4.RotateY(Math.PI), new Draw3dOpts { Bones = bones });
+            * Mat4.RotateY((float)Math.PI), new Draw3dOpts { Bones = bones });
 
         r.End();
     }

@@ -110,7 +110,7 @@ public static class NgsGame
         return false;
     }
 
-    public static void Frame(double dt)
+    public static void Frame(float dt)
     {
         if (!Boot()) return;
 

@@ -152,12 +152,12 @@ public class PassOpts
     public TextureRef? DepthTarget;
     /// <summary>クリア色 [r, g, b, a]。省略時 {0, 0, 0, 1}。</summary>
     [LubArray(4)]
-    public double[]? ClearColor;
+    public float[]? ClearColor;
     /// <summary>MRT 用。targets[i] に対応するクリア色の配列。</summary>
     [LubArray(4)]
-    public List<double[]>? ClearColors;
+    public List<float[]>? ClearColors;
     /// <summary>省略時 1.0。</summary>
-    public double? ClearDepth;
+    public float? ClearDepth;
     /// <summary>
     /// `Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth)
     /// の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提
@@ -305,7 +305,7 @@ public static class Lub
 
         /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
-            List<double> data, int? version = null)
+            List<float> data, int? version = null)
         {
             return null;
         }
@@ -461,7 +461,7 @@ public static class Lub
 
         /// <summary>カーソルの絶対座標 (window px)。</summary>
         [LubNoFail]
-        public static void MousePos(out double x, out double y)
+        public static void MousePos(out float x, out float y)
         {
             x = 0;
             y = 0;
@@ -469,7 +469,7 @@ public static class Lub
 
         /// <summary>このフレームの相対移動量 (window px) の合計。フレーム内で何度呼んでも同じ値。</summary>
         [LubNoFail]
-        public static void MouseDelta(out double dx, out double dy)
+        public static void MouseDelta(out float dx, out float dy)
         {
             dx = 0;
             dy = 0;
@@ -507,7 +507,7 @@ public static class Lub
         }
 
         /// <summary>`return { ... }` 形式の Lua ファイルを float 配列として読む。</summary>
-        public static void LoadFloats(string path, out List<double>? data,
+        public static void LoadFloats(string path, out List<float>? data,
             out int version, out Status status, out string? error)
         {
             data = null;
@@ -527,36 +527,36 @@ public static class Lub
         }
 
         /// <summary>mesh を position + normal で interleave した頂点列にする。</summary>
-        public static List<double> InterleavePn(MeshData mesh)
+        public static List<float> InterleavePn(MeshData mesh)
         {
-            return new List<double>();
+            return new List<float>();
         }
 
         /// <summary>
         /// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh`
         /// 用)。
         /// </summary>
-        public static List<double> InterleavePncm(MeshData mesh)
+        public static List<float> InterleavePncm(MeshData mesh)
         {
-            return new List<double>();
+            return new List<float>();
         }
 
         /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。</summary>
-        public static List<double> InterleavePncmw(MeshData mesh)
+        public static List<float> InterleavePncmw(MeshData mesh)
         {
-            return new List<double>();
+            return new List<float>();
         }
 
         /// <summary>position + normal + uv。</summary>
-        public static List<double> InterleavePnu(MeshData mesh)
+        public static List<float> InterleavePnu(MeshData mesh)
         {
-            return new List<double>();
+            return new List<float>();
         }
 
         /// <summary>position + normal + uv + tangent。</summary>
-        public static List<double> InterleavePnut(MeshData mesh)
+        public static List<float> InterleavePnut(MeshData mesh)
         {
-            return new List<double>();
+            return new List<float>();
         }
     }
 
@@ -583,9 +583,9 @@ public static class Lub
             Intersect = 15,
         }
 
-        public static MeshData SurfaceNets(List<double> grid, int nx, int ny,
-            int nz, double? cell = null, double? ox = null, double? oy = null,
-            double? oz = null)
+        public static MeshData SurfaceNets(List<float> grid, int nx, int ny,
+            int nz, float? cell = null, float? ox = null, float? oy = null,
+            float? oz = null)
         {
             return new MeshData();
         }
@@ -593,7 +593,7 @@ public static class Lub
         /// <summary>平らな node 配列 (子は index で参照) をメッシュ化する。
         /// 木の組み立ては lubx の Sdf が行う。</summary>
         public static MeshData SdfMesh(List<SdfNodeDesc> nodes, int root, int n,
-            double? skinK = null)
+            float? skinK = null)
         {
             return new MeshData();
         }
@@ -610,7 +610,7 @@ public static class Lub
 
         /// <summary>グリフを px サイズでラスタライズ。フォントに無い codepoint は null。</summary>
         [LubMaybe]
-        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, double px)
+        public static GlyphBitmap? Glyph(Bytes ttf, int codepoint, float px)
         {
             return null;
         }
@@ -621,13 +621,13 @@ public static class Lub
         /// </summary>
         [LubMaybe]
         public static GlyphMesh? GlyphMesh(Bytes ttf, int codepoint,
-            double? tolerance = null)
+            float? tolerance = null)
         {
             return null;
         }
 
         /// <summary>ペアカーニング (em 単位、無ければ 0)。</summary>
-        public static double Kern(Bytes ttf, int cp1, int cp2)
+        public static float Kern(Bytes ttf, int cp1, int cp2)
         {
             return 0;
         }
@@ -671,8 +671,8 @@ public static class Lub
         }
 
         [LubNoFail]
-        public static double SliderFloat(string label, double v, double min,
-            double max)
+        public static float SliderFloat(string label, float v, float min,
+            float max)
         {
             return 0;
         }
@@ -684,15 +684,15 @@ public static class Lub
         }
 
         [LubNoFail]
-        public static double DragFloat(string label, double v,
-            double? speed = null, double? min = null, double? max = null)
+        public static float DragFloat(string label, float v,
+            float? speed = null, float? min = null, float? max = null)
         {
             return 0;
         }
 
         [LubNoFail]
-        public static void ColorEdit3(string label, double r, double g,
-            double b, out double newR, out double newG, out double newB)
+        public static void ColorEdit3(string label, float r, float g,
+            float b, out float newR, out float newG, out float newB)
         {
             newR = 0;
             newG = 0;
@@ -723,8 +723,8 @@ public static class Lub
 
         /// <summary>次の window の初期配置(初回のみ。ユーザのドラッグは活きる)。</summary>
         [LubNoFail]
-        public static void SetNextWindow(double x, double y, double w,
-            double h)
+        public static void SetNextWindow(float x, float y, float w,
+            float h)
         {
         }
 
@@ -769,7 +769,7 @@ public static class Lub
         /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。
         /// 同じ内容は同じ snd に dedupe される。
         /// </summary>
-        public static int Snd(string key, List<double> data, int channels,
+        public static int Snd(string key, List<float> data, int channels,
             int rate, int? version = null)
         {
             return 0;
@@ -804,7 +804,7 @@ public static class Lub
         }
 
         [LubNoFail]
-        public static void MasterVolume(double volume)
+        public static void MasterVolume(float volume)
         {
         }
 
@@ -833,7 +833,7 @@ public static class Lub
 
         /// <summary>実測 FPS (約 1 秒ごとの平滑値)。</summary>
         [LubNoFail]
-        public static double ActualFps()
+        public static float ActualFps()
         {
             return 0;
         }
@@ -1011,37 +1011,37 @@ public static class Lub
             return new Vec2d();
         }
 
-        public static double JointTorque(JointRef joint)
+        public static float JointTorque(JointRef joint)
         {
             return 0;
         }
 
-        public static double? JointAngle(JointRef joint)
+        public static float? JointAngle(JointRef joint)
         {
             return null;
         }
 
-        public static double? JointTranslation(JointRef joint)
+        public static float? JointTranslation(JointRef joint)
         {
             return null;
         }
 
-        public static double? JointSpeed(JointRef joint)
+        public static float? JointSpeed(JointRef joint)
         {
             return null;
         }
 
-        public static double? JointLength(JointRef joint)
+        public static float? JointLength(JointRef joint)
         {
             return null;
         }
 
-        public static double? JointMotorForce(JointRef joint)
+        public static float? JointMotorForce(JointRef joint)
         {
             return null;
         }
 
-        public static double? JointMotorTorque(JointRef joint)
+        public static float? JointMotorTorque(JointRef joint)
         {
             return null;
         }
@@ -1062,7 +1062,7 @@ public static class Lub
         {
         }
 
-        public static StepInfo Step(WorldRef world, double dt)
+        public static StepInfo Step(WorldRef world, float dt)
         {
             return new StepInfo();
         }
@@ -1192,7 +1192,7 @@ public static class Lub
         /// <summary>visitor 付きの Raycast。visitor が通した hit の一覧。
         /// Lua 面は同じ raycast。</summary>
         public static List<RayHit> RaycastAll(WorldRef world, RaycastDesc query,
-            Func<RayHit, double> visitor)
+            Func<RayHit, float> visitor)
         {
             return new List<RayHit>();
         }
@@ -1212,7 +1212,7 @@ public static class Lub
 
         /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
         public static List<RayHit> ShapeCastAll(WorldRef world,
-            ShapeCastDesc query, Func<RayHit, double> visitor)
+            ShapeCastDesc query, Func<RayHit, float> visitor)
         {
             return new List<RayHit>();
         }
@@ -1268,12 +1268,12 @@ public static class Lub
         {
         }
 
-        public static void AddTorque(BodyRef body, double torque,
+        public static void AddTorque(BodyRef body, float torque,
             CommandOpts? opts = null)
         {
         }
 
-        public static void AddAngularImpulse(BodyRef body, double impulse,
+        public static void AddAngularImpulse(BodyRef body, float impulse,
             CommandOpts? opts = null)
         {
         }
@@ -1444,34 +1444,34 @@ public static class Lub
             return new Vec3d();
         }
 
-        public static double? JointAngle(JointRef3d joint)
+        public static float? JointAngle(JointRef3d joint)
         {
             return null;
         }
 
-        public static double? JointTranslation(JointRef3d joint)
+        public static float? JointTranslation(JointRef3d joint)
         {
             return null;
         }
 
-        public static double? JointSpeed(JointRef3d joint)
+        public static float? JointSpeed(JointRef3d joint)
         {
             return null;
         }
 
-        public static double? JointLength(JointRef3d joint)
+        public static float? JointLength(JointRef3d joint)
         {
             return null;
         }
 
-        public static double? JointMotorForce(JointRef3d joint)
+        public static float? JointMotorForce(JointRef3d joint)
         {
             return null;
         }
 
         /// <summary>revolute / wheel の motor torque。spherical は
         /// JointMotorTorqueVector。</summary>
-        public static double? JointMotorTorque(JointRef3d joint)
+        public static float? JointMotorTorque(JointRef3d joint)
         {
             return null;
         }
@@ -1516,7 +1516,7 @@ public static class Lub
             return new List<MoverPlane3d>();
         }
 
-        public static StepInfo3d Step(WorldRef3d world, double dt)
+        public static StepInfo3d Step(WorldRef3d world, float dt)
         {
             return new StepInfo3d();
         }
@@ -1638,7 +1638,7 @@ public static class Lub
         /// <summary>visitor 付き (か Mode = "all") の Raycast。Lua 面は同じ
         /// raycast。</summary>
         public static List<RayHit3d> RaycastAll(WorldRef3d world,
-            RaycastDesc3d query, Func<RayHit3d, double>? visitor = null)
+            RaycastDesc3d query, Func<RayHit3d, float>? visitor = null)
         {
             return new List<RayHit3d>();
         }
@@ -1664,7 +1664,7 @@ public static class Lub
 
         /// <summary>visitor 付きの ShapeCast。Lua 面は同じ shape_cast。</summary>
         public static List<RayHit3d> ShapeCastAll(WorldRef3d world,
-            ShapeProxyDesc3d query, Func<RayHit3d, double> visitor)
+            ShapeProxyDesc3d query, Func<RayHit3d, float> visitor)
         {
             return new List<RayHit3d>();
         }
@@ -1751,8 +1751,9 @@ public static class Lub
 public class ConfigOpts
 {
     /// <summary>
-    /// GPU backend。native では "native" (既定。このプラットフォームの最短距離実装 — Windows: D3D12
-    /// / Linux: 当面 sdlgpu) か "sdlgpu"。 web (WASM) は webgpu のみで、指定は無視される。
+    /// GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。
+    /// Windows は Vulkan SDK がある build のみ) / "sdlgpu"。web (WASM) は webgpu のみで、
+    /// 指定は無視される。未指定 (null) なら既定のまま。
     /// </summary>
     public string? Backend;
     /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>
@@ -1774,20 +1775,20 @@ public class ConfigOpts
 /// <summary>surface_nets / sdf_mesh / load_gltf 共通のメッシュ規約。</summary>
 public class MeshData
 {
-    public List<double> Positions = new List<double>();
-    public List<double> Normals = new List<double>();
+    public List<float> Positions = new List<float>();
+    public List<float> Normals = new List<float>();
     public List<int> Indices = new List<int>();
     public int VertCount;
     public int IndexCount;
-    public List<double>? Uvs;
-    public List<double>? Tangents;
-    public List<double>? BoundsMin;
-    public List<double>? BoundsMax;
-    public double? Cell;
-    public List<double>? Colors;
-    public List<double>? MetalRough;
+    public List<float>? Uvs;
+    public List<float>? Tangents;
+    public List<float>? BoundsMin;
+    public List<float>? BoundsMax;
+    public float? Cell;
+    public List<float>? Colors;
+    public List<float>? MetalRough;
     public List<int>? Joints;
-    public List<double>? Weights;
+    public List<float>? Weights;
     public List<SdfBone>? Bones;
 }
 
@@ -1795,9 +1796,9 @@ public class MeshData
 public class SdfBone
 {
     public string Name = "";
-    public double X;
-    public double Y;
-    public double Z;
+    public float X;
+    public float Y;
+    public float Z;
 }
 
 /// <summary>sdf の木の node (平らな配列の要素)。A / B は子の index
@@ -1811,7 +1812,7 @@ public class SdfNodeDesc
     public int A = -1;
     public int B = -1;
     [LubArray(8)]
-    public List<double> Params = new List<double>();
+    public List<float> Params = new List<float>();
     public string? Name;
 }
 
@@ -1819,13 +1820,13 @@ public class SdfNodeDesc
 public class GltfMaterial
 {
     [LubArray(4)]
-    public List<double> BaseColorFactor = new List<double>();
-    public double MetallicFactor;
-    public double RoughnessFactor;
+    public List<float> BaseColorFactor = new List<float>();
+    public float MetallicFactor;
+    public float RoughnessFactor;
     public int AlphaMode;
-    public double AlphaCutoff;
+    public float AlphaCutoff;
     public bool DoubleSided;
-    public double NormalScale;
+    public float NormalScale;
     public string? BaseColorPath;
     public string? MetallicRoughnessPath;
     public string? NormalPath;
@@ -1856,7 +1857,7 @@ public class GlyphBitmap
     public int H;
     public int Xoff;
     public int Yoff;
-    public double Advance;
+    public float Advance;
     /// <summary>w × h の alpha (frame 有効の view)。</summary>
     public Bytes? Bytes;
 }
@@ -1864,14 +1865,14 @@ public class GlyphBitmap
 /// <summary>font_glyph_mesh が返すメッシュ (MeshData 規約 + advance)。</summary>
 public class GlyphMesh : MeshData
 {
-    public double Advance;
+    public float Advance;
 }
 
 public class FontMetrics
 {
-    public double Ascent;
-    public double Descent;
-    public double LineGap;
+    public float Ascent;
+    public float Descent;
+    public float LineGap;
 }
 
 // --------------------------------------------------------------------- Ui
@@ -1883,9 +1884,9 @@ public class FontMetrics
 /// <summary>audio_play / audio_voice の再生パラメータ。</summary>
 public class PlayOpts
 {
-    public double? Volume;
-    public double? Pitch;
-    public double? Pan;
+    public float? Volume;
+    public float? Pitch;
+    public float? Pan;
 }
 
 public class VoiceOpts : PlayOpts
@@ -1910,8 +1911,8 @@ public class AudioInfo
 /// <summary>2D 物理の座標 wire format。</summary>
 public class Vec2d
 {
-    public double X;
-    public double Y;
+    public float X;
+    public float Y;
 }
 
 [LubHandle]
@@ -1942,12 +1943,12 @@ public class JointRef
 /// <summary>body 生成時の初期状態。</summary>
 public class InitialState
 {
-    public double? X;
-    public double? Y;
-    public double? Angle;
-    public double? Vx;
-    public double? Vy;
-    public double? W;
+    public float? X;
+    public float? Y;
+    public float? Angle;
+    public float? Vx;
+    public float? Vy;
+    public float? W;
     public bool? Awake;
 }
 
@@ -1976,24 +1977,24 @@ public class ShapeView
 /// callback の種類に応じて Friction か Restitution に入る。</summary>
 public class MaterialView
 {
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int MaterialId;
 }
 
 public class ManifoldPoint
 {
-    public double X;
-    public double Y;
-    public double AnchorAX;
-    public double AnchorAY;
-    public double AnchorBX;
-    public double AnchorBY;
-    public double Separation;
-    public double NormalImpulse;
-    public double TangentImpulse;
-    public double TotalNormalImpulse;
-    public double NormalVelocity;
+    public float X;
+    public float Y;
+    public float AnchorAX;
+    public float AnchorAY;
+    public float AnchorBX;
+    public float AnchorBY;
+    public float Separation;
+    public float NormalImpulse;
+    public float TangentImpulse;
+    public float TotalNormalImpulse;
+    public float NormalVelocity;
     public int Id;
     public bool Persisted;
 }
@@ -2003,15 +2004,15 @@ public class PreSolveContact
 {
     public ShapeView A = new ShapeView();
     public ShapeView B = new ShapeView();
-    public double Nx;
-    public double Ny;
-    public double RollingImpulse;
+    public float Nx;
+    public float Ny;
+    public float RollingImpulse;
     public int PointCount;
     public List<ManifoldPoint> Points = new List<ManifoldPoint>();
-    public double? X;
-    public double? Y;
-    public double? Separation;
-    public double? NormalVelocity;
+    public float? X;
+    public float? Y;
+    public float? Separation;
+    public float? NormalVelocity;
 }
 
 /// <summary>world callback。生存期間は次の world 宣言か step まで。</summary>
@@ -2019,8 +2020,8 @@ public class WorldCallbacks
 {
     public Func<ShapeView, ShapeView, bool>? Filter;
     public Func<PreSolveContact, bool>? PreSolve;
-    public Func<MaterialView, MaterialView, double>? Friction;
-    public Func<MaterialView, MaterialView, double>? Restitution;
+    public Func<MaterialView, MaterialView, float>? Friction;
+    public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
 /// <summary>
@@ -2032,12 +2033,12 @@ public class WorldOpts
 {
     public int? Version;
     public Vec2d? Gravity;
-    public double? FixedDt;
+    public float? FixedDt;
     public int? Substeps;
     public int? MaxSteps;
     public bool? Sleep;
     public bool? Continuous;
-    public double? HitEventThreshold;
+    public float? HitEventThreshold;
     public WorldCallbacks? Callbacks;
 }
 
@@ -2063,10 +2064,10 @@ public class BodyDesc
     public bool? Enabled;
     public bool? Awake;
     public bool? Sleep;
-    public double? SleepThreshold;
-    public double? GravityScale;
-    public double? LinearDamping;
-    public double? AngularDamping;
+    public float? SleepThreshold;
+    public float? GravityScale;
+    public float? LinearDamping;
+    public float? AngularDamping;
     public InitialState? Initial;
 }
 
@@ -2086,9 +2087,9 @@ public class FilterDesc
 public class ShapeDesc
 {
     public int? Version;
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -2102,52 +2103,52 @@ public class ShapeDesc
 
 public class BoxDesc : ShapeDesc
 {
-    public double Hx;
-    public double Hy;
-    public double? Cx;
-    public double? Cy;
-    public double? Angle;
+    public float Hx;
+    public float Hy;
+    public float? Cx;
+    public float? Cy;
+    public float? Angle;
 }
 
 public class CircleDesc : ShapeDesc
 {
-    public double R;
-    public double? Cx;
-    public double? Cy;
+    public float R;
+    public float? Cx;
+    public float? Cy;
 }
 
 public class CapsuleDesc : ShapeDesc
 {
-    public double Ax;
-    public double Ay;
-    public double Bx;
-    public double By;
-    public double R;
+    public float Ax;
+    public float Ay;
+    public float Bx;
+    public float By;
+    public float R;
 }
 
 public class SegmentDesc : ShapeDesc
 {
-    public double Ax;
-    public double Ay;
-    public double Bx;
-    public double By;
+    public float Ax;
+    public float Ay;
+    public float Bx;
+    public float By;
 }
 
 /// <summary>凸多角形。Points は x, y の組 (3..8 点)。</summary>
 public class PolygonDesc : ShapeDesc
 {
-    public List<double> Points = new List<double>();
-    public double? Radius;
-    public double? Cx;
-    public double? Cy;
-    public double? Angle;
+    public List<float> Points = new List<float>();
+    public float? Radius;
+    public float? Cx;
+    public float? Cy;
+    public float? Angle;
 }
 
 /// <summary>chain の区間ごとの材質。</summary>
 public class ChainMaterial
 {
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int? MaterialId;
 }
 
@@ -2156,11 +2157,11 @@ public class ChainMaterial
 public class ChainDesc
 {
     public int Version;
-    public List<double> Points = new List<double>();
+    public List<float> Points = new List<float>();
     public List<ChainMaterial>? Materials;
     public bool? Loop;
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -2173,22 +2174,22 @@ public class ChainDesc
 public class JointSpringDesc
 {
     public bool? Enabled;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? LinearHertz;
-    public double? LinearDampingRatio;
-    public double? AngularHertz;
-    public double? AngularDampingRatio;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? LinearHertz;
+    public float? LinearDampingRatio;
+    public float? AngularHertz;
+    public float? AngularDampingRatio;
 }
 
 /// <summary>joint の limit。Min / Max は distance。</summary>
 public class JointLimitDesc
 {
     public bool? Enabled;
-    public double? Lower;
-    public double? Upper;
-    public double? MinLength;
-    public double? MaxLength;
+    public float? Lower;
+    public float? Upper;
+    public float? MinLength;
+    public float? MaxLength;
 }
 
 /// <summary>joint の motor。LinearOffset / AngularOffset / CorrectionFactor
@@ -2196,24 +2197,24 @@ public class JointLimitDesc
 public class JointMotorDesc
 {
     public bool? Enabled;
-    public double? Speed;
-    public double? MaxForce;
-    public double? MaxTorque;
+    public float? Speed;
+    public float? MaxForce;
+    public float? MaxTorque;
     public Vec2d? LinearOffset;
-    public double? AngularOffset;
-    public double? CorrectionFactor;
+    public float? AngularOffset;
+    public float? CorrectionFactor;
 }
 
 /// <summary>JointSetTarget。mouse は Target か X / Y、prismatic は
 /// Translation、revolute は Angle、motor は LinearOffset / AngularOffset。</summary>
 public class JointTargetDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Translation;
-    public double? Angle;
+    public float? X;
+    public float? Y;
+    public float? Translation;
+    public float? Angle;
     public Vec2d? LinearOffset;
-    public double? AngularOffset;
+    public float? AngularOffset;
 }
 
 /// <summary>joint の宣言。有効フィールドは type ごとに異なる。</summary>
@@ -2228,23 +2229,23 @@ public class JointDesc
     public Vec2d? LocalAnchorA;
     public Vec2d? LocalAnchorB;
     public Vec2d? LocalAxisA;
-    public double? ReferenceAngle;
+    public float? ReferenceAngle;
     public bool? CollideConnected;
-    public double? Length;
-    public double? MinLength;
-    public double? MaxLength;
-    public double? Lower;
-    public double? Upper;
-    public double? TargetAngle;
-    public double? TargetTranslation;
+    public float? Length;
+    public float? MinLength;
+    public float? MaxLength;
+    public float? Lower;
+    public float? Upper;
+    public float? TargetAngle;
+    public float? TargetTranslation;
     public Vec2d? LinearOffset;
-    public double? AngularOffset;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? MaxForce;
-    public double? MaxTorque;
-    public double? MotorSpeed;
-    public double? CorrectionFactor;
+    public float? AngularOffset;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? MaxForce;
+    public float? MaxTorque;
+    public float? MotorSpeed;
+    public float? CorrectionFactor;
     public JointSpringDesc? Spring;
     public JointLimitDesc? Limit;
     public JointMotorDesc? Motor;
@@ -2255,36 +2256,36 @@ public class CommandOpts
 {
     public bool? Wake;
     public Vec2d? Point;
-    public double? TimeStep;
+    public float? TimeStep;
 }
 
 public class VelocityDesc
 {
-    public double? Vx;
-    public double? Vy;
-    public double? W;
+    public float? Vx;
+    public float? Vy;
+    public float? W;
 }
 
 public class PoseDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Angle;
+    public float? X;
+    public float? Y;
+    public float? Angle;
 }
 
 public class MassDataDesc
 {
-    public double? Mass;
-    public double? Inertia;
+    public float? Mass;
+    public float? Inertia;
     public Vec2d? LocalCenter;
 }
 
 /// <summary>ShapeSetMaterial。Material は名前、MaterialId は整数の id。</summary>
 public class MaterialDesc
 {
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? MaterialName;
     public int? MaterialId;
 }
@@ -2300,20 +2301,20 @@ public class ShapeEventsDesc
 
 public class RaycastDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Dx;
-    public double? Dy;
-    public double? MaxFraction;
+    public float? X;
+    public float? Y;
+    public float? Dx;
+    public float? Dy;
+    public float? MaxFraction;
     public FilterDesc? Filter;
 }
 
 public class AabbDesc
 {
-    public double MinX;
-    public double MinY;
-    public double MaxX;
-    public double MaxY;
+    public float MinX;
+    public float MinY;
+    public float MaxX;
+    public float MaxY;
     public FilterDesc? Filter;
 }
 
@@ -2322,45 +2323,45 @@ public class AabbDesc
 public class ShapeCastDesc
 {
     public Lub.Phys2d.ProxyKind? Kind;
-    public double? X;
-    public double? Y;
-    public double? Angle;
-    public double? Radius;
-    public double? Cx;
-    public double? Cy;
-    public double? Ax;
-    public double? Ay;
-    public double? Bx;
-    public double? By;
-    public double? Hx;
-    public double? Hy;
-    public List<double>? Points;
-    public double? Dx;
-    public double? Dy;
-    public double? MaxFraction;
+    public float? X;
+    public float? Y;
+    public float? Angle;
+    public float? Radius;
+    public float? Cx;
+    public float? Cy;
+    public float? Ax;
+    public float? Ay;
+    public float? Bx;
+    public float? By;
+    public float? Hx;
+    public float? Hy;
+    public List<float>? Points;
+    public float? Dx;
+    public float? Dy;
+    public float? MaxFraction;
     public FilterDesc? Filter;
 }
 
 public class MoverDesc
 {
-    public double Ax;
-    public double Ay;
-    public double Bx;
-    public double By;
-    public double R;
-    public double? Dx;
-    public double? Dy;
-    public double? MaxFraction;
+    public float Ax;
+    public float Ay;
+    public float Bx;
+    public float By;
+    public float R;
+    public float? Dx;
+    public float? Dy;
+    public float? MaxFraction;
     public FilterDesc? Filter;
 }
 
 public class ExplosionDesc
 {
-    public double? X;
-    public double? Y;
-    public double? Radius;
-    public double? Falloff;
-    public double? ImpulsePerLength;
+    public float? X;
+    public float? Y;
+    public float? Radius;
+    public float? Falloff;
+    public float? ImpulsePerLength;
     public FilterDesc? Filter;
 }
 
@@ -2387,50 +2388,50 @@ public class DebugOpts
 /// polygons は n solid + 色 + 点列、points は x y size + 色。</summary>
 public class DebugData
 {
-    public List<double> Segments = new List<double>();
-    public List<double> Circles = new List<double>();
-    public List<double> Capsules = new List<double>();
-    public List<double> Polygons = new List<double>();
-    public List<double> Points = new List<double>();
+    public List<float> Segments = new List<float>();
+    public List<float> Circles = new List<float>();
+    public List<float> Capsules = new List<float>();
+    public List<float> Polygons = new List<float>();
+    public List<float> Points = new List<float>();
 }
 
 /// <summary>phys2d_pose の戻り値。</summary>
 public class Pose
 {
-    public double X;
-    public double Y;
-    public double Angle;
-    public double Vx;
-    public double Vy;
-    public double W;
+    public float X;
+    public float Y;
+    public float Angle;
+    public float Vx;
+    public float Vy;
+    public float W;
     public bool Awake;
     public bool Enabled;
     public bool Sleep;
-    public double SleepThreshold;
+    public float SleepThreshold;
 }
 
 /// <summary>phys2d_velocity の戻り値。</summary>
 public class Velocity
 {
-    public double X;
-    public double Y;
-    public double W;
+    public float X;
+    public float Y;
+    public float W;
 }
 
 public class MassData
 {
-    public double Mass;
-    public double Inertia;
+    public float Mass;
+    public float Inertia;
     public Vec2d Center = new Vec2d();
     public Vec2d LocalCenter = new Vec2d();
 }
 
 public class Aabb
 {
-    public double MinX;
-    public double MinY;
-    public double MaxX;
-    public double MaxY;
+    public float MinX;
+    public float MinY;
+    public float MaxX;
+    public float MaxY;
 }
 
 public class FilterInfo
@@ -2444,9 +2445,9 @@ public class FilterInfo
 
 public class ShapeInfo : ShapeView
 {
-    public double Density;
-    public double Friction;
-    public double Restitution;
+    public float Density;
+    public float Friction;
+    public float Restitution;
     public bool Sensor;
     public bool SensorEvents;
     public bool Contact;
@@ -2472,19 +2473,19 @@ public class WorldInfo
     public int Generation;
     public bool Begun;
     public bool Prune;
-    public double FixedDt;
+    public float FixedDt;
     public int Substeps;
     public int MaxSteps;
-    public double Accumulator;
+    public float Accumulator;
     public int PendingCommands;
     public WorldCallbackInfo Callbacks = new WorldCallbackInfo();
     public Vec2d? Gravity;
     public bool? Sleep;
     public bool? Continuous;
     public bool? WarmStarting;
-    public double? RestitutionThreshold;
-    public double? HitEventThreshold;
-    public double? MaximumLinearSpeed;
+    public float? RestitutionThreshold;
+    public float? HitEventThreshold;
+    public float? MaximumLinearSpeed;
     public int? AwakeBodyCount;
 }
 
@@ -2492,7 +2493,7 @@ public class StepInfo
 {
     public int Steps;
     public int Commands;
-    public double Alpha;
+    public float Alpha;
     public bool Dropped;
     public int ContactBegins;
     public int ContactEnds;
@@ -2516,13 +2517,13 @@ public class JointInfo : JointView
 {
     public bool CollideConnected;
     public Vec2d Force = new Vec2d();
-    public double Torque;
-    public double LinearSeparation;
-    public double AngularSeparation;
+    public float Torque;
+    public float LinearSeparation;
+    public float AngularSeparation;
     public Vec2d? LocalAnchorA;
     public Vec2d? LocalAnchorB;
     public Vec2d? LocalAxisA;
-    public double? ReferenceAngle;
+    public float? ReferenceAngle;
 }
 
 /// <summary>body に今触れている contact。</summary>
@@ -2530,12 +2531,12 @@ public class ContactData
 {
     public ShapeView A = new ShapeView();
     public ShapeView B = new ShapeView();
-    public double Nx;
-    public double Ny;
+    public float Nx;
+    public float Ny;
     public int PointCount;
-    public double? X;
-    public double? Y;
-    public double? Separation;
+    public float? X;
+    public float? Y;
+    public float? Separation;
 }
 
 /// <summary>contact イベントの端点 (2D/3D 共通)。</summary>
@@ -2544,12 +2545,12 @@ public class ContactEvent
 {
     public ShapeView A = new ShapeView();
     public ShapeView B = new ShapeView();
-    public double Nx;
-    public double Ny;
+    public float Nx;
+    public float Ny;
     public int PointCount;
-    public double X;
-    public double Y;
-    public double? ApproachSpeed;
+    public float X;
+    public float Y;
+    public float? ApproachSpeed;
 }
 
 public class SensorEvent
@@ -2562,19 +2563,19 @@ public class BodyEvent
 {
     public string Body = "";
     public bool Valid;
-    public double X;
-    public double Y;
-    public double Angle;
+    public float X;
+    public float Y;
+    public float Angle;
     public bool FellAsleep;
 }
 
 public class RayHit : ShapeView
 {
-    public double X;
-    public double Y;
-    public double Nx;
-    public double Ny;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Nx;
+    public float Ny;
+    public float Fraction;
     public int? NodeVisits;
     public int? LeafVisits;
 }
@@ -2582,55 +2583,55 @@ public class RayHit : ShapeView
 /// <summary>ShapeRaycast の戻り値。</summary>
 public class ShapeRayHit
 {
-    public double X;
-    public double Y;
-    public double Nx;
-    public double Ny;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Nx;
+    public float Ny;
+    public float Fraction;
     public int Iterations;
 }
 
 public class MoverCast
 {
-    public double Fraction;
-    public double Dx;
-    public double Dy;
+    public float Fraction;
+    public float Dx;
+    public float Dy;
 }
 
 public class MoverPlane : ShapeView
 {
     public bool Hit;
-    public double X;
-    public double Y;
-    public double Nx;
-    public double Ny;
-    public double Offset;
+    public float X;
+    public float Y;
+    public float Nx;
+    public float Ny;
+    public float Offset;
 }
 
 public class Profile
 {
-    public double Step;
-    public double Pairs;
-    public double Collide;
-    public double Solve;
-    public double MergeIslands;
-    public double PrepareStages;
-    public double SolveConstraints;
-    public double PrepareConstraints;
-    public double IntegrateVelocities;
-    public double WarmStart;
-    public double SolveImpulses;
-    public double IntegratePositions;
-    public double RelaxImpulses;
-    public double ApplyRestitution;
-    public double StoreImpulses;
-    public double SplitIslands;
-    public double Transforms;
-    public double HitEvents;
-    public double Refit;
-    public double Bullets;
-    public double SleepIslands;
-    public double Sensors;
+    public float Step;
+    public float Pairs;
+    public float Collide;
+    public float Solve;
+    public float MergeIslands;
+    public float PrepareStages;
+    public float SolveConstraints;
+    public float PrepareConstraints;
+    public float IntegrateVelocities;
+    public float WarmStart;
+    public float SolveImpulses;
+    public float IntegratePositions;
+    public float RelaxImpulses;
+    public float ApplyRestitution;
+    public float StoreImpulses;
+    public float SplitIslands;
+    public float Transforms;
+    public float HitEvents;
+    public float Refit;
+    public float Bullets;
+    public float SleepIslands;
+    public float Sensors;
 }
 
 public class Counters
@@ -2654,18 +2655,18 @@ public class Counters
 /// <summary>3D 物理の座標 wire format。</summary>
 public class Vec3d
 {
-    public double X;
-    public double Y;
-    public double Z;
+    public float X;
+    public float Y;
+    public float Z;
 }
 
 /// <summary>回転の wire format。</summary>
 public class Quat3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double W;
+    public float X;
+    public float Y;
+    public float Z;
+    public float W;
 }
 
 [LubHandle]
@@ -2694,17 +2695,17 @@ public class JointRef3d
 /// </summary>
 public class InitialState3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
-    public double? Vx;
-    public double? Vy;
-    public double? Vz;
-    public double? Wx;
-    public double? Wy;
-    public double? Wz;
+    public float? Vx;
+    public float? Vy;
+    public float? Vz;
+    public float? Wx;
+    public float? Wy;
+    public float? Wz;
     public bool? Awake;
 }
 
@@ -2740,20 +2741,20 @@ public class PreSolveContact3d
 {
     public ShapeView3d A = new ShapeView3d();
     public ShapeView3d B = new ShapeView3d();
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
 }
 
 public class WorldCallbacks3d
 {
     public Func<ShapeView3d, ShapeView3d, bool>? Filter;
     public Func<PreSolveContact3d, bool>? PreSolve;
-    public Func<MaterialView, MaterialView, double>? Friction;
-    public Func<MaterialView, MaterialView, double>? Restitution;
+    public Func<MaterialView, MaterialView, float>? Friction;
+    public Func<MaterialView, MaterialView, float>? Restitution;
 }
 
 /// <summary>
@@ -2765,12 +2766,12 @@ public class WorldOpts3d
 {
     public int? Version;
     public Vec3d? Gravity;
-    public double? FixedDt;
+    public float? FixedDt;
     public int? Substeps;
     public int? MaxSteps;
     public bool? Sleep;
     public bool? Continuous;
-    public double? HitEventThreshold;
+    public float? HitEventThreshold;
     public WorldCallbacks3d? Callbacks;
 }
 
@@ -2796,10 +2797,10 @@ public class BodyDesc3d
     public bool? Enabled;
     public bool? Awake;
     public bool? Sleep;
-    public double? SleepThreshold;
-    public double? GravityScale;
-    public double? LinearDamping;
-    public double? AngularDamping;
+    public float? SleepThreshold;
+    public float? GravityScale;
+    public float? LinearDamping;
+    public float? AngularDamping;
     public InitialState3d? Initial;
 }
 
@@ -2816,9 +2817,9 @@ public class FilterDesc3d
 public class ShapeDesc3d
 {
     public int? Version;
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? Tag;
     public string? MaterialName;
     public int? MaterialId;
@@ -2839,15 +2840,15 @@ public class ShapeDesc3d
 /// </summary>
 public class SphereDesc3d : ShapeDesc3d
 {
-    public double R;
+    public float R;
     public Vec3d? Offset;
 }
 
 public class BoxDesc3d : ShapeDesc3d
 {
-    public double Hx;
-    public double Hy;
-    public double Hz;
+    public float Hx;
+    public float Hy;
+    public float Hz;
     public Vec3d? Offset;
     public Quat3d? Quat;
 }
@@ -2856,37 +2857,37 @@ public class CapsuleDesc3d : ShapeDesc3d
 {
     public Vec3d A = new Vec3d();
     public Vec3d B = new Vec3d();
-    public double R;
+    public float R;
 }
 
 public class CylinderDesc3d : ShapeDesc3d
 {
-    public double Height;
-    public double Radius;
+    public float Height;
+    public float Radius;
     public int? Sides;
-    public double? YOffset;
+    public float? YOffset;
 }
 
 public class ConeDesc3d : ShapeDesc3d
 {
-    public double Height;
-    public double Radius1;
-    public double? Radius2;
+    public float Height;
+    public float Radius1;
+    public float? Radius2;
     public int? Slices;
 }
 
 /// <summary>凸包。Points は x, y, z の組 (4 点以上)。Version 必須。</summary>
 public class HullDesc3d : ShapeDesc3d
 {
-    public List<double> Points = new List<double>();
+    public List<float> Points = new List<float>();
     public int? MaxVertices;
 }
 
 /// <summary>mesh / compound の区間ごとの材質。</summary>
 public class SurfaceMaterial3d
 {
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int? MaterialId;
 }
 
@@ -2894,11 +2895,11 @@ public class SurfaceMaterial3d
 /// 3 の倍数。Version 必須。</summary>
 public class MeshDesc3d : ShapeDesc3d
 {
-    public List<double> Positions = new List<double>();
+    public List<float> Positions = new List<float>();
     public List<int> Indices = new List<int>();
     public Vec3d? Scale;
     public bool? WeldVertices;
-    public double? WeldTolerance;
+    public float? WeldTolerance;
     public bool? UseMedianSplit;
     public bool? IdentifyEdges;
     public List<SurfaceMaterial3d>? Materials;
@@ -2908,42 +2909,42 @@ public class MeshDesc3d : ShapeDesc3d
 /// <summary>height field。Heights は XCount * ZCount 個。Version 必須。</summary>
 public class HeightFieldDesc3d : ShapeDesc3d
 {
-    public List<double> Heights = new List<double>();
+    public List<float> Heights = new List<float>();
     public int XCount;
     public int ZCount;
-    public double? CellWidth;
+    public float? CellWidth;
     public Vec3d? Scale;
-    public double? MinHeight;
-    public double? MaxHeight;
+    public float? MinHeight;
+    public float? MaxHeight;
     public bool? ClockwiseWinding;
 }
 
 public class CompoundSphere3d
 {
-    public double R;
+    public float R;
     public Vec3d? Center;
 }
 
 public class CompoundBox3d
 {
-    public double Hx;
-    public double Hy;
-    public double Hz;
+    public float Hx;
+    public float Hy;
+    public float Hz;
 }
 
 public class CompoundCapsule3d
 {
     public Vec3d A = new Vec3d();
     public Vec3d B = new Vec3d();
-    public double R;
+    public float R;
 }
 
 /// <summary>compound の子。Sphere / Box / Capsule のどれか 1 つ。</summary>
 public class CompoundChild3d
 {
     public FrameDesc3d? Pose;
-    public double? Friction;
-    public double? Restitution;
+    public float? Friction;
+    public float? Restitution;
     public int? MaterialId;
     public CompoundSphere3d? Sphere;
     public CompoundBox3d? Box;
@@ -2964,39 +2965,39 @@ public class CommandOpts3d
 
 public class VelocityDesc3d
 {
-    public double? Vx;
-    public double? Vy;
-    public double? Vz;
-    public double? Wx;
-    public double? Wy;
-    public double? Wz;
+    public float? Vx;
+    public float? Vy;
+    public float? Vz;
+    public float? Wx;
+    public float? Wy;
+    public float? Wz;
 }
 
 public class PoseDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
 }
 
 public class TargetDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
-    public double? TimeStep;
+    public float? TimeStep;
     public bool? Wake;
 }
 
 public class FrameDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
+    public float? X;
+    public float? Y;
+    public float? Z;
     public Quat3d? Quat;
     public Vec3d? Euler;
 }
@@ -3004,47 +3005,47 @@ public class FrameDesc3d
 public class JointSpringDesc3d
 {
     public bool? Enabled;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? LinearHertz;
-    public double? LinearDampingRatio;
-    public double? AngularHertz;
-    public double? AngularDampingRatio;
-    public double? MaxTorque;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? LinearHertz;
+    public float? LinearDampingRatio;
+    public float? AngularHertz;
+    public float? AngularDampingRatio;
+    public float? MaxTorque;
 }
 
 public class JointLimitDesc3d
 {
     public bool? Enabled;
-    public double? Lower;
-    public double? Upper;
-    public double? MinLength;
-    public double? MaxLength;
-    public double? ConeAngle;
-    public double? LowerTwistAngle;
-    public double? UpperTwistAngle;
+    public float? Lower;
+    public float? Upper;
+    public float? MinLength;
+    public float? MaxLength;
+    public float? ConeAngle;
+    public float? LowerTwistAngle;
+    public float? UpperTwistAngle;
 }
 
 public class JointMotorDesc3d
 {
     public bool? Enabled;
-    public double? Speed;
-    public double? MaxForce;
-    public double? MaxTorque;
+    public float? Speed;
+    public float? MaxForce;
+    public float? MaxTorque;
     public Vec3d? Velocity;
     public Vec3d? LinearVelocity;
     public Vec3d? AngularVelocity;
-    public double? MaxVelocityForce;
-    public double? MaxVelocityTorque;
+    public float? MaxVelocityForce;
+    public float? MaxVelocityTorque;
 }
 
 /// <summary>JointSetTarget (3D)。prismatic は Translation、revolute と wheel
 /// は Angle、spherical は Rotation / Quat / Euler、motor は速度。</summary>
 public class JointTargetDesc3d
 {
-    public double? Translation;
-    public double? Angle;
-    public double? SteeringAngle;
+    public float? Translation;
+    public float? Angle;
+    public float? SteeringAngle;
     public Quat3d? Quat;
     public Vec3d? Euler;
     public Vec3d? LinearVelocity;
@@ -3064,30 +3065,30 @@ public class JointDesc3d
     public FrameDesc3d? FrameA;
     public FrameDesc3d? FrameB;
     public bool? CollideConnected;
-    public double? ForceThreshold;
-    public double? TorqueThreshold;
-    public double? ConstraintHertz;
-    public double? ConstraintDampingRatio;
-    public double? Length;
-    public double? MinLength;
-    public double? MaxLength;
-    public double? Lower;
-    public double? Upper;
-    public double? Hertz;
-    public double? DampingRatio;
-    public double? LinearHertz;
-    public double? AngularHertz;
-    public double? LinearDampingRatio;
-    public double? AngularDampingRatio;
-    public double? MaxForce;
-    public double? MaxTorque;
-    public double? MaxVelocityForce;
-    public double? MaxVelocityTorque;
-    public double? MaxSpringForce;
-    public double? MaxSpringTorque;
-    public double? MotorSpeed;
-    public double? TargetAngle;
-    public double? TargetTranslation;
+    public float? ForceThreshold;
+    public float? TorqueThreshold;
+    public float? ConstraintHertz;
+    public float? ConstraintDampingRatio;
+    public float? Length;
+    public float? MinLength;
+    public float? MaxLength;
+    public float? Lower;
+    public float? Upper;
+    public float? Hertz;
+    public float? DampingRatio;
+    public float? LinearHertz;
+    public float? AngularHertz;
+    public float? LinearDampingRatio;
+    public float? AngularDampingRatio;
+    public float? MaxForce;
+    public float? MaxTorque;
+    public float? MaxVelocityForce;
+    public float? MaxVelocityTorque;
+    public float? MaxSpringForce;
+    public float? MaxSpringTorque;
+    public float? MotorSpeed;
+    public float? TargetAngle;
+    public float? TargetTranslation;
     public Quat3d? TargetRotation;
     public Vec3d? LinearVelocity;
     public Vec3d? AngularVelocity;
@@ -3095,11 +3096,11 @@ public class JointDesc3d
     public bool? EnableSpring;
     public bool? EnableLimit;
     public bool? EnableMotor;
-    public double? ConeAngle;
+    public float? ConeAngle;
     public bool? EnableConeLimit;
     public bool? EnableTwistLimit;
-    public double? LowerTwistAngle;
-    public double? UpperTwistAngle;
+    public float? LowerTwistAngle;
+    public float? UpperTwistAngle;
     public JointSpringDesc3d? Spring;
     public JointLimitDesc3d? Limit;
     public JointMotorDesc3d? Motor;
@@ -3107,9 +3108,9 @@ public class JointDesc3d
 
 public class MaterialDesc3d
 {
-    public double? Density;
-    public double? Friction;
-    public double? Restitution;
+    public float? Density;
+    public float? Friction;
+    public float? Restitution;
     public string? MaterialName;
     public int? MaterialId;
 }
@@ -3126,49 +3127,49 @@ public class MoverDesc3d
 {
     public Vec3d A = new Vec3d();
     public Vec3d B = new Vec3d();
-    public double R;
-    public double? Dx;
-    public double? Dy;
-    public double? Dz;
-    public double? MaxFraction;
+    public float R;
+    public float? Dx;
+    public float? Dy;
+    public float? Dz;
+    public float? MaxFraction;
     public FilterDesc3d? Filter;
 }
 
 public class RaycastDesc3d
 {
-    public double? X;
-    public double? Y;
-    public double? Z;
-    public double? Dx;
-    public double? Dy;
-    public double? Dz;
-    public double? MaxFraction;
+    public float? X;
+    public float? Y;
+    public float? Z;
+    public float? Dx;
+    public float? Dy;
+    public float? Dz;
+    public float? MaxFraction;
     public FilterDesc3d? Filter;
 }
 
 public class AabbDesc3d
 {
-    public double MinX;
-    public double MinY;
-    public double MinZ;
-    public double MaxX;
-    public double MaxY;
-    public double MaxZ;
+    public float MinX;
+    public float MinY;
+    public float MinZ;
+    public float MaxX;
+    public float MaxY;
+    public float MaxZ;
     public FilterDesc3d? Filter;
 }
 
 public class SphereProxy3d
 {
-    public double R;
+    public float R;
     public Vec3d? Center;
 }
 
 public class BoxProxy3d
 {
-    public double Hx;
-    public double Hy;
-    public double Hz;
-    public double? Radius;
+    public float Hx;
+    public float Hy;
+    public float Hz;
+    public float? Radius;
     public Vec3d? Center;
     public Quat3d? Quat;
 }
@@ -3177,7 +3178,7 @@ public class CapsuleProxy3d
 {
     public Vec3d A = new Vec3d();
     public Vec3d B = new Vec3d();
-    public double R;
+    public float R;
 }
 
 /// <summary>OverlapShape / ShapeCast の形。Sphere / Box / Capsule のどれか。</summary>
@@ -3186,59 +3187,59 @@ public class ShapeProxyDesc3d
     public SphereProxy3d? Sphere;
     public BoxProxy3d? Box;
     public CapsuleProxy3d? Capsule;
-    public double? Dx;
-    public double? Dy;
-    public double? Dz;
-    public double? MaxFraction;
+    public float? Dx;
+    public float? Dy;
+    public float? Dz;
+    public float? MaxFraction;
     public FilterDesc3d? Filter;
 }
 
 /// <summary>phys3d_pose の戻り値。</summary>
 public class Pose3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Qx;
-    public double Qy;
-    public double Qz;
-    public double Qw;
-    public double Vx;
-    public double Vy;
-    public double Vz;
-    public double Wx;
-    public double Wy;
-    public double Wz;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Qx;
+    public float Qy;
+    public float Qz;
+    public float Qw;
+    public float Vx;
+    public float Vy;
+    public float Vz;
+    public float Wx;
+    public float Wy;
+    public float Wz;
     public bool Awake;
     public bool Enabled;
     public bool Sleep;
-    public double SleepThreshold;
+    public float SleepThreshold;
 }
 
 /// <summary>phys3d_velocity の戻り値。</summary>
 public class Velocity3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Wx;
-    public double Wy;
-    public double Wz;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Wx;
+    public float Wy;
+    public float Wz;
 }
 
 public class Inertia3d
 {
-    public double Xx;
-    public double Yy;
-    public double Zz;
-    public double Xy;
-    public double Xz;
-    public double Yz;
+    public float Xx;
+    public float Yy;
+    public float Zz;
+    public float Xy;
+    public float Xz;
+    public float Yz;
 }
 
 public class MassData3d
 {
-    public double Mass;
+    public float Mass;
     public Vec3d Center = new Vec3d();
     public Vec3d LocalCenter = new Vec3d();
     public Inertia3d Inertia = new Inertia3d();
@@ -3246,19 +3247,19 @@ public class MassData3d
 
 public class Aabb3d
 {
-    public double MinX;
-    public double MinY;
-    public double MinZ;
-    public double MaxX;
-    public double MaxY;
-    public double MaxZ;
+    public float MinX;
+    public float MinY;
+    public float MinZ;
+    public float MaxX;
+    public float MaxY;
+    public float MaxZ;
 }
 
 public class ShapeInfo3d : ShapeView3d
 {
-    public double Density;
-    public double Friction;
-    public double Restitution;
+    public float Density;
+    public float Friction;
+    public float Restitution;
     public bool Sensor;
     public bool SensorEvents;
     public bool Contact;
@@ -3276,18 +3277,18 @@ public class WorldInfo3d
     public int Generation;
     public bool Begun;
     public bool Prune;
-    public double FixedDt;
+    public float FixedDt;
     public int Substeps;
     public int MaxSteps;
-    public double Accumulator;
+    public float Accumulator;
     public int PendingCommands;
     public Vec3d? Gravity;
     public bool? Sleep;
     public bool? Continuous;
     public bool? WarmStarting;
-    public double? RestitutionThreshold;
-    public double? HitEventThreshold;
-    public double? MaximumLinearSpeed;
+    public float? RestitutionThreshold;
+    public float? HitEventThreshold;
+    public float? MaximumLinearSpeed;
     public int? AwakeBodyCount;
 }
 
@@ -3298,13 +3299,13 @@ public class StepInfo3d : StepInfo
 
 public class Frame3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Qx;
-    public double Qy;
-    public double Qz;
-    public double Qw;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Qx;
+    public float Qy;
+    public float Qz;
+    public float Qw;
 }
 
 /// <summary>3D joint の識別 (BodyJoints / JointEvents)。</summary>
@@ -3322,8 +3323,8 @@ public class JointInfo3d : JointView3d
     public bool CollideConnected;
     public Vec3d Force = new Vec3d();
     public Vec3d Torque = new Vec3d();
-    public double LinearSeparation;
-    public double AngularSeparation;
+    public float LinearSeparation;
+    public float AngularSeparation;
     public Frame3d LocalFrameA = new Frame3d();
     public Frame3d LocalFrameB = new Frame3d();
 }
@@ -3332,15 +3333,15 @@ public class ContactData3d
 {
     public ShapeView3d A = new ShapeView3d();
     public ShapeView3d B = new ShapeView3d();
-    public double Nx;
-    public double Ny;
-    public double Nz;
+    public float Nx;
+    public float Ny;
+    public float Nz;
     public int ManifoldCount;
     public int PointCount;
-    public double? X;
-    public double? Y;
-    public double? Z;
-    public double? Separation;
+    public float? X;
+    public float? Y;
+    public float? Z;
+    public float? Separation;
 }
 
 /// <summary>3D の contact event (Contacts)。</summary>
@@ -3348,14 +3349,14 @@ public class ContactEvent3d
 {
     public ShapeView3d A = new ShapeView3d();
     public ShapeView3d B = new ShapeView3d();
-    public double Nx;
-    public double Ny;
-    public double Nz;
+    public float Nx;
+    public float Ny;
+    public float Nz;
     public int PointCount;
-    public double X;
-    public double Y;
-    public double Z;
-    public double? ApproachSpeed;
+    public float X;
+    public float Y;
+    public float Z;
+    public float? ApproachSpeed;
 }
 
 /// <summary>3D の sensor event (Sensors)。</summary>
@@ -3369,13 +3370,13 @@ public class BodyEvent3d
 {
     public string Body = "";
     public bool Valid;
-    public double X;
-    public double Y;
-    public double Z;
-    public double Qx;
-    public double Qy;
-    public double Qz;
-    public double Qw;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Qx;
+    public float Qy;
+    public float Qz;
+    public float Qw;
     public bool FellAsleep;
 }
 
@@ -3385,13 +3386,13 @@ public class JointEvent3d : JointView3d
 
 public class RayHit3d : ShapeView3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
+    public float Fraction;
     public int HitMaterialId;
     public int TriangleIndex;
     public int ChildIndex;
@@ -3401,13 +3402,13 @@ public class RayHit3d : ShapeView3d
 
 public class ShapeRayHit3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
-    public double Fraction;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
+    public float Fraction;
     public int Iterations;
     public int TriangleIndex;
     public int ChildIndex;
@@ -3415,49 +3416,49 @@ public class ShapeRayHit3d
 
 public class MoverCast3d
 {
-    public double Fraction;
-    public double Dx;
-    public double Dy;
-    public double Dz;
+    public float Fraction;
+    public float Dx;
+    public float Dy;
+    public float Dz;
 }
 
 public class MoverPlane3d : ShapeView3d
 {
-    public double X;
-    public double Y;
-    public double Z;
-    public double Nx;
-    public double Ny;
-    public double Nz;
-    public double Offset;
+    public float X;
+    public float Y;
+    public float Z;
+    public float Nx;
+    public float Ny;
+    public float Nz;
+    public float Offset;
     public int PlaneCount;
 }
 
 public class Profile3d
 {
-    public double Step;
-    public double Pairs;
-    public double Collide;
-    public double Solve;
-    public double SolverSetup;
-    public double Constraints;
-    public double PrepareConstraints;
-    public double IntegrateVelocities;
-    public double WarmStart;
-    public double SolveImpulses;
-    public double IntegratePositions;
-    public double RelaxImpulses;
-    public double ApplyRestitution;
-    public double StoreImpulses;
-    public double SplitIslands;
-    public double Transforms;
-    public double SensorHits;
-    public double JointEvents;
-    public double HitEvents;
-    public double Refit;
-    public double Bullets;
-    public double SleepIslands;
-    public double Sensors;
+    public float Step;
+    public float Pairs;
+    public float Collide;
+    public float Solve;
+    public float SolverSetup;
+    public float Constraints;
+    public float PrepareConstraints;
+    public float IntegrateVelocities;
+    public float WarmStart;
+    public float SolveImpulses;
+    public float IntegratePositions;
+    public float RelaxImpulses;
+    public float ApplyRestitution;
+    public float StoreImpulses;
+    public float SplitIslands;
+    public float Transforms;
+    public float SensorHits;
+    public float JointEvents;
+    public float HitEvents;
+    public float Refit;
+    public float Bullets;
+    public float SleepIslands;
+    public float Sensors;
 }
 
 public class Counters3d
@@ -3499,8 +3500,8 @@ public class EventData
     public Lub.EventKind Kind;
     public int Key;
     public int Button;
-    public double X;
-    public double Y;
-    public double Dx;
-    public double Dy;
+    public float X;
+    public float Y;
+    public float Dx;
+    public float Dy;
 }

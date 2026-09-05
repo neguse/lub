@@ -8,7 +8,7 @@ entry class(static class)は次の static メソッドを持つ(`OnFrame` 以外
 | --- | --- |
 | `OnInit()` | 起動時に 1 回だけ。hot reload 後は呼ばれない。`Config` はここでのみ有効 |
 | `OnEvent(EventData e)` | 入力やウィンドウのイベントごと |
-| `OnFrame(double dt)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
+| `OnFrame(float dt)` | 毎フレーム。`dt` は通常、直近フレームの実測秒 |
 | `OnQuit()` | 終了時に 1 回 |
 | `OnReload()` | playground で編集が生きたまま反映された直後に 1 回(後述) |
 
@@ -27,7 +27,7 @@ Lua 側の名前は `on_init` / `on_event` / `on_frame` / `on_quit` / `on_reload
 ```csharp
 static FixedStep? step; // 60 Hz、catch-up 上限 8
 
-public static void OnFrame(double dt)
+public static void OnFrame(float dt)
 {
     step ??= new FixedStep();
     step.Frame(dt, tickDt => Update(step.KeyPressed("space")));

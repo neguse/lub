@@ -14,24 +14,29 @@ LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
   if (app->phase != APP_PHASE_PRE_BACKEND)
     return lub_api_fail(app, "config: must be called inside on_init");
 
-  // "native" = そのプラットフォームの最短距離実装
-  // (Windows: D3D12 / web: webgpu / Linux: 当面 sdlgpu が代行)。
+  // backend は d3d12 / vulkan / sdlgpu。未指定なら app_init が決めた既定
+  // (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
   char name[16];
 #ifdef __EMSCRIPTEN__
-  // WASM: backend は webgpu 一択なので指定を無視する。
+  // WASM: backend は webgpu 一択なので指定を無視する
+  // (native と共用のサンプルが native 向け指定を持っていても壊さない)。
   (void)lub_str_copy(lub_str_c("webgpu"), name, sizeof(name));
-#else
-  if (d->backend.len <= 0) {
-    (void)lub_str_copy(lub_str_c("native"), name, sizeof(name));
-  } else if (!lub_str_copy(d->backend, name, sizeof(name)) ||
-             (strcmp(name, "sdlgpu") != 0 && strcmp(name, "native") != 0)) {
-    return lub_api_fail(
-        app, "config: backend must be 'native' or 'sdlgpu', got '%.*s'",
-        d->backend.len, d->backend.ptr ? d->backend.ptr : "");
-  }
-#endif
   strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
   app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+#else
+  if (d->backend.len > 0) {
+    if (!lub_str_copy(d->backend, name, sizeof(name)) ||
+        (strcmp(name, "d3d12") != 0 && strcmp(name, "vulkan") != 0 &&
+         strcmp(name, "sdlgpu") != 0)) {
+      return lub_api_fail(
+          app,
+          "config: backend must be 'd3d12', 'vulkan' or 'sdlgpu', got '%.*s'",
+          d->backend.len, d->backend.ptr ? d->backend.ptr : "");
+    }
+    strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
+    app->backend_name[sizeof(app->backend_name) - 1] = '\0';
+  }
+#endif
 
   if (d->has_resource_sweep_after_frames) {
     if (d->resource_sweep_after_frames < 0)

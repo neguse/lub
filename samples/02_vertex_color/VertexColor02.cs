@@ -8,7 +8,7 @@ public static class VertexColor02
 {
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -20,7 +20,7 @@ public static class VertexColor02
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Io.LoadText("samples/02_vertex_color/data/02_vcol.vs.slang",
             out var vs, out var vsv, out _, out _);
@@ -37,7 +37,7 @@ public static class VertexColor02
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.1, 0.1, 0.2, 1.0 },
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
         Gfx.Draw(3,
             new Dictionary<string, object> { ["verts"] = vbuf },

@@ -339,10 +339,10 @@ typedef struct LubTextureOpts {
 
 // Lub.config のオプション (onInit 内でのみ有効)。
 typedef struct LubConfigOpts {
-  LubStr backend; // len 0 = 無し // GPU backend。native では "native"
-                  // (既定。このプラットフォームの最短距離実装 — Windows: D3D12
-                  // / Linux: 当面 sdlgpu) か "sdlgpu"。 web (WASM) は webgpu
-                  // のみで、指定は無視される。
+  LubStr backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows
+                  // の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK
+                  // がある build のみ) / "sdlgpu"。web (WASM) は webgpu
+                  // のみで、指定は無視される。未指定 (null) なら既定のまま。
   bool has_width;
   int32_t width; // ウィンドウ幅 (px)。`height` とセットで指定する。
   bool has_height;

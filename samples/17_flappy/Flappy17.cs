@@ -9,17 +9,17 @@ using static Lub;
 
 public static class Flappy17
 {
-    static double t = 0;
-    static double playerY = 0;
-    static double velocityY = 0;
-    static double pipeX = 5.0;
-    static double gapY = 0;
+    static float t = 0;
+    static float playerY = 0;
+    static float velocityY = 0;
+    static float pipeX = 5.0f;
+    static float gapY = 0;
     static int score = 0;
     static bool dead = false;
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -31,7 +31,7 @@ public static class Flappy17
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         t = t + dt;
 
@@ -50,45 +50,45 @@ public static class Flappy17
         {
             if (flap)
             {
-                velocityY = 3.0;
-                Audio.Play(Sfx.Blip(300, 700, 0.09, 0.4));
+                velocityY = 3.0f;
+                Audio.Play(Sfx.Blip(300, 700, 0.09f, 0.4f));
             }
-            velocityY = velocityY - 8.0 * dt;
+            velocityY = velocityY - 8.0f * dt;
             playerY = playerY + velocityY * dt;
 
-            pipeX = pipeX - 2.0 * dt;
-            if (pipeX < -3.0)
+            pipeX = pipeX - 2.0f * dt;
+            if (pipeX < -3.0f)
             {
-                pipeX = 5.0;
-                gapY = Math.Sin(t * 1.7) * 1.5;
+                pipeX = 5.0f;
+                gapY = (float)Math.Sin(t * 1.7f) * 1.5f;
                 score = score + 1;
-                Audio.Play(Sfx.Blip(660, 990, 0.12, 0.35));
+                Audio.Play(Sfx.Blip(660, 990, 0.12f, 0.35f));
             }
 
-            if (playerY < -3.0 || playerY > 3.0)
+            if (playerY < -3.0f || playerY > 3.0f)
             {
                 dead = true;
             }
-            if (pipeX > -1.0 && pipeX < 1.0)
+            if (pipeX > -1.0f && pipeX < 1.0f)
             {
-                if (playerY > gapY + 1.0 || playerY < gapY - 1.0)
+                if (playerY > gapY + 1.0f || playerY < gapY - 1.0f)
                 {
                     dead = true;
                 }
             }
             if (dead)
             {
-                Audio.Play(Sfx.Noise(0.3, 0.5));
+                Audio.Play(Sfx.Noise(0.3f, 0.5f));
             }
 
             // 落下速度に pitch が追従する風切り音 (毎フレーム宣言する声)。
             // 宣言をやめれば fade out するので stop 管理は要らない。
-            var wind = Math.Min(1.0, Math.Abs(velocityY) * 0.25);
-            Audio.Voice("wind", Sfx.Noise(0.3, 0.5), new VoiceOpts
+            var wind = Math.Min(1.0f, Math.Abs(velocityY) * 0.25f);
+            Audio.Voice("wind", Sfx.Noise(0.3f, 0.5f), new VoiceOpts
             {
                 Loop = true,
-                Volume = 0.05 * wind,
-                Pitch = 0.5 + wind,
+                Volume = 0.05f * wind,
+                Pitch = 0.5f + wind,
             });
         }
         else
@@ -98,7 +98,7 @@ public static class Flappy17
                 dead = false;
                 playerY = 0;
                 velocityY = 0;
-                pipeX = 5.0;
+                pipeX = 5.0f;
                 score = 0;
             }
         }
@@ -112,7 +112,7 @@ public static class Flappy17
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.05, 0.05, 0.15, 1.0 },
+            ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
         });
 
         var drawOpts = new DrawOpts
@@ -122,8 +122,8 @@ public static class Flappy17
             Cull = Gfx.Cull.None,
         };
 
-        var playerModel = Mat4.Translate(new Vec3(-2.0, playerY, 0))
-            * Mat4.RotateY(t * 3.0) * Mat4.Scale(new Vec3(0.4, 0.4, 0.4));
+        var playerModel = Mat4.Translate(new Vec3(-2.0f, playerY, 0))
+            * Mat4.RotateY(t * 3.0f) * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f));
         var playerMvp = vp * playerModel;
         Gfx.Draw(36, new Dictionary<string, object>
         {
@@ -134,8 +134,8 @@ public static class Flappy17
             },
         }, drawOpts);
 
-        var pipeScale = Mat4.Scale(new Vec3(0.8, 5.0, 0.8));
-        var topModel = Mat4.Translate(new Vec3(pipeX, gapY + 3.5, 0))
+        var pipeScale = Mat4.Scale(new Vec3(0.8f, 5.0f, 0.8f));
+        var topModel = Mat4.Translate(new Vec3(pipeX, gapY + 3.5f, 0))
             * pipeScale;
         var topMvp = vp * topModel;
         Gfx.Draw(36, new Dictionary<string, object>
@@ -147,7 +147,7 @@ public static class Flappy17
             },
         }, drawOpts);
 
-        var botModel = Mat4.Translate(new Vec3(pipeX, gapY - 3.5, 0))
+        var botModel = Mat4.Translate(new Vec3(pipeX, gapY - 3.5f, 0))
             * pipeScale;
         var botMvp = vp * botModel;
         Gfx.Draw(36, new Dictionary<string, object>

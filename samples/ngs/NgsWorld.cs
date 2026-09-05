@@ -190,9 +190,9 @@ public class NgsPlayer
             if (input.DirX != 0 || input.DirY != 0)
             {
                 // 上=angle0、右回り。dirY: +1=下。world y は下方向増加。
-                double ang = Math.Atan2(input.DirX, -input.DirY); // 上(-y)=0, 右(+x)=+90°
-                X = X + (int)Math.Round(Math.Sin(ang) * spd);
-                Y = Y + (int)Math.Round(-Math.Cos(ang) * spd);
+                float ang = (float)Math.Atan2(input.DirX, -input.DirY); // 上(-y)=0, 右(+x)=+90°
+                X = X + (int)Math.Round((float)Math.Sin(ang) * spd);
+                Y = Y + (int)Math.Round(-(float)Math.Cos(ang) * spd);
                 // animState: 左(-x)寄り 1..中央2..右(+x)3 (dirX ∈ {-1,0,1})
                 animState = 2 + input.DirX;
             }

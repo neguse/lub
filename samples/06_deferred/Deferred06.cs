@@ -13,7 +13,7 @@ public static class Deferred06
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
     }
 
@@ -25,7 +25,7 @@ public static class Deferred06
     {
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         Io.LoadText("samples/06_deferred/data/06_gbuffer.vs.slang",
             out var gvs, out var gvsv, out _, out _);
@@ -59,10 +59,10 @@ public static class Deferred06
         Gfx.BeginPass(new PassOpts
         {
             Targets = new List<TextureRef> { gbuf0, gbuf1 },
-            ClearColors = new List<double[]>
+            ClearColors = new List<float[]>
             {
-                new double[] { 0.1, 0.1, 0.15, 1.0 },
-                new double[] { 0.15, 0.1, 0.1, 1.0 },
+                new float[] { 0.1f, 0.1f, 0.15f, 1.0f },
+                new float[] { 0.15f, 0.1f, 0.1f, 1.0f },
             },
         });
         Gfx.Draw(3,
@@ -79,7 +79,7 @@ public static class Deferred06
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
         Gfx.Draw(6,
             new Dictionary<string, object>
@@ -88,7 +88,7 @@ public static class Deferred06
                 ["gbuf"] = gbuf0,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["transform"] = new double[] { 0.5, 1.0, -0.5, 0.0 },
+                    ["transform"] = new float[] { 0.5f, 1.0f, -0.5f, 0.0f },
                 },
             },
             new DrawOpts { Shader = shV, Depth = false, Cull = Gfx.Cull.None });
@@ -99,7 +99,7 @@ public static class Deferred06
                 ["gbuf"] = gbuf1,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["transform"] = new double[] { 0.5, 1.0, 0.5, 0.0 },
+                    ["transform"] = new float[] { 0.5f, 1.0f, 0.5f, 0.0f },
                 },
             },
             new DrawOpts { Shader = shV, Depth = false, Cull = Gfx.Cull.None });

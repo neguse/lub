@@ -19,30 +19,30 @@ public class Ball
 {
     public int Id;
     public int Level;
-    public double SpawnX; // 宣言用: initial は不変でないと body が作り直される
-    public double SpawnY;
-    public double X;
-    public double Y;
-    public double Angle;
-    public double Age;
-    public double OverT;
+    public float SpawnX; // 宣言用: initial は不変でないと body が作り直される
+    public float SpawnY;
+    public float X;
+    public float Y;
+    public float Angle;
+    public float Age;
+    public float OverT;
 }
 
 public static class Iroha21
 {
     const int w = 640;
     const int h = 360;
-    const double ppm = 100.0; // physics m -> logical px
-    const double halfW = 1.15; // 容器の半幅 (m)
-    const double wallTop = 3.2; // 壁の上端 (m)
-    const double lineY = 2.45; // ゲームオーバー線 (m)
-    const double dropY = 2.85; // 投下位置 (m)
+    const float ppm = 100.0f; // physics m -> logical px
+    const float halfW = 1.15f; // 容器の半幅 (m)
+    const float wallTop = 3.2f; // 壁の上端 (m)
+    const float lineY = 2.45f; // ゲームオーバー線 (m)
+    const float dropY = 2.85f; // 投下位置 (m)
     const int levels = 7;
 
     static string[] chars = new string[]
         { "い", "ろ", "は", "に", "ほ", "へ", "と" };
-    static double[] radii = new double[]
-        { 0.13, 0.17, 0.22, 0.28, 0.36, 0.46, 0.58 };
+    static float[] radii = new float[]
+        { 0.13f, 0.17f, 0.22f, 0.28f, 0.36f, 0.46f, 0.58f };
     static Color[]? _colors = null; // onFrame 先頭で遅延生成
 
     static Camera2d? cam = null;
@@ -62,9 +62,9 @@ public static class Iroha21
     static int nextLevel = 0;
     static int score = 0;
     static int best = 0;
-    static double cooldown = 0.0;
+    static float cooldown = 0.0f;
     static bool over = false;
-    static double t = 0.0;
+    static float t = 0.0f;
     static Rand? rng = null;
 
     // LUB_IROHA_AUTO=1 で自動プレイ (ヘッドレス検証・デモ用)
@@ -72,7 +72,7 @@ public static class Iroha21
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
@@ -102,7 +102,7 @@ public static class Iroha21
 
     // --- ゲーム -------------------------------------------------------------
 
-    static void Spawn(double x, double y, int level)
+    static void Spawn(float x, float y, int level)
     {
         balls.Add(new Ball
         {
@@ -112,9 +112,9 @@ public static class Iroha21
             SpawnY = y,
             X = x,
             Y = y,
-            Angle = 0.0,
-            Age = 0.0,
-            OverT = 0.0,
+            Angle = 0.0f,
+            Age = 0.0f,
+            OverT = 0.0f,
         });
         nextId++;
     }
@@ -124,20 +124,20 @@ public static class Iroha21
         balls = new List<Ball>();
         score = 0;
         over = false;
-        cooldown = 0.3;
+        cooldown = 0.3f;
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         t += dt;
-        if (dt > 0.1)
-            dt = 0.1;
+        if (dt > 0.1f)
+            dt = 0.1f;
         if (!EnsureAssets()) return;
         var hudNow = hud;
         var meshNow = mesh;
         if (hudNow == null || meshNow == null) return;
 
-        var camNow = cam ?? new Camera2d(w, h, ppm, 320.0, 344.0);
+        var camNow = cam ?? new Camera2d(w, h, ppm, 320.0f, 344.0f);
         cam = camNow;
         var batchNow = batch ?? new SpriteBatch(w, h);
         batch = batchNow;
@@ -151,13 +151,13 @@ public static class Iroha21
         {
             colors = new Color[]
             {
-                Color.Rgb(0.91, 0.36, 0.36),
-                Color.Rgb(0.93, 0.60, 0.34),
-                Color.Rgb(0.93, 0.83, 0.36),
-                Color.Rgb(0.49, 0.80, 0.42),
-                Color.Rgb(0.36, 0.72, 0.91),
-                Color.Rgb(0.50, 0.45, 0.93),
-                Color.Rgb(0.83, 0.36, 0.91),
+                Color.Rgb(0.91f, 0.36f, 0.36f),
+                Color.Rgb(0.93f, 0.60f, 0.34f),
+                Color.Rgb(0.93f, 0.83f, 0.36f),
+                Color.Rgb(0.49f, 0.80f, 0.42f),
+                Color.Rgb(0.36f, 0.72f, 0.91f),
+                Color.Rgb(0.50f, 0.45f, 0.93f),
+                Color.Rgb(0.83f, 0.36f, 0.91f),
             };
             _colors = colors;
         }
@@ -171,30 +171,30 @@ public static class Iroha21
             dropX = halfW - dropR;
         cooldown -= dt;
         var click = Input.MousePressed() || Input.KeyPressed("space");
-        if (auto && cooldown <= 0.0 && !over)
+        if (auto && cooldown <= 0.0f && !over)
         {
             click = true;
-            dropX = (rngNow.NextFloat() * 2.0 - 1.0) * (halfW - dropR);
+            dropX = (rngNow.NextFloat() * 2.0f - 1.0f) * (halfW - dropR);
         }
         if (over)
         {
             if (click)
                 Reset();
         }
-        else if (click && cooldown <= 0.0)
+        else if (click && cooldown <= 0.0f)
         {
             Spawn(dropX, dropY, nextLevel);
             var pickTable = new int[] { 0, 0, 0, 1, 1, 2 };
-            nextLevel = pickTable[(int)Math.Floor(rngNow.NextFloat() * 6.0)];
-            cooldown = 0.45;
-            Audio.Play(Sfx.Blip(420, 260, 0.06, 0.3));
+            nextLevel = pickTable[(int)Math.Floor(rngNow.NextFloat() * 6.0f)];
+            cooldown = 0.45f;
+            Audio.Play(Sfx.Blip(420, 260, 0.06f, 0.3f));
         }
 
         // --- 物理 (immediate mode: 生きている玉だけ毎フレーム宣言する)
         var world = Phys2d.World("iroha", new WorldOpts
         {
-            Gravity = new Vec2d { X = 0.0, Y = -10.0 },
-            FixedDt = 1.0 / 120.0,
+            Gravity = new Vec2d { X = 0.0f, Y = -10.0f },
+            FixedDt = 1.0f / 120.0f,
             Substeps = 4,
             MaxSteps = 4,
         });
@@ -204,31 +204,31 @@ public static class Iroha21
         var arena = Phys2d.Body(world, "arena", new BodyDesc
         {
             Type = Phys2d.BodyType.Static,
-            Initial = new InitialState { X = 0.0, Y = 0.0 },
+            Initial = new InitialState { X = 0.0f, Y = 0.0f },
         });
         if (arena == null) return;
         Phys2d.Box(arena, "floor", new BoxDesc
         {
-            Hx = halfW + 0.3,
-            Hy = 0.1,
-            Cy = -0.1,
-            Friction = 0.5,
+            Hx = halfW + 0.3f,
+            Hy = 0.1f,
+            Cy = -0.1f,
+            Friction = 0.5f,
         });
         Phys2d.Box(arena, "wall_l", new BoxDesc
         {
-            Hx = 0.1,
-            Hy = wallTop * 0.5,
-            Cx = -(halfW + 0.1),
-            Cy = wallTop * 0.5,
-            Friction = 0.3,
+            Hx = 0.1f,
+            Hy = wallTop * 0.5f,
+            Cx = -(halfW + 0.1f),
+            Cy = wallTop * 0.5f,
+            Friction = 0.3f,
         });
         Phys2d.Box(arena, "wall_r", new BoxDesc
         {
-            Hx = 0.1,
-            Hy = wallTop * 0.5,
-            Cx = halfW + 0.1,
-            Cy = wallTop * 0.5,
-            Friction = 0.3,
+            Hx = 0.1f,
+            Hy = wallTop * 0.5f,
+            Cx = halfW + 0.1f,
+            Cy = wallTop * 0.5f,
+            Friction = 0.3f,
         });
 
         var refs = new Dictionary<int, BodyRef>();
@@ -243,9 +243,9 @@ public static class Iroha21
             Phys2d.Circle(b, "c", new CircleDesc
             {
                 R = radii[ball.Level],
-                Density = 1.0,
-                Friction = 0.35,
-                Restitution = 0.12,
+                Density = 1.0f,
+                Friction = 0.35f,
+                Restitution = 0.12f,
                 Contact = true,
             });
             refs[ball.Id] = b;
@@ -285,12 +285,12 @@ public static class Iroha21
                 anyMerged = true;
                 var level = b1.Level;
                 if (level < levels - 1)
-                    Spawn((b1.X + b2.X) * 0.5, (b1.Y + b2.Y) * 0.5, level + 1);
+                    Spawn((b1.X + b2.X) * 0.5f, (b1.Y + b2.Y) * 0.5f, level + 1);
                 score += (level + 1) * (level + 1);
                 if (score > best)
                     best = score;
-                Audio.Play(Sfx.Blip(400, 840, 0.12, 0.35),
-                    new PlayOpts { Pitch = 1.0 + level * 0.15 });
+                Audio.Play(Sfx.Blip(400, 840, 0.12f, 0.35f),
+                    new PlayOpts { Pitch = 1.0f + level * 0.15f });
             }
             if (anyMerged)
             {
@@ -310,14 +310,14 @@ public static class Iroha21
             foreach (var ball in balls)
             {
                 var top = ball.Y + radii[ball.Level];
-                if (top > lineY && ball.Age > 1.0)
+                if (top > lineY && ball.Age > 1.0f)
                     ball.OverT += dt;
                 else
-                    ball.OverT = 0.0;
-                if (ball.OverT > 1.0)
+                    ball.OverT = 0.0f;
+                if (ball.OverT > 1.0f)
                 {
                     over = true;
-                    Audio.Play(Sfx.Noise(0.4, 0.5, 0x2468ace));
+                    Audio.Play(Sfx.Noise(0.4f, 0.5f, 0x2468ace));
                 }
             }
         }
@@ -326,12 +326,12 @@ public static class Iroha21
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.10, 0.09, 0.13, 1.0 },
+            ClearColor = new float[] { 0.10f, 0.09f, 0.13f, 1.0f },
         });
         batchNow.Begin();
 
         // 容器
-        var wallCol = Color.Rgb(0.35, 0.32, 0.42);
+        var wallCol = Color.Rgb(0.35f, 0.32f, 0.42f);
         batchNow.Rect(camNow.Sx(-halfW) - 8, camNow.Sy(wallTop), 8, wallTop * ppm,
             wallCol);
         batchNow.Rect(camNow.Sx(halfW), camNow.Sy(wallTop), 8, wallTop * ppm,
@@ -340,9 +340,9 @@ public static class Iroha21
             wallCol);
 
         // ゲームオーバー線
-        var lineBlink = over ? 1.0 : 0.25 + 0.15 * Math.Sin(t * 4.0);
+        var lineBlink = over ? 1.0f : 0.25f + 0.15f * (float)Math.Sin(t * 4.0f);
         batchNow.Rect(camNow.Sx(-halfW), camNow.Sy(lineY), halfW * 2 * ppm, 2,
-            Color.Rgb(0.9, 0.3, 0.3, lineBlink));
+            Color.Rgb(0.9f, 0.3f, 0.3f, lineBlink));
 
         // 玉 (sprite は本体、上に mesh グリフ)
         foreach (var ball in balls)
@@ -358,41 +358,41 @@ public static class Iroha21
             var r = dropR * ppm;
             var c = colors[nextLevel];
             batchNow.Disc(camNow.Sx(dropX), camNow.Sy(dropY), r,
-                Color.Rgb(c.R, c.G, c.B, 0.5 + 0.2 * Math.Sin(t * 6.0)));
+                Color.Rgb(c.R, c.G, c.B, 0.5f + 0.2f * (float)Math.Sin(t * 6.0f)));
         }
 
         // HUD (bitmap 小サイズレジーム)
         hudNow.Draw(batchNow, "スコア " + score, 12, 26);
         hudNow.Draw(batchNow, "ベスト " + best, 12, 50,
-            Color.Rgb(0.8, 0.8, 0.8, 0.8));
+            Color.Rgb(0.8f, 0.8f, 0.8f, 0.8f));
         hudNow.Draw(batchNow, "いろはにほへと", 500, 26,
-            Color.Rgb(0.7, 0.7, 0.8, 0.9), 0.8);
+            Color.Rgb(0.7f, 0.7f, 0.8f, 0.9f), 0.8f);
 
         batchNow.Flush();
 
         // mesh グリフ (拡大レジーム): 玉の文字は物理の回転ごと描く
-        var ink = Color.Rgb(0.12, 0.10, 0.14, 0.9);
+        var ink = Color.Rgb(0.12f, 0.10f, 0.14f, 0.9f);
         foreach (var ball in balls)
         {
             meshNow.Char(chars[ball.Level], camNow.Sx(ball.X), camNow.Sy(ball.Y),
-                radii[ball.Level] * ppm * 1.3, ball.Angle, ink, true);
+                radii[ball.Level] * ppm * 1.3f, ball.Angle, ink, true);
         }
         if (!over)
             meshNow.Char(chars[nextLevel], camNow.Sx(dropX), camNow.Sy(dropY),
-                dropR * ppm * 1.3, 0.0,
-                Color.Rgb(ink.R, ink.G, ink.B, 0.6), true);
+                dropR * ppm * 1.3f, 0.0f,
+                Color.Rgb(ink.R, ink.G, ink.B, 0.6f), true);
 
         if (over)
         {
             // 帯とメッセージは玉の上に重ねたいので別 batch で flush を分ける
             overlayNow.Begin();
-            overlayNow.Rect(0, 108, w, 132, Color.Rgb(0.05, 0.04, 0.07, 0.85));
+            overlayNow.Rect(0, 108, w, 132, Color.Rgb(0.05f, 0.04f, 0.07f, 0.85f));
             var msg = "クリックでもういちど";
             hudNow.Draw(overlayNow, msg,
-                camNow.OriginX - hudNow.Width(msg) * 0.5, 222);
+                camNow.OriginX - hudNow.Width(msg) * 0.5f, 222);
             overlayNow.Flush();
             meshNow.TextCentered("おしまい", camNow.OriginX, 190, 64,
-                Color.Rgb(0.95, 0.92, 0.85));
+                Color.Rgb(0.95f, 0.92f, 0.85f));
         }
 
         Gfx.EndPass();

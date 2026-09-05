@@ -2,7 +2,7 @@
 set -euo pipefail
 
 build_dir="build-release-linux"
-backend="native"
+backend=""
 score_frame=3600
 burst=1
 target_fps=60
@@ -19,7 +19,7 @@ Usage: bash scripts/run-sprites-bench.sh [options]
 
 Options:
   --build-dir DIR              Build directory (default: build-release-linux)
-  --backend NAME               Backend: native or sdlgpu (default: native)
+  --backend NAME               Backend: d3d12 / vulkan / sdlgpu (default: platform default)
   --score-frame N              Frame to print score and quit (default: 3600)
   --burst N                    Sprites spawned per accepted spawn tick (default: 1)
   --target-fps N               Target FPS threshold (default: 60)
@@ -101,7 +101,11 @@ if ! command -v dotnet >/dev/null 2>&1; then
   exit 1
 fi
 
-export LUB_BACKEND="$backend"
+if [[ -n "$backend" ]]; then
+  export LUB_BACKEND="$backend"
+else
+  unset LUB_BACKEND
+fi
 export LUB_SPRITE_TARGET_FPS="$target_fps"
 export LUB_SPRITE_BURST="$burst"
 export LUB_SPRITE_SCORE_FRAME="$score_frame"
@@ -125,7 +129,7 @@ fi
 echo "running sprite benchmark:"
 echo "  exe=$exe"
 echo "  sample=$sample"
-echo "  backend=$backend target_fps=$target_fps score_frame=$score_frame burst=$burst max_sprites=$max_sprites"
+echo "  backend=${backend:-(default)} target_fps=$target_fps score_frame=$score_frame burst=$burst max_sprites=$max_sprites"
 if [[ "$profile" -eq 1 ]]; then
   echo "  profile=on profile_window=$profile_window profile_start_frame=$profile_start_frame"
 fi

@@ -1,6 +1,6 @@
 param(
     [string]$BuildDir = "build-release",
-    [string]$Backend = "native",
+    [string]$Backend = "",
     [int]$ScoreFrame = 3600,
     [int]$Burst = 1,
     [double]$TargetFps = 60.0,
@@ -38,7 +38,11 @@ try {
         throw "dotnet was not found. The sample is C# (tcs), so the dotnet SDK is required."
     }
 
-    $env:LUB_BACKEND = $Backend
+    if ($Backend) {
+        $env:LUB_BACKEND = $Backend
+    } else {
+        Remove-Item Env:LUB_BACKEND -ErrorAction SilentlyContinue
+    }
     $env:LUB_SPRITE_TARGET_FPS = $TargetFps.ToString([Globalization.CultureInfo]::InvariantCulture)
     $env:LUB_SPRITE_BURST = $Burst.ToString([Globalization.CultureInfo]::InvariantCulture)
     $env:LUB_SPRITE_SCORE_FRAME = $ScoreFrame.ToString([Globalization.CultureInfo]::InvariantCulture)
@@ -61,7 +65,8 @@ try {
     Write-Host "running sprite benchmark:"
     Write-Host "  exe=$ExePath"
     Write-Host "  sample=$SamplePath"
-    Write-Host "  backend=$Backend target_fps=$TargetFps score_frame=$ScoreFrame burst=$Burst max_sprites=$MaxSprites"
+    $backendLabel = if ($Backend) { $Backend } else { "(default)" }
+    Write-Host "  backend=$backendLabel target_fps=$TargetFps score_frame=$ScoreFrame burst=$Burst max_sprites=$MaxSprites"
     if ($Profile) {
         Write-Host "  profile=on profile_window=$ProfileWindow profile_start_frame=$profileStartFrame"
     }

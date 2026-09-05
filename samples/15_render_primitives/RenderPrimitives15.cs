@@ -16,11 +16,11 @@ public static class RenderPrimitives15
 
     static BufferRef? quad;
     static BufferRef? tri;
-    static double tAccum = 0.0;
+    static float tAccum = 0.0f;
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
@@ -48,23 +48,23 @@ public static class RenderPrimitives15
     {
         if (quad == null)
         {
-            quad = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Vertex, new List<double>
+            quad = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Vertex, new List<float>
             {
-                -1.0, -1.0, 0.0, 1.0,
-                1.0, -1.0, 1.0, 1.0,
-                1.0, 1.0, 1.0, 0.0,
-                -1.0, -1.0, 0.0, 1.0,
-                1.0, 1.0, 1.0, 0.0,
-                -1.0, 1.0, 0.0, 0.0,
+                -1.0f, -1.0f, 0.0f, 1.0f,
+                1.0f, -1.0f, 1.0f, 1.0f,
+                1.0f, 1.0f, 1.0f, 0.0f,
+                -1.0f, -1.0f, 0.0f, 1.0f,
+                1.0f, 1.0f, 1.0f, 0.0f,
+                -1.0f, 1.0f, 0.0f, 0.0f,
             }, 1);
         }
         if (tri == null)
         {
-            tri = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Vertex, new List<double>
+            tri = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Vertex, new List<float>
             {
-                -0.75, -0.70, 0.25,
-                0.85, -0.65, 0.75,
-                -0.10, 0.82, 0.55,
+                -0.75f, -0.70f, 0.25f,
+                0.85f, -0.65f, 0.75f,
+                -0.10f, 0.82f, 0.55f,
             }, 1);
         }
     }
@@ -88,8 +88,8 @@ public static class RenderPrimitives15
     }
 
     static void DrawPanel(ShaderRef shader, TextureRef tex, BufferRef verts,
-        double x, double y, double sx, double sy, List<double> tint,
-        double mode)
+        float x, float y, float sx, float sy, List<float> tint,
+        float mode)
     {
         Gfx.Draw(6, new Dictionary<string, object>
         {
@@ -97,27 +97,27 @@ public static class RenderPrimitives15
             ["scene"] = tex,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["transform"] = new List<double> { sx, sy, x, y },
+                ["transform"] = new List<float> { sx, sy, x, y },
                 ["tint"] = tint,
-                ["mode"] = new List<double> { mode, 0.0, 0.0, 0.0 },
+                ["mode"] = new List<float> { mode, 0.0f, 0.0f, 0.0f },
             },
         }, new DrawOpts { Shader = shader, Depth = false, Cull = Gfx.Cull.None });
     }
 
-    static void DrawFill(BufferRef verts, ShaderRef fill, double r, double g,
-        double b)
+    static void DrawFill(BufferRef verts, ShaderRef fill, float r, float g,
+        float b)
     {
         Gfx.Draw(6, new Dictionary<string, object>
         {
             ["verts"] = verts,
             ["uniforms"] = new Dictionary<string, object>
             {
-                ["fill"] = new List<double> { r, g, b, 1.0 },
+                ["fill"] = new List<float> { r, g, b, 1.0f },
             },
         }, new DrawOpts { Shader = fill, Depth = false, Cull = Gfx.Cull.None });
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         EnsureGeometry();
         tAccum = tAccum + dt;
@@ -146,33 +146,33 @@ public static class RenderPrimitives15
         Gfx.BeginPass(new PassOpts
         {
             Target = r16,
-            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
-        DrawFill(quadBuf, fill, 0.25, 0.0, 0.0);
+        DrawFill(quadBuf, fill, 0.25f, 0.0f, 0.0f);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts
         {
             Target = rg16,
-            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
-        DrawFill(quadBuf, fill, 0.1, 0.85, 0.0);
+        DrawFill(quadBuf, fill, 0.1f, 0.85f, 0.0f);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts
         {
             Target = r32,
-            ClearColor = new double[] { 0.0, 0.0, 0.0, 1.0 },
+            ClearColor = new float[] { 0.0f, 0.0f, 0.0f, 1.0f },
         });
-        DrawFill(quadBuf, fill, 0.85, 0.0, 0.0);
+        DrawFill(quadBuf, fill, 0.85f, 0.0f, 0.0f);
         Gfx.EndPass();
 
         Gfx.BeginPass(new PassOpts
         {
             Target = depthColor,
             DepthTarget = depthTex,
-            ClearColor = new double[] { 0.02, 0.02, 0.04, 1.0 },
-            ClearDepth = 1.0,
+            ClearColor = new float[] { 0.02f, 0.02f, 0.04f, 1.0f },
+            ClearDepth = 1.0f,
         });
         Gfx.Draw(3, new Dictionary<string, object> { ["verts"] = triBuf },
             new DrawOpts
@@ -184,33 +184,33 @@ public static class RenderPrimitives15
             });
         Gfx.EndPass();
 
-        Gfx.Dispatch((int)Math.Ceiling(rtw / 8.0),
-            (int)Math.Ceiling(rth / 8.0), 1,
+        Gfx.Dispatch((int)Math.Ceiling(rtw / 8.0f),
+            (int)Math.Ceiling(rth / 8.0f), 1,
             new Dictionary<string, object>
             {
                 ["dst"] = storageTex,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["params"] = new List<double>
-                        { rtw, rth, tAccum * 0.6, 0.0 },
+                    ["params"] = new List<float>
+                        { rtw, rth, tAccum * 0.6f, 0.0f },
                 },
             }, new DispatchOpts { Shader = compute });
 
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.025, 0.03, 0.04, 1.0 },
+            ClearColor = new float[] { 0.025f, 0.03f, 0.04f, 1.0f },
         });
-        DrawPanel(present, r16, quadBuf, -0.66, 0.47, 0.29, 0.42,
-            new List<double> { 1.0, 0.35, 0.25, 1.0 }, 0.0);
-        DrawPanel(present, rg16, quadBuf, 0.0, 0.47, 0.29, 0.42,
-            new List<double> { 0.35, 1.0, 0.55, 1.0 }, 0.0);
-        DrawPanel(present, r32, quadBuf, 0.66, 0.47, 0.29, 0.42,
-            new List<double> { 0.55, 0.72, 1.0, 1.0 }, 0.0);
-        DrawPanel(present, depthColor, quadBuf, -0.34, -0.48, 0.29, 0.42,
-            new List<double> { 0.8, 0.9, 1.0, 1.0 }, 0.0);
-        DrawPanel(present, storageTex, quadBuf, 0.34, -0.48, 0.29, 0.42,
-            new List<double> { 1.0, 1.0, 1.0, 1.0 }, 0.0);
+        DrawPanel(present, r16, quadBuf, -0.66f, 0.47f, 0.29f, 0.42f,
+            new List<float> { 1.0f, 0.35f, 0.25f, 1.0f }, 0.0f);
+        DrawPanel(present, rg16, quadBuf, 0.0f, 0.47f, 0.29f, 0.42f,
+            new List<float> { 0.35f, 1.0f, 0.55f, 1.0f }, 0.0f);
+        DrawPanel(present, r32, quadBuf, 0.66f, 0.47f, 0.29f, 0.42f,
+            new List<float> { 0.55f, 0.72f, 1.0f, 1.0f }, 0.0f);
+        DrawPanel(present, depthColor, quadBuf, -0.34f, -0.48f, 0.29f, 0.42f,
+            new List<float> { 0.8f, 0.9f, 1.0f, 1.0f }, 0.0f);
+        DrawPanel(present, storageTex, quadBuf, 0.34f, -0.48f, 0.29f, 0.42f,
+            new List<float> { 1.0f, 1.0f, 1.0f, 1.0f }, 0.0f);
         Gfx.EndPass();
     }
 }

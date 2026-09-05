@@ -15,31 +15,31 @@ using static Lub;
 public class ParsedDec13
 {
     public bool Ok = false;
-    public double Value = 0.0;
+    public float Value = 0.0f;
     public int IntPart = 0;
 }
 
 public class BenchSprite13
 {
-    public double X;
-    public double Y;
-    public double TimeInit;
-    public double TimeLeft;
-    public double R;
-    public double Dr;
-    public double Cr;
-    public double Sr;
-    public double StepCr;
-    public double StepSr;
-    public double TintS;
-    public double TintC;
-    public double TintStepS;
-    public double TintStepC;
-    public double Scale;
+    public float X;
+    public float Y;
+    public float TimeInit;
+    public float TimeLeft;
+    public float R;
+    public float Dr;
+    public float Cr;
+    public float Sr;
+    public float StepCr;
+    public float StepSr;
+    public float TintS;
+    public float TintC;
+    public float TintStepS;
+    public float TintStepC;
+    public float Scale;
     public int Kind;
 
-    public BenchSprite13(double x, double y, double timeInit, double r,
-        double dr, double scale, int kind)
+    public BenchSprite13(float x, float y, float timeInit, float r,
+        float dr, float scale, int kind)
     {
         this.X = x;
         this.Y = y;
@@ -47,29 +47,29 @@ public class BenchSprite13
         this.TimeLeft = timeInit;
         this.R = r;
         this.Dr = dr;
-        this.Cr = Math.Cos(r);
-        this.Sr = Math.Sin(r);
-        double step = dr / 60.0;
-        this.StepCr = Math.Cos(step);
-        this.StepSr = Math.Sin(step);
-        double phase = r * 3.0;
-        this.TintS = Math.Sin(phase);
-        this.TintC = Math.Cos(phase);
-        double tintStep = step * 3.0;
-        this.TintStepS = Math.Sin(tintStep);
-        this.TintStepC = Math.Cos(tintStep);
+        this.Cr = (float)Math.Cos(r);
+        this.Sr = (float)Math.Sin(r);
+        float step = dr / 60.0f;
+        this.StepCr = (float)Math.Cos(step);
+        this.StepSr = (float)Math.Sin(step);
+        float phase = r * 3.0f;
+        this.TintS = (float)Math.Sin(phase);
+        this.TintC = (float)Math.Cos(phase);
+        float tintStep = step * 3.0f;
+        this.TintStepS = (float)Math.Sin(tintStep);
+        this.TintStepC = (float)Math.Cos(tintStep);
         this.Scale = scale;
         this.Kind = kind;
     }
 
-    public void Update(double dt)
+    public void Update(float dt)
     {
         R = R + dt * Dr;
         TimeLeft = TimeLeft - dt;
-        double nextCr = Cr * StepCr - Sr * StepSr;
+        float nextCr = Cr * StepCr - Sr * StepSr;
         Sr = Cr * StepSr + Sr * StepCr;
         Cr = nextCr;
-        double nextTintS = TintS * TintStepC + TintC * TintStepS;
+        float nextTintS = TintS * TintStepC + TintC * TintStepS;
         TintC = TintC * TintStepC - TintS * TintStepS;
         TintS = nextTintS;
     }
@@ -84,20 +84,20 @@ public static class Sprites13
 {
     const int w = 640;
     const int h = 480;
-    const double dt = 1.0 / 60.0;
+    const float dt = 1.0f / 60.0f;
     const int texW = 80;
     const int texH = 16;
     const int cell = 16;
-    const double sqrt3Half = 0.8660254037844386;
+    const float sqrt3Half = 0.8660254037844386f;
 
     static List<BenchSprite13> sprites = new List<BenchSprite13>();
     static SpriteBatch? batch = null;
     static Atlas? atlas = null;
     static FpsMeter? meter = null;
     static int tick = 0;
-    static double rng = 305419896.0;
-    static double timeMultiply = 4.0;
-    static double targetFps = 60.0;
+    static float rng = 305419896.0f;
+    static float timeMultiply = 4.0f;
+    static float targetFps = 60.0f;
     static int maxSprites = 200000;
     static int burst = 1;
     static int scoreFrame = 0;
@@ -110,7 +110,7 @@ public static class Sprites13
 
     public static void OnInit()
     {
-        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND") ?? "native";
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
 
         spriteRects = new List<Rect>
@@ -123,7 +123,7 @@ public static class Sprites13
         var wr = new Rect(64, 0, 1, 1);
         whiteRect = wr;
 
-        targetFps = EnvFloat("LUB_SPRITE_TARGET_FPS", 60.0);
+        targetFps = EnvFloat("LUB_SPRITE_TARGET_FPS", 60.0f);
         maxSprites = EnvInt("LUB_SPRITE_MAX", 200000);
         burst = EnvInt("LUB_SPRITE_BURST", 1);
         scoreFrame = EnvInt("LUB_SPRITE_SCORE_FRAME", 0);
@@ -172,18 +172,18 @@ public static class Sprites13
             any = true;
             i = i + 1;
         }
-        double v = ip;
+        float v = ip;
         if (i < n && (int)s[i] == 46)
         {
             i = i + 1;
-            double f = 0.1;
+            float f = 0.1f;
             while (i < n)
             {
                 int c = (int)s[i];
                 if (c < 48 || c > 57)
                     break;
                 v = v + (c - 48) * f;
-                f = f * 0.1;
+                f = f * 0.1f;
                 any = true;
                 i = i + 1;
             }
@@ -196,7 +196,7 @@ public static class Sprites13
         return res;
     }
 
-    static double EnvFloat(string name, double fallback)
+    static float EnvFloat(string name, float fallback)
     {
         var s = Environment.GetEnvironmentVariable(name);
         if (s == null)
@@ -222,29 +222,29 @@ public static class Sprites13
         return s != "0" && s != "false" && s != "FALSE";
     }
 
-    static double Rand01()
+    static float Rand01()
     {
-        rng = rng * 1664525.0 + 1013904223.0;
-        rng = rng - Math.Floor(rng / 4294967296.0) * 4294967296.0;
-        return rng / 4294967296.0;
+        rng = rng * 1664525.0f + 1013904223.0f;
+        rng = rng - (float)Math.Floor(rng / 4294967296.0f) * 4294967296.0f;
+        return rng / 4294967296.0f;
     }
 
     static void SpawnOne()
     {
-        double life = Rand01() * timeMultiply + 2.0;
+        float life = Rand01() * timeMultiply + 2.0f;
         sprites.Add(new BenchSprite13(Rand01(), Rand01(), life,
-            Rand01() * Math.PI * 2.0, Rand01() * Math.PI * 2.0,
-            Rand01() * 120.0 + 80.0,
+            Rand01() * (float)Math.PI * 2.0f, Rand01() * (float)Math.PI * 2.0f,
+            Rand01() * 120.0f + 80.0f,
             (int)Math.Floor(Rand01() * spriteRects.Count)));
     }
 
     // tick % n == 0 相当 (整数剰余は使わない)。v >= 0 前提。
     static bool EveryN(int v, int n)
     {
-        return Math.Floor(v / (double)n) * n == v;
+        return (float)Math.Floor(v / (float)n) * n == v;
     }
 
-    static void UpdateSprites(double fps)
+    static void UpdateSprites(float fps)
     {
         tick = tick + 1;
 
@@ -269,22 +269,22 @@ public static class Sprites13
             if (fps > targetFps)
             {
                 spawn = true;
-                timeMultiply = timeMultiply + 0.7 * dt;
+                timeMultiply = timeMultiply + 0.7f * dt;
             }
-            else if (fps > targetFps * 0.5 && EveryN(tick, 2))
+            else if (fps > targetFps * 0.5f && EveryN(tick, 2))
             {
                 spawn = true;
-                timeMultiply = timeMultiply + 0.2 * dt;
+                timeMultiply = timeMultiply + 0.2f * dt;
             }
-            else if (fps > targetFps * 0.25 && EveryN(tick, 4))
+            else if (fps > targetFps * 0.25f && EveryN(tick, 4))
             {
                 spawn = true;
-                timeMultiply = timeMultiply - 0.3 * dt;
+                timeMultiply = timeMultiply - 0.3f * dt;
             }
         }
 
-        if (timeMultiply < 1.0)
-            timeMultiply = 1.0;
+        if (timeMultiply < 1.0f)
+            timeMultiply = 1.0f;
 
         if (spawn)
         {
@@ -315,17 +315,17 @@ public static class Sprites13
         {
             for (int x = 0; x < cell; x++)
             {
-                double nx = (x + 0.5 - cell * 0.5) / (cell * 0.5);
-                double ny = (y + 0.5 - cell * 0.5) / (cell * 0.5);
-                double d = Math.Sqrt(nx * nx + ny * ny);
-                if (d < 0.92)
+                float nx = (x + 0.5f - cell * 0.5f) / (cell * 0.5f);
+                float ny = (y + 0.5f - cell * 0.5f) / (cell * 0.5f);
+                float d = (float)Math.Sqrt(nx * nx + ny * ny);
+                if (d < 0.92f)
                     SetPx(px, x, y, 255, 255, 255, 255);
-                if (Math.Abs(nx) + Math.Abs(ny) < 1.1)
+                if (Math.Abs(nx) + Math.Abs(ny) < 1.1f)
                     SetPx(px, 16 + x, y, 255, 255, 255, 255);
-                if (Math.Max(Math.Abs(nx), Math.Abs(ny)) < 0.78)
+                if (Math.Max(Math.Abs(nx), Math.Abs(ny)) < 0.78f)
                     SetPx(px, 32 + x, y, 255, 255, 255, 255);
-                if (Math.Abs(nx) < 0.24 || Math.Abs(ny) < 0.24
-                    || Math.Abs(nx - ny) < 0.16 || Math.Abs(nx + ny) < 0.16)
+                if (Math.Abs(nx) < 0.24f || Math.Abs(ny) < 0.24f
+                    || Math.Abs(nx - ny) < 0.16f || Math.Abs(nx + ny) < 0.16f)
                     SetPx(px, 48 + x, y, 255, 255, 255, 255);
             }
         }
@@ -337,17 +337,17 @@ public static class Sprites13
     {
         foreach (var s in sprites)
         {
-            double age = (s.TimeInit - s.TimeLeft) / s.TimeInit;
-            double pulse = Math.Sin(Math.PI * age);
+            float age = (s.TimeInit - s.TimeLeft) / s.TimeInit;
+            float pulse = (float)Math.Sin((float)Math.PI * age);
             if (pulse <= 0)
                 continue;
-            double size = pulse * s.Scale;
-            double a = pulse < 0.18 ? pulse / 0.18 : 1.0;
-            double ts = s.TintS;
-            double tc = s.TintC;
-            double red = 0.58 + 0.42 * ts;
-            double green = 0.58 + 0.42 * (-0.5 * ts + sqrt3Half * tc);
-            double blue = 0.58 + 0.42 * (-0.5 * ts - sqrt3Half * tc);
+            float size = pulse * s.Scale;
+            float a = pulse < 0.18f ? pulse / 0.18f : 1.0f;
+            float ts = s.TintS;
+            float tc = s.TintC;
+            float red = 0.58f + 0.42f * ts;
+            float green = 0.58f + 0.42f * (-0.5f * ts + sqrt3Half * tc);
+            float blue = 0.58f + 0.42f * (-0.5f * ts - sqrt3Half * tc);
             batch.SpriteColor(atlas, spriteRects[s.Kind], s.X * w, s.Y * h,
                 size, size, s.Cr, s.Sr, red, green, blue, a);
         }
@@ -404,24 +404,24 @@ public static class Sprites13
     }
 
     static void DrawHud(SpriteBatch batch, Atlas atlas, Rect whiteRect,
-        double fps)
+        float fps)
     {
         batch.Quad(atlas, whiteRect, 8, 8, 248, 46,
-            Color.Rgb(0.0, 0.0, 0.0, 0.56));
+            Color.Rgb(0.0f, 0.0f, 0.0f, 0.56f));
         DrawText(batch, atlas, whiteRect, 16, 16,
-            "SPRITES:" + sprites.Count, 3, Color.Rgb(0.90, 0.96, 1.0, 1.0));
+            "SPRITES:" + sprites.Count, 3, Color.Rgb(0.90f, 0.96f, 1.0f, 1.0f));
         DrawText(batch, atlas, whiteRect, 16, 36,
-            "FPS:" + (int)Math.Floor(fps + 0.5)
-            + " TARGET:" + (int)Math.Floor(targetFps + 0.5), 2,
-            Color.Rgb(0.78, 1.0, 0.70, 1.0));
+            "FPS:" + (int)Math.Floor(fps + 0.5f)
+            + " TARGET:" + (int)Math.Floor(targetFps + 0.5f), 2,
+            Color.Rgb(0.78f, 1.0f, 0.70f, 1.0f));
     }
 
-    static string FpsText(double fps)
+    static string FpsText(float fps)
     {
-        return "" + Math.Floor(fps * 100.0 + 0.5) / 100.0;
+        return "" + (float)Math.Floor(fps * 100.0f + 0.5f) / 100.0f;
     }
 
-    static void MaybePrintScore(double fps)
+    static void MaybePrintScore(float fps)
     {
         if (scoreFrame <= 0 || scorePrinted || tick < scoreFrame)
             return;
@@ -434,7 +434,7 @@ public static class Sprites13
         Lub.Quit();
     }
 
-    public static void OnFrame(double dt)
+    public static void OnFrame(float dt)
     {
         var b = batch;
         var a = atlas;
@@ -443,7 +443,7 @@ public static class Sprites13
         if (b == null || a == null || m == null || wr == null)
             return;
 
-        double fps = m.Tick();
+        float fps = m.Tick();
         Profiler.BeginScope("sprites.update");
         if (scoreFrame > 0)
         {
@@ -463,7 +463,7 @@ public static class Sprites13
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
-            ClearColor = new double[] { 0.03, 0.035, 0.045, 1.0 },
+            ClearColor = new float[] { 0.03f, 0.035f, 0.045f, 1.0f },
         });
         Profiler.EndScope("gfx.begin_pass");
 
