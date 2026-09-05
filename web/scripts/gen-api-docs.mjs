@@ -1,9 +1,12 @@
-// gen-api-docs.mjs — haxe -xml から API reference データを生成する。
+// gen-api-docs.mjs — API reference データを生成する。
 // 出力: web/public/api-docs.json { guides: [...], packages: [...] }
-//   node web/scripts/gen-api-docs.mjs
+//   node web/scripts/gen-api-docs.mjs [--source haxe|stub]
 //
-// - API の single source of truth は haxe-lib/lub/**/*.hx の doc comment。
-//   haxe --xml (dox 形式) を parse して signature + doc を JSON に固める。
+// - source haxe (既定): haxe-lib/lub/**/*.hx の doc comment。haxe --xml
+//   (dox 形式) を parse して signature + doc を JSON に固める。
+// - source stub: cs-lib/lub_stub.cs の XML doc。tools/lub-gen が
+//   web/gen/lub-api-docs.json (scripts/gen-api.sh で再生成) に固めた
+//   signature + doc (markdown) を読む。
 // - ガイドは docs/manual/*.md。ファイル名の数字 prefix が表示順。
 // - doc comment / ガイドの markdown は build 時に HTML へ変換する
 //   (client は innerHTML するだけ)。`Gfx` のような型名 code span は
@@ -26,45 +29,70 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..");
 const REPO = join(WEB, "..");
 const OUT = join(WEB, "public", "api-docs.json");
+const STUB_DOCS = join(WEB, "gen", "lub-api-docs.json");
+
+const argv = process.argv.slice(2);
+const sourceIdx = argv.indexOf("--source");
+const source = sourceIdx >= 0 ? argv[sourceIdx + 1] : "haxe";
+if (source !== "haxe" && source !== "stub") {
+  console.error(`gen-api-docs: unknown --source ${source} (haxe | stub)`);
+  process.exit(2);
+}
+
+// shortName -> [path...] (doc 内 code span の自動リンク用)。source ごとの
+// 収集で埋め、doc の markdown 変換より前に揃える。
+const shortNames = new Map();
+function addShortName(path) {
+  const short = path.split(".").pop();
+  if (!shortNames.has(short)) shortNames.set(short, []);
+  shortNames.get(short).push(path);
+}
 
 // ---------------------------------------------------------------------------
 // 1) haxe --xml で型情報を吐かせる
 // ---------------------------------------------------------------------------
-const tmp = mkdtempSync(join(tmpdir(), "lub-api-"));
-const xmlPath = join(tmp, "api.xml");
-try {
-  execFileSync(
-    "haxe",
-    [
-      "-cp",
-      "haxe-lib/lub",
-      "--macro",
-      "include('lub')",
-      "--macro",
-      "include('lubx')",
-      "-lua",
-      join(tmp, "out.lua"),
-      "--no-output",
-      "-xml",
-      xmlPath,
-    ],
-    { cwd: REPO, stdio: ["ignore", "inherit", "inherit"] },
-  );
-  var xmlText = readFileSync(xmlPath, "utf8");
-} finally {
-  rmSync(tmp, { recursive: true, force: true });
+function loadHaxeXml() {
+  const tmp = mkdtempSync(join(tmpdir(), "lub-api-"));
+  const xmlPath = join(tmp, "api.xml");
+  try {
+    execFileSync(
+      "haxe",
+      [
+        "-cp",
+        "haxe-lib/lub",
+        "--macro",
+        "include('lub')",
+        "--macro",
+        "include('lubx')",
+        "-lua",
+        join(tmp, "out.lua"),
+        "--no-output",
+        "-xml",
+        xmlPath,
+      ],
+      { cwd: REPO, stdio: ["ignore", "inherit", "inherit"] },
+    );
+    return readFileSync(xmlPath, "utf8");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------
 // 2) XML parse (preserveOrder: 関数引数の型は子要素の順序が意味を持つ)
 // ---------------------------------------------------------------------------
-const parser = new XMLParser({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  trimValues: false,
-});
-const xml = parser.parse(xmlText);
+function parseHaxeXml(xmlText) {
+  const parser = new XMLParser({
+    preserveOrder: true,
+    ignoreAttributes: false,
+    attributeNamePrefix: "",
+    trimValues: false,
+  });
+  const xml = parser.parse(xmlText);
+  const rootNode = xml.map(norm).find((n) => n.tag === "haxe");
+  if (!rootNode) throw new Error("haxe root element not found in XML");
+  return rootNode;
+}
 
 // preserveOrder の生形式を {tag, attrs, children, text} に整える。
 function norm(node) {
@@ -82,30 +110,15 @@ function norm(node) {
   return { tag, attrs, children, text };
 }
 
-const rootNode = xml.map(norm).find((n) => n.tag === "haxe");
-if (!rootNode) throw new Error("haxe root element not found in XML");
-
 // ---------------------------------------------------------------------------
 // 3) 型の収集とフィルタ
 // ---------------------------------------------------------------------------
 const wanted = (p) => p && (p.startsWith("lub.") || p.startsWith("lubx."));
 const isPrivateImpl = (p) => /(^|\.)_/.test(p);
 
-const typeNodes = rootNode.children.filter(
-  (n) => wanted(n.attrs.path) && !isPrivateImpl(n.attrs.path),
-);
-
-// shortName -> [path...] (doc 内 code span の自動リンク用)
-const shortNames = new Map();
-for (const n of typeNodes) {
-  const short = n.attrs.path.split(".").pop();
-  if (!shortNames.has(short)) shortNames.set(short, []);
-  shortNames.get(short).push(n.attrs.path);
-}
-
 function resolveTypeLink(word) {
   // "Gfx" / "Gfx.useShader" / "lub.Gfx" の先頭型名をアンカーに解決する。
-  const m = word.match(/^(?:(lub|lubx)\.)?([A-Z]\w*)/);
+  const m = word.match(/^(?:(lub|lubx|Lub)\.)?([A-Z]\w*)/);
   if (!m) return null;
   const [, pkg, short] = m;
   const paths = shortNames.get(short) || [];
@@ -315,11 +328,6 @@ function anonFields(aNode, selfPath) {
 
 // abstract の impl class (private) を path で引けるようにしておく
 const implClasses = new Map();
-for (const n of rootNode.children) {
-  if (n.tag === "class" && isPrivateImpl(n.attrs.path || "")) {
-    implClasses.set(n.attrs.path, n);
-  }
-}
 
 function convertType(node) {
   const path = node.attrs.path;
@@ -374,32 +382,61 @@ function convertType(node) {
 
 // module 単位でまとめる: lub.Gfx module = Gfx class + ShaderRef + DrawOpts...
 // 主型 (path == module) を先頭に、補助型 (typedef/abstract) をぶら下げる。
-const types = typeNodes.map(convertType);
-const byModule = new Map();
-for (const t of types) {
-  if (!byModule.has(t.module)) byModule.set(t.module, []);
-  byModule.get(t.module).push(t);
+function packagesFromHaxe() {
+  const rootNode = parseHaxeXml(loadHaxeXml());
+  const typeNodes = rootNode.children.filter(
+    (n) => wanted(n.attrs.path) && !isPrivateImpl(n.attrs.path),
+  );
+  for (const n of typeNodes) addShortName(n.attrs.path);
+  for (const n of rootNode.children) {
+    if (n.tag === "class" && isPrivateImpl(n.attrs.path || "")) {
+      implClasses.set(n.attrs.path, n);
+    }
+  }
+  const types = typeNodes.map(convertType);
+  const byModule = new Map();
+  for (const t of types) {
+    if (!byModule.has(t.module)) byModule.set(t.module, []);
+    byModule.get(t.module).push(t);
+  }
+  const modules = [];
+  for (const [modPath, list] of byModule) {
+    list.sort((a, b) => {
+      const am = a.path === modPath ? 0 : 1;
+      const bm = b.path === modPath ? 0 : 1;
+      return am - bm;
+    });
+    modules.push({
+      module: modPath,
+      package: modPath.split(".")[0],
+      name: modPath.split(".").pop(),
+      file: list[0].file,
+      types: list,
+    });
+  }
+  modules.sort((a, b) => a.name.localeCompare(b.name));
+  return [
+    { name: "lub", modules: modules.filter((m) => m.package === "lub") },
+    { name: "lubx", modules: modules.filter((m) => m.package === "lubx") },
+  ];
 }
-const modules = [];
-for (const [modPath, list] of byModule) {
-  list.sort((a, b) => {
-    const am = a.path === modPath ? 0 : 1;
-    const bm = b.path === modPath ? 0 : 1;
-    return am - bm;
-  });
-  modules.push({
-    module: modPath,
-    package: modPath.split(".")[0],
-    name: modPath.split(".").pop(),
-    file: list[0].file,
-    types: list,
-  });
+
+// stub 由来: 形は既に docs.ts の ApiDocs。doc の markdown を HTML にする。
+function packagesFromStub() {
+  const data = JSON.parse(readFileSync(STUB_DOCS, "utf8"));
+  for (const pkg of data.packages)
+    for (const m of pkg.modules) for (const t of m.types) addShortName(t.path);
+  for (const pkg of data.packages)
+    for (const m of pkg.modules)
+      for (const t of m.types) {
+        t.doc = t.doc ? md.render(t.doc, { selfPath: t.path }) : "";
+        for (const mm of t.members)
+          mm.doc = mm.doc ? md.render(mm.doc, { selfPath: t.path }) : "";
+      }
+  return data.packages;
 }
-modules.sort((a, b) => a.name.localeCompare(b.name));
-const packages = [
-  { name: "lub", modules: modules.filter((m) => m.package === "lub") },
-  { name: "lubx", modules: modules.filter((m) => m.package === "lubx") },
-];
+
+const packages = source === "stub" ? packagesFromStub() : packagesFromHaxe();
 
 // ---------------------------------------------------------------------------
 // 7) ガイド (docs/manual/*.md)
@@ -422,8 +459,11 @@ for (const f of readdirSync(manualDir).sort()) {
 // ---------------------------------------------------------------------------
 const out = { guides, packages };
 writeFileSync(OUT, JSON.stringify(out));
-const nTypes = types.length;
-const nMembers = types.reduce((s, t) => s + t.members.length, 0);
+const allTypes = packages.flatMap((p) => p.modules.flatMap((m) => m.types));
+const nMembers = allTypes.reduce((s, t) => s + t.members.length, 0);
+const nModules = packages
+  .map((p) => `${p.modules.length} ${p.name}`)
+  .join(" / ");
 console.error(
-  `gen-api-docs: ${guides.length} guides + ${packages[0].modules.length} lub / ${packages[1].modules.length} lubx modules (${nTypes} types, ${nMembers} members) -> ${OUT}`,
+  `gen-api-docs (${source}): ${guides.length} guides + ${nModules} modules (${allTypes.length} types, ${nMembers} members) -> ${OUT}`,
 );

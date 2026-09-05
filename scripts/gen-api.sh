@@ -3,6 +3,7 @@
 #   include/lub/lub_api.h        C API の header
 #   src/gen/lua_api_gen.c        Lua binding
 #   tests/lua/test_api_surface.lua  prelude が全 member を持つかの Lua テスト
+#   web/gen/lub-api-docs.json    API reference のデータ (web/scripts/gen-api-docs.mjs が読む)
 # --check は再生成せず、checkin 済みの生成物との差分を検査する (native gate)。
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -14,11 +15,12 @@ dotnet run --project tools/lub-gen -- check
 dotnet run --project tools/lub-gen -- header -o "$tmp/lub_api.h"
 dotnet run --project tools/lub-gen -- lua -o "$tmp/lua_api_gen.c"
 dotnet run --project tools/lub-gen -- surface-test -o "$tmp/test_api_surface.lua"
+dotnet run --project tools/lub-gen -- docs -o "$tmp/lub-api-docs.json"
 # checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする
 clang-format --style=LLVM -i "$tmp/lub_api.h" "$tmp/lua_api_gen.c"
 npm --prefix web exec --no -- stylua --no-editorconfig "$tmp/test_api_surface.lua"
 status=0
-for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen.c" "test_api_surface.lua:tests/lua/test_api_surface.lua"; do
+for pair in "lub_api.h:include/lub/lub_api.h" "lua_api_gen.c:src/gen/lua_api_gen.c" "test_api_surface.lua:tests/lua/test_api_surface.lua" "lub-api-docs.json:web/gen/lub-api-docs.json"; do
   src="$tmp/${pair%%:*}"
   dst="${pair#*:}"
   if [ "$check" = 1 ]; then

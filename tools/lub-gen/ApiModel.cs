@@ -45,22 +45,25 @@ public sealed record ApiFunction(string Name, string LuaName, TypeRef Return,
 public sealed record ApiEnumMember(string Name, string LuaName, int Value, string Doc);
 
 public sealed record ApiEnum(string Name, string Namespace, string LuaPath,
-    IReadOnlyList<ApiEnumMember> Members, string Doc, bool LuaString);
+    IReadOnlyList<ApiEnumMember> Members, string Doc, bool LuaString, int Line);
 
 public sealed record ApiField(string Name, string LuaName, TypeRef Type,
     bool Optional, string Doc, int? ArrayLen, bool Bits);
 
 public sealed record ApiConst(string Name, string LuaName, object Value, string Doc);
 
+/// <summary>Line は stub での宣言行 (1 始まり)。API docs の source link に使う。</summary>
 public sealed record ApiNamespace(string Name, string LuaPath,
     IReadOnlyList<ApiFunction> Functions, IReadOnlyList<ApiEnum> Enums,
-    IReadOnlyList<ApiField> StaticFields, IReadOnlyList<ApiConst> Consts, string Doc);
+    IReadOnlyList<ApiField> StaticFields, IReadOnlyList<ApiConst> Consts, string Doc,
+    int Line);
 
 /// <summary>Kind: handle (runtime 所有の不透明参照) / view (frame 有効の
 /// バイト列) / keyed (key で参照する resource) / record (option table や
 /// 戻り値の平らな構造)。</summary>
 public sealed record ApiType(string Name, string Kind, string? Base,
-    IReadOnlyList<ApiField> Fields, IReadOnlyList<ApiFunction> Methods, string Doc);
+    IReadOnlyList<ApiField> Fields, IReadOnlyList<ApiFunction> Methods, string Doc,
+    int Line);
 
 public sealed record ApiModel(IReadOnlyList<ApiNamespace> Namespaces,
     IReadOnlyList<ApiType> Types)
@@ -131,7 +134,8 @@ public static class ApiModelLoader
             .Where(f => f.IsConst && f.DeclaredAccessibility == Accessibility.Public)
             .Select(f => new ApiConst(f.Name, LuaNaming.Const(f.Name), f.ConstantValue!, Doc(f)))
             .ToList();
-        return new ApiNamespace(cls.Name, luaPath, functions, enums, fields, consts, Doc(cls));
+        return new ApiNamespace(cls.Name, luaPath, functions, enums, fields, consts, Doc(cls),
+            Line(cls));
     }
 
     private static ApiEnum LoadEnum(INamedTypeSymbol e, string ns)
@@ -142,7 +146,7 @@ public static class ApiModelLoader
                 Convert.ToInt32(f.ConstantValue), Doc(f)))
             .ToList();
         return new ApiEnum(e.Name, ns, LuaNaming.RefTypePath(e), members, Doc(e),
-            HasAttr(e, "LubLuaStringAttribute"));
+            HasAttr(e, "LubLuaStringAttribute"), Line(e));
     }
 
     private static ApiType LoadType(INamedTypeSymbol t)
@@ -163,7 +167,7 @@ public static class ApiModelLoader
             .Select(LoadFunction).ToList();
         var baseName = t.BaseType != null && t.BaseType.SpecialType != SpecialType.System_Object
             ? t.BaseType.Name : null;
-        return new ApiType(t.Name, kind, baseName, fields, methods, Doc(t));
+        return new ApiType(t.Name, kind, baseName, fields, methods, Doc(t), Line(t));
     }
 
     private static ApiFunction LoadFunction(IMethodSymbol m)
@@ -182,6 +186,9 @@ public static class ApiModelLoader
             f.NullableAnnotation == NullableAnnotation.Annotated
                 || f.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
             Doc(f), ArrayLen(f), HasAttr(f, "LubBitsAttribute"));
+
+    private static int Line(ISymbol s) =>
+        s.Locations[0].GetLineSpan().StartLinePosition.Line + 1;
 
     private static bool HasAttr(ISymbol s, string name) =>
         s.GetAttributes().Any(a => a.AttributeClass?.Name == name);

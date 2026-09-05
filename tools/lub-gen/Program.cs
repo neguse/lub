@@ -10,6 +10,7 @@ using TinyCs;
 //   lub-gen surface-test [-o file]    prelude が全 member を持つかの Lua テスト
 //   lub-gen header [-o file]          C API の header (include/lub/lub_api.h)
 //   lub-gen lua [-o file]             Lua binding (src/gen/lua_api_gen.c)
+//   lub-gen docs [-o file]            API reference のデータ (web/gen/lub-api-docs.json)
 // 既定の stub は repo root からの相対パス cs-lib/lub_stub.cs。
 
 var verb = args.Length > 0 ? args[0] : "check";
@@ -75,6 +76,11 @@ switch (verb)
     case "lua":
         {
             Emit(outPath, LuaBinding.Generate(model));
+            return 0;
+        }
+    case "docs":
+        {
+            Emit(outPath, Docs.Generate(model, stubPath));
             return 0;
         }
     default:
