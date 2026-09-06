@@ -151,7 +151,6 @@ struct DxBuffer {
   ComPtr<ID3D12Resource> res;
   size_t bytes = 0;
   SglBufferType type = SGL_BUFFER_VERTEX;
-  D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
 };
 
 struct DxImage {
@@ -166,7 +165,6 @@ struct DxImage {
   bool is_depth = false;
   UINT rtv = UINT_MAX; // index into rtv heap (render targets)
   UINT dsv = UINT_MAX; // index into dsv heap (depth targets)
-  D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
 };
 
 // --- global state ------------------------------------------------------------
@@ -174,9 +172,10 @@ struct Dx12State {
   App *app = nullptr;
   ComPtr<IDXGIFactory4> factory;
   ComPtr<ID3D12Device> device;
+  ComPtr<ID3D12Device10> device10; // CreateCommittedResource3 (layouts)
   ComPtr<ID3D12CommandQueue> queue;
   ComPtr<IDXGISwapChain3> swapchain;
-  ComPtr<ID3D12GraphicsCommandList> cl;
+  ComPtr<ID3D12GraphicsCommandList7> cl;
   bool recording = false;
 
   ComPtr<ID3D12Fence> fence;
@@ -187,7 +186,6 @@ struct Dx12State {
   int slot = 0;
 
   ComPtr<ID3D12Resource> backbuffers[kSwapchainBuffers];
-  D3D12_RESOURCE_STATES bb_state[kSwapchainBuffers] = {};
   UINT bb_rtv[kSwapchainBuffers] = {};
   UINT bb_index = 0;
   int sw_w = 0, sw_h = 0;
@@ -208,6 +206,12 @@ struct Dx12State {
   // Current pass state.
   bool in_pass = false;
   int pass_w = 0, pass_h = 0;
+  // Attachments of the open pass; end_pass moves them back to their
+  // resting layout.
+  bool pass_swapchain = false;
+  DxImage *pass_colors[SGL_MAX_COLOR_TARGETS] = {};
+  int pass_n_colors = 0;
+  DxImage *pass_depth = nullptr;
 
   // Set when capture already closed+executed this frame's list; end_frame
   // then only presents and signals.
@@ -259,18 +263,97 @@ void dx_wait_idle() {
   dx_wait_for_fence(v);
 }
 
-void dx_transition(ID3D12Resource *res, D3D12_RESOURCE_STATES *state,
-                   D3D12_RESOURCE_STATES to) {
-  if (!res || *state == to)
-    return;
-  D3D12_RESOURCE_BARRIER b = {};
-  b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  b.Transition.pResource = res;
-  b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  b.Transition.StateBefore = *state;
-  b.Transition.StateAfter = to;
-  g.cl->ResourceBarrier(1, &b);
-  *state = to;
+// Enhanced barriers. Buffers have no layout, so ordering them is one global
+// barrier. Textures rest in DIRECT_QUEUE_COMMON, where sampling, storage
+// (UAV) and copies are all allowed, and only change layout while they are
+// bound as an attachment; the swapchain buffer rests in PRESENT.
+void dx_global_barrier(ID3D12GraphicsCommandList7 *cl) {
+  D3D12_GLOBAL_BARRIER gb = {};
+  gb.SyncBefore = D3D12_BARRIER_SYNC_ALL;
+  gb.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+  gb.AccessBefore = D3D12_BARRIER_ACCESS_COMMON;
+  gb.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
+  D3D12_BARRIER_GROUP grp = {};
+  grp.Type = D3D12_BARRIER_TYPE_GLOBAL;
+  grp.NumBarriers = 1;
+  grp.pGlobalBarriers = &gb;
+  cl->Barrier(1, &grp);
+}
+
+void dx_texture_barrier(ID3D12GraphicsCommandList7 *cl, ID3D12Resource *res,
+                        D3D12_BARRIER_SYNC sync_before,
+                        D3D12_BARRIER_ACCESS access_before,
+                        D3D12_BARRIER_LAYOUT layout_before,
+                        D3D12_BARRIER_SYNC sync_after,
+                        D3D12_BARRIER_ACCESS access_after,
+                        D3D12_BARRIER_LAYOUT layout_after) {
+  D3D12_TEXTURE_BARRIER tb = {};
+  tb.SyncBefore = sync_before;
+  tb.SyncAfter = sync_after;
+  tb.AccessBefore = access_before;
+  tb.AccessAfter = access_after;
+  tb.LayoutBefore = layout_before;
+  tb.LayoutAfter = layout_after;
+  tb.pResource = res;
+  tb.Subresources.IndexOrFirstMipLevel = 0xffffffffu; // every subresource
+  tb.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+  D3D12_BARRIER_GROUP grp = {};
+  grp.Type = D3D12_BARRIER_TYPE_TEXTURE;
+  grp.NumBarriers = 1;
+  grp.pTextureBarriers = &tb;
+  cl->Barrier(1, &grp);
+}
+
+// Attachment entry / exit. The resting side is "everything before / after"
+// so the layout change also orders the pass against surrounding work.
+void dx_to_render_target(ID3D12Resource *res) {
+  dx_texture_barrier(
+      g.cl.Get(), res, D3D12_BARRIER_SYNC_ALL, D3D12_BARRIER_ACCESS_COMMON,
+      D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON,
+      D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET,
+      D3D12_BARRIER_LAYOUT_RENDER_TARGET);
+}
+
+void dx_from_render_target(ID3D12Resource *res) {
+  dx_texture_barrier(g.cl.Get(), res, D3D12_BARRIER_SYNC_RENDER_TARGET,
+                     D3D12_BARRIER_ACCESS_RENDER_TARGET,
+                     D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_SYNC_ALL,
+                     D3D12_BARRIER_ACCESS_COMMON,
+                     D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON);
+}
+
+void dx_to_depth_write(ID3D12Resource *res) {
+  dx_texture_barrier(g.cl.Get(), res, D3D12_BARRIER_SYNC_ALL,
+                     D3D12_BARRIER_ACCESS_COMMON,
+                     D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON,
+                     D3D12_BARRIER_SYNC_DEPTH_STENCIL,
+                     D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE,
+                     D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE);
+}
+
+void dx_from_depth_write(ID3D12Resource *res) {
+  dx_texture_barrier(g.cl.Get(), res, D3D12_BARRIER_SYNC_DEPTH_STENCIL,
+                     D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE,
+                     D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
+                     D3D12_BARRIER_SYNC_ALL, D3D12_BARRIER_ACCESS_COMMON,
+                     D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON);
+}
+
+// Swapchain buffer: PRESENT (also its copy-source layout for capture) while
+// not being rendered to.
+void dx_swapchain_to_render_target(ID3D12Resource *res) {
+  dx_texture_barrier(
+      g.cl.Get(), res, D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS,
+      D3D12_BARRIER_LAYOUT_PRESENT, D3D12_BARRIER_SYNC_RENDER_TARGET,
+      D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET);
+}
+
+void dx_swapchain_to_present(ID3D12Resource *res) {
+  dx_texture_barrier(g.cl.Get(), res, D3D12_BARRIER_SYNC_RENDER_TARGET,
+                     D3D12_BARRIER_ACCESS_RENDER_TARGET,
+                     D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                     D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS,
+                     D3D12_BARRIER_LAYOUT_PRESENT);
 }
 
 // Allocate transient upload memory valid until this frame slot's fence.
@@ -292,7 +375,7 @@ bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   UploadChunk c;
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_UPLOAD;
-  D3D12_RESOURCE_DESC rd = {};
+  D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   rd.Width = cap;
   rd.Height = 1;
@@ -300,9 +383,9 @@ bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   rd.MipLevels = 1;
   rd.SampleDesc.Count = 1;
   rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-  if (FAILED(g.device->CreateCommittedResource(
-          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ,
-          nullptr, IID_PPV_ARGS(&c.res)))) {
+  if (FAILED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_BARRIER_LAYOUT_UNDEFINED,
+          nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&c.res)))) {
     SDL_Log("d3d12: upload chunk alloc failed (%zu bytes)", cap);
     return false;
   }
@@ -377,7 +460,6 @@ bool dx_create_swapchain_views() {
     g.bb_rtv[i] = g.rtv_heap.alloc();
     g.device->CreateRenderTargetView(g.backbuffers[i].Get(), nullptr,
                                      g.rtv_heap.cpu(g.bb_rtv[i]));
-    g.bb_state[i] = D3D12_RESOURCE_STATE_PRESENT;
   }
   DXGI_SWAP_CHAIN_DESC1 d = {};
   g.swapchain->GetDesc1(&d);
@@ -396,7 +478,7 @@ bool dx_ensure_default_depth(int w, int h) {
 
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_DEFAULT;
-  D3D12_RESOURCE_DESC rd = {};
+  D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   rd.Width = (UINT64)w;
   rd.Height = (UINT)h;
@@ -408,9 +490,11 @@ bool dx_ensure_default_depth(int w, int h) {
   D3D12_CLEAR_VALUE cv = {};
   cv.Format = kDefaultDepthFormat;
   cv.DepthStencil.Depth = 1.0f;
-  if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
-                                               D3D12_RESOURCE_STATE_DEPTH_WRITE,
-                                               &cv, IID_PPV_ARGS(&g.depth)))) {
+  // Never sampled, so it lives in the depth-write layout for good.
+  if (FAILED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd,
+          D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, &cv, nullptr, 0, nullptr,
+          IID_PPV_ARGS(&g.depth)))) {
     SDL_Log("d3d12: default depth create failed (%dx%d)", w, h);
     return false;
   }
@@ -562,6 +646,17 @@ bool dx_init(App *app) {
     SDL_Log("d3d12: adapter: %s", name);
   }
   dx_log_runtime();
+  {
+    D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12 = {};
+    bool eb = SUCCEEDED(g.device->CheckFeatureSupport(
+                  D3D12_FEATURE_D3D12_OPTIONS12, &o12, sizeof(o12))) &&
+              o12.EnhancedBarriersSupported;
+    if (!eb || FAILED(g.device.As(&g.device10))) {
+      SDL_Log("d3d12: enhanced barriers are required (Agility SDK runtime + a "
+              "driver that supports them); use backend=sdlgpu otherwise");
+      return false;
+    }
+  }
 
   D3D12_COMMAND_QUEUE_DESC qd = {};
   qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -704,8 +799,6 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
 void dx_end_frame(App *app) {
   (void)app;
   if (g.recording) {
-    dx_transition(g.backbuffers[g.bb_index].Get(), &g.bb_state[g.bb_index],
-                  D3D12_RESOURCE_STATE_PRESENT);
     g.cl->Close();
     g.recording = false;
     ID3D12CommandList *lists[] = {g.cl.Get()};
@@ -738,6 +831,9 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
   // D3D12 has no load op; LOAD just skips the explicit clears (contents are
   // preserved by the resource transitions).
   bool do_clear = (d->load != SGL_LOAD_LOAD);
+  g.pass_swapchain = false;
+  g.pass_n_colors = 0;
+  g.pass_depth = nullptr;
 
   D3D12_CPU_DESCRIPTOR_HANDLE rtvs[SGL_MAX_COLOR_TARGETS];
   int nct = d->n_color_targets;
@@ -749,8 +845,8 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
 
   if (nct == 1 && d->targets[0] == 0 && !d->depth_target) {
     // Swapchain pass.
-    dx_transition(g.backbuffers[g.bb_index].Get(), &g.bb_state[g.bb_index],
-                  D3D12_RESOURCE_STATE_RENDER_TARGET);
+    dx_swapchain_to_render_target(g.backbuffers[g.bb_index].Get());
+    g.pass_swapchain = true;
     rtvs[0] = g.rtv_heap.cpu(g.bb_rtv[g.bb_index]);
     dsv = g.dsv_heap.cpu(g.depth_dsv);
     has_dsv = true;
@@ -769,8 +865,8 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
       DxImage *im = (DxImage *)d->targets[i];
       if (!im || !im->res || im->rtv == UINT_MAX)
         return;
-      dx_transition(im->res.Get(), &im->state,
-                    D3D12_RESOURCE_STATE_RENDER_TARGET);
+      dx_to_render_target(im->res.Get());
+      g.pass_colors[g.pass_n_colors++] = im;
       rtvs[i] = g.rtv_heap.cpu(im->rtv);
       w = im->w;
       h = im->h;
@@ -779,8 +875,8 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
       DxImage *di = (DxImage *)d->depth_target;
       if (!di || !di->res || di->dsv == UINT_MAX)
         return;
-      dx_transition(di->res.Get(), &di->state,
-                    D3D12_RESOURCE_STATE_DEPTH_WRITE);
+      dx_to_depth_write(di->res.Get());
+      g.pass_depth = di;
       dsv = g.dsv_heap.cpu(di->dsv);
       has_dsv = true;
       if (nct == 0) {
@@ -813,7 +909,7 @@ void dx_begin_pass(App *app, const PassBeginDesc *d) {
 // Used by uploads that happen while no frame list is open.
 struct OneShotList {
   ComPtr<ID3D12CommandAllocator> alloc;
-  ComPtr<ID3D12GraphicsCommandList> cl;
+  ComPtr<ID3D12GraphicsCommandList7> cl;
   bool ok = false;
 
   OneShotList() {
@@ -837,21 +933,6 @@ struct OneShotList {
 // --- buffers
 // ------------------------------------------------------------------
 
-D3D12_RESOURCE_STATES dx_buffer_read_state(SglBufferType type) {
-  switch (type) {
-  case SGL_BUFFER_INDEX:
-    return D3D12_RESOURCE_STATE_INDEX_BUFFER;
-  case SGL_BUFFER_STORAGE:
-    // Resting state between compute dispatches; dispatch transitions to
-    // UAV/SRV as needed.
-    return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-  case SGL_BUFFER_VERTEX:
-  case SGL_BUFFER_UNIFORM:
-  default:
-    return D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-  }
-}
-
 // Copy `data` into `buf` through the per-frame upload arena. Records on the
 // open frame list when available, else does a one-shot submit.
 bool dx_upload_buffer_bytes(DxBuffer *buf, const void *data, size_t bytes) {
@@ -861,27 +942,18 @@ bool dx_upload_buffer_bytes(DxBuffer *buf, const void *data, size_t bytes) {
   memcpy(ua.cpu, data, bytes);
 
   if (g.recording) {
-    dx_transition(buf->res.Get(), &buf->state, D3D12_RESOURCE_STATE_COPY_DEST);
+    // Earlier reads of the buffer before the copy, the copy before later
+    // reads.
+    dx_global_barrier(g.cl.Get());
     g.cl->CopyBufferRegion(buf->res.Get(), 0, ua.res, ua.offset, bytes);
-    dx_transition(buf->res.Get(), &buf->state, dx_buffer_read_state(buf->type));
+    dx_global_barrier(g.cl.Get());
     return true;
   }
   OneShotList one;
   if (!one.ok)
     return false;
-  D3D12_RESOURCE_BARRIER b = {};
-  b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  b.Transition.pResource = buf->res.Get();
-  b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  b.Transition.StateBefore = buf->state;
-  b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-  if (buf->state != D3D12_RESOURCE_STATE_COPY_DEST)
-    one.cl->ResourceBarrier(1, &b);
   one.cl->CopyBufferRegion(buf->res.Get(), 0, ua.res, ua.offset, bytes);
-  b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-  b.Transition.StateAfter = dx_buffer_read_state(buf->type);
-  one.cl->ResourceBarrier(1, &b);
-  buf->state = dx_buffer_read_state(buf->type);
+  dx_global_barrier(one.cl.Get());
   one.submit_and_wait();
   return true;
 }
@@ -893,11 +965,10 @@ BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
   DxBuffer *buf = new DxBuffer();
   buf->bytes = bytes;
   buf->type = type;
-  buf->state = D3D12_RESOURCE_STATE_COMMON;
 
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_DEFAULT;
-  D3D12_RESOURCE_DESC rd = {};
+  D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   rd.Width = (UINT64)bytes;
   rd.Height = 1;
@@ -907,9 +978,9 @@ BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
   rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
   if (type == SGL_BUFFER_STORAGE)
     rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-  if (FAILED(g.device->CreateCommittedResource(
-          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_COMMON, nullptr,
-          IID_PPV_ARGS(&buf->res)))) {
+  if (FAILED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_BARRIER_LAYOUT_UNDEFINED,
+          nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&buf->res)))) {
     SDL_Log("d3d12: make_buffer: create failed (%zu bytes)", bytes);
     delete buf;
     return 0;
@@ -1061,31 +1132,17 @@ bool dx_upload_image_bytes(DxImage *im, const void *data, size_t bytes) {
   src.PlacedFootprint.Footprint.Depth = 1;
   src.PlacedFootprint.Footprint.RowPitch = (UINT)dst_pitch;
 
-  const D3D12_RESOURCE_STATES sampled =
-      D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
-      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
   if (g.recording) {
-    dx_transition(im->res.Get(), &im->state, D3D12_RESOURCE_STATE_COPY_DEST);
+    dx_global_barrier(g.cl.Get());
     g.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-    dx_transition(im->res.Get(), &im->state, sampled);
+    dx_global_barrier(g.cl.Get());
     return true;
   }
   OneShotList one;
   if (!one.ok)
     return false;
-  D3D12_RESOURCE_BARRIER b = {};
-  b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  b.Transition.pResource = im->res.Get();
-  b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  b.Transition.StateBefore = im->state;
-  b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-  if (im->state != D3D12_RESOURCE_STATE_COPY_DEST)
-    one.cl->ResourceBarrier(1, &b);
   one.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-  b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-  b.Transition.StateAfter = sampled;
-  one.cl->ResourceBarrier(1, &b);
-  im->state = sampled;
+  dx_global_barrier(one.cl.Get());
   one.submit_and_wait();
   return true;
 }
@@ -1106,7 +1163,7 @@ BackendImage dx_make_image(const ImageDesc *d) {
 
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_DEFAULT;
-  D3D12_RESOURCE_DESC rd = {};
+  D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   rd.Width = (UINT64)d->w;
   rd.Height = (UINT)d->h;
@@ -1131,10 +1188,10 @@ BackendImage dx_make_image(const ImageDesc *d) {
   if (d->storage)
     rd.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
-  im->state = D3D12_RESOURCE_STATE_COMMON;
-  if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
-                                               im->state, cvp,
-                                               IID_PPV_ARGS(&im->res)))) {
+  if (FAILED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd,
+          D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON, cvp, nullptr, 0, nullptr,
+          IID_PPV_ARGS(&im->res)))) {
     SDL_Log("d3d12: make_image: create failed (%dx%d fmt=%d)", d->w, d->h,
             (int)d->fmt);
     delete im;
@@ -1583,6 +1640,18 @@ bool g_last_indexed = false;
 
 void dx_end_pass(App *app) {
   (void)app;
+  if (g.recording && g.in_pass) {
+    if (g.pass_swapchain)
+      dx_swapchain_to_present(g.backbuffers[g.bb_index].Get());
+    for (int i = 0; i < g.pass_n_colors; ++i)
+      dx_from_render_target(g.pass_colors[i]->res.Get());
+    if (g.pass_depth)
+      dx_from_depth_write(g.pass_depth->res.Get());
+    dx_global_barrier(g.cl.Get());
+  }
+  g.pass_swapchain = false;
+  g.pass_n_colors = 0;
+  g.pass_depth = nullptr;
   g.in_pass = false;
   g_current_pip = nullptr;
 }
@@ -1686,9 +1755,6 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
     }
   }
 
-  const D3D12_RESOURCE_STATES sampled =
-      D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
-      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
   for (int i = 0; i < b->texture_count && refl; ++i) {
     if (!b->textures[i].name)
       continue;
@@ -1699,7 +1765,6 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
       DxImage *im = (DxImage *)b->textures[i].image;
       if (!im || !im->res)
         continue;
-      dx_transition(im->res.Get(), &im->state, sampled);
       if (rt->img_slot >= 0 && rt->img_slot < t->srv_count) {
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
@@ -1729,8 +1794,6 @@ void dx_apply_bindings(const BindingsDesc *b) {
   if (b->vbuf) {
     DxBuffer *vb = (DxBuffer *)b->vbuf;
     if (vb && vb->res) {
-      dx_transition(vb->res.Get(), &vb->state,
-                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
       D3D12_VERTEX_BUFFER_VIEW v = {};
       v.BufferLocation = vb->res->GetGPUVirtualAddress();
       v.SizeInBytes = (UINT)vb->bytes;
@@ -1741,8 +1804,6 @@ void dx_apply_bindings(const BindingsDesc *b) {
   if (b->instance_vbuf) {
     DxBuffer *vb = (DxBuffer *)b->instance_vbuf;
     if (vb && vb->res) {
-      dx_transition(vb->res.Get(), &vb->state,
-                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
       D3D12_VERTEX_BUFFER_VIEW v = {};
       v.BufferLocation = vb->res->GetGPUVirtualAddress();
       v.SizeInBytes = (UINT)vb->bytes;
@@ -1753,10 +1814,6 @@ void dx_apply_bindings(const BindingsDesc *b) {
   if (b->ibuf) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
     if (ib && ib->res) {
-      // Storage buffers written by compute get rebound as index/vertex
-      // buffers (e.g. generated geometry) — transition covers that case.
-      dx_transition(ib->res.Get(), &ib->state,
-                    D3D12_RESOURCE_STATE_INDEX_BUFFER);
       D3D12_INDEX_BUFFER_VIEW v = {};
       v.BufferLocation = ib->res->GetGPUVirtualAddress();
       v.SizeInBytes = (UINT)ib->bytes;
@@ -1895,9 +1952,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       DxImage *im = (DxImage *)d->textures[i].image;
       if (!im || !im->res)
         break;
-      dx_transition(im->res.Get(), &im->state,
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
-                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
       if (rt->img_slot >= 0 && rt->img_slot < t->srv_count) {
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
@@ -1912,14 +1966,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
     }
   }
 
-  // Written resources: transitioned back to their resting read states after
-  // the dispatch so later passes can sample / bind them without special
-  // cases. Track them here.
-  DxBuffer *written_bufs[SGL_MAX_STORAGE_BUFS] = {};
-  int n_written_bufs = 0;
-  DxImage *written_texs[SGL_MAX_STORAGE_TEXTURES] = {};
-  int n_written_texs = 0;
-
   for (int i = 0; i < d->n_storage_bufs; ++i) {
     if (!d->storage_bufs[i].name)
       continue;
@@ -1933,8 +1979,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
       UINT elems = (UINT)(buf->bytes / stride);
       if (sb->readonly) {
-        dx_transition(buf->res.Get(), &buf->state,
-                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         if (sb->slot >= 0 && sb->slot < t->srv_count) {
           D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
           sd.Format = DXGI_FORMAT_UNKNOWN;
@@ -1947,8 +1991,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
           g.device->CreateShaderResourceView(buf->res.Get(), &sd, h);
         }
       } else {
-        dx_transition(buf->res.Get(), &buf->state,
-                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         if (sb->slot >= 0 && sb->slot < t->uav_count) {
           D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
           ud.Format = DXGI_FORMAT_UNKNOWN;
@@ -1959,8 +2001,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
           h.ptr += (SIZE_T)sb->slot * g.srv_stride;
           g.device->CreateUnorderedAccessView(buf->res.Get(), nullptr, &ud, h);
         }
-        if (n_written_bufs < SGL_MAX_STORAGE_BUFS)
-          written_bufs[n_written_bufs++] = buf;
       }
       break;
     }
@@ -1977,17 +2017,12 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       if (!im || !im->res)
         break;
       if (st->readonly) {
-        dx_transition(im->res.Get(), &im->state,
-                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
-                          D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         if (st->slot >= 0 && st->slot < t->srv_count) {
           D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
           h.ptr += (SIZE_T)st->slot * g.srv_stride;
           dx_write_image_srv(h, im);
         }
       } else {
-        dx_transition(im->res.Get(), &im->state,
-                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         if (st->slot >= 0 && st->slot < t->uav_count) {
           D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
           ud.Format = im->dxgi;
@@ -1996,8 +2031,6 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
           h.ptr += (SIZE_T)st->slot * g.srv_stride;
           g.device->CreateUnorderedAccessView(im->res.Get(), nullptr, &ud, h);
         }
-        if (n_written_texs < SGL_MAX_STORAGE_TEXTURES)
-          written_texs[n_written_texs++] = im;
       }
       break;
     }
@@ -2014,15 +2047,8 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
                  (UINT)(d->groups_y > 0 ? d->groups_y : 1),
                  (UINT)(d->groups_z > 0 ? d->groups_z : 1));
 
-  // Back to resting states; the transition barrier also orders the UAV
-  // writes against subsequent reads.
-  for (int i = 0; i < n_written_bufs; ++i)
-    dx_transition(written_bufs[i]->res.Get(), &written_bufs[i]->state,
-                  dx_buffer_read_state(written_bufs[i]->type));
-  for (int i = 0; i < n_written_texs; ++i)
-    dx_transition(written_texs[i]->res.Get(), &written_texs[i]->state,
-                  D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
-                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+  // Order the storage writes against whatever reads them next.
+  dx_global_barrier(g.cl.Get());
 }
 
 // --- readback
@@ -2057,7 +2083,7 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
   ComPtr<ID3D12Resource> rb;
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_READBACK;
-  D3D12_RESOURCE_DESC rd = {};
+  D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   rd.Width = row_pitch * h;
   rd.Height = 1;
@@ -2065,63 +2091,35 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
   rd.MipLevels = 1;
   rd.SampleDesc.Count = 1;
   rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-  if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
-                                               D3D12_RESOURCE_STATE_COPY_DEST,
-                                               nullptr, IID_PPV_ARGS(&rb)))) {
+  if (FAILED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_BARRIER_LAYOUT_UNDEFINED,
+          nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&rb)))) {
     SDL_Log("d3d12: readback: alloc failed");
     return false;
   }
 
-  bool was_recording = g.recording;
-  if (!was_recording) {
+  D3D12_TEXTURE_COPY_LOCATION src = {};
+  src.pResource = im->res.Get();
+  src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+  D3D12_TEXTURE_COPY_LOCATION dst = {};
+  dst.pResource = rb.Get();
+  dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+  dst.PlacedFootprint.Footprint.Format = dx_format(src_fmt);
+  dst.PlacedFootprint.Footprint.Width = (UINT)w;
+  dst.PlacedFootprint.Footprint.Height = (UINT)h;
+  dst.PlacedFootprint.Footprint.Depth = 1;
+  dst.PlacedFootprint.Footprint.RowPitch = (UINT)row_pitch;
+  D3D12_BOX box = {0, 0, 0, (UINT)w, (UINT)h, 1};
+  if (!g.recording) {
     // No open frame (shouldn't happen via the Lua API): use a one-shot list.
     OneShotList one;
     if (!one.ok)
       return false;
-    // Swap in the one-shot list for the copy below via the shared path.
-    // Simpler: record everything on it directly.
-    D3D12_RESOURCE_BARRIER b = {};
-    b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    b.Transition.pResource = im->res.Get();
-    b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    b.Transition.StateBefore = im->state;
-    b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-    if (im->state != D3D12_RESOURCE_STATE_COPY_SOURCE)
-      one.cl->ResourceBarrier(1, &b);
-    D3D12_TEXTURE_COPY_LOCATION src = {};
-    src.pResource = im->res.Get();
-    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    D3D12_TEXTURE_COPY_LOCATION dst = {};
-    dst.pResource = rb.Get();
-    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    dst.PlacedFootprint.Footprint.Format = dx_format(src_fmt);
-    dst.PlacedFootprint.Footprint.Width = (UINT)w;
-    dst.PlacedFootprint.Footprint.Height = (UINT)h;
-    dst.PlacedFootprint.Footprint.Depth = 1;
-    dst.PlacedFootprint.Footprint.RowPitch = (UINT)row_pitch;
-    D3D12_BOX box = {0, 0, 0, (UINT)w, (UINT)h, 1};
     one.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, &box);
-    b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-    b.Transition.StateAfter = im->state;
-    one.cl->ResourceBarrier(1, &b);
     one.submit_and_wait();
   } else {
-    D3D12_RESOURCE_STATES prev = im->state;
-    dx_transition(im->res.Get(), &im->state, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    D3D12_TEXTURE_COPY_LOCATION src = {};
-    src.pResource = im->res.Get();
-    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    D3D12_TEXTURE_COPY_LOCATION dst = {};
-    dst.pResource = rb.Get();
-    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    dst.PlacedFootprint.Footprint.Format = dx_format(src_fmt);
-    dst.PlacedFootprint.Footprint.Width = (UINT)w;
-    dst.PlacedFootprint.Footprint.Height = (UINT)h;
-    dst.PlacedFootprint.Footprint.Depth = 1;
-    dst.PlacedFootprint.Footprint.RowPitch = (UINT)row_pitch;
-    D3D12_BOX box = {0, 0, 0, (UINT)w, (UINT)h, 1};
+    dx_global_barrier(g.cl.Get());
     g.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, &box);
-    dx_transition(im->res.Get(), &im->state, prev);
 
     // Flush the frame list and reopen it so the frame can continue.
     g.cl->Close();
@@ -2236,7 +2234,7 @@ bool dx_capture(App *app, const char *path) {
   ComPtr<ID3D12Resource> rb;
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_READBACK;
-  D3D12_RESOURCE_DESC rd = {};
+  D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   rd.Width = row_pitch * h;
   rd.Height = 1;
@@ -2244,15 +2242,16 @@ bool dx_capture(App *app, const char *path) {
   rd.MipLevels = 1;
   rd.SampleDesc.Count = 1;
   rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-  if (FAILED(g.device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
-                                               D3D12_RESOURCE_STATE_COPY_DEST,
-                                               nullptr, IID_PPV_ARGS(&rb)))) {
+  if (FAILED(g.device10->CreateCommittedResource3(
+          &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_BARRIER_LAYOUT_UNDEFINED,
+          nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&rb)))) {
     SDL_Log("d3d12: capture: readback alloc failed");
     return false;
   }
 
-  dx_transition(g.backbuffers[g.bb_index].Get(), &g.bb_state[g.bb_index],
-                D3D12_RESOURCE_STATE_COPY_SOURCE);
+  // The buffer rests in PRESENT after the last pass, and that layout
+  // allows copy-source reads; only the ordering is needed.
+  dx_global_barrier(g.cl.Get());
   D3D12_TEXTURE_COPY_LOCATION src = {};
   src.pResource = g.backbuffers[g.bb_index].Get();
   src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -2266,8 +2265,6 @@ bool dx_capture(App *app, const char *path) {
   dst.PlacedFootprint.Footprint.Depth = 1;
   dst.PlacedFootprint.Footprint.RowPitch = (UINT)row_pitch;
   g.cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-  dx_transition(g.backbuffers[g.bb_index].Get(), &g.bb_state[g.bb_index],
-                D3D12_RESOURCE_STATE_PRESENT);
 
   g.cl->Close();
   g.recording = false;
