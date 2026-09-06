@@ -19,7 +19,7 @@ public class Brick
 
 public static class Breakout09
 {
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
     const int stride = 6; // pos.xy + color.rgba
 
     const int cols = 11;
@@ -197,14 +197,14 @@ public static class Breakout09
         if (Input.KeyDown("right") || Input.KeyDown("d")) move = move + 1;
 
         paddlePrevX = paddleX;
-        paddleX = Clamp(paddleX + move * paddleSpeed * dt,
+        paddleX = Clamp(paddleX + move * paddleSpeed * tickDt,
             -1 + paddleW * 0.5f + 0.03f, 1 - paddleW * 0.5f - 0.03f);
 
         if (ballStuck)
         {
             ballX = paddleX;
             ballY = paddleY + paddleH * 0.5f + ballR + 0.01f;
-            launchTimer = launchTimer + dt;
+            launchTimer = launchTimer + tickDt;
             if (Input.KeyDown("space") || launchTimer > 1.0f)
             {
                 LaunchBall();
@@ -212,8 +212,8 @@ public static class Breakout09
             return;
         }
 
-        ballX = ballX + ballVx * dt;
-        ballY = ballY + ballVy * dt;
+        ballX = ballX + ballVx * tickDt;
+        ballY = ballY + ballVy * tickDt;
 
         if (ballX - ballR < -0.96f)
         {

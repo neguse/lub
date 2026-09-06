@@ -8,7 +8,7 @@ using static Lub;
 
 public static class Box2d16
 {
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
     const float ppmX = 4.0f;
     const float ppmY = 2.7f;
     static int contactFlash = 0;
@@ -105,7 +105,7 @@ public static class Box2d16
             });
         }
 
-        Phys2d.Step(world, dt);
+        Phys2d.Step(world, tickDt);
 
         var contacts = Phys2d.Contacts(world, Phys2d.EventKind.Begin);
         if (contacts.Count > 0) contactFlash = 12;
@@ -117,7 +117,7 @@ public static class Box2d16
         var world = Phys2d.World("box2d16", new WorldOpts
         {
             Gravity = new Vec2d { X = 0.0f, Y = -10.0f },
-            FixedDt = dt,
+            FixedDt = tickDt,
             Substeps = 4,
             MaxSteps = 1,
         });

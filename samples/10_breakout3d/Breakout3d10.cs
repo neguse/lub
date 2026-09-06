@@ -20,7 +20,7 @@ public class Brick
 
 public static class Breakout3d10
 {
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
     const int stride = 7; // pos.xyz + color.rgba
 
     const int cols = 9;
@@ -204,14 +204,14 @@ public static class Breakout3d10
         if (Input.KeyDown("right") || Input.KeyDown("d")) move = move + 1;
 
         paddlePrevX = paddleX;
-        paddleX = MathUtil.Clamp(paddleX + move * paddleSpeed * dt,
+        paddleX = MathUtil.Clamp(paddleX + move * paddleSpeed * tickDt,
             -1 + paddleW * 0.5f + 0.05f, 1 - paddleW * 0.5f - 0.05f);
 
         if (ballStuck)
         {
             ballX = paddleX;
             ballY = paddleY + paddleH * 0.5f + ballR + 0.015f;
-            launchTimer = launchTimer + dt;
+            launchTimer = launchTimer + tickDt;
             if (Input.KeyDown("space") || launchTimer > 1.0f)
             {
                 LaunchBall();
@@ -219,8 +219,8 @@ public static class Breakout3d10
             return;
         }
 
-        ballX = ballX + ballVx * dt;
-        ballY = ballY + ballVy * dt;
+        ballX = ballX + ballVx * tickDt;
+        ballY = ballY + ballVy * tickDt;
 
         if (ballX - ballR < -0.95f)
         {
@@ -449,7 +449,7 @@ public static class Breakout3d10
         step = stepNow;
         stepNow.Frame(dt, _ =>
         {
-            cameraT = cameraT + dt;
+            cameraT = cameraT + tickDt;
             UpdateGame(stepNow.KeyPressed("r"));
         });
 

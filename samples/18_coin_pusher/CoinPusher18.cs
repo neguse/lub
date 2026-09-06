@@ -46,7 +46,7 @@ public class LiveCoin
 // - 投入はポインタ位置へ直接 (クリック/タップ = その真下に投入)。無限に出せる。
 public static class CoinPusher18
 {
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
     const int maxCoins = 80;
     const float coinR = 0.17f;
     const float coinH = 0.07f;
@@ -250,8 +250,8 @@ public static class CoinPusher18
         {
             X = 0.0f,
             Y = 0.82f,
-            Z = PusherZ(frame * dt),
-            TimeStep = dt,
+            Z = PusherZ(frame * tickDt),
+            TimeStep = tickDt,
         });
     }
 
@@ -381,7 +381,7 @@ public static class CoinPusher18
         var nextWorld = Phys3d.World("coin_pusher", new WorldOpts3d
         {
             Gravity = new Vec3d { X = 0.0f, Y = -10.0f, Z = 0.0f },
-            FixedDt = dt,
+            FixedDt = tickDt,
             Substeps = 4,
             MaxSteps = 1,
         });
@@ -407,7 +407,7 @@ public static class CoinPusher18
         foreach (var entry in live)
             renderCoinIndices.Add(entry.Index);
 
-        Phys3d.Step(nextWorld, dt);
+        Phys3d.Step(nextWorld, tickDt);
 
         // Contact begin events light coins up for a few frames.
         foreach (var contact in Phys3d.Contacts(nextWorld, Phys3d.EventKind.Begin))
