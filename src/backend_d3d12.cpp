@@ -22,7 +22,13 @@
 #include "stb_image_write.h"
 
 #include <SDL3/SDL.h>
+
+// initguid.h must come before the D3D headers so the CLSID / IID constants
+// they declare (CLSID_D3D12SDKConfiguration and friends) get storage here.
+#include <initguid.h>
+
 #include <d3d12.h>
+#include <d3d12sdklayers.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
@@ -31,6 +37,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
+
+// Agility SDK opt-in. D3D12 reads these two exports from the process
+// executable and, when they name an SDK it can find, loads D3D12/D3D12Core.dll
+// from next to the exe instead of the inbox runtime (CMake stages the DLL
+// there). lub_objs is linked into lub.exe, where the exports matter, and
+// into lub.dll, where D3D12 ignores them; that host goes through
+// dx_create_device below instead.
+extern "C" {
+__declspec(dllexport) extern const UINT D3D12SDKVersion = D3D12_SDK_VERSION;
+__declspec(dllexport) extern const char *D3D12SDKPath = ".\\D3D12\\";
+}
 
 using Microsoft::WRL::ComPtr;
 
@@ -420,6 +437,54 @@ bool dx_resize_swapchain() {
 
 // --- vtable: lifecycle ------------------------------------------------------
 
+// Create the device on the Agility SDK runtime. lub.exe already selected it
+// through the exports above; a host without them (the .NET runner) asks for
+// the same SDK here, with the path taken relative to the process exe like the
+// export. Older Windows (before build 20348) has no SDK configuration
+// interface and a host without D3D12/ next to it gets no factory: both fall
+// back to whatever D3D12CreateDevice gives.
+static bool dx_create_device(IDXGIAdapter1 *adapter) {
+  ComPtr<ID3D12SDKConfiguration1> cfg;
+  if (SUCCEEDED(
+          D3D12GetInterface(CLSID_D3D12SDKConfiguration, IID_PPV_ARGS(&cfg)))) {
+    ComPtr<ID3D12DeviceFactory> factory;
+    if (SUCCEEDED(cfg->CreateDeviceFactory(D3D12_SDK_VERSION, D3D12SDKPath,
+                                           IID_PPV_ARGS(&factory))) &&
+        SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0,
+                                        IID_PPV_ARGS(&g.device)))) {
+      SDL_Log("d3d12: device via Agility SDK device factory (sdk %u)",
+              (unsigned)D3D12_SDK_VERSION);
+      return true;
+    }
+  }
+  if (FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0,
+                               IID_PPV_ARGS(&g.device)))) {
+    SDL_Log("d3d12: D3D12CreateDevice failed");
+    return false;
+  }
+  return true;
+}
+
+// Which runtime actually got loaded, and the feature bits the backend cares
+// about. D3D12Core.dll is the inbox core under System32 or the Agility copy
+// next to the exe.
+static void dx_log_runtime(void) {
+  char path[MAX_PATH] = {0};
+  HMODULE core = GetModuleHandleA("D3D12Core.dll");
+  if (core && GetModuleFileNameA(core, path, MAX_PATH))
+    SDL_Log("d3d12: runtime: %s", path);
+  else
+    SDL_Log("d3d12: runtime: D3D12Core.dll not loaded");
+  HMODULE warp = GetModuleHandleA("d3d10warp.dll");
+  if (warp && GetModuleFileNameA(warp, path, MAX_PATH))
+    SDL_Log("d3d12: warp: %s", path);
+  D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12 = {};
+  bool ok = SUCCEEDED(g.device->CheckFeatureSupport(
+      D3D12_FEATURE_D3D12_OPTIONS12, &o12, sizeof(o12)));
+  SDL_Log("d3d12: enhanced barriers: %s",
+          ok && o12.EnhancedBarriersSupported ? "yes" : "no");
+}
+
 bool dx_init(App *app) {
   g.app = app;
 
@@ -460,11 +525,8 @@ bool dx_init(App *app) {
     if (!adapter)
       g.factory->EnumAdapters1(0, &adapter);
   }
-  if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
-                               IID_PPV_ARGS(&g.device)))) {
-    SDL_Log("d3d12: D3D12CreateDevice failed");
+  if (!dx_create_device(adapter.Get()))
     return false;
-  }
   if (want_debug) {
     g.device.As(&g.info_queue); // best effort; null when unsupported
   }
@@ -476,6 +538,7 @@ bool dx_init(App *app) {
                         nullptr, nullptr);
     SDL_Log("d3d12: adapter: %s", name);
   }
+  dx_log_runtime();
 
   D3D12_COMMAND_QUEUE_DESC qd = {};
   qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;

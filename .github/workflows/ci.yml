@@ -197,13 +197,25 @@ jobs:
           path: |
             third_party/slang/lib
             third_party/slang/bin
+            third_party/d3d12agility
+            third_party/d3d12warp
           key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUB_FETCH_WARP=ON
 
       - name: Build
         run: cmake --build build-release
+
+      # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が
+      # 見る feature flag を log に残す。
+      - name: d3d12 runtime info
+        shell: bash
+        run: |
+          ls -1 build-release/D3D12 build-release/d3d10warp.dll
+          LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_indexed_draw.lua \
+            --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
+            | grep -E '^d3d12:'
 
       # smoke test の exe は SDL3 (shared) にリンクしている。SDL3.dll は
       # build-release/third_party/SDL/ に生成され、lub.exe 隣への copy は lub の
@@ -254,7 +266,8 @@ jobs:
           scripts/run-cs-sample.sh 00_hello --build
           ./build-release/lub.exe samples/00_hello/.lub/Hello00.lua --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
           dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
-          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
+          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest 2>&1 | tee "$RUNNER_TEMP/dn.log" | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
+          grep -E '^d3d12:' "$RUNNER_TEMP/dn.log" || true
           cmp "$RUNNER_TEMP/cs.digest" "$RUNNER_TEMP/dn.digest"
 
       - name: Upload golden failure artifacts
