@@ -438,17 +438,16 @@ bool dx_resize_swapchain() {
 // --- vtable: lifecycle ------------------------------------------------------
 
 // Create the device on the Agility SDK runtime. lub.exe already selected it
-// through the exports above; a host without them (the .NET runner) asks for
-// the same SDK here, with the path taken relative to the process exe like the
-// export. Older Windows (before build 20348) has no SDK configuration
-// interface and a host without D3D12/ next to it gets no factory: both fall
-// back to whatever D3D12CreateDevice gives.
+// through the exports above; a host without them (the .NET runner loading
+// lub.dll) asks for the same SDK here. The SDK directory is D3D12/ next to
+// this module (an absolute path, which the factory accepts), with the
+// exe-relative path of the export as the second candidate. Older Windows
+// (before build 20348) has no SDK configuration interface: fall back to
+// whatever D3D12CreateDevice gives.
 static bool dx_create_device(IDXGIAdapter1 *adapter) {
   ComPtr<ID3D12SDKConfiguration1> cfg;
   if (SUCCEEDED(
           D3D12GetInterface(CLSID_D3D12SDKConfiguration, IID_PPV_ARGS(&cfg)))) {
-    // Two candidate SDK directories: the exe-relative one the export names,
-    // and D3D12/ next to this module (lub.dll loaded by a foreign host).
     char module_dir[MAX_PATH] = {0};
     HMODULE self = nullptr;
     if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -459,7 +458,7 @@ static bool dx_create_device(IDXGIAdapter1 *adapter) {
       if (slash)
         strcpy_s(slash + 1, MAX_PATH - (slash + 1 - module_dir), "D3D12\\");
     }
-    const char *candidates[2] = {D3D12SDKPath, module_dir};
+    const char *candidates[2] = {module_dir, D3D12SDKPath};
     for (const char *path : candidates) {
       if (!path[0])
         continue;
