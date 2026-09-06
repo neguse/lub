@@ -99,6 +99,14 @@ lub は所有権を runtime に寄せてユーザーから判断を消す。
 - 結論: 技術的には可能だが、build 時の NuGet 取得と出荷物への DLL 同梱が増える。
   `docs/d3d12-backend.md` が「対応 GPU の幅優先」で見送った判断は今も妥当で、
   Phase 2 の出荷パイプラインと一緒に決める。Linux からは検証できない。
+- その後: 配布方法(app-local の `D3D12/D3D12Core.dll`)を確認した上で進めた。
+  Agility SDK の同梱は `agent/d3d12-agility-sdk`、Enhanced Barriers への
+  書き換えは `agent/d3d12-enhanced-barriers`。CI の windows job で、Agility
+  runtime + runner の inbox WARP で `EnhancedBarriersSupported` が TRUE に
+  なり、書き換え後も WARP golden 23 件が一致した。NuGet 版 WARP は出力の LSB
+  が inbox 版と違い golden と一致しないので CI では使わない。.NET 実行の host
+  (export を持てない apphost)は `ID3D12SDKConfiguration1::CreateDeviceFactory`
+  に lub.dll 隣の絶対 path を渡す形で同じ runtime に載る。
 
 ### 5. vertex pulling(graphics stage の storage buffer 束縛)
 
@@ -136,7 +144,7 @@ lub は所有権を runtime に寄せてユーザーから判断を消す。
 | 1 is_indexed | 済 | 0(dead field の除去) | PR にする |
 | 2 GENERAL 統一 | 試作で確認 | layout 状態機械と pass 中断が消える | PR にする |
 | 3 key の粒度 | 可能 | 66 本中 5 本、要任意拡張 | 見送り |
-| 4 Enhanced Barriers | Agility SDK 必須 | state 追跡が消えるが出荷物が増える | 出荷パイプラインと一緒に決める |
+| 4 Enhanced Barriers | Agility SDK 必須。CI で確認 | resource ごとの state 追跡が消える。出荷物に DLL が一つ増える | PR にした |
 | 5 vertex pulling | 試作で確認(vulkan / sdlgpu。d3d12 は CI) | 入力レイアウト機構が消える。移行 100 ファイル | 設計判断。採用なら shader 規約を先に決める |
 
 ## 再現
