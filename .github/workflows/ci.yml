@@ -202,17 +202,18 @@ jobs:
           key: slang-dxc-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUB_FETCH_WARP=ON
+        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build-release
 
       # どの D3D12 runtime(Agility SDK か inbox か)と WARP が載ったか、backend が
-      # 見る feature flag を log に残す。
+      # 見る feature flag を log に残す。WARP は runner の inbox 版を使う
+      # (golden はその出力で撮ってある。NuGet 版は LSB が違う)。
       - name: d3d12 runtime info
         shell: bash
         run: |
-          ls -1 build-release/D3D12 build-release/d3d10warp.dll
+          ls -1 build-release/D3D12
           LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 ./build-release/lub.exe tests/lua/test_indexed_draw.lua \
             --capture "$RUNNER_TEMP/info.png" --capture-frame 1 --fixed-dt 0.0166666666666667 2>&1 \
             | grep -E '^d3d12:'
