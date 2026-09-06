@@ -36,7 +36,7 @@ public static class Bowling25
 {
     const int w = 960;
     const int h = 540;
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
 
     // --- 実寸 (m) ----------------------------------------------------------
     const float laneHw = 0.533f; // レーン半幅 (41.5in)
@@ -631,14 +631,14 @@ public static class Bowling25
 
     static void SimulateTick(WorldRef3d world)
     {
-        tAccum += dt;
-        eventT += dt;
+        tAccum += tickDt;
+        eventT += tickDt;
         Phys3d.Begin(world);
         UpdateSequence(world);
         DeclareStatics(world);
         DeclarePins(world);
         DeclareBall(world);
-        Phys3d.Step(world, dt);
+        Phys3d.Step(world, tickDt);
         UpdateCamera(world);
     }
 
@@ -789,7 +789,7 @@ public static class Bowling25
             dtg = new Vec3(0, 0.2f, pinZ);
             dfov = 45.0f;
         }
-        var k = Math.Min(1.0f, 5.0f * dt);
+        var k = Math.Min(1.0f, 5.0f * tickDt);
         camEye = eye.Lerp(de, k);
         camTgt = tgt.Lerp(dtg, k);
         camFov = MathUtil.Lerp(camFov, dfov, k);
@@ -1003,7 +1003,7 @@ public static class Bowling25
         var world = Phys3d.World("bowling", new WorldOpts3d
         {
             Gravity = new Vec3d { X = 0.0f, Y = -9.81f, Z = 0.0f },
-            FixedDt = dt,
+            FixedDt = tickDt,
             Substeps = 8,
             MaxSteps = 1,
         });

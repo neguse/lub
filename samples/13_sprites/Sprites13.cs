@@ -84,7 +84,7 @@ public static class Sprites13
 {
     const int w = 640;
     const int h = 480;
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
     const int texW = 80;
     const int texH = 16;
     const int cell = 16;
@@ -252,7 +252,7 @@ public static class Sprites13
         for (int i = 0; i < sprites.Count; i++)
         {
             var s = sprites[i];
-            s.Update(dt);
+            s.Update(tickDt);
             if (!s.Dead())
             {
                 sprites[write] = s;
@@ -269,17 +269,17 @@ public static class Sprites13
             if (fps > targetFps)
             {
                 spawn = true;
-                timeMultiply = timeMultiply + 0.7f * dt;
+                timeMultiply = timeMultiply + 0.7f * tickDt;
             }
             else if (fps > targetFps * 0.5f && EveryN(tick, 2))
             {
                 spawn = true;
-                timeMultiply = timeMultiply + 0.2f * dt;
+                timeMultiply = timeMultiply + 0.2f * tickDt;
             }
             else if (fps > targetFps * 0.25f && EveryN(tick, 4))
             {
                 spawn = true;
-                timeMultiply = timeMultiply - 0.3f * dt;
+                timeMultiply = timeMultiply - 0.3f * tickDt;
             }
         }
 
