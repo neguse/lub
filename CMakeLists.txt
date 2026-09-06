@@ -164,6 +164,58 @@ if(NOT LUB_WASM)
       endif()
     endif()
   endif()
+
+  # --- DirectX 12 Agility SDK -----------------------------------------------
+  # The d3d12 backend runs on the Agility SDK runtime instead of the inbox
+  # D3D12: D3D12Core.dll ships next to lub.exe under D3D12/ and the exe
+  # exports D3D12SDKVersion / D3D12SDKPath (backend_d3d12.cpp). Headers come
+  # from the same NuGet package so D3D12_SDK_VERSION matches the DLL. The
+  # package is redistributable (its LICENSE.txt covers build/native/bin).
+  if(WIN32)
+    set(LUB_AGILITY_VERSION "1.619.5")
+    set(LUB_AGILITY_ROOT "${CMAKE_SOURCE_DIR}/third_party/d3d12agility")
+    set(_agility_marker "${LUB_AGILITY_ROOT}/build/native/bin/x64/D3D12Core.dll")
+    if(NOT EXISTS "${_agility_marker}")
+      set(_agility_url
+        "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/${LUB_AGILITY_VERSION}")
+      message(STATUS "Agility SDK missing; downloading ${_agility_url}")
+      set(_agility_archive "${CMAKE_BINARY_DIR}/_agility_sdk.zip")
+      file(DOWNLOAD "${_agility_url}" "${_agility_archive}" SHOW_PROGRESS STATUS _agility_dl_status)
+      list(GET _agility_dl_status 0 _agility_dl_code)
+      if(NOT _agility_dl_code EQUAL 0)
+        message(FATAL_ERROR "Failed to download the Agility SDK: ${_agility_dl_status}")
+      endif()
+      file(REMOVE_RECURSE "${LUB_AGILITY_ROOT}")
+      file(ARCHIVE_EXTRACT INPUT "${_agility_archive}" DESTINATION "${LUB_AGILITY_ROOT}")
+      if(NOT EXISTS "${_agility_marker}")
+        message(FATAL_ERROR "Agility SDK package did not contain build/native/bin/x64/D3D12Core.dll")
+      endif()
+    endif()
+    # WARP from its own NuGet package for software-rasterizer runs (CI golden):
+    # the runtime uses a d3d10warp.dll placed next to the exe.
+    option(LUB_FETCH_WARP "Stage the NuGet WARP (d3d10warp.dll) next to lub.exe" OFF)
+    if(LUB_FETCH_WARP)
+      set(LUB_WARP_VERSION "1.0.20")
+      set(LUB_WARP_ROOT "${CMAKE_SOURCE_DIR}/third_party/d3d12warp")
+      set(_warp_marker "${LUB_WARP_ROOT}/build/native/bin/x64/d3d10warp.dll")
+      if(NOT EXISTS "${_warp_marker}")
+        set(_warp_url
+          "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.WARP/${LUB_WARP_VERSION}")
+        message(STATUS "WARP missing; downloading ${_warp_url}")
+        set(_warp_archive "${CMAKE_BINARY_DIR}/_warp.zip")
+        file(DOWNLOAD "${_warp_url}" "${_warp_archive}" SHOW_PROGRESS STATUS _warp_dl_status)
+        list(GET _warp_dl_status 0 _warp_dl_code)
+        if(NOT _warp_dl_code EQUAL 0)
+          message(FATAL_ERROR "Failed to download WARP: ${_warp_dl_status}")
+        endif()
+        file(REMOVE_RECURSE "${LUB_WARP_ROOT}")
+        file(ARCHIVE_EXTRACT INPUT "${_warp_archive}" DESTINATION "${LUB_WARP_ROOT}")
+        if(NOT EXISTS "${_warp_marker}")
+          message(FATAL_ERROR "WARP package did not contain build/native/bin/x64/d3d10warp.dll")
+        endif()
+      endif()
+    endif()
+  endif()
 endif()
 
 # Linux uses Vulkan as its default native backend, so its loader and headers
@@ -306,6 +358,9 @@ if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   )
 endif()
 if(WIN32)
+  # Agility SDK headers ahead of the Windows SDK ones, so D3D12_SDK_VERSION is
+  # the shipped runtime's.
+  target_include_directories(lub_objs BEFORE PUBLIC "${LUB_AGILITY_ROOT}/build/native/include")
   # On Windows the Slang runtime is a set of DLLs in third_party/slang/bin/.
   # Copy them next to lub.exe so it can resolve them at runtime without
   # putting third_party/slang/bin on PATH.
@@ -314,6 +369,22 @@ if(WIN32)
       "${CMAKE_SOURCE_DIR}/third_party/slang/bin"
       "$<TARGET_FILE_DIR:lub>"
     VERBATIM)
+  # Agility SDK runtime under D3D12/ (where the D3D12SDKPath export points).
+  # d3d12SDKLayers.dll is its debug layer; it stays out of shipped builds.
+  add_custom_command(TARGET lub POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:lub>/D3D12"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${LUB_AGILITY_ROOT}/build/native/bin/x64/D3D12Core.dll"
+      "${LUB_AGILITY_ROOT}/build/native/bin/x64/d3d12SDKLayers.dll"
+      "$<TARGET_FILE_DIR:lub>/D3D12"
+    VERBATIM)
+  if(LUB_FETCH_WARP)
+    add_custom_command(TARGET lub POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${LUB_WARP_ROOT}/build/native/bin/x64/d3d10warp.dll"
+        "$<TARGET_FILE_DIR:lub>"
+      VERBATIM)
+  endif()
   # SDL3 builds as a shared library; copy the import-side DLL too.
   add_custom_command(TARGET lub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
