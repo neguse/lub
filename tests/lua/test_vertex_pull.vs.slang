@@ -6,7 +6,7 @@ struct VSOut {
   float2 uv : TEXCOORD0;
 };
 
-[shader("vertex")] VSOut vs_main(uint vid : SV_VulkanVertexID) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
   float2 p = verts[idx[vid]];
   VSOut o;
   o.pos = float4(p, 0.0, 1.0);
