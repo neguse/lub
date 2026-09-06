@@ -975,8 +975,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       &app->pip_cache, sh->u.sh.h, &sh->u.sh.refl, (SglBlend)blend, depth_test,
       depth_write, (SglCull)cull, (SglPrimitive)prim,
       app->pass.current_n_color_targets, app->pass.current_color_fmts,
-      app->pass.current_has_depth, app->pass.current_depth_fmt,
-      (bind.ibuf != 0), depth_tex_mask, (int64_t)app->frame_index);
+      app->pass.current_has_depth, app->pass.current_depth_fmt, depth_tex_mask,
+      (int64_t)app->frame_index);
   g_backend->apply_pipeline(pip);
   g_backend->apply_bindings(&bind);
 

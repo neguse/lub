@@ -32,14 +32,11 @@ static uint32_t hash_key(const PipelineKey *k) {
   return h;
 }
 
-BackendPipeline pipeline_cache_get(PipelineCache *c, BackendShader sh,
-                                   const ShaderReflection *refl, SglBlend blend,
-                                   bool dt, bool dw, SglCull cull,
-                                   SglPrimitive prim, int n_color_targets,
-                                   const SglPixelFormat *cfmts, bool has_depth,
-                                   SglPixelFormat depth_fmt, bool is_indexed,
-                                   uint8_t depth_tex_mask,
-                                   int64_t current_frame) {
+BackendPipeline pipeline_cache_get(
+    PipelineCache *c, BackendShader sh, const ShaderReflection *refl,
+    SglBlend blend, bool dt, bool dw, SglCull cull, SglPrimitive prim,
+    int n_color_targets, const SglPixelFormat *cfmts, bool has_depth,
+    SglPixelFormat depth_fmt, uint8_t depth_tex_mask, int64_t current_frame) {
   if (n_color_targets < 0)
     n_color_targets = 0;
   if (n_color_targets > SGL_MAX_COLOR_TARGETS)
@@ -57,7 +54,6 @@ BackendPipeline pipeline_cache_get(PipelineCache *c, BackendShader sh,
   k.primitive = (uint8_t)prim;
   k.has_depth = has_depth ? 1 : 0;
   k.depth_fmt = has_depth ? (uint8_t)depth_fmt : 0;
-  k.is_indexed = is_indexed ? 1 : 0;
   k.depth_tex_mask = depth_tex_mask;
   k.n_color_targets = (uint8_t)n_color_targets;
   for (int i = 0; i < n_color_targets; ++i) {
@@ -82,7 +78,6 @@ BackendPipeline pipeline_cache_get(PipelineCache *c, BackendShader sh,
       .n_color_targets = n_color_targets,
       .has_depth = has_depth,
       .depth_fmt = depth_fmt,
-      .is_indexed = is_indexed,
       .depth_tex_mask = depth_tex_mask,
   };
   for (int i = 0; i < n_color_targets; ++i) {
