@@ -57,7 +57,6 @@ typedef struct PipelineDesc {
   SglPixelFormat color_fmts[SGL_MAX_COLOR_TARGETS];
   bool has_depth;           // false = offscreen color-only pass
   SglPixelFormat depth_fmt; // valid when has_depth
-  bool is_indexed; // true = pipeline used for indexed draw (u32 indices)
   bool is_compute; // true: make_pipeline ignores graphics state and builds a
                    // compute pipeline
   // Bit i = reflection texture i is bound to a depth-format texture. Only

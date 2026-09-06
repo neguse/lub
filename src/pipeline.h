@@ -14,12 +14,11 @@ typedef struct PipelineKey {
   uint8_t color_fmts[SGL_MAX_COLOR_TARGETS];
   uint8_t depth_fmt;
   uint8_t is_compute; // 1 = compute pipeline (all graphics fields are zero)
-  uint8_t is_indexed; // 1 = pipeline used for indexed draw
   // Bit i = reflection texture i is bound to a depth-format texture this
   // draw. webgpu needs a different bind group layout (unfilterable-float)
   // for depth sampling, so it is part of the pipeline identity.
   uint8_t depth_tex_mask;
-  uint8_t _pad[1]; // memset-zeroed; memcmp would otherwise hit indeterminate
+  uint8_t _pad[2]; // memset-zeroed; memcmp would otherwise hit indeterminate
                    // padding
 } PipelineKey;
 
@@ -41,8 +40,8 @@ BackendPipeline pipeline_cache_get(
     PipelineCache *c, BackendShader sh, const ShaderReflection *refl,
     SglBlend blend, bool depth_test, bool depth_write, SglCull cull,
     SglPrimitive prim, int n_color_targets, const SglPixelFormat *color_fmts,
-    bool has_depth, SglPixelFormat depth_fmt, bool is_indexed,
-    uint8_t depth_tex_mask, int64_t current_frame);
+    bool has_depth, SglPixelFormat depth_fmt, uint8_t depth_tex_mask,
+    int64_t current_frame);
 
 // Compute pipeline lookup. The same cache holds both render and compute
 // pipelines, keyed by `is_compute` so they never collide on shader_handle.

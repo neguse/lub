@@ -971,13 +971,21 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
 
   // Depth-only: WebGPU rejects a fragment output with no matching color
   // target, so drop the fragment stage entirely (depth still writes).
+  //
+  // Strip topologies must name the index format up front for indexed draws,
+  // and list topologies must leave it undefined. lub indices are always u32,
+  // so the format follows the topology and indexed vs non-indexed draws share
+  // one pipeline.
+  const bool strip = d->primitive == SGL_PRIM_TRIANGLE_STRIP ||
+                     d->primitive == SGL_PRIM_LINE_STRIP;
   WGPURenderPipelineDescriptor rpd = {
       .layout = wp->layout,
       .vertex = vs,
       .primitive =
           {
               .topology = sgl_to_wgpu_prim(d->primitive),
-              .stripIndexFormat = WGPUIndexFormat_Undefined,
+              .stripIndexFormat =
+                  strip ? WGPUIndexFormat_Uint32 : WGPUIndexFormat_Undefined,
               .frontFace = WGPUFrontFace_CW,
               .cullMode = sgl_to_wgpu_cull(d->cull),
           },
