@@ -785,8 +785,10 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
          ++i) {
       WGPUBindGroupLayoutEntry *e = &entries[count++];
       e->binding = (uint32_t)refl->storage_bufs[i].slot;
-      e->visibility =
-          is_compute ? WGPUShaderStage_Compute : WGPUShaderStage_Fragment;
+      e->visibility = is_compute ? WGPUShaderStage_Compute
+                      : (refl->storage_bufs[i].stage == SGL_STAGE_VERTEX)
+                          ? WGPUShaderStage_Vertex
+                          : WGPUShaderStage_Fragment;
       e->buffer.type = refl->storage_bufs[i].readonly
                            ? WGPUBufferBindingType_ReadOnlyStorage
                            : WGPUBufferBindingType_Storage;
@@ -1252,6 +1254,21 @@ static void wg_apply_bindings(const BindingsDesc *b) {
               e->binding = (uint32_t)smp_slot;
               e->sampler = wi->sampler;
             }
+            break;
+          }
+        }
+      }
+      for (int i = 0; i < b->storage_buf_count; ++i) {
+        const char *name = b->storage_bufs[i].name;
+        WgBuffer *wb = (WgBuffer *)b->storage_bufs[i].buf;
+        if (!name || !wb)
+          continue;
+        for (int k = 0; k < b->refl->storage_buf_count; ++k) {
+          if (strcmp(b->refl->storage_bufs[k].name, name) == 0) {
+            WGPUBindGroupEntry *e = &entries[count++];
+            e->binding = (uint32_t)b->refl->storage_bufs[k].slot;
+            e->buffer = wb->buf;
+            e->size = wb->bytes;
             break;
           }
         }

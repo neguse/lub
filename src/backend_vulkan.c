@@ -2560,6 +2560,26 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
         // Keep scanning: the same texture name can appear in both stages.
       }
     }
+    for (int i = 0; i < b->storage_buf_count; ++i) {
+      if (!b->storage_bufs[i].name)
+        continue;
+      VkbBuffer *buf = (VkbBuffer *)b->storage_bufs[i].buf;
+      if (!buf || !buf->buf)
+        continue;
+      for (int j = 0; j < refl->storage_buf_count; ++j) {
+        const ShaderStorageBuf *sb = &refl->storage_bufs[j];
+        if (sb->stage != stages[s].stage || !sb->readonly ||
+            strcmp(sb->name, b->storage_bufs[i].name) != 0)
+          continue;
+        int wi = vkb_write_index_for_binding(
+            &w, vkb_ro_storage_buf_binding(refl, stages[s].stage, sb));
+        if (wi >= 0)
+          w.bufs[wi] = (VkDescriptorBufferInfo){
+              .buffer = buf->buf,
+              .range = VK_WHOLE_SIZE,
+          };
+      }
+    }
     vkUpdateDescriptorSets(g.device, (uint32_t)w.count, w.writes, 0, NULL);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             g_current_pip->layout,

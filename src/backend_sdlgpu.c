@@ -1113,6 +1113,24 @@ static void sg_apply_bindings(const BindingsDesc *b) {
                                   (Uint32)(max_slot + 1));
     }
   }
+  // Graphics-stage read-only storage buffers: SDL_GPU numbers them in their
+  // own slot space per stage (the reflection `slot`).
+  for (int i = 0; i < b->storage_buf_count && b->refl; ++i) {
+    SgBuffer *sb = (SgBuffer *)b->storage_bufs[i].buf;
+    if (!sb || !sb->gpu || !b->storage_bufs[i].name)
+      continue;
+    for (int j = 0; j < b->refl->storage_buf_count; ++j) {
+      const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
+      if (!r->readonly || strcmp(r->name, b->storage_bufs[i].name) != 0)
+        continue;
+      if (r->stage == SGL_STAGE_VERTEX)
+        SDL_BindGPUVertexStorageBuffers(g_render_pass, (Uint32)r->slot,
+                                        &sb->gpu, 1);
+      else if (r->stage == SGL_STAGE_FRAGMENT)
+        SDL_BindGPUFragmentStorageBuffers(g_render_pass, (Uint32)r->slot,
+                                          &sb->gpu, 1);
+    }
+  }
 }
 
 static void sg_apply_uniforms(SglShaderStage stage, int slot, const void *d,

@@ -76,6 +76,11 @@ Gfx.EndPass();
   予約名は `indices`(indexed draw)、`instances`(インスタンシング)、
   `uniforms` の 3 つ。それ以外のバッファ値は頂点バッファ、テクスチャ値は
   キー名でシェーダのテクスチャに束縛される。
+- シェーダが同じ名前を `StructuredBuffer<T>` として宣言していれば、STORAGE
+  バッファは頂点バッファではなく storage として束縛される。頂点シェーダが
+  `SV_VulkanVertexID` で自分の要素を読む(vertex pulling)ことで、頂点入力
+  レイアウトなしに描ける。`SV_VertexID` は SPIR-V で base vertex を引く形に
+  なり `DrawParameters` を要求するので使わない(lub は常に base 0 で描く)。
 - `opts`(`DrawOpts`)の既定値は blend=NONE / cull=BACK /
   primitive=TRIANGLES / depth=true。
 
