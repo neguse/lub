@@ -558,8 +558,9 @@ using(宣言)  virtual(部分)  volatile  yield
 | `Math` | **Y** | 後述の個別メンバー表参照 | `math` ラッパー |
 | `MathF` | **-** | | float 版 Math |
 | `Console` | **Y** | `WriteLine` → `print` | |
+| `int` / `double` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `tonumber(s)` | 不正な文字列は例外でなく nil |
 | `Convert` | **-** | | |
-| `Environment` | **-** | | |
+| `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替 |
 | `Tuple` | **-** | | |
 | `ValueTuple` | **-** | | |
@@ -619,7 +620,9 @@ using(宣言)  virtual(部分)  volatile  yield
 | `String.Equals(a, b)` (static) | **-** | | |
 | `String.Empty` (static) | **-** | | |
 | `.ReplaceLineEndings()` | **-** | | |
-| `[int]` (char indexer) | **-** | | |
+| `[int]` (char indexer) | **Y** | `string.sub(s, i + 1, i + 1)` (1 文字 string) | T |
+| `(int)s[i]` / `(int)ch` (char → int) | **Y** | `string.byte(s, i + 1)` / `string.byte(ch)`。`(int)'a'` は定数畳み込み | T |
+| `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in utf8.codes(s)`。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの | T |
 
 引数なし`Split()`のwhitespace判定はLua `%s`によるbyte/locale単位であり、
 .NETのUnicode `Char.IsWhiteSpace`とは一致しない。これはUTF-8 byte列を使う既知制約に含む。
@@ -847,6 +850,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | `StringBuilder` | **-** | |
 | `Encoding` | **-** | |
 | `Regex` (`System.Text.RegularExpressions`) | **-** | Lua パターンで部分代替可能 |
+| `Rune` | **P** | `string.EnumerateRunes()` の foreach 変数と `.Value` のみ (§13) |
 
 ---
 
@@ -909,7 +913,8 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | watch モード | **Y** | `--watch` でファイル監視 |
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
-| 命名規約チェック | **Y** | PascalCase/camelCase 警告 |
+| 命名規約チェック | **Y** | PascalCase/camelCase 警告。`--no-naming-check` で抑制 |
+| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo` が同じ Lua 名に落ちると warning (§28) |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -943,3 +948,25 @@ C# と Lua 出力の意味論差のうち、正規化 (bool 表記・浮動小�
 - 文字列長: C# は UTF-16 code unit 数、Lua は byte 数 (UTF-8)
 - 数値表示: Lua は integer/float を区別し `4` / `4.0`、C# double は `4`。
   differential は数値等価で比較する
+
+## 28. Lua 出力の名前規則
+
+C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaNaming.cs`)。
+ユーザ型の型名 (`Player`) は写さない。
+
+| C# | Lua | 規則 |
+|----|-----|------|
+| field / property / method `BeginPass`, `hp`, `_maxHp` | `begin_pass`, `hp`, `_max_hp` | 先頭を小文字にし、以降の大文字の前に `_` を入れて小文字化。先頭の `_` は保つ |
+| enum メンバ `DontCare`, `Depth24Stencil8` | `DONT_CARE`, `DEPTH24_STENCIL8` | 上の結果を全大文字 |
+| 小文字を含まない名前 `CLEAR`, `RGBA8` | `clear` / `CLEAR` | 既に snake_case とみなす |
+| Lua の予約語に落ちる名前 `End`, `Do` | `end_`, `do_` | `_` を後置 |
+| custom property `Width` | `get_width` / `set_width` | accessor 名の接頭辞はそのまま |
+| record の positional parameter `PosX` | field `pos_x` (ctor 引数は C# 名) | field 名だけ写す |
+| `--ref` 型の static アクセス `Lub.Gfx.BeginPass` | `lub.gfx.begin_pass` | 入れ子の型名を全小文字で `.` 結合 |
+| `--ref` 型に入れ子の enum `Lub.Gfx.PixelFormat.Rgba8` | `lub.gfx.RGBA8` | enum 名を省いて親の下に平らに置く |
+| `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
+| BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
+
+同じ型の中で写像後の名前が衝突するメンバ (`Value` と `value`) は
+transpile 時に warning にする。
+

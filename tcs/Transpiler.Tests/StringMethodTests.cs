@@ -29,7 +29,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("5", result);
     }
 
@@ -46,7 +46,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -63,7 +63,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("hello lua", result);
     }
 
@@ -80,7 +80,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -97,7 +97,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -114,7 +114,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("hello", result);
     }
 
@@ -131,7 +131,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("world", result);
     }
 
@@ -148,7 +148,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("hello", result);
     }
 
@@ -165,7 +165,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("6", result);
     }
 
@@ -182,7 +182,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("-1", result);
     }
 
@@ -199,7 +199,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("6", result);
     }
 
@@ -218,7 +218,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("red/blue/green", result);
     }
 
@@ -234,7 +234,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("red/blue/green", result);
     }
 
@@ -251,7 +251,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("HELLOhello", result);
     }
 
@@ -268,7 +268,7 @@ public class StringMethodTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("42", result);
     }
 }

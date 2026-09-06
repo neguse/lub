@@ -21,7 +21,7 @@ internal sealed record FieldFact(
     IlFieldInfo Metadata);
 
 /// <summary>
-/// T228 の IlExport metadata を backend 内部型へ写す。source syntax や
+/// IlExport の metadata を backend 内部型へ写す。source syntax や
 /// SemanticModel は参照せず、backend の入力は IlExportResult だけに限定する。
 /// </summary>
 internal sealed class ContractFacts
@@ -55,7 +55,7 @@ internal sealed class ContractFacts
             foreach (var method in cls.Methods)
             {
                 if (method.ParameterTypes.IsDefault)
-                    throw new Tcs2cException($"method is missing T228 parameter types: " +
+                    throw new Tcs2cException($"method is missing parameter types: " +
                         $"{cls.Name}.{method.Name}");
                 if (method.Parameters.Length != method.ParameterTypes.Length)
                     throw new Tcs2cException($"method parameter metadata mismatch: " +

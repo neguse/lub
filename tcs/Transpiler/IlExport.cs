@@ -5,11 +5,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// M2 (T217): IL→C backend (../luo) 向けの入力契約。検査済みプログラムの
+// IL→C backend (tcs2c) 向けの入力契約。検査済みプログラムの
 // IL (doc/il-spec.md) と migration metadata (il-spec §14) を、Lua 出力を
 // 経由せずに公開する。契約の正本は doc/il-reference.md。
 
-/// <summary>class の migration metadata (il-spec §14) と骨格 IL (T224)。
+/// <summary>class の migration metadata (il-spec §14) と骨格 IL。
 /// Ctor は explicit constructor (無ければ null — default 初期化のみ)。
 /// custom property の accessor は get_/set_ 名の IlMethodInfo として
 /// Methods に現れる。</summary>
@@ -43,7 +43,7 @@ public sealed record IlMethodInfo(
     string ReturnType = "void",
     ImmutableArray<string> ParameterTypes = default);
 
-/// <summary>データ struct (M5 v1) の migration metadata。field のみ
+/// <summary>データ struct の migration metadata。field のみ
 /// (member は診断済み)。LayoutHash は class と同じ展開規則で、struct 値は
 /// reload 時に owner 経由で再直列化される (il-design §6)。</summary>
 public sealed record IlStructInfo(
@@ -97,7 +97,7 @@ public static class IlExport
                         if (model.GetDeclaredSymbol(v) is IFieldSymbol
                             { IsStatic: false } fs)
                         {
-                            layout.Add((v.Identifier.ValueText,
+                            layout.Add((LuaNaming.MemberName(fs),
                                 fs.Type.ToDisplayString()));
                         }
                     }
@@ -162,7 +162,9 @@ public static class IlExport
                 var init = v.Initializer != null
                     ? emitter.ExportExprIl(model, v.Initializer.Value) : null;
                 fields.Add(new IlFieldInfo(
-                    v.Identifier.ValueText,
+                    fieldSymbol != null
+                        ? LuaNaming.MemberName(fieldSymbol)
+                        : LuaNaming.Member(v.Identifier.ValueText),
                     fieldSymbol?.Type.ToDisplayString() ?? "?",
                     fieldSymbol?.IsStatic ?? false,
                     init));
@@ -175,7 +177,9 @@ public static class IlExport
         {
             var propSymbol = model.GetDeclaredSymbol(prop);
             fields.Add(new IlFieldInfo(
-                prop.Identifier.ValueText,
+                propSymbol != null
+                    ? LuaNaming.MemberName(propSymbol)
+                    : LuaNaming.Member(prop.Identifier.ValueText),
                 propSymbol?.Type.ToDisplayString() ?? "?",
                 propSymbol?.IsStatic ?? false));
         }
@@ -221,7 +225,7 @@ public static class IlExport
             foreach (var accessor in prop.AccessorList!.Accessors)
             {
                 var isGet = accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
-                var name = $"{(isGet ? "get_" : "set_")}{prop.Identifier.ValueText}";
+                var name = $"{(isGet ? "get_" : "set_")}{LuaNaming.Member(prop.Identifier.ValueText)}";
                 IlBlock? body = null;
                 if (accessor.Body != null)
                     body = emitter.ExportStatsIl(model,
@@ -263,7 +267,9 @@ public static class IlExport
             var body = emitter.ExportMethodIl(model, method);
             var methodSymbol = model.GetDeclaredSymbol(method);
             methods.Add(new IlMethodInfo(
-                method.Identifier.ValueText,
+                methodSymbol != null
+                    ? LuaNaming.MemberName(methodSymbol)
+                    : LuaNaming.Member(method.Identifier.ValueText),
                 method.Modifiers.Any(SyntaxKind.StaticKeyword),
                 [.. method.ParameterList.Parameters
                     .Select(p => p.Identifier.ValueText)],

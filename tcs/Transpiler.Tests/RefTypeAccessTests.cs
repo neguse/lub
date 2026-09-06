@@ -45,9 +45,9 @@ public class RefTypeAccessTests
         var script = $$"""
             local rb = {}
             function rb:status() return self == rb and "self-ok" or "self-ng" end
-            Gfx = { readback = function() return rb end }
+            gfx = { readback = function() return rb end }
             {{result.Lua}}
-            print(Game.Run())
+            print(Game.run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 
@@ -81,7 +81,7 @@ public class RefTypeAccessTests
 
         var script = $$"""
             {{result.Lua}}
-            print(Game.Describe({ type = "key_down", keycode = 32 }))
+            print(Game.describe({ type = "key_down", keycode = 32 }))
             """;
         var output = TestHelper.RunLua(script).Trim();
 

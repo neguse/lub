@@ -111,6 +111,10 @@ dotnet run --project Transpiler -- samples/hello.cs -o out.lua --no-runtime
 (host が module の callback を呼ぶ engine 組み込み向け)。
 指定は metadata 名 (`Game.App`) と一意な simple 名 (`App`) の両方を解決し、
 interface / `--ref` 型 / 曖昧な simple 名はエラーになる。
+`--module` を付けると出力末尾に定義した型 (`--ref` を除く) の table を返す
+`return { Counter = Counter, ... }` を追記し、ライブラリを
+`local m = require("lib")` で読む Lua module として使える (`--entry` /
+`--snapshot` とは併用しない)。
 `--prelude <shim.lua>` は任意のユーザー Lua (host API を tcs stub の形に
 橋渡しする shim など) を出力の先頭に前置する。
 
@@ -132,8 +136,12 @@ Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
 TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較、および
 互換public fieldによるinterface property facadeだけで、同じC#エラーIDの
 通常の型不一致は失敗する。
-host の wire format (lowerCamel / snake_case) を使うコードは
-`--no-naming-check` で C# naming convention warning だけを抑制できる。
+Lua 出力のメンバ名は C# 名から規則で写す (`BeginPass` → `begin_pass`、enum
+メンバ `DontCare` → `DONT_CARE`、`--ref` 型の static アクセスは
+`Lub.Gfx` → `lub.gfx`)。host の wire format が snake_case なら C# 側は通常の
+naming convention で書ける (規則は `doc/support-matrix.md` の
+「Lua 出力の名前規則」)。`--no-naming-check` は naming convention warning
+だけを抑制する。
 
 ```bash
 dotnet run --project Transpiler -- check samples/hello.cs

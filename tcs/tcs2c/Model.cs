@@ -19,7 +19,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public static readonly CType Null = new(CTypeKind.Null);
 
     public static CType Ref(string name) => new(CTypeKind.Ref, name);
-    /// <summary>データ struct (T219b)。C では素の値型 (ポインタなし)。</summary>
+    /// <summary>データ struct。C では素の値型 (ポインタなし)。</summary>
     public static CType Struct(string name) => new(CTypeKind.StructVal, name);
     public static CType Array(CType element) => new(CTypeKind.Array, Element: element);
     public static CType List(CType? element) => new(CTypeKind.List, Element: element);

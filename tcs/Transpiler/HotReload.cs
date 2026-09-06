@@ -2,7 +2,7 @@ using System.Text;
 
 namespace TinyCs;
 
-// T220(b)(c): hot reload — 実行中 VM の v1 状態へ v2 を適用する reload chunk を
+// hot reload — 実行中 VM の v1 状態へ v2 を適用する reload chunk を
 // 生成する (il-design §6: eager migration)。適用規則:
 //   - class table は in-place 更新で identity を保つ (method / static の差し替え)
 //   - 生存インスタンスは __tcs_instances (weak registry) を walk して
@@ -11,7 +11,7 @@ namespace TinyCs;
 //   - struct 値は参照 identity を持たないため再直列化で移行する:
 //     layout が変わった struct を型に持つ field (直接 / 配列) を owner 経由で
 //     新 layout の table に組み直す (struct in struct は再帰)
-//   - migration 完了後、OnReload メソッドがあれば instance ごとに 1 回呼ぶ
+//   - migration 完了後、OnReload (Lua では on_reload) があれば instance ごとに 1 回呼ぶ
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
 // 前提: v1 chunk を実行済みの同一 VM で、返り値の chunk を 1 つの chunk として
 // 実行する。record class は IlExport 対象外のため現時点では移行されない。
@@ -254,7 +254,7 @@ public static class HotReload
         sb.AppendLine("    if __hit then __tcs_touched[__inst] = true end");
         sb.AppendLine("  end");
         sb.AppendLine("  for __inst in pairs(__tcs_touched) do");
-        sb.AppendLine("    if __inst.OnReload then __inst:OnReload() end");
+        sb.AppendLine("    if __inst.on_reload then __inst:on_reload() end");
         sb.AppendLine("  end");
     }
 

@@ -6,7 +6,7 @@ namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
-    // ---- closure (T218-m7): capture-by-variable (il-spec §7) ----
+    // ---- closure: capture-by-variable (il-spec §7) ----
     // 本体内のどこかの closure が参照する名前を集め、その local/param を
     // heap cell (T *) へ box する。過剰 box は無害 (意味等価)
     private void CollectCapturedNames(IlBlock body)

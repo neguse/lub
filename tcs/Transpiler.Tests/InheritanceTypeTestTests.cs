@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T222: `is` / switch 型判定は C# では「T またはその派生」(il-spec §9)。
+// `is` / switch 型判定は C# では「T またはその派生」(il-spec §9)。
 // getmetatable の完全一致比較だと派生インスタンスへの `is Base` が偽になる。
 public class InheritanceTypeTestTests
 {
@@ -18,7 +18,7 @@ public class InheritanceTypeTestTests
                     return $"{d is Animal}|{d is Dog}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("true|true", result);
     }
 
@@ -37,7 +37,7 @@ public class InheritanceTypeTestTests
                     return $"{c is A}|{c is B}|{c is C}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("true|true|true", result);
     }
 
@@ -56,7 +56,7 @@ public class InheritanceTypeTestTests
                     return $"{r is Animal}|{n is Animal}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("false|false", result);
     }
 
@@ -78,7 +78,7 @@ public class InheritanceTypeTestTests
                 public static string Test() =>
                     $"{Classify(new Dog())}|{Classify(new Cat())}|{Classify(42)}";
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("animal|cat|other", result);
     }
 
@@ -97,7 +97,7 @@ public class InheritanceTypeTestTests
                     return "no";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("dog", result);
     }
 }

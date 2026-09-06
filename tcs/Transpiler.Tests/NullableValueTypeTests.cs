@@ -15,7 +15,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("nil", result);
     }
 
@@ -32,7 +32,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -49,7 +49,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -66,7 +66,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("false", result);
     }
 
@@ -83,7 +83,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -100,7 +100,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("0", result);
     }
 
@@ -117,7 +117,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("99", result);
     }
 
@@ -134,11 +134,11 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("false", result);
     }
 
-    // T146: Lua の `or` は false も fallback してしまうため、bool? の ?? は
+    // Lua の `or` は false も fallback してしまうため、bool? の ?? は
     // 明示 nil 判定にする。?? の右辺は null のときだけ評価される。
     [Fact]
     public void NullableBool_Coalesce_FalseIsNotFallback()
@@ -156,7 +156,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("false|true", result);
     }
 
@@ -184,7 +184,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("1|5|9", result);
     }
 
@@ -206,7 +206,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("false|5|3", result);
     }
 
@@ -232,7 +232,7 @@ public class NullableValueTypeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("1|3", result);
     }
 }

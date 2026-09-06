@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// エディタ向けの補完/hover クエリ (T230)。IncrementalCompilationSession の
+// エディタ向けの補完/hover クエリ。IncrementalCompilationSession の
 // speculative fork (ForkWithContent) が返す compilation/tree に対する読み取り
 // 専用のクエリで、session 状態には触れない。呼び出しごとに評価し、fork や
 // SemanticModel はキャッシュしない (wasm ホストのメモリ膨張防止)。

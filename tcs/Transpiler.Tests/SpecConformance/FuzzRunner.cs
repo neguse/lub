@@ -42,7 +42,7 @@ internal sealed class FuzzRunner
                      "Math = TinySystem.Math\n" +
                      "String = TinySystem.String\n" +
                      "Random = TinySystem.Random\n" +
-                     $"{lua}\nProgram.Main()";
+                     $"{lua}\nProgram.main()";
         string luaOut;
         try
         {

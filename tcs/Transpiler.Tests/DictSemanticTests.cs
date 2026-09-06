@@ -15,7 +15,7 @@ public class DictSemanticTests
                     return dict.Count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2", result);
     }
 
@@ -33,7 +33,7 @@ public class DictSemanticTests
                     return dict.Count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1", result);
     }
 
@@ -52,7 +52,7 @@ public class DictSemanticTests
                     return keys.Count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2", result);
     }
 
@@ -71,7 +71,7 @@ public class DictSemanticTests
                     return vals.Count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2", result);
     }
 
@@ -89,7 +89,7 @@ public class DictSemanticTests
                     return found.ToString() + ":" + value.ToString();
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("true:42", result);
     }
@@ -108,7 +108,7 @@ public class DictSemanticTests
                     return found.ToString() + ":" + value.ToString();
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("false:0", result);
     }
@@ -130,7 +130,7 @@ public class DictSemanticTests
                     return 0;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("7", result);
     }
@@ -150,7 +150,7 @@ public class DictSemanticTests
                     return found.ToString() + ":" + (value == null ? "nil" : value);
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("false:nil", result);
     }

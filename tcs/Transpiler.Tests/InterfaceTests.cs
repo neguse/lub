@@ -26,7 +26,7 @@ public class InterfaceTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("Hello, world", result);
     }
 
@@ -56,7 +56,7 @@ public class InterfaceTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("110", result);
     }
 
@@ -81,7 +81,7 @@ public class InterfaceTests
                     return counter.Value;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("5", result);
     }
@@ -98,7 +98,7 @@ public class InterfaceTests
             {
                 public readonly int Value = 7;
             }
-            """, "T.new().Value");
+            """, "T.new().value");
 
         Assert.Equal("7", result);
     }

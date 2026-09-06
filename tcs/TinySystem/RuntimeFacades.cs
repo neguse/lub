@@ -201,7 +201,7 @@ public static class List
 
 public static class Dict
 {
-    // Lua runtime の Add は table 代入 (duplicate key は上書き、T153 判断)。
+    // Lua runtime の Add は table 代入 (duplicate key は上書き)。
     // parity のため Dictionary.Add の throw ではなく indexer 代入へ委譲する
     public static void Add<TKey, TValue>(
         global::System.Collections.Generic.Dictionary<TKey, TValue> dict,

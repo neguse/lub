@@ -32,7 +32,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("0", result);
     }
 
@@ -50,7 +50,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -71,7 +71,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -89,7 +89,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("20", result);
     }
 
@@ -109,7 +109,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("2", result);
     }
 
@@ -129,7 +129,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         // 2 + 4 + 6 = 12
         Assert.Equal("12", result);
     }
@@ -150,7 +150,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         // 30 + 40 + 50 = 120
         Assert.Equal("120", result);
     }
@@ -170,7 +170,7 @@ public class CollectionTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -189,7 +189,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("10", result);
     }
 
@@ -207,7 +207,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -226,7 +226,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -244,7 +244,7 @@ public class CollectionTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -263,7 +263,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("15", result);
     }
 
@@ -283,7 +283,7 @@ public class CollectionTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("123", result);
     }
 
@@ -301,7 +301,7 @@ public class CollectionTests
                     return arr[0] + arr[2];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("40", result);
     }
 
@@ -317,7 +317,7 @@ public class CollectionTests
                     return names[0] + "+" + names[1];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("Alice+Bob", result);
     }
 
@@ -333,7 +333,7 @@ public class CollectionTests
                     return arr.Length;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("0", result);
     }
 }

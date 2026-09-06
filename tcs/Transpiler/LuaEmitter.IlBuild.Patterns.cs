@@ -108,9 +108,11 @@ public partial class LuaEmitter
             foreach (var sub in rp.PropertyPatternClause.Subpatterns)
             {
                 if (sub.NameColon == null) continue;
-                var propName = sub.NameColon.Name.Identifier.ValueText;
-                IlExpr propExpr = model.GetSymbolInfo(sub.NameColon.Name).Symbol
-                        is IPropertySymbol patProp && IsCustomProperty(patProp)
+                var patSym = model.GetSymbolInfo(sub.NameColon.Name).Symbol;
+                var propName = patSym != null
+                    ? N(patSym) : N(sub.NameColon.Name.Identifier.ValueText);
+                IlExpr propExpr = patSym is IPropertySymbol patProp
+                        && IsCustomProperty(patProp)
                     ? new IlInvoke(expr, $"get_{propName}", [])
                     : new IlField(expr, propName);
                 var cond = BuildIsSubPattern(model, propExpr, sub.Pattern);
@@ -423,8 +425,9 @@ public partial class LuaEmitter
             return new IlLen(obj);
         if (FindInstanceProperty(receiverType, member) is { } condProp
             && IsCustomProperty(condProp))
-            return new IlInvoke(obj, $"get_{member}", []);
-        return new IlField(obj, member);
+            return new IlInvoke(obj, $"get_{N(condProp)}", []);
+        var memberSym = receiverType?.GetMembers(member).FirstOrDefault();
+        return new IlField(obj, memberSym != null ? N(memberSym) : N(member));
     }
 
     private IlExpr? BuildConditionalInvocation(SemanticModel model,
@@ -480,6 +483,9 @@ public partial class LuaEmitter
             };
         }
 
-        return new IlInvoke(obj, methodName, argArr);
+        var methodSym = receiverType?.GetMembers(methodName)
+            .OfType<IMethodSymbol>().FirstOrDefault();
+        return new IlInvoke(obj, methodSym != null ? N(methodSym) : N(methodName),
+            argArr);
     }
 }

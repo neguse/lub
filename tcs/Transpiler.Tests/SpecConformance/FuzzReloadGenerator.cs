@@ -6,7 +6,7 @@ public sealed record FuzzReloadScenario(
     string V1, string V2, string StateLua, string AssertsLua);
 
 /// <summary>
-/// hot reload fuzz (T235) の seed 決定的シナリオ生成器。単一 class
+/// hot reload fuzz の seed 決定的シナリオ生成器。単一 class
 /// (+ 任意で struct 型 field) の v1/v2 ペアと、状態構築 Lua・不変量検証 Lua
 /// を生成する。期待値は生成時に計算する (値は小さく保ち wrap を踏まない)。
 /// 検出網の自己検証のため、毎シナリオ必ず「method body 変更」と
@@ -100,7 +100,7 @@ internal sealed class FuzzReloadGenerator(int seed)
         var asserts = new StringBuilder();
         var staticAssign = 7000 + _rng.Next(1000);
         if (statics[0].Retained)
-            state.AppendLine($"RC0.St0 = {staticAssign}");
+            state.AppendLine($"RC0.st0 = {staticAssign}");
 
         for (var k = 1; k <= instances; k++)
         {
@@ -115,13 +115,13 @@ internal sealed class FuzzReloadGenerator(int seed)
                 {
                     var value = 1000 * k + i;
                     live[f.Name] = value;
-                    state.AppendLine($"p{k}.{f.Name} = {value}");
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == {value}, " +
+                    state.AppendLine($"p{k}.{LuaNaming.Member(f.Name)} = {value}");
+                    asserts.AppendLine($"assert(p{k}.{LuaNaming.Member(f.Name)} == {value}, " +
                         $"\"retained {f.Name} {k}\")");
                 }
                 else
                 {
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == nil, " +
+                    asserts.AppendLine($"assert(p{k}.{LuaNaming.Member(f.Name)} == nil, " +
                         $"\"dropped {f.Name} {k}\")");
                 }
             }
@@ -129,18 +129,18 @@ internal sealed class FuzzReloadGenerator(int seed)
             {
                 if (f.Retained)
                 {
-                    state.AppendLine($"p{k}.{f.Name} = \"live{k}\"");
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == \"live{k}\", " +
+                    state.AppendLine($"p{k}.{LuaNaming.Member(f.Name)} = \"live{k}\"");
+                    asserts.AppendLine($"assert(p{k}.{LuaNaming.Member(f.Name)} == \"live{k}\", " +
                         $"\"retained string {k}\")");
                 }
                 else
                 {
-                    asserts.AppendLine($"assert(p{k}.{f.Name} == nil, " +
+                    asserts.AppendLine($"assert(p{k}.{LuaNaming.Member(f.Name)} == nil, " +
                         $"\"dropped string {k}\")");
                 }
             }
             foreach (var (name, type, init) in added)
-                asserts.AppendLine($"assert(p{k}.{name} == {init}, " +
+                asserts.AppendLine($"assert(p{k}.{LuaNaming.Member(name)} == {init}, " +
                     $"\"added {name} {k}\")");
             if (hasStruct)
             {
@@ -149,53 +149,53 @@ internal sealed class FuzzReloadGenerator(int seed)
                     if (f.Retained)
                     {
                         var value = 2000 * k + j;
-                        state.AppendLine($"p{k}.Pos.{f.Name} = {value}");
+                        state.AppendLine($"p{k}.pos.{LuaNaming.Member(f.Name)} = {value}");
                         asserts.AppendLine(
-                            $"assert(p{k}.Pos.{f.Name} == {value}, " +
+                            $"assert(p{k}.pos.{LuaNaming.Member(f.Name)} == {value}, " +
                             $"\"struct retained {f.Name} {k}\")");
                     }
                     else
                     {
                         asserts.AppendLine(
-                            $"assert(p{k}.Pos.{f.Name} == nil, " +
+                            $"assert(p{k}.pos.{LuaNaming.Member(f.Name)} == nil, " +
                             $"\"struct dropped {f.Name} {k}\")");
                     }
                 }
                 foreach (var name in structAdded)
-                    asserts.AppendLine($"assert(p{k}.Pos.{name} == 0, " +
+                    asserts.AppendLine($"assert(p{k}.pos.{LuaNaming.Member(name)} == 0, " +
                         $"\"struct added {name} {k}\")");
             }
             if (hook)
-                asserts.AppendLine($"assert(p{k}.R == 1, \"hook once {k}\")");
+                asserts.AppendLine($"assert(p{k}.r == 1, \"hook once {k}\")");
 
             // method swap: v2 body の期待値 (hook は R のみ触るので干渉しない)
             var fieldValue = live.TryGetValue(m0V2Field, out var lv)
                 ? lv
                 : int.Parse(added.First(a => a.Name == m0V2Field).Init);
-            asserts.AppendLine($"assert(p{k}:M0() == {fieldValue * a2 + b2}, " +
+            asserts.AppendLine($"assert(p{k}:m0() == {fieldValue * a2 + b2}, " +
                 $"\"method swap {k}\")");
         }
 
         if (statics[0].Retained)
-            asserts.AppendLine($"assert(RC0.St0 == {staticAssign}, " +
+            asserts.AppendLine($"assert(RC0.st0 == {staticAssign}, " +
                 "\"retained static\")");
         else
-            asserts.AppendLine("assert(RC0.St0 == nil, \"dropped static\")");
+            asserts.AppendLine("assert(RC0.st0 == nil, \"dropped static\")");
         if (addedStatic != default)
-            asserts.AppendLine($"assert(RC0.{addedStatic.Item1} == " +
+            asserts.AppendLine($"assert(RC0.{LuaNaming.Member(addedStatic.Item1)} == " +
                 $"{addedStatic.Item2}, \"added static\")");
         if (hasStaticMethod)
-            asserts.AppendLine($"assert(RC0.SM() == {smV2}, " +
+            asserts.AppendLine($"assert(RC0.sm() == {smV2}, " +
                 "\"static method swap\")");
 
         // reload 後の新規構築は v2 shape
         asserts.AppendLine("local q = RC0.new()");
         foreach (var (name, _, init) in added)
-            asserts.AppendLine($"assert(q.{name} == {init}, \"new added\")");
+            asserts.AppendLine($"assert(q.{LuaNaming.Member(name)} == {init}, \"new added\")");
         var qField = retainedInts.Any(f => f.Name == m0V2Field)
             ? int.Parse(fields.First(f => f.Name == m0V2Field).V1Init)
             : int.Parse(added.First(a => a.Name == m0V2Field).Init);
-        asserts.AppendLine($"assert(q:M0() == {qField * a2 + b2}, " +
+        asserts.AppendLine($"assert(q:m0() == {qField * a2 + b2}, " +
             "\"new instance method\")");
         asserts.AppendLine("print(\"ok\")");
 

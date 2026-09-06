@@ -28,7 +28,7 @@ public class EntryClassTests
             File.WriteAllText(luaPath, result.Lua);
             var script = $"""
                 local m = dofile("{luaPath}")
-                print(m.Ping())
+                print(m.ping())
                 """;
             var output = TestHelper.RunLua(script).Trim();
 
@@ -87,7 +87,7 @@ public class EntryClassTests
             Assert.Equal(0, exitCode);
             var script = $"""
                 local m = dofile("{outputPath}")
-                print(m.Ping())
+                print(m.ping())
                 """;
             var output = TestHelper.RunLua(script).Trim();
 
@@ -99,7 +99,7 @@ public class EntryClassTests
         }
     }
 
-    // T155: --entry は emitter の実 Lua 名 (namespace 透過の simple 名) を
+    // --entry は emitter の実 Lua 名 (namespace 透過の simple 名) を
     // return する。namespaced 指定・一意な simple 指定の両方が動き、
     // interface / 曖昧な simple 名は exit 1。
     private const string NamespacedSource = """
@@ -140,7 +140,7 @@ public class EntryClassTests
             entryClass: "Game.App");
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal("pong", RunEntryModule(result.Lua, "m.Ping()"));
+        Assert.Equal("pong", RunEntryModule(result.Lua, "m.ping()"));
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class EntryClassTests
             entryClass: "App");
 
         Assert.True(result.Success, string.Join("\n", result.Errors));
-        Assert.Equal("pong", RunEntryModule(result.Lua, "m.Ping()"));
+        Assert.Equal("pong", RunEntryModule(result.Lua, "m.ping()"));
     }
 
     [Fact]

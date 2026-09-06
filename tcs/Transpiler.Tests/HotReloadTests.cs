@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T220(b): hot reload runtime — 同一 VM で v1 実行状態へ v2 を適用する
+// hot reload runtime — 同一 VM で v1 実行状態へ v2 を適用する
 // (il-design §6: weak registry + eager migration、instance identity 保持)。
 // テストは 1 つの Lua chunk として v1 → 状態構築 → reload chunk → 検証を実行する
 public class HotReloadTests
@@ -35,7 +35,7 @@ public class HotReloadTests
         RunOk(Compose(V1,
             """
             local p = Player.new()
-            p.Hp = 42
+            p.hp = 42
             local before = p
             local beforeClass = Player
             """,
@@ -43,12 +43,12 @@ public class HotReloadTests
             """
             assert(p == before, "instance identity")
             assert(Player == beforeClass, "class identity")
-            assert(p.Hp == 42, "retained field keeps live value")
-            assert(p.Mana == 5, "added field gets initializer")
-            assert(p.Speed == nil, "discarded field dropped")
-            assert(p:Level() == 2, "method body swapped")
+            assert(p.hp == 42, "retained field keeps live value")
+            assert(p.mana == 5, "added field gets initializer")
+            assert(p.speed == nil, "discarded field dropped")
+            assert(p:level() == 2, "method body swapped")
             local q = Player.new()
-            assert(q.Mana == 5, "post-reload construction uses v2 shape")
+            assert(q.mana == 5, "post-reload construction uses v2 shape")
             assert(getmetatable(q) == Player, "post-reload instance links old identity")
             print("ok")
             """));
@@ -75,17 +75,17 @@ public class HotReloadTests
             """;
         RunOk(Compose(V1,
             """
-            Counter.Bump()
-            Counter.Bump()
-            Counter.Bump()
+            Counter.bump()
+            Counter.bump()
+            Counter.bump()
             """,
             V2,
             """
-            assert(Counter.Count == 3, "retained static keeps live value")
-            assert(Counter.Max == 99, "added static initialized")
-            assert(Counter.Legacy == nil, "discarded static dropped")
-            Counter.Bump()
-            assert(Counter.Count == 5, "swapped static method sees retained state")
+            assert(Counter.count == 3, "retained static keeps live value")
+            assert(Counter.max == 99, "added static initialized")
+            assert(Counter.legacy == nil, "discarded static dropped")
+            Counter.bump()
+            assert(Counter.count == 5, "swapped static method sees retained state")
             print("ok")
             """));
     }
@@ -104,13 +104,13 @@ public class HotReloadTests
         RunOk(Compose(V1,
             """
             local d = Dog.new()
-            d.Age = 9
+            d.age = 9
             """,
             V2,
             """
-            assert(d.Legs == 4, "base-added field reaches derived instance")
-            assert(d.Age == 9, "inherited retained field keeps value")
-            assert(d.Bark == 2, "derived fields untouched")
+            assert(d.legs == 4, "base-added field reaches derived instance")
+            assert(d.age == 9, "inherited retained field keeps value")
+            assert(d.bark == 2, "derived fields untouched")
             print("ok")
             """));
     }
@@ -131,14 +131,14 @@ public class HotReloadTests
         RunOk(Compose(V1,
             """
             local p = Player.new()
-            p.Pos.X = 3.0
-            p.Pos.Y = 4.0
+            p.pos.x = 3.0
+            p.pos.y = 4.0
             """,
             V2,
             """
-            assert(p.Pos.X == 3.0, "retained struct field keeps value")
-            assert(p.Pos.Y == nil, "discarded struct field dropped")
-            assert(p.Pos.Z == 0, "added struct field zeroed")
+            assert(p.pos.x == 3.0, "retained struct field keeps value")
+            assert(p.pos.y == nil, "discarded struct field dropped")
+            assert(p.pos.z == 0, "added struct field zeroed")
             print("ok")
             """));
     }
@@ -157,16 +157,16 @@ public class HotReloadTests
         RunOk(Compose(V1,
             """
             local poly = Poly.new()
-            poly.Points = { Vec2.new(), Vec2.new() }
-            poly.Points[1].X = 1.0
-            poly.Points[2].X = 2.0
+            poly.points = { Vec2.new(), Vec2.new() }
+            poly.points[1].x = 1.0
+            poly.points[2].x = 2.0
             """,
             V2,
             """
-            assert(#poly.Points == 2, "array length preserved")
-            assert(poly.Points[1].X == 1.0, "element retained field")
-            assert(poly.Points[1].Z == 0, "element added field zeroed")
-            assert(poly.Points[2].X == 2.0, "second element retained")
+            assert(#poly.points == 2, "array length preserved")
+            assert(poly.points[1].x == 1.0, "element retained field")
+            assert(poly.points[1].z == 0, "element added field zeroed")
+            assert(poly.points[2].x == 2.0, "second element retained")
             print("ok")
             """));
     }
@@ -188,8 +188,8 @@ public class HotReloadTests
             """,
             V2,
             """
-            assert(p.Pos ~= nil, "added struct field present")
-            assert(p.Pos.X == 0 and p.Pos.Y == 0, "added struct field zeroed")
+            assert(p.pos ~= nil, "added struct field present")
+            assert(p.pos.x == 0 and p.pos.y == 0, "added struct field zeroed")
             print("ok")
             """));
     }
@@ -211,11 +211,11 @@ public class HotReloadTests
         RunOk(Compose(V1,
             """
             local p = Player.new()
-            p.Hp = 40
+            p.hp = 40
             """,
             V2,
             """
-            assert(p.Hp == 45, "OnReload runs after field migration")
+            assert(p.hp == 45, "OnReload runs after field migration")
             print("ok")
             """));
     }

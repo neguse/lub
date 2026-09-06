@@ -33,7 +33,7 @@ public class PreludeTests
                 """);
             var preludePath = Path.Combine(tempDir, "shim.lua");
             File.WriteAllText(preludePath, """
-                Host = { value = function() return 42 end }
+                host = { value = function() return 42 end }
                 """);
             var outputPath = Path.Combine(tempDir, "app.lua");
 
@@ -44,7 +44,7 @@ public class PreludeTests
             Assert.Equal(0, result.ExitCode);
             var script = $"""
                 local m = dofile("{outputPath}")
-                print(m.Read())
+                print(m.read())
                 """;
             var output = TestHelper.RunLua(script).Trim();
 

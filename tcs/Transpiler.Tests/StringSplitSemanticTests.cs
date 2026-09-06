@@ -15,7 +15,7 @@ public class StringSplitSemanticTests
                     return parts.Length;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -32,7 +32,7 @@ public class StringSplitSemanticTests
                     return parts[0];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("hello", result);
     }
 }

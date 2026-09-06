@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T160: CLAUDE.md のファイルサイズ規約 (600 行警告 / 800 行禁止) の恒常ゲート。
+// CLAUDE.md のファイルサイズ規約 (600 行警告 / 800 行禁止) の恒常ゲート。
 // run-tests.sh / run-tests.ps1 / CI はいずれも dotnet test を通るため、
 // テストとして実装することで判定の二重実装を避ける。
 public class FileSizeGateTests

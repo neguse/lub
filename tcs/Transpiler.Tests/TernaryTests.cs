@@ -14,7 +14,7 @@ public class TernaryTests
                 }
             }
             """,
-            "T.Max(10, 5)");
+            "T.max(10, 5)");
         Assert.Equal("10", result);
     }
 
@@ -30,7 +30,7 @@ public class TernaryTests
                 }
             }
             """,
-            "T.Max(3, 8)");
+            "T.max(3, 8)");
         Assert.Equal("8", result);
     }
 
@@ -47,7 +47,7 @@ public class TernaryTests
                 }
             }
             """,
-            "T.Pick(true)");
+            "T.pick(true)");
         Assert.Equal("0", result);
     }
 }

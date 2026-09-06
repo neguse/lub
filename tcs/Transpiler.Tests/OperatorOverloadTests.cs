@@ -40,7 +40,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1122", result);
     }
 
@@ -56,7 +56,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("918", result);
     }
 
@@ -72,7 +72,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("-296", result);
     }
 
@@ -92,7 +92,7 @@ public class OperatorOverloadTests
                     return vv.X + vv.Y + vs.X + vs.Y + sv.X + sv.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("573.0", result);
     }
 
@@ -109,7 +109,7 @@ public class OperatorOverloadTests
                     return vv.X + vv.Y + vs.X + vs.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("10.0", result);
     }
 
@@ -136,7 +136,7 @@ public class OperatorOverloadTests
                     return (new Wrap(17) % new Wrap(5)).Value;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2", result);
     }
 
@@ -154,7 +154,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2244.0", result);
     }
 
@@ -172,7 +172,7 @@ public class OperatorOverloadTests
                     return v.X * 100 + v.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("608.0", result);
     }
 
@@ -200,7 +200,7 @@ public class OperatorOverloadTests
             {
                 public static int Test() => (new Acc(40) + new Acc(2)).Total;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -221,7 +221,7 @@ public class OperatorOverloadTests
                     return p.X * 100 + p.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1122", result);
     }
 
@@ -239,7 +239,7 @@ public class OperatorOverloadTests
 
                 private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("25", result);
     }
 

@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// T174: incremental/full diagnostics differential harness
+// incremental/full diagnostics differential harness
 // (doc/incremental-module-compilation-design.md §9)。
-// IncrementalCompilationSession (T175) 導入時に Left 側を session の増分結果へ
+// IncrementalCompilationSession の導入時に Left 側を session の増分結果へ
 // 差し替える。それまでは full vs full の恒等比較で、canonical 化・比較・
 // diff 表示の契約を先に固定する。
 public class IncrementalDifferentialTests

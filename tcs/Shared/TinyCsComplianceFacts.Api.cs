@@ -116,6 +116,12 @@ public static partial class TinyCsComplianceFacts
             "string.Join(string, params System.ReadOnlySpan<string>)",
             "string.Join<T>(string, System.Collections.Generic.IEnumerable<T>)",
             "string.IsNullOrEmpty(string)",
+            // host 連携で使う BCL: 環境変数と codepoint 走査。Lua 側は
+            // os.getenv / utf8.codes に落ちる。int.Parse / double.Parse は
+            // 数値型の member として元から allowlist の外側 (許可) で、
+            // emitter が tonumber へ写す
+            "System.Environment.GetEnvironmentVariable(string)",
+            "string.EnumerateRunes()",
 
             "System.Collections.Generic.List<T>.List()",
             "System.Collections.Generic.List<T>.Add(T)",
@@ -357,13 +363,25 @@ public static partial class TinyCsComplianceFacts
             || IsListType(containingType)
             || IsDictType(containingType)
             || IsSystemLinqEnumerable(containingType)
-            || IsConsoleType(containingType))
+            || IsConsoleType(containingType)
+            || IsEnvironmentType(containingType)
+            || IsRuneType(containingType))
         {
             return true;
         }
 
         return false;
     }
+
+    private static bool IsEnvironmentType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && named.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)
+            == "System.Environment";
+
+    private static bool IsRuneType(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && named.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)
+            == "System.Text.Rune";
 
     // emitter が print へマップするのは WriteLine のみ。In/Out/Write/ReadLine
     // 等は Lua 出力に対応物がなく silent nil アクセスになるため allowlist 外。
@@ -390,9 +408,12 @@ public static partial class TinyCsComplianceFacts
         if (symbol is IPropertySymbol property)
         {
             if (property.IsIndexer)
-                return IsListType(containingType) || IsDictType(containingType);
+                return IsListType(containingType) || IsDictType(containingType)
+                    || IsStringType(containingType);
             if (IsStringType(containingType))
                 return SupportedStringProperties.Contains(property.Name);
+            if (IsRuneType(containingType))
+                return property.Name == "Value";
             if (IsListType(containingType))
                 return SupportedListProperties.Contains(property.Name);
             if (IsDictType(containingType))

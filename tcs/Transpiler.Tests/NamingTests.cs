@@ -155,4 +155,23 @@ public class NamingTests
         Assert.True(result.Success);
         Assert.True(result.Warnings.Count >= 4); // class, method, param, local
     }
+
+    [Fact]
+    public void DiscardParameter_IsNotFlagged()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            using System;
+            public static class T
+            {
+                public static int Run()
+                {
+                    Func<int, int> f = _ => 1;
+                    Action<int, int> g = (_, __) => { };
+                    g(1, 2);
+                    return f(0);
+                }
+            }
+            """]);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("naming:"));
+    }
 }

@@ -13,7 +13,7 @@ public class StringEdgeContractTests
                 {
                     public static string Test() => "abc".Replace("", "x");
                 }
-                """, "T.Test()", TimeSpan.FromSeconds(3)));
+                """, "T.test()", TimeSpan.FromSeconds(3)));
 
         Assert.Contains("oldValue", error.Message);
     }
@@ -28,7 +28,7 @@ public class StringEdgeContractTests
             {
                 public static bool Test() => "hello".EndsWith("");
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
 
         Assert.Equal(expected, actual);
     }
@@ -53,7 +53,7 @@ public class StringEdgeContractTests
                         emptyParts.Length + "|" + emptyParts[0];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal(expected, actual);
     }
@@ -76,7 +76,7 @@ public class StringEdgeContractTests
                         + "|" + parts[5] + "|" + parts[6] + "|" + parts[7];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal(expected, actual);
     }
@@ -96,7 +96,7 @@ public class StringEdgeContractTests
                     return parts.Length + "|" + parts[0];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal(expected, actual);
     }
@@ -117,7 +117,7 @@ public class StringEdgeContractTests
                     return parts.Length + "|" + parts[0];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal(expected, actual);
     }
@@ -138,7 +138,7 @@ public class StringEdgeContractTests
                         string.Join(",", empty);
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal(expected, actual);
     }
@@ -183,7 +183,7 @@ public class StringEdgeContractTests
                     return result;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal(expected.ToString(), actual);
     }

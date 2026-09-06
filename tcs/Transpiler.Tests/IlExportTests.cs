@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T217 (M2): IL→C backend 向け入力契約 (IlExport) の検証
+// IL→C backend 向け入力契約 (IlExport) の検証
 public class IlExportTests
 {
     private const string Source = """
@@ -30,19 +30,19 @@ public class IlExportTests
         Assert.Null(player.BaseName);
 
         Assert.Collection(player.Fields,
-            f => { Assert.Equal(("X", "float", false), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("Y", "float", false), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("Count", "int", true), (f.Name, f.Type, f.IsStatic)); },
-            f => { Assert.Equal(("Hp", "int", false), (f.Name, f.Type, f.IsStatic)); });
+            f => { Assert.Equal(("x", "float", false), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("y", "float", false), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("count", "int", true), (f.Name, f.Type, f.IsStatic)); },
+            f => { Assert.Equal(("hp", "int", false), (f.Name, f.Type, f.IsStatic)); });
 
         Assert.All(player.Methods, m => Assert.NotNull(m.Body));
-        var move = player.Methods.Single(m => m.Name == "Move");
+        var move = player.Methods.Single(m => m.Name == "move");
         var assign = Assert.IsType<IlAssign>(
             Assert.Single(move.Body!.Stats));
         var target = Assert.IsType<IlField>(assign.Target);
-        Assert.Equal("X", target.Name);
+        Assert.Equal("x", target.Name);
 
-        var twice = player.Methods.Single(m => m.Name == "Twice");
+        var twice = player.Methods.Single(m => m.Name == "twice");
         Assert.IsType<IlReturn>(Assert.Single(twice.Body!.Stats));
     }
 
@@ -122,15 +122,15 @@ public class IlExportTests
                 }
             }
             """]);
-        var grab = result.Classes[0].Methods.Single(m => m.Name == "Grab");
+        var grab = result.Classes[0].Methods.Single(m => m.Name == "grab");
         Assert.Null(grab.Body);
         Assert.Contains(result.Diagnostics,
             d => d.Contains("InstanceMethodGroup"));
-        var m = result.Classes[0].Methods.Single(x => x.Name == "M");
+        var m = result.Classes[0].Methods.Single(x => x.Name == "m");
         Assert.NotNull(m.Body);
     }
 
-    // T228: 型情報・field initializer・配列生成の契約
+    // 型情報・field initializer・配列生成の契約
     [Fact]
     public void Export_TypesInitializersAndArrays()
     {
@@ -146,9 +146,9 @@ public class IlExportTests
             }
             """]);
         var k = result.Classes[0];
-        var dt = k.Fields.Single(f => f.Name == "Dt");
+        var dt = k.Fields.Single(f => f.Name == "dt");
         Assert.IsType<IlBin>(dt.Init);
-        var make = k.Methods.Single(m => m.Name == "Make");
+        var make = k.Methods.Single(m => m.Name == "make");
         Assert.Equal("float[]", make.ReturnType);
         Assert.Equal("int", Assert.Single(make.ParameterTypes));
         var local = Assert.IsType<IlLocal>(make.Body!.Stats[0]);
@@ -157,7 +157,7 @@ public class IlExportTests
         Assert.Equal("n", Assert.IsType<IlVar>(arr.Length).Name);
     }
 
-    // T224: class 骨格 (ctor / custom property accessor) の契約
+    // class 骨格 (ctor / custom property accessor) の契約
     [Fact]
     public void Export_CtorAndAccessorBodies()
     {
@@ -184,15 +184,15 @@ public class IlExportTests
         Assert.Equal("speed", Assert.Single(timer.Ctor!.Parameters));
         Assert.Equal("float", Assert.Single(timer.Ctor.ParameterTypes));
         Assert.NotNull(timer.Ctor.Body);
-        var getter = timer.Methods.Single(m => m.Name == "get_Speed");
+        var getter = timer.Methods.Single(m => m.Name == "get_speed");
         Assert.IsType<IlReturn>(Assert.Single(getter.Body!.Stats));
         Assert.Equal("float", getter.ReturnType);
-        var setter = timer.Methods.Single(m => m.Name == "set_Speed");
+        var setter = timer.Methods.Single(m => m.Name == "set_speed");
         Assert.Equal("value", Assert.Single(setter.Parameters));
         Assert.IsType<IlAssign>(Assert.Single(setter.Body!.Stats));
     }
 
-    // T224 後半: top-level 文と operator の契約
+    // top-level 文と operator の契約
     [Fact]
     public void Export_TopLevelAndOperators()
     {

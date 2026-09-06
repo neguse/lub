@@ -28,7 +28,7 @@ internal sealed partial class FuzzGenerator
     private sealed record RecordInfo(string Name,
         IReadOnlyList<(string Name, string Type)> Params);
 
-    // struct (T234b)。member は int のみ — string member は zero 値が null で
+    // struct。member は int のみ — string member は zero 値が null で
     // 出力時の nil/"" 差 (既知差異) を踏むため生成しない
     private sealed record StructTypeInfo(string Name, bool IsRecord,
         bool IsReadonly, IReadOnlyList<string> IntMembers,

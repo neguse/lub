@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T143: 副作用を含む lvalue (receiver / index に呼び出しがある compound
+// 副作用を含む lvalue (receiver / index に呼び出しがある compound
 // assignment、??=、increment、collection mutation) は receiver / index を
 // 一度だけ評価する。C# の評価回数・順序 (receiver → index → read → rhs →
 // write) と一致させる。
@@ -37,7 +37,7 @@ public class LvalueEvaluationTests
                     return $"{GetCalls}|{IdxCalls}|{Data[1]}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|1|25", result);
     }
 
@@ -67,7 +67,7 @@ public class LvalueEvaluationTests
                     return $"{Calls}|{B.X}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|13", result);
     }
 
@@ -85,7 +85,7 @@ public class LvalueEvaluationTests
                     return s;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("ab1", result);
     }
 
@@ -123,7 +123,7 @@ public class LvalueEvaluationTests
                     return $"{GetCalls}|{FbCalls}|{B.Label}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2|1|fb", result);
     }
 
@@ -158,7 +158,7 @@ public class LvalueEvaluationTests
                     return $"{GetCalls}|{IdxCalls}|{Data[0]}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|1|6", result);
     }
 
@@ -186,7 +186,7 @@ public class LvalueEvaluationTests
                     return $"{Calls}|{Data.Count}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|0", result);
     }
 }

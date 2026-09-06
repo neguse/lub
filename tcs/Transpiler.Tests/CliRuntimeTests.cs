@@ -205,7 +205,7 @@ public class CliRuntimeTests
         Assert.Equal(0, exitCode);
         var lua = File.ReadAllText(outputPath);
         Assert.Contains("TinyC# embedded runtime prelude", lua);
-        Assert.Equal("3", TestHelper.RunLua($"{lua}\nprint(T.Test())").Trim());
+        Assert.Equal("3", TestHelper.RunLua($"{lua}\nprint(T.test())").Trim());
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class CliRuntimeTests
         Assert.Equal(0, exitCode);
         var lua = File.ReadAllText(outputPath);
         Assert.DoesNotContain("TinyC# embedded runtime prelude", lua);
-        Assert.Equal("42", TestHelper.RunLua($"{lua}\nprint(T.Test())").Trim());
+        Assert.Equal("42", TestHelper.RunLua($"{lua}\nprint(T.test())").Trim());
     }
 
     [Fact]

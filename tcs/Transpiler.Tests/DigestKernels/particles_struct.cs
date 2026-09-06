@@ -1,6 +1,6 @@
 using System;
 
-// digest kernel: particles の struct 版 (M5 / T219)。演算列は particles.cs
+// digest kernel: particles の struct 版。演算列は particles.cs
 // (SoA 配列版) と同一で、digest も一致すべき。
 public struct Particle
 {

@@ -632,7 +632,7 @@ public partial class LuaEmitter
         var props = named.GetMembers()
             .OfType<IPropertySymbol>()
             .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public)
-            .Select(p => p.Name).ToList();
+            .Select(N).ToList();
         if (props.Count >= count) return props.Take(count).ToList();
         return null;
     }
@@ -640,6 +640,19 @@ public partial class LuaEmitter
     private void VisitForEach(SemanticModel model, ForEachStatementSyntax foreachStmt)
     {
         var varName = foreachStmt.Identifier.ValueText;
+        if (TryGetEnumerateRunesReceiver(model, foreachStmt.Expression)
+            is { } runesRecv)
+        {
+            var runesLabel = PushContinueLabel();
+            AppendLine($"for _, {varName} in utf8.codes({VisitExpression(model, runesRecv)}) do");
+            _indent++;
+            VisitBlock(model, foreachStmt.Statement);
+            EmitContinueLabel(runesLabel);
+            _indent--;
+            AppendLine("end");
+            PopContinueLabel();
+            return;
+        }
         var collection = VisitExpression(model, foreachStmt.Expression);
         var typeInfo = model.GetTypeInfo(foreachStmt.Expression);
         var typeName = typeInfo.Type?.OriginalDefinition.ToDisplayString() ?? "";

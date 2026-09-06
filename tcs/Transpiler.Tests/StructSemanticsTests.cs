@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T219 (M5 v1): データ struct の値意味論 (il-spec §10 の copy 地点)
+// データ struct の値意味論 (il-spec §10 の copy 地点)
 public class StructSemanticsTests
 {
     private const string Vec = """
@@ -92,7 +92,7 @@ public class StructSemanticsTests
         Assert.Equal("5|42", result);
     }
 
-    // ---- T219b(a): struct member (instance method / property / ctor) ----
+    // ---- struct member (instance method / property / ctor) ----
 
     private const string Counter = """
         public struct Counter
@@ -234,7 +234,7 @@ public class StructSemanticsTests
         Assert.Equal("21|42", result);
     }
 
-    // static member は引き続きサブセット外 (T219b(a) は instance member のみ)
+    // static member は引き続きサブセット外 (対応したのは instance member のみ)
     [Fact]
     public void StructStaticMember_ReportsDiagnostic()
     {
@@ -274,7 +274,7 @@ public class StructSemanticsTests
         Assert.Equal("1|99", result);
     }
 
-    // ---- T219b(b): record struct ----
+    // ---- record struct ----
 
     [Fact]
     public void RecordStruct_PositionalCreate_AndNewIsZero()
@@ -377,7 +377,7 @@ public class StructSemanticsTests
         Assert.Equal("true|false", result);
     }
 
-    // ---- T219b(c): readonly struct の copy 省略 ----
+    // ---- readonly struct の copy 省略 ----
 
     // 不変なら alias しても観測不能 — copy 地点の型別 __copy を全省略する
     [Fact]

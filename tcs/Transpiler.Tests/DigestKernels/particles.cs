@@ -1,7 +1,7 @@
 using System;
 
 // digest kernel: particles (perf/CONTRACT.md kernel 3)。
-// struct は M5 まで未対応のため class + 配列フィールドの SoA 形で書く
+// struct を使わず class + 配列フィールドの SoA 形で書く (struct 版は particles_struct.cs)
 // (演算列は CONTRACT と同一)。
 public class Particles
 {

@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T167: Math.Round / Sign / Tan / Log / Exp と String.IsNullOrEmpty の
+// Math.Round / Sign / Tan / Log / Exp と String.IsNullOrEmpty の
 // runtime + facade + allowlist 3点セットを固定する。
 public class BclAllowlistExtensionTests
 {
@@ -16,7 +16,7 @@ public class BclAllowlistExtensionTests
                     Math.Round(2.5f) + ":" + Math.Round(3.5f) + ":" +
                     Math.Round(2.4f) + ":" + Math.Round(-2.5f) + ":" + Math.Round(-2.6f);
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2:4:2:-2:-3", result);
     }
 
@@ -29,7 +29,7 @@ public class BclAllowlistExtensionTests
             {
                 public static float Test() => (float)Math.Round(3.14159f, 2);
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3.14", result);
     }
 
@@ -43,7 +43,7 @@ public class BclAllowlistExtensionTests
                 public static string Test() =>
                     Math.Sign(-12.5f) + ":" + Math.Sign(0) + ":" + Math.Sign(3);
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("-1:0:1", result);
     }
 
@@ -56,7 +56,7 @@ public class BclAllowlistExtensionTests
             {
                 public static bool Test() => Math.Abs(Math.Tan(Math.PI / 4) - 1.0f) < 1e-9f;
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -69,9 +69,9 @@ public class BclAllowlistExtensionTests
             {
                 public static bool Test() =>
                     Math.Abs(Math.Log(Math.Exp(1.0f)) - 1.0f) < 1e-6f
-                    && Math.Abs(Math.Log(8.0f, 2.0f) - 3.0f) < 1e-6f; // f32 精度 (M4)
+                    && Math.Abs(Math.Log(8.0f, 2.0f) - 3.0f) < 1e-6f; // f32 精度
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -84,7 +84,7 @@ public class BclAllowlistExtensionTests
             {
                 public static bool Test() => Math.Abs(Math.Exp(1.0f) - 2.718281828f) < 1e-6f;
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -100,7 +100,7 @@ public class BclAllowlistExtensionTests
                     return $"{string.IsNullOrEmpty(missing)}:{string.IsNullOrEmpty("")}:{string.IsNullOrEmpty("x")}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("true:true:false", result);
     }
 
@@ -152,7 +152,7 @@ public class BclAllowlistExtensionTests
                     && TinySystem.String.IsNullOrEmpty("")
                     && !TinySystem.String.IsNullOrEmpty("x");
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 }

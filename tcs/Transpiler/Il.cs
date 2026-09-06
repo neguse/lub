@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 
 namespace TinyCs;
 
-// TinyC# IL (doc/il-spec.md)。M1 スライス: method body の中間表現。
+// TinyC# IL (doc/il-spec.md)。method body の中間表現。
 // builder (LuaEmitter.IlBuild) が全 SemanticModel 問い合わせを済ませ、
 // emitter (LuaEmitter.IlEmit) は Roslyn に依存せず IL のみから出力する。
 // 演算ノードは型解決済み・単型 (il-spec §4)。
@@ -68,7 +68,7 @@ public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args) : Il
 
 /// <summary>table 構築 (List / Dict リテラル / ref-type option table)。
 /// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。
-/// ElementType は配列/List リテラルの要素型 (C backend 用 metadata、T228)。</summary>
+/// ElementType は配列/List リテラルの要素型 (C backend 用 metadata)。</summary>
 public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
     string? ElementType = null, string? KeyType = null) : IlExpr;
 
@@ -142,6 +142,10 @@ public sealed record IlForeachList(string Var, IlExpr Coll, IlBlock Body) : IlSt
 
 /// <summary>foreach (Dictionary): pairs + KeyValuePair table 合成。</summary>
 public sealed record IlForeachDict(string Var, IlExpr Coll, IlBlock Body) : IlStat;
+
+/// <summary>string.EnumerateRunes() の foreach: for _, Var in utf8.codes(Str) do。
+/// Var は codepoint 整数で、Rune.Value はその値そのもの。</summary>
+public sealed record IlForeachRunes(string Var, IlExpr Str, IlBlock Body) : IlStat;
 
 public sealed record IlBreak : IlStat;
 

@@ -34,9 +34,9 @@ public class GameScriptTests
             """, """
             (function()
               local e = Entity.new(10, 20, 100)
-              e:TakeDamage(30)
-              e:TakeDamage(80)
-              return e:IsAlive() and "alive" or "dead"
+              e:take_damage(30)
+              e:take_damage(80)
+              return e:is_alive() and "alive" or "dead"
             end)()
             """);
         Assert.Equal("dead", result);
@@ -71,14 +71,14 @@ public class GameScriptTests
             """, """
             (function()
               local c = Character.new()
-              c:Update(1)
-              local s1 = c:GetState()
-              c:Update(2)
-              local s2 = c:GetState()
-              c:Update(99)
-              local s3 = c:GetState()
-              c:Update(1)
-              local s4 = c:GetState()
+              c:update(1)
+              local s1 = c:get_state()
+              c:update(2)
+              local s2 = c:get_state()
+              c:update(99)
+              local s3 = c:get_state()
+              c:update(1)
+              local s4 = c:get_state()
               return s1 .. "," .. s2 .. "," .. s3 .. "," .. s4
             end)()
             """);
@@ -112,8 +112,8 @@ public class GameScriptTests
             (function()
               local a = Vec2.new(0, 0)
               local b = Vec2.new(3, 4)
-              local hit = Collision.CircleOverlap(a, 3.0, b, 3.0)
-              local miss = Collision.CircleOverlap(a, 1.0, b, 1.0)
+              local hit = Collision.circle_overlap(a, 3.0, b, 3.0)
+              local miss = Collision.circle_overlap(a, 1.0, b, 1.0)
               return tostring(hit) .. "," .. tostring(miss)
             end)()
             """);
@@ -137,7 +137,7 @@ public class GameScriptTests
                 }
             }
             """,
-            "Inventory.TotalValue(5)");
+            "Inventory.total_value(5)");
         // 10+20+30+40+50 = 150
         Assert.Equal("150", result);
     }
@@ -162,7 +162,7 @@ public class GameScriptTests
                 }
             }
             """,
-            "EventSystem.Test()");
+            "EventSystem.test()");
         Assert.Equal("42", result);
     }
 }

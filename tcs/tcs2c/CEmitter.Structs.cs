@@ -2,7 +2,7 @@ using TinyCs;
 
 namespace TinyCs.Tcs2c;
 
-// struct (T219b) の C 側 emit: typedef 生成。値型はポインタなしの素の
+// struct の C 側 emit: typedef 生成。値型はポインタなしの素の
 // C struct に落ち、copy は値代入で成立する。
 internal sealed partial class CEmitter
 {

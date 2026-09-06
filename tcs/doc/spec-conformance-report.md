@@ -43,37 +43,37 @@ Executed 35 InRun examples with an output contract; passed 35 (1 via known-diffe
 ## Unexpected extraction details
 
 - `attributes.md:AttributeCantBeGeneric` (expected-error-not-raised): <no details>
-- `documentation-comments.md:IDStringsFields` (unexpected-compile-error): (21,29): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `documentation-comments.md:IDStringsMethods` (unexpected-compile-error): (19,28): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `patterns.md:LogicalPattern3` (unexpected-compile-error): (19,1): error CS0841: Cannot use local variable 'result' before it is declared
+- `documentation-comments.md:IDStringsFields` (unexpected-compile-error): (21,29): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `documentation-comments.md:IDStringsMethods` (unexpected-compile-error): (19,28): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `patterns.md:LogicalPattern3` (unexpected-compile-error): (19,1): error CS0841: 宣言する前にローカル変数 'result' を使用できません
 - `structs.md:Constructors2` (expected-error-not-raised): <no details>
-- `structs.md:RecordStructEqualityMembers2` (unexpected-compile-error): (32,59): error CS1513: } expected
+- `structs.md:RecordStructEqualityMembers2` (unexpected-compile-error): (32,59): error CS1513: } が必要です
 - `structs.md:RecordStructPrimaryConstructor2` (expected-error-mismatch): missing: CS0171
-- `unsafe-code.md:Address-ofOperator` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:Fixed-sizeBuffers1` (unexpected-compile-error): (1,15): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:Fixed-sizeBuffers2` (unexpected-compile-error): (1,15): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:Fixed-sizeBuffersInExpressions` (unexpected-compile-error): (1,15): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FixedStatement1` (unexpected-compile-error): (6,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FixedStatement2` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FixedStatement3` (unexpected-compile-error): (3,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FixedStatement4` (unexpected-compile-error): (18,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FixedStatement5` (unexpected-compile-error): (23,32): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FunctionPointers1` (unexpected-compile-error): (1,14): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:FunctionPointers2` (unexpected-compile-error): (1,14): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerArithmetic` (unexpected-compile-error): (18,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerConversions1` (unexpected-compile-error): (1,20): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerConversions2` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerElementAccess1` (unexpected-compile-error): (5,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerElementAccess2` (unexpected-compile-error): (5,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerMemberAccess1` (unexpected-compile-error): (26,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerMemberAccess2` (unexpected-compile-error): (19,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerTypes1` (unexpected-compile-error): (7,24): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:PointerTypes2` (unexpected-compile-error): (1,20): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:UnsafeContexts2` (unexpected-compile-error): (4,25): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:UnsafeContexts3` (unexpected-compile-error): (3,32): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:UnsafeContexts4` (unexpected-compile-error): (1,21): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:UnsafeModifierOnStruct` (unexpected-compile-error): (1,22): error CS0227: Unsafe code may only appear if compiling with /unsafe
-- `unsafe-code.md:UnsafeStackAllocation2` (unexpected-compile-error): (23,9): error CS0227: Unsafe code may only appear if compiling with /unsafe
+- `unsafe-code.md:Address-ofOperator` (unexpected-compile-error): (19,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:Fixed-sizeBuffers1` (unexpected-compile-error): (1,15): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:Fixed-sizeBuffers2` (unexpected-compile-error): (1,15): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:Fixed-sizeBuffersInExpressions` (unexpected-compile-error): (1,15): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FixedStatement1` (unexpected-compile-error): (6,24): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FixedStatement2` (unexpected-compile-error): (19,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FixedStatement3` (unexpected-compile-error): (3,24): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FixedStatement4` (unexpected-compile-error): (18,24): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FixedStatement5` (unexpected-compile-error): (23,32): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FunctionPointers1` (unexpected-compile-error): (1,14): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:FunctionPointers2` (unexpected-compile-error): (1,14): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerArithmetic` (unexpected-compile-error): (18,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerConversions1` (unexpected-compile-error): (1,20): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerConversions2` (unexpected-compile-error): (19,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerElementAccess1` (unexpected-compile-error): (5,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerElementAccess2` (unexpected-compile-error): (5,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerMemberAccess1` (unexpected-compile-error): (26,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerMemberAccess2` (unexpected-compile-error): (19,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerTypes1` (unexpected-compile-error): (7,24): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:PointerTypes2` (unexpected-compile-error): (1,20): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:UnsafeContexts2` (unexpected-compile-error): (4,25): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:UnsafeContexts3` (unexpected-compile-error): (3,32): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:UnsafeContexts4` (unexpected-compile-error): (1,21): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:UnsafeModifierOnStruct` (unexpected-compile-error): (1,22): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
+- `unsafe-code.md:UnsafeStackAllocation2` (unexpected-compile-error): (23,9): error CS0227: アンセーフ コードは /unsafe でコンパイルした場合のみ有効です
 
 ## Bugs
 

@@ -405,7 +405,7 @@ internal sealed partial class FuzzGenerator
             0 => $"({PickReadableIntVar()} + {IntExpr(depth - 1)})",
             1 => $"({PickReadableIntVar()} - {IntExpr(depth - 1)})",
             2 => $"({PickReadableIntVar()} * {IntExpr(depth - 1)})",
-            // 除算/剰余は非ゼロ定数除数 (負も含む) — T145 の idiv/irem を踏む
+            // 除算/剰余は非ゼロ定数除数 (負も含む) — idiv/irem の経路を踏む
             3 => $"({PickReadableIntVar()} / {NonZeroDivisor()})",
             4 => $"({PickReadableIntVar()} % {NonZeroDivisor()})",
             5 => HelperCallOrElse("int", depth, IntAtom),

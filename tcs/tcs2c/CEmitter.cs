@@ -34,7 +34,7 @@ internal sealed partial class CEmitter
 
     public CEmitter(IlExportResult program, bool digestF32)
     {
-        // T218-m3: ctor と top-level 文を合成 method として注入し、
+        // ctor と top-level 文を合成 method として注入し、
         // facts / prototype / EmitMethod の既存機構をそのまま通す
         _program = Normalize(program);
         _digestF32 = digestF32;
@@ -45,7 +45,7 @@ internal sealed partial class CEmitter
 
     internal const string CtorMethodName = "__ctor";
 
-    // ---- 継承 (T218-m4): DFS 範囲型 ID と chain 解決 ----
+    // ---- 継承: DFS 範囲型 ID と chain 解決 ----
     private readonly Dictionary<string, (int First, int Last)> _typeRange = new();
 
     private void BuildHierarchy()
@@ -127,7 +127,8 @@ internal sealed partial class CEmitter
         if (program.TopLevel is { } topLevel)
         {
             classes.Add(new IlClassInfo("TopLevel", null, [], "0",
-                [new IlMethodInfo("Main", true, [], topLevel, "void", [])]));
+                [new IlMethodInfo(LuaNaming.Member("Main"), true, [], topLevel,
+                    "void", [])]));
         }
         return program with { Classes = [.. classes] };
     }
@@ -206,7 +207,8 @@ internal sealed partial class CEmitter
     {
         var candidates = _program.Classes
             .SelectMany(c => c.Methods.Select(m => (Class: c, Method: m)))
-            .Where(x => x.Method.Name == "Main" && x.Method.IsStatic
+            // IL の名前は Lua 出力の規則 (snake_case) で写像済み
+            .Where(x => x.Method.Name == LuaNaming.Member("Main") && x.Method.IsStatic
                 && x.Method.Parameters.Length == 0
                 && _facts.Method(x.Class.Name, x.Method.Name).ReturnType == CType.Void)
             .Where(x => requested is null || x.Class.Name == requested)
@@ -293,7 +295,7 @@ internal sealed partial class CEmitter
                 $"({ParameterList(fact)});");
         }
         Line();
-        // dispatcher (T218-m4) の前方宣言
+        // dispatcher の前方宣言
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods.Where(m => !m.IsStatic))
         {

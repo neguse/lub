@@ -233,9 +233,11 @@ public partial class LuaEmitter
             {
                 if (sub.NameColon != null)
                 {
-                    var propName = sub.NameColon.Name.Identifier.ValueText;
-                    var propExpr = model.GetSymbolInfo(sub.NameColon.Name).Symbol
-                            is IPropertySymbol patProp && IsCustomProperty(patProp)
+                    var patSym = model.GetSymbolInfo(sub.NameColon.Name).Symbol;
+                    var propName = patSym != null
+                        ? N(patSym) : N(sub.NameColon.Name.Identifier.ValueText);
+                    var propExpr = patSym is IPropertySymbol patProp
+                            && IsCustomProperty(patProp)
                         ? $"{expr}:get_{propName}()"
                         : $"{expr}.{propName}";
                     conditions.Add(VisitIsSubPattern(model, propExpr, sub.Pattern));
@@ -322,10 +324,11 @@ public partial class LuaEmitter
         if (FindInstanceProperty(receiverType, member) is { } condProp
             && IsCustomProperty(condProp))
         {
-            return $"{obj}:get_{member}()";
+            return $"{obj}:get_{N(condProp)}()";
         }
 
-        return $"{obj}.{member}";
+        var memberSym = receiverType?.GetMembers(member).FirstOrDefault();
+        return $"{obj}.{(memberSym != null ? N(memberSym) : N(member))}";
     }
 
     private string VisitConditionalElementAccess(SemanticModel model,
@@ -395,6 +398,8 @@ public partial class LuaEmitter
             };
         }
 
-        return $"{obj}:{methodName}({string.Join(", ", args)})";
+        var methodSym = receiverType?.GetMembers(methodName)
+            .OfType<IMethodSymbol>().FirstOrDefault();
+        return $"{obj}:{(methodSym != null ? N(methodSym) : N(methodName))}({string.Join(", ", args)})";
     }
 }

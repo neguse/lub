@@ -21,7 +21,7 @@ public class LambdaTests
                 }
             }
             """,
-            "Fn.Test()");
+            "Fn.test()");
         Assert.Equal("42", result);
     }
 
@@ -44,7 +44,7 @@ public class LambdaTests
                 }
             }
             """,
-            "Fn.Test()");
+            "Fn.test()");
         Assert.Equal("42", result);
     }
 
@@ -63,7 +63,7 @@ public class LambdaTests
                 }
             }
             """,
-            "Fn.Test()");
+            "Fn.test()");
         Assert.Equal("42", result);
     }
 }

@@ -11,7 +11,7 @@ public class SmokeTests
                 public static int Bar() { return 42; }
             }
             """,
-            "Foo.Bar()");
+            "Foo.bar()");
         Assert.Equal("42", result);
     }
 
@@ -24,7 +24,7 @@ public class SmokeTests
                 public static int Add(int a, int b) { return a + b; }
             }
             """,
-            "Math.Add(3, 7)");
+            "Math.add(3, 7)");
         Assert.Equal("10", result);
     }
 
@@ -41,7 +41,7 @@ public class SmokeTests
                 }
             }
             """,
-            "Logic.Check(5)");
+            "Logic.check(5)");
         Assert.Equal("1", result);
     }
 
@@ -58,7 +58,7 @@ public class SmokeTests
                 }
             }
             """,
-            "Logic.Check(-3)");
+            "Logic.check(-3)");
         Assert.Equal("0", result);
     }
 
@@ -72,7 +72,7 @@ public class SmokeTests
                 public static bool F() { return false; }
             }
             """,
-            "tostring(B.T()) .. ',' .. tostring(B.F())");
+            "tostring(B.t()) .. ',' .. tostring(B.f())");
         Assert.Equal("true,false", result);
     }
 
@@ -89,7 +89,7 @@ public class SmokeTests
                 }
             }
             """,
-            "Calc.Double(21)");
+            "Calc.double(21)");
         Assert.Equal("42", result);
     }
 
@@ -112,7 +112,7 @@ public class SmokeTests
                 }
             }
             """,
-            "Loop.Sum(10)");
+            "Loop.sum(10)");
         Assert.Equal("55", result);
     }
 
@@ -127,7 +127,7 @@ public class SmokeTests
                 public static bool Not(bool a) { return !a; }
             }
             """,
-            "tostring(Logic.And(true, false)) .. ',' .. tostring(Logic.Or(true, false)) .. ',' .. tostring(Logic.Not(true))");
+            "tostring(Logic.and_(true, false)) .. ',' .. tostring(Logic.or_(true, false)) .. ',' .. tostring(Logic.not_(true))");
         Assert.Equal("false,true,false", result);
     }
 
@@ -141,7 +141,7 @@ public class SmokeTests
                 public static bool Neq(int a, int b) { return a != b; }
             }
             """,
-            "tostring(Cmp.Eq(1, 1)) .. ',' .. tostring(Cmp.Neq(1, 2))");
+            "tostring(Cmp.eq(1, 1)) .. ',' .. tostring(Cmp.neq(1, 2))");
         Assert.Equal("true,true", result);
     }
 
@@ -160,7 +160,7 @@ public class SmokeTests
                 }
             }
             """,
-            "Grade.Eval(85)");
+            "Grade.eval(85)");
         Assert.Equal("B", result);
     }
 }

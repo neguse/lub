@@ -44,7 +44,7 @@ public class SnapshotCliTests
             Assert.Contains(game.Replace("\\", "/"), lua);
             var output = TestHelper.RunLua($"""
                 local w = dofile("{outPath.Replace("\\", "/")}")
-                print(w.Run())
+                print(w.run())
                 """).Trim().Split('\n');
             // 1 行目は commit ACK (@@tcs_commit ...)、最後が Run() の結果
             Assert.StartsWith("@@tcs_commit", output[0]);

@@ -20,7 +20,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -42,7 +42,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("nil", result);
     }
 
@@ -59,7 +59,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -76,7 +76,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -94,7 +94,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("default", result);
     }
 
@@ -112,7 +112,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("hello", result);
     }
 
@@ -131,7 +131,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("20", result);
     }
 
@@ -150,7 +150,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("nil", result);
     }
 
@@ -169,7 +169,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -186,7 +186,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }
@@ -204,7 +204,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
 
         Assert.Equal("nil", result);
     }
@@ -223,7 +223,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }
@@ -242,7 +242,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }
@@ -266,11 +266,11 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("99", result);
     }
 
-    // T139: ?. の receiver は一度だけ評価し、null のときは引数/index を
+    // ?. の receiver は一度だけ評価し、null のときは引数/index を
     // 評価しない (C# の評価回数・順序と一致させる)。
     [Fact]
     public void NullConditional_ReceiverWithSideEffect_EvaluatedOnce()
@@ -298,7 +298,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("107", result);
     }
 
@@ -335,7 +335,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("99", result);
     }
 
@@ -373,7 +373,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("2121", result);
     }
 
@@ -398,7 +398,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("deep|none", result);
     }
 
@@ -426,7 +426,7 @@ public class NullConditionalTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("2", result);
     }
 }

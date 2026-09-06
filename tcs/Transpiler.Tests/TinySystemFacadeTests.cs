@@ -15,7 +15,7 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }
@@ -33,7 +33,7 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }
@@ -50,7 +50,7 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
 
         Assert.Equal("hello lua", result);
     }
@@ -68,7 +68,7 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }
@@ -89,7 +89,7 @@ public class TinySystemFacadeTests
                 }
             }
             """,
-            "tostring(T.Test())");
+            "tostring(T.test())");
 
         Assert.Equal("true", result);
     }

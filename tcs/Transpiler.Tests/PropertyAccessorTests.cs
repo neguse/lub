@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T147: custom property (body 付き accessor / expression-bodied) の読み書きは
+// custom property (body 付き accessor / expression-bodied) の読み書きは
 // 生成済み get_/set_ を呼ぶ。auto property は raw field のまま。
 public class PropertyAccessorTests
 {
@@ -31,7 +31,7 @@ public class PropertyAccessorTests
                     return $"{t.Raw}|{c}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("250|25", result);
     }
 
@@ -49,7 +49,7 @@ public class PropertyAccessorTests
                     return $"{t.Raw}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("250", result);
     }
 
@@ -72,7 +72,7 @@ public class PropertyAccessorTests
                     return b.Doubled;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -99,7 +99,7 @@ public class PropertyAccessorTests
                     return $"{Calls}|{Shared.Raw}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|250", result);
     }
 
@@ -115,7 +115,7 @@ public class PropertyAccessorTests
                     return t.Raw;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("30", result);
     }
 
@@ -148,7 +148,7 @@ public class PropertyAccessorTests
                     return $"{c.Raw}|{v}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("9|10", result);
     }
 
@@ -168,7 +168,7 @@ public class PropertyAccessorTests
                     return $"{a ?? -1}|{b ?? -1}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("7|-1", result);
     }
 
@@ -187,11 +187,11 @@ public class PropertyAccessorTests
                     return $"{hot}|{cold}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("true|false", result);
     }
 
-    // T148: static property は instance 生成に関係なく class table 上で共有される
+    // static property は instance 生成に関係なく class table 上で共有される
     [Fact]
     public void StaticAutoProperty_InitializerAndWrites_OnClassTable()
     {
@@ -210,7 +210,7 @@ public class PropertyAccessorTests
                     return $"{before}|{Game.Score}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("10|30", result);
     }
 
@@ -245,7 +245,7 @@ public class PropertyAccessorTests
                     return $"{Game.Raw}|{v}|{Game.Doubled}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("14|10|30", result);
     }
 
@@ -268,7 +268,7 @@ public class PropertyAccessorTests
                     return $"{m.Auto}|{m.Twice}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("5|10", result);
     }
 }

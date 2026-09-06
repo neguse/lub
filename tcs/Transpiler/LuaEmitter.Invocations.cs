@@ -23,7 +23,7 @@ public partial class LuaEmitter
             {
                 var allArgs = new List<string> { "self" };
                 allArgs.AddRange(args);
-                return $"{baseMethod.ContainingType.Name}.{methodName}({string.Join(", ", allArgs)})";
+                return $"{TypeRef(baseMethod.ContainingType)}.{N(baseMethod)}({string.Join(", ", allArgs)})";
             }
 
             if (symbol is IMethodSymbol { IsStatic: true } staticMethod
@@ -80,6 +80,13 @@ public partial class LuaEmitter
                 return $"Math.{luaName}({string.Join(", ", args)})";
             }
 
+            if (IsEnvironmentGetEnv(symbol))
+                return $"os.getenv({string.Join(", ", args)})";
+            if (NumericParseKind(symbol) is { } parseKind)
+                return parseKind == "int"
+                    ? $"math.tointeger(tonumber({string.Join(", ", args)}))"
+                    : $"tonumber({string.Join(", ", args)})";
+
             // string.Join / string.IsNullOrEmpty → String.* runtime call
             if (symbol is IMethodSymbol stringStaticMethod
                 && stringStaticMethod.ContainingType.SpecialType == SpecialType.System_String
@@ -98,17 +105,17 @@ public partial class LuaEmitter
             if (symbol is IMethodSymbol { IsExtensionMethod: true, ReducedFrom: not null } extMethod)
             {
                 var obj = VisitExpression(model, ma.Expression);
-                var extClass = extMethod.ReducedFrom!.ContainingType.Name;
+                var extClass = TypeRef(extMethod.ReducedFrom!.ContainingType);
                 var allArgs = new List<string> { obj };
                 allArgs.AddRange(args);
-                return $"{extClass}.{methodName}({string.Join(", ", allArgs)})";
+                return $"{extClass}.{N(extMethod.ReducedFrom!)}({string.Join(", ", allArgs)})";
             }
 
             // Regular instance method
-            if (symbol is IMethodSymbol { IsStatic: false })
+            if (symbol is IMethodSymbol { IsStatic: false } instanceMethod)
             {
                 var obj = VisitExpression(model, ma.Expression);
-                return $"{obj}:{methodName}({string.Join(", ", args)})";
+                return $"{obj}:{N(instanceMethod)}({string.Join(", ", args)})";
             }
 
             var target = VisitExpression(model, invocation.Expression);
@@ -158,9 +165,9 @@ public partial class LuaEmitter
             }
         }
 
-        var methodName = ma.Name.Identifier.ValueText;
+        var methodName = N(method);
         var call = method.IsStatic
-            ? $"{method.ContainingType.Name}.{methodName}({string.Join(", ", callArgs)})"
+            ? $"{TypeRef(method.ContainingType)}.{methodName}({string.Join(", ", callArgs)})"
             : $"{VisitExpression(model, ma.Expression)}:{methodName}({string.Join(", ", callArgs)})";
         var outs = string.Join(", ", outNames);
         if (method.ReturnsVoid)
@@ -295,6 +302,10 @@ public partial class LuaEmitter
             && IsTinySystemFacade(staticProperty.ContainingType))
             return $"{staticProperty.ContainingType.Name}.{member}";
 
+        // Rune.Value: utf8.codes の値は codepoint 整数そのもの
+        if (IsRuneValue(symbol))
+            return obj;
+
         if (symbol is IPropertySymbol propSym)
         {
             var receiverType = model.GetTypeInfo(memberAccess.Expression).Type;
@@ -324,11 +335,18 @@ public partial class LuaEmitter
             if (IsCustomProperty(propSym))
             {
                 return propSym.IsStatic
-                    ? $"{propSym.ContainingType.Name}.get_{member}()"
-                    : $"{obj}:get_{member}()";
+                    ? $"{TypeRef(propSym.ContainingType)}.get_{N(propSym)}()"
+                    : $"{obj}:get_{N(propSym)}()";
             }
         }
 
+        // 入れ子の型参照 (Lub.Gfx) — 参照専用型は小文字パスで平らに置く
+        if (symbol is INamedTypeSymbol namedType)
+            return TypeRef(namedType);
+        if (ConstLiteral(symbol) is { } constLit)
+            return constLit;
+        if (symbol is IFieldSymbol or IPropertySymbol or IMethodSymbol)
+            return $"{obj}.{N(symbol)}";
         return $"{obj}.{member}";
     }
 

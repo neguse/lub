@@ -268,7 +268,7 @@ public class WatchModeTests
         throw new TimeoutException($"File {path} was not rewritten within {timeoutMs}ms");
     }
 
-    // T157: 出力へ埋め込まれる --prelude も build dependency として監視する。
+    // 出力へ埋め込まれる --prelude も build dependency として監視する。
     // 無関係ファイルの変更では rebuild しない。
     [Fact]
     public void Watch_PreludeChange_TriggersRebuild()

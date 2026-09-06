@@ -15,7 +15,7 @@ public class ConsoleSemanticTests
                 }
             }
             """);
-        var script = $"{lua}\nT.Test()";
+        var script = $"{lua}\nT.test()";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("hello", result);
     }
@@ -33,7 +33,7 @@ public class ConsoleSemanticTests
                 }
             }
             """);
-        var script = $"{lua}\nT.Test()";
+        var script = $"{lua}\nT.test()";
         var result = TestHelper.RunLua(script).Trim();
         Assert.Equal("42", result);
     }

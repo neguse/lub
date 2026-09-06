@@ -13,7 +13,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => 5 & 3;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1", result);
     }
 
@@ -25,7 +25,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => 5 | 2;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("7", result);
     }
 
@@ -38,7 +38,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => 5 ^ 3;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("6", result);
     }
 
@@ -50,7 +50,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => ~5;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("-6", result);
     }
 
@@ -62,7 +62,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => 1 << 4;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("16", result);
     }
 
@@ -74,7 +74,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => 256 >> 4;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("16", result);
     }
 
@@ -87,7 +87,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test() => 1 | 2 & 3;
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -100,7 +100,7 @@ public class BitwiseOperatorTests
             {
                 public static int Test(int n) => 1 << n + 1;
             }
-            """, "T.Test(2)");
+            """, "T.test(2)");
         Assert.Equal("8", result);
     }
 
@@ -121,7 +121,7 @@ public class BitwiseOperatorTests
                     return x;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("5", result);
     }
 
@@ -138,7 +138,7 @@ public class BitwiseOperatorTests
                     return 0;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1", result);
     }
 
@@ -163,7 +163,7 @@ public class BitwiseOperatorTests
                     return (int)cleared;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("4", result);
     }
 

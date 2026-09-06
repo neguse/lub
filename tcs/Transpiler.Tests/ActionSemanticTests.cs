@@ -17,7 +17,7 @@ public class ActionSemanticTests
                     return x;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("42", result);
     }
 
@@ -40,7 +40,7 @@ public class ActionSemanticTests
                     return result;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("42", result);
     }
 }

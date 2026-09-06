@@ -44,6 +44,7 @@ public class Program
         bool includeRuntime = true;
         bool checkNaming = true;
         bool snapshot = false;
+        bool module = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -91,6 +92,10 @@ public class Program
             {
                 snapshot = true;
             }
+            else if (args[i] == "--module")
+            {
+                module = true;
+            }
             else if (!args[i].StartsWith('-'))
             {
                 inputPaths.Add(args[i]);
@@ -100,6 +105,9 @@ public class Program
                 return Error($"unknown option: {args[i]}");
             }
         }
+
+        if (module && (entryClass != null || snapshot))
+            return Error("--module cannot be combined with --entry/--snapshot");
 
         if (snapshot)
         {
@@ -148,7 +156,7 @@ public class Program
 
         var options = new BuildOptions(
             outputPath, entryClass, preludePath, emitSourceMap,
-            includeRuntime, checkNaming, snapshot);
+            includeRuntime, checkNaming, snapshot, module);
         var conflict = FindOutputPathConflict(inputPaths, refPaths, options);
         if (conflict != null)
             return Error(conflict);
@@ -160,7 +168,7 @@ public class Program
 
     private sealed record BuildOptions(string? OutputPath, string? EntryClass,
         string? PreludePath, bool EmitSourceMap, bool IncludeRuntime,
-        bool CheckNaming, bool Snapshot = false);
+        bool CheckNaming, bool Snapshot = false, bool Module = false);
 
     private static string? FindOutputPathConflict(
         IReadOnlyList<string> inputPaths, IReadOnlyList<string> refPaths,
@@ -228,7 +236,7 @@ public class Program
 
     private static void PrintUsage(TextWriter writer)
     {
-        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check]");
+        writer.WriteLine("Usage: tcs <input.cs> [input2.cs ...] [--ref <ref.cs>] [-o <output.lua>] [--entry <Class>] [--module] [--prelude <shim.lua>] [--sourcemap] [--watch] [--no-runtime] [--no-naming-check]");
         writer.WriteLine("       tcs check <input.cs> [input2.cs ...] [--ref <ref.cs>] [--no-naming-check]");
         writer.WriteLine("       tcs --map-stacktrace <output.lua.map> [trace.txt]");
         writer.WriteLine("       tcs --help");
@@ -241,6 +249,7 @@ public class Program
         writer.WriteLine("       --prelude <shim.lua>        # prepend a user Lua file (host API shim, etc.) to the output");
         writer.WriteLine("       --no-runtime                # omit embedded TinySystem runtime prelude");
         writer.WriteLine("       --snapshot                  # emit module-registry bridge snapshot (requires --entry)");
+        writer.WriteLine("       --module                    # append 'return { Type = Type, ... }' so require() gets the defined types");
     }
 
     private static int Error(string message)
@@ -364,7 +373,8 @@ public class Program
                 return RunSnapshot(inputPaths, sources, refSources, options);
 
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, options.EntryClass, options.CheckNaming);
+                refSources, options.EntryClass, options.CheckNaming,
+                module: options.Module);
 
             if (!result.Success)
             {
@@ -574,7 +584,8 @@ public class Program
             var refSources = refPaths.Count > 0
                 ? refPaths.Select(File.ReadAllText).ToArray() : null;
             var result = Transpiler.TranspileWithDiagnostics(sources, inputPaths.ToArray(),
-                refSources, options.EntryClass, options.CheckNaming);
+                refSources, options.EntryClass, options.CheckNaming,
+                module: options.Module);
 
             if (!result.Success)
             {

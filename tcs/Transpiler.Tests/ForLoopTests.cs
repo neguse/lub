@@ -19,7 +19,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.Sum(5)");
+            "Loop.sum(5)");
         Assert.Equal("10", result);
     }
 
@@ -40,7 +40,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.Sum(10)");
+            "Loop.sum(10)");
         Assert.Equal("55", result);
     }
 
@@ -60,7 +60,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.FirstOver(5)");
+            "Loop.first_over(5)");
         Assert.Equal("6", result);
     }
 
@@ -84,7 +84,7 @@ public class ForLoopTests
                 }
             }
             """,
-            "Loop.Multiply(3, 4)");
+            "Loop.multiply(3, 4)");
         Assert.Equal("12", result);
     }
 
@@ -107,7 +107,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("25", result); // 1+3+5+7+9
     }
 
@@ -130,7 +130,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("12", result); // 1+2+4+5
     }
 
@@ -156,7 +156,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("16", result); // (0+1+3+4)*2
     }
 
@@ -179,7 +179,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("12", result); // 1+2+4+5
     }
 
@@ -201,7 +201,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("6", result);
     }
@@ -222,7 +222,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("6", result);
     }
@@ -243,7 +243,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("6", result);
     }
@@ -266,11 +266,11 @@ public class ForLoopTests
                     return i;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("5", result);
     }
 
-    // T144: C# の for 条件は毎 iteration 再評価される。bound が動的な場合は
+    // C# の for 条件は毎 iteration 再評価される。bound が動的な場合は
     // Lua numeric for (limit 一回評価) に落とさず while で再評価する。
     [Fact]
     public void For_BoundVariableMutatedInBody_ReevaluatedEachIteration()
@@ -290,7 +290,7 @@ public class ForLoopTests
                     return count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("5", result);
     }
 
@@ -318,7 +318,7 @@ public class ForLoopTests
                     return $"{Calls}|{sum}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("4|3", result);
     }
 
@@ -342,7 +342,7 @@ public class ForLoopTests
                     return iterations;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -363,7 +363,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("8", result);
     }
 
@@ -384,7 +384,7 @@ public class ForLoopTests
                     return sum;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("6", result);
     }
 
@@ -404,11 +404,11 @@ public class ForLoopTests
                     return i;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("11", result); // Executes once even though 10 >= 5
     }
 
-    // T221: C# の for 制御変数はループ全体で 1 個であり、closure は全反復で
+    // C# の for 制御変数はループ全体で 1 個であり、closure は全反復で
     // 同じ変数を共有する (il-spec §7)。Lua numeric for は反復ごとに新しい
     // 変数のため、捕捉がある場合は while 脱糖で意味論を保つ。
     [Fact]
@@ -434,7 +434,7 @@ public class ForLoopTests
                     return s;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3,3,3,", result);
     }
 
@@ -462,7 +462,7 @@ public class ForLoopTests
                     return s;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("10,20,", result);
     }
 }

@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
-// struct / record struct の emit (T219b)。instance は metatable 無しの
+// struct / record struct の emit。instance は metatable 無しの
 // plain table で、member は静的自由関数 (`S.M(self, ...)`) として同名 table に
 // 載る — struct は継承がなく呼び出しサイトの静的型が確定するため動的
 // ディスパッチ不要で、呼び出し側 (IlBuild) が直接呼ぶ。
@@ -29,7 +29,7 @@ public partial class LuaEmitter
         EmitStructMembers(model, name, structDecl.Members);
     }
 
-    // record struct (T219b(b))。struct の emit の上に positional primary ctor
+    // record struct。struct の emit の上に positional primary ctor
     // と値等価 (op_Equality) を合成する。== の呼び出しサイトは IlBuild が
     // 静的型から直接 op_Equality へ振り分ける
     private void VisitRecordStruct(SemanticModel model,
@@ -53,7 +53,7 @@ public partial class LuaEmitter
             _indent++;
             AppendLine($"local self = {name}.new()");
             foreach (var p in paramNames)
-                AppendLine($"self.{p} = {p}");
+                AppendLine($"self.{N(p)} = {p}");
             EmitMemberInitializers(model, rec.Members);
             AppendLine("return self");
             _indent--;
@@ -136,11 +136,11 @@ public partial class LuaEmitter
                 case FieldDeclarationSyntax field:
                     foreach (var v in field.Declaration.Variables)
                         if (v.Initializer != null)
-                            AppendLine($"self.{v.Identifier.ValueText} = " +
+                            AppendLine($"self.{N(v.Identifier.ValueText)} = " +
                                 $"{VisitExpression(model, v.Initializer.Value)}");
                     break;
                 case PropertyDeclarationSyntax { Initializer: not null } prop:
-                    AppendLine($"self.{prop.Identifier.ValueText} = " +
+                    AppendLine($"self.{N(prop.Identifier.ValueText)} = " +
                         $"{VisitExpression(model, prop.Initializer.Value)}");
                     break;
             }
@@ -206,9 +206,10 @@ public partial class LuaEmitter
         foreach (var field in type.GetMembers().OfType<IFieldSymbol>())
         {
             if (field.IsStatic || field.IsConst) continue;
+            // IL builder が写像後の名前で参照するので、field 名も Lua 側の名前で返す
             yield return field.AssociatedSymbol is IPropertySymbol prop
-                ? (prop.Name, field.Type)
-                : (field.Name, field.Type);
+                ? (LuaNaming.MemberName(prop), field.Type)
+                : (LuaNaming.MemberName(field), field.Type);
         }
     }
 
@@ -231,7 +232,7 @@ public partial class LuaEmitter
     }
 
     // struct 値が legacy fallback 経路に流れると copy 意味論が消えるため、
-    // silent wrong-code にせず診断する (M5 v1 の安全網)
+    // silent wrong-code にせず診断する (値型対応の安全網)
     private void WarnIfStructInLegacyBody(SemanticModel model, SyntaxNode body)
     {
         var offender = body.DescendantNodesAndSelf()
@@ -261,7 +262,7 @@ public partial class LuaEmitter
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
     // fresh な値 (object creation / initializer IIFE / with 式 / copy 済み) は
     // 他から参照されないので copy 不要。readonly (record) struct は不変で
-    // alias が観測不能なため copy を全省略する (T219b(c))
+    // alias が観測不能なため copy を全省略する
     private IlExpr WrapStructCopy(SemanticModel model, ExpressionSyntax src,
         IlExpr built)
     {
@@ -277,7 +278,7 @@ public partial class LuaEmitter
         return new IlStructCopy(built, type!.Name);
     }
 
-    // struct method/accessor の receiver 規則 (T219b(a)): C# の「変数」
+    // struct method/accessor の receiver 規則: C# の「変数」
     // (local / param / field / 配列要素 / this) なら直渡しで変異が変数に残り、
     // rvalue (property / List indexer / 呼び出し結果等) はコピーへの変異 =
     // 捨てられる。どちらも C# と一致する

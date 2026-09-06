@@ -16,7 +16,7 @@ public class ListSemanticTests
                     return list.Count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("2", result);
     }
 
@@ -34,7 +34,7 @@ public class ListSemanticTests
                     return list[0];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("20", result);
     }
 
@@ -52,7 +52,7 @@ public class ListSemanticTests
                     return list.Count;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("0", result);
     }
 
@@ -70,7 +70,7 @@ public class ListSemanticTests
                     return list.Contains(2);
                 }
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -88,7 +88,7 @@ public class ListSemanticTests
                     return list.IndexOf(20);
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1", result);
     }
 
@@ -106,7 +106,7 @@ public class ListSemanticTests
                     return list[0].ToString() + "," + list[1].ToString() + "," + list[2].ToString();
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("1,2,3", result);
     }
@@ -125,7 +125,7 @@ public class ListSemanticTests
                     return list[0].ToString() + "," + list[1].ToString() + "," + list[2].ToString();
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
 
         Assert.Equal("3,2,1", result);
     }

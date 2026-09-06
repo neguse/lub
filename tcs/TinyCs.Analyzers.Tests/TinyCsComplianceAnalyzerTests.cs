@@ -30,7 +30,7 @@ public class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task StructDeclaration_InstanceMembersClean_StaticReports()
     {
-        // T219b(a): instance member (method/property/ctor) は許可、
+        // instance member (method/property/ctor) は許可、
         // static member は引き続き拒否
         var clean = await AnalyzeAsync("""
             public struct Vec2
@@ -58,7 +58,7 @@ public class TinyCsComplianceAnalyzerTests
     [Fact]
     public async Task RecordStruct_IsClean_StaticMemberReports()
     {
-        // T219b(b): record struct は対応済み。static member は struct と同じ規則
+        // record struct は対応済み。static member は struct と同じ規則
         var clean = await AnalyzeAsync("""
             public readonly record struct Vec2(int X, int Y);
             """);
@@ -564,7 +564,7 @@ public class TinyCsComplianceAnalyzerTests
         Assert.Empty(diagnostics);
     }
 
-    // T138: transpiler check 側 ApiSignatureComplianceTests と同じケースで
+    // transpiler check 側 ApiSignatureComplianceTests と同じケースで
     // Analyzer が同じ TCS1002 判定になることを固定する。
     private static string WrapApiStatement(string statement) => $$"""
         using System;

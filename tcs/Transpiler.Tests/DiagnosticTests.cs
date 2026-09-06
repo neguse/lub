@@ -162,7 +162,7 @@ public class DiagnosticTests
     [Fact]
     public void DataStruct_NoDiagnostic()
     {
-        // M5 (T219) v1: field のみのデータ struct はサブセット内
+        // field のみのデータ struct はサブセット内
         var result = Transpiler.TranspileWithDiagnostics(["""
             public struct Vec2
             {
@@ -175,7 +175,7 @@ public class DiagnosticTests
             w => w.Contains("StructDeclaration"));
     }
 
-    // T219b(b): record struct は対応済み。static member は struct と同じく
+    // record struct は対応済み。static member は struct と同じく
     // サブセット外のまま
     [Fact]
     public void RecordStruct_IsClean_StaticMemberReportsWarning()
@@ -380,7 +380,7 @@ public class DiagnosticTests
             StringSplitOptions.None).Length - 1);
         Assert.Contains("--[[ unsupported: LockStatement ]]", result.Lua);
         Assert.Equal("1", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Locker.Test())").Trim());
+            $"{result.Lua}\nprint(Locker.test())").Trim());
     }
 
     [Fact]
@@ -415,9 +415,9 @@ public class DiagnosticTests
         Assert.DoesNotContain("nameof(", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
             {{result.Lua}}
-            print(tostring(NameDemo.Simple(1)) .. "|" ..
-                tostring(NameDemo.MemberName()) .. "|" ..
-                tostring(NameDemo.TypeName()))
+            print(tostring(NameDemo.simple(1)) .. "|" ..
+                tostring(NameDemo.member_name()) .. "|" ..
+                tostring(NameDemo.type_name()))
             """).Trim());
     }
 
@@ -436,7 +436,7 @@ public class DiagnosticTests
         Assert.DoesNotContain(result.Warnings,
             warning => warning.Contains(TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal("ok", TestHelper.RunLua(
-            $"{result.Lua}\nprint(NameDemo.Run())").Trim());
+            $"{result.Lua}\nprint(NameDemo.run())").Trim());
     }
 
     [Fact]

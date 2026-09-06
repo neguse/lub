@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T230: SessionExports 向け補完/hover クエリ (SemanticQueries) の検証。
+// SessionExports 向け補完/hover クエリ (SemanticQueries) の検証。
 // - speculative fork (ForkWithContent) が session 状態を変えないこと
 // - allowlist フィルタ (「補完に出る = tcs で書ける」) が効くこと
 public class SemanticQueriesTests

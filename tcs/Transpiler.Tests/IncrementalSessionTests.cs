@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T175: IncrementalCompilationSession の M1 core 検証
+// IncrementalCompilationSession の core の検証
 // (doc/incremental-module-compilation-design.md §7-§9, §18.1)。
 public class IncrementalSessionTests
 {
@@ -60,7 +60,7 @@ public class IncrementalSessionTests
         Assert.Equal(1, result.ParsedTreeCount);
         Assert.Equal(1, result.EmittedModuleCount);
         Assert.Equal("game/Counter.cs", result.ChangedArtifacts.Single().ModuleId);
-        Assert.Equal("42", LinkAndRun(session, "Game.Play()"));
+        Assert.Equal("42", LinkAndRun(session, "Game.play()"));
         AssertDiagnosticsParity(session);
     }
 
@@ -71,8 +71,8 @@ public class IncrementalSessionTests
         session.Update("game/Counter.cs", FileA.Replace("return 10;", "return 7;"));
         var full = session.BuildFull();
         Assert.True(full.Success);
-        var incremental = LinkAndRun(session, "Game.Play()");
-        var legacy = TestHelper.RunLua($"{full.Lua}\nprint(Game.Play())").Trim();
+        var incremental = LinkAndRun(session, "Game.play()");
+        var legacy = TestHelper.RunLua($"{full.Lua}\nprint(Game.play())").Trim();
         Assert.Equal(legacy, incremental);
         Assert.Equal("7", incremental);
     }
@@ -88,7 +88,7 @@ public class IncrementalSessionTests
         Assert.True(result.Success);
         Assert.False(result.FastPath);
         Assert.Equal(2, result.EmittedModuleCount);
-        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
+        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
         AssertDiagnosticsParity(session);
     }
 
@@ -117,7 +117,7 @@ public class IncrementalSessionTests
         // last-good は維持され、リンク済み出力は編集前のまま動く (§7.3)
         Assert.Equal(before,
             session.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua);
-        Assert.Equal("10", LinkAndRun(session, "Game.Play()"));
+        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class IncrementalSessionTests
             FileA.Replace("return 10;", "return 1;"));
         Assert.True(recovered.Success);
         Assert.Contains(recovered.ChangedArtifacts, a => a.ModuleId == "game/Game.cs");
-        Assert.Equal("101", LinkAndRun(session, "Game.Play()"));
+        Assert.Equal("101", LinkAndRun(session, "Game.play()"));
         AssertDiagnosticsParity(session);
     }
 
@@ -183,7 +183,7 @@ public class IncrementalSessionTests
         fresh.OpenProject([("game/Counter.cs", edited2), ("game/Game.cs", FileB)]);
         var full = fresh.Artifacts.Single(a => a.ModuleId == "game/Counter.cs").Lua;
         Assert.Equal(full, spliced);
-        Assert.Equal("43", LinkAndRun(session, "Game.Play()"));
+        Assert.Equal("43", LinkAndRun(session, "Game.play()"));
     }
 
     [Fact]

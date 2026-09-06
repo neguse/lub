@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T138: supported API allowlist は完全シグネチャ単位。メソッド名が同じでも
+// supported API allowlist は完全シグネチャ単位。メソッド名が同じでも
 // Lua runtime が実装していない overload は TCS1002 になる。
 public class ApiSignatureComplianceTests
 {

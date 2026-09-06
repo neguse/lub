@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T180: 値型・string の型パターンは Lua 側に型 table が無く、
+// 値型・string の型パターンは Lua 側に型 table が無く、
 // `getmetatable(x) == int` (未定義 global = nil 比較) だと nil がマッチする。
 // type() 判定 (number/boolean/string) を emit する。
 public class TypePatternTests
@@ -21,7 +21,7 @@ public class TypePatternTests
                     return $"{a}|{b}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("false|7", result);
     }
 
@@ -44,7 +44,7 @@ public class TypePatternTests
                     return $"{a}|{c}|{d}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("f|nil|ok", result);
     }
 
@@ -63,11 +63,11 @@ public class TypePatternTests
                 public static string Test() =>
                     $"{Classify(5)}|{Classify(null)}";
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("5|-1", result);
     }
 
-    // T181: 式文脈 (ternary / 複合条件 / lambda) の is-pattern designation 束縛
+    // 式文脈 (ternary / 複合条件 / lambda) の is-pattern designation 束縛
     [Fact]
     public void IsPattern_InTernary_BindsDesignation()
     {
@@ -83,7 +83,7 @@ public class TypePatternTests
                     return $"{a}|{b}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("7|-1", result);
     }
 
@@ -107,7 +107,7 @@ public class TypePatternTests
                 public static string Test() =>
                     Classify(new Circle { R = 9 }) + "|" + Classify(new Shape());
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("big:9|other", result);
     }
 
@@ -136,7 +136,7 @@ public class TypePatternTests
                     return shapes.Count(o => o is Circle c && c.R > 2);
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1", result);
     }
 
@@ -157,7 +157,7 @@ public class TypePatternTests
                     return $"{a}|{b}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("circle|none", result);
     }
 }

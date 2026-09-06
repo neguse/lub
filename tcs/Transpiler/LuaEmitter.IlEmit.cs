@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace TinyCs;
 
 // IL → Lua emit。SemanticModel には依存しない (意味決定は builder 側で完了
-// している)。出力は legacy visitor と同形 — M1 は挙動不変が完了条件。
+// している)。出力は legacy visitor と同形 (移行中は挙動不変が条件)。
 public partial class LuaEmitter
 {
     /// <summary>reload chunk (HotReload.cs) が field initializer IL を
@@ -84,6 +84,18 @@ public partial class LuaEmitter
                 AppendLine($"for _, {feList.Var} in ipairs({RenderIl(feList.Coll)}) do");
                 _indent++;
                 EmitIlBlock(feList.Body);
+                EmitContinueLabel(label);
+                _indent--;
+                AppendLine("end");
+                PopContinueLabel();
+                break;
+            }
+            case IlForeachRunes feRunes:
+            {
+                var label = PushContinueLabel();
+                AppendLine($"for _, {feRunes.Var} in utf8.codes({RenderIl(feRunes.Str)}) do");
+                _indent++;
+                EmitIlBlock(feRunes.Body);
                 EmitContinueLabel(label);
                 _indent--;
                 AppendLine("end");

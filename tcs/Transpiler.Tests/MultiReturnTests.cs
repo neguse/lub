@@ -45,11 +45,11 @@ public class MultiReturnTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
         var script = $$"""
-            Io = { load_text = function(path)
+            io = { load_text = function(path)
               return "hello:" .. path, 3, "ready"
             end }
             {{result.Lua}}
-            print(Game.Run())
+            print(Game.run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 
@@ -79,9 +79,9 @@ public class MultiReturnTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
         var script = $$"""
-            Host = { try_read = function() return true, 42 end }
+            host = { try_read = function() return true, 42 end }
             {{result.Lua}}
-            print(Game.Run())
+            print(Game.run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 
@@ -108,9 +108,9 @@ public class MultiReturnTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
         var script = $$"""
-            Io = { load_text = function() return "t", 7, "s" end }
+            io = { load_text = function() return "t", 7, "s" end }
             {{result.Lua}}
-            print(Game.Run())
+            print(Game.run())
             """;
         var output = TestHelper.RunLua(script).Trim();
 

@@ -36,19 +36,19 @@ public class SourceMapTests
         var result = Transpiler.TranspileWithDiagnostics([source], ["calc.cs"]);
         Assert.True(result.Success);
 
-        // Find the "function Calc.Add" line and check it maps to C# line 3
+        // Find the "function Calc.add" line and check it maps to C# line 3
         var lua = result.Lua;
         var lines = lua.Split('\n');
         int funcLine = 0;
         for (int i = 0; i < lines.Length; i++)
         {
-            if (lines[i].Contains("function Calc.Add"))
+            if (lines[i].Contains("function Calc.add"))
             {
                 funcLine = i + 1; // 1-based
                 break;
             }
         }
-        Assert.True(funcLine > 0, "Could not find function Calc.Add in output");
+        Assert.True(funcLine > 0, "Could not find function Calc.add in output");
         var entry = result.SourceMap!.Lookup(funcLine);
         Assert.NotNull(entry);
         Assert.Equal("calc.cs", entry.Value.File);

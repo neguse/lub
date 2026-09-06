@@ -64,13 +64,13 @@ public static partial class TinyCsComplianceFacts
     {
         syntaxName = node switch
         {
-            // struct は M5 (T219) v1 でデータ struct (field のみ) を解除。
+            // データ struct (field のみ) はサブセット内。
             // ctor / method / property 等の member は引き続き拒否する
             // (メソッド付き値型は metatable 無し表現と両立しないため)。
             StructDeclarationSyntax nestedStruct
                 when nestedStruct.Parent is TypeDeclarationSyntax
                     => "NestedTypeDeclaration",
-            // T219b(a)(b): instance method / property / 単一のパラメータ付き
+            // instance method / property / 単一のパラメータ付き
             // ctor は対応 (静的自由関数へ emit)。record struct 本体の member も
             // 同じ規則。static member・operator・indexer 等は引き続き
             // サブセット外
@@ -87,7 +87,7 @@ public static partial class TinyCsComplianceFacts
                 when type.Modifiers.Any(SyntaxKind.PartialKeyword)
                     => "PartialTypeDeclaration",
             // nested class は Lua 出力に emit されず、参照時に実行時 nil の
-            // silent wrong-code になる (T215 で実測 → T227)
+            // silent wrong-code になる
             ClassDeclarationSyntax nested
                 when nested.Parent is TypeDeclarationSyntax
                     => "NestedTypeDeclaration",
@@ -284,7 +284,7 @@ public static partial class TinyCsComplianceFacts
             && assignment.Left == node;
     }
 
-    // struct instance member は静的自由関数へ emit できる (T219b(a))。
+    // struct instance member は静的自由関数へ emit できる。
     // パラメータなし明示 ctor は `new S()` (zero 値) と衝突するため除外。
     // override (ToString/Equals/GetHashCode) は呼び出しが tostring 等の
     // 動的経路に乗り metatable なしでは差し替えられないため除外。

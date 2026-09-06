@@ -23,7 +23,7 @@ public class InheritanceTests
             -- base() is not yet supported in ctor, so test method inheritance
             (function()
               local d = Dog.new("Rex")
-              return d:Speak()
+              return d:speak()
             end)()
             """);
         // Constructor chaining (base()) is not yet implemented,
@@ -49,7 +49,7 @@ public class InheritanceTests
                 public new int Area() { return this.Side * this.Side; }
             }
             """, """
-            Square.new(5):Area()
+            Square.new(5):area()
             """);
         Assert.Equal("25", result);
     }
@@ -77,13 +77,13 @@ public class InheritanceTests
                 }
             }
             """, """
-            Dog.new("Rex"):Speak()
+            Dog.new("Rex"):speak()
             """);
 
         Assert.Equal("Rex speaks and barks", result);
     }
 
-    // T149: 継承 link は宣言順・ファイル順に依存しない
+    // 継承 link は宣言順・ファイル順に依存しない
     [Fact]
     public void Inheritance_DerivedDeclaredBeforeBase_SameFile()
     {
@@ -97,7 +97,7 @@ public class InheritanceTests
                 public string Speak() => "sound";
             }
             """, """
-            Dog.new():Bark()
+            Dog.new():bark()
             """);
 
         Assert.Equal("sound!", result);
@@ -120,13 +120,13 @@ public class InheritanceTests
                 public int One() => 1;
             }
             """, """
-            C.new():Three()
+            C.new():three()
             """);
 
         Assert.Equal("3", result);
     }
 
-    // T150: initializer なしの派生 constructor でも C# は暗黙に base() を呼ぶ
+    // initializer なしの派生 constructor でも C# は暗黙に base() を呼ぶ
     [Fact]
     public void ImplicitBaseCall_PreservesBaseFieldInitializers()
     {
@@ -139,7 +139,7 @@ public class InheritanceTests
             {
             }
             """, """
-            D.new().X
+            D.new().x
             """);
 
         Assert.Equal("42", result);
@@ -163,7 +163,7 @@ public class InheritanceTests
                 }
             }
             """, """
-            (function() local d = D.new() return d.X .. "|" .. d.Y end)()
+            (function() local d = D.new() return d.x .. "|" .. d.y end)()
             """);
 
         Assert.Equal("42|43", result);
@@ -234,7 +234,7 @@ public class InheritanceTests
                 public string Speak() => "sound";
             }
             """]);
-        var result = TestHelper.RunLua(lua + "\nprint(Dog.new():Bark())").Trim();
+        var result = TestHelper.RunLua(lua + "\nprint(Dog.new():bark())").Trim();
 
         Assert.Equal("sound!", result);
     }

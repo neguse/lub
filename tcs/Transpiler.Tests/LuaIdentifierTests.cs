@@ -213,7 +213,7 @@ public class LuaIdentifierTests
         Assert.Equal("9", output);
     }
 
-    // T151: `self` は Lua method receiver、`__tcs_` prefix は generated temp
+    // `self` は Lua method receiver、`__tcs_` prefix は generated temp
     // として emit 側が予約する。宣言すると receiver/temp を壊すため TCS1001。
     private static void AssertReservedIdentifierWarning(TranspileResult result,
         string name)

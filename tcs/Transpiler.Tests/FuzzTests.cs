@@ -103,8 +103,8 @@ public class FuzzTests
     // 検出網の自己検証 (design doc §17 C4 gate): 生成 Lua へ故障を注入し、
     // differential が必ず検出することを確認する
     private static string InjectFault(string lua) => lua.Replace(
-        "function Program.Main()",
-        "function Program.Main()\n  print(\"FAULT\")",
+        "function Program.main()",
+        "function Program.main()\n  print(\"FAULT\")",
         StringComparison.Ordinal);
 
     [Fact]

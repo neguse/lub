@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T168: Dictionary<string, object> の wire format 契約を固定する。
+// Dictionary<string, object> の wire format 契約を固定する。
 // lub 等の host は Dictionary を --ref 関数へ渡された素の Lua table
 // (文字列キー→値のみ、metatable / bookkeeping フィールドなし) として読む。
 // Count は保存メタデータではなく pairs 走査で都度計算される。
@@ -51,7 +51,7 @@ public class DictionaryWireFormatTests
 
         var script = $$"""
             local handle = { id = 7 }
-            Host = {
+            host = {
               create = function() return handle end,
               inspect = function(t)
                 if getmetatable(t) ~= nil then return "metatable" end
@@ -73,7 +73,7 @@ public class DictionaryWireFormatTests
               end,
             }
             {{result.Lua}}
-            print(Game.Run())
+            print(Game.run())
             """;
 
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -102,7 +102,7 @@ public class DictionaryWireFormatTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
 
         var script = $$"""
-            Host = {
+            host = {
               create = function() return nil end,
               inspect = function(t)
                 if getmetatable(t) ~= nil then return "metatable" end
@@ -117,7 +117,7 @@ public class DictionaryWireFormatTests
               end,
             }
             {{result.Lua}}
-            print(Game.Run())
+            print(Game.run())
             """;
 
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
@@ -144,7 +144,7 @@ public class DictionaryWireFormatTests
                     return $"{before}:{d.Count}:{d.ContainsKey("str")}:{d.ContainsKey("flag")}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3:2:true:false", result);
     }
 
@@ -172,7 +172,7 @@ public class DictionaryWireFormatTests
                     return n;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3", result);
     }
 }

@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T214 (M1): method body の syntax→IL→Lua 経路。ストラングラー方式のため
+// method body の syntax→IL→Lua 経路。ストラングラー方式のため
 // 「IL 対応構文だけの method は IL 経由で emit される」ことと
 // 「未対応構文を含む method は legacy へ fallback して従来出力になる」ことを
 // 両方ロックする。挙動不変そのものは既存 corpus + differential が守る。
@@ -51,7 +51,7 @@ public class IlPipelineTests
                     return $"{total}|{s}|{neg / 2}|{neg % 2}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("15|1245|-3|-1", result);
     }
 
@@ -123,11 +123,11 @@ public class IlPipelineTests
                     return $"{xs.Count}:{d}:{xs[0]}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3:13:1", result);
     }
 
-    // T225: local 初期化 / return 位置の条件式は IIFE でなく if 文へ
+    // local 初期化 / return 位置の条件式は IIFE でなく if 文へ
     [Fact]
     public void Ternary_InLocalAndReturn_IsStatementized()
     {
@@ -155,7 +155,7 @@ public class IlPipelineTests
         Assert.Equal("y?", result);
     }
 
-    // T225 第二スライス: statement 位置の switch 式も IIFE を出さない
+    // statement 位置の switch 式も IIFE を出さない
     [Fact]
     public void SwitchExpr_InStatementPositions_IsStatementized()
     {
@@ -187,7 +187,7 @@ public class IlPipelineTests
         Assert.Equal("ABC", result);
     }
 
-    // T225 第三スライス: ?. / ?? / TryGetValue の IIFE も statement 位置では出さない
+    // ?. / ?? / TryGetValue の IIFE も statement 位置では出さない
     [Fact]
     public void CondAccessAndCoalesce_InStatementPositions_AreStatementized()
     {
@@ -227,7 +227,7 @@ public class IlPipelineTests
         Assert.Equal("true:7:false:0:true", result);
     }
 
-    // T225: root if 条件の TryGetValue 等も IIFE を出さない
+    // root if 条件の TryGetValue 等も IIFE を出さない
     [Fact]
     public void IfCondition_TryGetValue_IsHoisted()
     {

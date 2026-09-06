@@ -32,7 +32,7 @@ public class ComplianceParityTests
         Assert.DoesNotContain("PartialClass = {}", result.Lua);
         Assert.DoesNotContain("PartialRecord = {}", result.Lua);
         Assert.Equal("1", TestHelper.RunLua(
-            $"{result.Lua}\nprint(Locker.Test())").Trim());
+            $"{result.Lua}\nprint(Locker.test())").Trim());
     }
 
     [Fact]
@@ -63,9 +63,9 @@ public class ComplianceParityTests
         Assert.DoesNotContain("nameof(", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
             {{result.Lua}}
-            print(tostring(NameDemo.Simple(1)) .. "|" ..
-                tostring(NameDemo.MemberName()) .. "|" ..
-                tostring(NameDemo.TypeName()))
+            print(tostring(NameDemo.simple(1)) .. "|" ..
+                tostring(NameDemo.member_name()) .. "|" ..
+                tostring(NameDemo.type_name()))
             """).Trim());
     }
 
@@ -85,7 +85,7 @@ public class ComplianceParityTests
         Assert.Equal(0, CountDiagnostics(transpile.Stderr,
             TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal("ok", TestHelper.RunLua(
-            $"{transpile.Lua}\nprint(NameDemo.Run())").Trim());
+            $"{transpile.Lua}\nprint(NameDemo.run())").Trim());
     }
 
     private static (int ExitCode, string Stdout, string Stderr, string Lua)

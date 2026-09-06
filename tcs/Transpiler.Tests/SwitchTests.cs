@@ -147,7 +147,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("two", result);
     }
 
@@ -172,7 +172,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("other", result);
     }
 
@@ -197,7 +197,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("left", result);
     }
 
@@ -221,7 +221,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("three", result);
     }
 
@@ -246,11 +246,11 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("running", result);
     }
 
-    // T140: switch の対象式は一度だけ評価される (arm/case 数に依存しない)。
+    // switch の対象式は一度だけ評価される (arm/case 数に依存しない)。
     [Fact]
     public void SwitchExpression_GoverningExpression_EvaluatedOnce()
     {
@@ -277,7 +277,7 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("1|mid", result);
     }
 
@@ -309,11 +309,11 @@ public class SwitchTests
                 }
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("1|mid", result);
     }
 
-    // T140: switch statement のパターンラベル (relational / or / 型) は
+    // switch statement のパターンラベル (relational / or / 型) は
     // 従来空条件の不正 Lua になっていた。case 値ラベルとの混在も含めて動くこと。
     [Fact]
     public void SwitchStatement_PatternAndConstantLabels_Mixed()
@@ -340,7 +340,7 @@ public class SwitchTests
                     Classify(2) + "|" + Classify(3) + "|" + Classify(11) + "|" + Classify(5);
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("pair|three|big|other", result);
     }
 
@@ -374,7 +374,7 @@ public class SwitchTests
                     + Classify(new Shape());
             }
             """,
-            "T.Test()");
+            "T.test()");
         Assert.Equal("big:10|circle|other", result);
     }
 

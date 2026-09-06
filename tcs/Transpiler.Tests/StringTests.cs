@@ -11,7 +11,7 @@ public class StringTests
                 public static string Hello() { return "world"; }
             }
             """,
-            "S.Hello()");
+            "S.hello()");
         Assert.Equal("world", result);
     }
 
@@ -27,7 +27,7 @@ public class StringTests
                 }
             }
             """,
-            "S.Greet('Alice', 30)");
+            "S.greet('Alice', 30)");
         Assert.Equal("Hello Alice, age 30", result);
     }
 
@@ -93,7 +93,7 @@ public class StringTests
                 }
             }
             """,
-            "S.Wrap(nil)");
+            "S.wrap(nil)");
         Assert.Equal("><", result);
     }
 
@@ -112,7 +112,7 @@ public class StringTests
                 }
             }
             """,
-            "S.Append(nil, nil)");
+            "S.append(nil, nil)");
         Assert.Equal("-", result);
     }
 
@@ -132,7 +132,7 @@ public class StringTests
                 }
             }
             """,
-            "S.Test()",
+            "S.test()",
             differential: false); // Length は C# UTF-16 / Lua byte の既知差異
         // C#: "\x9Good..." = tab + "Good text" (10 chars)、
         //     "\x9Bad..." = U+9BAD + " text" (6 chars → UTF-8 では 3+5 bytes)、
@@ -153,7 +153,7 @@ public class StringTests
                 }
             }
             """,
-            "S.Test()");
+            "S.test()");
         Assert.Equal("{x=    FF} ff 255 |", result);
     }
 
@@ -169,7 +169,7 @@ public class StringTests
                 }
             }
             """,
-            "tostring(S.IsNull(nil))");
+            "tostring(S.is_null(nil))");
         Assert.Equal("true", result);
     }
 }

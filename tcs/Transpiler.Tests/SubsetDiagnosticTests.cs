@@ -1,6 +1,6 @@
 namespace TinyCs.Tests;
 
-// T188 以降の spec conformance 由来サブセット診断 (tuple / args / attribute /
+// spec conformance 由来のサブセット診断 (tuple / args / attribute /
 // interface member / delegate / decimal / Console allowlist)
 public class SubsetDiagnosticTests
 {
@@ -487,7 +487,7 @@ public class SubsetDiagnosticTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("Decimal"));
     }
 
-    // T223: interface は実行時表現を持たないため、interface を対象とする
+    // interface は実行時表現を持たないため、interface を対象とする
     // type test は常に偽になる (il-spec §2)。診断で拒否する。
     [Fact]
     public void InterfaceTypeTest_ReportsWarning()
@@ -526,7 +526,7 @@ public class SubsetDiagnosticTests
             w => w.Contains("InterfaceTypeTest"));
     }
 
-    // T223: 孤立 surrogate は UTF-8 octet 列への写像を持たない (il-spec §11)
+    // 孤立 surrogate は UTF-8 octet 列への写像を持たない (il-spec §11)
     [Fact]
     public void LoneSurrogateLiteral_ReportsWarning()
     {
@@ -553,7 +553,7 @@ public class SubsetDiagnosticTests
             w => w.Contains("LoneSurrogateLiteral"));
     }
 
-    // T227: nested class は emit されず参照時に実行時 nil になる
+    // nested class は emit されず参照時に実行時 nil になる
     [Fact]
     public void NestedClass_ReportsWarning()
     {
@@ -567,7 +567,7 @@ public class SubsetDiagnosticTests
         AssertUnsupportedWarning(result, "NestedTypeDeclaration");
     }
 
-    // T224: instance method group / 非リテラル alignment は silent wrong-code
+    // instance method group / 非リテラル alignment は silent wrong-code
     [Fact]
     public void InstanceMethodGroupAndAlignment_ReportWarnings()
     {

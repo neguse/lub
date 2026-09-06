@@ -79,7 +79,7 @@ internal static partial class CorpusDifferential
             return true;
         // C# double の整数値は Lua 側で integer になり得る (math.ceil 等)。
         // 表示差 (4.0 vs 4) は既知の数値表現差なので数値等価で比較する。
-        // M4 (T216): 実行側の数値モデルは f32 (LUA_32BITS) なので、.NET 側の
+        // 実行側の数値モデルは f32 (LUA_32BITS) なので、.NET 側の
         // double 値は f32 へ量子化してから比較する (il-spec §6)
         return double.TryParse(normalized, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var dotnetNumber)
@@ -105,6 +105,10 @@ internal static partial class CorpusDifferential
 
         expr = expr.Replace('\'', '"');
         expr = NilRegex().Replace(expr, "null");
+        // Lua 側の snake_case メンバ名 (LuaNaming) を C# の PascalCase へ戻す
+        expr = SnakeMemberRegex().Replace(expr, m =>
+            m.Groups[1].Value == "new" ? m.Value
+                : m.Value[0] + ToPascal(m.Groups[1].Value));
 
         var probe = CSharpSyntaxTree.ParseText($"class __P {{ object F() => ({expr}); }}");
         if (probe.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error))
@@ -198,6 +202,15 @@ internal static partial class CorpusDifferential
 
     [GeneratedRegex(@"(?<![\w.])nil(?![\w])")]
     private static partial Regex NilRegex();
+
+    [GeneratedRegex(@"(?<=[\w\)\]])[.:]([a-z_][a-z0-9_]*)(?![\w])")]
+    private static partial Regex SnakeMemberRegex();
+
+    private static string ToPascal(string snake)
+    {
+        var parts = snake.TrimEnd('_').Split('_', StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(parts.Select(p => char.ToUpperInvariant(p[0]) + p[1..]));
+    }
 
     // Lua 専用の識別子/演算子が残っていたら翻訳不能扱いにする
     [GeneratedRegex(@"(?<![\w.])(and|or|not|local|end|then|elseif|repeat|until)(?![\w])|~=|\.\.\.")]

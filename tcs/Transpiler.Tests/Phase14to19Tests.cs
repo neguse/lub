@@ -17,7 +17,7 @@ public class Phase14to19Tests
                     return p is { X: > 0 };
                 }
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -34,7 +34,7 @@ public class Phase14to19Tests
                     return p is { X: > 0, Y: > 0 };
                 }
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("false", result);
     }
 
@@ -56,7 +56,7 @@ public class Phase14to19Tests
                     };
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("Q1", result);
     }
 
@@ -76,7 +76,7 @@ public class Phase14to19Tests
                     return p2.X + p2.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("12", result);
     }
 
@@ -94,7 +94,7 @@ public class Phase14to19Tests
                     return p1.X;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1", result);
     }
 
@@ -112,7 +112,7 @@ public class Phase14to19Tests
                     return p2.X + p2.Y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("30", result);
     }
 
@@ -132,11 +132,11 @@ public class Phase14to19Tests
                     return x + y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("7", result);
     }
 
-    // ===== T142: with expression receiver の一回評価 =====
+    // ===== with expression receiver の一回評価 =====
 
     [Fact]
     public void With_SideEffectReceiver_EvaluatedOnce()
@@ -159,7 +159,7 @@ public class Phase14to19Tests
                     return $"{Calls}|{moved.X},{moved.Y}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|10,2", result);
     }
 
@@ -180,11 +180,11 @@ public class Phase14to19Tests
                     return $"{p.X}|{q.X}|{q.Sum()}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|10|12", result);
     }
 
-    // ===== T141: deconstruction RHS の一回評価 =====
+    // ===== deconstruction RHS の一回評価 =====
 
     [Fact]
     public void Deconstruct_SideEffectRhs_EvaluatedOnce()
@@ -207,7 +207,7 @@ public class Phase14to19Tests
                     return $"{Calls}|{x}{y}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|34", result);
     }
 
@@ -232,7 +232,7 @@ public class Phase14to19Tests
                     return $"{Calls}|{x}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|3", result);
     }
 
@@ -259,7 +259,7 @@ public class Phase14to19Tests
                     return $"{Calls}|{a}{b}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("1|56", result);
     }
 
@@ -279,7 +279,7 @@ public class Phase14to19Tests
                     return p1 == p2;
                 }
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("true", result);
     }
 
@@ -297,7 +297,7 @@ public class Phase14to19Tests
                     return p1 == p2;
                 }
             }
-            """, "tostring(T.Test())");
+            """, "tostring(T.test())");
         Assert.Equal("false", result);
     }
 
@@ -321,7 +321,7 @@ public class Phase14to19Tests
                     return "hello".Shout();
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("hello!", result);
     }
 
@@ -344,7 +344,7 @@ public class Phase14to19Tests
                     return a.Add(5);
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("15", result);
     }
 
@@ -367,7 +367,7 @@ public class Phase14to19Tests
                     return dict["a"] + dict["b"];
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3", result);
     }
 
@@ -385,7 +385,7 @@ public class Phase14to19Tests
                     return $"{pi:F2}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("3.14", result);
     }
 
@@ -401,7 +401,7 @@ public class Phase14to19Tests
                     return $"{n:D3}";
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("007", result);
     }
 
@@ -420,7 +420,7 @@ public class Phase14to19Tests
                     return y;
                 }
             }
-            """, "T.Test()");
+            """, "T.test()");
         Assert.Equal("10", result);
     }
 

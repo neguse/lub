@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace TinyCs;
 
-// doc/incremental-module-compilation-design.md §7-§9 の M1 core。
+// doc/incremental-module-compilation-design.md §7-§9 の core。
 // 常駐 Roslyn session を保持し、method body だけの編集では変更 tree のみを
 // 診断・emit する。次のいずれかに該当する編集は全 editable module の
 // slow path に落とす (正しさ優先、§8.1):
@@ -155,7 +155,7 @@ public sealed class IncrementalCompilationSession
     // 補完/hover (SemanticQueries) 用の speculative fork。エディタの現在
     // バッファ content で tree を差し替えた compilation を返すが、session
     // 状態 (_texts/_trees/_compilation/Revision/artifacts) は変更しない。
-    // 返り値は transient で、呼び出し側もキャッシュしない前提 (T230)。
+    // 返り値は transient で、呼び出し側もキャッシュしない前提。
     public (CSharpCompilation Compilation, SyntaxTree Tree)? ForkWithContent(
         string path, string content)
     {

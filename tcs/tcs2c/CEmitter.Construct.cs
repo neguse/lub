@@ -92,7 +92,7 @@ internal sealed partial class CEmitter
     }
 
 
-    // 実行時型 dispatch (T218-m4): 「chain 最上位で宣言され、strict 子孫が
+    // 実行時型 dispatch: 「chain 最上位で宣言され、strict 子孫が
     // 再宣言している」method ごとに type_id → 最寄り実装の switch を生成
     private void EmitDispatchers()
     {

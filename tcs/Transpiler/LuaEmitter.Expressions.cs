@@ -41,13 +41,14 @@ public partial class LuaEmitter
                 VisitImplicitObjectCreation(model, ic),
             ThisExpressionSyntax => "self",
             BaseExpressionSyntax => "self",
-            CastExpressionSyntax cast => VisitExpression(model, cast.Expression),
+            CastExpressionSyntax cast => VisitCast(model, cast),
             SwitchExpressionSyntax switchExpr => VisitSwitchExpression(model, switchExpr),
             IsPatternExpressionSyntax isPattern => VisitIsPattern(model, isPattern),
             ConditionalAccessExpressionSyntax condAccess =>
                 VisitConditionalAccess(model, condAccess),
             MemberBindingExpressionSyntax memberBinding =>
-                $"__tcs_ca.{memberBinding.Name.Identifier.ValueText}",
+                $"__tcs_ca.{(model.GetSymbolInfo(memberBinding).Symbol is { } mbSym
+                    ? N(mbSym) : N(memberBinding.Name.Identifier.ValueText))}",
             ConditionalExpressionSyntax ternary => VisitTernary(model, ternary),
             InterpolatedStringExpressionSyntax interp =>
                 VisitInterpolatedString(model, interp),
@@ -72,26 +73,30 @@ public partial class LuaEmitter
     private string ResolveIdentifier(SemanticModel model, IdentifierNameSyntax id)
     {
         var symbol = model.GetSymbolInfo(id).Symbol;
+        if (ConstLiteral(symbol) is { } constLit)
+            return constLit;
         if (symbol is IMethodSymbol method && method.ContainingType != null)
         {
             if (method.IsStatic)
-                return $"{method.ContainingType.Name}.{method.Name}";
+                return $"{TypeRef(method.ContainingType)}.{N(method)}";
             // Instance method without explicit receiver → implicit this (self)
-            return $"self:{method.Name}";
+            return $"self:{N(method)}";
         }
         if (symbol is IPropertySymbol customProp && IsCustomProperty(customProp))
         {
             return customProp.IsStatic
-                ? $"{customProp.ContainingType.Name}.get_{id.Identifier.ValueText}()"
-                : $"self:get_{id.Identifier.ValueText}()";
+                ? $"{TypeRef(customProp.ContainingType)}.get_{N(customProp)}()"
+                : $"self:get_{N(customProp)}()";
         }
         if (symbol is IFieldSymbol { IsStatic: false }
             or IPropertySymbol { IsStatic: false })
-            return $"self.{id.Identifier.ValueText}";
+            return $"self.{N(symbol)}";
         if (symbol is IFieldSymbol { IsStatic: true } sf && sf.ContainingType != null)
-            return $"{sf.ContainingType.Name}.{id.Identifier.ValueText}";
+            return $"{TypeRef(sf.ContainingType)}.{N(sf)}";
         if (symbol is IPropertySymbol { IsStatic: true } sp && sp.ContainingType != null)
-            return $"{sp.ContainingType.Name}.{id.Identifier.ValueText}";
+            return $"{TypeRef(sp.ContainingType)}.{N(sp)}";
+        if (symbol is INamedTypeSymbol namedType)
+            return TypeRef(namedType);
         return id.Identifier.ValueText;
     }
 
@@ -314,17 +319,14 @@ public partial class LuaEmitter
                 when model.GetSymbolInfo(id).Symbol is IPropertySymbol prop
                     && IsCustomProperty(prop):
                 return prop.IsStatic
-                    ? (prop.ContainingType.Name, id.Identifier.ValueText,
-                        false, ".")
-                    : ("self", id.Identifier.ValueText, false, ":");
+                    ? (TypeRef(prop.ContainingType), N(prop), false, ".")
+                    : ("self", N(prop), false, ":");
             case MemberAccessExpressionSyntax ma
                 when model.GetSymbolInfo(ma).Symbol is IPropertySymbol prop
                     && IsCustomProperty(prop):
                 return prop.IsStatic
-                    ? (prop.ContainingType.Name, ma.Name.Identifier.ValueText,
-                        false, ".")
-                    : (VisitExpression(model, ma.Expression),
-                        ma.Name.Identifier.ValueText,
+                    ? (TypeRef(prop.ContainingType), N(prop), false, ".")
+                    : (VisitExpression(model, ma.Expression), N(prop),
                         HasSideEffectSyntax(ma.Expression), ":");
             default:
                 return null;
@@ -343,8 +345,30 @@ public partial class LuaEmitter
         if (IsListType(typeDef) || receiverType is IArrayTypeSymbol)
             return $"{obj}[{index} + 1]";
 
+        // string indexer: 1 文字 string (char は string で代替)
+        if (receiverType?.SpecialType == SpecialType.System_String)
+            return $"string.sub({obj}, {index} + 1, {index} + 1)";
+
         // Dictionary<K,V> indexer
         return $"{obj}[{index}]";
+    }
+
+    private string VisitCast(SemanticModel model, CastExpressionSyntax cast)
+    {
+        var constant = model.GetConstantValue(cast);
+        if (constant.HasValue && constant.Value is int or long
+            && IsCharType(model.GetTypeInfo(cast.Expression).Type))
+            return Convert.ToString(constant.Value,
+                System.Globalization.CultureInfo.InvariantCulture)!;
+        if (IsCharToIntCast(model, cast))
+        {
+            if (IsStringElementAccess(model, cast.Expression,
+                    out var strRecv, out var strIdx))
+                return $"string.byte({VisitExpression(model, strRecv)}, " +
+                    $"{VisitExpression(model, strIdx)} + 1)";
+            return $"string.byte({VisitExpression(model, cast.Expression)})";
+        }
+        return VisitExpression(model, cast.Expression);
     }
 
     private string VisitAssignment(SemanticModel model, AssignmentExpressionSyntax assign)
@@ -451,9 +475,9 @@ public partial class LuaEmitter
             : body;
     }
 
-    // compound の右辺式 (read op rhs)。T145 の整数/浮動小数判定を共有する。
+    // compound の右辺式 (read op rhs)。整数/浮動小数の判定は除算と共有する。
 
-    // compound の右辺式 (read op rhs)。T145 の整数/浮動小数判定を共有する。
+    // compound の右辺式 (read op rhs)。整数/浮動小数の判定は除算と共有する。
     private string ApplyCompound(SemanticModel model,
         AssignmentExpressionSyntax assign, string op, string read, string right)
     {
@@ -506,7 +530,8 @@ public partial class LuaEmitter
             case MemberAccessExpressionSyntax ma
                 when HasSideEffectSyntax(ma.Expression):
                 return ($"local __tcs_obj = {VisitExpression(model, ma.Expression)}; ",
-                    $"__tcs_obj.{ma.Name.Identifier.ValueText}");
+                    $"__tcs_obj.{(model.GetSymbolInfo(ma).Symbol is { } lowSym
+                        ? N(lowSym) : N(ma.Name.Identifier.ValueText))}");
             case ElementAccessExpressionSyntax ea when HasSideEffectSyntax(ea):
             {
                 var receiver = VisitExpression(model, ea.Expression);

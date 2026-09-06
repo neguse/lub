@@ -86,6 +86,8 @@ public static class NamingAnalyzer
     {
         var name = identifier.Text;
         if (name.Length == 0) return;
+        // `_` (と `__` 等) は discard 相当の慣用名で、規約の対象外
+        if (name.All(c => c == '_')) return;
 
         bool valid = style switch
         {
