@@ -1628,6 +1628,33 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
       // (two reflection entries pointing at distinct registers).
     }
   }
+  // Graphics-stage read-only storage buffers (StructuredBuffer<T>) live in
+  // the same t-register table as textures.
+  for (int i = 0; i < b->storage_buf_count && refl; ++i) {
+    if (!b->storage_bufs[i].name)
+      continue;
+    for (int j = 0; j < refl->storage_buf_count; ++j) {
+      const ShaderStorageBuf *sb = &refl->storage_bufs[j];
+      if (!sb->readonly || strcmp(sb->name, b->storage_bufs[i].name) != 0)
+        continue;
+      DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
+      if (!buf || !buf->res)
+        continue;
+      dx_transition(buf->res.Get(), &buf->state, sampled);
+      if (sb->slot >= 0 && sb->slot < t->srv_count) {
+        UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
+        sd.Format = DXGI_FORMAT_UNKNOWN;
+        sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Buffer.NumElements = (UINT)(buf->bytes / stride);
+        sd.Buffer.StructureByteStride = stride;
+        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
+        h.ptr += (SIZE_T)sb->slot * g.srv_stride;
+        g.device->CreateShaderResourceView(buf->res.Get(), &sd, h);
+      }
+    }
+  }
 
   if (t->srv_root >= 0)
     g.cl->SetGraphicsRootDescriptorTable((UINT)t->srv_root, srv_gpu);

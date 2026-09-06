@@ -44,16 +44,27 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
   // Native SDL_GPU/Vulkan tolerates implicit-LOD there, so a native-only run
   // passes and the pipeline only turns up invalid (black screen) on web: use
   // LUB_SAMPLE_LOD for any sample reached after a branch/loop.
+  //
+  // LUB_VERTEX_ID / LUB_INSTANCE_ID are the per-draw vertex and instance
+  // index (vertex pulling). On SPIR-V Slang lowers SV_VertexID to
+  // VertexIndex - BaseVertex, which needs the DrawParameters capability that
+  // SDL_GPU never enables, so that target uses the raw builtin instead; lub
+  // always draws from base 0, so both mean the same thing. DXC rejects the
+  // Vulkan-only semantic names, hence the per-target spelling.
   if (target == SHADER_TARGET_SDLGPU) {
     return "#define LUB_TEXTURE2D(n) Sampler2D<float4> n\n"
            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
-           "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
+           "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n"
+           "#define LUB_VERTEX_ID SV_VulkanVertexID\n"
+           "#define LUB_INSTANCE_ID SV_VulkanInstanceID\n";
   }
   // wasm and d3d12 use the separate texture+sampler form (D3D12 has no
   // combined image samplers; t/s registers are distinct classes).
   return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
          "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
-         "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
+         "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n"
+         "#define LUB_VERTEX_ID SV_VertexID\n"
+         "#define LUB_INSTANCE_ID SV_InstanceID\n";
 }
 
 #ifndef __EMSCRIPTEN__

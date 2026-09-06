@@ -93,6 +93,13 @@ typedef struct BindingsDesc {
     const char *name; // matches reflection name
     BackendImage image;
   } textures[8];
+  // Graphics-stage read-only storage buffers (StructuredBuffer<T> in a
+  // vertex or fragment shader), resolved by reflection name like textures.
+  int storage_buf_count;
+  struct {
+    const char *name; // matches ShaderStorageBuf.name
+    BackendBuffer buf;
+  } storage_bufs[SGL_MAX_STORAGE_BUFS];
 } BindingsDesc;
 
 typedef struct ReadbackResult {

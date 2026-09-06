@@ -862,6 +862,17 @@ static bool refl_texture_index(const ShaderReflection *refl, LubStr name,
   return false;
 }
 
+static bool refl_storage_buf_index(const ShaderReflection *refl, LubStr name,
+                                   int *out_index) {
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    if (lub_str_eq(name, refl->storage_bufs[i].name)) {
+      *out_index = i;
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool refl_has_storage_texture(const ShaderReflection *refl,
                                      LubStr name) {
   for (int i = 0; i < refl->storage_tex_count; ++i)
@@ -933,6 +944,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   bind.refl = &sh->u.sh.refl;
   uint8_t depth_tex_mask = 0;
   // buffers: name で役割を決める ("indices" / "instances" / それ以外は vertex)
+  int sbi = 0;
   for (int32_t i = 0; i < bs.n_buffers; ++i) {
     const LubBinding *b = bs.buffers[i];
     ResEntry *be = bs.buffer_entries[i];
@@ -946,6 +958,16 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       if (be->u.buf.type == SGL_BUFFER_VERTEX ||
           be->u.buf.type == SGL_BUFFER_STORAGE)
         bind.instance_vbuf = be->u.buf.h;
+    } else if (be->u.buf.type == SGL_BUFFER_STORAGE &&
+               refl_storage_buf_index(&sh->u.sh.refl, b->name, &sbi)) {
+      // The shader declares this name as a StructuredBuffer: bind it as a
+      // graphics-stage storage buffer (vertex pulling), not a vertex buffer.
+      if (bind.storage_buf_count < SGL_MAX_STORAGE_BUFS) {
+        bind.storage_bufs[bind.storage_buf_count].name =
+            sh->u.sh.refl.storage_bufs[sbi].name;
+        bind.storage_bufs[bind.storage_buf_count].buf = be->u.buf.h;
+        bind.storage_buf_count++;
+      }
     } else if (be->u.buf.type == SGL_BUFFER_VERTEX ||
                be->u.buf.type == SGL_BUFFER_STORAGE) {
       // STORAGE buffers can also serve as a vertex source — they are declared
