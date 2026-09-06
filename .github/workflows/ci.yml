@@ -4,15 +4,15 @@
 #
 # 変更検知 (changes job) は保守的な 2 クラスだけ切る:
 #   - docs のみ (docs/** の manual 以外, *.md, .claude/**) → lint のみ
-#   - web サブツリーのみ (web/, haxe-wasm/, docs/manual/) → native をスキップ
-# それ以外は全 job 実行。依存の閉包が広い (src/ は wasm へ、haxe-lib/ は
+#   - web サブツリーのみ (web/, docs/manual/) → native をスキップ
+# それ以外は全 job 実行。依存の閉包が広い (src/ は wasm へ、cs-lib/ は
 # 全 golden へ波及する) ので、細かく削るより漏れない側に倒す。
 #
 # 速度は cache が本体:
 #   - ccache (linux native build / emcc wasm build)
 #   - tcs wasm assets / prebuilt snapshot (content key: tcs submodule SHA +
 #     cs-lib / samples の C# ソース)
-#   - haxe-wasm dist、slang prebuilt、haxe5、playwright browsers、npm
+#   - slang prebuilt、playwright browsers、npm
 # master push が cache を温め、PR はそれを読む (actions/cache の branch scope)。
 name: ci
 
@@ -55,7 +55,7 @@ jobs:
                 *) docs_only=false ;;
               esac
               case "$f" in
-                docs/manual/* | web/* | haxe-wasm/*) ;;
+                docs/manual/* | web/*) ;;
                 *) web_only=false ;;
               esac
             done < /tmp/changed.txt
@@ -114,13 +114,12 @@ jobs:
           restore-keys: ccache-linux-
 
       # SDL3 は vendored build なので X11/Wayland/audio の dev ヘッダが要る。
-      # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓、
-      # neko = haxelib (install-haxe5.sh) のランタイム。
+      # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb neko \
+            ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
             libxfixes-dev libxi-dev libxss-dev libxtst-dev \
@@ -128,15 +127,24 @@ jobs:
             libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
             libdbus-1-dev libudev-dev
 
-      # C# sample gate 用。native-gate.sh --require-cs が skip を fail 扱いにする。
+      # C# sample gate と .NET 実行用。native-gate.sh --require-cs が skip を
+      # fail 扱いにする。
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      # golden と haxe_build_smoke がサンプルの .hxml を起動時にコンパイルする。
-      - uses: ./.github/actions/setup-haxe5
+      # gen-api / gen-lubx の --check が生成物を stylua (web の devDependency)
+      # で整形してから比べる。postinstall (slang-wasm の取得) は要らない。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: npm ci (web devDependencies for stylua)
+        working-directory: web
+        run: npm ci --ignore-scripts
 
-      - name: Native gate (build, smokes, physics Lua, C# samples)
+      - name: Native gate (build, smokes, physics Lua, C# samples, .NET digest)
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -218,14 +226,15 @@ jobs:
         run: |
           cd build-release
           ./lub_shader_d3d12_smoke.exe
-          ./lub_hxml_parse_test.exe
           ./lub_sdf_smoke.exe
           ./lub_surfacenets_smoke.exe
           ./lub_physics_box2d_smoke.exe
           ./lub_physics_box3d_smoke.exe
 
-      # golden はサンプルの .hxml を起動時にコンパイルするので Haxe 5 が要る。
-      - uses: ./.github/actions/setup-haxe5
+      # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
 
       - name: Golden image test (d3d12 backend, WARP)
         shell: bash
@@ -233,6 +242,20 @@ jobs:
           export TMPDIR="${RUNNER_TEMP}/golden-tmp"
           mkdir -p "$TMPDIR"
           scripts/run-golden.sh
+
+      # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から
+      # P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで
+      # 確かめる (golden は linux の lavapipe 分だけ)。
+      - name: .NET run (00_hello, digest vs tcs→Lua)
+        shell: bash
+        run: |
+          export LUB_D3D12_WARP=1
+          export LUB_NATIVE_LIB="$(cygpath -m "$PWD/build-release/lub.dll")"
+          scripts/run-cs-sample.sh 00_hello --build
+          ./build-release/lub.exe samples/00_hello/.lub/Hello00.lua --capture "$RUNNER_TEMP/cs.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/cs.digest"
+          dotnet build dotnet/SampleRunner -p:Sample=00_hello -nologo -v q
+          ./dotnet/SampleRunner/bin/00_hello/lub-sample-00_hello.exe --capture "$RUNNER_TEMP/dn.png" --capture-frame 30 --fixed-dt 0.0166666666666667 --digest | grep '^digest ' > "$RUNNER_TEMP/dn.digest"
+          cmp "$RUNNER_TEMP/cs.digest" "$RUNNER_TEMP/dn.digest"
 
       - name: Upload golden failure artifacts
         if: failure()
@@ -244,11 +267,9 @@ jobs:
 
   # web playground (lub.neguse.net) のアセット生成 + build。検証は下流の
   # web-verify / web-golden が artifact (web-dist-test) に対して行う。
-  # 前提アセット3つ (web/README.md) の供給:
+  # 前提アセット (web/README.md) の供給:
   #   - lub player wasm: emsdk でこの job 内でビルド (emcc は ccache)
   #   - tcs WasmCompiler: content key cache、miss 時だけ dotnet で publish
-  #   - Haxe compiler wasm: haxe-wasm/dist を cache し、miss 時だけ docker で
-  #     再現ビルド (haxe-wasm/build.sh。key の入力が変わらない限り走らない)
   web-build:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
@@ -282,11 +303,10 @@ jobs:
           "$HOME/emsdk/emsdk" install 5.0.2
           "$HOME/emsdk/emsdk" activate 5.0.2
 
-      # neko = haxelib (setup-haxe5) のランタイム。gen-api が haxe を呼ぶ。
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ccache neko
+          sudo apt-get install -y --no-install-recommends ccache
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -352,27 +372,6 @@ jobs:
         working-directory: web
         run: npm run gen-tcs-prebuilt
 
-      - name: Cache haxe-wasm dist
-        id: haxe-wasm-cache
-        uses: actions/cache@v4
-        with:
-          path: haxe-wasm/dist
-          key: haxe-wasm-${{ hashFiles('haxe-wasm/Dockerfile', 'haxe-wasm/build.sh', 'haxe-wasm/patches/**', 'haxe-wasm/harness/patch_env.mjs') }}
-
-      - name: Build haxe-wasm (docker, cache miss only)
-        if: steps.haxe-wasm-cache.outputs.cache-hit != 'true'
-        run: bash haxe-wasm/build.sh
-
-      - name: Generate haxe wasm assets
-        working-directory: web
-        run: npm run gen-haxe
-
-      # gen-api (build に含まれる) が PATH の haxe を呼ぶ。
-      - uses: ./.github/actions/setup-haxe5
-
-      # verify が使う __lubTest hook (editor.ts) は dev/test mode 限定で
-      # production build には入らない。verify は test mode build に対して行い、
-      # deploy する production build は別 artifact として分ける。
       - name: Build site (test mode for verify)
         working-directory: web
         run: |

@@ -1,19 +1,18 @@
-// Phase 7 visual verification: launch headless chromium with WebGPU
+// Visual verification: launch headless chromium with WebGPU
 // enabled, load the playground at http://localhost:5173/ and exercise the
-// full edit -> auto-sync -> render path on top of Phase 6's initial render
-// check.
+// full edit -> auto-sync -> render path on top of the initial render check.
 //
 // What this covers:
-//   1. Sample 01_triangle initial render (Phase 6 baseline). Expect dark
+//   1. Sample 01_triangle initial render. Expect dark
 //      blue clear + orange triangle.
 //   2. Shader edit. Patch the fragment colour literal in the .fs.slang tab,
 //      wait one debounce window + frame, assert the orange triangle is no
 //      longer orange-ish (we recolour it green-ish).
 //   3. Shader revert. Restore the original .fs.slang content and assert it
 //      syncs even though the tab's dirty bit turns off.
-//   4. Haxe source edit. Patch the `clear_color` literal in the Triangle01.hx
-//      tab; the client-only wasm Haxe compiler regenerates the .lua and syncs
-//      it. Wait, assert the background is no longer the dark blue clear.
+//   4. C# source edit. Patch the `ClearColor` literal in the Triangle01.cs
+//      tab; the in-browser TinyC# session regenerates the .lua and syncs it.
+//      Wait for the commit ACK, assert the background is no longer dark blue.
 //   5. Verts edit. Shrink the triangle in the .verts.lua tab, wait, assert
 //      the pixel footprint of the drawn shape shrank.
 //   6. All-samples render sanity. For each sample 01..10 switch via the
@@ -40,7 +39,7 @@ const HEAD = process.env.HEADLESS !== '0'
 const WAIT_MS = Number(process.env.WAIT_MS || 20000)
 const VERBOSE = process.env.VERBOSE === '1'
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/lub-verify'
-// Single-file legacy SCREENSHOT path (Phase 6) — written as the first
+// Single-file legacy SCREENSHOT path — written as the first
 // shot to keep external tooling that grep'd /tmp/lub-iframe.png happy.
 const LEGACY_SCREENSHOT = process.env.SCREENSHOT || '/tmp/lub-iframe.png'
 // How long to wait after a debounced edit for the next frame to draw with
@@ -53,7 +52,7 @@ const DEBOUNCE_WAIT_MS = Number(process.env.DEBOUNCE_WAIT_MS || 1500)
 const SAMPLE_SWITCH_WAIT_MS = Number(process.env.SAMPLE_SWITCH_WAIT_MS || 6000)
 // LUB_VERIFY_SHARD=k/n splits the suite across independent processes so CI
 // can fan the wall-clock out over runners: shard 1 runs the edit-path
-// scenarios (A1-A4) and the C#-session scenarios (A6-A8 + Haxe diagnostics);
+// scenarios (A1-A4) and the C#-session scenarios (A6-A8);
 // shards 2..n split the A5 sample sweep. Unset (or 1/1) runs everything.
 const SHARD = (() => {
   const raw = process.env.LUB_VERIFY_SHARD
@@ -227,7 +226,7 @@ if (RUN_EDIT) {
   const shot01 = screenshotPath('01_initial.png')
   c1 = await waitForPixels(
     iframeHandle, shot01, (c) => c.orangeish / c.total > 0.005, WAIT_MS)
-  // Mirror to legacy /tmp/lub-iframe.png for back-compat with Phase 6.
+  // Mirror to legacy /tmp/lub-iframe.png for back-compat.
   try { fs.copyFileSync(shot01, LEGACY_SCREENSHOT) } catch {}
   console.log('[verify] A1 buckets', c1)
   if (!check('A1 initial render (orange triangle)',
@@ -297,21 +296,31 @@ if (RUN_EDIT) try {
   failures++
 }
 
-// ===== Test A3: Haxe source edit (clear_color) ============================
-// Playground は .hx を編集し、wasm Haxe コンパイラ(client-only)で .lua を
-// 生成して player に sync する。ここでは Triangle01.hx の clear_color リテラルを
-// 赤に書き換え、再コンパイル → hot-reload で背景が赤くなることを確認する。
+// ===== Test A3: C# source edit (ClearColor) ===============================
+// Playground は .cs を編集し、ブラウザ内の TinyC# session で .lua を生成して
+// player に sync する。ここでは Triangle01.cs の ClearColor リテラルを赤に
+// 書き換え、再コンパイル → hot-reload で背景が赤くなることを確認する。
+// 初回編集は session の cold open(.NET wasm 起動)が乗るので commit ACK
+// (#status "synced rev N")を待つ。
 
 // NOTE: this script shadows the global `URL` with a string const above, so we
 // resolve the path via `path` (verify is run from web/, so .. is the repo root).
-const triangleHx = fs.readFileSync(path.resolve('..', 'samples', '01_triangle', 'Triangle01.hx'), 'utf8')
-const redClearHx = triangleHx.replace('[0.1, 0.1, 0.2, 1.0]', '[0.9, 0.05, 0.05, 1.0]')
+const triangleCs = fs.readFileSync(path.resolve('..', 'samples', '01_triangle', 'Triangle01.cs'), 'utf8')
+const redClearCs = triangleCs.replace('{ 0.1f, 0.1f, 0.2f, 1.0f }', '{ 0.9f, 0.05f, 0.05f, 1.0f }')
 
 if (RUN_EDIT) try {
-  if (redClearHx === triangleHx) throw new Error('clear_color literal not found in Triangle01.hx')
-  await selectTabAndReplace('Triangle01.hx', redClearHx)
-  // 300ms debounce + wasm Haxe 再コンパイル + .lua hot-reload。コンパイルは数百 ms。
-  await page.waitForTimeout(DEBOUNCE_WAIT_MS + 3000)
+  if (redClearCs === triangleCs) throw new Error('ClearColor literal not found in Triangle01.cs')
+  const statusBefore = await page.$eval('#status', (el) => el.textContent)
+  await selectTabAndReplace('Triangle01.cs', redClearCs)
+  await page.waitForFunction(
+    (before) => {
+      const t = document.getElementById('status').textContent
+      return /^synced rev \d+/.test(t) && t !== before
+    },
+    statusBefore,
+    { timeout: 120000, polling: 100 },
+  )
+  await page.waitForTimeout(DEBOUNCE_WAIT_MS + 1000)
   const shot03 = await takeShot('03_lua_edit.png')
   const c3 = classify(shot03)
   console.log('[verify] A3 buckets', c3)
@@ -319,7 +328,7 @@ if (RUN_EDIT) try {
   // still be drawn on top (shader file is still green).
   const darkBlueGone = (c3.darkBlue / c3.total) < 0.02
   const redAppeared  = (c3.redish / c3.total)   > 0.10
-  if (!check('A3 lua edit (red clear)',
+  if (!check('A3 C# edit (red clear)',
              darkBlueGone && redAppeared,
              `darkBlue ${(c3.darkBlue/c3.total).toFixed(4)}, red ${(c3.redish/c3.total).toFixed(4)}`)) {
     failures++
@@ -376,7 +385,7 @@ function greenAppearedRef() {
 // ===== Test A5: all-samples render ========================================
 // For each currently-gated web sample, switch + screenshot + assert non-black.
 // We confirm the user-visible "compile something and draw it" path works for
-// each one, but don't pixel-validate content (Phase 8's job).
+// each one, but don't pixel-validate content (the golden test's job).
 //
 // Note: switching samples discards our edits via the dirty-check confirm
 // dialog. We dismiss the dialog by re-opening the sample first; or just
@@ -425,38 +434,6 @@ const samples = [
   { name: '24_baseball',        minNonBlack: 0.01 },
   { name: '25_bowling',         minNonBlack: 0.01 },
   { name: '26_renderer3d',      minNonBlack: 0.05 },
-  // C# (tcs) 版: lang=cs で同一サンプルを C# ソースから compile する。
-  // 初回は .NET wasm ランタイムの cold start が乗る。
-  { name: '00_hello',           minNonBlack: 0.01, lang: 'cs' },
-  { name: '00b_clear',          minNonBlack: 0.01, lang: 'cs' },
-  { name: '00c_buffer',         minNonBlack: 0.01, lang: 'cs' },
-  { name: '00d_shader',         minNonBlack: 0.01, lang: 'cs' },
-  { name: '01_triangle',        minNonBlack: 0.10, lang: 'cs' },
-  { name: '02_vertex_color',    minNonBlack: 0.10, lang: 'cs' },
-  { name: '03_texture',         minNonBlack: 0.10, lang: 'cs' },
-  { name: '04_mvp',             minNonBlack: 0.05, lang: 'cs' },
-  { name: '05_postprocess',     minNonBlack: 0.20, lang: 'cs' },
-  { name: '06_deferred',        minNonBlack: 0.10, lang: 'cs' },
-  { name: '07_compute',         minNonBlack: 0.10, lang: 'cs' },
-  { name: '08_gltf',            minNonBlack: 0.10, lang: 'cs' },
-  { name: '09_breakout',        minNonBlack: 0.10, lang: 'cs' },
-  { name: '10_breakout3d',      minNonBlack: 0.10, lang: 'cs' },
-  { name: '11_shadow',          minNonBlack: 0.10, lang: 'cs' },
-  { name: '12_sfb',             minNonBlack: 0.01, lang: 'cs' },
-  { name: '13_sprites',         minNonBlack: 0.01, lang: 'cs' },
-  { name: '14_sponza',          minNonBlack: 0.01, lang: 'cs' },
-  { name: '15_render_primitives', minNonBlack: 0.01, lang: 'cs' },
-  { name: '16_box2d',           minNonBlack: 0.01, lang: 'cs' },
-  { name: '17_flappy',          minNonBlack: 0.01, lang: 'cs' },
-  { name: '18_coin_pusher',     minNonBlack: 0.01, lang: 'cs' },
-  { name: '19_sdf',             minNonBlack: 0.05, lang: 'cs' },
-  { name: '20_audio',           minNonBlack: 0.01, lang: 'cs' },
-  { name: '21_iroha',           minNonBlack: 0.01, lang: 'cs' },
-  { name: '22_tonton',          minNonBlack: 0.01, lang: 'cs' },
-  { name: '23_crane_game',      minNonBlack: 0.01, lang: 'cs' },
-  { name: '24_baseball',        minNonBlack: 0.01, lang: 'cs' },
-  { name: '25_bowling',         minNonBlack: 0.01, lang: 'cs' },
-  { name: '26_renderer3d',      minNonBlack: 0.05, lang: 'cs' },
 ]
 const sampleResults = {}
 
@@ -490,14 +467,12 @@ async function waitForPlayerReady(timeoutMs) {
 // For subsequent samples, selectOption changes the value AND fires change,
 // triggering main.ts's onchange handler.
 // shard 1 が edit / C#-session シナリオを担当するので、A5 は shards 2..n が
-// contiguous に分担する (haxe ブロック → cs ブロックの並び順を保ち、言語
-// トグルを shard あたり最大 1 回に抑える)。cs エントリは in-browser Roslyn
-// compile の分だけ重い (実測 ~9.5s vs ~7s) ので、重み付き累積で切って
-// shard 間の wall-clock を均す。n=1 は全件。
+// contiguous に分担する。重み付き累積で切って shard 間の wall-clock を均す
+// (今は全サンプルが同じ C# 経路なので等重み)。n=1 は全件。
 const a5Samples = (() => {
   if (SHARD.n === 1) return samples
   if (SHARD.k === 1) return []
-  const weight = (s) => (s.lang === 'cs' ? 3 : 2)
+  const weight = () => 1
   const total = samples.reduce((a, s) => a + weight(s), 0)
   const slices = SHARD.n - 1
   const target = total / slices
@@ -525,14 +500,23 @@ if (!RUN_EDIT && a5Samples.length > 0) {
     const h = await page.waitForSelector('iframe', { timeout: 20000 })
     await waitForPixels(h, screenshotPath('A5_initial_settle.png'),
       (c) => c.nonBlack / c.total > 0.005, 30000)
+    // 初期サンプルの C# session (.NET wasm の cold start + compile) は main
+    // thread を塞ぐので、開き終わるまで待ってから切替に入る。遅い runner だと
+    // 切替の handler が遅れて iframe が出ない。
+    await page.waitForFunction(
+      () => {
+        const q = window.__lubTest && window.__lubTest.csQuery
+        return !!q && q.ready()
+      },
+      { timeout: 90000, polling: 500 },
+    ).catch(() => {})
   } catch { }
 }
 
 let firstIter = true
 for (const sample of a5Samples) {
   const name = sample.name
-  const lang = sample.lang || 'haxe'
-  const label = lang === 'cs' ? `${name} (C#)` : name
+  const label = name
   const known = KNOWN_FAILING.has(name)
   try {
     console.log(`[verify] A5 switching to ${label}`)
@@ -556,21 +540,14 @@ for (const sample of a5Samples) {
       await page.selectOption('#sample-select', name)
       await readyP
     }
-    const currentLang = await page.$eval('#lang-select', (el) => el.value)
-    if (currentLang !== lang) {
-      // 言語トグルは change で loadCompileRun が走る。playerReady を待ち直す
-      const langReadyP = waitForPlayerReady(60000).catch((e) => {
-        console.warn(`[verify] A5 ${label} lang playerReady wait:`, e.message)
-      })
-      await page.selectOption('#lang-select', lang)
-      await langReadyP
-    }
     firstIter = false
     // playerReady fires before the first frame draws. Poll the canvas until
     // pixels cross the threshold instead of sleeping a fixed window; the cap
     // (2x the old fixed sleep) preserves the former sleep + retry tolerance.
-    const handle = await page.waitForSelector('iframe', { timeout: 10000 })
-    const p = screenshotPath(`A5_${name}${lang === 'cs' ? '_cs' : ''}.png`)
+    // 切替直前のサンプルの session compile が main thread を塞ぐことがある
+    // (大きいサンプル + 遅い runner) ので、iframe の出現は長めに待つ。
+    const handle = await page.waitForSelector('iframe', { timeout: 30000 })
+    const p = screenshotPath(`A5_${name}.png`)
     const threshold = sample.minNonBlack
     const c = await waitForPixels(
       handle, p, (cc) => cc.nonBlack / cc.total > threshold,
@@ -614,11 +591,6 @@ if (RUN_CS_SESSION) try {
   const a6ReadyP = waitForPlayerReady(120000).catch(() => {})
   await page.selectOption('#sample-select', '17_flappy')
   await a6ReadyP
-  if ((await page.$eval('#lang-select', (el) => el.value)) !== 'cs') {
-    const langReadyP = waitForPlayerReady(120000).catch(() => {})
-    await page.selectOption('#lang-select', 'cs')
-    await langReadyP
-  }
   await page.waitForTimeout(SAMPLE_SWITCH_WAIT_MS)
   const flappySrc = fs.readFileSync(
     path.resolve('..', 'samples', '17_flappy', 'Flappy17.cs'), 'utf8')
@@ -640,9 +612,8 @@ if (RUN_CS_SESSION) try {
 
 // ---------------------------------------------------------------------------
 // A7. 診断のエディタ内表示。故意のコンパイルエラーが __lubTest.getDiagnostics()
-// に該当ファイル + error severity で載り、修正で消えることを C#(warm 増分
-// path)と Haxe(full compile path)の両方で確認する。生成 Lua 仮想タブの存在
-// もここで見る。
+// に該当ファイル + error severity で載り、修正で消えることを warm 増分 path で
+// 確認する。生成 Lua 仮想タブの存在もここで見る。
 
 async function waitForDiagnostics(file, want, timeoutMs) {
   // want: 'error' = file に error 診断がある / 'none' = file の診断が無い
@@ -673,6 +644,10 @@ if (RUN_CS_SESSION) try {
   await selectTabAndReplace('Flappy17.cs', flappySrc)
   await waitForDiagnostics('Flappy17.cs', 'none', 15000)
   check('A7 C# fix clears diagnostics', true)
+  // 生成 Lua 仮想タブが出ていること
+  const files = await page.evaluate(() => window.__lubTest.listFiles())
+  check('A7 generated Lua tab present', files.includes('.lub/17_flappy.lua'),
+    JSON.stringify(files))
 } catch (e) {
   console.error('[verify] A7 (C#) threw', e.message)
   check('A7 C# diagnostics', false, e.message)
@@ -680,7 +655,7 @@ if (RUN_CS_SESSION) try {
 }
 
 // ---------------------------------------------------------------------------
-// A8. C# 補完/hover (T230)。A7-C# の warm session を再利用し、__lubTest.csQuery
+// A8. C# 補完/hover。A7-C# の warm session を再利用し、__lubTest.csQuery
 // (エディタの provider 直叩き = 実 wasm SessionExports.Complete/Hover) を検証
 // する。speculative content (`Gfx.` を挿した編集途中バッファ) で lub API の
 // member が引けること、allowlist フィルタで p95 レイテンシも観測ログに残す。
@@ -719,7 +694,7 @@ if (RUN_CS_SESSION) try {
   })
   console.log(`[verify] A8 complete ${Math.round(r.compMs)}ms, hover ${Math.round(r.hoverMs)}ms`)
   if (!check('A8 C# completion lists lub API member',
-             r.labels.includes('begin_pass') && r.labels.includes('VERTEX'),
+             r.labels.includes('BeginPass') && r.labels.includes('BufferType'),
              `labels[${r.labels.length}] sample: ${r.labels.slice(0, 8).join(',')}`)) {
     failures++
   }
@@ -731,38 +706,6 @@ if (RUN_CS_SESSION) try {
 } catch (e) {
   console.error('[verify] A8 threw', e.message)
   check('A8 C# completion/hover', false, e.message)
-  failures++
-}
-
-if (RUN_CS_SESSION) try {
-  console.log('[verify] A7 diagnostics: Haxe (full compile path)')
-  const readyP = waitForPlayerReady(60000).catch(() => {})
-  await page.selectOption('#sample-select', '01_triangle')
-  await readyP
-  if ((await page.$eval('#lang-select', (el) => el.value)) !== 'haxe') {
-    const langReadyP = waitForPlayerReady(60000).catch(() => {})
-    await page.selectOption('#lang-select', 'haxe')
-    await langReadyP
-  }
-  await page.waitForTimeout(2000)
-  // 生成 Lua 仮想タブが出ていること
-  const files = await page.evaluate(() => window.__lubTest.listFiles())
-  check('A7 generated Lua tab present', files.includes('.lub/01_triangle.lua'),
-    JSON.stringify(files))
-  const triHx = fs.readFileSync(
-    path.resolve('..', 'samples', '01_triangle', 'Triangle01.hx'), 'utf8')
-  const triBroken = triHx.replace(
-    '[0.1, 0.1, 0.2, 1.0]', '[0.1, 0.1, 0.2, thisIsUndefined]')
-  if (triBroken === triHx) throw new Error('A7 Haxe edit marker not found')
-  await selectTabAndReplace('Triangle01.hx', triBroken)
-  await waitForDiagnostics('Triangle01.hx', 'error', 30000)
-  check('A7 Haxe error shows diagnostics', true)
-  await selectTabAndReplace('Triangle01.hx', triHx)
-  await waitForDiagnostics('Triangle01.hx', 'none', 30000)
-  check('A7 Haxe fix clears diagnostics', true)
-} catch (e) {
-  console.error('[verify] A7 (Haxe) threw', e.message)
-  check('A7 Haxe diagnostics', false, e.message)
   failures++
 }
 

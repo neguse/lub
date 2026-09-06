@@ -1,4 +1,5 @@
 #pragma once
+#include "lub/lub_api.h"
 #include <SDL3/SDL.h>
 #include <lua.h>
 
@@ -10,9 +11,8 @@ typedef struct LuaCtx {
 } LuaCtx;
 
 // L を作って openlibs + lua_api_register まで実施する。boot.lua の読み込みや
-// entry module の require はここでは行わない (Task 23: .hxml dispatch から
-// package.path を inject する余地を作るため、L 作成と entry resolution
-// を分離)。
+// entry module の require はここでは行わない (entry の種類ごとに package.path
+// を inject できるよう、L 作成と entry resolution を分離)。
 bool lua_ctx_init(LuaCtx *ctx, struct App *app);
 
 // boot.lua を読み込み、entry_module_name を require して module table を ref
@@ -20,7 +20,7 @@ bool lua_ctx_init(LuaCtx *ctx, struct App *app);
 // 1 度だけ呼ぶ。
 bool lua_ctx_load_entry(LuaCtx *ctx, const char *entry_module_name);
 
-// entry .hxml 経由の build 後、生成 .lua を find できるよう
+// entry .csproj 経由の transpile 後、生成 .lua を find できるよう
 // `<dir>/.lub/?.lua` を package.path の先頭に積む。
 void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
 
@@ -29,7 +29,7 @@ void lua_ctx_add_package_path(LuaCtx *ctx, const char *entry_dir);
 void lua_ctx_add_package_dir(LuaCtx *ctx, const char *dir);
 
 void lua_ctx_call_init(LuaCtx *ctx);
-void lua_ctx_call_event(LuaCtx *ctx, const SDL_Event *e);
+void lua_ctx_call_event(LuaCtx *ctx, const LubEventData *e);
 // onFrame(dt) を呼ぶ。dt は直近フレームの実測秒。
 void lua_ctx_call_frame(LuaCtx *ctx, double dt);
 void lua_ctx_call_quit(LuaCtx *ctx);
@@ -47,5 +47,3 @@ void lua_api_register(lua_State *L);
 
 // Bytes userdata (LUB_BYTES_MT) is private to lua_api.c; this lets other
 // modules accept raw byte buffers from Lua without knowing the layout: a Lua
-// string or a Bytes userdata at idx (raises on anything else).
-const uint8_t *lub_bytes_arg(lua_State *L, int idx, size_t *len);

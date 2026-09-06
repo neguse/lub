@@ -5,12 +5,12 @@ local function fail(message)
 	os.exit(1, true)
 end
 
-function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+function M.on_init()
+	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.onFrame()
-	local world = phys2d_world("phase3", {
+function M.on_frame()
+	local world = lub.phys2d.world("phase3", {
 		gravity = { x = 0, y = 0 },
 		fixed_dt = 1 / 60,
 		substeps = 4,
@@ -19,23 +19,23 @@ function M.onFrame()
 	world:begin()
 
 	local ground = world:body("ground", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = -0.2 },
 	})
 	ground:box("solid", {
 		hx = 4,
 		hy = 0.2,
-		filter = { category = 0, mask = "all" },
+		filter = { category_bits = "0000000000000001", mask_bits = "ffffffffffffffff" },
 	})
 
 	local ball = world:body("ball", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		initial = { x = 1, y = 0.6 },
 	})
 	ball:circle("solid", {
 		r = 0.2,
 		density = 1,
-		filter = { category = 1, mask = "all" },
+		filter = { category_bits = "0000000000000002", mask_bits = "ffffffffffffffff" },
 	})
 
 	local cast = world:cast_mover({
@@ -46,7 +46,7 @@ function M.onFrame()
 		r = 0.2,
 		dx = 0,
 		dy = -2.0,
-		filter = { mask = { 0 } },
+		filter = { mask_bits = "0000000000000001" },
 	})
 	if type(cast.fraction) ~= "number" or cast.fraction <= 0 or cast.fraction >= 1 then
 		fail("cast_mover fraction out of range: " .. tostring(cast.fraction))
@@ -62,7 +62,7 @@ function M.onFrame()
 		bx = 0,
 		by = 0.9,
 		r = 0.2,
-		filter = { mask = { 0 } },
+		filter = { mask_bits = "0000000000000001" },
 	}, function(plane)
 		visited_plane = visited_plane or plane.body == "ground"
 		return true
@@ -79,15 +79,11 @@ function M.onFrame()
 		bx = 0,
 		by = 0.9,
 		r = 0.2,
-		filter = { mask = { 0 } },
+		filter = { mask_bits = "0000000000000001" },
 	}, function()
 		error("collide_mover visitor boom")
 	end)
-	if
-		bad_planes ~= nil
-		or type(bad_planes_err) ~= "string"
-		or not bad_planes_err:find("phys2d_collide_mover visitor")
-	then
+	if bad_planes ~= nil or type(bad_planes_err) ~= "string" or not bad_planes_err:find("phys2d_collide_mover") then
 		fail("collide_mover visitor error did not return nil,error")
 	end
 	local mutating_planes, mutating_planes_err = world:collide_mover({
@@ -96,9 +92,9 @@ function M.onFrame()
 		bx = 0,
 		by = 0.9,
 		r = 0.2,
-		filter = { mask = { 0 } },
+		filter = { mask_bits = "0000000000000001" },
 	}, function()
-		ball:set_velocity({ x = 0, y = 0 })
+		ball:set_velocity({ vx = 0, vy = 0 })
 		return true
 	end)
 	if
@@ -115,7 +111,7 @@ function M.onFrame()
 		radius = 2,
 		falloff = 0,
 		impulse_per_length = 20,
-		filter = { mask = { 1 } },
+		filter = { mask_bits = "0000000000000002" },
 	})
 	world:step(1 / 60)
 
@@ -124,8 +120,8 @@ function M.onFrame()
 		fail("explode did not push ball outward: vx=" .. tostring(velocity.x))
 	end
 
-	begin_pass({ target = main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
-	end_pass()
+	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
+	lub.gfx.end_pass()
 
 	print(
 		"PHYS2D_PHASE3_OK fraction="
@@ -135,7 +131,7 @@ function M.onFrame()
 			.. " vx="
 			.. string.format("%.4f", velocity.x)
 	)
-	quit()
+	lub.quit()
 end
 
 return M

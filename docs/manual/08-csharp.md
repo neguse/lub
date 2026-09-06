@@ -1,9 +1,9 @@
 # C# (TinyC#) で書く
 
-lub のゲームコードは Haxe のほかに C# でも書ける。使うのは
+lub のゲームコードは C# で書く。使うのは
 [tcs (TinyC#)](https://github.com/neguse/tcs) — C# のサブセットを Lua に
 transpile するコンパイラで、playground ではブラウザ内 (Roslyn の WASM 版)、
-native では `scripts/run-cs-sample.sh` 経由で動く。
+native では lub が `third_party/tcs` を dotnet で動かす。
 
 「フル C# が動く」わけではない。TinyC# は C# 構文の DSL であり、
 モダンな C# の書き味 (record / pattern / lambda / LINQ メソッドチェーン /
@@ -40,7 +40,7 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
   TinyC# メソッドの既定引数は通常どおり効く
 - static 初期化子から cs-lib のクラスを参照しない。生成 Lua はサンプル
   → cs-lib の順で定義されるため、ロード時に nil 呼び出しになる。
-  `onInit` / `onFrame` で遅延生成する(リテラルだけの static は可)
+  `OnInit` / `OnFrame` で遅延生成する(リテラルだけの static は可)
 
 境界を踏むとコンパイル時に `TCS1001`(未対応構文)/ `TCS1002`(未対応 API)/
 `TCS1003`(Lua table に置けない null 保存)の診断が出る。playground では
@@ -49,38 +49,44 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 
 ## lub API の呼び方
 
-runtime API は Haxe と同じ namespace table
-(`Gfx` / `Input` / `Lub` / `Io` / ...) をそのまま呼ぶ。メンバー名は Lua の
-wire format (snake_case) に合わせる:
+runtime API は root class `Lub` の下の nested static class(`Gfx` / `Input` /
+`Io` / `Phys2d` / ...)にある。`using static Lub;` を置くと `Gfx.BeginPass(...)`
+と書ける。名前は通常の C# 命名(PascalCase、enum は `Gfx.PixelFormat.Rgba8`)
+で、Lua 側の snake_case(`lub.gfx.begin_pass`、`lub.gfx.RGBA8`)には tcs が
+規則で写す。entry callback も `OnInit` / `OnEvent` / `OnFrame` / `OnQuit`
+(Lua では `on_init` 等):
 
 ```csharp
+using static Lub;
+
 public static class Main
 {
-    public static void onInit()
+    public static void OnInit()
     {
-        Lub.config(new ConfigOpts { width = 640, height = 360 });
+        Config(new ConfigOpts { Width = 640, Height = 360 });
     }
 
-    public static void onFrame(float dt)
+    public static void OnFrame(float dt)
     {
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
+            Target = Gfx.MainTex,
+            ClearColor = new float[] { 0.1f, 0.1f, 0.2f, 1.0f },
         });
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }
 ```
 
 型定義は `cs-lib/lub_stub.cs`(参照専用 stub)にある。IDE で書くときは
 これを参照に加えると補完と型チェックが効く。Lua 側の multi-return
-(`Io.load_text` など) は `out` 引数で受ける。
+(`Io.LoadText` など) は `out` 引数で受ける。環境変数は
+`Environment.GetEnvironmentVariable`、数値の parse は `int.Parse` /
+`float.Parse`、文字列の codepoint 走査は `s.EnumerateRunes()` と、実 .NET
+でも通る書き方をする(Lua 標準ライブラリを直接呼ぶ stub は無い)。
 
-サンプルは Haxe 版と同じディレクトリに同居する (例:
-`samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。playground では
-画面上部の言語トグルで Haxe / C# を切り替えられる (C# 版があるサンプルのみ)。
-native での実行は hxml と対称:
+サンプルは `samples/<name>/<Entry>.cs` + `<Entry>.csproj` (例:
+`samples/09_breakout/Breakout09.cs` + `Breakout09.csproj`)。native での実行:
 
 ```
 lub samples/09_breakout/Breakout09.csproj         # transpile + watch + hot reload
@@ -96,3 +102,21 @@ csproj は lub にとっては entry 指定 (basename = entry class、入力 = �
 ディレクトリの全 `*.cs`) でしかないが、dotnet 側 (Rider / VS Code) では
 本物のプロジェクトとして機能する: stub と TinySystem を参照し、TinyC#
 サブセット逸脱は Roslyn Analyzer が IDE 上で TCS 診断として出す。
+
+## .NET で実行する
+
+同じソースを実 .NET で動かせる (.NET Hot Reload や本物のデバッガを使いたい
+とき)。`dotnet/Lub` が lub の C API の facade と host で、共有 library
+(`build-release-linux/liblub.so`、CMake の `lub_shared`) を P/Invoke する。
+雛形は `templates/game/` (`dotnet run` で .NET 実行、`lub Game.csproj` で
+tcs→Lua。入口は `Lub.Run(typeof(Game), args)`)。サンプルは runner で回す:
+
+```
+dotnet run --project dotnet/SampleRunner -p:Sample=09_breakout -- --capture out.png
+```
+
+共有 library は出力の隣か環境変数 `LUB_NATIVE_LIB` (full path) で見つける。
+引数は player と同じ (`--backend` / `--fixed-dt` / `--capture` /
+`--capture-frame` / `--digest`)。`Bytes` (view) は `AsSpan()` で読め、frame を
+跨いで持つと例外になる。数値は C# の `float` のまま .NET で計算する(BCL の
+double 演算は `(float)` で丸める)ので、Lua 側の f32 と同じ精度になる。

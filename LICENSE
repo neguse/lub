@@ -23,11 +23,5 @@ SOFTWARE.
 -------------------------------------------------------------------------------
 NOTE on exceptions (not MIT):
 
-- `haxe-wasm/patches/haxe-5.0.0-preview.1-wasm.diff` is a modification of the Haxe
-  compiler source and is therefore licensed under GPL-2.0-or-later (the Haxe
-  compiler license), not MIT. See `haxe-wasm/LICENSE`.
-- The Haxe compiler WebAssembly build shipped under `web/public/haxe-wasm/`
-  (generated, gitignored) is GPL-2.0-or-later. The bundled Haxe standard
-  library is MIT. See `THIRD_PARTY_LICENSES.md`.
 - Third-party components bundled or linked by lub keep their own licenses;
   see `THIRD_PARTY_LICENSES.md`.

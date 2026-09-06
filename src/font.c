@@ -4,13 +4,11 @@
 // golden-capture friendly.
 #include "font.h"
 
-#include <lauxlib.h>
-#include <lua.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "lua_api.h"
 #include "stb_truetype.h"
 #include "surfacenets.h"
 #include "tesselator.h"
@@ -18,12 +16,10 @@
 // ---------------------------------------------------------------------------
 // helpers
 
-static void font_check(lua_State *L, int idx, stbtt_fontinfo *f) {
-  size_t len = 0;
-  const uint8_t *data = lub_bytes_arg(L, idx, &len);
+static bool font_init(const uint8_t *data, size_t len, stbtt_fontinfo *f) {
+  (void)len;
   int off = stbtt_GetFontOffsetForIndex(data, 0);
-  if (off < 0 || !stbtt_InitFont(f, data, off))
-    luaL_error(L, "font: invalid font data");
+  return off >= 0 && stbtt_InitFont(f, data, off);
 }
 
 static float font_em_scale(const stbtt_fontinfo *f) {
@@ -99,88 +95,79 @@ static void flat_cubic(PtBuf *b, float x0, float y0, float c0x, float c0y,
 }
 
 // ---------------------------------------------------------------------------
-// font_metrics(ttf) -> { ascent, descent, line_gap }
+// metrics
 
-int lub_font_metrics(lua_State *L) {
+bool font_metrics_get(const uint8_t *ttf, size_t len, float *ascent,
+                      float *descent, float *line_gap) {
   stbtt_fontinfo f;
-  font_check(L, 1, &f);
-  int ascent, descent, line_gap;
-  stbtt_GetFontVMetrics(&f, &ascent, &descent, &line_gap);
+  if (!font_init(ttf, len, &f))
+    return false;
+  int a, d, g;
+  stbtt_GetFontVMetrics(&f, &a, &d, &g);
   float s = font_em_scale(&f);
-  lua_createtable(L, 0, 3);
-  lua_pushnumber(L, ascent * s);
-  lua_setfield(L, -2, "ascent");
-  lua_pushnumber(L, descent * s);
-  lua_setfield(L, -2, "descent");
-  lua_pushnumber(L, line_gap * s);
-  lua_setfield(L, -2, "line_gap");
-  return 1;
+  *ascent = a * s;
+  *descent = d * s;
+  *line_gap = g * s;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
-// font_glyph(ttf, codepoint, px) -> nil | { w, h, xoff, yoff, advance, bytes }
+// glyph bitmap
 
-int lub_font_glyph(lua_State *L) {
+int font_glyph_bitmap(const uint8_t *ttf, size_t len, int cp, float px, int *w,
+                      int *h, int *xoff, int *yoff, float *advance,
+                      unsigned char **bytes) {
   stbtt_fontinfo f;
-  font_check(L, 1, &f);
-  int cp = (int)luaL_checkinteger(L, 2);
-  float px = (float)luaL_checknumber(L, 3);
-  if (!(px > 0.0f) || px > 4096.0f)
-    return luaL_error(L, "font_glyph: px out of range");
-
+  if (!font_init(ttf, len, &f))
+    return -1;
   int g = stbtt_FindGlyphIndex(&f, cp);
-  if (g == 0) {
-    lua_pushnil(L);
-    return 1;
-  }
-
+  if (g == 0)
+    return 0;
   float scale = stbtt_ScaleForMappingEmToPixels(&f, px);
   int adv, lsb;
   stbtt_GetGlyphHMetrics(&f, g, &adv, &lsb);
   (void)lsb;
-
-  int w = 0, h = 0, xo = 0, yo = 0;
+  int bw = 0, bh = 0, xo = 0, yo = 0;
   unsigned char *bmp =
-      stbtt_GetGlyphBitmap(&f, scale, scale, g, &w, &h, &xo, &yo);
-
-  lua_createtable(L, 0, 6);
-  lua_pushinteger(L, w);
-  lua_setfield(L, -2, "w");
-  lua_pushinteger(L, h);
-  lua_setfield(L, -2, "h");
-  lua_pushinteger(L, xo);
-  lua_setfield(L, -2, "xoff");
-  lua_pushinteger(L, yo);
-  lua_setfield(L, -2, "yoff");
-  lua_pushnumber(L, adv * scale);
-  lua_setfield(L, -2, "advance");
-  if (bmp && w > 0 && h > 0) {
-    // Lua string: readable from script (string.byte) so the atlas blit can
-    // happen outside the core.
-    lua_pushlstring(L, (const char *)bmp, (size_t)w * (size_t)h);
-    lua_setfield(L, -2, "bytes");
+      stbtt_GetGlyphBitmap(&f, scale, scale, g, &bw, &bh, &xo, &yo);
+  *w = bw;
+  *h = bh;
+  *xoff = xo;
+  *yoff = yo;
+  *advance = adv * scale;
+  if (bmp && bw > 0 && bh > 0) {
+    *bytes = bmp;
+  } else {
+    if (bmp)
+      stbtt_FreeBitmap(bmp, NULL);
+    *bytes = NULL;
+    *w = bw;
+    *h = bh;
   }
-  if (bmp)
-    stbtt_FreeBitmap(bmp, NULL);
   return 1;
 }
 
-// ---------------------------------------------------------------------------
-// font_glyph_mesh(ttf, codepoint [, tolerance]) -> nil | mesh table
+void font_glyph_bitmap_free(unsigned char *bytes) {
+  if (bytes)
+    stbtt_FreeBitmap(bytes, NULL);
+}
 
-int lub_font_glyph_mesh(lua_State *L) {
+// ---------------------------------------------------------------------------
+// glyph mesh
+
+int font_glyph_mesh_build(const uint8_t *ttf, size_t len, int cp, float tol,
+                          SnMesh *out, float *advance, char *err,
+                          size_t err_size) {
   stbtt_fontinfo f;
-  font_check(L, 1, &f);
-  int cp = (int)luaL_checkinteger(L, 2);
-  float tol = (float)luaL_optnumber(L, 3, 0.002);
+  if (!font_init(ttf, len, &f)) {
+    snprintf(err, err_size, "font: invalid font data");
+    return -1;
+  }
   if (tol < 1e-5f)
     tol = 1e-5f;
-
   int g = stbtt_FindGlyphIndex(&f, cp);
-  if (g == 0) {
-    lua_pushnil(L);
-    return 1;
-  }
+  if (g == 0)
+    return 0;
 
   float s = font_em_scale(&f);
   int adv, lsb;
@@ -190,21 +177,19 @@ int lub_font_glyph_mesh(lua_State *L) {
   stbtt_vertex *v = NULL;
   int nv = stbtt_GetGlyphShape(&f, g, &v);
 
-  const char *err = NULL;
+  const char *fail = NULL;
   TESStesselator *tess = NULL;
   PtBuf pts = {0};
   SnMesh m = {0};
   float tol2 = tol * tol;
   float x = 0, y = 0;
-
   int contours = 0;
 
   tess = tessNewTess(NULL);
   if (!tess) {
-    err = "font_glyph_mesh: out of memory";
+    fail = "font_glyph_mesh: out of memory";
     goto done;
   }
-
   for (int i = 0; i < nv; ++i) {
     switch (v[i].type) {
     case STBTT_vmove:
@@ -244,7 +229,7 @@ int lub_font_glyph_mesh(lua_State *L) {
     contours++;
   }
   if (pts.oom) {
-    err = "font_glyph_mesh: out of memory";
+    fail = "font_glyph_mesh: out of memory";
     goto done;
   }
 
@@ -252,7 +237,7 @@ int lub_font_glyph_mesh(lua_State *L) {
   // and its advance is meaningful.
   if (contours > 0 &&
       !tessTesselate(tess, TESS_WINDING_NONZERO, TESS_POLYGONS, 3, 2, NULL)) {
-    err = "font_glyph_mesh: tessellation failed";
+    fail = "font_glyph_mesh: tessellation failed";
     goto done;
   }
 
@@ -269,7 +254,7 @@ int lub_font_glyph_mesh(lua_State *L) {
     m.indices =
         (int32_t *)malloc(sizeof(int32_t) * 3 * (size_t)(nelem ? nelem : 1));
     if (!m.positions || !m.normals || !m.indices) {
-      err = "font_glyph_mesh: out of memory";
+      fail = "font_glyph_mesh: out of memory";
       goto done;
     }
     for (int i = 0; i < nvert; ++i) {
@@ -299,31 +284,28 @@ done:
     stbtt_FreeShape(&f, v);
   if (tess)
     tessDeleteTess(tess);
-  if (err) {
+  if (fail) {
     sn_mesh_free(&m);
-    return luaL_error(L, "%s", err);
+    snprintf(err, err_size, "%s", fail);
+    return -1;
   }
-  sn_mesh_push(L, &m);
-  sn_mesh_free(&m);
-  lua_pushnumber(L, adv * s);
-  lua_setfield(L, -2, "advance");
+  *out = m;
+  *advance = adv * s;
   return 1;
 }
 
 // ---------------------------------------------------------------------------
-// font_kern(ttf, cp1, cp2) -> em advance adjustment
+// kern
 
-int lub_font_kern(lua_State *L) {
+bool font_kern_get(const uint8_t *ttf, size_t len, int cp1, int cp2,
+                   float *out) {
   stbtt_fontinfo f;
-  font_check(L, 1, &f);
-  int cp1 = (int)luaL_checkinteger(L, 2);
-  int cp2 = (int)luaL_checkinteger(L, 3);
+  if (!font_init(ttf, len, &f))
+    return false;
   int g1 = stbtt_FindGlyphIndex(&f, cp1);
   int g2 = stbtt_FindGlyphIndex(&f, cp2);
-  if (g1 == 0 || g2 == 0) {
-    lua_pushnumber(L, 0.0);
-    return 1;
-  }
-  lua_pushnumber(L, stbtt_GetGlyphKernAdvance(&f, g1, g2) * font_em_scale(&f));
-  return 1;
+  *out = (g1 == 0 || g2 == 0)
+             ? 0.0f
+             : stbtt_GetGlyphKernAdvance(&f, g1, g2) * font_em_scale(&f);
+  return true;
 }

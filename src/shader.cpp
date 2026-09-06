@@ -1103,9 +1103,9 @@ static void merge_stage_reflection(ShaderReflection *dst,
 // registers become program-unique across stages, which the d3d12 backend
 // relies on (single root-signature tables with SHADER_VISIBILITY_ALL).
 bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
-                           ShaderBlob *out_vs, ShaderBlob *out_fs,
-                           ShaderReflection *out_refl, char *err_buf,
-                           size_t err_buf_size) {
+                            ShaderBlob *out_vs, ShaderBlob *out_fs,
+                            ShaderReflection *out_refl, char *err_buf,
+                            size_t err_buf_size) {
   TargetDesc slang_target = {};
   configure_target(&slang_target, SHADER_TARGET_D3D12);
   SessionDesc sd = {};
@@ -1276,7 +1276,7 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
 
   if (target == SHADER_TARGET_D3D12) {
     return compile_d3d12_graphics(vs_src, fs_src, out_vs, out_fs, out_refl,
-                                 err_buf, err_buf_size);
+                                  err_buf, err_buf_size);
   }
 
   TargetDesc slang_target = {};

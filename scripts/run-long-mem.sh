@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 binary="./build-release-linux/lub"
-sample="samples/12_sfb/12_sfb.hxml"
+sample="samples/12_sfb/Sfb12.csproj"
 frames=60000
 interval_sec=1
 timeout_sec=7200
@@ -26,7 +26,7 @@ RSS/VSZ/smaps_rollup over time, then prints a compact summary.
 
 Options:
   --binary PATH          lub binary (default: ./build-release-linux/lub)
-  --sample PATH          sample entry (default: samples/12_sfb/12_sfb.hxml)
+  --sample PATH          sample entry (default: samples/12_sfb/Sfb12.csproj)
   --frames N             capture/exit frame (default: 60000)
   --interval-sec N       monitor interval seconds (default: 1)
   --timeout-sec N        whole-run timeout seconds (default: 7200)

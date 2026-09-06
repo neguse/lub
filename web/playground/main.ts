@@ -7,16 +7,9 @@ import {
   setCsLanguageProvider,
   jumpTo,
 } from "./editor";
-import { parseHaxeDiagnostic, parseTcsDiagnostic } from "./diagnostics";
+import { parseTcsDiagnostic } from "./diagnostics";
 import type { PlaygroundDiagnostic } from "./diagnostics";
-import {
-  SAMPLE_NAMES,
-  loadSampleSource,
-  discoverDataFiles,
-  hasCsVariant,
-} from "./samples";
-import type { SampleLanguage } from "./samples";
-import { compileHaxe } from "./haxe-compiler";
+import { SAMPLE_NAMES, loadSampleSource, discoverDataFiles } from "./samples";
 import { openTcsSession } from "./tcs-compiler";
 import type { TcsSession } from "./tcs-compiler";
 
@@ -24,17 +17,16 @@ let playerIframe: HTMLIFrameElement | null = null;
 let currentSample = "01_triangle";
 let mainClass = "";
 let entryKey = "";
-let language: SampleLanguage = "haxe";
 let lastLua: string | null = null;
 let syncTimer: number | null = null;
 const pendingSyncPaths = new Set<string>();
 let syncInFlight = false;
 
-// C# は増分 session (tcs SessionExports)。sample/言語切替で開き直す。
+// C# は増分 session (tcs SessionExports)。sample 切替で開き直す。
 let tcsSession: TcsSession | null = null;
 // prebuilt 起動後の background open 中 (この間の C# 編集は queue して待つ)
 let tcsOpening = false;
-// sample/言語切替の世代。async 完了時に古い世代の結果を捨てる。
+// sample 切替の世代。async 完了時に古い世代の結果を捨てる。
 let loadGen = 0;
 // 直近の warm apply が待っている commit ACK (@@tcs_commit、player の
 // print relay 経由)。ACK が来るまで synced にしない。MEMFS の mtime が
@@ -49,7 +41,6 @@ let pendingAck: {
 } | null = null;
 
 const $sample = document.querySelector<HTMLSelectElement>("#sample-select")!;
-const $lang = document.querySelector<HTMLSelectElement>("#lang-select")!;
 const $res = document.querySelector<HTMLSelectElement>("#res-select")!;
 const $restart = document.querySelector<HTMLButtonElement>("#restart-btn")!;
 const $log = document.getElementById("log")!;
@@ -62,46 +53,15 @@ for (const s of SAMPLE_NAMES) {
   $sample.appendChild(o);
 }
 
-// URL hash (#sample=<name>&lang=cs&...) からサンプルと言語を復元する。他の
-// フラグ(debug-slang等)と共存できるよう key=value 形式にしている。
+// URL hash (#sample=<name>&...) からサンプルを復元する。他のフラグ
+// (debug-slang等)と共存できるよう key=value 形式にしている。
 // 不正/未指定なら既定値のまま。
 const hashParams = new URLSearchParams(location.hash.slice(1));
 const hashSample = hashParams.get("sample");
 if (hashSample && SAMPLE_NAMES.includes(hashSample)) {
   currentSample = hashSample;
 }
-if (hashParams.get("lang") === "cs" && hasCsVariant(currentSample)) {
-  language = "cs";
-}
 $sample.value = currentSample;
-
-// 言語トグル: Haxe は全サンプル、C# は .cs を持つサンプルのみ。
-function rebuildLangOptions() {
-  $lang.innerHTML = "";
-  const langs: [SampleLanguage, string][] = [["haxe", "Haxe"]];
-  if (hasCsVariant(currentSample)) langs.push(["cs", "C#"]);
-  for (const [v, label] of langs) {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = label;
-    $lang.appendChild(o);
-  }
-  $lang.disabled = langs.length === 1;
-  $lang.value = language;
-}
-rebuildLangOptions();
-
-$lang.addEventListener("change", async () => {
-  if (anyDirty()) {
-    if (!confirm("未保存の変更があります。破棄して言語切替しますか?")) {
-      $lang.value = language;
-      return;
-    }
-  }
-  language = $lang.value as SampleLanguage;
-  updateHash();
-  await loadCompileRun(currentSample);
-});
 
 // Render-resolution presets (16:9). Smaller = fewer pixels through the whole
 // post chain = faster on weak devices. The choice rides the player iframe URL.
@@ -181,8 +141,6 @@ $sample.addEventListener("change", async () => {
     }
   }
   currentSample = $sample.value;
-  if (language === "cs" && !hasCsVariant(currentSample)) language = "haxe";
-  rebuildLangOptions();
   updateHash();
   await loadCompileRun(currentSample);
 });
@@ -208,7 +166,7 @@ window.addEventListener("message", (e) => {
   }
 });
 
-/** registry の commit ACK (§13.1)。待っている revision だけ状態を進める。 */
+/** registry の commit ACK。待っている revision だけ状態を進める。 */
 function handleTcsCommitAck(json: string) {
   let ack: {
     revision: number;
@@ -239,17 +197,16 @@ attachEditor(
   (path, _content) => {
     pendingSyncPaths.add(path);
     if (syncTimer) clearTimeout(syncTimer);
-    // C# の増分 path は compile が 100ms 級なので debounce も短くする (§14.2)
-    syncTimer = window.setTimeout(syncDirtyNow, language === "cs" ? 75 : 300);
+    // 増分 path は compile が 100ms 級なので debounce も短い
+    syncTimer = window.setTimeout(syncDirtyNow, 75);
   },
 );
 
-/** URL hash の sample= / lang= を現在の状態に同期する(履歴は汚さない)。 */
+/** URL hash の sample= を現在の状態に同期する(履歴は汚さない)。 */
 function updateHash() {
   const params = new URLSearchParams(location.hash.slice(1));
   params.set("sample", currentSample);
-  if (language === "cs") params.set("lang", "cs");
-  else params.delete("lang");
+  params.delete("lang");
   history.replaceState(null, "", "#" + params.toString());
 }
 
@@ -258,13 +215,12 @@ function anyDirty(): boolean {
   return false;
 }
 
-/** 現在の言語のソースファイルか(compile トリガと data file の区別)。 */
+/** ソースファイルか(compile トリガと data file の区別)。 */
 function isSourceFile(path: string): boolean {
-  if (language === "cs") return path.endsWith(".cs");
-  return path.endsWith(".hx") || path.endsWith(".hxml");
+  return path.endsWith(".cs");
 }
 
-/** エディタ上のソース一式を compiler へ渡す形({ "Foo.hx": content })にする。 */
+/** エディタ上のソース一式を compiler へ渡す形({ "Foo.cs": content })にする。 */
 function collectSources(ext: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [p, f] of getFiles())
@@ -302,49 +258,35 @@ function makeCsProvider(session: TcsSession) {
   };
 }
 
-/** 現在のソースを言語に応じて compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
+/** 現在のソースを compile して完全な Lua を返す。失敗時は null(ログにエラー)。 */
 async function compileCurrent(): Promise<string | null> {
   $status.textContent = "compiling…";
-  if (language === "cs") {
-    // 増分 session を開く (cold path)。以後の編集は syncDirtyNow の
-    // update + linkSnapshot が warm に処理する。
-    tcsSession = null;
-    setCsLanguageProvider(null);
-    const res = await openTcsSession(collectSources(".cs"), mainClass);
-    for (const w of res.warnings) addLog(w, "warn");
-    if (!res.ok || !res.session) {
-      applyCompileDiagnostics(
-        [...res.errors, ...res.warnings],
-        parseTcsDiagnostic,
-      );
-      addLog("C# compile error:", "err");
-      for (const line of res.errors) if (line.trim()) addLog(line, "err");
-      $status.textContent = "compile error";
-      return null;
-    }
-    applyCompileDiagnostics(res.warnings, parseTcsDiagnostic);
-    const lua = res.session.linkSnapshot();
-    if (lua == null) {
-      $status.textContent = "compile error";
-      return null;
-    }
-    tcsSession = res.session;
-    setCsLanguageProvider(makeCsProvider(res.session));
-    $status.textContent = "compiled";
-    return lua;
-  }
-  const res = await compileHaxe(collectSources(".hx"), mainClass);
-  // 成功時も stderr に warning が乗ることがあるため常にパースして反映する。
-  applyCompileDiagnostics(res.stderr.split("\n"), parseHaxeDiagnostic);
-  if (!res.ok) {
-    addLog("Haxe compile error:", "err");
-    for (const line of res.stderr.split("\n"))
-      if (line.trim()) addLog(line, "err");
+  // 増分 session を開く (cold path)。以後の編集は syncDirtyNow の
+  // update + linkSnapshot が warm に処理する。
+  tcsSession = null;
+  setCsLanguageProvider(null);
+  const res = await openTcsSession(collectSources(".cs"), mainClass);
+  for (const w of res.warnings) addLog(w, "warn");
+  if (!res.ok || !res.session) {
+    applyCompileDiagnostics(
+      [...res.errors, ...res.warnings],
+      parseTcsDiagnostic,
+    );
+    addLog("C# compile error:", "err");
+    for (const line of res.errors) if (line.trim()) addLog(line, "err");
     $status.textContent = "compile error";
     return null;
   }
+  applyCompileDiagnostics(res.warnings, parseTcsDiagnostic);
+  const lua = res.session.linkSnapshot();
+  if (lua == null) {
+    $status.textContent = "compile error";
+    return null;
+  }
+  tcsSession = res.session;
+  setCsLanguageProvider(makeCsProvider(res.session));
   $status.textContent = "compiled";
-  return res.lua;
+  return lua;
 }
 
 /** サンプルをロード → compile → data file 解決 → エディタ反映 → player 起動。 */
@@ -363,15 +305,14 @@ async function loadCompileRun(name: string) {
   lastLua = null;
   let src;
   try {
-    src = await loadSampleSource(name, language);
+    src = await loadSampleSource(name);
   } catch (e: any) {
     addLog("failed to load sample: " + e.message, "err");
     return;
   }
   mainClass = src.mainClass;
   entryKey = src.entryKey;
-  language = src.language;
-  // まずソース(.hx/.hxml/.cs)だけエディタに出してから compile(エラーでもソースは見える)。
+  // まずソース (.cs) だけエディタに出してから compile(エラーでもソースは見える)。
   setFiles(src.files);
 
   // C# は build 時生成の prebuilt snapshot があれば先に player を起動し、
@@ -380,7 +321,7 @@ async function loadCompileRun(name: string) {
   // authoritative な snapshot に置き換わる。
   let lua: string | null = null;
   let warmAfterBoot = false;
-  if (language === "cs") {
+  {
     const pre = await fetch(`/tcs-prebuilt/${name}.lua`).catch(() => null);
     if (gen !== loadGen) return;
     if (pre?.ok) {
@@ -397,7 +338,7 @@ async function loadCompileRun(name: string) {
 
   const dataFiles = await discoverDataFiles(name, lua);
   if (gen !== loadGen) return;
-  // エディタ表示 = ソース(.hx/.hxml)+ data files + 生成 Lua(read-only)。
+  // エディタ表示 = ソース (.cs) + data files + 生成 Lua(read-only)。
   const all = new Map(src.files);
   for (const [k, v] of dataFiles) all.set(k, v);
   setFiles(all);
@@ -407,7 +348,7 @@ async function loadCompileRun(name: string) {
   if (warmAfterBoot && gen === loadGen) void warmTcsSession(gen);
 }
 
-/** prebuilt 起動後に増分 session を背景で開く (§14.1 background prewarm)。
+/** prebuilt 起動後に増分 session を背景で開く。
  * Open は main thread 同期呼び出しのため数秒〜十数秒 UI が固まるが、player は
  * 既に prebuilt で動いている。完了時に queue された編集を flush する。 */
 async function warmTcsSession(gen: number) {
@@ -513,7 +454,7 @@ function waitForAckFrom(
   });
 }
 
-/** requiresRestart 編集の二相 handoff (§14.2)。hidden player を lastLua で
+/** requiresRestart 編集の二相 handoff。hidden player を lastLua で
  * 起動し、runtime の初回 commit ACK を確認してから表示を swap する。
  * 失敗時は旧 player に触れず false を返す。 */
 async function restartTwoPhase(): Promise<boolean> {
@@ -551,7 +492,7 @@ async function restartTwoPhase(): Promise<boolean> {
   }
 }
 
-/** debounce 後の同期: .hx 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
+/** debounce 後の同期: .cs 編集なら再 compile して Lua を、data 編集ならその場で sync。 */
 async function syncDirtyNow() {
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = null;
@@ -578,16 +519,16 @@ async function syncDirtyNow() {
     const t0 = performance.now();
 
     if (sourceChanged) {
-      if (language === "cs" && !tcsSession && tcsOpening) {
+      if (!tcsSession && tcsOpening) {
         // session を background で開いている最中。編集は pending のまま残し、
         // open 完了時 (warmTcsSession) に flush される (latest-wins)。
         $status.textContent = "compiler warming…";
         return;
       }
-      if (language === "cs" && tcsSession) {
+      if (tcsSession) {
         // warm path: 変更 .cs だけ増分 Update → bridge snapshot を再 link。
         // live-safe なら hotswap + commit ACK 待ち、そうでなければ fresh
-        // player を snapshot で起動する (§14.2)。
+        // player を snapshot で起動する。
         $status.textContent = "compiling…";
         let requiresRestart = false;
         for (const [p, f] of changed) {
@@ -617,7 +558,7 @@ async function syncDirtyNow() {
         setVirtualFile(genLuaTabPath(), lua);
         if (requiresRestart) {
           // 二相 handoff: hidden player を snapshot で起動し、初回 commit ACK
-          // を確認してから表示を swap する。失敗時は旧 player を残す (§14.2)。
+          // を確認してから表示を swap する。失敗時は旧 player を残す。
           const ok = await restartTwoPhase();
           if (!ok) {
             addLog("two-phase restart failed; keeping current player", "err");
@@ -648,7 +589,7 @@ async function syncDirtyNow() {
       if (!current || current.content === content) pendingSyncPaths.delete(p);
     }
     if (ackRevision > 0) {
-      // synced 表示は runtime の commit ACK を受けてから (§13.1)
+      // synced 表示は runtime の commit ACK を受けてから
       clearPendingAck();
       pendingAck = { revision: ackRevision, t0, retries: 0, timer: 0, files };
       scheduleAckRetry();
@@ -661,7 +602,7 @@ async function syncDirtyNow() {
   }
 
   if (pendingSyncPaths.size > 0) {
-    syncTimer = window.setTimeout(syncDirtyNow, language === "cs" ? 75 : 300);
+    syncTimer = window.setTimeout(syncDirtyNow, 75);
   }
 }
 
@@ -693,9 +634,9 @@ function scheduleAckRetry() {
 }
 
 // ログ中の file:line(:col) / file(line,col) をクリックジャンプ可能にする。
-// Haxe エラー・tcs エラー・Lua runtime traceback の 3 形をカバーする。
+// tcs エラー・Lua runtime traceback の 2 形をカバーする。
 const LOG_LINK_RE =
-  /((?:[\w.-]+\/)*[\w.-]+\.(?:hx|hxml|cs|lua|slang))(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
+  /((?:[\w.-]+\/)*[\w.-]+\.(?:cs|lua|slang))(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
 
 /** ログ中のパスをエディタのタブキーへ解決する。解決不能なら null。 */
 function resolveLogPath(raw: string): string | null {

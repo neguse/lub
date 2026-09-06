@@ -1,38 +1,39 @@
-// lub の samples/00b_clear (Haxe 版 Clear00b.hx) の TinyC# 版 entry。
+// lub の samples/00b_clear の entry。
 // 実行: lub samples/00b_clear/Clear00b.csproj (transpile + watch + hot reload)
 using System;
+using static Lub;
 
 public static class Clear00b
 {
     static float t = 0;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND");
-        Lub.config(new ConfigOpts { backend = backend });
-        Console.WriteLine("backend = " + (backend ?? "(default)"));
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
+        Lub.Config(new ConfigOpts { Backend = backend });
+        Console.WriteLine("backend = " + backend);
         Console.WriteLine("clear demo");
     }
 
-    public static void onEvent(EventData e)
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onQuit()
+    public static void OnQuit()
     {
     }
 
-    public static void onFrame(float dt)
+    public static void OnFrame(float dt)
     {
         t = t + dt;
         var r = 0.5f + 0.5f * (float)Math.Sin(t);
         var g = 0.5f + 0.5f * (float)Math.Sin(t + 2.0f);
         var b = 0.5f + 0.5f * (float)Math.Sin(t + 4.0f);
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new float[] { r, g, b, 1.0f },
+            Target = Gfx.MainTex,
+            ClearColor = new float[] { r, g, b, 1.0f },
         });
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

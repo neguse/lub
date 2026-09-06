@@ -1,5 +1,6 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Mesh3d.hx と対)。
+// 実装ライブラリ lubx の Mesh3d。
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>
 /// MeshData (Mesh.sdf_mesh / Io.load_gltf / Shapes3d) を GPU buffer にして
@@ -14,11 +15,11 @@ public class Mesh3d
 {
     private string key;
 
-    public MeshData? data;
-    public BufferRef? vb;
-    public BufferRef? ib;
-    public int indexCount = 0;
-    public bool skinned = false;
+    public MeshData? Data;
+    public BufferRef? Vb;
+    public BufferRef? Ib;
+    public int IndexCount = 0;
+    public bool Skinned = false;
 
     public Mesh3d(string key)
     {
@@ -26,26 +27,26 @@ public class Mesh3d
     }
 
     /// <summary>メッシュを差し替える (初回含む)。呼ぶたびに GPU へ再アップロード。</summary>
-    public void rebuild(MeshData data)
+    public void Rebuild(MeshData data)
     {
-        this.data = data;
-        skinned = data.bones != null;
-        var verts = skinned ? Io.interleave_pncmw(data) : Io.interleave_pncm(data);
-        vb = Gfx.use_buffer(key + "_vb", Gfx.VERTEX, verts);
+        this.Data = data;
+        Skinned = data.Bones != null;
+        var verts = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
+        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Vertex, verts);
         // use_buffer は List<float> を取るので indices を詰め替える。
         // Lua 上は同じ整数値の array table になり、wire data は変わらない。
         var indices = new List<float>();
-        foreach (var i in data.indices)
+        foreach (var i in data.Indices)
         {
             indices.Add(i);
         }
-        ib = Gfx.use_buffer(key + "_ib", Gfx.INDEX, indices);
-        indexCount = data.index_count;
+        Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, indices);
+        IndexCount = data.IndexCount;
     }
 
     /// <summary>rebuild 済みで描画可能か。</summary>
-    public bool ready()
+    public bool Ready()
     {
-        return vb != null && indexCount > 0;
+        return Vb != null && IndexCount > 0;
     }
 }

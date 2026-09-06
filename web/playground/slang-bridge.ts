@@ -222,7 +222,7 @@ async function compileOne(
   // hot-reload editing session. Track everything and clean it up in a
   // try/finally so exceptions still trigger release.
   //
-  // Phase 8 note (slang-wasm v2026.8.1 / Emscripten): destroying a per-compile
+  // slang-wasm v2026.8.1 / Emscripten: destroying a per-compile
   // Session after building / discarding ~3 sessions aborts the wasm runtime
   // ("Aborted(native code called abort()) ... unreachable"). The failing case
   // in our suite is sample 06 (`06_gbuffer.vs.slang`) — third compile after
@@ -233,7 +233,7 @@ async function compileOne(
   // every compile and never delete it; give each module a unique name so
   // Slang's per-session module cache doesn't return a stale handle on the
   // next compile. Stress-tested at 5 passes × 8 compiles in Node with
-  // slang-wasm v2026.8.1 (see /tmp probes used during Phase 8).
+  // slang-wasm v2026.8.1.
   let userModule: any = null;
   let entryPoint: any = null;
   let composite: any = null;

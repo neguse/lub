@@ -16,7 +16,7 @@ Useful variants:
 
 ```powershell
 # Build a different target.
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Target lub_haxe_build_smoke
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -Target lub_serve_smoke
 
 # Configure only.
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -ConfigureOnly
@@ -43,7 +43,7 @@ Useful variants:
 
 ```sh
 # Build a different target.
-bash scripts/build-release.sh --target lub_haxe_build_smoke
+bash scripts/build-release.sh --target lub_serve_smoke
 
 # Configure only.
 bash scripts/build-release.sh --configure-only

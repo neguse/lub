@@ -1,4 +1,4 @@
-// lub の samples/22_tonton (Haxe 版 Tonton22.hx) の TinyC# 版 entry。
+// lub の samples/22_tonton の entry。
 // 実行: lub samples/22_tonton/Tonton22.csproj (transpile + watch + hot reload)
 //
 // とんとん相撲: AI 力士同士の紙相撲。人間は土俵をトントンするだけ。
@@ -13,65 +13,66 @@
 //   しない。引き・いなしで支えを外した瞬間に勝負が動く。個性 (counter
 //   確率・前傾の深さ) の違いが取り口の違いになる。
 //
-// Haxe 版との対応: gameplay rule (力士の挙動・投げ判定・土俵) は忠実。
-// typedef Rikishi は class、screenPos の匿名構造体戻りは class ScreenPos、
+// 力士は class Rikishi、screenPos の戻りは class ScreenPos、
 // Phys3d の desc 匿名構造体は lub_stub の desc class。end() は End()、
 // char() は Char()。Renderer3d / Mesh3d / MeshText は cs-lib の load 順の
 // 都合で static 初期化子から呼べないため onFrame で遅延生成する。
+// 整数 % は tcs 未対応なので imod (Math.Floor 分解) で書く。
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
-/// <summary>力士 1 体 (Haxe 版 typedef Rikishi と対)。</summary>
+/// <summary>力士 1 体。</summary>
 public class Rikishi
 {
-    public int gen; // 再宣言 (respawn) 用 version
-    public string name = ""; // 四股名 (かな)
-    public float homeX;
-    public float[] color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f };
-    public int bodyRgb; // SDF に焼く体色
-    public int downFrames;
-    public int squashT; // 着地スカッシュの残りフレーム
-    public float prevVy;
+    public int Gen; // 再宣言 (respawn) 用 version
+    public string Name = ""; // 四股名 (かな)
+    public float HomeX;
+    public float[] Color = new float[] { 1.0f, 1.0f, 1.0f, 1.0f };
+    public int BodyRgb; // SDF に焼く体色
+    public int DownFrames;
+    public int SquashT; // 着地スカッシュの残りフレーム
+    public float PrevVy;
     // --- 個性 ---
     // 押し合いは「相手が支え」の安定構造なので、押すだけでは永遠に倒れない。
     // 決着は支えを外す瞬間 (引き・いなし) に生まれる。個性はその使い分け。
-    public float pushK; // 押しの強さ
-    public float leanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
-    public float pulseHz; // 押しの脈動周期
-    public float phase;
-    public float counter; // 相手の深い前傾に引き/いなしを合わせる確率
+    public float PushK; // 押しの強さ
+    public float LeanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
+    public float PulseHz; // 押しの脈動周期
+    public float Phase;
+    public float Counter; // 相手の深い前傾に引き/いなしを合わせる確率
     // --- 戦術状態 ---
-    public int tactic;
-    public int tacticUntil;
-    public float sideSign; // いなしの回り込み方向
+    public int Tactic;
+    public int TacticUntil;
+    public float SideSign; // いなしの回り込み方向
 }
 
-/// <summary>world 座標 → 論理スクリーン座標 (Haxe 版の匿名構造体戻り)。</summary>
+/// <summary>world 座標 → 論理スクリーン座標。</summary>
 public class ScreenPos
 {
-    public float x;
-    public float y;
-    public bool ok;
+    public float X;
+    public float Y;
+    public bool Ok;
 }
 
 public static class Tonton22
 {
-    const int W = 640;
-    const int H = 360;
-    const float DT = 1.0f / 60.0f;
+    const int w = 640;
+    const int h = 360;
+    const float dt = 1.0f / 60.0f;
 
-    const float DOHYO_R = 2.2f;
-    const float DOHYO_H = 0.4f;
-    const float DOHYO_Y = 0.6f; // 懸架時の中心高
-    const float TOP_Y = DOHYO_Y + DOHYO_H * 0.5f;
-    const float CAP_R = 0.35f;
+    const float dohyoR = 2.2f;
+    const float dohyoH = 0.4f;
+    const float dohyoY = 0.6f; // 懸架時の中心高
+    const float topY = dohyoY + dohyoH * 0.5f;
+    const float capR = 0.35f;
 
     // 土俵の質量と傾き慣性 (cylinder の解析値)。懸架 PD のゲインを
     // 「共振周波数 Hz と減衰比」で書くために使う。
-    const float DOHYO_MASS = 3.14159f * DOHYO_R * DOHYO_R * DOHYO_H;
-    const float DOHYO_I_TILT =
-        DOHYO_MASS * (3.0f * DOHYO_R * DOHYO_R + DOHYO_H * DOHYO_H) / 12.0f;
+    const float dohyoMass = 3.14159f * dohyoR * dohyoR * dohyoH;
+    const float dohyoITilt =
+        dohyoMass * (3.0f * dohyoR * dohyoR + dohyoH * dohyoH) / 12.0f;
 
     // --- 調整パラメータ (hot reload でいじる) ------------------------------
     static float suspLinHz = 3.0f; // 土俵懸架ばね (上下・水平の戻り)
@@ -92,10 +93,10 @@ public static class Tonton22
     static int tapRepeat = 9; // 押しっぱなし連打の間隔 (frame)
 
     // --- 取組フロー ---------------------------------------------------------
-    const int ST_SHIKIRI = 0; // 仕切り位置へ戻って一呼吸
-    const int ST_FIGHT = 1; // 勝負 (トントン受付)
-    const int ST_KIMARI = 2; // 決着の余韻
-    static int state = ST_SHIKIRI;
+    const int stShikiri = 0; // 仕切り位置へ戻って一呼吸
+    const int stFight = 1; // 勝負 (トントン受付)
+    const int stKimari = 2; // 決着の余韻
+    static int state = stShikiri;
     static int stateT = 45;
     static int winner = -1;
     static int[] stars = new int[] { 0, 0 }; // 星取り
@@ -105,10 +106,10 @@ public static class Tonton22
 
     static int frame = 0;
     // 戦術
-    const int TA_OSU = 0; // 押す: 前傾して押し込む (支えがある間は安全)
-    const int TA_HIKI = 1; // 引く: 支えを外して前傾の相手を落とす
-    const int TA_INASHI = 2; // いなす: 横へかわして空振りさせる
-    const int TA_TAME = 3; // ためる: 直立で耐える
+    const int taOsu = 0; // 押す: 前傾して押し込む (支えがある間は安全)
+    const int taHiki = 1; // 引く: 支えを外して前傾の相手を落とす
+    const int taInashi = 2; // いなす: 横へかわして空振りさせる
+    const int taTame = 3; // ためる: 直立で耐える
     static float hikiK = 5.0f; // 引きの後退力
     static float inashiK = 5.5f; // いなしの横力
     static float hatakiK = 3.2f; // はたき込み (引き際に相手上体を引き倒すトルク)
@@ -119,46 +120,46 @@ public static class Tonton22
     {
         new Rikishi
         {
-            gen = 1,
-            name = "あか",
-            homeX = -0.9f,
-            color = new float[] { 0.86f, 0.28f, 0.24f, 1.0f },
-            bodyRgb = 0xC94434,
-            downFrames = 0,
-            squashT = 0,
-            prevVy = 0.0f,
-            pushK = 9.0f,
-            leanK = 2.0f,
-            pulseHz = 2.2f,
-            phase = 0.0f,
-            counter = 0.25f,
-            tactic = TA_OSU,
-            tacticUntil = 0,
-            sideSign = 1.0f,
+            Gen = 1,
+            Name = "あか",
+            HomeX = -0.9f,
+            Color = new float[] { 0.86f, 0.28f, 0.24f, 1.0f },
+            BodyRgb = 0xC94434,
+            DownFrames = 0,
+            SquashT = 0,
+            PrevVy = 0.0f,
+            PushK = 9.0f,
+            LeanK = 2.0f,
+            PulseHz = 2.2f,
+            Phase = 0.0f,
+            Counter = 0.25f,
+            Tactic = taOsu,
+            TacticUntil = 0,
+            SideSign = 1.0f,
         },
         new Rikishi
         {
-            gen = 1,
-            name = "あお",
-            homeX = 0.9f,
-            color = new float[] { 0.27f, 0.47f, 0.88f, 1.0f },
-            bodyRgb = 0x3E6ED8,
-            downFrames = 0,
-            squashT = 0,
-            prevVy = 0.0f,
-            pushK = 7.5f,
-            leanK = 1.2f,
-            pulseHz = 1.6f,
-            phase = 2.1f,
-            counter = 0.7f,
-            tactic = TA_OSU,
-            tacticUntil = 0,
-            sideSign = -1.0f,
+            Gen = 1,
+            Name = "あお",
+            HomeX = 0.9f,
+            Color = new float[] { 0.27f, 0.47f, 0.88f, 1.0f },
+            BodyRgb = 0x3E6ED8,
+            DownFrames = 0,
+            SquashT = 0,
+            PrevVy = 0.0f,
+            PushK = 7.5f,
+            LeanK = 1.2f,
+            PulseHz = 1.6f,
+            Phase = 2.1f,
+            Counter = 0.7f,
+            Tactic = taOsu,
+            TacticUntil = 0,
+            SideSign = -1.0f,
         },
     };
 
     // LUB_TONTON_AUTO=1 で自動トントン (ヘッドレス検証・デモ自走用)
-    static bool auto = os.getenv("LUB_TONTON_AUTO") != null;
+    static bool auto = Environment.GetEnvironmentVariable("LUB_TONTON_AUTO") != null;
 
     // トントンの見た目フィードバック
     static int lastTap = -999;
@@ -187,264 +188,269 @@ public static class Tonton22
     static Mesh3d? cylMesh = null;
     static Renderer3d? ren = null;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND");
-        Lub.config(new ConfigOpts { backend = backend, width = W, height = H });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
+        Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
     }
 
-    public static void onEvent(EventData e)
-    {
-    }
-
-    public static void onQuit()
+    public static void OnEvent(EventData e)
     {
     }
 
+    public static void OnQuit()
+    {
+    }
+
+    /// <summary>整数剰余 (tcs は % 未対応)。a, b > 0 前提。</summary>
+    static int Imod(int a, int b)
+    {
+        return a - (int)Math.Floor((float)a / (float)b) * b;
+    }
 
     // --- SDF だるま力士 -----------------------------------------------------
     // bone 付き SDF ツリーからメッシュ化。体色だけ違う 2 体分を焼く。
     // モデルは -Z (相手の方) を向いて作る。feet が y=0。
-    const int SDF_N = 56;
+    const int sdfN = 56;
     static Mesh3d[]? darumaMesh = null;
     // native watch は chunk 再実行で初期値 true に戻り、web (module mode) は
     // onReload で立てる。どちらも再メッシュのトリガ。
     static bool darumaDirty = true;
 
-    public static void onReload()
+    public static void OnReload()
     {
         darumaDirty = true;
     }
 
-    static SdfNode darumaModel(int bodyRgb)
+    static SdfNode DarumaModel(int bodyRgb)
     {
-        var body = Sdf.sphere(0.50f).move(0, 0.52f, 0)
-            .bone("body", new Vec3(0, 0.25f, 0));
-        var head = Sdf.sphere(0.30f).move(0, 1.02f, 0)
-            .bone("head", new Vec3(0, 0.80f, 0));
-        var armL = Sdf.capsule(new Vec3(0.40f, 0.76f, -0.06f),
+        var body = Sdf.Sphere(0.50f).Move(0, 0.52f, 0)
+            .Bone("body", new Vec3(0, 0.25f, 0));
+        var head = Sdf.Sphere(0.30f).Move(0, 1.02f, 0)
+            .Bone("head", new Vec3(0, 0.80f, 0));
+        var armL = Sdf.Capsule(new Vec3(0.40f, 0.76f, -0.06f),
             new Vec3(0.60f, 0.40f, -0.30f), 0.11f)
-            .bone("arm_l", new Vec3(0.40f, 0.76f, -0.06f));
-        var armR = Sdf.capsule(new Vec3(-0.40f, 0.76f, -0.06f),
+            .Bone("arm_l", new Vec3(0.40f, 0.76f, -0.06f));
+        var armR = Sdf.Capsule(new Vec3(-0.40f, 0.76f, -0.06f),
             new Vec3(-0.60f, 0.40f, -0.30f), 0.11f)
-            .bone("arm_r", new Vec3(-0.40f, 0.76f, -0.06f));
-        var trunk = body.smin(head, 0.12f).smin(armL, 0.06f).smin(armR, 0.06f)
-            .paint(bodyRgb);
+            .Bone("arm_r", new Vec3(-0.40f, 0.76f, -0.06f));
+        var trunk = body.Smin(head, 0.12f).Smin(armL, 0.06f).Smin(armR, 0.06f)
+            .Paint(bodyRgb);
         // 顔: 肌色の球を頭前面に沈めて smin (だるまの顔窓)
-        var face = Sdf.sphere(0.20f).move(0, 1.02f, -0.17f).paint(0xF2D1AC);
+        var face = Sdf.Sphere(0.20f).Move(0, 1.02f, -0.17f).Paint(0xF2D1AC);
         // まわし: 白帯の torus
-        var mawashi = Sdf.torus(0.40f, 0.10f).move(0, 0.24f, 0).paint(0xF2EEDC);
-        var eye = Sdf.sphere(0.05f).move(0.10f, 1.08f, -0.30f).mirrorX()
-            .paint(0x241F1F, 0.0f, 0.2f);
-        return trunk.smin(face, 0.04f).union(mawashi).union(eye);
+        var mawashi = Sdf.Torus(0.40f, 0.10f).Move(0, 0.24f, 0).Paint(0xF2EEDC);
+        var eye = Sdf.Sphere(0.05f).Move(0.10f, 1.08f, -0.30f).MirrorX()
+            .Paint(0x241F1F, 0.0f, 0.2f);
+        return trunk.Smin(face, 0.04f).Union(mawashi).Union(eye);
     }
 
-    static void ensureDaruma(Mesh3d[] meshes)
+    static void EnsureDaruma(Mesh3d[] meshes)
     {
         if (!darumaDirty)
             return;
         for (int i = 0; i < fighters.Count; i++)
-            meshes[i].rebuild(Sdf.mesh(darumaModel(fighters[i].bodyRgb), SDF_N));
+            meshes[i].Rebuild(Sdf.Mesh(DarumaModel(fighters[i].BodyRgb), sdfN));
         darumaDirty = false;
     }
 
     // 手続きボーンアニメ。腕 = 戦術で構えが変わる + 転倒でバタバタ、
     // 頭 = 押しの脈動でうなずく。物理 (傾き・跳ね) は model 行列側。
-    static List<float> packBones(int mi, Rikishi f, bool falling, float pulse,
+    static List<float> PackBones(int mi, Rikishi f, bool falling, float pulse,
         int logicalFrame, MeshData? data)
     {
-        float t = logicalFrame * DT;
+        float t = logicalFrame * dt;
         float armSwing;
         if (falling)
             armSwing = (float)Math.Sin(t * 16.0f + mi * 2.1f) * 0.9f;
-        else if (f.tactic == TA_HIKI || f.tactic == TA_INASHI)
+        else if (f.Tactic == taHiki || f.Tactic == taInashi)
             armSwing = 0.7f;
         else
             armSwing = -0.55f * pulse + (float)Math.Sin(t * 2.3f + mi) * 0.08f;
         float nod = falling ? (float)Math.Sin(t * 12.0f) * 0.25f : pulse * 0.16f;
-        return Bones.pack(data, (name, x, y, z) =>
+        return Bones.Pack(data, (name, x, y, z) =>
         {
             if (name == "arm_l")
-                return Bones.pivotRot(x, y, z, Mat4.rotateX(armSwing)
-                    .mul(Mat4.rotateZ(
+                return Bones.PivotRot(x, y, z, Mat4.RotateX(armSwing)
+                    .Mul(Mat4.RotateZ(
                         falling ? (float)Math.Sin(t * 13.0f) * 0.5f : 0.12f * pulse)));
             if (name == "arm_r")
-                return Bones.pivotRot(x, y, z, Mat4.rotateX(armSwing)
-                    .mul(Mat4.rotateZ(
+                return Bones.PivotRot(x, y, z, Mat4.RotateX(armSwing)
+                    .Mul(Mat4.RotateZ(
                         falling ? -(float)Math.Sin(t * 13.0f) * 0.5f : -0.12f * pulse)));
             if (name == "head")
-                return Bones.pivotRot(x, y, z, Mat4.rotateX(nod));
+                return Bones.PivotRot(x, y, z, Mat4.RotateX(nod));
             return null;
         });
     }
 
     // --- テキスト (かなサブセット TTF) --------------------------------------
-    static string? ttf = null;
+    const string fontPath = "samples/22_tonton/data/MPLUS1p-subset.ttf";
+    static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;
 
-    static MeshText? ensureText()
+    static MeshText? EnsureText()
     {
-        Io.load_text("samples/22_tonton/data/MPLUS1p-subset.ttf",
-            out var text, out var version, out _, out _);
-        if (text == null)
+        Io.LoadBytes(fontPath, out var bytes, out var version, out _, out _);
+        if (bytes == null)
             return null;
-        if (ttf == null || fontVersion != version)
+        if (!fontLoaded || fontVersion != version)
         {
-            ttf = text;
+            fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("tonton_mtext", text, version, W, H);
+            mtext = new MeshText("tonton_mtext", fontPath, version, w, h);
         }
         return mtext;
     }
 
     // world 座標 → 論理スクリーン座標
-    static ScreenPos screenPos(Mat4 vp, float wx, float wy, float wz)
+    static ScreenPos ScreenPos(Mat4 vp, float wx, float wy, float wz)
     {
-        var c = vp.mulVec4(new Vec4(wx, wy, wz, 1.0f));
-        if (c.w <= 0.001f)
-            return new ScreenPos { x = 0.0f, y = 0.0f, ok = false };
+        var c = vp.MulVec4(new Vec4(wx, wy, wz, 1.0f));
+        if (c.W <= 0.001f)
+            return new ScreenPos { X = 0.0f, Y = 0.0f, Ok = false };
         return new ScreenPos
         {
-            x = (c.x / c.w + 1.0f) * 0.5f * W,
-            y = (1.0f - c.y / c.w) * 0.5f * H,
-            ok = true,
+            X = (c.X / c.W + 1.0f) * 0.5f * w,
+            Y = (1.0f - c.Y / c.W) * 0.5f * h,
+            Ok = true,
         };
     }
 
     // --- physics -------------------------------------------------------------
 
-    static WorldRef3d? declareWorld()
+    static WorldRef3d? DeclareWorld()
     {
-        var world = Phys3d.phys3d_world("tonton", new WorldOpts3d
+        var world = Phys3d.World("tonton", new WorldOpts3d
         {
-            gravity = new Vec3d { x = 0.0f, y = -10.0f, z = 0.0f },
-            fixedDt = DT,
-            substeps = 4,
-            maxSteps = 1,
+            Gravity = new Vec3d { X = 0.0f, Y = -10.0f, Z = 0.0f },
+            FixedDt = dt,
+            Substeps = 4,
+            MaxSteps = 1,
         });
         if (world == null)
             return null;
-        Phys3d.phys3d_begin(world);
+        Phys3d.Begin(world);
         return world;
     }
 
     // 地面と台座。落ちた力士は地面に転がる (respawn は y で検出)。
-    static void declareStatics(WorldRef3d world)
+    static void DeclareStatics(WorldRef3d world)
     {
-        var ground = Phys3d.phys3d_body(world, "ground", new BodyDesc3d
+        var ground = Phys3d.Body(world, "ground", new BodyDesc3d
         {
-            type = Phys3d.STATIC,
-            initial = new InitialState3d { x = 0.0f, y = -0.5f, z = 0.0f },
+            Type = Phys3d.BodyType.Static,
+            Initial = new InitialState3d { X = 0.0f, Y = -0.5f, Z = 0.0f },
         });
         if (ground != null)
-            Phys3d.phys3d_box(ground, "solid", new BoxDesc3d
+            Phys3d.Box(ground, "solid", new BoxDesc3d
             {
-                hx = 8.0f,
-                hy = 0.5f,
-                hz = 8.0f,
-                friction = 0.7f,
+                Hx = 8.0f,
+                Hy = 0.5f,
+                Hz = 8.0f,
+                Friction = 0.7f,
             });
-        var baseBody = Phys3d.phys3d_body(world, "base", new BodyDesc3d
+        var baseBody = Phys3d.Body(world, "base", new BodyDesc3d
         {
-            type = Phys3d.STATIC,
-            initial = new InitialState3d { x = 0.0f, y = 0.15f, z = 0.0f },
+            Type = Phys3d.BodyType.Static,
+            Initial = new InitialState3d { X = 0.0f, Y = 0.15f, Z = 0.0f },
         });
         if (baseBody != null)
-            Phys3d.phys3d_cylinder(baseBody, "solid", new CylinderDesc3d
+            Phys3d.Cylinder(baseBody, "solid", new CylinderDesc3d
             {
-                height = 0.3f,
-                radius = 1.7f,
-                sides = 24,
-                friction = 0.6f,
+                Height = 0.3f,
+                Radius = 1.7f,
+                Sides = 24,
+                Friction = 0.6f,
             });
     }
 
     // 土俵: 懸架ばね付きの dynamic cylinder。トントンはここに impulse を打つ。
     // 懸架は joint ではなく自前 PD (力士のバランスと同じ流儀)。gravityScale 0
     // なので rest 位置はぴったり home に決まる。
-    static BodyRef3d? declareDohyo(WorldRef3d world)
+    static BodyRef3d? DeclareDohyo(WorldRef3d world)
     {
-        var dohyo = Phys3d.phys3d_body(world, "dohyo", new BodyDesc3d
+        var dohyo = Phys3d.Body(world, "dohyo", new BodyDesc3d
         {
-            type = Phys3d.DYNAMIC,
-            gravityScale = 0.0f,
-            initial = new InitialState3d { x = 0.0f, y = DOHYO_Y, z = 0.0f },
+            Type = Phys3d.BodyType.Dynamic,
+            GravityScale = 0.0f,
+            Initial = new InitialState3d { X = 0.0f, Y = dohyoY, Z = 0.0f },
         });
         if (dohyo == null)
             return null;
-        Phys3d.phys3d_cylinder(dohyo, "solid", new CylinderDesc3d
+        Phys3d.Cylinder(dohyo, "solid", new CylinderDesc3d
         {
-            height = DOHYO_H,
-            radius = DOHYO_R,
-            sides = 28,
-            density = 1.0f,
-            friction = 0.9f,
-            contact = true,
+            Height = dohyoH,
+            Radius = dohyoR,
+            Sides = 28,
+            Density = 1.0f,
+            Friction = 0.9f,
+            Contact = true,
         });
         return dohyo;
     }
 
     // 懸架 PD。位置 (xyz) は home へ、傾きは水平へ、周波数 ω と減衰比 ζ で戻す。
     // F = m (ω² Δx − 2ζω v)、τ = I (ω² lean − 2ζω w)。
-    static void controlDohyo(BodyRef3d dohyo)
+    static void ControlDohyo(BodyRef3d dohyo)
     {
-        var pose = Phys3d.phys3d_pose(dohyo);
+        var pose = Phys3d.Pose(dohyo);
         if (pose == null)
             return;
         float wl = 2.0f * (float)Math.PI * suspLinHz;
         float cl = 2.0f * suspLinDamp * wl;
-        Phys3d.phys3d_add_force_center(dohyo, new Vec3d
+        Phys3d.AddForceCenter(dohyo, new Vec3d
         {
-            x = DOHYO_MASS * (wl * wl * (0.0f - pose.x) - cl * pose.vx),
-            y = DOHYO_MASS * (wl * wl * (DOHYO_Y - pose.y) - cl * pose.vy),
-            z = DOHYO_MASS * (wl * wl * (0.0f - pose.z) - cl * pose.vz),
+            X = dohyoMass * (wl * wl * (0.0f - pose.X) - cl * pose.Vx),
+            Y = dohyoMass * (wl * wl * (dohyoY - pose.Y) - cl * pose.Vy),
+            Z = dohyoMass * (wl * wl * (0.0f - pose.Z) - cl * pose.Vz),
         });
-        var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
-        var up = q * Vec3.up();
-        var lean = up.cross(Vec3.up());
+        var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
+        var up = q * Vec3.Up();
+        var lean = up.Cross(Vec3.Up());
         float wa = 2.0f * (float)Math.PI * suspAngHz;
         float ca = 2.0f * suspAngDamp * wa;
-        Phys3d.phys3d_add_torque(dohyo, new Vec3d
+        Phys3d.AddTorque(dohyo, new Vec3d
         {
-            x = DOHYO_I_TILT * (wa * wa * lean.x - ca * pose.wx),
-            y = DOHYO_I_TILT * (-ca * pose.wy),
-            z = DOHYO_I_TILT * (wa * wa * lean.z - ca * pose.wz),
+            X = dohyoITilt * (wa * wa * lean.X - ca * pose.Wx),
+            Y = dohyoITilt * (-ca * pose.Wy),
+            Z = dohyoITilt * (wa * wa * lean.Z - ca * pose.Wz),
         });
     }
 
-    static BodyRef3d? declareRikishi(WorldRef3d world, int i, Rikishi f)
+    static BodyRef3d? DeclareRikishi(WorldRef3d world, int i, Rikishi f)
     {
-        var body = Phys3d.phys3d_body(world, "rikishi:" + i, new BodyDesc3d
+        var body = Phys3d.Body(world, "rikishi:" + i, new BodyDesc3d
         {
-            type = Phys3d.DYNAMIC,
-            version = f.gen,
-            linearDamping = 0.1f,
-            angularDamping = 0.5f,
+            Type = Phys3d.BodyType.Dynamic,
+            Version = f.Gen,
+            LinearDamping = 0.1f,
+            AngularDamping = 0.5f,
             // yaw を封じる: capsule は回転対称なので物理には影響せず、
             // 見た目の向き (相手に正対) をレンダリング側で自由に決められる
-            motionLocks = new MotionLocks3d { angular_y = true },
-            initial = new InitialState3d { x = f.homeX, y = TOP_Y + 0.02f, z = 0.0f },
+            MotionLocks = new MotionLocks3d { AngularY = true },
+            Initial = new InitialState3d { X = f.HomeX, Y = topY + 0.02f, Z = 0.0f },
         });
         if (body == null)
             return null;
-        Phys3d.phys3d_capsule(body, "solid", new CapsuleDesc3d
+        Phys3d.Capsule(body, "solid", new CapsuleDesc3d
         {
-            version = f.gen,
-            a = new Vec3d { x = 0.0f, y = CAP_R, z = 0.0f },
-            b = new Vec3d { x = 0.0f, y = 0.95f, z = 0.0f },
-            r = CAP_R,
-            density = 1.0f,
+            Version = f.Gen,
+            A = new Vec3d { X = 0.0f, Y = capR, Z = 0.0f },
+            B = new Vec3d { X = 0.0f, Y = 0.95f, Z = 0.0f },
+            R = capR,
+            Density = 1.0f,
             // 高摩擦: 足が滑るより先に体が傾くように (押し倒しが決まる条件)。
             // 移動の自由は空中 (トントンで跳ねた瞬間) にある。
-            friction = 0.85f,
-            contact = true,
+            Friction = 0.85f,
+            Contact = true,
         });
         return body;
     }
 
     // 決定論ハッシュ乱数 (シードは frame と力士 index)。リプレイ可能。
-    static float rand01(int n)
+    static float Rand01(int n)
     {
         float x = (float)Math.Sin(n * 12.9898f) * 43758.5453f;
         return x - (float)Math.Floor(x);
@@ -454,223 +460,223 @@ public static class Tonton22
     // - 相手が深く前傾 → counter 確率で引き/いなし (支えを外す)
     // - 背中が土俵際 → いなしで軸をずらす
     // - まれに「ため」、基本は押し
-    static void decide(int i, Rikishi f, Pose3d pose, Pose3d op, Vec3 dir,
+    static void Decide(int i, Rikishi f, Pose3d pose, Pose3d op, Vec3 dir,
         bool engaged)
     {
-        if (frame < f.tacticUntil)
+        if (frame < f.TacticUntil)
             return;
-        var opQ = new Quat(op.qx, op.qy, op.qz, op.qw);
-        var opUp = opQ * Vec3.up();
-        float leanToMe = -(opUp.x * dir.x + opUp.z * dir.z); // 相手の前傾のこちら成分
-        float pushedBack = -(pose.vx * dir.x + pose.vz * dir.z); // 押し込まれ速度
-        float rr = (float)Math.Sqrt(pose.x * pose.x + pose.z * pose.z);
+        var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
+        var opUp = opQ * Vec3.Up();
+        float leanToMe = -(opUp.X * dir.X + opUp.Z * dir.Z); // 相手の前傾のこちら成分
+        float pushedBack = -(pose.Vx * dir.X + pose.Vz * dir.Z); // 押し込まれ速度
+        float rr = (float)Math.Sqrt(pose.X * pose.X + pose.Z * pose.Z);
         float backToEdge =
-            rr > 0.01f ? -(pose.x * dir.x + pose.z * dir.z) / rr : 0.0f;
-        float edgeDanger = backToEdge > 0.0f ? rr / DOHYO_R * backToEdge : 0.0f;
-        float r = rand01(frame * 97 + i * 1013);
+            rr > 0.01f ? -(pose.X * dir.X + pose.Z * dir.Z) / rr : 0.0f;
+        float edgeDanger = backToEdge > 0.0f ? rr / dohyoR * backToEdge : 0.0f;
+        float r = Rand01(frame * 97 + i * 1013);
         // 引き/いなしの好機: 相手が前傾している、押し込まれている、または賭け
-        float chance = (leanToMe > 0.10f ? f.counter : 0.0f)
-            + (pushedBack > 0.12f ? f.counter * 0.8f : 0.0f) + f.counter * 0.15f;
+        float chance = (leanToMe > 0.10f ? f.Counter : 0.0f)
+            + (pushedBack > 0.12f ? f.Counter * 0.8f : 0.0f) + f.Counter * 0.15f;
         if (engaged && r < chance && edgeDanger < 0.55f)
         {
-            f.tactic = rand01(frame * 131 + i * 71) < 0.5f ? TA_HIKI : TA_INASHI;
-            f.tacticUntil = frame + 18;
-            f.sideSign = rand01(frame * 193 + i * 37) < 0.5f ? -1.0f : 1.0f;
+            f.Tactic = Rand01(frame * 131 + i * 71) < 0.5f ? taHiki : taInashi;
+            f.TacticUntil = frame + 18;
+            f.SideSign = Rand01(frame * 193 + i * 37) < 0.5f ? -1.0f : 1.0f;
         }
         else if (edgeDanger > 0.62f && r < 0.8f)
         {
-            f.tactic = TA_INASHI;
-            f.tacticUntil = frame + 16;
-            f.sideSign = rand01(frame * 193 + i * 37) < 0.5f ? -1.0f : 1.0f;
+            f.Tactic = taInashi;
+            f.TacticUntil = frame + 16;
+            f.SideSign = Rand01(frame * 193 + i * 37) < 0.5f ? -1.0f : 1.0f;
         }
         else if (r > 0.9f)
         {
-            f.tactic = TA_TAME;
-            f.tacticUntil = frame + 12;
+            f.Tactic = taTame;
+            f.TacticUntil = frame + 12;
         }
         else
         {
-            f.tactic = TA_OSU;
-            f.tacticUntil = frame + 18 + (int)Math.Floor(r * 22.0f);
+            f.Tactic = taOsu;
+            f.TacticUntil = frame + 18 + (int)Math.Floor(r * 22.0f);
         }
     }
 
     // 姿勢 PD (倒立振子)。up を world up へ立て直すトルク + 角速度ダンピング。
     // その上に状態別の操舵: 仕切り中は定位置ばね、勝負中は戦術に従う。
-    static void controlRikishi(int i, Rikishi f, BodyRef3d body, BodyRef3d opp)
+    static void ControlRikishi(int i, Rikishi f, BodyRef3d body, BodyRef3d opp)
     {
-        var pose = Phys3d.phys3d_pose(body);
+        var pose = Phys3d.Pose(body);
         if (pose == null)
             return;
-        var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
-        var up = q * Vec3.up();
-        var lean = up.cross(Vec3.up()); // |lean| = sin(傾き)、方向 = 立て直す回転軸
+        var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
+        var up = q * Vec3.Up();
+        var lean = up.Cross(Vec3.Up()); // |lean| = sin(傾き)、方向 = 立て直す回転軸
         var spring = lean * balKp;
-        float mag = spring.length();
+        float mag = spring.Length();
         // 筋力上限 (超えた傾きは救えない)。「ため」中は腰を落として踏ん張る
-        float maxEff = f.tactic == TA_TAME && state == ST_FIGHT
+        float maxEff = f.Tactic == taTame && state == stFight
             ? balMax * 1.5f : balMax;
         if (mag > maxEff)
             spring = spring * (maxEff / mag);
-        Phys3d.phys3d_add_torque(body, new Vec3d
+        Phys3d.AddTorque(body, new Vec3d
         {
-            x = spring.x - pose.wx * balKd,
-            y = 0.0f, // yaw は motionLocks で封じている
-            z = spring.z - pose.wz * balKd,
+            X = spring.X - pose.Wx * balKd,
+            Y = 0.0f, // yaw は motionLocks で封じている
+            Z = spring.Z - pose.Wz * balKd,
         });
         // 倒れている間は操舵しない (勝敗の余韻でジタバタさせない)
-        if (up.y < 0.5f)
+        if (up.Y < 0.5f)
             return;
-        if (state == ST_FIGHT)
+        if (state == stFight)
         {
-            var op = Phys3d.phys3d_pose(opp);
+            var op = Phys3d.Pose(opp);
             if (op == null)
                 return;
-            var toOpp = new Vec3(op.x - pose.x, 0.0f, op.z - pose.z);
-            float dist = toOpp.length();
-            var dir = toOpp.normalize();
-            bool engaged = dist < 2.0f * CAP_R + 0.14f;
-            decide(i, f, pose, op, dir, engaged);
-            if (f.tactic == TA_HIKI)
+            var toOpp = new Vec3(op.X - pose.X, 0.0f, op.Z - pose.Z);
+            float dist = toOpp.Length();
+            var dir = toOpp.Normalize();
+            bool engaged = dist < 2.0f * capR + 0.14f;
+            Decide(i, f, pose, op, dir, engaged);
+            if (f.Tactic == taHiki)
             {
                 // 支えを外す。前傾した相手はつんのめって落ちる (引き落とし)
-                Phys3d.phys3d_add_force_center(body, new Vec3d
+                Phys3d.AddForceCenter(body, new Vec3d
                 {
-                    x = (-dir.x * 1.8f - pose.vx) * hikiK,
-                    y = 0.0f,
-                    z = (-dir.z * 1.8f - pose.vz) * hikiK,
+                    X = (-dir.X * 1.8f - pose.Vx) * hikiK,
+                    Y = 0.0f,
+                    Z = (-dir.Z * 1.8f - pose.Vz) * hikiK,
                 });
                 // はたき込み: 組んだまま引くときは相手の上体をこちらへ引き倒す
-                if (dist < 2.0f * CAP_R + 0.55f)
+                if (dist < 2.0f * capR + 0.55f)
                 {
-                    var opQ = new Quat(op.qx, op.qy, op.qz, op.qw);
-                    var opUp = opQ * Vec3.up();
-                    var pullAxis = opUp.cross(-1.0f * dir); // 相手の up をこちらへ倒す軸
-                    Phys3d.phys3d_add_torque(opp, new Vec3d
+                    var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
+                    var opUp = opQ * Vec3.Up();
+                    var pullAxis = opUp.Cross(-1.0f * dir); // 相手の up をこちらへ倒す軸
+                    Phys3d.AddTorque(opp, new Vec3d
                     {
-                        x = pullAxis.x * hatakiK,
-                        y = 0.0f,
-                        z = pullAxis.z * hatakiK,
+                        X = pullAxis.X * hatakiK,
+                        Y = 0.0f,
+                        Z = pullAxis.Z * hatakiK,
                     });
                 }
             }
-            else if (f.tactic == TA_INASHI)
+            else if (f.Tactic == taInashi)
             {
                 // 横へかわす。押しの軸を外して空振りさせる
-                var side = new Vec3(-dir.z * f.sideSign, 0.0f, dir.x * f.sideSign);
-                Phys3d.phys3d_add_force_center(body, new Vec3d
+                var side = new Vec3(-dir.Z * f.SideSign, 0.0f, dir.X * f.SideSign);
+                Phys3d.AddForceCenter(body, new Vec3d
                 {
-                    x = (side.x * 2.3f - pose.vx) * inashiK,
-                    y = 0.0f,
-                    z = (side.z * 2.3f - pose.vz) * inashiK,
+                    X = (side.X * 2.3f - pose.Vx) * inashiK,
+                    Y = 0.0f,
+                    Z = (side.Z * 2.3f - pose.Vz) * inashiK,
                 });
                 // かわしながら相手の突進を前へ転がす (突き落とし)
-                if (dist < 2.0f * CAP_R + 0.55f)
+                if (dist < 2.0f * capR + 0.55f)
                 {
-                    var opQ = new Quat(op.qx, op.qy, op.qz, op.qw);
-                    var opUp = opQ * Vec3.up();
-                    var rollAxis = opUp.cross(-1.0f * dir);
-                    Phys3d.phys3d_add_torque(opp, new Vec3d
+                    var opQ = new Quat(op.Qx, op.Qy, op.Qz, op.Qw);
+                    var opUp = opQ * Vec3.Up();
+                    var rollAxis = opUp.Cross(-1.0f * dir);
+                    Phys3d.AddTorque(opp, new Vec3d
                     {
-                        x = rollAxis.x * hatakiK * 0.7f,
-                        y = 0.0f,
-                        z = rollAxis.z * hatakiK * 0.7f,
+                        X = rollAxis.X * hatakiK * 0.7f,
+                        Y = 0.0f,
+                        Z = rollAxis.Z * hatakiK * 0.7f,
                     });
                 }
             }
-            else if (f.tactic == TA_TAME)
+            else if (f.Tactic == taTame)
             {
                 // 直立で耐える。詰めも押しもしない
-                Phys3d.phys3d_add_force_center(body, new Vec3d
+                Phys3d.AddForceCenter(body, new Vec3d
                 {
-                    x = -pose.vx * seekK,
-                    y = 0.0f,
-                    z = -pose.vz * seekK,
+                    X = -pose.Vx * seekK,
+                    Y = 0.0f,
+                    Z = -pose.Vz * seekK,
                 });
             }
             else
             {
                 // 押す: 前進方向にはブレーキをかけない速度サーボ。押し込み中に
                 // 相手が消えても止まれない = 突っ込むリスクが物理に乗る
-                float vAlong = pose.vx * dir.x + pose.vz * dir.z;
+                float vAlong = pose.Vx * dir.X + pose.Vz * dir.Z;
                 float drive =
                     vAlong < walkSpeed ? (walkSpeed - vAlong) * seekK : 0.0f;
-                float perpX = pose.vx - dir.x * vAlong;
-                float perpZ = pose.vz - dir.z * vAlong;
-                Phys3d.phys3d_add_force_center(body, new Vec3d
+                float perpX = pose.Vx - dir.X * vAlong;
+                float perpZ = pose.Vz - dir.Z * vAlong;
+                Phys3d.AddForceCenter(body, new Vec3d
                 {
-                    x = dir.x * drive - perpX * seekK,
-                    y = 0.0f,
-                    z = dir.z * drive - perpZ * seekK,
+                    X = dir.X * drive - perpX * seekK,
+                    Y = 0.0f,
+                    Z = dir.Z * drive - perpZ * seekK,
                 });
                 if (engaged)
                 {
                     // 「のこった」の脈動で前傾して押し込む。重心を相手に預ける
                     float pulse = Math.Max(0.0f, (float)Math.Sin(
-                        frame * DT * f.pulseHz * 2.0f * (float)Math.PI + f.phase));
-                    Phys3d.phys3d_add_force_center(body, new Vec3d
+                        frame * dt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase));
+                    Phys3d.AddForceCenter(body, new Vec3d
                     {
-                        x = dir.x * f.pushK * pulse,
-                        y = 0.0f,
-                        z = dir.z * f.pushK * pulse,
+                        X = dir.X * f.PushK * pulse,
+                        Y = 0.0f,
+                        Z = dir.Z * f.PushK * pulse,
                     });
-                    var leanAxis = up.cross(dir); // up を dir へ倒す = 前傾
-                    Phys3d.phys3d_add_torque(body, new Vec3d
+                    var leanAxis = up.Cross(dir); // up を dir へ倒す = 前傾
+                    Phys3d.AddTorque(body, new Vec3d
                     {
-                        x = leanAxis.x * f.leanK * pulse,
-                        y = 0.0f,
-                        z = leanAxis.z * f.leanK * pulse,
+                        X = leanAxis.X * f.LeanK * pulse,
+                        Y = 0.0f,
+                        Z = leanAxis.Z * f.LeanK * pulse,
                     });
                 }
             }
         }
         else
         {
-            Phys3d.phys3d_add_force_center(body, new Vec3d
+            Phys3d.AddForceCenter(body, new Vec3d
             {
-                x = (f.homeX - pose.x) * holdK - pose.vx * holdKd,
-                y = 0.0f,
-                z = (0.0f - pose.z) * holdK - pose.vz * holdKd,
+                X = (f.HomeX - pose.X) * holdK - pose.Vx * holdKd,
+                Y = 0.0f,
+                Z = (0.0f - pose.Z) * holdK - pose.Vz * holdKd,
             });
         }
     }
 
     // 勝敗判定と取組フロー。負け = 土俵上面から落ちた or 倒れたまま起きない。
-    static void judge(List<BodyRef3d> bodies)
+    static void Judge(List<BodyRef3d> bodies)
     {
-        if (state == ST_SHIKIRI)
+        if (state == stShikiri)
         {
             stateT--;
             if (stateT <= 0)
             {
-                state = ST_FIGHT;
+                state = stFight;
                 fightStart = frame;
                 engagedPrev = false;
-                Audio.audio_play(Sfx.blip(2400, 2100, 0.05f, 0.35f)); // 拍子木
+                Audio.Play(Sfx.Blip(2400, 2100, 0.05f, 0.35f)); // 拍子木
             }
         }
-        else if (state == ST_FIGHT)
+        else if (state == stFight)
         {
             if (frame == fightStart + 9)
-                Audio.audio_play(Sfx.blip(2400, 2100, 0.05f, 0.35f),
-                    new PlayOpts { pitch = 0.93f });
+                Audio.Play(Sfx.Blip(2400, 2100, 0.05f, 0.35f),
+                    new PlayOpts { Pitch = 0.93f });
             var lost = new bool[] { false, false };
             var lostOut = new bool[] { false, false };
             for (int i = 0; i < fighters.Count; i++)
             {
                 var f = fighters[i];
-                var pose = Phys3d.phys3d_pose(bodies[i]);
+                var pose = Phys3d.Pose(bodies[i]);
                 if (pose == null)
                     continue;
-                var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
-                var up = q * Vec3.up();
-                if (up.y < 0.5f) // 60° = 筋力上限の臨界角より深い。もう戻れない
-                    f.downFrames++;
+                var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
+                var up = q * Vec3.Up();
+                if (up.Y < 0.5f) // 60° = 筋力上限の臨界角より深い。もう戻れない
+                    f.DownFrames++;
                 else
-                    f.downFrames = 0;
-                lostOut[i] = pose.y < 0.35f
-                    || pose.x * pose.x + pose.z * pose.z > DOHYO_R * DOHYO_R;
-                lost[i] = lostOut[i] || f.downFrames > 20;
+                    f.DownFrames = 0;
+                lostOut[i] = pose.Y < 0.35f
+                    || pose.X * pose.X + pose.Z * pose.Z > dohyoR * dohyoR;
+                lost[i] = lostOut[i] || f.DownFrames > 20;
             }
             if (lost[0] || lost[1])
             {
@@ -683,26 +689,26 @@ public static class Tonton22
                 else
                 {
                     bool wentOut = lostOut[1 - winner];
-                    int wt = fighters[winner].tactic;
-                    if (wt == TA_HIKI)
+                    int wt = fighters[winner].Tactic;
+                    if (wt == taHiki)
                         kimarite = wentOut ? "ひきおとし" : "はたきこみ";
-                    else if (wt == TA_INASHI)
+                    else if (wt == taInashi)
                         kimarite = wentOut ? "おくりだし" : "つきおとし";
                     else
                         kimarite = wentOut ? "おしだし" : "おしたおし";
                 }
-                state = ST_KIMARI;
+                state = stKimari;
                 stateT = 90;
                 shake = 1.0f;
-                Audio.audio_play(Sfx.noise(0.7f, 0.28f, 0xbeef)); // 歓声がわり
-                Audio.audio_play(Sfx.blip(520, 780, 0.22f, 0.22f));
+                Audio.Play(Sfx.Noise(0.7f, 0.28f, 0xbeef)); // 歓声がわり
+                Audio.Play(Sfx.Blip(520, 780, 0.22f, 0.22f));
                 if (auto)
                     Console.WriteLine("tonton: winner=" + winner
                         + " kimarite=" + kimarite + " stars=[" + stars[0] + ","
                         + stars[1] + "] frame=" + frame);
             }
         }
-        else if (state == ST_KIMARI)
+        else if (state == stKimari)
         {
             stateT--;
             if (stateT <= 0)
@@ -711,11 +717,11 @@ public static class Tonton22
                     stars[winner]++;
                 foreach (var f in fighters)
                 {
-                    f.gen++;
-                    f.downFrames = 0;
+                    f.Gen++;
+                    f.DownFrames = 0;
                 }
                 winner = -1;
-                state = ST_SHIKIRI;
+                state = stShikiri;
                 stateT = 45;
             }
         }
@@ -725,33 +731,33 @@ public static class Tonton22
     // クリック (押しっぱなしは連打) = トントン。カメラ ray を土俵上面の平面と
     // 交差させ、土俵の中なら下向き impulse。土俵が傾いていても上面 "あたり" に
     // 打てれば十分なので平面近似で済ませる。
-    static void tapAt(BodyRef3d dohyo, float px, float pz)
+    static void TapAt(BodyRef3d dohyo, float px, float pz)
     {
         lastTap = frame;
-        Audio.audio_play(Sfx.blip(150, 45, 0.09f, 0.5f)); // トントンの「ドンッ」
-        Audio.audio_play(Sfx.noise(0.05f, 0.18f));
-        Phys3d.phys3d_add_impulse(dohyo,
-            new Vec3d { x = 0.0f, y = -tapImpulse, z = 0.0f },
+        Audio.Play(Sfx.Blip(150, 45, 0.09f, 0.5f)); // トントンの「ドンッ」
+        Audio.Play(Sfx.Noise(0.05f, 0.18f));
+        Phys3d.AddImpulse(dohyo,
+            new Vec3d { X = 0.0f, Y = -tapImpulse, Z = 0.0f },
             new CommandOpts3d
             {
-                point = new Vec3d { x = px, y = TOP_Y, z = pz },
+                Point = new Vec3d { X = px, Y = topY, Z = pz },
             });
         markerX = px;
-        markerY = TOP_Y;
+        markerY = topY;
         markerZ = pz;
         markerT = 10;
         shake = 1.0f;
     }
 
-    static void captureTapInput()
+    static void CaptureTapInput()
     {
         if (auto)
             return;
-        bool pressed = Input.mouse_pressed();
-        pointerDown = Input.mouse_down();
+        bool pressed = Input.MousePressed();
+        pointerDown = Input.MouseDown();
         if (pressed || pointerDown)
         {
-            Input.mouse_pos(out var mx, out var my);
+            Input.MousePos(out var mx, out var my);
             pointerX = mx;
             pointerY = my;
             if (pressed)
@@ -763,20 +769,20 @@ public static class Tonton22
         }
     }
 
-    static void updateTap(BodyRef3d dohyo, Vec3 eye, Vec3 target, float fovDeg,
+    static void UpdateTap(BodyRef3d dohyo, Vec3 eye, Vec3 target, float fovDeg,
         float aspect, float w, float h)
     {
         // 自動トントン: 決定論の擬似乱数で縁寄りを叩き続ける (勝負中のみ)
         if (auto)
         {
-            if (state != ST_FIGHT || frame % 24 != 12)
+            if (state != stFight || Imod(frame, 24) != 12)
                 return;
-            float aa = (frame * 7919) % 628 / 100.0f;
-            float rr = DOHYO_R * (0.45f + (frame * 337) % 50 / 100.0f);
-            tapAt(dohyo, (float)Math.Cos(aa) * rr, (float)Math.Sin(aa) * rr);
+            float aa = Imod(frame * 7919, 628) / 100.0f;
+            float rr = dohyoR * (0.45f + Imod(frame * 337, 50) / 100.0f);
+            TapAt(dohyo, (float)Math.Cos(aa) * rr, (float)Math.Sin(aa) * rr);
             return;
         }
-        if (state != ST_FIGHT)
+        if (state != stFight)
         {
             // 仕切り・余韻中の pressed は次の取組に持ち越さない。
             pendingTap = false;
@@ -791,22 +797,22 @@ public static class Tonton22
             return;
         float ndcX = sx / w * 2.0f - 1.0f;
         float ndcY = 1.0f - sy / h * 2.0f;
-        var fwd = (target - eye).normalize();
-        var right = Vec3.up().cross(fwd).normalize();
-        var upv = fwd.cross(right);
+        var fwd = (target - eye).Normalize();
+        var right = Vec3.Up().Cross(fwd).Normalize();
+        var upv = fwd.Cross(right);
         float tanH = (float)Math.Tan(fovDeg * (float)Math.PI / 360.0f);
         var dir = (fwd + right * (ndcX * tanH * aspect) + upv * (ndcY * tanH))
-            .normalize();
-        if (dir.y > -0.001f)
+            .Normalize();
+        if (dir.Y > -0.001f)
             return; // 上を向いた ray は土俵に届かない
-        float t = (TOP_Y - eye.y) / dir.y;
+        float t = (topY - eye.Y) / dir.Y;
         var p = eye + dir * t;
-        if (p.x * p.x + p.z * p.z > DOHYO_R * DOHYO_R * 1.1f)
+        if (p.X * p.X + p.Z * p.Z > dohyoR * dohyoR * 1.1f)
             return;
-        tapAt(dohyo, p.x, p.z);
+        TapAt(dohyo, p.X, p.Z);
     }
 
-    static void tick(float aspect, float w, float h)
+    static void Tick(float aspect, float w, float h)
     {
         // 従来の render frame 冒頭 / 末尾にあった演出カウントを
         // 60 Hz で進める。この後の tap / judge で始まる演出は全強度で描く。
@@ -821,44 +827,44 @@ public static class Tonton22
         var lookAt = new Vec3(0.0f, 0.4f, 0.0f);
         float fovDeg = 40.0f;
 
-        var nextWorld = declareWorld();
+        var nextWorld = DeclareWorld();
         if (nextWorld == null)
             return;
         world = nextWorld;
-        declareStatics(nextWorld);
-        var dohyo = declareDohyo(nextWorld);
+        DeclareStatics(nextWorld);
+        var dohyo = DeclareDohyo(nextWorld);
         if (dohyo == null)
             return;
-        controlDohyo(dohyo);
+        ControlDohyo(dohyo);
         var bodies = new List<BodyRef3d>();
         for (int i = 0; i < fighters.Count; i++)
         {
-            var body = declareRikishi(nextWorld, i, fighters[i]);
+            var body = DeclareRikishi(nextWorld, i, fighters[i]);
             if (body == null)
                 return;
             bodies.Add(body);
         }
         for (int i = 0; i < fighters.Count; i++)
-            controlRikishi(i, fighters[i], bodies[i], bodies[1 - i]);
-        judge(bodies);
-        updateTap(dohyo, tickEye, lookAt, fovDeg, aspect, w, h);
+            ControlRikishi(i, fighters[i], bodies[i], bodies[1 - i]);
+        Judge(bodies);
+        UpdateTap(dohyo, tickEye, lookAt, fovDeg, aspect, w, h);
 
-        Phys3d.phys3d_step(nextWorld, DT);
+        Phys3d.Step(nextWorld, dt);
 
         // 立ち合いのぶつかり (接触のエッジで音と振動)
         {
-            var p0 = Phys3d.phys3d_pose(bodies[0]);
-            var p1 = Phys3d.phys3d_pose(bodies[1]);
-            if (state == ST_FIGHT && p0 != null && p1 != null)
+            var p0 = Phys3d.Pose(bodies[0]);
+            var p1 = Phys3d.Pose(bodies[1]);
+            if (state == stFight && p0 != null && p1 != null)
             {
-                float ddx = p1.x - p0.x;
-                float ddz = p1.z - p0.z;
-                float lim = 2.0f * CAP_R + 0.14f;
+                float ddx = p1.X - p0.X;
+                float ddz = p1.Z - p0.Z;
+                float lim = 2.0f * capR + 0.14f;
                 bool eng = ddx * ddx + ddz * ddz < lim * lim;
                 if (eng && !engagedPrev)
                 {
-                    Audio.audio_play(Sfx.noise(0.12f, 0.45f));
-                    Audio.audio_play(Sfx.blip(90, 55, 0.07f, 0.3f));
+                    Audio.Play(Sfx.Noise(0.12f, 0.45f));
+                    Audio.Play(Sfx.Blip(90, 55, 0.07f, 0.3f));
                     if (shake < 0.6f)
                         shake = 0.6f;
                 }
@@ -870,14 +876,14 @@ public static class Tonton22
         for (int i = 0; i < fighters.Count; i++)
         {
             var f = fighters[i];
-            var pose = Phys3d.phys3d_pose(bodies[i]);
+            var pose = Phys3d.Pose(bodies[i]);
             if (pose == null)
                 continue;
-            if (f.prevVy < -1.2f && pose.vy > f.prevVy + 0.8f)
-                f.squashT = 8;
-            f.prevVy = pose.vy;
-            if (f.squashT > 0)
-                f.squashT = f.squashT - 1;
+            if (f.PrevVy < -1.2f && pose.Vy > f.PrevVy + 0.8f)
+                f.SquashT = 8;
+            f.PrevVy = pose.Vy;
+            if (f.SquashT > 0)
+                f.SquashT = f.SquashT - 1;
         }
 
         frame = frame + 1;
@@ -885,7 +891,7 @@ public static class Tonton22
 
     // --- rendering -------------------------------------------------------------
 
-    public static void onFrame(float dt)
+    public static void OnFrame(float dt)
     {
         var renNow = ren ?? new Renderer3d("tt22");
         ren = renNow;
@@ -894,9 +900,9 @@ public static class Tonton22
         if (cubeNow == null || cylNow == null)
         {
             cubeNow = new Mesh3d("tt_cube");
-            cubeNow.rebuild(Shapes3d.cube());
+            cubeNow.Rebuild(Shapes3d.Cube());
             cylNow = new Mesh3d("tt_cyl");
-            cylNow.rebuild(Shapes3d.cylinder(28));
+            cylNow.Rebuild(Shapes3d.Cylinder(28));
             cubeMesh = cubeNow;
             cylMesh = cylNow;
         }
@@ -904,15 +910,15 @@ public static class Tonton22
             ?? new Mesh3d[] { new Mesh3d("tt_daruma0"), new Mesh3d("tt_daruma1") };
         darumaMesh = darumaNow;
 
-        Gfx.size(out var sw, out var sh);
+        Gfx.Size(out var sw, out var sh);
         float aspect = (float)sw / sh;
         float fovDeg = 40.0f;
         var lookAt = new Vec3(0.0f, 0.4f, 0.0f);
 
-        captureTapInput();
+        CaptureTapInput();
         var stepNow = step ?? new FixedStep();
         step = stepNow;
-        stepNow.frame(dt, _ => tick(aspect, sw, sh));
+        stepNow.Frame(dt, _ => Tick(aspect, sw, sh));
 
         var eyeNow = renderEye;
         if (eyeNow == null)
@@ -923,82 +929,82 @@ public static class Tonton22
 
         // --- draw ---
         // 屋外の明るい昼 (だるまの色がよく出るように空色強め)
-        renNow.light.dir = new Vec3(-0.4f, 1.0f, -0.55f);
-        renNow.sky.top = Color.rgb(0.45f, 0.52f, 0.62f);
-        renNow.sky.bottom = Color.rgb(0.16f, 0.14f, 0.13f);
-        renNow.background = Color.rgb(0.05f, 0.05f, 0.08f);
-        renNow.shadow.center = new Vec3(0, 0.3f, 0);
-        renNow.shadow.extent = 3.5f;
-        renNow.begin(new Camera
+        renNow.Light.Dir = new Vec3(-0.4f, 1.0f, -0.55f);
+        renNow.Sky.Top = Color.Rgb(0.45f, 0.52f, 0.62f);
+        renNow.Sky.Bottom = Color.Rgb(0.16f, 0.14f, 0.13f);
+        renNow.Background = Color.Rgb(0.05f, 0.05f, 0.08f);
+        renNow.Shadow.Center = new Vec3(0, 0.3f, 0);
+        renNow.Shadow.Extent = 3.5f;
+        renNow.Begin(new Camera
         {
-            eye = eyeNow,
-            target = lookAt,
-            fov = fovDeg,
-            near = 0.1f,
-            far = 50.0f,
+            Eye = eyeNow,
+            Target = lookAt,
+            Fov = fovDeg,
+            Near = 0.1f,
+            Far = 50.0f,
         });
 
         // 地面と台座
-        renNow.draw(cubeNow, Mat4.translate(new Vec3(0, -0.5f, 0))
-            * Mat4.scale(new Vec3(8, 0.5f, 8)),
-            new Draw3dOpts { tint = Color.rgb(0.10f, 0.10f, 0.13f) });
-        renNow.draw(cylNow, Mat4.translate(new Vec3(0, 0.15f, 0))
-            * Mat4.scale(new Vec3(1.7f, 0.3f, 1.7f)),
-            new Draw3dOpts { tint = Color.rgb(0.16f, 0.15f, 0.19f) });
+        renNow.Draw(cubeNow, Mat4.Translate(new Vec3(0, -0.5f, 0))
+            * Mat4.Scale(new Vec3(8, 0.5f, 8)),
+            new Draw3dOpts { Tint = Color.Rgb(0.10f, 0.10f, 0.13f) });
+        renNow.Draw(cylNow, Mat4.Translate(new Vec3(0, 0.15f, 0))
+            * Mat4.Scale(new Vec3(1.7f, 0.3f, 1.7f)),
+            new Draw3dOpts { Tint = Color.Rgb(0.16f, 0.15f, 0.19f) });
 
         // 土俵 (懸架で傾く)。上面に俵の白リングと仕切り線を重ねる。
         var drawWorld = world;
         Pose3d? dp = null;
         if (drawWorld != null)
-            dp = Phys3d.phys3d_pose(drawWorld, "dohyo");
+            dp = Phys3d.PoseByKey(drawWorld, "dohyo");
         if (dp != null)
         {
-            var dm = Renderer3d.poseMat(dp);
-            renNow.draw(cylNow, dm * Mat4.scale(new Vec3(DOHYO_R, DOHYO_H, DOHYO_R)),
-                new Draw3dOpts { tint = Color.rgb(0.72f, 0.55f, 0.38f) });
-            float topLocal = DOHYO_H * 0.5f;
-            renNow.draw(cylNow, dm * Mat4.translate(new Vec3(0, topLocal + 0.005f, 0))
-                * Mat4.scale(new Vec3(DOHYO_R * 0.98f, 0.01f, DOHYO_R * 0.98f)),
-                new Draw3dOpts { tint = Color.rgb(0.92f, 0.88f, 0.78f) });
-            renNow.draw(cylNow, dm * Mat4.translate(new Vec3(0, topLocal + 0.015f, 0))
-                * Mat4.scale(new Vec3(DOHYO_R * 0.86f, 0.01f, DOHYO_R * 0.86f)),
-                new Draw3dOpts { tint = Color.rgb(0.72f, 0.55f, 0.38f) });
+            var dm = Renderer3d.PoseMat(dp);
+            renNow.Draw(cylNow, dm * Mat4.Scale(new Vec3(dohyoR, dohyoH, dohyoR)),
+                new Draw3dOpts { Tint = Color.Rgb(0.72f, 0.55f, 0.38f) });
+            float topLocal = dohyoH * 0.5f;
+            renNow.Draw(cylNow, dm * Mat4.Translate(new Vec3(0, topLocal + 0.005f, 0))
+                * Mat4.Scale(new Vec3(dohyoR * 0.98f, 0.01f, dohyoR * 0.98f)),
+                new Draw3dOpts { Tint = Color.Rgb(0.92f, 0.88f, 0.78f) });
+            renNow.Draw(cylNow, dm * Mat4.Translate(new Vec3(0, topLocal + 0.015f, 0))
+                * Mat4.Scale(new Vec3(dohyoR * 0.86f, 0.01f, dohyoR * 0.86f)),
+                new Draw3dOpts { Tint = Color.Rgb(0.72f, 0.55f, 0.38f) });
             foreach (var sx in new float[] { -0.22f, 0.22f })
-                renNow.draw(cubeNow,
-                    dm * Mat4.translate(new Vec3(sx, topLocal + 0.025f, 0))
-                    * Mat4.scale(new Vec3(0.02f, 0.004f, 0.3f)),
-                    new Draw3dOpts { tint = Color.rgb(0.92f, 0.88f, 0.78f) });
+                renNow.Draw(cubeNow,
+                    dm * Mat4.Translate(new Vec3(sx, topLocal + 0.025f, 0))
+                    * Mat4.Scale(new Vec3(0.02f, 0.004f, 0.3f)),
+                    new Draw3dOpts { Tint = Color.Rgb(0.92f, 0.88f, 0.78f) });
         }
 
         // 力士: SDF だるま (skinning + 手続きボーンアニメ)。物理の pose に
         // 相手への正対 yaw と着地スカッシュを重ねる。
-        ensureDaruma(darumaNow);
+        EnsureDaruma(darumaNow);
         for (int i = 0; i < fighters.Count; i++)
         {
             var f = fighters[i];
             var mesh = darumaNow[i];
             if (drawWorld == null)
                 continue;
-            var pose = Phys3d.phys3d_pose(drawWorld, "rikishi:" + i);
-            if (pose == null || !mesh.ready())
+            var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
+            if (pose == null || !mesh.Ready())
                 continue;
-            float sq = f.squashT / 8.0f * 0.22f;
-            var op = Phys3d.phys3d_pose(drawWorld, "rikishi:" + (1 - i));
-            float fx = op != null ? op.x - pose.x : -pose.x;
-            float fz = op != null ? op.z - pose.z : -pose.z;
+            float sq = f.SquashT / 8.0f * 0.22f;
+            var op = Phys3d.PoseByKey(drawWorld, "rikishi:" + (1 - i));
+            float fx = op != null ? op.X - pose.X : -pose.X;
+            float fz = op != null ? op.Z - pose.Z : -pose.Z;
             float yaw = (float)Math.Atan2(fx, fz); // model の -Z を相手へ向ける
-            var q = new Quat(pose.qx, pose.qy, pose.qz, pose.qw);
-            var upv = q * Vec3.up();
-            bool falling = upv.y < 0.6f;
-            float pulse = f.tactic == TA_OSU
+            var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
+            var upv = q * Vec3.Up();
+            bool falling = upv.Y < 0.6f;
+            float pulse = f.Tactic == taOsu
                 ? Math.Max(0.0f, (float)Math.Sin(
-                    renderFrame * DT * f.pulseHz * 2.0f * (float)Math.PI + f.phase))
+                    renderFrame * dt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase))
                 : 0.0f;
-            var model = Renderer3d.poseMat(pose) * Mat4.rotateY(yaw)
-                * Mat4.scale(new Vec3(1.0f + sq * 0.6f, 1.0f - sq, 1.0f + sq * 0.6f));
-            renNow.draw(mesh, model, new Draw3dOpts
+            var model = Renderer3d.PoseMat(pose) * Mat4.RotateY(yaw)
+                * Mat4.Scale(new Vec3(1.0f + sq * 0.6f, 1.0f - sq, 1.0f + sq * 0.6f));
+            renNow.Draw(mesh, model, new Draw3dOpts
             {
-                bones = packBones(i, f, falling, pulse, renderFrame, mesh.data),
+                Bones = PackBones(i, f, falling, pulse, renderFrame, mesh.Data),
             });
         }
 
@@ -1006,29 +1012,29 @@ public static class Tonton22
         if (markerT > 0)
         {
             float k = markerT / 10.0f;
-            renNow.draw(cylNow,
-                Mat4.translate(new Vec3(markerX, markerY + 0.03f, markerZ))
-                * Mat4.scale(new Vec3(0.22f * (2.0f - k), 0.01f, 0.22f * (2.0f - k))),
-                new Draw3dOpts { tint = Color.rgb(1.6f, 1.5f, 0.9f) });
+            renNow.Draw(cylNow,
+                Mat4.Translate(new Vec3(markerX, markerY + 0.03f, markerZ))
+                * Mat4.Scale(new Vec3(0.22f * (2.0f - k), 0.01f, 0.22f * (2.0f - k))),
+                new Draw3dOpts { Tint = Color.Rgb(1.6f, 1.5f, 0.9f) });
         }
 
         renNow.End();
 
         // --- テキスト (かな): tonemap 後の swapchain に重ね描き ---
-        Gfx.begin_pass(new PassOpts { target = Gfx.main_tex, load = Gfx.LOAD });
-        var mt = ensureText();
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
+        var mt = EnsureText();
         if (mt != null)
         {
-            var cream = Color.rgb(0.95f, 0.92f, 0.85f);
-            mt.textCentered("あか　" + stars[0] + " - " + stars[1] + "　あお",
-                W * 0.5f, 348, 20, cream);
-            if (state == ST_FIGHT)
+            var cream = Color.Rgb(0.95f, 0.92f, 0.85f);
+            mt.TextCentered("あか　" + stars[0] + " - " + stars[1] + "　あお",
+                w * 0.5f, 348, 20, cream);
+            if (state == stFight)
             {
                 if (renderFrame - fightStart < 50)
-                    mt.textCentered("はっけよい", W * 0.5f, 120, 44,
-                        Color.rgb(0.98f, 0.85f, 0.4f));
+                    mt.TextCentered("はっけよい", w * 0.5f, 120, 44,
+                        Color.Rgb(0.98f, 0.85f, 0.4f));
                 // 思考の可視化: 頭上に現在の戦術
-                var vp = renNow.viewProj;
+                var vp = renNow.ViewProj;
                 for (int i = 0; i < fighters.Count; i++)
                 {
                     if (vp == null)
@@ -1036,54 +1042,54 @@ public static class Tonton22
                     var f = fighters[i];
                     if (drawWorld == null)
                         continue;
-                    var pose = Phys3d.phys3d_pose(drawWorld, "rikishi:" + i);
+                    var pose = Phys3d.PoseByKey(drawWorld, "rikishi:" + i);
                     if (pose == null)
                         continue;
-                    var sp = screenPos(vp, pose.x, pose.y + 1.5f, pose.z);
-                    if (!sp.ok)
+                    var sp = ScreenPos(vp, pose.X, pose.Y + 1.5f, pose.Z);
+                    if (!sp.Ok)
                         continue;
                     string label;
                     Color tint;
-                    if (f.tactic == TA_HIKI)
+                    if (f.Tactic == taHiki)
                     {
                         label = "ひく";
-                        tint = Color.rgb(0.35f, 0.9f, 0.9f);
+                        tint = Color.Rgb(0.35f, 0.9f, 0.9f);
                     }
-                    else if (f.tactic == TA_INASHI)
+                    else if (f.Tactic == taInashi)
                     {
                         label = "いなす";
-                        tint = Color.rgb(0.45f, 0.9f, 0.45f);
+                        tint = Color.Rgb(0.45f, 0.9f, 0.45f);
                     }
-                    else if (f.tactic == TA_TAME)
+                    else if (f.Tactic == taTame)
                     {
                         label = "ためる";
-                        tint = Color.rgb(0.75f, 0.75f, 0.78f);
+                        tint = Color.Rgb(0.75f, 0.75f, 0.78f);
                     }
                     else
                     {
                         label = "おす";
-                        tint = Color.rgb(1.0f, 0.66f, 0.25f);
+                        tint = Color.Rgb(1.0f, 0.66f, 0.25f);
                     }
-                    mt.textCentered(label, sp.x, sp.y, 16, tint);
+                    mt.TextCentered(label, sp.X, sp.Y, 16, tint);
                 }
             }
-            if (state == ST_KIMARI)
+            if (state == stKimari)
             {
                 if (winner >= 0)
                 {
                     var wf = fighters[winner];
-                    mt.textCentered(wf.name + "のかち", W * 0.5f, 112, 36,
-                        Color.rgb(wf.color[0] * 0.4f + 0.6f,
-                            wf.color[1] * 0.4f + 0.6f, wf.color[2] * 0.4f + 0.6f));
-                    mt.textCentered(kimarite, W * 0.5f, 150, 24, cream);
+                    mt.TextCentered(wf.Name + "のかち", w * 0.5f, 112, 36,
+                        Color.Rgb(wf.Color[0] * 0.4f + 0.6f,
+                            wf.Color[1] * 0.4f + 0.6f, wf.Color[2] * 0.4f + 0.6f));
+                    mt.TextCentered(kimarite, w * 0.5f, 150, 24, cream);
                 }
                 else
                 {
-                    mt.textCentered("とりなおし", W * 0.5f, 124, 32, cream);
+                    mt.TextCentered("とりなおし", w * 0.5f, 124, 32, cream);
                 }
             }
         }
 
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }

@@ -1,6 +1,6 @@
 // gen-tcs-prebuilt.mjs — C# サンプルの prebuilt bridge snapshot を生成する。
 // playground は起動時にまず prebuilt snapshot で player を立ち上げ、.NET
-// (Roslyn) session は背景で温める (tcs design doc §14.1 cold path)。
+// (Roslyn) session は背景で温める。
 // 出力: web/tcs-prebuilt/<sample>.lua (gitignore。vite が /tcs-prebuilt で配信)。
 //
 // module ID の契約: in-browser session (tcs-compiler.ts) が使う ID
@@ -71,10 +71,21 @@ const implFiles = listCsFiles(CS_LIB)
   .filter((rel) => rel !== "lub_stub.cs")
   .sort();
 
-// C# サンプル一覧: samples/<name>/<Entry>.csproj (basename = entry class)
+// 対象は playground が出すサンプルだけ (一覧の正は samples.ts の CS_SAMPLES)。
+// ngs のように native 専用のサンプルは snapshot を作っても誰も読まない。
 const SAMPLES = join(REPO, "samples");
+const samplesTs = readFileSync(join(WEB, "playground", "samples.ts"), "utf8");
+const csSamplesBlock = /const CS_SAMPLES[^{]*\{([\s\S]*?)\};/.exec(samplesTs);
+if (!csSamplesBlock) {
+  console.error("gen-tcs-prebuilt: CS_SAMPLES not found in playground/samples.ts");
+  process.exit(1);
+}
+const playgroundSamples = new Set(
+  [...csSamplesBlock[1].matchAll(/"([^"]+)"\s*:/g)].map((m) => m[1]),
+);
 const targets = [];
 for (const name of readdirSync(SAMPLES).sort()) {
+  if (!playgroundSamples.has(name)) continue;
   const dir = join(SAMPLES, name);
   if (!statSync(dir).isDirectory()) continue;
   const csproj = readdirSync(dir).find((f) => f.endsWith(".csproj"));
@@ -82,8 +93,8 @@ for (const name of readdirSync(SAMPLES).sort()) {
   targets.push({ name, entry: basename(csproj, ".csproj") });
 }
 
-// staging: temp/ に lubx/... + lub_stub.cs を置き、サンプルごとに Entry.cs を
-// 差し替えて tcs --snapshot を回す
+// staging: temp/ に lubx/... + lub_stub.cs を置き、サンプルごとにそのディレクトリの
+// *.cs を差し替えて tcs --snapshot を回す
 const temp = mkdtempSync(join(tmpdir(), "tcs-prebuilt-"));
 try {
   for (const rel of implFiles.concat("lub_stub.cs")) {
@@ -96,8 +107,10 @@ try {
 
   let failures = 0;
   for (const { name, entry } of targets) {
-    const csName = `${entry}.cs`;
-    copyFileSync(join(SAMPLES, name, csName), join(temp, csName));
+    const csFiles = readdirSync(join(SAMPLES, name))
+      .filter((f) => f.endsWith(".cs"))
+      .sort();
+    for (const f of csFiles) copyFileSync(join(SAMPLES, name, f), join(temp, f));
     const outPath = join(OUT, `${name}.lua`);
     try {
       execFileSync(
@@ -105,13 +118,12 @@ try {
         [
           TCS_DLL,
           ...implFiles,
-          csName,
+          ...csFiles,
           "--ref",
           "lub_stub.cs",
           "--entry",
           entry,
           "--snapshot",
-          "--no-naming-check",
           "-o",
           outPath,
         ],
@@ -122,7 +134,7 @@ try {
       failures++;
       console.error(`prebuilt FAILED ${name}: ${e.stderr?.toString() ?? e}`);
     } finally {
-      rmSync(join(temp, csName), { force: true });
+      for (const f of csFiles) rmSync(join(temp, f), { force: true });
     }
   }
   const count = readdirSync(OUT).length;

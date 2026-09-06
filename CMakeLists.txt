@@ -29,6 +29,12 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
   message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")
 endif()
 
+# runtime は共有 library (lub_shared) にもなるので、静的に link する全部を
+# PIC で作る (SDL / lua / box2d / box3d / tess2 / lub 本体)。
+if(NOT LUB_WASM)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # SDL3 build flags must be set BEFORE add_subdirectory. The Emscripten build
 # uses static SDL and disables pthreads/tests so the wasm artifact stays
 # self-contained.
@@ -41,7 +47,7 @@ endif()
 add_subdirectory(third_party/SDL)
 
 # Box2D v3 is C17. Only the library is used; the upstream sample/test/benchmark
-# applications are intentionally disabled because lub exposes its own Lua/Haxe
+# applications are intentionally disabled because lub exposes its own
 # sample surface.
 set(BOX2D_SAMPLES OFF CACHE BOOL "" FORCE)
 set(BOX2D_UNIT_TESTS OFF CACHE BOOL "" FORCE)
@@ -66,6 +72,9 @@ list(REMOVE_ITEM LUA_SRC
 )
 add_library(lua_static STATIC ${LUA_SRC})
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
+# Lua の数値は int32 + float (C API の面と C# の int / float に揃える)。
+# lua.h を include する側も同じ定義を見る必要があるので PUBLIC。
+target_compile_definitions(lua_static PUBLIC LUA_32BITS)
 
 # libtess2 (glyph outline tessellation for font_glyph_mesh)
 add_library(tess2 STATIC
@@ -179,19 +188,28 @@ endif()
 # and compiles everywhere. backend_sdlgpu.c / backend_d3d12.cpp are
 # native-only; wasm builds ship the webgpu backend alone.
 set(LUB_SOURCES
-  src/main.c
   src/app.c
+  src/host_api.c
   src/lua_api.c
-  src/enums_lua.c
+  src/api_core.c
+  src/api_gfx.c
+  src/api_sys.c
+  src/api_audio.c
+  src/api_io.c
+  src/api_font.c
+  src/api_mesh.c
   src/pass.c
   src/profile.c
   src/gpu_stats.c
   src/resources.c
   src/physics_box2d.c
   src/physics_box3d.c
+  src/gen/lua_api_gen.c
+  src/lua_gen_support.c
   src/shader.cpp
   src/pipeline.c
   src/capture.c
+  src/digest.c
   src/stb_impl.c
   src/audio.c
   src/miniaudio_impl.c
@@ -209,16 +227,10 @@ set(LUB_SOURCES
 list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
-  # haxe --wait child process management; WASM ビルドでは process spawn が無いので除外。
-  list(APPEND LUB_SOURCES src/haxe_server.c)
-  # hxml parse + haxe --connect 呼び出し + prelude/postlude concat (atomic write)。
-  # haxe_pipeline_{start,stop,tick} もこの TU に同居している (haxe_build.c 末尾)。
-  list(APPEND LUB_SOURCES src/haxe_build.c)
-  # `*.hx` の recursive mtime watcher (50ms debounce)。
-  list(APPEND LUB_SOURCES src/haxe_watch.c)
   # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)
   list(APPEND LUB_SOURCES src/tcs_build.c)
-  # HTTP + SSE dev server for `lub --serve game.hxml`.
+  list(APPEND LUB_SOURCES src/path_util.c)
+  # HTTP + SSE dev server for `lub --serve Game.csproj`.
   list(APPEND LUB_SOURCES src/serve.c)
   if(WIN32)
     # D3D12 backend ("d3d12", Windows 既定).
@@ -229,12 +241,26 @@ if(NOT LUB_WASM)
     list(APPEND LUB_SOURCES src/backend_vulkan.c)
   endif()
 endif()
-add_executable(lub ${LUB_SOURCES})
+# runtime 本体は object library にまとめ、player (lub) と共有 library
+# (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
+add_library(lub_objs OBJECT ${LUB_SOURCES})
+add_executable(lub src/main.c)
+target_link_libraries(lub PRIVATE lub_objs)
 if(LUB_HAS_VULKAN)
-  target_compile_definitions(lub PRIVATE LUB_HAS_VULKAN=1)
+  target_compile_definitions(lub_objs PUBLIC LUB_HAS_VULKAN=1)
+endif()
+if(NOT LUB_WASM)
+  add_library(lub_shared SHARED)
+  target_link_libraries(lub_shared PRIVATE lub_objs)
+  set_target_properties(lub_shared PROPERTIES OUTPUT_NAME lub)
+  if(WIN32)
+    # include/lub/lub_api.h の LUB_API を dllexport にする
+    target_compile_definitions(lub_objs PUBLIC LUB_BUILD_SHARED)
+  endif()
 endif()
 
-target_include_directories(lub PRIVATE
+target_include_directories(lub_objs PUBLIC
+  include
   third_party/slang/include
   third_party/stb
   third_party/cgltf
@@ -243,12 +269,12 @@ target_include_directories(lub PRIVATE
   src
 )
 # backend の index buffer は u32 固定なので ImDrawIdx を 32bit にする。
-target_compile_definitions(lub PRIVATE ImDrawIdx=unsigned)
+target_compile_definitions(lub_objs PUBLIC ImDrawIdx=unsigned)
 if(NOT LUB_WASM)
-  target_link_directories(lub PRIVATE third_party/slang/lib)
+  target_link_directories(lub_objs PUBLIC third_party/slang/lib)
 endif()
 
-target_link_libraries(lub PRIVATE
+target_link_libraries(lub_objs PUBLIC
   SDL3::SDL3
   lua_static
   box2d
@@ -256,25 +282,25 @@ target_link_libraries(lub PRIVATE
   tess2
 )
 if(NOT LUB_WASM)
-  target_link_libraries(lub PRIVATE slang)
+  target_link_libraries(lub_objs PUBLIC slang)
 endif()
 if(UNIX AND NOT LUB_WASM)
   # libdl required by Lua dynamic loading, libm by Lua math (Linux/Mac).
   # Under emscripten the libc already provides both equivalents.
-  target_link_libraries(lub PRIVATE m dl)
+  target_link_libraries(lub_objs PUBLIC m dl)
 endif()
 if(WIN32)
   # Winsock for the --serve HTTP/SSE server (src/sock_compat.h).
   # d3d12/dxgi/dxguid for the d3d12 backend (all OS-provided).
-  target_link_libraries(lub PRIVATE ws2_32 d3d12 dxgi dxguid)
+  target_link_libraries(lub_objs PUBLIC ws2_32 d3d12 dxgi dxguid)
 endif()
 if(LUB_HAS_VULKAN)
-  target_link_libraries(lub PRIVATE Vulkan::Vulkan)
+  target_link_libraries(lub_objs PUBLIC Vulkan::Vulkan)
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
   # discoverable at runtime so the smoke test doesn't need LD_LIBRARY_PATH.
-  set_target_properties(lub PROPERTIES
+  set_target_properties(lub lub_shared PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
       INSTALL_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib"
   )
@@ -296,10 +322,12 @@ if(WIN32)
     VERBATIM)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(lub PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
-    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
-  )
+  foreach(t lub_objs lub)
+    target_compile_options(${t} PRIVATE
+      $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+    )
+  endforeach()
   # miniaudio 本体の警告はこちらで直せないので実装 TU だけ抑制する。
   set_source_files_properties(src/miniaudio_impl.c PROPERTIES COMPILE_OPTIONS "-w")
 endif()
@@ -325,7 +353,7 @@ if(LUB_WASM)
   # If you upgrade emsdk and wgpu* calls suddenly stop compiling or
   # render-paths regress, revert to this SDK version or update backend_webgpu.c
   # to track the newer Dawn ABI.
-  target_compile_options(lub PRIVATE --use-port=emdawnwebgpu)
+  target_compile_options(lub_objs PUBLIC --use-port=emdawnwebgpu)
   # SHELL: keeps multi-token flags (`--preload-file PATH`) as one logical
   # unit so CMake doesn't dedupe / split them. Without SHELL the second
   # `--preload-file` got dropped during CMake's list deduplication and only
@@ -339,58 +367,20 @@ if(LUB_WASM)
     # ENV: player.ts (dev/test) が preRun で env var を注入する (?env= 転写)
     "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','ccall','UTF8ToString','ENV']"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/boot.lua@/samples/boot.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_io.lua@/samples/lub_io.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lub_prelude.lua@/samples/lub_prelude.lua"
-    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/samples/lubx_png.lua@/samples/lubx_png.lua"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/third_party/lume@/lume"
   )
   set_property(TARGET lub APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/samples/boot.lua"
-    "${CMAKE_SOURCE_DIR}/samples/lub_io.lua"
-    "${CMAKE_SOURCE_DIR}/samples/lub_prelude.lua"
-    "${CMAKE_SOURCE_DIR}/samples/lubx_png.lua"
   )
 endif()
 
-# Haxe pipeline C-side smoke tests (native only — spawn は wasm に存在しない).
+# C-side smoke tests (native only — spawn は wasm に存在しない).
 if(NOT LUB_WASM)
-  add_executable(lub_haxe_server_smoke
-    tests/c/haxe_server_smoke.c
-    src/haxe_server.c
-  )
-  target_link_libraries(lub_haxe_server_smoke PRIVATE SDL3::SDL3)
-  target_include_directories(lub_haxe_server_smoke PRIVATE src)
-
-  # hxml parser 単体 unit test (haxe 子プロセスは spawn しない)。
-  # haxe_build.c は pipeline 実装も同居しており haxe_server / haxe_watch の
-  # 関数を参照するため、test 自体が parser しか呼ばなくても両者を link する。
-  add_executable(lub_hxml_parse_test
-    tests/c/hxml_parse_test.c
-    src/haxe_build.c
-    src/haxe_server.c
-    src/haxe_watch.c
-  )
-  target_link_libraries(lub_hxml_parse_test PRIVATE SDL3::SDL3)
-  target_include_directories(lub_hxml_parse_test PRIVATE src)
-
-  # haxe_build end-to-end smoke (haxe --wait → --connect → atomic write の貫通)。
-  # haxe_build.c は pipeline 実装 (haxe_watch.h を含む) も持つので、
-  # smoke 自体が watch を呼ばなくても haxe_watch.c を link する必要がある。
-  add_executable(lub_haxe_build_smoke
-    tests/c/haxe_build_smoke.c
-    src/haxe_build.c
-    src/haxe_server.c
-    src/haxe_watch.c
-  )
-  target_link_libraries(lub_haxe_build_smoke PRIVATE SDL3::SDL3)
-  target_include_directories(lub_haxe_build_smoke PRIVATE src)
-
   add_executable(lub_serve_smoke
     tests/c/serve_smoke.c
     src/serve.c
-    src/haxe_build.c
-    src/haxe_server.c
-    src/haxe_watch.c
+    src/tcs_build.c
+    src/path_util.c
   )
   target_link_libraries(lub_serve_smoke PRIVATE SDL3::SDL3)
   if(WIN32)
@@ -401,6 +391,8 @@ if(NOT LUB_WASM)
   add_executable(lub_physics_box2d_smoke
     tests/c/physics_box2d_smoke.c
     src/physics_box2d.c
+    src/api_core.c
+    src/digest.c
   )
   target_link_libraries(lub_physics_box2d_smoke PRIVATE
     SDL3::SDL3
@@ -410,11 +402,13 @@ if(NOT LUB_WASM)
   if(UNIX AND NOT APPLE)
     target_link_libraries(lub_physics_box2d_smoke PRIVATE m dl)
   endif()
-  target_include_directories(lub_physics_box2d_smoke PRIVATE src)
+  target_include_directories(lub_physics_box2d_smoke PRIVATE src include)
 
   add_executable(lub_physics_box3d_smoke
     tests/c/physics_box3d_smoke.c
     src/physics_box3d.c
+    src/api_core.c
+    src/digest.c
   )
   target_link_libraries(lub_physics_box3d_smoke PRIVATE
     SDL3::SDL3
@@ -424,28 +418,26 @@ if(NOT LUB_WASM)
   if(UNIX AND NOT APPLE)
     target_link_libraries(lub_physics_box3d_smoke PRIVATE m dl)
   endif()
-  target_include_directories(lub_physics_box3d_smoke PRIVATE src)
+  target_include_directories(lub_physics_box3d_smoke PRIVATE src include)
 
   add_executable(lub_surfacenets_smoke
     tests/c/surfacenets_smoke.c
     src/surfacenets.c
   )
-  target_link_libraries(lub_surfacenets_smoke PRIVATE lua_static)
   if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_surfacenets_smoke PRIVATE m dl)
+    target_link_libraries(lub_surfacenets_smoke PRIVATE m)
   endif()
-  target_include_directories(lub_surfacenets_smoke PRIVATE src)
+  target_include_directories(lub_surfacenets_smoke PRIVATE src include)
 
   add_executable(lub_sdf_smoke
     tests/c/sdf_smoke.c
     src/sdf.c
     src/surfacenets.c
   )
-  target_link_libraries(lub_sdf_smoke PRIVATE lua_static)
   if(UNIX AND NOT APPLE)
-    target_link_libraries(lub_sdf_smoke PRIVATE m dl)
+    target_link_libraries(lub_sdf_smoke PRIVATE m)
   endif()
-  target_include_directories(lub_sdf_smoke PRIVATE src)
+  target_include_directories(lub_sdf_smoke PRIVATE src include)
 
   # Slang -> DXIL compile smoke (Windows only; needs dxcompiler.dll from the
   # DXC fetch above, resolved from the build dir where the slang DLLs are

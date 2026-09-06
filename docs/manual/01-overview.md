@@ -4,7 +4,7 @@ lub は、細部までこだわったゲーム体験を作るための code-cent
 runtime。最重要の価値は、ゲームを止めずに変更を反映し、トライアンドエラーを
 極限まで速くすること。
 
-- ゲームコードは Haxe で書き、Lua に transpile されて runtime 上で動く
+- ゲームコードは C#(TinyC# サブセット)で書き、Lua に transpile されて runtime 上で動く
 - native(SDL3 GPU / Sokol)と web(WASM + WebGPU)の両方で同じコードが動く
 - コード・アセットの変更は実行中のゲームに hot reload で即座に反映される
 
@@ -18,33 +18,36 @@ workflow をコードで組む。
 | --- | --- |
 | C runtime | window / GPU / audio / 物理 / IO。Lua に API を公開する |
 | Lua | runtime API の接点。reload 時に data shape の変化へ追従しやすい |
-| Haxe (`lub.*`) | Lua API への型付き extern。runtime primitive そのもの |
-| Haxe (`lubx.*`) | extern の上に Haxe で書かれた便利ライブラリ層 |
+| C# (`Lub.*`) | Lua API への型付き宣言(`cs-lib/lub_stub.cs`)。runtime primitive そのもの |
+| C# (`lubx`) | 宣言の上に C# で書かれた便利ライブラリ層(`cs-lib/lubx`) |
 
-ゲームコードから見える API はこのリファレンスの `lub` / `lubx` パッケージが
-すべて。`lub` は runtime が所有する最小の固い primitive、`lubx` はその上の
+ゲームコードから見える API はこのリファレンスの `Lub` / `lubx` が
+すべて。`Lub` は runtime が所有する最小の固い primitive、`lubx` はその上の
 書き味を良くする層(詳細は「lub と lubx」の章)。
 
 ## 最小のゲーム
 
-```haxe
-import lub.Lub;
-import lub.Gfx;
+```csharp
+using static Lub;
 
-class Game {
-	public static function main() {}
+public static class Game
+{
+    public static void OnInit()
+    {
+        Config(new ConfigOpts());
+    }
 
-	public static function onInit() {
-		Lub.config({});
-	}
-
-	public static function onFrame(dt:Float) {
-		Gfx.beginPass({target: Gfx.mainTex,
-			clear_color: lua.Table.fromArray([0.2, 0.3, 0.4, 1.0])});
-		Gfx.endPass();
-	}
+    public static void OnFrame(float dt)
+    {
+        Gfx.BeginPass(new PassOpts
+        {
+            Target = Gfx.MainTex,
+            ClearColor = new float[] { 0.2f, 0.3f, 0.4f, 1.0f },
+        });
+        Gfx.EndPass();
+    }
 }
 ```
 
-`onInit` が起動時に 1 回、`onFrame` が毎フレーム呼ばれる(詳細は
+`OnInit` が起動時に 1 回、`OnFrame` が毎フレーム呼ばれる(詳細は
 「ライフサイクルと hot reload」の章)。

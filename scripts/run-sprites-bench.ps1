@@ -19,7 +19,7 @@ $BuildPath = if ([System.IO.Path]::IsPathRooted($BuildDir)) {
 } else {
     Join-Path $RepoRoot $BuildDir
 }
-$SamplePath = Join-Path $RepoRoot "samples\13_sprites\13_sprites.hxml"
+$SamplePath = Join-Path $RepoRoot "samples\13_sprites\Sprites13.csproj"
 $ExePath = Join-Path $BuildPath "lub.exe"
 
 Push-Location $RepoRoot
@@ -34,20 +34,8 @@ try {
     if (-not (Test-Path -LiteralPath $ExePath)) {
         throw "lub.exe was not found: $ExePath. Run without -NoBuild first."
     }
-    if ($env:LUB_HAXE) {
-        if (-not (Test-Path -LiteralPath $env:LUB_HAXE)) {
-            throw "LUB_HAXE points to a missing haxe executable: $env:LUB_HAXE"
-        }
-        $haxePath = (Resolve-Path -LiteralPath $env:LUB_HAXE).Path
-        $haxeDir = Split-Path -Parent $haxePath
-        if ($haxeDir) {
-            $env:PATH = "$haxeDir;$env:PATH"
-        }
-    } elseif (-not (Get-Command haxe -ErrorAction SilentlyContinue)) {
-        throw "haxe was not found. Install Haxe 5 or set LUB_HAXE before running the .hxml benchmark."
-    }
-    if (-not (Get-Command haxelib -ErrorAction SilentlyContinue)) {
-        throw "haxelib was not found. Put haxelib in PATH or set LUB_HAXE to a Haxe install that contains haxelib."
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        throw "dotnet was not found. The sample is C# (tcs), so the dotnet SDK is required."
     }
 
     if ($Backend) {

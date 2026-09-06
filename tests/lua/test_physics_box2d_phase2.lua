@@ -23,18 +23,18 @@ local function near(a, b)
 	return math.abs(a - b) < 0.001
 end
 
-function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+function M.on_init()
+	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.onFrame()
+function M.on_frame()
 	frame = frame + 1
 
-	local world = phys2d_world("phase2", {
+	local world = lub.phys2d.world("phase2", {
 		gravity = { x = 0, y = 0 },
-		fixedDt = 1 / 60,
+		fixed_dt = 1 / 60,
 		substeps = 4,
-		maxSteps = 1,
+		max_steps = 1,
 	})
 	if frame == 1 then
 		local no_begin_info = world:step(0)
@@ -62,7 +62,7 @@ function M.onFrame()
 	end
 
 	local ground = world:body("ground", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = 0 },
 	})
 	local floor_shape = ground:segment("floor", {
@@ -70,66 +70,56 @@ function M.onFrame()
 		ay = -0.5,
 		bx = 3,
 		by = -0.5,
-		filter = { category = 0, mask = "all" },
+		filter = { category_bits = "0000000000000001", mask_bits = "ffffffffffffffff" },
 	})
 
 	local sensor = world:body("sensor", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = 0 },
 	})
 	local sensor_shape = sensor:box("zone", {
 		hx = 0.3,
 		hy = 0.35,
 		sensor = true,
-		sensorEvents = true,
-		filter = { category = 2, mask = "all" },
+		sensor_events = true,
+		filter = { category_bits = "0000000000000004", mask_bits = "ffffffffffffffff" },
 	})
 
 	local rock = world:body("rock", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 2, y = 0 },
 	})
 	local rock_shape = rock:polygon("hull", {
-		points = {
-			{ x = -0.3, y = -0.2 },
-			{ x = 0.35, y = -0.15 },
-			{ x = 0.2, y = 0.25 },
-			{ x = -0.25, y = 0.3 },
-		},
+		points = { -0.3, -0.2, 0.35, -0.15, 0.2, 0.25, -0.25, 0.3 },
 		radius = 0.01,
-		filter = { category = 3, mask = "all" },
+		filter = { category_bits = "0000000000000008", mask_bits = "ffffffffffffffff" },
 	})
 
 	local terrain = world:body("terrain", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = 0 },
 	})
 	local terrain_chain = terrain:chain("path", {
 		version = 1,
-		points = {
-			{ x = -3, y = -0.8 },
-			{ x = -1, y = -0.8 },
-			{ x = 1, y = -0.8 },
-			{ x = 3, y = -0.8 },
-		},
-		material = "terrain",
+		points = { -3, -0.8, -1, -0.8, 1, -0.8, 3, -0.8 },
+		material_name = "terrain",
 		materials = {
-			{ material = 9, friction = 0.7 },
-			{ material = 9, friction = 0.7 },
-			{ material = 9, friction = 0.7 },
-			{ material = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
+			{ material_id = 9, friction = 0.7 },
 		},
 		friction = 0.7,
-		filter = { category = 4, mask = "all" },
+		filter = { category_bits = "0000000000000010", mask_bits = "ffffffffffffffff" },
 	})
 
 	local mover = world:body("mover", {
-		type = DYNAMIC,
-		fixedRotation = true,
+		type = lub.phys2d.DYNAMIC,
+		fixed_rotation = true,
 		initial = { x = -1, y = 0 },
 	})
 	local sleepy = world:body("sleepy", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		awake = false,
 		initial = { x = -2.5, y = 1.0 },
 	})
@@ -139,7 +129,7 @@ function M.onFrame()
 		density = 1,
 	})
 	local disabled = world:body("disabled", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		enabled = false,
 		initial = { x = -2.5, y = 1.5 },
 	})
@@ -149,7 +139,7 @@ function M.onFrame()
 		density = 1,
 	})
 	local nosleep = world:body("nosleep", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		sleep = false,
 		sleep_threshold = 0.2,
 		initial = { x = -2.8, y = 2.0 },
@@ -167,21 +157,21 @@ function M.onFrame()
 		r = 0.1,
 		density = 1,
 		tag = "player",
-		material = "player",
-		userMaterialId = 7,
+		material_name = "player",
+		material_id = 7,
 		contact = true,
 		hit = true,
-		sensorEvents = true,
-		preSolve = true,
-		filter = { category = 1, mask = "all" },
+		sensor_events = true,
+		pre_solve = true,
+		filter = { category_bits = "0000000000000002", mask_bits = "ffffffffffffffff" },
 	})
 	local pre_command_velocity = mover:velocity()
 	mover:add_impulse_center({ x = 0.001, y = 0 })
-	mover:set_velocity({ x = 2.0, y = 0 })
+	mover:set_velocity({ vx = 2.0, vy = 0 })
 	mover:set_mass_data({
 		mass = 2.0,
 		inertia = 1.0,
-		center = { x = 0.05, y = 0 },
+		local_center = { x = 0.05, y = 0 },
 	})
 	local queued_velocity = mover:velocity()
 	if not near(queued_velocity.x, pre_command_velocity.x) or not near(queued_velocity.y, pre_command_velocity.y) then
@@ -225,12 +215,12 @@ function M.onFrame()
 	if #chain_segments ~= 1 or chain_segments[1].chain ~= "path" or chain_segments[1].kind ~= "chain_segment" then
 		fail("chain segment enumeration missing terrain segment")
 	end
-	if chain_segments[1].material ~= "terrain" or chain_segments[1].user_material_id ~= 9 then
+	if chain_segments[1].material_name ~= "terrain" or chain_segments[1].material_id ~= 9 then
 		fail(
 			"chain segment metadata/material missing: material="
-				.. tostring(chain_segments[1].material)
-				.. " user_material_id="
-				.. tostring(chain_segments[1].user_material_id)
+				.. tostring(chain_segments[1].material_name)
+				.. " material_id="
+				.. tostring(chain_segments[1].material_id)
 		)
 	end
 	local terrain_shapes = terrain:shapes()
@@ -252,8 +242,8 @@ function M.onFrame()
 		or mover_info.shape ~= "capsule"
 		or mover_info.kind ~= "capsule"
 		or mover_info.tag ~= "player"
-		or mover_info.material ~= "player"
-		or mover_info.user_material_id ~= 7
+		or mover_info.material_name ~= "player"
+		or mover_info.material_id ~= 7
 	then
 		fail("shape info identity/material metadata missing")
 	end
@@ -339,19 +329,19 @@ function M.onFrame()
 			y = 1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		})
 		if not hit or hit.body ~= "ground" or hit.shape ~= "floor" then
 			fail("closest raycast missed ground")
 		end
 
 		local visited = false
-		local hits = world:raycast({
+		local hits = world:raycast_all({
 			x = 0,
 			y = 1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		}, function(visitor_hit)
 			visited = visited or visitor_hit.body == "ground"
 			return "clip"
@@ -359,30 +349,26 @@ function M.onFrame()
 		if not visited or #hits < 1 then
 			fail("visitor raycast missed ground")
 		end
-		local bad_raycast, bad_raycast_err = world:raycast({
+		local bad_raycast, bad_raycast_err = world:raycast_all({
 			x = 0,
 			y = 1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		}, function()
 			error("raycast visitor boom")
 		end)
-		if
-			bad_raycast ~= nil
-			or type(bad_raycast_err) ~= "string"
-			or not bad_raycast_err:find("phys2d_raycast visitor")
-		then
+		if bad_raycast ~= nil or type(bad_raycast_err) ~= "string" or not bad_raycast_err:find("phys2d_raycast") then
 			fail("raycast visitor error did not return nil,error")
 		end
-		local mutating_raycast, mutating_raycast_err = world:raycast({
+		local mutating_raycast, mutating_raycast_err = world:raycast_all({
 			x = 0,
 			y = 1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		}, function()
-			mover:set_velocity({ x = 0, y = 0 })
+			mover:set_velocity({ vx = 0, vy = 0 })
 			return "clip"
 		end)
 		if
@@ -398,7 +384,7 @@ function M.onFrame()
 			min_y = -0.4,
 			max_x = 0.4,
 			max_y = 0.4,
-			filter = { mask = { 2 } },
+			filter = { mask_bits = "0000000000000004" },
 		})
 		if not has_shape(overlaps, "sensor", "zone") then
 			fail("overlap_aabb missed sensor zone")
@@ -408,39 +394,39 @@ function M.onFrame()
 			min_y = -0.4,
 			max_x = 0.4,
 			max_y = 0.4,
-			filter = { mask = { 2 } },
+			filter = { mask_bits = "0000000000000004" },
 		}, function()
 			error("overlap visitor boom")
 		end)
 		if
 			bad_overlap ~= nil
 			or type(bad_overlap_err) ~= "string"
-			or not bad_overlap_err:find("phys2d_overlap_aabb visitor")
+			or not bad_overlap_err:find("phys2d_overlap_aabb")
 		then
 			fail("overlap_aabb visitor error did not return nil,error")
 		end
 		local cast = world:shape_cast({
-			type = "circle",
+			kind = "circle",
 			x = 0,
 			y = 1,
-			r = 0.1,
+			radius = 0.1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		})
 		if not cast or cast.body ~= "ground" or cast.shape ~= "floor" then
 			fail("closest shape_cast missed ground")
 		end
 		local shape_cast_visited = false
-		local shape_cast_hits = world:shape_cast({
-			type = "box",
+		local shape_cast_hits = world:shape_cast_all({
+			kind = "box",
 			x = 0,
 			y = 1,
 			hx = 0.1,
 			hy = 0.1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		}, function(hit)
 			shape_cast_visited = shape_cast_visited or hit.body == "ground"
 			return "clip"
@@ -448,40 +434,40 @@ function M.onFrame()
 		if not shape_cast_visited or #shape_cast_hits < 1 then
 			fail("visitor shape_cast missed ground")
 		end
-		local bad_shape_cast, bad_shape_cast_err = world:shape_cast({
-			type = "box",
+		local bad_shape_cast, bad_shape_cast_err = world:shape_cast_all({
+			kind = "box",
 			x = 0,
 			y = 1,
 			hx = 0.1,
 			hy = 0.1,
 			dx = 0,
 			dy = -2,
-			filter = { mask = { 0 } },
+			filter = { mask_bits = "0000000000000001" },
 		}, function()
 			error("shape_cast visitor boom")
 		end)
 		if
 			bad_shape_cast ~= nil
 			or type(bad_shape_cast_err) ~= "string"
-			or not bad_shape_cast_err:find("phys2d_shape_cast visitor")
+			or not bad_shape_cast_err:find("phys2d_shape_cast")
 		then
 			fail("shape_cast visitor error did not return nil,error")
 		end
 		checked_queries = true
 	end
 
-	begin_pass({ target = main_tex, clear_color = { 0.02, 0.02, 0.025, 1.0 } })
-	end_pass()
+	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.02, 0.02, 0.025, 1.0 } })
+	lub.gfx.end_pass()
 
 	if saw_sensor and saw_body_move and checked_queries then
 		mover_shape:set_material({
-			material = "runtime",
-			user_material_id = 11,
+			material_name = "runtime",
+			material_id = 11,
 			friction = 0.25,
 			restitution = 0.4,
 			density = 1.25,
 		})
-		mover_shape:set_filter({ category = 5, mask = { 5 } })
+		mover_shape:set_filter({ category_bits = "0000000000000020", mask_bits = "0000000000000020" })
 		mover_shape:set_events({
 			contact = false,
 			hit = false,
@@ -490,8 +476,8 @@ function M.onFrame()
 		})
 		local runtime_info = mover_shape:info()
 		if
-			runtime_info.material ~= "runtime"
-			or runtime_info.user_material_id ~= 11
+			runtime_info.material_name ~= "runtime"
+			or runtime_info.material_id ~= 11
 			or not near(runtime_info.friction, 0.25)
 			or not near(runtime_info.restitution, 0.4)
 			or not near(runtime_info.density, 1.25)
@@ -509,7 +495,7 @@ function M.onFrame()
 		end
 		local pose = mover:pose()
 		print("PHYS2D_PHASE2_OK frame=" .. frame .. " x=" .. string.format("%.4f", pose.x))
-		quit()
+		lub.quit()
 		return
 	end
 

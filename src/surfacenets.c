@@ -1,7 +1,5 @@
 #include "surfacenets.h"
 
-#include <lauxlib.h>
-#include <lua.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -94,22 +92,6 @@ static int iv_push3(IntVec *v, int32_t a, int32_t b, int32_t c) {
   v->data[v->len++] = b;
   v->data[v->len++] = c;
   return 1;
-}
-
-static void push_float_table(lua_State *L, const float *v, size_t n) {
-  lua_createtable(L, (int)n, 0);
-  for (size_t i = 0; i < n; ++i) {
-    lua_pushnumber(L, v[i]);
-    lua_rawseti(L, -2, (int)(i + 1));
-  }
-}
-
-static void push_int_table(lua_State *L, const int32_t *v, size_t n) {
-  lua_createtable(L, (int)n, 0);
-  for (size_t i = 0; i < n; ++i) {
-    lua_pushinteger(L, v[i]);
-    lua_rawseti(L, -2, (int)(i + 1));
-  }
 }
 
 void sn_mesh_free(SnMesh *m) {
@@ -262,58 +244,4 @@ oom:
   free(nrm.data);
   free(idx.data);
   return 0;
-}
-
-void sn_mesh_push(lua_State *L, const SnMesh *m) {
-  lua_createtable(L, 0, 5);
-  push_float_table(L, m->positions, m->vert_count * 3);
-  lua_setfield(L, -2, "positions");
-  push_float_table(L, m->normals, m->vert_count * 3);
-  lua_setfield(L, -2, "normals");
-  push_int_table(L, m->indices, m->index_count);
-  lua_setfield(L, -2, "indices");
-  lua_pushinteger(L, (lua_Integer)m->vert_count);
-  lua_setfield(L, -2, "vert_count");
-  lua_pushinteger(L, (lua_Integer)m->index_count);
-  lua_setfield(L, -2, "index_count");
-}
-
-int lub_surface_nets(lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  int nx = (int)luaL_checkinteger(L, 2);
-  int ny = (int)luaL_checkinteger(L, 3);
-  int nz = (int)luaL_checkinteger(L, 4);
-  float cell = (float)luaL_optnumber(L, 5, 1.0);
-  float ox = (float)luaL_optnumber(L, 6, 0.0);
-  float oy = (float)luaL_optnumber(L, 7, 0.0);
-  float oz = (float)luaL_optnumber(L, 8, 0.0);
-
-  if (nx < 2 || ny < 2 || nz < 2)
-    return luaL_error(L, "surface_nets: grid dims must be >= 2 (got %dx%dx%d)",
-                      nx, ny, nz);
-  size_t total = (size_t)nx * ny * nz;
-  if (total > (size_t)1 << 27)
-    return luaL_error(L, "surface_nets: grid too large (%dx%dx%d)", nx, ny, nz);
-  if (lua_rawlen(L, 1) < total)
-    return luaL_error(L,
-                      "surface_nets: grid has %d entries, need nx*ny*nz = %d",
-                      (int)lua_rawlen(L, 1), (int)total);
-
-  float *s = (float *)malloc(total * sizeof(float));
-  if (!s)
-    return luaL_error(L, "surface_nets: out of memory");
-  for (size_t i = 0; i < total; ++i) {
-    lua_rawgeti(L, 1, (lua_Integer)(i + 1));
-    s[i] = (float)lua_tonumber(L, -1);
-    lua_pop(L, 1);
-  }
-
-  SnMesh m;
-  int ok = sn_mesh_from_grid(s, nx, ny, nz, cell, ox, oy, oz, &m);
-  free(s);
-  if (!ok)
-    return luaL_error(L, "surface_nets: out of memory");
-  sn_mesh_push(L, &m);
-  sn_mesh_free(&m);
-  return 1;
 }

@@ -1,5 +1,4 @@
 import type { EditorFile } from "./editor";
-import { parseMainClass } from "./haxe-compiler";
 
 export const SAMPLE_NAMES = [
   "00_hello",
@@ -34,9 +33,8 @@ export const SAMPLE_NAMES = [
   "26_renderer3d",
 ];
 
-// C# (TinyC#) 対応済みサンプル: サンプル名 → entry class。ソースは
-// samples/<name>/<EntryClass>.cs の 1 ファイル構成で Haxe 版と同居する。
-// 全サンプルの両言語対応がゴール。ここが対応状況の正。
+// サンプル名 → entry class。ソースは samples/<name>/<EntryClass>.cs の
+// 1 ファイル構成 (csproj の basename = entry class)。
 const CS_SAMPLES: Record<string, string> = {
   "00_hello": "Hello00",
   "00b_clear": "Clear00b",
@@ -69,11 +67,6 @@ const CS_SAMPLES: Record<string, string> = {
   "25_bowling": "Bowling25",
   "26_renderer3d": "RendererDemo26",
 };
-
-/** サンプルが C# 版を持つか (言語トグルの活性判定)。 */
-export function hasCsVariant(name: string): boolean {
-  return name in CS_SAMPLES;
-}
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
 // below can't see them) list their editable data files explicitly.
@@ -141,19 +134,13 @@ const EXTRA_FILES: Record<string, string[]> = {
   ],
 };
 
-export type SampleLanguage = "haxe" | "cs";
-
 export type SampleSource = {
-  /** エディタに出す編集対象(.hx + .hxml / .cs)。data files は compile 後に追加する。 */
+  /** エディタに出す編集対象 (.cs)。data files は compile 後に追加する。 */
   files: Map<string, EditorFile>;
-  /** -main / --entry のクラス名(compile と postlude の `return <Main>` に使う)。 */
+  /** --entry のクラス名 (compile と `return <Main>` に使う)。 */
   mainClass: string;
-  /** 拡張子 .hx のソースファイル名一覧(compile に渡す)。 */
-  hxFiles: string[];
-  /** player に渡す entry(サンプル名)と lua のキー。 */
+  /** player に渡す entry (サンプル名) と lua のキー。 */
   entryKey: string;
-  /** authoring 言語。compile の dispatch に使う。 */
-  language: SampleLanguage;
 };
 
 async function fetchText(url: string): Promise<string> {
@@ -163,44 +150,20 @@ async function fetchText(url: string): Promise<string> {
 }
 
 /**
- * `.hx`/`.hxml` ソースをロードする。各 playground サンプルは単一 `<MainClass>.hx`。
+ * `.cs` ソースをロードする。各 playground サンプルは単一 `<EntryClass>.cs`。
  * data files(slang 等)は compile 後の Lua を scan して別途取得する(discoverDataFiles)。
  */
-export async function loadSampleSource(
-  name: string,
-  language: SampleLanguage = "haxe",
-): Promise<SampleSource> {
-  if (language === "cs" && CS_SAMPLES[name]) {
-    const entryClass = CS_SAMPLES[name];
-    const csName = `${entryClass}.cs`;
-    const cs = await fetchText(`/samples/${name}/${csName}`);
-    const files = new Map<string, EditorFile>();
-    files.set(csName, { content: cs, dirty: false, initial: cs });
-    return {
-      files,
-      mainClass: entryClass,
-      hxFiles: [],
-      entryKey: `${name}/.lub/${name}.lua`,
-      language: "cs",
-    };
-  }
-
-  const hxmlName = `${name}.hxml`;
-  const hxml = await fetchText(`/samples/${name}/${hxmlName}`);
-  const mainClass = parseMainClass(hxml);
-  if (!mainClass) throw new Error(`-main not found in ${hxmlName}`);
-  const hxName = `${mainClass}.hx`;
-  const hx = await fetchText(`/samples/${name}/${hxName}`);
-
+export async function loadSampleSource(name: string): Promise<SampleSource> {
+  const entryClass = CS_SAMPLES[name];
+  if (!entryClass) throw new Error(`unknown sample: ${name}`);
+  const csName = `${entryClass}.cs`;
+  const cs = await fetchText(`/samples/${name}/${csName}`);
   const files = new Map<string, EditorFile>();
-  files.set(hxName, { content: hx, dirty: false, initial: hx });
-  files.set(hxmlName, { content: hxml, dirty: false, initial: hxml });
+  files.set(csName, { content: cs, dirty: false, initial: cs });
   return {
     files,
-    mainClass,
-    hxFiles: [hxName],
+    mainClass: entryClass,
     entryKey: `${name}/.lub/${name}.lua`,
-    language: "haxe",
   };
 }
 

@@ -1,15 +1,15 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Rand.hx と対)。
-// state は int (32bit wrap) で持ち、Haxe (32bit Int) と乱数列がビット一致
-// する: << は int32 wrap がそのまま Haxe と同じ。Haxe の >>> (論理シフト) は
-// C# の算術シフト >> と & マスクで再現する (17bit シフト後の有効 15bit を
-// 0x7FFF で残す)。float / int は C# の予約語のため nextFloat / nextInt に
-// 改名する (それ以外の API 名は Haxe 版と同名)。
+// 実装ライブラリ lubx の Rand。
+// state は int (32bit wrap) で持つ。<< は int32 wrap がそのまま xorshift32 の
+// 定義どおりで、論理シフト >>> は算術シフト >> と & マスク (17bit シフト後の
+// 有効 15bit を 0x7FFF で残す) で再現する。golden はこの列に依存する。
+// float / int は C# の予約語のため NextFloat / NextInt。
 
 /// <summary>
 /// 決定的な xorshift32 乱数。固定シードで hot reload / headless 検証でも
 /// 再現可能 (Math.random は reload のたびに列が変わるので使わない)。
-/// 同一シードで Haxe 版と同じ乱数列を生成する。
 /// </summary>
+using static Lub;
+
 public class Rand
 {
     private int state;
@@ -20,8 +20,8 @@ public class Rand
         state = s == 0 ? 0x12345678 : s;
     }
 
-    /// <summary>[0, 1) の一様乱数 (Haxe 版の float())。</summary>
-    public float nextFloat()
+    /// <summary>[0, 1) の一様乱数。</summary>
+    public float NextFloat()
     {
         state = state ^ (state << 13);
         state = state ^ ((state >> 17) & 0x7FFF);
@@ -29,15 +29,15 @@ public class Rand
         return (state & 0xffff) / 65536.0f;
     }
 
-    /// <summary>[0, n) の整数 (Haxe 版の int())。</summary>
-    public int nextInt(int n)
+    /// <summary>[0, n) の整数。</summary>
+    public int NextInt(int n)
     {
-        return (int)System.Math.Floor(nextFloat() * n);
+        return (int)System.Math.Floor(NextFloat() * n);
     }
 
     /// <summary>[min, max) の一様乱数。</summary>
-    public float range(float min, float max)
+    public float Range(float min, float max)
     {
-        return min + nextFloat() * (max - min);
+        return min + NextFloat() * (max - min);
     }
 }

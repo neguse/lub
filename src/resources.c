@@ -1,5 +1,6 @@
 #include "resources.h"
 #include "backend.h"
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,6 +51,49 @@ void res_table_shutdown(ResTable *t) {
     }
     t->buckets[i] = NULL;
   }
+  free(t->by_handle);
+  t->by_handle = NULL;
+  t->handle_cap = 0;
+  t->next_handle = 0;
+}
+
+ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len) {
+  uint32_t h = 2166136261u;
+  for (size_t k = 0; k < len; ++k) {
+    h ^= (uint8_t)key[k];
+    h *= 16777619u;
+  }
+  for (ResEntry *e = t->buckets[h & (RES_BUCKETS - 1)]; e; e = e->next) {
+    if (strlen(e->key) == len && memcmp(e->key, key, len) == 0)
+      return e;
+  }
+  return NULL;
+}
+
+ResEntry *res_table_get_by_handle(ResTable *t, int32_t handle) {
+  if (handle <= 0 || handle >= t->handle_cap)
+    return NULL;
+  return t->by_handle[handle];
+}
+
+static bool res_table_assign_handle(ResTable *t, ResEntry *e) {
+  int32_t h = ++t->next_handle;
+  if (h >= t->handle_cap) {
+    int32_t cap = t->handle_cap ? t->handle_cap * 2 : 256;
+    while (cap <= h)
+      cap *= 2;
+    ResEntry **grown =
+        (ResEntry **)realloc(t->by_handle, (size_t)cap * sizeof(ResEntry *));
+    if (!grown)
+      return false;
+    memset(grown + t->handle_cap, 0,
+           (size_t)(cap - t->handle_cap) * sizeof(ResEntry *));
+    t->by_handle = grown;
+    t->handle_cap = cap;
+  }
+  t->by_handle[h] = e;
+  e->handle = h;
+  return true;
 }
 
 ResEntry *res_table_get(ResTable *t, const char *key) {
@@ -80,6 +124,11 @@ ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind) {
   e->kind = kind;
   e->version = -1;
   e->last_seen_frame = -1;
+  if (!res_table_assign_handle(t, e)) {
+    free(e->key);
+    free(e);
+    return NULL;
+  }
   e->next = t->buckets[i];
   t->buckets[i] = e;
   return e;
@@ -106,6 +155,8 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
           on_shader_release(ctx, e->u.sh.h);
         }
         *prev = next;
+        if (e->handle > 0 && e->handle < t->handle_cap)
+          t->by_handle[e->handle] = NULL;
         res_entry_release(e);
       } else {
         prev = &e->next;

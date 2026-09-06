@@ -1,12 +1,13 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Shapes3d.hx と対)。
-// Haxe 版の lua.Table.fromArray は不要 — List<float>/List<int> がそのまま
-// Lua array table。MeshData の匿名構造リテラルは stub (cs-lib/lub_stub.cs) の
+// 実装ライブラリ lubx の Shapes3d。
+// List<float>/List<int> はそのまま Lua array table。MeshData は stub
+// (cs-lib/lub_stub.cs) の
 // MeshData class の object initializer で構築 (--ref 型は plain table に落ちる)。
-// Std.int(len / k) は整数除算を避けて (float)Math.Floor(len / k.0)、
+// Std.int(len / k) は整数除算を避けて Math.Floor(len / k.0)、
 // (i + 1) % sides の剰余は wrap 分岐 (i は 0..sides-1) で書く。
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>単位プリミティブを MeshData 形式 (indexed、positions + normals +
 /// 白色) で生成する。Mesh3d.rebuild() にそのまま渡せて、SDF / glTF メッシュと
@@ -15,7 +16,7 @@ using System.Collections.Generic;
 /// 別物。</summary>
 public static class Shapes3d
 {
-    private static MeshData mesh(List<float> positions, List<float> normals,
+    private static MeshData Mesh(List<float> positions, List<float> normals,
         List<int> indices)
     {
         // 頂点色は白 (interleave 既定は 0.8 グレー)。draw 側の tint がそのまま
@@ -26,19 +27,19 @@ public static class Shapes3d
             colors.Add(1.0f);
         return new MeshData
         {
-            positions = positions,
-            normals = normals,
-            colors = colors,
-            indices = indices,
-            vert_count = n,
-            index_count = indices.Count,
+            Positions = positions,
+            Normals = normals,
+            Colors = colors,
+            Indices = indices,
+            VertCount = n,
+            IndexCount = indices.Count,
         };
     }
 
     /// <summary>Shapes (stride 10: pos3 + normal3 + rgba) の生成結果を MeshData
     /// に変換する。既存の Shapes.box/quad/sphere で組んだジオメトリを
     /// Mesh3d / Renderer3d に載せるためのブリッジ。alpha は落ちる。</summary>
-    public static MeshData fromInterleaved(List<float> v)
+    public static MeshData FromInterleaved(List<float> v)
     {
         int n = (int)Math.Floor(v.Count / 10.0f);
         var pos = new List<float>();
@@ -61,23 +62,23 @@ public static class Shapes3d
         }
         return new MeshData
         {
-            positions = pos,
-            normals = nrm,
-            colors = col,
-            indices = indices,
-            vert_count = n,
-            index_count = n,
+            Positions = pos,
+            Normals = nrm,
+            Colors = col,
+            Indices = indices,
+            VertCount = n,
+            IndexCount = n,
         };
     }
 
     /// <summary>辺長 2 の立方体 (中心原点、±1)。scale は model 行列で。</summary>
-    public static MeshData cube()
+    public static MeshData Cube()
     {
         var pos = new List<float>();
         var nrm = new List<float>();
         var indices = new List<int>();
         // 各面の { 法線 n, 面内基底 u, v } を n.xyz, u.xyz, v.xyz の 9 要素で
-        // 並べたもの (Haxe 版の匿名 {n, u, v} 相当)。
+        // 並べたもの。
         var faces = new List<List<float>>
         {
             new List<float> { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f },
@@ -102,11 +103,11 @@ public static class Shapes3d
             foreach (var idx in new List<int> { 0, 1, 2, 0, 2, 3 })
                 indices.Add(baseIdx + idx);
         }
-        return mesh(pos, nrm, indices);
+        return Mesh(pos, nrm, indices);
     }
 
     /// <summary>高さ 1 (y = ±0.5)、半径 1 の円柱。</summary>
-    public static MeshData cylinder(int sides)
+    public static MeshData Cylinder(int sides)
     {
         var pos = new List<float>();
         var nrm = new List<float>();
@@ -177,11 +178,11 @@ public static class Shapes3d
                 }
             }
         }
-        return mesh(pos, nrm, indices);
+        return Mesh(pos, nrm, indices);
     }
 
     /// <summary>半径 1 の UV 球。</summary>
-    public static MeshData sphere(int stacks, int slices)
+    public static MeshData Sphere(int stacks, int slices)
     {
         var pos = new List<float>();
         var nrm = new List<float>();
@@ -214,6 +215,6 @@ public static class Shapes3d
                     indices.Add(idx);
             }
         }
-        return mesh(pos, nrm, indices);
+        return Mesh(pos, nrm, indices);
     }
 }

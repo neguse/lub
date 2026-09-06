@@ -27,7 +27,7 @@ local function on_filter(a, b)
 	filter_calls = filter_calls + 1
 	if not mutation_blocked then
 		local ok, err = pcall(function()
-			phys2d_world("callback_illegal", {})
+			lub.phys2d.world("callback_illegal", {})
 		end)
 		mutation_blocked = (not ok) and tostring(err):find("physics mutation") ~= nil
 	end
@@ -37,17 +37,14 @@ local function on_filter(a, b)
 		saw_callback_metadata = saw_callback_metadata
 			or (
 				ghost.tag == "ghost_shape"
-				and ghost.material == "ghost_material"
-				and ghost.user_material_id == 5
-				and ghost.category == 5
+				and ghost.material_name == "ghost_material"
+				and ghost.material_id == 5
 				and ghost.category_bits == "0000000000000020"
-				and type(ghost.mask) == "table"
-				and ghost.mask[1] == 0
-				and ghost.mask[#ghost.mask] == 63
+				and ghost.mask_bits == "ffffffffffffffff"
 				and wall.tag == "wall_shape"
-				and wall.material == "wall_material"
-				and wall.user_material_id == 3
-				and wall.category == 0
+				and wall.material_name == "wall_material"
+				and wall.material_id == 3
+				and wall.category_bits == "0000000000000001"
 			)
 		return false
 	end
@@ -67,7 +64,7 @@ end
 
 local function mix_friction(a, b)
 	friction_calls = friction_calls + 1
-	if a.material == 7 or b.material == 7 then
+	if a.material_id == 7 or b.material_id == 7 then
 		return 0.25
 	end
 	return math.sqrt(a.friction * b.friction)
@@ -75,7 +72,7 @@ end
 
 local function mix_restitution(a, b)
 	restitution_calls = restitution_calls + 1
-	if a.material == 7 or b.material == 7 then
+	if a.material_id == 7 or b.material_id == 7 then
 		return 0.1
 	end
 	return math.max(a.restitution, b.restitution)
@@ -104,7 +101,7 @@ end
 local function declare_fallback_pair(world)
 	world:begin({ prune = false })
 	local wall = world:body("wall", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = 0 },
 	})
 	wall:box("solid", {
@@ -114,7 +111,7 @@ local function declare_fallback_pair(world)
 		pre_solve = true,
 	})
 	local box = world:body("box", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		initial = { x = 0, y = 0 },
 	})
 	box:box("solid", {
@@ -129,7 +126,7 @@ end
 
 local function run_fallback_smoke()
 	if frame == 1 then
-		local world = phys2d_world("callback_fallback", {
+		local world = lub.phys2d.world("callback_fallback", {
 			gravity = { x = 0, y = 0 },
 			fixed_dt = 1 / 60,
 			substeps = 4,
@@ -156,7 +153,7 @@ local function run_fallback_smoke()
 			+ fallback_pre_solve_errors
 			+ fallback_friction_errors
 			+ fallback_restitution_errors
-		local world = phys2d_world("callback_fallback", {
+		local world = lub.phys2d.world("callback_fallback", {
 			gravity = { x = 0, y = 0 },
 			fixed_dt = 1 / 60,
 			substeps = 4,
@@ -175,15 +172,15 @@ local function run_fallback_smoke()
 	end
 end
 
-function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+function M.on_init()
+	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.onFrame()
+function M.on_frame()
 	frame = frame + 1
 	run_fallback_smoke()
 
-	local world = phys2d_world("callbacks", {
+	local world = lub.phys2d.world("callbacks", {
 		gravity = { x = 0, y = 0 },
 		fixed_dt = 1 / 60,
 		substeps = 4,
@@ -199,7 +196,7 @@ function M.onFrame()
 	world:begin()
 
 	local wall = world:body("wall", {
-		type = STATIC,
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = 0 },
 	})
 	wall:box("solid", {
@@ -208,14 +205,14 @@ function M.onFrame()
 		tag = "wall_shape",
 		friction = 0.8,
 		restitution = 0.0,
-		material = "wall_material",
-		user_material_id = 3,
+		material_name = "wall_material",
+		material_id = 3,
 		contact = true,
 		pre_solve = true,
 	})
 
 	local ghost = world:body("ghost", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		fixed_rotation = true,
 		initial = { x = -1.0, y = 1.2, vx = 3.0, vy = 0 },
 	})
@@ -224,14 +221,14 @@ function M.onFrame()
 		hy = 0.08,
 		tag = "ghost_shape",
 		density = 1,
-		material = "ghost_material",
-		user_material_id = 5,
+		material_name = "ghost_material",
+		material_id = 5,
 		pre_solve = true,
-		filter = { category = 5, mask = "all" },
+		filter = { category_bits = "0000000000000020", mask_bits = "ffffffffffffffff" },
 	})
 
 	local pass = world:body("pass", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		fixed_rotation = true,
 		initial = { x = -1.0, y = 0.0, vx = 3.0, vy = 0 },
 	})
@@ -240,13 +237,13 @@ function M.onFrame()
 		hy = 0.08,
 		tag = "pass_shape",
 		density = 1,
-		material = "pass_material",
-		user_material_id = 6,
+		material_name = "pass_material",
+		material_id = 6,
 		pre_solve = true,
 	})
 
 	local mix = world:body("mix", {
-		type = DYNAMIC,
+		type = lub.phys2d.DYNAMIC,
 		fixed_rotation = true,
 		initial = { x = -1.0, y = -1.2, vx = 3.0, vy = 0 },
 	})
@@ -257,8 +254,8 @@ function M.onFrame()
 		density = 1,
 		friction = 0.2,
 		restitution = 0.3,
-		material = "mix_material",
-		user_material_id = 7,
+		material_name = "mix_material",
+		material_id = 7,
 		contact = true,
 		pre_solve = true,
 	})
@@ -271,15 +268,15 @@ function M.onFrame()
 			saw_event_metadata = saw_event_metadata
 				or (
 					mix_shape.tag == "mix_shape"
-					and mix_shape.material == "mix_material"
-					and mix_shape.user_material_id == 7
+					and mix_shape.material_name == "mix_material"
+					and mix_shape.material_id == 7
 				)
 		end
 	end
 
 	if frame < 48 then
-		begin_pass({ target = main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
-		end_pass()
+		lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
+		lub.gfx.end_pass()
 		return
 	end
 
@@ -320,8 +317,8 @@ function M.onFrame()
 		if
 			hit.body == "wall"
 			and hit.tag == "wall_shape"
-			and hit.material == "wall_material"
-			and hit.user_material_id == 3
+			and hit.material_name == "wall_material"
+			and hit.material_id == 3
 		then
 			saw_query_metadata = true
 		end
@@ -336,8 +333,8 @@ function M.onFrame()
 		fail("pre_solve did not disable wall solve: x=" .. tostring(pass_pose.x))
 	end
 
-	begin_pass({ target = main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
-	end_pass()
+	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.015, 0.015, 0.02, 1.0 } })
+	lub.gfx.end_pass()
 	print(
 		"PHYS2D_CALLBACKS_OK filter="
 			.. filter_calls
@@ -352,7 +349,7 @@ function M.onFrame()
 			.. " pass_x="
 			.. string.format("%.4f", pass_pose.x)
 	)
-	quit()
+	lub.quit()
 end
 
 return M

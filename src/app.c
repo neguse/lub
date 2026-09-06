@@ -1,6 +1,8 @@
 #include "app.h"
+#include "api_internal.h"
 #include "backend.h"
 #include "gpu_stats.h"
+#include "host.h"
 #include "lua_api.h"
 #include "physics_box2d.h"
 #include "physics_box3d.h"
@@ -151,15 +153,6 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
   app->last_w = w;
   app->last_h = h;
 
-  // .hxml entry のときは毎フレーム haxe pipeline を tick して .hx 変更を拾い
-  // .lub/<base>.lua へ atomic write する。下の mtime polling が新しい .lua を
-  // 検出して lume.hotswap を回す、という二段構え。
-#ifndef __EMSCRIPTEN__
-  if (app->haxe_enabled) {
-    haxe_pipeline_tick(&app->haxe);
-  }
-#endif
-
   // Hot-reload entry Lua when its mtime changes. Skip during PRE_BACKEND
   // (callbacks aren't being driven yet) and on the very first poll
   // (cache == 0) — record the baseline instead of triggering an
@@ -205,6 +198,10 @@ void app_frame_end(App *app) {
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
+  // key で宣言する snd / readback queue の sweep。退役した snd の PCM 回収は
+  // この後の audio_state_frame_end が行う。
+  api_audio_frame_end(app);
+  api_gfx_frame_end(app);
   if (app->audio) {
     audio_state_frame_end(app->audio);
   }
@@ -216,6 +213,11 @@ void app_frame_end(App *app) {
     pipeline_cache_sweep(&app->pip_cache, cf, thr);
     res_table_sweep(&app->res, cf, thr, app_on_shader_release, app);
   }
+  // frame 有効の view の実体を回収する
+  for (int i = 0; i < app->frame_garbage_count; ++i)
+    free(app->frame_garbage[i]);
+  app->frame_garbage_count = 0;
+  digest_frame_end(app);
   app->frame_index++;
   gpu_stats_frame(app->frame_index, g_backend ? g_backend->name : NULL);
 }
@@ -223,6 +225,17 @@ void app_frame_end(App *app) {
 void app_shutdown(App *app) {
   // Pipelines reference shaders, so destroy pipelines before resources.
   pipeline_cache_shutdown(&app->pip_cache);
+  api_gfx_shutdown(app); // readback queue (backend の readback request を含む)
+  api_audio_shutdown(app);
+  for (int i = 0; i < app->frame_garbage_count; ++i)
+    free(app->frame_garbage[i]);
+  free(app->frame_garbage);
+  app->frame_garbage = NULL;
+  app->frame_garbage_count = app->frame_garbage_cap = 0;
+  api_host_shutdown(app);
+  api_io_shutdown(app);
+  api_font_shutdown(app);
+  api_mesh_shutdown(app);
   audio_state_destroy(app->audio);
   app->audio = NULL;
   phys3d_state_shutdown(&app->phys3);
@@ -237,10 +250,5 @@ void app_shutdown(App *app) {
     SDL_DestroyWindow(app->window);
 
 #ifndef __EMSCRIPTEN__
-  // .hxml entry を踏んでいたときだけ haxe pipeline (server + watch) を止める。
-  // 通常の .lua-only 実行は haxe_enabled = false のままなので no-op。
-  if (app->haxe_enabled) {
-    haxe_pipeline_stop(&app->haxe);
-  }
 #endif
 }

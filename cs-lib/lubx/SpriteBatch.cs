@@ -1,24 +1,22 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/SpriteBatch.hx と対)。
-// Haxe 版の typedef SpriteBucket は class に、Dynamic フィールドは
-// ShaderRef / BufferRef の型付きに。untyped の配列直書き (perf イディオム) は
-// List<float>.Add の逐次追加に置換 (格納順は Haxe 版の out[i]..out[i+n] と
-// 同一)。lua.Table.fromArray は List<float> がそのまま Lua array table
-// なので不要。デフォルト引数値は nullable + ?? で受ける (tcs は call site
-// 展開しない)。
+// 実装ライブラリ lubx の SpriteBatch。
+// バケットは class SpriteBucket、フィールドは ShaderRef / BufferRef の型付き。
+// 頂点は List<float>.Add の逐次追加 (そのまま Lua array table)。
+// デフォルト引数値は nullable + ?? で受ける (tcs は call site 展開しない)。
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
-/// <summary>アトラスごとの頂点バケット (Haxe 版 typedef SpriteBucket と対)。</summary>
+/// <summary>アトラスごとの頂点バケット。</summary>
 public class SpriteBucket
 {
-    public Atlas atlas;
-    public List<float> verts = new List<float>();
-    public bool ready = false;
+    public Atlas Atlas;
+    public List<float> Verts = new List<float>();
+    public bool Ready = false;
 
     public SpriteBucket(Atlas atlas)
     {
-        this.atlas = atlas;
+        this.Atlas = atlas;
     }
 }
 
@@ -29,11 +27,11 @@ public class SpriteBucket
 /// </summary>
 public class SpriteBatch
 {
-    public const int LEGACY_STRIDE = 8;
-    public const int VERTEX_STRIDE = 4;
-    public const int INSTANCE_STRIDE = 14;
+    public const int LegacyStride = 8;
+    public const int VertexStride = 4;
+    public const int InstanceStride = 14;
 
-    private static string LEGACY_VS = "struct Uniforms { float4 params; };\n"
+    private static string legacyVs = "struct Uniforms { float4 params; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
         + "struct VSIn  { float2 pos : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
         + "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
@@ -47,7 +45,7 @@ public class SpriteBatch
         + "    return o;\n"
         + "}\n";
 
-    private static string INSTANCED_VS = "struct Uniforms { float4 params; };\n"
+    private static string instancedVs = "struct Uniforms { float4 params; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
         + "struct VSVertex { float2 corner : TEXCOORD0; float2 uv01 : TEXCOORD1; };\n"
         + "struct VSInstance { float2 pos : TEXCOORD2; float2 size : TEXCOORD3; float2 rot_cs : TEXCOORD4; float4 uv_rect : TEXCOORD5; float4 color : TEXCOORD6; };\n"
@@ -64,7 +62,7 @@ public class SpriteBatch
         + "    return o;\n"
         + "}\n";
 
-    private static string FS = "LUB_TEXTURE2D(atlas);\n"
+    private static string fs = "LUB_TEXTURE2D(atlas);\n"
         + "struct FSIn { float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
         + "[shader(\"fragment\")]\n"
         + "float4 fs_main(FSIn i) : SV_Target {\n"
@@ -76,8 +74,8 @@ public class SpriteBatch
     private static Atlas? whiteAtlas = null;
     private static Atlas? discAtlas = null;
 
-    public int logicalW;
-    public int logicalH;
+    public int LogicalW;
+    public int LogicalH;
 
     private Dictionary<string, SpriteBucket> buckets =
         new Dictionary<string, SpriteBucket>();
@@ -93,8 +91,8 @@ public class SpriteBatch
     public SpriteBatch(int logicalW, int logicalH, string? shaderKey = null,
         string? bufferPrefix = null, bool? instanced = null)
     {
-        this.logicalW = logicalW;
-        this.logicalH = logicalH;
+        this.LogicalW = logicalW;
+        this.LogicalH = logicalH;
         bool inst = instanced ?? true;
         this.shaderKey = (shaderKey ?? "lubx_sprite")
             + (inst ? "_instanced" : "_legacy");
@@ -102,58 +100,57 @@ public class SpriteBatch
         this.instanced = inst;
     }
 
-    public bool ensure()
+    public bool Ensure()
     {
-        shader = Gfx.use_shader(shaderKey, instanced ? INSTANCED_VS : LEGACY_VS,
-            FS, 1);
+        shader = Gfx.UseShader(shaderKey, instanced ? instancedVs : legacyVs,
+            fs, 1);
         return shader != null;
     }
 
-    public void begin()
+    public void Begin()
     {
         foreach (var k in order)
         {
             var b = buckets[k];
-            b.verts.Clear();
-            b.ready = false;
+            b.Verts.Clear();
+            b.Ready = false;
         }
     }
 
-    private List<float>? bucketFor(Atlas a)
+    private List<float>? BucketFor(Atlas a)
     {
-        if (!buckets.TryGetValue(a.key, out var b))
+        if (!buckets.TryGetValue(a.Key, out var b))
         {
             b = new SpriteBucket(a);
-            buckets[a.key] = b;
-            order.Add(a.key);
+            buckets[a.Key] = b;
+            order.Add(a.Key);
         }
-        if (!b.ready)
+        if (!b.Ready)
         {
-            if (!a.ensure())
+            if (!a.Ensure())
                 return null;
-            b.ready = true;
+            b.Ready = true;
         }
-        return b.verts;
+        return b.Verts;
     }
 
-    private Color colorOrWhite(Color? c)
+    private Color ColorOrWhite(Color? c)
     {
         if (c != null)
             return c;
-        return Color.rgb(1.0f, 1.0f, 1.0f, 1.0f);
+        return Color.Rgb(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private void pushInstance(List<float> verts, float cx, float cy,
+    private void PushInstance(List<float> verts, float cx, float cy,
         float w, float h, float cr, float sr, float u0, float v0,
         float u1, float v1, Color c)
     {
-        pushInstanceColor(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1,
-            c.r, c.g, c.b, c.a);
+        PushInstanceColor(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1,
+            c.R, c.G, c.B, c.A);
     }
 
-    // Haxe 版は untyped out[i]..out[i+13] の直書き。Add の逐次追加でも
-    // Lua 上は同じ array table への同順 append になる。
-    private void pushInstanceColor(List<float> verts, float cx, float cy,
+    // Add の逐次追加は Lua 上では array table への同順 append になる。
+    private void PushInstanceColor(List<float> verts, float cx, float cy,
         float w, float h, float cr, float sr, float u0, float v0,
         float u1, float v1, float r, float g, float b, float alpha)
     {
@@ -173,13 +170,13 @@ public class SpriteBatch
         verts.Add(alpha);
     }
 
-    private void pushVertex(List<float> verts, float x, float y, float u,
+    private void PushVertex(List<float> verts, float x, float y, float u,
         float v, Color c)
     {
-        pushVertexColor(verts, x, y, u, v, c.r, c.g, c.b, c.a);
+        PushVertexColor(verts, x, y, u, v, c.R, c.G, c.B, c.A);
     }
 
-    private void pushVertexColor(List<float> verts, float x, float y,
+    private void PushVertexColor(List<float> verts, float x, float y,
         float u, float v, float r, float g, float b, float alpha)
     {
         verts.Add(x);
@@ -192,103 +189,103 @@ public class SpriteBatch
         verts.Add(alpha);
     }
 
-    private void pushRot(List<float> verts, float cx, float cy, float ox,
+    private void PushRot(List<float> verts, float cx, float cy, float ox,
         float oy, float cr, float sr, float u, float v, Color c)
     {
-        pushVertex(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr,
+        PushVertex(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr,
             u, v, c);
     }
 
-    private void pushRotColor(List<float> verts, float cx, float cy,
+    private void PushRotColor(List<float> verts, float cx, float cy,
         float ox, float oy, float cr, float sr, float u, float v,
         float r, float g, float b, float alpha)
     {
-        pushVertexColor(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr,
+        PushVertexColor(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr,
             u, v, r, g, b, alpha);
     }
 
     /// <summary>アトラスの src 矩形を中心 (cx, cy)・radians 回転で描く。</summary>
-    public void sprite(Atlas a, Rect src, float cx, float cy, float w,
+    public void Sprite(Atlas a, Rect src, float cx, float cy, float w,
         float h, float radians, Color? tint = null)
     {
-        var c = colorOrWhite(tint);
-        spriteColor(a, src, cx, cy, w, h, (float)Math.Cos(radians), (float)Math.Sin(radians),
-            c.r, c.g, c.b, c.a);
+        var c = ColorOrWhite(tint);
+        SpriteColor(a, src, cx, cy, w, h, (float)Math.Cos(radians), (float)Math.Sin(radians),
+            c.R, c.G, c.B, c.A);
     }
 
     /// <summary>sprite の cos/sin・色成分ばらし版 (Color 生成を避ける hot path 用)。</summary>
-    public void spriteColor(Atlas a, Rect src, float cx, float cy, float w,
+    public void SpriteColor(Atlas a, Rect src, float cx, float cy, float w,
         float h, float cr, float sr, float r, float g, float b,
         float alpha)
     {
-        var verts = bucketFor(a);
+        var verts = BucketFor(a);
         if (verts == null)
             return;
 
-        float u0 = src.x / (float)a.w;
-        float v0 = src.y / (float)a.h;
-        float u1 = (src.x + src.w) / (float)a.w;
-        float v1 = (src.y + src.h) / (float)a.h;
+        float u0 = src.X / (float)a.W;
+        float v0 = src.Y / (float)a.H;
+        float u1 = (src.X + src.W) / (float)a.W;
+        float v1 = (src.Y + src.H) / (float)a.H;
         if (instanced)
         {
-            pushInstanceColor(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1,
+            PushInstanceColor(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1,
                 r, g, b, alpha);
             return;
         }
 
         float hw = w * 0.5f;
         float hh = h * 0.5f;
-        pushRotColor(verts, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha);
-        pushRotColor(verts, cx, cy, hw, -hh, cr, sr, u1, v0, r, g, b, alpha);
-        pushRotColor(verts, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha);
-        pushRotColor(verts, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha);
-        pushRotColor(verts, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha);
-        pushRotColor(verts, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha);
+        PushRotColor(verts, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha);
+        PushRotColor(verts, cx, cy, hw, -hh, cr, sr, u1, v0, r, g, b, alpha);
+        PushRotColor(verts, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha);
+        PushRotColor(verts, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha);
+        PushRotColor(verts, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha);
+        PushRotColor(verts, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha);
     }
 
     /// <summary>アトラスの src 矩形を左上 (x, y) に無回転で描く。</summary>
-    public void quad(Atlas a, Rect src, float x, float y, float w, float h,
+    public void Quad(Atlas a, Rect src, float x, float y, float w, float h,
         Color? tint = null)
     {
-        var verts = bucketFor(a);
+        var verts = BucketFor(a);
         if (verts == null)
             return;
 
-        var c = colorOrWhite(tint);
-        float u0 = src.x / (float)a.w;
-        float v0 = src.y / (float)a.h;
-        float u1 = (src.x + src.w) / (float)a.w;
-        float v1 = (src.y + src.h) / (float)a.h;
+        var c = ColorOrWhite(tint);
+        float u0 = src.X / (float)a.W;
+        float v0 = src.Y / (float)a.H;
+        float u1 = (src.X + src.W) / (float)a.W;
+        float v1 = (src.Y + src.H) / (float)a.H;
         if (instanced)
         {
-            pushInstance(verts, x + w * 0.5f, y + h * 0.5f, w, h, 1.0f, 0.0f,
+            PushInstance(verts, x + w * 0.5f, y + h * 0.5f, w, h, 1.0f, 0.0f,
                 u0, v0, u1, v1, c);
             return;
         }
 
         float x1 = x + w;
         float y1 = y + h;
-        pushVertex(verts, x, y, u0, v0, c);
-        pushVertex(verts, x1, y, u1, v0, c);
-        pushVertex(verts, x1, y1, u1, v1, c);
-        pushVertex(verts, x, y, u0, v0, c);
-        pushVertex(verts, x1, y1, u1, v1, c);
-        pushVertex(verts, x, y1, u0, v1, c);
+        PushVertex(verts, x, y, u0, v0, c);
+        PushVertex(verts, x1, y, u1, v0, c);
+        PushVertex(verts, x1, y1, u1, v1, c);
+        PushVertex(verts, x, y, u0, v0, c);
+        PushVertex(verts, x1, y1, u1, v1, c);
+        PushVertex(verts, x, y1, u0, v1, c);
     }
 
-    private static Atlas ensureWhiteAtlas()
+    private static Atlas EnsureWhiteAtlas()
     {
         if (whiteAtlas == null)
         {
             var px = new List<int>();
             for (int i = 0; i < 4 * 4 * 4; i++)
                 px.Add(255);
-            whiteAtlas = Atlas.fromPixels("lubx_white", 4, 4, px, 1);
+            whiteAtlas = Atlas.FromPixels("lubx_white", 4, 4, px, 1);
         }
         return whiteAtlas;
     }
 
-    private static Atlas ensureDiscAtlas()
+    private static Atlas EnsureDiscAtlas()
     {
         if (discAtlas == null)
         {
@@ -310,26 +307,26 @@ public class SpriteBatch
                     px.Add((int)Math.Floor(a * 255));
                 }
             }
-            discAtlas = Atlas.fromPixels("lubx_disc", n, n, px, 1);
+            discAtlas = Atlas.FromPixels("lubx_disc", n, n, px, 1);
         }
         return discAtlas;
     }
 
     /// <summary>単色矩形。(x, y) は左上、座標系は quad と同じ論理 px。</summary>
-    public void rect(float x, float y, float w, float h,
+    public void Rect(float x, float y, float w, float h,
         Color? tint = null)
     {
-        quad(ensureWhiteAtlas(), new Rect(0, 0, 4, 4), x, y, w, h, tint);
+        Quad(EnsureWhiteAtlas(), new Rect(0, 0, 4, 4), x, y, w, h, tint);
     }
 
     /// <summary>単色の円 (ソフトエッジの disc)。(cx, cy) は中心、r は半径 px。</summary>
-    public void disc(float cx, float cy, float r, Color? tint = null)
+    public void Disc(float cx, float cy, float r, Color? tint = null)
     {
-        sprite(ensureDiscAtlas(), new Rect(0, 0, 64, 64), cx, cy,
+        Sprite(EnsureDiscAtlas(), new Rect(0, 0, 64, 64), cx, cy,
             r * 2.0f, r * 2.0f, 0.0f, tint);
     }
 
-    private BufferRef? ensureQuad()
+    private BufferRef? EnsureQuad()
     {
         if (quadData == null)
             quadData = new List<float>
@@ -339,41 +336,40 @@ public class SpriteBatch
                 -0.5f, 0.5f, 0.0f, 1.0f,
                 0.5f, 0.5f, 1.0f, 1.0f,
             };
-        quadBuf = Gfx.use_buffer(bufferPrefix + "_quad", Gfx.VERTEX, quadData,
+        quadBuf = Gfx.UseBuffer(bufferPrefix + "_quad", Gfx.BufferType.Vertex, quadData,
             1);
         return quadBuf;
     }
 
     /// <summary>積んだスプライトをアトラス単位で描画する。blend 省略で ALPHA。</summary>
-    public void flush(int? blend = null)
+    public void Flush(Gfx.Blend? blend = null)
     {
-        if (!ensure())
+        if (!Ensure())
             return;
         var sh = shader;
         if (sh == null)
             return;
-        var quadVb = instanced ? ensureQuad() : null;
+        var quadVb = instanced ? EnsureQuad() : null;
         if (instanced && quadVb == null)
             return;
 
-        var uniformParams = new List<float> { logicalW, logicalH, 0.0f, 0.0f };
-        int blendArg = blend ?? -1;
-        int blendMode = blendArg < 0 ? Gfx.ALPHA : blendArg;
+        var uniformParams = new List<float> { LogicalW, LogicalH, 0.0f, 0.0f };
+        var blendMode = blend ?? Gfx.Blend.Alpha;
         foreach (var k in order)
         {
             var b = buckets[k];
-            if (b.verts.Count == 0)
+            if (b.Verts.Count == 0)
                 continue;
-            var tex = b.atlas.texture;
+            var tex = b.Atlas.Texture;
             if (tex == null)
                 continue;
             if (!instanced)
             {
-                var vbuf = Gfx.use_buffer(bufferPrefix + "_" + k + "_verts",
-                    Gfx.VERTEX, b.verts);
+                var vbuf = Gfx.UseBuffer(bufferPrefix + "_" + k + "_verts",
+                    Gfx.BufferType.Vertex, b.Verts);
                 if (vbuf == null)
                     continue;
-                Gfx.draw((int)Math.Floor(b.verts.Count / (float)LEGACY_STRIDE),
+                Gfx.Draw((int)Math.Floor(b.Verts.Count / (float)LegacyStride),
                     new Dictionary<string, object>
                     {
                         ["verts"] = vbuf,
@@ -385,18 +381,18 @@ public class SpriteBatch
                     },
                     new DrawOpts
                     {
-                        shader = sh,
-                        depth = false,
-                        cull = Gfx.NONE,
-                        blend = blendMode,
+                        Shader = sh,
+                        Depth = false,
+                        Cull = Gfx.Cull.None,
+                        Blend = blendMode,
                     });
                 continue;
             }
-            var instances = Gfx.use_buffer(
-                bufferPrefix + "_" + k + "_instances", Gfx.VERTEX, b.verts);
+            var instances = Gfx.UseBuffer(
+                bufferPrefix + "_" + k + "_instances", Gfx.BufferType.Vertex, b.Verts);
             if (instances == null || quadVb == null)
                 continue;
-            Gfx.draw(4,
+            Gfx.Draw(4,
                 new Dictionary<string, object>
                 {
                     ["verts"] = quadVb,
@@ -409,13 +405,13 @@ public class SpriteBatch
                 },
                 new DrawOpts
                 {
-                    shader = sh,
-                    depth = false,
-                    cull = Gfx.NONE,
-                    blend = blendMode,
-                    primitive = Gfx.TRIANGLE_STRIP,
-                    instance_count = (int)Math.Floor(
-                        b.verts.Count / (float)INSTANCE_STRIDE),
+                    Shader = sh,
+                    Depth = false,
+                    Cull = Gfx.Cull.None,
+                    Blend = blendMode,
+                    Primitive = Gfx.Primitive.TriangleStrip,
+                    InstanceCount = (int)Math.Floor(
+                        b.Verts.Count / (float)InstanceStride),
                 });
         }
     }

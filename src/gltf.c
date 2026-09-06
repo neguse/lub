@@ -12,9 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <lauxlib.h>
-#include <lua.h>
-
 static void path_dirname(const char *path, char *out, size_t out_size) {
   if (out_size == 0)
     return;
@@ -37,117 +34,72 @@ static bool uri_is_external_file(const char *uri) {
   return strncmp(uri, "data:", 5) != 0 && strstr(uri, "://") == NULL;
 }
 
-static void push_joined_uri(lua_State *L, const char *base_dir,
-                            const char *uri) {
-  if (!uri_is_external_file(uri)) {
-    lua_pushnil(L);
-    return;
-  }
-  lua_pushfstring(L, "%s%s", base_dir ? base_dir : "", uri);
+static char *joined_uri(const char *base_dir, const char *uri) {
+  if (!uri_is_external_file(uri))
+    return NULL;
+  size_t bl = base_dir ? strlen(base_dir) : 0;
+  size_t ul = strlen(uri);
+  char *s = (char *)malloc(bl + ul + 1);
+  if (!s)
+    return NULL;
+  if (bl)
+    memcpy(s, base_dir, bl);
+  memcpy(s + bl, uri, ul + 1);
+  return s;
 }
 
-static void push_float_array(lua_State *L, const cgltf_float *v, int n) {
-  lua_createtable(L, n, 0);
-  for (int i = 0; i < n; ++i) {
-    lua_pushnumber(L, v[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-}
-
-static bool push_accessor_float_table(lua_State *L, cgltf_accessor *acc,
-                                      size_t components) {
+static float *unpack_floats(cgltf_accessor *acc, size_t components) {
   size_t n = acc->count * components;
-  float *buf = (float *)malloc(n * sizeof(float));
+  float *buf = (float *)malloc((n ? n : 1) * sizeof(float));
   if (!buf)
-    return false;
+    return NULL;
   cgltf_accessor_unpack_floats(acc, buf, n);
-  lua_createtable(L, (int)n, 0);
-  for (size_t i = 0; i < n; ++i) {
-    lua_pushnumber(L, buf[i]);
-    lua_rawseti(L, -2, (int)(i + 1));
-  }
-  free(buf);
-  return true;
+  return buf;
 }
 
-static bool push_index_table(lua_State *L, cgltf_accessor *acc_idx) {
-  cgltf_size index_count = acc_idx->count;
-  lua_createtable(L, (int)index_count, 0);
-  for (cgltf_size i = 0; i < index_count; ++i) {
-    cgltf_size idx = cgltf_accessor_read_index(acc_idx, i);
-    lua_pushinteger(L, (lua_Integer)idx);
-    lua_rawseti(L, -2, (int)(i + 1));
-  }
-  return true;
-}
-
-static void set_texture_path(lua_State *L, const char *field,
-                             const char *base_dir,
-                             const cgltf_texture_view *view) {
-  const char *uri = NULL;
+static const char *texture_uri(const cgltf_texture_view *view) {
   if (view && view->texture && view->texture->image)
-    uri = view->texture->image->uri;
-  push_joined_uri(L, base_dir, uri);
-  lua_setfield(L, -2, field);
+    return view->texture->image->uri;
+  return NULL;
 }
 
-static void push_material_table(lua_State *L, const cgltf_material *mat,
-                                const char *base_dir) {
+static void load_material(GltfMaterial *out, const cgltf_material *mat,
+                          const char *base_dir) {
   static const cgltf_float default_color[4] = {1, 1, 1, 1};
-  lua_createtable(L, 0, 11);
-
   const cgltf_pbr_metallic_roughness *pbr =
       mat ? &mat->pbr_metallic_roughness : NULL;
-  push_float_array(L, pbr ? pbr->base_color_factor : default_color, 4);
-  lua_setfield(L, -2, "base_color_factor");
-
-  lua_pushnumber(L, pbr ? pbr->metallic_factor : 1.0f);
-  lua_setfield(L, -2, "metallic_factor");
-  lua_pushnumber(L, pbr ? pbr->roughness_factor : 1.0f);
-  lua_setfield(L, -2, "roughness_factor");
-
-  int alpha_mode = 0;
+  memcpy(out->base_color_factor, pbr ? pbr->base_color_factor : default_color,
+         sizeof(out->base_color_factor));
+  out->metallic_factor = pbr ? pbr->metallic_factor : 1.0f;
+  out->roughness_factor = pbr ? pbr->roughness_factor : 1.0f;
+  out->alpha_mode = 0;
   if (mat && mat->alpha_mode == cgltf_alpha_mode_mask)
-    alpha_mode = 1;
+    out->alpha_mode = 1;
   else if (mat && mat->alpha_mode == cgltf_alpha_mode_blend)
-    alpha_mode = 2;
-  lua_pushinteger(L, alpha_mode);
-  lua_setfield(L, -2, "alpha_mode");
-  lua_pushnumber(L, mat ? mat->alpha_cutoff : 0.5f);
-  lua_setfield(L, -2, "alpha_cutoff");
-  lua_pushboolean(L, mat ? mat->double_sided : 0);
-  lua_setfield(L, -2, "double_sided");
-  lua_pushnumber(L, mat ? mat->normal_texture.scale : 1.0f);
-  lua_setfield(L, -2, "normal_scale");
-
-  set_texture_path(L, "base_color_path", base_dir,
-                   pbr ? &pbr->base_color_texture : NULL);
-  set_texture_path(L, "metallic_roughness_path", base_dir,
-                   pbr ? &pbr->metallic_roughness_texture : NULL);
-  set_texture_path(L, "normal_path", base_dir,
-                   mat ? &mat->normal_texture : NULL);
-
-  if (mat && mat->name) {
-    lua_pushstring(L, mat->name);
-    lua_setfield(L, -2, "name");
-  }
+    out->alpha_mode = 2;
+  out->alpha_cutoff = mat ? mat->alpha_cutoff : 0.5f;
+  out->double_sided = mat ? mat->double_sided != 0 : false;
+  out->normal_scale = mat ? mat->normal_texture.scale : 1.0f;
+  out->base_color_path =
+      joined_uri(base_dir, texture_uri(pbr ? &pbr->base_color_texture : NULL));
+  out->metallic_roughness_path = joined_uri(
+      base_dir, texture_uri(pbr ? &pbr->metallic_roughness_texture : NULL));
+  out->normal_path =
+      joined_uri(base_dir, texture_uri(mat ? &mat->normal_texture : NULL));
+  out->name = (mat && mat->name) ? strdup(mat->name) : NULL;
 }
 
-static bool push_primitive_table(lua_State *L, cgltf_primitive *prim,
-                                 cgltf_material *materials,
-                                 cgltf_size materials_count,
-                                 const char *base_dir, const char *path,
-                                 bool *warned_unknown) {
+static bool load_primitive(GltfPrimitive *out, cgltf_primitive *prim,
+                           cgltf_material *materials,
+                           cgltf_size materials_count, const char *path,
+                           bool *warned_unknown, char *err, size_t err_size) {
   if (prim->type != cgltf_primitive_type_triangles) {
-    fprintf(stderr, "load_gltf: non-triangle primitive (%d) in %s\n",
-            (int)prim->type, path);
+    snprintf(err, err_size, "load_gltf: non-triangle primitive (%d) in %s",
+             (int)prim->type, path);
     return false;
   }
-
-  cgltf_accessor *acc_pos = NULL;
-  cgltf_accessor *acc_nrm = NULL;
-  cgltf_accessor *acc_uv = NULL;
-  cgltf_accessor *acc_tan = NULL;
+  cgltf_accessor *acc_pos = NULL, *acc_nrm = NULL, *acc_uv = NULL,
+                 *acc_tan = NULL;
   for (cgltf_size i = 0; i < prim->attributes_count; ++i) {
     cgltf_attribute *a = &prim->attributes[i];
     switch (a->type) {
@@ -174,142 +126,127 @@ static bool push_primitive_table(lua_State *L, cgltf_primitive *prim,
     }
   }
   if (!acc_pos) {
-    fprintf(stderr, "load_gltf: POSITION attribute missing in %s\n", path);
+    snprintf(err, err_size, "load_gltf: POSITION attribute missing in %s",
+             path);
     return false;
   }
-
-  lua_createtable(L, 0, 10);
-
-  if (!push_accessor_float_table(L, acc_pos, 3))
+  memset(out, 0, sizeof(*out));
+  out->positions = unpack_floats(acc_pos, 3);
+  if (!out->positions) {
+    snprintf(err, err_size, "load_gltf: out of memory");
     return false;
-  lua_setfield(L, -2, "positions");
-
-  if (acc_nrm) {
-    if (!push_accessor_float_table(L, acc_nrm, 3))
-      return false;
-    lua_setfield(L, -2, "normals");
   }
-
-  if (acc_uv) {
-    if (!push_accessor_float_table(L, acc_uv, 2))
-      return false;
-    lua_setfield(L, -2, "uvs");
-  }
-
-  if (acc_tan) {
-    if (!push_accessor_float_table(L, acc_tan, 4))
-      return false;
-    lua_setfield(L, -2, "tangents");
-  }
-
-  size_t index_count = 0;
+  out->vert_count = (int)acc_pos->count;
+  if (acc_nrm)
+    out->normals = unpack_floats(acc_nrm, 3);
+  if (acc_uv)
+    out->uvs = unpack_floats(acc_uv, 2);
+  if (acc_tan)
+    out->tangents = unpack_floats(acc_tan, 4);
   if (prim->indices) {
-    index_count = prim->indices->count;
-    if (!push_index_table(L, prim->indices))
+    cgltf_size n = prim->indices->count;
+    out->indices = (uint32_t *)malloc((n ? n : 1) * sizeof(uint32_t));
+    if (!out->indices) {
+      snprintf(err, err_size, "load_gltf: out of memory");
       return false;
-    lua_setfield(L, -2, "indices");
+    }
+    for (cgltf_size i = 0; i < n; ++i)
+      out->indices[i] = (uint32_t)cgltf_accessor_read_index(prim->indices, i);
+    out->index_count = (int)n;
   }
-
-  lua_pushinteger(L, (lua_Integer)acc_pos->count);
-  lua_setfield(L, -2, "vert_count");
-  lua_pushinteger(L, (lua_Integer)index_count);
-  lua_setfield(L, -2, "index_count");
-
-  int material_index = -1;
+  out->material_index = -1;
   if (prim->material && materials && prim->material >= materials &&
-      prim->material < materials + materials_count) {
-    material_index = (int)(prim->material - materials);
-  }
-  lua_pushinteger(L, material_index);
-  lua_setfield(L, -2, "material_index");
-  push_material_table(L, prim->material, base_dir);
-  lua_setfield(L, -2, "material");
-
+      prim->material < materials + materials_count)
+    out->material_index = (int)(prim->material - materials);
   return true;
 }
 
-static void copy_field(lua_State *L, int src_idx, int dst_idx,
-                       const char *field) {
-  lua_getfield(L, src_idx, field);
-  lua_setfield(L, dst_idx, field);
+static void free_primitive(GltfPrimitive *p) {
+  free(p->positions);
+  free(p->normals);
+  free(p->uvs);
+  free(p->tangents);
+  free(p->indices);
 }
 
-int lub_load_gltf(lua_State *L) {
-  const char *path = luaL_checkstring(L, 1);
+void gltf_free(GltfMesh *mesh) {
+  if (!mesh)
+    return;
+  for (int i = 0; i < mesh->primitive_count; ++i)
+    free_primitive(&mesh->primitives[i]);
+  free(mesh->primitives);
+  for (int i = 0; i < mesh->material_count; ++i) {
+    free(mesh->materials[i].base_color_path);
+    free(mesh->materials[i].metallic_roughness_path);
+    free(mesh->materials[i].normal_path);
+    free(mesh->materials[i].name);
+  }
+  free(mesh->materials);
+  free(mesh);
+}
+
+GltfMesh *gltf_load(const char *path, char *err, size_t err_size) {
   cgltf_options options = {0};
   cgltf_data *data = NULL;
-
   cgltf_result r = cgltf_parse_file(&options, path, &data);
   if (r != cgltf_result_success) {
-    fprintf(stderr, "load_gltf: parse failed (%d): %s\n", (int)r, path);
-    lua_pushnil(L);
-    return 1;
+    snprintf(err, err_size, "load_gltf: parse failed (%d): %s", (int)r, path);
+    return NULL;
   }
-
   r = cgltf_load_buffers(&options, data, path);
   if (r != cgltf_result_success) {
-    fprintf(stderr, "load_gltf: load_buffers failed (%d): %s\n", (int)r, path);
+    snprintf(err, err_size, "load_gltf: load_buffers failed (%d): %s", (int)r,
+             path);
     cgltf_free(data);
-    lua_pushnil(L);
-    return 1;
+    return NULL;
   }
-
-  if (data->meshes_count == 0) {
-    fprintf(stderr, "load_gltf: no meshes in %s\n", path);
-    cgltf_free(data);
-    lua_pushnil(L);
-    return 1;
-  }
-
   cgltf_size primitive_count = 0;
   for (cgltf_size mi = 0; mi < data->meshes_count; ++mi)
     primitive_count += data->meshes[mi].primitives_count;
-  if (primitive_count == 0) {
-    fprintf(stderr, "load_gltf: no primitives in %s\n", path);
+  if (data->meshes_count == 0 || primitive_count == 0) {
+    snprintf(err, err_size, "load_gltf: no primitives in %s", path);
     cgltf_free(data);
-    lua_pushnil(L);
-    return 1;
+    return NULL;
   }
 
   char base_dir[4096];
   path_dirname(path, base_dir, sizeof(base_dir));
 
-  lua_createtable(L, 0, 8);
-  int result_idx = lua_gettop(L);
-
-  lua_createtable(L, (int)primitive_count, 0);
+  GltfMesh *mesh = (GltfMesh *)calloc(1, sizeof(GltfMesh));
+  if (!mesh) {
+    snprintf(err, err_size, "load_gltf: out of memory");
+    cgltf_free(data);
+    return NULL;
+  }
+  mesh->primitives =
+      (GltfPrimitive *)calloc(primitive_count, sizeof(GltfPrimitive));
+  mesh->materials = (GltfMaterial *)calloc(
+      data->materials_count ? data->materials_count : 1, sizeof(GltfMaterial));
+  if (!mesh->primitives || !mesh->materials) {
+    snprintf(err, err_size, "load_gltf: out of memory");
+    gltf_free(mesh);
+    cgltf_free(data);
+    return NULL;
+  }
   bool warned_unknown = false;
-  int out_prim = 1;
   for (cgltf_size mi = 0; mi < data->meshes_count; ++mi) {
-    cgltf_mesh *mesh = &data->meshes[mi];
-    for (cgltf_size pi = 0; pi < mesh->primitives_count; ++pi) {
-      if (!push_primitive_table(L, &mesh->primitives[pi], data->materials,
-                                data->materials_count, base_dir, path,
-                                &warned_unknown)) {
+    cgltf_mesh *m = &data->meshes[mi];
+    for (cgltf_size pi = 0; pi < m->primitives_count; ++pi) {
+      if (!load_primitive(&mesh->primitives[mesh->primitive_count],
+                          &m->primitives[pi], data->materials,
+                          data->materials_count, path, &warned_unknown, err,
+                          err_size)) {
+        mesh->primitive_count++;
+        gltf_free(mesh);
         cgltf_free(data);
-        return luaL_error(L, "load_gltf: failed to load primitive in %s", path);
+        return NULL;
       }
-      lua_rawseti(L, -2, out_prim++);
+      mesh->primitive_count++;
     }
   }
-  lua_setfield(L, result_idx, "primitives");
-
-  lua_pushinteger(L, (lua_Integer)primitive_count);
-  lua_setfield(L, result_idx, "primitive_count");
-
-  lua_getfield(L, result_idx, "primitives");
-  lua_rawgeti(L, -1, 1);
-  int first_idx = lua_gettop(L);
-  copy_field(L, first_idx, result_idx, "positions");
-  copy_field(L, first_idx, result_idx, "normals");
-  copy_field(L, first_idx, result_idx, "uvs");
-  copy_field(L, first_idx, result_idx, "tangents");
-  copy_field(L, first_idx, result_idx, "indices");
-  copy_field(L, first_idx, result_idx, "vert_count");
-  copy_field(L, first_idx, result_idx, "index_count");
-  copy_field(L, first_idx, result_idx, "material");
-  lua_pop(L, 2);
-
+  for (cgltf_size i = 0; i < data->materials_count; ++i)
+    load_material(&mesh->materials[i], &data->materials[i], base_dir);
+  mesh->material_count = (int)data->materials_count;
   cgltf_free(data);
-  return 1;
+  return mesh;
 }

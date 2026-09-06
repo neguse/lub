@@ -44,9 +44,10 @@ void audio_state_frame_end(AudioState *st);
 int audio_snd_from_pcm(AudioState *st, const float *interleaved,
                        uint32_t frames, uint32_t channels, uint32_t rate);
 
-// snd を解放する。参照中の voice は audio 側で即座に止まり、PCM の実メモリは
-// 全 voice が離れた後のフレーム末に回収される。
-bool audio_snd_free(AudioState *st, int snd);
+// snd を退役させる。以後の lookup (play / voice) は失敗するが、鳴っている
+// voice は最後まで鳴り、参照が無くなってから frame_end で PCM を回収する。
+// 同じ内容で宣言し直せば dedupe で同じ snd が復帰する。
+bool audio_snd_retire(AudioState *st, int snd);
 
 // oneshot。pitch<0 なら末尾から逆再生で始まる。
 bool audio_play(AudioState *st, int snd, float volume, float pitch, float pan);

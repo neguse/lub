@@ -10,7 +10,6 @@
     "gen-api": "node scripts/gen-api-docs.mjs",
     "preview": "vite preview",
     "fetch-slang": "bash scripts/fetch-slang-wasm.sh",
-    "gen-haxe": "node scripts/gen-haxe-assets.mjs",
     "gen-tcs": "node scripts/gen-tcs-assets.mjs",
     "gen-tcs-prebuilt": "node scripts/gen-tcs-prebuilt.mjs",
     "verify": "node scripts/verify-headless.mjs",
@@ -31,7 +30,6 @@
   },
   "devDependencies": {
     "@johnnymorganz/stylua-bin": "^2.5.2",
-    "fast-xml-parser": "^5.10.1",
     "markdown-it": "^14.3.0",
     "playwright": "^1.58.0",
     "pngjs": "^7.0.0",

@@ -71,7 +71,7 @@ done
 # 5. Current-state docs ban ** (bold) emphasis. "**/" and "/**" glob
 #    patterns inside code spans are not emphasis and are ignored.
 current_docs=(README.md AGENTS.md CLAUDE.md tasks.md web/README.md
-  haxe-wasm/README.md docs/*.md docs/manual/*.md)
+  docs/*.md docs/manual/*.md)
 for f in "${current_docs[@]}"; do
   [[ -f "$f" ]] || continue
   line="$(sed 's|\*\*/||g; s|/\*\*||g' "$f" | grep -n '\*\*' | head -1 || true)"

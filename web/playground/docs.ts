@@ -1,5 +1,5 @@
 // docs.ts — /docs.html のレンダラ。public/api-docs.json(gen-api-docs.mjs が
-// docs/manual/*.md と haxe doc comment から生成)を読み、ガイド + API
+// docs/manual/*.md と API の doc comment から生成)を読み、ガイド + API
 // reference を 1 ページに描画する。doc/guide の HTML は build 時に生成済みの
 // 信頼できる内容なので innerHTML で流し込む。
 
@@ -8,6 +8,7 @@ type Member = {
   kind: "method" | "var" | "field" | "ctor";
   signature: string;
   doc: string;
+  lua?: string; // Lua 面の名前 (stub 由来のときだけ)
 };
 type ApiType = {
   kind: "class" | "typedef" | "abstract" | "enum";
@@ -20,6 +21,7 @@ type ApiType = {
   alias?: string;
   underlying?: string;
   isEnum?: boolean;
+  extends?: string; // 基底の record (stub 由来のときだけ)
 };
 type ApiModule = {
   module: string;
@@ -58,6 +60,10 @@ function kindLabel(t: ApiType): string {
   return t.kind;
 }
 
+function luaName(m: Member): string {
+  return m.lua ? `<span class="lua">${esc(m.lua)}</span>` : "";
+}
+
 function renderType(t: ApiType, isMain: boolean): string {
   const h = isMain ? "h1" : "h2";
   const parts: string[] = [];
@@ -80,6 +86,10 @@ function renderType(t: ApiType, isMain: boolean): string {
     parts.push(
       `<p><span class="badge">underlying: ${esc(t.underlying)}</span></p>`,
     );
+  if (t.extends)
+    parts.push(
+      `<p><span class="badge">extends: ${linkifySig(esc(t.extends), t.path)}</span></p>`,
+    );
   if (t.doc) parts.push(`<div class="tdoc">${t.doc}</div>`);
   if (t.isEnum && t.members.length) {
     // enum abstract: 値の羅列は 1 ブロックにまとめる
@@ -89,7 +99,7 @@ function renderType(t: ApiType, isMain: boolean): string {
       if (!m.doc) continue;
       parts.push(
         `<div class="member" id="${esc(t.path + "." + m.name)}">` +
-          `<pre class="sig"><code>${esc(m.name)}</code></pre>` +
+          `<pre class="sig"><code>${esc(m.name)}</code>${luaName(m)}</pre>` +
           `<div class="mdoc">${m.doc}</div></div>`,
       );
     }
@@ -97,7 +107,7 @@ function renderType(t: ApiType, isMain: boolean): string {
     for (const m of t.members) {
       parts.push(
         `<div class="member" id="${esc(t.path + "." + m.name)}">` +
-          `<pre class="sig"><code>${linkifySig(esc(m.signature), t.path)}</code></pre>` +
+          `<pre class="sig"><code>${linkifySig(esc(m.signature), t.path)}</code>${luaName(m)}</pre>` +
           (m.doc ? `<div class="mdoc">${m.doc}</div>` : "") +
           `</div>`,
       );

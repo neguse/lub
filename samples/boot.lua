@@ -19,10 +19,6 @@ if not ok then
 end
 _G.lume = lume
 
--- 公式 API 面 (namespace table) を entry より先に注入する。
--- 全 authoring 言語が同じ面を見る (samples/lub_prelude.lua 参照)。
-require("lub_prelude")
-
 local mod = require(entry_name)
 if type(mod) ~= "table" then
 	error("boot.lua: module " .. tostring(entry_name) .. " did not return a table")

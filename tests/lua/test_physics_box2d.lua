@@ -15,30 +15,30 @@ local function fail(message)
 	os.exit(1, true)
 end
 
-function M.onInit()
-	config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
+function M.on_init()
+	lub.config({ backend = os.getenv("LUB_BACKEND") or "sdlgpu", width = 320, height = 180 })
 end
 
-function M.onFrame()
+function M.on_frame()
 	frame = frame + 1
 	trace("frame " .. frame .. " world")
 
-	local world = phys2d_world("smoke", {
+	local world = lub.phys2d.world("smoke", {
 		gravity = { x = 0, y = -10 },
 		fixed_dt = 1 / 60,
 		substeps = 4,
 		max_steps = 1,
 	})
 	trace("begin")
-	phys2d_begin(world)
+	lub.phys2d.begin(world)
 
 	trace("ground body")
-	local ground = phys2d_body(world, "ground", {
-		type = STATIC,
+	local ground = lub.phys2d.body(world, "ground", {
+		type = lub.phys2d.STATIC,
 		initial = { x = 0, y = -0.25 },
 	})
 	trace("ground shape")
-	phys2d_box(ground, "solid", {
+	lub.phys2d.box(ground, "solid", {
 		hx = 4,
 		hy = 0.25,
 		density = 0,
@@ -47,12 +47,12 @@ function M.onFrame()
 	})
 
 	trace("ball body")
-	local ball = phys2d_body(world, "ball", {
-		type = DYNAMIC,
+	local ball = lub.phys2d.body(world, "ball", {
+		type = lub.phys2d.DYNAMIC,
 		initial = { x = 0, y = 2.0 },
 	})
 	trace("ball shape")
-	phys2d_circle(ball, "solid", {
+	lub.phys2d.circle(ball, "solid", {
 		r = 0.25,
 		density = 1,
 		friction = 0.4,
@@ -60,16 +60,16 @@ function M.onFrame()
 	})
 
 	trace("step")
-	phys2d_step(world, 1 / 60)
+	lub.phys2d.step(world, 1 / 60)
 
 	trace("pose")
-	local pose = phys2d_pose(ball)
+	local pose = lub.phys2d.pose(ball)
 	if not pose then
 		fail("pose missing")
 	end
 
 	trace("contacts begin")
-	local contacts = phys2d_contacts(world, "begin")
+	local contacts = lub.phys2d.contacts(world, "begin")
 	trace("contacts count " .. tostring(#contacts))
 	for _, contact in ipairs(contacts) do
 		local a = contact.a.body .. "/" .. contact.a.shape
@@ -83,8 +83,8 @@ function M.onFrame()
 	end
 	trace("contacts done")
 
-	begin_pass({ target = main_tex, clear_color = { 0.02, 0.03, 0.04, 1.0 } })
-	end_pass()
+	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 0.02, 0.03, 0.04, 1.0 } })
+	lub.gfx.end_pass()
 
 	if frame == 30 and not (pose.y < 1.0) then
 		fail("ball did not fall by frame 30: y=" .. tostring(pose.y))
@@ -92,7 +92,7 @@ function M.onFrame()
 
 	if saw_contact then
 		print("PHYS2D_SMOKE_OK frame=" .. frame .. " y=" .. string.format("%.4f", pose.y))
-		quit()
+		lub.quit()
 		return
 	end
 

@@ -1,6 +1,6 @@
 # Haxe -> Lua transpile / reload Implementation Plan
 
-> 記録: 2026-05-25 時点の実装計画(workflow 産物)。現状は [../manual/07-haxe-lua.md](../manual/07-haxe-lua.md) を参照。
+> 記録: 2026-05-25 時点の実装計画(workflow 産物)。Haxe → Lua の経路はその後撤去した(現状は [2026-09-04-language-architecture-design.md](2026-09-04-language-architecture-design.md) を参照)。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

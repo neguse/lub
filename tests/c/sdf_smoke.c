@@ -1,169 +1,235 @@
 // sdf_mesh smoke: mesh SDF trees and check the output — a plain sphere tree
 // reproduces the analytic sphere (vertices, normals, winding), a nested
-// move+rotate+smin tree stays inside its reported bounds, and invalid trees
-// (unknown op, bad version, missing field) raise errors instead of passing
-// silently.
+// move+rotate+smin tree stays inside its reported bounds, paint / bones bake
+// per-vertex data, and invalid trees are rejected by the converter instead
+// of passing silently. C core (sdf_tree_convert / sdf_mesh_build) を直接
+// 叩く。Lua 面 (table の木) は lub 本体の Lua テストと golden が見る。
 #include "sdf.h"
 
-#include <lauxlib.h>
-#include <lua.h>
-#include <lualib.h>
+#include <math.h>
 #include <stdio.h>
+#include <string.h>
 
-static const char *SCRIPT =
-    "local function check(cond, msg)\n"
-    "  if not cond then error(msg, 2) end\n"
-    "end\n"
-    "-- sphere: analytic checks\n"
-    "local r = 0.5\n"
-    "local m = sdf_mesh({version = 1, root = {op = 'sphere', r = r}}, 32)\n"
-    "check(m.vert_count > 0, 'no vertices')\n"
-    "check(m.index_count % 3 == 0, 'index_count not a multiple of 3')\n"
-    "check(#m.positions == m.vert_count * 3, 'positions length mismatch')\n"
-    "check(#m.normals == m.vert_count * 3, 'normals length mismatch')\n"
-    "check(m.cell > 0, 'cell missing')\n"
-    "check(m.bounds_min[1] == -r and m.bounds_max[2] == r, 'sphere bounds')\n"
-    "for v = 0, m.vert_count - 1 do\n"
-    "  local px = m.positions[v * 3 + 1]\n"
-    "  local py = m.positions[v * 3 + 2]\n"
-    "  local pz = m.positions[v * 3 + 3]\n"
-    "  local len = math.sqrt(px * px + py * py + pz * pz)\n"
-    "  check(math.abs(len - r) < m.cell, 'vertex off the sphere surface')\n"
-    "  local nx = m.normals[v * 3 + 1]\n"
-    "  local ny = m.normals[v * 3 + 2]\n"
-    "  local nz = m.normals[v * 3 + 3]\n"
-    "  check((nx * px + ny * py + nz * pz) / len > 0.9, 'normal not radial')\n"
-    "end\n"
-    "local function pos(ix)\n"
-    "  return m.positions[ix * 3 + 1], m.positions[ix * 3 + 2],\n"
-    "      m.positions[ix * 3 + 3]\n"
-    "end\n"
-    "for t = 0, m.index_count / 3 - 1 do\n"
-    "  local ax, ay, az = pos(m.indices[t * 3 + 1])\n"
-    "  local bx, by, bz = pos(m.indices[t * 3 + 2])\n"
-    "  local cx, cy, cz = pos(m.indices[t * 3 + 3])\n"
-    "  local ux, uy, uz = bx - ax, by - ay, bz - az\n"
-    "  local vx, vy, vz = cx - ax, cy - ay, cz - az\n"
-    "  local fx = uy * vz - uz * vy\n"
-    "  local fy = uz * vx - ux * vz\n"
-    "  local fz = ux * vy - uy * vx\n"
-    "  check(fx * (ax + bx + cx) + fy * (ay + by + cy) + fz * (az + bz + cz)\n"
-    "      > 0, 'winding not CCW from outside')\n"
-    "end\n"
-    "-- nested move+rotate+smin+mirror: bounds contain every vertex\n"
-    "local s2 = math.sqrt(0.5)\n"
-    "local tree = {\n"
-    "  version = 1,\n"
-    "  root = {\n"
-    "    op = 'smin', k = 0.2,\n"
-    "    a = { op = 'move', x = 0.4, y = 0.6, z = -0.2,\n"
-    "          c = { op = 'rotate', qx = 0, qy = 0, qz = s2, qw = s2,\n"
-    "                c = { op = 'box', hx = 0.5, hy = 0.2, hz = 0.2 } } },\n"
-    "    b = { op = 'mirror_x',\n"
-    "          c = { op = 'capsule', ax = 0.3, ay = 0, az = 0,\n"
-    "                bx = 0.9, by = 0.5, bz = 0, r = 0.15 } },\n"
-    "  },\n"
-    "}\n"
-    "local m2 = sdf_mesh(tree, 48)\n"
-    "check(m2.vert_count > 0, 'nested tree produced no mesh')\n"
-    "for v = 0, m2.vert_count - 1 do\n"
-    "  for i = 1, 3 do\n"
-    "    local p = m2.positions[v * 3 + i]\n"
-    "    check(p >= m2.bounds_min[i] - m2.cell and\n"
-    "        p <= m2.bounds_max[i] + m2.cell, 'vertex outside reported "
-    "bounds')\n"
-    "  end\n"
-    "end\n"
-    "-- mirror produced both capsules: some vertex has x < -0.3\n"
-    "local mirrored = false\n"
-    "for v = 0, m2.vert_count - 1 do\n"
-    "  if m2.positions[v * 3 + 1] < -0.3 then mirrored = true end\n"
-    "end\n"
-    "check(mirrored, 'mirror_x did not mirror')\n"
-    "-- scale: sphere r=0.25 scaled by 2 == sphere r=0.5 bounds\n"
-    "local m3 = sdf_mesh({version = 1, root = {op = 'scale', s = 2,\n"
-    "    c = {op = 'sphere', r = 0.25}}}, 24)\n"
-    "check(math.abs(m3.bounds_max[1] - 0.5) < 1e-5, 'scale bounds wrong')\n"
-    "-- paint: default material, innermost wins, cut face takes cutter's\n"
-    "check(#m.colors == m.vert_count * 3, 'colors length mismatch')\n"
-    "check(#m.metal_rough == m.vert_count * 2, 'metal_rough length mismatch')\n"
-    "check(math.abs(m.colors[1] - 0.8) < 1e-5, 'default albedo wrong')\n"
-    "local pt = {version = 1, root = {op = 'ssub', k = 0.05,\n"
-    "  a = {op = 'paint', cr = 1, cg = 0, cb = 0,\n"
-    "       c = {op = 'sphere', r = 0.5}},\n"
-    "  b = {op = 'paint', cr = 0, cg = 0, cb = 1, metallic = 1,\n"
-    "       roughness = 0.1,\n"
-    "       c = {op = 'move', x = 0, y = 0, z = -0.5,\n"
-    "            c = {op = 'sphere', r = 0.15}}}}}\n"
-    "local m4 = sdf_mesh(pt, 40)\n"
-    "check(#m4.colors == m4.vert_count * 3, 'paint colors length mismatch')\n"
-    "local reds, blues = 0, 0\n"
-    "for v = 0, m4.vert_count - 1 do\n"
-    "  local cr = m4.colors[v * 3 + 1]\n"
-    "  local cb = m4.colors[v * 3 + 3]\n"
-    "  if cr > 0.9 and cb < 0.1 then reds = reds + 1 end\n"
-    "  if cb > 0.9 and cr < 0.1 then\n"
-    "    blues = blues + 1\n"
-    "    check(m4.metal_rough[v * 2 + 1] > 0.9, 'cutter metallic not baked')\n"
-    "  end\n"
-    "end\n"
-    "check(reds > 0, 'painted body color missing')\n"
-    "check(blues > 0, 'cut face did not take cutter material')\n"
-    "-- bones: 2 部位の重み焼き\n"
-    "local bt = {version = 1, root = {op = 'union',\n"
-    "  a = {op = 'bone', name = 'left', px = -0.5, py = 0, pz = 0,\n"
-    "       c = {op = 'move', x = -0.5, y = 0, z = 0,\n"
-    "            c = {op = 'sphere', r = 0.3}}},\n"
-    "  b = {op = 'bone', name = 'right', px = 0.5, py = 0, pz = 0,\n"
-    "       c = {op = 'move', x = 0.5, y = 0, z = 0,\n"
-    "            c = {op = 'sphere', r = 0.3}}}}}\n"
-    "local m5 = sdf_mesh(bt, 32, 0.05)\n"
-    "check(#m5.joints == m5.vert_count * 2, 'joints length mismatch')\n"
-    "check(#m5.weights == m5.vert_count * 2, 'weights length mismatch')\n"
-    "check(#m5.bones == 2, 'bones list length wrong')\n"
-    "check(m5.bones[1].name == 'left' and m5.bones[2].name == 'right',\n"
-    "    'bone names wrong')\n"
-    "check(m5.bones[2].x == 0.5, 'bone pivot wrong')\n"
-    "for v = 0, m5.vert_count - 1 do\n"
-    "  local w0 = m5.weights[v * 2 + 1]\n"
-    "  local w1 = m5.weights[v * 2 + 2]\n"
-    "  check(math.abs(w0 + w1 - 1) < 1e-4, 'weights do not sum to 1')\n"
-    "  check(w0 >= w1 - 1e-6, 'primary weight not dominant')\n"
-    "  local px = m5.positions[v * 3 + 1]\n"
-    "  local j0 = m5.joints[v * 2 + 1]\n"
-    "  if px < -0.2 then check(j0 == 0, 'left vertex bound to wrong bone') "
-    "end\n"
-    "  if px > 0.2 then check(j0 == 1, 'right vertex bound to wrong bone') "
-    "end\n"
-    "end\n"
-    "-- invalid trees must error\n"
-    "local ok1 = pcall(sdf_mesh, {version = 1, root = {op = 'blob'}}, 16)\n"
-    "check(not ok1, 'unknown op did not error')\n"
-    "local ok2 = pcall(sdf_mesh, {version = 2,\n"
-    "    root = {op = 'sphere', r = 1}}, 16)\n"
-    "check(not ok2, 'bad version did not error')\n"
-    "local ok3 = pcall(sdf_mesh, {version = 1, root = {op = 'sphere'}}, 16)\n"
-    "check(not ok3, 'missing field did not error')\n"
-    "local ok4 = pcall(sdf_mesh, {version = 1,\n"
-    "    root = {op = 'smin', k = 0.1, a = {op = 'sphere', r = 1}}}, 16)\n"
-    "check(not ok4, 'missing child did not error')\n";
+static int fail(const char *msg) {
+  fprintf(stderr, "sdf smoke FAILED: %s\n", msg);
+  return 1;
+}
+
+static LubSdfNodeDesc node(int op, int a, int b, const float *p, int np) {
+  LubSdfNodeDesc n;
+  memset(&n, 0, sizeof(n));
+  n.op = op;
+  n.a = a;
+  n.b = b;
+  for (int i = 0; i < np; ++i)
+    n.params[i] = p[i];
+  return n;
+}
+
+static int build(const LubSdfNodeDesc *nodes, int count, int root, int n,
+                 float skin_k, SdfMeshOut *out, char *err, size_t err_size) {
+  SdfTree t;
+  if (!sdf_tree_convert(nodes, count, root, &t, err, err_size))
+    return 0;
+  int ok = sdf_mesh_build(&t, n, skin_k, out, err, err_size);
+  sdf_tree_free(&t);
+  return ok;
+}
 
 int main(void) {
-  lua_State *L = luaL_newstate();
-  if (!L) {
-    fprintf(stderr, "luaL_newstate failed\n");
-    return 1;
+  char err[256];
+  const float r = 0.5f;
+  // sphere: analytic checks
+  {
+    float p[] = {r};
+    LubSdfNodeDesc nodes[] = {node(LUB_MESH_SDF_OP_SPHERE, -1, -1, p, 1)};
+    SdfMeshOut m;
+    if (!build(nodes, 1, 0, 32, 0, &m, err, sizeof(err)))
+      return fail(err);
+    if (m.mesh.vert_count == 0)
+      return fail("no vertices");
+    if (m.mesh.index_count % 3 != 0)
+      return fail("index_count not a multiple of 3");
+    if (!(m.cell > 0))
+      return fail("cell missing");
+    if (m.mn[0] != -r || m.mx[1] != r)
+      return fail("sphere bounds");
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      const float *pp = &m.mesh.positions[v * 3];
+      float len = sqrtf(pp[0] * pp[0] + pp[1] * pp[1] + pp[2] * pp[2]);
+      if (fabsf(len - r) >= m.cell)
+        return fail("vertex off the sphere surface");
+      const float *nn = &m.mesh.normals[v * 3];
+      if ((nn[0] * pp[0] + nn[1] * pp[1] + nn[2] * pp[2]) / len <= 0.9f)
+        return fail("normal not radial");
+      if (fabsf(m.colors[v * 3] - 0.8f) >= 1e-5f)
+        return fail("default albedo wrong");
+    }
+    for (size_t t = 0; t < m.mesh.index_count / 3; ++t) {
+      const float *a = &m.mesh.positions[(size_t)m.mesh.indices[t * 3] * 3];
+      const float *b = &m.mesh.positions[(size_t)m.mesh.indices[t * 3 + 1] * 3];
+      const float *c = &m.mesh.positions[(size_t)m.mesh.indices[t * 3 + 2] * 3];
+      float ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+      float vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      float fx = uy * vz - uz * vy, fy = uz * vx - ux * vz,
+            fz = ux * vy - uy * vx;
+      if (fx * (a[0] + b[0] + c[0]) + fy * (a[1] + b[1] + c[1]) +
+              fz * (a[2] + b[2] + c[2]) <=
+          0)
+        return fail("winding not CCW from outside");
+    }
+    sdf_mesh_out_free(&m);
   }
-  luaL_openlibs(L);
-  lua_pushcfunction(L, lub_sdf_mesh);
-  lua_setglobal(L, "sdf_mesh");
-
-  if (luaL_dostring(L, SCRIPT) != LUA_OK) {
-    fprintf(stderr, "sdf smoke FAILED: %s\n", lua_tostring(L, -1));
-    lua_close(L);
-    return 1;
+  // nested move+rotate+smin+mirror: bounds contain every vertex
+  {
+    float s2 = sqrtf(0.5f);
+    float pk[] = {0.2f};
+    float pmove[] = {0.4f, 0.6f, -0.2f};
+    float prot[] = {0, 0, s2, s2};
+    float pbox[] = {0.5f, 0.2f, 0.2f};
+    float pcap[] = {0.3f, 0, 0, 0.9f, 0.5f, 0, 0.15f};
+    LubSdfNodeDesc nodes[] = {
+        node(LUB_MESH_SDF_OP_SMIN, 1, 4, pk, 1),        // 0
+        node(LUB_MESH_SDF_OP_MOVE, 2, -1, pmove, 3),    // 1
+        node(LUB_MESH_SDF_OP_ROTATE, 3, -1, prot, 4),   // 2
+        node(LUB_MESH_SDF_OP_BOX, -1, -1, pbox, 3),     // 3
+        node(LUB_MESH_SDF_OP_MIRROR_X, 5, -1, NULL, 0), // 4
+        node(LUB_MESH_SDF_OP_CAPSULE, -1, -1, pcap, 7), // 5
+    };
+    SdfMeshOut m;
+    if (!build(nodes, 6, 0, 48, 0, &m, err, sizeof(err)))
+      return fail(err);
+    if (m.mesh.vert_count == 0)
+      return fail("nested tree produced no mesh");
+    int mirrored = 0;
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      for (int i = 0; i < 3; ++i) {
+        float p = m.mesh.positions[v * 3 + i];
+        if (p < m.mn[i] - m.cell || p > m.mx[i] + m.cell)
+          return fail("vertex outside reported bounds");
+      }
+      if (m.mesh.positions[v * 3] < -0.3f)
+        mirrored = 1;
+    }
+    if (!mirrored)
+      return fail("mirror_x did not mirror");
+    sdf_mesh_out_free(&m);
   }
-  lua_close(L);
+  // scale: sphere r=0.25 scaled by 2 == sphere r=0.5 bounds
+  {
+    float ps[] = {2.0f};
+    float pr[] = {0.25f};
+    LubSdfNodeDesc nodes[] = {node(LUB_MESH_SDF_OP_SCALE, 1, -1, ps, 1),
+                              node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    SdfMeshOut m;
+    if (!build(nodes, 2, 0, 24, 0, &m, err, sizeof(err)))
+      return fail(err);
+    if (fabsf(m.mx[0] - 0.5f) >= 1e-5f)
+      return fail("scale bounds wrong");
+    sdf_mesh_out_free(&m);
+  }
+  // paint: innermost wins, cut face takes cutter's material
+  {
+    float pk[] = {0.05f};
+    float pred[] = {1, 0, 0, 0, 0.8f};
+    float pblue[] = {0, 0, 1, 1, 0.1f};
+    float pbig[] = {0.5f};
+    float pmove[] = {0, 0, -0.5f};
+    float psmall[] = {0.15f};
+    LubSdfNodeDesc nodes[] = {
+        node(LUB_MESH_SDF_OP_SSUB, 1, 3, pk, 1),         // 0
+        node(LUB_MESH_SDF_OP_PAINT, 2, -1, pred, 5),     // 1
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pbig, 1),   // 2
+        node(LUB_MESH_SDF_OP_PAINT, 4, -1, pblue, 5),    // 3
+        node(LUB_MESH_SDF_OP_MOVE, 5, -1, pmove, 3),     // 4
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, psmall, 1), // 5
+    };
+    SdfMeshOut m;
+    if (!build(nodes, 6, 0, 40, 0, &m, err, sizeof(err)))
+      return fail(err);
+    int reds = 0, blues = 0;
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      float cr = m.colors[v * 3], cb = m.colors[v * 3 + 2];
+      if (cr > 0.9f && cb < 0.1f)
+        reds++;
+      if (cb > 0.9f && cr < 0.1f) {
+        blues++;
+        if (m.metal_rough[v * 2] <= 0.9f)
+          return fail("cutter metallic not baked");
+      }
+    }
+    if (reds == 0)
+      return fail("painted body color missing");
+    if (blues == 0)
+      return fail("cut face did not take cutter material");
+    sdf_mesh_out_free(&m);
+  }
+  // bones: 2 部位の重み焼き
+  {
+    float pl[] = {-0.5f, 0, 0};
+    float pml[] = {-0.5f, 0, 0};
+    float pr_[] = {0.5f, 0, 0};
+    float pmr[] = {0.5f, 0, 0};
+    float ps[] = {0.3f};
+    LubSdfNodeDesc nodes[] = {
+        node(LUB_MESH_SDF_OP_UNION, 1, 4, NULL, 0),  // 0
+        node(LUB_MESH_SDF_OP_BONE, 2, -1, pl, 3),    // 1
+        node(LUB_MESH_SDF_OP_MOVE, 3, -1, pml, 3),   // 2
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, ps, 1), // 3
+        node(LUB_MESH_SDF_OP_BONE, 5, -1, pr_, 3),   // 4
+        node(LUB_MESH_SDF_OP_MOVE, 6, -1, pmr, 3),   // 5
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, ps, 1), // 6
+    };
+    nodes[1].name = (LubStr){"left", 4};
+    nodes[4].name = (LubStr){"right", 5};
+    SdfTree t;
+    if (!sdf_tree_convert(nodes, 7, 0, &t, err, sizeof(err)))
+      return fail(err);
+    if (t.part_count != 2 || strcmp(t.parts[0].name, "left") != 0 ||
+        strcmp(t.parts[1].name, "right") != 0)
+      return fail("bone names wrong");
+    if (t.parts[1].pivot[0] != 0.5f)
+      return fail("bone pivot wrong");
+    SdfMeshOut m;
+    if (!sdf_mesh_build(&t, 32, 0.05f, &m, err, sizeof(err)))
+      return fail(err);
+    sdf_tree_free(&t);
+    if (!m.joints || !m.weights)
+      return fail("joints / weights missing");
+    for (size_t v = 0; v < m.mesh.vert_count; ++v) {
+      float w0 = m.weights[v * 2], w1 = m.weights[v * 2 + 1];
+      if (fabsf(w0 + w1 - 1) >= 1e-4f)
+        return fail("weights do not sum to 1");
+      if (w0 < w1 - 1e-6f)
+        return fail("primary weight not dominant");
+      float px = m.mesh.positions[v * 3];
+      int j0 = (int)m.joints[v * 2];
+      if (px < -0.2f && j0 != 0)
+        return fail("left vertex bound to wrong bone");
+      if (px > 0.2f && j0 != 1)
+        return fail("right vertex bound to wrong bone");
+    }
+    sdf_mesh_out_free(&m);
+  }
+  // invalid trees must be rejected
+  {
+    float pk[] = {0.1f};
+    float pr[] = {1.0f};
+    LubSdfNodeDesc bad_op[] = {node(99, -1, -1, NULL, 0)};
+    SdfTree t;
+    if (sdf_tree_convert(bad_op, 1, 0, &t, err, sizeof(err)))
+      return fail("unknown op did not error");
+    LubSdfNodeDesc missing_child[] = {
+        node(LUB_MESH_SDF_OP_SMIN, 1, -1, pk, 1),
+        node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    if (sdf_tree_convert(missing_child, 2, 0, &t, err, sizeof(err)))
+      return fail("missing child did not error");
+    float pzero[] = {0.0f};
+    LubSdfNodeDesc bad_k[] = {node(LUB_MESH_SDF_OP_SMIN, 1, 1, pzero, 1),
+                              node(LUB_MESH_SDF_OP_SPHERE, -1, -1, pr, 1)};
+    if (sdf_tree_convert(bad_k, 2, 0, &t, err, sizeof(err)))
+      return fail("k <= 0 did not error");
+  }
   printf("sdf smoke OK\n");
   return 0;
 }

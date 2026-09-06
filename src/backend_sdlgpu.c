@@ -1,9 +1,4 @@
-// SDL3 GPU backend (Tasks 3-4).
-//
-// Task 3 implemented init/shutdown + frame/pass clear-only flow.
-// Task 4 fills in make_buffer/make_shader/make_pipeline + apply_pipeline /
-// apply_bindings / draw so sample 01_triangle (no uniforms, no textures)
-// renders end-to-end.
+// SDL3 GPU backend.
 //
 // Sequence per frame:
 //   begin_frame: AcquireGPUCommandBuffer -> AcquireGPUSwapchainTexture

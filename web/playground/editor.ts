@@ -14,7 +14,6 @@ import {
 import { hoverTooltip } from "@codemirror/view";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
 import { c as clike, csharp } from "@codemirror/legacy-modes/mode/clike";
-import { haxe } from "@codemirror/legacy-modes/mode/haxe";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { numberScrubber } from "./scrub";
 import type { PlaygroundDiagnostic } from "./diagnostics";
@@ -45,7 +44,7 @@ function readOnlyExt(readOnly: boolean) {
   return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
 }
 
-// C# の補完/hover provider (docs/playground-dx.md §3)。main.ts が tcs 常駐
+// C# の補完/hover provider。main.ts が tcs 常駐
 // session の warm/cold に合わせて登録・解除する。cold 中は null で、補完は
 // 静かに無効 (エラーにしない)。
 export type CsLanguageProvider = {
@@ -138,10 +137,8 @@ function csToolsExt(path: string | null) {
   return [autocompletion({ override: [csCompletionSource] }), csHoverTooltip];
 }
 
-// langFor is the picker for .hx / .cs vs .slang vs .lua highlight modes.
+// langFor is the picker for .cs vs .slang vs .lua highlight modes.
 function langFor(path: string | null) {
-  if (path?.endsWith(".hx") || path?.endsWith(".hxml"))
-    return StreamLanguage.define(haxe);
   if (path?.endsWith(".cs")) return StreamLanguage.define(csharp);
   if (path?.endsWith(".slang")) return StreamLanguage.define(clike);
   return StreamLanguage.define(lua);

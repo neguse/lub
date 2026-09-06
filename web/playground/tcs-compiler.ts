@@ -1,8 +1,7 @@
 /*
  * tcs-compiler.ts — client-only な C#→Lua コンパイラ(tcs WasmCompiler)の API。
- * haxe-compiler.ts と同じ形の CompileResult を返す。
  * 出力 Lua は TinySystem runtime prelude + transpile 結果 + `return <Entry>` で、
- * そのまま player の entry に使える (lub API 面は runtime の lub_prelude が注入)。
+ * そのまま player の entry に使える (lub API 面は runtime が生成 binding で注入)。
  *
  * TODO: .NET ランタイムは main thread で動かしている。dotnet.create() が
  * dedicated worker 内でダウンロード完了後に resolve しない事象があり
@@ -14,8 +13,7 @@ const ASSET_BASE = "/tcs-wasm/";
 const STUB_URL = "/cs-lib/lub_stub.cs";
 
 // cs-lib 実装ソース (lub_stub.cs 以外の全 *.cs) を一律 compile 入力に足す。
-// haxe 側が std-bundle.json に lub ライブラリを焼き込むのと同様、build 時に
-// バンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。
+// build 時にバンドルへ焼き込む (vite の import.meta.glob。手動 manifest を持たない)。
 const IMPL_GLOB = import.meta.glob("../../cs-lib/**/*.cs", {
   query: "?raw",
   import: "default",
@@ -27,10 +25,6 @@ for (const [path, src] of Object.entries(IMPL_GLOB)) {
   if (rel === "lub_stub.cs") continue; // 宣言専用 (--ref)。emit しない
   IMPL_SOURCES[rel] = src;
 }
-
-export type TcsCompileResult =
-  | { ok: true; lua: string; stderr: string; warnings: string[]; code: 0 }
-  | { ok: false; lua: null; stderr: string; warnings: string[]; code: number };
 
 // dotnet ランタイムの assembly exports (CompilerExports / SessionExports)
 let readyPromise: Promise<any> | null = null;
@@ -49,44 +43,6 @@ function ensureRuntime(): Promise<any> {
     return await getAssemblyExports(getConfig().mainAssemblyName);
   })();
   return readyPromise;
-}
-
-/**
- * `.cs` ソース一式を entryClass で compile し、player が読める完全な `.lua` を返す。
- * lub core API の参照は cs-lib/lub_stub.cs を自動で --ref 相当として渡し、
- * cs-lib 実装ソース (lubx/*) も自動で compile 入力に加える。
- */
-export async function compileTcs(
-  files: Record<string, string>,
-  entryClass: string,
-): Promise<TcsCompileResult> {
-  const exports = await ensureRuntime();
-  const res = JSON.parse(
-    exports.CompilerExports.Compile(
-      JSON.stringify({
-        files: { ...IMPL_SOURCES, ...files },
-        refs: { "lub_stub.cs": stub },
-        entryClass,
-        checkNaming: false,
-      }),
-    ),
-  );
-  if (res.ok && typeof res.lua === "string") {
-    return {
-      ok: true,
-      lua: res.lua,
-      stderr: "",
-      warnings: res.warnings ?? [],
-      code: 0,
-    };
-  }
-  return {
-    ok: false,
-    lua: null,
-    stderr: (res.errors ?? []).join("\n"),
-    warnings: res.warnings ?? [],
-    code: 1,
-  };
 }
 
 /*
@@ -126,9 +82,9 @@ export type TcsSession = {
   update(path: string, content: string): TcsUpdateResult;
   /** 現 revision の bridge snapshot (完全な entry Lua)。失敗時 null。 */
   linkSnapshot(): string | null;
-  /** 補完 (T230)。content はエディタの現在バッファ (speculative、session 不変)。 */
+  /** 補完。content はエディタの現在バッファ (speculative、session 不変)。 */
   complete(path: string, content: string, offset: number): TcsCompletionItem[];
-  /** hover (T230)。同上。 */
+  /** hover。同上。 */
   hover(path: string, content: string, offset: number): TcsHoverResult;
 };
 

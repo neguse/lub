@@ -11,6 +11,7 @@
 #endif
 #include "audio.h"
 #include "capture.h"
+#include "digest.h"
 #include "lua_api.h"
 #include "pass.h"
 #include "physics_box2d.h"
@@ -20,9 +21,6 @@
 #include "resources.h"
 #include <stdbool.h>
 #include <stdint.h>
-#ifndef __EMSCRIPTEN__
-#include "haxe_pipeline.h"
-#endif
 
 typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 
@@ -60,6 +58,7 @@ typedef struct App {
 
   // Offscreen capture
   CaptureState capture;
+  DigestState digest;     // --digest (host opts)
   bool capture_then_exit; // set by app_frame_end after a successful capture
   int last_w, last_h;     // last extents seen by app_frame_begin
   int cfg_w, cfg_h; // config({width,height}) で要求された窓サイズ。0 = 既定維持
@@ -109,9 +108,23 @@ typedef struct App {
   // config({ resource_sweep_after_frames = N }) during onInit.
   int resource_sweep_after_frames;
 
-  // Default readback queue depth for Gfx.readback() handles. Configurable via
+  // Default readback queue depth for Gfx.readback(key) queues. Configurable via
   // Lua config({ readback_depth = N }) during onInit.
   int readback_depth;
+
+  // C API (include/lub/lub_api.h) の状態。last_error は直近の LUB_ERROR の
+  // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
+  char last_error[512];
+  struct GfxReadbackQueues *readbacks;
+  struct AudioSnds *audio_snds;     // key で宣言する snd (api_audio.c 所有)
+  struct IoCache *io_cache;         // lub_io_* / lub_png_load の file cache
+  struct FontScratch *font_scratch; // lub_font_* の view の実体
+  struct MeshScratch *mesh_scratch; // lub_mesh_* の view の実体
+  unsigned char *host_poll_buf;     // lub_host_poll の view の実体
+  // frame 有効の view の実体 (readback の pixel、audio_decode の PCM)。
+  // app_frame_end が free する。
+  void **frame_garbage;
+  int frame_garbage_count, frame_garbage_cap;
 
 #ifndef __EMSCRIPTEN__
   // SDL3 GPU backend state. Owned/used by backend_sdlgpu.c only.
@@ -131,16 +144,6 @@ typedef struct App {
   char entry_module_name[128]; // e.g. "01_triangle"
   int64_t entry_mtime_cache;   // last observed mtime in ns; 0 means "unknown /
                                // first poll"
-
-#ifndef __EMSCRIPTEN__
-  // Haxe pipeline state. .hxml entry path のとき main.c が haxe_enabled = true
-  // に し、haxe_pipeline_start で server + initial build + watch
-  // を一括起動する。 app_shutdown が haxe_enabled ガード下で haxe_pipeline_stop
-  // を呼ぶ。 WASM ビルドでは子プロセスを spawn
-  // しないためフィールドごと存在しない。
-  HaxePipeline haxe;
-  bool haxe_enabled;
-#endif
 } App;
 
 bool app_init(App *app);
@@ -153,5 +156,5 @@ void app_shutdown(App *app);
 // Returns mtime of `path` in nanoseconds since epoch (sub-second precision on
 // POSIX, seconds * 1e9 on Windows). Returns 0 if the file does not exist or
 // stat fails. Used by both the C-side entry-Lua mtime poll in app_frame_begin
-// and the `file_mtime` Lua binding consumed by samples/lub_io.lua.
+// (hot reload of the entry Lua).
 int64_t app_file_mtime_ns(const char *path);

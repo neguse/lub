@@ -1,112 +1,113 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/SdfPanel.hx と対)。
-// Haxe 版の Reflect.field/setField によるスキーマ走査は、SdfNode が保持する
-// Dictionary<string, object> の文字列 index + ContainsKey に置き換える。
-// フィールド列挙は Haxe 版と同じくコード内の固定順なので widget 並びも同一。
-// `params` は C# 予約語のため opParams と改名 (private なので API 面に影響なし)。
-
+// 実装ライブラリ lubx の SdfPanel。
+// widget は typed な SdfNode の Params (op ごとの数値列) を in-place に
+// 書き換える。フィールド列挙はコード内の固定順なので widget 並びも固定。
 using System.Collections.Generic;
+using static Lub;
 
-/// <summary>SDF ツリー(素の data)から ImGui のチューニング UI を自動生成
-/// する。widget はノードのフィールドを in-place に書き換え、どれかが変わったら
-/// true を返す(呼び側はそれを remesh のトリガにする)。hot reload すると
-/// コードからツリーが再構築されるので、パネル編集はリロードまでの一時
-/// オーバーレイ。
+/// <summary>SDF ツリーから ImGui のチューニング UI を自動生成する。widget は
+/// ノードの Params を in-place に書き換え、どれかが変わったら true を返す
+/// (呼び側はそれを remesh のトリガにする)。hot reload するとコードから
+/// ツリーが再構築されるので、パネル編集はリロードまでの一時オーバーレイ。
 /// <code>
-/// if (SdfPanel.draw(tree))
+/// if (SdfPanel.Draw(tree))
 ///     meshDirty = true;
 /// </code></summary>
 public static class SdfPanel
 {
     /// <summary>ルートから widget 群を描く。編集があれば true。</summary>
-    public static bool draw(SdfNode root)
+    public static bool Draw(SdfNode root)
     {
-        return node(root.data, "/");
+        return Node(root, "/");
     }
 
     // ImGui の ID はツリー内のパスから作る (##/a/c 等)。訪問順カウンタだと
     // ノードを畳んだとき後続の ID がズレて開閉状態が飛ぶ。
-
-    private static bool num(Dictionary<string, object> n, string field,
-        float speed, string path)
-    {
-        float v = (float)n[field];
-        float nv = Ui.ui_drag_float(field + "##" + path, v, speed);
-        if (nv == v)
-            return false;
-        n[field] = nv;
-        return true;
-    }
-
-    private static bool num01(Dictionary<string, object> n, string field,
+    private static bool Num(SdfNode n, int index, string field, float speed,
         string path)
     {
-        float v = (float)n[field];
-        float nv = Ui.ui_slider_float(field + "##" + path, v, 0, 1);
+        float v = n.Params[index];
+        float nv = Ui.DragFloat(field + "##" + path, v, speed);
         if (nv == v)
             return false;
-        n[field] = nv;
+        n.Params[index] = nv;
         return true;
     }
 
-    private static bool color(Dictionary<string, object> n, string path)
+    private static bool Num01(SdfNode n, int index, string field, string path)
     {
-        float cr = (float)n["cr"];
-        float cg = (float)n["cg"];
-        float cb = (float)n["cb"];
-        Ui.ui_color_edit3("albedo##" + path, cr, cg, cb, out var r, out var g,
+        float v = n.Params[index];
+        float nv = Ui.SliderFloat(field + "##" + path, v, 0, 1);
+        if (nv == v)
+            return false;
+        n.Params[index] = nv;
+        return true;
+    }
+
+    private static bool Color(SdfNode n, string path)
+    {
+        float cr = n.Params[0];
+        float cg = n.Params[1];
+        float cb = n.Params[2];
+        Ui.ColorEdit3("albedo##" + path, cr, cg, cb, out var r, out var g,
             out var b);
         if (r == cr && g == cg && b == cb)
             return false;
-        n["cr"] = r;
-        n["cg"] = g;
-        n["cb"] = b;
+        n.Params[0] = r;
+        n.Params[1] = g;
+        n.Params[2] = b;
         return true;
     }
 
-    private static bool opParams(Dictionary<string, object> n, string path)
+    private static bool Nums(SdfNode n, List<string> fields, float speed,
+        string path)
     {
         bool changed = false;
-        switch ((string)n["op"])
+        for (var i = 0; i < fields.Count; i++)
+            changed = Num(n, i, fields[i], speed, path) || changed;
+        return changed;
+    }
+
+    private static bool OpParams(SdfNode n, string path)
+    {
+        bool changed = false;
+        switch (n.Op)
         {
-            case "sphere":
-                changed = num(n, "r", 0.005f, path);
+            case Lub.Mesh.SdfOp.Sphere:
+                changed = Num(n, 0, "r", 0.005f, path);
                 break;
-            case "box":
-                changed = num(n, "hx", 0.005f, path) || changed;
-                changed = num(n, "hy", 0.005f, path) || changed;
-                changed = num(n, "hz", 0.005f, path) || changed;
+            case Lub.Mesh.SdfOp.Box:
+                changed = Nums(n, new List<string> { "hx", "hy", "hz" }, 0.005f,
+                    path);
                 break;
-            case "capsule":
-                foreach (var f in new List<string>
-                    { "ax", "ay", "az", "bx", "by", "bz" })
-                    changed = num(n, f, 0.01f, path) || changed;
-                changed = num(n, "r", 0.005f, path) || changed;
+            case Lub.Mesh.SdfOp.Capsule:
+                changed = Nums(n,
+                    new List<string> { "ax", "ay", "az", "bx", "by", "bz" },
+                    0.01f, path);
+                changed = Num(n, 6, "r", 0.005f, path) || changed;
                 break;
-            case "torus":
-                changed = num(n, "rmajor", 0.005f, path) || changed;
-                changed = num(n, "rminor", 0.005f, path) || changed;
+            case Lub.Mesh.SdfOp.Torus:
+                changed = Nums(n, new List<string> { "rmajor", "rminor" },
+                    0.005f, path);
                 break;
-            case "move":
-                changed = num(n, "x", 0.01f, path) || changed;
-                changed = num(n, "y", 0.01f, path) || changed;
-                changed = num(n, "z", 0.01f, path) || changed;
+            case Lub.Mesh.SdfOp.Move:
+                changed = Nums(n, new List<string> { "x", "y", "z" }, 0.01f,
+                    path);
                 break;
-            case "scale":
-                changed = num(n, "s", 0.005f, path);
+            case Lub.Mesh.SdfOp.Scale:
+                changed = Num(n, 0, "s", 0.005f, path);
                 break;
-            case "smin":
-            case "ssub":
-                changed = num(n, "k", 0.002f, path);
+            case Lub.Mesh.SdfOp.Smin:
+            case Lub.Mesh.SdfOp.Ssub:
+                changed = Num(n, 0, "k", 0.002f, path);
                 break;
-            case "paint":
-                changed = color(n, path) || changed;
-                changed = num01(n, "metallic", path) || changed;
-                changed = num01(n, "roughness", path) || changed;
+            case Lub.Mesh.SdfOp.Paint:
+                changed = Color(n, path) || changed;
+                changed = Num01(n, 3, "metallic", path) || changed;
+                changed = Num01(n, 4, "roughness", path) || changed;
                 break;
-            case "bone":
-                changed = num(n, "px", 0.01f, path) || changed;
-                changed = num(n, "py", 0.01f, path) || changed;
-                changed = num(n, "pz", 0.01f, path) || changed;
+            case Lub.Mesh.SdfOp.Bone:
+                changed = Nums(n, new List<string> { "px", "py", "pz" }, 0.01f,
+                    path);
                 break;
             default:
                 // rotate (quat は直接いじらない) / mirror_x / union / ...
@@ -115,27 +116,24 @@ public static class SdfPanel
         return changed;
     }
 
-    private static bool node(Dictionary<string, object> n, string path)
+    private static bool Node(SdfNode n, string path)
     {
-        string op = (string)n["op"];
+        string op = Sdf.OpName(n.Op);
         string label = op;
-        if (n.ContainsKey("name"))
-            label = op + " (" + (string)n["name"] + ")";
+        if (n.Name != null)
+            label = op + " (" + n.Name + ")";
         label = label + "##" + path;
         bool changed = false;
-        if (Ui.ui_tree_node(label, true))
+        if (Ui.TreeNode(label, true))
         {
-            changed = opParams(n, path);
-            if (n.ContainsKey("c"))
-                changed = node((Dictionary<string, object>)n["c"],
-                    path + "c/") || changed;
-            if (n.ContainsKey("a"))
-                changed = node((Dictionary<string, object>)n["a"],
-                    path + "a/") || changed;
-            if (n.ContainsKey("b"))
-                changed = node((Dictionary<string, object>)n["b"],
-                    path + "b/") || changed;
-            Ui.ui_tree_pop();
+            changed = OpParams(n, path);
+            if (n.C != null)
+                changed = Node(n.C, path + "c/") || changed;
+            if (n.A != null)
+                changed = Node(n.A, path + "a/") || changed;
+            if (n.B != null)
+                changed = Node(n.B, path + "b/") || changed;
+            Ui.TreePop();
         }
         return changed;
     }

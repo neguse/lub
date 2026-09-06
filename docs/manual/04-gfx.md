@@ -5,11 +5,11 @@
 
 ## use* — key + version によるリソース宣言
 
-```haxe
-var vs = Io.loadText("data/cube.vs.slang");
-var fs = Io.loadText("data/cube.fs.slang");
-if (vs.text == null || fs.text == null) return;
-var shader = Gfx.useShader("cube", vs.text, fs.text, vs.version * 31 + fs.version);
+```csharp
+Io.LoadText("data/cube.vs.slang", out var vs, out var vsVersion, out _, out _);
+Io.LoadText("data/cube.fs.slang", out var fs, out var fsVersion, out _, out _);
+if (vs == null || fs == null) return;
+var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
 ```
 
 - `use*` 系は毎フレーム同じ `key` で呼ぶ。`version` が前フレームと同じなら
@@ -32,13 +32,13 @@ var shader = Gfx.useShader("cube", vs.text, fs.text, vs.version * 31 + fs.versio
   保証を自分で持ちたくなければ省略(変更宣言)に任せる。同じ key で方式
   (定数 / 省略 / hash)を混ぜない。
 - `use*` されなくなったリソースは数フレーム後に自動破棄される
-  (`Lub.config` の `resource_sweep_after_frames`)。
+  (`Config` の `ResourceSweepAfterFrames`)。
 
 このモデルにより、シェーダファイルを保存した瞬間に version が変わって
 リソースが作り直される = アセットの hot reload がコードと同じ仕組みで動く。
 
 シェーダソースは [Slang](https://shader-slang.org/) で書き、文字列のまま
-`useShader(key, vs, fs, version)` に渡す(native / web 共通)。
+`UseShader(key, vs, fs, version)` に渡す(native / web 共通)。
 
 VS→FS の varying には 2 つの規約がある:
 
@@ -52,36 +52,44 @@ VS→FS の varying には 2 つの規約がある:
 
 ## pass と draw
 
-```haxe
-Gfx.beginPass({target: Gfx.mainTex,
-	clear_color: lua.Table.fromArray([0.05, 0.05, 0.15, 1.0])});
-Gfx.draw(36, {verts: buf, uniforms: {mvp: lua.Table.fromArray(mvp.m)}},
-	{shader: shader});
-Gfx.endPass();
+```csharp
+Gfx.BeginPass(new PassOpts
+{
+    Target = Gfx.MainTex,
+    ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
+});
+Gfx.Draw(36,
+    new Dictionary<string, object>
+    {
+        ["verts"] = buf,
+        ["uniforms"] = new Dictionary<string, object> { ["mvp"] = mvp.M },
+    },
+    new DrawOpts { Shader = shader });
+Gfx.EndPass();
 ```
 
-- 描画は `beginPass` / `endPass` で囲む。画面へ描くなら `target: Gfx.mainTex`、
-  offscreen へ描くなら `useTexture` で `{target: true}` を付けて作った
-  テクスチャを渡す。MRT は `targets`、depth-only は `depth_target`(詳細は
+- 描画は `BeginPass` / `EndPass` で囲む。画面へ描くなら `Target = Gfx.MainTex`、
+  offscreen へ描くなら `UseTexture` で `Target = true` を付けて作った
+  テクスチャを渡す。MRT は `Targets`、depth-only は `DepthTarget`(詳細は
   `PassOpts`)。
-- `draw(count, bindings, opts)` の `bindings` はシェーダ依存の自由なテーブル。
+- `Draw(count, bindings, opts)` の `bindings` はシェーダ依存の自由なテーブル。
   予約名は `indices`(indexed draw)、`instances`(インスタンシング)、
   `uniforms` の 3 つ。それ以外のバッファ値は頂点バッファ、テクスチャ値は
   キー名でシェーダのテクスチャに束縛される。
 - `opts`(`DrawOpts`)の既定値は blend=NONE / cull=BACK /
   primitive=TRIANGLES / depth=true。
 
-compute は `useShaderCompute` + `dispatch`、GPU からの読み戻しは
-`readback` を参照。
+compute は `UseShaderCompute` + `Dispatch`、GPU からの読み戻しは
+`Readback` を参照。
 
 ## 定型: ready になるまでスキップ
 
-web ではファイル取得が非同期なので、`Io.load*` は ready になるまで本体が
+web ではファイル取得が非同期なので、`Io.Load*` は ready になるまで本体が
 null を返す。null の間はそのフレームの処理をスキップするのが定型:
 
-```haxe
-var verts = Io.loadFloats("data/cube.verts.lua");
-if (verts.data == null) return; // pending or error
+```csharp
+Io.LoadFloats("data/cube.verts.lua", out var verts, out _, out _, out _);
+if (verts == null) return; // pending or error
 ```
 
 この「毎フレーム宣言して、揃うまで待つ」スタイルにより、初期化順や

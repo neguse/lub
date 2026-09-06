@@ -1,54 +1,56 @@
-// 実装ライブラリ lubx の TinyC# 版 (haxe-lib/lub/lubx/Sfx.hx と対)。
-// Haxe 版の lua.Table.create + 1-based 直接代入は List<float>.Add で置き
-// 換える (TinyC# の List は最初から Lua array table)。Std.int は値が非負
-// なので Math.Floor で代替、i % 16 == 0 は整数剰余を避けて (i & 15) == 0。
+// 実装ライブラリ lubx の Sfx。
+// 波形は List<float>.Add で積む (TinyC# の List は最初から Lua array table)。
+// 切り捨ては値が非負なので Math.Floor、i % 16 == 0 は整数剰余を避けて
+// (i & 15) == 0。
 using System.Collections.Generic;
+using static Lub;
 
 /// <summary>
 /// 効果音の即席合成。同じパラメータからは常に同じ波形を生成する (決定的) ので、
-/// Audio.pcm の内容 dedupe と合わせて hot reload しても snd handle が安定する。
-/// 結果は内部 cache するので毎フレーム宣言的に呼んでよい。
+/// Audio.Snd の内容 dedupe と合わせて hot reload しても snd handle が安定する。
+/// 波形は内部 cache し、呼ぶたびに key で宣言し直す (version が同じなら runtime
+/// は波形を読まない) ので毎フレーム宣言的に呼んでよい。sweep された snd は
+/// 次に呼んだとき cache の波形から作り直される。
 /// </summary>
 public static class Sfx
 {
-    public const int RATE = 44100;
+    public const int Rate = 44100;
 
-    private static Dictionary<string, int> cache = new Dictionary<string, int>();
+    private static Dictionary<string, List<float>> cache = new Dictionary<string, List<float>>();
 
     /// <summary>矩形波 blip。freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。snd handle を返す。</summary>
-    public static int blip(float freq0, float freq1, float dur, float vol)
+    public static int Blip(float freq0, float freq1, float dur, float vol)
     {
         var key = "blip:" + freq0 + ":" + freq1 + ":" + dur + ":" + vol;
         if (cache.TryGetValue(key, out var cached))
         {
-            return cached;
+            return Audio.Snd(key, cached, 1, Rate, 1);
         }
-        var n = (int)System.Math.Floor(dur * RATE);
+        var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
         var phase = 0.0f;
         for (var i = 0; i < n; i++)
         {
             var u = (float)i / n;
             var freq = freq0 + (freq1 - freq0) * u;
-            phase += freq / RATE;
+            phase += freq / Rate;
             var env = (float)System.Math.Exp(-5.0f * u);
             samples.Add((phase % 1.0f < 0.5f ? 1.0f : -1.0f) * env * vol);
         }
-        var snd = Audio.audio_pcm(samples, 1, RATE);
-        cache[key] = snd;
-        return snd;
+        cache[key] = samples;
+        return Audio.Snd(key, samples, 1, Rate, 1);
     }
 
     /// <summary>ノイズバースト。指数減衰 (exp(-4u))、16 sample ごとにホールド更新。snd handle を返す。</summary>
-    public static int noise(float dur, float vol, int? seed = null)
+    public static int Noise(float dur, float vol, int? seed = null)
     {
         var s = seed ?? 0x12345678;
         var key = "noise:" + dur + ":" + vol + ":" + s;
         if (cache.TryGetValue(key, out var cached))
         {
-            return cached;
+            return Audio.Snd(key, cached, 1, Rate, 1);
         }
-        var n = (int)System.Math.Floor(dur * RATE);
+        var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
         var r = new Rand(s);
         var hold = 0.0f;
@@ -56,13 +58,12 @@ public static class Sfx
         {
             if ((i & 15) == 0)
             {
-                hold = r.nextFloat() * 2.0f - 1.0f;
+                hold = r.NextFloat() * 2.0f - 1.0f;
             }
             var u = (float)i / n;
             samples.Add(hold * (float)System.Math.Exp(-4.0f * u) * vol);
         }
-        var snd = Audio.audio_pcm(samples, 1, RATE);
-        cache[key] = snd;
-        return snd;
+        cache[key] = samples;
+        return Audio.Snd(key, samples, 1, Rate, 1);
     }
 }

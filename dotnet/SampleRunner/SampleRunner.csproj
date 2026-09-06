@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- サンプルを .NET 実行で動かす runner (native gate / CI 用)。
+         dotnet run -p:Sample=09_breakout ‐‐project dotnet/SampleRunner
+       (‐‐ は実際には半角 2 つ)。Sample のディレクトリの *.cs と cs-lib の実装
+       ソースを compile し、entry class (static OnFrame を持つ class) を
+       Lub.Run が探す。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <Sample Condition="'$(Sample)' == ''">00_hello</Sample>
+    <AssemblyName>lub-sample-$(Sample)</AssemblyName>
+    <RootNamespace></RootNamespace>
+    <NoWarn>$(NoWarn);CS1591;CS8981</NoWarn>
+    <!-- サンプルごとに別の出力先 (同じ project を Sample 違いで build する) -->
+    <BaseIntermediateOutputPath>obj/$(Sample)/</BaseIntermediateOutputPath>
+    <OutputPath>bin/$(Sample)/</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../samples/$(Sample)/*.cs" Link="sample/%(Filename)%(Extension)" />
+    <Compile Include="../../cs-lib/lubx/**/*.cs" Link="lubx/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../cs-lib/lub/**/*.cs" Link="lub/%(RecursiveDir)%(Filename)%(Extension)" />
+    <ProjectReference Include="../Lub/Lub.csproj" />
+    <ProjectReference Include="../../third_party/tcs/TinySystem/TinySystem.csproj" />
+  </ItemGroup>
+</Project>

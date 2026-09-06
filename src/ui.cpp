@@ -1,13 +1,12 @@
 #include "ui.h"
 
 extern "C" {
+#include "api_internal.h"
 #include "app.h"
 #include "backend.h"
 #include "pass.h"
 #include "pipeline.h"
 #include "shader.h"
-#include <lauxlib.h>
-#include <lua.h>
 }
 
 #include "imgui.h"
@@ -70,8 +69,9 @@ static bool ui_gpu_init() {
   ShaderTargetBackend tgt = SHADER_TARGET_WGSL;
 #elif defined(_WIN32)
   // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う。d3d12 だけ DXIL。
-  ShaderTargetBackend tgt =
-      (g_backend == &g_backend_d3d12) ? SHADER_TARGET_D3D12 : SHADER_TARGET_SDLGPU;
+  ShaderTargetBackend tgt = (g_backend == &g_backend_d3d12)
+                                ? SHADER_TARGET_D3D12
+                                : SHADER_TARGET_SDLGPU;
 #else
   ShaderTargetBackend tgt = SHADER_TARGET_SDLGPU;
 #endif
@@ -201,28 +201,38 @@ extern "C" void ui_shutdown(void) {
   g_ctx_ready = false;
 }
 
-// ---- Lua bindings -----------------------------------------------------------
+// ---- C API (include/lub/lub_api.h) -----------------------------------------
 
 // frame が開いてない時 (new_frame 前 / render 後) は widget 呼び出しを黙って
-// 既定値で返す。onFrame の書き順ミスでクラッシュさせない。
-#define UI_GUARD(ret)                                                          \
-  do {                                                                         \
-    if (!g_frame_open)                                                         \
-      return (ret);                                                            \
-  } while (0)
+// 既定値で返す。on_frame の書き順ミスでクラッシュさせない。
+// ImGui は NUL 終端の文字列を取るので LubStr を scratch に写す。
+static const char *ui_cstr(LubStr s) {
+  static char buf[4][512];
+  static int slot = 0;
+  char *b = buf[slot];
+  slot = (slot + 1) & 3;
+  size_t n = s.len > 0 ? (size_t)s.len : 0;
+  if (n >= sizeof(buf[0]))
+    n = sizeof(buf[0]) - 1;
+  if (n)
+    memcpy(b, s.ptr, n);
+  b[n] = '\0';
+  return b;
+}
 
-static int l_ui_render(lua_State *L) {
-  App *app = g_app_ui;
-  if (!app || !g_frame_open)
-    return 0;
+extern "C" LubStatus lub_ui_render(LubContext *ctx) {
+  App *app = (App *)ctx;
+  if (!g_app_ui || !g_frame_open)
+    return LUB_OK;
   if (!pass_state_in_pass(&app->pass))
-    return luaL_error(L, "ui_render: must be called inside begin_pass");
+    return lub_api_fail(app, "ui_render: must be called inside begin_pass");
   if (g_gpu_failed)
-    return 0; // 一度失敗したら以降は黙って no-op (毎フレームのエラー連打回避)
+    return LUB_OK; // 一度失敗したら以降は黙って no-op
+                   // (毎フレームのエラー連打回避)
   if (!g_gpu_ready) {
     if (!ui_gpu_init()) {
       g_gpu_failed = true;
-      return luaL_error(L, "ui_render: gpu init failed (see log)");
+      return lub_api_fail(app, "ui_render: gpu init failed (see log)");
     }
     g_gpu_ready = true;
   }
@@ -231,7 +241,7 @@ static int l_ui_render(lua_State *L) {
   g_frame_open = false;
   ImDrawData *dd = ImGui::GetDrawData();
   if (!dd || dd->TotalVtxCount <= 0)
-    return 0;
+    return LUB_OK;
 
   // 全 cmd list を単一の float 頂点列 + u32 インデックス列に平坦化
   static std::vector<float> vstage;
@@ -262,7 +272,7 @@ static int l_ui_render(lua_State *L) {
                      vstage.size() * sizeof(float)) ||
       !ensure_buffer(&g_ibuf, &g_ibuf_bytes, SGL_BUFFER_INDEX, istage.data(),
                      istage.size() * sizeof(unsigned int)))
-    return luaL_error(L, "ui_render: buffer upload failed");
+    return lub_api_fail(app, "ui_render: buffer upload failed");
 
   BackendPipeline pip = pipeline_cache_get(
       &app->pip_cache, g_shader, &g_refl, SGL_BLEND_ALPHA,
@@ -274,7 +284,7 @@ static int l_ui_render(lua_State *L) {
   g_backend->apply_pipeline(pip);
 
   // 2D ortho (framebuffer px, y down)。row-major で mul(u.proj, v) 形式
-  // (Haxe Mat4 と同じ渡し方)。
+  // (lub.Math の Mat4 と同じ渡し方)。
   float W = dd->DisplaySize.x > 0 ? dd->DisplaySize.x : 1;
   float H = dd->DisplaySize.y > 0 ? dd->DisplaySize.y : 1;
   const float proj[16] = {
@@ -335,167 +345,126 @@ static int l_ui_render(lua_State *L) {
     list_idx_base += (size_t)dl->IdxBuffer.Size;
   }
   g_backend->set_scissor(0, 0, fbw, fbh); // 後続の draw を巻き込まない
-  return 0;
+  return LUB_OK;
 }
 
-static int l_ui_begin(lua_State *L) {
-  UI_GUARD((lua_pushboolean(L, 0), 1));
-  const char *title = luaL_checkstring(L, 1);
-  lua_pushboolean(L, ImGui::Begin(title));
-  return 1;
+extern "C" bool lub_ui_begin_window(LubContext *ctx, LubStr title) {
+  (void)ctx;
+  if (!g_frame_open)
+    return false;
+  return ImGui::Begin(ui_cstr(title));
 }
 
-static int l_ui_end(lua_State *L) {
-  (void)L;
-  UI_GUARD(0);
-  ImGui::End();
-  return 0;
+extern "C" void lub_ui_end_window(LubContext *ctx) {
+  (void)ctx;
+  if (g_frame_open)
+    ImGui::End();
 }
 
-static int l_ui_text(lua_State *L) {
-  const char *s = luaL_checkstring(L, 1);
-  UI_GUARD(0);
-  ImGui::TextUnformatted(s);
-  return 0;
+extern "C" void lub_ui_text(LubContext *ctx, LubStr text) {
+  (void)ctx;
+  if (!g_frame_open)
+    return;
+  ImGui::TextUnformatted(text.ptr, text.ptr ? text.ptr + text.len : nullptr);
 }
 
-static int l_ui_button(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  UI_GUARD((lua_pushboolean(L, 0), 1));
-  lua_pushboolean(L, ImGui::Button(label));
-  return 1;
+extern "C" bool lub_ui_button(LubContext *ctx, LubStr label) {
+  (void)ctx;
+  if (!g_frame_open)
+    return false;
+  return ImGui::Button(ui_cstr(label));
 }
 
-static int l_ui_checkbox(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  bool v = lua_toboolean(L, 2) != 0;
-  UI_GUARD((lua_pushboolean(L, v), 1));
-  ImGui::Checkbox(label, &v);
-  lua_pushboolean(L, v);
-  return 1;
+extern "C" bool lub_ui_checkbox(LubContext *ctx, LubStr label, bool value) {
+  (void)ctx;
+  if (!g_frame_open)
+    return value;
+  ImGui::Checkbox(ui_cstr(label), &value);
+  return value;
 }
 
-static int l_ui_slider_float(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  float v = (float)luaL_checknumber(L, 2);
-  float lo = (float)luaL_checknumber(L, 3);
-  float hi = (float)luaL_checknumber(L, 4);
-  UI_GUARD((lua_pushnumber(L, v), 1));
-  ImGui::SliderFloat(label, &v, lo, hi);
-  lua_pushnumber(L, v);
-  return 1;
+extern "C" float lub_ui_slider_float(LubContext *ctx, LubStr label, float value,
+                                     float min, float max) {
+  (void)ctx;
+  if (!g_frame_open)
+    return value;
+  ImGui::SliderFloat(ui_cstr(label), &value, min, max);
+  return value;
 }
 
-static int l_ui_slider_int(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  int v = (int)luaL_checkinteger(L, 2);
-  int lo = (int)luaL_checkinteger(L, 3);
-  int hi = (int)luaL_checkinteger(L, 4);
-  UI_GUARD((lua_pushinteger(L, v), 1));
-  ImGui::SliderInt(label, &v, lo, hi);
-  lua_pushinteger(L, v);
-  return 1;
+extern "C" int32_t lub_ui_slider_int(LubContext *ctx, LubStr label,
+                                     int32_t value, int32_t min, int32_t max) {
+  (void)ctx;
+  if (!g_frame_open)
+    return value;
+  int v = value;
+  ImGui::SliderInt(ui_cstr(label), &v, min, max);
+  return v;
 }
 
-static int l_ui_drag_float(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  float v = (float)luaL_checknumber(L, 2);
-  float speed = (float)luaL_optnumber(L, 3, 1.0);
-  float lo = (float)luaL_optnumber(L, 4, 0.0);
-  float hi = (float)luaL_optnumber(L, 5, 0.0);
-  UI_GUARD((lua_pushnumber(L, v), 1));
-  ImGui::DragFloat(label, &v, speed, lo, hi);
-  lua_pushnumber(L, v);
-  return 1;
+extern "C" float lub_ui_drag_float(LubContext *ctx, LubStr label, float value,
+                                   const float *speed, const float *min,
+                                   const float *max) {
+  (void)ctx;
+  if (!g_frame_open)
+    return value;
+  ImGui::DragFloat(ui_cstr(label), &value, speed && *speed > 0 ? *speed : 1.0f,
+                   min ? *min : 0.0f, max ? *max : 0.0f);
+  return value;
 }
 
-static int l_ui_color_edit3(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  float c[3] = {(float)luaL_checknumber(L, 2), (float)luaL_checknumber(L, 3),
-                (float)luaL_checknumber(L, 4)};
-  UI_GUARD((lua_pushnumber(L, c[0]), lua_pushnumber(L, c[1]),
-            lua_pushnumber(L, c[2]), 3));
-  ImGui::ColorEdit3(label, c);
-  lua_pushnumber(L, c[0]);
-  lua_pushnumber(L, c[1]);
-  lua_pushnumber(L, c[2]);
-  return 3;
+extern "C" void lub_ui_color_edit3(LubContext *ctx, LubStr label, float r,
+                                   float g, float b, float *new_r, float *new_g,
+                                   float *new_b) {
+  (void)ctx;
+  float rgb[3] = {r, g, b};
+  if (g_frame_open)
+    ImGui::ColorEdit3(ui_cstr(label), rgb);
+  *new_r = rgb[0];
+  *new_g = rgb[1];
+  *new_b = rgb[2];
 }
 
-static int l_ui_separator(lua_State *L) {
-  (void)L;
-  UI_GUARD(0);
-  ImGui::Separator();
-  return 0;
+extern "C" void lub_ui_separator(LubContext *ctx) {
+  (void)ctx;
+  if (g_frame_open)
+    ImGui::Separator();
 }
 
-static int l_ui_same_line(lua_State *L) {
-  (void)L;
-  UI_GUARD(0);
-  ImGui::SameLine();
-  return 0;
+extern "C" void lub_ui_same_line(LubContext *ctx) {
+  (void)ctx;
+  if (g_frame_open)
+    ImGui::SameLine();
 }
 
-// 階層 UI。true が返ったら子を描いて ui_tree_pop を呼ぶ。
-// 第 2 引数 true で初期展開。
-static int l_ui_tree_node(lua_State *L) {
-  const char *label = luaL_checkstring(L, 1);
-  bool def_open = lua_toboolean(L, 2) != 0;
-  UI_GUARD((lua_pushboolean(L, 0), 1));
-  lua_pushboolean(L, ImGui::TreeNodeEx(
-                         label, def_open ? ImGuiTreeNodeFlags_DefaultOpen : 0));
-  return 1;
+// 階層 UI。true が返ったら子を描いて tree_pop を呼ぶ。
+extern "C" bool lub_ui_tree_node(LubContext *ctx, LubStr label,
+                                 const bool *default_open) {
+  (void)ctx;
+  if (!g_frame_open)
+    return false;
+  return ImGui::TreeNodeEx(ui_cstr(label), default_open && *default_open
+                                               ? ImGuiTreeNodeFlags_DefaultOpen
+                                               : 0);
 }
 
-static int l_ui_tree_pop(lua_State *L) {
-  (void)L;
-  UI_GUARD(0);
-  ImGui::TreePop();
-  return 0;
+extern "C" void lub_ui_tree_pop(LubContext *ctx) {
+  (void)ctx;
+  if (g_frame_open)
+    ImGui::TreePop();
 }
 
-// 初回配置だけ指定 (ユーザのドラッグは活かす)。
-static int l_ui_set_next_window(lua_State *L) {
-  float x = (float)luaL_checknumber(L, 1);
-  float y = (float)luaL_checknumber(L, 2);
-  float w = (float)luaL_checknumber(L, 3);
-  float h = (float)luaL_checknumber(L, 4);
-  UI_GUARD(0);
+extern "C" void lub_ui_set_next_window(LubContext *ctx, float x, float y,
+                                       float w, float h) {
+  (void)ctx;
+  if (!g_frame_open)
+    return;
   ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_FirstUseEver);
-  return 0;
 }
 
 // UI がマウスを取ってる間、ゲーム側はクリックを無視できる。
-static int l_ui_want_capture_mouse(lua_State *L) {
-  lua_pushboolean(L, g_ctx_ready && ImGui::GetIO().WantCaptureMouse);
-  return 1;
-}
-
-extern "C" void ui_register_lua(lua_State *L) {
-  const struct {
-    const char *name;
-    lua_CFunction fn;
-  } fns[] = {
-      {"ui_render", l_ui_render},
-      {"ui_begin", l_ui_begin},
-      {"ui_end", l_ui_end},
-      {"ui_text", l_ui_text},
-      {"ui_button", l_ui_button},
-      {"ui_checkbox", l_ui_checkbox},
-      {"ui_slider_float", l_ui_slider_float},
-      {"ui_slider_int", l_ui_slider_int},
-      {"ui_drag_float", l_ui_drag_float},
-      {"ui_color_edit3", l_ui_color_edit3},
-      {"ui_separator", l_ui_separator},
-      {"ui_same_line", l_ui_same_line},
-      {"ui_tree_node", l_ui_tree_node},
-      {"ui_tree_pop", l_ui_tree_pop},
-      {"ui_set_next_window", l_ui_set_next_window},
-      {"ui_want_capture_mouse", l_ui_want_capture_mouse},
-  };
-  for (size_t i = 0; i < sizeof(fns) / sizeof(fns[0]); ++i) {
-    lua_pushcfunction(L, fns[i].fn);
-    lua_setglobal(L, fns[i].name);
-  }
+extern "C" bool lub_ui_want_capture_mouse(LubContext *ctx) {
+  (void)ctx;
+  return g_ctx_ready && ImGui::GetIO().WantCaptureMouse;
 }

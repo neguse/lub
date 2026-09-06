@@ -5,11 +5,9 @@ third_party/slang/lib/
 third_party/slang/bin/
 web/node_modules/
 web/dist/
-# web playground の Haxe wasm コンパイラアセット(~18MB、gen-haxe-assets.mjs で生成)
-web/public/haxe-wasm/
 web/tcs-wasm-assets/
 web/tcs-prebuilt/
-# API reference データ(gen-api-docs.mjs で haxe doc comment から生成)
+# API reference データ(gen-api-docs.mjs が stub の docs から生成)
 web/public/api-docs.json
 # lub player の emcc ビルド成果物(ローカルビルド由来)
 web/public/lub.js
@@ -19,3 +17,10 @@ web/public/lub.data
 # C# サンプルの dotnet build (IDE 型チェック) 生成物
 samples/*/bin/
 samples/*/obj/
+tools/*/bin/
+tools/*/obj/
+# .NET 実行 (facade / host / runner) とテンプレートの dotnet build 生成物
+dotnet/*/bin/
+dotnet/*/obj/
+templates/game/bin/
+templates/game/obj/

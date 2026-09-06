@@ -6,43 +6,44 @@
 
 using System;
 using System.Collections.Generic;
+using static Lub;
 
 public class Brick
 {
-    public float x0;
-    public float y0;
-    public float x1;
-    public float y1;
-    public int row;
-    public bool alive;
+    public float X0;
+    public float Y0;
+    public float X1;
+    public float Y1;
+    public int Row;
+    public bool Alive;
 }
 
 public static class Breakout3d10
 {
-    const float DT = 1.0f / 60.0f;
-    const int STRIDE = 7; // pos.xyz + color.rgba
+    const float dt = 1.0f / 60.0f;
+    const int stride = 7; // pos.xyz + color.rgba
 
-    const int COLS = 9;
-    const int ROWS = 5;
-    const float BRICK_GAP_X = 0.035f;
-    const float BRICK_GAP_Y = 0.03f;
-    const float BRICK_LEFT = -0.83f;
-    const float BRICK_RIGHT = 0.83f;
-    const float BRICK_TOP = 0.70f;
-    const float BRICK_H = 0.075f;
-    const float BRICK_D = 0.16f;
-    const float BRICK_W =
-        (BRICK_RIGHT - BRICK_LEFT - BRICK_GAP_X * (COLS - 1)) / COLS;
+    const int cols = 9;
+    const int rows = 5;
+    const float brickGapX = 0.035f;
+    const float brickGapY = 0.03f;
+    const float brickLeft = -0.83f;
+    const float brickRight = 0.83f;
+    const float brickTop = 0.70f;
+    const float brickH = 0.075f;
+    const float brickD = 0.16f;
+    const float brickW =
+        (brickRight - brickLeft - brickGapX * (cols - 1)) / cols;
 
-    const float PADDLE_Y = -0.76f;
-    const float PADDLE_W = 0.38f;
-    const float PADDLE_H = 0.055f;
-    const float PADDLE_D = 0.24f;
-    const float PADDLE_SPEED = 1.55f;
+    const float paddleY = -0.76f;
+    const float paddleW = 0.38f;
+    const float paddleH = 0.055f;
+    const float paddleD = 0.24f;
+    const float paddleSpeed = 1.55f;
 
-    const float BALL_R = 0.035f;
-    const float BALL_SPEED_X = 0.58f;
-    const float BALL_SPEED_Y = 0.85f;
+    const float ballR = 0.035f;
+    const float ballSpeedX = 0.58f;
+    const float ballSpeedY = 0.85f;
 
     static List<float[]> rowColors = new List<float[]>
     {
@@ -58,8 +59,8 @@ public static class Breakout3d10
     static float paddlePrevX = 0;
     static float ballX = 0;
     static float ballY = 0;
-    static float ballVx = BALL_SPEED_X;
-    static float ballVy = BALL_SPEED_Y;
+    static float ballVx = ballSpeedX;
+    static float ballVy = ballSpeedY;
     static bool ballStuck = true;
     static int lives = 3;
     static int score = 0;
@@ -67,18 +68,18 @@ public static class Breakout3d10
     static FixedStep? step = null;
     static float cameraT = 0;
 
-    public static void onInit()
+    public static void OnInit()
     {
-        var backend = os.getenv("LUB_BACKEND");
-        Lub.config(new ConfigOpts { backend = backend });
+        var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
+        Lub.Config(new ConfigOpts { Backend = backend });
         ResetGame();
     }
 
-    public static void onEvent(EventData e)
+    public static void OnEvent(EventData e)
     {
     }
 
-    public static void onQuit()
+    public static void OnQuit()
     {
     }
 
@@ -86,9 +87,9 @@ public static class Breakout3d10
     {
         return new float[]
         {
-            MathUtil.clamp(c[0] * k, 0, 1),
-            MathUtil.clamp(c[1] * k, 0, 1),
-            MathUtil.clamp(c[2] * k, 0, 1),
+            MathUtil.Clamp(c[0] * k, 0, 1),
+            MathUtil.Clamp(c[1] * k, 0, 1),
+            MathUtil.Clamp(c[2] * k, 0, 1),
             c[3],
         };
     }
@@ -96,21 +97,21 @@ public static class Breakout3d10
     static void ResetBricks()
     {
         bricks = new List<Brick>();
-        for (int row = 1; row <= ROWS; row++)
+        for (int row = 1; row <= rows; row++)
         {
-            float y1 = BRICK_TOP - (row - 1) * (BRICK_H + BRICK_GAP_Y);
-            float y0 = y1 - BRICK_H;
-            for (int col = 1; col <= COLS; col++)
+            float y1 = brickTop - (row - 1) * (brickH + brickGapY);
+            float y0 = y1 - brickH;
+            for (int col = 1; col <= cols; col++)
             {
-                float x0 = BRICK_LEFT + (col - 1) * (BRICK_W + BRICK_GAP_X);
+                float x0 = brickLeft + (col - 1) * (brickW + brickGapX);
                 bricks.Add(new Brick
                 {
-                    x0 = x0,
-                    y0 = y0,
-                    x1 = x0 + BRICK_W,
-                    y1 = y1,
-                    row = row,
-                    alive = true,
+                    X0 = x0,
+                    Y0 = y0,
+                    X1 = x0 + brickW,
+                    Y1 = y1,
+                    Row = row,
+                    Alive = true,
                 });
             }
         }
@@ -119,9 +120,9 @@ public static class Breakout3d10
     static void ResetBall()
     {
         ballX = paddleX;
-        ballY = PADDLE_Y + PADDLE_H * 0.5f + BALL_R + 0.015f;
-        ballVx = BALL_SPEED_X;
-        ballVy = BALL_SPEED_Y;
+        ballY = paddleY + paddleH * 0.5f + ballR + 0.015f;
+        ballVx = ballSpeedX;
+        ballVy = ballSpeedY;
         ballStuck = true;
         launchTimer = 0;
     }
@@ -140,8 +141,8 @@ public static class Breakout3d10
     {
         if (!ballStuck) return;
         ballStuck = false;
-        ballVx = paddleX >= 0 ? -BALL_SPEED_X : BALL_SPEED_X;
-        ballVy = BALL_SPEED_Y;
+        ballVx = paddleX >= 0 ? -ballSpeedX : ballSpeedX;
+        ballVy = ballSpeedY;
     }
 
     static int AliveBricks()
@@ -149,7 +150,7 @@ public static class Breakout3d10
         int n = 0;
         foreach (var b in bricks)
         {
-            if (b.alive) n = n + 1;
+            if (b.Alive) n = n + 1;
         }
         return n;
     }
@@ -162,31 +163,31 @@ public static class Breakout3d10
 
     static void BounceFromRect(Brick rect)
     {
-        float left = ballX + BALL_R - rect.x0;
-        float right = rect.x1 - (ballX - BALL_R);
-        float bottom = ballY + BALL_R - rect.y0;
-        float top = rect.y1 - (ballY - BALL_R);
+        float left = ballX + ballR - rect.X0;
+        float right = rect.X1 - (ballX - ballR);
+        float bottom = ballY + ballR - rect.Y0;
+        float top = rect.Y1 - (ballY - ballR);
         float m = Math.Min(Math.Min(left, right),
             Math.Min(bottom, top));
 
         if (m == left)
         {
-            ballX = rect.x0 - BALL_R;
+            ballX = rect.X0 - ballR;
             ballVx = -Math.Abs(ballVx);
         }
         else if (m == right)
         {
-            ballX = rect.x1 + BALL_R;
+            ballX = rect.X1 + ballR;
             ballVx = Math.Abs(ballVx);
         }
         else if (m == bottom)
         {
-            ballY = rect.y0 - BALL_R;
+            ballY = rect.Y0 - ballR;
             ballVy = -Math.Abs(ballVy);
         }
         else
         {
-            ballY = rect.y1 + BALL_R;
+            ballY = rect.Y1 + ballR;
             ballVy = Math.Abs(ballVy);
         }
     }
@@ -199,69 +200,69 @@ public static class Breakout3d10
         }
 
         int move = 0;
-        if (Input.key_down("left") || Input.key_down("a")) move = move - 1;
-        if (Input.key_down("right") || Input.key_down("d")) move = move + 1;
+        if (Input.KeyDown("left") || Input.KeyDown("a")) move = move - 1;
+        if (Input.KeyDown("right") || Input.KeyDown("d")) move = move + 1;
 
         paddlePrevX = paddleX;
-        paddleX = MathUtil.clamp(paddleX + move * PADDLE_SPEED * DT,
-            -1 + PADDLE_W * 0.5f + 0.05f, 1f - PADDLE_W * 0.5f - 0.05f);
+        paddleX = MathUtil.Clamp(paddleX + move * paddleSpeed * dt,
+            -1 + paddleW * 0.5f + 0.05f, 1 - paddleW * 0.5f - 0.05f);
 
         if (ballStuck)
         {
             ballX = paddleX;
-            ballY = PADDLE_Y + PADDLE_H * 0.5f + BALL_R + 0.015f;
-            launchTimer = launchTimer + DT;
-            if (Input.key_down("space") || launchTimer > 1.0f)
+            ballY = paddleY + paddleH * 0.5f + ballR + 0.015f;
+            launchTimer = launchTimer + dt;
+            if (Input.KeyDown("space") || launchTimer > 1.0f)
             {
                 LaunchBall();
             }
             return;
         }
 
-        ballX = ballX + ballVx * DT;
-        ballY = ballY + ballVy * DT;
+        ballX = ballX + ballVx * dt;
+        ballY = ballY + ballVy * dt;
 
-        if (ballX - BALL_R < -0.95f)
+        if (ballX - ballR < -0.95f)
         {
-            ballX = -0.95f + BALL_R;
+            ballX = -0.95f + ballR;
             ballVx = Math.Abs(ballVx);
         }
-        else if (ballX + BALL_R > 0.95f)
+        else if (ballX + ballR > 0.95f)
         {
-            ballX = 0.95f - BALL_R;
+            ballX = 0.95f - ballR;
             ballVx = -Math.Abs(ballVx);
         }
-        if (ballY + BALL_R > 0.88f)
+        if (ballY + ballR > 0.88f)
         {
-            ballY = 0.88f - BALL_R;
+            ballY = 0.88f - ballR;
             ballVy = -Math.Abs(ballVy);
         }
 
-        float px0 = paddleX - PADDLE_W * 0.5f;
-        float py0 = PADDLE_Y - PADDLE_H * 0.5f;
-        float px1 = paddleX + PADDLE_W * 0.5f;
-        float py1 = PADDLE_Y + PADDLE_H * 0.5f;
-        if (ballVy < 0 && CircleHitsRect(ballX, ballY, BALL_R, px0, py0, px1, py1))
+        float px0 = paddleX - paddleW * 0.5f;
+        float py0 = paddleY - paddleH * 0.5f;
+        float px1 = paddleX + paddleW * 0.5f;
+        float py1 = paddleY + paddleH * 0.5f;
+        if (ballVy < 0 && CircleHitsRect(ballX, ballY, ballR, px0, py0, px1, py1))
         {
-            float hit = (ballX - paddleX) / (PADDLE_W * 0.5f);
-            ballY = py1 + BALL_R;
-            ballVx = MathUtil.clamp(hit * 0.9f + (paddleX - paddlePrevX) * 2.5f,
+            float hit = (ballX - paddleX) / (paddleW * 0.5f);
+            ballY = py1 + ballR;
+            ballVx = MathUtil.Clamp(hit * 0.9f + (paddleX - paddlePrevX) * 2.5f,
                 -0.98f, 0.98f);
             ballVy = Math.Abs(ballVy);
         }
 
         foreach (var b in bricks)
         {
-            if (b.alive && CircleHitsRect(ballX, ballY, BALL_R, b.x0, b.y0, b.x1, b.y1))
+            if (b.Alive && CircleHitsRect(ballX, ballY, ballR, b.X0, b.Y0, b.X1, b.Y1))
             {
-                b.alive = false;
+                b.Alive = false;
                 score = score + 1;
                 BounceFromRect(b);
                 break;
             }
         }
 
-        if (ballY + BALL_R < -1.0f)
+        if (ballY + ballR < -1.0f)
         {
             lives = lives - 1;
             if (lives <= 0)
@@ -393,16 +394,16 @@ public static class Breakout3d10
 
         foreach (var b in bricks)
         {
-            if (b.alive)
+            if (b.Alive)
             {
-                AddBox(verts, (b.x0 + b.x1) * 0.5f, (b.y0 + b.y1) * 0.5f, -0.03f,
-                    b.x1 - b.x0, b.y1 - b.y0, BRICK_D, rowColors[b.row - 1]);
+                AddBox(verts, (b.X0 + b.X1) * 0.5f, (b.Y0 + b.Y1) * 0.5f, -0.03f,
+                    b.X1 - b.X0, b.Y1 - b.Y0, brickD, rowColors[b.Row - 1]);
             }
         }
 
-        AddBox(verts, paddleX, PADDLE_Y, -0.10f, PADDLE_W, PADDLE_H, PADDLE_D,
+        AddBox(verts, paddleX, paddleY, -0.10f, paddleW, paddleH, paddleD,
             new float[] { 0.94f, 0.96f, 0.86f, 1.0f });
-        AddSphere(verts, ballX, ballY, -0.20f, BALL_R,
+        AddSphere(verts, ballX, ballY, -0.20f, ballR,
             new float[] { 1.0f, 0.95f, 0.65f, 1.0f });
 
         for (int i = 1; i <= lives; i++)
@@ -424,52 +425,52 @@ public static class Breakout3d10
     {
         float yaw = -0.22f + (float)Math.Sin(t * 0.35f) * 0.025f;
         float pitch = -0.18f;
-        var ry = Mat4.rotateY(-yaw);
-        var rx = Mat4.rotateX(-pitch);
-        var view = Mat4.translate(new Vec3(0, -0.02f, 3.15f));
+        var ry = Mat4.RotateY(-yaw);
+        var rx = Mat4.RotateX(-pitch);
+        var view = Mat4.Translate(new Vec3(0, -0.02f, 3.15f));
         // proj: perspective with focal length f=2.05 directly, aspect=16/9,
         // near=0.1, far=40
         float f = 2.05f;
         float aspect = 16.0f / 9.0f;
         float nz = 0.1f;
         float fz = 40.0f;
-        var proj = Mat4.zero();
-        proj.m[0] = f / aspect;
-        proj.m[5] = f;
-        proj.m[10] = fz / (fz - nz);
-        proj.m[11] = -fz * nz / (fz - nz);
-        proj.m[14] = 1.0f;
-        return proj.mul(view.mul(rx.mul(ry))).m;
+        var proj = Mat4.Zero();
+        proj.M[0] = f / aspect;
+        proj.M[5] = f;
+        proj.M[10] = fz / (fz - nz);
+        proj.M[11] = -fz * nz / (fz - nz);
+        proj.M[14] = 1.0f;
+        return proj.Mul(view.Mul(rx.Mul(ry))).M;
     }
 
-    public static void onFrame(float dt)
+    public static void OnFrame(float dt)
     {
         var stepNow = step ?? new FixedStep();
         step = stepNow;
-        stepNow.frame(dt, _ =>
+        stepNow.Frame(dt, _ =>
         {
-            cameraT = cameraT + DT;
-            UpdateGame(stepNow.keyPressed("r"));
+            cameraT = cameraT + dt;
+            UpdateGame(stepNow.KeyPressed("r"));
         });
 
-        Io.load_text("samples/10_breakout3d/data/10_breakout3d.vs.slang",
+        Io.LoadText("samples/10_breakout3d/data/10_breakout3d.vs.slang",
             out var vs, out var vsv, out _, out _);
-        Io.load_text("samples/10_breakout3d/data/10_breakout3d.fs.slang",
+        Io.LoadText("samples/10_breakout3d/data/10_breakout3d.fs.slang",
             out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return;
 
         var verts = BuildVertices();
-        var shader = Gfx.use_shader("breakout3d_shader", vs, fs,
+        var shader = Gfx.UseShader("breakout3d_shader", vs, fs,
             vsv * 31 + fsv);
-        var vbuf = Gfx.use_buffer("breakout3d_verts", Gfx.VERTEX, verts);
+        var vbuf = Gfx.UseBuffer("breakout3d_verts", Gfx.BufferType.Vertex, verts);
         if (shader == null || vbuf == null) return;
 
-        Gfx.begin_pass(new PassOpts
+        Gfx.BeginPass(new PassOpts
         {
-            target = Gfx.main_tex,
-            clear_color = new float[] { 0.025f, 0.032f, 0.048f, 1.0f },
+            Target = Gfx.MainTex,
+            ClearColor = new float[] { 0.025f, 0.032f, 0.048f, 1.0f },
         });
-        Gfx.draw(verts.Count / STRIDE,
+        Gfx.Draw(verts.Count / stride,
             new Dictionary<string, object>
             {
                 ["verts"] = vbuf,
@@ -480,11 +481,11 @@ public static class Breakout3d10
             },
             new DrawOpts
             {
-                shader = shader,
-                depth = true,
-                depth_write = true,
-                cull = Gfx.NONE,
+                Shader = shader,
+                Depth = true,
+                DepthWrite = true,
+                Cull = Gfx.Cull.None,
             });
-        Gfx.end_pass();
+        Gfx.EndPass();
     }
 }
