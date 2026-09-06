@@ -447,14 +447,37 @@ static bool dx_create_device(IDXGIAdapter1 *adapter) {
   ComPtr<ID3D12SDKConfiguration1> cfg;
   if (SUCCEEDED(
           D3D12GetInterface(CLSID_D3D12SDKConfiguration, IID_PPV_ARGS(&cfg)))) {
-    ComPtr<ID3D12DeviceFactory> factory;
-    if (SUCCEEDED(cfg->CreateDeviceFactory(D3D12_SDK_VERSION, D3D12SDKPath,
-                                           IID_PPV_ARGS(&factory))) &&
-        SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0,
-                                        IID_PPV_ARGS(&g.device)))) {
-      SDL_Log("d3d12: device via Agility SDK device factory (sdk %u)",
-              (unsigned)D3D12_SDK_VERSION);
-      return true;
+    // Two candidate SDK directories: the exe-relative one the export names,
+    // and D3D12/ next to this module (lub.dll loaded by a foreign host).
+    char module_dir[MAX_PATH] = {0};
+    HMODULE self = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)&dx_create_device, &self) &&
+        GetModuleFileNameA(self, module_dir, MAX_PATH)) {
+      char *slash = strrchr(module_dir, '\\');
+      if (slash)
+        strcpy_s(slash + 1, MAX_PATH - (slash + 1 - module_dir), "D3D12\\");
+    }
+    const char *candidates[2] = {D3D12SDKPath, module_dir};
+    for (const char *path : candidates) {
+      if (!path[0])
+        continue;
+      ComPtr<ID3D12DeviceFactory> factory;
+      HRESULT hr = cfg->CreateDeviceFactory(D3D12_SDK_VERSION, path,
+                                            IID_PPV_ARGS(&factory));
+      if (FAILED(hr)) {
+        SDL_Log("d3d12: CreateDeviceFactory(%u, %s) failed: 0x%08lx",
+                (unsigned)D3D12_SDK_VERSION, path, (unsigned long)hr);
+        continue;
+      }
+      if (SUCCEEDED(factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0,
+                                          IID_PPV_ARGS(&g.device)))) {
+        SDL_Log("d3d12: device via Agility SDK device factory (sdk %u, %s)",
+                (unsigned)D3D12_SDK_VERSION, path);
+        return true;
+      }
+      SDL_Log("d3d12: device factory CreateDevice failed for %s", path);
     }
   }
   if (FAILED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0,
