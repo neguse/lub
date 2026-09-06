@@ -99,7 +99,6 @@ typedef struct VkbImage {
   bool render_target;
   bool storage;
   bool is_depth;
-  VkImageLayout layout;
 } VkbImage;
 
 // Descriptor set layout contents mirrored for write-time iteration.
@@ -172,7 +171,6 @@ typedef struct VkbState {
   VkImage depth_img;
   VkDeviceMemory depth_mem;
   VkImageView depth_view;
-  VkImageLayout depth_layout;
   int depth_w, depth_h;
 
   VkCommandPool oneshot_pool;
@@ -724,21 +722,18 @@ static void vkb_image_barrier(VkCommandBuffer cmd, VkImage img,
   vkCmdPipelineBarrier2(cmd, &di);
 }
 
-// Transition a tracked image to `to` on the current recording context.
-// Suspends an active pass; the calling vtable op resumes it (or use the
-// RecordCtx variant when already inside one).
-static void vkb_transition(VkbImage *im, VkImageLayout to) {
-  if (!im || !im->img || im->layout == to)
-    return;
+// Move a freshly created image to GENERAL once. Every later use (attachment,
+// sampling, storage, transfer) stays in GENERAL, so images carry no layout
+// state and binding one never has to interrupt a pass; hazards are ordered by
+// the global memory barrier at pass end, after copies and after dispatches.
+static bool vkb_image_init_general(VkImage img, VkImageAspectFlags aspect) {
   RecordCtx ctx = vkb_record_begin();
   if (!ctx.ok)
-    return;
-  vkb_image_barrier(ctx.cmd, im->img, vkb_aspect(im->vkfmt, false), im->layout,
-                    to);
-  im->layout = to;
-  if (ctx.used_oneshot)
-    vkb_record_end(&ctx);
-  // frame-recording case: leave the pass suspended, caller resumes once.
+    return false;
+  vkb_image_barrier(ctx.cmd, img, aspect, VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_GENERAL);
+  vkb_record_end(&ctx);
+  return true;
 }
 
 // --- swapchain / default depth
@@ -807,7 +802,10 @@ static bool vkb_ensure_default_depth(int w, int h) {
     SDL_Log("vk: default depth: view create failed");
     return false;
   }
-  g.depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  if (!vkb_image_init_general(g.depth_img, vkb_aspect(g.depth24_fmt, false))) {
+    SDL_Log("vk: default depth: initial layout failed");
+    return false;
+  }
   g.depth_w = w;
   g.depth_h = h;
   return true;
@@ -1255,8 +1253,6 @@ static bool vkb_make_dummies(void) {
       .storage = true,
   };
   g.dummy_storage = (VkbImage *)vkb_make_image(&sd);
-  if (g.dummy_storage)
-    vkb_transition(g.dummy_storage, VK_IMAGE_LAYOUT_GENERAL);
   static const uint8_t zeros[256] = {0};
   g.dummy_ubuf =
       (VkbBuffer *)vkb_make_buffer(SGL_BUFFER_UNIFORM, zeros, sizeof(zeros));
@@ -1455,12 +1451,6 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
                       g.sc_layouts[g.bb_index],
                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    if (g.depth_layout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-      vkb_image_barrier(cmd, g.depth_img, vkb_aspect(g.depth24_fmt, false),
-                        g.depth_layout,
-                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-      g.depth_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    }
     g.pass_colors[0] = (VkRenderingAttachmentInfo){
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = g.sc_views[g.bb_index],
@@ -1474,7 +1464,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
     g.pass_depth = (VkRenderingAttachmentInfo){
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = g.depth_view,
-        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
         .loadOp = load_op,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
     };
@@ -1488,15 +1478,10 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
       VkbImage *im = (VkbImage *)d->targets[i];
       if (!im || !im->img)
         return;
-      if (im->layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-        vkb_image_barrier(cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT, im->layout,
-                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        im->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-      }
       g.pass_colors[i] = (VkRenderingAttachmentInfo){
           .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
           .imageView = im->attach_view,
-          .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
           .loadOp = load_op,
           .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
       };
@@ -1510,16 +1495,10 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
       VkbImage *di = (VkbImage *)d->depth_target;
       if (!di || !di->img)
         return;
-      if (di->layout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-        vkb_image_barrier(cmd, di->img, vkb_aspect(di->vkfmt, false),
-                          di->layout,
-                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        di->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-      }
       g.pass_depth = (VkRenderingAttachmentInfo){
           .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
           .imageView = di->attach_view,
-          .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
           .loadOp = load_op,
           .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
       };
@@ -1542,8 +1521,13 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
 
 static void vkb_end_pass(App *app) {
   (void)app;
-  if (g.in_pass && g.recording && !g.pass_suspended)
-    vkCmdEndRendering(g.frames[g.slot].cmd);
+  if (g.in_pass && g.recording) {
+    if (!g.pass_suspended)
+      vkCmdEndRendering(g.frames[g.slot].cmd);
+    // Attachment writes are ordered here against whatever reads them next;
+    // there is no layout transition left to carry that dependency.
+    vkb_memory_barrier(g.frames[g.slot].cmd);
+  }
   g.in_pass = false;
   g.pass_suspended = false;
   g_current_pip = NULL;
@@ -1670,19 +1654,16 @@ static bool vkb_upload_image_bytes(VkbImage *im, const void *data,
   RecordCtx ctx = vkb_record_begin();
   if (!ctx.ok)
     return false;
-  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT, im->layout,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  // Earlier reads of the image before the copy, the copy before later reads.
+  vkb_memory_barrier(ctx.cmd);
   VkBufferImageCopy region = {
       .bufferOffset = ua.offset,
       .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
       .imageExtent = {(uint32_t)im->w, (uint32_t)im->h, 1},
   };
-  vkCmdCopyBufferToImage(ctx.cmd, ua.buf, im->img,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  im->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  vkCmdCopyBufferToImage(ctx.cmd, ua.buf, im->img, VK_IMAGE_LAYOUT_GENERAL, 1,
+                         &region);
+  vkb_memory_barrier(ctx.cmd);
   vkb_record_end(&ctx);
   return true;
 }
@@ -1700,7 +1681,6 @@ static BackendImage vkb_make_image(const ImageDesc *d) {
   im->render_target = d->render_target;
   im->storage = d->storage;
   im->is_depth = sgl_is_depth_fmt(d->fmt);
-  im->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   VkImageUsageFlags usage =
       VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -1815,17 +1795,18 @@ static BackendImage vkb_make_image(const ImageDesc *d) {
     return 0;
   }
 
-  if (!d->render_target && d->data && d->data_bytes > 0) {
-    if (!vkb_upload_image_bytes(im, d->data, d->data_bytes)) {
-      vkDestroySampler(g.device, im->sampler, NULL);
-      if (im->attach_view != im->view)
-        vkDestroyImageView(g.device, im->attach_view, NULL);
-      vkDestroyImageView(g.device, im->view, NULL);
-      vkDestroyImage(g.device, im->img, NULL);
-      vkFreeMemory(g.device, im->mem, NULL);
-      free(im);
-      return 0;
-    }
+  bool ready = vkb_image_init_general(im->img, vkb_aspect(im->vkfmt, false));
+  if (ready && !d->render_target && d->data && d->data_bytes > 0)
+    ready = vkb_upload_image_bytes(im, d->data, d->data_bytes);
+  if (!ready) {
+    vkDestroySampler(g.device, im->sampler, NULL);
+    if (im->attach_view != im->view)
+      vkDestroyImageView(g.device, im->attach_view, NULL);
+    vkDestroyImageView(g.device, im->view, NULL);
+    vkDestroyImage(g.device, im->img, NULL);
+    vkFreeMemory(g.device, im->mem, NULL);
+    free(im);
+    return 0;
   }
   gpu_stats_create(GPU_STAT_TEXTURE, gpu_stats_image_bytes(d->fmt, d->w, d->h));
   gpu_stats_create(GPU_STAT_SAMPLER, 0);
@@ -2434,7 +2415,7 @@ static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
     w->imgs[i] = (VkDescriptorImageInfo){
         .sampler = g.dummy_tex->sampler,
         .imageView = g.dummy_tex->view,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
     };
     w->writes[i].pImageInfo = &w->imgs[i];
     break;
@@ -2513,15 +2494,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
   if (!b->refl)
     return;
 
-  // Resource sets (0 = vertex, 2 = fragment). Transition sampled images
-  // first: barriers suspend the pass, descriptor writes/binds don't care.
-  for (int i = 0; i < b->texture_count; ++i) {
-    VkbImage *im = (VkbImage *)b->textures[i].image;
-    if (im && im->img && im->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-      vkb_transition(im, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  }
-  vkb_pass_resume();
-
+  // Resource sets (0 = vertex, 2 = fragment).
   // Unmatched bindings keep dummy descriptors — the moral equivalent of the
   // d3d12 backend's null SRV writes.
   static const struct {
@@ -2555,7 +2528,7 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
         if (wi >= 0) {
           w.imgs[wi].sampler = im->sampler;
           w.imgs[wi].imageView = im->view;
-          w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
         }
         // Keep scanning: the same texture name can appear in both stages.
       }
@@ -2656,18 +2629,7 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   const ShaderReflection *refl = d->refl ? d->refl : &p->refl;
 
-  // Layouts first (they carry their own barriers), then one global barrier
-  // ordering every prior write against the dispatch.
-  for (int i = 0; i < d->texture_count; ++i) {
-    VkbImage *im = (VkbImage *)d->textures[i].image;
-    if (im && im->img && im->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-      vkb_transition(im, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  }
-  for (int i = 0; i < d->n_storage_textures; ++i) {
-    VkbImage *im = (VkbImage *)d->storage_textures[i].image;
-    if (im && im->img && im->layout != VK_IMAGE_LAYOUT_GENERAL)
-      vkb_transition(im, VK_IMAGE_LAYOUT_GENERAL);
-  }
+  // One global barrier orders every prior write against the dispatch.
   vkb_memory_barrier(cmd);
 
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p->compute_pipe);
@@ -2719,7 +2681,7 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
           if (set_index == 0 && wi >= 0) {
             w.imgs[wi].sampler = im->sampler;
             w.imgs[wi].imageView = im->view;
-            w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
           }
           break;
         }
@@ -2785,14 +2747,8 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
                 (uint32_t)(d->groups_y > 0 ? d->groups_y : 1),
                 (uint32_t)(d->groups_z > 0 ? d->groups_z : 1));
 
-  // Order the storage writes against subsequent reads and park written
-  // textures back in their resting sampled state.
+  // Order the storage writes against subsequent reads.
   vkb_memory_barrier(cmd);
-  for (int i = 0; i < d->n_storage_textures; ++i) {
-    VkbImage *im = (VkbImage *)d->storage_textures[i].image;
-    if (im && im->img)
-      vkb_transition(im, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  }
 }
 
 // --- readback
@@ -2846,29 +2802,20 @@ static bool vkb_readback_image_now(VkbImage *im, int w, int h,
     return false;
   }
 
-  VkImageLayout prev = im->layout;
   RecordCtx ctx = vkb_record_begin();
   if (!ctx.ok) {
     vkDestroyBuffer(g.device, rb, NULL);
     vkFreeMemory(g.device, rb_mem, NULL);
     return false;
   }
-  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT, im->layout,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+  vkb_memory_barrier(ctx.cmd);
   VkBufferImageCopy region = {
       .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
       .imageExtent = {(uint32_t)w, (uint32_t)h, 1},
   };
-  vkCmdCopyImageToBuffer(ctx.cmd, im->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         rb, 1, &region);
-  vkb_image_barrier(ctx.cmd, im->img, VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    prev == VK_IMAGE_LAYOUT_UNDEFINED
-                        ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                        : prev);
-  im->layout = prev == VK_IMAGE_LAYOUT_UNDEFINED
-                   ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                   : prev;
+  vkCmdCopyImageToBuffer(ctx.cmd, im->img, VK_IMAGE_LAYOUT_GENERAL, rb, 1,
+                         &region);
+  vkb_memory_barrier(ctx.cmd);
   if (ctx.used_oneshot) {
     vkb_record_end(&ctx);
   } else {
