@@ -79,7 +79,7 @@ public class ClawCommand
 
 public static class CraneGame23
 {
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
 
     // --- 実寸パラメータ (フィールド 750×900mm、実機調査に基づく) ---------
     const float fieldHx = 0.375f; // フィールド半幅 (X)
@@ -422,7 +422,7 @@ public static class CraneGame23
             X = cx,
             Y = carriageY,
             Z = cz,
-            TimeStep = dt,
+            TimeStep = tickDt,
         });
 
         // ヘッド: ワイヤー 1 本吊り (実機の主流はワイヤー巻き取り式)。
@@ -673,7 +673,7 @@ public static class CraneGame23
         else if (state == stMoveX)
         {
             if (ButtonHeld())
-                cx = Math.Min(cx + moveSpeed * dt, maxX);
+                cx = Math.Min(cx + moveSpeed * tickDt, maxX);
             else if (stateT > 5)
                 Enter(stWait2);
         }
@@ -687,7 +687,7 @@ public static class CraneGame23
         else if (state == stMoveZ)
         {
             if (ButtonHeld())
-                cz = Math.Max(cz - moveSpeed * dt, minZ);
+                cz = Math.Max(cz - moveSpeed * tickDt, minZ);
             else if (stateT > 5)
                 Enter(stDescend);
         }
@@ -695,7 +695,7 @@ public static class CraneGame23
         {
             // 移動直後の振り子揺れが収まるまで一呼吸置いてから繰り出す
             if (stateT > 15)
-                wireLen = Math.Min(wireLen + winchSpeed * dt, wireMax);
+                wireLen = Math.Min(wireLen + winchSpeed * tickDt, wireMax);
             // 着地検出 = ワイヤー張力低下 (実機はテンションセンサー)。
             // 繰り出し量に対して実距離が短い = 弛み。揺れによる瞬間的な
             // 弛みを拾わないよう連続フレームでデバウンスする
@@ -720,7 +720,7 @@ public static class CraneGame23
         }
         else if (state == stLift)
         {
-            wireLen = Math.Max(wireLen - winchSpeed * dt, wireMin);
+            wireLen = Math.Max(wireLen - winchSpeed * tickDt, wireMin);
             if (wireLen <= wireMin)
                 Enter(stCarry);
         }
@@ -728,8 +728,8 @@ public static class CraneGame23
         {
             float dx = homeX - cx;
             float dz = homeZ - cz;
-            cx += MathUtil.Clamp(dx, -moveSpeed * dt, moveSpeed * dt);
-            cz += MathUtil.Clamp(dz, -moveSpeed * dt, moveSpeed * dt);
+            cx += MathUtil.Clamp(dx, -moveSpeed * tickDt, moveSpeed * tickDt);
+            cz += MathUtil.Clamp(dz, -moveSpeed * tickDt, moveSpeed * tickDt);
             if (Math.Abs(dx) < 0.002f && Math.Abs(dz) < 0.002f)
                 Enter(stRelease);
         }
@@ -840,7 +840,7 @@ public static class CraneGame23
         foreach (var entry in live)
             renderBearIndices.Add(entry.Index);
         UpdateSequence(world, machine.Head, tickPressed);
-        Phys3d.Step(world, dt);
+        Phys3d.Step(world, tickDt);
         UpdatePrizes(live);
         frame++;
     }
@@ -863,7 +863,7 @@ public static class CraneGame23
         var world = Phys3d.World("crane_game", new WorldOpts3d
         {
             Gravity = new Vec3d { X = 0.0f, Y = -9.81f, Z = 0.0f },
-            FixedDt = dt,
+            FixedDt = tickDt,
             Substeps = 8,
             MaxSteps = 1,
         });

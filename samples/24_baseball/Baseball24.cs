@@ -71,7 +71,7 @@ public static class Baseball24
 {
     const int w = 960;
     const int h = 540;
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
 
     // --- フィールド寸法 (m) -------------------------------------------------
     const float baseD = 19.4f; // 塁間 27.43m の対角成分
@@ -639,8 +639,8 @@ public static class Baseball24
         var peak = by;
         while (t < 12.0f)
         {
-            StepBall(dt, true);
-            t += dt;
+            StepBall(tickDt, true);
+            t += tickDt;
             if (by > peak)
                 peak = by;
             if (ballBounces > sb || ballRolling)
@@ -1575,24 +1575,24 @@ public static class Baseball24
 
     static void SimulateTick()
     {
-        tAccum += dt;
+        tAccum += tickDt;
         // ヒットストップ: その間シミュレーションだけ止める
         if (hitstopT > 0)
         {
-            hitstopT -= dt;
+            hitstopT -= tickDt;
         }
         else
         {
-            UpdateGame(dt);
+            UpdateGame(tickDt);
         }
-        UpdateCamera(dt);
+        UpdateCamera(tickDt);
 
         var fs = fielders;
         if (fs == null) return;
         // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
         if (fs[1].Anim == AnReach)
         {
-            fs[1].AnimT += dt;
+            fs[1].AnimT += tickDt;
             if (fs[1].AnimT > 0.5f)
                 fs[1].Anim = AnCrouch;
         }

@@ -41,6 +41,7 @@ public class Rikishi
     public float LeanK; // 前傾の深さ (リスク: 支えを外されると帰れない)
     public float PulseHz; // 押しの脈動周期
     public float Phase;
+    public float Pulse; // 脈動の波形 (0..1)。Tick が決め、押し込み力と描画が同じ値を読む
     public float Counter; // 相手の深い前傾に引き/いなしを合わせる確率
     // --- 戦術状態 ---
     public int Tactic;
@@ -60,7 +61,7 @@ public static class Tonton22
 {
     const int w = 640;
     const int h = 360;
-    const float dt = 1.0f / 60.0f;
+    const float tickDt = 1.0f / 60.0f;
 
     const float dohyoR = 2.2f;
     const float dohyoH = 0.4f;
@@ -259,7 +260,7 @@ public static class Tonton22
     static List<float> PackBones(int mi, Rikishi f, bool falling, float pulse,
         int logicalFrame, MeshData? data)
     {
-        float t = logicalFrame * dt;
+        float t = logicalFrame * tickDt;
         float armSwing;
         if (falling)
             armSwing = (float)Math.Sin(t * 16.0f + mi * 2.1f) * 0.9f;
@@ -325,7 +326,7 @@ public static class Tonton22
         var world = Phys3d.World("tonton", new WorldOpts3d
         {
             Gravity = new Vec3d { X = 0.0f, Y = -10.0f, Z = 0.0f },
-            FixedDt = dt,
+            FixedDt = tickDt,
             Substeps = 4,
             MaxSteps = 1,
         });
@@ -505,6 +506,9 @@ public static class Tonton22
     // その上に状態別の操舵: 仕切り中は定位置ばね、勝負中は戦術に従う。
     static void ControlRikishi(int i, Rikishi f, BodyRef3d body, BodyRef3d opp)
     {
+        // 「のこった」の脈動。押し込み力と腕の絵が同じ位相を読む
+        f.Pulse = Math.Max(0.0f, (float)Math.Sin(
+            frame * tickDt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase));
         var pose = Phys3d.Pose(body);
         if (pose == null)
             return;
@@ -611,9 +615,8 @@ public static class Tonton22
                 });
                 if (engaged)
                 {
-                    // 「のこった」の脈動で前傾して押し込む。重心を相手に預ける
-                    float pulse = Math.Max(0.0f, (float)Math.Sin(
-                        frame * dt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase));
+                    // 脈動で前傾して押し込む。重心を相手に預ける
+                    float pulse = f.Pulse;
                     Phys3d.AddForceCenter(body, new Vec3d
                     {
                         X = dir.X * f.PushK * pulse,
@@ -849,7 +852,7 @@ public static class Tonton22
         Judge(bodies);
         UpdateTap(dohyo, tickEye, lookAt, fovDeg, aspect, w, h);
 
-        Phys3d.Step(nextWorld, dt);
+        Phys3d.Step(nextWorld, tickDt);
 
         // 立ち合いのぶつかり (接触のエッジで音と振動)
         {
@@ -996,10 +999,7 @@ public static class Tonton22
             var q = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw);
             var upv = q * Vec3.Up();
             bool falling = upv.Y < 0.6f;
-            float pulse = f.Tactic == taOsu
-                ? Math.Max(0.0f, (float)Math.Sin(
-                    renderFrame * dt * f.PulseHz * 2.0f * (float)Math.PI + f.Phase))
-                : 0.0f;
+            float pulse = f.Tactic == taOsu ? f.Pulse : 0.0f;
             var model = Renderer3d.PoseMat(pose) * Mat4.RotateY(yaw)
                 * Mat4.Scale(new Vec3(1.0f + sq * 0.6f, 1.0f - sq, 1.0f + sq * 0.6f));
             renNow.Draw(mesh, model, new Draw3dOpts

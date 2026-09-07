@@ -3,6 +3,8 @@ build-*/
 out/
 third_party/slang/lib/
 third_party/slang/bin/
+third_party/d3d12agility/
+third_party/d3d12warp/
 web/node_modules/
 web/dist/
 web/tcs-wasm-assets/

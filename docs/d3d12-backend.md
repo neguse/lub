@@ -13,6 +13,19 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   シンボル(`g_backend_d3d12`)とファイル名は実装 API を表すので d3d12 のまま。
 - リンク: `d3d12.lib` `dxgi.lib` `dxguid.lib`(OS 標準)。CMake は `WIN32`
   のみソースを追加。
+- runtime: DirectX 12 Agility SDK(NuGet `Microsoft.Direct3D.D3D12`。CMake が
+  取得して `third_party/d3d12agility/` に展開)。header はこの package のものを
+  Windows SDK より先に見せ、`D3D12_SDK_VERSION` が同梱する `D3D12Core.dll` と
+  一致するようにする。exe は `D3D12SDKVersion` / `D3D12SDKPath` を export し、
+  post-build で `D3D12/D3D12Core.dll` と debug layer の `d3d12SDKLayers.dll` を
+  exe の隣に置く。配布物には `D3D12/D3D12Core.dll` だけを同梱する。exe に
+  export の無い host(.NET 実行)は `ID3D12SDKConfiguration1::CreateDeviceFactory`
+  で同じ SDK を求め、無ければ inbox の D3D12 に落ちる。対応 OS は
+  Windows 10 1909 以降。起動時に `d3d12: runtime:` で載った runtime の path、
+  `d3d12: enhanced barriers:` で feature flag を log する。
+- WARP: `-DLUB_FETCH_WARP=ON` で NuGet `Microsoft.Direct3D.WARP` の
+  `d3d10warp.dll` を exe の隣に置ける(新しい WARP を試すとき用)。CI と
+  golden は runner の inbox WARP で、NuGet 版とは出力の LSB が違う。
 - HWND は SDL3 window の `SDL_PROP_WINDOW_WIN32_HWND_POINTER`。
 - Debug build または `LUB_D3D12_DEBUG=1` で debug layer を有効化。
   validation メッセージは失敗時に `ID3D12InfoQueue` から SDL_Log へ流す。
@@ -77,9 +90,17 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   `CopyBufferRegion` / `CopyTextureRegion` を frame list に記録する。
   単一 queue の in-order 実行により「copy より前に記録された draw は古い
   内容を読む」= SDL_GPU の cycle 意味論と一致。
-- resource ごとに current state を持ち遅延遷移(legacy `ResourceBarrier`)。
-  compute の書き込み先は dispatch 後に resting state
-  (buffer は用途別 read state、texture は PSR|NPSR)へ戻す。
+- 同期は Enhanced Barriers。buffer は layout を持たないので、copy の前後・
+  dispatch の後・pass の終わりに打つ global barrier(`SYNC_ALL` /
+  `ACCESS_COMMON`)だけで順序付ける。texture は `DIRECT_QUEUE_COMMON` layout
+  に置いたまま sampling・storage(UAV)・copy を行い、attachment として
+  bind されている間だけ `RENDER_TARGET` / `DEPTH_STENCIL_WRITE` に移す
+  (begin_pass で入り、end_pass で戻る)。swapchain の buffer は pass の外では
+  `PRESENT`(capture の copy 元にもなる)。resource ごとの state は持たない。
+  default depth は sampling しないので `DEPTH_STENCIL_WRITE` に置いたまま。
+- resource の生成は `CreateCommittedResource3`(`ID3D12Device10`)で初期
+  layout を与える。`EnhancedBarriersSupported` が無い環境では init に失敗し、
+  `backend=sdlgpu` が代替。
 - destroy は fence 値付きの遅延解放リストに積み、begin_frame で回収
   (GPU が最大 2 frame 参照し続けるため)。
 - readback: 同期(SDL_GPU backend と同じ意味論)。frame list を
@@ -92,7 +113,6 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 
 - graphics stage の storage buffer バインドは未対応(SDL_GPU backend と
   同等。compute 経由でのみ使用)。
-- Enhanced Barriers 不使用(対応 GPU の幅優先)。
 
 ## Golden test
 
