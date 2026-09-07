@@ -2062,9 +2062,15 @@ static int wasm_next_free_ub_slot(const ShaderReflection *dst,
   return -1;
 }
 
+// Group 1 is shared by every stage's textures, samplers, storage buffers and
+// storage textures, so the free-slot search must cover their sum, not one
+// resource type's cap (a post pass with four textures plus the vertex
+// stage's storage buffer already needs nine slots).
+#define WASM_MAX_GROUP1_BINDINGS 64
+
 static int wasm_next_free_binding(const ShaderReflection *dst,
                                   const ShaderReflection *stage) {
-  for (int s = 0; s < SGL_MAX_TEXTURES; ++s) {
+  for (int s = 0; s < WASM_MAX_GROUP1_BINDINGS; ++s) {
     if (!wasm_binding_used(dst, s) && !wasm_binding_used(stage, s))
       return s;
   }
@@ -2096,6 +2102,20 @@ static void wasm_remap_stage_for_wgsl(const ShaderReflection *dst,
       int slot = wasm_next_free_binding(dst, stage);
       if (slot >= 0)
         stage->texs[i].smp_slot = slot;
+    }
+  }
+  for (int i = 0; i < stage->storage_buf_count; ++i) {
+    if (wasm_binding_used(dst, stage->storage_bufs[i].slot)) {
+      int slot = wasm_next_free_binding(dst, stage);
+      if (slot >= 0)
+        stage->storage_bufs[i].slot = slot;
+    }
+  }
+  for (int i = 0; i < stage->storage_tex_count; ++i) {
+    if (wasm_binding_used(dst, stage->storage_texs[i].slot)) {
+      int slot = wasm_next_free_binding(dst, stage);
+      if (slot >= 0)
+        stage->storage_texs[i].slot = slot;
     }
   }
 }
