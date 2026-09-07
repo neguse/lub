@@ -2542,27 +2542,31 @@ LUB_API LubStatus lub_io_load_gltf(LubContext *ctx, LubStr path,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
 
-// mesh を position + normal で interleave した頂点列にする。
+// mesh を position + normal で interleave した頂点列にする。 1 頂点 8 float:
+// `float3 pos; float pad; float3 nrm; float pad;` (shader 側の
+// StructuredBuffer の struct と同じ並び)。
 LUB_API LubStatus lub_io_interleave_pn(LubContext *ctx, const LubMeshData *mesh,
                                        const float **out, int32_t *out_count);
 
-// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。
+// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。1 頂点
+// 16 float: pn + `float3 albedo; float pad; float2 mr; float2 pad;`。
 LUB_API LubStatus lub_io_interleave_pncm(LubContext *ctx,
                                          const LubMeshData *mesh,
                                          const float **out, int32_t *out_count);
 
-// interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。
+// interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。 1 頂点
+// 20 float: pncm + `float4 skin;`。
 LUB_API LubStatus lub_io_interleave_pncmw(LubContext *ctx,
                                           const LubMeshData *mesh,
                                           const float **out,
                                           int32_t *out_count);
 
-// position + normal + uv。
+// position + normal + uv。1 頂点 12 float: pn + `float2 uv; float2 pad;`。
 LUB_API LubStatus lub_io_interleave_pnu(LubContext *ctx,
                                         const LubMeshData *mesh,
                                         const float **out, int32_t *out_count);
 
-// position + normal + uv + tangent。
+// position + normal + uv + tangent。1 頂点 16 float: pnu + `float4 tangent;`。
 LUB_API LubStatus lub_io_interleave_pnut(LubContext *ctx,
                                          const LubMeshData *mesh,
                                          const float **out, int32_t *out_count);
