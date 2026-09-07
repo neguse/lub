@@ -54,7 +54,7 @@ public static class Deferred06
 
         // G-buffer pass: MRT write. SV_Target0 -> gbuf0, SV_Target1 -> gbuf1.
         var shG = Gfx.UseShader("gbuf_shader", gvs, gfs, gvsv * 31 + gfsv);
-        var bG = Gfx.UseBuffer("gbuf_verts", Gfx.BufferType.Vertex, gverts, gvv);
+        var bG = Gfx.UseBuffer("gbuf_verts", Gfx.BufferType.Storage, gverts, gvv);
         if (shG == null || bG == null) return;
         Gfx.BeginPass(new PassOpts
         {
@@ -74,7 +74,7 @@ public static class Deferred06
         // right half samples gbuf1. Same shader; only the texture binding and
         // the (scale, offset) transform uniform differ.
         var shV = Gfx.UseShader("view_shader", vvs, vfs, vvsv * 31 + vfsv);
-        var bV = Gfx.UseBuffer("view_verts", Gfx.BufferType.Vertex, vverts, vvv);
+        var bV = Gfx.UseBuffer("view_verts", Gfx.BufferType.Storage, vverts, vvv);
         if (shV == null || bV == null) return;
         Gfx.BeginPass(new PassOpts
         {

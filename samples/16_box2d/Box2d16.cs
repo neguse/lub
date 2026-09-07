@@ -34,6 +34,7 @@ public static class Box2d16
         verts.Add(x / ppmX);
         verts.Add(y / ppmY);
         verts.Add(0.0f);
+        verts.Add(0.0f);
         verts.Add(r);
         verts.Add(g);
         verts.Add(b);
@@ -149,7 +150,7 @@ public static class Box2d16
             out var fs, out var fsv, out _, out _);
         if (vs == null || fs == null) return;
         var shader = Gfx.UseShader("box2d16_color", vs, fs, vsv * 31 + fsv);
-        var mesh = Gfx.UseBuffer("box2d16_mesh", Gfx.BufferType.Vertex, verts);
+        var mesh = Gfx.UseBuffer("box2d16_mesh", Gfx.BufferType.Storage, verts);
         if (shader == null || mesh == null) return;
 
         Gfx.BeginPass(new PassOpts

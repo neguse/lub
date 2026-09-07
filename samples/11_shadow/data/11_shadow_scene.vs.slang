@@ -7,11 +7,14 @@ struct ShadowSceneUniforms {
 ConstantBuffer<ShadowSceneUniforms> u;
 #endif
 
-struct VSIn {
-  float3 pos : POSITION;
-  float3 normal : NORMAL;
-  float4 color : COLOR;
+struct V {
+  float3 pos;
+  float pad0;
+  float3 normal;
+  float pad1;
+  float4 color;
 };
+StructuredBuffer<V> verts;
 
 struct VSOut {
   float3 normal : TEXCOORD0;
@@ -20,7 +23,8 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   o.pos = mul(u.mvp, float4(i.pos, 1.0));
   o.normal = i.normal;

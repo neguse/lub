@@ -192,14 +192,22 @@ public static class Sfb12
         dst.Add(cx + nx * r);
         dst.Add(cy + ny * r);
         dst.Add(cz + nz * r);
+        dst.Add(0.0f);
         dst.Add(nx);
         dst.Add(ny);
         dst.Add(nz);
+        dst.Add(0.0f);
         dst.Add((float)seg / segs * 3.0f);
         dst.Add((float)ring / rings * 3.0f);
+        dst.Add(0.0f);
+        dst.Add(0.0f);
     }
 
-    // UV-sphere (pos.xyz, normal.xyz, uv.xy) for the material shader.
+    // UV-sphere for the material shader, in the same padded layout as
+    // Io.InterleavePnu (pos.xyz pad, normal.xyz pad, uv.xy pad pad) so
+    // 12_mat.vs / 12_shadow_hero.vs read either hero source.
+    const int heroStride = 12;
+
     static List<float> BuildHero()
     {
         var dst = new List<float>();
@@ -448,9 +456,9 @@ public static class Sfb12
 
         // Scene + camera.
         var scene = BuildScene(tAccum);
-        var sceneBuf = Gfx.UseBuffer("sfb_scene", Gfx.BufferType.Vertex, scene);
-        var quadBuf = Gfx.UseBuffer("sfb_quad", Gfx.BufferType.Vertex, quadVerts, 1);
-        var quadBufF = Gfx.UseBuffer("sfb_quadF", Gfx.BufferType.Vertex, quadVertsFlip,
+        var sceneBuf = Gfx.UseBuffer("sfb_scene", Gfx.BufferType.Storage, scene);
+        var quadBuf = Gfx.UseBuffer("sfb_quad", Gfx.BufferType.Storage, quadVerts, 1);
+        var quadBufF = Gfx.UseBuffer("sfb_quadF", Gfx.BufferType.Storage, quadVertsFlip,
             1);
 
         // Textured hero (material demo): generated albedo + normal map. The
@@ -469,7 +477,7 @@ public static class Sfb12
             if (meshObj != null)
             {
                 var mesh = meshObj;
-                heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Vertex,
+                heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Storage,
                     Io.InterleavePnu(mesh), meshVer);
                 heroIdx = Gfx.UseBufferInts("sfb_heroIdx", Gfx.BufferType.Index, mesh.Indices, meshVer);
                 heroCount = mesh.IndexCount;
@@ -479,8 +487,8 @@ public static class Sfb12
         if (heroBuf == null)
         {
             var heroMesh = BuildHero();
-            heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Vertex, heroMesh, 1);
-            heroCount = heroMesh.Count / 8;
+            heroBuf = Gfx.UseBuffer("sfb_hero", Gfx.BufferType.Storage, heroMesh, 1);
+            heroCount = heroMesh.Count / heroStride;
         }
         var albedoTex = Gfx.UseTexture("sfb_albedo", texN, texN, Gfx.PixelFormat.Rgba8,
             albedoPx, 1, new TextureOpts { Filter = Gfx.Filter.Linear, Wrap = Gfx.Wrap.Repeat });

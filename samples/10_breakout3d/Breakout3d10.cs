@@ -21,7 +21,7 @@ public class Brick
 public static class Breakout3d10
 {
     const float dt = 1.0f / 60.0f;
-    const int stride = 7; // pos.xyz + color.rgba
+    const int stride = 8; // pos.xyz + pad + color.rgba
 
     const int cols = 9;
     const int rows = 5;
@@ -286,6 +286,7 @@ public static class Breakout3d10
         verts.Add(x);
         verts.Add(y);
         verts.Add(z);
+        verts.Add(0.0f);
         verts.Add(c[0]);
         verts.Add(c[1]);
         verts.Add(c[2]);
@@ -462,7 +463,7 @@ public static class Breakout3d10
         var verts = BuildVertices();
         var shader = Gfx.UseShader("breakout3d_shader", vs, fs,
             vsv * 31 + fsv);
-        var vbuf = Gfx.UseBuffer("breakout3d_verts", Gfx.BufferType.Vertex, verts);
+        var vbuf = Gfx.UseBuffer("breakout3d_verts", Gfx.BufferType.Storage, verts);
         if (shader == null || vbuf == null) return;
 
         Gfx.BeginPass(new PassOpts

@@ -13,11 +13,17 @@ struct MatUniforms {
 ConstantBuffer<MatUniforms> u;
 #endif
 
-struct VSIn {
-  float3 pos : POSITION;
-  float3 normal : NORMAL;
-  float2 uv : TEXCOORD0;
+// Io.InterleavePnu layout (12 floats per vertex); the procedural hero
+// sphere is generated with the same pads.
+struct V {
+  float3 pos;
+  float pad0;
+  float3 normal;
+  float pad1;
+  float2 uv;
+  float2 pad2;
 };
+StructuredBuffer<V> verts;
 
 struct VSOut {
   float3 vpos : TEXCOORD0;
@@ -28,7 +34,8 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   float4 wp = mul(u.model, float4(i.pos, 1.0));
   float4 vp = mul(u.view, wp);

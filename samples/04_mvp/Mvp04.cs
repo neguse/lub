@@ -34,7 +34,7 @@ public static class Mvp04
         if (vs == null || fs == null || verts == null) return;
 
         var shader = Gfx.UseShader("mvp_shader", vs, fs, vsv * 31 + fsv);
-        var vbuf = Gfx.UseBuffer("mvp_verts", Gfx.BufferType.Vertex, verts, vv);
+        var vbuf = Gfx.UseBuffer("mvp_verts", Gfx.BufferType.Storage, verts, vv);
         if (shader == null || vbuf == null) return;
 
         Gfx.BeginPass(new PassOpts

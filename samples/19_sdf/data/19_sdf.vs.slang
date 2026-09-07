@@ -6,15 +6,19 @@ struct Uniforms {
   float4x4 bones[8];
 };
 ConstantBuffer<Uniforms> u;
-struct VSIn {
-  // NOTE: slang の WGSL 出力は TEXCOORDn を @location(n) に割り当てるので、
-  // TEXCOORD の番号は宣言位置に合わせる (ズレると wasm で attr が崩れる)
-  float3 pos : POSITION;
-  float3 normal : NORMAL;
-  float3 color : COLOR;
-  float2 mr : TEXCOORD3;   // metallic, roughness (頂点に焼いた材質)
-  float4 skin : TEXCOORD4; // j0, w0, j1, w1 (SDF 部位距離から焼いた重み)
+// Io.interleave_pncmw の頂点 (Mesh3d の skinned レイアウト、pad 込み 20 float)
+struct V {
+  float3 pos;
+  float pad0;
+  float3 normal;
+  float pad1;
+  float3 color;
+  float pad2;
+  float2 mr; // metallic, roughness (頂点に焼いた材質)
+  float2 pad3;
+  float4 skin; // j0, w0, j1, w1 (SDF 部位距離から焼いた重み)
 };
+StructuredBuffer<V> verts;
 struct VSOut {
   float3 normal : TEXCOORD2;  // world
   float3 vnormal : TEXCOORD3; // view space (matcap 用)
@@ -22,7 +26,8 @@ struct VSOut {
   float2 mr : TEXCOORD4;
   float4 pos : SV_Position;
 };
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   // 2-bone LBS (model 空間で変形してから mvp)
   int j0 = int(i.skin.x);

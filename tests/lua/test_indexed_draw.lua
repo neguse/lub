@@ -20,7 +20,7 @@ function M.on_frame()
 	local s = lub.gfx.use_shader("sh", vs, fs, ver_vs ~ ver_fs)
 
 	local verts = { -0.6, -0.6, 0.6, -0.6, 0.6, 0.6, -0.6, 0.6 }
-	local vb = lub.gfx.use_buffer("vb", lub.gfx.VERTEX, verts, 1)
+	local vb = lub.gfx.use_buffer("vb", lub.gfx.STORAGE, verts, 1)
 	local indices = { 0, 1, 2, 0, 2, 3 }
 	local ib = lub.gfx.use_buffer("ib", lub.gfx.INDEX, indices, 1)
 

@@ -25,8 +25,8 @@ function M.on_frame()
 	end
 	local s = lub.gfx.use_shader("sh", vs, fs, ver_vs ~ ver_fs)
 
-	local green = lub.gfx.use_buffer("vb_green", lub.gfx.VERTEX, quad_verts(-0.8, -0.4, -0.2, 0.4), 1)
-	local blue = lub.gfx.use_buffer("vb_blue", lub.gfx.VERTEX, quad_verts(-0.6, -0.6, 0.6, 0.6), 1)
+	local green = lub.gfx.use_buffer("vb_green", lub.gfx.STORAGE, quad_verts(-0.8, -0.4, -0.2, 0.4), 1)
+	local blue = lub.gfx.use_buffer("vb_blue", lub.gfx.STORAGE, quad_verts(-0.6, -0.6, 0.6, 0.6), 1)
 
 	lub.gfx.begin_pass({ target = lub.gfx.main_tex, clear_color = { 1, 0, 0, 1 } })
 	lub.gfx.draw(

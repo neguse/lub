@@ -119,8 +119,8 @@ public static class Shadow11
         {
             scene.Add(f);
         }
-        var casterBuf = Gfx.UseBuffer("shadow_casters", Gfx.BufferType.Vertex, casters);
-        var sceneBuf = Gfx.UseBuffer("shadow_scene", Gfx.BufferType.Vertex, scene);
+        var casterBuf = Gfx.UseBuffer("shadow_casters", Gfx.BufferType.Storage, casters);
+        var sceneBuf = Gfx.UseBuffer("shadow_scene", Gfx.BufferType.Storage, scene);
         if (depthShader == null || sceneShader == null || shadowMap == null
             || shadowDepth == null || casterBuf == null || sceneBuf == null)
         {

@@ -6,12 +6,17 @@ struct ShadowUniforms {
 };
 ConstantBuffer<ShadowUniforms> u;
 
-struct VSIn {
-  float3 pos : POSITION;
-  float3 normal : NORMAL;
-  float2 uv : TEXCOORD0;
-  float4 tangent : TANGENT;
+// Io.InterleavePnut layout (16 floats per vertex).
+struct V {
+  float3 pos;
+  float pad0;
+  float3 normal;
+  float pad1;
+  float2 uv;
+  float2 pad2;
+  float4 tangent;
 };
+StructuredBuffer<V> verts;
 
 struct VSOut {
   float depth : TEXCOORD0;
@@ -21,7 +26,8 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   float4 p = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0)));
   o.pos = p;

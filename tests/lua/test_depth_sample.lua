@@ -34,8 +34,8 @@ function M.on_frame()
 		{ target = true, filter = lub.gfx.NEAREST, wrap = lub.gfx.CLAMP }
 	)
 
-	local tri = lub.gfx.use_buffer("vb_tri", lub.gfx.VERTEX, { -0.7, -0.7, 0.7, -0.7, 0.0, 0.7 }, 1)
-	local quad = lub.gfx.use_buffer("vb_quad", lub.gfx.VERTEX, { -1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1 }, 1)
+	local tri = lub.gfx.use_buffer("vb_tri", lub.gfx.STORAGE, { -0.7, -0.7, 0.7, -0.7, 0.0, 0.7 }, 1)
+	local quad = lub.gfx.use_buffer("vb_quad", lub.gfx.STORAGE, { -1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1 }, 1)
 
 	lub.gfx.begin_pass({ depth_target = dt, clear_depth = 1.0 })
 	lub.gfx.draw(

@@ -98,7 +98,7 @@ public class NgsDrawList
         {
             var b = buckets[k];
             if (b.Verts.Count == 0) continue;
-            var vbuf = Gfx.UseBuffer("ngs_dl_" + k, Gfx.BufferType.Vertex, b.Verts);
+            var vbuf = Gfx.UseBuffer("ngs_dl_" + k, Gfx.BufferType.Storage, b.Verts);
             if (vbuf == null) continue;
             Gfx.Draw(b.Verts.Count / Stride, new Dictionary<string, object>
             {
