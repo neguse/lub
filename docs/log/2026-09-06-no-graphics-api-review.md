@@ -136,6 +136,17 @@ lub は所有権を runtime に寄せてユーザーから判断を消す。
   `instances` 予約名、頂点 buffer 2 本上限が不要になる。一方で頂点 attribute を
   使う shader は約 98 ファイル(12_sfb 26、14_sponza 22 など)と .cs / .lua 内の
   6 本が書き換え対象で、authoring の規約が変わる。
+- その後: 移行を実施した。struct の layout 規約と compile 時検査
+  (`agent/gfx-vertex-layout-check`)、全 shader と頂点データの移行
+  (`agent/gfx-vertex-pull-migration`)、入力レイアウト機構の削除
+  (`agent/gfx-vertex-input-removal`)の 3 段。golden のあるサンプルとテストは
+  移行前と byte 一致で、radv の実測でも頂点フェッチと GPU 時間は同じだった
+  (60M 頂点 / frame で 21.3 ms 対 21.3 ms)。移行で見つかったもの:
+  Slang の `SV_VertexID` は SPIR-V で DrawParameters を要求し DXC は
+  `SV_VulkanVertexID` を受けないので、prelude の `LUB_VERTEX_ID` で target ごとに
+  与える。WGSL 経路の binding 番号の空き探索が texture 上限までしか見ておらず、
+  VS の storage buffer と texture 4 枚の post pass で衝突した。06_deferred の
+  web golden は旧経路の varying 順の入れ替わりを写していたので撮り直した。
 
 ## 判断
 
@@ -145,7 +156,7 @@ lub は所有権を runtime に寄せてユーザーから判断を消す。
 | 2 GENERAL 統一 | 試作で確認 | layout 状態機械と pass 中断が消える | PR にする |
 | 3 key の粒度 | 可能 | 66 本中 5 本、要任意拡張 | 見送り |
 | 4 Enhanced Barriers | Agility SDK 必須。CI で確認 | resource ごとの state 追跡が消える。出荷物に DLL が一つ増える | PR にした |
-| 5 vertex pulling | 試作で確認(vulkan / sdlgpu。d3d12 は CI) | 入力レイアウト機構が消える。移行 100 ファイル | 設計判断。採用なら shader 規約を先に決める |
+| 5 vertex pulling | 移行済み(4 backend) | 入力レイアウト機構を削除(+236 / -716 行)。性能は同じ | PR 3 本 |
 
 ## 再現
 
