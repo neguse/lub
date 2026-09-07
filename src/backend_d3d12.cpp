@@ -1767,7 +1767,6 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
       DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
       if (!buf || !buf->res)
         continue;
-      dx_transition(buf->res.Get(), &buf->state, sampled);
       if (sb->slot >= 0 && sb->slot < t->srv_count) {
         UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
         D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
