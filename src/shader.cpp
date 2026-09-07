@@ -420,12 +420,112 @@ static bool refl_stex_exists(const ShaderReflection *refl, SglShaderStage stage,
   return false;
 }
 
+// --- portable buffer layouts -------------------------------------------------
+// lub fills StructuredBuffer<T> from one flat float list on every target, so
+// the layout Slang computes for T must equal tight packing: 4-byte scalars,
+// vectors of N*4 bytes, members back to back, no implicit padding. SPIR-V and
+// WGSL use std430, which pads float3 / float4 members up to 16-byte offsets
+// and rounds the struct size up; DXIL packs tightly. A struct that already
+// satisfies std430 when packed tightly is identical everywhere, and that is
+// what this check enforces (the manual states the rule as: a float3 is
+// followed by a float, and the struct size is a multiple of 16 when it holds
+// float3 / float4 members, of 8 when float2 is the widest).
+static size_t tight_size_of(TypeReflection *t) {
+  if (!t)
+    return 0;
+  switch (t->getKind()) {
+  case TypeReflection::Kind::Scalar:
+    return 4;
+  case TypeReflection::Kind::Vector:
+    return 4 * (size_t)t->getElementCount();
+  case TypeReflection::Kind::Matrix:
+    return 4 * (size_t)t->getRowCount() * (size_t)t->getColumnCount();
+  case TypeReflection::Kind::Array:
+    return (size_t)t->getElementCount() * tight_size_of(t->getElementType());
+  case TypeReflection::Kind::Struct: {
+    size_t n = 0;
+    for (unsigned i = 0; i < t->getFieldCount(); ++i)
+      n += tight_size_of(t->getFieldByIndex(i)->getType());
+    return n;
+  }
+  default:
+    return 0;
+  }
+}
+
+static bool check_tight_layout(TypeLayoutReflection *tl, const char *name,
+                               char *err, size_t errsz) {
+  TypeReflection *t = tl ? tl->getType() : nullptr;
+  if (!t)
+    return true;
+  const char *nm = name ? name : "?";
+  switch (t->getKind()) {
+  case TypeReflection::Kind::Struct: {
+    size_t off = 0;
+    for (unsigned i = 0; i < tl->getFieldCount(); ++i) {
+      VariableLayoutReflection *fl = tl->getFieldByIndex(i);
+      size_t got = fl->getOffset(SLANG_PARAMETER_CATEGORY_UNIFORM);
+      if (got != off) {
+        if (err && errsz)
+          snprintf(err, errsz,
+                   "buffer layout: %s.%s sits at byte %zu on this target but "
+                   "%zu when packed tightly; pad the member before it (a "
+                   "float3 is followed by a float) so every target agrees",
+                   nm, fl->getName() ? fl->getName() : "?", got, off);
+        return false;
+      }
+      if (!check_tight_layout(fl->getTypeLayout(), fl->getName(), err, errsz))
+        return false;
+      off += tight_size_of(fl->getType());
+    }
+    size_t size = tl->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    if (size != off) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: struct %s is %zu bytes on this target but %zu "
+                 "when packed tightly; pad it to a multiple of 16 (8 when "
+                 "float2 is the widest member)",
+                 nm, size, off);
+      return false;
+    }
+    return true;
+  }
+  case TypeReflection::Kind::Array: {
+    size_t stride = tl->getElementStride(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    size_t tight = tight_size_of(t->getElementType());
+    if (stride != tight) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: array %s has element stride %zu on this "
+                 "target but %zu when packed tightly; use float4 (or pad) "
+                 "elements",
+                 nm, stride, tight);
+      return false;
+    }
+    return check_tight_layout(tl->getElementTypeLayout(), nm, err, errsz);
+  }
+  default: {
+    size_t size = tl->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    size_t tight = tight_size_of(t);
+    if (size != tight) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: %s is %zu bytes on this target but %zu when "
+                 "packed tightly (use 32-bit scalars, float4 matrix rows)",
+                 nm, size, tight);
+      return false;
+    }
+    return true;
+  }
+  }
+}
+
 // Record one global (module-scope) shader parameter into the reflection,
 // attributed to `stage`. Sampler states pair positionally with the preceding
 // textures of the same stage, so callers must feed a stage's parameters in
 // declaration order.
-void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
-                       SglShaderStage stage) {
+bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
+                       SglShaderStage stage, char *err, size_t errsz) {
   {
     SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
     TypeReflection *t =
@@ -440,7 +540,7 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
         fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
         out->ub_count++;
       }
-      return;
+      return true;
     }
 
     // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
@@ -474,10 +574,12 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
           if (TypeLayoutReflection *el = tl->getElementTypeLayout()) {
             sb->elem_stride =
                 (int)el->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+            if (!check_tight_layout(el, p->getName(), err, errsz))
+              return false;
           }
         }
       }
-      return;
+      return true;
     }
 
     // Texture resources. Read-write textures become storage textures;
@@ -526,7 +628,7 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
         }
         tx->smp_slot = combined ? tx->img_slot : -1;
       }
-      return;
+      return true;
     }
 
     // Sampler states — pair with the next unmatched texture in declaration
@@ -549,13 +651,14 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
       }
       if (matched >= 0)
         out->texs[matched].smp_slot = sidx;
-      return;
+      return true;
     }
   }
+  return true;
 }
 
 bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
-                            SglShaderStage stage) {
+                            SglShaderStage stage, char *err, size_t errsz) {
   if (!layout)
     return false;
   unsigned gpc = layout->getParameterCount();
@@ -563,7 +666,8 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
     VariableLayoutReflection *p = layout->getParameterByIndex(i);
     if (!p)
       continue;
-    fill_global_param(p, out, stage);
+    if (!fill_global_param(p, out, stage, err, errsz))
+      return false;
   }
   return true;
 }
@@ -1241,7 +1345,8 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
         continue;
       if (!has(names, p->getName()))
         continue;
-      fill_global_param(p, out_refl, stage);
+      if (!fill_global_param(p, out_refl, stage, err_buf, err_buf_size))
+        return false;
     }
   }
 
@@ -1376,7 +1481,9 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
         return false;
       }
     }
-    fill_global_reflection(programLayout, stage_refl, sgl_stage);
+    if (!fill_global_reflection(programLayout, stage_refl, sgl_stage, err_buf,
+                                err_buf_size))
+      return false;
 
     size_t size = code->getBufferSize();
     out_blob->spirv = (uint32_t *)malloc(size);
@@ -1519,7 +1626,9 @@ extern "C" bool shader_compile_compute(const char *cs_src,
     out_refl->workgroup[2] = (int)sizes[2];
     break;
   }
-  fill_global_reflection(programLayout, out_refl, SGL_STAGE_COMPUTE);
+  if (!fill_global_reflection(programLayout, out_refl, SGL_STAGE_COMPUTE,
+                              err_buf, err_buf_size))
+    return false;
   if (target == SHADER_TARGET_SDLGPU)
     remap_stage_for_sdlgpu(out_refl);
 

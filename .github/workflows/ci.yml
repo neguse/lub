@@ -226,6 +226,7 @@ jobs:
         run: |
           cd build-release
           ./lub_shader_d3d12_smoke.exe
+          ./lub_shader_layout_smoke.exe
           ./lub_sdf_smoke.exe
           ./lub_surfacenets_smoke.exe
           ./lub_physics_box2d_smoke.exe

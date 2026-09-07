@@ -82,6 +82,13 @@ Gfx.EndPass();
   頂点入力レイアウトなしに描ける。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
   lub が target ごとに与える semantic で、`SV_VertexID` を直接書くと SPIR-V
   では base vertex を引く形になり `DrawParameters` を要求してしまう。
+- `StructuredBuffer<T>` の `T` は target によらず同じ並びでなければならない
+  (SPIR-V と WGSL は float3 / float4 を 16 byte 境界に置き、DXIL は詰める)。
+  規約は「float3 の直後には float を置く」「struct の大きさは、float3 か
+  float4 を含むなら 16 の倍数、float2 までなら 8 の倍数にする」。
+  `{float3 pos; float pad; float2 uv; float2 pad2;}` は通り、
+  `{float3 pos; float2 uv;}` は shader compile 時に `buffer layout:` の
+  error になる。float4 と float2 と float だけで組めば自然に満たす。
 - `opts`(`DrawOpts`)の既定値は blend=NONE / cull=BACK /
   primitive=TRIANGLES / depth=true。
 

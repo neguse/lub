@@ -439,6 +439,27 @@ if(NOT LUB_WASM)
   endif()
   target_include_directories(lub_sdf_smoke PRIVATE src include)
 
+  # Buffer layout smoke: StructuredBuffer element structs must pack the same
+  # on every target (shader.cpp rejects the rest). Compiles through the
+  # SPIR-V (SDL_GPU) target on every platform.
+  add_executable(lub_shader_layout_smoke
+    tests/c/shader_layout_smoke.c
+    src/shader.cpp
+  )
+  target_include_directories(lub_shader_layout_smoke PRIVATE
+    src
+    third_party/slang/include
+  )
+  target_link_directories(lub_shader_layout_smoke PRIVATE third_party/slang/lib)
+  target_link_libraries(lub_shader_layout_smoke PRIVATE slang)
+  if(UNIX AND NOT APPLE)
+    set_target_properties(lub_shader_layout_smoke PROPERTIES
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib")
+  endif()
+  if(WIN32)
+    add_dependencies(lub_shader_layout_smoke lub) # slang DLLs land via lub's post-build copy
+  endif()
+
   # Slang -> DXIL compile smoke (Windows only; needs dxcompiler.dll from the
   # DXC fetch above, resolved from the build dir where the slang DLLs are
   # copied post-build of lub).
