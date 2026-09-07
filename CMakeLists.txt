@@ -306,6 +306,12 @@ if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   )
 endif()
 if(WIN32)
+  # lub.exe links the same objects as lub.dll, whose C API is dllexport, so
+  # MSVC also writes an import library for the exe. Keep it apart from
+  # lub.dll's lub.lib / lub.exp: both targets link into the same directory,
+  # possibly at the same time, and a shared name is a build race
+  # (LNK1104 cannot open file 'lub.exp').
+  set_target_properties(lub PROPERTIES ENABLE_EXPORTS ON ARCHIVE_OUTPUT_NAME lub_exe)
   # On Windows the Slang runtime is a set of DLLs in third_party/slang/bin/.
   # Copy them next to lub.exe so it can resolve them at runtime without
   # putting third_party/slang/bin on PATH.
