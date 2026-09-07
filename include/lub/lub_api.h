@@ -88,7 +88,6 @@ typedef enum LubEventKind {
 
 // use_buffer の種別。
 typedef enum LubGfxBufferType {
-  LUB_GFX_BUFFER_TYPE_VERTEX = 1,
   LUB_GFX_BUFFER_TYPE_INDEX = 2,
   LUB_GFX_BUFFER_TYPE_UNIFORM = 3,
   LUB_GFX_BUFFER_TYPE_STORAGE = 4,
@@ -2421,7 +2420,8 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
                                              LubStr src, const int32_t *version,
                                              LubHandle *out);
 
-// VERTEX/INDEX/STORAGE バッファ (データ渡し)。
+// INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の
+// StructuredBuffer が読む。
 LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);

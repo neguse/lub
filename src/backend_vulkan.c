@@ -2174,44 +2174,10 @@ static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {
     return (uintptr_t)p;
   }
 
-  VkVertexInputAttributeDescription attrs[SGL_MAX_ATTRS];
-  VkVertexInputBindingDescription binds[SGL_MAX_VERTEX_BUFFERS];
-  uint32_t n_binds = 0;
-  bool buffer_used[SGL_MAX_VERTEX_BUFFERS] = {false};
-  int attr_count = p->refl.attr_count;
-  static const VkFormat comp_fmt[5] = {
-      VK_FORMAT_UNDEFINED, VK_FORMAT_R32_SFLOAT, VK_FORMAT_R32G32_SFLOAT,
-      VK_FORMAT_R32G32B32_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT};
-  for (int i = 0; i < attr_count; ++i) {
-    const ShaderAttr *a = &p->refl.attrs[i];
-    int cc = a->comp_count >= 1 && a->comp_count <= 4 ? a->comp_count : 4;
-    int bi = (a->buffer_index >= 0 && a->buffer_index < SGL_MAX_VERTEX_BUFFERS)
-                 ? a->buffer_index
-                 : 0;
-    attrs[i] = (VkVertexInputAttributeDescription){
-        .location = (uint32_t)a->slot,
-        .binding = (uint32_t)bi,
-        .format = comp_fmt[cc],
-        .offset = (uint32_t)(a->offset_floats * sizeof(float)),
-    };
-    buffer_used[bi] = true;
-  }
-  for (int bi = 0; bi < SGL_MAX_VERTEX_BUFFERS; ++bi) {
-    if (!buffer_used[bi])
-      continue;
-    binds[n_binds++] = (VkVertexInputBindingDescription){
-        .binding = (uint32_t)bi,
-        .stride = (uint32_t)(p->refl.buffer_stride_floats[bi] * sizeof(float)),
-        .inputRate = bi == 0 ? VK_VERTEX_INPUT_RATE_VERTEX
-                             : VK_VERTEX_INPUT_RATE_INSTANCE,
-    };
-  }
+  // Vertex pulling: shaders read vertices from storage buffers, so the
+  // pipeline declares no vertex input.
   VkPipelineVertexInputStateCreateInfo vin = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-      .vertexBindingDescriptionCount = n_binds,
-      .pVertexBindingDescriptions = binds,
-      .vertexAttributeDescriptionCount = (uint32_t)attr_count,
-      .pVertexAttributeDescriptions = attrs,
   };
 
   VkPrimitiveTopology topo;
@@ -2487,17 +2453,6 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   const ShaderReflection *refl = &g_current_pip->refl;
 
-  VkDeviceSize zero = 0;
-  if (b->vbuf) {
-    VkbBuffer *vb = (VkbBuffer *)b->vbuf;
-    if (vb && vb->buf)
-      vkCmdBindVertexBuffers(cmd, 0, 1, &vb->buf, &zero);
-  }
-  if (b->instance_vbuf) {
-    VkbBuffer *vb = (VkbBuffer *)b->instance_vbuf;
-    if (vb && vb->buf)
-      vkCmdBindVertexBuffers(cmd, 1, 1, &vb->buf, &zero);
-  }
   if (b->ibuf) {
     VkbBuffer *ib = (VkbBuffer *)b->ibuf;
     if (ib && ib->buf) {

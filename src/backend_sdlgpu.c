@@ -484,18 +484,14 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
   b->type = type;
   SDL_GPUBufferUsageFlags usage;
   switch (type) {
-  case SGL_BUFFER_VERTEX:
-    usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    break;
   case SGL_BUFFER_INDEX:
     usage = SDL_GPU_BUFFERUSAGE_INDEX;
     break;
   case SGL_BUFFER_STORAGE:
-    // Storage buffer for compute output + graphics vertex input.
-    // The compute pass writes via COMPUTE_STORAGE_*; the same buffer
-    // is rebound as a VBO in the subsequent render pass.
-    usage = SDL_GPU_BUFFERUSAGE_VERTEX |
-            SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+    // Storage buffer for compute and for graphics-stage reads (vertex
+    // pulling): the compute pass writes via COMPUTE_STORAGE_*, the render
+    // pass reads it as a graphics storage buffer.
+    usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
             SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
             SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
     break;
@@ -849,49 +845,6 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
   if (d->refl)
     p->refl = *d->refl;
 
-  SDL_GPUVertexAttribute attrs[SGL_MAX_ATTRS];
-  int attr_count = d->refl ? d->refl->attr_count : 0;
-  for (int i = 0; i < attr_count; ++i) {
-    int buffer_index = d->refl->attrs[i].buffer_index;
-    if (buffer_index < 0 || buffer_index >= SGL_MAX_VERTEX_BUFFERS)
-      buffer_index = 0;
-    SDL_GPUVertexElementFormat fmt;
-    switch (d->refl->attrs[i].comp_count) {
-    case 1:
-      fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
-      break;
-    case 2:
-      fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-      break;
-    case 3:
-      fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-      break;
-    default:
-      fmt = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4;
-    }
-    attrs[i] = (SDL_GPUVertexAttribute){
-        .location = (Uint32)d->refl->attrs[i].slot,
-        .buffer_slot = (Uint32)buffer_index,
-        .format = fmt,
-        .offset = (Uint32)(d->refl->attrs[i].offset_floats * sizeof(float)),
-    };
-  }
-  SDL_GPUVertexBufferDescription vbds[SGL_MAX_VERTEX_BUFFERS] = {0};
-  int buffer_count = d->refl ? d->refl->buffer_count : 0;
-  if (buffer_count <= 0 && attr_count > 0)
-    buffer_count = 1;
-  if (buffer_count > SGL_MAX_VERTEX_BUFFERS)
-    buffer_count = SGL_MAX_VERTEX_BUFFERS;
-  for (int i = 0; i < buffer_count; ++i) {
-    vbds[i] = (SDL_GPUVertexBufferDescription){
-        .slot = (Uint32)i,
-        .pitch = (Uint32)((d->refl ? d->refl->buffer_stride_floats[i] : 0) *
-                          sizeof(float)),
-        .input_rate = (i == 0) ? SDL_GPU_VERTEXINPUTRATE_VERTEX
-                               : SDL_GPU_VERTEXINPUTRATE_INSTANCE,
-        .instance_step_rate = 0,
-    };
-  }
   int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
   if (nct > SGL_MAX_COLOR_TARGETS)
     nct = SGL_MAX_COLOR_TARGETS;
@@ -951,13 +904,6 @@ static BackendPipeline sg_make_pipeline(const PipelineDesc *d) {
       &(SDL_GPUGraphicsPipelineCreateInfo){
           .vertex_shader = sh->vs,
           .fragment_shader = sh->fs,
-          .vertex_input_state =
-              {
-                  .vertex_buffer_descriptions = vbds,
-                  .num_vertex_buffers = (Uint32)buffer_count,
-                  .vertex_attributes = attrs,
-                  .num_vertex_attributes = (Uint32)attr_count,
-              },
           .primitive_type = prim,
           .rasterizer_state =
               {
@@ -1052,22 +998,6 @@ static void sg_apply_pipeline(BackendPipeline h) {
 static void sg_apply_bindings(const BindingsDesc *b) {
   if (!g_render_pass)
     return;
-  if (b->vbuf) {
-    SgBuffer *vb = (SgBuffer *)b->vbuf;
-    if (vb && vb->gpu) {
-      SDL_BindGPUVertexBuffers(
-          g_render_pass, 0,
-          &(SDL_GPUBufferBinding){.buffer = vb->gpu, .offset = 0}, 1);
-    }
-  }
-  if (b->instance_vbuf) {
-    SgBuffer *vb = (SgBuffer *)b->instance_vbuf;
-    if (vb && vb->gpu) {
-      SDL_BindGPUVertexBuffers(
-          g_render_pass, 1,
-          &(SDL_GPUBufferBinding){.buffer = vb->gpu, .offset = 0}, 1);
-    }
-  }
   if (b->ibuf) {
     SgBuffer *ib = (SgBuffer *)b->ibuf;
     if (ib && ib->gpu) {

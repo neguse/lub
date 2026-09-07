@@ -85,8 +85,6 @@ typedef struct PassBeginDesc {
 typedef struct BindingsDesc {
   const ShaderReflection
       *refl; // for resolving texture name -> slot. NULL = skip texture binding.
-  BackendBuffer vbuf;          // 0 = none
-  BackendBuffer instance_vbuf; // 0 = none; slot 1, per-instance attributes
   BackendBuffer ibuf; // 0 = none (non-indexed); non-0 = u32 index buffer
   int texture_count;
   struct {

@@ -156,10 +156,8 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_buffer"))
     return LUB_ERROR;
-  if (type != SGL_BUFFER_VERTEX && type != SGL_BUFFER_INDEX &&
-      type != SGL_BUFFER_STORAGE)
-    return lub_api_fail(app,
-                        "use_buffer: only VERTEX/INDEX/STORAGE are supported");
+  if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
+    return lub_api_fail(app, "use_buffer: only INDEX/STORAGE are supported");
   if (bytes <= 0)
     return lub_api_fail(app, "use_buffer: empty data");
   if (!data && type != SGL_BUFFER_STORAGE)
@@ -943,7 +941,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   BindingsDesc bind = {0};
   bind.refl = &sh->u.sh.refl;
   uint8_t depth_tex_mask = 0;
-  // buffers: name で役割を決める ("indices" / "instances" / それ以外は vertex)
+  // buffers: "indices" は index buffer、それ以外は shader が同じ名前で宣言した
+  // StructuredBuffer に束縛する (vertex pulling)。宣言の無い名前は無視。
   int sbi = 0;
   for (int32_t i = 0; i < bs.n_buffers; ++i) {
     const LubBinding *b = bs.buffers[i];
@@ -954,26 +953,14 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
             app, "draw: 'indices' must be an INDEX buffer (got type %d)",
             (int)be->u.buf.type);
       bind.ibuf = be->u.buf.h;
-    } else if (lub_str_eq(b->name, "instances")) {
-      if (be->u.buf.type == SGL_BUFFER_VERTEX ||
-          be->u.buf.type == SGL_BUFFER_STORAGE)
-        bind.instance_vbuf = be->u.buf.h;
     } else if (be->u.buf.type == SGL_BUFFER_STORAGE &&
                refl_storage_buf_index(&sh->u.sh.refl, b->name, &sbi)) {
-      // The shader declares this name as a StructuredBuffer: bind it as a
-      // graphics-stage storage buffer (vertex pulling), not a vertex buffer.
       if (bind.storage_buf_count < SGL_MAX_STORAGE_BUFS) {
         bind.storage_bufs[bind.storage_buf_count].name =
             sh->u.sh.refl.storage_bufs[sbi].name;
         bind.storage_bufs[bind.storage_buf_count].buf = be->u.buf.h;
         bind.storage_buf_count++;
       }
-    } else if (be->u.buf.type == SGL_BUFFER_VERTEX ||
-               be->u.buf.type == SGL_BUFFER_STORAGE) {
-      // STORAGE buffers can also serve as a vertex source — they are declared
-      // with both vertex_buffer + storage_buffer usage so the same buffer can
-      // flow from compute write to draw read.
-      bind.vbuf = be->u.buf.h;
     }
   }
   const int max_tex = (int)(sizeof(bind.textures) / sizeof(bind.textures[0]));

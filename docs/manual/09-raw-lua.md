@@ -3,7 +3,7 @@
 lub のゲームは Lua だけでも書ける。runtime API は C runtime が作る `lub`
 table(`lub.gfx` / `lub.input` / `lub.io` / `lub.phys2d` / ...)で、名前は
 C# の面(`Gfx.BeginPass`)を snake_case に写したもの(`lub.gfx.begin_pass`)。
-enum は namespace 直下の大文字の定数(`lub.gfx.VERTEX`)か、"begin" のような
+enum は namespace 直下の大文字の定数(`lub.gfx.STORAGE`)か、"begin" のような
 文字列(API reference の Lua 欄を見る)。
 
 ## entry

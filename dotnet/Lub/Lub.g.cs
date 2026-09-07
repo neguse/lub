@@ -1836,7 +1836,6 @@ public static unsafe partial class Lub
         /// <summary>use_buffer の種別。</summary>
         public enum BufferType
         {
-            Vertex = 1,
             Index = 2,
             Uniform = 3,
             Storage = 4,
@@ -2008,7 +2007,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
+        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。</summary>
         public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();

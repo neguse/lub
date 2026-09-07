@@ -133,7 +133,7 @@ struct FrameCtx {
 struct DxBuffer {
   ComPtr<ID3D12Resource> res;
   size_t bytes = 0;
-  SglBufferType type = SGL_BUFFER_VERTEX;
+  SglBufferType type = SGL_BUFFER_STORAGE;
   D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
 };
 
@@ -759,7 +759,6 @@ D3D12_RESOURCE_STATES dx_buffer_read_state(SglBufferType type) {
     // Resting state between compute dispatches; dispatch transitions to
     // UAV/SRV as needed.
     return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-  case SGL_BUFFER_VERTEX:
   case SGL_BUFFER_UNIFORM:
   default:
     return D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
@@ -1379,34 +1378,11 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
     return (uintptr_t)p;
   }
 
-  D3D12_INPUT_ELEMENT_DESC elems[SGL_MAX_ATTRS] = {};
-  int attr_count = p->refl.attr_count;
-  for (int i = 0; i < attr_count; ++i) {
-    const ShaderAttr *a = &p->refl.attrs[i];
-    static const DXGI_FORMAT comp_fmt[5] = {
-        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32G32_FLOAT,
-        DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT};
-    int cc = a->comp_count >= 1 && a->comp_count <= 4 ? a->comp_count : 4;
-    int buffer_index =
-        (a->buffer_index >= 0 && a->buffer_index < SGL_MAX_VERTEX_BUFFERS)
-            ? a->buffer_index
-            : 0;
-    elems[i].SemanticName = a->semantic[0] ? a->semantic : "TEXCOORD";
-    elems[i].SemanticIndex = (UINT)a->semantic_index;
-    elems[i].Format = comp_fmt[cc];
-    elems[i].InputSlot = (UINT)buffer_index;
-    elems[i].AlignedByteOffset = (UINT)(a->offset_floats * sizeof(float));
-    elems[i].InputSlotClass =
-        buffer_index == 0 ? D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA
-                          : D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA;
-    elems[i].InstanceDataStepRate = buffer_index == 0 ? 0 : 1;
-  }
-
   D3D12_GRAPHICS_PIPELINE_STATE_DESC pd = {};
   pd.pRootSignature = sh->root_sig.Get();
   pd.VS = {sh->vs.data(), sh->vs.size()};
   pd.PS = {sh->fs.data(), sh->fs.size()};
-  pd.InputLayout = {elems, (UINT)attr_count};
+  pd.InputLayout = {nullptr, 0}; // vertex pulling: no vertex input
   pd.BlendState.RenderTarget[0] = dx_blend(d->blend);
   int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
   if (nct > SGL_MAX_COLOR_TARGETS)
@@ -1665,32 +1641,7 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
 void dx_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
-  const ShaderReflection *refl = &g_current_pip->refl;
 
-  if (b->vbuf) {
-    DxBuffer *vb = (DxBuffer *)b->vbuf;
-    if (vb && vb->res) {
-      dx_transition(vb->res.Get(), &vb->state,
-                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-      D3D12_VERTEX_BUFFER_VIEW v = {};
-      v.BufferLocation = vb->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)vb->bytes;
-      v.StrideInBytes = (UINT)(refl->buffer_stride_floats[0] * sizeof(float));
-      g.cl->IASetVertexBuffers(0, 1, &v);
-    }
-  }
-  if (b->instance_vbuf) {
-    DxBuffer *vb = (DxBuffer *)b->instance_vbuf;
-    if (vb && vb->res) {
-      dx_transition(vb->res.Get(), &vb->state,
-                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-      D3D12_VERTEX_BUFFER_VIEW v = {};
-      v.BufferLocation = vb->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)vb->bytes;
-      v.StrideInBytes = (UINT)(refl->buffer_stride_floats[1] * sizeof(float));
-      g.cl->IASetVertexBuffers(1, 1, &v);
-    }
-  }
   if (b->ibuf) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
     if (ib && ib->res) {

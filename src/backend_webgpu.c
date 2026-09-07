@@ -75,21 +75,6 @@ static WGPUTextureFormat sgl_to_wgpu_fmt(SglPixelFormat fmt) {
   }
 }
 
-static WGPUVertexFormat comp_count_to_wgpu(int n) {
-  switch (n) {
-  case 1:
-    return WGPUVertexFormat_Float32;
-  case 2:
-    return WGPUVertexFormat_Float32x2;
-  case 3:
-    return WGPUVertexFormat_Float32x3;
-  case 4:
-    return WGPUVertexFormat_Float32x4;
-  default:
-    return WGPUVertexFormat_Float32x3;
-  }
-}
-
 static WGPUPrimitiveTopology sgl_to_wgpu_prim(SglPrimitive p) {
   switch (p) {
   case SGL_PRIM_LINES:
@@ -465,13 +450,10 @@ static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
   wb->bytes = (uint64_t)bytes;
 
   WGPUBufferUsage usage = 0;
-  if (type == SGL_BUFFER_VERTEX)
-    usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-  else if (type == SGL_BUFFER_INDEX)
+  if (type == SGL_BUFFER_INDEX)
     usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
   else if (type == SGL_BUFFER_STORAGE)
-    usage = WGPUBufferUsage_Storage | WGPUBufferUsage_Vertex |
-            WGPUBufferUsage_CopyDst;
+    usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
   else
     usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
 
@@ -864,53 +846,12 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
   }
 
   // Graphics pipeline
-  // Vertex state
-  WGPUVertexBufferLayout vb_layouts[SGL_MAX_VERTEX_BUFFERS] = {0};
-  int vb_count = 0;
-
-  // Per-buffer attribute collection
-  WGPUVertexAttribute buf0_attrs[SGL_MAX_ATTRS];
-  WGPUVertexAttribute buf1_attrs[SGL_MAX_ATTRS];
-  int buf0_count = 0, buf1_count = 0;
-
-  if (d->refl) {
-    for (int i = 0; i < d->refl->attr_count && i < SGL_MAX_ATTRS; ++i) {
-      WGPUVertexAttribute a = {
-          .format = comp_count_to_wgpu(d->refl->attrs[i].comp_count),
-          .offset =
-              (uint64_t)(d->refl->attrs[i].offset_floats * (int)sizeof(float)),
-          .shaderLocation = (uint32_t)d->refl->attrs[i].slot,
-      };
-      int bi = d->refl->attrs[i].buffer_index;
-      if (bi <= 0) {
-        buf0_attrs[buf0_count++] = a;
-      } else {
-        buf1_attrs[buf1_count++] = a;
-      }
-    }
-    if (buf0_count > 0) {
-      vb_layouts[0].arrayStride =
-          (uint64_t)(d->refl->buffer_stride_floats[0] * (int)sizeof(float));
-      vb_layouts[0].stepMode = WGPUVertexStepMode_Vertex;
-      vb_layouts[0].attributeCount = (size_t)buf0_count;
-      vb_layouts[0].attributes = buf0_attrs;
-      vb_count = 1;
-    }
-    if (buf1_count > 0) {
-      vb_layouts[1].arrayStride =
-          (uint64_t)(d->refl->buffer_stride_floats[1] * (int)sizeof(float));
-      vb_layouts[1].stepMode = WGPUVertexStepMode_Instance;
-      vb_layouts[1].attributeCount = (size_t)buf1_count;
-      vb_layouts[1].attributes = buf1_attrs;
-      vb_count = 2;
-    }
-  }
-
+  // Vertex pulling: no vertex buffer layouts, shaders read storage buffers.
   WGPUVertexState vs = {
       .module = ws->vs_mod,
       .entryPoint = wg_sv("vs_main"),
-      .bufferCount = (size_t)vb_count,
-      .buffers = vb_layouts,
+      .bufferCount = 0,
+      .buffers = NULL,
   };
 
   // Fragment state. n_color_targets == 0 = depth-only pass: the fragment
@@ -1211,15 +1152,7 @@ static void wg_apply_bindings(const BindingsDesc *b) {
   if (!g_rpass || !g_cur_pipeline)
     return;
 
-  // Vertex / index buffers
-  if (b->vbuf) {
-    WgBuffer *vb = (WgBuffer *)b->vbuf;
-    wgpuRenderPassEncoderSetVertexBuffer(g_rpass, 0, vb->buf, 0, vb->bytes);
-  }
-  if (b->instance_vbuf) {
-    WgBuffer *vb = (WgBuffer *)b->instance_vbuf;
-    wgpuRenderPassEncoderSetVertexBuffer(g_rpass, 1, vb->buf, 0, vb->bytes);
-  }
+  // Index buffer
   g_ibuf_bound = false;
   if (b->ibuf) {
     WgBuffer *ib = (WgBuffer *)b->ibuf;

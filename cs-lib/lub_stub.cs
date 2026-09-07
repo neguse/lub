@@ -246,7 +246,7 @@ public static class Lub
         public static TextureRef? MainTex;
 
         /// <summary>use_buffer の種別。</summary>
-        public enum BufferType { Vertex = 1, Index = 2, Uniform = 3, Storage = 4 }
+        public enum BufferType { Index = 2, Uniform = 3, Storage = 4 }
 
         /// <summary>テクスチャ / render target の画素形式。</summary>
         public enum PixelFormat
@@ -303,7 +303,8 @@ public static class Lub
             return null;
         }
 
-        /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
+        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
+        /// 作り、shader の StructuredBuffer が読む。</summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
             List<float> data, int? version = null)
         {
