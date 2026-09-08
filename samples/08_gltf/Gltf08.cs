@@ -64,7 +64,7 @@ public static class Gltf08
         if (mesh == null) return;
 
         var verts = Io.InterleavePn(mesh);
-        var vb = Gfx.UseBuffer("gltf_vb", Gfx.BufferType.Vertex, verts, meshVer);
+        var vb = Gfx.UseBuffer("gltf_vb", Gfx.BufferType.Storage, verts, meshVer);
         var ib = Gfx.UseBufferInts("gltf_ib", Gfx.BufferType.Index, mesh.Indices, meshVer);
         if (shader == null || vb == null || ib == null) return;
 

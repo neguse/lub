@@ -35,15 +35,17 @@ public class MeshText
         + "ConstantBuffer<Uniforms> u;\n"
         + "\n"
         + "struct VSIn {\n"
-        + "  float2 pos : POSITION; // em units, y-up, baseline origin\n"
+        + "  float2 pos; // em units, y-up, baseline origin\n"
         + "};\n"
+        + "StructuredBuffer<VSIn> verts;\n"
         + "\n"
         + "struct VSOut {\n"
         + "  float4 color : COLOR;\n"
         + "  float4 pos : SV_Position;\n"
         + "};\n"
         + "\n"
-        + "[shader(\"vertex\")] VSOut vs_main(VSIn i) {\n"
+        + "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+        + "  VSIn i = verts[vid];\n"
         + "  VSOut o;\n"
         + "  float c = cos(u.psr.w);\n"
         + "  float s = sin(u.psr.w);\n"
@@ -138,7 +140,7 @@ public class MeshText
             idx.Add(gm.Indices[i]);
         var e = new GlyphEntry
         {
-            Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Vertex, verts, version),
+            Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Storage, verts, version),
             Ib = Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index, idx, version),
             Count = gm.IndexCount,
             Advance = gm.Advance,

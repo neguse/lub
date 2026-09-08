@@ -7,8 +7,8 @@ using static Lub;
 /// 保持するインスタンス。rebuild() は version 省略の「変更宣言」で upload
 /// するので、呼び側が version を管理する必要はない (hot reload や編集のたびに
 /// rebuild() を呼べばよい)。bones を持つ MeshData は自動で skinned レイアウト
-/// (Io.interleave_pncmw、stride 15)、それ以外は Io.interleave_pncm
-/// (stride 11: pos.xyz + normal.xyz + albedo.rgb + mr.xy)。
+/// (Io.interleave_pncmw、20 float)、それ以外は Io.interleave_pncm
+/// (16 float: pos pad nrm pad albedo pad mr pad)。
 /// この頂点レイアウトが Renderer3d の material 契約。
 /// </summary>
 public class Mesh3d
@@ -32,7 +32,7 @@ public class Mesh3d
         this.Data = data;
         Skinned = data.Bones != null;
         var verts = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
-        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Vertex, verts);
+        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, verts);
         // use_buffer は List<float> を取るので indices を詰め替える。
         // Lua 上は同じ整数値の array table になり、wire data は変わらない。
         var indices = new List<float>();

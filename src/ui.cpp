@@ -17,9 +17,10 @@ extern "C" {
 // ImGui のレンダラ実装。draw list を「頂点変換 → 単一 vbuf/ibuf アップロード →
 // cmd ごとに scissor + テクスチャ切替 + indexed draw」として l_draw と同じ
 // 内部 API (pipeline cache / reflection ベースの bindings) で発行する。
-// 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float に展開して、既存の
-// float-only 頂点レイアウト (reflection 由来) に乗せる。ImDrawIdx は CMake の
-// ImDrawIdx=unsigned 定義で 32bit (backend の ibuf は u32 固定)。
+// 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv,
+// float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex
+// pulling)。ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の
+// ibuf は u32 固定)。
 
 static App *g_app_ui = nullptr;
 static bool g_ctx_ready = false;
@@ -37,17 +38,19 @@ static const char *UI_VS = //
     "  float4x4 proj;\n"
     "};\n"
     "ConstantBuffer<Uniforms> u;\n"
-    "struct VSIn {\n"
-    "  float2 pos : POSITION;\n"
-    "  float2 uv : TEXCOORD0;\n"
-    "  float4 col : COLOR;\n"
+    "struct V {\n"
+    "  float2 pos;\n"
+    "  float2 uv;\n"
+    "  float4 col;\n"
     "};\n"
+    "StructuredBuffer<V> verts;\n"
     "struct VSOut {\n"
     "  float2 uv : TEXCOORD0;\n"
     "  float4 col : COLOR0;\n"
     "  float4 pos : SV_Position;\n"
     "};\n"
-    "[shader(\"vertex\")] VSOut vs_main(VSIn i) {\n"
+    "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+    "  V i = verts[vid];\n"
     "  VSOut o;\n"
     "  o.pos = mul(u.proj, float4(i.pos, 0.0, 1.0));\n"
     "  o.uv = i.uv;\n"
@@ -268,7 +271,7 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
     vbase += (size_t)dl->VtxBuffer.Size;
     ibase += (size_t)dl->IdxBuffer.Size;
   }
-  if (!ensure_buffer(&g_vbuf, &g_vbuf_bytes, SGL_BUFFER_VERTEX, vstage.data(),
+  if (!ensure_buffer(&g_vbuf, &g_vbuf_bytes, SGL_BUFFER_STORAGE, vstage.data(),
                      vstage.size() * sizeof(float)) ||
       !ensure_buffer(&g_ibuf, &g_ibuf_bytes, SGL_BUFFER_INDEX, istage.data(),
                      istage.size() * sizeof(unsigned int)))
@@ -330,7 +333,9 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
 
       BindingsDesc bind = {};
       bind.refl = &g_refl;
-      bind.vbuf = g_vbuf;
+      bind.storage_buf_count = 1;
+      bind.storage_bufs[0].name = "verts";
+      bind.storage_bufs[0].buf = g_vbuf;
       bind.ibuf = g_ibuf;
       bind.texture_count = 1;
       bind.textures[0].name = "tex";

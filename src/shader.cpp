@@ -44,16 +44,27 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
   // Native SDL_GPU/Vulkan tolerates implicit-LOD there, so a native-only run
   // passes and the pipeline only turns up invalid (black screen) on web: use
   // LUB_SAMPLE_LOD for any sample reached after a branch/loop.
+  //
+  // LUB_VERTEX_ID / LUB_INSTANCE_ID are the per-draw vertex and instance
+  // index (vertex pulling). On SPIR-V Slang lowers SV_VertexID to
+  // VertexIndex - BaseVertex, which needs the DrawParameters capability that
+  // SDL_GPU never enables, so that target uses the raw builtin instead; lub
+  // always draws from base 0, so both mean the same thing. DXC rejects the
+  // Vulkan-only semantic names, hence the per-target spelling.
   if (target == SHADER_TARGET_SDLGPU) {
     return "#define LUB_TEXTURE2D(n) Sampler2D<float4> n\n"
            "#define LUB_SAMPLE(t, uv) t.Sample(uv)\n"
-           "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n";
+           "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(uv, 0.0)\n"
+           "#define LUB_VERTEX_ID SV_VulkanVertexID\n"
+           "#define LUB_INSTANCE_ID SV_VulkanInstanceID\n";
   }
   // wasm and d3d12 use the separate texture+sampler form (D3D12 has no
   // combined image samplers; t/s registers are distinct classes).
   return "#define LUB_TEXTURE2D(n) Texture2D n; SamplerState n##_smp\n"
          "#define LUB_SAMPLE(t, uv) t.Sample(t##_smp, uv)\n"
-         "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n";
+         "#define LUB_SAMPLE_LOD(t, uv) t.SampleLevel(t##_smp, uv, 0.0)\n"
+         "#define LUB_VERTEX_ID SV_VertexID\n"
+         "#define LUB_INSTANCE_ID SV_InstanceID\n";
 }
 
 #ifndef __EMSCRIPTEN__
@@ -220,104 +231,6 @@ int component_count_of(TypeReflection *t) {
   return 0;
 }
 
-bool fill_attrs_from_entry_point(EntryPointReflection *ep,
-                                 ShaderReflection *out, char *err,
-                                 size_t errsz) {
-  out->attr_count = 0;
-  out->vertex_stride_floats = 0;
-  out->buffer_count = 0;
-  memset(out->buffer_stride_floats, 0, sizeof(out->buffer_stride_floats));
-  if (!ep) {
-    if (err && errsz)
-      snprintf(err, errsz, "no vertex entry point reflection");
-    return false;
-  }
-  unsigned pcount = ep->getParameterCount();
-  int input_buffer = 0;
-  for (unsigned i = 0; i < pcount; ++i) {
-    VariableLayoutReflection *p = ep->getParameterByIndex(i);
-    if (!p)
-      continue;
-    TypeLayoutReflection *tl = p->getTypeLayout();
-    if (!tl)
-      continue;
-    TypeReflection *t = tl->getType();
-    if (!t)
-      continue;
-
-    // Two cases:
-    //  (a) parameter is a struct: iterate its fields as varying inputs.
-    //  (b) parameter is a vector/scalar: it's a single varying input.
-    if (input_buffer >= SGL_MAX_VERTEX_BUFFERS) {
-      if (err && errsz)
-        snprintf(err, errsz, "too many vertex input buffers (>%d)",
-                 SGL_MAX_VERTEX_BUFFERS);
-      return false;
-    }
-    const int buffer_index = input_buffer;
-    bool recorded_any = false;
-    auto record_one = [&](const char *name, TypeReflection *vt,
-                          const char *semantic, size_t semantic_index) -> bool {
-      if (out->attr_count >= SGL_MAX_ATTRS) {
-        if (err && errsz)
-          snprintf(err, errsz, "too many vertex attributes (>%d)",
-                   SGL_MAX_ATTRS);
-        return false;
-      }
-      ShaderAttr *a = &out->attrs[out->attr_count];
-      copy_name(a->name, sizeof(a->name), name);
-      // Canonicalize "TEXCOORD0" style semantics into base + index so the
-      // d3d12 input layout matches the DXIL input signature.
-      copy_name(a->semantic, sizeof(a->semantic), semantic);
-      a->semantic_index = (int)semantic_index;
-      size_t sn = strlen(a->semantic);
-      size_t digits = 0;
-      while (digits < sn && a->semantic[sn - 1 - digits] >= '0' &&
-             a->semantic[sn - 1 - digits] <= '9')
-        digits++;
-      if (digits > 0 && digits < sn) {
-        a->semantic_index = atoi(a->semantic + sn - digits);
-        a->semantic[sn - digits] = '\0';
-      }
-      a->slot = out->attr_count; // input location: assume sequential
-      a->comp_count = component_count_of(vt);
-      if (a->comp_count <= 0)
-        a->comp_count = 4;
-      a->buffer_index = buffer_index;
-      a->offset_floats = out->buffer_stride_floats[buffer_index];
-      out->buffer_stride_floats[buffer_index] += a->comp_count;
-      out->attr_count++;
-      recorded_any = true;
-      return true;
-    };
-
-    if (t->getKind() == TypeReflection::Kind::Struct) {
-      unsigned fc = tl->getFieldCount();
-      for (unsigned f = 0; f < fc; ++f) {
-        VariableLayoutReflection *fl = tl->getFieldByIndex(f);
-        if (!fl)
-          continue;
-        TypeReflection *ft = fl->getTypeLayout()->getType();
-        if (!record_one(fl->getName() ? fl->getName() : "attr", ft,
-                        fl->getSemanticName() ? fl->getSemanticName() : "",
-                        fl->getSemanticIndex()))
-          return false;
-      }
-    } else {
-      if (!record_one(p->getName() ? p->getName() : "attr", t,
-                      p->getSemanticName() ? p->getSemanticName() : "",
-                      p->getSemanticIndex()))
-        return false;
-    }
-    if (recorded_any) {
-      input_buffer++;
-      out->buffer_count = input_buffer;
-    }
-  }
-  out->vertex_stride_floats = out->buffer_stride_floats[0];
-  return true;
-}
-
 bool fill_uniform_block(VariableLayoutReflection *p, SglShaderStage stage,
                         ShaderUniformBlock *ub) {
   copy_name(ub->name, sizeof(ub->name), p->getName());
@@ -409,12 +322,112 @@ static bool refl_stex_exists(const ShaderReflection *refl, SglShaderStage stage,
   return false;
 }
 
+// --- portable buffer layouts -------------------------------------------------
+// lub fills StructuredBuffer<T> from one flat float list on every target, so
+// the layout Slang computes for T must equal tight packing: 4-byte scalars,
+// vectors of N*4 bytes, members back to back, no implicit padding. SPIR-V and
+// WGSL use std430, which pads float3 / float4 members up to 16-byte offsets
+// and rounds the struct size up; DXIL packs tightly. A struct that already
+// satisfies std430 when packed tightly is identical everywhere, and that is
+// what this check enforces (the manual states the rule as: a float3 is
+// followed by a float, and the struct size is a multiple of 16 when it holds
+// float3 / float4 members, of 8 when float2 is the widest).
+static size_t tight_size_of(TypeReflection *t) {
+  if (!t)
+    return 0;
+  switch (t->getKind()) {
+  case TypeReflection::Kind::Scalar:
+    return 4;
+  case TypeReflection::Kind::Vector:
+    return 4 * (size_t)t->getElementCount();
+  case TypeReflection::Kind::Matrix:
+    return 4 * (size_t)t->getRowCount() * (size_t)t->getColumnCount();
+  case TypeReflection::Kind::Array:
+    return (size_t)t->getElementCount() * tight_size_of(t->getElementType());
+  case TypeReflection::Kind::Struct: {
+    size_t n = 0;
+    for (unsigned i = 0; i < t->getFieldCount(); ++i)
+      n += tight_size_of(t->getFieldByIndex(i)->getType());
+    return n;
+  }
+  default:
+    return 0;
+  }
+}
+
+static bool check_tight_layout(TypeLayoutReflection *tl, const char *name,
+                               char *err, size_t errsz) {
+  TypeReflection *t = tl ? tl->getType() : nullptr;
+  if (!t)
+    return true;
+  const char *nm = name ? name : "?";
+  switch (t->getKind()) {
+  case TypeReflection::Kind::Struct: {
+    size_t off = 0;
+    for (unsigned i = 0; i < tl->getFieldCount(); ++i) {
+      VariableLayoutReflection *fl = tl->getFieldByIndex(i);
+      size_t got = fl->getOffset(SLANG_PARAMETER_CATEGORY_UNIFORM);
+      if (got != off) {
+        if (err && errsz)
+          snprintf(err, errsz,
+                   "buffer layout: %s.%s sits at byte %zu on this target but "
+                   "%zu when packed tightly; pad the member before it (a "
+                   "float3 is followed by a float) so every target agrees",
+                   nm, fl->getName() ? fl->getName() : "?", got, off);
+        return false;
+      }
+      if (!check_tight_layout(fl->getTypeLayout(), fl->getName(), err, errsz))
+        return false;
+      off += tight_size_of(fl->getType());
+    }
+    size_t size = tl->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    if (size != off) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: struct %s is %zu bytes on this target but %zu "
+                 "when packed tightly; pad it to a multiple of 16 (8 when "
+                 "float2 is the widest member)",
+                 nm, size, off);
+      return false;
+    }
+    return true;
+  }
+  case TypeReflection::Kind::Array: {
+    size_t stride = tl->getElementStride(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    size_t tight = tight_size_of(t->getElementType());
+    if (stride != tight) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: array %s has element stride %zu on this "
+                 "target but %zu when packed tightly; use float4 (or pad) "
+                 "elements",
+                 nm, stride, tight);
+      return false;
+    }
+    return check_tight_layout(tl->getElementTypeLayout(), nm, err, errsz);
+  }
+  default: {
+    size_t size = tl->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+    size_t tight = tight_size_of(t);
+    if (size != tight) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: %s is %zu bytes on this target but %zu when "
+                 "packed tightly (use 32-bit scalars, float4 matrix rows)",
+                 nm, size, tight);
+      return false;
+    }
+    return true;
+  }
+  }
+}
+
 // Record one global (module-scope) shader parameter into the reflection,
 // attributed to `stage`. Sampler states pair positionally with the preceding
 // textures of the same stage, so callers must feed a stage's parameters in
 // declaration order.
-void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
-                       SglShaderStage stage) {
+bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
+                       SglShaderStage stage, char *err, size_t errsz) {
   {
     SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
     TypeReflection *t =
@@ -429,7 +442,7 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
         fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
         out->ub_count++;
       }
-      return;
+      return true;
     }
 
     // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
@@ -463,10 +476,12 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
           if (TypeLayoutReflection *el = tl->getElementTypeLayout()) {
             sb->elem_stride =
                 (int)el->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+            if (!check_tight_layout(el, p->getName(), err, errsz))
+              return false;
           }
         }
       }
-      return;
+      return true;
     }
 
     // Texture resources. Read-write textures become storage textures;
@@ -515,7 +530,7 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
         }
         tx->smp_slot = combined ? tx->img_slot : -1;
       }
-      return;
+      return true;
     }
 
     // Sampler states — pair with the next unmatched texture in declaration
@@ -538,13 +553,14 @@ void fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
       }
       if (matched >= 0)
         out->texs[matched].smp_slot = sidx;
-      return;
+      return true;
     }
   }
+  return true;
 }
 
 bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
-                            SglShaderStage stage) {
+                            SglShaderStage stage, char *err, size_t errsz) {
   if (!layout)
     return false;
   unsigned gpc = layout->getParameterCount();
@@ -552,7 +568,8 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
     VariableLayoutReflection *p = layout->getParameterByIndex(i);
     if (!p)
       continue;
-    fill_global_param(p, out, stage);
+    if (!fill_global_param(p, out, stage, err, errsz))
+      return false;
   }
   return true;
 }
@@ -1060,14 +1077,6 @@ static void merge_stage_reflection(ShaderReflection *dst,
   // DXIL blob can't be re-numbered after the fact; the backend builds its
   // root signature from these values instead.
 
-  if (stage.attr_count > 0) {
-    dst->attr_count = stage.attr_count;
-    memcpy(dst->attrs, stage.attrs, sizeof(stage.attrs));
-    dst->buffer_count = stage.buffer_count;
-    memcpy(dst->buffer_stride_floats, stage.buffer_stride_floats,
-           sizeof(stage.buffer_stride_floats));
-    dst->vertex_stride_floats = stage.vertex_stride_floats;
-  }
   for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
        ++i) {
     dst->ubs[dst->ub_count++] = stage.ubs[i];
@@ -1181,18 +1190,6 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
     return false;
   }
 
-  EntryPointReflection *vsRefl = nullptr;
-  SlangUInt epc = layout->getEntryPointCount();
-  for (SlangUInt i = 0; i < epc; ++i) {
-    EntryPointReflection *epr = layout->getEntryPointByIndex(i);
-    if (epr && epr->getStage() == SLANG_STAGE_VERTEX) {
-      vsRefl = epr;
-      break;
-    }
-  }
-  if (!fill_attrs_from_entry_point(vsRefl, out_refl, err_buf, err_buf_size))
-    return false;
-
   // Stage attribution. The linked layout's registers are what the DXIL uses,
   // but it doesn't say which stage consumes a parameter — recover that by
   // matching names against each module's own parameter list.
@@ -1230,7 +1227,8 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
         continue;
       if (!has(names, p->getName()))
         continue;
-      fill_global_param(p, out_refl, stage);
+      if (!fill_global_param(p, out_refl, stage, err_buf, err_buf_size))
+        return false;
     }
   }
 
@@ -1350,22 +1348,9 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
       return false;
     }
 
-    if (sgl_stage == SGL_STAGE_VERTEX) {
-      EntryPointReflection *vsRefl = nullptr;
-      SlangUInt epc = programLayout->getEntryPointCount();
-      for (SlangUInt i = 0; i < epc; ++i) {
-        EntryPointReflection *epr = programLayout->getEntryPointByIndex(i);
-        if (epr && epr->getStage() == SLANG_STAGE_VERTEX) {
-          vsRefl = epr;
-          break;
-        }
-      }
-      if (!fill_attrs_from_entry_point(vsRefl, stage_refl, err_buf,
-                                       err_buf_size)) {
-        return false;
-      }
-    }
-    fill_global_reflection(programLayout, stage_refl, sgl_stage);
+    if (!fill_global_reflection(programLayout, stage_refl, sgl_stage, err_buf,
+                                err_buf_size))
+      return false;
 
     size_t size = code->getBufferSize();
     out_blob->spirv = (uint32_t *)malloc(size);
@@ -1508,7 +1493,9 @@ extern "C" bool shader_compile_compute(const char *cs_src,
     out_refl->workgroup[2] = (int)sizes[2];
     break;
   }
-  fill_global_reflection(programLayout, out_refl, SGL_STAGE_COMPUTE);
+  if (!fill_global_reflection(programLayout, out_refl, SGL_STAGE_COMPUTE,
+                              err_buf, err_buf_size))
+    return false;
   if (target == SHADER_TARGET_SDLGPU)
     remap_stage_for_sdlgpu(out_refl);
 
@@ -1796,38 +1783,6 @@ int comp_count_of_type_json(const json &t) {
   return 0;
 }
 
-// Record a single varying-input field. Fields appear inside a struct's
-// "fields" array, each with its own binding.{index, kind} and type.
-void record_attr_field(const json &f, ShaderReflection *out, int buffer_index) {
-  if (out->attr_count >= SGL_MAX_ATTRS)
-    return;
-  if (buffer_index < 0 || buffer_index >= SGL_MAX_VERTEX_BUFFERS)
-    return;
-  std::string name = f.value("name", std::string("attr"));
-  int cc = 0;
-  if (f.contains("type"))
-    cc = comp_count_of_type_json(f["type"]);
-  if (cc <= 0)
-    cc = 4;
-
-  ShaderAttr *a = &out->attrs[out->attr_count];
-  copy_name_capped(a->name, sizeof(a->name), name);
-  // Slang WASM reflection reports field binding.index as per-struct-relative,
-  // not global WGSL @location. Using the relative index directly causes slot
-  // collisions with multi-struct vertex inputs (e.g. instanced shaders with
-  // separate vertex + instance structs). Always use sequential attr_count,
-  // matching the native Slang API path in fill_attrs_from_entry_point.
-  a->slot = out->attr_count;
-  a->comp_count = cc;
-  a->buffer_index = buffer_index;
-  a->offset_floats = out->buffer_stride_floats[buffer_index];
-  out->buffer_stride_floats[buffer_index] += cc;
-  if (out->buffer_count < buffer_index + 1)
-    out->buffer_count = buffer_index + 1;
-  out->vertex_stride_floats = out->buffer_stride_floats[0];
-  out->attr_count++;
-}
-
 // Populate a ShaderUniformBlock from a top-level parameter whose type is
 // a ConstantBuffer<T>. Reads members from type.elementType.fields[].
 void fill_uniform_block_from_json(const json &p, int slot, SglShaderStage stage,
@@ -2046,47 +2001,6 @@ bool reflect_from_slang_json(const char *json_text, ShaderReflection *out,
           out->workgroup[k] = ep["threadGroupSize"][k].get<int>();
         }
       }
-
-      // Varying inputs (vertex only). is_vertex_stage gates this — the
-      // FS reflection has its own varyingInput entries (texcoords etc.)
-      // but those aren't pipeline-level vertex attributes.
-      if (reflect_stage != SGL_STAGE_VERTEX || stage != "vertex")
-        continue;
-      if (!ep.contains("parameters") || !ep["parameters"].is_array())
-        continue;
-      int input_buffer = 0;
-      for (const auto &p : ep["parameters"]) {
-        if (!p.is_object())
-          continue;
-        std::string bkind;
-        if (p.contains("binding") && p["binding"].is_object()) {
-          bkind = p["binding"].value("kind", std::string(""));
-        }
-        if (bkind != "varyingInput")
-          continue;
-        if (input_buffer >= SGL_MAX_VERTEX_BUFFERS)
-          continue;
-        // Two cases mirror the native path's fill_attrs_from_entry_point:
-        //   (a) struct => flatten its fields[]
-        //   (b) scalar/vector => single attr
-        if (!p.contains("type") || !p["type"].is_object())
-          continue;
-        const json &t = p["type"];
-        std::string tkind = t.value("kind", std::string(""));
-        bool recorded_any = false;
-        int before_count = out->attr_count;
-        if (tkind == "struct" && t.contains("fields") &&
-            t["fields"].is_array()) {
-          for (const auto &f : t["fields"]) {
-            record_attr_field(f, out, input_buffer);
-          }
-        } else {
-          record_attr_field(p, out, input_buffer);
-        }
-        recorded_any = out->attr_count > before_count;
-        if (recorded_any)
-          input_buffer++;
-      }
     }
   }
   // Slang assigns a single contiguous binding index across ALL resource types
@@ -2148,9 +2062,15 @@ static int wasm_next_free_ub_slot(const ShaderReflection *dst,
   return -1;
 }
 
+// Group 1 is shared by every stage's textures, samplers, storage buffers and
+// storage textures, so the free-slot search must cover their sum, not one
+// resource type's cap (a post pass with four textures plus the vertex
+// stage's storage buffer already needs nine slots).
+#define WASM_MAX_GROUP1_BINDINGS 64
+
 static int wasm_next_free_binding(const ShaderReflection *dst,
                                   const ShaderReflection *stage) {
-  for (int s = 0; s < SGL_MAX_TEXTURES; ++s) {
+  for (int s = 0; s < WASM_MAX_GROUP1_BINDINGS; ++s) {
     if (!wasm_binding_used(dst, s) && !wasm_binding_used(stage, s))
       return s;
   }
@@ -2184,6 +2104,20 @@ static void wasm_remap_stage_for_wgsl(const ShaderReflection *dst,
         stage->texs[i].smp_slot = slot;
     }
   }
+  for (int i = 0; i < stage->storage_buf_count; ++i) {
+    if (wasm_binding_used(dst, stage->storage_bufs[i].slot)) {
+      int slot = wasm_next_free_binding(dst, stage);
+      if (slot >= 0)
+        stage->storage_bufs[i].slot = slot;
+    }
+  }
+  for (int i = 0; i < stage->storage_tex_count; ++i) {
+    if (wasm_binding_used(dst, stage->storage_texs[i].slot)) {
+      int slot = wasm_next_free_binding(dst, stage);
+      if (slot >= 0)
+        stage->storage_texs[i].slot = slot;
+    }
+  }
 }
 
 static void wasm_merge_stage_reflection(ShaderReflection *dst,
@@ -2192,14 +2126,6 @@ static void wasm_merge_stage_reflection(ShaderReflection *dst,
   ShaderReflection stage = *src;
   if (target == SHADER_TARGET_WGSL)
     wasm_remap_stage_for_wgsl(dst, &stage);
-  if (stage.attr_count > 0) {
-    dst->attr_count = stage.attr_count;
-    memcpy(dst->attrs, stage.attrs, sizeof(stage.attrs));
-    dst->buffer_count = stage.buffer_count;
-    memcpy(dst->buffer_stride_floats, stage.buffer_stride_floats,
-           sizeof(stage.buffer_stride_floats));
-    dst->vertex_stride_floats = stage.vertex_stride_floats;
-  }
   for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
        ++i)
     dst->ubs[dst->ub_count++] = stage.ubs[i];

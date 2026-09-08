@@ -19,7 +19,7 @@ function M.on_frame(dt)
 	end
 	-- version は内容の hash。同じ version なら data は読まれない (再宣言だけ)。
 	local shader = lub.gfx.use_shader("tri27_shader", vs, fs, vsv * 31 + fsv)
-	local vbuf = lub.gfx.use_buffer("tri27_verts", lub.gfx.VERTEX, verts, vv)
+	local vbuf = lub.gfx.use_buffer("tri27_verts", lub.gfx.STORAGE, verts, vv)
 	if shader == nil or vbuf == nil then
 		return
 	end

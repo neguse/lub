@@ -47,7 +47,7 @@ public static class Postprocess05
         if (rt == null) return;
 
         var shOff = Gfx.UseShader("off_shader", ovs, ofs, ovsv * 31 + ofsv);
-        var bOff = Gfx.UseBuffer("off_verts", Gfx.BufferType.Vertex, overts, ovv);
+        var bOff = Gfx.UseBuffer("off_verts", Gfx.BufferType.Storage, overts, ovv);
         if (shOff == null || bOff == null) return;
         Gfx.BeginPass(new PassOpts
         {
@@ -60,7 +60,7 @@ public static class Postprocess05
         Gfx.EndPass();
 
         var shPost = Gfx.UseShader("post_shader", pvs, pfs, pvsv * 31 + pfsv);
-        var bPost = Gfx.UseBuffer("post_verts", Gfx.BufferType.Vertex, pverts, pvv);
+        var bPost = Gfx.UseBuffer("post_verts", Gfx.BufferType.Storage, pverts, pvv);
         if (shPost == null || bPost == null) return;
         Gfx.BeginPass(new PassOpts
         {

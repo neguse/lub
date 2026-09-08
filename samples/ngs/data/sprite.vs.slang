@@ -1,14 +1,17 @@
-struct VSIn {
-  float2 pos : POSITION;
-  float2 uv : TEXCOORD0;
-  float4 color : COLOR;
+// NgsDrawList.Stride = 8 floats per vertex.
+struct V {
+  float2 pos;
+  float2 uv;
+  float4 color;
 };
+StructuredBuffer<V> verts;
 struct VSOut {
   float2 uv : TEXCOORD0;
   float4 color : COLOR;
   float4 pos : SV_Position;
 };
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   // logical 640x480, origin top-left -> NDC (origin center, y up)
   o.pos = float4(i.pos.x / 320.0 - 1.0, 1.0 - i.pos.y / 240.0, 0.0, 1.0);

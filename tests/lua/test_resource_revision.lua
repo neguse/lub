@@ -14,13 +14,13 @@ function M.on_frame()
 	local data = { 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 }
 
 	-- 変更宣言のたびに実効 version が変わる
-	local b1 = lub.gfx.use_buffer("rev_test", lub.gfx.VERTEX, data)
+	local b1 = lub.gfx.use_buffer("rev_test", lub.gfx.STORAGE, data)
 	assert(b1.version ~= nil, "ref must carry the effective version")
-	local b2 = lub.gfx.use_buffer("rev_test", lub.gfx.VERTEX, data)
+	local b2 = lub.gfx.use_buffer("rev_test", lub.gfx.STORAGE, data)
 	assert(b2.version ~= b1.version, "declaration must issue a fresh version")
 
 	-- ref.version の再主張は stored と一致する (upload skip 経路)
-	local b3 = lub.gfx.use_buffer("rev_test", lub.gfx.VERTEX, data, b2.version)
+	local b3 = lub.gfx.use_buffer("rev_test", lub.gfx.STORAGE, data, b2.version)
 	assert(b3.version == b2.version, "reassertion must keep the stored version")
 
 	-- 宣言で発行される version は hot reload を跨いで過去の値と衝突しない

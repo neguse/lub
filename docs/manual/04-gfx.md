@@ -73,9 +73,47 @@ Gfx.EndPass();
   テクスチャを渡す。MRT は `Targets`、depth-only は `DepthTarget`(詳細は
   `PassOpts`)。
 - `Draw(count, bindings, opts)` の `bindings` はシェーダ依存の自由なテーブル。
-  予約名は `indices`(indexed draw)、`instances`(インスタンシング)、
-  `uniforms` の 3 つ。それ以外のバッファ値は頂点バッファ、テクスチャ値は
-  キー名でシェーダのテクスチャに束縛される。
+  予約名は `indices`(indexed draw)と `uniforms` の 2 つ。それ以外は
+  キー名でシェーダの同名の `StructuredBuffer` / テクスチャに束縛される。
+- 頂点データは頂点シェーダが `StructuredBuffer<V> verts` から
+  `LUB_VERTEX_ID` で自分の要素を読む(vertex pulling)。頂点入力レイアウトは
+  無く、バッファは `BufferType.Storage` で作る。instancing は per-instance
+  の `StructuredBuffer<I> insts` を `LUB_INSTANCE_ID` で読み、
+  `DrawOpts.InstanceCount` を渡す。`LUB_VERTEX_ID` / `LUB_INSTANCE_ID` は
+  lub が target ごとに与える semantic で、`SV_VertexID` を直接書くと SPIR-V
+  では base vertex を引く形になり `DrawParameters` を要求してしまう。
+
+```slang
+struct V { float3 pos; float pad0; float4 col; };
+StructuredBuffer<V> verts;
+struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V v = verts[vid];
+  VSOut o;
+  o.pos = mul(mvp, float4(v.pos, 1.0));
+  o.col = v.col;
+  return o;
+}
+```
+
+- `StructuredBuffer<T>` の `T` は target によらず同じ並びでなければならない
+  (SPIR-V と WGSL は float3 / float4 を 16 byte 境界に置き、DXIL は詰める)。
+  規約は「float3 の直後には float を置く」「struct の大きさは、float3 か
+  float4 を含むなら 16 の倍数、float2 までなら 8 の倍数にする」。
+  `{float3 pos; float pad; float2 uv; float2 pad2;}` は通り、
+  `{float3 pos; float2 uv;}` は shader compile 時に `buffer layout:` の
+  error になる。float4 と float2 と float だけで組めば自然に満たす。
+- `Io.Interleave*` と `lubx` の `Shapes` はこの規約で頂点列を返す:
+
+| 生成 | float / 頂点 | struct |
+|---|---|---|
+| `InterleavePn` | 8 | `float3 pos; float pad0; float3 nrm; float pad1;` |
+| `InterleavePnu` | 12 | pn + `float2 uv; float2 pad2;` |
+| `InterleavePnut` | 16 | pnu + `float4 tangent;` |
+| `InterleavePncm` | 16 | pn + `float3 albedo; float pad2; float2 mr; float2 pad3;` |
+| `InterleavePncmw` | 20 | pncm + `float4 skin;`(j0, w0, j1, w1) |
+| `Shapes`(Stride 12) | 12 | pn + `float4 color;` |
+
 - `opts`(`DrawOpts`)の既定値は blend=NONE / cull=BACK /
   primitive=TRIANGLES / depth=true。
 

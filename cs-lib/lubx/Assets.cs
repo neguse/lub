@@ -22,7 +22,7 @@ public static class Assets
     }
 
     /// <summary>load_floats + use_buffer。data 未 ready なら null。
-    /// usage は Gfx.BufferType.Vertex / Index。</summary>
+    /// usage は Gfx.BufferType.Storage / Index。</summary>
     public static BufferRef? Floats(string key, Gfx.BufferType usage, string path)
     {
         Io.LoadFloats(path, out var data, out var version, out _, out _);

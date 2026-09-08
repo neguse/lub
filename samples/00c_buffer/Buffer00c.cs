@@ -27,7 +27,7 @@ public static class Buffer00c
 
     public static void OnFrame(float dt)
     {
-        var b = Gfx.UseBuffer("tri", Gfx.BufferType.Vertex, data, 1);
+        var b = Gfx.UseBuffer("tri", Gfx.BufferType.Storage, data, 1);
         if (b != null)
         {
             // buffer registered

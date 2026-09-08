@@ -38,7 +38,7 @@ public static class Flappy17
         var s = Assets.Shader("cube_shader",
             "samples/17_flappy/data/cube.vs.slang",
             "samples/17_flappy/data/cube.fs.slang");
-        var b = Assets.Floats("cube_verts", Gfx.BufferType.Vertex,
+        var b = Assets.Floats("cube_verts", Gfx.BufferType.Storage,
             "samples/17_flappy/data/cube.verts.lua");
         if (s == null || b == null) return;
 

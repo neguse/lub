@@ -109,7 +109,7 @@ local function run_checks()
 	for i = 1, gm.vert_count * 3 do
 		verts[i] = gm.positions[i]
 	end
-	local buf = lub.gfx.use_buffer("font_mesh_ho", lub.gfx.VERTEX, verts, 1)
+	local buf = lub.gfx.use_buffer("font_mesh_ho", lub.gfx.STORAGE, verts, 1)
 	expect(buf ~= nil, "use_buffer with glyph mesh failed")
 end
 

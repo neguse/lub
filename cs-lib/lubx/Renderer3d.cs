@@ -190,8 +190,42 @@ public class Renderer3dOutline
 public class Renderer3d
 {
     // --- 埋め込み shader (pncm / pncmw 頂点レイアウト契約) -------------------
-    // NOTE: slang の WGSL 出力は TEXCOORDn を @location(n) に割り当てるので、
-    // TEXCOORD の番号は宣言位置に合わせる (ズレると wasm で attr が崩れる)。
+    // 頂点は StructuredBuffer `verts` を LUB_VERTEX_ID で引く (vertex pulling)。
+    // 構造体の並びと pad は Io.interleave_pncm / interleave_pncmw の float 列と
+    // 一致させる (Mesh3d が作る buffer をそのまま読む)。
+    private static string pncmVerts = """
+
+        struct V {
+          float3 pos;
+          float pad0;
+          float3 normal;
+          float pad1;
+          float3 color;
+          float pad2;
+          float2 mr; // metallic, roughness
+          float2 pad3;
+        };
+        StructuredBuffer<V> verts;
+
+        """;
+
+    private static string pncmwVerts = """
+
+        struct V {
+          float3 pos;
+          float pad0;
+          float3 normal;
+          float pad1;
+          float3 color;
+          float pad2;
+          float2 mr; // metallic, roughness
+          float2 pad3;
+          float4 skin; // j0, w0, j1, w1
+        };
+        StructuredBuffer<V> verts;
+
+        """;
+
     private static string litVsCommon = """
 
         struct Uniforms {
@@ -219,17 +253,13 @@ public class Renderer3d
         + """
         };
         ConstantBuffer<Uniforms> u;
-        struct VSIn {
-          float3 pos : POSITION;
-          float3 normal : NORMAL;
-          float3 color : COLOR;
-          float2 mr : TEXCOORD3;
-        };
         """
+        + pncmVerts
         + litVsBody
         + """
 
-        [shader("vertex")] VSOut vs_main(VSIn i) {
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+          V i = verts[vid];
           VSOut o;
           float4 wp4 = mul(u.model, float4(i.pos, 1.0f));
           o.pos = mul(u.mvp, float4(i.pos, 1.0f));
@@ -251,18 +281,13 @@ public class Renderer3d
           float4x4 bones[8];
         };
         ConstantBuffer<Uniforms> u;
-        struct VSIn {
-          float3 pos : POSITION;
-          float3 normal : NORMAL;
-          float3 color : COLOR;
-          float2 mr : TEXCOORD3;
-          float4 skin : TEXCOORD4; // j0, w0, j1, w1
-        };
         """
+        + pncmwVerts
         + litVsBody
         + """
 
-        [shader("vertex")] VSOut vs_main(VSIn i) {
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+          V i = verts[vid];
           VSOut o;
           int j0 = int(i.skin.x);
           int j1 = int(i.skin.z);
@@ -364,16 +389,14 @@ public class Renderer3d
           float4x4 model;
         };
         ConstantBuffer<U> u;
-        struct VSIn {
-          float3 pos : POSITION;
-          float3 normal : NORMAL;
-          float3 color : COLOR;
-          float2 mr : TEXCOORD3;
-        };
+        """
+        + pncmVerts
+        + """
         struct VSOut {
           float4 pos : SV_Position;
         };
-        [shader("vertex")] VSOut vs_main(VSIn i) {
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+          V i = verts[vid];
           VSOut o;
           o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));
           return o;
@@ -389,17 +412,14 @@ public class Renderer3d
           float4x4 bones[8];
         };
         ConstantBuffer<U> u;
-        struct VSIn {
-          float3 pos : POSITION;
-          float3 normal : NORMAL;
-          float3 color : COLOR;
-          float2 mr : TEXCOORD3;
-          float4 skin : TEXCOORD4;
-        };
+        """
+        + pncmwVerts
+        + """
         struct VSOut {
           float4 pos : SV_Position;
         };
-        [shader("vertex")] VSOut vs_main(VSIn i) {
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+          V i = verts[vid];
           VSOut o;
           int j0 = int(i.skin.x);
           int j1 = int(i.skin.z);
@@ -630,15 +650,17 @@ public class Renderer3d
 
     private static string quadVs = """
 
-        struct VSIn {
-          float2 pos : POSITION;
-          float2 uv : TEXCOORD0;
+        struct Q {
+          float2 pos;
+          float2 uv;
         };
+        StructuredBuffer<Q> verts;
         struct VSOut {
           float2 uv : TEXCOORD0;
           float4 pos : SV_Position;
         };
-        [shader("vertex")] VSOut vs_main(VSIn i) {
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+          Q i = verts[vid];
           VSOut o;
           o.pos = float4(i.pos, 0.0f, 1.0f);
           o.uv = i.uv;
@@ -996,8 +1018,8 @@ public class Renderer3d
         var shadowMap = Gfx.UseTexture(key + "_sm", Shadow.Size, Shadow.Size,
             Gfx.PixelFormat.Depth32f, null, Shadow.Size,
             new TextureOpts { Target = true, Wrap = Gfx.Wrap.Clamp });
-        var quad = Gfx.UseBuffer(key + "_quad", Gfx.BufferType.Vertex, presentQuad, 1);
-        flipQuadBuf = Gfx.UseBuffer(key + "_fquad", Gfx.BufferType.Vertex, flipQuad, 1);
+        var quad = Gfx.UseBuffer(key + "_quad", Gfx.BufferType.Storage, presentQuad, 1);
+        flipQuadBuf = Gfx.UseBuffer(key + "_fquad", Gfx.BufferType.Storage, flipQuad, 1);
         if (hdr == null || depth == null || shadowMap == null || quad == null
             || flipQuadBuf == null)
             return;

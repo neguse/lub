@@ -358,6 +358,12 @@ if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   )
 endif()
 if(WIN32)
+  # lub.exe links the same objects as lub.dll, whose C API is dllexport, so
+  # MSVC also writes an import library for the exe. Keep it apart from
+  # lub.dll's lub.lib / lub.exp: both targets link into the same directory,
+  # possibly at the same time, and a shared name is a build race
+  # (LNK1104 cannot open file 'lub.exp').
+  set_target_properties(lub PROPERTIES ENABLE_EXPORTS ON ARCHIVE_OUTPUT_NAME lub_exe)
   # Agility SDK headers ahead of the Windows SDK ones, so D3D12_SDK_VERSION is
   # the shipped runtime's.
   target_include_directories(lub_objs BEFORE PUBLIC "${LUB_AGILITY_ROOT}/build/native/include")
@@ -509,6 +515,27 @@ if(NOT LUB_WASM)
     target_link_libraries(lub_sdf_smoke PRIVATE m)
   endif()
   target_include_directories(lub_sdf_smoke PRIVATE src include)
+
+  # Buffer layout smoke: StructuredBuffer element structs must pack the same
+  # on every target (shader.cpp rejects the rest). Compiles through the
+  # SPIR-V (SDL_GPU) target on every platform.
+  add_executable(lub_shader_layout_smoke
+    tests/c/shader_layout_smoke.c
+    src/shader.cpp
+  )
+  target_include_directories(lub_shader_layout_smoke PRIVATE
+    src
+    third_party/slang/include
+  )
+  target_link_directories(lub_shader_layout_smoke PRIVATE third_party/slang/lib)
+  target_link_libraries(lub_shader_layout_smoke PRIVATE slang)
+  if(UNIX AND NOT APPLE)
+    set_target_properties(lub_shader_layout_smoke PROPERTIES
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib")
+  endif()
+  if(WIN32)
+    add_dependencies(lub_shader_layout_smoke lub) # slang DLLs land via lub's post-build copy
+  endif()
 
   # Slang -> DXIL compile smoke (Windows only; needs dxcompiler.dll from the
   # DXC fetch above, resolved from the build dir where the slang DLLs are

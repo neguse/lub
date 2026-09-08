@@ -670,18 +670,26 @@ enum {
   LUB_MESH_LAYOUT_PNCMW = 5,
 };
 
+// Floats per vertex. Every float3 is followed by one pad float and every
+// struct is a multiple of 16 bytes, so the same bytes match the shader-side
+// StructuredBuffer struct on every target (shader.cpp enforces the rule):
+//   pn    float3 pos; float pad; float3 nrm; float pad;
+//   pnu   pn + float2 uv; float2 pad;
+//   pnut  pnu + float4 tangent;
+//   pncm  pn + float3 albedo; float pad; float2 mr; float2 pad;
+//   pncmw pncm + float4 skin (j0, w0, j1, w1);
 static int32_t layout_stride(int32_t layout) {
   switch (layout) {
   case LUB_MESH_LAYOUT_PN:
-    return 6;
-  case LUB_MESH_LAYOUT_PNU:
     return 8;
-  case LUB_MESH_LAYOUT_PNUT:
+  case LUB_MESH_LAYOUT_PNU:
     return 12;
+  case LUB_MESH_LAYOUT_PNUT:
+    return 16;
   case LUB_MESH_LAYOUT_PNCM:
-    return 11;
+    return 16;
   case LUB_MESH_LAYOUT_PNCMW:
-    return 15;
+    return 20;
   default:
     return 0;
   }
@@ -712,6 +720,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
     *o++ = p[0];
     *o++ = p[1];
     *o++ = p[2];
+    *o++ = 0; // pad
     if (has_normals) {
       const float *nm = mesh->normals + i * 3;
       *o++ = nm[0];
@@ -722,6 +731,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
       *o++ = 0;
       *o++ = 1;
     }
+    *o++ = 0; // pad
     if (layout == LUB_MESH_LAYOUT_PNU || layout == LUB_MESH_LAYOUT_PNUT) {
       if (has_uvs) {
         *o++ = mesh->uvs[i * 2];
@@ -730,6 +740,8 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
         *o++ = 0;
         *o++ = 0;
       }
+      *o++ = 0; // pad
+      *o++ = 0;
     }
     if (layout == LUB_MESH_LAYOUT_PNUT) {
       // tangent 欠損時は w=0 にして shader 側が derivative TBN に fallback する
@@ -758,6 +770,7 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
         *o++ = 0.8f;
         *o++ = 0.8f;
       }
+      *o++ = 0; // pad
       if (has_mr) {
         *o++ = mesh->metal_rough[i * 2];
         *o++ = mesh->metal_rough[i * 2 + 1];
@@ -765,6 +778,8 @@ static int32_t interleave(const LubMeshData *mesh, int32_t layout, float *out,
         *o++ = 0;
         *o++ = 0.8f;
       }
+      *o++ = 0; // pad
+      *o++ = 0;
     }
     if (layout == LUB_MESH_LAYOUT_PNCMW) {
       // joints/weights 欠損は「bone 0 に重み 1」

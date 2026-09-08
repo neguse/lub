@@ -8705,8 +8705,6 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "dispatch");
   lua_pushcfunction(L, l_gfx_size);
   lua_setfield(L, -2, "size");
-  lua_pushinteger(L, 1);
-  lua_setfield(L, -2, "VERTEX");
   lua_pushinteger(L, 2);
   lua_setfield(L, -2, "INDEX");
   lua_pushinteger(L, 3);

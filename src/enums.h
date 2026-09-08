@@ -1,8 +1,7 @@
 #pragma once
 
 typedef enum {
-  SGL_BUFFER_VERTEX = 1,
-  SGL_BUFFER_INDEX,
+  SGL_BUFFER_INDEX = 2,
   SGL_BUFFER_UNIFORM,
   SGL_BUFFER_STORAGE,
 } SglBufferType;

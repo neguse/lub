@@ -27,16 +27,20 @@ public class SpriteBucket
 /// </summary>
 public class SpriteBatch
 {
-    public const int LegacyStride = 8;
-    public const int VertexStride = 4;
-    public const int InstanceStride = 14;
+    // 1 要素の float 数。shader 側 StructuredBuffer の struct と同じ並び
+    // (float2 は 8、float4 は 16 byte 境界に置くため pad が入る)。
+    public const int LegacyStride = 8; // float2 pos, uv; float4 color
+    public const int VertexStride = 4; // float2 corner, uv01
+    public const int InstanceStride = 16; // float2 pos, size, rot_cs, pad; float4 uv_rect, color
 
     private static string legacyVs = "struct Uniforms { float4 params; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
-        + "struct VSIn  { float2 pos : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
+        + "struct VSIn  { float2 pos; float2 uv; float4 color; };\n"
+        + "StructuredBuffer<VSIn> verts;\n"
         + "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
         + "[shader(\"vertex\")]\n"
-        + "VSOut vs_main(VSIn i) {\n"
+        + "VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+        + "    VSIn i = verts[vid];\n"
         + "    VSOut o;\n"
         + "    float2 p = float2(i.pos.x / u.params.x * 2.0 - 1.0, 1.0 - i.pos.y / u.params.y * 2.0);\n"
         + "    o.pos = float4(p, 0.0, 1.0);\n"
@@ -47,11 +51,15 @@ public class SpriteBatch
 
     private static string instancedVs = "struct Uniforms { float4 params; };\n"
         + "ConstantBuffer<Uniforms> u;\n"
-        + "struct VSVertex { float2 corner : TEXCOORD0; float2 uv01 : TEXCOORD1; };\n"
-        + "struct VSInstance { float2 pos : TEXCOORD2; float2 size : TEXCOORD3; float2 rot_cs : TEXCOORD4; float4 uv_rect : TEXCOORD5; float4 color : TEXCOORD6; };\n"
+        + "struct VSVertex { float2 corner; float2 uv01; };\n"
+        + "struct VSInstance { float2 pos; float2 size; float2 rot_cs; float2 pad0; float4 uv_rect; float4 color; };\n"
+        + "StructuredBuffer<VSVertex> verts;\n"
+        + "StructuredBuffer<VSInstance> insts;\n"
         + "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
         + "[shader(\"vertex\")]\n"
-        + "VSOut vs_main(VSVertex v, VSInstance i) {\n"
+        + "VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n"
+        + "    VSVertex v = verts[vid];\n"
+        + "    VSInstance i = insts[iid];\n"
         + "    VSOut o;\n"
         + "    float2 local = v.corner * i.size;\n"
         + "    float2 p2 = i.pos + float2(local.x * i.rot_cs.x - local.y * i.rot_cs.y, local.x * i.rot_cs.y + local.y * i.rot_cs.x);\n"
@@ -160,6 +168,8 @@ public class SpriteBatch
         verts.Add(h);
         verts.Add(cr);
         verts.Add(sr);
+        verts.Add(0.0f); // pad0 (float4 uv_rect は 16 byte 境界)
+        verts.Add(0.0f);
         verts.Add(u0);
         verts.Add(v0);
         verts.Add(u1);
@@ -336,7 +346,7 @@ public class SpriteBatch
                 -0.5f, 0.5f, 0.0f, 1.0f,
                 0.5f, 0.5f, 1.0f, 1.0f,
             };
-        quadBuf = Gfx.UseBuffer(bufferPrefix + "_quad", Gfx.BufferType.Vertex, quadData,
+        quadBuf = Gfx.UseBuffer(bufferPrefix + "_quad", Gfx.BufferType.Storage, quadData,
             1);
         return quadBuf;
     }
@@ -366,7 +376,7 @@ public class SpriteBatch
             if (!instanced)
             {
                 var vbuf = Gfx.UseBuffer(bufferPrefix + "_" + k + "_verts",
-                    Gfx.BufferType.Vertex, b.Verts);
+                    Gfx.BufferType.Storage, b.Verts);
                 if (vbuf == null)
                     continue;
                 Gfx.Draw((int)Math.Floor(b.Verts.Count / (float)LegacyStride),
@@ -389,14 +399,14 @@ public class SpriteBatch
                 continue;
             }
             var instances = Gfx.UseBuffer(
-                bufferPrefix + "_" + k + "_instances", Gfx.BufferType.Vertex, b.Verts);
+                bufferPrefix + "_" + k + "_instances", Gfx.BufferType.Storage, b.Verts);
             if (instances == null || quadVb == null)
                 continue;
             Gfx.Draw(4,
                 new Dictionary<string, object>
                 {
                     ["verts"] = quadVb,
-                    ["instances"] = instances,
+                    ["insts"] = instances,
                     ["atlas"] = tex,
                     ["uniforms"] = new Dictionary<string, object>
                     {

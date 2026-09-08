@@ -12,7 +12,7 @@ using static Lub;
 /// <summary>単位プリミティブを MeshData 形式 (indexed、positions + normals +
 /// 白色) で生成する。Mesh3d.rebuild() にそのまま渡せて、SDF / glTF メッシュと
 /// 同じ描画経路に乗る。着色は draw 側の tint で (白 × tint = tint がそのまま
-/// albedo)。既存 Shapes は sfb / 11_shadow 用の非 indexed・stride 10 生成で、
+/// albedo)。既存 Shapes は sfb / 11_shadow 用の非 indexed・Stride 12 生成で、
 /// 別物。</summary>
 public static class Shapes3d
 {
@@ -36,28 +36,28 @@ public static class Shapes3d
         };
     }
 
-    /// <summary>Shapes (stride 10: pos3 + normal3 + rgba) の生成結果を MeshData
+    /// <summary>Shapes (Stride 12: pos3 pad normal3 pad rgba) の生成結果を MeshData
     /// に変換する。既存の Shapes.box/quad/sphere で組んだジオメトリを
     /// Mesh3d / Renderer3d に載せるためのブリッジ。alpha は落ちる。</summary>
     public static MeshData FromInterleaved(List<float> v)
     {
-        int n = (int)Math.Floor(v.Count / 10.0f);
+        int n = (int)Math.Floor(v.Count / (float)Shapes.Stride);
         var pos = new List<float>();
         var nrm = new List<float>();
         var col = new List<float>();
         var indices = new List<int>();
         for (int i = 0; i < n; i++)
         {
-            int o = i * 10;
+            int o = i * Shapes.Stride;
             pos.Add(v[o]);
             pos.Add(v[o + 1]);
             pos.Add(v[o + 2]);
-            nrm.Add(v[o + 3]);
             nrm.Add(v[o + 4]);
             nrm.Add(v[o + 5]);
-            col.Add(v[o + 6]);
-            col.Add(v[o + 7]);
+            nrm.Add(v[o + 6]);
             col.Add(v[o + 8]);
+            col.Add(v[o + 9]);
+            col.Add(v[o + 10]);
             indices.Add(i);
         }
         return new MeshData

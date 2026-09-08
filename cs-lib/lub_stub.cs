@@ -246,7 +246,7 @@ public static class Lub
         public static TextureRef? MainTex;
 
         /// <summary>use_buffer の種別。</summary>
-        public enum BufferType { Vertex = 1, Index = 2, Uniform = 3, Storage = 4 }
+        public enum BufferType { Index = 2, Uniform = 3, Storage = 4 }
 
         /// <summary>テクスチャ / render target の画素形式。</summary>
         public enum PixelFormat
@@ -303,7 +303,8 @@ public static class Lub
             return null;
         }
 
-        /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
+        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
+        /// 作り、shader の StructuredBuffer が読む。</summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
             List<float> data, int? version = null)
         {
@@ -526,7 +527,9 @@ public static class Lub
             error = null;
         }
 
-        /// <summary>mesh を position + normal で interleave した頂点列にする。</summary>
+        /// <summary>mesh を position + normal で interleave した頂点列にする。
+        /// 1 頂点 8 float: `float3 pos; float pad; float3 nrm; float pad;`
+        /// (shader 側の StructuredBuffer の struct と同じ並び)。</summary>
         public static List<float> InterleavePn(MeshData mesh)
         {
             return new List<float>();
@@ -534,26 +537,30 @@ public static class Lub
 
         /// <summary>
         /// position + normal + albedo + metallic/roughness (`Mesh.SdfMesh`
-        /// 用)。
+        /// 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr;
+        /// float2 pad;`。
         /// </summary>
         public static List<float> InterleavePncm(MeshData mesh)
         {
             return new List<float>();
         }
 
-        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。</summary>
+        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。
+        /// 1 頂点 20 float: pncm + `float4 skin;`。</summary>
         public static List<float> InterleavePncmw(MeshData mesh)
         {
             return new List<float>();
         }
 
-        /// <summary>position + normal + uv。</summary>
+        /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv;
+        /// float2 pad;`。</summary>
         public static List<float> InterleavePnu(MeshData mesh)
         {
             return new List<float>();
         }
 
-        /// <summary>position + normal + uv + tangent。</summary>
+        /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu +
+        /// `float4 tangent;`。</summary>
         public static List<float> InterleavePnut(MeshData mesh)
         {
             return new List<float>();

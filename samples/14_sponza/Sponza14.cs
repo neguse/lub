@@ -150,8 +150,8 @@ public static class Sponza14
             Gfx.Filter.Linear);
         var bloomB = Target("sponza_bloomB", rtW, rtH, Gfx.PixelFormat.Rgba16f,
             Gfx.Filter.Linear);
-        var quad = Gfx.UseBuffer("sponza_quad", Gfx.BufferType.Vertex, quadVerts, 1);
-        var quadF = Gfx.UseBuffer("sponza_quadF", Gfx.BufferType.Vertex, quadVertsFlip,
+        var quad = Gfx.UseBuffer("sponza_quad", Gfx.BufferType.Storage, quadVerts, 1);
+        var quadF = Gfx.UseBuffer("sponza_quadF", Gfx.BufferType.Storage, quadVertsFlip,
             1);
         if (gAlbedo == null || gNormal == null || gPosition == null
             || gDepth == null || aoTex == null || shadowMap == null
@@ -267,7 +267,7 @@ public static class Sponza14
             var prim = mesh.Primitives[i];
             var verts = Io.InterleavePnut(prim);
             var p = new SponzaPrim();
-            p.Vb = Gfx.UseBuffer("sponza_vb_" + i, Gfx.BufferType.Vertex, verts,
+            p.Vb = Gfx.UseBuffer("sponza_vb_" + i, Gfx.BufferType.Storage, verts,
                 version);
             if (prim.IndexCount > 0)
             {

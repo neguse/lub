@@ -11,7 +11,7 @@ public static class Hello00
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend });
         Console.WriteLine("config called");
-        Console.WriteLine("VERTEX=" + Gfx.BufferType.Vertex + " RGBA8=" + Gfx.PixelFormat.Rgba8
+        Console.WriteLine("STORAGE=" + Gfx.BufferType.Storage + " RGBA8=" + Gfx.PixelFormat.Rgba8
             + " CLEAR=" + Gfx.LoadAction.Clear);
     }
 

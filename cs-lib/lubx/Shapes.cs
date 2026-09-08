@@ -9,11 +9,12 @@ using System.Collections.Generic;
 using static Lub;
 
 /// <summary>手続き 3D プリミティブの頂点生成。interleaved
-/// pos.xyz + normal.xyz + color.rgba (STRIDE=10) を dst に push する。
+/// `float3 pos; float pad; float3 nrm; float pad; float4 color;` (Stride=12)
+/// を dst に push する。
 /// Gfx.use_buffer にそのまま渡せる。</summary>
 public static class Shapes
 {
-    public const int Stride = 10; // pos.xyz + normal.xyz + color.rgba
+    public const int Stride = 12; // pos.xyz pad normal.xyz pad color.rgba
 
     /// <summary>頂点1つ。</summary>
     public static void Vertex(List<float> dst, float x, float y, float z,
@@ -22,9 +23,11 @@ public static class Shapes
         dst.Add(x);
         dst.Add(y);
         dst.Add(z);
+        dst.Add(0);
         dst.Add(nx);
         dst.Add(ny);
         dst.Add(nz);
+        dst.Add(0);
         dst.Add(col[0]);
         dst.Add(col[1]);
         dst.Add(col[2]);

@@ -48,7 +48,8 @@ public static class RenderPrimitives15
     {
         if (quad == null)
         {
-            quad = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Vertex, new List<float>
+            // pos(2) + uv(2): already tightly packed (16 bytes, mult of 8), no pad.
+            quad = Gfx.UseBuffer("rp15_quad", Gfx.BufferType.Storage, new List<float>
             {
                 -1.0f, -1.0f, 0.0f, 1.0f,
                 1.0f, -1.0f, 1.0f, 1.0f,
@@ -60,11 +61,13 @@ public static class RenderPrimitives15
         }
         if (tri == null)
         {
-            tri = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Vertex, new List<float>
+            // pos(2) + z(1) + pad(1): struct size must be a multiple of 8 (float2 is
+            // the widest member), so pad the 12-byte layout up to 16.
+            tri = Gfx.UseBuffer("rp15_tri", Gfx.BufferType.Storage, new List<float>
             {
-                -0.75f, -0.70f, 0.25f,
-                0.85f, -0.65f, 0.75f,
-                -0.10f, 0.82f, 0.55f,
+                -0.75f, -0.70f, 0.25f, 0.0f,
+                0.85f, -0.65f, 0.75f, 0.0f,
+                -0.10f, 0.82f, 0.55f, 0.0f,
             }, 1);
         }
     }

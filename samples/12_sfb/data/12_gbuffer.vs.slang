@@ -13,11 +13,15 @@ struct GBufUniforms {
 ConstantBuffer<GBufUniforms> u;
 #endif
 
-struct VSIn {
-  float3 pos : POSITION;
-  float3 normal : NORMAL;
-  float4 color : COLOR;
+// Shapes.Stride layout (12 floats per vertex).
+struct V {
+  float3 pos;
+  float pad0;
+  float3 normal;
+  float pad1;
+  float4 color;
 };
+StructuredBuffer<V> verts;
 
 struct VSOut {
   float3 vpos : TEXCOORD0; // view-space position
@@ -30,7 +34,8 @@ struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   float4 vp = mul(u.view, float4(i.pos, 1.0));
   o.vpos = vp.xyz;

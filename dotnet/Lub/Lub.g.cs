@@ -1836,7 +1836,6 @@ public static unsafe partial class Lub
         /// <summary>use_buffer の種別。</summary>
         public enum BufferType
         {
-            Vertex = 1,
             Index = 2,
             Uniform = 3,
             Storage = 4,
@@ -2008,7 +2007,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>VERTEX/INDEX/STORAGE バッファ (データ渡し)。</summary>
+        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。</summary>
         public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2589,7 +2588,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>mesh を position + normal で interleave した頂点列にする。</summary>
+        /// <summary>mesh を position + normal で interleave した頂点列にする。 1 頂点 8 float: `float3 pos; float pad; float3 nrm; float pad;` (shader 側の StructuredBuffer の struct と同じ並び)。</summary>
         public static List<float> InterleavePn(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2617,7 +2616,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。</summary>
+        /// <summary>position + normal + albedo + metallic/roughness (`Mesh.SdfMesh` 用)。1 頂点 16 float: pn + `float3 albedo; float pad; float2 mr; float2 pad;`。</summary>
         public static List<float> InterleavePncm(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2645,7 +2644,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。</summary>
+        /// <summary>interleavePncm + skin (j0,w0,j1,w1)。bone 付き `Mesh.SdfMesh` 用。 1 頂点 20 float: pncm + `float4 skin;`。</summary>
         public static List<float> InterleavePncmw(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2673,7 +2672,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>position + normal + uv。</summary>
+        /// <summary>position + normal + uv。1 頂点 12 float: pn + `float2 uv; float2 pad;`。</summary>
         public static List<float> InterleavePnu(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2701,7 +2700,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>position + normal + uv + tangent。</summary>
+        /// <summary>position + normal + uv + tangent。1 頂点 16 float: pnu + `float4 tangent;`。</summary>
         public static List<float> InterleavePnut(MeshData mesh)
         {
             var a = LubRuntime.Arena.Begin();

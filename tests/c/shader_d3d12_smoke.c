@@ -26,10 +26,12 @@ static int is_dxil_container(const ShaderBlob *b) {
 }
 
 static void test_triangle(void) {
-  const char *vs = "struct VSIn { float3 pos : POSITION; };\n"
-                   "struct VSOut { float4 pos : SV_Position; };\n"
-                   "[shader(\"vertex\")] VSOut vs_main(VSIn i) {\n"
-                   "  VSOut o; o.pos = float4(i.pos, 1.0); return o; }\n";
+  const char *vs =
+      "struct V { float3 pos; float pad0; };\n"
+      "StructuredBuffer<V> verts;\n"
+      "struct VSOut { float4 pos : SV_Position; };\n"
+      "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+      "  VSOut o; o.pos = float4(verts[vid].pos, 1.0); return o; }\n";
   const char *fs = "[shader(\"fragment\")] float4 fs_main() : SV_Target {\n"
                    "  return float4(1.0, 0.5, 0.0, 1.0); }\n";
   ShaderBlob vsb = {0}, fsb = {0};
@@ -42,11 +44,12 @@ static void test_triangle(void) {
   }
   CHECK(is_dxil_container(&vsb), "triangle: vs blob is not a DXIL container");
   CHECK(is_dxil_container(&fsb), "triangle: fs blob is not a DXIL container");
-  CHECK(refl.attr_count == 1, "triangle: attr_count %d != 1", refl.attr_count);
-  CHECK(refl.attrs[0].comp_count == 3, "triangle: pos comp_count %d != 3",
-        refl.attrs[0].comp_count);
-  CHECK(refl.vertex_stride_floats == 3, "triangle: stride %d != 3",
-        refl.vertex_stride_floats);
+  CHECK(refl.storage_buf_count == 1, "triangle: storage_buf_count %d != 1",
+        refl.storage_buf_count);
+  CHECK(refl.storage_bufs[0].elem_stride == 16, "triangle: stride %d != 16",
+        refl.storage_bufs[0].elem_stride);
+  CHECK(refl.storage_bufs[0].stage == SGL_STAGE_VERTEX,
+        "triangle: verts not attributed to the vertex stage");
   printf("PASS: triangle (vs %zu bytes, fs %zu bytes)\n", vsb.bytes, fsb.bytes);
   shader_blob_free(&vsb);
   shader_blob_free(&fsb);
@@ -55,9 +58,11 @@ static void test_triangle(void) {
 static void test_uniforms_and_texture(void) {
   const char *vs =
       "cbuffer VSParams { float4x4 mvp; };\n"
-      "struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; };\n"
+      "struct V { float3 pos; float pad0; float2 uv; float2 pad1; };\n"
+      "StructuredBuffer<V> verts;\n"
       "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
-      "[shader(\"vertex\")] VSOut vs_main(VSIn i) {\n"
+      "[shader(\"vertex\")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+      "  V i = verts[vid];\n"
       "  VSOut o; o.pos = mul(mvp, float4(i.pos, 1.0)); o.uv = i.uv;\n"
       "  return o; }\n";
   const char *fs =

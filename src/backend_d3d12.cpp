@@ -150,7 +150,7 @@ struct FrameCtx {
 struct DxBuffer {
   ComPtr<ID3D12Resource> res;
   size_t bytes = 0;
-  SglBufferType type = SGL_BUFFER_VERTEX;
+  SglBufferType type = SGL_BUFFER_STORAGE;
 };
 
 struct DxImage {
@@ -1521,34 +1521,11 @@ BackendPipeline dx_make_pipeline(const PipelineDesc *d) {
     return (uintptr_t)p;
   }
 
-  D3D12_INPUT_ELEMENT_DESC elems[SGL_MAX_ATTRS] = {};
-  int attr_count = p->refl.attr_count;
-  for (int i = 0; i < attr_count; ++i) {
-    const ShaderAttr *a = &p->refl.attrs[i];
-    static const DXGI_FORMAT comp_fmt[5] = {
-        DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32G32_FLOAT,
-        DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT};
-    int cc = a->comp_count >= 1 && a->comp_count <= 4 ? a->comp_count : 4;
-    int buffer_index =
-        (a->buffer_index >= 0 && a->buffer_index < SGL_MAX_VERTEX_BUFFERS)
-            ? a->buffer_index
-            : 0;
-    elems[i].SemanticName = a->semantic[0] ? a->semantic : "TEXCOORD";
-    elems[i].SemanticIndex = (UINT)a->semantic_index;
-    elems[i].Format = comp_fmt[cc];
-    elems[i].InputSlot = (UINT)buffer_index;
-    elems[i].AlignedByteOffset = (UINT)(a->offset_floats * sizeof(float));
-    elems[i].InputSlotClass =
-        buffer_index == 0 ? D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA
-                          : D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA;
-    elems[i].InstanceDataStepRate = buffer_index == 0 ? 0 : 1;
-  }
-
   D3D12_GRAPHICS_PIPELINE_STATE_DESC pd = {};
   pd.pRootSignature = sh->root_sig.Get();
   pd.VS = {sh->vs.data(), sh->vs.size()};
   pd.PS = {sh->fs.data(), sh->fs.size()};
-  pd.InputLayout = {elems, (UINT)attr_count};
+  pd.InputLayout = {nullptr, 0}; // vertex pulling: no vertex input
   pd.BlendState.RenderTarget[0] = dx_blend(d->blend);
   int nct = d->n_color_targets > 0 ? d->n_color_targets : 0;
   if (nct > SGL_MAX_COLOR_TARGETS)
@@ -1778,6 +1755,32 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
       // (two reflection entries pointing at distinct registers).
     }
   }
+  // Graphics-stage read-only storage buffers (StructuredBuffer<T>) live in
+  // the same t-register table as textures.
+  for (int i = 0; i < b->storage_buf_count && refl; ++i) {
+    if (!b->storage_bufs[i].name)
+      continue;
+    for (int j = 0; j < refl->storage_buf_count; ++j) {
+      const ShaderStorageBuf *sb = &refl->storage_bufs[j];
+      if (!sb->readonly || strcmp(sb->name, b->storage_bufs[i].name) != 0)
+        continue;
+      DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
+      if (!buf || !buf->res)
+        continue;
+      if (sb->slot >= 0 && sb->slot < t->srv_count) {
+        UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
+        sd.Format = DXGI_FORMAT_UNKNOWN;
+        sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Buffer.NumElements = (UINT)(buf->bytes / stride);
+        sd.Buffer.StructureByteStride = stride;
+        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
+        h.ptr += (SIZE_T)sb->slot * g.srv_stride;
+        g.device->CreateShaderResourceView(buf->res.Get(), &sd, h);
+      }
+    }
+  }
 
   if (t->srv_root >= 0)
     g.cl->SetGraphicsRootDescriptorTable((UINT)t->srv_root, srv_gpu);
@@ -1788,28 +1791,7 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
 void dx_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
     return;
-  const ShaderReflection *refl = &g_current_pip->refl;
 
-  if (b->vbuf) {
-    DxBuffer *vb = (DxBuffer *)b->vbuf;
-    if (vb && vb->res) {
-      D3D12_VERTEX_BUFFER_VIEW v = {};
-      v.BufferLocation = vb->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)vb->bytes;
-      v.StrideInBytes = (UINT)(refl->buffer_stride_floats[0] * sizeof(float));
-      g.cl->IASetVertexBuffers(0, 1, &v);
-    }
-  }
-  if (b->instance_vbuf) {
-    DxBuffer *vb = (DxBuffer *)b->instance_vbuf;
-    if (vb && vb->res) {
-      D3D12_VERTEX_BUFFER_VIEW v = {};
-      v.BufferLocation = vb->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)vb->bytes;
-      v.StrideInBytes = (UINT)(refl->buffer_stride_floats[1] * sizeof(float));
-      g.cl->IASetVertexBuffers(1, 1, &v);
-    }
-  }
   if (b->ibuf) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
     if (ib && ib->res) {

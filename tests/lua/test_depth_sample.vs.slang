@@ -3,14 +3,17 @@ struct Uniforms {
 };
 ConstantBuffer<Uniforms> u;
 
-struct VSIn {
-  float2 pos : POSITION;
+struct V {
+  float2 pos;
 };
+StructuredBuffer<V> verts;
+
 struct VSOut {
   float4 pos : SV_Position;
 };
 
-[shader("vertex")] VSOut vs_main(VSIn i) {
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  V i = verts[vid];
   VSOut o;
   o.pos = float4(i.pos, u.z.x, 1.0);
   return o;
