@@ -114,7 +114,7 @@ local function run_cases()
 			if old == 0 and g.state == 1 then
 				g.auto_x, g.auto_z = g.auto_x + case.offset, g.auto_z + case.offset
 				if case.name == "miss" then
-					g.auto_x, g.auto_z = 0.15, -0.30
+					g.auto_x, g.auto_z = -0.15, -0.30
 				end
 			end
 			local head = lub.phys3d.pose(bodies.head)

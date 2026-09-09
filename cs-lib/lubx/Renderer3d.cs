@@ -54,8 +54,6 @@ public class Camera
     public Vec3 Eye = new Vec3(0, 0, 0);
     public Vec3 Target = new Vec3(0, 0, 0);
     public Vec3? Up;
-    /// <summary>投影後の画面の左右を反転する。ワールド座標や物理の回転は変えない。</summary>
-    public bool MirrorX;
 
     /// <summary>度。省略時 60。</summary>
     public float? Fov;
@@ -816,7 +814,6 @@ public class Renderer3d
         var far = cam.Far ?? 100.0f;
         Gfx.Size(out var w, out var h);
         var p = Mat4.PerspectiveLh(fov, (float)w / h, near, far);
-        if (cam.MirrorX) p.M[0] = -p.M[0];
         var v = Mat4.LookAtLh(cam.Eye, cam.Target, up);
         view = v;
         ViewMat = v;
@@ -1087,10 +1084,9 @@ public class Renderer3d
         }
         Gfx.EndPass();
 
-        // proj は m[5] を反転済み、MirrorX なら m[0] も反転済み。SSAO の
-        // 法線は screen-space の微分から出すので符号を落として渡す
+        // proj は m[5] を反転済みなので |m5| を渡す
         var projP = new List<float>
-            { Math.Abs(proj.M[0]), Math.Abs(proj.M[5]), proj.M[10], proj.M[11] };
+            { proj.M[0], Math.Abs(proj.M[5]), proj.M[10], proj.M[11] };
 
         // SSAO (半解像度)
         TextureRef? aoTex = null;

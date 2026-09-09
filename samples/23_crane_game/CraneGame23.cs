@@ -84,12 +84,13 @@ public static class CraneGame23
     const float headTop = 0.06f; // ヘッド原点→ワイヤー取付点
     const float shoulderX = 0.10f; // 爪の肩関節 (ヘッド原点から)
     const float shoulderY = -0.01f;
-    const float homeX = -0.16f; // 待機位置 = 獲得口の真上
+    // 左手系のカメラを +Z (手前) に置くので、画面の右は -X。左右の語は画面基準
+    const float homeX = 0.16f; // 待機位置 = 獲得口の真上
     const float homeZ = 0.275f;
-    const float maxX = 0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
+    const float minX = -0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
     const float minZ = -0.30f;
     // 獲得口 (シュート): 手前左の床穴。判定に使う内側 2 辺
-    const float chuteX1 = -0.025f;
+    const float chuteX1 = 0.025f;
     const float chuteZ0 = 0.10f;
 
     // ソレノイドの吸引力 (N)。保持中も通電し、弱めると荷重で爪が開く。
@@ -161,11 +162,11 @@ public static class CraneGame23
         // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
         bears = new List<Bear>
         {
-            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.08f, Y = 0.02f, Z = -0.05f, Yaw = 0.4f },
-            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = -0.14f, Y = 0.02f, Z = -0.26f, Yaw = -0.7f },
-            new Bear { Gen = 1, Variant = 2, Respawn = 0, X = 0.15f, Y = 0.02f, Z = 0.18f, Yaw = 2.6f },
-            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = -0.14f, Y = 0.02f, Z = -0.02f, Yaw = 1.8f },
-            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = 0.16f, Y = 0.02f, Z = -0.24f, Yaw = -2.2f },
+            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = -0.08f, Y = 0.02f, Z = -0.05f, Yaw = -0.4f },
+            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = 0.14f, Y = 0.02f, Z = -0.26f, Yaw = 0.7f },
+            new Bear { Gen = 1, Variant = 2, Respawn = 0, X = -0.15f, Y = 0.02f, Z = 0.18f, Yaw = -2.6f },
+            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.14f, Y = 0.02f, Z = -0.02f, Yaw = -1.8f },
+            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = -0.16f, Y = 0.02f, Z = -0.24f, Yaw = 2.2f },
         };
     }
 
@@ -384,17 +385,17 @@ public static class CraneGame23
     {
         // x, y, z, hx, hy, hz
         new float[] { 0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f }, // 床 (奥側)
-        new float[] { 0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // 床 (手前右)
-        new float[] { -0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // フェンス (穴の奥側)
-        new float[] { -0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // フェンス (穴の右側)
+        new float[] { -0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // 床 (手前右)
+        new float[] { 0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // フェンス (穴の奥側)
+        new float[] { 0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // フェンス (穴の右側)
         new float[] { -fieldHx - 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // ガラス左
         new float[] { fieldHx + 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // ガラス右
         new float[] { 0.0f, 0.31f, -fieldHz - 0.006f, fieldHx, 0.31f, 0.006f }, // ガラス奥
         new float[] { 0.0f, 0.31f, fieldHz + 0.006f, fieldHx, 0.31f, 0.006f }, // ガラス手前
-        new float[] { -0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 右
-        new float[] { -0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // シュート筒 奥
-        new float[] { -fieldHx - 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 左
-        new float[] { -0.20f, -0.25f, fieldHz + 0.006f, 0.175f, 0.25f, 0.006f }, // シュート筒 手前
+        new float[] { 0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 右
+        new float[] { 0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // シュート筒 奥
+        new float[] { fieldHx + 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 左
+        new float[] { 0.20f, -0.25f, fieldHz + 0.006f, 0.175f, 0.25f, 0.006f }, // シュート筒 手前
     };
 
     static void DeclareStatics(WorldRef3d world)
@@ -668,7 +669,7 @@ public static class CraneGame23
         if (autoPlay)
         {
             // attract: 目標座標に届くまで押し続ける動作を合成
-            if (state == stMoveX) return cx < autoX - 0.005f;
+            if (state == stMoveX) return cx > autoX + 0.005f;
             if (state == stMoveZ) return cz > autoZ + 0.005f;
             return false;
         }
@@ -730,7 +731,7 @@ public static class CraneGame23
                             aim = new Vec3(pose.X, pose.Y, pose.Z)
                                 + new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw)
                                     .RotateVec3(new Vec3(0, 0.10f, 0));
-                        autoX = MathUtil.Clamp(aim.X, homeX, maxX);
+                        autoX = MathUtil.Clamp(aim.X, minX, homeX);
                         autoZ = MathUtil.Clamp(aim.Z, minZ, homeZ);
                         autoPlay = true;
                         plays++;
@@ -743,7 +744,7 @@ public static class CraneGame23
         else if (state == stMoveX)
         {
             if (ButtonHeld())
-                cx = Math.Min(cx + moveSpeed * tickDt, maxX);
+                cx = Math.Max(cx - moveSpeed * tickDt, minX);
             else if (stateT > 5)
                 Enter(stWait2);
         }
@@ -830,7 +831,7 @@ public static class CraneGame23
             if (pose.Y < -0.32f)
             {
                 entry.Bear.Respawn = 150;
-                if (pose.X < chuteX1 && pose.Z > chuteZ0)
+                if (pose.X > chuteX1 && pose.Z > chuteZ0)
                 {
                     score++;
                     payoutFlash = 60;
@@ -847,10 +848,10 @@ public static class CraneGame23
                 {
                     // 補充: フィールド奥へ落とす。位置は決定論的にずらす
                     b.Gen++;
-                    b.X = 0.02f + Mod(b.Gen * 53, 13) * 0.012f;
+                    b.X = -0.02f - Mod(b.Gen * 53, 13) * 0.012f;
                     b.Y = 0.35f;
                     b.Z = -0.15f + Mod(b.Gen * 31, 11) * 0.02f;
-                    b.Yaw = Mod(b.Gen * 137, 63) * 0.1f;
+                    b.Yaw = -Mod(b.Gen * 137, 63) * 0.1f;
                 }
             }
         }
@@ -1112,7 +1113,7 @@ public static class CraneGame23
 
         // --- draw ---
         // ゲームセンターの薄暗い環境 + 筐体上部からの光
-        r.Light.Dir = new Vec3(-0.3f, 0.85f, 0.65f);
+        r.Light.Dir = new Vec3(0.3f, 0.85f, 0.65f);
         r.Light.Intensity = 1.8f;
         r.Sky.Top = Color.Rgb(0.82f, 0.88f, 0.94f);
         r.Sky.Bottom = Color.Rgb(0.42f, 0.40f, 0.43f);
@@ -1126,12 +1127,11 @@ public static class CraneGame23
         r.Begin(new Camera
         {
             Eye = showLinkage && viewPose != null
-                ? new Vec3(viewPose.X + 0.25f, viewPose.Y + 0.10f, viewPose.Z + 0.85f)
-                : sideView ? new Vec3(2.05f, 0.60f, 0.05f) : new Vec3(0.015f, 0.60f, 2.05f),
+                ? new Vec3(viewPose.X - 0.25f, viewPose.Y + 0.10f, viewPose.Z + 0.85f)
+                : sideView ? new Vec3(-2.05f, 0.60f, 0.05f) : new Vec3(-0.015f, 0.60f, 2.05f),
             Target = showLinkage && viewPose != null
                 ? new Vec3(viewPose.X, viewPose.Y - 0.10f, viewPose.Z)
                 : new Vec3(0.0f, 0.25f, 0.0f),
-            MirrorX = true,
             Fov = Math.Min(80.0f, Math.Max(42.0f, 42.0f * (4.0f / 3.0f) * screenH / screenW)),
             Near = 0.1f,
             Far = 50.0f,
@@ -1154,8 +1154,8 @@ public static class CraneGame23
         DrawBox(BoxMat(0, -0.105f, 0.49f, 0.435f, 0.035f, 0.13f), body, null);
         DrawBox(BoxMat(0, -0.065f, 0.49f, 0.39f, 0.005f, 0.115f), accent, null);
         // 獲得口の外側の扉。景品の落下経路の手前に枠だけを描く。
-        DrawBox(BoxMat(-0.20f, -0.285f, 0.506f, 0.15f, 0.095f, 0.003f), dark, null);
-        DrawBox(BoxMat(-0.20f, -0.19f, 0.512f, 0.16f, 0.006f, 0.006f), accent, null);
+        DrawBox(BoxMat(0.20f, -0.285f, 0.506f, 0.15f, 0.095f, 0.003f), dark, null);
+        DrawBox(BoxMat(0.20f, -0.19f, 0.512f, 0.16f, 0.006f, 0.006f), accent, null);
         foreach (var sx in new List<int> { -1, 1 })
         {
             foreach (var sz in new List<int> { -1, 1 })
@@ -1168,11 +1168,11 @@ public static class CraneGame23
             DrawBox(BoxMat(sx * 0.375f, 0.39f, -0.455f, 0.003f, 0.38f, 0.004f),
                 Color.Rgb(1.3f, 1.7f, 1.8f), null);
         // 物理フェンスの上端を細い枠で示し、透明な板の所在を読み取れるようにする。
-        DrawBox(BoxMat(-0.20f, 0.14f, 0.10f, 0.175f, 0.002f, 0.006f), body, null);
-        DrawBox(BoxMat(-0.025f, 0.14f, 0.275f, 0.006f, 0.002f, 0.175f), body, null);
+        DrawBox(BoxMat(0.20f, 0.14f, 0.10f, 0.175f, 0.002f, 0.006f), body, null);
+        DrawBox(BoxMat(0.025f, 0.14f, 0.275f, 0.006f, 0.002f, 0.175f), body, null);
         // 床 (フェルト) と穴の縁
         DrawBox(BoxMat(0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f), felt, null);
-        DrawBox(BoxMat(0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
+        DrawBox(BoxMat(-0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
         DrawBox(BoxMat(-0.20f, -0.05f, 0.275f, 0.175f, 0.05f, 0.175f), dark, null); // シュート内部
         // 払い出しの褒め演出: 獲得口の縁が光る (HDR 高輝度で bloom に乗せる)
         if (payoutFlash > 0)
@@ -1238,8 +1238,8 @@ public static class CraneGame23
                 glass, Gfx.Blend.Alpha);
             DrawBox(BoxMat(fieldHx + 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
                 glass, Gfx.Blend.Alpha);
-            DrawBox(BoxMat(-0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.Blend.Alpha);
-            DrawBox(BoxMat(-0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.Blend.Alpha);
+            DrawBox(BoxMat(0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.Blend.Alpha);
+            DrawBox(BoxMat(0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.Blend.Alpha);
             // 正面と背面の無色ガラスは面を塗らず、縁と筐体の支柱で見せる。
         }
 

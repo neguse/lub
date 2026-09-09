@@ -66,7 +66,7 @@ return function(g, check)
 		for _ = 1, 20 do
 			tick()
 		end
-		check(g.state == 1 and g.cx > x, "first button must move along +X while held")
+		check(g.state == 1 and g.cx < x, "first button must move along -X (screen right) while held")
 		-- Leaving the button releases it; holding does not activate button 2.
 		mx, my = 10, 250
 		tick()
