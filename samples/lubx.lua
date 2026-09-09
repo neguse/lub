@@ -1247,15 +1247,15 @@ function Quat:to_mat4()
 	local wz = self.w * z2
 	local r = Mat4.zero()
 	r.m[0 + 1] = 1 - (yy + zz)
-	r.m[1 + 1] = xy + wz
-	r.m[2 + 1] = xz - wy
+	r.m[1 + 1] = xy - wz
+	r.m[2 + 1] = xz + wy
 	r.m[3 + 1] = 0
-	r.m[4 + 1] = xy - wz
+	r.m[4 + 1] = xy + wz
 	r.m[5 + 1] = 1 - (xx + zz)
-	r.m[6 + 1] = yz + wx
+	r.m[6 + 1] = yz - wx
 	r.m[7 + 1] = 0
-	r.m[8 + 1] = xz + wy
-	r.m[9 + 1] = yz - wx
+	r.m[8 + 1] = xz - wy
+	r.m[9 + 1] = yz + wx
 	r.m[10 + 1] = 1 - (xx + yy)
 	r.m[11 + 1] = 0
 	r.m[12 + 1] = 0
@@ -1578,7 +1578,7 @@ function Mat4.rotate_z(angle)
 end
 
 function Mat4.rotate(angle, axis)
-	return Quat.from_axis_angle(axis, angle):to_mat4()
+	return Quat.from_axis_angle(axis, -angle):to_mat4()
 end
 
 function Mat4.from_quat(q)
@@ -2718,8 +2718,7 @@ function Renderer3d.new(key)
 end
 
 function Renderer3d.pose_mat(pose)
-	return Mat4.translate(Vec3.new(pose.x, pose.y, pose.z))
-		* Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4():transpose()
+	return Mat4.translate(Vec3.new(pose.x, pose.y, pose.z)) * Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4()
 end
 
 function Renderer3d:begin(cam)

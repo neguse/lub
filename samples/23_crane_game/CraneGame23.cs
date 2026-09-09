@@ -878,7 +878,7 @@ public static class CraneGame23
             float s = axis.Length();
             if (s > 1e-6f)
                 rot = Quat.FromAxisAngle(axis * (1.0f / s),
-                    (float)Math.Atan2(s, dir.Y)).ToMat4().Transpose();
+                    (float)Math.Atan2(s, dir.Y)).ToMat4();
             else if (dir.Y < 0)
                 rot = Mat4.RotateX((float)Math.PI);
         }
