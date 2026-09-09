@@ -2492,8 +2492,8 @@ LUB_API LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y,
 LUB_API void lub_gfx_size(LubContext *ctx, int32_t *w, int32_t *h);
 
 // ----------------------------------------------------------------- input
-// フレームラッチ付きポーリング入力。key は "space" / "a".."z" 等、 button は
-// SDL 準拠 1 始まり (省略時 1 = 左)。
+// フレームラッチ付きポーリング入力。key は "space" / "a".."z" / "f1".."f12"
+// 等、 button は SDL 準拠 1 始まり (省略時 1 = 左)。
 
 LUB_API bool lub_input_key_down(LubContext *ctx, LubStr key);
 

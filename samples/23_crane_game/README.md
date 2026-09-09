@@ -10,7 +10,7 @@ The front view looks into a lit cabinet from above the control deck. Tab or the
 view button switches to a side view for judging depth. The camera, cabinet trim,
 and controls use the same physical playfield and prize dimensions in both views.
 F2 opens the force sliders, measured in newtons, and mechanism inspection.
-`show linkage` removes the head cover and glass from the drawing and zooms in on
+`inspect mechanism` removes the head cover and glass from the drawing and zooms in on
 the moving shaft and links.
 Orange dots mark actual contact points on the fingers. Orange dashed lines and
 the shaft marker show internal constraints; they are inspection guides, not

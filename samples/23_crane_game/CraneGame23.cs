@@ -878,7 +878,7 @@ public static class CraneGame23
             float s = axis.Length();
             if (s > 1e-6f)
                 rot = Quat.FromAxisAngle(axis * (1.0f / s),
-                    (float)Math.Atan2(s, dir.Y)).ToMat4().Transpose();
+                    (float)Math.Atan2(s, dir.Y)).ToMat4();
             else if (dir.Y < 0)
                 rot = Mat4.RotateX((float)Math.PI);
         }
@@ -974,6 +974,19 @@ public static class CraneGame23
             (int)(screenH - 94 * s), (int)(236 * s), (int)(58 * s));
     }
 
+    // 上部バーの view 切替と、下部デッキの demo ボタン。描画と当たり判定で共有する
+    static Rect ViewButtonRect()
+    {
+        float s = hudScale;
+        return new Rect((int)(screenW - 180 * s), (int)(14 * s), (int)(160 * s), (int)(34 * s));
+    }
+
+    static Rect DemoButtonRect()
+    {
+        float s = hudScale;
+        return new Rect((int)(24 * s), (int)(screenH - 94 * s), (int)(128 * s), (int)(58 * s));
+    }
+
     static bool Inside(Rect rect, float x, float y)
     {
         return x >= rect.X && x < rect.X + rect.W && y >= rect.Y && y < rect.Y + rect.H;
@@ -995,9 +1008,9 @@ public static class CraneGame23
         Input.MousePos(out var mx, out var my);
         bool click = Input.MousePressed() && !Ui.WantCaptureMouse();
         if (Input.KeyPressed("f2")) settingsOpen = !settingsOpen;
-        if (Input.KeyPressed("tab") || (click && mx > screenW - 180 * hudScale && my < 54 * hudScale))
+        if (Input.KeyPressed("tab") || (click && Inside(ViewButtonRect(), mx, my)))
             sideView = !sideView;
-        if (click && Inside(new Rect((int)(24 * hudScale), (int)(screenH - 94 * hudScale), (int)(128 * hudScale), (int)(58 * hudScale)), mx, my))
+        if (click && Inside(DemoButtonRect(), mx, my))
         {
             demoEnabled = !demoEnabled;
             if (demoEnabled && state == stIdle) idleT = 241;
@@ -1038,8 +1051,10 @@ public static class CraneGame23
         b.Rect(0, 0, screenW, 54 * s, Color.Hex(0x14242F, 0.96f));
         b.Rect(0, screenH - 126 * s, screenW, 126 * s, Color.Hex(0xF5F1EB));
         b.Rect(0, screenH - 126 * s, screenW, 3 * s, Color.Hex(0xD8536C));
-        b.Rect(screenW - 180 * s, 14 * s, 160 * s, 34 * s, Color.Hex(0x223544));
-        b.Rect(24 * s, screenH - 94 * s, 128 * s, 58 * s, Color.Hex(0xE7E3DD));
+        var viewRect = ViewButtonRect();
+        b.Rect(viewRect.X, viewRect.Y, viewRect.W, viewRect.H, Color.Hex(0x223544));
+        var demoRect = DemoButtonRect();
+        b.Rect(demoRect.X, demoRect.Y, demoRect.W, demoRect.H, Color.Hex(0xE7E3DD));
         for (int i = 1; i <= 2; i++)
         {
             var rect = ControlRect(i);

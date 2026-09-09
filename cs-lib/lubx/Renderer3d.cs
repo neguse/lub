@@ -803,7 +803,6 @@ public class Renderer3d
     {
         // box3d の quaternion と Quat.ToMat4 は同じ能動回転。ここで共役や
         // 転置を挟むと物理と描画がずれる (tests/lua/test_rotation_convention.lua)
-
         return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
             * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
     }
@@ -1088,9 +1087,10 @@ public class Renderer3d
         }
         Gfx.EndPass();
 
-        // proj は m[5] を反転済みなので |m5| を渡す
+        // proj は m[5] を反転済み、MirrorX なら m[0] も反転済み。SSAO の
+        // 法線は screen-space の微分から出すので符号を落として渡す
         var projP = new List<float>
-            { proj.M[0], Math.Abs(proj.M[5]), proj.M[10], proj.M[11] };
+            { Math.Abs(proj.M[0]), Math.Abs(proj.M[5]), proj.M[10], proj.M[11] };
 
         // SSAO (半解像度)
         TextureRef? aoTex = null;

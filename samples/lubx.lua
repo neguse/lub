@@ -3030,7 +3030,7 @@ function Renderer3d:end_()
 		end
 	end
 	lub.gfx.end_pass()
-	local projP = { proj.m[0 + 1], Math.Abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
+	local projP = { Math.Abs(proj.m[0 + 1]), Math.Abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
 	local aoTex = nil
 	if self.ssao.enabled then
 		local aw = Math.Floor(w / 2.0)
