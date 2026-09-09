@@ -272,15 +272,15 @@ public static class Tonton22
         return Bones.Pack(data, (name, x, y, z) =>
         {
             if (name == "arm_l")
-                return Bones.PivotRot(x, y, z, Mat4.RotateX(armSwing)
-                    .Mul(Mat4.RotateZ(
-                        falling ? (float)Math.Sin(t * 13.0f) * 0.5f : 0.12f * pulse)));
-            if (name == "arm_r")
-                return Bones.PivotRot(x, y, z, Mat4.RotateX(armSwing)
+                return Bones.PivotRot(x, y, z, Mat4.RotateX(-armSwing)
                     .Mul(Mat4.RotateZ(
                         falling ? -(float)Math.Sin(t * 13.0f) * 0.5f : -0.12f * pulse)));
+            if (name == "arm_r")
+                return Bones.PivotRot(x, y, z, Mat4.RotateX(-armSwing)
+                    .Mul(Mat4.RotateZ(
+                        falling ? (float)Math.Sin(t * 13.0f) * 0.5f : 0.12f * pulse)));
             if (name == "head")
-                return Bones.PivotRot(x, y, z, Mat4.RotateX(nod));
+                return Bones.PivotRot(x, y, z, Mat4.RotateX(-nod));
             return null;
         });
     }
@@ -1000,7 +1000,7 @@ public static class Tonton22
             var upv = q * Vec3.Up();
             bool falling = upv.Y < 0.6f;
             float pulse = f.Tactic == taOsu ? f.Pulse : 0.0f;
-            var model = Renderer3d.PoseMat(pose) * Mat4.RotateY(yaw)
+            var model = Renderer3d.PoseMat(pose) * Mat4.RotateY(-yaw)
                 * Mat4.Scale(new Vec3(1.0f + sq * 0.6f, 1.0f - sq, 1.0f + sq * 0.6f));
             renNow.Draw(mesh, model, new Draw3dOpts
             {

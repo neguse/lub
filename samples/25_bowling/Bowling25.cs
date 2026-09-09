@@ -808,7 +808,7 @@ public static class Bowling25
     static Mat4 BoxMatR(float x, float y, float z, float ry, float sx,
         float sy, float sz)
     {
-        return Mat4.Translate(new Vec3(x, y, z)) * Mat4.RotateY(ry)
+        return Mat4.Translate(new Vec3(x, y, z)) * Mat4.RotateY(-ry)
             * Mat4.Scale(new Vec3(sx, sy, sz));
     }
 

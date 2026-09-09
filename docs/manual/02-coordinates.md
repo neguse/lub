@@ -25,6 +25,33 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 するように、
 「上が +Y」がワールドの前提。
 
+### 回転と行列
+
+`Mat4` は行優先の 16 要素配列(`M[row * 4 + col]`)で、頂点には列ベクトルとして
+左から掛ける(`m.MulPoint(v)`。shader も同じ)。合成は
+`projection * view * model` で、右側の行列から順に適用される。
+配列の格納順と座標系の左右は別の規約。
+
+回転の規約はスタック全体で 1 つ。「軸 n 回りに角度 θ 回す」は右ねじの向きの
+能動回転で、+Z 軸回りの +π/2 は +X を +Y に、+Y 軸回りの +π/2 は +Z を +X に
+回す。次は全部同じ写像を返す:
+
+- `Quat.FromAxisAngle(axis, θ).RotateVec3(v)`(演算子 `q * v`)
+- `Quat.FromAxisAngle(axis, θ).ToMat4().MulDir(v)`、`Mat4.FromQuat(q)`
+- `Mat4.Rotate(θ, axis).MulDir(v)`、`Mat4.RotateX/Y/Z(θ).MulDir(v)`
+- `Phys3d` の pose の quaternion で C 側(box3d、SDF の rotate)がローカル点を
+  回した結果
+
+`Quat` は `(x, y, z, w)` の Hamilton 積で、`a * b` は b を先に適用する。
+`Phys3d` は quaternion の成分を反転せずに入出力し、pose はそのまま
+`Renderer3d.PoseMat(pose)` で model 行列になる。呼び出し側で共役や転置を
+してはいけない。
+
+左手系(+Z 前方、depth [0, 1])はカメラと投影の話で、回転の向きとは独立した
+規約。左手系だからといって回転行列を転置したり物理の quaternion を反転したり
+しない。Unity や D3D、box3d の回転と同じ式になる。
+native gate の `tests/lua/test_rotation_convention.lua` がこの一致を検査する。
+
 ## 2D: 「ワールド」と「スクリーン」は別物
 
 2D では 2 つの座標系を行き来する:
