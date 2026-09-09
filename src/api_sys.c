@@ -3,6 +3,7 @@
 #include "profile.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define LUB_READBACK_DEPTH_MAX 32
@@ -100,6 +101,11 @@ static SDL_Scancode scancode_from_name(LubStr name) {
     return SDL_SCANCODE_TAB;
   if (strcmp(key, "backspace") == 0)
     return SDL_SCANCODE_BACKSPACE;
+  if (key[0] == 'f' && n >= 2 && n <= 3) {
+    int fn = atoi(key + 1);
+    if (fn >= 1 && fn <= 12)
+      return (SDL_Scancode)(SDL_SCANCODE_F1 + (fn - 1));
+  }
   return SDL_SCANCODE_UNKNOWN;
 }
 

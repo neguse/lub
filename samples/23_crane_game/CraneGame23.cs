@@ -2,15 +2,13 @@
 // 実行: lub samples/23_crane_game/CraneGame23.csproj (transpile + watch + hot reload)
 //
 // 型と tcs 制約:
-// - typedef Bear / 匿名構造体 {bear, body, index} {head, fr, fl}
-//   {speed, torque} は class Bear / LiveBear / Machine / ClawCommand 化。
 // - Renderer3d / Mesh3d は static 初期化子でなく onFrame からの build() で
 //   遅延生成する (cs-lib クラスは load 順の都合で static 初期化子から呼べない)。
 // - 整数剰余 % は Mod() (floor 分解) で代替、switch は if 連鎖。
 // - Phys3d の body/world 取得は null ガード。
 //
-// 3D クレーンゲーム (2 本爪プライズ機)。実機の機構を実寸スケールで再現し、
-// 補助力なしの現実の物理 (拘束 + モーター + 摩擦 + 重力) だけで成立させる:
+// 3D クレーンゲーム (2 本爪プライズ機)。景品には接触・摩擦・重力だけが作用する。
+// 中央のソレノイド、戻しバネ、リンクで開閉する機構を簡略化している。
 //
 // - ガントリー: キャリッジ (kinematic) が上部レールを X→Z の順に走る。
 //   ボタン 1 押下中に右へ、ボタン 2 押下中に奥へ。離すと戻せない。
@@ -18,10 +16,9 @@
 //   distance joint を「バネ力 0 + 上限 limit」でロープ化し、巻き上げ =
 //   maxLength の増減。着地でワイヤーが弛む・移動で振り子揺れするのは実機通り。
 //   着地検出も実機と同じ「張力低下」(= 弛み) で行う。
-// - 爪: 2 本アームを revolute joint のトルク制限付きモーターで開閉。
-//   トルク上限 = アームパワー。実機同様「初動 (掴む瞬間)」と「保持
-//   (運搬中)」を別設定できる。把持はモーターの締め付け × 摩擦のみなので、
-//   保持が弱いと運搬中に滑り落ちる (=「取れそうで取れない」が物理から創発)。
+// - 爪: 肩の回転関節と 2 本の等長リンクを、中央の可動軸で同時に駆動する。
+//   ソレノイドは可動軸とヘッドに等大反対向きの力を加える。無通電ではバネで開く。
+//   板状の爪先が景品を下から支える。景品への吸着・固定用の拘束は作らない。
 // - ぬいぐるみ: SDF モデリングしたクマ (約 30cm / 約 330g、密度 50kg/m³)。
 //   物理は球 + カプセルの複数 shape 近似。
 
@@ -70,18 +67,12 @@ public class Machine
     }
 }
 
-/// <summary>爪モーター指示 (右用の符号。左は反転)。</summary>
-public class ClawCommand
-{
-    public float Speed;
-    public float Torque;
-}
-
 public static class CraneGame23
 {
     const float tickDt = 1.0f / 60.0f;
+    const int physicsSubsteps = 8;
 
-    // --- 実寸パラメータ (フィールド 750×900mm、実機調査に基づく) ---------
+    // --- メートル・秒・kg で定義した機構 (フィールド 750×900mm) ---------
     const float fieldHx = 0.375f; // フィールド半幅 (X)
     const float fieldHz = 0.45f; // フィールド半奥行 (Z)。+Z が手前
     const float carriageY = 0.78f;
@@ -93,19 +84,19 @@ public static class CraneGame23
     const float headTop = 0.06f; // ヘッド原点→ワイヤー取付点
     const float shoulderX = 0.10f; // 爪の肩関節 (ヘッド原点から)
     const float shoulderY = -0.01f;
-    const float homeX = -0.16f; // 待機位置 = 獲得口の真上
+    // 左手系のカメラを +Z (手前) に置くので、画面の右は -X。左右の語は画面基準
+    const float homeX = 0.16f; // 待機位置 = 獲得口の真上
     const float homeZ = 0.275f;
-    const float maxX = 0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
+    const float minX = -0.15f; // 可動範囲 (店側設定。開いた爪がガラスに触れない位置まで)
     const float minZ = -0.30f;
     // 獲得口 (シュート): 手前左の床穴。判定に使う内側 2 辺
-    const float chuteX1 = -0.025f;
+    const float chuteX1 = 0.025f;
     const float chuteZ0 = 0.10f;
 
-    // アームパワー。実機の店側パワー設定に相当し、把持はトルク上限 × 摩擦で決まる。
-    // 初動 1.2 N·m で約 330g のクマを掴め、保持 0.6 N·m は揺れ・加速で
-    // 滑る境界値 (デモ実測でおよそ 4-5 回に 1 回獲得 = 実機並み)
-    static float grabTorque = 1.2f;
-    static float holdTorque = 0.6f;
+    // ソレノイドの吸引力 (N)。保持中も通電し、弱めると荷重で爪が開く。
+    static float grabForce = 40.0f;
+    static float holdForce = 40.0f;
+    const int grabTicks = 100; // 全開から閉じる時間 + 接触が落ち着く時間
 
     // --- 状態機械 (実機の自動シーケンス) ---------------------------------
     const int stIdle = 0;
@@ -144,6 +135,15 @@ public static class CraneGame23
     static int idleT = 0;
     // attract モード: 放置でクマを狙って自動プレイ (デモ兼ヘッドレス検証用)
     static bool autoPlay = false;
+    static bool demoEnabled = false;
+    static bool sideView = false;
+    static bool settingsOpen = false;
+    static bool controlHeld = false;
+    static int pointerControl = 0;
+    static int screenW = 960, screenH = 720;
+    static float hudScale = 1;
+    static SpriteBatch? hud = null;
+    static Text? hudFont = null;
     static int autoIndex = 0;
     static float autoX = 0.0f;
     static float autoZ = 0.0f;
@@ -151,21 +151,22 @@ public static class CraneGame23
     static FixedStep? step = null;
     static int pendingPresses = 0;
     static List<int> renderBearIndices = new List<int>();
+    static Machine? renderMachine = null;
 
     static List<Bear> bears = new List<Bear>();
 
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
+        Lub.Config(new ConfigOpts { Backend = backend, Width = 960, Height = 720 });
         // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
         bears = new List<Bear>
         {
-            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.08f, Y = 0.02f, Z = -0.05f, Yaw = 0.4f },
-            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = -0.14f, Y = 0.02f, Z = -0.26f, Yaw = -0.7f },
-            new Bear { Gen = 1, Variant = 2, Respawn = 0, X = 0.15f, Y = 0.02f, Z = 0.18f, Yaw = 2.6f },
-            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.06f, Y = 0.02f, Z = 0.18f, Yaw = 1.8f },
-            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = 0.16f, Y = 0.02f, Z = -0.24f, Yaw = -2.2f },
+            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = -0.08f, Y = 0.02f, Z = -0.05f, Yaw = -0.4f },
+            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = 0.14f, Y = 0.02f, Z = -0.26f, Yaw = 0.7f },
+            new Bear { Gen = 1, Variant = 2, Respawn = 0, X = -0.15f, Y = 0.02f, Z = 0.18f, Yaw = -2.6f },
+            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.14f, Y = 0.02f, Z = -0.02f, Yaw = -1.8f },
+            new Bear { Gen = 1, Variant = 1, Respawn = 0, X = -0.16f, Y = 0.02f, Z = -0.24f, Yaw = 2.2f },
         };
     }
 
@@ -210,16 +211,17 @@ public static class CraneGame23
             .Ssub(eye, 0.004f);
     }
 
-    // 爪 1 本 (右用)。肩 (原点) → 肘 → 爪先の「反り 120°」形状。
-    // 左は描画・物理とも X 反転 (rotateY(π))
-    static SdfNode FingerModel()
+    // 描画と物理が共有する右爪の寸法。左は両方で X を反転する。
+    const float padHx = 0.025f, padHy = 0.004f, padHz = 0.065f;
+    const float padX = -0.07f, padY = -0.211f;
+    const float leverY = 0.06f;
+    static List<float[]> fingerRods = new List<float[]>
     {
-        var upper = Sdf.Capsule(new Vec3(0, 0, 0),
-            new Vec3(0.050f, -0.110f, 0), 0.009f);
-        var lower = Sdf.Capsule(new Vec3(0.050f, -0.110f, 0),
-            new Vec3(-0.085f, -0.215f, 0), 0.008f);
-        return upper.Smin(lower, 0.010f).Paint(0xC9CED8, 0.9f, 0.25f);
-    }
+        // ax, ay, bx, by, radius
+        new float[] { 0, 0, 0.050f, -0.110f, 0.009f },
+        new float[] { 0.050f, -0.110f, -0.085f, -0.215f, 0.008f },
+        new float[] { 0, 0, 0, leverY, 0.006f },
+    };
 
     // ヘッド: ドーム + リング。原点はリング面の中心
     static SdfNode HeadModel()
@@ -234,6 +236,7 @@ public static class CraneGame23
     // --- メッシュ (hot reload 対応: dirty フラグで再メッシュ。native watch は
     // chunk 再実行で初期値 true に戻り、web の module mode は onReload で立てる) --
     static bool meshDirty = true;
+    static bool showLinkage = false;
 
     public static void OnReload()
     {
@@ -241,7 +244,8 @@ public static class CraneGame23
     }
     static Renderer3d? ren = null;
     static List<Mesh3d>? bearMeshes = null;
-    static Mesh3d? fingerMesh = null;
+    static Mesh3d? rodCylinder = null;
+    static Mesh3d? rodSphere = null;
     static Mesh3d? headMesh = null;
     static Mesh3d? cubeMesh = null;
 
@@ -255,7 +259,8 @@ public static class CraneGame23
             bm.Add(new Mesh3d("cg_bear" + i));
         }
         bearMeshes = bm;
-        fingerMesh = new Mesh3d("cg_finger");
+        rodCylinder = new Mesh3d("cg_rod_cylinder");
+        rodSphere = new Mesh3d("cg_rod_sphere");
         headMesh = new Mesh3d("cg_head");
         cubeMesh = new Mesh3d("cg_cube");
     }
@@ -263,17 +268,19 @@ public static class CraneGame23
     static void Remesh()
     {
         var bm = bearMeshes;
-        var fm = fingerMesh;
+        var cylinder = rodCylinder;
+        var sphere = rodSphere;
         var hm = headMesh;
         var cm = cubeMesh;
-        if (bm == null || fm == null || hm == null || cm == null) return;
+        if (bm == null || cylinder == null || sphere == null || hm == null || cm == null) return;
         var furs = new List<int> { 0xB07A4A, 0xE8A0B4, 0xF0E5CE };
         var bellies = new List<int> { 0xF2E3C8, 0xF7D9E2, 0xE0CFA8 };
         for (int i = 0; i < 3; i++)
         {
             bm[i].Rebuild(Sdf.Mesh(BearModel(furs[i], bellies[i]), 56));
         }
-        fm.Rebuild(Sdf.Mesh(FingerModel(), 48));
+        cylinder.Rebuild(Shapes3d.Cylinder(32));
+        sphere.Rebuild(Shapes3d.Sphere(16, 32));
         hm.Rebuild(Sdf.Mesh(HeadModel(), 56));
         if (!cm.Ready())
             cm.Rebuild(Shapes3d.Cube());
@@ -350,22 +357,27 @@ public static class CraneGame23
     // 爪 1 本の物理 (右用。左は sign = -1 で X 反転)
     static void DeclareFingerShapes(BodyRef3d body, float sign)
     {
-        Phys3d.Capsule(body, "upper", new CapsuleDesc3d
+        Phys3d.Box(body, "pad", new BoxDesc3d
         {
-            A = new Vec3d { X = 0.0f, Y = 0.0f, Z = 0.0f },
-            B = new Vec3d { X = sign * 0.050f, Y = -0.110f, Z = 0.0f },
-            R = 0.009f,
+            Hx = padHx,
+            Hy = padHy,
+            Hz = padHz,
+            Offset = new Vec3d { X = sign * padX, Y = padY, Z = 0 },
             Density = 2000.0f,
-            Friction = 0.6f,
+            Friction = 0.9f,
         });
-        Phys3d.Capsule(body, "lower", new CapsuleDesc3d
+        for (int i = 0; i < fingerRods.Count; i++)
         {
-            A = new Vec3d { X = sign * 0.050f, Y = -0.110f, Z = 0.0f },
-            B = new Vec3d { X = sign * -0.085f, Y = -0.215f, Z = 0.0f },
-            R = 0.008f,
-            Density = 2000.0f,
-            Friction = 0.6f,
-        });
+            var rod = fingerRods[i];
+            Phys3d.Capsule(body, "rod:" + i, new CapsuleDesc3d
+            {
+                A = new Vec3d { X = sign * rod[0], Y = rod[1], Z = 0 },
+                B = new Vec3d { X = sign * rod[2], Y = rod[3], Z = 0 },
+                R = rod[4],
+                Density = 2000.0f,
+                Friction = 0.6f,
+            });
+        }
     }
 
     // 静物: 床 (獲得口の穴あき) + アクリルフェンス + ガラス壁 + シュート筒
@@ -373,17 +385,17 @@ public static class CraneGame23
     {
         // x, y, z, hx, hy, hz
         new float[] { 0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f }, // 床 (奥側)
-        new float[] { 0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // 床 (手前右)
-        new float[] { -0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // フェンス (穴の奥側)
-        new float[] { -0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // フェンス (穴の右側)
+        new float[] { -0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f }, // 床 (手前右)
+        new float[] { 0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.006f }, // フェンス (穴の奥側)
+        new float[] { 0.025f, 0.07f, 0.275f, 0.006f, 0.07f, 0.175f }, // フェンス (穴の右側)
         new float[] { -fieldHx - 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // ガラス左
         new float[] { fieldHx + 0.006f, 0.31f, 0.0f, 0.006f, 0.31f, fieldHz }, // ガラス右
         new float[] { 0.0f, 0.31f, -fieldHz - 0.006f, fieldHx, 0.31f, 0.006f }, // ガラス奥
         new float[] { 0.0f, 0.31f, fieldHz + 0.006f, fieldHx, 0.31f, 0.006f }, // ガラス手前
-        new float[] { -0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 右
-        new float[] { -0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // シュート筒 奥
-        new float[] { -fieldHx - 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 左
-        new float[] { -0.20f, -0.25f, fieldHz + 0.006f, 0.175f, 0.25f, 0.006f }, // シュート筒 手前
+        new float[] { 0.025f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 右
+        new float[] { 0.20f, -0.25f, 0.10f, 0.175f, 0.25f, 0.006f }, // シュート筒 奥
+        new float[] { fieldHx + 0.006f, -0.25f, 0.275f, 0.006f, 0.25f, 0.175f }, // シュート筒 左
+        new float[] { 0.20f, -0.25f, fieldHz + 0.006f, 0.175f, 0.25f, 0.006f }, // シュート筒 手前
     };
 
     static void DeclareStatics(WorldRef3d world)
@@ -431,6 +443,9 @@ public static class CraneGame23
         var head = Phys3d.Body(world, "head", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
+            // 巻き取り長や爪モーターの宣言更新だけでは、休止した拘束は起きない。
+            // 駆動するヘッドは休止させず、つながる機構の巻き上げを毎 tick 解く。
+            Sleep = false,
             LinearDamping = 0.15f,
             AngularDamping = 0.5f,
             Initial = new InitialState3d { X = homeX, Y = headY0, Z = homeZ },
@@ -481,8 +496,7 @@ public static class CraneGame23
             MaxSpringTorque = 2.5f,
         });
 
-        // 爪 2 本: 肩の revolute joint。モーターのトルク上限がアームパワー。
-        // 開閉指示は状態機械から (clawCommand)。angularDamping は関節部の摩擦損失
+        // 肩の回転関節は受動。開閉力は中央軸からリンクを通して伝わる。
         var fr = Phys3d.Body(world, "finger:r", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
@@ -510,9 +524,9 @@ public static class CraneGame23
         if (fl == null) return null;
         DeclareFingerShapes(fl, -1.0f);
 
-        var claw = ClawCommand();
         Phys3d.Joint(world, "claw:r", new JointDesc3d
         {
+            ConstraintHertz = 120.0f,
             Type = Phys3d.JointType.Revolute,
             BodyA = head,
             BodyB = fr,
@@ -524,12 +538,10 @@ public static class CraneGame23
             EnableLimit = true,
             Lower = 0.0f,
             Upper = openAngle,
-            EnableMotor = true,
-            MotorSpeed = claw.Speed,
-            MaxTorque = claw.Torque,
         });
         Phys3d.Joint(world, "claw:l", new JointDesc3d
         {
+            ConstraintHertz = 120.0f,
             Type = Phys3d.JointType.Revolute,
             BodyA = head,
             BodyB = fl,
@@ -541,29 +553,85 @@ public static class CraneGame23
             EnableLimit = true,
             Lower = -openAngle,
             Upper = 0.0f,
-            EnableMotor = true,
-            MotorSpeed = -claw.Speed,
-            MaxTorque = claw.Torque,
         });
+        // One sliding actuator closes both arms through fixed-length links.
+        // With no drive force, the return spring and plunger weight open them.
+        var plunger = Phys3d.Body(world, "plunger", new BodyDesc3d
+        {
+            Type = Phys3d.BodyType.Dynamic,
+            Initial = new InitialState3d { X = homeX, Y = headY0 + 0.02f, Z = homeZ },
+        });
+        if (plunger == null) return null;
+        Phys3d.Box(plunger, "solid", new BoxDesc3d
+        {
+            Hx = 0.02f,
+            Hy = 0.02f,
+            Hz = 0.02f,
+            Density = 3125.0f, // 可動軸の等価質量 0.20 kg
+            Filter = new FilterDesc3d { MaskBits = "0" }, // inside the head housing
+        });
+        Phys3d.Joint(world, "actuator", new JointDesc3d
+        {
+            ConstraintHertz = 120.0f,
+            Type = Phys3d.JointType.Prismatic,
+            BodyA = head,
+            BodyB = plunger,
+            AnchorA = new Vec3d { X = homeX, Y = headY0 + 0.02f, Z = homeZ },
+            AnchorB = new Vec3d { X = homeX, Y = headY0 + 0.02f, Z = homeZ },
+            Axis = new Vec3d { X = 0, Y = 1, Z = 0 },
+            EnableLimit = true,
+            Lower = -0.079f,
+            Upper = 0.0f,
+            EnableSpring = true,
+            Hertz = 4.0f,
+            DampingRatio = 1.0f,
+            TargetTranslation = -0.079f,
+        });
+        // The solenoid pulls on its plunger and housing with equal opposite forces.
+        // No force or constraint is ever applied directly to a prize.
+        var headPose = Phys3d.Pose(head);
+        var plungerPose = Phys3d.Pose(plunger);
+        if (headPose != null && plungerPose != null)
+        {
+            var force = new Quat(headPose.Qx, headPose.Qy, headPose.Qz, headPose.Qw)
+                .RotateVec3(new Vec3(0, ClawForce(), 0));
+            Phys3d.AddForceCenter(plunger, new Vec3d { X = force.X, Y = force.Y, Z = force.Z });
+            Phys3d.AddForce(head, new Vec3d { X = -force.X, Y = -force.Y, Z = -force.Z },
+                new CommandOpts3d { Point = new Vec3d { X = plungerPose.X, Y = plungerPose.Y, Z = plungerPose.Z } });
+        }
+        DeclareLink(world, plunger, fr, headY0, 1.0f, "link:r");
+        DeclareLink(world, plunger, fl, headY0, -1.0f, "link:l");
         return new Machine(head, fr, fl);
     }
 
-    // 状態ごとの爪モーター指示 (右用の符号。左は反転)。
-    // speed > 0 = 開く。実機の位相別パワー (初動/保持) をここで切り替える。
-    // 速度は実機並みにゆっくり (速いとリミット衝突の反動でヘッドが暴れる)
-    static ClawCommand ClawCommand()
+    static void DeclareLink(WorldRef3d world, BodyRef3d plunger, BodyRef3d finger,
+        float headY0, float sign, string key)
     {
-        // プレイ開始 (移動) から降下まで開きっぱなし (実機と同じ)
-        if (state == stMoveX || state == stWait2 || state == stMoveZ
-            || state == stDescend)
-            return new ClawCommand { Speed = 1.8f, Torque = 0.9f };
+        Phys3d.Joint(world, key, new JointDesc3d
+        {
+            ConstraintHertz = 120.0f,
+            Type = Phys3d.JointType.Distance,
+            BodyA = plunger,
+            BodyB = finger,
+            AnchorA = new Vec3d { X = homeX, Y = headY0 + 0.02f, Z = homeZ },
+            AnchorB = new Vec3d
+            {
+                X = homeX + sign * shoulderX,
+                Y = headY0 + shoulderY + leverY,
+                Z = homeZ
+            },
+            Length = 0.104403f,
+        });
+    }
+
+    // Coil pull in newtons. With power off, the return spring opens the fingers.
+    static float ClawForce()
+    {
         if (state == stGrab || state == stLift)
-            return new ClawCommand { Speed = -2.0f, Torque = grabTorque }; // 初動 (掴む〜持ち上げ)
+            return grabForce;
         if (state == stCarry)
-            return new ClawCommand { Speed = -2.0f, Torque = holdTorque }; // 保持 (運搬中に弱まる)
-        if (state == stRelease)
-            return new ClawCommand { Speed = 1.8f, Torque = 0.9f }; // 獲得口で開放
-        return new ClawCommand { Speed = -1.5f, Torque = 0.5f }; // 待機は閉じ
+            return holdForce;
+        return 0.0f;
     }
 
     static List<LiveBear> DeclareBears(WorldRef3d world)
@@ -601,12 +669,11 @@ public static class CraneGame23
         if (autoPlay)
         {
             // attract: 目標座標に届くまで押し続ける動作を合成
-            if (state == stMoveX) return cx < autoX - 0.005f;
+            if (state == stMoveX) return cx > autoX + 0.005f;
             if (state == stMoveZ) return cz > autoZ + 0.005f;
             return false;
         }
-        return Input.KeyDown("space")
-            || (Input.MouseDown() && !Ui.WantCaptureMouse());
+        return controlHeld;
     }
 
     static bool ButtonPressed(bool tickPressed)
@@ -638,7 +705,7 @@ public static class CraneGame23
             else
             {
                 idleT++;
-                if (idleT > 240)
+                if (demoEnabled && idleT > 240)
                 {
                     // attract: 生きているクマを順繰りに狙う
                     Bear? target = null;
@@ -658,10 +725,14 @@ public static class CraneGame23
                     if (target != null)
                     {
                         var pose = Phys3d.PoseByKey(world, "bear:" + targetIndex);
-                        autoX = MathUtil.Clamp(pose != null ? pose.X : target.X,
-                            homeX, maxX);
-                        autoZ = MathUtil.Clamp(pose != null ? pose.Z : target.Z,
-                            minZ, homeZ);
+                        // 原点は足元。倒れた景品も胴体の中心を狙う。
+                        var aim = new Vec3(target.X, target.Y + 0.10f, target.Z);
+                        if (pose != null)
+                            aim = new Vec3(pose.X, pose.Y, pose.Z)
+                                + new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw)
+                                    .RotateVec3(new Vec3(0, 0.10f, 0));
+                        autoX = MathUtil.Clamp(aim.X, minX, homeX);
+                        autoZ = MathUtil.Clamp(aim.Z, minZ, homeZ);
                         autoPlay = true;
                         plays++;
                         Enter(stMoveX);
@@ -673,7 +744,7 @@ public static class CraneGame23
         else if (state == stMoveX)
         {
             if (ButtonHeld())
-                cx = Math.Min(cx + moveSpeed * tickDt, maxX);
+                cx = Math.Max(cx - moveSpeed * tickDt, minX);
             else if (stateT > 5)
                 Enter(stWait2);
         }
@@ -715,7 +786,7 @@ public static class CraneGame23
         }
         else if (state == stGrab)
         {
-            if (stateT > 50)
+            if (stateT > grabTicks)
                 Enter(stLift);
         }
         else if (state == stLift)
@@ -760,7 +831,7 @@ public static class CraneGame23
             if (pose.Y < -0.32f)
             {
                 entry.Bear.Respawn = 150;
-                if (pose.X < chuteX1 && pose.Z > chuteZ0)
+                if (pose.X > chuteX1 && pose.Z > chuteZ0)
                 {
                     score++;
                     payoutFlash = 60;
@@ -777,10 +848,10 @@ public static class CraneGame23
                 {
                     // 補充: フィールド奥へ落とす。位置は決定論的にずらす
                     b.Gen++;
-                    b.X = 0.02f + Mod(b.Gen * 53, 13) * 0.012f;
+                    b.X = -0.02f - Mod(b.Gen * 53, 13) * 0.012f;
                     b.Y = 0.35f;
                     b.Z = -0.15f + Mod(b.Gen * 31, 11) * 0.02f;
-                    b.Yaw = Mod(b.Gen * 137, 63) * 0.1f;
+                    b.Yaw = -Mod(b.Gen * 137, 63) * 0.1f;
                 }
             }
         }
@@ -823,6 +894,57 @@ public static class CraneGame23
         r.Draw(cube, model, new Draw3dOpts { Tint = color, Blend = blend });
     }
 
+    // 円柱 + 両端球の和集合で、物理のカプセルを直接描く。
+    // 円周 32 分割・球 16 段の輪郭誤差は最大半径 9 mm に対して 0.1 mm 未満。
+    static void DrawRod(Mat4 pose, Vec3 a, Vec3 b, float radius)
+    {
+        var r = ren;
+        var cylinder = rodCylinder;
+        var sphere = rodSphere;
+        if (r == null || cylinder == null || sphere == null) return;
+        var opts = new Draw3dOpts { Tint = Color.Rgb(0.72f, 0.74f, 0.78f) };
+        r.Draw(cylinder, pose * SegmentMat(a, b, radius)
+            * Mat4.Scale(new Vec3(1, 2, 1)), opts);
+        r.Draw(sphere, pose * Mat4.Translate(a)
+            * Mat4.Scale(new Vec3(radius, radius, radius)), opts);
+        r.Draw(sphere, pose * Mat4.Translate(b)
+            * Mat4.Scale(new Vec3(radius, radius, radius)), opts);
+    }
+
+    static void DrawFinger(Pose3d bodyPose, float sign)
+    {
+        var pose = Renderer3d.PoseMat(bodyPose);
+        DrawBox(pose * BoxMat(sign * padX, padY, 0, padHx, padHy, padHz),
+            Color.Rgb(0.27f, 0.29f, 0.35f), null);
+        foreach (var rod in fingerRods)
+            DrawRod(pose, new Vec3(sign * rod[0], rod[1], 0),
+                new Vec3(sign * rod[2], rod[3], 0), rod[4]);
+    }
+
+    // 機構確認用の破線。距離拘束を示す記号であり、金属部品の描画ではない。
+    static void DrawLink(Pose3d plunger, Pose3d finger)
+    {
+        var a = new Vec3(plunger.X, plunger.Y, plunger.Z);
+        var b = new Vec3(finger.X, finger.Y, finger.Z)
+            + new Quat(finger.Qx, finger.Qy, finger.Qz, finger.Qw)
+                .RotateVec3(new Vec3(0, leverY, 0));
+        for (int i = 0; i < 6; i++)
+            DrawBox(SegmentMat(a + (b - a) * (i / 6.0f),
+                a + (b - a) * ((i + 0.5f) / 6.0f), 0.0015f),
+                Color.Rgb(2.0f, 1.1f, 0.1f), null);
+    }
+
+    static void DrawContacts(BodyRef3d finger)
+    {
+        foreach (var contact in Phys3d.BodyContacts(finger))
+        {
+            if (contact.PointCount > 0 && contact.X != null && contact.Y != null && contact.Z != null
+                && (contact.Separation ?? 0) <= 0.002f)
+                DrawBox(BoxMat(contact.X.Value, contact.Y.Value, contact.Z.Value,
+                    0.003f, 0.003f, 0.003f), Color.Rgb(2.0f, 1.1f, 0.1f), null);
+        }
+    }
+
     static void SimulateTick(WorldRef3d world)
     {
         // render 側で保持した edge は次の logical tick だけで有効。
@@ -835,6 +957,7 @@ public static class CraneGame23
         DeclareStatics(world);
         var machine = DeclareMachine(world);
         if (machine == null) return;
+        renderMachine = machine;
         var live = DeclareBears(world);
         renderBearIndices = new List<int>();
         foreach (var entry in live)
@@ -845,6 +968,123 @@ public static class CraneGame23
         frame++;
     }
 
+    static Rect ControlRect(int button)
+    {
+        float s = hudScale;
+        return new Rect((int)(screenW * 0.5f + (button == 1 ? -248 : 12) * s),
+            (int)(screenH - 94 * s), (int)(236 * s), (int)(58 * s));
+    }
+
+    // 上部バーの view 切替と、下部デッキの demo ボタン。描画と当たり判定で共有する
+    static Rect ViewButtonRect()
+    {
+        float s = hudScale;
+        return new Rect((int)(screenW - 180 * s), (int)(14 * s), (int)(160 * s), (int)(34 * s));
+    }
+
+    static Rect DemoButtonRect()
+    {
+        float s = hudScale;
+        return new Rect((int)(24 * s), (int)(screenH - 94 * s), (int)(128 * s), (int)(58 * s));
+    }
+
+    static bool Inside(Rect rect, float x, float y)
+    {
+        return x >= rect.X && x < rect.X + rect.W && y >= rect.Y && y < rect.Y + rect.H;
+    }
+
+    static int ActiveControl()
+    {
+        if (state == stIdle || state == stMoveX) return 1;
+        if (state == stWait2 || state == stMoveZ) return 2;
+        return 0;
+    }
+
+    static void ReadControls()
+    {
+        Gfx.Size(out var width, out var height);
+        screenW = width;
+        screenH = height;
+        hudScale = Math.Min(screenW / 960.0f, screenH / 720.0f);
+        Input.MousePos(out var mx, out var my);
+        bool click = Input.MousePressed() && !Ui.WantCaptureMouse();
+        if (Input.KeyPressed("f2")) settingsOpen = !settingsOpen;
+        if (Input.KeyPressed("tab") || (click && Inside(ViewButtonRect(), mx, my)))
+            sideView = !sideView;
+        if (click && Inside(DemoButtonRect(), mx, my))
+        {
+            demoEnabled = !demoEnabled;
+            if (demoEnabled && state == stIdle) idleT = 241;
+        }
+        int active = ActiveControl();
+        if (!Input.MouseDown()) pointerControl = 0;
+        if (click && active != 0 && Inside(ControlRect(active), mx, my) && !autoPlay)
+            pointerControl = active;
+        controlHeld = !autoPlay && active != 0 && (Input.KeyDown("space")
+            || (pointerControl == active && Input.MouseDown() && Inside(ControlRect(active), mx, my)));
+        if (!autoPlay && active != 0 && (Input.KeyPressed("space") || (click && pointerControl == active)))
+        {
+            demoEnabled = false;
+            pendingPresses++;
+        }
+    }
+
+    static void HudLabel(string text, float x, float y, int color, float scale)
+    {
+        var b = hud;
+        var f = hudFont;
+        if (b != null && f != null) f.Draw(b, text, x, y, Color.Hex(color), scale * hudScale);
+    }
+
+    static void DrawHud()
+    {
+        const string fontPath = "samples/21_iroha/data/MPLUS1p-subset.ttf"; // 共有の M PLUS 1p subset (21_iroha が正)
+        Io.LoadBytes(fontPath, out var bytes, out _, out _, out _);
+        if (bytes == null) return;
+        hud ??= new SpriteBatch(screenW, screenH, "crane_hud", "crane_hud");
+        hudFont ??= new Text("crane_hud_font", fontPath, 24, 512);
+        var b = hud;
+        b.LogicalW = screenW;
+        b.LogicalH = screenH;
+        float s = hudScale;
+        int active = autoPlay ? 0 : ActiveControl();
+        b.Begin();
+        b.Rect(0, 0, screenW, 54 * s, Color.Hex(0x14242F, 0.96f));
+        b.Rect(0, screenH - 126 * s, screenW, 126 * s, Color.Hex(0xF5F1EB));
+        b.Rect(0, screenH - 126 * s, screenW, 3 * s, Color.Hex(0xD8536C));
+        var viewRect = ViewButtonRect();
+        b.Rect(viewRect.X, viewRect.Y, viewRect.W, viewRect.H, Color.Hex(0x223544));
+        var demoRect = DemoButtonRect();
+        b.Rect(demoRect.X, demoRect.Y, demoRect.W, demoRect.H, Color.Hex(0xE7E3DD));
+        for (int i = 1; i <= 2; i++)
+        {
+            var rect = ControlRect(i);
+            int color = active == i ? (controlHeld ? 0xAD354F : 0xD8536C) : 0xDDDAD5;
+            b.Rect(rect.X, rect.Y + 5 * s, rect.W, rect.H, Color.Hex(active == i ? 0x9F374D : 0xC3BFBA));
+            b.Rect(rect.X, rect.Y + (controlHeld && active == i ? 3 * s : 0), rect.W, rect.H, Color.Hex(color));
+        }
+        b.Flush();
+        b.Begin();
+        HudLabel("CLAW CLUB", 26 * s, 37 * s, 0xF5F1EB, 1.0f);
+        HudLabel(sideView ? "FRONT VIEW  / TAB" : "SIDE VIEW  / TAB", screenW - 165 * s, 36 * s, 0xE1E9EF, 0.60f);
+        string hint = active == 1 ? "Hold 1 to move right. Release to stop."
+            : active == 2 ? "Hold 2 to move back. Release to grab."
+            : autoPlay ? (demoEnabled ? "DEMO  /  " : "Finishing this play  /  ") + stateNames[state] : "The crane is " + stateNames[state] + ".";
+        HudLabel(hint, screenW * 0.5f - 248 * s, screenH - 105 * s, 0x45515A, 0.66f);
+        HudLabel(demoEnabled ? "STOP DEMO" : "WATCH DEMO", 36 * s, screenH - 59 * s, 0x5B6267, 0.64f);
+        for (int i = 1; i <= 2; i++)
+        {
+            var rect = ControlRect(i);
+            HudLabel(i == 1 ? "1   MOVE RIGHT" : "2   MOVE BACK", rect.X + 22 * s, rect.Y + 37 * s,
+                active == i ? 0xFFFFFF : 0x7C8081, 0.83f);
+        }
+        HudLabel("PRIZES  " + score, screenW - 170 * s, screenH - 68 * s, 0x34464E, 0.78f);
+        HudLabel("PLAYS   " + plays, screenW - 170 * s, screenH - 42 * s, 0x81888B, 0.62f);
+        HudLabel("Hold SPACE for the lit button", screenW * 0.5f - 128 * s, screenH - 12 * s, 0x81888B, 0.60f);
+        HudLabel("F2  Settings", 26 * s, screenH - 12 * s, 0x81888B, 0.55f);
+        b.Flush();
+    }
+
     public static void OnFrame(float dt)
     {
         Build();
@@ -852,19 +1092,18 @@ public static class CraneGame23
             Remesh();
         var r = ren;
         var bm = bearMeshes;
-        var fm = fingerMesh;
+        var cylinder = rodCylinder;
+        var sphere = rodSphere;
         var hm = headMesh;
-        if (r == null || bm == null || fm == null || hm == null)
+        if (r == null || bm == null || cylinder == null || sphere == null || hm == null)
             return;
-        if (!autoPlay && (Input.KeyPressed("space")
-            || (Input.MousePressed() && !Ui.WantCaptureMouse())))
-            pendingPresses = pendingPresses + 1;
+        ReadControls();
 
         var world = Phys3d.World("crane_game", new WorldOpts3d
         {
             Gravity = new Vec3d { X = 0.0f, Y = -9.81f, Z = 0.0f },
             FixedDt = tickDt,
-            Substeps = 8,
+            Substeps = physicsSubsteps,
             MaxSteps = 1,
         });
         if (world == null) return;
@@ -874,42 +1113,66 @@ public static class CraneGame23
 
         // --- draw ---
         // ゲームセンターの薄暗い環境 + 筐体上部からの光
-        r.Light.Dir = new Vec3(-0.3f, 1.0f, 0.45f);
-        r.Light.Intensity = 1.2f;
-        r.Sky.Top = Color.Rgb(0.35f, 0.36f, 0.45f);
-        r.Sky.Bottom = Color.Rgb(0.12f, 0.11f, 0.12f);
-        r.Sky.Intensity = 0.45f;
-        r.Background = Color.Rgb(0.10f, 0.10f, 0.13f);
+        r.Light.Dir = new Vec3(0.3f, 0.85f, 0.65f);
+        r.Light.Intensity = 1.8f;
+        r.Sky.Top = Color.Rgb(0.82f, 0.88f, 0.94f);
+        r.Sky.Bottom = Color.Rgb(0.42f, 0.40f, 0.43f);
+        r.Sky.Intensity = 0.8f;
+        r.Ssao.Radius = 0.06f;
+        r.Ssao.Strength = 0.45f;
+        r.Background = Color.Rgb(0.055f, 0.075f, 0.10f);
         r.Shadow.Center = new Vec3(0, 0.3f, 0);
         r.Shadow.Extent = 1.2f;
+        var viewPose = Phys3d.PoseByKey(world, "head");
         r.Begin(new Camera
         {
-            Eye = new Vec3(0.02f, 1.02f, 1.95f),
-            Target = new Vec3(0.0f, 0.30f, 0.0f),
-            Fov = 40,
+            Eye = showLinkage && viewPose != null
+                ? new Vec3(viewPose.X - 0.25f, viewPose.Y + 0.10f, viewPose.Z + 0.85f)
+                : sideView ? new Vec3(-2.05f, 0.60f, 0.05f) : new Vec3(-0.015f, 0.60f, 2.05f),
+            Target = showLinkage && viewPose != null
+                ? new Vec3(viewPose.X, viewPose.Y - 0.10f, viewPose.Z)
+                : new Vec3(0.0f, 0.25f, 0.0f),
+            Fov = Math.Min(80.0f, Math.Max(42.0f, 42.0f * (4.0f / 3.0f) * screenH / screenW)),
             Near = 0.1f,
             Far = 50.0f,
         });
 
         // 筐体 (描画のみ): 本体・上部飾り・柱・レール
-        var body = Color.Rgb(0.93f, 0.93f, 0.95f);
-        var accent = Color.Rgb(0.88f, 0.25f, 0.42f);
-        var dark = Color.Rgb(0.22f, 0.23f, 0.27f);
-        var felt = Color.Rgb(0.32f, 0.62f, 0.46f);
+        var body = Color.Rgb(0.93f, 0.92f, 0.89f);
+        var accent = Color.Rgb(0.83f, 0.22f, 0.35f);
+        var dark = Color.Rgb(0.17f, 0.20f, 0.24f);
+        var felt = Color.Rgb(0.78f, 0.84f, 0.83f);
+        // ガラスの外側の背面パネル。明るい売り場の背景として奥行きの基準を作る。
+        DrawBox(BoxMat(0, 0.39f, -0.48f, 0.38f, 0.40f, 0.01f), Color.Rgb(0.40f, 0.56f, 0.60f), null);
+        DrawBox(BoxMat(0, 0.61f, -0.465f, 0.37f, 0.006f, 0.003f), body, null);
         DrawBox(BoxMat(0.0f, -0.33f, 0.0f, 0.42f, 0.29f, fieldHz + 0.05f), body, null);
-        DrawBox(BoxMat(0.0f, -0.06f, 0.0f, 0.42f, 0.022f, fieldHz + 0.05f), accent, null);
-        DrawBox(BoxMat(0.0f, 0.86f, 0.0f, 0.42f, 0.075f, fieldHz + 0.05f), accent, null);
+        DrawBox(BoxMat(0.0f, -0.06f, 0.0f, 0.425f, 0.022f, fieldHz + 0.055f), accent, null);
+        DrawBox(BoxMat(0.0f, 0.85f, 0.0f, 0.42f, 0.055f, fieldHz + 0.05f), body, null);
+        DrawBox(BoxMat(0.0f, 0.80f, fieldHz + 0.046f, 0.42f, 0.008f, 0.006f), accent, null);
+        // 天井照明と操作台。人が向き合う筐体の高さ・前後を見分ける手掛かり。
+        DrawBox(BoxMat(0, 0.792f, 0, 0.32f, 0.003f, 0.35f), Color.Rgb(2.1f, 2.0f, 1.85f), null);
+        DrawBox(BoxMat(0, -0.105f, 0.49f, 0.435f, 0.035f, 0.13f), body, null);
+        DrawBox(BoxMat(0, -0.065f, 0.49f, 0.39f, 0.005f, 0.115f), accent, null);
+        // 獲得口の外側の扉。景品の落下経路の手前に枠だけを描く。
+        DrawBox(BoxMat(0.20f, -0.285f, 0.506f, 0.15f, 0.095f, 0.003f), dark, null);
+        DrawBox(BoxMat(0.20f, -0.19f, 0.512f, 0.16f, 0.006f, 0.006f), accent, null);
         foreach (var sx in new List<int> { -1, 1 })
         {
             foreach (var sz in new List<int> { -1, 1 })
             {
-                DrawBox(BoxMat(sx * (fieldHx + 0.022f), 0.31f,
-                    sz * (fieldHz + 0.028f), 0.016f, 0.315f, 0.016f), body, null);
+                DrawBox(BoxMat(sx * (fieldHx + 0.022f), 0.39f,
+                    sz * (fieldHz + 0.028f), 0.009f, 0.40f, 0.009f), body, null);
             }
         }
+        foreach (var sx in new List<int> { -1, 1 })
+            DrawBox(BoxMat(sx * 0.375f, 0.39f, -0.455f, 0.003f, 0.38f, 0.004f),
+                Color.Rgb(1.3f, 1.7f, 1.8f), null);
+        // 物理フェンスの上端を細い枠で示し、透明な板の所在を読み取れるようにする。
+        DrawBox(BoxMat(0.20f, 0.14f, 0.10f, 0.175f, 0.002f, 0.006f), body, null);
+        DrawBox(BoxMat(0.025f, 0.14f, 0.275f, 0.006f, 0.002f, 0.175f), body, null);
         // 床 (フェルト) と穴の縁
         DrawBox(BoxMat(0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f), felt, null);
-        DrawBox(BoxMat(0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
+        DrawBox(BoxMat(-0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
         DrawBox(BoxMat(-0.20f, -0.05f, 0.275f, 0.175f, 0.05f, 0.175f), dark, null); // シュート内部
         // 払い出しの褒め演出: 獲得口の縁が光る (HDR 高輝度で bloom に乗せる)
         if (payoutFlash > 0)
@@ -933,14 +1196,24 @@ public static class CraneGame23
                     .RotateVec3(new Vec3(0, headTop, 0));
             DrawBox(SegmentMat(new Vec3(cx, carriageY, cz), anchor, 0.005f),
                 dark, null);
-            r.Draw(hm, Renderer3d.PoseMat(headPose));
+            if (!showLinkage)
+                r.Draw(hm, Renderer3d.PoseMat(headPose));
         }
         var frPose = Phys3d.PoseByKey(world, "finger:r");
         if (frPose != null)
-            r.Draw(fm, Renderer3d.PoseMat(frPose));
+            DrawFinger(frPose, 1.0f);
         var flPose = Phys3d.PoseByKey(world, "finger:l");
         if (flPose != null)
-            r.Draw(fm, Renderer3d.PoseMat(flPose) * Mat4.RotateY((float)Math.PI));
+            DrawFinger(flPose, -1.0f);
+        var plungerPose = Phys3d.PoseByKey(world, "plunger");
+        if (showLinkage && plungerPose != null)
+        {
+            // 非衝突の内部アクチュエーターも、確認表示では橙色の記号にする。
+            DrawBox(Renderer3d.PoseMat(plungerPose) * Mat4.Scale(new Vec3(0.01f, 0.01f, 0.01f)),
+                Color.Rgb(2.0f, 1.1f, 0.1f), null);
+            if (frPose != null) DrawLink(plungerPose, frPose);
+            if (flPose != null) DrawLink(plungerPose, flPose);
+        }
 
         // ぬいぐるみ
         foreach (var i in renderBearIndices)
@@ -949,37 +1222,44 @@ public static class CraneGame23
             if (pose != null)
                 r.Draw(bm[bears[i].Variant], Renderer3d.PoseMat(pose));
         }
+        var machineView = renderMachine;
+        if (showLinkage && machineView != null)
+        {
+            DrawContacts(machineView.Fr);
+            DrawContacts(machineView.Fl);
+        }
 
         // ガラスとフェンス (半透明は opaque の後に自動で回る)
-        var glass = Color.Rgb(0.75f, 0.85f, 0.95f, 0.12f);
-        var fence = Color.Rgb(0.85f, 0.9f, 1.0f, 0.25f);
-        DrawBox(BoxMat(-fieldHx - 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
-            glass, Gfx.Blend.Alpha);
-        DrawBox(BoxMat(fieldHx + 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
-            glass, Gfx.Blend.Alpha);
-        DrawBox(BoxMat(0.0f, 0.31f, -fieldHz - 0.006f, fieldHx, 0.31f, 0.005f),
-            glass, Gfx.Blend.Alpha);
-        DrawBox(BoxMat(-0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.Blend.Alpha);
-        DrawBox(BoxMat(-0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.Blend.Alpha);
-        DrawBox(BoxMat(0.0f, 0.31f, fieldHz + 0.006f, fieldHx, 0.31f, 0.005f),
-            glass, Gfx.Blend.Alpha);
+        if (!showLinkage)
+        {
+            var glass = Color.Rgb(0.75f, 0.85f, 0.95f, 0.006f);
+            var fence = Color.Rgb(0.85f, 0.9f, 1.0f, 0.045f);
+            DrawBox(BoxMat(-fieldHx - 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
+                glass, Gfx.Blend.Alpha);
+            DrawBox(BoxMat(fieldHx + 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
+                glass, Gfx.Blend.Alpha);
+            DrawBox(BoxMat(0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.Blend.Alpha);
+            DrawBox(BoxMat(0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.Blend.Alpha);
+            // 正面と背面の無色ガラスは面を塗らず、縁と筐体の支柱で見せる。
+        }
 
         r.End();
 
         // UI は tonemap 後の swapchain に重ね描き (load = LOAD)
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
-        Ui.SetNextWindow(10, 10, 240, 150);
-        if (Ui.BeginWindow("crane game"))
+        DrawHud();
+        if (settingsOpen)
         {
-            Ui.Text("prizes: " + score + "  plays: " + plays);
-            Ui.Text("state: " + stateNames[state]
-                + (autoPlay ? " (auto)" : ""));
-            Ui.Text("hold Space/click: right, then back");
-            Ui.Separator();
-            grabTorque = Ui.SliderFloat("grab power", grabTorque, 0.0f, 2.0f);
-            holdTorque = Ui.SliderFloat("hold power", holdTorque, 0.0f, 2.0f);
+            Ui.SetNextWindow(20, 65, 260, 155);
+            if (Ui.BeginWindow("Machine settings [F2]"))
+            {
+                grabForce = Ui.SliderFloat("grab (N)", grabForce, 0.0f, 80.0f);
+                holdForce = Ui.SliderFloat("hold (N)", holdForce, 0.0f, 80.0f);
+                showLinkage = Ui.Checkbox("inspect mechanism", showLinkage);
+                if (showLinkage) Ui.Text("orange: guides / contacts");
+            }
+            Ui.EndWindow();
         }
-        Ui.EndWindow();
         Ui.Render();
         Gfx.EndPass();
     }

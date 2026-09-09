@@ -420,7 +420,8 @@ public static class Lub
         }
     }
 
-    /// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" 等、
+    /// <summary>フレームラッチ付きポーリング入力。key は "space" / "a".."z" /
+    /// "f1".."f12" 等、
     /// button は SDL 準拠 1 始まり (省略時 1 = 左)。</summary>
     public static class Input
     {
