@@ -217,17 +217,17 @@ public static class Baseball24
     // llx, lrx]
     static List<float> PackBones(List<float> p)
     {
-        var rTorso = Mat4.RotateY(p[0]) * (Mat4.RotateX(p[1]) * Mat4.RotateZ(p[2]));
+        var rTorso = Mat4.RotateY(-p[0]) * (Mat4.RotateX(-p[1]) * Mat4.RotateZ(-p[2]));
         var mTorso = Mat4.Translate(new Vec3(0, p[3], 0))
             * Bones.PivotRot(torsoPx, torsoPy, 0, rTorso);
         var mHead = mTorso
-            * Bones.PivotRot(0, headPy, 0, Mat4.RotateY(p[5]) * Mat4.RotateX(p[4]));
+            * Bones.PivotRot(0, headPy, 0, Mat4.RotateY(-p[5]) * Mat4.RotateX(-p[4]));
         var mArmL = mTorso
-            * Bones.PivotRot(armPx, armPy, 0, Mat4.RotateZ(p[7]) * Mat4.RotateX(p[6]));
+            * Bones.PivotRot(armPx, armPy, 0, Mat4.RotateZ(-p[7]) * Mat4.RotateX(-p[6]));
         var mArmR = mTorso
-            * Bones.PivotRot(-armPx, armPy, 0, Mat4.RotateZ(p[9]) * Mat4.RotateX(p[8]));
-        var mLegL = Bones.PivotRot(legPx, legPy, 0, Mat4.RotateX(p[10]));
-        var mLegR = Bones.PivotRot(-legPx, legPy, 0, Mat4.RotateX(p[11]));
+            * Bones.PivotRot(-armPx, armPy, 0, Mat4.RotateZ(-p[9]) * Mat4.RotateX(-p[8]));
+        var mLegL = Bones.PivotRot(legPx, legPy, 0, Mat4.RotateX(-p[10]));
+        var mLegR = Bones.PivotRot(-legPx, legPy, 0, Mat4.RotateX(-p[11]));
         var mats = new Dictionary<string, Mat4>
         {
             ["torso"] = mTorso,
@@ -1487,14 +1487,14 @@ public static class Baseball24
         var cm = charMesh;
         if (renNow == null || cm == null)
             return;
-        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(yaw);
+        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(-yaw);
         renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackBones(pose) });
     }
 
     // バット。スイング位相から向きを決める (打者ローカル)
     static Mat4 BatMatrix(float ph)
     {
-        // 溜め → 一気に振り抜き → フォロー (rotateX は +θ で +Z が下向きに回る)
+        // 溜め → 一気に振り抜き → フォロー (角度は右ねじの逆向きで調整してある)
         var ang = -2.35f; // 構え: 後方上
         var tilt = 1.05f;
         var k2 = MathUtil.Smoothstep(0.47f, 0.56f, ph);
@@ -1505,12 +1505,12 @@ public static class Baseball24
         tilt = MathUtil.Lerp(tilt, 0.45f, k3);
         // local は Lua キーワードで emit が不正になるため batLocal
         var batLocal = Mat4.Translate(new Vec3(-0.12f, 1.45f, -0.15f))
-            * (Mat4.RotateY(ang) * Mat4.RotateX(tilt));
+            * (Mat4.RotateY(-ang) * Mat4.RotateX(-tilt));
         var b = batter;
         var px = b != null ? b.X : 0.0f;
         var pz = b != null ? b.Z : 0.0f;
         return Mat4.Translate(new Vec3(px, 0, pz))
-            * (Mat4.RotateY((float)Math.PI / 2) * batLocal);
+            * (Mat4.RotateY(-(float)Math.PI / 2) * batLocal);
     }
 
     // --- HUD ------------------------------------------------------------------------

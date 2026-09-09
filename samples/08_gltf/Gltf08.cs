@@ -28,7 +28,7 @@ public static class Gltf08
     static List<float> MakeMvp(float t)
     {
         // model: Y 軸回転
-        var model = Mat4.RotateY(-t);
+        var model = Mat4.RotateY(t);
         // view: translate z = +3 (D3D-style LH: camera at origin looks down +Z;
         // move world +Z so the box sits in front of the camera)
         var view = Mat4.Translate(new Vec3(0.0f, 0.0f, 3.0f));

@@ -75,7 +75,7 @@ public static class Game
         });
         var drawOpts = new DrawOpts { Shader = s, Depth = true, Cull = Gfx.Cull.None };
 
-        DrawCube(b, vp * Mat4.Translate(new Vec3(-2.0f, playerY, 0)) * Mat4.RotateY(t * 3.0f)
+        DrawCube(b, vp * Mat4.Translate(new Vec3(-2.0f, playerY, 0)) * Mat4.RotateY(-t * 3.0f)
             * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f)), drawOpts);
         var pipeScale = Mat4.Scale(new Vec3(0.8f, 5.0f, 0.8f));
         DrawCube(b, vp * Mat4.Translate(new Vec3(pipeX, gapY + 3.5f, 0)) * pipeScale, drawOpts);

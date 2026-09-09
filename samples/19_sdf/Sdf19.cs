@@ -55,11 +55,11 @@ public static class Sdf19
             switch (name)
             {
                 case "arm_l":
-                    return Bones.PivotRot(x, y, z, Mat4.RotateZ(wave));
-                case "arm_r":
                     return Bones.PivotRot(x, y, z, Mat4.RotateZ(-wave));
+                case "arm_r":
+                    return Bones.PivotRot(x, y, z, Mat4.RotateZ(wave));
                 case "head":
-                    return Bones.PivotRot(x, y, z, Mat4.RotateZ(nod));
+                    return Bones.PivotRot(x, y, z, Mat4.RotateZ(-nod));
                 default:
                     return null;
             }
@@ -219,7 +219,7 @@ public static class Sdf19
         matcapDirty = false;
         var matcap = matcapTex;
 
-        var model = Mat4.RotateY(tAccum * 0.7f);
+        var model = Mat4.RotateY(-tAccum * 0.7f);
         r.Begin(new Camera
         {
             Eye = new Vec3(0.0f, 0.55f, -3.1f),

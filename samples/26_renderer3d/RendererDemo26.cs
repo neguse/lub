@@ -117,7 +117,7 @@ public static class RendererDemo26
             new Draw3dOpts { Tint = Color.Hex(0x76816F) });
         // 箱・円柱・球
         r.Draw(cubeM, Mat4.Translate(new Vec3(-2.2f, 0.5f, 1.2f))
-            * Mat4.RotateY(t * 0.7f) * Mat4.Scale(new Vec3(0.5f, 0.5f, 0.5f)),
+            * Mat4.RotateY(-t * 0.7f) * Mat4.Scale(new Vec3(0.5f, 0.5f, 0.5f)),
             new Draw3dOpts { Tint = Color.Hex(0xE8A33D) });
         r.Draw(cylM, Mat4.Translate(new Vec3(2.1f, 0.6f, 1.4f))
             * Mat4.Scale(new Vec3(0.45f, 1.2f, 0.45f)),
@@ -145,12 +145,12 @@ public static class RendererDemo26
         var bones = Bones.Pack(charaM.Data, (name, x, y, z) =>
         {
             if (name == "arm_l")
-                return Bones.PivotRot(x, y, z, Mat4.RotateZ(0.3f + wave * 0.6f));
+                return Bones.PivotRot(x, y, z, Mat4.RotateZ(-0.3f - wave * 0.6f));
             if (name == "arm_r")
-                return Bones.PivotRot(x, y, z, Mat4.RotateZ(-0.3f + wave * 0.6f));
+                return Bones.PivotRot(x, y, z, Mat4.RotateZ(0.3f - wave * 0.6f));
             if (name == "head")
                 return Bones.PivotRot(x, y, z,
-                    Mat4.RotateX((float)Math.Sin(t * 1.7f) * 0.12f));
+                    Mat4.RotateX(-(float)Math.Sin(t * 1.7f) * 0.12f));
             return null;
         });
         r.Draw(charaM, Mat4.Translate(new Vec3(0, 0, 0))

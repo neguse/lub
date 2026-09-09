@@ -277,8 +277,9 @@ public class Vec4
     public Vec3 Xyz() => new Vec3(X, Y, Z);
 }
 
-/// <summary>回転を表すクォータニオン。演算子: a * b (回転の合成)、
-/// q * v (Vec3 の回転 = rotateVec3)。角度は全てラジアン。</summary>
+/// <summary>回転を表すクォータニオン (Hamilton 積、右ねじの能動回転。Phys3d と
+/// 同じ規約)。演算子: a * b (回転の合成)、q * v (Vec3 の回転 = rotateVec3)。
+/// 角度は全てラジアン。</summary>
 public class Quat
 {
     public float X;
@@ -305,8 +306,8 @@ public class Quat
         return new Quat(n.X * s, n.Y * s, n.Z * s, (float)Math.Cos(half));
     }
 
-    /// <summary>オイラー角 (ラジアン) から生成。適用順は roll (Z) → pitch (X)
-    /// → yaw (Y)。</summary>
+    /// <summary>オイラー角 (ラジアン) から生成。適用順は roll (X) → pitch (Y)
+    /// → yaw (Z)。</summary>
     public static Quat FromEuler(float yaw, float pitch, float roll)
     {
         var cy = (float)Math.Cos(yaw * 0.5f);
@@ -402,6 +403,9 @@ public class Quat
         return v.Add(uv.Scale(2.0f * W).Add(uuv.Scale(2.0f)));
     }
 
+    /// <summary>RotateVec3 と同じ回転を行う行列 (列ベクトルに左から掛ける)。
+    /// 正規化済みの quaternion を渡す。box3d / sdf.c と同じ能動回転で、
+    /// Mat4.RotateX/Y/Z もこれに揃えてある。</summary>
     public Mat4 ToMat4()
     {
         var x2 = X + X;
@@ -418,15 +422,15 @@ public class Quat
         var wz = W * z2;
         var r = Mat4.Zero();
         r.M[0] = 1 - (yy + zz);
-        r.M[1] = xy + wz;
-        r.M[2] = xz - wy;
+        r.M[1] = xy - wz;
+        r.M[2] = xz + wy;
         r.M[3] = 0;
-        r.M[4] = xy - wz;
+        r.M[4] = xy + wz;
         r.M[5] = 1 - (xx + zz);
-        r.M[6] = yz + wx;
+        r.M[6] = yz - wx;
         r.M[7] = 0;
-        r.M[8] = xz + wy;
-        r.M[9] = yz - wx;
+        r.M[8] = xz - wy;
+        r.M[9] = yz + wx;
         r.M[10] = 1 - (xx + yy);
         r.M[11] = 0;
         r.M[12] = 0;
@@ -436,32 +440,33 @@ public class Quat
         return r;
     }
 
+    /// <summary>回転行列 (ToMat4 と同じ規約) から quaternion を取り出す。</summary>
     public static Quat FromMat4(Mat4 m)
     {
         var trace = m.M[0] + m.M[5] + m.M[10];
         if (trace > 0)
         {
             var s = 0.5f / (float)Math.Sqrt(trace + 1.0f);
-            return new Quat((m.M[6] - m.M[9]) * s, (m.M[8] - m.M[2]) * s,
-                (m.M[1] - m.M[4]) * s, 0.25f / s);
+            return new Quat((m.M[9] - m.M[6]) * s, (m.M[2] - m.M[8]) * s,
+                (m.M[4] - m.M[1]) * s, 0.25f / s);
         }
         else if (m.M[0] > m.M[5] && m.M[0] > m.M[10])
         {
             var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[0] - m.M[5] - m.M[10]);
             return new Quat(0.25f * s, (m.M[1] + m.M[4]) / s,
-                (m.M[8] + m.M[2]) / s, (m.M[6] - m.M[9]) / s);
+                (m.M[8] + m.M[2]) / s, (m.M[9] - m.M[6]) / s);
         }
         else if (m.M[5] > m.M[10])
         {
             var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[5] - m.M[0] - m.M[10]);
             return new Quat((m.M[1] + m.M[4]) / s, 0.25f * s,
-                (m.M[6] + m.M[9]) / s, (m.M[8] - m.M[2]) / s);
+                (m.M[6] + m.M[9]) / s, (m.M[2] - m.M[8]) / s);
         }
         else
         {
             var s = 2.0f * (float)Math.Sqrt(1.0f + m.M[10] - m.M[0] - m.M[5]);
             return new Quat((m.M[8] + m.M[2]) / s, (m.M[6] + m.M[9]) / s,
-                0.25f * s, (m.M[1] - m.M[4]) / s);
+                0.25f * s, (m.M[4] - m.M[1]) / s);
         }
     }
 
@@ -729,46 +734,46 @@ public class Mat4
         return r;
     }
 
-    /// <summary>X 軸回りの回転 (ラジアン)。</summary>
+    /// <summary>X 軸回りの回転 (ラジアン)。+π/2 は +Y を +Z に回す。</summary>
     public static Mat4 RotateX(float angle)
     {
         var c = (float)Math.Cos(angle);
         var s = (float)Math.Sin(angle);
         var r = new Mat4();
         r.M[5] = c;
-        r.M[6] = s;
-        r.M[9] = -s;
+        r.M[6] = -s;
+        r.M[9] = s;
         r.M[10] = c;
         return r;
     }
 
-    /// <summary>Y 軸回りの回転 (ラジアン)。</summary>
+    /// <summary>Y 軸回りの回転 (ラジアン)。+π/2 は +Z を +X に回す。</summary>
     public static Mat4 RotateY(float angle)
     {
         var c = (float)Math.Cos(angle);
         var s = (float)Math.Sin(angle);
         var r = new Mat4();
         r.M[0] = c;
-        r.M[2] = -s;
-        r.M[8] = s;
+        r.M[2] = s;
+        r.M[8] = -s;
         r.M[10] = c;
         return r;
     }
 
-    /// <summary>Z 軸回りの回転 (ラジアン)。</summary>
+    /// <summary>Z 軸回りの回転 (ラジアン)。+π/2 は +X を +Y に回す。</summary>
     public static Mat4 RotateZ(float angle)
     {
         var c = (float)Math.Cos(angle);
         var s = (float)Math.Sin(angle);
         var r = new Mat4();
         r.M[0] = c;
-        r.M[1] = s;
-        r.M[4] = -s;
+        r.M[1] = -s;
+        r.M[4] = s;
         r.M[5] = c;
         return r;
     }
 
-    /// <summary>任意軸 axis 回りの回転 (ラジアン)。</summary>
+    /// <summary>任意軸 axis 回りの回転 (ラジアン)。Quat.FromAxisAngle と同じ向き。</summary>
     public static Mat4 Rotate(float angle, Vec3 axis) =>
         Quat.FromAxisAngle(axis, angle).ToMat4();
 

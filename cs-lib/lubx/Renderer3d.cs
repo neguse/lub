@@ -801,11 +801,11 @@ public class Renderer3d
     /// <summary>Phys3d の pose (x,y,z,qx,qy,qz,qw) → model 行列。</summary>
     public static Mat4 PoseMat(Pose3d pose)
     {
-        // Phys3d の q はローカル点を q * v * conjugate(q) でワールドへ回す。
-        // 既存の ToMat4 は逆回転の行列を作るため、入力を共役にして合わせる。
-        // 位置・座標軸や Mat4 の角度規約は変更しない。
+        // box3d の quaternion と Quat.ToMat4 は同じ能動回転。ここで共役や
+        // 転置を挟むと物理と描画がずれる (tests/lua/test_rotation_convention.lua)
+
         return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
-            * new Quat(-pose.Qx, -pose.Qy, -pose.Qz, pose.Qw).ToMat4();
+            * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
     }
 
     /// <summary>フレーム開始。カメラを確定し draw 列を空にする。</summary>
