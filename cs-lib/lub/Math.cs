@@ -404,7 +404,8 @@ public class Quat
     }
 
     /// <summary>RotateVec3 と同じ回転を行う行列 (列ベクトルに左から掛ける)。
-    /// 正規化済みの quaternion を渡す。</summary>
+    /// 正規化済みの quaternion を渡す。box3d / sdf.c と同じ能動回転で、
+    /// Mat4.RotateX/Y/Z もこれに揃えてある。</summary>
     public Mat4 ToMat4()
     {
         var x2 = X + X;
