@@ -38,7 +38,7 @@ lub bundles or links the following third-party components.
 |-------|------|---------|--------|
 | Box.glb | samples/data/08_box.glb | CC0 (Public Domain) | https://github.com/KhronosGroup/glTF-Sample-Assets |
 | Sponza | samples/14_sponza/data/Sponza/ | Cryengine Limited License Agreement | https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza |
-| M PLUS 1p Regular (kana+ASCII subset) | samples/21_iroha/data/MPLUS1p-subset.ttf | OFL-1.1 (samples/21_iroha/data/MPLUS1p-OFL.txt) | https://github.com/google/fonts/tree/main/ofl/mplus1p |
+| M PLUS 1p Regular (kana+ASCII subset) | samples/data/fonts/MPLUS1p-subset.ttf | OFL-1.1 (samples/data/fonts/MPLUS1p-OFL.txt) | https://github.com/google/fonts/tree/main/ofl/mplus1p |
 
 ## Client-side C# compiler (web playground)
 

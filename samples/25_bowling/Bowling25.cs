@@ -899,7 +899,7 @@ public static class Bowling25
     }
 
     // --- HUD ------------------------------------------------------------------
-    const string fontPath = "samples/25_bowling/data/MPLUS1p-subset.ttf";
+    const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;
