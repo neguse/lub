@@ -275,6 +275,7 @@ physics_lua_tests=(
   tests/lua/test_audio.lua
   tests/lua/test_font.lua
   tests/lua/test_api_surface.lua
+  tests/lua/test_phys3d_pose_matrix.lua
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
