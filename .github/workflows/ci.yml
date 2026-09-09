@@ -117,6 +117,9 @@ jobs:
       # mesa-vulkan-drivers = lavapipe (CPU Vulkan)、xvfb = headless 窓。
       - name: Install system deps
         run: |
+          # runner イメージ同梱の Google Chrome の apt source は metadata の
+          # Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build ccache libvulkan-dev mesa-vulkan-drivers xvfb \
@@ -320,6 +323,9 @@ jobs:
 
       - name: Install system deps
         run: |
+          # runner イメージ同梱の Google Chrome の apt source は metadata の
+          # Hash Sum mismatch を時々出して update ごと落とす。ここでは使わない
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ccache
 
@@ -497,7 +503,11 @@ jobs:
 
       - name: Install chromium (playwright)
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        # --with-deps は apt-get update を回すので、上の job と同じく壊れやすい
+        # Google Chrome の apt source を先に外す
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
+          npx playwright install --with-deps chromium
 
       - name: Web goldens (playwright + swiftshader, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         working-directory: web
