@@ -101,11 +101,11 @@ public static class CraneGame23
     const float chuteX1 = -0.025f;
     const float chuteZ0 = 0.10f;
 
-    // アームパワー。実機の店側パワー設定に相当し、把持はトルク上限 × 摩擦で決まる。
-    // 初動 1.2 N·m で約 330g のクマを掴め、保持 0.6 N·m は揺れ・加速で
-    // 滑る境界値 (デモ実測でおよそ 4-5 回に 1 回獲得 = 実機並み)
+    // 把持はトルク上限と爪先の滑り止めで決まる。保持を弱めると運搬中に滑る。
     static float grabTorque = 1.2f;
     static float holdTorque = 0.6f;
+    const float closeSpeed = 1.0f; // 急に挟んで景品を弾き出さない速度 (rad/s)
+    const int grabTicks = 100; // 全開から閉じる時間 + 接触が落ち着く時間
 
     // --- 状態機械 (実機の自動シーケンス) ---------------------------------
     const int stIdle = 0;
@@ -164,7 +164,7 @@ public static class CraneGame23
             new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.08f, Y = 0.02f, Z = -0.05f, Yaw = 0.4f },
             new Bear { Gen = 1, Variant = 1, Respawn = 0, X = -0.14f, Y = 0.02f, Z = -0.26f, Yaw = -0.7f },
             new Bear { Gen = 1, Variant = 2, Respawn = 0, X = 0.15f, Y = 0.02f, Z = 0.18f, Yaw = 2.6f },
-            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = 0.06f, Y = 0.02f, Z = 0.18f, Yaw = 1.8f },
+            new Bear { Gen = 1, Variant = 0, Respawn = 0, X = -0.14f, Y = 0.02f, Z = -0.02f, Yaw = 1.8f },
             new Bear { Gen = 1, Variant = 1, Respawn = 0, X = 0.16f, Y = 0.02f, Z = -0.24f, Yaw = -2.2f },
         };
     }
@@ -218,7 +218,11 @@ public static class CraneGame23
             new Vec3(0.050f, -0.110f, 0), 0.009f);
         var lower = Sdf.Capsule(new Vec3(0.050f, -0.110f, 0),
             new Vec3(-0.085f, -0.215f, 0), 0.008f);
-        return upper.Smin(lower, 0.010f).Paint(0xC9CED8, 0.9f, 0.25f);
+        var pad = Sdf.Capsule(new Vec3(-0.085f, -0.215f, -0.035f),
+            new Vec3(-0.085f, -0.215f, 0.035f), 0.012f)
+            .Paint(0x454958, 0.0f, 0.8f);
+        return upper.Smin(lower, 0.010f).Paint(0xC9CED8, 0.9f, 0.25f)
+            .Union(pad);
     }
 
     // ヘッド: ドーム + リング。原点はリング面の中心
@@ -350,6 +354,15 @@ public static class CraneGame23
     // 爪 1 本の物理 (右用。左は sign = -1 で X 反転)
     static void DeclareFingerShapes(BodyRef3d body, float sign)
     {
+        // 幅のある滑り止め。細い棒の一点接触だけで景品が前後に抜けないようにする。
+        Phys3d.Capsule(body, "pad", new CapsuleDesc3d
+        {
+            A = new Vec3d { X = sign * -0.085f, Y = -0.215f, Z = -0.035f },
+            B = new Vec3d { X = sign * -0.085f, Y = -0.215f, Z = 0.035f },
+            R = 0.012f,
+            Density = 500.0f,
+            Friction = 1.2f,
+        });
         Phys3d.Capsule(body, "upper", new CapsuleDesc3d
         {
             A = new Vec3d { X = 0.0f, Y = 0.0f, Z = 0.0f },
@@ -431,6 +444,9 @@ public static class CraneGame23
         var head = Phys3d.Body(world, "head", new BodyDesc3d
         {
             Type = Phys3d.BodyType.Dynamic,
+            // 巻き取り長や爪モーターの宣言更新だけでは、休止した拘束は起きない。
+            // 駆動するヘッドは休止させず、つながる機構の巻き上げを毎 tick 解く。
+            Sleep = false,
             LinearDamping = 0.15f,
             AngularDamping = 0.5f,
             Initial = new InitialState3d { X = homeX, Y = headY0, Z = homeZ },
@@ -558,9 +574,9 @@ public static class CraneGame23
             || state == stDescend)
             return new ClawCommand { Speed = 1.8f, Torque = 0.9f };
         if (state == stGrab || state == stLift)
-            return new ClawCommand { Speed = -2.0f, Torque = grabTorque }; // 初動 (掴む〜持ち上げ)
+            return new ClawCommand { Speed = -closeSpeed, Torque = grabTorque }; // 初動 (掴む〜持ち上げ)
         if (state == stCarry)
-            return new ClawCommand { Speed = -2.0f, Torque = holdTorque }; // 保持 (運搬中に弱まる)
+            return new ClawCommand { Speed = -closeSpeed, Torque = holdTorque }; // 保持 (運搬中に弱まる)
         if (state == stRelease)
             return new ClawCommand { Speed = 1.8f, Torque = 0.9f }; // 獲得口で開放
         return new ClawCommand { Speed = -1.5f, Torque = 0.5f }; // 待機は閉じ
@@ -658,10 +674,14 @@ public static class CraneGame23
                     if (target != null)
                     {
                         var pose = Phys3d.PoseByKey(world, "bear:" + targetIndex);
-                        autoX = MathUtil.Clamp(pose != null ? pose.X : target.X,
-                            homeX, maxX);
-                        autoZ = MathUtil.Clamp(pose != null ? pose.Z : target.Z,
-                            minZ, homeZ);
+                        // 原点は足元。倒れた景品も胴体の中心を狙う。
+                        var aim = new Vec3(target.X, target.Y + 0.10f, target.Z);
+                        if (pose != null)
+                            aim = new Vec3(pose.X, pose.Y, pose.Z)
+                                + new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw)
+                                    .RotateVec3(new Vec3(0, 0.10f, 0));
+                        autoX = MathUtil.Clamp(aim.X, homeX, maxX);
+                        autoZ = MathUtil.Clamp(aim.Z, minZ, homeZ);
                         autoPlay = true;
                         plays++;
                         Enter(stMoveX);
@@ -715,7 +735,7 @@ public static class CraneGame23
         }
         else if (state == stGrab)
         {
-            if (stateT > 50)
+            if (stateT > grabTicks)
                 Enter(stLift);
         }
         else if (state == stLift)

@@ -322,6 +322,9 @@ if [[ $cs_available -eq 1 ]]; then
     exit 1
   fi
   cs_pool "capture (+.NET digest)" cs_capture 1
+  # The crane replay uses the sample compiled above and advances physics without
+  # rendering every tick, so complete grabs and carries are covered as well.
+  run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_crane_game.lua
 else
   echo
   echo "==> C# sample gate skipped (dotnet or third_party/tcs missing)"
