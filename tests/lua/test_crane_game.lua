@@ -3,6 +3,7 @@ local M = {}
 local cases, bodies, joints, names = {}, {}, {}, {}
 local sample = os.getenv("CRANE_SAMPLE_LUA") or "samples/23_crane_game/.lub/CraneGame23.lua"
 local failures = {}
+local control_game
 local function check(ok, message)
 	if not ok then
 		failures[#failures + 1] = message
@@ -11,6 +12,7 @@ end
 local function fixture(name, yaw, offset)
 	local g = dofile(sample)
 	g.on_init()
+	g.demo_enabled = true
 	if name ~= "stock" then
 		g.bears = { g.bears[1] }
 		local b = g.bears[1]
@@ -26,6 +28,8 @@ local function fixture(name, yaw, offset)
 end
 function M.on_init()
 	local ok, err = pcall(function()
+		control_game = dofile(sample)
+		control_game.on_init()
 		for yaw = 0, 15 do
 			for _, offset in ipairs({ 0, 0.02, -0.02 }) do
 				fixture("grid", yaw * 0.4, offset)
@@ -55,6 +59,7 @@ local function support(body)
 end
 
 local function run_cases()
+	dofile("tests/lua/crane_controls.lua")(control_game, check)
 	CraneGame23 = cases[1].game
 	dofile("tests/lua/crane_geometry.lua")(CraneGame23, check)
 	-- Observe declarations and commands; never alter simulation inputs here.

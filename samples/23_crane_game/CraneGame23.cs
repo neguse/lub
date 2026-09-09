@@ -134,6 +134,15 @@ public static class CraneGame23
     static int idleT = 0;
     // attract モード: 放置でクマを狙って自動プレイ (デモ兼ヘッドレス検証用)
     static bool autoPlay = false;
+    static bool demoEnabled = false;
+    static bool sideView = false;
+    static bool settingsOpen = false;
+    static bool controlHeld = false;
+    static int pointerControl = 0;
+    static int screenW = 960, screenH = 720;
+    static float hudScale = 1;
+    static SpriteBatch? hud = null;
+    static Text? hudFont = null;
     static int autoIndex = 0;
     static float autoX = 0.0f;
     static float autoZ = 0.0f;
@@ -148,7 +157,7 @@ public static class CraneGame23
     public static void OnInit()
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
-        Lub.Config(new ConfigOpts { Backend = backend, Width = 640, Height = 360 });
+        Lub.Config(new ConfigOpts { Backend = backend, Width = 960, Height = 720 });
         // 初期配置: 可動範囲内 (x <= MAX_X) に散らす。座標は固定 (決定論)
         bears = new List<Bear>
         {
@@ -663,8 +672,7 @@ public static class CraneGame23
             if (state == stMoveZ) return cz > autoZ + 0.005f;
             return false;
         }
-        return Input.KeyDown("space")
-            || (Input.MouseDown() && !Ui.WantCaptureMouse());
+        return controlHeld;
     }
 
     static bool ButtonPressed(bool tickPressed)
@@ -696,7 +704,7 @@ public static class CraneGame23
             else
             {
                 idleT++;
-                if (idleT > 240)
+                if (demoEnabled && idleT > 240)
                 {
                     // attract: 生きているクマを順繰りに狙う
                     Bear? target = null;
@@ -959,6 +967,108 @@ public static class CraneGame23
         frame++;
     }
 
+    static Rect ControlRect(int button)
+    {
+        float s = hudScale;
+        return new Rect((int)(screenW * 0.5f + (button == 1 ? -248 : 12) * s),
+            (int)(screenH - 94 * s), (int)(236 * s), (int)(58 * s));
+    }
+
+    static bool Inside(Rect rect, float x, float y)
+    {
+        return x >= rect.X && x < rect.X + rect.W && y >= rect.Y && y < rect.Y + rect.H;
+    }
+
+    static int ActiveControl()
+    {
+        if (state == stIdle || state == stMoveX) return 1;
+        if (state == stWait2 || state == stMoveZ) return 2;
+        return 0;
+    }
+
+    static void ReadControls()
+    {
+        Gfx.Size(out var width, out var height);
+        screenW = width;
+        screenH = height;
+        hudScale = Math.Min(screenW / 960.0f, screenH / 720.0f);
+        Input.MousePos(out var mx, out var my);
+        bool click = Input.MousePressed() && !Ui.WantCaptureMouse();
+        if (Input.KeyPressed("f2")) settingsOpen = !settingsOpen;
+        if (Input.KeyPressed("tab") || (click && mx > screenW - 180 * hudScale && my < 54 * hudScale))
+            sideView = !sideView;
+        if (click && Inside(new Rect((int)(24 * hudScale), (int)(screenH - 94 * hudScale), (int)(128 * hudScale), (int)(58 * hudScale)), mx, my))
+        {
+            demoEnabled = !demoEnabled;
+            if (demoEnabled && state == stIdle) idleT = 241;
+        }
+        int active = ActiveControl();
+        if (!Input.MouseDown()) pointerControl = 0;
+        if (click && active != 0 && Inside(ControlRect(active), mx, my) && !autoPlay)
+            pointerControl = active;
+        controlHeld = !autoPlay && active != 0 && (Input.KeyDown("space")
+            || (pointerControl == active && Input.MouseDown() && Inside(ControlRect(active), mx, my)));
+        if (!autoPlay && active != 0 && (Input.KeyPressed("space") || (click && pointerControl == active)))
+        {
+            demoEnabled = false;
+            pendingPresses++;
+        }
+    }
+
+    static void HudLabel(string text, float x, float y, int color, float scale)
+    {
+        var b = hud;
+        var f = hudFont;
+        if (b != null && f != null) f.Draw(b, text, x, y, Color.Hex(color), scale * hudScale);
+    }
+
+    static void DrawHud()
+    {
+        const string fontPath = "samples/23_crane_game/data/MPLUS1p-subset.ttf";
+        Io.LoadBytes(fontPath, out var bytes, out _, out _, out _);
+        if (bytes == null) return;
+        hud ??= new SpriteBatch(screenW, screenH, "crane_hud", "crane_hud");
+        hudFont ??= new Text("crane_hud_font", fontPath, 24, 512);
+        var b = hud;
+        b.LogicalW = screenW;
+        b.LogicalH = screenH;
+        float s = hudScale;
+        int active = autoPlay ? 0 : ActiveControl();
+        b.Begin();
+        b.Rect(0, 0, screenW, 54 * s, Color.Hex(0x14242F, 0.96f));
+        b.Rect(0, screenH - 126 * s, screenW, 126 * s, Color.Hex(0xF5F1EB));
+        b.Rect(0, screenH - 126 * s, screenW, 3 * s, Color.Hex(0xD8536C));
+        b.Rect(screenW - 180 * s, 14 * s, 160 * s, 34 * s, Color.Hex(0x223544));
+        b.Rect(24 * s, screenH - 94 * s, 128 * s, 58 * s, Color.Hex(0xE7E3DD));
+        for (int i = 1; i <= 2; i++)
+        {
+            var rect = ControlRect(i);
+            int color = active == i ? (controlHeld ? 0xAD354F : 0xD8536C) : 0xDDDAD5;
+            b.Rect(rect.X, rect.Y + 5 * s, rect.W, rect.H, Color.Hex(active == i ? 0x9F374D : 0xC3BFBA));
+            b.Rect(rect.X, rect.Y + (controlHeld && active == i ? 3 * s : 0), rect.W, rect.H, Color.Hex(color));
+        }
+        b.Flush();
+        b.Begin();
+        HudLabel("CLAW CLUB", 26 * s, 37 * s, 0xF5F1EB, 1.0f);
+        HudLabel(sideView ? "FRONT VIEW  / TAB" : "SIDE VIEW  / TAB", screenW - 165 * s, 36 * s, 0xE1E9EF, 0.60f);
+        string hint = active == 1 ? "Hold 1 to move right. Release to stop."
+            : active == 2 ? "Hold 2 to move back. Release to grab."
+            : autoPlay ? (demoEnabled ? "DEMO  /  " : "Finishing this play  /  ") + stateNames[state] : "The crane is " + stateNames[state] + ".";
+        HudLabel(hint, screenW * 0.5f - 248 * s, screenH - 105 * s, 0x45515A, 0.66f);
+        HudLabel(demoEnabled ? "STOP DEMO" : "WATCH DEMO", 36 * s, screenH - 59 * s, 0x5B6267, 0.64f);
+        for (int i = 1; i <= 2; i++)
+        {
+            var rect = ControlRect(i);
+            HudLabel(i == 1 ? "1   MOVE RIGHT" : "2   MOVE BACK", rect.X + 22 * s, rect.Y + 37 * s,
+                active == i ? 0xFFFFFF : 0x7C8081, 0.83f);
+        }
+        HudLabel("PRIZES  " + score, screenW - 170 * s, screenH - 68 * s, 0x34464E, 0.78f);
+        HudLabel("PLAYS   " + plays, screenW - 170 * s, screenH - 42 * s, 0x81888B, 0.62f);
+        HudLabel("Hold SPACE for the lit button", screenW * 0.5f - 128 * s, screenH - 12 * s, 0x81888B, 0.60f);
+        HudLabel("F2  Settings", 26 * s, screenH - 12 * s, 0x81888B, 0.55f);
+        b.Flush();
+    }
+
     public static void OnFrame(float dt)
     {
         Build();
@@ -971,9 +1081,7 @@ public static class CraneGame23
         var hm = headMesh;
         if (r == null || bm == null || cylinder == null || sphere == null || hm == null)
             return;
-        if (!autoPlay && (Input.KeyPressed("space")
-            || (Input.MousePressed() && !Ui.WantCaptureMouse())))
-            pendingPresses = pendingPresses + 1;
+        ReadControls();
 
         var world = Phys3d.World("crane_game", new WorldOpts3d
         {
@@ -989,12 +1097,14 @@ public static class CraneGame23
 
         // --- draw ---
         // ゲームセンターの薄暗い環境 + 筐体上部からの光
-        r.Light.Dir = new Vec3(-0.3f, 1.0f, 0.45f);
-        r.Light.Intensity = 1.2f;
-        r.Sky.Top = Color.Rgb(0.35f, 0.36f, 0.45f);
-        r.Sky.Bottom = Color.Rgb(0.12f, 0.11f, 0.12f);
-        r.Sky.Intensity = 0.45f;
-        r.Background = Color.Rgb(0.10f, 0.10f, 0.13f);
+        r.Light.Dir = new Vec3(-0.3f, 0.85f, 0.65f);
+        r.Light.Intensity = 1.8f;
+        r.Sky.Top = Color.Rgb(0.82f, 0.88f, 0.94f);
+        r.Sky.Bottom = Color.Rgb(0.42f, 0.40f, 0.43f);
+        r.Sky.Intensity = 0.8f;
+        r.Ssao.Radius = 0.06f;
+        r.Ssao.Strength = 0.45f;
+        r.Background = Color.Rgb(0.055f, 0.075f, 0.10f);
         r.Shadow.Center = new Vec3(0, 0.3f, 0);
         r.Shadow.Extent = 1.2f;
         var viewPose = Phys3d.PoseByKey(world, "head");
@@ -1002,31 +1112,49 @@ public static class CraneGame23
         {
             Eye = showLinkage && viewPose != null
                 ? new Vec3(viewPose.X + 0.25f, viewPose.Y + 0.10f, viewPose.Z + 0.85f)
-                : new Vec3(0.02f, 1.02f, 1.95f),
+                : sideView ? new Vec3(2.05f, 0.60f, 0.05f) : new Vec3(0.015f, 0.60f, 2.05f),
             Target = showLinkage && viewPose != null
                 ? new Vec3(viewPose.X, viewPose.Y - 0.10f, viewPose.Z)
-                : new Vec3(0.0f, 0.30f, 0.0f),
-            Fov = 40,
+                : new Vec3(0.0f, 0.25f, 0.0f),
+            MirrorX = true,
+            Fov = Math.Min(80.0f, Math.Max(42.0f, 42.0f * (4.0f / 3.0f) * screenH / screenW)),
             Near = 0.1f,
             Far = 50.0f,
         });
 
         // 筐体 (描画のみ): 本体・上部飾り・柱・レール
-        var body = Color.Rgb(0.93f, 0.93f, 0.95f);
-        var accent = Color.Rgb(0.88f, 0.25f, 0.42f);
-        var dark = Color.Rgb(0.22f, 0.23f, 0.27f);
-        var felt = Color.Rgb(0.32f, 0.62f, 0.46f);
+        var body = Color.Rgb(0.93f, 0.92f, 0.89f);
+        var accent = Color.Rgb(0.83f, 0.22f, 0.35f);
+        var dark = Color.Rgb(0.17f, 0.20f, 0.24f);
+        var felt = Color.Rgb(0.78f, 0.84f, 0.83f);
+        // ガラスの外側の背面パネル。明るい売り場の背景として奥行きの基準を作る。
+        DrawBox(BoxMat(0, 0.39f, -0.48f, 0.38f, 0.40f, 0.01f), Color.Rgb(0.40f, 0.56f, 0.60f), null);
+        DrawBox(BoxMat(0, 0.61f, -0.465f, 0.37f, 0.006f, 0.003f), body, null);
         DrawBox(BoxMat(0.0f, -0.33f, 0.0f, 0.42f, 0.29f, fieldHz + 0.05f), body, null);
-        DrawBox(BoxMat(0.0f, -0.06f, 0.0f, 0.42f, 0.022f, fieldHz + 0.05f), accent, null);
-        DrawBox(BoxMat(0.0f, 0.86f, 0.0f, 0.42f, 0.075f, fieldHz + 0.05f), accent, null);
+        DrawBox(BoxMat(0.0f, -0.06f, 0.0f, 0.425f, 0.022f, fieldHz + 0.055f), accent, null);
+        DrawBox(BoxMat(0.0f, 0.85f, 0.0f, 0.42f, 0.055f, fieldHz + 0.05f), body, null);
+        DrawBox(BoxMat(0.0f, 0.80f, fieldHz + 0.046f, 0.42f, 0.008f, 0.006f), accent, null);
+        // 天井照明と操作台。人が向き合う筐体の高さ・前後を見分ける手掛かり。
+        DrawBox(BoxMat(0, 0.792f, 0, 0.32f, 0.003f, 0.35f), Color.Rgb(2.1f, 2.0f, 1.85f), null);
+        DrawBox(BoxMat(0, -0.105f, 0.49f, 0.435f, 0.035f, 0.13f), body, null);
+        DrawBox(BoxMat(0, -0.065f, 0.49f, 0.39f, 0.005f, 0.115f), accent, null);
+        // 獲得口の外側の扉。景品の落下経路の手前に枠だけを描く。
+        DrawBox(BoxMat(-0.20f, -0.285f, 0.506f, 0.15f, 0.095f, 0.003f), dark, null);
+        DrawBox(BoxMat(-0.20f, -0.19f, 0.512f, 0.16f, 0.006f, 0.006f), accent, null);
         foreach (var sx in new List<int> { -1, 1 })
         {
             foreach (var sz in new List<int> { -1, 1 })
             {
-                DrawBox(BoxMat(sx * (fieldHx + 0.022f), 0.31f,
-                    sz * (fieldHz + 0.028f), 0.016f, 0.315f, 0.016f), body, null);
+                DrawBox(BoxMat(sx * (fieldHx + 0.022f), 0.39f,
+                    sz * (fieldHz + 0.028f), 0.009f, 0.40f, 0.009f), body, null);
             }
         }
+        foreach (var sx in new List<int> { -1, 1 })
+            DrawBox(BoxMat(sx * 0.375f, 0.39f, -0.455f, 0.003f, 0.38f, 0.004f),
+                Color.Rgb(1.3f, 1.7f, 1.8f), null);
+        // 物理フェンスの上端を細い枠で示し、透明な板の所在を読み取れるようにする。
+        DrawBox(BoxMat(-0.20f, 0.14f, 0.10f, 0.175f, 0.002f, 0.006f), body, null);
+        DrawBox(BoxMat(-0.025f, 0.14f, 0.275f, 0.006f, 0.002f, 0.175f), body, null);
         // 床 (フェルト) と穴の縁
         DrawBox(BoxMat(0.0f, -0.02f, -0.175f, fieldHx, 0.02f, 0.275f), felt, null);
         DrawBox(BoxMat(0.175f, -0.02f, 0.275f, 0.20f, 0.02f, 0.175f), felt, null);
@@ -1089,38 +1217,34 @@ public static class CraneGame23
         // ガラスとフェンス (半透明は opaque の後に自動で回る)
         if (!showLinkage)
         {
-            var glass = Color.Rgb(0.75f, 0.85f, 0.95f, 0.12f);
-            var fence = Color.Rgb(0.85f, 0.9f, 1.0f, 0.25f);
+            var glass = Color.Rgb(0.75f, 0.85f, 0.95f, 0.006f);
+            var fence = Color.Rgb(0.85f, 0.9f, 1.0f, 0.045f);
             DrawBox(BoxMat(-fieldHx - 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
                 glass, Gfx.Blend.Alpha);
             DrawBox(BoxMat(fieldHx + 0.006f, 0.31f, 0.0f, 0.005f, 0.31f, fieldHz),
                 glass, Gfx.Blend.Alpha);
-            DrawBox(BoxMat(0.0f, 0.31f, -fieldHz - 0.006f, fieldHx, 0.31f, 0.005f),
-                glass, Gfx.Blend.Alpha);
             DrawBox(BoxMat(-0.20f, 0.07f, 0.10f, 0.175f, 0.07f, 0.005f), fence, Gfx.Blend.Alpha);
             DrawBox(BoxMat(-0.025f, 0.07f, 0.275f, 0.005f, 0.07f, 0.175f), fence, Gfx.Blend.Alpha);
-            DrawBox(BoxMat(0.0f, 0.31f, fieldHz + 0.006f, fieldHx, 0.31f, 0.005f),
-                glass, Gfx.Blend.Alpha);
+            // 正面と背面の無色ガラスは面を塗らず、縁と筐体の支柱で見せる。
         }
 
         r.End();
 
         // UI は tonemap 後の swapchain に重ね描き (load = LOAD)
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
-        Ui.SetNextWindow(10, 10, 250, showLinkage ? 195 : 175);
-        if (Ui.BeginWindow("crane game"))
+        DrawHud();
+        if (settingsOpen)
         {
-            Ui.Text("prizes: " + score + "  plays: " + plays);
-            Ui.Text("state: " + stateNames[state]
-                + (autoPlay ? " (auto)" : ""));
-            Ui.Text("hold Space/click: right, then back");
-            Ui.Separator();
-            grabForce = Ui.SliderFloat("grab (N)", grabForce, 0.0f, 80.0f);
-            holdForce = Ui.SliderFloat("hold (N)", holdForce, 0.0f, 80.0f);
-            showLinkage = Ui.Checkbox("show linkage", showLinkage);
-            if (showLinkage) Ui.Text("orange: guides / contacts");
+            Ui.SetNextWindow(20, 65, 260, 155);
+            if (Ui.BeginWindow("Machine settings [F2]"))
+            {
+                grabForce = Ui.SliderFloat("grab (N)", grabForce, 0.0f, 80.0f);
+                holdForce = Ui.SliderFloat("hold (N)", holdForce, 0.0f, 80.0f);
+                showLinkage = Ui.Checkbox("inspect mechanism", showLinkage);
+                if (showLinkage) Ui.Text("orange: guides / contacts");
+            }
+            Ui.EndWindow();
         }
-        Ui.EndWindow();
         Ui.Render();
         Gfx.EndPass();
     }

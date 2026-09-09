@@ -54,6 +54,8 @@ public class Camera
     public Vec3 Eye = new Vec3(0, 0, 0);
     public Vec3 Target = new Vec3(0, 0, 0);
     public Vec3? Up;
+    /// <summary>画面の左右を反転する。+Z 側から右手系の物理空間を見る場合などに使う。</summary>
+    public bool MirrorX;
 
     /// <summary>度。省略時 60。</summary>
     public float? Fov;
@@ -813,6 +815,7 @@ public class Renderer3d
         var far = cam.Far ?? 100.0f;
         Gfx.Size(out var w, out var h);
         var p = Mat4.PerspectiveLh(fov, (float)w / h, near, far);
+        if (cam.MirrorX) p.M[0] = -p.M[0];
         var v = Mat4.LookAtLh(cam.Eye, cam.Target, up);
         view = v;
         ViewMat = v;

@@ -2508,6 +2508,7 @@ function Camera.new()
 	self.eye = Vec3.new(0, 0, 0)
 	self.target = Vec3.new(0, 0, 0)
 	self.up = nil
+	self.mirror_x = false
 	self.fov = nil
 	self.near = nil
 	self.far = nil
@@ -2730,6 +2731,9 @@ function Renderer3d:begin(cam)
 	local h
 	w, h = lub.gfx.size()
 	local p = Mat4.perspective_lh(fov, w / h, near, far)
+	if cam.mirror_x then
+		p.m[0 + 1] = -p.m[0 + 1]
+	end
 	local v = Mat4.look_at_lh(cam.eye, cam.target, up)
 	self.view = v
 	self.view_mat = v

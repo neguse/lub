@@ -1,10 +1,17 @@
 # Crane game
 
-Hold Space or the mouse button to move right, release, then hold again to move
-back. Releasing the second time starts the drop, grab, lift, return, and release.
-After four seconds without input, the demo aims at a prize's torso, accounting
-for its rotation. The force sliders are in newtons. `show linkage` removes the
-head cover and glass from the drawing and zooms in on the moving shaft and links.
+Hold the lit `1 MOVE RIGHT` button, release, then hold `2 MOVE BACK`.
+Releasing the second button starts the drop, grab, lift, return, and release.
+Space also operates the lit button. Leaving a pressed button stops movement.
+The game waits for input; `WATCH DEMO` starts automatic play. `STOP DEMO`
+finishes the current play before returning control to the player.
+
+The front view looks into a lit cabinet from above the control deck. Tab or the
+view button switches to a side view for judging depth. The camera, cabinet trim,
+and controls use the same physical playfield and prize dimensions in both views.
+F2 opens the force sliders, measured in newtons, and mechanism inspection.
+`show linkage` removes the head cover and glass from the drawing and zooms in on
+the moving shaft and links.
 Orange dots mark actual contact points on the fingers. Orange dashed lines and
 the shaft marker show internal constraints; they are inspection guides, not
 rendered solid parts.
