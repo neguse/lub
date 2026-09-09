@@ -123,7 +123,7 @@ public static class Flappy17
         };
 
         var playerModel = Mat4.Translate(new Vec3(-2.0f, playerY, 0))
-            * Mat4.RotateY(t * 3.0f) * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f));
+            * Mat4.RotateY(-t * 3.0f) * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f));
         var playerMvp = vp * playerModel;
         Gfx.Draw(36, new Dictionary<string, object>
         {

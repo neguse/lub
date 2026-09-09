@@ -450,12 +450,8 @@ public static class CoinPusher18
 
     // --- rendering -----------------------------------------------------------
 
-    static Mat4 ModelMat(Pose3d pose, float sx, float sy, float sz)
-    {
-        var rot = new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
-        return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z)) * rot
-            * Mat4.Scale(new Vec3(sx, sy, sz));
-    }
+    static Mat4 ModelMat(Pose3d pose, float sx, float sy, float sz) =>
+        Renderer3d.PoseMat(pose) * Mat4.Scale(new Vec3(sx, sy, sz));
 
     static Mat4 StaticModel(float x, float y, float z,
         float sx, float sy, float sz)

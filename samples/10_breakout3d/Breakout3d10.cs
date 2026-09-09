@@ -426,8 +426,8 @@ public static class Breakout3d10
     {
         float yaw = -0.22f + (float)Math.Sin(t * 0.35f) * 0.025f;
         float pitch = -0.18f;
-        var ry = Mat4.RotateY(-yaw);
-        var rx = Mat4.RotateX(-pitch);
+        var ry = Mat4.RotateY(yaw);
+        var rx = Mat4.RotateX(pitch);
         var view = Mat4.Translate(new Vec3(0, -0.02f, 3.15f));
         // proj: perspective with focal length f=2.05 directly, aspect=16/9,
         // near=0.1, far=40

@@ -1247,15 +1247,15 @@ function Quat:to_mat4()
 	local wz = self.w * z2
 	local r = Mat4.zero()
 	r.m[0 + 1] = 1 - (yy + zz)
-	r.m[1 + 1] = xy + wz
-	r.m[2 + 1] = xz - wy
+	r.m[1 + 1] = xy - wz
+	r.m[2 + 1] = xz + wy
 	r.m[3 + 1] = 0
-	r.m[4 + 1] = xy - wz
+	r.m[4 + 1] = xy + wz
 	r.m[5 + 1] = 1 - (xx + zz)
-	r.m[6 + 1] = yz + wx
+	r.m[6 + 1] = yz - wx
 	r.m[7 + 1] = 0
-	r.m[8 + 1] = xz + wy
-	r.m[9 + 1] = yz - wx
+	r.m[8 + 1] = xz - wy
+	r.m[9 + 1] = yz + wx
 	r.m[10 + 1] = 1 - (xx + yy)
 	r.m[11 + 1] = 0
 	r.m[12 + 1] = 0
@@ -1270,9 +1270,9 @@ function Quat.from_mat4(m)
 	if trace > 0 then
 		local s = 0.5 / Math.Sqrt(trace + 1.0)
 		return Quat.new(
-			(m.m[6 + 1] - m.m[9 + 1]) * s,
-			(m.m[8 + 1] - m.m[2 + 1]) * s,
-			(m.m[1 + 1] - m.m[4 + 1]) * s,
+			(m.m[9 + 1] - m.m[6 + 1]) * s,
+			(m.m[2 + 1] - m.m[8 + 1]) * s,
+			(m.m[4 + 1] - m.m[1 + 1]) * s,
 			0.25 / s
 		)
 	elseif m.m[0 + 1] > m.m[5 + 1] and m.m[0 + 1] > m.m[10 + 1] then
@@ -1281,7 +1281,7 @@ function Quat.from_mat4(m)
 			0.25 * s,
 			(m.m[1 + 1] + m.m[4 + 1]) / s,
 			(m.m[8 + 1] + m.m[2 + 1]) / s,
-			(m.m[6 + 1] - m.m[9 + 1]) / s
+			(m.m[9 + 1] - m.m[6 + 1]) / s
 		)
 	elseif m.m[5 + 1] > m.m[10 + 1] then
 		local s = 2.0 * Math.Sqrt(1.0 + m.m[5 + 1] - m.m[0 + 1] - m.m[10 + 1])
@@ -1289,7 +1289,7 @@ function Quat.from_mat4(m)
 			(m.m[1 + 1] + m.m[4 + 1]) / s,
 			0.25 * s,
 			(m.m[6 + 1] + m.m[9 + 1]) / s,
-			(m.m[8 + 1] - m.m[2 + 1]) / s
+			(m.m[2 + 1] - m.m[8 + 1]) / s
 		)
 	else
 		local s = 2.0 * Math.Sqrt(1.0 + m.m[10 + 1] - m.m[0 + 1] - m.m[5 + 1])
@@ -1297,7 +1297,7 @@ function Quat.from_mat4(m)
 			(m.m[8 + 1] + m.m[2 + 1]) / s,
 			(m.m[6 + 1] + m.m[9 + 1]) / s,
 			0.25 * s,
-			(m.m[1 + 1] - m.m[4 + 1]) / s
+			(m.m[4 + 1] - m.m[1 + 1]) / s
 		)
 	end
 end
@@ -1549,8 +1549,8 @@ function Mat4.rotate_x(angle)
 	local s = Math.Sin(angle)
 	local r = Mat4.new()
 	r.m[5 + 1] = c
-	r.m[6 + 1] = s
-	r.m[9 + 1] = -s
+	r.m[6 + 1] = -s
+	r.m[9 + 1] = s
 	r.m[10 + 1] = c
 	return r
 end
@@ -1560,8 +1560,8 @@ function Mat4.rotate_y(angle)
 	local s = Math.Sin(angle)
 	local r = Mat4.new()
 	r.m[0 + 1] = c
-	r.m[2 + 1] = -s
-	r.m[8 + 1] = s
+	r.m[2 + 1] = s
+	r.m[8 + 1] = -s
 	r.m[10 + 1] = c
 	return r
 end
@@ -1571,8 +1571,8 @@ function Mat4.rotate_z(angle)
 	local s = Math.Sin(angle)
 	local r = Mat4.new()
 	r.m[0 + 1] = c
-	r.m[1 + 1] = s
-	r.m[4 + 1] = -s
+	r.m[1 + 1] = -s
+	r.m[4 + 1] = s
 	r.m[5 + 1] = c
 	return r
 end

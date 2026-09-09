@@ -9,7 +9,7 @@ check=0
 [ "${1:-}" = "--check" ] && check=1
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-mapfile -t LIB < <(find cs-lib -name '*.cs' ! -name 'lub_stub.cs' | sort)
+mapfile -t LIB < <(find cs-lib -name '*.cs' ! -name 'lub_stub.cs' | LC_ALL=C sort)
 dotnet run --project third_party/tcs/Transpiler -- "${LIB[@]}" --ref cs-lib/lub_stub.cs --module -o "$tmp/lubx.lua"
 # checkin 済みの生成物は scripts/format.sh と同じ整形を通した形にする。stylua は
 # 1 回で不動点にならないことがあるので、変わらなくなるまで回す。

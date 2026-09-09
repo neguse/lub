@@ -48,7 +48,7 @@ public static class Mvp04
                 ["verts"] = vbuf,
                 ["uniforms"] = new Dictionary<string, object>
                 {
-                    ["mvp"] = Mat4.RotateZ(t).M,
+                    ["mvp"] = Mat4.RotateZ(-t).M,
                 },
             },
             new DrawOpts
