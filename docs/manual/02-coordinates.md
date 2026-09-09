@@ -28,10 +28,7 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 ### 回転
 
 角度は右ねじの向き。+Z 軸回りの +π/2 は +X を +Y に、+Y 軸回りの +π/2 は
-+Z を +X に回す。`Quat`、`Mat4.RotateX/Y/Z` と `Mat4.Rotate`、`Sdf.Rotate`、
-`Phys3d` の pose はすべて同じ向きなので、どれをどれと組み合わせても気にする
-ことはない。物理の pose は `Renderer3d.PoseMat(pose)` でそのまま model 行列に
-なる。
++Z を +X に回す。
 
 `Mat4` は列ベクトルに左から掛ける(`m.MulPoint(v)`)。合成は
 `projection * view * model` で、右の行列から順に適用される。`Quat` の
