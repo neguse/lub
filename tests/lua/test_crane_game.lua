@@ -55,6 +55,8 @@ local function support(body)
 end
 
 local function run_cases()
+	CraneGame23 = cases[1].game
+	dofile("tests/lua/crane_geometry.lua")(CraneGame23, check)
 	-- Observe declarations and commands; never alter simulation inputs here.
 	local body, joint = lub.phys3d.body, lub.phys3d.joint
 	lub.phys3d.body = function(w, k, d)
@@ -95,7 +97,7 @@ local function run_cases()
 		local w = lub.phys3d.world("crane_replay:" .. i, {
 			gravity = { x = 0, y = -9.81, z = 0 },
 			fixed_dt = 1 / 60,
-			substeps = 8,
+			substeps = g.physics_substeps or 8,
 			max_steps = 1,
 		})
 		local previous, max_step, min_carry_y, cycles = nil, 0, 1, 0

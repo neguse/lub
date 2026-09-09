@@ -2717,7 +2717,8 @@ function Renderer3d.new(key)
 end
 
 function Renderer3d.pose_mat(pose)
-	return Mat4.translate(Vec3.new(pose.x, pose.y, pose.z)) * Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4()
+	return Mat4.translate(Vec3.new(pose.x, pose.y, pose.z))
+		* Quat.new(pose.qx, pose.qy, pose.qz, pose.qw):to_mat4():transpose()
 end
 
 function Renderer3d:begin(cam)
