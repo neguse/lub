@@ -1038,7 +1038,7 @@ public static class CraneGame23
 
     static void DrawHud()
     {
-        const string fontPath = "samples/23_crane_game/data/MPLUS1p-subset.ttf";
+        const string fontPath = "samples/21_iroha/data/MPLUS1p-subset.ttf"; // 共有の M PLUS 1p subset (21_iroha が正)
         Io.LoadBytes(fontPath, out var bytes, out _, out _, out _);
         if (bytes == null) return;
         hud ??= new SpriteBatch(screenW, screenH, "crane_hud", "crane_hud");
