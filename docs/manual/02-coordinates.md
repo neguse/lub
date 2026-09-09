@@ -12,7 +12,7 @@ lub には役割の異なる座標系が 4 つある。どの API がどの座�
 
 ## 3D: 左手系、+Y 上、+Z 前方
 
-カメラの view と投影は左手系を使う:
+`Mat4` の行列コンストラクタは左手系で統一されている:
 
 - view は `Mat4.LookAtLh(eye, target, up)`、投影は `PerspectiveLh` /
   `OrthoLh`。カメラの前方は +Z(`Vec3.Forward()` = (0,0,1))
@@ -24,23 +24,6 @@ view-projection を 1 発で作る(fov 60°、up +Y、aspect は `Gfx.Size()` �
 実比が既定)。`Phys3d` の gravity を `new Vec3d { X = 0, Y = -10, Z = 0 }` に
 するように、
 「上が +Y」がワールドの前提。
-
-### 回転と行列
-
-`Mat4` は行優先の配列を持ち、頂点には列ベクトルとして左から掛ける。
-合成は `projection * view * model`。配列の格納順と座標系の左右は別の規約。
-
-`Phys3d` の回転は `(x, y, z, w)` の正規化された Hamilton quaternion。
-物理 API はその成分を反転せずに入出力する。`Quat.RotateVec3(v)` と
-`Quat.ToMat4().MulDir(v)` は同じ回転を表し、`(a * b)` は b、a の順に適用する。
-例えば `Quat.FromAxisAngle(new Vec3(0, 0, 1), PI / 2)` は +X を +Y に回す。
-`Renderer3d.PoseMat` はこの回転に位置を加える。呼び出し側で転置しない。
-
-既存の角度指定 `Mat4.RotateX/Y/Z(angle)` と `Mat4.Rotate(angle, axis)` は
-左手系の角度の向きを使う。Z 軸の +PI/2 は +X を -Y に回すため、
-同じ変換を quaternion で作る場合は `Quat.FromAxisAngle(axis, -angle)` とする。
-`Mat4.FromQuat(q)` は角度を解釈し直さず、q 自体の回転を行列にする。
-カメラが左手系であることを理由に、物理の quaternion を反転してはいけない。
 
 ## 2D: 「ワールド」と「スクリーン」は別物
 

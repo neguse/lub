@@ -54,7 +54,7 @@ public class Camera
     public Vec3 Eye = new Vec3(0, 0, 0);
     public Vec3 Target = new Vec3(0, 0, 0);
     public Vec3? Up;
-    /// <summary>投影後の画面の左右を反転する。ワールド座標や物理の回転は変えない。</summary>
+    /// <summary>画面の左右を反転する。+Z 側から右手系の物理空間を見る場合などに使う。</summary>
     public bool MirrorX;
 
     /// <summary>度。省略時 60。</summary>
@@ -801,8 +801,9 @@ public class Renderer3d
     /// <summary>Phys3d の pose (x,y,z,qx,qy,qz,qw) → model 行列。</summary>
     public static Mat4 PoseMat(Pose3d pose)
     {
+        // Phys3d / RotateVec3 と同じ能動回転へ変換する。ToMat4 は逆向きの規約。
         return Mat4.Translate(new Vec3(pose.X, pose.Y, pose.Z))
-            * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4();
+            * new Quat(pose.Qx, pose.Qy, pose.Qz, pose.Qw).ToMat4().Transpose();
     }
 
     /// <summary>フレーム開始。カメラを確定し draw 列を空にする。</summary>

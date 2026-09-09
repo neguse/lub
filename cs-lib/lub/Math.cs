@@ -402,7 +402,6 @@ public class Quat
         return v.Add(uv.Scale(2.0f * W).Add(uuv.Scale(2.0f)));
     }
 
-    /// <summary>RotateVec3 と同じ回転を行う行列。正規化済みの quaternion を使う。</summary>
     public Mat4 ToMat4()
     {
         var x2 = X + X;
@@ -419,15 +418,15 @@ public class Quat
         var wz = W * z2;
         var r = Mat4.Zero();
         r.M[0] = 1 - (yy + zz);
-        r.M[1] = xy - wz;
-        r.M[2] = xz + wy;
+        r.M[1] = xy + wz;
+        r.M[2] = xz - wy;
         r.M[3] = 0;
-        r.M[4] = xy + wz;
+        r.M[4] = xy - wz;
         r.M[5] = 1 - (xx + zz);
-        r.M[6] = yz - wx;
+        r.M[6] = yz + wx;
         r.M[7] = 0;
-        r.M[8] = xz - wy;
-        r.M[9] = yz + wx;
+        r.M[8] = xz + wy;
+        r.M[9] = yz - wx;
         r.M[10] = 1 - (xx + yy);
         r.M[11] = 0;
         r.M[12] = 0;
@@ -769,9 +768,9 @@ public class Mat4
         return r;
     }
 
-    /// <summary>任意軸 axis 回りの左手系の角度指定 (ラジアン)。RotateX/Y/Z と同じ向き。</summary>
+    /// <summary>任意軸 axis 回りの回転 (ラジアン)。</summary>
     public static Mat4 Rotate(float angle, Vec3 axis) =>
-        Quat.FromAxisAngle(axis, -angle).ToMat4();
+        Quat.FromAxisAngle(axis, angle).ToMat4();
 
     public static Mat4 FromQuat(Quat q) => q.ToMat4();
 
