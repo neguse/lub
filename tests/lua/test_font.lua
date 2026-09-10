@@ -3,7 +3,7 @@
 -- 呼び出し間の一致も見る。
 local M = {}
 
-local FONT_PATH = "samples/21_iroha/data/MPLUS1p-subset.ttf"
+local FONT_PATH = "samples/data/fonts/MPLUS1p-subset.ttf"
 
 local function fail(message)
 	print("FONT_SMOKE_FAIL: " .. message)

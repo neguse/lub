@@ -286,7 +286,7 @@ public static class Tonton22
     }
 
     // --- テキスト (かなサブセット TTF) --------------------------------------
-    const string fontPath = "samples/22_tonton/data/MPLUS1p-subset.ttf";
+    const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;

@@ -29,6 +29,7 @@ memory に状態を溜めない。現在地は常に以下を読む:
 - csproj は basename = entry class(`Hello00.csproj` → `Hello00`)
 - ソースはデータを `Io.LoadText("samples/<name>/data/...")` と cwd 基準で参照
 - 共有 Lua (`boot.lua`、生成した `lubx.lua`) は `samples/` 直下
+- サンプル横断で使うアセット(フォント等)は `samples/data/`(例: `samples/data/fonts/`)。サンプル固有のものだけ `samples/<name>/data/`
 - 生成 Lua は `samples/<name>/.lub/<Entry>.lua`(`.lub/` は gitignore)
 - C 側 bare-name 解決 (`src/main.c`) と web playground (`web/playground/samples.ts`, `verify-headless.mjs`) も対応済
 - C# (TinyC#) が authoring 言語(サンプル一覧の正は `web/playground/samples.ts` の CS_SAMPLES)。実行は `lub samples/<name>/<Entry>.csproj`(transpile + watch + hotswap、要 dotnet SDK + `third_party/tcs` submodule)。csproj は basename = entry class の規約で、lub は MSBuild 評価をしない(IDE 型チェック用の実ファイル)。check/build のみは `scripts/run-cs-sample.sh <name> --check|--build`。共有 stub は `cs-lib/lub_stub.cs`(root class `Lub` の下に `Gfx` / `Input` / ... と enum。ゲームは `using static Lub;` で `Gfx.BeginPass(...)`)。C# は通常の命名(PascalCase)で書き、tcs が Lua の snake_case(`lub.gfx.begin_pass`)に写す。API 面は生成 binding が作る `lub` table。stub の検査と生成物は `tools/lub-gen`(`docs/api-glue.md`)。web は playground(`#sample=<name>`)

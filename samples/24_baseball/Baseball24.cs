@@ -1514,7 +1514,7 @@ public static class Baseball24
     }
 
     // --- HUD ------------------------------------------------------------------------
-    const string fontPath = "samples/24_baseball/data/MPLUS1p-subset.ttf";
+    const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
     static MeshText? mtext = null;

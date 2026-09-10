@@ -53,7 +53,7 @@ public static class Iroha21
     static SpriteBatch? overlay = null;
     static Text? hud = null;
     static MeshText? mesh = null;
-    const string fontPath = "samples/21_iroha/data/MPLUS1p-subset.ttf";
+    const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
 
