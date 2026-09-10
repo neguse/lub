@@ -232,6 +232,7 @@ if [[ $cs_available -eq 1 ]]; then
     run scripts/gen-lubx-lua.sh --check
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
+    run dotnet run --project tests/tetris/TetrisTests.csproj
     cs_pool "transpile (check+build)" cs_transpile
     cs_t0=$SECONDS
     for cs_dir in "${cs_dirs[@]}"; do
