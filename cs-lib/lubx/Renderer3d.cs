@@ -358,15 +358,18 @@ public class Renderer3d
           float3 l = f.light_dir.xyz;
           float metal = i.mr.x;
           float rough = i.mr.y;
-          float sh = shadow_factor(i.lpos, dot(n, l));
+          float ndl = dot(n, l);
+          // 裏向きの面に直接光を足すと、shadow bias が明るい縁として見える。
+          // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。
+          float sh = ndl > 0.0f ? shadow_factor(i.lpos, ndl) : 0.0f;
           float up = n.y * 0.5f + 0.5f;
           float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;
           float3 v = normalize(f.cam_pos.xyz - i.wp);
           float3 hv = normalize(l + v);
 
-          // 誘電体: half-lambert + hemispheric ambient + roughness で絞る specular
-          float diff = dot(n, l) * 0.5f + 0.5f;
-          float3 direct = f.light_col.rgb * (diff * diff) * sh;
+          // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular
+          float diff = saturate(ndl);
+          float3 direct = f.light_col.rgb * diff * sh;
           float spec =
               pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;
           float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;
@@ -478,7 +481,9 @@ public class Renderer3d
 
         [shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
           float3 p = view_pos(i.uv);
-          float3 n = normalize(cross(ddy(p), ddx(p)));
+          // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で
+          // カメラ側を向け、面より手前の遮蔽物を数える。
+          float3 n = normalize(cross(ddx(p), ddy(p)));
           // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール
           float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに
           float occ = 0.0f;
