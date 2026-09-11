@@ -31,6 +31,7 @@ export const SAMPLE_NAMES = [
   "24_baseball",
   "25_bowling",
   "26_renderer3d",
+  "28_renderer_shadow",
 ];
 
 // サンプル名 → entry class。ソースは samples/<name>/<EntryClass>.cs の
@@ -66,6 +67,7 @@ const CS_SAMPLES: Record<string, string> = {
   "24_baseball": "Baseball24",
   "25_bowling": "Bowling25",
   "26_renderer3d": "RendererDemo26",
+  "28_renderer_shadow": "RendererShadow28",
 };
 
 // Samples whose Lua builds shader paths dynamically (so the load_text scan
