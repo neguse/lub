@@ -19,3 +19,35 @@ G キーで水色の枠、S キーで影を切り替える。
 枠はちらつきを避けるため床から `0.006` 浮かせ、影を落とさず、受けない設定で描く。
 影の補正と輪郭のぼかしにより、描画された境界は枠と厳密には一致しない。
 まず位置・方向・形が合うかを確認し、G キーで枠を消して境界を観察する。
+
+## コイン 2 枚の比較
+
+`coin_contact.lua` は、`18_coin_pusher` の投入後の配置から抜き出した 2 枚を
+固定して描く native 用の比較サンプル。物理、bloom、FXAA、dither は使わない。
+リポジトリの root から起動する。
+
+```sh
+./build-release-linux/lub samples/28_renderer_shadow/coin_contact.lua
+COIN_MODE=weighted ./build-release-linux/lub samples/28_renderer_shadow/coin_contact.lua
+```
+
+S キーは影、A キーは SSAO、O キーは上のコインの表示を切り替える。
+`reference` では 2 枚の形状を使って光線との交差を計算するため、O キーは使えない。
+比較方式は起動時の `COIN_MODE` で選ぶ。
+
+| 値 | 比較条件 |
+| --- | --- |
+| `baseline` | 現行の影。省略時の値、bias は 0.001 |
+| `shadow_off` / `ao_off` / `clean` | 影なし / SSAO なし / 両方なし |
+| `single` / `reverse` | 下の 1 枚だけ / 描画順を反転 |
+| `bias_high` / `bias_low` / `bias_zero` | bias を 0.004 / 0.0001 / 0 に変更 |
+| `high_res` / `one_tap` | 影の解像度を 8192 に変更 / 中央の 1 点だけ比較 |
+| `receiver_plane` | サンプル位置に合わせて受け面の深度を補正する試作 |
+| `weighted_only` | PCF の補間だけを加える試作。bias は現行と同じ |
+| `weighted` | 受け面の深度補正と PCF の補間を組み合わせる試作 |
+| `reference` | 同じ 24 角柱 2 枚への光線の交差で求める、ぼかしのない比較用の影 |
+
+試作はこのプロセス内のシェーダーだけを差し替える。
+`Renderer3d` 本体と `18_coin_pusher` の影の実装には反映しない。
+`reference` の逆行列は固定した 2 枚に対応するので、配置を変える場合は再計算が必要。
+検証の範囲と結果は [調査記録](../../docs/log/2026-09-12-coin-shadow-verification.md) を参照。
