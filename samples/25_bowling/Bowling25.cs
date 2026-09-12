@@ -155,16 +155,17 @@ public static class Bowling25
         var baseShape = Sdf.Capsule(new Vec3(0, 0.030f, 0), new Vec3(0, 0.090f, 0),
             0.051f);
         var belly = Sdf.Sphere(0.0605f).Move(0, 0.155f, 0);
-        var neck = Sdf.Capsule(new Vec3(0, 0.20f, 0), new Vec3(0, 0.30f, 0),
-            0.032f);
+        var shoulder = Sdf.Sphere(0.046f).Move(0, 0.20f, 0);
+        var neck = Sdf.Capsule(new Vec3(0, 0.22f, 0), new Vec3(0, 0.30f, 0),
+            0.034f);
         var head = Sdf.Sphere(0.040f).Move(0, 0.335f, 0);
-        var body = baseShape.Smin(belly, 0.03f).Smin(neck, 0.035f).Smin(head, 0.02f)
-            .Paint(white, 0.0f, 0.18f);
-        var stripe1 = Sdf.Torus(0.034f, 0.006f).Move(0, 0.265f, 0)
-            .Paint(0xD53242, 0.0f, 0.4f);
-        var stripe2 = Sdf.Torus(0.035f, 0.006f).Move(0, 0.298f, 0)
-            .Paint(0xD53242, 0.0f, 0.4f);
-        return body.Smin(stripe1, 0.006f).Smin(stripe2, 0.006f);
+        var body = baseShape.Smin(belly, 0.03f).Smin(shoulder, 0.035f)
+            .Smin(neck, 0.045f).Smin(head, 0.025f);
+        var stripe1 = body.Intersect(Sdf.Box(0.1f, 0.008f, 0.1f).Move(0, 0.265f, 0))
+            .Paint(0xD53242, 0.0f, 0.18f);
+        var stripe2 = body.Intersect(Sdf.Box(0.1f, 0.008f, 0.1f).Move(0, 0.298f, 0))
+            .Paint(0xD53242, 0.0f, 0.18f);
+        return stripe1.Union(stripe2).Union(body.Paint(white, 0.0f, 0.18f));
     }
 
     // ボール: 指穴 3 つ + 飾りリング (回転が見えるように)

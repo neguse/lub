@@ -285,8 +285,8 @@ public static class Baseball24
     {
         var p = ZeroPose();
         p[3] = -0.30f;
-        p[1] = 0.38f;
-        p[4] = -0.55f;
+        p[1] = 0.18f;
+        p[4] = -0.18f;
         p[6] = 1.05f;
         p[8] = 1.05f; // 両腕前
         p[10] = 0.18f;
@@ -1782,7 +1782,16 @@ public static class Baseball24
             if (i == 0)
                 yaw = (float)Math.PI; // 投手は打者へ正対
             if (i == 1)
+            {
                 yaw = 0; // 捕手は投手へ
+                pose = PoseCrouch(t);
+                if (f.Anim == AnReach)
+                {
+                    var reach = (float)Math.Sin(MathUtil.Clamp(f.AnimT / 0.5f, 0, 1) * (float)Math.PI);
+                    pose[6] += reach * 0.22f;
+                    pose[3] += reach * 0.04f;
+                }
+            }
             DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose, true);
         }
         // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
