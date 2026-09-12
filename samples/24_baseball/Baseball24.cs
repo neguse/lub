@@ -1732,7 +1732,7 @@ public static class Baseball24
         if (!wide)
             firstBaseView = false;
         var runner = batterRunner;
-        bool followHomeRun = isHomeRun && liveT >= homeRunAt + 0.65f
+        bool followHomeRun = isHomeRun && liveT >= homeRunAt + 1.0f
             && runner != null && (state == stLive || state == stCall);
         if (followHomeRun && runner != null)
         {

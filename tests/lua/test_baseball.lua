@@ -113,7 +113,7 @@ assert(g.ball_bounces == 0 and g.by > 3, "home run must be confirmed above the f
 assert(g.bx * g.bx + g.bz * g.bz > 75.8 * 75.8, "home run must not be announced before reaching the fence")
 assert(not g.home_run_view and g.event_text == "HOME RUN!", "show the result while retaining the fence-crossing shot")
 advance(g, function()
-	if g.live_t < g.home_run_at + 0.65 then
+	if g.live_t < g.home_run_at + 1.0 then
 		assert(not g.home_run_view, "let the viewer see the fence clearance before cutting to the runner")
 		in_frame(g, g.bx, g.by, g.bz)
 		return false
