@@ -1,6 +1,22 @@
 -- Run after: bash scripts/run-cs-sample.sh 24_baseball --build
 local entry = arg[1] or "samples/24_baseball/.lub/Baseball24.lua"
 lub = {
+	KEY_DOWN = "key_down",
+	KEY_UP = "key_up",
+	input = {
+		key_released = function()
+			return false
+		end,
+		mouse_pressed = function()
+			return false
+		end,
+		mouse_released = function()
+			return false
+		end,
+		key_pressed = function()
+			return false
+		end,
+	},
 	gfx = {
 		begin_pass = function() end,
 		end_pass = function() end,
@@ -188,3 +204,76 @@ for _ = 1, 18000 do
 	end
 end
 print("baseball: home-run lifecycle, actor continuity, pitch, throw, decision hold, fence and camera PASS")
+
+local pressed
+lub.ui = {
+	set_next_window = function() end,
+	begin_window = function()
+		return true
+	end,
+	end_window = function() end,
+	text = function() end,
+	separator = function() end,
+	same_line = function() end,
+	render = function() end,
+	button = function(label)
+		return label == pressed
+	end,
+	checkbox = function(_, value)
+		return value
+	end,
+	slider_float = function(_, value)
+		return value
+	end,
+	slider_int = function(_, value)
+		return value
+	end,
+}
+lub.gfx.size = function()
+	return 960, 540
+end
+g = fresh()
+g.reloaded = false
+g.ren = Renderer3d.new("debug-test")
+g.ren.begin = function() end
+g.ren.draw = function() end
+g.ren.end_ = function() end
+g.debug_box = {}
+g.debug_props = false
+g.debug_guides = false
+g.draw_hud = function() end
+local shown_pose
+g.draw_char = function(_, _, _, _, pose)
+	shown_pose = pose
+end
+g.on_event({ kind = lub.KEY_DOWN, key = 59 })
+assert(g.model_debug, "F2 must open the model viewer")
+g.on_event({ kind = lub.KEY_DOWN, key = 59 })
+assert(g.model_debug, "holding F2 must not repeatedly toggle the viewer")
+g.on_event({ kind = lub.KEY_UP, key = 59 })
+local match_time = g.t_accum
+pressed = "Contact"
+g.on_frame(1 / 60)
+assert(g.t_accum == match_time, "model viewer must pause the match")
+assert(math.abs(g.debug_time - 0.52 * 0.55) < 0.00001, "contact button must seek the batting contact")
+local expected_pose = g.pose_swing(0.52)
+for i, value in ipairs(expected_pose) do
+	assert(math.abs(shown_pose[i] - value) < 0.00001, "viewer must render the match's swing pose")
+end
+pressed = "+1 frame"
+g.on_frame(1 / 60)
+assert(math.abs(g.debug_time - 0.52 * 0.55 - 1 / 60) < 0.00001, "step must advance one match tick")
+pressed = nil
+g.debug_playing = true
+g.debug_speed = 0.25
+local before = g.debug_time
+g.on_frame(1 / 60)
+assert(math.abs(g.debug_time - before - 1 / 240) < 0.00001, "slow playback must advance only the preview clock")
+assert(g.t_accum == match_time, "preview playback must not advance the match")
+pressed = "Return to match"
+g.on_frame(1 / 60)
+assert(not g.model_debug, "return button must close the viewer")
+pressed = nil
+g.on_frame(1 / 60)
+assert(g.t_accum > match_time and g.t_accum < match_time + 0.02, "return must resume without catching up paused time")
+print("baseball: model preview pause, shared pose, contact seek, frame step, slow playback and resume PASS")

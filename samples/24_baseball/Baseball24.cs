@@ -119,6 +119,13 @@ public static class Baseball24
 
     public static void OnEvent(EventData e)
     {
+        if (e.Key != 59) return; // F2 scancode
+        if (e.Kind == EventKind.KeyUp) debugKeyHeld = false;
+        if (e.Kind == EventKind.KeyDown && !debugKeyHeld)
+        {
+            debugKeyHeld = true;
+            modelDebug = !modelDebug;
+        }
     }
 
     public static void OnQuit()
@@ -1727,6 +1734,7 @@ public static class Baseball24
         HudText(teamName[0] + "  " + score[0] + " : " + score[1] + "  " + teamName[1], 38, 50, 24, cream);
         HudText((half == 0 ? "TOP " : "BOT ") + inning, 295, 48, 18, gold);
         HudText("B " + balls + "   S " + strikes + "   O " + outs, 380, 48, 18, cream);
+        HudText("F2  MODEL VIEW", 748, 44, 16, cream);
         batch.Flush();
         if (eventText != "" && eventT < 1.6f && eventCol != null)
         {
@@ -1770,6 +1778,197 @@ public static class Baseball24
         }
     }
 
+    static bool modelDebug = false;
+    static bool debugKeyHeld = false;
+    static bool debugViewControls = false;
+    static int debugAnim = AnSwing;
+    static float debugTime = 0.165f;
+    static bool debugPlaying = false;
+    static float debugSpeed = 0.25f;
+    static float debugYaw = 90;
+    static float debugOrbit = 35;
+    static float debugElevation = 12;
+    static float debugDistance = 5.5f;
+    static bool debugProps = true;
+    static bool debugGuides = true;
+    static int debugTeam = 0;
+    static Mesh3d? debugBox = null;
+    static List<string> debugClips = new List<string> {
+        "Idle", "Ready", "Run", "Pitch", "Swing", "High catch", "Crouch", "Throw", "Bind pose"
+    };
+
+    static float DebugDuration()
+    {
+        if (debugAnim == AnSwing) return 0.55f;
+        if (debugAnim == AnWindup) return 1.1f;
+        if (debugAnim == AnThrow || debugAnim == AnReach) return 0.45f;
+        if (debugAnim == AnRun) return 2 * (float)Math.PI / 11;
+        return 2 * (float)Math.PI / 2.1f;
+    }
+
+    static void DebugGuide(Mat4 transform, Vec3 origin, Color color)
+    {
+        var r = ren;
+        if (r == null) return;
+        r.Draw(debugBox, transform * Mat4.Translate(origin + new Vec3(0, 0, 0.55f))
+            * Mat4.Scale(new Vec3(0.025f, 0.025f, 1.1f)), new Draw3dOpts { Tint = color });
+        r.Draw(ballMesh, transform * Mat4.Translate(origin + new Vec3(0, 0, 1.1f))
+            * Mat4.Scale(new Vec3(0.45f, 0.45f, 0.45f)), new Draw3dOpts { Tint = color });
+    }
+
+    static void DrawModelDebug(float dt)
+    {
+        var r = ren;
+        var b = batter;
+        if (r == null || b == null) return;
+        if (debugBox == null)
+        {
+            debugBox = new Mesh3d("bb24_debug_box");
+            var v = new List<float>();
+            Shapes.Box(v, 0, 0, 0, 1, 1, 1, new List<float> { 1, 1, 1, 1 });
+            debugBox.Rebuild(Shapes3d.FromInterleaved(v));
+        }
+        if (debugPlaying)
+            debugTime = (debugTime + Math.Min(dt, 0.1f) * debugSpeed) % DebugDuration();
+        Gfx.Size(out var debugWidth, out var debugHeight);
+        Ui.SetNextWindow(12, 12, Math.Min(290, debugWidth - 24), Math.Min(332, debugHeight - 24));
+        if (Ui.BeginWindow("Baseball model [F2]"))
+        {
+            Ui.Text("Match paused / same meshes and poses");
+            if (Ui.Button("Return to match")) modelDebug = false;
+            Ui.Separator();
+            if (Ui.Button("Motion")) debugViewControls = false;
+            Ui.SameLine();
+            if (Ui.Button("View / display")) debugViewControls = true;
+            if (!debugViewControls)
+            {
+                for (int i = 0; i < debugClips.Count; i++)
+                {
+                    if (i % 3 != 0) Ui.SameLine();
+                    if (Ui.Button(debugClips[i]))
+                    {
+                        debugAnim = i;
+                        debugTime = 0;
+                        debugPlaying = false;
+                        debugYaw = i == AnSwing ? 90 : i == AnWindup ? 180 : i == AnRun || i == AnThrow ? 45 : 0;
+                    }
+                }
+                Ui.Text("Clip: " + debugClips[debugAnim]);
+                debugPlaying = Ui.Checkbox("Play / loop", debugPlaying);
+                Ui.SameLine();
+                if (Ui.Button("-1 frame"))
+                {
+                    debugPlaying = false;
+                    debugTime = Math.Max(0, debugTime - tickDt);
+                }
+                Ui.SameLine();
+                if (Ui.Button("+1 frame"))
+                {
+                    debugPlaying = false;
+                    debugTime = Math.Min(DebugDuration(), debugTime + tickDt);
+                }
+                debugSpeed = Ui.SliderFloat("Speed", debugSpeed, 0.05f, 1);
+                float scrub = Ui.SliderFloat("Time (s)", debugTime, 0, DebugDuration());
+                if (scrub != debugTime) debugPlaying = false;
+                debugTime = scrub;
+                if (debugAnim == AnSwing)
+                {
+                    if (Ui.Button("Stance")) { debugTime = 0.30f * 0.55f; debugPlaying = false; }
+                    Ui.SameLine();
+                    if (Ui.Button("Contact")) { debugTime = SwingHitPh * 0.55f; debugPlaying = false; }
+                    Ui.SameLine();
+                    if (Ui.Button("Follow-through")) { debugTime = 0.9f * 0.55f; debugPlaying = false; }
+                }
+                else if (debugAnim == AnWindup || debugAnim == AnThrow)
+                {
+                    if (Ui.Button("Release"))
+                    {
+                        debugTime = debugAnim == AnWindup ? RelPh * 1.1f : 0.24f;
+                        debugPlaying = false;
+                    }
+                }
+                Ui.Text("Yellow: chest / Cyan: face");
+            }
+            else
+            {
+                debugYaw = Ui.SliderFloat("Body yaw", debugYaw, 0, 360);
+                if (Ui.Button("Front")) debugOrbit = debugYaw;
+                Ui.SameLine();
+                if (Ui.Button("Side")) debugOrbit = (debugYaw + 90) % 360;
+                Ui.SameLine();
+                if (Ui.Button("Back")) debugOrbit = (debugYaw + 180) % 360;
+                debugOrbit = Ui.SliderFloat("Camera orbit", debugOrbit, 0, 360);
+                debugElevation = Ui.SliderFloat("Elevation", debugElevation, -10, 80);
+                debugDistance = Ui.SliderFloat("Distance", debugDistance, 3.5f, 10);
+                debugTeam = Ui.SliderInt("Team", debugTeam, 0, 1);
+                debugProps = Ui.Checkbox("Bat / glove", debugProps);
+                debugGuides = Ui.Checkbox("Direction guides", debugGuides);
+                if (debugGuides)
+                {
+                    Ui.Text("Red: world +X / Blue: world +Z");
+                    Ui.Text("White: root / Yellow: chest / Cyan: face");
+                    Ui.Text("Dots mark the forward ends.");
+                }
+            }
+        }
+        Ui.EndWindow();
+
+        float orbit = MathUtil.Radians(debugOrbit);
+        float elevation = MathUtil.Radians(debugElevation);
+        var side = new Vec3((float)Math.Cos(orbit), 0, -(float)Math.Sin(orbit));
+        var target = new Vec3(0, 1.1f, 0) + side * (debugDistance * 0.20f);
+        var eye = target + new Vec3((float)Math.Sin(orbit) * (float)Math.Cos(elevation),
+            (float)Math.Sin(elevation), (float)Math.Cos(orbit) * (float)Math.Cos(elevation)) * debugDistance;
+        r.Light.Dir = new Vec3(-0.65f, 1, 0.45f);
+        r.Light.Intensity = 1.8f;
+        r.Light.Color = Color.Rgb(1, 1, 1);
+        r.Sky.Intensity = 0.7f;
+        r.Background = Color.Rgb(0.19f, 0.22f, 0.26f);
+        r.Ssao.Enabled = false;
+        r.Bloom.Enabled = false;
+        r.Vignette = 0;
+        r.Shadow.Size = 512;
+        r.Shadow.Center = new Vec3(0, 0, 0);
+        r.Shadow.Extent = 6;
+        r.Begin(new Camera { Eye = eye, Target = target, Fov = 38, Near = 0.1f, Far = 40 });
+        r.Draw(debugBox, Mat4.Translate(new Vec3(0, -0.06f, 0)) * Mat4.Scale(new Vec3(12, 0.1f, 12)),
+            new Draw3dOpts { Tint = Color.Rgb(0.27f, 0.29f, 0.31f) });
+        float phase = debugTime / DebugDuration();
+        var pose = debugAnim == 8 ? ZeroPose() : PoseFor(debugAnim,
+            debugAnim == AnWindup || debugAnim == AnSwing || debugAnim == AnThrow || debugAnim == AnReach
+                ? phase : debugTime, debugTime * 11);
+        float yaw = MathUtil.Radians(debugYaw);
+        var root = Mat4.RotateY(yaw);
+        DrawChar(0, 0, yaw, debugTeam, pose, debugProps && debugAnim != AnSwing);
+        if (debugProps && debugAnim == AnSwing)
+        {
+            var fromBatter = Mat4.RotateY(-(float)Math.PI / 2) * Mat4.Translate(new Vec3(-b.X, 0, -b.Z));
+            r.Draw(batMesh, root * fromBatter * BatMatrix(phase));
+        }
+        if (debugGuides)
+        {
+            DebugGuide(Mat4.RotateY((float)Math.PI / 2), new Vec3(0, 0.03f, 0), Color.Rgb(1, 0.1f, 0.1f));
+            DebugGuide(new Mat4(), new Vec3(0, 0.03f, 0), Color.Rgb(0.15f, 0.35f, 1));
+            DebugGuide(root, new Vec3(0, 0.08f, 0), Color.Rgb(1, 1, 1));
+            var packed = PackBones(pose);
+            var bones = charMesh![debugTeam].Data!.Bones;
+            if (bones != null)
+                for (int i = 0; i < bones.Count; i++)
+                {
+                    var bone = bones[i];
+                    if (bone.Name != "torso" && bone.Name != "head") continue;
+                    var matrix = new Mat4();
+                    for (int j = 0; j < 16; j++) matrix.M[j] = packed[i * 16 + j];
+                    DebugGuide(root * matrix, new Vec3(bone.X, bone.Y, bone.Z),
+                        bone.Name == "head" ? Color.Rgb(0, 1, 1) : Color.Rgb(1, 0.8f, 0));
+                }
+        }
+        r.End();
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
+        Ui.Render();
+        Gfx.EndPass();
+    }
+
     // --- main loop --------------------------------------------------------------------
     public static void OnFrame(float dt)
     {
@@ -1787,6 +1986,12 @@ public static class Baseball24
             stateT = 0;
             reloaded = false;
             ShowEvent("PLAY BALL!", Color.Rgb(1.0f, 0.95f, 0.5f));
+        }
+
+        if (modelDebug)
+        {
+            DrawModelDebug(dt);
+            return;
         }
 
         var stepNow = step ?? new FixedStep();
