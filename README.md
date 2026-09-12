@@ -105,9 +105,6 @@ scripts/format.sh --check    # 整形が必要か確認のみ (CI 向け / 非�
 raw Lua で書いたゲームは transpile なしで起動できる
 (`./build/lub samples/27_lua_triangle/27_lua_triangle.lua`)。
 
-`Renderer3d` の影を単純な配置で確認するには
-[28_renderer_shadow](samples/28_renderer_shadow/README.md) を使う。
-
 サンプルは `samples/<name>/` に 1 つずつ自己完結する形で置く
 (`<Entry>.cs` + `<Entry>.csproj` + `data/`)。
 ゲームの書き方(ライフサイクル、座標系、描画モデル、C#→Lua の注意点)は
