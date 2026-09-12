@@ -22,13 +22,13 @@ G キーで水色の枠、S キーで影を切り替える。
 
 ## コイン 2 枚の比較
 
-`coin_contact.lua` は、`18_coin_pusher` の投入後の配置から抜き出した 2 枚を
-固定して描く native 用の比較サンプル。物理、bloom、FXAA、dither は使わない。
+`coin_contact.lua` は、上下に重なるコイン 2 枚の接地影を描く native 用サンプル。
+物理、bloom、FXAA、dither は使わない。
 リポジトリの root から起動する。
 
 ```sh
-./build-release-linux/lub samples/28_renderer_shadow/coin_contact.lua
-COIN_MODE=weighted ./build-release-linux/lub samples/28_renderer_shadow/coin_contact.lua
+COIN_MODE=fixed ./build-release-linux/lub samples/28_renderer_shadow/coin_contact.lua
+COIN_MODE=reference ./build-release-linux/lub samples/28_renderer_shadow/coin_contact.lua
 ```
 
 S キーは影、A キーは SSAO、O キーは上のコインの表示を切り替える。
@@ -37,28 +37,26 @@ S キーは影、A キーは SSAO、O キーは上のコインの表示を切り
 
 | 値 | 比較条件 |
 | --- | --- |
-| `baseline` | 調査開始時の影。省略時の値、bias は 0.001 |
-| `fixed` | 修正後の Renderer3d 本体。bias はコインと同じ 0.0001 |
+| `baseline` | 中央の受け面の深度で周囲 9 点を比較。省略時の値、bias は 0.001 |
+| `fixed` | Renderer3d 本体。bias はコインと同じ 0.0001 |
 | `shadow_off` / `ao_off` / `clean` | 影なし / SSAO なし / 両方なし |
 | `single` / `reverse` | 下の 1 枚だけ / 描画順を反転 |
 | `bias_high` / `bias_low` / `bias_zero` | bias を 0.004 / 0.0001 / 0 に変更 |
 | `high_res` / `one_tap` | 影の解像度を 8192 に変更 / 中央の 1 点だけ比較 |
-| `receiver_plane` | サンプル位置に合わせて受け面の深度を補正する試作 |
-| `weighted_only` | PCF の補間だけを加える試作。bias は現行と同じ |
-| `weighted` | 受け面の深度補正と PCF の補間を組み合わせる試作 |
+| `receiver_plane` | 読み取り位置に合わせて受け面の深度を補正。bias は 0.000005 |
+| `weighted_only` | PCF の補間のみ。bias は 0.001 |
+| `weighted` | 受け面の深度補正と PCF の補間。bias は 0.000005 |
 | `reference` | 同じ 24 角柱 2 枚への光線の交差で求める、ぼかしのない比較用の影 |
 
-`fixed` 以外は調査開始時のシェーダーを読み、このプロセス内だけで比較方式を差し替える。
-試作モードは当時の比較条件を保つ。修正後の本体を確認するときは `fixed` を使う。
+`fixed` 以外は比較用の `coin_shadow_legacy.slang` を使う。
+Renderer3d 本体の接地影を見るには `fixed`、形状と光線の交差による影を見るには `reference` を選ぶ。
 `reference` の逆行列は固定した 2 枚に対応するので、配置を変える場合は再計算が必要。
-検証の範囲と結果は [PR #42](https://github.com/neguse/lub/pull/42) を参照。
-
 
 ## 傾いたコイン 1 枚の自己影
 
-`coin_acne.lua` は、実際の連続投入後に縞が出たコイン 1 枚の位置・姿勢を固定する。
+`coin_acne.lua` は、光にほぼ平行なコイン 1 枚を描く native 用サンプル。
 この平らな面は光に向いており、ほかの遮蔽物もないので、影 ON/OFF で縞が出てはいけない。
-初期状態は修正後の Renderer3d。`legacy` は調査開始時の方式で縞を再現する。
+通常起動は Renderer3d 本体を使う。`legacy` は比較用のシェーダーで自己影の縞を再現する。
 
 ```sh
 ./build-release-linux/lub samples/28_renderer_shadow/coin_acne.lua
@@ -67,5 +65,3 @@ COIN_MODE=legacy ./build-release-linux/lub samples/28_renderer_shadow/coin_acne.
 
 S キーで影、space キーで微小な移動・回転を切り替える。
 SSAO、bloom、FXAA、dither は無効。
-`tests/lua/test_renderer3d_coin_shadow.lua` はこの姿勢を少しずつ変え、平らな面の画素を影 ON/OFF で比較する。
-原因と検証結果は [PR #42](https://github.com/neguse/lub/pull/42) を参照。
