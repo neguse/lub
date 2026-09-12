@@ -300,6 +300,26 @@ for pitch = 1, 100 do
 	close(g.fielder_ball(1), Vec3.new(g.bx, g.by, g.bz), "catcher must receive the actual pitch")
 	assert(g.by >= 0.115 - 0.00001, "low pitch must stay above the ground")
 end
+for pitch = 1, 100 do
+	g.start_pitch()
+	g.will_swing, g.swing_outcome = true, 2
+	local contact_seen = false
+	for tick = 1, 200 do
+		local was_pitch, before = g.state == 3, g.batter.anim_t
+		g.simulate_tick()
+		if was_pitch and g.state == 4 then
+			assert(g.batter.anim_t >= before, "swing must not rewind when contact occurs")
+			assert(math.abs(g.batter.anim_t - 0.52) < 0.00001, "contact must use the hitting pose")
+			local bat = g.bat_matrix(g.batter.anim_t)
+			local delta = Vec3.new(g.bx, g.by, g.bz) - bat:mul_point(Vec3.new(0, 0, 0))
+			local axis = bat:mul_dir(Vec3.new(0, 0, 1))
+			close(delta, axis * delta:dot(axis), "displayed bat must meet the simulated ball")
+			contact_seen = true
+			break
+		end
+	end
+	assert(contact_seen, "pitch must reach contact")
+end
 local palette = { bones = {} }
 for i = 1, 16 do
 	palette.bones[i] = { name = tostring(i), x = 0, y = 0, z = 0 }

@@ -1572,7 +1572,7 @@ public static class Baseball24
                 swingStarted = true;
             }
             if (b.Anim == AnSwing)
-                b.AnimT = Math.Min(1.0f, b.AnimT + dt / 0.55f);
+                b.AnimT = MathUtil.Clamp(SwingHitPh - tToPlate / 0.55f, 0, 1);
             if (travel < dt || bz <= contactZ)
                 ResolveContact();
         }
