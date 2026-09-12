@@ -11,9 +11,21 @@ local function fresh()
 	local g = dofile(entry)
 	g.rng = Rand.new(0x0B5EBA11)
 	g.reset_actors()
-	g.cam_eye = Vec3.new(6, 5.2, -9)
-	g.cam_target = Vec3.new(0, 1, 9)
+	g.cam_eye = Vec3.new(2.8, 2.6, -5.2)
+	g.cam_target = Vec3.new(-0.1, 1.1, 5)
 	return g
+end
+
+local function project(g, x, y, z)
+	local vp = Camera3d.vp({ eye = g.cam_eye, target = g.cam_target, fov = g.cam_fov, aspect = 16 / 9 })
+	local clip = vp * Vec4.new(x, y, z, 1)
+	assert(clip.w > 0, "shot subject must be in front of the camera")
+	return clip.x / clip.w, clip.y / clip.w
+end
+
+local function in_frame(g, x, y, z)
+	local sx, sy = project(g, x, y, z)
+	assert(math.abs(sx) < 0.95 and math.abs(sy) < 0.95, "shot subject must remain inside the frame")
 end
 
 local function advance(g, predicate, label)
@@ -43,6 +55,13 @@ local function actor_count(g)
 end
 
 local g = fresh()
+g.state = 1
+g.update_camera(0)
+local _, feet = project(g, -0.85, 0, 0)
+local _, head_top = project(g, -0.85, 1.9, 0)
+assert((head_top - feet) * 270 > 280, "pre-pitch shot must show the batter close up")
+in_frame(g, -0.85, 0, 0)
+in_frame(g, -0.85, 1.9, 0)
 g.char_mesh = { { data = { bones = { { name = "torso" }, { name = "head" } } } } }
 local model, bones
 g.ren = {
@@ -104,12 +123,19 @@ advance(g, function()
 	return g.play_phase == 2
 end, "fielder gathers the ball")
 assert(g.ball_visible, "ball must remain visible during the transfer")
+assert(g.first_base_view, "cut to first base before the throwing release")
+local throw_eye = g.cam_eye
 local start_x, start_z = g.bx, g.bz
 for _ = 1, 6 do
 	g.simulate_tick()
 end
 assert(math.abs(g.bx - start_x) < 0.01 and math.abs(g.bz - start_z) < 0.01, "throw must wait for the fielder's release")
 advance(g, function()
+	assert(g.cam_eye == throw_eye, "hold the first-base shot through the throw and decision")
+	in_frame(g, g.bx, g.by, g.bz)
+	in_frame(g, 19.4, 0, 19.4)
+	local r = g.batter_runner or g.retired_runner
+	in_frame(g, r.x, 1, r.z)
 	return g.play_phase == 3
 end, "first-base decision")
 assert(g.event_text == "OUT!" or g.event_text == "SAFE!", "ground ball must resolve at first base")
@@ -118,6 +144,9 @@ assert(g.ball_held_by == g.first_base_cover, "the covering fielder must receive 
 assert((cover.x - 19.4) ^ 2 + (cover.z - 19.4) ^ 2 < 0.36, "force out requires a fielder on the base")
 assert(g.ball_visible, "first baseman must visibly hold the ball at the decision")
 assert(actor_count(g) == 10, "runner must remain visible at the first-base decision")
+_, feet = project(g, cover.x, 0, cover.z)
+_, head_top = project(g, cover.x, 1.9, cover.z)
+assert((head_top - feet) * 270 > 70, "first-base decision must be larger than the field overview")
 for _ = 1, 12 do
 	g.simulate_tick()
 end
@@ -131,8 +160,13 @@ advance(g, function()
 	return g.state == 3
 end, "pitch release")
 eye = g.cam_eye
+_, feet = project(g, -0.85, 0, 0)
+_, head_top = project(g, -0.85, 1.9, 0)
+assert((head_top - feet) * 270 > 175, "pitch shot must keep the batter large in the foreground")
+in_frame(g, 0, 1, 18.44)
 advance(g, function()
 	assert(g.cam_eye.x == eye.x and g.cam_eye.y == eye.y and g.cam_eye.z == eye.z, "pitch camera must stay fixed")
+	in_frame(g, g.bx, g.by, g.bz)
 	return g.state == 5
 end, "catcher receives pitch")
 assert(g.bz <= -2 and g.ball_visible, "called pitch must reach the catcher and remain visible")
@@ -143,6 +177,14 @@ for _ = 1, 18000 do
 	for _, f in ipairs(g.fielders) do
 		assert(f.x * f.x + f.z * f.z < 76 * 76, "fielder must stay inside the fence")
 	end
-	assert(g.cam_eye.y > 3 and g.cam_eye.z < 0, "camera must stay above the backstop, behind home")
+	local cam = g.cam_eye
+	assert(cam.y > 1 and cam.x * cam.x + cam.z * cam.z < 76 * 76, "camera must stay inside the stadium")
+	assert(cam.z > -8 or cam.y > 3, "camera behind home must clear the backstop")
+	if g.first_base_view and g.state == 4 then
+		in_frame(g, g.bx, g.by, g.bz)
+		in_frame(g, 19.4, 0, 19.4)
+		local r = g.batter_runner or g.retired_runner
+		in_frame(g, r.x, 1, r.z)
+	end
 end
 print("baseball: home-run lifecycle, actor continuity, pitch, throw, decision hold, fence and camera PASS")

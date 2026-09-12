@@ -1518,6 +1518,7 @@ public static class Baseball24
     static float camFov = 34.0f;
     static bool fieldView = false;
     static bool showAllBases = false;
+    static bool firstBaseView = false;
 
     static void UpdateCamera(float dt)
     {
@@ -1525,12 +1526,62 @@ public static class Baseball24
         var tgt = camTarget;
         if (eye == null || tgt == null)
             return;
-        var de = new Vec3(6, 5.2f, -9);
-        var dtg = new Vec3(0, 1.0f, 9);
-        var dfov = 48.0f;
+        var de = new Vec3(2.8f, 2.6f, -5.2f);
+        var dtg = new Vec3(-0.1f, 1.1f, 5);
+        var dfov = 46.0f;
+        if (state == stPrepitch && batterAtPlate && outs < 3)
+        {
+            de = new Vec3(2.1f, 1.5f, 3.6f);
+            dtg = new Vec3(-0.65f, 1.1f, 0);
+            dfov = 37;
+        }
         var wide = state == stLive && playPhase != plFoul && liveT > 0.18f
             || state == stCall && fieldView;
-        if (wide)
+        if (!wide)
+            firstBaseView = false;
+        if (wide && state == stLive && playPhase == plThrow1b && !firstBaseView)
+        {
+            var br = batterRunner;
+            var cover = fielders![firstBaseCover];
+            var points = new List<Vec3> {
+                new Vec3(throwFromX, 0, throwFromZ),
+                new Vec3(baseD, 0, baseD),
+                new Vec3(cover.X, 0, cover.Z),
+                new Vec3(br != null ? br.X : baseD, 0, br != null ? br.Z : baseD)
+            };
+            float left = baseD, right = baseD, front = baseD, back = baseD;
+            foreach (var p in points)
+            {
+                left = Math.Min(left, p.X);
+                right = Math.Max(right, p.X);
+                front = Math.Min(front, p.Z);
+                back = Math.Max(back, p.Z);
+            }
+            dtg = new Vec3((left + right) * 0.5f, 1.1f, (front + back) * 0.5f);
+            // 送球の始点・走者・受け手を収め、リリース前から判定まで同じ構図を保つ。
+            float distance = 7;
+            foreach (var p in points)
+            {
+                float x = p.X - dtg.X, z = p.Z - dtg.Z;
+                for (int h = 0; h < 2; h++)
+                {
+                    float y = h * 3.5f - dtg.Y;
+                    float depth = x * 0.575f + y * 0.287f - z * 0.766f;
+                    distance = Math.Max(distance, depth + (Math.Abs(x * 0.8f + z * 0.6f) + 1) / 0.61f);
+                    distance = Math.Max(distance, depth + Math.Abs(-x * 0.172f + y * 0.958f + z * 0.230f) / 0.30f);
+                }
+            }
+            de = dtg + new Vec3(0.575f, 0.287f, -0.766f) * distance;
+            dfov = 44;
+            firstBaseView = true;
+        }
+        else if (wide && firstBaseView)
+        {
+            de = eye;
+            dtg = tgt;
+            dfov = camFov;
+        }
+        else if (wide)
         {
             var land = landing;
             float lx = land != null ? MathUtil.Clamp(land.X, -55, 55) : 0;
@@ -1726,9 +1777,9 @@ public static class Baseball24
         {
             rng = new Rand(0x0B5EBA11);
             ren = new Renderer3d("bb24");
-            camEye = new Vec3(6, 5.2f, -9);
-            camTarget = new Vec3(0, 1, 9);
-            camFov = 48;
+            camEye = new Vec3(2.8f, 2.6f, -5.2f);
+            camTarget = new Vec3(-0.1f, 1.1f, 5);
+            camFov = 46;
             BuildCharMesh();
             BuildField();
             ResetActors();
