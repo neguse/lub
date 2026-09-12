@@ -110,13 +110,47 @@ advance(g, function()
 	return g.is_home_run and g.state == 4
 end, "home run")
 local score = g.score[1] + g.score[2]
+local home_runner = g.batter_runner
+local previous_offset = g.cam_eye - g.cam_target
+actor_count(g)
+local shown_yaw
+g.draw_char = function(x, z, yaw)
+	if x == home_runner.x and z == home_runner.z then
+		shown_yaw = yaw
+	end
+end
 advance(g, function()
+	assert(g.home_run_view, "confirmed home run must follow the batter-runner")
+	in_frame(g, home_runner.x, 0, home_runner.z)
+	in_frame(g, home_runner.x, 1.9, home_runner.z)
+	local _, bottom = project(g, home_runner.x, 0, home_runner.z)
+	local _, top = project(g, home_runner.x, 1.9, home_runner.z)
+	assert((top - bottom) * 270 > 250, "home-run runner must stay large enough to read the running motion")
+	local offset = g.cam_eye - g.cam_target
+	assert(offset:distance(previous_offset) < 0.5, "home-run camera must turn smoothly at each base")
+	previous_offset = offset
+	shown_yaw = nil
+	g.on_frame(0)
+	assert(shown_yaw ~= nil, "home-run subject must remain drawn through home plate")
+	if home_runner.at_base < 4 then
+		local next_base = g.base_pos(home_runner.at_base + 1)
+		local heading = Vec3.new(next_base[1] - home_runner.x, 0, next_base[2] - home_runner.z):normalize()
+		local facing = Mat4.rotate_y(shown_yaw):mul_dir(Vec3.new(0, 0, 1))
+		assert(facing:dot(heading) > 0.99, "home-run runner must face the next base along the circuit")
+	end
 	return g.state ~= 4
 end, "home run finishes")
 assert(g.score[1] + g.score[2] > score, "home run must reach home before leaving the play")
+assert(g.retired_runner == home_runner, "scored batter must remain visible during the result hold")
+local catcher = g.fielders[2]
+local sight = Vec3.new(g.cam_eye.x - home_runner.x, 0, g.cam_eye.z - home_runner.z)
+local obstruction = Vec3.new(catcher.x - home_runner.x, 0, catcher.z - home_runner.z)
+local along_sight = math.max(0, math.min(1, obstruction:dot(sight) / sight:dot(sight)))
+assert(obstruction:distance(sight * along_sight) > 0.8, "catcher must not obscure the scorer in the home-plate shot")
 advance(g, function()
 	return g.state == 2
 end, "next batter")
+assert(not g.home_run_view, "next pitch must leave the home-run close-up")
 assert(actor_count(g) == 10, "next batter must be drawn after a home run")
 
 g = fresh()

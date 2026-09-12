@@ -1485,6 +1485,8 @@ public static class Baseball24
                     r.AtBase = nextBase;
                     if (nextBase >= 4)
                     {
+                        if (isHomeRun && r == batterRunner)
+                            retiredRunner = r;
                         score[BattingTeam()] = score[BattingTeam()] + 1;
                         ShowEvent("RUN SCORED!", Color.Rgb(1.0f, 0.9f, 0.4f));
                         rns.RemoveAt(i);
@@ -1706,6 +1708,7 @@ public static class Baseball24
     static bool fieldView = false;
     static bool showAllBases = false;
     static bool firstBaseView = false;
+    static bool homeRunView = false;
 
     static void UpdateCamera(float dt)
     {
@@ -1726,7 +1729,22 @@ public static class Baseball24
             || state == stCall && fieldView;
         if (!wide)
             firstBaseView = false;
-        if (wide && state == stLive && playPhase == plThrow1b && !firstBaseView)
+        var runner = batterRunner;
+        bool followHomeRun = isHomeRun && runner != null && (state == stLive || state == stCall);
+        if (followHomeRun && runner != null)
+        {
+            var from = BasePos(Math.Min(runner.AtBase, 3));
+            var next = BasePos(Math.Min(runner.AtBase + 1, 4));
+            var forward = new Vec3(next[0] - from[0], 0, next[1] - from[1]).Normalize();
+            var offset = forward * 3.3f - new Vec3(forward.Z, 0, -forward.X) * 4.4f + new Vec3(0, 0.8f, 0);
+            if (homeRunView)
+                offset = (eye - tgt).Lerp(offset, Math.Min(1, dt * 4)).Normalize() * offset.Length();
+            dtg = new Vec3(runner.X, 1.0f, runner.Z);
+            de = dtg + offset;
+            dfov = 34;
+            firstBaseView = false;
+        }
+        else if (wide && state == stLive && playPhase == plThrow1b && !firstBaseView)
         {
             var br = batterRunner;
             var cover = fielders![firstBaseCover];
@@ -1786,6 +1804,7 @@ public static class Baseball24
             de = new Vec3(dtg.X + 6, span * 0.85f, dtg.Z - span * 0.9f);
             dfov = 50;
         }
+        homeRunView = followHomeRun;
         fieldView = wide;
         camEye = de;
         camTarget = dtg;
@@ -2305,7 +2324,7 @@ public static class Baseball24
         {
             foreach (var r in rns)
             {
-                var np = BasePos(r.To == 4 ? 0 : r.To);
+                var np = BasePos(r.AtBase < r.To ? r.AtBase + 1 : r.To);
                 var moving = r.AtBase != r.To;
                 var yaw = moving ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
                     : (float)Math.Atan2(-r.X, -r.Z);
