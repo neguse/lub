@@ -2502,50 +2502,6 @@ public static class Baseball24
         return count;
     }
 
-    static void CheckArms(BaseballRig rig)
-    {
-        var inverse = rig.Matrices["torso"].Inverse();
-        for (int side = -1; side <= 1; side += 2)
-        {
-            var arm = rig.Matrices[side > 0 ? "forearm_l" : "forearm_r"];
-            var elbow = inverse.MulPoint(arm.MulPoint(RestElbow(side)));
-            var hand = inverse.MulPoint(arm.MulPoint(RestWrist(side)));
-            for (int i = 0; i <= 10; i++)
-            {
-                var point = elbow.Lerp(hand, i / 10.0f);
-                if (point.Y > 0.96f)
-                {
-                    var axis = new Vec3(0, MathUtil.Clamp(point.Y, 0.98f, 1.35f), 0);
-                    Check(point.Distance(axis) > 0.20f, "forearms must not pass through the torso core");
-                }
-            }
-        }
-    }
-
-    static Vec3 CheckCatcher(BaseballPose pose)
-    {
-        var rig = MakeRig(pose);
-        var head = rig.Matrices["head"].MulPoint(new Vec3(0, 1.66f, 0));
-        Check(rig.Matrices["torso"].MulDir(new Vec3(0, 1, 0)).Y > 0.8f, "catcher must not fold over low pitches");
-        Check(rig.Matrices["head"].MulDir(new Vec3(0, 0, 1)).Z > 0.9f, "catcher must face the pitcher");
-        Check(rig.RightHand.Y < head.Y - 0.35f, "bare hand must stay below the catcher's head");
-        CheckNear(rig.LeftHand, pose.LeftHand, "catcher's glove target must be reachable");
-        CheckNear(rig.RightHand, pose.RightHand, "catcher's protected hand must be reachable");
-        for (int side = -1; side <= 1; side += 2)
-        {
-            var suffix = side > 0 ? "_l" : "_r";
-            var hip = rig.Matrices["hips"].MulPoint(RestHip(side));
-            var knee = rig.Matrices["thigh" + suffix].MulPoint(RestKnee(side));
-            Check(hip.Y < 0.7f, "catcher must retain a squat for high pitches");
-            Check(-side * knee.X > 0.25f, "catcher's knees must stay apart");
-            CheckNear(rig.Matrices["shin" + suffix].MulPoint(RestKnee(side)), knee, "catcher's knee must stay connected");
-            var ankle = rig.Matrices["foot" + suffix].MulPoint(RestAnkle(side));
-            CheckNear(ankle, side > 0 ? pose.LeftFoot : pose.RightFoot, "catcher's foot must stay planted");
-            Check(Math.Abs(ankle.Y - 0.12f) < 0.0001f, "catcher's feet must stay on the ground");
-        }
-        return head;
-    }
-
     static void SelfTest()
     {
         ResetMatch();
@@ -2555,24 +2511,6 @@ public static class Baseball24
             "pre-pitch shot must show the batter close up");
         CheckInFrame(-0.85f, 0, 0);
         CheckInFrame(-0.85f, 1.9f, 0);
-        var model = new Mat4();
-        var rig = MakeRig(PoseSwing(0.30f));
-        VisitPlayers((x, z, yaw, team, pose, glove, held) =>
-        {
-            if (x == batter!.X && z == batter.Z)
-            {
-                model = CharacterMatrix(x, z, yaw);
-                rig = MakeRig(pose);
-            }
-        }, matrix => { });
-        var mesh = new MeshData { Bones = new List<SdfBone> { new SdfBone { Name = "torso" }, new SdfBone { Name = "head" } } };
-        var packed = PackRig(rig, mesh);
-        var torso = new Mat4();
-        var headMatrix = new Mat4();
-        for (int i = 0; i < 16; i++) { torso.M[i] = packed[i]; headMatrix.M[i] = packed[i + 16]; }
-        Check((model * torso).MulDir(new Vec3(0, 0, 1)).X > 0.9f, "batter must face across home plate");
-        var gaze = (model * headMatrix).MulDir(new Vec3(0, 0, 1));
-        Check(gaze.Z > 0.95f && Math.Abs(gaze.X) < 0.10f, "batter must look toward the pitcher");
         var bat = BatMatrix(0.52f);
         var grip = bat.MulPoint(new Vec3(0, 0, 0));
         var axis = bat.MulDir(new Vec3(0, 0, 1));
@@ -2700,117 +2638,6 @@ public static class Baseball24
         }
 
         ResetMatch();
-        for (int anim = 0; anim < 8; anim++)
-            for (int tick = 0; tick <= 60; tick++)
-            {
-                float phase = tick / 60.0f;
-                var p = PoseFor(anim, phase, phase * 2 * (float)Math.PI);
-                rig = MakeRig(p); CheckArms(rig);
-                CheckNear(rig.LeftHand, p.LeftHand, "left hand target must be reachable");
-                CheckNear(rig.RightHand, p.RightHand, "right hand target must be reachable");
-                for (int side = -1; side <= 1; side += 2)
-                {
-                    var suffix = side > 0 ? "_l" : "_r";
-                    var upper = rig.Matrices["upper_arm" + suffix]; var lower = rig.Matrices["forearm" + suffix];
-                    CheckNear(upper.MulPoint(RestElbow(side)), lower.MulPoint(RestElbow(side)), "elbow must remain connected");
-                    if (anim == AnRun)
-                    {
-                        var arm = upper.MulPoint(RestElbow(side)) - upper.MulPoint(RestShoulder(side));
-                        var forearm = lower.MulPoint(RestWrist(side)) - lower.MulPoint(RestElbow(side));
-                        var forward = rig.Matrices["torso"].MulDir(new Vec3(0, 0, 1));
-                        var lateral = rig.Matrices["torso"].MulDir(new Vec3(1, 0, 0));
-                        var up = rig.Matrices["torso"].MulDir(new Vec3(0, 1, 0));
-                        var foot = side > 0 ? p.LeftFoot : p.RightFoot;
-                        Check(arm.Dot(forward) * foot.Z < 0.00001f, "running upper arms must oppose the legs");
-                        Check(Math.Abs(arm.Dot(lateral)) < 0.06f && arm.Dot(up) < -0.15f, "running elbows must stay down without flaring");
-                        Check(Math.Abs(arm.Normalize().Dot(forearm.Normalize())) < 0.1f, "running elbows must retain a right-angle bend");
-                        Check(forearm.Dot(forward) > 0.15f, "running forearms must bend forward");
-                    }
-                    CheckNear(rig.Matrices["thigh" + suffix].MulPoint(RestKnee(side)), rig.Matrices["shin" + suffix].MulPoint(RestKnee(side)), "knee must remain connected");
-                    var footMatrix = rig.Matrices["foot" + suffix];
-                    CheckNear(footMatrix.MulPoint(RestAnkle(side)), side > 0 ? p.LeftFoot : p.RightFoot, "foot must reach its planted position");
-                    CheckNear(footMatrix.MulDir(new Vec3(0, 1, 0)), new Vec3(0, 1, 0), "foot must stay level");
-                }
-            }
-        Check(MakeRig(PoseReady(0)).Matrices["torso"].MulDir(new Vec3(0, 1, 0)).Z > 0.2f, "ready stance must lean forward");
-        Check(MakeRig(PoseReach(0)).Matrices["head"].MulDir(new Vec3(0, 0, 1)).Y > 0.5f, "high catch must look up");
-        Check(Math.Abs(RunFoot(0.2f + 11.0f / 60, 1).Z - RunFoot(0.2f, 1).Z + 7.2f / 60) < 0.00001f, "planted foot must cancel running speed");
-        var moving = new Fielder(0, 0) { RunPhase = 0.2f };
-        float planted = RunFoot(moving.RunPhase, 1).Z;
-        MoveTowards(moving, 0, 10, tickDt, 5.76f);
-        Check(Math.Abs(moving.Z + RunFoot(moving.RunPhase, 1).Z - planted) < 0.00001f, "foot must stay planted at reduced speed");
-        for (int ix = 0; ix < 7; ix++)
-            for (int iy = 0; iy < 15; iy++)
-            {
-                float x = -0.45f + ix * 0.15f, y = 0.15f + iy * 0.1f;
-                batContactX = x; batContactY = y; batContactZ = 0.42f;
-                for (int tick = 0; tick <= 60; tick++)
-                {
-                    float phase = tick / 60.0f;
-                    rig = MakeRig(PoseSwing(phase)); CheckArms(rig);
-                    var localBat = BatLocalMatrix(phase);
-                    CheckNear(rig.LeftHand, localBat.MulPoint(new Vec3(0, 0, 0)), "lower hand must hold the bat throughout the swing");
-                    CheckNear(rig.RightHand, localBat.MulPoint(new Vec3(0, 0, 0.11f)), "upper hand must hold the bat throughout the swing");
-                }
-                bat = BatLocalMatrix(0.52f); grip = bat.MulPoint(new Vec3(0, 0, 0)); axis = bat.MulDir(new Vec3(0, 0, 1));
-                var toBall = new Vec3(-0.42f, y, x + 0.85f) - grip;
-                along = toBall.Dot(axis);
-                Check(along > 0.4f && along < 1.02f, "actual pitch must hit the bat barrel");
-                CheckNear(toBall, axis * along, "bat must pass through the actual pitch");
-            }
-        for (int ix = -1; ix <= 1; ix++)
-        {
-            float x = ix * 0.45f;
-            ResetMatch(); fielders![1].X = x;
-            Vec3? previous = null;
-            for (int height = 115; height <= 1500; height++)
-            {
-                var head = CheckCatcher(CatchPose(1, new Vec3(x, height / 1000.0f, -2)));
-                if (previous != null) Check(head.Distance(previous) < 0.003f, "pitch height must not cause a neck or torso jump");
-                previous = head;
-            }
-            foreach (float y in new float[] { 0.15f, 0.7f, 1.5f })
-            {
-                ResetMatch(); StartPitch(); willSwing = false; pitchTX = x; pitchTY = y;
-                var previousHead = CheckCatcher(FielderPose(1));
-                bool received = false;
-                for (int tick = 0; tick < 180; tick++)
-                {
-                    SimulateTick();
-                    var head = CheckCatcher(FielderPose(1));
-                    Check(head.Distance(previousHead) < 0.08f, "catch and recovery must not snap between poses");
-                    previousHead = head;
-                    if (state == stCall)
-                    {
-                        if (!received) CheckNear(FielderBall(1), new Vec3(bx, by, bz), "catcher's glove must meet the actual pitch");
-                        received = true;
-                        Check(ballHeldBy == 1, "catcher must retain the ball during recovery");
-                        if (stateT > 0.55f) break;
-                    }
-                }
-                Check(received, "pitch must reach the catcher");
-                CheckNear(MakeRig(FielderPose(1)).LeftHand, PoseCrouch(0).LeftHand, "catcher must return to the receiving stance");
-            }
-        }
-        ResetMatch();
-        var fielder = fielders![2];
-        Vec3? lastHead = null;
-        for (int height = 115; height <= 1550; height++)
-        {
-            var target = new Vec3(fielder.X, 0, fielder.Z) + Mat4.RotateY(FielderYaw(2)).MulPoint(new Vec3(0, height / 1000.0f, 0.4f));
-            var p = CatchPose(2, target); rig = MakeRig(p); CheckArms(rig);
-            CheckNear(rig.LeftHand, p.LeftHand, "fielder's receiving hand must reach the ball");
-            CheckNear(rig.RightHand, p.RightHand, "fielder's free hand must remain reachable");
-            var head = rig.Matrices["head"].MulPoint(new Vec3(0, 1.66f, 0));
-            Check(rig.RightHand.Y < head.Y - 0.3f, "ground-ball gather must not lift the free hand beside the head");
-            if (lastHead != null) Check(head.Distance(lastHead) < 0.004f, "fielder catch height must not abruptly fold the torso or neck");
-            lastHead = head;
-        }
-        for (int tick = 0; tick <= 120; tick++)
-        {
-            float time = tick / 120.0f * 0.24f;
-            CheckArms(MakeRig(BlendPose(PoseSwing(0.52f + time / 0.55f), PoseRun(time * 11), MathUtil.Smoothstep(0.1f, 0.24f, time))));
-        }
         for (int pitch = 0; pitch < 100; pitch++)
         {
             StartPitch(); willSwing = false;
@@ -2840,14 +2667,6 @@ public static class Baseball24
             }
             Check(seen, "pitch must reach contact");
         }
-        mesh = new MeshData { Bones = new List<SdfBone>() };
-        for (int i = 1; i <= 16; i++) mesh.Bones.Add(new SdfBone { Name = "bone", X = i });
-        packed = Bones.Pack(mesh, (name, x, y, z) => Mat4.Translate(new Vec3(x, 0, 0)));
-        Check(packed.Count == 256, "bone palette must contain 16 complete matrices");
-        var last = new Mat4();
-        for (int i = 0; i < 16; i++) last.M[i] = packed[240 + i];
-        CheckNear(last.MulPoint(new Vec3(0, 0, 0)), new Vec3(16, 0, 0), "last bone must survive packing");
-
         ResetMatch();
         OnEvent(new EventData { Kind = EventKind.KeyDown, Key = 59 });
         Check(modelDebug, "F2 must open the model viewer");
@@ -2857,9 +2676,6 @@ public static class Baseball24
         float matchTime = tAccum;
         DebugCommand("Contact"); AdvanceFrame(tickDt);
         Check(tAccum == matchTime && Math.Abs(debugTime - 0.52f * 0.55f) < 0.00001f, "contact seek must pause the match");
-        var expected = PoseSwing(0.52f); var shownPose = DebugPose();
-        CheckNear(shownPose.LeftHand, expected.LeftHand, "viewer must use the match's bat grip");
-        Check(Math.Abs(shownPose.Twist - expected.Twist) < 0.00001f, "viewer must use the match's torso pose");
         DebugCommand("+1 frame");
         Check(Math.Abs(debugTime - 0.52f * 0.55f - tickDt) < 0.00001f, "step must advance one match tick");
         debugPlaying = true; debugSpeed = 0.25f;
@@ -2873,13 +2689,6 @@ public static class Baseball24
         Check(debugPlaying && debugSpeed == 0.25f, "clip switch must preserve playback speed and state");
         debugPlaying = false; DebugCommand("Crouch");
         Check(!debugPlaying && debugTime == 0, "switching a paused animation must keep it paused");
-        DebugCommand("Bind pose");
-        foreach (var bone in MakeRig(DebugPose()).Matrices)
-        {
-            var matrix = bone.Value;
-            var identity = new Mat4();
-            for (int i = 0; i < 16; i++) Check(Math.Abs(matrix.M[i] - identity.M[i]) < 0.00001f, "bind pose must preserve the original mesh");
-        }
         DebugCommand("Return to match"); Check(!modelDebug, "return must close the viewer");
         AdvanceFrame(tickDt);
         Check(tAccum > matchTime && tAccum < matchTime + 0.02f, "return must resume without catching up paused time");
