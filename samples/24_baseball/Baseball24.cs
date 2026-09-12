@@ -346,11 +346,10 @@ public static class Baseball24
     static List<float> PoseSwing(float ph)
     {
         var p = ZeroPose();
-        p[5] = 0.9f; // 顔は投手へ
         p[4] = -0.15f;
         // 1) 溜め: 捕手側へ捻る
         var k1 = MathUtil.Smoothstep(0.0f, 0.40f, ph);
-        p[0] = -0.55f * k1;
+        p[0] = 0.15f * k1;
         p[6] = -1.5f * k1;
         p[8] = -1.7f * k1;
         p[7] = 0.9f * k1;
@@ -370,6 +369,7 @@ public static class Baseball24
         var k3 = MathUtil.Smoothstep(0.6f, 1.0f, ph);
         p[0] = MathUtil.Lerp(p[0], 1.85f, k3);
         p[4] = MathUtil.Lerp(p[4], -0.3f, k3);
+        p[5] = (float)Math.PI / 2 - p[0] - 0.046f;
         return p;
     }
 
@@ -1574,7 +1574,7 @@ public static class Baseball24
             if (clip.W <= 0 || Math.Abs(clip.X) > clip.W + 5 || Math.Abs(clip.Y) > clip.W + 5)
                 return;
         }
-        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(-yaw);
+        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(yaw);
         renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackBones(pose) });
         if (glove && gloveMesh != null)
         {
@@ -1593,15 +1593,6 @@ public static class Baseball24
     // バット。スイング位相から向きを決める (打者ローカル)
     static Mat4 BatMatrix(float ph)
     {
-        // 溜め → 一気に振り抜き → フォロー (角度は右ねじの逆向きで調整してある)
-        var ang = -2.35f; // 構え: 後方上
-        var tilt = 1.05f;
-        var k2 = MathUtil.Smoothstep(0.47f, 0.56f, ph);
-        ang = MathUtil.Lerp(ang, 1.15f, k2);
-        tilt = MathUtil.Lerp(tilt, -0.05f, k2);
-        var k3 = MathUtil.Smoothstep(0.6f, 1.0f, ph);
-        ang = MathUtil.Lerp(ang, 1.9f, k3);
-        tilt = MathUtil.Lerp(tilt, 0.45f, k3);
         var pose = PoseSwing(ph);
         var torso = Mat4.Translate(new Vec3(0, pose[3], 0))
             * Bones.PivotRot(torsoPx, torsoPy, 0,
@@ -1609,14 +1600,22 @@ public static class Baseball24
         var arm = Bones.PivotRot(-armPx, armPy, 0,
             Mat4.RotateZ(-pose[9]) * Mat4.RotateX(-pose[8]));
         var grip = (torso * arm).MulPoint(new Vec3(-0.32f, 1.01f, 0.045f));
+        var contact = new Vec3(-0.35f - grip.X, 1.0f - grip.Y, 0.85f - grip.Z);
+        float hitYaw = (float)Math.Atan2(contact.X, contact.Z);
+        float hitTilt = -(float)Math.Atan2(contact.Y,
+            (float)Math.Sqrt(contact.X * contact.X + contact.Z * contact.Z));
+        float strike = MathUtil.Smoothstep(0.44f, SwingHitPh, ph);
+        float follow = MathUtil.Smoothstep(SwingHitPh, 0.90f, ph);
+        float ang = MathUtil.Lerp(-2.35f, hitYaw, strike) - follow * 1.2f;
+        float tilt = MathUtil.Lerp(-1.05f, hitTilt, strike) - follow * 0.45f;
         // local は Lua キーワードで emit が不正になるため batLocal
         var batLocal = Mat4.Translate(grip)
-            * (Mat4.RotateY(-ang) * Mat4.RotateX(-tilt));
+            * (Mat4.RotateY(ang) * Mat4.RotateX(tilt));
         var b = batter;
         var px = b != null ? b.X : 0.0f;
         var pz = b != null ? b.Z : 0.0f;
         return Mat4.Translate(new Vec3(px, 0, pz))
-            * (Mat4.RotateY(-(float)Math.PI / 2) * batLocal);
+            * (Mat4.RotateY((float)Math.PI / 2) * batLocal);
     }
 
     // --- HUD ------------------------------------------------------------------------

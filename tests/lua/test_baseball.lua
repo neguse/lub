@@ -43,6 +43,34 @@ local function actor_count(g)
 end
 
 local g = fresh()
+g.char_mesh = { { data = { bones = { { name = "torso" }, { name = "head" } } } } }
+local model, bones
+g.ren = {
+	draw = function(_, _, m, opts)
+		model, bones = m, opts.bones
+	end,
+}
+g.draw_char(-0.85, 0, math.pi / 2, 0, g.pose_swing(0.30))
+local torso, head = Mat4.new(), Mat4.new()
+for i = 1, 16 do
+	torso.m[i], head.m[i] = bones[i], bones[i + 16]
+end
+local chest = (model * torso):mul_dir(Vec3.new(0, 0, 1))
+local gaze = (model * head):mul_dir(Vec3.new(0, 0, 1))
+assert(chest.x > 0.9, "batter must face across home plate, not out of the batter's box")
+assert(gaze.z > 0.95 and math.abs(gaze.x) < 0.10, "batter must look toward the pitcher")
+local bat = g.bat_matrix(0.52)
+local grip = bat:mul_point(Vec3.new(0, 0, 0))
+local axis = bat:mul_dir(Vec3.new(0, 0, 1))
+local contact = Vec3.new(-grip.x, 1 - grip.y, 0.35 - grip.z)
+local along = contact.x * axis.x + contact.y * axis.y + contact.z * axis.z
+local miss = (contact.x - along * axis.x) ^ 2 + (contact.y - along * axis.y) ^ 2 + (contact.z - along * axis.z) ^ 2
+assert(along > 0.45 and along < 0.94 and miss < 0.0004, "bat barrel must cross the ball at contact")
+g.draw_char(0, 0, math.pi / 4, 0, g.pose_run(0))
+local forward = model:mul_dir(Vec3.new(0, 0, 1))
+assert(forward.x > 0 and forward.z > 0, "runner must face the direction of travel")
+
+g = fresh()
 advance(g, function()
 	return g.is_home_run and g.state == 4
 end, "home run")
