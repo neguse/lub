@@ -63,6 +63,7 @@ typedef struct App {
   int last_w, last_h;     // last extents seen by app_frame_begin
   int cfg_w, cfg_h; // config({width,height}) で要求された窓サイズ。0 = 既定維持
   bool quit_requested; // Lua quit() が立てる。AppIterate が SUCCESS で抜ける
+  bool init_failed;
   double actual_fps; // updated once per second after backend end_frame/present
   uint64_t fps_last_ns;
   int fps_frame_count;

@@ -137,6 +137,9 @@ public static class Baseball24
     {
         var backend = Environment.GetEnvironmentVariable("LUB_BACKEND");
         Lub.Config(new ConfigOpts { Backend = backend, Width = w, Height = h });
+        SelfTest();
+        ResetMatch();
+        Console.WriteLine("baseball self-test PASS");
     }
 
     public static void OnEvent(EventData e)
@@ -1903,6 +1906,75 @@ public static class Baseball24
             .MulPoint(MakeRig(FielderPose(i)).Ball);
     }
 
+    static void VisitPlayers(Action<float, float, float, int, BaseballPose, bool, bool> visit, Action<Mat4> visitBat)
+    {
+        var fs = fielders!;
+        var t = tAccum;
+        // 野手 (守備側チーム色)
+        var ft = FieldingTeam();
+        for (int i = 0; i < 9; i++)
+        {
+            var f = fs[i];
+            var pose = FielderPose(i);
+            var yaw = FielderYaw(i);
+            var holding = ballVisible && ballHeldBy == i
+                && (state != stLive || playPhase != plThrow1b || throwT < 0.24f);
+            visit(f.X, f.Z, yaw, ft, pose, true, holding);
+        }
+        // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
+        var bt = BattingTeam();
+        var b = batter;
+        if (batterAtPlate && b != null)
+        {
+            // 構え = スイングの溜め位相を静止で使う (バットの持ち手と一致する)
+            var stance = b.Anim == AnSwing ? b.AnimT : 0.30f;
+            var inSwingPose = b.Anim == AnSwing
+                || state == stPrepitch
+                || state == stWindup
+                || state == stPitch
+                || state == stCall;
+            visit(b.X, b.Z, (float)Math.PI / 2, bt,
+                inSwingPose ? PoseSwing(stance) : PoseIdle(t), false, false);
+            // バット
+            if (state == stPrepitch || state == stWindup || state == stPitch
+                || state == stCall || b.Anim == AnSwing)
+                visitBat(BatMatrix(stance));
+        }
+        // 走者 (塁上で止まっているときは待機ポーズ)
+        var rns = runners;
+        if (rns != null)
+        {
+            foreach (var r in rns)
+            {
+                var np = BasePos(r.AtBase < r.To ? r.AtBase + 1 : r.To);
+                var moving = r.AtBase != r.To;
+                var yaw = moving ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
+                    : (float)Math.Atan2(-r.X, -r.Z);
+                var pose = moving ? PoseRun(r.RunPhase) : PoseIdle(t);
+                if (r == batterRunner && b != null && liveT < 0.24f)
+                {
+                    float blend = MathUtil.Smoothstep(0.10f, 0.24f, liveT);
+                    var swing = PoseSwing(b.AnimT);
+                    pose = BlendPose(swing, pose, blend);
+                    yaw = MathUtil.Lerp((float)Math.PI / 2, yaw, blend);
+                    if (liveT < 0.10f)
+                        visitBat(Mat4.Translate(new Vec3(r.X - b.X, 0, r.Z - b.Z)) * BatMatrix(b.AnimT));
+                }
+                visit(r.X, r.Z, yaw, bt, pose, false, false);
+            }
+        }
+        var retired = retiredRunner;
+        if (retired != null)
+            visit(retired.X, retired.Z, (float)Math.Atan2(baseD - retired.X, baseD - retired.Z),
+                bt, PoseIdle(t), false, false);
+
+    }
+
+    static Mat4 CharacterMatrix(float x, float z, float yaw)
+    {
+        return Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(yaw);
+    }
+
     static void DrawChar(float x, float z, float yaw, int team,
         BaseballPose pose, bool glove = false, bool holdingBall = false)
     {
@@ -1917,7 +1989,7 @@ public static class Baseball24
             if (clip.W <= 0 || Math.Abs(clip.X) > clip.W + 5 || Math.Abs(clip.Y) > clip.W + 5)
                 return;
         }
-        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(yaw);
+        var model = CharacterMatrix(x, z, yaw);
         var rig = MakeRig(pose);
         renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackRig(rig, cm[team].Data) });
         if (glove && gloveMesh != null)
@@ -2062,6 +2134,47 @@ public static class Baseball24
         return 2 * (float)Math.PI / 2.1f;
     }
 
+    static void AdvanceFrame(float dt)
+    {
+        if (modelDebug)
+        {
+            if (debugPlaying)
+                debugTime = (debugTime + Math.Min(dt, 0.1f) * debugSpeed) % DebugDuration();
+            return;
+        }
+        var stepNow = step ?? new FixedStep();
+        step = stepNow;
+        stepNow.Frame(dt, _ => SimulateTick());
+    }
+
+    static void DebugCommand(string command)
+    {
+        for (int i = 0; i < debugClips.Count; i++)
+            if (command == debugClips[i])
+            {
+                debugAnim = i;
+                debugTime = 0;
+                debugYaw = i == AnSwing ? 90 : i == AnWindup ? 180 : i == AnRun || i == AnThrow ? 45 : 0;
+                return;
+            }
+        if (command == "Return to match") { modelDebug = false; return; }
+        if (command == "-1 frame") debugTime = Math.Max(0, debugTime - tickDt);
+        else if (command == "+1 frame") debugTime = Math.Min(DebugDuration(), debugTime + tickDt);
+        else if (command == "Stance") debugTime = 0.30f * 0.55f;
+        else if (command == "Contact") debugTime = SwingHitPh * 0.55f;
+        else if (command == "Follow-through") debugTime = 0.9f * 0.55f;
+        else if (command == "Release") debugTime = debugAnim == AnWindup ? RelPh * 1.1f : 0.24f;
+        debugPlaying = false;
+    }
+
+    static BaseballPose DebugPose()
+    {
+        float phase = debugTime / DebugDuration();
+        return debugAnim == 8 ? new BaseballPose { Bind = true } : PoseFor(debugAnim,
+            debugAnim == AnWindup || debugAnim == AnSwing || debugAnim == AnThrow || debugAnim == AnReach
+                ? phase : debugTime, debugTime * 11);
+    }
+
     static void DebugGuide(Mat4 transform, Vec3 origin, Color color)
     {
         var r = ren;
@@ -2084,14 +2197,12 @@ public static class Baseball24
             Shapes.Box(v, 0, 0, 0, 1, 1, 1, new List<float> { 1, 1, 1, 1 });
             debugBox.Rebuild(Shapes3d.FromInterleaved(v));
         }
-        if (debugPlaying)
-            debugTime = (debugTime + Math.Min(dt, 0.1f) * debugSpeed) % DebugDuration();
         Gfx.Size(out var debugWidth, out var debugHeight);
         Ui.SetNextWindow(12, 12, Math.Min(290, debugWidth - 24), Math.Min(332, debugHeight - 24));
         if (Ui.BeginWindow("Baseball model [F2]"))
         {
             Ui.Text("Match paused / same meshes and poses");
-            if (Ui.Button("Return to match")) modelDebug = false;
+            if (Ui.Button("Return to match")) DebugCommand("Return to match");
             Ui.Separator();
             if (Ui.Button("Motion")) debugViewControls = false;
             Ui.SameLine();
@@ -2101,46 +2212,29 @@ public static class Baseball24
                 for (int i = 0; i < debugClips.Count; i++)
                 {
                     if (i % 3 != 0) Ui.SameLine();
-                    if (Ui.Button(debugClips[i]))
-                    {
-                        debugAnim = i;
-                        debugTime = 0;
-                        debugYaw = i == AnSwing ? 90 : i == AnWindup ? 180 : i == AnRun || i == AnThrow ? 45 : 0;
-                    }
+                    if (Ui.Button(debugClips[i])) DebugCommand(debugClips[i]);
                 }
                 Ui.Text("Clip: " + debugClips[debugAnim]);
                 debugPlaying = Ui.Checkbox("Play / loop", debugPlaying);
                 Ui.SameLine();
-                if (Ui.Button("-1 frame"))
-                {
-                    debugPlaying = false;
-                    debugTime = Math.Max(0, debugTime - tickDt);
-                }
+                if (Ui.Button("-1 frame")) DebugCommand("-1 frame");
                 Ui.SameLine();
-                if (Ui.Button("+1 frame"))
-                {
-                    debugPlaying = false;
-                    debugTime = Math.Min(DebugDuration(), debugTime + tickDt);
-                }
+                if (Ui.Button("+1 frame")) DebugCommand("+1 frame");
                 debugSpeed = Ui.SliderFloat("Speed", debugSpeed, 0.05f, 1);
                 float scrub = Ui.SliderFloat("Time (s)", debugTime, 0, DebugDuration());
                 if (scrub != debugTime) debugPlaying = false;
                 debugTime = scrub;
                 if (debugAnim == AnSwing)
                 {
-                    if (Ui.Button("Stance")) { debugTime = 0.30f * 0.55f; debugPlaying = false; }
+                    if (Ui.Button("Stance")) DebugCommand("Stance");
                     Ui.SameLine();
-                    if (Ui.Button("Contact")) { debugTime = SwingHitPh * 0.55f; debugPlaying = false; }
+                    if (Ui.Button("Contact")) DebugCommand("Contact");
                     Ui.SameLine();
-                    if (Ui.Button("Follow-through")) { debugTime = 0.9f * 0.55f; debugPlaying = false; }
+                    if (Ui.Button("Follow-through")) DebugCommand("Follow-through");
                 }
                 else if (debugAnim == AnWindup || debugAnim == AnThrow)
                 {
-                    if (Ui.Button("Release"))
-                    {
-                        debugTime = debugAnim == AnWindup ? RelPh * 1.1f : 0.24f;
-                        debugPlaying = false;
-                    }
+                    if (Ui.Button("Release")) DebugCommand("Release");
                 }
                 Ui.Text("Yellow: chest / Cyan: face");
             }
@@ -2189,9 +2283,7 @@ public static class Baseball24
         r.Draw(debugBox, Mat4.Translate(new Vec3(0, -0.06f, 0)) * Mat4.Scale(new Vec3(12, 0.1f, 12)),
             new Draw3dOpts { Tint = Color.Rgb(0.27f, 0.29f, 0.31f) });
         float phase = debugTime / DebugDuration();
-        var pose = debugAnim == 8 ? new BaseballPose { Bind = true } : PoseFor(debugAnim,
-            debugAnim == AnWindup || debugAnim == AnSwing || debugAnim == AnThrow || debugAnim == AnReach
-                ? phase : debugTime, debugTime * 11);
+        var pose = DebugPose();
         float yaw = MathUtil.Radians(debugYaw);
         var root = Mat4.RotateY(yaw);
         bool held = debugProps && ((debugAnim == AnWindup && phase <= RelPh)
@@ -2245,15 +2337,12 @@ public static class Baseball24
             ShowEvent("PLAY BALL!", Color.Rgb(1.0f, 0.95f, 0.5f));
         }
 
+        AdvanceFrame(dt);
         if (modelDebug)
         {
             DrawModelDebug(dt);
             return;
         }
-
-        var stepNow = step ?? new FixedStep();
-        step = stepNow;
-        stepNow.Frame(dt, _ => SimulateTick());
 
         var fs = fielders;
         var renNow = ren;
@@ -2291,63 +2380,7 @@ public static class Baseball24
 
         renNow.Draw(fieldMesh, new Mat4());
 
-        // 野手 (守備側チーム色)
-        var ft = FieldingTeam();
-        for (int i = 0; i < 9; i++)
-        {
-            var f = fs[i];
-            var pose = FielderPose(i);
-            var yaw = FielderYaw(i);
-            var holding = ballVisible && ballHeldBy == i
-                && (state != stLive || playPhase != plThrow1b || throwT < 0.24f);
-            DrawChar(f.X, f.Z, yaw, ft, pose, true, holding);
-        }
-        // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
-        var bt = BattingTeam();
-        var b = batter;
-        if (batterAtPlate && b != null)
-        {
-            // 構え = スイングの溜め位相を静止で使う (バットの持ち手と一致する)
-            var stance = b.Anim == AnSwing ? b.AnimT : 0.30f;
-            var inSwingPose = b.Anim == AnSwing
-                || state == stPrepitch
-                || state == stWindup
-                || state == stPitch
-                || state == stCall;
-            DrawChar(b.X, b.Z, (float)Math.PI / 2, bt,
-                inSwingPose ? PoseSwing(stance) : PoseIdle(t));
-            // バット
-            if (state == stPrepitch || state == stWindup || state == stPitch
-                || state == stCall || b.Anim == AnSwing)
-                renNow.Draw(batMesh, BatMatrix(stance));
-        }
-        // 走者 (塁上で止まっているときは待機ポーズ)
-        var rns = runners;
-        if (rns != null)
-        {
-            foreach (var r in rns)
-            {
-                var np = BasePos(r.AtBase < r.To ? r.AtBase + 1 : r.To);
-                var moving = r.AtBase != r.To;
-                var yaw = moving ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
-                    : (float)Math.Atan2(-r.X, -r.Z);
-                var pose = moving ? PoseRun(r.RunPhase) : PoseIdle(t);
-                if (r == batterRunner && b != null && liveT < 0.24f)
-                {
-                    float blend = MathUtil.Smoothstep(0.10f, 0.24f, liveT);
-                    var swing = PoseSwing(b.AnimT);
-                    pose = BlendPose(swing, pose, blend);
-                    yaw = MathUtil.Lerp((float)Math.PI / 2, yaw, blend);
-                    if (liveT < 0.10f)
-                        renNow.Draw(batMesh, Mat4.Translate(new Vec3(r.X - b.X, 0, r.Z - b.Z)) * BatMatrix(b.AnimT));
-                }
-                DrawChar(r.X, r.Z, yaw, bt, pose);
-            }
-        }
-        var retired = retiredRunner;
-        if (retired != null)
-            DrawChar(retired.X, retired.Z, (float)Math.Atan2(baseD - retired.X, baseD - retired.Z),
-                bt, PoseIdle(t));
+        VisitPlayers(DrawChar, matrix => renNow.Draw(batMesh, matrix));
 
         // ボール
         if (ballVisible && !(ballHeldBy >= 0
@@ -2365,5 +2398,299 @@ public static class Baseball24
         Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
         DrawHud();
         Gfx.EndPass();
+    }
+
+    static void ResetMatch()
+    {
+        bx = 0.0f;
+        by = 0.0f;
+        bz = 0.0f;
+        bvx = 0.0f;
+        bvy = 0.0f;
+        bvz = 0.0f;
+        ballBounces = 0;
+        ballRolling = false;
+        isHomeRun = false;
+        state = stIntro;
+        stateT = 0.0f;
+        inning = 1;
+        half = 0;
+        score = new List<int> { 0, 0 };
+        balls = 0;
+        strikes = 0;
+        outs = 0;
+        pitchTX = 0.0f;
+        pitchTY = 0.0f;
+        pitchInZone = false;
+        willSwing = false;
+        swingOutcome = 0;
+        exitSpeed = 0.0f;
+        exitLaunch = 0.0f;
+        exitSpray = 0.0f;
+        swingStarted = false;
+        playPhase = plFly;
+        chaser = -1;
+        liveT = 0.0f;
+        homeRunAt = 0.0f;
+        throwT = 0.0f;
+        throwDur = 0.0f;
+        throwFromX = 0.0f;
+        throwFromY = 0.0f;
+        throwFromZ = 0.0f;
+        firstBaseCover = 2;
+        landing = null;
+        hitstopT = 0.0f;
+        eventText = "";
+        eventT = 99.0f;
+        eventCol = null;
+        tAccum = 0.0f;
+        camFov = 34.0f;
+        fieldView = false;
+        showAllBases = false;
+        firstBaseView = false;
+        homeRunView = false;
+        rng = new Rand(0x0B5EBA11);
+        ResetActors();
+        camEye = new Vec3(2.8f, 2.6f, -5.2f);
+        camTarget = new Vec3(-0.1f, 1.1f, 5);
+        newBatterPending = false;
+        batContactX = 0; batContactY = 1; batContactZ = 0.35f;
+        modelDebug = false; debugKeyHeld = false;
+        debugAnim = AnSwing; debugTime = 0.165f; debugPlaying = false;
+        debugSpeed = 0.25f; debugYaw = 90;
+        step = null;
+    }
+
+    static void Check(bool condition, string message)
+    {
+        if (!condition) Lub.Assert(false, "baseball self-test: " + message);
+    }
+
+    static void CheckNear(Vec3 a, Vec3 b, string message)
+    {
+        Check(a.Distance(b) < 0.0001f, message);
+    }
+
+    static Vec3 TestProject(float x, float y, float z)
+    {
+        var vp = Camera3d.Vp(new Camera3dOpts { Eye = camEye!, Target = camTarget!, Fov = camFov, Aspect = 16.0f / 9 });
+        var clip = vp * new Vec4(x, y, z, 1);
+        Check(clip.W > 0, "shot subject must be in front of the camera");
+        return new Vec3(clip.X / clip.W, clip.Y / clip.W, 0);
+    }
+
+    static void CheckInFrame(float x, float y, float z)
+    {
+        var p = TestProject(x, y, z);
+        Check(Math.Abs(p.X) < 0.95f && Math.Abs(p.Y) < 0.95f, "shot subject must remain inside the frame");
+    }
+
+    static void TestAdvance(Func<bool> predicate, string label)
+    {
+        for (int i = 0; i < 6000; i++)
+        {
+            SimulateTick();
+            if (predicate()) return;
+        }
+        Check(false, "timed out: " + label);
+    }
+
+    static int TestActorCount()
+    {
+        int count = 0;
+        VisitPlayers((x, z, yaw, team, pose, glove, held) => { count++; }, matrix => { });
+        return count;
+    }
+
+    static void SelfTest()
+    {
+        ResetMatch();
+        state = stPrepitch;
+        UpdateCamera(0);
+        Check((TestProject(-0.85f, 1.9f, 0).Y - TestProject(-0.85f, 0, 0).Y) * 270 > 280,
+            "pre-pitch shot must show the batter close up");
+        CheckInFrame(-0.85f, 0, 0);
+        CheckInFrame(-0.85f, 1.9f, 0);
+        var bat = BatMatrix(0.52f);
+        var grip = bat.MulPoint(new Vec3(0, 0, 0));
+        var axis = bat.MulDir(new Vec3(0, 0, 1));
+        var contact = new Vec3(-grip.X, 1 - grip.Y, 0.35f - grip.Z);
+        float along = contact.Dot(axis);
+        Check(along > 0.45f && along < 0.94f && (contact - axis * along).Length() < 0.02f,
+            "bat barrel must cross the ball at contact");
+
+        ResetMatch();
+        TestAdvance(() => isHomeRun && state == stLive, "home run");
+        Check(ballBounces == 0 && by > fenceH, "home run must be confirmed above the fence before landing");
+        Check(bx * bx + bz * bz > 75.8f * 75.8f, "home run must not be announced before reaching the fence");
+        Check(!homeRunView && eventText == "HOME RUN!", "show the result while retaining the fence-crossing shot");
+        TestAdvance(() =>
+        {
+            if (liveT < homeRunAt + 1.0f)
+            {
+                Check(!homeRunView, "show the fence clearance before cutting to the runner");
+                CheckInFrame(bx, by, bz);
+                return false;
+            }
+            return homeRunView;
+        }, "home-run close-up");
+        int runs = score[0] + score[1];
+        var homeRunner = batterRunner!;
+        var previousOffset = camEye! - camTarget!;
+        TestAdvance(() =>
+        {
+            Check(homeRunView, "confirmed home run must follow the batter-runner");
+            CheckInFrame(homeRunner.X, 0, homeRunner.Z);
+            CheckInFrame(homeRunner.X, 1.9f, homeRunner.Z);
+            Check((TestProject(homeRunner.X, 1.9f, homeRunner.Z).Y - TestProject(homeRunner.X, 0, homeRunner.Z).Y) * 270 > 250,
+                "home-run runner must stay large enough to read the motion");
+            var offset = camEye! - camTarget!;
+            Check(offset.Distance(previousOffset) < 0.5f, "home-run camera must turn smoothly at each base");
+            previousOffset = offset;
+            bool shown = false;
+            VisitPlayers((x, z, yaw, team, pose, glove, held) =>
+            {
+                if (x == homeRunner.X && z == homeRunner.Z)
+                {
+                    shown = true;
+                    if (homeRunner.AtBase < 4)
+                    {
+                        var next = BasePos(homeRunner.AtBase + 1);
+                        var heading = new Vec3(next[0] - x, 0, next[1] - z).Normalize();
+                        Check(Mat4.RotateY(yaw).MulDir(new Vec3(0, 0, 1)).Dot(heading) > 0.99f,
+                            "home-run runner must face the next base");
+                    }
+                }
+            }, matrix => { });
+            Check(shown, "home-run subject must remain drawn through home plate");
+            return state != stLive;
+        }, "home run finishes");
+        Check(score[0] + score[1] > runs, "home run must reach home before leaving the play");
+        Check(retiredRunner == homeRunner, "scorer must remain visible during the result hold");
+        var catcher = fielders![1];
+        var sight = new Vec3(camEye!.X - homeRunner.X, 0, camEye.Z - homeRunner.Z);
+        var obstruction = new Vec3(catcher.X - homeRunner.X, 0, catcher.Z - homeRunner.Z);
+        Check(obstruction.Distance(sight * MathUtil.Clamp(obstruction.Dot(sight) / sight.Dot(sight), 0, 1)) > 0.8f,
+            "catcher must not obscure the scorer");
+        TestAdvance(() => state == stWindup, "next batter");
+        Check(!homeRunView && TestActorCount() == 10, "next batter must be drawn after a home run");
+
+        ResetMatch();
+        StartPitch();
+        willSwing = true; swingOutcome = 2; exitSpeed = 28; exitLaunch = -4; exitSpray = 22;
+        TestAdvance(() => state == stLive, "ground ball");
+        Check(TestActorCount() == 10, "batter must become one runner without disappearing or duplicating");
+        var eye = camEye!;
+        for (int i = 0; i < 6; i++) SimulateTick();
+        Check(camEye!.X == eye.X && camEye.Z == eye.Z, "contact must remain in the batting shot");
+        TestAdvance(() => playPhase == plThrow1b, "fielder gathers the ball");
+        Check(ballVisible && firstBaseView, "show transfer and cut to first base before release");
+        var throwEye = camEye;
+        for (int i = 0; i < 6; i++) SimulateTick();
+        Check(ballHeldBy == chaser, "throw must remain held until release");
+        TestAdvance(() =>
+        {
+            Check(camEye == throwEye, "hold the first-base shot through the throw and decision");
+            CheckInFrame(bx, by, bz); CheckInFrame(baseD, 0, baseD);
+            var r = batterRunner ?? retiredRunner!;
+            CheckInFrame(r.X, 1, r.Z);
+            return playPhase == plSettle;
+        }, "first-base decision");
+        Check(eventText == "OUT!" || eventText == "SAFE!", "ground ball must resolve at first base");
+        var cover = fielders![firstBaseCover];
+        Check(ballHeldBy == firstBaseCover && new Vec3(cover.X - baseD, 0, cover.Z - baseD).Length() < 0.6f,
+            "force out requires possession on the base");
+        Check(ballVisible, "first baseman must visibly hold the ball at the decision");
+        CheckNear(FielderBall(firstBaseCover), new Vec3(bx, by, bz), "throw must arrive at the displayed glove");
+        Check(TestActorCount() == 10, "runner must remain visible at the first-base decision");
+        Check((TestProject(cover.X, 1.9f, cover.Z).Y - TestProject(cover.X, 0, cover.Z).Y) * 270 > 70,
+            "first-base decision must be larger than the overview");
+        for (int i = 0; i < 12; i++) SimulateTick();
+        Check(state == stLive, "hold the deciding play before returning to the batter");
+
+        ResetMatch(); StartPitch(); willSwing = false; pitchInZone = true;
+        TestAdvance(() => state == stPitch, "pitch release");
+        eye = camEye!;
+        Check((TestProject(-0.85f, 1.9f, 0).Y - TestProject(-0.85f, 0, 0).Y) * 270 > 175,
+            "pitch shot must keep the batter large in the foreground");
+        CheckInFrame(0, 1, 18.44f);
+        TestAdvance(() =>
+        {
+            Check(camEye!.X == eye.X && camEye.Y == eye.Y && camEye.Z == eye.Z, "pitch camera must stay fixed");
+            CheckInFrame(bx, by, bz);
+            return state == stCall;
+        }, "catcher receives pitch");
+        Check(bz <= -2 && ballVisible, "called pitch must reach the catcher and remain visible");
+        ResetMatch();
+        for (int i = 0; i < 18000; i++)
+        {
+            SimulateTick();
+            foreach (var f in fielders!) Check(f.X * f.X + f.Z * f.Z < fenceR * fenceR, "fielder must stay inside the fence");
+            var cam = camEye!;
+            Check(cam.Y > 1 && cam.X * cam.X + cam.Z * cam.Z < fenceR * fenceR, "camera must stay inside the stadium");
+            Check(cam.Z > -8 || cam.Y > 3, "camera behind home must clear the backstop");
+            if (firstBaseView && state == stLive)
+            {
+                CheckInFrame(bx, by, bz); CheckInFrame(baseD, 0, baseD);
+                var r = batterRunner ?? retiredRunner!;
+                CheckInFrame(r.X, 1, r.Z);
+            }
+        }
+
+        ResetMatch();
+        for (int pitch = 0; pitch < 100; pitch++)
+        {
+            StartPitch(); willSwing = false;
+            TestAdvance(() => state == stPitch, "rig release");
+            CheckNear(FielderBall(0), new Vec3(bx, by, bz), "pitch must start at the throwing hand");
+            TestAdvance(() => state == stCall, "rig receive");
+            CheckNear(FielderBall(1), new Vec3(bx, by, bz), "catcher must receive the actual pitch");
+            Check(by >= ballR - 0.00001f, "low pitch must stay above the ground");
+        }
+        for (int pitch = 0; pitch < 100; pitch++)
+        {
+            StartPitch(); willSwing = true; swingOutcome = 2;
+            bool seen = false;
+            for (int tick = 0; tick < 200; tick++)
+            {
+                bool wasPitch = state == stPitch;
+                float before = batter!.AnimT;
+                SimulateTick();
+                if (wasPitch && state == stLive)
+                {
+                    Check(batter.AnimT >= before && Math.Abs(batter.AnimT - 0.52f) < 0.00001f, "contact must not rewind the swing");
+                    bat = BatMatrix(batter.AnimT); axis = bat.MulDir(new Vec3(0, 0, 1));
+                    var delta = new Vec3(bx, by, bz) - bat.MulPoint(new Vec3(0, 0, 0));
+                    CheckNear(delta, axis * delta.Dot(axis), "displayed bat must meet the simulated ball");
+                    seen = true; break;
+                }
+            }
+            Check(seen, "pitch must reach contact");
+        }
+        ResetMatch();
+        OnEvent(new EventData { Kind = EventKind.KeyDown, Key = 59 });
+        Check(modelDebug, "F2 must open the model viewer");
+        OnEvent(new EventData { Kind = EventKind.KeyDown, Key = 59 });
+        Check(modelDebug, "holding F2 must not repeatedly toggle the viewer");
+        OnEvent(new EventData { Kind = EventKind.KeyUp, Key = 59 });
+        float matchTime = tAccum;
+        DebugCommand("Contact"); AdvanceFrame(tickDt);
+        Check(tAccum == matchTime && Math.Abs(debugTime - 0.52f * 0.55f) < 0.00001f, "contact seek must pause the match");
+        DebugCommand("+1 frame");
+        Check(Math.Abs(debugTime - 0.52f * 0.55f - tickDt) < 0.00001f, "step must advance one match tick");
+        debugPlaying = true; debugSpeed = 0.25f;
+        float previousTime = debugTime;
+        AdvanceFrame(tickDt);
+        Check(Math.Abs(debugTime - previousTime - 1.0f / 240) < 0.00001f && tAccum == matchTime, "slow playback must only advance the preview clock");
+        DebugCommand("Run");
+        Check(debugPlaying && debugTime == 0, "clip switch must preserve playback and restart the clip");
+        AdvanceFrame(tickDt); Check(debugTime > 0, "selected animation must continue playing");
+        DebugCommand("Pitch");
+        Check(debugPlaying && debugSpeed == 0.25f, "clip switch must preserve playback speed and state");
+        debugPlaying = false; DebugCommand("Crouch");
+        Check(!debugPlaying && debugTime == 0, "switching a paused animation must keep it paused");
+        DebugCommand("Return to match"); Check(!modelDebug, "return must close the viewer");
+        AdvanceFrame(tickDt);
+        Check(tAccum > matchTime && tAccum < matchTime + 0.02f, "return must resume without catching up paused time");
     }
 }

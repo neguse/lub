@@ -1816,6 +1816,25 @@ public static unsafe partial class Lub
         }
     }
 
+    /// <summary>条件が偽なら message をエラーとして現在のコールバックを中断する。</summary>
+    public static void Assert(bool condition, string message)
+    {
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var st = LubNative.lub_assert(LubRuntime.Ctx, (byte)(condition ? 1 : 0), a.Str(message));
+            if (st == LubNative.LUB_NOT_FOUND)
+            {
+                return;
+            }
+            LubRuntime.Check(st, "Lub.Assert");
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+
     /// <summary>アプリ終了を要求する。</summary>
     public static void Quit()
     {
@@ -9435,6 +9454,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_config(void* ctx, LubConfigOpts* @opts);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_assert(void* ctx, byte @condition, LubStr @message);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_quit(void* ctx);

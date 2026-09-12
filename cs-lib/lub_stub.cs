@@ -233,6 +233,11 @@ public static class Lub
     {
     }
 
+    /// <summary>条件が偽なら message をエラーとして現在のコールバックを中断する。</summary>
+    public static void Assert(bool condition, string message)
+    {
+    }
+
     /// <summary>アプリ終了を要求する。</summary>
     [LubNoFail]
     public static void Quit()

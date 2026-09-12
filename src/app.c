@@ -82,6 +82,7 @@ bool app_init(App *app) {
   app->cfg_w = 0;
   app->cfg_h = 0;
   app->quit_requested = false;
+  app->init_failed = false;
   app->actual_fps = 0.0;
   app->fps_last_ns = 0;
   app->fps_frame_count = 0;

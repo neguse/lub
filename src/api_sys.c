@@ -62,6 +62,15 @@ LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
 
 void lub_quit(LubContext *ctx) { lub_api_app(ctx)->quit_requested = true; }
 
+LubStatus lub_assert(LubContext *ctx, bool condition, LubStr message) {
+  if (condition)
+    return LUB_OK;
+  App *app = lub_api_app(ctx);
+  if (app->phase == APP_PHASE_PRE_BACKEND)
+    app->init_failed = true;
+  return lub_api_fail(app, "%.*s", message.len, message.ptr ? message.ptr : "");
+}
+
 // ----------------------------------------------------------------- input
 
 static SDL_Scancode scancode_from_name(LubStr name) {
