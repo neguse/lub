@@ -2573,7 +2573,7 @@ function Renderer3dShadow.new()
 	self.size = 2048
 	self.center = Vec3.new(0, 0, 0)
 	self.extent = 12.0
-	self.bias = 0.0001
+	self.bias = 0.004
 	return self
 end
 

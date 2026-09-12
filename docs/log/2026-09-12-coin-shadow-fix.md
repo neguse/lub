@@ -1,4 +1,4 @@
-> 記録: 2026-09-12 のコインの自己影の調査と修正。現在の使い方は [影サンプル](../../samples/28_renderer_shadow/README.md) と [lubx](../manual/06-lub-lubx.md) を参照。
+> 記録: 2026-09-12 のコインの自己影の調査と修正。現在の使い方は [影サンプル](../../samples/28_renderer_shadow/README.md) と [lubx](../manual/06-lub-lubx.md) を参照。 bias の最終設定は [既定値の確認](2026-09-12-renderer-shadow-default.md) を参照。
 
 # 傾いたコインの自己影
 

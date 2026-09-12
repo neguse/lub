@@ -113,8 +113,8 @@ public class Renderer3dShadow
     public int Size = 2048;
     public Vec3 Center = new Vec3(0, 0, 0);
     public float Extent = 12.0f;
-    /// <summary>受け面の深度補正後に残る丸め誤差用の bias (影の深度 0〜1)。</summary>
-    public float Bias = 0.0001f;
+    /// <summary>受け面の深度補正後に引く bias (影の深度 0〜1)。</summary>
+    public float Bias = 0.004f;
 }
 
 /// <summary>SSAO (半解像度、depth 由来)。`radius` は view 空間。</summary>

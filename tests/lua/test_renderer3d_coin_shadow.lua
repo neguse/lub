@@ -45,6 +45,7 @@ return {
 		r.sky.bottom = x.Color.rgb(0.1, 0.1, 0.12)
 		r.sky.intensity = 0.45
 		r.shadow.extent = 3
+		r.shadow.bias = 0.0001
 		r.shadow.enabled = phase % 2 == 1
 		if legacy then
 			r.shadow.bias = 0.001

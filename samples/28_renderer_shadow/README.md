@@ -2,7 +2,7 @@
 
 床と浮いた箱だけを、固定カメラと固定の平行光源で描く。
 `18_coin_pusher` と同じ `Renderer3d` を使う。
-SSAO、bloom、FXAA は無効。影の補正値は既定の `0.0001` のままにする。
+SSAO、bloom、FXAA は無効。影の補正値は既定の `0.004` のままにする。
 
 ```sh
 ./build-release-linux/lub samples/28_renderer_shadow/RendererShadow28.csproj
@@ -38,7 +38,7 @@ S キーは影、A キーは SSAO、O キーは上のコインの表示を切り
 | 値 | 比較条件 |
 | --- | --- |
 | `baseline` | 調査開始時の影。省略時の値、bias は 0.001 |
-| `fixed` | 修正後の Renderer3d 本体。bias は既定の 0.0001 |
+| `fixed` | 修正後の Renderer3d 本体。bias はコインと同じ 0.0001 |
 | `shadow_off` / `ao_off` / `clean` | 影なし / SSAO なし / 両方なし |
 | `single` / `reverse` | 下の 1 枚だけ / 描画順を反転 |
 | `bias_high` / `bias_low` / `bias_zero` | bias を 0.004 / 0.0001 / 0 に変更 |

@@ -33,6 +33,7 @@ return {
 		end
 		r.shadow.enabled = shadows
 		r.shadow.extent = 3
+		r.shadow.bias = 0.0001
 		if mode == "legacy" then
 			r.shadow.bias = 0.001
 		end
