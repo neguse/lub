@@ -8,7 +8,7 @@
 //   球 vs 平面/円筒の解析判定なのですり抜けしない
 // - 試合: state machine で投球→打撃→守備→走塁を全自動進行。捕球・封殺は
 //   野手と走者の実際の位置と時間で決まる (結果の先取りをしない)
-// - 演出: バット接触ヒットストップ + 画面振動、状況別自動カメラ
+// - 演出: 投打を固定構図で見せ、打球後は守備と走塁を同じ画面に収める
 //
 // boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の
 // resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
@@ -106,6 +106,7 @@ public static class Baseball24
 
     // 打球フェーズ (ST_LIVE 中)
     const int plFly = 0; // 打球が空中 (ノーバウンド)
+    const int plTouch1b = 1;
     const int plThrow1b = 2; // 一塁送球中
     const int plSettle = 3; // 判定確定、走者が到達するのを待つ
     const int plFoul = 4;
@@ -212,7 +213,7 @@ public static class Baseball24
         }
         for (int t = 0; t < 2; t++)
         {
-            cm[t].Rebuild(Sdf.Mesh(CharModel(teamRgb[t]), 72));
+            cm[t].Rebuild(Sdf.Mesh(CharModel(teamRgb[t]), 48));
         }
     }
 
@@ -658,7 +659,7 @@ public static class Baseball24
         }
         // フェンス (フェア扇形内の円筒壁)。越えたら本塁打
         var hr = (float)Math.Sqrt(bx * bx + bz * bz);
-        if (bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
+        if (!isHomeRun && bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
         {
             if (by > fenceH)
             {
@@ -760,6 +761,11 @@ public static class Baseball24
         fielders = fs;
         batter = new Fielder(-0.85f, 0.0f);
         runners = new List<Runner>();
+        batterRunner = null;
+        retiredRunner = null;
+        batterAtPlate = true;
+        ballHeldBy = -1;
+        ballVisible = false;
     }
 
     // --- 試合状態 ---------------------------------------------------------------
@@ -804,11 +810,13 @@ public static class Baseball24
     static float throwFromY = 0.0f;
     static float throwFromZ = 0.0f;
     static Runner? batterRunner = null;
+    static Runner? retiredRunner = null;
+    static int firstBaseCover = 2;
+    static bool batterAtPlate = true;
     static Landing? landing = null;
 
     // 演出
     static float hitstopT = 0.0f;
-    static float shakeAmp = 0.0f;
     static string eventText = "";
     static float eventT = 99.0f;
     static Color? eventCol = null;
@@ -871,6 +879,9 @@ public static class Baseball24
             }
         }
         swingStarted = false;
+        showAllBases = runners != null && runners.Count > 0;
+        ballHeldBy = 0;
+        ballVisible = true;
         SetState(stWindup);
         fs[0].Anim = AnWindup;
         fs[0].AnimT = 0;
@@ -889,6 +900,7 @@ public static class Baseball24
         bvy = (pitchTY - by) / t + 0.5f * grav * t;
         bvz = dz / t;
         ballVisible = true;
+        ballHeldBy = -1;
         ballBounces = 0;
         ballRolling = false;
         isHomeRun = false;
@@ -923,13 +935,12 @@ public static class Baseball24
             }
             fs[1].Anim = AnReach;
             fs[1].AnimT = 0;
-            ballVisible = false;
+            ballHeldBy = 1;
             AfterCall();
             return;
         }
-        // バットに当たった。ヒットストップ + 画面振動
-        hitstopT = 0.09f;
-        shakeAmp = 0.5f;
+        // 接触を短く止め、振り抜きへつなぐ。
+        hitstopT = 0.035f;
         var launch = exitLaunch;
         var spray = exitSpray;
         var speed = exitSpeed;
@@ -964,12 +975,13 @@ public static class Baseball24
         // 打者走者スタート
         var br = new Runner(b.X, b.Z, 0, 1);
         batterRunner = br;
+        batterAtPlate = false;
         rns.Add(br);
         b.Anim = AnSwing; // 走り出しはスイングの続きから
         // 最寄りの野手が追う
         chaser = NearestFielder(land.X, land.Z);
+        firstBaseCover = chaser == 2 ? 0 : 2;
         playPhase = plFly;
-        camCut = true;
         SetState(stLive);
     }
 
@@ -1021,6 +1033,7 @@ public static class Baseball24
             for (int bs = 1; bs < free; bs++)
                 occ[bs].To = bs + 1;
             rns.Add(new Runner(b.X, b.Z, 0, 1));
+            batterAtPlate = false;
             newBatterPending = true;
         }
     }
@@ -1056,7 +1069,10 @@ public static class Baseball24
         if (fs == null || rns == null)
             return;
         liveT += dt;
-        StepBall(dt, true);
+        if (playPhase == plFly || playPhase == plFoul || isHomeRun && ballVisible)
+            StepBall(dt, true);
+        if (isHomeRun && ballBounces > 0)
+            ballVisible = false;
 
         if (playPhase == plFoul)
         {
@@ -1078,7 +1094,6 @@ public static class Baseball24
         if (isHomeRun && playPhase == plFly)
         {
             ShowEvent("HOME RUN!", Color.Rgb(1.0f, 0.85f, 0.25f));
-            shakeAmp = 0.35f;
             foreach (var r in rns)
                 r.To = 4;
             playPhase = plSettle;
@@ -1091,7 +1106,7 @@ public static class Baseball24
         for (int i = 0; i < 9; i++)
         {
             var f = fs[i];
-            if (state != stLive)
+            if (state != stLive || playPhase == plSettle)
                 break;
             if (i == chaser && ballHeldBy < 0 && playPhase != plSettle)
             {
@@ -1100,6 +1115,12 @@ public static class Baseball24
                 var flying = ballBounces == 0 && !ballRolling;
                 var tx = flying && land != null ? land.X : bx + bvx * 0.35f;
                 var tz = flying && land != null ? land.Z : bz + bvz * 0.35f;
+                var radius = (float)Math.Sqrt(tx * tx + tz * tz);
+                if (radius > fenceR - 1.2f)
+                {
+                    tx *= (fenceR - 1.2f) / radius;
+                    tz *= (fenceR - 1.2f) / radius;
+                }
                 var arrived = MoveTowards(f, tx, tz, dt, runSpd);
                 var dx = f.X - bx;
                 var dz = f.Z - bz;
@@ -1119,11 +1140,10 @@ public static class Baseball24
                     f.Anim = AnReady;
                 }
             }
-            else if (i == 2 && playPhase != plSettle && batterRunner != null)
+            else if (i == firstBaseCover && batterRunner != null)
             {
                 // 一塁手はベースへ (自分が追走者でなければ)
-                if (i != chaser)
-                    MoveTowards(f, baseD - 0.4f, baseD - 0.4f, dt, runSpd);
+                MoveTowards(f, baseD - 0.25f, baseD - 0.25f, dt, runSpd);
             }
             else if (i != chaser)
             {
@@ -1135,12 +1155,23 @@ public static class Baseball24
         if (playPhase == plThrow1b)
         {
             throwT += dt;
-            var k = Math.Min(1.0f, throwT / throwDur);
+            var k = MathUtil.Clamp((throwT - 0.24f) / throwDur, 0, 1);
             // 送球は放物線 (見た目用に手計算)
-            bx = MathUtil.Lerp(throwFromX, baseD, k);
-            bz = MathUtil.Lerp(throwFromZ, baseD, k);
+            bx = MathUtil.Lerp(throwFromX, fs[firstBaseCover].X, k);
+            bz = MathUtil.Lerp(throwFromZ, fs[firstBaseCover].Z, k);
             by = MathUtil.Lerp(throwFromY, 1.2f, k) + (float)Math.Sin(k * (float)Math.PI) * 1.4f;
             if (k >= 1.0f)
+            {
+                ballHeldBy = firstBaseCover;
+                playPhase = plTouch1b;
+            }
+        }
+        if (playPhase == plTouch1b)
+        {
+            var cover = fs[firstBaseCover];
+            float dx = cover.X - baseD;
+            float dz = cover.Z - baseD;
+            if (dx * dx + dz * dz < 0.36f)
             {
                 // 封殺 or セーフ: 走者の進塁具合と競争
                 var br = batterRunner;
@@ -1148,6 +1179,7 @@ public static class Baseball24
                 {
                     outs++;
                     ShowEvent("OUT!", Color.Rgb(1.0f, 0.5f, 0.3f));
+                    retiredRunner = br;
                     rns.Remove(br);
                     // 他の走者は 1 つ進む
                     foreach (var r in rns)
@@ -1159,9 +1191,10 @@ public static class Baseball24
                     ShowEvent("SAFE!", Color.Rgb(0.5f, 1.0f, 0.6f));
                 }
                 batterRunner = null;
-                ballHeldBy = 2;
-                ballVisible = false;
+                cover.Anim = AnReady;
+                cover.AnimT = 0;
                 playPhase = plSettle;
+                stateT = 0;
             }
         }
 
@@ -1172,7 +1205,7 @@ public static class Baseball24
             foreach (var r in rns)
                 if (r.AtBase < r.To)
                     settled = false;
-            if (settled && liveT > 1.0f)
+            if (settled && stateT > 0.65f)
             {
                 ballVisible = false;
                 newBatterPending = true;
@@ -1180,7 +1213,7 @@ public static class Baseball24
             }
         }
         // 保険: 異常に長引いたら打ち切り
-        if (liveT > 14.0f)
+        if (liveT > 14.0f && playPhase != plSettle)
         {
             ballVisible = false;
             newBatterPending = true;
@@ -1206,12 +1239,15 @@ public static class Baseball24
             // 打者アウト。走者は帰塁 (簡略: その場から戻る)
             var br = batterRunner;
             if (br != null)
+            {
+                retiredRunner = br;
                 rns.Remove(br);
+            }
             batterRunner = null;
             foreach (var r in rns)
                 r.To = r.AtBase;
-            ballVisible = false;
             playPhase = plSettle;
+            stateT = 0;
             return;
         }
         // ゴロ/落ちたフライ: 一塁封殺が間に合いそうなら送球、無理ならヒット確定
@@ -1221,6 +1257,7 @@ public static class Baseball24
         {
             f.Anim = AnThrow;
             f.AnimT = 0;
+            f.Yaw = (float)Math.Atan2(baseD - f.X, baseD - f.Z);
             playPhase = plThrow1b;
             throwFromX = bx;
             throwFromY = Math.Max(by, 1.3f);
@@ -1242,8 +1279,8 @@ public static class Baseball24
         foreach (var r in rns)
             r.To = r == batterRunner ? bases : Math.Min(4, r.AtBase + bases);
         batterRunner = null;
-        ballVisible = false;
         playPhase = plSettle;
+        stateT = 0;
     }
 
     static void UpdateRunners(float dt, float spdScale)
@@ -1340,6 +1377,9 @@ public static class Baseball24
                 b.X = -0.85f;
                 b.Z = 0.0f;
                 b.Anim = AnIdle;
+                batterRunner = null;
+                retiredRunner = null;
+                batterAtPlate = true;
                 balls = 0;
                 strikes = 0;
                 newBatterPending = false;
@@ -1386,7 +1426,7 @@ public static class Baseball24
             }
             if (b.Anim == AnSwing)
                 b.AnimT = Math.Min(1.0f, b.AnimT + dt / 0.55f);
-            if (bz <= 0.42f)
+            if (bz <= (willSwing && swingOutcome != 0 ? 0.42f : -2.0f))
                 ResolveContact();
         }
         else if (state == stLive)
@@ -1476,7 +1516,8 @@ public static class Baseball24
     static Vec3? camEye = null;
     static Vec3? camTarget = null;
     static float camFov = 34.0f;
-    static bool camCut = false;
+    static bool fieldView = false;
+    static bool showAllBases = false;
 
     static void UpdateCamera(float dt)
     {
@@ -1484,61 +1525,33 @@ public static class Baseball24
         var tgt = camTarget;
         if (eye == null || tgt == null)
             return;
-        var de = new Vec3(4.8f, 3.3f, 28.5f); // センター後方の中継カメラ
-        var dtg = new Vec3(-0.3f, 1.1f, 1.2f);
-        var dfov = 29.0f;
-        if (state == stLive && playPhase != plFoul)
+        var de = new Vec3(6, 5.2f, -9);
+        var dtg = new Vec3(0, 1.0f, 9);
+        var dfov = 48.0f;
+        var wide = state == stLive && playPhase != plFoul && liveT > 0.18f
+            || state == stCall && fieldView;
+        if (wide)
         {
             var land = landing;
-            if (land != null && (land.Peak > 7.0f || isHomeRun)
-                && (ballBounces == 0 && !ballRolling || isHomeRun))
+            float lx = land != null ? MathUtil.Clamp(land.X, -55, 55) : 0;
+            float lz = land != null ? MathUtil.Clamp(land.Z, 0, fenceR) : baseD;
+            float left = Math.Min(-4, lx - 5);
+            float right = Math.Max(baseD + 4, lx + 5);
+            float back = Math.Max(baseD + 4, lz + 6);
+            if (showAllBases)
             {
-                // フライ追従: 打球の後方上空から
-                var hv = (float)Math.Sqrt(bvx * bvx + bvz * bvz);
-                var dirx = hv > 0.5f ? bvx / hv : 0.0f;
-                var dirz = hv > 0.5f ? bvz / hv : 1.0f;
-                de = new Vec3(bx - dirx * 13.0f,
-                    Math.Max(by * 0.55f + 3.5f, 2.2f), bz - dirz * 13.0f);
-                dtg = new Vec3(bx + bvx * 0.22f, Math.Max(by, 0.5f),
-                    bz + bvz * 0.22f);
-                dfov = 42.0f;
+                left = Math.Min(left, -baseD - 4);
+                back = Math.Max(back, baseD * 2 + 4);
             }
-            else
-            {
-                // 内野俯瞰
-                de = new Vec3(8, 19.0f, -13.0f);
-                dtg = new Vec3(0, 0.0f, 20.0f);
-                dfov = 50.0f;
-            }
+            float span = Math.Max(28, Math.Max((back + 4) * 1.05f, (right - left) * 0.9f));
+            dtg = new Vec3((left + right) * 0.5f, 0, (back - 4) * 0.5f + 4);
+            de = new Vec3(dtg.X + 6, span * 0.85f, dtg.Z - span * 0.9f);
+            dfov = 50;
         }
-        else if (state == stPrepitch && stateT < 0.65f)
-        {
-            de = new Vec3(5.2f, 2.5f, 5.0f);
-            dtg = new Vec3(-0.6f, 1.1f, 0);
-            dfov = 34.0f;
-        }
-        else if (state == stIntro || state == stChange || state == stEnd)
-        {
-            var a = tAccum * 0.12f;
-            de = new Vec3((float)Math.Sin(a) * 46.0f, 17.0f, 24.0f + (float)Math.Cos(a) * 30.0f);
-            dtg = new Vec3(0, 1.0f, 22.0f);
-            dfov = 42.0f;
-        }
-        var k = camCut ? 1.0f : Math.Min(1.0f, 7.0f * dt);
-        camCut = false;
-        eye = eye.Lerp(de, k);
-        tgt = tgt.Lerp(dtg, k);
-        camFov = MathUtil.Lerp(camFov, dfov, k);
-        // 画面振動 (ヒットの手応え)。減衰付きで eye だけ揺らす
-        if (shakeAmp > 0.003f)
-        {
-            var s = shakeAmp;
-            eye = new Vec3(eye.X + (float)Math.Sin(tAccum * 71.0f) * s * 0.25f,
-                eye.Y + (float)Math.Sin(tAccum * 93.0f + 1.7f) * s * 0.2f, eye.Z);
-            shakeAmp *= (float)Math.Pow(0.001f, dt); // ~0.7s で収束
-        }
-        camEye = eye;
-        camTarget = tgt;
+        fieldView = wide;
+        camEye = de;
+        camTarget = dtg;
+        camFov = dfov;
     }
 
     // --- 描画 -----------------------------------------------------------------------
@@ -1548,12 +1561,19 @@ public static class Baseball24
     static Renderer3d? ren = null;
 
     static void DrawChar(float x, float z, float yaw, int team,
-        List<float> pose, bool glove = false)
+        List<float> pose, bool glove = false, bool holdingBall = false)
     {
         var renNow = ren;
         var cm = charMesh;
         if (renNow == null || cm == null)
             return;
+        var vp = renNow.ViewProj;
+        if (vp != null)
+        {
+            var clip = vp * new Vec4(x, 1, z, 1);
+            if (clip.W <= 0 || Math.Abs(clip.X) > clip.W + 5 || Math.Abs(clip.Y) > clip.W + 5)
+                return;
+        }
         var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(-yaw);
         renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackBones(pose) });
         if (glove && gloveMesh != null)
@@ -1563,7 +1583,10 @@ public static class Baseball24
                     Mat4.RotateY(-pose[0]) * Mat4.RotateX(-pose[1]) * Mat4.RotateZ(-pose[2]));
             var arm = Bones.PivotRot(armPx, armPy, 0,
                 Mat4.RotateZ(-pose[7]) * Mat4.RotateX(-pose[6]));
-            renNow.Draw(gloveMesh, model * torso * arm * Mat4.Translate(new Vec3(0.32f, 1.01f, 0.12f)));
+            var hand = model * torso * arm * Mat4.Translate(new Vec3(0.32f, 1.01f, 0.12f));
+            renNow.Draw(gloveMesh, hand);
+            if (holdingBall)
+                renNow.Draw(ballMesh, hand * Mat4.Translate(new Vec3(0, 0.06f, 0.02f)));
         }
     }
 
@@ -1612,7 +1635,7 @@ public static class Baseball24
         {
             fontLoaded = true;
             fontVersion = version;
-            mtext = new Text("bb24_text", fontPath, 40, 1024);
+            mtext = new Text("bb24_text", fontPath, 32, 256);
             hud = new SpriteBatch(w, h, "bb24_hud", "bb24_hud");
         }
         return mtext != null;
@@ -1636,13 +1659,8 @@ public static class Baseball24
         var ink = Color.Rgb(0.04f, 0.10f, 0.15f, 0.95f);
         var gold = Color.Hex(0xF5C46B);
         batch.Begin();
-        batch.Rect(24, 24, 274, 106, ink);
-        batch.Rect(24, 24, 5, 50, Color.Hex(teamRgb[0]));
-        batch.Rect(24, 77, 5, 50, Color.Hex(teamRgb[1]));
-        batch.Rect(40, 75, 240, 1, Color.Rgb(0.3f, 0.4f, 0.45f));
-        batch.Rect(298, 24, 124, 106, Color.Rgb(0.07f, 0.16f, 0.21f, 0.95f));
-        for (int i = 0; i < 3; i++)
-            batch.Disc(335 + i * 24, 107, 5, i < outs ? gold : Color.Hex(0x304653));
+        batch.Rect(20, 16, 616, 52, ink);
+        batch.Rect(20, 16, 5, 52, Color.Hex(teamRgb[BattingTeam()]));
         var occupied = new bool[] { false, false, false };
         var rns = runners;
         if (rns != null)
@@ -1652,27 +1670,22 @@ public static class Baseball24
             }
         for (int i = 0; i < 3; i++)
         {
-            float x = i == 0 ? 391 : i == 1 ? 378 : 365;
-            float y = i == 1 ? 59 : 72;
-            batch.Disc(x, y, 6, occupied[i] ? gold : Color.Hex(0x304653));
+            float x = i == 0 ? 612 : i == 1 ? 596 : 580;
+            float y = i == 1 ? 31 : 47;
+            batch.Rect(x - 5, y - 5, 10, 10, occupied[i] ? gold : Color.Hex(0x607380));
         }
-        HudText(teamName[0], 44, 57, 23, cream);
-        HudText(teamName[1], 44, 110, 23, cream);
-        HudText("" + score[0], 258, 61, 35, cream, true);
-        HudText("" + score[1], 258, 114, 35, cream, true);
-        HudText((half == 0 ? "TOP " : "BOT ") + inning, 313, 47, 16, gold);
-        HudText(balls + " - " + strikes, 313, 78, 20, cream);
-        HudText("LUB  /  BASEBALL", w - 118, 42, 17, ink, true);
+        HudText(teamName[0] + "  " + score[0] + " : " + score[1] + "  " + teamName[1], 38, 50, 24, cream);
+        HudText((half == 0 ? "TOP " : "BOT ") + inning, 295, 48, 18, gold);
+        HudText("B " + balls + "   S " + strikes + "   O " + outs, 380, 48, 18, cream);
         batch.Flush();
         if (eventText != "" && eventT < 1.6f && eventCol != null)
         {
             float a = MathUtil.Clamp((1.6f - eventT) / 0.3f, 0, 1);
-            float slide = (float)Math.Exp(-eventT * 15) * 32;
-            float size = Math.Min(39, 790 / Math.Max(1, mtext!.Width(eventText, 1.0f)) * 40);
+            float size = Math.Min(28, 380 / Math.Max(1, mtext!.Width(eventText, 1.0f)) * mtext.Px);
             batch.Begin();
-            batch.Rect(0, 408 + slide, w, 88, Color.Rgb(0.04f, 0.10f, 0.15f, 0.93f * a));
-            batch.Rect(0, 408 + slide, w, 3, Color.Rgb(eventCol.R, eventCol.G, eventCol.B, a));
-            HudText(eventText, w * 0.5f, 464 + slide, size,
+            batch.Rect(280, h - 64, 400, 44, Color.Rgb(0.04f, 0.10f, 0.15f, 0.93f * a));
+            batch.Rect(280, h - 64, 3, 44, Color.Rgb(eventCol.R, eventCol.G, eventCol.B, a));
+            HudText(eventText, w * 0.5f, h - 32, size,
                 Color.Rgb(cream.R, cream.G, cream.B, a), true);
             batch.Flush();
         }
@@ -1714,9 +1727,9 @@ public static class Baseball24
         {
             rng = new Rand(0x0B5EBA11);
             ren = new Renderer3d("bb24");
-            camEye = new Vec3(5.5f, 3.4f, 30.0f);
-            camTarget = new Vec3(0, 1.3f, 0);
-            camFov = 34.0f;
+            camEye = new Vec3(6, 5.2f, -9);
+            camTarget = new Vec3(0, 1, 9);
+            camFov = 48;
             BuildCharMesh();
             BuildField();
             ResetActors();
@@ -1748,10 +1761,10 @@ public static class Baseball24
         renNow.Sky.Bottom = Color.Rgb(0.22f, 0.28f, 0.20f);
         renNow.Sky.Intensity = 0.7f;
         renNow.Background = Color.Rgb(0.57f, 0.73f, 0.83f);
-        renNow.Ssao.Radius = 0.35f;
-        renNow.Ssao.Strength = 0.6f;
-        renNow.Bloom.Strength = 0.12f;
-        renNow.Vignette = 0.12f;
+        renNow.Ssao.Enabled = false;
+        renNow.Bloom.Enabled = false;
+        renNow.Vignette = 0;
+        renNow.Shadow.Size = 512;
         // 影はカメラターゲット周辺 (フィールド全体 100m は 1 枚に入れない)
         renNow.Shadow.Center = new Vec3(tgtNow.X, 0, tgtNow.Z);
         renNow.Shadow.Extent = 30.0f;
@@ -1760,8 +1773,8 @@ public static class Baseball24
             Eye = eyeNow,
             Target = tgtNow,
             Fov = camFov,
-            Near = 0.1f,
-            Far = 400.0f,
+            Near = 0.3f,
+            Far = 180.0f,
         });
 
         renNow.Draw(fieldMesh, new Mat4());
@@ -1776,7 +1789,7 @@ public static class Baseball24
                     ? f.AnimT
                     : t,
                 f.RunPhase);
-            var yaw = f.Anim == AnRun
+            var yaw = f.Anim == AnRun || f.Anim == AnThrow
                 ? f.Yaw
                 : (float)Math.Atan2(0 - f.X, 0 - f.Z); // 待機中は本塁を向く
             if (i == 0)
@@ -1792,12 +1805,14 @@ public static class Baseball24
                     pose[3] += reach * 0.04f;
                 }
             }
-            DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose, true);
+            var holding = ballVisible && ballHeldBy == i
+                && (state != stLive || playPhase != plThrow1b || throwT < 0.24f);
+            DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose, true, holding);
         }
         // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
         var bt = BattingTeam();
         var b = batter;
-        if (batterRunner == null && b != null)
+        if (batterAtPlate && b != null)
         {
             // 構え = スイングの溜め位相を静止で使う (バットの持ち手と一致する)
             var stance = b.Anim == AnSwing ? b.AnimT : 0.30f;
@@ -1821,30 +1836,35 @@ public static class Baseball24
             {
                 var np = BasePos(r.To == 4 ? 0 : r.To);
                 var moving = r.AtBase != r.To;
-                DrawChar(r.X, r.Z,
-                    moving
-                        ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
-                        : (float)Math.Atan2(-r.X, -r.Z),
-                    bt, moving ? PoseRun(r.RunPhase) : PoseIdle(t));
+                var yaw = moving ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
+                    : (float)Math.Atan2(-r.X, -r.Z);
+                var pose = moving ? PoseRun(r.RunPhase) : PoseIdle(t);
+                if (r == batterRunner && b != null && liveT < 0.24f)
+                {
+                    float blend = MathUtil.Smoothstep(0.10f, 0.24f, liveT);
+                    var swing = PoseSwing(b.AnimT);
+                    for (int j = 0; j < pose.Count; j++)
+                        pose[j] = MathUtil.Lerp(swing[j], pose[j], blend);
+                    yaw = MathUtil.Lerp((float)Math.PI / 2, yaw, blend);
+                    if (liveT < 0.10f)
+                        renNow.Draw(batMesh, Mat4.Translate(new Vec3(r.X - b.X, 0, r.Z - b.Z)) * BatMatrix(b.AnimT));
+                }
+                DrawChar(r.X, r.Z, yaw, bt, pose);
             }
         }
+        var retired = retiredRunner;
+        if (retired != null)
+            DrawChar(retired.X, retired.Z, (float)Math.Atan2(baseD - retired.X, baseD - retired.Z),
+                bt, PoseIdle(t));
 
         // ボール
-        if (ballVisible)
+        if (ballVisible && !(ballHeldBy >= 0
+            && (state != stLive || playPhase != plThrow1b || throwT < 0.24f)))
         {
-            if (state == stPitch || state == stLive && !ballRolling)
-            {
-                for (int i = 5; i >= 1; i--)
-                {
-                    float lag = i * 0.009f;
-                    float scale = 1.0f - i * 0.13f;
-                    renNow.Draw(ballMesh,
-                        Mat4.Translate(new Vec3(bx - bvx * lag, by - bvy * lag, bz - bvz * lag))
-                            * Mat4.Scale(new Vec3(scale, scale, scale)),
-                        new Draw3dOpts { Tint = Color.Rgb(1, 0.90f, 0.64f, 0.28f - i * 0.035f), Blend = Gfx.Blend.Alpha });
-                }
-            }
-            renNow.Draw(ballMesh, Mat4.Translate(new Vec3(bx, by, bz)));
+            var delta = new Vec3(bx - eyeNow.X, by - eyeNow.Y, bz - eyeNow.Z);
+            float scale = Math.Max(1, delta.Length() * 0.03f);
+            renNow.Draw(ballMesh, Mat4.Translate(new Vec3(bx, by + ballR * (scale - 1), bz))
+                * Mat4.Scale(new Vec3(scale, scale, scale)));
         }
 
         renNow.End();
