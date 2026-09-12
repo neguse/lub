@@ -1,14 +1,26 @@
 -- 光を向くコインの平面は、単体では遮蔽されない。
 -- 微小に移動・回転した 5 姿勢で、影 ON/OFF の明るさが一致することを検査する。
 local x = dofile("samples/lubx.lua")
-local legacy = os.getenv("LUB_SHADOW_LEGACY") == "1"
-if legacy then
-	local f = assert(io.open("samples/28_renderer_shadow/coin_shadow_legacy.slang", "r"))
-	x.Renderer3d.lit_fs = f:read("*a")
-	f:close()
-end
 local base = x.Mat4.new()
-base.m = dofile("samples/28_renderer_shadow/coin_acne_pose.lua")
+-- 面法線と光方向の正規化した内積が約 0.077 になるモデル行列。
+base.m = {
+	-0.028147876262664795,
+	0.061249461024999619,
+	-0.07734033465385437,
+	-1.1987354755401611,
+	-0.1511349231004715,
+	0.0047069210559129715,
+	0.076990686357021332,
+	0.36878728866577148,
+	0.072566762566566467,
+	0.033561117947101593,
+	0.13034917414188385,
+	-0.2021888792514801,
+	0,
+	0,
+	0,
+	1,
+}
 local r, coin, rb
 local frame = 0
 local samples, results = {}, {}
@@ -47,9 +59,6 @@ return {
 		r.shadow.extent = 3
 		r.shadow.bias = 0.0001
 		r.shadow.enabled = phase % 2 == 1
-		if legacy then
-			r.shadow.bias = 0.001
-		end
 		r.ssao.enabled = false
 		r.bloom.enabled = false
 		r.aa.enabled = false
