@@ -158,38 +158,44 @@ public static class Baseball24
 
     static SdfNode CharModel(int jersey)
     {
-        var white = jersey;
-        var skin = 0xF5C29A;
-        var pants = 0x3A3E4C;
-        var torso = Sdf.Capsule(new Vec3(0, 0.92f, 0), new Vec3(0, 1.42f, 0), 0.19f)
-            .Paint(white)
+        var skin = 0xEFB68A;
+        var ink = 0x172C43;
+        var torso = Sdf.Capsule(new Vec3(0, 0.98f, 0), new Vec3(0, 1.35f, 0), 0.23f)
+            .Paint(jersey, 0, 0.7f)
+            .Union(Sdf.Box(0.027f, 0.22f, 0.012f).Move(0, 1.20f, 0.226f).Paint(0xFFF1D7))
+            .Union(Sdf.Box(0.23f, 0.045f, 0.18f).Move(0, 0.98f, 0).Paint(ink))
             .Bone("torso", new Vec3(torsoPx, torsoPy, 0));
-        var head = Sdf.Sphere(0.15f)
-            .Move(0, 1.62f, 0)
-            .Paint(skin)
-            .Smin(Sdf.Sphere(0.115f).Move(0, 1.72f, 0).Paint(white), 0.03f)
-            .Smin(Sdf.Sphere(0.035f).Move(0, 1.60f, 0.15f).Paint(skin), 0.02f)
+        var head = Sdf.Sphere(0.225f).Move(0, 1.66f, 0).Paint(skin, 0, 0.65f)
+            .Union(Sdf.Sphere(0.233f).Move(0, 1.73f, -0.018f)
+                .Subtract(Sdf.Box(0.4f, 0.3f, 0.4f).Move(0, 1.38f, 0))
+                .Paint(jersey, 0, 0.45f))
+            .Union(Sdf.Box(0.21f, 0.028f, 0.14f).Move(0, 1.77f, 0.19f).Paint(jersey))
+            .Union(Sdf.Sphere(0.030f).Move(0.084f, 1.66f, 0.202f).MirrorX().Paint(ink))
+            .Union(Sdf.Sphere(0.047f).Move(0, 1.60f, 0.216f).Paint(skin))
+            .Union(Sdf.Sphere(0.058f).Move(0.222f, 1.63f, 0).MirrorX().Paint(skin))
             .Bone("head", new Vec3(0, headPy, 0));
-        var armL = Sdf.Capsule(new Vec3(0.24f, 1.40f, 0),
-            new Vec3(0.31f, 1.00f, 0.05f), 0.065f)
+        var armL = Sdf.Capsule(new Vec3(0.25f, 1.37f, 0), new Vec3(0.32f, 1.05f, 0.04f), 0.085f)
             .Paint(skin)
+            .Smin(Sdf.Sphere(0.11f).Move(0.32f, 1.01f, 0.045f).Paint(skin), 0.03f)
+            .Union(Sdf.Capsule(new Vec3(0.24f, 1.38f, 0), new Vec3(0.28f, 1.25f, 0), 0.105f).Paint(jersey))
             .Bone("arm_l", new Vec3(armPx, armPy, 0));
-        var armR = Sdf.Capsule(new Vec3(-0.24f, 1.40f, 0),
-            new Vec3(-0.31f, 1.00f, 0.05f), 0.065f)
+        var armR = Sdf.Capsule(new Vec3(-0.25f, 1.37f, 0), new Vec3(-0.32f, 1.05f, 0.04f), 0.085f)
             .Paint(skin)
+            .Smin(Sdf.Sphere(0.11f).Move(-0.32f, 1.01f, 0.045f).Paint(skin), 0.03f)
+            .Union(Sdf.Capsule(new Vec3(-0.24f, 1.38f, 0), new Vec3(-0.28f, 1.25f, 0), 0.105f).Paint(jersey))
             .Bone("arm_r", new Vec3(-armPx, armPy, 0));
-        var legL = Sdf.Capsule(new Vec3(0.10f, 0.92f, 0),
-            new Vec3(0.11f, 0.10f, 0), 0.085f)
-            .Smin(Sdf.Sphere(0.07f).Move(0.11f, 0.07f, 0.07f), 0.05f)
-            .Paint(pants)
+        var legL = Sdf.Capsule(new Vec3(0.12f, 0.90f, 0), new Vec3(0.14f, 0.30f, 0), 0.11f)
+            .Paint(0xF5EDDA)
+            .Union(Sdf.Capsule(new Vec3(0.14f, 0.30f, 0), new Vec3(0.14f, 0.13f, 0), 0.09f).Paint(jersey))
+            .Smin(Sdf.Capsule(new Vec3(0.14f, 0.10f, -0.02f), new Vec3(0.14f, 0.10f, 0.13f), 0.10f).Paint(ink), 0.025f)
             .Bone("leg_l", new Vec3(legPx, legPy, 0));
-        var legR = Sdf.Capsule(new Vec3(-0.10f, 0.92f, 0),
-            new Vec3(-0.11f, 0.10f, 0), 0.085f)
-            .Smin(Sdf.Sphere(0.07f).Move(-0.11f, 0.07f, 0.07f), 0.05f)
-            .Paint(pants)
+        var legR = Sdf.Capsule(new Vec3(-0.12f, 0.90f, 0), new Vec3(-0.14f, 0.30f, 0), 0.11f)
+            .Paint(0xF5EDDA)
+            .Union(Sdf.Capsule(new Vec3(-0.14f, 0.30f, 0), new Vec3(-0.14f, 0.13f, 0), 0.09f).Paint(jersey))
+            .Smin(Sdf.Capsule(new Vec3(-0.14f, 0.10f, -0.02f), new Vec3(-0.14f, 0.10f, 0.13f), 0.10f).Paint(ink), 0.025f)
             .Bone("leg_r", new Vec3(-legPx, legPy, 0));
-        return torso.Smin(head, 0.05f).Smin(armL, 0.04f).Smin(armR, 0.04f)
-            .Smin(legL, 0.05f).Smin(legR, 0.05f);
+        return torso.Smin(head, 0.025f).Smin(armL, 0.025f).Smin(armR, 0.025f)
+            .Smin(legL, 0.025f).Smin(legR, 0.025f);
     }
 
     static void BuildCharMesh()
@@ -206,7 +212,7 @@ public static class Baseball24
         }
         for (int t = 0; t < 2; t++)
         {
-            cm[t].Rebuild(Sdf.Mesh(CharModel(teamRgb[t]), 56));
+            cm[t].Rebuild(Sdf.Mesh(CharModel(teamRgb[t]), 72));
         }
     }
 
@@ -226,8 +232,9 @@ public static class Baseball24
             * Bones.PivotRot(armPx, armPy, 0, Mat4.RotateZ(-p[7]) * Mat4.RotateX(-p[6]));
         var mArmR = mTorso
             * Bones.PivotRot(-armPx, armPy, 0, Mat4.RotateZ(-p[9]) * Mat4.RotateX(-p[8]));
-        var mLegL = Bones.PivotRot(legPx, legPy, 0, Mat4.RotateX(-p[10]));
-        var mLegR = Bones.PivotRot(-legPx, legPy, 0, Mat4.RotateX(-p[11]));
+        var legScale = Mat4.Scale(new Vec3(1, 1 + Math.Min(p[3], 0) / legPy, 1));
+        var mLegL = legScale * Bones.PivotRot(legPx, legPy, 0, Mat4.RotateX(-p[10]));
+        var mLegR = legScale * Bones.PivotRot(-legPx, legPy, 0, Mat4.RotateX(-p[11]));
         var mats = new Dictionary<string, Mat4>
         {
             ["torso"] = mTorso,
@@ -282,8 +289,8 @@ public static class Baseball24
         p[4] = -0.55f;
         p[6] = 1.05f;
         p[8] = 1.05f; // 両腕前
-        p[10] = 1.05f;
-        p[11] = 1.05f;
+        p[10] = 0.18f;
+        p[11] = -0.18f;
         return p;
     }
 
@@ -296,7 +303,7 @@ public static class Baseball24
         p[11] = -s * 1.0f;
         p[6] = -s * 0.9f;
         p[8] = s * 0.9f;
-        p[3] = Math.Abs((float)Math.Cos(ph)) * 0.04f;
+        p[3] = Math.Abs((float)Math.Cos(ph)) * 0.075f;
         return p;
     }
 
@@ -310,7 +317,7 @@ public static class Baseball24
         var k1 = MathUtil.Smoothstep(0.0f, 0.34f, ph);
         p[6] = -2.1f * k1;
         p[8] = -2.1f * k1;
-        p[10] = 1.35f * k1;
+        p[10] = 1.55f * k1;
         p[1] = -0.28f * k1;
         // 2) 踏み込み + 腕を極端に引き絞る
         var k2 = MathUtil.Smoothstep(0.38f, 0.54f, ph);
@@ -322,7 +329,7 @@ public static class Baseball24
         var k3 = MathUtil.Smoothstep(0.56f, 0.62f, ph);
         p[8] = MathUtil.Lerp(p[8], 0.9f, k3);
         p[1] = MathUtil.Lerp(p[1], 0.62f, k3);
-        p[0] = -0.45f * k3;
+        p[0] = -0.60f * k3;
         p[10] = MathUtil.Lerp(p[10], 0.35f, k3);
         p[11] = -0.3f * k3;
         // 4) フォロースルーの余韻
@@ -405,6 +412,7 @@ public static class Baseball24
     static Mesh3d? fieldMesh = null;
     static Mesh3d? ballMesh = null;
     static Mesh3d? batMesh = null;
+    static Mesh3d? gloveMesh = null;
 
     static void Fan(List<float> dst, float cx, float cy, float cz,
         float r, float a0, float a1, int segs, List<float> col)
@@ -432,11 +440,11 @@ public static class Baseball24
         batMesh = btm;
 
         var v = new List<float>();
-        var grass = new List<float> { 0.24f, 0.47f, 0.24f, 1.0f };
-        var grassIn = new List<float> { 0.28f, 0.54f, 0.27f, 1.0f };
-        var dirt = new List<float> { 0.63f, 0.46f, 0.31f, 1.0f };
+        var grass = new List<float> { 0.19f, 0.37f, 0.29f, 1.0f };
+        var grassIn = new List<float> { 0.31f, 0.55f, 0.34f, 1.0f };
+        var dirt = new List<float> { 0.73f, 0.49f, 0.32f, 1.0f };
         var lineW = new List<float> { 0.95f, 0.95f, 0.92f, 1.0f };
-        var wall = new List<float> { 0.26f, 0.42f, 0.58f, 1.0f };
+        var wall = new List<float> { 0.12f, 0.26f, 0.29f, 1.0f };
         var wallTop = new List<float> { 0.88f, 0.82f, 0.35f, 1.0f };
         var up = new List<float> { 0, 1, 0 };
 
@@ -446,6 +454,17 @@ public static class Baseball24
             new List<float> { 95, 0, -20 }, up, grass);
         // フェアグラウンドの扇形 (少し明るい緑)
         Fan(v, 0, 0.012f, 0, fenceR, -(float)Math.PI / 4, (float)Math.PI / 4, 24, grassIn);
+        for (int band = 0; band < 12; band++)
+        {
+            var z0 = band * 6.0f;
+            var z1 = z0 + 3.0f;
+            var edge0 = Math.Min(z0, (float)Math.Sqrt(fenceR * fenceR - z0 * z0));
+            var edge1 = Math.Min(z1, (float)Math.Sqrt(fenceR * fenceR - z1 * z1));
+            Shapes.Quad(v, new List<float> { -edge0, 0.016f, z0 },
+                new List<float> { -edge1, 0.016f, z1 }, new List<float> { edge1, 0.016f, z1 },
+                new List<float> { edge0, 0.016f, z0 }, up,
+                new List<float> { 0.27f, 0.48f, 0.30f, 1 });
+        }
         // 内野ダート (ひし形)
         Shapes.Quad(v, new List<float> { 0, 0.024f, -2.2f },
             new List<float> { 24.5f, 0.024f, baseD },
@@ -524,6 +543,42 @@ public static class Baseball24
                 new List<float> { x1, 1.6f, z1 },
                 new List<float> { x1, 0, z1 }, n, bsCol);
         }
+        var seat = new List<float> { 0.16f, 0.30f, 0.36f, 1 };
+        var concrete = new List<float> { 0.60f, 0.64f, 0.60f, 1 };
+        for (int side = -1; side <= 1; side += 2)
+        {
+            for (int row = 0; row < 7; row++)
+            {
+                float z = -14 - row * 1.5f;
+                float y = 1.6f + row * 0.8f;
+                Shapes.Box(v, side * 11, y - 0.5f, z, 19, 0.6f, 1.5f, concrete);
+                for (int j = 0; j < 22; j++)
+                {
+                    float x = side * 11 - 8.8f + j * 0.84f;
+                    Shapes.Box(v, x, y, z, 0.64f, 0.7f, 0.25f, seat);
+                    var crowd = (j * 7 + row * 3) % 5;
+                    var shirt = crowd == 0 ? new List<float> { 0.84f, 0.40f, 0.28f, 1 }
+                        : crowd == 1 ? lineW : crowd == 2 ? wallTop : seat;
+                    Shapes.Box(v, x, y + 0.16f, z + 0.36f, 0.43f, 0.58f, 0.30f, shirt);
+                    Shapes.Sphere(v, x, y + 0.64f, z + 0.36f, 0.19f,
+                        new List<float> { 0.80f, 0.62f, 0.46f, 1 }, 4, 6);
+                }
+            }
+            Shapes.Box(v, side * 11, 9.5f, -23, 20, 0.22f, 8, wall);
+            for (int j = 0; j < 3; j++)
+                Shapes.Box(v, side * 11 - 9 + j * 9, 4.75f, -25, 0.22f, 9.5f, 0.22f, seat);
+            Shapes.Box(v, side * 34, 10, -8, 0.36f, 20, 0.36f, concrete);
+            Shapes.Box(v, side * 34, 20, -8, 6, 2, 0.6f, seat);
+            for (int j = 0; j < 6; j++)
+                Shapes.Box(v, side * 34 - 2.5f + j, 20, -7.66f, 0.65f, 1.4f, 0.05f, lineW);
+        }
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Shapes.Box(v, side * 1.20f, 0.055f, 0, 0.045f, 0.02f, 2.2f, lineW);
+            Shapes.Box(v, side * 2.45f, 0.055f, 0, 0.045f, 0.02f, 2.2f, lineW);
+            Shapes.Box(v, side * 1.82f, 0.055f, -1.1f, 1.3f, 0.02f, 0.045f, lineW);
+            Shapes.Box(v, side * 1.82f, 0.055f, 1.1f, 1.3f, 0.02f, 0.045f, lineW);
+        }
         fm.Rebuild(Shapes3d.FromInterleaved(v));
 
         var ballVerts = new List<float>();
@@ -531,10 +586,16 @@ public static class Baseball24
             new List<float> { 0.96f, 0.96f, 0.94f, 1.0f }, 8, 12);
         bm.Rebuild(Shapes3d.FromInterleaved(ballVerts));
 
-        var batVerts = new List<float>();
-        Shapes.Box(batVerts, 0, 0, 0.44f, 0.075f, 0.075f, 0.88f,
-            new List<float> { 0.85f, 0.66f, 0.40f, 1.0f });
-        btm.Rebuild(Shapes3d.FromInterleaved(batVerts));
+        btm.Rebuild(Sdf.Mesh(Sdf.Capsule(new Vec3(0, 0, 0.08f), new Vec3(0, 0, 0.45f), 0.035f)
+            .Paint(0x283648)
+            .Smin(Sdf.Capsule(new Vec3(0, 0, 0.40f), new Vec3(0, 0, 0.94f), 0.075f)
+                .Paint(0xDDA75F, 0, 0.4f), 0.06f), 40));
+        var gm = gloveMesh ?? new Mesh3d("bb24_glove");
+        gloveMesh = gm;
+        gm.Rebuild(Sdf.Mesh(Sdf.Sphere(0.17f)
+            .Subtract(Sdf.Sphere(0.14f).Move(0, 0, 0.11f))
+            .Smin(Sdf.Capsule(new Vec3(-0.12f, -0.08f, 0), new Vec3(-0.15f, 0.10f, 0.04f), 0.06f), 0.04f)
+            .Paint(0xAD683B, 0, 0.75f), 32));
     }
 
     // --- ボール ---------------------------------------------------------------
@@ -1423,9 +1484,9 @@ public static class Baseball24
         var tgt = camTarget;
         if (eye == null || tgt == null)
             return;
-        var de = new Vec3(4.6f, 3.1f, 29.0f); // センター後方の中継カメラ
+        var de = new Vec3(4.8f, 3.3f, 28.5f); // センター後方の中継カメラ
         var dtg = new Vec3(-0.3f, 1.1f, 1.2f);
-        var dfov = 30.0f;
+        var dfov = 29.0f;
         if (state == stLive && playPhase != plFoul)
         {
             var land = landing;
@@ -1445,10 +1506,16 @@ public static class Baseball24
             else
             {
                 // 内野俯瞰
-                de = new Vec3(0, 15.0f, -14.0f);
+                de = new Vec3(8, 19.0f, -13.0f);
                 dtg = new Vec3(0, 0.0f, 20.0f);
                 dfov = 50.0f;
             }
+        }
+        else if (state == stPrepitch && stateT < 0.65f)
+        {
+            de = new Vec3(5.2f, 2.5f, 5.0f);
+            dtg = new Vec3(-0.6f, 1.1f, 0);
+            dfov = 34.0f;
         }
         else if (state == stIntro || state == stChange || state == stEnd)
         {
@@ -1481,7 +1548,7 @@ public static class Baseball24
     static Renderer3d? ren = null;
 
     static void DrawChar(float x, float z, float yaw, int team,
-        List<float> pose)
+        List<float> pose, bool glove = false)
     {
         var renNow = ren;
         var cm = charMesh;
@@ -1489,6 +1556,15 @@ public static class Baseball24
             return;
         var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(-yaw);
         renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackBones(pose) });
+        if (glove && gloveMesh != null)
+        {
+            var torso = Mat4.Translate(new Vec3(0, pose[3], 0))
+                * Bones.PivotRot(torsoPx, torsoPy, 0,
+                    Mat4.RotateY(-pose[0]) * Mat4.RotateX(-pose[1]) * Mat4.RotateZ(-pose[2]));
+            var arm = Bones.PivotRot(armPx, armPy, 0,
+                Mat4.RotateZ(-pose[7]) * Mat4.RotateX(-pose[6]));
+            renNow.Draw(gloveMesh, model * torso * arm * Mat4.Translate(new Vec3(0.32f, 1.01f, 0.12f)));
+        }
     }
 
     // バット。スイング位相から向きを決める (打者ローカル)
@@ -1503,8 +1579,15 @@ public static class Baseball24
         var k3 = MathUtil.Smoothstep(0.6f, 1.0f, ph);
         ang = MathUtil.Lerp(ang, 1.9f, k3);
         tilt = MathUtil.Lerp(tilt, 0.45f, k3);
+        var pose = PoseSwing(ph);
+        var torso = Mat4.Translate(new Vec3(0, pose[3], 0))
+            * Bones.PivotRot(torsoPx, torsoPy, 0,
+                Mat4.RotateY(-pose[0]) * Mat4.RotateX(-pose[1]) * Mat4.RotateZ(-pose[2]));
+        var arm = Bones.PivotRot(-armPx, armPy, 0,
+            Mat4.RotateZ(-pose[9]) * Mat4.RotateX(-pose[8]));
+        var grip = (torso * arm).MulPoint(new Vec3(-0.32f, 1.01f, 0.045f));
         // local は Lua キーワードで emit が不正になるため batLocal
-        var batLocal = Mat4.Translate(new Vec3(-0.12f, 1.45f, -0.15f))
+        var batLocal = Mat4.Translate(grip)
             * (Mat4.RotateY(-ang) * Mat4.RotateX(-tilt));
         var b = batter;
         var px = b != null ? b.X : 0.0f;
@@ -1517,7 +1600,8 @@ public static class Baseball24
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
-    static MeshText? mtext = null;
+    static Text? mtext = null;
+    static SpriteBatch? hud = null;
 
     static bool EnsureText()
     {
@@ -1528,48 +1612,69 @@ public static class Baseball24
         {
             fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("bb24_text", fontPath, version, w, h);
+            mtext = new Text("bb24_text", fontPath, 40, 1024);
+            hud = new SpriteBatch(w, h, "bb24_hud", "bb24_hud");
         }
         return mtext != null;
     }
 
+    static void HudText(string text, float x, float y, float size, Color color, bool center = false)
+    {
+        var mt = mtext;
+        var batch = hud;
+        if (mt == null || batch == null) return;
+        float scale = size / mt.Px;
+        mt.Draw(batch, text, center ? x - mt.Width(text, scale) * 0.5f : x, y, color, scale);
+    }
+
     static void DrawHud()
     {
-        if (!EnsureText())
-            return;
-        var mt = mtext;
-        if (mt == null)
-            return;
-        var cream = Color.Rgb(0.97f, 0.96f, 0.9f);
-        var red = Color.Rgb(1.0f, 0.5f, 0.45f);
-        var blue = Color.Rgb(0.55f, 0.7f, 1.0f);
-        // スコア (チーム名は各チーム色)
-        var sL = teamName[0] + " ";
-        var sM = score[0] + " - " + score[1];
-        var sR = " " + teamName[1];
-        var size = 26.0f;
-        var total = mt.Width(sL, size) + mt.Width(sM, size)
-            + mt.Width(sR, size);
-        var x = w * 0.5f - total * 0.5f;
-        mt.Text(sL, x, 38, size, red);
-        mt.Text(sM, x + mt.Width(sL, size), 38, size, cream);
-        mt.Text(sR, x + mt.Width(sL, size) + mt.Width(sM, size), 38, size,
-            blue);
-        // イニングとカウント
-        var halfMark = half == 0 ? "TOP" : "BOT";
-        mt.TextCentered("INN " + inning + " " + halfMark + "   B" + balls
-            + " S" + strikes + " O" + outs, w * 0.5f, 64, 15,
-            Color.Rgb(0.85f, 0.87f, 0.9f));
-        // イベントテキスト (出現時にスケールが弾む)
-        if (eventText != "" && eventT < 1.6f)
+        if (!EnsureText()) return;
+        var batch = hud;
+        if (batch == null) return;
+        var cream = Color.Hex(0xFFF3DB);
+        var ink = Color.Rgb(0.04f, 0.10f, 0.15f, 0.95f);
+        var gold = Color.Hex(0xF5C46B);
+        batch.Begin();
+        batch.Rect(24, 24, 274, 106, ink);
+        batch.Rect(24, 24, 5, 50, Color.Hex(teamRgb[0]));
+        batch.Rect(24, 77, 5, 50, Color.Hex(teamRgb[1]));
+        batch.Rect(40, 75, 240, 1, Color.Rgb(0.3f, 0.4f, 0.45f));
+        batch.Rect(298, 24, 124, 106, Color.Rgb(0.07f, 0.16f, 0.21f, 0.95f));
+        for (int i = 0; i < 3; i++)
+            batch.Disc(335 + i * 24, 107, 5, i < outs ? gold : Color.Hex(0x304653));
+        var occupied = new bool[] { false, false, false };
+        var rns = runners;
+        if (rns != null)
+            foreach (var runner in rns)
+            {
+                if (runner.AtBase >= 1 && runner.AtBase <= 3) occupied[runner.AtBase - 1] = true;
+            }
+        for (int i = 0; i < 3; i++)
         {
-            var ec = eventCol;
-            if (ec == null)
-                return;
-            var pop = 1.0f + 0.6f * (float)Math.Exp(-eventT * 9.0f);
-            var a = eventT > 1.25f ? 1.0f - (eventT - 1.25f) / 0.35f : 1.0f;
-            var c = Color.Rgb(ec.R, ec.G, ec.B, a);
-            mt.TextCentered(eventText, w * 0.5f, 190, 52 * pop, c);
+            float x = i == 0 ? 391 : i == 1 ? 378 : 365;
+            float y = i == 1 ? 59 : 72;
+            batch.Disc(x, y, 6, occupied[i] ? gold : Color.Hex(0x304653));
+        }
+        HudText(teamName[0], 44, 57, 23, cream);
+        HudText(teamName[1], 44, 110, 23, cream);
+        HudText("" + score[0], 258, 61, 35, cream, true);
+        HudText("" + score[1], 258, 114, 35, cream, true);
+        HudText((half == 0 ? "TOP " : "BOT ") + inning, 313, 47, 16, gold);
+        HudText(balls + " - " + strikes, 313, 78, 20, cream);
+        HudText("LUB  /  BASEBALL", w - 118, 42, 17, ink, true);
+        batch.Flush();
+        if (eventText != "" && eventT < 1.6f && eventCol != null)
+        {
+            float a = MathUtil.Clamp((1.6f - eventT) / 0.3f, 0, 1);
+            float slide = (float)Math.Exp(-eventT * 15) * 32;
+            float size = Math.Min(39, 790 / Math.Max(1, mtext!.Width(eventText, 1.0f)) * 40);
+            batch.Begin();
+            batch.Rect(0, 408 + slide, w, 88, Color.Rgb(0.04f, 0.10f, 0.15f, 0.93f * a));
+            batch.Rect(0, 408 + slide, w, 3, Color.Rgb(eventCol.R, eventCol.G, eventCol.B, a));
+            HudText(eventText, w * 0.5f, 464 + slide, size,
+                Color.Rgb(cream.R, cream.G, cream.B, a), true);
+            batch.Flush();
         }
     }
 
@@ -1636,13 +1741,17 @@ public static class Baseball24
 
         // --- 描画 ---
         // 屋外デーゲーム: 高い太陽 + 空色の環境光
-        renNow.Light.Dir = new Vec3(0.35f, 1.0f, -0.25f);
-        renNow.Light.Intensity = 1.3f;
-        renNow.Light.Color = Color.Rgb(1.0f, 0.98f, 0.92f);
-        renNow.Sky.Top = Color.Rgb(0.55f, 0.65f, 0.80f);
+        renNow.Light.Dir = new Vec3(-0.65f, 1.0f, 0.45f);
+        renNow.Light.Intensity = 2.2f;
+        renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);
+        renNow.Sky.Top = Color.Rgb(0.43f, 0.61f, 0.85f);
         renNow.Sky.Bottom = Color.Rgb(0.22f, 0.28f, 0.20f);
-        renNow.Sky.Intensity = 0.55f;
-        renNow.Background = Color.Rgb(0.50f, 0.68f, 0.87f);
+        renNow.Sky.Intensity = 0.7f;
+        renNow.Background = Color.Rgb(0.57f, 0.73f, 0.83f);
+        renNow.Ssao.Radius = 0.35f;
+        renNow.Ssao.Strength = 0.6f;
+        renNow.Bloom.Strength = 0.12f;
+        renNow.Vignette = 0.12f;
         // 影はカメラターゲット周辺 (フィールド全体 100m は 1 枚に入れない)
         renNow.Shadow.Center = new Vec3(tgtNow.X, 0, tgtNow.Z);
         renNow.Shadow.Extent = 30.0f;
@@ -1674,7 +1783,7 @@ public static class Baseball24
                 yaw = (float)Math.PI; // 投手は打者へ正対
             if (i == 1)
                 yaw = 0; // 捕手は投手へ
-            DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose);
+            DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose, true);
         }
         // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
         var bt = BattingTeam();
@@ -1713,7 +1822,21 @@ public static class Baseball24
 
         // ボール
         if (ballVisible)
+        {
+            if (state == stPitch || state == stLive && !ballRolling)
+            {
+                for (int i = 5; i >= 1; i--)
+                {
+                    float lag = i * 0.009f;
+                    float scale = 1.0f - i * 0.13f;
+                    renNow.Draw(ballMesh,
+                        Mat4.Translate(new Vec3(bx - bvx * lag, by - bvy * lag, bz - bvz * lag))
+                            * Mat4.Scale(new Vec3(scale, scale, scale)),
+                        new Draw3dOpts { Tint = Color.Rgb(1, 0.90f, 0.64f, 0.28f - i * 0.035f), Blend = Gfx.Blend.Alpha });
+                }
+            }
             renNow.Draw(ballMesh, Mat4.Translate(new Vec3(bx, by, bz)));
+        }
 
         renNow.End();
 

@@ -151,7 +151,7 @@ public static class Bowling25
     // ピン: 物理 shape (declarePinShapes) と寸法を揃えた回転体近似
     static SdfNode PinModel()
     {
-        var white = 0xF2EFE6;
+        var white = 0xFFF8E9;
         var baseShape = Sdf.Capsule(new Vec3(0, 0.030f, 0), new Vec3(0, 0.090f, 0),
             0.051f);
         var belly = Sdf.Sphere(0.0605f).Move(0, 0.155f, 0);
@@ -159,21 +159,21 @@ public static class Bowling25
             0.032f);
         var head = Sdf.Sphere(0.040f).Move(0, 0.335f, 0);
         var body = baseShape.Smin(belly, 0.03f).Smin(neck, 0.035f).Smin(head, 0.02f)
-            .Paint(white, 0.0f, 0.35f);
+            .Paint(white, 0.0f, 0.18f);
         var stripe1 = Sdf.Torus(0.034f, 0.006f).Move(0, 0.265f, 0)
-            .Paint(0xC2263D, 0.0f, 0.4f);
+            .Paint(0xD53242, 0.0f, 0.4f);
         var stripe2 = Sdf.Torus(0.035f, 0.006f).Move(0, 0.298f, 0)
-            .Paint(0xC2263D, 0.0f, 0.4f);
+            .Paint(0xD53242, 0.0f, 0.4f);
         return body.Smin(stripe1, 0.006f).Smin(stripe2, 0.006f);
     }
 
     // ボール: 指穴 3 つ + 飾りリング (回転が見えるように)
     static SdfNode BallModel()
     {
-        var body = Sdf.Sphere(ballR).Paint(0x2B55A8, 0.15f, 0.25f);
+        var body = Sdf.Sphere(ballR).Paint(0x194878, 0.35f, 0.12f);
         var ring = Sdf.Torus(ballR, 0.0035f)
             .Rotate(new Vec3(1, 0, 0.35f).Normalize(), 1.0f)
-            .Paint(0xD9A441, 0.3f, 0.3f);
+            .Paint(0xEAC780, 0.5f, 0.18f);
         var withRing = body.Smin(ring, 0.002f);
         var h1 = Sdf.Sphere(0.015f).Move(0.024f, 0.098f, 0.027f);
         var h2 = Sdf.Sphere(0.015f).Move(-0.024f, 0.098f, 0.027f);
@@ -192,6 +192,7 @@ public static class Bowling25
     static Mesh3d? pinMesh = null;
     static Mesh3d? ballMesh = null;
     static Mesh3d? cubeMesh = null;
+    static Mesh3d? hallMesh = null;
 
     // --- 物理宣言 ------------------------------------------------------------
     // 静物: x, y, z, hx, hy, hz, friction, restitution
@@ -754,30 +755,30 @@ public static class Bowling25
 
     static void UpdateCamera(WorldRef3d world)
     {
-        var eye = camEye ?? new Vec3(0, 0.62f, -2.4f);
-        var tgt = camTgt ?? new Vec3(0, 0.28f, 6.0f);
-        var de = new Vec3(aimX * 0.55f, 0.62f, -2.4f);
-        var dtg = new Vec3(aimX * 0.25f, 0.28f, 6.0f);
-        var dfov = 38.0f;
+        var eye = camEye ?? new Vec3(0, 0.46f, -1.8f);
+        var tgt = camTgt ?? new Vec3(0, 0.20f, 8.0f);
+        var de = new Vec3(aimX * 0.35f, 0.46f, -1.8f);
+        var dtg = new Vec3(aimX * 0.25f, 0.20f, 8.0f);
+        var dfov = 43.0f;
         if (state == stRoll)
         {
             var pose = Phys3d.PoseByKey(world, "ball");
             if (pose != null && pose.Z < 14.0f)
             {
-                de = new Vec3(pose.X * 0.45f, 1.0f, pose.Z - 3.2f);
-                dtg = new Vec3(pose.X * 0.8f, 0.12f, pose.Z + 4.5f);
+                de = new Vec3(pose.X * 0.7f, 0.40f, pose.Z - 1.8f);
+                dtg = new Vec3(pose.X * 0.8f, 0.16f, pose.Z + 3.5f);
                 dfov = 42.0f;
             }
             else
             {
-                de = new Vec3(-1.05f, 0.85f, 15.2f);
+                de = new Vec3(-0.82f, 0.64f, 15.9f);
                 dtg = new Vec3(0.05f, 0.25f, pinZ + 0.3f);
                 dfov = 30.0f;
             }
         }
         else if (state == stSettle || state == stScore)
         {
-            de = new Vec3(-1.05f, 0.8f, 15.6f);
+            de = new Vec3(-0.82f, 0.64f, 15.9f);
             dtg = new Vec3(0.0f, 0.22f, pinZ + 0.3f);
             dfov = 28.0f;
         }
@@ -789,7 +790,7 @@ public static class Bowling25
             dtg = new Vec3(0, 0.2f, pinZ);
             dfov = 45.0f;
         }
-        var k = Math.Min(1.0f, 5.0f * tickDt);
+        var k = Math.Min(1.0f, (state >= stRoll ? 9.0f : 5.0f) * tickDt);
         camEye = eye.Lerp(de, k);
         camTgt = tgt.Lerp(dtg, k);
         camFov = MathUtil.Lerp(camFov, dfov, k);
@@ -821,25 +822,168 @@ public static class Bowling25
     }
 
     // 静的な舞台 (物理 STATICS と目視で寸法を揃える)
+    static ShaderRef? SurfaceShader()
+    {
+        return Gfx.UseShader("bw25_surface", """
+            struct U { float4x4 mvp; float4x4 model; float4x4 light_mvp; float4 tint; };
+            ConstantBuffer<U> u;
+            struct V { float3 pos; float pad0; float3 normal; float pad1; float3 color; float pad2; float2 mr; float2 pad3; };
+            StructuredBuffer<V> verts;
+            struct Out {
+                float3 normal : TEXCOORD0; float3 world : TEXCOORD1;
+                float4 shadow : TEXCOORD2; float2 mr : TEXCOORD3;
+                float4 color : COLOR0; float4 pos : SV_Position;
+            };
+            [shader("vertex")] Out vs_main(uint id : LUB_VERTEX_ID) {
+                V v = verts[id]; Out o;
+                float4 world = mul(u.model, float4(v.pos, 1));
+                o.pos = mul(u.mvp, float4(v.pos, 1));
+                o.world = world.xyz; o.normal = mul(u.model, float4(v.normal, 0)).xyz;
+                o.shadow = mul(u.light_mvp, world); o.mr = v.mr;
+                o.color = float4(pow(v.color * u.tint.rgb, float3(2.2, 2.2, 2.2)), u.tint.a);
+                return o;
+            }
+            """, """
+            LUB_TEXTURE2D(shadow_map);
+            struct F {
+                float4 light_dir; float4 light_col; float4 sky_col;
+                float4 ground_col; float4 cam_pos; float4 shadow_p;
+            };
+            ConstantBuffer<F> f;
+            struct In {
+                float3 normal : TEXCOORD0; float3 world : TEXCOORD1;
+                float4 shadow : TEXCOORD2; float2 mr : TEXCOORD3; float4 color : COLOR0;
+            };
+            [shader("fragment")] float4 fs_main(In i) : SV_Target {
+                float3 n = normalize(i.normal);
+                float3 v = normalize(f.cam_pos.xyz - i.world);
+                float3 p = i.shadow.xyz / i.shadow.w;
+                p.xy = p.xy * float2(0.5, -0.5) + 0.5;
+                float3 dx = ddx(p), dy = ddy(p);
+                float det = dx.x * dy.y - dx.y * dy.x;
+                float2 gradient = abs(det) < 1e-15 ? float2(0, 0)
+                    : float2(dx.z * dy.y - dy.z * dx.y, dx.x * dy.z - dy.x * dx.z) / det;
+                float2 uv = p.xy;
+                float shadow = 1;
+                if (f.shadow_p.z > 0.5 && all(uv > 0) && all(uv < 1) && p.z > 0 && p.z < 1) {
+                    shadow = 0;
+                    float texel = f.shadow_p.x;
+                    float2 coord = uv / texel - 0.5;
+                    float2 base = floor(coord), fraction = frac(coord);
+                    for (int y = -1; y <= 2; y++)
+                        for (int x = -1; x <= 2; x++) {
+                            float2 at = clamp((base + float2(x, y) + 0.5) * texel, texel * 0.5, 1 - texel * 0.5);
+                            float depth = LUB_SAMPLE_LOD(shadow_map, at).r;
+                            float receiver = p.z + dot(gradient, at - uv);
+                            float wx = x == -1 ? 1 - fraction.x : (x == 2 ? fraction.x : 1);
+                            float wy = y == -1 ? 1 - fraction.y : (y == 2 ? fraction.y : 1);
+                            shadow += receiver - f.shadow_p.y <= depth ? wx * wy / 9 : 0;
+                        }
+                }
+                float3 ambient = lerp(f.ground_col.rgb, f.sky_col.rgb, n.y * 0.5 + 0.5) * f.sky_col.w;
+                float3 diffuse = f.light_col.rgb * saturate(dot(n, f.light_dir.xyz)) * shadow;
+                float3 deckLight = float3(0, 0.57, 18.30) - i.world;
+                float deckDistance = max(dot(deckLight, deckLight), 0.01);
+                diffuse += float3(1.6, 1.4, 1.1) * saturate(dot(n, deckLight * rsqrt(deckDistance)))
+                    / (1 + deckDistance * 2) * smoothstep(17, 18, i.world.z);
+                float3 r = reflect(-v, n);
+                float3 ceiling = i.world + r * ((4.54 - i.world.y) / max(r.y, 0.001));
+                float across = abs(frac(ceiling.x / 2.25 + 0.5) - 0.5) * 2.25;
+                float along = abs(frac((ceiling.z - 1) / 5 + 0.5) - 0.5) * 5;
+                float soft = 0.025 + i.mr.y * i.mr.y * 0.65;
+                float lamps = (1 - smoothstep(0.135, 0.135 + soft, across))
+                    * (1 - smoothstep(1.5, 1.5 + soft, along))
+                    * step(0.01, r.y) * step(abs(ceiling.x), 5.6)
+                    * step(-0.5, ceiling.z) * step(ceiling.z, 17.5);
+                float fresnel = 0.06 + 0.94 * pow(1 - saturate(dot(n, v)), 5);
+                float3 specular = float3(4.8, 3.8, 2.5) * lamps * fresnel
+                    * (1 - smoothstep(0.35, 0.55, i.mr.y));
+                float highlight = pow(saturate(dot(n, normalize(v + f.light_dir.xyz))), 64);
+                specular += f.light_col.rgb * highlight * (1 - i.mr.y) * 0.3 * shadow;
+                return float4(i.color.rgb * (ambient + diffuse) + specular, i.color.a);
+            }
+            """, 1);
+    }
+
+    static void BuildHall()
+    {
+        var v = new List<float>();
+        var navy = new List<float> { 0.095f, 0.15f, 0.23f, 1 };
+        var brass = new List<float> { 0.70f, 0.53f, 0.29f, 1 };
+        var lamp = new List<float> { 2.1f, 1.75f, 1.20f, 1 };
+        var blue = new List<float> { 0.35f, 0.72f, 0.90f, 1 };
+        var up = new List<float> { 0, 1, 0 };
+        Shapes.Box(v, 0, 2.5f, 22, 16, 6, 0.3f, navy);
+        for (int lane = -2; lane <= 2; lane++)
+        {
+            float center = lane * 2.25f;
+            for (int board = 0; board < 39; board++)
+            {
+                float x = center - laneHw + (board + 0.5f) * (laneHw * 2 / 39);
+                for (int section = 0; section < 9; section++)
+                {
+                    float tone = ((board * 13 + section * 7) % 11) * 0.007f;
+                    var wood = new List<float> { 0.73f + tone, 0.53f + tone, 0.31f + tone, 1 };
+                    float half = laneHw / 39;
+                    float length = (deckEnd + 2.5f) / 9;
+                    float z0 = -2.5f + section * length;
+                    float z1 = z0 + length;
+                    Shapes.Quad(v, new List<float> { x - half, 0, z0 },
+                        new List<float> { x - half, 0, z1 }, new List<float> { x + half, 0, z1 },
+                        new List<float> { x + half, 0, z0 }, up, wood);
+                }
+            }
+            if (lane != 0)
+            {
+                Shapes.Box(v, center - 0.7f, -0.06f, 9, 0.31f, 0.06f, 23, navy);
+                Shapes.Box(v, center + 0.7f, -0.06f, 9, 0.31f, 0.06f, 23, navy);
+            }
+            Shapes.Box(v, center, 1.15f, 20.8f, 2.05f, 1.55f, 0.18f, navy);
+            Shapes.Box(v, center, 1.86f, 20.68f, 1.90f, 0.04f, 0.05f, brass);
+            Shapes.Box(v, center, 0.45f, 20.68f, 1.90f, 0.025f, 0.05f, blue);
+            for (int bar = 0; bar < 5; bar++)
+                Shapes.Box(v, center - 0.64f + bar * 0.32f, 1.15f, 20.67f,
+                    0.055f, 0.4f + (2 - Math.Abs(bar - 2)) * 0.18f, 0.03f, brass);
+            for (int light = 0; light < 4; light++)
+            {
+                float z = 1 + light * 5;
+                Shapes.Box(v, center, 4.65f, z, 0.42f, 0.16f, 3.2f, brass);
+                Shapes.Box(v, center, 4.54f, z, 0.27f, 0.035f, 3.0f, lamp);
+            }
+        }
+        Shapes.Box(v, 0, 0.57f, 18.30f, 1.2f, 0.025f, 0.045f, lamp);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Shapes.Box(v, side * 6.3f, 2.2f, 9, 0.22f, 4.4f, 26, navy);
+            for (int rib = 0; rib < 14; rib++)
+                Shapes.Box(v, side * 6.16f, 2.2f, -3 + rib * 1.9f, 0.10f, 4.4f, 0.10f, brass);
+            Shapes.Box(v, side * (laneHw + gutterW + 0.04f), 0.31f, 10,
+                0.025f, 0.018f, 20, lamp);
+        }
+        var mesh = hallMesh ?? new Mesh3d("bw25_hall");
+        hallMesh = mesh;
+        var data = Shapes3d.FromInterleaved(v);
+        var mr = new List<float>();
+        for (int i = 0; i < data.VertCount; i++)
+        {
+            mr.Add(0.0f);
+            mr.Add(data.Positions[i * 3 + 1] < 0.03f ? 0.22f : 0.65f);
+        }
+        data.MetalRough = mr;
+        mesh.Rebuild(data);
+    }
+
     static void DrawStage()
     {
-        var wood = Color.Rgb(0.76f, 0.60f, 0.40f);
-        var woodOil = Color.Rgb(0.70f, 0.57f, 0.41f);
         var dark = Color.Rgb(0.16f, 0.17f, 0.19f);
-        var accentRed = Color.Rgb(0.52f, 0.15f, 0.20f);
+        var accentRed = Color.Rgb(0.10f, 0.17f, 0.25f);
         var mark = Color.Rgb(0.35f, 0.20f, 0.12f);
 
+        if (hallMesh != null && ren != null)
+            ren.Draw(hallMesh, new Mat4(), new Draw3dOpts { Shader = SurfaceShader() });
         // 周辺の床 (見た目のみ)
         DrawBox(BoxMat(0, -0.7f, 9.0f, 6.0f, 0.05f, 14.0f),
             Color.Rgb(0.10f, 0.10f, 0.13f), null);
-        // アプローチ
-        DrawBox(BoxMat(0, -0.06f, -1.25f, laneHw + gutterW + 0.12f, 0.06f, 1.25f),
-            Color.Rgb(0.62f, 0.51f, 0.36f), null);
-        // レーン (オイル / ドライ)
-        DrawBox(BoxMat(0, -0.06f, oilEnd * 0.5f, laneHw, 0.06f, oilEnd * 0.5f),
-            woodOil, null);
-        DrawBox(BoxMat(0, -0.06f, (oilEnd + deckEnd) * 0.5f, laneHw, 0.06f,
-            (deckEnd - oilEnd) * 0.5f), wood, null);
         // ガター
         DrawBox(BoxMat(-(laneHw + gutterW * 0.5f), -0.104f, deckEnd * 0.5f,
             gutterW * 0.5f, 0.05f, deckEnd * 0.5f), dark, null);
@@ -847,9 +991,9 @@ public static class Bowling25
             gutterW * 0.5f, 0.05f, deckEnd * 0.5f), dark, null);
         // 側壁
         DrawBox(BoxMat(-(laneHw + gutterW + 0.03f), 0.08f, pitEnd * 0.5f, 0.03f,
-            0.22f, pitEnd * 0.5f), Color.Rgb(0.30f, 0.31f, 0.36f), null);
+            0.22f, pitEnd * 0.5f), Color.Rgb(0.11f, 0.18f, 0.25f), null);
         DrawBox(BoxMat(laneHw + gutterW + 0.03f, 0.08f, pitEnd * 0.5f, 0.03f,
-            0.22f, pitEnd * 0.5f), Color.Rgb(0.30f, 0.31f, 0.36f), null);
+            0.22f, pitEnd * 0.5f), Color.Rgb(0.11f, 0.18f, 0.25f), null);
         // ピット (奥の暗がり) とマスキング
         DrawBox(BoxMat(0, -0.58f, (deckEnd + pitEnd) * 0.5f,
             laneHw + gutterW + 0.06f, 0.05f, (pitEnd - deckEnd) * 0.5f + 0.2f),
@@ -902,7 +1046,8 @@ public static class Bowling25
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
-    static MeshText? mtext = null;
+    static Text? mtext = null;
+    static SpriteBatch? hud = null;
     static string eventText = "";
     static float eventT = 99.0f;
     static Color? eventCol = null;
@@ -922,57 +1067,82 @@ public static class Bowling25
         {
             fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("bw25_text", fontPath, version, w, h);
+            mtext = new Text("bw25_text", fontPath, 40, 1024);
+            hud = new SpriteBatch(w, h, "bw25_hud", "bw25_hud");
         }
         return mtext != null;
+    }
+
+    static void HudText(string text, float x, float y, float size, Color color, bool center = false)
+    {
+        var mt = mtext;
+        var batch = hud;
+        if (mt == null || batch == null) return;
+        float scale = size / mt.Px;
+        mt.Draw(batch, text, center ? x - mt.Width(text, scale) * 0.5f : x, y, color, scale);
     }
 
     static void DrawHud()
     {
         if (!EnsureText()) return;
-        var mt = mtext;
-        if (mt == null) return;
-        var cream = Color.Rgb(0.96f, 0.95f, 0.9f);
-        var gray = Color.Rgb(0.55f, 0.57f, 0.62f);
-        var gold = Color.Rgb(1.0f, 0.85f, 0.3f);
-        // スコアボード: 10 フレームのマーク列 + 合計
-        var colW = 56.0f;
-        var x0 = w * 0.5f - 4.5f * colW;
+        var batch = hud;
+        if (batch == null) return;
+        var cream = Color.Hex(0xFFF3DB);
+        var muted = Color.Hex(0xA8BCC6);
+        var gold = Color.Hex(0xEDC782);
+        var ink = Color.Rgb(0.035f, 0.08f, 0.13f, 0.94f);
+        batch.Begin();
+        batch.Rect(24, 24, 120, 76, ink);
+        batch.Rect(148, 24, 652, 76, ink);
+        batch.Rect(804, 24, 132, 76, ink);
+        HudText("TEN PIN", 84, 55, 20, cream, true);
+        HudText("BOWLING CLUB", 84, 78, 11, gold, true);
         for (int f = 0; f < 10; f++)
         {
-            var cx = x0 + f * colW;
-            var cur = f == fi && state != stEnd;
-            mt.TextCentered("" + (f + 1), cx, 24, 11, cur ? gold : gray);
-            mt.TextCentered(MarkStr(f), cx, 46, 20, cream);
+            float x = 151 + f * 65;
+            bool current = f == fi && state != stEnd;
+            if (current)
+            {
+                batch.Rect(x, 24, 62, 76, Color.Rgb(0.16f, 0.25f, 0.30f));
+                batch.Rect(x, 97, 62, 3, gold);
+            }
+            HudText("" + (f + 1), x + 31, 46, 13, current ? gold : muted, true);
+            HudText(MarkStr(f), x + 31, 80, 22, cream, true);
         }
-        mt.TextCentered("SCORE " + TotalScore(), w * 0.5f, 76, 16, cream);
-        // イベント (出現時にスケールが弾む)
+        HudText("TOTAL", 870, 45, 12, gold, true);
+        HudText("" + TotalScore(), 870, 84, 36, cream, true);
+        if (state <= stPower)
+        {
+            batch.Rect(232, 441, 496, 79, ink);
+            var labels = new string[] { "POSITION", "ANGLE", "HOOK", "POWER" };
+            for (int i = 0; i < 4; i++)
+            {
+                float x = 246 + i * 119;
+                batch.Rect(x, 453, 111, 3, i <= state ? gold : Color.Hex(0x304653));
+                HudText(labels[i], x + 55, 478, 14, i == state ? cream : muted, true);
+            }
+            HudText(autoPlay ? "AUTO PLAY  /  PRESS TO TAKE OVER" : state == stPower ? "SPACE / CLICK  /  THROW" : "SPACE / CLICK  /  LOCK IN",
+                w * 0.5f, 505, 14, gold, true);
+            if (state == stPower)
+            {
+                batch.Rect(316, 414, 328, 10, ink);
+                batch.Rect(320, 417, 320 * power, 4, gold);
+            }
+        }
+        batch.Flush();
         var ec = eventCol;
-        if (eventText != "" && eventT < 1.6f && ec != null)
+        if (eventText != "" && eventT < 1.6f && ec != null || state == stEnd)
         {
-            var pop = 1.0f + 0.5f * (float)Math.Exp(-eventT * 9.0f);
-            var a = eventT > 1.25f ? 1.0f - (eventT - 1.25f) / 0.35f : 1.0f;
-            mt.TextCentered(eventText, w * 0.5f, 205, 48 * pop,
-                Color.Rgb(ec.R, ec.G, ec.B, a));
-        }
-        // ゲーム終了
-        if (state == stEnd)
-        {
-            mt.TextCentered("GAME SET", w * 0.5f, 220, 44, gold);
-            mt.TextCentered("SCORE " + TotalScore(), w * 0.5f, 268, 28, cream);
-        }
-        // 操作プロンプト
-        var prompt = "";
-        if (state == stAim) prompt = "PRESS: SET POSITION";
-        else if (state == stAngle) prompt = "PRESS: SET ANGLE";
-        else if (state == stHook) prompt = "PRESS: SET HOOK";
-        else if (state == stPower) prompt = "PRESS: THROW";
-        if (prompt != "")
-        {
-            if (autoPlay) prompt = "AUTO PLAY - PRESS TO TAKE OVER";
-            mt.TextCentered(prompt, w * 0.5f, h - 28, 15,
-                Color.Rgb(0.8f, 0.82f, 0.88f));
-            mt.TextCentered("SPACE / CLICK", w * 0.5f, h - 10, 11, gray);
+            float a = state == stEnd ? 1 : MathUtil.Clamp((1.6f - eventT) / 0.3f, 0, 1);
+            float slide = state == stEnd ? 0 : (float)Math.Exp(-eventT * 14) * 26;
+            batch.Begin();
+            batch.Rect(240, 369 + slide, 480, 129, Color.Rgb(0.035f, 0.08f, 0.13f, 0.96f * a));
+            batch.Rect(240, 369 + slide, 480, 3, Color.Rgb(gold.R, gold.G, gold.B, a));
+            HudText(state == stEnd ? "GAME SET" : eventText, w * 0.5f, 432 + slide, 42,
+                Color.Rgb(cream.R, cream.G, cream.B, a), true);
+            HudText("TOTAL  " + TotalScore(), w * 0.5f, 473 + slide, 20,
+                Color.Rgb(gold.R, gold.G, gold.B, a), true);
+            batch.Flush();
         }
     }
 
@@ -991,8 +1161,35 @@ public static class Bowling25
         ren = renNow;
         if (meshDirty)
         {
-            pinM.Rebuild(Sdf.Mesh(PinModel(), 48, null));
-            ballM.Rebuild(Sdf.Mesh(BallModel(), 48, null));
+            pinM.Rebuild(Sdf.Mesh(PinModel(), 64, null));
+            var ballData = Sdf.Mesh(BallModel(), 64, null);
+            var colors = ballData.Colors;
+            if (colors != null)
+            {
+                var marble = new List<float>();
+                for (int i = 0; i < ballData.VertCount; i++)
+                {
+                    float x = ballData.Positions[i * 3] / ballR;
+                    float y = ballData.Positions[i * 3 + 1] / ballR;
+                    float z = ballData.Positions[i * 3 + 2] / ballR;
+                    float vein = (float)Math.Pow(0.5f + 0.5f * (float)Math.Sin(x * 15 + y * 9 + 3 * (float)Math.Sin(z * 7)), 5);
+                    if (colors[i * 3 + 2] > colors[i * 3])
+                    {
+                        marble.Add(0.10f + vein * 0.22f);
+                        marble.Add(0.23f + vein * 0.40f);
+                        marble.Add(0.43f + vein * 0.34f);
+                    }
+                    else
+                    {
+                        marble.Add(colors[i * 3]);
+                        marble.Add(colors[i * 3 + 1]);
+                        marble.Add(colors[i * 3 + 2]);
+                    }
+                }
+                ballData.Colors = marble;
+            }
+            ballM.Rebuild(ballData);
+            BuildHall();
             if (!cubeM.Ready()) cubeM.Rebuild(Shapes3d.Cube());
             meshDirty = false;
         }
@@ -1017,12 +1214,17 @@ public static class Bowling25
 
         // --- 描画 ---
         // 暗めの場内 + レーン主体のライティング
-        renNow.Light.Dir = new Vec3(-0.35f, 1.0f, -0.3f);
-        renNow.Light.Intensity = 1.15f;
-        renNow.Sky.Top = Color.Rgb(0.30f, 0.33f, 0.42f);
+        renNow.Light.Dir = new Vec3(-0.20f, 1.0f, -0.45f);
+        renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);
+        renNow.Light.Intensity = 2.0f;
+        renNow.Sky.Top = Color.Rgb(0.32f, 0.45f, 0.66f);
         renNow.Sky.Bottom = Color.Rgb(0.10f, 0.09f, 0.09f);
-        renNow.Sky.Intensity = 0.38f;
-        renNow.Background = Color.Rgb(0.05f, 0.06f, 0.09f);
+        renNow.Sky.Intensity = 0.65f;
+        renNow.Background = Color.Rgb(0.045f, 0.075f, 0.12f);
+        renNow.Ssao.Radius = 0.12f;
+        renNow.Ssao.Strength = 0.65f;
+        renNow.Bloom.Strength = 0.22f;
+        renNow.Vignette = 0.22f;
         // 影のオルソ範囲は注視点 (カメラターゲット) 周辺に寄せて解像度を稼ぐ
         renNow.Shadow.Center = new Vec3(0, 0,
             MathUtil.Clamp(tgtNow.Z, 3.0f, pinZ));
@@ -1044,18 +1246,19 @@ public static class Bowling25
             if (!pins[i].Standing) continue;
             var pose = Phys3d.PoseByKey(world, "pin:" + i);
             if (pose != null)
-                renNow.Draw(pinM, Renderer3d.PoseMat(pose));
+                renNow.Draw(pinM, Renderer3d.PoseMat(pose), new Draw3dOpts { Shader = SurfaceShader() });
         }
         // ボール (投球前は構え位置のプレビュー)
         if (ballLive)
         {
             var pose = Phys3d.PoseByKey(world, "ball");
             if (pose != null)
-                renNow.Draw(ballM, Renderer3d.PoseMat(pose));
+                renNow.Draw(ballM, Renderer3d.PoseMat(pose), new Draw3dOpts { Shader = SurfaceShader() });
         }
         else if (state <= stPower)
         {
-            renNow.Draw(ballM, Mat4.Translate(new Vec3(aimX, ballR, 0)));
+            renNow.Draw(ballM, Mat4.Translate(new Vec3(aimX, ballR, 0)),
+                new Draw3dOpts { Shader = SurfaceShader() });
         }
 
         DrawGuide();
