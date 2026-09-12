@@ -2,7 +2,7 @@
 
 床と浮いた箱だけを、固定カメラと固定の平行光源で描く。
 `18_coin_pusher` と同じ `Renderer3d` を使う。
-SSAO、bloom、FXAA は無効。影の補正値は既定の `0.004` のままにする。
+SSAO、bloom、FXAA は無効。影の補正値は既定の `0.0001` のままにする。
 
 ```sh
 ./build-release-linux/lub samples/28_renderer_shadow/RendererShadow28.csproj
@@ -37,7 +37,8 @@ S キーは影、A キーは SSAO、O キーは上のコインの表示を切り
 
 | 値 | 比較条件 |
 | --- | --- |
-| `baseline` | 現行の影。省略時の値、bias は 0.001 |
+| `baseline` | 調査開始時の影。省略時の値、bias は 0.001 |
+| `fixed` | 修正後の Renderer3d 本体。bias は既定の 0.0001 |
 | `shadow_off` / `ao_off` / `clean` | 影なし / SSAO なし / 両方なし |
 | `single` / `reverse` | 下の 1 枚だけ / 描画順を反転 |
 | `bias_high` / `bias_low` / `bias_zero` | bias を 0.004 / 0.0001 / 0 に変更 |
@@ -47,7 +48,24 @@ S キーは影、A キーは SSAO、O キーは上のコインの表示を切り
 | `weighted` | 受け面の深度補正と PCF の補間を組み合わせる試作 |
 | `reference` | 同じ 24 角柱 2 枚への光線の交差で求める、ぼかしのない比較用の影 |
 
-試作はこのプロセス内のシェーダーだけを差し替える。
-`Renderer3d` 本体と `18_coin_pusher` の影の実装には反映しない。
+`fixed` 以外は調査開始時のシェーダーを読み、このプロセス内だけで比較方式を差し替える。
+試作モードは当時の比較条件を保つ。修正後の本体を確認するときは `fixed` を使う。
 `reference` の逆行列は固定した 2 枚に対応するので、配置を変える場合は再計算が必要。
 検証の範囲と結果は [調査記録](../../docs/log/2026-09-12-coin-shadow-verification.md) を参照。
+
+
+## 傾いたコイン 1 枚の自己影
+
+`coin_acne.lua` は、実際の連続投入後に縞が出たコイン 1 枚の位置・姿勢を固定する。
+この平らな面は光に向いており、ほかの遮蔽物もないので、影 ON/OFF で縞が出てはいけない。
+初期状態は修正後の Renderer3d。`legacy` は調査開始時の方式で縞を再現する。
+
+```sh
+./build-release-linux/lub samples/28_renderer_shadow/coin_acne.lua
+COIN_MODE=legacy ./build-release-linux/lub samples/28_renderer_shadow/coin_acne.lua
+```
+
+S キーで影、space キーで微小な移動・回転を切り替える。
+SSAO、bloom、FXAA、dither は無効。
+`tests/lua/test_renderer3d_coin_shadow.lua` はこの姿勢を少しずつ変え、平らな面の画素を影 ON/OFF で比較する。
+原因と検証結果は [修正の記録](../../docs/log/2026-09-12-coin-shadow-fix.md) を参照。

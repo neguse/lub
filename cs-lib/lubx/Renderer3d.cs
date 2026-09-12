@@ -113,7 +113,8 @@ public class Renderer3dShadow
     public int Size = 2048;
     public Vec3 Center = new Vec3(0, 0, 0);
     public float Extent = 12.0f;
-    public float Bias = 0.004f;
+    /// <summary>受け面の深度補正後に残る丸め誤差用の bias (影の深度 0〜1)。</summary>
+    public float Bias = 0.0001f;
 }
 
 /// <summary>SSAO (半解像度、depth 由来)。`radius` は view 空間。</summary>
@@ -331,7 +332,19 @@ public class Renderer3d
           float4 albedo : COLOR0;
         };
 
-        float shadow_factor(float4 lpos, float ndl) {
+        // 微分は light-facing / shadow-enabled の分岐前に評価する。
+        float2 shadow_depth_gradient(float4 lpos) {
+          float3 p = lpos.xyz / lpos.w;
+          p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;
+          float3 dx = ddx(p), dy = ddy(p);
+          float det = dx.x * dy.y - dx.y * dy.x;
+          if (abs(det) < 1e-15f)
+            return float2(0.0f, 0.0f);
+          return float2(dx.z * dy.y - dy.z * dx.y,
+                        dx.x * dy.z - dy.x * dx.z) / det;
+        }
+
+        float shadow_factor(float4 lpos, float2 dz) {
           if (f.shadow_p.z < 0.5f)
             return 1.0f;
           float3 ndc = lpos.xyz / lpos.w;
@@ -341,14 +354,21 @@ public class Renderer3d
               ndc.z > 1.0f)
             return 1.0f;
           float texel = f.shadow_p.x;
-          // slope-scaled: 面が光に平行なほど acne が出やすいので bias を増す
-          float bias = f.shadow_p.y * (1.0f + (1.0f - saturate(ndl)) * 3.0f);
+          // 各 texel の中心にある受け面の深度を比較する。
+          // 同じ ndc.z を周囲にも使うと、光に平行な面ほど自己影の縞になる。
+          float2 coord = uv / texel - 0.5f;
+          float2 base = floor(coord), fracUv = frac(coord);
           float lit = 0.0f;
-          for (int y = -1; y <= 1; ++y)
-            for (int x = -1; x <= 1; ++x) {
-              float closest =
-                  LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).r;
-              lit += (ndc.z - bias <= closest) ? 1.0f : 0.0f;
+          // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。
+          for (int y = -1; y <= 2; ++y)
+            for (int x = -1; x <= 2; ++x) {
+              float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;
+              sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);
+              float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;
+              float receiver = ndc.z + dot(dz, sampleUv - uv);
+              float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);
+              float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);
+              lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;
             }
           return lit / 9.0f;
         }
@@ -361,7 +381,8 @@ public class Renderer3d
           float ndl = dot(n, l);
           // 裏向きの面に直接光を足すと、shadow bias が明るい縁として見える。
           // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。
-          float sh = ndl > 0.0f ? shadow_factor(i.lpos, ndl) : 0.0f;
+          float2 shadowGradient = shadow_depth_gradient(i.lpos);
+          float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;
           float up = n.y * 0.5f + 0.5f;
           float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;
           float3 v = normalize(f.cam_pos.xyz - i.wp);

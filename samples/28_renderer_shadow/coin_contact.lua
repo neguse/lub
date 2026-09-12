@@ -50,6 +50,11 @@ local scene = {
 	},
 }
 local mode = os.getenv("COIN_MODE") or "baseline"
+if mode ~= "fixed" then
+	local legacy = assert(io.open("samples/28_renderer_shadow/coin_shadow_legacy.slang", "r"))
+	x.Renderer3d.lit_fs = legacy:read("*a")
+	legacy:close()
+end
 if mode == "one_tap" then
 	x.Renderer3d.lit_fs = x.Renderer3d.lit_fs
 		:gsub("int y = %-1; y <= 1", "int y = 0; y <= 0")
@@ -152,7 +157,8 @@ return {
 		r.background = x.Color.rgb(0.035, 0.045, 0.06)
 		r.shadow.size = mode == "high_res" and 8192 or 2048
 		r.shadow.extent = 3
-		r.shadow.bias = mode == "bias_high" and 0.004
+		r.shadow.bias = mode == "fixed" and 0.0001
+			or mode == "bias_high" and 0.004
 			or (mode == "bias_low" and 0.0001 or (mode == "bias_zero" and 0 or 0.001))
 		r.shadow.enabled = shadows and mode ~= "clean"
 		r.ssao.enabled = ao and mode ~= "clean"

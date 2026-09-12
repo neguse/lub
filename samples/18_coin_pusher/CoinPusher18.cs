@@ -500,8 +500,6 @@ public static class CoinPusher18
         rn.Background = Color.Rgb(0.035f, 0.045f, 0.06f);
         rn.Shadow.Center = new Vec3(0, 0, 0);
         rn.Shadow.Extent = 3.0f;
-        // 厚み 0.07 のコインの接地影を既定の補正で削らないようにする。
-        rn.Shadow.Bias = 0.001f;
         rn.Begin(new Camera
         {
             Eye = new Vec3(0.0f, 3.3f, 4.4f),
