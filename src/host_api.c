@@ -55,6 +55,8 @@ LubContext *lub_host_create(const LubHostOpts *opts) {
 
 LubStatus lub_host_start(LubContext *ctx) {
   App *app = lub_api_app(ctx);
+  if (app->init_failed)
+    return LUB_ERROR;
   if (app->cfg_w > 0 && app->cfg_h > 0)
     SDL_SetWindowSize(app->window, app->cfg_w, app->cfg_h);
   if (!app_backend_init(app))

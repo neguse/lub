@@ -3770,6 +3770,18 @@ static int l_config(lua_State *L) {
   return 0;
 }
 
+static int l_assert(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool condition = lua_toboolean(L, 1);
+  LubStr message = lgen_str_arg(L, 2);
+  LubStatus st = lub_assert(lgen_ctx(), condition, message);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
 static int l_quit(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -8650,6 +8662,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_newtable(L); // lub
   lua_pushcfunction(L, l_config);
   lua_setfield(L, -2, "config");
+  lua_pushcfunction(L, l_assert);
+  lua_setfield(L, -2, "assert");
   lua_pushcfunction(L, l_quit);
   lua_setfield(L, -2, "quit");
   lua_pushstring(L, "quit");

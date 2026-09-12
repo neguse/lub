@@ -2397,6 +2397,9 @@ typedef struct LubEventData {
 // ランタイム設定。`OnInit` 内でのみ有効。
 LUB_API LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
 
+// 条件が偽なら message をエラーとして現在のコールバックを中断する。
+LUB_API LubStatus lub_assert(LubContext *ctx, bool condition, LubStr message);
+
 // アプリ終了を要求する。
 LUB_API void lub_quit(LubContext *ctx);
 

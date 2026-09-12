@@ -20,6 +20,7 @@ end
 
 function M.on_frame()
 	check("config", "function")
+	check("assert", "function")
 	check("quit", "function")
 	check("QUIT", "value")
 	check("KEY_DOWN", "value")
@@ -354,7 +355,7 @@ function M.on_frame()
 	check("phys3d.HIT", "value")
 	check("png.load", "function")
 	check("png.write", "function")
-	print("API_SURFACE_OK members=335")
+	print("API_SURFACE_OK members=336")
 	lub.quit()
 end
 
