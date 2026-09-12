@@ -1905,9 +1905,9 @@ public static class Baseball24
                 debugGuides = Ui.Checkbox("Direction guides", debugGuides);
                 if (debugGuides)
                 {
-                    Ui.Text("Red: world +X / Blue: world +Z");
-                    Ui.Text("White: root / Yellow: chest / Cyan: face");
-                    Ui.Text("Dots mark the forward ends.");
+                    Ui.Text("World: red +X / blue +Z");
+                    Ui.Text("Root: white / Chest: yellow");
+                    Ui.Text("Face: cyan / dots: forward");
                 }
             }
         }
@@ -1934,7 +1934,7 @@ public static class Baseball24
         r.Draw(debugBox, Mat4.Translate(new Vec3(0, -0.06f, 0)) * Mat4.Scale(new Vec3(12, 0.1f, 12)),
             new Draw3dOpts { Tint = Color.Rgb(0.27f, 0.29f, 0.31f) });
         float phase = debugTime / DebugDuration();
-        var pose = debugAnim == 8 ? ZeroPose() : PoseFor(debugAnim,
+        var pose = debugAnim == 8 ? new List<float> { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } : PoseFor(debugAnim,
             debugAnim == AnWindup || debugAnim == AnSwing || debugAnim == AnThrow || debugAnim == AnReach
                 ? phase : debugTime, debugTime * 11);
         float yaw = MathUtil.Radians(debugYaw);

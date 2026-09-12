@@ -270,6 +270,11 @@ local before = g.debug_time
 g.on_frame(1 / 60)
 assert(math.abs(g.debug_time - before - 1 / 240) < 0.00001, "slow playback must advance only the preview clock")
 assert(g.t_accum == match_time, "preview playback must not advance the match")
+pressed = "Bind pose"
+g.on_frame(1 / 60)
+for _, value in ipairs(shown_pose) do
+	assert(value == 0, "bind pose must disable every animation transform")
+end
 pressed = "Return to match"
 g.on_frame(1 / 60)
 assert(not g.model_debug, "return button must close the viewer")
