@@ -109,6 +109,17 @@ g = fresh()
 advance(g, function()
 	return g.is_home_run and g.state == 4
 end, "home run")
+assert(g.ball_bounces == 0 and g.by > 3, "home run must be confirmed above the fence before landing")
+assert(g.bx * g.bx + g.bz * g.bz > 75.8 * 75.8, "home run must not be announced before reaching the fence")
+assert(not g.home_run_view and g.event_text == "HOME RUN!", "show the result while retaining the fence-crossing shot")
+advance(g, function()
+	if g.live_t < g.home_run_at + 0.65 then
+		assert(not g.home_run_view, "let the viewer see the fence clearance before cutting to the runner")
+		in_frame(g, g.bx, g.by, g.bz)
+		return false
+	end
+	return g.home_run_view
+end, "home-run close-up")
 local score = g.score[1] + g.score[2]
 local home_runner = g.batter_runner
 local previous_offset = g.cam_eye - g.cam_target

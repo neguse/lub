@@ -949,6 +949,7 @@ public static class Baseball24
     static int chaser = -1;
     static int ballHeldBy = -1; // 野手 index (-1 = フリー)
     static float liveT = 0.0f;
+    static float homeRunAt = 0.0f;
     static float throwT = 0.0f;
     static float throwDur = 0.0f;
     static float throwFromX = 0.0f;
@@ -1244,6 +1245,7 @@ public static class Baseball24
 
         if (isHomeRun && playPhase == plFly)
         {
+            homeRunAt = liveT;
             ShowEvent("HOME RUN!", Color.Rgb(1.0f, 0.85f, 0.25f));
             foreach (var r in rns)
                 r.To = 4;
@@ -1730,7 +1732,8 @@ public static class Baseball24
         if (!wide)
             firstBaseView = false;
         var runner = batterRunner;
-        bool followHomeRun = isHomeRun && runner != null && (state == stLive || state == stCall);
+        bool followHomeRun = isHomeRun && liveT >= homeRunAt + 0.65f
+            && runner != null && (state == stLive || state == stCall);
         if (followHomeRun && runner != null)
         {
             var from = BasePos(Math.Min(runner.AtBase, 3));
