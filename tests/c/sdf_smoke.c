@@ -211,6 +211,41 @@ int main(void) {
     }
     sdf_mesh_out_free(&m);
   }
+  {
+    LubSdfNodeDesc nodes[66];
+    char names[16][8];
+    float radius[] = {0.12f};
+    for (int i = 0; i < 16; ++i) {
+      float pos[] = {(i % 4) * 0.35f, (i / 4) * 0.35f, 0};
+      nodes[i * 4] = node(LUB_MESH_SDF_OP_SPHERE, -1, -1, radius, 1);
+      nodes[i * 4 + 1] = node(LUB_MESH_SDF_OP_MOVE, i * 4, -1, pos, 3);
+      nodes[i * 4 + 2] = node(LUB_MESH_SDF_OP_BONE, i * 4 + 1, -1, pos, 3);
+      int len = snprintf(names[i], sizeof(names[i]), "bone%d", i);
+      nodes[i * 4 + 2].name = (LubStr){names[i], len};
+      nodes[i * 4 + 3] = node(LUB_MESH_SDF_OP_UNION, i * 4 + 2,
+                              i ? i * 4 - 1 : i * 4, NULL, 0);
+    }
+    SdfTree t;
+    if (!sdf_tree_convert(nodes, 64, 63, &t, err, sizeof(err)))
+      return fail(err);
+    if (t.part_count != 16)
+      return fail("16-bone palette truncated");
+    SdfMeshOut m;
+    if (!sdf_mesh_build(&t, 32, 0.025f, &m, err, sizeof(err)))
+      return fail(err);
+    int seen = 0;
+    for (size_t v = 0; v < m.mesh.vert_count; ++v)
+      seen |= 1 << (int)m.joints[v * 2];
+    if (seen != 65535)
+      return fail("mesh lost a bone beyond the first eight");
+    sdf_mesh_out_free(&m);
+    sdf_tree_free(&t);
+    nodes[64] = node(LUB_MESH_SDF_OP_BONE, 0, -1, NULL, 0);
+    nodes[64].name = (LubStr){"overflow", 8};
+    nodes[65] = node(LUB_MESH_SDF_OP_UNION, 63, 64, NULL, 0);
+    if (sdf_tree_convert(nodes, 66, 65, &t, err, sizeof(err)))
+      return fail("17th bone did not error");
+  }
   // invalid trees must be rejected
   {
     float pk[] = {0.1f};

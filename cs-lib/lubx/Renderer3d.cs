@@ -32,7 +32,7 @@ public class Draw3dOpts
     /// 落とさない。</summary>
     public Gfx.Blend? Blend;
 
-    /// <summary>skinned メッシュ用。`Bones.pack()` の 128 float。</summary>
+    /// <summary>skinned メッシュ用。`Bones.pack()` の 256 float。</summary>
     public List<float>? Bones;
 
     /// <summary>material 差し替え。頂点レイアウトと uniform 名は既定 shader
@@ -279,7 +279,7 @@ public class Renderer3d
 
     private static string litSkinnedVs = litVsCommon
         + """
-          float4x4 bones[8];
+          float4x4 bones[16];
         };
         ConstantBuffer<Uniforms> u;
         """
@@ -431,7 +431,7 @@ public class Renderer3d
         struct U {
           float4x4 light_mvp;
           float4x4 model;
-          float4x4 bones[8];
+          float4x4 bones[16];
         };
         ConstantBuffer<U> u;
         """
