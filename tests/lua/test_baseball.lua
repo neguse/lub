@@ -212,18 +212,29 @@ local function close(a, b, message)
 	assert(a:distance(b) < 0.0001, message)
 end
 
+local function arms_clear_torso(rig)
+	local inverse = rig.matrices.torso:inverse()
+	for _, side in ipairs({ -1, 1 }) do
+		local arm = rig.matrices[side > 0 and "forearm_l" or "forearm_r"]
+		local elbow = inverse:mul_point(arm:mul_point(g.rest_elbow(side)))
+		local hand = inverse:mul_point(arm:mul_point(g.rest_wrist(side)))
+		for step = 0, 10 do
+			local point = elbow:lerp(hand, step / 10)
+			if point.y > 0.96 then
+				local axis = Vec3.new(0, math.max(0.98, math.min(1.35, point.y)), 0)
+				assert(point:distance(axis) > 0.20, "forearms must not pass through the torso core")
+			end
+		end
+	end
+end
+
 g = fresh()
 for anim = 0, 7 do
 	for tick = 0, 60 do
 		local phase = tick / 60
 		local pose = g.pose_for(anim, phase, phase * 2 * math.pi)
 		local rig = g.make_rig(pose)
-		if anim == 2 then
-			assert(
-				pose.left_hand.z * pose.left_foot.z <= 0 and pose.right_hand.z * pose.right_foot.z <= 0,
-				"running arms must oppose the legs"
-			)
-		end
+		arms_clear_torso(rig)
 		close(rig.left_hand, pose.left_hand, "left hand target must be reachable")
 		close(rig.right_hand, pose.right_hand, "right hand target must be reachable")
 		for _, side in ipairs({ -1, 1 }) do
@@ -234,6 +245,24 @@ for anim = 0, 7 do
 				forearm:mul_point(g.rest_elbow(side)),
 				"elbow must remain connected"
 			)
+			if anim == 2 then
+				local shoulder = upper:mul_point(g.rest_shoulder(side))
+				local elbow = upper:mul_point(g.rest_elbow(side))
+				local wrist = forearm:mul_point(g.rest_wrist(side))
+				local arm, lower = elbow - shoulder, wrist - elbow
+				local forward = rig.matrices.torso:mul_dir(Vec3.new(0, 0, 1))
+				local lateral = rig.matrices.torso:mul_dir(Vec3.new(1, 0, 0))
+				local up = rig.matrices.torso:mul_dir(Vec3.new(0, 1, 0))
+				local foot = side > 0 and pose.left_foot or pose.right_foot
+				assert(arm:dot(forward) * foot.z < 0.00001, "running upper arms must oppose the legs")
+				assert(math.abs(arm:dot(lateral)) < 0.06, "running elbows must not flare sideways")
+				assert(arm:dot(up) < -0.15, "running elbows must stay below the shoulders")
+				assert(
+					math.abs(arm:normalize():dot(lower:normalize())) < 0.1,
+					"running elbows must retain a right-angle bend"
+				)
+				assert(lower:dot(forward) > 0.15, "running forearms must bend forward")
+			end
 			local thigh, shin = rig.matrices["thigh" .. suffix], rig.matrices["shin" .. suffix]
 			close(thigh:mul_point(g.rest_knee(side)), shin:mul_point(g.rest_knee(side)), "knee must remain connected")
 			local foot = rig.matrices["foot" .. suffix]
@@ -266,6 +295,7 @@ for x = -0.45, 0.46, 0.15 do
 		for tick = 0, 60 do
 			local phase = tick / 60
 			local rig = g.make_rig(g.pose_swing(phase))
+			arms_clear_torso(rig)
 			local bat_local = g.bat_local_matrix(phase)
 			close(
 				rig.left_hand,
@@ -351,6 +381,32 @@ for _, x in ipairs({ -0.45, 0, 0.45 }) do
 	end
 end
 print("baseball: catcher squat, knees, planted feet, height continuity and catch recovery PASS")
+
+g = fresh()
+local fielder = g.fielders[3]
+local previous_head
+for height = 115, 1550 do
+	local target = Vec3.new(fielder.x, 0, fielder.z)
+		+ Mat4.rotate_y(g.fielder_yaw(2)):mul_point(Vec3.new(0, height / 1000, 0.4))
+	local pose = g.catch_pose(2, target)
+	local rig = g.make_rig(pose)
+	arms_clear_torso(rig)
+	close(rig.left_hand, pose.left_hand, "fielder's receiving hand must reach the ball")
+	close(rig.right_hand, pose.right_hand, "fielder's free hand must remain reachable")
+	local head = rig.matrices.head:mul_point(Vec3.new(0, 1.66, 0))
+	assert(rig.right_hand.y < head.y - 0.3, "ground-ball gather must not lift the free hand beside the head")
+	if previous_head then
+		assert(head:distance(previous_head) < 0.004, "fielder catch height must not abruptly fold the torso or neck")
+	end
+	previous_head = head
+end
+for tick = 0, 120 do
+	local time = tick / 120 * 0.24
+	local pose =
+		g.blend_pose(g.pose_swing(0.52 + time / 0.55), g.pose_run(time * 11), MathUtil.smoothstep(0.1, 0.24, time))
+	arms_clear_torso(g.make_rig(pose))
+end
+print("baseball: running arm bend, forearm clearance, fielding gather and swing-to-run transition PASS")
 
 for pitch = 1, 100 do
 	g.start_pitch()
@@ -464,6 +520,19 @@ local before = g.debug_time
 g.on_frame(1 / 60)
 assert(math.abs(g.debug_time - before - 1 / 240) < 0.00001, "slow playback must advance only the preview clock")
 assert(g.t_accum == match_time, "preview playback must not advance the match")
+pressed = "Run"
+g.on_frame(1 / 60)
+assert(g.debug_playing and g.debug_time == 0, "switching animation must preserve playback and restart the clip")
+pressed = nil
+g.on_frame(1 / 60)
+assert(g.debug_time > 0, "the selected animation must continue playing")
+pressed = "Pitch"
+g.on_frame(1 / 60)
+assert(g.debug_playing and g.debug_speed == 0.25, "switching clips must preserve playback speed and state")
+g.debug_playing = false
+pressed = "Crouch"
+g.on_frame(1 / 60)
+assert(not g.debug_playing and g.debug_time == 0, "switching a paused animation must keep it paused")
 pressed = "Bind pose"
 g.on_frame(1 / 60)
 local bind = g.make_rig(shown_pose)

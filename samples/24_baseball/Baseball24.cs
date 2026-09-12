@@ -75,6 +75,8 @@ public class BaseballPose
     public bool Bind;
     public Vec3 LeftHand = Baseball24.RestWrist(1);
     public Vec3 RightHand = Baseball24.RestWrist(-1);
+    public Vec3 LeftElbowHint = new Vec3(-0.60f, 1.05f, -0.15f);
+    public Vec3 RightElbowHint = new Vec3(0.60f, 1.05f, -0.15f);
     public Vec3 LeftFoot = Baseball24.RestAnkle(1);
     public Vec3 RightFoot = Baseball24.RestAnkle(-1);
 }
@@ -270,12 +272,17 @@ public static class Baseball24
         return start + direction * along + bend * height;
     }
 
+    static Mat4 TorsoMatrix(BaseballPose p)
+    {
+        return Mat4.Translate(new Vec3(0, p.Drop, p.Shift)) * Bones.PivotRot(0, torsoPy, 0,
+            Mat4.RotateY(p.Twist) * Mat4.RotateX(p.Lean) * Mat4.RotateZ(p.Tilt));
+    }
+
     static BaseballRig MakeRig(BaseballPose p)
     {
         var rig = new BaseballRig();
         var drop = new Vec3(0, p.Drop, p.Shift);
-        var torso = Mat4.Translate(drop) * Bones.PivotRot(0, torsoPy, 0,
-            Mat4.RotateY(p.Twist) * Mat4.RotateX(p.Lean) * Mat4.RotateZ(p.Tilt));
+        var torso = TorsoMatrix(p);
         rig.Matrices["torso"] = torso;
         rig.Matrices["head"] = torso * Bones.PivotRot(0, headPy, 0,
             Mat4.RotateY(p.HeadYaw) * Mat4.RotateX(p.HeadPitch));
@@ -285,7 +292,7 @@ public static class Baseball24
             var suffix = side > 0 ? "_l" : "_r";
             var shoulder = torso.MulPoint(RestShoulder(side));
             var hand = side > 0 ? p.LeftHand : p.RightHand;
-            var elbow = p.Bind ? RestElbow(side) : BendJoint(shoulder, hand, torso.MulPoint(new Vec3(-side * 0.60f, 1.05f, -0.15f)),
+            var elbow = p.Bind ? RestElbow(side) : BendJoint(shoulder, hand, torso.MulPoint(side > 0 ? p.LeftElbowHint : p.RightElbowHint),
                 RestShoulder(side).Distance(RestElbow(side)), RestElbow(side).Distance(RestWrist(side)));
             rig.Matrices["upper_arm" + suffix] = BoneBetween(RestShoulder(side), RestElbow(side), shoulder, elbow);
             var forearm = BoneBetween(RestElbow(side), RestWrist(side), elbow, hand);
@@ -382,8 +389,29 @@ public static class Baseball24
         p.HeadYaw = -p.Twist;
         p.LeftFoot = RunFoot(ph, 1);
         p.RightFoot = RunFoot(ph + (float)Math.PI, -1);
-        p.LeftHand = new Vec3(-0.31f, 1.00f, -p.LeftFoot.Z * 0.50f);
-        p.RightHand = new Vec3(0.31f, 1.00f, -p.RightFoot.Z * 0.50f);
+        var torso = TorsoMatrix(p);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var foot = side > 0 ? p.LeftFoot : p.RightFoot;
+            float arm = -foot.Z * 1.4f;
+            float upper = RestShoulder(side).Distance(RestElbow(side));
+            upper = (float)Math.Sqrt(upper * upper - 0.035f * 0.035f);
+            float lower = RestElbow(side).Distance(RestWrist(side));
+            float s = (float)Math.Sin(arm);
+            float c = (float)Math.Cos(arm);
+            var elbow = RestShoulder(side) + new Vec3(-side * 0.035f, -upper * c, upper * s);
+            var hand = torso.MulPoint(elbow + new Vec3(0, lower * s, lower * c));
+            if (side > 0)
+            {
+                p.LeftElbowHint = elbow;
+                p.LeftHand = hand;
+            }
+            else
+            {
+                p.RightElbowHint = elbow;
+                p.RightHand = hand;
+            }
+        }
         return p;
     }
 
@@ -401,10 +429,10 @@ public static class Baseball24
         p.Lean = MathUtil.Lerp(-0.08f * load, 0.28f, strike) + 0.08f * follow;
         p.HeadPitch = -p.Lean;
         p.HeadYaw = -p.Twist;
-        p.LeftHand = RestWrist(1).Lerp(new Vec3(-0.07f, 1.23f, 0.18f), join)
-            .Lerp(new Vec3(-0.12f, 1.20f, 0.22f), load)
-            .Lerp(new Vec3(-0.18f, 1.02f, 0.14f), strike);
-        p.RightHand = RestWrist(-1).Lerp(new Vec3(0.05f, 1.23f, 0.18f), join)
+        p.LeftHand = RestWrist(1).Lerp(new Vec3(-0.07f, 1.23f, 0.30f), join)
+            .Lerp(new Vec3(-0.12f, 1.20f, 0.34f), load)
+            .Lerp(new Vec3(-0.18f, 1.02f, 0.30f), strike);
+        p.RightHand = RestWrist(-1).Lerp(new Vec3(0.05f, 1.23f, 0.30f), join)
             .Lerp(new Vec3(0.44f, 1.55f, -0.17f), load)
             .Lerp(new Vec3(0.14f, 1.57f, 0.60f), strike)
             .Lerp(new Vec3(-0.20f, 0.97f, 0.40f), follow);
@@ -424,9 +452,9 @@ public static class Baseball24
     {
         float strike = MathUtil.Smoothstep(0.32f, SwingHitPh, ph);
         float follow = MathUtil.Smoothstep(SwingHitPh, 0.92f, ph);
-        var contactGrip = new Vec3(0, MathUtil.Clamp(batContactY + 0.15f, 0.55f, 1.30f), MathUtil.Clamp(batContactX + 0.24f, 0.05f, 0.50f));
-        var grip = new Vec3(0.16f, 1.35f, 0.20f).Lerp(contactGrip, strike)
-            .Lerp(new Vec3(-0.16f, 1.42f, 0), follow);
+        var contactGrip = new Vec3(-0.18f, MathUtil.Clamp(batContactY + 0.15f, 0.55f, 1.30f), MathUtil.Clamp(batContactX + 0.24f, 0.05f, 0.50f));
+        var grip = new Vec3(0.16f, 1.35f, 0.30f).Lerp(contactGrip, strike)
+            .Lerp(new Vec3(-0.34f, 1.42f, 0.15f), follow);
         var contact = new Vec3(-batContactZ, batContactY, batContactX + 0.85f) - contactGrip;
         float hitYaw = (float)Math.Atan2(contact.X, contact.Z);
         float hitTilt = -(float)Math.Atan2(contact.Y, (float)Math.Sqrt(contact.X * contact.X + contact.Z * contact.Z));
@@ -439,13 +467,14 @@ public static class Baseball24
     static BaseballPose PoseSwing(float ph)
     {
         var p = ZeroPose();
+        p.LeftElbowHint = new Vec3(-0.35f, 1.50f, 0.55f);
         float strike = MathUtil.Smoothstep(0.32f, SwingHitPh, ph);
         float follow = MathUtil.Smoothstep(SwingHitPh, 0.92f, ph);
         p.Drop = MathUtil.Lerp(-0.10f, MathUtil.Clamp(-0.18f + (batContactY - 1) * 0.70f, -0.62f, -0.18f), strike);
         p.Drop = MathUtil.Lerp(p.Drop, -0.10f, follow);
-        p.Shift = Math.Max(0, batContactX) * 0.75f * strike * (1 - follow);
+        p.Shift = MathUtil.Clamp(batContactX, -0.19f, 0.26f) * strike * (1 - follow);
         p.Lean = 0.08f + Math.Max(0, 1 - batContactY) * 0.15f * strike * (1 - follow);
-        p.Twist = MathUtil.Lerp(0.12f, -1.35f, strike) - 0.45f * follow;
+        p.Twist = MathUtil.Lerp(0.12f, -1.10f, strike) - 0.45f * follow;
         p.HeadYaw = -(float)Math.PI / 2 - p.Twist;
         p.HeadPitch = -p.Lean;
         var bat = BatLocalMatrix(ph);
@@ -476,18 +505,20 @@ public static class Baseball24
         p.Lean = 0.10f + 0.15f * release;
         p.HeadPitch = -p.Lean;
         p.HeadYaw = -p.Twist;
-        p.LeftHand = new Vec3(-0.08f, 1.03f, 0.30f).Lerp(new Vec3(-0.18f, 1.0f, 0.08f), load);
+        p.LeftHand = new Vec3(-0.08f, 1.03f, 0.30f).Lerp(new Vec3(-0.18f, 1.0f, 0.30f), load);
         p.RightHand = new Vec3(0.03f, 1.03f, 0.30f)
             .Lerp(new Vec3(0.42f, 1.45f, -0.15f), load)
             .Lerp(new Vec3(0.10f, 1.36f, 0.63f), release)
             .Lerp(new Vec3(-0.20f, 0.95f, 0.30f), follow);
+        p.RightHand += new Vec3(0.15f * (float)Math.Sin(load * Math.PI) * (1 - release), 0, 0);
+        p.RightElbowHint = p.RightElbowHint.Lerp(new Vec3(0.35f, 1.0f, 0.55f), follow);
         p.BallTransfer = MathUtil.Smoothstep(0.10f, 0.28f, ph);
         return p;
     }
 
     static BaseballPose BlendPose(BaseballPose a, BaseballPose b, float k)
     {
-        return new BaseballPose
+        var p = new BaseballPose
         {
             Twist = MathUtil.Lerp(a.Twist, b.Twist, k),
             Lean = MathUtil.Lerp(a.Lean, b.Lean, k),
@@ -498,11 +529,17 @@ public static class Baseball24
             HeadPitch = MathUtil.Lerp(a.HeadPitch, b.HeadPitch, k),
             HeadYaw = MathUtil.Lerp(a.HeadYaw, b.HeadYaw, k),
             BallTransfer = MathUtil.Lerp(a.BallTransfer, b.BallTransfer, k),
-            LeftHand = a.LeftHand.Lerp(b.LeftHand, k),
-            RightHand = a.RightHand.Lerp(b.RightHand, k),
+            LeftElbowHint = a.LeftElbowHint.Lerp(b.LeftElbowHint, k),
+            RightElbowHint = a.RightElbowHint.Lerp(b.RightElbowHint, k),
             LeftFoot = a.LeftFoot.Lerp(b.LeftFoot, k),
             RightFoot = a.RightFoot.Lerp(b.RightFoot, k)
         };
+        var fromA = TorsoMatrix(a).Inverse();
+        var fromB = TorsoMatrix(b).Inverse();
+        var torso = TorsoMatrix(p);
+        p.LeftHand = torso.MulPoint(fromA.MulPoint(a.LeftHand).Lerp(fromB.MulPoint(b.LeftHand), k));
+        p.RightHand = torso.MulPoint(fromA.MulPoint(a.RightHand).Lerp(fromB.MulPoint(b.RightHand), k));
+        return p;
     }
 
     static BaseballPose PoseFor(int anim, float t, float runPhase)
@@ -1822,12 +1859,18 @@ public static class Baseball24
         }
         else
         {
-            p.Drop = MathUtil.Clamp(hand.Y - 1.15f, -0.60f, 0);
-            p.Lean = hand.Y < 0.5f ? 1.10f : 0.28f;
-            p.HeadPitch = hand.Y > 1.5f ? -0.60f : -p.Lean;
-            p.RightHand = new Vec3(0.20f, 1.0f + p.Drop * 0.4f, 0.30f);
+            float low = 1 - MathUtil.Smoothstep(0.10f, 0.90f, hand.Y);
+            p.Drop = MathUtil.Lerp(MathUtil.Clamp(hand.Y - 1.15f, -0.60f, 0), -0.74f, low);
+            p.Shift = -0.4f * low * (1 - low);
+            p.Lean = 0.24f + 0.39f * low;
+            p.HeadPitch = -p.Lean - 0.32f * MathUtil.Smoothstep(1.4f, 1.8f, hand.Y);
+            p.RightHand = new Vec3(0.20f, 1.0f + p.Drop, 0.30f);
+            p.KneeSpread = MathUtil.Lerp(p.KneeSpread, 0.85f, low);
+            p.LeftFoot = p.LeftFoot.Lerp(new Vec3(-0.24f, 0.12f, -0.04f), low);
+            p.RightFoot = p.RightFoot.Lerp(new Vec3(0.24f, 0.12f, -0.04f), low);
         }
         p.LeftHand = hand;
+        p.LeftElbowHint = new Vec3(-0.35f, 1.10f, 0.55f);
         return p;
     }
 
@@ -2040,7 +2083,6 @@ public static class Baseball24
                     {
                         debugAnim = i;
                         debugTime = 0;
-                        debugPlaying = false;
                         debugYaw = i == AnSwing ? 90 : i == AnWindup ? 180 : i == AnRun || i == AnThrow ? 45 : 0;
                     }
                 }
