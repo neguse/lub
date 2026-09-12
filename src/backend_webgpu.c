@@ -154,9 +154,9 @@ static WGPURenderPassEncoder g_rpass;
 // overwriting earlier draws' uniform data.
 #define WG_MAX_UB_SLOTS 2
 #define WG_UB_ALIGN 256   // minUniformBufferOffsetAlignment
-#define WG_UB_SIZE 1024   // max bytes per uniform block
-#define WG_UB_STRIDE 1024 // ring stride: aligned to WG_UB_ALIGN, >= WG_UB_SIZE
-#define WG_UB_RING_SIZE (WG_UB_STRIDE * 128) // 128KB ring per slot
+#define WG_UB_SIZE 2048   // max bytes per uniform block
+#define WG_UB_STRIDE 2048 // ring stride: aligned to WG_UB_ALIGN, >= WG_UB_SIZE
+#define WG_UB_RING_SIZE (WG_UB_STRIDE * 128) // 256KB ring per slot
 
 typedef struct WgUniformState {
   WGPUBuffer bufs[WG_MAX_UB_SLOTS];

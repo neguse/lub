@@ -34,7 +34,7 @@ enum {
 // per-vertex material: albedo rgb + metallic + roughness
 #define SDF_MAT_N 5
 // skinning parts (bone nodes) per tree
-#define SDF_MAX_PARTS 8
+#define SDF_MAX_PARTS 16
 #define SDF_MAX_DEPTH 64
 #define SDF_MAX_NODES 4096
 

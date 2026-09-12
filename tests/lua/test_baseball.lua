@@ -141,11 +141,10 @@ end, "fielder gathers the ball")
 assert(g.ball_visible, "ball must remain visible during the transfer")
 assert(g.first_base_view, "cut to first base before the throwing release")
 local throw_eye = g.cam_eye
-local start_x, start_z = g.bx, g.bz
 for _ = 1, 6 do
 	g.simulate_tick()
 end
-assert(math.abs(g.bx - start_x) < 0.01 and math.abs(g.bz - start_z) < 0.01, "throw must wait for the fielder's release")
+assert(g.ball_held_by == g.chaser, "throw must remain held until the fielder releases it")
 advance(g, function()
 	assert(g.cam_eye == throw_eye, "hold the first-base shot through the throw and decision")
 	in_frame(g, g.bx, g.by, g.bz)
@@ -159,6 +158,10 @@ local cover = g.fielders[g.first_base_cover + 1]
 assert(g.ball_held_by == g.first_base_cover, "the covering fielder must receive the throw")
 assert((cover.x - 19.4) ^ 2 + (cover.z - 19.4) ^ 2 < 0.36, "force out requires a fielder on the base")
 assert(g.ball_visible, "first baseman must visibly hold the ball at the decision")
+assert(
+	g.fielder_ball(g.first_base_cover):distance(Vec3.new(g.bx, g.by, g.bz)) < 0.0001,
+	"throw must arrive at the displayed glove"
+)
 assert(actor_count(g) == 10, "runner must remain visible at the first-base decision")
 _, feet = project(g, cover.x, 0, cover.z)
 _, head_top = project(g, cover.x, 1.9, cover.z)
@@ -204,6 +207,113 @@ for _ = 1, 18000 do
 	end
 end
 print("baseball: home-run lifecycle, actor continuity, pitch, throw, decision hold, fence and camera PASS")
+
+local function close(a, b, message)
+	assert(a:distance(b) < 0.0001, message)
+end
+
+g = fresh()
+for anim = 0, 7 do
+	for tick = 0, 60 do
+		local phase = tick / 60
+		local pose = g.pose_for(anim, phase, phase * 2 * math.pi)
+		local rig = g.make_rig(pose)
+		if anim == 2 then
+			assert(
+				pose.left_hand.z * pose.left_foot.z <= 0 and pose.right_hand.z * pose.right_foot.z <= 0,
+				"running arms must oppose the legs"
+			)
+		end
+		close(rig.left_hand, pose.left_hand, "left hand target must be reachable")
+		close(rig.right_hand, pose.right_hand, "right hand target must be reachable")
+		for _, side in ipairs({ -1, 1 }) do
+			local suffix = side > 0 and "_l" or "_r"
+			local upper, forearm = rig.matrices["upper_arm" .. suffix], rig.matrices["forearm" .. suffix]
+			close(
+				upper:mul_point(g.rest_elbow(side)),
+				forearm:mul_point(g.rest_elbow(side)),
+				"elbow must remain connected"
+			)
+			local thigh, shin = rig.matrices["thigh" .. suffix], rig.matrices["shin" .. suffix]
+			close(thigh:mul_point(g.rest_knee(side)), shin:mul_point(g.rest_knee(side)), "knee must remain connected")
+			local foot = rig.matrices["foot" .. suffix]
+			close(
+				foot:mul_point(g.rest_ankle(side)),
+				side > 0 and pose.left_foot or pose.right_foot,
+				"foot must reach its planted position"
+			)
+			close(foot:mul_dir(Vec3.new(0, 1, 0)), Vec3.new(0, 1, 0), "foot must stay level")
+		end
+	end
+end
+local ready = g.make_rig(g.pose_ready(0))
+assert(ready.matrices.torso:mul_dir(Vec3.new(0, 1, 0)).z > 0.2, "ready stance must lean forward")
+assert(g.make_rig(g.pose_reach(0)).matrices.head:mul_dir(Vec3.new(0, 0, 1)).y > 0.5, "high catch must look up")
+local foot_before = g.run_foot(0.2, 1)
+local foot_after = g.run_foot(0.2 + 11 / 60, 1)
+assert(math.abs(foot_after.z - foot_before.z + 7.2 / 60) < 0.00001, "planted foot must cancel forward running speed")
+local moving = Fielder.new(0, 0)
+moving.run_phase = 0.2
+local planted_z = g.run_foot(moving.run_phase, 1).z
+g.move_towards(moving, 0, 10, 1 / 60, 5.76)
+assert(
+	math.abs(moving.z + g.run_foot(moving.run_phase, 1).z - planted_z) < 0.00001,
+	"foot must stay planted at reduced movement speed"
+)
+for x = -0.45, 0.46, 0.15 do
+	for y = 0.15, 1.56, 0.1 do
+		g.bat_contact_x, g.bat_contact_y, g.bat_contact_z = x, y, 0.42
+		for tick = 0, 60 do
+			local phase = tick / 60
+			local rig = g.make_rig(g.pose_swing(phase))
+			local bat_local = g.bat_local_matrix(phase)
+			close(
+				rig.left_hand,
+				bat_local:mul_point(Vec3.new(0, 0, 0)),
+				"lower hand must hold the bat throughout the swing"
+			)
+			close(
+				rig.right_hand,
+				bat_local:mul_point(Vec3.new(0, 0, 0.11)),
+				"upper hand must hold the bat throughout the swing"
+			)
+		end
+		local bat_local = g.bat_local_matrix(0.52)
+		local grip = bat_local:mul_point(Vec3.new(0, 0, 0))
+		local axis = bat_local:mul_dir(Vec3.new(0, 0, 1))
+		local to_ball = Vec3.new(-0.42, y, x + 0.85) - grip
+		local along = to_ball:dot(axis)
+		assert(along > 0.4 and along < 1.02, "actual pitch must hit the bat barrel")
+		close(to_ball, axis * along, "bat must pass through the actual pitch")
+	end
+end
+for pitch = 1, 100 do
+	g.start_pitch()
+	g.will_swing = false
+	advance(g, function()
+		return g.state == 3
+	end, "rig release")
+	close(g.fielder_ball(0), Vec3.new(g.bx, g.by, g.bz), "pitch must start at the throwing hand")
+	advance(g, function()
+		return g.state == 5
+	end, "rig receive")
+	close(g.fielder_ball(1), Vec3.new(g.bx, g.by, g.bz), "catcher must receive the actual pitch")
+	assert(g.by >= 0.115 - 0.00001, "low pitch must stay above the ground")
+end
+local palette = { bones = {} }
+for i = 1, 16 do
+	palette.bones[i] = { name = tostring(i), x = 0, y = 0, z = 0 }
+end
+local packed = Bones.pack(palette, function(name)
+	return Mat4.translate(Vec3.new(tonumber(name), 0, 0))
+end)
+assert(#packed == 256, "bone palette must contain 16 complete matrices")
+local last = Mat4.new()
+for i = 1, 16 do
+	last.m[i] = packed[240 + i]
+end
+close(last:mul_point(Vec3.new(0, 0, 0)), Vec3.new(16, 0, 0), "last bone must survive packing")
+print("baseball: joint continuity, feet, gaze, two-hand grip, pitch attachment and 16-bone palette PASS")
 
 local pressed
 lub.ui = {
@@ -257,9 +367,8 @@ g.on_frame(1 / 60)
 assert(g.t_accum == match_time, "model viewer must pause the match")
 assert(math.abs(g.debug_time - 0.52 * 0.55) < 0.00001, "contact button must seek the batting contact")
 local expected_pose = g.pose_swing(0.52)
-for i, value in ipairs(expected_pose) do
-	assert(math.abs(shown_pose[i] - value) < 0.00001, "viewer must render the match's swing pose")
-end
+assert(shown_pose.left_hand:distance(expected_pose.left_hand) < 0.00001, "viewer must use the match's bat grip")
+assert(math.abs(shown_pose.twist - expected_pose.twist) < 0.00001, "viewer must use the match's torso pose")
 pressed = "+1 frame"
 g.on_frame(1 / 60)
 assert(math.abs(g.debug_time - 0.52 * 0.55 - 1 / 60) < 0.00001, "step must advance one match tick")
@@ -272,8 +381,12 @@ assert(math.abs(g.debug_time - before - 1 / 240) < 0.00001, "slow playback must 
 assert(g.t_accum == match_time, "preview playback must not advance the match")
 pressed = "Bind pose"
 g.on_frame(1 / 60)
-for _, value in ipairs(shown_pose) do
-	assert(value == 0, "bind pose must disable every animation transform")
+local bind = g.make_rig(shown_pose)
+for _, matrix in pairs(bind.matrices) do
+	local identity = Mat4.new()
+	for i = 1, 16 do
+		assert(math.abs(matrix.m[i] - identity.m[i]) < 0.00001, "bind pose must preserve the original mesh")
+	end
 end
 pressed = "Return to match"
 g.on_frame(1 / 60)
