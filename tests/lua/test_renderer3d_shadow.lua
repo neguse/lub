@@ -1,5 +1,4 @@
--- 実画素で影の位置、裏面の照明、薄い円柱の接地影、SSAO の向きを検査する。
--- 明るさの絶対値や PNG の一致ではなく、同じ面の対照画像との差を使う。
+-- 同じ面の対照画像との明るさの差で、投影位置・裏面照明・接地影・SSAO を検査する。
 local x = dofile("samples/lubx.lua")
 local V, M, C = x.Vec3, x.Mat4, x.Color
 local r, cube, coin, rb

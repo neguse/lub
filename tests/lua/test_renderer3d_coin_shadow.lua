@@ -1,5 +1,5 @@
--- 実際に縞が出たコインの平面は、光に向いており単体では遮蔽されない。
--- 影 ON/OFF を微小に移動・回転した 5 姿勢で比較する。旧方式は同じテストに失敗する。
+-- 光を向くコインの平面は、単体では遮蔽されない。
+-- 微小に移動・回転した 5 姿勢で、影 ON/OFF の明るさが一致することを検査する。
 local x = dofile("samples/lubx.lua")
 local legacy = os.getenv("LUB_SHADOW_LEGACY") == "1"
 if legacy then

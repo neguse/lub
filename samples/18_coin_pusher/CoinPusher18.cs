@@ -500,7 +500,7 @@ public static class CoinPusher18
         rn.Background = Color.Rgb(0.035f, 0.045f, 0.06f);
         rn.Shadow.Center = new Vec3(0, 0, 0);
         rn.Shadow.Extent = 3.0f;
-        // 受け面の深度補正後の誤差だけを吸収し、薄いコインの接地影を残す。
+        // 薄いコインの接地影を保つため、既定値より小さくする。
         rn.Shadow.Bias = 0.0001f;
         rn.Begin(new Camera
         {

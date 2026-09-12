@@ -45,7 +45,6 @@ public static class RendererShadow28
         r.Shadow.Center = new Vec3(0, 0, 0);
         r.Shadow.Extent = 3;
         r.Shadow.Enabled = shadows;
-        // Bias は Renderer3d の既定値のまま。描画のずれも比較対象にする。
         r.Ssao.Enabled = false;
         r.Bloom.Enabled = false;
         r.Aa.Enabled = false;

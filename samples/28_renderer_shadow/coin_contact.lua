@@ -1,6 +1,6 @@
 -- repo root から起動。COIN_MODE の各条件は README.md を参照。
 local x = dofile("samples/lubx.lua")
--- 18_coin_pusher の 120 秒時点から抜き出した、物理を更新しない 2 枚。
+-- 上下に重なる 2 枚の固定配置。reference の逆行列もこの配置に対応する。
 local scene = {
 	{
 		mesh = "coin",

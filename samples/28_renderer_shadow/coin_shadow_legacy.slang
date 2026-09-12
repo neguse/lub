@@ -1,4 +1,4 @@
-// 調査開始時の影。比較サンプル専用で、本体の描画には使わない。
+// 比較用: 中央の受け面の深度で周囲 9 点を比較する PCF。
 
 LUB_TEXTURE2D(shadow_map);
 struct FsU {
@@ -46,7 +46,6 @@ float shadow_factor(float4 lpos, float ndl) {
   float metal = i.mr.x;
   float rough = i.mr.y;
   float ndl = dot(n, l);
-  // 裏向きの面に直接光を足すと、shadow bias が明るい縁として見える。
   // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。
   float sh = ndl > 0.0f ? shadow_factor(i.lpos, ndl) : 0.0f;
   float up = n.y * 0.5f + 0.5f;

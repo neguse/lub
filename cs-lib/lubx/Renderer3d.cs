@@ -113,7 +113,7 @@ public class Renderer3dShadow
     public int Size = 2048;
     public Vec3 Center = new Vec3(0, 0, 0);
     public float Extent = 12.0f;
-    /// <summary>受け面の深度補正後に引く bias (影の深度 0〜1)。</summary>
+    /// <summary>影の深度比較で受け面の深度から引く値 (深度 0〜1)。</summary>
     public float Bias = 0.004f;
 }
 
@@ -332,7 +332,7 @@ public class Renderer3d
           float4 albedo : COLOR0;
         };
 
-        // 微分は light-facing / shadow-enabled の分岐前に評価する。
+        // 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。
         float2 shadow_depth_gradient(float4 lpos) {
           float3 p = lpos.xyz / lpos.w;
           p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;
@@ -354,8 +354,7 @@ public class Renderer3d
               ndc.z > 1.0f)
             return 1.0f;
           float texel = f.shadow_p.x;
-          // 各 texel の中心にある受け面の深度を比較する。
-          // 同じ ndc.z を周囲にも使うと、光に平行な面ほど自己影の縞になる。
+          // 読み取る texel の中心と受け面の深度の位置を揃える。
           float2 coord = uv / texel - 0.5f;
           float2 base = floor(coord), fracUv = frac(coord);
           float lit = 0.0f;
@@ -379,7 +378,6 @@ public class Renderer3d
           float metal = i.mr.x;
           float rough = i.mr.y;
           float ndl = dot(n, l);
-          // 裏向きの面に直接光を足すと、shadow bias が明るい縁として見える。
           // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。
           float2 shadowGradient = shadow_depth_gradient(i.lpos);
           float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;
