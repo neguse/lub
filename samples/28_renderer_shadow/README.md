@@ -51,7 +51,7 @@ S キーは影、A キーは SSAO、O キーは上のコインの表示を切り
 `fixed` 以外は調査開始時のシェーダーを読み、このプロセス内だけで比較方式を差し替える。
 試作モードは当時の比較条件を保つ。修正後の本体を確認するときは `fixed` を使う。
 `reference` の逆行列は固定した 2 枚に対応するので、配置を変える場合は再計算が必要。
-検証の範囲と結果は [調査記録](../../docs/log/2026-09-12-coin-shadow-verification.md) を参照。
+検証の範囲と結果は [PR #42](https://github.com/neguse/lub/pull/42) を参照。
 
 
 ## 傾いたコイン 1 枚の自己影
@@ -68,4 +68,4 @@ COIN_MODE=legacy ./build-release-linux/lub samples/28_renderer_shadow/coin_acne.
 S キーで影、space キーで微小な移動・回転を切り替える。
 SSAO、bloom、FXAA、dither は無効。
 `tests/lua/test_renderer3d_coin_shadow.lua` はこの姿勢を少しずつ変え、平らな面の画素を影 ON/OFF で比較する。
-原因と検証結果は [修正の記録](../../docs/log/2026-09-12-coin-shadow-fix.md) を参照。
+原因と検証結果は [PR #42](https://github.com/neguse/lub/pull/42) を参照。
