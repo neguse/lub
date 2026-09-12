@@ -113,6 +113,7 @@ public class Renderer3dShadow
     public int Size = 2048;
     public Vec3 Center = new Vec3(0, 0, 0);
     public float Extent = 12.0f;
+    /// <summary>影の深度比較で受け面の深度から引く値 (深度 0〜1)。</summary>
     public float Bias = 0.004f;
 }
 
@@ -331,7 +332,19 @@ public class Renderer3d
           float4 albedo : COLOR0;
         };
 
-        float shadow_factor(float4 lpos, float ndl) {
+        // 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。
+        float2 shadow_depth_gradient(float4 lpos) {
+          float3 p = lpos.xyz / lpos.w;
+          p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;
+          float3 dx = ddx(p), dy = ddy(p);
+          float det = dx.x * dy.y - dx.y * dy.x;
+          if (abs(det) < 1e-15f)
+            return float2(0.0f, 0.0f);
+          return float2(dx.z * dy.y - dy.z * dx.y,
+                        dx.x * dy.z - dy.x * dx.z) / det;
+        }
+
+        float shadow_factor(float4 lpos, float2 dz) {
           if (f.shadow_p.z < 0.5f)
             return 1.0f;
           float3 ndc = lpos.xyz / lpos.w;
@@ -341,14 +354,20 @@ public class Renderer3d
               ndc.z > 1.0f)
             return 1.0f;
           float texel = f.shadow_p.x;
-          // slope-scaled: 面が光に平行なほど acne が出やすいので bias を増す
-          float bias = f.shadow_p.y * (1.0f + (1.0f - saturate(ndl)) * 3.0f);
+          // 読み取る texel の中心と受け面の深度の位置を揃える。
+          float2 coord = uv / texel - 0.5f;
+          float2 base = floor(coord), fracUv = frac(coord);
           float lit = 0.0f;
-          for (int y = -1; y <= 1; ++y)
-            for (int x = -1; x <= 1; ++x) {
-              float closest =
-                  LUB_SAMPLE_LOD(shadow_map, uv + float2(float(x), float(y)) * texel).r;
-              lit += (ndc.z - bias <= closest) ? 1.0f : 0.0f;
+          // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。
+          for (int y = -1; y <= 2; ++y)
+            for (int x = -1; x <= 2; ++x) {
+              float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;
+              sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);
+              float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;
+              float receiver = ndc.z + dot(dz, sampleUv - uv);
+              float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);
+              float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);
+              lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;
             }
           return lit / 9.0f;
         }
@@ -358,15 +377,18 @@ public class Renderer3d
           float3 l = f.light_dir.xyz;
           float metal = i.mr.x;
           float rough = i.mr.y;
-          float sh = shadow_factor(i.lpos, dot(n, l));
+          float ndl = dot(n, l);
+          // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。
+          float2 shadowGradient = shadow_depth_gradient(i.lpos);
+          float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;
           float up = n.y * 0.5f + 0.5f;
           float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;
           float3 v = normalize(f.cam_pos.xyz - i.wp);
           float3 hv = normalize(l + v);
 
-          // 誘電体: half-lambert + hemispheric ambient + roughness で絞る specular
-          float diff = dot(n, l) * 0.5f + 0.5f;
-          float3 direct = f.light_col.rgb * (diff * diff) * sh;
+          // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular
+          float diff = saturate(ndl);
+          float3 direct = f.light_col.rgb * diff * sh;
           float spec =
               pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;
           float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;
@@ -478,7 +500,9 @@ public class Renderer3d
 
         [shader("fragment")] float4 fs_main(FSIn i) : SV_Target {
           float3 p = view_pos(i.uv);
-          float3 n = normalize(cross(ddy(p), ddx(p)));
+          // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で
+          // カメラ側を向け、面より手前の遮蔽物を数える。
+          float3 n = normalize(cross(ddx(p), ddy(p)));
           // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール
           float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに
           float occ = 0.0f;
