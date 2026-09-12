@@ -287,6 +287,71 @@ for x = -0.45, 0.46, 0.15 do
 		close(to_ball, axis * along, "bat must pass through the actual pitch")
 	end
 end
+local function catcher_body(pose)
+	local rig = g.make_rig(pose)
+	local head = rig.matrices.head:mul_point(Vec3.new(0, 1.66, 0))
+	local up = rig.matrices.torso:mul_dir(Vec3.new(0, 1, 0))
+	assert(up.y > 0.8, "catcher must not fold the torso over low pitches")
+	assert(rig.matrices.head:mul_dir(Vec3.new(0, 0, 1)).z > 0.9, "catcher must face the pitcher")
+	assert(rig.right_hand.y < head.y - 0.35, "bare hand must stay below the catcher's head")
+	close(rig.left_hand, pose.left_hand, "catcher's glove target must be reachable")
+	close(rig.right_hand, pose.right_hand, "catcher's protected hand must be reachable")
+	for _, side in ipairs({ -1, 1 }) do
+		local suffix = side > 0 and "_l" or "_r"
+		local hip = rig.matrices.hips:mul_point(g.rest_hip(side))
+		local knee = rig.matrices["thigh" .. suffix]:mul_point(g.rest_knee(side))
+		assert(hip.y < 0.7, "catcher must retain a squat for high pitches")
+		assert(-side * knee.x > 0.25, "catcher's knees must stay apart")
+		close(rig.matrices["shin" .. suffix]:mul_point(g.rest_knee(side)), knee, "catcher's knee must stay connected")
+		local ankle = rig.matrices["foot" .. suffix]:mul_point(g.rest_ankle(side))
+		close(ankle, side > 0 and pose.left_foot or pose.right_foot, "catcher's foot must stay planted")
+		assert(math.abs(ankle.y - 0.12) < 0.0001, "catcher's feet must stay on the ground")
+	end
+	return head
+end
+for _, x in ipairs({ -0.45, 0, 0.45 }) do
+	g = fresh()
+	g.fielders[2].x = x
+	local previous
+	for height = 115, 1500 do
+		local head = catcher_body(g.catch_pose(1, Vec3.new(x, height / 1000, -2)))
+		if previous then
+			assert(head:distance(previous) < 0.003, "pitch height must not cause a sudden neck or torso jump")
+		end
+		previous = head
+	end
+	for _, y in ipairs({ 0.15, 0.7, 1.5 }) do
+		g = fresh()
+		g.start_pitch()
+		g.will_swing, g.pitch_t_x, g.pitch_t_y = false, x, y
+		local previous_head = catcher_body(g.fielder_pose(1))
+		local received = false
+		for tick = 1, 180 do
+			g.simulate_tick()
+			local head = catcher_body(g.fielder_pose(1))
+			assert(head:distance(previous_head) < 0.08, "catch and recovery must not snap between poses")
+			previous_head = head
+			if g.state == 5 then
+				if not received then
+					close(g.fielder_ball(1), Vec3.new(g.bx, g.by, g.bz), "catcher's glove must meet the actual pitch")
+				end
+				received = true
+				assert(g.ball_held_by == 1, "catcher must retain the ball during recovery")
+				if g.state_t > 0.55 then
+					break
+				end
+			end
+		end
+		assert(received, "pitch must reach the catcher")
+		close(
+			g.make_rig(g.fielder_pose(1)).left_hand,
+			g.pose_crouch(0).left_hand,
+			"catcher must return to the receiving stance"
+		)
+	end
+end
+print("baseball: catcher squat, knees, planted feet, height continuity and catch recovery PASS")
+
 for pitch = 1, 100 do
 	g.start_pitch()
 	g.will_swing = false

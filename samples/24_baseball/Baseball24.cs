@@ -71,6 +71,7 @@ public class Landing
 public class BaseballPose
 {
     public float Twist, Lean, Tilt, Drop, Shift, HeadPitch, HeadYaw, BallTransfer;
+    public float KneeSpread = 0.25f;
     public bool Bind;
     public Vec3 LeftHand = Baseball24.RestWrist(1);
     public Vec3 RightHand = Baseball24.RestWrist(-1);
@@ -293,7 +294,7 @@ public static class Baseball24
             else rig.RightHand = forearm.MulPoint(RestWrist(side));
             var hip = RestHip(side) + drop;
             var foot = side > 0 ? p.LeftFoot : p.RightFoot;
-            var knee = p.Bind ? RestKnee(side) : BendJoint(hip, foot, new Vec3(-side * 0.25f, hip.Y - 0.15f, 0.65f),
+            var knee = p.Bind ? RestKnee(side) : BendJoint(hip, foot, new Vec3(-side * p.KneeSpread, hip.Y - 0.15f, 0.65f),
                 RestHip(side).Distance(RestKnee(side)), RestKnee(side).Distance(RestAnkle(side)));
             rig.Matrices["thigh" + suffix] = BoneBetween(RestHip(side), RestKnee(side), hip, knee);
             var shin = BoneBetween(RestKnee(side), RestAnkle(side), knee, foot);
@@ -345,9 +346,10 @@ public static class Baseball24
         p.Lean = 0.28f;
         p.HeadPitch = -p.Lean;
         p.LeftHand = new Vec3(-0.09f, 0.83f, 0.43f);
-        p.RightHand = new Vec3(0.10f, 0.79f, 0.30f);
-        p.LeftFoot = new Vec3(-0.29f, 0.12f, 0.12f);
-        p.RightFoot = new Vec3(0.29f, 0.12f, 0.12f);
+        p.RightHand = new Vec3(0.18f, 0.55f, 0.12f);
+        p.KneeSpread = 0.85f;
+        p.LeftFoot = new Vec3(-0.24f, 0.12f, -0.04f);
+        p.RightFoot = new Vec3(0.24f, 0.12f, -0.04f);
         return p;
     }
 
@@ -492,6 +494,7 @@ public static class Baseball24
             Tilt = MathUtil.Lerp(a.Tilt, b.Tilt, k),
             Drop = MathUtil.Lerp(a.Drop, b.Drop, k),
             Shift = MathUtil.Lerp(a.Shift, b.Shift, k),
+            KneeSpread = MathUtil.Lerp(a.KneeSpread, b.KneeSpread, k),
             HeadPitch = MathUtil.Lerp(a.HeadPitch, b.HeadPitch, k),
             HeadYaw = MathUtil.Lerp(a.HeadYaw, b.HeadYaw, k),
             BallTransfer = MathUtil.Lerp(a.BallTransfer, b.BallTransfer, k),
@@ -1778,8 +1781,9 @@ public static class Baseball24
         var f = fielders![i];
         if (i == 1)
         {
-            if (f.CatchPose != null && ballHeldBy == i) return f.CatchPose;
             var crouch = PoseCrouch(tAccum);
+            if (f.CatchPose != null && ballHeldBy == i)
+                return BlendPose(f.CatchPose, crouch, f.Anim == AnReach ? MathUtil.Smoothstep(0.10f, 0.45f, f.AnimT) : 1);
             if (state == stPitch && bvz < 0)
             {
                 float remaining = Math.Max(0, (-2.0f - bz) / bvz);
@@ -1806,12 +1810,24 @@ public static class Baseball24
     {
         var f = fielders![i];
         var hand = Mat4.RotateY(-FielderYaw(i)).MulPoint(target - new Vec3(f.X, 0, f.Z)) - new Vec3(0, 0.04f, 0.09f);
-        var p = PoseReady(0);
-        p.Drop = MathUtil.Clamp(hand.Y - 1.15f, -0.60f, 0);
-        p.Lean = hand.Y < 0.5f ? 1.10f : 0.28f;
-        p.HeadPitch = hand.Y > 1.5f ? -0.60f : -p.Lean;
+        var p = i == 1 ? PoseCrouch(tAccum) : PoseReady(0);
+        if (i == 1)
+        {
+            float low = 1 - MathUtil.Smoothstep(0.10f, 0.75f, hand.Y);
+            float high = MathUtil.Smoothstep(0.85f, 1.50f, hand.Y);
+            p.Drop = -0.43f - 0.31f * low + 0.15f * high;
+            p.Lean = 0.28f + 0.35f * low;
+            p.HeadPitch = -p.Lean - 0.15f * high;
+            p.RightHand = new Vec3(0.18f, 0.85f + p.Drop * 0.70f, 0.12f);
+        }
+        else
+        {
+            p.Drop = MathUtil.Clamp(hand.Y - 1.15f, -0.60f, 0);
+            p.Lean = hand.Y < 0.5f ? 1.10f : 0.28f;
+            p.HeadPitch = hand.Y > 1.5f ? -0.60f : -p.Lean;
+            p.RightHand = new Vec3(0.20f, 1.0f + p.Drop * 0.4f, 0.30f);
+        }
         p.LeftHand = hand;
-        p.RightHand = new Vec3(0.20f, 1.0f + p.Drop * 0.4f, 0.30f);
         return p;
     }
 
@@ -1941,7 +1957,6 @@ public static class Baseball24
 
         var fs = fielders;
         if (fs == null) return;
-        // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
         if (fs[1].Anim == AnReach)
         {
             fs[1].AnimT += tickDt;
