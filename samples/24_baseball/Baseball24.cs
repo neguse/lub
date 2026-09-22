@@ -8,7 +8,7 @@
 //   球 vs 平面/円筒の解析判定なのですり抜けしない
 // - 試合: state machine で投球→打撃→守備→走塁を全自動進行。捕球・封殺は
 //   野手と走者の実際の位置と時間で決まる (結果の先取りをしない)
-// - 演出: バット接触ヒットストップ + 画面振動、状況別自動カメラ
+// - 演出: 投打を固定構図で見せ、打球後は守備と走塁を同じ画面に収める
 //
 // boneSlot 表 + 手詰めの packBones は cs-lib の Bones.pack (mesh.bones 順の
 // resolve callback) に置き換え、乱数は Math.random でなく決定的な Rand。
@@ -48,6 +48,7 @@ public class Fielder
     public float RunPhase = 0;
     public int Anim = 0; // Baseball24.AN_*
     public float AnimT = 0;
+    public BaseballPose? CatchPose;
 
     public Fielder(float hx, float hz)
     {
@@ -65,6 +66,27 @@ public class Landing
     public float Z;
     public float T;
     public float Peak;
+}
+
+public class BaseballPose
+{
+    public float Twist, Lean, Tilt, Drop, Shift, HeadPitch, HeadYaw, BallTransfer;
+    public float KneeSpread = 0.25f;
+    public bool Bind;
+    public Vec3 LeftHand = Baseball24.RestWrist(1);
+    public Vec3 RightHand = Baseball24.RestWrist(-1);
+    public Vec3 LeftElbowHint = new Vec3(-0.60f, 1.05f, -0.15f);
+    public Vec3 RightElbowHint = new Vec3(0.60f, 1.05f, -0.15f);
+    public Vec3 LeftFoot = Baseball24.RestAnkle(1);
+    public Vec3 RightFoot = Baseball24.RestAnkle(-1);
+}
+
+public class BaseballRig
+{
+    public Dictionary<string, Mat4> Matrices = new Dictionary<string, Mat4>();
+    public Vec3 LeftHand = new Vec3(0, 0, 0);
+    public Vec3 RightHand = new Vec3(0, 0, 0);
+    public Vec3 Ball = new Vec3(0, 0, 0);
 }
 
 public static class Baseball24
@@ -106,6 +128,7 @@ public static class Baseball24
 
     // 打球フェーズ (ST_LIVE 中)
     const int plFly = 0; // 打球が空中 (ノーバウンド)
+    const int plTouch1b = 1;
     const int plThrow1b = 2; // 一塁送球中
     const int plSettle = 3; // 判定確定、走者が到達するのを待つ
     const int plFoul = 4;
@@ -118,6 +141,13 @@ public static class Baseball24
 
     public static void OnEvent(EventData e)
     {
+        if (e.Key != 59) return; // F2 scancode
+        if (e.Kind == EventKind.KeyUp) debugKeyHeld = false;
+        if (e.Kind == EventKind.KeyDown && !debugKeyHeld)
+        {
+            debugKeyHeld = true;
+            modelDebug = !modelDebug;
+        }
     }
 
     public static void OnQuit()
@@ -147,249 +177,372 @@ public static class Baseball24
     // 身長 ~1.8m。ユニフォームをチーム色で焼いた 2 メッシュを使い分ける
     static List<Mesh3d>? charMesh = null;
     static int[] teamRgb = new int[] { 0xD94038, 0x4073E0 };
-
-    const float torsoPx = 0.0f;
     const float torsoPy = 0.95f;
     const float headPy = 1.50f;
-    const float armPx = 0.24f;
-    const float armPy = 1.40f;
-    const float legPx = 0.10f;
-    const float legPy = 0.92f;
+
+    public static Vec3 RestShoulder(float side) => new Vec3(-side * 0.28f, 1.42f, 0);
+    public static Vec3 RestElbow(float side) => new Vec3(-side * 0.42f, 1.15f, 0.03f);
+    public static Vec3 RestWrist(float side) => new Vec3(-side * 0.55f, 0.88f, 0.06f);
+    public static Vec3 RestHip(float side) => new Vec3(-side * 0.13f, 0.90f, 0);
+    public static Vec3 RestKnee(float side) => new Vec3(-side * 0.14f, 0.51f, 0.03f);
+    public static Vec3 RestAnkle(float side) => new Vec3(-side * 0.15f, 0.12f, 0);
 
     static SdfNode CharModel(int jersey)
     {
-        var white = jersey;
-        var skin = 0xF5C29A;
-        var pants = 0x3A3E4C;
-        var torso = Sdf.Capsule(new Vec3(0, 0.92f, 0), new Vec3(0, 1.42f, 0), 0.19f)
-            .Paint(white)
-            .Bone("torso", new Vec3(torsoPx, torsoPy, 0));
-        var head = Sdf.Sphere(0.15f)
-            .Move(0, 1.62f, 0)
-            .Paint(skin)
-            .Smin(Sdf.Sphere(0.115f).Move(0, 1.72f, 0).Paint(white), 0.03f)
-            .Smin(Sdf.Sphere(0.035f).Move(0, 1.60f, 0.15f).Paint(skin), 0.02f)
+        var skin = 0xEFB68A;
+        var ink = 0x172C43;
+        var pants = 0xF5EDDA;
+        var hips = Sdf.Capsule(new Vec3(-0.13f, 0.89f, 0), new Vec3(0.13f, 0.89f, 0), 0.145f)
+            .Paint(pants).Bone("hips", new Vec3(0, 0.90f, 0));
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var suffix = side > 0 ? "_l" : "_r";
+            var hip = RestHip(side);
+            var knee = RestKnee(side);
+            var ankle = RestAnkle(side);
+            var thigh = Sdf.Capsule(hip, knee, 0.11f).Paint(pants).Bone("thigh" + suffix, hip);
+            var shin = Sdf.Capsule(knee, ankle, 0.095f).Paint(pants)
+                .Union(Sdf.Capsule(ankle + new Vec3(0, 0.02f, 0), ankle + new Vec3(0, 0.13f, 0), 0.097f).Paint(jersey))
+                .Bone("shin" + suffix, knee);
+            var foot = Sdf.Capsule(ankle + new Vec3(0, -0.035f, -0.025f), ankle + new Vec3(0, -0.035f, 0.14f), 0.085f)
+                .Paint(ink).Bone("foot" + suffix, ankle);
+            hips = hips.Smin(thigh, 0.02f).Smin(shin, 0.02f).Smin(foot, 0.015f);
+        }
+        var torso = Sdf.Capsule(new Vec3(0, 0.98f, 0), new Vec3(0, 1.35f, 0), 0.23f)
+            .Intersect(Sdf.Box(0.4f, 0.4f, 0.4f).Move(0, 1.36f, 0))
+            .Paint(jersey, 0, 0.7f)
+            .Union(Sdf.Box(0.027f, 0.22f, 0.012f).Move(0, 1.20f, 0.226f).Paint(0xFFF1D7))
+            .Union(Sdf.Box(0.23f, 0.045f, 0.18f).Move(0, 0.98f, 0).Paint(ink))
+            .Bone("torso", new Vec3(0, torsoPy, 0));
+        var head = Sdf.Sphere(0.225f).Move(0, 1.66f, 0).Paint(skin, 0, 0.65f)
+            .Union(Sdf.Sphere(0.233f).Move(0, 1.73f, -0.018f)
+                .Subtract(Sdf.Box(0.4f, 0.3f, 0.4f).Move(0, 1.38f, 0)).Paint(jersey, 0, 0.45f))
+            .Union(Sdf.Box(0.21f, 0.028f, 0.14f).Move(0, 1.77f, 0.19f).Paint(jersey))
+            .Union(Sdf.Sphere(0.030f).Move(0.084f, 1.66f, 0.202f).MirrorX().Paint(ink))
+            .Union(Sdf.Sphere(0.047f).Move(0, 1.60f, 0.216f).Paint(skin))
+            .Union(Sdf.Sphere(0.058f).Move(0.222f, 1.63f, 0).MirrorX().Paint(skin))
             .Bone("head", new Vec3(0, headPy, 0));
-        var armL = Sdf.Capsule(new Vec3(0.24f, 1.40f, 0),
-            new Vec3(0.31f, 1.00f, 0.05f), 0.065f)
-            .Paint(skin)
-            .Bone("arm_l", new Vec3(armPx, armPy, 0));
-        var armR = Sdf.Capsule(new Vec3(-0.24f, 1.40f, 0),
-            new Vec3(-0.31f, 1.00f, 0.05f), 0.065f)
-            .Paint(skin)
-            .Bone("arm_r", new Vec3(-armPx, armPy, 0));
-        var legL = Sdf.Capsule(new Vec3(0.10f, 0.92f, 0),
-            new Vec3(0.11f, 0.10f, 0), 0.085f)
-            .Smin(Sdf.Sphere(0.07f).Move(0.11f, 0.07f, 0.07f), 0.05f)
-            .Paint(pants)
-            .Bone("leg_l", new Vec3(legPx, legPy, 0));
-        var legR = Sdf.Capsule(new Vec3(-0.10f, 0.92f, 0),
-            new Vec3(-0.11f, 0.10f, 0), 0.085f)
-            .Smin(Sdf.Sphere(0.07f).Move(-0.11f, 0.07f, 0.07f), 0.05f)
-            .Paint(pants)
-            .Bone("leg_r", new Vec3(-legPx, legPy, 0));
-        return torso.Smin(head, 0.05f).Smin(armL, 0.04f).Smin(armR, 0.04f)
-            .Smin(legL, 0.05f).Smin(legR, 0.05f);
+        var model = torso.Smin(head, 0.025f);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var suffix = side > 0 ? "_l" : "_r";
+            var shoulder = RestShoulder(side);
+            var elbow = RestElbow(side);
+            var wrist = RestWrist(side);
+            var upper = Sdf.Capsule(shoulder, elbow, 0.080f).Paint(skin)
+                .Union(Sdf.Capsule(shoulder, shoulder.Lerp(elbow, 0.48f), 0.105f).Paint(jersey))
+                .Bone("upper_arm" + suffix, shoulder);
+            var forearm = Sdf.Capsule(elbow, wrist, 0.075f).Paint(skin)
+                .Smin(Sdf.Sphere(0.10f).Move(wrist.X, wrist.Y, wrist.Z).Paint(skin), 0.02f)
+                .Bone("forearm" + suffix, elbow);
+            model = model.Smin(upper, 0.02f).Smin(forearm, 0.02f);
+        }
+        return model.Smin(hips, 0.025f);
     }
 
     static void BuildCharMesh()
     {
-        var cm = charMesh;
-        if (cm == null)
+        var meshes = charMesh ?? new List<Mesh3d> { new Mesh3d("bb24_char0"), new Mesh3d("bb24_char1") };
+        charMesh = meshes;
+        for (int team = 0; team < 2; team++)
+            meshes[team].Rebuild(Sdf.Mesh(CharModel(teamRgb[team]), 48, 0.025f));
+    }
+
+    static Mat4 BoneBetween(Vec3 restStart, Vec3 restEnd, Vec3 start, Vec3 target)
+    {
+        var a = (restEnd - restStart).Normalize();
+        var b = (target - start).Normalize();
+        var axis = a.Cross(b);
+        float dot = a.Dot(b);
+        var rotation = dot < -0.9999f
+            ? Quat.FromAxisAngle(a.Cross(Vec3.Right()).Normalize(), (float)Math.PI)
+            : new Quat(axis.X, axis.Y, axis.Z, 1 + dot).Normalize();
+        return Mat4.Translate(start) * Mat4.FromQuat(rotation) * Mat4.Translate(-restStart);
+    }
+
+    static Vec3 BendJoint(Vec3 start, Vec3 target, Vec3 hint, float upper, float lower)
+    {
+        var delta = target - start;
+        float distance = Math.Max(0.001f, delta.Length());
+        var direction = delta / distance;
+        var bend = hint - start;
+        bend = (bend - direction * bend.Dot(direction)).Normalize();
+        float along = MathUtil.Clamp((upper * upper - lower * lower + distance * distance) / (2 * distance), -upper, upper);
+        float height = (float)Math.Sqrt(Math.Max(0, upper * upper - along * along));
+        return start + direction * along + bend * height;
+    }
+
+    static Mat4 TorsoMatrix(BaseballPose p)
+    {
+        return Mat4.Translate(new Vec3(0, p.Drop, p.Shift)) * Bones.PivotRot(0, torsoPy, 0,
+            Mat4.RotateY(p.Twist) * Mat4.RotateX(p.Lean) * Mat4.RotateZ(p.Tilt));
+    }
+
+    static BaseballRig MakeRig(BaseballPose p)
+    {
+        var rig = new BaseballRig();
+        var drop = new Vec3(0, p.Drop, p.Shift);
+        var torso = TorsoMatrix(p);
+        rig.Matrices["torso"] = torso;
+        rig.Matrices["head"] = torso * Bones.PivotRot(0, headPy, 0,
+            Mat4.RotateY(p.HeadYaw) * Mat4.RotateX(p.HeadPitch));
+        rig.Matrices["hips"] = Mat4.Translate(drop);
+        for (int side = -1; side <= 1; side += 2)
         {
-            cm = new List<Mesh3d>
+            var suffix = side > 0 ? "_l" : "_r";
+            var shoulder = torso.MulPoint(RestShoulder(side));
+            var hand = side > 0 ? p.LeftHand : p.RightHand;
+            var elbow = p.Bind ? RestElbow(side) : BendJoint(shoulder, hand, torso.MulPoint(side > 0 ? p.LeftElbowHint : p.RightElbowHint),
+                RestShoulder(side).Distance(RestElbow(side)), RestElbow(side).Distance(RestWrist(side)));
+            rig.Matrices["upper_arm" + suffix] = BoneBetween(RestShoulder(side), RestElbow(side), shoulder, elbow);
+            var forearm = BoneBetween(RestElbow(side), RestWrist(side), elbow, hand);
+            rig.Matrices["forearm" + suffix] = forearm;
+            if (side > 0) rig.LeftHand = forearm.MulPoint(RestWrist(side));
+            else rig.RightHand = forearm.MulPoint(RestWrist(side));
+            var hip = RestHip(side) + drop;
+            var foot = side > 0 ? p.LeftFoot : p.RightFoot;
+            var knee = p.Bind ? RestKnee(side) : BendJoint(hip, foot, new Vec3(-side * p.KneeSpread, hip.Y - 0.15f, 0.65f),
+                RestHip(side).Distance(RestKnee(side)), RestKnee(side).Distance(RestAnkle(side)));
+            rig.Matrices["thigh" + suffix] = BoneBetween(RestHip(side), RestKnee(side), hip, knee);
+            var shin = BoneBetween(RestKnee(side), RestAnkle(side), knee, foot);
+            rig.Matrices["shin" + suffix] = shin;
+            var ankle = shin.MulPoint(RestAnkle(side));
+            rig.Matrices["foot" + suffix] = Mat4.Translate(ankle - RestAnkle(side));
+        }
+        rig.Ball = rig.LeftHand.Lerp(rig.RightHand, p.BallTransfer) + new Vec3(0, 0.04f, 0.09f);
+        return rig;
+    }
+
+    static List<float> PackRig(BaseballRig rig, MeshData? mesh)
+    {
+        return Bones.Pack(mesh, (name, px, py, pz) => rig.Matrices.ContainsKey(name) ? rig.Matrices[name] : null);
+    }
+
+    static List<float> PackBones(BaseballPose p)
+    {
+        return PackRig(MakeRig(p), charMesh != null ? charMesh[0].Data : null);
+    }
+
+    static BaseballPose ZeroPose() => new BaseballPose();
+
+    static BaseballPose PoseIdle(float t)
+    {
+        var p = ZeroPose();
+        p.Lean = 0.015f * (float)Math.Sin(t * 2.1f);
+        p.HeadPitch = -p.Lean;
+        return p;
+    }
+
+    static BaseballPose PoseReady(float t)
+    {
+        var p = ZeroPose();
+        p.Lean = 0.28f;
+        p.Drop = -0.10f;
+        p.HeadPitch = -p.Lean;
+        p.LeftHand = new Vec3(-0.18f, 1.0f, 0.43f);
+        p.RightHand = new Vec3(0.18f, 1.0f, 0.35f);
+        p.LeftFoot = new Vec3(-0.26f, 0.12f, 0.03f);
+        p.RightFoot = new Vec3(0.26f, 0.12f, -0.03f);
+        return p;
+    }
+
+    static BaseballPose PoseCrouch(float t)
+    {
+        var p = PoseReady(t);
+        p.Drop = -0.43f;
+        p.Lean = 0.28f;
+        p.HeadPitch = -p.Lean;
+        p.LeftHand = new Vec3(-0.09f, 0.83f, 0.43f);
+        p.RightHand = new Vec3(0.18f, 0.55f, 0.12f);
+        p.KneeSpread = 0.85f;
+        p.LeftFoot = new Vec3(-0.24f, 0.12f, -0.04f);
+        p.RightFoot = new Vec3(0.24f, 0.12f, -0.04f);
+        return p;
+    }
+
+    static Vec3 RunFoot(float phase, float side)
+    {
+        float cycle = phase / (2 * (float)Math.PI);
+        cycle -= (float)Math.Floor(cycle);
+        float stride = runSpd * (2 * (float)Math.PI / 11) * 0.28f;
+        float z;
+        float y = 0.12f;
+        if (cycle < 0.28f)
+            z = stride * (0.5f - cycle / 0.28f);
+        else
+        {
+            float swing = (cycle - 0.28f) / 0.72f;
+            z = stride * (-0.5f + MathUtil.Smoothstep(0, 1, swing));
+            y += (float)Math.Sin(swing * (float)Math.PI) * 0.24f;
+        }
+        return new Vec3(-side * 0.17f, y, z);
+    }
+
+    static BaseballPose PoseRun(float ph)
+    {
+        var p = ZeroPose();
+        float swing = (float)Math.Sin(ph);
+        p.Drop = -0.28f + 0.02f * (float)Math.Cos(2 * ph);
+        p.Lean = 0.24f;
+        p.Twist = 0.06f * swing;
+        p.HeadPitch = -p.Lean;
+        p.HeadYaw = -p.Twist;
+        p.LeftFoot = RunFoot(ph, 1);
+        p.RightFoot = RunFoot(ph + (float)Math.PI, -1);
+        var torso = TorsoMatrix(p);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var foot = side > 0 ? p.LeftFoot : p.RightFoot;
+            float arm = -foot.Z * 1.4f;
+            float upper = RestShoulder(side).Distance(RestElbow(side));
+            upper = (float)Math.Sqrt(upper * upper - 0.035f * 0.035f);
+            float lower = RestElbow(side).Distance(RestWrist(side));
+            float s = (float)Math.Sin(arm);
+            float c = (float)Math.Cos(arm);
+            var elbow = RestShoulder(side) + new Vec3(-side * 0.035f, -upper * c, upper * s);
+            var hand = torso.MulPoint(elbow + new Vec3(0, lower * s, lower * c));
+            if (side > 0)
             {
-                new Mesh3d("bb24_char0"),
-                new Mesh3d("bb24_char1"),
-            };
-            charMesh = cm;
+                p.LeftElbowHint = elbow;
+                p.LeftHand = hand;
+            }
+            else
+            {
+                p.RightElbowHint = elbow;
+                p.RightHand = hand;
+            }
         }
-        for (int t = 0; t < 2; t++)
-        {
-            cm[t].Rebuild(Sdf.Mesh(CharModel(teamRgb[t]), 56));
-        }
-    }
-
-    // --- ポーズ → ボーン行列 ------------------------------------------------
-    // torso が親、head/arms が子、legs は独立。回転はすべて pivot 回り。
-    // bone 行列の詰めは Bones.pack (mesh.bones 順の resolve) に
-    // 任せる。pose: [twist, lean, tilt, toy, hx, hy, alx, alz, arx, arz,
-    // llx, lrx]
-    static List<float> PackBones(List<float> p)
-    {
-        var rTorso = Mat4.RotateY(-p[0]) * (Mat4.RotateX(-p[1]) * Mat4.RotateZ(-p[2]));
-        var mTorso = Mat4.Translate(new Vec3(0, p[3], 0))
-            * Bones.PivotRot(torsoPx, torsoPy, 0, rTorso);
-        var mHead = mTorso
-            * Bones.PivotRot(0, headPy, 0, Mat4.RotateY(-p[5]) * Mat4.RotateX(-p[4]));
-        var mArmL = mTorso
-            * Bones.PivotRot(armPx, armPy, 0, Mat4.RotateZ(-p[7]) * Mat4.RotateX(-p[6]));
-        var mArmR = mTorso
-            * Bones.PivotRot(-armPx, armPy, 0, Mat4.RotateZ(-p[9]) * Mat4.RotateX(-p[8]));
-        var mLegL = Bones.PivotRot(legPx, legPy, 0, Mat4.RotateX(-p[10]));
-        var mLegR = Bones.PivotRot(-legPx, legPy, 0, Mat4.RotateX(-p[11]));
-        var mats = new Dictionary<string, Mat4>
-        {
-            ["torso"] = mTorso,
-            ["head"] = mHead,
-            ["arm_l"] = mArmL,
-            ["arm_r"] = mArmR,
-            ["leg_l"] = mLegL,
-            ["leg_r"] = mLegR,
-        };
-        var cm = charMesh;
-        var mesh = cm != null ? cm[0].Data : null;
-        return Bones.Pack(mesh, (name, px, py, pz) =>
-            mats.ContainsKey(name) ? mats[name] : null);
-    }
-
-    static List<float> ZeroPose()
-    {
-        return new List<float> { 0, 0, 0, 0, 0, 0, 0, -0.08f, 0, 0.08f, 0, 0 };
-    }
-
-    // クリップ。桜井メソッド: 構え/攻撃ポーズは極端に、中割りはほぼゼロ
-    static List<float> PoseIdle(float t)
-    {
-        var p = ZeroPose();
-        var b = (float)Math.Sin(t * 2.1f);
-        p[1] = 0.04f + b * 0.015f;
-        p[7] = 0.10f + b * 0.02f;
-        p[9] = -0.10f - b * 0.02f;
         return p;
     }
 
-    static List<float> PoseReady(float t)
-    {
-        var p = ZeroPose();
-        p[1] = 0.42f; // 前傾
-        p[3] = -0.08f;
-        p[4] = -0.35f; // 顔は上げる
-        p[6] = 0.85f;
-        p[8] = 0.85f; // 両腕前
-        p[7] = 0.35f;
-        p[9] = -0.35f;
-        p[10] = 0.25f;
-        p[11] = -0.25f;
-        return p;
-    }
-
-    static List<float> PoseCrouch(float t)
-    {
-        var p = ZeroPose();
-        p[3] = -0.30f;
-        p[1] = 0.38f;
-        p[4] = -0.55f;
-        p[6] = 1.05f;
-        p[8] = 1.05f; // 両腕前
-        p[10] = 1.05f;
-        p[11] = 1.05f;
-        return p;
-    }
-
-    static List<float> PoseRun(float ph)
-    {
-        var p = ZeroPose();
-        var s = (float)Math.Sin(ph);
-        p[1] = 0.30f;
-        p[10] = s * 1.0f;
-        p[11] = -s * 1.0f;
-        p[6] = -s * 0.9f;
-        p[8] = s * 0.9f;
-        p[3] = Math.Abs((float)Math.Cos(ph)) * 0.04f;
-        return p;
-    }
-
-    // 投球。ph 0..1、リリースは REL_PH
     public const float RelPh = 0.60f;
 
-    static List<float> PoseWindup(float ph)
+    static BaseballPose PoseWindup(float ph)
     {
         var p = ZeroPose();
-        // 1) 振りかぶり + 足上げ (前 = +Z = rotateX 正)
-        var k1 = MathUtil.Smoothstep(0.0f, 0.34f, ph);
-        p[6] = -2.1f * k1;
-        p[8] = -2.1f * k1;
-        p[10] = 1.35f * k1;
-        p[1] = -0.28f * k1;
-        // 2) 踏み込み + 腕を極端に引き絞る
-        var k2 = MathUtil.Smoothstep(0.38f, 0.54f, ph);
-        p[10] = MathUtil.Lerp(p[10], 0.55f, k2);
-        p[8] = MathUtil.Lerp(p[8], -2.95f, k2); // 右腕を頭の後ろまで
-        p[6] = MathUtil.Lerp(p[6], -0.4f, k2);
-        p[1] = MathUtil.Lerp(p[1], -0.38f, k2);
-        // 3) リリース: 一気に振り抜く (中割りなし)
-        var k3 = MathUtil.Smoothstep(0.56f, 0.62f, ph);
-        p[8] = MathUtil.Lerp(p[8], 0.9f, k3);
-        p[1] = MathUtil.Lerp(p[1], 0.62f, k3);
-        p[0] = -0.45f * k3;
-        p[10] = MathUtil.Lerp(p[10], 0.35f, k3);
-        p[11] = -0.3f * k3;
-        // 4) フォロースルーの余韻
-        var k4 = MathUtil.Smoothstep(0.66f, 1.0f, ph);
-        p[8] = MathUtil.Lerp(p[8], 0.5f, k4);
-        p[1] = MathUtil.Lerp(p[1], 0.45f, k4);
+        float join = MathUtil.Smoothstep(0, 0.18f, ph);
+        float load = MathUtil.Smoothstep(0.20f, 0.45f, ph);
+        float strike = MathUtil.Smoothstep(0.50f, RelPh, ph);
+        float follow = MathUtil.Smoothstep(RelPh, 0.90f, ph);
+        p.Drop = MathUtil.Lerp(0, -0.23f, MathUtil.Smoothstep(0.38f, RelPh, ph));
+        p.Twist = MathUtil.Lerp(0.20f * load, -0.30f, strike) - 0.10f * follow;
+        p.Lean = MathUtil.Lerp(-0.08f * load, 0.28f, strike) + 0.08f * follow;
+        p.HeadPitch = -p.Lean;
+        p.HeadYaw = -p.Twist;
+        p.LeftHand = RestWrist(1).Lerp(new Vec3(-0.07f, 1.23f, 0.30f), join)
+            .Lerp(new Vec3(-0.12f, 1.20f, 0.34f), load)
+            .Lerp(new Vec3(-0.18f, 1.02f, 0.30f), strike);
+        p.RightHand = RestWrist(-1).Lerp(new Vec3(0.05f, 1.23f, 0.30f), join)
+            .Lerp(new Vec3(0.44f, 1.55f, -0.17f), load)
+            .Lerp(new Vec3(0.14f, 1.57f, 0.60f), strike)
+            .Lerp(new Vec3(-0.20f, 0.97f, 0.40f), follow);
+        float lift = MathUtil.Smoothstep(0.05f, 0.35f, ph);
+        float step = MathUtil.Smoothstep(0.38f, 0.56f, ph);
+        p.LeftFoot = RestAnkle(1).Lerp(new Vec3(-0.16f, 0.65f, 0.15f), lift)
+            .Lerp(new Vec3(-0.20f, 0.12f, 0.47f), step);
+        p.RightFoot = RestAnkle(-1).Lerp(new Vec3(0.20f, 0.12f, -0.12f), step);
+        p.BallTransfer = MathUtil.Smoothstep(0.16f, 0.24f, ph);
         return p;
     }
 
-    // スイング。ph 0..1、ミートは SWING_HIT_PH
     public const float SwingHitPh = 0.52f;
+    static float batContactX = 0, batContactY = 1, batContactZ = 0.35f;
 
-    static List<float> PoseSwing(float ph)
+    static Mat4 BatLocalMatrix(float ph)
+    {
+        float strike = MathUtil.Smoothstep(0.32f, SwingHitPh, ph);
+        float follow = MathUtil.Smoothstep(SwingHitPh, 0.92f, ph);
+        var contactGrip = new Vec3(-0.18f, MathUtil.Clamp(batContactY + 0.15f, 0.55f, 1.30f), MathUtil.Clamp(batContactX + 0.24f, 0.05f, 0.50f));
+        var grip = new Vec3(0.16f, 1.35f, 0.30f).Lerp(contactGrip, strike)
+            .Lerp(new Vec3(-0.34f, 1.42f, 0.15f), follow);
+        var contact = new Vec3(-batContactZ, batContactY, batContactX + 0.85f) - contactGrip;
+        float hitYaw = (float)Math.Atan2(contact.X, contact.Z);
+        float hitTilt = -(float)Math.Atan2(contact.Y, (float)Math.Sqrt(contact.X * contact.X + contact.Z * contact.Z));
+        float yaw = MathUtil.Lerp(2.35f, hitYaw, strike) - 1.3f * follow;
+        float tilt = MathUtil.Lerp(-1.05f, hitTilt, strike);
+        tilt = MathUtil.Lerp(tilt, -0.90f, follow);
+        return Mat4.Translate(grip) * Mat4.RotateY(yaw) * Mat4.RotateX(tilt);
+    }
+
+    static BaseballPose PoseSwing(float ph)
     {
         var p = ZeroPose();
-        p[5] = 0.9f; // 顔は投手へ
-        p[4] = -0.15f;
-        // 1) 溜め: 捕手側へ捻る
-        var k1 = MathUtil.Smoothstep(0.0f, 0.40f, ph);
-        p[0] = -0.55f * k1;
-        p[6] = -1.5f * k1;
-        p[8] = -1.7f * k1;
-        p[7] = 0.9f * k1;
-        p[9] = -0.4f * k1;
-        p[10] = -0.35f * k1;
-        // 2) 爆発: 1-2 フレームで振り抜く
-        var k2 = MathUtil.Smoothstep(0.47f, 0.54f, ph);
-        p[0] = MathUtil.Lerp(p[0], 1.55f, k2);
-        p[6] = MathUtil.Lerp(p[6], 0.6f, k2);
-        p[8] = MathUtil.Lerp(p[8], 0.6f, k2);
-        p[7] = MathUtil.Lerp(p[7], 0.3f, k2);
-        p[9] = MathUtil.Lerp(p[9], -1.1f, k2);
-        p[1] = 0.12f * k2;
-        p[10] = MathUtil.Lerp(p[10], 0.4f, k2);
-        p[11] = -0.5f * k2;
-        // 3) フォロースルー: ウェイト破綻気味に大きく
-        var k3 = MathUtil.Smoothstep(0.6f, 1.0f, ph);
-        p[0] = MathUtil.Lerp(p[0], 1.85f, k3);
-        p[4] = MathUtil.Lerp(p[4], -0.3f, k3);
+        p.LeftElbowHint = new Vec3(-0.35f, 1.50f, 0.55f);
+        float strike = MathUtil.Smoothstep(0.32f, SwingHitPh, ph);
+        float follow = MathUtil.Smoothstep(SwingHitPh, 0.92f, ph);
+        p.Drop = MathUtil.Lerp(-0.10f, MathUtil.Clamp(-0.18f + (batContactY - 1) * 0.70f, -0.62f, -0.18f), strike);
+        p.Drop = MathUtil.Lerp(p.Drop, -0.10f, follow);
+        p.Shift = MathUtil.Clamp(batContactX, -0.19f, 0.26f) * strike * (1 - follow);
+        p.Lean = 0.08f + Math.Max(0, 1 - batContactY) * 0.15f * strike * (1 - follow);
+        p.Twist = MathUtil.Lerp(0.12f, -1.10f, strike) - 0.45f * follow;
+        p.HeadYaw = -(float)Math.PI / 2 - p.Twist;
+        p.HeadPitch = -p.Lean;
+        var bat = BatLocalMatrix(ph);
+        p.LeftHand = bat.MulPoint(new Vec3(0, 0, 0));
+        p.RightHand = bat.MulPoint(new Vec3(0, 0, 0.11f));
+        p.LeftFoot = new Vec3(-0.30f - 0.10f * strike, 0.12f, 0.02f);
+        p.RightFoot = new Vec3(0.30f, 0.12f, 0.02f);
         return p;
     }
 
-    static List<float> PoseReach(float t)
+    static BaseballPose PoseReach(float t)
     {
         var p = ZeroPose();
-        p[6] = 2.9f;
-        p[8] = 2.9f;
-        p[7] = 0.25f;
-        p[9] = -0.25f;
-        p[4] = -0.8f;
+        p.HeadPitch = -0.60f;
+        p.LeftHand = new Vec3(-0.18f, 1.90f, 0.27f);
+        p.RightHand = new Vec3(0.25f, 1.57f, 0.30f);
         return p;
     }
 
-    static List<float> PoseThrow(float ph)
+    static BaseballPose PoseThrow(float ph)
     {
-        var p = ZeroPose();
-        var k1 = MathUtil.Smoothstep(0.0f, 0.4f, ph);
-        p[8] = -2.6f * k1;
-        p[0] = -0.4f * k1;
-        var k2 = MathUtil.Smoothstep(0.45f, 0.58f, ph);
-        p[8] = MathUtil.Lerp(p[8], 0.8f, k2);
-        p[0] = MathUtil.Lerp(p[0], 0.35f, k2);
-        p[1] = 0.35f * k2;
+        var p = PoseReady(0);
+        float load = MathUtil.Smoothstep(0.20f, 0.40f, ph);
+        float release = MathUtil.Smoothstep(0.40f, 0.24f / 0.45f, ph);
+        float follow = MathUtil.Smoothstep(0.24f / 0.45f, 0.90f, ph);
+        p.Drop = -0.12f;
+        p.Twist = MathUtil.Lerp(0.25f * load, -0.25f, release);
+        p.Lean = 0.10f + 0.15f * release;
+        p.HeadPitch = -p.Lean;
+        p.HeadYaw = -p.Twist;
+        p.LeftHand = new Vec3(-0.08f, 1.03f, 0.30f).Lerp(new Vec3(-0.18f, 1.0f, 0.30f), load);
+        p.RightHand = new Vec3(0.03f, 1.03f, 0.30f)
+            .Lerp(new Vec3(0.42f, 1.45f, -0.15f), load)
+            .Lerp(new Vec3(0.10f, 1.36f, 0.63f), release)
+            .Lerp(new Vec3(-0.20f, 0.95f, 0.30f), follow);
+        p.RightHand += new Vec3(0.15f * (float)Math.Sin(load * Math.PI) * (1 - release), 0, 0);
+        p.RightElbowHint = p.RightElbowHint.Lerp(new Vec3(0.35f, 1.0f, 0.55f), follow);
+        p.BallTransfer = MathUtil.Smoothstep(0.10f, 0.28f, ph);
         return p;
     }
 
-    static List<float> PoseFor(int anim, float t, float runPhase)
+    static BaseballPose BlendPose(BaseballPose a, BaseballPose b, float k)
+    {
+        var p = new BaseballPose
+        {
+            Twist = MathUtil.Lerp(a.Twist, b.Twist, k),
+            Lean = MathUtil.Lerp(a.Lean, b.Lean, k),
+            Tilt = MathUtil.Lerp(a.Tilt, b.Tilt, k),
+            Drop = MathUtil.Lerp(a.Drop, b.Drop, k),
+            Shift = MathUtil.Lerp(a.Shift, b.Shift, k),
+            KneeSpread = MathUtil.Lerp(a.KneeSpread, b.KneeSpread, k),
+            HeadPitch = MathUtil.Lerp(a.HeadPitch, b.HeadPitch, k),
+            HeadYaw = MathUtil.Lerp(a.HeadYaw, b.HeadYaw, k),
+            BallTransfer = MathUtil.Lerp(a.BallTransfer, b.BallTransfer, k),
+            LeftElbowHint = a.LeftElbowHint.Lerp(b.LeftElbowHint, k),
+            RightElbowHint = a.RightElbowHint.Lerp(b.RightElbowHint, k),
+            LeftFoot = a.LeftFoot.Lerp(b.LeftFoot, k),
+            RightFoot = a.RightFoot.Lerp(b.RightFoot, k)
+        };
+        var fromA = TorsoMatrix(a).Inverse();
+        var fromB = TorsoMatrix(b).Inverse();
+        var torso = TorsoMatrix(p);
+        p.LeftHand = torso.MulPoint(fromA.MulPoint(a.LeftHand).Lerp(fromB.MulPoint(b.LeftHand), k));
+        p.RightHand = torso.MulPoint(fromA.MulPoint(a.RightHand).Lerp(fromB.MulPoint(b.RightHand), k));
+        return p;
+    }
+
+    static BaseballPose PoseFor(int anim, float t, float runPhase)
     {
         if (anim == AnReady) return PoseReady(t);
         if (anim == AnRun) return PoseRun(runPhase);
@@ -405,6 +558,7 @@ public static class Baseball24
     static Mesh3d? fieldMesh = null;
     static Mesh3d? ballMesh = null;
     static Mesh3d? batMesh = null;
+    static Mesh3d? gloveMesh = null;
 
     static void Fan(List<float> dst, float cx, float cy, float cz,
         float r, float a0, float a1, int segs, List<float> col)
@@ -432,11 +586,11 @@ public static class Baseball24
         batMesh = btm;
 
         var v = new List<float>();
-        var grass = new List<float> { 0.24f, 0.47f, 0.24f, 1.0f };
-        var grassIn = new List<float> { 0.28f, 0.54f, 0.27f, 1.0f };
-        var dirt = new List<float> { 0.63f, 0.46f, 0.31f, 1.0f };
+        var grass = new List<float> { 0.19f, 0.37f, 0.29f, 1.0f };
+        var grassIn = new List<float> { 0.31f, 0.55f, 0.34f, 1.0f };
+        var dirt = new List<float> { 0.73f, 0.49f, 0.32f, 1.0f };
         var lineW = new List<float> { 0.95f, 0.95f, 0.92f, 1.0f };
-        var wall = new List<float> { 0.26f, 0.42f, 0.58f, 1.0f };
+        var wall = new List<float> { 0.12f, 0.26f, 0.29f, 1.0f };
         var wallTop = new List<float> { 0.88f, 0.82f, 0.35f, 1.0f };
         var up = new List<float> { 0, 1, 0 };
 
@@ -446,6 +600,17 @@ public static class Baseball24
             new List<float> { 95, 0, -20 }, up, grass);
         // フェアグラウンドの扇形 (少し明るい緑)
         Fan(v, 0, 0.012f, 0, fenceR, -(float)Math.PI / 4, (float)Math.PI / 4, 24, grassIn);
+        for (int band = 0; band < 12; band++)
+        {
+            var z0 = band * 6.0f;
+            var z1 = z0 + 3.0f;
+            var edge0 = Math.Min(z0, (float)Math.Sqrt(fenceR * fenceR - z0 * z0));
+            var edge1 = Math.Min(z1, (float)Math.Sqrt(fenceR * fenceR - z1 * z1));
+            Shapes.Quad(v, new List<float> { -edge0, 0.016f, z0 },
+                new List<float> { -edge1, 0.016f, z1 }, new List<float> { edge1, 0.016f, z1 },
+                new List<float> { edge0, 0.016f, z0 }, up,
+                new List<float> { 0.27f, 0.48f, 0.30f, 1 });
+        }
         // 内野ダート (ひし形)
         Shapes.Quad(v, new List<float> { 0, 0.024f, -2.2f },
             new List<float> { 24.5f, 0.024f, baseD },
@@ -524,6 +689,42 @@ public static class Baseball24
                 new List<float> { x1, 1.6f, z1 },
                 new List<float> { x1, 0, z1 }, n, bsCol);
         }
+        var seat = new List<float> { 0.16f, 0.30f, 0.36f, 1 };
+        var concrete = new List<float> { 0.60f, 0.64f, 0.60f, 1 };
+        for (int side = -1; side <= 1; side += 2)
+        {
+            for (int row = 0; row < 7; row++)
+            {
+                float z = -14 - row * 1.5f;
+                float y = 1.6f + row * 0.8f;
+                Shapes.Box(v, side * 11, y - 0.5f, z, 19, 0.6f, 1.5f, concrete);
+                for (int j = 0; j < 22; j++)
+                {
+                    float x = side * 11 - 8.8f + j * 0.84f;
+                    Shapes.Box(v, x, y, z, 0.64f, 0.7f, 0.25f, seat);
+                    var crowd = (j * 7 + row * 3) % 5;
+                    var shirt = crowd == 0 ? new List<float> { 0.84f, 0.40f, 0.28f, 1 }
+                        : crowd == 1 ? lineW : crowd == 2 ? wallTop : seat;
+                    Shapes.Box(v, x, y + 0.16f, z + 0.36f, 0.43f, 0.58f, 0.30f, shirt);
+                    Shapes.Sphere(v, x, y + 0.64f, z + 0.36f, 0.19f,
+                        new List<float> { 0.80f, 0.62f, 0.46f, 1 }, 4, 6);
+                }
+            }
+            Shapes.Box(v, side * 11, 9.5f, -23, 20, 0.22f, 8, wall);
+            for (int j = 0; j < 3; j++)
+                Shapes.Box(v, side * 11 - 9 + j * 9, 4.75f, -25, 0.22f, 9.5f, 0.22f, seat);
+            Shapes.Box(v, side * 34, 10, -8, 0.36f, 20, 0.36f, concrete);
+            Shapes.Box(v, side * 34, 20, -8, 6, 2, 0.6f, seat);
+            for (int j = 0; j < 6; j++)
+                Shapes.Box(v, side * 34 - 2.5f + j, 20, -7.66f, 0.65f, 1.4f, 0.05f, lineW);
+        }
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Shapes.Box(v, side * 1.20f, 0.055f, 0, 0.045f, 0.02f, 2.2f, lineW);
+            Shapes.Box(v, side * 2.45f, 0.055f, 0, 0.045f, 0.02f, 2.2f, lineW);
+            Shapes.Box(v, side * 1.82f, 0.055f, -1.1f, 1.3f, 0.02f, 0.045f, lineW);
+            Shapes.Box(v, side * 1.82f, 0.055f, 1.1f, 1.3f, 0.02f, 0.045f, lineW);
+        }
         fm.Rebuild(Shapes3d.FromInterleaved(v));
 
         var ballVerts = new List<float>();
@@ -531,10 +732,16 @@ public static class Baseball24
             new List<float> { 0.96f, 0.96f, 0.94f, 1.0f }, 8, 12);
         bm.Rebuild(Shapes3d.FromInterleaved(ballVerts));
 
-        var batVerts = new List<float>();
-        Shapes.Box(batVerts, 0, 0, 0.44f, 0.075f, 0.075f, 0.88f,
-            new List<float> { 0.85f, 0.66f, 0.40f, 1.0f });
-        btm.Rebuild(Shapes3d.FromInterleaved(batVerts));
+        btm.Rebuild(Sdf.Mesh(Sdf.Capsule(new Vec3(0, 0, 0.08f), new Vec3(0, 0, 0.45f), 0.035f)
+            .Paint(0x283648)
+            .Smin(Sdf.Capsule(new Vec3(0, 0, 0.40f), new Vec3(0, 0, 0.94f), 0.075f)
+                .Paint(0xDDA75F, 0, 0.4f), 0.06f), 40));
+        var gm = gloveMesh ?? new Mesh3d("bb24_glove");
+        gloveMesh = gm;
+        gm.Rebuild(Sdf.Mesh(Sdf.Sphere(0.17f)
+            .Subtract(Sdf.Sphere(0.14f).Move(0, 0, 0.11f))
+            .Smin(Sdf.Capsule(new Vec3(-0.12f, -0.08f, 0), new Vec3(-0.15f, 0.10f, 0.04f), 0.06f), 0.04f)
+            .Paint(0xAD683B, 0, 0.75f), 32));
     }
 
     // --- ボール ---------------------------------------------------------------
@@ -597,7 +804,7 @@ public static class Baseball24
         }
         // フェンス (フェア扇形内の円筒壁)。越えたら本塁打
         var hr = (float)Math.Sqrt(bx * bx + bz * bz);
-        if (bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
+        if (!isHomeRun && bz > 0 && Math.Abs(bx) < bz + 2 && hr > fenceR - ballR)
         {
             if (by > fenceH)
             {
@@ -699,6 +906,11 @@ public static class Baseball24
         fielders = fs;
         batter = new Fielder(-0.85f, 0.0f);
         runners = new List<Runner>();
+        batterRunner = null;
+        retiredRunner = null;
+        batterAtPlate = true;
+        ballHeldBy = -1;
+        ballVisible = false;
     }
 
     // --- 試合状態 ---------------------------------------------------------------
@@ -737,17 +949,20 @@ public static class Baseball24
     static int chaser = -1;
     static int ballHeldBy = -1; // 野手 index (-1 = フリー)
     static float liveT = 0.0f;
+    static float homeRunAt = 0.0f;
     static float throwT = 0.0f;
     static float throwDur = 0.0f;
     static float throwFromX = 0.0f;
     static float throwFromY = 0.0f;
     static float throwFromZ = 0.0f;
     static Runner? batterRunner = null;
+    static Runner? retiredRunner = null;
+    static int firstBaseCover = 2;
+    static bool batterAtPlate = true;
     static Landing? landing = null;
 
     // 演出
     static float hitstopT = 0.0f;
-    static float shakeAmp = 0.0f;
     static string eventText = "";
     static float eventT = 99.0f;
     static Color? eventCol = null;
@@ -772,6 +987,7 @@ public static class Baseball24
         var fs = fielders;
         if (fs == null)
             return;
+        foreach (var f in fs) f.CatchPose = null;
         // 目標: ゾーン内/外を先に決めてから座標を出す
         pitchInZone = Rnd() < 0.62f;
         if (pitchInZone)
@@ -810,6 +1026,9 @@ public static class Baseball24
             }
         }
         swingStarted = false;
+        showAllBases = runners != null && runners.Count > 0;
+        ballHeldBy = 0;
+        ballVisible = true;
         SetState(stWindup);
         fs[0].Anim = AnWindup;
         fs[0].AnimT = 0;
@@ -818,9 +1037,15 @@ public static class Baseball24
     // リリース: ボールに初速を与える (重力補償で目標へ届ける)
     static void ReleaseBall()
     {
-        bx = 0.35f;
-        by = 1.9f;
-        bz = moundZ - 0.55f;
+        var fs = fielders;
+        if (fs == null) return;
+        var origin = FielderBall(0);
+        bx = origin.X;
+        by = origin.Y;
+        bz = origin.Z;
+        batContactX = pitchTX;
+        batContactY = pitchTY;
+        batContactZ = 0.42f;
         var speed = Rrange(31.0f, 40.0f);
         var dz = 0.42f - bz;
         var t = Math.Abs(dz) / speed;
@@ -828,6 +1053,7 @@ public static class Baseball24
         bvy = (pitchTY - by) / t + 0.5f * grav * t;
         bvz = dz / t;
         ballVisible = true;
+        ballHeldBy = -1;
         ballBounces = 0;
         ballRolling = false;
         isHomeRun = false;
@@ -862,13 +1088,13 @@ public static class Baseball24
             }
             fs[1].Anim = AnReach;
             fs[1].AnimT = 0;
-            ballVisible = false;
+            fs[1].CatchPose = CatchPose(1, new Vec3(bx, by, bz));
+            ballHeldBy = 1;
             AfterCall();
             return;
         }
-        // バットに当たった。ヒットストップ + 画面振動
-        hitstopT = 0.09f;
-        shakeAmp = 0.5f;
+        // 接触を短く止め、振り抜きへつなぐ。
+        hitstopT = 0.035f;
         var launch = exitLaunch;
         var spray = exitSpray;
         var speed = exitSpeed;
@@ -881,9 +1107,7 @@ public static class Baseball24
         }
         var la = MathUtil.Radians(launch);
         var sa = MathUtil.Radians(spray);
-        bx = 0.0f;
-        by = 1.0f;
-        bz = 0.35f;
+        b.AnimT = SwingHitPh;
         bvx = speed * (float)Math.Cos(la) * (float)Math.Sin(sa);
         bvy = speed * (float)Math.Sin(la);
         bvz = speed * (float)Math.Cos(la) * (float)Math.Cos(sa);
@@ -903,12 +1127,13 @@ public static class Baseball24
         // 打者走者スタート
         var br = new Runner(b.X, b.Z, 0, 1);
         batterRunner = br;
+        batterAtPlate = false;
         rns.Add(br);
         b.Anim = AnSwing; // 走り出しはスイングの続きから
         // 最寄りの野手が追う
         chaser = NearestFielder(land.X, land.Z);
+        firstBaseCover = chaser == 2 ? 0 : 2;
         playPhase = plFly;
-        camCut = true;
         SetState(stLive);
     }
 
@@ -960,6 +1185,7 @@ public static class Baseball24
             for (int bs = 1; bs < free; bs++)
                 occ[bs].To = bs + 1;
             rns.Add(new Runner(b.X, b.Z, 0, 1));
+            batterAtPlate = false;
             newBatterPending = true;
         }
     }
@@ -984,7 +1210,7 @@ public static class Baseball24
         f.Z += dz / d * mv;
         f.Yaw = (float)Math.Atan2(dx, dz);
         f.Anim = AnRun;
-        f.RunPhase += dt * 11.0f;
+        f.RunPhase += mv / runSpd * 11.0f;
         return false;
     }
 
@@ -995,7 +1221,10 @@ public static class Baseball24
         if (fs == null || rns == null)
             return;
         liveT += dt;
-        StepBall(dt, true);
+        if (playPhase == plFly || playPhase == plFoul || isHomeRun && ballVisible)
+            StepBall(dt, true);
+        if (isHomeRun && ballBounces > 0)
+            ballVisible = false;
 
         if (playPhase == plFoul)
         {
@@ -1016,8 +1245,8 @@ public static class Baseball24
 
         if (isHomeRun && playPhase == plFly)
         {
+            homeRunAt = liveT;
             ShowEvent("HOME RUN!", Color.Rgb(1.0f, 0.85f, 0.25f));
-            shakeAmp = 0.35f;
             foreach (var r in rns)
                 r.To = 4;
             playPhase = plSettle;
@@ -1030,26 +1259,48 @@ public static class Baseball24
         for (int i = 0; i < 9; i++)
         {
             var f = fs[i];
-            if (state != stLive)
+            if (state != stLive || playPhase == plSettle)
                 break;
-            if (i == chaser && ballHeldBy < 0 && playPhase != plSettle)
+            if (i == chaser && ballHeldBy < 0 && playPhase == plFly)
             {
                 // 落下点 (フライ) or 転がるボールの少し先 (ゴロ)
                 var land = landing;
                 var flying = ballBounces == 0 && !ballRolling;
                 var tx = flying && land != null ? land.X : bx + bvx * 0.35f;
                 var tz = flying && land != null ? land.Z : bz + bvz * 0.35f;
+                var radius = (float)Math.Sqrt(tx * tx + tz * tz);
+                if (radius > fenceR - 1.2f)
+                {
+                    tx *= (fenceR - 1.2f) / radius;
+                    tz *= (fenceR - 1.2f) / radius;
+                }
+                float approach = (float)Math.Atan2(bx - f.X, bz - f.Z);
+                bool reaching = (f.X - bx) * (f.X - bx) + (f.Z - bz) * (f.Z - bz) < 6.25f && by < 2.0f;
+                if (reaching)
+                {
+                    var offset = Mat4.RotateY(approach).MulDir(new Vec3(-0.15f, 0, 0.45f));
+                    tx = bx - offset.X;
+                    tz = bz - offset.Z;
+                }
                 var arrived = MoveTowards(f, tx, tz, dt, runSpd);
+                if (reaching) f.Yaw = approach;
                 var dx = f.X - bx;
                 var dz = f.Z - bz;
                 var dist = (float)Math.Sqrt(dx * dx + dz * dz);
-                if (flying && by < 2.6f && bvy < 0 && dist < catchR)
+                bool canCatch = false;
+                if (reaching && dist < catchR)
+                {
+                    var rig = MakeRig(CatchPose(i, new Vec3(bx, by, bz)));
+                    var glove = (Mat4.Translate(new Vec3(f.X, 0, f.Z)) * Mat4.RotateY(FielderYaw(i))).MulPoint(rig.Ball);
+                    canCatch = glove.Distance(new Vec3(bx, by, bz)) < 0.01f;
+                }
+                if (flying && bvy < 0 && canCatch)
                 {
                     // ノーバウンド捕球 → アウト
                     FielderCaught(i, true);
                 }
                 else if ((ballBounces > 0 || ballRolling)
-                    && dist < catchR * 0.8f && by < 1.2f)
+                    && canCatch && by < 1.2f)
                 {
                     FielderCaught(i, false);
                 }
@@ -1058,11 +1309,10 @@ public static class Baseball24
                     f.Anim = AnReady;
                 }
             }
-            else if (i == 2 && playPhase != plSettle && batterRunner != null)
+            else if (i == firstBaseCover && batterRunner != null)
             {
                 // 一塁手はベースへ (自分が追走者でなければ)
-                if (i != chaser)
-                    MoveTowards(f, baseD - 0.4f, baseD - 0.4f, dt, runSpd);
+                MoveTowards(f, baseD - 0.25f, baseD - 0.25f, dt, runSpd);
             }
             else if (i != chaser)
             {
@@ -1074,12 +1324,34 @@ public static class Baseball24
         if (playPhase == plThrow1b)
         {
             throwT += dt;
-            var k = Math.Min(1.0f, throwT / throwDur);
-            // 送球は放物線 (見た目用に手計算)
-            bx = MathUtil.Lerp(throwFromX, baseD, k);
-            bz = MathUtil.Lerp(throwFromZ, baseD, k);
-            by = MathUtil.Lerp(throwFromY, 1.2f, k) + (float)Math.Sin(k * (float)Math.PI) * 1.4f;
+            if (ballHeldBy == chaser)
+            {
+                var origin = FielderBall(chaser);
+                throwFromX = origin.X;
+                throwFromY = origin.Y;
+                throwFromZ = origin.Z;
+                if (throwT >= 0.24f) ballHeldBy = -1;
+            }
+            var receiver = fs[firstBaseCover];
+            receiver.Yaw = (float)Math.Atan2(throwFromX - receiver.X, throwFromZ - receiver.Z);
+            if (receiver.Anim != AnRun) receiver.Anim = AnReady;
+            var destination = FielderBall(firstBaseCover);
+            var k = MathUtil.Clamp((throwT - 0.24f) / throwDur, 0, 1);
+            bx = MathUtil.Lerp(throwFromX, destination.X, k);
+            bz = MathUtil.Lerp(throwFromZ, destination.Z, k);
+            by = MathUtil.Lerp(throwFromY, destination.Y, k) + (float)Math.Sin(k * (float)Math.PI) * 1.4f;
             if (k >= 1.0f)
+            {
+                ballHeldBy = firstBaseCover;
+                playPhase = plTouch1b;
+            }
+        }
+        if (playPhase == plTouch1b)
+        {
+            var cover = fs[firstBaseCover];
+            float dx = cover.X - baseD;
+            float dz = cover.Z - baseD;
+            if (dx * dx + dz * dz < 0.36f)
             {
                 // 封殺 or セーフ: 走者の進塁具合と競争
                 var br = batterRunner;
@@ -1087,6 +1359,7 @@ public static class Baseball24
                 {
                     outs++;
                     ShowEvent("OUT!", Color.Rgb(1.0f, 0.5f, 0.3f));
+                    retiredRunner = br;
                     rns.Remove(br);
                     // 他の走者は 1 つ進む
                     foreach (var r in rns)
@@ -1098,9 +1371,10 @@ public static class Baseball24
                     ShowEvent("SAFE!", Color.Rgb(0.5f, 1.0f, 0.6f));
                 }
                 batterRunner = null;
-                ballHeldBy = 2;
-                ballVisible = false;
+                cover.Anim = AnReady;
+                cover.AnimT = 0;
                 playPhase = plSettle;
+                stateT = 0;
             }
         }
 
@@ -1111,7 +1385,7 @@ public static class Baseball24
             foreach (var r in rns)
                 if (r.AtBase < r.To)
                     settled = false;
-            if (settled && liveT > 1.0f)
+            if (settled && stateT > 0.65f)
             {
                 ballVisible = false;
                 newBatterPending = true;
@@ -1119,7 +1393,7 @@ public static class Baseball24
             }
         }
         // 保険: 異常に長引いたら打ち切り
-        if (liveT > 14.0f)
+        if (liveT > 14.0f && playPhase != plSettle)
         {
             ballVisible = false;
             newBatterPending = true;
@@ -1134,8 +1408,9 @@ public static class Baseball24
         var rns = runners;
         if (fs == null || rns == null)
             return;
-        ballHeldBy = i;
         var f = fs[i];
+        f.CatchPose = CatchPose(i, new Vec3(bx, by, bz));
+        ballHeldBy = i;
         f.Anim = fly ? AnReach : AnReady;
         f.AnimT = 0;
         if (fly)
@@ -1145,12 +1420,15 @@ public static class Baseball24
             // 打者アウト。走者は帰塁 (簡略: その場から戻る)
             var br = batterRunner;
             if (br != null)
+            {
+                retiredRunner = br;
                 rns.Remove(br);
+            }
             batterRunner = null;
             foreach (var r in rns)
                 r.To = r.AtBase;
-            ballVisible = false;
             playPhase = plSettle;
+            stateT = 0;
             return;
         }
         // ゴロ/落ちたフライ: 一塁封殺が間に合いそうなら送球、無理ならヒット確定
@@ -1181,8 +1459,8 @@ public static class Baseball24
         foreach (var r in rns)
             r.To = r == batterRunner ? bases : Math.Min(4, r.AtBase + bases);
         batterRunner = null;
-        ballVisible = false;
         playPhase = plSettle;
+        stateT = 0;
     }
 
     static void UpdateRunners(float dt, float spdScale)
@@ -1209,6 +1487,8 @@ public static class Baseball24
                     r.AtBase = nextBase;
                     if (nextBase >= 4)
                     {
+                        if (isHomeRun && r == batterRunner)
+                            retiredRunner = r;
                         score[BattingTeam()] = score[BattingTeam()] + 1;
                         ShowEvent("RUN SCORED!", Color.Rgb(1.0f, 0.9f, 0.4f));
                         rns.RemoveAt(i);
@@ -1219,7 +1499,7 @@ public static class Baseball24
                     r.X += dx / d * mv;
                     r.Z += dz / d * mv;
                 }
-                r.RunPhase += dt * 11.0f;
+                r.RunPhase += Math.Min(d, mv) / runSpd * 11.0f;
             }
             else if (r.AtBase > r.To)
             {
@@ -1240,7 +1520,7 @@ public static class Baseball24
                     r.X += dx / d * mv;
                     r.Z += dz / d * mv;
                 }
-                r.RunPhase += dt * 11.0f;
+                r.RunPhase += Math.Min(d, mv) / runSpd * 11.0f;
             }
             i--;
         }
@@ -1279,6 +1559,9 @@ public static class Baseball24
                 b.X = -0.85f;
                 b.Z = 0.0f;
                 b.Anim = AnIdle;
+                batterRunner = null;
+                retiredRunner = null;
+                batterAtPlate = true;
                 balls = 0;
                 strikes = 0;
                 newBatterPending = false;
@@ -1311,10 +1594,19 @@ public static class Baseball24
         {
             fs[0].AnimT = Math.Min(1.0f, fs[0].AnimT + dt / 1.1f);
             // 投球は無抵抗の放物線 (短距離なので誤差は無視できる)
-            bvy -= grav * dt;
-            bx += bvx * dt;
-            by += bvy * dt;
-            bz += bvz * dt;
+            float contactZ = willSwing && swingOutcome != 0 ? 0.42f : -2.0f;
+            float travel = Math.Min(dt, Math.Max(0, (contactZ - bz) / bvz));
+            bx += bvx * travel;
+            by += bvy * travel - 0.5f * grav * travel * travel;
+            bz += bvz * travel;
+            bvy -= grav * travel;
+            if (by < ballR)
+            {
+                by = ballR;
+                bvy = Math.Abs(bvy) * 0.30f;
+            }
+            float toCatcher = Math.Max(0, (-2.0f - bz) / bvz);
+            fs[1].X = MathUtil.Lerp(fs[1].X, bx + bvx * toCatcher, Math.Min(1, dt * 12));
             // スイング開始タイミング (ミートの瞬間に SWING_HIT_PH が来るよう逆算)
             var tToPlate = bvz != 0 ? (0.42f - bz) / bvz : 0.0f;
             if (willSwing && !swingStarted && tToPlate < SwingHitPh * 0.55f)
@@ -1324,8 +1616,8 @@ public static class Baseball24
                 swingStarted = true;
             }
             if (b.Anim == AnSwing)
-                b.AnimT = Math.Min(1.0f, b.AnimT + dt / 0.55f);
-            if (bz <= 0.42f)
+                b.AnimT = MathUtil.Clamp(SwingHitPh - tToPlate / 0.55f, 0, 1);
+            if (travel < dt || bz <= contactZ)
                 ResolveContact();
         }
         else if (state == stLive)
@@ -1415,7 +1707,10 @@ public static class Baseball24
     static Vec3? camEye = null;
     static Vec3? camTarget = null;
     static float camFov = 34.0f;
-    static bool camCut = false;
+    static bool fieldView = false;
+    static bool showAllBases = false;
+    static bool firstBaseView = false;
+    static bool homeRunView = false;
 
     static void UpdateCamera(float dt)
     {
@@ -1423,55 +1718,100 @@ public static class Baseball24
         var tgt = camTarget;
         if (eye == null || tgt == null)
             return;
-        var de = new Vec3(4.6f, 3.1f, 29.0f); // センター後方の中継カメラ
-        var dtg = new Vec3(-0.3f, 1.1f, 1.2f);
-        var dfov = 30.0f;
-        if (state == stLive && playPhase != plFoul)
+        var de = new Vec3(2.8f, 2.6f, -5.2f);
+        var dtg = new Vec3(-0.1f, 1.1f, 5);
+        var dfov = 46.0f;
+        if (state == stPrepitch && batterAtPlate && outs < 3)
+        {
+            de = new Vec3(2.1f, 1.5f, 3.6f);
+            dtg = new Vec3(-0.65f, 1.1f, 0);
+            dfov = 37;
+        }
+        var wide = state == stLive && playPhase != plFoul && liveT > 0.18f
+            || state == stCall && fieldView;
+        if (!wide)
+            firstBaseView = false;
+        var runner = batterRunner;
+        bool followHomeRun = isHomeRun && liveT >= homeRunAt + 1.0f
+            && runner != null && (state == stLive || state == stCall);
+        if (followHomeRun && runner != null)
+        {
+            var from = BasePos(Math.Min(runner.AtBase, 3));
+            var next = BasePos(Math.Min(runner.AtBase + 1, 4));
+            var forward = new Vec3(next[0] - from[0], 0, next[1] - from[1]).Normalize();
+            var offset = forward * 3.3f - new Vec3(forward.Z, 0, -forward.X) * 4.4f + new Vec3(0, 0.8f, 0);
+            if (homeRunView)
+                offset = (eye - tgt).Lerp(offset, Math.Min(1, dt * 4)).Normalize() * offset.Length();
+            dtg = new Vec3(runner.X, 1.0f, runner.Z);
+            de = dtg + offset;
+            dfov = 34;
+            firstBaseView = false;
+        }
+        else if (wide && state == stLive && playPhase == plThrow1b && !firstBaseView)
+        {
+            var br = batterRunner;
+            var cover = fielders![firstBaseCover];
+            var points = new List<Vec3> {
+                new Vec3(throwFromX, 0, throwFromZ),
+                new Vec3(baseD, 0, baseD),
+                new Vec3(cover.X, 0, cover.Z),
+                new Vec3(br != null ? br.X : baseD, 0, br != null ? br.Z : baseD)
+            };
+            float left = baseD, right = baseD, front = baseD, back = baseD;
+            foreach (var p in points)
+            {
+                left = Math.Min(left, p.X);
+                right = Math.Max(right, p.X);
+                front = Math.Min(front, p.Z);
+                back = Math.Max(back, p.Z);
+            }
+            dtg = new Vec3((left + right) * 0.5f, 1.1f, (front + back) * 0.5f);
+            // 送球の始点・走者・受け手を収め、リリース前から判定まで同じ構図を保つ。
+            float distance = 7;
+            foreach (var p in points)
+            {
+                float x = p.X - dtg.X, z = p.Z - dtg.Z;
+                for (int h = 0; h < 2; h++)
+                {
+                    float y = h * 3.5f - dtg.Y;
+                    float depth = x * 0.575f + y * 0.287f - z * 0.766f;
+                    distance = Math.Max(distance, depth + (Math.Abs(x * 0.8f + z * 0.6f) + 1) / 0.61f);
+                    distance = Math.Max(distance, depth + Math.Abs(-x * 0.172f + y * 0.958f + z * 0.230f) / 0.30f);
+                }
+            }
+            de = dtg + new Vec3(0.575f, 0.287f, -0.766f) * distance;
+            dfov = 44;
+            firstBaseView = true;
+        }
+        else if (wide && firstBaseView)
+        {
+            de = eye;
+            dtg = tgt;
+            dfov = camFov;
+        }
+        else if (wide)
         {
             var land = landing;
-            if (land != null && (land.Peak > 7.0f || isHomeRun)
-                && (ballBounces == 0 && !ballRolling || isHomeRun))
+            float lx = land != null ? MathUtil.Clamp(land.X, -55, 55) : 0;
+            float lz = land != null ? MathUtil.Clamp(land.Z, 0, fenceR) : baseD;
+            float left = Math.Min(-4, lx - 5);
+            float right = Math.Max(baseD + 4, lx + 5);
+            float back = Math.Max(baseD + 4, lz + 6);
+            if (showAllBases)
             {
-                // フライ追従: 打球の後方上空から
-                var hv = (float)Math.Sqrt(bvx * bvx + bvz * bvz);
-                var dirx = hv > 0.5f ? bvx / hv : 0.0f;
-                var dirz = hv > 0.5f ? bvz / hv : 1.0f;
-                de = new Vec3(bx - dirx * 13.0f,
-                    Math.Max(by * 0.55f + 3.5f, 2.2f), bz - dirz * 13.0f);
-                dtg = new Vec3(bx + bvx * 0.22f, Math.Max(by, 0.5f),
-                    bz + bvz * 0.22f);
-                dfov = 42.0f;
+                left = Math.Min(left, -baseD - 4);
+                back = Math.Max(back, baseD * 2 + 4);
             }
-            else
-            {
-                // 内野俯瞰
-                de = new Vec3(0, 15.0f, -14.0f);
-                dtg = new Vec3(0, 0.0f, 20.0f);
-                dfov = 50.0f;
-            }
+            float span = Math.Max(28, Math.Max((back + 4) * 1.05f, (right - left) * 0.9f));
+            dtg = new Vec3((left + right) * 0.5f, 0, (back - 4) * 0.5f + 4);
+            de = new Vec3(dtg.X + 6, span * 0.85f, dtg.Z - span * 0.9f);
+            dfov = 50;
         }
-        else if (state == stIntro || state == stChange || state == stEnd)
-        {
-            var a = tAccum * 0.12f;
-            de = new Vec3((float)Math.Sin(a) * 46.0f, 17.0f, 24.0f + (float)Math.Cos(a) * 30.0f);
-            dtg = new Vec3(0, 1.0f, 22.0f);
-            dfov = 42.0f;
-        }
-        var k = camCut ? 1.0f : Math.Min(1.0f, 7.0f * dt);
-        camCut = false;
-        eye = eye.Lerp(de, k);
-        tgt = tgt.Lerp(dtg, k);
-        camFov = MathUtil.Lerp(camFov, dfov, k);
-        // 画面振動 (ヒットの手応え)。減衰付きで eye だけ揺らす
-        if (shakeAmp > 0.003f)
-        {
-            var s = shakeAmp;
-            eye = new Vec3(eye.X + (float)Math.Sin(tAccum * 71.0f) * s * 0.25f,
-                eye.Y + (float)Math.Sin(tAccum * 93.0f + 1.7f) * s * 0.2f, eye.Z);
-            shakeAmp *= (float)Math.Pow(0.001f, dt); // ~0.7s で収束
-        }
-        camEye = eye;
-        camTarget = tgt;
+        homeRunView = followHomeRun;
+        fieldView = wide;
+        camEye = de;
+        camTarget = dtg;
+        camFov = dfov;
     }
 
     // --- 描画 -----------------------------------------------------------------------
@@ -1480,44 +1820,125 @@ public static class Baseball24
 
     static Renderer3d? ren = null;
 
+    static float FielderYaw(int i)
+    {
+        var f = fielders![i];
+        if (f.Anim == AnThrow)
+        {
+            float turn = (float)Math.Atan2(baseD - f.X, baseD - f.Z) - f.Yaw;
+            turn = (float)Math.Atan2(Math.Sin(turn), Math.Cos(turn));
+            return f.Yaw + turn * MathUtil.Smoothstep(0, 0.20f, f.AnimT);
+        }
+        if (f.Anim == AnRun || f.Anim == AnThrow || (i == chaser && state == stLive) || (state == stLive && (ballHeldBy == i || (i == firstBaseCover && playPhase == plThrow1b)))) return f.Yaw;
+        if (i == 0) return (float)Math.PI;
+        if (i == 1) return 0;
+        return (float)Math.Atan2(-f.X, -f.Z);
+    }
+
+    static BaseballPose FielderPose(int i)
+    {
+        var f = fielders![i];
+        if (i == 1)
+        {
+            var crouch = PoseCrouch(tAccum);
+            if (f.CatchPose != null && ballHeldBy == i)
+                return BlendPose(f.CatchPose, crouch, f.Anim == AnReach ? MathUtil.Smoothstep(0.10f, 0.45f, f.AnimT) : 1);
+            if (state == stPitch && bvz < 0)
+            {
+                float remaining = Math.Max(0, (-2.0f - bz) / bvz);
+                var target = new Vec3(bx + bvx * remaining, Math.Max(ballR, by + bvy * remaining - 0.5f * grav * remaining * remaining), -2.0f);
+                var receive = CatchPose(i, target);
+                return BlendPose(crouch, receive, MathUtil.Smoothstep(0, 0.20f, stateT));
+            }
+            return crouch;
+        }
+        if (i == chaser && state == stLive && playPhase == plFly && by < 2.0f
+            && (f.X - bx) * (f.X - bx) + (f.Z - bz) * (f.Z - bz) < catchR * catchR)
+            return CatchPose(i, new Vec3(bx, by, bz));
+        if (f.CatchPose != null && ballHeldBy == i)
+        {
+            if (f.Anim == AnThrow) return BlendPose(f.CatchPose, PoseThrow(f.AnimT), MathUtil.Smoothstep(0, 0.20f, f.AnimT));
+            return f.CatchPose;
+        }
+        return PoseFor(f.Anim,
+            f.Anim == AnWindup || f.Anim == AnThrow || f.Anim == AnReach ? f.AnimT : tAccum,
+            f.RunPhase);
+    }
+
+    static BaseballPose CatchPose(int i, Vec3 target)
+    {
+        var f = fielders![i];
+        var hand = Mat4.RotateY(-FielderYaw(i)).MulPoint(target - new Vec3(f.X, 0, f.Z)) - new Vec3(0, 0.04f, 0.09f);
+        var p = i == 1 ? PoseCrouch(tAccum) : PoseReady(0);
+        if (i == 1)
+        {
+            float low = 1 - MathUtil.Smoothstep(0.10f, 0.75f, hand.Y);
+            float high = MathUtil.Smoothstep(0.85f, 1.50f, hand.Y);
+            p.Drop = -0.43f - 0.31f * low + 0.15f * high;
+            p.Lean = 0.28f + 0.35f * low;
+            p.HeadPitch = -p.Lean - 0.15f * high;
+            p.RightHand = new Vec3(0.18f, 0.85f + p.Drop * 0.70f, 0.12f);
+        }
+        else
+        {
+            float low = 1 - MathUtil.Smoothstep(0.10f, 0.90f, hand.Y);
+            p.Drop = MathUtil.Lerp(MathUtil.Clamp(hand.Y - 1.15f, -0.60f, 0), -0.74f, low);
+            p.Shift = -0.4f * low * (1 - low);
+            p.Lean = 0.24f + 0.39f * low;
+            p.HeadPitch = -p.Lean - 0.32f * MathUtil.Smoothstep(1.4f, 1.8f, hand.Y);
+            p.RightHand = new Vec3(0.20f, 1.0f + p.Drop, 0.30f);
+            p.KneeSpread = MathUtil.Lerp(p.KneeSpread, 0.85f, low);
+            p.LeftFoot = p.LeftFoot.Lerp(new Vec3(-0.24f, 0.12f, -0.04f), low);
+            p.RightFoot = p.RightFoot.Lerp(new Vec3(0.24f, 0.12f, -0.04f), low);
+        }
+        p.LeftHand = hand;
+        p.LeftElbowHint = new Vec3(-0.35f, 1.10f, 0.55f);
+        return p;
+    }
+
+    static Vec3 FielderBall(int i)
+    {
+        var f = fielders![i];
+        return (Mat4.Translate(new Vec3(f.X, 0, f.Z)) * Mat4.RotateY(FielderYaw(i)))
+            .MulPoint(MakeRig(FielderPose(i)).Ball);
+    }
+
     static void DrawChar(float x, float z, float yaw, int team,
-        List<float> pose)
+        BaseballPose pose, bool glove = false, bool holdingBall = false)
     {
         var renNow = ren;
         var cm = charMesh;
         if (renNow == null || cm == null)
             return;
-        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(-yaw);
-        renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackBones(pose) });
+        var vp = renNow.ViewProj;
+        if (vp != null)
+        {
+            var clip = vp * new Vec4(x, 1, z, 1);
+            if (clip.W <= 0 || Math.Abs(clip.X) > clip.W + 5 || Math.Abs(clip.Y) > clip.W + 5)
+                return;
+        }
+        var model = Mat4.Translate(new Vec3(x, 0, z)) * Mat4.RotateY(yaw);
+        var rig = MakeRig(pose);
+        renNow.Draw(cm[team], model, new Draw3dOpts { Bones = PackRig(rig, cm[team].Data) });
+        if (glove && gloveMesh != null)
+            renNow.Draw(gloveMesh, model * Mat4.Translate(rig.LeftHand));
+        if (holdingBall)
+            renNow.Draw(ballMesh, model * Mat4.Translate(rig.Ball));
     }
 
-    // バット。スイング位相から向きを決める (打者ローカル)
     static Mat4 BatMatrix(float ph)
     {
-        // 溜め → 一気に振り抜き → フォロー (角度は右ねじの逆向きで調整してある)
-        var ang = -2.35f; // 構え: 後方上
-        var tilt = 1.05f;
-        var k2 = MathUtil.Smoothstep(0.47f, 0.56f, ph);
-        ang = MathUtil.Lerp(ang, 1.15f, k2);
-        tilt = MathUtil.Lerp(tilt, -0.05f, k2);
-        var k3 = MathUtil.Smoothstep(0.6f, 1.0f, ph);
-        ang = MathUtil.Lerp(ang, 1.9f, k3);
-        tilt = MathUtil.Lerp(tilt, 0.45f, k3);
-        // local は Lua キーワードで emit が不正になるため batLocal
-        var batLocal = Mat4.Translate(new Vec3(-0.12f, 1.45f, -0.15f))
-            * (Mat4.RotateY(-ang) * Mat4.RotateX(-tilt));
         var b = batter;
-        var px = b != null ? b.X : 0.0f;
-        var pz = b != null ? b.Z : 0.0f;
-        return Mat4.Translate(new Vec3(px, 0, pz))
-            * (Mat4.RotateY(-(float)Math.PI / 2) * batLocal);
+        return Mat4.Translate(new Vec3(b != null ? b.X : 0, 0, b != null ? b.Z : 0))
+            * Mat4.RotateY((float)Math.PI / 2) * BatLocalMatrix(ph);
     }
 
     // --- HUD ------------------------------------------------------------------------
     const string fontPath = "samples/data/fonts/MPLUS1p-subset.ttf";
     static bool fontLoaded = false;
     static int fontVersion = 0;
-    static MeshText? mtext = null;
+    static Text? mtext = null;
+    static SpriteBatch? hud = null;
 
     static bool EnsureText()
     {
@@ -1528,48 +1949,60 @@ public static class Baseball24
         {
             fontLoaded = true;
             fontVersion = version;
-            mtext = new MeshText("bb24_text", fontPath, version, w, h);
+            mtext = new Text("bb24_text", fontPath, 32, 256);
+            hud = new SpriteBatch(w, h, "bb24_hud", "bb24_hud");
         }
         return mtext != null;
     }
 
+    static void HudText(string text, float x, float y, float size, Color color, bool center = false)
+    {
+        var mt = mtext;
+        var batch = hud;
+        if (mt == null || batch == null) return;
+        float scale = size / mt.Px;
+        mt.Draw(batch, text, center ? x - mt.Width(text, scale) * 0.5f : x, y, color, scale);
+    }
+
     static void DrawHud()
     {
-        if (!EnsureText())
-            return;
-        var mt = mtext;
-        if (mt == null)
-            return;
-        var cream = Color.Rgb(0.97f, 0.96f, 0.9f);
-        var red = Color.Rgb(1.0f, 0.5f, 0.45f);
-        var blue = Color.Rgb(0.55f, 0.7f, 1.0f);
-        // スコア (チーム名は各チーム色)
-        var sL = teamName[0] + " ";
-        var sM = score[0] + " - " + score[1];
-        var sR = " " + teamName[1];
-        var size = 26.0f;
-        var total = mt.Width(sL, size) + mt.Width(sM, size)
-            + mt.Width(sR, size);
-        var x = w * 0.5f - total * 0.5f;
-        mt.Text(sL, x, 38, size, red);
-        mt.Text(sM, x + mt.Width(sL, size), 38, size, cream);
-        mt.Text(sR, x + mt.Width(sL, size) + mt.Width(sM, size), 38, size,
-            blue);
-        // イニングとカウント
-        var halfMark = half == 0 ? "TOP" : "BOT";
-        mt.TextCentered("INN " + inning + " " + halfMark + "   B" + balls
-            + " S" + strikes + " O" + outs, w * 0.5f, 64, 15,
-            Color.Rgb(0.85f, 0.87f, 0.9f));
-        // イベントテキスト (出現時にスケールが弾む)
-        if (eventText != "" && eventT < 1.6f)
+        if (!EnsureText()) return;
+        var batch = hud;
+        if (batch == null) return;
+        var cream = Color.Hex(0xFFF3DB);
+        var ink = Color.Rgb(0.04f, 0.10f, 0.15f, 0.95f);
+        var gold = Color.Hex(0xF5C46B);
+        batch.Begin();
+        batch.Rect(20, 16, 616, 52, ink);
+        batch.Rect(20, 16, 5, 52, Color.Hex(teamRgb[BattingTeam()]));
+        var occupied = new bool[] { false, false, false };
+        var rns = runners;
+        if (rns != null)
+            foreach (var runner in rns)
+            {
+                if (runner.AtBase >= 1 && runner.AtBase <= 3) occupied[runner.AtBase - 1] = true;
+            }
+        for (int i = 0; i < 3; i++)
         {
-            var ec = eventCol;
-            if (ec == null)
-                return;
-            var pop = 1.0f + 0.6f * (float)Math.Exp(-eventT * 9.0f);
-            var a = eventT > 1.25f ? 1.0f - (eventT - 1.25f) / 0.35f : 1.0f;
-            var c = Color.Rgb(ec.R, ec.G, ec.B, a);
-            mt.TextCentered(eventText, w * 0.5f, 190, 52 * pop, c);
+            float x = i == 0 ? 612 : i == 1 ? 596 : 580;
+            float y = i == 1 ? 31 : 47;
+            batch.Rect(x - 5, y - 5, 10, 10, occupied[i] ? gold : Color.Hex(0x607380));
+        }
+        HudText(teamName[0] + "  " + score[0] + " : " + score[1] + "  " + teamName[1], 38, 50, 24, cream);
+        HudText((half == 0 ? "TOP " : "BOT ") + inning, 295, 48, 18, gold);
+        HudText("B " + balls + "   S " + strikes + "   O " + outs, 380, 48, 18, cream);
+        HudText("F2  MODEL VIEW", 748, 44, 16, cream);
+        batch.Flush();
+        if (eventText != "" && eventT < 1.6f && eventCol != null)
+        {
+            float a = MathUtil.Clamp((1.6f - eventT) / 0.3f, 0, 1);
+            float size = Math.Min(28, 380 / Math.Max(1, mtext!.Width(eventText, 1.0f)) * mtext.Px);
+            batch.Begin();
+            batch.Rect(280, h - 64, 400, 44, Color.Rgb(0.04f, 0.10f, 0.15f, 0.93f * a));
+            batch.Rect(280, h - 64, 3, 44, Color.Rgb(eventCol.R, eventCol.G, eventCol.B, a));
+            HudText(eventText, w * 0.5f, h - 32, size,
+                Color.Rgb(cream.R, cream.G, cream.B, a), true);
+            batch.Flush();
         }
     }
 
@@ -1589,7 +2022,6 @@ public static class Baseball24
 
         var fs = fielders;
         if (fs == null) return;
-        // 捕手は基本しゃがみ。捕球リアクションだけ一瞬立つ
         if (fs[1].Anim == AnReach)
         {
             fs[1].AnimT += tickDt;
@@ -1602,6 +2034,198 @@ public static class Baseball24
         }
     }
 
+    static bool modelDebug = false;
+    static bool debugKeyHeld = false;
+    static bool debugViewControls = false;
+    static int debugAnim = AnSwing;
+    static float debugTime = 0.165f;
+    static bool debugPlaying = false;
+    static float debugSpeed = 0.25f;
+    static float debugYaw = 90;
+    static float debugOrbit = 35;
+    static float debugElevation = 12;
+    static float debugDistance = 5.5f;
+    static bool debugProps = true;
+    static bool debugGuides = true;
+    static int debugTeam = 0;
+    static Mesh3d? debugBox = null;
+    static List<string> debugClips = new List<string> {
+        "Idle", "Ready", "Run", "Pitch", "Swing", "High catch", "Crouch", "Throw", "Bind pose"
+    };
+
+    static float DebugDuration()
+    {
+        if (debugAnim == AnSwing) return 0.55f;
+        if (debugAnim == AnWindup) return 1.1f;
+        if (debugAnim == AnThrow || debugAnim == AnReach) return 0.45f;
+        if (debugAnim == AnRun) return 2 * (float)Math.PI / 11;
+        return 2 * (float)Math.PI / 2.1f;
+    }
+
+    static void DebugGuide(Mat4 transform, Vec3 origin, Color color)
+    {
+        var r = ren;
+        if (r == null) return;
+        r.Draw(debugBox, transform * Mat4.Translate(origin + new Vec3(0, 0, 0.55f))
+            * Mat4.Scale(new Vec3(0.025f, 0.025f, 1.1f)), new Draw3dOpts { Tint = color });
+        r.Draw(ballMesh, transform * Mat4.Translate(origin + new Vec3(0, 0, 1.1f))
+            * Mat4.Scale(new Vec3(0.45f, 0.45f, 0.45f)), new Draw3dOpts { Tint = color });
+    }
+
+    static void DrawModelDebug(float dt)
+    {
+        var r = ren;
+        var b = batter;
+        if (r == null || b == null) return;
+        if (debugBox == null)
+        {
+            debugBox = new Mesh3d("bb24_debug_box");
+            var v = new List<float>();
+            Shapes.Box(v, 0, 0, 0, 1, 1, 1, new List<float> { 1, 1, 1, 1 });
+            debugBox.Rebuild(Shapes3d.FromInterleaved(v));
+        }
+        if (debugPlaying)
+            debugTime = (debugTime + Math.Min(dt, 0.1f) * debugSpeed) % DebugDuration();
+        Gfx.Size(out var debugWidth, out var debugHeight);
+        Ui.SetNextWindow(12, 12, Math.Min(290, debugWidth - 24), Math.Min(332, debugHeight - 24));
+        if (Ui.BeginWindow("Baseball model [F2]"))
+        {
+            Ui.Text("Match paused / same meshes and poses");
+            if (Ui.Button("Return to match")) modelDebug = false;
+            Ui.Separator();
+            if (Ui.Button("Motion")) debugViewControls = false;
+            Ui.SameLine();
+            if (Ui.Button("View / display")) debugViewControls = true;
+            if (!debugViewControls)
+            {
+                for (int i = 0; i < debugClips.Count; i++)
+                {
+                    if (i % 3 != 0) Ui.SameLine();
+                    if (Ui.Button(debugClips[i]))
+                    {
+                        debugAnim = i;
+                        debugTime = 0;
+                        debugYaw = i == AnSwing ? 90 : i == AnWindup ? 180 : i == AnRun || i == AnThrow ? 45 : 0;
+                    }
+                }
+                Ui.Text("Clip: " + debugClips[debugAnim]);
+                debugPlaying = Ui.Checkbox("Play / loop", debugPlaying);
+                Ui.SameLine();
+                if (Ui.Button("-1 frame"))
+                {
+                    debugPlaying = false;
+                    debugTime = Math.Max(0, debugTime - tickDt);
+                }
+                Ui.SameLine();
+                if (Ui.Button("+1 frame"))
+                {
+                    debugPlaying = false;
+                    debugTime = Math.Min(DebugDuration(), debugTime + tickDt);
+                }
+                debugSpeed = Ui.SliderFloat("Speed", debugSpeed, 0.05f, 1);
+                float scrub = Ui.SliderFloat("Time (s)", debugTime, 0, DebugDuration());
+                if (scrub != debugTime) debugPlaying = false;
+                debugTime = scrub;
+                if (debugAnim == AnSwing)
+                {
+                    if (Ui.Button("Stance")) { debugTime = 0.30f * 0.55f; debugPlaying = false; }
+                    Ui.SameLine();
+                    if (Ui.Button("Contact")) { debugTime = SwingHitPh * 0.55f; debugPlaying = false; }
+                    Ui.SameLine();
+                    if (Ui.Button("Follow-through")) { debugTime = 0.9f * 0.55f; debugPlaying = false; }
+                }
+                else if (debugAnim == AnWindup || debugAnim == AnThrow)
+                {
+                    if (Ui.Button("Release"))
+                    {
+                        debugTime = debugAnim == AnWindup ? RelPh * 1.1f : 0.24f;
+                        debugPlaying = false;
+                    }
+                }
+                Ui.Text("Yellow: chest / Cyan: face");
+            }
+            else
+            {
+                debugYaw = Ui.SliderFloat("Body yaw", debugYaw, 0, 360);
+                if (Ui.Button("Front")) debugOrbit = debugYaw;
+                Ui.SameLine();
+                if (Ui.Button("Side")) debugOrbit = (debugYaw + 90) % 360;
+                Ui.SameLine();
+                if (Ui.Button("Back")) debugOrbit = (debugYaw + 180) % 360;
+                debugOrbit = Ui.SliderFloat("Camera orbit", debugOrbit, 0, 360);
+                debugElevation = Ui.SliderFloat("Elevation", debugElevation, -10, 80);
+                debugDistance = Ui.SliderFloat("Distance", debugDistance, 3.5f, 10);
+                debugTeam = Ui.SliderInt("Team", debugTeam, 0, 1);
+                debugProps = Ui.Checkbox("Bat / glove", debugProps);
+                debugGuides = Ui.Checkbox("Direction guides", debugGuides);
+                if (debugGuides)
+                {
+                    Ui.Text("World: red +X / blue +Z");
+                    Ui.Text("Root: white / Chest: yellow");
+                    Ui.Text("Face: cyan / dots: forward");
+                }
+            }
+        }
+        Ui.EndWindow();
+
+        float orbit = MathUtil.Radians(debugOrbit);
+        float elevation = MathUtil.Radians(debugElevation);
+        var side = new Vec3((float)Math.Cos(orbit), 0, -(float)Math.Sin(orbit));
+        var target = new Vec3(0, 1.1f, 0) + side * (debugDistance * 0.20f);
+        var eye = target + new Vec3((float)Math.Sin(orbit) * (float)Math.Cos(elevation),
+            (float)Math.Sin(elevation), (float)Math.Cos(orbit) * (float)Math.Cos(elevation)) * debugDistance;
+        r.Light.Dir = new Vec3(-0.65f, 1, 0.45f);
+        r.Light.Intensity = 1.8f;
+        r.Light.Color = Color.Rgb(1, 1, 1);
+        r.Sky.Intensity = 0.7f;
+        r.Background = Color.Rgb(0.19f, 0.22f, 0.26f);
+        r.Ssao.Enabled = false;
+        r.Bloom.Enabled = false;
+        r.Vignette = 0;
+        r.Shadow.Size = 512;
+        r.Shadow.Center = new Vec3(0, 0, 0);
+        r.Shadow.Extent = 6;
+        r.Begin(new Camera { Eye = eye, Target = target, Fov = 38, Near = 0.1f, Far = 40 });
+        r.Draw(debugBox, Mat4.Translate(new Vec3(0, -0.06f, 0)) * Mat4.Scale(new Vec3(12, 0.1f, 12)),
+            new Draw3dOpts { Tint = Color.Rgb(0.27f, 0.29f, 0.31f) });
+        float phase = debugTime / DebugDuration();
+        var pose = debugAnim == 8 ? new BaseballPose { Bind = true } : PoseFor(debugAnim,
+            debugAnim == AnWindup || debugAnim == AnSwing || debugAnim == AnThrow || debugAnim == AnReach
+                ? phase : debugTime, debugTime * 11);
+        float yaw = MathUtil.Radians(debugYaw);
+        var root = Mat4.RotateY(yaw);
+        bool held = debugProps && ((debugAnim == AnWindup && phase <= RelPh)
+            || (debugAnim == AnThrow && debugTime <= 0.24f) || debugAnim == AnReach || debugAnim == AnCrouch);
+        DrawChar(0, 0, yaw, debugTeam, pose, debugProps && debugAnim != AnSwing, held);
+        if (debugProps && debugAnim == AnSwing)
+        {
+            var fromBatter = Mat4.RotateY(-(float)Math.PI / 2) * Mat4.Translate(new Vec3(-b.X, 0, -b.Z));
+            r.Draw(batMesh, root * fromBatter * BatMatrix(phase));
+        }
+        if (debugGuides)
+        {
+            DebugGuide(Mat4.RotateY((float)Math.PI / 2), new Vec3(0, 0.03f, 0), Color.Rgb(1, 0.1f, 0.1f));
+            DebugGuide(new Mat4(), new Vec3(0, 0.03f, 0), Color.Rgb(0.15f, 0.35f, 1));
+            DebugGuide(root, new Vec3(0, 0.08f, 0), Color.Rgb(1, 1, 1));
+            var packed = PackBones(pose);
+            var bones = charMesh![debugTeam].Data!.Bones;
+            if (bones != null)
+                for (int i = 0; i < bones.Count; i++)
+                {
+                    var bone = bones[i];
+                    if (bone.Name != "torso" && bone.Name != "head") continue;
+                    var matrix = new Mat4();
+                    for (int j = 0; j < 16; j++) matrix.M[j] = packed[i * 16 + j];
+                    DebugGuide(root * matrix, new Vec3(bone.X, bone.Y, bone.Z),
+                        bone.Name == "head" ? Color.Rgb(0, 1, 1) : Color.Rgb(1, 0.8f, 0));
+                }
+        }
+        r.End();
+        Gfx.BeginPass(new PassOpts { Target = Gfx.MainTex, Load = Gfx.LoadAction.Load });
+        Ui.Render();
+        Gfx.EndPass();
+    }
+
     // --- main loop --------------------------------------------------------------------
     public static void OnFrame(float dt)
     {
@@ -1609,9 +2233,9 @@ public static class Baseball24
         {
             rng = new Rand(0x0B5EBA11);
             ren = new Renderer3d("bb24");
-            camEye = new Vec3(5.5f, 3.4f, 30.0f);
-            camTarget = new Vec3(0, 1.3f, 0);
-            camFov = 34.0f;
+            camEye = new Vec3(2.8f, 2.6f, -5.2f);
+            camTarget = new Vec3(-0.1f, 1.1f, 5);
+            camFov = 46;
             BuildCharMesh();
             BuildField();
             ResetActors();
@@ -1619,6 +2243,12 @@ public static class Baseball24
             stateT = 0;
             reloaded = false;
             ShowEvent("PLAY BALL!", Color.Rgb(1.0f, 0.95f, 0.5f));
+        }
+
+        if (modelDebug)
+        {
+            DrawModelDebug(dt);
+            return;
         }
 
         var stepNow = step ?? new FixedStep();
@@ -1636,13 +2266,17 @@ public static class Baseball24
 
         // --- 描画 ---
         // 屋外デーゲーム: 高い太陽 + 空色の環境光
-        renNow.Light.Dir = new Vec3(0.35f, 1.0f, -0.25f);
-        renNow.Light.Intensity = 1.3f;
-        renNow.Light.Color = Color.Rgb(1.0f, 0.98f, 0.92f);
-        renNow.Sky.Top = Color.Rgb(0.55f, 0.65f, 0.80f);
+        renNow.Light.Dir = new Vec3(-0.65f, 1.0f, 0.45f);
+        renNow.Light.Intensity = 2.2f;
+        renNow.Light.Color = Color.Rgb(1.0f, 0.88f, 0.70f);
+        renNow.Sky.Top = Color.Rgb(0.43f, 0.61f, 0.85f);
         renNow.Sky.Bottom = Color.Rgb(0.22f, 0.28f, 0.20f);
-        renNow.Sky.Intensity = 0.55f;
-        renNow.Background = Color.Rgb(0.50f, 0.68f, 0.87f);
+        renNow.Sky.Intensity = 0.7f;
+        renNow.Background = Color.Rgb(0.57f, 0.73f, 0.83f);
+        renNow.Ssao.Enabled = false;
+        renNow.Bloom.Enabled = false;
+        renNow.Vignette = 0;
+        renNow.Shadow.Size = 512;
         // 影はカメラターゲット周辺 (フィールド全体 100m は 1 枚に入れない)
         renNow.Shadow.Center = new Vec3(tgtNow.X, 0, tgtNow.Z);
         renNow.Shadow.Extent = 30.0f;
@@ -1651,8 +2285,8 @@ public static class Baseball24
             Eye = eyeNow,
             Target = tgtNow,
             Fov = camFov,
-            Near = 0.1f,
-            Far = 400.0f,
+            Near = 0.3f,
+            Far = 180.0f,
         });
 
         renNow.Draw(fieldMesh, new Mat4());
@@ -1662,24 +2296,16 @@ public static class Baseball24
         for (int i = 0; i < 9; i++)
         {
             var f = fs[i];
-            var pose = PoseFor(f.Anim,
-                f.Anim == AnWindup || f.Anim == AnThrow || f.Anim == AnReach
-                    ? f.AnimT
-                    : t,
-                f.RunPhase);
-            var yaw = f.Anim == AnRun
-                ? f.Yaw
-                : (float)Math.Atan2(0 - f.X, 0 - f.Z); // 待機中は本塁を向く
-            if (i == 0)
-                yaw = (float)Math.PI; // 投手は打者へ正対
-            if (i == 1)
-                yaw = 0; // 捕手は投手へ
-            DrawChar(f.X, f.Z, f.Anim == AnRun ? f.Yaw : yaw, ft, pose);
+            var pose = FielderPose(i);
+            var yaw = FielderYaw(i);
+            var holding = ballVisible && ballHeldBy == i
+                && (state != stLive || playPhase != plThrow1b || throwT < 0.24f);
+            DrawChar(f.X, f.Z, yaw, ft, pose, true, holding);
         }
         // 打者 (攻撃側チーム色)。走者に切り替わっていない間だけ打席に立つ
         var bt = BattingTeam();
         var b = batter;
-        if (batterRunner == null && b != null)
+        if (batterAtPlate && b != null)
         {
             // 構え = スイングの溜め位相を静止で使う (バットの持ち手と一致する)
             var stance = b.Anim == AnSwing ? b.AnimT : 0.30f;
@@ -1701,19 +2327,37 @@ public static class Baseball24
         {
             foreach (var r in rns)
             {
-                var np = BasePos(r.To == 4 ? 0 : r.To);
+                var np = BasePos(r.AtBase < r.To ? r.AtBase + 1 : r.To);
                 var moving = r.AtBase != r.To;
-                DrawChar(r.X, r.Z,
-                    moving
-                        ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
-                        : (float)Math.Atan2(-r.X, -r.Z),
-                    bt, moving ? PoseRun(r.RunPhase) : PoseIdle(t));
+                var yaw = moving ? (float)Math.Atan2(np[0] - r.X, np[1] - r.Z)
+                    : (float)Math.Atan2(-r.X, -r.Z);
+                var pose = moving ? PoseRun(r.RunPhase) : PoseIdle(t);
+                if (r == batterRunner && b != null && liveT < 0.24f)
+                {
+                    float blend = MathUtil.Smoothstep(0.10f, 0.24f, liveT);
+                    var swing = PoseSwing(b.AnimT);
+                    pose = BlendPose(swing, pose, blend);
+                    yaw = MathUtil.Lerp((float)Math.PI / 2, yaw, blend);
+                    if (liveT < 0.10f)
+                        renNow.Draw(batMesh, Mat4.Translate(new Vec3(r.X - b.X, 0, r.Z - b.Z)) * BatMatrix(b.AnimT));
+                }
+                DrawChar(r.X, r.Z, yaw, bt, pose);
             }
         }
+        var retired = retiredRunner;
+        if (retired != null)
+            DrawChar(retired.X, retired.Z, (float)Math.Atan2(baseD - retired.X, baseD - retired.Z),
+                bt, PoseIdle(t));
 
         // ボール
-        if (ballVisible)
-            renNow.Draw(ballMesh, Mat4.Translate(new Vec3(bx, by, bz)));
+        if (ballVisible && !(ballHeldBy >= 0
+            && (state != stLive || playPhase != plThrow1b || throwT < 0.24f)))
+        {
+            var delta = new Vec3(bx - eyeNow.X, by - eyeNow.Y, bz - eyeNow.Z);
+            float scale = Math.Max(1, delta.Length() * 0.03f);
+            renNow.Draw(ballMesh, Mat4.Translate(new Vec3(bx, by + ballR * (scale - 1), bz))
+                * Mat4.Scale(new Vec3(scale, scale, scale)));
+        }
 
         renNow.End();
 

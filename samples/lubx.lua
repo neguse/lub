@@ -1826,7 +1826,7 @@ Bones = {}
 Bones.__index = Bones
 
 Bones.max = 0
-Bones.max = 8
+Bones.max = 16
 
 function Bones.new()
 	local self = setmetatable({}, Bones)
@@ -1845,7 +1845,7 @@ function Bones.pack(mesh, resolve)
 		local bones = mesh.bones
 		local n = #bones
 		local i = 0
-		while count < 8 and i < n do
+		while count < 16 and i < n do
 			local b = bones[i + 1]
 			local m = resolve(b.name, b.x, b.y, b.z)
 			if m == nil then
@@ -1858,7 +1858,7 @@ function Bones.pack(mesh, resolve)
 			i = i + 1
 		end
 	end
-	while count < 8 do
+	while count < 16 do
 		local id = Mat4.new()
 		for _, v in ipairs(id.m) do
 			table.insert(arr, v)
@@ -2654,7 +2654,7 @@ Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
 	.. (Renderer3d.lit_vs_body or "")
 	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
 Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
-	.. "  float4x4 bones[8];\n};\nConstantBuffer<Uniforms> u;"
+	.. "  float4x4 bones[16];\n};\nConstantBuffer<Uniforms> u;"
 	.. (Renderer3d.pncmw_verts or "")
 	.. (Renderer3d.lit_vs_body or "")
 	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
@@ -2663,7 +2663,7 @@ Renderer3d.lit_fs =
 Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
 	.. (Renderer3d.pncm_verts or "")
 	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[8];\n};\nConstantBuffer<U> u;"
+Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
 	.. (Renderer3d.pncmw_verts or "")
 	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
 Renderer3d.shadow_fs =

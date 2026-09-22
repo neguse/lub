@@ -7,13 +7,13 @@ using System.Collections.Generic;
 using static Lub;
 
 /// <summary>skinned SDF メッシュ (Sdf の bone() ノード) の bone 行列定型。
-/// 規約: shader は float4x4 bones[8]、行列は mesh.bones の並び順、不足分は
+/// 規約: shader は float4x4 bones[16]、行列は mesh.bones の並び順、不足分は
 /// 単位行列で埋める (Mesh3d の skinned レイアウトとセットで使う)。
 /// アニメーション (どの骨をどう回すか) はゲーム側の仕事のまま。</summary>
 public static class Bones
 {
-    /// <summary>最大 bone 数 (shader 側の float4x4 bones[8] と対)。</summary>
-    public const int Max = 8;
+    /// <summary>最大 bone 数 (shader 側の float4x4 bones[16] と対)。</summary>
+    public const int Max = 16;
 
     /// <summary>pivot (px, py, pz) 回りの回転 (model 空間)。
     /// T(p) · R · T(−p)。</summary>
@@ -24,7 +24,7 @@ public static class Bones
     }
 
     /// <summary>mesh.bones の並び順で resolve(name, x, y, z) が返す行列を
-    /// mat4 × 8 = 128 float に詰める。resolve が null を返した bone は
+    /// mat4 × 16 = 256 float に詰める。resolve が null を返した bone は
     /// 単位行列。(x, y, z) はその bone の pivot (pivotRot にそのまま
     /// 渡せる)。</summary>
     public static List<float> Pack(MeshData? mesh,

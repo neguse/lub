@@ -779,7 +779,7 @@ LubStatus lub_gfx_end_pass(LubContext *ctx) {
 
 // ----------------------------------------------------------------- draw
 
-enum { UB_MAX_FLOATS = 256 };
+enum { UB_MAX_FLOATS = 512 };
 
 // reflection の uniform block を、名前つきの値の列から詰める。無い member は
 // 0 のまま。
