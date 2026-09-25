@@ -719,7 +719,9 @@ function Vec2:normalize()
 end
 
 function Vec2:distance_sq(b)
-	return self:sub(b):length_sq()
+	local dx = self.x - b.x
+	local dy = self.y - b.y
+	return dx * dx + dy * dy
 end
 
 function Vec2:distance(b)
@@ -756,6 +758,124 @@ end
 
 function Vec2.from_wire(v)
 	return Vec2.new(v.x, v.y)
+end
+
+function Vec2:set(x, y)
+	self.x = x
+	self.y = y
+	return self
+end
+
+function Vec2:copy_from(v)
+	self.x = v.x
+	self.y = v.y
+	return self
+end
+
+function Vec2:add_in_place(b)
+	self.x = self.x + b.x
+	self.y = self.y + b.y
+	return self
+end
+
+function Vec2:sub_in_place(b)
+	self.x = self.x - b.x
+	self.y = self.y - b.y
+	return self
+end
+
+function Vec2:scale_in_place(s)
+	self.x = self.x * s
+	self.y = self.y * s
+	return self
+end
+
+function Vec2:add_scaled_in_place(b, s)
+	self.x = self.x + b.x * s
+	self.y = self.y + b.y * s
+	return self
+end
+
+function Vec2:negate_in_place()
+	self.x = -self.x
+	self.y = -self.y
+	return self
+end
+
+function Vec2:mul_in_place(b)
+	self.x = self.x * b.x
+	self.y = self.y * b.y
+	return self
+end
+
+function Vec2:div_in_place(b)
+	self.x = self.x / b.x
+	self.y = self.y / b.y
+	return self
+end
+
+function Vec2:normalize_in_place()
+	local len = self:length()
+	if len > 0 then
+		self.x = self.x / len
+		self.y = self.y / len
+	else
+		self.x = 0
+		self.y = 0
+	end
+	return self
+end
+
+function Vec2:lerp_in_place(b, t)
+	self.x = self.x + (b.x - self.x) * t
+	self.y = self.y + (b.y - self.y) * t
+	return self
+end
+
+function Vec2:min_in_place(b)
+	self.x = Math.Min(self.x, b.x)
+	self.y = Math.Min(self.y, b.y)
+	return self
+end
+
+function Vec2:max_in_place(b)
+	self.x = Math.Max(self.x, b.x)
+	self.y = Math.Max(self.y, b.y)
+	return self
+end
+
+function Vec2:clamp_in_place(lo, hi)
+	self.x = Math.Max(lo.x, Math.Min(hi.x, self.x))
+	self.y = Math.Max(lo.y, Math.Min(hi.y, self.y))
+	return self
+end
+
+function Vec2:perp_in_place()
+	return self:set(-self.y, self.x)
+end
+
+function Vec2:set_add(a, b)
+	self.x = a.x + b.x
+	self.y = a.y + b.y
+	return self
+end
+
+function Vec2:set_sub(a, b)
+	self.x = a.x - b.x
+	self.y = a.y - b.y
+	return self
+end
+
+function Vec2:set_scaled(a, s)
+	self.x = a.x * s
+	self.y = a.y * s
+	return self
+end
+
+function Vec2:set_lerp(a, b, t)
+	self.x = a.x + (b.x - a.x) * t
+	self.y = a.y + (b.y - a.y) * t
+	return self
 end
 
 function Vec2.__add(a, b)
@@ -899,7 +1019,10 @@ function Vec3:normalize()
 end
 
 function Vec3:distance_sq(b)
-	return self:sub(b):length_sq()
+	local dx = self.x - b.x
+	local dy = self.y - b.y
+	local dz = self.z - b.z
+	return dx * dx + dy * dy + dz * dz
 end
 
 function Vec3:distance(b)
@@ -927,7 +1050,7 @@ function Vec3:clamp(lo, hi)
 end
 
 function Vec3:reflect(normal)
-	return self:sub(normal:scale(2.0 * self:dot(normal)))
+	return Vec3.new(self.x, self.y, self.z):reflect_in_place(normal)
 end
 
 function Vec3:wire()
@@ -936,6 +1059,148 @@ end
 
 function Vec3.from_wire(v)
 	return Vec3.new(v.x, v.y, v.z)
+end
+
+function Vec3:set(x, y, z)
+	self.x = x
+	self.y = y
+	self.z = z
+	return self
+end
+
+function Vec3:copy_from(v)
+	self.x = v.x
+	self.y = v.y
+	self.z = v.z
+	return self
+end
+
+function Vec3:add_in_place(b)
+	self.x = self.x + b.x
+	self.y = self.y + b.y
+	self.z = self.z + b.z
+	return self
+end
+
+function Vec3:sub_in_place(b)
+	self.x = self.x - b.x
+	self.y = self.y - b.y
+	self.z = self.z - b.z
+	return self
+end
+
+function Vec3:scale_in_place(s)
+	self.x = self.x * s
+	self.y = self.y * s
+	self.z = self.z * s
+	return self
+end
+
+function Vec3:add_scaled_in_place(b, s)
+	self.x = self.x + b.x * s
+	self.y = self.y + b.y * s
+	self.z = self.z + b.z * s
+	return self
+end
+
+function Vec3:negate_in_place()
+	self.x = -self.x
+	self.y = -self.y
+	self.z = -self.z
+	return self
+end
+
+function Vec3:mul_in_place(b)
+	self.x = self.x * b.x
+	self.y = self.y * b.y
+	self.z = self.z * b.z
+	return self
+end
+
+function Vec3:div_in_place(b)
+	self.x = self.x / b.x
+	self.y = self.y / b.y
+	self.z = self.z / b.z
+	return self
+end
+
+function Vec3:normalize_in_place()
+	local len = self:length()
+	if len > 0 then
+		self.x = self.x / len
+		self.y = self.y / len
+		self.z = self.z / len
+	else
+		self.x = 0
+		self.y = 0
+		self.z = 0
+	end
+	return self
+end
+
+function Vec3:lerp_in_place(b, t)
+	self.x = self.x + (b.x - self.x) * t
+	self.y = self.y + (b.y - self.y) * t
+	self.z = self.z + (b.z - self.z) * t
+	return self
+end
+
+function Vec3:min_in_place(b)
+	self.x = Math.Min(self.x, b.x)
+	self.y = Math.Min(self.y, b.y)
+	self.z = Math.Min(self.z, b.z)
+	return self
+end
+
+function Vec3:max_in_place(b)
+	self.x = Math.Max(self.x, b.x)
+	self.y = Math.Max(self.y, b.y)
+	self.z = Math.Max(self.z, b.z)
+	return self
+end
+
+function Vec3:clamp_in_place(lo, hi)
+	self.x = Math.Max(lo.x, Math.Min(hi.x, self.x))
+	self.y = Math.Max(lo.y, Math.Min(hi.y, self.y))
+	self.z = Math.Max(lo.z, Math.Min(hi.z, self.z))
+	return self
+end
+
+function Vec3:reflect_in_place(normal)
+	local k = 2.0 * self:dot(normal)
+	return self:set(self.x - normal.x * k, self.y - normal.y * k, self.z - normal.z * k)
+end
+
+function Vec3:set_add(a, b)
+	self.x = a.x + b.x
+	self.y = a.y + b.y
+	self.z = a.z + b.z
+	return self
+end
+
+function Vec3:set_sub(a, b)
+	self.x = a.x - b.x
+	self.y = a.y - b.y
+	self.z = a.z - b.z
+	return self
+end
+
+function Vec3:set_scaled(a, s)
+	self.x = a.x * s
+	self.y = a.y * s
+	self.z = a.z * s
+	return self
+end
+
+function Vec3:set_lerp(a, b, t)
+	self.x = a.x + (b.x - a.x) * t
+	self.y = a.y + (b.y - a.y) * t
+	self.z = a.z + (b.z - a.z) * t
+	return self
+end
+
+function Vec3:set_cross(a, b)
+	return self:set(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
 end
 
 function Vec3.__add(a, b)
@@ -1069,6 +1334,118 @@ function Vec4:xyz()
 	return Vec3.new(self.x, self.y, self.z)
 end
 
+function Vec4:set(x, y, z, w)
+	self.x = x
+	self.y = y
+	self.z = z
+	self.w = w
+	return self
+end
+
+function Vec4:copy_from(v)
+	self.x = v.x
+	self.y = v.y
+	self.z = v.z
+	self.w = v.w
+	return self
+end
+
+function Vec4:add_in_place(b)
+	self.x = self.x + b.x
+	self.y = self.y + b.y
+	self.z = self.z + b.z
+	self.w = self.w + b.w
+	return self
+end
+
+function Vec4:sub_in_place(b)
+	self.x = self.x - b.x
+	self.y = self.y - b.y
+	self.z = self.z - b.z
+	self.w = self.w - b.w
+	return self
+end
+
+function Vec4:scale_in_place(s)
+	self.x = self.x * s
+	self.y = self.y * s
+	self.z = self.z * s
+	self.w = self.w * s
+	return self
+end
+
+function Vec4:add_scaled_in_place(b, s)
+	self.x = self.x + b.x * s
+	self.y = self.y + b.y * s
+	self.z = self.z + b.z * s
+	self.w = self.w + b.w * s
+	return self
+end
+
+function Vec4:negate_in_place()
+	self.x = -self.x
+	self.y = -self.y
+	self.z = -self.z
+	self.w = -self.w
+	return self
+end
+
+function Vec4:normalize_in_place()
+	local len = self:length()
+	if len > 0 then
+		self.x = self.x / len
+		self.y = self.y / len
+		self.z = self.z / len
+		self.w = self.w / len
+	else
+		self.x = 0
+		self.y = 0
+		self.z = 0
+		self.w = 0
+	end
+	return self
+end
+
+function Vec4:lerp_in_place(b, t)
+	self.x = self.x + (b.x - self.x) * t
+	self.y = self.y + (b.y - self.y) * t
+	self.z = self.z + (b.z - self.z) * t
+	self.w = self.w + (b.w - self.w) * t
+	return self
+end
+
+function Vec4:set_add(a, b)
+	self.x = a.x + b.x
+	self.y = a.y + b.y
+	self.z = a.z + b.z
+	self.w = a.w + b.w
+	return self
+end
+
+function Vec4:set_sub(a, b)
+	self.x = a.x - b.x
+	self.y = a.y - b.y
+	self.z = a.z - b.z
+	self.w = a.w - b.w
+	return self
+end
+
+function Vec4:set_scaled(a, s)
+	self.x = a.x * s
+	self.y = a.y * s
+	self.z = a.z * s
+	self.w = a.w * s
+	return self
+end
+
+function Vec4:set_lerp(a, b, t)
+	self.x = a.x + (b.x - a.x) * t
+	self.y = a.y + (b.y - a.y) * t
+	self.z = a.z + (b.z - a.z) * t
+	self.w = a.w + (b.w - a.w) * t
+	return self
+end
+
 function Vec4.__add(a, b)
 	return a:add(b)
 end
@@ -1124,25 +1501,11 @@ function Quat.identity()
 end
 
 function Quat.from_axis_angle(axis, angle)
-	local half = angle * 0.5
-	local s = Math.Sin(half)
-	local n = axis:normalize()
-	return Quat.new(n.x * s, n.y * s, n.z * s, Math.Cos(half))
+	return Quat.new(0, 0, 0, 1):set_axis_angle(axis, angle)
 end
 
 function Quat.from_euler(yaw, pitch, roll)
-	local cy = Math.Cos(yaw * 0.5)
-	local sy = Math.Sin(yaw * 0.5)
-	local cp = Math.Cos(pitch * 0.5)
-	local sp = Math.Sin(pitch * 0.5)
-	local cr = Math.Cos(roll * 0.5)
-	local sr = Math.Sin(roll * 0.5)
-	return Quat.new(
-		sr * cp * cy - cr * sp * sy,
-		cr * sp * cy + sr * cp * sy,
-		cr * cp * sy - sr * sp * cy,
-		cr * cp * cy + sr * sp * sy
-	)
+	return Quat.new(0, 0, 0, 1):set_euler(yaw, pitch, roll)
 end
 
 function Quat:mul(b)
@@ -1198,7 +1561,134 @@ function Quat:lerp(b, t)
 end
 
 function Quat:slerp(b, t)
-	local d = self:dot(b)
+	return Quat.new(0, 0, 0, 1):set_slerp(self, b, t)
+end
+
+function Quat:rotate_vec3(v)
+	return self:rotate_into(v, Vec3.new(0, 0, 0))
+end
+
+function Quat:to_mat4()
+	return Mat4.new():set_from_quat(self)
+end
+
+function Quat.from_mat4(m)
+	return Quat.new(0, 0, 0, 1):set_from_mat4(m)
+end
+
+function Quat:wire()
+	return { x = self.x, y = self.y, z = self.z, w = self.w }
+end
+
+function Quat.from_wire(q)
+	return Quat.new(q.x, q.y, q.z, q.w)
+end
+
+function Quat:set(x, y, z, w)
+	self.x = x
+	self.y = y
+	self.z = z
+	self.w = w
+	return self
+end
+
+function Quat:copy_from(q)
+	self.x = q.x
+	self.y = q.y
+	self.z = q.z
+	self.w = q.w
+	return self
+end
+
+function Quat:set_identity()
+	self.x = 0
+	self.y = 0
+	self.z = 0
+	self.w = 1
+	return self
+end
+
+function Quat:set_axis_angle(axis, angle)
+	local half = angle * 0.5
+	local s = Math.Sin(half)
+	local len = axis:length()
+	local nx = 0
+	local ny = 0
+	local nz = 0
+	if len > 0 then
+		nx = axis.x / len
+		ny = axis.y / len
+		nz = axis.z / len
+	end
+	return self:set(nx * s, ny * s, nz * s, Math.Cos(half))
+end
+
+function Quat:set_euler(yaw, pitch, roll)
+	local cy = Math.Cos(yaw * 0.5)
+	local sy = Math.Sin(yaw * 0.5)
+	local cp = Math.Cos(pitch * 0.5)
+	local sp = Math.Sin(pitch * 0.5)
+	local cr = Math.Cos(roll * 0.5)
+	local sr = Math.Sin(roll * 0.5)
+	return self:set(
+		sr * cp * cy - cr * sp * sy,
+		cr * sp * cy + sr * cp * sy,
+		cr * cp * sy - sr * sp * cy,
+		cr * cp * cy + sr * sp * sy
+	)
+end
+
+function Quat:set_mul(a, b)
+	return self:set(
+		a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+		a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+		a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
+	)
+end
+
+function Quat:normalize_in_place()
+	local len = self:length()
+	if len > 0 then
+		self.x = self.x / len
+		self.y = self.y / len
+		self.z = self.z / len
+		self.w = self.w / len
+		return self
+	end
+	return self:set_identity()
+end
+
+function Quat:conjugate_in_place()
+	self.x = -self.x
+	self.y = -self.y
+	self.z = -self.z
+	return self
+end
+
+function Quat:inverse_in_place()
+	local lsq = self:length_sq()
+	if lsq > 0 then
+		local inv = 1.0 / lsq
+		return self:set(-self.x * inv, -self.y * inv, -self.z * inv, self.w * inv)
+	end
+	return self:set_identity()
+end
+
+function Quat:lerp_in_place(b, t)
+	self.x = self.x + (b.x - self.x) * t
+	self.y = self.y + (b.y - self.y) * t
+	self.z = self.z + (b.z - self.z) * t
+	self.w = self.w + (b.w - self.w) * t
+	return self
+end
+
+function Quat:set_slerp(a, b, t)
+	local ax = a.x
+	local ay = a.y
+	local az = a.z
+	local aw = a.w
+	local d = a:dot(b)
 	local bx = b.x
 	local by = b.y
 	local bz = b.z
@@ -1211,103 +1701,49 @@ function Quat:slerp(b, t)
 		bw = -bw
 	end
 	if d > 0.9995 then
-		return Quat.new(
-			self.x + (bx - self.x) * t,
-			self.y + (by - self.y) * t,
-			self.z + (bz - self.z) * t,
-			self.w + (bw - self.w) * t
-		):normalize()
+		return self:set(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, aw + (bw - aw) * t)
+			:normalize_in_place()
 	end
 	local theta = Math.Atan2(Math.Sqrt(1.0 - d * d), d)
 	local sinT = Math.Sin(theta)
 	local s0 = Math.Sin((1.0 - t) * theta) / sinT
 	local s1 = Math.Sin(t * theta) / sinT
-	return Quat.new(self.x * s0 + bx * s1, self.y * s0 + by * s1, self.z * s0 + bz * s1, self.w * s0 + bw * s1)
+	return self:set(ax * s0 + bx * s1, ay * s0 + by * s1, az * s0 + bz * s1, aw * s0 + bw * s1)
 end
 
-function Quat:rotate_vec3(v)
-	local qv = Vec3.new(self.x, self.y, self.z)
-	local uv = qv:cross(v)
-	local uuv = qv:cross(uv)
-	return v:add(uv:scale(2.0 * self.w):add(uuv:scale(2.0)))
-end
-
-function Quat:to_mat4()
-	local x2 = self.x + self.x
-	local y2 = self.y + self.y
-	local z2 = self.z + self.z
-	local xx = self.x * x2
-	local xy = self.x * y2
-	local xz = self.x * z2
-	local yy = self.y * y2
-	local yz = self.y * z2
-	local zz = self.z * z2
-	local wx = self.w * x2
-	local wy = self.w * y2
-	local wz = self.w * z2
-	local r = Mat4.zero()
-	r.m[0 + 1] = 1 - (yy + zz)
-	r.m[1 + 1] = xy - wz
-	r.m[2 + 1] = xz + wy
-	r.m[3 + 1] = 0
-	r.m[4 + 1] = xy + wz
-	r.m[5 + 1] = 1 - (xx + zz)
-	r.m[6 + 1] = yz - wx
-	r.m[7 + 1] = 0
-	r.m[8 + 1] = xz - wy
-	r.m[9 + 1] = yz + wx
-	r.m[10 + 1] = 1 - (xx + yy)
-	r.m[11 + 1] = 0
-	r.m[12 + 1] = 0
-	r.m[13 + 1] = 0
-	r.m[14 + 1] = 0
-	r.m[15 + 1] = 1
-	return r
-end
-
-function Quat.from_mat4(m)
-	local trace = m.m[0 + 1] + m.m[5 + 1] + m.m[10 + 1]
+function Quat:set_from_mat4(m)
+	local a = m.m
+	local trace = a[0 + 1] + a[5 + 1] + a[10 + 1]
 	if trace > 0 then
 		local s = 0.5 / Math.Sqrt(trace + 1.0)
-		return Quat.new(
-			(m.m[9 + 1] - m.m[6 + 1]) * s,
-			(m.m[2 + 1] - m.m[8 + 1]) * s,
-			(m.m[4 + 1] - m.m[1 + 1]) * s,
-			0.25 / s
-		)
-	elseif m.m[0 + 1] > m.m[5 + 1] and m.m[0 + 1] > m.m[10 + 1] then
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[0 + 1] - m.m[5 + 1] - m.m[10 + 1])
-		return Quat.new(
-			0.25 * s,
-			(m.m[1 + 1] + m.m[4 + 1]) / s,
-			(m.m[8 + 1] + m.m[2 + 1]) / s,
-			(m.m[9 + 1] - m.m[6 + 1]) / s
-		)
-	elseif m.m[5 + 1] > m.m[10 + 1] then
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[5 + 1] - m.m[0 + 1] - m.m[10 + 1])
-		return Quat.new(
-			(m.m[1 + 1] + m.m[4 + 1]) / s,
-			0.25 * s,
-			(m.m[6 + 1] + m.m[9 + 1]) / s,
-			(m.m[2 + 1] - m.m[8 + 1]) / s
-		)
+		return self:set((a[9 + 1] - a[6 + 1]) * s, (a[2 + 1] - a[8 + 1]) * s, (a[4 + 1] - a[1 + 1]) * s, 0.25 / s)
+	elseif a[0 + 1] > a[5 + 1] and a[0 + 1] > a[10 + 1] then
+		local s = 2.0 * Math.Sqrt(1.0 + a[0 + 1] - a[5 + 1] - a[10 + 1])
+		return self:set(0.25 * s, (a[1 + 1] + a[4 + 1]) / s, (a[8 + 1] + a[2 + 1]) / s, (a[9 + 1] - a[6 + 1]) / s)
+	elseif a[5 + 1] > a[10 + 1] then
+		local s = 2.0 * Math.Sqrt(1.0 + a[5 + 1] - a[0 + 1] - a[10 + 1])
+		return self:set((a[1 + 1] + a[4 + 1]) / s, 0.25 * s, (a[6 + 1] + a[9 + 1]) / s, (a[2 + 1] - a[8 + 1]) / s)
 	else
-		local s = 2.0 * Math.Sqrt(1.0 + m.m[10 + 1] - m.m[0 + 1] - m.m[5 + 1])
-		return Quat.new(
-			(m.m[8 + 1] + m.m[2 + 1]) / s,
-			(m.m[6 + 1] + m.m[9 + 1]) / s,
-			0.25 * s,
-			(m.m[4 + 1] - m.m[1 + 1]) / s
-		)
+		local s = 2.0 * Math.Sqrt(1.0 + a[10 + 1] - a[0 + 1] - a[5 + 1])
+		return self:set((a[8 + 1] + a[2 + 1]) / s, (a[6 + 1] + a[9 + 1]) / s, 0.25 * s, (a[4 + 1] - a[1 + 1]) / s)
 	end
 end
 
-function Quat:wire()
-	return { x = self.x, y = self.y, z = self.z, w = self.w }
-end
-
-function Quat.from_wire(q)
-	return Quat.new(q.x, q.y, q.z, q.w)
+function Quat:rotate_into(v, dst)
+	local qx = self.x
+	local qy = self.y
+	local qz = self.z
+	local vx = v.x
+	local vy = v.y
+	local vz = v.z
+	local uvx = qy * vz - qz * vy
+	local uvy = qz * vx - qx * vz
+	local uvz = qx * vy - qy * vx
+	local uuvx = qy * uvz - qz * uvy
+	local uuvy = qz * uvx - qx * uvz
+	local uuvz = qx * uvy - qy * uvx
+	local w2 = 2.0 * self.w
+	return dst:set(vx + (uvx * w2 + uuvx * 2.0), vy + (uvy * w2 + uuvy * 2.0), vz + (uvz * w2 + uuvz * 2.0))
 end
 
 function Quat.__mul_1(a, b)
@@ -1344,33 +1780,15 @@ end
 
 function Mat4.zero()
 	local r = Mat4.new()
-	for i = 0, 16 - 1 do
-		r.m[i + 1] = 0
-	end
+	r.m[0 + 1] = 0
+	r.m[5 + 1] = 0
+	r.m[10 + 1] = 0
+	r.m[15 + 1] = 0
 	return r
 end
 
 function Mat4:mul(b)
-	local r = Mat4.zero()
-	local a = self.m
-	local bm = b.m
-	r.m[0 + 1] = a[0 + 1] * bm[0 + 1] + a[1 + 1] * bm[4 + 1] + a[2 + 1] * bm[8 + 1] + a[3 + 1] * bm[12 + 1]
-	r.m[1 + 1] = a[0 + 1] * bm[1 + 1] + a[1 + 1] * bm[5 + 1] + a[2 + 1] * bm[9 + 1] + a[3 + 1] * bm[13 + 1]
-	r.m[2 + 1] = a[0 + 1] * bm[2 + 1] + a[1 + 1] * bm[6 + 1] + a[2 + 1] * bm[10 + 1] + a[3 + 1] * bm[14 + 1]
-	r.m[3 + 1] = a[0 + 1] * bm[3 + 1] + a[1 + 1] * bm[7 + 1] + a[2 + 1] * bm[11 + 1] + a[3 + 1] * bm[15 + 1]
-	r.m[4 + 1] = a[4 + 1] * bm[0 + 1] + a[5 + 1] * bm[4 + 1] + a[6 + 1] * bm[8 + 1] + a[7 + 1] * bm[12 + 1]
-	r.m[5 + 1] = a[4 + 1] * bm[1 + 1] + a[5 + 1] * bm[5 + 1] + a[6 + 1] * bm[9 + 1] + a[7 + 1] * bm[13 + 1]
-	r.m[6 + 1] = a[4 + 1] * bm[2 + 1] + a[5 + 1] * bm[6 + 1] + a[6 + 1] * bm[10 + 1] + a[7 + 1] * bm[14 + 1]
-	r.m[7 + 1] = a[4 + 1] * bm[3 + 1] + a[5 + 1] * bm[7 + 1] + a[6 + 1] * bm[11 + 1] + a[7 + 1] * bm[15 + 1]
-	r.m[8 + 1] = a[8 + 1] * bm[0 + 1] + a[9 + 1] * bm[4 + 1] + a[10 + 1] * bm[8 + 1] + a[11 + 1] * bm[12 + 1]
-	r.m[9 + 1] = a[8 + 1] * bm[1 + 1] + a[9 + 1] * bm[5 + 1] + a[10 + 1] * bm[9 + 1] + a[11 + 1] * bm[13 + 1]
-	r.m[10 + 1] = a[8 + 1] * bm[2 + 1] + a[9 + 1] * bm[6 + 1] + a[10 + 1] * bm[10 + 1] + a[11 + 1] * bm[14 + 1]
-	r.m[11 + 1] = a[8 + 1] * bm[3 + 1] + a[9 + 1] * bm[7 + 1] + a[10 + 1] * bm[11 + 1] + a[11 + 1] * bm[15 + 1]
-	r.m[12 + 1] = a[12 + 1] * bm[0 + 1] + a[13 + 1] * bm[4 + 1] + a[14 + 1] * bm[8 + 1] + a[15 + 1] * bm[12 + 1]
-	r.m[13 + 1] = a[12 + 1] * bm[1 + 1] + a[13 + 1] * bm[5 + 1] + a[14 + 1] * bm[9 + 1] + a[15 + 1] * bm[13 + 1]
-	r.m[14 + 1] = a[12 + 1] * bm[2 + 1] + a[13 + 1] * bm[6 + 1] + a[14 + 1] * bm[10 + 1] + a[15 + 1] * bm[14 + 1]
-	r.m[15 + 1] = a[12 + 1] * bm[3 + 1] + a[13 + 1] * bm[7 + 1] + a[14 + 1] * bm[11 + 1] + a[15 + 1] * bm[15 + 1]
-	return r
+	return Mat4.new():set_mul(self, b)
 end
 
 function Mat4:mul_vec4(v)
@@ -1406,13 +1824,7 @@ function Mat4:mat3_mul_vec3(v)
 end
 
 function Mat4:transpose()
-	local r = Mat4.zero()
-	for row = 0, 4 - 1 do
-		for col = 0, 4 - 1 do
-			r.m[col * 4 + row + 1] = self.m[row * 4 + col + 1]
-		end
-	end
-	return r
+	return Mat4.new():set_transpose(self)
 end
 
 function Mat4:determinant()
@@ -1440,23 +1852,232 @@ function Mat4:determinant()
 end
 
 function Mat4:inverse()
-	local a = self.m
-	local a00 = a[0 + 1]
-	local a01 = a[1 + 1]
-	local a02 = a[2 + 1]
-	local a03 = a[3 + 1]
-	local a10 = a[4 + 1]
-	local a11 = a[5 + 1]
-	local a12 = a[6 + 1]
-	local a13 = a[7 + 1]
-	local a20 = a[8 + 1]
-	local a21 = a[9 + 1]
-	local a22 = a[10 + 1]
-	local a23 = a[11 + 1]
-	local a30 = a[12 + 1]
-	local a31 = a[13 + 1]
-	local a32 = a[14 + 1]
-	local a33 = a[15 + 1]
+	return Mat4.new():set_inverse(self)
+end
+
+function Mat4:rigid_inverse(eye)
+	return Mat4.new():set_rigid_inverse(self, eye)
+end
+
+function Mat4.translate(v)
+	local r = Mat4.new()
+	local m = r.m
+	m[3 + 1] = v.x
+	m[7 + 1] = v.y
+	m[11 + 1] = v.z
+	return r
+end
+
+function Mat4.translate_xyz(x, y, z)
+	local r = Mat4.new()
+	local m = r.m
+	m[3 + 1] = x
+	m[7 + 1] = y
+	m[11 + 1] = z
+	return r
+end
+
+function Mat4.scale(v)
+	return Mat4.new():set_scale(v.x, v.y, v.z)
+end
+
+function Mat4.scale_xyz(x, y, z)
+	return Mat4.new():set_scale(x, y, z)
+end
+
+function Mat4.scale_trans(s, t)
+	return Mat4.new():set_scale_trans(s, t.x, t.y, t.z)
+end
+
+function Mat4.rotate_x(angle)
+	local c = Math.Cos(angle)
+	local s = Math.Sin(angle)
+	local r = Mat4.new()
+	local m = r.m
+	m[5 + 1] = c
+	m[6 + 1] = -s
+	m[9 + 1] = s
+	m[10 + 1] = c
+	return r
+end
+
+function Mat4.rotate_y(angle)
+	local c = Math.Cos(angle)
+	local s = Math.Sin(angle)
+	local r = Mat4.new()
+	local m = r.m
+	m[0 + 1] = c
+	m[2 + 1] = s
+	m[8 + 1] = -s
+	m[10 + 1] = c
+	return r
+end
+
+function Mat4.rotate_z(angle)
+	local c = Math.Cos(angle)
+	local s = Math.Sin(angle)
+	local r = Mat4.new()
+	local m = r.m
+	m[0 + 1] = c
+	m[1 + 1] = -s
+	m[4 + 1] = s
+	m[5 + 1] = c
+	return r
+end
+
+function Mat4.rotate(angle, axis)
+	return Mat4.new():set_rotate(angle, axis)
+end
+
+function Mat4.from_quat(q)
+	return q:to_mat4()
+end
+
+function Mat4.look_at_lh(eye, target, up)
+	return Mat4.new():set_look_at_lh(eye, target, up)
+end
+
+function Mat4.perspective_lh(fovDeg, aspect, nz, fz)
+	return Mat4.new():set_perspective_lh(fovDeg, aspect, nz, fz)
+end
+
+function Mat4.ortho_lh(w, h, nz, fz)
+	return Mat4.new():set_ortho_lh(w, h, nz, fz)
+end
+
+function Mat4:set(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33)
+	local m = self.m
+	m[0 + 1] = m00
+	m[1 + 1] = m01
+	m[2 + 1] = m02
+	m[3 + 1] = m03
+	m[4 + 1] = m10
+	m[5 + 1] = m11
+	m[6 + 1] = m12
+	m[7 + 1] = m13
+	m[8 + 1] = m20
+	m[9 + 1] = m21
+	m[10 + 1] = m22
+	m[11 + 1] = m23
+	m[12 + 1] = m30
+	m[13 + 1] = m31
+	m[14 + 1] = m32
+	m[15 + 1] = m33
+	return self
+end
+
+function Mat4:copy_from(a)
+	local m = self.m
+	local src = a.m
+	for i = 0, 16 - 1 do
+		m[i + 1] = src[i + 1]
+	end
+	return self
+end
+
+function Mat4:set_identity()
+	return self:set(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+end
+
+function Mat4:set_zero()
+	return self:set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+end
+
+function Mat4:set_mul(a, b)
+	local p = a.m
+	local q = b.m
+	local a00 = p[0 + 1]
+	local a01 = p[1 + 1]
+	local a02 = p[2 + 1]
+	local a03 = p[3 + 1]
+	local a10 = p[4 + 1]
+	local a11 = p[5 + 1]
+	local a12 = p[6 + 1]
+	local a13 = p[7 + 1]
+	local a20 = p[8 + 1]
+	local a21 = p[9 + 1]
+	local a22 = p[10 + 1]
+	local a23 = p[11 + 1]
+	local a30 = p[12 + 1]
+	local a31 = p[13 + 1]
+	local a32 = p[14 + 1]
+	local a33 = p[15 + 1]
+	local b00 = q[0 + 1]
+	local b01 = q[1 + 1]
+	local b02 = q[2 + 1]
+	local b03 = q[3 + 1]
+	local b10 = q[4 + 1]
+	local b11 = q[5 + 1]
+	local b12 = q[6 + 1]
+	local b13 = q[7 + 1]
+	local b20 = q[8 + 1]
+	local b21 = q[9 + 1]
+	local b22 = q[10 + 1]
+	local b23 = q[11 + 1]
+	local b30 = q[12 + 1]
+	local b31 = q[13 + 1]
+	local b32 = q[14 + 1]
+	local b33 = q[15 + 1]
+	return self:set(
+		a00 * b00 + a01 * b10 + a02 * b20 + a03 * b30,
+		a00 * b01 + a01 * b11 + a02 * b21 + a03 * b31,
+		a00 * b02 + a01 * b12 + a02 * b22 + a03 * b32,
+		a00 * b03 + a01 * b13 + a02 * b23 + a03 * b33,
+		a10 * b00 + a11 * b10 + a12 * b20 + a13 * b30,
+		a10 * b01 + a11 * b11 + a12 * b21 + a13 * b31,
+		a10 * b02 + a11 * b12 + a12 * b22 + a13 * b32,
+		a10 * b03 + a11 * b13 + a12 * b23 + a13 * b33,
+		a20 * b00 + a21 * b10 + a22 * b20 + a23 * b30,
+		a20 * b01 + a21 * b11 + a22 * b21 + a23 * b31,
+		a20 * b02 + a21 * b12 + a22 * b22 + a23 * b32,
+		a20 * b03 + a21 * b13 + a22 * b23 + a23 * b33,
+		a30 * b00 + a31 * b10 + a32 * b20 + a33 * b30,
+		a30 * b01 + a31 * b11 + a32 * b21 + a33 * b31,
+		a30 * b02 + a31 * b12 + a32 * b22 + a33 * b32,
+		a30 * b03 + a31 * b13 + a32 * b23 + a33 * b33
+	)
+end
+
+function Mat4:set_transpose(a)
+	local p = a.m
+	return self:set(
+		p[0 + 1],
+		p[4 + 1],
+		p[8 + 1],
+		p[12 + 1],
+		p[1 + 1],
+		p[5 + 1],
+		p[9 + 1],
+		p[13 + 1],
+		p[2 + 1],
+		p[6 + 1],
+		p[10 + 1],
+		p[14 + 1],
+		p[3 + 1],
+		p[7 + 1],
+		p[11 + 1],
+		p[15 + 1]
+	)
+end
+
+function Mat4:set_inverse(a)
+	local m = a.m
+	local a00 = m[0 + 1]
+	local a01 = m[1 + 1]
+	local a02 = m[2 + 1]
+	local a03 = m[3 + 1]
+	local a10 = m[4 + 1]
+	local a11 = m[5 + 1]
+	local a12 = m[6 + 1]
+	local a13 = m[7 + 1]
+	local a20 = m[8 + 1]
+	local a21 = m[9 + 1]
+	local a22 = m[10 + 1]
+	local a23 = m[11 + 1]
+	local a30 = m[12 + 1]
+	local a31 = m[13 + 1]
+	local a32 = m[14 + 1]
+	local a33 = m[15 + 1]
 	local b00 = a00 * a11 - a01 * a10
 	local b01 = a00 * a12 - a02 * a10
 	local b02 = a00 * a13 - a03 * a10
@@ -1471,163 +2092,254 @@ function Mat4:inverse()
 	local b11 = a22 * a33 - a23 * a32
 	local det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06
 	if det == 0 then
-		return Mat4.identity()
+		return self:set_identity()
 	end
 	local inv = 1.0 / det
-	local r = Mat4.zero()
-	r.m[0 + 1] = (a11 * b11 - a12 * b10 + a13 * b09) * inv
-	r.m[1 + 1] = (-a01 * b11 + a02 * b10 - a03 * b09) * inv
-	r.m[2 + 1] = (a31 * b05 - a32 * b04 + a33 * b03) * inv
-	r.m[3 + 1] = (-a21 * b05 + a22 * b04 - a23 * b03) * inv
-	r.m[4 + 1] = (-a10 * b11 + a12 * b08 - a13 * b07) * inv
-	r.m[5 + 1] = (a00 * b11 - a02 * b08 + a03 * b07) * inv
-	r.m[6 + 1] = (-a30 * b05 + a32 * b02 - a33 * b01) * inv
-	r.m[7 + 1] = (a20 * b05 - a22 * b02 + a23 * b01) * inv
-	r.m[8 + 1] = (a10 * b10 - a11 * b08 + a13 * b06) * inv
-	r.m[9 + 1] = (-a00 * b10 + a01 * b08 - a03 * b06) * inv
-	r.m[10 + 1] = (a30 * b04 - a31 * b02 + a33 * b00) * inv
-	r.m[11 + 1] = (-a20 * b04 + a21 * b02 - a23 * b00) * inv
-	r.m[12 + 1] = (-a10 * b09 + a11 * b07 - a12 * b06) * inv
-	r.m[13 + 1] = (a00 * b09 - a01 * b07 + a02 * b06) * inv
-	r.m[14 + 1] = (-a30 * b03 + a31 * b01 - a32 * b00) * inv
-	r.m[15 + 1] = (a20 * b03 - a21 * b01 + a22 * b00) * inv
-	return r
+	return self:set(
+		(a11 * b11 - a12 * b10 + a13 * b09) * inv,
+		(-a01 * b11 + a02 * b10 - a03 * b09) * inv,
+		(a31 * b05 - a32 * b04 + a33 * b03) * inv,
+		(-a21 * b05 + a22 * b04 - a23 * b03) * inv,
+		(-a10 * b11 + a12 * b08 - a13 * b07) * inv,
+		(a00 * b11 - a02 * b08 + a03 * b07) * inv,
+		(-a30 * b05 + a32 * b02 - a33 * b01) * inv,
+		(a20 * b05 - a22 * b02 + a23 * b01) * inv,
+		(a10 * b10 - a11 * b08 + a13 * b06) * inv,
+		(-a00 * b10 + a01 * b08 - a03 * b06) * inv,
+		(a30 * b04 - a31 * b02 + a33 * b00) * inv,
+		(-a20 * b04 + a21 * b02 - a23 * b00) * inv,
+		(-a10 * b09 + a11 * b07 - a12 * b06) * inv,
+		(a00 * b09 - a01 * b07 + a02 * b06) * inv,
+		(-a30 * b03 + a31 * b01 - a32 * b00) * inv,
+		(a20 * b03 - a21 * b01 + a22 * b00) * inv
+	)
 end
 
-function Mat4:rigid_inverse(eye)
-	local r = Mat4.zero()
-	r.m[0 + 1] = self.m[0 + 1]
-	r.m[1 + 1] = self.m[4 + 1]
-	r.m[2 + 1] = self.m[8 + 1]
-	r.m[3 + 1] = eye.x
-	r.m[4 + 1] = self.m[1 + 1]
-	r.m[5 + 1] = self.m[5 + 1]
-	r.m[6 + 1] = self.m[9 + 1]
-	r.m[7 + 1] = eye.y
-	r.m[8 + 1] = self.m[2 + 1]
-	r.m[9 + 1] = self.m[6 + 1]
-	r.m[10 + 1] = self.m[10 + 1]
-	r.m[11 + 1] = eye.z
-	r.m[12 + 1] = 0
-	r.m[13 + 1] = 0
-	r.m[14 + 1] = 0
-	r.m[15 + 1] = 1
-	return r
+function Mat4:set_rigid_inverse(a, eye)
+	local p = a.m
+	return self:set(
+		p[0 + 1],
+		p[4 + 1],
+		p[8 + 1],
+		eye.x,
+		p[1 + 1],
+		p[5 + 1],
+		p[9 + 1],
+		eye.y,
+		p[2 + 1],
+		p[6 + 1],
+		p[10 + 1],
+		eye.z,
+		0,
+		0,
+		0,
+		1
+	)
 end
 
-function Mat4.translate(v)
-	local r = Mat4.new()
-	r.m[3 + 1] = v.x
-	r.m[7 + 1] = v.y
-	r.m[11 + 1] = v.z
-	return r
+function Mat4:set_translate(x, y, z)
+	return self:set(1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1)
 end
 
-function Mat4.scale(v)
-	local r = Mat4.zero()
-	r.m[0 + 1] = v.x
-	r.m[5 + 1] = v.y
-	r.m[10 + 1] = v.z
-	r.m[15 + 1] = 1
-	return r
+function Mat4:set_scale(x, y, z)
+	return self:set(x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1)
 end
 
-function Mat4.scale_trans(s, t)
-	local r = Mat4.zero()
-	r.m[0 + 1] = s
-	r.m[3 + 1] = t.x
-	r.m[5 + 1] = s
-	r.m[7 + 1] = t.y
-	r.m[10 + 1] = s
-	r.m[11 + 1] = t.z
-	r.m[15 + 1] = 1
-	return r
+function Mat4:set_scale_trans(s, x, y, z)
+	return self:set(s, 0, 0, x, 0, s, 0, y, 0, 0, s, z, 0, 0, 0, 1)
 end
 
-function Mat4.rotate_x(angle)
+function Mat4:set_rotate_x(angle)
 	local c = Math.Cos(angle)
 	local s = Math.Sin(angle)
-	local r = Mat4.new()
-	r.m[5 + 1] = c
-	r.m[6 + 1] = -s
-	r.m[9 + 1] = s
-	r.m[10 + 1] = c
-	return r
+	return self:set(1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0, 0, 0, 0, 1)
 end
 
-function Mat4.rotate_y(angle)
+function Mat4:set_rotate_y(angle)
 	local c = Math.Cos(angle)
 	local s = Math.Sin(angle)
-	local r = Mat4.new()
-	r.m[0 + 1] = c
-	r.m[2 + 1] = s
-	r.m[8 + 1] = -s
-	r.m[10 + 1] = c
-	return r
+	return self:set(c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 0, 0, 0, 1)
 end
 
-function Mat4.rotate_z(angle)
+function Mat4:set_rotate_z(angle)
 	local c = Math.Cos(angle)
 	local s = Math.Sin(angle)
-	local r = Mat4.new()
-	r.m[0 + 1] = c
-	r.m[1 + 1] = -s
-	r.m[4 + 1] = s
-	r.m[5 + 1] = c
-	return r
+	return self:set(c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 end
 
-function Mat4.rotate(angle, axis)
-	return Quat.from_axis_angle(axis, angle):to_mat4()
+function Mat4:set_rotate(angle, axis)
+	local half = angle * 0.5
+	local s = Math.Sin(half)
+	local len = axis:length()
+	local nx = 0
+	local ny = 0
+	local nz = 0
+	if len > 0 then
+		nx = axis.x / len
+		ny = axis.y / len
+		nz = axis.z / len
+	end
+	return self:set_rotation(nx * s, ny * s, nz * s, Math.Cos(half))
 end
 
-function Mat4.from_quat(q)
-	return q:to_mat4()
+function Mat4:set_from_quat(q)
+	return self:set_rotation(q.x, q.y, q.z, q.w)
 end
 
-function Mat4.look_at_lh(eye, target, up)
-	local z = target:sub(eye):normalize()
-	local x = up:cross(z):normalize()
-	local y = z:cross(x)
-	local r = Mat4.zero()
-	r.m[0 + 1] = x.x
-	r.m[1 + 1] = x.y
-	r.m[2 + 1] = x.z
-	r.m[3 + 1] = -x:dot(eye)
-	r.m[4 + 1] = y.x
-	r.m[5 + 1] = y.y
-	r.m[6 + 1] = y.z
-	r.m[7 + 1] = -y:dot(eye)
-	r.m[8 + 1] = z.x
-	r.m[9 + 1] = z.y
-	r.m[10 + 1] = z.z
-	r.m[11 + 1] = -z:dot(eye)
-	r.m[12 + 1] = 0
-	r.m[13 + 1] = 0
-	r.m[14 + 1] = 0
-	r.m[15 + 1] = 1
-	return r
+function Mat4:set_trs(px, py, pz, qx, qy, qz, qw, sx, sy, sz)
+	local x2 = qx + qx
+	local y2 = qy + qy
+	local z2 = qz + qz
+	local xx = qx * x2
+	local xy = qx * y2
+	local xz = qx * z2
+	local yy = qy * y2
+	local yz = qy * z2
+	local zz = qz * z2
+	local wx = qw * x2
+	local wy = qw * y2
+	local wz = qw * z2
+	return self:set(
+		(1 - (yy + zz)) * sx,
+		(xy - wz) * sy,
+		(xz + wy) * sz,
+		px,
+		(xy + wz) * sx,
+		(1 - (xx + zz)) * sy,
+		(yz - wx) * sz,
+		py,
+		(xz - wy) * sx,
+		(yz + wx) * sy,
+		(1 - (xx + yy)) * sz,
+		pz,
+		0,
+		0,
+		0,
+		1
+	)
 end
 
-function Mat4.perspective_lh(fovDeg, aspect, nz, fz)
+function Mat4:set_look_at_lh(eye, target, up)
+	local ex = eye.x
+	local ey = eye.y
+	local ez = eye.z
+	local zx = target.x - ex
+	local zy = target.y - ey
+	local zz = target.z - ez
+	local zl = Math.Sqrt(zx * zx + zy * zy + zz * zz)
+	if zl > 0 then
+		zx = zx / zl
+		zy = zy / zl
+		zz = zz / zl
+	else
+		zx = 0
+		zy = 0
+		zz = 0
+	end
+	local xx = up.y * zz - up.z * zy
+	local xy = up.z * zx - up.x * zz
+	local xz = up.x * zy - up.y * zx
+	local xl = Math.Sqrt(xx * xx + xy * xy + xz * xz)
+	if xl > 0 then
+		xx = xx / xl
+		xy = xy / xl
+		xz = xz / xl
+	else
+		xx = 0
+		xy = 0
+		xz = 0
+	end
+	local yx = zy * xz - zz * xy
+	local yy = zz * xx - zx * xz
+	local yz = zx * xy - zy * xx
+	return self:set(
+		xx,
+		xy,
+		xz,
+		-(xx * ex + xy * ey + xz * ez),
+		yx,
+		yy,
+		yz,
+		-(yx * ex + yy * ey + yz * ez),
+		zx,
+		zy,
+		zz,
+		-(zx * ex + zy * ey + zz * ez),
+		0,
+		0,
+		0,
+		1
+	)
+end
+
+function Mat4:set_perspective_lh(fovDeg, aspect, nz, fz)
 	local f = 1.0 / Math.Tan(fovDeg * 3.141592653589793 / 360.0)
-	local r = Mat4.zero()
-	r.m[0 + 1] = f / aspect
-	r.m[5 + 1] = f
-	r.m[10 + 1] = fz / (fz - nz)
-	r.m[11 + 1] = -fz * nz / (fz - nz)
-	r.m[14 + 1] = 1
-	return r
+	return self:set(f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, fz / (fz - nz), -fz * nz / (fz - nz), 0, 0, 1, 0)
 end
 
-function Mat4.ortho_lh(w, h, nz, fz)
-	local r = Mat4.zero()
-	r.m[0 + 1] = 2 / w
-	r.m[5 + 1] = 2 / h
-	r.m[10 + 1] = 1 / (fz - nz)
-	r.m[11 + 1] = -nz / (fz - nz)
-	r.m[15 + 1] = 1
-	return r
+function Mat4:set_ortho_lh(w, h, nz, fz)
+	return self:set(2 / w, 0, 0, 0, 0, 2 / h, 0, 0, 0, 0, 1 / (fz - nz), -nz / (fz - nz), 0, 0, 0, 1)
+end
+
+function Mat4:mul_vec4_into(v, dst)
+	local a = self.m
+	return dst:set(
+		a[0 + 1] * v.x + a[1 + 1] * v.y + a[2 + 1] * v.z + a[3 + 1] * v.w,
+		a[4 + 1] * v.x + a[5 + 1] * v.y + a[6 + 1] * v.z + a[7 + 1] * v.w,
+		a[8 + 1] * v.x + a[9 + 1] * v.y + a[10 + 1] * v.z + a[11 + 1] * v.w,
+		a[12 + 1] * v.x + a[13 + 1] * v.y + a[14 + 1] * v.z + a[15 + 1] * v.w
+	)
+end
+
+function Mat4:mul_point_into(v, dst)
+	local a = self.m
+	return dst:set(
+		a[0 + 1] * v.x + a[1 + 1] * v.y + a[2 + 1] * v.z + a[3 + 1],
+		a[4 + 1] * v.x + a[5 + 1] * v.y + a[6 + 1] * v.z + a[7 + 1],
+		a[8 + 1] * v.x + a[9 + 1] * v.y + a[10 + 1] * v.z + a[11 + 1]
+	)
+end
+
+function Mat4:mul_dir_into(v, dst)
+	local a = self.m
+	return dst:set(
+		a[0 + 1] * v.x + a[1 + 1] * v.y + a[2 + 1] * v.z,
+		a[4 + 1] * v.x + a[5 + 1] * v.y + a[6 + 1] * v.z,
+		a[8 + 1] * v.x + a[9 + 1] * v.y + a[10 + 1] * v.z
+	)
+end
+
+function Mat4:set_rotation(x, y, z, w)
+	local x2 = x + x
+	local y2 = y + y
+	local z2 = z + z
+	local xx = x * x2
+	local xy = x * y2
+	local xz = x * z2
+	local yy = y * y2
+	local yz = y * z2
+	local zz = z * z2
+	local wx = w * x2
+	local wy = w * y2
+	local wz = w * z2
+	return self:set(
+		1 - (yy + zz),
+		xy - wz,
+		xz + wy,
+		0,
+		xy + wz,
+		1 - (xx + zz),
+		yz - wx,
+		0,
+		xz - wy,
+		yz + wx,
+		1 - (xx + yy),
+		0,
+		0,
+		0,
+		0,
+		1
+	)
 end
 
 function Mat4.__mul_1(a, b)
@@ -2042,24 +2754,41 @@ function FixedStep.new(hz, maxCatchUp)
 	local self = setmetatable({}, FixedStep)
 	__tcs_instances[self] = FixedStep
 	self.tick_dt = 0
+	self.last_steps = 0
+	self.last_dropped = 0
+	self.total_dropped = 0
 	self.max_catch_up = 0
 	self.accumulator = 0
 	self.stopped = false
+	self.running = false
 	self.pending_key_pressed = {}
 	self.pending_key_released = {}
 	self.pending_mouse_pressed = {}
 	self.pending_mouse_released = {}
-	self.tick_dt = 1.0 / (hz or 60.0)
-	self.max_catch_up = maxCatchUp or 8
+	local h = hz or 60.0
+	self.tick_dt = 1.0 / h
+	self.max_catch_up = maxCatchUp or Math.Max(3, Math.Ceil(h / 20.0))
+	local i = 0
+	while i < #FixedStep.scan_keys do
+		table.insert(self.pending_key_pressed, false)
+		table.insert(self.pending_key_released, false)
+		i = i + 1
+	end
+	for b = 0, 4 - 1 do
+		table.insert(self.pending_mouse_pressed, false)
+		table.insert(self.pending_mouse_released, false)
+	end
 	return self
 end
 
 function FixedStep:frame(dt, tick)
 	self:latch_edges()
 	if dt > 0 then
-		self.accumulator = Math.Min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
+		self.accumulator = self.accumulator + dt
 	end
+	self.last_dropped = 0
 	self.stopped = false
+	self.running = true
 	local steps = 0
 	while self.accumulator + 1e-9 >= self.tick_dt and steps < self.max_catch_up and not self.stopped do
 		tick(self.tick_dt)
@@ -2070,10 +2799,27 @@ function FixedStep:frame(dt, tick)
 		end
 		steps = steps + 1
 	end
+	self.running = false
+	self.last_steps = steps
+	if self.stopped or self.accumulator + 1e-9 >= self.tick_dt then
+		self:drop()
+	end
 end
 
 function FixedStep:stop()
 	self.stopped = true
+	if not self.running then
+		self:drop()
+	end
+end
+
+function FixedStep:reset_dropped()
+	self.total_dropped = 0
+end
+
+function FixedStep:drop()
+	self.last_dropped = self.last_dropped + self.accumulator
+	self.total_dropped = self.total_dropped + self.accumulator
 	self.accumulator = 0
 end
 
@@ -3957,6 +4703,73 @@ function Shapes3d.sphere(stacks, slices)
 	return Shapes3d.mesh(pos, nrm, indices)
 end
 
+SlotPool = {}
+SlotPool.__index = SlotPool
+
+function SlotPool.new()
+	local self = setmetatable({}, SlotPool)
+	__tcs_instances[self] = SlotPool
+	self.capacity = 0
+	self.live = 0
+	self.alive = {}
+	self.generations = {}
+	self.free_slots = {}
+	return self
+end
+
+function SlotPool:alloc()
+	local n = #self.free_slots
+	if n > 0 then
+		local i = self.free_slots[n - 1 + 1]
+		table.remove(self.free_slots, n - 1 + 1)
+		self.alive[i + 1] = true
+		self.generations[i + 1] = self.generations[i + 1] + 1
+		self.live = self.live + 1
+		return i
+	end
+	table.insert(self.alive, true)
+	table.insert(self.generations, 1)
+	self.capacity = self.capacity + 1
+	self.live = self.live + 1
+	return self.capacity - 1
+end
+
+function SlotPool:free(i)
+	if not self:is_alive(i) then
+		return
+	end
+	self.alive[i + 1] = false
+	table.insert(self.free_slots, i)
+	self.live = self.live - 1
+end
+
+function SlotPool:is_alive(i)
+	if i < 0 or i >= self.capacity then
+		return false
+	end
+	return self.alive[i + 1]
+end
+
+function SlotPool:generation(i)
+	if i < 0 or i >= self.capacity then
+		return 0
+	end
+	return self.generations[i + 1]
+end
+
+function SlotPool:clear()
+	while #self.free_slots > 0 do
+		table.remove(self.free_slots, #self.free_slots - 1 + 1)
+	end
+	local i = self.capacity - 1
+	while i >= 0 do
+		self.alive[i + 1] = false
+		table.insert(self.free_slots, i)
+		i = i - 1
+	end
+	self.live = 0
+end
+
 SpriteBucket = {}
 SpriteBucket.__index = SpriteBucket
 
@@ -4289,29 +5102,29 @@ function SpriteBatch:flush(blend)
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
 		if #b.verts == 0 then
-			goto _continue_56
+			goto _continue_58
 		end
 		local tex = b.atlas.texture
 		if tex == nil then
-			goto _continue_56
+			goto _continue_58
 		end
 		if not self.instanced then
 			local vbuf =
 				lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_verts", lub.gfx.STORAGE, b.verts)
 			if vbuf == nil then
-				goto _continue_56
+				goto _continue_58
 			end
 			lub.gfx.draw(
 				Math.Floor(#b.verts / 8),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
-			goto _continue_56
+			goto _continue_58
 		end
 		local instances =
 			lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_instances", lub.gfx.STORAGE, b.verts)
 		if instances == nil or quadVb == nil then
-			goto _continue_56
+			goto _continue_58
 		end
 		lub.gfx.draw(4, {
 			["verts"] = quadVb,
@@ -4326,7 +5139,7 @@ function SpriteBatch:flush(blend)
 			primitive = lub.gfx.TRIANGLE_STRIP,
 			instance_count = Math.Floor(#b.verts / 16),
 		})
-		::_continue_56::
+		::_continue_58::
 	end
 end
 
@@ -4547,6 +5360,7 @@ return {
 	Sfx = Sfx,
 	Shapes = Shapes,
 	Shapes3d = Shapes3d,
+	SlotPool = SlotPool,
 	SpriteBatch = SpriteBatch,
 	SpriteBucket = SpriteBucket,
 	Text = Text,

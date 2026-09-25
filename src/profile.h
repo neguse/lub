@@ -15,7 +15,7 @@ typedef struct ProfileScopeStats {
   uint64_t max_ns;
   uint64_t calls;
   uint64_t alloc_bytes; // scope の中で Lua heap が確保した byte 数 (内側込み)
-  uint64_t gc_ns; // scope の中の GC step の時間
+  uint64_t gc_ns;       // scope の中の GC step の時間
 } ProfileScopeStats;
 
 typedef struct ProfileStackEntry {
@@ -30,9 +30,9 @@ typedef struct ProfileStackEntry {
 // 差を取る。
 typedef struct ProfileHeapCounters {
   uint64_t alloc_bytes; // 確保した byte 数 (新しい block と realloc の増分)
-  uint64_t allocs;     // 新しい block の数
-  uint64_t free_bytes; // 返した byte 数 (free と realloc の縮小分)
-  uint64_t gc_ns;      // GC step の時間
+  uint64_t allocs;      // 新しい block の数
+  uint64_t free_bytes;  // 返した byte 数 (free と realloc の縮小分)
+  uint64_t gc_ns;       // GC step の時間
   uint64_t gc_steps;
   uint64_t gc_cycles; // 終わった GC の周回
 } ProfileHeapCounters;
@@ -75,7 +75,7 @@ typedef struct ProfileState {
   // window (frames と同じ区間) の集計。frame の外 (on_event / on_init /
   // frame の間) の確保は win_outside_alloc に分ける。
   ProfileHeapCounters frame_heap_start; // 今の frame の始まりの heap
-  uint64_t gap_alloc_start; // 直前の frame_end の heap.alloc_bytes
+  uint64_t gap_alloc_start;             // 直前の frame_end の heap.alloc_bytes
   ProfileHeapCounters win_heap;
   uint64_t win_alloc_max;
   uint64_t win_gc_ns_max;      // frame ごとの GC 時間の最大

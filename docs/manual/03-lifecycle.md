@@ -25,7 +25,7 @@ Lua 側の名前は `on_init` / `on_event` / `on_frame` / `on_quit` / `on_reload
 固定 60 Hz tick にする — `lubx.FixedStep` がこの分離を担う。
 
 ```csharp
-static FixedStep? step; // 60 Hz、catch-up 上限 8
+static FixedStep? step; // 60 Hz、catch-up 上限 3
 
 public static void OnFrame(float dt)
 {
@@ -35,11 +35,22 @@ public static void OnFrame(float dt)
 }
 ```
 
-`Frame()` は実測 `dt` を積み、溜まった分だけ tick を 0〜上限回実行する
-(上限超過分は捨てられ、ゲームは実時間よりゆっくり進む)。`step.KeyPressed` /
-`step.MousePressed` などの edge は tick 粒度で配送され、tick が 0 回だった
-render frame の edge も失われない(次の tick が観測する)。tick callback は
+`Frame()` は実測 `dt` を積み、溜まった分だけ tick を 0〜上限回実行する。
+上限まで回してもまだ 1 tick 分以上の時間が残っていたら、残りは捨てられ、
+ゲームは実時間よりゆっくり進む。残りを次のフレームへ持ち越すと、重いフレームの
+次にさらに多くの tick を回してもっと重くなるためで、上限の既定も小さめの
+50 ms 分にしてある(60 Hz なら 3 tick。tick の周波数 `hz` を上げると上限の
+tick 数も増え、どの `hz` でも 20 fps まではゲームが実時間どおりに進む)。上限は
+`new FixedStep(hz, maxCatchUp)` の 2 番目の引数で tick 数として変えられる。直近の `Frame()` で
+走った tick 数は `step.LastSteps`、捨てた時間(秒)は `step.LastDropped`、
+これまでの合計は `step.TotalDropped`(`step.ResetDropped()` で 0 に戻す)で読める。
+
+`step.KeyPressed` / `step.MousePressed` などの edge は tick 粒度で配送され、
+tick が 0 回だった render frame の edge も失われない(次の tick が観測する)。
+edge は 1 回の tick で消費され、次の tick では false に戻る。tick callback は
 保持されないので、hot reload の live 反映後も次のフレームから新コードが走る。
+tick callback の中で `step.Stop()` を呼ぶと、そのフレームの残りの tick と
+溜まった時間を捨てて `Frame()` を抜ける(捨てた時間は `LastDropped` に入る)。
 
 代表的な構成:
 

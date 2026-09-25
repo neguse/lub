@@ -854,7 +854,8 @@ public class Renderer3d
         draws = new List<Renderer3dDrawCmd>();
     }
 
-    /// <summary>描画を記録する (実行は `End()`)。</summary>
+    /// <summary>描画を記録する (実行は `End()`)。model はコピーせず `End()`
+    /// まで参照するので、同じ Mat4 を書き換えながら何度も渡さない。</summary>
     public void Draw(Mesh3d? mesh, Mat4 model, Draw3dOpts? opts = null)
     {
         if (mesh == null || !mesh.Ready())

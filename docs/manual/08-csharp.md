@@ -47,6 +47,28 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
 ログパネルに表示される。エラーではなく警告として出るものも、Lua 出力の
 正しさに関わるので放置しない。
 
+## lub.Math の演算と確保
+
+`lub.Math` の Vec2 / Vec3 / Vec4 / Quat / Mat4 は class で、演算子(`a + b`、
+`m * n`、`q * v`)と結果を返すメソッド(`Add`、`Normalize`、`Mat4.Translate`
+など)は呼ぶたびに新しいオブジェクトを作る。毎フレーム多数のオブジェクトに
+対して回す計算では、手元のオブジェクトを書き換える版を使って使い回す:
+
+- `v.AddInPlace(b)` / `v.ScaleInPlace(s)` / `v.NormalizeInPlace()` など —
+  自分自身を書き換える
+- `c.SetAdd(a, b)` / `c.SetCross(a, b)` / `q.SetMul(a, b)` / `m.SetMul(a, b)` —
+  引数から計算して自分に入れる(自分が引数と同じオブジェクトでもよい)
+- `m.SetTrs(px, py, pz, qx, qy, qz, qw, sx, sy, sz)` — 平行移動・回転・拡大の
+  モデル行列を一度に作る
+- `q.RotateInto(v, dst)` / `m.MulPointInto(p, dst)` — 結果を `dst` に書く
+
+どれも書き換えたオブジェクトを返すので続けて呼べ、結果は同じ計算をする演算子や
+メソッドと完全に一致する。`SetTrs` だけは対応する 1 つの演算が無く、
+`Mat4.Translate(p) * q.ToMat4() * Mat4.Scale(s)` と値は同じだが、0 の符号などの
+細かい違いが出ることがある。`Renderer3d.Draw` に渡した行列は `End()` まで
+そのまま参照されるので、1 つの行列を書き換えながら何度も `Draw` に渡さない
+(描画ごとに別の Mat4 を持つ)。
+
 ## lub API の呼び方
 
 runtime API は root class `Lub` の下の nested static class(`Gfx` / `Input` /

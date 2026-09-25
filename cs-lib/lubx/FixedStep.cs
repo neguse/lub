@@ -1,7 +1,9 @@
 // 実装ライブラリ lubx の FixedStep。
-// pending 集合は SCAN_KEYS と平行な bool 配列で持つ。
+// pending 集合は scanKeys と平行な List<bool> で持つ。new bool[n] は Lua では
+// 空 table になり .Length が 0 になるので、構築時に要素数ぶん false を詰める。
 
 using System;
+using System.Collections.Generic;
 using static Lub;
 
 /// <summary>
@@ -12,15 +14,29 @@ using static Lub;
 /// edge も失われない。edge は tick callback の中で読むこと。
 /// callback は保持しない (毎フレーム frame() に渡す) ので、playground の
 /// live 反映後も次のフレームから新しいコードが呼ばれる。
+/// maxCatchUp tick を回してもまだ 1 tick 分以上の時間が残ったフレームは、
+/// 残りを捨ててゲームを実時間より遅らせる。捨てた時間は LastDropped /
+/// TotalDropped で読める。
 /// </summary>
 public class FixedStep
 {
     /// <summary>tick callback に渡される固定 dt (= 1/hz) 秒。</summary>
     public float TickDt;
 
+    /// <summary>直近の frame() で走った tick 数。</summary>
+    public int LastSteps { get; private set; }
+
+    /// <summary>直近の frame() で捨てた時間 (秒)。catch-up 上限で打ち切った
+    /// 残りと、Stop() で捨てた分。</summary>
+    public float LastDropped { get; private set; }
+
+    /// <summary>生成 (または ResetDropped()) 以降に捨てた時間の合計 (秒)。</summary>
+    public float TotalDropped { get; private set; }
+
     private int maxCatchUp;
     private float accumulator = 0;
     private bool stopped = false;
+    private bool running = false;
 
     // lub.Input が公開する全キー名 (Key 定数 + a..z + 0..9)。
     // キー名を足したらここにも足す。
@@ -36,30 +52,50 @@ public class FixedStep
     };
 
     // tick 粒度 edge の保留分。次の tick が消費するまでフレームを跨いで持ち越す。
-    private bool[] pendingKeyPressed = new bool[45];
-    private bool[] pendingKeyReleased = new bool[45];
-    private bool[] pendingMousePressed = new bool[4];
-    private bool[] pendingMouseReleased = new bool[4];
+    // key は scanKeys と同じ添字、mouse は button 番号 (1〜3) を添字にする。
+    private List<bool> pendingKeyPressed = new List<bool>();
+    private List<bool> pendingKeyReleased = new List<bool>();
+    private List<bool> pendingMousePressed = new List<bool>();
+    private List<bool> pendingMouseReleased = new List<bool>();
 
     /// <summary>hz: tick の周波数 (正の値、省略 = 60)。maxCatchUp: 1 回の
-    /// frame() で走る tick 数の上限 (1 以上、省略 = 8)。tcs は default 値を
-    /// Lua 側へ出さないので nullable + ?? で受ける (Rand と同じ)。</summary>
+    /// frame() で走る tick 数の上限 (1 以上)。省略時は 50 ms 分の tick 数
+    /// (hz / 20 の切り上げ、最低 3) で、60 Hz なら 3。どの hz でも 20 fps
+    /// まで落ちても実時間どおりに進み、それより重いフレームの後に tick を
+    /// まとめて回してさらに重くする量は 50 ms 分に抑えられる。
+    /// tcs は default 値を Lua 側へ出さないので nullable + ?? で受ける
+    /// (Rand と同じ)。</summary>
     public FixedStep(float? hz = null, int? maxCatchUp = null)
     {
-        TickDt = 1.0f / (hz ?? 60.0f);
-        this.maxCatchUp = maxCatchUp ?? 8;
+        var h = hz ?? 60.0f;
+        TickDt = 1.0f / h;
+        this.maxCatchUp =
+            maxCatchUp ?? Math.Max(3, (int)Math.Ceiling(h / 20.0f));
+        for (int i = 0; i < scanKeys.Length; i++)
+        {
+            pendingKeyPressed.Add(false);
+            pendingKeyReleased.Add(false);
+        }
+        for (int b = 0; b < 4; b++)
+        {
+            pendingMousePressed.Add(false);
+            pendingMouseReleased.Add(false);
+        }
     }
 
     /// <summary>onFrame から毎フレーム呼ぶ。実測 dt を積み、固定 tick を
-    /// 0〜maxCatchUp 回実行する。tick は保持されない。</summary>
+    /// 0〜maxCatchUp 回実行する。上限まで回してもまだ 1 tick 分以上残って
+    /// いれば、残りは捨てて LastDropped に記録する。tick は保持されない。</summary>
     public void Frame(float dt, Action<float> tick)
     {
         LatchEdges();
         if (dt > 0)
         {
-            accumulator = Math.Min(accumulator + dt, TickDt * maxCatchUp);
+            accumulator = accumulator + dt;
         }
+        LastDropped = 0;
         stopped = false;
+        running = true;
         int steps = 0;
         while (accumulator + 1e-9f >= TickDt && steps < maxCatchUp && !stopped)
         {
@@ -72,13 +108,40 @@ public class FixedStep
             }
             steps = steps + 1;
         }
+        running = false;
+        LastSteps = steps;
+        // 上限で打ち切ったときは残りを全部捨てる。次のフレームへ持ち越すと、
+        // 重いフレームの次にさらに多くの tick を回すことになる。Stop() された
+        // ときも同じ。
+        if (stopped || accumulator + 1e-9f >= TickDt)
+        {
+            Drop();
+        }
     }
 
     /// <summary>tick callback 内から呼ぶと、このフレームの残り catch-up tick
-    /// と溜まった時間を捨てて frame() を抜ける。</summary>
+    /// と溜まった時間を捨てて frame() を抜ける。捨てた時間は LastDropped /
+    /// TotalDropped に入る。</summary>
     public void Stop()
     {
         stopped = true;
+        // tick の中なら、今の tick の分を引いた残りを frame() が捨てる
+        if (!running)
+        {
+            Drop();
+        }
+    }
+
+    /// <summary>TotalDropped を 0 に戻す。</summary>
+    public void ResetDropped()
+    {
+        TotalDropped = 0;
+    }
+
+    private void Drop()
+    {
+        LastDropped = LastDropped + accumulator;
+        TotalDropped = TotalDropped + accumulator;
         accumulator = 0;
     }
 
@@ -158,7 +221,7 @@ public class FixedStep
 
     private void ClearPending()
     {
-        for (int i = 0; i < pendingKeyPressed.Length; i++)
+        for (int i = 0; i < pendingKeyPressed.Count; i++)
         {
             pendingKeyPressed[i] = false;
             pendingKeyReleased[i] = false;
