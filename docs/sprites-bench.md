@@ -30,7 +30,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -N
 # Run the SDL GPU backend.
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -Backend sdlgpu
 
-# Print generic CPU profile timing over the final profile window.
+# Print the profiler report (time, Lua allocation, GC) over the final profile window.
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sprites-bench.ps1 -Profile
 
 # Longer single-spawn benchmark run.
@@ -54,7 +54,7 @@ bash scripts/run-sprites-bench.sh --no-build
 # Run the SDL GPU backend.
 bash scripts/run-sprites-bench.sh --backend sdlgpu
 
-# Print generic CPU profile timing over the final profile window.
+# Print the profiler report (time, Lua allocation, GC) over the final profile window.
 bash scripts/run-sprites-bench.sh --profile
 
 # Longer single-spawn benchmark run.
@@ -67,4 +67,4 @@ comparison.
 
 When reporting a score, include the exact command, OS, backend, target FPS,
 score frame, burst, and the full `LUB_PROFILE` / `LUB_PROFILE_SCOPE` /
-`SPRITES13_SCORE` lines.
+`LUB_PROFILE_HEAP` / `SPRITES13_SCORE` lines.

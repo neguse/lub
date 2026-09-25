@@ -70,11 +70,15 @@ list(REMOVE_ITEM LUA_SRC
   ${lua_SOURCE_DIR}/onelua.c
   ${lua_SOURCE_DIR}/ltests.c
 )
-add_library(lua_static STATIC ${LUA_SRC})
+add_library(lua_static STATIC ${LUA_SRC} src/lub_lua_user.c)
 target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
 # Lua の数値は int32 + float (C API の面と C# の int / float に揃える)。
 # lua.h を include する側も同じ定義を見る必要があるので PUBLIC。
 target_compile_definitions(lua_static PUBLIC LUA_32BITS)
+# GC step の hook (src/lub_lua_user.h、LUB_PROFILE の GC 時間)。lua.h が
+# LUA_USER_H を include する。Lua の内部 macro を差し替えるだけなので PRIVATE。
+target_compile_definitions(lua_static PRIVATE LUA_USER_H="lub_lua_user.h")
+target_include_directories(lua_static PRIVATE src)
 
 # libtess2 (glyph outline tessellation for font_glyph_mesh)
 add_library(tess2 STATIC
@@ -496,6 +500,18 @@ if(NOT LUB_WASM)
     target_link_libraries(lub_physics_box3d_smoke PRIVATE m dl)
   endif()
   target_include_directories(lub_physics_box3d_smoke PRIVATE src include)
+
+  # LUB_PROFILE の Lua heap: 数える allocator と GC step の hook
+  # (lua_static の LUA_USER_H)。lub_objs は link しない。
+  add_executable(lub_profile_alloc_smoke
+    tests/c/profile_alloc_smoke.c
+    src/profile.c
+  )
+  target_link_libraries(lub_profile_alloc_smoke PRIVATE SDL3::SDL3 lua_static)
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(lub_profile_alloc_smoke PRIVATE m dl)
+  endif()
+  target_include_directories(lub_profile_alloc_smoke PRIVATE src)
 
   add_executable(lub_surfacenets_smoke
     tests/c/surfacenets_smoke.c

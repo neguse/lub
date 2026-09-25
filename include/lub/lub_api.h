@@ -2757,13 +2757,18 @@ LUB_API int32_t lub_sys_fnv1a64(LubContext *ctx, LubStr s);
 LUB_API float lub_sys_actual_fps(LubContext *ctx);
 
 // -------------------------------------------------------------- profiler
-// 汎用 CPU profiler (LUB_PROFILE=1 で有効化)。
+// 組み込み profiler (LUB_PROFILE=1 で有効化)。frame と名前付きの scope ごと
+// に、時間と Lua の確保量、GC の時間を集計する。.NET 実行では managed heap
+// の確保量と GC を frame ごとに集計する。
 
 // profiler が有効か (`LUB_PROFILE=1`)。
 LUB_API bool lub_profiler_enabled(LubContext *ctx);
 
+// `name` の scope を始める。EndScope までの時間と Lua の確保量を scope ごと
+// に足す (内側の scope の分も含む)。
 LUB_API void lub_profiler_begin_scope(LubContext *ctx, LubStr name);
 
+// `name` の scope を終える。空文字なら最後に始めた scope。
 LUB_API void lub_profiler_end_scope(LubContext *ctx, LubStr name);
 
 // 集計をリセットする。

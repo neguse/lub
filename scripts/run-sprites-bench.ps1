@@ -50,13 +50,11 @@ try {
     if ($Profile) {
         $profileStartFrame = [Math]::Max(0, $ScoreFrame - $ProfileWindow)
         $env:LUB_PROFILE = "1"
-        $env:LUB_PROFILE_WINDOW = $ProfileWindow.ToString([Globalization.CultureInfo]::InvariantCulture)
         $env:LUB_PROFILE_START_FRAME = $profileStartFrame.ToString([Globalization.CultureInfo]::InvariantCulture)
         $env:LUB_PROFILE_FRAME = $ScoreFrame.ToString([Globalization.CultureInfo]::InvariantCulture)
         $env:LUB_PROFILE_LABEL = "sprites13"
     } else {
         Remove-Item Env:LUB_PROFILE -ErrorAction SilentlyContinue
-        Remove-Item Env:LUB_PROFILE_WINDOW -ErrorAction SilentlyContinue
         Remove-Item Env:LUB_PROFILE_START_FRAME -ErrorAction SilentlyContinue
         Remove-Item Env:LUB_PROFILE_FRAME -ErrorAction SilentlyContinue
         Remove-Item Env:LUB_PROFILE_LABEL -ErrorAction SilentlyContinue

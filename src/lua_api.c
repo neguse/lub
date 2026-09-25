@@ -99,6 +99,9 @@ bool lua_ctx_init(LuaCtx *ctx, App *app) {
     SDL_Log("luaL_newstate failed (out of memory)");
     return false;
   }
+  // LUB_PROFILE の有効時だけ、確保と GC step を数える (無効時は何も足さない)。
+  // luaL_newstate の panic / warn の handler はそのまま残る。
+  profile_attach_lua(&app->profile, ctx->L);
   ctx->module_ref = LUA_NOREF;
   luaL_openlibs(ctx->L);
   lua_api_register(ctx->L);

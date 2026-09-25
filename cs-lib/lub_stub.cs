@@ -882,7 +882,9 @@ public static class Lub
         }
     }
 
-    /// <summary>汎用 CPU profiler (LUB_PROFILE=1 で有効化)。</summary>
+    /// <summary>組み込み profiler (LUB_PROFILE=1 で有効化)。frame と名前付きの
+    /// scope ごとに、時間と Lua の確保量、GC の時間を集計する。.NET 実行では
+    /// managed heap の確保量と GC を frame ごとに集計する。</summary>
     public static class Profiler
     {
         /// <summary>profiler が有効か (`LUB_PROFILE=1`)。</summary>
@@ -892,11 +894,14 @@ public static class Lub
             return false;
         }
 
+        /// <summary>`name` の scope を始める。EndScope までの時間と Lua の
+        /// 確保量を scope ごとに足す (内側の scope の分も含む)。</summary>
         [LubNoFail]
         public static void BeginScope(string name)
         {
         }
 
+        /// <summary>`name` の scope を終える。空文字なら最後に始めた scope。</summary>
         [LubNoFail]
         public static void EndScope(string name)
         {

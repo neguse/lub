@@ -56,6 +56,15 @@ LUB_API LubStatus lub_host_stale_ref(LubContext *ctx, LubStr key);
 // Quit が呼ばれたか、capture が終わったか、window が閉じられた。
 LUB_API bool lub_host_quit_requested(LubContext *ctx);
 
+// profiler (LUB_PROFILE) が有効なとき、ゲームを Lua 以外の runtime で動かす
+// host (.NET 実行) がその heap の累計値を渡す。確保した byte 数、世代
+// 0 / 1 / 2 の GC 回数、GC で止まった時間 (ns)。loop に入る前に 1 回と、
+// 各 frame の lub_host_frame_end の直前に呼ぶ。直前の値との差をその frame
+// の値として集計し、LUB_PROFILE_HEAP の heap=dotnet の行に出す。
+LUB_API void lub_host_profile_managed(LubContext *ctx, int64_t alloc_bytes,
+                                      int32_t gen0, int32_t gen1, int32_t gen2,
+                                      int64_t pause_ns);
+
 // runtime と SDL を終了して context を捨てる。
 LUB_API void lub_host_destroy(LubContext *ctx);
 

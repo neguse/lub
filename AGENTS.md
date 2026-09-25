@@ -52,4 +52,4 @@ benchmark. Use `scripts/run-sprites-bench.sh` /
 `scripts\run-sprites-bench.ps1`; flags and score reading are described in
 `docs/sprites-bench.md`. When reporting benchmark results, include the exact
 command, backend, target FPS, score frame, burst, and the full `LUB_PROFILE`
-/ `LUB_PROFILE_SCOPE` / `SPRITES13_SCORE` lines.
+/ `LUB_PROFILE_SCOPE` / `LUB_PROFILE_HEAP` / `SPRITES13_SCORE` lines.

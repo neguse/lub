@@ -247,6 +247,7 @@ jobs:
           ./lub_surfacenets_smoke.exe
           ./lub_physics_box2d_smoke.exe
           ./lub_physics_box3d_smoke.exe
+          ./lub_profile_alloc_smoke.exe
 
       # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
       - uses: actions/setup-dotnet@v4

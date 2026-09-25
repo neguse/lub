@@ -45,6 +45,10 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_host_destroy(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_host_profile_managed(void* ctx, long allocBytes,
+        int gen0, int gen1, int gen2, long pauseNs);
 }
 
 public static unsafe partial class Lub
@@ -140,6 +144,9 @@ public static unsafe partial class Lub
                 Console.Error.WriteLine("lub: " + LubRuntime.Str(LubNative.lub_last_error(ctx)));
                 return 1;
             }
+            // LUB_PROFILE: Lua の state は使わないので、managed heap の数字を渡す
+            var profile = LubNative.lub_profiler_enabled(ctx) != 0;
+            if (profile) ProfileManaged(ctx);
             while (LubNative.lub_host_quit_requested(ctx) == 0)
             {
                 LubNative.LubEventData e;
@@ -147,22 +154,19 @@ public static unsafe partial class Lub
                 {
                     if (e.kind == (int)EventKind.Quit) break;
                     if (onEvent != null)
-                    {
-                        var ev = LubNative.From_LubEventData(&e);
-                        Guard(() => onEvent(ev), "OnEvent");
-                    }
+                        Guard(onEvent, LubNative.From_LubEventData(&e), "OnEvent");
                 }
                 if (LubNative.lub_host_quit_requested(ctx) != 0) break;
-                float dtRaw = 0f;
-                if (LubNative.lub_host_frame_begin(ctx, &dtRaw) == 0)
+                float dt = 0f;
+                if (LubNative.lub_host_frame_begin(ctx, &dt) == 0)
                 {
                     Thread.Sleep(16);
                     continue;
                 }
-                float dt = dtRaw;
                 // 例外で抜けた frame は resource を sweep しない (Lua の player と同じ)
-                if (!Guard(() => onFrame(dt), "OnFrame"))
+                if (!Guard(onFrame, dt, "OnFrame"))
                     LubNative.lub_host_frame_failed(ctx);
+                if (profile) ProfileManaged(ctx);
                 LubNative.lub_host_frame_end(ctx);
             }
             Guard(onQuit, "OnQuit");
@@ -190,5 +194,28 @@ public static unsafe partial class Lub
             Console.Error.WriteLine($"lub: error in {what}: {e}");
             return false;
         }
+    }
+
+    // 引数を closure に入れずに渡す (毎 frame の closure と delegate の確保を
+    // 避ける。profiler の managed heap の数字に host の分が混ざらない)。
+    private static bool Guard<T>(Action<T> f, T arg, string what)
+    {
+        try
+        {
+            f(arg);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"lub: error in {what}: {e}");
+            return false;
+        }
+    }
+
+    private static void ProfileManaged(void* ctx)
+    {
+        LubNative.lub_host_profile_managed(ctx, GC.GetAllocatedBytesForCurrentThread(),
+            GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2),
+            GC.GetTotalPauseDuration().Ticks * 100);
     }
 }

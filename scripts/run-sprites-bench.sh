@@ -24,7 +24,7 @@ Options:
   --burst N                    Sprites spawned per accepted spawn tick (default: 1)
   --target-fps N               Target FPS threshold (default: 60)
   --max-sprites N              Maximum live sprites (default: 200000)
-  --profile                    Enable generic CPU profiler for the final window
+  --profile                    Enable the profiler (time, Lua allocation, GC) for the final window
   --profile-window N           Profile window before score frame (default: 300)
   --no-build                   Reuse an existing Release build
 EOF
@@ -117,12 +117,11 @@ if [[ "$profile" -eq 1 ]]; then
     profile_start_frame=0
   fi
   export LUB_PROFILE=1
-  export LUB_PROFILE_WINDOW="$profile_window"
   export LUB_PROFILE_START_FRAME="$profile_start_frame"
   export LUB_PROFILE_FRAME="$score_frame"
   export LUB_PROFILE_LABEL="sprites13"
 else
-  unset LUB_PROFILE LUB_PROFILE_WINDOW LUB_PROFILE_START_FRAME
+  unset LUB_PROFILE LUB_PROFILE_START_FRAME
   unset LUB_PROFILE_FRAME LUB_PROFILE_LABEL
 fi
 

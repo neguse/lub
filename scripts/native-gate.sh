@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Native regression gate: docs lint, Release build, C smoke tests,
-# physics Lua tests, visual goldens (lavapipe), the C# sample gate
+# physics Lua tests, the LUB_PROFILE allocation test, visual goldens
+# (lavapipe), the C# sample gate
 # (tcs→Lua と .NET 実行を同じ条件で走らせ、digest と capture が一致すること)、
 # ngs scenario golden、raw Lua サンプル。
 # Single source of truth shared by the CI linux job (.github/workflows/ci.yml)
@@ -256,6 +257,8 @@ run_timed scripts/run-headless.sh "$native_binary" tests/lua/test_fixed_dt.lua \
 run_timed bash scripts/build-release.sh --target lub_shared --no-configure
 run_timed bash scripts/build-release.sh --target lub_physics_box2d_smoke --no-configure
 run_timed ./build-release-linux/lub_physics_box2d_smoke
+run_timed bash scripts/build-release.sh --target lub_profile_alloc_smoke --no-configure
+run_timed ./build-release-linux/lub_profile_alloc_smoke
 run_timed bash scripts/build-release.sh --target lub_surfacenets_smoke --no-configure
 run_timed ./build-release-linux/lub_surfacenets_smoke
 run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
@@ -306,6 +309,59 @@ done
 if [[ $physics_failed -ne 0 ]]; then
   exit 1
 fi
+
+# LUB_PROFILE の Lua heap (確保量と GC)。env が要るので上の並列とは別に走らせ、
+# 終了時の report (label=exit) を test が測った 1 frame の確保量と突き合わせる。
+# 量には幅を持たせるが、値だけを返す binding (scope test.binding) の確保は 0。
+# 手元の shell に残った LUB_PROFILE_FRAME / EVERY は終了時の report を消すので外す。
+echo
+echo "==> profile alloc Lua test (LUB_PROFILE=1)"
+profile_log="$(mktemp)"
+cleanup_files+=("$profile_log")
+if ! env -u LUB_PROFILE_FRAME -u LUB_PROFILE_EVERY \
+  LUB_PROFILE=1 LUB_PROFILE_START_FRAME=10 "${timeout_cmd[@]}" \
+  scripts/run-headless.sh "$native_binary" tests/lua/test_profile_alloc.lua \
+  >"$profile_log" 2>&1; then
+  echo "FAIL tests/lua/test_profile_alloc.lua"
+  sed 's/^/    /' "$profile_log"
+  exit 1
+fi
+grep -a '^PROFILE_ALLOC_EXPECT_KB=\|^LUB_PROFILE_HEAP ' "$profile_log" || true
+if ! awk '
+  function field(line, key,   n, i, kv) {
+    n = split(line, kv, " ")
+    for (i = 1; i <= n; i++)
+      if (index(kv[i], key "=") == 1) return substr(kv[i], length(key) + 2)
+    return ""
+  }
+  function bad(msg) { print "FAIL: " msg; failed = 1 }
+  /^PROFILE_ALLOC_EXPECT_KB=/ { expect = substr($0, 25) + 0 }
+  /^LUB_PROFILE_HEAP label=exit heap=lua / { heap = $0 }
+  /^LUB_PROFILE_SCOPE label=exit name=test\.garbage / { garbage = $0 }
+  /^LUB_PROFILE_SCOPE label=exit name=test\.binding / { binding = $0 }
+  END {
+    if (expect <= 0 || heap == "" || garbage == "" || binding == "") {
+      bad("PROFILE_ALLOC_EXPECT_KB or the exit report is missing")
+      exit 1
+    }
+    avg = field(heap, "alloc_kb_avg") + 0
+    scope = field(garbage, "alloc_kb_avg") + 0
+    if (field(heap, "frames") + 0 != 60) bad("frames is not 60")
+    if (avg < expect * 0.95 || avg > expect * 1.2 + 1)
+      bad("alloc_kb_avg " avg " is far from " expect)
+    if (scope < expect * 0.95 || scope > expect * 1.05 + 0.5)
+      bad("test.garbage alloc_kb_avg " scope " is far from " expect)
+    if (field(binding, "alloc_kb") + 0 != 0)
+      bad("test.binding allocates " field(binding, "alloc_kb") " KB")
+    if (field(heap, "gc_steps") + 0 <= 0) bad("gc_steps is 0")
+    if (field(heap, "gc_cycles") + 0 < 1) bad("gc_cycles is 0")
+    exit failed
+  }
+' "$profile_log"; then
+  echo "FAIL tests/lua/test_profile_alloc.lua"
+  exit 1
+fi
+echo "PASS tests/lua/test_profile_alloc.lua"
 
 if [[ $skip_golden -eq 0 ]]; then
   run_timed env BINARY="$native_binary" scripts/run-golden.sh

@@ -46,7 +46,7 @@ commit フックと CI で確認する。
 - [api-glue.md](api-glue.md) — 多言語 (Lua/C#) binding の構成
 - [serve.md](serve.md) — `--serve` Web 開発モード
 - [d3d12-backend.md](d3d12-backend.md) — D3D12 backend の構成
-- [profile.md](profile.md) — 組み込み CPU profiler
+- [profile.md](profile.md) — 組み込み profiler (時間、Lua の確保量と GC)
 - [release-build.md](release-build.md) — Release build 手順
 - [sprites-bench.md](sprites-bench.md) — sprite benchmark
 

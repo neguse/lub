@@ -201,13 +201,28 @@ bool lub_host_quit_requested(LubContext *ctx) {
   return app->quit_requested || app->capture_then_exit;
 }
 
+void lub_host_profile_managed(LubContext *ctx, int64_t alloc_bytes,
+                              int32_t gen0, int32_t gen1, int32_t gen2,
+                              int64_t pause_ns) {
+  App *app = lub_api_app(ctx);
+  ProfileManagedSample s;
+  s.alloc_bytes = alloc_bytes > 0 ? (uint64_t)alloc_bytes : 0;
+  s.collections[0] = gen0 > 0 ? (uint64_t)gen0 : 0;
+  s.collections[1] = gen1 > 0 ? (uint64_t)gen1 : 0;
+  s.collections[2] = gen2 > 0 ? (uint64_t)gen2 : 0;
+  s.pause_ns = pause_ns > 0 ? (uint64_t)pause_ns : 0;
+  profile_managed_sample(&app->profile, &s);
+}
+
 void lub_host_destroy(LubContext *ctx) {
   if (!ctx)
     return;
   App *app = lub_api_app(ctx);
+  profile_report_at_exit(&app->profile);
   ui_shutdown();
   app_shutdown(app);
   lua_ctx_shutdown(&app->lua);
+  profile_detach_lua(&app->profile);
   free(app);
   SDL_Quit();
 }
