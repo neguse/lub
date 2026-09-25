@@ -3,7 +3,11 @@
 ## Io.Load* — 毎フレーム呼べるファイル入力
 
 `Io.LoadText` / `LoadFloats` / `LoadGltf` は hot reload 前提の即時モード API。
-mtime の fast-path + コンテンツハッシュにより、毎フレーム呼んでも安い。
+mtime の fast-path + コンテンツハッシュにより、毎フレーム呼んでもファイルを
+読み直さない。ただし本体は呼ぶたびに新しく作られる(`LoadText` はファイル全体の
+文字列、`LoadGltf` は mesh を表す table)ので、大きなファイルを毎フレーム読むと
+そのぶんのごみが出る(「コストの目安とホットパス」章)。中身から作るもの
+(parse した設定など)は `version` が変わったときだけ作り直す。
 
 ```csharp
 Io.LoadText("samples/mygame/data/config.txt", out var text, out var version, out var status, out var error);

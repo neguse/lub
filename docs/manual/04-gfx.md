@@ -150,6 +150,10 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 compute は `UseShaderCompute` + `Dispatch`、GPU からの読み戻しは
 `Readback` を参照。
 
+上の例は draw のたびに Dictionary と `DrawOpts` を作る。たくさん描くときに
+table を作り直さない書き方(この後の pass の bindings と draw state)と、draw
+1 回にかかる時間の目安は「コストの目安とホットパス」章にある。
+
 ## pass の bindings — pass の中で変わらない値
 
 view / projection や光の向き、shadow map のように、1 つの pass のどの draw
