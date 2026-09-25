@@ -95,7 +95,7 @@ public static class AudioLab20
             version = version + 1;
             lastKey = key;
         }
-        snd = Audio.Snd("lab", samples!, 1, rate, version);
+        snd = Audio.Snd("lab", samples!, 1, rate, version) ?? 0;
         return changed;
     }
 

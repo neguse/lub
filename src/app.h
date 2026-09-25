@@ -102,11 +102,17 @@ typedef struct App {
   AppPhase phase;
   char backend_name[16];
 
-  // Frame-based GC threshold. 0 disables sweeping. When > 0, app_frame_end
-  // releases resource / pipeline entries whose last_seen_frame is older than
-  // (frame_index - resource_sweep_after_frames). Configurable via Lua
+  // Frame-based GC threshold (app_init sets the default). 0 disables
+  // sweeping. When > 0, app_frame_end releases resource / pipeline entries,
+  // snds and readback queues whose last_seen_frame is older than
+  // (frame_index - resource_sweep_after_frames). A resource is "seen" when it
+  // is declared (use_* / snd / readback) or used by a draw, dispatch, pass
+  // target, read_texture or audio play / voice. Configurable via Lua
   // config({ resource_sweep_after_frames = N }) during onInit.
   int resource_sweep_after_frames;
+  // The frame's on_frame raised (Lua error, or an exception the .NET host
+  // caught). app_frame_end skips the sweep for such a frame and clears this.
+  bool frame_failed;
 
   // Default readback queue depth for Gfx.readback(key) queues. Configurable via
   // Lua config({ readback_depth = N }) during onInit.

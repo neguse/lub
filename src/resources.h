@@ -73,8 +73,8 @@ void res_table_touch(ResEntry *e, int64_t frame_index);
 typedef void (*ResShaderInvalidateFn)(void *ctx, uintptr_t old_shader);
 
 // Release entries whose last_seen_frame is older than (current_frame -
-// max_unused_frames). Entries with last_seen_frame < 0 (never touched) are
-// left alone — config callbacks may create resources before the first frame.
+// max_unused_frames). Every creator (use_*) touches the entry it creates in
+// the same call, so each entry has a last_seen_frame to age from.
 void res_table_sweep(ResTable *t, int64_t current_frame,
                      int64_t max_unused_frames,
                      ResShaderInvalidateFn on_shader_release, void *ctx);

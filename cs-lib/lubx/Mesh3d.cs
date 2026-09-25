@@ -10,6 +10,8 @@ using static Lub;
 /// (Io.interleave_pncmw、20 float)、それ以外は Io.interleave_pncm
 /// (16 float: pos pad nrm pad albedo pad mr pad)。
 /// この頂点レイアウトが Renderer3d の material 契約。
+/// buffer はしばらく描かれないと runtime が破棄するので、描く frame に
+/// Ensure() を呼ぶ (Renderer3d は記録した mesh について自分で呼ぶ)。
 /// </summary>
 public class Mesh3d
 {
@@ -42,6 +44,22 @@ public class Mesh3d
         }
         Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, indices);
         IndexCount = data.IndexCount;
+    }
+
+    /// <summary>
+    /// 描く frame に呼ぶ。buffer がまだあることを version で再主張し (data は
+    /// 読まない)、しばらく描かれずに破棄されていたら Data から作り直す。
+    /// </summary>
+    public void Ensure()
+    {
+        var vb = Vb;
+        var ib = Ib;
+        var data = Data;
+        if (vb == null || ib == null || data == null)
+            return;
+        if (Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, null, vb.Version) == null
+            || Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, null, ib.Version) == null)
+            Rebuild(data);
     }
 
     /// <summary>rebuild 済みで描画可能か。</summary>

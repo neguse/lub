@@ -2199,6 +2199,21 @@ function Mesh3d:rebuild(data)
 	self.index_count = data.index_count
 end
 
+function Mesh3d:ensure()
+	local vb = self.vb
+	local ib = self.ib
+	local data = self.data
+	if vb == nil or ib == nil or data == nil then
+		return
+	end
+	if
+		lub.gfx.use_buffer((self.key or "") .. "_vb", lub.gfx.STORAGE, nil, vb.version) == nil
+		or lub.gfx.use_buffer((self.key or "") .. "_ib", lub.gfx.INDEX, nil, ib.version) == nil
+	then
+		self:rebuild(data)
+	end
+end
+
 function Mesh3d:ready()
 	return self.vb ~= nil and self.index_count > 0
 end
@@ -2356,6 +2371,21 @@ function MeshText:glyph_for(cp)
 	return e
 end
 
+function MeshText:live_glyph(cp)
+	local e = self:glyph_for(cp)
+	if e == nil or e.count == 0 then
+		return e
+	end
+	if
+		lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.STORAGE, nil, self.version) ~= nil
+		and lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, nil, self.version) ~= nil
+	then
+		return e
+	end
+	Dict.Remove(self.glyphs, cp)
+	return self:glyph_for(cp)
+end
+
 function MeshText.color_or_white(c)
 	return c or Color.rgb(1.0, 1.0, 1.0)
 end
@@ -2365,7 +2395,7 @@ function MeshText:glyph(cp, x, y, size, angle, tint, centered)
 	if sh == nil then
 		return
 	end
-	local e = self:glyph_for(cp)
+	local e = self:live_glyph(cp)
 	if e == nil or e.count == 0 then
 		return
 	end
@@ -2968,6 +2998,15 @@ function Renderer3d:end_()
 	if hdr == nil or depth == nil or shadowMap == nil or quad == nil or self.flip_quad_buf == nil then
 		return
 	end
+	local ensured = {}
+	for _, d in ipairs(self.draws) do
+		if ensured[d.mesh] ~= nil then
+			goto _continue_22
+		end
+		ensured[d.mesh] = true
+		d.mesh:ensure()
+		::_continue_22::
+	end
 	local lmvp = self:light_mvp()
 	if self.shadow.enabled then
 		self:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
@@ -2988,12 +3027,12 @@ function Renderer3d:end_()
 		for _, d in ipairs(self.draws) do
 			local isBlend = d.blend ~= lub.gfx.NONE
 			if (phase == 0) == isBlend then
-				goto _continue_23
+				goto _continue_24
 			end
 			local vb = d.mesh.vb
 			local ib = d.mesh.ib
 			if vb == nil or ib == nil then
-				goto _continue_23
+				goto _continue_24
 			end
 			local shader = d.shader
 				or (
@@ -3022,7 +3061,7 @@ function Renderer3d:end_()
 				bindings,
 				{ shader = shader, depth = true, depth_write = not isBlend, cull = lub.gfx.NONE, blend = d.blend }
 			)
-			::_continue_23::
+			::_continue_24::
 		end
 	end
 	lub.gfx.end_pass()
@@ -3552,6 +3591,10 @@ function Sfx.new()
 	return self
 end
 
+function Sfx.declare(key, samples)
+	return lub.audio.snd(key, samples, 1, 44100, 1) or 0
+end
+
 function Sfx.blip(freq0, freq1, dur, vol)
 	local key = "blip:"
 		.. __tcs_fstr(freq0)
@@ -3567,7 +3610,7 @@ function Sfx.blip(freq0, freq1, dur, vol)
 	cached = __tcs_v
 	__tcs_cond1 = __tcs_found
 	if __tcs_cond1 then
-		return lub.audio.snd(key, cached, 1, 44100, 1)
+		return Sfx.declare(key, cached)
 	end
 	local n = Math.Floor(dur * 44100)
 	local samples = {}
@@ -3586,7 +3629,7 @@ function Sfx.blip(freq0, freq1, dur, vol)
 		end)()) * env * vol)
 	end
 	Sfx.cache[key] = samples
-	return lub.audio.snd(key, samples, 1, 44100, 1)
+	return Sfx.declare(key, samples)
 end
 
 function Sfx.noise(dur, vol, seed)
@@ -3598,7 +3641,7 @@ function Sfx.noise(dur, vol, seed)
 	cached = __tcs_v
 	__tcs_cond2 = __tcs_found
 	if __tcs_cond2 then
-		return lub.audio.snd(key, cached, 1, 44100, 1)
+		return Sfx.declare(key, cached)
 	end
 	local n = Math.Floor(dur * 44100)
 	local samples = {}
@@ -3612,7 +3655,7 @@ function Sfx.noise(dur, vol, seed)
 		table.insert(samples, hold * Math.Exp(-4.0 * u) * vol)
 	end
 	Sfx.cache[key] = samples
-	return lub.audio.snd(key, samples, 1, 44100, 1)
+	return Sfx.declare(key, samples)
 end
 
 Shapes = {}
@@ -4246,29 +4289,29 @@ function SpriteBatch:flush(blend)
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
 		if #b.verts == 0 then
-			goto _continue_55
+			goto _continue_56
 		end
 		local tex = b.atlas.texture
 		if tex == nil then
-			goto _continue_55
+			goto _continue_56
 		end
 		if not self.instanced then
 			local vbuf =
 				lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_verts", lub.gfx.STORAGE, b.verts)
 			if vbuf == nil then
-				goto _continue_55
+				goto _continue_56
 			end
 			lub.gfx.draw(
 				Math.Floor(#b.verts / 8),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
-			goto _continue_55
+			goto _continue_56
 		end
 		local instances =
 			lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_instances", lub.gfx.STORAGE, b.verts)
 		if instances == nil or quadVb == nil then
-			goto _continue_55
+			goto _continue_56
 		end
 		lub.gfx.draw(4, {
 			["verts"] = quadVb,
@@ -4283,7 +4326,7 @@ function SpriteBatch:flush(blend)
 			primitive = lub.gfx.TRIANGLE_STRIP,
 			instance_count = Math.Floor(#b.verts / 16),
 		})
-		::_continue_55::
+		::_continue_56::
 	end
 end
 

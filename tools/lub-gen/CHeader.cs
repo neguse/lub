@@ -400,6 +400,10 @@ public static class CHeader
                     sb.Append($"typedef {FuncReturn(fn.FuncReturn!)} (*{FnTypedefName(ns, f, p)})({FuncParams(fn)});\n");
                 }
                 Comment(f.Doc);
+                foreach (var p in f.Params.Where(p => p.LazyData))
+                    Comment($"{p.LuaName} == NULL かつ {p.LuaName}_count > 0 は {p.LuaName} を読む前の問い合わせ: " +
+                        $"key がその version を持っていれば {p.LuaName} を渡したときと同じ結果、" +
+                        "持っていなければ何も変えずに LUB_NOT_FOUND。");
                 sb.Append(Prototype(ns, f)).Append("\n\n");
             }
         }

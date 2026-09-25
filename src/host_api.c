@@ -173,6 +173,14 @@ static void input_latch_clear(App *app) {
   app->mouse_wheel_y = 0.0f;
 }
 
+void lub_host_frame_failed(LubContext *ctx) {
+  lub_api_app(ctx)->frame_failed = true;
+}
+
+LubStatus lub_host_stale_ref(LubContext *ctx, LubStr key) {
+  return api_gfx_stale_ref(lub_api_app(ctx), key);
+}
+
 void lub_host_frame_end(LubContext *ctx) {
   App *app = lub_api_app(ctx);
   uint64_t profile_frame = app->frame_index;

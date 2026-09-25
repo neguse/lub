@@ -17,7 +17,8 @@ LubContext *lgen_ctx(void);
 int lgen_raise(lua_State *L);
 
 // 呼び出しの間だけ生きる memory。生成した関数は入口で mark、出口で release
-// する (入れ子の呼び出しも安全)。
+// する (入れ子の呼び出しも安全)。引数を読む途中の error (lgen_raise) は
+// release を飛ばすので、on_frame を呼ぶ前に lgen_release(0) で空に戻す。
 typedef size_t LgenMark;
 LgenMark lgen_mark(void);
 void lgen_release(LgenMark mark);
@@ -64,6 +65,10 @@ const float *lgen_floats_arg(lua_State *L, int idx, int32_t *count,
                              bool required);
 const int32_t *lgen_ints_arg(lua_State *L, int idx, int32_t *count,
                              bool required);
+// 配列 (table か view) の長さだけを読む (中身は読まない)。count は
+// lgen_floats_arg / lgen_ints_arg と同じ値で、古い view は error。nil なら
+// false。[LubLazyData] の引数が、中身を読む前に C へ問い合わせるのに使う。
+bool lgen_array_len_arg(lua_State *L, int idx, int32_t *count, bool required);
 const float *lgen_floats(lua_State *L, int idx, const char *key,
                          int32_t *count);
 const int32_t *lgen_ints(lua_State *L, int idx, const char *key,

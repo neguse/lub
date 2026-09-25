@@ -148,8 +148,7 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
     ResEntry *e = t->buckets[i];
     while (e) {
       ResEntry *next = e->next;
-      int evict = (e->last_seen_frame >= 0) &&
-                  (current_frame - e->last_seen_frame > max_unused_frames);
+      int evict = current_frame - e->last_seen_frame > max_unused_frames;
       if (evict) {
         if (e->kind == RES_SHADER && e->u.sh.h && on_shader_release) {
           on_shader_release(ctx, e->u.sh.h);

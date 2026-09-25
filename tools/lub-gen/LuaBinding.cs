@@ -506,6 +506,9 @@ public static class LuaBinding
             sb.Append("  (void)L;\n  LgenMark mark = lgen_mark();\n");
             var call = new List<string> { "lgen_ctx()" };
             var post = new StringBuilder(); // 呼び出し後の後始末
+            // [LubLazyData] の引数 (名前、位置、変換関数): 長さだけ読み、中身は
+            // key がその version を持っていなかったときだけ呼び出しの直前に読む
+            (string name, int idx, string conv, string req)? lazy = null;
             var idx = 0;
             foreach (var p in f.Params.Where(p => !p.IsOut))
             {
@@ -572,6 +575,16 @@ public static class LuaBinding
                             var elem = tr.Elem!;
                             var req = opt ? "false" : "true";
                             sb.Append($"  int32_t {n}_count = 0;\n");
+                            if (p.LazyData)
+                            {
+                                var ints = elem.Kind == LubTypeKind.Int;
+                                sb.Append($"  const {(ints ? "int32_t" : "float")} *{n} = NULL;\n");
+                                sb.Append($"  bool {n}_given = lgen_array_len_arg(L, {idx}, &{n}_count, {req});\n");
+                                lazy = (n, idx, ints ? "lgen_ints_arg" : "lgen_floats_arg", req);
+                                call.Add(n);
+                                call.Add($"{n}_count");
+                                break;
+                            }
                             switch (elem.Kind)
                             {
                                 case LubTypeKind.Double:
@@ -652,7 +665,18 @@ public static class LuaBinding
             }
             else
             {
-                sb.Append($"  LubStatus st = {callExpr};\n");
+                if (lazy is { } lz)
+                {
+                    // version があれば、まだ NULL の data で問い合わせる (hit なら
+                    // data を読まずに済む)。外れたら data を読んでもう一度呼ぶ
+                    sb.Append("  LubStatus st = LUB_NOT_FOUND;\n");
+                    sb.Append($"  if (version && {lz.name}_count > 0)\n    st = {callExpr};\n");
+                    sb.Append($"  if (st == LUB_NOT_FOUND) {{\n    if ({lz.name}_given)\n");
+                    sb.Append($"      {lz.name} = {lz.conv}(L, {lz.idx}, &{lz.name}_count, {lz.req});\n");
+                    sb.Append($"    st = {callExpr};\n  }}\n");
+                }
+                else
+                    sb.Append($"  LubStatus st = {callExpr};\n");
                 sb.Append(post);
                 sb.Append("  lgen_release(mark);\n");
                 sb.Append("  if (st == LUB_ERROR)\n    return lgen_raise(L);\n");

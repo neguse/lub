@@ -18,13 +18,19 @@ public static class Sfx
 
     private static Dictionary<string, List<float>> cache = new Dictionary<string, List<float>>();
 
+    // 波形を渡す宣言は null を返さない (失敗は error になる)。
+    private static int Declare(string key, List<float> samples)
+    {
+        return Audio.Snd(key, samples, 1, Rate, 1) ?? 0;
+    }
+
     /// <summary>矩形波 blip。freq0→freq1 へスイープしつつ指数減衰 (exp(-5u))。snd handle を返す。</summary>
     public static int Blip(float freq0, float freq1, float dur, float vol)
     {
         var key = "blip:" + freq0 + ":" + freq1 + ":" + dur + ":" + vol;
         if (cache.TryGetValue(key, out var cached))
         {
-            return Audio.Snd(key, cached, 1, Rate, 1);
+            return Declare(key, cached);
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
@@ -38,7 +44,7 @@ public static class Sfx
             samples.Add((phase % 1.0f < 0.5f ? 1.0f : -1.0f) * env * vol);
         }
         cache[key] = samples;
-        return Audio.Snd(key, samples, 1, Rate, 1);
+        return Declare(key, samples);
     }
 
     /// <summary>ノイズバースト。指数減衰 (exp(-4u))、16 sample ごとにホールド更新。snd handle を返す。</summary>
@@ -48,7 +54,7 @@ public static class Sfx
         var key = "noise:" + dur + ":" + vol + ":" + s;
         if (cache.TryGetValue(key, out var cached))
         {
-            return Audio.Snd(key, cached, 1, Rate, 1);
+            return Declare(key, cached);
         }
         var n = (int)System.Math.Floor(dur * Rate);
         var samples = new List<float>();
@@ -64,6 +70,6 @@ public static class Sfx
             samples.Add(hold * (float)System.Math.Exp(-4.0f * u) * vol);
         }
         cache[key] = samples;
-        return Audio.Snd(key, samples, 1, Rate, 1);
+        return Declare(key, samples);
     }
 }

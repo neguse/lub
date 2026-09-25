@@ -36,8 +36,10 @@ public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
     };
 }
 
+/// <summary>LazyData は [LubLazyData] の List (key がその version を持っていれば
+/// 読まない data)。</summary>
 public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
-    bool IsOut, int? ArrayLen);
+    bool IsOut, int? ArrayLen, bool LazyData = false);
 
 public sealed record ApiFunction(string Name, string LuaName, TypeRef Return,
     IReadOnlyList<ApiParam> Params, string Doc, bool NoFail, bool Maybe, bool NoC);
@@ -172,11 +174,28 @@ public static class ApiModelLoader
     {
         var ps = m.Parameters.Select(p => new ApiParam(p.Name, LuaNaming.Member(p.Name),
             Resolve(p.Type, p.NullableAnnotation), p.HasExplicitDefaultValue,
-            p.RefKind == RefKind.Out, ArrayLen(p))).ToList();
+            p.RefKind == RefKind.Out, ArrayLen(p), HasAttr(p, "LubLazyDataAttribute"))).ToList();
+        foreach (var p in ps.Where(p => p.LazyData)) CheckLazyData(m, ps, p);
         return new ApiFunction(m.Name, LuaNaming.Member(m.Name),
             Resolve(m.ReturnType, m.ReturnNullableAnnotation), ps, Doc(m),
             HasAttr(m, "LubNoFailAttribute"), HasAttr(m, "LubMaybeAttribute"),
             HasAttr(m, "LubNoCAttribute"));
+    }
+
+    // [LubLazyData] は key と version で宣言する関数の float / int の List にだけ
+    // 付けられる (C の問い合わせの契約が key と version を前提にする)。
+    private static void CheckLazyData(IMethodSymbol m, List<ApiParam> ps, ApiParam p)
+    {
+        var where = $"{m.ContainingType.Name}.{m.Name}({p.Name})";
+        if (p.IsOut || p.Type.Kind != LubTypeKind.List
+            || p.Type.Elem!.Kind is not (LubTypeKind.Double or LubTypeKind.Int))
+            throw new InvalidOperationException($"{where}: [LubLazyData] needs a List<float> or List<int> parameter");
+        if (!ps.Any(q => !q.IsOut && q.Name == "key" && q.Type.Kind == LubTypeKind.String && !q.Type.Nullable))
+            throw new InvalidOperationException($"{where}: [LubLazyData] needs a 'string key' parameter");
+        if (!ps.Any(q => !q.IsOut && q.Name == "version" && q.Type.Kind == LubTypeKind.Int && q.Type.Nullable))
+            throw new InvalidOperationException($"{where}: [LubLazyData] needs an 'int? version' parameter");
+        if (ps.Count(q => q.LazyData) > 1 || HasAttr(m, "LubNoFailAttribute") || HasAttr(m, "LubNoCAttribute"))
+            throw new InvalidOperationException($"{where}: [LubLazyData] needs a status-returning C function with one lazy parameter");
     }
 
     private static ApiField LoadField(IFieldSymbol f) =>

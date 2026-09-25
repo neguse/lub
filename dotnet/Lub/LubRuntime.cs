@@ -127,6 +127,29 @@ internal static unsafe class LubRuntime
         return v;
     }
 
+    // [LubLazyData] の引数に渡す pointer。C では NULL が「data を渡さない」の
+    // 意味なので、null でない list は空でも NULL にしない (Lua の空 table と同じ)。
+    private static readonly void* emptyData = NativeMemory.AllocZeroed(sizeof(float));
+
+    internal static float* NonNull(float* p, bool present) => p != null || !present ? p : (float*)emptyData;
+
+    internal static int* NonNull(int* p, bool present) => p != null || !present ? p : (int*)emptyData;
+
+    // key で宣言する resource の handle が stale (sweep 済み) か。main_tex (-1) と
+    // 0 (無し) は stale にならない。
+    internal static bool IsStale(int handle) =>
+        handle != 0 && handle != -1 && Ctx != null
+        && LubNative.lub_gfx_resource_info(Ctx, handle, null, null) == 0;
+
+    // stale な参照の key も宣言されていないときの例外 (Lua と同じ文面)。
+    internal static int StaleRef(LubNative.LubStr key)
+    {
+        LubNative.lub_host_stale_ref(Ctx, key);
+        throw new LubException(Str(LubNative.lub_last_error(Ctx)));
+    }
+
+    // 参照を作ったときに写す実効 version (Lua の ref.version と同じ)。stale な
+    // handle (と main_tex) は 0。
     internal static int ResourceVersion(int handle)
     {
         LubNative.LubStr key = default;
@@ -491,8 +514,8 @@ internal static unsafe class LubRuntime
                 hb.name = Str(k);
                 hb.handle = v switch
                 {
-                    TextureRef t => t.H,
-                    BufferRef bf => bf.H,
+                    TextureRef t => t.Live(),
+                    BufferRef bf => bf.Live(),
                     _ => throw new LubException($"bindings.{k}: buffer or texture expected"),
                 };
                 items.Add(hb);

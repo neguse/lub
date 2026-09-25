@@ -32,7 +32,13 @@ internal static unsafe partial class LubNative
     internal static extern byte lub_host_frame_begin(void* ctx, float* dt);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void lub_host_frame_failed(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void lub_host_frame_end(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_host_stale_ref(void* ctx, LubStr key);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_host_quit_requested(void* ctx);
@@ -154,7 +160,9 @@ public static unsafe partial class Lub
                     continue;
                 }
                 float dt = dtRaw;
-                Guard(() => onFrame(dt), "OnFrame");
+                // 例外で抜けた frame は resource を sweep しない (Lua の player と同じ)
+                if (!Guard(() => onFrame(dt), "OnFrame"))
+                    LubNative.lub_host_frame_failed(ctx);
                 LubNative.lub_host_frame_end(ctx);
             }
             Guard(onQuit, "OnQuit");
@@ -167,17 +175,20 @@ public static unsafe partial class Lub
         return 0;
     }
 
-    // ゲームの例外は frame 境界で止めて log する (Lua の player と同じ)。
-    private static void Guard(Action? f, string what)
+    // ゲームの例外は frame 境界で止めて log する (Lua の player と同じ)。例外で
+    // 抜けたら false。
+    private static bool Guard(Action? f, string what)
     {
-        if (f == null) return;
+        if (f == null) return true;
         try
         {
             f();
+            return true;
         }
         catch (Exception e)
         {
             Console.Error.WriteLine($"lub: error in {what}: {e}");
+            return false;
         }
     }
 }

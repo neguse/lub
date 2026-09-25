@@ -8,28 +8,76 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-/// <summary>use_texture / main_tex の不透明ハンドル。version は stored されている実効 version で、次の use_* に渡すと「変わっていない」の再主張になる。</summary>
-public sealed class TextureRef
+/// <summary>use_texture / main_tex の不透明ハンドル。version は参照を受け取ったときの実効 version で、次の use_* に渡すと「変わっていない」の再主張になる。resource がしばらく使われずに破棄されたあとで参照を使うと error になる。同じ key で宣言し直せば古い参照もそれを指す (version は受け取ったときのまま)。</summary>
+public sealed unsafe class TextureRef
 {
-    internal readonly int H;
-    internal TextureRef(int h) { H = h; }
-    public int Version => LubRuntime.ResourceVersion(H);
+    internal int H;
+    internal readonly string? Key;
+    internal TextureRef(int h, string? key) { H = h; Key = key; Version = LubRuntime.ResourceVersion(h); }
+    internal int Live()
+    {
+        if (Key == null || !LubRuntime.IsStale(H)) return H;
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var k = a.Str(Key);
+            var h = LubNative.lub_gfx_lookup_texture(LubRuntime.Ctx, k);
+            return H = h != 0 ? h : LubRuntime.StaleRef(k);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+    public int Version { get; }
 }
 
-/// <summary>use_shader / use_shader_compute の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
-public sealed class ShaderRef
+/// <summary>use_shader / use_shader_compute の不透明ハンドル。version と破棄後の扱いは TextureRef と同じ。</summary>
+public sealed unsafe class ShaderRef
 {
-    internal readonly int H;
-    internal ShaderRef(int h) { H = h; }
-    public int Version => LubRuntime.ResourceVersion(H);
+    internal int H;
+    internal readonly string? Key;
+    internal ShaderRef(int h, string? key) { H = h; Key = key; Version = LubRuntime.ResourceVersion(h); }
+    internal int Live()
+    {
+        if (Key == null || !LubRuntime.IsStale(H)) return H;
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var k = a.Str(Key);
+            var h = LubNative.lub_gfx_lookup_shader(LubRuntime.Ctx, k);
+            return H = h != 0 ? h : LubRuntime.StaleRef(k);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+    public int Version { get; }
 }
 
-/// <summary>use_buffer の不透明ハンドル。version の意味は TextureRef と同じ。</summary>
-public sealed class BufferRef
+/// <summary>use_buffer の不透明ハンドル。version と破棄後の扱いは TextureRef と同じ。</summary>
+public sealed unsafe class BufferRef
 {
-    internal readonly int H;
-    internal BufferRef(int h) { H = h; }
-    public int Version => LubRuntime.ResourceVersion(H);
+    internal int H;
+    internal readonly string? Key;
+    internal BufferRef(int h, string? key) { H = h; Key = key; Version = LubRuntime.ResourceVersion(h); }
+    internal int Live()
+    {
+        if (Key == null || !LubRuntime.IsStale(H)) return H;
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var k = a.Str(Key);
+            var h = LubNative.lub_gfx_lookup_buffer(LubRuntime.Ctx, k);
+            return H = h != 0 ? h : LubRuntime.StaleRef(k);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+    public int Version { get; }
 }
 
 /// <summary>ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。返された frame の終わりまで有効で、古い view を API に渡すと error になる。frame を跨いで持ちたい内容は自分の memory に写す。</summary>
@@ -45,7 +93,7 @@ public sealed unsafe class Bytes
     public int Get(int index) => AsSpan()[index];
 }
 
-/// <summary>Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で宣言する resource で、poll が途切れると sweep される。</summary>
+/// <summary>Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で宣言する resource で、poll が ResourceSweepAfterFrames の間途切れると破棄される。</summary>
 public sealed class Readback
 {
     public readonly string Key;
@@ -135,7 +183,7 @@ public class DrawOpts
     /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
     public bool? DepthWrite;
-    /// <summary>0 以下を渡すと draw 自体がスキップされる。</summary>
+    /// <summary>instance の数。省略時 1。0 以下を渡すと描かない (draw としての検査と、使った resource の記録はする)。</summary>
     public int? InstanceCount;
 }
 
@@ -167,7 +215,7 @@ public class ConfigOpts
     public int? Width;
     /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
     public int? Height;
-    /// <summary>`use*` されなくなったリソースを何フレーム後に破棄するか。</summary>
+    /// <summary>使われなくなった resource を何フレーム後に破棄するか。使うとは use* での宣言、draw / dispatch の bindings と shader、pass の target、id 付きの read_texture (読み戻しを積む呼び出し)、snd の宣言と再生、readback queue の poll。既定 300 (60 Hz で約 5 秒)、0 で破棄しない。OnFrame が error で抜けた frame の終わりには破棄しない (使われない frame 数は error の間も進むので、長い error のあとは直った frame で使わなかったものがその frame の終わりに破棄される)。</summary>
     public int? ResourceSweepAfterFrames;
     /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;
@@ -1977,7 +2025,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Gfx.UseShader");
-                return LubNative.H_ShaderRef(o_out);
+                return LubNative.H_ShaderRef(o_out, key);
             }
             finally
             {
@@ -1999,7 +2047,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Gfx.UseShaderCompute");
-                return LubNative.H_ShaderRef(o_out);
+                return LubNative.H_ShaderRef(o_out, key);
             }
             finally
             {
@@ -2007,23 +2055,24 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。</summary>
-        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float> data, int? version = null)
+        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version は key の内容に対する同一性の主張で、key がすでに同じ version と type を持っていれば data を読まずに今の buffer を返し、違えば data から作り直す。省略 (null) は「内容が変わった」宣言で、runtime が新しい version を発行して必ず upload する。戻り値の Version を次の呼び出しに渡すと「変わっていない」の再主張になる。data に null を渡すと再主張だけをする: key がその version を持っていなければ何も作らずに null (Lua は nil, "not found") を返す。</summary>
+        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                int _data_n = 0;
-                var _data = a.Floats(data, out _data_n);
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
+                fixed (float* _data_p = CollectionsMarshal.AsSpan(data))
                 {
-                    return null;
+                    int _version = (version ?? default);
+                    int o_out = 0;
+                    var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, LubRuntime.NonNull(_data_p, data != null), data?.Count ?? 0, version.HasValue ? &_version : null, &o_out);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        return null;
+                    }
+                    LubRuntime.Check(st, "Gfx.UseBuffer");
+                    return LubNative.H_BufferRef(o_out, key);
                 }
-                LubRuntime.Check(st, "Gfx.UseBuffer");
-                return LubNative.H_BufferRef(o_out);
             }
             finally
             {
@@ -2031,23 +2080,24 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version の規約は UseBuffer と同じ。</summary>
-        public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int> data, int? version = null)
+        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version と data = null の規約は UseBuffer と同じ。</summary>
+        public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                int _data_n = 0;
-                var _data = a.Ints(data, out _data_n);
-                int _version = (version ?? default);
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_buffer_ints(LubRuntime.Ctx, a.Str(key), (int)type, _data, _data_n, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
+                fixed (int* _data_p = CollectionsMarshal.AsSpan(data))
                 {
-                    return null;
+                    int _version = (version ?? default);
+                    int o_out = 0;
+                    var st = LubNative.lub_gfx_use_buffer_ints(LubRuntime.Ctx, a.Str(key), (int)type, LubRuntime.NonNull(_data_p, data != null), data?.Count ?? 0, version.HasValue ? &_version : null, &o_out);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        return null;
+                    }
+                    LubRuntime.Check(st, "Gfx.UseBufferInts");
+                    return LubNative.H_BufferRef(o_out, key);
                 }
-                LubRuntime.Check(st, "Gfx.UseBufferInts");
-                return LubNative.H_BufferRef(o_out);
             }
             finally
             {
@@ -2055,7 +2105,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。</summary>
+        /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は use_buffer_empty。version の規約は UseBuffer と同じ。</summary>
         public static BufferRef? UseBufferEmpty(string key, Lub.Gfx.BufferType type, int count, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2069,7 +2119,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Gfx.UseBufferEmpty");
-                return LubNative.H_BufferRef(o_out);
+                return LubNative.H_BufferRef(o_out, key);
             }
             finally
             {
@@ -2077,29 +2127,30 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。</summary>
+        /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の空 texture。version の規約は UseBuffer と同じで、key がすでに同じ version を持ち、大きさ・形式・opts も同じなら px は読まない。</summary>
         public static TextureRef? UseTexture(string key, int w, int h, Lub.Gfx.PixelFormat fmt, List<int>? px, int? version = null, TextureOpts? opts = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                int _px_n = 0;
-                var _px = a.Ints(px, out _px_n);
-                int _version = (version ?? default);
-                LubNative.LubTextureOpts* _opts = null;
-                if (opts != null)
+                fixed (int* _px_p = CollectionsMarshal.AsSpan(px))
                 {
-                    _opts = a.Alloc<LubNative.LubTextureOpts>(1);
-                    LubNative.To_LubTextureOpts(opts, a, _opts);
+                    int _version = (version ?? default);
+                    LubNative.LubTextureOpts* _opts = null;
+                    if (opts != null)
+                    {
+                        _opts = a.Alloc<LubNative.LubTextureOpts>(1);
+                        LubNative.To_LubTextureOpts(opts, a, _opts);
+                    }
+                    int o_out = 0;
+                    var st = LubNative.lub_gfx_use_texture(LubRuntime.Ctx, a.Str(key), w, h, (int)fmt, LubRuntime.NonNull(_px_p, px != null), px?.Count ?? 0, version.HasValue ? &_version : null, _opts, &o_out);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        return null;
+                    }
+                    LubRuntime.Check(st, "Gfx.UseTexture");
+                    return LubNative.H_TextureRef(o_out, key);
                 }
-                int o_out = 0;
-                var st = LubNative.lub_gfx_use_texture(LubRuntime.Ctx, a.Str(key), w, h, (int)fmt, _px, _px_n, version.HasValue ? &_version : null, _opts, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return null;
-                }
-                LubRuntime.Check(st, "Gfx.UseTexture");
-                return LubNative.H_TextureRef(o_out);
             }
             finally
             {
@@ -2107,7 +2158,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ use_texture。</summary>
+        /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。Lua 面は use_texture_bytes。</summary>
         public static TextureRef? UseTextureBytes(string key, int w, int h, Lub.Gfx.PixelFormat fmt, Bytes? px, int? version = null, TextureOpts? opts = null)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2129,7 +2180,7 @@ public static unsafe partial class Lub
                     return null;
                 }
                 LubRuntime.Check(st, "Gfx.UseTextureBytes");
-                return LubNative.H_TextureRef(o_out);
+                return LubNative.H_TextureRef(o_out, key);
             }
             finally
             {
@@ -2137,14 +2188,14 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
+        /// <summary>key が今宣言されている texture の handle (無ければ null)。runtime は使われずに破棄された参照を、使うときにこれで key から引き直す。</summary>
         public static TextureRef? LookupTexture(string key)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 var r = LubNative.lub_gfx_lookup_texture(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_TextureRef(r);
+                return LubNative.H_TextureRef(r, key);
             }
             finally
             {
@@ -2152,13 +2203,14 @@ public static unsafe partial class Lub
             }
         }
 
+        /// <summary>LookupTexture の shader 版。</summary>
         public static ShaderRef? LookupShader(string key)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 var r = LubNative.lub_gfx_lookup_shader(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_ShaderRef(r);
+                return LubNative.H_ShaderRef(r, key);
             }
             finally
             {
@@ -2166,13 +2218,14 @@ public static unsafe partial class Lub
             }
         }
 
+        /// <summary>LookupTexture の buffer 版。</summary>
         public static BufferRef? LookupBuffer(string key)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 var r = LubNative.lub_gfx_lookup_buffer(LubRuntime.Ctx, a.Str(key));
-                return LubNative.H_BufferRef(r);
+                return LubNative.H_BufferRef(r, key);
             }
             finally
             {
@@ -2220,7 +2273,7 @@ public static unsafe partial class Lub
                 int o_result_id = default;
                 int o_dropped = default;
                 LubNative.LubStr o_error = default;
-                var st = LubNative.lub_gfx_read_texture(LubRuntime.Ctx, a.Str(rb.Key), tex.H, id.HasValue ? &_id : null, &o_status, &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_result_id, &o_dropped, &o_error);
+                var st = LubNative.lub_gfx_read_texture(LubRuntime.Ctx, a.Str(rb.Key), tex.Live(), id.HasValue ? &_id : null, &o_status, &o_bytes, &o_width, &o_height, &o_format, &o_stride, &o_result_id, &o_dropped, &o_error);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     status = default!;
@@ -2758,20 +2811,21 @@ public static unsafe partial class Lub
             var a = LubRuntime.Arena.Begin();
             try
             {
-                int _grid_n = 0;
-                var _grid = a.Floats(grid, out _grid_n);
-                float _cell = (cell ?? default);
-                float _ox = (ox ?? default);
-                float _oy = (oy ?? default);
-                float _oz = (oz ?? default);
-                LubNative.LubMeshData o_out = default;
-                var st = LubNative.lub_mesh_surface_nets(LubRuntime.Ctx, _grid, _grid_n, nx, ny, nz, cell.HasValue ? &_cell : null, ox.HasValue ? &_ox : null, oy.HasValue ? &_oy : null, oz.HasValue ? &_oz : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
+                fixed (float* _grid_p = CollectionsMarshal.AsSpan(grid))
                 {
-                    throw new LubException("Mesh.SurfaceNets: not found");
+                    float _cell = (cell ?? default);
+                    float _ox = (ox ?? default);
+                    float _oy = (oy ?? default);
+                    float _oz = (oz ?? default);
+                    LubNative.LubMeshData o_out = default;
+                    var st = LubNative.lub_mesh_surface_nets(LubRuntime.Ctx, _grid_p, grid?.Count ?? 0, nx, ny, nz, cell.HasValue ? &_cell : null, ox.HasValue ? &_ox : null, oy.HasValue ? &_oy : null, oz.HasValue ? &_oz : null, &o_out);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        throw new LubException("Mesh.SurfaceNets: not found");
+                    }
+                    LubRuntime.Check(st, "Mesh.SurfaceNets");
+                    return LubNative.From_LubMeshData(&o_out);
                 }
-                LubRuntime.Check(st, "Mesh.SurfaceNets");
-                return LubNative.From_LubMeshData(&o_out);
             }
             finally
             {
@@ -3198,26 +3252,28 @@ public static unsafe partial class Lub
 
     }
 
-    /// <summary>音の core API。snd は key で宣言する resource で、宣言が途切れると sweep される (鳴っている voice は最後まで鳴る)。</summary>
+    /// <summary>音の core API。snd は key で宣言する resource で、宣言も再生 (Play / Voice) も ResourceSweepAfterFrames の間途切れると破棄される (鳴っている voice は最後まで鳴る)。</summary>
     public static unsafe class Audio
     {
-        /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ snd に dedupe される。</summary>
-        public static int Snd(string key, List<float> data, int channels, int rate, int? version = null)
+        /// <summary>interleaved なサンプル値 (-1..1) から snd を宣言する。version と data = null の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない。null は再主張だけで、key がその version を持っていなければ null を返す)。同じ内容は同じ snd に dedupe される。</summary>
+        public static int? Snd(string key, List<float>? data, int channels, int rate, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                int _data_n = 0;
-                var _data = a.Floats(data, out _data_n);
-                int _version = (version ?? default);
-                int o_out = default;
-                var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), _data, _data_n, channels, rate, version.HasValue ? &_version : null, &o_out);
-                if (st == LubNative.LUB_NOT_FOUND)
+                fixed (float* _data_p = CollectionsMarshal.AsSpan(data))
                 {
-                    throw new LubException("Audio.Snd: not found");
+                    int _version = (version ?? default);
+                    int o_out = default;
+                    bool has = false;
+                    var st = LubNative.lub_audio_snd(LubRuntime.Ctx, a.Str(key), LubRuntime.NonNull(_data_p, data != null), data?.Count ?? 0, channels, rate, version.HasValue ? &_version : null, &o_out, &has);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        return null;
+                    }
+                    LubRuntime.Check(st, "Audio.Snd");
+                    return (!has ? null : (int?)o_out);
                 }
-                LubRuntime.Check(st, "Audio.Snd");
-                return o_out;
             }
             finally
             {
@@ -3225,7 +3281,7 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
+        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は snd_bytes。</summary>
         public static int SndBytes(string key, Bytes data, int channels, int rate, int? version = null)
         {
             var a = LubRuntime.Arena.Begin();
@@ -7137,11 +7193,11 @@ public static unsafe partial class Lub
 
 internal static unsafe partial class LubNative
 {
-    internal static TextureRef? H_TextureRef(int h) => h == 0 ? null : new TextureRef(h);
+    internal static TextureRef? H_TextureRef(int h, string? key = null) => h == 0 ? null : new TextureRef(h, key);
 
-    internal static ShaderRef? H_ShaderRef(int h) => h == 0 ? null : new ShaderRef(h);
+    internal static ShaderRef? H_ShaderRef(int h, string? key = null) => h == 0 ? null : new ShaderRef(h, key);
 
-    internal static BufferRef? H_BufferRef(int h) => h == 0 ? null : new BufferRef(h);
+    internal static BufferRef? H_BufferRef(int h, string? key = null) => h == 0 ? null : new BufferRef(h, key);
 
     internal static WorldRef? H_WorldRef(int h) => h == 0 ? null : new WorldRef(h);
 
@@ -9620,7 +9676,7 @@ internal static unsafe partial class LubNative
     internal static extern int lub_host_poll(void* ctx, LubStr* @topic, LubStr* @payload);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_audio_snd(void* ctx, LubStr @key, float* @data, int @data_count, int @channels, int @rate, int* @version, int* @out);
+    internal static extern int lub_audio_snd(void* ctx, LubStr @key, float* @data, int @data_count, int @channels, int @rate, int* @version, int* @out, bool* has);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_audio_snd_bytes(void* ctx, LubStr @key, byte* @data, int @data_len, int @channels, int @rate, int* @version, int* @out);
@@ -10116,9 +10172,9 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubPassOpts(PassOpts o, LubRuntime.Arena a, LubPassOpts* s)
     {
-        s->@target = o.Target?.H ?? 0;
-        s->@targets = a.Handles(o.Targets, out s->@targets_count, static h => h.H);
-        s->@depth_target = o.DepthTarget?.H ?? 0;
+        s->@target = o.Target?.Live() ?? 0;
+        s->@targets = a.Handles(o.Targets, out s->@targets_count, static h => h.Live());
+        s->@depth_target = o.DepthTarget?.Live() ?? 0;
         s->@has_clear_color = o.ClearColor != null;
         LubRuntime.FixedFloats(o.ClearColor, s->@clear_color, 4);
         s->@clear_colors = a.FloatRows(o.ClearColors, out s->@clear_colors_count, 4);
@@ -10131,7 +10187,7 @@ internal static unsafe partial class LubNative
     internal static void Fill_LubPassOpts(PassOpts o, LubPassOpts* s)
     {
         o.Target = H_TextureRef(s->@target);
-        o.Targets = s->@targets == null ? null! : LubRuntime.HandleList(s->@targets, s->@targets_count, LubNative.H_TextureRef);
+        o.Targets = s->@targets == null ? null! : LubRuntime.HandleList(s->@targets, s->@targets_count, static h => LubNative.H_TextureRef(h));
         o.DepthTarget = H_TextureRef(s->@depth_target);
         o.ClearColor = s->@has_clear_color ? LubRuntime.FloatsArray(s->@clear_color, 4) : null;
         o.ClearColors = s->@clear_colors == null ? null! : LubRuntime.FloatRowList(s->@clear_colors, s->@clear_colors_count, 4);
@@ -10148,7 +10204,7 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubDrawOpts(DrawOpts o, LubRuntime.Arena a, LubDrawOpts* s)
     {
-        s->@shader = o.Shader?.H ?? 0;
+        s->@shader = o.Shader?.Live() ?? 0;
         s->@has_blend = o.Blend.HasValue;
         s->@blend = (int)(o.Blend ?? default);
         s->@has_cull = o.Cull.HasValue;
@@ -10183,7 +10239,7 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubDispatchOpts(DispatchOpts o, LubRuntime.Arena a, LubDispatchOpts* s)
     {
-        s->@shader = o.Shader?.H ?? 0;
+        s->@shader = o.Shader?.Live() ?? 0;
     }
 
     internal static void Fill_LubDispatchOpts(DispatchOpts o, LubDispatchOpts* s)

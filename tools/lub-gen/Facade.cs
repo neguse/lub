@@ -133,13 +133,32 @@ public static class Facade
             switch (t.Kind)
             {
                 case "handle":
-                    sb.Append($"public sealed class {t.Name}\n{{\n");
-                    sb.Append("    internal readonly int H;\n");
-                    sb.Append($"    internal {t.Name}(int h) {{ H = h; }}\n");
+                    if (IsKeyedResource(t.Name))
+                    {
+                        // key で宣言する resource の参照は key も持ち、sweep で stale に
+                        // なった handle を key から引き直す。Version は参照を作ったときの
+                        // 値で、stale になっても変わらない (どちらも Lua の参照と同じ規則)
+                        sb.Append($"public sealed unsafe class {t.Name}\n{{\n");
+                        sb.Append("    internal int H;\n    internal readonly string? Key;\n");
+                        sb.Append($"    internal {t.Name}(int h, string? key) {{ H = h; Key = key; Version = LubRuntime.ResourceVersion(h); }}\n");
+                        sb.Append("    internal int Live()\n    {\n");
+                        sb.Append("        if (Key == null || !LubRuntime.IsStale(H)) return H;\n");
+                        sb.Append("        var a = LubRuntime.Arena.Begin();\n        try\n        {\n");
+                        sb.Append("            var k = a.Str(Key);\n");
+                        sb.Append($"            var h = LubNative.{LookupFn(t.Name)}(LubRuntime.Ctx, k);\n");
+                        sb.Append("            return H = h != 0 ? h : LubRuntime.StaleRef(k);\n");
+                        sb.Append("        }\n        finally\n        {\n            a.End();\n        }\n    }\n");
+                    }
+                    else
+                    {
+                        sb.Append($"public sealed class {t.Name}\n{{\n");
+                        sb.Append("    internal readonly int H;\n");
+                        sb.Append($"    internal {t.Name}(int h) {{ H = h; }}\n");
+                    }
                     foreach (var f in t.Fields)
                     {
                         if (f.Name == "Version" && f.Type.Kind == LubTypeKind.Int)
-                            sb.Append("    public int Version => LubRuntime.ResourceVersion(H);\n");
+                            sb.Append("    public int Version { get; }\n");
                         else
                             throw new InvalidOperationException($"{t.Name}.{f.Name}: handle field is not supported by the facade");
                     }
@@ -171,6 +190,37 @@ public static class Facade
                 default:
                     throw new InvalidOperationException($"{t.Name}: unknown kind {t.Kind}");
             }
+        }
+
+        // key と version で宣言する resource (Version を持つ handle: texture /
+        // shader / buffer)。参照は key を持つ。
+        private bool IsKeyedResource(string typeName) =>
+            types.TryGetValue(typeName, out var t) && t.Kind == "handle"
+            && t.Fields.Any(f => f.Name == "Version");
+
+        // handle の値。key で宣言する resource は stale なら key から引き直す。
+        private string HandleOf(TypeRef tr, string expr) =>
+            IsKeyedResource(tr.Name) ? $"{expr}.Live()" : $"{expr}.H";
+
+        // key で引き直す関数 (Lookup*: key 1 つを取り handle を返す)。
+        private string LookupFn(string typeName)
+        {
+            foreach (var ns in model.Namespaces)
+                foreach (var f in ns.Functions)
+                    if (f.NoFail && f.Return.Kind == LubTypeKind.Handle && f.Return.Name == typeName
+                        && f.Params.Count == 1 && f.Params[0].Type.Kind == LubTypeKind.String)
+                        return NativeFn(ns, f.LuaName);
+            throw new InvalidOperationException($"{typeName}: no lookup function (key -> handle) for stale references");
+        }
+
+        // 戻り値の handle。key で宣言する関数が返す resource の参照は key を持つ
+        // (Lua の lgen_push_ref_keyed と同じ)。
+        private string HandleResult(ApiFunction f, TypeRef r, string v)
+        {
+            var key = f.Params.FirstOrDefault(p => !p.IsOut && p.Type.Kind == LubTypeKind.String && p.LuaName == "key");
+            return IsKeyedResource(r.Name) && key != null
+                ? $"LubNative.H_{r.Name}({v}, {key.Name})"
+                : $"LubNative.H_{r.Name}({v})";
         }
 
         // ---------------------------------------------------------- records
@@ -257,6 +307,13 @@ public static class Facade
             }
             b.Append($"{i2}var a = LubRuntime.Arena.Begin();\n{i2}try\n{i2}{{\n");
             var i3 = i2 + "    ";
+            // float / int の List は copy せず、中身を pin してそのまま渡す
+            var pinned = f.Params.Where(p => !p.IsOut && IsPinnedList(p.Type)).ToList();
+            foreach (var p in pinned)
+            {
+                b.Append($"{i3}fixed ({NElem(p.Type.Elem!)}* _{p.LuaName}_p = CollectionsMarshal.AsSpan({p.Name}))\n{i3}{{\n");
+                i3 += "    ";
+            }
             var args = new List<string> { "LubRuntime.Ctx" };
             var post = new StringBuilder(); // 呼び出し後 (out の変換)
             foreach (var p in f.Params.Where(p => !p.IsOut))
@@ -280,7 +337,7 @@ public static class Facade
                     var call = $"{fn}({string.Join(", ", args)})";
                     if (r.Kind == LubTypeKind.Void) b.Append($"{i3}{call};\n");
                     else b.Append($"{i3}var r = {call};\n");
-                    retExpr = r.Kind == LubTypeKind.Void ? "" : FromDirect(r, "r");
+                    retExpr = r.Kind == LubTypeKind.Void ? "" : r.Kind == LubTypeKind.Handle ? HandleResult(f, r, "r") : FromDirect(r, "r");
                 }
                 else
                 {
@@ -320,10 +377,15 @@ public static class Facade
                 b.Append($"{i3}LubRuntime.Check(st, \"{ns.Name}.{f.Name}\");\n");
                 foreach (var p in f.Params.Where(p => p.IsOut))
                     post.Append(OutAssign(p, i3, p.Type.Kind == LubTypeKind.Record && p.Type.Nullable ? $"has_{p.LuaName}" : null));
-                retExpr = hasRet ? OutValue(r, "out", has) : "";
+                retExpr = !hasRet ? "" : r.Kind == LubTypeKind.Handle ? HandleResult(f, r, "o_out") : OutValue(r, "out", has);
             }
             b.Append(post);
             if (retExpr.Length > 0) b.Append($"{i3}return {retExpr};\n");
+            foreach (var _ in pinned)
+            {
+                i3 = i3[..^4];
+                b.Append($"{i3}}}\n");
+            }
             b.Append($"{i2}}}\n{i2}finally\n{i2}{{\n{i3}a.End();\n{i2}}}\n");
             sb.Append(b).Append($"{ind}}}\n\n");
         }
@@ -357,7 +419,7 @@ public static class Facade
                     yield return $"a.Str({n})";
                     break;
                 case LubTypeKind.Handle:
-                    yield return tr.Nullable ? $"({n}?.H ?? 0)" : $"{n}.H";
+                    yield return tr.Nullable ? $"({HandleOf(tr, n + "?")} ?? 0)" : HandleOf(tr, n);
                     break;
                 case LubTypeKind.Keyed:
                     yield return $"a.Str({n}.Key)";
@@ -381,6 +443,13 @@ public static class Facade
                     b.Append($"{ind}LubNative.{C(tr.Name)}* {v} = null;\n");
                     b.Append($"{ind}if ({n} != null)\n{ind}{{\n{ind}    {v} = a.Alloc<LubNative.{C(tr.Name)}>(1);\n{ind}    LubNative.To_{C(tr.Name)}({n}, a, {v});\n{ind}}}\n");
                     yield return v;
+                    break;
+                case LubTypeKind.List when IsPinnedList(tr):
+                    // EmitFunction が pin した中身。空の list は NULL (従来どおり)。
+                    // [LubLazyData] の NULL は「data を渡さない」なので、null でない
+                    // list は空でも NULL でない pointer にする (Lua の空 table と同じ)
+                    yield return p.LazyData ? $"LubRuntime.NonNull({v}_p, {n} != null)" : $"{v}_p";
+                    yield return $"{n}?.Count ?? 0";
                     break;
                 case LubTypeKind.List:
                     {
@@ -407,6 +476,11 @@ public static class Facade
 
         private static string TrampName(ApiFunction f, ApiParam p) => $"fn_{f.Name}_{p.Name}";
 
+        // 引数の List<float> / List<int> は C の float* / int32_t* と同じ並びなので
+        // pin して渡せる (enum や record の List は写す)。
+        private static bool IsPinnedList(TypeRef tr) =>
+            tr.Kind == LubTypeKind.List && tr.Elem!.Kind is LubTypeKind.Double or LubTypeKind.Int;
+
         // List<T> を arena に写す式 (count は countVar に書く)
         private string ListToNative(TypeRef tr, string expr, string countVar, int? arrayLen)
         {
@@ -418,7 +492,7 @@ public static class Facade
                 LubTypeKind.Enum => $"a.Ints({expr}, out {countVar})",
                 LubTypeKind.Bool => $"a.Bools({expr}, out {countVar})",
                 LubTypeKind.String => $"a.Strs({expr}, out {countVar})",
-                LubTypeKind.Handle => $"a.Handles({expr}, out {countVar}, static h => h.H)",
+                LubTypeKind.Handle => $"a.Handles({expr}, out {countVar}, static h => {HandleOf(elem, "h")})",
                 LubTypeKind.Array => $"a.FloatRows({expr}, out {countVar}, {arrayLen ?? throw new InvalidOperationException("List of array needs [LubArray]")})",
                 LubTypeKind.Record => $"a.Records<{elem.Name}, LubNative.{C(elem.Name)}>({expr}, out {countVar}, &LubNative.To_{C(elem.Name)})",
                 _ => throw new InvalidOperationException($"unsupported list element {elem}"),
@@ -512,7 +586,7 @@ public static class Facade
                 LubTypeKind.Enum => $"LubRuntime.EnumList<{EnumCs(elem)}>({ptr}, {count})",
                 LubTypeKind.Bool => $"LubRuntime.BoolList({ptr}, {count})",
                 LubTypeKind.String => $"LubRuntime.StrList({ptr}, {count})",
-                LubTypeKind.Handle => $"LubRuntime.HandleList({ptr}, {count}, LubNative.H_{elem.Name})",
+                LubTypeKind.Handle => $"LubRuntime.HandleList({ptr}, {count}, static h => LubNative.H_{elem.Name}(h))",
                 LubTypeKind.Record => $"LubRuntime.RecordList<{elem.Name}, LubNative.{C(elem.Name)}>({ptr}, {count}, &LubNative.From_{C(elem.Name)})",
                 _ => throw new InvalidOperationException($"unsupported list element {elem}"),
             };
@@ -527,7 +601,9 @@ public static class Facade
         {
             sb.Append("internal static unsafe partial class LubNative\n{\n");
             foreach (var t in model.Types.Where(t => t.Kind == "handle"))
-                sb.Append($"    internal static {t.Name}? H_{t.Name}(int h) => h == 0 ? null : new {t.Name}(h);\n\n");
+                sb.Append(IsKeyedResource(t.Name)
+                    ? $"    internal static {t.Name}? H_{t.Name}(int h, string? key = null) => h == 0 ? null : new {t.Name}(h, key);\n\n"
+                    : $"    internal static {t.Name}? H_{t.Name}(int h) => h == 0 ? null : new {t.Name}(h);\n\n");
             foreach (var t in SortedRecords()) EmitStruct(t);
             foreach (var ns in model.Namespaces)
             {
@@ -829,7 +905,7 @@ public static class Facade
                         else sb.Append($"        s->@{n} = a.Str({v});\n");
                         break;
                     case LubTypeKind.Handle:
-                        sb.Append($"        s->@{n} = {v}?.H ?? 0;\n");
+                        sb.Append($"        s->@{n} = {HandleOf(tr, v + "?")} ?? 0;\n");
                         break;
                     case LubTypeKind.Keyed:
                         sb.Append($"        s->@{n} = a.Str({v}?.Key);\n");

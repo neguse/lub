@@ -95,33 +95,48 @@ public sealed class LubNoCAttribute : Attribute
 {
 }
 
+/// <summary>
+/// key と version で宣言する resource の data (float / int の List)。key が
+/// すでに同じ version を持っていれば data は読まない。C では data == NULL かつ
+/// data_count > 0 が data を読む前の問い合わせで、key がその version を持って
+/// いれば data を渡したときと同じ結果 (LUB_OK)、持っていなければ何も変えずに
+/// LUB_NOT_FOUND を返す。Lua binding はこの問い合わせを先に試し、外れたときだけ
+/// data を読む。関数には string key と int? version が要る。
+/// </summary>
+[AttributeUsage(AttributeTargets.Parameter)]
+public sealed class LubLazyDataAttribute : Attribute
+{
+}
+
 // ---------------------------------------------------------------- handles
 
-/// <summary>use_texture / main_tex の不透明ハンドル。version は stored
-/// されている実効 version で、次の use_* に渡すと「変わっていない」の
-/// 再主張になる。</summary>
+/// <summary>use_texture / main_tex の不透明ハンドル。version は参照を
+/// 受け取ったときの実効 version で、次の use_* に渡すと「変わっていない」の
+/// 再主張になる。resource がしばらく使われずに破棄されたあとで参照を
+/// 使うと error になる。同じ key で宣言し直せば古い参照もそれを指す
+/// (version は受け取ったときのまま)。</summary>
 [LubHandle]
 public class TextureRef
 {
-    /// <summary>stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
+    /// <summary>参照を受け取ったときの実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
     public int Version;
 }
 
-/// <summary>use_shader / use_shader_compute の不透明ハンドル。version の
-/// 意味は TextureRef と同じ。</summary>
+/// <summary>use_shader / use_shader_compute の不透明ハンドル。version と
+/// 破棄後の扱いは TextureRef と同じ。</summary>
 [LubHandle]
 public class ShaderRef
 {
-    /// <summary>stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
+    /// <summary>参照を受け取ったときの実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
     public int Version;
 }
 
-/// <summary>use_buffer の不透明ハンドル。version の意味は TextureRef と
-/// 同じ。</summary>
+/// <summary>use_buffer の不透明ハンドル。version と破棄後の扱いは
+/// TextureRef と同じ。</summary>
 [LubHandle]
 public class BufferRef
 {
-    /// <summary>stored されている実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
+    /// <summary>参照を受け取ったときの実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
     public int Version;
 }
 
@@ -182,7 +197,8 @@ public class DrawOpts
     /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
     public bool? DepthWrite;
-    /// <summary>0 以下を渡すと draw 自体がスキップされる。</summary>
+    /// <summary>instance の数。省略時 1。0 以下を渡すと描かない (draw と
+    /// しての検査と、使った resource の記録はする)。</summary>
     public int? InstanceCount;
 }
 
@@ -207,7 +223,8 @@ public class TextureOpts
 
 /// <summary>
 /// Gfx.Readback(key) が返す GPU→CPU 読み戻し queue の参照。queue は key で
-/// 宣言する resource で、poll が途切れると sweep される。
+/// 宣言する resource で、poll が ResourceSweepAfterFrames の間途切れると
+/// 破棄される。
 /// </summary>
 [LubKeyed]
 public class Readback
@@ -303,41 +320,52 @@ public static class Lub
             return null;
         }
 
-        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
-        /// 作り、shader の StructuredBuffer が読む。</summary>
+        /// <summary>
+        /// INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で
+        /// 作り、shader の StructuredBuffer が読む。version は key の内容に対する
+        /// 同一性の主張で、key がすでに同じ version と type を持っていれば data を
+        /// 読まずに今の buffer を返し、違えば data から作り直す。省略 (null) は
+        /// 「内容が変わった」宣言で、runtime が新しい version を発行して必ず
+        /// upload する。戻り値の Version を次の呼び出しに渡すと「変わっていない」の
+        /// 再主張になる。data に null を渡すと再主張だけをする: key がその version を
+        /// 持っていなければ何も作らずに null (Lua は nil, "not found") を返す。
+        /// </summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
-            List<float> data, int? version = null)
+            [LubLazyData] List<float>? data, int? version = null)
         {
             return null;
         }
 
         /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の
-        /// STORAGE)。version の規約は UseBuffer と同じ。</summary>
-        public static BufferRef? UseBufferInts(string key, BufferType type, List<int> data,
-            int? version = null)
+        /// STORAGE)。version と data = null の規約は UseBuffer と同じ。</summary>
+        public static BufferRef? UseBufferInts(string key, BufferType type,
+            [LubLazyData] List<int>? data, int? version = null)
         {
             return null;
         }
 
         /// <summary>STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
-        /// 同じ use_buffer。</summary>
+        /// use_buffer_empty。version の規約は UseBuffer と同じ。</summary>
         public static BufferRef? UseBufferEmpty(string key, BufferType type,
             int count, int? version = null)
         {
             return null;
         }
 
-        /// <summary>px は byte 値 (0..255) の列、null で target / storage 用の
-        /// 空 texture。</summary>
+        /// <summary>
+        /// px は byte 値 (0..255) の列、null で target / storage 用の空
+        /// texture。version の規約は UseBuffer と同じで、key がすでに同じ
+        /// version を持ち、大きさ・形式・opts も同じなら px は読まない。
+        /// </summary>
         public static TextureRef? UseTexture(string key, int w, int h,
-            PixelFormat fmt, List<int>? px, int? version = null,
+            PixelFormat fmt, [LubLazyData] List<int>? px, int? version = null,
             TextureOpts? opts = null)
         {
             return null;
         }
 
-        /// <summary>px が bytes (Png.Load の結果等) のときの UseTexture。
-        /// Lua 面は同じ use_texture。</summary>
+        /// <summary>px が bytes (Png.Load の結果等) のときの
+        /// UseTexture。Lua 面は use_texture_bytes。</summary>
         public static TextureRef? UseTextureBytes(string key, int w, int h,
             PixelFormat fmt, Bytes? px, int? version = null,
             TextureOpts? opts = null)
@@ -345,19 +373,24 @@ public static class Lub
             return null;
         }
 
-        /// <summary>key から handle を引く (無ければ null)。stale な参照の再解決用。</summary>
+        /// <summary>
+        /// key が今宣言されている texture の handle (無ければ null)。runtime は
+        /// 使われずに破棄された参照を、使うときにこれで key から引き直す。
+        /// </summary>
         [LubNoFail]
         public static TextureRef? LookupTexture(string key)
         {
             return null;
         }
 
+        /// <summary>LookupTexture の shader 版。</summary>
         [LubNoFail]
         public static ShaderRef? LookupShader(string key)
         {
             return null;
         }
 
+        /// <summary>LookupTexture の buffer 版。</summary>
         [LubNoFail]
         public static BufferRef? LookupBuffer(string key)
         {
@@ -767,23 +800,25 @@ public static class Lub
     }
 
     /// <summary>
-    /// 音の core API。snd は key で宣言する resource で、宣言が途切れると
-    /// sweep される (鳴っている voice は最後まで鳴る)。
+    /// 音の core API。snd は key で宣言する resource で、宣言も再生 (Play /
+    /// Voice) も ResourceSweepAfterFrames の間途切れると破棄される (鳴って
+    /// いる voice は最後まで鳴る)。
     /// </summary>
     public static class Audio
     {
         /// <summary>
-        /// interleaved なサンプル値 (-1..1) から snd を宣言する。version の
-        /// 規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない)。
-        /// 同じ内容は同じ snd に dedupe される。
+        /// interleaved なサンプル値 (-1..1) から snd を宣言する。version と
+        /// data = null の規約は Gfx.UseBuffer と同じ (同じ version なら data は
+        /// 読まない。null は再主張だけで、key がその version を持っていなければ
+        /// null を返す)。同じ内容は同じ snd に dedupe される。
         /// </summary>
-        public static int Snd(string key, List<float> data, int channels,
-            int rate, int? version = null)
+        public static int? Snd(string key, [LubLazyData] List<float>? data,
+            int channels, int rate, int? version = null)
         {
             return 0;
         }
 
-        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。</summary>
+        /// <summary>f32 PCM の bytes から snd を宣言する。Lua 面は snd_bytes。</summary>
         public static int SndBytes(string key, Bytes data, int channels,
             int rate, int? version = null)
         {
@@ -1768,7 +1803,15 @@ public class ConfigOpts
     public int? Width;
     /// <summary>ウィンドウ高さ (px)。`width` とセットで指定する。</summary>
     public int? Height;
-    /// <summary>`use*` されなくなったリソースを何フレーム後に破棄するか。</summary>
+    /// <summary>
+    /// 使われなくなった resource を何フレーム後に破棄するか。使うとは use* での
+    /// 宣言、draw / dispatch の bindings と shader、pass の target、id 付きの
+    /// read_texture (読み戻しを積む呼び出し)、snd の宣言と再生、readback queue
+    /// の poll。既定 300 (60 Hz で約 5 秒)、0 で破棄しない。OnFrame が error で
+    /// 抜けた frame の終わりには破棄しない (使われない frame 数は error の間も
+    /// 進むので、長い error のあとは直った frame で使わなかったものがその
+    /// frame の終わりに破棄される)。
+    /// </summary>
     public int? ResourceSweepAfterFrames;
     /// <summary>readback リングの深さ (1..)。</summary>
     public int? ReadbackDepth;

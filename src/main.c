@@ -242,7 +242,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
   }
-  lua_ctx_call_frame(&g_app->lua, g_app->frame_dt);
+  if (!lua_ctx_call_frame(&g_app->lua, g_app->frame_dt))
+    lub_host_frame_failed(g_ctx);
   lub_host_frame_end(g_ctx);
   if (lub_host_quit_requested(g_ctx))
     return SDL_APP_SUCCESS;

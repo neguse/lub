@@ -88,6 +88,12 @@ bool app_init(App *app) {
   app->fixed_frame_dt = 0.0;
   app->phase = APP_PHASE_PRE_BACKEND;
   app->readback_depth = 8;
+  // 使われなくなった resource を破棄するまでの frame 数の既定。gate が
+  // capture する最後の frame (240) より大きいので golden / digest は変わら
+  // ない。60 Hz で約 5 秒あるので、pause menu や一時的に切った effect で
+  // shader の compile をやり直さずに済む。Config の
+  // ResourceSweepAfterFrames で上書きする (0 = 破棄しない)。
+  app->resource_sweep_after_frames = 300;
   return true;
 }
 
@@ -198,14 +204,21 @@ void app_frame_end(App *app) {
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
+  // 使われなくなった resource の sweep。on_frame が error で抜けた frame は
+  // 飛ばす (編集中の error が続いたあと、直した途端に全部を作り直すことに
+  // ならないように)。
+  bool sweep = app->resource_sweep_after_frames > 0 && !app->frame_failed;
+  app->frame_failed = false;
   // key で宣言する snd / readback queue の sweep。退役した snd の PCM 回収は
   // この後の audio_state_frame_end が行う。
-  api_audio_frame_end(app);
-  api_gfx_frame_end(app);
+  if (sweep) {
+    api_audio_frame_end(app);
+    api_gfx_frame_end(app);
+  }
   if (app->audio) {
     audio_state_frame_end(app->audio);
   }
-  if (app->resource_sweep_after_frames > 0) {
+  if (sweep) {
     int64_t cf = (int64_t)app->frame_index;
     int64_t thr = (int64_t)app->resource_sweep_after_frames;
     // Pipelines first: invalidate_shader (called by res sweep) walks the

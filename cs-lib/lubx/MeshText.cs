@@ -151,6 +151,20 @@ public class MeshText
         return e;
     }
 
+    // cache した glyph の buffer を描く前に再主張する (data は読まない)。
+    // しばらく描かれずに破棄されていたら作り直す。
+    private GlyphEntry? LiveGlyph(int cp)
+    {
+        var e = GlyphFor(cp);
+        if (e == null || e.Count == 0)
+            return e;
+        if (Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Storage, null, version) != null
+            && Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index, null, version) != null)
+            return e;
+        glyphs.Remove(cp);
+        return GlyphFor(cp);
+    }
+
     private static Color ColorOrWhite(Color? c)
     {
         return c ?? Color.Rgb(1.0f, 1.0f, 1.0f);
@@ -165,7 +179,7 @@ public class MeshText
         var sh = Ensure();
         if (sh == null)
             return;
-        var e = GlyphFor(cp);
+        var e = LiveGlyph(cp);
         if (e == null || e.Count == 0)
             return;
         var vb = e.Vb;

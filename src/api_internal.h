@@ -32,6 +32,10 @@ static inline bool lub_str_copy(LubStr s, char *buf, size_t cap) {
   return true;
 }
 
+// key で宣言した resource への参照が sweep で stale になり、key も今は宣言
+// されていないときの error (lub_host_stale_ref、Lua の参照の解決)。
+LubStatus api_gfx_stale_ref(App *app, LubStr key);
+
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
 void api_audio_frame_end(App *app);

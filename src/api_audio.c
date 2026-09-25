@@ -1,6 +1,6 @@
 // audio の C API。raw PCM だけを受ける core 契約 (docs/roadmap.md)。snd は
-// key で宣言し、宣言が途切れたら sweep する。decode は png_load と同格の
-// 純関数 utility で snd handle を作らない。
+// key で宣言し、宣言も再生 (play / voice) も途切れたら sweep する。decode は
+// png_load と同格の純関数 utility で snd handle を作らない。
 #include "api_internal.h"
 #include "audio.h"
 #include <stdlib.h>
@@ -40,6 +40,17 @@ static AudioSndEntry *snd_entry_find(struct AudioSnds *s, LubStr key) {
   return NULL;
 }
 
+// snd を鳴らした frame を、その snd を指す全 key に記録する (鳴らすのも使用で、
+// 鳴らし続けている snd は sweep しない)。
+static void snd_touch(App *app, int32_t snd) {
+  struct AudioSnds *s = app->audio_snds;
+  if (!s)
+    return;
+  for (int i = 0; i < s->n; ++i)
+    if (s->e[i].snd == snd)
+      s->e[i].last_seen_frame = (int64_t)app->frame_index;
+}
+
 // 他の entry が同じ snd を指していなければ退役させる。
 static void snd_release(App *app, struct AudioSnds *s, int32_t snd) {
   for (int i = 0; i < s->n; ++i)
@@ -49,23 +60,28 @@ static void snd_release(App *app, struct AudioSnds *s, int32_t snd) {
     audio_snd_retire(app->audio, snd);
 }
 
+// 同じ version なら samples は読まない。samples が NULL なら再主張だけ
+// (count > 0 は Lua binding が samples を読む前に試す問い合わせ): key がその
+// version を持っていなければ何もせず NOT_FOUND。
 LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
                         int32_t count, int32_t channels, int32_t rate,
-                        const int32_t *version, int32_t *out_snd) {
+                        const int32_t *version, int32_t *out_snd, bool *has) {
   App *app = lub_api_app(ctx);
-  AudioState *st = audio_lazy(app);
-  struct AudioSnds *s = snds_lazy(app);
-  if (!st || !s)
-    return lub_api_fail(app, "audio: state create failed");
   int64_t now = (int64_t)app->frame_index;
-  AudioSndEntry *e = snd_entry_find(s, key);
+  AudioSndEntry *e =
+      app->audio_snds ? snd_entry_find(app->audio_snds, key) : NULL;
   if (e && version && e->has_version && e->version == *version) {
     e->last_seen_frame = now;
     *out_snd = e->snd;
+    *has = true;
     return LUB_OK;
   }
   if (!samples)
     return LUB_NOT_FOUND; // version が違う (か未宣言) なので samples が要る
+  AudioState *st = audio_lazy(app);
+  struct AudioSnds *s = snds_lazy(app);
+  if (!st || !s)
+    return lub_api_fail(app, "audio: state create failed");
   if (count <= 0 || channels <= 0 || count % channels != 0)
     return lub_api_fail(app,
                         "audio_snd: %d samples not divisible by %d channels",
@@ -99,6 +115,7 @@ LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *samples,
   e->version = version ? *version : 0;
   e->last_seen_frame = now;
   *out_snd = id;
+  *has = true;
   return LUB_OK;
 }
 
@@ -128,9 +145,10 @@ LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
   if (data && data_len % (int32_t)sizeof(float) != 0)
     return lub_api_fail(app, "audio_snd: byte length %d is not f32-aligned",
                         data_len);
+  bool has = false;
   return lub_audio_snd(ctx, key, (const float *)data,
                        data_len / (int32_t)sizeof(float), channels, rate,
-                       version, out);
+                       version, out, &has);
 }
 
 LubStatus lub_audio_decode(LubContext *ctx, const uint8_t *data, int32_t len,
@@ -167,6 +185,7 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
     digest_tag(lub_api_app(ctx), "audio_play");
     digest_i32(lub_api_app(ctx), snd);
   }
+  snd_touch(lub_api_app(ctx), snd);
   AudioState *st = audio_lazy(lub_api_app(ctx));
   if (!st)
     return false;
@@ -177,6 +196,7 @@ bool lub_audio_play(LubContext *ctx, int32_t snd, const LubPlayOpts *opts) {
 
 bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
                      const LubVoiceOpts *opts) {
+  snd_touch(lub_api_app(ctx), snd);
   AudioState *st = audio_lazy(lub_api_app(ctx));
   char kbuf[128];
   if (!st || !lub_str_copy(key, kbuf, sizeof(kbuf)))

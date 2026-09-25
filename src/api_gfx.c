@@ -8,6 +8,7 @@
 #include "resources.h"
 #include "shader.h"
 #include <SDL3/SDL.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,11 +67,31 @@ static int64_t effective_version(App *app, const int32_t *version,
   return (int64_t)*version;
 }
 
+// sweep で消えた resource の error の後半。handle が一度は発行されていれば
+// (発行されていない値と違い) 使われずに破棄された resource。
+#define SWEPT_HINT                                                             \
+  "was swept (not used for %d frames); declare it again with use_*"
+
+static bool handle_swept(App *app, LubHandle h) {
+  return h > 0 && h <= app->res.next_handle &&
+         !res_table_get_by_handle(&app->res, h);
+}
+
+LubStatus api_gfx_stale_ref(App *app, LubStr key) {
+  return lub_api_fail(app, "'%.*s' " SWEPT_HINT, key.len,
+                      key.ptr ? key.ptr : "", app->resource_sweep_after_frames);
+}
+
+// handle の entry を引き、今の frame で使ったことにする。
 static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
                                    const char *fn, const char *what) {
   ResEntry *e = res_table_get_by_handle(&app->res, h);
   if (!e) {
-    lub_api_fail(app, "%s: %s handle %d is stale or invalid", fn, what, (int)h);
+    if (handle_swept(app, h))
+      lub_api_fail(app, "%s: %s handle %d " SWEPT_HINT, fn, what, (int)h,
+                   app->resource_sweep_after_frames);
+    else
+      lub_api_fail(app, "%s: %s handle %d is invalid", fn, what, (int)h);
     return NULL;
   }
   if (e->kind != kind) {
@@ -80,6 +101,7 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
                                       : "shader");
     return NULL;
   }
+  res_table_touch(e, (int64_t)app->frame_index);
   return e;
 }
 
@@ -150,15 +172,65 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 
 // ------------------------------------------------------------ resources
 
+// data を渡さない use_* (「変わっていない」の再主張と、Lua binding が data を
+// 読む前に試す問い合わせ) の下調べ。version が与えられ、key がこの kind で
+// その version を持っていれば entry を返す。無ければ (検査に通らない引数も
+// 含めて) 何も変えずに NULL。data を渡す呼び出しが同じ引数なら hit するときに
+// 限って entry を返す (種別ごとの形の一致は呼び出し側が見る)。
+static ResEntry *cached_entry(App *app, LubStr key, ResKind kind,
+                              const int32_t *version) {
+  if (!version || key.len <= 0 || key.len >= LUB_KEY_MAX)
+    return NULL;
+  ResEntry *e = res_table_get_n(&app->res, key.ptr, (size_t)key.len);
+  if (!e || e->kind != kind || e->version != (int64_t)*version)
+    return NULL;
+  return e;
+}
+
+// hit した entry を今の frame で使ったことにして返す。
+static LubStatus reuse_entry(App *app, ResEntry *e, LubHandle *out) {
+  res_table_touch(e, (int64_t)app->frame_index);
+  *out = e->handle;
+  return LUB_OK;
+}
+
+// key が同じ種別の buffer をこの version で持っている (data を読まずに返せる)。
+static bool buffer_hit(const ResEntry *e, int32_t type, int64_t ver) {
+  return e->u.buf.h != 0 && e->version == ver &&
+         e->u.buf.type == (SglBufferType)type;
+}
+
+static ResEntry *buffer_cached(App *app, LubStr key, int32_t type,
+                               const int32_t *version) {
+  ResEntry *e = cached_entry(app, key, RES_BUFFER, version);
+  return e && buffer_hit(e, type, e->version) ? e : NULL;
+}
+
+static void digest_use_buffer(App *app, const char *tag, LubStr key,
+                              int32_t type, int32_t count,
+                              const int32_t *version) {
+  if (!app->digest.enabled)
+    return;
+  digest_tag(app, tag);
+  digest_str(app, key);
+  digest_i32(app, type);
+  digest_i32(app, count);
+  digest_i32(app, version ? *version : 0);
+}
+
+// use_buffer に渡された data の要素型。buffer は INDEX を u32、STORAGE を
+// float で持つので、違う型の data は upload するときだけ写す。
+typedef enum { BUF_DATA_NONE, BUF_DATA_FLOATS, BUF_DATA_INTS } BufData;
+
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
-                                 const void *data, int32_t bytes,
+                                 const void *data, int32_t count, BufData src,
                                  const int32_t *version, LubHandle *out) {
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_buffer"))
     return LUB_ERROR;
   if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
     return lub_api_fail(app, "use_buffer: only INDEX/STORAGE are supported");
-  if (bytes <= 0)
+  if (count <= 0)
     return lub_api_fail(app, "use_buffer: empty data");
   if (!data && type != SGL_BUFFER_STORAGE)
     return lub_api_fail(app,
@@ -172,165 +244,215 @@ static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
         app, "use_buffer: key '%s' already used as different kind", kbuf);
   res_table_touch(e, (int64_t)app->frame_index);
 
-  if (!declared && e->version == ver && e->u.buf.h != 0) {
+  if (!declared && buffer_hit(e, type, ver)) {
     *out = e->handle;
     return LUB_OK;
   }
 
-  size_t new_bytes = (size_t)bytes;
+  // 要素型の写しは upload するときだけ (INDEX は u32、STORAGE は float)
+  void *conv = NULL;
+  if (src == BUF_DATA_FLOATS && type == SGL_BUFFER_INDEX) {
+    uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)count);
+    if (!idx)
+      return lub_api_fail(app, "use_buffer: out of memory");
+    for (int32_t i = 0; i < count; ++i)
+      idx[i] = (uint32_t)((const float *)data)[i];
+    conv = idx;
+  } else if (src == BUF_DATA_INTS && type == SGL_BUFFER_STORAGE) {
+    float *f = (float *)malloc(sizeof(float) * (size_t)count);
+    if (!f)
+      return lub_api_fail(app, "use_buffer_ints: out of memory");
+    for (int32_t i = 0; i < count; ++i)
+      f[i] = (float)((const int32_t *)data)[i];
+    conv = f;
+  }
+  const void *bytes = conv ? conv : data;
+
+  // 要素は float も u32 も 4 byte
+  size_t new_bytes = (size_t)count * sizeof(float);
   if (e->u.buf.h != 0 && e->u.buf.size_bytes == new_bytes &&
-      e->u.buf.type == (SglBufferType)type && data) {
-    g_backend->update_buffer(e->u.buf.h, data, new_bytes);
+      e->u.buf.type == (SglBufferType)type && bytes) {
+    g_backend->update_buffer(e->u.buf.h, bytes, new_bytes);
   } else {
     if (e->u.buf.h != 0)
       g_backend->destroy_buffer(e->u.buf.h);
-    e->u.buf.h = g_backend->make_buffer((SglBufferType)type, data, new_bytes);
+    e->u.buf.h = g_backend->make_buffer((SglBufferType)type, bytes, new_bytes);
     e->u.buf.type = (SglBufferType)type;
     e->u.buf.size_bytes = new_bytes;
   }
+  free(conv);
   e->version = ver;
   *out = e->handle;
   return LUB_OK;
 }
 
-// data は float 列。INDEX は uint32 に写してから渡す。
+// data は float 列。INDEX は upload するときに uint32 に写す。data が NULL
+// なら再主張だけ (data_count > 0 は Lua binding の問い合わせ): key が
+// その version を持っていれば data を渡したときと同じ結果、無ければ何も
+// せずに NOT_FOUND。
 LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                              const float *data, int32_t data_count,
                              const int32_t *version, LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_buffer");
-    digest_str(app, key);
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-    digest_i32(app, version ? *version : 0);
-  }
-  if (!data || data_count <= 0)
+  ResEntry *hit = NULL;
+  if (!data && !(hit = buffer_cached(app, key, type, version)))
+    return LUB_NOT_FOUND;
+  digest_use_buffer(app, "use_buffer", key, type, data_count, version);
+  if (hit)
+    return reuse_entry(app, hit, out);
+  if (data_count <= 0)
     return lub_api_fail(app, "use_buffer: empty data");
-  if (type == SGL_BUFFER_INDEX) {
-    uint32_t *idx = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)data_count);
-    if (!idx)
-      return lub_api_fail(app, "use_buffer: out of memory");
-    for (int32_t i = 0; i < data_count; ++i)
-      idx[i] = (uint32_t)data[i];
-    LubStatus st =
-        use_buffer_impl(app, key, type, idx,
-                        data_count * (int32_t)sizeof(uint32_t), version, out);
-    free(idx);
-    return st;
-  }
-  return use_buffer_impl(app, key, type, data,
-                         data_count * (int32_t)sizeof(float), version, out);
+  return use_buffer_impl(app, key, type, data, data_count, BUF_DATA_FLOATS,
+                         version, out);
 }
 
+// data は整数列。INDEX は int32 の bit 列をそのまま u32 として使い、STORAGE は
+// upload するときに float に写す。data が NULL の意味は use_buffer と同じ。
 LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key, int32_t type,
                                   const int32_t *data, int32_t data_count,
                                   const int32_t *version, LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_buffer_ints");
-    digest_str(app, key);
-    digest_i32(app, type);
-    digest_i32(app, data_count);
-    digest_i32(app, version ? *version : 0);
-  }
-  if (!data || data_count <= 0)
+  ResEntry *hit = NULL;
+  if (!data && !(hit = buffer_cached(app, key, type, version)))
+    return LUB_NOT_FOUND;
+  digest_use_buffer(app, "use_buffer_ints", key, type, data_count, version);
+  if (hit)
+    return reuse_entry(app, hit, out);
+  if (data_count <= 0)
     return lub_api_fail(app, "use_buffer_ints: empty data");
-  if (type == SGL_BUFFER_INDEX) {
-    // index は u32。int32 の bit 列をそのまま使う
-    return use_buffer_impl(app, key, type, data,
-                           data_count * (int32_t)sizeof(uint32_t), version,
-                           out);
-  }
-  float *f = (float *)malloc(sizeof(float) * (size_t)data_count);
-  if (!f)
-    return lub_api_fail(app, "use_buffer_ints: out of memory");
-  for (int32_t i = 0; i < data_count; ++i)
-    f[i] = (float)data[i];
-  LubStatus st = use_buffer_impl(
-      app, key, type, f, data_count * (int32_t)sizeof(float), version, out);
-  free(f);
-  return st;
+  return use_buffer_impl(app, key, type, data, data_count, BUF_DATA_INTS,
+                         version, out);
 }
 
 LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
                                    int32_t count, const int32_t *version,
                                    LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_buffer_empty");
-    digest_str(app, key);
-    digest_i32(app, type);
-    digest_i32(app, count);
-    digest_i32(app, version ? *version : 0);
-  }
+  digest_use_buffer(app, "use_buffer_empty", key, type, count, version);
   if (count <= 0)
     return lub_api_fail(app, "use_buffer: count must be > 0");
-  return use_buffer_impl(app, key, type, NULL, count * (int32_t)sizeof(float),
-                         version, out);
+  return use_buffer_impl(app, key, type, NULL, count, BUF_DATA_NONE, version,
+                         out);
 }
 
-// use_texture の本体。pixels は呼び出しの間だけ借用。
+// use_texture の本体。pixels (byte 列) か ints (byte 値の整数列、upload する
+// ときに 0..255 に丸めて写す) は呼び出しの間だけ借用。
 typedef struct TextureDesc {
   int32_t w, h;
   int32_t format;
   const uint8_t *pixels;
+  const int32_t *ints;
   int32_t pixels_len;
   int32_t filter, wrap;
   bool target, storage;
 } TextureDesc;
+
+// 引数から決まる texture の形と sampler。entry が同じ形を持っていれば hit。
+typedef struct TextureShape {
+  SglPixelFormat fmt;
+  int32_t w, h;
+  SglFilter filter;
+  SglWrap wrap;
+  bool target, storage;
+} TextureShape;
+
+// use_texture の引数の検査と形の決定。has_data は画素を渡す呼び出しか
+// (問い合わせでは、まだ読んでいない画素も含む)。通らなければ理由を err に
+// 書いて false。
+static bool texture_shape(const TextureDesc *d, bool has_data, TextureShape *s,
+                          char *err, size_t errn) {
+  if (!is_known_format(d->format)) {
+    snprintf(err, errn,
+             "format not supported "
+             "(RGBA8/R8/RG8/R16F/RG16F/R32F/RGBA16F/RGBA32F/"
+             "depth target formats only)");
+    return false;
+  }
+  s->fmt = (SglPixelFormat)d->format;
+  s->filter = SGL_FILTER_LINEAR;
+  s->wrap = SGL_WRAP_REPEAT;
+  s->target = d->target;
+  s->storage = d->storage;
+  s->w = d->w;
+  s->h = d->h;
+  bool filter_explicit = false;
+  if (d->filter != 0) {
+    if (d->filter != SGL_FILTER_LINEAR && d->filter != SGL_FILTER_NEAREST) {
+      snprintf(err, errn, "opts.filter must be LINEAR or NEAREST");
+      return false;
+    }
+    s->filter = (SglFilter)d->filter;
+    filter_explicit = true;
+  }
+  if (d->wrap != 0) {
+    if (d->wrap != SGL_WRAP_REPEAT && d->wrap != SGL_WRAP_CLAMP) {
+      snprintf(err, errn, "opts.wrap must be REPEAT or CLAMP");
+      return false;
+    }
+    s->wrap = (SglWrap)d->wrap;
+  }
+  if (d->target && has_data) {
+    snprintf(err, errn, "render target cannot be initialized with data");
+    return false;
+  }
+  if (d->storage && has_data) {
+    snprintf(err, errn, "storage texture cannot be initialized with data");
+    return false;
+  }
+  bool depth = is_depth_format(s->fmt);
+  if (depth && !d->target) {
+    snprintf(err, errn, "depth formats are only supported with {target=true}");
+    return false;
+  }
+  if (depth && d->storage) {
+    snprintf(err, errn, "depth formats cannot use storage=true");
+    return false;
+  }
+  if (depth) {
+    // WebGPU can only sample depth as unfilterable-float; a filtering sampler
+    // is a validation error there (and LINEAR on D32 is optional in Vulkan).
+    if (filter_explicit && s->filter == SGL_FILTER_LINEAR) {
+      snprintf(err, errn, "depth textures must use NEAREST filter");
+      return false;
+    }
+    s->filter = SGL_FILTER_NEAREST;
+  }
+  if (d->w <= 0 || d->h <= 0) {
+    snprintf(err, errn, "invalid size %dx%d", d->w, d->h);
+    return false;
+  }
+  return true;
+}
+
+// key が同じ形の texture をこの version で持っている (画素を読まずに返せる)。
+static bool texture_hit(const ResEntry *e, const TextureShape *s, int64_t ver) {
+  return e->u.tex.h != 0 && e->version == ver && e->u.tex.w == s->w &&
+         e->u.tex.h_ == s->h && e->u.tex.fmt == s->fmt &&
+         e->u.tex.filter == s->filter && e->u.tex.wrap == s->wrap &&
+         e->u.tex.is_target == s->target && e->u.tex.storage == s->storage;
+}
+
+// 画素を渡す呼び出しの問い合わせ (まだ画素を読んでいない)。
+static ResEntry *texture_cached(App *app, LubStr key, const TextureDesc *d,
+                                const int32_t *version) {
+  ResEntry *e = cached_entry(app, key, RES_TEXTURE, version);
+  TextureShape s;
+  char err[160];
+  if (!e || !texture_shape(d, true, &s, err, sizeof(err)))
+    return NULL;
+  return texture_hit(e, &s, e->version) ? e : NULL;
+}
 
 static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
                                   const int32_t *version, LubHandle *out) {
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_texture"))
     return LUB_ERROR;
-  if (!is_known_format(d->format))
-    return lub_api_fail(app, "use_texture: format not supported "
-                             "(RGBA8/R8/RG8/R16F/RG16F/R32F/RGBA16F/RGBA32F/"
-                             "depth target formats only)");
-  SglPixelFormat fmt = (SglPixelFormat)d->format;
-  SglFilter filter = SGL_FILTER_LINEAR;
-  SglWrap wrap = SGL_WRAP_REPEAT;
-  bool filter_explicit = false;
-  if (d->filter != 0) {
-    if (d->filter != SGL_FILTER_LINEAR && d->filter != SGL_FILTER_NEAREST)
-      return lub_api_fail(app,
-                          "use_texture: opts.filter must be LINEAR or NEAREST");
-    filter = (SglFilter)d->filter;
-    filter_explicit = true;
-  }
-  if (d->wrap != 0) {
-    if (d->wrap != SGL_WRAP_REPEAT && d->wrap != SGL_WRAP_CLAMP)
-      return lub_api_fail(app,
-                          "use_texture: opts.wrap must be REPEAT or CLAMP");
-    wrap = (SglWrap)d->wrap;
-  }
-  bool has_data = d->pixels != NULL;
-  if (d->target && has_data)
-    return lub_api_fail(
-        app, "use_texture: render target cannot be initialized with data");
-  if (d->storage && has_data)
-    return lub_api_fail(
-        app, "use_texture: storage texture cannot be initialized with data");
-  bool depth = is_depth_format(fmt);
-  if (depth && !d->target)
-    return lub_api_fail(
-        app,
-        "use_texture: depth formats are only supported with {target=true}");
-  if (depth && d->storage)
-    return lub_api_fail(app,
-                        "use_texture: depth formats cannot use storage=true");
-  if (depth) {
-    // WebGPU can only sample depth as unfilterable-float; a filtering sampler
-    // is a validation error there (and LINEAR on D32 is optional in Vulkan).
-    if (filter_explicit && filter == SGL_FILTER_LINEAR)
-      return lub_api_fail(
-          app, "use_texture: depth textures must use NEAREST filter");
-    filter = SGL_FILTER_NEAREST;
-  }
-  if (d->w <= 0 || d->h <= 0)
-    return lub_api_fail(app, "use_texture: invalid size %dx%d", d->w, d->h);
+  bool has_data = d->pixels != NULL || d->ints != NULL;
+  TextureShape s;
+  char err[160];
+  if (!texture_shape(d, has_data, &s, err, sizeof(err)))
+    return lub_api_fail(app, "use_texture: %s", err);
 
   bool declared = false;
   int64_t ver = effective_version(app, version, &declared);
@@ -340,19 +462,14 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
         app, "use_texture: key '%s' already used as different kind", kbuf);
   res_table_touch(e, (int64_t)app->frame_index);
 
-  bool sampler_changed =
-      (e->u.tex.h != 0) && (e->u.tex.filter != filter || e->u.tex.wrap != wrap);
-  bool target_changed = (e->u.tex.h != 0) && (e->u.tex.is_target != d->target);
-  bool storage_changed = (e->u.tex.h != 0) && (e->u.tex.storage != d->storage);
-  if (!declared && e->version == ver && e->u.tex.h != 0 && !sampler_changed &&
-      !target_changed && !storage_changed) {
+  if (!declared && texture_hit(e, &s, ver)) {
     *out = e->handle;
     return LUB_OK;
   }
 
   size_t new_bytes = 0;
   if (has_data) {
-    int bpp = bytes_per_pixel(fmt);
+    int bpp = bytes_per_pixel(s.fmt);
     if (bpp == 0)
       return lub_api_fail(app, "use_texture: this texture format cannot be "
                                "initialized with byte data");
@@ -363,33 +480,51 @@ static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
           d->pixels_len, expected);
     new_bytes = expected;
   }
+  // 整数列は upload するときだけ byte に丸めて写す
+  const uint8_t *pixels = d->pixels;
+  uint8_t *clamped = NULL;
+  if (d->ints && new_bytes > 0) {
+    clamped = (uint8_t *)malloc(new_bytes);
+    if (!clamped)
+      return lub_api_fail(app, "use_texture: out of memory");
+    for (size_t i = 0; i < new_bytes; ++i) {
+      int32_t v = d->ints[i];
+      clamped[i] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+    }
+    pixels = clamped;
+  }
 
+  bool sampler_changed = (e->u.tex.h != 0) && (e->u.tex.filter != s.filter ||
+                                               e->u.tex.wrap != s.wrap);
+  bool target_changed = (e->u.tex.h != 0) && (e->u.tex.is_target != d->target);
+  bool storage_changed = (e->u.tex.h != 0) && (e->u.tex.storage != d->storage);
   bool same_shape = (e->u.tex.h != 0) && (e->u.tex.w == d->w) &&
-                    (e->u.tex.h_ == d->h) && (e->u.tex.fmt == fmt);
+                    (e->u.tex.h_ == d->h) && (e->u.tex.fmt == s.fmt);
   if (same_shape && !sampler_changed && !target_changed && !storage_changed &&
       has_data && new_bytes > 0) {
-    g_backend->update_image(e->u.tex.h, d->pixels, new_bytes);
+    g_backend->update_image(e->u.tex.h, pixels, new_bytes);
   } else {
     if (e->u.tex.h != 0)
       g_backend->destroy_image(e->u.tex.h);
     ImageDesc id = {
-        .fmt = fmt,
+        .fmt = s.fmt,
         .w = d->w,
         .h = d->h,
-        .data = has_data ? d->pixels : NULL,
+        .data = has_data ? pixels : NULL,
         .data_bytes = new_bytes,
-        .filter = filter,
-        .wrap = wrap,
+        .filter = s.filter,
+        .wrap = s.wrap,
         .render_target = d->target,
         .storage = d->storage,
     };
     e->u.tex.h = g_backend->make_image(&id);
     e->u.tex.w = d->w;
     e->u.tex.h_ = d->h;
-    e->u.tex.fmt = fmt;
+    e->u.tex.fmt = s.fmt;
   }
-  e->u.tex.filter = filter;
-  e->u.tex.wrap = wrap;
+  free(clamped);
+  e->u.tex.filter = s.filter;
+  e->u.tex.wrap = s.wrap;
   e->u.tex.is_target = d->target;
   e->u.tex.storage = d->storage;
   e->version = ver;
@@ -411,22 +546,27 @@ static void texture_desc_init(TextureDesc *d, int32_t w, int32_t h, int32_t fmt,
   }
 }
 
+static void digest_use_texture(App *app, LubStr key, int32_t w, int32_t h,
+                               int32_t fmt, int32_t count,
+                               const int32_t *version) {
+  if (!app->digest.enabled)
+    return;
+  digest_tag(app, "use_texture");
+  digest_str(app, key);
+  digest_i32(app, w);
+  digest_i32(app, h);
+  digest_i32(app, fmt);
+  digest_i32(app, count);
+  digest_i32(app, version ? *version : 0);
+}
+
 LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
                                     int32_t h, int32_t fmt, const uint8_t *px,
                                     int32_t px_len, const int32_t *version,
                                     const LubTextureOpts *opts,
                                     LubHandle *out) {
-  if (lub_api_app(ctx)->digest.enabled) {
-    App *app = lub_api_app(ctx);
-    digest_tag(app, "use_texture");
-    digest_str(app, key);
-    digest_i32(app, w);
-    digest_i32(app, h);
-    digest_i32(app, fmt);
-    digest_i32(app, px_len);
-    digest_i32(app, version ? *version : 0);
-  }
   App *app = lub_api_app(ctx);
+  digest_use_texture(app, key, w, h, fmt, px_len, version);
   TextureDesc d;
   texture_desc_init(&d, w, h, fmt, opts);
   d.pixels = px;
@@ -434,35 +574,29 @@ LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key, int32_t w,
   return use_texture_impl(app, key, &d, version, out);
 }
 
-// px は byte 値 (0..255) の列。
+// px は byte 値 (0..255) の列。px が NULL で px_count > 0 は Lua binding が
+// px を読む前に試す問い合わせ: key がその version を同じ形で持っていれば px を
+// 渡したときと同じ結果、無ければ何もせず NOT_FOUND。px が NULL で px_count が
+// 0 は画素を持たない texture (target / storage 用)。
 LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
                               int32_t fmt, const int32_t *px, int32_t px_count,
                               const int32_t *version,
                               const LubTextureOpts *opts, LubHandle *out) {
   App *app = lub_api_app(ctx);
-  if (app->digest.enabled) {
-    digest_tag(app, "use_texture");
-    digest_str(app, key);
-    digest_i32(app, w);
-    digest_i32(app, h);
-    digest_i32(app, fmt);
-    digest_i32(app, px_count);
-    digest_i32(app, version ? *version : 0);
-  }
-  uint8_t *bytes = NULL;
-  if (px) {
-    bytes = (uint8_t *)malloc((size_t)(px_count > 0 ? px_count : 1));
-    if (!bytes)
-      return lub_api_fail(app, "use_texture: out of memory");
-    for (int32_t i = 0; i < px_count; ++i) {
-      int32_t v = px[i];
-      bytes[i] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
-    }
-  }
-  LubStatus st = lub_gfx_use_texture_bytes(ctx, key, w, h, fmt, bytes, px_count,
-                                           version, opts, out);
-  free(bytes);
-  return st;
+  TextureDesc d;
+  texture_desc_init(&d, w, h, fmt, opts);
+  d.ints = px;
+  d.pixels_len = px ? px_count : 0;
+  ResEntry *hit = NULL;
+  if (!px && px_count > 0 && !(hit = texture_cached(app, key, &d, version)))
+    return LUB_NOT_FOUND;
+  // 整数列の経路は bytes の経路を通していた頃と同じく 2 回記録する (digest の
+  // 形を変えない)
+  digest_use_texture(app, key, w, h, fmt, px_count, version);
+  digest_use_texture(app, key, w, h, fmt, px_count, version);
+  if (hit)
+    return reuse_entry(app, hit, out);
+  return use_texture_impl(app, key, &d, version, out);
 }
 
 // vs/fs (graphics) か cs (compute) の compile と入れ替え。失敗時、既存の
@@ -808,9 +942,16 @@ static LubStatus split_bindings(App *app, const char *fn,
       continue;
     }
     ResEntry *e = res_table_get_by_handle(&app->res, b->handle);
-    if (!e)
-      return lub_api_fail(app, "%s: binding '%.*s' is stale or invalid", fn,
-                          b->name.len, b->name.ptr ? b->name.ptr : "");
+    if (!e) {
+      if (handle_swept(app, b->handle))
+        return lub_api_fail(app, "%s: binding '%.*s' " SWEPT_HINT, fn,
+                            b->name.len, b->name.ptr ? b->name.ptr : "",
+                            app->resource_sweep_after_frames);
+      return lub_api_fail(app, "%s: binding '%.*s' is invalid", fn, b->name.len,
+                          b->name.ptr ? b->name.ptr : "");
+    }
+    // draw / dispatch に束縛した resource は使われている (sweep しない)
+    res_table_touch(e, (int64_t)app->frame_index);
     if (e->kind == RES_BUFFER) {
       if (out->n_buffers >= 16)
         return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
@@ -924,8 +1065,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
-  int instance_count =
-      d->has_instance_count && d->instance_count > 0 ? d->instance_count : 1;
+  int instance_count = d->has_instance_count ? d->instance_count : 1;
   int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
   int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
@@ -979,6 +1119,11 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
     if (is_depth_format(te->u.tex.fmt))
       depth_tex_mask |= (uint8_t)(1u << ti);
   }
+
+  // instance_count を 0 以下で渡した draw は描かない (検査と digest、使った
+  // resource の記録は draw と同じ)
+  if (instance_count <= 0)
+    return LUB_OK;
 
   BackendPipeline pip = pipeline_cache_get(
       &app->pip_cache, sh->u.sh.h, &sh->u.sh.refl, (SglBlend)blend, depth_test,
@@ -1269,7 +1414,11 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   q->count++;
   ResEntry *e = res_table_get_by_handle(&app->res, tex);
   if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
-    it->error = SDL_strdup("read_texture: texture handle is stale or invalid");
+    if (handle_swept(app, tex))
+      SDL_asprintf(&it->error, "read_texture: texture handle %d " SWEPT_HINT,
+                   (int)tex, app->resource_sweep_after_frames);
+    else
+      it->error = SDL_strdup("read_texture: texture handle is invalid");
     it->state = RB_ERROR;
     return;
   }
@@ -1345,6 +1494,10 @@ LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb, LubHandle tex,
     return LUB_ERROR;
   bool has_request = id != NULL;
   int32_t token = id ? *id : 0;
+  // 読み戻しを求めた texture は使われている (queue が一杯で落としても)
+  ResEntry *te = has_request ? res_table_get_by_handle(&app->res, tex) : NULL;
+  if (te)
+    res_table_touch(te, (int64_t)app->frame_index);
   *status = LUB_GFX_READBACK_STATUS_PROCESSING;
   memset(bytes, 0, sizeof(*bytes));
   *width = *height = *format = *stride = 0;

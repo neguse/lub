@@ -3,6 +3,7 @@
 #include "api_internal.h"
 #include "app.h"
 #include "lua_api.h"
+#include "lub/lub_host.h"
 #include <SDL3/SDL.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -551,6 +552,15 @@ static bool array_arg_present(lua_State *L, int idx, bool required,
   return true;
 }
 
+bool lgen_array_len_arg(lua_State *L, int idx, int32_t *count, bool required) {
+  *count = 0;
+  if (!array_arg_present(L, idx, required, "number array"))
+    return false;
+  bool is_view;
+  *count = array_len(L, lua_absindex(L, idx), &is_view);
+  return true;
+}
+
 const float *lgen_floats_arg(lua_State *L, int idx, int32_t *count,
                              bool required) {
   *count = 0;
@@ -764,7 +774,8 @@ void lgen_push_str_table(lua_State *L, const LubStr *data, int32_t count) {
 // -------------------------------------------------------------- handles
 // sentinel table: { __lub_kind = kind, handle = h, key = ..., ... }。
 // gfx の resource (texture / shader / buffer) は key と version も持ち、
-// handle が stale なら key から引き直す。
+// handle が stale (使われずに sweep された) なら key から引き直す。key も
+// 宣言されていなければ error (黙って「無し」にしない)。
 
 static bool is_sentinel(lua_State *L, int idx, const char *kind) {
   if (lua_type(L, idx) != LUA_TTABLE)
@@ -785,26 +796,30 @@ static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
   lua_getfield(L, idx, "handle");
   LubHandle h = lua_isinteger(L, -1) ? (LubHandle)lua_tointeger(L, -1) : 0;
   lua_pop(L, 1);
-  if (is_gfx_kind(kind)) {
-    // main_tex は特別な handle。stale なら key から引き直す
-    LubStr key = {NULL, 0};
-    int32_t ver = 0;
-    if (h != 0 && h != -1 &&
-        !lub_gfx_resource_info(lgen_ctx(), h, &key, &ver)) {
-      lua_getfield(L, idx, "key");
-      size_t n = 0;
-      const char *s = lua_tolstring(L, -1, &n);
-      LubStr k = {s, (int32_t)n};
-      if (!s)
-        h = 0;
-      else if (strcmp(kind, "texture") == 0)
-        h = lub_gfx_lookup_texture(lgen_ctx(), k);
-      else if (strcmp(kind, "shader") == 0)
-        h = lub_gfx_lookup_shader(lgen_ctx(), k);
-      else
-        h = lub_gfx_lookup_buffer(lgen_ctx(), k);
+  // main_tex は特別な handle。key を持たない参照は stale のまま C に渡し、
+  // C が error にする
+  if (is_gfx_kind(kind) && h != 0 && h != -1 &&
+      !lub_gfx_resource_info(lgen_ctx(), h, NULL, NULL)) {
+    lua_getfield(L, idx, "key");
+    size_t n = 0;
+    const char *s = lua_tolstring(L, -1, &n);
+    LubStr k = {s, (int32_t)n};
+    LubHandle found = 0;
+    if (!s)
+      found = h;
+    else if (strcmp(kind, "texture") == 0)
+      found = lub_gfx_lookup_texture(lgen_ctx(), k);
+    else if (strcmp(kind, "shader") == 0)
+      found = lub_gfx_lookup_shader(lgen_ctx(), k);
+    else
+      found = lub_gfx_lookup_buffer(lgen_ctx(), k);
+    if (found == 0) {
+      lub_host_stale_ref(lgen_ctx(), k);
       lua_pop(L, 1);
+      lgen_raise(L);
     }
+    lua_pop(L, 1);
+    h = found;
   }
   return h;
 }

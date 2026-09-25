@@ -316,7 +316,9 @@ typedef struct LubDrawOpts {
   bool has_depth_write;
   bool depth_write;
   bool has_instance_count;
-  int32_t instance_count; // 0 以下を渡すと draw 自体がスキップされる。
+  int32_t
+      instance_count; // instance の数。省略時 1。0 以下を渡すと描かない (draw
+                      // としての検査と、使った resource の記録はする)。
 } LubDrawOpts;
 
 // Gfx.dispatch のオプション。
@@ -348,8 +350,19 @@ typedef struct LubConfigOpts {
   int32_t height; // ウィンドウ高さ (px)。`width` とセットで指定する。
   bool has_resource_sweep_after_frames;
   int32_t
-      resource_sweep_after_frames; // `use*`
-                                   // されなくなったリソースを何フレーム後に破棄するか。
+      resource_sweep_after_frames; // 使われなくなった resource
+                                   // を何フレーム後に破棄するか。使うとは use*
+                                   // での宣言、draw / dispatch の bindings と
+                                   // shader、pass の target、id 付きの
+                                   // read_texture (読み戻しを積む呼び出し)、snd
+                                   // の宣言と再生、readback queue の poll。既定
+                                   // 300 (60 Hz で約 5 秒)、0
+                                   // で破棄しない。OnFrame が error で抜けた
+                                   // frame の終わりには破棄しない (使われない
+                                   // frame 数は error の間も進むので、長い
+                                   // error のあとは直った frame
+                                   // で使わなかったものがその frame
+                                   // の終わりに破棄される)。
   bool has_readback_depth;
   int32_t readback_depth; // readback リングの深さ (1..)。
 } LubConfigOpts;
@@ -2421,34 +2434,52 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
                                              LubHandle *out);
 
 // INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の
-// StructuredBuffer が読む。
+// StructuredBuffer が読む。version は key の内容に対する同一性の主張で、key
+// がすでに同じ version と type を持っていれば data を読まずに今の buffer を
+// 返し、違えば data から作り直す。省略 (null) は「内容が変わった」宣言
+// で、runtime が新しい version を発行して必ず upload する。戻り値の Version
+// を次の呼び出しに渡すと「変わっていない」の再主張になる。data に null を渡
+// すと再主張だけをする: key がその version を持っていなければ何も作らずに
+// null (Lua は nil, "not found") を返す。
+// data == NULL かつ data_count > 0 は data を読む前の問い合わせ: key がその
+// version を持っていれば data を渡したときと同じ結果、持っていなければ何も変
+// えずに LUB_NOT_FOUND。
 LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
 
 // 整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version
-// の規約は UseBuffer と同じ。
+// と data = null の規約は UseBuffer と同じ。
+// data == NULL かつ data_count > 0 は data を読む前の問い合わせ: key がその
+// version を持っていれば data を渡したときと同じ結果、持っていなければ何も変
+// えずに LUB_NOT_FOUND。
 LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,
                                           int32_t type, const int32_t *data,
                                           int32_t data_count,
                                           const int32_t *version,
                                           LubHandle *out);
 
-// STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は同じ use_buffer。
+// STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
+// use_buffer_empty。version の規約は UseBuffer と同じ。
 LUB_API LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key,
                                            int32_t type, int32_t count,
                                            const int32_t *version,
                                            LubHandle *out);
 
-// px は byte 値 (0..255) の列、null で target / storage 用の空 texture。
+// px は byte 値 (0..255) の列、null で target / storage 用の空
+// texture。version の規約は UseBuffer と同じで、key がすでに同じ version を
+// 持ち、大きさ・形式・opts も同じなら px は読まない。
+// px == NULL かつ px_count > 0 は px を読む前の問い合わせ: key がその version
+// を持っていれば px を渡したときと同じ結果、持っていなければ何も変えずに
+// LUB_NOT_FOUND。
 LUB_API LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w,
                                       int32_t h, int32_t fmt, const int32_t *px,
                                       int32_t px_count, const int32_t *version,
                                       const LubTextureOpts *opts,
                                       LubHandle *out);
 
-// px が bytes (Png.Load の結果等) のときの UseTexture。 Lua 面は同じ
-// use_texture。
+// px が bytes (Png.Load の結果等) のときの UseTexture。Lua 面は
+// use_texture_bytes。
 LUB_API LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key,
                                             int32_t w, int32_t h, int32_t fmt,
                                             const uint8_t *px, int32_t px_len,
@@ -2456,11 +2487,14 @@ LUB_API LubStatus lub_gfx_use_texture_bytes(LubContext *ctx, LubStr key,
                                             const LubTextureOpts *opts,
                                             LubHandle *out);
 
-// key から handle を引く (無ければ null)。stale な参照の再解決用。
+// key が今宣言されている texture の handle (無ければ null)。runtime は使われ
+// ずに破棄された参照を、使うときにこれで key から引き直す。
 LUB_API LubHandle lub_gfx_lookup_texture(LubContext *ctx, LubStr key);
 
+// LookupTexture の shader 版。
 LUB_API LubHandle lub_gfx_lookup_shader(LubContext *ctx, LubStr key);
 
+// LookupTexture の buffer 版。
 LUB_API LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key);
 
 // handle の key と実効 version。handle が stale なら false。
@@ -2674,18 +2708,23 @@ LUB_API LubStatus lub_host_poll(LubContext *ctx, LubStr *topic,
                                 LubStr *payload);
 
 // ----------------------------------------------------------------- audio
-// 音の core API。snd は key で宣言する resource で、宣言が途切れると sweep
-// される (鳴っている voice は最後まで鳴る)。
+// 音の core API。snd は key で宣言する resource で、宣言も再生 (Play / Voice)
+// も ResourceSweepAfterFrames の間途切れると破棄される (鳴っている voice は
+// 最後まで鳴る)。
 
-// interleaved なサンプル値 (-1..1) から snd を宣言する。version の規約は
-// Gfx.UseBuffer と同じ (同じ version なら data は読まない)。同じ内容は同じ
-// snd に dedupe される。
+// interleaved なサンプル値 (-1..1) から snd を宣言する。version と data =
+// null の規約は Gfx.UseBuffer と同じ (同じ version なら data は読まない。null
+// は再主張だけで、key がその version を持っていなければ null を返す)。同じ内
+// 容は同じ snd に dedupe される。
+// data == NULL かつ data_count > 0 は data を読む前の問い合わせ: key がその
+// version を持っていれば data を渡したときと同じ結果、持っていなければ何も変
+// えずに LUB_NOT_FOUND。
 LUB_API LubStatus lub_audio_snd(LubContext *ctx, LubStr key, const float *data,
                                 int32_t data_count, int32_t channels,
                                 int32_t rate, const int32_t *version,
-                                int32_t *out);
+                                int32_t *out, bool *has);
 
-// f32 PCM の bytes から snd を宣言する。Lua 面は同じ snd。
+// f32 PCM の bytes から snd を宣言する。Lua 面は snd_bytes。
 LUB_API LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key,
                                       const uint8_t *data, int32_t data_len,
                                       int32_t channels, int32_t rate,

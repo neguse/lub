@@ -1050,6 +1050,17 @@ public class Renderer3d
             || flipQuadBuf == null)
             return;
 
+        // 記録した mesh の buffer を frame 1 回ずつ再主張する (しばらく描かれずに
+        // 破棄されていたら作り直す)
+        var ensured = new Dictionary<Mesh3d, bool>();
+        foreach (var d in draws)
+        {
+            if (ensured.ContainsKey(d.Mesh))
+                continue;
+            ensured[d.Mesh] = true;
+            d.Mesh.Ensure();
+        }
+
         var lmvp = LightMvp();
         if (Shadow.Enabled)
             ShadowPass(lmvp, shStatic, shSkinned, shadowMap);

@@ -57,19 +57,20 @@ void lua_api_register(lua_State *L) {
 // Fetches the entry module from the registry, looks up the named field, and
 // pcalls it with the existing top-of-stack args. samples declare callbacks
 // without `self`; C-side does not push module table as first arg.
-// entry callback は snake_case (on_init 等)。
-static void call_module_field(LuaCtx *ctx, const char *name,
+// entry callback は snake_case (on_init 等)。callback が error で抜けたら
+// log して false (無い callback は true)。
+static bool call_module_field(LuaCtx *ctx, const char *name,
                               const char *legacy_name, int nargs) {
   lua_State *L = ctx->L;
   /* stack on entry: [..., arg1, arg2, ...] (nargs items on top) */
   if (ctx->module_ref == LUA_NOREF) {
     lua_pop(L, nargs);
-    return;
+    return true;
   }
   lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->module_ref); /* +1: module */
   if (!lua_istable(L, -1)) {
     lua_pop(L, 1 + nargs);
-    return;
+    return true;
   }
   lua_getfield(L, -1, name); /* +1: fn */
   if (!lua_isfunction(L, -1) && legacy_name) {
@@ -78,7 +79,7 @@ static void call_module_field(LuaCtx *ctx, const char *name,
   }
   if (!lua_isfunction(L, -1)) {
     lua_pop(L, 2 + nargs);
-    return;
+    return true;
   }
   lua_remove(L, -2); /* drop module: stack [..., args, fn] */
   if (nargs > 0)
@@ -86,7 +87,9 @@ static void call_module_field(LuaCtx *ctx, const char *name,
   if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
     SDL_Log("lua error in %s: %s", name, lua_tostring(L, -1));
     lua_pop(L, 1);
+    return false;
   }
+  return true;
 }
 
 bool lua_ctx_init(LuaCtx *ctx, App *app) {
@@ -201,13 +204,18 @@ void lua_ctx_call_init(LuaCtx *ctx) {
     return;
   call_module_field(ctx, "on_init", NULL, 0);
 }
-void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
+bool lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
-    return;
+    return true;
+  // binding が引数を読む途中で error になると (stale な参照など)、その
+  // 呼び出しが arena から取った分は release されない。on_frame の外では
+  // どの binding も動いていないので、ここで arena を空に戻す (error が毎
+  // frame 続いても memory が伸びない)。
+  lgen_release(0);
   // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
-  call_module_field(ctx, "on_frame", NULL, 1);
+  return call_module_field(ctx, "on_frame", NULL, 1);
 }
 void lua_ctx_call_quit(LuaCtx *ctx) {
   if (!ctx->L)

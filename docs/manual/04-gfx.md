@@ -23,7 +23,10 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
   省略する。省略は「内容が変わった」宣言で、runtime が新しい実効 version
   を発行して必ず upload する。毎フレーム use する key で upload を避けたい
   ときは、前回の戻り値 ref の `version` を渡して「変わっていない」を再主張
-  する(`lubx.Atlas` がこの形)。
+  する(`lubx.Atlas` がこの形)。key がすでに同じ version を持っていれば
+  データの配列は読まれないので、大きな配列を渡したままでも再主張は軽い。
+  `UseBuffer` / `UseBufferInts` / `Audio.Snd` はデータに null を渡すと
+  再主張だけをして、key がその version を持っていなければ null を返す。
 - 守るべき不変条件は一つ: 同じ key の異なる内容に同じ version を再利用
   しない — hot reload を跨いでも。これを保証できるなら値の作り方は自由
   (自前 counter でも mtime でも構わない)。ただし素朴な static / instance
@@ -31,8 +34,6 @@ var shader = Gfx.UseShader("cube", vs, fs, vsVersion * 31 + fsVersion);
   との偶然の一致で更新が黙って skip される(「ライフサイクル」章参照)。
   保証を自分で持ちたくなければ省略(変更宣言)に任せる。同じ key で方式
   (定数 / 省略 / hash)を混ぜない。
-- `use*` されなくなったリソースは数フレーム後に自動破棄される
-  (`Config` の `ResourceSweepAfterFrames`)。
 
 このモデルにより、シェーダファイルを保存した瞬間に version が変わって
 リソースが作り直される = アセットの hot reload がコードと同じ仕組みで動く。
@@ -49,6 +50,33 @@ VS→FS の varying には 2 つの規約がある:
   先頭にあると FS 側の varying 位置がずれる。Vulkan / WebGPU では
   `SV_Position` は location 採番の対象外なので、この順序はどの backend
   でも同じ意味になる。
+
+## 使われなくなったリソースの破棄
+
+リソースは「作って解放する」ものではなく、使っている間だけ runtime が
+持ち続ける。しばらく使われなかったリソースは自動で破棄される。
+
+- 使うとは、そのフレームに `use*` で宣言するか、`Draw` / `Dispatch` の
+  bindings と shader、`BeginPass` の `Target` / `Targets` / `DepthTarget` に
+  渡すか、`ReadTexture` で id を付けて読み戻しを求めること。音の snd は
+  `Audio.Snd` での宣言と `Audio.Play` / `Audio.Voice` での再生、readback
+  queue は `ReadTexture` での poll が使うことにあたる。
+- 何フレーム使われなければ破棄するかは `Config` の
+  `ResourceSweepAfterFrames` で決まり、既定は 300(60 Hz で約 5 秒)。
+  0 にすると破棄しない。
+- `OnFrame` が error(例外)で抜けたフレームの終わりには破棄しない。編集中に
+  error が続いても、直したフレームで使うシェーダやバッファはそのまま残る。
+  使われないフレームの数は error の間も進むので、長い error のあとは、
+  直したフレームで使わなかったものがそのフレームの終わりに破棄される。
+- 一度宣言した ref を持ち続けても、毎フレーム描いていればそれで使っている
+  ことになる。しばらく描かないことがある ref(出たり消えたりする物の
+  メッシュ等)は、描くフレームに version で再主張する
+  (`Gfx.UseBuffer(key, type, null, vb.Version)`。データを読まないので軽い)。
+  null が返ったら破棄されているので、内容から作り直す。`lubx.Mesh3d` の
+  `Ensure()` がこの形で、`Renderer3d` は記録したメッシュについて自分で呼ぶ。
+- 破棄されたリソースの ref をそのまま使うと、key を名指した error になる
+  (`'key' was swept (not used for N frames); declare it again with use_*`)。
+  同じ key で宣言し直せば、古い ref も新しいリソースを指す。
 
 ## pass と draw
 
