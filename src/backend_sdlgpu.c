@@ -472,7 +472,7 @@ static bool sg_upload_to_image(SDL_GPUTexture *dst, int w, int h,
 }
 
 static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
-                                    size_t bytes) {
+                                    size_t data_bytes, size_t cap_bytes) {
   if (!g_app || !g_app->gpu_device) {
     SDL_Log("sg_make_buffer: no GPU device");
     return 0;
@@ -480,7 +480,7 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
   SgBuffer *b = (SgBuffer *)calloc(1, sizeof(SgBuffer));
   if (!b)
     return 0;
-  b->bytes = (Uint32)bytes;
+  b->bytes = (Uint32)cap_bytes;
   b->type = type;
   SDL_GPUBufferUsageFlags usage;
   switch (type) {
@@ -502,7 +502,7 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
   }
   b->gpu = SDL_CreateGPUBuffer(g_app->gpu_device, &(SDL_GPUBufferCreateInfo){
                                                       .usage = usage,
-                                                      .size = (Uint32)bytes,
+                                                      .size = b->bytes,
                                                   });
   if (!b->gpu) {
     SDL_Log("SDL_CreateGPUBuffer failed: %s", SDL_GetError());
@@ -510,8 +510,8 @@ static BackendBuffer sg_make_buffer(SglBufferType type, const void *data,
     return 0;
   }
   gpu_stats_create(GPU_STAT_BUFFER, b->bytes);
-  if (data && bytes > 0) {
-    if (!sg_upload_to_buffer(b->gpu, data, bytes, false)) {
+  if (data && data_bytes > 0) {
+    if (!sg_upload_to_buffer(b->gpu, data, data_bytes, false)) {
       SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
       gpu_stats_destroy(GPU_STAT_BUFFER, b->bytes);
       free(b);
@@ -1001,10 +1001,12 @@ static void sg_apply_bindings(const BindingsDesc *b) {
   if (b->ibuf) {
     SgBuffer *ib = (SgBuffer *)b->ibuf;
     if (ib && ib->gpu) {
-      SDL_BindGPUIndexBuffer(
-          g_render_pass,
-          &(SDL_GPUBufferBinding){.buffer = ib->gpu, .offset = 0},
-          SDL_GPU_INDEXELEMENTSIZE_32BIT);
+      SDL_BindGPUIndexBuffer(g_render_pass,
+                             &(SDL_GPUBufferBinding){
+                                 .buffer = ib->gpu,
+                                 .offset = (Uint32)b->ibuf_offset,
+                             },
+                             SDL_GPU_INDEXELEMENTSIZE_32BIT);
       g_last_indexed = true;
     } else {
       g_last_indexed = false;
@@ -1044,7 +1046,9 @@ static void sg_apply_bindings(const BindingsDesc *b) {
     }
   }
   // Graphics-stage read-only storage buffers: SDL_GPU numbers them in their
-  // own slot space per stage (the reflection `slot`).
+  // own slot space per stage (the reflection `slot`). SDL_GPU binds a whole
+  // buffer (no offset / range), so the shader sees the full capacity rather
+  // than the logical size; only offset 0 can be honored.
   for (int i = 0; i < b->storage_buf_count && b->refl; ++i) {
     SgBuffer *sb = (SgBuffer *)b->storage_bufs[i].buf;
     if (!sb || !sb->gpu || !b->storage_bufs[i].name)
@@ -1110,7 +1114,8 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   // Resolve storage buffers into ordered RW / RO arrays per the SDL_GPU
   // layout (set 1 = RW, set 0 = RO). The slot number from reflection is
   // the binding within its set; the current compute binding normally uses
-  // one of each.
+  // one of each. Whole buffers, as in sg_apply_bindings (SDL_GPU has no
+  // storage-buffer range).
   SDL_GPUStorageBufferReadWriteBinding rw[SGL_MAX_STORAGE_BUFS] = {0};
   SDL_GPUBuffer *ro[SGL_MAX_STORAGE_BUFS] = {0};
   int n_rw = 0, n_ro = 0;
@@ -1581,4 +1586,5 @@ const RenderBackend g_backend_sdlgpu = {
     .capture = sg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = sg_swapchain_color_format,
+    .transient_buffer = NULL, // runtime fallback (api_gfx.c)
 };

@@ -148,6 +148,73 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 compute は `UseShaderCompute` + `Dispatch`、GPU からの読み戻しは
 `Readback` を参照。
 
+## フレームごとのデータ — TransientBuffer
+
+draw ごとの位置や色、instance の列のように毎フレーム作り直すデータは
+`Gfx.TransientBuffer` で渡す。key も version も無く、そのフレームの間だけ
+使える `BufferRef` を返す。
+
+```csharp
+// 使い回す List。足りない分だけ伸ばし、中身は添字で書く
+static List<float> insts = new List<float>();
+
+static void DrawEnemies(ShaderRef shader, List<Enemy> enemies)
+{
+    while (insts.Count < enemies.Count * 8) insts.Add(0);
+    int n = 0;
+    foreach (var e in enemies)
+    {
+        int b = n * 8;
+        insts[b + 0] = e.X;
+        insts[b + 1] = e.Y;
+        insts[b + 2] = e.Size;
+        insts[b + 3] = 0;
+        insts[b + 4] = e.R;
+        insts[b + 5] = e.G;
+        insts[b + 6] = e.B;
+        insts[b + 7] = 1;
+        n++;
+    }
+    if (n == 0) return;
+    var buf = Gfx.TransientBuffer(Gfx.BufferType.Storage, insts, n * 8);
+    Gfx.Draw(6, new Dictionary<string, object> { ["insts"] = buf },
+        new DrawOpts { Shader = shader, InstanceCount = n });
+}
+```
+
+- データは呼んだ時点で写され、あとから変わらない。同じ List を書き換えて
+  次の `TransientBuffer` に渡してよく、1 つの pass で draw ごとに作れば、
+  どの draw も自分のデータを読む。
+- 3 番目の引数 `count` は List の先頭から使う要素数(省略時は全部)。
+  List を毎フレーム作らずに使い回し、要素は `insts[i] = v` の添字で書く
+  (`Clear` と `Add` で作り直さない)と、データのための確保は起きない。
+- `UseBuffer` / `UseBufferInts` も同じ `count` を取る。こちらの `count` は
+  `version` の後ろの引数なので、version を渡さないときは `null` を置く:
+  `Gfx.UseBuffer("enemies", Gfx.BufferType.Storage, insts, null, n * 8)`。
+  TinyC# は名前付き引数を扱えず、`count: n * 8` と書くと値が `version` に
+  入る(警告 `TCS1001` が出る)。
+- 使えるのは作ったフレームの終わりまで。次のフレームで束縛すると error
+  (`transient buffer from an earlier frame`)。`OnInit` / `OnEvent` では
+  作れない。pass の中でも外でも作れる。
+- 種別は `Index`(bindings の `indices`)と `Storage`(`StructuredBuffer`)。
+  読むだけの buffer で、`Dispatch` では `StructuredBuffer` に渡せる
+  (`RWStructuredBuffer` に渡すと error)。整数列からは
+  `TransientBufferInts`。
+
+`UseBuffer` の key を 1 フレームの中で書き直すと、native の backend では
+それぞれの draw が書き直した時点の内容を読む(記録した順)が、書き直す
+たびに pass が分かれたり GPU の待ちが入ったりする。web(WebGPU)では、
+同じ大きさで書き直すと、そのフレームの draw はどれも最後に書いた内容を
+読む。draw ごとに変わるデータは key で持たずに `TransientBuffer` で渡す。
+
+`UseBuffer` のデータの大きさがフレームごとに変わるときは、runtime が
+余裕を持って確保しておき、確保した大きさに収まる少しの伸び縮みでは
+作り直さずに書き込む。大きく伸びたり縮んだりしたときだけ作り直す。
+そのため SDL3 GPU の backend では、shader から見た `StructuredBuffer` が
+データより長くなることがある(`GetDimensions` が確保した大きさを返し、
+データより後ろの中身は決まらない)。要素の数は `GetDimensions` に頼らず
+uniform で渡す。
+
 ## 定型: ready になるまでスキップ
 
 web ではファイル取得が非同期なので、`Io.Load*` は ready になるまで本体が

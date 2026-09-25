@@ -442,12 +442,12 @@ static void wg_end_frame(App *app) {
 // ---- make / destroy buffer -------------------------------------------------
 
 static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
-                                    size_t bytes) {
+                                    size_t data_bytes, size_t cap_bytes) {
   WgBuffer *wb = (WgBuffer *)calloc(1, sizeof(WgBuffer));
   if (!wb)
     return 0;
   wb->type = type;
-  wb->bytes = (uint64_t)bytes;
+  wb->bytes = (uint64_t)cap_bytes;
 
   WGPUBufferUsage usage = 0;
   if (type == SGL_BUFFER_INDEX)
@@ -459,15 +459,15 @@ static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
 
   WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
   bd.usage = usage;
-  bd.size = bytes > 0 ? bytes : 4;
+  bd.size = cap_bytes > 0 ? cap_bytes : 4;
   wb->buf = wgpuDeviceCreateBuffer(g_dev, &bd);
   if (!wb->buf) {
     free(wb);
     return 0;
   }
   gpu_stats_create(GPU_STAT_BUFFER, wb->bytes);
-  if (data && bytes > 0) {
-    wgpuQueueWriteBuffer(g_queue, wb->buf, 0, data, bytes);
+  if (data && data_bytes > 0) {
+    wgpuQueueWriteBuffer(g_queue, wb->buf, 0, data, data_bytes);
   }
   return (uintptr_t)wb;
 }
@@ -1156,8 +1156,8 @@ static void wg_apply_bindings(const BindingsDesc *b) {
   g_ibuf_bound = false;
   if (b->ibuf) {
     WgBuffer *ib = (WgBuffer *)b->ibuf;
-    wgpuRenderPassEncoderSetIndexBuffer(g_rpass, ib->buf,
-                                        WGPUIndexFormat_Uint32, 0, ib->bytes);
+    wgpuRenderPassEncoderSetIndexBuffer(
+        g_rpass, ib->buf, WGPUIndexFormat_Uint32, b->ibuf_offset, b->ibuf_size);
     g_ibuf_bound = true;
   }
 
@@ -1201,7 +1201,10 @@ static void wg_apply_bindings(const BindingsDesc *b) {
             WGPUBindGroupEntry *e = &entries[count++];
             e->binding = (uint32_t)b->refl->storage_bufs[k].slot;
             e->buffer = wb->buf;
-            e->size = wb->bytes;
+            // the logical size (a keyed buffer can have spare capacity),
+            // rounded up to the 4-byte multiple WebGPU requires
+            e->offset = b->storage_bufs[i].offset;
+            e->size = (b->storage_bufs[i].size + 3) & ~(uint64_t)3;
             break;
           }
         }
@@ -1391,7 +1394,9 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
         int slot = d->refl->storage_bufs[k].slot;
         res_entries[res_count].binding = (uint32_t)slot;
         res_entries[res_count].buffer = wb->buf;
-        res_entries[res_count].size = wb->bytes;
+        res_entries[res_count].offset = d->storage_bufs[i].offset;
+        res_entries[res_count].size =
+            (d->storage_bufs[i].size + 3) & ~(uint64_t)3;
         res_count++;
         break;
       }
@@ -1823,6 +1828,7 @@ const RenderBackend g_backend_webgpu = {
     .capture = wg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = wg_swapchain_color_format,
+    .transient_buffer = NULL, // runtime fallback (api_gfx.c)
 };
 
 #else

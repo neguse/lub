@@ -108,6 +108,24 @@ public sealed class LubLazyDataAttribute : Attribute
 {
 }
 
+/// <summary>
+/// float / int の List の引数 (Param で名前を指す) の先頭から使う要素数。C の
+/// 引数にはならず、List の data_count がこの数になる。0 以上で List の長さ
+/// (null は 0) 以下、それ以外は error。Lua binding は先頭の count 個だけを
+/// 読み、.NET は pin した List の先頭だけを渡す。付けるのは `int?` の引数で、
+/// 省略 (null) は List の全部。
+/// </summary>
+[AttributeUsage(AttributeTargets.Parameter)]
+public sealed class LubCountOfAttribute : Attribute
+{
+    public string Param { get; }
+
+    public LubCountOfAttribute(string param)
+    {
+        Param = param;
+    }
+}
+
 // ---------------------------------------------------------------- handles
 
 /// <summary>use_texture / main_tex の不透明ハンドル。version は参照を
@@ -131,8 +149,9 @@ public class ShaderRef
     public int Version;
 }
 
-/// <summary>use_buffer の不透明ハンドル。version と破棄後の扱いは
-/// TextureRef と同じ。</summary>
+/// <summary>use_buffer / transient_buffer の不透明ハンドル。use_buffer の
+/// 参照の version と破棄後の扱いは TextureRef と同じ。transient_buffer の
+/// 参照は key も version も持たず、作った frame の間だけ使える。</summary>
 [LubHandle]
 public class BufferRef
 {
@@ -328,18 +347,58 @@ public static class Lub
         /// 「内容が変わった」宣言で、runtime が新しい version を発行して必ず
         /// upload する。戻り値の Version を次の呼び出しに渡すと「変わっていない」の
         /// 再主張になる。data に null を渡すと再主張だけをする: key がその version を
-        /// 持っていなければ何も作らずに null (Lua は nil, "not found") を返す。
+        /// 持っていなければ何も作らずに null (Lua は nil, "not found") を返す。引数の
+        /// count は data の先頭から使う要素数 (省略時は全部)。使い回す List の
+        /// 前の方だけを渡せる。0 は空の data と同じく error。count は version の
+        /// 後ろなので、version を渡さないときは null を置く
+        /// (UseBuffer(key, type, list, null, n))。TinyC# は名前付き引数を
+        /// 扱えないので、count: n と書くと値が version に入る。
+        /// 同じ frame に同じ key を書き直すと、native の backend ではそれぞれの
+        /// draw が記録した順にそのときの内容を読むが、pass の分割や GPU の待ちが
+        /// 入る。WebGPU では同じ大きさの書き直しは、その frame のどの draw も
+        /// 最後の内容を読む。draw ごとに変わるデータは TransientBuffer で渡す。
+        /// 大きさが変わっても確保量に収まる間は作り直さずに書き込む (SDL3 GPU の
+        /// backend では shader から見た StructuredBuffer が data より長くなる
+        /// ことがあるので、要素の数は uniform で渡す)。
         /// </summary>
         public static BufferRef? UseBuffer(string key, BufferType type,
-            [LubLazyData] List<float>? data, int? version = null)
+            [LubLazyData] List<float>? data, int? version = null,
+            [LubCountOf("data")] int? count = null)
         {
             return null;
         }
 
         /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の
-        /// STORAGE)。version と data = null の規約は UseBuffer と同じ。</summary>
+        /// STORAGE)。version、data = null と count の規約は UseBuffer と同じ。</summary>
         public static BufferRef? UseBufferInts(string key, BufferType type,
-            [LubLazyData] List<int>? data, int? version = null)
+            [LubLazyData] List<int>? data, int? version = null,
+            [LubCountOf("data")] int? count = null)
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// この frame の間だけ使う INDEX / STORAGE バッファ。data (count を
+        /// 渡せば先頭の count 個) は呼んだ時点で写され、以後は変わらないので、
+        /// これを束縛した draw はどの backend でも必ずその内容を読む。draw ごとの
+        /// データや instance の列のように、1 フレームに何度も作ってよい (key も
+        /// version も要らない)。作った frame の終わりまで有効で、後の frame で
+        /// 束縛すると error ("transient buffer from an earlier frame")。OnInit /
+        /// OnEvent では作れない。pass の中でも外でも作れる。読むだけの buffer
+        /// で、draw の StructuredBuffer か `indices`、dispatch の StructuredBuffer
+        /// (RWStructuredBuffer は error) に束縛できる。INDEX の float は u32 に
+        /// 写す。
+        /// </summary>
+        public static BufferRef? TransientBuffer(BufferType type, List<float> data,
+            [LubCountOf("data")] int? count = null)
+        {
+            return null;
+        }
+
+        /// <summary>整数列から作る TransientBuffer (INDEX はそのまま u32 で、
+        /// 整数の STORAGE は float に写す)。規約は TransientBuffer と同じ。</summary>
+        public static BufferRef? TransientBufferInts(BufferType type, List<int> data,
+            [LubCountOf("data")] int? count = null)
         {
             return null;
         }

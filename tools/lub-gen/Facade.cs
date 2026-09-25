@@ -307,16 +307,23 @@ public static class Facade
             }
             b.Append($"{i2}var a = LubRuntime.Arena.Begin();\n{i2}try\n{i2}{{\n");
             var i3 = i2 + "    ";
-            // float / int の List は copy せず、中身を pin してそのまま渡す
+            // float / int の List は copy せず、中身を pin してそのまま渡す。
+            // [LubCountOf] の count があれば先頭の count 個に切る
             var pinned = f.Params.Where(p => !p.IsOut && IsPinnedList(p.Type)).ToList();
             foreach (var p in pinned)
             {
-                b.Append($"{i3}fixed ({NElem(p.Type.Elem!)}* _{p.LuaName}_p = CollectionsMarshal.AsSpan({p.Name}))\n{i3}{{\n");
+                var span = $"CollectionsMarshal.AsSpan({p.Name})";
+                if (CountParam(f, p) is { } c)
+                {
+                    b.Append($"{i3}var _{p.LuaName}_n = LubRuntime.CountOf({c.Name}, {p.Name}?.Count ?? 0, \"{ns.Name}.{f.Name}\");\n");
+                    span += $"[.._{p.LuaName}_n]";
+                }
+                b.Append($"{i3}fixed ({NElem(p.Type.Elem!)}* _{p.LuaName}_p = {span})\n{i3}{{\n");
                 i3 += "    ";
             }
             var args = new List<string> { "LubRuntime.Ctx" };
             var post = new StringBuilder(); // 呼び出し後 (out の変換)
-            foreach (var p in f.Params.Where(p => !p.IsOut))
+            foreach (var p in f.Params.Where(p => !p.IsOut && p.CountOf == null))
                 args.AddRange(InArg(f, p, b, i3));
             foreach (var p in f.Params.Where(p => p.IsOut))
             {
@@ -449,7 +456,7 @@ public static class Facade
                     // [LubLazyData] の NULL は「data を渡さない」なので、null でない
                     // list は空でも NULL でない pointer にする (Lua の空 table と同じ)
                     yield return p.LazyData ? $"LubRuntime.NonNull({v}_p, {n} != null)" : $"{v}_p";
-                    yield return $"{n}?.Count ?? 0";
+                    yield return CountParam(f, p) != null ? $"{v}_n" : $"{n}?.Count ?? 0";
                     break;
                 case LubTypeKind.List:
                     {
@@ -475,6 +482,10 @@ public static class Facade
         }
 
         private static string TrampName(ApiFunction f, ApiParam p) => $"fn_{f.Name}_{p.Name}";
+
+        // List の引数 p の要素数を指す [LubCountOf] の引数 (無ければ null)。
+        private static ApiParam? CountParam(ApiFunction f, ApiParam p) =>
+            f.Params.FirstOrDefault(q => q.CountOf == p.Name);
 
         // 引数の List<float> / List<int> は C の float* / int32_t* と同じ並びなので
         // pin して渡せる (enum や record の List は写す)。
@@ -750,7 +761,7 @@ public static class Facade
         private void EmitExtern(ApiNamespace ns, ApiFunction f)
         {
             var args = new List<string> { "void* ctx" };
-            foreach (var p in f.Params.Where(p => !p.IsOut))
+            foreach (var p in f.Params.Where(p => !p.IsOut && p.CountOf == null))
                 args.AddRange(NInParam(f, p));
             foreach (var p in f.Params.Where(p => p.IsOut))
             {

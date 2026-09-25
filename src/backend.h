@@ -82,13 +82,40 @@ typedef struct PassBeginDesc {
   SglLoadAction load;
 } PassBeginDesc;
 
+// A byte range of a buffer: a whole persistent buffer (offset 0, size = its
+// logical size) or a per-frame transient allocation.
+typedef struct BufferSlice {
+  BackendBuffer buf;
+  size_t offset;
+  size_t size;
+} BufferSlice;
+
+// Buffer bindings carry a byte range (offset, size). Persistent buffers pass
+// offset 0 and their logical size, which can be smaller than the buffer's
+// capacity (make_buffer cap_bytes): the shader must see exactly `size` bytes
+// (StructuredBuffer length, WGSL arrayLength and bounds clamping). Exception:
+// sdlgpu has no range binding and binds the whole buffer, so there the shader
+// sees the capacity (bytes past `size` are undefined). Transient slices
+// (transient_buffer) pass the offset the backend returned.
+//
+// `slot` is the index of the entry in the reflection arrays (refl->texs,
+// refl->storage_bufs, refl->storage_texs), resolved by the runtime from the
+// name. It is not the binding slot (that is refl->storage_bufs[slot].slot).
+// It is the FIRST entry with that name: the per-stage reflections are merged
+// without de-duplication, so a resource read by both VS and FS has one entry
+// per stage (each with its own binding slot). A backend that binds by `slot`
+// must also bind the later entries with the same name (scan from `slot` to
+// the end of the array), as the name-matching loops do today.
 typedef struct BindingsDesc {
   const ShaderReflection
       *refl; // for resolving texture name -> slot. NULL = skip texture binding.
   BackendBuffer ibuf; // 0 = none (non-indexed); non-0 = u32 index buffer
+  size_t ibuf_offset; // byte offset of the first index (multiple of 4)
+  size_t ibuf_size;   // bytes readable from ibuf_offset
   int texture_count;
   struct {
     const char *name; // matches reflection name
+    int slot;         // index into refl->texs
     BackendImage image;
   } textures[8];
   // Graphics-stage read-only storage buffers (StructuredBuffer<T> in a
@@ -96,7 +123,10 @@ typedef struct BindingsDesc {
   int storage_buf_count;
   struct {
     const char *name; // matches ShaderStorageBuf.name
+    int slot;         // index into refl->storage_bufs
     BackendBuffer buf;
+    size_t offset;
+    size_t size;
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
 } BindingsDesc;
 
@@ -121,19 +151,26 @@ typedef struct ComputeDispatchDesc {
   BackendPipeline pipeline;
   const ShaderReflection *refl;
   int groups_x, groups_y, groups_z;
+  // Byte ranges and `slot` as in BindingsDesc. A transient slice is only
+  // ever bound to a read-only StructuredBuffer (the runtime rejects RW use).
   int n_storage_bufs;
   struct {
     const char *name; // matches ShaderStorageBuf.name
+    int slot;         // index into refl->storage_bufs
     BackendBuffer buf;
+    size_t offset;
+    size_t size;
   } storage_bufs[SGL_MAX_STORAGE_BUFS];
   int texture_count;
   struct {
     const char *name; // matches ShaderTexture.name
+    int slot;         // index into refl->texs
     BackendImage image;
   } textures[SGL_MAX_TEXTURES];
   int n_storage_textures;
   struct {
     const char *name; // matches ShaderStorageTexture.name
+    int slot;         // index into refl->storage_texs
     BackendImage image;
   } storage_textures[SGL_MAX_STORAGE_TEXTURES];
   int uniform_count;
@@ -154,8 +191,12 @@ typedef struct RenderBackend {
   void (*begin_frame)(struct App *app, int *out_w, int *out_h);
   void (*end_frame)(struct App *app);
 
+  // Allocates cap_bytes and uploads the first data_bytes of `data` (data may
+  // be NULL: contents undefined). cap_bytes >= data_bytes; the runtime keeps
+  // spare capacity so a keyed buffer whose size changes a little is updated
+  // in place (update_buffer writes a prefix) instead of recreated.
   BackendBuffer (*make_buffer)(SglBufferType type, const void *data,
-                               size_t bytes);
+                               size_t data_bytes, size_t cap_bytes);
   BackendImage (*make_image)(const ImageDesc *desc);
   BackendShader (*make_shader)(const ShaderDesc *desc);
   BackendPipeline (*make_pipeline)(const PipelineDesc *desc);
@@ -197,6 +238,28 @@ typedef struct RenderBackend {
   // Pipeline cache uses this as part of its key — both backends must
   // return the swapchain's color format for the current frame.
   SglPixelFormat (*swapchain_color_format)(struct App *app);
+
+  // Per-frame, write-once buffer data (Gfx.TransientBuffer, the ImGui
+  // renderer). Copies `bytes` bytes of `data` now and returns a slice that
+  // stays readable, with exactly that content, until the GPU work of the
+  // current frame completes: as a read-only StructuredBuffer (STORAGE) or as
+  // a u32 index buffer (INDEX), by every command of the frame whether it was
+  // recorded before or after this call. Only called between begin_frame and
+  // end_frame, inside or outside a pass; it must not split the pass or submit
+  // work. Offset alignment is the backend's business (the slice is bound
+  // through BindingsDesc / ComputeDispatchDesc offset and size). Returning
+  // false fails the API call with an error.
+  //
+  // NULL = the runtime's portable fallback: one make_buffer per call,
+  // destroyed after end_frame (every backend defers the GPU destruction of a
+  // buffer until the frames using it are done). It is correct but costs one
+  // GPU allocation per call, held for the frames in flight: on Vulkan one
+  // vkAllocateMemory each (drivers commonly allow only 4096 in total), on
+  // D3D12 one committed resource (64 KB minimum) each. A native
+  // implementation must sub-allocate so that thousands of calls per frame
+  // stay cheap.
+  bool (*transient_buffer)(SglBufferType type, const void *data, size_t bytes,
+                           BufferSlice *out);
 } RenderBackend;
 
 extern const RenderBackend *g_backend;

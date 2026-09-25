@@ -509,6 +509,9 @@ public static class LuaBinding
             // [LubLazyData] の引数 (名前、位置、変換関数): 長さだけ読み、中身は
             // key がその version を持っていなかったときだけ呼び出しの直前に読む
             (string name, int idx, string conv, string req)? lazy = null;
+            // [LubCountOf] で数を指される List (名前、位置、変換関数): 長さだけ
+            // 読み、count を当てた後で先頭の count 個を呼び出しの直前に読む
+            var counted = new List<(string name, int idx, string conv)>();
             var idx = 0;
             foreach (var p in f.Params.Where(p => !p.IsOut))
             {
@@ -539,6 +542,13 @@ public static class LuaBinding
                             }
                             else
                                 sb.Append($"  {ct} {n} = {read};\n");
+                            if (p.CountOf != null)
+                            {
+                                // C の引数ではなく、List の先頭から使う要素数
+                                var target = f.Params.First(q => q.Name == p.CountOf).LuaName;
+                                sb.Append($"  if ({n})\n    {target}_count = lgen_count_arg(L, {idx}, *{n}, {target}_count);\n");
+                                break;
+                            }
                             call.Add(n);
                             break;
                         }
@@ -575,12 +585,18 @@ public static class LuaBinding
                             var elem = tr.Elem!;
                             var req = opt ? "false" : "true";
                             sb.Append($"  int32_t {n}_count = 0;\n");
-                            if (p.LazyData)
+                            var hasCount = f.Params.Any(q => q.CountOf == p.Name);
+                            if (p.LazyData || hasCount)
                             {
                                 var ints = elem.Kind == LubTypeKind.Int;
                                 sb.Append($"  const {(ints ? "int32_t" : "float")} *{n} = NULL;\n");
                                 sb.Append($"  bool {n}_given = lgen_array_len_arg(L, {idx}, &{n}_count, {req});\n");
-                                lazy = (n, idx, ints ? "lgen_ints_arg" : "lgen_floats_arg", req);
+                                // count があれば先頭の {n}_count 個だけを読む
+                                var conv = hasCount
+                                    ? (ints ? "lgen_ints_n" : "lgen_floats_n")
+                                    : (ints ? "lgen_ints_arg" : "lgen_floats_arg");
+                                if (p.LazyData) lazy = (n, idx, conv, req);
+                                else counted.Add((n, idx, conv));
                                 call.Add(n);
                                 call.Add($"{n}_count");
                                 break;
@@ -650,6 +666,8 @@ public static class LuaBinding
                 }
             }
             var callExpr = $"{FnName(ns, f.LuaName)}({string.Join(", ", call)})";
+            foreach (var (cn, cidx, conv) in counted)
+                sb.Append($"  if ({cn}_given)\n    {cn} = {conv}(L, {cidx}, {cn}_count);\n");
             if (direct)
             {
                 if (r.Kind == LubTypeKind.Void) sb.Append($"  {callExpr};\n");
@@ -669,10 +687,13 @@ public static class LuaBinding
                 {
                     // version があれば、まだ NULL の data で問い合わせる (hit なら
                     // data を読まずに済む)。外れたら data を読んでもう一度呼ぶ
+                    var read = lz.conv.EndsWith("_n", StringComparison.Ordinal)
+                        ? $"{lz.conv}(L, {lz.idx}, {lz.name}_count)"
+                        : $"{lz.conv}(L, {lz.idx}, &{lz.name}_count, {lz.req})";
                     sb.Append("  LubStatus st = LUB_NOT_FOUND;\n");
                     sb.Append($"  if (version && {lz.name}_count > 0)\n    st = {callExpr};\n");
                     sb.Append($"  if (st == LUB_NOT_FOUND) {{\n    if ({lz.name}_given)\n");
-                    sb.Append($"      {lz.name} = {lz.conv}(L, {lz.idx}, &{lz.name}_count, {lz.req});\n");
+                    sb.Append($"      {lz.name} = {read};\n");
                     sb.Append($"    st = {callExpr};\n  }}\n");
                 }
                 else

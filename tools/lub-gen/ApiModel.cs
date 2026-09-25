@@ -37,9 +37,10 @@ public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
 }
 
 /// <summary>LazyData は [LubLazyData] の List (key がその version を持っていれば
-/// 読まない data)。</summary>
+/// 読まない data)。CountOf は [LubCountOf] の対象の List の引数名 (C の引数に
+/// ならず、その List の先頭から使う要素数)。</summary>
 public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
-    bool IsOut, int? ArrayLen, bool LazyData = false);
+    bool IsOut, int? ArrayLen, bool LazyData = false, string? CountOf = null);
 
 public sealed record ApiFunction(string Name, string LuaName, TypeRef Return,
     IReadOnlyList<ApiParam> Params, string Doc, bool NoFail, bool Maybe, bool NoC);
@@ -174,8 +175,10 @@ public static class ApiModelLoader
     {
         var ps = m.Parameters.Select(p => new ApiParam(p.Name, LuaNaming.Member(p.Name),
             Resolve(p.Type, p.NullableAnnotation), p.HasExplicitDefaultValue,
-            p.RefKind == RefKind.Out, ArrayLen(p), HasAttr(p, "LubLazyDataAttribute"))).ToList();
+            p.RefKind == RefKind.Out, ArrayLen(p), HasAttr(p, "LubLazyDataAttribute"),
+            CountOf(p))).ToList();
         foreach (var p in ps.Where(p => p.LazyData)) CheckLazyData(m, ps, p);
+        foreach (var p in ps.Where(p => p.CountOf != null)) CheckCountOf(m, ps, p);
         return new ApiFunction(m.Name, LuaNaming.Member(m.Name),
             Resolve(m.ReturnType, m.ReturnNullableAnnotation), ps, Doc(m),
             HasAttr(m, "LubNoFailAttribute"), HasAttr(m, "LubMaybeAttribute"),
@@ -196,6 +199,28 @@ public static class ApiModelLoader
             throw new InvalidOperationException($"{where}: [LubLazyData] needs an 'int? version' parameter");
         if (ps.Count(q => q.LazyData) > 1 || HasAttr(m, "LubNoFailAttribute") || HasAttr(m, "LubNoCAttribute"))
             throw new InvalidOperationException($"{where}: [LubLazyData] needs a status-returning C function with one lazy parameter");
+    }
+
+    // [LubCountOf("x")] は省略可能な int? に付け、x はそれより前の float / int の
+    // List の引数 (1 つの List に count は 1 つ)。
+    private static void CheckCountOf(IMethodSymbol m, List<ApiParam> ps, ApiParam p)
+    {
+        var where = $"{m.ContainingType.Name}.{m.Name}({p.Name})";
+        if (p.IsOut || p.Type.Kind != LubTypeKind.Int || !p.Type.Nullable || !p.Optional)
+            throw new InvalidOperationException($"{where}: [LubCountOf] needs an optional 'int?' parameter");
+        var target = ps.FindIndex(q => q.Name == p.CountOf);
+        if (target < 0 || target > ps.IndexOf(p) || ps[target].IsOut
+            || ps[target].Type.Kind != LubTypeKind.List
+            || ps[target].Type.Elem!.Kind is not (LubTypeKind.Double or LubTypeKind.Int))
+            throw new InvalidOperationException($"{where}: [LubCountOf(\"{p.CountOf}\")] needs an earlier List<float> or List<int> parameter of that name");
+        if (ps.Count(q => q.CountOf == p.CountOf) > 1)
+            throw new InvalidOperationException($"{where}: '{p.CountOf}' has more than one [LubCountOf]");
+    }
+
+    private static string? CountOf(IParameterSymbol p)
+    {
+        var a = p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "LubCountOfAttribute");
+        return a == null ? null : (string?)a.ConstructorArguments[0].Value;
     }
 
     private static ApiField LoadField(IFieldSymbol f) =>

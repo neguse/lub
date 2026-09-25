@@ -284,6 +284,10 @@ physics_lua_tests=(
   tests/lua/test_api_surface.lua
   tests/lua/test_rotation_convention.lua
   tests/lua/test_lubx_math_inplace.lua
+  tests/lua/test_transient_buffer.lua
+  tests/lua/test_transient_buffer.lua@vulkan
+  tests/lua/test_buffer_rewrite.lua
+  tests/lua/test_buffer_rewrite.lua@vulkan
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
@@ -293,8 +297,16 @@ for i in "${!physics_lua_tests[@]}"; do
   physics_log="$(mktemp)"
   cleanup_files+=("$physics_log")
   physics_logs+=("$physics_log")
-  LUB_XVFB_SERVERNUM=$((300 + i)) "${timeout_cmd[@]}" scripts/run-headless.sh \
-    "$native_binary" "${physics_lua_tests[$i]}" >"$physics_log" 2>&1 &
+  # 末尾の @vulkan は同じ test を vulkan backend で走らせる
+  physics_entry="${physics_lua_tests[$i]}"
+  physics_env=()
+  if [[ "$physics_entry" == *@vulkan ]]; then
+    physics_env=(LUB_BACKEND=vulkan)
+    physics_entry="${physics_entry%@vulkan}"
+  fi
+  env ${physics_env[@]+"${physics_env[@]}"} LUB_XVFB_SERVERNUM=$((300 + i)) \
+    "${timeout_cmd[@]}" scripts/run-headless.sh \
+    "$native_binary" "$physics_entry" >"$physics_log" 2>&1 &
   physics_pids+=("$!")
 done
 physics_failed=0

@@ -135,11 +135,23 @@ internal static unsafe class LubRuntime
 
     internal static int* NonNull(int* p, bool present) => p != null || !present ? p : (int*)emptyData;
 
-    // key で宣言する resource の handle が stale (sweep 済み) か。main_tex (-1) と
-    // 0 (無し) は stale にならない。
+    // key で宣言する resource の handle が stale (sweep 済み) か。0 (無し)、
+    // main_tex (-1)、transient_buffer (-2 以下) は resource table の外で、stale に
+    // ならない (前の frame の transient は C が error にする)。
     internal static bool IsStale(int handle) =>
-        handle != 0 && handle != -1 && Ctx != null
+        handle > 0 && Ctx != null
         && LubNative.lub_gfx_resource_info(Ctx, handle, null, null) == 0;
+
+    // [LubCountOf] の count: List の先頭から使う要素数 (null は全部)。範囲外は
+    // 例外。文面は頭 (Lua は "argument N:"、ここは関数名) の他は Lua の binding
+    // (lgen_count_arg) と同じ。どちらも C を呼ぶ前に止まるので digest は変わらない。
+    internal static int CountOf(int? count, int length, string fn)
+    {
+        if (count is not int n) return length;
+        if (n < 0 || n > length)
+            throw new LubException($"{fn}: count {n} is out of range (data has {length} elements)");
+        return n;
+    }
 
     // stale な参照の key も宣言されていないときの例外 (Lua と同じ文面)。
     internal static int StaleRef(LubNative.LubStr key)

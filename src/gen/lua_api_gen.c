@@ -3876,6 +3876,14 @@ static int l_gfx_use_buffer(lua_State *L) {
     version_v = (int32_t)luaL_checkinteger(L, 4);
     version = &version_v;
   }
+  int32_t count_v = 0;
+  const int32_t *count = NULL;
+  if (!lua_isnoneornil(L, 5)) {
+    count_v = (int32_t)luaL_checkinteger(L, 5);
+    count = &count_v;
+  }
+  if (count)
+    data_count = lgen_count_arg(L, 5, *count, data_count);
   LubHandle out = 0;
   LubStatus st = LUB_NOT_FOUND;
   if (version && data_count > 0)
@@ -3883,7 +3891,7 @@ static int l_gfx_use_buffer(lua_State *L) {
                             &out);
   if (st == LUB_NOT_FOUND) {
     if (data_given)
-      data = lgen_floats_arg(L, 3, &data_count, false);
+      data = lgen_floats_n(L, 3, data_count);
     st = lub_gfx_use_buffer(lgen_ctx(), key, type, data, data_count, version,
                             &out);
   }
@@ -3916,6 +3924,14 @@ static int l_gfx_use_buffer_ints(lua_State *L) {
     version_v = (int32_t)luaL_checkinteger(L, 4);
     version = &version_v;
   }
+  int32_t count_v = 0;
+  const int32_t *count = NULL;
+  if (!lua_isnoneornil(L, 5)) {
+    count_v = (int32_t)luaL_checkinteger(L, 5);
+    count = &count_v;
+  }
+  if (count)
+    data_count = lgen_count_arg(L, 5, *count, data_count);
   LubHandle out = 0;
   LubStatus st = LUB_NOT_FOUND;
   if (version && data_count > 0)
@@ -3923,7 +3939,7 @@ static int l_gfx_use_buffer_ints(lua_State *L) {
                                  version, &out);
   if (st == LUB_NOT_FOUND) {
     if (data_given)
-      data = lgen_ints_arg(L, 3, &data_count, false);
+      data = lgen_ints_n(L, 3, data_count);
     st = lub_gfx_use_buffer_ints(lgen_ctx(), key, type, data, data_count,
                                  version, &out);
   }
@@ -3939,6 +3955,76 @@ static int l_gfx_use_buffer_ints(lua_State *L) {
     lua_pushnil(L);
   else
     lgen_push_ref_keyed(L, "buffer", out, 0, key);
+  return 1;
+}
+
+static int l_gfx_transient_buffer(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t type = (int32_t)luaL_checkinteger(L, 1);
+  int32_t data_count = 0;
+  const float *data = NULL;
+  bool data_given = lgen_array_len_arg(L, 2, &data_count, true);
+  int32_t count_v = 0;
+  const int32_t *count = NULL;
+  if (!lua_isnoneornil(L, 3)) {
+    count_v = (int32_t)luaL_checkinteger(L, 3);
+    count = &count_v;
+  }
+  if (count)
+    data_count = lgen_count_arg(L, 3, *count, data_count);
+  LubHandle out = 0;
+  if (data_given)
+    data = lgen_floats_n(L, 2, data_count);
+  LubStatus st =
+      lub_gfx_transient_buffer(lgen_ctx(), type, data, data_count, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref(L, "buffer", out);
+  return 1;
+}
+
+static int l_gfx_transient_buffer_ints(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t type = (int32_t)luaL_checkinteger(L, 1);
+  int32_t data_count = 0;
+  const int32_t *data = NULL;
+  bool data_given = lgen_array_len_arg(L, 2, &data_count, true);
+  int32_t count_v = 0;
+  const int32_t *count = NULL;
+  if (!lua_isnoneornil(L, 3)) {
+    count_v = (int32_t)luaL_checkinteger(L, 3);
+    count = &count_v;
+  }
+  if (count)
+    data_count = lgen_count_arg(L, 3, *count, data_count);
+  LubHandle out = 0;
+  if (data_given)
+    data = lgen_ints_n(L, 2, data_count);
+  LubStatus st =
+      lub_gfx_transient_buffer_ints(lgen_ctx(), type, data, data_count, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref(L, "buffer", out);
   return 1;
 }
 
@@ -8723,6 +8809,10 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "use_buffer");
   lua_pushcfunction(L, l_gfx_use_buffer_ints);
   lua_setfield(L, -2, "use_buffer_ints");
+  lua_pushcfunction(L, l_gfx_transient_buffer);
+  lua_setfield(L, -2, "transient_buffer");
+  lua_pushcfunction(L, l_gfx_transient_buffer_ints);
+  lua_setfield(L, -2, "transient_buffer_ints");
   lua_pushcfunction(L, l_gfx_use_buffer_empty);
   lua_setfield(L, -2, "use_buffer_empty");
   lua_pushcfunction(L, l_gfx_use_texture);

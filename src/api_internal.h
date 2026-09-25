@@ -39,6 +39,16 @@ LubStatus api_gfx_stale_ref(App *app, LubStr key);
 // frame の終わりに呼ぶ (app_frame_end)。key で宣言する queue / snd の sweep。
 void api_gfx_frame_end(App *app);
 void api_audio_frame_end(App *app);
+// この frame の transient buffer を手放す (app_frame_end が backend の
+// end_frame の後に呼ぶ)。
+void api_gfx_transients_frame_end(App *app);
+
+// frame 有効の buffer (Gfx.TransientBuffer と ImGui の renderer の共通経路)。
+// data を今写し、frame の GPU の仕事が終わるまで同じ内容で読める範囲を out に
+// 返す。frame の外 (on_init / on_event) や失敗は last_error を書いて false。
+struct BufferSlice;
+bool api_gfx_transient(App *app, SglBufferType type, const void *data,
+                       size_t bytes, struct BufferSlice *out);
 // frame 有効の view の実体を預ける。app_frame_end が free する。
 void app_frame_garbage_push(App *app, void *ptr);
 

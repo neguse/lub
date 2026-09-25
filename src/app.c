@@ -158,6 +158,7 @@ void app_frame_begin(App *app, int *out_w, int *out_h) {
     *out_h = h;
   app->last_w = w;
   app->last_h = h;
+  app->in_frame = true;
 
   // Hot-reload entry Lua when its mtime changes. Skip during PRE_BACKEND
   // (callbacks aren't being driven yet) and on the very first poll
@@ -204,6 +205,9 @@ void app_frame_end(App *app) {
   if (!capture_before_end_frame && capture_state_drain(&app->capture, app)) {
     app->capture_then_exit = true;
   }
+  // この frame の TransientBuffer を手放す (frame の GPU の仕事は submit 済み)
+  app->in_frame = false;
+  api_gfx_transients_frame_end(app);
   // 使われなくなった resource の sweep。on_frame が error で抜けた frame は
   // 飛ばす (編集中の error が続いたあと、直した途端に全部を作り直すことに
   // ならないように)。

@@ -404,6 +404,11 @@ public static class CHeader
                     Comment($"{p.LuaName} == NULL かつ {p.LuaName}_count > 0 は {p.LuaName} を読む前の問い合わせ: " +
                         $"key がその version を持っていれば {p.LuaName} を渡したときと同じ結果、" +
                         "持っていなければ何も変えずに LUB_NOT_FOUND。");
+                foreach (var p in f.Params.Where(p => p.CountOf != null))
+                {
+                    var target = f.Params.First(q => q.Name == p.CountOf).LuaName;
+                    Comment($"Lua / C# の {p.LuaName} 引数 ({target} の先頭から使う要素数) は {target}_count で渡す。");
+                }
                 sb.Append(Prototype(ns, f)).Append("\n\n");
             }
         }
@@ -422,7 +427,7 @@ public static class CHeader
         private string Prototype(ApiNamespace ns, ApiFunction f)
         {
             var args = new List<string> { "LubContext *ctx" };
-            foreach (var p in f.Params.Where(p => !p.IsOut))
+            foreach (var p in f.Params.Where(p => !p.IsOut && p.CountOf == null))
                 args.AddRange(InParam(ns, f, p));
             foreach (var p in f.Params.Where(p => p.IsOut))
             {

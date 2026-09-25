@@ -17,6 +17,8 @@ extern "C" {
 // ImGui のレンダラ実装。draw list を「頂点変換 → 単一 vbuf/ibuf アップロード →
 // cmd ごとに scissor + テクスチャ切替 + indexed draw」として l_draw と同じ
 // 内部 API (pipeline cache / reflection ベースの bindings) で発行する。
+// vbuf / ibuf は毎フレーム作り直す frame 有効の buffer で、Gfx.TransientBuffer
+// と同じ経路 (api_gfx_transient) を通る。
 // 頂点は ImDrawVert (pos2f, uv2f, col u32) を 8 float (float2 pos, float2 uv,
 // float4 col) に展開した storage buffer で、shader が頂点 id で読む (vertex
 // pulling)。ImDrawIdx は CMake の ImDrawIdx=unsigned 定義で 32bit (backend の
@@ -30,8 +32,8 @@ static bool g_gpu_failed = false;
 static BackendShader g_shader = 0;
 static ShaderReflection g_refl;
 static BackendImage g_font_tex = 0;
-static BackendBuffer g_vbuf = 0, g_ibuf = 0;
-static size_t g_vbuf_bytes = 0, g_ibuf_bytes = 0;
+// "verts" / "tex" の reflection の index (BindingsDesc の slot)
+static int g_verts_slot = 0, g_tex_slot = 0;
 
 static const char *UI_VS = //
     "struct Uniforms {\n"
@@ -100,6 +102,12 @@ static bool ui_gpu_init() {
     SDL_Log("ui: make_shader failed");
     return false;
   }
+  for (int i = 0; i < g_refl.storage_buf_count; ++i)
+    if (strcmp(g_refl.storage_bufs[i].name, "verts") == 0)
+      g_verts_slot = i;
+  for (int i = 0; i < g_refl.tex_count; ++i)
+    if (strcmp(g_refl.texs[i].name, "tex") == 0)
+      g_tex_slot = i;
 
   ImGuiIO &io = ImGui::GetIO();
   unsigned char *px = nullptr;
@@ -120,20 +128,6 @@ static bool ui_gpu_init() {
   }
   io.Fonts->SetTexID((ImTextureID)(intptr_t)g_font_tex);
   return true;
-}
-
-// l_use_buffer と同じ方針: 同サイズなら in-place 更新、違えば作り直し。
-static bool ensure_buffer(BackendBuffer *buf, size_t *cap, SglBufferType type,
-                          const void *data, size_t bytes) {
-  if (*buf && *cap == bytes) {
-    g_backend->update_buffer(*buf, data, bytes);
-    return true;
-  }
-  if (*buf)
-    g_backend->destroy_buffer(*buf);
-  *buf = g_backend->make_buffer(type, data, bytes);
-  *cap = bytes;
-  return *buf != 0;
 }
 
 extern "C" void ui_new_frame(App *app, float dt, int fb_w, int fb_h) {
@@ -188,15 +182,10 @@ extern "C" void ui_shutdown(void) {
     ImGui::EndFrame();
     g_frame_open = false;
   }
-  if (g_vbuf)
-    g_backend->destroy_buffer(g_vbuf);
-  if (g_ibuf)
-    g_backend->destroy_buffer(g_ibuf);
   if (g_font_tex)
     g_backend->destroy_image(g_font_tex);
   if (g_shader)
     g_backend->destroy_shader(g_shader);
-  g_vbuf = g_ibuf = 0;
   g_font_tex = 0;
   g_shader = 0;
   g_gpu_ready = false;
@@ -271,11 +260,12 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
     vbase += (size_t)dl->VtxBuffer.Size;
     ibase += (size_t)dl->IdxBuffer.Size;
   }
-  if (!ensure_buffer(&g_vbuf, &g_vbuf_bytes, SGL_BUFFER_STORAGE, vstage.data(),
-                     vstage.size() * sizeof(float)) ||
-      !ensure_buffer(&g_ibuf, &g_ibuf_bytes, SGL_BUFFER_INDEX, istage.data(),
-                     istage.size() * sizeof(unsigned int)))
-    return lub_api_fail(app, "ui_render: buffer upload failed");
+  BufferSlice vbuf = {}, ibuf = {};
+  if (!api_gfx_transient(app, SGL_BUFFER_STORAGE, vstage.data(),
+                         vstage.size() * sizeof(float), &vbuf) ||
+      !api_gfx_transient(app, SGL_BUFFER_INDEX, istage.data(),
+                         istage.size() * sizeof(unsigned int), &ibuf))
+    return LUB_ERROR; // last_error は api_gfx_transient が書いた
 
   BackendPipeline pip = pipeline_cache_get(
       &app->pip_cache, g_shader, &g_refl, SGL_BLEND_ALPHA,
@@ -335,10 +325,16 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       bind.refl = &g_refl;
       bind.storage_buf_count = 1;
       bind.storage_bufs[0].name = "verts";
-      bind.storage_bufs[0].buf = g_vbuf;
-      bind.ibuf = g_ibuf;
+      bind.storage_bufs[0].slot = g_verts_slot;
+      bind.storage_bufs[0].buf = vbuf.buf;
+      bind.storage_bufs[0].offset = vbuf.offset;
+      bind.storage_bufs[0].size = vbuf.size;
+      bind.ibuf = ibuf.buf;
+      bind.ibuf_offset = ibuf.offset;
+      bind.ibuf_size = ibuf.size;
       bind.texture_count = 1;
       bind.textures[0].name = "tex";
+      bind.textures[0].slot = g_tex_slot;
       // 初回フレームは NewFrame 時点で font TexID が未設定 (0) のまま
       // draw cmd に乗るので、0 は font atlas に読み替える。
       BackendImage img = (BackendImage)(intptr_t)cmd.GetTexID();

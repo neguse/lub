@@ -958,18 +958,18 @@ bool dx_upload_buffer_bytes(DxBuffer *buf, const void *data, size_t bytes) {
 }
 
 BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
-                             size_t bytes) {
-  if (bytes == 0)
+                             size_t data_bytes, size_t cap_bytes) {
+  if (cap_bytes == 0)
     return 0;
   DxBuffer *buf = new DxBuffer();
-  buf->bytes = bytes;
+  buf->bytes = cap_bytes;
   buf->type = type;
 
   D3D12_HEAP_PROPERTIES hp = {};
   hp.Type = D3D12_HEAP_TYPE_DEFAULT;
   D3D12_RESOURCE_DESC1 rd = {};
   rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  rd.Width = (UINT64)bytes;
+  rd.Width = (UINT64)cap_bytes;
   rd.Height = 1;
   rd.DepthOrArraySize = 1;
   rd.MipLevels = 1;
@@ -980,15 +980,16 @@ BackendBuffer dx_make_buffer(SglBufferType type, const void *data,
   if (FAILED(g.device10->CreateCommittedResource3(
           &hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_BARRIER_LAYOUT_UNDEFINED,
           nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&buf->res)))) {
-    SDL_Log("d3d12: make_buffer: create failed (%zu bytes)", bytes);
+    SDL_Log("d3d12: make_buffer: create failed (%zu bytes)", cap_bytes);
     delete buf;
     return 0;
   }
-  if (data && !dx_upload_buffer_bytes(buf, data, bytes)) {
+  if (data && data_bytes > 0 &&
+      !dx_upload_buffer_bytes(buf, data, data_bytes)) {
     delete buf;
     return 0;
   }
-  gpu_stats_create(GPU_STAT_BUFFER, bytes);
+  gpu_stats_create(GPU_STAT_BUFFER, cap_bytes);
   return (uintptr_t)buf;
 }
 
@@ -1768,12 +1769,15 @@ void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
       if (!buf || !buf->res)
         continue;
       if (sb->slot >= 0 && sb->slot < t->srv_count) {
+        // The view covers the binding's logical size (offset 0 until the
+        // per-frame transient slices get a native path).
         UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
         D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
         sd.Format = DXGI_FORMAT_UNKNOWN;
         sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        sd.Buffer.NumElements = (UINT)(buf->bytes / stride);
+        sd.Buffer.FirstElement = (UINT64)(b->storage_bufs[i].offset / stride);
+        sd.Buffer.NumElements = (UINT)(b->storage_bufs[i].size / stride);
         sd.Buffer.StructureByteStride = stride;
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)sb->slot * g.srv_stride;
@@ -1796,8 +1800,8 @@ void dx_apply_bindings(const BindingsDesc *b) {
     DxBuffer *ib = (DxBuffer *)b->ibuf;
     if (ib && ib->res) {
       D3D12_INDEX_BUFFER_VIEW v = {};
-      v.BufferLocation = ib->res->GetGPUVirtualAddress();
-      v.SizeInBytes = (UINT)ib->bytes;
+      v.BufferLocation = ib->res->GetGPUVirtualAddress() + b->ibuf_offset;
+      v.SizeInBytes = (UINT)b->ibuf_size;
       v.Format = DXGI_FORMAT_R32_UINT;
       g.cl->IASetIndexBuffer(&v);
       g_last_indexed = true;
@@ -1958,13 +1962,15 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
       if (!buf || !buf->res)
         break;
       UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
-      UINT elems = (UINT)(buf->bytes / stride);
+      UINT64 first = (UINT64)(d->storage_bufs[i].offset / stride);
+      UINT elems = (UINT)(d->storage_bufs[i].size / stride);
       if (sb->readonly) {
         if (sb->slot >= 0 && sb->slot < t->srv_count) {
           D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
           sd.Format = DXGI_FORMAT_UNKNOWN;
           sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
           sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+          sd.Buffer.FirstElement = first;
           sd.Buffer.NumElements = elems;
           sd.Buffer.StructureByteStride = stride;
           D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
@@ -1976,6 +1982,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
           D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
           ud.Format = DXGI_FORMAT_UNKNOWN;
           ud.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+          ud.Buffer.FirstElement = first;
           ud.Buffer.NumElements = elems;
           ud.Buffer.StructureByteStride = stride;
           D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
@@ -2316,4 +2323,5 @@ extern "C" const RenderBackend g_backend_d3d12 = {
     dx_capture,
     /*capture_before_end_frame=*/true,
     dx_swapchain_color_format,
+    /*transient_buffer=*/nullptr, // runtime fallback (api_gfx.c)
 };

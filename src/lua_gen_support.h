@@ -69,6 +69,12 @@ const int32_t *lgen_ints_arg(lua_State *L, int idx, int32_t *count,
 // lgen_floats_arg / lgen_ints_arg と同じ値で、古い view は error。nil なら
 // false。[LubLazyData] の引数が、中身を読む前に C へ問い合わせるのに使う。
 bool lgen_array_len_arg(lua_State *L, int idx, int32_t *count, bool required);
+// lgen_array_len_arg で長さを読んだ配列の先頭 n 個 (n は長さ以下) を写す。
+const float *lgen_floats_n(lua_State *L, int idx, int32_t n);
+const int32_t *lgen_ints_n(lua_State *L, int idx, int32_t n);
+// [LubCountOf] の count 引数 (引数 idx)。0 以上で配列の長さ len 以下でなければ
+// error。count を返す。
+int32_t lgen_count_arg(lua_State *L, int idx, int32_t count, int32_t len);
 const float *lgen_floats(lua_State *L, int idx, const char *key,
                          int32_t *count);
 const int32_t *lgen_ints(lua_State *L, int idx, const char *key,

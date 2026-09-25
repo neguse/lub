@@ -56,7 +56,7 @@ public sealed unsafe class ShaderRef
     public int Version { get; }
 }
 
-/// <summary>use_buffer の不透明ハンドル。version と破棄後の扱いは TextureRef と同じ。</summary>
+/// <summary>use_buffer / transient_buffer の不透明ハンドル。use_buffer の参照の version と破棄後の扱いは TextureRef と同じ。transient_buffer の参照は key も version も持たず、作った frame の間だけ使える。</summary>
 public sealed unsafe class BufferRef
 {
     internal int H;
@@ -2055,17 +2055,18 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version は key の内容に対する同一性の主張で、key がすでに同じ version と type を持っていれば data を読まずに今の buffer を返し、違えば data から作り直す。省略 (null) は「内容が変わった」宣言で、runtime が新しい version を発行して必ず upload する。戻り値の Version を次の呼び出しに渡すと「変わっていない」の再主張になる。data に null を渡すと再主張だけをする: key がその version を持っていなければ何も作らずに null (Lua は nil, "not found") を返す。</summary>
-        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null)
+        /// <summary>INDEX/STORAGE バッファ (データ渡し)。頂点データは STORAGE で作り、shader の StructuredBuffer が読む。version は key の内容に対する同一性の主張で、key がすでに同じ version と type を持っていれば data を読まずに今の buffer を返し、違えば data から作り直す。省略 (null) は「内容が変わった」宣言で、runtime が新しい version を発行して必ず upload する。戻り値の Version を次の呼び出しに渡すと「変わっていない」の再主張になる。data に null を渡すと再主張だけをする: key がその version を持っていなければ何も作らずに null (Lua は nil, "not found") を返す。引数の count は data の先頭から使う要素数 (省略時は全部)。使い回す List の前の方だけを渡せる。0 は空の data と同じく error。count は version の後ろなので、version を渡さないときは null を置く (UseBuffer(key, type, list, null, n))。TinyC# は名前付き引数を扱えないので、count: n と書くと値が version に入る。同じ frame に同じ key を書き直すと、native の backend ではそれぞれの draw が記録した順にそのときの内容を読むが、pass の分割や GPU の待ちが入る。WebGPU では同じ大きさの書き直しは、その frame のどの draw も最後の内容を読む。draw ごとに変わるデータは TransientBuffer で渡す。大きさが変わっても確保量に収まる間は作り直さずに書き込む (SDL3 GPU の backend では shader から見た StructuredBuffer が data より長くなることがあるので、要素の数は uniform で渡す)。</summary>
+        public static BufferRef? UseBuffer(string key, Lub.Gfx.BufferType type, List<float>? data, int? version = null, int? count = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                fixed (float* _data_p = CollectionsMarshal.AsSpan(data))
+                var _data_n = LubRuntime.CountOf(count, data?.Count ?? 0, "Gfx.UseBuffer");
+                fixed (float* _data_p = CollectionsMarshal.AsSpan(data)[.._data_n])
                 {
                     int _version = (version ?? default);
                     int o_out = 0;
-                    var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, LubRuntime.NonNull(_data_p, data != null), data?.Count ?? 0, version.HasValue ? &_version : null, &o_out);
+                    var st = LubNative.lub_gfx_use_buffer(LubRuntime.Ctx, a.Str(key), (int)type, LubRuntime.NonNull(_data_p, data != null), _data_n, version.HasValue ? &_version : null, &o_out);
                     if (st == LubNative.LUB_NOT_FOUND)
                     {
                         return null;
@@ -2080,23 +2081,74 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version と data = null の規約は UseBuffer と同じ。</summary>
-        public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null)
+        /// <summary>整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version、data = null と count の規約は UseBuffer と同じ。</summary>
+        public static BufferRef? UseBufferInts(string key, Lub.Gfx.BufferType type, List<int>? data, int? version = null, int? count = null)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
-                fixed (int* _data_p = CollectionsMarshal.AsSpan(data))
+                var _data_n = LubRuntime.CountOf(count, data?.Count ?? 0, "Gfx.UseBufferInts");
+                fixed (int* _data_p = CollectionsMarshal.AsSpan(data)[.._data_n])
                 {
                     int _version = (version ?? default);
                     int o_out = 0;
-                    var st = LubNative.lub_gfx_use_buffer_ints(LubRuntime.Ctx, a.Str(key), (int)type, LubRuntime.NonNull(_data_p, data != null), data?.Count ?? 0, version.HasValue ? &_version : null, &o_out);
+                    var st = LubNative.lub_gfx_use_buffer_ints(LubRuntime.Ctx, a.Str(key), (int)type, LubRuntime.NonNull(_data_p, data != null), _data_n, version.HasValue ? &_version : null, &o_out);
                     if (st == LubNative.LUB_NOT_FOUND)
                     {
                         return null;
                     }
                     LubRuntime.Check(st, "Gfx.UseBufferInts");
                     return LubNative.H_BufferRef(o_out, key);
+                }
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>この frame の間だけ使う INDEX / STORAGE バッファ。data (count を渡せば先頭の count 個) は呼んだ時点で写され、以後は変わらないので、これを束縛した draw はどの backend でも必ずその内容を読む。draw ごとのデータや instance の列のように、1 フレームに何度も作ってよい (key も version も要らない)。作った frame の終わりまで有効で、後の frame で束縛すると error ("transient buffer from an earlier frame")。OnInit / OnEvent では作れない。pass の中でも外でも作れる。読むだけの buffer で、draw の StructuredBuffer か `indices`、dispatch の StructuredBuffer (RWStructuredBuffer は error) に束縛できる。INDEX の float は u32 に写す。</summary>
+        public static BufferRef? TransientBuffer(Lub.Gfx.BufferType type, List<float> data, int? count = null)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var _data_n = LubRuntime.CountOf(count, data?.Count ?? 0, "Gfx.TransientBuffer");
+                fixed (float* _data_p = CollectionsMarshal.AsSpan(data)[.._data_n])
+                {
+                    int o_out = 0;
+                    var st = LubNative.lub_gfx_transient_buffer(LubRuntime.Ctx, (int)type, _data_p, _data_n, &o_out);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        return null;
+                    }
+                    LubRuntime.Check(st, "Gfx.TransientBuffer");
+                    return LubNative.H_BufferRef(o_out);
+                }
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>整数列から作る TransientBuffer (INDEX はそのまま u32 で、整数の STORAGE は float に写す)。規約は TransientBuffer と同じ。</summary>
+        public static BufferRef? TransientBufferInts(Lub.Gfx.BufferType type, List<int> data, int? count = null)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var _data_n = LubRuntime.CountOf(count, data?.Count ?? 0, "Gfx.TransientBufferInts");
+                fixed (int* _data_p = CollectionsMarshal.AsSpan(data)[.._data_n])
+                {
+                    int o_out = 0;
+                    var st = LubNative.lub_gfx_transient_buffer_ints(LubRuntime.Ctx, (int)type, _data_p, _data_n, &o_out);
+                    if (st == LubNative.LUB_NOT_FOUND)
+                    {
+                        return null;
+                    }
+                    LubRuntime.Check(st, "Gfx.TransientBufferInts");
+                    return LubNative.H_BufferRef(o_out);
                 }
             }
             finally
@@ -9517,6 +9569,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_use_buffer_ints(void* ctx, LubStr @key, int @type, int* @data, int @data_count, int* @version, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_transient_buffer(void* ctx, int @type, float* @data, int @data_count, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_transient_buffer_ints(void* ctx, int @type, int* @data, int @data_count, int* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_use_buffer_empty(void* ctx, LubStr @key, int @type, int @count, int* @version, int* @out);

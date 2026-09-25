@@ -490,11 +490,9 @@ static int32_t array_len(lua_State *L, int idx, bool *is_view) {
   return table_len(L, idx);
 }
 
-static const float *read_floats(lua_State *L, int idx, int32_t *count) {
-  idx = lua_absindex(L, idx);
-  bool is_view;
-  int32_t n = array_len(L, idx, &is_view);
-  *count = n;
+// 配列 (table か view、絶対 index) の先頭 n 個を float で読む。n は長さ以下。
+static const float *floats_prefix(lua_State *L, int idx, int32_t n,
+                                  bool is_view) {
   if (is_view) {
     View *v = (View *)lua_touserdata(L, idx);
     if (v->kind == VIEW_FLOAT)
@@ -514,11 +512,8 @@ static const float *read_floats(lua_State *L, int idx, int32_t *count) {
   return out;
 }
 
-static const int32_t *read_ints(lua_State *L, int idx, int32_t *count) {
-  idx = lua_absindex(L, idx);
-  bool is_view;
-  int32_t n = array_len(L, idx, &is_view);
-  *count = n;
+static const int32_t *ints_prefix(lua_State *L, int idx, int32_t n,
+                                  bool is_view) {
   if (is_view) {
     View *v = (View *)lua_touserdata(L, idx);
     if (v->kind == VIEW_INT)
@@ -540,6 +535,20 @@ static const int32_t *read_ints(lua_State *L, int idx, int32_t *count) {
   return out;
 }
 
+static const float *read_floats(lua_State *L, int idx, int32_t *count) {
+  idx = lua_absindex(L, idx);
+  bool is_view;
+  *count = array_len(L, idx, &is_view);
+  return floats_prefix(L, idx, *count, is_view);
+}
+
+static const int32_t *read_ints(lua_State *L, int idx, int32_t *count) {
+  idx = lua_absindex(L, idx);
+  bool is_view;
+  *count = array_len(L, idx, &is_view);
+  return ints_prefix(L, idx, *count, is_view);
+}
+
 static bool array_arg_present(lua_State *L, int idx, bool required,
                               const char *what) {
   if (lua_isnoneornil(L, idx)) {
@@ -559,6 +568,24 @@ bool lgen_array_len_arg(lua_State *L, int idx, int32_t *count, bool required) {
   bool is_view;
   *count = array_len(L, lua_absindex(L, idx), &is_view);
   return true;
+}
+
+const float *lgen_floats_n(lua_State *L, int idx, int32_t n) {
+  idx = lua_absindex(L, idx);
+  return floats_prefix(L, idx, n, view_test(L, idx) != NULL);
+}
+
+const int32_t *lgen_ints_n(lua_State *L, int idx, int32_t n) {
+  idx = lua_absindex(L, idx);
+  return ints_prefix(L, idx, n, view_test(L, idx) != NULL);
+}
+
+int32_t lgen_count_arg(lua_State *L, int idx, int32_t count, int32_t len) {
+  if (count < 0 || count > len)
+    luaL_error(L,
+               "argument %d: count %d is out of range (data has %d elements)",
+               idx, (int)count, (int)len);
+  return count;
 }
 
 const float *lgen_floats_arg(lua_State *L, int idx, int32_t *count,
@@ -796,9 +823,9 @@ static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
   lua_getfield(L, idx, "handle");
   LubHandle h = lua_isinteger(L, -1) ? (LubHandle)lua_tointeger(L, -1) : 0;
   lua_pop(L, 1);
-  // main_tex は特別な handle。key を持たない参照は stale のまま C に渡し、
-  // C が error にする
-  if (is_gfx_kind(kind) && h != 0 && h != -1 &&
+  // main_tex (-1) と transient_buffer (-2 以下) は resource table の外。
+  // key を持たない参照は stale のまま C に渡し、C が error にする
+  if (is_gfx_kind(kind) && h > 0 &&
       !lub_gfx_resource_info(lgen_ctx(), h, NULL, NULL)) {
     lua_getfield(L, idx, "key");
     size_t n = 0;

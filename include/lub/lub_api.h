@@ -2440,24 +2440,58 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
 // で、runtime が新しい version を発行して必ず upload する。戻り値の Version
 // を次の呼び出しに渡すと「変わっていない」の再主張になる。data に null を渡
 // すと再主張だけをする: key がその version を持っていなければ何も作らずに
-// null (Lua は nil, "not found") を返す。
+// null (Lua は nil, "not found") を返す。引数の count は data の先頭から使う
+// 要素数 (省略時は全部)。使い回す List の前の方だけを渡せる。0 は空の data
+// と同じく error。count は version の後ろなので、version を渡さないときは
+// null を置く (UseBuffer(key, type, list, null, n))。TinyC# は名前付き引数を
+// 扱えないので、count: n と書くと値が version に入る。同じ frame に同じ key
+// を書き直すと、native の backend ではそれぞれの draw が記録した順にそのとき
+// の内容を読むが、pass の分割や GPU の待ちが入る。WebGPU では同じ大きさの書
+// き直しは、その frame のどの draw も最後の内容を読む。draw ごとに変わるデー
+// タは TransientBuffer で渡す。大きさが変わっても確保量に収まる間は作り直さ
+// ずに書き込む (SDL3 GPU の backend では shader から見た StructuredBuffer が
+// data より長くなることがあるので、要素の数は uniform で渡す)。
 // data == NULL かつ data_count > 0 は data を読む前の問い合わせ: key がその
 // version を持っていれば data を渡したときと同じ結果、持っていなければ何も変
 // えずに LUB_NOT_FOUND。
+// Lua / C# の count 引数 (data の先頭から使う要素数) は data_count で渡す。
 LUB_API LubStatus lub_gfx_use_buffer(LubContext *ctx, LubStr key, int32_t type,
                                      const float *data, int32_t data_count,
                                      const int32_t *version, LubHandle *out);
 
-// 整数列から宣言する use_buffer (INDEX の index 列や整数の STORAGE)。version
-// と data = null の規約は UseBuffer と同じ。
+// 整数列から宣言する use_buffer (INDEX の index 列や整数の
+// STORAGE)。version、data = null と count の規約は UseBuffer と同じ。
 // data == NULL かつ data_count > 0 は data を読む前の問い合わせ: key がその
 // version を持っていれば data を渡したときと同じ結果、持っていなければ何も変
 // えずに LUB_NOT_FOUND。
+// Lua / C# の count 引数 (data の先頭から使う要素数) は data_count で渡す。
 LUB_API LubStatus lub_gfx_use_buffer_ints(LubContext *ctx, LubStr key,
                                           int32_t type, const int32_t *data,
                                           int32_t data_count,
                                           const int32_t *version,
                                           LubHandle *out);
+
+// この frame の間だけ使う INDEX / STORAGE バッファ。data (count を渡せば先頭
+// の count 個) は呼んだ時点で写され、以後は変わらないので、これを束縛した
+// draw はどの backend でも必ずその内容を読む。draw ごとのデータや instance
+// の列のように、1 フレームに何度も作ってよい (key も version も要らない)。作
+// った frame の終わりまで有効で、後の frame で束縛すると error ("transient
+// buffer from an earlier frame")。OnInit / OnEvent では作れない。pass の中で
+// も外でも作れる。読むだけの buffer で、draw の StructuredBuffer か
+// `indices`、dispatch の StructuredBuffer (RWStructuredBuffer は error) に束
+// 縛できる。INDEX の float は u32 に写す。
+// Lua / C# の count 引数 (data の先頭から使う要素数) は data_count で渡す。
+LUB_API LubStatus lub_gfx_transient_buffer(LubContext *ctx, int32_t type,
+                                           const float *data,
+                                           int32_t data_count, LubHandle *out);
+
+// 整数列から作る TransientBuffer (INDEX はそのまま u32 で、整数の STORAGE は
+// float に写す)。規約は TransientBuffer と同じ。
+// Lua / C# の count 引数 (data の先頭から使う要素数) は data_count で渡す。
+LUB_API LubStatus lub_gfx_transient_buffer_ints(LubContext *ctx, int32_t type,
+                                                const int32_t *data,
+                                                int32_t data_count,
+                                                LubHandle *out);
 
 // STORAGE の空確保 (float 個数指定、compute 出力用)。Lua 面は
 // use_buffer_empty。version の規約は UseBuffer と同じ。

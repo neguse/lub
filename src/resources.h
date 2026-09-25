@@ -21,7 +21,8 @@ typedef struct ResEntry {
     struct {
       uintptr_t h;
       SglBufferType type;
-      size_t size_bytes;
+      size_t size_bytes; // 論理的な大きさ (最後に upload した data の byte 数)
+      size_t cap_bytes;  // 確保した大きさ (size_bytes 以上)
     } buf;
     struct {
       uintptr_t h;

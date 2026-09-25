@@ -1235,7 +1235,7 @@ static bool vkb_init(App *app) {
 static void vkb_destroy_buffer(BackendBuffer h);
 static void vkb_destroy_image(BackendImage h);
 static BackendBuffer vkb_make_buffer(SglBufferType type, const void *data,
-                                     size_t bytes);
+                                     size_t data_bytes, size_t cap_bytes);
 static BackendImage vkb_make_image(const ImageDesc *desc);
 
 static bool vkb_make_dummies(void) {
@@ -1258,10 +1258,10 @@ static bool vkb_make_dummies(void) {
   if (g.dummy_storage)
     vkb_transition(g.dummy_storage, VK_IMAGE_LAYOUT_GENERAL);
   static const uint8_t zeros[256] = {0};
-  g.dummy_ubuf =
-      (VkbBuffer *)vkb_make_buffer(SGL_BUFFER_UNIFORM, zeros, sizeof(zeros));
-  g.dummy_sbuf =
-      (VkbBuffer *)vkb_make_buffer(SGL_BUFFER_STORAGE, zeros, sizeof(zeros));
+  g.dummy_ubuf = (VkbBuffer *)vkb_make_buffer(SGL_BUFFER_UNIFORM, zeros,
+                                              sizeof(zeros), sizeof(zeros));
+  g.dummy_sbuf = (VkbBuffer *)vkb_make_buffer(SGL_BUFFER_STORAGE, zeros,
+                                              sizeof(zeros), sizeof(zeros));
   if (!g.dummy_tex || !g.dummy_storage || !g.dummy_ubuf || !g.dummy_sbuf) {
     SDL_Log("vk: dummy resource creation failed");
     return false;
@@ -1605,26 +1605,27 @@ static bool vkb_upload_buffer_bytes(VkbBuffer *buf, const void *data,
 }
 
 static BackendBuffer vkb_make_buffer(SglBufferType type, const void *data,
-                                     size_t bytes) {
-  if (bytes == 0)
+                                     size_t data_bytes, size_t cap_bytes) {
+  if (cap_bytes == 0)
     return 0;
   VkbBuffer *buf = (VkbBuffer *)calloc(1, sizeof(VkbBuffer));
-  buf->bytes = bytes;
+  buf->bytes = cap_bytes;
   buf->type = type;
-  if (!vkb_alloc_buffer(bytes, vkb_buffer_usage(type),
+  if (!vkb_alloc_buffer(cap_bytes, vkb_buffer_usage(type),
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &buf->buf,
                         &buf->mem)) {
-    SDL_Log("vk: make_buffer: create failed (%zu bytes)", bytes);
+    SDL_Log("vk: make_buffer: create failed (%zu bytes)", cap_bytes);
     free(buf);
     return 0;
   }
-  if (data && !vkb_upload_buffer_bytes(buf, data, bytes)) {
+  if (data && data_bytes > 0 &&
+      !vkb_upload_buffer_bytes(buf, data, data_bytes)) {
     vkDestroyBuffer(g.device, buf->buf, NULL);
     vkFreeMemory(g.device, buf->mem, NULL);
     free(buf);
     return 0;
   }
-  gpu_stats_create(GPU_STAT_BUFFER, bytes);
+  gpu_stats_create(GPU_STAT_BUFFER, cap_bytes);
   return (uintptr_t)buf;
 }
 
@@ -2456,7 +2457,8 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
   if (b->ibuf) {
     VkbBuffer *ib = (VkbBuffer *)b->ibuf;
     if (ib && ib->buf) {
-      vkCmdBindIndexBuffer(cmd, ib->buf, 0, VK_INDEX_TYPE_UINT32);
+      vkCmdBindIndexBuffer(cmd, ib->buf, (VkDeviceSize)b->ibuf_offset,
+                           VK_INDEX_TYPE_UINT32);
       g_last_indexed = true;
     } else {
       g_last_indexed = false;
@@ -2531,7 +2533,8 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
         if (wi >= 0)
           w.bufs[wi] = (VkDescriptorBufferInfo){
               .buffer = buf->buf,
-              .range = VK_WHOLE_SIZE,
+              .offset = (VkDeviceSize)b->storage_bufs[i].offset,
+              .range = (VkDeviceSize)b->storage_bufs[i].size,
           };
       }
     }
@@ -2744,7 +2747,8 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
           if (in_this_set && wi >= 0) {
             w.bufs[wi] = (VkDescriptorBufferInfo){
                 .buffer = buf->buf,
-                .range = VK_WHOLE_SIZE,
+                .offset = (VkDeviceSize)d->storage_bufs[i].offset,
+                .range = (VkDeviceSize)d->storage_bufs[i].size,
             };
           }
           break;
@@ -3066,4 +3070,5 @@ const RenderBackend g_backend_vulkan = {
     vkb_capture,
     /*capture_before_end_frame=*/true,
     vkb_swapchain_color_format,
+    /*transient_buffer=*/NULL, // runtime fallback (api_gfx.c)
 };

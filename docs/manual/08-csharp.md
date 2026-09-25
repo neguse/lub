@@ -31,6 +31,9 @@ nullable 型チェック) を保ちつつ、Lua 5.5 に素直に落ちる小さ�
   `1.5f` のように `f` を付ける。`Math.Sin` など double を返す BCL は
   `(float)` cast で受ける)
 - LINQ クエリ構文(`from x in y select`)
+- 名前付き引数(`f(count: n)`)。名前は捨てられ、値は書いた位置の引数に
+  なる(`TCS1001` の警告)。lub API の途中の省略できる引数を飛ばすときは
+  `null` を置く
 
 ## 診断に出ない注意点
 

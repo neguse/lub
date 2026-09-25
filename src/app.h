@@ -56,6 +56,10 @@ typedef struct App {
   PipelineCache pip_cache;
   uint64_t frame_index;
 
+  // app_frame_begin から app_frame_end まで true。on_init / on_event の間は
+  // false (frame に属するもの、TransientBuffer 等はここで拒む)。
+  bool in_frame;
+
   // Offscreen capture
   CaptureState capture;
   DigestState digest;     // --digest (host opts)
@@ -119,9 +123,11 @@ typedef struct App {
   int readback_depth;
 
   // C API (include/lub/lub_api.h) の状態。last_error は直近の LUB_ERROR の
-  // message、readbacks は key で宣言する readback queue (api_gfx.c 所有)。
+  // message、readbacks は key で宣言する readback queue、transients は
+  // この frame の TransientBuffer (どちらも api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
+  struct GfxTransients *transients;
   struct AudioSnds *audio_snds;     // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;         // lub_io_* / lub_png_load の file cache
   struct FontScratch *font_scratch; // lub_font_* の view の実体
