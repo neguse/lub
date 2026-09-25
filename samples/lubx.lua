@@ -3573,8 +3573,11 @@ function Renderer3d.identity_bones()
 end
 
 function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
-	lub.gfx.begin_pass({ depth_target = shadowMap, clear_depth = 1.0 })
-	local lm = lmvp.m
+	lub.gfx.begin_pass({
+		depth_target = shadowMap,
+		clear_depth = 1.0,
+		bindings = { ["uniforms"] = { ["light_mvp"] = lmvp.m } },
+	})
 	for _, d in ipairs(self.draws) do
 		if d.blend ~= lub.gfx.NONE then
 			goto _continue_20
@@ -3584,7 +3587,7 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 		if vb == nil or ib == nil then
 			goto _continue_20
 		end
-		local u = { ["light_mvp"] = lm, ["model"] = d.model.m }
+		local u = { ["model"] = d.model.m }
 		if d.mesh.skinned then
 			u["bones"] = d.bones or Renderer3d.identity_bones()
 		end
@@ -3605,12 +3608,9 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 	lub.gfx.end_pass()
 end
 
-function Renderer3d:lit_uniforms(d, vp, lmvp, texel)
-	local u = {
-		["mvp"] = (vp * d.model).m,
-		["model"] = d.model.m,
+function Renderer3d:frame_uniforms(lmvp, texel)
+	return {
 		["light_mvp"] = lmvp.m,
-		["tint"] = d.tint,
 		["light_dir"] = self:light_dir_table(),
 		["light_col"] = {
 			self.light.color.r * self.light.intensity,
@@ -3634,6 +3634,10 @@ function Renderer3d:lit_uniforms(d, vp, lmvp, texel)
 			0.0,
 		},
 	}
+end
+
+function Renderer3d:lit_uniforms(d, vp)
+	local u = { ["mvp"] = (vp * d.model).m, ["model"] = d.model.m, ["tint"] = d.tint }
 	if d.mesh.skinned then
 		u["bones"] = d.bones or Renderer3d.identity_bones()
 	end
@@ -3768,6 +3772,7 @@ function Renderer3d:end_()
 			1.0,
 		},
 		clear_depth = 1.0,
+		bindings = { ["shadow_map"] = shadowMap, ["uniforms"] = self:frame_uniforms(lmvp, texel) },
 	})
 	for phase = 0, 2 - 1 do
 		for _, d in ipairs(self.draws) do
@@ -3790,12 +3795,7 @@ function Renderer3d:end_()
 						end
 					end)()
 				)
-			local bindings = {
-				["verts"] = vb,
-				["indices"] = ib,
-				["shadow_map"] = shadowMap,
-				["uniforms"] = self:lit_uniforms(d, vp, lmvp, texel),
-			}
+			local bindings = { ["verts"] = vb, ["indices"] = ib, ["uniforms"] = self:lit_uniforms(d, vp) }
 			if d.textures ~= nil then
 				for kv_key, kv_value in pairs(d.textures) do
 					local kv = { Key = kv_key, Value = kv_value }

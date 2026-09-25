@@ -298,9 +298,18 @@ typedef struct LubPassOpts {
             // は全アタッチメント (color + depth)
             // の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提
             // (フレーム最初のパスで使うと内容は不定)。
+  // この pass のどの draw にも効く bindings。形は Draw の bindings と同じ (
+  // 名前で束縛する buffer / texture と、入れ子の `uniforms`)。draw の
+  // bindings に同じ名前があれば draw の方が勝つ (uniforms は member の名前ご
+  // と、buffer / texture は束縛の名前ごと)。どちらにも無い uniform の member
+  // は 0。値は BeginPass の時点で写すので、渡した Dictionary を後で書き換え
+  // ても pass には効かない。buffer / texture は draw のたびに引くので、 pass
+  // の中で宣言し直した内容も見える。EndPass で消え、Dispatch には効かない。
+  const LubBinding *bindings; // NULL = 無し
+  int32_t bindings_count;
 } LubPassOpts;
 
-// Gfx.draw のオプション。shader 以外は省略可。
+// Gfx.Draw と Gfx.UseDrawState のオプション。shader 以外は省略可。
 typedef struct LubDrawOpts {
   LubHandle shader;
   bool has_blend;
@@ -316,9 +325,10 @@ typedef struct LubDrawOpts {
   bool has_depth_write;
   bool depth_write;
   bool has_instance_count;
-  int32_t
-      instance_count; // instance の数。省略時 1。0 以下を渡すと描かない (draw
-                      // としての検査と、使った resource の記録はする)。
+  int32_t instance_count; // instance の数。省略時 1。0 以下を渡すと描かない
+                          // (draw としての検査と、使った resource
+                          // の記録はする)。UseDrawState では DrawWithState が
+                          // instanceCount を省いたときの数。
 } LubDrawOpts;
 
 // Gfx.dispatch のオプション。
@@ -2531,6 +2541,9 @@ LUB_API LubHandle lub_gfx_lookup_shader(LubContext *ctx, LubStr key);
 // LookupTexture の buffer 版。
 LUB_API LubHandle lub_gfx_lookup_buffer(LubContext *ctx, LubStr key);
 
+// LookupTexture の draw state 版。
+LUB_API LubHandle lub_gfx_lookup_draw_state(LubContext *ctx, LubStr key);
+
 // handle の key と実効 version。handle が stale なら false。
 LUB_API bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
                                    int32_t *version);
@@ -2547,9 +2560,45 @@ LUB_API LubStatus lub_gfx_read_texture(LubContext *ctx, LubStr rb,
                                        int32_t *result_id, int32_t *dropped,
                                        LubStr *error);
 
+// count 個の頂点 (bindings に `indices` があれば count 個の index) を描
+// く。bindings はシェーダ依存の自由な table で、名前で buffer / texture を束
+// 縛し、`uniforms` の下に uniform の値を置く。 PassOpts.Bindings と同じ名前
+// があれば、こちらが勝つ。
 LUB_API LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
                                const LubBinding *bindings,
                                int32_t bindings_count, const LubDrawOpts *opts);
+
+// draw の設定 (opts の shader と blend / cull / primitive / depth /
+// depthWrite、固定の bindings) を key で持つ draw state。DrawWithState で描
+// く。bindings の名前を shader のどの uniform / texture / buffer に束縛する
+// かは宣言の時に決め、shader が作り直されたら (hot reload) 次の DrawWithState
+// で決め直す。version の規約は UseBuffer と同じで、key がすでに同じ version
+// を持っていれば opts も bindings も読まない。opts に null を渡すと再主張だ
+// けをする (key がその version を持っていなければ null)。opts.Shader は必須
+// で、graphics の shader に限る。bindings の形は Draw と同じで、uniform の値
+// は宣言の時点で写す (buffer / texture は描くたびに引く)。draw state を宣言
+// するか DrawWithState で描くと、その shader と固定の buffer / texture も使
+// ったことになる。
+// opts == NULL は opts を読む前の問い合わせ: key がその version を持っていれ
+// ば opts を渡したときと同じ結果、持っていなければ何も変えずに LUB_NOT_FOUND。
+// 問い合わせでは bindings も読まずに NULL と 0 を渡す。
+LUB_API LubStatus lub_gfx_use_draw_state(LubContext *ctx, LubStr key,
+                                         const LubDrawOpts *opts,
+                                         const LubBinding *bindings,
+                                         int32_t bindings_count,
+                                         const int32_t *version,
+                                         LubHandle *out);
+
+// draw state で count 個の頂点 (または index) を描く。bindings はこの draw
+// だけの分で、同じ名前はこの bindings、draw state の固定の
+// bindings、PassOpts.Bindings の順に勝つ。instanceCount の意味は
+// DrawOpts.InstanceCount と同じで、省略すると draw state の InstanceCount (
+// それも無ければ 1)。
+LUB_API LubStatus lub_gfx_draw_with_state(LubContext *ctx, LubHandle state,
+                                          int32_t count,
+                                          const LubBinding *bindings,
+                                          int32_t bindings_count,
+                                          const int32_t *instance_count);
 
 LUB_API LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y,
                                    int32_t z, const LubBinding *bindings,

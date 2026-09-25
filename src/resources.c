@@ -1,5 +1,6 @@
 #include "resources.h"
 #include "backend.h"
+#include "gfx_bind.h"
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,10 @@ static void res_entry_release(ResEntry *e) {
   case RES_SHADER:
     if (e->u.sh.h)
       g_backend->destroy_shader(e->u.sh.h);
+    shader_names_free(e->u.sh.names);
+    break;
+  case RES_DRAW_STATE:
+    draw_state_free(e->u.ds.state);
     break;
   default:
     break;

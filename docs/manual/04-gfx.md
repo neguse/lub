@@ -57,10 +57,12 @@ VS→FS の varying には 2 つの規約がある:
 持ち続ける。しばらく使われなかったリソースは自動で破棄される。
 
 - 使うとは、そのフレームに `use*` で宣言するか、`Draw` / `Dispatch` の
-  bindings と shader、`BeginPass` の `Target` / `Targets` / `DepthTarget` に
-  渡すか、`ReadTexture` で id を付けて読み戻しを求めること。音の snd は
-  `Audio.Snd` での宣言と `Audio.Play` / `Audio.Voice` での再生、readback
-  queue は `ReadTexture` での poll が使うことにあたる。
+  bindings と shader、`BeginPass` の `Target` / `Targets` / `DepthTarget` /
+  `Bindings` に渡すか、`ReadTexture` で id を付けて読み戻しを求めること。
+  draw state は `DrawWithState` で描くことも使うことにあたり、draw state を
+  使うと、その shader と固定の buffer / texture も使ったことになる。音の
+  snd は `Audio.Snd` での宣言と `Audio.Play` / `Audio.Voice` での再生、
+  readback queue は `ReadTexture` での poll が使うことにあたる。
 - 何フレーム使われなければ破棄するかは `Config` の
   `ResourceSweepAfterFrames` で決まり、既定は 300(60 Hz で約 5 秒)。
   0 にすると破棄しない。
@@ -147,6 +149,97 @@ struct VSOut { float4 col : COLOR0; float4 pos : SV_Position; };
 
 compute は `UseShaderCompute` + `Dispatch`、GPU からの読み戻しは
 `Readback` を参照。
+
+## pass の bindings — pass の中で変わらない値
+
+view / projection や光の向き、shadow map のように、1 つの pass のどの draw
+でも同じ値は `PassOpts.Bindings` に置く。形は `Draw` の bindings と同じで、
+その pass のすべての draw に効く。draw ごとに渡すのは、draw ごとに変わる
+値だけになる。
+
+```csharp
+Gfx.BeginPass(new PassOpts
+{
+    Target = Gfx.MainTex,
+    Bindings = new Dictionary<string, object>
+    {
+        ["shadow_map"] = shadowMap,
+        ["uniforms"] = new Dictionary<string, object>
+        {
+            ["view_proj"] = viewProj.M,
+            ["light_dir"] = lightDir,
+        },
+    },
+});
+foreach (var obj in objects)
+{
+    Gfx.Draw(obj.IndexCount,
+        new Dictionary<string, object>
+        {
+            ["verts"] = obj.Verts,
+            ["indices"] = obj.Indices,
+            ["uniforms"] = new Dictionary<string, object> { ["model"] = obj.Model.M },
+        },
+        new DrawOpts { Shader = shader });
+}
+Gfx.EndPass();
+```
+
+- draw の bindings に同じ名前があれば draw の方が勝つ。uniform は member の
+  名前ごとに決まり(pass の `light_dir` と draw の `model` は両方届く)、
+  buffer / texture は束縛の名前ごとに決まる。pass にも draw にも無い uniform の
+  member は 0。
+- uniforms を 1 つも渡さない draw にも、pass の uniforms は届く。
+- uniform の値は `BeginPass` の時点で写される。渡した Dictionary や List を
+  後で書き換えても、その pass には効かない。
+- buffer / texture は描くたびに引く。pass の中で同じ key を宣言し直して
+  作り直されても、新しい中身が見える。`TransientBuffer` も渡せる。
+- `EndPass` で消える。次の pass には残らず、pass の外で呼ぶ `Dispatch` にも
+  効かない。
+
+## draw state — 同じ設定で何度も描く
+
+shader と `DrawOpts`、いつも同じ bindings(頂点と index の buffer、material の
+texture や色)を `Gfx.UseDrawState` で key に結びつけておくと、
+`Gfx.DrawWithState` はその draw だけの値を渡して描ける。bindings の名前を
+shader のどの uniform / texture / buffer に当てるかは宣言の時に決まっている
+ので、同じものを `Draw` で描くより 1 回あたりが軽い。
+
+```csharp
+var rock = Gfx.UseDrawState("rock",
+    new DrawOpts { Shader = shader },
+    new Dictionary<string, object>
+    {
+        ["verts"] = rockVerts,
+        ["indices"] = rockIndices,
+        ["albedo"] = rockTex,
+    },
+    1);
+// draw ごとの値は使い回す Dictionary に書く
+var uniforms = new Dictionary<string, object>();
+var perDraw = new Dictionary<string, object> { ["uniforms"] = uniforms };
+foreach (var r in rocks)
+{
+    uniforms["model"] = r.Model.M;
+    Gfx.DrawWithState(rock, rockIndexCount, perDraw);
+}
+```
+
+- 同じ名前は、`DrawWithState` の bindings、draw state の固定の bindings、
+  pass の bindings の順に勝つ。
+- `version` の規約は `UseBuffer` と同じ。key がすでに同じ version を持って
+  いれば opts も bindings も読まないので、毎フレーム宣言しても軽い。固定の
+  uniform の値を変えたときや、別の shader や buffer に替えたときは version も
+  変える(省略すれば毎回作り直す)。
+- 固定の uniform の値は宣言の時点で写される。buffer / texture は描くたびに
+  引くので、同じ key の buffer を宣言し直した中身はそのまま見える。
+- shader を作り直すと(ファイルを保存して version が変わる)、次の
+  `DrawWithState` が名前を当て直す。draw state を宣言し直す必要はない。
+- `DrawWithState` の最後の引数は instance の数。省くと `DrawOpts` の
+  `InstanceCount`(それも無ければ 1)で、0 以下は描かない。
+- draw state は key で宣言するリソースで、使われなくなると破棄される。
+  宣言するか `DrawWithState` で描くと、draw state と、その shader と固定の
+  buffer / texture も使ったことになる。
 
 ## フレームごとのデータ — TransientBuffer
 

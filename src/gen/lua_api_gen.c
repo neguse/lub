@@ -483,6 +483,7 @@ static void read_LubPassOpts(lua_State *L, int idx, void *out_) {
       L, idx, "clear_colors", 4, &o->clear_colors_count);
   o->has_clear_depth = lgen_num_opt(L, idx, "clear_depth", &o->clear_depth);
   o->has_load = lgen_int_opt(L, idx, "load", &o->load);
+  o->bindings = lgen_bindings_field(L, idx, "bindings", &o->bindings_count);
 }
 
 static void read_LubDrawOpts(lua_State *L, int idx, void *out_) {
@@ -4188,6 +4189,19 @@ static int l_gfx_lookup_buffer(lua_State *L) {
   return 1;
 }
 
+static int l_gfx_lookup_draw_state(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubHandle out = lub_gfx_lookup_draw_state(lgen_ctx(), key);
+  lgen_release(mark);
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref_keyed(L, "draw_state", out, 0, key);
+  return 1;
+}
+
 static int l_gfx_resource_info(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -4277,6 +4291,80 @@ static int l_gfx_draw(lua_State *L) {
   opts = &opts_v;
   LubStatus st =
       lub_gfx_draw(lgen_ctx(), count, bindings, bindings_count, opts);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
+static int l_gfx_use_draw_state(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr key = lgen_str_arg(L, 1);
+  LubDrawOpts opts_v;
+  memset(&opts_v, 0, sizeof opts_v);
+  const LubDrawOpts *opts = NULL;
+  bool opts_given = !lua_isnoneornil(L, 2);
+  if (opts_given)
+    luaL_checktype(L, 2, LUA_TTABLE);
+  int32_t bindings_count = 0;
+  const LubBinding *bindings = NULL;
+  bool bindings_given = !lua_isnoneornil(L, 3);
+  if (bindings_given)
+    luaL_checktype(L, 3, LUA_TTABLE);
+  int32_t version_v = 0;
+  const int32_t *version = NULL;
+  if (!lua_isnoneornil(L, 4)) {
+    version_v = (int32_t)luaL_checkinteger(L, 4);
+    version = &version_v;
+  }
+  LubHandle out = 0;
+  LubStatus st = LUB_NOT_FOUND;
+  if (version && (opts_given || bindings_given))
+    st = lub_gfx_use_draw_state(lgen_ctx(), key, opts, bindings, bindings_count,
+                                version, &out);
+  if (st == LUB_NOT_FOUND) {
+    if (opts_given) {
+      read_LubDrawOpts(L, 2, &opts_v);
+      opts = &opts_v;
+    }
+    if (bindings_given)
+      bindings = lgen_bindings_arg(L, 3, &bindings_count);
+    st = lub_gfx_use_draw_state(lgen_ctx(), key, opts, bindings, bindings_count,
+                                version, &out);
+  }
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  if (out == 0)
+    lua_pushnil(L);
+  else
+    lgen_push_ref_keyed(L, "draw_state", out, 0, key);
+  return 1;
+}
+
+static int l_gfx_draw_with_state(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubHandle state = lgen_ref_arg(L, 1, "draw_state", true);
+  int32_t count = (int32_t)luaL_checkinteger(L, 2);
+  int32_t bindings_count = 0;
+  const LubBinding *bindings = NULL;
+  if (!lua_isnoneornil(L, 3))
+    bindings = lgen_bindings_arg(L, 3, &bindings_count);
+  int32_t instance_count_v = 0;
+  const int32_t *instance_count = NULL;
+  if (!lua_isnoneornil(L, 4)) {
+    instance_count_v = (int32_t)luaL_checkinteger(L, 4);
+    instance_count = &instance_count_v;
+  }
+  LubStatus st = lub_gfx_draw_with_state(lgen_ctx(), state, count, bindings,
+                                         bindings_count, instance_count);
   lgen_release(mark);
   if (st == LUB_ERROR)
     return lgen_raise(L);
@@ -8825,12 +8913,18 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "lookup_shader");
   lua_pushcfunction(L, l_gfx_lookup_buffer);
   lua_setfield(L, -2, "lookup_buffer");
+  lua_pushcfunction(L, l_gfx_lookup_draw_state);
+  lua_setfield(L, -2, "lookup_draw_state");
   lua_pushcfunction(L, l_gfx_resource_info);
   lua_setfield(L, -2, "resource_info");
   lua_pushcfunction(L, l_gfx_read_texture);
   lua_setfield(L, -2, "read_texture");
   lua_pushcfunction(L, l_gfx_draw);
   lua_setfield(L, -2, "draw");
+  lua_pushcfunction(L, l_gfx_use_draw_state);
+  lua_setfield(L, -2, "use_draw_state");
+  lua_pushcfunction(L, l_gfx_draw_with_state);
+  lua_setfield(L, -2, "draw_with_state");
   lua_pushcfunction(L, l_gfx_dispatch);
   lua_setfield(L, -2, "dispatch");
   lua_pushcfunction(L, l_gfx_size);
@@ -9489,6 +9583,14 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "write");
   lua_setfield(L, -2, "png");
   lua_newtable(L); // lub.__refs
+  luaL_newmetatable(L, "lub.ref.draw_state");
+  lua_createtable(L, 0, 1); // methods
+  lua_pushcfunction(L, l_gfx_draw_with_state);
+  lua_setfield(L, -2, "draw_with_state");
+  lua_pushvalue(L, -1);
+  lua_setfield(L, -4, "draw_state"); // lub.__refs.draw_state
+  lua_setfield(L, -2, "__index");
+  lua_pop(L, 1);
   luaL_newmetatable(L, "lub.ref.world");
   lua_createtable(L, 0, 22); // methods
   lua_pushcfunction(L, l_phys2d_find_body);

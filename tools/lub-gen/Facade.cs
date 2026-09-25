@@ -323,15 +323,63 @@ public static class Facade
             }
             var args = new List<string> { "LubRuntime.Ctx" };
             var post = new StringBuilder(); // 呼び出し後 (out の変換)
+            // [LubLazyData] の record / Dictionary は詰め替え (Dictionary は名前の
+            // UTF-8 と値の写し) が重いので、Lua binding と同じく読まずに問い合わせ、
+            // 外れたときだけ詰め替えてもう一度呼ぶ。List は pin するだけなので
+            // 問い合わせない
+            var probe = !f.NoFail && f.Params.Any(p => p.LazyData && p.Type.Kind is LubTypeKind.Record or LubTypeKind.Dict);
+            var probeArgs = new List<string> { "LubRuntime.Ctx" };
+            var probeWhen = new List<string>();
+            var lazyPre = new StringBuilder(); // 外れたときの詰め替え
             foreach (var p in f.Params.Where(p => !p.IsOut && p.CountOf == null))
-                args.AddRange(InArg(f, p, b, i3));
+            {
+                if (probe && p.Type.Kind == LubTypeKind.String)
+                {
+                    // 2 回の呼び出しで同じ文字列を使う (UTF-8 に写すのは 1 回)
+                    b.Append($"{i3}var _{p.LuaName}_s = a.Str({p.Name});\n");
+                    args.Add($"_{p.LuaName}_s");
+                    probeArgs.Add($"_{p.LuaName}_s");
+                    continue;
+                }
+                if (!(probe && p.LazyData))
+                {
+                    var ins = InArg(f, p, b, i3).ToList();
+                    args.AddRange(ins);
+                    probeArgs.AddRange(ins);
+                    continue;
+                }
+                args.AddRange(InArg(f, p, lazyPre, i3 + "    "));
+                switch (p.Type.Kind)
+                {
+                    case LubTypeKind.Record:
+                        probeArgs.Add("null");
+                        probeWhen.Add($"{p.Name} != null");
+                        break;
+                    case LubTypeKind.Dict:
+                        probeArgs.Add("null");
+                        probeArgs.Add("0");
+                        probeWhen.Add($"{p.Name} != null");
+                        break;
+                    default:
+                        {
+                            var count = CountParam(f, p) != null ? $"_{p.LuaName}_n" : $"{p.Name}?.Count ?? 0";
+                            probeArgs.Add("null");
+                            probeArgs.Add(count);
+                            probeWhen.Add($"({count}) > 0");
+                            break;
+                        }
+                }
+            }
             foreach (var p in f.Params.Where(p => p.IsOut))
             {
-                args.AddRange(OutArg(p.Type, p.LuaName, b, i3));
+                var o = OutArg(p.Type, p.LuaName, b, i3).ToList();
+                args.AddRange(o);
+                probeArgs.AddRange(o);
                 if (p.Type.Kind == LubTypeKind.Record && p.Type.Nullable)
                 {
                     b.Append($"{i3}bool has_{p.LuaName} = false;\n");
                     args.Add($"&has_{p.LuaName}");
+                    probeArgs.Add($"&has_{p.LuaName}");
                 }
             }
             var r = f.Return;
@@ -360,15 +408,28 @@ public static class Facade
                 string? has = null;
                 if (hasRet)
                 {
-                    args.AddRange(OutArg(r, "out", b, i3));
+                    var o = OutArg(r, "out", b, i3).ToList();
+                    args.AddRange(o);
+                    probeArgs.AddRange(o);
                     if (r.Nullable && (r.IsScalar || (r.Kind == LubTypeKind.Record && f.Maybe)))
                     {
                         b.Append($"{i3}bool has = false;\n");
                         args.Add("&has");
+                        probeArgs.Add("&has");
                         has = "has";
                     }
                 }
-                b.Append($"{i3}var st = {fn}({string.Join(", ", args)});\n");
+                if (probe)
+                {
+                    b.Append($"{i3}var st = LubNative.LUB_NOT_FOUND;\n");
+                    b.Append($"{i3}if (version.HasValue && ({string.Join(" || ", probeWhen)}))\n");
+                    b.Append($"{i3}    st = {fn}({string.Join(", ", probeArgs)});\n");
+                    b.Append($"{i3}if (st == LubNative.LUB_NOT_FOUND)\n{i3}{{\n");
+                    b.Append(lazyPre);
+                    b.Append($"{i3}    st = {fn}({string.Join(", ", args)});\n{i3}}}\n");
+                }
+                else
+                    b.Append($"{i3}var st = {fn}({string.Join(", ", args)});\n");
                 // NOT_FOUND: 戻り値が null を許す (か戻り値が無い) なら null / 既定値、
                 // そうでなければ例外
                 var notFound = new StringBuilder();
@@ -749,6 +810,9 @@ public static class Facade
                     case LubTypeKind.Func:
                         sb.Append($"        public {FnPtr(tr)} @{n};\n");
                         break;
+                    case LubTypeKind.Dict:
+                        sb.Append($"        public LubBinding* @{n};\n        public int @{n}_count;\n");
+                        break;
                     default:
                         throw new InvalidOperationException($"{f.Name}: unsupported field type {tr}");
                 }
@@ -958,6 +1022,9 @@ public static class Facade
                             _ = slot;
                             break;
                         }
+                    case LubTypeKind.Dict:
+                        sb.Append($"        s->@{n} = a.Bindings({v}, out s->@{n}_count);\n");
+                        break;
                     default:
                         throw new InvalidOperationException($"{t.Name}.{f.Name}: unsupported {tr}");
                 }
@@ -1026,7 +1093,8 @@ public static class Facade
                             break;
                         }
                     case LubTypeKind.Func:
-                        break; // callback は戻さない
+                    case LubTypeKind.Dict:
+                        break; // callback と bindings は戻さない
                     default:
                         throw new InvalidOperationException($"{t.Name}.{f.Name}: unsupported {tr}");
                 }

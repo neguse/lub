@@ -53,7 +53,8 @@ void lgen_release(LgenMark mark) {
   }
 }
 
-void *lgen_alloc(lua_State *L, size_t bytes) {
+// zero なら 0 で埋める (中身を全部書く呼び出し側は埋めない)。
+static void *arena_alloc(lua_State *L, size_t bytes, bool zero) {
   bytes = (bytes + 15) & ~(size_t)15;
   Chunk *c = g_arena.cur;
   if (!c || c->used + bytes > c->cap) {
@@ -83,8 +84,13 @@ void *lgen_alloc(lua_State *L, size_t bytes) {
   }
   void *p = c->data + c->used;
   c->used += bytes;
-  memset(p, 0, bytes);
+  if (zero)
+    memset(p, 0, bytes);
   return p;
+}
+
+void *lgen_alloc(lua_State *L, size_t bytes) {
+  return arena_alloc(L, bytes, true);
 }
 
 // ---------------------------------------------------------------- views
@@ -479,14 +485,17 @@ static int32_t table_len(lua_State *L, int idx) {
   return (int32_t)lua_rawlen(L, idx);
 }
 
-// 配列らしい値 (table か view) の長さ。
+// 配列らしい値 (table か view) の長さ。table なら userdata の metatable を
+// 引かない。
 static int32_t array_len(lua_State *L, int idx, bool *is_view) {
-  View *v = view_test(L, idx);
-  if (v) {
-    *is_view = true;
-    return v->count;
-  }
   *is_view = false;
+  if (lua_type(L, idx) != LUA_TTABLE) {
+    View *v = view_test(L, idx);
+    if (v) {
+      *is_view = true;
+      return v->count;
+    }
+  }
   return table_len(L, idx);
 }
 
@@ -572,12 +581,14 @@ bool lgen_array_len_arg(lua_State *L, int idx, int32_t *count, bool required) {
 
 const float *lgen_floats_n(lua_State *L, int idx, int32_t n) {
   idx = lua_absindex(L, idx);
-  return floats_prefix(L, idx, n, view_test(L, idx) != NULL);
+  bool is_view = lua_type(L, idx) != LUA_TTABLE && view_test(L, idx) != NULL;
+  return floats_prefix(L, idx, n, is_view);
 }
 
 const int32_t *lgen_ints_n(lua_State *L, int idx, int32_t n) {
   idx = lua_absindex(L, idx);
-  return ints_prefix(L, idx, n, view_test(L, idx) != NULL);
+  bool is_view = lua_type(L, idx) != LUA_TTABLE && view_test(L, idx) != NULL;
+  return ints_prefix(L, idx, n, is_view);
 }
 
 int32_t lgen_count_arg(lua_State *L, int idx, int32_t count, int32_t len) {
@@ -800,9 +811,9 @@ void lgen_push_str_table(lua_State *L, const LubStr *data, int32_t count) {
 
 // -------------------------------------------------------------- handles
 // sentinel table: { __lub_kind = kind, handle = h, key = ..., ... }。
-// gfx の resource (texture / shader / buffer) は key と version も持ち、
-// handle が stale (使われずに sweep された) なら key から引き直す。key も
-// 宣言されていなければ error (黙って「無し」にしない)。
+// gfx の resource (texture / shader / buffer / draw state) は key と version
+// も持ち、handle が stale (使われずに sweep された) なら key から引き直す。
+// key も宣言されていなければ error (黙って「無し」にしない)。
 
 static bool is_sentinel(lua_State *L, int idx, const char *kind) {
   if (lua_type(L, idx) != LUA_TTABLE)
@@ -816,7 +827,7 @@ static bool is_sentinel(lua_State *L, int idx, const char *kind) {
 
 static bool is_gfx_kind(const char *kind) {
   return strcmp(kind, "texture") == 0 || strcmp(kind, "shader") == 0 ||
-         strcmp(kind, "buffer") == 0;
+         strcmp(kind, "buffer") == 0 || strcmp(kind, "draw_state") == 0;
 }
 
 static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
@@ -838,6 +849,8 @@ static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
       found = lub_gfx_lookup_texture(lgen_ctx(), k);
     else if (strcmp(kind, "shader") == 0)
       found = lub_gfx_lookup_shader(lgen_ctx(), k);
+    else if (strcmp(kind, "draw_state") == 0)
+      found = lub_gfx_lookup_draw_state(lgen_ctx(), k);
     else
       found = lub_gfx_lookup_buffer(lgen_ctx(), k);
     if (found == 0) {
@@ -1053,89 +1066,140 @@ const char *lgen_callbacks_error(LgenCallbacks *cb) {
 }
 
 // ------------------------------------------------------------ bindings
+// draw / dispatch の自由な table を 1 回の走査で LubBinding の列にする。列は
+// arena に置き、項目の数を先に数えずに伸ばす。
+
+typedef struct BindingList {
+  LubBinding *items;
+  int32_t n, cap;
+} BindingList;
+
+static LubBinding *binding_push(lua_State *L, BindingList *l) {
+  if (l->n == l->cap) {
+    int32_t cap = l->cap ? l->cap * 2 : 16;
+    LubBinding *grown =
+        (LubBinding *)arena_alloc(L, (size_t)cap * sizeof(LubBinding), false);
+    if (l->n > 0)
+      memcpy(grown, l->items, (size_t)l->n * sizeof(LubBinding));
+    l->items = grown;
+    l->cap = cap;
+  }
+  return &l->items[l->n++];
+}
+
+// `__` で始まる予約 key は binding として読まない
+static bool reserved_key(const char *k, size_t len) {
+  return len >= 2 && k[0] == '_' && k[1] == '_';
+}
+
+typedef enum { BIND_NONE, BIND_TEXTURE, BIND_BUFFER, BIND_MAIN_TEX } BindKind;
+
+// 束縛できる sentinel (texture / buffer / main_tex) の種類。__lub_kind は 1 回
+// だけ引く。
+static BindKind binding_kind(lua_State *L, int idx) {
+  if (lua_type(L, idx) != LUA_TTABLE)
+    return BIND_NONE;
+  lua_getfield(L, idx, "__lub_kind");
+  const char *k = lua_tostring(L, -1);
+  BindKind kind = !k                           ? BIND_NONE
+                  : strcmp(k, "texture") == 0  ? BIND_TEXTURE
+                  : strcmp(k, "buffer") == 0   ? BIND_BUFFER
+                  : strcmp(k, "main_tex") == 0 ? BIND_MAIN_TEX
+                                               : BIND_NONE;
+  lua_pop(L, 1);
+  return kind;
+}
+
+// uniforms の table (絶対 index ut) の値 (数か数の配列) を足す。
+static void read_uniforms(lua_State *L, int ut, BindingList *l) {
+  lua_pushnil(L);
+  while (lua_next(L, ut)) {
+    size_t len = 0;
+    const char *k =
+        lua_type(L, -2) == LUA_TSTRING ? lua_tolstring(L, -2, &len) : NULL;
+    if (k && !reserved_key(k, len)) {
+      LubBinding *b = binding_push(L, l);
+      b->name.ptr = k; // 文字列は table の key が参照し続ける
+      b->name.len = (int32_t)len;
+      b->handle = 0;
+      int t = lua_type(L, -1);
+      if (t == LUA_TNUMBER) {
+        float *one = (float *)arena_alloc(L, sizeof(float), false);
+        one[0] = (float)lua_tonumber(L, -1);
+        b->values = one;
+        b->count = 1;
+      } else {
+        if (t != LUA_TTABLE && !view_test(L, -1))
+          luaL_error(L, "bindings.uniforms.%s: number or number array expected",
+                     k);
+        b->values = read_floats(L, -1, &b->count);
+      }
+    }
+    lua_pop(L, 1);
+  }
+}
 
 const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count) {
   idx = lua_absindex(L, idx);
   *count = 0;
   luaL_checktype(L, idx, LUA_TTABLE);
-  // 個数を数えてから詰める (uniforms は入れ子)
-  int32_t n = 0;
+  BindingList l = {NULL, 0, 0};
   lua_pushnil(L);
   while (lua_next(L, idx)) {
-    if (lua_type(L, -2) == LUA_TSTRING) {
-      const char *k = lua_tostring(L, -2);
-      if (strcmp(k, "uniforms") == 0 && lua_type(L, -1) == LUA_TTABLE) {
-        lua_pushnil(L);
-        while (lua_next(L, -2)) {
-          n++;
-          lua_pop(L, 1);
-        }
-      } else if (k[0] != '_' || k[1] != '_') {
-        n++;
-      }
-    }
-    lua_pop(L, 1);
-  }
-  LubBinding *out =
-      (LubBinding *)lgen_alloc(L, (size_t)(n ? n : 1) * sizeof(LubBinding));
-  int32_t i = 0;
-  lua_pushnil(L);
-  while (lua_next(L, idx)) {
-    if (lua_type(L, -2) != LUA_TSTRING) {
+    size_t len = 0;
+    const char *k =
+        lua_type(L, -2) == LUA_TSTRING ? lua_tolstring(L, -2, &len) : NULL;
+    if (!k || reserved_key(k, len)) {
       lua_pop(L, 1);
       continue;
     }
-    size_t klen = 0;
-    const char *k = lua_tolstring(L, -2, &klen);
-    // `__` で始まる予約 key は binding として読まない
-    if (k[0] == '_' && k[1] == '_') {
-      lua_pop(L, 1);
-      continue;
-    }
-    if (strcmp(k, "uniforms") == 0 && lua_type(L, -1) == LUA_TTABLE) {
-      int ut = lua_gettop(L);
-      lua_pushnil(L);
-      while (lua_next(L, ut)) {
-        if (lua_type(L, -2) == LUA_TSTRING &&
-            !(lua_tostring(L, -2)[0] == '_' && lua_tostring(L, -2)[1] == '_')) {
-          size_t ulen = 0;
-          out[i].name.ptr = lua_tolstring(L, -2, &ulen);
-          out[i].name.len = (int32_t)ulen;
-          out[i].handle = 0;
-          if (lua_type(L, -1) == LUA_TNUMBER) {
-            float *one = (float *)lgen_alloc(L, sizeof(float));
-            one[0] = (float)lua_tonumber(L, -1);
-            out[i].values = one;
-            out[i].count = 1;
-          } else {
-            out[i].values = read_floats(L, -1, &out[i].count);
-          }
-          i++;
-        }
-        lua_pop(L, 1);
-      }
+    int vt = lua_gettop(L);
+    if (len == 8 && memcmp(k, "uniforms", 8) == 0 &&
+        lua_type(L, vt) == LUA_TTABLE) {
+      read_uniforms(L, vt, &l);
     } else {
-      out[i].name.ptr = k;
-      out[i].name.len = (int32_t)klen;
-      out[i].values = NULL;
-      out[i].count = 0;
-      const char *kind =
-          is_sentinel(L, -1, "texture") || is_sentinel(L, -1, "main_tex")
-              ? "texture"
-          : is_sentinel(L, -1, "buffer") ? "buffer"
-                                         : NULL;
-      if (!kind) {
+      BindKind kind = binding_kind(L, vt);
+      if (kind == BIND_NONE) {
         lua_pop(L, 2);
         luaL_error(L, "bindings.%s: buffer or texture expected", k);
         return NULL;
       }
-      out[i].handle = lgen_ref_arg(L, lua_gettop(L), kind, true);
-      i++;
+      LubBinding *b = binding_push(L, &l);
+      b->name.ptr = k;
+      b->name.len = (int32_t)len;
+      b->values = NULL;
+      b->count = 0;
+      b->handle = kind == BIND_MAIN_TEX
+                      ? lub_gfx_main_tex(lgen_ctx())
+                      : sentinel_handle(
+                            L, vt, kind == BIND_TEXTURE ? "texture" : "buffer");
     }
     lua_pop(L, 1);
   }
-  *count = i;
-  return out;
+  *count = l.n;
+  // 空の bindings も NULL にしない (渡されたことが分かるように)
+  return l.items ? l.items
+                 : (const LubBinding *)arena_alloc(L, sizeof(LubBinding), true);
+}
+
+const LubBinding *lgen_bindings_field(lua_State *L, int idx, const char *key,
+                                      int32_t *count) {
+  *count = 0;
+  lua_getfield(L, idx, key);
+  int t = lua_type(L, -1);
+  if (t == LUA_TNIL) {
+    lua_pop(L, 1);
+    return NULL;
+  }
+  if (t != LUA_TTABLE) {
+    lua_pop(L, 1);
+    luaL_error(L, "field '%s' must be a table", key);
+    return NULL;
+  }
+  // 名前は table の key が参照し続ける (table は引数の table が持つ)
+  const LubBinding *r = lgen_bindings_arg(L, -1, count);
+  lua_pop(L, 1);
+  return r;
 }
 
 // ------------------------------------------------------------ register

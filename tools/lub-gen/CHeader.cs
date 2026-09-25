@@ -324,6 +324,12 @@ public static class CHeader
                 case LubTypeKind.Func:
                     line = $"  {FuncPointer(tr, n)};";
                     break;
+                case LubTypeKind.Dict:
+                    // 2 行になるので doc は上に置く
+                    Comment(f.Doc, "  ");
+                    doc = "";
+                    line = $"  const LubBinding *{n};" + (f.Optional ? " // NULL = 無し" : "") + $"\n  int32_t {n}_count;";
+                    break;
                 default:
                     throw new InvalidOperationException($"{f.Name}: unsupported field type {tr}");
             }
@@ -401,9 +407,16 @@ public static class CHeader
                 }
                 Comment(f.Doc);
                 foreach (var p in f.Params.Where(p => p.LazyData))
-                    Comment($"{p.LuaName} == NULL かつ {p.LuaName}_count > 0 は {p.LuaName} を読む前の問い合わせ: " +
-                        $"key がその version を持っていれば {p.LuaName} を渡したときと同じ結果、" +
-                        "持っていなければ何も変えずに LUB_NOT_FOUND。");
+                    Comment(p.Type.Kind switch
+                    {
+                        LubTypeKind.List => $"{p.LuaName} == NULL かつ {p.LuaName}_count > 0 は {p.LuaName} を読む前の問い合わせ: " +
+                            $"key がその version を持っていれば {p.LuaName} を渡したときと同じ結果、" +
+                            "持っていなければ何も変えずに LUB_NOT_FOUND。",
+                        LubTypeKind.Record => $"{p.LuaName} == NULL は {p.LuaName} を読む前の問い合わせ: " +
+                            $"key がその version を持っていれば {p.LuaName} を渡したときと同じ結果、" +
+                            "持っていなければ何も変えずに LUB_NOT_FOUND。",
+                        _ => $"問い合わせでは {p.LuaName} も読まずに NULL と 0 を渡す。",
+                    });
                 foreach (var p in f.Params.Where(p => p.CountOf != null))
                 {
                     var target = f.Params.First(q => q.Name == p.CountOf).LuaName;
@@ -538,11 +551,11 @@ public static class CHeader
 
         // ---------------------------------------------------------- helpers
 
-        private void Comment(string doc)
+        private void Comment(string doc, string indent = "")
         {
             if (doc.Length == 0) return;
-            foreach (var line in WrapText(doc, 76))
-                sb.Append("// ").Append(line).Append('\n');
+            foreach (var line in WrapText(doc, 76 - indent.Length))
+                sb.Append(indent).Append("// ").Append(line).Append('\n');
         }
 
         // 表示幅 (CJK は 2) で折り返す。折り返し位置は空白の後か、CJK の文字

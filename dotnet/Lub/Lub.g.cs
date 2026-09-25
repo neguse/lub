@@ -80,6 +80,30 @@ public sealed unsafe class BufferRef
     public int Version { get; }
 }
 
+/// <summary>use_draw_state の不透明ハンドル。version と破棄後の扱いは TextureRef と同じ。</summary>
+public sealed unsafe class DrawStateRef
+{
+    internal int H;
+    internal readonly string? Key;
+    internal DrawStateRef(int h, string? key) { H = h; Key = key; Version = LubRuntime.ResourceVersion(h); }
+    internal int Live()
+    {
+        if (Key == null || !LubRuntime.IsStale(H)) return H;
+        var a = LubRuntime.Arena.Begin();
+        try
+        {
+            var k = a.Str(Key);
+            var h = LubNative.lub_gfx_lookup_draw_state(LubRuntime.Ctx, k);
+            return H = h != 0 ? h : LubRuntime.StaleRef(k);
+        }
+        finally
+        {
+            a.End();
+        }
+    }
+    public int Version { get; }
+}
+
 /// <summary>ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の結果)。返された frame の終わりまで有効で、古い view を API に渡すと error になる。frame を跨いで持ちたい内容は自分の memory に写す。</summary>
 public sealed unsafe class Bytes
 {
@@ -168,9 +192,11 @@ public class PassOpts
     public float? ClearDepth;
     /// <summary>`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
     public Lub.Gfx.LoadAction? Load;
+    /// <summary>この pass のどの draw にも効く bindings。形は Draw の bindings と同じ (名前で束縛する buffer / texture と、入れ子の `uniforms`)。draw の bindings に同じ名前があれば draw の方が勝つ (uniforms は member の名前ごと、buffer / texture は束縛の名前ごと)。どちらにも無い uniform の member は 0。値は BeginPass の時点で写すので、渡した Dictionary を後で書き換えても pass には効かない。buffer / texture は draw のたびに引くので、 pass の中で宣言し直した内容も見える。EndPass で消え、Dispatch には効かない。</summary>
+    public Dictionary<string, object>? Bindings;
 }
 
-/// <summary>Gfx.draw のオプション。shader 以外は省略可。</summary>
+/// <summary>Gfx.Draw と Gfx.UseDrawState のオプション。shader 以外は省略可。</summary>
 public class DrawOpts
 {
     public ShaderRef Shader;
@@ -183,7 +209,7 @@ public class DrawOpts
     /// <summary>depth test の有効/無効。</summary>
     public bool? Depth;
     public bool? DepthWrite;
-    /// <summary>instance の数。省略時 1。0 以下を渡すと描かない (draw としての検査と、使った resource の記録はする)。</summary>
+    /// <summary>instance の数。省略時 1。0 以下を渡すと描かない (draw としての検査と、使った resource の記録はする)。UseDrawState では DrawWithState が instanceCount を省いたときの数。</summary>
     public int? InstanceCount;
 }
 
@@ -2285,6 +2311,21 @@ public static unsafe partial class Lub
             }
         }
 
+        /// <summary>LookupTexture の draw state 版。</summary>
+        public static DrawStateRef? LookupDrawState(string key)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var r = LubNative.lub_gfx_lookup_draw_state(LubRuntime.Ctx, a.Str(key));
+                return LubNative.H_DrawStateRef(r, key);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
         /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
         public static bool ResourceInfo(int handle, out string? key, out int version)
         {
@@ -2356,6 +2397,7 @@ public static unsafe partial class Lub
             }
         }
 
+        /// <summary>count 個の頂点 (bindings に `indices` があれば count 個の index) を描く。bindings はシェーダ依存の自由な table で、名前で buffer / texture を束縛し、`uniforms` の下に uniform の値を置く。 PassOpts.Bindings と同じ名前があれば、こちらが勝つ。</summary>
         public static void Draw(int count, Dictionary<string, object> bindings, DrawOpts opts)
         {
             var a = LubRuntime.Arena.Begin();
@@ -2375,6 +2417,65 @@ public static unsafe partial class Lub
                     return;
                 }
                 LubRuntime.Check(st, "Gfx.Draw");
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>draw の設定 (opts の shader と blend / cull / primitive / depth / depthWrite、固定の bindings) を key で持つ draw state。DrawWithState で描く。bindings の名前を shader のどの uniform / texture / buffer に束縛するかは宣言の時に決め、shader が作り直されたら (hot reload) 次の DrawWithState で決め直す。version の規約は UseBuffer と同じで、key がすでに同じ version を持っていれば opts も bindings も読まない。opts に null を渡すと再主張だけをする (key がその version を持っていなければ null)。opts.Shader は必須で、graphics の shader に限る。bindings の形は Draw と同じで、uniform の値は宣言の時点で写す (buffer / texture は描くたびに引く)。draw state を宣言するか DrawWithState で描くと、その shader と固定の buffer / texture も使ったことになる。</summary>
+        public static DrawStateRef? UseDrawState(string key, DrawOpts? opts, Dictionary<string, object>? bindings, int? version = null)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var _key_s = a.Str(key);
+                int _version = (version ?? default);
+                int o_out = 0;
+                var st = LubNative.LUB_NOT_FOUND;
+                if (version.HasValue && (opts != null || bindings != null))
+                    st = LubNative.lub_gfx_use_draw_state(LubRuntime.Ctx, _key_s, null, null, 0, version.HasValue ? &_version : null, &o_out);
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    LubNative.LubDrawOpts* _opts = null;
+                    if (opts != null)
+                    {
+                        _opts = a.Alloc<LubNative.LubDrawOpts>(1);
+                        LubNative.To_LubDrawOpts(opts, a, _opts);
+                    }
+                    int _bindings_n = 0;
+                    var _bindings = a.Bindings(bindings, out _bindings_n);
+                    st = LubNative.lub_gfx_use_draw_state(LubRuntime.Ctx, _key_s, _opts, _bindings, _bindings_n, version.HasValue ? &_version : null, &o_out);
+                }
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    return null;
+                }
+                LubRuntime.Check(st, "Gfx.UseDrawState");
+                return LubNative.H_DrawStateRef(o_out, key);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>draw state で count 個の頂点 (または index) を描く。bindings はこの draw だけの分で、同じ名前はこの bindings、draw state の固定の bindings、PassOpts.Bindings の順に勝つ。instanceCount の意味は DrawOpts.InstanceCount と同じで、省略すると draw state の InstanceCount (それも無ければ 1)。</summary>
+        public static void DrawWithState(DrawStateRef state, int count, Dictionary<string, object>? bindings = null, int? instanceCount = null)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                int _bindings_n = 0;
+                var _bindings = a.Bindings(bindings, out _bindings_n);
+                int _instance_count = (instanceCount ?? default);
+                var st = LubNative.lub_gfx_draw_with_state(LubRuntime.Ctx, state.Live(), count, _bindings, _bindings_n, instanceCount.HasValue ? &_instance_count : null);
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    return;
+                }
+                LubRuntime.Check(st, "Gfx.DrawWithState");
             }
             finally
             {
@@ -7253,6 +7354,8 @@ internal static unsafe partial class LubNative
 
     internal static BufferRef? H_BufferRef(int h, string? key = null) => h == 0 ? null : new BufferRef(h, key);
 
+    internal static DrawStateRef? H_DrawStateRef(int h, string? key = null) => h == 0 ? null : new DrawStateRef(h, key);
+
     internal static WorldRef? H_WorldRef(int h) => h == 0 ? null : new WorldRef(h);
 
     internal static BodyRef? H_BodyRef(int h) => h == 0 ? null : new BodyRef(h);
@@ -7286,6 +7389,8 @@ internal static unsafe partial class LubNative
         public float @clear_depth;
         public bool @has_load;
         public int @load;
+        public LubBinding* @bindings;
+        public int @bindings_count;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -9595,6 +9700,9 @@ internal static unsafe partial class LubNative
     internal static extern int lub_gfx_lookup_buffer(void* ctx, LubStr @key);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_lookup_draw_state(void* ctx, LubStr @key);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_gfx_resource_info(void* ctx, int @handle, LubStr* @key, int* @version);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -9602,6 +9710,12 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_draw(void* ctx, int @count, LubBinding* @bindings, int @bindings_count, LubDrawOpts* @opts);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_use_draw_state(void* ctx, LubStr @key, LubDrawOpts* @opts, LubBinding* @bindings, int @bindings_count, int* @version, int* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_gfx_draw_with_state(void* ctx, int @state, int @count, LubBinding* @bindings, int @bindings_count, int* @instance_count);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_dispatch(void* ctx, int @x, int @y, int @z, LubBinding* @bindings, int @bindings_count, LubDispatchOpts* @opts);
@@ -10242,6 +10356,7 @@ internal static unsafe partial class LubNative
         s->@clear_depth = (float)(o.ClearDepth ?? default);
         s->@has_load = o.Load.HasValue;
         s->@load = (int)(o.Load ?? default);
+        s->@bindings = a.Bindings(o.Bindings, out s->@bindings_count);
     }
 
     internal static void Fill_LubPassOpts(PassOpts o, LubPassOpts* s)

@@ -36,9 +36,9 @@ public sealed record TypeRef(LubTypeKind Kind, string Name, bool Nullable,
     };
 }
 
-/// <summary>LazyData は [LubLazyData] の List (key がその version を持っていれば
-/// 読まない data)。CountOf は [LubCountOf] の対象の List の引数名 (C の引数に
-/// ならず、その List の先頭から使う要素数)。</summary>
+/// <summary>LazyData は [LubLazyData] の List / record / Dictionary (key がその
+/// version を持っていれば読まない data)。CountOf は [LubCountOf] の対象の List の
+/// 引数名 (C の引数にならず、その List の先頭から使う要素数)。</summary>
 public sealed record ApiParam(string Name, string LuaName, TypeRef Type, bool Optional,
     bool IsOut, int? ArrayLen, bool LazyData = false, string? CountOf = null);
 
@@ -185,20 +185,23 @@ public static class ApiModelLoader
             HasAttr(m, "LubNoCAttribute"));
     }
 
-    // [LubLazyData] は key と version で宣言する関数の float / int の List にだけ
-    // 付けられる (C の問い合わせの契約が key と version を前提にする)。
+    // [LubLazyData] は key と version で宣言する関数の float / int の List と、
+    // null を許す record / Dictionary に付けられる (C の問い合わせの契約が key と
+    // version を前提にし、record / Dictionary は NULL で「読んでいない」を表す)。
     private static void CheckLazyData(IMethodSymbol m, List<ApiParam> ps, ApiParam p)
     {
         var where = $"{m.ContainingType.Name}.{m.Name}({p.Name})";
-        if (p.IsOut || p.Type.Kind != LubTypeKind.List
-            || p.Type.Elem!.Kind is not (LubTypeKind.Double or LubTypeKind.Int))
-            throw new InvalidOperationException($"{where}: [LubLazyData] needs a List<float> or List<int> parameter");
+        var list = p.Type.Kind == LubTypeKind.List
+            && p.Type.Elem!.Kind is LubTypeKind.Double or LubTypeKind.Int;
+        var nullable = p.Type.Kind is LubTypeKind.Record or LubTypeKind.Dict && p.Type.Nullable;
+        if (p.IsOut || !(list || nullable))
+            throw new InvalidOperationException($"{where}: [LubLazyData] needs a List<float> / List<int>, or a nullable record / Dictionary parameter");
         if (!ps.Any(q => !q.IsOut && q.Name == "key" && q.Type.Kind == LubTypeKind.String && !q.Type.Nullable))
             throw new InvalidOperationException($"{where}: [LubLazyData] needs a 'string key' parameter");
         if (!ps.Any(q => !q.IsOut && q.Name == "version" && q.Type.Kind == LubTypeKind.Int && q.Type.Nullable))
             throw new InvalidOperationException($"{where}: [LubLazyData] needs an 'int? version' parameter");
-        if (ps.Count(q => q.LazyData) > 1 || HasAttr(m, "LubNoFailAttribute") || HasAttr(m, "LubNoCAttribute"))
-            throw new InvalidOperationException($"{where}: [LubLazyData] needs a status-returning C function with one lazy parameter");
+        if (HasAttr(m, "LubNoFailAttribute") || HasAttr(m, "LubNoCAttribute"))
+            throw new InvalidOperationException($"{where}: [LubLazyData] needs a status-returning C function");
     }
 
     // [LubCountOf("x")] は省略可能な int? に付け、x はそれより前の float / int の

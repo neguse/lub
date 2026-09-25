@@ -294,6 +294,9 @@ public static class LuaBinding
                             sb.Append($"  o->{n} = lgen_callbacks_field(L, cb, {i}, idx, {q}) ? tramp_{c}_{n} : NULL;\n");
                             break;
                         }
+                    case LubTypeKind.Dict:
+                        sb.Append($"  o->{n} = lgen_bindings_field(L, idx, {q}, &o->{n}_count);\n");
+                        break;
                     default:
                         throw new InvalidOperationException($"{t.Name}.{f.Name}: unsupported {tr}");
                 }
@@ -406,7 +409,8 @@ public static class LuaBinding
                             break;
                         }
                     case LubTypeKind.Func:
-                        break; // callback は Lua に戻さない
+                    case LubTypeKind.Dict:
+                        break; // callback と bindings は Lua に戻さない
                     default:
                         throw new InvalidOperationException($"{t.Name}.{f.Name}: unsupported {tr}");
                 }
@@ -506,9 +510,11 @@ public static class LuaBinding
             sb.Append("  (void)L;\n  LgenMark mark = lgen_mark();\n");
             var call = new List<string> { "lgen_ctx()" };
             var post = new StringBuilder(); // 呼び出し後の後始末
-            // [LubLazyData] の引数 (名前、位置、変換関数): 長さだけ読み、中身は
-            // key がその version を持っていなかったときだけ呼び出しの直前に読む
-            (string name, int idx, string conv, string req)? lazy = null;
+            // [LubLazyData] の引数: 中身は key がその version を持っていなかった
+            // ときだけ呼び出しの直前に読む (read)。それまでの変数は問い合わせの形
+            // (List は NULL と長さ、record は NULL、Dictionary は NULL と 0) で、
+            // probe は問い合わせる価値があるか (読むものが渡されたか)
+            var lazies = new List<(string read, string probe)>();
             // [LubCountOf] で数を指される List (名前、位置、変換関数): 長さだけ
             // 読み、count を当てた後で先頭の count 個を呼び出しの直前に読む
             var counted = new List<(string name, int idx, string conv)>();
@@ -573,7 +579,14 @@ public static class LuaBinding
                         {
                             var c = CType(tr.Name);
                             sb.Append($"  {c} {n}_v;\n  memset(&{n}_v, 0, sizeof {n}_v);\n  const {c} *{n} = NULL;\n");
-                            if (opt)
+                            if (p.LazyData)
+                            {
+                                // 形だけ先に確かめ、中身は呼び出しの直前に読む
+                                sb.Append($"  bool {n}_given = !lua_isnoneornil(L, {idx});\n");
+                                sb.Append($"  if ({n}_given)\n    luaL_checktype(L, {idx}, LUA_TTABLE);\n");
+                                lazies.Add(($"    if ({n}_given) {{\n      read_{c}(L, {idx}, &{n}_v);\n      {n} = &{n}_v;\n    }}\n", $"{n}_given"));
+                            }
+                            else if (opt)
                                 sb.Append($"  if (!lua_isnoneornil(L, {idx})) {{\n    luaL_checktype(L, {idx}, LUA_TTABLE);\n    read_{c}(L, {idx}, &{n}_v);\n    {n} = &{n}_v;\n  }}\n");
                             else
                                 sb.Append($"  luaL_checktype(L, {idx}, LUA_TTABLE);\n  read_{c}(L, {idx}, &{n}_v);\n  {n} = &{n}_v;\n");
@@ -595,7 +608,13 @@ public static class LuaBinding
                                 var conv = hasCount
                                     ? (ints ? "lgen_ints_n" : "lgen_floats_n")
                                     : (ints ? "lgen_ints_arg" : "lgen_floats_arg");
-                                if (p.LazyData) lazy = (n, idx, conv, req);
+                                if (p.LazyData)
+                                {
+                                    var read = hasCount
+                                        ? $"{conv}(L, {idx}, {n}_count)"
+                                        : $"{conv}(L, {idx}, &{n}_count, {req})";
+                                    lazies.Add(($"    if ({n}_given)\n      {n} = {read};\n", $"{n}_count > 0"));
+                                }
                                 else counted.Add((n, idx, conv));
                                 call.Add(n);
                                 call.Add($"{n}_count");
@@ -631,7 +650,20 @@ public static class LuaBinding
                         post.Append($"  lgen_callbacks_free({n}_cb);\n");
                         break;
                     case LubTypeKind.Dict:
-                        sb.Append($"  int32_t {n}_count = 0;\n  const LubBinding *{n} = lgen_bindings_arg(L, {idx}, &{n}_count);\n");
+                        if (p.LazyData)
+                        {
+                            sb.Append($"  int32_t {n}_count = 0;\n  const LubBinding *{n} = NULL;\n");
+                            sb.Append($"  bool {n}_given = !lua_isnoneornil(L, {idx});\n");
+                            sb.Append($"  if ({n}_given)\n    luaL_checktype(L, {idx}, LUA_TTABLE);\n");
+                            lazies.Add(($"    if ({n}_given)\n      {n} = lgen_bindings_arg(L, {idx}, &{n}_count);\n", $"{n}_given"));
+                        }
+                        else if (opt)
+                        {
+                            sb.Append($"  int32_t {n}_count = 0;\n  const LubBinding *{n} = NULL;\n");
+                            sb.Append($"  if (!lua_isnoneornil(L, {idx}))\n    {n} = lgen_bindings_arg(L, {idx}, &{n}_count);\n");
+                        }
+                        else
+                            sb.Append($"  int32_t {n}_count = 0;\n  const LubBinding *{n} = lgen_bindings_arg(L, {idx}, &{n}_count);\n");
                         call.Add(n);
                         call.Add($"{n}_count");
                         break;
@@ -683,17 +715,16 @@ public static class LuaBinding
             }
             else
             {
-                if (lazy is { } lz)
+                if (lazies.Count > 0)
                 {
-                    // version があれば、まだ NULL の data で問い合わせる (hit なら
-                    // data を読まずに済む)。外れたら data を読んでもう一度呼ぶ
-                    var read = lz.conv.EndsWith("_n", StringComparison.Ordinal)
-                        ? $"{lz.conv}(L, {lz.idx}, {lz.name}_count)"
-                        : $"{lz.conv}(L, {lz.idx}, &{lz.name}_count, {lz.req})";
+                    // version があれば、まだ読んでいない data で問い合わせる (hit
+                    // なら data を読まずに済む)。外れたら data を読んでもう一度呼ぶ
+                    var probe = lazies.Count == 1 ? lazies[0].probe
+                        : "(" + string.Join(" || ", lazies.Select(z => z.probe)) + ")";
                     sb.Append("  LubStatus st = LUB_NOT_FOUND;\n");
-                    sb.Append($"  if (version && {lz.name}_count > 0)\n    st = {callExpr};\n");
-                    sb.Append($"  if (st == LUB_NOT_FOUND) {{\n    if ({lz.name}_given)\n");
-                    sb.Append($"      {lz.name} = {read};\n");
+                    sb.Append($"  if (version && {probe})\n    st = {callExpr};\n");
+                    sb.Append("  if (st == LUB_NOT_FOUND) {\n");
+                    foreach (var z in lazies) sb.Append(z.read);
                     sb.Append($"    st = {callExpr};\n  }}\n");
                 }
                 else

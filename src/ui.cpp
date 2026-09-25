@@ -274,6 +274,9 @@ extern "C" LubStatus lub_ui_render(LubContext *ctx) {
       app->pass.current_color_fmts, app->pass.current_has_depth,
       app->pass.current_depth_fmt, /*depth_tex_mask=*/0,
       (int64_t)app->frame_index);
+  // runtime の draw を通さずに pipeline を変えるので、次の draw には必ず
+  // pipeline を渡させる
+  pass_state_forget_pipeline(&app->pass);
   g_backend->apply_pipeline(pip);
 
   // 2D ortho (framebuffer px, y down)。row-major で mul(u.proj, v) 形式

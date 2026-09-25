@@ -298,12 +298,16 @@ internal static unsafe class LubRuntime
     // -------------------------------------------------------------- arena
 
     /// <summary>呼び出しの間だけ生きる memory。生成した関数は入口で Begin、出口で
-    /// End する (入れ子も安全)。</summary>
+    /// End する (入れ子も安全)。一番外の呼び出しから戻っても先頭の block は
+    /// 残す (呼び出しごとに確保と解放をしない)。</summary>
     internal sealed class Arena
     {
         [ThreadStatic] private static Arena? current;
 
+        private const int BlockSize = 64 * 1024;
+
         private readonly List<IntPtr> blocks = new();
+        private readonly List<int> caps = new();
         private byte* cur;
         private int used, cap;
         private readonly List<int> marks = new();
@@ -330,22 +334,28 @@ internal static unsafe class LubRuntime
                 transient.RemoveAt(i);
             }
             transientMarks.RemoveAt(last);
-            // block 単位で戻す (同じ block なら used だけ戻す)
+            // Begin した時の block と位置に戻し、後から足した block は解放する。
+            // 一番外の呼び出しから戻るときも、既定の大きさの先頭の block は次の
+            // 呼び出しのために残す
             var blockCount = marksBlocks[last];
-            if (blocks.Count == blockCount)
+            var keep = blockCount > 0 ? blockCount : blocks.Count > 0 && caps[0] <= BlockSize ? 1 : 0;
+            for (var i = blocks.Count - 1; i >= keep; i--)
             {
-                used = marks[last];
+                Marshal.FreeHGlobal(blocks[i]);
+                blocks.RemoveAt(i);
+                caps.RemoveAt(i);
+            }
+            if (keep == 0)
+            {
+                cur = null;
+                cap = 0;
+                used = 0;
             }
             else
             {
-                for (var i = blocks.Count - 1; i >= blockCount; i--)
-                {
-                    Marshal.FreeHGlobal(blocks[i]);
-                    blocks.RemoveAt(i);
-                }
-                used = 0;
-                cap = 0;
-                cur = null;
+                cur = (byte*)blocks[keep - 1];
+                cap = caps[keep - 1];
+                used = blockCount == 0 ? 0 : marks[last];
             }
             marks.RemoveAt(last);
             marksBlocks.RemoveAt(last);
@@ -358,9 +368,10 @@ internal static unsafe class LubRuntime
             var start = (used + align - 1) & ~(align - 1);
             if (cur == null || start + bytes > cap)
             {
-                cap = Math.Max(bytes + align, 64 * 1024);
+                cap = Math.Max(bytes + align, BlockSize);
                 cur = (byte*)Marshal.AllocHGlobal(cap);
                 blocks.Add((IntPtr)cur);
+                caps.Add(cap);
                 used = 0;
                 start = 0;
             }
@@ -508,34 +519,54 @@ internal static unsafe class LubRuntime
         {
             n = 0;
             if (dict == null) return null;
-            var items = new List<LubNative.LubBinding>();
+            // 項目の数 (uniforms は入れ子の項目で数える) だけの列を arena に取り、
+            // そこへ直に詰める
+            var count = dict.Count;
+            if (dict.TryGetValue("uniforms", out var u) && u is Dictionary<string, object> ud)
+                count += ud.Count - 1;
+            var p = Alloc<LubNative.LubBinding>(count);
             foreach (var (k, v) in dict)
             {
                 if (k == "uniforms" && v is Dictionary<string, object> uniforms)
                 {
                     foreach (var (uk, uv) in uniforms)
                     {
-                        LubNative.LubBinding b = default;
-                        b.name = Str(uk);
-                        b.values = Numbers(uv, out b.count, uk);
-                        items.Add(b);
+                        var b = &p[n++];
+                        b->name = Name(uk);
+                        b->values = Numbers(uv, out b->count, uk);
                     }
                     continue;
                 }
-                LubNative.LubBinding hb = default;
-                hb.name = Str(k);
-                hb.handle = v switch
+                var hb = &p[n++];
+                hb->name = Name(k);
+                hb->handle = v switch
                 {
                     TextureRef t => t.Live(),
                     BufferRef bf => bf.Live(),
                     _ => throw new LubException($"bindings.{k}: buffer or texture expected"),
                 };
-                items.Add(hb);
             }
-            n = items.Count;
-            var p = Alloc<LubNative.LubBinding>(n);
-            for (var i = 0; i < n; i++) p[i] = items[i];
             return p;
+        }
+
+        // bindings の名前の UTF-8 (NUL 終端)。名前の種類は少なく毎 frame 同じ
+        // なので、文字列ごとに 1 回だけ写して持ち続ける (種類が上限を超えたら
+        // 呼び出しの間だけ arena に写す)。
+        private readonly Dictionary<string, LubNative.LubStr> names = new();
+        private const int NamesMax = 4096;
+
+        private LubNative.LubStr Name(string s)
+        {
+            if (names.TryGetValue(s, out var r)) return r;
+            if (names.Count >= NamesMax) return Str(s);
+            var len = Encoding.UTF8.GetByteCount(s);
+            var p = (byte*)NativeMemory.Alloc((nuint)len + 1);
+            Encoding.UTF8.GetBytes(s, new Span<byte>(p, len));
+            p[len] = 0;
+            r.ptr = p;
+            r.len = len;
+            names[s] = r;
+            return r;
         }
 
         private float* Numbers(object v, out int count, string key)
@@ -556,11 +587,25 @@ internal static unsafe class LubRuntime
                         count = 1;
                         return p;
                     }
+                // List と配列は要素ごとの呼び出しをせず、まとめて写す
+                case List<float> l:
+                    return CopyFloats(CollectionsMarshal.AsSpan(l), out count);
+                case float[] a:
+                    return CopyFloats(a, out count);
                 case IReadOnlyList<float> l:
                     return Floats(l, out count);
                 default:
                     throw new LubException($"bindings.uniforms.{key}: number or number array expected");
             }
+        }
+
+        private float* CopyFloats(ReadOnlySpan<float> s, out int n)
+        {
+            n = s.Length;
+            if (n == 0) return null;
+            var p = Alloc<float>(n);
+            s.CopyTo(new Span<float>(p, n));
+            return p;
         }
     }
 }

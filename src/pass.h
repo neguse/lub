@@ -14,6 +14,9 @@ typedef struct PassState {
       current_color_fmts[SGL_MAX_COLOR_TARGETS]; // valid while in_pass
   bool current_has_depth;                        // valid while in_pass
   SglPixelFormat current_depth_fmt;              // valid when current_has_depth
+  // pass の中で最後に backend に渡した pipeline (pass_state_apply_pipeline)。
+  bool pipeline_applied;
+  BackendPipeline applied_pipeline;
 } PassState;
 
 void pass_state_init(PassState *p);
@@ -44,3 +47,11 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
                          SglLoadAction load);
 
 void pass_state_end(PassState *p);
+
+// draw の pipeline を backend に渡す。pass の中で直前に渡したものと同じなら
+// 渡さない (backend.h の apply_pipeline)。
+void pass_state_apply_pipeline(PassState *p, BackendPipeline pip);
+// 直前に渡した pipeline を忘れ、次の draw で必ず渡す。runtime の draw の外で
+// backend の pipeline が変わったとき (ImGui の描画) と、pipeline が破棄され
+// うるとき (shader の作り直し) に呼ぶ。begin_pass / end_pass も忘れる。
+void pass_state_forget_pipeline(PassState *p);

@@ -14,6 +14,9 @@
 //   ガードする (cs-lib 慣例)。
 // - viewProj / viewMat は public フィールド (書くのは begin() だけ、利用側は
 //   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
+// - pass のどの draw でも同じ値 (light_mvp、光と空の色、カメラ位置、shadow
+//   map) は PassOpts.Bindings に置き、draw ごとの bindings にはその draw で
+//   変わるもの (mesh、model、tint、bones、差し替えの分) だけを置く。
 // end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と
 // emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
 
@@ -909,8 +912,18 @@ public class Renderer3d
     private void ShadowPass(Mat4 lmvp, ShaderRef shStatic, ShaderRef shSkinned,
         TextureRef shadowMap)
     {
-        Gfx.BeginPass(new PassOpts { DepthTarget = shadowMap, ClearDepth = 1.0f });
-        var lm = lmvp.M;
+        Gfx.BeginPass(new PassOpts
+        {
+            DepthTarget = shadowMap,
+            ClearDepth = 1.0f,
+            Bindings = new Dictionary<string, object>
+            {
+                ["uniforms"] = new Dictionary<string, object>
+                {
+                    ["light_mvp"] = lmvp.M,
+                },
+            },
+        });
         foreach (var d in draws)
         {
             if (d.Blend != Gfx.Blend.None)
@@ -921,7 +934,6 @@ public class Renderer3d
                 continue;
             var u = new Dictionary<string, object>
             {
-                ["light_mvp"] = lm,
                 ["model"] = d.Model.M,
             };
             if (d.Mesh.Skinned)
@@ -942,16 +954,12 @@ public class Renderer3d
         Gfx.EndPass();
     }
 
-    private Dictionary<string, object> LitUniforms(Renderer3dDrawCmd d,
-        Mat4 vp, Mat4 lmvp, float texel)
+    // lit pass のどの draw でも同じ uniform (pass の bindings に置く)。
+    private Dictionary<string, object> FrameUniforms(Mat4 lmvp, float texel)
     {
-        // (差し替え shader の追加 uniform は末尾でマージ)
-        var u = new Dictionary<string, object>
+        return new Dictionary<string, object>
         {
-            ["mvp"] = (vp * d.Model).M,
-            ["model"] = d.Model.M,
             ["light_mvp"] = lmvp.M,
-            ["tint"] = d.Tint,
             ["light_dir"] = LightDirTable(),
             ["light_col"] = new List<float>
             {
@@ -967,6 +975,18 @@ public class Renderer3d
             ["cam_pos"] = new List<float> { eye.X, eye.Y, eye.Z, 0.0f },
             ["shadow_p"] = new List<float>
                 { texel, Shadow.Bias, Shadow.Enabled ? 1.0f : 0.0f, 0.0f },
+        };
+    }
+
+    private Dictionary<string, object> LitUniforms(Renderer3dDrawCmd d, Mat4 vp)
+    {
+        // (差し替え shader の追加 uniform は末尾でマージ。pass の uniform と
+        // 同じ名前なら draw の方が勝つ)
+        var u = new Dictionary<string, object>
+        {
+            ["mvp"] = (vp * d.Model).M,
+            ["model"] = d.Model.M,
+            ["tint"] = d.Tint,
         };
         if (d.Mesh.Skinned)
             u["bones"] = d.Bones ?? IdentityBones();
@@ -1081,6 +1101,11 @@ public class Renderer3d
                 1.0f,
             },
             ClearDepth = 1.0f,
+            Bindings = new Dictionary<string, object>
+            {
+                ["shadow_map"] = shadowMap,
+                ["uniforms"] = FrameUniforms(lmvp, texel),
+            },
         });
         // opaque → blend の順
         for (int phase = 0; phase < 2; phase++)
@@ -1100,8 +1125,7 @@ public class Renderer3d
                 {
                     ["verts"] = vb,
                     ["indices"] = ib,
-                    ["shadow_map"] = shadowMap,
-                    ["uniforms"] = LitUniforms(d, vp, lmvp, texel),
+                    ["uniforms"] = LitUniforms(d, vp),
                 };
                 if (d.Textures != null)
                 {

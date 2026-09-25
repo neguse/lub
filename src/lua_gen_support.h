@@ -155,6 +155,9 @@ const char *lgen_callbacks_error(LgenCallbacks *cb);
 
 // draw / dispatch の自由な table を LubBinding の配列に写す。
 const LubBinding *lgen_bindings_arg(lua_State *L, int idx, int32_t *count);
+// record の field の bindings (PassOpts.Bindings)。無ければ NULL。
+const LubBinding *lgen_bindings_field(lua_State *L, int idx, const char *key,
+                                      int32_t *count);
 
 // ------------------------------------------------------------ register
 

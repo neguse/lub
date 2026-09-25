@@ -5,7 +5,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { RES_NONE = 0, RES_BUFFER, RES_TEXTURE, RES_SHADER } ResKind;
+typedef enum {
+  RES_NONE = 0,
+  RES_BUFFER,
+  RES_TEXTURE,
+  RES_SHADER,
+  RES_DRAW_STATE,
+} ResKind;
+
+struct ShaderNames;
+struct DrawState;
 
 #define RES_BUCKETS 256
 
@@ -17,6 +26,9 @@ typedef struct ResEntry {
   int32_t handle;
   int64_t version;
   int64_t last_seen_frame;
+  // backend の object (buffer / image / shader) を作り直すたびに増える。
+  // 名前を shader に結びつけたもの (draw state) はこれで古さを知る。
+  uint32_t gen;
   union {
     struct {
       uintptr_t h;
@@ -36,7 +48,11 @@ typedef struct ResEntry {
     struct {
       uintptr_t h;
       ShaderReflection refl;
+      struct ShaderNames *names; // refl の名前の表 (gfx_bind.h)
     } sh;
+    struct {
+      struct DrawState *state; // gfx_bind.h
+    } ds;
   } u;
   struct ResEntry *next;
 } ResEntry;

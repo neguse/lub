@@ -109,55 +109,56 @@ public static class Flappy17
             Target = new Vec3(0, 0, 0),
         });
 
+        // 3 つの箱は shader、頂点、描き方が同じなので draw state にまとめ、
+        // draw ごとには mvp だけを渡す。version が同じ間は opts と bindings
+        // を読まないので、描き方を書き換えたら version も上げる。
+        var cube = Gfx.UseDrawState("cube_draw", new DrawOpts
+        {
+            Shader = s,
+            Depth = true,
+            Cull = Gfx.Cull.None,
+        }, new Dictionary<string, object> { ["verts"] = b }, 1);
+        if (cube == null) return;
+
         Gfx.BeginPass(new PassOpts
         {
             Target = Gfx.MainTex,
             ClearColor = new float[] { 0.05f, 0.05f, 0.15f, 1.0f },
         });
 
-        var drawOpts = new DrawOpts
-        {
-            Shader = s,
-            Depth = true,
-            Cull = Gfx.Cull.None,
-        };
-
         var playerModel = Mat4.Translate(new Vec3(-2.0f, playerY, 0))
             * Mat4.RotateY(-t * 3.0f) * Mat4.Scale(new Vec3(0.4f, 0.4f, 0.4f));
         var playerMvp = vp * playerModel;
-        Gfx.Draw(36, new Dictionary<string, object>
+        Gfx.DrawWithState(cube, 36, new Dictionary<string, object>
         {
-            ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
                 ["mvp"] = playerMvp.M,
             },
-        }, drawOpts);
+        });
 
         var pipeScale = Mat4.Scale(new Vec3(0.8f, 5.0f, 0.8f));
         var topModel = Mat4.Translate(new Vec3(pipeX, gapY + 3.5f, 0))
             * pipeScale;
         var topMvp = vp * topModel;
-        Gfx.Draw(36, new Dictionary<string, object>
+        Gfx.DrawWithState(cube, 36, new Dictionary<string, object>
         {
-            ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
                 ["mvp"] = topMvp.M,
             },
-        }, drawOpts);
+        });
 
         var botModel = Mat4.Translate(new Vec3(pipeX, gapY - 3.5f, 0))
             * pipeScale;
         var botMvp = vp * botModel;
-        Gfx.Draw(36, new Dictionary<string, object>
+        Gfx.DrawWithState(cube, 36, new Dictionary<string, object>
         {
-            ["verts"] = b,
             ["uniforms"] = new Dictionary<string, object>
             {
                 ["mvp"] = botMvp.M,
             },
-        }, drawOpts);
+        });
 
         Gfx.EndPass();
     }

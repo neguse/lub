@@ -5,6 +5,8 @@
 --   * 同じ key で宣言し直せば、古い参照も新しい resource に引き直される
 --   * on_frame が error で抜けた frame は sweep しない
 --   * InstanceCount を 0 で渡した draw は描かない (draw としての検査と使用の記録はする)
+--   * on_init では backend がまだ動いていないので、resource の宣言や pass は
+--     error になる (落ちない)
 local M = {}
 
 local N = 3
@@ -13,6 +15,7 @@ local refs = {}
 local rb
 local rb_ic
 local ic = { phase = 0 }
+local init_errors = {}
 
 local VS = [[
 struct V {
@@ -72,6 +75,10 @@ function M.on_init()
 	})
 	rb = lub.gfx.readback("sw_rb")
 	rb_ic = lub.gfx.readback("sw_rb_ic")
+	local ok, err = pcall(lub.gfx.use_buffer, "sw_init", lub.gfx.STORAGE, QUAD, 1)
+	init_errors.use_buffer = ok and "no error" or tostring(err)
+	ok, err = pcall(lub.gfx.begin_pass, { target = lub.gfx.main_tex })
+	init_errors.begin_pass = ok and "no error" or tostring(err)
 end
 
 -- 1 回だけ宣言して参照を持つ
@@ -147,6 +154,12 @@ end
 local function frame()
 	f = f + 1
 	if f == 1 then
+		for fn, err in pairs(init_errors) do
+			expect(
+				string.find(err, fn .. ": not available in on_init", 1, true) ~= nil,
+				fn .. " in on_init must raise a clear error: " .. err
+			)
+		end
 		declare()
 	end
 	if f >= 15 and f <= 24 then

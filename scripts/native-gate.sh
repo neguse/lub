@@ -288,6 +288,10 @@ physics_lua_tests=(
   tests/lua/test_transient_buffer.lua@vulkan
   tests/lua/test_buffer_rewrite.lua
   tests/lua/test_buffer_rewrite.lua@vulkan
+  tests/lua/test_pass_bindings.lua
+  tests/lua/test_pass_bindings.lua@vulkan
+  tests/lua/test_draw_state.lua
+  tests/lua/test_draw_state.lua@vulkan
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"

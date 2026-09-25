@@ -124,10 +124,12 @@ typedef struct App {
 
   // C API (include/lub/lub_api.h) の状態。last_error は直近の LUB_ERROR の
   // message、readbacks は key で宣言する readback queue、transients は
-  // この frame の TransientBuffer (どちらも api_gfx.c 所有)。
+  // この frame の TransientBuffer、pass_bindings は今の pass の bindings
+  // (PassOpts.Bindings の写し。どれも api_gfx.c 所有)。
   char last_error[512];
   struct GfxReadbackQueues *readbacks;
   struct GfxTransients *transients;
+  struct GfxPassBindings *pass_bindings;
   struct AudioSnds *audio_snds;     // key で宣言する snd (api_audio.c 所有)
   struct IoCache *io_cache;         // lub_io_* / lub_png_load の file cache
   struct FontScratch *font_scratch; // lub_font_* の view の実体

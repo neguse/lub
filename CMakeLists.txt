@@ -249,6 +249,7 @@ set(LUB_SOURCES
   src/lua_api.c
   src/api_core.c
   src/api_gfx.c
+  src/gfx_bind.c
   src/api_sys.c
   src/api_audio.c
   src/api_io.c

@@ -212,6 +212,13 @@ typedef struct RenderBackend {
   void (*begin_pass)(struct App *app, const PassBeginDesc *);
   void (*end_pass)(struct App *app);
 
+  // Within a pass the runtime calls apply_pipeline only when the pipeline
+  // differs from the one it last applied in that pass: the first draw of a
+  // pass always applies, and so does the first draw after the ImGui renderer
+  // (which drives the backend directly) or after a shader was replaced. The
+  // state set by apply_pipeline / apply_bindings / apply_uniforms must stay
+  // in effect across draws that share a pipeline, since those draws only call
+  // apply_bindings, apply_uniforms (when they have uniforms) and draw.
   void (*apply_pipeline)(BackendPipeline);
   void (*apply_bindings)(const BindingsDesc *);
   void (*apply_uniforms)(SglShaderStage stage, int ub_slot, const void *data,

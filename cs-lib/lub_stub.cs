@@ -96,12 +96,17 @@ public sealed class LubNoCAttribute : Attribute
 }
 
 /// <summary>
-/// key と version で宣言する resource の data (float / int の List)。key が
-/// すでに同じ version を持っていれば data は読まない。C では data == NULL かつ
-/// data_count > 0 が data を読む前の問い合わせで、key がその version を持って
-/// いれば data を渡したときと同じ結果 (LUB_OK)、持っていなければ何も変えずに
-/// LUB_NOT_FOUND を返す。Lua binding はこの問い合わせを先に試し、外れたときだけ
-/// data を読む。関数には string key と int? version が要る。
+/// key と version で宣言する resource の data (float / int の List、record、
+/// Dictionary)。key がすでに同じ version を持っていれば data は読まない。C では
+/// data を読む前の問い合わせがあり、[LubLazyData] の引数をどれも読まずに渡す
+/// (List は NULL と長さ、Dictionary は NULL と 0、record は NULL)。key がその
+/// version を持っていれば data を渡したときと同じ結果 (LUB_OK)、持っていなければ
+/// 何も変えずに LUB_NOT_FOUND を返す。どの NULL を問い合わせとみなすかは関数が
+/// 決める (use_buffer は data == NULL かつ data_count > 0、use_draw_state は
+/// opts == NULL)。Lua binding はこの問い合わせを先に試し、外れたときだけ data を
+/// 読む。.NET は record と Dictionary の詰め替えが重いので同じ順に呼ぶ (List は
+/// pin するだけなので問い合わせない)。関数には string key と int? version が
+/// 要る。
 /// </summary>
 [AttributeUsage(AttributeTargets.Parameter)]
 public sealed class LubLazyDataAttribute : Attribute
@@ -159,6 +164,15 @@ public class BufferRef
     public int Version;
 }
 
+/// <summary>use_draw_state の不透明ハンドル。version と破棄後の扱いは
+/// TextureRef と同じ。</summary>
+[LubHandle]
+public class DrawStateRef
+{
+    /// <summary>参照を受け取ったときの実効 version。次の `use*` に渡すと「変わっていない」の再主張になる。</summary>
+    public int Version;
+}
+
 /// <summary>
 /// ランタイム所有のバイト列への view (Png.Load / readback / Audio.Decode の
 /// 結果)。返された frame の終わりまで有効で、古い view を API に渡すと
@@ -198,9 +212,19 @@ public class PassOpts
     /// (フレーム最初のパスで使うと内容は不定)。
     /// </summary>
     public Lub.Gfx.LoadAction? Load;
+    /// <summary>
+    /// この pass のどの draw にも効く bindings。形は Draw の bindings と同じ
+    /// (名前で束縛する buffer / texture と、入れ子の `uniforms`)。draw の
+    /// bindings に同じ名前があれば draw の方が勝つ (uniforms は member の名前
+    /// ごと、buffer / texture は束縛の名前ごと)。どちらにも無い uniform の
+    /// member は 0。値は BeginPass の時点で写すので、渡した Dictionary を後で
+    /// 書き換えても pass には効かない。buffer / texture は draw のたびに引くので、
+    /// pass の中で宣言し直した内容も見える。EndPass で消え、Dispatch には効かない。
+    /// </summary>
+    public Dictionary<string, object>? Bindings;
 }
 
-/// <summary>Gfx.draw のオプション。shader 以外は省略可。</summary>
+/// <summary>Gfx.Draw と Gfx.UseDrawState のオプション。shader 以外は省略可。</summary>
 public class DrawOpts
 {
     public ShaderRef Shader = new ShaderRef();
@@ -217,7 +241,8 @@ public class DrawOpts
     public bool? Depth;
     public bool? DepthWrite;
     /// <summary>instance の数。省略時 1。0 以下を渡すと描かない (draw と
-    /// しての検査と、使った resource の記録はする)。</summary>
+    /// しての検査と、使った resource の記録はする)。UseDrawState では
+    /// DrawWithState が instanceCount を省いたときの数。</summary>
     public int? InstanceCount;
 }
 
@@ -456,6 +481,13 @@ public static class Lub
             return null;
         }
 
+        /// <summary>LookupTexture の draw state 版。</summary>
+        [LubNoFail]
+        public static DrawStateRef? LookupDrawState(string key)
+        {
+            return null;
+        }
+
         /// <summary>handle の key と実効 version。handle が stale なら false。</summary>
         [LubNoFail]
         public static bool ResourceInfo(int handle, out string? key,
@@ -493,8 +525,47 @@ public static class Lub
             error = null;
         }
 
+        /// <summary>
+        /// count 個の頂点 (bindings に `indices` があれば count 個の index) を
+        /// 描く。bindings はシェーダ依存の自由な table で、名前で buffer /
+        /// texture を束縛し、`uniforms` の下に uniform の値を置く。
+        /// PassOpts.Bindings と同じ名前があれば、こちらが勝つ。
+        /// </summary>
         public static void Draw(int count, Dictionary<string, object> bindings,
             DrawOpts opts)
+        {
+        }
+
+        /// <summary>
+        /// draw の設定 (opts の shader と blend / cull / primitive / depth /
+        /// depthWrite、固定の bindings) を key で持つ draw state。DrawWithState で
+        /// 描く。bindings の名前を shader のどの uniform / texture / buffer に
+        /// 束縛するかは宣言の時に決め、shader が作り直されたら (hot reload) 次の
+        /// DrawWithState で決め直す。version の規約は UseBuffer と同じで、key が
+        /// すでに同じ version を持っていれば opts も bindings も読まない。opts に
+        /// null を渡すと再主張だけをする (key がその version を持っていなければ
+        /// null)。opts.Shader は必須で、graphics の shader に限る。bindings の形は
+        /// Draw と同じで、uniform の値は宣言の時点で写す (buffer / texture は描く
+        /// たびに引く)。draw state を宣言するか DrawWithState で描くと、その
+        /// shader と固定の buffer / texture も使ったことになる。
+        /// </summary>
+        public static DrawStateRef? UseDrawState(string key,
+            [LubLazyData] DrawOpts? opts,
+            [LubLazyData] Dictionary<string, object>? bindings,
+            int? version = null)
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// draw state で count 個の頂点 (または index) を描く。bindings はこの
+        /// draw だけの分で、同じ名前はこの bindings、draw state の固定の
+        /// bindings、PassOpts.Bindings の順に勝つ。instanceCount の意味は
+        /// DrawOpts.InstanceCount と同じで、省略すると draw state の
+        /// InstanceCount (それも無ければ 1)。
+        /// </summary>
+        public static void DrawWithState(DrawStateRef state, int count,
+            Dictionary<string, object>? bindings = null, int? instanceCount = null)
         {
         }
 

@@ -12,6 +12,7 @@ void pass_state_init(PassState *p) {
   }
   p->current_has_depth = false;
   p->current_depth_fmt = SGL_PF_DEPTH24_STENCIL8;
+  pass_state_forget_pipeline(p);
 }
 
 void pass_state_set_app(PassState *p, struct App *app) { p->app = app; }
@@ -42,6 +43,7 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
   };
   g_backend->begin_pass(p->app, &d);
   p->in_pass = true;
+  pass_state_forget_pipeline(p);
   p->current_n_color_targets = 1;
   p->current_color_fmts[0] = use_fmt;
   // Swapchain passes use the default depth/stencil attachment; offscreen
@@ -83,6 +85,7 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
   }
   g_backend->begin_pass(p->app, &d);
   p->in_pass = true;
+  pass_state_forget_pipeline(p);
   p->current_n_color_targets = n_targets;
   for (int i = 0; i < n_targets; ++i) {
     p->current_color_fmts[i] = fmts[i];
@@ -109,4 +112,18 @@ void pass_state_end(PassState *p) {
   }
   g_backend->end_pass(p->app);
   p->in_pass = false;
+  pass_state_forget_pipeline(p);
+}
+
+void pass_state_apply_pipeline(PassState *p, BackendPipeline pip) {
+  if (p->pipeline_applied && p->applied_pipeline == pip)
+    return;
+  g_backend->apply_pipeline(pip);
+  p->pipeline_applied = true;
+  p->applied_pipeline = pip;
+}
+
+void pass_state_forget_pipeline(PassState *p) {
+  p->pipeline_applied = false;
+  p->applied_pipeline = 0;
 }
