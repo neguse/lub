@@ -8,15 +8,23 @@
 //   Dictionary<string, TextureRef> の foreach で bindings dict へ代入する
 //   (tcs の Dictionary は素の Lua table なので wire format はそのまま)。
 // - Mat4.m (List<float>) は直渡し。bones は Bones.pack() の返す List<float>
-//   で、mesh が null のときは identityBones() (ダミー resolve の lambda)。
+//   で、bones の無い skinned draw は IdentityBones() (一度作って使い回す)。
 // - sz.w >> 1 等の bit shift は tcs 未対応なので Math.Floor(x / 2.0)。
 // - use_texture / use_buffer / mesh.vb の null は早期 return / continue で
 //   ガードする (cs-lib 慣例)。
 // - viewProj / viewMat は public フィールド (書くのは begin() だけ、利用側は
-//   読み取り専用扱い)。litUniforms は End() で narrow 済みの vp を引数で受ける。
+//   読み取り専用扱い)。LitBindings は End() で narrow 済みの vp を引数で受ける。
 // - pass のどの draw でも同じ値 (light_mvp、光と空の色、カメラ位置、shadow
 //   map) は PassOpts.Bindings に置き、draw ごとの bindings にはその draw で
 //   変わるもの (mesh、model、tint、bones、差し替えの分) だけを置く。
+// - 既定 shader で不透明に描く draw は、shader と描き方を draw state に
+//   まとめて DrawWithState で描く。半透明と差し替え shader は Draw で描く。
+// - draw の記録 (Renderer3dDrawCmd) は使い回し、model は記録に写す。draw
+//   ごとの bindings / uniforms / mvp も使い回しの Dictionary と Mat4 に書く
+//   (Draw は呼んだ時点で値を写すので、次の draw で書き換えてよい)。
+//   差し替えの uniform / texture がある draw だけは Dictionary を作る。
+// - 式の中の三項演算子と ?? の右辺の三項演算子は、tcs が即時実行の
+//   クロージャにするので、draw ごとの経路では if 文で書く。
 // end は Lua キーワードで、tcs が宣言をそのまま `function Renderer3d:end` と
 // emit して不正 Lua になるため End にしている (MeshText の Char と同じ扱い)。
 
@@ -24,18 +32,19 @@ using System;
 using System.Collections.Generic;
 using static Lub;
 
-/// <summary>`Renderer3d.draw()` の per-draw オプション。</summary>
+/// <summary>`Renderer3d.Draw()` / `DrawInstances()` の per-draw オプション。</summary>
 public class Draw3dOpts
 {
     /// <summary>頂点色に乗じる色 (省略時白)。a &lt; 1 でも自動では blend に
-    /// ならない。</summary>
+    /// ならない。DrawInstances では instance ごとの色にさらに乗じる。</summary>
     public Color? Tint;
 
     /// <summary>`Gfx.ALPHA` 等。指定すると opaque 群の後に描かれ、影を
-    /// 落とさない。</summary>
+    /// 落とさない。DrawInstances の instance は奥から順に並べ替えない。</summary>
     public Gfx.Blend? Blend;
 
-    /// <summary>skinned メッシュ用。`Bones.pack()` の 256 float。</summary>
+    /// <summary>skinned メッシュ用。`Bones.pack()` の 256 float。
+    /// DrawInstances では使わない。</summary>
     public List<float>? Bones;
 
     /// <summary>material 差し替え。頂点レイアウトと uniform 名は既定 shader
@@ -65,31 +74,29 @@ public class Camera
     public float? Far;
 }
 
-/// <summary>Renderer3d の per-draw 記録 (内部用)。</summary>
+/// <summary>Renderer3d の per-draw 記録 (内部用)。Renderer3d がフレームを
+/// 跨いで使い回し、model と tint は自分の Mat4 / List に写して持つ。</summary>
 public class Renderer3dDrawCmd
 {
     public Mesh3d Mesh;
-    public Mat4 Model;
-    public List<float> Tint;
-    public Gfx.Blend Blend;
+    public Mat4 Model = new Mat4();
+    public List<float> Tint = new List<float> { 1.0f, 1.0f, 1.0f, 1.0f };
+    public Gfx.Blend Blend = Gfx.Blend.None;
     public List<float>? Bones;
     public ShaderRef? Shader;
     public Dictionary<string, TextureRef>? Textures;
     public Dictionary<string, object>? Uniforms;
 
-    public Renderer3dDrawCmd(Mesh3d mesh, Mat4 model, List<float> tint,
-        Gfx.Blend blend, List<float>? bones, ShaderRef? shader,
-        Dictionary<string, TextureRef>? textures,
-        Dictionary<string, object>? uniforms)
+    /// <summary>DrawInstances の instance の列 (InstanceBatch3d.Upload() の
+    /// 写し)。Draw の記録では null。</summary>
+    public BufferRef? Insts;
+
+    /// <summary>instance の数。Draw の記録では 1。</summary>
+    public int InstanceCount = 1;
+
+    public Renderer3dDrawCmd(Mesh3d mesh)
     {
         this.Mesh = mesh;
-        this.Model = model;
-        this.Tint = tint;
-        this.Blend = blend;
-        this.Bones = bones;
-        this.Shader = shader;
-        this.Textures = textures;
-        this.Uniforms = uniforms;
     }
 }
 
@@ -179,6 +186,7 @@ public class Renderer3dOutline
 /// ren.begin(new Camera { eye = eye, target = tgt, fov = 38 });
 /// ren.draw(mesh, model);
 /// ren.draw(charMesh, m2, new Draw3dOpts { bones = packed });
+/// ren.DrawInstances(coinMesh, coins); // InstanceBatch3d をまとめて 1 draw
 /// ren.End(); // shadow → forward(HDR) → tonemap → swapchain
 /// </code>
 ///
@@ -307,6 +315,61 @@ public class Renderer3d
           o.lpos = mul(u.light_mvp, wp4);
           float3 srgb = i.color * u.tint.rgb;
           o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);
+          o.mr = i.mr;
+          return o;
+        }
+
+        """;
+
+    // InstanceBatch3d の 1 instance (InstanceBatch3d.Stride と同じ並び)。
+    // 頂点は拡大 → 回転 → 平行移動の順に置き (Mat4.SetTrs と同じ)、法線は
+    // 拡大の逆数を掛けてから回す (向きだけ使うので正規化は FS に任せる)。
+    private static string instDecl = """
+
+        struct Inst {
+          float3 pos;
+          float pad0;
+          float3 scale;
+          float pad1;
+          float4 rot; // quaternion (x, y, z, w)
+          float4 color;
+        };
+        StructuredBuffer<Inst> insts;
+
+        float3 quat_rotate(float4 q, float3 v) {
+          float3 t = 2.0f * cross(q.xyz, v);
+          return v + q.w * t + cross(q.xyz, t);
+        }
+
+        """;
+
+    // instance 用。mvp / model の代わりに vp (world → clip) を受け、world の
+    // 位置は instance から作る。
+    private static string litInstancedVs = """
+
+        struct Uniforms {
+          float4x4 vp;
+          float4x4 light_mvp;
+          float4 tint;
+        };
+        ConstantBuffer<Uniforms> u;
+        """
+        + pncmVerts
+        + instDecl
+        + litVsBody
+        + """
+
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {
+          V i = verts[vid];
+          Inst n = insts[iid];
+          VSOut o;
+          float4 wp4 = float4(n.pos + quat_rotate(n.rot, i.pos * n.scale), 1.0f);
+          o.pos = mul(u.vp, wp4);
+          o.wn = quat_rotate(n.rot, i.normal / n.scale);
+          o.wp = wp4.xyz;
+          o.lpos = mul(u.light_mvp, wp4);
+          float3 srgb = i.color * n.color.rgb * u.tint.rgb;
+          o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), n.color.a * u.tint.a);
           o.mr = i.mr;
           return o;
         }
@@ -452,6 +515,30 @@ public class Renderer3d
           float3 sp =
               (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;
           o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));
+          return o;
+        }
+
+        """;
+
+    private static string shadowInstancedVs = """
+
+        struct U {
+          float4x4 light_mvp;
+        };
+        ConstantBuffer<U> u;
+        """
+        + pncmVerts
+        + instDecl
+        + """
+        struct VSOut {
+          float4 pos : SV_Position;
+        };
+        [shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {
+          V i = verts[vid];
+          Inst n = insts[iid];
+          VSOut o;
+          float3 wp = n.pos + quat_rotate(n.rot, i.pos * n.scale);
+          o.pos = mul(u.light_mvp, float4(wp, 1.0f));
           return o;
         }
 
@@ -811,12 +898,37 @@ public class Renderer3d
     public Mat4? ViewMat = null;
 
     private string key;
+    // 記録は使い回す。今のフレームの記録は先頭の drawCount 個。
     private List<Renderer3dDrawCmd> draws = new List<Renderer3dDrawCmd>();
+    private int drawCount = 0;
     private Mat4? view = null;
     private Mat4? proj = null;
     private Mat4? vp = null;
     private Vec3 eye = new Vec3(0, 0, 0);
     private BufferRef? flipQuadBuf = null;
+
+    // draw ごとの bindings と uniforms (値を書き換えて使い回す)。
+    private Dictionary<string, object> meshBindings = new Dictionary<string, object>();
+    private Dictionary<string, object> instBindings = new Dictionary<string, object>();
+    private Dictionary<string, object> shadowInstBindings =
+        new Dictionary<string, object>();
+    private Dictionary<string, object> shadowU = new Dictionary<string, object>();
+    private Dictionary<string, object> shadowSkinU = new Dictionary<string, object>();
+    private Dictionary<string, object> litU = new Dictionary<string, object>();
+    private Dictionary<string, object> litSkinU = new Dictionary<string, object>();
+    private Dictionary<string, object> instU = new Dictionary<string, object>();
+    private Mat4 mvpScratch = new Mat4();
+    // draw state の宣言と、半透明 / 差し替え shader の Draw の opts
+    // (shader などを書き換えて使い回す)。
+    private DrawOpts stateOpts = new DrawOpts
+    {
+        Depth = true,
+        DepthWrite = true,
+        Cull = Gfx.Cull.None,
+        Blend = Gfx.Blend.None,
+    };
+    private DrawOpts litOpts = new DrawOpts { Depth = true, Cull = Gfx.Cull.None };
+    private static List<float>? cachedIdentityBones = null;
 
     public Renderer3d(string key)
     {
@@ -850,38 +962,82 @@ public class Renderer3d
         p.M[5] = -p.M[5];
         proj = p;
         vp = p * v;
-        eye = cam.Eye;
-        // draws を空にする。List.Clear() は tcs が
-        // `(function() ... end)()` を emit し、直前の代入文と連結されて
-        // 関数呼び出しに誤解釈される (Lua の文区切り曖昧性) ため使わない。
-        draws = new List<Renderer3dDrawCmd>();
+        // eye は End() で読むので写しておく (呼び側が Vec3 を使い回してよい)
+        eye.CopyFrom(cam.Eye);
+        // 記録を空にする (記録の object は次に使う)
+        drawCount = 0;
     }
 
-    /// <summary>描画を記録する (実行は `End()`)。model はコピーせず `End()`
-    /// まで参照するので、同じ Mat4 を書き換えながら何度も渡さない。</summary>
+    /// <summary>描画を記録する (実行は `End()`)。model はこの場で写すので、
+    /// 1 つの Mat4 を書き換えながら何度も渡してよい。</summary>
     public void Draw(Mesh3d? mesh, Mat4 model, Draw3dOpts? opts = null)
     {
         if (mesh == null || !mesh.Ready())
             return;
-        var tint = new List<float> { 1.0f, 1.0f, 1.0f, 1.0f };
-        var blend = Gfx.Blend.None;
-        List<float>? bones = null;
-        ShaderRef? shader = null;
-        Dictionary<string, TextureRef>? textures = null;
-        Dictionary<string, object>? uniforms = null;
+        var d = NextCmd(mesh, opts);
+        d.Model.CopyFrom(model);
+    }
+
+    /// <summary>
+    /// batch の instance を mesh で描くように記録する (実行は `End()`)。
+    /// batch の今の中身をこの場で写す (InstanceBatch3d.Upload()) ので、この後
+    /// batch を Begin() から積み直してよい。影を落とす pass と色を塗る pass は
+    /// その写しを 1 つ使い回し、どちらも 1 draw で描く。batch が空なら何も
+    /// しない。skinned メッシュは描かない (instance では bones を使えない)。
+    /// opts の Blend を指定すると、instance は奥から順に並べ替えずに描く。
+    /// 差し替え shader (opts.Shader) は `insts` と uniform の `vp` (world →
+    /// clip)、`light_mvp`、`tint` を受ける (mvp / model は無い)。
+    /// </summary>
+    public void DrawInstances(Mesh3d? mesh, InstanceBatch3d batch,
+        Draw3dOpts? opts = null)
+    {
+        if (mesh == null || !mesh.Ready() || mesh.Skinned)
+            return;
+        var insts = batch.Upload();
+        if (insts == null)
+            return;
+        var d = NextCmd(mesh, opts);
+        d.Insts = insts;
+        d.InstanceCount = batch.Count;
+    }
+
+    // 次の記録を取り出して opts を写す。足りなければ作る。
+    private Renderer3dDrawCmd NextCmd(Mesh3d mesh, Draw3dOpts? opts)
+    {
+        if (drawCount == draws.Count)
+            draws.Add(new Renderer3dDrawCmd(mesh));
+        var d = draws[drawCount];
+        drawCount = drawCount + 1;
+        d.Mesh = mesh;
+        d.Insts = null;
+        d.InstanceCount = 1;
+        var tint = d.Tint;
+        tint[0] = 1.0f;
+        tint[1] = 1.0f;
+        tint[2] = 1.0f;
+        tint[3] = 1.0f;
+        d.Blend = Gfx.Blend.None;
+        d.Bones = null;
+        d.Shader = null;
+        d.Textures = null;
+        d.Uniforms = null;
         if (opts != null)
         {
             var t = opts.Tint;
             if (t != null)
-                tint = new List<float> { t.R, t.G, t.B, t.A };
-            blend = opts.Blend ?? Gfx.Blend.None;
-            bones = opts.Bones;
-            shader = opts.Shader;
-            textures = opts.Textures;
-            uniforms = opts.Uniforms;
+            {
+                tint[0] = t.R;
+                tint[1] = t.G;
+                tint[2] = t.B;
+                tint[3] = t.A;
+            }
+            d.Blend = opts.Blend ?? Gfx.Blend.None;
+            d.Bones = opts.Bones;
+            d.Shader = opts.Shader;
+            d.Textures = opts.Textures;
+            d.Uniforms = opts.Uniforms;
         }
-        draws.Add(new Renderer3dDrawCmd(mesh, model, tint, blend, bones,
-            shader, textures, uniforms));
+        return d;
     }
 
     private Mat4 LightMvp()
@@ -902,15 +1058,32 @@ public class Renderer3d
             dist * 2.0f) * lview;
     }
 
-    // mesh が null なら resolve は
-    // 呼ばれないが、Bones.pack の契約 (resolve 非 null) を保つためダミーを渡す。
+    // bones の無い skinned draw 用の単位行列の列。一度作って使い回す
+    // (uniform は draw の時点で写されるので、書き換えられることはない)。
+    // mesh が null なら resolve は呼ばれないが、Bones.pack の契約 (resolve
+    // 非 null) を保つためダミーを渡す。
     private static List<float> IdentityBones()
     {
-        return Bones.Pack(null, (name, px, py, pz) => null);
+        var b = cachedIdentityBones;
+        if (b == null)
+        {
+            b = Bones.Pack(null, (name, px, py, pz) => null);
+            cachedIdentityBones = b;
+        }
+        return b;
     }
 
-    private void ShadowPass(Mat4 lmvp, ShaderRef shStatic, ShaderRef shSkinned,
-        TextureRef shadowMap)
+    // 既定の shader で不透明に描く draw の draw state。描き方はどれも同じで
+    // shader だけが違う。shader の handle は key ごとに変わらないので version
+    // は定数で、2 回目からの宣言は opts を読まない。
+    private DrawStateRef? UseState(string suffix, ShaderRef shader)
+    {
+        stateOpts.Shader = shader;
+        return Gfx.UseDrawState(key + suffix, stateOpts, null, 1);
+    }
+
+    private void ShadowPass(Mat4 lmvp, DrawStateRef stStatic,
+        DrawStateRef stSkinned, DrawStateRef? stInstanced, TextureRef shadowMap)
     {
         Gfx.BeginPass(new PassOpts
         {
@@ -924,32 +1097,42 @@ public class Renderer3d
                 },
             },
         });
-        foreach (var d in draws)
+        for (int i = 0; i < drawCount; i++)
         {
+            var d = draws[i];
             if (d.Blend != Gfx.Blend.None)
                 continue; // 半透明は影を落とさない
             var vb = d.Mesh.Vb;
             var ib = d.Mesh.Ib;
             if (vb == null || ib == null)
                 continue;
-            var u = new Dictionary<string, object>
+            var insts = d.Insts;
+            if (insts != null)
             {
-                ["model"] = d.Model.M,
-            };
+                if (stInstanced == null)
+                    continue;
+                var ibs = shadowInstBindings;
+                ibs["verts"] = vb;
+                ibs["indices"] = ib;
+                ibs["insts"] = insts;
+                Gfx.DrawWithState(stInstanced, d.Mesh.IndexCount, ibs,
+                    d.InstanceCount);
+                continue;
+            }
+            var u = shadowU;
+            var st = stStatic;
             if (d.Mesh.Skinned)
+            {
+                u = shadowSkinU;
                 u["bones"] = d.Bones ?? IdentityBones();
-            Gfx.Draw(d.Mesh.IndexCount, new Dictionary<string, object>
-            {
-                ["verts"] = vb,
-                ["indices"] = ib,
-                ["uniforms"] = u,
-            }, new DrawOpts
-            {
-                Shader = d.Mesh.Skinned ? shSkinned : shStatic,
-                Depth = true,
-                DepthWrite = true,
-                Cull = Gfx.Cull.None,
-            });
+                st = stSkinned;
+            }
+            u["model"] = d.Model.M;
+            var bs = meshBindings;
+            bs["verts"] = vb;
+            bs["indices"] = ib;
+            bs["uniforms"] = u;
+            Gfx.DrawWithState(st, d.Mesh.IndexCount, bs);
         }
         Gfx.EndPass();
     }
@@ -957,6 +1140,9 @@ public class Renderer3d
     // lit pass のどの draw でも同じ uniform (pass の bindings に置く)。
     private Dictionary<string, object> FrameUniforms(Mat4 lmvp, float texel)
     {
+        float shadowOn = 0.0f;
+        if (Shadow.Enabled)
+            shadowOn = 1.0f;
         return new Dictionary<string, object>
         {
             ["light_mvp"] = lmvp.M,
@@ -974,28 +1160,68 @@ public class Renderer3d
                 { Sky.Bottom.R, Sky.Bottom.G, Sky.Bottom.B, 0.0f },
             ["cam_pos"] = new List<float> { eye.X, eye.Y, eye.Z, 0.0f },
             ["shadow_p"] = new List<float>
-                { texel, Shadow.Bias, Shadow.Enabled ? 1.0f : 0.0f, 0.0f },
+                { texel, Shadow.Bias, shadowOn, 0.0f },
         };
     }
 
-    private Dictionary<string, object> LitUniforms(Renderer3dDrawCmd d, Mat4 vp)
+    // forward pass の draw の bindings。差し替えの uniform / texture が無ければ
+    // 使い回しの Dictionary に書く。差し替えの uniform は既定の uniform と
+    // 同じ名前なら上書きし、pass の uniform と同じ名前なら draw の方が勝つ。
+    private Dictionary<string, object> LitBindings(Renderer3dDrawCmd d,
+        BufferRef vb, BufferRef ib, Mat4 vp)
     {
-        // (差し替え shader の追加 uniform は末尾でマージ。pass の uniform と
-        // 同じ名前なら draw の方が勝つ)
-        var u = new Dictionary<string, object>
+        var insts = d.Insts;
+        var extraU = d.Uniforms;
+        var extraT = d.Textures;
+        Dictionary<string, object> u;
+        Dictionary<string, object> bs;
+        if (extraU != null || extraT != null)
         {
-            ["mvp"] = (vp * d.Model).M,
-            ["model"] = d.Model.M,
-            ["tint"] = d.Tint,
-        };
-        if (d.Mesh.Skinned)
-            u["bones"] = d.Bones ?? IdentityBones();
-        if (d.Uniforms != null)
+            u = new Dictionary<string, object>();
+            bs = new Dictionary<string, object>();
+        }
+        else if (insts != null)
         {
-            foreach (var kv in d.Uniforms)
+            u = instU;
+            bs = instBindings;
+        }
+        else if (d.Mesh.Skinned)
+        {
+            u = litSkinU;
+            bs = meshBindings;
+        }
+        else
+        {
+            u = litU;
+            bs = meshBindings;
+        }
+        if (insts != null)
+        {
+            u["vp"] = vp.M;
+            bs["insts"] = insts;
+        }
+        else
+        {
+            u["mvp"] = mvpScratch.SetMul(vp, d.Model).M;
+            u["model"] = d.Model.M;
+            if (d.Mesh.Skinned)
+                u["bones"] = d.Bones ?? IdentityBones();
+        }
+        u["tint"] = d.Tint;
+        if (extraU != null)
+        {
+            foreach (var kv in extraU)
                 u[kv.Key] = kv.Value;
         }
-        return u;
+        bs["verts"] = vb;
+        bs["indices"] = ib;
+        bs["uniforms"] = u;
+        if (extraT != null)
+        {
+            foreach (var kv in extraT)
+                bs[kv.Key] = kv.Value;
+        }
+        return bs;
     }
 
     private List<float> LightDirTable()
@@ -1071,20 +1297,49 @@ public class Renderer3d
             || flipQuadBuf == null)
             return;
 
+        var stShStatic = UseState("_ds_sh_s", shStatic);
+        var stShSkinned = UseState("_ds_sh_k", shSkinned);
+        var stLitStatic = UseState("_ds_lit_s", litStatic);
+        var stLitSkinned = UseState("_ds_lit_k", litSkinned);
+        if (stShStatic == null || stShSkinned == null || stLitStatic == null
+            || stLitSkinned == null)
+            return;
+
         // 記録した mesh の buffer を frame 1 回ずつ再主張する (しばらく描かれずに
         // 破棄されていたら作り直す)
         var ensured = new Dictionary<Mesh3d, bool>();
-        foreach (var d in draws)
+        bool hasInstances = false;
+        for (int i = 0; i < drawCount; i++)
         {
+            var d = draws[i];
+            if (d.Insts != null)
+                hasInstances = true;
             if (ensured.ContainsKey(d.Mesh))
                 continue;
             ensured[d.Mesh] = true;
             d.Mesh.Ensure();
         }
 
+        // instance 用の shader と draw state は DrawInstances を記録した
+        // フレームにだけ宣言する (使わないなら compile しない)
+        ShaderRef? litInstanced = null;
+        DrawStateRef? stShInstanced = null;
+        DrawStateRef? stLitInstanced = null;
+        if (hasInstances)
+        {
+            litInstanced = Gfx.UseShader(key + "_lit_i", litInstancedVs, litFs, 1);
+            var shInstanced = Gfx.UseShader(key + "_sh_i", shadowInstancedVs,
+                shadowFs, 1);
+            if (litInstanced != null && shInstanced != null)
+            {
+                stShInstanced = UseState("_ds_sh_i", shInstanced);
+                stLitInstanced = UseState("_ds_lit_i", litInstanced);
+            }
+        }
+
         var lmvp = LightMvp();
         if (Shadow.Enabled)
-            ShadowPass(lmvp, shStatic, shSkinned, shadowMap);
+            ShadowPass(lmvp, stShStatic, stShSkinned, stShInstanced, shadowMap);
         var texel = 1.0f / Shadow.Size;
 
         // forward pass (HDR)
@@ -1110,8 +1365,9 @@ public class Renderer3d
         // opaque → blend の順
         for (int phase = 0; phase < 2; phase++)
         {
-            foreach (var d in draws)
+            for (int i = 0; i < drawCount; i++)
             {
+                var d = draws[i];
                 bool isBlend = d.Blend != Gfx.Blend.None;
                 if ((phase == 0) == isBlend)
                     continue;
@@ -1119,27 +1375,41 @@ public class Renderer3d
                 var ib = d.Mesh.Ib;
                 if (vb == null || ib == null)
                     continue;
-                var shader = d.Shader
-                    ?? (d.Mesh.Skinned ? litSkinned : litStatic);
-                var bindings = new Dictionary<string, object>
+                DrawStateRef? st;
+                ShaderRef? shader;
+                if (d.Insts != null)
                 {
-                    ["verts"] = vb,
-                    ["indices"] = ib,
-                    ["uniforms"] = LitUniforms(d, vp),
-                };
-                if (d.Textures != null)
-                {
-                    foreach (var kv in d.Textures)
-                        bindings[kv.Key] = kv.Value;
+                    st = stLitInstanced;
+                    shader = litInstanced;
                 }
-                Gfx.Draw(d.Mesh.IndexCount, bindings, new DrawOpts
+                else if (d.Mesh.Skinned)
                 {
-                    Shader = shader,
-                    Depth = true,
-                    DepthWrite = !isBlend,
-                    Cull = Gfx.Cull.None,
-                    Blend = d.Blend,
-                });
+                    st = stLitSkinned;
+                    shader = litSkinned;
+                }
+                else
+                {
+                    st = stLitStatic;
+                    shader = litStatic;
+                }
+                var custom = d.Shader;
+                if (custom != null)
+                    shader = custom;
+                if (shader == null)
+                    continue;
+                var bindings = LitBindings(d, vb, ib, vp);
+                if (st != null && custom == null && !isBlend)
+                {
+                    Gfx.DrawWithState(st, d.Mesh.IndexCount, bindings,
+                        d.InstanceCount);
+                    continue;
+                }
+                var opts = litOpts;
+                opts.Shader = shader;
+                opts.DepthWrite = !isBlend;
+                opts.Blend = d.Blend;
+                opts.InstanceCount = d.InstanceCount;
+                Gfx.Draw(d.Mesh.IndexCount, bindings, opts);
             }
         }
         Gfx.EndPass();

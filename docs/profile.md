@@ -84,16 +84,16 @@ Example from `13_sprites` run headless (lavapipe) with
 `LUB_PROFILE_START_FRAME=60 LUB_PROFILE_FRAME=240`, some scope lines left out:
 
 ```text
-LUB_PROFILE label=frame frames=180 avg_frame_ms=4.531 max_frame_ms=31.950 alloc_kb_avg=58.507 alloc_kb_max=123.113 gc_ms_avg=0.055 gc_steps_avg=1.1
-LUB_PROFILE_SCOPE label=frame name=script.onFrame calls=180 total_ms=154.048 avg_ms=0.856 max_ms=2.895 pct=18.9 alloc_kb=10531.346 alloc_kb_avg=58.507 gc_ms=9.884
-LUB_PROFILE_SCOPE label=frame name=sprites.update calls=180 total_ms=10.027 avg_ms=0.056 max_ms=0.140 pct=1.2 alloc_kb=95.766 alloc_kb_avg=0.532 gc_ms=0.000
-LUB_PROFILE_SCOPE label=frame name=sprites.draw calls=180 total_ms=29.179 avg_ms=0.162 max_ms=0.642 pct=3.6 alloc_kb=2220.734 alloc_kb_avg=12.337 gc_ms=2.044
-LUB_PROFILE_SCOPE label=frame name=sprites.hud calls=180 total_ms=63.745 avg_ms=0.354 max_ms=1.289 pct=7.8 alloc_kb=7925.510 alloc_kb_avg=44.031 gc_ms=7.649
-LUB_PROFILE_SCOPE label=frame name=runtime.end_frame calls=180 total_ms=655.491 avg_ms=3.642 max_ms=30.889 pct=80.4 alloc_kb=0.000 alloc_kb_avg=0.000 gc_ms=0.000
-LUB_PROFILE_HEAP label=frame heap=lua frames=180 alloc_kb_avg=58.507 alloc_kb_max=123.113 allocs_avg=1269.6 free_kb_avg=53.892 live_kb=1496.5 gc_steps=200 gc_cycles=11 gc_ms_total=9.884 gc_ms_avg=0.055 gc_ms_max_frame=0.847 gc_ms_max_step=0.532 gc_pct=1.2 outside_kb=0.000
+LUB_PROFILE label=frame frames=180 avg_frame_ms=1.121 max_frame_ms=2.910 alloc_kb_avg=4.740 alloc_kb_max=28.557 gc_ms_avg=0.003 gc_steps_avg=0.0
+LUB_PROFILE_SCOPE label=frame name=script.onFrame calls=180 total_ms=45.251 avg_ms=0.251 max_ms=0.568 pct=22.4 alloc_kb=853.201 alloc_kb_avg=4.740 gc_ms=0.503
+LUB_PROFILE_SCOPE label=frame name=sprites.update calls=180 total_ms=2.546 avg_ms=0.014 max_ms=0.044 pct=1.3 alloc_kb=21.211 alloc_kb_avg=0.118 gc_ms=0.000
+LUB_PROFILE_SCOPE label=frame name=sprites.draw calls=180 total_ms=2.732 avg_ms=0.015 max_ms=0.051 pct=1.4 alloc_kb=25.312 alloc_kb_avg=0.141 gc_ms=0.000
+LUB_PROFILE_SCOPE label=frame name=sprites.hud calls=180 total_ms=27.441 avg_ms=0.152 max_ms=0.334 pct=13.6 alloc_kb=585.896 alloc_kb_avg=3.255 gc_ms=0.164
+LUB_PROFILE_SCOPE label=frame name=runtime.end_frame calls=180 total_ms=151.465 avg_ms=0.841 max_ms=2.630 pct=75.0 alloc_kb=0.000 alloc_kb_avg=0.000 gc_ms=0.000
+LUB_PROFILE_HEAP label=frame heap=lua frames=180 alloc_kb_avg=4.740 alloc_kb_max=28.557 allocs_avg=86.7 free_kb_avg=2.577 live_kb=1365.6 gc_steps=3 gc_cycles=1 gc_ms_total=0.503 gc_ms_avg=0.003 gc_ms_max_frame=0.339 gc_ms_max_step=0.339 gc_pct=0.2 outside_kb=0.000
 ```
 
-Here the HUD text makes three quarters of the frame's garbage.
+Here the HUD text makes about two thirds of the frame's garbage.
 
 `LUB_PROFILE`:
 
@@ -159,8 +159,7 @@ With `LUB_PROFILE` off, the Lua state uses the normal allocator and nothing is
 counted. With it on, every allocation goes through a counting wrapper and every
 GC step reads the clock twice. Measured on headless Linux over frames 60 to
 240, `avg_frame_ms` and the `script.onFrame` time stayed within run-to-run
-noise both for `13_sprites` (about 60 KB per frame) and for `12_sfb` (about
-3 MB per frame).
+noise even for `12_sfb`, which allocates about 3 MB per frame.
 
 ## .NET runs
 

@@ -715,18 +715,32 @@ if (RUN_CS_SESSION) try {
 // ===== Test A9: runtime tests on the WebGPU backend ========================
 // tests/lua の自己検査する runtime テスト (読み戻した画素で確かめ、OK / FAIL
 // の行を print する) を player.html に Lua の entry として渡して走らせる。
-// 同じ key を 1 つの pass で書き直したときの記録順と、TransientBuffer を
-// WebGPU の backend で確かめる。
+// 同じ key を 1 つの pass で書き直したときの記録順と、TransientBuffer と、
+// lubx の InstanceBatch3d (instance の struct の並びが WGSL でも同じか) と
+// SpriteBatch を 1 つの pass で何度か flush したときの絵を WebGPU の backend で
+// 確かめる。files は一緒に置く repo のファイル、size は描く大きさ (test が
+// Gfx.Size に頼るとき)。
 
 const RUNTIME_TESTS = [
   { file: 'test_buffer_rewrite.lua', ok: 'BUFFER_REWRITE_OK', fail: 'BUFFER_REWRITE_FAIL' },
   { file: 'test_transient_buffer.lua', ok: 'TRANSIENT_BUFFER_OK', fail: 'TRANSIENT_BUFFER_FAIL' },
+  {
+    file: 'test_instance_batch3d.lua', ok: 'INSTANCE_BATCH3D_PASS', fail: 'INSTANCE_BATCH3D_FAIL',
+    files: ['samples/lubx.lua'], size: 128,
+  },
+  {
+    file: 'test_sprite_batch_flush.lua', ok: 'SPRITE_BATCH_FLUSH_OK', fail: 'SPRITE_BATCH_FLUSH_FAIL',
+    files: ['samples/lubx.lua'],
+  },
 ]
 
 if (RUN_EDIT) for (const t of RUNTIME_TESTS) {
   const tp = await ctx.newPage()
   try {
     const src = fs.readFileSync(path.resolve('..', 'tests', 'lua', t.file), 'utf8')
+    const files = { [`samples/${t.file}`]: src }
+    for (const f of t.files || []) files[f] = fs.readFileSync(path.resolve('..', f), 'utf8')
+    const size = t.size || 64
     const lines = []
     await tp.exposeFunction('__lubRuntimeTestLog', (msg) => lines.push(msg))
     await tp.addInitScript(() => {
@@ -738,15 +752,15 @@ if (RUN_EDIT) for (const t of RUNTIME_TESTS) {
     // player.html を直接開く (親は自分自身)。test_transient_buffer は
     // LUB_BACKEND で backend ごとの期待値を選ぶ。
     const base = URL.endsWith('/') ? URL : URL + '/'
-    await tp.goto(`${base}player.html?w=64&h=64&env=LUB_BACKEND%3Dwebgpu`, { waitUntil: 'load' })
+    await tp.goto(`${base}player.html?w=${size}&h=${size}&env=LUB_BACKEND%3Dwebgpu`, { waitUntil: 'load' })
     // samples/<file> は Lua の検索路 (samples/?.lua) に載る
-    await tp.evaluate(({ file, src }) => {
+    await tp.evaluate(({ file, files }) => {
       window.postMessage({
         type: 'setFiles',
-        files: { [`samples/${file}`]: src },
+        files,
         entry: file.replace(/\.lua$/, ''),
       }, '*')
-    }, { file: t.file, src })
+    }, { file: t.file, files })
     const deadline = Date.now() + 120000
     let line = null
     while (!line && Date.now() < deadline) {

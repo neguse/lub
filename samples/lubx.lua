@@ -2911,6 +2911,93 @@ function FpsMeter:tick()
 	return self.fps
 end
 
+InstanceBatch3d = {}
+InstanceBatch3d.__index = InstanceBatch3d
+
+InstanceBatch3d.stride = 0
+InstanceBatch3d.stride = 16
+
+function InstanceBatch3d.new()
+	local self = setmetatable({}, InstanceBatch3d)
+	__tcs_instances[self] = InstanceBatch3d
+	self.count = 0
+	self.data = {}
+	self.capacity = 0
+	return self
+end
+
+function InstanceBatch3d:begin()
+	self.count = 0
+end
+
+function InstanceBatch3d:add(x, y, z, scale, qx, qy, qz, qw, r, g, b, a)
+	local o = self.count * 16
+	if o + 16 > self.capacity then
+		self:grow(o + 16)
+	end
+	local d = self.data
+	d[o + 1] = x
+	d[o + 1 + 1] = y
+	d[o + 2 + 1] = z
+	d[o + 3 + 1] = 0.0
+	d[o + 4 + 1] = scale
+	d[o + 5 + 1] = scale
+	d[o + 6 + 1] = scale
+	d[o + 7 + 1] = 0.0
+	d[o + 8 + 1] = qx
+	d[o + 9 + 1] = qy
+	d[o + 10 + 1] = qz
+	d[o + 11 + 1] = qw
+	d[o + 12 + 1] = r
+	d[o + 13 + 1] = g
+	d[o + 14 + 1] = b
+	d[o + 15 + 1] = a
+	self.count = self.count + 1
+end
+
+function InstanceBatch3d:add_scaled(x, y, z, sx, sy, sz, qx, qy, qz, qw, r, g, b, a)
+	local o = self.count * 16
+	if o + 16 > self.capacity then
+		self:grow(o + 16)
+	end
+	local d = self.data
+	d[o + 1] = x
+	d[o + 1 + 1] = y
+	d[o + 2 + 1] = z
+	d[o + 3 + 1] = 0.0
+	d[o + 4 + 1] = sx
+	d[o + 5 + 1] = sy
+	d[o + 6 + 1] = sz
+	d[o + 7 + 1] = 0.0
+	d[o + 8 + 1] = qx
+	d[o + 9 + 1] = qy
+	d[o + 10 + 1] = qz
+	d[o + 11 + 1] = qw
+	d[o + 12 + 1] = r
+	d[o + 13 + 1] = g
+	d[o + 14 + 1] = b
+	d[o + 15 + 1] = a
+	self.count = self.count + 1
+end
+
+function InstanceBatch3d:grow(need)
+	local cap = self.capacity * 2
+	if cap < need then
+		cap = need
+	end
+	while #self.data < cap do
+		table.insert(self.data, 0.0)
+	end
+	self.capacity = cap
+end
+
+function InstanceBatch3d:upload()
+	if self.count == 0 then
+		return nil
+	end
+	return lub.gfx.transient_buffer(lub.gfx.STORAGE, self.data, self.count * 16)
+end
+
 Mesh3d = {}
 Mesh3d.__index = Mesh3d
 
@@ -3293,25 +3380,20 @@ end
 Renderer3dDrawCmd = {}
 Renderer3dDrawCmd.__index = Renderer3dDrawCmd
 
-function Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
+function Renderer3dDrawCmd.new(mesh)
 	local self = setmetatable({}, Renderer3dDrawCmd)
 	__tcs_instances[self] = Renderer3dDrawCmd
 	self.mesh = nil
-	self.model = nil
-	self.tint = nil
-	self.blend = nil
+	self.model = Mat4.new()
+	self.tint = { 1.0, 1.0, 1.0, 1.0 }
+	self.blend = lub.gfx.NONE
 	self.bones = nil
 	self.shader = nil
 	self.textures = nil
 	self.uniforms = nil
+	self.insts = nil
+	self.instance_count = 1
 	self.mesh = mesh
-	self.model = model
-	self.tint = tint
-	self.blend = blend
-	self.bones = bones
-	self.shader = shader
-	self.textures = textures
-	self.uniforms = uniforms
 	return self
 end
 
@@ -3434,6 +3516,13 @@ Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
 	.. (Renderer3d.pncmw_verts or "")
 	.. (Renderer3d.lit_vs_body or "")
 	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+Renderer3d.inst_decl =
+	"\nstruct Inst {\n  float3 pos;\n  float pad0;\n  float3 scale;\n  float pad1;\n  float4 rot; // quaternion (x, y, z, w)\n  float4 color;\n};\nStructuredBuffer<Inst> insts;\n\nfloat3 quat_rotate(float4 q, float3 v) {\n  float3 t = 2.0f * cross(q.xyz, v);\n  return v + q.w * t + cross(q.xyz, t);\n}\n"
+Renderer3d.lit_instanced_vs = "\nstruct Uniforms {\n  float4x4 vp;\n  float4x4 light_mvp;\n  float4 tint;\n};\nConstantBuffer<Uniforms> u;"
+	.. (Renderer3d.pncm_verts or "")
+	.. (Renderer3d.inst_decl or "")
+	.. (Renderer3d.lit_vs_body or "")
+	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n  V i = verts[vid];\n  Inst n = insts[iid];\n  VSOut o;\n  float4 wp4 = float4(n.pos + quat_rotate(n.rot, i.pos * n.scale), 1.0f);\n  o.pos = mul(u.vp, wp4);\n  o.wn = quat_rotate(n.rot, i.normal / n.scale);\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * n.color.rgb * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), n.color.a * u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
 Renderer3d.lit_fs =
 	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\n// 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。\nfloat2 shadow_depth_gradient(float4 lpos) {\n  float3 p = lpos.xyz / lpos.w;\n  p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;\n  float3 dx = ddx(p), dy = ddy(p);\n  float det = dx.x * dy.y - dx.y * dy.x;\n  if (abs(det) < 1e-15f)\n    return float2(0.0f, 0.0f);\n  return float2(dx.z * dy.y - dy.z * dx.y,\n                dx.x * dy.z - dy.x * dx.z) / det;\n}\n\nfloat shadow_factor(float4 lpos, float2 dz) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // 読み取る texel の中心と受け面の深度の位置を揃える。\n  float2 coord = uv / texel - 0.5f;\n  float2 base = floor(coord), fracUv = frac(coord);\n  float lit = 0.0f;\n  // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。\n  for (int y = -1; y <= 2; ++y)\n    for (int x = -1; x <= 2; ++x) {\n      float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;\n      sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);\n      float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;\n      float receiver = ndc.z + dot(dz, sampleUv - uv);\n      float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);\n      float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);\n      lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float ndl = dot(n, l);\n  // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。\n  float2 shadowGradient = shadow_depth_gradient(i.lpos);\n  float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular\n  float diff = saturate(ndl);\n  float3 direct = f.light_col.rgb * diff * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
 Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
@@ -3442,6 +3531,10 @@ Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 m
 Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
 	.. (Renderer3d.pncmw_verts or "")
 	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
+Renderer3d.shadow_instanced_vs = "\nstruct U {\n  float4x4 light_mvp;\n};\nConstantBuffer<U> u;"
+	.. (Renderer3d.pncm_verts or "")
+	.. (Renderer3d.inst_decl or "")
+	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n  V i = verts[vid];\n  Inst n = insts[iid];\n  VSOut o;\n  float3 wp = n.pos + quat_rotate(n.rot, i.pos * n.scale);\n  o.pos = mul(u.light_mvp, float4(wp, 1.0f));\n  return o;\n}\n'
 Renderer3d.shadow_fs =
 	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
 Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
@@ -3462,6 +3555,7 @@ Renderer3d.quad_vs =
 Renderer3d.tonemap_fs =
 	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
 Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
+Renderer3d.cached_identity_bones = nil
 
 function Renderer3d.new(key)
 	local self = setmetatable({}, Renderer3d)
@@ -3483,11 +3577,23 @@ function Renderer3d.new(key)
 	self.view_mat = nil
 	self.key = nil
 	self.draws = {}
+	self.draw_count = 0
 	self.view = nil
 	self.proj = nil
 	self.vp = nil
 	self.eye = Vec3.new(0, 0, 0)
 	self.flip_quad_buf = nil
+	self.mesh_bindings = {}
+	self.inst_bindings = {}
+	self.shadow_inst_bindings = {}
+	self.shadow_u = {}
+	self.shadow_skin_u = {}
+	self.lit_u = {}
+	self.lit_skin_u = {}
+	self.inst_u = {}
+	self.mvp_scratch = Mat4.new()
+	self.state_opts = { depth = true, depth_write = true, cull = lub.gfx.NONE, blend = lub.gfx.NONE }
+	self.lit_opts = { depth = true, cull = lub.gfx.NONE }
 	self.key = key
 	return self
 end
@@ -3512,32 +3618,65 @@ function Renderer3d:begin(cam)
 	p.m[5 + 1] = -p.m[5 + 1]
 	self.proj = p
 	self.vp = p * v
-	self.eye = cam.eye
-	self.draws = {}
+	self.eye:copy_from(cam.eye)
+	self.draw_count = 0
 end
 
 function Renderer3d:draw(mesh, model, opts)
 	if mesh == nil or not mesh:ready() then
 		return
 	end
-	local tint = { 1.0, 1.0, 1.0, 1.0 }
-	local blend = lub.gfx.NONE
-	local bones = nil
-	local shader = nil
-	local textures = nil
-	local uniforms = nil
+	local d = self:next_cmd(mesh, opts)
+	d.model:copy_from(model)
+end
+
+function Renderer3d:draw_instances(mesh, batch, opts)
+	if mesh == nil or not mesh:ready() or mesh.skinned then
+		return
+	end
+	local insts = batch:upload()
+	if insts == nil then
+		return
+	end
+	local d = self:next_cmd(mesh, opts)
+	d.insts = insts
+	d.instance_count = batch.count
+end
+
+function Renderer3d:next_cmd(mesh, opts)
+	if self.draw_count == #self.draws then
+		table.insert(self.draws, Renderer3dDrawCmd.new(mesh))
+	end
+	local d = self.draws[self.draw_count + 1]
+	self.draw_count = self.draw_count + 1
+	d.mesh = mesh
+	d.insts = nil
+	d.instance_count = 1
+	local tint = d.tint
+	tint[0 + 1] = 1.0
+	tint[1 + 1] = 1.0
+	tint[2 + 1] = 1.0
+	tint[3 + 1] = 1.0
+	d.blend = lub.gfx.NONE
+	d.bones = nil
+	d.shader = nil
+	d.textures = nil
+	d.uniforms = nil
 	if opts ~= nil then
 		local t = opts.tint
 		if t ~= nil then
-			tint = { t.r, t.g, t.b, t.a }
+			tint[0 + 1] = t.r
+			tint[1 + 1] = t.g
+			tint[2 + 1] = t.b
+			tint[3 + 1] = t.a
 		end
-		blend = opts.blend or lub.gfx.NONE
-		bones = opts.bones
-		shader = opts.shader
-		textures = opts.textures
-		uniforms = opts.uniforms
+		d.blend = opts.blend or lub.gfx.NONE
+		d.bones = opts.bones
+		d.shader = opts.shader
+		d.textures = opts.textures
+		d.uniforms = opts.uniforms
 	end
-	table.insert(self.draws, Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms))
+	return d
 end
 
 function Renderer3d:light_mvp()
@@ -3567,48 +3706,76 @@ function Renderer3d:light_mvp()
 end
 
 function Renderer3d.identity_bones()
-	return Bones.pack(nil, function(name, px, py, pz)
-		return nil
-	end)
+	local b = Renderer3d.cached_identity_bones
+	if b == nil then
+		b = Bones.pack(nil, function(name, px, py, pz)
+			return nil
+		end)
+		Renderer3d.cached_identity_bones = b
+	end
+	return b
 end
 
-function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
+function Renderer3d:use_state(suffix, shader)
+	self.state_opts.shader = shader
+	return lub.gfx.use_draw_state((self.key or "") .. (suffix or ""), self.state_opts, nil, 1)
+end
+
+function Renderer3d:shadow_pass(lmvp, stStatic, stSkinned, stInstanced, shadowMap)
 	lub.gfx.begin_pass({
 		depth_target = shadowMap,
 		clear_depth = 1.0,
 		bindings = { ["uniforms"] = { ["light_mvp"] = lmvp.m } },
 	})
-	for _, d in ipairs(self.draws) do
-		if d.blend ~= lub.gfx.NONE then
-			goto _continue_20
-		end
-		local vb = d.mesh.vb
-		local ib = d.mesh.ib
-		if vb == nil or ib == nil then
-			goto _continue_20
-		end
-		local u = { ["model"] = d.model.m }
-		if d.mesh.skinned then
-			u["bones"] = d.bones or Renderer3d.identity_bones()
-		end
-		lub.gfx.draw(d.mesh.index_count, { ["verts"] = vb, ["indices"] = ib, ["uniforms"] = u }, {
-			shader = (function()
-				if d.mesh.skinned then
-					return shSkinned
-				else
-					return shStatic
+	local i = 0
+	while i < self.draw_count do
+		do
+			local d = self.draws[i + 1]
+			if d.blend ~= lub.gfx.NONE then
+				goto _continue_21
+			end
+			local vb = d.mesh.vb
+			local ib = d.mesh.ib
+			if vb == nil or ib == nil then
+				goto _continue_21
+			end
+			local insts = d.insts
+			if insts ~= nil then
+				if stInstanced == nil then
+					goto _continue_21
 				end
-			end)(),
-			depth = true,
-			depth_write = true,
-			cull = lub.gfx.NONE,
-		})
-		::_continue_20::
+				local ibs = self.shadow_inst_bindings
+				ibs["verts"] = vb
+				ibs["indices"] = ib
+				ibs["insts"] = insts
+				lub.gfx.draw_with_state(stInstanced, d.mesh.index_count, ibs, d.instance_count)
+				goto _continue_21
+			end
+			local u = self.shadow_u
+			local st = stStatic
+			if d.mesh.skinned then
+				u = self.shadow_skin_u
+				u["bones"] = d.bones or Renderer3d.identity_bones()
+				st = stSkinned
+			end
+			u["model"] = d.model.m
+			local bs = self.mesh_bindings
+			bs["verts"] = vb
+			bs["indices"] = ib
+			bs["uniforms"] = u
+			lub.gfx.draw_with_state(st, d.mesh.index_count, bs)
+			::_continue_21::
+		end
+		i = i + 1
 	end
 	lub.gfx.end_pass()
 end
 
 function Renderer3d:frame_uniforms(lmvp, texel)
+	local shadowOn = 0.0
+	if self.shadow.enabled then
+		shadowOn = 1.0
+	end
 	return {
 		["light_mvp"] = lmvp.m,
 		["light_dir"] = self:light_dir_table(),
@@ -3621,33 +3788,56 @@ function Renderer3d:frame_uniforms(lmvp, texel)
 		["sky_col"] = { self.sky.top.r, self.sky.top.g, self.sky.top.b, self.sky.intensity },
 		["ground_col"] = { self.sky.bottom.r, self.sky.bottom.g, self.sky.bottom.b, 0.0 },
 		["cam_pos"] = { self.eye.x, self.eye.y, self.eye.z, 0.0 },
-		["shadow_p"] = {
-			texel,
-			self.shadow.bias,
-			(function()
-				if self.shadow.enabled then
-					return 1.0
-				else
-					return 0.0
-				end
-			end)(),
-			0.0,
-		},
+		["shadow_p"] = { texel, self.shadow.bias, shadowOn, 0.0 },
 	}
 end
 
-function Renderer3d:lit_uniforms(d, vp)
-	local u = { ["mvp"] = (vp * d.model).m, ["model"] = d.model.m, ["tint"] = d.tint }
-	if d.mesh.skinned then
-		u["bones"] = d.bones or Renderer3d.identity_bones()
+function Renderer3d:lit_bindings(d, vb, ib, vp)
+	local insts = d.insts
+	local extraU = d.uniforms
+	local extraT = d.textures
+	local u
+	local bs
+	if extraU ~= nil or extraT ~= nil then
+		u = {}
+		bs = {}
+	elseif insts ~= nil then
+		u = self.inst_u
+		bs = self.inst_bindings
+	elseif d.mesh.skinned then
+		u = self.lit_skin_u
+		bs = self.mesh_bindings
+	else
+		u = self.lit_u
+		bs = self.mesh_bindings
 	end
-	if d.uniforms ~= nil then
-		for kv_key, kv_value in pairs(d.uniforms) do
+	if insts ~= nil then
+		u["vp"] = vp.m
+		bs["insts"] = insts
+	else
+		u["mvp"] = self.mvp_scratch:set_mul(vp, d.model).m
+		u["model"] = d.model.m
+		if d.mesh.skinned then
+			u["bones"] = d.bones or Renderer3d.identity_bones()
+		end
+	end
+	u["tint"] = d.tint
+	if extraU ~= nil then
+		for kv_key, kv_value in pairs(extraU) do
 			local kv = { Key = kv_key, Value = kv_value }
 			u[kv.Key] = kv.Value
 		end
 	end
-	return u
+	bs["verts"] = vb
+	bs["indices"] = ib
+	bs["uniforms"] = u
+	if extraT ~= nil then
+		for kv_key, kv_value in pairs(extraT) do
+			local kv = { Key = kv_key, Value = kv_value }
+			bs[kv.Key] = kv.Value
+		end
+	end
+	return bs
 end
 
 function Renderer3d:light_dir_table()
@@ -3748,18 +3938,47 @@ function Renderer3d:end_()
 	if hdr == nil or depth == nil or shadowMap == nil or quad == nil or self.flip_quad_buf == nil then
 		return
 	end
+	local stShStatic = self:use_state("_ds_sh_s", shStatic)
+	local stShSkinned = self:use_state("_ds_sh_k", shSkinned)
+	local stLitStatic = self:use_state("_ds_lit_s", litStatic)
+	local stLitSkinned = self:use_state("_ds_lit_k", litSkinned)
+	if stShStatic == nil or stShSkinned == nil or stLitStatic == nil or stLitSkinned == nil then
+		return
+	end
 	local ensured = {}
-	for _, d in ipairs(self.draws) do
-		if ensured[d.mesh] ~= nil then
-			goto _continue_22
+	local hasInstances = false
+	local i = 0
+	while i < self.draw_count do
+		do
+			local d = self.draws[i + 1]
+			if d.insts ~= nil then
+				hasInstances = true
+			end
+			if ensured[d.mesh] ~= nil then
+				goto _continue_24
+			end
+			ensured[d.mesh] = true
+			d.mesh:ensure()
+			::_continue_24::
 		end
-		ensured[d.mesh] = true
-		d.mesh:ensure()
-		::_continue_22::
+		i = i + 1
+	end
+	local litInstanced = nil
+	local stShInstanced = nil
+	local stLitInstanced = nil
+	if hasInstances then
+		litInstanced =
+			lub.gfx.use_shader((self.key or "") .. "_lit_i", Renderer3d.lit_instanced_vs, Renderer3d.lit_fs, 1)
+		local shInstanced =
+			lub.gfx.use_shader((self.key or "") .. "_sh_i", Renderer3d.shadow_instanced_vs, Renderer3d.shadow_fs, 1)
+		if litInstanced ~= nil and shInstanced ~= nil then
+			stShInstanced = self:use_state("_ds_sh_i", shInstanced)
+			stLitInstanced = self:use_state("_ds_lit_i", litInstanced)
+		end
 	end
 	local lmvp = self:light_mvp()
 	if self.shadow.enabled then
-		self:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
+		self:shadow_pass(lmvp, stShStatic, stShSkinned, stShInstanced, shadowMap)
 	end
 	local texel = 1.0 / self.shadow.size
 	lub.gfx.begin_pass({
@@ -3775,39 +3994,52 @@ function Renderer3d:end_()
 		bindings = { ["shadow_map"] = shadowMap, ["uniforms"] = self:frame_uniforms(lmvp, texel) },
 	})
 	for phase = 0, 2 - 1 do
-		for _, d in ipairs(self.draws) do
-			local isBlend = d.blend ~= lub.gfx.NONE
-			if (phase == 0) == isBlend then
-				goto _continue_24
-			end
-			local vb = d.mesh.vb
-			local ib = d.mesh.ib
-			if vb == nil or ib == nil then
-				goto _continue_24
-			end
-			local shader = d.shader
-				or (
-					(function()
-						if d.mesh.skinned then
-							return litSkinned
-						else
-							return litStatic
-						end
-					end)()
-				)
-			local bindings = { ["verts"] = vb, ["indices"] = ib, ["uniforms"] = self:lit_uniforms(d, vp) }
-			if d.textures ~= nil then
-				for kv_key, kv_value in pairs(d.textures) do
-					local kv = { Key = kv_key, Value = kv_value }
-					bindings[kv.Key] = kv.Value
+		local i = 0
+		while i < self.draw_count do
+			do
+				local d = self.draws[i + 1]
+				local isBlend = d.blend ~= lub.gfx.NONE
+				if (phase == 0) == isBlend then
+					goto _continue_26
 				end
+				local vb = d.mesh.vb
+				local ib = d.mesh.ib
+				if vb == nil or ib == nil then
+					goto _continue_26
+				end
+				local st
+				local shader
+				if d.insts ~= nil then
+					st = stLitInstanced
+					shader = litInstanced
+				elseif d.mesh.skinned then
+					st = stLitSkinned
+					shader = litSkinned
+				else
+					st = stLitStatic
+					shader = litStatic
+				end
+				local custom = d.shader
+				if custom ~= nil then
+					shader = custom
+				end
+				if shader == nil then
+					goto _continue_26
+				end
+				local bindings = self:lit_bindings(d, vb, ib, vp)
+				if st ~= nil and custom == nil and not isBlend then
+					lub.gfx.draw_with_state(st, d.mesh.index_count, bindings, d.instance_count)
+					goto _continue_26
+				end
+				local opts = self.lit_opts
+				opts.shader = shader
+				opts.depth_write = not isBlend
+				opts.blend = d.blend
+				opts.instance_count = d.instance_count
+				lub.gfx.draw(d.mesh.index_count, bindings, opts)
+				::_continue_26::
 			end
-			lub.gfx.draw(
-				d.mesh.index_count,
-				bindings,
-				{ shader = shader, depth = true, depth_write = not isBlend, cull = lub.gfx.NONE, blend = d.blend }
-			)
-			::_continue_24::
+			i = i + 1
 		end
 	end
 	lub.gfx.end_pass()
@@ -4778,6 +5010,7 @@ function SpriteBucket.new(atlas)
 	__tcs_instances[self] = SpriteBucket
 	self.atlas = nil
 	self.verts = {}
+	self.count = 0
 	self.ready = false
 	self.atlas = atlas
 	return self
@@ -4891,26 +5124,17 @@ end
 
 function SpriteBatch:begin()
 	for _, k in ipairs(self.order) do
-		local b = self.buckets[k];
-		(function()
-			local __tcs_obj = b.verts
-			for k in pairs(__tcs_obj) do
-				__tcs_obj[k] = nil
-			end
-		end)()
+		local b = self.buckets[k]
+		b.count = 0
 		b.ready = false
 	end
 end
 
 function SpriteBatch:bucket_for(a)
 	local b
-	if
-		not (function()
-			local __tcs_found, __tcs_v = Dict.TryGet(self.buckets, a.key, nil)
-			b = __tcs_v
-			return __tcs_found
-		end)()
-	then
+	if Dict.ContainsKey(self.buckets, a.key) then
+		b = self.buckets[a.key]
+	else
 		b = SpriteBucket.new(a)
 		self.buckets[a.key] = b
 		table.insert(self.order, a.key)
@@ -4921,112 +5145,141 @@ function SpriteBatch:bucket_for(a)
 		end
 		b.ready = true
 	end
-	return b.verts
+	return b
 end
 
-function SpriteBatch:color_or_white(c)
-	if c ~= nil then
-		return c
+function SpriteBatch:reserve(bucket, n)
+	local o = bucket.count
+	local verts = bucket.verts
+	if o + n > #verts then
+		local cap = #verts * 2
+		if cap < o + n then
+			cap = o + n
+		end
+		while #verts < cap do
+			table.insert(verts, 0.0)
+		end
 	end
-	return Color.rgb(1.0, 1.0, 1.0, 1.0)
+	bucket.count = o + n
+	return o
 end
 
-function SpriteBatch:push_instance(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, c)
-	self:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, c.r, c.g, c.b, c.a)
+function SpriteBatch:push_instance_color(bucket, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
+	local o = self:reserve(bucket, 16)
+	local verts = bucket.verts
+	verts[o + 1] = cx
+	verts[o + 1 + 1] = cy
+	verts[o + 2 + 1] = w
+	verts[o + 3 + 1] = h
+	verts[o + 4 + 1] = cr
+	verts[o + 5 + 1] = sr
+	verts[o + 6 + 1] = 0.0
+	verts[o + 7 + 1] = 0.0
+	verts[o + 8 + 1] = u0
+	verts[o + 9 + 1] = v0
+	verts[o + 10 + 1] = u1
+	verts[o + 11 + 1] = v1
+	verts[o + 12 + 1] = r
+	verts[o + 13 + 1] = g
+	verts[o + 14 + 1] = b
+	verts[o + 15 + 1] = alpha
 end
 
-function SpriteBatch:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
-	table.insert(verts, cx)
-	table.insert(verts, cy)
-	table.insert(verts, w)
-	table.insert(verts, h)
-	table.insert(verts, cr)
-	table.insert(verts, sr)
-	table.insert(verts, 0.0)
-	table.insert(verts, 0.0)
-	table.insert(verts, u0)
-	table.insert(verts, v0)
-	table.insert(verts, u1)
-	table.insert(verts, v1)
-	table.insert(verts, r)
-	table.insert(verts, g)
-	table.insert(verts, b)
-	table.insert(verts, alpha)
+function SpriteBatch:put_vertex_color(verts, o, x, y, u, v, r, g, b, alpha)
+	verts[o + 1] = x
+	verts[o + 1 + 1] = y
+	verts[o + 2 + 1] = u
+	verts[o + 3 + 1] = v
+	verts[o + 4 + 1] = r
+	verts[o + 5 + 1] = g
+	verts[o + 6 + 1] = b
+	verts[o + 7 + 1] = alpha
 end
 
-function SpriteBatch:push_vertex(verts, x, y, u, v, c)
-	self:push_vertex_color(verts, x, y, u, v, c.r, c.g, c.b, c.a)
-end
-
-function SpriteBatch:push_vertex_color(verts, x, y, u, v, r, g, b, alpha)
-	table.insert(verts, x)
-	table.insert(verts, y)
-	table.insert(verts, u)
-	table.insert(verts, v)
-	table.insert(verts, r)
-	table.insert(verts, g)
-	table.insert(verts, b)
-	table.insert(verts, alpha)
-end
-
-function SpriteBatch:push_rot(verts, cx, cy, ox, oy, cr, sr, u, v, c)
-	self:push_vertex(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, c)
-end
-
-function SpriteBatch:push_rot_color(verts, cx, cy, ox, oy, cr, sr, u, v, r, g, b, alpha)
-	self:push_vertex_color(verts, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, r, g, b, alpha)
+function SpriteBatch:put_rot_color(verts, o, cx, cy, ox, oy, cr, sr, u, v, r, g, b, alpha)
+	self:put_vertex_color(verts, o, cx + ox * cr - oy * sr, cy + ox * sr + oy * cr, u, v, r, g, b, alpha)
 end
 
 function SpriteBatch:sprite(a, src, cx, cy, w, h, radians, tint)
-	local c = self:color_or_white(tint)
-	self:sprite_color(a, src, cx, cy, w, h, Math.Cos(radians), Math.Sin(radians), c.r, c.g, c.b, c.a)
+	local r = 1.0
+	local g = 1.0
+	local b = 1.0
+	local alpha = 1.0
+	if tint ~= nil then
+		r = tint.r
+		g = tint.g
+		b = tint.b
+		alpha = tint.a
+	end
+	self:sprite_color(a, src, cx, cy, w, h, Math.Cos(radians), Math.Sin(radians), r, g, b, alpha)
 end
 
 function SpriteBatch:sprite_color(a, src, cx, cy, w, h, cr, sr, r, g, b, alpha)
-	local verts = self:bucket_for(a)
-	if verts == nil then
+	local bucket = self:bucket_for(a)
+	if bucket == nil then
 		return
 	end
 	local u0 = src.x / a.w
 	local v0 = src.y / a.h
 	local u1 = (src.x + src.w) / a.w
 	local v1 = (src.y + src.h) / a.h
+	self:put_sprite(bucket, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
+end
+
+function SpriteBatch:put_sprite(bucket, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
 	if self.instanced then
-		self:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
+		self:push_instance_color(bucket, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
 		return
 	end
 	local hw = w * 0.5
 	local hh = h * 0.5
-	self:push_rot_color(verts, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha)
-	self:push_rot_color(verts, cx, cy, hw, -hh, cr, sr, u1, v0, r, g, b, alpha)
-	self:push_rot_color(verts, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha)
-	self:push_rot_color(verts, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha)
-	self:push_rot_color(verts, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha)
-	self:push_rot_color(verts, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha)
+	local o = self:reserve(bucket, 8 * 6)
+	local verts = bucket.verts
+	self:put_rot_color(verts, o, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha)
+	self:put_rot_color(verts, o + 8, cx, cy, hw, -hh, cr, sr, u1, v0, r, g, b, alpha)
+	self:put_rot_color(verts, o + 16, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha)
+	self:put_rot_color(verts, o + 24, cx, cy, -hw, -hh, cr, sr, u0, v0, r, g, b, alpha)
+	self:put_rot_color(verts, o + 32, cx, cy, hw, hh, cr, sr, u1, v1, r, g, b, alpha)
+	self:put_rot_color(verts, o + 40, cx, cy, -hw, hh, cr, sr, u0, v1, r, g, b, alpha)
 end
 
 function SpriteBatch:quad(a, src, x, y, w, h, tint)
-	local verts = self:bucket_for(a)
-	if verts == nil then
+	local bucket = self:bucket_for(a)
+	if bucket == nil then
 		return
 	end
-	local c = self:color_or_white(tint)
 	local u0 = src.x / a.w
 	local v0 = src.y / a.h
 	local u1 = (src.x + src.w) / a.w
 	local v1 = (src.y + src.h) / a.h
+	self:put_quad(bucket, x, y, w, h, u0, v0, u1, v1, tint)
+end
+
+function SpriteBatch:put_quad(bucket, x, y, w, h, u0, v0, u1, v1, tint)
+	local r = 1.0
+	local g = 1.0
+	local b = 1.0
+	local alpha = 1.0
+	if tint ~= nil then
+		r = tint.r
+		g = tint.g
+		b = tint.b
+		alpha = tint.a
+	end
 	if self.instanced then
-		self:push_instance(verts, x + w * 0.5, y + h * 0.5, w, h, 1.0, 0.0, u0, v0, u1, v1, c)
+		self:push_instance_color(bucket, x + w * 0.5, y + h * 0.5, w, h, 1.0, 0.0, u0, v0, u1, v1, r, g, b, alpha)
 		return
 	end
 	local x1 = x + w
 	local y1 = y + h
-	self:push_vertex(verts, x, y, u0, v0, c)
-	self:push_vertex(verts, x1, y, u1, v0, c)
-	self:push_vertex(verts, x1, y1, u1, v1, c)
-	self:push_vertex(verts, x, y, u0, v0, c)
-	self:push_vertex(verts, x1, y1, u1, v1, c)
-	self:push_vertex(verts, x, y1, u0, v1, c)
+	local o = self:reserve(bucket, 8 * 6)
+	local verts = bucket.verts
+	self:put_vertex_color(verts, o, x, y, u0, v0, r, g, b, alpha)
+	self:put_vertex_color(verts, o + 8, x1, y, u1, v0, r, g, b, alpha)
+	self:put_vertex_color(verts, o + 16, x1, y1, u1, v1, r, g, b, alpha)
+	self:put_vertex_color(verts, o + 24, x, y, u0, v0, r, g, b, alpha)
+	self:put_vertex_color(verts, o + 32, x1, y1, u1, v1, r, g, b, alpha)
+	self:put_vertex_color(verts, o + 40, x, y1, u0, v1, r, g, b, alpha)
 end
 
 function SpriteBatch.ensure_white_atlas()
@@ -5064,11 +5317,29 @@ function SpriteBatch.ensure_disc_atlas()
 end
 
 function SpriteBatch:rect(x, y, w, h, tint)
-	self:quad(SpriteBatch.ensure_white_atlas(), Rect.new(0, 0, 4, 4), x, y, w, h, tint)
+	local bucket = self:bucket_for(SpriteBatch.ensure_white_atlas())
+	if bucket == nil then
+		return
+	end
+	self:put_quad(bucket, x, y, w, h, 0.0, 0.0, 1.0, 1.0, tint)
 end
 
 function SpriteBatch:disc(cx, cy, r, tint)
-	self:sprite(SpriteBatch.ensure_disc_atlas(), Rect.new(0, 0, 64, 64), cx, cy, r * 2.0, r * 2.0, 0.0, tint)
+	local bucket = self:bucket_for(SpriteBatch.ensure_disc_atlas())
+	if bucket == nil then
+		return
+	end
+	local cr = 1.0
+	local cg = 1.0
+	local cb = 1.0
+	local ca = 1.0
+	if tint ~= nil then
+		cr = tint.r
+		cg = tint.g
+		cb = tint.b
+		ca = tint.a
+	end
+	self:put_sprite(bucket, cx, cy, r * 2.0, r * 2.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, cr, cg, cb, ca)
 end
 
 function SpriteBatch:ensure_quad()
@@ -5087,59 +5358,52 @@ function SpriteBatch:flush(blend)
 	if sh == nil then
 		return
 	end
-	local quadVb = (function()
-		if self.instanced then
-			return self:ensure_quad()
-		else
-			return nil
+	local quadVb = nil
+	if self.instanced then
+		quadVb = self:ensure_quad()
+		if quadVb == nil then
+			return
 		end
-	end)()
-	if self.instanced and quadVb == nil then
-		return
 	end
 	local uniformParams = { self.logical_w, self.logical_h, 0.0, 0.0 }
 	local blendMode = blend or lub.gfx.ALPHA
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
-		if #b.verts == 0 then
-			goto _continue_58
+		if b.count == 0 then
+			goto _continue_60
 		end
 		local tex = b.atlas.texture
 		if tex == nil then
-			goto _continue_58
+			goto _continue_60
+		end
+		local data = lub.gfx.transient_buffer(lub.gfx.STORAGE, b.verts, b.count)
+		if data == nil then
+			goto _continue_60
 		end
 		if not self.instanced then
-			local vbuf =
-				lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_verts", lub.gfx.STORAGE, b.verts)
-			if vbuf == nil then
-				goto _continue_58
-			end
 			lub.gfx.draw(
-				Math.Floor(#b.verts / 8),
-				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
+				Math.Floor(b.count / 8),
+				{ ["verts"] = data, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
-			goto _continue_58
+			goto _continue_60
 		end
-		local instances =
-			lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_instances", lub.gfx.STORAGE, b.verts)
-		if instances == nil or quadVb == nil then
-			goto _continue_58
+		if quadVb == nil then
+			goto _continue_60
 		end
-		lub.gfx.draw(4, {
-			["verts"] = quadVb,
-			["insts"] = instances,
-			["atlas"] = tex,
-			["uniforms"] = { ["params"] = uniformParams },
-		}, {
-			shader = sh,
-			depth = false,
-			cull = lub.gfx.NONE,
-			blend = blendMode,
-			primitive = lub.gfx.TRIANGLE_STRIP,
-			instance_count = Math.Floor(#b.verts / 16),
-		})
-		::_continue_58::
+		lub.gfx.draw(
+			4,
+			{ ["verts"] = quadVb, ["insts"] = data, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
+			{
+				shader = sh,
+				depth = false,
+				cull = lub.gfx.NONE,
+				blend = blendMode,
+				primitive = lub.gfx.TRIANGLE_STRIP,
+				instance_count = Math.Floor(b.count / 16),
+			}
+		)
+		::_continue_60::
 	end
 end
 
@@ -5337,6 +5601,7 @@ return {
 	FixedStep = FixedStep,
 	FpsMeter = FpsMeter,
 	GlyphEntry = GlyphEntry,
+	InstanceBatch3d = InstanceBatch3d,
 	Mat4 = Mat4,
 	MathUtil = MathUtil,
 	Mesh3d = Mesh3d,

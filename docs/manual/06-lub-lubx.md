@@ -23,7 +23,7 @@ core API にしない方針。既存エンジンとの API 互換も目標にし
 
 `lubx`(`cs-lib/lubx`)は `Lub.*` の上に純粋な C# で書かれた便利層。
 `SpriteBatch` / `Atlas` / `Shapes` / `Text`(2D 描画)、
-`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones`(3D レンダラ。設計記録は `docs/log/2026-07-12-renderer3d-design.md`)、
+`Renderer3d` / `Mesh3d` / `Shapes3d` / `Bones` / `InstanceBatch3d`(3D レンダラ。`InstanceBatch3d` は同じメッシュをまとめて 1 draw で描くための instance の列。設計記録は `docs/log/2026-07-12-renderer3d-design.md`)、
 `Camera2d` / `Camera3d`、`FixedStep`(固定 tick)、`SlotPool`(消した要素の場所を詰めずに使い回すプール)、
 `Assets`、`Rand`、`Sfx` など。raw Lua からは
 tcs が生成した `samples/lubx.lua` を `require("lubx")` して使う。
