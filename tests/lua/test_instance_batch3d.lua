@@ -352,10 +352,7 @@ local steps = {
 			ren:end_()
 		end,
 		check = function(img)
-			expect(
-				img.data == results.per_object.data,
-				"drawing with one rewritten Mat4 must match a Mat4 per draw"
-			)
+			expect(img.data == results.per_object.data, "drawing with one rewritten Mat4 must match a Mat4 per draw")
 		end,
 	},
 	{
