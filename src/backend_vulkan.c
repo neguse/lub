@@ -9,8 +9,10 @@
 //     into it. In-order execution on the one queue reproduces the SDL_GPU
 //     "cycle" semantics for mid-frame buffer updates: draws recorded before
 //     an update read the old contents.
-//   * Uniforms are suballocated from a per-frame host-visible upload arena
-//     and bound through per-draw descriptor sets from a per-frame pool ring.
+//   * Uniforms and transient buffers (backend.h transient_buffer) are
+//     suballocated from a per-frame host-visible upload arena. Uniform sets
+//     use dynamic offsets into the arena; descriptor sets come from per-frame
+//     pools (grown on demand) and identical sets are shared within a frame.
 //   * Descriptor set layouts are built per shader from ShaderReflection.
 //     The SPIR-V comes from SHADER_TARGET_SDLGPU, so the set/binding
 //     convention is SDL_GPU's: vs resources=set 0 / vs UBs=set 1 /
@@ -38,32 +40,73 @@
 #define KMAX_SWAPCHAIN_IMAGES 8
 #define KARENA_CHUNK_CAP 32
 #define KARENA_BASE_CHUNK (4 * 1024 * 1024)
-#define KDESC_POOL_CAP 8
+// A chunk with less than this left is skipped once a request doesn't fit.
+#define KARENA_FULL_TAIL (64 * 1024)
 #define KDESC_POOL_SETS 4096
+// Arena chunks and descriptor pools a frame slot hasn't touched for this many
+// of its frames are released (the high-water set is kept until then).
+#define KIDLE_FRAMES 120
 #define KSET_MAX_BINDINGS 16
 
-// --- upload arena -----------------------------------------------------------
-// Per-frame transient upload memory (uniforms, buffer/texture updates).
-// Chunked linear allocator over host-visible buffers; reset when the frame
-// slot's timeline value has passed. All but the first chunk are released on
-// reset so a one-off spike doesn't pin memory forever.
-typedef struct ArenaChunk {
+typedef struct VkbBuffer {
   VkBuffer buf;
   VkDeviceMemory mem;
+  size_t bytes;
+  SglBufferType type;
+} VkbBuffer;
+
+// --- upload arena -----------------------------------------------------------
+// Per-frame transient upload memory (uniforms, transient buffers,
+// buffer/texture updates). Chunked linear allocator over host-visible,
+// host-coherent buffers; reset when the frame slot's timeline value has
+// passed. Never wraps within a frame: a full arena grows by a chunk. Chunks
+// are kept across frames (high-water) so a steady load doesn't re-create
+// them; trailing chunks idle for KIDLE_FRAMES are released.
+typedef struct ArenaChunk {
+  VkbBuffer vb; // transient slices hand out &vb as their BackendBuffer
   uint8_t *map;
   size_t cap, off;
+  int idle; // consecutive frames of this slot that didn't touch the chunk
 } ArenaChunk;
 
 typedef struct Arena {
   ArenaChunk chunks[KARENA_CHUNK_CAP];
   int count;
+  int cur; // first chunk that may still take a request this frame
+  // This frame, a chunk allocation failed (grow by the minimum size only) /
+  // a failure was logged (one line per frame).
+  bool grow_failed, fail_logged;
 } Arena;
 
 typedef struct UploadAlloc {
   VkBuffer buf;
+  VkbBuffer *chunk;
   size_t offset;
   uint8_t *cpu;
 } UploadAlloc;
+
+// --- descriptor pools and set cache ------------------------------------------
+typedef struct DescPool {
+  VkDescriptorPool pool;
+  int idle; // consecutive frames of this slot that didn't allocate from it
+} DescPool;
+
+// Descriptor sets written this frame, keyed by their layout and contents
+// (vkb_resolve_set). Entries are valid while `gen` matches SetCache.gen.
+typedef struct SetCacheSlot {
+  uint64_t hash;
+  uint32_t gen;
+  uint32_t key_len; // words at keys[key_off]
+  size_t key_off;
+  VkDescriptorSet set;
+} SetCacheSlot;
+
+typedef struct SetCache {
+  SetCacheSlot *slots;
+  uint32_t cap, count, gen; // cap: power of two
+  uint64_t *keys;
+  size_t keys_len, keys_cap;
+} SetCache;
 
 // --- per-frame context -------------------------------------------------------
 typedef struct FrameCtx {
@@ -72,19 +115,14 @@ typedef struct FrameCtx {
   uint64_t fence_value; // timeline value that retires this slot
   VkSemaphore acquire_sem;
   Arena arena;
-  VkDescriptorPool desc_pools[KDESC_POOL_CAP];
-  int desc_pool_count;
+  DescPool *desc_pools; // grown on demand, reset every frame of this slot
+  int desc_pool_count, desc_pool_cap;
   int desc_pool_cur;
+  int desc_pool_used; // pools allocated from this frame (0..cur+1)
+  SetCache set_cache;
 } FrameCtx;
 
 // --- resource wrappers -------------------------------------------------------
-typedef struct VkbBuffer {
-  VkBuffer buf;
-  VkDeviceMemory mem;
-  size_t bytes;
-  SglBufferType type;
-} VkbBuffer;
-
 typedef struct VkbImage {
   VkImage img;
   VkDeviceMemory mem;
@@ -131,6 +169,11 @@ typedef struct VkbPipeline {
   SetInfo sets[4];
   int n_sets;
   ShaderReflection refl;
+  // Next reflection entry with the same name (-1 = none). BindingsDesc
+  // `slot` is the first entry of a name; a resource read by both stages has
+  // one entry per stage (backend.h).
+  int8_t tex_next[SGL_MAX_TEXTURES];
+  int8_t sbuf_next[SGL_MAX_STORAGE_BUFS];
   bool is_compute;
 } VkbPipeline;
 
@@ -145,6 +188,7 @@ typedef struct VkbState {
   VkQueue queue;
   uint32_t qfam;
   VkDeviceSize ub_align;
+  VkDeviceSize sb_align; // transient slice offsets (storage and index)
 
   VkSemaphore timeline;
   uint64_t fence_next;
@@ -204,6 +248,7 @@ static VkbState g;
 // Draw-state globals.
 static VkbPipeline *g_current_pip = NULL;
 static bool g_last_indexed = false;
+static size_t g_index_count = 0; // u32 indices in the bound index slice
 // Last-applied uniforms per stage (0=vertex 1=fragment) per slot; persist
 // across draws like root CBVs on d3d12, re-bound through a fresh descriptor
 // set when dirty.
@@ -212,12 +257,32 @@ typedef struct UniformSlot {
   VkDeviceSize off;
   size_t bytes;
   bool set;
+  bool lost; // the last apply_uniforms couldn't get arena memory
 } UniformSlot;
 static UniformSlot g_uniforms[2][SGL_MAX_UNIFORM_BLOCKS];
 static bool g_uniforms_dirty[2] = {true, true};
+// What the frame command buffer has bound (graphics), to skip rebinding the
+// same pipeline or resource set. Reset whenever a recording starts. Handles
+// can't be recycled within a recording (destroyed objects wait in the zombie
+// list until begin_frame), so equal handles mean the same object.
+static VkPipeline g_bound_pipe = VK_NULL_HANDLE;
+static VkPipelineLayout g_bound_layout = VK_NULL_HANDLE;
+static VkDescriptorSet g_bound_sets[4];
+// apply_bindings couldn't build the draw's descriptor sets: the draw is
+// skipped instead of reading stale ones.
+static bool g_bind_failed = false;
+static bool g_bind_fail_logged = false; // once per frame
 
 static void vkb_drain_zombies(void);
 static void vkb_pass_resume(void);
+static void vkb_desc_frame_reset(FrameCtx *f);
+static void vkb_desc_release_all(FrameCtx *f);
+
+static void vkb_forget_bound_state(void) {
+  g_bound_pipe = VK_NULL_HANDLE;
+  g_bound_layout = VK_NULL_HANDLE;
+  memset(g_bound_sets, 0, sizeof(g_bound_sets));
+}
 
 // --- small helpers
 // ------------------------------------------------------------
@@ -494,69 +559,112 @@ static void vkb_free_zombies_now(void) {
 // --- upload arena impl
 // ----------------------------------------------------------
 
+static void vkb_arena_free_chunk(ArenaChunk *c) {
+  vkDestroyBuffer(g.device, c->vb.buf, NULL);
+  vkFreeMemory(g.device, c->vb.mem, NULL);
+}
+
 static void vkb_arena_reset(Arena *a) {
-  for (int i = 1; i < a->count; ++i) {
-    vkDestroyBuffer(g.device, a->chunks[i].buf, NULL);
-    vkFreeMemory(g.device, a->chunks[i].mem, NULL);
+  for (int i = 0; i < a->count; ++i) {
+    ArenaChunk *c = &a->chunks[i];
+    c->idle = c->off > 0 ? 0 : c->idle + 1;
+    c->off = 0;
   }
-  if (a->count > 1)
-    a->count = 1;
-  if (a->count > 0)
-    a->chunks[0].off = 0;
+  // Requests fill the chunks in order, so the unused ones are at the end.
+  while (a->count > 1 && a->chunks[a->count - 1].idle > KIDLE_FRAMES)
+    vkb_arena_free_chunk(&a->chunks[--a->count]);
+  a->cur = 0;
+  a->grow_failed = a->fail_logged = false;
 }
 
 static void vkb_arena_release_all(Arena *a) {
-  for (int i = 0; i < a->count; ++i) {
-    vkDestroyBuffer(g.device, a->chunks[i].buf, NULL);
-    vkFreeMemory(g.device, a->chunks[i].mem, NULL);
-  }
+  for (int i = 0; i < a->count; ++i)
+    vkb_arena_free_chunk(&a->chunks[i]);
   a->count = 0;
+  a->cur = 0;
+}
+
+// Arena memory is read by the GPU as uniform / storage / index data and as
+// a copy source. Host-coherent always (writes before the submit are visible
+// without a flush or barrier); device-local too when the device has such a
+// type, else plain host memory.
+static bool vkb_arena_new_chunk(size_t cap, ArenaChunk *c) {
+  const VkBufferUsageFlags usage =
+      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+  const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+  memset(c, 0, sizeof(*c));
+  if (!vkb_alloc_buffer(cap, usage, host | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                        &c->vb.buf, &c->vb.mem)) {
+    memset(c, 0, sizeof(*c));
+    if (!vkb_alloc_buffer(cap, usage, host, &c->vb.buf, &c->vb.mem))
+      return false; // the caller logs
+  }
+  if (vkMapMemory(g.device, c->vb.mem, 0, VK_WHOLE_SIZE, 0, (void **)&c->map) !=
+      VK_SUCCESS) {
+    SDL_Log("vk: upload chunk map failed");
+    vkb_arena_free_chunk(c);
+    return false;
+  }
+  c->vb.bytes = cap;
+  c->vb.type = SGL_BUFFER_STORAGE;
+  c->cap = cap;
+  return true;
 }
 
 // Allocate transient upload memory valid until this frame slot's fence.
 static bool vkb_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   Arena *a = &g.frames[g.slot].arena;
-  for (int i = 0; i < a->count; ++i) {
+  for (int i = a->cur; i < a->count; ++i) {
     ArenaChunk *c = &a->chunks[i];
     size_t off = (c->off + align - 1) & ~(align - 1);
     if (off + bytes <= c->cap) {
       c->off = off + bytes;
-      out->buf = c->buf;
+      out->buf = c->vb.buf;
+      out->chunk = &c->vb;
       out->offset = off;
       out->cpu = c->map + off;
       return true;
     }
+    if (i == a->cur && c->cap - c->off < KARENA_FULL_TAIL)
+      a->cur++;
   }
   if (a->count == KARENA_CHUNK_CAP) {
-    SDL_Log("vk: upload arena chunk cap exceeded");
+    if (!a->fail_logged)
+      SDL_Log("vk: upload arena chunk cap exceeded");
+    a->fail_logged = true;
     return false;
   }
-  size_t cap = bytes > KARENA_BASE_CHUNK ? bytes : KARENA_BASE_CHUNK;
-  cap = (cap + 65535) & ~(size_t)65535;
-  ArenaChunk c = {0};
-  if (!vkb_alloc_buffer(cap,
-                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        &c.buf, &c.mem)) {
-    SDL_Log("vk: upload chunk alloc failed (%zu bytes)", cap);
+  // Grow by at least the capacity so far (the total doubles), so a steady
+  // load settles on a few chunks that the following frames reuse.
+  size_t total = 0;
+  for (int i = 0; i < a->count; ++i)
+    total += a->chunks[i].cap;
+  size_t min_cap = bytes > KARENA_BASE_CHUNK ? bytes : KARENA_BASE_CHUNK;
+  min_cap = (min_cap + 65535) & ~(size_t)65535;
+  size_t cap = !a->grow_failed && total > min_cap ? total : min_cap;
+  ArenaChunk *c = &a->chunks[a->count];
+  bool ok = vkb_arena_new_chunk(cap, c);
+  // Under memory pressure the doubled size can fail while the request itself
+  // still fits: retry at the minimum and stop doubling for this frame.
+  if (!ok && cap > min_cap) {
+    a->grow_failed = true;
+    ok = vkb_arena_new_chunk(min_cap, c);
+  }
+  if (!ok) {
+    a->grow_failed = true;
+    if (!a->fail_logged)
+      SDL_Log("vk: upload chunk alloc failed (%zu bytes)", min_cap);
+    a->fail_logged = true;
     return false;
   }
-  if (vkMapMemory(g.device, c.mem, 0, VK_WHOLE_SIZE, 0, (void **)&c.map) !=
-      VK_SUCCESS) {
-    SDL_Log("vk: upload chunk map failed");
-    vkDestroyBuffer(g.device, c.buf, NULL);
-    vkFreeMemory(g.device, c.mem, NULL);
-    return false;
-  }
-  c.cap = cap;
-  c.off = bytes;
-  a->chunks[a->count++] = c;
-  ArenaChunk *back = &a->chunks[a->count - 1];
-  out->buf = back->buf;
+  a->count++;
+  c->off = bytes;
+  out->buf = c->vb.buf;
+  out->chunk = &c->vb;
   out->offset = 0;
-  out->cpu = back->map;
+  out->cpu = c->map;
   return true;
 }
 
@@ -1039,6 +1147,10 @@ static bool vkb_pick_device(void) {
   g.ub_align = props.limits.minUniformBufferOffsetAlignment;
   if (g.ub_align < 16)
     g.ub_align = 16;
+  // Also covers index data (4-byte offsets for u32 indices).
+  g.sb_align = props.limits.minStorageBufferOffsetAlignment;
+  if (g.sb_align < 16)
+    g.sb_align = 16;
   return true;
 }
 
@@ -1287,8 +1399,7 @@ static void vkb_shutdown(App *app) {
   for (int i = 0; i < KFRAMES_IN_FLIGHT; ++i) {
     FrameCtx *f = &g.frames[i];
     vkb_arena_release_all(&f->arena);
-    for (int p = 0; p < f->desc_pool_count; ++p)
-      vkDestroyDescriptorPool(g.device, f->desc_pools[p], NULL);
+    vkb_desc_release_all(f);
     if (f->acquire_sem)
       vkDestroySemaphore(g.device, f->acquire_sem, NULL);
     if (f->pool)
@@ -1319,6 +1430,7 @@ static void vkb_shutdown(App *app) {
   g_current_pip = NULL;
   g_last_indexed = false;
   memset(g_uniforms, 0, sizeof(g_uniforms));
+  vkb_forget_bound_state();
 }
 
 // --- vtable: frame
@@ -1336,9 +1448,7 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   vkb_wait_for_fence(f->fence_value);
   vkb_drain_zombies();
   vkb_arena_reset(&f->arena);
-  for (int p = 0; p < f->desc_pool_count; ++p)
-    vkResetDescriptorPool(g.device, f->desc_pools[p], 0);
-  f->desc_pool_cur = 0;
+  vkb_desc_frame_reset(f);
 
   vkResetCommandBuffer(f->cmd, 0);
   VkCommandBufferBeginInfo bi = {
@@ -1352,6 +1462,8 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
   g.submitted_before_present = false;
   g_current_pip = NULL;
   g_uniforms_dirty[0] = g_uniforms_dirty[1] = true;
+  vkb_forget_bound_state();
+  g_bind_fail_logged = false;
   // Cached uniform allocations point into the previous frame's arena;
   // callers re-apply uniforms every draw, so just invalidate.
   memset(g_uniforms, 0, sizeof(g_uniforms));
@@ -1648,6 +1760,28 @@ static void vkb_destroy_buffer(BackendBuffer h) {
   z.mem = buf->mem;
   vkb_zombie_push(&z);
   free(buf);
+}
+
+// Transient slices (backend.h) live in the upload arena: no copy, no barrier
+// and no pass split. The memory is host-coherent, so the memcpy is visible
+// to every command of the frame through the next vkQueueSubmit2 (host writes
+// before a submit need no flush), including commands recorded before this
+// call. A mid-frame submit (readback) waits idle and keeps the arena, and the
+// slot's fence retires the memory. The chunk's VkbBuffer stays valid until
+// the chunk is released at a later reset of this slot.
+static bool vkb_transient_buffer(SglBufferType type, const void *data,
+                                 size_t bytes, BufferSlice *out) {
+  (void)type; // arena chunks carry both STORAGE and INDEX usage
+  if (!data || bytes == 0 || !out)
+    return false;
+  UploadAlloc ua;
+  if (!vkb_upload_alloc(bytes, (size_t)g.sb_align, &ua))
+    return false;
+  memcpy(ua.cpu, data, bytes);
+  out->buf = (BackendBuffer)ua.chunk;
+  out->offset = ua.offset;
+  out->size = bytes;
+  return true;
 }
 
 // --- images
@@ -1952,11 +2086,22 @@ static void vkb_collect_write_set(const ShaderReflection *r, SglShaderStage st,
                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 }
 
+// Graphics UB sets use dynamic descriptors (the arena offset is passed at
+// bind time, so one set serves every draw); compute writes plain ones per
+// dispatch.
 static void vkb_collect_uniform_set(const ShaderReflection *r,
-                                    SglShaderStage st, SetInfo *out) {
+                                    SglShaderStage st, VkDescriptorType type,
+                                    SetInfo *out) {
   for (int i = 0; i < r->ub_count; ++i)
     if (r->ubs[i].stage == st)
-      vkb_set_info_add(out, r->ubs[i].slot, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+      vkb_set_info_add(out, r->ubs[i].slot, type);
+  // Dynamic offsets are taken in binding order.
+  for (int i = 1; i < out->count; ++i)
+    for (int j = i; j > 0 && out->b[j - 1].binding > out->b[j].binding; --j) {
+      SetBindingInfo t = out->b[j];
+      out->b[j] = out->b[j - 1];
+      out->b[j - 1] = t;
+    }
 }
 
 static bool vkb_create_set_layout(const SetInfo *info,
@@ -2015,7 +2160,8 @@ static BackendShader vkb_make_shader(const ShaderDesc *d) {
     sh->n_sets = 3;
     vkb_collect_resource_set(&sh->refl, SGL_STAGE_COMPUTE, &sh->sets[0]);
     vkb_collect_write_set(&sh->refl, SGL_STAGE_COMPUTE, &sh->sets[1]);
-    vkb_collect_uniform_set(&sh->refl, SGL_STAGE_COMPUTE, &sh->sets[2]);
+    vkb_collect_uniform_set(&sh->refl, SGL_STAGE_COMPUTE,
+                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &sh->sets[2]);
     for (int i = 0; i < 3 && ok; ++i)
       ok = vkb_create_set_layout(&sh->sets[i], VK_SHADER_STAGE_COMPUTE_BIT,
                                  &sh->dsl[i]);
@@ -2027,9 +2173,13 @@ static BackendShader vkb_make_shader(const ShaderDesc *d) {
     }
     sh->n_sets = 4;
     vkb_collect_resource_set(&sh->refl, SGL_STAGE_VERTEX, &sh->sets[0]);
-    vkb_collect_uniform_set(&sh->refl, SGL_STAGE_VERTEX, &sh->sets[1]);
+    vkb_collect_uniform_set(&sh->refl, SGL_STAGE_VERTEX,
+                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                            &sh->sets[1]);
     vkb_collect_resource_set(&sh->refl, SGL_STAGE_FRAGMENT, &sh->sets[2]);
-    vkb_collect_uniform_set(&sh->refl, SGL_STAGE_FRAGMENT, &sh->sets[3]);
+    vkb_collect_uniform_set(&sh->refl, SGL_STAGE_FRAGMENT,
+                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                            &sh->sets[3]);
     ok = vkb_create_set_layout(&sh->sets[0], VK_SHADER_STAGE_VERTEX_BIT,
                                &sh->dsl[0]) &&
          vkb_create_set_layout(&sh->sets[1], VK_SHADER_STAGE_VERTEX_BIT,
@@ -2150,6 +2300,29 @@ static void vkb_blend_state(SglBlend b,
   }
 }
 
+static void vkb_link_same_names(VkbPipeline *p) {
+  const ShaderReflection *r = &p->refl;
+  int nt = r->tex_count < SGL_MAX_TEXTURES ? r->tex_count : SGL_MAX_TEXTURES;
+  for (int i = 0; i < SGL_MAX_TEXTURES; ++i) {
+    p->tex_next[i] = -1;
+    for (int j = i + 1; i < nt && j < nt; ++j)
+      if (strcmp(r->texs[i].name, r->texs[j].name) == 0) {
+        p->tex_next[i] = (int8_t)j;
+        break;
+      }
+  }
+  int nb = r->storage_buf_count < SGL_MAX_STORAGE_BUFS ? r->storage_buf_count
+                                                       : SGL_MAX_STORAGE_BUFS;
+  for (int i = 0; i < SGL_MAX_STORAGE_BUFS; ++i) {
+    p->sbuf_next[i] = -1;
+    for (int j = i + 1; i < nb && j < nb; ++j)
+      if (strcmp(r->storage_bufs[i].name, r->storage_bufs[j].name) == 0) {
+        p->sbuf_next[i] = (int8_t)j;
+        break;
+      }
+  }
+}
+
 static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {
   VkbShader *sh = (VkbShader *)d->shader;
   if (!sh) {
@@ -2159,6 +2332,7 @@ static BackendPipeline vkb_make_pipeline(const PipelineDesc *d) {
   VkbPipeline *p = (VkbPipeline *)calloc(1, sizeof(VkbPipeline));
   if (d->refl)
     p->refl = *d->refl;
+  vkb_link_same_names(p);
   p->layout = sh->layout;
   p->n_sets = sh->n_sets;
   memcpy(p->sets, sh->sets, sizeof(p->sets));
@@ -2323,16 +2497,17 @@ static void vkb_destroy_pipeline(BackendPipeline h) {
 // ----------------------------------------------------------------
 
 static VkDescriptorPool vkb_new_desc_pool(void) {
-  VkDescriptorPoolSize sizes[4] = {
+  VkDescriptorPoolSize sizes[5] = {
       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, KDESC_POOL_SETS * 2},
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, KDESC_POOL_SETS * 2},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, KDESC_POOL_SETS / 2},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, KDESC_POOL_SETS * 2},
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, KDESC_POOL_SETS / 2},
       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, KDESC_POOL_SETS / 2},
   };
   VkDescriptorPoolCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
       .maxSets = KDESC_POOL_SETS,
-      .poolSizeCount = 4,
+      .poolSizeCount = 5,
       .pPoolSizes = sizes,
   };
   VkDescriptorPool pool = VK_NULL_HANDLE;
@@ -2341,41 +2516,98 @@ static VkDescriptorPool vkb_new_desc_pool(void) {
   return pool;
 }
 
-// Allocate a transient descriptor set from this frame's pool ring.
+// Allocate a transient descriptor set from this frame's pools, adding a pool
+// when they are full (no fixed cap: running out would leave draws with stale
+// sets).
 static VkDescriptorSet vkb_alloc_set(VkDescriptorSetLayout layout) {
   FrameCtx *f = &g.frames[g.slot];
   for (;;) {
+    bool fresh = false;
     if (f->desc_pool_cur == f->desc_pool_count) {
-      if (f->desc_pool_count == KDESC_POOL_CAP) {
-        static bool warned = false;
-        if (!warned) {
-          SDL_Log("vk: descriptor pool ring overflow");
-          warned = true;
+      if (f->desc_pool_count == f->desc_pool_cap) {
+        int cap = f->desc_pool_cap ? f->desc_pool_cap * 2 : 8;
+        DescPool *grown =
+            (DescPool *)realloc(f->desc_pools, (size_t)cap * sizeof(DescPool));
+        if (!grown) {
+          SDL_Log("vk: descriptor pool list: out of memory");
+          return VK_NULL_HANDLE;
         }
-        return VK_NULL_HANDLE;
+        f->desc_pools = grown;
+        f->desc_pool_cap = cap;
       }
       VkDescriptorPool pool = vkb_new_desc_pool();
       if (!pool)
         return VK_NULL_HANDLE;
-      f->desc_pools[f->desc_pool_count++] = pool;
+      f->desc_pools[f->desc_pool_count].pool = pool;
+      f->desc_pools[f->desc_pool_count].idle = 0;
+      f->desc_pool_count++;
+      fresh = true;
     }
     VkDescriptorSetAllocateInfo ai = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = f->desc_pools[f->desc_pool_cur],
+        .descriptorPool = f->desc_pools[f->desc_pool_cur].pool,
         .descriptorSetCount = 1,
         .pSetLayouts = &layout,
     };
     VkDescriptorSet set = VK_NULL_HANDLE;
     VkResult r = vkAllocateDescriptorSets(g.device, &ai, &set);
-    if (r == VK_SUCCESS)
+    if (r == VK_SUCCESS) {
+      if (f->desc_pool_used <= f->desc_pool_cur)
+        f->desc_pool_used = f->desc_pool_cur + 1;
       return set;
-    if (r == VK_ERROR_OUT_OF_POOL_MEMORY || r == VK_ERROR_FRAGMENTED_POOL) {
+    }
+    if (!fresh &&
+        (r == VK_ERROR_OUT_OF_POOL_MEMORY || r == VK_ERROR_FRAGMENTED_POOL)) {
       f->desc_pool_cur++;
       continue;
     }
     SDL_Log("vk: vkAllocateDescriptorSets failed (%d)", (int)r);
     return VK_NULL_HANDLE;
   }
+}
+
+static void vkb_set_cache_reset(SetCache *c) {
+  c->count = 0;
+  c->keys_len = 0;
+  if (++c->gen == 0) { // wrapped: stale slots could look current
+    if (c->slots)
+      memset(c->slots, 0, (size_t)c->cap * sizeof(SetCacheSlot));
+    c->gen = 1;
+  }
+}
+
+// begin_frame: the slot's GPU work is done, so its pools can be reset. Only
+// the pools used last time hold sets; the trailing ones idle for
+// KIDLE_FRAMES are released.
+static void vkb_desc_frame_reset(FrameCtx *f) {
+  for (int p = 0; p < f->desc_pool_count; ++p) {
+    DescPool *dp = &f->desc_pools[p];
+    if (p < f->desc_pool_used) {
+      vkResetDescriptorPool(g.device, dp->pool, 0);
+      dp->idle = 0;
+    } else {
+      dp->idle++;
+    }
+  }
+  while (f->desc_pool_count > 1 &&
+         f->desc_pools[f->desc_pool_count - 1].idle > KIDLE_FRAMES)
+    vkDestroyDescriptorPool(g.device, f->desc_pools[--f->desc_pool_count].pool,
+                            NULL);
+  f->desc_pool_cur = 0;
+  f->desc_pool_used = 0;
+  vkb_set_cache_reset(&f->set_cache);
+}
+
+static void vkb_desc_release_all(FrameCtx *f) {
+  for (int p = 0; p < f->desc_pool_count; ++p)
+    vkDestroyDescriptorPool(g.device, f->desc_pools[p].pool, NULL);
+  free(f->desc_pools);
+  f->desc_pools = NULL;
+  f->desc_pool_count = f->desc_pool_cap = 0;
+  f->desc_pool_cur = f->desc_pool_used = 0;
+  free(f->set_cache.slots);
+  free(f->set_cache.keys);
+  memset(&f->set_cache, 0, sizeof(f->set_cache));
 }
 
 // Scratch for building one set's writes.
@@ -2386,12 +2618,11 @@ typedef struct SetWrites {
   int count;
 } SetWrites;
 
-static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
-                              const SetBindingInfo *b) {
+// dstSet is filled in by vkb_resolve_set.
+static void vkb_write_default(SetWrites *w, const SetBindingInfo *b) {
   int i = w->count++;
   w->writes[i] = (VkWriteDescriptorSet){
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = set,
       .dstBinding = (uint32_t)b->binding,
       .descriptorCount = 1,
       .descriptorType = b->type,
@@ -2419,13 +2650,171 @@ static void vkb_write_default(SetWrites *w, VkDescriptorSet set,
     };
     w->writes[i].pBufferInfo = &w->bufs[i];
     break;
-  default: // uniform buffer
+  default: // uniform buffer (plain or dynamic: a dynamic one needs a range)
     w->bufs[i] = (VkDescriptorBufferInfo){
         .buffer = g.dummy_ubuf->buf,
-        .range = VK_WHOLE_SIZE,
+        .range = (VkDeviceSize)g.dummy_ubuf->bytes,
     };
     w->writes[i].pBufferInfo = &w->bufs[i];
     break;
+  }
+}
+
+// --- per-frame set cache
+// Draws often bind the same resources (same mesh and texture, the uniform
+// set of one shader). A set's contents are its layout plus the handles,
+// offsets, ranges and layouts of its writes; identical contents share one
+// set for the rest of the frame. Handles are safe keys within a frame:
+// destroyed objects wait in the zombie list (drained only in begin_frame),
+// so no new object can reuse a handle before the cache is reset with the
+// pools.
+
+static uint64_t vkb_word(const void *p, size_t n) {
+  uint64_t w = 0;
+  memcpy(&w, p, n < sizeof(w) ? n : sizeof(w));
+  return w;
+}
+#define VKB_WORD(h) vkb_word(&(h), sizeof(h))
+
+enum { KSET_KEY_WORDS = 1 + 3 * KSET_MAX_BINDINGS };
+
+static uint32_t vkb_set_key(VkDescriptorSetLayout dsl, const SetWrites *w,
+                            uint64_t *key) {
+  uint32_t n = 0;
+  key[n++] = VKB_WORD(dsl);
+  for (int i = 0; i < w->count; ++i) {
+    if (w->writes[i].pBufferInfo) {
+      key[n++] = VKB_WORD(w->bufs[i].buffer);
+      key[n++] = (uint64_t)w->bufs[i].offset;
+      key[n++] = (uint64_t)w->bufs[i].range;
+    } else {
+      key[n++] = VKB_WORD(w->imgs[i].imageView);
+      key[n++] = VKB_WORD(w->imgs[i].sampler);
+      key[n++] = (uint64_t)w->imgs[i].imageLayout;
+    }
+  }
+  return n;
+}
+
+static uint64_t vkb_hash_words(const uint64_t *k, uint32_t n) {
+  uint64_t h = 0x9E3779B97F4A7C15ULL ^ n;
+  for (uint32_t i = 0; i < n; ++i) {
+    h = (h ^ k[i]) * 0xBF58476D1CE4E5B9ULL;
+    h ^= h >> 31;
+  }
+  return h;
+}
+
+static VkDescriptorSet vkb_set_cache_find(const SetCache *c,
+                                          const uint64_t *key, uint32_t n,
+                                          uint64_t hash) {
+  if (c->cap == 0)
+    return VK_NULL_HANDLE;
+  uint32_t mask = c->cap - 1;
+  for (uint32_t i = (uint32_t)hash & mask;; i = (i + 1) & mask) {
+    const SetCacheSlot *s = &c->slots[i];
+    if (s->gen != c->gen)
+      return VK_NULL_HANDLE;
+    if (s->hash == hash && s->key_len == n &&
+        memcmp(c->keys + s->key_off, key, n * sizeof(uint64_t)) == 0)
+      return s->set;
+  }
+}
+
+static void vkb_set_cache_insert_slot(SetCache *c, const SetCacheSlot *e) {
+  uint32_t mask = c->cap - 1;
+  uint32_t i = (uint32_t)e->hash & mask;
+  while (c->slots[i].gen == c->gen)
+    i = (i + 1) & mask;
+  c->slots[i] = *e;
+}
+
+// Failing to grow only means the set isn't shared.
+static void vkb_set_cache_put(SetCache *c, const uint64_t *key, uint32_t n,
+                              uint64_t hash, VkDescriptorSet set) {
+  if ((c->count + 1) * 2 > c->cap) {
+    uint32_t cap = c->cap ? c->cap * 2 : 256;
+    SetCacheSlot *slots = (SetCacheSlot *)calloc(cap, sizeof(SetCacheSlot));
+    if (!slots)
+      return;
+    SetCacheSlot *old = c->slots;
+    uint32_t old_cap = c->cap;
+    c->slots = slots;
+    c->cap = cap;
+    for (uint32_t i = 0; i < old_cap; ++i)
+      if (old[i].gen == c->gen)
+        vkb_set_cache_insert_slot(c, &old[i]);
+    free(old);
+  }
+  if (c->keys_len + n > c->keys_cap) {
+    size_t cap = c->keys_cap ? c->keys_cap * 2 : 4096;
+    while (cap < c->keys_len + n)
+      cap *= 2;
+    uint64_t *keys = (uint64_t *)realloc(c->keys, cap * sizeof(uint64_t));
+    if (!keys)
+      return;
+    c->keys = keys;
+    c->keys_cap = cap;
+  }
+  memcpy(c->keys + c->keys_len, key, n * sizeof(uint64_t));
+  SetCacheSlot e = {
+      .hash = hash,
+      .gen = c->gen,
+      .key_len = n,
+      .key_off = c->keys_len,
+      .set = set,
+  };
+  vkb_set_cache_insert_slot(c, &e);
+  c->keys_len += n;
+  c->count++;
+}
+
+// A set for `dsl` with the contents of `w`: the one already written this
+// frame, else a new one from the frame's pools. VK_NULL_HANDLE = allocation
+// failed.
+static VkDescriptorSet vkb_resolve_set(VkDescriptorSetLayout dsl,
+                                       SetWrites *w) {
+  SetCache *c = &g.frames[g.slot].set_cache;
+  uint64_t key[KSET_KEY_WORDS];
+  uint32_t n = vkb_set_key(dsl, w, key);
+  uint64_t hash = vkb_hash_words(key, n);
+  VkDescriptorSet set = vkb_set_cache_find(c, key, n, hash);
+  if (set)
+    return set;
+  set = vkb_alloc_set(dsl);
+  if (!set)
+    return VK_NULL_HANDLE;
+  for (int i = 0; i < w->count; ++i)
+    w->writes[i].dstSet = set;
+  vkUpdateDescriptorSets(g.device, (uint32_t)w->count, w->writes, 0, NULL);
+  vkb_set_cache_put(c, key, n, hash, set);
+  return set;
+}
+
+// Bind a graphics set unless the same set is already bound under the same
+// layout (dynamic offsets always rebind). Binding under another layout may
+// disturb the other sets, so the record starts over.
+static void vkb_bind_graphics_set(VkCommandBuffer cmd, VkPipelineLayout layout,
+                                  int index, VkDescriptorSet set,
+                                  uint32_t n_dynamic, const uint32_t *dynamic) {
+  if (layout != g_bound_layout) {
+    memset(g_bound_sets, 0, sizeof(g_bound_sets));
+    g_bound_layout = layout;
+  } else if (n_dynamic == 0 && g_bound_sets[index] == set) {
+    return;
+  }
+  vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
+                          (uint32_t)index, 1, &set, n_dynamic, dynamic);
+  g_bound_sets[index] = n_dynamic == 0 ? set : VK_NULL_HANDLE;
+}
+
+// A draw whose sets couldn't be built is skipped rather than drawn with
+// whatever is bound; logged once per frame.
+static void vkb_bind_fail(const char *what) {
+  g_bind_failed = true;
+  if (!g_bind_fail_logged) {
+    SDL_Log("vk: %s; skipping the draws that need it this frame", what);
+    g_bind_fail_logged = true;
   }
 }
 
@@ -2443,23 +2832,36 @@ static void vkb_apply_pipeline(BackendPipeline h) {
   g_current_pip = (VkbPipeline *)h;
   if (!g_current_pip || !g.recording || g_current_pip->is_compute)
     return;
+  // Still bound (same VkPipeline, so same layout): the bound sets and
+  // uniforms stay valid.
+  if (g_current_pip->pipe == g_bound_pipe)
+    return;
   vkCmdBindPipeline(g.frames[g.slot].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     g_current_pip->pipe);
+  g_bound_pipe = g_current_pip->pipe;
   g_uniforms_dirty[0] = g_uniforms_dirty[1] = true;
 }
 
 static void vkb_apply_bindings(const BindingsDesc *b) {
+  g_bind_failed = false;
   if (!g.recording || !g_current_pip)
     return;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
-  const ShaderReflection *refl = &g_current_pip->refl;
+  const VkbPipeline *pip = g_current_pip;
+  const ShaderReflection *refl = &pip->refl;
 
   if (b->ibuf) {
     VkbBuffer *ib = (VkbBuffer *)b->ibuf;
     if (ib && ib->buf) {
+      // Core Vulkan 1.3 binds from the offset to the end of the VkBuffer
+      // (a size needs vkCmdBindIndexBuffer2 from maintenance5) and the device
+      // has no robustBufferAccess, so the slice's size is enforced by
+      // vkb_draw instead: a transient slice shares its arena chunk with other
+      // data, which a longer draw would read as indices.
       vkCmdBindIndexBuffer(cmd, ib->buf, (VkDeviceSize)b->ibuf_offset,
                            VK_INDEX_TYPE_UINT32);
       g_last_indexed = true;
+      g_index_count = b->ibuf_size / sizeof(uint32_t);
     } else {
       g_last_indexed = false;
     }
@@ -2480,22 +2882,20 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
   vkb_pass_resume();
 
   // Unmatched bindings keep dummy descriptors — the moral equivalent of the
-  // d3d12 backend's null SRV writes.
+  // d3d12 backend's null SRV writes. Each binding starts at its reflection
+  // `slot` and follows the entries with the same name (one per stage).
   static const struct {
     int set_index;
     SglShaderStage stage;
   } stages[2] = {{0, SGL_STAGE_VERTEX}, {2, SGL_STAGE_FRAGMENT}};
   for (int s = 0; s < 2; ++s) {
-    const SetInfo *info = &g_current_pip->sets[stages[s].set_index];
+    const SetInfo *info = &pip->sets[stages[s].set_index];
     if (info->count == 0)
       continue;
-    VkDescriptorSet set =
-        vkb_alloc_set(g_current_pip->dsl[stages[s].set_index]);
-    if (!set)
-      return;
-    SetWrites w = {0};
+    SetWrites w;
+    w.count = 0;
     for (int i = 0; i < info->count; ++i)
-      vkb_write_default(&w, set, &info->b[i]);
+      vkb_write_default(&w, &info->b[i]);
 
     for (int i = 0; i < b->texture_count; ++i) {
       if (!b->textures[i].name)
@@ -2503,10 +2903,10 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
       VkbImage *im = (VkbImage *)b->textures[i].image;
       if (!im || !im->img)
         continue;
-      for (int j = 0; j < refl->tex_count; ++j) {
+      for (int j = b->textures[i].slot; j >= 0 && j < refl->tex_count;
+           j = pip->tex_next[j]) {
         const ShaderTexture *rt = &refl->texs[j];
-        if (rt->stage != stages[s].stage ||
-            strcmp(rt->name, b->textures[i].name) != 0)
+        if (rt->stage != stages[s].stage)
           continue;
         int wi = vkb_write_index_for_binding(&w, rt->smp_slot);
         if (wi >= 0) {
@@ -2514,7 +2914,6 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
           w.imgs[wi].imageView = im->view;
           w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
-        // Keep scanning: the same texture name can appear in both stages.
       }
     }
     for (int i = 0; i < b->storage_buf_count; ++i) {
@@ -2523,10 +2922,10 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
       VkbBuffer *buf = (VkbBuffer *)b->storage_bufs[i].buf;
       if (!buf || !buf->buf)
         continue;
-      for (int j = 0; j < refl->storage_buf_count; ++j) {
+      for (int j = b->storage_bufs[i].slot;
+           j >= 0 && j < refl->storage_buf_count; j = pip->sbuf_next[j]) {
         const ShaderStorageBuf *sb = &refl->storage_bufs[j];
-        if (sb->stage != stages[s].stage || !sb->readonly ||
-            strcmp(sb->name, b->storage_bufs[i].name) != 0)
+        if (sb->stage != stages[s].stage || !sb->readonly)
           continue;
         int wi = vkb_write_index_for_binding(
             &w, vkb_ro_storage_buf_binding(refl, stages[s].stage, sb));
@@ -2534,14 +2933,18 @@ static void vkb_apply_bindings(const BindingsDesc *b) {
           w.bufs[wi] = (VkDescriptorBufferInfo){
               .buffer = buf->buf,
               .offset = (VkDeviceSize)b->storage_bufs[i].offset,
-              .range = (VkDeviceSize)b->storage_bufs[i].size,
+              .range = b->storage_bufs[i].size
+                           ? (VkDeviceSize)b->storage_bufs[i].size
+                           : VK_WHOLE_SIZE,
           };
       }
     }
-    vkUpdateDescriptorSets(g.device, (uint32_t)w.count, w.writes, 0, NULL);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            g_current_pip->layout,
-                            (uint32_t)stages[s].set_index, 1, &set, 0, NULL);
+    VkDescriptorSet set = vkb_resolve_set(pip->dsl[stages[s].set_index], &w);
+    if (!set) {
+      vkb_bind_fail("descriptor set allocation failed");
+      return;
+    }
+    vkb_bind_graphics_set(cmd, pip->layout, stages[s].set_index, set, 0, NULL);
   }
 }
 
@@ -2554,19 +2957,24 @@ static void vkb_apply_uniforms(SglShaderStage stage, int slot, const void *data,
   if (slot < 0 || slot >= SGL_MAX_UNIFORM_BLOCKS)
     return;
   int si = stage == SGL_STAGE_VERTEX ? 0 : 1;
+  g_uniforms_dirty[si] = true;
   UploadAlloc ua;
-  if (!vkb_upload_alloc(bytes, (size_t)g.ub_align, &ua))
+  if (!vkb_upload_alloc(bytes, (size_t)g.ub_align, &ua)) {
+    g_uniforms[si][slot].lost = true; // draws fail until the next apply
     return;
+  }
   memcpy(ua.cpu, data, bytes);
   g_uniforms[si][slot].buf = ua.buf;
   g_uniforms[si][slot].off = ua.offset;
   g_uniforms[si][slot].bytes = bytes;
   g_uniforms[si][slot].set = true;
-  g_uniforms_dirty[si] = true;
+  g_uniforms[si][slot].lost = false;
 }
 
-// Bind pending uniform sets (set 1 = vertex UBs, set 3 = fragment UBs).
-static void vkb_flush_uniform_sets(void) {
+// Bind pending uniform sets (set 1 = vertex UBs, set 3 = fragment UBs). The
+// descriptors point at the arena chunk from offset 0 and the draw's data is
+// selected by dynamic offsets, so the set itself is shared across draws.
+static bool vkb_flush_uniform_sets(void) {
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   for (int si = 0; si < 2; ++si) {
     if (!g_uniforms_dirty[si])
@@ -2577,34 +2985,57 @@ static void vkb_flush_uniform_sets(void) {
       g_uniforms_dirty[si] = false;
       continue;
     }
-    VkDescriptorSet set = vkb_alloc_set(g_current_pip->dsl[set_index]);
-    if (!set)
-      return;
-    SetWrites w = {0};
+    SetWrites w;
+    w.count = 0;
+    uint32_t offsets[KSET_MAX_BINDINGS];
     for (int i = 0; i < info->count; ++i) {
-      vkb_write_default(&w, set, &info->b[i]);
+      vkb_write_default(&w, &info->b[i]);
+      offsets[i] = 0;
       int slot = info->b[i].binding;
+      if (slot >= 0 && slot < SGL_MAX_UNIFORM_BLOCKS &&
+          g_uniforms[si][slot].lost) {
+        vkb_bind_fail("uniform upload failed");
+        return false;
+      }
       if (slot >= 0 && slot < SGL_MAX_UNIFORM_BLOCKS &&
           g_uniforms[si][slot].set) {
         w.bufs[i] = (VkDescriptorBufferInfo){
             .buffer = g_uniforms[si][slot].buf,
-            .offset = g_uniforms[si][slot].off,
+            .offset = 0,
             .range = g_uniforms[si][slot].bytes,
         };
+        offsets[i] = (uint32_t)g_uniforms[si][slot].off;
       }
     }
-    vkUpdateDescriptorSets(g.device, (uint32_t)w.count, w.writes, 0, NULL);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            g_current_pip->layout, (uint32_t)set_index, 1, &set,
-                            0, NULL);
+    VkDescriptorSet set = vkb_resolve_set(g_current_pip->dsl[set_index], &w);
+    if (!set) {
+      vkb_bind_fail("uniform descriptor set allocation failed");
+      return false;
+    }
+    vkb_bind_graphics_set(cmd, g_current_pip->layout, set_index, set,
+                          (uint32_t)info->count, offsets);
     g_uniforms_dirty[si] = false;
   }
+  return true;
 }
 
 static void vkb_draw(int base, int count, int instance_count) {
   if (!g.recording || !g.in_pass || !g_current_pip || g_current_pip->is_compute)
     return;
-  vkb_flush_uniform_sets();
+  if (g_bind_failed)
+    return;
+  // The index slice's size (see vkb_apply_bindings): logged once per frame.
+  if (g_last_indexed && (size_t)base + (size_t)count > g_index_count) {
+    if (!g_bind_fail_logged) {
+      SDL_Log("vk: indexed draw reads past its index buffer (%d + %d > %zu "
+              "indices); skipped",
+              base, count, g_index_count);
+      g_bind_fail_logged = true;
+    }
+    return;
+  }
+  if (!vkb_flush_uniform_sets())
+    return;
   VkCommandBuffer cmd = g.frames[g.slot].cmd;
   uint32_t instances = (uint32_t)(instance_count > 0 ? instance_count : 1);
   if (g_last_indexed)
@@ -2655,12 +3086,10 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
     const SetInfo *info = &p->sets[set_index];
     if (info->count == 0)
       continue;
-    VkDescriptorSet set = vkb_alloc_set(p->dsl[set_index]);
-    if (!set)
-      return;
-    SetWrites w = {0};
+    SetWrites w;
+    w.count = 0;
     for (int i = 0; i < info->count; ++i)
-      vkb_write_default(&w, set, &info->b[i]);
+      vkb_write_default(&w, &info->b[i]);
 
     if (set_index == 2) {
       for (int i = 0; i < d->uniform_count; ++i) {
@@ -2688,18 +3117,17 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
         VkbImage *im = (VkbImage *)d->textures[i].image;
         if (!im || !im->img)
           continue;
-        for (int k = 0; k < refl->tex_count; ++k) {
-          const ShaderTexture *rt = &refl->texs[k];
-          if (rt->stage != SGL_STAGE_COMPUTE ||
-              strcmp(rt->name, d->textures[i].name) != 0)
-            continue;
-          int wi = vkb_write_index_for_binding(&w, rt->smp_slot);
-          if (set_index == 0 && wi >= 0) {
-            w.imgs[wi].sampler = im->sampler;
-            w.imgs[wi].imageView = im->view;
-            w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-          }
-          break;
+        int k = d->textures[i].slot;
+        if (k < 0 || k >= refl->tex_count)
+          continue;
+        const ShaderTexture *rt = &refl->texs[k];
+        if (rt->stage != SGL_STAGE_COMPUTE)
+          continue;
+        int wi = vkb_write_index_for_binding(&w, rt->smp_slot);
+        if (set_index == 0 && wi >= 0) {
+          w.imgs[wi].sampler = im->sampler;
+          w.imgs[wi].imageView = im->view;
+          w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
       }
       for (int i = 0; i < d->n_storage_textures; ++i) {
@@ -2708,23 +3136,21 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
         VkbImage *im = (VkbImage *)d->storage_textures[i].image;
         if (!im || !im->img)
           continue;
-        for (int k = 0; k < refl->storage_tex_count; ++k) {
-          const ShaderStorageTexture *st = &refl->storage_texs[k];
-          if (strcmp(st->name, d->storage_textures[i].name) != 0)
-            continue;
-          int binding =
-              st->readonly
-                  ? vkb_ro_storage_tex_binding(refl, SGL_STAGE_COMPUTE, st)
-                  : st->slot;
-          bool in_this_set = (st->readonly && set_index == 0) ||
-                             (!st->readonly && set_index == 1);
-          int wi = vkb_write_index_for_binding(&w, binding);
-          if (in_this_set && wi >= 0) {
-            w.imgs[wi].sampler = VK_NULL_HANDLE;
-            w.imgs[wi].imageView = im->view;
-            w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-          }
-          break;
+        int k = d->storage_textures[i].slot;
+        if (k < 0 || k >= refl->storage_tex_count)
+          continue;
+        const ShaderStorageTexture *st = &refl->storage_texs[k];
+        int binding =
+            st->readonly
+                ? vkb_ro_storage_tex_binding(refl, SGL_STAGE_COMPUTE, st)
+                : st->slot;
+        bool in_this_set = (st->readonly && set_index == 0) ||
+                           (!st->readonly && set_index == 1);
+        int wi = vkb_write_index_for_binding(&w, binding);
+        if (in_this_set && wi >= 0) {
+          w.imgs[wi].sampler = VK_NULL_HANDLE;
+          w.imgs[wi].imageView = im->view;
+          w.imgs[wi].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
         }
       }
       for (int i = 0; i < d->n_storage_bufs; ++i) {
@@ -2733,29 +3159,33 @@ static void vkb_dispatch(App *app, const ComputeDispatchDesc *d) {
         VkbBuffer *buf = (VkbBuffer *)d->storage_bufs[i].buf;
         if (!buf || !buf->buf)
           continue;
-        for (int k = 0; k < refl->storage_buf_count; ++k) {
-          const ShaderStorageBuf *sb = &refl->storage_bufs[k];
-          if (strcmp(sb->name, d->storage_bufs[i].name) != 0)
-            continue;
-          int binding =
-              sb->readonly
-                  ? vkb_ro_storage_buf_binding(refl, SGL_STAGE_COMPUTE, sb)
-                  : vkb_rw_storage_buf_binding(refl, SGL_STAGE_COMPUTE, sb);
-          bool in_this_set = (sb->readonly && set_index == 0) ||
-                             (!sb->readonly && set_index == 1);
-          int wi = vkb_write_index_for_binding(&w, binding);
-          if (in_this_set && wi >= 0) {
-            w.bufs[wi] = (VkDescriptorBufferInfo){
-                .buffer = buf->buf,
-                .offset = (VkDeviceSize)d->storage_bufs[i].offset,
-                .range = (VkDeviceSize)d->storage_bufs[i].size,
-            };
-          }
-          break;
+        int k = d->storage_bufs[i].slot;
+        if (k < 0 || k >= refl->storage_buf_count)
+          continue;
+        const ShaderStorageBuf *sb = &refl->storage_bufs[k];
+        int binding =
+            sb->readonly
+                ? vkb_ro_storage_buf_binding(refl, SGL_STAGE_COMPUTE, sb)
+                : vkb_rw_storage_buf_binding(refl, SGL_STAGE_COMPUTE, sb);
+        bool in_this_set = (sb->readonly && set_index == 0) ||
+                           (!sb->readonly && set_index == 1);
+        int wi = vkb_write_index_for_binding(&w, binding);
+        if (in_this_set && wi >= 0) {
+          w.bufs[wi] = (VkDescriptorBufferInfo){
+              .buffer = buf->buf,
+              .offset = (VkDeviceSize)d->storage_bufs[i].offset,
+              .range = d->storage_bufs[i].size
+                           ? (VkDeviceSize)d->storage_bufs[i].size
+                           : VK_WHOLE_SIZE,
+          };
         }
       }
     }
-    vkUpdateDescriptorSets(g.device, (uint32_t)w.count, w.writes, 0, NULL);
+    VkDescriptorSet set = vkb_resolve_set(p->dsl[set_index], &w);
+    if (!set) {
+      SDL_Log("vk: dispatch: descriptor set allocation failed; skipped");
+      return;
+    }
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p->layout,
                             (uint32_t)set_index, 1, &set, 0, NULL);
   }
@@ -2804,6 +3234,7 @@ static void vkb_flush_frame_and_reopen(void) {
   vkBeginCommandBuffer(cmd, &bi);
   g_current_pip = NULL;
   g_uniforms_dirty[0] = g_uniforms_dirty[1] = true;
+  vkb_forget_bound_state();
 }
 
 static bool vkb_readback_image_now(VkbImage *im, int w, int h,
@@ -3070,5 +3501,5 @@ const RenderBackend g_backend_vulkan = {
     vkb_capture,
     /*capture_before_end_frame=*/true,
     vkb_swapchain_color_format,
-    /*transient_buffer=*/NULL, // runtime fallback (api_gfx.c)
+    vkb_transient_buffer,
 };

@@ -7,6 +7,9 @@
 --     の count も同じ (SDL3 GPU は buffer 全体を束縛するので、大きさが変わった
 --     key は確保した大きさが見える)
 --   * INDEX の transient で indexed draw、整数列 (transient_buffer_ints) も使える
+--   * 大きさが要素の大きさ (stride) で割り切れない transient (最後の要素が
+--     途中で終わる) も、どの draw も自分の data を読む。同じ transient を
+--     もう一度束縛しても同じ
 --   * dispatch では読むだけの StructuredBuffer に使え、RWStructuredBuffer は error
 --   * 前の frame の transient を束縛すると error、on_init では作れない
 -- 結果は offscreen の target を読み戻して画素で確かめる。
@@ -84,6 +87,33 @@ struct VSOut {
   VSOut o;
   o.col = float4(float(n) * 8.0 / 255.0, 0.0, 0.0, 1.0);
   o.pos = float4(r.x + c.x * r.z, c.y, 0.0, 1.0);
+  return o;
+}
+]]
+
+-- 1 要素 12 byte の struct。item[0] = (中心の x, 半幅, _)、item[1] = 色
+local VS_S3 = [[
+struct S3 {
+  float a;
+  float b;
+  float c;
+};
+StructuredBuffer<S3> item;
+static const float2 corner[6] = {
+  float2(-1, -1), float2(1, -1), float2(1, 1),
+  float2(-1, -1), float2(1, 1), float2(-1, 1),
+};
+struct VSOut {
+  float4 col : COLOR0;
+  float4 pos : SV_Position;
+};
+[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {
+  S3 r = item[0];
+  S3 k = item[1];
+  float2 c = corner[vid];
+  VSOut o;
+  o.col = float4(k.a, k.b, k.c, 1.0);
+  o.pos = float4(r.a + c.x * r.b, c.y, 0.0, 1.0);
   return o;
 }
 ]]
@@ -297,6 +327,27 @@ local steps = {
 		end,
 	},
 	{
+		name = "a transient whose size is not a multiple of the stride",
+		run = function(rt)
+			-- 7 float = 12 byte の要素 2 つと余りの 1 float
+			local colors = { RED, GREEN, BLUE, WHITE }
+			local refs = {}
+			local function draw_s3(ref)
+				lub.gfx.draw(6, { item = ref }, { shader = shaders.s3, depth = false, cull = lub.gfx.NONE })
+			end
+			lub.gfx.begin_pass({ target = rt, clear_color = { 0, 0, 0, 1 } })
+			for i = 0, 3 do
+				local c = colors[i + 1]
+				refs[i] = lub.gfx.transient_buffer(lub.gfx.STORAGE, { column_x(i), 0.2, 0, c[1], c[2], c[3], 9 })
+				draw_s3(refs[i])
+			end
+			draw_s3(refs[0])
+			draw_s3(refs[1])
+			lub.gfx.end_pass()
+			return { RED, GREEN, BLUE, WHITE }
+		end,
+	},
+	{
 		name = "dispatch reads a transient; RW use is rejected",
 		run = function(rt)
 			-- dst = src * 2 + 1 が item になる: 列 2 に青
@@ -398,6 +449,7 @@ function M.on_frame()
 		shaders.indexed = lub.gfx.use_shader("tb_indexed", VS_INDEXED, FS, 1)
 		shaders.cs = lub.gfx.use_shader_compute("tb_cs", CS, 1)
 		shaders.dims = lub.gfx.use_shader("tb_dims_sh", VS_DIMS, FS, 1)
+		shaders.s3 = lub.gfx.use_shader("tb_s3", VS_S3, FS, 1)
 
 		-- 引数の検査
 		expect_error("count past the end", "out of range", lub.gfx.transient_buffer, lub.gfx.STORAGE, { 1, 2 }, 3)

@@ -292,6 +292,8 @@ physics_lua_tests=(
   tests/lua/test_pass_bindings.lua@vulkan
   tests/lua/test_draw_state.lua
   tests/lua/test_draw_state.lua@vulkan
+  tests/lua/test_transient_midframe.lua
+  tests/lua/test_transient_midframe.lua@vulkan
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"

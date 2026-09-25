@@ -2455,12 +2455,12 @@ LUB_API LubStatus lub_gfx_use_shader_compute(LubContext *ctx, LubStr key,
 // と同じく error。count は version の後ろなので、version を渡さないときは
 // null を置く (UseBuffer(key, type, list, null, n))。TinyC# は名前付き引数を
 // 扱えないので、count: n と書くと値が version に入る。同じ frame に同じ key
-// を書き直すと、native の backend ではそれぞれの draw が記録した順にそのとき
-// の内容を読むが、pass の分割や GPU の待ちが入る。WebGPU では同じ大きさの書
-// き直しは、その frame のどの draw も最後の内容を読む。draw ごとに変わるデー
-// タは TransientBuffer で渡す。大きさが変わっても確保量に収まる間は作り直さ
-// ずに書き込む (SDL3 GPU の backend では shader から見た StructuredBuffer が
-// data より長くなることがあるので、要素の数は uniform で渡す)。
+// を書き直すと、それぞれの draw が記録した順にそのときの内容を読むが、書き直
+// すたびに native の backend では pass の分割や GPU の待ちが入り、WebGPU では
+// GPU の buffer を作り直す。draw ごとに変わるデータは TransientBuffer で渡
+// す。大きさが変わっても確保量に収まる間は作り直さずに書き込む (SDL3 GPU の
+// backend では shader から見た StructuredBuffer が data より長くなることがあ
+// るので、要素の数は uniform で渡す)。
 // data == NULL かつ data_count > 0 は data を読む前の問い合わせ: key がその
 // version を持っていれば data を渡したときと同じ結果、持っていなければ何も変
 // えずに LUB_NOT_FOUND。

@@ -57,8 +57,15 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
   begin_frame〜end_frame の間ずっと open。pass も copy も compute も
   この list に記録する。
 - per-frame リソース: command allocator / upload arena(uniform・
-  buffer/texture 更新の一時メモリ)/ shader-visible CBV_SRV_UAV・sampler
-  heap のリング区画 / fence 値。
+  transient buffer・buffer/texture 更新の一時メモリ)/ shader-visible
+  CBV_SRV_UAV heap のリング区画 / fence 値。
+- upload arena は UPLOAD heap の chunk を先頭から詰めて使い、frame の途中で
+  折り返さない。chunk は基本 4MB で、それより大きい要求には 4MB の 2 の累乗倍
+  の大きな chunk を作る(frame ごとに少しずつ大きくなる要求でも、作り直すのは
+  大きさが倍になるたびだけ)。基本の大きさに収まる要求は大きな chunk を
+  使わない。chunk は frame をまたいで使い回し、120 回の reset の間(大きな
+  chunk は 4 回の間)使われなかった chunk を解放する(起動時の texture upload
+  のような一度きりの要求の分を持ち続けない)。
 - `begin_frame`: slot の fence 待ち → 遅延破棄 drain → allocator/list reset。
   `end_frame`: backbuffer を PRESENT へ遷移 → Close → Execute →
   Present(1) → Signal。
@@ -77,15 +84,45 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 - root signature: shader ごとに `ShaderReflection` から生成。root CBV ×
   uniform block + SRV table(t0..N)+ sampler table(s0..N)、compute は
   + UAV table(u0..N)。すべて `SHADER_VISIBILITY_ALL`。
-- texture/SRV/sampler: `apply_bindings` / `dispatch` 時に per-frame
+- texture/SRV: `apply_bindings` / `dispatch` 時に per-frame
   shader-visible ring へ descriptor を直接 Create して table をセット。
-  未使用 slot は null descriptor / default sampler で埋める。
-  StructuredBuffer の stride は reflection の `elem_stride`。
+  未使用 slot は null descriptor で埋める。StructuredBuffer の stride は
+  reflection の `elem_stride`。束縛先は runtime が名前から引いた reflection
+  の index(`BindingsDesc` の `slot`)で決める。VS と FS の両方が読む名前は
+  reflection に 2 つ並ぶので、同じ名前の後ろの項目も束縛する。
+- ring の区画が frame の途中で足りなくなったら、区画を 2 倍にした heap を
+  作って切り替える(`SetDescriptorHeaps` をやり直す)。以後の frame もその
+  大きさを使い、古い heap はその frame の GPU の処理が終わってから解放する。
+- sampler: table は s register ごとの filter と wrap の組で決まるので、
+  内容ごとに一度だけ sampler heap(D3D12 の上限の 2048 個)に書き、以後の
+  draw と frame で共有する。未使用 slot は default sampler(LINEAR / REPEAT)。
+- table を作れないとき(heap をこれ以上大きくできない、sampler heap が一杯)
+  や uniform を upload arena に置けないときは、古い table や uniform のまま
+  描かずに draw / dispatch を飛ばし、log に出す。uniform は、その block を
+  設定し直すか root signature が変わるまで draw を飛ばす。
+- pipeline state・root signature・topology は、list に今設定されているものと
+  違うときだけ設定する(同じ root signature を設定し直しても root 引数は
+  消えないので、飛ばしても結果は変わらない)。
 - depth format (D24S8 等) は typeless resource + DSV/SRV format 分離で
   シャドウマップのサンプリングに対応。
 
 ## Resource 管理と同期
 
+- transient buffer(`Gfx.TransientBuffer`、ImGui の頂点と index)は upload
+  arena から切り出し、UPLOAD heap のまま StructuredBuffer の SRV と index
+  buffer として読む。copy も barrier も無く、pass も分けない。arena はその
+  frame slot の fence を待ってから reset するので、GPU が frame を終えるまで
+  内容は変わらない(readback / capture の途中 submit でも同じ)。
+- SRV は要素の境目からしか始められない(`FirstElement` は要素数)が、stride は
+  束縛するときまで分からない。そこで storage の slice は自分の大きさの倍数の
+  位置に置く。要素の揃った配列なら、どの stride でも要素の境目から始まる。
+  代わりに slice の前に大きさ未満の隙間が空くので、arena はデータのおよそ
+  2 倍まで使う(基本の chunk の半分より大きい slice は chunk を 1 つ占める)。
+  stride が大きさを割り切らない slice だけは、束縛するときに stride と 16 の
+  最小公倍数の倍数の位置へ写し直し、同じ frame で同じ slice と stride の束縛
+  はその写しを使う。
+  写すときは UPLOAD heap を CPU で読み返すので遅い。index buffer の slice は
+  4 byte 境界。
 - buffer / texture は default heap。更新は upload arena に書いて
   `CopyBufferRegion` / `CopyTextureRegion` を frame list に記録する。
   単一 queue の in-order 実行により「copy より前に記録された draw は古い
@@ -111,8 +148,8 @@ descriptor heap・resource state など D3D12 固有の概念はすべて
 
 ## 制約 / 未対応
 
-- graphics stage の storage buffer バインドは未対応(SDL_GPU backend と
-  同等。compute 経由でのみ使用)。
+- sampler table は sampler heap(2048 個)に入る分まで。内容の違う table が
+  それを超えると、その後の新しい table を使う draw は飛ばす。
 
 ## Golden test
 

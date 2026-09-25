@@ -261,6 +261,26 @@ jobs:
           mkdir -p "$TMPDIR"
           scripts/run-golden.sh
 
+      # golden のサンプルは TransientBuffer や pass bindings を通らないので、
+      # 読み戻しで自己検査する runtime テストを d3d12 (WARP) でも走らせる。
+      - name: Runtime tests (d3d12 backend, WARP)
+        shell: bash
+        run: |
+          failed=0
+          for t in transient_buffer transient_midframe buffer_rewrite \
+            pass_bindings draw_state lazy_data; do
+            if LUB_BACKEND=d3d12 LUB_D3D12_WARP=1 \
+              timeout 600 ./build-release/lub.exe "tests/lua/test_${t}.lua" \
+              >"${RUNNER_TEMP}/test_${t}.log" 2>&1; then
+              echo "PASS test_${t}"
+            else
+              echo "FAIL test_${t}"
+              sed 's/^/    /' "${RUNNER_TEMP}/test_${t}.log"
+              failed=1
+            fi
+          done
+          exit $failed
+
       # .NET 実行: 共有 library (lub.dll、cmake --build が作る) を facade から
       # P/Invoke で叩き、tcs→Lua と frame digest が一致することを 1 サンプルで
       # 確かめる (golden は linux の lavapipe 分だけ)。
@@ -418,7 +438,7 @@ jobs:
 
   # dist を vite preview で配信し、deploy 前の実体を headless で検証する。
   # LUB_VERIFY_SHARD で suite を分割: shard 1 = 編集経路 (A1-A4) + C# session
-  # (A6-A8)、shard 2..n = A5 全サンプル切替のスライス。
+  # (A6-A8) + runtime テスト (A9)、shard 2..n = A5 全サンプル切替のスライス。
   # verify は閾値判定なので runner の system chromium で足りる (golden の
   # byte 比較だけ playwright の版固定 chromium を使う)。
   web-verify:

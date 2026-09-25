@@ -18,6 +18,8 @@
 //   6. All-samples render sanity. For each sample 01..10 switch via the
 //      dropdown, wait for the iframe to relaunch + compile, screenshot
 //      and assert the canvas isn't uniformly black.
+//   7. Runtime tests (A9). Run self-checking tests/lua files in player.html
+//      on the WebGPU backend and wait for their OK line.
 //
 // Usage (the dev server must be running):
 //   cd web && npm run dev      # in one terminal
@@ -52,8 +54,9 @@ const DEBOUNCE_WAIT_MS = Number(process.env.DEBOUNCE_WAIT_MS || 1500)
 const SAMPLE_SWITCH_WAIT_MS = Number(process.env.SAMPLE_SWITCH_WAIT_MS || 6000)
 // LUB_VERIFY_SHARD=k/n splits the suite across independent processes so CI
 // can fan the wall-clock out over runners: shard 1 runs the edit-path
-// scenarios (A1-A4) and the C#-session scenarios (A6-A8);
-// shards 2..n split the A5 sample sweep. Unset (or 1/1) runs everything.
+// scenarios (A1-A4), the C#-session scenarios (A6-A8) and the runtime tests
+// (A9); shards 2..n split the A5 sample sweep. Unset (or 1/1) runs
+// everything.
 const SHARD = (() => {
   const raw = process.env.LUB_VERIFY_SHARD
   if (!raw) return { k: 1, n: 1 }
@@ -707,6 +710,59 @@ if (RUN_CS_SESSION) try {
   console.error('[verify] A8 threw', e.message)
   check('A8 C# completion/hover', false, e.message)
   failures++
+}
+
+// ===== Test A9: runtime tests on the WebGPU backend ========================
+// tests/lua の自己検査する runtime テスト (読み戻した画素で確かめ、OK / FAIL
+// の行を print する) を player.html に Lua の entry として渡して走らせる。
+// 同じ key を 1 つの pass で書き直したときの記録順と、TransientBuffer を
+// WebGPU の backend で確かめる。
+
+const RUNTIME_TESTS = [
+  { file: 'test_buffer_rewrite.lua', ok: 'BUFFER_REWRITE_OK', fail: 'BUFFER_REWRITE_FAIL' },
+  { file: 'test_transient_buffer.lua', ok: 'TRANSIENT_BUFFER_OK', fail: 'TRANSIENT_BUFFER_FAIL' },
+]
+
+if (RUN_EDIT) for (const t of RUNTIME_TESTS) {
+  const tp = await ctx.newPage()
+  try {
+    const src = fs.readFileSync(path.resolve('..', 'tests', 'lua', t.file), 'utf8')
+    const lines = []
+    await tp.exposeFunction('__lubRuntimeTestLog', (msg) => lines.push(msg))
+    await tp.addInitScript(() => {
+      window.addEventListener('message', (e) => {
+        const d = (e && e.data) || {}
+        if (d.type === 'log') window.__lubRuntimeTestLog(String(d.msg))
+      })
+    })
+    // player.html を直接開く (親は自分自身)。test_transient_buffer は
+    // LUB_BACKEND で backend ごとの期待値を選ぶ。
+    const base = URL.endsWith('/') ? URL : URL + '/'
+    await tp.goto(`${base}player.html?w=64&h=64&env=LUB_BACKEND%3Dwebgpu`, { waitUntil: 'load' })
+    // samples/<file> は Lua の検索路 (samples/?.lua) に載る
+    await tp.evaluate(({ file, src }) => {
+      window.postMessage({
+        type: 'setFiles',
+        files: { [`samples/${file}`]: src },
+        entry: file.replace(/\.lua$/, ''),
+      }, '*')
+    }, { file: t.file, src })
+    const deadline = Date.now() + 120000
+    let line = null
+    while (!line && Date.now() < deadline) {
+      line = lines.find((l) => l.includes(t.ok) || l.includes(t.fail)) || null
+      if (!line) await tp.waitForTimeout(250)
+    }
+    if (!check(`A9 ${t.file} on WebGPU`, !!line && line.includes(t.ok),
+               line || `no ${t.ok} / ${t.fail} line within 120s: ${lines.slice(-5).join(' | ')}`)) {
+      failures++
+    }
+  } catch (e) {
+    console.error(`[verify] A9 ${t.file} threw`, e.message)
+    failures++
+  } finally {
+    await tp.close()
+  }
 }
 
 await browser.close()

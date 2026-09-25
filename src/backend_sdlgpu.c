@@ -32,6 +32,12 @@ static App *g_app = NULL;
 // this just records the current pipeline for future use.
 static struct SgPipeline *g_current_pip = NULL;
 
+// Graphics pipeline bound in the current render pass. Binding the same one
+// again only makes SDL_GPU build every descriptor set anew at the next draw,
+// so sg_apply_pipeline skips it (reset per pass and when the pipeline is
+// destroyed, since a new pipeline may reuse the address).
+static struct SgPipeline *g_bound_pip = NULL;
+
 // Whether the most recent apply_bindings bound an index buffer. sg_draw
 // branches on this between SDL_DrawGPUIndexedPrimitives and
 // SDL_DrawGPUPrimitives.
@@ -216,6 +222,598 @@ typedef struct SgImage {
   bool storage;
 } SgImage;
 
+// --- transient buffers ----------------------------------------------------
+//
+// Per-frame, write-once buffer data (backend.h transient_buffer: the
+// runtime's Gfx.TransientBuffer and the ImGui vertices / indices).
+//
+// SDL_GPU binds a storage buffer without an offset, so every STORAGE slice
+// gets an SDL_GPUBuffer of its own, taken from a pool of buffers of exactly
+// the slice's size: the shader sees the whole buffer, and its length must be
+// the slice's length as on the other backends. INDEX slices share larger
+// chunks (the index binding takes an offset).
+//
+// The data is staged on the CPU. sg_flush_transients uploads all of it with
+// one transfer buffer and one copy pass in a command buffer of its own,
+// submitted just before every submit of the frame command buffer (end_frame,
+// the readback and capture submits). The queue runs it before the frame's
+// commands, so every command reads the data whether it was recorded before
+// or after the call. The upload writes with cycle=false: draws recorded
+// earlier in the frame already refer to the buffer's current internal
+// buffer. (SDL's defragmenter, which moves a buffer to a new internal
+// buffer, only runs when a command buffer holding a swapchain texture is
+// submitted, i.e. a frame command buffer, and the flush precedes each one.)
+//
+// Pools belong to one of SG_TRANSIENT_SLOTS frame slots. A slot is reused
+// SG_TRANSIENT_SLOTS frames later, after the fences of the submits that used
+// it have signaled. A fence is only released once signaled: SDL_GPU puts a
+// released fence back in its pool and resets it for the next submit, even
+// while the submit it belonged to is still running. Buffers stay from frame
+// to frame. Every frame ages its slot, whether or not it makes transients
+// (sg_transients_age): a size the slot did not use during its last
+// SG_TRANSIENT_IDLE frames loses its pool (a size that changes every frame
+// must not pile up buffers that no later frame asks for), and every
+// SG_TRANSIENT_TRIM frames of the slot the pools and the INDEX chunks give
+// back what they did not need since the previous trim.
+#define SG_TRANSIENT_SLOTS 3 // one more than SDL_GPU's frames in flight
+#define SG_TRANSIENT_IDLE 2
+#define SG_TRANSIENT_TRIM 64
+#define SG_INDEX_CHUNK_BYTES (256u * 1024u)
+#define SG_STAGE_MIN_BYTES (64u * 1024u)
+
+// STORAGE buffers of one size. bufs[0..used) are handed out this frame.
+typedef struct SgSizePool {
+  Uint32 size;
+  SgBuffer **bufs; // stable pointers: a slice's BackendBuffer
+  int count, cap;
+  int used;
+  int peak;        // max `used` since the last trim
+  Uint32 last_use; // the slot's `frames` when it last handed out a buffer
+} SgSizePool;
+
+typedef struct SgTransientSlot {
+  SgSizePool *pools;
+  int n_pools, cap_pools;
+  int *lookup; // open addressing, size -> pools index + 1 (0 = empty)
+  int lookup_cap;
+  // INDEX chunks. chunks[0..chunks_used) are in use this frame; the last of
+  // them is filled from chunk_off.
+  SgBuffer **chunks;
+  int n_chunks, cap_chunks;
+  int chunks_used;
+  Uint32 chunk_off;
+  int chunk_peak;
+  Uint32 frames;  // frames that took this slot (wraps; only differences count)
+  Uint32 trimmed; // `frames` at the last trim
+  // Submits of the frame that used the slot: the uploads and the frame
+  // command buffers (end_frame and the readback submits).
+  SDL_GPUFence **fences;
+  int n_fences, cap_fences;
+} SgTransientSlot;
+
+typedef struct SgUpload {
+  SDL_GPUBuffer *dst;
+  Uint32 dst_offset;
+  Uint32 src_offset; // in the staged bytes
+  Uint32 size;
+} SgUpload;
+
+static SgTransientSlot g_tslots[SG_TRANSIENT_SLOTS];
+static int g_tslot = 0;
+// g_tslots[g_tslot] was made ready for the current frame (its fences waited
+// for, its pools rewound) by the frame's first transient buffer.
+static bool g_tslot_open = false;
+
+// Slice data waiting for the next flush.
+static struct {
+  uint8_t *data;
+  size_t bytes, cap;
+  SgUpload *ups;
+  int n_ups, cap_ups;
+  SDL_GPUTransferBuffer *tbuf;
+  Uint32 tbuf_bytes;
+  size_t peak; // largest flush since the last trim
+  int frames;  // since the last trim
+} g_stage;
+
+static Uint32 sg_pow2(Uint32 v) {
+  if (v > 0x80000000u)
+    return v;
+  Uint32 p = 1;
+  while (p < v)
+    p <<= 1;
+  return p;
+}
+
+// Makes room for `need` items (the capacity doubles). Returns the array,
+// moved or not, or NULL when out of memory (the old one is then kept).
+static void *sg_grow(void *items, int *cap, int need, size_t item_bytes) {
+  if (need <= *cap)
+    return items;
+  int n = *cap ? *cap * 2 : 16;
+  while (n < need)
+    n *= 2;
+  void *grown = realloc(items, (size_t)n * item_bytes);
+  if (grown)
+    *cap = n;
+  return grown;
+}
+
+static SgBuffer *sg_create_transient_buffer(SglBufferType type, Uint32 bytes) {
+  SgBuffer *b = (SgBuffer *)calloc(1, sizeof(SgBuffer));
+  if (!b)
+    return NULL;
+  b->bytes = bytes;
+  b->type = type;
+  // Read-only: a transient is never bound as a compute RW buffer.
+  SDL_GPUBufferUsageFlags usage =
+      type == SGL_BUFFER_INDEX ? SDL_GPU_BUFFERUSAGE_INDEX
+                               : SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
+                                     SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+  b->gpu = SDL_CreateGPUBuffer(g_app->gpu_device, &(SDL_GPUBufferCreateInfo){
+                                                      .usage = usage,
+                                                      .size = bytes,
+                                                  });
+  if (!b->gpu) {
+    SDL_Log("sg_transient_buffer: SDL_CreateGPUBuffer failed: %s",
+            SDL_GetError());
+    free(b);
+    return NULL;
+  }
+  gpu_stats_create(GPU_STAT_BUFFER, bytes);
+  return b;
+}
+
+static void sg_release_transient_buffer(SgBuffer *b) {
+  SDL_ReleaseGPUBuffer(g_app->gpu_device, b->gpu);
+  gpu_stats_destroy(GPU_STAT_BUFFER, b->bytes);
+  free(b);
+}
+
+// The table is indexed with the low bits, so they must depend on every bit
+// of the size (murmur3's finalizer): sizes that are multiples of a large
+// power of two would otherwise share a few buckets.
+static Uint32 sg_size_hash(Uint32 size) {
+  size ^= size >> 16;
+  size *= 0x85ebca6bu;
+  size ^= size >> 13;
+  size *= 0xc2b2ae35u;
+  size ^= size >> 16;
+  return size;
+}
+
+// Rebuilds the lookup table with `cap` entries (a power of two); only a new
+// size can fail to allocate.
+static bool sg_pool_rehash(SgTransientSlot *s, int cap) {
+  int *lookup = s->lookup;
+  if (cap != s->lookup_cap) {
+    lookup = (int *)calloc((size_t)cap, sizeof(int));
+    if (!lookup)
+      return false;
+    free(s->lookup);
+    s->lookup = lookup;
+    s->lookup_cap = cap;
+  } else {
+    memset(lookup, 0, (size_t)cap * sizeof(int));
+  }
+  Uint32 mask = (Uint32)cap - 1;
+  for (int i = 0; i < s->n_pools; ++i) {
+    Uint32 k = sg_size_hash(s->pools[i].size) & mask;
+    while (lookup[k])
+      k = (k + 1) & mask;
+    lookup[k] = i + 1;
+  }
+  return true;
+}
+
+static SgSizePool *sg_pool_get(SgTransientSlot *s, Uint32 size) {
+  if (s->lookup_cap > 0) {
+    Uint32 mask = (Uint32)s->lookup_cap - 1;
+    for (Uint32 k = sg_size_hash(size) & mask; s->lookup[k];
+         k = (k + 1) & mask) {
+      SgSizePool *p = &s->pools[s->lookup[k] - 1];
+      if (p->size == size)
+        return p;
+    }
+  }
+  SgSizePool *pools =
+      sg_grow(s->pools, &s->cap_pools, s->n_pools + 1, sizeof(SgSizePool));
+  if (!pools)
+    return NULL;
+  s->pools = pools;
+  if ((s->n_pools + 1) * 2 > s->lookup_cap &&
+      !sg_pool_rehash(s, s->lookup_cap ? s->lookup_cap * 2 : 64))
+    return NULL;
+  SgSizePool *p = &s->pools[s->n_pools++];
+  memset(p, 0, sizeof(*p));
+  p->size = size;
+  Uint32 mask = (Uint32)s->lookup_cap - 1;
+  Uint32 k = sg_size_hash(size) & mask;
+  while (s->lookup[k])
+    k = (k + 1) & mask;
+  s->lookup[k] = s->n_pools;
+  return p;
+}
+
+static SgBuffer *sg_transient_storage(SgTransientSlot *s, Uint32 size) {
+  SgSizePool *p = sg_pool_get(s, size);
+  if (!p)
+    return NULL;
+  if (p->used == p->count) {
+    SgBuffer **bufs =
+        sg_grow(p->bufs, &p->cap, p->count + 1, sizeof(SgBuffer *));
+    if (!bufs)
+      return NULL;
+    p->bufs = bufs;
+    SgBuffer *b = sg_create_transient_buffer(SGL_BUFFER_STORAGE, size);
+    if (!b)
+      return NULL;
+    p->bufs[p->count++] = b;
+  }
+  SgBuffer *b = p->bufs[p->used++];
+  if (p->used > p->peak)
+    p->peak = p->used;
+  p->last_use = s->frames;
+  return b;
+}
+
+// Index slices are placed one after another (u32 indices keep every offset
+// 4-byte aligned); a slice that does not fit moves on to the next chunk,
+// never back to the start of one in use.
+static SgBuffer *sg_transient_index(SgTransientSlot *s, Uint32 size,
+                                    Uint32 *out_offset) {
+  Uint32 off = s->chunk_off;
+  if (s->chunks_used == 0 ||
+      size > s->chunks[s->chunks_used - 1]->bytes - off) {
+    // Next chunk: a kept one that is big enough, else a new one.
+    int pick = -1;
+    for (int i = s->chunks_used; i < s->n_chunks; ++i) {
+      if (s->chunks[i]->bytes >= size) {
+        pick = i;
+        break;
+      }
+    }
+    if (pick < 0) {
+      SgBuffer **chunks = sg_grow(s->chunks, &s->cap_chunks, s->n_chunks + 1,
+                                  sizeof(SgBuffer *));
+      if (!chunks)
+        return NULL;
+      s->chunks = chunks;
+      SgBuffer *c = sg_create_transient_buffer(
+          SGL_BUFFER_INDEX,
+          size > SG_INDEX_CHUNK_BYTES ? sg_pow2(size) : SG_INDEX_CHUNK_BYTES);
+      if (!c)
+        return NULL;
+      pick = s->n_chunks++;
+      s->chunks[pick] = c;
+    }
+    SgBuffer *c = s->chunks[pick];
+    s->chunks[pick] = s->chunks[s->chunks_used];
+    s->chunks[s->chunks_used++] = c;
+    if (s->chunks_used > s->chunk_peak)
+      s->chunk_peak = s->chunks_used;
+    off = 0;
+  }
+  s->chunk_off = off + size;
+  *out_offset = off;
+  return s->chunks[s->chunks_used - 1];
+}
+
+static bool sg_stage_upload(SDL_GPUBuffer *dst, Uint32 dst_offset,
+                            const void *data, Uint32 size) {
+  size_t src = g_stage.bytes;
+  size_t end = (src + size + 3u) & ~(size_t)3u;
+  if (end > 0xffffffffu) // one transfer buffer (Uint32 size) per flush
+    return false;
+  if (end > g_stage.cap) {
+    size_t cap = g_stage.cap ? g_stage.cap : SG_STAGE_MIN_BYTES;
+    while (cap < end)
+      cap *= 2;
+    uint8_t *grown = (uint8_t *)realloc(g_stage.data, cap);
+    if (!grown)
+      return false;
+    g_stage.data = grown;
+    g_stage.cap = cap;
+  }
+  memcpy(g_stage.data + src, data, size);
+  SgUpload *last = g_stage.n_ups > 0 ? &g_stage.ups[g_stage.n_ups - 1] : NULL;
+  if (last && last->dst == dst && last->dst_offset + last->size == dst_offset &&
+      last->src_offset + last->size == src) {
+    last->size += size; // the next slice of the same INDEX chunk
+  } else {
+    SgUpload *ups = sg_grow(g_stage.ups, &g_stage.cap_ups, g_stage.n_ups + 1,
+                            sizeof(SgUpload));
+    if (!ups)
+      return false;
+    g_stage.ups = ups;
+    g_stage.ups[g_stage.n_ups++] = (SgUpload){
+        .dst = dst,
+        .dst_offset = dst_offset,
+        .src_offset = (Uint32)src,
+        .size = size,
+    };
+  }
+  g_stage.bytes = end;
+  return true;
+}
+
+static void sg_release_fences(App *app, SDL_GPUFence **fences, int n) {
+  for (int i = 0; i < n; ++i) {
+    SDL_ReleaseGPUFence(app->gpu_device, fences[i]);
+    gpu_stats_destroy(GPU_STAT_FENCE, 0);
+  }
+}
+
+static void sg_tslot_add_fence(App *app, SDL_GPUFence *fence) {
+  SgTransientSlot *s = &g_tslots[g_tslot];
+  gpu_stats_create(GPU_STAT_FENCE, 0);
+  SDL_GPUFence **fences = sg_grow(s->fences, &s->cap_fences, s->n_fences + 1,
+                                  sizeof(SDL_GPUFence *));
+  if (!fences) {
+    // No room to keep it: wait now instead.
+    SDL_WaitForGPUFences(app->gpu_device, true, &fence, 1);
+    sg_release_fences(app, &fence, 1);
+    return;
+  }
+  s->fences = fences;
+  s->fences[s->n_fences++] = fence;
+}
+
+// Called by every frame as it takes its slot (sg_begin_frame), whether or
+// not the frame makes transients. Releases the slot's fences that have
+// signaled, without waiting (sg_tslot_open waits for the rest), and what
+// the slot no longer needs: the pools of sizes it did not use during its
+// last SG_TRANSIENT_IDLE frames, and every SG_TRANSIENT_TRIM frames the
+// buffers of a pool past its peak count and the INDEX chunks past the peak
+// number in use since the previous trim. Only reusing a buffer needs the
+// fences: SDL_ReleaseGPUBuffer destroys a buffer once the command buffers
+// that use it have finished. Staging memory far larger than the largest
+// flush of the last SG_TRANSIENT_TRIM frames is released too.
+static void sg_transients_age(App *app) {
+  SgTransientSlot *s = &g_tslots[g_tslot];
+  int kept = 0;
+  for (int i = 0; i < s->n_fences; ++i) {
+    if (SDL_QueryGPUFence(app->gpu_device, s->fences[i]))
+      sg_release_fences(app, &s->fences[i], 1);
+    else
+      s->fences[kept++] = s->fences[i];
+  }
+  s->n_fences = kept;
+
+  ++s->frames;
+  bool trim = s->frames - s->trimmed >= SG_TRANSIENT_TRIM;
+  int n = 0;
+  for (int i = 0; i < s->n_pools; ++i) {
+    SgSizePool *p = &s->pools[i];
+    int keep = s->frames - p->last_use > SG_TRANSIENT_IDLE ? 0
+               : trim                                      ? p->peak
+                                                           : p->count;
+    while (p->count > keep)
+      sg_release_transient_buffer(p->bufs[--p->count]);
+    if (trim)
+      p->peak = 0;
+    if (p->count == 0) {
+      free(p->bufs);
+      continue;
+    }
+    s->pools[n++] = *p;
+  }
+  if (n != s->n_pools) {
+    s->n_pools = n;
+    // A burst of sizes leaves a large table: halve it while at most 1/8 full.
+    int cap = s->lookup_cap;
+    while (cap > 64 && n * 8 <= cap)
+      cap /= 2;
+    if (!sg_pool_rehash(s, cap))
+      (void)sg_pool_rehash(s, s->lookup_cap); // same size: rebuilt in place
+  }
+  if (trim) {
+    while (s->n_chunks > s->chunk_peak)
+      sg_release_transient_buffer(s->chunks[--s->n_chunks]);
+    s->chunk_peak = 0;
+    s->trimmed = s->frames;
+  }
+
+  if (++g_stage.frames < SG_TRANSIENT_TRIM)
+    return;
+  g_stage.frames = 0;
+  size_t keep =
+      g_stage.peak > SG_STAGE_MIN_BYTES ? g_stage.peak : SG_STAGE_MIN_BYTES;
+  if (g_stage.tbuf && g_stage.tbuf_bytes / 4 > keep) {
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, g_stage.tbuf);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, g_stage.tbuf_bytes);
+    g_stage.tbuf = NULL;
+    g_stage.tbuf_bytes = 0;
+  }
+  if (g_stage.bytes == 0 && g_stage.cap / 4 > keep) {
+    free(g_stage.data);
+    g_stage.data = NULL;
+    g_stage.cap = 0;
+  }
+  g_stage.peak = 0;
+}
+
+// The current frame's slot, made ready by the frame's first transient
+// buffer: waits until the GPU is done with the frame that used the slot
+// last, then hands its buffers out again from the start.
+static SgTransientSlot *sg_tslot_open(App *app) {
+  SgTransientSlot *s = &g_tslots[g_tslot];
+  if (g_tslot_open)
+    return s;
+  if (s->n_fences > 0) {
+    if (!SDL_WaitForGPUFences(app->gpu_device, true, s->fences,
+                              (Uint32)s->n_fences)) {
+      SDL_Log("sg_transient_buffer: SDL_WaitForGPUFences failed: %s",
+              SDL_GetError());
+      return NULL;
+    }
+    sg_release_fences(app, s->fences, s->n_fences);
+    s->n_fences = 0;
+  }
+  for (int i = 0; i < s->n_pools; ++i)
+    s->pools[i].used = 0;
+  s->chunks_used = 0;
+  s->chunk_off = 0;
+  g_tslot_open = true;
+  return s;
+}
+
+static bool sg_upload_staged(App *app) {
+  SDL_GPUDevice *dev = app->gpu_device;
+  Uint32 bytes = (Uint32)g_stage.bytes;
+  if (g_stage.peak < bytes)
+    g_stage.peak = bytes;
+  if (g_stage.tbuf && g_stage.tbuf_bytes < bytes) {
+    SDL_ReleaseGPUTransferBuffer(dev, g_stage.tbuf);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, g_stage.tbuf_bytes);
+    g_stage.tbuf = NULL;
+    g_stage.tbuf_bytes = 0;
+  }
+  if (!g_stage.tbuf) {
+    Uint32 cap = sg_pow2(bytes);
+    if (cap < SG_STAGE_MIN_BYTES)
+      cap = SG_STAGE_MIN_BYTES;
+    g_stage.tbuf = SDL_CreateGPUTransferBuffer(
+        dev, &(SDL_GPUTransferBufferCreateInfo){
+                 .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                 .size = cap,
+             });
+    if (!g_stage.tbuf) {
+      SDL_Log("sg_flush_transients: tbuf: %s", SDL_GetError());
+      return false;
+    }
+    g_stage.tbuf_bytes = cap;
+    gpu_stats_create(GPU_STAT_TRANSFER_BUFFER, cap);
+  }
+  // cycle: an earlier flush of this or a previous frame may still read it
+  void *map = SDL_MapGPUTransferBuffer(dev, g_stage.tbuf, true);
+  if (!map) {
+    SDL_Log("sg_flush_transients: map: %s", SDL_GetError());
+    return false;
+  }
+  memcpy(map, g_stage.data, bytes);
+  SDL_UnmapGPUTransferBuffer(dev, g_stage.tbuf);
+  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(dev);
+  if (!cmd) {
+    SDL_Log("sg_flush_transients: cmd: %s", SDL_GetError());
+    return false;
+  }
+  SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+  for (int i = 0; i < g_stage.n_ups; ++i) {
+    const SgUpload *u = &g_stage.ups[i];
+    SDL_UploadToGPUBuffer(cp,
+                          &(SDL_GPUTransferBufferLocation){
+                              .transfer_buffer = g_stage.tbuf,
+                              .offset = u->src_offset,
+                          },
+                          &(SDL_GPUBufferRegion){
+                              .buffer = u->dst,
+                              .offset = u->dst_offset,
+                              .size = u->size,
+                          },
+                          false);
+  }
+  SDL_EndGPUCopyPass(cp);
+  // Fenced too, so the slot is never reused while this is in flight even if
+  // the frame's own submit fails.
+  SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+  if (!fence) {
+    SDL_Log("sg_flush_transients: submit: %s", SDL_GetError());
+    return false;
+  }
+  sg_tslot_add_fence(app, fence);
+  return true;
+}
+
+// Uploads the staged slice data (see the section comment). Called right
+// before each submit of the frame command buffer.
+static bool sg_flush_transients(App *app) {
+  if (g_stage.n_ups == 0)
+    return true;
+  bool ok = sg_upload_staged(app);
+  if (!ok)
+    SDL_Log("sg_flush_transients: %d uploads (%zu bytes) failed; draws "
+            "reading this frame's transient buffers see stale data",
+            g_stage.n_ups, g_stage.bytes);
+  g_stage.n_ups = 0;
+  g_stage.bytes = 0;
+  return ok;
+}
+
+// Submits the frame command buffer after the staged transient data. When
+// the frame used transient buffers the submit's fence is kept for the slot
+// (the command buffer may bind any of the frame's transient buffers).
+static bool sg_submit_frame_cmd(App *app) {
+  sg_flush_transients(app);
+  bool ok;
+  if (g_tslot_open) {
+    SDL_GPUFence *fence =
+        SDL_SubmitGPUCommandBufferAndAcquireFence(app->gpu_cmd);
+    if (fence)
+      sg_tslot_add_fence(app, fence);
+    ok = fence != NULL;
+  } else {
+    ok = SDL_SubmitGPUCommandBuffer(app->gpu_cmd);
+  }
+  app->gpu_cmd = NULL;
+  app->gpu_swapchain_tex = NULL;
+  return ok;
+}
+
+static bool sg_transient_buffer(SglBufferType type, const void *data,
+                                size_t bytes, BufferSlice *out) {
+  if (!g_app || !g_app->gpu_device || !data || bytes == 0 ||
+      bytes > 0xffffffffu)
+    return false;
+  if (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE)
+    return false;
+  SgTransientSlot *s = sg_tslot_open(g_app);
+  if (!s)
+    return false;
+  Uint32 size = (Uint32)bytes;
+  Uint32 offset = 0;
+  SgBuffer *b = type == SGL_BUFFER_INDEX ? sg_transient_index(s, size, &offset)
+                                         : sg_transient_storage(s, size);
+  if (!b || !sg_stage_upload(b->gpu, offset, data, size))
+    return false;
+  out->buf = (BackendBuffer)b;
+  out->offset = offset;
+  out->size = bytes;
+  return true;
+}
+
+static void sg_transients_shutdown(App *app) {
+  for (int k = 0; k < SG_TRANSIENT_SLOTS; ++k) {
+    SgTransientSlot *s = &g_tslots[k];
+    if (s->n_fences > 0) {
+      SDL_WaitForGPUFences(app->gpu_device, true, s->fences,
+                           (Uint32)s->n_fences);
+      sg_release_fences(app, s->fences, s->n_fences);
+    }
+    free(s->fences);
+    for (int i = 0; i < s->n_pools; ++i) {
+      for (int j = 0; j < s->pools[i].count; ++j)
+        sg_release_transient_buffer(s->pools[i].bufs[j]);
+      free(s->pools[i].bufs);
+    }
+    for (int i = 0; i < s->n_chunks; ++i)
+      sg_release_transient_buffer(s->chunks[i]);
+    free(s->pools);
+    free(s->lookup);
+    free(s->chunks);
+    memset(s, 0, sizeof(*s));
+  }
+  if (g_stage.tbuf) {
+    SDL_ReleaseGPUTransferBuffer(app->gpu_device, g_stage.tbuf);
+    gpu_stats_destroy(GPU_STAT_TRANSFER_BUFFER, g_stage.tbuf_bytes);
+  }
+  free(g_stage.data);
+  free(g_stage.ups);
+  memset(&g_stage, 0, sizeof(g_stage));
+  g_tslot = 0;
+  g_tslot_open = false;
+}
+
 // --- backend lifecycle ----------------------------------------------------
 
 static bool sg_init(App *app) {
@@ -236,6 +834,7 @@ static bool sg_init(App *app) {
 
 static void sg_shutdown(App *app) {
   if (app->gpu_device) {
+    sg_transients_shutdown(app);
     sg_release_depth_texture(app);
     SDL_ReleaseWindowFromGPUDevice(app->gpu_device, app->window);
     SDL_DestroyGPUDevice(app->gpu_device);
@@ -246,6 +845,9 @@ static void sg_shutdown(App *app) {
 
 static void sg_begin_frame(App *app, int *out_w, int *out_h) {
   g_app = app;
+  g_tslot = (g_tslot + 1) % SG_TRANSIENT_SLOTS;
+  g_tslot_open = false;
+  sg_transients_age(app);
   app->gpu_cmd = SDL_AcquireGPUCommandBuffer(app->gpu_device);
   if (!app->gpu_cmd) {
     SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
@@ -274,14 +876,18 @@ static void sg_begin_frame(App *app, int *out_w, int *out_h) {
 }
 
 static void sg_end_frame(App *app) {
-  if (app->gpu_cmd && !SDL_SubmitGPUCommandBuffer(app->gpu_cmd)) {
+  if (app->gpu_cmd && !sg_submit_frame_cmd(app)) {
     SDL_Log("SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
   }
+  // Without a command buffer left to submit, nothing reads what was staged.
+  g_stage.n_ups = 0;
+  g_stage.bytes = 0;
   app->gpu_cmd = NULL;
   app->gpu_swapchain_tex = NULL;
 }
 
 static void sg_begin_pass(App *app, const PassBeginDesc *d) {
+  g_bound_pip = NULL;
   if (!sg_acquire_command_buffer(app, "sg_begin_pass")) {
     g_render_pass = NULL;
     return;
@@ -371,6 +977,7 @@ static void sg_end_pass(App *app) {
     g_render_pass = NULL;
   }
   g_current_pip = NULL;
+  g_bound_pip = NULL;
 }
 
 // --- resources ------------------------------------------------------------
@@ -950,6 +1557,8 @@ static void sg_destroy_pipeline(BackendPipeline h) {
     SDL_ReleaseGPUGraphicsPipeline(g_app->gpu_device, p->gpu);
     gpu_stats_destroy(GPU_STAT_PIPELINE, 0);
   }
+  if (g_bound_pip == p)
+    g_bound_pip = NULL;
   // p->compute_gpu is owned by SgShader, do not release here.
   free(p);
 }
@@ -990,8 +1599,10 @@ static void sg_destroy_image(BackendImage h) {
 
 static void sg_apply_pipeline(BackendPipeline h) {
   g_current_pip = (SgPipeline *)h;
-  if (g_current_pip && g_current_pip->gpu && g_render_pass) {
+  if (g_current_pip && g_current_pip->gpu && g_render_pass &&
+      g_current_pip != g_bound_pip) {
     SDL_BindGPUGraphicsPipeline(g_render_pass, g_current_pip->gpu);
+    g_bound_pip = g_current_pip;
   }
 }
 
@@ -1014,31 +1625,28 @@ static void sg_apply_bindings(const BindingsDesc *b) {
   } else {
     g_last_indexed = false;
   }
-  // Fragment-stage texture+sampler binding: resolve name->slot via reflection,
-  // then issue a single SDL_BindGPUFragmentSamplers covering [0..max_slot].
+  // Fragment-stage texture+sampler binding: the reflection entry (`slot`)
+  // gives the sampler slot; a single SDL_BindGPUFragmentSamplers covers
+  // [0..max_slot].
   if (b->texture_count > 0 && b->refl) {
     SDL_GPUTextureSamplerBinding tsb[8] = {0};
     int max_slot = -1;
     for (int i = 0; i < b->texture_count; ++i) {
-      if (!b->textures[i].name)
+      int j = b->textures[i].slot;
+      if (j < 0 || j >= b->refl->tex_count)
         continue;
-      for (int j = 0; j < b->refl->tex_count; ++j) {
-        if (strcmp(b->refl->texs[j].name, b->textures[i].name) != 0)
-          continue;
-        SgImage *im = (SgImage *)b->textures[i].image;
-        if (!im || !im->tex || !im->smp)
-          break;
-        int slot = b->refl->texs[j].smp_slot;
-        if (slot < 0 || slot >= 8)
-          break;
-        tsb[slot] = (SDL_GPUTextureSamplerBinding){
-            .texture = im->tex,
-            .sampler = im->smp,
-        };
-        if (slot > max_slot)
-          max_slot = slot;
-        break;
-      }
+      SgImage *im = (SgImage *)b->textures[i].image;
+      if (!im || !im->tex || !im->smp)
+        continue;
+      int slot = b->refl->texs[j].smp_slot;
+      if (slot < 0 || slot >= 8)
+        continue;
+      tsb[slot] = (SDL_GPUTextureSamplerBinding){
+          .texture = im->tex,
+          .sampler = im->smp,
+      };
+      if (slot > max_slot)
+        max_slot = slot;
     }
     if (max_slot >= 0) {
       SDL_BindGPUFragmentSamplers(g_render_pass, 0, tsb,
@@ -1046,16 +1654,21 @@ static void sg_apply_bindings(const BindingsDesc *b) {
     }
   }
   // Graphics-stage read-only storage buffers: SDL_GPU numbers them in their
-  // own slot space per stage (the reflection `slot`). SDL_GPU binds a whole
-  // buffer (no offset / range), so the shader sees the full capacity rather
-  // than the logical size; only offset 0 can be honored.
+  // own slot space per stage (the reflection entry's `slot`). The entry
+  // `slot` and every later entry of the same name (the buffer read by
+  // another stage) are bound. SDL_GPU binds a whole buffer (no offset /
+  // range): a keyed buffer shows the shader its full capacity rather than
+  // the logical size, and the offset is always 0 (transient slices get
+  // buffers of their own).
   for (int i = 0; i < b->storage_buf_count && b->refl; ++i) {
     SgBuffer *sb = (SgBuffer *)b->storage_bufs[i].buf;
-    if (!sb || !sb->gpu || !b->storage_bufs[i].name)
+    int first = b->storage_bufs[i].slot;
+    if (!sb || !sb->gpu || first < 0 || first >= b->refl->storage_buf_count)
       continue;
-    for (int j = 0; j < b->refl->storage_buf_count; ++j) {
+    const char *name = b->refl->storage_bufs[first].name;
+    for (int j = first; j < b->refl->storage_buf_count; ++j) {
       const ShaderStorageBuf *r = &b->refl->storage_bufs[j];
-      if (!r->readonly || strcmp(r->name, b->storage_bufs[i].name) != 0)
+      if (!r->readonly || (j != first && strcmp(r->name, name) != 0))
         continue;
       if (r->stage == SGL_STAGE_VERTEX)
         SDL_BindGPUVertexStorageBuffers(g_render_pass, (Uint32)r->slot,
@@ -1112,37 +1725,30 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
     return;
   }
   // Resolve storage buffers into ordered RW / RO arrays per the SDL_GPU
-  // layout (set 1 = RW, set 0 = RO). The slot number from reflection is
-  // the binding within its set; the current compute binding normally uses
-  // one of each. Whole buffers, as in sg_apply_bindings (SDL_GPU has no
-  // storage-buffer range).
+  // layout (set 1 = RW, set 0 = RO). The reflection entry (`slot`) gives the
+  // binding within its set; the current compute binding normally uses one
+  // of each. Whole buffers, as in sg_apply_bindings (SDL_GPU has no
+  // storage-buffer range; a transient slice has a buffer of its own).
   SDL_GPUStorageBufferReadWriteBinding rw[SGL_MAX_STORAGE_BUFS] = {0};
   SDL_GPUBuffer *ro[SGL_MAX_STORAGE_BUFS] = {0};
   int n_rw = 0, n_ro = 0;
   for (int i = 0; i < d->n_storage_bufs; ++i) {
     SgBuffer *buf = (SgBuffer *)d->storage_bufs[i].buf;
-    if (!buf || !buf->gpu || !d->storage_bufs[i].name)
+    int k = d->storage_bufs[i].slot;
+    if (!buf || !buf->gpu || k < 0 || k >= d->refl->storage_buf_count)
       continue;
-    for (int k = 0; k < d->refl->storage_buf_count; ++k) {
-      if (strcmp(d->refl->storage_bufs[k].name, d->storage_bufs[i].name) != 0)
-        continue;
-      if (d->refl->storage_bufs[k].readonly) {
-        int slot = d->refl->storage_bufs[k].slot;
-        if (slot >= 0 && slot < SGL_MAX_STORAGE_BUFS) {
-          ro[slot] = buf->gpu;
-          if (slot + 1 > n_ro)
-            n_ro = slot + 1;
-        }
-      } else {
-        int slot = d->refl->storage_bufs[k].slot;
-        if (slot >= 0 && slot < SGL_MAX_STORAGE_BUFS) {
-          rw[slot].buffer = buf->gpu;
-          rw[slot].cycle = true; // discard previous content
-          if (slot + 1 > n_rw)
-            n_rw = slot + 1;
-        }
-      }
-      break;
+    int slot = d->refl->storage_bufs[k].slot;
+    if (slot < 0 || slot >= SGL_MAX_STORAGE_BUFS)
+      continue;
+    if (d->refl->storage_bufs[k].readonly) {
+      ro[slot] = buf->gpu;
+      if (slot + 1 > n_ro)
+        n_ro = slot + 1;
+    } else {
+      rw[slot].buffer = buf->gpu;
+      rw[slot].cycle = true; // discard previous content
+      if (slot + 1 > n_rw)
+        n_rw = slot + 1;
     }
   }
   SDL_GPUStorageTextureReadWriteBinding rw_tex[SGL_MAX_STORAGE_TEXTURES] = {0};
@@ -1150,28 +1756,23 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   int n_rw_tex = 0, n_ro_tex = 0;
   for (int i = 0; i < d->n_storage_textures; ++i) {
     SgImage *img = (SgImage *)d->storage_textures[i].image;
-    if (!img || !img->tex || !d->storage_textures[i].name)
+    int k = d->storage_textures[i].slot;
+    if (!img || !img->tex || k < 0 || k >= d->refl->storage_tex_count)
       continue;
-    for (int k = 0; k < d->refl->storage_tex_count; ++k) {
-      if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) !=
-          0)
-        continue;
-      int slot = d->refl->storage_texs[k].slot;
-      if (slot < 0 || slot >= SGL_MAX_STORAGE_TEXTURES)
-        break;
-      if (d->refl->storage_texs[k].readonly) {
-        ro_tex[slot] = img->tex;
-        if (slot + 1 > n_ro_tex)
-          n_ro_tex = slot + 1;
-      } else {
-        rw_tex[slot].texture = img->tex;
-        rw_tex[slot].mip_level = 0;
-        rw_tex[slot].layer = 0;
-        rw_tex[slot].cycle = true;
-        if (slot + 1 > n_rw_tex)
-          n_rw_tex = slot + 1;
-      }
-      break;
+    int slot = d->refl->storage_texs[k].slot;
+    if (slot < 0 || slot >= SGL_MAX_STORAGE_TEXTURES)
+      continue;
+    if (d->refl->storage_texs[k].readonly) {
+      ro_tex[slot] = img->tex;
+      if (slot + 1 > n_ro_tex)
+        n_ro_tex = slot + 1;
+    } else {
+      rw_tex[slot].texture = img->tex;
+      rw_tex[slot].mip_level = 0;
+      rw_tex[slot].layer = 0;
+      rw_tex[slot].cycle = true;
+      if (slot + 1 > n_rw_tex)
+        n_rw_tex = slot + 1;
     }
   }
   SDL_GPUComputePass *cp = SDL_BeginGPUComputePass(
@@ -1186,19 +1787,15 @@ static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
     int max_slot = -1;
     for (int i = 0; i < d->texture_count; ++i) {
       SgImage *img = (SgImage *)d->textures[i].image;
-      if (!img || !img->tex || !img->smp || !d->textures[i].name)
+      int k = d->textures[i].slot;
+      if (!img || !img->tex || !img->smp || k < 0 || k >= d->refl->tex_count)
         continue;
-      for (int k = 0; k < d->refl->tex_count; ++k) {
-        if (strcmp(d->refl->texs[k].name, d->textures[i].name) != 0)
-          continue;
-        int slot = d->refl->texs[k].smp_slot;
-        if (slot >= 0 && slot < SGL_MAX_TEXTURES) {
-          tsb[slot].texture = img->tex;
-          tsb[slot].sampler = img->smp;
-          if (slot > max_slot)
-            max_slot = slot;
-        }
-        break;
+      int slot = d->refl->texs[k].smp_slot;
+      if (slot >= 0 && slot < SGL_MAX_TEXTURES) {
+        tsb[slot].texture = img->tex;
+        tsb[slot].sampler = img->smp;
+        if (slot > max_slot)
+          max_slot = slot;
       }
     }
     if (max_slot >= 0) {
@@ -1266,15 +1863,11 @@ static void sg_convert_readback_to_rgba8(SglPixelFormat fmt, const uint8_t *src,
 static bool sg_submit_pending_frame_commands(App *app) {
   if (!app->gpu_cmd)
     return true;
-  if (!SDL_SubmitGPUCommandBuffer(app->gpu_cmd)) {
+  if (!sg_submit_frame_cmd(app)) {
     SDL_Log("sg_readback_image: SDL_SubmitGPUCommandBuffer failed: %s",
             SDL_GetError());
-    app->gpu_cmd = NULL;
-    app->gpu_swapchain_tex = NULL;
     return false;
   }
-  app->gpu_swapchain_tex = NULL;
-  app->gpu_cmd = NULL;
   return true;
 }
 
@@ -1491,6 +2084,10 @@ static bool sg_capture(App *app, const char *path) {
                              });
   SDL_EndGPUCopyPass(cp);
 
+  // The transient data goes first. The slot needs no fence of this submit:
+  // the wait below finishes all of the frame's GPU work (the slot's fences
+  // are still released only at its next use).
+  sg_flush_transients(app);
   SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(app->gpu_cmd);
   app->gpu_cmd = NULL;
   app->gpu_swapchain_tex = NULL;
@@ -1586,5 +2183,5 @@ const RenderBackend g_backend_sdlgpu = {
     .capture = sg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = sg_swapchain_color_format,
-    .transient_buffer = NULL, // runtime fallback (api_gfx.c)
+    .transient_buffer = sg_transient_buffer,
 };

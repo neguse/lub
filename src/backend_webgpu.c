@@ -42,6 +42,10 @@ static uint32_t wg_align(uint32_t v, uint32_t a) {
   return (v + a - 1u) & ~(a - 1u);
 }
 
+static uint64_t wg_align64(uint64_t v, uint64_t a) {
+  return (v + a - 1u) & ~(a - 1u);
+}
+
 // ---- format tables ---------------------------------------------------------
 
 static WGPUTextureFormat sgl_to_wgpu_fmt(SglPixelFormat fmt) {
@@ -103,10 +107,18 @@ static WGPUCullMode sgl_to_wgpu_cull(SglCull c) {
 
 // ---- per-resource structs --------------------------------------------------
 
+// id: bind group cache の key に使う通し番号 (作るたびに増やし、使い回さない。
+// pointer は解放後に同じ番地が再び使われうるので key にしない)。buffer は
+// GPU object を差し替えたときにも新しい id にする。
 typedef struct WgBuffer {
   WGPUBuffer buf;
   uint64_t bytes;
   SglBufferType type;
+  uint64_t id;
+  // この値が g_submit_serial と等しい = まだ submit していない command が
+  // この buffer を参照している (wg_update_buffer の記録順)
+  uint64_t used_serial;
+  bool transient; // transient arena の chunk
 } WgBuffer;
 
 typedef struct WgImage {
@@ -117,6 +129,7 @@ typedef struct WgImage {
   WGPUTextureView storage_view;
   WGPUSampler sampler;
   uint64_t stat_bytes;
+  uint64_t id;
   bool render_target;
   bool storage;
   SglPixelFormat fmt;
@@ -130,6 +143,31 @@ typedef struct WgShader {
   bool is_compute;
 } WgShader;
 
+// group 1 (textures / samplers / storage) の bind group cache。key は layout
+// の entry ごとの resource: reflection の並びで texs (image id)、
+// storage_bufs (buffer id, offset, size)、storage_texs (image id)。未束縛は 0。
+#define WG_BG_KEY_WORDS                                                        \
+  (SGL_MAX_TEXTURES + 3 * SGL_MAX_STORAGE_BUFS + SGL_MAX_STORAGE_TEXTURES)
+// 使われない entry を捨てるまでの frame 数 (transient の slice を参照する
+// entry は、使われなかった frame の次の begin_frame で捨てる)
+#define WG_BG_KEEP_FRAMES 120
+
+typedef struct WgBgEntry {
+  WGPUBindGroup bg; // NULL = 空き
+  uint64_t hash;
+  uint64_t last_frame;
+  bool transient;
+  uint64_t key[WG_BG_KEY_WORDS];
+} WgBgEntry;
+
+// open addressing (線形探索)。消すのは begin_frame の掃除だけで、そのとき
+// 残る entry を入れ直す。
+typedef struct WgBgCache {
+  WgBgEntry *slots;
+  uint32_t cap; // 2 の冪 (0 = 未確保)
+  uint32_t count;
+} WgBgCache;
+
 typedef struct WgPipeline {
   WGPURenderPipeline render;
   WGPUComputePipeline compute;
@@ -138,6 +176,20 @@ typedef struct WgPipeline {
   WGPUBindGroupLayout bgl1; // group 1: textures/samplers/storage
   bool is_compute;
   ShaderReflection refl; // copy for bind group creation
+  // group 0 は uniform ring を dynamic offset で指すだけなので pipeline ごとに
+  // 1 つ。ring を作り直したら (g_ub.gen が変わったら) 作り直す。
+  WGPUBindGroup bg0;
+  uint64_t bg0_gen;
+  int ub_n;                                // group 0 の entry 数
+  int ub_bindings[SGL_MAX_UNIFORM_BLOCKS]; // binding 番号の昇順
+  WgBgCache bgc;
+  // reflection は stage ごとの宣言を名前で束ねずに並べるので、同じ名前が
+  // 複数ある (VS と FS の両方が読む)。next = 後ろにある同じ名前の index
+  // (無ければ -1)。束縛の slot はその名前の最初の index。
+  int8_t tex_next[SGL_MAX_TEXTURES];
+  int8_t sb_next[SGL_MAX_STORAGE_BUFS];
+  int8_t st_next[SGL_MAX_STORAGE_TEXTURES];
+  struct WgPipeline *prev, *next; // g_pipelines (cache の掃除)
 } WgPipeline;
 
 // ---- per-frame state -------------------------------------------------------
@@ -147,28 +199,217 @@ static WGPUQueue g_queue;
 static WGPUCommandEncoder g_enc;
 static WGPURenderPassEncoder g_rpass;
 
-// Uniform staging: WebGPU doesn't have push constants, so we write uniform
-// data to per-frame staging buffers and bind them as uniform buffers.
-// We use a ring buffer approach: each draw call writes to the next 256-byte
-// aligned offset in a large buffer, avoiding the problem of later draws
-// overwriting earlier draws' uniform data.
+static uint64_t g_next_id = 1;
+// frame の encoder を submit するたびに増やす (WgBuffer.used_serial)
+static uint64_t g_submit_serial = 1;
+// begin_frame の回数 (cache の entry の古さ、transient chunk の保持)
+static uint64_t g_frame;
+static WgPipeline *g_pipelines;
+// 破棄した / 差し替えた resource の id。次の begin_frame で、これを参照する
+// cache の entry を捨てる (cache の bind group が GPU object を生かし続け
+// ないように)。id は使い回さないので、それまでに誤って当たることはない。
+static uint64_t *g_dead_ids;
+static int g_dead_count, g_dead_cap;
+// 手放した GPU buffer のうち、まだ submit していない command が参照している
+// もの。その submit の後で destroy する (wg_buffer_free)。
+static WGPUBuffer *g_retired;
+static int g_retired_count, g_retired_cap;
+// device の maxBufferSize。これより大きい buffer は作れない (browser は
+// NULL を返さずに無効な buffer を返し、それを使う submit がすべて拒まれる)
+static uint64_t g_max_buffer_size;
+
+// CPU 側の写しを持つ GPU buffer。書いた分 [flushed, used) を submit の直前に
+// まとめて 1 回の writeBuffer で送る (wg_flush_uploads)。writeBuffer は
+// queue の上でその submit より前に着くので、この frame の command はどれも
+// 書いた内容を読む。frame の途中で先頭に戻って書き直すことはしない (まだ
+// submit していない command が前の内容を読むため)。frame をまたいだ
+// 使い回しは queue の順で安全 (次の frame の writeBuffer は前の frame の
+// submit の後に着く)。
+typedef struct WgStaged {
+  WgBuffer wb; // transient chunk ではこれが BufferSlice.buf になる
+  uint8_t *cpu;
+  uint64_t used;
+  uint64_t flushed;
+} WgStaged;
+
+// uniform: WebGPU には push constant が無いので、UB slot ごとの ring に書き、
+// dynamic offset で束縛する。uniform を書き換えた draw ごとに ring の次の
+// WG_UB_ALIGN 境界から取る。frame の途中で足りなくなったら折り返さずに
+// 大きい ring に替える (替えられなければその draw を捨てる)。
 #define WG_MAX_UB_SLOTS 2
-#define WG_UB_ALIGN 256   // minUniformBufferOffsetAlignment
-#define WG_UB_SIZE 2048   // max bytes per uniform block
-#define WG_UB_STRIDE 2048 // ring stride: aligned to WG_UB_ALIGN, >= WG_UB_SIZE
-#define WG_UB_RING_SIZE (WG_UB_STRIDE * 128) // 256KB ring per slot
+#define WG_UB_ALIGN 256 // minUniformBufferOffsetAlignment
+#define WG_UB_SIZE 2048 // max bytes per uniform block (bound size)
+#define WG_UB_RING_SIZE (WG_UB_SIZE * 128) // initial ring size per slot
 
 typedef struct WgUniformState {
-  WGPUBuffer bufs[WG_MAX_UB_SLOTS];
+  WgStaged ring[WG_MAX_UB_SLOTS];
+  uint64_t gen; // ring の GPU buffer を替えるたびに増やす (group 0)
   bool dirty[WG_MAX_UB_SLOTS];
   uint8_t data[WG_MAX_UB_SLOTS][WG_UB_SIZE];
   size_t sizes[WG_MAX_UB_SLOTS];
-  uint32_t ring_offset[WG_MAX_UB_SLOTS]; // current write offset in ring
+  // 最後に書いた位置。uniform を渡さない draw はここを読む
+  uint32_t last_off[WG_MAX_UB_SLOTS];
 } WgUniformState;
 
 static WgUniformState g_ub;
+// ring を大きくできなかった frame (draw を捨てる error の log を frame に
+// 1 回にする)
+static uint64_t g_ub_fail_frame;
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
+
+// pass の中で最後に設定した状態。同じものの設定を省く。begin_pass で消し、
+// bind group を release するとき (同じ番地が別の bind group に使われうる)
+// にも消す。index buffer は buffer の id で比べる。
+static WGPUBindGroup g_set_bg[2];
+static uint32_t g_set_dyn[SGL_MAX_UNIFORM_BLOCKS]; // group 0 の dynamic offset
+static uint64_t g_set_ib_id, g_set_ib_off, g_set_ib_size;
+
+// transient buffer (Gfx.TransientBuffer、ImGui の頂点): Storage|Index の
+// chunk を並べた frame ごとの arena。frame の中では前にだけ進む。chunk は
+// frame をまたいで持ち続け、WG_TRANSIENT_KEEP_FRAMES frame 使われなかった
+// ものだけ手放す。
+#define WG_TRANSIENT_CHUNK (1u << 20)
+#define WG_TRANSIENT_KEEP_FRAMES 120
+#define WG_STORAGE_ALIGN 256 // minStorageBufferOffsetAlignment (default)
+
+typedef struct WgChunk {
+  WgStaged s;
+  uint64_t last_frame;
+} WgChunk;
+
+static WgChunk **g_chunks;
+static int g_chunk_count, g_chunk_cap;
+static int g_chunk_cur; // この frame で割り当てている chunk
+
+// ---- staging / submit helpers ----------------------------------------------
+
+static WGPUBufferUsage wg_buffer_usage(SglBufferType type) {
+  if (type == SGL_BUFFER_INDEX)
+    return WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+  if (type == SGL_BUFFER_STORAGE)
+    return WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+  return WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+}
+
+static void wg_dead_id(uint64_t id) {
+  if (g_dead_count == g_dead_cap) {
+    int cap = g_dead_cap ? g_dead_cap * 2 : 64;
+    uint64_t *grown =
+        (uint64_t *)realloc(g_dead_ids, (size_t)cap * sizeof(uint64_t));
+    if (!grown)
+      return; // 捨て損ねた entry は WG_BG_KEEP_FRAMES 後に古さで消える
+    g_dead_ids = grown;
+    g_dead_cap = cap;
+  }
+  g_dead_ids[g_dead_count++] = id;
+}
+
+static void wg_release_bind_group(WGPUBindGroup bg) {
+  if (!bg)
+    return;
+  for (int i = 0; i < 2; ++i)
+    if (g_set_bg[i] == bg)
+      g_set_bg[i] = NULL;
+  wgpuBindGroupRelease(bg);
+}
+
+static bool wg_staged_init(WgStaged *s, WGPUBufferUsage usage, uint64_t bytes) {
+  memset(s, 0, sizeof(*s));
+  s->cpu = (uint8_t *)malloc((size_t)bytes);
+  if (!s->cpu)
+    return false;
+  WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+  bd.usage = usage;
+  bd.size = bytes;
+  s->wb.buf = wgpuDeviceCreateBuffer(g_dev, &bd);
+  if (!s->wb.buf) {
+    free(s->cpu);
+    s->cpu = NULL;
+    return false;
+  }
+  s->wb.bytes = bytes;
+  s->wb.id = g_next_id++;
+  gpu_stats_create(GPU_STAT_BUFFER, bytes);
+  return true;
+}
+
+// GPU buffer を手放す。emdawnwebgpu の release は JS object の対応を外す
+// だけで destroy() を呼ばないので、release だけでは GPU の memory が JS の
+// GC まで残る。submit した後の destroy は、GPU がその仕事を終えてから
+// memory を返す。submit は destroy した buffer を使う command buffer を
+// 拒むので、まだ submit していない command が参照している (pending) buffer
+// は次の submit の後まで待たせる (wg_free_retired)。
+static void wg_buffer_free(WGPUBuffer buf, bool pending) {
+  if (!buf)
+    return;
+  if (pending) {
+    if (g_retired_count == g_retired_cap) {
+      int cap = g_retired_cap ? g_retired_cap * 2 : 16;
+      WGPUBuffer *grown =
+          (WGPUBuffer *)realloc(g_retired, (size_t)cap * sizeof(WGPUBuffer));
+      if (!grown) {
+        wgpuBufferRelease(buf); // 置けなければ GC に任せる
+        return;
+      }
+      g_retired = grown;
+      g_retired_cap = cap;
+    }
+    g_retired[g_retired_count++] = buf;
+    return;
+  }
+  wgpuBufferDestroy(buf);
+  wgpuBufferRelease(buf);
+}
+
+static void wg_free_retired(void) {
+  for (int i = 0; i < g_retired_count; ++i) {
+    wgpuBufferDestroy(g_retired[i]);
+    wgpuBufferRelease(g_retired[i]);
+  }
+  g_retired_count = 0;
+}
+
+// pending: まだ submit していない command がこの buffer を参照しうる
+static void wg_staged_free(WgStaged *s, bool pending) {
+  if (s->wb.buf) {
+    wg_dead_id(s->wb.id);
+    wg_buffer_free(s->wb.buf, pending);
+    gpu_stats_destroy(GPU_STAT_BUFFER, s->wb.bytes);
+  }
+  free(s->cpu);
+  memset(s, 0, sizeof(*s));
+}
+
+static void wg_staged_flush(WgStaged *s) {
+  if (s->used > s->flushed) {
+    wgpuQueueWriteBuffer(g_queue, s->wb.buf, s->flushed, s->cpu + s->flushed,
+                         (size_t)(s->used - s->flushed));
+    s->flushed = s->used;
+  }
+}
+
+static void wg_flush_uploads(void) {
+  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
+    wg_staged_flush(&g_ub.ring[i]);
+  for (int i = 0; i < g_chunk_count; ++i)
+    wg_staged_flush(&g_chunks[i]->s);
+}
+
+// frame の encoder を submit する。uniform と transient の書いた分を先に
+// 送り (queue の上でこの command buffer より前に着く)、この command buffer
+// が参照していた手放した buffer は submit の後で destroy する。
+static void wg_submit_encoder(void) {
+  wg_flush_uploads();
+  WGPUCommandBufferDescriptor cmd_desc = {0};
+  WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
+  wgpuQueueSubmit(g_queue, 1, &cmd);
+  wgpuCommandBufferRelease(cmd);
+  wgpuCommandEncoderRelease(g_enc);
+  g_enc = NULL;
+  g_submit_serial++;
+  wg_free_retired();
+}
 
 // ---- bring-up (surface / depth / swapchain) --------------------------------
 
@@ -254,6 +495,12 @@ static bool wg_init(App *app) {
   app->wgpu_surface_format = WGPUTextureFormat_BGRA8Unorm;
   g_dev = app->wgpu_device;
   g_queue = wgpuDeviceGetQueue(g_dev);
+  WGPULimits limits = WGPU_LIMITS_INIT;
+  g_max_buffer_size = 256u << 20; // WebGPU の既定値
+  if (wgpuDeviceGetLimits(g_dev, &limits) == WGPUStatus_Success &&
+      limits.maxBufferSize != WGPU_LIMIT_U64_UNDEFINED &&
+      limits.maxBufferSize > 0)
+    g_max_buffer_size = limits.maxBufferSize;
   int cw = wg_canvas_width();
   int ch = wg_canvas_height();
   if (cw <= 0)
@@ -266,10 +513,12 @@ static bool wg_init(App *app) {
 
   // Create uniform staging buffers.
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
-    bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    bd.size = WG_UB_RING_SIZE;
-    g_ub.bufs[i] = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
+    if (!wg_staged_init(&g_ub.ring[i],
+                        WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
+                        WG_UB_RING_SIZE)) {
+      SDL_Log("[webgpu] uniform ring create failed");
+      return false;
+    }
   }
 
   SDL_Log("[webgpu] backend init OK: %dx%d", cw, ch);
@@ -277,12 +526,22 @@ static bool wg_init(App *app) {
 }
 
 static void wg_shutdown(App *app) {
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    if (g_ub.bufs[i]) {
-      wgpuBufferRelease(g_ub.bufs[i]);
-      g_ub.bufs[i] = NULL;
-    }
+  wg_free_retired();
+  free(g_retired);
+  g_retired = NULL;
+  g_retired_cap = 0;
+  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
+    wg_staged_free(&g_ub.ring[i], false);
+  for (int i = 0; i < g_chunk_count; ++i) {
+    wg_staged_free(&g_chunks[i]->s, false);
+    free(g_chunks[i]);
   }
+  free(g_chunks);
+  g_chunks = NULL;
+  g_chunk_count = g_chunk_cap = g_chunk_cur = 0;
+  free(g_dead_ids);
+  g_dead_ids = NULL;
+  g_dead_count = g_dead_cap = 0;
   if (g_queue) {
     wgpuQueueRelease(g_queue);
     g_queue = NULL;
@@ -318,11 +577,373 @@ static void wg_shutdown(App *app) {
   app->wgpu_device = NULL;
 }
 
+// ---- bind group cache ------------------------------------------------------
+
+// group 1 に入れる resource (reflection の並び、未束縛は NULL)
+typedef struct WgGroup1 {
+  WgImage *tex[SGL_MAX_TEXTURES];
+  WgBuffer *sb[SGL_MAX_STORAGE_BUFS];
+  uint64_t sb_off[SGL_MAX_STORAGE_BUFS];
+  uint64_t sb_size[SGL_MAX_STORAGE_BUFS];
+  WgImage *st[SGL_MAX_STORAGE_TEXTURES];
+} WgGroup1;
+
+static uint64_t wg_hash_words(const uint64_t *w, int n) {
+  uint64_t h = 0x9E3779B97F4A7C15ull ^ (uint64_t)n;
+  for (int i = 0; i < n; ++i) {
+    h ^= w[i];
+    h *= 0xFF51AFD7ED558CCDull;
+    h ^= h >> 32;
+  }
+  return h;
+}
+
+static WgBgEntry *wg_bg_cache_find(WgBgCache *c, const uint64_t *key, int n,
+                                   uint64_t hash) {
+  if (!c->cap)
+    return NULL;
+  uint32_t mask = c->cap - 1;
+  for (uint32_t i = (uint32_t)hash & mask;; i = (i + 1) & mask) {
+    WgBgEntry *e = &c->slots[i];
+    if (!e->bg)
+      return NULL;
+    if (e->hash == hash &&
+        memcmp(e->key, key, (size_t)n * sizeof(uint64_t)) == 0)
+      return e;
+  }
+}
+
+static void wg_bg_cache_place(WgBgCache *c, const WgBgEntry *src) {
+  uint32_t mask = c->cap - 1;
+  uint32_t i = (uint32_t)src->hash & mask;
+  while (c->slots[i].bg)
+    i = (i + 1) & mask;
+  c->slots[i] = *src;
+  c->count++;
+}
+
+// cap (2 の冪、使用率 1/2 以下) の表に入れ直す。bg が NULL の entry は落とす
+static bool wg_bg_cache_rehash(WgBgCache *c, uint32_t cap) {
+  WgBgEntry *slots = (WgBgEntry *)calloc(cap, sizeof(WgBgEntry));
+  if (!slots)
+    return false;
+  WgBgEntry *old = c->slots;
+  uint32_t old_cap = c->cap;
+  c->slots = slots;
+  c->cap = cap;
+  c->count = 0;
+  for (uint32_t i = 0; i < old_cap; ++i)
+    if (old[i].bg)
+      wg_bg_cache_place(c, &old[i]);
+  free(old);
+  return true;
+}
+
+static void wg_bg_cache_clear(WgBgCache *c) {
+  for (uint32_t i = 0; i < c->cap; ++i)
+    wg_release_bind_group(c->slots[i].bg);
+  free(c->slots);
+  memset(c, 0, sizeof(*c));
+}
+
+static int wg_cmp_u64(const void *a, const void *b) {
+  uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+static bool wg_id_dead(uint64_t id) {
+  return id && bsearch(&id, g_dead_ids, (size_t)g_dead_count, sizeof(uint64_t),
+                       wg_cmp_u64) != NULL;
+}
+
+static bool wg_bg_entry_dead(const WgPipeline *p, const WgBgEntry *e) {
+  int w = 0;
+  for (int i = 0; i < p->refl.tex_count; ++i)
+    if (wg_id_dead(e->key[w++]))
+      return true;
+  for (int i = 0; i < p->refl.storage_buf_count; ++i, w += 3)
+    if (wg_id_dead(e->key[w]))
+      return true;
+  for (int i = 0; i < p->refl.storage_tex_count; ++i)
+    if (wg_id_dead(e->key[w++]))
+      return true;
+  return false;
+}
+
+// begin_frame で呼ぶ。しばらく使われない entry と、破棄した resource を
+// 参照する entry を捨てる。
+static void wg_bg_cache_sweep(void) {
+  if (g_dead_count > 1)
+    qsort(g_dead_ids, (size_t)g_dead_count, sizeof(uint64_t), wg_cmp_u64);
+  for (WgPipeline *p = g_pipelines; p; p = p->next) {
+    WgBgCache *c = &p->bgc;
+    if (!c->count)
+      continue;
+    uint32_t removed = 0;
+    for (uint32_t i = 0; i < c->cap; ++i) {
+      WgBgEntry *e = &c->slots[i];
+      if (!e->bg)
+        continue;
+      bool stale = e->transient ? e->last_frame + 1 < g_frame
+                                : g_frame - e->last_frame > WG_BG_KEEP_FRAMES;
+      if (stale || (g_dead_count > 0 && wg_bg_entry_dead(p, e))) {
+        wg_release_bind_group(e->bg);
+        e->bg = NULL;
+        removed++;
+      }
+    }
+    if (!removed)
+      continue;
+    uint32_t live = c->count - removed;
+    uint32_t cap = 16;
+    while (cap < live * 2)
+      cap *= 2;
+    if (!wg_bg_cache_rehash(c, cap))
+      wg_bg_cache_clear(c);
+  }
+  g_dead_count = 0;
+}
+
+// group 1 の bind group を cache から引く (無ければ作って入れる)。
+// *uncached = true なら cache に入れられなかったので、使ったら release する。
+static WGPUBindGroup wg_group1(WgPipeline *p, const WgGroup1 *g,
+                               bool *uncached) {
+  const ShaderReflection *r = &p->refl;
+  uint64_t key[WG_BG_KEY_WORDS];
+  bool transient = false;
+  int w = 0;
+  for (int i = 0; i < r->tex_count; ++i)
+    key[w++] = g->tex[i] ? g->tex[i]->id : 0;
+  for (int i = 0; i < r->storage_buf_count; ++i) {
+    const WgBuffer *b = g->sb[i];
+    key[w++] = b ? b->id : 0;
+    key[w++] = b ? g->sb_off[i] : 0;
+    key[w++] = b ? g->sb_size[i] : 0;
+    if (b && b->transient)
+      transient = true;
+  }
+  for (int i = 0; i < r->storage_tex_count; ++i)
+    key[w++] = g->st[i] ? g->st[i]->id : 0;
+  uint64_t hash = wg_hash_words(key, w);
+  *uncached = false;
+  WgBgEntry *hit = wg_bg_cache_find(&p->bgc, key, w, hash);
+  if (hit) {
+    hit->last_frame = g_frame;
+    return hit->bg;
+  }
+
+  WGPUBindGroupEntry entries[2 * SGL_MAX_TEXTURES + SGL_MAX_STORAGE_BUFS +
+                             SGL_MAX_STORAGE_TEXTURES] = {0};
+  int count = 0;
+  for (int i = 0; i < r->tex_count; ++i) {
+    if (!g->tex[i])
+      continue;
+    if (r->texs[i].img_slot >= 0) {
+      WGPUBindGroupEntry *e = &entries[count++];
+      e->binding = (uint32_t)r->texs[i].img_slot;
+      e->textureView = g->tex[i]->view;
+    }
+    if (r->texs[i].smp_slot >= 0) {
+      WGPUBindGroupEntry *e = &entries[count++];
+      e->binding = (uint32_t)r->texs[i].smp_slot;
+      e->sampler = g->tex[i]->sampler;
+    }
+  }
+  for (int i = 0; i < r->storage_buf_count; ++i) {
+    if (!g->sb[i])
+      continue;
+    WGPUBindGroupEntry *e = &entries[count++];
+    e->binding = (uint32_t)r->storage_bufs[i].slot;
+    e->buffer = g->sb[i]->buf;
+    e->offset = g->sb_off[i];
+    e->size = g->sb_size[i];
+  }
+  for (int i = 0; i < r->storage_tex_count; ++i) {
+    if (!g->st[i])
+      continue;
+    WGPUBindGroupEntry *e = &entries[count++];
+    e->binding = (uint32_t)r->storage_texs[i].slot;
+    e->textureView = g->st[i]->storage_view;
+  }
+  WGPUBindGroupDescriptor bgd = {
+      .layout = p->bgl1,
+      .entryCount = (size_t)count,
+      .entries = entries,
+  };
+  WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
+  if (!bg)
+    return NULL;
+
+  WgBgCache *c = &p->bgc;
+  if ((c->count + 1) * 2 > c->cap &&
+      !wg_bg_cache_rehash(c, c->cap ? c->cap * 2 : 16)) {
+    *uncached = true;
+    return bg;
+  }
+  WgBgEntry ne;
+  memset(&ne, 0, sizeof(ne));
+  ne.bg = bg;
+  ne.hash = hash;
+  ne.last_frame = g_frame;
+  ne.transient = transient;
+  memcpy(ne.key, key, (size_t)w * sizeof(uint64_t));
+  wg_bg_cache_place(c, &ne);
+  return bg;
+}
+
+// ---- uniform ring ----------------------------------------------------------
+
+// ring の空きが足りない: 書いた分を今の buffer へ送ってから倍の大きさの
+// buffer に替える。先に記録した command は前の buffer を読み続ける (前の
+// buffer は次の submit の後で destroy する)。maxBufferSize と、dynamic
+// offset が 32 bit に収まる大きさまでしか大きくしない。
+static bool wg_ub_grow(int slot) {
+  WgStaged *r = &g_ub.ring[slot];
+  uint64_t bytes = r->wb.bytes * 2;
+  if (bytes > g_max_buffer_size || bytes > ((uint64_t)1 << 31))
+    return false;
+  wg_staged_flush(r);
+  WgStaged grown;
+  if (!wg_staged_init(&grown, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
+                      bytes))
+    return false;
+  wg_staged_free(r, true);
+  *r = grown;
+  g_ub.gen++;
+  return true;
+}
+
+// uniform を 1 つ slot の ring に書き、g_ub.last_off をそこに向ける。ring を
+// 大きくできなければ false (呼び手はその draw / dispatch を捨てる)。
+static bool wg_ub_push(int slot, const void *data, size_t bytes) {
+  WgStaged *r = &g_ub.ring[slot];
+  if (r->used + WG_UB_SIZE > r->wb.bytes && !wg_ub_grow(slot)) {
+    if (g_ub_fail_frame != g_frame) {
+      g_ub_fail_frame = g_frame;
+      SDL_Log("[webgpu] ERROR: uniform ring grow failed (slot %d, %llu "
+              "bytes); skipping draws that write uniforms this frame",
+              slot, (unsigned long long)r->wb.bytes * 2);
+    }
+    return false;
+  }
+  uint64_t off = r->used;
+  memcpy(r->cpu + off, data, bytes);
+  r->used = off + wg_align64(bytes > 0 ? bytes : 1, WG_UB_ALIGN);
+  g_ub.last_off[slot] = (uint32_t)off;
+  return true;
+}
+
+// pipeline の group 0: 各 UB slot の ring 全体 (dynamic offset で位置を選ぶ)
+static WGPUBindGroup wg_pipeline_bg0(WgPipeline *p) {
+  if (p->bg0 && p->bg0_gen == g_ub.gen)
+    return p->bg0;
+  wg_release_bind_group(p->bg0);
+  WGPUBindGroupEntry entries[SGL_MAX_UNIFORM_BLOCKS] = {0};
+  for (int i = 0; i < p->ub_n; ++i) {
+    int slot = p->ub_bindings[i];
+    entries[i].binding = (uint32_t)slot;
+    entries[i].buffer = g_ub.ring[slot].wb.buf;
+    entries[i].offset = 0;
+    entries[i].size = WG_UB_SIZE;
+  }
+  WGPUBindGroupDescriptor bgd = {
+      .layout = p->bgl0,
+      .entryCount = (size_t)p->ub_n,
+      .entries = entries,
+  };
+  p->bg0 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
+  p->bg0_gen = g_ub.gen;
+  return p->bg0;
+}
+
+// ---- transient buffers -----------------------------------------------------
+
+static void wg_transient_frame_begin(void) {
+  int kept = 0;
+  for (int i = 0; i < g_chunk_count; ++i) {
+    WgChunk *c = g_chunks[i];
+    if (g_frame - c->last_frame > WG_TRANSIENT_KEEP_FRAMES) {
+      wg_staged_free(&c->s, c->s.wb.used_serial == g_submit_serial);
+      free(c);
+      continue;
+    }
+    c->s.used = c->s.flushed = 0;
+    g_chunks[kept++] = c;
+  }
+  g_chunk_count = kept;
+  g_chunk_cur = 0;
+}
+
+static bool wg_transient_buffer(SglBufferType type, const void *data,
+                                size_t bytes, BufferSlice *out) {
+  if (!out || (type != SGL_BUFFER_INDEX && type != SGL_BUFFER_STORAGE))
+    return false;
+  // 束縛する大きさは 4 の倍数に切り上げる (WebGPU の決まり) のでその分まで取る
+  uint64_t need = wg_align64(bytes > 0 ? (uint64_t)bytes : 4, 4);
+  uint64_t align = type == SGL_BUFFER_STORAGE ? WG_STORAGE_ALIGN : 4;
+  for (;;) {
+    if (g_chunk_cur < g_chunk_count) {
+      WgChunk *c = g_chunks[g_chunk_cur];
+      uint64_t off = wg_align64(c->s.used, align);
+      if (off + need <= c->s.wb.bytes) {
+        if (data && bytes > 0)
+          memcpy(c->s.cpu + off, data, bytes);
+        if (need > bytes)
+          memset(c->s.cpu + off + bytes, 0, (size_t)(need - bytes));
+        c->s.used = off + need;
+        c->last_frame = g_frame;
+        out->buf = (BackendBuffer)&c->s.wb;
+        out->offset = (size_t)off;
+        out->size = bytes;
+        return true;
+      }
+      // 次の chunk へ。この frame のうちは戻らない
+      g_chunk_cur++;
+      continue;
+    }
+    if (g_chunk_count == g_chunk_cap) {
+      int cap = g_chunk_cap ? g_chunk_cap * 2 : 8;
+      WgChunk **grown =
+          (WgChunk **)realloc(g_chunks, (size_t)cap * sizeof(WgChunk *));
+      if (!grown)
+        return false;
+      g_chunks = grown;
+      g_chunk_cap = cap;
+    }
+    uint64_t cap = WG_TRANSIENT_CHUNK;
+    while (cap < need)
+      cap *= 2;
+    if (cap > g_max_buffer_size)
+      cap = g_max_buffer_size;
+    if (cap < need)
+      return false; // maxBufferSize を超える (呼び手が error にする)
+    WgChunk *c = (WgChunk *)calloc(1, sizeof(WgChunk));
+    if (!c)
+      return false;
+    if (!wg_staged_init(&c->s,
+                        WGPUBufferUsage_Storage | WGPUBufferUsage_Index |
+                            WGPUBufferUsage_CopyDst,
+                        cap)) {
+      free(c);
+      return false;
+    }
+    c->s.wb.type = SGL_BUFFER_STORAGE;
+    c->s.wb.transient = true;
+    c->last_frame = g_frame;
+    g_chunks[g_chunk_count++] = c; // g_chunk_cur はこの chunk を指す
+  }
+}
+
 // ---- frame begin / end -----------------------------------------------------
 
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
-    g_ub.ring_offset[i] = 0;
+  g_frame++;
+  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
+    g_ub.ring[i].used = g_ub.ring[i].flushed = 0;
+    g_ub.last_off[i] = 0;
+  }
+  wg_transient_frame_begin();
+  wg_bg_cache_sweep();
 
   int cw = wg_canvas_width();
   int ch = wg_canvas_height();
@@ -418,14 +1039,8 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
 
 static void wg_end_frame(App *app) {
   // Submit the command buffer.
-  if (g_enc) {
-    WGPUCommandBufferDescriptor cmd_desc = {0};
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
-    wgpuQueueSubmit(g_queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(g_enc);
-    g_enc = NULL;
-  }
+  if (g_enc)
+    wg_submit_encoder();
 
   if (app->wgpu_swapchain_view) {
     wgpuTextureViewRelease(app->wgpu_swapchain_view);
@@ -448,17 +1063,10 @@ static BackendBuffer wg_make_buffer(SglBufferType type, const void *data,
     return 0;
   wb->type = type;
   wb->bytes = (uint64_t)cap_bytes;
-
-  WGPUBufferUsage usage = 0;
-  if (type == SGL_BUFFER_INDEX)
-    usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-  else if (type == SGL_BUFFER_STORAGE)
-    usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
-  else
-    usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+  wb->id = g_next_id++;
 
   WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
-  bd.usage = usage;
+  bd.usage = wg_buffer_usage(type);
   bd.size = cap_bytes > 0 ? cap_bytes : 4;
   wb->buf = wgpuDeviceCreateBuffer(g_dev, &bd);
   if (!wb->buf) {
@@ -477,7 +1085,8 @@ static void wg_destroy_buffer(BackendBuffer h) {
   if (!wb)
     return;
   if (wb->buf) {
-    wgpuBufferRelease(wb->buf);
+    wg_dead_id(wb->id);
+    wg_buffer_free(wb->buf, wb->used_serial == g_submit_serial);
     gpu_stats_destroy(GPU_STAT_BUFFER, wb->bytes);
   }
   free(wb);
@@ -493,6 +1102,7 @@ static BackendImage wg_make_image(const ImageDesc *d) {
   wi->storage = d->storage;
   wi->fmt = d->fmt;
   wi->stat_bytes = gpu_stats_image_bytes(d->fmt, d->w, d->h);
+  wi->id = g_next_id++;
 
   WGPUTextureFormat wfmt = sgl_to_wgpu_fmt(d->fmt);
 
@@ -604,6 +1214,7 @@ static void wg_destroy_image(BackendImage h) {
   WgImage *wi = (WgImage *)h;
   if (!wi)
     return;
+  wg_dead_id(wi->id);
   if (wi->storage_view) {
     wgpuTextureViewRelease(wi->storage_view);
     gpu_stats_destroy(GPU_STAT_VIEW, 0);
@@ -799,6 +1410,44 @@ static void wg_build_bind_group_layouts(WGPUDevice dev,
 
 // ---- make / destroy pipeline -----------------------------------------------
 
+// 束縛のための表を reflection から作り、g_pipelines に繋ぐ
+static void wg_pipeline_register(WgPipeline *wp) {
+  const ShaderReflection *r = &wp->refl;
+  for (int i = 0; i < r->ub_count && i < SGL_MAX_UNIFORM_BLOCKS; ++i) {
+    int slot = r->ubs[i].slot;
+    if (slot < 0 || slot >= WG_MAX_UB_SLOTS)
+      continue;
+    int k = wp->ub_n++;
+    while (k > 0 && wp->ub_bindings[k - 1] > slot) {
+      wp->ub_bindings[k] = wp->ub_bindings[k - 1];
+      --k;
+    }
+    wp->ub_bindings[k] = slot;
+  }
+  for (int i = 0; i < r->tex_count; ++i) {
+    wp->tex_next[i] = -1;
+    for (int j = i + 1; j < r->tex_count && wp->tex_next[i] < 0; ++j)
+      if (strcmp(r->texs[i].name, r->texs[j].name) == 0)
+        wp->tex_next[i] = (int8_t)j;
+  }
+  for (int i = 0; i < r->storage_buf_count; ++i) {
+    wp->sb_next[i] = -1;
+    for (int j = i + 1; j < r->storage_buf_count && wp->sb_next[i] < 0; ++j)
+      if (strcmp(r->storage_bufs[i].name, r->storage_bufs[j].name) == 0)
+        wp->sb_next[i] = (int8_t)j;
+  }
+  for (int i = 0; i < r->storage_tex_count; ++i) {
+    wp->st_next[i] = -1;
+    for (int j = i + 1; j < r->storage_tex_count && wp->st_next[i] < 0; ++j)
+      if (strcmp(r->storage_texs[i].name, r->storage_texs[j].name) == 0)
+        wp->st_next[i] = (int8_t)j;
+  }
+  wp->next = g_pipelines;
+  if (g_pipelines)
+    g_pipelines->prev = wp;
+  g_pipelines = wp;
+}
+
 static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
   WgShader *ws = (WgShader *)d->shader;
   if (!ws)
@@ -842,6 +1491,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
       return 0;
     }
     gpu_stats_create(GPU_STAT_PIPELINE, 0);
+    wg_pipeline_register(wp);
     return (uintptr_t)wp;
   }
 
@@ -960,6 +1610,7 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
     return 0;
   }
   gpu_stats_create(GPU_STAT_PIPELINE, 0);
+  wg_pipeline_register(wp);
   return (uintptr_t)wp;
 }
 
@@ -967,6 +1618,17 @@ static void wg_destroy_pipeline(BackendPipeline h) {
   WgPipeline *wp = (WgPipeline *)h;
   if (!wp)
     return;
+  // 同じ番地に次の pipeline が作られうる (apply_pipeline の省略)
+  if (g_cur_pipeline == wp)
+    g_cur_pipeline = NULL;
+  wg_bg_cache_clear(&wp->bgc);
+  wg_release_bind_group(wp->bg0);
+  if (wp->prev)
+    wp->prev->next = wp->next;
+  else
+    g_pipelines = wp->next;
+  if (wp->next)
+    wp->next->prev = wp->prev;
   if (wp->render)
     wgpuRenderPipelineRelease(wp->render);
   if (wp->compute)
@@ -987,6 +1649,33 @@ static void wg_update_buffer(BackendBuffer h, const void *data, size_t bytes) {
   WgBuffer *wb = (WgBuffer *)h;
   if (!wb || !data || bytes == 0)
     return;
+  if (bytes > wb->bytes)
+    bytes = (size_t)wb->bytes;
+  // writeBuffer は queue の上で frame の command buffer より前に着くので、
+  // まだ submit していない command がこの buffer を参照していると、先に記録
+  // した draw まで新しい内容を読んでしまう。同じ容量の buffer に替えてそこへ
+  // 書き、記録した順に読ませる (前の buffer は次の submit の後で destroy
+  // する。それを参照する cache の bind group は前の id で引くので、もう
+  // 当たらない)。
+  if (wb->used_serial == g_submit_serial) {
+    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+    bd.usage = wg_buffer_usage(wb->type);
+    bd.size = wb->bytes > 0 ? wb->bytes : 4;
+    WGPUBuffer nb = wgpuDeviceCreateBuffer(g_dev, &bd);
+    if (nb) {
+      wg_dead_id(wb->id);
+      wg_buffer_free(wb->buf, true);
+      gpu_stats_destroy(GPU_STAT_BUFFER, wb->bytes);
+      gpu_stats_create(GPU_STAT_BUFFER, wb->bytes);
+      wb->buf = nb;
+      wb->id = g_next_id++;
+      wb->used_serial = 0;
+    } else {
+      SDL_Log("[webgpu] ERROR: update_buffer: replacement buffer create "
+              "failed; draws recorded earlier in this frame read the new "
+              "data");
+    }
+  }
   wgpuQueueWriteBuffer(g_queue, wb->buf, 0, data, bytes);
 }
 
@@ -1127,6 +1816,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   g_ibuf_bound = false;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     g_ub.dirty[i] = false;
+  g_set_bg[0] = g_set_bg[1] = NULL;
+  g_set_ib_id = 0;
 }
 
 static void wg_end_pass(App *app) {
@@ -1144,86 +1835,78 @@ static void wg_apply_pipeline(BackendPipeline p) {
   WgPipeline *wp = (WgPipeline *)p;
   if (!wp || !g_rpass)
     return;
+  if (wp == g_cur_pipeline)
+    return; // この pass で設定済み
   g_cur_pipeline = wp;
   wgpuRenderPassEncoderSetPipeline(g_rpass, wp->render);
 }
 
 static void wg_apply_bindings(const BindingsDesc *b) {
-  if (!g_rpass || !g_cur_pipeline)
+  WgPipeline *wp = g_cur_pipeline;
+  if (!g_rpass || !wp)
     return;
 
   // Index buffer
   g_ibuf_bound = false;
   if (b->ibuf) {
     WgBuffer *ib = (WgBuffer *)b->ibuf;
-    wgpuRenderPassEncoderSetIndexBuffer(
-        g_rpass, ib->buf, WGPUIndexFormat_Uint32, b->ibuf_offset, b->ibuf_size);
+    ib->used_serial = g_submit_serial;
+    if (ib->id != g_set_ib_id || b->ibuf_offset != g_set_ib_off ||
+        b->ibuf_size != g_set_ib_size) {
+      wgpuRenderPassEncoderSetIndexBuffer(g_rpass, ib->buf,
+                                          WGPUIndexFormat_Uint32,
+                                          b->ibuf_offset, b->ibuf_size);
+      g_set_ib_id = ib->id;
+      g_set_ib_off = b->ibuf_offset;
+      g_set_ib_size = b->ibuf_size;
+    }
     g_ibuf_bound = true;
   }
 
-  // Build bind group 1: textures + samplers + storage.
+  // Bind group 1: textures + samplers + storage.
   // Always set group 1 — WebKit requires all pipeline bind groups to be bound.
-  if (g_cur_pipeline->bgl1) {
-    WGPUBindGroupEntry entries[32] = {0};
-    int count = 0;
-
+  if (wp->bgl1) {
+    const ShaderReflection *r = &wp->refl;
+    WgGroup1 g;
+    memset(&g, 0, sizeof(g));
     if (b->refl) {
+      // slot はその名前の最初の entry。同じ名前の後ろの entry にも束縛する
       for (int i = 0; i < b->texture_count; ++i) {
-        const char *name = b->textures[i].name;
         WgImage *wi = (WgImage *)b->textures[i].image;
-        if (!name || !wi)
+        int k = b->textures[i].slot;
+        if (!wi || k < 0 || k >= r->tex_count)
           continue;
-        for (int k = 0; k < b->refl->tex_count; ++k) {
-          if (strcmp(b->refl->texs[k].name, name) == 0) {
-            int img_slot = b->refl->texs[k].img_slot;
-            int smp_slot = b->refl->texs[k].smp_slot;
-            if (img_slot >= 0) {
-              WGPUBindGroupEntry *e = &entries[count++];
-              e->binding = (uint32_t)img_slot;
-              e->textureView = wi->view;
-            }
-            if (smp_slot >= 0) {
-              WGPUBindGroupEntry *e = &entries[count++];
-              e->binding = (uint32_t)smp_slot;
-              e->sampler = wi->sampler;
-            }
-            break;
-          }
-        }
+        for (; k >= 0; k = wp->tex_next[k])
+          g.tex[k] = wi;
       }
       for (int i = 0; i < b->storage_buf_count; ++i) {
-        const char *name = b->storage_bufs[i].name;
         WgBuffer *wb = (WgBuffer *)b->storage_bufs[i].buf;
-        if (!name || !wb)
+        int k = b->storage_bufs[i].slot;
+        if (!wb || k < 0 || k >= r->storage_buf_count)
           continue;
-        for (int k = 0; k < b->refl->storage_buf_count; ++k) {
-          if (strcmp(b->refl->storage_bufs[k].name, name) == 0) {
-            WGPUBindGroupEntry *e = &entries[count++];
-            e->binding = (uint32_t)b->refl->storage_bufs[k].slot;
-            e->buffer = wb->buf;
-            // the logical size (a keyed buffer can have spare capacity),
-            // rounded up to the 4-byte multiple WebGPU requires
-            e->offset = b->storage_bufs[i].offset;
-            e->size = (b->storage_bufs[i].size + 3) & ~(uint64_t)3;
-            break;
-          }
+        wb->used_serial = g_submit_serial;
+        for (; k >= 0; k = wp->sb_next[k]) {
+          g.sb[k] = wb;
+          // the logical size (a keyed buffer can have spare capacity),
+          // rounded up to the 4-byte multiple WebGPU requires
+          g.sb_off[k] = b->storage_bufs[i].offset;
+          g.sb_size[k] = (b->storage_bufs[i].size + 3) & ~(uint64_t)3;
         }
       }
     }
-
-    WGPUBindGroupDescriptor bgd = {
-        .layout = g_cur_pipeline->bgl1,
-        .entryCount = (size_t)count,
-        .entries = entries,
-    };
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
+    bool uncached = false;
+    WGPUBindGroup bg = wg_group1(wp, &g, &uncached);
     if (bg) {
-      wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
-      wgpuBindGroupRelease(bg);
+      if (bg != g_set_bg[1]) {
+        wgpuRenderPassEncoderSetBindGroup(g_rpass, 1, bg, 0, NULL);
+        g_set_bg[1] = bg;
+      }
+      if (uncached)
+        wg_release_bind_group(bg);
     } else {
-      SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, count=%d "
+      SDL_Log("[webgpu] WARN: createBindGroup(group1) failed, "
               "tex_count=%d bgl1=%p",
-              count, b->texture_count, (void *)g_cur_pipeline->bgl1);
+              b->texture_count, (void *)wp->bgl1);
     }
   }
 }
@@ -1239,63 +1922,44 @@ static void wg_apply_uniforms(SglShaderStage stage, int ub_slot,
   g_ub.dirty[ub_slot] = true;
 }
 
-// Flush uniform data to GPU and bind group 0 before draw/dispatch.
-// Uses a ring buffer with dynamic offsets so each draw gets its own
-// uniform data region, preventing later draws from overwriting earlier ones.
-static void wg_flush_uniforms(void) {
-  if (!g_cur_pipeline)
-    return;
+// uniform を書き換えた slot を ring に書き、group 0 を dynamic offset で
+// 束縛する。書き換えていない slot は最後に書いた位置を読む。ring に書けな
+// かったら false (その slot は書き換えたままにし、次の draw でまた書く)。
+static bool wg_flush_uniforms(void) {
+  WgPipeline *wp = g_cur_pipeline;
+  if (!wp)
+    return true;
 
-  bool any_dirty = false;
+  bool ok = true;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    if (g_ub.dirty[i]) {
-      any_dirty = true;
-      size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
-      if (aligned > WG_UB_SIZE)
-        aligned = WG_UB_SIZE;
-      uint32_t off = g_ub.ring_offset[i];
-      if (off + WG_UB_STRIDE > WG_UB_RING_SIZE)
-        off = 0;
-      wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
-      g_ub.ring_offset[i] = off + WG_UB_STRIDE;
-    }
+    if (!g_ub.dirty[i])
+      continue;
+    size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
+    if (aligned > WG_UB_SIZE)
+      aligned = WG_UB_SIZE;
+    if (wg_ub_push(i, g_ub.data[i], aligned))
+      g_ub.dirty[i] = false;
+    else
+      ok = false;
   }
-  if (!any_dirty && g_cur_pipeline->refl.ub_count == 0)
-    return;
+  if (!ok)
+    return false;
+  if (wp->ub_n == 0)
+    return true;
 
-  // Build bind group 0 with the uniform buffers, using dynamic offsets.
-  WGPUBindGroupEntry entries[WG_MAX_UB_SLOTS] = {0};
-  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
-  int count = 0;
-  for (int i = 0; i < g_cur_pipeline->refl.ub_count && i < WG_MAX_UB_SLOTS;
-       ++i) {
-    int slot = g_cur_pipeline->refl.ubs[i].slot;
-    WGPUBindGroupEntry *e = &entries[count];
-    e->binding = (uint32_t)slot;
-    e->buffer = g_ub.bufs[slot];
-    e->offset = 0;
-    e->size = WG_UB_SIZE;
-    // Dynamic offset = where we last wrote for this slot.
-    uint32_t off = g_ub.ring_offset[slot];
-    dyn_offsets[count] = (off >= WG_UB_STRIDE) ? (off - WG_UB_STRIDE) : 0;
-    count++;
-  }
-  if (count > 0) {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = g_cur_pipeline->bgl0,
-        .entryCount = (size_t)count,
-        .entries = entries,
-    };
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-    if (bg) {
-      wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
-                                        dyn_offsets);
-      wgpuBindGroupRelease(bg);
-    }
-  }
-
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
-    g_ub.dirty[i] = false;
+  WGPUBindGroup bg = wg_pipeline_bg0(wp);
+  if (!bg)
+    return false;
+  uint32_t dyn[SGL_MAX_UNIFORM_BLOCKS];
+  for (int i = 0; i < wp->ub_n; ++i)
+    dyn[i] = g_ub.last_off[wp->ub_bindings[i]];
+  if (bg == g_set_bg[0] &&
+      memcmp(dyn, g_set_dyn, (size_t)wp->ub_n * sizeof(uint32_t)) == 0)
+    return true;
+  wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)wp->ub_n, dyn);
+  g_set_bg[0] = bg;
+  memcpy(g_set_dyn, dyn, (size_t)wp->ub_n * sizeof(uint32_t));
+  return true;
 }
 
 // ---- draw / dispatch -------------------------------------------------------
@@ -1303,7 +1967,10 @@ static void wg_flush_uniforms(void) {
 static void wg_draw(int base, int count, int instance_count) {
   if (!g_rpass)
     return;
-  wg_flush_uniforms();
+  // uniform を渡せない draw は、前の draw の uniform で描かずに捨てる
+  // (wg_ub_push が log を出す)
+  if (!wg_flush_uniforms())
+    return;
   if (instance_count < 1)
     instance_count = 1;
   if (g_ibuf_bound) {
@@ -1331,12 +1998,10 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   WgPipeline *wp = (WgPipeline *)d->pipeline;
   if (!wp->compute)
     return;
+  const ShaderReflection *r = &wp->refl;
 
-  // Build bind groups for compute.
-  // Group 0: uniforms (ring-buffered with dynamic offsets)
-  WGPUBindGroupEntry ub_entries[WG_MAX_UB_SLOTS] = {0};
-  uint32_t ub_dyn_offsets[WG_MAX_UB_SLOTS] = {0};
-  int ub_count = 0;
+  // Group 0: uniforms (ring-buffered with dynamic offsets). draw と同じ
+  // ring に同じ幅で書く。
   for (int i = 0; i < d->uniform_count; ++i) {
     int slot = d->uniforms[i].slot;
     if (slot < 0 || slot >= WG_MAX_UB_SLOTS || !d->uniforms[i].data)
@@ -1344,97 +2009,47 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     size_t aligned = wg_align((uint32_t)d->uniforms[i].bytes, 16);
     if (aligned > WG_UB_SIZE)
       aligned = WG_UB_SIZE;
-    uint32_t off = g_ub.ring_offset[slot];
-    if (off + WG_UB_ALIGN > WG_UB_RING_SIZE)
-      off = 0;
-    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[slot], off, d->uniforms[i].data,
-                         aligned);
-    WGPUBindGroupEntry *e = &ub_entries[ub_count];
-    e->binding = (uint32_t)slot;
-    e->buffer = g_ub.bufs[slot];
-    e->offset = 0;
-    e->size = WG_UB_SIZE;
-    ub_dyn_offsets[ub_count] = off;
-    g_ub.ring_offset[slot] = off + WG_UB_ALIGN;
-    ub_count++;
+    if (!wg_ub_push(slot, d->uniforms[i].data, aligned))
+      return; // draw と同じく捨てる
   }
+  WGPUBindGroup bg0 = wg_pipeline_bg0(wp);
+  uint32_t ub_dyn_offsets[SGL_MAX_UNIFORM_BLOCKS] = {0};
+  for (int i = 0; i < wp->ub_n; ++i)
+    ub_dyn_offsets[i] = g_ub.last_off[wp->ub_bindings[i]];
 
   // Group 1: textures + samplers + storage buffers + storage textures
-  WGPUBindGroupEntry res_entries[32] = {0};
-  int res_count = 0;
-
+  WgGroup1 g;
+  memset(&g, 0, sizeof(g));
   for (int i = 0; i < d->texture_count; ++i) {
     WgImage *wi = (WgImage *)d->textures[i].image;
-    if (!wi || !d->textures[i].name)
+    int k = d->textures[i].slot;
+    if (!wi || k < 0 || k >= r->tex_count)
       continue;
-    for (int k = 0; k < d->refl->tex_count; ++k) {
-      if (strcmp(d->refl->texs[k].name, d->textures[i].name) == 0) {
-        int img_slot = d->refl->texs[k].img_slot;
-        int smp_slot = d->refl->texs[k].smp_slot;
-        if (img_slot >= 0) {
-          res_entries[res_count].binding = (uint32_t)img_slot;
-          res_entries[res_count].textureView = wi->view;
-          res_count++;
-        }
-        if (smp_slot >= 0) {
-          res_entries[res_count].binding = (uint32_t)smp_slot;
-          res_entries[res_count].sampler = wi->sampler;
-          res_count++;
-        }
-        break;
-      }
-    }
+    for (; k >= 0; k = wp->tex_next[k])
+      g.tex[k] = wi;
   }
   for (int i = 0; i < d->n_storage_bufs; ++i) {
     WgBuffer *wb = (WgBuffer *)d->storage_bufs[i].buf;
-    if (!wb || !d->storage_bufs[i].name)
+    int k = d->storage_bufs[i].slot;
+    if (!wb || k < 0 || k >= r->storage_buf_count)
       continue;
-    for (int k = 0; k < d->refl->storage_buf_count; ++k) {
-      if (strcmp(d->refl->storage_bufs[k].name, d->storage_bufs[i].name) == 0) {
-        int slot = d->refl->storage_bufs[k].slot;
-        res_entries[res_count].binding = (uint32_t)slot;
-        res_entries[res_count].buffer = wb->buf;
-        res_entries[res_count].offset = d->storage_bufs[i].offset;
-        res_entries[res_count].size =
-            (d->storage_bufs[i].size + 3) & ~(uint64_t)3;
-        res_count++;
-        break;
-      }
+    wb->used_serial = g_submit_serial;
+    for (; k >= 0; k = wp->sb_next[k]) {
+      g.sb[k] = wb;
+      g.sb_off[k] = d->storage_bufs[i].offset;
+      g.sb_size[k] = (d->storage_bufs[i].size + 3) & ~(uint64_t)3;
     }
   }
   for (int i = 0; i < d->n_storage_textures; ++i) {
     WgImage *wi = (WgImage *)d->storage_textures[i].image;
-    if (!wi || !d->storage_textures[i].name)
+    int k = d->storage_textures[i].slot;
+    if (!wi || k < 0 || k >= r->storage_tex_count)
       continue;
-    for (int k = 0; k < d->refl->storage_tex_count; ++k) {
-      if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) ==
-          0) {
-        int slot = d->refl->storage_texs[k].slot;
-        res_entries[res_count].binding = (uint32_t)slot;
-        res_entries[res_count].textureView = wi->storage_view;
-        res_count++;
-        break;
-      }
-    }
+    for (; k >= 0; k = wp->st_next[k])
+      g.st[k] = wi;
   }
-
-  WGPUBindGroup bg0 = NULL, bg1 = NULL;
-  {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = wp->bgl0,
-        .entryCount = (size_t)ub_count,
-        .entries = ub_entries,
-    };
-    bg0 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-  }
-  {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = wp->bgl1,
-        .entryCount = (size_t)res_count,
-        .entries = res_entries,
-    };
-    bg1 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-  }
+  bool uncached = false;
+  WGPUBindGroup bg1 = wg_group1(wp, &g, &uncached);
 
   WGPUComputePassDescriptor cpd = {0};
   WGPUComputePassEncoder cpass =
@@ -1442,7 +2057,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (cpass) {
     wgpuComputePassEncoderSetPipeline(cpass, wp->compute);
     if (bg0)
-      wgpuComputePassEncoderSetBindGroup(cpass, 0, bg0, (size_t)ub_count,
+      wgpuComputePassEncoderSetBindGroup(cpass, 0, bg0, (size_t)wp->ub_n,
                                          ub_dyn_offsets);
     if (bg1)
       wgpuComputePassEncoderSetBindGroup(cpass, 1, bg1, 0, NULL);
@@ -1452,10 +2067,8 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     wgpuComputePassEncoderEnd(cpass);
     wgpuComputePassEncoderRelease(cpass);
   }
-  if (bg0)
-    wgpuBindGroupRelease(bg0);
-  if (bg1)
-    wgpuBindGroupRelease(bg1);
+  if (uncached)
+    wg_release_bind_group(bg1);
 }
 
 // ---- readback --------------------------------------------------------------
@@ -1550,11 +2163,7 @@ static bool wg_request_readback_image(App *app, BackendImage image, int w,
 
   // Submit pending work so render-target writes are visible.
   if (g_enc) {
-    WGPUCommandBufferDescriptor cmd_desc = {0};
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
-    wgpuQueueSubmit(g_queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(g_enc);
+    wg_submit_encoder();
     // Re-create encoder for rest of frame.
     WGPUCommandEncoderDescriptor enc_desc = {0};
     g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
@@ -1688,11 +2297,7 @@ static bool wg_capture(App *app, const char *path) {
   }
 
   if (g_enc) {
-    WGPUCommandBufferDescriptor cmd_desc = {0};
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
-    wgpuQueueSubmit(g_queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(g_enc);
+    wg_submit_encoder();
     // Re-create encoder for rest of frame.
     WGPUCommandEncoderDescriptor enc_desc = {0};
     g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
@@ -1828,7 +2433,7 @@ const RenderBackend g_backend_webgpu = {
     .capture = wg_capture,
     .capture_before_end_frame = true,
     .swapchain_color_format = wg_swapchain_color_format,
-    .transient_buffer = NULL, // runtime fallback (api_gfx.c)
+    .transient_buffer = wg_transient_buffer,
 };
 
 #else

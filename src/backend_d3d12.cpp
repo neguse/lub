@@ -10,7 +10,8 @@
 //     before an update read the old contents.
 //   * Uniforms are suballocated from a per-frame upload arena and bound as
 //     root CBVs (GPU VA, no descriptors) — the moral equivalent of SDL_GPU's
-//     push uniforms.
+//     push uniforms. Transient buffers are slices of the same arena, read in
+//     place from the UPLOAD heap (dx_transient_buffer).
 //   * Root signatures are built per shader from ShaderReflection; the slots
 //     are Slang's HLSL register indices (see SHADER_TARGET_D3D12).
 //   * Resource states are tracked per resource and transitioned lazily.
@@ -33,9 +34,12 @@
 #include <wrl/client.h>
 
 #include <limits.h>
+#include <map>
+#include <memory>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <tuple>
 #include <vector>
 
 // Agility SDK opt-in. D3D12 reads these two exports from the process
@@ -61,20 +65,46 @@ constexpr DXGI_FORMAT kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 constexpr DXGI_FORMAT kDefaultDepthFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 constexpr UINT kRtvHeapCap = 256;
 constexpr UINT kDsvHeapCap = 64;
-constexpr UINT kSrvHeapCapPerFrame = 4096; // shader-visible CBV_SRV_UAV ring
-constexpr UINT kSmpHeapCapPerFrame = 1024; // shader-visible sampler ring
+// Initial size of each frame slot's partition of the shader-visible
+// CBV_SRV_UAV ring; dx_srv_alloc doubles it when a frame needs more.
+constexpr UINT kSrvHeapCapPerFrame = 4096;
+// Shader-visible sampler heap (D3D12's maximum). It holds the cached sampler
+// tables (dx_sampler_table), not a per-frame ring.
+constexpr UINT kSmpHeapCap = D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
+constexpr int kMaxSamplerTable = 28; // s registers in one cached table
+// Upload chunks unused for this many resets of their frame slot are released.
+constexpr int kUploadChunkIdleFrames = 120;
+// The same for an oversized chunk: it holds large requests only, and one
+// that outgrows it gets a larger chunk (dx_upload_alloc), so the smaller one
+// is released soon.
+constexpr int kUploadBigChunkIdleFrames = 4;
+
+// --- buffers -----------------------------------------------------------------
+struct DxBuffer {
+  ComPtr<ID3D12Resource> res;
+  size_t bytes = 0;
+  SglBufferType type = SGL_BUFFER_STORAGE;
+  // Non-null for an upload arena chunk (the buffer of transient slices): its
+  // persistent CPU mapping.
+  uint8_t *map = nullptr;
+};
 
 // --- upload arena -----------------------------------------------------------
-// Per-frame transient upload memory (uniforms, buffer/texture updates).
-// Chunked linear allocator over UPLOAD-heap resources; reset when the frame
-// slot's fence has passed. Oversized requests get a dedicated chunk. All but
-// the first chunk are released on reset so a one-off spike (initial texture
-// uploads) doesn't pin memory forever.
+// Per-frame transient upload memory (uniforms, transient buffers,
+// buffer/texture updates). Chunked linear allocator over UPLOAD-heap
+// resources; reset when the frame slot's fence has passed, never wrapped
+// within a frame. A request larger than the base size gets an oversized
+// chunk (a power of two times the base size), which requests that fit a
+// base-size chunk do not use. Chunks are kept across frames so a steady load
+// of several chunks per frame reuses them; one left unused for
+// kUploadChunkIdleFrames resets (kUploadBigChunkIdleFrames for an oversized
+// one), such as a one-off spike of initial texture uploads, is released.
 struct UploadAlloc {
   ID3D12Resource *res;
   size_t offset;
   uint8_t *cpu;
   D3D12_GPU_VIRTUAL_ADDRESS gpu;
+  DxBuffer *buf; // the chunk as a BackendBuffer (transient slices)
 };
 
 struct UploadChunk {
@@ -82,6 +112,10 @@ struct UploadChunk {
   uint8_t *map = nullptr;
   size_t cap = 0;
   size_t off = 0;
+  int idle = 0; // resets since the chunk was last used
+  // Heap-allocated so its address survives the vector growing: transient
+  // slices hand it out as their BackendBuffer.
+  std::unique_ptr<DxBuffer> buf;
 };
 
 struct UploadArena {
@@ -89,10 +123,20 @@ struct UploadArena {
   size_t base_chunk_size = 4 * 1024 * 1024;
 
   void reset() {
-    if (chunks.size() > 1)
-      chunks.resize(1); // ComPtr releases the extras
-    if (!chunks.empty())
-      chunks[0].off = 0;
+    size_t keep = 0;
+    for (size_t i = 0; i < chunks.size(); ++i) {
+      UploadChunk &c = chunks[i];
+      c.idle = c.off > 0 ? 0 : c.idle + 1;
+      c.off = 0;
+      int limit = c.cap > base_chunk_size ? kUploadBigChunkIdleFrames
+                                          : kUploadChunkIdleFrames;
+      if (c.idle > limit)
+        continue; // released below (ComPtr)
+      if (keep != i)
+        chunks[keep] = std::move(c);
+      ++keep;
+    }
+    chunks.resize(keep);
   }
   void release_all() { chunks.clear(); }
 };
@@ -143,16 +187,9 @@ struct FrameCtx {
   uint64_t fence_value = 0;
   UploadArena upload;
   UINT srv_used = 0; // within this frame's srv ring partition
-  UINT smp_used = 0;
 };
 
 // --- resource wrappers -------------------------------------------------------
-struct DxBuffer {
-  ComPtr<ID3D12Resource> res;
-  size_t bytes = 0;
-  SglBufferType type = SGL_BUFFER_STORAGE;
-};
-
 struct DxImage {
   ComPtr<ID3D12Resource> res;
   int w = 0, h = 0;
@@ -197,11 +234,34 @@ struct Dx12State {
   CpuDescHeap rtv_heap;
   CpuDescHeap dsv_heap;
 
-  // Shader-visible rings, one partition per frame slot.
+  // Shader-visible CBV_SRV_UAV ring, one partition of srv_cap descriptors
+  // per frame slot.
   ComPtr<ID3D12DescriptorHeap> srv_heap;
   UINT srv_stride = 0;
+  UINT srv_cap = kSrvHeapCapPerFrame;
+  // Shader-visible sampler heap: cached tables, filled up to smp_used.
   ComPtr<ID3D12DescriptorHeap> smp_heap;
   UINT smp_stride = 0;
+  UINT smp_used = 0;
+  struct SamplerTable {
+    uint64_t key; // dx_sampler_table
+    UINT base;
+  };
+  std::vector<SamplerTable> smp_tables;
+
+  // This frame's transient slices copied to a stride-aligned place
+  // (dx_structured_range): (slice buffer, offset, stride) -> copy.
+  std::map<std::tuple<const DxBuffer *, size_t, UINT>, UploadAlloc> realigned;
+
+  // Graphics state last set on the open list (dx_apply_pipeline skips what is
+  // already there). A list Reset clears it (dx_reset_list_state).
+  ID3D12PipelineState *cl_pso = nullptr;
+  ID3D12RootSignature *cl_root_sig = nullptr;
+  D3D_PRIMITIVE_TOPOLOGY cl_topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+  // Uniform blocks (bit = b register) whose last apply_uniforms could not
+  // allocate: their root CBV still points at earlier data, so dx_draw skips
+  // draws until they are set again or the root signature changes.
+  unsigned cl_stale_ubs = 0;
 
   // Current pass state.
   bool in_pass = false;
@@ -261,6 +321,17 @@ void dx_wait_idle() {
   uint64_t v = g.fence_next++;
   g.queue->Signal(g.fence.Get(), v);
   dx_wait_for_fence(v);
+}
+
+// After g.cl->Reset: bind the descriptor heaps and forget the graphics state
+// dx_apply_pipeline remembers (a reset list has none).
+void dx_reset_list_state() {
+  ID3D12DescriptorHeap *heaps[] = {g.srv_heap.Get(), g.smp_heap.Get()};
+  g.cl->SetDescriptorHeaps(2, heaps);
+  g.cl_pso = nullptr;
+  g.cl_root_sig = nullptr;
+  g.cl_topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+  g.cl_stale_ubs = 0;
 }
 
 // Enhanced barriers. Buffers have no layout, so ordering them is one global
@@ -357,20 +428,33 @@ void dx_swapchain_to_present(ID3D12Resource *res) {
 }
 
 // Allocate transient upload memory valid until this frame slot's fence.
+// `align` need not be a power of two (chunks start 64 KB aligned).
 bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   UploadArena &a = g.frames[g.slot].upload;
   for (UploadChunk &c : a.chunks) {
-    size_t off = (c.off + align - 1) & ~(align - 1);
+    if (bytes <= a.base_chunk_size && c.cap > a.base_chunk_size)
+      continue; // keep small requests out of oversized chunks
+    size_t off = (c.off + align - 1) / align * align;
     if (off + bytes <= c.cap) {
       c.off = off + bytes;
       out->res = c.res.Get();
       out->offset = off;
       out->cpu = c.map + off;
       out->gpu = c.res->GetGPUVirtualAddress() + off;
+      out->buf = c.buf.get();
       return true;
     }
   }
-  size_t cap = bytes > a.base_chunk_size ? bytes : a.base_chunk_size;
+  // An oversized chunk is a power of two times the base size, so a request
+  // that grows a little every frame gets a new chunk only each time it
+  // doubles, not every frame.
+  size_t cap = a.base_chunk_size;
+  while (cap < bytes && cap <= SIZE_MAX / 2)
+    cap *= 2;
+  if (cap < bytes) {
+    SDL_Log("d3d12: upload request too large (%zu bytes)", bytes);
+    return false;
+  }
   cap = (cap + 65535) & ~(size_t)65535;
   UploadChunk c;
   D3D12_HEAP_PROPERTIES hp = {};
@@ -396,12 +480,17 @@ bool dx_upload_alloc(size_t bytes, size_t align, UploadAlloc *out) {
   }
   c.cap = cap;
   c.off = bytes;
+  c.buf = std::make_unique<DxBuffer>();
+  c.buf->res = c.res;
+  c.buf->bytes = cap;
+  c.buf->map = c.map;
   g.frames[g.slot].upload.chunks.push_back(std::move(c));
   UploadChunk &back = g.frames[g.slot].upload.chunks.back();
   out->res = back.res.Get();
   out->offset = 0;
   out->cpu = back.map;
   out->gpu = back.res->GetGPUVirtualAddress();
+  out->buf = back.buf.get();
   return true;
 }
 
@@ -710,8 +799,9 @@ bool dx_init(App *app) {
     }
     g.srv_stride = g.device->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    g.srv_cap = kSrvHeapCapPerFrame;
     d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    d.NumDescriptors = kSmpHeapCapPerFrame * kFramesInFlight;
+    d.NumDescriptors = kSmpHeapCap;
     if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g.smp_heap)))) {
       SDL_Log("d3d12: sampler heap create failed");
       return false;
@@ -780,13 +870,12 @@ void dx_begin_frame(App *app, int *out_w, int *out_h) {
   dx_drain_zombies();
   f.upload.reset();
   f.srv_used = 0;
-  f.smp_used = 0;
+  g.realigned.clear();
 
   f.alloc->Reset();
   g.cl->Reset(f.alloc.Get(), nullptr);
   g.recording = true;
-  ID3D12DescriptorHeap *heaps[] = {g.srv_heap.Get(), g.smp_heap.Get()};
-  g.cl->SetDescriptorHeaps(2, heaps);
+  dx_reset_list_state();
 
   g.bb_index = g.swapchain->GetCurrentBackBufferIndex();
   if (out_w)
@@ -1009,17 +1098,20 @@ struct Zombie {
   ComPtr<ID3D12Resource> res;
   ComPtr<ID3D12PipelineState> pso;
   ComPtr<ID3D12RootSignature> rs;
+  ComPtr<ID3D12DescriptorHeap> heap;
   uint64_t fence_value;
 };
 std::vector<Zombie> g_zombies;
 
 void dx_defer_release(ComPtr<ID3D12Resource> res,
                       ComPtr<ID3D12PipelineState> pso,
-                      ComPtr<ID3D12RootSignature> rs) {
+                      ComPtr<ID3D12RootSignature> rs,
+                      ComPtr<ID3D12DescriptorHeap> heap = nullptr) {
   Zombie z;
   z.res = std::move(res);
   z.pso = std::move(pso);
   z.rs = std::move(rs);
+  z.heap = std::move(heap);
   z.fence_value = g.fence_next; // retired once the *next* signal completes
   g_zombies.push_back(std::move(z));
 }
@@ -1265,9 +1357,18 @@ struct StageTables {
   int srv_count = 0;
   int smp_count = 0;
   int uav_count = 0;
+  // Next reflection entry with the same name, or -1. A binding's `slot` is
+  // the first entry with its name; a resource read by both VS and FS has one
+  // more entry (its own register) that must be bound too.
+  int8_t tex_next[SGL_MAX_TEXTURES];
+  int8_t sbuf_next[SGL_MAX_STORAGE_BUFS];
   StageTables() {
     for (int i = 0; i < SGL_MAX_UNIFORM_BLOCKS; ++i)
       ub_root[i] = -1;
+    for (int i = 0; i < SGL_MAX_TEXTURES; ++i)
+      tex_next[i] = -1;
+    for (int i = 0; i < SGL_MAX_STORAGE_BUFS; ++i)
+      sbuf_next[i] = -1;
   }
 };
 
@@ -1306,6 +1407,25 @@ void dx_collect_counts(const ShaderReflection *refl, StageTables *t) {
   t->srv_count = max_t + 1;
   t->smp_count = max_s + 1;
   t->uav_count = max_u + 1;
+
+  for (int i = 0; i < refl->tex_count; ++i) {
+    t->tex_next[i] = -1;
+    for (int j = i + 1; j < refl->tex_count; ++j) {
+      if (strcmp(refl->texs[i].name, refl->texs[j].name) == 0) {
+        t->tex_next[i] = (int8_t)j;
+        break;
+      }
+    }
+  }
+  for (int i = 0; i < refl->storage_buf_count; ++i) {
+    t->sbuf_next[i] = -1;
+    for (int j = i + 1; j < refl->storage_buf_count; ++j) {
+      if (strcmp(refl->storage_bufs[i].name, refl->storage_bufs[j].name) == 0) {
+        t->sbuf_next[i] = (int8_t)j;
+        break;
+      }
+    }
+  }
 }
 
 // Build a root signature covering the reflection's registers. Uniform blocks
@@ -1633,39 +1753,80 @@ void dx_end_pass(App *app) {
   g_current_pip = nullptr;
 }
 
+// Only what differs from the list's current state is set. Setting the same
+// root signature again would keep its root arguments anyway (D3D12 drops
+// them only when the root signature changes), so skipping it changes nothing.
 void dx_apply_pipeline(BackendPipeline h) {
   g_current_pip = (DxPipelineFull *)h;
   if (!g_current_pip || !g.recording || g_current_pip->is_compute)
     return;
-  g.cl->SetPipelineState(g_current_pip->pso.Get());
-  g.cl->SetGraphicsRootSignature(g_current_pip->root_sig);
-  g.cl->IASetPrimitiveTopology(g_current_pip->topology);
+  if (g.cl_pso != g_current_pip->pso.Get()) {
+    g.cl->SetPipelineState(g_current_pip->pso.Get());
+    g.cl_pso = g_current_pip->pso.Get();
+  }
+  if (g.cl_root_sig != g_current_pip->root_sig) {
+    g.cl->SetGraphicsRootSignature(g_current_pip->root_sig);
+    g.cl_root_sig = g_current_pip->root_sig;
+    g.cl_stale_ubs = 0; // a new root signature starts with no root CBVs
+  }
+  if (g.cl_topology != g_current_pip->topology) {
+    g.cl->IASetPrimitiveTopology(g_current_pip->topology);
+    g.cl_topology = g_current_pip->topology;
+  }
 }
 
-// Allocate `count` consecutive descriptors from this frame's shader-visible
-// ring partition. Returns false (with one log) when the ring overflows.
-bool dx_ring_alloc(bool sampler, UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
-                   D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
+// Replace the CBV_SRV_UAV heap with one whose per-frame partition is twice as
+// large (later frames keep the size). Commands already recorded this frame
+// read the old heap, so it is released once the GPU is done with the frame;
+// the list switches to the new heap, and the descriptor tables set before
+// the switch are not used again (every draw / dispatch sets its own).
+bool dx_grow_srv_heap() {
+  UINT cap = g.srv_cap * 2;
+  if ((uint64_t)cap * kFramesInFlight >
+      D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1)
+    return false;
+  D3D12_DESCRIPTOR_HEAP_DESC d = {};
+  d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  d.NumDescriptors = cap * kFramesInFlight;
+  d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  ComPtr<ID3D12DescriptorHeap> heap;
+  if (FAILED(g.device->CreateDescriptorHeap(&d, IID_PPV_ARGS(&heap))))
+    return false;
+  dx_defer_release(nullptr, nullptr, nullptr, std::move(g.srv_heap));
+  g.srv_heap = std::move(heap);
+  g.srv_cap = cap;
+  g.frames[g.slot].srv_used = 0;
+  ID3D12DescriptorHeap *heaps[] = {g.srv_heap.Get(), g.smp_heap.Get()};
+  g.cl->SetDescriptorHeaps(2, heaps);
+  SDL_Log("d3d12: srv descriptor heap grown to %u per frame", cap);
+  return true;
+}
+
+// Allocate `count` consecutive CBV_SRV_UAV descriptors from this frame's
+// ring partition, growing the heap when the partition is full. Returns false
+// (with one log) only when the heap cannot grow; the caller then skips its
+// draw / dispatch.
+bool dx_srv_alloc(UINT count, D3D12_CPU_DESCRIPTOR_HANDLE *cpu,
+                  D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
   FrameCtx &f = g.frames[g.slot];
-  UINT cap = sampler ? kSmpHeapCapPerFrame : kSrvHeapCapPerFrame;
-  UINT *used = sampler ? &f.smp_used : &f.srv_used;
-  if (*used + count > cap) {
+  if (f.srv_used + count > g.srv_cap && !dx_grow_srv_heap()) {
     static bool warned = false;
     if (!warned) {
-      SDL_Log("d3d12: %s descriptor ring overflow (%u + %u > %u)",
-              sampler ? "sampler" : "srv", *used, count, cap);
+      SDL_Log("d3d12: srv descriptor heap cannot grow past %u per frame; "
+              "skipping draws",
+              g.srv_cap);
       warned = true;
     }
     return false;
   }
-  UINT base = (UINT)g.slot * cap + *used;
-  *used += count;
-  ID3D12DescriptorHeap *heap = sampler ? g.smp_heap.Get() : g.srv_heap.Get();
-  UINT stride = sampler ? g.smp_stride : g.srv_stride;
-  D3D12_CPU_DESCRIPTOR_HANDLE c = heap->GetCPUDescriptorHandleForHeapStart();
-  c.ptr += (SIZE_T)base * stride;
-  D3D12_GPU_DESCRIPTOR_HANDLE gp = heap->GetGPUDescriptorHandleForHeapStart();
-  gp.ptr += (UINT64)base * stride;
+  UINT base = (UINT)g.slot * g.srv_cap + f.srv_used;
+  f.srv_used += count;
+  D3D12_CPU_DESCRIPTOR_HANDLE c =
+      g.srv_heap->GetCPUDescriptorHandleForHeapStart();
+  c.ptr += (SIZE_T)base * g.srv_stride;
+  D3D12_GPU_DESCRIPTOR_HANDLE gp =
+      g.srv_heap->GetGPUDescriptorHandleForHeapStart();
+  gp.ptr += (UINT64)base * g.srv_stride;
   *cpu = c;
   *gpu = gp;
   return true;
@@ -1703,94 +1864,193 @@ void dx_write_image_srv(D3D12_CPU_DESCRIPTOR_HANDLE at, DxImage *im) {
   g.device->CreateShaderResourceView(im->res.Get(), &sd, at);
 }
 
+// The sampler an s register gets, as the two things dx_write_sampler looks
+// at: bit 0 = NEAREST filter, bit 1 = CLAMP wrap. 0 is the default sampler
+// of a register no texture uses (LINEAR, REPEAT).
+uint8_t dx_sampler_mode(const DxImage *im) {
+  return (uint8_t)((im->filter == SGL_FILTER_NEAREST ? 1 : 0) |
+                   (im->wrap == SGL_WRAP_CLAMP ? 2 : 0));
+}
+
+// Sampler table for s0..count-1 with the given modes. Tables are cached by
+// content in the sampler heap and shared by every later draw and frame
+// (sampler descriptors never change once written), so the heap holds the few
+// distinct tables an app uses instead of one table per draw; D3D12 caps a
+// shader-visible sampler heap at 2048 descriptors. Returns false (with one
+// log) when the heap is full.
+bool dx_sampler_table(const uint8_t *modes, int count,
+                      D3D12_GPU_DESCRIPTOR_HANDLE *gpu) {
+  uint64_t key = (uint64_t)count;
+  for (int i = 0; i < count && i < kMaxSamplerTable; ++i)
+    key |= (uint64_t)(modes[i] & 3) << (8 + 2 * i);
+  UINT base = UINT_MAX;
+  for (const Dx12State::SamplerTable &st : g.smp_tables) {
+    if (st.key == key) {
+      base = st.base;
+      break;
+    }
+  }
+  if (base == UINT_MAX) {
+    if (count > kMaxSamplerTable || g.smp_used + (UINT)count > kSmpHeapCap) {
+      static bool warned = false;
+      if (!warned) {
+        SDL_Log("d3d12: no room for a sampler table (%d registers, %u "
+                "tables cached); skipping draws",
+                count, (unsigned)g.smp_tables.size());
+        warned = true;
+      }
+      return false;
+    }
+    base = g.smp_used;
+    g.smp_used += (UINT)count;
+    D3D12_CPU_DESCRIPTOR_HANDLE c =
+        g.smp_heap->GetCPUDescriptorHandleForHeapStart();
+    c.ptr += (SIZE_T)base * g.smp_stride;
+    for (int i = 0; i < count; ++i) {
+      D3D12_CPU_DESCRIPTOR_HANDLE h = c;
+      h.ptr += (SIZE_T)i * g.smp_stride;
+      dx_write_sampler(h,
+                       (modes[i] & 1) ? SGL_FILTER_NEAREST : SGL_FILTER_LINEAR,
+                       (modes[i] & 2) ? SGL_WRAP_CLAMP : SGL_WRAP_REPEAT);
+    }
+    Dx12State::SamplerTable st = {key, base};
+    g.smp_tables.push_back(st);
+  }
+  D3D12_GPU_DESCRIPTOR_HANDLE gp =
+      g.smp_heap->GetGPUDescriptorHandleForHeapStart();
+  gp.ptr += (UINT64)base * g.smp_stride;
+  *gpu = gp;
+  return true;
+}
+
+size_t dx_lcm(size_t a, size_t b) {
+  size_t x = a, y = b;
+  while (y) {
+    size_t r = x % y;
+    x = y;
+    y = r;
+  }
+  return a / x * b;
+}
+
+// Where a structured-buffer view of a binding starts. The view counts whole
+// elements (FirstElement = offset / stride), so its bytes must start at a
+// multiple of the stride. Keyed buffers start at 0, and dx_transient_align
+// places a transient slice at a multiple of every stride that divides its
+// size. Any other slice (one ending in a partial element) is copied once per
+// frame and stride to an arena allocation aligned to lcm(stride, 16), which
+// later bindings of the same slice reuse. The copy reads the upload heap
+// back, which is slow where that memory is write-combined.
+bool dx_structured_range(DxBuffer **buf, size_t *offset, size_t size,
+                         UINT stride) {
+  if (*offset % stride == 0 || !(*buf)->map)
+    return true;
+  std::tuple<const DxBuffer *, size_t, UINT> key(*buf, *offset, stride);
+  auto it = g.realigned.find(key);
+  if (it == g.realigned.end()) {
+    UploadAlloc ua;
+    if (!dx_upload_alloc(size, dx_lcm(stride, 16), &ua))
+      return false;
+    memcpy(ua.cpu, (*buf)->map + *offset, size);
+    it = g.realigned.emplace(key, ua).first;
+  }
+  *buf = it->second.buf;
+  *offset = it->second.offset;
+  return true;
+}
+
+// Structured-buffer SRV over a binding's byte range: a keyed buffer from 0
+// to its logical size, a transient slice at its place in the upload arena.
+// False when a realigned copy cannot be allocated.
+bool dx_write_buffer_srv(D3D12_CPU_DESCRIPTOR_HANDLE at, DxBuffer *buf,
+                         size_t offset, size_t size, int elem_stride) {
+  UINT stride = elem_stride > 0 ? (UINT)elem_stride : 4;
+  if (!dx_structured_range(&buf, &offset, size, stride))
+    return false;
+  D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
+  sd.Format = DXGI_FORMAT_UNKNOWN;
+  sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+  sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+  sd.Buffer.FirstElement = (UINT64)(offset / stride);
+  sd.Buffer.NumElements = (UINT)(size / stride);
+  sd.Buffer.StructureByteStride = stride;
+  g.device->CreateShaderResourceView(buf->res.Get(), &sd, at);
+  return true;
+}
+
 // Bind the graphics texture/sampler tables from a BindingsDesc. Registers
 // are program-unique (VS+FS linked as one program) so one SRV table + one
-// sampler table cover both stages.
-void dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
+// sampler table cover both stages. Returns false when a table cannot be
+// made; the draw is then skipped.
+bool dx_bind_textures(const BindingsDesc *b, const StageTables *t) {
   if (t->srv_count <= 0 && t->smp_count <= 0)
-    return;
+    return true;
   const ShaderReflection *refl = b->refl;
 
-  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {}, smp_cpu = {};
+  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {};
   D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {}, smp_gpu = {};
   if (t->srv_count > 0) {
-    if (!dx_ring_alloc(false, (UINT)t->srv_count, &srv_cpu, &srv_gpu))
-      return;
+    if (!dx_srv_alloc((UINT)t->srv_count, &srv_cpu, &srv_gpu))
+      return false;
     for (int i = 0; i < t->srv_count; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
       dx_write_null_srv(h);
     }
   }
-  if (t->smp_count > 0) {
-    if (!dx_ring_alloc(true, (UINT)t->smp_count, &smp_cpu, &smp_gpu))
-      return;
-    for (int i = 0; i < t->smp_count; ++i) {
-      D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-      h.ptr += (SIZE_T)i * g.smp_stride;
-      dx_write_sampler(h, SGL_FILTER_LINEAR, SGL_WRAP_REPEAT);
-    }
-  }
+  uint8_t smp_modes[kMaxSamplerTable] = {};
 
+  // `slot` is the first reflection entry with the binding's name. The same
+  // name can be consumed by both stages (a later entry pointing at a
+  // distinct register); tex_next / sbuf_next lead to those.
   for (int i = 0; i < b->texture_count && refl; ++i) {
-    if (!b->textures[i].name)
+    DxImage *im = (DxImage *)b->textures[i].image;
+    if (!im || !im->res)
       continue;
-    for (int j = 0; j < refl->tex_count; ++j) {
+    for (int j = b->textures[i].slot; j >= 0 && j < refl->tex_count;
+         j = t->tex_next[j]) {
       const ShaderTexture *rt = &refl->texs[j];
-      if (strcmp(rt->name, b->textures[i].name) != 0)
-        continue;
-      DxImage *im = (DxImage *)b->textures[i].image;
-      if (!im || !im->res)
-        continue;
       if (rt->img_slot >= 0 && rt->img_slot < t->srv_count) {
         D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
         h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
         dx_write_image_srv(h, im);
       }
-      if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count) {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-        h.ptr += (SIZE_T)rt->smp_slot * g.smp_stride;
-        dx_write_sampler(h, im->filter, im->wrap);
-      }
-      // Keep scanning: the same texture name can be consumed by both stages
-      // (two reflection entries pointing at distinct registers).
+      if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count &&
+          rt->smp_slot < kMaxSamplerTable)
+        smp_modes[rt->smp_slot] = dx_sampler_mode(im);
     }
   }
   // Graphics-stage read-only storage buffers (StructuredBuffer<T>) live in
   // the same t-register table as textures.
   for (int i = 0; i < b->storage_buf_count && refl; ++i) {
-    if (!b->storage_bufs[i].name)
+    DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
+    if (!buf || !buf->res)
       continue;
-    for (int j = 0; j < refl->storage_buf_count; ++j) {
+    for (int j = b->storage_bufs[i].slot; j >= 0 && j < refl->storage_buf_count;
+         j = t->sbuf_next[j]) {
       const ShaderStorageBuf *sb = &refl->storage_bufs[j];
-      if (!sb->readonly || strcmp(sb->name, b->storage_bufs[i].name) != 0)
+      if (!sb->readonly || sb->slot < 0 || sb->slot >= t->srv_count)
         continue;
-      DxBuffer *buf = (DxBuffer *)b->storage_bufs[i].buf;
-      if (!buf || !buf->res)
-        continue;
-      if (sb->slot >= 0 && sb->slot < t->srv_count) {
-        // The view covers the binding's logical size (offset 0 until the
-        // per-frame transient slices get a native path).
-        UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
-        D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
-        sd.Format = DXGI_FORMAT_UNKNOWN;
-        sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        sd.Buffer.FirstElement = (UINT64)(b->storage_bufs[i].offset / stride);
-        sd.Buffer.NumElements = (UINT)(b->storage_bufs[i].size / stride);
-        sd.Buffer.StructureByteStride = stride;
-        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
-        h.ptr += (SIZE_T)sb->slot * g.srv_stride;
-        g.device->CreateShaderResourceView(buf->res.Get(), &sd, h);
-      }
+      D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
+      h.ptr += (SIZE_T)sb->slot * g.srv_stride;
+      if (!dx_write_buffer_srv(h, buf, b->storage_bufs[i].offset,
+                               b->storage_bufs[i].size, sb->elem_stride))
+        return false;
     }
   }
+  if (t->smp_count > 0 && !dx_sampler_table(smp_modes, t->smp_count, &smp_gpu))
+    return false;
 
   if (t->srv_root >= 0)
     g.cl->SetGraphicsRootDescriptorTable((UINT)t->srv_root, srv_gpu);
   if (t->smp_root >= 0)
     g.cl->SetGraphicsRootDescriptorTable((UINT)t->smp_root, smp_gpu);
+  return true;
 }
+
+// False when the last apply_bindings could not bind its tables: dx_draw
+// skips the draw rather than draw with stale tables.
+bool g_bindings_ok = true;
 
 void dx_apply_bindings(const BindingsDesc *b) {
   if (!g.recording || !g_current_pip)
@@ -1812,9 +2072,7 @@ void dx_apply_bindings(const BindingsDesc *b) {
     g_last_indexed = false;
   }
 
-  if (b->refl) {
-    dx_bind_textures(b, &g_current_pip->tables);
-  }
+  g_bindings_ok = b->refl ? dx_bind_textures(b, &g_current_pip->tables) : true;
 }
 
 void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
@@ -1832,14 +2090,17 @@ void dx_apply_uniforms(SglShaderStage stage, int slot, const void *data,
     return;
   UploadAlloc ua;
   if (!dx_upload_alloc(bytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
-                       &ua))
+                       &ua)) {
+    g.cl_stale_ubs |= 1u << slot; // dx_upload_alloc logged it
     return;
+  }
   memcpy(ua.cpu, data, bytes);
   g.cl->SetGraphicsRootConstantBufferView((UINT)root, ua.gpu);
+  g.cl_stale_ubs &= ~(1u << slot);
 }
 
 void dx_draw(int base, int count, int instance_count) {
-  if (!g.recording || !g_current_pip)
+  if (!g.recording || !g_current_pip || !g_bindings_ok || g.cl_stale_ubs)
     return;
   UINT instances = (UINT)(instance_count > 0 ? instance_count : 1);
   if (g_last_indexed) {
@@ -1878,6 +2139,7 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
   const ShaderReflection *refl = d->refl ? d->refl : &p->refl;
 
   g.cl->SetPipelineState(p->compute_pso);
+  g.cl_pso = p->compute_pso;
   g.cl->SetComputeRootSignature(p->root_sig);
 
   for (int i = 0; i < d->uniform_count; ++i) {
@@ -1896,133 +2158,109 @@ void dx_dispatch(App *app, const ComputeDispatchDesc *d) {
     g.cl->SetComputeRootConstantBufferView((UINT)root, ua.gpu);
   }
 
-  // SRV table: sampled textures + readonly structured buffers (t registers).
-  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {}, smp_cpu = {}, uav_cpu = {};
+  // SRV table (sampled textures + readonly structured buffers, t registers)
+  // and UAV table (u registers), allocated as one block so both come from
+  // the same heap even when the allocation grows it.
+  D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu = {}, uav_cpu = {};
   D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {}, smp_gpu = {}, uav_gpu = {};
-  if (t->srv_count > 0) {
-    if (!dx_ring_alloc(false, (UINT)t->srv_count, &srv_cpu, &srv_gpu))
+  if (t->srv_count + t->uav_count > 0) {
+    if (!dx_srv_alloc((UINT)(t->srv_count + t->uav_count), &srv_cpu, &srv_gpu))
       return;
+    uav_cpu = srv_cpu;
+    uav_cpu.ptr += (SIZE_T)t->srv_count * g.srv_stride;
+    uav_gpu = srv_gpu;
+    uav_gpu.ptr += (UINT64)t->srv_count * g.srv_stride;
     for (int i = 0; i < t->srv_count; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
       dx_write_null_srv(h);
     }
-  }
-  if (t->smp_count > 0) {
-    if (!dx_ring_alloc(true, (UINT)t->smp_count, &smp_cpu, &smp_gpu))
-      return;
-    for (int i = 0; i < t->smp_count; ++i) {
-      D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-      h.ptr += (SIZE_T)i * g.smp_stride;
-      dx_write_sampler(h, SGL_FILTER_LINEAR, SGL_WRAP_REPEAT);
-    }
-  }
-  if (t->uav_count > 0) {
-    if (!dx_ring_alloc(false, (UINT)t->uav_count, &uav_cpu, &uav_gpu))
-      return;
     for (int i = 0; i < t->uav_count; ++i) {
       D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
       h.ptr += (SIZE_T)i * g.srv_stride;
       dx_write_null_uav(h);
     }
   }
+  uint8_t smp_modes[kMaxSamplerTable] = {};
 
+  // `slot` indexes the reflection entry the runtime resolved from the name.
   for (int i = 0; i < d->texture_count; ++i) {
-    if (!d->textures[i].name)
+    int k = d->textures[i].slot;
+    if (k < 0 || k >= refl->tex_count)
       continue;
-    for (int k = 0; k < refl->tex_count; ++k) {
-      const ShaderTexture *rt = &refl->texs[k];
-      if (strcmp(rt->name, d->textures[i].name) != 0)
-        continue;
-      DxImage *im = (DxImage *)d->textures[i].image;
-      if (!im || !im->res)
-        break;
-      if (rt->img_slot >= 0 && rt->img_slot < t->srv_count) {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
-        h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
-        dx_write_image_srv(h, im);
-      }
-      if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count) {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = smp_cpu;
-        h.ptr += (SIZE_T)rt->smp_slot * g.smp_stride;
-        dx_write_sampler(h, im->filter, im->wrap);
-      }
-      break;
+    const ShaderTexture *rt = &refl->texs[k];
+    DxImage *im = (DxImage *)d->textures[i].image;
+    if (!im || !im->res)
+      continue;
+    if (rt->img_slot >= 0 && rt->img_slot < t->srv_count) {
+      D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
+      h.ptr += (SIZE_T)rt->img_slot * g.srv_stride;
+      dx_write_image_srv(h, im);
     }
+    if (rt->smp_slot >= 0 && rt->smp_slot < t->smp_count &&
+        rt->smp_slot < kMaxSamplerTable)
+      smp_modes[rt->smp_slot] = dx_sampler_mode(im);
   }
 
   for (int i = 0; i < d->n_storage_bufs; ++i) {
-    if (!d->storage_bufs[i].name)
+    int k = d->storage_bufs[i].slot;
+    if (k < 0 || k >= refl->storage_buf_count)
       continue;
-    for (int k = 0; k < refl->storage_buf_count; ++k) {
-      const ShaderStorageBuf *sb = &refl->storage_bufs[k];
-      if (strcmp(sb->name, d->storage_bufs[i].name) != 0)
-        continue;
-      DxBuffer *buf = (DxBuffer *)d->storage_bufs[i].buf;
-      if (!buf || !buf->res)
-        break;
-      UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
-      UINT64 first = (UINT64)(d->storage_bufs[i].offset / stride);
-      UINT elems = (UINT)(d->storage_bufs[i].size / stride);
-      if (sb->readonly) {
-        if (sb->slot >= 0 && sb->slot < t->srv_count) {
-          D3D12_SHADER_RESOURCE_VIEW_DESC sd = {};
-          sd.Format = DXGI_FORMAT_UNKNOWN;
-          sd.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-          sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-          sd.Buffer.FirstElement = first;
-          sd.Buffer.NumElements = elems;
-          sd.Buffer.StructureByteStride = stride;
-          D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
-          h.ptr += (SIZE_T)sb->slot * g.srv_stride;
-          g.device->CreateShaderResourceView(buf->res.Get(), &sd, h);
-        }
-      } else {
-        if (sb->slot >= 0 && sb->slot < t->uav_count) {
-          D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
-          ud.Format = DXGI_FORMAT_UNKNOWN;
-          ud.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-          ud.Buffer.FirstElement = first;
-          ud.Buffer.NumElements = elems;
-          ud.Buffer.StructureByteStride = stride;
-          D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
-          h.ptr += (SIZE_T)sb->slot * g.srv_stride;
-          g.device->CreateUnorderedAccessView(buf->res.Get(), nullptr, &ud, h);
-        }
+    const ShaderStorageBuf *sb = &refl->storage_bufs[k];
+    DxBuffer *buf = (DxBuffer *)d->storage_bufs[i].buf;
+    if (!buf || !buf->res)
+      continue;
+    if (sb->readonly) {
+      if (sb->slot >= 0 && sb->slot < t->srv_count) {
+        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
+        h.ptr += (SIZE_T)sb->slot * g.srv_stride;
+        if (!dx_write_buffer_srv(h, buf, d->storage_bufs[i].offset,
+                                 d->storage_bufs[i].size, sb->elem_stride))
+          return;
       }
-      break;
+    } else if (!buf->map) { // transient slices are read-only (UPLOAD heap)
+      if (sb->slot >= 0 && sb->slot < t->uav_count) {
+        UINT stride = sb->elem_stride > 0 ? (UINT)sb->elem_stride : 4;
+        D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
+        ud.Format = DXGI_FORMAT_UNKNOWN;
+        ud.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        ud.Buffer.FirstElement = (UINT64)(d->storage_bufs[i].offset / stride);
+        ud.Buffer.NumElements = (UINT)(d->storage_bufs[i].size / stride);
+        ud.Buffer.StructureByteStride = stride;
+        D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
+        h.ptr += (SIZE_T)sb->slot * g.srv_stride;
+        g.device->CreateUnorderedAccessView(buf->res.Get(), nullptr, &ud, h);
+      }
     }
   }
 
   for (int i = 0; i < d->n_storage_textures; ++i) {
-    if (!d->storage_textures[i].name)
+    int k = d->storage_textures[i].slot;
+    if (k < 0 || k >= refl->storage_tex_count)
       continue;
-    for (int k = 0; k < refl->storage_tex_count; ++k) {
-      const ShaderStorageTexture *st = &refl->storage_texs[k];
-      if (strcmp(st->name, d->storage_textures[i].name) != 0)
-        continue;
-      DxImage *im = (DxImage *)d->storage_textures[i].image;
-      if (!im || !im->res)
-        break;
-      if (st->readonly) {
-        if (st->slot >= 0 && st->slot < t->srv_count) {
-          D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
-          h.ptr += (SIZE_T)st->slot * g.srv_stride;
-          dx_write_image_srv(h, im);
-        }
-      } else {
-        if (st->slot >= 0 && st->slot < t->uav_count) {
-          D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
-          ud.Format = im->dxgi;
-          ud.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-          D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
-          h.ptr += (SIZE_T)st->slot * g.srv_stride;
-          g.device->CreateUnorderedAccessView(im->res.Get(), nullptr, &ud, h);
-        }
+    const ShaderStorageTexture *st = &refl->storage_texs[k];
+    DxImage *im = (DxImage *)d->storage_textures[i].image;
+    if (!im || !im->res)
+      continue;
+    if (st->readonly) {
+      if (st->slot >= 0 && st->slot < t->srv_count) {
+        D3D12_CPU_DESCRIPTOR_HANDLE h = srv_cpu;
+        h.ptr += (SIZE_T)st->slot * g.srv_stride;
+        dx_write_image_srv(h, im);
       }
-      break;
+    } else {
+      if (st->slot >= 0 && st->slot < t->uav_count) {
+        D3D12_UNORDERED_ACCESS_VIEW_DESC ud = {};
+        ud.Format = im->dxgi;
+        ud.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        D3D12_CPU_DESCRIPTOR_HANDLE h = uav_cpu;
+        h.ptr += (SIZE_T)st->slot * g.srv_stride;
+        g.device->CreateUnorderedAccessView(im->res.Get(), nullptr, &ud, h);
+      }
     }
   }
+  if (t->smp_count > 0 && !dx_sampler_table(smp_modes, t->smp_count, &smp_gpu))
+    return;
 
   if (t->srv_root >= 0)
     g.cl->SetComputeRootDescriptorTable((UINT)t->srv_root, srv_gpu);
@@ -2115,8 +2353,7 @@ bool dx_readback_image_now(DxImage *im, int w, int h, SglPixelFormat src_fmt,
     g.queue->ExecuteCommandLists(1, lists);
     dx_wait_idle();
     g.cl->Reset(g.frames[g.slot].alloc.Get(), nullptr);
-    ID3D12DescriptorHeap *heaps[] = {g.srv_heap.Get(), g.smp_heap.Get()};
-    g.cl->SetDescriptorHeaps(2, heaps);
+    dx_reset_list_state();
   }
 
   uint8_t *mapped = nullptr;
@@ -2291,6 +2528,39 @@ SglPixelFormat dx_swapchain_color_format(App *app) {
   return SGL_PF_RGBA8;
 }
 
+// Placement of a transient storage slice. A structured-buffer view starts at
+// a whole element (dx_structured_range), and the stride is only known when
+// the slice is bound. A slice placed at a multiple of its size starts at a
+// whole element for every stride that divides its size, i.e. for any array
+// of whole elements, so it never needs the copy. (Strides are multiples of
+// 4, and a view has no other alignment rule.) The price is the padding in
+// front of each slice, less than its size: the arena holds at most about
+// twice the data, and a slice over half a base chunk takes a chunk of its
+// own.
+size_t dx_transient_align(size_t bytes) { return dx_lcm(bytes, 4); }
+
+// Per-frame transient data (backend.h): a slice of this frame slot's upload
+// arena, bound straight from the UPLOAD heap (reading it as a structured
+// buffer SRV or an index buffer is legal there). The arena is reset only
+// after the slot's fence, is never wrapped within a frame, and survives the
+// mid-frame submits of readback and capture, so the data stays as written
+// until the GPU has finished the frame. Nothing is recorded: the slice is
+// visible to every command of the frame.
+bool dx_transient_buffer(SglBufferType type, const void *data, size_t bytes,
+                         BufferSlice *out) {
+  if (!data || bytes == 0)
+    return false;
+  size_t align = type == SGL_BUFFER_INDEX ? 4 : dx_transient_align(bytes);
+  UploadAlloc ua;
+  if (!dx_upload_alloc(bytes, align, &ua))
+    return false;
+  memcpy(ua.cpu, data, bytes);
+  out->buf = (BackendBuffer)ua.buf;
+  out->offset = ua.offset;
+  out->size = bytes;
+  return true;
+}
+
 } // anonymous namespace
 
 extern "C" const RenderBackend g_backend_d3d12 = {
@@ -2323,5 +2593,5 @@ extern "C" const RenderBackend g_backend_d3d12 = {
     dx_capture,
     /*capture_before_end_frame=*/true,
     dx_swapchain_color_format,
-    /*transient_buffer=*/nullptr, // runtime fallback (api_gfx.c)
+    dx_transient_buffer,
 };

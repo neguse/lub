@@ -378,10 +378,10 @@ public static class Lub
         /// 後ろなので、version を渡さないときは null を置く
         /// (UseBuffer(key, type, list, null, n))。TinyC# は名前付き引数を
         /// 扱えないので、count: n と書くと値が version に入る。
-        /// 同じ frame に同じ key を書き直すと、native の backend ではそれぞれの
-        /// draw が記録した順にそのときの内容を読むが、pass の分割や GPU の待ちが
-        /// 入る。WebGPU では同じ大きさの書き直しは、その frame のどの draw も
-        /// 最後の内容を読む。draw ごとに変わるデータは TransientBuffer で渡す。
+        /// 同じ frame に同じ key を書き直すと、それぞれの draw が記録した順に
+        /// そのときの内容を読むが、書き直すたびに native の backend では pass の
+        /// 分割や GPU の待ちが入り、WebGPU では GPU の buffer を作り直す。draw
+        /// ごとに変わるデータは TransientBuffer で渡す。
         /// 大きさが変わっても確保量に収まる間は作り直さずに書き込む (SDL3 GPU の
         /// backend では shader から見た StructuredBuffer が data より長くなる
         /// ことがあるので、要素の数は uniform で渡す)。

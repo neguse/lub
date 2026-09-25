@@ -294,11 +294,11 @@ static void DrawEnemies(ShaderRef shader, List<Enemy> enemies)
   (`RWStructuredBuffer` に渡すと error)。整数列からは
   `TransientBufferInts`。
 
-`UseBuffer` の key を 1 フレームの中で書き直すと、native の backend では
-それぞれの draw が書き直した時点の内容を読む(記録した順)が、書き直す
-たびに pass が分かれたり GPU の待ちが入ったりする。web(WebGPU)では、
-同じ大きさで書き直すと、そのフレームの draw はどれも最後に書いた内容を
-読む。draw ごとに変わるデータは key で持たずに `TransientBuffer` で渡す。
+`UseBuffer` の key を 1 フレームの中で書き直すと、それぞれの draw が
+書き直した時点の内容を読む(記録した順)。ただし書き直すたびに、native の
+backend では pass が分かれたり GPU の待ちが入ったりし、web(WebGPU)では
+GPU の buffer を 1 つ作り直す。draw ごとに変わるデータは key で持たずに
+`TransientBuffer` で渡す。
 
 `UseBuffer` のデータの大きさがフレームごとに変わるときは、runtime が
 余裕を持って確保しておき、確保した大きさに収まる少しの伸び縮みでは

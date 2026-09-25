@@ -4,8 +4,8 @@
 --     大きさを変えても同じ
 --   * frame ごとに大きさを変えても (確保量に収まる伸び縮み、収まらない伸び、
 --     大きく縮む) 正しく描け、参照の handle は変わらない
--- 結果は offscreen の target を読み戻して画素で確かめる。WebGPU は同じ大きさの
--- 書き直しがまだ最後の内容になる (native の backend で走らせる)。
+-- 結果は offscreen の target を読み戻して画素で確かめる。web (WebGPU) では
+-- web/scripts/verify-headless.mjs が player で同じファイルを走らせる。
 local M = {}
 
 local W, H = 32, 4
