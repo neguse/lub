@@ -164,6 +164,7 @@ typedef struct WgUniformState {
   uint8_t data[WG_MAX_UB_SLOTS][WG_UB_SIZE];
   size_t sizes[WG_MAX_UB_SLOTS];
   uint32_t ring_offset[WG_MAX_UB_SLOTS]; // current write offset in ring
+  uint32_t capacity[WG_MAX_UB_SLOTS];
 } WgUniformState;
 
 static WgUniformState g_ub;
@@ -269,6 +270,7 @@ static bool wg_init(App *app) {
     WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
     bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     bd.size = WG_UB_RING_SIZE;
+    g_ub.capacity[i] = WG_UB_RING_SIZE;
     g_ub.bufs[i] = wgpuDeviceCreateBuffer(app->wgpu_device, &bd);
   }
 
@@ -1236,6 +1238,23 @@ static void wg_apply_uniforms(SglShaderStage stage, int ub_slot,
   g_ub.dirty[ub_slot] = true;
 }
 
+static uint32_t wg_reserve_uniform(int slot) {
+  uint32_t off = g_ub.ring_offset[slot];
+  if (off + WG_UB_STRIDE > g_ub.capacity[slot]) {
+    WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
+    bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    g_ub.capacity[slot] *= 2;
+    bd.size = g_ub.capacity[slot];
+    WGPUBuffer buffer = wgpuDeviceCreateBuffer(g_dev, &bd);
+    // Encoded draws retain the old buffer until submission; do not destroy it.
+    wgpuBufferRelease(g_ub.bufs[slot]);
+    g_ub.bufs[slot] = buffer;
+    off = 0;
+  }
+  g_ub.ring_offset[slot] = off + WG_UB_STRIDE;
+  return off;
+}
+
 // Flush uniform data to GPU and bind group 0 before draw/dispatch.
 // Uses a ring buffer with dynamic offsets so each draw gets its own
 // uniform data region, preventing later draws from overwriting earlier ones.
@@ -1250,11 +1269,8 @@ static void wg_flush_uniforms(void) {
       size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
       if (aligned > WG_UB_SIZE)
         aligned = WG_UB_SIZE;
-      uint32_t off = g_ub.ring_offset[i];
-      if (off + WG_UB_STRIDE > WG_UB_RING_SIZE)
-        off = 0;
+      uint32_t off = wg_reserve_uniform(i);
       wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
-      g_ub.ring_offset[i] = off + WG_UB_STRIDE;
     }
   }
   if (!any_dirty && g_cur_pipeline->refl.ub_count == 0)
@@ -1341,9 +1357,7 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     size_t aligned = wg_align((uint32_t)d->uniforms[i].bytes, 16);
     if (aligned > WG_UB_SIZE)
       aligned = WG_UB_SIZE;
-    uint32_t off = g_ub.ring_offset[slot];
-    if (off + WG_UB_ALIGN > WG_UB_RING_SIZE)
-      off = 0;
+    uint32_t off = wg_reserve_uniform(slot);
     wgpuQueueWriteBuffer(g_queue, g_ub.bufs[slot], off, d->uniforms[i].data,
                          aligned);
     WGPUBindGroupEntry *e = &ub_entries[ub_count];
@@ -1352,7 +1366,6 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     e->offset = 0;
     e->size = WG_UB_SIZE;
     ub_dyn_offsets[ub_count] = off;
-    g_ub.ring_offset[slot] = off + WG_UB_ALIGN;
     ub_count++;
   }
 
