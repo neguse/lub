@@ -279,6 +279,7 @@ physics_lua_tests=(
   tests/lua/test_resource_sweep.lua
   tests/lua/test_resource_sweep_default.lua
   tests/lua/test_resource_sweep_off.lua
+  tests/lua/test_resource_handles.lua
   tests/lua/test_audio.lua
   tests/lua/test_font.lua
   tests/lua/test_api_surface.lua

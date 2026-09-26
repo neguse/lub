@@ -192,7 +192,7 @@ public class PassOpts
     public float? ClearDepth;
     /// <summary>`Gfx.CLEAR`(省略時)/ `Gfx.LOAD`。LOAD は全アタッチメント (color + depth) の直前の内容を保持したまま描き足す。同一フレーム内で先行パスが同じターゲットに描いていることが前提 (フレーム最初のパスで使うと内容は不定)。</summary>
     public Lub.Gfx.LoadAction? Load;
-    /// <summary>この pass のどの draw にも効く bindings。形は Draw の bindings と同じ (名前で束縛する buffer / texture と、入れ子の `uniforms`)。draw の bindings に同じ名前があれば draw の方が勝つ (uniforms は member の名前ごと、buffer / texture は束縛の名前ごと)。どちらにも無い uniform の member は 0。値は BeginPass の時点で写すので、渡した Dictionary を後で書き換えても pass には効かない。buffer / texture は draw のたびに引くので、 pass の中で宣言し直した内容も見える。EndPass で消え、Dispatch には効かない。</summary>
+    /// <summary>この pass のどの draw にも効く bindings。形は Draw の bindings と同じ (名前で束縛する buffer / texture と、入れ子の `uniforms`)。draw の bindings に同じ名前があれば draw の方が勝つ (uniforms は member の名前ごと、buffer / texture は束縛の名前ごと)。どちらかが uniforms を渡していれば、どちらにも無い member は 0 (どちらも渡さない draw は uniform を書き換えず、前の draw の値が残る)。値は BeginPass の時点で写すので、渡した Dictionary を後で書き換えても pass には効かない。buffer / texture は draw のたびに引くので、 pass の中で宣言し直した内容も見える。EndPass で消え、Dispatch には効かない。</summary>
     public Dictionary<string, object>? Bindings;
 }
 

@@ -191,8 +191,9 @@ Gfx.EndPass();
 
 - draw の bindings に同じ名前があれば draw の方が勝つ。uniform は member の
   名前ごとに決まり(pass の `light_dir` と draw の `model` は両方届く)、
-  buffer / texture は束縛の名前ごとに決まる。pass にも draw にも無い uniform の
-  member は 0。
+  buffer / texture は束縛の名前ごとに決まる。pass か draw のどちらかが
+  uniforms を渡していれば、どちらにも無い member は 0。どちらも uniforms を
+  渡さない draw は uniform を書き換えず、前の draw の値が残る。
 - uniforms を 1 つも渡さない draw にも、pass の uniforms は届く。
 - uniform の値は `BeginPass` の時点で写される。渡した Dictionary や List を
   後で書き換えても、その pass には効かない。

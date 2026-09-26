@@ -90,7 +90,7 @@ static bool renderer_ready(App *app, const char *fn, const char *hint) {
   "was swept (not used for %d frames); declare it again with use_*"
 
 static bool handle_swept(App *app, LubHandle h) {
-  return h > 0 && h <= app->res.next_handle &&
+  return res_table_handle_issued(&app->res, h) &&
          !res_table_get_by_handle(&app->res, h);
 }
 
@@ -414,13 +414,12 @@ LubStatus lub_gfx_use_buffer_empty(LubContext *ctx, LubStr key, int32_t type,
 // frame の終わりに全部を手放す。
 //
 // TransientBuffer の handle は resource table の handle (1 始まり) とも
-// main_tex (-1) とも重ならない -2 以下の値で、frame 番号の下位 10 bit と
-// frame 内の通し番号を持つ: -2 - (frame << 20 | index)。値は呼び出しの順だけで
-// 決まる (Lua と .NET で同じになる)。前の frame の handle は frame の bit が
-// 合わないので error にできる (1024 frame 前のものとは見分けない)。
-#define TRANSIENT_INDEX_BITS 20
-#define TRANSIENT_MAX (1 << TRANSIENT_INDEX_BITS)
-#define TRANSIENT_FRAME_MASK 0x3ff
+// main_tex (-1) とも重ならない -2 以下の値で、起動からの transient の通し番号
+// (30 bit で一周) を持つ: -2 - seq。値は呼び出しの順だけで決まる (Lua と .NET
+// で同じになる)。この frame の最初の通し番号より前のものは前の frame の
+// handle なので error にできる (2^30 個前のものとは見分けない)。
+#define TRANSIENT_SEQ_MASK 0x3fffffff
+#define TRANSIENT_MAX (1 << 20) // 1 frame に作れる数
 
 typedef struct TransientBuf {
   BufferSlice slice;
@@ -431,6 +430,7 @@ typedef struct TransientBuf {
 struct GfxTransients {
   TransientBuf *items;
   int32_t count, cap;
+  uint32_t first_seq; // この frame の最初の transient の通し番号
 };
 
 static bool transient_push(App *app, SglBufferType type, const void *data,
@@ -514,6 +514,7 @@ void api_gfx_transients_frame_end(App *app) {
   for (int32_t i = 0; i < ts->count; ++i)
     if (ts->items[i].owned)
       g_backend->destroy_buffer(ts->items[i].slice.buf);
+  ts->first_seq = (ts->first_seq + (uint32_t)ts->count) & TRANSIENT_SEQ_MASK;
   ts->count = 0;
 }
 
@@ -527,8 +528,9 @@ static void transients_shutdown(App *app) {
 }
 
 static LubHandle transient_handle(App *app, int32_t index) {
-  int32_t frame = (int32_t)(app->frame_index & TRANSIENT_FRAME_MASK);
-  return (LubHandle)(-2 - ((frame << TRANSIENT_INDEX_BITS) | index));
+  uint32_t seq =
+      (app->transients->first_seq + (uint32_t)index) & TRANSIENT_SEQ_MASK;
+  return (LubHandle)(-2 - (int32_t)seq);
 }
 
 // handle (-2 以下) の transient。前の frame のものなら *stale を立てて NULL。
@@ -537,13 +539,11 @@ static const TransientBuf *transient_get(App *app, LubHandle h, bool *stale) {
   if (h > -2)
     return NULL;
   int64_t v = -2 - (int64_t)h;
-  int64_t frame = v >> TRANSIENT_INDEX_BITS;
-  int64_t index = v & (TRANSIENT_MAX - 1);
-  if (frame > TRANSIENT_FRAME_MASK)
+  if (v > TRANSIENT_SEQ_MASK)
     return NULL;
   struct GfxTransients *ts = app->transients;
-  if (frame != (int64_t)(app->frame_index & TRANSIENT_FRAME_MASK) || !ts ||
-      index >= ts->count) {
+  uint32_t index = ts ? ((uint32_t)v - ts->first_seq) & TRANSIENT_SEQ_MASK : 0;
+  if (!ts || index >= (uint32_t)ts->count) {
     *stale = true;
     return NULL;
   }
@@ -1486,8 +1486,9 @@ static LubStatus add_pass_layer(App *app, DrawCall *c) {
 }
 
 // 段を重ねて backend に渡す。buffer / texture は名前ごとに一番上の段のもの。
-// uniform は下の段から書き、上の段が同じ member を書き直す。どの段も書かない
-// member は 0。
+// uniform は下の段から書き、上の段が同じ member を書き直す。どこかの段が
+// uniform を渡していれば、どの段も書かない member は 0 (どの段も渡さない
+// draw は uniform に触らない)。
 static LubStatus draw_submit(App *app, const DrawCall *c) {
   ResEntry *sh = c->sh;
   const ShaderReflection *refl = &sh->u.sh.refl;

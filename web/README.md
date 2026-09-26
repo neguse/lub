@@ -92,6 +92,9 @@ npm run deploy            # build + wrangler deploy
 6. C# 増分編集が runtime の commit ACK(synced rev 表示)まで貫通する
 7. C# の診断がエディタ内に表示される
 8. C# 補完 / hover が返る(レイテンシ観測ログ付き)
+9. `tests/lua` の記録順と TransientBuffer のテスト、lubx の InstanceBatch3d と
+   SpriteBatch の 1 pass 内の複数 flush のテストを player で WebGPU backend に
+   走らせ、OK の行を待つ
 
 スクリーンショットは `/tmp/lub-verify/` に出力される。CI 利用時は dev server を
 別ジョブで立ち上げてから `LUB_URL=http://...` を指定すること。

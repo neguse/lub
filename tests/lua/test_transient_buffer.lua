@@ -225,6 +225,7 @@ local steps = {
 				local ref = lub.gfx.transient_buffer(lub.gfx.STORAGE, scratch, 8)
 				expect(ref.handle < -1, "a transient handle must not look like a resource handle")
 				expect(not lub.gfx.resource_info(ref.handle), "a transient has no key")
+				expect(ref.version == 0, "a transient ref reads version 0 (same as .NET)")
 				draw(ref)
 			end
 			lub.gfx.end_pass()

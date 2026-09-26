@@ -64,10 +64,16 @@ typedef struct ResTable {
   // both together.
   int64_t revision;
   ResEntry *buckets[RES_BUCKETS];
-  // handle → entry。index = handle。NULL は sweep 済み (stale)。
+  // handle → entry の open addressing (線形探索)。生きている entry だけを
+  // 持ち、sweep で抜くので、大きさは同時に生きている resource の数で決まる
+  // (key を作り続けても伸び続けない)。
   ResEntry **by_handle;
-  int32_t handle_cap;
+  int32_t handle_cap; // 2 の冪 (0 = 未確保)
+  int32_t handle_count;
+  // 最後に発行した handle。handle は 1 から増やし、int32 の上限で 1 に
+  // 戻る (生きている handle は飛ばす)。
   int32_t next_handle;
+  bool handle_wrapped;
 } ResTable;
 
 void res_table_init(ResTable *t);
@@ -82,6 +88,9 @@ ResEntry *res_table_get(ResTable *t, const char *key);
 // key の長さ指定版 (NUL 終端を要求しない LubStr 向け)。
 ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len);
 ResEntry *res_table_get_by_handle(ResTable *t, int32_t handle);
+// handle が一度は発行された値か (sweep で消えたものを含む)。handle が一周
+// した後は正の値をすべて発行済みとみなす。
+bool res_table_handle_issued(const ResTable *t, int32_t handle);
 ResEntry *res_table_get_or_create(ResTable *t, const char *key, ResKind kind);
 void res_table_touch(ResEntry *e, int64_t frame_index);
 

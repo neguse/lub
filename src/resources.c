@@ -2,6 +2,7 @@
 #include "backend.h"
 #include "gfx_bind.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -59,7 +60,9 @@ void res_table_shutdown(ResTable *t) {
   free(t->by_handle);
   t->by_handle = NULL;
   t->handle_cap = 0;
+  t->handle_count = 0;
   t->next_handle = 0;
+  t->handle_wrapped = false;
 }
 
 ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len) {
@@ -75,29 +78,89 @@ ResEntry *res_table_get_n(ResTable *t, const char *key, size_t len) {
   return NULL;
 }
 
+static uint32_t handle_slot(int32_t handle, int32_t cap) {
+  return ((uint32_t)handle * 2654435761u) & (uint32_t)(cap - 1);
+}
+
 ResEntry *res_table_get_by_handle(ResTable *t, int32_t handle) {
-  if (handle <= 0 || handle >= t->handle_cap)
+  if (handle <= 0 || t->handle_cap == 0)
     return NULL;
-  return t->by_handle[handle];
+  uint32_t mask = (uint32_t)t->handle_cap - 1;
+  for (uint32_t i = handle_slot(handle, t->handle_cap);; i = (i + 1) & mask) {
+    ResEntry *e = t->by_handle[i];
+    if (!e)
+      return NULL;
+    if (e->handle == handle)
+      return e;
+  }
+}
+
+bool res_table_handle_issued(const ResTable *t, int32_t handle) {
+  return handle > 0 && (t->handle_wrapped || handle <= t->next_handle);
+}
+
+static void handle_insert(ResEntry **slots, int32_t cap, ResEntry *e) {
+  uint32_t mask = (uint32_t)cap - 1;
+  uint32_t i = handle_slot(e->handle, cap);
+  while (slots[i])
+    i = (i + 1) & mask;
+  slots[i] = e;
+}
+
+// 表の大きさを cap にして入れ直す。
+static bool handle_rehash(ResTable *t, int32_t cap) {
+  ResEntry **slots = (ResEntry **)calloc((size_t)cap, sizeof(ResEntry *));
+  if (!slots)
+    return false;
+  for (int32_t i = 0; i < t->handle_cap; ++i)
+    if (t->by_handle[i])
+      handle_insert(slots, cap, t->by_handle[i]);
+  free(t->by_handle);
+  t->by_handle = slots;
+  t->handle_cap = cap;
+  return true;
+}
+
+// handle を表から抜く。後ろに続く entry を詰め直す (墓標を残さない)。
+static void handle_remove(ResTable *t, ResEntry *e) {
+  if (t->handle_cap == 0)
+    return;
+  uint32_t mask = (uint32_t)t->handle_cap - 1;
+  uint32_t i = handle_slot(e->handle, t->handle_cap);
+  while (t->by_handle[i] && t->by_handle[i] != e)
+    i = (i + 1) & mask;
+  if (!t->by_handle[i])
+    return;
+  t->by_handle[i] = NULL;
+  t->handle_count--;
+  for (uint32_t j = (i + 1) & mask; t->by_handle[j]; j = (j + 1) & mask) {
+    uint32_t home = handle_slot(t->by_handle[j]->handle, t->handle_cap);
+    // j の entry が空いた i より前 (巡回順で i..j の外) を home に持つなら
+    // i に移せる
+    bool movable = i <= j ? (home <= i || home > j) : (home <= i && home > j);
+    if (movable) {
+      t->by_handle[i] = t->by_handle[j];
+      t->by_handle[j] = NULL;
+      i = j;
+    }
+  }
 }
 
 static bool res_table_assign_handle(ResTable *t, ResEntry *e) {
-  int32_t h = ++t->next_handle;
-  if (h >= t->handle_cap) {
-    int32_t cap = t->handle_cap ? t->handle_cap * 2 : 256;
-    while (cap <= h)
-      cap *= 2;
-    ResEntry **grown =
-        (ResEntry **)realloc(t->by_handle, (size_t)cap * sizeof(ResEntry *));
-    if (!grown)
-      return false;
-    memset(grown + t->handle_cap, 0,
-           (size_t)(cap - t->handle_cap) * sizeof(ResEntry *));
-    t->by_handle = grown;
-    t->handle_cap = cap;
-  }
-  t->by_handle[h] = e;
-  e->handle = h;
+  if ((t->handle_count + 1) * 2 > t->handle_cap &&
+      !handle_rehash(t, t->handle_cap ? t->handle_cap * 2 : 256))
+    return false;
+  // 一周した後は、まだ生きている handle を飛ばす
+  do {
+    if (t->next_handle == INT32_MAX) {
+      t->next_handle = 0;
+      t->handle_wrapped = true;
+    }
+    ++t->next_handle;
+  } while (t->handle_wrapped && res_table_get_by_handle(t, t->next_handle));
+  e->handle = t->next_handle;
+  handle_insert(t->by_handle, t->handle_cap, e);
+  t->handle_count++;
   return true;
 }
 
@@ -159,8 +222,7 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
           on_shader_release(ctx, e->u.sh.h);
         }
         *prev = next;
-        if (e->handle > 0 && e->handle < t->handle_cap)
-          t->by_handle[e->handle] = NULL;
+        handle_remove(t, e);
         res_entry_release(e);
       } else {
         prev = &e->next;
@@ -168,4 +230,7 @@ void res_table_sweep(ResTable *t, int64_t current_frame,
       e = next;
     }
   }
+  // 生きている entry が大きく減ったら表も縮める
+  if (t->handle_cap > 256 && t->handle_count * 8 < t->handle_cap)
+    handle_rehash(t, t->handle_cap / 2);
 }

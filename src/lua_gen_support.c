@@ -906,12 +906,14 @@ void lgen_push_ref(lua_State *L, const char *kind, LubHandle h) {
   if (is_gfx_kind(kind)) {
     LubStr key = {NULL, 0};
     int32_t ver = 0;
+    // resource table の外の handle (main_tex、transient_buffer) は key を
+    // 持たず version は 0 (.NET の Ref.Version と同じ)。
     if (lub_gfx_resource_info(lgen_ctx(), h, &key, &ver)) {
       lgen_push_str(L, key);
       lua_setfield(L, -2, "key");
-      lua_pushinteger(L, ver);
-      lua_setfield(L, -2, "version");
     }
+    lua_pushinteger(L, ver);
+    lua_setfield(L, -2, "version");
   }
 }
 
