@@ -354,6 +354,7 @@ typedef struct LubXrInput {
   bool primary;
   bool secondary;
   bool menu;
+  bool stick_click;
 } LubXrInput;
 
 // Lub.config のオプション (onInit 内でのみ有効)。

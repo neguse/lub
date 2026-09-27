@@ -58,7 +58,7 @@ LubStatus lub_xr_get_input(LubContext *ctx, int32_t hand, LubXrInput *out) {
 #if defined(LUB_HAS_OPENXR)
   if (enabled(app)) {
     float values[4] = {0};
-    bool buttons[3] = {0};
+    bool buttons[4] = {0};
     out->active = lubxr_input(hand, values, buttons);
     out->stick_x = values[0];
     out->stick_y = values[1];
@@ -67,6 +67,7 @@ LubStatus lub_xr_get_input(LubContext *ctx, int32_t hand, LubXrInput *out) {
     out->primary = buttons[0];
     out->secondary = buttons[1];
     out->menu = buttons[2];
+    out->stick_click = buttons[3];
     return LUB_OK;
   }
 #endif

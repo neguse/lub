@@ -2114,12 +2114,13 @@ static void fill_LubXrInput(lua_State *L, const LubXrInput *v) {
   lgen_set_bool(L, "primary", v->primary);
   lgen_set_bool(L, "secondary", v->secondary);
   lgen_set_bool(L, "menu", v->menu);
+  lgen_set_bool(L, "stick_click", v->stick_click);
   (void)L;
   (void)v;
 }
 
 static void push_LubXrInput(lua_State *L, const LubXrInput *v) {
-  lua_createtable(L, 0, 8);
+  lua_createtable(L, 0, 9);
   fill_LubXrInput(L, v);
 }
 

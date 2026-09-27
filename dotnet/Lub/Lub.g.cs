@@ -179,6 +179,7 @@ public class XrInput
     public bool Primary;
     public bool Secondary;
     public bool Menu;
+    public bool StickClick;
 }
 
 /// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
@@ -7339,6 +7340,7 @@ internal static unsafe partial class LubNative
         public bool @primary;
         public bool @secondary;
         public bool @menu;
+        public bool @stick_click;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -10398,6 +10400,7 @@ internal static unsafe partial class LubNative
         s->@primary = o.Primary;
         s->@secondary = o.Secondary;
         s->@menu = o.Menu;
+        s->@stick_click = o.StickClick;
     }
 
     internal static void Fill_LubXrInput(XrInput o, LubXrInput* s)
@@ -10410,6 +10413,7 @@ internal static unsafe partial class LubNative
         o.Primary = s->@primary;
         o.Secondary = s->@secondary;
         o.Menu = s->@menu;
+        o.StickClick = s->@stick_click;
     }
 
     internal static XrInput From_LubXrInput(LubXrInput* s)

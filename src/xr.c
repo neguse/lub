@@ -21,7 +21,7 @@ static struct {
   XrSession session;
   XrSpace space;
   XrActionSet actions;
-  XrAction stick, trigger, grip, primary, secondary, menu;
+  XrAction stick, trigger, grip, primary, secondary, menu, stick_click;
   XrPath hands[2];
   XrView views[2];
   Eye eyes[2];
@@ -170,7 +170,7 @@ static bool bindings(bool frame) {
   const char *profile =
       frame ? "/interaction_profiles/valve/frame_controller_valve"
             : "/interaction_profiles/oculus/touch_controller";
-  XrActionSuggestedBinding values[12];
+  XrActionSuggestedBinding values[14];
   uint32_t count = 0;
   for (int hand = 0; hand < 2; ++hand) {
     const char *paths[] = {"thumbstick",
@@ -184,10 +184,11 @@ static bool bindings(bool frame) {
                                    : "y/click",
                            hand    ? "menu/click"
                            : frame ? "view/click"
-                                   : "menu/click"};
-    XrAction actions[] = {x.stick,   x.trigger,   x.grip,
-                          x.primary, x.secondary, x.menu};
-    for (int i = 0; i < 6; ++i) {
+                                   : "menu/click",
+                           "thumbstick/click"};
+    XrAction actions[] = {x.stick,     x.trigger, x.grip,       x.primary,
+                          x.secondary, x.menu,    x.stick_click};
+    for (int i = 0; i < 7; ++i) {
       if (!frame && hand == 1 && i == 5)
         continue;
       char path[128];
@@ -220,6 +221,7 @@ static bool create_actions(void) {
       !action("primary", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.primary) ||
       !action("secondary", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.secondary) ||
       !action("menu", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.menu) ||
+      !action("stick_click", XR_ACTION_TYPE_BOOLEAN_INPUT, &x.stick_click) ||
       !bindings(false))
     return false;
   if (x.frame_profile && !bindings(true))
@@ -613,8 +615,8 @@ bool lubxr_input(int hand, float *values, bool *buttons) {
       active = true;
     }
   }
-  XrAction booleans[] = {x.primary, x.secondary, x.menu};
-  for (int i = 0; i < 3; ++i) {
+  XrAction booleans[] = {x.primary, x.secondary, x.menu, x.stick_click};
+  for (int i = 0; i < 4; ++i) {
     info.action = booleans[i];
     XrActionStateBoolean state = {.type = XR_TYPE_ACTION_STATE_BOOLEAN};
     XR_CHECK(xrGetActionStateBoolean(x.session, &info, &state));

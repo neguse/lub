@@ -368,6 +368,13 @@
                   "signature": "bool Menu",
                   "lua": "menu",
                   "doc": ""
+                },
+                {
+                  "name": "StickClick",
+                  "kind": "field",
+                  "signature": "bool StickClick",
+                  "lua": "stick_click",
+                  "doc": ""
                 }
               ]
             }

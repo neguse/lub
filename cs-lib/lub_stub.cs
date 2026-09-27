@@ -231,7 +231,7 @@ public class XrInput
 {
     public bool Active;
     public float StickX, StickY, Trigger, Grip;
-    public bool Primary, Secondary, Menu;
+    public bool Primary, Secondary, Menu, StickClick;
 }
 
 // -------------------------------------------------------------------- Lub
