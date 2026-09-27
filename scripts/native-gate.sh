@@ -262,6 +262,8 @@ run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
 run_timed ./build-release-linux/lub_sdf_smoke
 run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
 run_timed ./build-release-linux/lub_shader_layout_smoke
+run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
+run_timed ./build-release-linux/lub_xr_math_smoke
 
 physics_lua_tests=(
   tests/lua/test_physics_box2d.lua
