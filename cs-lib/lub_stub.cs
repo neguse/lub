@@ -217,6 +217,11 @@ public class Readback
 public class XrView
 {
     public int Width, Height;
+    /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
+    [LubArray(3)]
+    public float[] Position = new float[3];
+    [LubArray(4)]
+    public float[] Orientation = new float[4];
     /// <summary>右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。</summary>
     [LubArray(16)]
     public float[] ViewProjection = new float[16];

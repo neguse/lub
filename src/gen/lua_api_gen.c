@@ -2085,6 +2085,14 @@ static void fill_LubXrView(lua_State *L, const LubXrView *v) {
   lgen_set_int(L, "width", v->width);
   lgen_set_int(L, "height", v->height);
   {
+    lgen_push_float_table(L, v->position, 3);
+    lua_setfield(L, -2, "position");
+  }
+  {
+    lgen_push_float_table(L, v->orientation, 4);
+    lua_setfield(L, -2, "orientation");
+  }
+  {
     lgen_push_float_table(L, v->view_projection, 16);
     lua_setfield(L, -2, "view_projection");
   }
@@ -2093,7 +2101,7 @@ static void fill_LubXrView(lua_State *L, const LubXrView *v) {
 }
 
 static void push_LubXrView(lua_State *L, const LubXrView *v) {
-  lua_createtable(L, 0, 3);
+  lua_createtable(L, 0, 5);
   fill_LubXrView(L, v);
 }
 

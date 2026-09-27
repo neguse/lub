@@ -30,6 +30,7 @@ LubStatus lub_xr_get_view(LubContext *ctx, int32_t eye, float near_plane,
   if (enabled(app) &&
       lubxr_view(eye, near_plane, far_plane, out->view_projection)) {
     lubxr_size(&out->width, &out->height);
+    lubxr_pose(eye, out->position, out->orientation);
     return LUB_OK;
   }
 #endif

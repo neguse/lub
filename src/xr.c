@@ -528,6 +528,17 @@ bool lubxr_view(int eye, float near_plane, float far_plane, float *matrix) {
   return true;
 }
 
+void lubxr_pose(int eye, float *position, float *orientation) {
+  const XrPosef *p = &x.views[eye].pose;
+  position[0] = p->position.x;
+  position[1] = p->position.y;
+  position[2] = p->position.z;
+  orientation[0] = p->orientation.x;
+  orientation[1] = p->orientation.y;
+  orientation[2] = p->orientation.z;
+  orientation[3] = p->orientation.w;
+}
+
 void lubxr_view_projection(const XrPosef *pose, const XrFovf *fov,
                            float near_plane, float far_plane, float *matrix) {
   XrQuaternionf q = pose->orientation;

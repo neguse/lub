@@ -339,6 +339,8 @@ typedef struct LubTextureOpts {
 typedef struct LubXrView {
   int32_t width;
   int32_t height;
+  float position[3]; // LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。
+  float orientation[4];
   float view_projection[16]; // 右手系、メートル、前方 -Z。行優先の projection *
                              // view、深度 [0,1]。
 } LubXrView;

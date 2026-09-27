@@ -162,6 +162,9 @@ public class XrView
 {
     public int Width;
     public int Height;
+    /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
+    public float[] Position;
+    public float[] Orientation;
     /// <summary>右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。</summary>
     public float[] ViewProjection;
 }
@@ -7320,6 +7323,8 @@ internal static unsafe partial class LubNative
     {
         public int @width;
         public int @height;
+        public fixed float @position[3];
+        public fixed float @orientation[4];
         public fixed float @view_projection[16];
     }
 
@@ -10362,6 +10367,8 @@ internal static unsafe partial class LubNative
     {
         s->@width = o.Width;
         s->@height = o.Height;
+        LubRuntime.FixedFloats(o.Position, s->@position, 3);
+        LubRuntime.FixedFloats(o.Orientation, s->@orientation, 4);
         LubRuntime.FixedFloats(o.ViewProjection, s->@view_projection, 16);
     }
 
@@ -10369,6 +10376,8 @@ internal static unsafe partial class LubNative
     {
         o.Width = s->@width;
         o.Height = s->@height;
+        o.Position = LubRuntime.FloatsArray(s->@position, 3);
+        o.Orientation = LubRuntime.FloatsArray(s->@orientation, 4);
         o.ViewProjection = LubRuntime.FloatsArray(s->@view_projection, 16);
     }
 

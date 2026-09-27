@@ -30,6 +30,7 @@ void lubxr_size(int *width, int *height);
 float lubxr_frame_dt(void);
 bool lubxr_focused(void);
 bool lubxr_view(int eye, float near_plane, float far_plane, float *matrix);
+void lubxr_pose(int eye, float *position, float *orientation);
 void lubxr_view_projection(const XrPosef *pose, const XrFovf *fov,
                            float near_plane, float far_plane, float *matrix);
 bool lubxr_input(int hand, float *values, bool *buttons);
