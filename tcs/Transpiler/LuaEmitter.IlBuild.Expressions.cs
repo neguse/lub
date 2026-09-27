@@ -443,7 +443,7 @@ public partial class LuaEmitter
             if (symbol is IMethodSymbol { IsStatic: true } staticFacade
                 && IsTinySystemFacade(staticFacade.ContainingType))
                 return new IlCall(
-                    $"{staticFacade.ContainingType.Name}.{methodName}", argArr);
+                    $"TinySystem.{staticFacade.ContainingType.Name}.{methodName}", argArr);
 
             if (symbol is IMethodSymbol collectionMethod
                 && TryBuildCollectionCall(model, ma, collectionMethod,
@@ -576,10 +576,10 @@ public partial class LuaEmitter
 
         if (symbol is IFieldSymbol { IsStatic: true } facadeField
             && IsTinySystemFacade(facadeField.ContainingType))
-            return new IlField(new IlVar(facadeField.ContainingType.Name), member);
+            return new IlField(new IlVar($"TinySystem.{facadeField.ContainingType.Name}"), member);
         if (symbol is IPropertySymbol { IsStatic: true } facadeProp
             && IsTinySystemFacade(facadeProp.ContainingType))
-            return new IlField(new IlVar(facadeProp.ContainingType.Name), member);
+            return new IlField(new IlVar($"TinySystem.{facadeProp.ContainingType.Name}"), member);
 
         // 入れ子の型参照 (Lub.Gfx) — 参照専用型は小文字パスで平らに置く
         if (symbol is INamedTypeSymbol namedType)

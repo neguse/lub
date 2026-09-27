@@ -28,7 +28,7 @@ public partial class LuaEmitter
 
             if (symbol is IMethodSymbol { IsStatic: true } staticMethod
                 && IsTinySystemFacade(staticMethod.ContainingType))
-                return $"{staticMethod.ContainingType.Name}.{methodName}({string.Join(", ", args)})";
+                return $"TinySystem.{staticMethod.ContainingType.Name}.{methodName}({string.Join(", ", args)})";
 
             // --ref method の out 引数 → Lua multi-return 受け
             // (host 側は `local a, b = f(args)` の形で複数値を返す)
@@ -297,10 +297,10 @@ public partial class LuaEmitter
         var symbol = model.GetSymbolInfo(memberAccess).Symbol;
         if (symbol is IFieldSymbol { IsStatic: true } staticField
             && IsTinySystemFacade(staticField.ContainingType))
-            return $"{staticField.ContainingType.Name}.{member}";
+            return $"TinySystem.{staticField.ContainingType.Name}.{member}";
         if (symbol is IPropertySymbol { IsStatic: true } staticProperty
             && IsTinySystemFacade(staticProperty.ContainingType))
-            return $"{staticProperty.ContainingType.Name}.{member}";
+            return $"TinySystem.{staticProperty.ContainingType.Name}.{member}";
 
         // Rune.Value: utf8.codes の値は codepoint 整数そのもの
         if (IsRuneValue(symbol))

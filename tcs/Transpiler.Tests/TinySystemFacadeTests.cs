@@ -3,6 +3,26 @@ namespace TinyCs.Tests;
 public class TinySystemFacadeTests
 {
     [Fact]
+    public void RandomFacade_DoesNotResolveToGameRandom()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class Random
+            {
+                public int Next() => -1;
+            }
+            public class T
+            {
+                public static bool Test()
+                {
+                    return new Random().Next() == -1
+                        && TinySystem.Random.Next(1) == 0;
+                }
+            }
+            """, "tostring(T.test())");
+        Assert.Equal("true", result);
+    }
+
+    [Fact]
     public void RandomFacade_CompilesWithoutStub()
     {
         var result = TestHelper.TranspileAndRunWithRuntime("""
