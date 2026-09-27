@@ -2597,6 +2597,25 @@ public static unsafe partial class Lub
             }
         }
 
+        /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+        public static void SaveText(string path, string text)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var st = LubNative.lub_io_save_text(LubRuntime.Ctx, a.Str(path), a.Str(text));
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    return;
+                }
+                LubRuntime.Check(st, "Io.SaveText");
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や音の data のような binary 用。</summary>
         public static void LoadBytes(string path, out Bytes? bytes, out int version, out Lub.Io.Status status, out string? error)
         {
@@ -9659,6 +9678,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_text(void* ctx, LubStr @path, LubStr* @text, int* @version, int* @status, LubStr* @error);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_io_save_text(void* ctx, LubStr @path, LubStr @text);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_bytes(void* ctx, LubStr @path, LubView* @bytes, int* @version, int* @status, LubStr* @error);
