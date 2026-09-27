@@ -214,12 +214,42 @@ public class Readback
 {
 }
 
+public class XrView
+{
+    public int Width, Height;
+    /// <summary>右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。</summary>
+    [LubArray(16)]
+    public float[] ViewProjection = new float[16];
+}
+
+public class XrInput
+{
+    public bool Active;
+    public float StickX, StickY, Trigger, Grip;
+    public bool Primary, Secondary, Menu;
+}
+
 // -------------------------------------------------------------------- Lub
 
 /// <summary>lub の runtime API。ゲームは `using static Lub;` で
 /// `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。</summary>
 public static class Lub
 {
+    public static class Xr
+    {
+        /// <summary>入力フォーカスを持つ XR セッションか。</summary>
+        [LubNoFail]
+        public static bool Focused() { return false; }
+
+        /// <summary>眼は左 0、右 1。描画不可なら null。距離はメートル。</summary>
+        public static XrView? GetView(int eye, float near, float far) { return null; }
+
+        /// <summary>次の MainTex パスの眼を選ぶ。パスの外で呼ぶ。</summary>
+        public static void SelectEye(int eye) { }
+
+        /// <summary>左手 0、右手 1。フォーカスを失うと入力は無効。</summary>
+        public static XrInput? GetInput(int hand) { return null; }
+    }
     /// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
     [LubLuaString]
     public enum EventKind

@@ -7,6 +7,9 @@
 #include "lua_api.h"
 #include "profile.h"
 #include "ui.h"
+#if defined(LUB_HAS_OPENXR)
+#include "xr.h"
+#endif
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -135,6 +138,11 @@ bool lub_host_poll_event(LubContext *ctx, LubEventData *out) {
 
 bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   App *app = lub_api_app(ctx);
+#if defined(LUB_HAS_OPENXR)
+  bool xr = strcmp(app->backend_name, "openxr") == 0;
+  if (xr && !lubxr_poll(&app->quit_requested))
+    return false;
+#endif
   int w = 0, h = 0;
   SDL_GetWindowSizeInPixels(app->window, &w, &h);
   if (w == 0 || h == 0)
@@ -154,7 +162,15 @@ bool lub_host_frame_begin(LubContext *ctx, float *dt) {
   profile_frame_begin(&app->profile, app->frame_index);
   profile_begin_scope(&app->profile, "runtime.begin_frame");
   app_frame_begin(app, &w, &h);
+#if defined(LUB_HAS_OPENXR)
+  if (xr)
+    app->frame_dt = lubxr_frame_dt();
+#endif
   profile_end_scope(&app->profile, "runtime.begin_frame");
+  if (app->quit_requested) {
+    profile_frame_end(&app->profile, app->frame_index);
+    return false;
+  }
   ui_new_frame(app, (float)app->frame_dt, w, h);
   profile_begin_scope(&app->profile, "script.onFrame");
   if (dt)

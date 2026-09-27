@@ -336,6 +336,24 @@ typedef struct LubTextureOpts {
   bool storage; // compute の storage image として使う。
 } LubTextureOpts;
 
+typedef struct LubXrView {
+  int32_t width;
+  int32_t height;
+  float view_projection[16]; // 右手系、メートル、前方 -Z。行優先の projection *
+                             // view、深度 [0,1]。
+} LubXrView;
+
+typedef struct LubXrInput {
+  bool active;
+  float stick_x;
+  float stick_y;
+  float trigger;
+  float grip;
+  bool primary;
+  bool secondary;
+  bool menu;
+} LubXrInput;
+
 // Lub.config のオプション (onInit 内でのみ有効)。
 typedef struct LubConfigOpts {
   LubStr backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows
@@ -2399,6 +2417,22 @@ LUB_API LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
 
 // アプリ終了を要求する。
 LUB_API void lub_quit(LubContext *ctx);
+
+// -------------------------------------------------------------------- xr
+
+// 入力フォーカスを持つ XR セッションか。
+LUB_API bool lub_xr_focused(LubContext *ctx);
+
+// 眼は左 0、右 1。描画不可なら null。距離はメートル。
+LUB_API LubStatus lub_xr_get_view(LubContext *ctx, int32_t eye, float near,
+                                  float far, LubXrView *out);
+
+// 次の MainTex パスの眼を選ぶ。パスの外で呼ぶ。
+LUB_API LubStatus lub_xr_select_eye(LubContext *ctx, int32_t eye);
+
+// 左手 0、右手 1。フォーカスを失うと入力は無効。
+LUB_API LubStatus lub_xr_get_input(LubContext *ctx, int32_t hand,
+                                   LubXrInput *out);
 
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ

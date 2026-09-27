@@ -241,6 +241,7 @@ endif()
 # native-only; wasm builds ship the webgpu backend alone.
 set(LUB_SOURCES
   src/app.c
+  src/api_xr.c
   src/host_api.c
   src/lua_api.c
   src/api_core.c
@@ -293,9 +294,19 @@ if(NOT LUB_WASM)
     list(APPEND LUB_SOURCES src/backend_vulkan.c)
   endif()
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LUB_HAS_VULKAN)
+  set(BUILD_WITH_SYSTEM_JSONCPP OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/openxr EXCLUDE_FROM_ALL)
+  list(APPEND LUB_SOURCES src/xr.c)
+  set(LUB_HAS_OPENXR ON)
+endif()
 # runtime 本体は object library にまとめ、player (lub) と共有 library
 # (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
 add_library(lub_objs OBJECT ${LUB_SOURCES})
+if(LUB_HAS_OPENXR)
+  target_compile_definitions(lub_objs PUBLIC LUB_HAS_OPENXR=1)
+  target_link_libraries(lub_objs PUBLIC OpenXR::openxr_loader)
+endif()
 add_executable(lub src/main.c)
 target_link_libraries(lub PRIVATE lub_objs)
 if(LUB_HAS_VULKAN)
@@ -452,6 +463,11 @@ if(LUB_WASM)
 endif()
 
 # C-side smoke tests (native only — spawn は wasm に存在しない).
+if(LUB_HAS_OPENXR)
+  add_executable(lub_xr_math_smoke tests/c/xr_math_smoke.c)
+  target_link_libraries(lub_xr_math_smoke PRIVATE lub_objs)
+  target_include_directories(lub_xr_math_smoke PRIVATE third_party/openxr/src/common)
+endif()
 if(NOT LUB_WASM)
   add_executable(lub_serve_smoke
     tests/c/serve_smoke.c

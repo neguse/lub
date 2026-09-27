@@ -31,6 +31,8 @@ lub bundles or links the following third-party components.
 | Lua v5.5.0 | third_party/lua/ | MIT | https://github.com/lua/lua |
 | Box2D v3.1.1 | third_party/box2d/ | MIT | https://github.com/erincatto/box2d |
 | Box3D v0.1.0 | third_party/box3d/ | MIT | https://github.com/erincatto/box3d |
+| OpenXR SDK 1.1.63 | third_party/openxr/ | Apache-2.0 / MIT | https://github.com/KhronosGroup/OpenXR-SDK |
+| JsonCpp (OpenXR loader) | third_party/openxr/src/external/jsoncpp/ | MIT | https://github.com/open-source-parsers/jsoncpp |
 
 ## Bundled sample assets
 
