@@ -256,6 +256,8 @@ static VkFormat vkb_format(SglPixelFormat fmt) {
     return g.depth24_fmt; // D24S8 or D32S8, whichever the device supports
   case SGL_PF_BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
+  case SGL_PF_RGBA8_SRGB:
+    return VK_FORMAT_R8G8B8A8_SRGB;
   case SGL_PF_RGBA8:
   default:
     return VK_FORMAT_R8G8B8A8_UNORM;
@@ -1264,8 +1266,8 @@ static bool vkb_init(App *app) {
     if (!lubxr_start(g.instance, g.phys, g.device, g.qfam))
       return false;
     lubxr_size(&g.sw_w, &g.sw_h);
-    g.sc_format = VK_FORMAT_R8G8B8A8_UNORM;
-    g.sc_fmt_sgl = SGL_PF_RGBA8;
+    g.sc_format = VK_FORMAT_R8G8B8A8_SRGB;
+    g.sc_fmt_sgl = SGL_PF_RGBA8_SRGB;
     ImageDesc depth = {.fmt = SGL_PF_DEPTH24_STENCIL8,
                        .w = g.sw_w,
                        .h = g.sw_h,

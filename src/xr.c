@@ -100,11 +100,14 @@ bool lubxr_init(void) {
       .type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
   XR_CHECK(requirements_fn(x.instance, x.system, &requirements));
   XrVersion version = XR_MAKE_VERSION(1, 3, 0);
-  if (version < requirements.minApiVersionSupported ||
-      version > requirements.maxApiVersionSupported) {
-    SDL_Log("openxr: runtime does not support the required Vulkan 1.3 version");
+  if (version < requirements.minApiVersionSupported) {
+    SDL_Log("openxr: runtime requires a Vulkan version newer than 1.3");
     return false;
   }
+  if (version > requirements.maxApiVersionSupported)
+    SDL_Log("openxr: Vulkan 1.3 exceeds runtime tested version %u.%u",
+            (unsigned)XR_VERSION_MAJOR(requirements.maxApiVersionSupported),
+            (unsigned)XR_VERSION_MINOR(requirements.maxApiVersionSupported));
   XR_CHECK(xrGetInstanceProcAddr(x.instance, "xrCreateVulkanInstanceKHR",
                                  (PFN_xrVoidFunction *)&x.create_instance));
   XR_CHECK(xrGetInstanceProcAddr(x.instance, "xrGetVulkanGraphicsDevice2KHR",
@@ -274,11 +277,11 @@ bool lubxr_start(VkInstance instance, VkPhysicalDevice physical,
       xrEnumerateSwapchainFormats(x.session, count, &count, formats);
   bool rgba = false;
   for (uint32_t i = 0; XR_SUCCEEDED(result) && i < count; ++i)
-    if (formats[i] == VK_FORMAT_R8G8B8A8_UNORM)
+    if (formats[i] == VK_FORMAT_R8G8B8A8_SRGB)
       rgba = true;
   free(formats);
   if (!ok(result, "swapchain formats") || !rgba) {
-    SDL_Log("openxr: RGBA8 UNORM swapchain is required");
+    SDL_Log("openxr: RGBA8 sRGB swapchain is required");
     return false;
   }
   XR_CHECK(xrEnumerateEnvironmentBlendModes(
@@ -302,7 +305,7 @@ bool lubxr_start(VkInstance instance, VkPhysicalDevice physical,
     XrSwapchainCreateInfo ci = {.type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
                                 .usageFlags =
                                     XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-                                .format = VK_FORMAT_R8G8B8A8_UNORM,
+                                .format = VK_FORMAT_R8G8B8A8_SRGB,
                                 .sampleCount = 1,
                                 .width = x.width,
                                 .height = x.height,
@@ -325,7 +328,7 @@ bool lubxr_start(VkInstance instance, VkPhysicalDevice physical,
           .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
           .image = e->images[i].image,
           .viewType = VK_IMAGE_VIEW_TYPE_2D,
-          .format = VK_FORMAT_R8G8B8A8_UNORM,
+          .format = VK_FORMAT_R8G8B8A8_SRGB,
           .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
       if (vkCreateImageView(device, &vi, NULL, &e->views[i]) != VK_SUCCESS)
         return false;

@@ -107,6 +107,10 @@ if(NOT LUB_WASM)
     set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.dylib")
     set(_slang_archive_url
       "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-macos-aarch64.tar.gz")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.so")
+    set(_slang_archive_url
+      "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-aarch64.tar.gz")
   else()
     set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.so")
     set(_slang_archive_url
