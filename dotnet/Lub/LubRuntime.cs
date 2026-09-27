@@ -473,7 +473,10 @@ internal static unsafe class LubRuntime
         {
             n = 0;
             if (dict == null) return null;
-            var items = new List<LubNative.LubBinding>();
+            foreach (var (k, v) in dict)
+                n += k == "uniforms" && v is Dictionary<string, object> uniforms ? uniforms.Count : 1;
+            var p = Alloc<LubNative.LubBinding>(n);
+            int index = 0;
             foreach (var (k, v) in dict)
             {
                 if (k == "uniforms" && v is Dictionary<string, object> uniforms)
@@ -483,7 +486,7 @@ internal static unsafe class LubRuntime
                         LubNative.LubBinding b = default;
                         b.name = Str(uk);
                         b.values = Numbers(uv, out b.count, uk);
-                        items.Add(b);
+                        p[index++] = b;
                     }
                     continue;
                 }
@@ -495,11 +498,8 @@ internal static unsafe class LubRuntime
                     BufferRef bf => bf.H,
                     _ => throw new LubException($"bindings.{k}: buffer or texture expected"),
                 };
-                items.Add(hb);
+                p[index++] = hb;
             }
-            n = items.Count;
-            var p = Alloc<LubNative.LubBinding>(n);
-            for (var i = 0; i < n; i++) p[i] = items[i];
             return p;
         }
 
