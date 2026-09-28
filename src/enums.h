@@ -32,7 +32,8 @@ typedef enum {
   SGL_BLEND_NONE = 1,
   SGL_BLEND_ALPHA,
   SGL_BLEND_ADDITIVE,
-  SGL_BLEND_MULTIPLY
+  SGL_BLEND_MULTIPLY,
+  SGL_BLEND_ALPHA_RGBA
 } SglBlend;
 typedef enum { SGL_CULL_NONE = 1, SGL_CULL_BACK, SGL_CULL_FRONT } SglCull;
 typedef enum {

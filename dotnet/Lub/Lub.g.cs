@@ -126,7 +126,7 @@ public class PassOpts
 public class DrawOpts
 {
     public ShaderRef Shader;
-    /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。</summary>
+    /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY` / `ALPHA_RGBA`。</summary>
     public Lub.Gfx.Blend? Blend;
     /// <summary>`Gfx.NONE` / `BACK` / `FRONT`。</summary>
     public Lub.Gfx.Cull? Cull;
@@ -1982,6 +1982,7 @@ public static unsafe partial class Lub
             Alpha = 2,
             Additive = 3,
             Multiply = 4,
+            AlphaRgba = 5,
         }
 
         public enum Cull

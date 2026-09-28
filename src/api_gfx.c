@@ -931,7 +931,7 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
   bool depth_test = d->has_depth ? d->depth : true;
   bool depth_write = d->has_depth_write ? d->depth_write : depth_test;
-  if (blend < SGL_BLEND_NONE || blend > SGL_BLEND_MULTIPLY)
+  if (blend < SGL_BLEND_NONE || blend > SGL_BLEND_ALPHA_RGBA)
     return lub_api_fail(app, "draw: invalid blend %d", blend);
   if (cull < SGL_CULL_NONE || cull > SGL_CULL_FRONT)
     return lub_api_fail(app, "draw: invalid cull %d", cull);

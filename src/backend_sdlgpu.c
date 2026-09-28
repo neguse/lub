@@ -786,11 +786,14 @@ static SDL_GPUColorTargetBlendState to_sdl_blend(SglBlend b) {
   };
 
   switch (b) {
+  case SGL_BLEND_ALPHA_RGBA:
   case SGL_BLEND_ALPHA:
     bs.enable_blend = true;
     bs.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
     bs.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    bs.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    bs.src_alpha_blendfactor = b == SGL_BLEND_ALPHA_RGBA
+                                   ? SDL_GPU_BLENDFACTOR_SRC_ALPHA
+                                   : SDL_GPU_BLENDFACTOR_ONE;
     bs.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     break;
   case SGL_BLEND_ADDITIVE:

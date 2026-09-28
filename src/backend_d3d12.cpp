@@ -1473,11 +1473,13 @@ D3D12_RENDER_TARGET_BLEND_DESC dx_blend(SglBlend b) {
   d.BlendOpAlpha = D3D12_BLEND_OP_ADD;
   d.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
   switch (b) {
+  case SGL_BLEND_ALPHA_RGBA:
   case SGL_BLEND_ALPHA:
     d.BlendEnable = TRUE;
     d.SrcBlend = D3D12_BLEND_SRC_ALPHA;
     d.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-    d.SrcBlendAlpha = D3D12_BLEND_ONE;
+    d.SrcBlendAlpha =
+        b == SGL_BLEND_ALPHA_RGBA ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE;
     d.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
     break;
   case SGL_BLEND_ADDITIVE:

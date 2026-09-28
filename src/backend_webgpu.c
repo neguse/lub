@@ -874,11 +874,14 @@ static BackendPipeline wg_make_pipeline(const PipelineDesc *d) {
     if (d->blend != SGL_BLEND_NONE) {
       WGPUBlendState *bs = &blend_states[i];
       switch (d->blend) {
+      case SGL_BLEND_ALPHA_RGBA:
       case SGL_BLEND_ALPHA:
         bs->color.srcFactor = WGPUBlendFactor_SrcAlpha;
         bs->color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
         bs->color.operation = WGPUBlendOperation_Add;
-        bs->alpha.srcFactor = WGPUBlendFactor_One;
+        bs->alpha.srcFactor = d->blend == SGL_BLEND_ALPHA_RGBA
+                                  ? WGPUBlendFactor_SrcAlpha
+                                  : WGPUBlendFactor_One;
         bs->alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
         bs->alpha.operation = WGPUBlendOperation_Add;
         break;

@@ -170,7 +170,7 @@ public class PassOpts
 public class DrawOpts
 {
     public ShaderRef Shader = new ShaderRef();
-    /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。</summary>
+    /// <summary>`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY` / `ALPHA_RGBA`。</summary>
     public Lub.Gfx.Blend? Blend;
     /// <summary>`Gfx.NONE` / `BACK` / `FRONT`。</summary>
     public Lub.Gfx.Cull? Cull;
@@ -297,7 +297,12 @@ public static class Lub
         /// <summary>pass 終了時の書き戻し。DontCare は LoadAction と同じ値を共有する。</summary>
         public enum StoreAction { Store = 1, DontCare = 3 }
 
-        public enum Blend { None = 1, Alpha = 2, Additive = 3, Multiply = 4 }
+        public enum Blend
+        {
+            None = 1, Alpha = 2, Additive = 3, Multiply = 4,
+            /// <summary>RGBA 全成分を source * source.a + destination * (1 - source.a) で合成。</summary>
+            AlphaRgba = 5,
+        }
 
         public enum Cull { None = 1, Back = 2, Front = 3 }
 

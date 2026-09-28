@@ -8880,6 +8880,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "ADDITIVE");
   lua_pushinteger(L, 4);
   lua_setfield(L, -2, "MULTIPLY");
+  lua_pushinteger(L, 5);
+  lua_setfield(L, -2, "ALPHA_RGBA");
   lua_pushinteger(L, 1);
   lua_setfield(L, -2, "NONE");
   lua_pushinteger(L, 2);

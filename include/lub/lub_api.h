@@ -126,6 +126,8 @@ typedef enum LubGfxBlend {
   LUB_GFX_BLEND_ALPHA = 2,
   LUB_GFX_BLEND_ADDITIVE = 3,
   LUB_GFX_BLEND_MULTIPLY = 4,
+  LUB_GFX_BLEND_ALPHA_RGBA = 5, // RGBA 全成分を source * source.a + destination
+                                // * (1 - source.a) で合成。
 } LubGfxBlend;
 
 typedef enum LubGfxCull {
@@ -304,8 +306,8 @@ typedef struct LubPassOpts {
 typedef struct LubDrawOpts {
   LubHandle shader;
   bool has_blend;
-  int32_t
-      blend; // LubGfxBlend。`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`。
+  int32_t blend; // LubGfxBlend。`Gfx.NONE` / `ALPHA` / `ADDITIVE` / `MULTIPLY`
+                 // / `ALPHA_RGBA`。
   bool has_cull;
   int32_t cull; // LubGfxCull。`Gfx.NONE` / `BACK` / `FRONT`。
   bool has_primitive;

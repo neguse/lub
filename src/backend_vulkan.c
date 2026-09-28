@@ -2225,11 +2225,14 @@ static void vkb_blend_state(SglBlend b,
                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
   };
   switch (b) {
+  case SGL_BLEND_ALPHA_RGBA:
   case SGL_BLEND_ALPHA:
     out->blendEnable = VK_TRUE;
     out->srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     out->dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    out->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    out->srcAlphaBlendFactor = b == SGL_BLEND_ALPHA_RGBA
+                                   ? VK_BLEND_FACTOR_SRC_ALPHA
+                                   : VK_BLEND_FACTOR_ONE;
     out->dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     break;
   case SGL_BLEND_ADDITIVE:
