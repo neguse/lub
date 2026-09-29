@@ -181,7 +181,7 @@ internal sealed class ContractFacts
             "int" or "System.Int32" => CType.I32,
             "float" or "System.Single" => CType.F32,
             "bool" or "System.Boolean" => CType.Bool,
-            "string" or "System.String" => CType.String,
+            "string" or "System.String" or "char" or "System.Char" => CType.String,
             "object" or "System.Object" => CType.Object,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
             _ when _structs.ContainsKey(text) => CType.Struct(text),

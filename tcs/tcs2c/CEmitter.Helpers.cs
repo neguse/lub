@@ -148,8 +148,10 @@ internal sealed partial class CEmitter
         throw new Tcs2cException($"incompatible {where}: {left}, {right}");
     }
 
-    private static void RequireComparable(CType left, CType right, string where)
+    private void RequireComparable(CType left, CType right, string where)
     {
+        if (left.Kind == CTypeKind.Ref && right.Kind == CTypeKind.Ref
+            && (IsAncestorOrSame(left.Name!, right.Name!) || IsAncestorOrSame(right.Name!, left.Name!))) return;
         if (left == CType.Object && right.IsNullable
             || right == CType.Object && left.IsNullable) return;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32

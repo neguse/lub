@@ -37,3 +37,10 @@ echo 'generics: constrained pools, inherited dispatch and separate static fields
   "$work_dir/generics-lib.c" "$script_dir/tests/generics-host.c" -o "$work_dir/generics-host"
 [[ "$("$work_dir/generics-host" | tr -d '\r')" == '3' ]]
 echo 'generics: retained pool survives collection and is reclaimed after release'
+
+"$dotnet_cmd" "$script_dir/bin/Debug/net10.0/tcs2c.dll" \
+  "$script_dir/tests/game-expressions.cs" -o "$work_dir/game-expressions.c"
+"$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
+  "$work_dir/game-expressions.c" -lm -o "$work_dir/game-expressions"
+[[ "$("$work_dir/game-expressions" | tr -d '\r')" == $'6\n7\n2\n3\n1\n9\n5\ntrue\n1.25\n-25\ntrue\nfalse\n1\nb\ntrue\ntrue\n7\na::b::\ntrue' ]]
+echo 'game expressions: initializers, base factories, field closures, byte characters and string messages passed'

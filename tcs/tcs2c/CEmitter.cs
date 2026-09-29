@@ -155,7 +155,10 @@ internal sealed partial class CEmitter
         EmitAllocators();
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
-            EmitMethod(cls, method);
+        {
+            try { EmitMethod(cls, method); }
+            catch (Tcs2cException error) { throw new Tcs2cException($"{cls.Name}.{method.Name}: {error.Message}"); }
+        }
         EmitDispatchers();
         EmitStaticInitializer();
         if (lib)
@@ -448,8 +451,7 @@ internal sealed partial class CEmitter
     private void EmitAssign(IlAssign assign)
     {
         var targetType = TypeOfPlace(assign.Target);
-        var valueType = TypeOf(assign.Value);
-        RequireAssignable(targetType, valueType, "assignment");
+        ValidateArgument(targetType, assign.Value, "assignment");
         var value = RenderCoerced(assign.Value, targetType);
 
         switch (assign.Target)
@@ -487,7 +489,6 @@ internal sealed partial class CEmitter
                 && TypeOf(index.Recv).Kind == CTypeKind.Dict:
             {
                 var slotType = RequireDict(index.Recv, out var dictType);
-                RequireAssignable(slotType, valueType, "dict store");
                 var dictTemp = Temp("dict");
                 Line($"TcsDict *{dictTemp} = {RenderExpr(index.Recv)};");
                 Line($"*({slotType.CName} *)tcs_dict_put({dictTemp}, " +
@@ -570,6 +571,7 @@ internal sealed partial class CEmitter
     private void EmitForeachList(IlForeachList loop)
     {
         var sequenceType = TypeOf(loop.Coll);
+        if (sequenceType == CType.String) { EmitForeachString(loop); return; }
         if (sequenceType.Kind is not (CTypeKind.Array or CTypeKind.List)
             || sequenceType.Element is null)
             throw new Tcs2cException($"IlForeachList requires a typed array/List, got " +

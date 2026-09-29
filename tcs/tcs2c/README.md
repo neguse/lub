@@ -74,6 +74,19 @@ C toolchain requires it. `String.IndexOf` and `Substring` use the Lua runtime's
 byte offsets and slicing rules. Run `bash tcs2c/verify-game-core.sh` for these
 array, argument, numeric and string contracts.
 
+Object initializers evaluate in order inside a C statement expression. The C
+backend accepts a final return in these blocks and rejects early returns.
+Factory lambdas can be passed to base constructors or assigned to delegate
+fields. Reference equality accepts related base and derived types. `List.Clear`
+resets the logical length while retaining capacity; cleared elements cease to
+be GC roots.
+
+`char` uses a one-byte string for ASCII arithmetic and string iteration visits
+bytes, not UTF-16 characters. `StartsWith`, `Split` with one string separator,
+and `Join` with a string array use the byte-string contract. An empty separator
+leaves the split input whole. `float.Parse` accepts a complete numeric string
+with surrounding ASCII whitespace; invalid input faults.
+
 ## Library heap lifetime
 
 `--ref STUB.cs` imports the static methods, static fields, enum values and data

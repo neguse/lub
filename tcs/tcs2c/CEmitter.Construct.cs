@@ -39,7 +39,7 @@ internal sealed partial class CEmitter
                 var rendered = new List<string> { "tcs_size", "tcs_trace" };
                 for (var i = 0; i < completeBaseArgs.Count; i++)
                 {
-                    RequireAssignable(baseParams[i].Type, TypeOf(completeBaseArgs[i]),
+                    ValidateArgument(baseParams[i].Type, completeBaseArgs[i],
                         $"base ctor argument {i} of {cls.Name}");
                     var temp = Temp("base_arg");
                     Line($"{baseParams[i].Type.CName} {temp} = " +

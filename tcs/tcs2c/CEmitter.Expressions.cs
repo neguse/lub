@@ -17,6 +17,7 @@ internal sealed partial class CEmitter
         IlUn unary => RenderUnary(unary),
         IlParen paren => $"({RenderExpr(paren.E)})",
         IlTernary ternary => RenderTernary(ternary),
+        IlIife block => RenderBlockExpression(block),
         IlCall call => RenderCall(call),
         IlDynCall call => RenderDynCall(call),
         IlInvoke invoke => RenderInvoke(invoke),
@@ -45,6 +46,7 @@ internal sealed partial class CEmitter
         IlUn unary => TypeOf(unary.E),
         IlParen paren => TypeOf(paren.E),
         IlTernary ternary => TypeOfTernary(ternary),
+        IlIife block => TypeOfBlockExpression(block),
         IlCall call => TypeOfCall(call),
         IlDynCall call => TypeOfDynCall(call),
         IlInvoke invoke => TypeOfInvoke(invoke),
@@ -231,6 +233,8 @@ internal sealed partial class CEmitter
     {
         IlBinOp.AddNum => $"({left} + {right})",
         IlBinOp.Concat => $"tcs_string_concat({left}, {right})",
+        IlBinOp.Sub when leftType == CType.String && rightType == CType.String =>
+            $"(tcs_string_byte({left}) - tcs_string_byte({right}))",
         IlBinOp.Sub => $"({left} - {right})",
         IlBinOp.Mul => $"({left} * {right})",
         IlBinOp.DivNum => $"((float)({left}) / (float)({right}))",
@@ -238,12 +242,14 @@ internal sealed partial class CEmitter
             $"tcs_string_equal({left}, {right})",
         IlBinOp.Ne when leftType == CType.String && rightType == CType.String =>
             $"(!tcs_string_equal({left}, {right}))",
+        IlBinOp.Eq when leftType.IsNullable && rightType.IsNullable => $"((void *)({left}) == (void *)({right}))",
+        IlBinOp.Ne when leftType.IsNullable && rightType.IsNullable => $"((void *)({left}) != (void *)({right}))",
         IlBinOp.Eq => $"({left} == {right})",
         IlBinOp.Ne => $"({left} != {right})",
-        IlBinOp.Lt => $"({left} < {right})",
-        IlBinOp.Le => $"({left} <= {right})",
-        IlBinOp.Gt => $"({left} > {right})",
-        IlBinOp.Ge => $"({left} >= {right})",
+        IlBinOp.Lt => CompareStringsOrNumbers(left, right, leftType, rightType, "<"),
+        IlBinOp.Le => CompareStringsOrNumbers(left, right, leftType, rightType, "<="),
+        IlBinOp.Gt => CompareStringsOrNumbers(left, right, leftType, rightType, ">"),
+        IlBinOp.Ge => CompareStringsOrNumbers(left, right, leftType, rightType, ">="),
         IlBinOp.And => $"({left} && {right})",
         IlBinOp.Or => $"({left} || {right})",
         IlBinOp.BitAnd => $"({left} & {right})",
@@ -260,6 +266,8 @@ internal sealed partial class CEmitter
         var right = TypeOf(binary.R);
         switch (binary.Op)
         {
+            case IlBinOp.Sub when left == CType.String && right == CType.String:
+                return CType.I32;
             case IlBinOp.AddNum or IlBinOp.Sub or IlBinOp.Mul:
                 return NumericJoin(left, right, binary.Op.ToString());
             case IlBinOp.Concat:
@@ -277,6 +285,7 @@ internal sealed partial class CEmitter
                 RequireComparable(left, right, "equality");
                 return CType.Bool;
             case IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge:
+                if (left == CType.String && right == CType.String) return CType.Bool;
                 _ = NumericJoin(left, right, "comparison");
                 return CType.Bool;
             case IlBinOp.And:
