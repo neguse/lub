@@ -19,7 +19,9 @@ public sealed record IlClassInfo(
     ImmutableArray<IlFieldInfo> Fields,
     string LayoutHash,
     ImmutableArray<IlMethodInfo> Methods,
-    IlCtorInfo? Ctor = null);
+    IlCtorInfo? Ctor = null,
+    ImmutableArray<string> Interfaces = default,
+    bool IsInterface = false);
 
 /// <summary>explicit constructor。構築順は base ctor → 自 class の field
 /// default/initializer → Body (Lua backend と同順)。BaseArgs は base(...)
@@ -62,7 +64,7 @@ public sealed record IlExportResult(
     IlBlock? TopLevel = null,
     ImmutableArray<IlStructInfo> Structs = default);
 
-public static class IlExport
+public static partial class IlExport
 {
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false)
     {
@@ -140,6 +142,8 @@ public static class IlExport
             {
                 classes.Add(ExportClass(emitter, model, cls, structLayouts));
             }
+            foreach (var iface in tree.GetRoot().DescendantNodes().OfType<InterfaceDeclarationSyntax>())
+                classes.Add(ExportInterface(emitter, model, iface));
             var globals = tree.GetCompilationUnitRoot().Members
                 .OfType<GlobalStatementSyntax>().ToList();
             if (globals.Count > 0)
@@ -296,7 +300,8 @@ public static class IlExport
         }
 
         return new IlClassInfo(cls.Identifier.ValueText, baseName,
-            [.. fields], LayoutHash(fields, structLayouts), [.. methods], ctor);
+            [.. fields], LayoutHash(fields, structLayouts), [.. methods], ctor,
+            symbol == null ? [] : [.. symbol.AllInterfaces.Select(i => i.ToDisplayString())]);
     }
 
     // layout version hash (il-spec §14): instance field の (名前, 型) 列の

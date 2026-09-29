@@ -11,7 +11,7 @@ internal sealed partial class CEmitter
         if (!_classes.ContainsKey(typeTest.TypeRef))
             throw new Tcs2cException($"IlIsType target is not a class: {typeTest.TypeRef}");
         var operand = TypeOf(typeTest.E);
-        if (operand.Kind is not (CTypeKind.Ref or CTypeKind.Null))
+        if (operand.Kind is not (CTypeKind.Ref or CTypeKind.Null or CTypeKind.Object))
             throw new Tcs2cException($"IlIsType operand is not a class reference: {operand}");
         return CType.Bool;
     }
@@ -131,6 +131,8 @@ internal sealed partial class CEmitter
     private static CType CommonType(CType left, CType right, string where)
     {
         if (left == right) return left;
+        if (left == CType.Object && left.CanAssignFrom(right)) return left;
+        if (right == CType.Object && right.CanAssignFrom(left)) return right;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
             && right.Kind is CTypeKind.I32 or CTypeKind.F32)
             return NumericJoin(left, right, where);
@@ -146,6 +148,8 @@ internal sealed partial class CEmitter
 
     private static void RequireComparable(CType left, CType right, string where)
     {
+        if (left == CType.Object && right.IsNullable
+            || right == CType.Object && left.IsNullable) return;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
             && right.Kind is CTypeKind.I32 or CTypeKind.F32) return;
         if (left == right && left.Kind is CTypeKind.Bool or CTypeKind.String
@@ -175,6 +179,7 @@ internal sealed partial class CEmitter
     // closure は型付き文脈でのみ生成できる (IlClosure は引数型を持たない)
     private string RenderCoerced(IlExpr expr, CType target)
     {
+        if (target == CType.Object) return RenderBox(expr);
         if (target.Kind == CTypeKind.Closure)
         {
             if (expr is IlClosure closure)
@@ -199,6 +204,7 @@ internal sealed partial class CEmitter
         IlVar => false,
         IlParen paren => Effectful(paren.E),
         IlNumericConvert convert => Effectful(convert.Value),
+        IlRefCast cast => Effectful(cast.Value),
         IlUn unary => Effectful(unary.E),
         IlBin binary => Effectful(binary.L) || Effectful(binary.R),
         IlTernary ternary => Effectful(ternary.Cond)

@@ -25,12 +25,20 @@ internal sealed partial class CEmitter
 
         typedef void (*TcsTrace)(void *);
 
+        typedef struct TcsObjectHeader { uint32_t type_id; } TcsObjectHeader;
+        #define TCS_STRING UINT32_C(0xfffffff1)
+        #define TCS_BOX_I32 UINT32_C(0xfffffff2)
+        #define TCS_BOX_F32 UINT32_C(0xfffffff3)
+        #define TCS_BOX_BOOL UINT32_C(0xfffffff4)
+
         typedef struct TcsString {
+            uint32_t type_id;
             size_t length;
             unsigned char data[];
         } TcsString;
 
         typedef struct TcsArray {
+            uint32_t type_id;
             size_t length;
             size_t element_size;
             TcsTrace trace_element;
@@ -38,6 +46,7 @@ internal sealed partial class CEmitter
         } TcsArray;
 
         typedef struct TcsList {
+            uint32_t type_id;
             size_t length;
             size_t capacity;
             size_t element_size;
@@ -50,6 +59,7 @@ internal sealed partial class CEmitter
         /* closure: fnptr + 捕捉変数 cell の配列。capture は変数単位
            (il-spec §7) — 捕捉される local は heap cell へ box される */
         typedef struct TcsClosure {
+            uint32_t type_id;
             void *fn;
             size_t count;
             void *cells[];
@@ -67,6 +77,7 @@ internal sealed partial class CEmitter
 
         #define TCS_DICT_BUCKETS 64
         typedef struct TcsDict {
+            uint32_t type_id;
             TcsDictNode *buckets[TCS_DICT_BUCKETS];
             int32_t count;
             int32_t key_is_string;
@@ -86,9 +97,10 @@ internal sealed partial class CEmitter
         static bool tcs_string_equal(TcsString *left, TcsString *right);
 
         static TcsDict *
-        tcs_dict_new(int32_t key_is_string, size_t value_size, TcsTrace trace)
+        tcs_dict_new(uint32_t type_id, int32_t key_is_string, size_t value_size, TcsTrace trace)
         {
             TcsDict *dict = tcs_alloc_traced(sizeof(*dict), tcs_trace_dict);
+            dict->type_id = type_id;
             dict->trace_value = trace;
             dict->key_is_string = key_is_string;
             dict->value_size = value_size;
@@ -221,6 +233,7 @@ internal sealed partial class CEmitter
             if (length > SIZE_MAX - sizeof(*string))
                 tcs_fault("allocation-overflow");
             string = tcs_alloc(sizeof(*string) + length);
+            string->type_id = TCS_STRING;
             string->length = length;
             if (length != 0 && data != NULL) memcpy(string->data, data, length);
             return string;
@@ -378,13 +391,14 @@ internal sealed partial class CEmitter
         }
 
         static TcsArray *
-        tcs_array_new(int32_t length, size_t element_size, TcsTrace trace)
+        tcs_array_new(uint32_t type_id, int32_t length, size_t element_size, TcsTrace trace)
         {
             TcsArray *array;
             if (length < 0) tcs_fault("negative-array-length");
             if ((size_t)length > SIZE_MAX / element_size)
                 tcs_fault("allocation-overflow");
             array = tcs_alloc_traced(sizeof(*array), tcs_trace_array);
+            array->type_id = type_id;
             array->trace_element = trace;
             array->length = (size_t)length;
             array->element_size = element_size;
@@ -410,9 +424,10 @@ internal sealed partial class CEmitter
         }
 
         static TcsList *
-        tcs_list_new(size_t element_size, TcsTrace trace)
+        tcs_list_new(uint32_t type_id, size_t element_size, TcsTrace trace)
         {
             TcsList *list = tcs_alloc_traced(sizeof(*list), tcs_trace_list);
+            list->type_id = type_id;
             list->trace_element = trace;
             list->element_size = element_size;
             return list;

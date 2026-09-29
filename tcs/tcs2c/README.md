@@ -76,6 +76,17 @@ array, argument, numeric and string contracts.
 
 ## Library heap lifetime
 
+`object` values can contain class, string, collection and delegate references,
+or boxed `int`, `float` and `bool` values. Reference conversions preserve object
+identity; numeric boxes are separate managed allocations. Runtime tags check
+unboxing and reference casts, including collection element types. Interface
+method calls dispatch to the implementing class, including inherited methods.
+Interface properties and default method bodies are outside this C slice.
+
+Object and interface references participate in the same precise root tracing as
+typed class references. Run `bash tcs2c/verify-object-values.sh` to check mixed
+roots, cyclic references, interface dispatch, collection and rejected casts.
+
 `--lib` exports `tcs_lib_init()` and `tcs_entry_CLASS_METHOD()` entry points.
 The generated runtime uses a non-moving, precise mark-and-sweep collector.
 Static fields are roots; generated tracers follow class fields, embedded structs,

@@ -77,6 +77,7 @@ public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
 public sealed record IlNewArray(string ElementType, IlExpr Length) : IlExpr;
 
 public sealed record IlNumericConvert(IlExpr Value, string TargetType) : IlExpr;
+public sealed record IlRefCast(IlExpr Value, string TargetType) : IlExpr;
 
 public readonly record struct IlTableEntry(
     IlExpr? Key, IlExpr Value, string? NameKey = null);

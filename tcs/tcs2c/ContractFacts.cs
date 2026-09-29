@@ -172,6 +172,7 @@ internal sealed class ContractFacts
             "float" or "System.Single" => CType.F32,
             "bool" or "System.Boolean" => CType.Bool,
             "string" or "System.String" => CType.String,
+            "object" or "System.Object" => CType.Object,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
             _ when _structs.ContainsKey(text) => CType.Struct(text),
             _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),

@@ -97,6 +97,7 @@ if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/tcs2c/verify-digests.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-gc.sh"
   bash "$SCRIPT_DIR/tcs2c/verify-game-core.sh"
+  bash "$SCRIPT_DIR/tcs2c/verify-object-values.sh"
 else
   echo "Skipping tcs2c digest verification (no C compiler)."
 fi

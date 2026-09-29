@@ -24,6 +24,7 @@ internal sealed partial class CEmitter
         IlTable table => RenderTable(table),
         IlNewArray array => RenderNewArray(array),
         IlNumericConvert convert => RenderNumericConvert(convert),
+        IlRefCast cast => RenderRefCast(cast),
         IlIsType typeTest => RenderIsType(typeTest),
         // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
         IlStructCopy copy => RenderExpr(copy.E),
@@ -53,6 +54,7 @@ internal sealed partial class CEmitter
         IlTable table => TypeOfTable(table),
         IlNewArray array => TypeOfNewArray(array),
         IlNumericConvert convert => _facts.MapType(convert.TargetType),
+        IlRefCast cast => _facts.MapType(cast.TargetType),
         IlIsType typeTest => TypeOfIsType(typeTest),
         IlStructCopy copy => TypeOf(copy.E),
         _ => throw Unsupported(expr),
@@ -716,7 +718,7 @@ internal sealed partial class CEmitter
         if (element is not null && element.Kind is not (CTypeKind.I32
             or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
             or CTypeKind.Ref or CTypeKind.Closure or CTypeKind.List
-            or CTypeKind.Dict or CTypeKind.Array))
+            or CTypeKind.Dict or CTypeKind.Array or CTypeKind.Object))
             throw new Tcs2cException($"unsupported List element type: {element}");
         return table.IsArray && element != null ? CType.Array(element) : CType.List(element);
     }
@@ -729,12 +731,12 @@ internal sealed partial class CEmitter
         var type = TypeOfTable(table);
         var list = Temp("list");
         var elementSize = type.Element is null ? "0" : $"sizeof({type.ElementCName})";
-        var statements = new StringBuilder($"TcsList *{list} = tcs_list_new({elementSize}, {TraceValue(type.Element)}); ");
+        var statements = new StringBuilder($"TcsList *{list} = tcs_list_new({RuntimeTypeId(type)}, {elementSize}, {TraceValue(type.Element)}); ");
         foreach (var entry in table.Entries)
         {
             var value = Temp("list_item");
             statements.Append(type.ElementCName).Append(' ').Append(value)
-                .Append(" = ").Append(RenderExpr(entry.Value)).Append("; ")
+                .Append(" = ").Append(RenderCoerced(entry.Value, type.Element!)).Append("; ")
                 .Append("tcs_list_add(").Append(list).Append(", &").Append(value)
                 .Append(", sizeof(").Append(value).Append(")); ");
         }
@@ -753,6 +755,6 @@ internal sealed partial class CEmitter
     private string RenderNewArray(IlNewArray array)
     {
         var type = TypeOfNewArray(array);
-        return $"tcs_array_new({RenderExpr(array.Length)}, sizeof({type.ElementCName}), {TraceValue(type.Element)})";
+        return $"tcs_array_new({RuntimeTypeId(type)}, {RenderExpr(array.Length)}, sizeof({type.ElementCName}), {TraceValue(type.Element)})";
     }
 }

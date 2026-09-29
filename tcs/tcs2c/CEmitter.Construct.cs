@@ -112,7 +112,7 @@ internal sealed partial class CEmitter
             _indent++;
             Line("switch (((TcsObjectHeader *)v_self)->type_id) {");
             foreach (var target in _program.Classes
-                .Where(c => IsAncestorOrSame(cls.Name, c.Name)))
+                .Where(c => !c.IsInterface && IsAncestorOrSame(cls.Name, c.Name)))
             {
                 var impl = FindDeclaringClass(target.Name, method.Name)!;
                 var call = $"{Names.Method(impl, method.Name)}(" +

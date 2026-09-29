@@ -95,7 +95,10 @@ internal sealed partial class CEmitter
     internal bool IsAncestorOrSame(string ancestor, string derived)
     {
         for (string? cur = derived; cur != null; cur = _classes[cur].BaseName)
+        {
             if (cur == ancestor) return true;
+            if (!_classes[cur].Interfaces.IsDefault && _classes[cur].Interfaces.Contains(ancestor)) return true;
+        }
         return false;
     }
 
@@ -117,7 +120,7 @@ internal sealed partial class CEmitter
 
     // declaring で宣言された method を strict 子孫が再宣言しているか
     private bool IsPolymorphic(string declaring, string method) =>
-        _program.Classes.Any(c => c.Name != declaring
+        _classes[declaring].IsInterface || _program.Classes.Any(c => c.Name != declaring
             && IsAncestorOrSame(declaring, c.Name)
             && c.Methods.Any(m => m.Name == method));
 
@@ -142,7 +145,9 @@ internal sealed partial class CEmitter
         _output.Append(GcRuntime);
         _output.Append(MathRuntime);
         _output.Append(StringRuntime);
+        _output.Append(ObjectRuntime);
         EmitClassDeclarations();
+        EmitInterfaceChecks();
         EmitStaticFields();
         EmitGcTracers();
         EmitMethodPrototypes();
@@ -198,7 +203,7 @@ internal sealed partial class CEmitter
     {
         if (type.Kind == CTypeKind.Void && allowVoid) return;
         if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-            or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal) return;
+            or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal or CTypeKind.Object) return;
         if (type.Kind is CTypeKind.Array or CTypeKind.List or CTypeKind.Dict)
         {
             EnsureSupportedStorageType(type.Element!, where);
@@ -234,12 +239,6 @@ internal sealed partial class CEmitter
         foreach (var cls in _program.Classes)
             Line($"typedef struct {Names.Class(cls.Name)} {Names.Class(cls.Name)};");
         EmitStructTypedefs();
-        Line();
-        Line("typedef struct TcsObjectHeader {");
-        _indent++;
-        Line("uint32_t type_id;");
-        _indent--;
-        Line("} TcsObjectHeader;");
         Line();
         Line("enum {");
         _indent++;
