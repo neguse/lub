@@ -86,6 +86,10 @@ elif [[ $require_cs -eq 1 ]]; then
   exit 1
 fi
 
+if [[ $cs_available -eq 1 ]]; then
+  run bash scripts/verify-tcs-binding.sh
+fi
+
 # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
 cs_entry_class() {
   local cs_dir="$1" cs_files cs_projs

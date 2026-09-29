@@ -77,6 +77,9 @@ jobs:
       - name: Docs lint
         run: bash scripts/docs-lint.sh
 
+      - name: WebXR input and scheduling
+        run: node web/scripts/verify-xr.mjs
+
   # Linux regression gate: scripts/native-gate.sh (CI と手動 pre-push の単一
   # ソース) で Release build -> C smoke tests -> physics Lua -> C# sample gate。
   # 視覚 golden の byte 比較は --skip-golden で外している: lavapipe の出力は

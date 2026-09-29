@@ -3,6 +3,9 @@
 #if defined(LUB_HAS_OPENXR)
 #include "xr.h"
 #endif
+#ifdef __EMSCRIPTEN__
+#include "webxr.h"
+#endif
 
 #if defined(LUB_HAS_OPENXR)
 static bool enabled(App *app) {
@@ -11,7 +14,10 @@ static bool enabled(App *app) {
 #endif
 
 bool lub_xr_focused(LubContext *ctx) {
-#if defined(LUB_HAS_OPENXR)
+#if defined(__EMSCRIPTEN__)
+  (void)ctx;
+  return lubwebxr_focused();
+#elif defined(LUB_HAS_OPENXR)
   return enabled(lub_api_app(ctx)) && lubxr_focused();
 #else
   (void)ctx;
@@ -26,7 +32,10 @@ LubStatus lub_xr_get_view(LubContext *ctx, int32_t eye, float near_plane,
   if (eye < 0 || eye > 1 || !isfinite(near_plane) || !isfinite(far_plane) ||
       near_plane <= 0 || far_plane <= near_plane)
     return lub_api_fail(app, "xr.get_view: invalid eye or clip distances");
-#if defined(LUB_HAS_OPENXR)
+#if defined(__EMSCRIPTEN__)
+  if (lubwebxr_view(eye, near_plane, far_plane, out))
+    return LUB_OK;
+#elif defined(LUB_HAS_OPENXR)
   if (enabled(app) &&
       lubxr_view(eye, near_plane, far_plane, out->view_projection)) {
     lubxr_size(&out->width, &out->height);
@@ -41,7 +50,10 @@ LubStatus lub_xr_select_eye(LubContext *ctx, int32_t eye) {
   App *app = lub_api_app(ctx);
   if (pass_state_in_pass(&app->pass))
     return lub_api_fail(app, "xr.select_eye: finish the current pass first");
-#if defined(LUB_HAS_OPENXR)
+#if defined(__EMSCRIPTEN__)
+  if (lubwebxr_select_eye(eye))
+    return LUB_OK;
+#elif defined(LUB_HAS_OPENXR)
   if (enabled(app) && lubxr_select_eye(eye))
     return LUB_OK;
 #else
@@ -55,7 +67,10 @@ LubStatus lub_xr_get_input(LubContext *ctx, int32_t hand, LubXrInput *out) {
   memset(out, 0, sizeof(*out));
   if (hand < 0 || hand > 1)
     return lub_api_fail(app, "xr.get_input: invalid hand");
-#if defined(LUB_HAS_OPENXR)
+#if defined(__EMSCRIPTEN__)
+  if (lubwebxr_input(hand, out))
+    return LUB_OK;
+#elif defined(LUB_HAS_OPENXR)
   if (enabled(app)) {
     float values[4] = {0};
     bool buttons[4] = {0};

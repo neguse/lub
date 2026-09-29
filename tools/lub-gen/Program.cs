@@ -17,10 +17,12 @@ using TinyCs;
 var verb = args.Length > 0 ? args[0] : "check";
 string? outPath = null;
 var stubPath = "cs-lib/lub_stub.cs";
+var sources = new List<string>();
 for (var i = 1; i < args.Length; i++)
 {
     if (args[i] == "-o" && i + 1 < args.Length) outPath = args[++i];
     else if (args[i] == "--stub" && i + 1 < args.Length) stubPath = args[++i];
+    else if (args[i] == "--source" && i + 1 < args.Length) sources.Add(args[++i]);
     else
     {
         Console.Error.WriteLine($"unknown arg: {args[i]}");
@@ -43,6 +45,18 @@ if (compileErrors.Count > 0)
 
 switch (verb)
 {
+    case "tcs":
+        {
+            var game = IlExport.Export(sources.Select(File.ReadAllText).ToArray(),
+                specializeGenerics: true, referenceSources: [File.ReadAllText(stubPath)]);
+            if (game.Diagnostics.Length != 0)
+            {
+                foreach (var error in game.Diagnostics) Console.Error.WriteLine(error);
+                return 1;
+            }
+            Emit(outPath, TcsBinding.Generate(model, game));
+            return 0;
+        }
     case "check":
         {
             var problems = Checks.Run(model);
