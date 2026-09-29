@@ -191,6 +191,8 @@ internal sealed partial class CEmitter
         var leftType = TypeOf(binary.L);
         var rightType = TypeOf(binary.R);
         var resultType = TypeOfBinary(binary);
+        if (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable)
+            return RenderNullableBinary(binary, leftType, rightType);
         if (binary.Op == IlBinOp.Concat)
         {
             var leftString = leftType == CType.String
@@ -296,6 +298,7 @@ internal sealed partial class CEmitter
                 RequireType(CType.Bool, right, "logical operand");
                 return CType.Bool;
             case IlBinOp.Or:
+                if (left.Kind == CTypeKind.Nullable && right == left.Element) return right;
                 return CommonType(left, right, "coalesce");
             case IlBinOp.BitAnd or IlBinOp.BitOr or IlBinOp.BitXor
                 or IlBinOp.Shl or IlBinOp.Shr:
@@ -341,6 +344,7 @@ internal sealed partial class CEmitter
         var type = TypeOfCall(call);
         if (MathResult(call) != null) return RenderMath(call, type);
         if (StringResult(call) != null) return RenderStringCall(call, type);
+        if (RuntimeServiceResult(call) != null) return RenderRuntimeService(call, type);
         return call.Callee switch
         {
             "__tcs_idiv" => RenderOrderedCall("tcs_idiv", type,
@@ -368,6 +372,7 @@ internal sealed partial class CEmitter
         if (ForeignMethod(call.Callee) is { } foreign) return _facts.MapType(foreign.ReturnType);
         if (MathResult(call) is { } mathType) return mathType;
         if (StringResult(call) is { } stringType) return stringType;
+        if (RuntimeServiceResult(call) is { } serviceType) return serviceType;
         if (call.Callee is "__tcs_idiv" or "__tcs_irem")
         {
             RequireArity(call.Callee, call.Args.Length, 2);

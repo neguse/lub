@@ -36,6 +36,17 @@ internal sealed partial class CEmitter
 
     private CType? StringResult(IlCall call)
     {
+        if (call is { Callee: "math.tointeger", Args: [IlCall { Callee: "tonumber", Args: [var text] }] })
+        {
+            RequireType(CType.String, TypeOf(text), call.Callee);
+            return CType.I32;
+        }
+        if (call.Callee == "String.Replace")
+        {
+            RequireArity(call.Callee, call.Args.Length, 3);
+            foreach (var arg in call.Args) RequireType(CType.String, TypeOf(arg), call.Callee);
+            return CType.String;
+        }
         if (call.Callee == "String.Join")
         {
             RequireArity(call.Callee, call.Args.Length, 2);
@@ -68,6 +79,10 @@ internal sealed partial class CEmitter
 
     private string RenderStringCall(IlCall call, CType result)
     {
+        if (call is { Callee: "math.tointeger", Args: [IlCall { Callee: "tonumber", Args: [var text] }] })
+            return RenderOrderedCall("tcs_parse_i32", result, [(CType.String, RenderExpr(text))]);
+        if (call.Callee == "String.Replace") return RenderOrderedCall("tcs_string_replace", result,
+            call.Args.Select(a => (TypeOf(a), RenderExpr(a))).ToList());
         if (call.Callee == "String.Join") return RenderOrderedCall("tcs_string_join", result,
             call.Args.Select(a => (TypeOf(a), RenderExpr(a))).ToList());
         if (call.Callee is "String.StartsWith" or "String.Split")
@@ -88,6 +103,50 @@ internal sealed partial class CEmitter
     }
 
     private const string StringRuntime = """
+        #include <errno.h>
+        #include <ctype.h>
+
+        static int32_t tcs_parse_i32(TcsString *text)
+        {
+            tcs_nonnull(text);
+            if (text->length == SIZE_MAX) tcs_fault("allocation-overflow");
+            char *buffer = malloc(text->length + 1);
+            if (buffer == NULL) tcs_fault("allocation");
+            memcpy(buffer, text->data, text->length);
+            buffer[text->length] = 0;
+            char *end;
+            errno = 0;
+            long long value = strtoll(buffer, &end, 10);
+            bool valid = end != buffer && errno != ERANGE && value >= INT32_MIN && value <= INT32_MAX;
+            while ((size_t)(end - buffer) < text->length && isspace((unsigned char)*end)) end++;
+            valid = valid && (size_t)(end - buffer) == text->length;
+            free(buffer);
+            if (!valid) tcs_fault("invalid-integer");
+            return (int32_t)value;
+        }
+        static TcsString *tcs_string_replace(TcsString *text, TcsString *old, TcsString *replacement)
+        {
+            size_t length = (size_t)tcs_string_length(text), width = (size_t)tcs_string_length(old);
+            size_t added = replacement == NULL ? 0 : replacement->length, matches = 0;
+            if (width == 0) tcs_fault("empty-replacement-pattern");
+            for (size_t i = 0; i < length;) {
+                if (width <= length - i && memcmp(text->data + i, old->data, width) == 0) {
+                    matches++; i += width;
+                } else i++;
+            }
+            if (matches == 0) return text;
+            size_t result_length = length - matches * width;
+            if (added != 0 && matches > (SIZE_MAX - result_length) / added) tcs_fault("allocation-overflow");
+            TcsString *result = tcs_string_new(NULL, result_length + matches * added);
+            for (size_t i = 0, out = 0; i < length;) {
+                if (width <= length - i && memcmp(text->data + i, old->data, width) == 0) {
+                    if (added != 0) memcpy(result->data + out, replacement->data, added);
+                    out += added; i += width;
+                } else result->data[out++] = text->data[i++];
+            }
+            return result;
+        }
+
         static TcsString *tcs_string_join(TcsString *separator, TcsArray *values)
         {
             size_t width = (size_t)tcs_string_length(separator), length = 0;

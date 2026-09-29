@@ -10,6 +10,7 @@ public class Foreign
         Api.Poll(out string topic, out string payload);
         Console.WriteLine(topic);
         Console.WriteLine(payload);
+        Api.Discard(out _, out _, out _);
     }
     public static void Frame(float dt)
     {

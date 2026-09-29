@@ -6,6 +6,7 @@ internal sealed partial class CEmitter
 {
     private CType TypeOfBlockExpression(IlIife block)
     {
+        block = NormalizeConditionalAccess(block);
         PushScope();
         try
         {
@@ -21,6 +22,7 @@ internal sealed partial class CEmitter
 
     private string RenderBlockExpression(IlIife block)
     {
+        block = NormalizeConditionalAccess(block);
         var start = _output.Length;
         PushScope();
         try
@@ -41,6 +43,17 @@ internal sealed partial class CEmitter
         }
         finally { _output.Length = start; PopScope(); }
     }
+
+    private static IlIife NormalizeConditionalAccess(IlIife block) => block.Stats switch
+    {
+        [IlLocal local, IlIf { Arms: [(IlBin { Op: IlBinOp.Ne, L: IlVar test, R: IlLit { LuaText: "nil" } },
+            { Stats: [IlReturn { Value: IlVar value }] })], Else: null }, IlReturn { Value: { } fallback }]
+            when local.Name == test.Name && local.Name == value.Name
+            => new IlIife([local, new IlReturn(new IlBin(IlBinOp.Or, value, fallback))]),
+        [IlLocal local, IlIf { Arms: [(var condition, { Stats: [IlReturn { Value: { } value }] })], Else: null }]
+            => new IlIife([local, new IlReturn(new IlTernary(condition, value, new IlLit("nil")))]),
+        _ => block,
+    };
 
     private bool EmitListClear(IlStat stat)
     {

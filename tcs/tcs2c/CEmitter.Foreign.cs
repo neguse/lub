@@ -53,7 +53,7 @@ internal sealed partial class CEmitter
         foreach (var entry in table.Entries)
         {
             if (entry.NameKey == null) throw new Tcs2cException("foreign option field needs a name");
-            var field = _facts.Field(cls.Name, entry.NameKey);
+            var field = FieldInChain(cls.Name, entry.NameKey);
             ValidateArgument(field.Type, entry.Value, entry.NameKey);
             text.Append($"{name}->{Names.Field(entry.NameKey)} = {RenderCoerced(entry.Value, field.Type)}; ");
         }
@@ -77,6 +77,13 @@ internal sealed partial class CEmitter
             if (parameter.IsOut)
             {
                 if (multi.Targets[output++] is not IlVar target) throw new Tcs2cException("foreign out target must be a local");
+                if (target.Name == "_" && TryResolve(target.Name) == null)
+                {
+                    var discard = Temp("discard");
+                    Line($"{type.CName} {discard};");
+                    values.Add($"&{discard}");
+                    continue;
+                }
                 var variable = Resolve(target.Name);
                 RequireType(type, variable.Type, method.Name);
                 values.Add(variable.Boxed ? variable.CName : $"&{variable.CName}");

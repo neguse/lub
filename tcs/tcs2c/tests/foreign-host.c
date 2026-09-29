@@ -32,3 +32,11 @@ int main(void)
     tcs_lib_collect();
     return tcs_lib_heap_bytes() != 0;
 }
+
+void tcs_host_api_discard(int32_t *count, TcsString **text, float *dt)
+{
+    *count = 42;
+    *text = tcs_string_new((const unsigned char *)"discard", 7);
+    *dt = 0.5f;
+    if (*count != 42 || (*text)->length != 7 || *dt != 0.5f) tcs_fault("aliased-discard");
+}

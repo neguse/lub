@@ -146,6 +146,7 @@ internal sealed partial class CEmitter
         _output.Append(MathRuntime);
         _output.Append(StringRuntime);
         _output.Append(ObjectRuntime);
+        _output.Append(RuntimeServices);
         EmitClassDeclarations();
         EmitInterfaceChecks();
         EmitStaticFields();
@@ -400,6 +401,7 @@ internal sealed partial class CEmitter
 
     private void EmitLocal(IlLocal local)
     {
+        if (local is { Name: "_", Init: null, Type: null }) return;
         if (local.Init is null)
         {
             // 型は契約 (IlLocal.Type) から。C の zero 初期化 = default 値

@@ -131,6 +131,10 @@ internal sealed partial class CEmitter
     private static CType CommonType(CType left, CType right, string where)
     {
         if (left == right) return left;
+        if (left == CType.Null && right.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool)
+            return CType.Nullable(right);
+        if (right == CType.Null && left.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool)
+            return CType.Nullable(left);
         if (left.Kind == CTypeKind.Nullable && left.CanAssignFrom(right)) return left;
         if (right.Kind == CTypeKind.Nullable && right.CanAssignFrom(left)) return right;
         if (left == CType.Object && left.CanAssignFrom(right)) return left;
@@ -150,6 +154,13 @@ internal sealed partial class CEmitter
 
     private void RequireComparable(CType left, CType right, string where)
     {
+        if (left.Kind == CTypeKind.Nullable || right.Kind == CTypeKind.Nullable)
+        {
+            if (left == CType.Null || right == CType.Null) return;
+            RequireComparable(left.Kind == CTypeKind.Nullable ? left.Element! : left,
+                right.Kind == CTypeKind.Nullable ? right.Element! : right, where);
+            return;
+        }
         if (left.Kind == CTypeKind.Ref && right.Kind == CTypeKind.Ref
             && (IsAncestorOrSame(left.Name!, right.Name!) || IsAncestorOrSame(right.Name!, left.Name!))) return;
         if (left == CType.Object && right.IsNullable
