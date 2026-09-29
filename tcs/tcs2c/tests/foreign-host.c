@@ -12,6 +12,7 @@ float tcs_host_api_read(Tcs_Options *options, int32_t mode, void *version)
 {
     if (mode != 3 || version != NULL || tcs_unbox(options->f_version, TCS_BOX_I32)->value.i != 2)
         tcs_fault("foreign-options");
+    if (options->f_data->type_id != TCS_TYPE_ARRAY_F32) tcs_fault("foreign-array-type");
     return ((float *)options->f_data->data)[1];
 }
 

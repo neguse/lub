@@ -4,6 +4,8 @@ internal sealed partial class CEmitter
 {
     private void EmitLibEntryPoints()
     {
+        Line($"#define TCS_TYPE_ARRAY_F32 {RuntimeTypeId(CType.Array(CType.F32))}");
+        Line($"#define TCS_TYPE_DICT_STRING_OBJECT {RuntimeTypeId(CType.Dict(CType.String, CType.Object))}");
         EmitGcExports();
         Line("void");
         Line("tcs_lib_init(void)");
