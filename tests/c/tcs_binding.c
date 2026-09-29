@@ -1,5 +1,7 @@
-#include "binding.c"
+// clang-format off
 #include "game.c"
+#include "binding.c"
+// clang-format on
 #include <assert.h>
 
 const char *lub_last_error(LubContext *ctx) {
