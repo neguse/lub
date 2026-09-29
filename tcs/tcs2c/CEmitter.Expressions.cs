@@ -632,11 +632,12 @@ internal sealed partial class CEmitter
     }
 
     private string RenderOrderedCall(string function, CType returnType,
-        IReadOnlyList<(CType Type, string Value)> values)
+        IReadOnlyList<(CType Type, string Value)> values, string prefix = "")
     {
-        if (values.Count == 0) return $"{function}()";
+        if (values.Count == 0) return $"{function}({prefix})";
         var declarations = new StringBuilder();
         var arguments = new List<string>();
+        if (prefix.Length != 0) arguments.Add(prefix);
         foreach (var (type, value) in values)
         {
             var temp = Temp("arg");
@@ -678,7 +679,6 @@ internal sealed partial class CEmitter
         if (creation.Args.Length != paramFacts.Count)
             throw new Tcs2cException($"constructor {cls.Name}: expected " +
                 $"{paramFacts.Count} arguments, got {creation.Args.Length}");
-        if (creation.Args.Length == 0) return $"{Names.New(cls.Name)}()";
         var values = new List<(CType Type, string Value)>();
         for (var i = 0; i < creation.Args.Length; i++)
         {
@@ -688,7 +688,8 @@ internal sealed partial class CEmitter
                 RenderCoerced(creation.Args[i], paramFacts[i].Type)));
         }
         return RenderOrderedCall(Names.New(cls.Name),
-            CType.Ref(cls.Name), values);
+            CType.Ref(cls.Name), values,
+            $"sizeof({Names.Class(cls.Name)}), tcs_trace_object_{Names.Id(cls.Name)}");
     }
 
     private CType TypeOfTable(IlTable table)
@@ -720,7 +721,7 @@ internal sealed partial class CEmitter
         var type = TypeOfTable(table);
         var list = Temp("list");
         var elementSize = type.Element is null ? "0" : $"sizeof({type.ElementCName})";
-        var statements = new StringBuilder($"TcsList *{list} = tcs_list_new({elementSize}); ");
+        var statements = new StringBuilder($"TcsList *{list} = tcs_list_new({elementSize}, {TraceValue(type.Element)}); ");
         foreach (var entry in table.Entries)
         {
             var value = Temp("list_item");
@@ -744,6 +745,6 @@ internal sealed partial class CEmitter
     private string RenderNewArray(IlNewArray array)
     {
         var type = TypeOfNewArray(array);
-        return $"tcs_array_new({RenderExpr(array.Length)}, sizeof({type.ElementCName}))";
+        return $"tcs_array_new({RenderExpr(array.Length)}, sizeof({type.ElementCName}), {TraceValue(type.Element)})";
     }
 }

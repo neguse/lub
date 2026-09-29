@@ -23,10 +23,9 @@ internal sealed partial class CEmitter
                 AddVariable(paramFacts[i].Name,
                     new Variable($"v_{Names.Id(paramFacts[i].Name)}_{i}",
                         paramFacts[i].Type));
-            var parameters = paramFacts.Count == 0
-                ? "void"
-                : string.Join(", ", paramFacts.Select((p, i) =>
-                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+            var parameters = string.Join(", ", new[] { "size_t tcs_size", "TcsTrace tcs_trace" }
+                .Concat(paramFacts.Select((p, i) =>
+                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
             Line($"static {cType} *");
             Line($"{Names.New(cls.Name)}({parameters})");
             Line("{");
@@ -39,7 +38,7 @@ internal sealed partial class CEmitter
                 if (baseArgs.Length != baseParams.Count)
                     throw new Tcs2cException(
                         $"base constructor arity mismatch: {cls.Name}");
-                var rendered = new List<string>();
+                var rendered = new List<string> { "tcs_size", "tcs_trace" };
                 for (var i = 0; i < baseArgs.Length; i++)
                 {
                     RequireAssignable(baseParams[i].Type, TypeOf(baseArgs[i]),
@@ -54,7 +53,7 @@ internal sealed partial class CEmitter
             }
             else
             {
-                Line($"{cType} *object = tcs_alloc(sizeof(*object));");
+                Line($"{cType} *object = tcs_alloc_traced(tcs_size, tcs_trace);");
             }
             Line($"object->type_id = {Names.TypeId(cls.Name)};");
             AddVariable("self", new Variable("object", CType.Ref(cls.Name)));

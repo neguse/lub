@@ -54,7 +54,7 @@ internal sealed partial class CEmitter
         var sb = new StringBuilder();
         sb.Append($"TcsDict *{dictTemp} = tcs_dict_new(" +
             $"{(type.Key!.Kind == CTypeKind.String ? 1 : 0)}, " +
-            $"sizeof({type.Element!.CName})); ");
+            $"sizeof({type.Element!.CName}), {TraceValue(type.Element)}); ");
         foreach (var entry in table.Entries)
         {
             var valueTemp = Temp("dict_value");

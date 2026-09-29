@@ -52,3 +52,28 @@ method overload、継承、List の int/float 以外は対象を含む明示 err
 生成 C は GNU statement expression で operand / argument の左→右評価を固定する。
 strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 `-fexcess-precision=standard` を必須とする。
+
+## Library heap lifetime
+
+`--lib` exports `tcs_lib_init()` and `tcs_entry_CLASS_METHOD()` entry points.
+The generated runtime uses a non-moving, precise mark-and-sweep collector.
+Static fields are roots; generated tracers follow class fields, embedded structs,
+collection elements and captured closure cells. Numeric buffers and strings are
+not scanned for pointers. Unreachable cycles are reclaimed.
+
+Collection runs only after the outermost exported call returns, when managed
+heap bytes exceed twice the previous live heap plus 128 KiB. A host can also call
+`tcs_lib_collect()` between calls. Collection during generated code execution is
+rejected: locals and expression temporaries are not registered as roots. This
+means a single long-running entry point can accumulate garbage until it returns.
+Executable `Main()` output has no intermediate automatic collection.
+
+The host must not retain generated heap pointers across these boundaries.
+`tcs_lib_heap_bytes()` reports allocated payload plus collector headers;
+`tcs_lib_heap_objects()` reports allocation count, including backing buffers.
+These are managed-heap metrics, not total process or WebAssembly memory usage.
+Collection is synchronous and has no pause-time bound.
+
+Run `bash tcs2c/verify-gc.sh` to check retained graphs, cyclic garbage and bounded
+heap growth across repeated host calls. The generated C and `tests/gc-host.c`
+can also be linked with Emscripten to exercise the same checks in WebAssembly.

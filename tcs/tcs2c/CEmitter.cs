@@ -139,8 +139,10 @@ internal sealed partial class CEmitter
         var entry = lib ? null : FindEntry(requestedEntry);
 
         _output.Append(RuntimePrelude);
+        _output.Append(GcRuntime);
         EmitClassDeclarations();
         EmitStaticFields();
+        EmitGcTracers();
         EmitMethodPrototypes();
         EmitAllocators();
         foreach (var cls in _program.Classes)
@@ -195,11 +197,12 @@ internal sealed partial class CEmitter
         if (type.Kind == CTypeKind.Void && allowVoid) return;
         if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
             or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal) return;
-        if (type.Kind == CTypeKind.Array
-            && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-                or CTypeKind.Ref or CTypeKind.StructVal) return;
-        if (type.Kind == CTypeKind.List
-            && type.Element!.Kind is CTypeKind.I32 or CTypeKind.F32) return;
+        if (type.Kind is CTypeKind.Array or CTypeKind.List or CTypeKind.Dict)
+        {
+            EnsureSupportedStorageType(type.Element!, where);
+            return;
+        }
+        if (type.Kind == CTypeKind.Closure) return;
         throw new Tcs2cException($"unsupported {where}: {type}");
     }
 
@@ -226,9 +229,9 @@ internal sealed partial class CEmitter
 
     private void EmitClassDeclarations()
     {
-        EmitStructTypedefs();
         foreach (var cls in _program.Classes)
             Line($"typedef struct {Names.Class(cls.Name)} {Names.Class(cls.Name)};");
+        EmitStructTypedefs();
         Line();
         Line("typedef struct TcsObjectHeader {");
         _indent++;
@@ -281,9 +284,8 @@ internal sealed partial class CEmitter
         foreach (var cls in _program.Classes)
         {
             var protoParams = CtorParamFacts(cls);
-            var signature = protoParams.Count == 0
-                ? "void"
-                : string.Join(", ", protoParams.Select(p => p.Type.CName));
+            var signature = string.Join(", ", new[] { "size_t", "TcsTrace" }
+                .Concat(protoParams.Select(p => p.Type.CName)));
             Line($"static {Names.Class(cls.Name)} *" +
                 $"{Names.New(cls.Name)}({signature});");
         }
@@ -404,7 +406,7 @@ internal sealed partial class CEmitter
                     { Boxed = true };
                 AddVariable(local.Name, cell0);
                 Line($"{declared.CName} *{cell0.CName} = " +
-                    $"tcs_alloc(sizeof(*{cell0.CName}));");
+                    $"tcs_alloc_traced(sizeof(*{cell0.CName}), {TraceValue(declared)});");
                 Line($"*{cell0.CName} = {zero};");
                 return;
             }
@@ -431,7 +433,7 @@ internal sealed partial class CEmitter
             var cell = new Variable($"c_{Names.Id(local.Name)}_{_serial++}",
                 type) { Boxed = true };
             AddVariable(local.Name, cell);
-            Line($"{type.CName} *{cell.CName} = tcs_alloc(sizeof(*{cell.CName}));");
+            Line($"{type.CName} *{cell.CName} = tcs_alloc_traced(sizeof(*{cell.CName}), {TraceValue(type)});");
             Line($"*{cell.CName} = {rendered};");
             return;
         }
@@ -735,11 +737,14 @@ internal sealed partial class CEmitter
     // 引数なし public method を外部 linkage で公開する
     private void EmitLibEntryPoints()
     {
+        EmitGcExports();
         Line("void");
         Line("tcs_lib_init(void)");
         Line("{");
         _indent++;
+        Line("tcs_gc_call_depth++;");
         Line("tcs_init_statics();");
+        EmitGcReturnBoundary();
         _indent--;
         Line("}");
         Line();
@@ -752,7 +757,9 @@ internal sealed partial class CEmitter
             Line($"tcs_entry_{Names.Id(cls.Name)}_{Names.Id(method.Name)}(void)");
             Line("{");
             _indent++;
+            Line("tcs_gc_call_depth++;");
             Line($"{Names.Method(cls.Name, method.Name)}();");
+            EmitGcReturnBoundary();
             _indent--;
             Line("}");
             Line();
