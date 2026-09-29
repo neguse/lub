@@ -15,7 +15,7 @@ static int Run(string[] args)
         }
 
         var sources = options.Inputs.Select(File.ReadAllText).ToArray();
-        var exported = IlExport.Export(sources);
+        var exported = IlExport.Export(sources, specializeGenerics: true);
         if (exported.Diagnostics.Length > 0)
             throw new Tcs2cException("TinyC# diagnostics:\n" +
                 string.Join("\n", exported.Diagnostics));

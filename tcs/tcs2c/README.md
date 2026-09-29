@@ -55,6 +55,13 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 
 ## Array, argument and numeric operations
 
+Closed instantiations of top-level generic classes are specialized before IL
+export. Each instantiation has its own fields and static storage; constrained
+base classes, arrays and factory lambdas retain their concrete types. Abstract
+method declarations participate in virtual dispatch. Open, nested and partial
+generic classes are not executable C types. Specialization is limited to 256
+closed classes and 128 expansion rounds.
+
 Array initializers use fixed-length storage, including nested and empty arrays.
 Constructor and method calls can omit trailing optional arguments. Literal and
 local declaration types are retained in IL so an integral initializer does not

@@ -4,6 +4,16 @@ namespace TinyCs.Tcs2c;
 
 internal sealed partial class CEmitter
 {
+    private void ValidateArgument(CType target, IlExpr argument, string context)
+    {
+        if (target.Kind == CTypeKind.Closure && argument is IlClosure closure)
+        {
+            RequireArity(context, closure.Params.Length, target.Parameters!.Count);
+            return;
+        }
+        RequireAssignable(target, TypeOf(argument), context);
+    }
+
     private static IReadOnlyList<IlExpr> CompleteArguments(
         IReadOnlyList<ParameterFact> parameters, IReadOnlyList<IlExpr> supplied)
     {

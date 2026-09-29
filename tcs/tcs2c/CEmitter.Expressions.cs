@@ -616,7 +616,7 @@ internal sealed partial class CEmitter
             throw new Tcs2cException($"IlInvoke target is static: {fact.ClassName}.{fact.Name}");
         args = CompleteArguments(fact.Parameters, args);
         for (var i = 0; i < args.Count; i++)
-            RequireAssignable(fact.Parameters[i].Type, TypeOf(args[i]),
+            ValidateArgument(fact.Parameters[i].Type, args[i],
                 $"argument {i} of {fact.ClassName}.{fact.Name}");
         return fact.ReturnType;
     }
@@ -689,7 +689,7 @@ internal sealed partial class CEmitter
         var values = new List<(CType Type, string Value)>();
         for (var i = 0; i < arguments.Count; i++)
         {
-            RequireAssignable(paramFacts[i].Type, TypeOf(arguments[i]),
+            ValidateArgument(paramFacts[i].Type, arguments[i],
                 $"constructor argument {i} of {cls.Name}");
             values.Add((paramFacts[i].Type,
                 RenderCoerced(arguments[i], paramFacts[i].Type)));

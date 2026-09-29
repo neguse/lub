@@ -43,7 +43,8 @@ public sealed record IlMethodInfo(
     IlBlock? Body,
     string ReturnType = "void",
     ImmutableArray<string> ParameterTypes = default,
-    ImmutableArray<IlExpr?> ParameterDefaults = default);
+    ImmutableArray<IlExpr?> ParameterDefaults = default,
+    bool IsAbstract = false);
 
 /// <summary>データ struct の migration metadata。field のみ
 /// (member は診断済み)。LayoutHash は class と同じ展開規則で、struct 値は
@@ -63,11 +64,17 @@ public sealed record IlExportResult(
 
 public static class IlExport
 {
-    public static IlExportResult Export(string[] csharpSources)
+    public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false)
     {
         var trees = csharpSources
             .Select(s => CSharpSyntaxTree.ParseText(s))
             .ToArray();
+        if (specializeGenerics)
+        {
+            var specialized = IlSpecialization.Expand(trees);
+            if (specialized.Error != null) return new IlExportResult([], [specialized.Error]);
+            trees = specialized.Trees;
+        }
         var compilation = CSharpCompilation.Create("IlExport", trees,
             Transpiler.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
@@ -284,7 +291,8 @@ public static class IlExport
                     : [.. methodSymbol.Parameters
                         .Select(p => p.Type.ToDisplayString())],
                 [.. method.ParameterList.Parameters.Select(p => p.Default is { } d
-                    ? emitter.ExportExprIl(model, d.Value) : null)]));
+                    ? emitter.ExportExprIl(model, d.Value) : null)],
+                methodSymbol?.IsAbstract ?? false));
         }
 
         return new IlClassInfo(cls.Identifier.ValueText, baseName,

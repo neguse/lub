@@ -181,7 +181,7 @@ internal sealed partial class CEmitter
                 if (!methodNames.Add(method.Name))
                     throw new Tcs2cException($"method overloads are not supported: " +
                         $"{cls.Name}.{method.Name}");
-                if (method.Body is null)
+                if (method.Body is null && !method.IsAbstract)
                     throw new Tcs2cException($"method has no IL body: {cls.Name}.{method.Name}");
                 var fact = _facts.Method(cls.Name, method.Name);
                 EnsureSupportedStorageType(fact.ReturnType,
@@ -332,6 +332,13 @@ internal sealed partial class CEmitter
         _currentClass = cls;
         _currentMethod = method;
         _currentMethodFact = _facts.Method(cls.Name, method.Name);
+        if (method.IsAbstract)
+        {
+            Line($"static {_currentMethodFact.ReturnType.CName}");
+            Line($"{Names.Method(cls.Name, method.Name)}({ParameterList(_currentMethodFact)})");
+            Line("{ tcs_fault(\"abstract-method\"); }");
+            return;
+        }
         _scopes.Clear();
         _continueTargets.Clear();
         CollectCapturedNames(method.Body!);
