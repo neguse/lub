@@ -150,6 +150,7 @@ internal sealed partial class CEmitter
         EmitClassDeclarations();
         EmitInterfaceChecks();
         EmitStaticFields();
+        EmitStaticInitPrototypes();
         EmitGcTracers();
         EmitMethodPrototypes();
         EmitForeignPrototypes();
@@ -467,6 +468,7 @@ internal sealed partial class CEmitter
                 return;
             }
             case IlField field when TryStaticField(field, out var staticName, out _):
+                Line($"{StaticInit(((IlVar)field.Recv).Name)}();");
                 Line($"{staticName} = {value};");
                 return;
             // struct place への field 書き込み (配列要素・ローカル・class field
@@ -711,33 +713,6 @@ internal sealed partial class CEmitter
         PopScope();
         _indent--;
         Line("}");
-    }
-
-    private void EmitStaticInitializer()
-    {
-        Line("static void");
-        Line("tcs_init_statics(void)");
-        Line("{");
-        _indent++;
-        foreach (var cls in _program.Classes)
-        {
-            _currentClass = cls;
-            _scopes.Clear();
-            PushScope();
-            foreach (var field in cls.Fields.Where(f => f.IsStatic))
-            {
-                var fact = _facts.Field(cls.Name, field.Name);
-                if (fact.Init is null) continue;
-                RequireAssignable(fact.Type, TypeOf(fact.Init),
-                    $"initializer of {cls.Name}.{field.Name}");
-                Line($"{Names.StaticField(cls.Name, field.Name)} = " +
-                    $"{RenderExpr(fact.Init)};");
-            }
-            PopScope();
-        }
-        _indent--;
-        Line("}");
-        Line();
     }
 
     private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)

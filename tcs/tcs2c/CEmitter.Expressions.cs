@@ -72,7 +72,8 @@ internal sealed partial class CEmitter
     {
         if (ForeignValue(field) is { } foreign)
             return foreign.Constant is { } constant ? Constants.I32(constant) : $"{HostName(foreign.Name)}()";
-        if (TryStaticField(field, out var staticName, out _)) return staticName;
+        if (TryStaticField(field, out var staticName, out _))
+            return $"({StaticInit(((IlVar)field.Recv).Name)}(), {staticName})";
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind == CTypeKind.Kvp && field.Recv is IlVar kvpVar)
         {

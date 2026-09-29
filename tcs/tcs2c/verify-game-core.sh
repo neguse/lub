@@ -44,3 +44,10 @@ echo 'generics: retained pool survives collection and is reclaimed after release
   "$work_dir/game-expressions.c" -lm -o "$work_dir/game-expressions"
 [[ "$("$work_dir/game-expressions" | tr -d '\r')" == $'6\n7\n2\n3\n1\n9\n5\ntrue\n1.25\n-25\ntrue\nfalse\n1\nb\ntrue\ntrue\n7\na::b::\ntrue' ]]
 echo 'game expressions: initializers, base factories, field closures, byte characters and string messages passed'
+
+"$dotnet_cmd" "$script_dir/bin/Debug/net10.0/tcs2c.dll" \
+  "$script_dir/tests/static-initialization.cs" -o "$work_dir/static-initialization.c"
+"$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
+  "$work_dir/static-initialization.c" -lm -o "$work_dir/static-initialization"
+[[ "$("$work_dir/static-initialization" | tr -d '\r')" == $'shot\n17\n3\n2\n29' ]]
+echo 'static initialization: forward references, method reads, cycles and writes passed'
