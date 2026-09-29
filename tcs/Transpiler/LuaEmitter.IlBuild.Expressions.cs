@@ -84,6 +84,7 @@ public partial class LuaEmitter
                     return new IlNumericConvert(value,
                         target.SpecialType == SpecialType.System_Int32 ? "int" : "float");
                 return target.IsReferenceType || target.SpecialType == SpecialType.System_Boolean
+                    || target.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
                     ? new IlRefCast(value, target.ToDisplayString()) : value;
             }
             case ConditionalExpressionSyntax ternary:
@@ -731,7 +732,7 @@ public partial class LuaEmitter
         if (IsReferenceOnlyType(typeSymbol))
             // ctor 引数つきは legacy が警告する経路 — fallback
             return args.Count > 0
-                ? null : BuildRefTypeTable(model, initializer);
+                ? null : BuildRefTypeTable(model, initializer, typeSymbol.ToDisplayString());
         // struct の明示 ctor は S.ctor (zero 初期化 + 本文)。`new S()` は
         // ctor を通らない zero 値なので S.new のまま
         var ctor = IsUserStruct(typeSymbol) && args.Count > 0

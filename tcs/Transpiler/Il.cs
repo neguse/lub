@@ -70,7 +70,8 @@ public sealed record IlNewObj(string TypeName, ImmutableArray<IlExpr> Args) : Il
 /// Key があれば [k]=v、NameKey があれば name=v、どちらも無ければ配列項。
 /// ElementType は配列/List リテラルの要素型 (C backend 用 metadata)。</summary>
 public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
-    string? ElementType = null, string? KeyType = null, bool IsArray = false) : IlExpr;
+    string? ElementType = null, string? KeyType = null, bool IsArray = false,
+    string? ObjectType = null) : IlExpr;
 
 /// <summary>固定長配列の生成: new T[n] (il-spec §11)。dev backend は
 /// 空 table (要素は使用時に埋まる)、release backend は連続バッファ確保。</summary>

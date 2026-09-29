@@ -21,7 +21,8 @@ public sealed record IlClassInfo(
     ImmutableArray<IlMethodInfo> Methods,
     IlCtorInfo? Ctor = null,
     ImmutableArray<string> Interfaces = default,
-    bool IsInterface = false);
+    bool IsInterface = false,
+    bool IsExternal = false);
 
 /// <summary>explicit constructor。構築順は base ctor → 自 class の field
 /// default/initializer → Body (Lua backend と同順)。BaseArgs は base(...)
@@ -62,22 +63,27 @@ public sealed record IlExportResult(
     ImmutableArray<IlClassInfo> Classes,
     ImmutableArray<string> Diagnostics,
     IlBlock? TopLevel = null,
-    ImmutableArray<IlStructInfo> Structs = default);
+    ImmutableArray<IlStructInfo> Structs = default,
+    ImmutableArray<IlForeignMethod> ForeignMethods = default,
+    ImmutableArray<IlForeignValue> ForeignValues = default,
+    ImmutableArray<string> EnumTypes = default);
 
 public static partial class IlExport
 {
-    public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false)
+    public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
+        string[]? referenceSources = null)
     {
+        var references = (referenceSources ?? []).Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
         var trees = csharpSources
             .Select(s => CSharpSyntaxTree.ParseText(s))
             .ToArray();
         if (specializeGenerics)
         {
-            var specialized = IlSpecialization.Expand(trees);
+            var specialized = IlSpecialization.Expand(trees, references);
             if (specialized.Error != null) return new IlExportResult([], [specialized.Error]);
             trees = specialized.Trees;
         }
-        var compilation = CSharpCompilation.Create("IlExport", trees,
+        var compilation = CSharpCompilation.Create("IlExport", trees.Concat(references),
             Transpiler.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                 allowUnsafe: false));
@@ -132,6 +138,7 @@ public static partial class IlExport
 
         var classes = new List<IlClassInfo>();
         var emitter = new LuaEmitter();
+        emitter.ReferenceTrees.UnionWith(references);
         var topLevel = new List<StatementSyntax>();
         SemanticModel? topLevelModel = null;
         foreach (var tree in trees)
@@ -154,8 +161,8 @@ public static partial class IlExport
         }
         var topLevelIl = topLevelModel != null
             ? emitter.ExportStatsIl(topLevelModel, topLevel) : null;
-        return new IlExportResult([.. classes], [.. diagnostics], topLevelIl,
-            [.. structs]);
+        return ExportForeign(compilation, trees, references, emitter, structLayouts,
+            new IlExportResult([.. classes], [.. diagnostics], topLevelIl, [.. structs]));
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,

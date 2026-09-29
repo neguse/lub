@@ -68,6 +68,8 @@ internal sealed partial class CEmitter
 
     private string RenderField(IlField field)
     {
+        if (ForeignValue(field) is { } foreign)
+            return foreign.Constant is { } constant ? Constants.I32(constant) : $"{HostName(foreign.Name)}()";
         if (TryStaticField(field, out var staticName, out _)) return staticName;
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind == CTypeKind.Kvp && field.Recv is IlVar kvpVar)
@@ -93,6 +95,7 @@ internal sealed partial class CEmitter
 
     private CType TypeOfField(IlField field)
     {
+        if (ForeignValue(field) is { } foreign) return _facts.MapType(foreign.Type);
         if (TryStaticField(field, out _, out var staticType)) return staticType;
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind == CTypeKind.Kvp)
@@ -318,13 +321,14 @@ internal sealed partial class CEmitter
 
     private string RenderTernary(IlTernary ternary)
     {
-        _ = TypeOfTernary(ternary);
-        return $"({RenderExpr(ternary.Cond)} ? {RenderExpr(ternary.T)} : " +
-            $"{RenderExpr(ternary.F)})";
+        var type = TypeOfTernary(ternary);
+        return $"({RenderExpr(ternary.Cond)} ? {RenderCoerced(ternary.T, type)} : " +
+            $"{RenderCoerced(ternary.F, type)})";
     }
 
     private string RenderCall(IlCall call)
     {
+        if (ForeignMethod(call.Callee) is { } foreign) return RenderForeignCall(foreign, call.Args);
         var type = TypeOfCall(call);
         if (MathResult(call) != null) return RenderMath(call, type);
         if (StringResult(call) != null) return RenderStringCall(call, type);
@@ -352,6 +356,7 @@ internal sealed partial class CEmitter
 
     private CType TypeOfCall(IlCall call)
     {
+        if (ForeignMethod(call.Callee) is { } foreign) return _facts.MapType(foreign.ReturnType);
         if (MathResult(call) is { } mathType) return mathType;
         if (StringResult(call) is { } stringType) return stringType;
         if (call.Callee is "__tcs_idiv" or "__tcs_irem")
@@ -512,6 +517,8 @@ internal sealed partial class CEmitter
 
     private CType TypeOfDynCall(IlDynCall call)
     {
+        if (ForeignCallee(call.Callee) is { } name && ForeignMethod(name) is { } foreign)
+            return _facts.MapType(foreign.ReturnType);
         if (TryTypeOfClosureCallee(call) is { } closureType)
         {
             RequireArity("closure call", call.Args.Length,
@@ -537,6 +544,8 @@ internal sealed partial class CEmitter
 
     private string RenderDynCall(IlDynCall call)
     {
+        if (ForeignCallee(call.Callee) is { } name && ForeignMethod(name) is { } foreign)
+            return RenderForeignCall(foreign, call.Args);
         if (TryTypeOfClosureCallee(call) is { } closureType)
         {
             _ = TypeOfDynCall(call);
@@ -703,6 +712,7 @@ internal sealed partial class CEmitter
 
     private CType TypeOfTable(IlTable table)
     {
+        if (table.ObjectType != null) return _facts.MapType(table.ObjectType);
         if (table.KeyType is not null
             || table.Entries.Any(e => e.Key is not null))
             return TypeOfDictTable(table);
@@ -725,6 +735,7 @@ internal sealed partial class CEmitter
 
     private string RenderTable(IlTable table)
     {
+        if (table.ObjectType != null) return RenderForeignTable(table);
         if (table.IsArray) return RenderArrayLiteral(table);
         if (table.KeyType is not null || table.Entries.Any(e => e.Key is not null))
             return RenderDictTable(table);

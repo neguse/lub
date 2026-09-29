@@ -43,7 +43,8 @@ internal sealed partial class CEmitter
     {
         var target = _facts.MapType(convert.TargetType);
         var source = TypeOf(convert.Value);
-        if (source == CType.Object) return RenderUnbox(convert.Value, target);
+        if (source == CType.Object || source.Kind == CTypeKind.Nullable)
+            return RenderUnbox(convert.Value, target);
         _ = NumericJoin(target, source, "numeric conversion");
         var value = RenderExpr(convert.Value);
         return target == CType.I32 && source == CType.F32

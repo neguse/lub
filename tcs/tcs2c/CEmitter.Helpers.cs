@@ -131,6 +131,8 @@ internal sealed partial class CEmitter
     private static CType CommonType(CType left, CType right, string where)
     {
         if (left == right) return left;
+        if (left.Kind == CTypeKind.Nullable && left.CanAssignFrom(right)) return left;
+        if (right.Kind == CTypeKind.Nullable && right.CanAssignFrom(left)) return right;
         if (left == CType.Object && left.CanAssignFrom(right)) return left;
         if (right == CType.Object && right.CanAssignFrom(left)) return right;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
@@ -180,6 +182,17 @@ internal sealed partial class CEmitter
     private string RenderCoerced(IlExpr expr, CType target)
     {
         if (target == CType.Object) return RenderBox(expr);
+        if (target.Kind == CTypeKind.Nullable)
+        {
+            var sourceType = TypeOf(expr);
+            if (sourceType == CType.Null || sourceType == target) return RenderExpr(expr);
+            var suffix = target.Element!.Kind switch
+            {
+                CTypeKind.I32 => "i32", CTypeKind.F32 => "f32", CTypeKind.Bool => "bool",
+                _ => throw new Tcs2cException($"unsupported nullable type: {target.Element}"),
+            };
+            return $"tcs_box_{suffix}({RenderCoerced(expr, target.Element)})";
+        }
         if (target.Kind == CTypeKind.Closure)
         {
             if (expr is IlClosure closure)

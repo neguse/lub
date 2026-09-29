@@ -76,6 +76,22 @@ array, argument, numeric and string contracts.
 
 ## Library heap lifetime
 
+`--ref STUB.cs` imports the static methods, static fields, enum values and data
+classes used by the input. Stub method bodies are never compiled. The generated
+C declares `tcs_host_` functions with the Lua path's dots replaced by underscores;
+static fields are exposed as no-argument getters. A host adapter can include the
+generated library C and implement these declarations, as in `tests/foreign-host.c`.
+External data objects carry an untraced `uint64_t host_value` for native handle
+bits. Managed fields and return values still use generated allocation and tracing.
+
+The adapter may borrow managed pointers only during a call; it must not retain
+them across a collection boundary. Copy borrowed native strings into managed
+strings before returning. Void methods can have typed `out` locals; out calls
+with a separate return value and overloaded foreign names are rejected.
+Nullable numeric/bool arguments carry either null or a typed managed scalar box.
+`--lib` entry points accept `int`, `float` and `bool` arguments and return void.
+Run `bash tcs2c/verify-host.sh` for the host boundary contract.
+
 `object` values can contain class, string, collection and delegate references,
 or boxed `int`, `float` and `bool` values. Reference conversions preserve object
 identity; numeric boxes are separate managed allocations. Runtime tags check

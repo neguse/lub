@@ -51,9 +51,10 @@ internal sealed partial class CEmitter
     private string RenderRefCast(IlRefCast cast)
     {
         var target = _facts.MapType(cast.TargetType);
+        if (target.Kind == CTypeKind.Nullable) return RenderCoerced(cast.Value, target);
         if (target == CType.Object) return RenderBox(cast.Value);
         if (target == CType.Bool)
-            return TypeOf(cast.Value) == CType.Object
+            return TypeOf(cast.Value).Kind is CTypeKind.Object or CTypeKind.Nullable
                 ? RenderUnbox(cast.Value, target) : RenderExpr(cast.Value);
         if (!target.IsNullable) throw new Tcs2cException($"unsupported cast to {target}");
         if (target.Kind == CTypeKind.Ref && _classes[target.Name!].IsInterface)

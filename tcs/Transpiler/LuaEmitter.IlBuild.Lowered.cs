@@ -374,9 +374,9 @@ public partial class LuaEmitter
     }
 
     private IlExpr? BuildRefTypeTable(SemanticModel model,
-        InitializerExpressionSyntax? initializer)
+        InitializerExpressionSyntax? initializer, string type)
     {
-        if (initializer == null) return new IlTable([]);
+        if (initializer == null) return new IlTable([], ObjectType: type);
         var entries = new List<IlTableEntry>();
         foreach (var expr in initializer.Expressions)
         {
@@ -392,6 +392,6 @@ public partial class LuaEmitter
                 model.GetSymbolInfo(name).Symbol is { } entrySym
                     ? N(entrySym) : N(name.Identifier.ValueText)));
         }
-        return new IlTable([.. entries]);
+        return new IlTable([.. entries], ObjectType: type);
     }
 }

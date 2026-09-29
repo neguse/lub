@@ -151,6 +151,7 @@ internal sealed partial class CEmitter
         EmitStaticFields();
         EmitGcTracers();
         EmitMethodPrototypes();
+        EmitForeignPrototypes();
         EmitAllocators();
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
@@ -203,7 +204,8 @@ internal sealed partial class CEmitter
     {
         if (type.Kind == CTypeKind.Void && allowVoid) return;
         if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-            or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal or CTypeKind.Object) return;
+            or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal or CTypeKind.Object
+            or CTypeKind.Nullable) return;
         if (type.Kind is CTypeKind.Array or CTypeKind.List or CTypeKind.Dict)
         {
             EnsureSupportedStorageType(type.Element!, where);
@@ -256,6 +258,7 @@ internal sealed partial class CEmitter
             Line($"struct {Names.Class(cls.Name)} {{");
             _indent++;
             Line("uint32_t type_id;");
+            if (cls.IsExternal) Line("uint64_t host_value;");
             // 継承 chain を root から平坦化 (先頭 layout 一致で upcast 可能)
             foreach (var link in ChainRootFirst(cls.Name))
             foreach (var field in link.Fields.Where(f => !f.IsStatic))
@@ -731,39 +734,6 @@ internal sealed partial class CEmitter
         _indent--;
         Line("}");
         Line();
-    }
-
-    // 静的 link 出荷形 (--lib): main を持たず、初期化と各 static void
-    // 引数なし public method を外部 linkage で公開する
-    private void EmitLibEntryPoints()
-    {
-        EmitGcExports();
-        Line("void");
-        Line("tcs_lib_init(void)");
-        Line("{");
-        _indent++;
-        Line("tcs_gc_call_depth++;");
-        Line("tcs_init_statics();");
-        EmitGcReturnBoundary();
-        _indent--;
-        Line("}");
-        Line();
-        foreach (var cls in _program.Classes)
-        foreach (var method in cls.Methods.Where(m => m.IsStatic
-            && m.Parameters.Length == 0
-            && _facts.Method(cls.Name, m.Name).ReturnType == CType.Void))
-        {
-            Line("void");
-            Line($"tcs_entry_{Names.Id(cls.Name)}_{Names.Id(method.Name)}(void)");
-            Line("{");
-            _indent++;
-            Line("tcs_gc_call_depth++;");
-            Line($"{Names.Method(cls.Name, method.Name)}();");
-            EmitGcReturnBoundary();
-            _indent--;
-            Line("}");
-            Line();
-        }
     }
 
     private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)

@@ -80,6 +80,7 @@ internal sealed partial class CEmitter
     // ref method 側で別対応)
     private void EmitMultiAssign(IlMultiAssign multi)
     {
+        if (EmitForeignMultiAssign(multi)) return;
         if (multi.Values is not [IlCall { Callee: "Dict.TryGet" } tryGet]
             || multi.Targets.Length != 2
             || multi.Targets[0] is not IlVar foundVar

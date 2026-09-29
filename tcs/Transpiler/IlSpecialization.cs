@@ -6,12 +6,12 @@ namespace TinyCs;
 
 internal static class IlSpecialization
 {
-    public static (SyntaxTree[] Trees, string? Error) Expand(SyntaxTree[] trees)
+    public static (SyntaxTree[] Trees, string? Error) Expand(SyntaxTree[] trees, SyntaxTree[] references)
     {
         var names = new Dictionary<string, string>();
         for (var round = 0; round < 128; round++)
         {
-            var compilation = CSharpCompilation.Create("IlSpecialization", trees,
+            var compilation = CSharpCompilation.Create("IlSpecialization", trees.Concat(references),
                 Transpiler.References,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             var instances = new List<(INamedTypeSymbol Type, ClassDeclarationSyntax Source)>();
