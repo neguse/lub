@@ -2375,13 +2375,13 @@ function MeshText:glyph(cp, x, y, size, angle, tint, centered)
 		return
 	end
 	local c = MeshText.color_or_white(tint)
-	local ctr = (function()
-		local __tcs_lhs = centered
-		if __tcs_lhs ~= nil then
-			return __tcs_lhs
-		end
-		return false
-	end)()
+	local ctr
+	local __tcs_lhs = centered
+	if __tcs_lhs ~= nil then
+		ctr = __tcs_lhs
+	else
+		ctr = false
+	end
 	lub.gfx.draw(e.count, {
 		["verts"] = vb,
 		["indices"] = ib,
@@ -3215,18 +3215,17 @@ function Renderer3d:end_()
 		},
 	})
 	if self.debug_view ~= nil then
-		local dbg = (function()
-			local __tcs_sw = self.debug_view
-			if __tcs_sw == "ao" then
-				return aoTex
-			elseif __tcs_sw == "bloom" then
-				return bloomTex
-			elseif __tcs_sw == "hdr" then
-				return hdr
-			else
-				return nil
-			end
-		end)()
+		local dbg
+		local __tcs_sw = self.debug_view
+		if __tcs_sw == "ao" then
+			dbg = aoTex
+		elseif __tcs_sw == "bloom" then
+			dbg = bloomTex
+		elseif __tcs_sw == "hdr" then
+			dbg = hdr
+		else
+			dbg = nil
+		end
 		if dbg ~= nil then
 			lub.gfx.begin_pass({ target = lub.gfx.main_tex })
 			lub.gfx.draw(
@@ -4231,13 +4230,12 @@ function SpriteBatch:flush(blend)
 	if sh == nil then
 		return
 	end
-	local quadVb = (function()
-		if self.instanced then
-			return self:ensure_quad()
-		else
-			return nil
-		end
-	end)()
+	local quadVb
+	if self.instanced then
+		quadVb = self:ensure_quad()
+	else
+		quadVb = nil
+	end
 	if self.instanced and quadVb == nil then
 		return
 	end
