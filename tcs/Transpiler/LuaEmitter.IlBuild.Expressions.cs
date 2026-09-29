@@ -26,7 +26,8 @@ public partial class LuaEmitter
                     ? null : new IlLit(GetDefaultValueForType(converted));
             }
             case LiteralExpressionSyntax lit:
-                return new IlLit(VisitLiteral(lit));
+                return new IlLit(VisitLiteral(lit),
+                    lit.Token.Value is float or double ? "float" : null);
             case IdentifierNameSyntax id:
                 return BuildIdentifier(model, id);
             case BinaryExpressionSyntax bin:
@@ -75,7 +76,13 @@ public partial class LuaEmitter
                     var ch = BuildExpr(model, cast.Expression);
                     return ch == null ? null : new IlCall("string.byte", [ch]);
                 }
-                return BuildExpr(model, cast.Expression);
+                var value = BuildExpr(model, cast.Expression);
+                var target = model.GetTypeInfo(cast.Type).Type?.SpecialType;
+                return value != null && target is SpecialType.System_Int32
+                    or SpecialType.System_Single or SpecialType.System_Double
+                    ? new IlNumericConvert(value,
+                        target == SpecialType.System_Int32 ? "int" : "float")
+                    : value;
             }
             case ConditionalExpressionSyntax ternary:
             {
@@ -134,7 +141,7 @@ public partial class LuaEmitter
                     if (elemType != null && sizeExpr != null
                         && BuildExpr(model, sizeExpr) is { } len)
                         return new IlNewArray(elemType, len);
-                    return new IlTable([], elemType);
+                    return new IlTable([], elemType, IsArray: true);
                 }
                 return BuildArrayItems(model, arr.Initializer,
                     (model.GetTypeInfo(arr).Type as IArrayTypeSymbol)
@@ -164,7 +171,7 @@ public partial class LuaEmitter
     private IlExpr? BuildArrayItems(SemanticModel model,
         InitializerExpressionSyntax? initializer, string? elementType = null)
     {
-        if (initializer == null) return new IlTable([], elementType);
+        if (initializer == null) return new IlTable([], elementType, IsArray: true);
         var items = new List<IlTableEntry>();
         foreach (var e in initializer.Expressions)
         {
@@ -172,7 +179,7 @@ public partial class LuaEmitter
             if (built == null) return null;
             items.Add(new IlTableEntry(null, built));
         }
-        return new IlTable([.. items], elementType);
+        return new IlTable([.. items], elementType, IsArray: true);
     }
 
     private IlExpr? BuildWithExpr(SemanticModel model,

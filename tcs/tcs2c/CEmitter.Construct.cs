@@ -35,17 +35,15 @@ internal sealed partial class CEmitter
                 var baseParams = CtorParamFacts(_classes[baseName]);
                 var baseArgs = ctor?.BaseArgs.IsDefault == false
                     ? ctor.BaseArgs : [];
-                if (baseArgs.Length != baseParams.Count)
-                    throw new Tcs2cException(
-                        $"base constructor arity mismatch: {cls.Name}");
+                var completeBaseArgs = CompleteArguments(baseParams, baseArgs);
                 var rendered = new List<string> { "tcs_size", "tcs_trace" };
-                for (var i = 0; i < baseArgs.Length; i++)
+                for (var i = 0; i < completeBaseArgs.Count; i++)
                 {
-                    RequireAssignable(baseParams[i].Type, TypeOf(baseArgs[i]),
+                    RequireAssignable(baseParams[i].Type, TypeOf(completeBaseArgs[i]),
                         $"base ctor argument {i} of {cls.Name}");
                     var temp = Temp("base_arg");
                     Line($"{baseParams[i].Type.CName} {temp} = " +
-                        $"{RenderCoerced(baseArgs[i], baseParams[i].Type)};");
+                        $"{RenderCoerced(completeBaseArgs[i], baseParams[i].Type)};");
                     rendered.Add(temp);
                 }
                 Line($"{cType} *object = ({cType} *)" +
@@ -87,7 +85,8 @@ internal sealed partial class CEmitter
         if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
             throw new Tcs2cException($"ctor metadata mismatch: {cls.Name}");
         return ctor.Parameters.Select((name, i) => new ParameterFact(
-            name, _facts.MapType(ctor.ParameterTypes[i]))).ToList();
+            name, _facts.MapType(ctor.ParameterTypes[i]),
+            ctor.ParameterDefaults.IsDefault ? null : ctor.ParameterDefaults[i])).ToList();
     }
 
 

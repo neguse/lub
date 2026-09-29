@@ -23,6 +23,7 @@ internal sealed partial class CEmitter
         IlNewObj creation => RenderNew(creation),
         IlTable table => RenderTable(table),
         IlNewArray array => RenderNewArray(array),
+        IlNumericConvert convert => RenderNumericConvert(convert),
         IlIsType typeTest => RenderIsType(typeTest),
         // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
         IlStructCopy copy => RenderExpr(copy.E),
@@ -51,6 +52,7 @@ internal sealed partial class CEmitter
             : CType.Ref(creation.TypeName),
         IlTable table => TypeOfTable(table),
         IlNewArray array => TypeOfNewArray(array),
+        IlNumericConvert convert => _facts.MapType(convert.TargetType),
         IlIsType typeTest => TypeOfIsType(typeTest),
         IlStructCopy copy => TypeOf(copy.E),
         _ => throw Unsupported(expr),
@@ -226,7 +228,7 @@ internal sealed partial class CEmitter
         IlBinOp.Concat => $"tcs_string_concat({left}, {right})",
         IlBinOp.Sub => $"({left} - {right})",
         IlBinOp.Mul => $"({left} * {right})",
-        IlBinOp.DivNum => $"({left} / {right})",
+        IlBinOp.DivNum => $"((float)({left}) / (float)({right}))",
         IlBinOp.Eq when leftType == CType.String && rightType == CType.String =>
             $"tcs_string_equal({left}, {right})",
         IlBinOp.Ne when leftType == CType.String && rightType == CType.String =>
@@ -264,7 +266,7 @@ internal sealed partial class CEmitter
                         $"{left}, {right}");
                 return CType.String;
             case IlBinOp.DivNum:
-                RequireType(CType.F32, NumericJoin(left, right, "division"), "division");
+                _ = NumericJoin(left, right, "division");
                 return CType.F32;
             case IlBinOp.Eq or IlBinOp.Ne:
                 RequireComparable(left, right, "equality");
@@ -293,6 +295,8 @@ internal sealed partial class CEmitter
 
     private string RenderUnary(IlUn unary)
     {
+        if (unary is { Op: IlUnOp.Neg, E: IlLit { LuaText: "2147483648", Type: null } })
+            return Constants.I32(int.MinValue);
         var value = RenderExpr(unary.E);
         var type = TypeOf(unary.E);
         return unary.Op switch
@@ -320,6 +324,8 @@ internal sealed partial class CEmitter
     private string RenderCall(IlCall call)
     {
         var type = TypeOfCall(call);
+        if (MathResult(call) != null) return RenderMath(call, type);
+        if (StringResult(call) != null) return RenderStringCall(call, type);
         return call.Callee switch
         {
             "__tcs_idiv" => RenderOrderedCall("tcs_idiv", type,
@@ -344,6 +350,8 @@ internal sealed partial class CEmitter
 
     private CType TypeOfCall(IlCall call)
     {
+        if (MathResult(call) is { } mathType) return mathType;
+        if (StringResult(call) is { } stringType) return stringType;
         if (call.Callee is "__tcs_idiv" or "__tcs_irem")
         {
             RequireArity(call.Callee, call.Args.Length, 2);
@@ -405,7 +413,7 @@ internal sealed partial class CEmitter
         var (cls, method) = ParseUserCallee(call.Callee);
         var fact = _facts.Method(cls, method);
         // base 呼び出し (IlCall "Base.M" with self 先頭) は非仮想の直呼び
-        if (!fact.IsStatic && call.Args.Length == fact.Parameters.Count + 1)
+        if (!fact.IsStatic && call.Args.Length > 0)
         {
             var self = TypeOf(call.Args[0]);
             if (self.Kind != CTypeKind.Ref
@@ -490,7 +498,7 @@ internal sealed partial class CEmitter
     {
         var (cls, method) = ParseUserCallee(call.Callee);
         var fact = _facts.Method(cls, method);
-        if (!fact.IsStatic && call.Args.Length == fact.Parameters.Count + 1)
+        if (!fact.IsStatic && call.Args.Length > 0)
         {
             // base 呼び出し: dispatcher を通さない直呼び
             return RenderMethodCall(fact, call.Args[0],
@@ -606,7 +614,7 @@ internal sealed partial class CEmitter
             throw new Tcs2cException($"call target is not static: {fact.ClassName}.{fact.Name}");
         if (receiver is not null && fact.IsStatic)
             throw new Tcs2cException($"IlInvoke target is static: {fact.ClassName}.{fact.Name}");
-        RequireArity($"{fact.ClassName}.{fact.Name}", args.Count, fact.Parameters.Count);
+        args = CompleteArguments(fact.Parameters, args);
         for (var i = 0; i < args.Count; i++)
             RequireAssignable(fact.Parameters[i].Type, TypeOf(args[i]),
                 $"argument {i} of {fact.ClassName}.{fact.Name}");
@@ -616,6 +624,7 @@ internal sealed partial class CEmitter
     private string RenderMethodCall(MethodFact fact, IlExpr? receiver,
         IReadOnlyList<IlExpr> args, string? function = null)
     {
+        args = CompleteArguments(fact.Parameters, args);
         var values = new List<(CType Type, string Value)>();
         if (receiver is not null)
         {
@@ -676,16 +685,14 @@ internal sealed partial class CEmitter
         if (!_classes.TryGetValue(creation.TypeName, out var cls))
             throw new Tcs2cException($"unknown class: {creation.TypeName}");
         var paramFacts = CtorParamFacts(cls);
-        if (creation.Args.Length != paramFacts.Count)
-            throw new Tcs2cException($"constructor {cls.Name}: expected " +
-                $"{paramFacts.Count} arguments, got {creation.Args.Length}");
+        var arguments = CompleteArguments(paramFacts, creation.Args);
         var values = new List<(CType Type, string Value)>();
-        for (var i = 0; i < creation.Args.Length; i++)
+        for (var i = 0; i < arguments.Count; i++)
         {
-            RequireAssignable(paramFacts[i].Type, TypeOf(creation.Args[i]),
+            RequireAssignable(paramFacts[i].Type, TypeOf(arguments[i]),
                 $"constructor argument {i} of {cls.Name}");
             values.Add((paramFacts[i].Type,
-                RenderCoerced(creation.Args[i], paramFacts[i].Type)));
+                RenderCoerced(arguments[i], paramFacts[i].Type)));
         }
         return RenderOrderedCall(Names.New(cls.Name),
             CType.Ref(cls.Name), values,
@@ -711,11 +718,12 @@ internal sealed partial class CEmitter
             or CTypeKind.Ref or CTypeKind.Closure or CTypeKind.List
             or CTypeKind.Dict or CTypeKind.Array))
             throw new Tcs2cException($"unsupported List element type: {element}");
-        return CType.List(element);
+        return table.IsArray && element != null ? CType.Array(element) : CType.List(element);
     }
 
     private string RenderTable(IlTable table)
     {
+        if (table.IsArray) return RenderArrayLiteral(table);
         if (table.KeyType is not null || table.Entries.Any(e => e.Key is not null))
             return RenderDictTable(table);
         var type = TypeOfTable(table);

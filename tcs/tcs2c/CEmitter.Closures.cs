@@ -66,6 +66,7 @@ internal sealed partial class CEmitter
                 expr(i.Recv); foreach (var a in i.Args) expr(a); break;
             case IlNewObj n: foreach (var a in n.Args) expr(a); break;
             case IlNewArray na: expr(na.Length); break;
+            case IlNumericConvert convert: expr(convert.Value); break;
             case IlTable t:
                 foreach (var en in t.Entries)
                 {

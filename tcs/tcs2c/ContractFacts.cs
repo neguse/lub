@@ -2,7 +2,7 @@ using TinyCs;
 
 namespace TinyCs.Tcs2c;
 
-internal sealed record ParameterFact(string Name, CType Type);
+internal sealed record ParameterFact(string Name, CType Type, IlExpr? Default = null);
 
 internal sealed record MethodFact(
     string ClassName,
@@ -61,7 +61,8 @@ internal sealed class ContractFacts
                     throw new Tcs2cException($"method parameter metadata mismatch: " +
                         $"{cls.Name}.{method.Name}");
                 var parameters = method.Parameters.Select((name, i) =>
-                    new ParameterFact(name, MapType(method.ParameterTypes[i]))).ToArray();
+                    new ParameterFact(name, MapType(method.ParameterTypes[i]),
+                        method.ParameterDefaults.IsDefault ? null : method.ParameterDefaults[i])).ToArray();
                 var fact = new MethodFact(cls.Name, method.Name, method.IsStatic,
                     MapType(method.ReturnType), parameters, method);
                 if (!_methods.TryAdd((cls.Name, method.Name), fact))

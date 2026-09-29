@@ -7,6 +7,7 @@ internal sealed partial class CEmitter
         /* strict f32 flags: -ffp-contract=off -fexcess-precision=standard */
         #include <stdbool.h>
         #include <stddef.h>
+        #include <math.h>
         #include <float.h>
         #include <inttypes.h>
         #include <limits.h>

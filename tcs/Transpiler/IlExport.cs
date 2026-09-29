@@ -28,7 +28,8 @@ public sealed record IlCtorInfo(
     ImmutableArray<string> Parameters,
     ImmutableArray<string> ParameterTypes,
     IlBlock? Body,
-    ImmutableArray<IlExpr> BaseArgs = default);
+    ImmutableArray<IlExpr> BaseArgs = default,
+    ImmutableArray<IlExpr?> ParameterDefaults = default);
 
 public sealed record IlFieldInfo(string Name, string Type, bool IsStatic,
     IlExpr? Init = null);
@@ -41,7 +42,8 @@ public sealed record IlMethodInfo(
     ImmutableArray<string> Parameters,
     IlBlock? Body,
     string ReturnType = "void",
-    ImmutableArray<string> ParameterTypes = default);
+    ImmutableArray<string> ParameterTypes = default,
+    ImmutableArray<IlExpr?> ParameterDefaults = default);
 
 /// <summary>データ struct の migration metadata。field のみ
 /// (member は診断済み)。LayoutHash は class と同じ展開規則で、struct 値は
@@ -210,7 +212,9 @@ public static class IlExport
                     : [.. ctorSymbol.Parameters
                         .Select(p => p.Type.ToDisplayString())],
                 emitter.ExportStatsIl(model, ctorDecl.Body?.Statements),
-                baseArgs);
+                baseArgs,
+                [.. ctorDecl.ParameterList.Parameters.Select(p => p.Default is { } d
+                    ? emitter.ExportExprIl(model, d.Value) : null)]);
         }
 
         var methods = new List<IlMethodInfo>();
@@ -278,7 +282,9 @@ public static class IlExport
                 methodSymbol == null
                     ? []
                     : [.. methodSymbol.Parameters
-                        .Select(p => p.Type.ToDisplayString())]));
+                        .Select(p => p.Type.ToDisplayString())],
+                [.. method.ParameterList.Parameters.Select(p => p.Default is { } d
+                    ? emitter.ExportExprIl(model, d.Value) : null)]));
         }
 
         return new IlClassInfo(cls.Identifier.ValueText, baseName,

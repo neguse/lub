@@ -53,6 +53,20 @@ method overload、継承、List の int/float 以外は対象を含む明示 err
 strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 `-fexcess-precision=standard` を必須とする。
 
+## Array, argument and numeric operations
+
+Array initializers use fixed-length storage, including nested and empty arrays.
+Constructor and method calls can omit trailing optional arguments. Literal and
+local declaration types are retained in IL so an integral initializer does not
+turn a float variable into an integer. Numeric casts to `int` truncate toward
+zero and fault outside the finite i32 range.
+
+`Math.Sin`, `Cos`, `Sqrt`, `Floor`, `Ceiling`, `Atan2`, `Pow`, `Abs`, `Min`, `Max`
+and floating remainder lower to C numeric operations. Link with `-lm` when the
+C toolchain requires it. `String.IndexOf` and `Substring` use the Lua runtime's
+byte offsets and slicing rules. Run `bash tcs2c/verify-game-core.sh` for these
+array, argument, numeric and string contracts.
+
 ## Library heap lifetime
 
 `--lib` exports `tcs_lib_init()` and `tcs_entry_CLASS_METHOD()` entry points.

@@ -36,7 +36,7 @@ internal sealed partial class CEmitter
         if (text is "true" or "false") return CType.Bool;
         if (text == "nil") return CType.Null;
         if (text.StartsWith('"')) return CType.String;
-        return IsFloatText(text) ? CType.F32 : CType.I32;
+        return literal.Type == "float" || IsFloatText(text) ? CType.F32 : CType.I32;
     }
 
     private static string RenderLiteral(IlLit literal)
@@ -45,7 +45,7 @@ internal sealed partial class CEmitter
         if (text is "true" or "false") return text;
         if (text == "nil") return "NULL";
         if (text.StartsWith('"')) return RenderStringLiteral(text);
-        if (IsFloatText(text))
+        if (literal.Type == "float" || IsFloatText(text))
         {
             if (!float.TryParse(text, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var value))
@@ -198,6 +198,7 @@ internal sealed partial class CEmitter
         IlLit literal => literal.LuaText.StartsWith('"'),
         IlVar => false,
         IlParen paren => Effectful(paren.E),
+        IlNumericConvert convert => Effectful(convert.Value),
         IlUn unary => Effectful(unary.E),
         IlBin binary => Effectful(binary.L) || Effectful(binary.R),
         IlTernary ternary => Effectful(ternary.Cond)

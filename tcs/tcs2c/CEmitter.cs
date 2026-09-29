@@ -140,6 +140,8 @@ internal sealed partial class CEmitter
 
         _output.Append(RuntimePrelude);
         _output.Append(GcRuntime);
+        _output.Append(MathRuntime);
+        _output.Append(StringRuntime);
         EmitClassDeclarations();
         EmitStaticFields();
         EmitGcTracers();
@@ -416,15 +418,7 @@ internal sealed partial class CEmitter
             Line($"{declared.CName} {declaredVar.CName} = {zero};");
             return;
         }
-        // 宣言型が closure なら契約型を使う (IlClosure / method group は
-        // 単独で型付けできない)
-        CType? declaredClosure = null;
-        if (local.Type != null)
-        {
-            var mapped = _facts.TryMapType(local.Type);
-            if (mapped is { Kind: CTypeKind.Closure }) declaredClosure = mapped;
-        }
-        var type = declaredClosure ?? TypeOf(local.Init);
+        var type = local.Type is null ? TypeOf(local.Init) : _facts.MapType(local.Type);
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
             throw new Tcs2cException($"cannot infer storage type of local {local.Name}: {type}");
         var rendered = RenderCoerced(local.Init, type);
