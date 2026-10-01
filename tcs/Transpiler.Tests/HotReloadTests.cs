@@ -143,6 +143,29 @@ public class HotReloadTests
             """));
     }
 
+    // #14: 追加された enum 型 field の default は 0 (nil ではない)
+    [Fact]
+    public void Reload_AddedEnumFieldDefaultsToZero()
+    {
+        const string V1 = """
+            public enum State { Idle, Run }
+            public class Actor { public int Hp; }
+            """;
+        const string V2 = """
+            public enum State { Idle, Run }
+            public class Actor { public int Hp; public State S; }
+            """;
+        RunOk(Compose(V1,
+            """
+            local a = Actor.new()
+            """,
+            V2,
+            """
+            assert(a.s == 0, "added enum field zeroed")
+            print("ok")
+            """));
+    }
+
     [Fact]
     public void Reload_ReserializesStructArrayElements()
     {

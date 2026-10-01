@@ -21,6 +21,7 @@ public static class HotReload
     private sealed record Context(
         List<(IlClassInfo Old, IlClassInfo New)> Classes,
         Dictionary<string, IlStructInfo> NewStructs,
+        HashSet<string> NewEnums,
         HashSet<string> ChangedStructs,
         LuaEmitter Emitter);
 
@@ -43,8 +44,9 @@ public static class HotReload
                 && old.LayoutHash != s.LayoutHash)
             .Select(s => s.Name)
             .ToHashSet();
-        var ctx = new Context(pairs, newStructs, changedStructs,
-            new LuaEmitter());
+        var ctx = new Context(pairs, newStructs,
+            newExport.Enums.IsDefault ? [] : [.. newExport.Enums],
+            changedStructs, new LuaEmitter());
 
         var sb = new StringBuilder();
         sb.AppendLine("-- TinyC# hot reload chunk (v2 定義 + eager migration)");
@@ -259,11 +261,13 @@ public static class HotReload
     }
 
     // 新型の default 値。struct は v2 の zero 値 (global は v2 fresh に
-    // 解決されるので新 layout で構築される)
+    // 解決されるので新 layout で構築される)、enum は 0 (default(E))
     private static string DefaultFor(string type, Context ctx)
     {
         if (ctx.NewStructs.ContainsKey(type))
             return $"{type}.new()";
+        if (ctx.NewEnums.Contains(type))
+            return "0";
         return type switch
         {
             "int" or "long" or "uint" or "float" or "double" => "0",

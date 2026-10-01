@@ -1577,3 +1577,11 @@
 - マシン側は dotnet-install.sh の per-user install (`~/.dotnet` + DOTNET_ROOT/PATH) に一本化し、SDK と workload の所有者を一人にした。README / CLAUDE.md に方針を明記
 - 検証: `~/.dotnet` の SDK 10.0.111 で pre-commit ゲート (run-tests.sh) 全通過 — MSBuildEnableWorkloadResolver 無効化なしで通ることを確認 (壊れた pacman 側 resolver を踏んでいない証明)。SDK 暗黙参照の追随で WasmCompiler の packages.lock.json が 10.0.11 に上がる (別コミット)
 - 残課題: workload set 版の pin (`sdk.workloadVersion`) は wasm-tools を実際に要求する lub 側で行う。Dependabot は workloadVersion の bump 未対応 (dependabot-core#13216) のため、workload set は SDK bump PR に乗せて手動更新
+
+### enum 型 field の既定値を 0 にする (#14) ✓ (2026-10-01)
+- initializer 無しの enum 型 instance / static field と auto property が `nil` で emit されていた (`GetDefaultValueForType` が SpecialType だけを見ていた)。`TypeKind.Enum` を 0 に写し、C# の `default(E) == 0` (member 値に依らない) に揃えた。同じ helper を通る struct の zero-init (`S.new()`)、`default(E)` 式、static field の pre-zero も同時に直る
+- hot reload の added field default (`HotReload.DefaultFor`) は型名文字列で判定するため enum を見分けられず nil だった。IlExport が enum 宣言名 (`IlExportResult.Enums`) を出し、reload chunk 側で 0 に解決するようにした
+- tcs2c は enum 型を `MapType` で受けないため対象外 (C の zero 初期化側は既に I32 を 0 にしている)
+- 検証: EnumTests 3 件 (instance / static / auto property / `default(E)`、0 member 無し enum、struct member) + HotReloadTests 1 件 (added enum field) を先に Red で確認 → fix 後 green。`dotnet test` 全通過
+- 判断: enum 名の照合は struct と同じく単純名 (ToDisplayString の namespace 付き名とは一致しない) で、既存 struct 判定と同じ制約に揃えた。TopLevel 以外の既存 API は default 引数で後方互換
+

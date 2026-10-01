@@ -622,6 +622,9 @@ public partial class LuaEmitter
         {
             return $"{type.Name}.new()";
         }
+        // enum の default は member 値に依らず 0 (C#: default(E) == 0)
+        if (type is { TypeKind: TypeKind.Enum })
+            return "0";
         return type?.SpecialType switch
         {
             SpecialType.System_Boolean => "false",

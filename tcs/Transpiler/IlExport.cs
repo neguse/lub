@@ -57,7 +57,8 @@ public sealed record IlExportResult(
     ImmutableArray<IlClassInfo> Classes,
     ImmutableArray<string> Diagnostics,
     IlBlock? TopLevel = null,
-    ImmutableArray<IlStructInfo> Structs = default);
+    ImmutableArray<IlStructInfo> Structs = default,
+    ImmutableArray<string> Enums = default);
 
 public static class IlExport
 {
@@ -119,6 +120,12 @@ public static class IlExport
                 LayoutHash(fields, structLayouts));
         }).ToList();
 
+        // enum 名。hot reload の added field default (0) 判定に使う
+        var enums = trees.SelectMany(t => t.GetCompilationUnitRoot()
+                .DescendantNodes().OfType<EnumDeclarationSyntax>())
+            .Select(e => e.Identifier.ValueText)
+            .ToList();
+
         var classes = new List<IlClassInfo>();
         var emitter = new LuaEmitter();
         var topLevel = new List<StatementSyntax>();
@@ -142,7 +149,7 @@ public static class IlExport
         var topLevelIl = topLevelModel != null
             ? emitter.ExportStatsIl(topLevelModel, topLevel) : null;
         return new IlExportResult([.. classes], [.. diagnostics], topLevelIl,
-            [.. structs]);
+            [.. structs], [.. enums]);
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,
