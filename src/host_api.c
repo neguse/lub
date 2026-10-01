@@ -200,6 +200,7 @@ void lub_host_destroy(LubContext *ctx) {
   if (!ctx)
     return;
   App *app = lub_api_app(ctx);
+  profile_report_at_exit(&app->profile);
   ui_shutdown();
   app_shutdown(app);
   lua_ctx_shutdown(&app->lua);
