@@ -946,8 +946,10 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
-  int instance_count =
-      d->has_instance_count && d->instance_count > 0 ? d->instance_count : 1;
+  // instance_count: 未指定は 1。0 以下は検証・digest は通常どおり行い、
+  // backend の draw だけ skip する (stub の記述どおり)。
+  int instance_count = d->has_instance_count ? d->instance_count : 1;
+  bool skip_draw = instance_count <= 0;
   int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
   int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
@@ -1008,8 +1010,10 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       app->pass.current_n_color_targets, app->pass.current_color_fmts,
       app->pass.current_has_depth, app->pass.current_depth_fmt, depth_tex_mask,
       (int64_t)app->frame_index);
-  g_backend->apply_pipeline(pip);
-  g_backend->apply_bindings(&bind);
+  if (!skip_draw) {
+    g_backend->apply_pipeline(pip);
+    g_backend->apply_bindings(&bind);
+  }
 
   if (bs.n_uniforms > 0 && sh->u.sh.refl.ub_count > 0) {
     float buf[UB_MAX_FLOATS];
@@ -1022,12 +1026,15 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
         return lub_api_fail(app,
                             "draw: uniform block too large (%d floats > %d)",
                             size, UB_MAX_FLOATS);
+      if (skip_draw)
+        continue;
       pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf);
       g_backend->apply_uniforms(ub->stage, ub->slot, buf,
                                 (size_t)size * sizeof(float));
     }
   }
-  g_backend->draw(0, count, instance_count);
+  if (!skip_draw)
+    g_backend->draw(0, count, instance_count);
   return LUB_OK;
 }
 
