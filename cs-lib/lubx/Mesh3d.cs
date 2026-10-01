@@ -10,10 +10,19 @@ using static Lub;
 /// (Io.interleave_pncmw、20 float)、それ以外は Io.interleave_pncm
 /// (16 float: pos pad nrm pad albedo pad mr pad)。
 /// この頂点レイアウトが Renderer3d の material 契約。
+/// buffer は ready() が呼ばれるたびに前回の version で再主張する (data は
+/// 読まれない) ので、resource_sweep_after_frames を設定しても描き続ける
+/// 限り sweep されない。Renderer3d.Draw が ready() を通るので、描画側が
+/// 再主張を意識する必要はない。
 /// </summary>
 public class Mesh3d
 {
     private string key;
+    // rebuild() が組んだ interleaved 頂点と index。ready() の再主張と、sweep
+    // 後の作り直しに使う。interleave の戻りは frame の終わりまでの view なので
+    // table に写して持つ。
+    private List<float>? verts = null;
+    private List<float>? indices = null;
 
     public MeshData? Data;
     public BufferRef? Vb;
@@ -31,22 +40,37 @@ public class Mesh3d
     {
         this.Data = data;
         Skinned = data.Bones != null;
-        var verts = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
-        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, verts);
+        var view = Skinned ? Io.InterleavePncmw(data) : Io.InterleavePncm(data);
+        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, view);
+        var v = new List<float>();
+        for (int i = 0; i < view.Count; i++)
+        {
+            v.Add(view[i]);
+        }
         // use_buffer は List<float> を取るので indices を詰め替える。
         // Lua 上は同じ整数値の array table になり、wire data は変わらない。
-        var indices = new List<float>();
+        var idx = new List<float>();
         foreach (var i in data.Indices)
         {
-            indices.Add(i);
+            idx.Add(i);
         }
-        Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, indices);
+        Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, idx);
+        verts = v;
+        indices = idx;
         IndexCount = data.IndexCount;
     }
 
-    /// <summary>rebuild 済みで描画可能か。</summary>
+    /// <summary>rebuild 済みで描画可能か。描く frame に毎回呼ぶ (Renderer3d.Draw
+    /// が呼ぶ)。buffer を前回の version で再主張して sweep を防ぐ。</summary>
     public bool Ready()
     {
-        return Vb != null && IndexCount > 0;
+        if (Vb == null || Ib == null || verts == null || indices == null
+            || IndexCount <= 0)
+        {
+            return false;
+        }
+        Vb = Gfx.UseBuffer(key + "_vb", Gfx.BufferType.Storage, verts, Vb.Version);
+        Ib = Gfx.UseBuffer(key + "_ib", Gfx.BufferType.Index, indices, Ib.Version);
+        return Vb != null && Ib != null;
     }
 }
