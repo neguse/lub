@@ -35,6 +35,13 @@ static bool has_extension(const char *path, const char *ext) {
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate;
 
+  // SDL の assertion は既定で message box を開いて利用者の選択を待つ。headless
+  // (Xvfb / CI / bench) ではクリックされないので process が止まり続ける。
+  // dialog を出さず abort させる。環境変数 SDL_ASSERT があれば hint より
+  // そちらが優先される (SDL_GetHint は env を先に見る) ので、利用者の設定は
+  // そのまま効く。
+  SDL_SetHint(SDL_HINT_ASSERT, "abort");
+
 #ifndef __EMSCRIPTEN__
   // Pre-scan for --serve before SDL_Init (serve mode skips video)
   bool want_serve = false;

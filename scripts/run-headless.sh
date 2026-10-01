@@ -26,6 +26,12 @@ export VK_ICD_FILENAMES="$ICD"
 # Modern Vulkan loader honors this; older may need the legacy var, set both.
 export VK_DRIVER_FILES="$ICD"
 
+# SDL assertions open a message box by default; nobody clicks it under Xvfb and
+# the process sits in X11_ShowMessageBox until the gate's timeout. lub sets the
+# same hint itself; this is the belt-and-braces for older binaries and the C
+# smoke tests. An explicit SDL_ASSERT from the caller wins.
+export SDL_ASSERT="${SDL_ASSERT:-abort}"
+
 # Forward LUB_BACKEND into the wrapped process so samples can pick the backend.
 [[ -n "${LUB_BACKEND:-}" ]] && export LUB_BACKEND
 
