@@ -232,6 +232,7 @@ if [[ $cs_available -eq 1 ]]; then
     run scripts/gen-lubx-lua.sh --check
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
+    run dotnet run --project tests/dotnet/Bindings -c Release
     cs_pool "transpile (check+build)" cs_transpile
     cs_t0=$SECONDS
     for cs_dir in "${cs_dirs[@]}"; do
@@ -274,6 +275,7 @@ physics_lua_tests=(
   tests/lua/test_physics_box2d_callbacks.lua
   tests/lua/test_physics_box2d_lifetime.lua
   tests/lua/test_resource_revision.lua
+  tests/lua/test_io_text.lua
   tests/lua/test_audio.lua
   tests/lua/test_font.lua
   tests/lua/test_api_surface.lua
