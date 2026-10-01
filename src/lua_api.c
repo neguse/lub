@@ -204,6 +204,12 @@ void lua_ctx_call_init(LuaCtx *ctx) {
 void lua_ctx_call_frame(LuaCtx *ctx, double dt) {
   if (!ctx->L)
     return;
+  // 生成 binding は入口で lgen_mark、出口で lgen_release するが、引数変換の
+  // 途中の luaL_error は release を longjmp で飛び越す。毎 frame 失敗する
+  // 呼び出し (編集中によくある) で arena が伸び続けないよう、binding が
+  // 動いていないここで巻き戻す。on_event の中では戻さない (SDL の呼び出しの
+  // 内側から event が届くことがあり、その時は binding が動いている)。
+  lgen_release(0);
   // onFrame(dt): dt は直近フレームの実測秒。引数なしの既存 onFrame() は
   // Lua が余分な引数を無視するのでそのまま動く。
   lua_pushnumber(ctx->L, dt);
