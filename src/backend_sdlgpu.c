@@ -1098,10 +1098,10 @@ static void sg_set_scissor(int x, int y, int w, int h) {
 static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (!d || !d->pipeline || !d->refl)
     return;
-  if (!app->gpu_cmd) {
-    SDL_Log("sg_dispatch: no command buffer (called outside of frame?)");
+  // 読み戻し (sg_readback_image) はフレームの command buffer を途中で submit
+  // して gpu_cmd を NULL にする。sg_begin_pass と同じく取り直す。
+  if (!sg_acquire_command_buffer(app, "sg_dispatch"))
     return;
-  }
   SgPipeline *p = (SgPipeline *)d->pipeline;
   if (!p->is_compute || !p->compute_gpu) {
     SDL_Log("sg_dispatch: not a compute pipeline");
