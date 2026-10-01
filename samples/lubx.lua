@@ -1825,7 +1825,6 @@ Bones = {}
 Bones.__index = Bones
 
 Bones.max = 0
-Bones.max = 16
 
 function Bones.new()
 	local self = setmetatable({}, Bones)
@@ -1851,7 +1850,7 @@ function Bones.pack(mesh, resolve)
 				m = Mat4.new()
 			end
 			for _, v in ipairs(m.m) do
-				table.insert(arr, v)
+				arr[#arr + 1] = v
 			end
 			count = count + 1
 			i = i + 1
@@ -1860,12 +1859,14 @@ function Bones.pack(mesh, resolve)
 	while count < 16 do
 		local id = Mat4.new()
 		for _, v in ipairs(id.m) do
-			table.insert(arr, v)
+			arr[#arr + 1] = v
 		end
 		count = count + 1
 	end
 	return arr
 end
+
+Bones.max = 16
 
 Camera2d = {}
 Camera2d.__index = Camera2d
@@ -1989,54 +1990,6 @@ end
 FixedStep = {}
 FixedStep.__index = FixedStep
 
-FixedStep.scan_keys = {
-	"space",
-	"enter",
-	"escape",
-	"tab",
-	"backspace",
-	"left",
-	"right",
-	"up",
-	"down",
-	"a",
-	"b",
-	"c",
-	"d",
-	"e",
-	"f",
-	"g",
-	"h",
-	"i",
-	"j",
-	"k",
-	"l",
-	"m",
-	"n",
-	"o",
-	"p",
-	"q",
-	"r",
-	"s",
-	"t",
-	"u",
-	"v",
-	"w",
-	"x",
-	"y",
-	"z",
-	"0",
-	"1",
-	"2",
-	"3",
-	"4",
-	"5",
-	"6",
-	"7",
-	"8",
-	"9",
-}
-
 function FixedStep.new(hz, maxCatchUp)
 	local self = setmetatable({}, FixedStep)
 	__tcs_instances[self] = FixedStep
@@ -2052,13 +2005,13 @@ function FixedStep.new(hz, maxCatchUp)
 	self.max_catch_up = maxCatchUp or 8
 	local i = 0
 	while i < #FixedStep.scan_keys do
-		table.insert(self.pending_key_pressed, false)
-		table.insert(self.pending_key_released, false)
+		self.pending_key_pressed[#self.pending_key_pressed + 1] = false
+		self.pending_key_released[#self.pending_key_released + 1] = false
 		i = i + 1
 	end
 	for b = 0, 4 - 1 do
-		table.insert(self.pending_mouse_pressed, false)
-		table.insert(self.pending_mouse_released, false)
+		self.pending_mouse_pressed[#self.pending_mouse_pressed + 1] = false
+		self.pending_mouse_released[#self.pending_mouse_released + 1] = false
 	end
 	return self
 end
@@ -2157,6 +2110,54 @@ function FixedStep:clear_pending()
 	end
 end
 
+FixedStep.scan_keys = {
+	"space",
+	"enter",
+	"escape",
+	"tab",
+	"backspace",
+	"left",
+	"right",
+	"up",
+	"down",
+	"a",
+	"b",
+	"c",
+	"d",
+	"e",
+	"f",
+	"g",
+	"h",
+	"i",
+	"j",
+	"k",
+	"l",
+	"m",
+	"n",
+	"o",
+	"p",
+	"q",
+	"r",
+	"s",
+	"t",
+	"u",
+	"v",
+	"w",
+	"x",
+	"y",
+	"z",
+	"0",
+	"1",
+	"2",
+	"3",
+	"4",
+	"5",
+	"6",
+	"7",
+	"8",
+	"9",
+}
+
 FpsMeter = {}
 FpsMeter.__index = FpsMeter
 
@@ -2207,12 +2208,12 @@ function Mesh3d:rebuild(data)
 	local v = {}
 	local i = 0
 	while i < #view do
-		table.insert(v, view[i + 1])
+		v[#v + 1] = view[i + 1]
 		i = i + 1
 	end
 	local idx = {}
 	for _, i in ipairs(data.indices) do
-		table.insert(idx, i)
+		idx[#idx + 1] = i
 	end
 	self.ib = lub.gfx.use_buffer((self.key or "") .. "_ib", lub.gfx.INDEX, idx)
 	self.verts = v
@@ -2248,44 +2249,6 @@ end
 
 MeshText = {}
 MeshText.__index = MeshText
-
-MeshText.vs = "struct Uniforms {\n"
-	.. "  float4\n"
-	.. "      psr; // x, y (screen px), scale (px per em), rotation (rad, CCW in y-up)\n"
-	.. "  float4 tint;\n"
-	.. "  float4 screen; // logical w, h\n"
-	.. "  float4 center; // rotation/placement center in em (glyph bbox center)\n"
-	.. "};\n"
-	.. "ConstantBuffer<Uniforms> u;\n"
-	.. "\n"
-	.. "struct VSIn {\n"
-	.. "  float2 pos; // em units, y-up, baseline origin\n"
-	.. "};\n"
-	.. "StructuredBuffer<VSIn> verts;\n"
-	.. "\n"
-	.. "struct VSOut {\n"
-	.. "  float4 color : COLOR;\n"
-	.. "  float4 pos : SV_Position;\n"
-	.. "};\n"
-	.. "\n"
-	.. '[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n'
-	.. "  VSIn i = verts[vid];\n"
-	.. "  VSOut o;\n"
-	.. "  float c = cos(u.psr.w);\n"
-	.. "  float s = sin(u.psr.w);\n"
-	.. "  float2 l = (i.pos - u.center.xy) * u.psr.z;\n"
-	.. "  float2 r = float2(l.x * c - l.y * s, l.x * s + l.y * c);\n"
-	.. "  float2 p = float2(u.psr.x + r.x, u.psr.y - r.y); // y-up -> screen y-down\n"
-	.. "  o.pos = float4(p.x / u.screen.x * 2.0 - 1.0, 1.0 - p.y / u.screen.y * 2.0,\n"
-	.. "                 0.0, 1.0);\n"
-	.. "  o.color = u.tint;\n"
-	.. "  return o;\n"
-	.. "}\n"
-MeshText.fs = "struct FSIn {\n"
-	.. "  float4 color : COLOR;\n"
-	.. "};\n"
-	.. "\n"
-	.. '[shader("fragment")] float4 fs_main(FSIn i) : SV_Target { return i.color; }\n'
 
 function MeshText.new(key, ttfPath, version, logicalW, logicalH)
 	local self = setmetatable({}, MeshText)
@@ -2355,8 +2318,8 @@ function MeshText:glyph_for(cp)
 	while i < gm.vert_count do
 		local x = gm.positions[i * 3 + 1]
 		local y = gm.positions[i * 3 + 1 + 1]
-		table.insert(verts, x)
-		table.insert(verts, y)
+		verts[#verts + 1] = x
+		verts[#verts + 1] = y
 		if x < minX then
 			minX = x
 		end
@@ -2374,7 +2337,7 @@ function MeshText:glyph_for(cp)
 	local idx = {}
 	local i = 0
 	while i < gm.index_count do
-		table.insert(idx, gm.indices[i + 1])
+		idx[#idx + 1] = gm.indices[i + 1]
 		i = i + 1
 	end
 	local e
@@ -2470,6 +2433,44 @@ function MeshText:width(s, size)
 	return sum * size
 end
 
+MeshText.vs = "struct Uniforms {\n"
+	.. "  float4\n"
+	.. "      psr; // x, y (screen px), scale (px per em), rotation (rad, CCW in y-up)\n"
+	.. "  float4 tint;\n"
+	.. "  float4 screen; // logical w, h\n"
+	.. "  float4 center; // rotation/placement center in em (glyph bbox center)\n"
+	.. "};\n"
+	.. "ConstantBuffer<Uniforms> u;\n"
+	.. "\n"
+	.. "struct VSIn {\n"
+	.. "  float2 pos; // em units, y-up, baseline origin\n"
+	.. "};\n"
+	.. "StructuredBuffer<VSIn> verts;\n"
+	.. "\n"
+	.. "struct VSOut {\n"
+	.. "  float4 color : COLOR;\n"
+	.. "  float4 pos : SV_Position;\n"
+	.. "};\n"
+	.. "\n"
+	.. '[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n'
+	.. "  VSIn i = verts[vid];\n"
+	.. "  VSOut o;\n"
+	.. "  float c = cos(u.psr.w);\n"
+	.. "  float s = sin(u.psr.w);\n"
+	.. "  float2 l = (i.pos - u.center.xy) * u.psr.z;\n"
+	.. "  float2 r = float2(l.x * c - l.y * s, l.x * s + l.y * c);\n"
+	.. "  float2 p = float2(u.psr.x + r.x, u.psr.y - r.y); // y-up -> screen y-down\n"
+	.. "  o.pos = float4(p.x / u.screen.x * 2.0 - 1.0, 1.0 - p.y / u.screen.y * 2.0,\n"
+	.. "                 0.0, 1.0);\n"
+	.. "  o.color = u.tint;\n"
+	.. "  return o;\n"
+	.. "}\n"
+MeshText.fs = "struct FSIn {\n"
+	.. "  float4 color : COLOR;\n"
+	.. "};\n"
+	.. "\n"
+	.. '[shader("fragment")] float4 fs_main(FSIn i) : SV_Target { return i.color; }\n'
+
 Rand = {}
 Rand.__index = Rand
 
@@ -2559,7 +2560,7 @@ function Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures
 	self.mesh = nil
 	self.model = nil
 	self.tint = nil
-	self.blend = nil
+	self.blend = 0
 	self.bones = nil
 	self.shader = nil
 	self.textures = nil
@@ -2676,53 +2677,6 @@ end
 Renderer3d = {}
 Renderer3d.__index = Renderer3d
 
-Renderer3d.pncm_verts =
-	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n};\nStructuredBuffer<V> verts;\n"
-Renderer3d.pncmw_verts =
-	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n  float4 skin; // j0, w0, j1, w1\n};\nStructuredBuffer<V> verts;\n"
-Renderer3d.lit_vs_common =
-	"\nstruct Uniforms {\n  float4x4 mvp;\n  float4x4 model;\n  float4x4 light_mvp;\n  float4 tint;\n"
-Renderer3d.lit_vs_body =
-	"\nstruct VSOut {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n  float4 pos : SV_Position;\n};\n"
-Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
-	.. "};\nConstantBuffer<Uniforms> u;"
-	.. (Renderer3d.pncm_verts or "")
-	.. (Renderer3d.lit_vs_body or "")
-	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
-Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
-	.. "  float4x4 bones[16];\n};\nConstantBuffer<Uniforms> u;"
-	.. (Renderer3d.pncmw_verts or "")
-	.. (Renderer3d.lit_vs_body or "")
-	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
-Renderer3d.lit_fs =
-	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\n// 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。\nfloat2 shadow_depth_gradient(float4 lpos) {\n  float3 p = lpos.xyz / lpos.w;\n  p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;\n  float3 dx = ddx(p), dy = ddy(p);\n  float det = dx.x * dy.y - dx.y * dy.x;\n  if (abs(det) < 1e-15f)\n    return float2(0.0f, 0.0f);\n  return float2(dx.z * dy.y - dy.z * dx.y,\n                dx.x * dy.z - dy.x * dx.z) / det;\n}\n\nfloat shadow_factor(float4 lpos, float2 dz) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // 読み取る texel の中心と受け面の深度の位置を揃える。\n  float2 coord = uv / texel - 0.5f;\n  float2 base = floor(coord), fracUv = frac(coord);\n  float lit = 0.0f;\n  // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。\n  for (int y = -1; y <= 2; ++y)\n    for (int x = -1; x <= 2; ++x) {\n      float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;\n      sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);\n      float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;\n      float receiver = ndc.z + dot(dz, sampleUv - uv);\n      float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);\n      float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);\n      lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float ndl = dot(n, l);\n  // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。\n  float2 shadowGradient = shadow_depth_gradient(i.lpos);\n  float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular\n  float diff = saturate(ndl);\n  float3 direct = f.light_col.rgb * diff * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
-Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
-	.. (Renderer3d.pncm_verts or "")
-	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
-	.. (Renderer3d.pncmw_verts or "")
-	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_fs =
-	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
-Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
-Renderer3d.ssao_fs =
-	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6f);\n  float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;\n  float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で\n  // カメラ側を向け、面より手前の遮蔽物を数える。\n  float3 n = normalize(cross(ddx(p), ddy(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに\n  float occ = 0.0f;\n  float ang = 2.399963f; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5f) / 12.0f;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6f));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0f - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02f) * range;\n  }\n  float ao = 1.0f - saturate(occ / 12.0f * 2.2f) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0f);\n}\n'
-Renderer3d.bright_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0f * max(knee, 1e-4f));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4f);\n  return float4(c * saturate(w), 1.0f);\n}\n'
-Renderer3d.blit_tent_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25f * f.st.z, 1.0f);\n}\n'
-Renderer3d.composite_fs =
-	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6f);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5f)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5f) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0f, -t.y));\n    float zs = view_z(i.uv + float2(0.0f, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0f));\n    float zw = view_z(i.uv + float2(-t.x, 0.0f));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85f);\n  }\n  if (f.en.z > 0.5f) {\n    float fogf = 1.0f - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0f);\n}\n'
-Renderer3d.fxaa_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312f, lMax * 0.125f))\n    return float4(cM, 1.0f);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125f, 0.0078125f);\n  float rcpMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0f, -8.0f), float2(8.0f, 8.0f)) * t;\n  float3 a = 0.5f * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0f / 3.0f - 0.5f)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0f / 3.0f - 0.5f)).rgb);\n  float3 b = a * 0.5f + 0.25f * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5f).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5f).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0f);\n}\n'
-Renderer3d.present_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0f);\n}\n'
-Renderer3d.quad_vs =
-	'\nstruct Q {\n  float2 pos;\n  float2 uv;\n};\nStructuredBuffer<Q> verts;\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  Q i = verts[vid];\n  VSOut o;\n  o.pos = float4(i.pos, 0.0f, 1.0f);\n  o.uv = i.uv;\n  return o;\n}\n'
-Renderer3d.tonemap_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
-Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
-
 function Renderer3d.new(key)
 	local self = setmetatable({}, Renderer3d)
 	__tcs_instances[self] = Renderer3d
@@ -2797,7 +2751,10 @@ function Renderer3d:draw(mesh, model, opts)
 		textures = opts.textures
 		uniforms = opts.uniforms
 	end
-	table.insert(self.draws, Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms))
+	do
+		local __tcs_v = Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
+		self.draws[#self.draws + 1] = __tcs_v
+	end
 end
 
 function Renderer3d:light_mvp()
@@ -3112,9 +3069,9 @@ function Renderer3d:end_()
 			if t == nil then
 				break
 			end
-			table.insert(ws, bw)
-			table.insert(hs, bh)
-			table.insert(texs, t)
+			ws[#ws + 1] = bw
+			hs[#hs + 1] = bh
+			texs[#texs + 1] = t
 		end
 		if #texs > 0 then
 			self:blit(
@@ -3290,13 +3247,60 @@ function Renderer3d:end_()
 	lub.gfx.end_pass()
 end
 
+Renderer3d.pncm_verts =
+	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n};\nStructuredBuffer<V> verts;\n"
+Renderer3d.pncmw_verts =
+	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n  float4 skin; // j0, w0, j1, w1\n};\nStructuredBuffer<V> verts;\n"
+Renderer3d.lit_vs_common =
+	"\nstruct Uniforms {\n  float4x4 mvp;\n  float4x4 model;\n  float4x4 light_mvp;\n  float4 tint;\n"
+Renderer3d.lit_vs_body =
+	"\nstruct VSOut {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n  float4 pos : SV_Position;\n};\n"
+Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
+	.. "};\nConstantBuffer<Uniforms> u;"
+	.. (Renderer3d.pncm_verts or "")
+	.. (Renderer3d.lit_vs_body or "")
+	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
+	.. "  float4x4 bones[16];\n};\nConstantBuffer<Uniforms> u;"
+	.. (Renderer3d.pncmw_verts or "")
+	.. (Renderer3d.lit_vs_body or "")
+	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+Renderer3d.lit_fs =
+	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\n// 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。\nfloat2 shadow_depth_gradient(float4 lpos) {\n  float3 p = lpos.xyz / lpos.w;\n  p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;\n  float3 dx = ddx(p), dy = ddy(p);\n  float det = dx.x * dy.y - dx.y * dy.x;\n  if (abs(det) < 1e-15f)\n    return float2(0.0f, 0.0f);\n  return float2(dx.z * dy.y - dy.z * dx.y,\n                dx.x * dy.z - dy.x * dx.z) / det;\n}\n\nfloat shadow_factor(float4 lpos, float2 dz) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // 読み取る texel の中心と受け面の深度の位置を揃える。\n  float2 coord = uv / texel - 0.5f;\n  float2 base = floor(coord), fracUv = frac(coord);\n  float lit = 0.0f;\n  // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。\n  for (int y = -1; y <= 2; ++y)\n    for (int x = -1; x <= 2; ++x) {\n      float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;\n      sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);\n      float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;\n      float receiver = ndc.z + dot(dz, sampleUv - uv);\n      float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);\n      float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);\n      lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float ndl = dot(n, l);\n  // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。\n  float2 shadowGradient = shadow_depth_gradient(i.lpos);\n  float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular\n  float diff = saturate(ndl);\n  float3 direct = f.light_col.rgb * diff * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
+Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
+	.. (Renderer3d.pncm_verts or "")
+	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
+Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
+	.. (Renderer3d.pncmw_verts or "")
+	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
+Renderer3d.shadow_fs =
+	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
+Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
+Renderer3d.ssao_fs =
+	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6f);\n  float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;\n  float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で\n  // カメラ側を向け、面より手前の遮蔽物を数える。\n  float3 n = normalize(cross(ddx(p), ddy(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに\n  float occ = 0.0f;\n  float ang = 2.399963f; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5f) / 12.0f;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6f));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0f - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02f) * range;\n  }\n  float ao = 1.0f - saturate(occ / 12.0f * 2.2f) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0f);\n}\n'
+Renderer3d.bright_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0f * max(knee, 1e-4f));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4f);\n  return float4(c * saturate(w), 1.0f);\n}\n'
+Renderer3d.blit_tent_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25f * f.st.z, 1.0f);\n}\n'
+Renderer3d.composite_fs =
+	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6f);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5f)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5f) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0f, -t.y));\n    float zs = view_z(i.uv + float2(0.0f, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0f));\n    float zw = view_z(i.uv + float2(-t.x, 0.0f));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85f);\n  }\n  if (f.en.z > 0.5f) {\n    float fogf = 1.0f - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0f);\n}\n'
+Renderer3d.fxaa_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312f, lMax * 0.125f))\n    return float4(cM, 1.0f);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125f, 0.0078125f);\n  float rcpMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0f, -8.0f), float2(8.0f, 8.0f)) * t;\n  float3 a = 0.5f * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0f / 3.0f - 0.5f)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0f / 3.0f - 0.5f)).rgb);\n  float3 b = a * 0.5f + 0.25f * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5f).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5f).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0f);\n}\n'
+Renderer3d.present_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0f);\n}\n'
+Renderer3d.quad_vs =
+	'\nstruct Q {\n  float2 pos;\n  float2 uv;\n};\nStructuredBuffer<Q> verts;\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  Q i = verts[vid];\n  VSOut o;\n  o.pos = float4(i.pos, 0.0f, 1.0f);\n  o.uv = i.uv;\n  return o;\n}\n'
+Renderer3d.tonemap_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
+Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
+
 SdfNode = {}
 SdfNode.__index = SdfNode
 
 function SdfNode.new(op, parameters)
 	local self = setmetatable({}, SdfNode)
 	__tcs_instances[self] = SdfNode
-	self.op = nil
+	self.op = 0
 	self.params = nil
 	self.name = nil
 	self.c = nil
@@ -3451,7 +3455,7 @@ function Sdf.flatten(node, nodes)
 	if node.b ~= nil then
 		d.b = Sdf.flatten(node.b, nodes)
 	end
-	table.insert(nodes, d)
+	nodes[#nodes + 1] = d
 	return #nodes - 1
 end
 
@@ -3578,8 +3582,6 @@ Sfx = {}
 Sfx.__index = Sfx
 
 Sfx.rate = 0
-Sfx.rate = 44100
-Sfx.cache = {}
 
 function Sfx.new()
 	local self = setmetatable({}, Sfx)
@@ -3612,13 +3614,17 @@ function Sfx.blip(freq0, freq1, dur, vol)
 		local freq = freq0 + (freq1 - freq0) * u
 		phase = phase + freq / 44100
 		local env = Math.Exp(-5.0 * u)
-		table.insert(samples, ((function()
-			if math.fmod(phase, 1.0) < 0.5 then
-				return 1.0
-			else
-				return -1.0
-			end
-		end)()) * env * vol)
+		samples[#samples + 1] = (
+			(function()
+				if math.fmod(phase, 1.0) < 0.5 then
+					return 1.0
+				else
+					return -1.0
+				end
+			end)()
+		)
+			* env
+			* vol
 	end
 	Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
@@ -3644,17 +3650,22 @@ function Sfx.noise(dur, vol, seed)
 			hold = r:next_float() * 2.0 - 1.0
 		end
 		local u = i / n
-		table.insert(samples, hold * Math.Exp(-4.0 * u) * vol)
+		do
+			local __tcs_v = hold * Math.Exp(-4.0 * u) * vol
+			samples[#samples + 1] = __tcs_v
+		end
 	end
 	Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
 end
 
+Sfx.rate = 44100
+Sfx.cache = {}
+
 Shapes = {}
 Shapes.__index = Shapes
 
 Shapes.stride = 0
-Shapes.stride = 12
 
 function Shapes.new()
 	local self = setmetatable({}, Shapes)
@@ -3663,18 +3674,18 @@ function Shapes.new()
 end
 
 function Shapes.vertex(dst, x, y, z, nx, ny, nz, col)
-	table.insert(dst, x)
-	table.insert(dst, y)
-	table.insert(dst, z)
-	table.insert(dst, 0)
-	table.insert(dst, nx)
-	table.insert(dst, ny)
-	table.insert(dst, nz)
-	table.insert(dst, 0)
-	table.insert(dst, col[0 + 1])
-	table.insert(dst, col[1 + 1])
-	table.insert(dst, col[2 + 1])
-	table.insert(dst, col[3 + 1])
+	dst[#dst + 1] = x
+	dst[#dst + 1] = y
+	dst[#dst + 1] = z
+	dst[#dst + 1] = 0
+	dst[#dst + 1] = nx
+	dst[#dst + 1] = ny
+	dst[#dst + 1] = nz
+	dst[#dst + 1] = 0
+	dst[#dst + 1] = col[0 + 1]
+	dst[#dst + 1] = col[1 + 1]
+	dst[#dst + 1] = col[2 + 1]
+	dst[#dst + 1] = col[3 + 1]
 end
 
 function Shapes.tri(dst, a, b, c, n, col)
@@ -3742,6 +3753,8 @@ function Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
 	end
 end
 
+Shapes.stride = 12
+
 Shapes3d = {}
 Shapes3d.__index = Shapes3d
 
@@ -3756,7 +3769,7 @@ function Shapes3d.mesh(positions, normals, indices)
 	local colors = {}
 	local i = 0
 	while i < n * 3 do
-		table.insert(colors, 1.0)
+		colors[#colors + 1] = 1.0
 		i = i + 1
 	end
 	return {
@@ -3777,16 +3790,16 @@ function Shapes3d.from_interleaved(v)
 	local indices = {}
 	for i = 0, n - 1 do
 		local o = i * 12
-		table.insert(pos, v[o + 1])
-		table.insert(pos, v[o + 1 + 1])
-		table.insert(pos, v[o + 2 + 1])
-		table.insert(nrm, v[o + 4 + 1])
-		table.insert(nrm, v[o + 5 + 1])
-		table.insert(nrm, v[o + 6 + 1])
-		table.insert(col, v[o + 8 + 1])
-		table.insert(col, v[o + 9 + 1])
-		table.insert(col, v[o + 10 + 1])
-		table.insert(indices, i)
+		pos[#pos + 1] = v[o + 1]
+		pos[#pos + 1] = v[o + 1 + 1]
+		pos[#pos + 1] = v[o + 2 + 1]
+		nrm[#nrm + 1] = v[o + 4 + 1]
+		nrm[#nrm + 1] = v[o + 5 + 1]
+		nrm[#nrm + 1] = v[o + 6 + 1]
+		col[#col + 1] = v[o + 8 + 1]
+		col[#col + 1] = v[o + 9 + 1]
+		col[#col + 1] = v[o + 10 + 1]
+		indices[#indices + 1] = i
 	end
 	return { positions = pos, normals = nrm, colors = col, indices = indices, vert_count = n, index_count = n }
 end
@@ -3819,14 +3832,14 @@ function Shapes3d.cube()
 				sv = -1.0
 			end
 			for k = 0, 3 - 1 do
-				table.insert(pos, f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv)
+				pos[#pos + 1] = f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv
 			end
 			for k = 0, 3 - 1 do
-				table.insert(nrm, f[k + 1])
+				nrm[#nrm + 1] = f[k + 1]
 			end
 		end
 		for _, idx in ipairs({ 0, 1, 2, 0, 2, 3 }) do
-			table.insert(indices, baseIdx + idx)
+			indices[#indices + 1] = baseIdx + idx
 		end
 	end
 	return Shapes3d.mesh(pos, nrm, indices)
@@ -3840,18 +3853,18 @@ function Shapes3d.cylinder(sides)
 		local a = i / sides * 3.141592653589793 * 2.0
 		local nx = Math.Cos(a)
 		local nz = Math.Sin(a)
-		table.insert(pos, nx)
-		table.insert(pos, -0.5)
-		table.insert(pos, nz)
-		table.insert(nrm, nx)
-		table.insert(nrm, 0.0)
-		table.insert(nrm, nz)
-		table.insert(pos, nx)
-		table.insert(pos, 0.5)
-		table.insert(pos, nz)
-		table.insert(nrm, nx)
-		table.insert(nrm, 0.0)
-		table.insert(nrm, nz)
+		pos[#pos + 1] = nx
+		pos[#pos + 1] = -0.5
+		pos[#pos + 1] = nz
+		nrm[#nrm + 1] = nx
+		nrm[#nrm + 1] = 0.0
+		nrm[#nrm + 1] = nz
+		pos[#pos + 1] = nx
+		pos[#pos + 1] = 0.5
+		pos[#pos + 1] = nz
+		nrm[#nrm + 1] = nx
+		nrm[#nrm + 1] = 0.0
+		nrm[#nrm + 1] = nz
 	end
 	for i = 0, sides - 1 do
 		local b0 = i * 2
@@ -3863,7 +3876,7 @@ function Shapes3d.cylinder(sides)
 		end
 		local b1 = i1 * 2
 		for _, idx in ipairs({ b0, b0 + 1, b1 + 1, b0, b1 + 1, b1 }) do
-			table.insert(indices, idx)
+			indices[#indices + 1] = idx
 		end
 	end
 	for side = 0, 2 - 1 do
@@ -3875,20 +3888,26 @@ function Shapes3d.cylinder(sides)
 		end
 		local y = ny * 0.5
 		local center = Math.Floor(#pos / 3.0)
-		table.insert(pos, 0.0)
-		table.insert(pos, y)
-		table.insert(pos, 0.0)
-		table.insert(nrm, 0.0)
-		table.insert(nrm, ny)
-		table.insert(nrm, 0.0)
+		pos[#pos + 1] = 0.0
+		pos[#pos + 1] = y
+		pos[#pos + 1] = 0.0
+		nrm[#nrm + 1] = 0.0
+		nrm[#nrm + 1] = ny
+		nrm[#nrm + 1] = 0.0
 		for i = 0, sides - 1 do
 			local a = i / sides * 3.141592653589793 * 2.0
-			table.insert(pos, Math.Cos(a))
-			table.insert(pos, y)
-			table.insert(pos, Math.Sin(a))
-			table.insert(nrm, 0.0)
-			table.insert(nrm, ny)
-			table.insert(nrm, 0.0)
+			do
+				local __tcs_v = Math.Cos(a)
+				pos[#pos + 1] = __tcs_v
+			end
+			pos[#pos + 1] = y
+			do
+				local __tcs_v = Math.Sin(a)
+				pos[#pos + 1] = __tcs_v
+			end
+			nrm[#nrm + 1] = 0.0
+			nrm[#nrm + 1] = ny
+			nrm[#nrm + 1] = 0.0
 		end
 		for i = 0, sides - 1 do
 			local i1
@@ -3900,13 +3919,13 @@ function Shapes3d.cylinder(sides)
 			local r0 = center + 1 + i
 			local r1 = center + 1 + i1
 			if ny > 0 then
-				table.insert(indices, center)
-				table.insert(indices, r0)
-				table.insert(indices, r1)
+				indices[#indices + 1] = center
+				indices[#indices + 1] = r0
+				indices[#indices + 1] = r1
 			else
-				table.insert(indices, center)
-				table.insert(indices, r1)
-				table.insert(indices, r0)
+				indices[#indices + 1] = center
+				indices[#indices + 1] = r1
+				indices[#indices + 1] = r0
 			end
 		end
 	end
@@ -3927,12 +3946,12 @@ function Shapes3d.sphere(stacks, slices)
 			local th = sl / slices * 3.141592653589793 * 2.0
 			local x = r * Math.Cos(th)
 			local z = r * Math.Sin(th)
-			table.insert(pos, x)
-			table.insert(pos, y)
-			table.insert(pos, z)
-			table.insert(nrm, x)
-			table.insert(nrm, y)
-			table.insert(nrm, z)
+			pos[#pos + 1] = x
+			pos[#pos + 1] = y
+			pos[#pos + 1] = z
+			nrm[#nrm + 1] = x
+			nrm[#nrm + 1] = y
+			nrm[#nrm + 1] = z
 			sl = sl + 1
 		end
 		st = st + 1
@@ -3942,7 +3961,7 @@ function Shapes3d.sphere(stacks, slices)
 			local a = st * (slices + 1) + sl
 			local b = a + slices + 1
 			for _, idx in ipairs({ a, b, a + 1, a + 1, b, b + 1 }) do
-				table.insert(indices, idx)
+				indices[#indices + 1] = idx
 			end
 		end
 	end
@@ -3968,54 +3987,6 @@ SpriteBatch.__index = SpriteBatch
 SpriteBatch.legacy_stride = 0
 SpriteBatch.vertex_stride = 0
 SpriteBatch.instance_stride = 0
-SpriteBatch.legacy_stride = 8
-SpriteBatch.vertex_stride = 4
-SpriteBatch.instance_stride = 16
-SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
-	.. "ConstantBuffer<Uniforms> u;\n"
-	.. "struct VSIn  { float2 pos; float2 uv; float4 color; };\n"
-	.. "StructuredBuffer<VSIn> verts;\n"
-	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
-	.. '[shader("vertex")]\n'
-	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
-	.. "    VSIn i = verts[vid];\n"
-	.. "    VSOut o;\n"
-	.. "    float2 p = float2(i.pos.x / u.params.x * 2.0 - 1.0, 1.0 - i.pos.y / u.params.y * 2.0);\n"
-	.. "    o.pos = float4(p, 0.0, 1.0);\n"
-	.. "    o.uv = i.uv;\n"
-	.. "    o.color = i.color;\n"
-	.. "    return o;\n"
-	.. "}\n"
-SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
-	.. "ConstantBuffer<Uniforms> u;\n"
-	.. "struct VSVertex { float2 corner; float2 uv01; };\n"
-	.. "struct VSInstance { float2 pos; float2 size; float2 rot_cs; float2 pad0; float4 uv_rect; float4 color; };\n"
-	.. "StructuredBuffer<VSVertex> verts;\n"
-	.. "StructuredBuffer<VSInstance> insts;\n"
-	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
-	.. '[shader("vertex")]\n'
-	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n"
-	.. "    VSVertex v = verts[vid];\n"
-	.. "    VSInstance i = insts[iid];\n"
-	.. "    VSOut o;\n"
-	.. "    float2 local = v.corner * i.size;\n"
-	.. "    float2 p2 = i.pos + float2(local.x * i.rot_cs.x - local.y * i.rot_cs.y, local.x * i.rot_cs.y + local.y * i.rot_cs.x);\n"
-	.. "    float2 p = float2(p2.x / u.params.x * 2.0 - 1.0, 1.0 - p2.y / u.params.y * 2.0);\n"
-	.. "    o.pos = float4(p, 0.0, 1.0);\n"
-	.. "    o.uv = lerp(i.uv_rect.xy, i.uv_rect.zw, v.uv01);\n"
-	.. "    o.color = i.color;\n"
-	.. "    return o;\n"
-	.. "}\n"
-SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
-	.. "struct FSIn { float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
-	.. '[shader("fragment")]\n'
-	.. "float4 fs_main(FSIn i) : SV_Target {\n"
-	.. "    float4 c = LUB_SAMPLE(atlas, i.uv) * i.color;\n"
-	.. "    if (c.a < 0.004) discard;\n"
-	.. "    return c;\n"
-	.. "}\n"
-SpriteBatch.white_atlas = nil
-SpriteBatch.disc_atlas = nil
 
 function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
 	local self = setmetatable({}, SpriteBatch)
@@ -4092,7 +4063,7 @@ function SpriteBatch:bucket_for(a)
 	then
 		b = SpriteBucket.new(a)
 		self.buckets[a.key] = b
-		table.insert(self.order, a.key)
+		self.order[#self.order + 1] = a.key
 	end
 	if not b.ready then
 		if not a:ensure() then
@@ -4115,22 +4086,22 @@ function SpriteBatch:push_instance(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, 
 end
 
 function SpriteBatch:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
-	table.insert(verts, cx)
-	table.insert(verts, cy)
-	table.insert(verts, w)
-	table.insert(verts, h)
-	table.insert(verts, cr)
-	table.insert(verts, sr)
-	table.insert(verts, 0.0)
-	table.insert(verts, 0.0)
-	table.insert(verts, u0)
-	table.insert(verts, v0)
-	table.insert(verts, u1)
-	table.insert(verts, v1)
-	table.insert(verts, r)
-	table.insert(verts, g)
-	table.insert(verts, b)
-	table.insert(verts, alpha)
+	verts[#verts + 1] = cx
+	verts[#verts + 1] = cy
+	verts[#verts + 1] = w
+	verts[#verts + 1] = h
+	verts[#verts + 1] = cr
+	verts[#verts + 1] = sr
+	verts[#verts + 1] = 0.0
+	verts[#verts + 1] = 0.0
+	verts[#verts + 1] = u0
+	verts[#verts + 1] = v0
+	verts[#verts + 1] = u1
+	verts[#verts + 1] = v1
+	verts[#verts + 1] = r
+	verts[#verts + 1] = g
+	verts[#verts + 1] = b
+	verts[#verts + 1] = alpha
 end
 
 function SpriteBatch:push_vertex(verts, x, y, u, v, c)
@@ -4138,14 +4109,14 @@ function SpriteBatch:push_vertex(verts, x, y, u, v, c)
 end
 
 function SpriteBatch:push_vertex_color(verts, x, y, u, v, r, g, b, alpha)
-	table.insert(verts, x)
-	table.insert(verts, y)
-	table.insert(verts, u)
-	table.insert(verts, v)
-	table.insert(verts, r)
-	table.insert(verts, g)
-	table.insert(verts, b)
-	table.insert(verts, alpha)
+	verts[#verts + 1] = x
+	verts[#verts + 1] = y
+	verts[#verts + 1] = u
+	verts[#verts + 1] = v
+	verts[#verts + 1] = r
+	verts[#verts + 1] = g
+	verts[#verts + 1] = b
+	verts[#verts + 1] = alpha
 end
 
 function SpriteBatch:push_rot(verts, cx, cy, ox, oy, cr, sr, u, v, c)
@@ -4213,7 +4184,7 @@ function SpriteBatch.ensure_white_atlas()
 		local px = {}
 		local i = 0
 		while i < 4 * 4 * 4 do
-			table.insert(px, 255)
+			px[#px + 1] = 255
 			i = i + 1
 		end
 		SpriteBatch.white_atlas = Atlas.from_pixels("lubx_white", 4, 4, px, 1)
@@ -4231,10 +4202,13 @@ function SpriteBatch.ensure_disc_atlas()
 				local dy = (y + 0.5) / n * 2.0 - 1.0
 				local d = Math.Sqrt(dx * dx + dy * dy)
 				local a = Math.Max(0.0, Math.Min(1.0, (1.0 - d) * n * 0.5))
-				table.insert(px, 255)
-				table.insert(px, 255)
-				table.insert(px, 255)
-				table.insert(px, Math.Floor(a * 255))
+				px[#px + 1] = 255
+				px[#px + 1] = 255
+				px[#px + 1] = 255
+				do
+					local __tcs_v = Math.Floor(a * 255)
+					px[#px + 1] = __tcs_v
+				end
 			end
 		end
 		SpriteBatch.disc_atlas = Atlas.from_pixels("lubx_disc", n, n, px, 1)
@@ -4321,6 +4295,55 @@ function SpriteBatch:flush(blend)
 	end
 end
 
+SpriteBatch.legacy_stride = 8
+SpriteBatch.vertex_stride = 4
+SpriteBatch.instance_stride = 16
+SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
+	.. "ConstantBuffer<Uniforms> u;\n"
+	.. "struct VSIn  { float2 pos; float2 uv; float4 color; };\n"
+	.. "StructuredBuffer<VSIn> verts;\n"
+	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
+	.. '[shader("vertex")]\n'
+	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+	.. "    VSIn i = verts[vid];\n"
+	.. "    VSOut o;\n"
+	.. "    float2 p = float2(i.pos.x / u.params.x * 2.0 - 1.0, 1.0 - i.pos.y / u.params.y * 2.0);\n"
+	.. "    o.pos = float4(p, 0.0, 1.0);\n"
+	.. "    o.uv = i.uv;\n"
+	.. "    o.color = i.color;\n"
+	.. "    return o;\n"
+	.. "}\n"
+SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
+	.. "ConstantBuffer<Uniforms> u;\n"
+	.. "struct VSVertex { float2 corner; float2 uv01; };\n"
+	.. "struct VSInstance { float2 pos; float2 size; float2 rot_cs; float2 pad0; float4 uv_rect; float4 color; };\n"
+	.. "StructuredBuffer<VSVertex> verts;\n"
+	.. "StructuredBuffer<VSInstance> insts;\n"
+	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
+	.. '[shader("vertex")]\n'
+	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n"
+	.. "    VSVertex v = verts[vid];\n"
+	.. "    VSInstance i = insts[iid];\n"
+	.. "    VSOut o;\n"
+	.. "    float2 local = v.corner * i.size;\n"
+	.. "    float2 p2 = i.pos + float2(local.x * i.rot_cs.x - local.y * i.rot_cs.y, local.x * i.rot_cs.y + local.y * i.rot_cs.x);\n"
+	.. "    float2 p = float2(p2.x / u.params.x * 2.0 - 1.0, 1.0 - p2.y / u.params.y * 2.0);\n"
+	.. "    o.pos = float4(p, 0.0, 1.0);\n"
+	.. "    o.uv = lerp(i.uv_rect.xy, i.uv_rect.zw, v.uv01);\n"
+	.. "    o.color = i.color;\n"
+	.. "    return o;\n"
+	.. "}\n"
+SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
+	.. "struct FSIn { float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
+	.. '[shader("fragment")]\n'
+	.. "float4 fs_main(FSIn i) : SV_Target {\n"
+	.. "    float4 c = LUB_SAMPLE(atlas, i.uv) * i.color;\n"
+	.. "    if (c.a < 0.004) discard;\n"
+	.. "    return c;\n"
+	.. "}\n"
+SpriteBatch.white_atlas = nil
+SpriteBatch.disc_atlas = nil
+
 TextGlyph = {}
 TextGlyph.__index = TextGlyph
 
@@ -4365,7 +4388,7 @@ function Text.new(key, ttfPath, px, atlasSize)
 	self.pixels = {}
 	local i = 0
 	while i < self.atlas_w * self.atlas_h * 4 do
-		table.insert(self.pixels, 0)
+		self.pixels[#self.pixels + 1] = 0
 		i = i + 1
 	end
 	local m = lub.font.metrics(self:ttf())
