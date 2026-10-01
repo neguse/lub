@@ -70,7 +70,10 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
                                    const char *fn, const char *what) {
   ResEntry *e = res_table_get_by_handle(&app->res, h);
   if (!e) {
-    lub_api_fail(app, "%s: %s handle %d is stale or invalid", fn, what, (int)h);
+    lub_api_fail(app,
+                 "%s: %s handle %d was destroyed or swept; declare it again "
+                 "with use_*",
+                 fn, what, (int)h);
     return NULL;
   }
   if (e->kind != kind) {
@@ -829,8 +832,11 @@ static LubStatus split_bindings(App *app, const char *fn,
     }
     ResEntry *e = res_table_get_by_handle(&app->res, b->handle);
     if (!e)
-      return lub_api_fail(app, "%s: binding '%.*s' is stale or invalid", fn,
-                          b->name.len, b->name.ptr ? b->name.ptr : "");
+      return lub_api_fail(app,
+                          "%s: binding '%.*s' handle %d was destroyed or "
+                          "swept; declare it again with use_*",
+                          fn, b->name.len, b->name.ptr ? b->name.ptr : "",
+                          (int)b->handle);
     if (e->kind == RES_BUFFER) {
       if (out->n_buffers >= 16)
         return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
@@ -1300,7 +1306,8 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   q->count++;
   ResEntry *e = res_table_get_by_handle(&app->res, tex);
   if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
-    it->error = SDL_strdup("read_texture: texture handle is stale or invalid");
+    it->error = SDL_strdup("read_texture: texture handle was destroyed or "
+                           "swept; declare it again with use_*");
     it->state = RB_ERROR;
     return;
   }

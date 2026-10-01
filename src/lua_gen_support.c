@@ -803,6 +803,20 @@ static LubHandle sentinel_handle(lua_State *L, int idx, const char *kind) {
         h = lub_gfx_lookup_shader(lgen_ctx(), k);
       else
         h = lub_gfx_lookup_buffer(lgen_ctx(), k);
+      if (h == 0) {
+        // key も無い = 宣言が途切れて sweep された (か、別の経路で破棄された)。
+        // 0 のまま渡すと draw では uniform 扱い、pass では target 無しになって
+        // 黙って束縛が外れるので、ここで error にする。
+        int sweep = g_app->resource_sweep_after_frames;
+        if (sweep > 0)
+          luaL_error(L,
+                     "%s '%s' was swept (not used for %d frames); declare it "
+                     "again with use_*",
+                     kind, s ? s : "?", sweep);
+        else
+          luaL_error(L, "%s '%s' was destroyed; declare it again with use_*",
+                     kind, s ? s : "?");
+      }
       lua_pop(L, 1);
     }
   }
