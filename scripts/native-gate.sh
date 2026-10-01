@@ -272,6 +272,7 @@ physics_lua_tests=(
   tests/lua/test_physics_box2d_callbacks.lua
   tests/lua/test_physics_box2d_lifetime.lua
   tests/lua/test_resource_revision.lua
+  tests/lua/test_io_text.lua
   tests/lua/test_atlas.lua
   tests/lua/test_lubx_fixedstep_edges.lua
   tests/lua/test_lubx_mesh_reassert.lua

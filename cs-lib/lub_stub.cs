@@ -497,6 +497,12 @@ public static class Lub
             error = null;
         }
 
+        /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの
+        /// 一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+        public static void SaveText(string path, string text)
+        {
+        }
+
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や
         /// 音の data のような binary 用。</summary>
         public static void LoadBytes(string path, out Bytes? bytes,
