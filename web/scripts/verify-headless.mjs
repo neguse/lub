@@ -66,8 +66,17 @@ const SHARD = (() => {
   }
   return { k, n }
 })()
-const RUN_EDIT = SHARD.k === 1
-const RUN_CS_SESSION = SHARD.k === 1
+// LUB_VERIFY_ONLY=A9 runs just the raw-Lua web tests (A9) and skips loading
+// the playground; unset runs everything the shard owns.
+const ONLY = process.env.LUB_VERIFY_ONLY || ''
+if (ONLY && ONLY !== 'A9') {
+  console.error(`[verify] bad LUB_VERIFY_ONLY: ${ONLY} (only A9 is supported)`)
+  process.exit(2)
+}
+const RUN_PLAYGROUND = !ONLY
+const RUN_EDIT = SHARD.k === 1 && RUN_PLAYGROUND
+const RUN_CS_SESSION = SHARD.k === 1 && RUN_PLAYGROUND
+const RUN_LUA_TESTS = SHARD.k === 1
 
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true })
 
@@ -111,31 +120,35 @@ ctx.on('console', (m) => {
 })
 ctx.on('pageerror', (e) => console.error('PAGEERR', e.message))
 
-await page.goto(URL, { waitUntil: 'load' })
+let iframeHandle = null
+let iframe = null
+if (RUN_PLAYGROUND) {
+  await page.goto(URL, { waitUntil: 'load' })
 
-const iframeHandle = await page.waitForSelector('iframe', { timeout: 20000 })
-const iframe = await iframeHandle.contentFrame()
-if (!iframe) {
-  console.error('[verify] iframe contentFrame returned null')
-  process.exit(1)
-}
-
-// Forward iframe log relays into the node console for failure forensics.
-await page.exposeFunction('__lubLog', (level, msg) => {
-  logs.push({ level, msg })
-  if (VERBOSE || level === 'err' || level === 'warn') {
-    console.log(`IFRAME[${level}]`, msg)
+  iframeHandle = await page.waitForSelector('iframe', { timeout: 20000 })
+  iframe = await iframeHandle.contentFrame()
+  if (!iframe) {
+    console.error('[verify] iframe contentFrame returned null')
+    process.exit(1)
   }
-})
-await page.evaluate(() => {
-  window.addEventListener('message', (e) => {
-    const d = (e && e.data) || {}
-    if (d && d.type === 'log') {
-      const fn = window.__lubLog
-      if (fn) fn(d.level || 'log', String(d.msg == null ? '' : d.msg))
+
+  // Forward iframe log relays into the node console for failure forensics.
+  await page.exposeFunction('__lubLog', (level, msg) => {
+    logs.push({ level, msg })
+    if (VERBOSE || level === 'err' || level === 'warn') {
+      console.log(`IFRAME[${level}]`, msg)
     }
   })
-})
+  await page.evaluate(() => {
+    window.addEventListener('message', (e) => {
+      const d = (e && e.data) || {}
+      if (d && d.type === 'log') {
+        const fn = window.__lubLog
+        if (fn) fn(d.level || 'log', String(d.msg == null ? '' : d.msg))
+      }
+    })
+  })
+}
 
 // -------------------------------------------------------------- helpers ----
 
@@ -470,6 +483,7 @@ async function waitForPlayerReady(timeoutMs) {
 // contiguous に分担する。重み付き累積で切って shard 間の wall-clock を均す
 // (今は全サンプルが同じ C# 経路なので等重み)。n=1 は全件。
 const a5Samples = (() => {
+  if (!RUN_PLAYGROUND) return []
   if (SHARD.n === 1) return samples
   if (SHARD.k === 1) return []
   const weight = () => 1
@@ -707,6 +721,86 @@ if (RUN_CS_SESSION) try {
   console.error('[verify] A8 threw', e.message)
   check('A8 C# completion/hover', false, e.message)
   failures++
+}
+
+// ===== Test A9: raw Lua runtime tests on the web player ===================
+// tests/lua/ の raw Lua テストのうち web でも動くものを player に直接流し込み
+// (main.ts の C# 経路は通さない)、OK 行が出て validation error も Lua error
+// も無いことを見る。entry は wasm 側の bare-name 解決に合わせて
+// samples/<name>/.lub/<name>.lua に置き、load_text が参照する兄弟ファイルは
+// cwd (/) 相対の同じパス (tests/lua/...) に置く (player.ts の fsPath)。
+// 各テストは成功で `OK <name>` を print し、失敗は `FAIL ...` を print する。
+const A9_TESTS = ['test_dup_binding']
+const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000)
+const A9_FAIL_RE = /\[webgpu-validation\]|lua error|^FAIL |lub: error/
+
+async function runLuaTestOnWeb(name) {
+  const lua = fs.readFileSync(
+    path.resolve('..', 'tests', 'lua', `${name}.lua`), 'utf8')
+  const files = { [`${name}/.lub/${name}.lua`]: lua }
+  const re = /load_(?:text|floats)\(\s*"([^"]+)"\s*\)/g
+  let m
+  while ((m = re.exec(lua))) {
+    const rel = m[1]
+    if (!('/' + rel in files))
+      files['/' + rel] = fs.readFileSync(path.resolve('..', rel), 'utf8')
+  }
+  const p = await ctx.newPage()
+  const consoleLines = []
+  p.on('console', (msg) => consoleLines.push(msg.text()))
+  p.on('pageerror', (e) => consoleLines.push('[pageerror] ' + e.message))
+  await p.goto(`${URL}player.html?w=64&h=64`, { waitUntil: 'load' })
+  // player.html を top-level で開くと parent === window なので、relayLog
+  // (wasm の print / printErr) の postMessage を自分で受けて溜める。
+  await p.evaluate(() => {
+    window.__lubA9 = []
+    window.addEventListener('message', (e) => {
+      const d = (e && e.data) || {}
+      if (d.type === 'log') window.__lubA9.push(String(d.msg))
+    })
+  })
+  await p.evaluate(({ files, name }) => {
+    window.postMessage({ type: 'setFiles', files, entry: name }, '*')
+  }, { files, name })
+  const okLine = `OK ${name}`
+  const collect = async () => {
+    const relayed = await p.evaluate(() => window.__lubA9.slice())
+    return [...relayed, ...consoleLines]
+  }
+  const deadline = Date.now() + A9_TIMEOUT_MS
+  let all = []
+  for (;;) {
+    all = await collect()
+    if (all.some((l) => l.includes(okLine)) || all.some((l) => A9_FAIL_RE.test(l))) break
+    if (Date.now() > deadline) break
+    await p.waitForTimeout(250)
+  }
+  // uncapturederror は非同期に届くので、OK の後も少し待ってから拾い直す。
+  await p.waitForTimeout(1000)
+  all = await collect()
+  await p.close()
+  return {
+    ok: all.some((l) => l.includes(okLine)),
+    errors: all.filter((l) => A9_FAIL_RE.test(l)),
+    all,
+  }
+}
+
+if (RUN_LUA_TESTS) for (const name of A9_TESTS) {
+  try {
+    console.log(`[verify] A9 ${name}`)
+    const r = await runLuaTestOnWeb(name)
+    const ok = r.ok && r.errors.length === 0
+    if (!check(`A9 ${name}`, ok,
+               ok ? '' : `ok=${r.ok} errors=${JSON.stringify(r.errors.slice(0, 5))}`)) {
+      failures++
+      for (const l of r.all.slice(-20)) console.error(`  [A9/${name}] ${l}`)
+    }
+  } catch (e) {
+    console.error(`[verify] A9 ${name} threw`, e.message)
+    check(`A9 ${name}`, false, e.message)
+    failures++
+  }
 }
 
 await browser.close()

@@ -285,6 +285,7 @@ physics_lua_tests=(
   tests/lua/test_gfx_in_on_init.lua
   tests/lua/test_instance_count_zero.lua
   tests/lua/test_swept_ref_error.lua
+  tests/lua/test_dup_binding.lua
 )
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
