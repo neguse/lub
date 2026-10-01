@@ -9,11 +9,14 @@ using System.Collections.Generic;
 using static Lub;
 
 /// <summary>MeshText の glyph キャッシュ 1 エントリ (内部用)。空グリフは
-/// vb/ib = null, count = 0 で advance だけ持つ。</summary>
+/// vb/ib = null, count = 0 で advance だけ持つ。verts / idx は buffer を
+/// 毎 frame 再主張する (sweep を防ぐ) ために持つ。</summary>
 public class GlyphEntry
 {
     public BufferRef? Vb;
     public BufferRef? Ib;
+    public List<float>? Verts;
+    public List<float>? Idx;
     public int Count;
     public float Advance;
     public float Cx;
@@ -92,7 +95,18 @@ public class MeshText
     private GlyphEntry? GlyphFor(int cp)
     {
         if (glyphs.TryGetValue(cp, out var cached))
+        {
+            // version が同じなので data は読まれない。sweep 済みなら作り直す。
+            if (cached.Vb != null && cached.Ib != null && cached.Verts != null
+                && cached.Idx != null)
+            {
+                cached.Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Storage,
+                    cached.Verts, cached.Vb.Version);
+                cached.Ib = Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index,
+                    cached.Idx, cached.Ib.Version);
+            }
             return cached;
+        }
         Io.LoadBytes(ttfPath, out var ttf, out _, out _, out _);
         if (ttf == null)
             return null;
@@ -142,6 +156,8 @@ public class MeshText
         {
             Vb = Gfx.UseBuffer(key + "_v:" + cp, Gfx.BufferType.Storage, verts, version),
             Ib = Gfx.UseBuffer(key + "_i:" + cp, Gfx.BufferType.Index, idx, version),
+            Verts = verts,
+            Idx = idx,
             Count = gm.IndexCount,
             Advance = gm.Advance,
             Cx = (minX + maxX) * 0.5f,

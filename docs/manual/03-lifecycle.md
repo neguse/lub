@@ -17,6 +17,9 @@ Lua 側の名前は `on_init` / `on_event` / `on_frame` / `on_quit` / `on_reload
 
 `dt` は固定レートではない。移動や時間経過は必ず `dt` でスケールする。
 ウィンドウサイズや backend の指定は `Config`(`ConfigOpts`)で行う。
+renderer は `OnInit` の後に起動するので、`OnInit` の中で `Gfx.Use*` /
+`Gfx.BeginPass` / `Gfx.Draw` / `Gfx.Dispatch` を呼ぶと error になる
+(resource の宣言は `OnFrame` で行う)。
 
 ## 駆動パターン (可変 dt と固定 tick)
 
