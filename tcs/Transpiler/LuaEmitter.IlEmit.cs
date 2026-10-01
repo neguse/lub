@@ -30,9 +30,19 @@ public partial class LuaEmitter
                 AppendLine($"{RenderIl(assign.Target)} = {RenderIl(assign.Value)}");
                 break;
             case IlCallStat call:
-                AppendLine(RenderIl(call.Call));
+                // 引数束縛の local は後続文へ漏れないよう do ... end で閉じる
+                AppendLine(TryRenderListAddStat(call.Call, "do ", " end")
+                    ?? RenderIl(call.Call));
                 break;
             case IlReturn ret:
+                // expression-bodied void member (`=> list.Add(v)`) の
+                // `return table.insert(...)` は値を返さないので文形に落とす
+                // (関数末尾なので local は漏れない)
+                if (ret.Value != null && TryRenderListAddStat(ret.Value) is { } add)
+                {
+                    AppendLine(add);
+                    break;
+                }
                 AppendLine(ret.Value != null
                     ? $"return {RenderIl(ret.Value)}" : "return");
                 break;
@@ -163,7 +173,7 @@ public partial class LuaEmitter
         IlLocal local => $"local {local.Name}",
         IlAssign assign => $"{RenderIl(assign.Target)} = {RenderIl(assign.Value)}",
         IlMultiAssign multi => RenderIlMultiAssign(multi),
-        IlCallStat call => RenderIl(call.Call),
+        IlCallStat call => TryRenderListAddStat(call.Call) ?? RenderIl(call.Call),
         IlReturn { Value: not null } ret => $"return {RenderIl(ret.Value)}",
         IlReturn => "return",
         IlIf ifStat => RenderIlIfInline(ifStat),
@@ -328,6 +338,8 @@ public partial class LuaEmitter
         {
             var locals = closure.PatternLocals.Length > 0
                 ? $"local {string.Join(", ", closure.PatternLocals)}; " : "";
+            if (TryRenderListAddStat(closure.ExprBody) is { } add)
+                return $"function({paramList}) {locals}{add} end";
             return $"function({paramList}) {locals}return " +
                 $"{RenderIl(closure.ExprBody)} end";
         }
@@ -355,4 +367,63 @@ public partial class LuaEmitter
             : RenderIl(e.Value));
         return $"{{{string.Join(", ", parts)}}}";
     }
+
+    // List.Add の文位置 lowering (#24): `table.insert(t, v)` は C 関数呼び出し
+    // の分だけ遅い (実測 52ns → 25ns/要素) ので `t[#t + 1] = v` を出力する。
+    // 文位置でのみ有効 (式位置の table.insert は IlCall のまま)。
+    // 受け手は変数 / field 連鎖に限る (1 回評価の保証。それ以外は fallback)。
+    // 引数が呼び出しを含む場合は `local __tcs_v = v` に先に束縛する — Lua は
+    // `t[#t + 1] = v` で `#t` を右辺より先に評価するため、右辺が t に副作用を
+    // 持つと C# (引数評価 → Add) と順序が入れ替わる。open/close は束縛を
+    // 伴う 2 文を囲む文字列 (block 位置の do ... end)。
+    private string? TryRenderListAddStat(IlExpr expr, string open = "",
+        string close = "")
+    {
+        if (expr is not IlCall { Callee: "table.insert", Args.Length: 2 } call)
+            return null;
+        var recv = call.Args[0];
+        if (!IsSimpleReceiverPath(recv)) return null;
+        var t = RenderIl(recv);
+        var value = RenderIl(call.Args[1]);
+        if (IsCallFree(call.Args[1]))
+            return $"{t}[#{t} + 1] = {value}";
+        return $"{open}local __tcs_v = {value}; {t}[#{t} + 1] = __tcs_v{close}";
+    }
+
+    private static bool IsSimpleReceiverPath(IlExpr e) => e switch
+    {
+        IlVar => true,
+        IlField f => IsSimpleReceiverPath(f.Recv),
+        _ => false,
+    };
+
+    // 呼び出しを含まない式 (順序入れ替えで観測できる副作用が無い)。
+    // runtime helper / math / string は純粋なので許す。
+    private static bool IsCallFree(IlExpr e) => e switch
+    {
+        IlLit or IlVar or IlClosure => true,
+        IlField f => IsCallFree(f.Recv),
+        IlIndex ix => IsCallFree(ix.Recv) && IsCallFree(ix.Idx),
+        IlLen len => IsCallFree(len.E),
+        IlBin bin => IsCallFree(bin.L) && IsCallFree(bin.R),
+        IlUn un => IsCallFree(un.E),
+        IlParen p => IsCallFree(p.E),
+        IlTernary t => IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F),
+        IlStructCopy sc => IsCallFree(sc.E),
+        IlIsType it => IsCallFree(it.E),
+        IlIsLuaType ilt => IsCallFree(ilt.E),
+        IlNewArray na => IsCallFree(na.Length),
+        IlTable tbl => tbl.Entries.All(
+            en => (en.Key == null || IsCallFree(en.Key)) && IsCallFree(en.Value)),
+        IlCall c => IsPureCallee(c.Callee) && c.Args.All(IsCallFree),
+        _ => false,
+    };
+
+    private static bool IsPureCallee(string callee) =>
+        callee.StartsWith("__tcs_", StringComparison.Ordinal)
+        || callee.StartsWith("math.", StringComparison.Ordinal)
+        || callee.StartsWith("string.", StringComparison.Ordinal)
+        || callee.StartsWith("Math.", StringComparison.Ordinal)
+        || callee.StartsWith("String.", StringComparison.Ordinal)
+        || callee is "tostring" or "tonumber";
 }

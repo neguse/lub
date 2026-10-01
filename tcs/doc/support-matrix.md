@@ -717,7 +717,7 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `new List<T> { 1, 2, 3 }` | **Y** | `{1, 2, 3}` | T |
 | `list[i]` (get/set) | **Y** | `list[i+1]` | T |
 | `.Count` | **Y** | `#list` | T |
-| `.Add(item)` | **Y** | `table.insert(list, item)` | T |
+| `.Add(item)` | **Y** | 文位置は `list[#list + 1] = item` (受け手が変数/field 連鎖の場合。引数が呼び出しを含むときは `local __tcs_v = item` に先に束縛)。受け手が式 (`Get().Add(x)` 等) のときは `table.insert(list, item)` | T |
 | `.Remove(item)` | **Y** | `List.Remove(list, item)` | T+R |
 | `.RemoveAt(index)` | **Y** | `table.remove(list, idx+1)` | T |
 | `.Clear()` | **Y** | | T |
