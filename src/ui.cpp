@@ -75,6 +75,10 @@ static bool ui_gpu_init() {
   ShaderTargetBackend tgt = (g_backend == &g_backend_d3d12)
                                 ? SHADER_TARGET_D3D12
                                 : SHADER_TARGET_SDLGPU;
+#elif defined(__APPLE__)
+  ShaderTargetBackend tgt = (g_backend == &g_backend_metal)
+                                ? SHADER_TARGET_METAL
+                                : SHADER_TARGET_SDLGPU;
 #else
   ShaderTargetBackend tgt = SHADER_TARGET_SDLGPU;
 #endif

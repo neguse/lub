@@ -12,6 +12,12 @@
 #include "path_util.h"
 #include "serve.h"
 #include "tcs_build.h"
+#ifdef _WIN32
+#include <direct.h>
+#define chdir _chdir
+#else
+#include <unistd.h>
+#endif
 #endif
 
 // player の runtime。frame の骨格は host API (src/host_api.c) が持ち、ここは
@@ -32,6 +38,31 @@ static bool has_extension(const char *path, const char *ext) {
   return n >= m && SDL_strcasecmp(path + n - m, ext) == 0;
 }
 
+#ifndef __EMSCRIPTEN__
+// パッケージの起動: script 指定が無く、実行ファイルの隣 (app bundle では
+// resource の場所) に game.lua があれば、そこを cwd にしてそれを動かす。
+// boot.lua やデータの相対パスは dev と同じく cwd 基準で解決される。
+static const char *packaged_entry(void) {
+  const char *base = SDL_GetBasePath();
+  char path[1024];
+  if (!base)
+    return NULL;
+  SDL_snprintf(path, sizeof(path), "%sgame.lua", base);
+  if (!SDL_GetPathInfo(path, NULL) || chdir(base) != 0)
+    return NULL;
+  return "game.lua";
+}
+
+// iOS の app は cwd が "/" で始まる。相対パスは常に bundle 基準にする。
+static void enter_bundle(void) {
+#ifdef SDL_PLATFORM_IOS
+  const char *base = SDL_GetBasePath();
+  if (base && chdir(base) != 0)
+    SDL_Log("chdir to %s failed", base);
+#endif
+}
+#endif
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate;
 
@@ -43,6 +74,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   SDL_SetHint(SDL_HINT_ASSERT, "abort");
 
 #ifndef __EMSCRIPTEN__
+  enter_bundle();
   // Pre-scan for --serve before SDL_Init (serve mode skips video)
   bool want_serve = false;
   for (int i = 1; i < argc; i++) {
@@ -159,6 +191,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   if (!g_ctx)
     return SDL_APP_FAILURE;
   g_app = lub_api_app(g_ctx);
+#ifndef __EMSCRIPTEN__
+  if (!script)
+    script = packaged_entry();
+#endif
   const char *entry_path = script ? script : "00_hello";
 
   char modbuf[256] = {0};

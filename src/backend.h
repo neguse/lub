@@ -208,6 +208,9 @@ extern const RenderBackend g_backend_d3d12; // backend_d3d12.cpp, Windows-only
 #if defined(LUB_HAS_VULKAN)
 extern const RenderBackend g_backend_vulkan; // backend_vulkan.c ("vulkan")
 #endif
+#ifdef __APPLE__
+extern const RenderBackend g_backend_metal; // backend_metal.m, Apple-only
+#endif
 
 #ifdef __cplusplus
 }

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 lub は code-centric な game 制作 runtime。C# (TinyC#) → Lua transpile + hot reload で
-game を書き、native (DX12 / Vulkan 直接実装 + SDL3 GPU) と web (WASM + WebGPU)
+game を書き、native (DX12 / Vulkan / Metal 直接実装 + SDL3 GPU) と web (WASM + WebGPU)
 の両方で動かす。
 
 ## 現状の source of truth
