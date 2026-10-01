@@ -219,6 +219,12 @@ static bool mt_init(App *app) {
     g_layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     // capture copies the drawable back, which a framebuffer-only one refuses.
     g_layer.framebufferOnly = NO;
+    // A capture run draws at the requested size, not at what the window got:
+    // the drawable is ours to size, and the layer scales it for display.
+    if (app->capture.pending) {
+      app->fixed_w = app->cfg_w > 0 ? app->cfg_w : LUB_DEFAULT_WINDOW_W;
+      app->fixed_h = app->cfg_h > 0 ? app->cfg_h : LUB_DEFAULT_WINDOW_H;
+    }
     SDL_Log("metal: device: %s", g_device.name.UTF8String);
     return true;
   }
@@ -255,6 +261,10 @@ static void mt_begin_frame(App *app, int *out_w, int *out_h) {
   @autoreleasepool {
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(app->window, &w, &h);
+    if (app->fixed_w > 0 && app->fixed_h > 0) {
+      w = app->fixed_w;
+      h = app->fixed_h;
+    }
     if (w > 0 && h > 0) {
       CGSize size = g_layer.drawableSize;
       if ((int)size.width != w || (int)size.height != h)

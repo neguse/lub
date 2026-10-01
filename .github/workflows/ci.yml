@@ -285,9 +285,9 @@ jobs:
 
   # macOS / iOS regression gate: scripts/apple-gate.sh (CI と手動の単一ソース)
   # で Release build -> C smoke tests -> Lua runtime テスト -> 視覚 golden ->
-  # shader cache の往復 -> iOS build。Metal は runner の GPU で描くので byte
-  # 一致にはならず、golden は Linux の *_sdlgpu.png との許容差比較
-  # (scripts/png-diff.py)。iOS は simulator 向けの build まで (起動はしない)。
+  # shader cache の往復 -> iOS build -> iOS simulator での実行。Metal は
+  # runner の GPU で描くので byte 一致にはならず、golden は Linux の
+  # *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
   macos:
     needs: changes
     if: needs.changes.outputs.web_only != 'true'
@@ -314,7 +314,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Apple gate (build, smokes, Lua runtime, golden, shader cache, iOS build)
+      - name: Apple gate (build, smokes, Lua runtime, golden, shader cache, iOS simulator)
         run: |
           export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
           mkdir -p "$TMPDIR"

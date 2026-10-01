@@ -66,10 +66,12 @@ bool app_init(App *app) {
 
   // wasm は canvas-backed default のみ。
 #ifdef __EMSCRIPTEN__
-  app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
+  app->window = SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W,
+                                 LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
 #else
-  app->window = SDL_CreateWindow("lub", 1280, 720,
-                                 window_flags_for_backend(app->backend_name));
+  app->window =
+      SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W, LUB_DEFAULT_WINDOW_H,
+                       window_flags_for_backend(app->backend_name));
 #endif
   if (!app->window) {
     SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());

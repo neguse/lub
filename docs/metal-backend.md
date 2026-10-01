@@ -118,22 +118,32 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 
 `scripts/apple-gate.sh` が CI の macos job と手元の Mac の両方で同じ内容を
 回す: Release build、C の smoke test、`tests/lua/` の runtime テスト、視覚
-golden、shader cache の往復、iOS の build。
+golden、shader cache の往復、iOS の build と simulator での実行。
 
 - 視覚 golden: Metal には機材に依存しない CPU rasterizer が無いので、Metal
   用の golden は持たない。`scripts/run-golden.sh` は macOS では metal backend
   で capture し、Linux の golden(`*_sdlgpu.png`)と許容差で比べる
   (`scripts/png-diff.py`。pixel の差は RGB の最大差で、平均が 3 以下、かつ
   16 を超える pixel が 1% 以下)。`--update` は macOS からは書かない。
+- capture の大きさ: `--capture` を付けた run は、window の実 pixel ではなく
+  要求した大きさ(`config` の width / height、無ければ 1280x720)で描く。
+  画面より大きい window は縮められ、Retina では pixel が倍になるので、
+  window に合わせると capture の大きさが機材で変わるため。drawable だけを
+  その大きさにし、表示は layer が拡縮する。
 - shader cache の往復: Slang を持つ player に cache を書かせ、`LUB_NO_SLANG`
   の player が同じ frame を cache だけから描いて byte 一致すること、cache が
   空なら key を名指しする error になることを確かめる。
-- iOS: Xcode generator で configure し、player を simulator 向けに build する。
+- iOS: Xcode generator で configure し、player の app(`lub.app`、bundle id
+  `dev.neguse.lub`)を simulator 向けに build する。その app に boot.lua、
+  lume、`tests/lua/`、Mac の player が埋めた shader cache を入れて simulator
+  で動かす。描画テストは capture を Linux の golden と許容差で比べる。
+  simctl は app の終了 code を返さないので、終了 code で合否が決まるテストは
+  `tests/lua/run_marked.lua` で包み、出力の `LUB_TEST_EXIT` で判定する。
 
 ## 制約 / 未対応
 
-- Metal の golden は持たない(下の「検証」)。
-- iOS で動かす検証は CI に無い。CI は simulator 向けの build まで。
+- Metal の golden は持たない(上の「検証」)。
+- iOS の検証は simulator まで。実機は CI に無い。
 - buffer の要素の float3 を、要素を local に受けずに直接行列と演算する式
   (`mul(m, verts[i].nrm)` の形)は MSL の compile error になる。
   `V v = verts[i];` と一度受けてから使う。

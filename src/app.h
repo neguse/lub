@@ -24,6 +24,10 @@
 
 typedef enum { APP_PHASE_PRE_BACKEND, APP_PHASE_POST_BACKEND } AppPhase;
 
+// config({width,height}) が無いときの window の大きさ。
+#define LUB_DEFAULT_WINDOW_W 1280
+#define LUB_DEFAULT_WINDOW_H 720
+
 typedef struct App {
   SDL_Window *window;
 
@@ -62,6 +66,10 @@ typedef struct App {
   bool capture_then_exit; // set by app_frame_end after a successful capture
   int last_w, last_h;     // last extents seen by app_frame_begin
   int cfg_w, cfg_h; // config({width,height}) で要求された窓サイズ。0 = 既定維持
+  // > 0: main target をこの大きさで描く (metal backend の capture run)。
+  // 画面より大きい window は縮められ、Retina では pixel が倍になるので、
+  // window の実 pixel で描くと capture の大きさが機材で変わる。
+  int fixed_w, fixed_h;
   bool quit_requested; // Lua quit() が立てる。AppIterate が SUCCESS で抜ける
   double actual_fps; // updated once per second after backend end_frame/present
   uint64_t fps_last_ns;

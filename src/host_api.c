@@ -77,6 +77,11 @@ void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h) {
   *x = *y = *w = *h = 0;
   if (!app->window)
     return;
+  if (app->fixed_w > 0 && app->fixed_h > 0) {
+    *w = app->fixed_w;
+    *h = app->fixed_h;
+    return;
+  }
   SDL_GetWindowSizeInPixels(app->window, w, h);
   SDL_Rect safe;
   if (!SDL_GetWindowSafeArea(app->window, &safe) || safe.w <= 0 || safe.h <= 0)

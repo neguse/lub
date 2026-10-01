@@ -331,6 +331,14 @@ endif()
 add_library(lub_objs OBJECT ${LUB_SOURCES})
 add_executable(lub src/main.c)
 target_link_libraries(lub PRIVATE lub_objs)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  # iOS の player は app bundle。game.lua やデータは bundle の中に置く
+  # (docs/metal-backend.md)。
+  set_target_properties(lub PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/Info.plist"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "dev.neguse.lub")
+endif()
 if(LUB_HAS_VULKAN)
   target_compile_definitions(lub_objs PUBLIC LUB_HAS_VULKAN=1)
 endif()
