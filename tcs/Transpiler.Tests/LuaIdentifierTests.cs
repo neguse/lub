@@ -1,7 +1,8 @@
 namespace TinyCs.Tests;
 
 // C# では合法でも Lua 出力を壊す識別子の扱い:
-// - Lua 5.5 予約語 (end, repeat, ...) と同名の宣言は TCS1001 で拒否する
+// - Lua 5.5 予約語 (end, repeat, ...) と同名の member 宣言は TCS1001 で拒否する
+//   (ローカル束縛は LuaLocalRenamer が `end_` に写す — LuaLocalRenameTests)
 // - verbatim 識別子 (@float 等) は ValueText (@ なし) で emit する
 public class LuaIdentifierTests
 {
@@ -40,8 +41,15 @@ public class LuaIdentifierTests
         AssertLuaKeywordWarning(result, "until");
     }
 
+    private static void AssertNoLuaKeywordWarning(TranspileResult result)
+    {
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("LuaKeywordIdentifier"));
+    }
+
     [Fact]
-    public void LocalNamedLuaKeyword_ReportsUnsupportedSyntax()
+    public void LocalNamedLuaKeyword_IsRenamedWithoutWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Runner
@@ -54,11 +62,12 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "repeat");
+        AssertNoLuaKeywordWarning(result);
+        Assert.Contains("local repeat_ = 3", result.Lua);
     }
 
     [Fact]
-    public void ParameterNamedLuaKeyword_ReportsUnsupportedSyntax()
+    public void ParameterNamedLuaKeyword_IsRenamedWithoutWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Timer
@@ -67,7 +76,18 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "then");
+        AssertNoLuaKeywordWarning(result);
+        Assert.Contains("wait(then_)", result.Lua);
+    }
+
+    [Fact]
+    public void RecordPositionalParameterNamedLuaKeyword_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public record Span(int until);
+            """], checkNaming: false);
+
+        AssertLuaKeywordWarning(result, "until");
     }
 
     [Fact]
@@ -97,7 +117,7 @@ public class LuaIdentifierTests
     }
 
     [Fact]
-    public void ForEachVariableNamedLuaKeyword_ReportsUnsupportedSyntax()
+    public void ForEachVariableNamedLuaKeyword_IsRenamedWithoutWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System.Collections.Generic;
@@ -113,11 +133,12 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "elseif");
+        AssertNoLuaKeywordWarning(result);
+        Assert.Contains("elseif_", result.Lua);
     }
 
     [Fact]
-    public void PatternDesignationNamedLuaKeyword_ReportsUnsupportedSyntax()
+    public void PatternDesignationNamedLuaKeyword_IsRenamedWithoutWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Matcher
@@ -130,16 +151,32 @@ public class LuaIdentifierTests
             }
             """], checkNaming: false);
 
-        AssertLuaKeywordWarning(result, "function");
+        AssertNoLuaKeywordWarning(result);
+        Assert.Contains("function_", result.Lua);
     }
 
     [Fact]
-    public void VerbatimLuaKeyword_ReportsUnsupportedSyntax()
+    public void VerbatimLuaKeywordParameter_IsRenamedWithoutWarning()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class Turn
             {
                 public int Wait(int @end) => @end;
+            }
+            """], checkNaming: false);
+
+        AssertNoLuaKeywordWarning(result);
+        Assert.Contains("wait(end_)", result.Lua);
+        Assert.DoesNotContain("@", result.Lua);
+    }
+
+    [Fact]
+    public void VerbatimLuaKeywordMethod_ReportsUnsupportedSyntax()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Turn
+            {
+                public int @end() => 1;
             }
             """], checkNaming: false);
 
@@ -339,5 +376,110 @@ public class LuaIdentifierTests
             """, "total");
 
         Assert.Equal("2", output);
+    }
+
+    // runtime が _G に置く名前 (TinySystem / List / Dict / Math / String /
+    // Random) と同名の型は、namespace の中でも simple name で global に emit
+    // され runtime の table を上書きする。以後の BCL 呼び出しが nil になる
+    // ため、build を止める error にする (#21)
+    private static void AssertRuntimeGlobalError(TranspileResult result,
+        string name)
+    {
+        Assert.False(result.Success);
+        Assert.Equal("", result.Lua);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains($"RuntimeGlobalIdentifier({name})"));
+    }
+
+    [Fact]
+    public void ClassNamedMath_IsBuildBlockingError()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Math
+            {
+                public static int Twice(int x) => x * 2;
+            }
+            """], checkNaming: false);
+
+        AssertRuntimeGlobalError(result, "Math");
+    }
+
+    [Fact]
+    public void TypesNamedLikeRuntimeGlobals_InNamespace_AreErrors()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            namespace Game
+            {
+                public class Dict { }
+                public struct String { public int X; }
+                public enum List { A }
+                public class TinySystem { }
+            }
+            """], checkNaming: false);
+
+        AssertRuntimeGlobalError(result, "Dict");
+        AssertRuntimeGlobalError(result, "String");
+        AssertRuntimeGlobalError(result, "List");
+        AssertRuntimeGlobalError(result, "TinySystem");
+        Assert.Equal(4, result.Errors.Count);
+    }
+
+    [Fact]
+    public void NonGlobalTypeNamesAndInterfaces_HaveNoRuntimeGlobalError()
+    {
+        // interface は Lua 出力を持たないので global を上書きしない。
+        // member 名 (`self.Math`) や enum member (`E.List`) も対象外。
+        // `Random` は生成コードが素の名で参照しない (facade は
+        // `TinySystem.Random.*`) ので user 型として使える
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            namespace Game
+            {
+                public interface Dict { }
+                public record Random(int Seed);
+                public enum Kind { List, Math }
+                public class MathUtil
+                {
+                    public int Math = 1;
+                    public static int Twice(int x) => x * 2;
+                    public int String() => Math;
+                }
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("RuntimeGlobalIdentifier"));
+    }
+
+    // 診断の集合と runtime の global は同じ配列から作る。予約名は prelude /
+    // module snapshot が `_G.<name>` に置く名前の部分集合で、runtime の
+    // module table も全 alias を定義していること
+    [Fact]
+    public void RuntimeGlobals_MatchReservedTypeNames()
+    {
+        var runtime = LuaRuntime.LoadTinySystemSource();
+        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+            Assert.Contains($"TinySystem.{name} = {name}", runtime);
+        Assert.All(TinyCsComplianceFacts.ReservedRuntimeGlobals, n =>
+            Assert.True(n == TinyCsComplianceFacts.RuntimeRootGlobal
+                || TinyCsComplianceFacts.RuntimeGlobalAliases.Contains(n), n));
+
+        var prelude = LuaRuntime.CreateEmbeddedPrelude(runtime);
+        var snapshot = ModuleLinker.LinkSnapshot([], 0, null, runtime,
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        foreach (var chunk in new[] { prelude, snapshot })
+        {
+            var globals = System.Text.RegularExpressions.Regex
+                .Matches(chunk, @"_G\.(\w+) = ")
+                .Select(m => m.Groups[1].Value)
+                .Where(n => !n.StartsWith("__tcs_", StringComparison.Ordinal))
+                .ToArray();
+            Assert.NotEmpty(globals);
+            Assert.All(TinyCsComplianceFacts.ReservedRuntimeGlobals, n =>
+                Assert.Contains(n, globals));
+            foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+                Assert.Contains($"_G.{name} = TinySystem.{name}", chunk);
+        }
     }
 }

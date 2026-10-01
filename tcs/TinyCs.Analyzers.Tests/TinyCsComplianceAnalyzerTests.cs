@@ -6,7 +6,7 @@ using Xunit;
 
 namespace TinyCs.Analyzers.Tests;
 
-public class TinyCsComplianceAnalyzerTests
+public partial class TinyCsComplianceAnalyzerTests
 {
     [Fact]
     public async Task SupportedSubset_HasNoDiagnostics()
@@ -25,6 +25,24 @@ public class TinyCsComplianceAnalyzerTests
             """);
 
         Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public async Task LuaNameCollision_ReportsSecondMemberOnly()
+    {
+        var diagnostics = await AnalyzeAsync("""
+            public class Repro
+            {
+                public int flash;
+                public void Flash() { flash = 1; }
+                public int flashCount;
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("LuaNameCollision(flash/Flash)", diagnostic.GetMessage());
+        Assert.Equal(3, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
     }
 
     [Fact]
@@ -73,6 +91,94 @@ public class TinyCsComplianceAnalyzerTests
         var diagnostic = Assert.Single(withStatic);
         Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
         Assert.Contains("StructMember", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public async Task NamedArgument_ReportsUnsupportedSyntax()
+    {
+        // transpiler は build を止める error、analyzer は warning のまま
+        // (.editorconfig で severity を上げられる)
+        var diagnostics = await AnalyzeAsync("""
+            public class T
+            {
+                public static int F(int x, int y = -1) => x;
+                public static int Test() => F(y: 2, x: 1);
+            }
+            """);
+
+        Assert.Equal(2, diagnostics.Count);
+        Assert.All(diagnostics, d =>
+        {
+            Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, d.Id);
+            Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+            Assert.Contains("NamedArgument", d.GetMessage());
+        });
+    }
+
+    [Fact]
+    public async Task TypeNamedLikeRuntimeGlobal_ReportsUnsupportedSyntax()
+    {
+        // namespace の中でも simple name で emit され runtime の table を
+        // 上書きする (#21)。transpiler では build を止める error
+        var math = await AnalyzeAsync("""
+            public class Math
+            {
+                public static int Twice(int x) => x * 2;
+            }
+            """);
+        var diagnostic = Assert.Single(math);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("RuntimeGlobalIdentifier(Math)", diagnostic.GetMessage());
+
+        var dict = await AnalyzeAsync("""
+            namespace Game
+            {
+                public class Dict { }
+            }
+            """);
+        Assert.Contains("RuntimeGlobalIdentifier(Dict)",
+            Assert.Single(dict).GetMessage());
+
+        var clean = await AnalyzeAsync("""
+            namespace Game
+            {
+                public class MathUtil
+                {
+                    public static int Twice(int x) => System.Math.Abs(x) * 2;
+                }
+            }
+            """);
+        Assert.Empty(clean);
+    }
+
+    [Theory]
+    [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
+    [InlineData("CallerMemberName", "CallerMemberName")]
+    [InlineData("CallerLineNumber", "CallerLineNumber")]
+    [InlineData("System.Runtime.CompilerServices.CallerFilePathAttribute",
+        "CallerFilePath")]
+    public async Task CallerInfoAttribute_ReportsUnsupportedSyntax(
+        string attribute, string kind)
+    {
+        // caller info は呼び出し側で埋まる値を tcs が再現しない (#17)
+        var type = kind == "CallerLineNumber" ? "int" : "string";
+        var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
+        var diagnostics = await AnalyzeAsync($$"""
+            using System.Runtime.CompilerServices;
+
+            public static class CallerInfoRepro
+            {
+                public static {{type}} Where(int value,
+                    [{{attribute}}] {{type}} text = {{dflt}}) => text;
+
+                public static {{type}} Test() => Where(1 + 2);
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains($"CallerInfoAttribute({kind})", diagnostic.GetMessage());
     }
 
     [Fact]
@@ -508,60 +614,6 @@ public class TinyCsComplianceAnalyzerTests
             d => d.GetMessage().Contains("OutParameter"));
         Assert.Contains(syntaxDiagnostics,
             d => d.GetMessage().Contains("RefParameter"));
-    }
-
-    [Fact]
-    public async Task LuaKeywordIdentifiers_ReportUnsupportedSyntax()
-    {
-        var diagnostics = await AnalyzeAsync("""
-            public class Turn
-            {
-                public int until;
-
-                public void end()
-                {
-                    var repeat = 3;
-                    Use(repeat);
-                }
-
-                public void Wait(int @nil) => Use(@nil);
-
-                private static void Use(int value) { }
-            }
-            """);
-
-        var syntaxDiagnostics = diagnostics
-            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
-            .ToArray();
-
-        Assert.Equal(4, syntaxDiagnostics.Length);
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(until)"));
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(end)"));
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(repeat)"));
-        Assert.Contains(syntaxDiagnostics,
-            d => d.GetMessage().Contains("LuaKeywordIdentifier(nil)"));
-    }
-
-    [Fact]
-    public async Task NonKeywordVerbatimIdentifiers_HaveNoDiagnostics()
-    {
-        var diagnostics = await AnalyzeAsync("""
-            public class Calc
-            {
-                public int @float;
-
-                public int Add(int @out)
-                {
-                    var @value = @out + @float;
-                    return @value;
-                }
-            }
-            """);
-
-        Assert.Empty(diagnostics);
     }
 
     // transpiler check 側 ApiSignatureComplianceTests と同じケースで

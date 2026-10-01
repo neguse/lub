@@ -90,6 +90,51 @@ public class HotReloadTests
             """));
     }
 
+    // static initializer が自クラスの constructor / static method を呼ぶ
+    // (neguse/tcs#15)。reload 後も retained static は live 値を保ち、
+    // 追加 static は v2 の initializer で初期化される
+    [Fact]
+    public void Reload_RetainsStaticInitializedFromOwnConstructor()
+    {
+        const string V1 = """
+            public class V
+            {
+                public static V Zero = new V(0, 0);
+                public static int Made = Count();
+                public int X;
+                public int Y;
+                public V(int x, int y) { X = x; Y = y; Made = Made + 1; }
+                public static int Count() { return 100; }
+            }
+            """;
+        const string V2 = """
+            public class V
+            {
+                public static V Zero = new V(0, 0);
+                public static V One = new V(1, 1);
+                public static int Made = Count();
+                public int X;
+                public int Y;
+                public V(int x, int y) { X = x; Y = y; Made = Made + 1; }
+                public static int Count() { return 100; }
+                public int Sum() { return X + Y; }
+            }
+            """;
+        RunOk(Compose(V1,
+            """
+            V.zero.x = 9
+            local zero = V.zero
+            """,
+            V2,
+            """
+            assert(V.zero == zero, "retained static keeps instance identity")
+            assert(V.zero.x == 9, "retained static keeps live value")
+            assert(V.one ~= nil and V.one:sum() == 2, "added static runs v2 initializer via own ctor")
+            assert(V.made == 100, "initializer order: Zero's ctor bumped pre-zero Made, then Made = Count()")
+            print("ok")
+            """));
+    }
+
     [Fact]
     public void Reload_MigratesInheritedFieldsOnDerivedInstances()
     {
@@ -139,6 +184,29 @@ public class HotReloadTests
             assert(p.pos.x == 3.0, "retained struct field keeps value")
             assert(p.pos.y == nil, "discarded struct field dropped")
             assert(p.pos.z == 0, "added struct field zeroed")
+            print("ok")
+            """));
+    }
+
+    // #14: 追加された enum 型 field の default は 0 (nil ではない)
+    [Fact]
+    public void Reload_AddedEnumFieldDefaultsToZero()
+    {
+        const string V1 = """
+            public enum State { Idle, Run }
+            public class Actor { public int Hp; }
+            """;
+        const string V2 = """
+            public enum State { Idle, Run }
+            public class Actor { public int Hp; public State S; }
+            """;
+        RunOk(Compose(V1,
+            """
+            local a = Actor.new()
+            """,
+            V2,
+            """
+            assert(a.s == 0, "added enum field zeroed")
             print("ok")
             """));
     }

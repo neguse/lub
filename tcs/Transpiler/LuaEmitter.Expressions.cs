@@ -258,11 +258,16 @@ public partial class LuaEmitter
     // C# の string 連結は null を空文字列として扱うが、Lua の .. は nil で
     // エラーになる。null になり得る string オペランドだけ `or ""` を付ける
     // (リテラル・補間文字列・ネストした連結結果は non-null が確定)。
+    // bool は `..` が受けないため tostring (#22)。
     private static string NullSafeConcatOperand(SemanticModel model,
         ExpressionSyntax expr, string rendered)
     {
-        if (model.GetTypeInfo(expr).Type?.SpecialType
-                != SpecialType.System_String)
+        var type = model.GetTypeInfo(expr).Type;
+        if (UnwrapNullable(type)?.SpecialType == SpecialType.System_Boolean)
+            return ReferenceEquals(UnwrapNullable(type), type)
+                ? $"tostring({rendered})"
+                : $"({rendered} ~= nil and tostring({rendered}) or \"\")";
+        if (type?.SpecialType != SpecialType.System_String)
             return rendered;
         var unwrapped = expr;
         while (unwrapped is ParenthesizedExpressionSyntax paren)
@@ -488,7 +493,8 @@ public partial class LuaEmitter
             "%" when IsIntegralType(type) => $"__tcs_irem({read}, {right})",
             "%" when IsFloatingType(type) => $"math.fmod({read}, {right})",
             // string += は C# 同様 null を空文字列扱いにする (nil .. はエラー)
-            ".." => $"({read} or \"\") .. ({right} or \"\")",
+            ".." => $"({read} or \"\") .. " +
+                NullSafeConcatOperand(model, assign.Right, right),
             _ => $"{read} {op} {right}",
         };
     }
@@ -622,6 +628,9 @@ public partial class LuaEmitter
         {
             return $"{type.Name}.new()";
         }
+        // enum の default は member 値に依らず 0 (C#: default(E) == 0)
+        if (type is { TypeKind: TypeKind.Enum })
+            return "0";
         return type?.SpecialType switch
         {
             SpecialType.System_Boolean => "false",

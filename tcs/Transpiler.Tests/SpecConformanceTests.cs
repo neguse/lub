@@ -255,6 +255,22 @@ public class SpecConformanceTests
     }
 
     [Fact]
+    public void Classifier_CountsBuildBlockingTinyCsErrorsAsDiag()
+    {
+        var classifier = Classifier(new TranspileResult
+        {
+            Errors = ["a.cs(1,1): error TCS1001: unsupported syntax: NamedArgument"],
+            Warnings = ["a.cs(2,1): warning TCS1002: unsupported"]
+        });
+        var example = Example("standalone-lib", "class C { }");
+
+        var result = classifier.Classify(example, Expanded(example, false));
+
+        Assert.Equal(SpecClassification.Diag, result.Category);
+        Assert.Contains("NamedArgument", result.Details);
+    }
+
+    [Fact]
     public void Classifier_RecognizesTinyCsDiagnosticsAndIgnoresOtherWarnings()
     {
         var classifier = Classifier(new TranspileResult

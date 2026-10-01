@@ -203,7 +203,29 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void IncrementAsExpressionAndNamedArgument_ReportWarnings()
+    public void IncrementAsExpression_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F(int x) { }
+
+                public static int Test()
+                {
+                    int i = 0;
+                    F(i++);
+                    return i;
+                }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "IncrementAsExpression");
+    }
+
+    // 名前付き引数は位置渡しに落ちて別の意味で動くため、warning ではなく
+    // build を止める error (Lua を返さない)。他の警告は残る (#19)
+    [Fact]
+    public void NamedArgument_IsBuildBlockingError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -220,8 +242,18 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "IncrementAsExpression");
-        AssertUnsupportedWarning(result, "NamedArgument");
+        Assert.False(result.Success);
+        Assert.Equal("", result.Lua);
+        // 名前付き引数 1 つにつき 1 件 (y: / x:)
+        Assert.Equal(2, result.Errors.Count);
+        Assert.All(result.Errors, e => Assert.Contains(
+            "error TCS1001: unsupported syntax: NamedArgument", e));
+        Assert.StartsWith("(9,11)", result.Errors[0]);
+        Assert.StartsWith("(9,17)", result.Errors[1]);
+        Assert.Contains(result.Warnings,
+            w => w.Contains("warning TCS1001") && w.Contains("IncrementAsExpression"));
+        Assert.True(TinyCsComplianceFacts.IsBuildBlocking("NamedArgument"));
+        Assert.False(TinyCsComplianceFacts.IsBuildBlocking("IncrementAsExpression"));
     }
 
     [Fact]
@@ -611,5 +643,64 @@ public class SubsetDiagnosticTests
             }
             """, "T.Test()");
         Assert.Equal("2:4", result);
+    }
+
+    // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
+    // tcs は再現せず既定値が渡る。少なくとも警告する (#17)。build は止めない
+    [Theory]
+    [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
+    [InlineData("CallerMemberName", "CallerMemberName")]
+    [InlineData("CallerLineNumber", "CallerLineNumber")]
+    [InlineData("CallerFilePath", "CallerFilePath")]
+    [InlineData("CallerMemberNameAttribute", "CallerMemberName")]
+    [InlineData("System.Runtime.CompilerServices.CallerFilePath", "CallerFilePath")]
+    [InlineData("global::System.Runtime.CompilerServices.CallerLineNumberAttribute",
+        "CallerLineNumber")]
+    public void CallerInfoAttribute_ReportsWarning(string attribute, string kind)
+    {
+        var type = kind == "CallerLineNumber" ? "int" : "string";
+        var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            using System.Runtime.CompilerServices;
+
+            public static class CallerInfoRepro
+            {
+                public static {{type}} Where(int value,
+                    [{{attribute}}] {{type}} text = {{dflt}})
+                {
+                    return text;
+                }
+
+                public static {{type}} Test() => Where(1 + 2);
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, $"CallerInfoAttribute({kind})");
+        Assert.NotEmpty(result.Lua);
+        Assert.False(TinyCsComplianceFacts.IsBuildBlocking(
+            $"CallerInfoAttribute({kind})"));
+    }
+
+    [Fact]
+    public void OtherAttributes_AreNotFlaggedAsCallerInfo()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class Plain
+            {
+                [System.Obsolete("old")]
+                public static int Where(int value) => value;
+
+                [Game.CallerMemberName]
+                public static int Test() => Where(1);
+            }
+            namespace Game
+            {
+                public class CallerMemberNameAttribute : System.Attribute { }
+            }
+            """]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("CallerInfoAttribute"));
     }
 }

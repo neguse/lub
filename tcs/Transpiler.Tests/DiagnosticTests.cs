@@ -26,6 +26,72 @@ public class DiagnosticTests
         Assert.Contains("error CS", result.Errors[0]);
     }
 
+    // 写像後の Lua 名が衝突するメンバ (#36): warning ではなく error で Lua を出さない
+    [Theory]
+    [InlineData("public int flash; public void Flash() { }", "flash", "Flash")]
+    [InlineData("public int Flash { get; set; } public void flash() { }", "Flash", "flash")]
+    [InlineData("public int flash; public int Flash { get; set; }", "flash", "Flash")]
+    public void LuaNameCollision_IsError_NoLua(string members, string first,
+        string second)
+    {
+        var result = Transpiler.TranspileWithDiagnostics(
+            [$"public class Repro {{ {members} }}"], ["Repro.cs"]);
+        Assert.False(result.Success);
+        var error = Assert.Single(result.Errors);
+        Assert.StartsWith("Repro.cs(1,", error);
+        Assert.Contains($"error TCS1001: unsupported syntax: LuaNameCollision({first}/{second}): '{first}' and '{second}' both map to Lua 'flash'",
+            error);
+        Assert.Equal("", result.Lua);
+    }
+
+    [Fact]
+    public void LuaNameCollision_DistinctLuaNames_IsNotError()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Repro
+            {
+                public int flashCount;
+                public void Flash() { flashCount = flashCount + 1; }
+                public static int Test()
+                {
+                    var r = new Repro();
+                    r.Flash();
+                    r.Flash();
+                    return r.flashCount;
+                }
+            }
+            """, "Repro.test()");
+        Assert.Equal("2", result);
+    }
+
+    [Fact]
+    public void LuaNameCollision_SameNameOverload_IsMethodOverloadNotCollision()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Repro
+            {
+                public void Flash() { }
+                public void Flash(int n) { }
+            }
+            """]);
+        AssertUnsupportedWarning(result, "MethodOverload");
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("LuaNameCollision"));
+    }
+
+    [Fact]
+    public void LuaNameCollision_RecordPositionalParameter_IsError()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public record Repro(int PosX)
+            {
+                public int pos_x;
+            }
+            """]);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            e => e.Contains("'PosX' and 'pos_x' both map to Lua 'pos_x'"));
+    }
+
     [Fact]
     public void ValidCode_NoErrors()
     {

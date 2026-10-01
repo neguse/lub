@@ -189,7 +189,7 @@ public sealed class IncrementalCompilationSession
         foreach (var p in _moduleOrder)
         {
             foreach (var d in _diagBuckets.GetValueOrDefault(p, []))
-                (d.Contains("): error ") ? errors : warnings).Add(d);
+                (TinyCsComplianceFacts.IsErrorDiagnostic(d) ? errors : warnings).Add(d);
         }
         return (errors, warnings);
     }
@@ -365,6 +365,18 @@ public sealed class IncrementalCompilationSession
         if (errors.Count > 0)
             return errors;
 
+        // Lua 名の衝突は full build (Transpiler) と同じく error で emit を止める。
+        // fast path (body 限定編集) は member 名が変わらないので対象外。
+        foreach (var p in _moduleOrder)
+        {
+            var collisions = TinyCsComplianceFacts
+                .AnalyzeLuaNameCollisions(_trees[p]).ToList();
+            errors.AddRange(collisions);
+            _diagBuckets[p].AddRange(collisions);
+        }
+        if (errors.Count > 0)
+            return errors;
+
         foreach (var p in _moduleOrder)
         {
             var bucket = _diagBuckets[p];
@@ -375,6 +387,9 @@ public sealed class IncrementalCompilationSession
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
             bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
+            // build を止める TCS1001 (IsBuildBlocking) は error 行で bucket に
+            // 入る。full build と同じく emit / commit を止める
+            errors.AddRange(bucket.Where(TinyCsComplianceFacts.IsErrorDiagnostic));
         }
         return errors;
     }
@@ -404,6 +419,7 @@ public sealed class IncrementalCompilationSession
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(tree, model));
         bucket.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(tree, model));
+        errors.AddRange(bucket.Where(TinyCsComplianceFacts.IsErrorDiagnostic));
         return sw.ElapsedMilliseconds;
     }
 

@@ -154,7 +154,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `record` / `record class` | **P** | table + metatable | positional record |
 | `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= と with 式。readonly (record) struct は copy 全省略 |
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
-| `enum` | **Y** | 定数テーブル | |
+| `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0 |
 | `delegate` 型定義 | **N/A** | | Action/Func で代替 |
 | ネストされた型 | **-** | | |
 
@@ -287,7 +287,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 演算子 | 状態 | Lua 出力 | 備考 |
 |--------|:----:|---------|------|
 | `+` `-` `*` `/` `%` (算術) | **Y** | `+ - *` はそのまま。整数 `/` `%` は `__tcs_idiv`/`__tcs_irem` (C# の 0 方向 truncation)、float `%` は `math.fmod` | |
-| `+` (文字列連結) | **Y** | `..` | 型で自動判定 |
+| `+` (文字列連結) | **Y** | `..` | 型で自動判定。operand は float → `__tcs_fstr`、bool / bool? → `tostring` (null は `""`)、null になり得る string → `or ""`。`+=` の右辺も同じ変換 |
 | `==` `!=` | **Y** | `==` `~=` | |
 | `<` `<=` `>` `>=` | **Y** | そのまま | |
 | `&&` `\|\|` | **Y** | `and` `or` | |
@@ -352,6 +352,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `throw` 式 (C# 7) | **-** | | unsupported 診断あり |
 | コレクション式 `[1,2,3]` (C# 12) | **-** | | |
 | タプル式 `(a, b)` (C# 7) | **-** | | |
+| 名前付き引数 `F(x: 1)` (C# 4) | **-** | | TCS1001 `NamedArgument`。位置渡しに落ちて別の意味になるため build を止める error (§24) |
 | `await` 式 (C# 5) | **N/A** | | |
 | 式ツリー `Expression<>` (C# 3) | **N/A** | | |
 | 静的ラムダ `static =>` (C# 9) | **-** | | |
@@ -477,6 +478,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `#nullable` (C# 8) | **-** | |
 | `#pragma` | **-** | |
 | `[Attribute]` | **-** | Roslyn はパース、トランスパイラ無視 |
+| caller info 属性 (`[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]`, C# 5 / 10) | **-** | TCS1001 `CallerInfoAttribute(name)` (warning)。C# では呼び出し側でコンパイラが引数を埋めるが tcs は再現せず既定値が渡るため、parameter の属性を構文名で診断する (`Attribute` suffix と `System.Runtime.CompilerServices.` 修飾を許容) |
 | `///` XML ドキュメント | **N/A** | |
 
 ---
@@ -489,7 +491,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 2.0 | 2005 | generics, nullable, iterators, `??`, partial, anonymous methods | **P** |
 | 3.0 | 2007 | LINQ, ラムダ, `var`, 拡張メソッド, 初期化子, 匿名型 | **P** |
 | 4.0 | 2010 | `dynamic`, named/optional 引数, 共変性/反変性 | **-** |
-| 5.0 | 2012 | `async`/`await`, caller info | **N/A** |
+| 5.0 | 2012 | `async`/`await`, caller info | **N/A** | caller info 属性は TCS1001 `CallerInfoAttribute` (§9) |
 | 6.0 | 2015 | `?.`, `$""`, `nameof`, 式本体, `using static` | **P** |
 | 7.0 | 2017 | タプル, パターンマッチング, ローカル関数, `out var`, throw 式 | **P** |
 | 7.1 | 2017 | `default` リテラル, async Main | **-** |
@@ -539,9 +541,11 @@ using(宣言)  virtual(部分)  volatile  yield
 
 | 識別子 | 状態 | 備考 |
 |--------|:----:|------|
-| Lua 5.5 予約語と同名の宣言 (`end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。emit すると不正 Lua になるため拒否 (自動リネームなし) |
-| `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 |
-| verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものは上記 TCS1001 |
+| Lua 5.5 予約語と同名のローカル束縛 (local 変数 / parameter / lambda parameter / foreach 変数 / pattern designation の `local`, `end`, `nil` 等) | **Y** | `local` → `local_` に写す。写した先が同じ member body (lambda 連鎖を含む) に識別子として現れる場合は `_` を足して衝突を避ける (`local_` があれば `local__`)。宣言と全参照 (closure 内含む) を同じ symbol として写す (LuaLocalRenamer) |
+| Lua 5.5 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。member 名は LuaNaming が `end_` に写すが、宣言サイトの診断は従来どおり |
+| `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 (ローカル束縛でも写さない) |
+| runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。型は namespace を捨てた simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
+| verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものはローカル束縛なら上記のとおり写し、member なら TCS1001 |
 
 ---
 
@@ -717,7 +721,7 @@ Lua sequence table は `nil` 要素を保持できないため、`null` 要素�
 | `new List<T> { 1, 2, 3 }` | **Y** | `{1, 2, 3}` | T |
 | `list[i]` (get/set) | **Y** | `list[i+1]` | T |
 | `.Count` | **Y** | `#list` | T |
-| `.Add(item)` | **Y** | `table.insert(list, item)` | T |
+| `.Add(item)` | **Y** | 文位置は `list[#list + 1] = item` (受け手が変数/field 連鎖の場合。引数が呼び出しを含むときは `local __tcs_v = item` に先に束縛)。受け手が式 (`Get().Add(x)` 等) のときは `table.insert(list, item)` | T |
 | `.Remove(item)` | **Y** | `List.Remove(list, item)` | T+R |
 | `.RemoveAt(index)` | **Y** | `table.remove(list, idx+1)` | T |
 | `.Clear()` | **Y** | | T |
@@ -902,6 +906,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
 | 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
+| build を止める未対応構文 | **Y** | TCS1001 のうち「警告付きで書いた Lua が黙って別の意味で動く」種類 (`NamedArgument`, `RuntimeGlobalIdentifier`) は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。一覧は `TinyCsComplianceFacts.IsBuildBlocking`。analyzer は warning のまま (`.editorconfig` で上書き) |
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
@@ -914,7 +919,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
 | 命名規約チェック | **Y** | PascalCase/camelCase 警告。`--no-naming-check` で抑制 |
-| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo` が同じ Lua 名に落ちると warning (§28) |
+| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo` が同じ Lua 名に落ちると error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(Foo/foo)` |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -960,6 +965,7 @@ C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaN
 | enum メンバ `DontCare`, `Depth24Stencil8` | `DONT_CARE`, `DEPTH24_STENCIL8` | 上の結果を全大文字 |
 | 小文字を含まない名前 `CLEAR`, `RGBA8` | `clear` / `CLEAR` | 既に snake_case とみなす |
 | Lua の予約語に落ちる名前 `End`, `Do` | `end_`, `do_` | `_` を後置 |
+| Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
 | custom property `Width` | `get_width` / `set_width` | accessor 名の接頭辞はそのまま |
 | record の positional parameter `PosX` | field `pos_x` (ctor 引数は C# 名) | field 名だけ写す |
 | `--ref` 型の static アクセス `Lub.Gfx.BeginPass` | `lub.gfx.begin_pass` | 入れ子の型名を全小文字で `.` 結合 |
@@ -967,6 +973,10 @@ C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaN
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
-同じ型の中で写像後の名前が衝突するメンバ (`Value` と `value`) は
-transpile 時に warning にする。
+同じ型の中で写像後の名前が衝突するメンバ (`Value` と `value`) は Lua table で
+片方が黙って消えるので、transpile 時に error (`file(line,col): error TCS1001: unsupported syntax:
+LuaNameCollision(Value/value): 'Value' and 'value' both map to Lua 'value'`) にして Lua を出力しない。同名の
+overload は衝突ではなく MethodOverload (TCS1001) の領分。analyzer / `tcs check`
+は同じ判定を TCS1001 `LuaNameCollision(Value/value)` として 2 個目以降の宣言に
+報告する。
 

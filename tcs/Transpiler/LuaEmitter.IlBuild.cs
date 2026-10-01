@@ -528,9 +528,11 @@ public partial class LuaEmitter
                 new IlCall("__tcs_irem", [read, right]),
             "%" when IsFloatingType(type) =>
                 new IlCall("math.fmod", [read, right]),
+            // string += は C# 同様 null を空文字列扱いにする (nil .. はエラー)。
+            // 右辺は `+` と同じ operand 変換 (bool は tostring、float は fstr)
             ".." => new IlBin(IlBinOp.Concat,
                 new IlParen(new IlBin(IlBinOp.Or, read, new IlLit("\"\""))),
-                new IlParen(new IlBin(IlBinOp.Or, right, new IlLit("\"\"")))),
+                WrapConcatOperand(model, assign.Right, right)),
             _ => LuaOpToIl(op) is { } ilOp
                 ? new IlBin(ilOp, read, right) : null,
         };

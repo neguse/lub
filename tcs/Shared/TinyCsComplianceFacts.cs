@@ -46,6 +46,8 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.ConstructorDeclaration,
         SyntaxKind.PredefinedType,
         SyntaxKind.NumericLiteralExpression,
+        SyntaxKind.Argument,
+        SyntaxKind.Attribute,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -58,6 +60,47 @@ public static partial class TinyCsComplianceFacts
             "function", "global", "goto", "if", "in", "local", "nil", "not",
             "or", "repeat", "return", "then", "true", "until", "while",
         };
+
+    // build を止める未対応構文。他の TCS1001 は warning のまま Lua を書き
+    // (unsupported marker / 位置どおりの emit)、check だけが exit 1 になる。
+    // ここに挙げた種類は「警告付きで書いた Lua が黙って別の意味で動く」もので、
+    // transpiler は Errors に回して出力しない (watch / 増分 session も同じ)。
+    // analyzer の severity は warning のまま (.editorconfig で上書き可能)。
+    private static readonly HashSet<string> BuildBlockingSyntaxes =
+        new(StringComparer.Ordinal)
+        {
+            // 名前付き引数は位置渡しに落ち、省略/並べ替えが別の引数へ入る (#19)
+            "NamedArgument",
+        };
+
+    public static bool IsBuildBlocking(string syntaxName) =>
+        BuildBlockingSyntaxes.Contains(syntaxName)
+        // runtime の global を上書きする型名は以後の BCL 呼び出しを nil にする (#21)
+        || syntaxName.StartsWith("RuntimeGlobalIdentifier(", StringComparison.Ordinal);
+
+    // runtime が _G に置く名前。runtime/tinysystem.lua の module table
+    // (`TinySystem.List = List` 等) を LuaRuntime.CreateEmbeddedPrelude と
+    // ModuleLinker.LinkSnapshot が `_G.<name> = TinySystem.<name>` で alias する。
+    // alias の emit もこの配列から行うので、runtime と診断の集合はここで一致する
+    // (`__tcs_*` の alias は IsUnsafeLuaIdentifier の prefix 規則が受け持つ)
+    public const string RuntimeRootGlobal = "TinySystem";
+
+    public static readonly string[] RuntimeGlobalAliases =
+        ["List", "Dict", "Math", "String", "Random"];
+
+    // 生成コードが素の global 名で参照する runtime table。BCL 呼び出しは
+    // `Math.Abs` / `List.Add` / `Dict.ContainsKey` / `String.Split` と、
+    // facade の `TinySystem.<Type>.<Member>` (#28) に落ちる。型名は namespace を
+    // 捨てた simple name のまま global に emit される (LuaEmitter: `Math = {}`)
+    // ため、同名の型は namespace の中でも runtime の table を上書きし、以後の
+    // BCL 呼び出しが nil になる。`Random` は alias にあるが生成コードが素の名で
+    // 参照しないので予約しない (user の `class Random` は facade と共存できる)。
+    // interface は Lua 出力を持たないので対象外
+    public static readonly string[] ReservedRuntimeGlobals =
+        [RuntimeRootGlobal, "List", "Dict", "Math", "String"];
+
+    public static bool IsRuntimeGlobalName(string name) =>
+        Array.IndexOf(ReservedRuntimeGlobals, name) >= 0;
 
     public static bool TryGetUnsupportedSyntax(SyntaxNode node,
         out string syntaxName)
@@ -139,6 +182,17 @@ public static partial class TinyCsComplianceFacts
                         or SyntaxKind.PreDecrementExpression
                     && !IsStatementLikeContext(prefix)
                     => "IncrementAsExpression",
+            // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
+            // tcs は再現せず既定値がそのまま渡る (#17)。parameter の属性を
+            // 構文名で判定する (Attribute suffix の有無、
+            // System.Runtime.CompilerServices. の修飾を許容)
+            AttributeSyntax callerInfo
+                when callerInfo.Parent is AttributeListSyntax
+                    {
+                        Parent: ParameterSyntax
+                    }
+                    && CallerInfoAttributeName(callerInfo) is { Length: > 0 } caller
+                    => $"CallerInfoAttribute({caller})",
             // named argument は引数の並べ替え + optional 補完が必要で、
             // 現行 emit は位置渡しに黙って落ちる。
             ArgumentSyntax named
@@ -152,6 +206,25 @@ public static partial class TinyCsComplianceFacts
                         .First(m => m.Identifier.ValueText
                             == overload.Identifier.ValueText) != overload
                     => "MethodOverload",
+            // 写像後の Lua 名が同じ型の先行メンバと衝突する (`flash` と `Flash`
+            // は共に `flash`)。Lua table では後勝ちで silent に片方が消えるため
+            // 2 個目以降を拒否する。同名 (overload) は MethodOverload の領分。
+            VariableDeclaratorSyntax collidingField
+                when TryGetLuaNameCollision(collidingField, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
+            PropertyDeclarationSyntax collidingProp
+                when TryGetLuaNameCollision(collidingProp, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
+            MethodDeclarationSyntax collidingMethod
+                when TryGetLuaNameCollision(collidingMethod, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
+            ParameterSyntax collidingParam
+                when TryGetLuaNameCollision(collidingParam, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
             // `new` による member hiding は静的型でディスパッチが変わる意味論で、
             // metatable の動的ディスパッチでは表現できない (override は対応済み)。
             MemberDeclarationSyntax hiding
@@ -241,9 +314,17 @@ public static partial class TinyCsComplianceFacts
                     => "MultipleConstructors",
             // Declared identifiers that reach Lua output. Verbatim forms
             // (@end) are compared by ValueText, matching the emitter.
+            // Local bindings (locals / parameters / foreach / designations)
+            // are not listed: the transpiler maps Lua keywords to a safe
+            // name (`local` -> `local_`, LuaLocalRenamer). Fields and
+            // record positional parameters stay members and keep the check.
             BaseTypeDeclarationSyntax type
                 when IsUnsafeLuaIdentifier(type.Identifier)
                     => UnsafeLuaIdentifierName(type.Identifier),
+            BaseTypeDeclarationSyntax type
+                when type is not InterfaceDeclarationSyntax
+                    && IsRuntimeGlobalName(type.Identifier.ValueText)
+                    => $"RuntimeGlobalIdentifier({type.Identifier.ValueText})",
             MethodDeclarationSyntax method
                 when IsUnsafeLuaIdentifier(method.Identifier)
                     => UnsafeLuaIdentifierName(method.Identifier),
@@ -255,20 +336,54 @@ public static partial class TinyCsComplianceFacts
                     => UnsafeLuaIdentifierName(enumMember.Identifier),
             VariableDeclaratorSyntax variable
                 when IsUnsafeLuaIdentifier(variable.Identifier)
+                    && (variable.Parent?.Parent is FieldDeclarationSyntax
+                        or EventFieldDeclarationSyntax
+                        || IsReservedIdentifier(variable.Identifier))
                     => UnsafeLuaIdentifierName(variable.Identifier),
             ParameterSyntax param
                 when IsUnsafeLuaIdentifier(param.Identifier)
+                    && (param.Parent?.Parent is RecordDeclarationSyntax
+                        || IsReservedIdentifier(param.Identifier))
                     => UnsafeLuaIdentifierName(param.Identifier),
             ForEachStatementSyntax forEach
-                when IsUnsafeLuaIdentifier(forEach.Identifier)
+                when IsReservedIdentifier(forEach.Identifier)
                     => UnsafeLuaIdentifierName(forEach.Identifier),
             SingleVariableDesignationSyntax designation
-                when IsUnsafeLuaIdentifier(designation.Identifier)
+                when IsReservedIdentifier(designation.Identifier)
                     => UnsafeLuaIdentifierName(designation.Identifier),
             _ => "",
         };
 
         return syntaxName.Length > 0;
+    }
+
+    private static readonly string[] CallerInfoAttributeNames =
+    [
+        "CallerArgumentExpression", "CallerMemberName", "CallerLineNumber",
+        "CallerFilePath",
+    ];
+
+    // 属性名が caller info のものならその名前 (Attribute suffix なし)、
+    // 違えば ""。修飾は無し / System.Runtime.CompilerServices /
+    // global::System.Runtime.CompilerServices だけを認める
+    private static string CallerInfoAttributeName(AttributeSyntax attribute)
+    {
+        var (qualifier, simple) = attribute.Name switch
+        {
+            QualifiedNameSyntax q =>
+                (q.Left.ToString(), q.Right.Identifier.ValueText),
+            SimpleNameSyntax s => ("", s.Identifier.ValueText),
+            _ => ("", ""),
+        };
+        qualifier = qualifier.Replace(" ", "");
+        // netstandard2.0 (analyzer) には Range/Index が無いので Substring
+        if (qualifier.StartsWith("global::", StringComparison.Ordinal))
+            qualifier = qualifier.Substring("global::".Length);
+        if (qualifier.Length > 0 && qualifier != "System.Runtime.CompilerServices")
+            return "";
+        if (simple.EndsWith("Attribute", StringComparison.Ordinal))
+            simple = simple.Substring(0, simple.Length - "Attribute".Length);
+        return Array.IndexOf(CallerInfoAttributeNames, simple) >= 0 ? simple : "";
     }
 
     private static bool IsStatementLikeContext(SyntaxNode node) =>
@@ -436,6 +551,12 @@ public static partial class TinyCsComplianceFacts
         || identifier.ValueText == "self"
         || identifier.ValueText.StartsWith("__tcs_", StringComparison.Ordinal);
 
+    // `self` / `__tcs_` は予約語でなく emit 側の予約名。ローカル束縛でも
+    // 写さず拒否する (keyword は LuaLocalRenamer が写す)。
+    private static bool IsReservedIdentifier(SyntaxToken identifier) =>
+        identifier.ValueText == "self"
+        || identifier.ValueText.StartsWith("__tcs_", StringComparison.Ordinal);
+
     private static string UnsafeLuaIdentifierName(SyntaxToken identifier) =>
         LuaKeywords.Contains(identifier.ValueText)
             ? $"LuaKeywordIdentifier({identifier.ValueText})"
@@ -477,20 +598,29 @@ public static partial class TinyCsComplianceFacts
             if (!TryGetUnsupportedSyntax(node, model, out var syntaxName))
                 continue;
 
-            yield return FormatWarning(node,
+            yield return FormatDiagnostic(node,
                 TinyCsDiagnosticIds.UnsupportedSyntax,
-                $"unsupported syntax: {syntaxName}");
+                $"unsupported syntax: {syntaxName}",
+                IsBuildBlocking(syntaxName) ? "error" : "warning");
         }
     }
 
     public static string FormatWarning(SyntaxNode node, string diagnosticId,
-        string message)
+        string message) => FormatDiagnostic(node, diagnosticId, message, "warning");
+
+    // 整形済み診断行の severity 判定。transpiler / 増分 session はこの判定で
+    // Errors (Lua を書かない) と Warnings に振り分ける。
+    public static bool IsErrorDiagnostic(string diagnostic) =>
+        diagnostic.Contains("): error ", StringComparison.Ordinal);
+
+    private static string FormatDiagnostic(SyntaxNode node, string diagnosticId,
+        string message, string severity)
     {
         var loc = node.GetLocation().GetLineSpan();
         var line = loc.StartLinePosition.Line + 1;
         var col = loc.StartLinePosition.Character + 1;
         var file = loc.Path;
         var prefix = string.IsNullOrEmpty(file) ? "" : file;
-        return $"{prefix}({line},{col}): warning {diagnosticId}: {message}";
+        return $"{prefix}({line},{col}): {severity} {diagnosticId}: {message}";
     }
 }

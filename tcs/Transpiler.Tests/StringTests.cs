@@ -172,4 +172,85 @@ public class StringTests
             "tostring(S.is_null(nil))");
         Assert.Equal("true", result);
     }
+
+    // #22: bool operand の `+` は ToString / 補間と同じ tostring で文字列化する
+    // (Lua の `..` は boolean を受けない)
+    [Fact]
+    public void ConcatBoolOperand()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Show(bool b) { return "b=" + b; }
+            }
+            """,
+            "S.show(true) .. ',' .. S.show(false)");
+        Assert.Equal("b=true,b=false", result);
+    }
+
+    [Fact]
+    public void ConcatBoolLeftOperandAndChain()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Show(bool b, int n)
+                {
+                    return b + ":" + n + ":" + !b;
+                }
+            }
+            """,
+            "S.show(true, 3)");
+        Assert.Equal("true:3:false", result);
+    }
+
+    [Fact]
+    public void ConcatBoolMatchesToString()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static bool Same(bool b)
+                {
+                    return ("x" + b) == ("x" + b.ToString())
+                        && ("x" + b) == $"x{b}";
+                }
+            }
+            """,
+            "tostring(S.same(true) and S.same(false))");
+        Assert.Equal("true", result);
+    }
+
+    [Fact]
+    public void CompoundConcatBoolOperand()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Show(bool b)
+                {
+                    string s = "b=";
+                    s += b;
+                    s += "/";
+                    s += !b;
+                    return s;
+                }
+            }
+            """,
+            "S.show(true)");
+        Assert.Equal("b=true/false", result);
+    }
+
+    [Fact]
+    public void ConcatNullableBoolOperand()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class S
+            {
+                public static string Show(bool? b) { return "b=" + b; }
+            }
+            """,
+            "S.show(true) .. ',' .. S.show(false) .. ',' .. S.show(nil)");
+        Assert.Equal("b=true,b=false,b=", result);
+    }
 }

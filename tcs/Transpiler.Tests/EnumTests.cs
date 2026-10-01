@@ -85,4 +85,67 @@ public class EnumTests
 
         Assert.Equal("true", result);
     }
+
+    // #14: initializer 無しの enum 型 field / property の既定値は 0 (default(E))
+    [Fact]
+    public void EnumField_DefaultIsZero()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public enum State { Idle, Run }
+            public class Actor
+            {
+                public State S;
+                public static State Global;
+                public State P { get; set; }
+            }
+            public static class T
+            {
+                public static bool Test()
+                {
+                    var a = new Actor();
+                    return a.S == State.Idle && Actor.Global == State.Idle
+                        && a.P == State.Idle && default(State) == State.Idle;
+                }
+            }
+            """, "tostring(T.Test())");
+
+        Assert.Equal("true", result);
+    }
+
+    // enum の default は member 値に依らず 0 (C# 意味論)
+    [Fact]
+    public void EnumField_DefaultIsZero_EvenWithoutZeroMember()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public enum Level { Low = 1, High = 2 }
+            public class Holder { public Level L; }
+            public static class T
+            {
+                public static int Test() { return (int)new Holder().L; }
+            }
+            """, "T.Test()");
+
+        Assert.Equal("0", result);
+    }
+
+    [Fact]
+    public void StructEnumMember_ZeroInitialized()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public enum Dir { Up, Down }
+            public struct Cell { public Dir D; public int N; }
+            public class Grid { public Cell C; }
+            public static class T
+            {
+                public static bool Test()
+                {
+                    var g = new Grid();
+                    Cell c = default;
+                    return g.C.D == Dir.Up && c.D == Dir.Up;
+                }
+            }
+            """, "tostring(T.Test())");
+
+        Assert.Equal("true", result);
+    }
 }

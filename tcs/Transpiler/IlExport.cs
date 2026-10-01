@@ -64,6 +64,7 @@ public sealed record IlExportResult(
     ImmutableArray<string> Diagnostics,
     IlBlock? TopLevel = null,
     ImmutableArray<IlStructInfo> Structs = default,
+    ImmutableArray<string> Enums = default,
     ImmutableArray<IlForeignMethod> ForeignMethods = default,
     ImmutableArray<IlForeignValue> ForeignValues = default,
     ImmutableArray<string> EnumTypes = default);
@@ -94,6 +95,12 @@ public static partial class IlExport
             var model = compilation.GetSemanticModel(tree);
             diagnostics.AddRange(
                 TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
+        }
+        // Lua 出力と同じ名前で IL を出す (予約語ローカルの写し、LuaLocalRenamer)
+        for (var i = 0; i < trees.Length; i++)
+        {
+            (compilation, _, trees[i]) = LuaLocalRenamer.Apply(compilation,
+                compilation.GetSemanticModel(trees[i]), trees[i]);
         }
 
         // struct layout の収集 (owner class の layout hash へ推移的に展開し、
@@ -136,6 +143,12 @@ public static partial class IlExport
                 LayoutHash(fields, structLayouts));
         }).ToList();
 
+        // enum 名。hot reload の added field default (0) 判定に使う
+        var enums = trees.SelectMany(t => t.GetCompilationUnitRoot()
+                .DescendantNodes().OfType<EnumDeclarationSyntax>())
+            .Select(e => e.Identifier.ValueText)
+            .ToList();
+
         var classes = new List<IlClassInfo>();
         var emitter = new LuaEmitter();
         emitter.ReferenceTrees.UnionWith(references);
@@ -162,7 +175,7 @@ public static partial class IlExport
         var topLevelIl = topLevelModel != null
             ? emitter.ExportStatsIl(topLevelModel, topLevel) : null;
         return ExportForeign(compilation, trees, references, emitter, structLayouts,
-            new IlExportResult([.. classes], [.. diagnostics], topLevelIl, [.. structs]));
+            new IlExportResult([.. classes], [.. diagnostics], topLevelIl, [.. structs], [.. enums]));
     }
 
     private static IlClassInfo ExportClass(LuaEmitter emitter,

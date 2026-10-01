@@ -19,12 +19,12 @@ public class SmokeTests
     public void StaticMethod_Addition()
     {
         var result = TestHelper.TranspileAndRun("""
-            public class Math
+            public class Calc
             {
                 public static int Add(int a, int b) { return a + b; }
             }
             """,
-            "Math.add(3, 7)");
+            "Calc.add(3, 7)");
         Assert.Equal("10", result);
     }
 

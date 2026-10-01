@@ -247,7 +247,7 @@ public class LuaNamingTests
     }
 
     [Fact]
-    public void SameLuaName_InOneType_Warns()
+    public void SameLuaName_InOneType_IsError()
     {
         var source = """
             public class Dup
@@ -257,6 +257,8 @@ public class LuaNamingTests
             }
             """;
         var result = Transpiler.TranspileWithDiagnostics([source], checkNaming: false);
-        Assert.Contains(result.Warnings, w => w.Contains("'value'"));
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors,
+            e => e.Contains("'Value' and 'value' both map to Lua 'value'"));
     }
 }

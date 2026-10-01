@@ -69,7 +69,7 @@ assembly 参照で直接消費する。
 | IlLocal(name, init?) | 変数導入 (identity は §7) |
 | IlAssign(target, value) | place への store (§10) |
 | IlMultiAssign(targets, values, declare) | 多重代入 (分解 / out 引数 multi-return) |
-| IlCallStat(call) | 呼び出し文 |
+| IlCallStat(call) | 呼び出し文。call が `table.insert(t, v)` (List.Add) で t が変数/field 連鎖なら、Lua backend は `t[#t + 1] = v` へ落とす (v が呼び出しを含むときは `local __tcs_v = v` に先に束縛して評価順を保つ。#24。IlReturn / closure exprBody の同形も同じ) |
 | IlIf(arms, else?) | if/elseif 連鎖 |
 | IlWhile(cond, body, trailer?, scopeBody) | while。trailer は for 脱糖の incrementors。scopeBody は continue label のための body スコープ隔離 |
 | IlRepeat(body, cond) | do-while |
