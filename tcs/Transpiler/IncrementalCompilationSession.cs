@@ -365,6 +365,18 @@ public sealed class IncrementalCompilationSession
         if (errors.Count > 0)
             return errors;
 
+        // Lua 名の衝突は full build (Transpiler) と同じく error で emit を止める。
+        // fast path (body 限定編集) は member 名が変わらないので対象外。
+        foreach (var p in _moduleOrder)
+        {
+            var collisions = TinyCsComplianceFacts
+                .AnalyzeLuaNameCollisions(_trees[p]).ToList();
+            errors.AddRange(collisions);
+            _diagBuckets[p].AddRange(collisions);
+        }
+        if (errors.Count > 0)
+            return errors;
+
         foreach (var p in _moduleOrder)
         {
             var bucket = _diagBuckets[p];

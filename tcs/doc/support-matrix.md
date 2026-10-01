@@ -914,7 +914,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | Lua CMake platform 分岐 | **Y** | Linux/Windows/macOS/iOS-family/Emscripten/BSD/generic Unix |
 | 依存 lock / publish runtime 同梱 | **Y** | package pin + packages.lock.json + runtime/tinysystem.lua |
 | 命名規約チェック | **Y** | PascalCase/camelCase 警告。`--no-naming-check` で抑制 |
-| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo` が同じ Lua 名に落ちると warning (§28) |
+| Lua 側の名前の衝突検出 | **Y** | 同じ型の `Foo` と `foo` が同じ Lua 名に落ちると error (§28)。analyzer / `tcs check` は TCS1001 `LuaNameCollision(Foo/foo)` |
 
 ## 25. 許容される C# エラー (TinyC# 固有)
 
@@ -967,6 +967,10 @@ C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaN
 | `const` field (enum メンバ以外) | 値を inline | C# の意味論どおり |
 | BCL / TinySystem のメンバ (`List.Add`, `Math.Min`) | runtime の名前のまま | source に宣言の無い symbol は写さない |
 
-同じ型の中で写像後の名前が衝突するメンバ (`Value` と `value`) は
-transpile 時に warning にする。
+同じ型の中で写像後の名前が衝突するメンバ (`Value` と `value`) は Lua table で
+片方が黙って消えるので、transpile 時に error (`file(line,col): error TCS1001: unsupported syntax:
+LuaNameCollision(Value/value): 'Value' and 'value' both map to Lua 'value'`) にして Lua を出力しない。同名の
+overload は衝突ではなく MethodOverload (TCS1001) の領分。analyzer / `tcs check`
+は同じ判定を TCS1001 `LuaNameCollision(Value/value)` として 2 個目以降の宣言に
+報告する。
 

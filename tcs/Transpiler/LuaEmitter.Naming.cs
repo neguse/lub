@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
@@ -45,52 +44,5 @@ public partial class LuaEmitter
         var text = x.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
         return text.Contains('.') || text.Contains('E') || text.Contains('e')
             ? text : text + ".0";
-    }
-
-    // 同じ型の中で写像後の名前が衝突するメンバ (`Foo` と `foo`) を警告する。
-    private void WarnLuaNameCollisions(TypeDeclarationSyntax type)
-    {
-        var seen = new Dictionary<string, (string Name, SyntaxToken Token)>(StringComparer.Ordinal);
-        foreach (var (name, token) in EnumerateMemberNames(type))
-        {
-            var lua = LuaNaming.Member(name);
-            if (seen.TryGetValue(lua, out var prev))
-            {
-                if (prev.Name == name) continue; // overload は同名で衝突しない
-                var loc = token.GetLocation().GetLineSpan();
-                var file = string.IsNullOrEmpty(loc.Path) ? "" : loc.Path;
-                Warnings.Add($"{file}({loc.StartLinePosition.Line + 1}," +
-                    $"{loc.StartLinePosition.Character + 1}): naming: " +
-                    $"'{prev.Name}' and '{name}' both map to Lua '{lua}'");
-            }
-            else
-            {
-                seen[lua] = (name, token);
-            }
-        }
-    }
-
-    private static IEnumerable<(string Name, SyntaxToken Token)> EnumerateMemberNames(
-        TypeDeclarationSyntax type)
-    {
-        if (type is RecordDeclarationSyntax { ParameterList: not null } rec)
-            foreach (var p in rec.ParameterList.Parameters)
-                yield return (p.Identifier.ValueText, p.Identifier);
-        foreach (var member in type.Members)
-        {
-            switch (member)
-            {
-                case FieldDeclarationSyntax field:
-                    foreach (var v in field.Declaration.Variables)
-                        yield return (v.Identifier.ValueText, v.Identifier);
-                    break;
-                case PropertyDeclarationSyntax prop:
-                    yield return (prop.Identifier.ValueText, prop.Identifier);
-                    break;
-                case MethodDeclarationSyntax method:
-                    yield return (method.Identifier.ValueText, method.Identifier);
-                    break;
-            }
-        }
     }
 }

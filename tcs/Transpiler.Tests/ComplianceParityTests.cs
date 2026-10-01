@@ -88,6 +88,27 @@ public class ComplianceParityTests
             $"{transpile.Lua}\nprint(NameDemo.run())").Trim());
     }
 
+    [Fact]
+    public void Check_LuaNameCollisionIsErrorExit1()
+    {
+        var result = RunCli(NameCollisionSource, check: true);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(flash/Flash): 'flash' and 'Flash' both map to Lua 'flash'",
+            result.Stderr);
+    }
+
+    [Fact]
+    public void Transpile_LuaNameCollisionIsErrorWithoutOutput()
+    {
+        var result = RunCli(NameCollisionSource, check: false);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("error TCS1001: unsupported syntax: LuaNameCollision(flash/Flash): 'flash' and 'Flash' both map to Lua 'flash'",
+            result.Stderr);
+        Assert.Equal("", result.Lua);
+    }
+
     private static (int ExitCode, string Stdout, string Stderr, string Lua)
         RunCli(string source, bool check, bool noNamingCheck = false)
     {
@@ -164,6 +185,14 @@ public class ComplianceParityTests
                     return 1;
                 }
             }
+        }
+        """;
+
+    private const string NameCollisionSource = """
+        public class Repro
+        {
+            public int flash;
+            public void Flash() { flash = 1; }
         }
         """;
 

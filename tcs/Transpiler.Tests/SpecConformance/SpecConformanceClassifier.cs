@@ -60,6 +60,14 @@ internal sealed partial class SpecConformanceClassifier
 
             if (result.Errors.Count > 0)
             {
+                // build を止める TinyC# 診断 (error TCS1001) は C# compile error
+                // ではなくサブセット外の報告なので Diag に数える
+                if (expectedErrors is null
+                    && result.Errors.All(error =>
+                        TinyCsDiagnosticRegex().IsMatch(error)))
+                    return new SpecClassificationResult(SpecClassification.Diag,
+                        Details: string.Join("\n",
+                            result.Errors.Concat(result.Warnings)));
                 if (expectedErrors is null)
                     return Unextracted("unexpected-compile-error",
                         result.Errors);

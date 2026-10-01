@@ -152,6 +152,25 @@ public static partial class TinyCsComplianceFacts
                         .First(m => m.Identifier.ValueText
                             == overload.Identifier.ValueText) != overload
                     => "MethodOverload",
+            // 写像後の Lua 名が同じ型の先行メンバと衝突する (`flash` と `Flash`
+            // は共に `flash`)。Lua table では後勝ちで silent に片方が消えるため
+            // 2 個目以降を拒否する。同名 (overload) は MethodOverload の領分。
+            VariableDeclaratorSyntax collidingField
+                when TryGetLuaNameCollision(collidingField, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
+            PropertyDeclarationSyntax collidingProp
+                when TryGetLuaNameCollision(collidingProp, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
+            MethodDeclarationSyntax collidingMethod
+                when TryGetLuaNameCollision(collidingMethod, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
+            ParameterSyntax collidingParam
+                when TryGetLuaNameCollision(collidingParam, out var prev,
+                    out var cur, out _)
+                    => $"LuaNameCollision({prev}/{cur})",
             // `new` による member hiding は静的型でディスパッチが変わる意味論で、
             // metatable の動的ディスパッチでは表現できない (override は対応済み)。
             MemberDeclarationSyntax hiding

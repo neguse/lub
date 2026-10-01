@@ -8,7 +8,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | arrays.md | 3 | 0 | 4 | 2 | 2 | 0 | 11 |
 | attributes.md | 2 | 10 | 22 | 5 | 1 | 0 | 40 |
 | basic-concepts.md | 1 | 4 | 17 | 10 | 0 | 0 | 32 |
-| classes.md | 3 | 49 | 66 | 28 | 1 | 0 | 147 |
+| classes.md | 3 | 40 | 75 | 28 | 1 | 0 | 147 |
 | conversions.md | 2 | 1 | 12 | 7 | 0 | 0 | 22 |
 | delegates.md | 0 | 0 | 7 | 0 | 0 | 0 | 7 |
 | documentation-comments.md | 0 | 16 | 10 | 2 | 2 | 0 | 30 |
@@ -23,7 +23,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | types.md | 3 | 4 | 13 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 35 | 138 | 301 | 119 | 49 | 0 | 642 |
+| **Total** | 35 | 129 | 310 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 

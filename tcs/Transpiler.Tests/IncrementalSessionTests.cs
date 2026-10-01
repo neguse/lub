@@ -167,6 +167,24 @@ public class IncrementalSessionTests
     }
 
     [Fact]
+    public void SessionDiagnostics_LuaNameCollisionIsError()
+    {
+        var session = new IncrementalCompilationSession(checkNaming: false);
+        session.OpenProject([("game/Counter.cs", FileA), ("game/Game.cs", FileB)]);
+        Assert.Empty(session.CollectDiagnostics().Errors);
+        // member 追加は slow path。衝突は error で emit を止める
+        var result = session.Update("game/Counter.cs",
+            FileA.Replace("public int Value;", "public int Value; public void value() { }"));
+        Assert.False(result.Success);
+        Assert.False(result.FastPath);
+        Assert.Contains(result.Errors,
+            e => e.Contains("error TCS1001: unsupported syntax: LuaNameCollision(Value/value): 'Value' and 'value' both map to Lua 'value'"));
+        Assert.Contains(session.CollectDiagnostics().Errors,
+            e => e.Contains("both map to Lua 'value'"));
+        AssertDiagnosticsParity(session);
+    }
+
+    [Fact]
     public void BodyEdit_SplicedEmit_MatchesFullEmitBytes()
     {
         var session = Open();

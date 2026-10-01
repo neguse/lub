@@ -166,7 +166,6 @@ public partial class LuaEmitter
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
         SetSource(cls);
-        WarnLuaNameCollisions(cls);
         var name = cls.Identifier.ValueText;
 
         var baseClass = cls.BaseList?.Types
@@ -465,7 +464,6 @@ public partial class LuaEmitter
     private void VisitRecord(SemanticModel model, RecordDeclarationSyntax rec)
     {
         SetSource(rec);
-        WarnLuaNameCollisions(rec);
         var name = rec.Identifier.ValueText;
 
         var info = new EmittedTypeInfo { Name = name, Kind = "record" };
