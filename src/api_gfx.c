@@ -70,7 +70,10 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
                                    const char *fn, const char *what) {
   ResEntry *e = res_table_get_by_handle(&app->res, h);
   if (!e) {
-    lub_api_fail(app, "%s: %s handle %d is stale or invalid", fn, what, (int)h);
+    lub_api_fail(app,
+                 "%s: %s handle %d was destroyed or swept; declare it again "
+                 "with use_*",
+                 fn, what, (int)h);
     return NULL;
   }
   if (e->kind != kind) {
@@ -81,6 +84,18 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
     return NULL;
   }
   return e;
+}
+
+// backend (renderer) は on_init の後 (lub_host_start) に起動する。それより前に
+// backend を触る API を呼ぶと g_backend が NULL なので、落ちる代わりに error。
+static bool require_backend(App *app, const char *fn) {
+  if (app->phase == APP_PHASE_POST_BACKEND && g_backend)
+    return true;
+  lub_api_fail(app,
+               "%s: not available in on_init (the renderer starts after "
+               "on_init)",
+               fn);
+  return false;
 }
 
 static bool key_arg(App *app, LubStr key, char *buf, const char *fn) {
@@ -153,6 +168,8 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
                                  const void *data, int32_t bytes,
                                  const int32_t *version, LubHandle *out) {
+  if (!require_backend(app, "use_buffer"))
+    return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_buffer"))
     return LUB_ERROR;
@@ -282,6 +299,8 @@ typedef struct TextureDesc {
 
 static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
                                   const int32_t *version, LubHandle *out) {
+  if (!require_backend(app, "use_texture"))
+    return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_texture"))
     return LUB_ERROR;
@@ -470,6 +489,8 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
 static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
                                  LubStr vs, LubStr fs, LubStr cs,
                                  const int32_t *version, LubHandle *out) {
+  if (!require_backend(app, fn))
+    return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, fn))
     return LUB_ERROR;
@@ -671,6 +692,8 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
     digest_i32(app, opts ? opts->targets_count : 0);
     digest_i32(app, opts ? opts->depth_target : 0);
   }
+  if (!require_backend(app, "begin_pass"))
+    return LUB_ERROR;
   if (!opts)
     return lub_api_fail(app, "begin_pass: opts required");
   if (pass_state_in_pass(&app->pass))
@@ -821,8 +844,11 @@ static LubStatus split_bindings(App *app, const char *fn,
     }
     ResEntry *e = res_table_get_by_handle(&app->res, b->handle);
     if (!e)
-      return lub_api_fail(app, "%s: binding '%.*s' is stale or invalid", fn,
-                          b->name.len, b->name.ptr ? b->name.ptr : "");
+      return lub_api_fail(app,
+                          "%s: binding '%.*s' handle %d was destroyed or "
+                          "swept; declare it again with use_*",
+                          fn, b->name.len, b->name.ptr ? b->name.ptr : "",
+                          (int)b->handle);
     if (e->kind == RES_BUFFER) {
       if (out->n_buffers >= 16)
         return lub_api_fail(app, "%s: too many buffers (max 16)", fn);
@@ -923,6 +949,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
     digest_i32(app, d ? d->shader : 0);
     digest_bindings(app, bindings, bindings_count);
   }
+  if (!require_backend(app, "draw"))
+    return LUB_ERROR;
   if (!d)
     return lub_api_fail(app, "draw: opts required");
   if (!pass_state_in_pass(&app->pass))
@@ -936,8 +964,10 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   Bindings bs;
   if (split_bindings(app, "draw", bindings, bindings_count, &bs) != LUB_OK)
     return LUB_ERROR;
-  int instance_count =
-      d->has_instance_count && d->instance_count > 0 ? d->instance_count : 1;
+  // instance_count: 未指定は 1。0 以下は検証・digest は通常どおり行い、
+  // backend の draw だけ skip する (stub の記述どおり)。
+  int instance_count = d->has_instance_count ? d->instance_count : 1;
+  bool skip_draw = instance_count <= 0;
   int blend = d->has_blend ? d->blend : SGL_BLEND_NONE;
   int cull = d->has_cull ? d->cull : SGL_CULL_BACK;
   int prim = d->has_primitive ? d->primitive : SGL_PRIM_TRIANGLES;
@@ -998,8 +1028,10 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
       app->pass.current_n_color_targets, app->pass.current_color_fmts,
       app->pass.current_has_depth, app->pass.current_depth_fmt, depth_tex_mask,
       (int64_t)app->frame_index);
-  g_backend->apply_pipeline(pip);
-  g_backend->apply_bindings(&bind);
+  if (!skip_draw) {
+    g_backend->apply_pipeline(pip);
+    g_backend->apply_bindings(&bind);
+  }
 
   if (bs.n_uniforms > 0 && sh->u.sh.refl.ub_count > 0) {
     float buf[UB_MAX_FLOATS];
@@ -1012,12 +1044,15 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
         return lub_api_fail(app,
                             "draw: uniform block too large (%d floats > %d)",
                             size, UB_MAX_FLOATS);
+      if (skip_draw)
+        continue;
       pack_uniform_block(ub, bs.uniforms, bs.n_uniforms, buf);
       g_backend->apply_uniforms(ub->stage, ub->slot, buf,
                                 (size_t)size * sizeof(float));
     }
   }
-  g_backend->draw(0, count, instance_count);
+  if (!skip_draw)
+    g_backend->draw(0, count, instance_count);
   return LUB_OK;
 }
 
@@ -1033,6 +1068,8 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
     digest_i32(app, d ? d->shader : 0);
     digest_bindings(app, bindings, bindings_count);
   }
+  if (!require_backend(app, "dispatch"))
+    return LUB_ERROR;
   if (!d)
     return lub_api_fail(app, "dispatch: opts required");
   if (pass_state_in_pass(&app->pass))
@@ -1281,7 +1318,8 @@ static void rb_enqueue(App *app, RbQueue *q, LubHandle tex, int32_t token) {
   q->count++;
   ResEntry *e = res_table_get_by_handle(&app->res, tex);
   if (!e || e->kind != RES_TEXTURE || e->u.tex.h == 0) {
-    it->error = SDL_strdup("read_texture: texture handle is stale or invalid");
+    it->error = SDL_strdup("read_texture: texture handle was destroyed or "
+                           "swept; declare it again with use_*");
     it->state = RB_ERROR;
     return;
   }

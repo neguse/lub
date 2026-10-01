@@ -23,7 +23,7 @@ endif()
 # Compiled dependencies are pinned as git submodules under third_party/ so
 # their sources live at stable in-tree paths. Run
 #   git submodule update --init
-# after cloning. Pinned versions: SDL release-3.2.30, Lua v5.5.0 (github
+# after cloning. Pinned versions: SDL release-3.4.16, Lua v5.5.0 (github
 # mirror), Box2D v3.1.1, Box3D v0.1.0 (alpha).
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL/CMakeLists.txt)
   message(FATAL_ERROR "Submodules are missing. Run: git submodule update --init")

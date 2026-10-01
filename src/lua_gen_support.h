@@ -17,7 +17,8 @@ LubContext *lgen_ctx(void);
 int lgen_raise(lua_State *L);
 
 // 呼び出しの間だけ生きる memory。生成した関数は入口で mark、出口で release
-// する (入れ子の呼び出しも安全)。
+// する (入れ子の呼び出しも安全)。binding の途中の Lua error は release を
+// 飛び越すので、runtime は on_frame の前に lgen_release(0) で全部戻す。
 typedef size_t LgenMark;
 LgenMark lgen_mark(void);
 void lgen_release(LgenMark mark);

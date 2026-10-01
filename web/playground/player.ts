@@ -157,10 +157,17 @@ let wasmStarted = false;
 // 捨てると runtimeReady 前の編集が失われるので queue + flush する。
 const pendingSyncBatches: Record<string, string>[] = [];
 
+// 編集ファイルは samples/ 相対で届く。"/" 始まりは MEMFS の絶対パスとして
+// そのまま置く (verify の A9 が tests/lua/ の raw Lua テストと、その
+// load_text が参照する兄弟ファイルを流し込む経路)。
+function fsPath(p: string): string {
+  if (p.startsWith("/")) return p.slice(1);
+  return p.startsWith("samples/") ? p : "samples/" + p;
+}
+
 function writeSyncBatch(FS: any, files: Record<string, string>) {
   for (const [p, c] of Object.entries(files)) {
-    const full = p.startsWith("samples/") ? p : "samples/" + p;
-    writeFileEnsureDir(FS, full, c);
+    writeFileEnsureDir(FS, fsPath(p), c);
   }
 }
 
@@ -253,8 +260,7 @@ async function startWasm() {
           const files = pendingFiles || {};
           let count = 0;
           for (const [p, c] of Object.entries(files)) {
-            const full = p.startsWith("samples/") ? p : "samples/" + p;
-            writeFileEnsureDir(FS, full, c);
+            writeFileEnsureDir(FS, fsPath(p), c);
             count++;
           }
           console.log("[player] postPreload overlayed", count, "editor files");

@@ -1,7 +1,11 @@
 // 実装ライブラリ lubx の FixedStep。
-// pending 集合は SCAN_KEYS と平行な bool 配列で持つ。
+// pending 集合は SCAN_KEYS と平行な bool の List で持つ。bool[] だと tcs が
+// `new bool[n]` を空 table に写し、Lua 側で Length が 0 になって
+// clear_pending が走らない (neguse/tcs#20)。List なら Lua / .NET の
+// どちらでも Count が要素数になる。
 
 using System;
+using System.Collections.Generic;
 using static Lub;
 
 /// <summary>
@@ -36,10 +40,12 @@ public class FixedStep
     };
 
     // tick 粒度 edge の保留分。次の tick が消費するまでフレームを跨いで持ち越す。
-    private bool[] pendingKeyPressed = new bool[45];
-    private bool[] pendingKeyReleased = new bool[45];
-    private bool[] pendingMousePressed = new bool[4];
-    private bool[] pendingMouseReleased = new bool[4];
+    // 要素数は constructor で scanKeys と同じ数 (mouse は index 0 を使わない 4)
+    // に揃えて埋める。
+    private List<bool> pendingKeyPressed = new List<bool>();
+    private List<bool> pendingKeyReleased = new List<bool>();
+    private List<bool> pendingMousePressed = new List<bool>();
+    private List<bool> pendingMouseReleased = new List<bool>();
 
     /// <summary>hz: tick の周波数 (正の値、省略 = 60)。maxCatchUp: 1 回の
     /// frame() で走る tick 数の上限 (1 以上、省略 = 8)。tcs は default 値を
@@ -48,6 +54,16 @@ public class FixedStep
     {
         TickDt = 1.0f / (hz ?? 60.0f);
         this.maxCatchUp = maxCatchUp ?? 8;
+        for (int i = 0; i < scanKeys.Length; i++)
+        {
+            pendingKeyPressed.Add(false);
+            pendingKeyReleased.Add(false);
+        }
+        for (int b = 0; b < 4; b++)
+        {
+            pendingMousePressed.Add(false);
+            pendingMouseReleased.Add(false);
+        }
     }
 
     /// <summary>onFrame から毎フレーム呼ぶ。実測 dt を積み、固定 tick を
@@ -158,12 +174,12 @@ public class FixedStep
 
     private void ClearPending()
     {
-        for (int i = 0; i < pendingKeyPressed.Length; i++)
+        for (int i = 0; i < pendingKeyPressed.Count; i++)
         {
             pendingKeyPressed[i] = false;
             pendingKeyReleased[i] = false;
         }
-        for (int b = 0; b < 4; b++)
+        for (int b = 0; b < pendingMousePressed.Count; b++)
         {
             pendingMousePressed[b] = false;
             pendingMouseReleased[b] = false;
