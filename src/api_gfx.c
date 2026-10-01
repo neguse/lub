@@ -83,6 +83,18 @@ static ResEntry *entry_from_handle(App *app, LubHandle h, ResKind kind,
   return e;
 }
 
+// backend (renderer) は on_init の後 (lub_host_start) に起動する。それより前に
+// backend を触る API を呼ぶと g_backend が NULL なので、落ちる代わりに error。
+static bool require_backend(App *app, const char *fn) {
+  if (app->phase == APP_PHASE_POST_BACKEND && g_backend)
+    return true;
+  lub_api_fail(app,
+               "%s: not available in on_init (the renderer starts after "
+               "on_init)",
+               fn);
+  return false;
+}
+
 static bool key_arg(App *app, LubStr key, char *buf, const char *fn) {
   if (key.len <= 0) {
     lub_api_fail(app, "%s: key must not be empty", fn);
@@ -153,6 +165,8 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
 static LubStatus use_buffer_impl(App *app, LubStr key, int32_t type,
                                  const void *data, int32_t bytes,
                                  const int32_t *version, LubHandle *out) {
+  if (!require_backend(app, "use_buffer"))
+    return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_buffer"))
     return LUB_ERROR;
@@ -282,6 +296,8 @@ typedef struct TextureDesc {
 
 static LubStatus use_texture_impl(App *app, LubStr key, const TextureDesc *d,
                                   const int32_t *version, LubHandle *out) {
+  if (!require_backend(app, "use_texture"))
+    return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, "use_texture"))
     return LUB_ERROR;
@@ -470,6 +486,8 @@ LubStatus lub_gfx_use_texture(LubContext *ctx, LubStr key, int32_t w, int32_t h,
 static LubStatus use_shader_impl(App *app, const char *fn, LubStr key,
                                  LubStr vs, LubStr fs, LubStr cs,
                                  const int32_t *version, LubHandle *out) {
+  if (!require_backend(app, fn))
+    return LUB_ERROR;
   char kbuf[LUB_KEY_MAX];
   if (!key_arg(app, key, kbuf, fn))
     return LUB_ERROR;
@@ -671,6 +689,8 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
     digest_i32(app, opts ? opts->targets_count : 0);
     digest_i32(app, opts ? opts->depth_target : 0);
   }
+  if (!require_backend(app, "begin_pass"))
+    return LUB_ERROR;
   if (!opts)
     return lub_api_fail(app, "begin_pass: opts required");
   if (pass_state_in_pass(&app->pass))
@@ -911,6 +931,8 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
     digest_i32(app, d ? d->shader : 0);
     digest_bindings(app, bindings, bindings_count);
   }
+  if (!require_backend(app, "draw"))
+    return LUB_ERROR;
   if (!d)
     return lub_api_fail(app, "draw: opts required");
   if (!pass_state_in_pass(&app->pass))
@@ -1021,6 +1043,8 @@ LubStatus lub_gfx_dispatch(LubContext *ctx, int32_t x, int32_t y, int32_t z,
     digest_i32(app, d ? d->shader : 0);
     digest_bindings(app, bindings, bindings_count);
   }
+  if (!require_backend(app, "dispatch"))
+    return LUB_ERROR;
   if (!d)
     return lub_api_fail(app, "dispatch: opts required");
   if (pass_state_in_pass(&app->pass))
