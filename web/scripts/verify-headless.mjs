@@ -730,7 +730,7 @@ if (RUN_CS_SESSION) try {
 // samples/<name>/.lub/<name>.lua に置き、load_text が参照する兄弟ファイルは
 // cwd (/) 相対の同じパス (tests/lua/...) に置く (player.ts の fsPath)。
 // 各テストは成功で `OK <name>` を print し、失敗は `FAIL ...` を print する。
-const A9_TESTS = ['test_dup_binding']
+const A9_TESTS = ['test_dup_binding', 'test_compute_uniform_block']
 const A9_TIMEOUT_MS = Number(process.env.A9_TIMEOUT_MS || 60000)
 const A9_FAIL_RE = /\[webgpu-validation\]|lua error|^FAIL |lub: error/
 

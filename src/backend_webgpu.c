@@ -1261,63 +1261,75 @@ static void wg_apply_uniforms(SglShaderStage stage, int ub_slot,
   g_ub.dirty[ub_slot] = true;
 }
 
-// Flush uniform data to GPU and bind group 0 before draw/dispatch.
-// Uses a ring buffer with dynamic offsets so each draw gets its own
-// uniform data region, preventing later draws from overwriting earlier ones.
-static void wg_flush_uniforms(void) {
-  if (!g_cur_pipeline)
-    return;
-
-  bool any_dirty = false;
+// Write every dirty uniform slot into its ring. Shared by draw and dispatch.
+static void wg_write_dirty_uniforms(void) {
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    if (g_ub.dirty[i]) {
-      any_dirty = true;
-      size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
-      if (aligned > WG_UB_SIZE)
-        aligned = WG_UB_SIZE;
-      uint32_t off = g_ub.ring_offset[i];
-      if (off + WG_UB_STRIDE > WG_UB_RING_SIZE)
-        off = 0;
-      wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
-      g_ub.ring_offset[i] = off + WG_UB_STRIDE;
-    }
+    if (!g_ub.dirty[i])
+      continue;
+    size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
+    if (aligned > WG_UB_SIZE)
+      aligned = WG_UB_SIZE;
+    uint32_t off = g_ub.ring_offset[i];
+    if (off + WG_UB_STRIDE > WG_UB_RING_SIZE)
+      off = 0;
+    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
+    g_ub.ring_offset[i] = off + WG_UB_STRIDE;
+    g_ub.dirty[i] = false;
   }
-  if (!any_dirty && g_cur_pipeline->refl.ub_count == 0)
-    return;
+}
 
-  // Build bind group 0 with the uniform buffers, using dynamic offsets.
+// Build group 0 for a pipeline from the uniform rings. Every uniform block
+// the pipeline declares gets an entry, with the dynamic offset at the most
+// recently written region of its slot: the ring start (zero-initialised at
+// creation) when nothing was written yet. A pipeline with a uniform block
+// always gets a complete group 0 this way, whether or not the caller passed
+// uniforms; leaving an entry out would make the group invalid and the whole
+// command buffer would be dropped. Returns NULL when the pipeline has no
+// uniform block.
+static WGPUBindGroup wg_make_group0(const WgPipeline *wp, uint32_t *dyn_offsets,
+                                    int *out_count) {
   WGPUBindGroupEntry entries[WG_MAX_UB_SLOTS] = {0};
-  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
   int count = 0;
-  for (int i = 0; i < g_cur_pipeline->refl.ub_count && i < WG_MAX_UB_SLOTS;
-       ++i) {
-    int slot = g_cur_pipeline->refl.ubs[i].slot;
+  for (int i = 0; i < wp->refl.ub_count && i < WG_MAX_UB_SLOTS; ++i) {
+    int slot = wp->refl.ubs[i].slot;
+    if (slot < 0 || slot >= WG_MAX_UB_SLOTS)
+      continue;
     WGPUBindGroupEntry *e = &entries[count];
     e->binding = (uint32_t)slot;
     e->buffer = g_ub.bufs[slot];
     e->offset = 0;
     e->size = WG_UB_SIZE;
-    // Dynamic offset = where we last wrote for this slot.
     uint32_t off = g_ub.ring_offset[slot];
     dyn_offsets[count] = (off >= WG_UB_STRIDE) ? (off - WG_UB_STRIDE) : 0;
     count++;
   }
-  if (count > 0) {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = g_cur_pipeline->bgl0,
-        .entryCount = (size_t)count,
-        .entries = entries,
-    };
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-    if (bg) {
-      wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
-                                        dyn_offsets);
-      wgpuBindGroupRelease(bg);
-    }
-  }
+  *out_count = count;
+  if (count == 0)
+    return NULL;
+  WGPUBindGroupDescriptor bgd = {
+      .layout = wp->bgl0,
+      .entryCount = (size_t)count,
+      .entries = entries,
+  };
+  return wgpuDeviceCreateBindGroup(g_dev, &bgd);
+}
 
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
-    g_ub.dirty[i] = false;
+// Flush uniform data to GPU and bind group 0 before a draw. The ring with
+// dynamic offsets gives each draw its own uniform region, so later draws do
+// not overwrite earlier ones.
+static void wg_flush_uniforms(void) {
+  if (!g_cur_pipeline)
+    return;
+  wg_write_dirty_uniforms();
+
+  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
+  int count = 0;
+  WGPUBindGroup bg = wg_make_group0(g_cur_pipeline, dyn_offsets, &count);
+  if (bg) {
+    wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
+                                      dyn_offsets);
+    wgpuBindGroupRelease(bg);
+  }
 }
 
 // ---- draw / dispatch -------------------------------------------------------
@@ -1355,31 +1367,16 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     return;
 
   // Build bind groups for compute.
-  // Group 0: uniforms (ring-buffered with dynamic offsets)
-  WGPUBindGroupEntry ub_entries[WG_MAX_UB_SLOTS] = {0};
+  // Group 0: uniforms, through the same ring and group builder as draws, so
+  // a pipeline with a uniform block gets a valid group 0 even when this
+  // dispatch passes no uniforms (it then sees the last written data).
+  for (int i = 0; i < d->uniform_count; ++i) {
+    wg_apply_uniforms(d->uniforms[i].stage, d->uniforms[i].slot,
+                      d->uniforms[i].data, d->uniforms[i].bytes);
+  }
+  wg_write_dirty_uniforms();
   uint32_t ub_dyn_offsets[WG_MAX_UB_SLOTS] = {0};
   int ub_count = 0;
-  for (int i = 0; i < d->uniform_count; ++i) {
-    int slot = d->uniforms[i].slot;
-    if (slot < 0 || slot >= WG_MAX_UB_SLOTS || !d->uniforms[i].data)
-      continue;
-    size_t aligned = wg_align((uint32_t)d->uniforms[i].bytes, 16);
-    if (aligned > WG_UB_SIZE)
-      aligned = WG_UB_SIZE;
-    uint32_t off = g_ub.ring_offset[slot];
-    if (off + WG_UB_ALIGN > WG_UB_RING_SIZE)
-      off = 0;
-    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[slot], off, d->uniforms[i].data,
-                         aligned);
-    WGPUBindGroupEntry *e = &ub_entries[ub_count];
-    e->binding = (uint32_t)slot;
-    e->buffer = g_ub.bufs[slot];
-    e->offset = 0;
-    e->size = WG_UB_SIZE;
-    ub_dyn_offsets[ub_count] = off;
-    g_ub.ring_offset[slot] = off + WG_UB_ALIGN;
-    ub_count++;
-  }
 
   // Group 1: textures + samplers + storage buffers + storage textures
   WGPUBindGroupEntry res_entries[32] = {0};
@@ -1418,15 +1415,8 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     }
   }
 
-  WGPUBindGroup bg0 = NULL, bg1 = NULL;
-  {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = wp->bgl0,
-        .entryCount = (size_t)ub_count,
-        .entries = ub_entries,
-    };
-    bg0 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-  }
+  WGPUBindGroup bg0 = wg_make_group0(wp, ub_dyn_offsets, &ub_count);
+  WGPUBindGroup bg1 = NULL;
   {
     WGPUBindGroupDescriptor bgd = {
         .layout = wp->bgl1,
