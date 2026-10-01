@@ -77,7 +77,9 @@ const SAMPLES = join(REPO, "samples");
 const samplesTs = readFileSync(join(WEB, "playground", "samples.ts"), "utf8");
 const csSamplesBlock = /const CS_SAMPLES[^{]*\{([\s\S]*?)\};/.exec(samplesTs);
 if (!csSamplesBlock) {
-  console.error("gen-tcs-prebuilt: CS_SAMPLES not found in playground/samples.ts");
+  console.error(
+    "gen-tcs-prebuilt: CS_SAMPLES not found in playground/samples.ts",
+  );
   process.exit(1);
 }
 const playgroundSamples = new Set(
@@ -110,7 +112,8 @@ try {
     const csFiles = readdirSync(join(SAMPLES, name))
       .filter((f) => f.endsWith(".cs"))
       .sort();
-    for (const f of csFiles) copyFileSync(join(SAMPLES, name, f), join(temp, f));
+    for (const f of csFiles)
+      copyFileSync(join(SAMPLES, name, f), join(temp, f));
     const outPath = join(OUT, `${name}.lua`);
     try {
       execFileSync(
