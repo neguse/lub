@@ -76,6 +76,7 @@ Release build は手順を固定するため、通常は script 経由で行う
 
 ```sh
 bash scripts/build-release.sh                                              # Linux
+bash scripts/build-release.sh --build-dir build-mac                        # macOS
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1  # Windows
 ```
 
@@ -169,11 +170,11 @@ scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的�
 scripts/run-golden.sh --sample 01_triangle --backend sdlgpu
 ```
 
-プラットフォームごとに機材非依存の CPU rasterizer を強制するので capture が
+Linux と Windows は機材非依存の CPU rasterizer を強制するので capture が
 確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
 sdlgpu と vulkan を、Windows (git bash) は WARP (`LUB_D3D12_WARP=1`) で
-d3d12 をチェックする。実 GPU でのドリフトは想定範囲外
-(tolerance 比較は別途)。
+d3d12 をチェックする。macOS は metal を実 GPU で描くので、Linux の golden
+(`*_sdlgpu.png`) と許容差で比べる (`scripts/png-diff.py`)。
 
 ## Backend 切替
 

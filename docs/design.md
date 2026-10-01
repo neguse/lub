@@ -121,8 +121,9 @@ log、capture、resource dump、runtime state dump のような情報取得は�
   `metal` (macOS / iOS) / `sdlgpu` (Windows / Linux の代替) / `webgpu`
   (web のみ)。未指定時の既定は Windows: d3d12、Linux: vulkan、
   macOS / iOS: metal、web: webgpu。CI golden は Windows は WARP、Linux は
-  lavapipe で回す (`docs/d3d12-backend.md`)。macOS / iOS は CI と golden を
-  持たない (`docs/metal-backend.md`)。backend 構成の整理方針は
+  lavapipe で回す (`docs/d3d12-backend.md`)。macOS は runner の GPU で描き、
+  Linux の golden と許容差で比べる。iOS は CI では build まで
+  (`docs/metal-backend.md`)。backend 構成の整理方針は
   `docs/log/2026-07-07-backend-consolidation.md`。
 - iOS の player は shader compiler と transpiler を持たない。生成済みの Lua と
   shader cache を同梱した app として動く (`docs/metal-backend.md`)。

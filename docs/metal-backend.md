@@ -114,11 +114,26 @@ iOS 用の Slang prebuilt は無いので、iOS の player は Slang をリン�
 - 保存は `Io.SaveText`。app の中から書ける場所は env `HOME` の下
   (`Library/Application Support/` など)。
 
+## 検証
+
+`scripts/apple-gate.sh` が CI の macos job と手元の Mac の両方で同じ内容を
+回す: Release build、C の smoke test、`tests/lua/` の runtime テスト、視覚
+golden、shader cache の往復、iOS の build。
+
+- 視覚 golden: Metal には機材に依存しない CPU rasterizer が無いので、Metal
+  用の golden は持たない。`scripts/run-golden.sh` は macOS では metal backend
+  で capture し、Linux の golden(`*_sdlgpu.png`)と許容差で比べる
+  (`scripts/png-diff.py`。pixel の差は RGB の最大差で、平均が 3 以下、かつ
+  16 を超える pixel が 1% 以下)。`--update` は macOS からは書かない。
+- shader cache の往復: Slang を持つ player に cache を書かせ、`LUB_NO_SLANG`
+  の player が同じ frame を cache だけから描いて byte 一致すること、cache が
+  空なら key を名指しする error になることを確かめる。
+- iOS: Xcode generator で configure し、player を simulator 向けに build する。
+
 ## 制約 / 未対応
 
-- golden は持たない(機材に依存しない CPU rasterizer が Metal には無い)。
-  golden の対象サンプルと `tests/lua/` の描画テストは、実 GPU の capture が
-  Linux の golden(`*_sdlgpu.png`)と数階調以内で一致することを確認している。
+- Metal の golden は持たない(下の「検証」)。
+- iOS で動かす検証は CI に無い。CI は simulator 向けの build まで。
 - buffer の要素の float3 を、要素を local に受けずに直接行列と演算する式
   (`mul(m, verts[i].nrm)` の形)は MSL の compile error になる。
   `V v = verts[i];` と一度受けてから使う。
