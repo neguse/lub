@@ -319,4 +319,58 @@ public class ClassTests
             "T.test()");
         Assert.Equal("1,2", result);
     }
+
+    // static initializer は同クラスの constructor / method の後に実行する
+    // (neguse/tcs#15: `static V Zero = new V(1, 2)` が `V.new` 未定義で落ちた)
+    [Fact]
+    public void StaticFieldInitializer_CallsOwnConstructor()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class V
+            {
+                public static V Zero = new V(1, 2);
+                public int X;
+                public int Y;
+                public V(int x, int y) { X = x; Y = y; }
+            }
+            public static class StaticInitRepro
+            {
+                public static int Test() => V.Zero.X + V.Zero.Y * 10;
+            }
+            """,
+            "StaticInitRepro.test()");
+        Assert.Equal("21", result);
+    }
+
+    [Fact]
+    public void StaticFieldInitializer_CallsOwnStaticMethod()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                static int n = Compute();
+                static int Compute() { return 7; }
+                public static int Test() => n;
+            }
+            """,
+            "T.test()");
+        Assert.Equal("7", result);
+    }
+
+    [Fact]
+    public void StaticFieldInitializers_RunInDeclarationOrder()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                static int a = 5;
+                static int b = a * 2;
+                static int c = Twice(b) + a;
+                static int Twice(int v) { return v * 2; }
+                public static string Test() => a + "," + b + "," + c;
+            }
+            """,
+            "T.test()");
+        Assert.Equal("5,10,25", result);
+    }
 }

@@ -1578,6 +1578,13 @@
 - 検証: `~/.dotnet` の SDK 10.0.111 で pre-commit ゲート (run-tests.sh) 全通過 — MSBuildEnableWorkloadResolver 無効化なしで通ることを確認 (壊れた pacman 側 resolver を踏んでいない証明)。SDK 暗黙参照の追随で WasmCompiler の packages.lock.json が 10.0.11 に上がる (別コミット)
 - 残課題: workload set 版の pin (`sdk.workloadVersion`) は wasm-tools を実際に要求する lub 側で行う。Dependabot は workloadVersion の bump 未対応 (dependabot-core#13216) のため、workload set は SDK bump PR に乗せて手動更新
 
+### static field の initializer を constructor と method の後に出力する (#15) ✓ (2026-10-01)
+- `public static V Zero = new V(1, 2);` のように static initializer が自クラスの constructor / static method を呼ぶと、生成 Lua では initializer 行が `function V.new` より前に並んでいたため chunk load 時に `attempt to call a nil value (field 'new')` で落ちていた。LuaEmitter の VisitClass で initializer 行の出力を constructor / method / property / operator の後 (EmitStaticFieldInitializers) に移した。pre-zero (`V.zero = <default>`) は宣言直後のままにし、initializer 同士の前方参照は従来どおり default 値を見る
+- hot reload の metadata は不変: StaticFieldMeta の Start/Length は移動後の行を指すので、define チャンク (BuildDefineLua) は initializer 行を除き、type 単位 thunk (BuildTypeInitializerLua) は宣言順のまま。registry の phase 2 (define) → phase 3 (init) の順序とも一致するため、増分 session / snapshot 側の変更は不要。EmittedTypeInfo.Shifted は Start > spliceStart で shift するので、method body の増分差し替えが initializer 行より前に来ても範囲は追従する
+- struct / record struct は static member が TCS1001、record は static field を emit しないため対象外。tcs2c は IL から C を出す (Lua のテキスト順に依存しない) ので変更なし
+- 検証: ClassTests に 自クラス ctor 呼び / 自クラス static method 呼び / 宣言順の 3 本 (fix 前は前 2 本が Red)、HotReloadTests に ctor 呼び initializer を持つ class の reload (retained static の identity / live 値保持、added static は v2 initializer で初期化)、ModuleDescriptorTests に snapshot の load + method-body hot apply で static 保持。`dotnet test` 797+48 green (Cli_AtomicOutputReplace_RespectsUnixWritePermission だけ root 実行環境のため fail — 権限テストで変更と無関係)、tcs2c digest 3/3 不変
+- 判断: C# の static constructor 意味論 (型の最初の使用前に initializer を宣言順に実行) に寄せ、「宣言順」は保ったまま「member 定義後」に動かすだけにした。Lua の遅延実行 (static method 内で参照) は元から動いていたので、挙動が変わるのは chunk load 時に即評価される initializer だけ
+- 残課題: 別クラスの static initializer から宣言順で後ろにある class の `new` を呼ぶ cross-class の前方参照 (`class A { static B b = new B(); } class B {}`) は未対応のまま (型の出力順の問題で、本件とは別)
 ### enum 型 field の既定値を 0 にする (#14) ✓ (2026-10-01)
 - initializer 無しの enum 型 instance / static field と auto property が `nil` で emit されていた (`GetDefaultValueForType` が SpecialType だけを見ていた)。`TypeKind.Enum` を 0 に写し、C# の `default(E) == 0` (member 値に依らない) に揃えた。同じ helper を通る struct の zero-init (`S.new()`)、`default(E)` 式、static field の pre-zero も同時に直る
 - hot reload の added field default (`HotReload.DefaultFor`) は型名文字列で判定するため enum を見分けられず nil だった。IlExport が enum 宣言名 (`IlExportResult.Enums`) を出し、reload chunk 側で 0 に解決するようにした

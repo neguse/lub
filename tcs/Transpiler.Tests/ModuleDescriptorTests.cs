@@ -219,6 +219,46 @@ public class ModuleDescriptorTests
             output.Split('\n').Select(l => l.Trim()));
     }
 
+    // static initializer が自クラスの ctor / static method を呼ぶ (#15)。
+    // define チャンク (new / method) の後に type 単位の initializer thunk が
+    // 走り、method-body edit の hot apply では static が保持される
+    [Fact]
+    public void StaticInitializerCallingOwnConstructorLoadsAndSurvivesHotApply()
+    {
+        var vec = """
+            public class Vec
+            {
+                public static Vec Zero = new Vec(0);
+                public static int Seed = Compute();
+                public int x;
+                public Vec(int v) { x = v; }
+                public static int Compute() { return 3; }
+                public int Get() { return x; }
+            }
+            """;
+        var session = Open(("vec.cs", vec));
+        var snap1 = Snapshot(session, "Vec");
+
+        var r = session.Update("vec.cs", vec.Replace("return x;", "return x * 10;"));
+        Assert.True(r.Success && r.FastPath, string.Join(";", r.RestartReasons));
+        var snap2 = Snapshot(session, "Vec");
+
+        var output = RunWithSnapshots(
+            """
+            dofile(snap1)
+            local reg = _G.__tcs_module_runtime.registry
+            local Vec = reg.types["vec.cs#Vec"]
+            print(Vec.zero:get(), Vec.seed)
+            Vec.zero.x = 4
+            local zero = Vec.zero
+            dofile(snap2)
+            print(Vec.zero == zero, Vec.zero:get(), Vec.seed)
+            """,
+            snap1, snap2);
+        Assert.Equal(["0\t3", "true\t40\t3"],
+            output.Split('\n').Select(l => l.Trim()));
+    }
+
     [Fact]
     public void HotApplySkipsUnchangedModulesAndDeletesRemovedKeys()
     {
