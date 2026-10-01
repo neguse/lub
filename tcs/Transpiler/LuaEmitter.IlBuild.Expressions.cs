@@ -298,15 +298,9 @@ public partial class LuaEmitter
              model.GetTypeInfo(bin.Right).Type?.SpecialType == SpecialType.System_String ||
              model.GetTypeInfo(bin).Type?.SpecialType == SpecialType.System_String);
         if (isStringConcat)
-        {
-            left = IsFloatingType(model.GetTypeInfo(bin.Left).Type)
-                ? new IlCall("__tcs_fstr", [left])
-                : WrapConcatOperand(model, bin.Left, left);
-            right = IsFloatingType(model.GetTypeInfo(bin.Right).Type)
-                ? new IlCall("__tcs_fstr", [right])
-                : WrapConcatOperand(model, bin.Right, right);
-            return new IlBin(IlBinOp.Concat, left, right);
-        }
+            return new IlBin(IlBinOp.Concat,
+                WrapConcatOperand(model, bin.Left, left),
+                WrapConcatOperand(model, bin.Right, right));
 
         IlBinOp? op = bin.Kind() switch
         {
@@ -345,12 +339,28 @@ public partial class LuaEmitter
             ? new IlCall("__tcs_fstr", [built])
             : new IlCall("tostring", [built]);
 
-    // legacy NullSafeConcatOperand の写像
+    // 文字列連結 (`+` / `+=`) の operand を Lua の `..` が受ける形にする。
+    // float は shortest round-trip (__tcs_fstr)、bool は ToString / 補間と
+    // 同じ tostring (`..` は boolean を拒否する。#22)、bool? の null は C# と
+    // 同じく空文字列。string は legacy NullSafeConcatOperand の写像
     private static IlExpr WrapConcatOperand(SemanticModel model,
         ExpressionSyntax expr, IlExpr rendered)
     {
-        if (model.GetTypeInfo(expr).Type?.SpecialType
-                != SpecialType.System_String)
+        var type = model.GetTypeInfo(expr).Type;
+        if (IsFloatingType(type))
+            return new IlCall("__tcs_fstr", [rendered]);
+        if (UnwrapNullable(type)?.SpecialType == SpecialType.System_Boolean)
+        {
+            var str = new IlCall("tostring", [rendered]);
+            return type is INamedTypeSymbol { OriginalDefinition.SpecialType:
+                    SpecialType.System_Nullable_T }
+                ? new IlParen(new IlBin(IlBinOp.Or,
+                    new IlBin(IlBinOp.And,
+                        new IlBin(IlBinOp.Ne, rendered, new IlLit("nil")), str),
+                    new IlLit("\"\"")))
+                : str;
+        }
+        if (type?.SpecialType != SpecialType.System_String)
             return rendered;
         var unwrapped = expr;
         while (unwrapped is ParenthesizedExpressionSyntax paren)
