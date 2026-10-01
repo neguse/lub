@@ -117,13 +117,20 @@ public static class Transpiler
             var model = compilation.GetSemanticModel(tree);
             if (checkNaming)
                 warnings.AddRange(NamingAnalyzer.Analyze(tree));
-            warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
-                tree, model));
+            // build を止める種類 (TinyCsComplianceFacts.IsBuildBlocking) は
+            // error 行で返るので Errors へ回し、Lua を書かない
+            foreach (var diag in TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(
+                         tree, model))
+                (TinyCsComplianceFacts.IsErrorDiagnostic(diag) ? errors : warnings)
+                    .Add(diag);
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedCollectionNulls(
                 tree, model));
             warnings.AddRange(TinyCsComplianceFacts.AnalyzeUnsupportedApis(
                 tree, model));
         }
+
+        if (errors.Count > 0)
+            return new TranspileResult { Errors = errors, Warnings = warnings };
 
         var emitter = new LuaEmitter();
         foreach (var refTree in refTrees)

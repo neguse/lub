@@ -1578,6 +1578,13 @@
 - 検証: `~/.dotnet` の SDK 10.0.111 で pre-commit ゲート (run-tests.sh) 全通過 — MSBuildEnableWorkloadResolver 無効化なしで通ることを確認 (壊れた pacman 側 resolver を踏んでいない証明)。SDK 暗黙参照の追随で WasmCompiler の packages.lock.json が 10.0.11 に上がる (別コミット)
 - 残課題: workload set 版の pin (`sdk.workloadVersion`) は wasm-tools を実際に要求する lub 側で行う。Dependabot は workloadVersion の bump 未対応 (dependabot-core#13216) のため、workload set は SDK bump PR に乗せて手動更新
 
+### 名前付き引数を build を止める error にする (#19) ✓ (2026-10-01)
+- TCS1001 `NamedArgument` は warning のままだと build (`-o` / `--watch` / 増分 session) が位置渡しの Lua を書いて exit 0 になり、省略・並べ替えた引数が黙って別の parameter に入っていた (lub の `Gfx.UseBuffer(..., count: n)` が version に入る)。facts に「build を止める未対応構文」の集合 (`IsBuildBlocking`) を置き、`AnalyzeUnsupportedSyntaxes` が該当種類を `error TCS1001` 行で返す。transpiler は error 行を `TranspileResult.Errors` に回して Lua を返さず、CLI は exit 1、watch は Build FAILED、増分 session は open 時 emit なし / edit 時 last-good 維持で commit しない (WasmCompiler は `Success` / `CollectDiagnostics` 経由でそのまま追従)
+- analyzer は `SyntaxKind.Argument` を登録していなかったため `NamedArgument` を一度も報告していなかった (transpiler とのずれ)。登録して warning で報告する。severity は warning のまま (.editorconfig で error にできる)
+- spec conformance の classifier は `error TCS1001` だけの失敗を compile error ではなく Diag に数える (named argument を含む例が Unextracted に落ちないように)
+- 検証: `dotnet test` 全 800+50 green (`Cli_AtomicOutputReplace_RespectsUnixWritePermission` は root 実行の環境要因で master でも fail)。check / build CLI の parity テスト (issue の再現コードで exit 1・Lua なし・error 3 件)、session の open / update / 復帰、classifier の単体テストを追加
+- 判断: 本対応 (IInvocationOperation.Arguments からの並べ替え + 既定値補完 + 副作用順の一時変数) は別タスク。error 化は「誤った Lua を掴ませない」ための暫定で、対応時に集合から外すだけで戻せる
+- 残課題: 名前付き引数の本対応 (#19 の期待挙動)
 ### List.Add を table.insert ではなく添字代入で出力する (#24) ✓ (2026-10-01)
 - Lua backend の文位置 lowering: IlCallStat / IlReturn / closure exprBody が `table.insert(t, v)` (List.Add) のとき `t[#t + 1] = v` を出力する (TryRenderListAddStat、LuaEmitter.IlEmit.cs)。IL 自体は IlCall("table.insert") のままなので tcs2c (callee 名で List.Add を検出) と IlExport / hot reload は無変更
 - 受け手は IlVar / IlField 連鎖に限る (1 回評価が自明)。`Get().Add(v)` のような式受け手だけ table.insert に fallback

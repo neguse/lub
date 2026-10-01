@@ -88,6 +88,42 @@ public class ComplianceParityTests
             $"{transpile.Lua}\nprint(NameDemo.run())").Trim());
     }
 
+    // #19: 名前付き引数は check でも build でも error。build は Lua を書かず
+    // exit 1 (watch / lub の経路が誤った Lua を掴まない)
+    [Fact]
+    public void Check_NamedArgumentReportsError()
+    {
+        var result = RunCli(NamedArgumentSource, check: true);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Equal(3, CountDiagnostics(result.Stderr,
+            TinyCsDiagnosticIds.UnsupportedSyntax, severity: "error"));
+        Assert.Contains(
+            "input.cs(8,39): error TCS1001: unsupported syntax: NamedArgument",
+            result.Stderr);
+        Assert.Contains(
+            "input.cs(9,36): error TCS1001: unsupported syntax: NamedArgument",
+            result.Stderr);
+        Assert.Contains(
+            "input.cs(9,42): error TCS1001: unsupported syntax: NamedArgument",
+            result.Stderr);
+    }
+
+    [Fact]
+    public void Transpile_NamedArgumentFailsWithoutOutput()
+    {
+        var result = RunCli(NamedArgumentSource, check: false);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Equal("", result.Lua);
+        Assert.Equal(3, CountDiagnostics(result.Stderr,
+            TinyCsDiagnosticIds.UnsupportedSyntax, severity: "error"));
+        Assert.Contains("NamedArgument", result.Stderr);
+        Assert.DoesNotContain("Wrote ", result.Stderr);
+    }
+
     [Fact]
     public void Check_LuaNameCollisionIsErrorExit1()
     {
@@ -138,9 +174,10 @@ public class ComplianceParityTests
         }
     }
 
-    private static int CountDiagnostics(string text, string diagnosticId) =>
+    private static int CountDiagnostics(string text, string diagnosticId,
+        string severity = "warning") =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Count(line => line.Contains($"warning {diagnosticId}:"));
+            .Count(line => line.Contains($"{severity} {diagnosticId}:"));
 
     private static void AssertNameOfDiagnostics(string stderr)
     {
@@ -188,11 +225,18 @@ public class ComplianceParityTests
         }
         """;
 
-    private const string NameCollisionSource = """
-        public class Repro
+    // neguse/tcs#19 の再現
+    private const string NamedArgumentSource = """
+        public static class B1User
         {
-            public int flash;
-            public void Flash() { flash = 1; }
+            static string F(int a, int? version = null, int? count = null)
+                => "a=" + a + " version=" + (version ?? -1) + " count=" + (count ?? -1);
+            static string G(int x, int y) => "x=" + x + " y=" + y;
+            public static void Main()
+            {
+                System.Console.WriteLine(F(1, count: 5));
+                System.Console.WriteLine(G(y: 1, x: 2));
+            }
         }
         """;
 
@@ -210,6 +254,14 @@ public class ComplianceParityTests
         {
             public static string nameof(string value) => value;
             public static string Run() => nameof("ok");
+        }
+        """;
+
+    private const string NameCollisionSource = """
+        public class Repro
+        {
+            public int flash;
+            public void Flash() { flash = 1; }
         }
         """;
 }

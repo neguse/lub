@@ -104,6 +104,45 @@ public class IncrementalSessionTests
         Assert.False(result.FastPath);
     }
 
+    // build を止める TCS1001 (NamedArgument) は session でも error 扱い:
+    // open 時は emit せず、edit 時は last-good を保って commit しない (#19)
+    [Fact]
+    public void BuildBlockingDiagnostic_BlocksOpenAndUpdate()
+    {
+        const string named = """
+            public class Counter
+            {
+                public int Value;
+                public void Add(int amount) { Value = Value + amount; }
+                public static int Magic() { return Pick(y: 1, x: 2); }
+                public static int Pick(int x, int y) { return x; }
+            }
+            """;
+        var blocked = new IncrementalCompilationSession(checkNaming: false);
+        blocked.OpenProject([("game/Counter.cs", named), ("game/Game.cs", FileB)]);
+        var (errors, warnings) = blocked.CollectDiagnostics();
+        Assert.Contains(errors, e => e.Contains("error TCS1001")
+            && e.Contains("NamedArgument"));
+        Assert.DoesNotContain(warnings, w => w.Contains("NamedArgument"));
+        Assert.Equal(0, blocked.Revision);
+        Assert.Empty(blocked.Artifacts);
+        AssertDiagnosticsParity(blocked);
+
+        var session = Open();
+        var before = session.Revision;
+        var result = session.Update("game/Counter.cs", named);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("NamedArgument"));
+        Assert.Empty(result.ChangedArtifacts);
+        Assert.Equal(before, session.Revision);
+        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
+        AssertDiagnosticsParity(session);
+
+        var recovered = session.Update("game/Counter.cs", FileA);
+        Assert.True(recovered.Success);
+        Assert.Equal("10", LinkAndRun(session, "Game.play()"));
+    }
+
     [Fact]
     public void ErrorEdit_KeepsLastGoodArtifacts()
     {

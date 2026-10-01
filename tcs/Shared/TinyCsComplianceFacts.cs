@@ -46,6 +46,7 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.ConstructorDeclaration,
         SyntaxKind.PredefinedType,
         SyntaxKind.NumericLiteralExpression,
+        SyntaxKind.Argument,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -58,6 +59,21 @@ public static partial class TinyCsComplianceFacts
             "function", "global", "goto", "if", "in", "local", "nil", "not",
             "or", "repeat", "return", "then", "true", "until", "while",
         };
+
+    // build を止める未対応構文。他の TCS1001 は warning のまま Lua を書き
+    // (unsupported marker / 位置どおりの emit)、check だけが exit 1 になる。
+    // ここに挙げた種類は「警告付きで書いた Lua が黙って別の意味で動く」もので、
+    // transpiler は Errors に回して出力しない (watch / 増分 session も同じ)。
+    // analyzer の severity は warning のまま (.editorconfig で上書き可能)。
+    private static readonly HashSet<string> BuildBlockingSyntaxes =
+        new(StringComparer.Ordinal)
+        {
+            // 名前付き引数は位置渡しに落ち、省略/並べ替えが別の引数へ入る (#19)
+            "NamedArgument",
+        };
+
+    public static bool IsBuildBlocking(string syntaxName) =>
+        BuildBlockingSyntaxes.Contains(syntaxName);
 
     public static bool TryGetUnsupportedSyntax(SyntaxNode node,
         out string syntaxName)
@@ -496,20 +512,29 @@ public static partial class TinyCsComplianceFacts
             if (!TryGetUnsupportedSyntax(node, model, out var syntaxName))
                 continue;
 
-            yield return FormatWarning(node,
+            yield return FormatDiagnostic(node,
                 TinyCsDiagnosticIds.UnsupportedSyntax,
-                $"unsupported syntax: {syntaxName}");
+                $"unsupported syntax: {syntaxName}",
+                IsBuildBlocking(syntaxName) ? "error" : "warning");
         }
     }
 
     public static string FormatWarning(SyntaxNode node, string diagnosticId,
-        string message)
+        string message) => FormatDiagnostic(node, diagnosticId, message, "warning");
+
+    // 整形済み診断行の severity 判定。transpiler / 増分 session はこの判定で
+    // Errors (Lua を書かない) と Warnings に振り分ける。
+    public static bool IsErrorDiagnostic(string diagnostic) =>
+        diagnostic.Contains("): error ", StringComparison.Ordinal);
+
+    private static string FormatDiagnostic(SyntaxNode node, string diagnosticId,
+        string message, string severity)
     {
         var loc = node.GetLocation().GetLineSpan();
         var line = loc.StartLinePosition.Line + 1;
         var col = loc.StartLinePosition.Character + 1;
         var file = loc.Path;
         var prefix = string.IsNullOrEmpty(file) ? "" : file;
-        return $"{prefix}({line},{col}): warning {diagnosticId}: {message}";
+        return $"{prefix}({line},{col}): {severity} {diagnosticId}: {message}";
     }
 }

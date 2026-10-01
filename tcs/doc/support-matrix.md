@@ -352,6 +352,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `throw` 式 (C# 7) | **-** | | unsupported 診断あり |
 | コレクション式 `[1,2,3]` (C# 12) | **-** | | |
 | タプル式 `(a, b)` (C# 7) | **-** | | |
+| 名前付き引数 `F(x: 1)` (C# 4) | **-** | | TCS1001 `NamedArgument`。位置渡しに落ちて別の意味になるため build を止める error (§24) |
 | `await` 式 (C# 5) | **N/A** | | |
 | 式ツリー `Expression<>` (C# 3) | **N/A** | | |
 | 静的ラムダ `static =>` (C# 9) | **-** | | |
@@ -902,6 +903,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
 | 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
+| build を止める未対応構文 | **Y** | TCS1001 のうち「警告付きで書いた Lua が黙って別の意味で動く」種類 (`NamedArgument`) は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。一覧は `TinyCsComplianceFacts.IsBuildBlocking`。analyzer は warning のまま (`.editorconfig` で上書き) |
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |

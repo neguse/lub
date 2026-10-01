@@ -94,6 +94,28 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task NamedArgument_ReportsUnsupportedSyntax()
+    {
+        // transpiler は build を止める error、analyzer は warning のまま
+        // (.editorconfig で severity を上げられる)
+        var diagnostics = await AnalyzeAsync("""
+            public class T
+            {
+                public static int F(int x, int y = -1) => x;
+                public static int Test() => F(y: 2, x: 1);
+            }
+            """);
+
+        Assert.Equal(2, diagnostics.Count);
+        Assert.All(diagnostics, d =>
+        {
+            Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, d.Id);
+            Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+            Assert.Contains("NamedArgument", d.GetMessage());
+        });
+    }
+
+    [Fact]
     public async Task DoubleAndLongTypesAndDoubleLiterals_ReportUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

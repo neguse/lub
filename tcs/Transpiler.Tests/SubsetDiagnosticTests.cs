@@ -203,7 +203,29 @@ public class SubsetDiagnosticTests
     }
 
     [Fact]
-    public void IncrementAsExpressionAndNamedArgument_ReportWarnings()
+    public void IncrementAsExpression_ReportsWarning()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class T
+            {
+                public static void F(int x) { }
+
+                public static int Test()
+                {
+                    int i = 0;
+                    F(i++);
+                    return i;
+                }
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, "IncrementAsExpression");
+    }
+
+    // 名前付き引数は位置渡しに落ちて別の意味で動くため、warning ではなく
+    // build を止める error (Lua を返さない)。他の警告は残る (#19)
+    [Fact]
+    public void NamedArgument_IsBuildBlockingError()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class T
@@ -220,8 +242,18 @@ public class SubsetDiagnosticTests
             }
             """]);
 
-        AssertUnsupportedWarning(result, "IncrementAsExpression");
-        AssertUnsupportedWarning(result, "NamedArgument");
+        Assert.False(result.Success);
+        Assert.Equal("", result.Lua);
+        // 名前付き引数 1 つにつき 1 件 (y: / x:)
+        Assert.Equal(2, result.Errors.Count);
+        Assert.All(result.Errors, e => Assert.Contains(
+            "error TCS1001: unsupported syntax: NamedArgument", e));
+        Assert.StartsWith("(9,11)", result.Errors[0]);
+        Assert.StartsWith("(9,17)", result.Errors[1]);
+        Assert.Contains(result.Warnings,
+            w => w.Contains("warning TCS1001") && w.Contains("IncrementAsExpression"));
+        Assert.True(TinyCsComplianceFacts.IsBuildBlocking("NamedArgument"));
+        Assert.False(TinyCsComplianceFacts.IsBuildBlocking("IncrementAsExpression"));
     }
 
     [Fact]
