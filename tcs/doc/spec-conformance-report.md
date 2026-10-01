@@ -6,7 +6,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | Markdown file | InRun | InCompile | Diag | CsErr | Unextracted | Bug | Total |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | arrays.md | 3 | 0 | 4 | 2 | 2 | 0 | 11 |
-| attributes.md | 2 | 10 | 22 | 5 | 1 | 0 | 40 |
+| attributes.md | 2 | 9 | 23 | 5 | 1 | 0 | 40 |
 | basic-concepts.md | 1 | 4 | 17 | 10 | 0 | 0 | 32 |
 | classes.md | 3 | 40 | 75 | 28 | 1 | 0 | 147 |
 | conversions.md | 2 | 1 | 12 | 7 | 0 | 0 | 22 |
@@ -23,7 +23,7 @@ Source corpus: dotnet/csharpstandard (CC-BY-4.0), read at test time.
 | types.md | 3 | 4 | 13 | 2 | 4 | 0 | 26 |
 | unsafe-code.md | 0 | 0 | 1 | 1 | 25 | 0 | 27 |
 | variables.md | 3 | 3 | 5 | 10 | 0 | 0 | 21 |
-| **Total** | 35 | 129 | 310 | 119 | 49 | 0 | 642 |
+| **Total** | 35 | 128 | 311 | 119 | 49 | 0 | 642 |
 
 ## Unextracted reasons
 

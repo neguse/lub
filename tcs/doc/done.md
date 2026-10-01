@@ -1623,3 +1623,10 @@
 - 判断: `Random` は alias にあるが予約しない。#28 で facade 呼び出しが `TinySystem.Random.*` に固定され、生成コードが素の `Random` を参照しないため、user の `class Random` は共存できる (既存テスト RandomFacade_DoesNotResolveToGameRandom がその契約)。local / parameter 名は C# 側で同スコープの BCL 参照が compile error になるため対象外
 - 残課題: 本対応は BCL 参照を user 名に左右されない形 (`TinySystem.Math.Abs` や `__tcs_` 別名) に変えて予約を外すこと (#21 の期待挙動)。別 namespace の同名型どうしの上書き (#18) は別件
 
+### caller info 属性を TCS1001 で診断する (#17) ✓ (2026-10-01)
+- `[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]` は C# では呼び出し側でコンパイラが引数を埋めるが、tcs は再現せず既定値がそのまま渡り、診断も無かった。parameter に付いた属性を構文名で判定して TCS1001 `CallerInfoAttribute(name)` (warning、build は止めない) にする。`Attribute` suffix の有無と `System.Runtime.CompilerServices.` / `global::` 修飾を許容し、別 namespace の同名属性は対象外。analyzer は `SyntaxKind.Attribute` を登録して同じ判定を共有する
+- spec conformance: `attributes.md:CallerArgumentAttr1` (M の宣言) が InCompile → Diag に移り、baseline と report の集計を更新 (CallerArgumentAttr2 は従来どおり Diag、理由に属性の診断が加わる)
+- 検証: `dotnet test` 全 814+54 green (環境要因の root 権限テストを除く)。transpiler は 7 形 (4 属性 / suffix / 修飾 / global::) の Theory、analyzer は 4 形、他の属性が誤検出されない control。spec sweep は更新した baseline で green
+- 判断: semantic model で `System.Runtime.CompilerServices` の属性型に束縛することも可能だが、analyzer が構文のみの経路 (`TryGetUnsupportedSyntax(SyntaxNode)`) で診断を共有するため構文判定にした。本対応 (呼び出し側で引数式テキスト / member 名 / 行番号 / path を埋める) は別タスク
+- 残課題: caller info の本対応 (#17 の期待挙動)。`ConditionalAttribute` 等 semantic 判定の診断は analyzer 側に無いまま (従来どおり)
+

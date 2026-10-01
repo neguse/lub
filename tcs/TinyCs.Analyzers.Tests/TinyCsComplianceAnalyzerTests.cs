@@ -151,6 +151,36 @@ public class TinyCsComplianceAnalyzerTests
         Assert.Empty(clean);
     }
 
+    [Theory]
+    [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
+    [InlineData("CallerMemberName", "CallerMemberName")]
+    [InlineData("CallerLineNumber", "CallerLineNumber")]
+    [InlineData("System.Runtime.CompilerServices.CallerFilePathAttribute",
+        "CallerFilePath")]
+    public async Task CallerInfoAttribute_ReportsUnsupportedSyntax(
+        string attribute, string kind)
+    {
+        // caller info は呼び出し側で埋まる値を tcs が再現しない (#17)
+        var type = kind == "CallerLineNumber" ? "int" : "string";
+        var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
+        var diagnostics = await AnalyzeAsync($$"""
+            using System.Runtime.CompilerServices;
+
+            public static class CallerInfoRepro
+            {
+                public static {{type}} Where(int value,
+                    [{{attribute}}] {{type}} text = {{dflt}}) => text;
+
+                public static {{type}} Test() => Where(1 + 2);
+            }
+            """);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains($"CallerInfoAttribute({kind})", diagnostic.GetMessage());
+    }
+
     [Fact]
     public async Task DoubleAndLongTypesAndDoubleLiterals_ReportUnsupportedSyntax()
     {

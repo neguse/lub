@@ -478,6 +478,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `#nullable` (C# 8) | **-** | |
 | `#pragma` | **-** | |
 | `[Attribute]` | **-** | Roslyn はパース、トランスパイラ無視 |
+| caller info 属性 (`[CallerArgumentExpression]` / `[CallerMemberName]` / `[CallerLineNumber]` / `[CallerFilePath]`, C# 5 / 10) | **-** | TCS1001 `CallerInfoAttribute(name)` (warning)。C# では呼び出し側でコンパイラが引数を埋めるが tcs は再現せず既定値が渡るため、parameter の属性を構文名で診断する (`Attribute` suffix と `System.Runtime.CompilerServices.` 修飾を許容) |
 | `///` XML ドキュメント | **N/A** | |
 
 ---
@@ -490,7 +491,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 2.0 | 2005 | generics, nullable, iterators, `??`, partial, anonymous methods | **P** |
 | 3.0 | 2007 | LINQ, ラムダ, `var`, 拡張メソッド, 初期化子, 匿名型 | **P** |
 | 4.0 | 2010 | `dynamic`, named/optional 引数, 共変性/反変性 | **-** |
-| 5.0 | 2012 | `async`/`await`, caller info | **N/A** |
+| 5.0 | 2012 | `async`/`await`, caller info | **N/A** | caller info 属性は TCS1001 `CallerInfoAttribute` (§9) |
 | 6.0 | 2015 | `?.`, `$""`, `nameof`, 式本体, `using static` | **P** |
 | 7.0 | 2017 | タプル, パターンマッチング, ローカル関数, `out var`, throw 式 | **P** |
 | 7.1 | 2017 | `default` リテラル, async Main | **-** |

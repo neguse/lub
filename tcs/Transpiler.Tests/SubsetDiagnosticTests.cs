@@ -644,4 +644,63 @@ public class SubsetDiagnosticTests
             """, "T.Test()");
         Assert.Equal("2:4", result);
     }
+
+    // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
+    // tcs は再現せず既定値が渡る。少なくとも警告する (#17)。build は止めない
+    [Theory]
+    [InlineData("CallerArgumentExpression(\"value\")", "CallerArgumentExpression")]
+    [InlineData("CallerMemberName", "CallerMemberName")]
+    [InlineData("CallerLineNumber", "CallerLineNumber")]
+    [InlineData("CallerFilePath", "CallerFilePath")]
+    [InlineData("CallerMemberNameAttribute", "CallerMemberName")]
+    [InlineData("System.Runtime.CompilerServices.CallerFilePath", "CallerFilePath")]
+    [InlineData("global::System.Runtime.CompilerServices.CallerLineNumberAttribute",
+        "CallerLineNumber")]
+    public void CallerInfoAttribute_ReportsWarning(string attribute, string kind)
+    {
+        var type = kind == "CallerLineNumber" ? "int" : "string";
+        var dflt = kind == "CallerLineNumber" ? "0" : "\"\"";
+        var result = Transpiler.TranspileWithDiagnostics([$$"""
+            using System.Runtime.CompilerServices;
+
+            public static class CallerInfoRepro
+            {
+                public static {{type}} Where(int value,
+                    [{{attribute}}] {{type}} text = {{dflt}})
+                {
+                    return text;
+                }
+
+                public static {{type}} Test() => Where(1 + 2);
+            }
+            """]);
+
+        AssertUnsupportedWarning(result, $"CallerInfoAttribute({kind})");
+        Assert.NotEmpty(result.Lua);
+        Assert.False(TinyCsComplianceFacts.IsBuildBlocking(
+            $"CallerInfoAttribute({kind})"));
+    }
+
+    [Fact]
+    public void OtherAttributes_AreNotFlaggedAsCallerInfo()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public static class Plain
+            {
+                [System.Obsolete("old")]
+                public static int Where(int value) => value;
+
+                [Game.CallerMemberName]
+                public static int Test() => Where(1);
+            }
+            namespace Game
+            {
+                public class CallerMemberNameAttribute : System.Attribute { }
+            }
+            """]);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("CallerInfoAttribute"));
+    }
 }

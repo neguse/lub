@@ -84,7 +84,7 @@
     "category": "Diag"
   },
   "attributes.md:CallerArgumentAttr1": {
-    "category": "InCompile"
+    "category": "Diag"
   },
   "attributes.md:CallerArgumentAttr2": {
     "category": "Diag"

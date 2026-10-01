@@ -47,6 +47,7 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.PredefinedType,
         SyntaxKind.NumericLiteralExpression,
         SyntaxKind.Argument,
+        SyntaxKind.Attribute,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -181,6 +182,17 @@ public static partial class TinyCsComplianceFacts
                         or SyntaxKind.PreDecrementExpression
                     && !IsStatementLikeContext(prefix)
                     => "IncrementAsExpression",
+            // caller info 属性は C# では呼び出し側でコンパイラが引数を埋めるが、
+            // tcs は再現せず既定値がそのまま渡る (#17)。parameter の属性を
+            // 構文名で判定する (Attribute suffix の有無、
+            // System.Runtime.CompilerServices. の修飾を許容)
+            AttributeSyntax callerInfo
+                when callerInfo.Parent is AttributeListSyntax
+                    {
+                        Parent: ParameterSyntax
+                    }
+                    && CallerInfoAttributeName(callerInfo) is { Length: > 0 } caller
+                    => $"CallerInfoAttribute({caller})",
             // named argument は引数の並べ替え + optional 補完が必要で、
             // 現行 emit は位置渡しに黙って落ちる。
             ArgumentSyntax named
@@ -334,6 +346,35 @@ public static partial class TinyCsComplianceFacts
         };
 
         return syntaxName.Length > 0;
+    }
+
+    private static readonly string[] CallerInfoAttributeNames =
+    [
+        "CallerArgumentExpression", "CallerMemberName", "CallerLineNumber",
+        "CallerFilePath",
+    ];
+
+    // 属性名が caller info のものならその名前 (Attribute suffix なし)、
+    // 違えば ""。修飾は無し / System.Runtime.CompilerServices /
+    // global::System.Runtime.CompilerServices だけを認める
+    private static string CallerInfoAttributeName(AttributeSyntax attribute)
+    {
+        var (qualifier, simple) = attribute.Name switch
+        {
+            QualifiedNameSyntax q =>
+                (q.Left.ToString(), q.Right.Identifier.ValueText),
+            SimpleNameSyntax s => ("", s.Identifier.ValueText),
+            _ => ("", ""),
+        };
+        qualifier = qualifier.Replace(" ", "");
+        // netstandard2.0 (analyzer) には Range/Index が無いので Substring
+        if (qualifier.StartsWith("global::", StringComparison.Ordinal))
+            qualifier = qualifier.Substring("global::".Length);
+        if (qualifier.Length > 0 && qualifier != "System.Runtime.CompilerServices")
+            return "";
+        if (simple.EndsWith("Attribute", StringComparison.Ordinal))
+            simple = simple.Substring(0, simple.Length - "Attribute".Length);
+        return Array.IndexOf(CallerInfoAttributeNames, simple) >= 0 ? simple : "";
     }
 
     private static bool IsStatementLikeContext(SyntaxNode node) =>
