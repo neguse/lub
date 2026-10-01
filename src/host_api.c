@@ -12,6 +12,9 @@
 #include <string.h>
 
 LubContext *lub_host_create(const LubHostOpts *opts) {
+  // .NET の host (dotnet/Lub) はここが SDL の入口。player (src/main.c) と同じく
+  // assertion を dialog にせず abort させる。環境変数 SDL_ASSERT が優先。
+  SDL_SetHint(SDL_HINT_ASSERT, "abort");
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("SDL_Init failed: %s", SDL_GetError());
     return NULL;
