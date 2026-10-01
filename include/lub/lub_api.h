@@ -2524,6 +2524,10 @@ LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
 
+// テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルか
+// ら置き換える。失敗はエラー。web では仮想ファイルへの保存。
+LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
+
 // ファイルを byte 列 (frame 有効の view) として読む。font や音の data のよう
 // な binary 用。
 LUB_API LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path,

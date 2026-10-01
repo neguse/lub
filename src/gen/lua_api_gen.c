@@ -4336,6 +4336,18 @@ static int l_io_load_text(lua_State *L) {
   return 4;
 }
 
+static int l_io_save_text(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  LubStr path = lgen_str_arg(L, 1);
+  LubStr text = lgen_str_arg(L, 2);
+  LubStatus st = lub_io_save_text(lgen_ctx(), path, text);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  return 0;
+}
+
 static int l_io_load_bytes(lua_State *L) {
   (void)L;
   LgenMark mark = lgen_mark();
@@ -8807,6 +8819,8 @@ void lub_api_gen_register(lua_State *L) {
   lua_newtable(L); // lub.io
   lua_pushcfunction(L, l_io_load_text);
   lua_setfield(L, -2, "load_text");
+  lua_pushcfunction(L, l_io_save_text);
+  lua_setfield(L, -2, "save_text");
   lua_pushcfunction(L, l_io_load_bytes);
   lua_setfield(L, -2, "load_bytes");
   lua_pushcfunction(L, l_io_load_floats);
