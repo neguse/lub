@@ -1,5 +1,6 @@
 // core (config / quit)、input、sys、profiler の C API。
 #include "api_internal.h"
+#include "host_api.h"
 #include "profile.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
@@ -15,8 +16,8 @@ LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
   if (app->phase != APP_PHASE_PRE_BACKEND)
     return lub_api_fail(app, "config: must be called inside on_init");
 
-  // backend は d3d12 / vulkan / sdlgpu。未指定なら app_init が決めた既定
-  // (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
+  // backend は d3d12 / vulkan / metal / sdlgpu。未指定なら app_init
+  // が決めた既定 (env LUB_BACKEND、無ければプラットフォーム既定) を維持する。
   char name[16];
 #ifdef __EMSCRIPTEN__
   // WASM: backend は webgpu 一択なので指定を無視する
@@ -28,11 +29,11 @@ LubStatus lub_config(LubContext *ctx, const LubConfigOpts *d) {
   if (d->backend.len > 0) {
     if (!lub_str_copy(d->backend, name, sizeof(name)) ||
         (strcmp(name, "d3d12") != 0 && strcmp(name, "vulkan") != 0 &&
-         strcmp(name, "sdlgpu") != 0)) {
-      return lub_api_fail(
-          app,
-          "config: backend must be 'd3d12', 'vulkan' or 'sdlgpu', got '%.*s'",
-          d->backend.len, d->backend.ptr ? d->backend.ptr : "");
+         strcmp(name, "metal") != 0 && strcmp(name, "sdlgpu") != 0)) {
+      return lub_api_fail(app,
+                          "config: backend must be 'd3d12', 'vulkan', 'metal' "
+                          "or 'sdlgpu', got '%.*s'",
+                          d->backend.len, d->backend.ptr ? d->backend.ptr : "");
     }
     strncpy(app->backend_name, name, sizeof(app->backend_name) - 1);
     app->backend_name[sizeof(app->backend_name) - 1] = '\0';
@@ -162,13 +163,16 @@ bool lub_input_mouse_released(LubContext *ctx, const int32_t *button) {
 }
 
 void lub_input_mouse_pos(LubContext *ctx, float *x, float *y) {
-  (void)ctx;
+  App *app = lub_api_app(ctx);
+  float density = lub_host_pixel_density(app);
+  int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
+  lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
   float px = 0.0f, py = 0.0f;
   SDL_GetMouseState(&px, &py);
   if (x)
-    *x = px;
+    *x = px * density - (float)main_x;
   if (y)
-    *y = py;
+    *y = py * density - (float)main_y;
 }
 
 // 今 frame の相対移動の合計 (window px)。frame の中では何度読んでも同じ。

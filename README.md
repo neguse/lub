@@ -12,8 +12,10 @@ hot reload する。同じ C# を実 .NET で動かす経路もある。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
 native がプラットフォーム直接実装 (`native`、default — Windows: D3D12、
-Linux: Vulkan) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
-対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
+Linux: Vulkan、macOS / iOS: Metal) と SDL3 GPU API (`sdlgpu`)、web が
+webgpu.h 直接実装。
+対応プラットフォームは Linux x86_64、Windows x86_64、macOS arm64、
+iOS arm64、WebAssembly/WebGPU。
 
 ## ドキュメント
 
@@ -51,6 +53,14 @@ Linux:
 ```sh
 cmake -S . -B build
 cmake --build build -j
+```
+
+macOS (Xcode か Command Line Tools。iOS の app は
+[docs/metal-backend.md](docs/metal-backend.md)):
+
+```sh
+cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-mac
 ```
 
 Windows (PowerShell, MSVC + Ninja):
@@ -167,13 +177,15 @@ d3d12 をチェックする。実 GPU でのドリフトは想定範囲外
 
 ## Backend 切替
 
-lub は 4 つの GPU backend を持ち、同一 API で動く:
+lub は 5 つの GPU backend を持ち、同一 API で動く:
 
 - `d3d12` — Windows の既定。D3D12 直接実装
   (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
 - `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
   Vulkan SDK が見つかる build では選べる
-- `sdlgpu` — SDL3 GPU API 経由の実装 (native 全般の代替 backend)
+- `metal` — macOS / iOS の既定。Metal 直接実装
+  (設計は [docs/metal-backend.md](docs/metal-backend.md))
+- `sdlgpu` — SDL3 GPU API 経由の実装 (Windows / Linux の代替 backend)
 - `webgpu` — web build の実体 (webgpu.h 直接)。web では backend 指定は無視される
 
 設計記録は [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、

@@ -1766,8 +1766,9 @@ public class ConfigOpts
 {
     /// <summary>
     /// GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。
-    /// Windows は Vulkan SDK がある build のみ) / "sdlgpu"。web (WASM) は webgpu のみで、
-    /// 指定は無視される。未指定 (null) なら既定のまま。
+    /// Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) /
+    /// "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら
+    /// 既定のまま。
     /// </summary>
     public string? Backend;
     /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>

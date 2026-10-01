@@ -12,11 +12,20 @@
 // plus a reflection JSON blob — see the EM_ASYNC_JS section below.
 #include "shader.h"
 
-#ifndef __EMSCRIPTEN__
+// Native builds link Slang unless LUB_NO_SLANG is set (iOS: no Slang there).
+// Such a player can only use shaders from the shader cache — see the public
+// entry points at the end of this file.
+#if !defined(__EMSCRIPTEN__) && !defined(LUB_NO_SLANG)
+#define LUB_HAS_SLANG 1
 #include <slang-com-ptr.h>
 #include <slang.h>
 #endif
+#ifndef __EMSCRIPTEN__
+#include "shader_cache.h"
+#endif
 
+#include <regex>
+#include <set>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +44,8 @@
 // Wasm (WGSL via slang-wasm) uses the separate form: Slang auto-lowers it
 // for WGSL and the declaration shape stays consistent across native + wasm
 // reflection output.
-static const char *prelude_for_target(ShaderTargetBackend target) {
+[[maybe_unused]] static const char *
+prelude_for_target(ShaderTargetBackend target) {
   // LUB_SAMPLE_LOD is an explicit-LOD (level 0) sample. Textures here are never
   // mipmapped so it's equivalent to LUB_SAMPLE, but unlike implicit-LOD Sample
   // it is legal in non-uniform control flow — WGSL (WebGPU) rejects an
@@ -67,7 +77,7 @@ static const char *prelude_for_target(ShaderTargetBackend target) {
          "#define LUB_INSTANCE_ID SV_InstanceID\n";
 }
 
-#ifndef __EMSCRIPTEN__
+#ifdef LUB_HAS_SLANG
 using Slang::ComPtr;
 using slang::EntryPointReflection;
 using slang::IBlob;
@@ -112,6 +122,11 @@ static void configure_target(TargetDesc *target, ShaderTargetBackend backend) {
   if (backend == SHADER_TARGET_D3D12) {
     target->format = SLANG_DXIL;
     target->profile = g_slang.dxil_profile;
+    return;
+  }
+  if (backend == SHADER_TARGET_METAL) {
+    target->format = SLANG_METAL;
+    target->lineDirectiveMode = SLANG_LINE_DIRECTIVE_MODE_NONE;
     return;
   }
   configure_spirv_target(target);
@@ -422,33 +437,111 @@ static bool check_tight_layout(TypeLayoutReflection *tl, const char *name,
   }
 }
 
+// Metal variant of the same rule. Slang lays Metal structs out with a 16-byte
+// float3, so its reflection can't be compared against tight packing. The MSL
+// is rewritten to packed_float3 instead (msl_pack_buffer_structs), which
+// matches tight packing exactly when the struct is tight under std430, so the
+// check computes std430 alignment from the types alone. Returns the std430
+// alignment of `t` through out_align.
+static bool check_tight_std430(TypeReflection *t, const char *name,
+                               size_t *out_align, char *err, size_t errsz) {
+  *out_align = 4;
+  if (!t)
+    return true;
+  const char *nm = name ? name : "?";
+  switch (t->getKind()) {
+  case TypeReflection::Kind::Vector: {
+    size_t n = t->getElementCount();
+    *out_align = n <= 1 ? 4 : n == 2 ? 8 : 16;
+    return true;
+  }
+  case TypeReflection::Kind::Matrix: {
+    size_t cols = t->getColumnCount();
+    size_t align = cols <= 1 ? 4 : cols == 2 ? 8 : 16;
+    *out_align = align;
+    if ((4 * cols) % align != 0) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: %s is %zu bytes on this target but %zu when "
+                 "packed tightly (use 32-bit scalars, float4 matrix rows)",
+                 nm, (size_t)t->getRowCount() * align, tight_size_of(t));
+      return false;
+    }
+    return true;
+  }
+  case TypeReflection::Kind::Array: {
+    TypeReflection *el = t->getElementType();
+    if (!check_tight_std430(el, nm, out_align, err, errsz))
+      return false;
+    size_t tight = tight_size_of(el);
+    size_t stride = (tight + *out_align - 1) / *out_align * *out_align;
+    if (stride != tight) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: array %s has element stride %zu on this "
+                 "target but %zu when packed tightly; use float4 (or pad) "
+                 "elements",
+                 nm, stride, tight);
+      return false;
+    }
+    return true;
+  }
+  case TypeReflection::Kind::Struct: {
+    size_t off = 0, max_align = 4;
+    for (unsigned i = 0; i < t->getFieldCount(); ++i) {
+      slang::VariableReflection *f = t->getFieldByIndex(i);
+      size_t align = 4;
+      if (!check_tight_std430(f->getType(), f->getName(), &align, err, errsz))
+        return false;
+      if (off % align != 0) {
+        if (err && errsz)
+          snprintf(err, errsz,
+                   "buffer layout: %s.%s sits at byte %zu on this target but "
+                   "%zu when packed tightly; pad the member before it (a "
+                   "float3 is followed by a float) so every target agrees",
+                   nm, f->getName() ? f->getName() : "?",
+                   (off + align - 1) / align * align, off);
+        return false;
+      }
+      off += tight_size_of(f->getType());
+      if (align > max_align)
+        max_align = align;
+    }
+    *out_align = max_align;
+    if (off % max_align != 0) {
+      if (err && errsz)
+        snprintf(err, errsz,
+                 "buffer layout: struct %s is %zu bytes on this target but %zu "
+                 "when packed tightly; pad it to a multiple of 16 (8 when "
+                 "float2 is the widest member)",
+                 nm, (off + max_align - 1) / max_align * max_align, off);
+      return false;
+    }
+    return true;
+  }
+  default:
+    return true;
+  }
+}
+
 // Record one global (module-scope) shader parameter into the reflection,
 // attributed to `stage`. Sampler states pair positionally with the preceding
 // textures of the same stage, so callers must feed a stage's parameters in
 // declaration order.
 bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
-                       SglShaderStage stage, char *err, size_t errsz) {
+                       SglShaderStage stage, ShaderTargetBackend target,
+                       char *err, size_t errsz) {
   {
     SlangParameterCategory cat = (SlangParameterCategory)p->getCategory();
     TypeReflection *t =
         p->getTypeLayout() ? p->getTypeLayout()->getType() : nullptr;
 
-    // Constant buffers / uniform blocks
-    if (cat == SLANG_PARAMETER_CATEGORY_CONSTANT_BUFFER ||
-        (t && t->getKind() == TypeReflection::Kind::ConstantBuffer)) {
-      if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS &&
-          !refl_ub_exists(out, stage, (int)p->getBindingIndex(),
-                          p->getName())) {
-        fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
-        out->ub_count++;
-      }
-      return true;
-    }
-
     // Structured / RW structured buffers. Slang reports StructuredBuffer<T>
     // under SHADER_RESOURCE (resource shape == STRUCTURED_BUFFER) and
     // RWStructuredBuffer<T> under UNORDERED_ACCESS. Both feed the same
     // storage-buffer plumbing on our backends, distinguished by `readonly`.
+    // Checked before constant buffers: Metal has one [[buffer]] index space,
+    // so there a structured buffer's category is CONSTANT_BUFFER too.
     bool is_structured_buf = false;
     bool readonly = true;
     if (t && t->getKind() == TypeReflection::Kind::Resource) {
@@ -474,12 +567,32 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
         sb->elem_stride = 0;
         if (TypeLayoutReflection *tl = p->getTypeLayout()) {
           if (TypeLayoutReflection *el = tl->getElementTypeLayout()) {
-            sb->elem_stride =
-                (int)el->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
-            if (!check_tight_layout(el, p->getName(), err, errsz))
-              return false;
+            if (target == SHADER_TARGET_METAL) {
+              size_t align = 4;
+              sb->elem_stride = (int)tight_size_of(el->getType());
+              if (!check_tight_std430(el->getType(), p->getName(), &align, err,
+                                      errsz))
+                return false;
+            } else {
+              sb->elem_stride =
+                  (int)el->getSize(SLANG_PARAMETER_CATEGORY_UNIFORM);
+              if (!check_tight_layout(el, p->getName(), err, errsz))
+                return false;
+            }
           }
         }
+      }
+      return true;
+    }
+
+    // Constant buffers / uniform blocks
+    if (cat == SLANG_PARAMETER_CATEGORY_CONSTANT_BUFFER ||
+        (t && t->getKind() == TypeReflection::Kind::ConstantBuffer)) {
+      if (out->ub_count < SGL_MAX_UNIFORM_BLOCKS &&
+          !refl_ub_exists(out, stage, (int)p->getBindingIndex(),
+                          p->getName())) {
+        fill_uniform_block(p, stage, &out->ubs[out->ub_count]);
+        out->ub_count++;
       }
       return true;
     }
@@ -560,7 +673,8 @@ bool fill_global_param(VariableLayoutReflection *p, ShaderReflection *out,
 }
 
 bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
-                            SglShaderStage stage, char *err, size_t errsz) {
+                            SglShaderStage stage, ShaderTargetBackend target,
+                            char *err, size_t errsz) {
   if (!layout)
     return false;
   unsigned gpc = layout->getParameterCount();
@@ -568,7 +682,7 @@ bool fill_global_reflection(ProgramLayout *layout, ShaderReflection *out,
     VariableLayoutReflection *p = layout->getParameterByIndex(i);
     if (!p)
       continue;
-    if (!fill_global_param(p, out, stage, err, errsz))
+    if (!fill_global_param(p, out, stage, target, err, errsz))
       return false;
   }
   return true;
@@ -1042,6 +1156,132 @@ void patch_spirv_storage_image_formats(void *spv, size_t size_bytes,
   }
 }
 
+// Metal: make StructuredBuffer elements pack tightly. Slang emits `float3`
+// members, which MSL aligns and sizes to 16 bytes; every other target reads
+// the same flat float list with a 12-byte float3 (check_tight_std430 has
+// already required the struct to be tight). The packed vector types fix the
+// layout but don't work with matrix operators, so the shader keeps computing
+// on the struct Slang emitted and only the buffer memory changes type: every
+// struct reachable from a `device*` buffer parameter gets a `<name>_packed`
+// twin with packed 3-component vectors that converts to and from the
+// original, and the buffer pointers are retargeted to the twin.
+static void msl_pack_buffer_structs(std::string &msl) {
+  static const std::regex vec3(R"(\b(float|int|uint)3\b)");
+  static const std::regex vec3_ptr(
+      R"(\b(float|int|uint)3(\s+(?:const\s+)?device\s*\*))");
+  static const std::regex buf_ptr(R"(\b(\w+)\s+(?:const\s+)?device\s*\*)");
+  static const std::regex struct_def(R"(\bstruct\s+(\w+)\s*\{([^{}]*)\}\s*;)");
+  static const std::regex ident(R"(\b[A-Za-z_]\w*\b)");
+  static const std::regex member(R"(^\s*(.*\S)\s+([A-Za-z_]\w*)\s*$)");
+  static const std::regex array_type(R"(^array<.*,\s*int\((\d+)\)\s*>$)");
+
+  // StructuredBuffer<float3> and friends: the element itself is the vector.
+  msl = std::regex_replace(msl, vec3_ptr, "packed_$013$2");
+
+  struct Def {
+    std::string name, body;
+    size_t end;
+  };
+  std::vector<Def> defs;
+  for (std::sregex_iterator it(msl.begin(), msl.end(), struct_def), end;
+       it != end; ++it)
+    defs.push_back({(*it)[1].str(), (*it)[2].str(),
+                    (size_t)(it->position(0) + it->length(0))});
+
+  std::set<std::string> packed;
+  std::vector<std::string> work;
+  for (std::sregex_iterator it(msl.begin(), msl.end(), buf_ptr), end; it != end;
+       ++it)
+    work.push_back((*it)[1].str());
+  while (!work.empty()) {
+    std::string name = work.back();
+    work.pop_back();
+    for (const Def &d : defs) {
+      if (d.name != name || !packed.insert(name).second)
+        continue;
+      for (std::sregex_iterator it(d.body.begin(), d.body.end(), ident), end;
+           it != end; ++it)
+        work.push_back(it->str());
+    }
+  }
+  if (packed.empty())
+    return;
+
+  auto packed_type = [&](const std::string &type) {
+    std::string vectors = std::regex_replace(type, vec3, "packed_$013");
+    std::string out;
+    size_t pos = 0;
+    for (std::sregex_iterator it(vectors.begin(), vectors.end(), ident), end;
+         it != end; ++it) {
+      out.append(vectors, pos, (size_t)it->position(0) - pos);
+      out += it->str();
+      if (packed.count(it->str()))
+        out += "_packed";
+      pos = (size_t)(it->position(0) + it->length(0));
+    }
+    out.append(vectors, pos, std::string::npos);
+    return out;
+  };
+
+  // Back to front so earlier offsets stay valid. A twin sits right after its
+  // original, which is after any struct it nests.
+  for (size_t i = defs.size(); i-- > 0;) {
+    const Def &d = defs[i];
+    if (!packed.count(d.name))
+      continue;
+    std::string fields, load, store;
+    size_t pos = 0;
+    while (pos < d.body.size()) {
+      size_t semi = d.body.find(';', pos);
+      if (semi == std::string::npos)
+        break;
+      std::string decl = d.body.substr(pos, semi - pos);
+      pos = semi + 1;
+      std::smatch m;
+      if (!std::regex_match(decl, m, member))
+        continue;
+      std::string type = m[1].str(), name = m[2].str();
+      std::string twin = packed_type(type);
+      fields += "    " + twin + " " + name + ";\n";
+      std::smatch am;
+      if (twin != type && std::regex_match(type, am, array_type)) {
+        std::string loop =
+            "        for (int i = 0; i < " + am[1].str() + "; ++i) ";
+        load += loop + "r." + name + "[i] = " + name + "[i];\n";
+        store += loop + name + "[i] = v." + name + "[i];\n";
+      } else {
+        load += "        r." + name + " = " + name + ";\n";
+        store += "        " + name + " = v." + name + ";\n";
+      }
+    }
+    msl.insert(d.end,
+               "\nstruct " + d.name + "_packed\n{\n" + fields +
+                   "    operator " + d.name + "() const device\n    {\n" +
+                   "        " + d.name + " r;\n" + load +
+                   "        return r;\n    }\n    void operator=(" + d.name +
+                   " v) device\n    {\n" + store + "    }\n};\n");
+  }
+  for (const std::string &name : packed)
+    msl = std::regex_replace(
+        msl, std::regex("\\b" + name + R"((\s+(?:const\s+)?device\s*\*))"),
+        name + "_packed$1");
+}
+
+// Metal: turn Slang's MSL blob into the NUL-terminated source the backend
+// hands to newLibraryWithSource.
+static bool finish_msl_blob(ShaderBlob *blob) {
+  std::string msl((const char *)blob->spirv, blob->bytes);
+  msl_pack_buffer_structs(msl);
+  char *text = (char *)malloc(msl.size() + 1);
+  if (!text)
+    return false;
+  memcpy(text, msl.c_str(), msl.size() + 1);
+  free(blob->spirv);
+  blob->spirv = (uint32_t *)text;
+  blob->bytes = msl.size();
+  return true;
+}
+
 static void remap_stage_for_sdlgpu(ShaderReflection *stage) {
   for (int i = 0; i < stage->ub_count; ++i) {
     stage->ubs[i].slot = i;
@@ -1076,6 +1316,9 @@ static void merge_stage_reflection(ShaderReflection *dst,
   // D3D12: no remap. The slots are Slang's HLSL register indices and the
   // DXIL blob can't be re-numbered after the fact; the backend builds its
   // root signature from these values instead.
+  // Metal: no remap either. The slots are the per-stage [[buffer]] /
+  // [[texture]] / [[sampler]] indices in the MSL, and the backend binds to
+  // them directly.
 
   for (int i = 0; i < stage.ub_count && dst->ub_count < SGL_MAX_UNIFORM_BLOCKS;
        ++i) {
@@ -1227,7 +1470,8 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
         continue;
       if (!has(names, p->getName()))
         continue;
-      if (!fill_global_param(p, out_refl, stage, err_buf, err_buf_size))
+      if (!fill_global_param(p, out_refl, stage, SHADER_TARGET_D3D12, err_buf,
+                             err_buf_size))
         return false;
     }
   }
@@ -1251,21 +1495,10 @@ bool compile_d3d12_graphics(const char *vs_src, const char *fs_src,
 
 } // anonymous namespace
 
-extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
-                               ShaderTargetBackend target, ShaderBlob *out_vs,
-                               ShaderBlob *out_fs, ShaderReflection *out_refl,
-                               char *err_buf, size_t err_buf_size) {
-  if (out_vs) {
-    out_vs->spirv = nullptr;
-    out_vs->bytes = 0;
-  }
-  if (out_fs) {
-    out_fs->spirv = nullptr;
-    out_fs->bytes = 0;
-  }
-  if (out_refl)
-    memset(out_refl, 0, sizeof(*out_refl));
-
+static bool compile_graphics(const char *vs_src, const char *fs_src,
+                             ShaderTargetBackend target, ShaderBlob *out_vs,
+                             ShaderBlob *out_fs, ShaderReflection *out_refl,
+                             char *err_buf, size_t err_buf_size) {
   if (!ensure_global_session()) {
     if (err_buf && err_buf_size)
       snprintf(err_buf, err_buf_size, "createGlobalSession failed");
@@ -1348,8 +1581,8 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
       return false;
     }
 
-    if (!fill_global_reflection(programLayout, stage_refl, sgl_stage, err_buf,
-                                err_buf_size))
+    if (!fill_global_reflection(programLayout, stage_refl, sgl_stage, target,
+                                err_buf, err_buf_size))
       return false;
 
     size_t size = code->getBufferSize();
@@ -1384,7 +1617,7 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
   merge_stage_reflection(out_refl, &vs_refl, target);
   merge_stage_reflection(out_refl, &fs_refl, target);
 
-  if (target != SHADER_TARGET_D3D12) {
+  if (target == SHADER_TARGET_SDLGPU) {
     patch_spirv_bindings_from_reflection(out_vs->spirv, out_vs->bytes,
                                          SpvStage::Vertex, out_refl);
     patch_spirv_bindings_from_reflection(out_fs->spirv, out_fs->bytes,
@@ -1394,21 +1627,20 @@ extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
     patch_spirv_storage_image_formats(out_fs->spirv, out_fs->bytes,
                                       SpvStage::Fragment, out_refl);
   }
+  if (target == SHADER_TARGET_METAL &&
+      (!finish_msl_blob(out_vs) || !finish_msl_blob(out_fs))) {
+    shader_blob_free(out_vs);
+    shader_blob_free(out_fs);
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM (msl blobs)");
+    return false;
+  }
   return true;
 }
 
-extern "C" bool shader_compile_compute(const char *cs_src,
-                                       ShaderTargetBackend target,
-                                       ShaderBlob *out_cs,
-                                       ShaderReflection *out_refl,
-                                       char *err_buf, size_t err_buf_size) {
-  if (out_cs) {
-    out_cs->spirv = nullptr;
-    out_cs->bytes = 0;
-  }
-  if (out_refl)
-    memset(out_refl, 0, sizeof(*out_refl));
-
+static bool compile_compute(const char *cs_src, ShaderTargetBackend target,
+                            ShaderBlob *out_cs, ShaderReflection *out_refl,
+                            char *err_buf, size_t err_buf_size) {
   if (!ensure_global_session()) {
     if (err_buf && err_buf_size)
       snprintf(err_buf, err_buf_size, "createGlobalSession failed");
@@ -1494,7 +1726,7 @@ extern "C" bool shader_compile_compute(const char *cs_src,
     break;
   }
   if (!fill_global_reflection(programLayout, out_refl, SGL_STAGE_COMPUTE,
-                              err_buf, err_buf_size))
+                              target, err_buf, err_buf_size))
     return false;
   if (target == SHADER_TARGET_SDLGPU)
     remap_stage_for_sdlgpu(out_refl);
@@ -1509,26 +1741,22 @@ extern "C" bool shader_compile_compute(const char *cs_src,
   memcpy(out_cs->spirv, csBlob->getBufferPointer(), cs_size);
   out_cs->bytes = cs_size;
 
-  if (target != SHADER_TARGET_D3D12) {
+  if (target == SHADER_TARGET_SDLGPU) {
     patch_spirv_bindings_from_reflection(out_cs->spirv, out_cs->bytes,
                                          SpvStage::Compute, out_refl);
     patch_spirv_storage_image_formats(out_cs->spirv, out_cs->bytes,
                                       SpvStage::Compute, out_refl);
   }
+  if (target == SHADER_TARGET_METAL && !finish_msl_blob(out_cs)) {
+    shader_blob_free(out_cs);
+    if (err_buf && err_buf_size)
+      snprintf(err_buf, err_buf_size, "OOM (msl blob)");
+    return false;
+  }
   return true;
 }
 
-extern "C" void shader_blob_free(ShaderBlob *b) {
-  if (!b)
-    return;
-  if (b->spirv) {
-    free(b->spirv);
-    b->spirv = nullptr;
-  }
-  b->bytes = 0;
-}
-
-#else // __EMSCRIPTEN__
+#elif defined(__EMSCRIPTEN__)
 
 // -------------------------------------------------------------------------
 // Emscripten Slang bridge.
@@ -2436,3 +2664,75 @@ extern "C" void shader_blob_free(ShaderBlob *b) {
 }
 
 #endif // __EMSCRIPTEN__
+
+#ifndef __EMSCRIPTEN__
+// Native entry points: shader cache first, then Slang when this player has
+// it. A cache directory named by LUB_SHADER_CACHE is written through.
+extern "C" void shader_blob_free(ShaderBlob *b) {
+  if (!b)
+    return;
+  if (b->spirv) {
+    free(b->spirv);
+    b->spirv = nullptr;
+  }
+  b->bytes = 0;
+}
+
+[[maybe_unused]] static bool cache_miss(const char *key, char *err_buf,
+                                        size_t err_buf_size) {
+  if (err_buf && err_buf_size)
+    snprintf(err_buf, err_buf_size,
+             "this player has no shader compiler and shader-cache/%s.lubshader "
+             "is missing; run the game once on a player with Slang and "
+             "LUB_SHADER_CACHE set to fill the cache",
+             key);
+  return false;
+}
+
+extern "C" bool shader_compile(const char *vs_src, const char *fs_src,
+                               ShaderTargetBackend target, ShaderBlob *out_vs,
+                               ShaderBlob *out_fs, ShaderReflection *out_refl,
+                               char *err_buf, size_t err_buf_size) {
+  *out_vs = {};
+  *out_fs = {};
+  memset(out_refl, 0, sizeof(*out_refl));
+  const char *sources[] = {vs_src, fs_src};
+  ShaderBlob *blobs[] = {out_vs, out_fs};
+  char key[SHADER_CACHE_KEY_CHARS];
+  shader_cache_key(target, sources, 2, key);
+  if (shader_cache_load(key, blobs, 2, out_refl))
+    return true;
+#ifdef LUB_HAS_SLANG
+  if (!compile_graphics(vs_src, fs_src, target, out_vs, out_fs, out_refl,
+                        err_buf, err_buf_size))
+    return false;
+  shader_cache_store(key, blobs, 2, out_refl);
+  return true;
+#else
+  return cache_miss(key, err_buf, err_buf_size);
+#endif
+}
+
+extern "C" bool shader_compile_compute(const char *cs_src,
+                                       ShaderTargetBackend target,
+                                       ShaderBlob *out_cs,
+                                       ShaderReflection *out_refl,
+                                       char *err_buf, size_t err_buf_size) {
+  *out_cs = {};
+  memset(out_refl, 0, sizeof(*out_refl));
+  const char *sources[] = {cs_src};
+  ShaderBlob *blobs[] = {out_cs};
+  char key[SHADER_CACHE_KEY_CHARS];
+  shader_cache_key(target, sources, 1, key);
+  if (shader_cache_load(key, blobs, 1, out_refl))
+    return true;
+#ifdef LUB_HAS_SLANG
+  if (!compile_compute(cs_src, target, out_cs, out_refl, err_buf, err_buf_size))
+    return false;
+  shader_cache_store(key, blobs, 1, out_refl);
+  return true;
+#else
+  return cache_miss(key, err_buf, err_buf_size);
+#endif
+}
+#endif // !__EMSCRIPTEN__

@@ -19,6 +19,8 @@ const RenderBackend *g_backend = NULL;
 #define LUB_DEFAULT_BACKEND "d3d12"
 #elif defined(__linux__)
 #define LUB_DEFAULT_BACKEND "vulkan"
+#elif defined(__APPLE__)
+#define LUB_DEFAULT_BACKEND "metal"
 #else
 #define LUB_DEFAULT_BACKEND "sdlgpu"
 #endif
@@ -26,11 +28,18 @@ const RenderBackend *g_backend = NULL;
 #ifndef __EMSCRIPTEN__
 // vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
 // d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
-// (GPU 無しの CI 等) でも window を作れるようにする。
+// (GPU 無しの CI 等) でも window を作れるようにする。metal は CAMetalLayer を
+// 持つ view を使い、Retina / iPhone の画面を実 pixel で描く。
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
-  if (strcmp(backend_name, "d3d12") != 0)
+  if (strcmp(backend_name, "metal") == 0)
+    flags |= SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+  else if (strcmp(backend_name, "d3d12") != 0)
     flags |= SDL_WINDOW_VULKAN;
+#ifdef SDL_PLATFORM_IOS
+  // iPhone の window は常に画面全体。fullscreen にすると status bar が消える。
+  flags |= SDL_WINDOW_FULLSCREEN;
+#endif
   return flags;
 }
 #endif
@@ -125,8 +134,16 @@ bool app_backend_init(App *app) {
     SDL_Log("backend 'vulkan' is not available in this build");
     return false;
 #endif
+  } else if (strcmp(app->backend_name, "metal") == 0) {
+#if defined(__APPLE__)
+    g_backend = &g_backend_metal;
+#else
+    SDL_Log("backend 'metal' is Apple-only");
+    return false;
+#endif
   } else {
-    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan' or 'sdlgpu')",
+    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan', 'metal' or "
+            "'sdlgpu')",
             app->backend_name);
     return false;
   }
