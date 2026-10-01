@@ -2050,6 +2050,16 @@ function FixedStep.new(hz, maxCatchUp)
 	self.pending_mouse_released = {}
 	self.tick_dt = 1.0 / (hz or 60.0)
 	self.max_catch_up = maxCatchUp or 8
+	local i = 0
+	while i < #FixedStep.scan_keys do
+		table.insert(self.pending_key_pressed, false)
+		table.insert(self.pending_key_released, false)
+		i = i + 1
+	end
+	for b = 0, 4 - 1 do
+		table.insert(self.pending_mouse_pressed, false)
+		table.insert(self.pending_mouse_released, false)
+	end
 	return self
 end
 
@@ -2139,9 +2149,11 @@ function FixedStep:clear_pending()
 		self.pending_key_released[i + 1] = false
 		i = i + 1
 	end
-	for b = 0, 4 - 1 do
+	local b = 0
+	while b < #self.pending_mouse_pressed do
 		self.pending_mouse_pressed[b + 1] = false
 		self.pending_mouse_released[b + 1] = false
+		b = b + 1
 	end
 end
 
@@ -2800,12 +2812,12 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 	local lm = lmvp.m
 	for _, d in ipairs(self.draws) do
 		if d.blend ~= lub.gfx.NONE then
-			goto _continue_20
+			goto _continue_22
 		end
 		local vb = d.mesh.vb
 		local ib = d.mesh.ib
 		if vb == nil or ib == nil then
-			goto _continue_20
+			goto _continue_22
 		end
 		local u = { ["light_mvp"] = lm, ["model"] = d.model.m }
 		if d.mesh.skinned then
@@ -2823,7 +2835,7 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 			depth_write = true,
 			cull = lub.gfx.NONE,
 		})
-		::_continue_20::
+		::_continue_22::
 	end
 	lub.gfx.end_pass()
 end
@@ -2987,12 +2999,12 @@ function Renderer3d:end_()
 		for _, d in ipairs(self.draws) do
 			local isBlend = d.blend ~= lub.gfx.NONE
 			if (phase == 0) == isBlend then
-				goto _continue_23
+				goto _continue_25
 			end
 			local vb = d.mesh.vb
 			local ib = d.mesh.ib
 			if vb == nil or ib == nil then
-				goto _continue_23
+				goto _continue_25
 			end
 			local shader = d.shader
 				or (
@@ -3021,7 +3033,7 @@ function Renderer3d:end_()
 				bindings,
 				{ shader = shader, depth = true, depth_write = not isBlend, cull = lub.gfx.NONE, blend = d.blend }
 			)
-			::_continue_23::
+			::_continue_25::
 		end
 	end
 	lub.gfx.end_pass()
@@ -4245,29 +4257,29 @@ function SpriteBatch:flush(blend)
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
 		if #b.verts == 0 then
-			goto _continue_55
+			goto _continue_57
 		end
 		local tex = b.atlas.texture
 		if tex == nil then
-			goto _continue_55
+			goto _continue_57
 		end
 		if not self.instanced then
 			local vbuf =
 				lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_verts", lub.gfx.STORAGE, b.verts)
 			if vbuf == nil then
-				goto _continue_55
+				goto _continue_57
 			end
 			lub.gfx.draw(
 				Math.Floor(#b.verts / 8),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
-			goto _continue_55
+			goto _continue_57
 		end
 		local instances =
 			lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_instances", lub.gfx.STORAGE, b.verts)
 		if instances == nil or quadVb == nil then
-			goto _continue_55
+			goto _continue_57
 		end
 		lub.gfx.draw(4, {
 			["verts"] = quadVb,
@@ -4282,7 +4294,7 @@ function SpriteBatch:flush(blend)
 			primitive = lub.gfx.TRIANGLE_STRIP,
 			instance_count = Math.Floor(#b.verts / 16),
 		})
-		::_continue_55::
+		::_continue_57::
 	end
 end
 
