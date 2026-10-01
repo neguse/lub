@@ -18,8 +18,8 @@ public static class LuaNaming
     private static readonly HashSet<string> LuaKeywords = new(StringComparer.Ordinal)
     {
         "and", "break", "do", "else", "elseif", "end", "false", "for",
-        "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat",
-        "return", "then", "true", "until", "while",
+        "function", "global", "goto", "if", "in", "local", "nil", "not", "or",
+        "repeat", "return", "then", "true", "until", "while",
     };
 
     public static bool IsLuaKeyword(string name) => LuaKeywords.Contains(name);

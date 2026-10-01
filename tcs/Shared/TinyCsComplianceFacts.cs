@@ -314,6 +314,10 @@ public static partial class TinyCsComplianceFacts
                     => "MultipleConstructors",
             // Declared identifiers that reach Lua output. Verbatim forms
             // (@end) are compared by ValueText, matching the emitter.
+            // Local bindings (locals / parameters / foreach / designations)
+            // are not listed: the transpiler maps Lua keywords to a safe
+            // name (`local` -> `local_`, LuaLocalRenamer). Fields and
+            // record positional parameters stay members and keep the check.
             BaseTypeDeclarationSyntax type
                 when IsUnsafeLuaIdentifier(type.Identifier)
                     => UnsafeLuaIdentifierName(type.Identifier),
@@ -332,15 +336,20 @@ public static partial class TinyCsComplianceFacts
                     => UnsafeLuaIdentifierName(enumMember.Identifier),
             VariableDeclaratorSyntax variable
                 when IsUnsafeLuaIdentifier(variable.Identifier)
+                    && (variable.Parent?.Parent is FieldDeclarationSyntax
+                        or EventFieldDeclarationSyntax
+                        || IsReservedIdentifier(variable.Identifier))
                     => UnsafeLuaIdentifierName(variable.Identifier),
             ParameterSyntax param
                 when IsUnsafeLuaIdentifier(param.Identifier)
+                    && (param.Parent?.Parent is RecordDeclarationSyntax
+                        || IsReservedIdentifier(param.Identifier))
                     => UnsafeLuaIdentifierName(param.Identifier),
             ForEachStatementSyntax forEach
-                when IsUnsafeLuaIdentifier(forEach.Identifier)
+                when IsReservedIdentifier(forEach.Identifier)
                     => UnsafeLuaIdentifierName(forEach.Identifier),
             SingleVariableDesignationSyntax designation
-                when IsUnsafeLuaIdentifier(designation.Identifier)
+                when IsReservedIdentifier(designation.Identifier)
                     => UnsafeLuaIdentifierName(designation.Identifier),
             _ => "",
         };
@@ -540,6 +549,12 @@ public static partial class TinyCsComplianceFacts
     private static bool IsUnsafeLuaIdentifier(SyntaxToken identifier) =>
         LuaKeywords.Contains(identifier.ValueText)
         || identifier.ValueText == "self"
+        || identifier.ValueText.StartsWith("__tcs_", StringComparison.Ordinal);
+
+    // `self` / `__tcs_` は予約語でなく emit 側の予約名。ローカル束縛でも
+    // 写さず拒否する (keyword は LuaLocalRenamer が写す)。
+    private static bool IsReservedIdentifier(SyntaxToken identifier) =>
+        identifier.ValueText == "self"
         || identifier.ValueText.StartsWith("__tcs_", StringComparison.Ordinal);
 
     private static string UnsafeLuaIdentifierName(SyntaxToken identifier) =>

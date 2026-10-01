@@ -1629,4 +1629,14 @@
 - 検証: `dotnet test` 全 814+54 green (環境要因の root 権限テストを除く)。transpiler は 7 形 (4 属性 / suffix / 修飾 / global::) の Theory、analyzer は 4 形、他の属性が誤検出されない control。spec sweep は更新した baseline で green
 - 判断: semantic model で `System.Runtime.CompilerServices` の属性型に束縛することも可能だが、analyzer が構文のみの経路 (`TryGetUnsupportedSyntax(SyntaxNode)`) で診断を共有するため構文判定にした。本対応 (呼び出し側で引数式テキスト / member 名 / 行番号 / path を埋める) は別タスク
 - 残課題: caller info の本対応 (#17 の期待挙動)。`ConditionalAttribute` 等 semantic 判定の診断は analyzer 側に無いまま (従来どおり)
+### Lua 予約語と同名のローカル変数を安全な名前に写す (#7) ✓ (2026-10-01)
+- `var local = 1;` / `int end` / `foreach (var until ...)` / `is int nil` / lambda parameter などローカル束縛が Lua 予約語と同名のとき、TCS1001 `LuaKeywordIdentifier` の警告を出した上でそのまま emit して不正 Lua (syntax error) を生成していた。member は LuaNaming.Member が `end_` に写しているので、ローカル束縛にも同じ規則を入れた
+- LuaLocalRenamer (Transpiler/LuaLocalRenamer.cs): emit 前に syntax tree の token 置換で写す。予約語 `x` → `x_`、同じ member body (lambda / local function を含む。top-level 文は compilation unit) に識別子として `x_` が現れるなら `_` を足す。semantic model で宣言と全参照 (closure 内含む) を同じ symbol として束ねるので、emit の各所 (IL 経路 / legacy 経路 / 既定引数 / pattern 前宣言) は名前を知らなくてよい。改行を増やさないので source map の行番号は保たれる。写した tree は `ReplaceSyntaxTree` で compilation に差し替え、新しい semantic model で emit する。予約語を含まない tree は token 走査だけで素通り
+- 適用点: LuaEmitter.Visit / EmitSingleMethod (incremental session の splice 経路。同種 node の序数で写した tree の method を引く) / IlExport (hot reload / tcs2c が見る IL の名前を Lua 出力と揃える)
+- Shared/TinyCsComplianceFacts: `LuaKeywordIdentifier` の対象から local 変数 / parameter / foreach / designation を外した (analyzer / `tcs check` / transpiler warning は同じ facts なので一括)。field / record positional parameter / 型 / method / property / enum メンバの診断は従来どおり残す (LuaNaming.Member が写してはいるが、member 側の整理は別件)。`self` / `__tcs_` prefix の `ReservedIdentifier` はローカル束縛でも従来どおり拒否
+- LuaNaming の予約語表に Lua 5.5 の `global` を追加 (facts 側には既にあり、member `Global` が `global` のまま emit されていた)
+- 検証: LuaLocalRenameTests 10 件 (local / parameter 既定値 / foreach / closure 捕捉 / `local_` との衝突 / 同名 member 参照の束縛保持 / pattern designation / for 変数 / incremental session の splice / reserved の据え置き) Red→Green、LuaIdentifierTests を新挙動に書き換え (member は警告、local は写す)、analyzer テストにローカル束縛の無診断を追加。`TCS_SPEC_CONFORMANCE=1 TCS_DIFFERENTIAL=1 TCS_FUZZ=1 dotnet test` 全通過
+- 判断: emit の各所に名前写像を足す案 (宣言サイト約 30 箇所 + 参照 2 箇所) は漏れやすいので、tree 置換で構造的に網羅する方を採った。衝突判定は宣言だけでなく member body 内の全識別子 token を見る (同名 member の simple name 参照が写した local に束縛し直されるのを防ぐ)。tcs2c はローカルを `v_<name>_<i>` に写すので C 側の予約語とは衝突しない
+- spec conformance: `attributes.md:CallerArgumentAttr2` は `int local = 10;` の警告で Diag に隠れていたが、写すようになって Lua 実行まで進む。#17 の `CallerInfoAttribute` 診断 (parameter の属性) が先に入っているので分類は Diag のまま変わらず、baseline / report に差分なし
+- 残課題: `nameof(local)` は写した名前 (`local_`) になる (nameof 自体がサブセット外)。member の `LuaKeywordIdentifier` 診断は LuaNaming.Member が既に安全化しているので外せる可能性があるが、issue の範囲 (ローカル) に留めた
 

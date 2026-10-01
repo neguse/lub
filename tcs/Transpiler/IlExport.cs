@@ -79,6 +79,12 @@ public static class IlExport
             diagnostics.AddRange(
                 TinyCsComplianceFacts.AnalyzeUnsupportedSyntaxes(tree, model));
         }
+        // Lua 出力と同じ名前で IL を出す (予約語ローカルの写し、LuaLocalRenamer)
+        for (var i = 0; i < trees.Length; i++)
+        {
+            (compilation, _, trees[i]) = LuaLocalRenamer.Apply(compilation,
+                compilation.GetSemanticModel(trees[i]), trees[i]);
+        }
 
         // struct layout の収集 (owner class の layout hash へ推移的に展開し、
         // struct 自身も migration metadata として契約に載せる)

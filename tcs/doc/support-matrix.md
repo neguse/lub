@@ -541,10 +541,11 @@ using(宣言)  virtual(部分)  volatile  yield
 
 | 識別子 | 状態 | 備考 |
 |--------|:----:|------|
-| Lua 5.5 予約語と同名の宣言 (`end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。emit すると不正 Lua になるため拒否 (自動リネームなし) |
-| `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 |
+| Lua 5.5 予約語と同名のローカル束縛 (local 変数 / parameter / lambda parameter / foreach 変数 / pattern designation の `local`, `end`, `nil` 等) | **Y** | `local` → `local_` に写す。写した先が同じ member body (lambda 連鎖を含む) に識別子として現れる場合は `_` を足して衝突を避ける (`local_` があれば `local__`)。宣言と全参照 (closure 内含む) を同じ symbol として写す (LuaLocalRenamer) |
+| Lua 5.5 予約語と同名の member 宣言 (型 / method / property / field / enum メンバ / record positional parameter の `end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。member 名は LuaNaming が `end_` に写すが、宣言サイトの診断は従来どおり |
+| `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 (ローカル束縛でも写さない) |
 | runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。型は namespace を捨てた simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
-| verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものは上記 TCS1001 |
+| verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものはローカル束縛なら上記のとおり写し、member なら TCS1001 |
 
 ---
 
@@ -964,6 +965,7 @@ C# のメンバ名は表を持たず規則で Lua 名に写す (`Transpiler/LuaN
 | enum メンバ `DontCare`, `Depth24Stencil8` | `DONT_CARE`, `DEPTH24_STENCIL8` | 上の結果を全大文字 |
 | 小文字を含まない名前 `CLEAR`, `RGBA8` | `clear` / `CLEAR` | 既に snake_case とみなす |
 | Lua の予約語に落ちる名前 `End`, `Do` | `end_`, `do_` | `_` を後置 |
+| Lua の予約語と同名のローカル束縛 `local`, `end` | `local_`, `end_` | `_` を後置。同じ member body に `local_` があれば `local__` のように足す |
 | custom property `Width` | `get_width` / `set_width` | accessor 名の接頭辞はそのまま |
 | record の positional parameter `PosX` | field `pos_x` (ctor 引数は C# 名) | field 名だけ写す |
 | `--ref` 型の static アクセス `Lub.Gfx.BeginPass` | `lub.gfx.begin_pass` | 入れ子の型名を全小文字で `.` 結合 |

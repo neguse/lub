@@ -1,4 +1,6 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
@@ -16,6 +18,22 @@ public partial class LuaEmitter
     private string TypeRef(INamedTypeSymbol? type) =>
         type == null ? "" :
         IsReferenceOnlyType(type) ? LuaNaming.RefTypePath(type) : type.Name;
+
+    // Lua 予約語と同名のローカル束縛を写した tree / model に差し替える
+    // (LuaLocalRenamer)。同じ tree を複数回 Visit する (top-level 文の 2 pass)
+    // ので結果を覚える。
+    private readonly Dictionary<SyntaxTree, (CSharpCompilation Compilation,
+        SemanticModel Model, SyntaxTree Tree)> _renamedTrees = [];
+
+    private (CSharpCompilation Compilation, SemanticModel Model, SyntaxTree Tree)
+        RenameKeywordLocals(Compilation compilation, SemanticModel model,
+            SyntaxTree tree)
+    {
+        if (_renamedTrees.TryGetValue(tree, out var cached)) return cached;
+        var result = LuaLocalRenamer.Apply((CSharpCompilation)compilation, model, tree);
+        _renamedTrees[tree] = result;
+        return result;
+    }
 
     /// <summary>C# の const (enum メンバ以外) は値を inline する。</summary>
     private static string? ConstLiteral(ISymbol? symbol)
