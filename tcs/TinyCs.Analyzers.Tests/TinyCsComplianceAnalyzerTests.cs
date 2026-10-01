@@ -116,6 +116,42 @@ public class TinyCsComplianceAnalyzerTests
     }
 
     [Fact]
+    public async Task TypeNamedLikeRuntimeGlobal_ReportsUnsupportedSyntax()
+    {
+        // namespace の中でも simple name で emit され runtime の table を
+        // 上書きする (#21)。transpiler では build を止める error
+        var math = await AnalyzeAsync("""
+            public class Math
+            {
+                public static int Twice(int x) => x * 2;
+            }
+            """);
+        var diagnostic = Assert.Single(math);
+        Assert.Equal(TinyCsDiagnosticIds.UnsupportedSyntax, diagnostic.Id);
+        Assert.Contains("RuntimeGlobalIdentifier(Math)", diagnostic.GetMessage());
+
+        var dict = await AnalyzeAsync("""
+            namespace Game
+            {
+                public class Dict { }
+            }
+            """);
+        Assert.Contains("RuntimeGlobalIdentifier(Dict)",
+            Assert.Single(dict).GetMessage());
+
+        var clean = await AnalyzeAsync("""
+            namespace Game
+            {
+                public class MathUtil
+                {
+                    public static int Twice(int x) => System.Math.Abs(x) * 2;
+                }
+            }
+            """);
+        Assert.Empty(clean);
+    }
+
+    [Fact]
     public async Task DoubleAndLongTypesAndDoubleLiterals_ReportUnsupportedSyntax()
     {
         var diagnostics = await AnalyzeAsync("""

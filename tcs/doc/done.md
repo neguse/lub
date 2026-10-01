@@ -1616,3 +1616,10 @@
 - 検証: EnumTests 3 件 (instance / static / auto property / `default(E)`、0 member 無し enum、struct member) + HotReloadTests 1 件 (added enum field) を先に Red で確認 → fix 後 green。`dotnet test` 全通過
 - 判断: enum 名の照合は struct と同じく単純名 (ToDisplayString の namespace 付き名とは一致しない) で、既存 struct 判定と同じ制約に揃えた。TopLevel 以外の既存 API は default 引数で後方互換
 
+### runtime の global と同名の型を error にする (#21) ✓ (2026-10-01)
+- runtime は `_G.TinySystem` / `List` / `Dict` / `Math` / `String` / `Random` を global に置き、生成コードの BCL 呼び出しは `Math.Abs` / `List.Add` / `Dict.ContainsKey` / `String.Split` と facade の `TinySystem.<Type>.*` を素の global 名で参照する。型は namespace を捨てた simple name で global に emit されるため、`namespace Game { class Math }` でも runtime の table を上書きし、以後の BCL 呼び出しが nil を呼んでいた (check も build も無診断)。TCS1001 `RuntimeGlobalIdentifier(name)` を型宣言 (interface 以外) に追加し、#19 の build を止める機構で error にする
+- 予約名の集合 (`ReservedRuntimeGlobals`) と prelude / module snapshot の `_G` alias (`RuntimeGlobalAliases`) は facts の同じ配列から作る (LuaRuntime.CreateEmbeddedPrelude と ModuleLinker.LinkSnapshot は配列を回して emit)。runtime/tinysystem.lua が全 alias を定義し、`_G` に置く名前が予約集合を含むことをテストで固定
+- 検証: `dotnet test` 全 806+50 green (環境要因の root 権限テストを除く)。analyzer / transpiler / check / build の各経路で `class Math`・`namespace Game { class Dict }` が error、`class MathUtil` は clean。既存 smoke test の `class Math` は `Calc` に改名
+- 判断: `Random` は alias にあるが予約しない。#28 で facade 呼び出しが `TinySystem.Random.*` に固定され、生成コードが素の `Random` を参照しないため、user の `class Random` は共存できる (既存テスト RandomFacade_DoesNotResolveToGameRandom がその契約)。local / parameter 名は C# 側で同スコープの BCL 参照が compile error になるため対象外
+- 残課題: 本対応は BCL 参照を user 名に左右されない形 (`TinySystem.Math.Abs` や `__tcs_` 別名) に変えて予約を外すこと (#21 の期待挙動)。別 namespace の同名型どうしの上書き (#18) は別件
+

@@ -340,4 +340,109 @@ public class LuaIdentifierTests
 
         Assert.Equal("2", output);
     }
+
+    // runtime が _G に置く名前 (TinySystem / List / Dict / Math / String /
+    // Random) と同名の型は、namespace の中でも simple name で global に emit
+    // され runtime の table を上書きする。以後の BCL 呼び出しが nil になる
+    // ため、build を止める error にする (#21)
+    private static void AssertRuntimeGlobalError(TranspileResult result,
+        string name)
+    {
+        Assert.False(result.Success);
+        Assert.Equal("", result.Lua);
+        Assert.Contains(result.Errors, e =>
+            e.Contains($"error {TinyCsDiagnosticIds.UnsupportedSyntax}:")
+            && e.Contains($"RuntimeGlobalIdentifier({name})"));
+    }
+
+    [Fact]
+    public void ClassNamedMath_IsBuildBlockingError()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public class Math
+            {
+                public static int Twice(int x) => x * 2;
+            }
+            """], checkNaming: false);
+
+        AssertRuntimeGlobalError(result, "Math");
+    }
+
+    [Fact]
+    public void TypesNamedLikeRuntimeGlobals_InNamespace_AreErrors()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            namespace Game
+            {
+                public class Dict { }
+                public struct String { public int X; }
+                public enum List { A }
+                public class TinySystem { }
+            }
+            """], checkNaming: false);
+
+        AssertRuntimeGlobalError(result, "Dict");
+        AssertRuntimeGlobalError(result, "String");
+        AssertRuntimeGlobalError(result, "List");
+        AssertRuntimeGlobalError(result, "TinySystem");
+        Assert.Equal(4, result.Errors.Count);
+    }
+
+    [Fact]
+    public void NonGlobalTypeNamesAndInterfaces_HaveNoRuntimeGlobalError()
+    {
+        // interface は Lua 出力を持たないので global を上書きしない。
+        // member 名 (`self.Math`) や enum member (`E.List`) も対象外。
+        // `Random` は生成コードが素の名で参照しない (facade は
+        // `TinySystem.Random.*`) ので user 型として使える
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            namespace Game
+            {
+                public interface Dict { }
+                public record Random(int Seed);
+                public enum Kind { List, Math }
+                public class MathUtil
+                {
+                    public int Math = 1;
+                    public static int Twice(int x) => x * 2;
+                    public int String() => Math;
+                }
+            }
+            """], checkNaming: false);
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.DoesNotContain(result.Warnings,
+            w => w.Contains("RuntimeGlobalIdentifier"));
+    }
+
+    // 診断の集合と runtime の global は同じ配列から作る。予約名は prelude /
+    // module snapshot が `_G.<name>` に置く名前の部分集合で、runtime の
+    // module table も全 alias を定義していること
+    [Fact]
+    public void RuntimeGlobals_MatchReservedTypeNames()
+    {
+        var runtime = LuaRuntime.LoadTinySystemSource();
+        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+            Assert.Contains($"TinySystem.{name} = {name}", runtime);
+        Assert.All(TinyCsComplianceFacts.ReservedRuntimeGlobals, n =>
+            Assert.True(n == TinyCsComplianceFacts.RuntimeRootGlobal
+                || TinyCsComplianceFacts.RuntimeGlobalAliases.Contains(n), n));
+
+        var prelude = LuaRuntime.CreateEmbeddedPrelude(runtime);
+        var snapshot = ModuleLinker.LinkSnapshot([], 0, null, runtime,
+            LuaRuntime.LoadRuntimeFile(LuaRuntime.RegistryRelativePath));
+        foreach (var chunk in new[] { prelude, snapshot })
+        {
+            var globals = System.Text.RegularExpressions.Regex
+                .Matches(chunk, @"_G\.(\w+) = ")
+                .Select(m => m.Groups[1].Value)
+                .Where(n => !n.StartsWith("__tcs_", StringComparison.Ordinal))
+                .ToArray();
+            Assert.NotEmpty(globals);
+            Assert.All(TinyCsComplianceFacts.ReservedRuntimeGlobals, n =>
+                Assert.Contains(n, globals));
+            foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+                Assert.Contains($"_G.{name} = TinySystem.{name}", chunk);
+        }
+    }
 }

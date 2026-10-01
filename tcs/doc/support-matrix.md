@@ -542,6 +542,7 @@ using(宣言)  virtual(部分)  volatile  yield
 |--------|:----:|------|
 | Lua 5.5 予約語と同名の宣言 (`end`, `repeat`, `until`, `global` 等) | **-** | TCS1001 `LuaKeywordIdentifier(name)`。emit すると不正 Lua になるため拒否 (自動リネームなし) |
 | `self` / `__tcs_` prefix と同名の宣言 | **-** | TCS1001 `ReservedIdentifier(name)`。`self` は Lua method receiver、`__tcs_*` は generated temp を壊すため拒否 |
+| runtime の global と同名の型宣言 (`TinySystem`, `List`, `Dict`, `Math`, `String`) | **-** | TCS1001 `RuntimeGlobalIdentifier(name)`。型は namespace を捨てた simple name で global に emit され runtime の table を上書きし、以後の BCL 呼び出しが nil になるため build を止める error (§24)。集合は `TinyCsComplianceFacts.ReservedRuntimeGlobals` (prelude の `_G` alias もここから生成)。interface と `Random` (facade は `TinySystem.Random.*` 経由) は対象外 |
 | verbatim 識別子 (`@float`, `@out` 等) | **Y** | ValueText (`@` なし) で emit。`@end` 等 Lua 予約語になるものは上記 TCS1001 |
 
 ---
@@ -903,7 +904,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 |------|:----:|------|
 | C# コンパイルエラー報告 | **Y** | ソース位置付き |
 | 未対応構文の警告 | **Y** | TCS1001 / analyzer と transpiler/check で共有 (`struct` / `record struct` / `partial` 型 / `lock` / `nameof` など) |
-| build を止める未対応構文 | **Y** | TCS1001 のうち「警告付きで書いた Lua が黙って別の意味で動く」種類 (`NamedArgument`) は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。一覧は `TinyCsComplianceFacts.IsBuildBlocking`。analyzer は warning のまま (`.editorconfig` で上書き) |
+| build を止める未対応構文 | **Y** | TCS1001 のうち「警告付きで書いた Lua が黙って別の意味で動く」種類 (`NamedArgument`, `RuntimeGlobalIdentifier`) は transpiler が error にし、Lua を書かず exit 1 (watch / 増分 session も commit しない)。一覧は `TinyCsComplianceFacts.IsBuildBlocking`。analyzer は warning のまま (`.editorconfig` で上書き) |
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |

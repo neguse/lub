@@ -36,11 +36,9 @@ public static class LuaRuntime
 
         sb.AppendLine("  end)()");
         sb.AppendLine("  _G.TinySystem = TinySystem");
-        sb.AppendLine("  _G.List = TinySystem.List");
-        sb.AppendLine("  _G.Dict = TinySystem.Dict");
-        sb.AppendLine("  _G.Math = TinySystem.Math");
-        sb.AppendLine("  _G.String = TinySystem.String");
-        sb.AppendLine("  _G.Random = TinySystem.Random");
+        // global alias の集合は診断 (RuntimeGlobalIdentifier) と共有する
+        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+            sb.AppendLine($"  _G.{name} = TinySystem.{name}");
         sb.AppendLine("end");
         sb.AppendLine();
         return sb.ToString();

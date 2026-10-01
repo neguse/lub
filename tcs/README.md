@@ -134,7 +134,8 @@ lub エンジンで動かす実例は `samples/lub/` (`run-lub.sh`) と
 Lua を出力せず、C# compile error と TinyC# 準拠診断だけを返す。
 警告またはエラーがあれば exit 1、問題がなければ exit 0。
 TCS1001 のうち、警告付きで書いた Lua が黙って別の意味で動く種類
-(名前付き引数 `NamedArgument` など、`TinyCsComplianceFacts.IsBuildBlocking`)
+(名前付き引数 `NamedArgument`、runtime の global と同名の型
+`RuntimeGlobalIdentifier` など、`TinyCsComplianceFacts.IsBuildBlocking`)
 は build (`-o` / `--watch`) でも error になり、Lua を書かずに exit 1 になる。
 TinyC#固有の例外はenumと数値整数 (`char`を除く) の変換・等値比較、および
 互換public fieldによるinterface property facadeだけで、同じC#エラーIDの
@@ -216,7 +217,7 @@ dotnet run --project Transpiler -- src/*.cs -o out.lua --watch
 ### tcs analyzer PoC
 
 Rider などの C# IDE 上で tcs 非準拠コードを警告するための Roslyn Analyzer PoC。
-現時点では `struct`, `record struct`, `partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数、未対応 BCL API / 未対応 core library member、collection への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
+現時点では `struct`, `record struct`, `partial` 型, `lock`, `nameof`, `try/catch`, `throw`, local function, list pattern, 名前付き引数, runtime の global と同名の型 (`class Math` 等)、未対応 BCL API / 未対応 core library member、collection への null 保存を `TCS1001` / `TCS1002` / `TCS1003` として報告する。
 同じ共有ルールを `tcs check` と transpiler warning でも使う (transpiler が build を止める種類も analyzer では warning。severity は `.editorconfig` で上げられる)。
 
 ```bash

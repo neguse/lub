@@ -121,11 +121,8 @@ public static class ModuleLinker
         AppendIndented(sb, tinySystemLua, "    ");
         sb.Append("  end)()\n");
         sb.Append("  _G.TinySystem = TinySystem\n");
-        sb.Append("  _G.List = TinySystem.List\n");
-        sb.Append("  _G.Dict = TinySystem.Dict\n");
-        sb.Append("  _G.Math = TinySystem.Math\n");
-        sb.Append("  _G.String = TinySystem.String\n");
-        sb.Append("  _G.Random = TinySystem.Random\n");
+        foreach (var name in TinyCsComplianceFacts.RuntimeGlobalAliases)
+            sb.Append($"  _G.{name} = TinySystem.{name}\n");
         sb.Append("  _G.__tcs_idiv = TinySystem.idiv\n");
         sb.Append("  _G.__tcs_irem = TinySystem.irem\n");
         sb.Append("  _G.__tcs_is = TinySystem.instanceof\n");

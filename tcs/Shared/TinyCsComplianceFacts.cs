@@ -73,7 +73,33 @@ public static partial class TinyCsComplianceFacts
         };
 
     public static bool IsBuildBlocking(string syntaxName) =>
-        BuildBlockingSyntaxes.Contains(syntaxName);
+        BuildBlockingSyntaxes.Contains(syntaxName)
+        // runtime の global を上書きする型名は以後の BCL 呼び出しを nil にする (#21)
+        || syntaxName.StartsWith("RuntimeGlobalIdentifier(", StringComparison.Ordinal);
+
+    // runtime が _G に置く名前。runtime/tinysystem.lua の module table
+    // (`TinySystem.List = List` 等) を LuaRuntime.CreateEmbeddedPrelude と
+    // ModuleLinker.LinkSnapshot が `_G.<name> = TinySystem.<name>` で alias する。
+    // alias の emit もこの配列から行うので、runtime と診断の集合はここで一致する
+    // (`__tcs_*` の alias は IsUnsafeLuaIdentifier の prefix 規則が受け持つ)
+    public const string RuntimeRootGlobal = "TinySystem";
+
+    public static readonly string[] RuntimeGlobalAliases =
+        ["List", "Dict", "Math", "String", "Random"];
+
+    // 生成コードが素の global 名で参照する runtime table。BCL 呼び出しは
+    // `Math.Abs` / `List.Add` / `Dict.ContainsKey` / `String.Split` と、
+    // facade の `TinySystem.<Type>.<Member>` (#28) に落ちる。型名は namespace を
+    // 捨てた simple name のまま global に emit される (LuaEmitter: `Math = {}`)
+    // ため、同名の型は namespace の中でも runtime の table を上書きし、以後の
+    // BCL 呼び出しが nil になる。`Random` は alias にあるが生成コードが素の名で
+    // 参照しないので予約しない (user の `class Random` は facade と共存できる)。
+    // interface は Lua 出力を持たないので対象外
+    public static readonly string[] ReservedRuntimeGlobals =
+        [RuntimeRootGlobal, "List", "Dict", "Math", "String"];
+
+    public static bool IsRuntimeGlobalName(string name) =>
+        Array.IndexOf(ReservedRuntimeGlobals, name) >= 0;
 
     public static bool TryGetUnsupportedSyntax(SyntaxNode node,
         out string syntaxName)
@@ -279,6 +305,10 @@ public static partial class TinyCsComplianceFacts
             BaseTypeDeclarationSyntax type
                 when IsUnsafeLuaIdentifier(type.Identifier)
                     => UnsafeLuaIdentifierName(type.Identifier),
+            BaseTypeDeclarationSyntax type
+                when type is not InterfaceDeclarationSyntax
+                    && IsRuntimeGlobalName(type.Identifier.ValueText)
+                    => $"RuntimeGlobalIdentifier({type.Identifier.ValueText})",
             MethodDeclarationSyntax method
                 when IsUnsafeLuaIdentifier(method.Identifier)
                     => UnsafeLuaIdentifierName(method.Identifier),
