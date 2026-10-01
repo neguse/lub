@@ -1776,7 +1776,19 @@ end
 
 function Atlas:ensure()
 	if self.pixels ~= nil then
-		if self.version ~= nil then
+		local claim = self.version
+		if claim == nil and not self.dirty and self.texture ~= nil then
+			claim = self.texture.version
+		end
+		local live
+		if claim ~= nil then
+			live = lub.gfx.lookup_texture(self.key)
+		else
+			live = nil
+		end
+		if live ~= nil and live.version == claim then
+			self.texture = lub.gfx.use_texture(self.key, self.w, self.h, self.format, nil, claim, self:texture_opts())
+		else
 			self.texture = lub.gfx.use_texture(
 				self.key,
 				self.w,
@@ -1786,20 +1798,7 @@ function Atlas:ensure()
 				self.version,
 				self:texture_opts()
 			)
-		elseif self.dirty or self.texture == nil then
-			self.texture =
-				lub.gfx.use_texture(self.key, self.w, self.h, self.format, self.pixels, nil, self:texture_opts())
 			self.dirty = false
-		else
-			self.texture = lub.gfx.use_texture(
-				self.key,
-				self.w,
-				self.h,
-				self.format,
-				self.pixels,
-				self.texture.version,
-				self:texture_opts()
-			)
 		end
 		return true
 	end

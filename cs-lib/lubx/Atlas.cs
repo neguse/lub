@@ -76,24 +76,24 @@ public class Atlas
     {
         if (pixels != null)
         {
-            if (version != null)
+            // caller 提供の同一性の値か、変更が無ければ前回の実効 version
+            int? claim = version;
+            if (claim == null && !dirty && Texture != null)
+                claim = Texture.Version;
+            // binding は version を見る前に pixels を全要素変換するので、
+            // runtime が同じ version を持っている間は pixels を渡さない
+            var live = claim != null ? Gfx.LookupTexture(Key) : null;
+            if (live != null && live.Version == claim)
             {
-                // caller 提供の同一性の値 (定数など)
-                Texture = Gfx.UseTexture(Key, W, H, format, pixels, version,
+                Texture = Gfx.UseTexture(Key, W, H, format, null, claim,
                     TextureOpts());
-            }
-            else if (dirty || Texture == null)
-            {
-                // 変更宣言: runtime が実効 version を発行して必ず upload
-                Texture = Gfx.UseTexture(Key, W, H, format, pixels, null,
-                    TextureOpts());
-                dirty = false;
             }
             else
             {
-                // 再主張: 前回の実効 version で upload を skip
-                Texture = Gfx.UseTexture(Key, W, H, format, pixels,
-                    Texture.Version, TextureOpts());
+                // 省略した version は変更宣言: runtime が発行して必ず upload
+                Texture = Gfx.UseTexture(Key, W, H, format, pixels, version,
+                    TextureOpts());
+                dirty = false;
             }
             return true;
         }
