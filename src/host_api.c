@@ -65,8 +65,45 @@ LubStatus lub_host_start(LubContext *ctx) {
   return LUB_OK;
 }
 
+// SDL reports the mouse in window coordinates. On a high pixel density window
+// (metal backend: Retina, iPhone) those are points, while everything the game
+// draws with is in framebuffer pixels (Gfx.Size), so input is scaled to match.
+float lub_host_pixel_density(App *app) {
+  float density = app->window ? SDL_GetWindowPixelDensity(app->window) : 0.0f;
+  return density > 0.0f ? density : 1.0f;
+}
+
+void lub_host_main_rect(App *app, int *x, int *y, int *w, int *h) {
+  *x = *y = *w = *h = 0;
+  if (!app->window)
+    return;
+  if (app->fixed_w > 0 && app->fixed_h > 0) {
+    *w = app->fixed_w;
+    *h = app->fixed_h;
+    return;
+  }
+  SDL_GetWindowSizeInPixels(app->window, w, h);
+  SDL_Rect safe;
+  if (!SDL_GetWindowSafeArea(app->window, &safe) || safe.w <= 0 || safe.h <= 0)
+    return;
+  float density = lub_host_pixel_density(app);
+  int x0 = (int)(safe.x * density + 0.5f);
+  int y0 = (int)(safe.y * density + 0.5f);
+  int x1 = (int)((safe.x + safe.w) * density + 0.5f);
+  int y1 = (int)((safe.y + safe.h) * density + 0.5f);
+  if (x0 < 0 || y0 < 0 || x1 > *w || y1 > *h || x1 <= x0 || y1 <= y0)
+    return;
+  *x = x0;
+  *y = y0;
+  *w = x1 - x0;
+  *h = y1 - y0;
+}
+
 bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
   memset(out, 0, sizeof(*out));
+  float density = lub_host_pixel_density(app);
+  int main_x = 0, main_y = 0, main_w = 0, main_h = 0;
+  lub_host_main_rect(app, &main_x, &main_y, &main_w, &main_h);
   switch (e->type) {
   case SDL_EVENT_QUIT:
     app->quit_requested = true;
@@ -94,24 +131,24 @@ bool lub_host_translate_event(App *app, const SDL_Event *e, LubEventData *out) {
     app->mouse_pressed_mask |= SDL_BUTTON_MASK(e->button.button);
     out->kind = LUB_EVENT_KIND_MOUSE_BUTTON_DOWN;
     out->button = e->button.button;
-    out->x = e->button.x;
-    out->y = e->button.y;
+    out->x = e->button.x * density - (float)main_x;
+    out->y = e->button.y * density - (float)main_y;
     return true;
   case SDL_EVENT_MOUSE_BUTTON_UP:
     app->mouse_released_mask |= SDL_BUTTON_MASK(e->button.button);
     out->kind = LUB_EVENT_KIND_MOUSE_BUTTON_UP;
     out->button = e->button.button;
-    out->x = e->button.x;
-    out->y = e->button.y;
+    out->x = e->button.x * density - (float)main_x;
+    out->y = e->button.y * density - (float)main_y;
     return true;
   case SDL_EVENT_MOUSE_MOTION:
-    app->mouse_rel_x += e->motion.xrel;
-    app->mouse_rel_y += e->motion.yrel;
+    app->mouse_rel_x += e->motion.xrel * density;
+    app->mouse_rel_y += e->motion.yrel * density;
     out->kind = LUB_EVENT_KIND_MOUSE_MOTION;
-    out->x = e->motion.x;
-    out->y = e->motion.y;
-    out->dx = e->motion.xrel;
-    out->dy = e->motion.yrel;
+    out->x = e->motion.x * density - (float)main_x;
+    out->y = e->motion.y * density - (float)main_y;
+    out->dx = e->motion.xrel * density;
+    out->dy = e->motion.yrel * density;
     return true;
   case SDL_EVENT_MOUSE_WHEEL:
     app->mouse_wheel_x += e->wheel.x;

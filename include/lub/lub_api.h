@@ -340,7 +340,8 @@ typedef struct LubTextureOpts {
 typedef struct LubConfigOpts {
   LubStr backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows
                   // の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK
-                  // がある build のみ) / "sdlgpu"。web (WASM) は webgpu
+                  // がある build のみ) / "metal" (macOS / iOS の既定) /
+                  // "sdlgpu"。web (WASM) は webgpu
                   // のみで、指定は無視される。未指定 (null) なら既定のまま。
   bool has_width;
   int32_t width; // ウィンドウ幅 (px)。`height` とセットで指定する。
@@ -2523,6 +2524,10 @@ LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
+
+// テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルか
+// ら置き換える。失敗はエラー。web では仮想ファイルへの保存。
+LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
 
 // ファイルを byte 列 (frame 有効の view) として読む。font や音の data のよう
 // な binary 用。

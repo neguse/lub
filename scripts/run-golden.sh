@@ -22,6 +22,11 @@
 # both backends render through lavapipe and must produce byte-identical
 # output, so they share the *_sdlgpu.png goldens — a vulkan/sdlgpu
 # divergence is a test failure by design.
+#
+# macOS checks metal on the real GPU. Metal has no machine-independent
+# rasterizer, so there are no metal goldens: the capture is compared to
+# the *_sdlgpu.png golden within a tolerance (scripts/png-diff.py), and
+# --update never writes from macOS.
 
 set -euo pipefail
 
@@ -30,11 +35,18 @@ cd "$(dirname "$0")/.."
 SAMPLES=(00_hello 00b_clear 00c_buffer 00d_shader 01_triangle 02_vertex_color 03_texture 04_mvp 05_postprocess 06_deferred 07_compute 08_gltf 09_breakout 10_breakout3d 11_shadow 12_sfb 16_box2d 18_coin_pusher 19_sdf 26_renderer3d)
 VISUAL_TESTS=(indexed_draw load_op depth_sample vertex_pull)
 FRAME=30
+apple=0
 case "$(uname -s)" in
     MINGW* | MSYS*)
         windows=1
         BACKENDS=(d3d12)
         BINARY="${BINARY:-./build-release/lub.exe}"
+        ;;
+    Darwin)
+        windows=0
+        apple=1
+        BACKENDS=(metal)
+        BINARY="${BINARY:-./build-mac/lub}"
         ;;
     *)
         windows=0
@@ -94,7 +106,7 @@ trap cleanup EXIT
 # lavapipe renders on the CPU, so independent captures scale with cores.
 # Entries run as background jobs; each writes its verdict to a status file
 # in $tmpdir, aggregated after the final wait. LUB_GOLDEN_JOBS=1 for serial.
-jobs_max="${LUB_GOLDEN_JOBS:-$(nproc)}"
+jobs_max="${LUB_GOLDEN_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu)}"
 jobs_running=0
 jobs_launched=0
 
@@ -116,6 +128,10 @@ check_entry() {
     if [[ $windows -eq 0 && "$backend" == vulkan ]]; then
         golden_backend=sdlgpu
     fi
+    # macOS metal has no goldens of its own (see the header).
+    if [[ $apple -eq 1 ]]; then
+        golden_backend=sdlgpu
+    fi
     local out="$tmpdir/${golden_name}_${backend}.png"
     local golden="$GOLDEN_DIR/${golden_name}_${golden_backend}.png"
     local log="$tmpdir/${golden_name}_${backend}.log"
@@ -127,6 +143,13 @@ check_entry() {
     if [[ $windows -eq 1 ]]; then
         # No xvfb/lavapipe on Windows; real windows open, WARP renders.
         LUB_BACKEND="$backend" LUB_D3D12_WARP=1 LUB_GOLDEN=1 \
+            "$BINARY" \
+            "$entry" --capture "$out" --capture-frame "$frame" \
+            --fixed-dt 0.0166666666666667 \
+            >"$log" 2>&1 || run_ok=0
+    elif [[ $apple -eq 1 ]]; then
+        # Real windows open and the GPU renders.
+        LUB_BACKEND="$backend" LUB_GOLDEN=1 \
             "$BINARY" \
             "$entry" --capture "$out" --capture-frame "$frame" \
             --fixed-dt 0.0166666666666667 \
@@ -166,6 +189,18 @@ check_entry() {
     if [[ ! -f "$golden" ]]; then
         echo "MISSING ${golden} (run with --update to create)"
         echo missing >"$status"
+        return
+    fi
+
+    if [[ $apple -eq 1 ]]; then
+        local metrics
+        if metrics=$(python3 scripts/png-diff.py "$out" "$golden"); then
+            echo "PASS ${label} ${backend} ${metrics}"
+            echo pass >"$status"
+        else
+            echo "FAIL ${label} ${backend}: $out vs $golden: ${metrics}"
+            echo fail >"$status"
+        fi
         return
     fi
 

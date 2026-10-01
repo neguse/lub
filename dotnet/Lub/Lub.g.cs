@@ -161,7 +161,7 @@ public class TextureOpts
 /// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
-    /// <summary>GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
+    /// <summary>GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) / "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら既定のまま。</summary>
     public string? Backend;
     /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>
     public int? Width;
@@ -2486,6 +2486,25 @@ public static unsafe partial class Lub
                 version = o_version;
                 status = (Lub.Io.Status)o_status;
                 error = LubRuntime.StrOrNull(o_error);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+        public static void SaveText(string path, string text)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var st = LubNative.lub_io_save_text(LubRuntime.Ctx, a.Str(path), a.Str(text));
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    return;
+                }
+                LubRuntime.Check(st, "Io.SaveText");
             }
             finally
             {
@@ -9519,6 +9538,9 @@ internal static unsafe partial class LubNative
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_text(void* ctx, LubStr @path, LubStr* @text, int* @version, int* @status, LubStr* @error);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_io_save_text(void* ctx, LubStr @path, LubStr @text);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_io_load_bytes(void* ctx, LubStr @path, LubView* @bytes, int* @version, int* @status, LubStr* @error);
