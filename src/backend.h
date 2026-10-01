@@ -80,6 +80,8 @@ typedef struct PassBeginDesc {
   // Applies to all attachments (color + depth). 0 (unset) behaves as
   // SGL_LOAD_CLEAR; SGL_LOAD_LOAD preserves the previous contents.
   SglLoadAction load;
+  // Swapchain passes only: -1 = the window, 0 / 1 = that XR eye's image.
+  int xr_eye;
 } PassBeginDesc;
 
 typedef struct BindingsDesc {

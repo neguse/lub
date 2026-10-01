@@ -1154,7 +1154,7 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   WGPURenderPassColorAttachment colors[SGL_MAX_COLOR_TARGETS] = {0};
 
   bool is_offscreen = (d->targets[0] != 0 || d->depth_target != 0);
-  int xr_eye = is_offscreen ? -1 : lubwebxr_eye();
+  int xr_eye = is_offscreen ? -1 : d->xr_eye;
   if (!g_xr_width)
     xr_eye = -1;
 
@@ -1895,7 +1895,7 @@ static bool wg_capture(App *app, const char *path) {
 }
 
 static SglPixelFormat wg_swapchain_color_format(App *app) {
-  if (lubwebxr_eye() >= 0)
+  if (lubwebxr_active())
     return SGL_PF_RGBA8_SRGB;
   return app->wgpu_surface_format == WGPUTextureFormat_RGBA8Unorm
              ? SGL_PF_RGBA8

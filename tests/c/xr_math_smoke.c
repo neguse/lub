@@ -46,15 +46,20 @@ int main(void) {
   }
   App app = {0};
   LubXrView view = {0};
-  if (lub_xr_get_view(lub_api_ctx(&app), 0, 0, 100, &view) != LUB_ERROR)
+  if (lub_xr_view(lub_api_ctx(&app), 0, 0, 100, &view) != LUB_ERROR)
     failures++;
-  if (lub_xr_get_view(lub_api_ctx(&app), 2, .1f, 100, &view) != LUB_ERROR)
+  if (lub_xr_view(lub_api_ctx(&app), 2, .1f, 100, &view) != LUB_ERROR)
     failures++;
-  if (lub_xr_get_view(lub_api_ctx(&app), 0, .1f, NAN, &view) != LUB_ERROR)
+  if (lub_xr_view(lub_api_ctx(&app), 0, .1f, NAN, &view) != LUB_ERROR)
     failures++;
-  if (lub_xr_get_view(lub_api_ctx(&app), 0, .1f, 100, &view) != LUB_NOT_FOUND)
+  if (lub_xr_view(lub_api_ctx(&app), 0, .1f, 100, &view) != LUB_NOT_FOUND)
     failures++;
-  if (lub_xr_focused(lub_api_ctx(&app)))
+  if (lub_xr_active(lub_api_ctx(&app)) || lub_xr_focused(lub_api_ctx(&app)))
+    failures++;
+  if (lub_gfx_xr_eye_of(LUB_GFX_XR_EYE_TEX(0)) != 0 ||
+      lub_gfx_xr_eye_of(LUB_GFX_XR_EYE_TEX(1)) != 1 ||
+      lub_gfx_xr_eye_of(lub_gfx_main_tex(lub_api_ctx(&app))) != -1 ||
+      lub_gfx_xr_eye_of(0) != -1 || lub_gfx_xr_eye_of(7) != -1)
     failures++;
   printf("XR_MATH failures=%d\n", failures);
   return failures ? 1 : 0;

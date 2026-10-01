@@ -214,8 +214,12 @@ public class Readback
 {
 }
 
+/// <summary>XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。
+/// MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。</summary>
 public class XrView
 {
+    /// <summary>この frame の片眼の描画先。</summary>
+    public TextureRef? Target;
     public int Width, Height;
     /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
     [LubArray(3)]
@@ -242,18 +246,21 @@ public static class Lub
 {
     public static class Xr
     {
+        /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、
+        /// View の Target へ描く。</summary>
+        [LubNoFail]
+        public static bool Active() { return false; }
+
         /// <summary>入力フォーカスを持つ XR セッションか。</summary>
         [LubNoFail]
         public static bool Focused() { return false; }
 
-        /// <summary>眼は左 0、右 1。描画不可なら null。距離はメートル。</summary>
-        public static XrView? GetView(int eye, float near, float far) { return null; }
+        /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
+        public static XrView? View(int eye, float near, float far) { return null; }
 
-        /// <summary>次の MainTex パスの眼を選ぶ。パスの外で呼ぶ。</summary>
-        public static void SelectEye(int eye) { }
-
-        /// <summary>左手 0、右手 1。フォーカスを失うと入力は無効。</summary>
-        public static XrInput? GetInput(int hand) { return null; }
+        /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと
+        /// 入力は無効。</summary>
+        public static XrInput? Input(int hand) { return null; }
     }
     /// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
     [LubLuaString]

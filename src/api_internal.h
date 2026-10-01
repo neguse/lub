@@ -12,6 +12,13 @@ static inline LubContext *lub_api_ctx(App *app) { return (LubContext *)app; }
 // last_error に message を書いて LUB_ERROR を返す。
 LubStatus lub_api_fail(App *app, const char *fmt, ...);
 
+// XR の片眼の描画先を指す特別な handle (lub_xr_view が XrView.target に返す)。
+// main_tex (-1) と同じく resource table には無く、begin_pass が解決する。
+#define LUB_GFX_XR_EYE_TEX(eye) ((LubHandle)(-2 - (eye)))
+static inline int lub_gfx_xr_eye_of(LubHandle h) {
+  return h == -2 || h == -3 ? (int)(-2 - h) : -1;
+}
+
 static inline LubStr lub_str_c(const char *s) {
   LubStr r = {s, s ? (int32_t)strlen(s) : 0};
   return r;

@@ -16,7 +16,7 @@ bool lub_gfx_resource_info(LubContext *ctx, int32_t handle, LubStr *key,
                            int32_t *version) {
   (void)ctx;
   (void)key;
-  if (handle == -1)
+  if (handle < 0)
     return false;
   assert(handle == 42);
   *version = 7;
@@ -53,13 +53,14 @@ LubStatus lub_gfx_draw(LubContext *ctx, int32_t count,
   assert(seen == 3);
   return LUB_OK;
 }
-LubStatus lub_xr_get_view(LubContext *ctx, int32_t eye, float near_plane,
-                          float far_plane, LubXrView *out) {
+LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near_plane,
+                      float far_plane, LubXrView *out) {
   (void)ctx;
   assert(near_plane == .05f && far_plane == 500);
   if (eye == 1)
     return LUB_NOT_FOUND;
   memset(out, 0, sizeof(*out));
+  out->target = -2;
   out->width = 123;
   out->view_projection[15] = 1;
   return LUB_OK;

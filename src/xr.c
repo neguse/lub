@@ -28,7 +28,7 @@ static struct {
   VkDevice device;
   XrTime display_time;
   float frame_dt;
-  int width, height, selected;
+  int width, height;
   unsigned rendered;
   bool running, focused, begun, visible, frame_profile, input_valid;
   PFN_xrCreateVulkanInstanceKHR create_instance;
@@ -401,7 +401,6 @@ bool lubxr_poll(bool *quit) {
 bool lubxr_begin_frame(void) {
   x.visible = false;
   x.rendered = 0;
-  x.selected = -1;
   XrFrameWaitInfo wait = {.type = XR_TYPE_FRAME_WAIT_INFO};
   XrFrameState state = {.type = XR_TYPE_FRAME_STATE};
   XR_CHECK(xrWaitFrame(x.session, &wait, &state));
@@ -491,30 +490,24 @@ bool lubxr_end_frame(void) {
   return success;
 }
 
-bool lubxr_select_eye(int eye) {
+bool lubxr_eye_image(int eye, XrEyeImage *image) {
   if (!x.visible || eye < 0 || eye > 1)
     return false;
-  x.selected = eye;
-  return true;
-}
-
-bool lubxr_eye_image(XrEyeImage *image) {
-  if (!x.visible || x.selected < 0)
-    return false;
-  Eye *e = &x.eyes[x.selected];
+  Eye *e = &x.eyes[eye];
   *image = (XrEyeImage){e->images[e->index].image,
                         e->views[e->index],
                         x.width,
                         x.height,
-                        x.selected,
-                        (x.rendered & (1u << x.selected)) == 0};
+                        eye,
+                        (x.rendered & (1u << eye)) == 0};
   return true;
 }
 
-void lubxr_mark_rendered(void) {
-  if (x.visible && x.selected >= 0)
-    x.rendered |= 1u << x.selected;
+void lubxr_mark_rendered(int eye) {
+  if (x.visible && eye >= 0 && eye <= 1)
+    x.rendered |= 1u << eye;
 }
+bool lubxr_active(void) { return x.running; }
 void lubxr_size(int *width, int *height) {
   *width = x.width;
   *height = x.height;

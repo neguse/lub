@@ -4466,6 +4466,73 @@ function Text:draw(batch, s, x, y, tint, scale)
 		prev = cp
 	end)
 end
+
+XrAnchor = {}
+XrAnchor.__index = XrAnchor
+
+function XrAnchor.new()
+	local self = setmetatable({}, XrAnchor)
+	__tcs_instances[self] = XrAnchor
+	self.matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
+	self.set = false
+	return self
+end
+
+function XrAnchor:is_set()
+	return self.set
+end
+
+function XrAnchor:recenter(left, right)
+	local o = left.orientation
+	local p = left.position
+	local q = right.position
+	local yaw =
+		Math.Atan2(2 * (o[0 + 1] * o[2 + 1] + o[1 + 1] * o[3 + 1]), 1 - 2 * (o[0 + 1] * o[0 + 1] + o[1 + 1] * o[1 + 1]))
+	local c = Math.Cos(yaw)
+	local s = Math.Sin(yaw)
+	for i = 0, 16 - 1 do
+		self.matrix[i + 1] = 0
+	end
+	self.matrix[0 + 1] = c
+	self.matrix[2 + 1] = s
+	self.matrix[5 + 1] = 1
+	self.matrix[8 + 1] = -s
+	self.matrix[10 + 1] = c
+	self.matrix[15 + 1] = 1
+	self.matrix[3 + 1] = (p[0 + 1] + q[0 + 1]) * 0.5
+	self.matrix[7 + 1] = (p[1 + 1] + q[1 + 1]) * 0.5
+	self.matrix[11 + 1] = (p[2 + 1] + q[2 + 1]) * 0.5
+	self.set = true
+end
+
+function XrAnchor:reset()
+	for i = 0, 16 - 1 do
+		self.matrix[i + 1] = (function()
+			if __tcs_irem(i, 5) == 0 then
+				return 1
+			else
+				return 0
+			end
+		end)()
+	end
+	self.set = false
+end
+
+function XrAnchor:to_local()
+	return self.matrix
+end
+
+function XrAnchor:view_projection(view, result)
+	local vp = view.view_projection
+	for row = 0, 4 - 1 do
+		for col = 0, 4 - 1 do
+			result[row * 4 + col + 1] = vp[row * 4 + 1] * self.matrix[col + 1]
+				+ vp[row * 4 + 1 + 1] * self.matrix[4 + col + 1]
+				+ vp[row * 4 + 2 + 1] * self.matrix[8 + col + 1]
+				+ vp[row * 4 + 3 + 1] * self.matrix[12 + col + 1]
+		end
+	end
+end
 return {
 	Assets = Assets,
 	Atlas = Atlas,
@@ -4509,4 +4576,5 @@ return {
 	Vec2 = Vec2,
 	Vec3 = Vec3,
 	Vec4 = Vec4,
+	XrAnchor = XrAnchor,
 }

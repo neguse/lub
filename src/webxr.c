@@ -2,16 +2,11 @@
 #include "webxr.h"
 #include <emscripten/emscripten.h>
 
-static int selected_eye = -1;
-
 // clang-format off
-EM_JS(bool, lubwebxr_active, (void), {
-  return !!(Module.lubXR && Module.lubXR.views && Module.lubXR.views.length == 2);
-})
+EM_JS(bool, lubwebxr_active, (void), { return !!Module.lubXR; })
 EM_JS(bool, lubwebxr_focused, (void), {
   return !!(Module.lubXR && Module.lubXR.focused);
 })
-EM_JS(bool, session_active, (void), { return !!Module.lubXR; })
 EM_JS(void, lubwebxr_present, (bool rendered), {
   if (Module.lubXR) Module.lubXR.rendered = !!rendered;
 })
@@ -56,7 +51,7 @@ bool lubwebxr_view(int eye, float near_plane, float far_plane, LubXrView *out) {
 }
 
 bool lubwebxr_input(int hand, LubXrInput *out) {
-  if (!session_active())
+  if (!lubwebxr_active())
     return false;
   float values[4] = {0};
   unsigned char buttons[4] = {0};
@@ -72,15 +67,5 @@ bool lubwebxr_input(int hand, LubXrInput *out) {
   return true;
 }
 
-bool lubwebxr_select_eye(int eye) {
-  if (!lubwebxr_active() || eye < 0 || eye > 1)
-    return false;
-  selected_eye = eye;
-  return true;
-}
-int lubwebxr_eye(void) { return selected_eye; }
-void lubwebxr_begin(void) {
-  selected_eye = -1;
-  lubwebxr_present(false);
-}
+void lubwebxr_begin(void) { lubwebxr_present(false); }
 #endif

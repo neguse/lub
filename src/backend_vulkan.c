@@ -1526,7 +1526,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
 #if defined(LUB_HAS_OPENXR)
     if (g.xr) {
       XrEyeImage image;
-      if (!lubxr_eye_image(&image))
+      if (d->xr_eye < 0 || !lubxr_eye_image(d->xr_eye, &image))
         return;
       color_view = image.view;
       VkbImage *depth = g.xr_depth[image.eye];
@@ -1542,7 +1542,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
       }
-      lubxr_mark_rendered();
+      lubxr_mark_rendered(image.eye);
     } else
 #endif
     {

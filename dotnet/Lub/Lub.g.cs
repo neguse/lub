@@ -158,8 +158,11 @@ public class TextureOpts
     public bool? Storage;
 }
 
+/// <summary>XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。</summary>
 public class XrView
 {
+    /// <summary>この frame の片眼の描画先。</summary>
+    public TextureRef? Target;
     public int Width;
     public int Height;
     /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
@@ -1856,6 +1859,21 @@ public static unsafe partial class Lub
 
     public static unsafe class Xr
     {
+        /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
+        public static bool Active()
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var r = LubNative.lub_xr_active(LubRuntime.Ctx);
+                return (r != 0);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
         /// <summary>入力フォーカスを持つ XR セッションか。</summary>
         public static bool Focused()
         {
@@ -1871,19 +1889,19 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>眼は左 0、右 1。描画不可なら null。距離はメートル。</summary>
-        public static XrView? GetView(int eye, float near, float far)
+        /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
+        public static XrView? View(int eye, float near, float far)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 LubNative.LubXrView o_out = default;
-                var st = LubNative.lub_xr_get_view(LubRuntime.Ctx, eye, near, far, &o_out);
+                var st = LubNative.lub_xr_view(LubRuntime.Ctx, eye, near, far, &o_out);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     return null;
                 }
-                LubRuntime.Check(st, "Xr.GetView");
+                LubRuntime.Check(st, "Xr.View");
                 return LubNative.From_LubXrView(&o_out);
             }
             finally
@@ -1892,38 +1910,19 @@ public static unsafe partial class Lub
             }
         }
 
-        /// <summary>次の MainTex パスの眼を選ぶ。パスの外で呼ぶ。</summary>
-        public static void SelectEye(int eye)
-        {
-            var a = LubRuntime.Arena.Begin();
-            try
-            {
-                var st = LubNative.lub_xr_select_eye(LubRuntime.Ctx, eye);
-                if (st == LubNative.LUB_NOT_FOUND)
-                {
-                    return;
-                }
-                LubRuntime.Check(st, "Xr.SelectEye");
-            }
-            finally
-            {
-                a.End();
-            }
-        }
-
-        /// <summary>左手 0、右手 1。フォーカスを失うと入力は無効。</summary>
-        public static XrInput? GetInput(int hand)
+        /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。</summary>
+        public static XrInput? Input(int hand)
         {
             var a = LubRuntime.Arena.Begin();
             try
             {
                 LubNative.LubXrInput o_out = default;
-                var st = LubNative.lub_xr_get_input(LubRuntime.Ctx, hand, &o_out);
+                var st = LubNative.lub_xr_input(LubRuntime.Ctx, hand, &o_out);
                 if (st == LubNative.LUB_NOT_FOUND)
                 {
                     return null;
                 }
-                LubRuntime.Check(st, "Xr.GetInput");
+                LubRuntime.Check(st, "Xr.Input");
                 return LubNative.From_LubXrInput(&o_out);
             }
             finally
@@ -7341,6 +7340,7 @@ internal static unsafe partial class LubNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct LubXrView
     {
+        public int @target;
         public int @width;
         public int @height;
         public fixed float @position[3];
@@ -9587,16 +9587,16 @@ internal static unsafe partial class LubNative
     internal static extern void lub_quit(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_xr_active(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern byte lub_xr_focused(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_xr_get_view(void* ctx, int @eye, float @near, float @far, LubXrView* @out);
+    internal static extern int lub_xr_view(void* ctx, int @eye, float @near, float @far, LubXrView* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_xr_select_eye(void* ctx, int @eye);
-
-    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int lub_xr_get_input(void* ctx, int @hand, LubXrInput* @out);
+    internal static extern int lub_xr_input(void* ctx, int @hand, LubXrInput* @out);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);
@@ -10389,6 +10389,7 @@ internal static unsafe partial class LubNative
 
     internal static void To_LubXrView(XrView o, LubRuntime.Arena a, LubXrView* s)
     {
+        s->@target = o.Target?.H ?? 0;
         s->@width = o.Width;
         s->@height = o.Height;
         LubRuntime.FixedFloats(o.Position, s->@position, 3);
@@ -10398,6 +10399,7 @@ internal static unsafe partial class LubNative
 
     internal static void Fill_LubXrView(XrView o, LubXrView* s)
     {
+        o.Target = H_TextureRef(s->@target);
         o.Width = s->@width;
         o.Height = s->@height;
         o.Position = LubRuntime.FloatsArray(s->@position, 3);

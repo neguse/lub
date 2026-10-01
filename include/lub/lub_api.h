@@ -336,7 +336,10 @@ typedef struct LubTextureOpts {
   bool storage; // compute の storage image として使う。
 } LubTextureOpts;
 
+// XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と
+// 同じく depth は既定のものを使い、他の target とは組み合わせない。
 typedef struct LubXrView {
+  LubHandle target; // 0 = 無し // この frame の片眼の描画先。
   int32_t width;
   int32_t height;
   float position[3]; // LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。
@@ -2423,19 +2426,19 @@ LUB_API void lub_quit(LubContext *ctx);
 
 // -------------------------------------------------------------------- xr
 
+// XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target
+// へ描く。
+LUB_API bool lub_xr_active(LubContext *ctx);
+
 // 入力フォーカスを持つ XR セッションか。
 LUB_API bool lub_xr_focused(LubContext *ctx);
 
-// 眼は左 0、右 1。描画不可なら null。距離はメートル。
-LUB_API LubStatus lub_xr_get_view(LubContext *ctx, int32_t eye, float near,
-                                  float far, LubXrView *out);
+// 眼は左 0、右 1。この frame に描けないなら null。距離はメートル。
+LUB_API LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near,
+                              float far, LubXrView *out);
 
-// 次の MainTex パスの眼を選ぶ。パスの外で呼ぶ。
-LUB_API LubStatus lub_xr_select_eye(LubContext *ctx, int32_t eye);
-
-// 左手 0、右手 1。フォーカスを失うと入力は無効。
-LUB_API LubStatus lub_xr_get_input(LubContext *ctx, int32_t hand,
-                                   LubXrInput *out);
+// 左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。
+LUB_API LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out);
 
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ

@@ -14,10 +14,11 @@ class BindingTest
             ["image"] = texture,
             ["uniforms"] = new Dictionary<string, object> { ["color"] = new float[] { 1, 2, 3, 4 } }
         }, new DrawOpts { Depth = false });
-        var view = Xr.GetView(0, .05f, 500);
+        var view = Xr.View(0, .05f, 500);
         Console.WriteLine(view.Width);
         Console.WriteLine(view.ViewProjection[15]);
-        Console.WriteLine(Xr.GetView(1, .05f, 500) == null);
+        Console.WriteLine(Xr.View(1, .05f, 500) == null);
+        Console.WriteLine(view.Target != null);
         Audio.Voice("voice", 12, new VoiceOpts { Volume = .25f, Loop = true });
     }
 }
