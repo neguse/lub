@@ -42,7 +42,10 @@ if (!existsSync(join(TCS, "WasmCompiler", "WasmCompiler.csproj"))) {
   process.exit(1);
 }
 
-if (process.argv.includes("--publish") || !existsSync(join(PUBLISH, "_framework"))) {
+if (
+  process.argv.includes("--publish") ||
+  !existsSync(join(PUBLISH, "_framework"))
+) {
   console.error("dotnet publish WasmCompiler -c Release ...");
   execFileSync("dotnet", ["publish", "WasmCompiler", "-c", "Release"], {
     cwd: TCS,
