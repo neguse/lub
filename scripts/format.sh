@@ -3,7 +3,7 @@
 # Project-specific config files (.clang-format / hxformat.json / .prettierrc)
 # are intentionally absent, so each tool's stock style is used.
 #
-#   clang-format     : C/C++ and Slang-as-HLSL (LLVM default)
+#   clang-format     : C/C++/Objective-C and Slang-as-HLSL (LLVM default)
 #   stylua           : Lua                     - `npm --prefix web install`
 #   prettier         : Web TS/MJS/JSON/HTML    - `npm --prefix web install`
 #   dotnet format    : C# (whitespace)         - dotnet SDK 付属
@@ -63,7 +63,7 @@ run_if_any() {
 # ディレクトリを 2 段書くと末尾の `/*.ext` が「もう 1 段下」を要求して直下の
 # ファイルに当たらず、さらに上の除外 pathspec と組むと git 2.43 では 1 件も
 # 返さない。pattern は 1 段のディレクトリ + `*.ext` に揃える。
-mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp')
+mapfile -d '' C_FILES < <(git_files '*.c' '*.cc' '*.cpp' '*.h' '*.hpp' '*.m')
 mapfile -d '' SLANG_FILES < <(git_files 'samples/*.slang' 'tests/*.slang')
 mapfile -d '' LUA_FILES < <(git_files '*.lua')
 mapfile -d '' CS_FILES < <(git_files 'samples/*.cs' 'cs-lib/*.cs' 'dotnet/*.cs' 'templates/*.cs')

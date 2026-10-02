@@ -286,6 +286,51 @@ jobs:
           path: ${{ runner.temp }}/golden-tmp
           if-no-files-found: ignore
 
+  # macOS / iOS regression gate: scripts/apple-gate.sh (CI と手動の単一ソース)
+  # で Release build -> C smoke tests -> Lua runtime テスト -> 視覚 golden ->
+  # shader cache の往復 -> iOS build -> iOS simulator での実行。Metal は
+  # runner の GPU で描くので byte 一致にはならず、golden は Linux の
+  # *_sdlgpu.png との許容差比較 (scripts/png-diff.py)。
+  macos:
+    needs: changes
+    if: needs.changes.outputs.web_only != 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # CMake configure が slang の prebuilt を落とすのでキャッシュする。
+      - name: Cache slang prebuilts
+        uses: actions/cache@v4
+        with:
+          path: third_party/slang/lib
+          key: slang-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # run-golden.sh は bash 4+ (mapfile / wait -n)。macOS 同梱の bash は 3.2。
+      - name: Install tools
+        run: brew install bash ninja
+
+      # golden はサンプルの C# を起動前に tcs で transpile するので dotnet が要る。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Apple gate (build, smokes, Lua runtime, golden, shader cache, iOS simulator)
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/apple-gate-tmp"
+          mkdir -p "$TMPDIR"
+          bash scripts/apple-gate.sh
+
+      - name: Upload golden failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failure-macos
+          path: ${{ runner.temp }}/apple-gate-tmp
+          if-no-files-found: ignore
+
   # web playground (lub.neguse.net) のアセット生成 + build。検証は下流の
   # web-verify / web-golden が artifact (web-dist-test) に対して行う。
   # 前提アセット (web/README.md) の供給:
@@ -533,7 +578,7 @@ jobs:
   # 唯一の required check。走った job が全部 success (skipped は changes の
   # 判定による意図的な skip) なら green。changes / lint は必ず走る前提。
   gate:
-    needs: [changes, lint, linux, windows, web-build, web-verify, web-golden]
+    needs: [changes, lint, linux, windows, macos, web-build, web-verify, web-golden]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

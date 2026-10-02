@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(lub C CXX)
+if(APPLE)
+  enable_language(OBJC)
+endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -44,6 +47,12 @@ if(LUB_WASM)
   set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
   set(SDL_STATIC   ON  CACHE BOOL "" FORCE)
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  # An app bundle links SDL statically instead of embedding a framework.
+  set(SDL_TESTS  OFF CACHE BOOL "" FORCE)
+  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+  set(SDL_STATIC ON  CACHE BOOL "" FORCE)
+endif()
 add_subdirectory(third_party/SDL)
 
 # Box2D v3 is C17. Only the library is used; the upstream sample/test/benchmark
@@ -75,6 +84,10 @@ target_include_directories(lua_static PUBLIC ${lua_SOURCE_DIR})
 # Lua の数値は int32 + float (C API の面と C# の int / float に揃える)。
 # lua.h を include する側も同じ定義を見る必要があるので PUBLIC。
 target_compile_definitions(lua_static PUBLIC LUA_32BITS)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  # iOS has no system(); Lua's os.execute reports "no shell" instead.
+  target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
+endif()
 
 # libtess2 (glyph outline tessellation for font_glyph_mesh)
 add_library(tess2 STATIC
@@ -96,8 +109,20 @@ target_include_directories(tess2 PUBLIC third_party/libtess2/Include)
 #
 # emscripten: skip the native prebuilt. shader.cpp delegates Slang
 # compilation to the browser-side slang-wasm bridge via EM_ASYNC_JS.
-if(NOT LUB_WASM)
-  set(SLANG_VERSION "2026.8.1")
+#
+# LUB_NO_SLANG builds a player without the compiler. It can only use shaders
+# from the shader cache (src/shader_cache.h), which a player with Slang
+# fills. iOS has no Slang prebuilt, so it is always built this way.
+set(SLANG_VERSION "2026.8.1")
+option(LUB_NO_SLANG "Build a player without the Slang shader compiler" OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(LUB_NO_SLANG ON CACHE BOOL "" FORCE)
+endif()
+set(LUB_HAS_SLANG OFF)
+if(NOT LUB_WASM AND NOT LUB_NO_SLANG)
+  set(LUB_HAS_SLANG ON)
+endif()
+if(LUB_HAS_SLANG)
   set(SLANG_ROOT "${CMAKE_SOURCE_DIR}/third_party/slang")
   if(WIN32)
     set(_slang_lib_marker "${SLANG_ROOT}/lib/slang.lib")
@@ -284,6 +309,8 @@ set(LUB_SOURCES
 list(APPEND LUB_SOURCES src/backend_webgpu.c)
 if(NOT LUB_WASM)
   list(APPEND LUB_SOURCES src/backend_sdlgpu.c)
+  # shader の生成キャッシュ (LUB_NO_SLANG の player では必須データ)
+  list(APPEND LUB_SOURCES src/shader_cache.c)
   # tcs (TinyC#) pipeline: .cs entry の transpile + watch 駆動 (native のみ)
   list(APPEND LUB_SOURCES src/tcs_build.c)
   list(APPEND LUB_SOURCES src/path_util.c)
@@ -296,6 +323,12 @@ if(NOT LUB_WASM)
   if(LUB_HAS_VULKAN)
     # Vulkan backend ("vulkan", Linux 既定。Windows では SDK 検出時のみ).
     list(APPEND LUB_SOURCES src/backend_vulkan.c)
+  endif()
+  if(APPLE)
+    # Metal backend ("metal", macOS / iOS 既定).
+    list(APPEND LUB_SOURCES src/backend_metal.m)
+    set_source_files_properties(src/backend_metal.m PROPERTIES
+      COMPILE_OPTIONS "-fobjc-arc")
   endif()
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LUB_HAS_VULKAN)
@@ -329,6 +362,14 @@ else()
   add_executable(lub src/main.c)
 endif()
 target_link_libraries(lub PRIVATE lub_objs)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  # iOS の player は app bundle。game.lua やデータは bundle の中に置く
+  # (docs/metal-backend.md)。
+  set_target_properties(lub PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/Info.plist"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "dev.neguse.lub")
+endif()
 if(LUB_HAS_VULKAN)
   target_compile_definitions(lub_objs PUBLIC LUB_HAS_VULKAN=1)
 endif()
@@ -353,8 +394,16 @@ target_include_directories(lub_objs PUBLIC
 )
 # backend の index buffer は u32 固定なので ImDrawIdx を 32bit にする。
 target_compile_definitions(lub_objs PUBLIC ImDrawIdx=unsigned)
-if(NOT LUB_WASM)
+if(LUB_HAS_SLANG)
   target_link_directories(lub_objs PUBLIC third_party/slang/lib)
+endif()
+if(NOT LUB_WASM)
+  # shader cache の key に畳む生成器の版 (Slang を持たない player も同じ値)
+  target_compile_definitions(lub_objs PRIVATE
+    LUB_SLANG_VERSION="${SLANG_VERSION}")
+endif()
+if(LUB_NO_SLANG)
+  target_compile_definitions(lub_objs PUBLIC LUB_NO_SLANG)
 endif()
 
 target_link_libraries(lub_objs PUBLIC
@@ -364,7 +413,7 @@ target_link_libraries(lub_objs PUBLIC
   box3d
   tess2
 )
-if(NOT LUB_WASM)
+if(LUB_HAS_SLANG)
   target_link_libraries(lub_objs PUBLIC slang)
 endif()
 if(UNIX AND NOT LUB_WASM)
@@ -379,6 +428,21 @@ if(WIN32)
 endif()
 if(LUB_HAS_VULKAN)
   target_link_libraries(lub_objs PUBLIC Vulkan::Vulkan)
+endif()
+if(APPLE)
+  target_link_libraries(lub_objs PUBLIC
+    "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+  if(CMAKE_GENERATOR STREQUAL "Xcode")
+    # The Xcode generator links a target whose own sources are all C
+    # (main.c) without the C++ runtime that lub_objs needs.
+    target_link_libraries(lub_objs PUBLIC c++)
+  endif()
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  # miniaudio drives AVAudioSession on iOS, which needs Objective-C.
+  set_source_files_properties(src/miniaudio_impl.c PROPERTIES LANGUAGE OBJC)
+  target_link_libraries(lub_objs PUBLIC
+    "-framework AVFoundation" "-framework AudioToolbox" "-framework CoreAudio")
 endif()
 if(UNIX AND NOT APPLE AND NOT LUB_WASM)
   # Slang's prebuilt shared libs live next to the source tree; make them
@@ -552,19 +616,23 @@ if(NOT LUB_WASM)
   endif()
   target_include_directories(lub_sdf_smoke PRIVATE src include)
 
+endif()
+
+if(LUB_HAS_SLANG)
   # Buffer layout smoke: StructuredBuffer element structs must pack the same
   # on every target (shader.cpp rejects the rest). Compiles through the
   # SPIR-V (SDL_GPU) target on every platform.
   add_executable(lub_shader_layout_smoke
     tests/c/shader_layout_smoke.c
     src/shader.cpp
+    src/shader_cache.c
   )
   target_include_directories(lub_shader_layout_smoke PRIVATE
     src
     third_party/slang/include
   )
   target_link_directories(lub_shader_layout_smoke PRIVATE third_party/slang/lib)
-  target_link_libraries(lub_shader_layout_smoke PRIVATE slang)
+  target_link_libraries(lub_shader_layout_smoke PRIVATE slang SDL3::SDL3)
   if(UNIX AND NOT APPLE)
     set_target_properties(lub_shader_layout_smoke PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/slang/lib")
@@ -580,13 +648,14 @@ if(NOT LUB_WASM)
     add_executable(lub_shader_d3d12_smoke
       tests/c/shader_d3d12_smoke.c
       src/shader.cpp
+      src/shader_cache.c
     )
     target_include_directories(lub_shader_d3d12_smoke PRIVATE
       src
       third_party/slang/include
     )
     target_link_directories(lub_shader_d3d12_smoke PRIVATE third_party/slang/lib)
-    target_link_libraries(lub_shader_d3d12_smoke PRIVATE slang)
+    target_link_libraries(lub_shader_d3d12_smoke PRIVATE slang SDL3::SDL3)
     add_dependencies(lub_shader_d3d12_smoke lub) # slang DLLs land via lub's post-build copy
   endif()
 endif()

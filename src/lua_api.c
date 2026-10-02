@@ -44,8 +44,12 @@ int64_t app_file_mtime_ns(const char *path) {
   struct stat st;
   if (stat(path, &st) != 0)
     return 0;
-  return (int64_t)st.st_mtim.tv_sec * 1000000000LL +
-         (int64_t)st.st_mtim.tv_nsec;
+#ifdef __APPLE__
+  struct timespec mtime = st.st_mtimespec;
+#else
+  struct timespec mtime = st.st_mtim;
+#endif
+  return (int64_t)mtime.tv_sec * 1000000000LL + (int64_t)mtime.tv_nsec;
 #endif
 }
 

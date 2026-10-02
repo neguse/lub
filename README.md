@@ -12,8 +12,10 @@ hot reload する。同じ C# を実 .NET で動かす経路もある。
 
 現時点の実装は SDL3 + Slang + Lua 5.5 を基盤にし、GPU backend は
 native がプラットフォーム直接実装 (`native`、default — Windows: D3D12、
-Linux: Vulkan) と SDL3 GPU API (`sdlgpu`)、web が webgpu.h 直接実装。
-対応プラットフォームは Linux x86_64、Windows x86_64、WebAssembly/WebGPU。
+Linux: Vulkan、macOS / iOS: Metal) と SDL3 GPU API (`sdlgpu`)、web が
+webgpu.h 直接実装。
+対応プラットフォームは Linux x86_64、Windows x86_64、macOS arm64、
+iOS arm64、WebAssembly/WebGPU。
 
 ## ドキュメント
 
@@ -53,6 +55,14 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
+macOS (Xcode か Command Line Tools。iOS の app は
+[docs/metal-backend.md](docs/metal-backend.md)):
+
+```sh
+cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-mac
+```
+
 Windows (PowerShell, MSVC + Ninja):
 
 ```powershell
@@ -66,6 +76,7 @@ Release build は手順を固定するため、通常は script 経由で行う
 
 ```sh
 bash scripts/build-release.sh                                              # Linux
+bash scripts/build-release.sh --build-dir build-mac                        # macOS
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1  # Windows
 ```
 
@@ -159,21 +170,23 @@ scripts/run-golden.sh --update    # golden 画像を再生成 (描画意図的�
 scripts/run-golden.sh --sample 01_triangle --backend sdlgpu
 ```
 
-プラットフォームごとに機材非依存の CPU rasterizer を強制するので capture が
+Linux と Windows は機材非依存の CPU rasterizer を強制するので capture が
 確定的になり、`cmp -s` で完全一致判定する。Linux は lavapipe + xvfb で
 sdlgpu と vulkan を、Windows (git bash) は WARP (`LUB_D3D12_WARP=1`) で
-d3d12 をチェックする。実 GPU でのドリフトは想定範囲外
-(tolerance 比較は別途)。
+d3d12 をチェックする。macOS は metal を実 GPU で描くので、Linux の golden
+(`*_sdlgpu.png`) と許容差で比べる (`scripts/png-diff.py`)。
 
 ## Backend 切替
 
-lub は 4 つの GPU backend を持ち、同一 API で動く:
+lub は 5 つの GPU backend を持ち、同一 API で動く:
 
 - `d3d12` — Windows の既定。D3D12 直接実装
   (設計は [docs/d3d12-backend.md](docs/d3d12-backend.md))
 - `vulkan` — Linux の既定。Vulkan 直接実装 (`src/backend_vulkan.c`)。Windows でも
   Vulkan SDK が見つかる build では選べる
-- `sdlgpu` — SDL3 GPU API 経由の実装 (native 全般の代替 backend)
+- `metal` — macOS / iOS の既定。Metal 直接実装
+  (設計は [docs/metal-backend.md](docs/metal-backend.md))
+- `sdlgpu` — SDL3 GPU API 経由の実装 (Windows / Linux の代替 backend)
 - `webgpu` — web build の実体 (webgpu.h 直接)。web では backend 指定は無視される
 
 設計記録は [docs/log/2026-06-22-native-backend-design.md](docs/log/2026-06-22-native-backend-design.md)、

@@ -210,7 +210,25 @@ static void audio_ensure_device(AudioState *st) {
   cfg.dataCallback = audio_data_callback;
   cfg.pUserData = st;
 
-  ma_result res = ma_device_init(NULL, &cfg, &st->device);
+  ma_result res = MA_ERROR;
+#ifdef SDL_PLATFORM_IOS
+  // miniaudio の既定は playback category で、消音スイッチを無視して鳴る。
+  // ゲームの音は ambient (消音に従い、他の app の音と混ざる) にする。
+  // audio session が決まる前の native rate は当てにならないので 48 kHz を頼む。
+  cfg.sampleRate = 48000;
+  ma_context_config ctx_cfg = ma_context_config_init();
+  ctx_cfg.coreaudio.sessionCategory = ma_ios_session_category_ambient;
+  if (ma_context_init(NULL, 0, &ctx_cfg, &st->context) == MA_SUCCESS) {
+    st->context_inited = true;
+    res = ma_device_init(&st->context, &cfg, &st->device);
+    if (res != MA_SUCCESS) {
+      ma_context_uninit(&st->context);
+      st->context_inited = false;
+    }
+  }
+#else
+  res = ma_device_init(NULL, &cfg, &st->device);
+#endif
   if (res != MA_SUCCESS) {
     // headless / CI: null backend にフォールバックして mixer は回し続ける
     ma_backend null_backend = ma_backend_null;

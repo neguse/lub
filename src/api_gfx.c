@@ -3,6 +3,7 @@
 #include "api_internal.h"
 #include "backend.h"
 #include "enums.h"
+#include "host_api.h"
 #include "pass.h"
 #include "pipeline.h"
 #include "resources.h"
@@ -48,6 +49,10 @@ static ShaderTargetBackend shader_target_for_backend(void) {
     return SHADER_TARGET_D3D12;
   // vulkan / sdlgpu は SDLGPU target の SPIR-V を食う
   // (descriptor set 規約が SDL_GPU 準拠のため)。
+  return SHADER_TARGET_SDLGPU;
+#elif defined(__APPLE__)
+  if (g_backend == &g_backend_metal)
+    return SHADER_TARGET_METAL;
   return SHADER_TARGET_SDLGPU;
 #else
   return SHADER_TARGET_SDLGPU;
@@ -118,9 +123,9 @@ LubHandle lub_gfx_main_tex(LubContext *ctx) {
 
 void lub_gfx_size(LubContext *ctx, int32_t *out_w, int32_t *out_h) {
   App *app = lub_api_app(ctx);
-  int w = 0, h = 0;
+  int x = 0, y = 0, w = 0, h = 0;
   if (app && app->window)
-    SDL_GetWindowSizeInPixels(app->window, &w, &h);
+    lub_host_main_rect(app, &x, &y, &w, &h);
   if (w <= 0)
     w = 1280;
   if (h <= 0)
