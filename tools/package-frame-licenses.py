@@ -63,7 +63,7 @@ for source in [
     'third_party/SDL/src/hidapi/linux/hid.c',
     'third_party/SDL/src/joystick/controller_type.c',
     'third_party/SDL/src/joystick/hidapi/SDL_hidapi_steamdeck.c',
-    'third_party/SDL/src/render/software/SDL_rotate.c',
+    'third_party/SDL/src/video/SDL_rotate.c',
     'third_party/SDL/src/stdlib/SDL_qsort.c',
     'third_party/SDL/src/video/x11/edid-parse.c',
     'third_party/SDL/src/video/x11/xsettings-client.c',
