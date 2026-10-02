@@ -321,6 +321,8 @@ public partial class LuaEmitter
             $"{obj.TypeName}.new({string.Join(", ", obj.Args.Select(RenderIl))})",
         IlTable table => RenderIlTable(table),
         IlNewArray => "{}",  // 長さは Lua 表現に現れない (legacy 互換)
+        IlNumericConvert convert => RenderIl(convert.Value),
+        IlRefCast cast => RenderIl(cast.Value),
         IlIsType isType => $"__tcs_is({RenderIl(isType.E)}, {isType.TypeRef})",
         IlStructCopy copy => $"{copy.TypeName}.__copy({RenderIl(copy.E)})",
         IlIsLuaType isLua => $"type({RenderIl(isLua.E)}) == \"{isLua.LuaType}\"",

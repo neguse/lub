@@ -53,8 +53,8 @@ internal sealed partial class CEmitter
         var dictTemp = Temp("dict");
         var sb = new StringBuilder();
         sb.Append($"TcsDict *{dictTemp} = tcs_dict_new(" +
-            $"{(type.Key!.Kind == CTypeKind.String ? 1 : 0)}, " +
-            $"sizeof({type.Element!.CName})); ");
+            $"{RuntimeTypeId(type)}, {(type.Key!.Kind == CTypeKind.String ? 1 : 0)}, " +
+            $"sizeof({type.Element!.CName}), {TraceValue(type.Element)}); ");
         foreach (var entry in table.Entries)
         {
             var valueTemp = Temp("dict_value");
@@ -80,6 +80,7 @@ internal sealed partial class CEmitter
     // ref method 側で別対応)
     private void EmitMultiAssign(IlMultiAssign multi)
     {
+        if (EmitForeignMultiAssign(multi)) return;
         if (multi.Values is not [IlCall { Callee: "Dict.TryGet" } tryGet]
             || multi.Targets.Length != 2
             || multi.Targets[0] is not IlVar foundVar

@@ -66,6 +66,8 @@ internal sealed partial class CEmitter
                 expr(i.Recv); foreach (var a in i.Args) expr(a); break;
             case IlNewObj n: foreach (var a in n.Args) expr(a); break;
             case IlNewArray na: expr(na.Length); break;
+            case IlNumericConvert convert: expr(convert.Value); break;
+            case IlRefCast cast: expr(cast.Value); break;
             case IlTable t:
                 foreach (var en in t.Entries)
                 {
@@ -147,7 +149,7 @@ internal sealed partial class CEmitter
             var cell = new Variable($"c_{old.CName}", old.Type)
                 { Boxed = true };
             Line($"{old.Type.CName} *{cell.CName} = " +
-                $"tcs_alloc(sizeof(*{cell.CName}));");
+                $"tcs_alloc_traced(sizeof(*{cell.CName}), {TraceValue(old.Type)});");
             Line($"*{cell.CName} = {old.CName};");
             _scopes.Peek()[scopeEntry.Key] = cell;
         }
@@ -253,9 +255,10 @@ internal sealed partial class CEmitter
 
         var make = new StringBuilder();
         var closTemp = Temp("closure");
-        make.Append($"TcsClosure *{closTemp} = tcs_alloc(sizeof(TcsClosure) " +
-            $"+ {Math.Max(captured.Count, 1)} * sizeof(void *)); ");
+        make.Append($"TcsClosure *{closTemp} = tcs_alloc_traced(sizeof(TcsClosure) " +
+            $"+ {Math.Max(captured.Count, 1)} * sizeof(void *), tcs_trace_closure); {closTemp}->count = {captured.Count}; ");
         make.Append($"{closTemp}->fn = (void *){fnName}; ");
+        make.Append($"{closTemp}->type_id = {RuntimeTypeId(target)}; ");
         for (var i = 0; i < captured.Count; i++)
             make.Append($"{closTemp}->cells[{i}] = (void *){captured[i].Cell.CName}; ");
         return $"({{ {make}{closTemp}; }})";
@@ -291,8 +294,8 @@ internal sealed partial class CEmitter
                 "{\n    " + body + "\n}\n\n");
         }
         var closTemp = Temp("closure");
-        return $"({{ TcsClosure *{closTemp} = tcs_alloc(sizeof(TcsClosure) " +
-            $"+ sizeof(void *)); {closTemp}->fn = (void *){fnName}; " +
-            $"{closTemp}; }})";
+        return $"({{ TcsClosure *{closTemp} = tcs_alloc_traced(sizeof(TcsClosure) " +
+            $"+ sizeof(void *), tcs_trace_closure); {closTemp}->fn = (void *){fnName}; " +
+            $"{closTemp}->type_id = {RuntimeTypeId(target)}; {closTemp}; }})";
     }
 }

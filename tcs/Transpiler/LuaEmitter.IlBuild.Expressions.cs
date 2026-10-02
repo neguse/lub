@@ -26,7 +26,8 @@ public partial class LuaEmitter
                     ? null : new IlLit(GetDefaultValueForType(converted));
             }
             case LiteralExpressionSyntax lit:
-                return new IlLit(VisitLiteral(lit));
+                return new IlLit(VisitLiteral(lit),
+                    lit.Token.Value is float or double ? "float" : null);
             case IdentifierNameSyntax id:
                 return BuildIdentifier(model, id);
             case BinaryExpressionSyntax bin:
@@ -75,7 +76,16 @@ public partial class LuaEmitter
                     var ch = BuildExpr(model, cast.Expression);
                     return ch == null ? null : new IlCall("string.byte", [ch]);
                 }
-                return BuildExpr(model, cast.Expression);
+                var value = BuildExpr(model, cast.Expression);
+                var target = model.GetTypeInfo(cast.Type).Type;
+                if (value == null || target == null) return value;
+                if (target.SpecialType is SpecialType.System_Int32
+                    or SpecialType.System_Single or SpecialType.System_Double)
+                    return new IlNumericConvert(value,
+                        target.SpecialType == SpecialType.System_Int32 ? "int" : "float");
+                return target.IsReferenceType || target.SpecialType == SpecialType.System_Boolean
+                    || target.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+                    ? new IlRefCast(value, target.ToDisplayString()) : value;
             }
             case ConditionalExpressionSyntax ternary:
             {
@@ -134,7 +144,7 @@ public partial class LuaEmitter
                     if (elemType != null && sizeExpr != null
                         && BuildExpr(model, sizeExpr) is { } len)
                         return new IlNewArray(elemType, len);
-                    return new IlTable([], elemType);
+                    return new IlTable([], elemType, IsArray: true);
                 }
                 return BuildArrayItems(model, arr.Initializer,
                     (model.GetTypeInfo(arr).Type as IArrayTypeSymbol)
@@ -164,7 +174,7 @@ public partial class LuaEmitter
     private IlExpr? BuildArrayItems(SemanticModel model,
         InitializerExpressionSyntax? initializer, string? elementType = null)
     {
-        if (initializer == null) return new IlTable([], elementType);
+        if (initializer == null) return new IlTable([], elementType, IsArray: true);
         var items = new List<IlTableEntry>();
         foreach (var e in initializer.Expressions)
         {
@@ -172,7 +182,7 @@ public partial class LuaEmitter
             if (built == null) return null;
             items.Add(new IlTableEntry(null, built));
         }
-        return new IlTable([.. items], elementType);
+        return new IlTable([.. items], elementType, IsArray: true);
     }
 
     private IlExpr? BuildWithExpr(SemanticModel model,
@@ -201,7 +211,12 @@ public partial class LuaEmitter
         var symbol = model.GetSymbolInfo(id).Symbol;
         var name = id.Identifier.ValueText;
         if (ConstLiteral(symbol) is { } constLit)
-            return new IlLit(constLit);
+            return new IlLit(constLit, symbol switch
+            {
+                IFieldSymbol { Type.SpecialType: SpecialType.System_Single or SpecialType.System_Double }
+                    or ILocalSymbol { Type.SpecialType: SpecialType.System_Single or SpecialType.System_Double } => "float",
+                _ => null,
+            });
         switch (symbol)
         {
             case IMethodSymbol { IsStatic: true, ContainingType: not null } sm:
@@ -595,7 +610,12 @@ public partial class LuaEmitter
         if (symbol is INamedTypeSymbol namedType)
             return new IlVar(TypeRef(namedType));
         if (ConstLiteral(symbol) is { } constLit)
-            return new IlLit(constLit);
+            return new IlLit(constLit, symbol switch
+            {
+                IFieldSymbol { Type.SpecialType: SpecialType.System_Single or SpecialType.System_Double }
+                    or ILocalSymbol { Type.SpecialType: SpecialType.System_Single or SpecialType.System_Double } => "float",
+                _ => null,
+            });
         // Rune.Value: utf8.codes の値は codepoint 整数そのもの
         if (IsRuneValue(symbol))
             return BuildExpr(model, ma.Expression);
@@ -693,9 +713,17 @@ public partial class LuaEmitter
                     if (key == null || value == null) return null;
                     entries.Add(new IlTableEntry(key, value));
                 }
+                else if (e is AssignmentExpressionSyntax
+                    { Left: ImplicitElementAccessSyntax { ArgumentList.Arguments.Count: 1 } index } assignment)
+                {
+                    var key = BuildExpr(model, index.ArgumentList.Arguments[0].Expression);
+                    var value = BuildExpr(model, assignment.Right);
+                    if (key == null || value == null) return null;
+                    entries.Add(new IlTableEntry(key, value));
+                }
                 else
                 {
-                    return null; // indexer initializer 等は fallback
+                    return null;
                 }
             }
             return new IlTable([.. entries], TypeArg(1), TypeArg(0));
@@ -714,7 +742,7 @@ public partial class LuaEmitter
         if (IsReferenceOnlyType(typeSymbol))
             // ctor 引数つきは legacy が警告する経路 — fallback
             return args.Count > 0
-                ? null : BuildRefTypeTable(model, initializer);
+                ? null : BuildRefTypeTable(model, initializer, typeSymbol.ToDisplayString());
         // struct の明示 ctor は S.ctor (zero 初期化 + 本文)。`new S()` は
         // ctor を通らない zero 値なので S.new のまま
         var ctor = IsUserStruct(typeSymbol) && args.Count > 0

@@ -116,7 +116,13 @@ public partial class LuaEmitter
         // EmitOutVarDeclarations と同じ位置・同じ名前集合)
         if (stmt is not BlockSyntax)
             foreach (var name in CollectPreDeclNames(stmt))
-                acc.Add(new IlLocal(name, null) { Origin = stmt });
+            {
+                var designation = stmt.DescendantNodes().OfType<SingleVariableDesignationSyntax>()
+                    .FirstOrDefault(d => d.Identifier.ValueText == name);
+                var type = designation == null ? null :
+                    (model.GetDeclaredSymbol(designation) as ILocalSymbol)?.Type.ToDisplayString();
+                acc.Add(new IlLocal(name, null, type) { Origin = stmt });
+            }
 
         switch (stmt)
         {

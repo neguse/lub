@@ -52,3 +52,89 @@ method overload、継承、List の int/float 以外は対象を含む明示 err
 生成 C は GNU statement expression で operand / argument の左→右評価を固定する。
 strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 `-fexcess-precision=standard` を必須とする。
+
+## Array, argument and numeric operations
+
+Closed instantiations of top-level generic classes are specialized before IL
+export. Each instantiation has its own fields and static storage; constrained
+base classes, arrays and factory lambdas retain their concrete types. Abstract
+method declarations participate in virtual dispatch. Open, nested and partial
+generic classes are not executable C types. Specialization is limited to 256
+closed classes and 128 expansion rounds.
+
+Array initializers use fixed-length storage, including nested and empty arrays.
+Constructor and method calls can omit trailing optional arguments. Literal and
+local declaration types are retained in IL so an integral initializer does not
+turn a float variable into an integer. Numeric casts to `int` truncate toward
+zero and fault outside the finite i32 range.
+
+`Math.Sin`, `Cos`, `Sqrt`, `Floor`, `Ceiling`, `Atan2`, `Pow`, `Abs`, `Min`, `Max`
+and floating remainder lower to C numeric operations. Link with `-lm` when the
+C toolchain requires it. `String.IndexOf` and `Substring` use the Lua runtime's
+byte offsets and slicing rules. Run `bash tcs2c/verify-game-core.sh` for these
+array, argument, numeric and string contracts.
+
+Object initializers evaluate in order inside a C statement expression. The C
+backend accepts a final return in these blocks and rejects early returns.
+Factory lambdas can be passed to base constructors or assigned to delegate
+fields. Reference equality accepts related base and derived types. `List.Clear`
+resets the logical length while retaining capacity; cleared elements cease to
+be GC roots.
+
+`char` uses a one-byte string for ASCII arithmetic and string iteration visits
+bytes, not UTF-16 characters. `StartsWith`, `Split` with one string separator,
+and `Join` with a string array use the byte-string contract. An empty separator
+leaves the split input whole. `float.Parse` accepts a complete numeric string
+with surrounding ASCII whitespace; invalid input faults.
+
+## Library heap lifetime
+
+`--ref STUB.cs` imports the static methods, static fields, enum values and data
+classes used by the input. Stub method bodies are never compiled. The generated
+C declares `tcs_host_` functions with the Lua path's dots replaced by underscores;
+static fields are exposed as no-argument getters. A host adapter can include the
+generated library C and implement these declarations, as in `tests/foreign-host.c`.
+External data objects carry an untraced `uint64_t host_value` for native handle
+bits. Managed fields and return values still use generated allocation and tracing.
+
+The adapter may borrow managed pointers only during a call; it must not retain
+them across a collection boundary. Copy borrowed native strings into managed
+strings before returning. Void methods can have typed `out` locals; out calls
+with a separate return value and overloaded foreign names are rejected.
+Nullable numeric/bool arguments carry either null or a typed managed scalar box.
+`--lib` entry points accept `int`, `float` and `bool` arguments and return void.
+Run `bash tcs2c/verify-host.sh` for the host boundary contract.
+
+`object` values can contain class, string, collection and delegate references,
+or boxed `int`, `float` and `bool` values. Reference conversions preserve object
+identity; numeric boxes are separate managed allocations. Runtime tags check
+unboxing and reference casts, including collection element types. Interface
+method calls dispatch to the implementing class, including inherited methods.
+Interface properties and default method bodies are outside this C slice.
+
+Object and interface references participate in the same precise root tracing as
+typed class references. Run `bash tcs2c/verify-object-values.sh` to check mixed
+roots, cyclic references, interface dispatch, collection and rejected casts.
+
+`--lib` exports `tcs_lib_init()` and `tcs_entry_CLASS_METHOD()` entry points.
+The generated runtime uses a non-moving, precise mark-and-sweep collector.
+Static fields are roots; generated tracers follow class fields, embedded structs,
+collection elements and captured closure cells. Numeric buffers and strings are
+not scanned for pointers. Unreachable cycles are reclaimed.
+
+Collection runs only after the outermost exported call returns, when managed
+heap bytes exceed twice the previous live heap plus 128 KiB. A host can also call
+`tcs_lib_collect()` between calls. Collection during generated code execution is
+rejected: locals and expression temporaries are not registered as roots. This
+means a single long-running entry point can accumulate garbage until it returns.
+Executable `Main()` output has no intermediate automatic collection.
+
+The host must not retain generated heap pointers across these boundaries.
+`tcs_lib_heap_bytes()` reports allocated payload plus collector headers;
+`tcs_lib_heap_objects()` reports allocation count, including backing buffers.
+These are managed-heap metrics, not total process or WebAssembly memory usage.
+Collection is synchronous and has no pause-time bound.
+
+Run `bash tcs2c/verify-gc.sh` to check retained graphs, cyclic garbage and bounded
+heap growth across repeated host calls. The generated C and `tests/gc-host.c`
+can also be linked with Emscripten to exercise the same checks in WebAssembly.

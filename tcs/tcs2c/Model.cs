@@ -5,7 +5,7 @@ namespace TinyCs.Tcs2c;
 
 internal sealed class Tcs2cException(string message) : Exception(message);
 
-internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure, StructVal }
+internal enum CTypeKind { Void, I32, F32, Bool, String, Ref, Array, List, Null, Dict, Kvp, Closure, StructVal, Object, Nullable }
 
 internal sealed record CType(CTypeKind Kind, string? Name = null,
     CType? Element = null, CType? Key = null,
@@ -17,8 +17,10 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public static readonly CType Bool = new(CTypeKind.Bool);
     public static readonly CType String = new(CTypeKind.String);
     public static readonly CType Null = new(CTypeKind.Null);
+    public static readonly CType Object = new(CTypeKind.Object);
 
     public static CType Ref(string name) => new(CTypeKind.Ref, name);
+    public static CType Nullable(CType element) => new(CTypeKind.Nullable, Element: element);
     /// <summary>データ struct。C では素の値型 (ポインタなし)。</summary>
     public static CType Struct(string name) => new(CTypeKind.StructVal, name);
     public static CType Array(CType element) => new(CTypeKind.Array, Element: element);
@@ -44,6 +46,8 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
         CTypeKind.List => "TcsList *",
         CTypeKind.Dict => "TcsDict *",
         CTypeKind.Closure => "TcsClosure *",
+        CTypeKind.Object => "void *",
+        CTypeKind.Nullable => "void *",
         _ => throw new Tcs2cException($"unsupported type: {this}"),
     };
 
@@ -53,6 +57,9 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
 
     public bool CanAssignFrom(CType source) =>
         this == source
+        || (Kind == CTypeKind.Nullable && Element!.CanAssignFrom(source))
+        || (Kind == CTypeKind.Object && (source.IsNullable
+            || source.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool))
         || (Kind == CTypeKind.F32 && source.Kind == CTypeKind.I32)
         || (IsNullable && source.Kind == CTypeKind.Null)
         || (Kind == CTypeKind.List && source.Kind == CTypeKind.List
@@ -67,7 +74,7 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
 
     public bool IsNullable => Kind is CTypeKind.String or CTypeKind.Ref
         or CTypeKind.Array or CTypeKind.List or CTypeKind.Dict
-        or CTypeKind.Closure;
+        or CTypeKind.Closure or CTypeKind.Object or CTypeKind.Nullable;
 
     public override string ToString() => Kind switch
     {

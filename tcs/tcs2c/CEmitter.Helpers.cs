@@ -11,7 +11,7 @@ internal sealed partial class CEmitter
         if (!_classes.ContainsKey(typeTest.TypeRef))
             throw new Tcs2cException($"IlIsType target is not a class: {typeTest.TypeRef}");
         var operand = TypeOf(typeTest.E);
-        if (operand.Kind is not (CTypeKind.Ref or CTypeKind.Null))
+        if (operand.Kind is not (CTypeKind.Ref or CTypeKind.Null or CTypeKind.Object))
             throw new Tcs2cException($"IlIsType operand is not a class reference: {operand}");
         return CType.Bool;
     }
@@ -36,7 +36,7 @@ internal sealed partial class CEmitter
         if (text is "true" or "false") return CType.Bool;
         if (text == "nil") return CType.Null;
         if (text.StartsWith('"')) return CType.String;
-        return IsFloatText(text) ? CType.F32 : CType.I32;
+        return literal.Type == "float" || IsFloatText(text) ? CType.F32 : CType.I32;
     }
 
     private static string RenderLiteral(IlLit literal)
@@ -45,7 +45,7 @@ internal sealed partial class CEmitter
         if (text is "true" or "false") return text;
         if (text == "nil") return "NULL";
         if (text.StartsWith('"')) return RenderStringLiteral(text);
-        if (IsFloatText(text))
+        if (literal.Type == "float" || IsFloatText(text))
         {
             if (!float.TryParse(text, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var value))
@@ -131,6 +131,14 @@ internal sealed partial class CEmitter
     private static CType CommonType(CType left, CType right, string where)
     {
         if (left == right) return left;
+        if (left == CType.Null && right.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool)
+            return CType.Nullable(right);
+        if (right == CType.Null && left.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool)
+            return CType.Nullable(left);
+        if (left.Kind == CTypeKind.Nullable && left.CanAssignFrom(right)) return left;
+        if (right.Kind == CTypeKind.Nullable && right.CanAssignFrom(left)) return right;
+        if (left == CType.Object && left.CanAssignFrom(right)) return left;
+        if (right == CType.Object && right.CanAssignFrom(left)) return right;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
             && right.Kind is CTypeKind.I32 or CTypeKind.F32)
             return NumericJoin(left, right, where);
@@ -144,8 +152,19 @@ internal sealed partial class CEmitter
         throw new Tcs2cException($"incompatible {where}: {left}, {right}");
     }
 
-    private static void RequireComparable(CType left, CType right, string where)
+    private void RequireComparable(CType left, CType right, string where)
     {
+        if (left.Kind == CTypeKind.Nullable || right.Kind == CTypeKind.Nullable)
+        {
+            if (left == CType.Null || right == CType.Null) return;
+            RequireComparable(left.Kind == CTypeKind.Nullable ? left.Element! : left,
+                right.Kind == CTypeKind.Nullable ? right.Element! : right, where);
+            return;
+        }
+        if (left.Kind == CTypeKind.Ref && right.Kind == CTypeKind.Ref
+            && (IsAncestorOrSame(left.Name!, right.Name!) || IsAncestorOrSame(right.Name!, left.Name!))) return;
+        if (left == CType.Object && right.IsNullable
+            || right == CType.Object && left.IsNullable) return;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
             && right.Kind is CTypeKind.I32 or CTypeKind.F32) return;
         if (left == right && left.Kind is CTypeKind.Bool or CTypeKind.String
@@ -175,6 +194,18 @@ internal sealed partial class CEmitter
     // closure は型付き文脈でのみ生成できる (IlClosure は引数型を持たない)
     private string RenderCoerced(IlExpr expr, CType target)
     {
+        if (target == CType.Object) return RenderBox(expr);
+        if (target.Kind == CTypeKind.Nullable)
+        {
+            var sourceType = TypeOf(expr);
+            if (sourceType == CType.Null || sourceType == target) return RenderExpr(expr);
+            var suffix = target.Element!.Kind switch
+            {
+                CTypeKind.I32 => "i32", CTypeKind.F32 => "f32", CTypeKind.Bool => "bool",
+                _ => throw new Tcs2cException($"unsupported nullable type: {target.Element}"),
+            };
+            return $"tcs_box_{suffix}({RenderCoerced(expr, target.Element)})";
+        }
         if (target.Kind == CTypeKind.Closure)
         {
             if (expr is IlClosure closure)
@@ -198,6 +229,8 @@ internal sealed partial class CEmitter
         IlLit literal => literal.LuaText.StartsWith('"'),
         IlVar => false,
         IlParen paren => Effectful(paren.E),
+        IlNumericConvert convert => Effectful(convert.Value),
+        IlRefCast cast => Effectful(cast.Value),
         IlUn unary => Effectful(unary.E),
         IlBin binary => Effectful(binary.L) || Effectful(binary.R),
         IlTernary ternary => Effectful(ternary.Cond)

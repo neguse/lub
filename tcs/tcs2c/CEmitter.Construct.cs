@@ -23,10 +23,9 @@ internal sealed partial class CEmitter
                 AddVariable(paramFacts[i].Name,
                     new Variable($"v_{Names.Id(paramFacts[i].Name)}_{i}",
                         paramFacts[i].Type));
-            var parameters = paramFacts.Count == 0
-                ? "void"
-                : string.Join(", ", paramFacts.Select((p, i) =>
-                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+            var parameters = string.Join(", ", new[] { "size_t tcs_size", "TcsTrace tcs_trace" }
+                .Concat(paramFacts.Select((p, i) =>
+                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
             Line($"static {cType} *");
             Line($"{Names.New(cls.Name)}({parameters})");
             Line("{");
@@ -36,17 +35,15 @@ internal sealed partial class CEmitter
                 var baseParams = CtorParamFacts(_classes[baseName]);
                 var baseArgs = ctor?.BaseArgs.IsDefault == false
                     ? ctor.BaseArgs : [];
-                if (baseArgs.Length != baseParams.Count)
-                    throw new Tcs2cException(
-                        $"base constructor arity mismatch: {cls.Name}");
-                var rendered = new List<string>();
-                for (var i = 0; i < baseArgs.Length; i++)
+                var completeBaseArgs = CompleteArguments(baseParams, baseArgs);
+                var rendered = new List<string> { "tcs_size", "tcs_trace" };
+                for (var i = 0; i < completeBaseArgs.Count; i++)
                 {
-                    RequireAssignable(baseParams[i].Type, TypeOf(baseArgs[i]),
+                    ValidateArgument(baseParams[i].Type, completeBaseArgs[i],
                         $"base ctor argument {i} of {cls.Name}");
                     var temp = Temp("base_arg");
                     Line($"{baseParams[i].Type.CName} {temp} = " +
-                        $"{RenderCoerced(baseArgs[i], baseParams[i].Type)};");
+                        $"{RenderCoerced(completeBaseArgs[i], baseParams[i].Type)};");
                     rendered.Add(temp);
                 }
                 Line($"{cType} *object = ({cType} *)" +
@@ -54,7 +51,7 @@ internal sealed partial class CEmitter
             }
             else
             {
-                Line($"{cType} *object = tcs_alloc(sizeof(*object));");
+                Line($"{cType} *object = tcs_alloc_traced(tcs_size, tcs_trace);");
             }
             Line($"object->type_id = {Names.TypeId(cls.Name)};");
             AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
@@ -88,7 +85,8 @@ internal sealed partial class CEmitter
         if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
             throw new Tcs2cException($"ctor metadata mismatch: {cls.Name}");
         return ctor.Parameters.Select((name, i) => new ParameterFact(
-            name, _facts.MapType(ctor.ParameterTypes[i]))).ToList();
+            name, _facts.MapType(ctor.ParameterTypes[i]),
+            ctor.ParameterDefaults.IsDefault ? null : ctor.ParameterDefaults[i])).ToList();
     }
 
 
@@ -114,7 +112,7 @@ internal sealed partial class CEmitter
             _indent++;
             Line("switch (((TcsObjectHeader *)v_self)->type_id) {");
             foreach (var target in _program.Classes
-                .Where(c => IsAncestorOrSame(cls.Name, c.Name)))
+                .Where(c => !c.IsInterface && IsAncestorOrSame(cls.Name, c.Name)))
             {
                 var impl = FindDeclaringClass(target.Name, method.Name)!;
                 var call = $"{Names.Method(impl, method.Name)}(" +

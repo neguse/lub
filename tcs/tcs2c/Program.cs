@@ -15,7 +15,8 @@ static int Run(string[] args)
         }
 
         var sources = options.Inputs.Select(File.ReadAllText).ToArray();
-        var exported = IlExport.Export(sources);
+        var exported = IlExport.Export(sources, specializeGenerics: true,
+            referenceSources: options.References.Select(File.ReadAllText).ToArray());
         if (exported.Diagnostics.Length > 0)
             throw new Tcs2cException("TinyC# diagnostics:\n" +
                 string.Join("\n", exported.Diagnostics));
@@ -42,6 +43,7 @@ static int Run(string[] args)
 
 file sealed record Options(
     IReadOnlyList<string> Inputs,
+    IReadOnlyList<string> References,
     string? OutputPath,
     string? EntryClass,
     bool DigestF32,
@@ -49,12 +51,13 @@ file sealed record Options(
     bool Lib = false)
 {
     public const string Usage =
-        "usage: tcs2c [--entry CLASS] [--digest-f32] [--lib] [-o OUTPUT.c] " +
+        "usage: tcs2c [--entry CLASS] [--digest-f32] [--lib] [--ref STUB.cs] [-o OUTPUT.c] " +
         "INPUT.cs [INPUT.cs ...]";
 
     public static Options Parse(string[] args)
     {
         var inputs = new List<string>();
+        var references = new List<string>();
         string? output = null;
         string? entry = null;
         var digestF32 = false;
@@ -74,6 +77,9 @@ file sealed record Options(
                 case "--entry":
                     entry = TakeValue(args, ref i);
                     break;
+                case "--ref":
+                    references.Add(TakeValue(args, ref i));
+                    break;
                 case "--digest-f32":
                     digestF32 = true;
                     break;
@@ -90,7 +96,7 @@ file sealed record Options(
 
         if (!help && inputs.Count == 0)
             throw new Tcs2cException(Usage);
-        return new Options(inputs, output, entry, digestF32, help, lib);
+        return new Options(inputs, references, output, entry, digestF32, help, lib);
     }
 
     private static string TakeValue(string[] args, ref int i)

@@ -2,7 +2,7 @@ using TinyCs;
 
 namespace TinyCs.Tcs2c;
 
-internal sealed record ParameterFact(string Name, CType Type);
+internal sealed record ParameterFact(string Name, CType Type, IlExpr? Default = null);
 
 internal sealed record MethodFact(
     string ClassName,
@@ -30,9 +30,11 @@ internal sealed class ContractFacts
     private readonly Dictionary<string, IlStructInfo> _structs = [];
     private readonly Dictionary<(string Class, string Method), MethodFact> _methods = [];
     private readonly Dictionary<(string Class, string Field), FieldFact> _fields = [];
+    private readonly HashSet<string> _enums;
 
     public ContractFacts(IlExportResult program)
     {
+        _enums = program.EnumTypes.IsDefault ? [] : [.. program.EnumTypes];
         _classes = new Dictionary<string, IlClassInfo>();
         foreach (var cls in program.Classes)
             if (!_classes.TryAdd(cls.Name, cls))
@@ -61,7 +63,8 @@ internal sealed class ContractFacts
                     throw new Tcs2cException($"method parameter metadata mismatch: " +
                         $"{cls.Name}.{method.Name}");
                 var parameters = method.Parameters.Select((name, i) =>
-                    new ParameterFact(name, MapType(method.ParameterTypes[i]))).ToArray();
+                    new ParameterFact(name, MapType(method.ParameterTypes[i]),
+                        method.ParameterDefaults.IsDefault ? null : method.ParameterDefaults[i])).ToArray();
                 var fact = new MethodFact(cls.Name, method.Name, method.IsStatic,
                     MapType(method.ReturnType), parameters, method);
                 if (!_methods.TryAdd((cls.Name, method.Name), fact))
@@ -114,6 +117,13 @@ internal sealed class ContractFacts
         var text = displayName.Trim();
         if (text.StartsWith("global::", StringComparison.Ordinal))
             text = text[8..];
+        if (text.EndsWith('?'))
+        {
+            var inner = MapType(text[..^1]);
+            return inner.IsNullable ? inner
+                : inner.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool ? CType.Nullable(inner)
+                : throw new Tcs2cException($"unsupported nullable type: {inner}");
+        }
         if (text.EndsWith("[]", StringComparison.Ordinal))
             return CType.Array(MapType(text[..^2]));
 
@@ -166,11 +176,13 @@ internal sealed class ContractFacts
 
         return text switch
         {
+            _ when _enums.Contains(text) => CType.I32,
             "void" => CType.Void,
             "int" or "System.Int32" => CType.I32,
             "float" or "System.Single" => CType.F32,
             "bool" or "System.Boolean" => CType.Bool,
-            "string" or "System.String" => CType.String,
+            "string" or "System.String" or "char" or "System.Char" => CType.String,
+            "object" or "System.Object" => CType.Object,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
             _ when _structs.ContainsKey(text) => CType.Struct(text),
             _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),
