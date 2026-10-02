@@ -24,6 +24,9 @@
 #include "backend.h"
 #include "gpu_stats.h"
 #include "stb_image_write.h"
+#if defined(LUB_HAS_OPENXR)
+#include "xr.h"
+#endif
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -140,6 +143,8 @@ typedef struct VkbState {
   VkInstance instance;
   VkDebugUtilsMessengerEXT messenger;
   VkSurfaceKHR surface;
+  bool xr;
+  VkbImage *xr_depth[2];
   VkPhysicalDevice phys;
   VkDevice device;
   VkQueue queue;
@@ -251,6 +256,8 @@ static VkFormat vkb_format(SglPixelFormat fmt) {
     return g.depth24_fmt; // D24S8 or D32S8, whichever the device supports
   case SGL_PF_BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
+  case SGL_PF_RGBA8_SRGB:
+    return VK_FORMAT_R8G8B8A8_SRGB;
   case SGL_PF_RGBA8:
   default:
     return VK_FORMAT_R8G8B8A8_UNORM;
@@ -971,8 +978,15 @@ static bool vkb_pick_device(void) {
     n = 16;
   vkEnumeratePhysicalDevices(g.instance, &n, devs);
 
+  VkPhysicalDevice xr_physical = VK_NULL_HANDLE;
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr && !lubxr_physical_device(g.instance, &xr_physical))
+    return false;
+#endif
   int best_score = -1;
   for (uint32_t i = 0; i < n; ++i) {
+    if (g.xr && devs[i] != xr_physical)
+      continue;
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(devs[i], &props);
     if (props.apiVersion < VK_API_VERSION_1_3)
@@ -1000,8 +1014,9 @@ static bool vkb_pick_device(void) {
     for (uint32_t q = 0; q < nq; ++q) {
       if (!(qs[q].queueFlags & VK_QUEUE_GRAPHICS_BIT))
         continue;
-      VkBool32 present = VK_FALSE;
-      vkGetPhysicalDeviceSurfaceSupportKHR(devs[i], q, g.surface, &present);
+      VkBool32 present = g.xr;
+      if (!g.xr)
+        vkGetPhysicalDeviceSurfaceSupportKHR(devs[i], q, g.surface, &present);
       if (present) {
         fam = (int)q;
         break;
@@ -1043,9 +1058,20 @@ static bool vkb_pick_device(void) {
 }
 
 static bool vkb_make_dummies(void);
+static BackendImage vkb_make_image(const ImageDesc *desc);
 
 static bool vkb_init(App *app) {
   g.app = app;
+  g.xr = strcmp(app->backend_name, "openxr") == 0;
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr && !lubxr_init())
+    return false;
+#else
+  if (g.xr) {
+    SDL_Log("OpenXR is unavailable in this build");
+    return false;
+  }
+#endif
 
   bool want_debug = getenv("LUB_VK_DEBUG") != NULL;
 #if !defined(NDEBUG)
@@ -1067,8 +1093,9 @@ static bool vkb_init(App *app) {
   }
 
   Uint32 n_sdl_ext = 0;
-  const char *const *sdl_exts = SDL_Vulkan_GetInstanceExtensions(&n_sdl_ext);
-  if (!sdl_exts) {
+  const char *const *sdl_exts =
+      g.xr ? NULL : SDL_Vulkan_GetInstanceExtensions(&n_sdl_ext);
+  if (!g.xr && !sdl_exts) {
     SDL_Log("vk: SDL_Vulkan_GetInstanceExtensions failed: %s", SDL_GetError());
     return false;
   }
@@ -1093,7 +1120,13 @@ static bool vkb_init(App *app) {
       .enabledExtensionCount = n_exts,
       .ppEnabledExtensionNames = exts,
   };
-  if (vkCreateInstance(&ici, NULL, &g.instance) != VK_SUCCESS) {
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr) {
+    if (!lubxr_create_instance(&ici, &g.instance))
+      return false;
+  } else
+#endif
+      if (vkCreateInstance(&ici, NULL, &g.instance) != VK_SUCCESS) {
     SDL_Log("vk: vkCreateInstance failed");
     return false;
   }
@@ -1115,7 +1148,8 @@ static bool vkb_init(App *app) {
     }
   }
 
-  if (!SDL_Vulkan_CreateSurface(app->window, g.instance, NULL, &g.surface)) {
+  if (!g.xr &&
+      !SDL_Vulkan_CreateSurface(app->window, g.instance, NULL, &g.surface)) {
     SDL_Log("vk: SDL_Vulkan_CreateSurface failed: %s", SDL_GetError());
     return false;
   }
@@ -1146,10 +1180,16 @@ static bool vkb_init(App *app) {
       .pNext = &f12,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = &qci,
-      .enabledExtensionCount = 1,
+      .enabledExtensionCount = g.xr ? 0 : 1,
       .ppEnabledExtensionNames = dev_exts,
   };
-  if (vkCreateDevice(g.phys, &dci, NULL, &g.device) != VK_SUCCESS) {
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr) {
+    if (!lubxr_create_device(&dci, g.phys, &g.device))
+      return false;
+  } else
+#endif
+      if (vkCreateDevice(g.phys, &dci, NULL, &g.device) != VK_SUCCESS) {
     SDL_Log("vk: vkCreateDevice failed");
     return false;
   }
@@ -1221,7 +1261,25 @@ static bool vkb_init(App *app) {
     }
   }
 
-  if (!vkb_create_swapchain())
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr) {
+    if (!lubxr_start(g.instance, g.phys, g.device, g.qfam))
+      return false;
+    lubxr_size(&g.sw_w, &g.sw_h);
+    g.sc_format = VK_FORMAT_R8G8B8A8_SRGB;
+    g.sc_fmt_sgl = SGL_PF_RGBA8_SRGB;
+    ImageDesc depth = {.fmt = SGL_PF_DEPTH24_STENCIL8,
+                       .w = g.sw_w,
+                       .h = g.sw_h,
+                       .render_target = true};
+    for (int eye = 0; eye < 2; ++eye) {
+      g.xr_depth[eye] = (VkbImage *)vkb_make_image(&depth);
+      if (!g.xr_depth[eye])
+        return false;
+    }
+  } else
+#endif
+      if (!vkb_create_swapchain())
     return false;
   if (!vkb_make_dummies())
     return false;
@@ -1236,7 +1294,6 @@ static void vkb_destroy_buffer(BackendBuffer h);
 static void vkb_destroy_image(BackendImage h);
 static BackendBuffer vkb_make_buffer(SglBufferType type, const void *data,
                                      size_t bytes);
-static BackendImage vkb_make_image(const ImageDesc *desc);
 
 static bool vkb_make_dummies(void) {
   static const uint8_t white[4] = {255, 255, 255, 255};
@@ -1272,6 +1329,9 @@ static bool vkb_make_dummies(void) {
 static void vkb_shutdown(App *app) {
   (void)app;
   vkb_wait_idle();
+  for (int eye = 0; eye < 2; ++eye)
+    if (g.xr_depth[eye])
+      vkb_destroy_image((BackendImage)g.xr_depth[eye]);
   if (g.dummy_tex)
     vkb_destroy_image((BackendImage)g.dummy_tex);
   if (g.dummy_storage)
@@ -1302,6 +1362,10 @@ static void vkb_shutdown(App *app) {
     vkDestroySwapchainKHR(g.device, g.swapchain, NULL);
   if (g.timeline)
     vkDestroySemaphore(g.device, g.timeline, NULL);
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr)
+    lubxr_shutdown();
+#endif
   if (g.device)
     vkDestroyDevice(g.device, NULL);
   if (g.surface)
@@ -1325,7 +1389,7 @@ static void vkb_shutdown(App *app) {
 // -----------------------------------------------------------------
 
 static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
-  if (app->pending_resize || g.need_recreate) {
+  if (!g.xr && (app->pending_resize || g.need_recreate)) {
     app->pending_resize = false;
     g.need_recreate = false;
     if (!vkb_recreate_swapchain())
@@ -1376,6 +1440,10 @@ static void vkb_begin_frame(App *app, int *out_w, int *out_h) {
     }
   }
 
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr && !lubxr_begin_frame())
+    app->quit_requested = true;
+#endif
   if (out_w)
     *out_w = g.sw_w;
   if (out_h)
@@ -1415,6 +1483,10 @@ static void vkb_end_frame(App *app) {
       SDL_Log("vk: vkQueuePresentKHR failed (%d)", (int)r);
   }
 
+#if defined(LUB_HAS_OPENXR)
+  if (g.xr && !lubxr_end_frame())
+    app->quit_requested = true;
+#endif
   g.frames[g.slot].fence_value = g.last_submit_value;
   g.slot = (g.slot + 1) % KFRAMES_IN_FLIGHT;
 }
@@ -1449,13 +1521,41 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
 
   if (nct == 1 && d->targets[0] == 0 && !d->depth_target) {
     // Swapchain pass.
-    if (!g.have_acquired)
-      return;
-    vkb_image_barrier(cmd, g.sc_images[g.bb_index], VK_IMAGE_ASPECT_COLOR_BIT,
-                      g.sc_layouts[g.bb_index],
-                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    if (g.depth_layout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    VkImageView color_view = VK_NULL_HANDLE;
+    VkImageView depth_view = g.depth_view;
+#if defined(LUB_HAS_OPENXR)
+    if (g.xr) {
+      XrEyeImage image;
+      if (d->xr_eye < 0 || !lubxr_eye_image(d->xr_eye, &image))
+        return;
+      color_view = image.view;
+      VkbImage *depth = g.xr_depth[image.eye];
+      depth_view = depth->attach_view;
+      vkb_memory_barrier(cmd);
+      vkb_image_barrier(cmd, depth->img, vkb_aspect(depth->vkfmt, false),
+                        depth->layout,
+                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+      depth->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      if (image.first_pass) {
+        vkb_image_barrier(cmd, image.image, VK_IMAGE_ASPECT_COLOR_BIT,
+                          VK_IMAGE_LAYOUT_UNDEFINED,
+                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      }
+      lubxr_mark_rendered(image.eye);
+    } else
+#endif
+    {
+      if (!g.have_acquired)
+        return;
+      vkb_image_barrier(cmd, g.sc_images[g.bb_index], VK_IMAGE_ASPECT_COLOR_BIT,
+                        g.sc_layouts[g.bb_index],
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+      g.sc_layouts[g.bb_index] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      color_view = g.sc_views[g.bb_index];
+    }
+    if (!g.xr &&
+        g.depth_layout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
       vkb_image_barrier(cmd, g.depth_img, vkb_aspect(g.depth24_fmt, false),
                         g.depth_layout,
                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
@@ -1463,7 +1563,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
     }
     g.pass_colors[0] = (VkRenderingAttachmentInfo){
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = g.sc_views[g.bb_index],
+        .imageView = color_view,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp = load_op,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1473,7 +1573,7 @@ static void vkb_begin_pass(App *app, const PassBeginDesc *d) {
     g.pass_n_colors = 1;
     g.pass_depth = (VkRenderingAttachmentInfo){
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = g.depth_view,
+        .imageView = depth_view,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .loadOp = load_op,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,

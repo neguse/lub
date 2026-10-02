@@ -86,6 +86,10 @@ elif [[ $require_cs -eq 1 ]]; then
   exit 1
 fi
 
+if [[ $cs_available -eq 1 ]]; then
+  run bash scripts/verify-tcs-binding.sh
+fi
+
 # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
 cs_entry_class() {
   local cs_dir="$1" cs_files cs_projs
@@ -232,6 +236,7 @@ if [[ $cs_available -eq 1 ]]; then
     run scripts/gen-lubx-lua.sh --check
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
+    run dotnet run --project tests/dotnet/Bindings -c Release
     cs_pool "transpile (check+build)" cs_transpile
     cs_t0=$SECONDS
     for cs_dir in "${cs_dirs[@]}"; do
@@ -262,6 +267,8 @@ run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
 run_timed ./build-release-linux/lub_sdf_smoke
 run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
 run_timed ./build-release-linux/lub_shader_layout_smoke
+run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
+run_timed ./build-release-linux/lub_xr_math_smoke
 
 # shellcheck source=scripts/lua-tests.sh
 source scripts/lua-tests.sh

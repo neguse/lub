@@ -107,7 +107,7 @@ static SDL_Scancode scancode_from_name(LubStr name) {
     if (fn >= 1 && fn <= 12)
       return (SDL_Scancode)(SDL_SCANCODE_F1 + (fn - 1));
   }
-  return SDL_SCANCODE_UNKNOWN;
+  return SDL_GetScancodeFromName(key);
 }
 
 bool lub_input_key_down(LubContext *ctx, LubStr key) {

@@ -19,6 +19,7 @@ typedef enum {
   SGL_PF_DEPTH24_STENCIL8,
   SGL_PF_DEPTH32F,
   SGL_PF_BGRA8,
+  SGL_PF_RGBA8_SRGB,
 } SglPixelFormat;
 
 typedef enum {

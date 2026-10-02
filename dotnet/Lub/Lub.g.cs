@@ -158,6 +158,33 @@ public class TextureOpts
     public bool? Storage;
 }
 
+/// <summary>XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。</summary>
+public class XrView
+{
+    /// <summary>この frame の片眼の描画先。</summary>
+    public TextureRef? Target;
+    public int Width;
+    public int Height;
+    /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
+    public float[] Position;
+    public float[] Orientation;
+    /// <summary>右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。</summary>
+    public float[] ViewProjection;
+}
+
+public class XrInput
+{
+    public bool Active;
+    public float StickX;
+    public float StickY;
+    public float Trigger;
+    public float Grip;
+    public bool Primary;
+    public bool Secondary;
+    public bool Menu;
+    public bool StickClick;
+}
+
 /// <summary>Lub.config のオプション (onInit 内でのみ有効)。</summary>
 public class ConfigOpts
 {
@@ -1828,6 +1855,82 @@ public static unsafe partial class Lub
         {
             a.End();
         }
+    }
+
+    public static unsafe class Xr
+    {
+        /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target へ描く。</summary>
+        public static bool Active()
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var r = LubNative.lub_xr_active(LubRuntime.Ctx);
+                return (r != 0);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>入力フォーカスを持つ XR セッションか。</summary>
+        public static bool Focused()
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                var r = LubNative.lub_xr_focused(LubRuntime.Ctx);
+                return (r != 0);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
+        public static XrView? View(int eye, float near, float far)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                LubNative.LubXrView o_out = default;
+                var st = LubNative.lub_xr_view(LubRuntime.Ctx, eye, near, far, &o_out);
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    return null;
+                }
+                LubRuntime.Check(st, "Xr.View");
+                return LubNative.From_LubXrView(&o_out);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
+        /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。</summary>
+        public static XrInput? Input(int hand)
+        {
+            var a = LubRuntime.Arena.Begin();
+            try
+            {
+                LubNative.LubXrInput o_out = default;
+                var st = LubNative.lub_xr_input(LubRuntime.Ctx, hand, &o_out);
+                if (st == LubNative.LUB_NOT_FOUND)
+                {
+                    return null;
+                }
+                LubRuntime.Check(st, "Xr.Input");
+                return LubNative.From_LubXrInput(&o_out);
+            }
+            finally
+            {
+                a.End();
+            }
+        }
+
     }
 
     /// <summary>即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブル (Dictionary<string, object>)。</summary>
@@ -7235,6 +7338,31 @@ internal static unsafe partial class LubNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LubXrView
+    {
+        public int @target;
+        public int @width;
+        public int @height;
+        public fixed float @position[3];
+        public fixed float @orientation[4];
+        public fixed float @view_projection[16];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LubXrInput
+    {
+        public bool @active;
+        public float @stick_x;
+        public float @stick_y;
+        public float @trigger;
+        public float @grip;
+        public bool @primary;
+        public bool @secondary;
+        public bool @menu;
+        public bool @stick_click;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct LubConfigOpts
     {
         public LubStr @backend;
@@ -9459,6 +9587,18 @@ internal static unsafe partial class LubNative
     internal static extern void lub_quit(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_xr_active(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern byte lub_xr_focused(void* ctx);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_xr_view(void* ctx, int @eye, float @near, float @far, LubXrView* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int lub_xr_input(void* ctx, int @hand, LubXrInput* @out);
+
+    [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int lub_gfx_main_tex(void* ctx);
 
     [DllImport(LubRuntime.LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -10244,6 +10384,66 @@ internal static unsafe partial class LubNative
     {
         var o = new TextureOpts();
         Fill_LubTextureOpts(o, s);
+        return o;
+    }
+
+    internal static void To_LubXrView(XrView o, LubRuntime.Arena a, LubXrView* s)
+    {
+        s->@target = o.Target?.H ?? 0;
+        s->@width = o.Width;
+        s->@height = o.Height;
+        LubRuntime.FixedFloats(o.Position, s->@position, 3);
+        LubRuntime.FixedFloats(o.Orientation, s->@orientation, 4);
+        LubRuntime.FixedFloats(o.ViewProjection, s->@view_projection, 16);
+    }
+
+    internal static void Fill_LubXrView(XrView o, LubXrView* s)
+    {
+        o.Target = H_TextureRef(s->@target);
+        o.Width = s->@width;
+        o.Height = s->@height;
+        o.Position = LubRuntime.FloatsArray(s->@position, 3);
+        o.Orientation = LubRuntime.FloatsArray(s->@orientation, 4);
+        o.ViewProjection = LubRuntime.FloatsArray(s->@view_projection, 16);
+    }
+
+    internal static XrView From_LubXrView(LubXrView* s)
+    {
+        var o = new XrView();
+        Fill_LubXrView(o, s);
+        return o;
+    }
+
+    internal static void To_LubXrInput(XrInput o, LubRuntime.Arena a, LubXrInput* s)
+    {
+        s->@active = o.Active;
+        s->@stick_x = (float)o.StickX;
+        s->@stick_y = (float)o.StickY;
+        s->@trigger = (float)o.Trigger;
+        s->@grip = (float)o.Grip;
+        s->@primary = o.Primary;
+        s->@secondary = o.Secondary;
+        s->@menu = o.Menu;
+        s->@stick_click = o.StickClick;
+    }
+
+    internal static void Fill_LubXrInput(XrInput o, LubXrInput* s)
+    {
+        o.Active = s->@active;
+        o.StickX = s->@stick_x;
+        o.StickY = s->@stick_y;
+        o.Trigger = s->@trigger;
+        o.Grip = s->@grip;
+        o.Primary = s->@primary;
+        o.Secondary = s->@secondary;
+        o.Menu = s->@menu;
+        o.StickClick = s->@stick_click;
+    }
+
+    internal static XrInput From_LubXrInput(LubXrInput* s)
+    {
+        var o = new XrInput();
+        Fill_LubXrInput(o, s);
         return o;
     }
 

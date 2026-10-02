@@ -23,10 +23,11 @@ bool pass_state_in_pass(const PassState *p);
 // Begin a pass with one color target (offscreen if target_image != 0, swapchain
 // otherwise). Convenience for single-target paths (Sample 01-05). For MRT use
 // pass_state_begin_mrt. load == SGL_LOAD_LOAD keeps the previous attachment
-// contents (0 behaves as SGL_LOAD_CLEAR).
+// contents (0 behaves as SGL_LOAD_CLEAR). xr_eye >= 0 draws that XR eye
+// instead of the window swapchain (target_image must be 0).
 void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
                       int target_w, int target_h, float r, float g, float b,
-                      float a, SglLoadAction load);
+                      float a, SglLoadAction load, int xr_eye);
 
 // Begin a multi-target offscreen pass. Each targets[i] must be a non-zero
 // render-target image handle (swapchain MRT not supported).

@@ -31,6 +31,8 @@ const RenderBackend *g_backend = NULL;
 // (GPU 無しの CI 等) でも window を作れるようにする。metal は CAMetalLayer を
 // 持つ view を使い、Retina / iPhone の画面を実 pixel で描く。
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
+  if (strcmp(backend_name, "openxr") == 0)
+    return SDL_WINDOW_HIDDEN;
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
   if (strcmp(backend_name, "metal") == 0)
     flags |= SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
@@ -129,7 +131,8 @@ bool app_backend_init(App *app) {
     SDL_Log("backend 'd3d12' is Windows-only");
     return false;
 #endif
-  } else if (strcmp(app->backend_name, "vulkan") == 0) {
+  } else if (strcmp(app->backend_name, "vulkan") == 0 ||
+             strcmp(app->backend_name, "openxr") == 0) {
 #if defined(LUB_HAS_VULKAN)
     g_backend = &g_backend_vulkan;
 #else
@@ -144,8 +147,8 @@ bool app_backend_init(App *app) {
     return false;
 #endif
   } else {
-    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan', 'metal' or "
-            "'sdlgpu')",
+    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan', 'metal', "
+            "'openxr' or 'sdlgpu')",
             app->backend_name);
     return false;
   }
@@ -153,7 +156,9 @@ bool app_backend_init(App *app) {
   // wasm build: webgpu backend only (backend_name is ignored).
   g_backend = &g_backend_webgpu;
 #endif
-  SDL_Log("backend selected: %s", g_backend->name);
+  SDL_Log("backend selected: %s", strcmp(app->backend_name, "openxr") == 0
+                                      ? "openxr"
+                                      : g_backend->name);
   if (!g_backend->init(app)) {
     SDL_Log("backend init failed");
     return false;

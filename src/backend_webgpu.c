@@ -12,6 +12,7 @@
 #include "backend.h"
 #include "gpu_stats.h"
 #include "shader.h"
+#include "webxr.h"
 
 #include <SDL3/SDL.h>
 #include <emscripten/emscripten.h>
@@ -48,6 +49,8 @@ static WGPUTextureFormat sgl_to_wgpu_fmt(SglPixelFormat fmt) {
   switch (fmt) {
   case SGL_PF_RGBA8:
     return WGPUTextureFormat_RGBA8Unorm;
+  case SGL_PF_RGBA8_SRGB:
+    return WGPUTextureFormat_RGBA8UnormSrgb;
   case SGL_PF_BGRA8:
     return WGPUTextureFormat_BGRA8Unorm;
   case SGL_PF_R8:
@@ -170,6 +173,75 @@ static WgUniformState g_ub;
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
 
+static WGPUTexture g_xr_color[2], g_xr_depth[2];
+static WGPUTextureView g_xr_color_view[2], g_xr_depth_view[2];
+static bool g_xr_drawn[2];
+static int g_xr_width, g_xr_height;
+
+static void wg_release_xr(void) {
+  for (int eye = 0; eye < 2; eye++) {
+    if (g_xr_color_view[eye]) {
+      wgpuTextureViewRelease(g_xr_color_view[eye]);
+      gpu_stats_destroy(GPU_STAT_VIEW, 0);
+    }
+    if (g_xr_depth_view[eye]) {
+      wgpuTextureViewRelease(g_xr_depth_view[eye]);
+      gpu_stats_destroy(GPU_STAT_VIEW, 0);
+    }
+    if (g_xr_color[eye]) {
+      wgpuTextureRelease(g_xr_color[eye]);
+      gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
+    }
+    if (g_xr_depth[eye]) {
+      wgpuTextureRelease(g_xr_depth[eye]);
+      gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
+    }
+    g_xr_color_view[eye] = g_xr_depth_view[eye] = NULL;
+    g_xr_color[eye] = g_xr_depth[eye] = NULL;
+  }
+  g_xr_width = g_xr_height = 0;
+}
+
+static bool wg_prepare_xr(App *app, int width, int height) {
+  if (g_xr_width == width && g_xr_height == height)
+    return true;
+  wg_release_xr();
+  for (int eye = 0; eye < 2; eye++) {
+    WGPUTextureDescriptor desc = {
+        .usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc,
+        .dimension = WGPUTextureDimension_2D,
+        .size = {(uint32_t)width, (uint32_t)height, 1},
+        .format = WGPUTextureFormat_RGBA8UnormSrgb,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    g_xr_color[eye] = wgpuDeviceCreateTexture(app->wgpu_device, &desc);
+    if (!g_xr_color[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_TEXTURE, 0);
+    g_xr_color_view[eye] = wgpuTextureCreateView(g_xr_color[eye], NULL);
+    if (!g_xr_color_view[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_VIEW, 0);
+    desc.usage = WGPUTextureUsage_RenderAttachment;
+    desc.format = WGPUTextureFormat_Depth32FloatStencil8;
+    g_xr_depth[eye] = wgpuDeviceCreateTexture(app->wgpu_device, &desc);
+    if (!g_xr_depth[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_TEXTURE, 0);
+    g_xr_depth_view[eye] = wgpuTextureCreateView(g_xr_depth[eye], NULL);
+    if (!g_xr_depth_view[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_VIEW, 0);
+  }
+  g_xr_width = width;
+  g_xr_height = height;
+  return true;
+fail:
+  wg_release_xr();
+  return false;
+}
+
 // ---- bring-up (surface / depth / swapchain) --------------------------------
 
 static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
@@ -214,7 +286,8 @@ static void wg_configure_surface(App *app, uint32_t w, uint32_t h) {
   WGPUSurfaceConfiguration cfg = {
       .device = app->wgpu_device,
       .format = app->wgpu_surface_format,
-      .usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc,
+      .usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc |
+               WGPUTextureUsage_CopyDst,
       .width = w,
       .height = h,
       .alphaMode = WGPUCompositeAlphaMode_Opaque,
@@ -277,6 +350,7 @@ static bool wg_init(App *app) {
 }
 
 static void wg_shutdown(App *app) {
+  wg_release_xr();
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
     if (g_ub.bufs[i]) {
       wgpuBufferRelease(g_ub.bufs[i]);
@@ -321,6 +395,8 @@ static void wg_shutdown(App *app) {
 // ---- frame begin / end -----------------------------------------------------
 
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
+  lubwebxr_begin();
+  g_xr_drawn[0] = g_xr_drawn[1] = false;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     g_ub.ring_offset[i] = 0;
 
@@ -331,10 +407,15 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   if (ch <= 0)
     ch = 360;
 
+  bool xr = lubwebxr_active();
+  WGPUTextureFormat format =
+      xr ? WGPUTextureFormat_RGBA8Unorm : WGPUTextureFormat_BGRA8Unorm;
   bool needs_resize = app->pending_resize ||
+                      app->wgpu_surface_format != format ||
                       (app->last_w != 0 && cw != app->last_w) ||
                       (app->last_h != 0 && ch != app->last_h);
   if (needs_resize) {
+    app->wgpu_surface_format = format;
     app->pending_resize = false;
     if (app->wgpu_swapchain_view) {
       wgpuTextureViewRelease(app->wgpu_swapchain_view);
@@ -409,6 +490,11 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   // Create the per-frame command encoder.
   WGPUCommandEncoderDescriptor enc_desc = {0};
   g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
+  if (xr) {
+    if (!wg_prepare_xr(app, cw / 2, ch))
+      SDL_Log("[webgpu] XR targets unavailable");
+  } else if (g_xr_width)
+    wg_release_xr();
 
   if (out_w)
     *out_w = cw;
@@ -419,12 +505,26 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
 static void wg_end_frame(App *app) {
   // Submit the command buffer.
   if (g_enc) {
+    if (g_xr_width && app->wgpu_swapchain_tex) {
+      for (int eye = 0; eye < 2; eye++) {
+        if (!g_xr_drawn[eye])
+          continue;
+        WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        src.texture = g_xr_color[eye];
+        dst.texture = app->wgpu_swapchain_tex;
+        dst.origin.x = (uint32_t)(eye * g_xr_width);
+        WGPUExtent3D extent = {(uint32_t)g_xr_width, (uint32_t)g_xr_height, 1};
+        wgpuCommandEncoderCopyTextureToTexture(g_enc, &src, &dst, &extent);
+      }
+    }
     WGPUCommandBufferDescriptor cmd_desc = {0};
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
     wgpuQueueSubmit(g_queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(g_enc);
     g_enc = NULL;
+    lubwebxr_present(g_xr_drawn[0] && g_xr_drawn[1]);
   }
 
   if (app->wgpu_swapchain_view) {
@@ -1054,6 +1154,9 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   WGPURenderPassColorAttachment colors[SGL_MAX_COLOR_TARGETS] = {0};
 
   bool is_offscreen = (d->targets[0] != 0 || d->depth_target != 0);
+  int xr_eye = is_offscreen ? -1 : d->xr_eye;
+  if (!g_xr_width)
+    xr_eye = -1;
 
   for (int i = 0; i < nct; ++i) {
     colors[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
@@ -1066,7 +1169,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
       WgImage *wi = (WgImage *)d->targets[i];
       colors[i].view = wi->color_att ? wi->color_att : wi->view;
     } else {
-      colors[i].view = app->wgpu_swapchain_view;
+      colors[i].view =
+          xr_eye >= 0 ? g_xr_color_view[xr_eye] : app->wgpu_swapchain_view;
     }
   }
 
@@ -1081,7 +1185,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
       WgImage *di = (WgImage *)d->depth_target;
       depth_att.view = di->depth_att ? di->depth_att : di->view;
     } else {
-      depth_att.view = app->wgpu_depth_view;
+      depth_att.view =
+          xr_eye >= 0 ? g_xr_depth_view[xr_eye] : app->wgpu_depth_view;
     }
     depth_att.depthLoadOp = load_op;
     depth_att.depthStoreOp = WGPUStoreOp_Store;
@@ -1108,8 +1213,13 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
 
   // Set viewport to match target.
   if (g_rpass) {
+    if (xr_eye >= 0)
+      g_xr_drawn[xr_eye] = true;
     int w, h;
-    if (is_offscreen && d->target_w > 0 && d->target_h > 0) {
+    if (xr_eye >= 0) {
+      w = g_xr_width;
+      h = g_xr_height;
+    } else if (is_offscreen && d->target_w > 0 && d->target_h > 0) {
       w = d->target_w;
       h = d->target_h;
     } else {
@@ -1782,8 +1892,11 @@ static bool wg_capture(App *app, const char *path) {
 }
 
 static SglPixelFormat wg_swapchain_color_format(App *app) {
-  (void)app;
-  return SGL_PF_BGRA8;
+  if (lubwebxr_active())
+    return SGL_PF_RGBA8_SRGB;
+  return app->wgpu_surface_format == WGPUTextureFormat_RGBA8Unorm
+             ? SGL_PF_RGBA8
+             : SGL_PF_BGRA8;
 }
 
 // ---- vtable ----------------------------------------------------------------

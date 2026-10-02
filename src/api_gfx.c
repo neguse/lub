@@ -738,30 +738,42 @@ LubStatus lub_gfx_begin_pass(LubContext *ctx, const LubPassOpts *opts) {
     return lub_api_fail(app, "begin_pass: too many targets (%d > %d)",
                         d->n_targets, SGL_MAX_COLOR_TARGETS);
 
-  // swapchain pass
-  if (d->n_targets == 1 && d->targets[0] == LUB_GFX_MAIN_TEX) {
+  // swapchain pass (main_tex、または XR の片眼)
+  int xr_eye = d->n_targets == 1 ? lub_gfx_xr_eye_of(d->targets[0]) : -1;
+  if (d->n_targets == 1 && (d->targets[0] == LUB_GFX_MAIN_TEX || xr_eye >= 0)) {
+    const char *what = xr_eye >= 0 ? "an XR eye target" : "main_tex";
     if (depth_image)
-      return lub_api_fail(app, "begin_pass: main_tex uses the swapchain depth "
-                               "buffer; depth_target is only for offscreen "
-                               "passes");
+      return lub_api_fail(app,
+                          "begin_pass: %s uses the default depth buffer; "
+                          "depth_target is only for offscreen passes",
+                          what);
+    bool xr_active = lub_xr_active(ctx);
+    if (xr_eye >= 0 && !xr_active)
+      return lub_api_fail(app, "begin_pass: XR eye target is unavailable; "
+                               "XR is not active");
+    if (xr_eye < 0 && xr_active)
+      return lub_api_fail(app, "begin_pass: main_tex is unavailable while XR "
+                               "is active; draw into Xr.View().Target");
     const float *c = d->clear_color[0];
     pass_state_begin(&app->pass, 0, SGL_PF_RGBA8, 0, 0, c[0], c[1], c[2], c[3],
-                     load);
+                     load, xr_eye);
     return LUB_OK;
   }
 
   if (d->n_targets == 0 && !depth_image)
-    return lub_api_fail(app, "begin_pass: target must be main_tex, a color "
-                             "TextureRef, or omitted for a depth-only pass");
+    return lub_api_fail(app, "begin_pass: target must be main_tex, an XR eye "
+                             "target, a color TextureRef, or omitted for a "
+                             "depth-only pass");
 
   uintptr_t targets[SGL_MAX_COLOR_TARGETS] = {0};
   SglPixelFormat fmts[SGL_MAX_COLOR_TARGETS] = {0};
   float clears[SGL_MAX_COLOR_TARGETS][4];
   int tw = depth_w, th = depth_h;
   for (int i = 0; i < d->n_targets; ++i) {
-    if (d->targets[i] == LUB_GFX_MAIN_TEX)
-      return lub_api_fail(
-          app, "begin_pass: main_tex cannot be combined with other targets");
+    if (d->targets[i] == LUB_GFX_MAIN_TEX ||
+        lub_gfx_xr_eye_of(d->targets[i]) >= 0)
+      return lub_api_fail(app, "begin_pass: main_tex and XR eye targets cannot "
+                               "be combined with other targets");
     ResEntry *te = color_target_entry(app, d->targets[i], i);
     if (!te)
       return LUB_ERROR;

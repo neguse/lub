@@ -90,6 +90,10 @@ static void read_LubSphereProxy3d(lua_State *L, int idx, void *out);
 static void read_LubBoxProxy3d(lua_State *L, int idx, void *out);
 static void read_LubCapsuleProxy3d(lua_State *L, int idx, void *out);
 static void read_LubShapeProxyDesc3d(lua_State *L, int idx, void *out);
+static void fill_LubXrView(lua_State *L, const LubXrView *v);
+static void push_LubXrView(lua_State *L, const LubXrView *v);
+static void fill_LubXrInput(lua_State *L, const LubXrInput *v);
+static void push_LubXrInput(lua_State *L, const LubXrInput *v);
 static void fill_LubMeshData(lua_State *L, const LubMeshData *v);
 static void push_LubMeshData(lua_State *L, const LubMeshData *v);
 static void fill_LubSdfBone(lua_State *L, const LubSdfBone *v);
@@ -479,7 +483,7 @@ static void read_LubPassOpts(lua_State *L, int idx, void *out_) {
   o->depth_target = lgen_ref(L, idx, "depth_target", "texture");
   o->has_clear_color =
       lgen_floats_fixed(L, idx, "clear_color", o->clear_color, 4, NULL);
-  o->clear_colors = (const float (*)[4])lgen_float_rows(
+  o->clear_colors = (const float(*)[4])lgen_float_rows(
       L, idx, "clear_colors", 4, &o->clear_colors_count);
   o->has_clear_depth = lgen_num_opt(L, idx, "clear_depth", &o->clear_depth);
   o->has_load = lgen_int_opt(L, idx, "load", &o->load);
@@ -2075,6 +2079,53 @@ static void read_LubShapeProxyDesc3d(lua_State *L, int idx, void *out_) {
     lua_pop(L, 1);
     o->has_filter = true;
   }
+}
+
+static void fill_LubXrView(lua_State *L, const LubXrView *v) {
+  if (v->target) {
+    lgen_push_ref(L, "texture", v->target);
+    lua_setfield(L, -2, "target");
+  }
+  lgen_set_int(L, "width", v->width);
+  lgen_set_int(L, "height", v->height);
+  {
+    lgen_push_float_table(L, v->position, 3);
+    lua_setfield(L, -2, "position");
+  }
+  {
+    lgen_push_float_table(L, v->orientation, 4);
+    lua_setfield(L, -2, "orientation");
+  }
+  {
+    lgen_push_float_table(L, v->view_projection, 16);
+    lua_setfield(L, -2, "view_projection");
+  }
+  (void)L;
+  (void)v;
+}
+
+static void push_LubXrView(lua_State *L, const LubXrView *v) {
+  lua_createtable(L, 0, 6);
+  fill_LubXrView(L, v);
+}
+
+static void fill_LubXrInput(lua_State *L, const LubXrInput *v) {
+  lgen_set_bool(L, "active", v->active);
+  lgen_set_num(L, "stick_x", v->stick_x);
+  lgen_set_num(L, "stick_y", v->stick_y);
+  lgen_set_num(L, "trigger", v->trigger);
+  lgen_set_num(L, "grip", v->grip);
+  lgen_set_bool(L, "primary", v->primary);
+  lgen_set_bool(L, "secondary", v->secondary);
+  lgen_set_bool(L, "menu", v->menu);
+  lgen_set_bool(L, "stick_click", v->stick_click);
+  (void)L;
+  (void)v;
+}
+
+static void push_LubXrInput(lua_State *L, const LubXrInput *v) {
+  lua_createtable(L, 0, 9);
+  fill_LubXrInput(L, v);
 }
 
 static void fill_LubMeshData(lua_State *L, const LubMeshData *v) {
@@ -3776,6 +3827,64 @@ static int l_quit(lua_State *L) {
   lub_quit(lgen_ctx());
   lgen_release(mark);
   return 0;
+}
+
+static int l_xr_active(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool out = lub_xr_active(lgen_ctx());
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_xr_focused(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  bool out = lub_xr_focused(lgen_ctx());
+  lgen_release(mark);
+  lua_pushboolean(L, out);
+  return 1;
+}
+
+static int l_xr_view(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t eye = (int32_t)luaL_checkinteger(L, 1);
+  float near = (float)luaL_checknumber(L, 2);
+  float far = (float)luaL_checknumber(L, 3);
+  LubXrView out;
+  memset(&out, 0, sizeof out);
+  LubStatus st = lub_xr_view(lgen_ctx(), eye, near, far, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  push_LubXrView(L, &out);
+  return 1;
+}
+
+static int l_xr_input(lua_State *L) {
+  (void)L;
+  LgenMark mark = lgen_mark();
+  int32_t hand = (int32_t)luaL_checkinteger(L, 1);
+  LubXrInput out;
+  memset(&out, 0, sizeof out);
+  LubStatus st = lub_xr_input(lgen_ctx(), hand, &out);
+  lgen_release(mark);
+  if (st == LUB_ERROR)
+    return lgen_raise(L);
+  if (st == LUB_NOT_FOUND) {
+    lua_pushnil(L);
+    lua_pushstring(L, "not found");
+    return 2;
+  }
+  push_LubXrInput(L, &out);
+  return 1;
 }
 
 static int l_gfx_begin_pass(lua_State *L) {
@@ -8682,6 +8791,16 @@ void lub_api_gen_register(lua_State *L) {
   lua_setfield(L, -2, "WINDOW_RESIZE");
   lua_pushstring(L, "other");
   lua_setfield(L, -2, "OTHER");
+  lua_newtable(L); // lub.xr
+  lua_pushcfunction(L, l_xr_active);
+  lua_setfield(L, -2, "active");
+  lua_pushcfunction(L, l_xr_focused);
+  lua_setfield(L, -2, "focused");
+  lua_pushcfunction(L, l_xr_view);
+  lua_setfield(L, -2, "view");
+  lua_pushcfunction(L, l_xr_input);
+  lua_setfield(L, -2, "input");
+  lua_setfield(L, -2, "xr");
   lua_newtable(L); // lub.gfx
   lua_pushcfunction(L, l_gfx_begin_pass);
   lua_setfield(L, -2, "begin_pass");

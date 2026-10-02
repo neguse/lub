@@ -132,6 +132,10 @@ if(LUB_HAS_SLANG)
     set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.dylib")
     set(_slang_archive_url
       "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-macos-aarch64.tar.gz")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.so")
+    set(_slang_archive_url
+      "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-aarch64.tar.gz")
   else()
     set(_slang_lib_marker "${SLANG_ROOT}/lib/libslang.so")
     set(_slang_archive_url
@@ -266,6 +270,7 @@ endif()
 # native-only; wasm builds ship the webgpu backend alone.
 set(LUB_SOURCES
   src/app.c
+  src/api_xr.c
   src/host_api.c
   src/lua_api.c
   src/api_core.c
@@ -326,10 +331,36 @@ if(NOT LUB_WASM)
       COMPILE_OPTIONS "-fobjc-arc")
   endif()
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LUB_HAS_VULKAN)
+  set(BUILD_WITH_SYSTEM_JSONCPP OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/openxr EXCLUDE_FROM_ALL)
+  list(APPEND LUB_SOURCES src/xr.c)
+  set(LUB_HAS_OPENXR ON)
+endif()
 # runtime 本体は object library にまとめ、player (lub) と共有 library
 # (lub_shared、.NET 実行の host が P/Invoke で使う) の両方が link する。
+if(LUB_WASM)
+  list(APPEND LUB_SOURCES src/webxr.c)
+endif()
 add_library(lub_objs OBJECT ${LUB_SOURCES})
-add_executable(lub src/main.c)
+if(LUB_HAS_OPENXR)
+  target_compile_definitions(lub_objs PUBLIC LUB_HAS_OPENXR=1)
+  target_link_libraries(lub_objs PUBLIC OpenXR::openxr_loader)
+endif()
+set(LUB_TCS_GAME "" CACHE FILEPATH "tcs2c game source")
+set(LUB_TCS_BINDING "" CACHE FILEPATH "lub-gen tcs binding")
+set(LUB_TCS_HOST "${CMAKE_CURRENT_SOURCE_DIR}/src/tcs_host.c" CACHE FILEPATH "tcs2c host entry point")
+if(LUB_TCS_GAME)
+  if(NOT LUB_TCS_BINDING)
+    message(FATAL_ERROR "LUB_TCS_BINDING is required with LUB_TCS_GAME")
+  endif()
+  add_executable(lub "${LUB_TCS_HOST}")
+  target_compile_definitions(lub PRIVATE
+    LUB_TCS_GAME="${LUB_TCS_GAME}" LUB_TCS_BINDING="${LUB_TCS_BINDING}")
+  target_compile_options(lub PRIVATE -ffp-contract=off -fwrapv -fexcess-precision=standard)
+else()
+  add_executable(lub src/main.c)
+endif()
 target_link_libraries(lub PRIVATE lub_objs)
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # iOS の player は app bundle。game.lua やデータは bundle の中に置く
@@ -516,6 +547,11 @@ if(LUB_WASM)
 endif()
 
 # C-side smoke tests (native only — spawn は wasm に存在しない).
+if(LUB_HAS_OPENXR)
+  add_executable(lub_xr_math_smoke tests/c/xr_math_smoke.c)
+  target_link_libraries(lub_xr_math_smoke PRIVATE lub_objs)
+  target_include_directories(lub_xr_math_smoke PRIVATE third_party/openxr/src/common)
+endif()
 if(NOT LUB_WASM)
   add_executable(lub_serve_smoke
     tests/c/serve_smoke.c

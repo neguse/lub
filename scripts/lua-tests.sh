@@ -26,4 +26,5 @@ lua_runtime_tests=(
   tests/lua/test_swept_ref_error.lua
   tests/lua/test_dup_binding.lua
   tests/lua/test_compute_uniform_block.lua
+  tests/lua/test_xr_inactive.lua
 )
