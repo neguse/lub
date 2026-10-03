@@ -98,3 +98,8 @@ LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
   *out = 9;
   return LUB_OK;
 }
+void lub_audio_info(LubContext *ctx, LubAudioInfo *out) {
+  (void)ctx;
+  memset(out, 0, sizeof(*out));
+  out->rate = 48000;
+}

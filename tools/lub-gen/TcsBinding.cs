@@ -235,10 +235,12 @@ public static class TcsBinding
                 args.Add("&n_" + param.LuaName);
             }
             bool returned = function.Return.Kind != LubTypeKind.Void;
+            // NoFail の C API は scalar と handle だけを戻り値で返し、それ以外は out 引数に書く
+            bool byValue = function.NoFail && (function.Return.IsScalar || function.Return.Kind == LubTypeKind.Handle);
             if (returned) Line($"  {NativeType(function.Return)} result = {{0}};");
-            if (!function.NoFail && returned) args.Add("&result");
+            if (returned && !byValue) args.Add("&result");
             var call = $"{name}({string.Join(", ", args)})";
-            if (function.NoFail) Line($"  {(returned ? "result = " : "")}{call};");
+            if (function.NoFail) Line($"  {(byValue ? "result = " : "")}{call};");
             else
             {
                 Line($"  LubStatus status = {call}; tcs_lub_check(status);");
