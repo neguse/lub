@@ -18,9 +18,10 @@ do
 			table.insert(list, item)
 		end
 
-		function List.Remove(list, item)
+		-- eq は struct 要素の値等価 (型別 op_Equality)。省略時は raw ==
+		function List.Remove(list, item, eq)
 			for i = 1, #list do
-				if list[i] == item then
+				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
 					table.remove(list, i)
 					return true
 				end
@@ -45,18 +46,18 @@ do
 			return #list
 		end
 
-		function List.Contains(list, item)
+		function List.Contains(list, item, eq)
 			for i = 1, #list do
-				if list[i] == item then
+				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
 					return true
 				end
 			end
 			return false
 		end
 
-		function List.IndexOf(list, item)
+		function List.IndexOf(list, item, eq)
 			for i = 1, #list do
-				if list[i] == item then
+				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
 					return i - 1
 				end -- return 0-indexed
 			end
@@ -337,6 +338,41 @@ do
 			return vals
 		end
 
+		-- Char (整数 code unit、ASCII の判定 / 変換。C backend も同じ表)
+		local Char = {}
+		TinySystem.Char = Char
+
+		function Char.IsDigit(c)
+			return c >= 48 and c <= 57
+		end
+		function Char.IsUpper(c)
+			return c >= 65 and c <= 90
+		end
+		function Char.IsLower(c)
+			return c >= 97 and c <= 122
+		end
+		function Char.IsLetter(c)
+			return Char.IsUpper(c) or Char.IsLower(c)
+		end
+		function Char.IsLetterOrDigit(c)
+			return Char.IsLetter(c) or Char.IsDigit(c)
+		end
+		function Char.IsWhiteSpace(c)
+			return c == 32 or (c >= 9 and c <= 13)
+		end
+		function Char.ToUpper(c)
+			if Char.IsLower(c) then
+				return c - 32
+			end
+			return c
+		end
+		function Char.ToLower(c)
+			if Char.IsUpper(c) then
+				return c + 32
+			end
+			return c
+		end
+
 		-- String operations
 		local String = {}
 		TinySystem.String = String
@@ -514,6 +550,23 @@ do
 			return rounded
 		end
 
+		-- int.TryParse / float.TryParse の lowering 先: (found, value or default)
+		function Math.TryParseInt(s, default)
+			local v = math.tointeger(tonumber(s))
+			if v ~= nil then
+				return true, v
+			end
+			return false, default
+		end
+
+		function Math.TryParseFloat(s, default)
+			local v = tonumber(s)
+			if v ~= nil then
+				return true, v + 0.0
+			end
+			return false, default
+		end
+
 		function Math.Clamp(value, min, max)
 			if value < min then
 				return min
@@ -524,26 +577,162 @@ do
 			return value
 		end
 
-		-- Random
+		-- Random (System.Random 形: instance + Shared)。合意 PRNG は Lua 5.5 の
+		-- math.random (xoshiro256**、LUA_32BITS 構成。il-spec §13)。Shared は VM の
+		-- math.random 状態そのもの、instance は同じアルゴリズムの pure-Lua 実装
+		-- (64bit 値を 32bit 対で持つので 32bit / 64bit どちらの Lua でも同じ列)。
+		-- C backend は両方に同じ実装を持つので seed 固定時に bit 一致する
 		local Random = {}
+		Random.__index = Random
 		TinySystem.Random = Random
 
-		function Random.Next(min, max)
+		local M32 = 0xFFFFFFFF
+
+		local function shl64(h, l, n) -- 0 < n < 32
+			return ((h << n) | (l >> (32 - n))) & M32, (l << n) & M32
+		end
+
+		local function rotl64(h, l, n) -- 0 < n < 32
+			return ((h << n) | (l >> (32 - n))) & M32, ((l << n) | (h >> (32 - n))) & M32
+		end
+
+		local function rotr64(h, l, n) -- 0 < n < 32 (= rotl by 64 - n)
+			return ((h >> n) | (l << (32 - n))) & M32, ((l >> n) | (h << (32 - n))) & M32
+		end
+
+		local function add64(h1, l1, h2, l2)
+			local l = (l1 + l2) & M32
+			local h = (h1 + h2) & M32
+			if math.ult(l, l1) then
+				h = (h + 1) & M32
+			end
+			return h, l
+		end
+
+		-- xoshiro256** の 1 step。state は {h0, l0, h1, l1, h2, l2, h3, l3}
+		local function nextrand(s)
+			local h0, l0, h1, l1, h2, l2, h3, l3 = s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8]
+			-- res = rotl(s1 * 5, 7) * 9
+			local th, tl = shl64(h1, l1, 2)
+			th, tl = add64(th, tl, h1, l1)
+			th, tl = rotl64(th, tl, 7)
+			local rh, rl = shl64(th, tl, 3)
+			rh, rl = add64(rh, rl, th, tl)
+			local sh, sl = shl64(h1, l1, 17)
+			h2, l2 = h2 ~ h0, l2 ~ l0
+			h3, l3 = h3 ~ h1, l3 ~ l1
+			h1, l1 = h1 ~ h2, l1 ~ l2
+			h0, l0 = h0 ~ h3, l0 ~ l3
+			h2, l2 = h2 ~ sh, l2 ~ sl
+			h3, l3 = rotr64(h3, l3, 19) -- rotl 45
+			s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8] = h0, l0, h1, l1, h2, l2, h3, l3
+			return rh & M32, rl & M32
+		end
+
+		-- 32bit 符号付きへ (64bit Lua では上位を落として符号拡張、32bit Lua では恒等)
+		local function toi32(x)
+			x = x & M32
+			if math.ult(0x7FFFFFFF, x) then
+				x = x - 0x100000000
+			end
+			return x
+		end
+
+		-- math.randomseed(n1, n2) と同じ: state = {n1, 0xff, n2, 0}、先頭 16 値を捨てる
+		local function seedstate(n1, n2)
+			local s = { 0, n1 & M32, 0, 0xff, 0, n2 & M32, 0, 0 }
+			for _ = 1, 16 do
+				nextrand(s)
+			end
+			return s
+		end
+
+		-- [0, n] (unsigned) への射影 (lmathlib の project)
+		local function project(s, ran, n)
+			local lim = n
+			local sh = 1
+			while (lim & (lim + 1)) ~= 0 do
+				lim = lim | (lim >> sh)
+				sh = sh * 2
+			end
+			ran = ran & lim
+			while math.ult(n, ran) do
+				local _, l = nextrand(s)
+				ran = l & lim
+			end
+			return ran
+		end
+
+		local function rangeof(s, low, up)
+			local _, l = nextrand(s)
+			if low > up then
+				error("interval is empty")
+			end
+			local p = project(s, l, (up - low) & M32)
+			return toi32((p + low) & M32)
+		end
+
+		local random_auto = 0
+
+		-- new Random() / new Random(seed)
+		function Random.new(seed)
+			if seed == nil then
+				random_auto = random_auto + 1
+				-- 起動ごと・instance ごとに異なる seed (32bit Lua でも整数に収まる形)
+				local t = math.tointeger(os.time()) or 0
+				local c = math.tointeger(math.floor(os.clock() * 1000000)) or 0
+				seed = (t ~ c ~ (random_auto * 0x9E3779B1)) & M32
+			end
+			return setmetatable({ s = seedstate(seed, 0) }, Random)
+		end
+
+		function Random:Next(min, max)
 			if max then
-				return math.random(min, max - 1)
+				return rangeof(self.s, min, max - 1)
 			elseif min then
-				return math.random(0, min - 1)
+				return rangeof(self.s, 0, min - 1)
 			else
-				return math.random(0, 2147483646)
+				return rangeof(self.s, 0, 2147483646)
 			end
 		end
 
-		function Random.NextFloat()
-			return math.random()
+		function Random:NextFloat()
+			local h = nextrand(self.s)
+			return (h >> 8) * (1 / 16777216)
+		end
+		Random.NextSingle = Random.NextFloat
+
+		function Random:Range(min, max)
+			return rangeof(self.s, min, max)
 		end
 
-		function Random.Range(min, max)
-			return math.random(min, max)
+		-- Shared: VM の math.random 状態 (Random.Seed = math.randomseed)
+		local Shared = setmetatable({}, {
+			__index = {
+				Next = function(_, min, max)
+					if max then
+						return math.random(min, max - 1)
+					elseif min then
+						return math.random(0, min - 1)
+					else
+						return math.random(0, 2147483646)
+					end
+				end,
+				NextFloat = function()
+					return math.random()
+				end,
+				NextSingle = function()
+					return math.random()
+				end,
+				Range = function(_, min, max)
+					return math.random(min, max)
+				end,
+			},
+		})
+		Random.Shared = Shared
+
+		function Random.Seed(seed)
+			math.randomseed(seed)
 		end
 
 		-- C# integer division / remainder (0 方向 truncation、剰余は被除数の符号)。
@@ -585,6 +774,163 @@ do
 			return false, default
 		end
 
+		-- `new T[n]` (値型 T): default を n 個詰めた sequence (生成コードは
+		-- __tcs_arr global 経由)。init が関数なら要素ごとに呼ぶ (struct の zero 値)
+		function TinySystem.arr(n, init)
+			local t = {}
+			if type(init) == "function" then
+				for i = 1, n do
+					t[i] = init()
+				end
+			else
+				for i = 1, n do
+					t[i] = init
+				end
+			end
+			return t
+		end
+
+		-- C# のシフト (生成コードは __tcs_shl / __tcs_shr global 経由): count は
+		-- 31 でマスク、int の >> は算術シフト (Lua native は論理)
+		function TinySystem.shl(a, n)
+			return a << (n & 31)
+		end
+
+		function TinySystem.shr(a, n)
+			n = n & 31
+			if a >= 0 then
+				return a >> n
+			end
+			return ~(~a >> n)
+		end
+
+		-- (int)f: 0 方向 truncation (生成コードは __tcs_trunc global 経由)
+		function TinySystem.trunc(x)
+			local i = math.tointeger(x)
+			if i then
+				return i
+			end
+			if x >= 0 then
+				return math.floor(x)
+			end
+			return math.ceil(x)
+		end
+
+		-- Nullable<T> (il-spec §13、module mode の __tcs_n* global の実体)
+		function TinySystem.nval(v)
+			if v == nil then
+				error("Nullable object must have a value")
+			end
+			return v
+		end
+		function TinySystem.nget(v, d)
+			if v == nil then
+				return d
+			end
+			return v
+		end
+		function TinySystem.nlift(a, b, f)
+			if a == nil or b == nil then
+				return nil
+			end
+			return f(a, b)
+		end
+		function TinySystem.nlift1(a, f)
+			if a == nil then
+				return nil
+			end
+			return f(a)
+		end
+		function TinySystem.ncmp(a, b, f)
+			if a == nil or b == nil then
+				return false
+			end
+			return f(a, b)
+		end
+		function TinySystem.nand(a, b)
+			if a == false or b == false then
+				return false
+			end
+			if a == nil or b == nil then
+				return nil
+			end
+			return true
+		end
+		function TinySystem.nor(a, b)
+			if a == true or b == true then
+				return true
+			end
+			if a == nil or b == nil then
+				return nil
+			end
+			return false
+		end
+		function TinySystem.nnot(a)
+			if a == nil then
+				return nil
+			end
+			return not a
+		end
+		TinySystem.nops = {
+			add = function(a, b)
+				return a + b
+			end,
+			sub = function(a, b)
+				return a - b
+			end,
+			mul = function(a, b)
+				return a * b
+			end,
+			div = function(a, b)
+				return a / b
+			end,
+			idiv = function(a, b)
+				return TinySystem.idiv(a, b)
+			end,
+			irem = function(a, b)
+				return TinySystem.irem(a, b)
+			end,
+			fmod = function(a, b)
+				return math.fmod(a, b)
+			end,
+			band = function(a, b)
+				return a & b
+			end,
+			bor = function(a, b)
+				return a | b
+			end,
+			bxor = function(a, b)
+				if type(a) == "boolean" then
+					return a ~= b
+				end
+				return a ~ b
+			end,
+			shl = function(a, b)
+				return TinySystem.shl(a, b)
+			end,
+			shr = function(a, b)
+				return TinySystem.shr(a, b)
+			end,
+			lt = function(a, b)
+				return a < b
+			end,
+			le = function(a, b)
+				return a <= b
+			end,
+			gt = function(a, b)
+				return a > b
+			end,
+			ge = function(a, b)
+				return a >= b
+			end,
+			neg = function(a)
+				return -a
+			end,
+			bnot = function(a)
+				return ~a
+			end,
+		}
+
 		-- f32 の shortest round-trip 10 進表記 (il-spec §13)
 		function TinySystem.fstr(v)
 			if math.type(v) ~= "float" then
@@ -601,6 +947,17 @@ do
 			return string.format("%.9g", v)
 		end
 
+		-- T? の文字列化 (null → "")
+		function TinySystem.nstr(v)
+			if v == nil then
+				return ""
+			end
+			if math.type(v) == "float" then
+				return TinySystem.fstr(v)
+			end
+			return tostring(v)
+		end
+
 		return TinySystem
 	end)()
 	_G.TinySystem = TinySystem
@@ -609,6 +966,7 @@ do
 	_G.Math = TinySystem.Math
 	_G.String = TinySystem.String
 	_G.Random = TinySystem.Random
+	_G.Char = TinySystem.Char
 end
 
 -- Generated by TinyC# transpiler
@@ -621,6 +979,137 @@ local function __tcs_idiv(a, b)
 end
 local function __tcs_irem(a, b)
 	return a - __tcs_idiv(a, b) * b
+end
+local function __tcs_trunc(x)
+	local i = math.tointeger(x)
+	if i then
+		return i
+	end
+	if x >= 0 then
+		return math.floor(x)
+	end
+	return math.ceil(x)
+end
+local function __tcs_shl(a, n)
+	return a << (n & 31)
+end
+local function __tcs_shr(a, n)
+	n = n & 31
+	if a >= 0 then
+		return a >> n
+	end
+	return ~(~a >> n)
+end
+local function __tcs_nval(v)
+	if v == nil then
+		error("Nullable object must have a value")
+	end
+	return v
+end
+local function __tcs_nget(v, d)
+	if v == nil then
+		return d
+	end
+	return v
+end
+local function __tcs_nlift(a, b, f)
+	if a == nil or b == nil then
+		return nil
+	end
+	return f(a, b)
+end
+local function __tcs_nlift1(a, f)
+	if a == nil then
+		return nil
+	end
+	return f(a)
+end
+local function __tcs_ncmp(a, b, f)
+	if a == nil or b == nil then
+		return false
+	end
+	return f(a, b)
+end
+local function __tcs_nand(a, b)
+	if a == false or b == false then
+		return false
+	end
+	if a == nil or b == nil then
+		return nil
+	end
+	return true
+end
+local function __tcs_nor(a, b)
+	if a == true or b == true then
+		return true
+	end
+	if a == nil or b == nil then
+		return nil
+	end
+	return false
+end
+local function __tcs_nnot(a)
+	if a == nil then
+		return nil
+	end
+	return not a
+end
+local function __tcs_op_add(a, b)
+	return a + b
+end
+local function __tcs_op_sub(a, b)
+	return a - b
+end
+local function __tcs_op_mul(a, b)
+	return a * b
+end
+local function __tcs_op_div(a, b)
+	return a / b
+end
+local function __tcs_op_idiv(a, b)
+	return __tcs_idiv(a, b)
+end
+local function __tcs_op_irem(a, b)
+	return __tcs_irem(a, b)
+end
+local function __tcs_op_fmod(a, b)
+	return math.fmod(a, b)
+end
+local function __tcs_op_band(a, b)
+	return a & b
+end
+local function __tcs_op_bor(a, b)
+	return a | b
+end
+local function __tcs_op_bxor(a, b)
+	if type(a) == "boolean" then
+		return a ~= b
+	end
+	return a ~ b
+end
+local function __tcs_op_shl(a, b)
+	return __tcs_shl(a, b)
+end
+local function __tcs_op_shr(a, b)
+	return __tcs_shr(a, b)
+end
+local function __tcs_op_lt(a, b)
+	return a < b
+end
+local function __tcs_op_le(a, b)
+	return a <= b
+end
+local function __tcs_op_gt(a, b)
+	return a > b
+end
+local function __tcs_op_ge(a, b)
+	return a >= b
+end
+local function __tcs_op_neg(a)
+	return -a
+end
+local function __tcs_op_bnot(a)
+	return ~a
 end
 local function __tcs_is(x, T)
 	local mt = getmetatable(x)
@@ -646,6 +1135,28 @@ local function __tcs_fstr(v)
 		return s
 	end
 	return string.format("%.9g", v)
+end
+local function __tcs_arr(n, init)
+	local t = {}
+	if type(init) == "function" then
+		for i = 1, n do
+			t[i] = init()
+		end
+	else
+		for i = 1, n do
+			t[i] = init
+		end
+	end
+	return t
+end
+local function __tcs_nstr(v)
+	if v == nil then
+		return ""
+	end
+	if math.type(v) == "float" then
+		return __tcs_fstr(v)
+	end
+	return tostring(v)
 end
 __tcs_instances = __tcs_instances or setmetatable({}, { __mode = "k" })
 Vec2 = {}
@@ -1777,7 +2288,7 @@ end
 function Atlas:ensure()
 	if self.pixels ~= nil then
 		local claim = self.version
-		if claim == nil and not self.dirty and self.texture ~= nil then
+		if not (claim ~= nil) and not self.dirty and self.texture ~= nil then
 			claim = self.texture.version
 		end
 		local live
@@ -1786,7 +2297,7 @@ function Atlas:ensure()
 		else
 			live = nil
 		end
-		if live ~= nil and live.version == claim then
+		if live ~= nil and (live.version == claim) then
 			self.texture = lub.gfx.use_texture(self.key, self.w, self.h, self.format, nil, claim, self:texture_opts())
 		else
 			self.texture = lub.gfx.use_texture(
@@ -1942,12 +2453,12 @@ end
 
 function Camera3d.vp(opts)
 	local up = opts.up or Vec3.new(0, 1, 0)
-	local fov = opts.fov or 60.0
-	local near = opts.near or 0.1
-	local far = opts.far or 100.0
+	local fov = __tcs_nget(opts.fov, 60.0)
+	local near = __tcs_nget(opts.near, 0.1)
+	local far = __tcs_nget(opts.far, 100.0)
 	local aspect
 	if opts.aspect ~= nil then
-		aspect = opts.aspect or 1.0
+		aspect = __tcs_nget(opts.aspect, 1.0)
 	else
 		local gw
 		local gh
@@ -1977,14 +2488,14 @@ function Color.new(r, g, b, a)
 end
 
 function Color.rgb(r, g, b, a)
-	return Color.new(r, g, b, a or 1.0)
+	return Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
 function Color.hex(rgb, a)
 	local r = math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0
 	local g = math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0
 	local b = __tcs_irem(rgb, 256) / 255.0
-	return Color.new(r, g, b, a or 1.0)
+	return Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
 FixedStep = {}
@@ -2001,8 +2512,8 @@ function FixedStep.new(hz, maxCatchUp)
 	self.pending_key_released = {}
 	self.pending_mouse_pressed = {}
 	self.pending_mouse_released = {}
-	self.tick_dt = 1.0 / (hz or 60.0)
-	self.max_catch_up = maxCatchUp or 8
+	self.tick_dt = 1.0 / (__tcs_nget(hz, 60.0))
+	self.max_catch_up = __tcs_nget(maxCatchUp, 8)
 	local i = 0
 	while i < #FixedStep.scan_keys do
 		self.pending_key_pressed[#self.pending_key_pressed + 1] = false
@@ -2050,12 +2561,12 @@ function FixedStep:key_released(key)
 end
 
 function FixedStep:mouse_pressed(button)
-	local b = button or 1
+	local b = __tcs_nget(button, 1)
 	return b >= 1 and b <= 3 and self.pending_mouse_pressed[b + 1]
 end
 
 function FixedStep:mouse_released(button)
-	local b = button or 1
+	local b = __tcs_nget(button, 1)
 	return b >= 1 and b <= 3 and self.pending_mouse_released[b + 1]
 end
 
@@ -2165,7 +2676,7 @@ function FpsMeter.new(initialFps)
 	local self = setmetatable({}, FpsMeter)
 	__tcs_instances[self] = FpsMeter
 	self.fps = 0
-	self.fps = initialFps or 60.0
+	self.fps = __tcs_nget(initialFps, 60.0)
 	return self
 end
 
@@ -2374,18 +2885,12 @@ function MeshText:glyph(cp, x, y, size, angle, tint, centered)
 		return
 	end
 	local c = MeshText.color_or_white(tint)
-	local ctr
-	local __tcs_lhs = centered
-	if __tcs_lhs ~= nil then
-		ctr = __tcs_lhs
-	else
-		ctr = false
-	end
+	local ctr = __tcs_nget(centered, false)
 	lub.gfx.draw(e.count, {
 		["verts"] = vb,
 		["indices"] = ib,
 		["uniforms"] = {
-			["psr"] = { x, y, size, angle or 0.0 },
+			["psr"] = { x, y, size, __tcs_nget(angle, 0.0) },
 			["tint"] = { c.r, c.g, c.b, c.a },
 			["screen"] = { self.logical_w, self.logical_h, 0.0, 0.0 },
 			["center"] = (function()
@@ -2413,7 +2918,7 @@ function MeshText:text(s, x, baselineY, size, tint)
 		local e = self:glyph_for(cp)
 		if e ~= nil then
 			self:glyph(cp, pen, baselineY, size, 0.0, tint, false)
-			pen = pen + e.advance * size
+			pen = pen + (e.advance * size)
 		end
 	end
 end
@@ -2478,7 +2983,7 @@ function Rand.new(seed)
 	local self = setmetatable({}, Rand)
 	__tcs_instances[self] = Rand
 	self.state = 0
-	local s = seed or 0x12345678
+	local s = __tcs_nget(seed, 0x12345678)
 	self.state = (function()
 		if s == 0 then
 			return 0x12345678
@@ -2490,14 +2995,14 @@ function Rand.new(seed)
 end
 
 function Rand:next_float()
-	self.state = self.state ~ (self.state << 13)
-	self.state = self.state ~ ((self.state >> 17) & 0x7FFF)
-	self.state = self.state ~ (self.state << 5)
+	self.state = self.state ~ (__tcs_shl(self.state, 13))
+	self.state = self.state ~ ((__tcs_shr(self.state, 17)) & 0x7FFF)
+	self.state = self.state ~ (__tcs_shl(self.state, 5))
 	return (self.state & 0xffff) / 65536.0
 end
 
 function Rand:next_int(n)
-	return Math.Floor(self:next_float() * n)
+	return __tcs_trunc(Math.Floor(self:next_float() * n))
 end
 
 function Rand:range(min, max)
@@ -2712,9 +3217,9 @@ end
 
 function Renderer3d:begin(cam)
 	local up = cam.up or Vec3.new(0, 1, 0)
-	local fov = cam.fov or 60.0
-	local near = cam.near or 0.1
-	local far = cam.far or 100.0
+	local fov = __tcs_nget(cam.fov, 60.0)
+	local near = __tcs_nget(cam.near, 0.1)
+	local far = __tcs_nget(cam.far, 100.0)
 	local w
 	local h
 	w, h = lub.gfx.size()
@@ -2745,7 +3250,7 @@ function Renderer3d:draw(mesh, model, opts)
 		if t ~= nil then
 			tint = { t.r, t.g, t.b, t.a }
 		end
-		blend = opts.blend or lub.gfx.NONE
+		blend = __tcs_nget(opts.blend, lub.gfx.NONE)
 		bones = opts.bones
 		shader = opts.shader
 		textures = opts.textures
@@ -2887,7 +3392,11 @@ function Renderer3d:blit(target, shader, bindings, load, blend)
 	end
 	lub.gfx.begin_pass(opts)
 	bindings["verts"] = fq
-	lub.gfx.draw(6, bindings, { shader = shader, depth = false, cull = lub.gfx.NONE, blend = blend or lub.gfx.NONE })
+	lub.gfx.draw(
+		6,
+		bindings,
+		{ shader = shader, depth = false, cull = lub.gfx.NONE, blend = __tcs_nget(blend, lub.gfx.NONE) }
+	)
 	lub.gfx.end_pass()
 end
 
@@ -3022,8 +3531,8 @@ function Renderer3d:end_()
 	local projP = { proj.m[0 + 1], Math.Abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
 	local aoTex = nil
 	if self.ssao.enabled then
-		local aw = Math.Floor(w / 2.0)
-		local ah = Math.Floor(h / 2.0)
+		local aw = __tcs_trunc(Math.Floor(w / 2.0))
+		local ah = __tcs_trunc(Math.Floor(h / 2.0))
 		aoTex = lub.gfx.use_texture(
 			(self.key or "") .. "_ao",
 			aw,
@@ -3052,8 +3561,8 @@ function Renderer3d:end_()
 		local bw = w
 		local bh = h
 		for li = 0, levels - 1 do
-			bw = Math.Floor(bw / 2.0)
-			bh = Math.Floor(bh / 2.0)
+			bw = __tcs_trunc(Math.Floor(bw / 2.0))
+			bh = __tcs_trunc(Math.Floor(bh / 2.0))
 			if bw < 8 or bh < 8 then
 				break
 			end
@@ -3346,8 +3855,8 @@ function SdfNode:paint(rgb, metallic, roughness)
 		math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0,
 		math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0,
 		__tcs_irem(rgb, 256) / 255.0,
-		metallic or 0.0,
-		roughness or 0.8,
+		__tcs_nget(metallic, 0.0),
+		__tcs_nget(roughness, 0.8),
 	}, self)
 end
 
@@ -3606,13 +4115,13 @@ function Sfx.blip(freq0, freq1, dur, vol)
 	if __tcs_cond1 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = Math.Floor(dur * 44100)
+	local n = __tcs_trunc(Math.Floor(dur * 44100))
 	local samples = {}
 	local phase = 0.0
 	for i = 0, n - 1 do
 		local u = i / n
 		local freq = freq0 + (freq1 - freq0) * u
-		phase = phase + freq / 44100
+		phase = phase + (freq / 44100)
 		local env = Math.Exp(-5.0 * u)
 		samples[#samples + 1] = (
 			(function()
@@ -3631,7 +4140,7 @@ function Sfx.blip(freq0, freq1, dur, vol)
 end
 
 function Sfx.noise(dur, vol, seed)
-	local s = seed or 0x12345678
+	local s = __tcs_nget(seed, 0x12345678)
 	local key = "noise:" .. __tcs_fstr(dur) .. ":" .. __tcs_fstr(vol) .. ":" .. s
 	local cached
 	local __tcs_cond2
@@ -3641,7 +4150,7 @@ function Sfx.noise(dur, vol, seed)
 	if __tcs_cond2 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = Math.Floor(dur * 44100)
+	local n = __tcs_trunc(Math.Floor(dur * 44100))
 	local samples = {}
 	local r = Rand.new(s)
 	local hold = 0.0
@@ -3731,8 +4240,8 @@ function Shapes.sphere_point(cx, cy, cz, r, u, vv)
 end
 
 function Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
-	local ringCount = rings or 12
-	local segCount = segs or 24
+	local ringCount = __tcs_nget(rings, 12)
+	local segCount = __tcs_nget(segs, 24)
 	for ring = 0, ringCount - 1 do
 		local v0 = -3.141592653589793 * 0.5 + ring / ringCount * 3.141592653589793
 		local v1 = -3.141592653589793 * 0.5 + (ring + 1) / ringCount * 3.141592653589793
@@ -3765,7 +4274,7 @@ function Shapes3d.new()
 end
 
 function Shapes3d.mesh(positions, normals, indices)
-	local n = Math.Floor(#positions / 3.0)
+	local n = __tcs_trunc(Math.Floor(#positions / 3.0))
 	local colors = {}
 	local i = 0
 	while i < n * 3 do
@@ -3783,7 +4292,7 @@ function Shapes3d.mesh(positions, normals, indices)
 end
 
 function Shapes3d.from_interleaved(v)
-	local n = Math.Floor(#v / 12)
+	local n = __tcs_trunc(Math.Floor(#v / 12))
 	local pos = {}
 	local nrm = {}
 	local col = {}
@@ -3817,7 +4326,7 @@ function Shapes3d.cube()
 		{ 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0 },
 	}
 	for _, f in ipairs(faces) do
-		local baseIdx = Math.Floor(#pos / 3.0)
+		local baseIdx = __tcs_trunc(Math.Floor(#pos / 3.0))
 		for i = 0, 4 - 1 do
 			local su
 			if i == 1 or i == 2 then
@@ -3887,7 +4396,7 @@ function Shapes3d.cylinder(sides)
 			ny = -1.0
 		end
 		local y = ny * 0.5
-		local center = Math.Floor(#pos / 3.0)
+		local center = __tcs_trunc(Math.Floor(#pos / 3.0))
 		pos[#pos + 1] = 0.0
 		pos[#pos + 1] = y
 		pos[#pos + 1] = 0.0
@@ -4003,13 +4512,7 @@ function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
 	self.quad_data = nil
 	self.logical_w = logicalW
 	self.logical_h = logicalH
-	local inst
-	local __tcs_lhs = instanced
-	if __tcs_lhs ~= nil then
-		inst = __tcs_lhs
-	else
-		inst = true
-	end
+	local inst = __tcs_nget(instanced, true)
 	self.shader_key = ((shaderKey or "lubx_sprite") or "")
 		.. (((function()
 			if inst then
@@ -4205,10 +4708,7 @@ function SpriteBatch.ensure_disc_atlas()
 				px[#px + 1] = 255
 				px[#px + 1] = 255
 				px[#px + 1] = 255
-				do
-					local __tcs_v = Math.Floor(a * 255)
-					px[#px + 1] = __tcs_v
-				end
+				px[#px + 1] = __tcs_trunc(Math.Floor(a * 255))
 			end
 		end
 		SpriteBatch.disc_atlas = Atlas.from_pixels("lubx_disc", n, n, px, 1)
@@ -4250,7 +4750,7 @@ function SpriteBatch:flush(blend)
 		return
 	end
 	local uniformParams = { self.logical_w, self.logical_h, 0.0, 0.0 }
-	local blendMode = blend or lub.gfx.ALPHA
+	local blendMode = __tcs_nget(blend, lub.gfx.ALPHA)
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
 		if #b.verts == 0 then
@@ -4267,7 +4767,7 @@ function SpriteBatch:flush(blend)
 				goto _continue_58
 			end
 			lub.gfx.draw(
-				Math.Floor(#b.verts / 8),
+				__tcs_trunc(Math.Floor(#b.verts / 8)),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
@@ -4289,7 +4789,7 @@ function SpriteBatch:flush(blend)
 			cull = lub.gfx.NONE,
 			blend = blendMode,
 			primitive = lub.gfx.TRIANGLE_STRIP,
-			instance_count = Math.Floor(#b.verts / 16),
+			instance_count = __tcs_trunc(Math.Floor(#b.verts / 16)),
 		})
 		::_continue_58::
 	end
@@ -4382,7 +4882,7 @@ function Text.new(key, ttfPath, px, atlasSize)
 	self.row_h = 0
 	self.ttf_path = ttfPath
 	self.px = px
-	local size = atlasSize or 256
+	local size = __tcs_nget(atlasSize, 256)
 	self.atlas_w = size
 	self.atlas_h = size
 	self.pixels = {}
@@ -4434,7 +4934,7 @@ function Text:ensure_glyph(cp)
 	if gb.bytes ~= nil and gb.w > 0 and gb.h > 0 then
 		if self.pen_x + gb.w + 1 > self.atlas_w then
 			self.pen_x = 1
-			self.pen_y = self.pen_y + self.row_h + 1
+			self.pen_y = self.pen_y + (self.row_h + 1)
 			self.row_h = 0
 		end
 		if self.pen_y + gb.h + 1 > self.atlas_h then
@@ -4461,7 +4961,7 @@ function Text:ensure_glyph(cp)
 			end
 			row = row + 1
 		end
-		self.pen_x = self.pen_x + gb.w + 1
+		self.pen_x = self.pen_x + (gb.w + 1)
 		if gb.h > self.row_h then
 			self.row_h = gb.h
 		end
@@ -4490,16 +4990,16 @@ function Text:width(s, scale)
 			return
 		end
 		if prev >= 0 then
-			sum = sum + lub.font.kern(self:ttf(), prev, cp) * self.px
+			sum = sum + (lub.font.kern(self:ttf(), prev, cp) * self.px)
 		end
 		sum = sum + g.advance
 		prev = cp
 	end)
-	return sum * (scale or 1.0)
+	return sum * (__tcs_nget(scale, 1.0))
 end
 
 function Text:draw(batch, s, x, y, tint, scale)
-	local sc = scale or 1.0
+	local sc = __tcs_nget(scale, 1.0)
 	local pen = x
 	local prev = -1
 	Text.each_codepoint(s, function(cp)
@@ -4508,7 +5008,7 @@ function Text:draw(batch, s, x, y, tint, scale)
 			return
 		end
 		if prev >= 0 then
-			pen = pen + lub.font.kern(self:ttf(), prev, cp) * self.px * sc
+			pen = pen + (lub.font.kern(self:ttf(), prev, cp) * self.px * sc)
 		end
 		if g.w > 0 then
 			batch:quad(
@@ -4521,7 +5021,7 @@ function Text:draw(batch, s, x, y, tint, scale)
 				tint
 			)
 		end
-		pen = pen + g.advance * sc
+		pen = pen + (g.advance * sc)
 		prev = cp
 	end)
 end
