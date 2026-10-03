@@ -19,7 +19,8 @@ public partial class LuaEmitter
             return true;
         }
 
-        if (forStmt.Initializers.Count > 0) return false;
+        foreach (var init in forStmt.Initializers)
+            if (!BuildExprStatInto(model, init, forStmt, acc)) return false;
         if (forStmt.Declaration != null)
             foreach (var v in forStmt.Declaration.Variables)
             {

@@ -77,8 +77,11 @@ internal sealed partial class CEmitter
         if (source == CType.Object
             && (target.IsNullable || target.Kind == CTypeKind.Nullable || target == CType.Bool))
             return target;
+        // interface が絡む cast は静的な継承関係が無くても成立しうる
+        // (実行時に tcs_interface_cast / tcs_cast が検査する)
         if (source.Kind == CTypeKind.Ref && target.Kind == CTypeKind.Ref
-            && IsAncestorOrSame(source.Name!, target.Name!))
+            && (IsAncestorOrSame(source.Name!, target.Name!)
+                || IsInterface(source.Name!) || IsInterface(target.Name!)))
             return target;
         throw new Tcs2cException($"unsupported cast: {source} to {target}");
     }

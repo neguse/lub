@@ -248,6 +248,30 @@ public class ForLoopTests
         Assert.Equal("6", result);
     }
 
+    [Fact]
+    public void GeneralFor_AssignmentInitializers()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int Test()
+                {
+                    int n = 1234, digits = 0, i = 0, j = 0;
+                    for (digits = 0; n > 0; digits++)
+                        n -= 500;
+                    for (i = 2, j = 5; ; i++)
+                    {
+                        if (i > 3) break;
+                        j += i;
+                    }
+                    return digits * 100 + j * 10 + i;
+                }
+            }
+            """, "T.test()");
+
+        Assert.Equal("404", result);
+    }
+
     // ===== do-while =====
 
     [Fact]

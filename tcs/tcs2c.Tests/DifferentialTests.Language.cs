@@ -268,6 +268,52 @@ public partial class DifferentialTests
     // (method は .Value の copy に対して呼ぶ)、参照型 receiver の値型 member は
     // T? に wrap、nested `?.`、`??=`、bool? の文字列化
     [CFact]
+    public void Interfaces_CrossCast()
+    {
+        Backends.AssertParity("""
+            using System;
+            public interface IDraw { int Draw(); }
+            public interface IHit { int Hit(); }
+            public class Both : IDraw, IHit { public int Draw() => 1; public int Hit() => 2; }
+            public class P
+            {
+                public static void Main()
+                {
+                    IDraw d = new Both();
+                    IHit h = (IHit)d;
+                    Both b = (Both)h;
+                    Console.WriteLine(h.Hit() + ":" + b.Draw() + ":" + ((IDraw)h).Draw());
+                }
+            }
+            """, "P");
+    }
+
+    [CFact]
+    public void Nullable_ImplicitNumericConversion()
+    {
+        Backends.AssertParity("""
+            using System;
+            public class Opts { public float? Volume; }
+            public class P
+            {
+                public static float Half(float? v) => (v ?? 1) / 2;
+                public static void Main()
+                {
+                    int n = 3;
+                    float? a = 0;
+                    float? b = n;
+                    var opts = new Opts { Volume = 2 };
+                    opts.Volume = n;
+                    Console.WriteLine(a.Value + 0.5f);
+                    Console.WriteLine(b.Value / 2);
+                    Console.WriteLine(opts.Volume.Value / 2);
+                    Console.WriteLine(Half(5));
+                }
+            }
+            """, "P");
+    }
+
+    [CFact]
     public void Nullable_ConditionalAccessAndCoalesceAssign()
     {
         Backends.AssertParity("""

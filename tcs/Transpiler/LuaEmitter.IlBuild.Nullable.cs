@@ -13,7 +13,8 @@ public partial class LuaEmitter
         type is INamedTypeSymbol named
         && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 
-    // Roslyn の ConvertedType が T? で式自体が T なら IlNullableWrap。null /
+    // Roslyn の ConvertedType が T? で式自体が非 nullable なら IlNullableWrap
+    // (T は変換先の underlying。`float? f = 0` は int ではなく float)。null /
     // default literal (Type == null) はそのまま nil
     private static IlExpr ApplyNullableConversion(SemanticModel model,
         ExpressionSyntax expr, IlExpr built)
@@ -26,7 +27,8 @@ public partial class LuaEmitter
             || info.Type.SpecialType == SpecialType.System_Object)
             return built;
         if (info.Type is IErrorTypeSymbol) return built;
-        return new IlNullableWrap(built, info.Type.ToDisplayString());
+        var underlying = ((INamedTypeSymbol)info.ConvertedType!).TypeArguments[0];
+        return new IlNullableWrap(built, underlying.ToDisplayString());
     }
 
     private static IlLiftedOp? LiftedOpFor(string op, ITypeSymbol? underlying) => op switch
