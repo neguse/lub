@@ -65,7 +65,7 @@ internal static class Backends
     public static string EmitC(string[] sources, string? entryClass,
         bool lib = false, bool digestF32 = false)
     {
-        var exported = IlExport.Export(sources);
+        var exported = IlExport.Export(sources, specializeGenerics: true);
         if (exported.Diagnostics.Length > 0)
             throw new InvalidOperationException("TinyC# diagnostics:\n" +
                 string.Join("\n", exported.Diagnostics));

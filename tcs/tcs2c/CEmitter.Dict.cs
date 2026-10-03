@@ -10,9 +10,22 @@ internal sealed partial class CEmitter
     private string DictKeyArgs(CType keyType, IlExpr key)
     {
         var rendered = RenderExpr(key);
-        return keyType.Kind == CTypeKind.String
-            ? $"0, {rendered}" : $"{rendered}, NULL";
+        return keyType.Kind switch
+        {
+            CTypeKind.String => $"0, {rendered}",
+            // handle key: pointer を key_s の slot で運ぶ (GC が追う)
+            CTypeKind.Ref => $"0, (TcsString *)(void *){rendered}",
+            _ => $"{rendered}, NULL",
+        };
     }
+
+    // tcs_dict_new の key 種別 (0 = i32、1 = string、2 = host handle)
+    private static string DictKeyKind(CType keyType) => keyType.Kind switch
+    {
+        CTypeKind.String => "1",
+        CTypeKind.Ref => "2",
+        _ => "0",
+    };
 
     private CType RequireDict(IlExpr recv, out CType dict)
     {
@@ -46,7 +59,7 @@ internal sealed partial class CEmitter
         if (key is null || value is null)
             throw new Tcs2cException(
                 "cannot infer Dictionary key/value types (no metadata)");
-        if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
+        if (!_facts.IsDictKey(key))
             throw new Tcs2cException($"Dictionary key type not supported: {key}");
         return CType.Dict(key, value);
     }
@@ -57,7 +70,7 @@ internal sealed partial class CEmitter
         var dictTemp = Temp("dict");
         var sb = new StringBuilder();
         sb.Append($"TcsDict *{dictTemp} = tcs_typed(tcs_dict_new(" +
-            $"{(type.Key!.Kind == CTypeKind.String ? 1 : 0)}, " +
+            $"{DictKeyKind(type.Key!)}, " +
             $"sizeof({type.Element!.CName}), {LayoutRef(type.Element)}), {RuntimeTypeId(type)}); ");
         foreach (var entry in table.Entries)
         {

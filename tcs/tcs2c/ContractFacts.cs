@@ -180,7 +180,7 @@ internal sealed class ContractFacts
             if (comma < 0)
                 throw new Tcs2cException($"unsupported IL type: {displayName}");
             var key = MapType(inner[..comma]);
-            if (key.Kind is not (CTypeKind.I32 or CTypeKind.String))
+            if (!IsDictKey(key))
                 throw new Tcs2cException(
                     $"Dictionary key type not supported: {displayName}");
             return CType.Dict(key, MapType(inner[(comma + 1)..]));
@@ -216,6 +216,19 @@ internal sealed class ContractFacts
     }
 
     public IReadOnlyDictionary<string, IlStructInfo> Structs => _structs;
+
+    /// <summary>Dictionary の key にできる型: int / string と、host handle を持つ
+    /// 外部 data class (同一性は host_value。Lua の host 値 key に対応)。</summary>
+    public bool IsDictKey(CType key) =>
+        key.Kind is CTypeKind.I32 or CTypeKind.String
+        || key.Kind == CTypeKind.Ref && IsExternalClass(key.Name!);
+
+    private bool IsExternalClass(string name)
+    {
+        for (string? cur = name; cur != null; cur = _classes[cur].BaseName)
+            if (_classes[cur].IsExternal) return true;
+        return false;
+    }
 
     private static CType MakeNullable(CType element) => element.Kind switch
     {

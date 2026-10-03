@@ -93,11 +93,11 @@ public sealed record IlExportResult(
 public static partial class IlExport
 {
     public static IlExportResult Export(string[] csharpSources, bool specializeGenerics = false,
-        string[]? referenceSources = null)
+        string[]? referenceSources = null, string[]? sourcePaths = null)
     {
         var references = (referenceSources ?? []).Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
         var trees = csharpSources
-            .Select(s => CSharpSyntaxTree.ParseText(s))
+            .Select((s, i) => CSharpSyntaxTree.ParseText(s, path: sourcePaths?[i] ?? ""))
             .ToArray();
         if (specializeGenerics)
         {
@@ -109,6 +109,21 @@ public static partial class IlExport
             Transpiler.References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                 allowUnsafe: false));
+
+        // C# として誤っている入力は IL にせず、Lua 経路 (Transpiler) と同じ
+        // 基準の compile error で止める
+        var errors = compilation.GetDiagnostics()
+            // CS8805: top-level 文は library として読むので executable を要求しない
+            .Where(d => d.Severity == DiagnosticSeverity.Error && d.Id != "CS8805"
+                && !CompilationDiagnosticPolicy.IsAllowed(compilation, d))
+            .Select(d =>
+            {
+                var span = d.Location.GetLineSpan();
+                var file = string.IsNullOrEmpty(span.Path) ? "<source>" : span.Path;
+                return $"{file}({span.StartLinePosition.Line + 1},{span.StartLinePosition.Character + 1}): " +
+                    $"error {d.Id}: {d.GetMessage()}";
+            }).ToArray();
+        if (errors.Length > 0) return new IlExportResult([], [.. errors]);
 
         var diagnostics = new List<string>();
         foreach (var tree in trees)

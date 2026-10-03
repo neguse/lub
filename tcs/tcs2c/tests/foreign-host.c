@@ -12,6 +12,13 @@ Tcs_Resource *tcs_host_api_current(void)
     return value;
 }
 
+Tcs_Handle *tcs_host_api_body(int32_t n)
+{
+    Tcs_Handle *value = tcs_new_Handle();
+    value->host_value = UINT64_C(0x100000000) + (uint64_t)n;
+    return value;
+}
+
 float tcs_host_api_read(Tcs_Options *options, int32_t mode, TcsOptI32 version)
 {
     if (mode != 3 || version.has || !options->f_version.has || options->f_version.v != 2)

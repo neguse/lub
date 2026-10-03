@@ -28,7 +28,9 @@ public partial class LuaEmitter
                 if (v.Initializer != null
                     && (init = BuildExpr(model, v.Initializer.Value)) == null)
                     return false;
-                acc.Add(new IlLocal(v.Identifier.ValueText, init)
+                // 宣言型を載せる (`for (float y = -1; ...)` は初期値からは int に見える)
+                acc.Add(new IlLocal(v.Identifier.ValueText, init,
+                    (model.GetDeclaredSymbol(v) as ILocalSymbol)?.Type.ToDisplayString())
                     { Origin = forStmt });
             }
 

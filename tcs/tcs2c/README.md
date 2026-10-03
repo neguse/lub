@@ -32,6 +32,10 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
 - class: 継承 (prefix layout)、virtual dispatch (type id switch)、`base.M`、
   ctor 連鎖、`is T` / is-pattern、static field / property、auto property
   initializer、upcast、明示 downcast (`IlCast`: 実行時型が合わなければ fault)
+- user-defined operator (`+ - * / %`、単項 `-`): IL は素の `IlBin` / `IlUn`。
+  operand の静的型で overload を選び static method を直呼びする (同じ operator
+  の overload は Lua 出力と同じ `__mul_1` `__mul_2` … の別関数)。virtual と
+  同名で別シグネチャの method は override ではなく別 method として扱う
 - struct / record struct: 素の C 値型 (配列 / List / field に inline、代入 =
   値 copy)。instance method / property accessor は `Tcs_S *self` で格納場所を
   直接指す (変数 receiver はコピーゼロ、rvalue receiver は C# と同じく一時値)、
@@ -201,6 +205,9 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 - `out` parameter は pointer 渡し (`TcsString **`、`int32_t *`)。戻り値のある
   out 呼び出しと同名 overload は拒否。`out _` は呼び出し側の一時変数
 - nullable スカラ (`int?`) は `TcsOptI32` 等の **値渡し** (box しない)
+- 外部データ class は `Dictionary` の key にできる。同一性は `host_value`
+  (同じ handle の別 wrapper で引ける。`host_value` が 0 の object は pointer
+  同一性)。`==` は pointer 比較のまま
 - 外部データ class (`IsExternal`) は `type_id` の直後に GC が見ない
   `uint64_t host_value` を持つ (host 側 handle)。`new Options { X = ... }` は
   `tcs_new_Options()` + field 代入

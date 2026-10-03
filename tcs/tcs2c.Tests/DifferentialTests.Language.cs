@@ -268,6 +268,43 @@ public partial class DifferentialTests
     // (method は .Value の copy に対して呼ぶ)、参照型 receiver の値型 member は
     // T? に wrap、nested `?.`、`??=`、bool? の文字列化
     [CFact]
+    public void GenericMethods_Specialized()
+    {
+        Backends.AssertParity("""
+            using System;
+            public class Item { public int V; }
+            public class Pool<T> where T : Item
+            {
+                public T[] Items;
+                public Pool(int n, Func<T> create) { Items = Arrays.Make(n, create); }
+            }
+            public static class Arrays
+            {
+                public static T[] Make<T>(int n, Func<T> create)
+                {
+                    var a = new T[n];
+                    for (int i = 0; i < n; i++) a[i] = create();
+                    return a;
+                }
+                public static T First<T>(T[] a) => a[0];
+            }
+            public class P
+            {
+                public T Pick<T>(T a, T b, bool first) => first ? a : b;
+                public static void Main()
+                {
+                    int[] ints = Arrays.Make(3, () => 7);
+                    float[] floats = Arrays.Make<float>(2, () => 1.5f);
+                    var pool = new Pool<Item>(2, () => new Item { V = 4 });
+                    var p = new P();
+                    Console.WriteLine(ints[2] + ":" + floats[1] + ":" + pool.Items[1].V + ":" + Arrays.First(ints));
+                    Console.WriteLine(p.Pick(1, 2, false) + ":" + p.Pick("a", "b", true));
+                }
+            }
+            """, "P");
+    }
+
+    [CFact]
     public void Interfaces_CrossCast()
     {
         Backends.AssertParity("""

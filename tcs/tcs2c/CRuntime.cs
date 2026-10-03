@@ -103,7 +103,9 @@ internal sealed partial class CEmitter
         } TcsClosure;
 
         /* Dictionary: chained hash (bucket 数は count に応じて倍化)。key は
-           i32 か string、value は node 末尾の value_size byte (struct 値可)。
+           i32 / string / host handle (key_is_string == 2: 外部 data class の
+           pointer を key_s に置き、同一性は host_value。host_value が 0 の
+           object は pointer 同一性)、value は node 末尾の value_size byte (struct 値可)。
            反復順は Lua と一致しない (どちらも順序未規定)。 */
         typedef struct TcsDictNode {
             struct TcsDictNode *next;

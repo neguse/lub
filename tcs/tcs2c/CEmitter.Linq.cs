@@ -455,7 +455,7 @@ internal sealed partial class CEmitter
                 var k = Temp("k");
                 var val = Temp("val");
                 var keyArgs = key.Kind == CTypeKind.String ? $"0, {k}" : $"{k}, NULL";
-                sb.Append($"TcsDict *{dict} = tcs_dict_new({(key.Kind == CTypeKind.String ? 1 : 0)}, " +
+                sb.Append($"TcsDict *{dict} = tcs_dict_new({DictKeyKind(key)}, " +
                     $"sizeof({value.CName}), {LayoutRef(value)}); ");
                 sb.Append(Loop($"{key.CName} {k} = {CallClosure(fk, keyType, v)}; " +
                     $"{value.CName} {val} = {valueExpr}; " +

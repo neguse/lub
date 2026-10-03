@@ -143,11 +143,23 @@ internal sealed partial class CEmitter
             return dict;
         }
 
+        /* 外部 data class の先頭 (type_id の直後が host handle) */
+        typedef struct TcsHandleObject {
+            uint32_t type_id;
+            uint64_t host_value;
+        } TcsHandleObject;
+        #define TCS_HANDLE_VALUE(ptr) (((const TcsHandleObject *)(const void *)(ptr))->host_value)
+
         static uint32_t
         tcs_dict_hash(TcsDict *dict, int32_t key_i, TcsString *key_s)
         {
             uint32_t h = 2166136261u;
-            if (dict->key_is_string) {
+            if (dict->key_is_string == 2) {
+                uint64_t value = TCS_HANDLE_VALUE(key_s);
+                int i;
+                for (i = 0; i < 8; i++)
+                    h = (h ^ (uint32_t)((value >> (8 * i)) & 0xFF)) * 16777619u;
+            } else if (dict->key_is_string) {
                 size_t i;
                 for (i = 0; i < key_s->length; i++)
                     h = (h ^ (unsigned char)key_s->data[i]) * 16777619u;
@@ -163,6 +175,10 @@ internal sealed partial class CEmitter
         tcs_dict_key_equal(TcsDict *dict, TcsDictNode *node, int32_t key_i,
             TcsString *key_s)
         {
+            if (dict->key_is_string == 2)
+                return node->key_s == key_s
+                    || (TCS_HANDLE_VALUE(key_s) != 0
+                        && TCS_HANDLE_VALUE(node->key_s) == TCS_HANDLE_VALUE(key_s));
             return dict->key_is_string
                 ? tcs_string_equal(node->key_s, key_s)
                 : node->key_i == key_i;

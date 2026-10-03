@@ -150,7 +150,7 @@ internal sealed partial class CEmitter
                 [new IlMethodInfo(LuaNaming.Member("Main"), true, [], topLevel,
                     "void", [])]));
         }
-        return program with { Classes = [.. classes] };
+        return program with { Classes = [.. classes.Select(RenameOperatorOverloads)] };
     }
 
     public string Emit(string? requestedEntry, bool lib = false)
@@ -172,7 +172,13 @@ internal sealed partial class CEmitter
         EmitAllocators();
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
-            EmitMethod(cls, method);
+        {
+            try { EmitMethod(cls, method); }
+            catch (Tcs2cException ex)
+            {
+                throw new Tcs2cException($"{ex.Message} (in {cls.Name}.{method.Name})");
+            }
+        }
         EmitStructMembers();
         EmitDispatchers();
         EmitRecordEquality();
@@ -696,6 +702,7 @@ internal sealed partial class CEmitter
             _indent--;
             Line("}");
             Line();
+            FlushPendingClosures();
         }
         Line("static void");
         Line("tcs_init_statics(void)");
@@ -709,6 +716,7 @@ internal sealed partial class CEmitter
         _indent--;
         Line("}");
         Line();
+        FlushPendingClosures();
     }
 
     private void EmitStaticFieldInits(IlClassInfo cls)
@@ -726,7 +734,6 @@ internal sealed partial class CEmitter
                 $"{RenderCoerced(fact.Init, fact.Type)};");
         }
         PopScope();
-        FlushPendingClosures();
     }
 
     private void Line(string text = "") =>

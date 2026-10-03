@@ -13,13 +13,21 @@ public partial class LuaEmitter
         type is INamedTypeSymbol named
         && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 
+    private static bool IsNullableWrapped(IlExpr built)
+    {
+        while (built is IlParen paren) built = paren.E;
+        return built is IlNullableWrap;
+    }
+
     // Roslyn の ConvertedType が T? で式自体が非 nullable なら IlNullableWrap
     // (T は変換先の underlying。`float? f = 0` は int ではなく float)。null /
     // default literal (Type == null) はそのまま nil
     private static IlExpr ApplyNullableConversion(SemanticModel model,
         ExpressionSyntax expr, IlExpr built)
     {
-        if (built is IlNullableWrap) return built;
+        // 括弧式は Roslyn が内側の式にも同じ ConvertedType を報告する
+        // (`(x) != null`)。内側で wrap 済みなら重ねない
+        if (IsNullableWrapped(built)) return built;
         var info = model.GetTypeInfo(expr);
         if (!IsNullableValueType(info.ConvertedType)
             || IsNullableValueType(info.Type)
@@ -127,9 +135,9 @@ public partial class LuaEmitter
         var op = LiftedOpFor(bin.Kind(), underlying);
         if (op == null) return null;
         return new IlLiftedBin(op.Value,
-            left is IlNullableWrap || leftNullable
+            IsNullableWrapped(left) || leftNullable
                 ? left : new IlNullableWrap(left, leftType?.ToDisplayString() ?? "int"),
-            right is IlNullableWrap || rightNullable
+            IsNullableWrapped(right) || rightNullable
                 ? right : new IlNullableWrap(right, rightType?.ToDisplayString() ?? "int"));
     }
 }

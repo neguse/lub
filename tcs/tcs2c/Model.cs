@@ -39,6 +39,16 @@ internal sealed record CType(CTypeKind Kind, string? Name = null,
     public static CType Nullable(CType element) =>
         new(CTypeKind.Nullable, Element: element);
 
+    // 構造等価 (Parameters は列の内容で比べる。closure を要素に持つ型も一致する)
+    public bool Equals(CType? other) =>
+        other is not null && Kind == other.Kind && Name == other.Name
+        && Equals(Element, other.Element) && Equals(Key, other.Key)
+        && (Parameters is null ? other.Parameters is null
+            : other.Parameters is not null && Parameters.SequenceEqual(other.Parameters));
+
+    public override int GetHashCode() =>
+        HashCode.Combine(Kind, Name, Element, Key, Parameters?.Count);
+
     public bool IsNullableValue => Kind == CTypeKind.Nullable;
 
     public string CName => Kind switch

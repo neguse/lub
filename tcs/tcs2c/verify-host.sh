@@ -18,7 +18,7 @@ compiler="$script_dir/bin/Debug/net10.0/tcs2c.dll"
   "$script_dir/tests/foreign.cs" -o "$work_dir/foreign.c"
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   -I "$work_dir" "$script_dir/tests/foreign-host.c" -o "$work_dir/host"
-[[ "$("$work_dir/host" | tr -d '\r')" == $'4\n2\ntopic\npayload\n0.5\n4' ]]
+[[ "$("$work_dir/host" | tr -d '\r')" == $'4\n2\ntopic\npayload\n0.5\n4\n21:false:true:1' ]]
 echo 'host: typed options, enums, nullable defaults, out strings and scalar entry arguments passed'
 
 "$dotnet_cmd" "$compiler" "$script_dir/tests/conditional-access.cs" -o "$work_dir/conditional.c"

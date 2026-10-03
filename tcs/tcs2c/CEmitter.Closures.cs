@@ -12,6 +12,11 @@ internal sealed partial class CEmitter
     private void CollectCapturedNames(IlBlock body)
     {
         _capturedNames.Clear();
+        AddCapturedNames(body);
+    }
+
+    private void AddCapturedNames(IlBlock body)
+    {
         void Expr(IlExpr e)
         {
             switch (e)

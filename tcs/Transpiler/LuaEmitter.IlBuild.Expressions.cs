@@ -174,7 +174,8 @@ public partial class LuaEmitter
                     var elemSymbol = (model.GetTypeInfo(arr).Type
                         as IArrayTypeSymbol)?.ElementType;
                     var elemType = elemSymbol?.ToDisplayString();
-                    var sizeExpr = arr.Type.RankSpecifiers.Count == 1
+                    // jagged (new T[n][]) も外側の長さ n で確保する
+                    var sizeExpr = arr.Type.RankSpecifiers.Count >= 1
                         && arr.Type.RankSpecifiers[0].Sizes.Count == 1
                         && arr.Type.RankSpecifiers[0].Sizes[0]
                             is not OmittedArraySizeExpressionSyntax

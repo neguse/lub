@@ -34,6 +34,16 @@ internal sealed partial class CEmitter
             Line($"{Names.Init(cls.Name)}({parameters})");
             Line("{");
             _indent++;
+            // ctor の closure (base 引数 / field initializer / 本文) が捕捉する
+            // this と引数は method と同じく cell へ box する
+            _capturedNames.Clear();
+            if (ctor?.BaseArgs.IsDefault == false)
+                AddCapturedNames(new IlBlock([.. ctor.BaseArgs.Select(a => new IlCallStat(a))]));
+            AddCapturedNames(new IlBlock([.. cls.Fields
+                .Where(f => !f.IsStatic && f.Init is not null).Select(f => new IlCallStat(f.Init!))]));
+            if (ctor?.Body is { } ctorBody) AddCapturedNames(ctorBody);
+            AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
+            BoxCapturedParameters();
             if (cls.BaseName is { } baseName)
             {
                 var baseParams = CtorParamFacts(_classes[baseName]);
@@ -54,7 +64,6 @@ internal sealed partial class CEmitter
             }
             Line($"object->type_id = {Names.TypeId(cls.Name)};");
             Line($"TCS_GC_HEADER(object)->type_id = {Names.TypeId(cls.Name)};");
-            AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
             foreach (var field in cls.Fields.Where(f => !f.IsStatic))
             {
                 var fact = _facts.Field(cls.Name, field.Name);
@@ -122,6 +131,48 @@ internal sealed partial class CEmitter
     }
 
 
+    private MethodFact ResolveInvokeFact(CType receiver, string method)
+    {
+        if (receiver.Kind != CTypeKind.Ref)
+            throw new Tcs2cException("IlInvoke receiver is not a class reference");
+        var declaring = FindDeclaringClass(receiver.Name!, method)
+            ?? throw new Tcs2cException(
+                $"unknown method: {receiver.Name}.{method}");
+        return _facts.Method(declaring, method);
+    }
+
+    private CType TypeOfInvoke(IlInvoke invoke)
+    {
+        var receiver = TypeOf(invoke.Recv);
+        if (receiver.Kind == CTypeKind.Random)
+            return TypeOfRandomMethod(invoke.Method, invoke.Args);
+        var fact = ResolveInvokeFact(receiver, invoke.Method);
+        return ValidateMethodCall(fact, receiver, invoke.Args);
+    }
+
+    private string RenderInvoke(IlInvoke invoke)
+    {
+        _ = TypeOfInvoke(invoke);
+        var receiver = TypeOf(invoke.Recv);
+        if (receiver.Kind == CTypeKind.Random)
+            return RenderRandomMethod($"tcs_nonnull({RenderExpr(invoke.Recv)})",
+                invoke.Method, invoke.Args);
+        var fact = ResolveInvokeFact(receiver, invoke.Method);
+        // 子孫に再宣言があれば実行時型で dispatch (il-spec §9)
+        // dispatcher は chain 最上位の宣言 class が持つ (receiver が中間 class
+        // 型でも同じ dispatcher を通す)
+        if (IsPolymorphic(fact.ClassName, fact.Name))
+        {
+            var root = fact.ClassName;
+            for (var cur = _classes[root].BaseName; cur != null; cur = _classes[cur].BaseName)
+                if (_classes[cur].Methods.Any(m => m.Name == fact.Name)) root = cur;
+            var rootFact = _facts.Method(root, fact.Name);
+            return RenderMethodCall(rootFact, invoke.Recv, invoke.Args,
+                Names.Dispatch(root, fact.Name));
+        }
+        return RenderMethodCall(fact, invoke.Recv, invoke.Args);
+    }
+
     // 実行時型 dispatch: 「chain 最上位で宣言され、strict 子孫が
     // 再宣言している」method ごとに type_id → 最寄り実装の switch を生成
     private void EmitDispatchers()
@@ -146,7 +197,15 @@ internal sealed partial class CEmitter
             foreach (var target in _program.Classes
                 .Where(c => !c.IsInterface && IsAncestorOrSame(cls.Name, c.Name)))
             {
-                var impl = FindDeclaringClass(target.Name, method.Name)!;
+                // 同名でもシグネチャが違う宣言は override ではない (C# の別
+                // method)。一致する最寄りの宣言へ飛ばす
+                string? impl = null;
+                for (string? cur = target.Name; cur != null && impl == null; cur = _classes[cur].BaseName)
+                    if (_classes[cur].Methods.Any(m => m.Name == method.Name && !m.IsStatic)
+                        && _facts.Method(cur, method.Name).Parameters.Select(p => p.Type)
+                            .SequenceEqual(fact.Parameters.Select(p => p.Type)))
+                        impl = cur;
+                if (impl == null) continue;
                 var call = $"{Names.Method(impl, method.Name)}(" +
                     string.Join(", ",
                         new[] { $"({Names.Class(impl)} *)v_self" }

@@ -51,7 +51,7 @@ internal sealed partial class CEmitter
         IlLen length => TypeOfLength(length),
         IlBin binary => TypeOfBinary(binary),
         IlUn { Op: IlUnOp.Not } => CType.Bool,
-        IlUn unary => TypeOf(unary.E),
+        IlUn unary => TypeOfUnary(unary),
         IlParen paren => TypeOf(paren.E),
         IlTernary ternary => TypeOfTernary(ternary),
         IlCall call => TypeOfCall(call),
@@ -96,8 +96,12 @@ internal sealed partial class CEmitter
             var node = Resolve(kvpVar.Name).CName;
             return field.Name switch
             {
-                "Key" => receiver.Key!.Kind == CTypeKind.String
-                    ? $"{node}->key_s" : $"{node}->key_i",
+                "Key" => receiver.Key!.Kind switch
+                {
+                    CTypeKind.String => $"{node}->key_s",
+                    CTypeKind.Ref => $"(({receiver.Key.CName}){node}->key_s)",
+                    _ => $"{node}->key_i",
+                },
                 "Value" => $"(*({receiver.Element!.CName} *){node}->value)",
                 _ => throw new Tcs2cException(
                     $"unknown KeyValuePair member: {field.Name}"),
@@ -228,6 +232,8 @@ internal sealed partial class CEmitter
     {
         var leftType = TypeOf(binary.L);
         var rightType = TypeOf(binary.R);
+        if (UserOperator(binary.Op, leftType, rightType) is { } userOperator)
+            return RenderMethodCall(userOperator, null, [binary.L, binary.R]);
         var resultType = TypeOfBinary(binary);
         if (binary.Op == IlBinOp.Concat)
         {
@@ -320,6 +326,7 @@ internal sealed partial class CEmitter
     {
         var left = TypeOf(binary.L);
         var right = TypeOf(binary.R);
+        if (UserOperator(binary.Op, left, right) is { } userOperator) return userOperator.ReturnType;
         switch (binary.Op)
         {
             case IlBinOp.AddNum or IlBinOp.Sub or IlBinOp.Mul:
@@ -368,6 +375,8 @@ internal sealed partial class CEmitter
         return unary.Op switch
         {
             IlUnOp.Neg when type.Kind is CTypeKind.I32 or CTypeKind.F32 => $"(-{value})",
+            IlUnOp.Neg when type.Kind == CTypeKind.Ref =>
+                RenderMethodCall(ResolveOperator("__unm", [type]), null, [unary.E]),
             IlUnOp.Not when type == CType.Bool => $"(!{value})",
             IlUnOp.BitNot when type == CType.I32 => $"(~{value})",
             _ => throw new Tcs2cException($"invalid unary operator {unary.Op} for {type}"),
@@ -382,9 +391,10 @@ internal sealed partial class CEmitter
 
     private string RenderTernary(IlTernary ternary)
     {
-        _ = TypeOfTernary(ternary);
-        return $"({RenderExpr(ternary.Cond)} ? {RenderExpr(ternary.T)} : " +
-            $"{RenderExpr(ternary.F)})";
+        // 両腕を結果型へ揃える (`cond ? x : null` の T? / upcast / int → float)
+        var type = TypeOfTernary(ternary);
+        return $"({RenderExpr(ternary.Cond)} ? {RenderCoerced(ternary.T, type)} : " +
+            $"{RenderCoerced(ternary.F, type)})";
     }
 
     private string RenderCall(IlCall call)
@@ -694,40 +704,6 @@ internal sealed partial class CEmitter
             throw new Tcs2cException($"dynamic call target is not static: " +
                 $"{receiver.Name}.{field.Name}");
         return fact;
-    }
-
-    private MethodFact ResolveInvokeFact(CType receiver, string method)
-    {
-        if (receiver.Kind != CTypeKind.Ref)
-            throw new Tcs2cException("IlInvoke receiver is not a class reference");
-        var declaring = FindDeclaringClass(receiver.Name!, method)
-            ?? throw new Tcs2cException(
-                $"unknown method: {receiver.Name}.{method}");
-        return _facts.Method(declaring, method);
-    }
-
-    private CType TypeOfInvoke(IlInvoke invoke)
-    {
-        var receiver = TypeOf(invoke.Recv);
-        if (receiver.Kind == CTypeKind.Random)
-            return TypeOfRandomMethod(invoke.Method, invoke.Args);
-        var fact = ResolveInvokeFact(receiver, invoke.Method);
-        return ValidateMethodCall(fact, receiver, invoke.Args);
-    }
-
-    private string RenderInvoke(IlInvoke invoke)
-    {
-        _ = TypeOfInvoke(invoke);
-        var receiver = TypeOf(invoke.Recv);
-        if (receiver.Kind == CTypeKind.Random)
-            return RenderRandomMethod($"tcs_nonnull({RenderExpr(invoke.Recv)})",
-                invoke.Method, invoke.Args);
-        var fact = ResolveInvokeFact(receiver, invoke.Method);
-        // 子孫に再宣言があれば実行時型で dispatch (il-spec §9)
-        if (IsPolymorphic(fact.ClassName, fact.Name))
-            return RenderMethodCall(fact, invoke.Recv, invoke.Args,
-                Names.Dispatch(fact.ClassName, fact.Name));
-        return RenderMethodCall(fact, invoke.Recv, invoke.Args);
     }
 
     private CType ValidateMethodCall(MethodFact fact, CType? receiver,
