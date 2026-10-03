@@ -191,6 +191,35 @@ public class GcTests
     }
 
     [CFact]
+    public void Dictionary_GrowthRehash_KeepsYoungNodesBehindOldOnes()
+    {
+        // 旧世代に昇格済みの node を rehash で若い node の前へ繋ぎ直す経路
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            public class Program
+            {
+                public static Dictionary<int, int> Map = new Dictionary<int, int>();
+                public static int Frames;
+                public static void Setup() { Map = new Dictionary<int, int>(); Frames = 0; }
+                public static void Frame()
+                {
+                    for (int i = 0; i < 17; i++) Map[Frames * 32 + i] = Frames * 32 + i;
+                    Frames = Frames + 1;
+                }
+                public static void Report()
+                {
+                    int sum = 0;
+                    for (int f = 0; f < Frames; f++)
+                        for (int i = 0; i < 17; i++) sum += Map[f * 32 + i];
+                    Console.WriteLine(Map.Count + ":" + sum);
+                }
+            }
+            """;
+        Backends.AssertParityLib(source, "Program", 6);
+    }
+
+    [CFact]
     public void Garbage_IsReclaimed_AtFrameBoundary_HeapStaysBounded()
     {
         // 毎フレーム ~2 MB の到達不能な確保 + 64 KB の static 保持。entry から

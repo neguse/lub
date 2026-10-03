@@ -213,6 +213,8 @@ internal sealed partial class CEmitter
                     size_t bucket = tcs_dict_hash(dict, node->key_i, node->key_s)
                         % count;
                     node->next = buckets[bucket];
+                    /* 旧 node の next が若い node を指しうる */
+                    tcs_wb(node);
                     buckets[bucket] = node;
                     node = next;
                 }
