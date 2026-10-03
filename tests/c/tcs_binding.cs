@@ -22,5 +22,6 @@ class BindingTest
         Audio.Voice("voice", 12, new VoiceOpts { Volume = .25f, Loop = true });
         Io.LoadBytes("data", out var bytes, out _, out _, out _);
         Console.WriteLine(Audio.SndBytes("sound", bytes, 1, 48000));
+        Console.WriteLine(Audio.Info().Rate);
     }
 }
