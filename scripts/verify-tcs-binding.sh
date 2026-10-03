@@ -13,5 +13,5 @@ cp tests/c/tcs_binding.c "$work/test.c"
 printf '\nint main(void) { tcs_lib_init(); tcs_entry_BindingTest_main(); return 0; }\n' >> "$work/test.c"
 "${CC:-cc}" -std=gnu11 -O2 -fwrapv -ffp-contract=off -fexcess-precision=standard \
   -Iinclude -I"$work" "$work/test.c" -lm -o "$work/test"
-[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue' ]]
-echo 'tcs2c binding: main target, handles, dictionaries, inherited options and nullable XR views passed'
+[[ "$("$work/test" | tr -d '\r')" == $'0\n7\n123\n1\ntrue\ntrue\n9' ]]
+echo 'tcs2c binding: main target, handles, dictionaries, inherited options, nullable XR views and byte views passed'

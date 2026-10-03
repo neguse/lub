@@ -20,5 +20,7 @@ class BindingTest
         Console.WriteLine(Xr.View(1, .05f, 500) == null);
         Console.WriteLine(view.Target != null);
         Audio.Voice("voice", 12, new VoiceOpts { Volume = .25f, Loop = true });
+        Io.LoadBytes("data", out var bytes, out _, out _, out _);
+        Console.WriteLine(Audio.SndBytes("sound", bytes, 1, 48000));
     }
 }

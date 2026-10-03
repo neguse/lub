@@ -73,3 +73,28 @@ bool lub_audio_voice(LubContext *ctx, LubStr key, int32_t snd,
   assert(opts->base.has_volume && opts->base.volume == .25f);
   return true;
 }
+int32_t lub_frame_index(LubContext *ctx) {
+  (void)ctx;
+  return 5;
+}
+LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
+                            int32_t *version, int32_t *status, LubStr *error) {
+  (void)ctx;
+  (void)path;
+  (void)error;
+  static const uint8_t data[] = {1, 2, 3};
+  *bytes = (LubView){data, 3, 5};
+  *version = 1;
+  *status = 0;
+  return LUB_OK;
+}
+LubStatus lub_audio_snd_bytes(LubContext *ctx, LubStr key, const uint8_t *data,
+                              int32_t data_len, int32_t channels, int32_t rate,
+                              const int32_t *version, int32_t *out) {
+  (void)ctx;
+  (void)key;
+  assert(data_len == 3 && data[2] == 3 && channels == 1 && rate == 48000);
+  assert(!version);
+  *out = 9;
+  return LUB_OK;
+}
