@@ -6,10 +6,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace TinyCs;
 
 // syntax + SemanticModel → IL 構築。意味決定 (idiv/concat/+1/facade 解決) は
-// すべてここで済ませ、未対応構文は null を返して method 全体を legacy 経路へ
-// fallback する (ストラングラー方式)。legacy visitor と出力が一致するよう、
-// 判定は legacy と同じ helper (VisitLiteral / CompoundOperator / IsListType 等)
-// を共有する。診断を出し得る経路 (WarnUnsupported) は必ず fallback にする。
+// すべてここで済ませ、未対応構文は null を返す。IL 化できない本文は
+// LuaEmitter.IlBuild.Unsupported が原因ノードを特定して TCS1001 を出し、
+// 実行時 error の stub にする (legacy visitor は T250 で廃止、IL が唯一の経路)。
+// builder 自身は診断を出さない (IlExport / 原因探索で何度も走るため)。
 public partial class LuaEmitter
 {
     private IlBlock? TryBuildIlBody(SemanticModel model,
@@ -70,7 +70,6 @@ public partial class LuaEmitter
     private bool TryEmitStatsViaIl(SemanticModel model,
         IEnumerable<StatementSyntax> statements)
     {
-        if (IlDisabled) return false;
         var acc = new List<IlStat>();
         if (!BuildStatsInto(model, statements, acc)) return false;
         IlBodies++;
@@ -80,7 +79,6 @@ public partial class LuaEmitter
 
     private bool TryEmitReturnViaIl(SemanticModel model, ExpressionSyntax expr)
     {
-        if (IlDisabled) return false;
         var built = BuildExpr(model, expr);
         if (built == null) return false;
         IlBodies++;
@@ -93,7 +91,6 @@ public partial class LuaEmitter
     private bool TryEmitExprStatViaIl(SemanticModel model,
         ExpressionSyntax expr)
     {
-        if (IlDisabled) return false;
         var acc = new List<IlStat>();
         if (!BuildExprStatInto(model, expr, null, acc)) return false;
         IlBodies++;
@@ -116,13 +113,8 @@ public partial class LuaEmitter
         // EmitOutVarDeclarations と同じ位置・同じ名前集合)
         if (stmt is not BlockSyntax)
             foreach (var name in CollectPreDeclNames(stmt))
-            {
-                var designation = stmt.DescendantNodes().OfType<SingleVariableDesignationSyntax>()
-                    .FirstOrDefault(d => d.Identifier.ValueText == name);
-                var type = designation == null ? null :
-                    (model.GetDeclaredSymbol(designation) as ILocalSymbol)?.Type.ToDisplayString();
-                acc.Add(new IlLocal(name, null, type) { Origin = stmt });
-            }
+                acc.Add(new IlLocal(name, null, PreDeclType(model, stmt, name))
+                    { Origin = stmt });
 
         switch (stmt)
         {
@@ -264,12 +256,45 @@ public partial class LuaEmitter
                 var coll = BuildExpr(model, foreachStmt.Expression);
                 var body = BuildBlock(model, foreachStmt.Statement);
                 if (coll == null || body == null) return false;
-                var typeName = model.GetTypeInfo(foreachStmt.Expression).Type
-                    ?.OriginalDefinition.ToDisplayString() ?? "";
-                acc.Add(typeName.StartsWith(
-                        "System.Collections.Generic.Dictionary")
+                if (model.GetTypeInfo(foreachStmt.Expression).Type?.SpecialType
+                    == SpecialType.System_String)
+                {
+                    // foreach (char c in s): byte 単位 (char は整数 code unit)
+                    var str = new IlVar("__tcs_str");
+                    var idx = new IlVar("__tcs_i");
+                    acc.Add(new IlDo(new IlBlock([
+                        new IlLocal("__tcs_str", coll),
+                        new IlNumericFor("__tcs_i", new IlLit("1"), new IlLen(str),
+                            new IlBlock([
+                                new IlLocal(varName, new IlCall("string.byte", [str, idx]),
+                                    "char"),
+                                .. body.Stats]))])) { Origin = stmt });
+                    return true;
+                }
+                // Dictionary 本体だけ pairs (KeyValuePair) 反復。Keys / Values
+                // (Dictionary<K,V>.KeyCollection 等の nested 型) は runtime が
+                // 配列を返すので List 反復
+                var collType = model.GetTypeInfo(foreachStmt.Expression).Type;
+                var isDict = collType is INamedTypeSymbol
+                    { Name: "Dictionary", ContainingType: null } dictType
+                    && dictType.ContainingNamespace.ToDisplayString()
+                        == "System.Collections.Generic";
+                acc.Add(isDict
                     ? new IlForeachDict(varName, coll, body) { Origin = stmt }
                     : new IlForeachList(varName, coll, body) { Origin = stmt });
+                return true;
+            }
+            case LockStatementSyntax lockStmt:
+            {
+                // 単一 thread の Lua / C では同期なしで body を実行する。
+                // TCS1001 (LockStatement) は Shared facts が出す。marker は
+                // legacy 期からの出力契約
+                var lockBody = new List<IlStat>();
+                if (!BuildStatsInto(model, [lockStmt.Statement], lockBody))
+                    return false;
+                acc.Add(new IlComment("--[[ unsupported: LockStatement ]]")
+                    { Origin = lockStmt });
+                acc.Add(new IlDo(new IlBlock([.. lockBody])) { Origin = lockStmt });
                 return true;
             }
             case BlockSyntax block:
@@ -319,8 +344,15 @@ public partial class LuaEmitter
             if (current.Else == null) break;
             if (current.Else.Statement is IfStatementSyntax elseIf)
             {
-                // elseif 条件の前宣言 (is-pattern) が要る chain は fallback
-                if (CollectPreDeclNames(elseIf).Count > 0) return null;
+                // elseif 条件に前宣言 (is-pattern の designation) が要る chain は
+                // else { local f; if ... } の入れ子に落とす
+                if (CollectPreDeclNames(elseIf).Count > 0)
+                {
+                    var nested = new List<IlStat>();
+                    if (!BuildStatInto(model, elseIf, nested)) return null;
+                    elseBlock = new IlBlock([.. nested]);
+                    break;
+                }
                 current = elseIf;
                 continue;
             }
@@ -388,6 +420,19 @@ public partial class LuaEmitter
                 }
                 return BuildDeconstructionInto(model, tupleRhs, targets,
                     declare: false, origin, acc);
+            }
+            // discard `_ = expr`: 評価して捨てる (Lua は式文を持たないので local)
+            case AssignmentExpressionSyntax
+                {
+                    Left: IdentifierNameSyntax { Identifier.ValueText: "_" } discardName,
+                    RawKind: (int)SyntaxKind.SimpleAssignmentExpression,
+                } discard
+                when model.GetSymbolInfo(discardName).Symbol is IDiscardSymbol:
+            {
+                var discarded = BuildExpr(model, discard.Right);
+                if (discarded == null) return false;
+                acc.Add(new IlLocal("_", discarded) { Origin = origin });
+                return true;
             }
             case AssignmentExpressionSyntax assign
                 when IsCustomPropertyTarget(model, assign.Left):
@@ -459,9 +504,7 @@ public partial class LuaEmitter
                 origin, acc);
         var target = BuildExpr(model, operand);
         if (target == null) return false;
-        acc.Add(new IlAssign(target,
-                new IlBin(increment ? IlBinOp.AddNum : IlBinOp.Sub, target,
-                    new IlLit("1")))
+        acc.Add(new IlAssign(target, StepValue(model, operand, target, increment))
             { Origin = origin });
         return true;
     }
@@ -502,14 +545,18 @@ public partial class LuaEmitter
             return true;
         }
 
-        // compound。副作用のある lvalue は legacy が temp へ下げる — fallback
+        // compound。副作用のある lvalue は BuildExprStatInto が
+        // BuildLoweredCompoundInto へ振り分け済み (ここには来ない)
         if (NeedsLoweredLvalue(assign.Left)) return false;
         var op = CompoundOperator(model, assign);
         if (op == null) return false;
         var read = BuildExpr(model, assign.Left);
         var right = BuildExpr(model, assign.Right);
         if (read == null || right == null) return false;
-        var applied = BuildCompoundValue(model, assign, op, read, right);
+        // `x op= a ⊕ b` は x = x op (a ⊕ b)。Lua の演算子優先順位 (xor / | /
+        // shift は + より弱い) に依らず右辺を 1 項として括る
+        var applied = BuildCompoundValue(model, assign, op, read,
+            right is IlBin or IlLiftedBin or IlTernary ? new IlParen(right) : right);
         if (applied == null) return false;
         acc.Add(new IlAssign(read, applied) { Origin = origin });
         return true;
@@ -520,6 +567,8 @@ public partial class LuaEmitter
         AssignmentExpressionSyntax assign, string op, IlExpr read, IlExpr right)
     {
         var type = model.GetTypeInfo(assign.Left).Type;
+        if (IsNullableValueType(type) && LiftedOpFor(op, UnwrapNullable(type)) is { } lifted)
+            return new IlLiftedBin(lifted, read, right);
         return op switch
         {
             "/" when IsIntegralType(type) =>
@@ -553,87 +602,6 @@ public partial class LuaEmitter
         _ => null,
     };
 
-    private bool BuildForInto(SemanticModel model, ForStatementSyntax forStmt,
-        List<IlStat> acc)
-    {
-        // TryEmitSimpleFor と同じ条件で numeric for へ (ガードも同じ helper)
-        if (TryBuildSimpleFor(model, forStmt) is { } simple)
-        {
-            acc.Add(simple with { Origin = forStmt });
-            return true;
-        }
-
-        if (forStmt.Initializers.Count > 0) return false;
-        if (forStmt.Declaration != null)
-            foreach (var v in forStmt.Declaration.Variables)
-            {
-                IlExpr? init = null;
-                if (v.Initializer != null
-                    && (init = BuildExpr(model, v.Initializer.Value)) == null)
-                    return false;
-                acc.Add(new IlLocal(v.Identifier.ValueText, init)
-                    { Origin = forStmt });
-            }
-
-        IlExpr cond = new IlLit("true");
-        if (forStmt.Condition != null)
-        {
-            var built = BuildExpr(model, forStmt.Condition);
-            if (built == null) return false;
-            cond = built;
-        }
-        var body = BuildBlock(model, forStmt.Statement);
-        if (body == null) return false;
-        var trailer = new List<IlStat>();
-        foreach (var inc in forStmt.Incrementors)
-            if (!BuildExprStatInto(model, inc, forStmt, trailer)) return false;
-        var scopeBody = forStmt.Incrementors.Count > 0
-            && ContainsDirectContinue(forStmt.Statement);
-        acc.Add(new IlWhile(cond, body, new IlBlock([.. trailer]), scopeBody)
-            { Origin = forStmt });
-        return true;
-    }
-
-    private IlNumericFor? TryBuildSimpleFor(SemanticModel model,
-        ForStatementSyntax forStmt)
-    {
-        if (forStmt.Declaration?.Variables.Count != 1) return null;
-        var decl = forStmt.Declaration.Variables[0];
-        if (decl.Initializer == null) return null;
-        var varName = decl.Identifier.ValueText;
-
-        if (forStmt.Condition is not BinaryExpressionSyntax cond) return null;
-        if (cond.Left is not IdentifierNameSyntax condId
-            || condId.Identifier.ValueText != varName) return null;
-
-        if (forStmt.Incrementors.Count != 1) return null;
-        var inc = forStmt.Incrementors[0];
-        var isIncByOne = inc is PostfixUnaryExpressionSyntax
-                { RawKind: (int)SyntaxKind.PostIncrementExpression }
-            || (inc is AssignmentExpressionSyntax
-                { RawKind: (int)SyntaxKind.AddAssignmentExpression } addAssign
-                && addAssign.Right is LiteralExpressionSyntax { Token.Text: "1" });
-        if (!isIncByOne) return null;
-
-        if (!IsLoopInvariantBound(model, forStmt, cond.Right)) return null;
-        if (IsAssignedWithin(forStmt.Statement, varName)) return null;
-        if (IsCapturedByLambdaWithin(forStmt.Statement, varName)) return null;
-
-        var start = BuildExpr(model, decl.Initializer.Value);
-        var end = BuildExpr(model, cond.Right);
-        var body = BuildBlock(model, forStmt.Statement);
-        if (start == null || end == null || body == null) return null;
-        IlExpr? limit = cond.Kind() switch
-        {
-            SyntaxKind.LessThanExpression =>
-                new IlBin(IlBinOp.Sub, end, new IlLit("1")),
-            SyntaxKind.LessThanOrEqualExpression => end,
-            _ => null,
-        };
-        return limit == null ? null : new IlNumericFor(varName, start, limit, body);
-    }
-
-    // return 位置の値を statement 化込みで追加する共通経路
     private void AddReturnStat(List<IlStat> acc, IlExpr? value,
         SyntaxNode? origin)
     {
@@ -743,6 +711,21 @@ public partial class LuaEmitter
         ElementAccessExpressionSyntax ea => HasSideEffectSyntax(ea),
         _ => false,
     };
+
+    // 前宣言 local の宣言型 (is-pattern / out var の designation の symbol
+    // 型。`out _` は symbol を持たないので null)。C backend の型付け用
+    private static string? PreDeclType(SemanticModel model, StatementSyntax stmt,
+        string name)
+    {
+        foreach (var designation in stmt.DescendantNodes()
+            .OfType<SingleVariableDesignationSyntax>()
+            .Where(d => d.Identifier.ValueText == name))
+        {
+            if (model.GetDeclaredSymbol(designation) is ILocalSymbol local)
+                return local.Type.ToDisplayString();
+        }
+        return null;
+    }
 
     private static List<string> CollectPreDeclNames(StatementSyntax stmt)
     {

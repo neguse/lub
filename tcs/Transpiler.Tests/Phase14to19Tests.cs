@@ -480,7 +480,8 @@ public class Phase14to19Tests
         Assert.True(result.Success);
         // Find the Lua line that maps to our source
         var found = false;
-        for (int i = 1; i <= 40; i++)  // chunk-local helper header の後ろから
+        var lineCount = result.Lua!.Split('\n').Length;
+        for (int i = 1; i <= lineCount; i++)  // chunk-local helper header の後ろから
         {
             var entry = result.SourceMap!.Lookup(i);
             if (entry?.File == "calc.cs")

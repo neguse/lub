@@ -98,13 +98,30 @@ public static partial class TinyCsComplianceFacts
             "System.Math.Sign(double)",
 
             "string.Contains(string)",
+            "string.Contains(char)",
             "string.Replace(string, string)",
+            "string.Replace(char, char)",
             "string.StartsWith(string)",
+            "string.StartsWith(char)",
             "string.EndsWith(string)",
+            "string.EndsWith(char)",
+            "string.IndexOf(char)",
+            "string.IndexOf(char, int)",
+            // char (整数 code unit) の ASCII 判定 / 変換
+            "char.ToString()",
+            "char.IsDigit(char)",
+            "char.IsLetter(char)",
+            "char.IsLetterOrDigit(char)",
+            "char.IsWhiteSpace(char)",
+            "char.IsUpper(char)",
+            "char.IsLower(char)",
+            "char.ToUpper(char)",
+            "char.ToLower(char)",
             "string.Trim()",
             "string.Substring(int)",
             "string.Substring(int, int)",
             "string.Split(params System.ReadOnlySpan<char>)",
+            "string.Split(char, System.StringSplitOptions)",
             "string.Split(string, System.StringSplitOptions)",
             "string.ToUpper()",
             "string.ToLower()",
@@ -201,7 +218,8 @@ public static partial class TinyCsComplianceFacts
     private static readonly Dictionary<string, int> MaxExplicitArguments =
         new(StringComparer.Ordinal)
         {
-            ["string.Split(params System.ReadOnlySpan<char>)"] = 0,
+            ["string.Split(params System.ReadOnlySpan<char>)"] = 1,
+            ["string.Split(char, System.StringSplitOptions)"] = 1,
             ["string.Split(string, System.StringSplitOptions)"] = 1,
         };
 
@@ -359,6 +377,7 @@ public static partial class TinyCsComplianceFacts
         INamedTypeSymbol containingType)
     {
         if (IsStringType(containingType)
+            || IsCharType(containingType)
             || IsMathType(containingType)
             || IsListType(containingType)
             || IsDictType(containingType)
@@ -448,6 +467,9 @@ public static partial class TinyCsComplianceFacts
 
     private static bool IsStringType(ITypeSymbol? type) =>
         type?.SpecialType == SpecialType.System_String;
+
+    private static bool IsCharType(ITypeSymbol? type) =>
+        type?.SpecialType == SpecialType.System_Char;
 
     private static bool IsMathType(ITypeSymbol? type) =>
         type is INamedTypeSymbol named

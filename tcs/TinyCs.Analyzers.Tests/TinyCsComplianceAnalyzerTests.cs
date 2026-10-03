@@ -277,8 +277,9 @@ public partial class TinyCsComplianceAnalyzerTests
             d => d.GetMessage().Contains("StructDeclaration')")); // 二重報告なし
     }
 
+    // nameof は定数式として対応 (T250): 診断なし
     [Fact]
-    public async Task NameOfExpressions_ReportUnsupportedSyntax()
+    public async Task NameOfExpressions_AreSupported()
     {
         const string source = """
             public class NameDemo
@@ -290,22 +291,8 @@ public partial class TinyCsComplianceAnalyzerTests
             """;
         var diagnostics = await AnalyzeAsync(source);
 
-        var syntaxDiagnostics = diagnostics
-            .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedSyntax)
-            .ToArray();
-
-        Assert.Equal(3, syntaxDiagnostics.Length);
-        Assert.Equal(3, diagnostics.Count);
-        Assert.All(syntaxDiagnostics,
-            d => Assert.Contains("NameOfExpression", d.GetMessage()));
-        Assert.Equal([
-            "nameof(value)",
-            "nameof(System.Math.E)",
-            "nameof(System.DateTime)",
-        ], syntaxDiagnostics.Select(d => source.Substring(
-            d.Location.SourceSpan.Start, d.Location.SourceSpan.Length)));
+        Assert.Empty(diagnostics);
     }
-
     [Fact]
     public async Task UserMethodNamedNameof_IsNotNameOfExpression()
     {
@@ -641,10 +628,8 @@ public partial class TinyCsComplianceAnalyzerTests
     [InlineData("list.OrderBy(x => x, Comparer<int>.Default);", "System.Linq.Enumerable.OrderBy")]
     [InlineData("list.FirstOrDefault(-1);", "System.Linq.Enumerable.FirstOrDefault")]
     [InlineData("names.ToDictionary(x => x, StringComparer.Ordinal);", "System.Linq.Enumerable.ToDictionary")]
-    [InlineData("s.Contains('a');", "string.Contains")]
     [InlineData("s.Contains(\"a\", StringComparison.Ordinal);", "string.Contains")]
     [InlineData("s.StartsWith(\"a\", StringComparison.Ordinal);", "string.StartsWith")]
-    [InlineData("s.Split(',');", "string.Split")]
     [InlineData("s.Split(\",\", StringSplitOptions.None);", "string.Split")]
     [InlineData("s.Split(',', ';');", "string.Split")]
     [InlineData("var c = new List<int>(4);", "List<T>")]
@@ -668,6 +653,7 @@ public partial class TinyCsComplianceAnalyzerTests
     [InlineData("dict.TryGetValue(\"a\", out var value);")]
     [InlineData("var r = Math.Round(1.234f, 2) + Math.Log(8.0f, 2.0f);")]
     [InlineData("var parts = s.Split(\",\"); var all = s.Split();")]
+    [InlineData("var p = s.Split(','); var i = s.IndexOf('a'); var b = s.Contains('a') && char.IsDigit(s[0]);")]
     [InlineData("var i = s.IndexOf(\"a\", 1); var sub = s.Substring(1, 2);")]
     [InlineData("var j = string.Join(\",\", names) + string.Join(\",\", \"x\", \"y\");")]
     [InlineData("var byName = names.ToDictionary(x => x); var byLen = names.ToDictionary(x => x, x => x.Length);")]

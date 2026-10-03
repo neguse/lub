@@ -15,7 +15,8 @@ public class TinySystemFacadeTests
                 public static bool Test()
                 {
                     return new Random().Next() == -1
-                        && TinySystem.Random.Next(1) == 0;
+                        && TinySystem.Random.Shared.Next(1) == 0
+                        && new TinySystem.Random(3).Next(1) == 0;
                 }
             }
             """, "tostring(T.test())");
@@ -30,7 +31,7 @@ public class TinySystemFacadeTests
             {
                 public static bool Test()
                 {
-                    var f = TinySystem.Random.NextFloat();
+                    var f = TinySystem.Random.Shared.NextFloat();
                     return f >= 0.0f && f < 1.0f;
                 }
             }

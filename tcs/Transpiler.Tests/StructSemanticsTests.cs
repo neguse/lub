@@ -457,4 +457,51 @@ public class StructSemanticsTests
             """, "T.Test()", differential: false);
         Assert.Equal("5|true", result);
     }
+
+    // `new S[n]` の要素は zero 値の struct (nil ではない)。Length も n
+    [Fact]
+    public void NewStructArray_ElementsAreZeroValues()
+    {
+        var result = TestHelper.TranspileAndRun(Vec + """
+            public class T
+            {
+                public static string Test()
+                {
+                    var arr = new Vec2[3];
+                    arr[1].X = 5.0f;
+                    var ints = new int[2];
+                    ints[1] = ints[0] + 7;
+                    var flags = new bool[2];
+                    return $"{arr[0].X}|{arr[1].X}|{arr.Length}|{ints[1]}|{ints.Length}|{flags[0]}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("0|5|3|7|2|false", result);
+    }
+
+    // struct 要素の Contains / IndexOf / Remove は値等価 (C# の
+    // EqualityComparer<T>.Default は memberwise)
+    [Fact]
+    public void ListOfStruct_ContainsIndexOfRemove_UseValueEquality()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public struct Vec2 { public float X; public float Y; }
+            public record struct Pt(int X, int Y);
+            public class T
+            {
+                public static string Test()
+                {
+                    var vs = new List<Vec2>();
+                    var v = new Vec2(); v.X = 1.0f;
+                    vs.Add(v);
+                    var probe = new Vec2(); probe.X = 1.0f;
+                    var pts = new List<Pt> { new Pt(1, 2), new Pt(3, 4) };
+                    var removed = pts.Remove(new Pt(1, 2));
+                    return $"{vs.Contains(probe)}|{vs.IndexOf(probe)}|{pts.Contains(new Pt(3, 4))}|{pts.IndexOf(new Pt(3, 4))}|{removed}|{pts.Count}";
+                }
+            }
+            """, "T.Test()");
+        Assert.Equal("true|0|true|0|true|1", result);
+    }
 }

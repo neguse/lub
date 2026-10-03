@@ -25,6 +25,7 @@ public partial class LuaEmitter
                 && c.ParameterList.Parameters.Count > 0);
         if (ctor != null)
             EmitStructCtor(model, name, structDecl, ctor);
+        EmitStructEquality(name, symbol);
 
         EmitStructMembers(model, name, structDecl.Members);
     }
@@ -62,9 +63,17 @@ public partial class LuaEmitter
         }
 
         EmitStructCopyFunction(name, symbol);
+        EmitStructEquality(name, symbol);
 
-        // 値等価。ネスト struct 値は推移的に field 展開する (struct は
-        // 循環できないので停止する)
+        EmitStructMembers(model, name, rec.Members);
+    }
+
+    // 値等価 (memberwise)。record struct の ==/!= と、struct 要素の
+    // List.Contains / IndexOf / Remove (C# の EqualityComparer<T>.Default)
+    // が使う。ネスト struct 値は推移的に field 展開する (struct は循環
+    // できないので停止する)
+    private void EmitStructEquality(string name, INamedTypeSymbol? symbol)
+    {
         _currentType?.DefinitionKeys.Add("op_Equality");
         AppendLine($"function {name}.op_Equality(a, b)");
         _indent++;
@@ -77,8 +86,6 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
-
-        EmitStructMembers(model, name, rec.Members);
     }
 
     // zero 初期化コンストラクタ。`new S()` / default(S) / field default が通る
@@ -137,11 +144,11 @@ public partial class LuaEmitter
                     foreach (var v in field.Declaration.Variables)
                         if (v.Initializer != null)
                             AppendLine($"self.{N(v.Identifier.ValueText)} = " +
-                                $"{VisitExpression(model, v.Initializer.Value)}");
+                                $"{RenderExprViaIl(model, v.Initializer.Value)}");
                     break;
                 case PropertyDeclarationSyntax { Initializer: not null } prop:
                     AppendLine($"self.{N(prop.Identifier.ValueText)} = " +
-                        $"{VisitExpression(model, prop.Initializer.Value)}");
+                        $"{RenderExprViaIl(model, prop.Initializer.Value)}");
                     break;
             }
         }
@@ -163,12 +170,7 @@ public partial class LuaEmitter
         AppendLine($"local self = {name}.new()");
         EmitMemberInitializers(model, structDecl.Members);
         if (ctor.Body != null && !TryEmitStatsViaIl(model, ctor.Body.Statements))
-        {
-            LegacyBodies++;
-            WarnIfStructInLegacyBody(model, ctor.Body);
-            foreach (var stmt in ctor.Body.Statements)
-                VisitStatement(model, stmt);
-        }
+            EmitUnsupportedBody(model, ctor.Body.Statements);
         AppendLine("return self");
         _indent--;
         AppendLine("end");
@@ -231,33 +233,18 @@ public partial class LuaEmitter
         }
     }
 
-    // struct 値が legacy fallback 経路に流れると copy 意味論が消えるため、
-    // silent wrong-code にせず診断する (値型対応の安全網)
-    private void WarnIfStructInLegacyBody(SemanticModel model, SyntaxNode body)
-    {
-        var offender = body.DescendantNodesAndSelf()
-            .FirstOrDefault(n =>
-                (n is ObjectCreationExpressionSyntax or VariableDeclarationSyntax
-                    or ParameterSyntax)
-                && n switch
-                {
-                    ObjectCreationExpressionSyntax oc =>
-                        IsUserStruct(model.GetTypeInfo(oc).Type),
-                    VariableDeclarationSyntax vd =>
-                        IsUserStruct(model.GetTypeInfo(vd.Type).Type),
-                    ParameterSyntax { Type: { } pt } =>
-                        IsUserStruct(model.GetTypeInfo(pt).Type),
-                    _ => false,
-                });
-        if (offender != null)
-            _ = WarnUnsupported(offender, "struct value in legacy-emitted body");
-    }
-
     internal static bool IsUserStruct(ITypeSymbol? type) =>
         type is { TypeKind: TypeKind.Struct, SpecialType: SpecialType.None }
         && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T
         && type.TypeKind != TypeKind.Enum
         && type.Locations.Any(l => l.IsInSource);
+
+    // default 値の IL: source 宣言の struct は zero 値の IlNewObj (backend が
+    // 型付けできる)、それ以外は変換済みリテラル
+    private static IlExpr DefaultIl(ITypeSymbol? type) =>
+        IsUserStruct(type)
+            ? new IlNewObj(type!.Name, [])
+            : new IlLit(GetDefaultValueForType(type));
 
     // 値型の copy 地点 (il-spec §10): 代入 / 引数 / return / 値文脈読み。
     // fresh な値 (object creation / initializer IIFE / with 式 / copy 済み) は

@@ -127,6 +127,15 @@ public static class ModuleLinker
         sb.Append("  _G.__tcs_irem = TinySystem.irem\n");
         sb.Append("  _G.__tcs_is = TinySystem.instanceof\n");
         sb.Append("  _G.__tcs_fstr = TinySystem.fstr\n");
+        sb.Append("  _G.__tcs_trunc = TinySystem.trunc\n");
+        sb.Append("  _G.__tcs_arr = TinySystem.arr\n");
+        sb.Append("  _G.__tcs_shl = TinySystem.shl\n");
+        sb.Append("  _G.__tcs_shr = TinySystem.shr\n");
+        foreach (var n in new[] { "nval", "nget", "nlift", "nlift1", "ncmp", "nand", "nor", "nnot", "nstr" })
+            sb.Append($"  _G.__tcs_{n} = TinySystem.{n}\n");
+        foreach (var op in new[] { "add", "sub", "mul", "div", "idiv", "irem", "fmod", "band",
+                     "bor", "bxor", "shl", "shr", "lt", "le", "gt", "ge", "neg", "bnot" })
+            sb.Append($"  _G.__tcs_op_{op} = TinySystem.nops.{op}\n");
         sb.Append("  local __registry_mod = (function()\n");
         AppendIndented(sb, registryLua, "    ");
         sb.Append("  end)()\n");

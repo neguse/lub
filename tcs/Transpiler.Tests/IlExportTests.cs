@@ -217,4 +217,89 @@ public class IlExportTests
         Assert.NotNull(add.Body);
         Assert.Equal(2, add.ParameterTypes.Length);
     }
+
+    [Fact]
+    public void Export_RecordClass_PositionalFieldsCtorAndBaseArgs()
+    {
+        var result = IlExport.Export(["""
+            public record Pt(int X, int Y)
+            {
+                public int Sum() => X + Y;
+            }
+            public record Shape(string Kind);
+            public record Circle(string Kind, float R) : Shape(Kind);
+            """]);
+        Assert.Empty(result.Diagnostics);
+        var pt = Assert.Single(result.Classes, c => c.Name == "Pt");
+        Assert.True(pt.IsRecord);
+        Assert.Equal(["x", "y"], pt.Fields.Select(f => f.Name));
+        Assert.Equal(["int", "int"], pt.Fields.Select(f => f.Type));
+        Assert.NotNull(pt.Ctor);
+        Assert.Equal(["X", "Y"], pt.Ctor!.Parameters.ToArray());
+        Assert.Collection(pt.Ctor.Body!.Stats,
+            s => Assert.Equal("x", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
+            s => Assert.Equal("y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
+        Assert.Contains(pt.Methods, m => m.Name == "sum" && m.Body != null);
+
+        var circle = Assert.Single(result.Classes, c => c.Name == "Circle");
+        Assert.Equal("Shape", circle.BaseName);
+        // Kind は base へ渡すだけ (C# も property を合成しない) → field は R のみ
+        Assert.Equal(["r"], circle.Fields.Select(f => f.Name));
+        var baseArg = Assert.Single(circle.Ctor!.BaseArgs);
+        Assert.Equal("Kind", Assert.IsType<IlVar>(baseArg).Name);
+    }
+
+    // struct / record struct は field (auto property / positional 込み) +
+    // instance member + ctor を契約に載せる (il-spec §10)。record struct の
+    // layout hash は positional parameter を含む
+    [Fact]
+    public void Export_StructContract_IncludesMembersCtorAndRecordStruct()
+    {
+        var result = IlExport.Export(["""
+            public struct Counter
+            {
+                public int N;
+                public int Step = 2;
+                public string Tag { get; set; }
+                public int Doubled => N * 2;
+                public int Clamped { get { return N > 10 ? 10 : N; } set { N = value; } }
+                public Counter(int n) { N = n; }
+                public void Inc() { N = N + Step; }
+            }
+            public record struct Point(int X, int Y)
+            {
+                public int Manhattan() => X + Y;
+            }
+            public class Owner { public Point P; }
+            """]);
+        Assert.Empty(result.Diagnostics);
+        var counter = Assert.Single(result.Structs, s => s.Name == "Counter");
+        Assert.False(counter.IsRecord);
+        Assert.Equal(["n", "step", "tag"], counter.Fields.Select(f => f.Name));
+        Assert.NotNull(counter.Fields[1].Init);
+        Assert.Equal(["get_clamped", "set_clamped", "get_doubled", "inc"],
+            counter.Methods.Select(m => m.Name));
+        Assert.All(counter.Methods, m => Assert.False(m.IsStatic));
+        Assert.All(counter.Methods, m => Assert.NotNull(m.Body));
+        Assert.NotNull(counter.Ctor);
+        Assert.Equal(["n"], counter.Ctor!.Parameters.ToArray());
+        Assert.Equal(["int"], counter.Ctor.ParameterTypes.ToArray());
+
+        var point = Assert.Single(result.Structs, s => s.Name == "Point");
+        Assert.True(point.IsRecord);
+        Assert.Equal(["x", "y"], point.Fields.Select(f => f.Name));
+        Assert.Equal(["X", "Y"], point.Ctor!.Parameters.ToArray());
+        Assert.Collection(point.Ctor.Body!.Stats,
+            s => Assert.Equal("x", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name),
+            s => Assert.Equal("y", Assert.IsType<IlField>(Assert.IsType<IlAssign>(s).Target).Name));
+        Assert.Contains(point.Methods, m => m.Name == "manhattan");
+
+        // record struct の positional field 変更は owner class の hash に伝播する
+        var ownerHash = Assert.Single(result.Classes, c => c.Name == "Owner").LayoutHash;
+        var grown = IlExport.Export(["""
+            public record struct Point(int X, int Y, int Z);
+            public class Owner { public Point P; }
+            """]);
+        Assert.NotEqual(ownerHash, Assert.Single(grown.Classes).LayoutHash);
+    }
 }

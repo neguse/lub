@@ -29,6 +29,8 @@ internal sealed partial class CEmitter
                     $"{Names.Field(field.Name)};");
             _indent--;
             Line($"}} Tcs_{Names.Id(next.Name)};");
+            Line($"typedef struct {{ bool has; Tcs_{Names.Id(next.Name)} v; }} " +
+                $"{CType.Nullable(CType.Struct(next.Name)).CName};");
             Line();
         }
     }
@@ -42,6 +44,14 @@ internal sealed partial class CEmitter
             case IlVar v:
                 var variable = Resolve(v.Name);
                 return variable.Boxed ? $"(*{variable.CName})" : variable.CName;
+            case IlIndex index when !index.PlusOne
+                && TypeOf(index.Recv).Kind == CTypeKind.Dict:
+            {
+                // Dictionary の struct 値 (読みのみ — 書きは C# が CS1612 で拒否)
+                var valueType = RequireDict(index.Recv, out var dictType);
+                return $"(*({valueType.CName} *)tcs_dict_at(" +
+                    $"{RenderExpr(index.Recv)}, {DictKeyArgs(dictType.Key!, index.Idx)}))";
+            }
             case IlIndex index:
             {
                 var sequenceType = RequireSequence(index);
@@ -52,6 +62,8 @@ internal sealed partial class CEmitter
             }
             case IlField field:
             {
+                if (TryStaticField(field, out var staticName, out _))
+                    return staticName;
                 var receiverType = TypeOf(field.Recv);
                 if (receiverType.Kind == CTypeKind.StructVal)
                     return $"{RenderStructPlace(field.Recv)}." +
@@ -62,6 +74,10 @@ internal sealed partial class CEmitter
                 throw new Tcs2cException(
                     "unsupported struct place receiver: " + receiverType);
             }
+            case IlNullableValue or IlIife or IlCall or IlInvoke or IlDynCall
+                or IlWith or IlStructCopy or IlNewObj or IlTernary:
+                // rvalue の struct (読みのみ。C は rvalue struct の member を読める)
+                return $"({RenderExpr(expr)})";
             default:
                 throw new Tcs2cException(
                     $"unsupported struct place: {expr.GetType().Name}");

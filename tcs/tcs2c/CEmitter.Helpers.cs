@@ -16,13 +16,105 @@ internal sealed partial class CEmitter
         return CType.Bool;
     }
 
+    // 明示 downcast: null は素通し、実行時型が範囲外なら fault (C# の
+    // InvalidCastException 相当)
+    private CType TypeOfCast(IlCast cast)
+    {
+        if (!_classes.ContainsKey(cast.TypeRef))
+            throw new Tcs2cException($"IlCast target is not a class: {cast.TypeRef}");
+        var source = TypeOf(cast.E);
+        if (source.Kind is not (CTypeKind.Ref or CTypeKind.Null or CTypeKind.Object))
+            throw new Tcs2cException($"IlCast operand is not a class reference: {source}");
+        return CType.Ref(cast.TypeRef);
+    }
+
+    private string RenderCast(IlCast cast)
+    {
+        var type = TypeOfCast(cast);
+        return $"(({type.CName})tcs_cast({RenderExpr(cast.E)}, " +
+            $"{Names.TypeId(cast.TypeRef)}, {Names.TypeIdMax(cast.TypeRef)}))";
+    }
+
+    // 数値 cast (int / float 目標)。float → int は IL が __tcs_trunc で
+    // 明示するので、ここに来るのは int ↔ float の拡大と恒等 (char / enum)、
+    // T? / object からの unbox
+    private CType TypeOfNumericConvert(IlNumericConvert convert)
+    {
+        var target = convert.TargetType == "int" ? CType.I32 : CType.F32;
+        var source = TypeOf(convert.Value);
+        if (source == CType.Object) return target;
+        if (source.Kind == CTypeKind.Nullable) source = source.Element!;
+        if (source.Kind is not (CTypeKind.I32 or CTypeKind.F32))
+            throw new Tcs2cException($"numeric cast of non-numeric operand: {source}");
+        return target;
+    }
+
+    private string RenderNumericConvert(IlNumericConvert convert)
+    {
+        var target = TypeOfNumericConvert(convert);
+        var source = TypeOf(convert.Value);
+        if (source == CType.Object) return RenderUnbox(convert.Value, target);
+        if (source.Kind == CTypeKind.Nullable)
+        {
+            // (int)x で x が T?: 値なしは fault (.Value と同じ)
+            var temp = Temp("opt");
+            return $"({{ {source.CName} {temp} = {RenderExpr(convert.Value)}; " +
+                $"if (!{temp}.has) tcs_fault(\"nullable-value\"); ({target.CName}){temp}.v; }})";
+        }
+        if (source == target) return RenderExpr(convert.Value);
+        if (target == CType.I32) return $"tcs_trunc_f32({RenderExpr(convert.Value)})";
+        return $"((float)({RenderExpr(convert.Value)}))";
+    }
+
+    // 参照型 / bool / T? / object への cast。user class の downcast は IL が
+    // IlCast で明示する。object からは実行時 tag で検査 (C# の
+    // InvalidCastException 相当は fault)
+    private CType TypeOfRefCast(IlRefCast cast)
+    {
+        var target = _facts.MapType(cast.TargetType);
+        var source = TypeOf(cast.Value);
+        if (source == target || target.CanAssignFrom(source)) return target;
+        if (source == CType.Object
+            && (target.IsNullable || target.Kind == CTypeKind.Nullable || target == CType.Bool))
+            return target;
+        if (source.Kind == CTypeKind.Ref && target.Kind == CTypeKind.Ref
+            && IsAncestorOrSame(source.Name!, target.Name!))
+            return target;
+        throw new Tcs2cException($"unsupported cast: {source} to {target}");
+    }
+
+    private string RenderRefCast(IlRefCast cast)
+    {
+        var target = TypeOfRefCast(cast);
+        var source = TypeOf(cast.Value);
+        if (target == CType.Object) return RenderBox(cast.Value);
+        if (source != CType.Object && (source == target || target.CanAssignFrom(source)))
+            return RenderCoerced(cast.Value, target);
+        var value = RenderExpr(cast.Value);
+        if (target.Kind == CTypeKind.Nullable)
+        {
+            var temp = Temp("obj");
+            var field = BoxField(target.Element!);
+            return $"({{ void *{temp} = {value}; {temp} == NULL ? ({target.CName}){{0}} " +
+                $": ({target.CName}){{ true, tcs_unbox({temp}, {RuntimeTypeId(target.Element!)})->value.{field} }}; }})";
+        }
+        if (target == CType.Bool) return RenderUnbox(cast.Value, target);
+        if (target.Kind == CTypeKind.Ref && IsInterface(target.Name!))
+            return $"(({target.CName})tcs_interface_cast({value}, {Names.InterfaceCheck(target.Name!)}))";
+        if (target.Kind == CTypeKind.Ref)
+            return $"(({target.CName})tcs_cast({value}, {Names.TypeId(target.Name!)}, " +
+                $"{Names.TypeIdMax(target.Name!)}))";
+        var id = RuntimeTypeId(target);
+        return $"(({target.CName})tcs_cast({value}, {id}, {id}))";
+    }
+
     private string RenderIsType(IlIsType typeTest)
     {
         _ = TypeOfIsType(typeTest);
         var value = RenderExpr(typeTest.E);
         if (!Effectful(typeTest.E))
             return $"({value} != NULL && tcs_type_in_range(" +
-                $"((TcsObjectHeader *){value})->type_id, " +
+                $"TCS_GC_HEADER({value})->type_id, " +
                 $"{Names.TypeId(typeTest.TypeRef)}, {Names.TypeIdMax(typeTest.TypeRef)}))";
         var temp = Temp("is_object");
         return $"({{ void *{temp} = {value}; {temp} != NULL && " +
@@ -39,7 +131,7 @@ internal sealed partial class CEmitter
         return literal.Type == "float" || IsFloatText(text) ? CType.F32 : CType.I32;
     }
 
-    private static string RenderLiteral(IlLit literal)
+    private string RenderLiteral(IlLit literal)
     {
         var text = literal.LuaText;
         if (text is "true" or "false") return text;
@@ -66,13 +158,8 @@ internal sealed partial class CEmitter
         return Constants.I32(integer);
     }
 
-    private static string RenderStringLiteral(string luaText)
-    {
-        var bytes = DecodeLuaString(luaText);
-        var escaped = string.Concat(bytes.Select(b => $"\\x{b:x2}"));
-        return $"tcs_string_new((const unsigned char *)\"{escaped}\", " +
-            $"(size_t){bytes.Length})";
-    }
+    private string RenderStringLiteral(string luaText) =>
+        InternStringLiteral(DecodeLuaString(luaText));
 
     private static byte[] DecodeLuaString(string text)
     {
@@ -137,8 +224,6 @@ internal sealed partial class CEmitter
             return CType.Nullable(left);
         if (left.Kind == CTypeKind.Nullable && left.CanAssignFrom(right)) return left;
         if (right.Kind == CTypeKind.Nullable && right.CanAssignFrom(left)) return right;
-        if (left == CType.Object && left.CanAssignFrom(right)) return left;
-        if (right == CType.Object && right.CanAssignFrom(left)) return right;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
             && right.Kind is CTypeKind.I32 or CTypeKind.F32)
             return NumericJoin(left, right, where);
@@ -154,6 +239,9 @@ internal sealed partial class CEmitter
 
     private void RequireComparable(CType left, CType right, string where)
     {
+        // object: 参照同一性 (box 同士も pointer 比較 = C# と同じ)
+        if (left == CType.Object && (right.IsNullable || right == CType.Null)
+            || right == CType.Object && (left.IsNullable || left == CType.Null)) return;
         if (left.Kind == CTypeKind.Nullable || right.Kind == CTypeKind.Nullable)
         {
             if (left == CType.Null || right == CType.Null) return;
@@ -163,14 +251,19 @@ internal sealed partial class CEmitter
         }
         if (left.Kind == CTypeKind.Ref && right.Kind == CTypeKind.Ref
             && (IsAncestorOrSame(left.Name!, right.Name!) || IsAncestorOrSame(right.Name!, left.Name!))) return;
-        if (left == CType.Object && right.IsNullable
-            || right == CType.Object && left.IsNullable) return;
         if (left.Kind is CTypeKind.I32 or CTypeKind.F32
             && right.Kind is CTypeKind.I32 or CTypeKind.F32) return;
         if (left == right && left.Kind is CTypeKind.Bool or CTypeKind.String
-            or CTypeKind.Ref or CTypeKind.Array or CTypeKind.List) return;
+            or CTypeKind.Ref or CTypeKind.Array or CTypeKind.List
+            or CTypeKind.Random) return;
         if (left.Kind == CTypeKind.Null && right.IsNullable
             || right.Kind == CTypeKind.Null && left.IsNullable) return;
+        if (left.Kind == CTypeKind.Nullable && right.Kind is CTypeKind.Null or CTypeKind.Nullable
+            || right.Kind == CTypeKind.Nullable && left.Kind is CTypeKind.Null or CTypeKind.Nullable)
+            return;
+        if (left.Kind == CTypeKind.Nullable && left.Element!.CanAssignFrom(right)
+            || right.Kind == CTypeKind.Nullable && right.Element!.CanAssignFrom(left))
+            return;
         throw new Tcs2cException($"incompatible {where} operands: {left}, {right}");
     }
 
@@ -180,12 +273,34 @@ internal sealed partial class CEmitter
             throw new Tcs2cException($"{where}: expected {expected}, got {actual}");
     }
 
+    // closure / static method group は単独で型付けできない (target で決まる)
+    private bool IsClosureValue(IlExpr expr) =>
+        expr is IlClosure
+        || expr is IlField { Recv: IlVar recv } group && TryResolve(recv.Name) is null
+            && _classes.TryGetValue(recv.Name, out var cls)
+            && cls.Methods.Any(m => m.Name == group.Name && m.IsStatic);
+
+    private void CheckAssignable(CType target, IlExpr value, string where)
+    {
+        if (target.Kind == CTypeKind.Closure && value is IlClosure) return;
+        if (target.Kind == CTypeKind.Closure
+            && value is IlField { Recv: IlVar recvVar } group
+            && _classes.ContainsKey(recvVar.Name)
+            && _classes[recvVar.Name].Methods
+                .Any(m => m.Name == group.Name && m.IsStatic))
+            return;
+        RequireAssignable(target, TypeOf(value), where);
+    }
+
     private void RequireAssignable(CType target, CType source, string where)
     {
         if (target.CanAssignFrom(source)) return;
-        // 継承 upcast: Derived → Base (il-spec §9)
+        // 継承 upcast: Derived → Base (il-spec §9)。downcast (pattern local
+        // への代入 / 明示 cast) も C の cast で通す — cast は型消去で
+        // 透過 (support-matrix)、is-pattern は直後の IlIsType が守る
         if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
-            && IsAncestorOrSame(target.Name!, source.Name!))
+            && (IsAncestorOrSame(target.Name!, source.Name!)
+                || IsAncestorOrSame(source.Name!, target.Name!)))
             return;
         throw new Tcs2cException($"{where}: cannot assign {source} to {target}");
     }
@@ -195,17 +310,6 @@ internal sealed partial class CEmitter
     private string RenderCoerced(IlExpr expr, CType target)
     {
         if (target == CType.Object) return RenderBox(expr);
-        if (target.Kind == CTypeKind.Nullable)
-        {
-            var sourceType = TypeOf(expr);
-            if (sourceType == CType.Null || sourceType == target) return RenderExpr(expr);
-            var suffix = target.Element!.Kind switch
-            {
-                CTypeKind.I32 => "i32", CTypeKind.F32 => "f32", CTypeKind.Bool => "bool",
-                _ => throw new Tcs2cException($"unsupported nullable type: {target.Element}"),
-            };
-            return $"tcs_box_{suffix}({RenderCoerced(expr, target.Element)})";
-        }
         if (target.Kind == CTypeKind.Closure)
         {
             if (expr is IlClosure closure)
@@ -217,6 +321,12 @@ internal sealed partial class CEmitter
                 return RenderStaticGroupThunk(recvVar.Name, group.Name, target);
         }
         var source = TypeOf(expr);
+        // T? への暗黙変換 (IL の IlNullableWrap が無い地点の安全網)
+        if (target.Kind == CTypeKind.Nullable && source != target)
+        {
+            if (source.Kind == CTypeKind.Null) return $"(({target.CName}){{0}})";
+            return $"(({target.CName}){{ true, {RenderCoerced(expr, target.Element!)} }})";
+        }
         var rendered = RenderExpr(expr);
         if (target.Kind == CTypeKind.Ref && source.Kind == CTypeKind.Ref
             && target.Name != source.Name)
@@ -236,6 +346,13 @@ internal sealed partial class CEmitter
         IlTernary ternary => Effectful(ternary.Cond)
             || Effectful(ternary.T) || Effectful(ternary.F),
         IlIsType typeTest => Effectful(typeTest.E),
+        IlCast cast => Effectful(cast.E),
+        IlNullableWrap w => Effectful(w.E),
+        IlNullableHasValue h => Effectful(h.E),
+        IlNullableValue => true,
+        IlNullableGetOrDefault g => Effectful(g.E) || Effectful(g.Default),
+        IlLiftedBin lb => Effectful(lb.L) || Effectful(lb.R),
+        IlLiftedUn lu => Effectful(lu.E),
         IlField or IlIndex or IlLen or IlCall or IlDynCall or IlInvoke
             or IlNewObj or IlTable or IlNewArray or IlIife or IlClosure or IlWith => true,
         _ => true,

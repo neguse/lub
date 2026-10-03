@@ -5,15 +5,32 @@ namespace TinySystem;
 // 検証でき、tcs の dotnet differential が facade parity を検証できる。
 // Lua 側実装は runtime/tinysystem.lua が正本。
 
-public static class Random
+/// <summary>System.Random と同じ形 (instance + `Random.Shared`)。tcs の
+/// 2 backend (Lua / C) は同じ PRNG (Lua 5.5 の xoshiro256**) なので、同じ
+/// seed なら `new Random(seed)` も `Random.Seed(seed)` 後の `Shared` も列が
+/// bit 一致する。dotnet 側は System.Random に委譲するので列は異なる
+/// (乱数は dotnet differential の対象外)。</summary>
+public sealed class Random
 {
-    private static readonly global::System.Random Shared = new();
+    private readonly global::System.Random _impl;
 
-    public static int Next() => Shared.Next();
-    public static int Next(int max) => Shared.Next(max);
-    public static int Next(int min, int max) => Shared.Next(min, max);
-    public static float NextFloat() => Shared.NextSingle();
-    public static int Range(int min, int max) => Shared.Next(min, max);
+    public Random() => _impl = new global::System.Random();
+    public Random(int seed) => _impl = new global::System.Random(seed);
+
+    /// <summary>共有 instance (System.Random.Shared 相当)。</summary>
+    public static Random Shared { get; private set; } = new();
+
+    /// <summary>共有 instance の列を seed で固定する (Lua 側は
+    /// math.randomseed)。</summary>
+    public static void Seed(int seed) => Shared = new Random(seed);
+
+    public int Next() => _impl.Next();
+    public int Next(int max) => _impl.Next(max);
+    public int Next(int min, int max) => _impl.Next(min, max);
+    public float NextFloat() => _impl.NextSingle();
+    public float NextSingle() => _impl.NextSingle();
+    /// <summary>[min, max] の整数 (両端含む。Lua の math.random(m, n) と同じ)。</summary>
+    public int Range(int min, int max) => (int)_impl.NextInt64(min, (long)max + 1);
 }
 
 public static class Math

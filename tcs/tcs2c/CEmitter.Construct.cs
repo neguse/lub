@@ -7,63 +7,63 @@ namespace TinyCs.Tcs2c;
 internal sealed partial class CEmitter
 {
     // Lua backend の Class.new と同順で構築する:
-    // base ctor → type_id (setmetatable 相当) → 自 class field init → ctor body
+    // base init → type_id (setmetatable 相当) → 自 class field init → ctor body。
+    // 確保は最派生の tcs_new_C が layout (sizeof(Tcs_C) + pointer map) で 1 回
+    // 行い、tcs_init_C(object, ...) が base の init を prefix 互換の upcast で
+    // 連鎖呼びする (base 側で sizeof(Base) を確保すると派生 field が溢れる)
     private void EmitAllocators()
     {
-        foreach (var cls in _program.Classes)
+        foreach (var cls in _program.Classes.Where(c => !c.IsInterface))
         {
             var cType = Names.Class(cls.Name);
             var ctor = cls.Ctor;
             _currentClass = cls;
             _scopes.Clear();
             _continueTargets.Clear();
+            _breakTargets.Clear();
             PushScope();
             var paramFacts = CtorParamFacts(cls);
             for (var i = 0; i < paramFacts.Count; i++)
                 AddVariable(paramFacts[i].Name,
                     new Variable($"v_{Names.Id(paramFacts[i].Name)}_{i}",
                         paramFacts[i].Type));
-            var parameters = string.Join(", ", new[] { "size_t tcs_size", "TcsTrace tcs_trace" }
+            var parameters = string.Join(", ", new[] { $"{cType} *object" }
                 .Concat(paramFacts.Select((p, i) =>
                     $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}")));
-            Line($"static {cType} *");
-            Line($"{Names.New(cls.Name)}({parameters})");
+            Line("static void");
+            Line($"{Names.Init(cls.Name)}({parameters})");
             Line("{");
             _indent++;
             if (cls.BaseName is { } baseName)
             {
                 var baseParams = CtorParamFacts(_classes[baseName]);
-                var baseArgs = ctor?.BaseArgs.IsDefault == false
-                    ? ctor.BaseArgs : [];
-                var completeBaseArgs = CompleteArguments(baseParams, baseArgs);
-                var rendered = new List<string> { "tcs_size", "tcs_trace" };
-                for (var i = 0; i < completeBaseArgs.Count; i++)
+                var baseArgs = CompleteArguments(baseParams,
+                    ctor?.BaseArgs.IsDefault == false ? ctor.BaseArgs : [],
+                    $"base constructor of {cls.Name}");
+                var rendered = new List<string> { $"({Names.Class(baseName)} *)object" };
+                for (var i = 0; i < baseArgs.Count; i++)
                 {
-                    ValidateArgument(baseParams[i].Type, completeBaseArgs[i],
+                    CheckAssignable(baseParams[i].Type, baseArgs[i],
                         $"base ctor argument {i} of {cls.Name}");
                     var temp = Temp("base_arg");
                     Line($"{baseParams[i].Type.CName} {temp} = " +
-                        $"{RenderCoerced(completeBaseArgs[i], baseParams[i].Type)};");
+                        $"{RenderCoerced(baseArgs[i], baseParams[i].Type)};");
                     rendered.Add(temp);
                 }
-                Line($"{cType} *object = ({cType} *)" +
-                    $"{Names.New(baseName)}({string.Join(", ", rendered)});");
-            }
-            else
-            {
-                Line($"{cType} *object = tcs_alloc_traced(tcs_size, tcs_trace);");
+                Line($"{Names.Init(baseName)}({string.Join(", ", rendered)});");
             }
             Line($"object->type_id = {Names.TypeId(cls.Name)};");
+            Line($"TCS_GC_HEADER(object)->type_id = {Names.TypeId(cls.Name)};");
             AddVariable("self", new Variable("object", CType.Ref(cls.Name)));
             foreach (var field in cls.Fields.Where(f => !f.IsStatic))
             {
                 var fact = _facts.Field(cls.Name, field.Name);
                 if (fact.Init is not null)
                 {
-                    RequireAssignable(fact.Type, TypeOf(fact.Init),
+                    CheckAssignable(fact.Type, fact.Init,
                         $"initializer of {cls.Name}.{field.Name}");
                     Line($"object->{Names.Field(field.Name)} = " +
-                        $"{RenderExpr(fact.Init)};");
+                        $"{RenderCoerced(fact.Init, fact.Type)};");
                 }
             }
             if (ctor?.Body is { } body)
@@ -71,8 +71,25 @@ internal sealed partial class CEmitter
             else if (ctor is { Body: null })
                 throw new Tcs2cException(
                     $"constructor body is not IL-exportable: {cls.Name}");
-            Line("return object;");
             PopScope();
+            _indent--;
+            Line("}");
+            Line();
+            FlushPendingClosures();
+
+            var newParams = paramFacts.Count == 0
+                ? "void"
+                : string.Join(", ", paramFacts.Select((p, i) =>
+                    $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
+            var initArgs = string.Join(", ", new[] { "object" }
+                .Concat(paramFacts.Select((p, i) => $"v_{Names.Id(p.Name)}_{i}")));
+            Line($"static {cType} *");
+            Line($"{Names.New(cls.Name)}({newParams})");
+            Line("{");
+            _indent++;
+            Line($"{cType} *object = tcs_new_object(&{Names.ClassLayout(cls.Name)});");
+            Line($"{Names.Init(cls.Name)}({initArgs});");
+            Line("return object;");
             _indent--;
             Line("}");
             Line();
@@ -84,9 +101,24 @@ internal sealed partial class CEmitter
         if (cls.Ctor is not { } ctor) return [];
         if (ctor.Parameters.Length != ctor.ParameterTypes.Length)
             throw new Tcs2cException($"ctor metadata mismatch: {cls.Name}");
-        return ctor.Parameters.Select((name, i) => new ParameterFact(
-            name, _facts.MapType(ctor.ParameterTypes[i]),
-            ctor.ParameterDefaults.IsDefault ? null : ctor.ParameterDefaults[i])).ToList();
+        return [.. _facts.ParameterFacts(ctor.Parameters, ctor.ParameterTypes,
+            ctor.ParameterDefaults)];
+    }
+
+    // 末尾の省略引数を既定値 (IL の ParameterDefaults) で補う
+    private static IReadOnlyList<IlExpr> CompleteArguments(
+        IReadOnlyList<ParameterFact> parameters, IReadOnlyList<IlExpr> supplied,
+        string where)
+    {
+        if (supplied.Count == parameters.Count) return supplied;
+        if (supplied.Count > parameters.Count)
+            throw new Tcs2cException($"{where}: expected {parameters.Count} arguments, " +
+                $"got {supplied.Count}");
+        var result = supplied.ToList();
+        for (var i = supplied.Count; i < parameters.Count; i++)
+            result.Add(parameters[i].Default
+                ?? throw new Tcs2cException($"{where}: missing argument {parameters[i].Name}"));
+        return result;
     }
 
 

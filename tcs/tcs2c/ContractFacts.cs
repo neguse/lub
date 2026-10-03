@@ -28,13 +28,12 @@ internal sealed class ContractFacts
 {
     private readonly Dictionary<string, IlClassInfo> _classes;
     private readonly Dictionary<string, IlStructInfo> _structs = [];
+    private readonly Dictionary<string, IlEnumInfo> _enums = [];
     private readonly Dictionary<(string Class, string Method), MethodFact> _methods = [];
     private readonly Dictionary<(string Class, string Field), FieldFact> _fields = [];
-    private readonly HashSet<string> _enums;
 
     public ContractFacts(IlExportResult program)
     {
-        _enums = program.EnumTypes.IsDefault ? [] : [.. program.EnumTypes];
         _classes = new Dictionary<string, IlClassInfo>();
         foreach (var cls in program.Classes)
             if (!_classes.TryAdd(cls.Name, cls))
@@ -43,6 +42,10 @@ internal sealed class ContractFacts
             foreach (var st in program.Structs)
                 if (!_structs.TryAdd(st.Name, st))
                     throw new Tcs2cException($"duplicate struct: {st.Name}");
+        if (!program.EnumTypes.IsDefault)
+            foreach (var e in program.EnumTypes)
+                if (!_enums.TryAdd(e.Name, e))
+                    throw new Tcs2cException($"duplicate enum: {e.Name}");
 
         foreach (var cls in program.Classes)
         {
@@ -54,27 +57,45 @@ internal sealed class ContractFacts
                     throw new Tcs2cException($"duplicate field: {cls.Name}.{field.Name}");
             }
 
-            foreach (var method in cls.Methods)
-            {
-                if (method.ParameterTypes.IsDefault)
-                    throw new Tcs2cException($"method is missing parameter types: " +
-                        $"{cls.Name}.{method.Name}");
-                if (method.Parameters.Length != method.ParameterTypes.Length)
-                    throw new Tcs2cException($"method parameter metadata mismatch: " +
-                        $"{cls.Name}.{method.Name}");
-                var parameters = method.Parameters.Select((name, i) =>
-                    new ParameterFact(name, MapType(method.ParameterTypes[i]),
-                        method.ParameterDefaults.IsDefault ? null : method.ParameterDefaults[i])).ToArray();
-                var fact = new MethodFact(cls.Name, method.Name, method.IsStatic,
-                    MapType(method.ReturnType), parameters, method);
-                if (!_methods.TryAdd((cls.Name, method.Name), fact))
-                    throw new Tcs2cException($"method overloads are not supported: " +
-                        $"{cls.Name}.{method.Name}");
-            }
+            RegisterMethods(cls.Name, cls.Methods);
+        }
+        // struct の instance member も同じ表に載せる (型名で引く)
+        foreach (var st in _structs.Values)
+            if (!st.Methods.IsDefault)
+                RegisterMethods(st.Name, st.Methods);
+    }
+
+    private void RegisterMethods(string owner,
+        System.Collections.Immutable.ImmutableArray<IlMethodInfo> methods)
+    {
+        foreach (var method in methods)
+        {
+            if (method.ParameterTypes.IsDefault)
+                throw new Tcs2cException($"method is missing parameter types: " +
+                    $"{owner}.{method.Name}");
+            if (method.Parameters.Length != method.ParameterTypes.Length)
+                throw new Tcs2cException($"method parameter metadata mismatch: " +
+                    $"{owner}.{method.Name}");
+            var parameters = ParameterFacts(method.Parameters, method.ParameterTypes,
+                method.ParameterDefaults);
+            var fact = new MethodFact(owner, method.Name, method.IsStatic,
+                MapType(method.ReturnType), parameters, method);
+            if (!_methods.TryAdd((owner, method.Name), fact))
+                throw new Tcs2cException($"method overloads are not supported: " +
+                    $"{owner}.{method.Name}");
         }
     }
 
     public IReadOnlyDictionary<string, IlClassInfo> Classes => _classes;
+
+    /// <summary>parameter の名前 / 型 / 省略時の既定値 (IL の ParameterDefaults。
+    /// 末尾の省略は呼び出し側が既定値で補う)。</summary>
+    public ParameterFact[] ParameterFacts(
+        System.Collections.Immutable.ImmutableArray<string> names,
+        System.Collections.Immutable.ImmutableArray<string> types,
+        System.Collections.Immutable.ImmutableArray<IlExpr?> defaults) =>
+        names.Select((name, i) => new ParameterFact(name, MapType(types[i]),
+            defaults.IsDefault || i >= defaults.Length ? null : defaults[i])).ToArray();
 
     public MethodFact Method(string cls, string name) =>
         _methods.TryGetValue((cls, name), out var fact)
@@ -117,15 +138,14 @@ internal sealed class ContractFacts
         var text = displayName.Trim();
         if (text.StartsWith("global::", StringComparison.Ordinal))
             text = text[8..];
-        if (text.EndsWith('?'))
-        {
-            var inner = MapType(text[..^1]);
-            return inner.IsNullable ? inner
-                : inner.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool ? CType.Nullable(inner)
-                : throw new Tcs2cException($"unsupported nullable type: {inner}");
-        }
         if (text.EndsWith("[]", StringComparison.Ordinal))
             return CType.Array(MapType(text[..^2]));
+        // Nullable<T>: 値型なら T?、参照型の `string?` 等は参照そのもの
+        if (text.EndsWith('?'))
+            return MakeNullable(MapType(text[..^1]));
+        foreach (var prefix in new[] { "System.Nullable<", "Nullable<" })
+            if (text.StartsWith(prefix, StringComparison.Ordinal) && text.EndsWith('>'))
+                return MakeNullable(MapType(text[prefix.Length..^1]));
 
         if (text == "System.Action" || text == "Action")
             return CType.Closure(CType.Void, []);
@@ -176,13 +196,19 @@ internal sealed class ContractFacts
 
         return text switch
         {
-            _ when _enums.Contains(text) => CType.I32,
             "void" => CType.Void,
             "int" or "System.Int32" => CType.I32,
             "float" or "System.Single" => CType.F32,
             "bool" or "System.Boolean" => CType.Bool,
-            "string" or "System.String" or "char" or "System.Char" => CType.String,
+            "string" or "System.String" => CType.String,
             "object" or "System.Object" => CType.Object,
+            // char は整数 code unit (il-spec §3)
+            "char" or "System.Char" => CType.I32,
+            // enum は整数定数 (Lua と同じ。tostring も整数表記)
+            _ when _enums.ContainsKey(text) => CType.I32,
+            // TinySystem.Random の instance (user の class Random は別物)
+            "TinySystem.Random" => CType.Random,
+            "Random" when !_classes.ContainsKey("Random") => CType.Random,
             _ when _classes.ContainsKey(text) => CType.Ref(text),
             _ when _structs.ContainsKey(text) => CType.Struct(text),
             _ => throw new Tcs2cException($"unsupported IL type: {displayName}"),
@@ -190,6 +216,25 @@ internal sealed class ContractFacts
     }
 
     public IReadOnlyDictionary<string, IlStructInfo> Structs => _structs;
+
+    private static CType MakeNullable(CType element) => element.Kind switch
+    {
+        CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.StructVal =>
+            CType.Nullable(element),
+        CTypeKind.Nullable => element,
+        _ => element, // 参照型の ? は注釈のみ
+    };
+
+    public bool IsEnum(string name) => _enums.ContainsKey(name);
+
+    public bool TryEnumConstant(string enumName, string member, out int value)
+    {
+        value = 0;
+        if (!_enums.TryGetValue(enumName, out var info)) return false;
+        foreach (var (name, v) in info.Members)
+            if (name == member) { value = v; return true; }
+        throw new Tcs2cException($"unknown enum member: {enumName}.{member}");
+    }
 
     public CType StructField(string structName, string fieldName)
     {

@@ -1,8 +1,8 @@
 namespace TinyCs.Tests;
 
-// 整数ビット演算子の Lua 5.5 native 演算子 (& | ~ ~ << >>) への写像を固定する。
-// C# int は 32bit / Lua 整数は 64bit のため、幅に依存する結果 (負数シフト、
-// 上位 bit の折り返し) は移植側の明示マスク運用 (support-matrix 参照)。
+// 整数ビット演算子の Lua 5.5 native 演算子 (& | ~ ~) への写像と、シフトの
+// C# 意味論 helper (__tcs_shl / __tcs_shr: count & 31、>> は算術) を固定する。
+// 幅は LUA_32BITS 構成の Lua (lua32) を数値基準とする (support-matrix 参照)。
 public class BitwiseOperatorTests
 {
     [Fact]
@@ -182,5 +182,78 @@ public class BitwiseOperatorTests
         Assert.Contains(result.Warnings, w =>
             w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax)
             && w.Contains("BitwiseAndExpression"));
+    }
+
+    // C# の int >> は算術シフト (符号拡張)、count は 31 でマスク。実 .NET と一致
+    [Fact]
+    public void Shift_NegativeRightShiftIsArithmetic_AndCountIsMasked()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Test()
+                {
+                    int a = -8;
+                    int b = -1;
+                    int c = 1;
+                    int n = 33;
+                    int m = -1;
+                    int x = -1024;
+                    x >>= 2;
+                    int y = 3;
+                    y <<= 34;
+                    int? q = -16;
+                    int? r = q >> 2;
+                    return (a >> 1) + "|" + (b >> 31) + "|" + (c << n) + "|" + (a >> n) + "|" + (c << m)
+                        + "|" + (b >> 0) + "|" + x + "|" + y + "|" + (-2147483648 >> 31) + "|" + r;
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("-4|-1|2|-4|-2147483648|-1|-256|12|-1|-4", result);
+    }
+
+    // `-2147483648` / int.MinValue は lua32 で literal 2147483648 が float に
+    // なるため式形で出す。整数のまま演算・表示されること (実 .NET と一致)
+    [Fact]
+    public void IntMinValue_LiteralStaysInteger()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public const int Floor = -2147483648;
+                public static string Test()
+                {
+                    int a = -2147483648;
+                    int b = int.MinValue;
+                    int mx = 2147483647;
+                    return a + "|" + b + "|" + Floor + "|" + (a == b) + "|" + (a >> 31) + "|" + (a & 0x7FFFFFFF) + "|" + (mx + 1 == a);
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("-2147483648|-2147483648|-2147483648|true|-1|0|true", result);
+    }
+
+    // `x op= a ⊕ b` の右辺は 1 項 (Lua の xor / | / shift は + より弱いので、
+    // 括らないと `x + a ~ b` が `(x + a) ~ b` に化ける)
+    [Fact]
+    public void CompoundAssignment_RightOperandIsOneTerm()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static string Test()
+                {
+                    int s = 100; s += 6 ^ 3;
+                    int m = 2; m *= 3 + 4;
+                    int d = 50; d -= 20 - 5;
+                    int o = 1; o |= 6 & 3;
+                    int h = 1; h <<= 1 + 1;
+                    int q = 7; q &= 5 | 2;
+                    int x = 3; x ^= 1 << 2;
+                    return s + "|" + m + "|" + d + "|" + o + "|" + h + "|" + q + "|" + x;
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("105|14|35|3|4|7|7", result);
     }
 }

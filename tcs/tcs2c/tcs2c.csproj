@@ -16,4 +16,8 @@
                       GlobalPropertiesToRemove="TcsRoot" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="tcs2c.Tests" />
+  </ItemGroup>
+
 </Project>

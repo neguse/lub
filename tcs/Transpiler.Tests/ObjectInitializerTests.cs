@@ -140,32 +140,33 @@ public class ObjectInitializerTests
         Assert.Equal("table,nil", output);
     }
 
+    // 入れ子の initializer は C# と同じく既存 member への代入 / Add (new は
+    // しない)。struct member はその場で書く
     [Fact]
-    public void ObjectInitializer_NestedInitializer_ReportsWarning()
+    public void ObjectInitializer_NestedInitializer_AssignsIntoExistingMembers()
     {
-        var source = """
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+            public struct Pos { public int X; public int Y; }
             public class Inner
             {
                 public int A;
+                public List<int> Items = new List<int>();
             }
-
             public class Outer
             {
-                public Inner? Child;
+                public Inner Child = new Inner();
+                public Pos P;
             }
-
             public static class Test
             {
-                public static void Run()
+                public static string Run()
                 {
-                    var o = new Outer { Child = { A = 1 } };
+                    var o = new Outer { Child = { A = 1, Items = { 7, 8 } }, P = { X = 3, Y = 4 } };
+                    return o.Child.A + "|" + o.Child.Items.Count + "|" + o.Child.Items[1] + "|" + o.P.X + "|" + o.P.Y;
                 }
             }
-            """;
-
-        var result = Transpiler.TranspileWithDiagnostics([source]);
-
-        Assert.Contains(result.Warnings,
-            w => w.Contains("TCS1001") && w.Contains("initializer"));
+            """, "Test.run()");
+        Assert.Equal("1|2|8|3|4", result);
     }
 }

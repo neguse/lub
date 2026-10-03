@@ -85,11 +85,11 @@ for i in "${!kernels[@]}"; do
   e=${entries[$i]}
 
   "$DOTNET" "$TR_DLL" "$WORK/$k.cs" -o "$WORK/$k.lua" >/dev/null
-  printf '\n%s.Main()\n' "$e" >> "$WORK/$k.lua"
+  printf '\n%s.main()\n' "$e" >> "$WORK/$k.lua"
   "$LUA32" "$WORK/$k.lua" > "$WORK/$k.dev.out"
   dev_digest=$(fnv_digest "$WORK/$k.dev.out")
   dev_s=$(time_runs "$LUA32" "$WORK/$k.lua")
-  dev_ms=$(python3 -c "print(f'{(float('$dev_s') - float('$lua_base')) * 1000.0 / $FRAMES:.6f}')")
+  dev_ms=$(python3 -c "print('%.6f' % ((float('$dev_s') - float('$lua_base')) * 1000.0 / $FRAMES))")
 
   # release backend。tcs2c 未対応 kernel (struct 系) は dev のみレポート
   if "$DOTNET" "$TCS2C_DLL" --digest-f32 --entry "$e" \
@@ -102,8 +102,8 @@ for i in "${!kernels[@]}"; do
       exit 1
     fi
     rel_s=$(time_runs "$WORK/$k.bin")
-    rel_ms=$(python3 -c "print(f'{float('$rel_s') * 1000.0 / $FRAMES:.6f}')")
-    ratio=$(python3 -c "print(f'{float('$dev_ms') / float('$rel_ms'):.1f}x')")
+    rel_ms=$(python3 -c "print('%.6f' % (float('$rel_s') * 1000.0 / $FRAMES))")
+    ratio=$(python3 -c "print('%.1fx' % (float('$dev_ms') / float('$rel_ms')))")
   else
     rel_ms="-"
     ratio="-"

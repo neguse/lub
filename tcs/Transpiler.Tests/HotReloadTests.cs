@@ -188,6 +188,33 @@ public class HotReloadTests
             """));
     }
 
+    // record struct も struct 側の契約 (positional parameter が field) で
+    // 再直列化される
+    [Fact]
+    public void Reload_ReserializesRecordStructFieldOnLayoutChange()
+    {
+        const string V1 = """
+            public record struct Vec2(float X, float Y);
+            public class Player { public Vec2 Pos; }
+            """;
+        const string V2 = """
+            public record struct Vec2(float X, float Z);
+            public class Player { public Vec2 Pos; }
+            """;
+        RunOk(Compose(V1,
+            """
+            local p = Player.new()
+            p.pos = Vec2.ctor(3.0, 4.0)
+            """,
+            V2,
+            """
+            assert(p.pos.x == 3.0, "retained positional field keeps value")
+            assert(p.pos.y == nil, "discarded positional field dropped")
+            assert(p.pos.z == 0, "added positional field zeroed")
+            print("ok")
+            """));
+    }
+
     // #14: 追加された enum 型 field の default は 0 (nil ではない)
     [Fact]
     public void Reload_AddedEnumFieldDefaultsToZero()

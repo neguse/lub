@@ -28,7 +28,6 @@ public class IlPipelineTests
             """]);
         Assert.True(result.Success);
         Assert.Equal(2, result.IlBodies);
-        Assert.Equal(0, result.LegacyBodies);
     }
 
     [Fact]
@@ -56,9 +55,10 @@ public class IlPipelineTests
     }
 
     [Fact]
-    public void UnsupportedConstructBody_FallsBackToLegacy()
+    public void UnsupportedConstructBody_EmitsDiagnosticAndStub()
     {
-        // instance method group (診断対象) は IL 未対応 → legacy fallback
+        // instance method group (診断対象) は IL 未対応 → TCS1001 + 実行時
+        // error の stub (legacy visitor への fallback は T250 で廃止)
         var result = Transpiler.TranspileWithDiagnostics(["""
             using System;
             public class T
@@ -74,9 +74,9 @@ public class IlPipelineTests
             """]);
         Assert.True(result.Success);
         Assert.Equal(1, result.IlBodies); // M は IL
-        Assert.Equal(1, result.LegacyBodies);
+        Assert.Single(result.Warnings, w => w.Contains("InstanceMethodGroup"));
+        Assert.Contains("error(\"TinyC#: unsupported", result.Lua);
     }
-
     [Fact]
     public void MixedClass_SplitsPerMethod()
     {
@@ -94,7 +94,7 @@ public class IlPipelineTests
                 public int Seed;
                 public int Pick()
                 {
-                    // instance method group は未対応 → この method だけ legacy
+                    // instance method group は未対応 → この method だけ stub
                     Func<int> f = Pick2;
                     return f();
                 }
@@ -103,9 +103,8 @@ public class IlPipelineTests
             """]);
         Assert.True(result.Success);
         Assert.Equal(2, result.IlBodies);
-        Assert.Equal(1, result.LegacyBodies);
+        Assert.Single(result.Warnings, w => w.Contains("InstanceMethodGroup"));
     }
-
     [Fact]
     public void ListAndInterpolation_GoThroughIl()
     {

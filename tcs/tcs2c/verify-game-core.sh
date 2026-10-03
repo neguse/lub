@@ -13,7 +13,7 @@ trap 'rm -rf -- "$work_dir"' EXIT
 "$cc_cmd" -O2 -ffp-contract=off -fwrapv -fexcess-precision=standard \
   "$work_dir/game-core.c" -lm -o "$work_dir/game-core"
 actual="$("$work_dir/game-core" | tr -d '\r')"
-expected=$'3\n1\n2\n3.5\n9\n0\n6\n3\n3\n0\n1\n0\n8\n-2\n3\n5\n0.5\n1.5\n1\n8\n4\n-1\n3\nbc\n\n1\n1.5\n-2147483648\n4.2949673e9\n6'
+expected=$'3\n1\n2\n3.5\n9\n0\n6\n3\n3\n0\n1\n0\n8\n-2\n3\n5\n0.5\n1.5\n1\n8\n4\n-1\n3\nbc\n\n1\n1.5\n-2147483648\n4.2949673e+09\n6'
 if [[ "$actual" != "$expected" ]]; then
   printf 'Game core semantic check failed:\n%s\n' "$actual" >&2
   exit 1

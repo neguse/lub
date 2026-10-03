@@ -1,18 +1,22 @@
 #include "foreign.c"
 
+/* host 側の foreign 実装 (生成 C を include して内部 ABI を直接使う):
+   外部 data class は tcs_new_<Class>() で作り host_value に handle を置く。
+   nullable スカラは TcsOpt* の値渡し、配列の要素型は GC header の type tag。
+   entry 中に作った object は static に置けば境界で昇格して生き残る */
 Tcs_Resource *tcs_host_api_current(void)
 {
-    Tcs_Resource *value = tcs_new_Resource(sizeof(*value), tcs_trace_object_Resource);
+    Tcs_Resource *value = tcs_new_Resource();
     value->host_value = 99;
     value->f_version = 4;
     return value;
 }
 
-float tcs_host_api_read(Tcs_Options *options, int32_t mode, void *version)
+float tcs_host_api_read(Tcs_Options *options, int32_t mode, TcsOptI32 version)
 {
-    if (mode != 3 || version != NULL || tcs_unbox(options->f_version, TCS_BOX_I32)->value.i != 2)
+    if (mode != 3 || version.has || !options->f_version.has || options->f_version.v != 2)
         tcs_fault("foreign-options");
-    if (options->f_data->type_id != TCS_TYPE_ARRAY_F32) tcs_fault("foreign-array-type");
+    if (TCS_GC_HEADER(options->f_data)->type_id != TCS_TYPE_ARRAY_F32) tcs_fault("foreign-array-type");
     return ((float *)options->f_data->data)[1];
 }
 

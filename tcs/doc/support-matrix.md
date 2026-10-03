@@ -112,7 +112,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `double` (Double) | **Y** | number | |
 | `bool` (Boolean) | **Y** | boolean | |
 | `decimal` (Decimal) | **-** | | |
-| `char` (Char) | **-** | | string で代替 |
+| `char` (Char) | **Y** | 整数 code unit (byte)。literal は ASCII のみ (非 ASCII は TCS1001 `NonAsciiCharLiteral`、string literal で書く)。算術 / 比較 / switch / pattern は int と同じ、文字列化 (連結・補間・`ToString`・`WriteLine`) は 1 byte の string。`Char.*` は §15b |
 | `byte` (Byte) | **-** | | |
 | `sbyte` (SByte) | **-** | | |
 | `short` (Int16) | **-** | | |
@@ -135,10 +135,10 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 型 | 状態 | 備考 |
 |----|:----:|------|
 | `void` | **Y** | 戻り値型として |
-| Nullable 値型 (`int?`) | **P** | `null`/値/HasValue/Value/GetValueOrDefault |
+| Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | Lua は常に nil 可能 |
 | タプル `(int, string)` | **-** | |
-| 配列 `int[]` | **P** | 初期化子、index、Length。List\<T\> を推奨 |
+| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型なら default (struct は zero 値)、参照型は nil (Length も 0 — TCS1003 と同じ nil 制約)。List\<T\> を推奨 |
 | 匿名型 `new { }` | **-** | |
 | `Span<T>` / `ReadOnlySpan<T>` | **N/A** | |
 | ポインタ型 `int*` | **N/A** | |
@@ -150,9 +150,9 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | 型 | 状態 | Lua マッピング | 備考 |
 |----|:----:|--------------|------|
 | `class` | **Y** | table + metatable | |
-| `struct` | **Y** | plain table (metatable なし) + copy 地点で型別 `__copy` | 値意味論 (il-spec §10)。instance member は静的自由関数。static member / operator / override はサブセット外 |
-| `record` / `record class` | **P** | table + metatable | positional record |
-| `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= と with 式。readonly (record) struct は copy 全省略 |
+| `struct` | **Y** | plain table (metatable なし) + copy 地点で型別 `__copy` | 値意味論 (il-spec §10)。instance member は静的自由関数 (C backend は `Tcs_S *self` のアドレス渡し)。List.Contains / IndexOf / Remove は memberwise 等価。static member / operator / override はサブセット外 |
+| `record` / `record class` | **Y** | table + metatable (`__eq`)。IL 契約に IsRecord で収載、C backend は型ごとの構造等価関数と実行時 layout の with copy | positional record。Equals / GetHashCode / ToString 呼びは対象外。C# の `(T)x` downcast は IlCast で C 側 fault 対象 |
+| `record struct` | **Y** | plain table + positional ctor + 合成 `op_Equality` | 値等価 ==/!= と with 式。readonly (record) struct は copy 全省略。IL 契約 (IlStructInfo) と C backend、hot reload の migration も struct と同じ |
 | `interface` | **P** | 出力なし | Roslyn 型チェックのみ |
 | `enum` | **Y** | 定数テーブル | initializer 無しの field / auto property / `default(E)` の既定値は member 値に依らず 0 |
 | `delegate` 型定義 | **N/A** | | Action/Func で代替 |
@@ -224,7 +224,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `ref` ローカル (C# 7) | **N/A** | | |
 | ローカル定数 `const` | **-** | | |
 | 分解宣言 `var (a, b) = ...` (C# 7) | **P** | `__tcs_dec` へ一回評価して展開 | record positional property 限定。既存変数への分解代入 `(a, b) = rhs` も対応 |
-| 破棄 `_ = expr` (C# 7) | **-** | | |
+| 破棄 `_ = expr` (C# 7) | **Y** | `local _ = expr` | 評価して捨てる |
 | トップレベル文 (C# 9) | **Y** | Lua chunk | 型定義を先に出力してから実行 |
 | using 宣言 `using var` (C# 8) | **-** | | unsupported 診断あり |
 | `scoped` ローカル (C# 11) | **-** | | |
@@ -251,7 +251,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `throw` | **-** | | unsupported 診断あり |
 | `try` / `catch` / `finally` | **-** | | unsupported 診断あり |
 | `using` 文 (リソース破棄) | **-** | | unsupported 診断あり |
-| `lock` | **N/A** | `do ... end` fallback | TCS1001。同期はせずbody/scopeだけ保持 |
+| `lock` | **N/A** | `do ... end` (IlDo) | TCS1001 警告は出すが body は実行する (単一 thread では lock = body)。C backend も同じ |
 | `yield return` / `yield break` (C# 2) | **-** | | |
 | `goto` / ラベル | **-** | | |
 | `checked` / `unchecked` | **N/A** | | |
@@ -300,7 +300,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `? :` (三項) | **Y** | IIFE | falsy 安全 |
 | `??` (null 合体) | **Y** | `or` (bool? のみ nil 判定 IIFE — `or` だと false が fallback するため) | |
 | `?.` (null 条件アクセス, C# 6) | **Y** | IIFE nil チェック | String/List/Dict mapping 対応 |
-| `(T)x` (キャスト) | **Y** | 透過 (型消去) | |
+| `(T)x` (キャスト) | **Y** | 透過 (型消去)。`(int)f` だけは `__tcs_trunc` で 0 方向 truncation (C backend も同じ契約) | |
 | `is null` / `is not null` | **Y** | `== nil` / `~= nil` | |
 | `is Type` | **Y** | class は `getmetatable() ==`、値型/string は `type()` 判定。designation なしの binary 形も対応 | |
 | `new T(args)` | **Y** | `T.new(args)` | |
@@ -309,15 +309,15 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `?.Prop = v` (null条件代入, C# 14) | **-** | | |
 | `as` (安全キャスト) | **-** | | |
 | `typeof(T)` | **-** | | |
-| `nameof(x)` (C# 6) | **-** | 定数文字列 + unsupported marker fallback | TCS1001。semantic判定し、同名ユーザーmethodは通常call |
+| `nameof(x)` (C# 6) | **Y** | 定数文字列 | C# の定数式として両 backend で畳む (T250)。同名ユーザー method は通常 call |
 | `default` / `default(T)` (C# 7.1) | **Y** | 型別 default | |
 | `sizeof(T)` | **N/A** | | |
 | `~` (ビット反転) | **Y** | `~x` | 整数のみ (64bit 幅、下記注記) |
-| `<<` `>>` (シフト) | **Y** | `<<` `>>` | 整数のみ。`>>>` は未対応。負数 `>>` は C# (算術) と Lua (論理) で異なる (下記注記) |
+| `<<` `>>` (シフト) | **Y** | `__tcs_shl` / `__tcs_shr` | 整数のみ。C# 意味論 (count は 31 でマスク、`>>` は算術シフト) を helper で与える。`>>>` は未対応 |
 | `&` `\|` `^` (ビット演算) | **Y** | `&` `\|` `~` (二項) | 整数と enum のみ。C# `^` は Lua 二項 `~`。bool operand は TCS1001 未対応 (Lua native が boolean を拒否し、and/or は非短絡の C# `&` `\|` と意味論が変わるため) |
 | `..` (Range, C# 8) | **-** | | |
 | `^x` (Index from end, C# 8) | **-** | | |
-| `new T { ... }` (初期化子) | **Y** | List/Dict、class (IIFE + field 代入)、`--ref` 型 (plain table)。ネストした初期化子は TCS1001 | |
+| `new T { ... }` (初期化子) | **Y** | List/Dict、class (IIFE + field 代入)、`--ref` 型 (plain table)。ネストした初期化子 (`Child = { A = 1 }` / `Items = { a, b }`) は C# と同じく既存 member への代入 / Add | |
 | `new(args)` (ターゲット型, C# 9) | **Y** | 初期化子含む | |
 | `x!` (null 許容抑制, C# 8) | **Y** | 型チェック専用、Lua へは透過 | |
 | `stackalloc` | **N/A** | | |
@@ -325,16 +325,12 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `delegate { }` (匿名メソッド, C# 2) | **-** | | |
 | `delegate*` (関数ポインタ, C# 9) | **N/A** | | |
 
-ビット演算の幅意味論: C# `int` は 32bit だが、Lua 整数は 64bit であり、
-ビット演算は Lua native 演算子への写像のため常に 64bit 幅で評価される。
+ビット演算の幅意味論: 数値基準は LUA_32BITS 構成の Lua (`deps/lua/lua32`、
+整数 32bit / float 32bit) で、`~x`、負数を含む `& \| ^`、`<<` の折り返しは
+C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 で
+マスク、`>>` は算術) で C# 意味論。64bit 整数構成の Lua で動かす場合は
+上位 32bit の扱いが C# と異なる (そちらは基準外)。
 
-- `~x`、負数を含む `& \| ^`、32bit を溢れる `<<` は上位 32bit の扱いが C# と異なる
-- C# の `>>` (int) は算術シフト (符号拡張)、Lua の `>>` は論理シフト (0 埋め) のため、
-  負数の右シフトは一致しない
-- C# はシフト量を 31 (int) でマスクするが、Lua はマスクしない (64 以上で 0)
-
-32bit 意味論が必要な箇所は、移植側で `& 0xFFFFFFFF` などの明示マスク
-(必要なら符号の手動復元) を行う運用とする。
 
 ### 4.3 高度な式
 
@@ -429,7 +425,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `in` (C# 7.2) | **-** | |
 | `ref readonly` (C# 12) | **-** | |
 | `params` | **-** | |
-| `this` (拡張メソッド) | **-** | |
+| `this` (拡張メソッド) | **Y** | user 定義の拡張メソッドは静的呼び出し (receiver が第 1 引数) |
 | `scoped` (C# 11) | **-** | |
 
 ### 6.4 変換修飾子
@@ -563,12 +559,13 @@ using(宣言)  virtual(部分)  volatile  yield
 | `MathF` | **-** | | float 版 Math |
 | `Console` | **Y** | `WriteLine` → `print` | |
 | `int` / `double` / `float` の `Parse(string)` | **Y** | `math.tointeger(tonumber(s))` / `tonumber(s)` | 不正な文字列は例外でなく nil |
+| `int` / `double` / `float` の `TryParse(string, out v)` | **Y** | `Math.TryParseInt` / `Math.TryParseFloat` の (found, value) multi-return (TryGetValue と同形の IIFE) | 失敗時の out は 0 |
 | `Convert` | **-** | | |
 | `Environment` | **P** | `GetEnvironmentVariable(s)` → `os.getenv(s)` | 他メンバーは未対応 |
 | `Array` | **-** | | List で代替 |
 | `Tuple` | **-** | | |
 | `ValueTuple` | **-** | | |
-| `Nullable<T>` | **-** | | |
+| `Nullable<T>` | **Y** | `int?` 等 (Part I 参照) | collection 要素の null は TCS1003 |
 | `Enum` (静的メソッド) | **-** | | |
 | `Exception` (全サブクラス) | **-** | | try/catch 未対応 |
 | `IDisposable` | **-** | | |
@@ -624,12 +621,25 @@ using(宣言)  virtual(部分)  volatile  yield
 | `String.Equals(a, b)` (static) | **-** | | |
 | `String.Empty` (static) | **-** | | |
 | `.ReplaceLineEndings()` | **-** | | |
-| `[int]` (char indexer) | **Y** | `string.sub(s, i + 1, i + 1)` (1 文字 string) | T |
-| `(int)s[i]` / `(int)ch` (char → int) | **Y** | `string.byte(s, i + 1)` / `string.byte(ch)`。`(int)'a'` は定数畳み込み | T |
+| `[int]` (char indexer) | **Y** | `string.byte(s, i + 1)` (整数 code unit = byte) | T |
+| `(int)ch` / `(char)n` (char ↔ int) | **Y** | 恒等 (char は整数)。`(int)'a'` は定数畳み込み | T |
+| `foreach (char c in s)` | **Y** | `for i = 1, #s do local c = string.byte(s, i)` (byte 単位。codepoint は `EnumerateRunes`) | T |
+| `.IndexOf(char)` / `.Contains(char)` / `.StartsWith(char)` / `.EndsWith(char)` / `.Replace(char, char)` / `.Split(char)` | **Y** | char 引数を `string.char` で 1 文字 string にして同名 runtime へ | T+R |
 | `.EnumerateRunes()` | **Y** | `foreach` の collection 位置限定: `for _, r in utf8.codes(s)`。`r.Value` (`System.Text.Rune`) は codepoint 整数そのもの | T |
 
 引数なし`Split()`のwhitespace判定はLua `%s`によるbyte/locale単位であり、
 .NETのUnicode `Char.IsWhiteSpace`とは一致しない。これはUTF-8 byte列を使う既知制約に含む。
+
+---
+
+## 13b. Char メンバー (static、整数 code unit の ASCII 判定 / 変換)
+
+| メンバー | 状態 | Lua マッピング | 区分 |
+|---------|:----:|--------------|:----:|
+| `char.IsDigit(c)` / `IsLetter` / `IsLetterOrDigit` / `IsWhiteSpace` / `IsUpper` / `IsLower` | **Y** | `Char.IsDigit(c)` 等 (ASCII 範囲。C backend も同じ表) | R |
+| `char.ToUpper(c)` / `char.ToLower(c)` | **Y** | `Char.ToUpper(c)` / `Char.ToLower(c)` (ASCII) | R |
+| `c.ToString()` | **Y** | `string.char(c)` | T |
+| `char.IsPunctuation` / `IsSymbol` / `IsControl` / `GetNumericValue` | **-** | | |
 
 ---
 
@@ -676,13 +686,13 @@ using(宣言)  virtual(部分)  volatile  yield
 
 | メンバー | 状態 | Lua マッピング | 区分 |
 |---------|:----:|--------------|:----:|
-| `Random.Next()` | **Y** | `Random.Next()` | R |
-| `Random.NextFloat()` | **Y** | `Random.NextFloat()` | R |
-| `Random.Range(min, max)` | **Y** | `Random.Range(min, max)` | R |
-| `new Random()` / `new Random(seed)` | **-** | | |
-| `Random.Shared` (static) | **-** | | |
-| `Random.Next(min, max)` (.NET 標準 API) | **-** | | |
-| `Random.NextDouble()` | **-** | | |
+| `new Random()` / `new Random(seed)` | **Y** | `Random.new(seed)` (pure-Lua xoshiro256**) | System.Random と同じ形。seed 固定時は Lua / C で列が bit 一致し、`Random.Seed(seed)` 後の `Shared` とも一致 (il-spec §13)。C backend は GC object |
+| `Random.Shared` (static) | **Y** | `Random.Shared` (VM の `math.random` 状態) | |
+| `Random.Seed(seed)` | **Y** | `math.randomseed(seed)` | `Shared` の列の固定 (tcs 独自。System.Random に無い) |
+| `r.Next()` / `r.Next(max)` / `r.Next(min, max)` | **Y** | `r:Next(...)` | .NET 標準 API (上限は exclusive) |
+| `r.NextFloat()` / `r.NextSingle()` | **Y** | `r:NextFloat()` | [0, 1) の float |
+| `r.Range(min, max)` | **Y** | `r:Range(min, max)` | 両端含む整数 (Lua の `math.random(m, n)`。tcs 独自) |
+| `Random.NextDouble()` | **-** | | double はサブセット外 |
 | `Random.NextBytes(buf)` | **-** | | |
 | `Random.Shuffle(arr)` | **-** | | |
 

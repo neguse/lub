@@ -75,7 +75,11 @@ public sealed record IlTable(ImmutableArray<IlTableEntry> Entries,
 
 /// <summary>固定長配列の生成: new T[n] (il-spec §11)。dev backend は
 /// 空 table (要素は使用時に埋まる)、release backend は連続バッファ確保。</summary>
-public sealed record IlNewArray(string ElementType, IlExpr Length) : IlExpr;
+/// <summary>固定長配列 `new T[n]`。要素は T の default 値 (Default: 値型は
+/// その IL、struct は IlNewObj の zero 値、参照型は null)。C は zero 初期化、
+/// Lua は値型のとき default を n 個詰める (参照型は空 table)。</summary>
+public sealed record IlNewArray(string ElementType, IlExpr Length,
+    IlExpr? Default = null) : IlExpr;
 
 public sealed record IlNumericConvert(IlExpr Value, string TargetType) : IlExpr;
 public sealed record IlRefCast(IlExpr Value, string TargetType) : IlExpr;
@@ -103,6 +107,44 @@ public sealed record IlClosure(
 /// 関数 {TypeName}.__copy (struct-in-struct を再帰 copy)、C backend は
 /// 素の値代入として扱う。</summary>
 public sealed record IlStructCopy(IlExpr E, string TypeName) : IlExpr;
+
+// ---- Nullable<T> (il-spec §3 / §13)。T? は IL 上の独立した型で、backend は
+// Lua = nil または値、C = { has, v } 構造体で表現する。nil 比較や `or` の
+// Lua 方言を IL に残さず、以下のノードで操作を明示する ----
+
+/// <summary>T → T? の暗黙変換。Type は T の display 名 (backend の型付け用)。</summary>
+public sealed record IlNullableWrap(IlExpr E, string Type) : IlExpr;
+
+/// <summary>HasValue / `!= null` / `is not null` (bool)。</summary>
+public sealed record IlNullableHasValue(IlExpr E) : IlExpr;
+
+/// <summary>.Value。値なしは fault (C# の InvalidOperationException 相当)。</summary>
+public sealed record IlNullableValue(IlExpr E) : IlExpr;
+
+/// <summary>`e ?? d` / GetValueOrDefault(d)。d は T (結果 T) か T? (結果 T?)。
+/// d は e が値なしのときだけ評価する。</summary>
+public sealed record IlNullableGetOrDefault(IlExpr E, IlExpr Default) : IlExpr;
+
+/// <summary>lifted 演算子 (C# §12.4.8)。両 operand は T? (builder が
+/// IlNullableWrap で揃える)。算術 / bit / shift は片方でも値なしなら値なし、
+/// 比較は false、Eq / Ne は両方値なしで等しい、And / Or は bool? の三値論理。</summary>
+public enum IlLiftedOp
+{
+    Add, Sub, Mul, DivFloat, DivInt, RemFloat, RemInt,
+    BitAnd, BitOr, BitXor, Shl, Shr,
+    Eq, Ne, Lt, Le, Gt, Ge,
+    And, Or,
+}
+
+public sealed record IlLiftedBin(IlLiftedOp Op, IlExpr L, IlExpr R) : IlExpr;
+
+/// <summary>lifted 単項 (Neg / Not / BitNot)。値なしは値なし。</summary>
+public sealed record IlLiftedUn(IlUnOp Op, IlExpr E) : IlExpr;
+
+/// <summary>class 参照の明示 downcast `(T)e` (il-spec §9)。Lua backend は透過
+/// (型消去)、C backend は実行時型が T 系でなければ fault。upcast は IL に
+/// 現れない (暗黙変換)。</summary>
+public sealed record IlCast(IlExpr E, string TypeRef) : IlExpr;
 
 /// <summary>record with 式 (shallow copy + 上書き)。</summary>
 public sealed record IlWith(
@@ -159,6 +201,14 @@ public sealed record IlReturn(IlExpr? Value) : IlStat;
 
 /// <summary>do ... end スコープ (temp local の隔離)。</summary>
 public sealed record IlDo(IlBlock Body) : IlStat;
+
+/// <summary>break スコープ: 本文内の (ループに束縛されない) IlBreak はここを
+/// 抜ける (switch 文の早期 break)。本文内の IlContinue は外側ループに束縛された
+/// まま。Lua は repeat ... until true、C は block + goto label。</summary>
+public sealed record IlBreakScope(IlBlock Body) : IlStat;
+
+/// <summary>出力に残す注記 (診断 marker 等)。意味論なし。</summary>
+public sealed record IlComment(string Text) : IlStat;
 
 /// <summary>多重代入: [local ]t1, t2 = v1, v2 (分解・out 引数 multi-return)。</summary>
 public sealed record IlMultiAssign(

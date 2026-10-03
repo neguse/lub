@@ -128,6 +128,7 @@ public static class TestHelper
                      "Math = TinySystem.Math\n" +
                      "String = TinySystem.String\n" +
                      "Random = TinySystem.Random\n" +
+                     "Char = TinySystem.Char\n" +
                      $"{lua}\nprint({luaCall})";
         var result = RunLua(script, timeout).Trim();
         SpecConformance.CorpusDifferential.Check(csharpSource, luaExpr, result);

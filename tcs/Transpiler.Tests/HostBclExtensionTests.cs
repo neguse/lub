@@ -28,6 +28,31 @@ public class HostBclExtensionTests
     }
 
     [Fact]
+    public void TryParse_IntAndFloat_OutVarAndExistingLocal()
+    {
+        // (found, value or 0) の multi-return。IL 経路 (IIFE + multi-assign) と
+        // legacy 経路の両方が runtime の Math.TryParseInt / TryParseFloat を使う
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public static class T
+            {
+                public static string Test()
+                {
+                    var s = 0;
+                    if (int.TryParse("42", out var a)) s += a;
+                    if (!int.TryParse("4x2", out var b)) s += 1000 + b;
+                    int c;
+                    var okc = int.TryParse(" 7 ", out c);
+                    s += okc ? c : -1;
+                    if (float.TryParse("1.5", out var f)) s += (int)(f * 2f);
+                    if (!float.TryParse("abc", out var g)) s += 100 + (int)g;
+                    return s.ToString();
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("1152", result);
+    }
+
+    [Fact]
     public void Parse_IntAndDouble()
     {
         var result = TestHelper.TranspileAndRun("""

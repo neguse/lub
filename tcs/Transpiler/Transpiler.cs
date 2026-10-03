@@ -12,11 +12,8 @@ public class TranspileResult
     public List<string> Warnings { get; init; } = [];
     public bool Success => Errors.Count == 0;
 
-    /// <summary>IL 移行の計測: IL 経由で emit した method body 数。</summary>
+    /// <summary>IL 経由で emit した member body 数 (計測用)。</summary>
     public int IlBodies { get; init; }
-
-    /// <summary>legacy visitor で emit した method body 数。</summary>
-    public int LegacyBodies { get; init; }
 }
 
 public static class Transpiler
@@ -223,8 +220,7 @@ public static class Transpiler
             Lua = lua,
             SourceMap = emitter.SourceMap,
             Warnings = warnings,
-            IlBodies = emitter.IlBodies,
-            LegacyBodies = emitter.LegacyBodies
+            IlBodies = emitter.IlBodies
         };
     }
 

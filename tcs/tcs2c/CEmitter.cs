@@ -13,6 +13,8 @@ internal sealed partial class CEmitter
     private readonly StringBuilder _output = new();
     private readonly Stack<Dictionary<string, Variable>> _scopes = new();
     private readonly Stack<string?> _continueTargets = new();
+    // break の飛び先: ループは null (`break;`)、IlBreakScope は label (`goto`)
+    private readonly Stack<string?> _breakTargets = new();
     private IlClassInfo _currentClass = null!;
     private IlMethodInfo _currentMethod = null!;
     private MethodFact _currentMethodFact = null!;
@@ -92,15 +94,28 @@ internal sealed partial class CEmitter
         return chain;
     }
 
+    // ancestor は base chain 上の class か、chain のどこかが実装する interface
     internal bool IsAncestorOrSame(string ancestor, string derived)
     {
         for (string? cur = derived; cur != null; cur = _classes[cur].BaseName)
         {
             if (cur == ancestor) return true;
-            if (!_classes[cur].Interfaces.IsDefault && _classes[cur].Interfaces.Contains(ancestor)) return true;
+            if (!_classes[cur].Interfaces.IsDefault
+                && _classes[cur].Interfaces.Any(i => SimpleTypeName(i) == ancestor))
+                return true;
         }
         return false;
     }
+
+    private static string SimpleTypeName(string displayName)
+    {
+        var text = displayName.StartsWith("global::", StringComparison.Ordinal)
+            ? displayName[8..] : displayName;
+        var dot = text.LastIndexOf('.');
+        return dot < 0 ? text : text[(dot + 1)..];
+    }
+
+    private bool IsInterface(string cls) => _classes[cls].IsInterface;
 
     // name を宣言する最も近い chain 上の class (自身含む)
     private string? FindDeclaringClass(string cls, string method)
@@ -118,9 +133,11 @@ internal sealed partial class CEmitter
         throw new Tcs2cException($"unknown field: {cls}.{name}");
     }
 
-    // declaring で宣言された method を strict 子孫が再宣言しているか
+    // declaring で宣言された method を strict 子孫が再宣言しているか。
+    // interface の method は常に実装側へ dispatch する
     private bool IsPolymorphic(string declaring, string method) =>
-        _classes[declaring].IsInterface || _program.Classes.Any(c => c.Name != declaring
+        IsInterface(declaring)
+        || _program.Classes.Any(c => c.Name != declaring
             && IsAncestorOrSame(declaring, c.Name)
             && c.Methods.Any(m => m.Name == method));
 
@@ -142,39 +159,38 @@ internal sealed partial class CEmitter
         var entry = lib ? null : FindEntry(requestedEntry);
 
         _output.Append(RuntimePrelude);
-        _output.Append(GcRuntime);
-        _output.Append(MathRuntime);
-        _output.Append(StringRuntime);
-        _output.Append(ObjectRuntime);
-        _output.Append(RuntimeServices);
+        _output.Append(RuntimeGc);
+        _output.Append(RuntimeCollections);
+        _output.Append(RuntimeStrings);
+        _output.Append(RuntimeLib);
+        Line(LiteralsMarker);
         EmitClassDeclarations();
         EmitInterfaceChecks();
         EmitStaticFields();
-        EmitStaticInitPrototypes();
-        EmitGcTracers();
+        EmitStaticRoots();
         EmitMethodPrototypes();
-        EmitForeignPrototypes();
         EmitAllocators();
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
-        {
-            try { EmitMethod(cls, method); }
-            catch (Tcs2cException error) { throw new Tcs2cException($"{cls.Name}.{method.Name}: {error.Message}"); }
-        }
+            EmitMethod(cls, method);
+        EmitStructMembers();
         EmitDispatchers();
+        EmitRecordEquality();
         EmitStaticInitializer();
         if (lib)
             EmitLibEntryPoints();
         else
             EmitEntryPoint(entry);
-        return _output.ToString().Replace(ClosureDeclMarker,
-            string.Join("\n", _closureDecls));
+        return _output.ToString()
+            .Replace(ClosureDeclMarker, string.Join("\n", _closureDecls))
+            .Replace(LiteralsMarker, string.Join("\n", _literalDecls));
     }
 
     private void ValidateProgram()
     {
         if (_program.Diagnostics.Length > 0)
             throw new Tcs2cException("cannot emit a program with TinyC# diagnostics");
+        ValidateStructs();
         foreach (var cls in _program.Classes)
         {
             Names.Id(cls.Name);
@@ -192,7 +208,7 @@ internal sealed partial class CEmitter
                 if (!methodNames.Add(method.Name))
                     throw new Tcs2cException($"method overloads are not supported: " +
                         $"{cls.Name}.{method.Name}");
-                if (method.Body is null && !method.IsAbstract)
+                if (method.Body is null && !method.IsAbstract && !cls.IsInterface)
                     throw new Tcs2cException($"method has no IL body: {cls.Name}.{method.Name}");
                 var fact = _facts.Method(cls.Name, method.Name);
                 EnsureSupportedStorageType(fact.ReturnType,
@@ -204,21 +220,27 @@ internal sealed partial class CEmitter
         }
     }
 
+    // 格納型 (field / parameter / local / 要素): スカラ・string・class 参照・
+    // データ struct・Dictionary・closure と、それらを要素とする array / List
     private static void EnsureSupportedStorageType(CType type, string where,
         bool allowVoid = false)
     {
         if (type.Kind == CTypeKind.Void && allowVoid) return;
-        if (type.Kind is CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool
-            or CTypeKind.String or CTypeKind.Ref or CTypeKind.StructVal or CTypeKind.Object
-            or CTypeKind.Nullable) return;
-        if (type.Kind is CTypeKind.Array or CTypeKind.List or CTypeKind.Dict)
-        {
-            EnsureSupportedStorageType(type.Element!, where);
-            return;
-        }
-        if (type.Kind == CTypeKind.Closure) return;
+        if (IsStorageType(type)) return;
         throw new Tcs2cException($"unsupported {where}: {type}");
     }
+
+    private static bool IsStorageType(CType type) => type.Kind switch
+    {
+        CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
+            or CTypeKind.Ref or CTypeKind.StructVal or CTypeKind.Closure
+            or CTypeKind.Nullable or CTypeKind.Random or CTypeKind.Object => true,
+        CTypeKind.Dict => type.Key is not null && type.Element is not null
+            && IsStorageType(type.Element),
+        CTypeKind.Array or CTypeKind.List => type.Element is not null
+            && IsStorageType(type.Element),
+        _ => false,
+    };
 
     private (IlClassInfo Class, IlMethodInfo Method)? FindEntry(string? requested)
     {
@@ -243,9 +265,16 @@ internal sealed partial class CEmitter
 
     private void EmitClassDeclarations()
     {
+        // class の前方 typedef を先に出す (struct の field が class 参照を持てる)
         foreach (var cls in _program.Classes)
             Line($"typedef struct {Names.Class(cls.Name)} {Names.Class(cls.Name)};");
+        Line();
         EmitStructTypedefs();
+        Line("typedef struct TcsObjectHeader {");
+        _indent++;
+        Line("uint32_t type_id;");
+        _indent--;
+        Line("} TcsObjectHeader;");
         Line();
         Line("enum {");
         _indent++;
@@ -263,7 +292,9 @@ internal sealed partial class CEmitter
             Line($"struct {Names.Class(cls.Name)} {{");
             _indent++;
             Line("uint32_t type_id;");
-            if (cls.IsExternal) Line("uint64_t host_value;");
+            // host と共有する外部 data class: host 側の handle (GC は見ない)
+            if (ChainRootFirst(cls.Name).Any(c => c.IsExternal))
+                Line("uint64_t host_value;");
             // 継承 chain を root から平坦化 (先頭 layout 一致で upcast 可能)
             foreach (var link in ChainRootFirst(cls.Name))
             foreach (var field in link.Fields.Where(f => !f.IsStatic))
@@ -275,6 +306,7 @@ internal sealed partial class CEmitter
             Line("};");
             Line();
         }
+        EmitLayouts();
     }
 
     private void EmitStaticFields()
@@ -286,17 +318,55 @@ internal sealed partial class CEmitter
             Line($"static {fact.Type.CName} {Names.StaticField(cls.Name, field.Name)};");
         }
         Line();
+        // 遅延初期化 class の static は accessor (lvalue) 経由で触る
+        foreach (var cls in _program.Classes.Where(HasLazyStatics))
+        {
+            Line($"static void {Names.StaticInit(cls.Name)}(void);");
+            foreach (var field in cls.Fields.Where(f => f.IsStatic))
+            {
+                var fact = _facts.Field(cls.Name, field.Name);
+                Line($"static inline {fact.Type.CName} *" +
+                    $"{Names.StaticPlace(cls.Name, field.Name)}(void) " +
+                    $"{{ {Names.StaticInit(cls.Name)}(); " +
+                    $"return &{Names.StaticField(cls.Name, field.Name)}; }}");
+            }
+        }
+        Line();
     }
+
+    // 定数式 (literal の組み合わせ) か。定数でない static initializer を持つ
+    // class は C# と同じく最初のアクセスで初期化する (前方参照 / 循環対応)
+    private static bool IsConstantExpr(IlExpr expr) => expr switch
+    {
+        IlLit => true,
+        IlParen paren => IsConstantExpr(paren.E),
+        IlUn unary => IsConstantExpr(unary.E),
+        IlBin binary => IsConstantExpr(binary.L) && IsConstantExpr(binary.R),
+        _ => false,
+    };
+
+    private bool HasLazyStatics(IlClassInfo cls) =>
+        cls.Fields.Any(f => f.IsStatic && f.Init is { } init && !IsConstantExpr(init));
+
+    // static field の place 式 (遅延 class なら初期化を保証する accessor)
+    private string StaticFieldPlace(IlClassInfo cls, string field) =>
+        HasLazyStatics(cls)
+            ? $"(*{Names.StaticPlace(cls.Name, field)}())"
+            : Names.StaticField(cls.Name, field);
 
     private void EmitMethodPrototypes()
     {
-        foreach (var cls in _program.Classes)
+        foreach (var cls in _program.Classes.Where(c => !c.IsInterface))
         {
             var protoParams = CtorParamFacts(cls);
-            var signature = string.Join(", ", new[] { "size_t", "TcsTrace" }
-                .Concat(protoParams.Select(p => p.Type.CName)));
+            var signature = protoParams.Count == 0
+                ? "void"
+                : string.Join(", ", protoParams.Select(p => p.Type.CName));
             Line($"static {Names.Class(cls.Name)} *" +
                 $"{Names.New(cls.Name)}({signature});");
+            Line($"static void {Names.Init(cls.Name)}(" +
+                string.Join(", ", new[] { $"{Names.Class(cls.Name)} *" }
+                    .Concat(protoParams.Select(p => p.Type.CName))) + ");");
         }
         foreach (var cls in _program.Classes)
         foreach (var method in cls.Methods)
@@ -321,14 +391,29 @@ internal sealed partial class CEmitter
             Line($"static {fact.ReturnType.CName} " +
                 $"{Names.Dispatch(cls.Name, method.Name)}({parameters});");
         }
+        EmitStructMemberPrototypes();
+        EmitRecordEqualityPrototypes();
+        EmitForeignPrototypes();
         Line(ClosureDeclMarker);
     }
 
-    private static string ParameterList(MethodFact method)
+    private string ParameterList(MethodFact method)
     {
         var parameters = new List<string>();
         if (!method.IsStatic)
-            parameters.Add($"{CType.Ref(method.ClassName).CName} v_self");
+        {
+            if (_facts.Structs.ContainsKey(method.ClassName))
+            {
+                // struct method: 格納場所へのポインタと、その所有 heap object
+                // (stack 上なら NULL。self 経由の参照 store のバリア先)
+                parameters.Add($"{CType.Struct(method.ClassName).CName} *v_self");
+                parameters.Add("void *v_owner");
+            }
+            else
+            {
+                parameters.Add($"{CType.Ref(method.ClassName).CName} v_self");
+            }
+        }
         parameters.AddRange(method.Parameters.Select((p, i) =>
             $"{p.Type.CName} v_{Names.Id(p.Name)}_{i}"));
         return parameters.Count == 0 ? "void" : string.Join(", ", parameters);
@@ -337,21 +422,23 @@ internal sealed partial class CEmitter
     private void EmitMethod(IlClassInfo cls, IlMethodInfo method)
     {
         _currentClass = cls;
+        var fact = _facts.Method(cls.Name, method.Name);
+        EmitMethodCore(method, fact,
+            fact.IsStatic ? null : new Variable("v_self", CType.Ref(cls.Name)));
+    }
+
+    // class / struct 共通の method 本体。self は class なら参照、struct なら
+    // 格納場所へのポインタ (Boxed = `(*v_self)` で place として現れる)
+    private void EmitMethodCore(IlMethodInfo method, MethodFact fact, Variable? self)
+    {
         _currentMethod = method;
-        _currentMethodFact = _facts.Method(cls.Name, method.Name);
-        if (method.IsAbstract)
-        {
-            Line($"static {_currentMethodFact.ReturnType.CName}");
-            Line($"{Names.Method(cls.Name, method.Name)}({ParameterList(_currentMethodFact)})");
-            Line("{ tcs_fault(\"abstract-method\"); }");
-            return;
-        }
+        _currentMethodFact = fact;
         _scopes.Clear();
         _continueTargets.Clear();
-        CollectCapturedNames(method.Body!);
+        _breakTargets.Clear();
+        if (method.Body is not null) CollectCapturedNames(method.Body);
         PushScope();
-        if (!_currentMethodFact.IsStatic)
-            AddVariable("self", new Variable("v_self", CType.Ref(cls.Name)));
+        if (self is not null) AddVariable("self", self);
         for (var i = 0; i < _currentMethodFact.Parameters.Count; i++)
         {
             var parameter = _currentMethodFact.Parameters[i];
@@ -360,11 +447,14 @@ internal sealed partial class CEmitter
         }
 
         Line($"static {_currentMethodFact.ReturnType.CName}");
-        Line($"{Names.Method(cls.Name, method.Name)}({ParameterList(_currentMethodFact)})");
+        Line($"{Names.Method(fact.ClassName, method.Name)}({ParameterList(_currentMethodFact)})");
         Line("{");
         _indent++;
         BoxCapturedParameters();
-        EmitStats(method.Body!.Stats);
+        // abstract / interface method: 実体は dispatcher が実装へ飛ばすので
+        // 本体には到達しない
+        if (method.Body is null) Line("tcs_fault(\"abstract-method\");");
+        else EmitStats(method.Body.Stats);
         _indent--;
         Line("}");
         Line();
@@ -383,6 +473,7 @@ internal sealed partial class CEmitter
         {
             case IlLocal local: EmitLocal(local); break;
             case IlAssign assign: EmitAssign(assign); break;
+            case IlCallStat { Call: IlIife iife } when TryEmitClearIife(iife): break;
             case IlCallStat call: Line($"{RenderExpr(call.Call)};"); break;
             case IlIf conditional: EmitIf(conditional); break;
             case IlWhile loop: EmitWhile(loop); break;
@@ -390,7 +481,13 @@ internal sealed partial class CEmitter
             case IlNumericFor loop: EmitNumericFor(loop); break;
             case IlForeachList loop: EmitForeachList(loop); break;
             case IlForeachDict loop: EmitForeachDict(loop); break;
-            case IlBreak: Line("break;"); break;
+            case IlForeachRunes loop: EmitForeachRunes(loop); break;
+            case IlBreak:
+                Line(_breakTargets.Count > 0 && _breakTargets.Peek() is { } breakLabel
+                    ? $"goto {breakLabel};" : "break;");
+                break;
+            case IlBreakScope scope: EmitBreakScope(scope); break;
+            case IlComment: break;
             case IlContinue: EmitContinue(); break;
             case IlMultiAssign multi: EmitMultiAssign(multi); break;
             case IlReturn ret: EmitReturn(ret); break;
@@ -402,20 +499,16 @@ internal sealed partial class CEmitter
 
     private void EmitLocal(IlLocal local)
     {
-        if (local is { Name: "_", Init: null, Type: null }) return;
+        // discard の前宣言 (`out _`): 受け手は呼び出し側が一時変数で用意する
+        if (local.Name == "_" && local.Init is null && local.Type is null) return;
         if (local.Init is null)
         {
             // 型は契約 (IlLocal.Type) から。C の zero 初期化 = default 値
             if (local.Type is null)
                 throw new Tcs2cException($"local has no initializer/type: " +
-                    $"{_currentClass.Name}.{_currentMethod.Name}.{local.Name}");
+                    $"{_currentMethodFact.ClassName}.{_currentMethod.Name}.{local.Name}");
             var declared = _facts.MapType(local.Type);
-            var zero = declared.Kind switch
-            {
-                CTypeKind.I32 or CTypeKind.F32 or CTypeKind.Bool => "0",
-                CTypeKind.StructVal => $"({declared.CName}){{0}}",
-                _ => "NULL",
-            };
+            var zero = ZeroInit(declared);
             if (_capturedNames.Contains(local.Name))
             {
                 var cell0 = new Variable(
@@ -423,7 +516,7 @@ internal sealed partial class CEmitter
                     { Boxed = true };
                 AddVariable(local.Name, cell0);
                 Line($"{declared.CName} *{cell0.CName} = " +
-                    $"tcs_alloc_traced(sizeof(*{cell0.CName}), {TraceValue(declared)});");
+                    $"tcs_new_cell(sizeof(*{cell0.CName}), {LayoutRef(declared)});");
                 Line($"*{cell0.CName} = {zero};");
                 return;
             }
@@ -433,7 +526,23 @@ internal sealed partial class CEmitter
             Line($"{declared.CName} {declaredVar.CName} = {zero};");
             return;
         }
-        var type = local.Type is null ? TypeOf(local.Init) : _facts.MapType(local.Type);
+        // 宣言型が closure なら契約型を使う (IlClosure / method group は
+        // 単独で型付けできない)
+        CType? declaredClosure = null;
+        if (local.Type != null)
+        {
+            var mapped = _facts.TryMapType(local.Type);
+            if (mapped is { Kind: CTypeKind.Closure }) declaredClosure = mapped;
+        }
+        var type = declaredClosure ?? TypeOf(local.Init);
+        // 宣言型 (契約) が初期化子の型を受けられるならそちらを local の型に
+        // する (`float f = 2` / `string s = null` / `Shape s = new Rect()`)
+        if (local.Type != null && _facts.TryMapType(local.Type) is { } declaredType
+            && declaredType != type
+            && (declaredType.CanAssignFrom(type)
+                || declaredType.Kind == CTypeKind.Ref && type.Kind == CTypeKind.Ref
+                    && IsAncestorOrSame(declaredType.Name!, type.Name!)))
+            type = declaredType;
         if (type.Kind is CTypeKind.Void or CTypeKind.Null)
             throw new Tcs2cException($"cannot infer storage type of local {local.Name}: {type}");
         var rendered = RenderCoerced(local.Init, type);
@@ -442,7 +551,8 @@ internal sealed partial class CEmitter
             var cell = new Variable($"c_{Names.Id(local.Name)}_{_serial++}",
                 type) { Boxed = true };
             AddVariable(local.Name, cell);
-            Line($"{type.CName} *{cell.CName} = tcs_alloc_traced(sizeof(*{cell.CName}), {TraceValue(type)});");
+            Line($"{type.CName} *{cell.CName} = " +
+                $"tcs_new_cell(sizeof(*{cell.CName}), {LayoutRef(type)});");
             Line($"*{cell.CName} = {rendered};");
             return;
         }
@@ -454,7 +564,7 @@ internal sealed partial class CEmitter
     private void EmitAssign(IlAssign assign)
     {
         var targetType = TypeOfPlace(assign.Target);
-        ValidateArgument(targetType, assign.Value, "assignment");
+        CheckAssignable(targetType, assign.Value, "assignment");
         var value = RenderCoerced(assign.Value, targetType);
 
         switch (assign.Target)
@@ -465,10 +575,12 @@ internal sealed partial class CEmitter
                 Line(target.Boxed
                     ? $"(*{target.CName}) = {value};"
                     : $"{target.CName} = {value};");
+                // 捕捉 cell は heap object: 参照の store は owner を dirty に
+                if (target.Boxed && NeedsBarrier(targetType))
+                    Line($"tcs_wb({target.CName});");
                 return;
             }
             case IlField field when TryStaticField(field, out var staticName, out _):
-                Line($"{StaticInit(((IlVar)field.Recv).Name)}();");
                 Line($"{staticName} = {value};");
                 return;
             // struct place への field 書き込み (配列要素・ローカル・class field
@@ -477,6 +589,8 @@ internal sealed partial class CEmitter
                 when TypeOf(field.Recv).Kind == CTypeKind.StructVal:
                 Line($"{RenderStructPlace(field.Recv)}." +
                     $"{Names.Field(field.Name)} = {value};");
+                if (NeedsBarrier(targetType) && RenderStructOwner(field.Recv) is { } owner)
+                    Line($"tcs_wb({owner});");
                 return;
             case IlField field:
             {
@@ -487,12 +601,14 @@ internal sealed partial class CEmitter
                 Line($"{receiverType.CName} {temp} = ({receiverType.CName})" +
                     $"tcs_nonnull({RenderExpr(field.Recv)});");
                 Line($"{temp}->{Names.Field(field.Name)} = {value};");
+                if (NeedsBarrier(targetType)) Line($"tcs_wb({temp});");
                 return;
             }
             case IlIndex index when !index.PlusOne
                 && TypeOf(index.Recv).Kind == CTypeKind.Dict:
             {
                 var slotType = RequireDict(index.Recv, out var dictType);
+                CheckAssignable(slotType, assign.Value, "dict store");
                 var dictTemp = Temp("dict");
                 Line($"TcsDict *{dictTemp} = {RenderExpr(index.Recv)};");
                 Line($"*({slotType.CName} *)tcs_dict_put({dictTemp}, " +
@@ -512,6 +628,7 @@ internal sealed partial class CEmitter
                 Line($"{sequenceType.ElementCName} *{place} = " +
                     $"({sequenceType.ElementCName} *){at}({sequence}, {idx});");
                 Line($"*{place} = {value};");
+                if (NeedsBarrier(targetType)) Line($"tcs_wb({sequence});");
                 return;
             }
             default:
@@ -520,187 +637,33 @@ internal sealed partial class CEmitter
         }
     }
 
-    private void EmitIf(IlIf conditional)
-    {
-        for (var i = 0; i < conditional.Arms.Length; i++)
-        {
-            var (condition, body) = conditional.Arms[i];
-            RequireType(CType.Bool, TypeOf(condition), "if condition");
-            Line($"{(i == 0 ? "if" : "else if")} ({RenderExpr(condition)}) {{");
-            _indent++;
-            PushScope();
-            EmitStats(body.Stats);
-            PopScope();
-            _indent--;
-            Line("}");
-        }
-        if (conditional.Else is not null)
-        {
-            Line("else {");
-            _indent++;
-            PushScope();
-            EmitStats(conditional.Else.Stats);
-            PopScope();
-            _indent--;
-            Line("}");
-        }
-    }
-
-    private void EmitNumericFor(IlNumericFor loop)
-    {
-        RequireType(CType.I32, TypeOf(loop.Start), "numeric for start");
-        RequireType(CType.I32, TypeOf(loop.Limit), "numeric for limit");
-        var start = Temp("for_start");
-        var limit = Temp("for_limit");
-        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}", CType.I32);
-        Line("{");
-        _indent++;
-        Line($"int32_t {start} = {RenderExpr(loop.Start)};");
-        Line($"int32_t {limit} = {RenderExpr(loop.Limit)};");
-        Line($"for (int32_t {variable.CName} = {start}; {variable.CName} <= {limit}; " +
-            $"{variable.CName} = {variable.CName} + INT32_C(1)) {{");
-        _indent++;
-        PushScope();
-        AddVariable(loop.Var, variable);
-        _continueTargets.Push(null);
-        EmitStats(loop.Body.Stats);
-        _continueTargets.Pop();
-        PopScope();
-        _indent--;
-        Line("}");
-        _indent--;
-        Line("}");
-    }
-
-    private void EmitForeachList(IlForeachList loop)
-    {
-        var sequenceType = TypeOf(loop.Coll);
-        if (sequenceType == CType.String) { EmitForeachString(loop); return; }
-        if (sequenceType.Kind is not (CTypeKind.Array or CTypeKind.List)
-            || sequenceType.Element is null)
-            throw new Tcs2cException($"IlForeachList requires a typed array/List, got " +
-                sequenceType);
-        var sequence = Temp("foreach_sequence");
-        var length = Temp("foreach_length");
-        var index = Temp("foreach_index");
-        var variable = new Variable($"v_{Names.Id(loop.Var)}_{_serial++}",
-            sequenceType.Element);
-        var lengthFunction = sequenceType.Kind == CTypeKind.Array
-            ? "tcs_array_length" : "tcs_list_length";
-        var atFunction = sequenceType.Kind == CTypeKind.Array
-            ? "tcs_array_at" : "tcs_list_at";
-
-        Line("{");
-        _indent++;
-        Line($"{sequenceType.CName} {sequence} = {RenderExpr(loop.Coll)};");
-        Line($"int32_t {length} = {lengthFunction}({sequence});");
-        Line($"for (int32_t {index} = 0; {index} < {length}; {index}++) {{");
-        _indent++;
-        PushScope();
-        AddVariable(loop.Var, variable);
-        _continueTargets.Push(null);
-        Line($"{sequenceType.ElementCName} {variable.CName} = " +
-            $"*({sequenceType.ElementCName} *){atFunction}({sequence}, {index});");
-        EmitStats(loop.Body.Stats);
-        _continueTargets.Pop();
-        PopScope();
-        _indent--;
-        Line("}");
-        _indent--;
-        Line("}");
-    }
-
-    private void EmitWhile(IlWhile loop)
-    {
-        RequireType(CType.Bool, TypeOf(loop.Cond), "while condition");
-        var label = loop.Trailer is null ? null : Temp("continue");
-        Line($"while ({RenderExpr(loop.Cond)}) {{");
-        _indent++;
-        _continueTargets.Push(label);
-        PushScope();
-        if (label is not null) Line("{");
-        if (label is not null) _indent++;
-        EmitStats(loop.Body.Stats);
-        if (label is not null) _indent--;
-        if (label is not null) Line("}");
-        PopScope();
-        if (label is not null)
-        {
-            Line($"{label}:");
-            PushScope();
-            EmitStats(loop.Trailer!.Stats);
-            PopScope();
-            Line(";");
-        }
-        _continueTargets.Pop();
-        _indent--;
-        Line("}");
-    }
-
-    private void EmitRepeat(IlRepeat repeat)
-    {
-        RequireType(CType.Bool, TypeOf(repeat.Cond), "repeat condition");
-        Line("do {");
-        _indent++;
-        _continueTargets.Push(null);
-        PushScope();
-        EmitStats(repeat.Body.Stats);
-        PopScope();
-        _continueTargets.Pop();
-        _indent--;
-        Line($"}} while ({RenderExpr(repeat.Cond)});");
-    }
-
-    private void EmitContinue()
-    {
-        if (_continueTargets.Count == 0)
-            throw new Tcs2cException("continue outside a loop");
-        var target = _continueTargets.Peek();
-        Line(target is null ? "continue;" : $"goto {target};");
-    }
-
-    // Dictionary の foreach。反復順は Lua (pairs) と一致しない — どちらも
-    // 順序未規定 (順序依存の出力は backend 間一致の対象外)
-    private void EmitForeachDict(IlForeachDict loop)
-    {
-        var valueType = RequireDict(loop.Coll, out var dictType);
-        var dictTemp = Temp("dict");
-        var bucketTemp = Temp("bucket");
-        var nodeTemp = Temp("node");
-        Line("{");
-        _indent++;
-        PushScope();
-        Line($"TcsDict *{dictTemp} = ({{ TcsDict *d = " +
-            $"{RenderExpr(loop.Coll)}; (TcsDict *)tcs_nonnull(d); }});");
-        Line($"for (int32_t {bucketTemp} = 0; {bucketTemp} < TCS_DICT_BUCKETS; " +
-            $"{bucketTemp}++)");
-        Line($"for (TcsDictNode *{nodeTemp} = {dictTemp}->buckets[{bucketTemp}]; " +
-            $"{nodeTemp} != NULL; {nodeTemp} = {nodeTemp}->next)");
-        Line("{");
-        _indent++;
-        PushScope();
-        AddVariable(loop.Var, new Variable(nodeTemp,
-            CType.Kvp(dictType.Key!, valueType)));
-        _continueTargets.Push(null);
-        EmitStats(loop.Body.Stats);
-        _continueTargets.Pop();
-        PopScope();
-        _indent--;
-        Line("}");
-        PopScope();
-        _indent--;
-        Line("}");
-    }
-
     private void EmitReturn(IlReturn ret)
     {
+        if (_iifes.Count > 0)
+        {
+            var (result, label, type) = _iifes.Peek();
+            if (ret.Value is null || type == CType.Void)
+            {
+                if (ret.Value is not null) Line($"{RenderExpr(ret.Value)};");
+                Line($"goto {label};");
+                return;
+            }
+            CheckAssignable(type, ret.Value, "iife return");
+            Line($"{{ {result} = {RenderCoerced(ret.Value, type)}; goto {label}; }}");
+            return;
+        }
         if (ret.Value is null)
         {
+            if (_ctorReturnValue is { } ctorValue)
+            {
+                Line($"return {ctorValue};");
+                return;
+            }
             RequireType(CType.Void, _currentMethodFact.ReturnType, "return");
             Line("return;");
             return;
         }
-        RequireAssignable(_currentMethodFact.ReturnType, TypeOf(ret.Value), "return");
+        CheckAssignable(_currentMethodFact.ReturnType, ret.Value, "return");
         Line($"return {RenderCoerced(ret.Value, _currentMethodFact.ReturnType)};");
     }
 
@@ -715,21 +678,55 @@ internal sealed partial class CEmitter
         Line("}");
     }
 
-    private void EmitEntryPoint((IlClassInfo Class, IlMethodInfo Method)? entry)
+    private void EmitStaticInitializer()
     {
-        Line("int");
-        Line("main(void)");
+        // 定数でない initializer を持つ class: 最初のアクセスで 1 回だけ。
+        // flag を先に立てるので循環参照は C# と同じく初期化中の値 (default)
+        // を読む
+        foreach (var cls in _program.Classes.Where(HasLazyStatics))
+        {
+            Line("static void");
+            Line($"{Names.StaticInit(cls.Name)}(void)");
+            Line("{");
+            _indent++;
+            Line("static bool initialized;");
+            Line("if (initialized) return;");
+            Line("initialized = true;");
+            EmitStaticFieldInits(cls);
+            _indent--;
+            Line("}");
+            Line();
+        }
+        Line("static void");
+        Line("tcs_init_statics(void)");
         Line("{");
         _indent++;
-        Line("tcs_init_statics();");
-        if (_digestF32) Line("tcs_digest = UINT32_C(2166136261);");
-        if (entry is { } selected)
-            Line($"{Names.Method(selected.Class.Name, selected.Method.Name)}();");
-        if (_digestF32)
-            Line("printf(\"%08\" PRIx32 \"\\n\", tcs_digest);");
-        Line("return 0;");
+        foreach (var cls in _program.Classes)
+        {
+            if (HasLazyStatics(cls)) Line($"{Names.StaticInit(cls.Name)}();");
+            else EmitStaticFieldInits(cls);
+        }
         _indent--;
         Line("}");
+        Line();
+    }
+
+    private void EmitStaticFieldInits(IlClassInfo cls)
+    {
+        _currentClass = cls;
+        _scopes.Clear();
+        PushScope();
+        foreach (var field in cls.Fields.Where(f => f.IsStatic))
+        {
+            var fact = _facts.Field(cls.Name, field.Name);
+            if (fact.Init is null) continue;
+            CheckAssignable(fact.Type, fact.Init,
+                $"initializer of {cls.Name}.{field.Name}");
+            Line($"{Names.StaticField(cls.Name, field.Name)} = " +
+                $"{RenderCoerced(fact.Init, fact.Type)};");
+        }
+        PopScope();
+        FlushPendingClosures();
     }
 
     private void Line(string text = "") =>

@@ -20,7 +20,7 @@ public static partial class IlExport
         var methods = new Dictionary<string, IlForeignMethod>();
         var signatures = new Dictionary<string, string>();
         var values = new Dictionary<string, IlForeignValue>();
-        var enums = new HashSet<string>();
+        var enums = new Dictionary<string, IlEnumInfo>();
         var classes = result.Classes.ToList();
         var pending = new Queue<INamedTypeSymbol>();
         var visited = new HashSet<string>();
@@ -34,12 +34,15 @@ public static partial class IlExport
             if (!Foreign(named) || named.IsStatic) return;
             if (named.TypeKind == TypeKind.Enum)
             {
-                enums.Add(named.ToDisplayString());
+                var members = new List<(string, int)>();
                 foreach (var field in named.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue))
                 {
                     var key = $"{LuaNaming.RefTypePath(named)}.{LuaNaming.MemberName(field)}";
                     values[key] = new IlForeignValue(key, named.ToDisplayString(), Convert.ToInt32(field.ConstantValue));
+                    members.Add((LuaNaming.Const(field.Name), Convert.ToInt32(field.ConstantValue)));
                 }
+                // foreign enum も user enum と同じ定数表に載せる (C backend は整数)
+                enums[named.ToDisplayString()] = new IlEnumInfo(named.ToDisplayString(), [.. members]);
             }
             else if (visited.Add(named.Name)) pending.Enqueue(named);
         }
@@ -94,6 +97,7 @@ public static partial class IlExport
             foreach (var field in type.GetMembers().OfType<IFieldSymbol>()) Type(field.Type);
         }
         return result with { Classes = [.. classes], ForeignMethods = [.. methods.Values],
-            ForeignValues = [.. values.Values], EnumTypes = [.. enums] };
+            ForeignValues = [.. values.Values],
+            EnumTypes = [.. (result.EnumTypes.IsDefault ? [] : result.EnumTypes), .. enums.Values] };
     }
 }

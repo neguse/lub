@@ -30,6 +30,12 @@ public partial class LuaEmitter
             when model.GetSymbolInfo(cp.Expression).Symbol is ITypeSymbol patType =>
             BuildTypeCheck(governing, patType,
                 BuildTypeRefText(model, cp.Expression)),
+        ConstantPatternSyntax cp when IsNullLiteral(cp.Expression)
+            && IsNullableValueType(model.GetTypeInfo(cp.Expression).ConvertedType) =>
+            new IlUn(IlUnOp.Not, new IlNullableHasValue(governing)),
+        ConstantPatternSyntax cp when IsNullLiteral(cp.Expression)
+            && IsNullableValueType(model.GetTypeInfo(cp.Expression).ConvertedType) =>
+            new IlUn(IlUnOp.Not, new IlNullableHasValue(governing)),
         ConstantPatternSyntax cp => BuildExpr(model, cp.Expression) is { } value
             ? new IlBin(IlBinOp.Eq, governing, value) : null,
         DiscardPatternSyntax => new IlLit("true"),
@@ -198,11 +204,9 @@ public partial class LuaEmitter
     private bool BuildSwitchStatInto(SemanticModel model,
         SwitchStatementSyntax switchStmt, List<IlStat> acc)
     {
-        // 早期 break は repeat スコープが要る。IL には continue label を
-        // 積まない repeat 相当ノードがない (IlRepeat は do-while 用で
-        // continue を乗っ取る) ため legacy visitor へ fallback する
-        if (SwitchNeedsBreakScope(switchStmt))
-            return false;
+        // 早期 break (terminal でない switch 束縛 break) は IlBreakScope で
+        // 抜ける。continue は外側ループ束縛のまま
+        var needsBreakScope = SwitchNeedsBreakScope(switchStmt);
         var governing = BuildExpr(model, switchStmt.Expression);
         if (governing == null) return false;
         var sw = new IlVar("__tcs_sw");
@@ -268,7 +272,10 @@ public partial class LuaEmitter
             products.Add(new IlIf([.. arms], defaultBody) { Origin = switchStmt });
         else if (defaultBody != null)
             products.Add(new IlDo(defaultBody) { Origin = switchStmt });
-        acc.AddRange(products);
+        if (needsBreakScope)
+            acc.Add(new IlBreakScope(new IlBlock([.. products])) { Origin = switchStmt });
+        else
+            acc.AddRange(products);
         return true;
     }
 
@@ -288,8 +295,7 @@ public partial class LuaEmitter
         IReadOnlyList<StatementSyntax> statements)
     {
         // 暗黙 break は末尾 block 連鎖の末尾にも現れる (case X: { ...; break; })。
-        // 早期 break は BuildSwitchStatInto 入口で legacy へ逃がしているので、
-        // ここに来る switch 束縛 break は terminal のみ
+        // 早期 break は IlBreak のまま残し、IlBreakScope が受ける
         var terminal = new HashSet<StatementSyntax>();
         CollectTerminalBreaks(statements, terminal);
         var acc = new List<IlStat>();
@@ -348,21 +354,53 @@ public partial class LuaEmitter
         return new IlClosure(paramList, new IlBlock([.. acc]), null, []);
     }
 
-    // legacy VisitConditionalAccess 系の写像
+    // when-not-null 側の MemberBinding (`.X`) が指す receiver local 名。
+    // 参照型 receiver は `__tcs_ca` そのもの、`T?` receiver は値を取り出した
+    // `__tcs_cav`
+    private string _condAccessVar = "__tcs_ca";
+
+    // `?.` (il-spec §3): receiver を local へ 1 回評価し、null でなければ
+    // when-not-null を返す IIFE。`T?` receiver は IlNullableHasValue /
+    // IlNullableValue の明示ノード (nil 比較を IL に残さない)。結果が
+    // 非 nullable 値型なら C# どおり T? に wrap する (null 側は値なし)
     private IlExpr? BuildConditionalAccess(SemanticModel model,
         ConditionalAccessExpressionSyntax condAccess)
     {
         var receiver = BuildExpr(model, condAccess.Expression);
         if (receiver == null) return null;
-        var receiverType = model.GetTypeInfo(condAccess.Expression).Type;
-        var whenNotNull = BuildConditionalWhenNotNull(model,
-            condAccess.WhenNotNull, new IlVar("__tcs_ca"), receiverType);
+        return BuildConditionalCore(model, receiver,
+            model.GetTypeInfo(condAccess.Expression).Type, condAccess.WhenNotNull);
+    }
+
+    private IlExpr? BuildConditionalCore(SemanticModel model, IlExpr receiver,
+        ITypeSymbol? receiverType, ExpressionSyntax whenNotNullSyntax)
+    {
+        var nullableValue = IsNullableValueType(receiverType);
+        var underlying = nullableValue
+            ? ((INamedTypeSymbol)receiverType!).TypeArguments[0] : receiverType;
+        var objName = nullableValue ? "__tcs_cav" : "__tcs_ca";
+        var saved = _condAccessVar;
+        _condAccessVar = objName;
+        var whenNotNull = BuildConditionalWhenNotNull(model, whenNotNullSyntax,
+            new IlVar(objName), underlying);
+        _condAccessVar = saved;
         if (whenNotNull == null) return null;
+        var resultType = model.GetTypeInfo(whenNotNullSyntax).Type;
+        if (resultType is { IsValueType: true, SpecialType: not SpecialType.System_Void }
+            && !IsNullableValueType(resultType)
+            && whenNotNull is not IlNullableWrap)
+            whenNotNull = new IlNullableWrap(whenNotNull, resultType.ToDisplayString());
+        var ca = new IlVar("__tcs_ca");
+        IlExpr cond = nullableValue
+            ? new IlNullableHasValue(ca)
+            : new IlBin(IlBinOp.Ne, ca, new IlLit("nil"));
+        var then = nullableValue
+            ? new IlBlock([new IlLocal(objName, new IlNullableValue(ca)),
+                new IlReturn(whenNotNull)])
+            : new IlBlock([new IlReturn(whenNotNull)]);
         return new IlIife([
             new IlLocal("__tcs_ca", receiver),
-            new IlIf([(new IlBin(IlBinOp.Ne, new IlVar("__tcs_ca"),
-                    new IlLit("nil")),
-                new IlBlock([new IlReturn(whenNotNull)]))], null)]);
+            new IlIf([(cond, then)], null)]);
     }
 
     private IlExpr? BuildConditionalWhenNotNull(SemanticModel model,
@@ -374,7 +412,7 @@ public partial class LuaEmitter
                 return BuildConditionalMemberBinding(mb, obj, receiverType);
             case InvocationExpressionSyntax inv
                 when inv.Expression is MemberBindingExpressionSyntax mb2:
-                return BuildConditionalInvocation(model, mb2, inv.ArgumentList,
+                return BuildConditionalInvocation(model, mb2, inv,
                     obj, receiverType);
             case ElementBindingExpressionSyntax eb:
             {
@@ -391,15 +429,8 @@ public partial class LuaEmitter
                 var inner = BuildConditionalWhenNotNull(model,
                     nested.Expression, obj, receiverType);
                 if (inner == null) return null;
-                var nestedType = model.GetTypeInfo(nested.Expression).Type;
-                var whenNotNull = BuildConditionalWhenNotNull(model,
-                    nested.WhenNotNull, new IlVar("__tcs_ca"), nestedType);
-                if (whenNotNull == null) return null;
-                return new IlIife([
-                    new IlLocal("__tcs_ca", inner),
-                    new IlIf([(new IlBin(IlBinOp.Ne, new IlVar("__tcs_ca"),
-                            new IlLit("nil")),
-                        new IlBlock([new IlReturn(whenNotNull)]))], null)]);
+                return BuildConditionalCore(model, inner,
+                    model.GetTypeInfo(nested.Expression).Type, nested.WhenNotNull);
             }
             default:
                 return BuildExpr(model, expr);
@@ -412,7 +443,8 @@ public partial class LuaEmitter
         var member = mb.Name.Identifier.ValueText;
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
-        if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)))
+        if (member == "Count" && (IsListType(typeDef) || IsDictType(typeDef)
+                || IsDictCollectionType(typeDef)))
             return IsDictType(typeDef)
                 ? new IlCall("Dict.Count", [obj]) : new IlLen(obj);
         if (member == "Keys" && IsDictType(typeDef))
@@ -425,18 +457,21 @@ public partial class LuaEmitter
             return new IlLen(obj);
         if (FindInstanceProperty(receiverType, member) is { } condProp
             && IsCustomProperty(condProp))
-            return new IlInvoke(obj, $"get_{N(condProp)}", []);
+            return IsUserStruct(receiverType)
+                ? new IlCall($"{TypeRef(condProp.ContainingType)}.get_{N(condProp)}",
+                    [ConditionalStructReceiver(obj, receiverType!)])
+                : new IlInvoke(obj, $"get_{N(condProp)}", []);
         var memberSym = receiverType?.GetMembers(member).FirstOrDefault();
         return new IlField(obj, memberSym != null ? N(memberSym) : N(member));
     }
 
     private IlExpr? BuildConditionalInvocation(SemanticModel model,
-        MemberBindingExpressionSyntax mb, ArgumentListSyntax argList,
+        MemberBindingExpressionSyntax mb, InvocationExpressionSyntax inv,
         IlExpr obj, ITypeSymbol? receiverType)
     {
         var methodName = mb.Name.Identifier.ValueText;
         var args = new List<IlExpr>();
-        foreach (var a in argList.Arguments)
+        foreach (var a in inv.ArgumentList.Arguments)
         {
             if (!a.RefKindKeyword.IsKind(SyntaxKind.None)) return null;
             var built = BuildExpr(model, a.Expression);
@@ -447,7 +482,8 @@ public partial class LuaEmitter
         var typeDef = receiverType?.OriginalDefinition.ToDisplayString() ?? "";
 
         if (receiverType?.SpecialType == SpecialType.System_String)
-            return TryBuildStringCall(obj, methodName, argArr)
+            return TryBuildStringCall(obj, methodName,
+                    WrapCharArgs(model, inv.ArgumentList, argArr))
                 ?? new IlInvoke(obj, methodName, argArr);
 
         if (IsListType(typeDef))
@@ -457,18 +493,27 @@ public partial class LuaEmitter
                 case "Add":
                     return new IlCall("table.insert", [obj, .. argArr]);
                 case "Remove":
-                    return new IlCall("List.Remove", [obj, .. argArr]);
+                    return new IlCall("List.Remove", [obj, .. WithStructEquality(
+                        receiverType, methodName, argArr)]);
                 case "RemoveAt":
                     return new IlCall("table.remove",
                         [obj, new IlBin(IlBinOp.AddNum, argArr[0],
                             new IlLit("1"))]);
                 case "Clear":
+                    return BuildListClear(obj);
                 case "FirstOrDefault":
                 case "LastOrDefault":
-                    return null; // IIFE / default 埋め込み経路 — fallback
+                {
+                    var invoked = model.GetSymbolInfo(inv).Symbol as IMethodSymbol;
+                    if (invoked == null) return null;
+                    var predicate = argArr.Length > 0 ? argArr[0] : new IlLit("nil");
+                    return new IlCall($"List.{methodName}",
+                        [obj, predicate, DefaultIl(invoked.ReturnType)]);
+                }
             }
             if (ListRuntimeMethods.Contains(methodName))
-                return new IlCall($"List.{methodName}", [obj, .. argArr]);
+                return new IlCall($"List.{methodName}", [obj, .. WithStructEquality(
+                    receiverType, methodName, argArr)]);
         }
 
         if (IsDictType(typeDef))
@@ -485,7 +530,16 @@ public partial class LuaEmitter
 
         var methodSym = receiverType?.GetMembers(methodName)
             .OfType<IMethodSymbol>().FirstOrDefault();
+        // struct (`S?` receiver の .Value) は静的ディスパッチ。receiver は
+        // rvalue (C# の .Value は copy) なので変異は捨てられる
+        if (IsUserStruct(receiverType) && methodSym != null)
+            return new IlCall($"{TypeRef(methodSym.ContainingType)}.{N(methodSym)}",
+                [ConditionalStructReceiver(obj, receiverType!), .. argArr]);
         return new IlInvoke(obj, methodSym != null ? N(methodSym) : N(methodName),
             argArr);
     }
+
+    private static IlExpr ConditionalStructReceiver(IlExpr obj, ITypeSymbol type) =>
+        type is INamedTypeSymbol { IsReadOnly: true }
+            ? obj : new IlStructCopy(obj, type.Name);
 }

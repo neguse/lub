@@ -624,6 +624,27 @@ public class SubsetDiagnosticTests
         Assert.Single(result.Warnings, w => w.Contains("NonConstantAlignment"));
     }
 
+    // `x?.M()` の `.M` は呼び出し位置 (MemberBinding) — method group 扱いしない
+    [Fact]
+    public void ConditionalInvocation_IsNotMethodGroup()
+    {
+        var result = Transpiler.TranspileWithDiagnostics(["""
+            public struct V { public int X; public int Sum() { return X; } }
+            public class T
+            {
+                public int Get() { return 1; }
+                public static int Run(T t, V? v)
+                {
+                    int? a = t?.Get();
+                    int? b = v?.Sum();
+                    return (a ?? 0) + (b ?? 0);
+                }
+            }
+            """]);
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("InstanceMethodGroup"));
+    }
+
     [Fact]
     public void StaticMethodGroup_NoWarning_AndWorks()
     {

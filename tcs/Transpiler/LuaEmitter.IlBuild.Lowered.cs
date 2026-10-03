@@ -125,10 +125,10 @@ public partial class LuaEmitter
         }
         else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
         {
-            body = new IlIf([(new IlBin(IlBinOp.Eq,
+            body = new IlIf([(IsNullIl(
                     BuildPropGet(target, prop.Name, prop.IsStatic,
                         prop.StructOwner),
-                    new IlLit("nil")),
+                    model.GetTypeInfo(assign.Left).Type),
                 new IlBlock([new IlCallStat(
                     BuildPropSet(target, prop.Name, prop.IsStatic, right,
                         prop.StructOwner))]))],
@@ -178,8 +178,8 @@ public partial class LuaEmitter
             var target = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
             var body = new IlCallStat(BuildPropSet(target, prop.Name,
                 prop.IsStatic,
-                new IlBin(op, BuildPropGet(target, prop.Name, prop.IsStatic,
-                    prop.StructOwner), new IlLit("1")),
+                StepValue(model, operand, BuildPropGet(target, prop.Name,
+                    prop.IsStatic, prop.StructOwner), increment),
                 prop.StructOwner));
             if (prop.SideEffect)
                 acc.Add(new IlDo(new IlBlock([
@@ -193,7 +193,7 @@ public partial class LuaEmitter
         {
             acc.Add(new IlDo(new IlBlock([.. lowered.Setup,
                 new IlAssign(lowered.Access,
-                    new IlBin(op, lowered.Access, new IlLit("1")))]))
+                    StepValue(model, operand, lowered.Access, increment))]))
                 { Origin = origin });
             return true;
         }
@@ -207,11 +207,11 @@ public partial class LuaEmitter
     {
         var right = BuildExpr(model, assign.Right);
         if (right == null) return false;
+        var leftType = model.GetTypeInfo(assign.Left).Type;
         if (BuildLoweredTarget(model, assign.Left) is { } lowered)
         {
             acc.Add(new IlDo(new IlBlock([.. lowered.Setup,
-                new IlIf([(new IlBin(IlBinOp.Eq, lowered.Access,
-                        new IlLit("nil")),
+                new IlIf([(IsNullIl(lowered.Access, leftType),
                     new IlBlock([new IlAssign(lowered.Access, right)]))],
                     null)]))
                 { Origin = origin });
@@ -219,11 +219,17 @@ public partial class LuaEmitter
         }
         var left = BuildExpr(model, assign.Left);
         if (left == null) return false;
-        acc.Add(new IlIf([(new IlBin(IlBinOp.Eq, left, new IlLit("nil")),
+        acc.Add(new IlIf([(IsNullIl(left, leftType),
                 new IlBlock([new IlAssign(left, right)]))], null)
             { Origin = origin });
         return true;
     }
+
+    // null 判定: `T?` は明示ノード (値なし)、参照型は nil 比較
+    private static IlExpr IsNullIl(IlExpr e, ITypeSymbol? type) =>
+        IsNullableValueType(type)
+            ? new IlUn(IlUnOp.Not, new IlNullableHasValue(e))
+            : new IlBin(IlBinOp.Eq, e, new IlLit("nil"));
 
     // compound + lowered lvalue (statement 位置): IIFE 形の写像
     private bool BuildLoweredCompoundInto(SemanticModel model,
@@ -345,32 +351,65 @@ public partial class LuaEmitter
         return true;
     }
 
-    // legacy EmitObjectInitializer / EmitRefTypeTable の写像
+    // object initializer: `new T(args) { M = v, Nested = { X = 1 }, Items = { a, b } }`
+    // を IIFE (local __tcs_init = ctor; 代入...; return) に落とす。入れ子の
+    // initializer は C# と同じく既存 member への代入 / Add (new はしない)
     private IlExpr? BuildObjectInitializerExpr(SemanticModel model,
         IlExpr ctor, InitializerExpressionSyntax initializer)
     {
         var stats = new List<IlStat> { new IlLocal("__tcs_init", ctor) };
+        if (!AddInitializerStats(model, new IlVar("__tcs_init"), initializer, stats))
+            return null;
+        stats.Add(new IlReturn(new IlVar("__tcs_init")));
+        return new IlIife([.. stats]);
+    }
+
+    private bool AddInitializerStats(SemanticModel model, IlExpr target,
+        InitializerExpressionSyntax initializer, List<IlStat> stats)
+    {
         foreach (var expr in initializer.Expressions)
         {
             if (expr is not AssignmentExpressionSyntax
-                {
-                    Left: IdentifierNameSyntax name,
-                    Right: not InitializerExpressionSyntax
-                } assign)
-                return null;
-            var value = BuildExpr(model, assign.Right);
-            if (value == null) return null;
-            var init = new IlVar("__tcs_init");
+                { Left: IdentifierNameSyntax name } assign)
+                return false;
             var initSym = model.GetSymbolInfo(name).Symbol;
             var initName = initSym != null ? N(initSym) : N(name.Identifier.ValueText);
-            stats.Add(initSym is IPropertySymbol prop && IsCustomProperty(prop)
-                ? new IlCallStat(BuildPropSet(init, initName, isStatic: false, value,
-                    IsUserStruct(prop.ContainingType)
-                        ? TypeRef(prop.ContainingType) : null))
-                : new IlAssign(new IlField(init, initName), value));
+            var customProp = initSym is IPropertySymbol prop && IsCustomProperty(prop)
+                ? prop : null;
+            var structOwner = customProp != null && IsUserStruct(customProp.ContainingType)
+                ? TypeRef(customProp.ContainingType) : null;
+            if (assign.Right is InitializerExpressionSyntax nested)
+            {
+                IlExpr member = customProp != null
+                    ? BuildPropGet(target, initName, isStatic: false, structOwner)
+                    : new IlField(target, initName);
+                if (nested.IsKind(SyntaxKind.ObjectInitializerExpression))
+                {
+                    if (!AddInitializerStats(model, member, nested, stats))
+                        return false;
+                    continue;
+                }
+                var memberType = model.GetTypeInfo(name).Type?.OriginalDefinition
+                    .ToDisplayString() ?? "";
+                if (!nested.IsKind(SyntaxKind.CollectionInitializerExpression)
+                    || !IsListType(memberType))
+                    return false;
+                foreach (var item in nested.Expressions)
+                {
+                    var built = BuildExpr(model, item);
+                    if (built == null) return false;
+                    stats.Add(new IlCallStat(new IlCall("table.insert", [member, built])));
+                }
+                continue;
+            }
+            var value = BuildExpr(model, assign.Right);
+            if (value == null) return false;
+            stats.Add(customProp != null
+                ? new IlCallStat(BuildPropSet(target, initName, isStatic: false, value,
+                    structOwner))
+                : new IlAssign(new IlField(target, initName), value));
         }
-        stats.Add(new IlReturn(new IlVar("__tcs_init")));
-        return new IlIife([.. stats]);
+        return true;
     }
 
     private IlExpr? BuildRefTypeTable(SemanticModel model,

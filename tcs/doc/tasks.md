@@ -24,8 +24,9 @@
 
 - [x] T224 完 (2026-07-18): IlExport 契約完備、fallback 構文の整理
       (static method group IL 化 / instance method group・定数式 alignment
-      診断化 / lock・using 等は既存診断)。legacy visitor は診断出力と
-      挙動不変の保険として恒久保持
+      診断化 / lock・using 等は既存診断)。legacy visitor は T250
+      (2026-10-02) で廃止 — IL 経路が唯一の Lua 生成経路で、IL 化できない
+      本文は TCS1001 + 実行時 error の stub
 
 
 ### Phase 3 — 価値の刈り取り
@@ -34,6 +35,31 @@
       ctor 連鎖 / 静的 link (--lib) まで全マイルストーン受入済み
       (digest 3/3 + 全サンプル stdout 一致)。未対応構文は明示エラー方針で、
       対応面の拡張は実利用の需要駆動 (done.md 第一〜第八参照)
+- [x] T240 / T241 完 (2026-10-01): tcs2c の GC (精密 heap / 保守的 stack の
+      mark-sweep、`-DTCS_GC_STRESS`。T252 で世代別に置換) と対応面の完成 (enum / LINQ / String /
+      Math / Dict / format / IIFE)。tcs2c.Tests が samples + 機能別 program の
+      2 backend stdout 一致 (GC stress 込み) を恒常ゲートにする
+      - T242–T245 完 (2026-10-02): delegate 型 field の直接呼び出し /
+        `int.TryParse`、record class の IL 収載と C 構造等価、Nullable<T> の
+        IL 明示ノード + lifted 演算子、Random の合意 PRNG (xoshiro256** 移植)
+      - T246 完 (2026-10-02): struct / record struct の IL 契約 (member /
+        ctor / 等価 / with) と C backend の値型 member、`new T[n]` の default
+        要素、List の struct 値等価
+      - T247 完 (2026-10-02): `T?` の `?.` / `??=` を明示 nullable ノードへ
+      - T248 完 (2026-10-02): Random を System.Random 形 (instance / Shared) に
+      - T249 完 (2026-10-02): シフトの C# 意味論 (Lua)、compound 右辺の括り、
+        int.MinValue literal
+      - T250 完 (2026-10-02): legacy visitor 廃止 (IL が唯一の Lua 生成経路、
+        未対応本文は TCS1001 + stub)。nameof / 拡張メソッド / 入れ子
+        initializer / discard / 式位置の代入 / switch 早期 break を IL 化
+      - T251 完 (2026-10-02): char を整数 code unit に (両 backend、Char.*)
+      - T252 完 (2026-10-02): GC をフレーム同期の世代別 (nursery bump +
+        境界で精密 copy 昇格 + 旧世代 mark-sweep、ライトバリア) に置き換え、
+        保守的 stack 走査を廃止。実行形は Main 全体が 1 フレーム
+      - T253 完 (2026-10-02): master の Codex 系列 (foreign --ref / interface /
+        object / generic 単相化 / 遅延 static 初期化 / 省略引数) をこちらの
+        runtime に移植して衝突解消。verify-gc / game-core / object-values /
+        host が run-tests のゲート
 - T219b 完 (done.md 参照): struct / record struct の値セマンティクス
   対応一式。設計方針の正本は support-matrix / CLAUDE.md / il-spec §10
 - [ ] **T220** (P1、ゲート解除 2026-07-18): hot reload の実装。ユーザー判断で
@@ -49,7 +75,7 @@
       - 残: 実導線 (ファイル監視 → EmitReloadChunk → 実行中 VM へ適用) は
         実利用トラックで接続。List/Dict 内 struct 値の再直列化と record class
         の migration は需要待ち。record struct の IlExport (layout hash /
-        migration) も未対応 — 需要待ち
+        migration) は T246 で対応
 
 ---
 

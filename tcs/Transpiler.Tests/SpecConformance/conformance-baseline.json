@@ -987,7 +987,7 @@
     "category": "InRun"
   },
   "expressions.md:CollectionInitializers2": {
-    "category": "Diag"
+    "category": "InCompile"
   },
   "expressions.md:CompoundAssignment": {
     "category": "CsErr"

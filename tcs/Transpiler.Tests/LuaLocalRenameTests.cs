@@ -136,7 +136,7 @@ public class LuaLocalRenameTests
     }
 
     [Fact]
-    public void KeywordLocalInExpressionBodiedAndLegacyBodies_Runs()
+    public void KeywordLocalInExpressionBodiedAndBlockBodies_Runs()
     {
         var output = TestHelper.TranspileAndRun("""
             var r = new Walker().Sum(3);

@@ -66,8 +66,6 @@ internal sealed partial class CEmitter
                 expr(i.Recv); foreach (var a in i.Args) expr(a); break;
             case IlNewObj n: foreach (var a in n.Args) expr(a); break;
             case IlNewArray na: expr(na.Length); break;
-            case IlNumericConvert convert: expr(convert.Value); break;
-            case IlRefCast cast: expr(cast.Value); break;
             case IlTable t:
                 foreach (var en in t.Entries)
                 {
@@ -77,6 +75,15 @@ internal sealed partial class CEmitter
                 break;
             case IlIsType it: expr(it.E); break;
             case IlStructCopy sc: expr(sc.E); break;
+            case IlCast cast: expr(cast.E); break;
+            case IlNumericConvert convert: expr(convert.Value); break;
+            case IlRefCast refCast: expr(refCast.Value); break;
+            case IlNullableWrap w: expr(w.E); break;
+            case IlNullableHasValue h: expr(h.E); break;
+            case IlNullableValue v: expr(v.E); break;
+            case IlNullableGetOrDefault g: expr(g.E); expr(g.Default); break;
+            case IlLiftedBin lb: expr(lb.L); expr(lb.R); break;
+            case IlLiftedUn lu: expr(lu.E); break;
             case IlWith w:
                 expr(w.Src);
                 foreach (var o in w.Overrides) expr(o.Value);
@@ -136,6 +143,9 @@ internal sealed partial class CEmitter
             case IlDo d:
                 foreach (var b in d.Body.Stats) stat(b);
                 break;
+            case IlBreakScope bs:
+                foreach (var b in bs.Body.Stats) stat(b);
+                break;
         }
     }
 
@@ -149,7 +159,7 @@ internal sealed partial class CEmitter
             var cell = new Variable($"c_{old.CName}", old.Type)
                 { Boxed = true };
             Line($"{old.Type.CName} *{cell.CName} = " +
-                $"tcs_alloc_traced(sizeof(*{cell.CName}), {TraceValue(old.Type)});");
+                $"tcs_new_cell(sizeof(*{cell.CName}), {LayoutRef(old.Type)});");
             Line($"*{cell.CName} = {old.CName};");
             _scopes.Peek()[scopeEntry.Key] = cell;
         }
@@ -207,6 +217,9 @@ internal sealed partial class CEmitter
             $"static {target.Element!.CName} {fnName}({declParams});");
         var saved = _output.Length;
         var savedIndent = _indent;
+        // 外側の IIFE の return 束縛を closure 本体へ持ち込まない
+        var savedIifes = _iifes;
+        _iifes = new Stack<(string Result, string Label, CType Type)>();
         _indent = 0;
         Line($"static {target.Element!.CName}");
         var paramList = string.Join(", ", new[] { "void **cells" }
@@ -249,16 +262,15 @@ internal sealed partial class CEmitter
         Line("}");
         Line();
         _indent = savedIndent;
+        _iifes = savedIifes;
         var code = _output.ToString(saved, _output.Length - saved);
         _output.Length = saved;
         _pendingClosures.Add(code);
 
         var make = new StringBuilder();
         var closTemp = Temp("closure");
-        make.Append($"TcsClosure *{closTemp} = tcs_alloc_traced(sizeof(TcsClosure) " +
-            $"+ {Math.Max(captured.Count, 1)} * sizeof(void *), tcs_trace_closure); {closTemp}->count = {captured.Count}; ");
-        make.Append($"{closTemp}->fn = (void *){fnName}; ");
-        make.Append($"{closTemp}->type_id = {RuntimeTypeId(target)}; ");
+        make.Append($"TcsClosure *{closTemp} = tcs_new_closure(" +
+            $"(void *){fnName}, {captured.Count}); ");
         for (var i = 0; i < captured.Count; i++)
             make.Append($"{closTemp}->cells[{i}] = (void *){captured[i].Cell.CName}; ");
         return $"({{ {make}{closTemp}; }})";
@@ -294,8 +306,7 @@ internal sealed partial class CEmitter
                 "{\n    " + body + "\n}\n\n");
         }
         var closTemp = Temp("closure");
-        return $"({{ TcsClosure *{closTemp} = tcs_alloc_traced(sizeof(TcsClosure) " +
-            $"+ sizeof(void *), tcs_trace_closure); {closTemp}->fn = (void *){fnName}; " +
-            $"{closTemp}->type_id = {RuntimeTypeId(target)}; {closTemp}; }})";
+        return $"({{ TcsClosure *{closTemp} = tcs_new_closure(" +
+            $"(void *){fnName}, 0); {closTemp}; }})";
     }
 }

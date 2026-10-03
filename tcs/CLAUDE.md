@@ -17,7 +17,8 @@ tcs/
 ├── doc/
 │   ├── tasks.md           # タスクリスト
 │   └── done.md            # 完了ログ
-├── tcs2c/                 # IL→C release backend (.NET、digest で Lua backend と一致検証)
+├── tcs2c/                 # IL→C release backend (.NET、自前 GC 付き C runtime)
+├── tcs2c.Tests/           # 2 backend differential (C 通常 + GC stress vs Lua の stdout 一致)
 ├── perf/                  # 性能実測ハーネス (kernel 契約 CONTRACT.md + 変種実装 + 実測記録)
 ├── Transpiler/            # トランスパイラ本体 (.NET)
 │   ├── Transpiler.csproj

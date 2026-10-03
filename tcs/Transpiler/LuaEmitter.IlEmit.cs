@@ -133,6 +133,18 @@ public partial class LuaEmitter
                 _indent--;
                 AppendLine("end");
                 break;
+            case IlBreakScope scope:
+                // switch 束縛 break の脱出先。continue の goto は外側ループの
+                // label へそのまま飛べる (外側 block の label は可視)
+                AppendLine("repeat");
+                _indent++;
+                EmitIlBlock(scope.Body);
+                _indent--;
+                AppendLine("until true");
+                break;
+            case IlComment comment:
+                AppendLine(comment.Text);
+                break;
             case IlMultiAssign multi:
                 AppendLine(RenderIlMultiAssign(multi));
                 break;
@@ -303,6 +315,10 @@ public partial class LuaEmitter
         IlField f => $"{RenderIl(f.Recv)}.{f.Name}",
         IlIndex ix => $"{RenderIl(ix.Recv)}[{RenderIl(ix.Idx)}{(ix.PlusOne ? " + 1" : "")}]",
         IlLen len => $"#{RenderIl(len.E)}",
+        // シフトは C# 意味論 (count & 31、>> は算術) を helper で与える。
+        // Lua native の >> は論理、count は無マスク (il-spec §4 / support-matrix §4.2)
+        IlBin { Op: IlBinOp.Shl } shl => $"__tcs_shl({RenderIl(shl.L)}, {RenderIl(shl.R)})",
+        IlBin { Op: IlBinOp.Shr } shr => $"__tcs_shr({RenderIl(shr.L)}, {RenderIl(shr.R)})",
         IlBin bin => $"{RenderIl(bin.L)} {RenderIlOp(bin.Op)} {RenderIl(bin.R)}",
         IlUn { Op: IlUnOp.Neg } un => $"-{RenderIl(un.E)}",
         IlUn { Op: IlUnOp.Not } un => $"not {RenderIl(un.E)}",
@@ -320,11 +336,34 @@ public partial class LuaEmitter
         IlNewObj obj =>
             $"{obj.TypeName}.new({string.Join(", ", obj.Args.Select(RenderIl))})",
         IlTable table => RenderIlTable(table),
-        IlNewArray => "{}",  // 長さは Lua 表現に現れない (legacy 互換)
+        // 値型要素は default を n 個詰める (要素読み / Length が C# と一致)。
+        // 参照型 (null) は Lua table に穴を作れないので空 table
+        IlNewArray na => na.Default switch
+        {
+            IlNewObj zero => $"__tcs_arr({RenderIl(na.Length)}, {zero.TypeName}.new)",
+            IlLit { LuaText: not "nil" } lit => $"__tcs_arr({RenderIl(na.Length)}, {lit.LuaText})",
+            _ => "{}",
+        },
         IlNumericConvert convert => RenderIl(convert.Value),
-        IlRefCast cast => RenderIl(cast.Value),
+        IlRefCast refCast => RenderIl(refCast.Value),
         IlIsType isType => $"__tcs_is({RenderIl(isType.E)}, {isType.TypeRef})",
         IlStructCopy copy => $"{copy.TypeName}.__copy({RenderIl(copy.E)})",
+        IlCast cast => RenderIl(cast.E),
+        IlNullableWrap wrap => RenderIl(wrap.E),
+        IlNullableHasValue has => $"({RenderIl(has.E)} ~= nil)",
+        IlNullableValue val => $"__tcs_nval({RenderIl(val.E)})",
+        // ?? の右辺は左が nil のときだけ評価 (呼び出しを含めば IIFE で遅延)
+        IlNullableGetOrDefault gd => IsCallFree(gd.Default)
+            ? $"__tcs_nget({RenderIl(gd.E)}, {RenderIl(gd.Default)})"
+            : $"(function() local __tcs_v = {RenderIl(gd.E)}; " +
+              $"if __tcs_v ~= nil then return __tcs_v end return {RenderIl(gd.Default)} end)()",
+        IlLiftedBin lifted => RenderIlLifted(lifted),
+        IlLiftedUn liftedUn => liftedUn.Op switch
+        {
+            IlUnOp.Neg => $"__tcs_nlift1({RenderIl(liftedUn.E)}, __tcs_op_neg)",
+            IlUnOp.BitNot => $"__tcs_nlift1({RenderIl(liftedUn.E)}, __tcs_op_bnot)",
+            _ => $"__tcs_nnot({RenderIl(liftedUn.E)})",
+        },
         IlIsLuaType isLua => $"type({RenderIl(isLua.E)}) == \"{isLua.LuaType}\"",
         IlIife iife => $"(function() {RenderIlStatsInline(iife.Stats)} end)()",
         IlClosure closure => RenderIlClosure(closure),
@@ -347,6 +386,37 @@ public partial class LuaEmitter
         }
         return $"function({paramList}) {RenderIlClosureBlock(closure.Body!)} end";
     }
+
+    // lifted 演算: 片方でも nil なら nil (比較は false)。op 関数は prelude の
+    // 定数なので closure 確保は無い。Eq / Ne は Lua の == がそのまま
+    // (nil == nil は true、nil と値は false)
+    private string RenderIlLifted(IlLiftedBin lifted)
+    {
+        var l = RenderIl(lifted.L);
+        var r = RenderIl(lifted.R);
+        return lifted.Op switch
+        {
+            IlLiftedOp.Eq => $"({l} == {r})",
+            IlLiftedOp.Ne => $"({l} ~= {r})",
+            IlLiftedOp.Lt => $"__tcs_ncmp({l}, {r}, __tcs_op_lt)",
+            IlLiftedOp.Le => $"__tcs_ncmp({l}, {r}, __tcs_op_le)",
+            IlLiftedOp.Gt => $"__tcs_ncmp({l}, {r}, __tcs_op_gt)",
+            IlLiftedOp.Ge => $"__tcs_ncmp({l}, {r}, __tcs_op_ge)",
+            IlLiftedOp.And => $"__tcs_nand({l}, {r})",
+            IlLiftedOp.Or => $"__tcs_nor({l}, {r})",
+            _ => $"__tcs_nlift({l}, {r}, __tcs_op_{LiftedOpName(lifted.Op)})",
+        };
+    }
+
+    private static string LiftedOpName(IlLiftedOp op) => op switch
+    {
+        IlLiftedOp.Add => "add", IlLiftedOp.Sub => "sub", IlLiftedOp.Mul => "mul",
+        IlLiftedOp.DivFloat => "div", IlLiftedOp.DivInt => "idiv",
+        IlLiftedOp.RemFloat => "fmod", IlLiftedOp.RemInt => "irem",
+        IlLiftedOp.BitAnd => "band", IlLiftedOp.BitOr => "bor",
+        IlLiftedOp.BitXor => "bxor", IlLiftedOp.Shl => "shl", IlLiftedOp.Shr => "shr",
+        _ => throw new InvalidOperationException($"not a lifted arithmetic op: {op}"),
+    };
 
     private string RenderIlWith(IlWith with)
     {
@@ -412,9 +482,13 @@ public partial class LuaEmitter
         IlParen p => IsCallFree(p.E),
         IlTernary t => IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F),
         IlStructCopy sc => IsCallFree(sc.E),
+        IlCast cast => IsCallFree(cast.E),
+        IlNullableWrap w => IsCallFree(w.E),
+        IlNullableHasValue h => IsCallFree(h.E),
         IlIsType it => IsCallFree(it.E),
         IlIsLuaType ilt => IsCallFree(ilt.E),
-        IlNewArray na => IsCallFree(na.Length),
+        IlNewArray na => IsCallFree(na.Length)
+            && (na.Default is null or IlLit or IlNewObj),
         IlTable tbl => tbl.Entries.All(
             en => (en.Key == null || IsCallFree(en.Key)) && IsCallFree(en.Value)),
         IlCall c => IsPureCallee(c.Callee) && c.Args.All(IsCallFree),

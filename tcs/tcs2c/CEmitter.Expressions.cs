@@ -17,18 +17,26 @@ internal sealed partial class CEmitter
         IlUn unary => RenderUnary(unary),
         IlParen paren => $"({RenderExpr(paren.E)})",
         IlTernary ternary => RenderTernary(ternary),
-        IlIife block => RenderBlockExpression(block),
         IlCall call => RenderCall(call),
         IlDynCall call => RenderDynCall(call),
         IlInvoke invoke => RenderInvoke(invoke),
         IlNewObj creation => RenderNew(creation),
         IlTable table => RenderTable(table),
         IlNewArray array => RenderNewArray(array),
-        IlNumericConvert convert => RenderNumericConvert(convert),
-        IlRefCast cast => RenderRefCast(cast),
         IlIsType typeTest => RenderIsType(typeTest),
         // C の struct 値代入がそのまま copy (il-spec §10 は Lua 側の都合)
         IlStructCopy copy => RenderExpr(copy.E),
+        IlCast cast => RenderCast(cast),
+        IlNumericConvert convert => RenderNumericConvert(convert),
+        IlRefCast refCast => RenderRefCast(refCast),
+        IlNullableWrap wrap => RenderNullableWrap(wrap),
+        IlNullableHasValue has => $"(({RenderExpr(has.E)}).has)",
+        IlNullableValue val => RenderNullableValue(val),
+        IlNullableGetOrDefault gd => RenderNullableGetOrDefault(gd),
+        IlLiftedBin lifted => RenderLiftedBin(lifted),
+        IlLiftedUn liftedUn => RenderLiftedUn(liftedUn),
+        IlIife iife => RenderIife(iife),
+        IlWith with => RenderWith(with),
         _ => throw Unsupported(expr),
     };
 
@@ -46,19 +54,29 @@ internal sealed partial class CEmitter
         IlUn unary => TypeOf(unary.E),
         IlParen paren => TypeOf(paren.E),
         IlTernary ternary => TypeOfTernary(ternary),
-        IlIife block => TypeOfBlockExpression(block),
         IlCall call => TypeOfCall(call),
         IlDynCall call => TypeOfDynCall(call),
         IlInvoke invoke => TypeOfInvoke(invoke),
         IlNewObj creation => _facts.Structs.ContainsKey(creation.TypeName)
             ? CType.Struct(creation.TypeName)
-            : CType.Ref(creation.TypeName),
+            : IsRandomTypeName(creation.TypeName)
+                ? TypeOfRandomNew(creation)
+                : CType.Ref(creation.TypeName),
         IlTable table => TypeOfTable(table),
         IlNewArray array => TypeOfNewArray(array),
-        IlNumericConvert convert => _facts.MapType(convert.TargetType),
-        IlRefCast cast => _facts.MapType(cast.TargetType),
         IlIsType typeTest => TypeOfIsType(typeTest),
         IlStructCopy copy => TypeOf(copy.E),
+        IlCast cast => TypeOfCast(cast),
+        IlNumericConvert convert => TypeOfNumericConvert(convert),
+        IlRefCast refCast => TypeOfRefCast(refCast),
+        IlNullableWrap wrap => TypeOfNullableWrap(wrap),
+        IlNullableHasValue has => RequireNullable(has.E, "HasValue") is { } ? CType.Bool : CType.Bool,
+        IlNullableValue val => RequireNullable(val.E, "Value").Element!,
+        IlNullableGetOrDefault gd => TypeOfNullableGetOrDefault(gd),
+        IlLiftedBin lifted => TypeOfLiftedBin(lifted),
+        IlLiftedUn liftedUn => TypeOfLiftedUn(liftedUn),
+        IlIife iife => TypeOfIife(iife),
+        IlWith with => TypeOfWith(with),
         _ => throw Unsupported(expr),
     };
 
@@ -70,10 +88,8 @@ internal sealed partial class CEmitter
 
     private string RenderField(IlField field)
     {
-        if (ForeignValue(field) is { } foreign)
-            return foreign.Constant is { } constant ? Constants.I32(constant) : $"{HostName(foreign.Name)}()";
-        if (TryStaticField(field, out var staticName, out _))
-            return $"({StaticInit(((IlVar)field.Recv).Name)}(), {staticName})";
+        if (ForeignValue(field) is { } foreignValue) return RenderForeignValue(foreignValue).Value;
+        if (TryStaticField(field, out var staticName, out _)) return staticName;
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind == CTypeKind.Kvp && field.Recv is IlVar kvpVar)
         {
@@ -98,7 +114,7 @@ internal sealed partial class CEmitter
 
     private CType TypeOfField(IlField field)
     {
-        if (ForeignValue(field) is { } foreign) return _facts.MapType(foreign.Type);
+        if (ForeignValue(field) is { } foreignValue) return RenderForeignValue(foreignValue).Type;
         if (TryStaticField(field, out _, out var staticType)) return staticType;
         var receiver = TypeOf(field.Recv);
         if (receiver.Kind == CTypeKind.Kvp)
@@ -118,12 +134,33 @@ internal sealed partial class CEmitter
 
     private bool TryStaticField(IlField field, out string cName, out CType type)
     {
+        if (field.Recv is IlVar enumRecv && TryResolve(enumRecv.Name) is null
+            && _facts.TryEnumConstant(enumRecv.Name, field.Name, out var constant))
+        {
+            cName = Constants.I32(constant);
+            type = CType.I32;
+            return true;
+        }
+        if (field.Recv is IlVar randomRecv && field.Name == "Shared"
+            && IsRandomTypeName(randomRecv.Name) && TryResolve(randomRecv.Name) is null)
+        {
+            cName = "tcs_random_shared()";
+            type = CType.Random;
+            return true;
+        }
+        if (field.Recv is IlVar { Name: "Math" or "MathF" } mathRecv && field.Name == "PI"
+            && TryResolve(mathRecv.Name) is null && !_classes.ContainsKey(mathRecv.Name))
+        {
+            cName = Constants.F32((float)Math.PI);
+            type = CType.F32;
+            return true;
+        }
         if (field.Recv is IlVar receiver && _classes.TryGetValue(receiver.Name, out var cls))
         {
             var metadata = cls.Fields.FirstOrDefault(f => f.Name == field.Name && f.IsStatic);
             if (metadata is not null)
             {
-                cName = Names.StaticField(cls.Name, field.Name);
+                cName = StaticFieldPlace(cls, field.Name);
                 type = _facts.Field(cls.Name, field.Name).Type;
                 return true;
             }
@@ -192,8 +229,6 @@ internal sealed partial class CEmitter
         var leftType = TypeOf(binary.L);
         var rightType = TypeOf(binary.R);
         var resultType = TypeOfBinary(binary);
-        if (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable)
-            return RenderNullableBinary(binary, leftType, rightType);
         if (binary.Op == IlBinOp.Concat)
         {
             var leftString = leftType == CType.String
@@ -208,6 +243,23 @@ internal sealed partial class CEmitter
         }
         var left = RenderExpr(binary.L);
         var right = RenderExpr(binary.R);
+
+        // T? と null / T? / T の ==/!= (IL の nil 比較の残りを lifted 等価で受ける)
+        if (binary.Op is IlBinOp.Eq or IlBinOp.Ne
+            && (leftType.Kind == CTypeKind.Nullable || rightType.Kind == CTypeKind.Nullable))
+            return RenderNullableEquality(binary, leftType, rightType);
+
+        // record の ==/!= は構造等価 (Lua の __eq と同じ)
+        if (binary.Op is IlBinOp.Eq or IlBinOp.Ne
+            && RecordEqualityType(leftType, rightType) is { } recordType)
+        {
+            var recordC = CType.Ref(recordType).CName;
+            var eqLeft = Temp("eq_lhs");
+            var eqRight = Temp("eq_rhs");
+            var negate = binary.Op == IlBinOp.Ne ? "!" : "";
+            return $"({{ {leftType.CName} {eqLeft} = {left}; {rightType.CName} {eqRight} = {right}; " +
+                $"{negate}{Names.RecordEq(recordType)}(({recordC}){eqLeft}, ({recordC}){eqRight}); }})";
+        }
 
         if (binary.Op is IlBinOp.And
             || binary.Op == IlBinOp.Or && leftType == CType.Bool)
@@ -236,23 +288,24 @@ internal sealed partial class CEmitter
     {
         IlBinOp.AddNum => $"({left} + {right})",
         IlBinOp.Concat => $"tcs_string_concat({left}, {right})",
-        IlBinOp.Sub when leftType == CType.String && rightType == CType.String =>
-            $"(tcs_string_byte({left}) - tcs_string_byte({right}))",
         IlBinOp.Sub => $"({left} - {right})",
         IlBinOp.Mul => $"({left} * {right})",
-        IlBinOp.DivNum => $"((float)({left}) / (float)({right}))",
+        IlBinOp.DivNum => $"((float){left} / (float){right})",
         IlBinOp.Eq when leftType == CType.String && rightType == CType.String =>
             $"tcs_string_equal({left}, {right})",
         IlBinOp.Ne when leftType == CType.String && rightType == CType.String =>
             $"(!tcs_string_equal({left}, {right}))",
-        IlBinOp.Eq when leftType.IsNullable && rightType.IsNullable => $"((void *)({left}) == (void *)({right}))",
-        IlBinOp.Ne when leftType.IsNullable && rightType.IsNullable => $"((void *)({left}) != (void *)({right}))",
+        // 参照の同一性: 関連 class / object / null は型が違っても pointer 比較
+        IlBinOp.Eq when leftType.IsNullable || rightType.IsNullable =>
+            $"((void *){left} == (void *){right})",
+        IlBinOp.Ne when leftType.IsNullable || rightType.IsNullable =>
+            $"((void *){left} != (void *){right})",
         IlBinOp.Eq => $"({left} == {right})",
         IlBinOp.Ne => $"({left} != {right})",
-        IlBinOp.Lt => CompareStringsOrNumbers(left, right, leftType, rightType, "<"),
-        IlBinOp.Le => CompareStringsOrNumbers(left, right, leftType, rightType, "<="),
-        IlBinOp.Gt => CompareStringsOrNumbers(left, right, leftType, rightType, ">"),
-        IlBinOp.Ge => CompareStringsOrNumbers(left, right, leftType, rightType, ">="),
+        IlBinOp.Lt => $"({left} < {right})",
+        IlBinOp.Le => $"({left} <= {right})",
+        IlBinOp.Gt => $"({left} > {right})",
+        IlBinOp.Ge => $"({left} >= {right})",
         IlBinOp.And => $"({left} && {right})",
         IlBinOp.Or => $"({left} || {right})",
         IlBinOp.BitAnd => $"({left} & {right})",
@@ -269,8 +322,6 @@ internal sealed partial class CEmitter
         var right = TypeOf(binary.R);
         switch (binary.Op)
         {
-            case IlBinOp.Sub when left == CType.String && right == CType.String:
-                return CType.I32;
             case IlBinOp.AddNum or IlBinOp.Sub or IlBinOp.Mul:
                 return NumericJoin(left, right, binary.Op.ToString());
             case IlBinOp.Concat:
@@ -282,13 +333,13 @@ internal sealed partial class CEmitter
                         $"{left}, {right}");
                 return CType.String;
             case IlBinOp.DivNum:
+                // Lua の / は常に float 除算 (i32 同士でも)
                 _ = NumericJoin(left, right, "division");
                 return CType.F32;
             case IlBinOp.Eq or IlBinOp.Ne:
                 RequireComparable(left, right, "equality");
                 return CType.Bool;
             case IlBinOp.Lt or IlBinOp.Le or IlBinOp.Gt or IlBinOp.Ge:
-                if (left == CType.String && right == CType.String) return CType.Bool;
                 _ = NumericJoin(left, right, "comparison");
                 return CType.Bool;
             case IlBinOp.And:
@@ -299,7 +350,6 @@ internal sealed partial class CEmitter
                 RequireType(CType.Bool, right, "logical operand");
                 return CType.Bool;
             case IlBinOp.Or:
-                if (left.Kind == CTypeKind.Nullable && right == left.Element) return right;
                 return CommonType(left, right, "coalesce");
             case IlBinOp.BitAnd or IlBinOp.BitOr or IlBinOp.BitXor
                 or IlBinOp.Shl or IlBinOp.Shr:
@@ -313,8 +363,6 @@ internal sealed partial class CEmitter
 
     private string RenderUnary(IlUn unary)
     {
-        if (unary is { Op: IlUnOp.Neg, E: IlLit { LuaText: "2147483648", Type: null } })
-            return Constants.I32(int.MinValue);
         var value = RenderExpr(unary.E);
         var type = TypeOf(unary.E);
         return unary.Op switch
@@ -334,18 +382,15 @@ internal sealed partial class CEmitter
 
     private string RenderTernary(IlTernary ternary)
     {
-        var type = TypeOfTernary(ternary);
-        return $"({RenderExpr(ternary.Cond)} ? {RenderCoerced(ternary.T, type)} : " +
-            $"{RenderCoerced(ternary.F, type)})";
+        _ = TypeOfTernary(ternary);
+        return $"({RenderExpr(ternary.Cond)} ? {RenderExpr(ternary.T)} : " +
+            $"{RenderExpr(ternary.F)})";
     }
 
     private string RenderCall(IlCall call)
     {
         if (ForeignMethod(call.Callee) is { } foreign) return RenderForeignCall(foreign, call.Args);
         var type = TypeOfCall(call);
-        if (MathResult(call) != null) return RenderMath(call, type);
-        if (StringResult(call) != null) return RenderStringCall(call, type);
-        if (RuntimeServiceResult(call) != null) return RenderRuntimeService(call, type);
         return call.Callee switch
         {
             "__tcs_idiv" => RenderOrderedCall("tcs_idiv", type,
@@ -363,17 +408,16 @@ internal sealed partial class CEmitter
             // Lua backend の f32 shortest round-trip helper。C 側の
             // to-string は元々 shortest round-trip なので同一経路で良い
             "__tcs_fstr" => RenderToString(call.Args[0]),
+            "__tcs_nstr" => RenderNullableToString(call.Args[0]),
             "table.insert" => RenderListAdd(call),
+            _ when IsIntrinsicCallee(call.Callee) => RenderIntrinsic(call),
             _ => RenderUserCall(call),
         };
     }
 
     private CType TypeOfCall(IlCall call)
     {
-        if (ForeignMethod(call.Callee) is { } foreign) return _facts.MapType(foreign.ReturnType);
-        if (MathResult(call) is { } mathType) return mathType;
-        if (StringResult(call) is { } stringType) return stringType;
-        if (RuntimeServiceResult(call) is { } serviceType) return serviceType;
+        if (ForeignMethod(call.Callee) is { } foreign) return TypeOfForeignCall(foreign, call.Args);
         if (call.Callee is "__tcs_idiv" or "__tcs_irem")
         {
             RequireArity(call.Callee, call.Args.Length, 2);
@@ -416,6 +460,12 @@ internal sealed partial class CEmitter
             _ = RequireDict(call.Args[0], out _);
             return CType.I32;
         }
+        if (call.Callee == "__tcs_nstr")
+        {
+            RequireArity(call.Callee, call.Args.Length, 1);
+            _ = RequireNullable(call.Args[0], "__tcs_nstr");
+            return CType.String;
+        }
         if (call.Callee is "tostring" or "__tcs_fstr")
         {
             RequireArity(call.Callee, call.Args.Length, 1);
@@ -429,13 +479,16 @@ internal sealed partial class CEmitter
         {
             RequireArity(call.Callee, call.Args.Length, 2);
             _ = RequireListForAdd(call.Args[0],
-                call.Args[1] is IlClosure ? null : TypeOf(call.Args[1]));
+                IsClosureValue(call.Args[1]) ? null : TypeOf(call.Args[1]));
             return CType.Void;
         }
+        if (IsIntrinsicCallee(call.Callee)) return TypeOfIntrinsic(call);
+        if (TryStructCallee(call.Callee, out var st, out var member))
+            return TypeOfStructCall(st, member, call.Args);
         var (cls, method) = ParseUserCallee(call.Callee);
         var fact = _facts.Method(cls, method);
         // base 呼び出し (IlCall "Base.M" with self 先頭) は非仮想の直呼び
-        if (!fact.IsStatic && call.Args.Length > 0)
+        if (!fact.IsStatic && call.Args.Length >= 1)
         {
             var self = TypeOf(call.Args[0]);
             if (self.Kind != CTypeKind.Ref
@@ -469,6 +522,15 @@ internal sealed partial class CEmitter
         };
         return RenderOrderedCall(helper, CType.Void,
             [(argument, RenderExpr(call.Args[0]))]);
+    }
+
+    private CType RenderToStringType(IlExpr argument)
+    {
+        var type = TypeOf(argument);
+        if (type.Kind is not (CTypeKind.I32 or CTypeKind.F32
+            or CTypeKind.Bool or CTypeKind.String))
+            throw new Tcs2cException($"tostring does not support {type}");
+        return CType.String;
     }
 
     private string RenderToString(IlExpr argument)
@@ -506,21 +568,24 @@ internal sealed partial class CEmitter
     private string RenderListAdd(IlCall call)
     {
         // closure 引数は要素型を target とした型付き render (TypeOf 不能)
-        var argType = call.Args[1] is IlClosure ? null : TypeOf(call.Args[1]);
+        var argType = IsClosureValue(call.Args[1]) ? null : TypeOf(call.Args[1]);
         var listType = RequireListForAdd(call.Args[0], argType);
         var list = Temp("list");
         var value = Temp("list_value");
         return $"({{ TcsList *{list} = {RenderExpr(call.Args[0])}; " +
             $"{listType.ElementCName} {value} = " +
             $"{RenderCoerced(call.Args[1], listType.Element!)}; " +
-            $"tcs_list_add({list}, &{value}, sizeof({value})); }})";
+            $"tcs_list_add({list}, &{value}, sizeof({value}), " +
+            $"{LayoutRef(listType.Element!)}); }})";
     }
 
     private string RenderUserCall(IlCall call)
     {
+        if (TryStructCallee(call.Callee, out var st, out var member))
+            return RenderStructCall(st, member, call.Args);
         var (cls, method) = ParseUserCallee(call.Callee);
         var fact = _facts.Method(cls, method);
-        if (!fact.IsStatic && call.Args.Length > 0)
+        if (!fact.IsStatic && call.Args.Length >= 1)
         {
             // base 呼び出し: dispatcher を通さない直呼び
             return RenderMethodCall(fact, call.Args[0],
@@ -530,17 +595,34 @@ internal sealed partial class CEmitter
         return RenderMethodCall(fact, null, call.Args);
     }
 
+    // Console.Write (改行なし) は型修飾の IlDynCall で来る
+    private static bool IsConsoleWrite(IlDynCall call) =>
+        call.Callee is IlField { Recv: IlVar { Name: "Console" }, Name: "Write" };
+
+    // MathF.X(...) (host BCL 経路) は Math.X の intrinsic と同じ扱い
+    private IlCall? AsMathCall(IlDynCall call) =>
+        call.Callee is IlField { Recv: IlVar { Name: "MathF" or "Math" } recv } field
+            && !_classes.ContainsKey(recv.Name) && TryResolve(recv.Name) is null
+            ? new IlCall($"Math.{(field.Name == "Ceiling" ? "Ceil" : field.Name)}", call.Args)
+            : null;
+
     private CType TypeOfDynCall(IlDynCall call)
     {
-        if (ForeignCallee(call.Callee) is { } name && ForeignMethod(name) is { } foreign)
-            return _facts.MapType(foreign.ReturnType);
+        if (ForeignCallee(call.Callee) is { } foreign) return TypeOfForeignCall(foreign, call.Args);
+        if (AsMathCall(call) is { } mathCall) return TypeOfIntrinsic(mathCall);
+        if (IsConsoleWrite(call))
+        {
+            RequireArity("Console.Write", call.Args.Length, 1);
+            _ = RenderToStringType(call.Args[0]);
+            return CType.Void;
+        }
         if (TryTypeOfClosureCallee(call) is { } closureType)
         {
             RequireArity("closure call", call.Args.Length,
                 closureType.Parameters!.Count);
             for (var i = 0; i < call.Args.Length; i++)
-                RequireAssignable(closureType.Parameters[i],
-                    TypeOf(call.Args[i]), $"closure argument {i}");
+                CheckAssignable(closureType.Parameters[i],
+                    call.Args[i], $"closure argument {i}");
             return closureType.Element!;
         }
         var fact = ParseDynCallee(call.Callee);
@@ -550,17 +632,27 @@ internal sealed partial class CEmitter
     // closure 値の callee (変数/フィールド等) なら closure 型を返す
     private CType? TryTypeOfClosureCallee(IlDynCall call)
     {
-        if (call.Callee is IlField { Recv: IlVar receiver }
-            && _classes.ContainsKey(receiver.Name))
-            return null; // 型修飾 static 呼び出し
+        if (call.Callee is IlField { Recv: IlVar receiver } member
+            && _classes.ContainsKey(receiver.Name) && TryResolve(receiver.Name) is null)
+        {
+            // 型修飾: closure 型の static field なら closure 呼び、それ以外は
+            // static method 呼び
+            if (TryStaticField(member, out _, out var staticType)
+                && staticType.Kind == CTypeKind.Closure)
+                return staticType;
+            return null;
+        }
         var type = TypeOf(call.Callee);
         return type.Kind == CTypeKind.Closure ? type : null;
     }
 
     private string RenderDynCall(IlDynCall call)
     {
-        if (ForeignCallee(call.Callee) is { } name && ForeignMethod(name) is { } foreign)
-            return RenderForeignCall(foreign, call.Args);
+        if (ForeignCallee(call.Callee) is { } foreign) return RenderForeignCall(foreign, call.Args);
+        if (AsMathCall(call) is { } mathCall) return RenderIntrinsic(mathCall);
+        if (IsConsoleWrite(call))
+            return RenderOrderedCall("tcs_write_string", CType.Void,
+                [(CType.String, RenderToString(UnwrapFstr(call.Args[0])))]);
         if (TryTypeOfClosureCallee(call) is { } closureType)
         {
             _ = TypeOfDynCall(call);
@@ -617,6 +709,8 @@ internal sealed partial class CEmitter
     private CType TypeOfInvoke(IlInvoke invoke)
     {
         var receiver = TypeOf(invoke.Recv);
+        if (receiver.Kind == CTypeKind.Random)
+            return TypeOfRandomMethod(invoke.Method, invoke.Args);
         var fact = ResolveInvokeFact(receiver, invoke.Method);
         return ValidateMethodCall(fact, receiver, invoke.Args);
     }
@@ -625,6 +719,9 @@ internal sealed partial class CEmitter
     {
         _ = TypeOfInvoke(invoke);
         var receiver = TypeOf(invoke.Recv);
+        if (receiver.Kind == CTypeKind.Random)
+            return RenderRandomMethod($"tcs_nonnull({RenderExpr(invoke.Recv)})",
+                invoke.Method, invoke.Args);
         var fact = ResolveInvokeFact(receiver, invoke.Method);
         // 子孫に再宣言があれば実行時型で dispatch (il-spec §9)
         if (IsPolymorphic(fact.ClassName, fact.Name))
@@ -640,9 +737,9 @@ internal sealed partial class CEmitter
             throw new Tcs2cException($"call target is not static: {fact.ClassName}.{fact.Name}");
         if (receiver is not null && fact.IsStatic)
             throw new Tcs2cException($"IlInvoke target is static: {fact.ClassName}.{fact.Name}");
-        args = CompleteArguments(fact.Parameters, args);
+        args = CompleteArguments(fact.Parameters, args, $"{fact.ClassName}.{fact.Name}");
         for (var i = 0; i < args.Count; i++)
-            ValidateArgument(fact.Parameters[i].Type, args[i],
+            CheckAssignable(fact.Parameters[i].Type, args[i],
                 $"argument {i} of {fact.ClassName}.{fact.Name}");
         return fact.ReturnType;
     }
@@ -650,7 +747,7 @@ internal sealed partial class CEmitter
     private string RenderMethodCall(MethodFact fact, IlExpr? receiver,
         IReadOnlyList<IlExpr> args, string? function = null)
     {
-        args = CompleteArguments(fact.Parameters, args);
+        args = CompleteArguments(fact.Parameters, args, $"{fact.ClassName}.{fact.Name}");
         var values = new List<(CType Type, string Value)>();
         if (receiver is not null)
         {
@@ -667,12 +764,11 @@ internal sealed partial class CEmitter
     }
 
     private string RenderOrderedCall(string function, CType returnType,
-        IReadOnlyList<(CType Type, string Value)> values, string prefix = "")
+        IReadOnlyList<(CType Type, string Value)> values)
     {
-        if (values.Count == 0) return $"{function}({prefix})";
+        if (values.Count == 0) return $"{function}()";
         var declarations = new StringBuilder();
         var arguments = new List<string>();
-        if (prefix.Length != 0) arguments.Add(prefix);
         foreach (var (type, value) in values)
         {
             var temp = Temp("arg");
@@ -694,93 +790,5 @@ internal sealed partial class CEmitter
         if (!_classes.ContainsKey(cls))
             throw new Tcs2cException($"unknown call target class: {callee}");
         return (cls, method);
-    }
-
-    private string RenderNew(IlNewObj creation)
-    {
-        if (_facts.Structs.ContainsKey(creation.TypeName))
-        {
-            // struct の zero 値。明示 ctor 呼び (S.ctor) は IlCall 経由なので
-            // ここに args 付きでは来ない
-            if (creation.Args.Length != 0)
-                throw new Tcs2cException(
-                    $"struct constructor is not supported by the C backend: " +
-                    creation.TypeName);
-            return $"(({CType.Struct(creation.TypeName).CName}){{0}})";
-        }
-        if (!_classes.TryGetValue(creation.TypeName, out var cls))
-            throw new Tcs2cException($"unknown class: {creation.TypeName}");
-        var paramFacts = CtorParamFacts(cls);
-        var arguments = CompleteArguments(paramFacts, creation.Args);
-        var values = new List<(CType Type, string Value)>();
-        for (var i = 0; i < arguments.Count; i++)
-        {
-            ValidateArgument(paramFacts[i].Type, arguments[i],
-                $"constructor argument {i} of {cls.Name}");
-            values.Add((paramFacts[i].Type,
-                RenderCoerced(arguments[i], paramFacts[i].Type)));
-        }
-        return RenderOrderedCall(Names.New(cls.Name),
-            CType.Ref(cls.Name), values,
-            $"sizeof({Names.Class(cls.Name)}), tcs_trace_object_{Names.Id(cls.Name)}");
-    }
-
-    private CType TypeOfTable(IlTable table)
-    {
-        if (table.ObjectType != null) return _facts.MapType(table.ObjectType);
-        if (table.KeyType is not null
-            || table.Entries.Any(e => e.Key is not null))
-            return TypeOfDictTable(table);
-        if (table.Entries.Any(e => e.NameKey is not null))
-            throw new Tcs2cException("option-table IlTable is not supported");
-        CType? element = table.ElementType is null
-            ? null : _facts.MapType(table.ElementType);
-        foreach (var entry in table.Entries)
-        {
-            var itemType = TypeOf(entry.Value);
-            element = element is null ? itemType : CommonType(element, itemType, "IlTable items");
-        }
-        if (element is not null && element.Kind is not (CTypeKind.I32
-            or CTypeKind.F32 or CTypeKind.Bool or CTypeKind.String
-            or CTypeKind.Ref or CTypeKind.Closure or CTypeKind.List
-            or CTypeKind.Dict or CTypeKind.Array or CTypeKind.Object))
-            throw new Tcs2cException($"unsupported List element type: {element}");
-        return table.IsArray && element != null ? CType.Array(element) : CType.List(element);
-    }
-
-    private string RenderTable(IlTable table)
-    {
-        if (table.ObjectType != null) return RenderForeignTable(table);
-        if (table.IsArray) return RenderArrayLiteral(table);
-        if (table.KeyType is not null || table.Entries.Any(e => e.Key is not null))
-            return RenderDictTable(table);
-        var type = TypeOfTable(table);
-        var list = Temp("list");
-        var elementSize = type.Element is null ? "0" : $"sizeof({type.ElementCName})";
-        var statements = new StringBuilder($"TcsList *{list} = tcs_list_new({RuntimeTypeId(type)}, {elementSize}, {TraceValue(type.Element)}); ");
-        foreach (var entry in table.Entries)
-        {
-            var value = Temp("list_item");
-            statements.Append(type.ElementCName).Append(' ').Append(value)
-                .Append(" = ").Append(RenderCoerced(entry.Value, type.Element!)).Append("; ")
-                .Append("tcs_list_add(").Append(list).Append(", &").Append(value)
-                .Append(", sizeof(").Append(value).Append(")); ");
-        }
-        return $"({{ {statements}{list}; }})";
-    }
-
-    private CType TypeOfNewArray(IlNewArray array)
-    {
-        RequireType(CType.I32, TypeOf(array.Length), "array length");
-        var element = _facts.MapType(array.ElementType);
-        var result = CType.Array(element);
-        EnsureSupportedStorageType(result, "IlNewArray element type");
-        return result;
-    }
-
-    private string RenderNewArray(IlNewArray array)
-    {
-        var type = TypeOfNewArray(array);
-        return $"tcs_array_new({RuntimeTypeId(type)}, {RenderExpr(array.Length)}, sizeof({type.ElementCName}), {TraceValue(type.Element)})";
     }
 }

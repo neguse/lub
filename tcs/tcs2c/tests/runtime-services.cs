@@ -10,11 +10,11 @@ class RuntimeServices
         Console.WriteLine("ababa".Replace("aba", "x"));
         Console.WriteLine(int.Parse("2147483647"));
         Console.WriteLine(int.Parse("-2147483648"));
-        int first = TinySystem.Random.Next();
+        int first = TinySystem.Random.Shared.Next();
         bool varied = false;
         for (int i = 0; i < 100; i++)
         {
-            int value = TinySystem.Random.Next();
+            int value = TinySystem.Random.Shared.Next();
             if (value < 0 || value >= 2147483647) Console.WriteLine("out-of-range");
             if (value != first) varied = true;
         }

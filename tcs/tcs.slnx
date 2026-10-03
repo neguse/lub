@@ -5,4 +5,5 @@
   <Project Path="TinyCs.Analyzers.Tests/TinyCs.Analyzers.Tests.csproj" />
   <Project Path="TinySystem/TinySystem.csproj" />
   <Project Path="tcs2c/tcs2c.csproj" />
+  <Project Path="tcs2c.Tests/tcs2c.Tests.csproj" />
 </Solution>

@@ -36,31 +36,28 @@ public class ComplianceParityTests
     }
 
     [Fact]
-    public void Check_NameOfReportsSharedSyntaxDiagnostics()
+    public void Check_NameOfIsSupported()
     {
         var result = RunCli(NameOfSource, check: true);
 
-        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.Stdout);
-        AssertNameOfDiagnostics(result.Stderr);
+        Assert.Equal(0, CountDiagnostics(result.Stderr,
+            TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.Equal(0, CountDiagnostics(result.Stderr,
             TinyCsDiagnosticIds.UnsupportedApi));
     }
-
     [Fact]
-    public void Transpile_NameOfKeepsValidConstantFallbacks()
+    public void Transpile_NameOfFoldsToConstantStrings()
     {
         var result = RunCli(NameOfSource, check: false);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.Stdout);
-        AssertNameOfDiagnostics(result.Stderr);
         Assert.Equal(0, CountDiagnostics(result.Stderr,
-            TinyCsDiagnosticIds.UnsupportedApi));
-        Assert.Equal(3, result.Lua.Split(
-            "--[[ unsupported: NameOfExpression ]]",
-            StringSplitOptions.None).Length - 1);
+            TinyCsDiagnosticIds.UnsupportedSyntax));
         Assert.DoesNotContain("nameof(", result.Lua);
+        Assert.DoesNotContain("unsupported: NameOfExpression", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
             {{result.Lua}}
             print(tostring(NameDemo.simple(1)) .. "|" ..
@@ -68,7 +65,6 @@ public class ComplianceParityTests
                 tostring(NameDemo.type_name()))
             """).Trim());
     }
-
     [Fact]
     public void UserMethodNamedNameof_RemainsOrdinaryInvocation()
     {
@@ -178,27 +174,6 @@ public class ComplianceParityTests
         string severity = "warning") =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Count(line => line.Contains($"{severity} {diagnosticId}:"));
-
-    private static void AssertNameOfDiagnostics(string stderr)
-    {
-        var diagnostics = stderr.Split('\n',
-                StringSplitOptions.RemoveEmptyEntries)
-            .Where(line => line.Contains(
-                $"warning {TinyCsDiagnosticIds.UnsupportedSyntax}:"))
-            .ToArray();
-
-        Assert.Equal(3, diagnostics.Length);
-        Assert.Collection(diagnostics,
-            line => Assert.Contains(
-                "input.cs(3,47): warning TCS1001: unsupported syntax: NameOfExpression",
-                line),
-            line => Assert.Contains(
-                "input.cs(4,42): warning TCS1001: unsupported syntax: NameOfExpression",
-                line),
-            line => Assert.Contains(
-                "input.cs(5,40): warning TCS1001: unsupported syntax: NameOfExpression",
-                line));
-    }
 
     private const string PartialLockSource = """
         public partial class PartialClass

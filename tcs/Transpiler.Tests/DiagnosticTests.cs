@@ -449,8 +449,9 @@ public class DiagnosticTests
             $"{result.Lua}\nprint(Locker.test())").Trim());
     }
 
+    // nameof は C# の定数式 (識別子名) として両 backend が文字列に畳む (T250)
     [Fact]
-    public void NameOfExpressions_ReportWarningsAndEmitConstantMarkers()
+    public void NameOfExpressions_AreConstantStrings()
     {
         var result = Transpiler.TranspileWithDiagnostics(["""
             public class NameDemo
@@ -461,24 +462,10 @@ public class DiagnosticTests
             }
             """], ["nameof.cs"]);
 
-        var syntaxWarnings = result.Warnings
-            .Where(w => w.Contains(TinyCsDiagnosticIds.UnsupportedSyntax))
-            .ToArray();
-
         Assert.True(result.Success);
-        Assert.Equal(3, result.Warnings.Count);
-        Assert.Equal(3, syntaxWarnings.Length);
-        Assert.All(syntaxWarnings,
-            warning => Assert.Contains("NameOfExpression", warning));
-        Assert.Equal([
-            "nameof.cs(3,47): warning TCS1001: unsupported syntax: NameOfExpression",
-            "nameof.cs(4,42): warning TCS1001: unsupported syntax: NameOfExpression",
-            "nameof.cs(5,40): warning TCS1001: unsupported syntax: NameOfExpression",
-        ], syntaxWarnings);
-        Assert.Equal(3, result.Lua.Split(
-            "--[[ unsupported: NameOfExpression ]]",
-            StringSplitOptions.None).Length - 1);
+        Assert.Empty(result.Warnings);
         Assert.DoesNotContain("nameof(", result.Lua);
+        Assert.DoesNotContain("unsupported", result.Lua);
         Assert.Equal("value|E|DateTime", TestHelper.RunLua($$"""
             {{result.Lua}}
             print(tostring(NameDemo.simple(1)) .. "|" ..
@@ -486,7 +473,6 @@ public class DiagnosticTests
                 tostring(NameDemo.type_name()))
             """).Trim());
     }
-
     [Fact]
     public void UserMethodNamedNameof_IsNotNameOfExpression()
     {

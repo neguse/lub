@@ -46,7 +46,7 @@ public partial class LuaEmitter
             null => "nil",
             bool b => b ? "true" : "false",
             string s => EscapeLuaString(s),
-            char c => EscapeLuaString(c.ToString()),
+            char c => ((int)c).ToString(System.Globalization.CultureInfo.InvariantCulture),
             float x => FormatLuaNumber(x),
             double x => FormatLuaNumber(x),
             decimal x => FormatLuaNumber((double)x),

@@ -31,12 +31,31 @@ module / class / record class / enum / interface / method / field。
 ## 3. 型
 
 `i32` / `f32` / `bool` / `string` / `ref C`（class / record class）/
-`V`（struct / record struct、M5 で有効化）/ `T[]` / `List<T>` /
-`Dictionary<K,V>` / 関数型（closure）/ enum (= i32)。
+`V`（struct / record struct、M5 で有効化）/ `T?`（Nullable、T は i32 /
+f32 / bool / enum / V）/ `T[]` / `List<T>` / `Dictionary<K,V>` /
+関数型（closure）/ enum (= i32) / char (= i32 の code unit。string は
+UTF-8 byte 列なので `s[i]` は byte 値、文字列化は `string.char(c)` で 1
+byte。literal は ASCII のみ、T251)。
 
 - 型引数は消去済み。IL ノードはすべて単型（examples 決定 3）
 - null は ref・string・List・Dict・関数型の値。i32 / f32 / bool / V は
-  非 null。Nullable<T> の位置づけは v0 未決（付録 C）
+  非 null
+- `T?` は「値なし」を持つ独立した型（T244）。IL は Lua の nil 方言を使わず
+  明示ノードで操作する: `IlNullableWrap` (T → T?)、`IlNullableHasValue`、
+  `IlNullableValue` (値なしは fault §12)、`IlNullableGetOrDefault`
+  (`??` / GetValueOrDefault。既定値は値なしのときだけ評価)、
+  `IlLiftedBin` / `IlLiftedUn` (lifted 演算子: 片方でも値なしなら値なし、
+  比較は false、Eq / Ne は両方値なしで等しい、`bool?` の `&` `|` は三値論理)。
+  `x?.M` は receiver を local に 1 回評価する IIFE で、`T?` receiver は
+  `IlNullableHasValue` で分岐し `IlNullableValue` (copy) に対して member を
+  参照する。結果が非 nullable 値型なら `IlNullableWrap` で `T?` に揃える
+  (値なし側は IIFE の fall-through = 値なし)。`??=` も `T?` では
+  `not IlNullableHasValue` で判定する (T247)。
+  意味論の規範は C# §12.4.8 で、dotnet differential がそれを検証する。
+  文字列化 (`__tcs_nstr`) は値なしを空文字列にする (C# の
+  `string.Concat(null)` / 補間と同じ)。backend 表現は dev = nil または値、
+  release = `{ bool has; T v; }`。collection 要素の値なしは TCS1003 のまま
+  (Lua table に nil を置けない)
 - double / long はサブセット外（M4 で診断化。il-design §4）
 
 ## 4. 評価モデル
@@ -104,8 +123,8 @@ goto は無い。例外機構は無い — try / throw はサブセット外（T
 - 仮想呼び出し: 単一継承、override は実行時型で解決
 - class の参照比較（operator 定義が無い `==`）は identity 比較
 
-## 10. place と値型（M5 v1 で「データ struct」= field のみを有効化。
-member 付き struct / record struct は引き続きサブセット外）
+## 10. place と値型（struct / record struct。field + instance member +
+ctor。static member / operator / override はサブセット外、T246 で契約完成）
 
 place = 格納場所。変数、フィールド path、配列/List 要素 path の 3 種。
 
@@ -118,7 +137,22 @@ place = 格納場所。変数、フィールド path、配列/List 要素 path �
   4. 値文脈での place 読み出し（`var p = a[i]`、`var q = s.Inner`）
 - struct 配列の要素は互いに独立した place。連続メモリ配置は backend 表現の
   自由であり IL の意味論ではない
-- 値型の `==` は operator 定義がある場合のみ（既定の構造等価は v0 に無い）
+- struct の instance member は静的ディスパッチの自由関数
+  `IlCall("S.M", [receiver, args...])`。receiver が C# の「変数」(local /
+  parameter / field / 配列要素 / this) なら place をそのまま渡し、変異は
+  その場に残る。rvalue (property / List indexer / 呼び出し結果) は copy を
+  渡し、変異は捨てられる (C# と同じ)。backend は place のアドレス渡し
+  (C: `Tcs_S *self`) で copy を省いてよい
+- explicit ctor は `IlCall("S.ctor", args)`: zero 値 → field initializer →
+  本文の順。`new S()` は ctor を通らない zero 値 (IlNewObj、initializer も
+  走らない)。record struct の positional ctor は宣言順の代入
+- 値等価は memberwise (ネスト struct は推移的)。record struct の `==` / `!=`
+  は `IlCall("S.op_Equality", [a, b])`、plain struct も List.Contains /
+  IndexOf / Remove (C# の EqualityComparer<T>.Default) で同じ等価を使う
+  (IL は末尾引数に `S.op_Equality` 参照を付け、要素型から判る backend は
+  読まなくてよい)。record struct の `with` は IlWith (値 copy + 上書き)
+- `new S[n]` / `new int[n]` の要素は default 値 (IlNewArray.Default。struct
+  は zero 値)。C は zero 初期化、Lua は値型のとき n 個詰める
 
 ## 11. 配列・List・Dictionary・string
 
@@ -168,7 +202,18 @@ fault = 決定的に検出される実行時異常。発生した fault はプ�
 - 数学関数（Sin / Cos / Sqrt 等）の規範は「同一プラットフォーム上で全
   backend が同一値」。プラットフォーム間のビット一致は保証しない。
   digest workload は数学関数を使わない（perf の libm 排除方針と同一）
-- Random は backend 間一致の対象外（v0）。合意 PRNG の導入は付録 C
+- Random の合意 PRNG は Lua 5.5 の `math.random` (xoshiro256**、LUA_32BITS
+  構成の 32bit 射影と FIGS=24 の float 化) で、C backend は同じ実装を持つ
+  (T245)。`Random` は System.Random と同じ形 (T248): `Random.Shared` は
+  VM の `math.random` 状態 (`Random.Seed(n)` = `math.randomseed(n)`)、
+  `new Random(seed)` は同じアルゴリズムの独立 instance (Lua は 32bit 対の
+  pure-Lua 実装、C は GC object `TcsRandom`)。IL は `IlNewObj
+  ("TinySystem.Random", [seed?])` と `IlInvoke(r, Next | NextFloat |
+  NextSingle | Range, args)`、`IlField(TinySystem.Random, Shared)`。同じ seed
+  なら instance と Shared、Lua と C の列が bit 一致する。seed 未指定時は
+  両 backend とも起動ごと・instance ごとに異なる (Lua の `luai_makeseed`
+  相当)。dotnet 側 facade は System.Random に委譲するので列は一致しない
+  (乱数は dotnet differential の対象外のまま)
 
 ## 14. migration metadata（v0 はスキーマのみ。実装は T220）
 
@@ -211,10 +256,8 @@ rename 注釈（`[RenamedFrom]` 相当）/ ユーザーフック（`OnReload` �
 
 ## 付録 C: 未決事項
 
-- Nullable<T> の位置づけ
 - relaxed-fp (§6) の粒度を module 単位まで細分するか（mixed-mode ABI と
   絡むため v0 は出荷ビルド単位のみ）
-- 合意 PRNG（Random の backend 間一致）
 - シリアライズ形式（M2 / T217）
 - Lua 側 struct 配列の連続表現最適化（perf 実測駆動。release 側 class 表現は native に決着済み）
 - mixed-mode の module 境界 ABI（il-design §5）
