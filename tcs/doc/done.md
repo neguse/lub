@@ -1759,3 +1759,12 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### 別 namespace の同名型が Lua global で上書きされる問題 (#18) ✓ (2026-10-05)
+- 原因: namespace を捨てた simple 名で型を global に emit していたため、`A.Color` / `B.Color` が同じ `Color` になり後勝ちで上書きされた (A.Color/B.Color で 12 のはずが 22)。型名は宣言・参照・IlExport・hot reload・snapshot・`--entry`/`--module` が各所で simple 名を直接使っていた
+- 型の Lua 名を `LuaEmitter.TypeName` に一本化。source assembly 内で simple 名が重複する型だけ namespace 修飾名 (`A_Color`、`Game_Gfx_Color`) にし、一意な型は従来どおり simple 名 (衝突しない出力は不変)。宣言 (class / record / struct / enum)、静的参照、`new` / cast / `is` / 型パターン、base 呼び出し、struct copy / default / op_Equality、演算子 overload の型判定、IlExport の Name / BaseName、`--entry` の `return`、`--module` の key、snapshot の type id を全てこの名前に揃えた
+- IL 契約の型文字列 (field 型 / 引数型) は C# 表示名のまま、IlClassInfo / IlStructInfo / IlEnumInfo に `DisplayName` を足して対応を持たせた。hot reload (struct migrate / default) と tcs2c (`ContractFacts.MapType`、interface 判定) はこの表で Lua 名へ写す。`EmittedTypeInfo.CSharpName` で snapshot の entry を `A.Color` / `A_Color` / simple 名 (曖昧ならエラー) で解決
+- 検証: NamespaceTypeNameTests 14 本 (宣言・static / enum / struct・継承 / is / cast・entry・module・IlExport・hot reload 2 本・snapshot 2 本・incremental で衝突型が増えたとき他 module も改名)、tcs2c の Lua / C differential (`Namespaces_SameNamedTypesStayDistinct`)
+- よかったこと: 型名の決定点を 1 関数に集めると、衝突しない場合は simple 名を返すだけなので既存出力が変わらない
+- 判断: 全型を常に修飾する案は既存出力 (`Color = {}`、hot reload / registry の type id、利用者の Lua 側参照) を壊すので却下。衝突した型の名前が他ファイルの追加で変わるが、incremental session は型集合の変更を slow path で全 module 再 emit する。`_` 連結は `A_B.C` と `A.B_C` で理論上衝突しうる (実用上無視)
+- 残課題: `--ref` (参照専用) 型の衝突は対象外。Lua 側からは衝突型を `A_Color` で引く必要がある。入れ子型 (`Outer.Inner`) と generic 単相化後の同名型は未対応

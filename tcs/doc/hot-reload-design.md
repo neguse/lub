@@ -303,9 +303,10 @@ index で既に解決しており、chunk backend (UC1) の driver も同じ方�
 - enum metadata / `[RenamedFrom]` / initializerHash が IlExport にない
 - registry overhead の実測なし (§2 の class 構築 workload が perf harness に
   未収載)
-- namespace は現 emitter がフラット global に emit するためそのまま動くが、
-  emitter が実 namespace 対応した時点で alias 解決 (§11 の global alias) に
-  追従する必要がある
+- namespace は透過 (フラット global)。別 namespace の同名型だけ修飾名
+  (`A_Color`) の global になり、registry の type id / migration 対象の名前も
+  この Lua 名で揃う。IL 契約の型文字列は C# 表示名 (`A.Color`) のままで、
+  IlClassInfo / IlStructInfo / IlEnumInfo の DisplayName が Lua 名への対応を持つ
 
 ## 12. 決定が必要な点
 

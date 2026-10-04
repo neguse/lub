@@ -18,7 +18,8 @@ public static partial class IlExport
                 [.. method.ParameterList.Parameters.Select(p => p.Default is { } d
                     ? emitter.ExportExprIl(model, d.Value) : null)], IsAbstract: symbol.IsAbstract);
         });
-        return new IlClassInfo(declaration.Identifier.ValueText, null, [], "0",
-            [.. methods], IsInterface: true);
+        var type = (INamedTypeSymbol)model.GetDeclaredSymbol(declaration)!;
+        return new IlClassInfo(emitter.TypeName(type), null, [], "0",
+            [.. methods], IsInterface: true, DisplayName: type.ToDisplayString());
     }
 }

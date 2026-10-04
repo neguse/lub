@@ -63,7 +63,7 @@ public partial class LuaEmitter
         AppendLine();
     }
 
-    private static string BuildOverloadCondition(SemanticModel model,
+    private string BuildOverloadCondition(SemanticModel model,
         OperatorDeclarationSyntax op, string[] dispatchParams)
     {
         var conditions = new List<string>();
@@ -77,7 +77,7 @@ public partial class LuaEmitter
         return conditions.Count > 0 ? string.Join(" and ", conditions) : "true";
     }
 
-    private static string? GetOperandTypeCheck(ITypeSymbol? type, string arg)
+    private string? GetOperandTypeCheck(ITypeSymbol? type, string arg)
     {
         if (type == null) return null;
         if (type.SpecialType is SpecialType.System_Int32
@@ -94,7 +94,7 @@ public partial class LuaEmitter
         if (type.TypeKind == TypeKind.Class
             && type.SpecialType == SpecialType.None)
         {
-            return $"getmetatable({arg}) == {type.Name}";
+            return $"getmetatable({arg}) == {TypeName(type)}";
         }
         return null;
     }

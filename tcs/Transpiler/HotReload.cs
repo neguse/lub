@@ -23,7 +23,13 @@ public static class HotReload
         Dictionary<string, IlStructInfo> NewStructs,
         HashSet<string> NewEnums,
         HashSet<string> ChangedStructs,
-        LuaEmitter Emitter);
+        LuaEmitter Emitter,
+        Dictionary<string, string> TypeAliases)
+    {
+        // IL の型文字列は C# 表示名 (`A.Vec`)。Lua global 名 (`A_Vec`) へ写す
+        public string LuaName(string type) =>
+            TypeAliases.GetValueOrDefault(type, type);
+    }
 
     public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources)
     {
@@ -46,7 +52,11 @@ public static class HotReload
             .ToHashSet();
         var ctx = new Context(pairs, newStructs,
             newExport.Enums.IsDefault ? [] : [.. newExport.Enums],
-            changedStructs, new LuaEmitter());
+            changedStructs, new LuaEmitter(),
+            newExport.Structs.Select(s => (s.DisplayName, s.Name))
+                .Concat(newExport.EnumTypes.Select(e => (e.DisplayName, e.Name)))
+                .Where(x => x.DisplayName != null && x.DisplayName != x.Name)
+                .ToDictionary(x => x.DisplayName!, x => x.Name));
 
         var sb = new StringBuilder();
         sb.AppendLine("-- TinyC# hot reload chunk (v2 定義 + eager migration)");
@@ -130,8 +140,8 @@ public static class HotReload
     {
         if (!retainedSameType)
             return DefaultFor(type, ctx);
-        if (ctx.ChangedStructs.Contains(type))
-            return $"__tcs_migrate_{type}({oldExpr})";
+        if (ctx.ChangedStructs.Contains(ctx.LuaName(type)))
+            return $"__tcs_migrate_{ctx.LuaName(type)}({oldExpr})";
         return oldExpr;
     }
 
@@ -177,14 +187,14 @@ public static class HotReload
     private static void EmitStructReserialize(StringBuilder sb, string indent,
         string target, string type, Context ctx)
     {
-        if (ctx.ChangedStructs.Contains(type))
+        if (ctx.ChangedStructs.Contains(ctx.LuaName(type)))
         {
-            sb.AppendLine($"{indent}{target} = __tcs_migrate_{type}({target})");
+            sb.AppendLine($"{indent}{target} = __tcs_migrate_{ctx.LuaName(type)}({target})");
         }
         else if (type.EndsWith("[]")
-            && ctx.ChangedStructs.Contains(type[..^2]))
+            && ctx.ChangedStructs.Contains(ctx.LuaName(type[..^2])))
         {
-            var elem = type[..^2];
+            var elem = ctx.LuaName(type[..^2]);
             sb.AppendLine($"{indent}do");
             sb.AppendLine($"{indent}  local __a = {target}");
             sb.AppendLine($"{indent}  if __a ~= nil then");
@@ -264,6 +274,7 @@ public static class HotReload
     // 解決されるので新 layout で構築される)、enum は 0 (default(E))
     private static string DefaultFor(string type, Context ctx)
     {
+        type = ctx.LuaName(type);
         if (ctx.NewStructs.ContainsKey(type))
             return $"{type}.new()";
         if (ctx.NewEnums.Contains(type))

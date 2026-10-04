@@ -101,7 +101,8 @@ internal sealed partial class CEmitter
         {
             if (cur == ancestor) return true;
             if (!_classes[cur].Interfaces.IsDefault
-                && _classes[cur].Interfaces.Any(i => SimpleTypeName(i) == ancestor))
+                && _classes[cur].Interfaces.Any(i =>
+                    _facts.LuaTypeName(i) == ancestor || SimpleTypeName(i) == ancestor))
                 return true;
         }
         return false;
