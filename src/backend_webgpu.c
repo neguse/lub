@@ -12,6 +12,7 @@
 #include "backend.h"
 #include "gpu_stats.h"
 #include "shader.h"
+#include "webxr.h"
 
 #include <SDL3/SDL.h>
 #include <emscripten/emscripten.h>
@@ -48,6 +49,8 @@ static WGPUTextureFormat sgl_to_wgpu_fmt(SglPixelFormat fmt) {
   switch (fmt) {
   case SGL_PF_RGBA8:
     return WGPUTextureFormat_RGBA8Unorm;
+  case SGL_PF_RGBA8_SRGB:
+    return WGPUTextureFormat_RGBA8UnormSrgb;
   case SGL_PF_BGRA8:
     return WGPUTextureFormat_BGRA8Unorm;
   case SGL_PF_R8:
@@ -171,6 +174,75 @@ static WgUniformState g_ub;
 static WgPipeline *g_cur_pipeline;
 static bool g_ibuf_bound;
 
+static WGPUTexture g_xr_color[2], g_xr_depth[2];
+static WGPUTextureView g_xr_color_view[2], g_xr_depth_view[2];
+static bool g_xr_drawn[2];
+static int g_xr_width, g_xr_height;
+
+static void wg_release_xr(void) {
+  for (int eye = 0; eye < 2; eye++) {
+    if (g_xr_color_view[eye]) {
+      wgpuTextureViewRelease(g_xr_color_view[eye]);
+      gpu_stats_destroy(GPU_STAT_VIEW, 0);
+    }
+    if (g_xr_depth_view[eye]) {
+      wgpuTextureViewRelease(g_xr_depth_view[eye]);
+      gpu_stats_destroy(GPU_STAT_VIEW, 0);
+    }
+    if (g_xr_color[eye]) {
+      wgpuTextureRelease(g_xr_color[eye]);
+      gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
+    }
+    if (g_xr_depth[eye]) {
+      wgpuTextureRelease(g_xr_depth[eye]);
+      gpu_stats_destroy(GPU_STAT_TEXTURE, 0);
+    }
+    g_xr_color_view[eye] = g_xr_depth_view[eye] = NULL;
+    g_xr_color[eye] = g_xr_depth[eye] = NULL;
+  }
+  g_xr_width = g_xr_height = 0;
+}
+
+static bool wg_prepare_xr(App *app, int width, int height) {
+  if (g_xr_width == width && g_xr_height == height)
+    return true;
+  wg_release_xr();
+  for (int eye = 0; eye < 2; eye++) {
+    WGPUTextureDescriptor desc = {
+        .usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc,
+        .dimension = WGPUTextureDimension_2D,
+        .size = {(uint32_t)width, (uint32_t)height, 1},
+        .format = WGPUTextureFormat_RGBA8UnormSrgb,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    g_xr_color[eye] = wgpuDeviceCreateTexture(app->wgpu_device, &desc);
+    if (!g_xr_color[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_TEXTURE, 0);
+    g_xr_color_view[eye] = wgpuTextureCreateView(g_xr_color[eye], NULL);
+    if (!g_xr_color_view[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_VIEW, 0);
+    desc.usage = WGPUTextureUsage_RenderAttachment;
+    desc.format = WGPUTextureFormat_Depth32FloatStencil8;
+    g_xr_depth[eye] = wgpuDeviceCreateTexture(app->wgpu_device, &desc);
+    if (!g_xr_depth[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_TEXTURE, 0);
+    g_xr_depth_view[eye] = wgpuTextureCreateView(g_xr_depth[eye], NULL);
+    if (!g_xr_depth_view[eye])
+      goto fail;
+    gpu_stats_create(GPU_STAT_VIEW, 0);
+  }
+  g_xr_width = width;
+  g_xr_height = height;
+  return true;
+fail:
+  wg_release_xr();
+  return false;
+}
+
 // ---- bring-up (surface / depth / swapchain) --------------------------------
 
 static bool wg_recreate_depth(App *app, uint32_t w, uint32_t h) {
@@ -215,7 +287,8 @@ static void wg_configure_surface(App *app, uint32_t w, uint32_t h) {
   WGPUSurfaceConfiguration cfg = {
       .device = app->wgpu_device,
       .format = app->wgpu_surface_format,
-      .usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc,
+      .usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc |
+               WGPUTextureUsage_CopyDst,
       .width = w,
       .height = h,
       .alphaMode = WGPUCompositeAlphaMode_Opaque,
@@ -279,6 +352,7 @@ static bool wg_init(App *app) {
 }
 
 static void wg_shutdown(App *app) {
+  wg_release_xr();
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
     if (g_ub.bufs[i]) {
       wgpuBufferRelease(g_ub.bufs[i]);
@@ -323,6 +397,8 @@ static void wg_shutdown(App *app) {
 // ---- frame begin / end -----------------------------------------------------
 
 static void wg_begin_frame(App *app, int *out_w, int *out_h) {
+  lubwebxr_begin();
+  g_xr_drawn[0] = g_xr_drawn[1] = false;
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
     g_ub.ring_offset[i] = 0;
 
@@ -333,10 +409,15 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   if (ch <= 0)
     ch = 360;
 
+  bool xr = lubwebxr_active();
+  WGPUTextureFormat format =
+      xr ? WGPUTextureFormat_RGBA8Unorm : WGPUTextureFormat_BGRA8Unorm;
   bool needs_resize = app->pending_resize ||
+                      app->wgpu_surface_format != format ||
                       (app->last_w != 0 && cw != app->last_w) ||
                       (app->last_h != 0 && ch != app->last_h);
   if (needs_resize) {
+    app->wgpu_surface_format = format;
     app->pending_resize = false;
     if (app->wgpu_swapchain_view) {
       wgpuTextureViewRelease(app->wgpu_swapchain_view);
@@ -411,6 +492,11 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
   // Create the per-frame command encoder.
   WGPUCommandEncoderDescriptor enc_desc = {0};
   g_enc = wgpuDeviceCreateCommandEncoder(app->wgpu_device, &enc_desc);
+  if (xr) {
+    if (!wg_prepare_xr(app, cw / 2, ch))
+      SDL_Log("[webgpu] XR targets unavailable");
+  } else if (g_xr_width)
+    wg_release_xr();
 
   if (out_w)
     *out_w = cw;
@@ -421,12 +507,26 @@ static void wg_begin_frame(App *app, int *out_w, int *out_h) {
 static void wg_end_frame(App *app) {
   // Submit the command buffer.
   if (g_enc) {
+    if (g_xr_width && app->wgpu_swapchain_tex) {
+      for (int eye = 0; eye < 2; eye++) {
+        if (!g_xr_drawn[eye])
+          continue;
+        WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        src.texture = g_xr_color[eye];
+        dst.texture = app->wgpu_swapchain_tex;
+        dst.origin.x = (uint32_t)(eye * g_xr_width);
+        WGPUExtent3D extent = {(uint32_t)g_xr_width, (uint32_t)g_xr_height, 1};
+        wgpuCommandEncoderCopyTextureToTexture(g_enc, &src, &dst, &extent);
+      }
+    }
     WGPUCommandBufferDescriptor cmd_desc = {0};
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(g_enc, &cmd_desc);
     wgpuQueueSubmit(g_queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(g_enc);
     g_enc = NULL;
+    lubwebxr_present(g_xr_drawn[0] && g_xr_drawn[1]);
   }
 
   if (app->wgpu_swapchain_view) {
@@ -1056,6 +1156,9 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
   WGPURenderPassColorAttachment colors[SGL_MAX_COLOR_TARGETS] = {0};
 
   bool is_offscreen = (d->targets[0] != 0 || d->depth_target != 0);
+  int xr_eye = is_offscreen ? -1 : d->xr_eye;
+  if (!g_xr_width)
+    xr_eye = -1;
 
   for (int i = 0; i < nct; ++i) {
     colors[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
@@ -1068,7 +1171,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
       WgImage *wi = (WgImage *)d->targets[i];
       colors[i].view = wi->color_att ? wi->color_att : wi->view;
     } else {
-      colors[i].view = app->wgpu_swapchain_view;
+      colors[i].view =
+          xr_eye >= 0 ? g_xr_color_view[xr_eye] : app->wgpu_swapchain_view;
     }
   }
 
@@ -1083,7 +1187,8 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
       WgImage *di = (WgImage *)d->depth_target;
       depth_att.view = di->depth_att ? di->depth_att : di->view;
     } else {
-      depth_att.view = app->wgpu_depth_view;
+      depth_att.view =
+          xr_eye >= 0 ? g_xr_depth_view[xr_eye] : app->wgpu_depth_view;
     }
     depth_att.depthLoadOp = load_op;
     depth_att.depthStoreOp = WGPUStoreOp_Store;
@@ -1110,8 +1215,13 @@ static void wg_begin_pass(App *app, const PassBeginDesc *d) {
 
   // Set viewport to match target.
   if (g_rpass) {
+    if (xr_eye >= 0)
+      g_xr_drawn[xr_eye] = true;
     int w, h;
-    if (is_offscreen && d->target_w > 0 && d->target_h > 0) {
+    if (xr_eye >= 0) {
+      w = g_xr_width;
+      h = g_xr_height;
+    } else if (is_offscreen && d->target_w > 0 && d->target_h > 0) {
       w = d->target_w;
       h = d->target_h;
     } else {
@@ -1150,6 +1260,52 @@ static void wg_apply_pipeline(BackendPipeline p) {
   wgpuRenderPassEncoderSetPipeline(g_rpass, wp->render);
 }
 
+// Group-1 entry filling shared by draw bindings and compute dispatch.
+//
+// Reflection keeps one entry per stage: on WGSL the VS and FS are reflected
+// separately and merged with distinct slots, so a resource both stages
+// declare under the same name (`StructuredBuffer<float4> item;` in both,
+// or one texture sampled in both) is two layout entries. Every entry that
+// shares the name gets the same resource; filling only the first would
+// leave a layout entry empty and the whole bind group invalid.
+static int wg_fill_texture_entries(WGPUBindGroupEntry *entries, int count,
+                                   int cap, const ShaderReflection *refl,
+                                   const char *name, WGPUTextureView view,
+                                   WGPUSampler sampler) {
+  for (int k = 0; k < refl->tex_count; ++k) {
+    if (strcmp(refl->texs[k].name, name) != 0)
+      continue;
+    int img_slot = refl->texs[k].img_slot;
+    int smp_slot = refl->texs[k].smp_slot;
+    if (img_slot >= 0 && count < cap) {
+      WGPUBindGroupEntry *e = &entries[count++];
+      e->binding = (uint32_t)img_slot;
+      e->textureView = view;
+    }
+    if (smp_slot >= 0 && count < cap) {
+      WGPUBindGroupEntry *e = &entries[count++];
+      e->binding = (uint32_t)smp_slot;
+      e->sampler = sampler;
+    }
+  }
+  return count;
+}
+
+static int wg_fill_storage_buf_entries(WGPUBindGroupEntry *entries, int count,
+                                       int cap, const ShaderReflection *refl,
+                                       const char *name, WGPUBuffer buf,
+                                       uint64_t bytes) {
+  for (int k = 0; k < refl->storage_buf_count; ++k) {
+    if (strcmp(refl->storage_bufs[k].name, name) != 0 || count >= cap)
+      continue;
+    WGPUBindGroupEntry *e = &entries[count++];
+    e->binding = (uint32_t)refl->storage_bufs[k].slot;
+    e->buffer = buf;
+    e->size = bytes;
+  }
+  return count;
+}
+
 static void wg_apply_bindings(const BindingsDesc *b) {
   if (!g_rpass || !g_cur_pipeline)
     return;
@@ -1167,6 +1323,7 @@ static void wg_apply_bindings(const BindingsDesc *b) {
   // Always set group 1 — WebKit requires all pipeline bind groups to be bound.
   if (g_cur_pipeline->bgl1) {
     WGPUBindGroupEntry entries[32] = {0};
+    const int cap = (int)(sizeof(entries) / sizeof(entries[0]));
     int count = 0;
 
     if (b->refl) {
@@ -1175,38 +1332,16 @@ static void wg_apply_bindings(const BindingsDesc *b) {
         WgImage *wi = (WgImage *)b->textures[i].image;
         if (!name || !wi)
           continue;
-        for (int k = 0; k < b->refl->tex_count; ++k) {
-          if (strcmp(b->refl->texs[k].name, name) == 0) {
-            int img_slot = b->refl->texs[k].img_slot;
-            int smp_slot = b->refl->texs[k].smp_slot;
-            if (img_slot >= 0) {
-              WGPUBindGroupEntry *e = &entries[count++];
-              e->binding = (uint32_t)img_slot;
-              e->textureView = wi->view;
-            }
-            if (smp_slot >= 0) {
-              WGPUBindGroupEntry *e = &entries[count++];
-              e->binding = (uint32_t)smp_slot;
-              e->sampler = wi->sampler;
-            }
-            break;
-          }
-        }
+        count = wg_fill_texture_entries(entries, count, cap, b->refl, name,
+                                        wi->view, wi->sampler);
       }
       for (int i = 0; i < b->storage_buf_count; ++i) {
         const char *name = b->storage_bufs[i].name;
         WgBuffer *wb = (WgBuffer *)b->storage_bufs[i].buf;
         if (!name || !wb)
           continue;
-        for (int k = 0; k < b->refl->storage_buf_count; ++k) {
-          if (strcmp(b->refl->storage_bufs[k].name, name) == 0) {
-            WGPUBindGroupEntry *e = &entries[count++];
-            e->binding = (uint32_t)b->refl->storage_bufs[k].slot;
-            e->buffer = wb->buf;
-            e->size = wb->bytes;
-            break;
-          }
-        }
+        count = wg_fill_storage_buf_entries(entries, count, cap, b->refl, name,
+                                            wb->buf, wb->bytes);
       }
     }
 
@@ -1255,60 +1390,72 @@ static uint32_t wg_reserve_uniform(int slot) {
   return off;
 }
 
-// Flush uniform data to GPU and bind group 0 before draw/dispatch.
-// Uses a ring buffer with dynamic offsets so each draw gets its own
-// uniform data region, preventing later draws from overwriting earlier ones.
-static void wg_flush_uniforms(void) {
-  if (!g_cur_pipeline)
-    return;
-
-  bool any_dirty = false;
+// Write every dirty uniform slot into its ring. Shared by draw and dispatch.
+static void wg_write_dirty_uniforms(void) {
   for (int i = 0; i < WG_MAX_UB_SLOTS; ++i) {
-    if (g_ub.dirty[i]) {
-      any_dirty = true;
-      size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
-      if (aligned > WG_UB_SIZE)
-        aligned = WG_UB_SIZE;
-      uint32_t off = wg_reserve_uniform(i);
-      wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
-    }
+    if (!g_ub.dirty[i])
+      continue;
+    size_t aligned = wg_align((uint32_t)g_ub.sizes[i], 16);
+    if (aligned > WG_UB_SIZE)
+      aligned = WG_UB_SIZE;
+    uint32_t off = wg_reserve_uniform(i);
+    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[i], off, g_ub.data[i], aligned);
+    g_ub.dirty[i] = false;
   }
-  if (!any_dirty && g_cur_pipeline->refl.ub_count == 0)
-    return;
+}
 
-  // Build bind group 0 with the uniform buffers, using dynamic offsets.
+// Build group 0 for a pipeline from the uniform rings. Every uniform block
+// the pipeline declares gets an entry, with the dynamic offset at the most
+// recently written region of its slot: the ring start (zero-initialised at
+// creation) when nothing was written yet. A pipeline with a uniform block
+// always gets a complete group 0 this way, whether or not the caller passed
+// uniforms; leaving an entry out would make the group invalid and the whole
+// command buffer would be dropped. Returns NULL when the pipeline has no
+// uniform block.
+static WGPUBindGroup wg_make_group0(const WgPipeline *wp, uint32_t *dyn_offsets,
+                                    int *out_count) {
   WGPUBindGroupEntry entries[WG_MAX_UB_SLOTS] = {0};
-  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
   int count = 0;
-  for (int i = 0; i < g_cur_pipeline->refl.ub_count && i < WG_MAX_UB_SLOTS;
-       ++i) {
-    int slot = g_cur_pipeline->refl.ubs[i].slot;
+  for (int i = 0; i < wp->refl.ub_count && i < WG_MAX_UB_SLOTS; ++i) {
+    int slot = wp->refl.ubs[i].slot;
+    if (slot < 0 || slot >= WG_MAX_UB_SLOTS)
+      continue;
     WGPUBindGroupEntry *e = &entries[count];
     e->binding = (uint32_t)slot;
     e->buffer = g_ub.bufs[slot];
     e->offset = 0;
     e->size = WG_UB_SIZE;
-    // Dynamic offset = where we last wrote for this slot.
     uint32_t off = g_ub.ring_offset[slot];
     dyn_offsets[count] = (off >= WG_UB_STRIDE) ? (off - WG_UB_STRIDE) : 0;
     count++;
   }
-  if (count > 0) {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = g_cur_pipeline->bgl0,
-        .entryCount = (size_t)count,
-        .entries = entries,
-    };
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-    if (bg) {
-      wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
-                                        dyn_offsets);
-      wgpuBindGroupRelease(bg);
-    }
-  }
+  *out_count = count;
+  if (count == 0)
+    return NULL;
+  WGPUBindGroupDescriptor bgd = {
+      .layout = wp->bgl0,
+      .entryCount = (size_t)count,
+      .entries = entries,
+  };
+  return wgpuDeviceCreateBindGroup(g_dev, &bgd);
+}
 
-  for (int i = 0; i < WG_MAX_UB_SLOTS; ++i)
-    g_ub.dirty[i] = false;
+// Flush uniform data to GPU and bind group 0 before a draw. The ring with
+// dynamic offsets gives each draw its own uniform region, so later draws do
+// not overwrite earlier ones.
+static void wg_flush_uniforms(void) {
+  if (!g_cur_pipeline)
+    return;
+  wg_write_dirty_uniforms();
+
+  uint32_t dyn_offsets[WG_MAX_UB_SLOTS] = {0};
+  int count = 0;
+  WGPUBindGroup bg = wg_make_group0(g_cur_pipeline, dyn_offsets, &count);
+  if (bg) {
+    wgpuRenderPassEncoderSetBindGroup(g_rpass, 0, bg, (size_t)count,
+                                      dyn_offsets);
+    wgpuBindGroupRelease(bg);
+  }
 }
 
 // ---- draw / dispatch -------------------------------------------------------
@@ -1346,95 +1493,56 @@ static void wg_dispatch(App *app, const ComputeDispatchDesc *d) {
     return;
 
   // Build bind groups for compute.
-  // Group 0: uniforms (ring-buffered with dynamic offsets)
-  WGPUBindGroupEntry ub_entries[WG_MAX_UB_SLOTS] = {0};
+  // Group 0: uniforms, through the same ring and group builder as draws, so
+  // a pipeline with a uniform block gets a valid group 0 even when this
+  // dispatch passes no uniforms (it then sees the last written data).
+  for (int i = 0; i < d->uniform_count; ++i) {
+    wg_apply_uniforms(d->uniforms[i].stage, d->uniforms[i].slot,
+                      d->uniforms[i].data, d->uniforms[i].bytes);
+  }
+  wg_write_dirty_uniforms();
   uint32_t ub_dyn_offsets[WG_MAX_UB_SLOTS] = {0};
   int ub_count = 0;
-  for (int i = 0; i < d->uniform_count; ++i) {
-    int slot = d->uniforms[i].slot;
-    if (slot < 0 || slot >= WG_MAX_UB_SLOTS || !d->uniforms[i].data)
-      continue;
-    size_t aligned = wg_align((uint32_t)d->uniforms[i].bytes, 16);
-    if (aligned > WG_UB_SIZE)
-      aligned = WG_UB_SIZE;
-    uint32_t off = wg_reserve_uniform(slot);
-    wgpuQueueWriteBuffer(g_queue, g_ub.bufs[slot], off, d->uniforms[i].data,
-                         aligned);
-    WGPUBindGroupEntry *e = &ub_entries[ub_count];
-    e->binding = (uint32_t)slot;
-    e->buffer = g_ub.bufs[slot];
-    e->offset = 0;
-    e->size = WG_UB_SIZE;
-    ub_dyn_offsets[ub_count] = off;
-    ub_count++;
-  }
 
   // Group 1: textures + samplers + storage buffers + storage textures
   WGPUBindGroupEntry res_entries[32] = {0};
+  const int res_cap = (int)(sizeof(res_entries) / sizeof(res_entries[0]));
   int res_count = 0;
 
   for (int i = 0; i < d->texture_count; ++i) {
     WgImage *wi = (WgImage *)d->textures[i].image;
     if (!wi || !d->textures[i].name)
       continue;
-    for (int k = 0; k < d->refl->tex_count; ++k) {
-      if (strcmp(d->refl->texs[k].name, d->textures[i].name) == 0) {
-        int img_slot = d->refl->texs[k].img_slot;
-        int smp_slot = d->refl->texs[k].smp_slot;
-        if (img_slot >= 0) {
-          res_entries[res_count].binding = (uint32_t)img_slot;
-          res_entries[res_count].textureView = wi->view;
-          res_count++;
-        }
-        if (smp_slot >= 0) {
-          res_entries[res_count].binding = (uint32_t)smp_slot;
-          res_entries[res_count].sampler = wi->sampler;
-          res_count++;
-        }
-        break;
-      }
-    }
+    res_count =
+        wg_fill_texture_entries(res_entries, res_count, res_cap, d->refl,
+                                d->textures[i].name, wi->view, wi->sampler);
   }
   for (int i = 0; i < d->n_storage_bufs; ++i) {
     WgBuffer *wb = (WgBuffer *)d->storage_bufs[i].buf;
     if (!wb || !d->storage_bufs[i].name)
       continue;
-    for (int k = 0; k < d->refl->storage_buf_count; ++k) {
-      if (strcmp(d->refl->storage_bufs[k].name, d->storage_bufs[i].name) == 0) {
-        int slot = d->refl->storage_bufs[k].slot;
-        res_entries[res_count].binding = (uint32_t)slot;
-        res_entries[res_count].buffer = wb->buf;
-        res_entries[res_count].size = wb->bytes;
-        res_count++;
-        break;
-      }
-    }
+    res_count = wg_fill_storage_buf_entries(res_entries, res_count, res_cap,
+                                            d->refl, d->storage_bufs[i].name,
+                                            wb->buf, wb->bytes);
   }
   for (int i = 0; i < d->n_storage_textures; ++i) {
     WgImage *wi = (WgImage *)d->storage_textures[i].image;
     if (!wi || !d->storage_textures[i].name)
       continue;
     for (int k = 0; k < d->refl->storage_tex_count; ++k) {
-      if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) ==
-          0) {
-        int slot = d->refl->storage_texs[k].slot;
-        res_entries[res_count].binding = (uint32_t)slot;
-        res_entries[res_count].textureView = wi->storage_view;
-        res_count++;
-        break;
-      }
+      if (strcmp(d->refl->storage_texs[k].name, d->storage_textures[i].name) !=
+              0 ||
+          res_count >= res_cap)
+        continue;
+      int slot = d->refl->storage_texs[k].slot;
+      res_entries[res_count].binding = (uint32_t)slot;
+      res_entries[res_count].textureView = wi->storage_view;
+      res_count++;
     }
   }
 
-  WGPUBindGroup bg0 = NULL, bg1 = NULL;
-  {
-    WGPUBindGroupDescriptor bgd = {
-        .layout = wp->bgl0,
-        .entryCount = (size_t)ub_count,
-        .entries = ub_entries,
-    };
-    bg0 = wgpuDeviceCreateBindGroup(g_dev, &bgd);
-  }
+  WGPUBindGroup bg0 = wg_make_group0(wp, ub_dyn_offsets, &ub_count);
+  WGPUBindGroup bg1 = NULL;
   {
     WGPUBindGroupDescriptor bgd = {
         .layout = wp->bgl1,
@@ -1800,8 +1908,11 @@ static bool wg_capture(App *app, const char *path) {
 }
 
 static SglPixelFormat wg_swapchain_color_format(App *app) {
-  (void)app;
-  return SGL_PF_BGRA8;
+  if (lubwebxr_active())
+    return SGL_PF_RGBA8_SRGB;
+  return app->wgpu_surface_format == WGPUTextureFormat_RGBA8Unorm
+             ? SGL_PF_RGBA8
+             : SGL_PF_BGRA8;
 }
 
 // ---- vtable ----------------------------------------------------------------

@@ -559,6 +559,46 @@ LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
   return LUB_OK;
 }
 
+LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text) {
+  App *app = lub_api_app(ctx);
+  char file[1024], temporary[1088], parent[1024];
+  if (!path.ptr || path.len <= 0 || memchr(path.ptr, 0, (size_t)path.len) ||
+      !lub_str_copy(path, file, sizeof(file)))
+    return lub_api_fail(app, "io.save_text: invalid path");
+  if (text.len < 0 || (text.len > 0 && !text.ptr))
+    return lub_api_fail(app, "io.save_text: invalid text");
+  SDL_strlcpy(parent, file, sizeof(parent));
+  char *separator = strrchr(parent, '/');
+#ifdef _WIN32
+  char *backslash = strrchr(parent, '\\');
+  if (backslash && (!separator || backslash > separator))
+    separator = backslash;
+#endif
+  if (separator && separator != parent) {
+    *separator = 0;
+    if (!SDL_CreateDirectory(parent))
+      return lub_api_fail(app, "io.save_text: %s", SDL_GetError());
+  }
+  SDL_snprintf(temporary, sizeof(temporary), "%s.lub-%" SDL_PRIu64 ".tmp", file,
+               SDL_GetPerformanceCounter());
+  SDL_IOStream *stream = SDL_IOFromFile(temporary, "wbx");
+  if (!stream)
+    return lub_api_fail(app, "io.save_text: %s", SDL_GetError());
+  if (!SDL_SaveFile_IO(stream, text.ptr ? text.ptr : "", (size_t)text.len,
+                       true) ||
+      !SDL_RenamePath(temporary, file)) {
+    LubStatus result = lub_api_fail(app, "io.save_text: %s", SDL_GetError());
+    SDL_RemovePath(temporary);
+    return result;
+  }
+  if (app->io_cache)
+    for (int i = 0; i < IO_BUCKETS; ++i)
+      for (IoEntry *e = app->io_cache->buckets[i]; e; e = e->next)
+        if (strcmp(e->path, file) == 0)
+          e->mtime = 0;
+  return LUB_OK;
+}
+
 LubStatus lub_io_load_bytes(LubContext *ctx, LubStr path, LubView *bytes,
                             int32_t *version, int32_t *status, LubStr *error) {
   App *app = lub_api_app(ctx);

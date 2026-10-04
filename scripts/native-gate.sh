@@ -86,6 +86,10 @@ elif [[ $require_cs -eq 1 ]]; then
   exit 1
 fi
 
+if [[ $cs_available -eq 1 ]]; then
+  run bash scripts/verify-tcs-binding.sh
+fi
+
 # entry class は csproj basename、無ければ唯一の .cs (run-cs-sample と同じ)
 cs_entry_class() {
   local cs_dir="$1" cs_files cs_projs
@@ -232,6 +236,7 @@ if [[ $cs_available -eq 1 ]]; then
     run scripts/gen-lubx-lua.sh --check
     # .NET 実行の facade + host
     run dotnet build dotnet/Lub -nologo -v q
+    run dotnet run --project tests/dotnet/Bindings -c Release
     cs_pool "transpile (check+build)" cs_transpile
     cs_t0=$SECONDS
     for cs_dir in "${cs_dirs[@]}"; do
@@ -262,21 +267,12 @@ run_timed bash scripts/build-release.sh --target lub_sdf_smoke --no-configure
 run_timed ./build-release-linux/lub_sdf_smoke
 run_timed bash scripts/build-release.sh --target lub_shader_layout_smoke --no-configure
 run_timed ./build-release-linux/lub_shader_layout_smoke
+run_timed bash scripts/build-release.sh --target lub_xr_math_smoke --no-configure
+run_timed ./build-release-linux/lub_xr_math_smoke
 
-physics_lua_tests=(
-  tests/lua/test_physics_box2d.lua
-  tests/lua/test_physics_box2d_phase2.lua
-  tests/lua/test_physics_box2d_phase3.lua
-  tests/lua/test_physics_box2d_debug.lua
-  tests/lua/test_physics_box2d_joints.lua
-  tests/lua/test_physics_box2d_callbacks.lua
-  tests/lua/test_physics_box2d_lifetime.lua
-  tests/lua/test_resource_revision.lua
-  tests/lua/test_audio.lua
-  tests/lua/test_font.lua
-  tests/lua/test_api_surface.lua
-  tests/lua/test_rotation_convention.lua
-)
+# shellcheck source=scripts/lua-tests.sh
+source scripts/lua-tests.sh
+physics_lua_tests=("${lua_runtime_tests[@]}")
 echo
 echo "==> physics Lua tests (${#physics_lua_tests[@]} in parallel)"
 physics_pids=()

@@ -13,3 +13,6 @@
 [submodule "third_party/tcs"]
 	path = third_party/tcs
 	url = https://github.com/neguse/tcs.git
+[submodule "third_party/openxr"]
+	path = third_party/openxr
+	url = https://github.com/KhronosGroup/OpenXR-SDK.git

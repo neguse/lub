@@ -28,6 +28,18 @@ graph TD
   Lua 供給はせず C# で実装する(`cs-lib/`)。raw Lua には tcs が生成した
   `samples/lubx.lua`(`scripts/gen-lubx-lua.sh`)を checkin して届ける。
 
+## tcs2c 実行
+
+同じ C# ソースを `tcs2c --lib --ref cs-lib/lub_stub.cs` で C に変換できる。
+`lub-gen tcs --source Game.cs --source Other.cs -o binding.c` に同じソースを渡すと、
+使用する API の C 接続コードを stub から生成する。対応していない型は生成時にエラーにする。
+生成したゲームの後に接続コードを include し、native は `liblub` にリンクする。
+
+`src/tcs_host.c` は `Game.OnInit` / `OnFrame` / `OnQuit` を呼ぶホスト。
+CMake の `LUB_TCS_GAME` と `LUB_TCS_BINDING` に生成ファイルを指定すると、
+通常の Lua ホストに代えて使う。C コンパイラーは GCC または Clang が必要。
+Web は Emscripten で同じ C を Wasm に変換する。
+
 ## 名前の規則
 
 C# の名前が中立表記で、Lua と C の名前は規則で導く(例外表は持たない)。

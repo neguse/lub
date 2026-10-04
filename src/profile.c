@@ -80,11 +80,23 @@ void profile_frame_end(ProfileState *p, uint64_t frame_index) {
       frame_index + 1 >= p->report_frame) {
     profile_report(p, p->report_label[0] ? p->report_label : "frame");
     p->report_frame_done = true;
+    p->reported = true;
   }
   if (p->report_every > 0 && p->frames >= p->report_every) {
     profile_report(p, p->report_label[0] ? p->report_label : "every");
+    p->reported = true;
     profile_reset(p);
   }
+}
+
+void profile_report_at_exit(ProfileState *p) {
+  // LUB_PROFILE_FRAME が capture の frame より後だったり、EVERY の周期に
+  // 届く前に終了したりすると report が一度も出ない。その場合だけ終了時に
+  // 一度出す。
+  if (!p->enabled || p->reported)
+    return;
+  profile_report(p, p->report_label[0] ? p->report_label : "exit");
+  p->reported = true;
 }
 
 void profile_begin_scope(ProfileState *p, const char *name) {

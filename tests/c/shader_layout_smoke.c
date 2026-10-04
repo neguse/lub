@@ -1,7 +1,9 @@
 // Buffer layout smoke: StructuredBuffer<T> element structs must have the same
 // layout on every target, so shader_compile rejects a struct whose std430
 // layout differs from tight packing and accepts one that is already aligned.
-// Runs on the SDL_GPU (SPIR-V) target, where std430 applies.
+// Runs on the SDL_GPU (SPIR-V) target, where std430 applies, and on Apple
+// also on the Metal target, which must give the same verdicts and emit the
+// packed twin struct that makes the MSL layout tight.
 #include "../../src/shader.h"
 #include <stdio.h>
 #include <string.h>
@@ -33,6 +35,8 @@ static const char *vs_with(const char *members, char *buf, size_t cap) {
   return buf;
 }
 
+static ShaderTargetBackend g_target = SHADER_TARGET_SDLGPU;
+
 static void expect(const char *label, const char *members, int should_pass,
                    int stride, const char *err_needle) {
   char vs[1024];
@@ -40,8 +44,8 @@ static void expect(const char *label, const char *members, int should_pass,
   ShaderBlob vsb = {0}, fsb = {0};
   ShaderReflection refl;
   char err[1024] = {0};
-  int ok = shader_compile(vs, kFs, SHADER_TARGET_SDLGPU, &vsb, &fsb, &refl, err,
-                          sizeof(err));
+  int ok =
+      shader_compile(vs, kFs, g_target, &vsb, &fsb, &refl, err, sizeof(err));
   if (should_pass) {
     CHECK(ok, "%s: compile failed: %s", label, err);
     if (ok) {
@@ -49,6 +53,9 @@ static void expect(const char *label, const char *members, int should_pass,
             refl.storage_buf_count);
       CHECK(refl.storage_bufs[0].elem_stride == stride, "%s: stride %d != %d",
             label, refl.storage_bufs[0].elem_stride, stride);
+      if (g_target == SHADER_TARGET_METAL && strstr(members, "float3"))
+        CHECK(strstr((const char *)vsb.spirv, "packed_float3 pos") != NULL,
+              "%s: MSL lacks the packed twin struct", label);
     }
   } else {
     CHECK(!ok, "%s: compile should have failed", label);
@@ -65,7 +72,8 @@ static void expect(const char *label, const char *members, int should_pass,
          ok ? "" : " -> ", ok ? "" : err);
 }
 
-int main(void) {
+static void run_target(ShaderTargetBackend target) {
+  g_target = target;
   expect("float2 pair", "float2 pos; float2 uv;", 1, 16, NULL);
   expect("padded float3", "float3 pos; float pad; float2 uv; float2 pad2;", 1,
          32, NULL);
@@ -73,6 +81,13 @@ int main(void) {
   expect("size not multiple of 16", "float3 pos; float pad; float2 uv;", 0, 0,
          "multiple of 16");
   expect("float3 array", "float3 p[2]; float2 pos;", 0, 0, "stride");
+}
+
+int main(void) {
+  run_target(SHADER_TARGET_SDLGPU);
+#ifdef __APPLE__
+  run_target(SHADER_TARGET_METAL);
+#endif
   if (g_failures) {
     printf("%d failure(s)\n", g_failures);
     return 1;

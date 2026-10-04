@@ -19,6 +19,8 @@ const RenderBackend *g_backend = NULL;
 #define LUB_DEFAULT_BACKEND "d3d12"
 #elif defined(__linux__)
 #define LUB_DEFAULT_BACKEND "vulkan"
+#elif defined(__APPLE__)
+#define LUB_DEFAULT_BACKEND "metal"
 #else
 #define LUB_DEFAULT_BACKEND "sdlgpu"
 #endif
@@ -26,11 +28,20 @@ const RenderBackend *g_backend = NULL;
 #ifndef __EMSCRIPTEN__
 // vulkan / sdlgpu (Vulkan driver) は Vulkan-capable surface を要求する。
 // d3d12 は Vulkan を使わないため flag を外し、Vulkan ICD の無い環境
-// (GPU 無しの CI 等) でも window を作れるようにする。
+// (GPU 無しの CI 等) でも window を作れるようにする。metal は CAMetalLayer を
+// 持つ view を使い、Retina / iPhone の画面を実 pixel で描く。
 static SDL_WindowFlags window_flags_for_backend(const char *backend_name) {
+  if (strcmp(backend_name, "openxr") == 0)
+    return SDL_WINDOW_HIDDEN;
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
-  if (strcmp(backend_name, "d3d12") != 0)
+  if (strcmp(backend_name, "metal") == 0)
+    flags |= SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+  else if (strcmp(backend_name, "d3d12") != 0)
     flags |= SDL_WINDOW_VULKAN;
+#ifdef SDL_PLATFORM_IOS
+  // iPhone の window は常に画面全体。fullscreen にすると status bar が消える。
+  flags |= SDL_WINDOW_FULLSCREEN;
+#endif
   return flags;
 }
 #endif
@@ -57,10 +68,12 @@ bool app_init(App *app) {
 
   // wasm は canvas-backed default のみ。
 #ifdef __EMSCRIPTEN__
-  app->window = SDL_CreateWindow("lub", 1280, 720, SDL_WINDOW_RESIZABLE);
+  app->window = SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W,
+                                 LUB_DEFAULT_WINDOW_H, SDL_WINDOW_RESIZABLE);
 #else
-  app->window = SDL_CreateWindow("lub", 1280, 720,
-                                 window_flags_for_backend(app->backend_name));
+  app->window =
+      SDL_CreateWindow("lub", LUB_DEFAULT_WINDOW_W, LUB_DEFAULT_WINDOW_H,
+                       window_flags_for_backend(app->backend_name));
 #endif
   if (!app->window) {
     SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
@@ -118,15 +131,24 @@ bool app_backend_init(App *app) {
     SDL_Log("backend 'd3d12' is Windows-only");
     return false;
 #endif
-  } else if (strcmp(app->backend_name, "vulkan") == 0) {
+  } else if (strcmp(app->backend_name, "vulkan") == 0 ||
+             strcmp(app->backend_name, "openxr") == 0) {
 #if defined(LUB_HAS_VULKAN)
     g_backend = &g_backend_vulkan;
 #else
     SDL_Log("backend 'vulkan' is not available in this build");
     return false;
 #endif
+  } else if (strcmp(app->backend_name, "metal") == 0) {
+#if defined(__APPLE__)
+    g_backend = &g_backend_metal;
+#else
+    SDL_Log("backend 'metal' is Apple-only");
+    return false;
+#endif
   } else {
-    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan' or 'sdlgpu')",
+    SDL_Log("unknown backend '%s' (expected 'd3d12', 'vulkan', 'metal', "
+            "'openxr' or 'sdlgpu')",
             app->backend_name);
     return false;
   }
@@ -134,7 +156,9 @@ bool app_backend_init(App *app) {
   // wasm build: webgpu backend only (backend_name is ignored).
   g_backend = &g_backend_webgpu;
 #endif
-  SDL_Log("backend selected: %s", g_backend->name);
+  SDL_Log("backend selected: %s", strcmp(app->backend_name, "openxr") == 0
+                                      ? "openxr"
+                                      : g_backend->name);
   if (!g_backend->init(app)) {
     SDL_Log("backend init failed");
     return false;

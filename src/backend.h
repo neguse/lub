@@ -80,6 +80,8 @@ typedef struct PassBeginDesc {
   // Applies to all attachments (color + depth). 0 (unset) behaves as
   // SGL_LOAD_CLEAR; SGL_LOAD_LOAD preserves the previous contents.
   SglLoadAction load;
+  // Swapchain passes only: -1 = the window, 0 / 1 = that XR eye's image.
+  int xr_eye;
 } PassBeginDesc;
 
 typedef struct BindingsDesc {
@@ -207,6 +209,9 @@ extern const RenderBackend g_backend_d3d12; // backend_d3d12.cpp, Windows-only
 #endif
 #if defined(LUB_HAS_VULKAN)
 extern const RenderBackend g_backend_vulkan; // backend_vulkan.c ("vulkan")
+#endif
+#ifdef __APPLE__
+extern const RenderBackend g_backend_metal; // backend_metal.m, Apple-only
 #endif
 
 #ifdef __cplusplus

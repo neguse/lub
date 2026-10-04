@@ -62,6 +62,22 @@ Linux prerequisites:
 The Linux script defaults to `build-release-linux` so it can coexist with a
 Windows `build-release` directory in the same checkout.
 
+## macOS
+
+The same script builds on macOS. `build-mac` is the directory the golden
+script and the Apple gate (`scripts/apple-gate.sh`) expect:
+
+```sh
+bash scripts/build-release.sh --build-dir build-mac
+
+# A player without the Slang shader compiler (what an iOS app links).
+bash scripts/build-release.sh --build-dir build-mac-player -DLUB_NO_SLANG=ON
+```
+
+Prerequisites are Xcode or the Command Line Tools, CMake and Ninja. `-DNAME=VALUE`
+arguments are passed to the CMake configure step. Building for iOS is described
+in `docs/metal-backend.md`.
+
 For benchmark runs, use the benchmark script for the platform:
 
 ```powershell

@@ -50,6 +50,12 @@ The profiler prints:
 - `LUB_PROFILE ...` for the measured frame window;
 - `LUB_PROFILE_SCOPE ...` for each named scope.
 
+`LUB_PROFILE_FRAME` prints once when that frame ends, and `LUB_PROFILE_EVERY`
+prints every N measured frames. If the run ends before either has printed
+(for example `--capture-frame 240` with `LUB_PROFILE_FRAME=300`, or neither
+variable set), the frames measured so far are printed once at exit with the
+label `exit` (or `LUB_PROFILE_LABEL` if set).
+
 For Release measurements, use the Release script and give automation a 2-hour
 process timeout:
 

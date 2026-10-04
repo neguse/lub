@@ -18,9 +18,10 @@ do
 			table.insert(list, item)
 		end
 
-		function List.Remove(list, item)
+		-- eq は struct 要素の値等価 (型別 op_Equality)。省略時は raw ==
+		function List.Remove(list, item, eq)
 			for i = 1, #list do
-				if list[i] == item then
+				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
 					table.remove(list, i)
 					return true
 				end
@@ -45,18 +46,18 @@ do
 			return #list
 		end
 
-		function List.Contains(list, item)
+		function List.Contains(list, item, eq)
 			for i = 1, #list do
-				if list[i] == item then
+				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
 					return true
 				end
 			end
 			return false
 		end
 
-		function List.IndexOf(list, item)
+		function List.IndexOf(list, item, eq)
 			for i = 1, #list do
-				if list[i] == item then
+				if (eq and eq(list[i], item)) or (not eq and list[i] == item) then
 					return i - 1
 				end -- return 0-indexed
 			end
@@ -337,6 +338,41 @@ do
 			return vals
 		end
 
+		-- Char (整数 code unit、ASCII の判定 / 変換。C backend も同じ表)
+		local Char = {}
+		TinySystem.Char = Char
+
+		function Char.IsDigit(c)
+			return c >= 48 and c <= 57
+		end
+		function Char.IsUpper(c)
+			return c >= 65 and c <= 90
+		end
+		function Char.IsLower(c)
+			return c >= 97 and c <= 122
+		end
+		function Char.IsLetter(c)
+			return Char.IsUpper(c) or Char.IsLower(c)
+		end
+		function Char.IsLetterOrDigit(c)
+			return Char.IsLetter(c) or Char.IsDigit(c)
+		end
+		function Char.IsWhiteSpace(c)
+			return c == 32 or (c >= 9 and c <= 13)
+		end
+		function Char.ToUpper(c)
+			if Char.IsLower(c) then
+				return c - 32
+			end
+			return c
+		end
+		function Char.ToLower(c)
+			if Char.IsUpper(c) then
+				return c + 32
+			end
+			return c
+		end
+
 		-- String operations
 		local String = {}
 		TinySystem.String = String
@@ -514,6 +550,23 @@ do
 			return rounded
 		end
 
+		-- int.TryParse / float.TryParse の lowering 先: (found, value or default)
+		function Math.TryParseInt(s, default)
+			local v = math.tointeger(tonumber(s))
+			if v ~= nil then
+				return true, v
+			end
+			return false, default
+		end
+
+		function Math.TryParseFloat(s, default)
+			local v = tonumber(s)
+			if v ~= nil then
+				return true, v + 0.0
+			end
+			return false, default
+		end
+
 		function Math.Clamp(value, min, max)
 			if value < min then
 				return min
@@ -524,26 +577,162 @@ do
 			return value
 		end
 
-		-- Random
+		-- Random (System.Random 形: instance + Shared)。合意 PRNG は Lua 5.5 の
+		-- math.random (xoshiro256**、LUA_32BITS 構成。il-spec §13)。Shared は VM の
+		-- math.random 状態そのもの、instance は同じアルゴリズムの pure-Lua 実装
+		-- (64bit 値を 32bit 対で持つので 32bit / 64bit どちらの Lua でも同じ列)。
+		-- C backend は両方に同じ実装を持つので seed 固定時に bit 一致する
 		local Random = {}
+		Random.__index = Random
 		TinySystem.Random = Random
 
-		function Random.Next(min, max)
+		local M32 = 0xFFFFFFFF
+
+		local function shl64(h, l, n) -- 0 < n < 32
+			return ((h << n) | (l >> (32 - n))) & M32, (l << n) & M32
+		end
+
+		local function rotl64(h, l, n) -- 0 < n < 32
+			return ((h << n) | (l >> (32 - n))) & M32, ((l << n) | (h >> (32 - n))) & M32
+		end
+
+		local function rotr64(h, l, n) -- 0 < n < 32 (= rotl by 64 - n)
+			return ((h >> n) | (l << (32 - n))) & M32, ((l >> n) | (h << (32 - n))) & M32
+		end
+
+		local function add64(h1, l1, h2, l2)
+			local l = (l1 + l2) & M32
+			local h = (h1 + h2) & M32
+			if math.ult(l, l1) then
+				h = (h + 1) & M32
+			end
+			return h, l
+		end
+
+		-- xoshiro256** の 1 step。state は {h0, l0, h1, l1, h2, l2, h3, l3}
+		local function nextrand(s)
+			local h0, l0, h1, l1, h2, l2, h3, l3 = s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8]
+			-- res = rotl(s1 * 5, 7) * 9
+			local th, tl = shl64(h1, l1, 2)
+			th, tl = add64(th, tl, h1, l1)
+			th, tl = rotl64(th, tl, 7)
+			local rh, rl = shl64(th, tl, 3)
+			rh, rl = add64(rh, rl, th, tl)
+			local sh, sl = shl64(h1, l1, 17)
+			h2, l2 = h2 ~ h0, l2 ~ l0
+			h3, l3 = h3 ~ h1, l3 ~ l1
+			h1, l1 = h1 ~ h2, l1 ~ l2
+			h0, l0 = h0 ~ h3, l0 ~ l3
+			h2, l2 = h2 ~ sh, l2 ~ sl
+			h3, l3 = rotr64(h3, l3, 19) -- rotl 45
+			s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8] = h0, l0, h1, l1, h2, l2, h3, l3
+			return rh & M32, rl & M32
+		end
+
+		-- 32bit 符号付きへ (64bit Lua では上位を落として符号拡張、32bit Lua では恒等)
+		local function toi32(x)
+			x = x & M32
+			if math.ult(0x7FFFFFFF, x) then
+				x = x - 0x100000000
+			end
+			return x
+		end
+
+		-- math.randomseed(n1, n2) と同じ: state = {n1, 0xff, n2, 0}、先頭 16 値を捨てる
+		local function seedstate(n1, n2)
+			local s = { 0, n1 & M32, 0, 0xff, 0, n2 & M32, 0, 0 }
+			for _ = 1, 16 do
+				nextrand(s)
+			end
+			return s
+		end
+
+		-- [0, n] (unsigned) への射影 (lmathlib の project)
+		local function project(s, ran, n)
+			local lim = n
+			local sh = 1
+			while (lim & (lim + 1)) ~= 0 do
+				lim = lim | (lim >> sh)
+				sh = sh * 2
+			end
+			ran = ran & lim
+			while math.ult(n, ran) do
+				local _, l = nextrand(s)
+				ran = l & lim
+			end
+			return ran
+		end
+
+		local function rangeof(s, low, up)
+			local _, l = nextrand(s)
+			if low > up then
+				error("interval is empty")
+			end
+			local p = project(s, l, (up - low) & M32)
+			return toi32((p + low) & M32)
+		end
+
+		local random_auto = 0
+
+		-- new Random() / new Random(seed)
+		function Random.new(seed)
+			if seed == nil then
+				random_auto = random_auto + 1
+				-- 起動ごと・instance ごとに異なる seed (32bit Lua でも整数に収まる形)
+				local t = math.tointeger(os.time()) or 0
+				local c = math.tointeger(math.floor(os.clock() * 1000000)) or 0
+				seed = (t ~ c ~ (random_auto * 0x9E3779B1)) & M32
+			end
+			return setmetatable({ s = seedstate(seed, 0) }, Random)
+		end
+
+		function Random:Next(min, max)
 			if max then
-				return math.random(min, max - 1)
+				return rangeof(self.s, min, max - 1)
 			elseif min then
-				return math.random(0, min - 1)
+				return rangeof(self.s, 0, min - 1)
 			else
-				return math.random(0, 2147483646)
+				return rangeof(self.s, 0, 2147483646)
 			end
 		end
 
-		function Random.NextFloat()
-			return math.random()
+		function Random:NextFloat()
+			local h = nextrand(self.s)
+			return (h >> 8) * (1 / 16777216)
+		end
+		Random.NextSingle = Random.NextFloat
+
+		function Random:Range(min, max)
+			return rangeof(self.s, min, max)
 		end
 
-		function Random.Range(min, max)
-			return math.random(min, max)
+		-- Shared: VM の math.random 状態 (Random.Seed = math.randomseed)
+		local Shared = setmetatable({}, {
+			__index = {
+				Next = function(_, min, max)
+					if max then
+						return math.random(min, max - 1)
+					elseif min then
+						return math.random(0, min - 1)
+					else
+						return math.random(0, 2147483646)
+					end
+				end,
+				NextFloat = function()
+					return math.random()
+				end,
+				NextSingle = function()
+					return math.random()
+				end,
+				Range = function(_, min, max)
+					return math.random(min, max)
+				end,
+			},
+		})
+		Random.Shared = Shared
+
+		function Random.Seed(seed)
+			math.randomseed(seed)
 		end
 
 		-- C# integer division / remainder (0 方向 truncation、剰余は被除数の符号)。
@@ -585,6 +774,163 @@ do
 			return false, default
 		end
 
+		-- `new T[n]` (値型 T): default を n 個詰めた sequence (生成コードは
+		-- __tcs_arr global 経由)。init が関数なら要素ごとに呼ぶ (struct の zero 値)
+		function TinySystem.arr(n, init)
+			local t = {}
+			if type(init) == "function" then
+				for i = 1, n do
+					t[i] = init()
+				end
+			else
+				for i = 1, n do
+					t[i] = init
+				end
+			end
+			return t
+		end
+
+		-- C# のシフト (生成コードは __tcs_shl / __tcs_shr global 経由): count は
+		-- 31 でマスク、int の >> は算術シフト (Lua native は論理)
+		function TinySystem.shl(a, n)
+			return a << (n & 31)
+		end
+
+		function TinySystem.shr(a, n)
+			n = n & 31
+			if a >= 0 then
+				return a >> n
+			end
+			return ~(~a >> n)
+		end
+
+		-- (int)f: 0 方向 truncation (生成コードは __tcs_trunc global 経由)
+		function TinySystem.trunc(x)
+			local i = math.tointeger(x)
+			if i then
+				return i
+			end
+			if x >= 0 then
+				return math.floor(x)
+			end
+			return math.ceil(x)
+		end
+
+		-- Nullable<T> (il-spec §13、module mode の __tcs_n* global の実体)
+		function TinySystem.nval(v)
+			if v == nil then
+				error("Nullable object must have a value")
+			end
+			return v
+		end
+		function TinySystem.nget(v, d)
+			if v == nil then
+				return d
+			end
+			return v
+		end
+		function TinySystem.nlift(a, b, f)
+			if a == nil or b == nil then
+				return nil
+			end
+			return f(a, b)
+		end
+		function TinySystem.nlift1(a, f)
+			if a == nil then
+				return nil
+			end
+			return f(a)
+		end
+		function TinySystem.ncmp(a, b, f)
+			if a == nil or b == nil then
+				return false
+			end
+			return f(a, b)
+		end
+		function TinySystem.nand(a, b)
+			if a == false or b == false then
+				return false
+			end
+			if a == nil or b == nil then
+				return nil
+			end
+			return true
+		end
+		function TinySystem.nor(a, b)
+			if a == true or b == true then
+				return true
+			end
+			if a == nil or b == nil then
+				return nil
+			end
+			return false
+		end
+		function TinySystem.nnot(a)
+			if a == nil then
+				return nil
+			end
+			return not a
+		end
+		TinySystem.nops = {
+			add = function(a, b)
+				return a + b
+			end,
+			sub = function(a, b)
+				return a - b
+			end,
+			mul = function(a, b)
+				return a * b
+			end,
+			div = function(a, b)
+				return a / b
+			end,
+			idiv = function(a, b)
+				return TinySystem.idiv(a, b)
+			end,
+			irem = function(a, b)
+				return TinySystem.irem(a, b)
+			end,
+			fmod = function(a, b)
+				return math.fmod(a, b)
+			end,
+			band = function(a, b)
+				return a & b
+			end,
+			bor = function(a, b)
+				return a | b
+			end,
+			bxor = function(a, b)
+				if type(a) == "boolean" then
+					return a ~= b
+				end
+				return a ~ b
+			end,
+			shl = function(a, b)
+				return TinySystem.shl(a, b)
+			end,
+			shr = function(a, b)
+				return TinySystem.shr(a, b)
+			end,
+			lt = function(a, b)
+				return a < b
+			end,
+			le = function(a, b)
+				return a <= b
+			end,
+			gt = function(a, b)
+				return a > b
+			end,
+			ge = function(a, b)
+				return a >= b
+			end,
+			neg = function(a)
+				return -a
+			end,
+			bnot = function(a)
+				return ~a
+			end,
+		}
+
 		-- f32 の shortest round-trip 10 進表記 (il-spec §13)
 		function TinySystem.fstr(v)
 			if math.type(v) ~= "float" then
@@ -601,6 +947,17 @@ do
 			return string.format("%.9g", v)
 		end
 
+		-- T? の文字列化 (null → "")
+		function TinySystem.nstr(v)
+			if v == nil then
+				return ""
+			end
+			if math.type(v) == "float" then
+				return TinySystem.fstr(v)
+			end
+			return tostring(v)
+		end
+
 		return TinySystem
 	end)()
 	_G.TinySystem = TinySystem
@@ -609,6 +966,7 @@ do
 	_G.Math = TinySystem.Math
 	_G.String = TinySystem.String
 	_G.Random = TinySystem.Random
+	_G.Char = TinySystem.Char
 end
 
 -- Generated by TinyC# transpiler
@@ -621,6 +979,137 @@ local function __tcs_idiv(a, b)
 end
 local function __tcs_irem(a, b)
 	return a - __tcs_idiv(a, b) * b
+end
+local function __tcs_trunc(x)
+	local i = math.tointeger(x)
+	if i then
+		return i
+	end
+	if x >= 0 then
+		return math.floor(x)
+	end
+	return math.ceil(x)
+end
+local function __tcs_shl(a, n)
+	return a << (n & 31)
+end
+local function __tcs_shr(a, n)
+	n = n & 31
+	if a >= 0 then
+		return a >> n
+	end
+	return ~(~a >> n)
+end
+local function __tcs_nval(v)
+	if v == nil then
+		error("Nullable object must have a value")
+	end
+	return v
+end
+local function __tcs_nget(v, d)
+	if v == nil then
+		return d
+	end
+	return v
+end
+local function __tcs_nlift(a, b, f)
+	if a == nil or b == nil then
+		return nil
+	end
+	return f(a, b)
+end
+local function __tcs_nlift1(a, f)
+	if a == nil then
+		return nil
+	end
+	return f(a)
+end
+local function __tcs_ncmp(a, b, f)
+	if a == nil or b == nil then
+		return false
+	end
+	return f(a, b)
+end
+local function __tcs_nand(a, b)
+	if a == false or b == false then
+		return false
+	end
+	if a == nil or b == nil then
+		return nil
+	end
+	return true
+end
+local function __tcs_nor(a, b)
+	if a == true or b == true then
+		return true
+	end
+	if a == nil or b == nil then
+		return nil
+	end
+	return false
+end
+local function __tcs_nnot(a)
+	if a == nil then
+		return nil
+	end
+	return not a
+end
+local function __tcs_op_add(a, b)
+	return a + b
+end
+local function __tcs_op_sub(a, b)
+	return a - b
+end
+local function __tcs_op_mul(a, b)
+	return a * b
+end
+local function __tcs_op_div(a, b)
+	return a / b
+end
+local function __tcs_op_idiv(a, b)
+	return __tcs_idiv(a, b)
+end
+local function __tcs_op_irem(a, b)
+	return __tcs_irem(a, b)
+end
+local function __tcs_op_fmod(a, b)
+	return math.fmod(a, b)
+end
+local function __tcs_op_band(a, b)
+	return a & b
+end
+local function __tcs_op_bor(a, b)
+	return a | b
+end
+local function __tcs_op_bxor(a, b)
+	if type(a) == "boolean" then
+		return a ~= b
+	end
+	return a ~ b
+end
+local function __tcs_op_shl(a, b)
+	return __tcs_shl(a, b)
+end
+local function __tcs_op_shr(a, b)
+	return __tcs_shr(a, b)
+end
+local function __tcs_op_lt(a, b)
+	return a < b
+end
+local function __tcs_op_le(a, b)
+	return a <= b
+end
+local function __tcs_op_gt(a, b)
+	return a > b
+end
+local function __tcs_op_ge(a, b)
+	return a >= b
+end
+local function __tcs_op_neg(a)
+	return -a
+end
+local function __tcs_op_bnot(a)
+	return ~a
 end
 local function __tcs_is(x, T)
 	local mt = getmetatable(x)
@@ -646,6 +1135,28 @@ local function __tcs_fstr(v)
 		return s
 	end
 	return string.format("%.9g", v)
+end
+local function __tcs_arr(n, init)
+	local t = {}
+	if type(init) == "function" then
+		for i = 1, n do
+			t[i] = init()
+		end
+	else
+		for i = 1, n do
+			t[i] = init
+		end
+	end
+	return t
+end
+local function __tcs_nstr(v)
+	if v == nil then
+		return ""
+	end
+	if math.type(v) == "float" then
+		return __tcs_fstr(v)
+	end
+	return tostring(v)
 end
 __tcs_instances = __tcs_instances or setmetatable({}, { __mode = "k" })
 Vec2 = {}
@@ -1776,7 +2287,19 @@ end
 
 function Atlas:ensure()
 	if self.pixels ~= nil then
-		if self.version ~= nil then
+		local claim = self.version
+		if not (claim ~= nil) and not self.dirty and self.texture ~= nil then
+			claim = self.texture.version
+		end
+		local live
+		if claim ~= nil then
+			live = lub.gfx.lookup_texture(self.key)
+		else
+			live = nil
+		end
+		if live ~= nil and (live.version == claim) then
+			self.texture = lub.gfx.use_texture(self.key, self.w, self.h, self.format, nil, claim, self:texture_opts())
+		else
 			self.texture = lub.gfx.use_texture(
 				self.key,
 				self.w,
@@ -1786,20 +2309,7 @@ function Atlas:ensure()
 				self.version,
 				self:texture_opts()
 			)
-		elseif self.dirty or self.texture == nil then
-			self.texture =
-				lub.gfx.use_texture(self.key, self.w, self.h, self.format, self.pixels, nil, self:texture_opts())
 			self.dirty = false
-		else
-			self.texture = lub.gfx.use_texture(
-				self.key,
-				self.w,
-				self.h,
-				self.format,
-				self.pixels,
-				self.texture.version,
-				self:texture_opts()
-			)
 		end
 		return true
 	end
@@ -1826,7 +2336,6 @@ Bones = {}
 Bones.__index = Bones
 
 Bones.max = 0
-Bones.max = 16
 
 function Bones.new()
 	local self = setmetatable({}, Bones)
@@ -1852,7 +2361,7 @@ function Bones.pack(mesh, resolve)
 				m = Mat4.new()
 			end
 			for _, v in ipairs(m.m) do
-				table.insert(arr, v)
+				arr[#arr + 1] = v
 			end
 			count = count + 1
 			i = i + 1
@@ -1861,12 +2370,14 @@ function Bones.pack(mesh, resolve)
 	while count < 16 do
 		local id = Mat4.new()
 		for _, v in ipairs(id.m) do
-			table.insert(arr, v)
+			arr[#arr + 1] = v
 		end
 		count = count + 1
 	end
 	return arr
 end
+
+Bones.max = 16
 
 Camera2d = {}
 Camera2d.__index = Camera2d
@@ -1942,12 +2453,12 @@ end
 
 function Camera3d.vp(opts)
 	local up = opts.up or Vec3.new(0, 1, 0)
-	local fov = opts.fov or 60.0
-	local near = opts.near or 0.1
-	local far = opts.far or 100.0
+	local fov = __tcs_nget(opts.fov, 60.0)
+	local near = __tcs_nget(opts.near, 0.1)
+	local far = __tcs_nget(opts.far, 100.0)
 	local aspect
 	if opts.aspect ~= nil then
-		aspect = opts.aspect or 1.0
+		aspect = __tcs_nget(opts.aspect, 1.0)
 	else
 		local gw
 		local gh
@@ -1977,18 +2488,138 @@ function Color.new(r, g, b, a)
 end
 
 function Color.rgb(r, g, b, a)
-	return Color.new(r, g, b, a or 1.0)
+	return Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
 function Color.hex(rgb, a)
 	local r = math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0
 	local g = math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0
 	local b = __tcs_irem(rgb, 256) / 255.0
-	return Color.new(r, g, b, a or 1.0)
+	return Color.new(r, g, b, __tcs_nget(a, 1.0))
 end
 
 FixedStep = {}
 FixedStep.__index = FixedStep
+
+function FixedStep.new(hz, maxCatchUp)
+	local self = setmetatable({}, FixedStep)
+	__tcs_instances[self] = FixedStep
+	self.tick_dt = 0
+	self.max_catch_up = 0
+	self.accumulator = 0
+	self.stopped = false
+	self.pending_key_pressed = {}
+	self.pending_key_released = {}
+	self.pending_mouse_pressed = {}
+	self.pending_mouse_released = {}
+	self.tick_dt = 1.0 / (__tcs_nget(hz, 60.0))
+	self.max_catch_up = __tcs_nget(maxCatchUp, 8)
+	local i = 0
+	while i < #FixedStep.scan_keys do
+		self.pending_key_pressed[#self.pending_key_pressed + 1] = false
+		self.pending_key_released[#self.pending_key_released + 1] = false
+		i = i + 1
+	end
+	for b = 0, 4 - 1 do
+		self.pending_mouse_pressed[#self.pending_mouse_pressed + 1] = false
+		self.pending_mouse_released[#self.pending_mouse_released + 1] = false
+	end
+	return self
+end
+
+function FixedStep:frame(dt, tick)
+	self:latch_edges()
+	if dt > 0 then
+		self.accumulator = Math.Min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
+	end
+	self.stopped = false
+	local steps = 0
+	while self.accumulator + 1e-9 >= self.tick_dt and steps < self.max_catch_up and not self.stopped do
+		tick(self.tick_dt)
+		self:clear_pending()
+		self.accumulator = self.accumulator - self.tick_dt
+		if self.accumulator < 0 then
+			self.accumulator = 0
+		end
+		steps = steps + 1
+	end
+end
+
+function FixedStep:stop()
+	self.stopped = true
+	self.accumulator = 0
+end
+
+function FixedStep:key_pressed(key)
+	local i = FixedStep.key_index(key)
+	return i >= 0 and self.pending_key_pressed[i + 1]
+end
+
+function FixedStep:key_released(key)
+	local i = FixedStep.key_index(key)
+	return i >= 0 and self.pending_key_released[i + 1]
+end
+
+function FixedStep:mouse_pressed(button)
+	local b = __tcs_nget(button, 1)
+	return b >= 1 and b <= 3 and self.pending_mouse_pressed[b + 1]
+end
+
+function FixedStep:mouse_released(button)
+	local b = __tcs_nget(button, 1)
+	return b >= 1 and b <= 3 and self.pending_mouse_released[b + 1]
+end
+
+function FixedStep:alpha()
+	return Math.Min(self.accumulator / self.tick_dt, 1.0)
+end
+
+function FixedStep.key_index(key)
+	local i = 0
+	while i < #FixedStep.scan_keys do
+		if FixedStep.scan_keys[i + 1] == key then
+			return i
+		end
+		i = i + 1
+	end
+	return -1
+end
+
+function FixedStep:latch_edges()
+	local i = 0
+	while i < #FixedStep.scan_keys do
+		if lub.input.key_pressed(FixedStep.scan_keys[i + 1]) then
+			self.pending_key_pressed[i + 1] = true
+		end
+		if lub.input.key_released(FixedStep.scan_keys[i + 1]) then
+			self.pending_key_released[i + 1] = true
+		end
+		i = i + 1
+	end
+	for b = 1, 3 do
+		if lub.input.mouse_pressed(b) then
+			self.pending_mouse_pressed[b + 1] = true
+		end
+		if lub.input.mouse_released(b) then
+			self.pending_mouse_released[b + 1] = true
+		end
+	end
+end
+
+function FixedStep:clear_pending()
+	local i = 0
+	while i < #self.pending_key_pressed do
+		self.pending_key_pressed[i + 1] = false
+		self.pending_key_released[i + 1] = false
+		i = i + 1
+	end
+	local b = 0
+	while b < #self.pending_mouse_pressed do
+		self.pending_mouse_pressed[b + 1] = false
+		self.pending_mouse_released[b + 1] = false
+		b = b + 1
+	end
+end
 
 FixedStep.scan_keys = {
 	"space",
@@ -2038,114 +2669,6 @@ FixedStep.scan_keys = {
 	"9",
 }
 
-function FixedStep.new(hz, maxCatchUp)
-	local self = setmetatable({}, FixedStep)
-	__tcs_instances[self] = FixedStep
-	self.tick_dt = 0
-	self.max_catch_up = 0
-	self.accumulator = 0
-	self.stopped = false
-	self.pending_key_pressed = {}
-	self.pending_key_released = {}
-	self.pending_mouse_pressed = {}
-	self.pending_mouse_released = {}
-	self.tick_dt = 1.0 / (hz or 60.0)
-	self.max_catch_up = maxCatchUp or 8
-	return self
-end
-
-function FixedStep:frame(dt, tick)
-	self:latch_edges()
-	if dt > 0 then
-		self.accumulator = Math.Min(self.accumulator + dt, self.tick_dt * self.max_catch_up)
-	end
-	self.stopped = false
-	local steps = 0
-	while self.accumulator + 1e-9 >= self.tick_dt and steps < self.max_catch_up and not self.stopped do
-		tick(self.tick_dt)
-		self:clear_pending()
-		self.accumulator = self.accumulator - self.tick_dt
-		if self.accumulator < 0 then
-			self.accumulator = 0
-		end
-		steps = steps + 1
-	end
-end
-
-function FixedStep:stop()
-	self.stopped = true
-	self.accumulator = 0
-end
-
-function FixedStep:key_pressed(key)
-	local i = FixedStep.key_index(key)
-	return i >= 0 and self.pending_key_pressed[i + 1]
-end
-
-function FixedStep:key_released(key)
-	local i = FixedStep.key_index(key)
-	return i >= 0 and self.pending_key_released[i + 1]
-end
-
-function FixedStep:mouse_pressed(button)
-	local b = button or 1
-	return b >= 1 and b <= 3 and self.pending_mouse_pressed[b + 1]
-end
-
-function FixedStep:mouse_released(button)
-	local b = button or 1
-	return b >= 1 and b <= 3 and self.pending_mouse_released[b + 1]
-end
-
-function FixedStep:alpha()
-	return Math.Min(self.accumulator / self.tick_dt, 1.0)
-end
-
-function FixedStep.key_index(key)
-	local i = 0
-	while i < #FixedStep.scan_keys do
-		if FixedStep.scan_keys[i + 1] == key then
-			return i
-		end
-		i = i + 1
-	end
-	return -1
-end
-
-function FixedStep:latch_edges()
-	local i = 0
-	while i < #FixedStep.scan_keys do
-		if lub.input.key_pressed(FixedStep.scan_keys[i + 1]) then
-			self.pending_key_pressed[i + 1] = true
-		end
-		if lub.input.key_released(FixedStep.scan_keys[i + 1]) then
-			self.pending_key_released[i + 1] = true
-		end
-		i = i + 1
-	end
-	for b = 1, 3 do
-		if lub.input.mouse_pressed(b) then
-			self.pending_mouse_pressed[b + 1] = true
-		end
-		if lub.input.mouse_released(b) then
-			self.pending_mouse_released[b + 1] = true
-		end
-	end
-end
-
-function FixedStep:clear_pending()
-	local i = 0
-	while i < #self.pending_key_pressed do
-		self.pending_key_pressed[i + 1] = false
-		self.pending_key_released[i + 1] = false
-		i = i + 1
-	end
-	for b = 0, 4 - 1 do
-		self.pending_mouse_pressed[b + 1] = false
-		self.pending_mouse_released[b + 1] = false
-	end
-end
-
 FpsMeter = {}
 FpsMeter.__index = FpsMeter
 
@@ -2153,7 +2676,7 @@ function FpsMeter.new(initialFps)
 	local self = setmetatable({}, FpsMeter)
 	__tcs_instances[self] = FpsMeter
 	self.fps = 0
-	self.fps = initialFps or 60.0
+	self.fps = __tcs_nget(initialFps, 60.0)
 	return self
 end
 
@@ -2172,6 +2695,8 @@ function Mesh3d.new(key)
 	local self = setmetatable({}, Mesh3d)
 	__tcs_instances[self] = Mesh3d
 	self.key = nil
+	self.verts = nil
+	self.indices = nil
 	self.data = nil
 	self.vb = nil
 	self.ib = nil
@@ -2184,23 +2709,36 @@ end
 function Mesh3d:rebuild(data)
 	self.data = data
 	self.skinned = data.bones ~= nil
-	local verts
+	local view
 	if self.skinned then
-		verts = lub.io.interleave_pncmw(data)
+		view = lub.io.interleave_pncmw(data)
 	else
-		verts = lub.io.interleave_pncm(data)
+		view = lub.io.interleave_pncm(data)
 	end
-	self.vb = lub.gfx.use_buffer((self.key or "") .. "_vb", lub.gfx.STORAGE, verts)
-	local indices = {}
+	self.vb = lub.gfx.use_buffer((self.key or "") .. "_vb", lub.gfx.STORAGE, view)
+	local v = {}
+	local i = 0
+	while i < #view do
+		v[#v + 1] = view[i + 1]
+		i = i + 1
+	end
+	local idx = {}
 	for _, i in ipairs(data.indices) do
-		table.insert(indices, i)
+		idx[#idx + 1] = i
 	end
-	self.ib = lub.gfx.use_buffer((self.key or "") .. "_ib", lub.gfx.INDEX, indices)
+	self.ib = lub.gfx.use_buffer((self.key or "") .. "_ib", lub.gfx.INDEX, idx)
+	self.verts = v
+	self.indices = idx
 	self.index_count = data.index_count
 end
 
 function Mesh3d:ready()
-	return self.vb ~= nil and self.index_count > 0
+	if self.vb == nil or self.ib == nil or self.verts == nil or self.indices == nil or self.index_count <= 0 then
+		return false
+	end
+	self.vb = lub.gfx.use_buffer((self.key or "") .. "_vb", lub.gfx.STORAGE, self.verts, self.vb.version)
+	self.ib = lub.gfx.use_buffer((self.key or "") .. "_ib", lub.gfx.INDEX, self.indices, self.ib.version)
+	return self.vb ~= nil and self.ib ~= nil
 end
 
 GlyphEntry = {}
@@ -2211,6 +2749,8 @@ function GlyphEntry.new()
 	__tcs_instances[self] = GlyphEntry
 	self.vb = nil
 	self.ib = nil
+	self.verts = nil
+	self.idx = nil
 	self.count = 0
 	self.advance = 0
 	self.cx = 0
@@ -2220,6 +2760,183 @@ end
 
 MeshText = {}
 MeshText.__index = MeshText
+
+function MeshText.new(key, ttfPath, version, logicalW, logicalH)
+	local self = setmetatable({}, MeshText)
+	__tcs_instances[self] = MeshText
+	self.key = nil
+	self.ttf_path = nil
+	self.version = 0
+	self.logical_w = 0
+	self.logical_h = 0
+	self.glyphs = {}
+	self.shader = nil
+	self.key = key
+	self.ttf_path = ttfPath
+	self.version = version
+	self.logical_w = logicalW
+	self.logical_h = logicalH
+	return self
+end
+
+function MeshText:ensure()
+	self.shader = lub.gfx.use_shader((self.key or "") .. "_shader", MeshText.vs, MeshText.fs, 1)
+	return self.shader
+end
+
+function MeshText:glyph_for(cp)
+	local cached
+	local __tcs_cond0
+	local __tcs_found, __tcs_v = Dict.TryGet(self.glyphs, cp, nil)
+	cached = __tcs_v
+	__tcs_cond0 = __tcs_found
+	if __tcs_cond0 then
+		if cached.vb ~= nil and cached.ib ~= nil and cached.verts ~= nil and cached.idx ~= nil then
+			cached.vb =
+				lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.STORAGE, cached.verts, cached.vb.version)
+			cached.ib =
+				lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, cached.idx, cached.ib.version)
+		end
+		return cached
+	end
+	local ttf
+	local _
+	ttf, _, _, _ = lub.io.load_bytes(self.ttf_path)
+	if ttf == nil then
+		return nil
+	end
+	local gm = lub.font.glyph_mesh(ttf, cp)
+	if gm == nil then
+		return nil
+	end
+	if gm.vert_count == 0 then
+		local empty
+		local __tcs_init = GlyphEntry.new()
+		__tcs_init.count = 0
+		__tcs_init.advance = gm.advance
+		__tcs_init.cx = 0.0
+		__tcs_init.cy = 0.0
+		empty = __tcs_init
+		self.glyphs[cp] = empty
+		return empty
+	end
+	local verts = {}
+	local minX = 1e9
+	local minY = 1e9
+	local maxX = -1e9
+	local maxY = -1e9
+	local i = 0
+	while i < gm.vert_count do
+		local x = gm.positions[i * 3 + 1]
+		local y = gm.positions[i * 3 + 1 + 1]
+		verts[#verts + 1] = x
+		verts[#verts + 1] = y
+		if x < minX then
+			minX = x
+		end
+		if x > maxX then
+			maxX = x
+		end
+		if y < minY then
+			minY = y
+		end
+		if y > maxY then
+			maxY = y
+		end
+		i = i + 1
+	end
+	local idx = {}
+	local i = 0
+	while i < gm.index_count do
+		idx[#idx + 1] = gm.indices[i + 1]
+		i = i + 1
+	end
+	local e
+	local __tcs_init = GlyphEntry.new()
+	__tcs_init.vb = lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.STORAGE, verts, self.version)
+	__tcs_init.ib = lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, idx, self.version)
+	__tcs_init.verts = verts
+	__tcs_init.idx = idx
+	__tcs_init.count = gm.index_count
+	__tcs_init.advance = gm.advance
+	__tcs_init.cx = (minX + maxX) * 0.5
+	__tcs_init.cy = (minY + maxY) * 0.5
+	e = __tcs_init
+	self.glyphs[cp] = e
+	return e
+end
+
+function MeshText.color_or_white(c)
+	return c or Color.rgb(1.0, 1.0, 1.0)
+end
+
+function MeshText:glyph(cp, x, y, size, angle, tint, centered)
+	local sh = self:ensure()
+	if sh == nil then
+		return
+	end
+	local e = self:glyph_for(cp)
+	if e == nil or e.count == 0 then
+		return
+	end
+	local vb = e.vb
+	local ib = e.ib
+	if vb == nil or ib == nil then
+		return
+	end
+	local c = MeshText.color_or_white(tint)
+	local ctr = __tcs_nget(centered, false)
+	lub.gfx.draw(e.count, {
+		["verts"] = vb,
+		["indices"] = ib,
+		["uniforms"] = {
+			["psr"] = { x, y, size, __tcs_nget(angle, 0.0) },
+			["tint"] = { c.r, c.g, c.b, c.a },
+			["screen"] = { self.logical_w, self.logical_h, 0.0, 0.0 },
+			["center"] = (function()
+				if ctr then
+					return { e.cx, e.cy, 0.0, 0.0 }
+				else
+					return { 0.0, 0.0, 0.0, 0.0 }
+				end
+			end)(),
+		},
+	}, { shader = sh, depth = false, cull = lub.gfx.NONE, blend = lub.gfx.ALPHA })
+end
+
+function MeshText:char(s, x, y, size, angle, tint, centered)
+	for _, r in utf8.codes(s) do
+		self:glyph(r, x, y, size, angle, tint, centered)
+		return
+	end
+end
+
+function MeshText:text(s, x, baselineY, size, tint)
+	local pen = x
+	for _, r in utf8.codes(s) do
+		local cp = r
+		local e = self:glyph_for(cp)
+		if e ~= nil then
+			self:glyph(cp, pen, baselineY, size, 0.0, tint, false)
+			pen = pen + (e.advance * size)
+		end
+	end
+end
+
+function MeshText:text_centered(s, cx, baselineY, size, tint)
+	self:text(s, cx - self:width(s, size) * 0.5, baselineY, size, tint)
+end
+
+function MeshText:width(s, size)
+	local sum = 0.0
+	for _, r in utf8.codes(s) do
+		local e = self:glyph_for(r)
+		if e ~= nil then
+			sum = sum + e.advance
+		end
+	end
+	return sum * size
+end
 
 MeshText.vs = "struct Uniforms {\n"
 	.. "  float4\n"
@@ -2259,181 +2976,6 @@ MeshText.fs = "struct FSIn {\n"
 	.. "\n"
 	.. '[shader("fragment")] float4 fs_main(FSIn i) : SV_Target { return i.color; }\n'
 
-function MeshText.new(key, ttfPath, version, logicalW, logicalH)
-	local self = setmetatable({}, MeshText)
-	__tcs_instances[self] = MeshText
-	self.key = nil
-	self.ttf_path = nil
-	self.version = 0
-	self.logical_w = 0
-	self.logical_h = 0
-	self.glyphs = {}
-	self.shader = nil
-	self.key = key
-	self.ttf_path = ttfPath
-	self.version = version
-	self.logical_w = logicalW
-	self.logical_h = logicalH
-	return self
-end
-
-function MeshText:ensure()
-	self.shader = lub.gfx.use_shader((self.key or "") .. "_shader", MeshText.vs, MeshText.fs, 1)
-	return self.shader
-end
-
-function MeshText:glyph_for(cp)
-	local cached
-	local __tcs_cond0
-	local __tcs_found, __tcs_v = Dict.TryGet(self.glyphs, cp, nil)
-	cached = __tcs_v
-	__tcs_cond0 = __tcs_found
-	if __tcs_cond0 then
-		return cached
-	end
-	local ttf
-	local _
-	ttf, _, _, _ = lub.io.load_bytes(self.ttf_path)
-	if ttf == nil then
-		return nil
-	end
-	local gm = lub.font.glyph_mesh(ttf, cp)
-	if gm == nil then
-		return nil
-	end
-	if gm.vert_count == 0 then
-		local empty
-		local __tcs_init = GlyphEntry.new()
-		__tcs_init.count = 0
-		__tcs_init.advance = gm.advance
-		__tcs_init.cx = 0.0
-		__tcs_init.cy = 0.0
-		empty = __tcs_init
-		self.glyphs[cp] = empty
-		return empty
-	end
-	local verts = {}
-	local minX = 1e9
-	local minY = 1e9
-	local maxX = -1e9
-	local maxY = -1e9
-	local i = 0
-	while i < gm.vert_count do
-		local x = gm.positions[i * 3 + 1]
-		local y = gm.positions[i * 3 + 1 + 1]
-		table.insert(verts, x)
-		table.insert(verts, y)
-		if x < minX then
-			minX = x
-		end
-		if x > maxX then
-			maxX = x
-		end
-		if y < minY then
-			minY = y
-		end
-		if y > maxY then
-			maxY = y
-		end
-		i = i + 1
-	end
-	local idx = {}
-	local i = 0
-	while i < gm.index_count do
-		table.insert(idx, gm.indices[i + 1])
-		i = i + 1
-	end
-	local e
-	local __tcs_init = GlyphEntry.new()
-	__tcs_init.vb = lub.gfx.use_buffer((self.key or "") .. "_v:" .. cp, lub.gfx.STORAGE, verts, self.version)
-	__tcs_init.ib = lub.gfx.use_buffer((self.key or "") .. "_i:" .. cp, lub.gfx.INDEX, idx, self.version)
-	__tcs_init.count = gm.index_count
-	__tcs_init.advance = gm.advance
-	__tcs_init.cx = (minX + maxX) * 0.5
-	__tcs_init.cy = (minY + maxY) * 0.5
-	e = __tcs_init
-	self.glyphs[cp] = e
-	return e
-end
-
-function MeshText.color_or_white(c)
-	return c or Color.rgb(1.0, 1.0, 1.0)
-end
-
-function MeshText:glyph(cp, x, y, size, angle, tint, centered)
-	local sh = self:ensure()
-	if sh == nil then
-		return
-	end
-	local e = self:glyph_for(cp)
-	if e == nil or e.count == 0 then
-		return
-	end
-	local vb = e.vb
-	local ib = e.ib
-	if vb == nil or ib == nil then
-		return
-	end
-	local c = MeshText.color_or_white(tint)
-	local ctr = (function()
-		local __tcs_lhs = centered
-		if __tcs_lhs ~= nil then
-			return __tcs_lhs
-		end
-		return false
-	end)()
-	lub.gfx.draw(e.count, {
-		["verts"] = vb,
-		["indices"] = ib,
-		["uniforms"] = {
-			["psr"] = { x, y, size, angle or 0.0 },
-			["tint"] = { c.r, c.g, c.b, c.a },
-			["screen"] = { self.logical_w, self.logical_h, 0.0, 0.0 },
-			["center"] = (function()
-				if ctr then
-					return { e.cx, e.cy, 0.0, 0.0 }
-				else
-					return { 0.0, 0.0, 0.0, 0.0 }
-				end
-			end)(),
-		},
-	}, { shader = sh, depth = false, cull = lub.gfx.NONE, blend = lub.gfx.ALPHA })
-end
-
-function MeshText:char(s, x, y, size, angle, tint, centered)
-	for _, r in utf8.codes(s) do
-		self:glyph(r, x, y, size, angle, tint, centered)
-		return
-	end
-end
-
-function MeshText:text(s, x, baselineY, size, tint)
-	local pen = x
-	for _, r in utf8.codes(s) do
-		local cp = r
-		local e = self:glyph_for(cp)
-		if e ~= nil then
-			self:glyph(cp, pen, baselineY, size, 0.0, tint, false)
-			pen = pen + e.advance * size
-		end
-	end
-end
-
-function MeshText:text_centered(s, cx, baselineY, size, tint)
-	self:text(s, cx - self:width(s, size) * 0.5, baselineY, size, tint)
-end
-
-function MeshText:width(s, size)
-	local sum = 0.0
-	for _, r in utf8.codes(s) do
-		local e = self:glyph_for(r)
-		if e ~= nil then
-			sum = sum + e.advance
-		end
-	end
-	return sum * size
-end
-
 Rand = {}
 Rand.__index = Rand
 
@@ -2441,7 +2983,7 @@ function Rand.new(seed)
 	local self = setmetatable({}, Rand)
 	__tcs_instances[self] = Rand
 	self.state = 0
-	local s = seed or 0x12345678
+	local s = __tcs_nget(seed, 0x12345678)
 	self.state = (function()
 		if s == 0 then
 			return 0x12345678
@@ -2453,14 +2995,14 @@ function Rand.new(seed)
 end
 
 function Rand:next_float()
-	self.state = self.state ~ (self.state << 13)
-	self.state = self.state ~ ((self.state >> 17) & 0x7FFF)
-	self.state = self.state ~ (self.state << 5)
+	self.state = self.state ~ (__tcs_shl(self.state, 13))
+	self.state = self.state ~ ((__tcs_shr(self.state, 17)) & 0x7FFF)
+	self.state = self.state ~ (__tcs_shl(self.state, 5))
 	return (self.state & 0xffff) / 65536.0
 end
 
 function Rand:next_int(n)
-	return Math.Floor(self:next_float() * n)
+	return __tcs_trunc(Math.Floor(self:next_float() * n))
 end
 
 function Rand:range(min, max)
@@ -2523,7 +3065,7 @@ function Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures
 	self.mesh = nil
 	self.model = nil
 	self.tint = nil
-	self.blend = nil
+	self.blend = 0
 	self.bones = nil
 	self.shader = nil
 	self.textures = nil
@@ -2640,53 +3182,6 @@ end
 Renderer3d = {}
 Renderer3d.__index = Renderer3d
 
-Renderer3d.pncm_verts =
-	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n};\nStructuredBuffer<V> verts;\n"
-Renderer3d.pncmw_verts =
-	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n  float4 skin; // j0, w0, j1, w1\n};\nStructuredBuffer<V> verts;\n"
-Renderer3d.lit_vs_common =
-	"\nstruct Uniforms {\n  float4x4 mvp;\n  float4x4 model;\n  float4x4 light_mvp;\n  float4 tint;\n"
-Renderer3d.lit_vs_body =
-	"\nstruct VSOut {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n  float4 pos : SV_Position;\n};\n"
-Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
-	.. "};\nConstantBuffer<Uniforms> u;"
-	.. (Renderer3d.pncm_verts or "")
-	.. (Renderer3d.lit_vs_body or "")
-	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
-Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
-	.. "  float4x4 bones[16];\n};\nConstantBuffer<Uniforms> u;"
-	.. (Renderer3d.pncmw_verts or "")
-	.. (Renderer3d.lit_vs_body or "")
-	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
-Renderer3d.lit_fs =
-	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\n// 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。\nfloat2 shadow_depth_gradient(float4 lpos) {\n  float3 p = lpos.xyz / lpos.w;\n  p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;\n  float3 dx = ddx(p), dy = ddy(p);\n  float det = dx.x * dy.y - dx.y * dy.x;\n  if (abs(det) < 1e-15f)\n    return float2(0.0f, 0.0f);\n  return float2(dx.z * dy.y - dy.z * dx.y,\n                dx.x * dy.z - dy.x * dx.z) / det;\n}\n\nfloat shadow_factor(float4 lpos, float2 dz) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // 読み取る texel の中心と受け面の深度の位置を揃える。\n  float2 coord = uv / texel - 0.5f;\n  float2 base = floor(coord), fracUv = frac(coord);\n  float lit = 0.0f;\n  // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。\n  for (int y = -1; y <= 2; ++y)\n    for (int x = -1; x <= 2; ++x) {\n      float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;\n      sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);\n      float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;\n      float receiver = ndc.z + dot(dz, sampleUv - uv);\n      float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);\n      float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);\n      lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float ndl = dot(n, l);\n  // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。\n  float2 shadowGradient = shadow_depth_gradient(i.lpos);\n  float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular\n  float diff = saturate(ndl);\n  float3 direct = f.light_col.rgb * diff * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
-Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
-	.. (Renderer3d.pncm_verts or "")
-	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
-	.. (Renderer3d.pncmw_verts or "")
-	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
-Renderer3d.shadow_fs =
-	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
-Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
-Renderer3d.ssao_fs =
-	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6f);\n  float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;\n  float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で\n  // カメラ側を向け、面より手前の遮蔽物を数える。\n  float3 n = normalize(cross(ddx(p), ddy(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに\n  float occ = 0.0f;\n  float ang = 2.399963f; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5f) / 12.0f;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6f));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0f - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02f) * range;\n  }\n  float ao = 1.0f - saturate(occ / 12.0f * 2.2f) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0f);\n}\n'
-Renderer3d.bright_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0f * max(knee, 1e-4f));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4f);\n  return float4(c * saturate(w), 1.0f);\n}\n'
-Renderer3d.blit_tent_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25f * f.st.z, 1.0f);\n}\n'
-Renderer3d.composite_fs =
-	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6f);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5f)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5f) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0f, -t.y));\n    float zs = view_z(i.uv + float2(0.0f, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0f));\n    float zw = view_z(i.uv + float2(-t.x, 0.0f));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85f);\n  }\n  if (f.en.z > 0.5f) {\n    float fogf = 1.0f - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0f);\n}\n'
-Renderer3d.fxaa_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312f, lMax * 0.125f))\n    return float4(cM, 1.0f);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125f, 0.0078125f);\n  float rcpMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0f, -8.0f), float2(8.0f, 8.0f)) * t;\n  float3 a = 0.5f * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0f / 3.0f - 0.5f)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0f / 3.0f - 0.5f)).rgb);\n  float3 b = a * 0.5f + 0.25f * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5f).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5f).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0f);\n}\n'
-Renderer3d.present_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0f);\n}\n'
-Renderer3d.quad_vs =
-	'\nstruct Q {\n  float2 pos;\n  float2 uv;\n};\nStructuredBuffer<Q> verts;\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  Q i = verts[vid];\n  VSOut o;\n  o.pos = float4(i.pos, 0.0f, 1.0f);\n  o.uv = i.uv;\n  return o;\n}\n'
-Renderer3d.tonemap_fs =
-	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
-Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
-
 function Renderer3d.new(key)
 	local self = setmetatable({}, Renderer3d)
 	__tcs_instances[self] = Renderer3d
@@ -2722,9 +3217,9 @@ end
 
 function Renderer3d:begin(cam)
 	local up = cam.up or Vec3.new(0, 1, 0)
-	local fov = cam.fov or 60.0
-	local near = cam.near or 0.1
-	local far = cam.far or 100.0
+	local fov = __tcs_nget(cam.fov, 60.0)
+	local near = __tcs_nget(cam.near, 0.1)
+	local far = __tcs_nget(cam.far, 100.0)
 	local w
 	local h
 	w, h = lub.gfx.size()
@@ -2755,13 +3250,16 @@ function Renderer3d:draw(mesh, model, opts)
 		if t ~= nil then
 			tint = { t.r, t.g, t.b, t.a }
 		end
-		blend = opts.blend or lub.gfx.NONE
+		blend = __tcs_nget(opts.blend, lub.gfx.NONE)
 		bones = opts.bones
 		shader = opts.shader
 		textures = opts.textures
 		uniforms = opts.uniforms
 	end
-	table.insert(self.draws, Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms))
+	do
+		local __tcs_v = Renderer3dDrawCmd.new(mesh, model, tint, blend, bones, shader, textures, uniforms)
+		self.draws[#self.draws + 1] = __tcs_v
+	end
 end
 
 function Renderer3d:light_mvp()
@@ -2801,12 +3299,12 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 	local lm = lmvp.m
 	for _, d in ipairs(self.draws) do
 		if d.blend ~= lub.gfx.NONE then
-			goto _continue_20
+			goto _continue_23
 		end
 		local vb = d.mesh.vb
 		local ib = d.mesh.ib
 		if vb == nil or ib == nil then
-			goto _continue_20
+			goto _continue_23
 		end
 		local u = { ["light_mvp"] = lm, ["model"] = d.model.m }
 		if d.mesh.skinned then
@@ -2824,7 +3322,7 @@ function Renderer3d:shadow_pass(lmvp, shStatic, shSkinned, shadowMap)
 			depth_write = true,
 			cull = lub.gfx.NONE,
 		})
-		::_continue_20::
+		::_continue_23::
 	end
 	lub.gfx.end_pass()
 end
@@ -2894,7 +3392,11 @@ function Renderer3d:blit(target, shader, bindings, load, blend)
 	end
 	lub.gfx.begin_pass(opts)
 	bindings["verts"] = fq
-	lub.gfx.draw(6, bindings, { shader = shader, depth = false, cull = lub.gfx.NONE, blend = blend or lub.gfx.NONE })
+	lub.gfx.draw(
+		6,
+		bindings,
+		{ shader = shader, depth = false, cull = lub.gfx.NONE, blend = __tcs_nget(blend, lub.gfx.NONE) }
+	)
 	lub.gfx.end_pass()
 end
 
@@ -2988,12 +3490,12 @@ function Renderer3d:end_()
 		for _, d in ipairs(self.draws) do
 			local isBlend = d.blend ~= lub.gfx.NONE
 			if (phase == 0) == isBlend then
-				goto _continue_23
+				goto _continue_26
 			end
 			local vb = d.mesh.vb
 			local ib = d.mesh.ib
 			if vb == nil or ib == nil then
-				goto _continue_23
+				goto _continue_26
 			end
 			local shader = d.shader
 				or (
@@ -3022,15 +3524,15 @@ function Renderer3d:end_()
 				bindings,
 				{ shader = shader, depth = true, depth_write = not isBlend, cull = lub.gfx.NONE, blend = d.blend }
 			)
-			::_continue_23::
+			::_continue_26::
 		end
 	end
 	lub.gfx.end_pass()
 	local projP = { proj.m[0 + 1], Math.Abs(proj.m[5 + 1]), proj.m[10 + 1], proj.m[11 + 1] }
 	local aoTex = nil
 	if self.ssao.enabled then
-		local aw = Math.Floor(w / 2.0)
-		local ah = Math.Floor(h / 2.0)
+		local aw = __tcs_trunc(Math.Floor(w / 2.0))
+		local ah = __tcs_trunc(Math.Floor(h / 2.0))
 		aoTex = lub.gfx.use_texture(
 			(self.key or "") .. "_ao",
 			aw,
@@ -3059,8 +3561,8 @@ function Renderer3d:end_()
 		local bw = w
 		local bh = h
 		for li = 0, levels - 1 do
-			bw = Math.Floor(bw / 2.0)
-			bh = Math.Floor(bh / 2.0)
+			bw = __tcs_trunc(Math.Floor(bw / 2.0))
+			bh = __tcs_trunc(Math.Floor(bh / 2.0))
 			if bw < 8 or bh < 8 then
 				break
 			end
@@ -3076,9 +3578,9 @@ function Renderer3d:end_()
 			if t == nil then
 				break
 			end
-			table.insert(ws, bw)
-			table.insert(hs, bh)
-			table.insert(texs, t)
+			ws[#ws + 1] = bw
+			hs[#hs + 1] = bh
+			texs[#texs + 1] = t
 		end
 		if #texs > 0 then
 			self:blit(
@@ -3215,18 +3717,17 @@ function Renderer3d:end_()
 		},
 	})
 	if self.debug_view ~= nil then
-		local dbg = (function()
-			local __tcs_sw = self.debug_view
-			if __tcs_sw == "ao" then
-				return aoTex
-			elseif __tcs_sw == "bloom" then
-				return bloomTex
-			elseif __tcs_sw == "hdr" then
-				return hdr
-			else
-				return nil
-			end
-		end)()
+		local dbg
+		local __tcs_sw = self.debug_view
+		if __tcs_sw == "ao" then
+			dbg = aoTex
+		elseif __tcs_sw == "bloom" then
+			dbg = bloomTex
+		elseif __tcs_sw == "hdr" then
+			dbg = hdr
+		else
+			dbg = nil
+		end
 		if dbg ~= nil then
 			lub.gfx.begin_pass({ target = lub.gfx.main_tex })
 			lub.gfx.draw(
@@ -3255,13 +3756,60 @@ function Renderer3d:end_()
 	lub.gfx.end_pass()
 end
 
+Renderer3d.pncm_verts =
+	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n};\nStructuredBuffer<V> verts;\n"
+Renderer3d.pncmw_verts =
+	"\nstruct V {\n  float3 pos;\n  float pad0;\n  float3 normal;\n  float pad1;\n  float3 color;\n  float pad2;\n  float2 mr; // metallic, roughness\n  float2 pad3;\n  float4 skin; // j0, w0, j1, w1\n};\nStructuredBuffer<V> verts;\n"
+Renderer3d.lit_vs_common =
+	"\nstruct Uniforms {\n  float4x4 mvp;\n  float4x4 model;\n  float4x4 light_mvp;\n  float4 tint;\n"
+Renderer3d.lit_vs_body =
+	"\nstruct VSOut {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n  float4 pos : SV_Position;\n};\n"
+Renderer3d.lit_static_vs = (Renderer3d.lit_vs_common or "")
+	.. "};\nConstantBuffer<Uniforms> u;"
+	.. (Renderer3d.pncm_verts or "")
+	.. (Renderer3d.lit_vs_body or "")
+	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  float4 wp4 = mul(u.model, float4(i.pos, 1.0f));\n  o.pos = mul(u.mvp, float4(i.pos, 1.0f));\n  o.wn = mul(u.model, float4(i.normal, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  // 頂点色 / tint は sRGB authoring。ライティングは linear で行い AgX が\n  // display に戻す。\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+Renderer3d.lit_skinned_vs = (Renderer3d.lit_vs_common or "")
+	.. "  float4x4 bones[16];\n};\nConstantBuffer<Uniforms> u;"
+	.. (Renderer3d.pncmw_verts or "")
+	.. (Renderer3d.lit_vs_body or "")
+	.. '\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  float3 sn = mul((float3x3)u.bones[j0], i.normal) * i.skin.y +\n              mul((float3x3)u.bones[j1], i.normal) * i.skin.w;\n  float4 wp4 = mul(u.model, float4(sp, 1.0f));\n  o.pos = mul(u.mvp, float4(sp, 1.0f));\n  o.wn = mul(u.model, float4(sn, 0.0f)).xyz;\n  o.wp = wp4.xyz;\n  o.lpos = mul(u.light_mvp, wp4);\n  float3 srgb = i.color * u.tint.rgb;\n  o.albedo = float4(pow(srgb, float3(2.2f, 2.2f, 2.2f)), u.tint.a);\n  o.mr = i.mr;\n  return o;\n}\n'
+Renderer3d.lit_fs =
+	'\nLUB_TEXTURE2D(shadow_map);\nstruct FsU {\n  float4 light_dir; // world, toward light (normalized)\n  float4 light_col; // rgb * intensity\n  float4 sky_col;   // hemispheric ambient (上), w = ambient 強度\n  float4 ground_col; // hemispheric ambient (下)\n  float4 cam_pos;   // world camera (specular 用)\n  float4 shadow_p;  // x = 1/texsize, y = bias, z = enabled\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float3 wn : TEXCOORD0;\n  float3 wp : TEXCOORD1;\n  float4 lpos : TEXCOORD2;\n  float2 mr : TEXCOORD3;\n  float4 albedo : COLOR0;\n};\n\n// 隣接画素との微分を揃えるため、画素ごとに異なる分岐より前に呼ぶ。\nfloat2 shadow_depth_gradient(float4 lpos) {\n  float3 p = lpos.xyz / lpos.w;\n  p.xy = p.xy * float2(0.5f, -0.5f) + 0.5f;\n  float3 dx = ddx(p), dy = ddy(p);\n  float det = dx.x * dy.y - dx.y * dy.x;\n  if (abs(det) < 1e-15f)\n    return float2(0.0f, 0.0f);\n  return float2(dx.z * dy.y - dy.z * dx.y,\n                dx.x * dy.z - dy.x * dx.z) / det;\n}\n\nfloat shadow_factor(float4 lpos, float2 dz) {\n  if (f.shadow_p.z < 0.5f)\n    return 1.0f;\n  float3 ndc = lpos.xyz / lpos.w;\n  float2 uv = ndc.xy * 0.5f + 0.5f;\n  uv.y = 1.0f - uv.y; // shadow map stored y-down vs the lookup uv\n  if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f || ndc.z < 0.0f ||\n      ndc.z > 1.0f)\n    return 1.0f;\n  float texel = f.shadow_p.x;\n  // 読み取る texel の中心と受け面の深度の位置を揃える。\n  float2 coord = uv / texel - 0.5f;\n  float2 base = floor(coord), fracUv = frac(coord);\n  float lit = 0.0f;\n  // 3x3 PCF を位置に応じて補間する。4x4 の重みの合計は 9。\n  for (int y = -1; y <= 2; ++y)\n    for (int x = -1; x <= 2; ++x) {\n      float2 sampleUv = (base + float2(float(x), float(y)) + 0.5f) * texel;\n      sampleUv = clamp(sampleUv, texel * 0.5f, 1.0f - texel * 0.5f);\n      float closest = LUB_SAMPLE_LOD(shadow_map, sampleUv).r;\n      float receiver = ndc.z + dot(dz, sampleUv - uv);\n      float wx = x == -1 ? 1.0f - fracUv.x : (x == 2 ? fracUv.x : 1.0f);\n      float wy = y == -1 ? 1.0f - fracUv.y : (y == 2 ? fracUv.y : 1.0f);\n      lit += receiver - f.shadow_p.y <= closest ? wx * wy : 0.0f;\n    }\n  return lit / 9.0f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 n = normalize(i.wn);\n  float3 l = f.light_dir.xyz;\n  float metal = i.mr.x;\n  float rough = i.mr.y;\n  float ndl = dot(n, l);\n  // 拡散・鏡面とも光側だけに当て、裏側は環境光で照らす。\n  float2 shadowGradient = shadow_depth_gradient(i.lpos);\n  float sh = ndl > 0.0f ? shadow_factor(i.lpos, shadowGradient) : 0.0f;\n  float up = n.y * 0.5f + 0.5f;\n  float3 hemi = lerp(f.ground_col.rgb, f.sky_col.rgb, up) * f.sky_col.w;\n  float3 v = normalize(f.cam_pos.xyz - i.wp);\n  float3 hv = normalize(l + v);\n\n  // 誘電体: Lambert + hemispheric ambient + roughness で絞る specular\n  float diff = saturate(ndl);\n  float3 direct = f.light_col.rgb * diff * sh;\n  float spec =\n      pow(max(dot(n, hv), 0.0f), 32.0f) * (1.0f - rough) * 0.5f * sh;\n  float3 dielectric = i.albedo.rgb * (direct + hemi) + f.light_col.rgb * spec;\n\n  // 金属: 上下グラデ環境 + 強い specular\n  float3 env = lerp(f.ground_col.rgb * 0.8f, f.sky_col.rgb * 1.6f, up);\n  float3 metallic = env * lerp(i.albedo.rgb, float3(1.0f, 1.0f, 1.0f), 0.5f);\n  metallic +=\n      f.light_col.rgb * pow(max(dot(n, hv), 0.0f), 64.0f) * (1.0f - rough) * 1.2f * sh;\n\n  return float4(lerp(dielectric, metallic, metal), i.albedo.a);\n}\n'
+Renderer3d.shadow_static_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n};\nConstantBuffer<U> u;"
+	.. (Renderer3d.pncm_verts or "")
+	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(i.pos, 1.0f)));\n  return o;\n}\n'
+Renderer3d.shadow_skinned_vs = "\nstruct U {\n  float4x4 light_mvp;\n  float4x4 model;\n  float4x4 bones[16];\n};\nConstantBuffer<U> u;"
+	.. (Renderer3d.pncmw_verts or "")
+	.. 'struct VSOut {\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  V i = verts[vid];\n  VSOut o;\n  int j0 = int(i.skin.x);\n  int j1 = int(i.skin.z);\n  float4 p4 = float4(i.pos, 1.0f);\n  float3 sp =\n      (mul(u.bones[j0], p4) * i.skin.y + mul(u.bones[j1], p4) * i.skin.w).xyz;\n  o.pos = mul(u.light_mvp, mul(u.model, float4(sp, 1.0f)));\n  return o;\n}\n'
+Renderer3d.shadow_fs =
+	'\n[shader("fragment")] float4 fs_main() : SV_Target {\n  return float4(0.0f, 0.0f, 0.0f, 1.0f);\n}\n'
+Renderer3d.flip_quad = { -1, -1, 0, 1, 1, -1, 1, 1, 1, 1, 1, 0, -1, -1, 0, 1, 1, 1, 1, 0, -1, 1, 0, 0 }
+Renderer3d.ssao_fs =
+	'\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;    // m0, m5abs, A (m10), B (m11)\n  float4 ao_p;  // x = radius (view), y = strength, z = 1/w, w = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 view_pos(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  // LH 投影 (m10 = A, m11 = B < 0) の逆変換: z = B / (d - A)。d - A は常に負。\n  float vz = f.pp.w / min(d - f.pp.z, -1e-6f);\n  float x = (uv.x * 2.0f - 1.0f) * vz / f.pp.x;\n  float y = (1.0f - uv.y * 2.0f) * vz / f.pp.y;\n  return float3(x, y, vz);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 p = view_pos(i.uv);\n  // view_pos は x 右・y 上・z 奥。画面の下向き微分との外積で\n  // カメラ側を向け、面より手前の遮蔽物を数える。\n  float3 n = normalize(cross(ddx(p), ddy(p)));\n  // 12 点の渦巻きオフセット (screen 空間) を view radius でスケール\n  float rpx = f.ao_p.x / p.z * f.pp.y * 0.5f; // 半径を uv スケールに\n  float occ = 0.0f;\n  float ang = 2.399963f; // golden angle\n  for (int k = 0; k < 12; ++k) {\n    float fk = (float(k) + 0.5f) / 12.0f;\n    float r = sqrt(fk) * rpx;\n    float a = float(k) * ang;\n    float2 duv = float2(cos(a) * r, sin(a) * r);\n    float3 q = view_pos(i.uv + duv);\n    float3 dq = q - p;\n    float dist = length(dq);\n    float ndotd = dot(n, dq / max(dist, 1e-6f));\n    // 半径内で手前に張り出す面だけを遮蔽としてカウント\n    float range = saturate(1.0f - dist / f.ao_p.x);\n    occ += saturate(ndotd - 0.02f) * range;\n  }\n  float ao = 1.0f - saturate(occ / 12.0f * 2.2f) * f.ao_p.y;\n  return float4(ao, ao, ao, 1.0f);\n}\n'
+Renderer3d.bright_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 bl; // x = threshold, y = knee\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lum = max(c.r, max(c.g, c.b));\n  float knee = f.bl.y;\n  float soft = saturate(lum - f.bl.x + knee) ;\n  soft = soft * soft / (4.0f * max(knee, 1e-4f));\n  float w = max(soft, lum - f.bl.x) / max(lum, 1e-4f);\n  return float4(c * saturate(w), 1.0f);\n}\n'
+Renderer3d.blit_tent_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 st; // x = 1/srcW, y = 1/srcH, z = gain\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.st.xy;\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb;\n  c += LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb;\n  return float4(c * 0.25f * f.st.z, 1.0f);\n}\n'
+Renderer3d.composite_fs =
+	'\nLUB_TEXTURE2D(scene);\nLUB_TEXTURE2D(ao_tex);\nLUB_TEXTURE2D(bloom_tex);\nLUB_TEXTURE2D(depth_tex);\nstruct FsU {\n  float4 pp;      // m0, m5abs, A, B (view 復元)\n  float4 en;      // x = ao on, y = bloom strength, z = fog on, w = outline on\n  float4 fog_col; // rgb, w = density\n  float4 ol;      // rgb = outline color, w = depth threshold (view)\n  float4 px;      // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat view_z(float2 uv) {\n  float d = LUB_SAMPLE_LOD(depth_tex, uv).r;\n  return f.pp.w / min(d - f.pp.z, -1e-6f);\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  if (f.en.x > 0.5f)\n    c *= LUB_SAMPLE_LOD(ao_tex, i.uv).r;\n  c += LUB_SAMPLE_LOD(bloom_tex, i.uv).rgb * f.en.y;\n  float vz = view_z(i.uv);\n  if (f.en.w > 0.5f) {\n    // depth エッジ検出 (4 近傍)\n    float2 t = f.px.xy;\n    float zn = view_z(i.uv + float2(0.0f, -t.y));\n    float zs = view_z(i.uv + float2(0.0f, t.y));\n    float ze = view_z(i.uv + float2(t.x, 0.0f));\n    float zw = view_z(i.uv + float2(-t.x, 0.0f));\n    float edge = max(max(abs(zn - vz), abs(zs - vz)), max(abs(ze - vz), abs(zw - vz)));\n    float o = saturate((edge - f.ol.w) / f.ol.w);\n    c = lerp(c, f.ol.rgb, saturate(o) * 0.85f);\n  }\n  if (f.en.z > 0.5f) {\n    float fogf = 1.0f - exp2(-vz * f.fog_col.w);\n    c = lerp(c, f.fog_col.rgb, saturate(fogf));\n  }\n  return float4(c, 1.0f);\n}\n'
+Renderer3d.fxaa_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 px; // x = 1/w, y = 1/h\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\nfloat luma(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float2 t = f.px.xy;\n  float3 cM = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  float lM = luma(cM);\n  float lNW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, -t.y)).rgb);\n  float lNE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, -t.y)).rgb);\n  float lSW = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(-t.x, t.y)).rgb);\n  float lSE = luma(LUB_SAMPLE_LOD(scene, i.uv + float2(t.x, t.y)).rgb);\n  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n  if (lMax - lMin < max(0.0312f, lMax * 0.125f))\n    return float4(cM, 1.0f);\n  float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  float dirReduce = max((lNW + lNE + lSW + lSE) * 0.03125f, 0.0078125f);\n  float rcpMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n  dir = clamp(dir * rcpMin, float2(-8.0f, -8.0f), float2(8.0f, 8.0f)) * t;\n  float3 a = 0.5f * (LUB_SAMPLE_LOD(scene, i.uv + dir * (1.0f / 3.0f - 0.5f)).rgb +\n                    LUB_SAMPLE_LOD(scene, i.uv + dir * (2.0f / 3.0f - 0.5f)).rgb);\n  float3 b = a * 0.5f + 0.25f * (LUB_SAMPLE_LOD(scene, i.uv + dir * -0.5f).rgb +\n                               LUB_SAMPLE_LOD(scene, i.uv + dir * 0.5f).rgb);\n  float lB = luma(b);\n  return float4((lB < lMin || lB > lMax) ? a : b, 1.0f);\n}\n'
+Renderer3d.present_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  return float4(LUB_SAMPLE_LOD(scene, i.uv).rgb, 1.0f);\n}\n'
+Renderer3d.quad_vs =
+	'\nstruct Q {\n  float2 pos;\n  float2 uv;\n};\nStructuredBuffer<Q> verts;\nstruct VSOut {\n  float2 uv : TEXCOORD0;\n  float4 pos : SV_Position;\n};\n[shader("vertex")] VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n  Q i = verts[vid];\n  VSOut o;\n  o.pos = float4(i.pos, 0.0f, 1.0f);\n  o.uv = i.uv;\n  return o;\n}\n'
+Renderer3d.tonemap_fs =
+	'\nLUB_TEXTURE2D(scene);\nstruct FsU {\n  float4 grade; // x = exposure (stops), y = vignette, z = dither, w = 画面高\n};\nConstantBuffer<FsU> f;\nstruct FSIn {\n  float2 uv : TEXCOORD0;\n};\n\nfloat3 agx_contrast(float3 x) {\n  float3 x2 = x * x;\n  float3 x4 = x2 * x2;\n  return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x +\n         0.4298f * x2 + 0.1191f * x - 0.00232f;\n}\n\n[shader("fragment")] float4 fs_main(FSIn i) : SV_Target {\n  float3 c = LUB_SAMPLE_LOD(scene, i.uv).rgb;\n  c *= exp2(f.grade.x);\n  // AgX inset matrix\n  float3 v = float3(0.842479f * c.r + 0.0784336f * c.g + 0.0792237f * c.b,\n                    0.0423282f * c.r + 0.878468f * c.g + 0.0791661f * c.b,\n                    0.0423756f * c.r + 0.0784336f * c.g + 0.879142f * c.b);\n  // log2 encode\n  float min_ev = -12.47393f;\n  float max_ev = 4.026069f;\n  v = clamp(log2(max(v, 1e-10f)), min_ev, max_ev);\n  v = (v - min_ev) / (max_ev - min_ev);\n  v = agx_contrast(v);\n  // outset matrix\n  float3 o = float3(1.19688f * v.r - 0.0980209f * v.g - 0.0990297f * v.b,\n                    -0.0528968f * v.r + 1.15190f * v.g - 0.0989612f * v.b,\n                    -0.0529716f * v.r - 0.0980434f * v.g + 1.15107f * v.b);\n  o = saturate(o);\n  // punchy look: わずかな締め + 彩度戻し (AgX は素だと眠い)\n  o = pow(o, float3(1.08f, 1.08f, 1.08f));\n  float lum = dot(o, float3(0.2126f, 0.7152f, 0.0722f));\n  o = lum + (o - lum) * 1.28f;\n  // vignette (grade.y = 強度)\n  float2 d2 = i.uv - 0.5f;\n  o *= 1.0f - dot(d2, d2) * 2.0f * f.grade.y;\n  // triangular dither (grade.z = 1 で on)。座標ハッシュなので決定的。\n  float h = frac(sin(dot(i.uv * f.grade.w, float2(12.9898f, 78.233f))) * 43758.5453f);\n  o += (h - 0.5f) * (2.0f / 255.0f) * f.grade.z;\n  return float4(saturate(o), 1.0f);\n}\n'
+Renderer3d.present_quad = { -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1 }
+
 SdfNode = {}
 SdfNode.__index = SdfNode
 
 function SdfNode.new(op, parameters)
 	local self = setmetatable({}, SdfNode)
 	__tcs_instances[self] = SdfNode
-	self.op = nil
+	self.op = 0
 	self.params = nil
 	self.name = nil
 	self.c = nil
@@ -3307,8 +3855,8 @@ function SdfNode:paint(rgb, metallic, roughness)
 		math.fmod(Math.Floor(rgb / 65536.0), 256) / 255.0,
 		math.fmod(Math.Floor(rgb / 256.0), 256) / 255.0,
 		__tcs_irem(rgb, 256) / 255.0,
-		metallic or 0.0,
-		roughness or 0.8,
+		__tcs_nget(metallic, 0.0),
+		__tcs_nget(roughness, 0.8),
 	}, self)
 end
 
@@ -3416,7 +3964,7 @@ function Sdf.flatten(node, nodes)
 	if node.b ~= nil then
 		d.b = Sdf.flatten(node.b, nodes)
 	end
-	table.insert(nodes, d)
+	nodes[#nodes + 1] = d
 	return #nodes - 1
 end
 
@@ -3543,8 +4091,6 @@ Sfx = {}
 Sfx.__index = Sfx
 
 Sfx.rate = 0
-Sfx.rate = 44100
-Sfx.cache = {}
 
 function Sfx.new()
 	local self = setmetatable({}, Sfx)
@@ -3569,28 +4115,32 @@ function Sfx.blip(freq0, freq1, dur, vol)
 	if __tcs_cond1 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = Math.Floor(dur * 44100)
+	local n = __tcs_trunc(Math.Floor(dur * 44100))
 	local samples = {}
 	local phase = 0.0
 	for i = 0, n - 1 do
 		local u = i / n
 		local freq = freq0 + (freq1 - freq0) * u
-		phase = phase + freq / 44100
+		phase = phase + (freq / 44100)
 		local env = Math.Exp(-5.0 * u)
-		table.insert(samples, ((function()
-			if math.fmod(phase, 1.0) < 0.5 then
-				return 1.0
-			else
-				return -1.0
-			end
-		end)()) * env * vol)
+		samples[#samples + 1] = (
+			(function()
+				if math.fmod(phase, 1.0) < 0.5 then
+					return 1.0
+				else
+					return -1.0
+				end
+			end)()
+		)
+			* env
+			* vol
 	end
 	Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
 end
 
 function Sfx.noise(dur, vol, seed)
-	local s = seed or 0x12345678
+	local s = __tcs_nget(seed, 0x12345678)
 	local key = "noise:" .. __tcs_fstr(dur) .. ":" .. __tcs_fstr(vol) .. ":" .. s
 	local cached
 	local __tcs_cond2
@@ -3600,7 +4150,7 @@ function Sfx.noise(dur, vol, seed)
 	if __tcs_cond2 then
 		return lub.audio.snd(key, cached, 1, 44100, 1)
 	end
-	local n = Math.Floor(dur * 44100)
+	local n = __tcs_trunc(Math.Floor(dur * 44100))
 	local samples = {}
 	local r = Rand.new(s)
 	local hold = 0.0
@@ -3609,17 +4159,22 @@ function Sfx.noise(dur, vol, seed)
 			hold = r:next_float() * 2.0 - 1.0
 		end
 		local u = i / n
-		table.insert(samples, hold * Math.Exp(-4.0 * u) * vol)
+		do
+			local __tcs_v = hold * Math.Exp(-4.0 * u) * vol
+			samples[#samples + 1] = __tcs_v
+		end
 	end
 	Sfx.cache[key] = samples
 	return lub.audio.snd(key, samples, 1, 44100, 1)
 end
 
+Sfx.rate = 44100
+Sfx.cache = {}
+
 Shapes = {}
 Shapes.__index = Shapes
 
 Shapes.stride = 0
-Shapes.stride = 12
 
 function Shapes.new()
 	local self = setmetatable({}, Shapes)
@@ -3628,18 +4183,18 @@ function Shapes.new()
 end
 
 function Shapes.vertex(dst, x, y, z, nx, ny, nz, col)
-	table.insert(dst, x)
-	table.insert(dst, y)
-	table.insert(dst, z)
-	table.insert(dst, 0)
-	table.insert(dst, nx)
-	table.insert(dst, ny)
-	table.insert(dst, nz)
-	table.insert(dst, 0)
-	table.insert(dst, col[0 + 1])
-	table.insert(dst, col[1 + 1])
-	table.insert(dst, col[2 + 1])
-	table.insert(dst, col[3 + 1])
+	dst[#dst + 1] = x
+	dst[#dst + 1] = y
+	dst[#dst + 1] = z
+	dst[#dst + 1] = 0
+	dst[#dst + 1] = nx
+	dst[#dst + 1] = ny
+	dst[#dst + 1] = nz
+	dst[#dst + 1] = 0
+	dst[#dst + 1] = col[0 + 1]
+	dst[#dst + 1] = col[1 + 1]
+	dst[#dst + 1] = col[2 + 1]
+	dst[#dst + 1] = col[3 + 1]
 end
 
 function Shapes.tri(dst, a, b, c, n, col)
@@ -3685,8 +4240,8 @@ function Shapes.sphere_point(cx, cy, cz, r, u, vv)
 end
 
 function Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
-	local ringCount = rings or 12
-	local segCount = segs or 24
+	local ringCount = __tcs_nget(rings, 12)
+	local segCount = __tcs_nget(segs, 24)
 	for ring = 0, ringCount - 1 do
 		local v0 = -3.141592653589793 * 0.5 + ring / ringCount * 3.141592653589793
 		local v1 = -3.141592653589793 * 0.5 + (ring + 1) / ringCount * 3.141592653589793
@@ -3707,6 +4262,8 @@ function Shapes.sphere(dst, cx, cy, cz, r, col, rings, segs)
 	end
 end
 
+Shapes.stride = 12
+
 Shapes3d = {}
 Shapes3d.__index = Shapes3d
 
@@ -3717,11 +4274,11 @@ function Shapes3d.new()
 end
 
 function Shapes3d.mesh(positions, normals, indices)
-	local n = Math.Floor(#positions / 3.0)
+	local n = __tcs_trunc(Math.Floor(#positions / 3.0))
 	local colors = {}
 	local i = 0
 	while i < n * 3 do
-		table.insert(colors, 1.0)
+		colors[#colors + 1] = 1.0
 		i = i + 1
 	end
 	return {
@@ -3735,23 +4292,23 @@ function Shapes3d.mesh(positions, normals, indices)
 end
 
 function Shapes3d.from_interleaved(v)
-	local n = Math.Floor(#v / 12)
+	local n = __tcs_trunc(Math.Floor(#v / 12))
 	local pos = {}
 	local nrm = {}
 	local col = {}
 	local indices = {}
 	for i = 0, n - 1 do
 		local o = i * 12
-		table.insert(pos, v[o + 1])
-		table.insert(pos, v[o + 1 + 1])
-		table.insert(pos, v[o + 2 + 1])
-		table.insert(nrm, v[o + 4 + 1])
-		table.insert(nrm, v[o + 5 + 1])
-		table.insert(nrm, v[o + 6 + 1])
-		table.insert(col, v[o + 8 + 1])
-		table.insert(col, v[o + 9 + 1])
-		table.insert(col, v[o + 10 + 1])
-		table.insert(indices, i)
+		pos[#pos + 1] = v[o + 1]
+		pos[#pos + 1] = v[o + 1 + 1]
+		pos[#pos + 1] = v[o + 2 + 1]
+		nrm[#nrm + 1] = v[o + 4 + 1]
+		nrm[#nrm + 1] = v[o + 5 + 1]
+		nrm[#nrm + 1] = v[o + 6 + 1]
+		col[#col + 1] = v[o + 8 + 1]
+		col[#col + 1] = v[o + 9 + 1]
+		col[#col + 1] = v[o + 10 + 1]
+		indices[#indices + 1] = i
 	end
 	return { positions = pos, normals = nrm, colors = col, indices = indices, vert_count = n, index_count = n }
 end
@@ -3769,7 +4326,7 @@ function Shapes3d.cube()
 		{ 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0 },
 	}
 	for _, f in ipairs(faces) do
-		local baseIdx = Math.Floor(#pos / 3.0)
+		local baseIdx = __tcs_trunc(Math.Floor(#pos / 3.0))
 		for i = 0, 4 - 1 do
 			local su
 			if i == 1 or i == 2 then
@@ -3784,14 +4341,14 @@ function Shapes3d.cube()
 				sv = -1.0
 			end
 			for k = 0, 3 - 1 do
-				table.insert(pos, f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv)
+				pos[#pos + 1] = f[k + 1] + f[3 + k + 1] * su + f[6 + k + 1] * sv
 			end
 			for k = 0, 3 - 1 do
-				table.insert(nrm, f[k + 1])
+				nrm[#nrm + 1] = f[k + 1]
 			end
 		end
 		for _, idx in ipairs({ 0, 1, 2, 0, 2, 3 }) do
-			table.insert(indices, baseIdx + idx)
+			indices[#indices + 1] = baseIdx + idx
 		end
 	end
 	return Shapes3d.mesh(pos, nrm, indices)
@@ -3805,18 +4362,18 @@ function Shapes3d.cylinder(sides)
 		local a = i / sides * 3.141592653589793 * 2.0
 		local nx = Math.Cos(a)
 		local nz = Math.Sin(a)
-		table.insert(pos, nx)
-		table.insert(pos, -0.5)
-		table.insert(pos, nz)
-		table.insert(nrm, nx)
-		table.insert(nrm, 0.0)
-		table.insert(nrm, nz)
-		table.insert(pos, nx)
-		table.insert(pos, 0.5)
-		table.insert(pos, nz)
-		table.insert(nrm, nx)
-		table.insert(nrm, 0.0)
-		table.insert(nrm, nz)
+		pos[#pos + 1] = nx
+		pos[#pos + 1] = -0.5
+		pos[#pos + 1] = nz
+		nrm[#nrm + 1] = nx
+		nrm[#nrm + 1] = 0.0
+		nrm[#nrm + 1] = nz
+		pos[#pos + 1] = nx
+		pos[#pos + 1] = 0.5
+		pos[#pos + 1] = nz
+		nrm[#nrm + 1] = nx
+		nrm[#nrm + 1] = 0.0
+		nrm[#nrm + 1] = nz
 	end
 	for i = 0, sides - 1 do
 		local b0 = i * 2
@@ -3828,7 +4385,7 @@ function Shapes3d.cylinder(sides)
 		end
 		local b1 = i1 * 2
 		for _, idx in ipairs({ b0, b0 + 1, b1 + 1, b0, b1 + 1, b1 }) do
-			table.insert(indices, idx)
+			indices[#indices + 1] = idx
 		end
 	end
 	for side = 0, 2 - 1 do
@@ -3839,21 +4396,27 @@ function Shapes3d.cylinder(sides)
 			ny = -1.0
 		end
 		local y = ny * 0.5
-		local center = Math.Floor(#pos / 3.0)
-		table.insert(pos, 0.0)
-		table.insert(pos, y)
-		table.insert(pos, 0.0)
-		table.insert(nrm, 0.0)
-		table.insert(nrm, ny)
-		table.insert(nrm, 0.0)
+		local center = __tcs_trunc(Math.Floor(#pos / 3.0))
+		pos[#pos + 1] = 0.0
+		pos[#pos + 1] = y
+		pos[#pos + 1] = 0.0
+		nrm[#nrm + 1] = 0.0
+		nrm[#nrm + 1] = ny
+		nrm[#nrm + 1] = 0.0
 		for i = 0, sides - 1 do
 			local a = i / sides * 3.141592653589793 * 2.0
-			table.insert(pos, Math.Cos(a))
-			table.insert(pos, y)
-			table.insert(pos, Math.Sin(a))
-			table.insert(nrm, 0.0)
-			table.insert(nrm, ny)
-			table.insert(nrm, 0.0)
+			do
+				local __tcs_v = Math.Cos(a)
+				pos[#pos + 1] = __tcs_v
+			end
+			pos[#pos + 1] = y
+			do
+				local __tcs_v = Math.Sin(a)
+				pos[#pos + 1] = __tcs_v
+			end
+			nrm[#nrm + 1] = 0.0
+			nrm[#nrm + 1] = ny
+			nrm[#nrm + 1] = 0.0
 		end
 		for i = 0, sides - 1 do
 			local i1
@@ -3865,13 +4428,13 @@ function Shapes3d.cylinder(sides)
 			local r0 = center + 1 + i
 			local r1 = center + 1 + i1
 			if ny > 0 then
-				table.insert(indices, center)
-				table.insert(indices, r0)
-				table.insert(indices, r1)
+				indices[#indices + 1] = center
+				indices[#indices + 1] = r0
+				indices[#indices + 1] = r1
 			else
-				table.insert(indices, center)
-				table.insert(indices, r1)
-				table.insert(indices, r0)
+				indices[#indices + 1] = center
+				indices[#indices + 1] = r1
+				indices[#indices + 1] = r0
 			end
 		end
 	end
@@ -3892,12 +4455,12 @@ function Shapes3d.sphere(stacks, slices)
 			local th = sl / slices * 3.141592653589793 * 2.0
 			local x = r * Math.Cos(th)
 			local z = r * Math.Sin(th)
-			table.insert(pos, x)
-			table.insert(pos, y)
-			table.insert(pos, z)
-			table.insert(nrm, x)
-			table.insert(nrm, y)
-			table.insert(nrm, z)
+			pos[#pos + 1] = x
+			pos[#pos + 1] = y
+			pos[#pos + 1] = z
+			nrm[#nrm + 1] = x
+			nrm[#nrm + 1] = y
+			nrm[#nrm + 1] = z
 			sl = sl + 1
 		end
 		st = st + 1
@@ -3907,7 +4470,7 @@ function Shapes3d.sphere(stacks, slices)
 			local a = st * (slices + 1) + sl
 			local b = a + slices + 1
 			for _, idx in ipairs({ a, b, a + 1, a + 1, b, b + 1 }) do
-				table.insert(indices, idx)
+				indices[#indices + 1] = idx
 			end
 		end
 	end
@@ -3933,54 +4496,6 @@ SpriteBatch.__index = SpriteBatch
 SpriteBatch.legacy_stride = 0
 SpriteBatch.vertex_stride = 0
 SpriteBatch.instance_stride = 0
-SpriteBatch.legacy_stride = 8
-SpriteBatch.vertex_stride = 4
-SpriteBatch.instance_stride = 16
-SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
-	.. "ConstantBuffer<Uniforms> u;\n"
-	.. "struct VSIn  { float2 pos; float2 uv; float4 color; };\n"
-	.. "StructuredBuffer<VSIn> verts;\n"
-	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
-	.. '[shader("vertex")]\n'
-	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
-	.. "    VSIn i = verts[vid];\n"
-	.. "    VSOut o;\n"
-	.. "    float2 p = float2(i.pos.x / u.params.x * 2.0 - 1.0, 1.0 - i.pos.y / u.params.y * 2.0);\n"
-	.. "    o.pos = float4(p, 0.0, 1.0);\n"
-	.. "    o.uv = i.uv;\n"
-	.. "    o.color = i.color;\n"
-	.. "    return o;\n"
-	.. "}\n"
-SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
-	.. "ConstantBuffer<Uniforms> u;\n"
-	.. "struct VSVertex { float2 corner; float2 uv01; };\n"
-	.. "struct VSInstance { float2 pos; float2 size; float2 rot_cs; float2 pad0; float4 uv_rect; float4 color; };\n"
-	.. "StructuredBuffer<VSVertex> verts;\n"
-	.. "StructuredBuffer<VSInstance> insts;\n"
-	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
-	.. '[shader("vertex")]\n'
-	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n"
-	.. "    VSVertex v = verts[vid];\n"
-	.. "    VSInstance i = insts[iid];\n"
-	.. "    VSOut o;\n"
-	.. "    float2 local = v.corner * i.size;\n"
-	.. "    float2 p2 = i.pos + float2(local.x * i.rot_cs.x - local.y * i.rot_cs.y, local.x * i.rot_cs.y + local.y * i.rot_cs.x);\n"
-	.. "    float2 p = float2(p2.x / u.params.x * 2.0 - 1.0, 1.0 - p2.y / u.params.y * 2.0);\n"
-	.. "    o.pos = float4(p, 0.0, 1.0);\n"
-	.. "    o.uv = lerp(i.uv_rect.xy, i.uv_rect.zw, v.uv01);\n"
-	.. "    o.color = i.color;\n"
-	.. "    return o;\n"
-	.. "}\n"
-SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
-	.. "struct FSIn { float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
-	.. '[shader("fragment")]\n'
-	.. "float4 fs_main(FSIn i) : SV_Target {\n"
-	.. "    float4 c = LUB_SAMPLE(atlas, i.uv) * i.color;\n"
-	.. "    if (c.a < 0.004) discard;\n"
-	.. "    return c;\n"
-	.. "}\n"
-SpriteBatch.white_atlas = nil
-SpriteBatch.disc_atlas = nil
 
 function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
 	local self = setmetatable({}, SpriteBatch)
@@ -3997,13 +4512,7 @@ function SpriteBatch.new(logicalW, logicalH, shaderKey, bufferPrefix, instanced)
 	self.quad_data = nil
 	self.logical_w = logicalW
 	self.logical_h = logicalH
-	local inst
-	local __tcs_lhs = instanced
-	if __tcs_lhs ~= nil then
-		inst = __tcs_lhs
-	else
-		inst = true
-	end
+	local inst = __tcs_nget(instanced, true)
 	self.shader_key = ((shaderKey or "lubx_sprite") or "")
 		.. (((function()
 			if inst then
@@ -4057,7 +4566,7 @@ function SpriteBatch:bucket_for(a)
 	then
 		b = SpriteBucket.new(a)
 		self.buckets[a.key] = b
-		table.insert(self.order, a.key)
+		self.order[#self.order + 1] = a.key
 	end
 	if not b.ready then
 		if not a:ensure() then
@@ -4080,22 +4589,22 @@ function SpriteBatch:push_instance(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, 
 end
 
 function SpriteBatch:push_instance_color(verts, cx, cy, w, h, cr, sr, u0, v0, u1, v1, r, g, b, alpha)
-	table.insert(verts, cx)
-	table.insert(verts, cy)
-	table.insert(verts, w)
-	table.insert(verts, h)
-	table.insert(verts, cr)
-	table.insert(verts, sr)
-	table.insert(verts, 0.0)
-	table.insert(verts, 0.0)
-	table.insert(verts, u0)
-	table.insert(verts, v0)
-	table.insert(verts, u1)
-	table.insert(verts, v1)
-	table.insert(verts, r)
-	table.insert(verts, g)
-	table.insert(verts, b)
-	table.insert(verts, alpha)
+	verts[#verts + 1] = cx
+	verts[#verts + 1] = cy
+	verts[#verts + 1] = w
+	verts[#verts + 1] = h
+	verts[#verts + 1] = cr
+	verts[#verts + 1] = sr
+	verts[#verts + 1] = 0.0
+	verts[#verts + 1] = 0.0
+	verts[#verts + 1] = u0
+	verts[#verts + 1] = v0
+	verts[#verts + 1] = u1
+	verts[#verts + 1] = v1
+	verts[#verts + 1] = r
+	verts[#verts + 1] = g
+	verts[#verts + 1] = b
+	verts[#verts + 1] = alpha
 end
 
 function SpriteBatch:push_vertex(verts, x, y, u, v, c)
@@ -4103,14 +4612,14 @@ function SpriteBatch:push_vertex(verts, x, y, u, v, c)
 end
 
 function SpriteBatch:push_vertex_color(verts, x, y, u, v, r, g, b, alpha)
-	table.insert(verts, x)
-	table.insert(verts, y)
-	table.insert(verts, u)
-	table.insert(verts, v)
-	table.insert(verts, r)
-	table.insert(verts, g)
-	table.insert(verts, b)
-	table.insert(verts, alpha)
+	verts[#verts + 1] = x
+	verts[#verts + 1] = y
+	verts[#verts + 1] = u
+	verts[#verts + 1] = v
+	verts[#verts + 1] = r
+	verts[#verts + 1] = g
+	verts[#verts + 1] = b
+	verts[#verts + 1] = alpha
 end
 
 function SpriteBatch:push_rot(verts, cx, cy, ox, oy, cr, sr, u, v, c)
@@ -4178,7 +4687,7 @@ function SpriteBatch.ensure_white_atlas()
 		local px = {}
 		local i = 0
 		while i < 4 * 4 * 4 do
-			table.insert(px, 255)
+			px[#px + 1] = 255
 			i = i + 1
 		end
 		SpriteBatch.white_atlas = Atlas.from_pixels("lubx_white", 4, 4, px, 1)
@@ -4196,10 +4705,10 @@ function SpriteBatch.ensure_disc_atlas()
 				local dy = (y + 0.5) / n * 2.0 - 1.0
 				local d = Math.Sqrt(dx * dx + dy * dy)
 				local a = Math.Max(0.0, Math.Min(1.0, (1.0 - d) * n * 0.5))
-				table.insert(px, 255)
-				table.insert(px, 255)
-				table.insert(px, 255)
-				table.insert(px, Math.Floor(a * 255))
+				px[#px + 1] = 255
+				px[#px + 1] = 255
+				px[#px + 1] = 255
+				px[#px + 1] = __tcs_trunc(Math.Floor(a * 255))
 			end
 		end
 		SpriteBatch.disc_atlas = Atlas.from_pixels("lubx_disc", n, n, px, 1)
@@ -4231,44 +4740,43 @@ function SpriteBatch:flush(blend)
 	if sh == nil then
 		return
 	end
-	local quadVb = (function()
-		if self.instanced then
-			return self:ensure_quad()
-		else
-			return nil
-		end
-	end)()
+	local quadVb
+	if self.instanced then
+		quadVb = self:ensure_quad()
+	else
+		quadVb = nil
+	end
 	if self.instanced and quadVb == nil then
 		return
 	end
 	local uniformParams = { self.logical_w, self.logical_h, 0.0, 0.0 }
-	local blendMode = blend or lub.gfx.ALPHA
+	local blendMode = __tcs_nget(blend, lub.gfx.ALPHA)
 	for _, k in ipairs(self.order) do
 		local b = self.buckets[k]
 		if #b.verts == 0 then
-			goto _continue_55
+			goto _continue_58
 		end
 		local tex = b.atlas.texture
 		if tex == nil then
-			goto _continue_55
+			goto _continue_58
 		end
 		if not self.instanced then
 			local vbuf =
 				lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_verts", lub.gfx.STORAGE, b.verts)
 			if vbuf == nil then
-				goto _continue_55
+				goto _continue_58
 			end
 			lub.gfx.draw(
-				Math.Floor(#b.verts / 8),
+				__tcs_trunc(Math.Floor(#b.verts / 8)),
 				{ ["verts"] = vbuf, ["atlas"] = tex, ["uniforms"] = { ["params"] = uniformParams } },
 				{ shader = sh, depth = false, cull = lub.gfx.NONE, blend = blendMode }
 			)
-			goto _continue_55
+			goto _continue_58
 		end
 		local instances =
 			lub.gfx.use_buffer((self.buffer_prefix or "") .. "_" .. (k or "") .. "_instances", lub.gfx.STORAGE, b.verts)
 		if instances == nil or quadVb == nil then
-			goto _continue_55
+			goto _continue_58
 		end
 		lub.gfx.draw(4, {
 			["verts"] = quadVb,
@@ -4281,11 +4789,60 @@ function SpriteBatch:flush(blend)
 			cull = lub.gfx.NONE,
 			blend = blendMode,
 			primitive = lub.gfx.TRIANGLE_STRIP,
-			instance_count = Math.Floor(#b.verts / 16),
+			instance_count = __tcs_trunc(Math.Floor(#b.verts / 16)),
 		})
-		::_continue_55::
+		::_continue_58::
 	end
 end
+
+SpriteBatch.legacy_stride = 8
+SpriteBatch.vertex_stride = 4
+SpriteBatch.instance_stride = 16
+SpriteBatch.legacy_vs = "struct Uniforms { float4 params; };\n"
+	.. "ConstantBuffer<Uniforms> u;\n"
+	.. "struct VSIn  { float2 pos; float2 uv; float4 color; };\n"
+	.. "StructuredBuffer<VSIn> verts;\n"
+	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
+	.. '[shader("vertex")]\n'
+	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID) {\n"
+	.. "    VSIn i = verts[vid];\n"
+	.. "    VSOut o;\n"
+	.. "    float2 p = float2(i.pos.x / u.params.x * 2.0 - 1.0, 1.0 - i.pos.y / u.params.y * 2.0);\n"
+	.. "    o.pos = float4(p, 0.0, 1.0);\n"
+	.. "    o.uv = i.uv;\n"
+	.. "    o.color = i.color;\n"
+	.. "    return o;\n"
+	.. "}\n"
+SpriteBatch.instanced_vs = "struct Uniforms { float4 params; };\n"
+	.. "ConstantBuffer<Uniforms> u;\n"
+	.. "struct VSVertex { float2 corner; float2 uv01; };\n"
+	.. "struct VSInstance { float2 pos; float2 size; float2 rot_cs; float2 pad0; float4 uv_rect; float4 color; };\n"
+	.. "StructuredBuffer<VSVertex> verts;\n"
+	.. "StructuredBuffer<VSInstance> insts;\n"
+	.. "struct VSOut { float2 uv : TEXCOORD0; float4 color : COLOR; float4 pos : SV_Position; };\n"
+	.. '[shader("vertex")]\n'
+	.. "VSOut vs_main(uint vid : LUB_VERTEX_ID, uint iid : LUB_INSTANCE_ID) {\n"
+	.. "    VSVertex v = verts[vid];\n"
+	.. "    VSInstance i = insts[iid];\n"
+	.. "    VSOut o;\n"
+	.. "    float2 local = v.corner * i.size;\n"
+	.. "    float2 p2 = i.pos + float2(local.x * i.rot_cs.x - local.y * i.rot_cs.y, local.x * i.rot_cs.y + local.y * i.rot_cs.x);\n"
+	.. "    float2 p = float2(p2.x / u.params.x * 2.0 - 1.0, 1.0 - p2.y / u.params.y * 2.0);\n"
+	.. "    o.pos = float4(p, 0.0, 1.0);\n"
+	.. "    o.uv = lerp(i.uv_rect.xy, i.uv_rect.zw, v.uv01);\n"
+	.. "    o.color = i.color;\n"
+	.. "    return o;\n"
+	.. "}\n"
+SpriteBatch.fs = "LUB_TEXTURE2D(atlas);\n"
+	.. "struct FSIn { float2 uv : TEXCOORD0; float4 color : COLOR; };\n"
+	.. '[shader("fragment")]\n'
+	.. "float4 fs_main(FSIn i) : SV_Target {\n"
+	.. "    float4 c = LUB_SAMPLE(atlas, i.uv) * i.color;\n"
+	.. "    if (c.a < 0.004) discard;\n"
+	.. "    return c;\n"
+	.. "}\n"
+SpriteBatch.white_atlas = nil
+SpriteBatch.disc_atlas = nil
 
 TextGlyph = {}
 TextGlyph.__index = TextGlyph
@@ -4325,13 +4882,13 @@ function Text.new(key, ttfPath, px, atlasSize)
 	self.row_h = 0
 	self.ttf_path = ttfPath
 	self.px = px
-	local size = atlasSize or 256
+	local size = __tcs_nget(atlasSize, 256)
 	self.atlas_w = size
 	self.atlas_h = size
 	self.pixels = {}
 	local i = 0
 	while i < self.atlas_w * self.atlas_h * 4 do
-		table.insert(self.pixels, 0)
+		self.pixels[#self.pixels + 1] = 0
 		i = i + 1
 	end
 	local m = lub.font.metrics(self:ttf())
@@ -4377,7 +4934,7 @@ function Text:ensure_glyph(cp)
 	if gb.bytes ~= nil and gb.w > 0 and gb.h > 0 then
 		if self.pen_x + gb.w + 1 > self.atlas_w then
 			self.pen_x = 1
-			self.pen_y = self.pen_y + self.row_h + 1
+			self.pen_y = self.pen_y + (self.row_h + 1)
 			self.row_h = 0
 		end
 		if self.pen_y + gb.h + 1 > self.atlas_h then
@@ -4404,7 +4961,7 @@ function Text:ensure_glyph(cp)
 			end
 			row = row + 1
 		end
-		self.pen_x = self.pen_x + gb.w + 1
+		self.pen_x = self.pen_x + (gb.w + 1)
 		if gb.h > self.row_h then
 			self.row_h = gb.h
 		end
@@ -4433,16 +4990,16 @@ function Text:width(s, scale)
 			return
 		end
 		if prev >= 0 then
-			sum = sum + lub.font.kern(self:ttf(), prev, cp) * self.px
+			sum = sum + (lub.font.kern(self:ttf(), prev, cp) * self.px)
 		end
 		sum = sum + g.advance
 		prev = cp
 	end)
-	return sum * (scale or 1.0)
+	return sum * (__tcs_nget(scale, 1.0))
 end
 
 function Text:draw(batch, s, x, y, tint, scale)
-	local sc = scale or 1.0
+	local sc = __tcs_nget(scale, 1.0)
 	local pen = x
 	local prev = -1
 	Text.each_codepoint(s, function(cp)
@@ -4451,7 +5008,7 @@ function Text:draw(batch, s, x, y, tint, scale)
 			return
 		end
 		if prev >= 0 then
-			pen = pen + lub.font.kern(self:ttf(), prev, cp) * self.px * sc
+			pen = pen + (lub.font.kern(self:ttf(), prev, cp) * self.px * sc)
 		end
 		if g.w > 0 then
 			batch:quad(
@@ -4464,9 +5021,76 @@ function Text:draw(batch, s, x, y, tint, scale)
 				tint
 			)
 		end
-		pen = pen + g.advance * sc
+		pen = pen + (g.advance * sc)
 		prev = cp
 	end)
+end
+
+XrAnchor = {}
+XrAnchor.__index = XrAnchor
+
+function XrAnchor.new()
+	local self = setmetatable({}, XrAnchor)
+	__tcs_instances[self] = XrAnchor
+	self.matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }
+	self.set = false
+	return self
+end
+
+function XrAnchor:is_set()
+	return self.set
+end
+
+function XrAnchor:recenter(left, right)
+	local o = left.orientation
+	local p = left.position
+	local q = right.position
+	local yaw =
+		Math.Atan2(2 * (o[0 + 1] * o[2 + 1] + o[1 + 1] * o[3 + 1]), 1 - 2 * (o[0 + 1] * o[0 + 1] + o[1 + 1] * o[1 + 1]))
+	local c = Math.Cos(yaw)
+	local s = Math.Sin(yaw)
+	for i = 0, 16 - 1 do
+		self.matrix[i + 1] = 0
+	end
+	self.matrix[0 + 1] = c
+	self.matrix[2 + 1] = s
+	self.matrix[5 + 1] = 1
+	self.matrix[8 + 1] = -s
+	self.matrix[10 + 1] = c
+	self.matrix[15 + 1] = 1
+	self.matrix[3 + 1] = (p[0 + 1] + q[0 + 1]) * 0.5
+	self.matrix[7 + 1] = (p[1 + 1] + q[1 + 1]) * 0.5
+	self.matrix[11 + 1] = (p[2 + 1] + q[2 + 1]) * 0.5
+	self.set = true
+end
+
+function XrAnchor:reset()
+	for i = 0, 16 - 1 do
+		self.matrix[i + 1] = (function()
+			if __tcs_irem(i, 5) == 0 then
+				return 1
+			else
+				return 0
+			end
+		end)()
+	end
+	self.set = false
+end
+
+function XrAnchor:to_local()
+	return self.matrix
+end
+
+function XrAnchor:view_projection(view, result)
+	local vp = view.view_projection
+	for row = 0, 4 - 1 do
+		for col = 0, 4 - 1 do
+			result[row * 4 + col + 1] = vp[row * 4 + 1] * self.matrix[col + 1]
+				+ vp[row * 4 + 1 + 1] * self.matrix[4 + col + 1]
+				+ vp[row * 4 + 2 + 1] * self.matrix[8 + col + 1]
+				+ vp[row * 4 + 3 + 1] * self.matrix[12 + col + 1]
+		end
+	end
 end
 return {
 	Assets = Assets,
@@ -4511,4 +5135,5 @@ return {
 	Vec2 = Vec2,
 	Vec3 = Vec3,
 	Vec4 = Vec4,
+	XrAnchor = XrAnchor,
 }

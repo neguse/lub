@@ -1012,35 +1012,51 @@ static void sg_apply_bindings(const BindingsDesc *b) {
   } else {
     g_last_indexed = false;
   }
-  // Fragment-stage texture+sampler binding: resolve name->slot via reflection,
-  // then issue a single SDL_BindGPUFragmentSamplers covering [0..max_slot].
+  // Texture+sampler binding: resolve name->slot via reflection. SDL_GPU
+  // numbers samplers per stage (vertex: set 0, fragment: set 2; the shader
+  // was created with num_samplers for each stage), so split the textures by
+  // the reflected stage and issue one SDL_BindGPU{Vertex,Fragment}Samplers
+  // per stage covering [0..max_slot].
   if (b->texture_count > 0 && b->refl) {
-    SDL_GPUTextureSamplerBinding tsb[8] = {0};
-    int max_slot = -1;
+    SDL_GPUTextureSamplerBinding vs_tsb[8] = {0};
+    SDL_GPUTextureSamplerBinding fs_tsb[8] = {0};
+    int vs_max_slot = -1, fs_max_slot = -1;
     for (int i = 0; i < b->texture_count; ++i) {
       if (!b->textures[i].name)
         continue;
+      // The same name can be declared by both stages; bind it in each.
       for (int j = 0; j < b->refl->tex_count; ++j) {
-        if (strcmp(b->refl->texs[j].name, b->textures[i].name) != 0)
+        const ShaderTexture *t = &b->refl->texs[j];
+        if (strcmp(t->name, b->textures[i].name) != 0)
           continue;
         SgImage *im = (SgImage *)b->textures[i].image;
         if (!im || !im->tex || !im->smp)
-          break;
-        int slot = b->refl->texs[j].smp_slot;
+          continue;
+        int slot = t->smp_slot;
         if (slot < 0 || slot >= 8)
-          break;
-        tsb[slot] = (SDL_GPUTextureSamplerBinding){
+          continue;
+        SDL_GPUTextureSamplerBinding tsb = {
             .texture = im->tex,
             .sampler = im->smp,
         };
-        if (slot > max_slot)
-          max_slot = slot;
-        break;
+        if (t->stage == SGL_STAGE_VERTEX) {
+          vs_tsb[slot] = tsb;
+          if (slot > vs_max_slot)
+            vs_max_slot = slot;
+        } else if (t->stage == SGL_STAGE_FRAGMENT) {
+          fs_tsb[slot] = tsb;
+          if (slot > fs_max_slot)
+            fs_max_slot = slot;
+        }
       }
     }
-    if (max_slot >= 0) {
-      SDL_BindGPUFragmentSamplers(g_render_pass, 0, tsb,
-                                  (Uint32)(max_slot + 1));
+    if (vs_max_slot >= 0) {
+      SDL_BindGPUVertexSamplers(g_render_pass, 0, vs_tsb,
+                                (Uint32)(vs_max_slot + 1));
+    }
+    if (fs_max_slot >= 0) {
+      SDL_BindGPUFragmentSamplers(g_render_pass, 0, fs_tsb,
+                                  (Uint32)(fs_max_slot + 1));
     }
   }
   // Graphics-stage read-only storage buffers: SDL_GPU numbers them in their
@@ -1098,10 +1114,10 @@ static void sg_set_scissor(int x, int y, int w, int h) {
 static void sg_dispatch(App *app, const ComputeDispatchDesc *d) {
   if (!d || !d->pipeline || !d->refl)
     return;
-  if (!app->gpu_cmd) {
-    SDL_Log("sg_dispatch: no command buffer (called outside of frame?)");
+  // 読み戻し (sg_readback_image) はフレームの command buffer を途中で submit
+  // して gpu_cmd を NULL にする。sg_begin_pass と同じく取り直す。
+  if (!sg_acquire_command_buffer(app, "sg_dispatch"))
     return;
-  }
   SgPipeline *p = (SgPipeline *)d->pipeline;
   if (!p->is_compute || !p->compute_gpu) {
     SDL_Log("sg_dispatch: not a compute pipeline");

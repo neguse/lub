@@ -214,12 +214,54 @@ public class Readback
 {
 }
 
+/// <summary>XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。
+/// MainTex と同じく depth は既定のものを使い、他の target とは組み合わせない。</summary>
+public class XrView
+{
+    /// <summary>この frame の片眼の描画先。</summary>
+    public TextureRef? Target;
+    public int Width, Height;
+    /// <summary>LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。</summary>
+    [LubArray(3)]
+    public float[] Position = new float[3];
+    [LubArray(4)]
+    public float[] Orientation = new float[4];
+    /// <summary>右手系、メートル、前方 -Z。行優先の projection * view、深度 [0,1]。</summary>
+    [LubArray(16)]
+    public float[] ViewProjection = new float[16];
+}
+
+public class XrInput
+{
+    public bool Active;
+    public float StickX, StickY, Trigger, Grip;
+    public bool Primary, Secondary, Menu, StickClick;
+}
+
 // -------------------------------------------------------------------- Lub
 
 /// <summary>lub の runtime API。ゲームは `using static Lub;` で
 /// `Gfx.BeginPass(...)` と書く。Lua 側は `lub.gfx.begin_pass`。</summary>
 public static class Lub
 {
+    public static class Xr
+    {
+        /// <summary>XR セッションが動いているか。true の間は MainTex へ描けず、
+        /// View の Target へ描く。</summary>
+        [LubNoFail]
+        public static bool Active() { return false; }
+
+        /// <summary>入力フォーカスを持つ XR セッションか。</summary>
+        [LubNoFail]
+        public static bool Focused() { return false; }
+
+        /// <summary>眼は左 0、右 1。この frame に描けないなら null。距離はメートル。</summary>
+        public static XrView? View(int eye, float near, float far) { return null; }
+
+        /// <summary>左手 0、右手 1。セッションが無ければ null。フォーカスを失うと
+        /// 入力は無効。</summary>
+        public static XrInput? Input(int hand) { return null; }
+    }
     /// <summary>OnEvent に届く event の種類。Lua 面は "quit" 等の文字列。</summary>
     [LubLuaString]
     public enum EventKind
@@ -495,6 +537,12 @@ public static class Lub
             version = 0;
             status = Status.Pending;
             error = null;
+        }
+
+        /// <summary>テキストを保存する。親ディレクトリを作り、同じディレクトリの
+        /// 一時ファイルから置き換える。失敗はエラー。web では仮想ファイルへの保存。</summary>
+        public static void SaveText(string path, string text)
+        {
         }
 
         /// <summary>ファイルを byte 列 (frame 有効の view) として読む。font や
@@ -1760,8 +1808,9 @@ public class ConfigOpts
 {
     /// <summary>
     /// GPU backend。native では "d3d12" (Windows の既定) / "vulkan" (Linux の既定。
-    /// Windows は Vulkan SDK がある build のみ) / "sdlgpu"。web (WASM) は webgpu のみで、
-    /// 指定は無視される。未指定 (null) なら既定のまま。
+    /// Windows は Vulkan SDK がある build のみ) / "metal" (macOS / iOS の既定) /
+    /// "sdlgpu"。web (WASM) は webgpu のみで、指定は無視される。未指定 (null) なら
+    /// 既定のまま。
     /// </summary>
     public string? Backend;
     /// <summary>ウィンドウ幅 (px)。`height` とセットで指定する。</summary>

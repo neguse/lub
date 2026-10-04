@@ -5,6 +5,7 @@ build_dir="build-release-linux"
 target="lub"
 configure_only=0
 no_configure=0
+defines=()
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -17,6 +18,7 @@ Options:
   --target NAME                   CMake target (default: lub)
   --configure-only                Configure but do not build
   --no-configure                  Build from an existing configure step
+  -DNAME=VALUE                    Passed to the CMake configure step
 EOF
 }
 
@@ -36,6 +38,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-configure)
       no_configure=1
+      shift
+      ;;
+    -D*)
+      defines+=("$1")
       shift
       ;;
     -h|--help)
@@ -68,6 +74,9 @@ fi
 
 if [[ "$no_configure" -eq 0 ]]; then
   configure_args=(-S "$repo_root" -B "$build_path" -DCMAKE_BUILD_TYPE=Release)
+  if [[ ${#defines[@]} -gt 0 ]]; then
+    configure_args+=("${defines[@]}")
+  fi
   if command -v ninja >/dev/null 2>&1; then
     configure_args+=(-G Ninja)
   fi

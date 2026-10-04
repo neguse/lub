@@ -336,11 +336,36 @@ typedef struct LubTextureOpts {
   bool storage; // compute の storage image として使う。
 } LubTextureOpts;
 
+// XR の片眼。Target はその眼の描画先で、PassOpts.Target に渡す。 MainTex と
+// 同じく depth は既定のものを使い、他の target とは組み合わせない。
+typedef struct LubXrView {
+  LubHandle target; // 0 = 無し // この frame の片眼の描画先。
+  int32_t width;
+  int32_t height;
+  float position[3]; // LOCAL 空間の眼の位置 (メートル) と姿勢 (xyzw)。
+  float orientation[4];
+  float view_projection[16]; // 右手系、メートル、前方 -Z。行優先の projection *
+                             // view、深度 [0,1]。
+} LubXrView;
+
+typedef struct LubXrInput {
+  bool active;
+  float stick_x;
+  float stick_y;
+  float trigger;
+  float grip;
+  bool primary;
+  bool secondary;
+  bool menu;
+  bool stick_click;
+} LubXrInput;
+
 // Lub.config のオプション (onInit 内でのみ有効)。
 typedef struct LubConfigOpts {
   LubStr backend; // len 0 = 無し // GPU backend。native では "d3d12" (Windows
                   // の既定) / "vulkan" (Linux の既定。 Windows は Vulkan SDK
-                  // がある build のみ) / "sdlgpu"。web (WASM) は webgpu
+                  // がある build のみ) / "metal" (macOS / iOS の既定) /
+                  // "sdlgpu"。web (WASM) は webgpu
                   // のみで、指定は無視される。未指定 (null) なら既定のまま。
   bool has_width;
   int32_t width; // ウィンドウ幅 (px)。`height` とセットで指定する。
@@ -2400,6 +2425,22 @@ LUB_API LubStatus lub_config(LubContext *ctx, const LubConfigOpts *opts);
 // アプリ終了を要求する。
 LUB_API void lub_quit(LubContext *ctx);
 
+// -------------------------------------------------------------------- xr
+
+// XR セッションが動いているか。true の間は MainTex へ描けず、 View の Target
+// へ描く。
+LUB_API bool lub_xr_active(LubContext *ctx);
+
+// 入力フォーカスを持つ XR セッションか。
+LUB_API bool lub_xr_focused(LubContext *ctx);
+
+// 眼は左 0、右 1。この frame に描けないなら null。距離はメートル。
+LUB_API LubStatus lub_xr_view(LubContext *ctx, int32_t eye, float near,
+                              float far, LubXrView *out);
+
+// 左手 0、右手 1。セッションが無ければ null。フォーカスを失うと入力は無効。
+LUB_API LubStatus lub_xr_input(LubContext *ctx, int32_t hand, LubXrInput *out);
+
 // ------------------------------------------------------------------- gfx
 // 即時モード GPU API。draw / dispatch の bindings はシェーダ依存の自由テーブ
 // ル (Dictionary<string, object>)。
@@ -2523,6 +2564,10 @@ LUB_API void lub_input_mouse_delta(LubContext *ctx, float *dx, float *dy);
 LUB_API LubStatus lub_io_load_text(LubContext *ctx, LubStr path, LubStr *text,
                                    int32_t *version, int32_t *status,
                                    LubStr *error);
+
+// テキストを保存する。親ディレクトリを作り、同じディレクトリの一時ファイルか
+// ら置き換える。失敗はエラー。web では仮想ファイルへの保存。
+LUB_API LubStatus lub_io_save_text(LubContext *ctx, LubStr path, LubStr text);
 
 // ファイルを byte 列 (frame 有効の view) として読む。font や音の data のよう
 // な binary 用。

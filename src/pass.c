@@ -20,7 +20,7 @@ bool pass_state_in_pass(const PassState *p) { return p->in_pass; }
 
 void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
                       int target_w, int target_h, float r, float g, float b,
-                      float a, SglLoadAction load) {
+                      float a, SglLoadAction load, int xr_eye) {
   if (p->in_pass) {
     SDL_Log("begin_pass called while already in pass (nested passes not "
             "supported)");
@@ -39,6 +39,7 @@ void pass_state_begin(PassState *p, uintptr_t target_image, SglPixelFormat fmt,
       .has_depth = (target_image == 0),
       .depth_fmt = SGL_PF_DEPTH24_STENCIL8,
       .load = load,
+      .xr_eye = target_image ? -1 : xr_eye,
   };
   g_backend->begin_pass(p->app, &d);
   p->in_pass = true;
@@ -73,6 +74,7 @@ void pass_state_begin_ex(PassState *p, int n_targets, const uintptr_t *targets,
   d.clear_depth = clear_depth;
   d.has_depth = (depth_target != 0);
   d.load = load;
+  d.xr_eye = -1;
   for (int i = 0; i < n_targets; ++i) {
     d.targets[i] = targets[i];
     d.color_fmts[i] = fmts[i];
