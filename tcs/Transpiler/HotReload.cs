@@ -29,7 +29,9 @@ public static class HotReload
     {
         var oldExport = IlExport.Export(v1Sources);
         var newExport = IlExport.Export(v2Sources);
-        var v2Lua = Transpiler.Transpile(v2Sources);
+        // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
+        // 解決する前提なので、型 table を chunk-local に cache しない
+        var v2Lua = Transpiler.Transpile(v2Sources, cacheTypeLocals: false);
 
         var oldByName = oldExport.Classes.ToDictionary(c => c.Name);
         var pairs = newExport.Classes

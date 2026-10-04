@@ -133,7 +133,7 @@ public partial class LuaEmitter
         _currentType = info;
 
         var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
+        AppendTypeTableDecl(name);
         info.DeclRanges.Add((declStart, _sb.Length - declStart));
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
@@ -411,7 +411,7 @@ public partial class LuaEmitter
         _currentType = info;
 
         var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
+        AppendTypeTableDecl(name);
         info.DeclRanges.Add((declStart, _sb.Length - declStart));
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
@@ -480,7 +480,7 @@ public partial class LuaEmitter
         var info = new EmittedTypeInfo { Name = name, Kind = "enum" };
         EmittedTypes.Add(info);
         var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
+        AppendTypeTableDecl(name);
         info.DeclRanges.Add((declStart, _sb.Length - declStart));
         int value = 0;
         foreach (var member in enumDecl.Members)
@@ -657,7 +657,11 @@ public partial class LuaEmitter
     public override string ToString()
     {
         FlushPendingBaseLinks();
-        return _sb.ToString().TrimEnd() + "\n";
+        var text = _sb.ToString().TrimEnd() + "\n";
+        return _typeLocals.Count > 0
+            ? text.Replace(TypeLocalsPlaceholder,
+                "local " + string.Join(", ", _typeLocals), StringComparison.Ordinal)
+            : text;
     }
 
     // 増分 splice 用の未 trim 出力 (MethodRanges の offset はこちらの座標)

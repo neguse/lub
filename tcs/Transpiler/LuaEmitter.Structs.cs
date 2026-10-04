@@ -15,7 +15,7 @@ public partial class LuaEmitter
         SetSource(structDecl);
         var name = structDecl.Identifier.ValueText;
         var symbol = model.GetDeclaredSymbol(structDecl);
-        AppendLine($"{name} = {{}}");
+        AppendTypeTableDecl(name);
         AppendLine();
         EmitStructNew(name, symbol);
         EmitStructCopyFunction(name, symbol);
@@ -39,7 +39,7 @@ public partial class LuaEmitter
         SetSource(rec);
         var name = rec.Identifier.ValueText;
         var symbol = model.GetDeclaredSymbol(rec);
-        AppendLine($"{name} = {{}}");
+        AppendTypeTableDecl(name);
         AppendLine();
         EmitStructNew(name, symbol);
 
