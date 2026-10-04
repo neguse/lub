@@ -167,18 +167,6 @@ public partial class LuaEmitter
                         return false;
                     if (init != null)
                         init = WrapStructCopy(model, v.Initializer!.Value, init);
-                    // 初期化子の条件式を statement 化 (return 位置と同方針)
-                    if (init is IlTernary lt)
-                    {
-                        var varNode = new IlVar(v.Identifier.ValueText);
-                        acc.Add(new IlLocal(v.Identifier.ValueText, null,
-                            declaredType) { Origin = stmt });
-                        acc.Add(new IlIf(
-                            [(lt.Cond, new IlBlock([new IlAssign(varNode, lt.T)]))],
-                            new IlBlock([new IlAssign(varNode, lt.F)]))
-                            { Origin = stmt });
-                        continue;
-                    }
                     if (init is IlIife li
                         && TryGetValueChainShape(li, out var liSetup,
                             out var liChain, out var liTail, out _))
@@ -519,16 +507,6 @@ public partial class LuaEmitter
             var value = BuildExpr(model, assign.Right);
             if (target == null || value == null) return false;
             value = WrapStructCopy(model, assign.Right, value);
-            // target が純 local なら条件式 RHS を if 文へ (target の
-            // 評価が存在しないため cond 先行評価でも順序が変わらない)
-            if (value is IlTernary at && target is IlVar)
-            {
-                acc.Add(new IlIf(
-                    [(at.Cond, new IlBlock([new IlAssign(target, at.T)]))],
-                    new IlBlock([new IlAssign(target, at.F)]))
-                    { Origin = origin });
-                return true;
-            }
             if (value is IlIife ai && target is IlVar
                 && TryGetValueChainShape(ai, out var aiSetup, out var aiChain,
                     out var aiTail, out _))
@@ -605,14 +583,6 @@ public partial class LuaEmitter
     private void AddReturnStat(List<IlStat> acc, IlExpr? value,
         SyntaxNode? origin)
     {
-        if (value is IlTernary ternary)
-        {
-            acc.Add(new IlIf(
-                [(ternary.Cond, new IlBlock([new IlReturn(ternary.T)]))],
-                new IlBlock([new IlReturn(ternary.F)]))
-                { Origin = origin });
-            return;
-        }
         // switch 式は inline (return がそのまま効く)。else 無しは
         // 「値なし return」への変化 (print の 0 値/1 値差) を避け IIFE 維持
         if (value is IlIife iife

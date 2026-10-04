@@ -297,8 +297,8 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `--x` `x--` (デクリメント) | **Y** | `x = x - 1` (文) | |
 | `=` (代入) | **Y** | そのまま | |
 | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` | **Y** | 展開 `x = x op y` | bool への `&=` `\|=` `^=` は未対応 |
-| `? :` (三項) | **Y** | IIFE | falsy 安全 |
-| `??` (null 合体) | **Y** | `or` (bool? のみ nil 判定 IIFE — `or` だと false が fallback するため) | |
+| `? :` (三項) | **Y** | temp local + if 文 (式の途中・入れ子・条件・lambda 本体も。前置文を置けない IIFE 内 / field initializer のみ IIFE) | falsy 安全、C# の評価順を保つ |
+| `??` (null 合体) | **Y** | `or` (bool? のみ nil 判定 IIFE — `or` だと false が fallback するため)。右辺が呼び出しを含むときは temp + `if nil` | 右辺は nil のときだけ評価 |
 | `?.` (null 条件アクセス, C# 6) | **Y** | IIFE nil チェック | String/List/Dict mapping 対応 |
 | `(T)x` (キャスト) | **Y** | 透過 (型消去)。`(int)f` だけは `__tcs_trunc` で 0 方向 truncation (C backend も同じ契約) | |
 | `is null` / `is not null` | **Y** | `== nil` / `~= nil` | |

@@ -18,6 +18,11 @@ public partial class LuaEmitter
 
     private void EmitIlStat(IlStat stat)
     {
+        if (LowerStat(stat) is { } lowered)
+        {
+            foreach (var s in lowered) EmitIlStat(s);
+            return;
+        }
         if (stat.Origin != null) SetSource(stat.Origin);
         switch (stat)
         {
@@ -64,17 +69,8 @@ public partial class LuaEmitter
                 EmitIlWhile(whileStat);
                 break;
             case IlRepeat repeat:
-            {
-                var label = PushContinueLabel();
-                AppendLine("repeat");
-                _indent++;
-                EmitIlBlock(repeat.Body);
-                EmitContinueLabel(label);
-                _indent--;
-                AppendLine($"until not ({RenderIl(repeat.Cond)})");
-                PopContinueLabel();
+                EmitIlRepeat(repeat);
                 break;
-            }
             case IlNumericFor numFor:
             {
                 var label = PushContinueLabel();
@@ -379,6 +375,12 @@ public partial class LuaEmitter
         {
             var locals = closure.PatternLocals.Length > 0
                 ? $"local {string.Join(", ", closure.PatternLocals)}; " : "";
+            if (Needs(closure.ExprBody))
+            {
+                IlStat[] body = [.. closure.PatternLocals.Select(n => (IlStat)new IlLocal(n, null)),
+                    new IlReturn(closure.ExprBody)];
+                return $"function({paramList}) {RenderIlClosureBlock(new IlBlock([.. body]))} end";
+            }
             if (TryRenderListAddStat(closure.ExprBody) is { } add)
                 return $"function({paramList}) {locals}{add} end";
             return $"function({paramList}) {locals}return " +
