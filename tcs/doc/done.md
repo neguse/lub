@@ -1759,3 +1759,11 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### #16: --snapshot で struct を含むと module registry の適用が失敗する ✓ (2026-10-05)
+- 原因: `VisitStruct` / `VisitRecordStruct` が module artifact に `EmittedTypeInfo` を登録していなかった (class / record / enum だけが登録)。descriptor の types に struct が無いので registry の declare が `P` を宣言せず、define chunk に残った `P = {}` が read-only module env で `write to undeclared global` になる。`_currentType` も null のまま member key (new / __copy / op_Equality / method) が記録されず、hot apply の削除 diff からも漏れていた
+- 修正: runtime type の登録 + 宣言行の DeclRanges 記録を `LuaEmitter.BeginType(name, kind)` に集約し、class / record / enum / struct / record struct の 5 visitor すべてをこれ経由にした。struct は kind `struct`、instance shape は値 member 一覧 (field 追加は restart 分類)
+- 検証: ModuleDescriptorTests に struct / record struct の descriptor 内容 + snapshot 実行 (issue の再現コード相当で `10`)、struct method body edit の hot apply (既存の値に新 body が届く、type table identity 維持) と field 追加の restart 分類。issue の再現手順 (`--snapshot --entry App` → `dofile(...).run()`) は `@@tcs_commit ok:true` と `2`
+- よかったこと: 登録を 1 箇所にしたので、新しい runtime type 種別を足すときに declare 漏れが構造的に起きない
+- 判断: struct の fast path (method 単位 splice) は class 限定のまま (struct の body edit は module 全体 emit に fallback し、hot apply 自体は成立する)
+- 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)

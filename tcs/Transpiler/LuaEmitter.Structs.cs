@@ -15,8 +15,7 @@ public partial class LuaEmitter
         SetSource(structDecl);
         var name = structDecl.Identifier.ValueText;
         var symbol = model.GetDeclaredSymbol(structDecl);
-        AppendLine($"{name} = {{}}");
-        AppendLine();
+        BeginStructType(name, symbol);
         EmitStructNew(name, symbol);
         EmitStructCopyFunction(name, symbol);
 
@@ -28,6 +27,17 @@ public partial class LuaEmitter
         EmitStructEquality(name, symbol);
 
         EmitStructMembers(model, name, structDecl.Members);
+        _currentType = null;
+    }
+
+    // struct の値を構成する member 一覧が instance shape。`new` が生成する
+    // field 集合そのものなので、変更は既存の値と食い違う = restart 境界
+    private void BeginStructType(string name, INamedTypeSymbol? symbol)
+    {
+        var info = BeginType(name, "struct");
+        info.InstanceShape = string.Join("\n", ValueMembers(symbol).Select(m =>
+            m.Name + "=" + GetDefaultValueForType(m.Type)));
+        AppendLine();
     }
 
     // record struct。struct の emit の上に positional primary ctor
@@ -39,8 +49,7 @@ public partial class LuaEmitter
         SetSource(rec);
         var name = rec.Identifier.ValueText;
         var symbol = model.GetDeclaredSymbol(rec);
-        AppendLine($"{name} = {{}}");
-        AppendLine();
+        BeginStructType(name, symbol);
         EmitStructNew(name, symbol);
 
         // positional primary ctor: zero → positional 代入 → initializer の順
@@ -66,6 +75,7 @@ public partial class LuaEmitter
         EmitStructEquality(name, symbol);
 
         EmitStructMembers(model, name, rec.Members);
+        _currentType = null;
     }
 
     // 値等価 (memberwise)。record struct の ==/!= と、struct 要素の

@@ -342,6 +342,103 @@ public class ModuleDescriptorTests
         Assert.Contains("undeclared global", output);
     }
 
+    // struct / record struct も registry の runtime type (#16)。宣言行は
+    // declare 側に回り、define は module env 経由で stable table に member を
+    // 載せる。descriptor に無いと `P = {}` が undeclared global write になる
+    [Fact]
+    public void StructIsDeclaredRuntimeType()
+    {
+        var session = Open(("p.cs", """
+            public struct P
+            {
+                public int X;
+                public int Doubled() { return X * 2; }
+            }
+            public record struct Q(int A, int B);
+            public class App
+            {
+                public static int Run()
+                {
+                    var p = new P();
+                    p.X = 2;
+                    var q = new Q(3, 4);
+                    return p.X + p.Doubled() + (q == new Q(3, 4) ? q.B : 0);
+                }
+            }
+            """));
+        Assert.Empty(session.CollectDiagnostics().Errors);
+        var artifact = session.Artifacts.Single();
+
+        var p = artifact.Types.Single(t => t.Name == "P");
+        Assert.Equal("struct", p.Kind);
+        Assert.Contains("new", p.DefinitionKeys);
+        Assert.Contains("__copy", p.DefinitionKeys);
+        Assert.Contains("op_Equality", p.DefinitionKeys);
+        Assert.Contains("doubled", p.DefinitionKeys);
+        var q = artifact.Types.Single(t => t.Name == "Q");
+        Assert.Equal("struct", q.Kind);
+        Assert.Contains("ctor", q.DefinitionKeys);
+
+        var define = ModuleArtifactText.BuildDefineLua(artifact.RawLua, artifact.Types);
+        Assert.DoesNotContain("P = {}", define);
+        Assert.DoesNotContain("Q = {}", define);
+        Assert.Contains("function P.new()", define);
+
+        var output = RunWithSnapshots(
+            """
+            local w = dofile(snap1)
+            print(w.run())
+            """,
+            Snapshot(session, "App"));
+        Assert.Equal("10", output);
+    }
+
+    // struct method の body edit は hot apply で既存の値にも届く (呼び出し側は
+    // module env 経由で stable type table を引く)。field 追加は instance shape
+    // 変更として restart
+    [Fact]
+    public void StructMethodBodyEditHotAppliesAndShapeChangeRestarts()
+    {
+        var src = """
+            public struct P
+            {
+                public int X;
+                public int Get() { return X; }
+            }
+            public class App
+            {
+                public static P Make() { var p = new P(); p.X = 3; return p; }
+                public static int Read(P p) { return p.Get(); }
+            }
+            """;
+        var session = Open(("p.cs", src));
+        var snap1 = Snapshot(session, "App");
+
+        var r = session.Update("p.cs", src.Replace("return X;", "return X * 10;"));
+        Assert.True(r.Success, string.Join(";", r.Errors));
+        Assert.False(r.RequiresRestart, string.Join(";", r.RestartReasons));
+        var snap2 = Snapshot(session, "App");
+
+        var output = RunWithSnapshots(
+            """
+            local w = dofile(snap1)
+            local reg = _G.__tcs_module_runtime.registry
+            local P = reg.types["p.cs#P"]
+            local p = w.make()
+            print(w.read(p))
+            dofile(snap2)
+            print(P == reg.types["p.cs#P"], w.read(p))
+            """,
+            snap1, snap2);
+        Assert.Equal(["3", "true\t30"],
+            output.Split('\n').Select(l => l.Trim()));
+
+        var r2 = session.Update("p.cs", src.Replace("public int X;",
+            "public int X;\n    public int Y;"));
+        Assert.True(r2.Success && r2.RequiresRestart);
+        Assert.Contains(r2.RestartReasons, m => m.Contains("instance shape changed: P"));
+    }
+
     [Fact]
     public void StaleRevisionIsSkipped()
     {
