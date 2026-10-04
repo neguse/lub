@@ -1759,3 +1759,9 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### 参照型要素の `new T[n]` を TCS1003 で診断 (#20, #26) ✓ (2026-10-05)
+- 値型要素 (数値 / bool / enum / char / struct) の `new T[n]` は master で既に `__tcs_arr(n, default)` になっており Length / foreach / default は正しい。残っていた参照型要素 (`new string[3]` が `{}` で Length 0、診断なし) を、要素の default が nil になる `new T[n]` (参照型 / `T?` / 型パラメータ / `new int[n][]`)・初期化子の null 要素・`a[i] = null` の TCS1003 にした。`new T[0]` は対象外。実装は `Shared/TinyCsComplianceFacts.CollectionNull.cs` で analyzer / `tcs check` / transpiler が共有する。support-matrix の配列行を更新
+- 検証: DiagnosticTests / TinyCsComplianceAnalyzerTests に 8 件の診断と非診断 (値型 / 初期化子 / jagged 初期化子 / List) の同一 source を追加。conformance baseline の ArrayCreationExpressions3 / 5 (`new int[100][]`) が InRun → Diag。`dotnet test` と `bash run-tests.sh` の件数は PR 本文
+- 判断: 長さ field (`n` / `__len`) は採らない。nil 穴を持てない Lua sequence の上に長さを足すと Length / foreach / index 全部が `n` 経由になり、値型配列の `#` / ipairs / `__tcs_arr` の hot path を重くする。List\<T\> / Dictionary の null 保存を TCS1003 で禁じている方針とも揃う。tcs2c は C 側で NULL 初期化の固定長配列を持てるが、2 backend parity の原則で frontend 診断を共通にした
+- 残課題: 多次元配列 (`new int[2,3]`) は診断なしで `{}` になる (別 issue 候補)。collection expression (`string[] a = [null]`) の null 要素は未検出
