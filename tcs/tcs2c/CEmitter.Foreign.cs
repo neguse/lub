@@ -17,6 +17,17 @@ internal sealed partial class CEmitter
     private IlForeignMethod? ForeignMethod(string name) => _program.ForeignMethods.IsDefault
         ? null : _program.ForeignMethods.FirstOrDefault(m => m.Name == name);
 
+    // 受け手の class chain 上で stub が宣言する instance method
+    private IlForeignMethod? ForeignInstanceMethod(CType receiver, string method)
+    {
+        if (receiver.Kind != CTypeKind.Ref || _program.ForeignMethods.IsDefault) return null;
+        for (string? cur = receiver.Name; cur != null; cur = _classes[cur].BaseName)
+            if (_program.ForeignMethods.FirstOrDefault(m =>
+                    m.Receiver == cur && m.Name.EndsWith("." + method)) is { } found)
+                return found;
+        return null;
+    }
+
     private IlForeignValue? ForeignValue(IlField field) =>
         field.Recv is IlVar receiver && !_program.ForeignValues.IsDefault
             && TryResolve(receiver.Name) is null
@@ -38,8 +49,10 @@ internal sealed partial class CEmitter
             {
                 var parameters = method.Parameters.Select(p =>
                     _facts.MapType(p.Type).CName + (p.IsOut ? " *" : ""));
+                if (method.Receiver is { } owner)
+                    parameters = parameters.Prepend(CType.Ref(owner).CName);
                 Line($"extern {_facts.MapType(method.ReturnType).CName} {HostName(method.Name)}(" +
-                    (method.Parameters.Length == 0 ? "void" : string.Join(", ", parameters)) + ");");
+                    (!parameters.Any() ? "void" : string.Join(", ", parameters)) + ");");
             }
         if (!_program.ForeignValues.IsDefault)
             foreach (var value in _program.ForeignValues.Where(v => v.Constant == null))
@@ -58,13 +71,21 @@ internal sealed partial class CEmitter
         return _facts.MapType(method.ReturnType);
     }
 
-    private string RenderForeignCall(IlForeignMethod method, IReadOnlyList<IlExpr> args)
+    private string RenderForeignCall(IlForeignMethod method, IReadOnlyList<IlExpr> args,
+        IlExpr? receiver = null)
     {
         var result = TypeOfForeignCall(method, args);
         var parameters = ForeignParameters(method);
         args = CompleteArguments(parameters, args, method.Name);
-        return RenderOrderedCall(HostName(method.Name), result,
-            [.. args.Select((a, i) => (parameters[i].Type, RenderCoerced(a, parameters[i].Type)))]);
+        var values = new List<(CType Type, string Value)>();
+        if (receiver is not null)
+        {
+            var type = CType.Ref(method.Receiver!);
+            values.Add((type, $"({type.CName})tcs_nonnull({RenderExpr(receiver)})"));
+        }
+        values.AddRange(args.Select((a, i) =>
+            (parameters[i].Type, RenderCoerced(a, parameters[i].Type))));
+        return RenderOrderedCall(HostName(method.Name), result, values);
     }
 
     private (string Value, CType Type) RenderForeignValue(IlForeignValue value)

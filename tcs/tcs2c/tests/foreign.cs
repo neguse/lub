@@ -9,7 +9,11 @@ public class Foreign
     {
         resource = Api.Current;
         Console.WriteLine(resource.Version);
-        Console.WriteLine(Api.Read(new Options { Version = 2, Data = new float[] { 1, 2 } }, Api.Mode.Fast));
+        Console.WriteLine(resource.Get(3) + resource.Get(4));
+        resource.Touch();
+        var options = new Options { Version = 2, Data = new float[] { 1, 2 } };
+        Console.WriteLine(options.Scale(5));
+        Console.WriteLine(Api.Read(options, Api.Mode.Fast));
         Api.Poll(out string topic, out string payload);
         Console.WriteLine(topic);
         Console.WriteLine(payload);

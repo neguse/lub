@@ -1,6 +1,6 @@
-public class BaseOptions { public int? Version; }
+public class BaseOptions { public int? Version; public int Scale(int n) { return 0; } }
 public class Options : BaseOptions { public float[] Data; }
-public class Resource { public int Version; }
+public class Resource { public int Version; public int Get(int index) { return 0; } public void Touch() { } }
 public class Handle { }
 public static class Api
 {

@@ -1759,3 +1759,9 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### --ref stub class の instance method を tcs2c で呼べるように ✓ (2026-10-05)
+- IlForeignMethod に `Receiver` (instance method の所有 class) を追加し、IlExport が foreign class の instance method も署名として出す。C backend は受け手の class chain から引いて `tcs_host_<class>_<method>(self, args...)` (受け手 null は fault) を `extern` で宣言して呼ぶ。以前は foreign class の Methods が空で `unknown method` になっていた
+- 検証: `bash tcs2c/verify-host.sh` (foreign stub に instance method 3 本: 値返し / void / 基底 class 宣言を追加。修正前は `unknown method: Resource.get` で失敗、修正後 pass)。IlForeignTests に export 契約テスト
+- 判断: Lua backend は foreign を持たないので IL の追加フィールドのみ。instance method の virtual / overload / property accessor は対象外 (overload は従来どおり拒否)
+- 残課題: foreign class の property accessor (`b.Length` が field でなく property の stub) は未対応
