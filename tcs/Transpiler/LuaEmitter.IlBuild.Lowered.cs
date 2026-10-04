@@ -35,15 +35,13 @@ public partial class LuaEmitter
                 var receiverType = model.GetTypeInfo(ea.Expression).Type;
                 var typeDef = receiverType?.OriginalDefinition
                     .ToDisplayString() ?? "";
-                var adjusted = IsListType(typeDef)
-                    || receiverType is IArrayTypeSymbol
-                        ? new IlBin(IlBinOp.AddNum, index, new IlLit("1"))
-                        : index;
+                var plusOne = IsListType(typeDef)
+                    || receiverType is IArrayTypeSymbol;
                 return ([
                     new IlLocal("__tcs_obj", recv),
-                    new IlLocal("__tcs_idx", adjusted)],
+                    new IlLocal("__tcs_idx", index)],
                     new IlIndex(new IlVar("__tcs_obj"),
-                        new IlVar("__tcs_idx"), false));
+                        new IlVar("__tcs_idx"), plusOne));
             }
             default:
                 return null;

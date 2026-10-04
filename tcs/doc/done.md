@@ -1759,3 +1759,10 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### 式位置の ++ / -- (IncrementAsExpression) を両 backend で対応 ✓ (2026-10-05)
+- 式位置の `++x` / `x++` / `--x` / `x--` を IL 構築で「1 回だけ代入して値を返す」IIFE に下げた (前置は更新後、後置は更新前の値)。place 解決は文位置と共通 (custom property は accessor、副作用 receiver / index は temp 化、Nullable は lifted)。TCS1001 `IncrementAsExpression` 診断は撤去
+- 副作用 index の lowered target が `+1` を IlBin に焼いて `PlusOne=false` で持っていたため C backend が「0-based のみ」と拒否していた (`data[Idx()] += 1` も同様)。index は raw のまま temp に置き `IlIndex.PlusOne` を立てる形に修正
+- 検証: `dotnet test` Transpiler.Tests 894/897 (skip 3)、tcs2c.Tests 46/46、Analyzers 55/55。`IncrementAsExpression_PrefixAndPostfixValues` (条件 / 引数 / 添字 / field / custom property / 副作用 receiver / Nullable / float) を Lua・C 一致で確認
+- 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
+- 残課題: なし
