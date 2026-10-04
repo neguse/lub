@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TinyCs;
 
@@ -31,6 +32,29 @@ public static class LuaNaming
     }
 
     public static string Const(string name) => ToSnake(name).ToUpperInvariant();
+
+    /// <summary>user-defined operator の Lua 関数名 (class table 上の static
+    /// 関数)。metamethod 名 (`__add` 等) を基本とし、同じ operator の overload
+    /// は宣言順に `__mul_1` `__mul_2` … と別名にする。Lua 出力 / IlExport /
+    /// 呼び出し箇所 (`V.__mul_2(a, b)`) で共通。対象外の operator は null。</summary>
+    public static string? OperatorName(OperatorDeclarationSyntax op)
+    {
+        if (!TinyCsComplianceFacts.TryGetOperatorMetamethod(op, out var metamethod))
+            return null;
+        if (op.Parent is not TypeDeclarationSyntax owner) return metamethod;
+        var overloads = owner.Members.OfType<OperatorDeclarationSyntax>()
+            .Where(o => TinyCsComplianceFacts.TryGetOperatorMetamethod(o, out var m)
+                && m == metamethod)
+            .ToList();
+        return overloads.Count == 1
+            ? metamethod
+            : $"{metamethod}_{overloads.IndexOf(op) + 1}";
+    }
+
+    /// <summary>symbol 版。source に宣言の無い operator (BCL metadata) は null。</summary>
+    public static string? OperatorName(IMethodSymbol op) =>
+        op.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
+            is OperatorDeclarationSyntax decl ? OperatorName(decl) : null;
 
     /// <summary>symbol の種類で member / const を選ぶ (enum メンバは const)。
     /// source に宣言の無い symbol (BCL / TinySystem の metadata) は runtime 側の

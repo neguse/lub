@@ -232,8 +232,6 @@ internal sealed partial class CEmitter
     {
         var leftType = TypeOf(binary.L);
         var rightType = TypeOf(binary.R);
-        if (UserOperator(binary.Op, leftType, rightType) is { } userOperator)
-            return RenderMethodCall(userOperator, null, [binary.L, binary.R]);
         var resultType = TypeOfBinary(binary);
         if (binary.Op == IlBinOp.Concat)
         {
@@ -326,7 +324,6 @@ internal sealed partial class CEmitter
     {
         var left = TypeOf(binary.L);
         var right = TypeOf(binary.R);
-        if (UserOperator(binary.Op, left, right) is { } userOperator) return userOperator.ReturnType;
         switch (binary.Op)
         {
             case IlBinOp.AddNum or IlBinOp.Sub or IlBinOp.Mul:
@@ -368,6 +365,10 @@ internal sealed partial class CEmitter
         }
     }
 
+    // user-defined operator (単項 - を含む) は IL 上で operator の static 関数への
+    // IlCall なので、ここに来る operand はプリミティブのみ
+    private CType TypeOfUnary(IlUn unary) => TypeOf(unary.E);
+
     private string RenderUnary(IlUn unary)
     {
         var value = RenderExpr(unary.E);
@@ -375,8 +376,6 @@ internal sealed partial class CEmitter
         return unary.Op switch
         {
             IlUnOp.Neg when type.Kind is CTypeKind.I32 or CTypeKind.F32 => $"(-{value})",
-            IlUnOp.Neg when type.Kind == CTypeKind.Ref =>
-                RenderMethodCall(ResolveOperator("__unm", [type]), null, [unary.E]),
             IlUnOp.Not when type == CType.Bool => $"(!{value})",
             IlUnOp.BitNot when type == CType.I32 => $"(~{value})",
             _ => throw new Tcs2cException($"invalid unary operator {unary.Op} for {type}"),

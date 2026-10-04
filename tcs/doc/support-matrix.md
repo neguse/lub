@@ -33,7 +33,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | class / enum / interface / record class | **Core** | editor 補完、型チェック、データ表現に必要 |
 | struct / record struct | **Core** | 値セマンティクス対応済み (T219b)。instance member / 値等価 / readonly copy 省略。C backend は素の C struct |
 | if / switch / loop / lambda / pattern | **Core** | ゲームロジックと小さな業務ロジックの表現力として必要 |
-| 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを Lua metamethod へ写像し、変換演算子と `==`/`!=`/比較系は対象外 |
+| 演算子オーバーロード (算術) | **Core** | ベクトル/行列など math 型の表現に必要。二項 `+ - * / %` と単項 `-` だけを class table 上の static 関数へ写像し (呼び出し箇所で overload を静的解決)、変換演算子と `==`/`!=`/比較系は対象外 |
 | LINQ メソッドチェーン | **Core** | `Where`/`Select`/`Any`/`All`/`First`/`Last`/`OrderBy`/`Take`/`Skip`/集計の小核だけ即時評価で提供 |
 | ユーザー定義ジェネリクス | **Out** | 型消去 runtime と複雑さが釣り合わない。組み込み generic 型に限定 |
 | reflection / dynamic / expression tree | **Out** | Lua 5.5 backend と compact baseline に合わない |
@@ -206,7 +206,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | デストラクタ / ファイナライザ | **N/A** | | |
 | イベント | **-** | | |
 | インデクサ (`this[int]`) | **-** | | |
-| 演算子オーバーロード | **P** | Lua metamethod (`__add`/`__sub`/`__mul`/`__div`/`__mod`/`__unm`) | 二項 `+ - * / %` と単項 `-`。複数 overload は metamethod 内で実行時型分岐 (class は metatable、数値/文字列/bool は `type()`)。`==`/`!=`/比較系は TCS1001 (record の `__eq` のみ) |
+| 演算子オーバーロード | **P** | static 関数 (`V.__add` / `V.__sub` / `V.__mul` / `V.__div` / `V.__mod` / `V.__unm`、同じ operator の複数 overload は `V.__mul_1` `V.__mul_2` …) | 二項 `+ - * / %` と単項 `-`。呼び出し箇所が Roslyn の選んだ overload を直呼びする (metatable 経由の実行時振り分けなし。基底 class の operator は派生 class の値でも動く)。`==`/`!=`/比較系は TCS1001 (record の `__eq` のみ) |
 | 暗黙/明示変換演算子 | **-** | | TCS1001 |
 | ローカル関数 (C# 7) | **-** | | unsupported 診断あり |
 | 静的ローカル関数 (C# 8) | **-** | | unsupported 診断あり |

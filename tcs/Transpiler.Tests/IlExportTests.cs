@@ -218,6 +218,33 @@ public class IlExportTests
         Assert.Equal(2, add.ParameterTypes.Length);
     }
 
+    // 同じ operator の overload は宣言順の `__mul_1` / `__mul_2` (Lua 出力と
+    // 同じ名前)。呼び出し箇所は Roslyn が選んだ overload の IlCall になる
+    [Fact]
+    public void Export_OverloadedOperators_HaveUniqueNamesAndStaticCallSites()
+    {
+        var result = IlExport.Export(["""
+            public class Vec
+            {
+                public float X;
+                public Vec(float x) { X = x; }
+                public static Vec operator *(Vec a, Vec b) => new Vec(a.X * b.X);
+                public static Vec operator *(Vec a, float s) => new Vec(a.X * s);
+                public static Vec operator -(Vec a) => new Vec(-a.X);
+                public static Vec Scale(Vec v) => -v * 2.0f;
+            }
+            """]);
+        var cls = result.Classes.Single();
+        Assert.Equal(["__mul_1", "__mul_2", "__unm"],
+            cls.Methods.Where(m => m.Name.StartsWith("__")).Select(m => m.Name));
+        var scale = cls.Methods.Single(m => m.Name == "scale");
+        var ret = Assert.IsType<IlReturn>(scale.Body!.Stats.Single());
+        var mul = Assert.IsType<IlCall>(ret.Value);
+        Assert.Equal("Vec.__mul_2", mul.Callee);
+        var neg = Assert.IsType<IlCall>(mul.Args[0]);
+        Assert.Equal("Vec.__unm", neg.Callee);
+    }
+
     [Fact]
     public void Export_RecordClass_PositionalFieldsCtorAndBaseArgs()
     {

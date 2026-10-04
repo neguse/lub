@@ -269,6 +269,12 @@ public partial class LuaEmitter
         var right = BuildExpr(model, bin.Right);
         if (left == null || right == null) return null;
 
+        // user-defined operator は結果型 / operand 型に依らず静的に選ばれた
+        // overload の直呼び (int を返す `/` や string operand の `+` を組み込みの
+        // 整数除算 / 連結に化けさせない)
+        if (TryBuildUserOperatorCall(model, bin, left, right) is { } userOp)
+            return userOp;
+
         // record struct の ==/!= は合成値等価へ (plain table の raw == は
         // identity 比較になってしまう)
         if ((bin.IsKind(SyntaxKind.EqualsExpression)

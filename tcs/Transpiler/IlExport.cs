@@ -425,12 +425,11 @@ public static partial class IlExport
                     prop.ExpressionBody!.Expression, isGet: true),
                 propSymbol?.Type.ToDisplayString() ?? "?", []));
         }
-        // user-defined operator は metamethod 名の static method として収載
+        // user-defined operator は Lua 出力と同じ名前 (`__add`、overload は
+        // `__mul_1` …) の static method として収載。呼び出し箇所は IlCall
         foreach (var op in cls.Members.OfType<OperatorDeclarationSyntax>())
         {
-            if (!TinyCsComplianceFacts.TryGetOperatorMetamethod(op,
-                    out var metamethod))
-                continue;
+            if (LuaNaming.OperatorName(op) is not { } metamethod) continue;
             IlBlock? opBody = null;
             if (op.Body != null)
                 opBody = emitter.ExportStatsIl(model, op.Body.Statements);

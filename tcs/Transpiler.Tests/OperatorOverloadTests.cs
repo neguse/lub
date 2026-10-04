@@ -290,4 +290,166 @@ public class OperatorOverloadTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.DoesNotContain(result.Warnings, w => w.Contains("OperatorDeclaration"));
     }
+
+    // 基底 class の operator を派生 class の値に適用する (#13 / #23)。派生の
+    // class table に metamethod は無いので、呼び出し箇所で operator を直接
+    // 呼ばないと `attempt to perform arithmetic on a table value` になる
+    private const string BaseDerivedSource = """
+        public class V
+        {
+            public int X;
+            public V(int x) { X = x; }
+            public static V operator +(V a, V b) => new V(a.X + b.X);
+            public static V operator -(V a) => new V(-a.X);
+            public static V operator *(V a, V b) => new V(a.X * b.X);
+            public static V operator *(V a, int s) => new V(a.X * s * 10);
+        }
+        public class D : V
+        {
+            public D(int x) : base(x) { }
+        }
+        """;
+
+    [Fact]
+    public void BaseClassOperator_AppliesToDerivedValues()
+    {
+        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
+            public class T
+            {
+                public static int Test()
+                {
+                    V sum = new D(1) + new D(2);
+                    V neg = -new D(5);
+                    D d = new D(7);
+                    V mixed = d + new V(3);
+                    return sum.X * 1000 + neg.X * 10 + mixed.X;
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("2960", result);
+    }
+
+    [Fact]
+    public void BaseClassOverloads_ResolveStaticallyForDerivedOperands()
+    {
+        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
+            public class T
+            {
+                public static int Test()
+                {
+                    D a = new D(2);
+                    D b = new D(3);
+                    V vv = a * b;   // (V, V) → 6
+                    V vs = a * 4;   // (V, int) → 80
+                    return vv.X * 100 + vs.X;
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("680", result);
+    }
+
+    [Fact]
+    public void CompoundAssignment_OnDerivedValue_UsesBaseOperator()
+    {
+        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
+            public class Holder
+            {
+                public V Pos = new D(1);
+                private V _p = new D(10);
+                public V P { get { return _p; } set { _p = value; } }
+            }
+            public class T
+            {
+                public static int Test()
+                {
+                    V v = new D(1);
+                    v += new D(2);
+                    v *= 2;
+                    var h = new Holder();
+                    h.Pos += new D(5);
+                    h.P += new D(20);
+                    return v.X * 10000 + h.Pos.X * 100 + h.P.X;
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("600630", result);
+    }
+
+    // overload は C# が静的に選ぶ。実行時型だけでは区別できない (interface 型の
+    // operand が実体は同じ class) 場合も宣言どおりの overload を呼ぶ
+    [Fact]
+    public void Overloads_AreChosenByStaticOperandType_NotRuntimeType()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public interface IHasX { int X { get; } }
+            public class V : IHasX
+            {
+                public int X { get; set; }
+                public V(int x) { X = x; }
+                public static V operator +(V a, V b) => new V(a.X + b.X);
+                public static V operator +(V a, IHasX b) => new V(a.X + b.X * 100);
+            }
+            public class T
+            {
+                public static int Test()
+                {
+                    V a = new V(1);
+                    V b = new V(2);
+                    IHasX i = b;
+                    return (a + b).X * 1000 + (a + i).X;
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("3201", result);
+    }
+
+    // operator の結果型が int / 引数が string でも、組み込みの整数除算
+    // (__tcs_idiv) や文字列連結 (..) に化けず operator を呼ぶ
+    [Fact]
+    public void Operators_WithPrimitiveResultOrOperand_CallOperator()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class V
+            {
+                public int X;
+                public V(int x) { X = x; }
+                public static int operator /(V a, V b) => a.X / b.X;
+                public static int operator %(V a, V b) => a.X % b.X;
+                public static V operator +(V a, string s) => new V(a.X + s.Length);
+                public static string operator -(V a, string s) => s + a.X;
+            }
+            public class T
+            {
+                public static string Test()
+                {
+                    var a = new V(7);
+                    var b = new V(2);
+                    return (a / b) + "|" + (a % b) + "|" + (a + "abc").X + "|" + (a - "n");
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("3|1|10|n7", result);
+    }
+
+    // ==/!= は operator 宣言が無ければ参照比較のまま (null 比較を含む)
+    [Fact]
+    public void EqualityOnOperatorClass_StaysReferenceIdentity()
+    {
+        var result = TestHelper.TranspileAndRun(BaseDerivedSource + """
+            public class T
+            {
+                static string B(bool v) => v ? "T" : "F";
+                public static string Test()
+                {
+                    V a = new D(1);
+                    V b = new D(1);
+                    V c = a;
+                    V n = null;
+                    return B(a == b) + B(a == c) + B(a != b) + B(a == null)
+                        + B(n == null) + B(null != a);
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("FTTFTT", result);
+    }
 }

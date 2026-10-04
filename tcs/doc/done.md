@@ -1759,3 +1759,11 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### 演算子を呼び出し箇所で静的に解決 (#23 / #13 part 2) ✓ (2026-10-05)
+- user-defined operator (二項 `+ - * / %`、単項 `-`、複合代入) の呼び出しを、Roslyn が選んだ overload の static 関数への直呼び (`V.__mul_2(a, b)`) に変更。複数 overload の名前は `LuaNaming.OperatorName` (Lua 出力 / IlExport / 呼び出し箇所で共通)。metatable 経由の `__add` 等と実行時型分岐 dispatcher、tcs2c 側の型一致による operator 解決 (`CEmitter.Operators.cs`) を廃止し、両 backend とも IL の IlCall だけで動く。hot reload は operator も通常の static method と同じ owned key なので影響なし
+- 原因: 派生 class の table は `setmetatable(Derived, {__index = Base})` で、メタメソッドは `__index` 経由で継承されず、基底 class で宣言した operator が派生値で `attempt to perform arithmetic on a table value` になっていた。overload 選択も実行時の型で決まり C# の静的解決と食い違い得た
+- 検証: `dotnet test` Transpiler.Tests 898 passed / 3 skipped、tcs2c.Tests 46、Analyzers.Tests 55。新規テスト: 基底 operator + 派生値、overload の静的選択 (静的型 vs 実行時型)、複合代入、int / string を返す・取る operator、IlExport の名前と呼び出し、hot reload の overload 本体差し替え、`(int)` float 切り捨て (#13 part 1 回帰)、tcs2c 2 backend differential
+- 実測 (micro benchmark、Vec2 float 型、5M 回の best of 5、ノイズ ±15%): `add` 約 167–200 → 166–250 ns/op (単一 overload で変化なし)、`mul` (overload 2 回/iter) 約 510–650 → 360–510 ns/op
+- 判断: `==`/`!=`/比較/変換 operator は subset 外 (TCS1001) のままなので対象外。`--ref` 型の operator は host 側実装なので従来どおり Lua 演算子に委ねる
+- 残課題: `==`/`!=`/変換 operator の対応は未着手 (subset 判断が先)
