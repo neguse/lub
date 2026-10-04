@@ -46,19 +46,24 @@ public static class Transpiler
 
     public static string Transpile(string csharpSource) => Transpile([csharpSource]);
 
-    public static string Transpile(string[] csharpSources)
+    public static string Transpile(string[] csharpSources,
+        bool instanceRegistry = false)
     {
-        var result = TranspileWithDiagnostics(csharpSources);
+        var result = TranspileWithDiagnostics(csharpSources,
+            instanceRegistry: instanceRegistry);
         if (!result.Success)
             throw new InvalidOperationException(
                 string.Join("\n", result.Errors));
         return result.Lua;
     }
 
+    /// <param name="instanceRegistry">hot reload 用 weak instance registry
+    /// (`__tcs_instances`) を emit する (LuaEmitter.InstanceRegistry)</param>
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
         string? entryClass = null, bool checkNaming = true,
-        MetadataReference[]? references = null, bool module = false)
+        MetadataReference[]? references = null, bool module = false,
+        bool instanceRegistry = false)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -129,7 +134,7 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
-        var emitter = new LuaEmitter();
+        var emitter = new LuaEmitter { InstanceRegistry = instanceRegistry };
         foreach (var refTree in refTrees)
             emitter.ReferenceTrees.Add(refTree);
         if (hasTopLevelStatements)

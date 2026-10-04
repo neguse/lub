@@ -1759,3 +1759,9 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### instance registry (`__tcs_instances`) を opt-in に ✓ (2026-10-05)
+- 生成 Lua の構築ごとの `__tcs_instances[self] = C` と header の weak table 宣言を既定で出さず、`--instance-registry` (API は `Transpile(instanceRegistry: true)` / `LuaEmitter.InstanceRegistry`) のときだけ出す。読むのは `HotReload.EmitReloadChunk` だけで、registry 付きで transpile した v1 / v2 を前提にする (HotReload は v2 を registry 付きで emit、テストの v1 は opt-in)。`--snapshot` との併用は拒否
+- 検証: `dotnet test` Transpiler.Tests 892 passed / 3 skipped (env 無効の sweep)、Analyzers 55、tcs2c 45。新規 InstanceRegistryTests (既定で `__tcs_instances == nil`、opt-in で最派生 class を登録、CLI オプション)。deps/lua/lua (5.5.1) の micro benchmark (300 万回、best of 5): `V.new` (3 field class) 279 ns → 150 ns、`S.new` 179 → 127 ns、`S.__copy` 143 → 130 ns (struct は元から registry 対象外のため差はノイズ)
+- 判断: reload 時だけ列挙する方式 (VM の heap 走査) は標準 Lua に列挙 API がないので opt-in にした。`runtime/module_registry.lua` は host 側の空 table を作るだけで害がないため触らない
+- 残課題: module registry 経由の reload (§11) で registry を自動 opt-in にする導線は未接続
