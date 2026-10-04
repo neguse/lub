@@ -1759,3 +1759,9 @@
 - よかったこと: 先に master 側の全変更を agent に棚卸しさせ、「IL 側は合成 / C 側はこちら土台 + 機能移植」と決めてから、master の exe テストを Lua と C で流す triage スクリプトで差分を潰していけた。GC header への type tag は box 時に遅延付与することで runtime の確保 API を変えずに済んだ
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
+
+### instance / struct 生成を 1 つのテーブルコンストラクタにする ✓ (2026-10-05)
+- 基底なし class の `new` を `setmetatable({x = x, y = y, ...}, C)` にした (field は宣言順)。ctor 本文の先頭に連続する `this.F = E` は、E が ctor parameter と定数だけから決まる式 (他の initializer の副作用と順序を入れ替えても観測できない。整数除算 / 剰余、field / static の読み、呼び出し、`this` を含まない) で、F の initializer も副作用なしのときだけコンストラクタへ畳み、F の既定値の二重代入を消す。それ以外に当たった時点で畳みを止め、残りは元の順序で emit。record class の `new`、struct の `S.new` (zero 値) / `__copy` も同形
+- 検証: `dotnet test` Transpiler.Tests 904 passed / 3 skipped (env 無効の sweep)、Analyzers 55、tcs2c 45。新規 ConstructorTableTests 15 本 (initializer の副作用が上書きされても実行される / 宣言順 / 本文が畳み対象前に field を読む・`this` を渡す・virtual を呼ぶと既定値が見える / 繰り返し代入 / 0 除算 fault と initializer 副作用の順 / 派生 class / record / struct の入れ子 copy)。`deps/lua/lua` (5.5.1) micro benchmark (300 万回、best of 5、registry 付き同士): `V.new` (3 field class) 172 → 92 ns、`S.new` 126 → 54 ns、`S.__copy` 130 → 57 ns
+- 判断: IL の leading assignment を観測不能性で畳む方式にした (Roslyn 側の構文パターンでは conversion 挿入後の値が拾えない)。派生 class は `Base.new()` が作った self に積むので対象外 (基底 ctor が virtual を呼ぶ順序の観測を保つ)。Lua のテーブルコンストラクタ内の評価順は仕様未定義だが、実装は左から右で、既存の引数評価順と同じ前提
+- 残課題: 派生 class の field 生成と record struct の ctor (`S.new()` の zero 値 → 代入) は未対応

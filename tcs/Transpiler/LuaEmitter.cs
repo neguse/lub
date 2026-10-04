@@ -289,6 +289,9 @@ public partial class LuaEmitter
         if (ctor != null)
             EmitParameterDefaults(model, ctor.ParameterList);
 
+        var tableBuilt = false;
+        List<IlStat>? remainingBody = null;
+
         if (ctor?.Initializer != null
             && ctor.Initializer.IsKind(SyntaxKind.BaseConstructorInitializer))
         {
@@ -315,21 +318,32 @@ public partial class LuaEmitter
         }
         else
         {
-            AppendLine($"local self = setmetatable({{}}, {className})");
+            // 基底なし: field をテーブルコンストラクタで一度に作る
+            EmitTableConstructedSelf(model, className, ctor, ctorParams,
+                fieldInits, out remainingBody);
+            tableBuilt = true;
         }
         // reload migration 用の登録。base ctor 経由でも最派生 class が勝つ
         // (同一 key への上書き)
         AppendLine($"__tcs_instances[self] = {className}");
 
-        foreach (var (fieldName, init, type) in fieldInits)
+        if (!tableBuilt)
         {
-            if (init != null)
-                AppendLine($"self.{fieldName} = {RenderExprViaIl(model, init)}");
-            else
-                AppendLine($"self.{fieldName} = {GetDefaultValueForType(type!)}");
+            foreach (var (fieldName, init, type) in fieldInits)
+            {
+                if (init != null)
+                    AppendLine($"self.{fieldName} = {RenderExprViaIl(model, init)}");
+                else
+                    AppendLine($"self.{fieldName} = {GetDefaultValueForType(type!)}");
+            }
         }
 
-        if (ctor?.Body != null)
+        if (remainingBody != null)
+        {
+            IlBodies++;
+            EmitIlBlock(new IlBlock([.. remainingBody]));
+        }
+        else if (ctor?.Body != null)
         {
             if (!TryEmitStatsViaIl(model, ctor.Body.Statements))
                 EmitUnsupportedBody(model, ctor.Body.Statements);
@@ -428,10 +442,9 @@ public partial class LuaEmitter
 
         AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
         _indent++;
-        AppendLine($"local self = setmetatable({{}}, {name})");
+        var fields = fieldNames.Select((f, i) => $"{f} = {paramNames[i]}");
+        AppendLine($"local self = setmetatable({{{string.Join(", ", fields)}}}, {name})");
         AppendLine($"__tcs_instances[self] = {name}");
-        for (var i = 0; i < paramNames.Count; i++)
-            AppendLine($"self.{fieldNames[i]} = {paramNames[i]}");
         AppendLine("return self");
         _indent--;
         AppendLine("end");
