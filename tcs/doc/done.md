@@ -1784,3 +1784,12 @@
 - よかったこと: 登録を 1 箇所にしたので、新しい runtime type 種別を足すときに declare 漏れが構造的に起きない
 - 判断: struct の fast path (method 単位 splice) は class 限定のまま (struct の body edit は module 全体 emit に fallback し、hot apply 自体は成立する)
 - 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)。class の instance shape も「名前 = initializer / default 値」で、initializer の無い field の同 default 型変更を区別しない (本件の範囲外)
+
+### 式位置の ++ / -- (IncrementAsExpression) を両 backend で対応 ✓ (2026-10-05)
+- 式位置の `++x` / `x++` / `--x` / `x--` を IL 構築で「1 回だけ代入して値を返す」IIFE に下げた (前置は更新後、後置は更新前の値)。place 解決は文位置と共通 (custom property は accessor、副作用 receiver / index は temp 化、Nullable は lifted)。TCS1001 `IncrementAsExpression` 診断は撤去
+- 副作用 index の lowered target が `+1` を IlBin に焼いて `PlusOne=false` で持っていたため C backend が「0-based のみ」と拒否していた (`data[Idx()] += 1` も同様)。index は raw のまま temp に置き `IlIndex.PlusOne` を立てる形に修正
+- operand 評価順の固定: 右側 operand / 右辺が書き換える local (代入 / ++ / -- / ref・out 引数、lambda で書かれる捕捉 local + 呼び出し) を左 operand や代入先の受け手 / 添字が読むとき、左側を temp に退避する (`i + i++`、`q += q++`、`i + (i = 5)`、`d[k] = k++`、`d[u] += u++`)。Lua は local を register のまま参照し、C は statement expression 間の順序を規定しないため、IL 構築側で直す。値型受け手 (`s.X = …`) は temp が copy になるので対象外。式位置の lowered 代入は再評価せず代入後の place を返す
+- custom property の getter を含む受け手 / 添字 (`Current.N++`、`Current.N += 1`) も副作用扱いで temp 化し、getter を 1 回だけ呼ぶ (文位置・式位置とも)。getter の先が値型の受け手 (`Current.S.N++`、`Current.S.I.N += 1`、`Current.Arr[i].N++`、struct の custom property `Current.S.P++`) は struct field / 配列要素を辿った先の参照型 prefix (と配列添字) だけを temp にし、経路を組み直して元の field に書き込む (struct を copy しない)。式位置の custom property 代入 (`(Get().P += 1)` / `= v` / `??=`) は lowered 代入より先に accessor 経路へ振り分け、受け手を 1 回評価して setter に渡した値を返す
+- 検証: `bash run-tests.sh` (Transpiler.Tests 899 合格 / 3 skip、tcs2c.Tests 49/49、Analyzers 55/55、All tests passed)。`IncrementAsExpression_PrefixAndPostfixValues` / `EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect` / `GetterReceiverAndCustomPropertyAssignAsExpression` / `GetterThroughStructField_EvaluatedOnceAndWritesInPlace` を Lua・C 一致 + C# 期待値で確認
+- 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
+- 残課題: 値型受け手への代入で右辺が struct local 自体を差し替える形 (`s.X = (s = t).X`) は評価順未固定

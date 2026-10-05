@@ -69,6 +69,10 @@ public partial class LuaEmitter
             {
                 // 式位置の代入 (`(i = y) >= 0`、`arr[x = 1]`): 文として代入し
                 // 代入後の左辺を値にする IIFE
+                if (IsCustomPropertyTarget(model, assignExpr.Left))
+                    return BuildPropAssignExpr(model, assignExpr);
+                if (NeedsLoweredAssign(model, assignExpr))
+                    return BuildLoweredAssign(model, assignExpr);
                 var assignStats = new List<IlStat>();
                 if (!BuildExprStatInto(model, assignExpr, null, assignStats))
                     return null;
@@ -268,7 +272,14 @@ public partial class LuaEmitter
         var left = BuildExpr(model, bin.Left);
         var right = BuildExpr(model, bin.Right);
         if (left == null || right == null) return null;
+        return WritesLocalReadBy(model, bin.Left, bin.Right)
+            ? SnapshotOperand(left, l => BuildBinaryOperands(model, bin, l, right))
+            : BuildBinaryOperands(model, bin, left, right);
+    }
 
+    private IlExpr? BuildBinaryOperands(SemanticModel model,
+        BinaryExpressionSyntax bin, IlExpr left, IlExpr right)
+    {
         // record struct の ==/!= は合成値等価へ (plain table の raw == は
         // identity 比較になってしまう)
         if ((bin.IsKind(SyntaxKind.EqualsExpression)
