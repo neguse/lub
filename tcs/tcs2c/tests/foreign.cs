@@ -11,6 +11,9 @@ public class Foreign
         Console.WriteLine(resource.Version);
         Console.WriteLine(resource.Get(3) + resource.Get(4));
         resource.Touch();
+        var shadow = new Shadow();
+        Resource upcast = shadow;
+        Console.WriteLine(shadow.Get(1) + ":" + upcast.Get(1) + ":" + upcast.Peek(1) + ":" + resource.Peek(1) + ":" + new Plain().Twice() + ":" + new Wide().Get("x"));
         var options = new Options { Version = 2, Data = new float[] { 1, 2 } };
         Console.WriteLine(options.Scale(5));
         Console.WriteLine(Api.Read(options, Api.Mode.Fast));
@@ -30,3 +33,11 @@ public class Foreign
         Console.WriteLine(bodies[Api.Body(2)] + ":" + bodies.ContainsKey(Api.Body(3)) + ":" + bodies.Remove(Api.Body(1)) + ":" + bodies.Count);
     }
 }
+// stub の method を user subclass が再宣言したら IlInvoke は実行時型で解決する
+public class Shadow : Resource
+{
+    public int Get(int index) { return 42; }
+    public override int Peek(int i) { return 50 + i; }
+}
+public class Wide : Resource { public int Get(string key) { return key.Length; } }
+public class Plain : Resource { public int Twice() { return Get(1) * 2; } }

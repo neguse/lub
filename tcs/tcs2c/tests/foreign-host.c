@@ -18,6 +18,11 @@ int32_t tcs_host_resource_get(Tcs_Resource *self, int32_t index)
     return self->host_value == 99 ? 100 + index : -1;
 }
 
+int32_t tcs_host_resource_peek(Tcs_Resource *self, int32_t i)
+{
+    return 100 + i;
+}
+
 void tcs_host_resource_touch(Tcs_Resource *self)
 {
     if (self->host_value != 99) tcs_fault("foreign-touch");

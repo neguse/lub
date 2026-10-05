@@ -1761,7 +1761,7 @@
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
 
 ### --ref stub class の instance method を tcs2c で呼べるように ✓ (2026-10-05)
-- IlForeignMethod に `Receiver` (instance method の所有 class) を追加し、IlExport が foreign class の instance method も署名として出す。C backend は受け手の class chain から引いて `tcs_host_<class>_<method>(self, args...)` (受け手 null は fault) を `extern` で宣言して呼ぶ。以前は foreign class の Methods が空で `unknown method` になっていた
-- 検証: `bash tcs2c/verify-host.sh` (foreign stub に instance method 3 本: 値返し / void / 基底 class 宣言を追加。修正前は `unknown method: Resource.get` で失敗、修正後 pass)。IlForeignTests に export 契約テスト
-- 判断: Lua backend は foreign を持たないので IL の追加フィールドのみ。instance method の virtual / overload / property accessor は対象外 (overload は従来どおり拒否)
+- IlForeignMethod に `Receiver` (instance method の所有 class) を追加し、IlExport が foreign class の instance method も署名として出す。C backend は受け手の class chain から引いて `tcs_host_<class>_<method>(self, args...)` (受け手 null は fault) を `extern` で宣言して呼ぶ。chain は下から辿り、途中の user class が同名を宣言していればそちら。stub の method を同じシグネチャで再宣言 (override / 隠蔽) する user subclass があれば、IlInvoke の実行時型解決 (il-reference §9) に合わせて type_id で振り分ける dispatcher を経由する。以前は foreign class の Methods が空で `unknown method` になっていた
+- 検証: `bash tcs2c/verify-host.sh` (foreign stub の instance method (値返し / void / 基底 class 宣言と、virtual の override・非 virtual の隠蔽・暗黙 this・subclass 側 overload) を追加。修正前は `unknown method: Resource.get` / override や隠蔽を無視して host 直呼び、修正後 pass)。IlForeignTests に export 契約テスト
+- 判断: Lua backend は foreign を持たないので IL の追加フィールドのみ。virtual な stub method の拒否ではなく dispatcher を選んだ (user class 同士の再宣言と同じ実行時型解決で、Lua の metatable 解決とも一致)。シグネチャの違う再宣言は dispatch しない (user class 同士と同じ)。stub 内の overload は従来どおり拒否
 - 残課題: foreign class の property accessor (`b.Length` が field でなく property の stub) は未対応
