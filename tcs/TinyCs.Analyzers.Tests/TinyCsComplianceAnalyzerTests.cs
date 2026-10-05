@@ -517,7 +517,8 @@ public partial class TinyCsComplianceAnalyzerTests
     }
 
     // #20: 要素の default が nil になる `new T[n]`、初期化子の null 要素、
-    // `a[i] = null` は TCS1003。値型要素の配列は対象外
+    // `a[i] = null` は TCS1003。値型要素の配列と、int? / object へ変換される
+    // `default(int)` は対象外
     // (transpiler 側の DiagnosticTests.ArrayNullSource と同じ source)
     [Fact]
     public async Task ArrayNulls_ReportUnsupportedCollectionNull()
@@ -555,6 +556,8 @@ public partial class TinyCsComplianceAnalyzerTests
                     var fine = new string[] { "a", "b" };
                     fine[0] = "c";
                     var inner = new int[][] { new int[2], new int[3] };
+                    var liftedZero = new int?[] { default(int) };
+                    var boxedZero = new object[] { default(int) };
                     var list = new List<string>();
                 }
             }

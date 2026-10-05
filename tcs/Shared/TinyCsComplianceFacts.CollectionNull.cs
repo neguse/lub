@@ -289,8 +289,10 @@ public static partial class TinyCsComplianceFacts
             return false;
         }
 
+        // 変換前の型で判定する。`default(int)` は int? / object へ変換されても
+        // 非 null。target-typed `default` の Type は変換先の型になる
         var typeInfo = model.GetTypeInfo(expr);
-        return CanDefaultToNil(typeInfo.ConvertedType ?? typeInfo.Type);
+        return CanDefaultToNil(typeInfo.Type ?? typeInfo.ConvertedType);
     }
 
     private static ExpressionSyntax StripNilTransparentSyntax(

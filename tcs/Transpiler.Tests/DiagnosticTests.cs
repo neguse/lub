@@ -626,7 +626,7 @@ public class DiagnosticTests
     // #20: 要素の default が nil になる `new T[n]` は Lua で `{}` (Length 0、
     // foreach 0 回) になるので TCS1003。初期化子の null 要素と `a[i] = null`
     // も同じ nil 制約。値型要素 (struct / enum / char / bool) は default で
-    // 詰まるので対象外
+    // 詰まるので対象外。`default(int)` は int? / object へ変換しても非 null
     public const string ArrayNullSource = """
         using System.Collections.Generic;
         public class Foo { public int V; }
@@ -660,6 +660,8 @@ public class DiagnosticTests
                 var fine = new string[] { "a", "b" };
                 fine[0] = "c";
                 var inner = new int[][] { new int[2], new int[3] };
+                var liftedZero = new int?[] { default(int) };
+                var boxedZero = new object[] { default(int) };
                 var list = new List<string>();
             }
         }
