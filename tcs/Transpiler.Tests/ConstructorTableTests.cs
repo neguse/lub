@@ -227,4 +227,39 @@ public class ConstructorTableTests
         Assert.Equal("table", Run(source,
             "type(E.__copy(E.new()))"));
     }
+    [Fact]
+    public void DictionaryLiteral_WithParamKey_FaultsAfterInitializers()
+    {
+        // nil key は Lua のテーブル生成中に fault するので、畳むと先行する
+        // initializer の副作用が消える
+        const string source = """
+            using System.Collections.Generic;
+            public class Log { public static string S = ""; public static int Side(string s) { S = S + s; return 0; } }
+            public class D
+            {
+                public Dictionary<string, int> M;
+                public int K = Log.Side("init K");
+                public D(string key) { M = new Dictionary<string, int> { { key, 1 } }; }
+            }
+            """;
+        Assert.Equal("false init K", Run(source,
+            "(function() local ok = pcall(D.new, nil) "
+            + "return tostring(ok) .. ' ' .. Log.s end)()"));
+    }
+
+    [Fact]
+    public void DictionaryLiteral_WithLiteralKeys_IsStillFolded()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            public class D
+            {
+                public Dictionary<string, int> M;
+                public D(int v) { M = new Dictionary<string, int> { { "a", v }, { "b", 2 } }; }
+            }
+            """;
+        Assert.Equal("5 2", Run(source,
+            "(function() local d = D.new(5) return d.m.a .. ' ' .. d.m.b end)()"));
+        Assert.DoesNotContain("self.m", Transpiler.Transpile([source]));
+    }
 }

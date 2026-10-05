@@ -88,8 +88,18 @@ public partial class LuaEmitter
         IlNullableWrap w => IsOrderIndependent(w.E, ctorParams),
         IlStructCopy c => IsOrderIndependent(c.E, ctorParams),
         IlTable t => t.Entries.All(e =>
-            (e.Key == null || IsOrderIndependent(e.Key, ctorParams))
+            (e.Key == null || IsNonFaultingKey(e.Key))
             && IsOrderIndependent(e.Value, ctorParams)),
         _ => false,
     };
+
+    // [k]=v は k が nil / NaN だとテーブル生成中に fault するので、
+    // そうならないと分かる文字列・有限数値・bool リテラルだけ許す
+    private static bool IsNonFaultingKey(IlExpr key) => key is IlLit
+    {
+        LuaText: var text,
+    } && (text.StartsWith('"') || text is "true" or "false"
+        || (double.TryParse(text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var d)
+            && double.IsFinite(d)));
 }
