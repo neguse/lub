@@ -528,6 +528,13 @@ public partial class TinyCsComplianceAnalyzerTests
             public struct S { public int X; }
             public enum E { A = 3 }
             public class Pool<T> { public T[] Items = new T[2]; }
+            public class Box<T> where T : struct { public T[] Make(int n) => new T[n]; }
+            public class Bag<T>
+            {
+                public T[] Make(T x) => new T[] { x, default, x };
+                public void Clear(T[] a) { a[0] = default; }
+                public void Push(List<T> l) { l.Add(default); }
+            }
             public class Demo
             {
                 public static void Run()
@@ -557,17 +564,21 @@ public partial class TinyCsComplianceAnalyzerTests
             .Where(d => d.Id == TinyCsDiagnosticIds.UnsupportedCollectionNull)
             .ToArray();
 
-        Assert.Equal(8, collectionNulls.Length);
+        Assert.Equal(12, collectionNulls.Length);
         Assert.DoesNotContain(diagnostics,
             d => d.Id != TinyCsDiagnosticIds.UnsupportedCollectionNull);
         Assert.All(collectionNulls,
             d => Assert.Contains("Lua sequence tables", d.GetMessage()));
         Assert.Contains(collectionNulls,
             d => d.GetMessage().Contains("int[][] created by size"));
-        Assert.Contains(collectionNulls,
-            d => d.GetMessage().Contains("T[] created by size"));
         Assert.Equal(3, collectionNulls.Count(
             d => d.GetMessage().Contains("string[] cannot store null elements")));
+        Assert.Equal(2, collectionNulls.Count(
+            d => d.GetMessage().Contains("T[] created by size")));
+        Assert.Equal(2, collectionNulls.Count(
+            d => d.GetMessage().Contains("T[] cannot store null elements")));
+        Assert.Single(collectionNulls,
+            d => d.GetMessage().Contains("List<T> cannot store"));
     }
 
     [Fact]

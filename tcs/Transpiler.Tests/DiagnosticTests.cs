@@ -633,6 +633,13 @@ public class DiagnosticTests
         public struct S { public int X; }
         public enum E { A = 3 }
         public class Pool<T> { public T[] Items = new T[2]; }
+        public class Box<T> where T : struct { public T[] Make(int n) => new T[n]; }
+        public class Bag<T>
+        {
+            public T[] Make(T x) => new T[] { x, default, x };
+            public void Clear(T[] a) { a[0] = default; }
+            public void Push(List<T> l) { l.Add(default); }
+        }
         public class Demo
         {
             public static void Run()
@@ -669,14 +676,18 @@ public class DiagnosticTests
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Warnings, w => !w.Contains("TCS1003"));
-        Assert.Equal(8, collectionNulls.Length);
+        Assert.Equal(12, collectionNulls.Length);
         Assert.All(collectionNulls, w => Assert.Contains("Lua sequence tables", w));
         Assert.Contains(collectionNulls, w => w.Contains("string[] created by size"));
         Assert.Contains(collectionNulls, w => w.Contains("Foo[] created by size"));
         Assert.Contains(collectionNulls, w => w.Contains("int?[] created by size"));
         Assert.Contains(collectionNulls, w => w.Contains("int[][] created by size"));
-        Assert.Contains(collectionNulls, w => w.Contains("T[] created by size"));
         Assert.Equal(3, collectionNulls.Count(
             w => w.Contains("string[] cannot store null elements")));
+        Assert.Equal(2, collectionNulls.Count(
+            w => w.Contains("T[] created by size")));
+        Assert.Equal(2, collectionNulls.Count(
+            w => w.Contains("T[] cannot store null elements")));
+        Assert.Single(collectionNulls, w => w.Contains("List<T> cannot store"));
     }
 }

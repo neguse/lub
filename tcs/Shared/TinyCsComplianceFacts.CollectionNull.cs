@@ -257,9 +257,10 @@ public static partial class TinyCsComplianceFacts
         $"{array.ToDisplayString()} cannot store null elements "
         + "in Lua sequence tables";
 
-    private static bool CanDefaultToNil(ITypeSymbol elementType) =>
-        CanBeNil(elementType)
-        || elementType is ITypeParameterSymbol { HasValueTypeConstraint: false };
+    // 型パラメータの default は制約 (struct 含む) を問わず Lua で nil になる
+    // (transpiler は生成 Lua に型実引数を持たない)
+    private static bool CanDefaultToNil(ITypeSymbol? type) =>
+        CanBeNil(type) || type is ITypeParameterSymbol;
 
     private static bool IsNilReturningLambda(ExpressionSyntax expr,
         SemanticModel model)
@@ -289,7 +290,7 @@ public static partial class TinyCsComplianceFacts
         }
 
         var typeInfo = model.GetTypeInfo(expr);
-        return CanBeNil(typeInfo.ConvertedType ?? typeInfo.Type);
+        return CanDefaultToNil(typeInfo.ConvertedType ?? typeInfo.Type);
     }
 
     private static ExpressionSyntax StripNilTransparentSyntax(
