@@ -262,4 +262,70 @@ public class ConstructorTableTests
             "(function() local d = D.new(5) return d.m.a .. ' ' .. d.m.b end)()"));
         Assert.DoesNotContain("self.m", Transpiler.Transpile([source]));
     }
+
+    // この head では user 定義 operator は Lua metamethod で動くので、
+    // operand が user 型の演算は畳まない (initializer より先に operator が走る)
+    [Fact]
+    public void UserOperator_RunsAfterInitializers()
+    {
+        const string source = """
+            public class Log { public static string S = ""; public static int Hit(string s) { S = S + s; return 0; } }
+            public class V
+            {
+                public int X;
+                public static V operator +(V a, V b) { Log.Hit("op"); return a; }
+                public static V operator -(V a) { Log.Hit("neg"); return a; }
+            }
+            public class W
+            {
+                public V Sum;
+                public V Neg;
+                public int Marker = Log.Hit("init");
+                public W(V a, V b) { Sum = a + b; Neg = -a; }
+            }
+            """;
+        Assert.Equal("initopneg", Run(source,
+            "(function() W.new(V.new(), V.new()) return Log.s end)()"));
+    }
+
+    // --ref の host 型も operator は metamethod 経由で host code が走る
+    [Fact]
+    public void HostOperator_RunsAfterInitializers()
+    {
+        const string refSource = """
+            public class HV { public static HV operator +(HV a, HV b) => a; }
+            """;
+        const string source = """
+            public class Log { public static string S = ""; public static int Hit(string s) { S = S + s; return 0; } }
+            public class W
+            {
+                public HV Sum;
+                public int Marker = Log.Hit("init");
+                public W(HV a, HV b) { Sum = a + b; }
+            }
+            """;
+        var result = Transpiler.TranspileWithDiagnostics([source],
+            referenceSources: [refSource]);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Equal("initop", TestHelper.RunLua(result.Lua
+            + "\nlocal mt = {__add = function(a) Log.hit('op') return a end}"
+            + "\nW.new(setmetatable({}, mt), setmetatable({}, mt))"
+            + "\nprint(Log.s)").Trim());
+    }
+
+    [Fact]
+    public void PrimitiveArithmetic_IsStillFolded()
+    {
+        const string source = """
+            public class W
+            {
+                public double D; public bool B;
+                public W(int x, double y, bool f) { D = -x * 2 + y; B = !f && x < 3; }
+            }
+            """;
+        Assert.Equal("1.5 true", Run(source,
+            "(function() local w = W.new(1, 3.5, false) "
+            + "return w.d .. ' ' .. tostring(w.b) end)()"));
+        Assert.DoesNotContain("self.d", Transpiler.Transpile([source]));
+    }
 }

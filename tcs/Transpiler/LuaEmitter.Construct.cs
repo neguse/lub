@@ -25,7 +25,7 @@ public partial class LuaEmitter
             if (BuildStatsInto(model, ctor.Body.Statements, body))
             {
                 body.RemoveRange(0, TakeFoldableAssignments(model, fieldInits,
-                    [.. ctorParams], body, folded));
+                    [.. ctorParams], PrimitiveParams(model, ctor), body, folded));
                 remainingBody = body;
             }
         }
@@ -43,7 +43,8 @@ public partial class LuaEmitter
     // 先頭から連続する畳める代入の個数を返し、folded に field 名 → 値を入れる
     private int TakeFoldableAssignments(SemanticModel model,
         List<(string Name, ExpressionSyntax? Init, ITypeSymbol? Type)> fieldInits,
-        HashSet<string> ctorParams, List<IlStat> body,
+        HashSet<string> ctorParams, HashSet<string> primitiveParams,
+        List<IlStat> body,
         Dictionary<string, IlExpr> folded)
     {
         var count = 0;
@@ -57,13 +58,13 @@ public partial class LuaEmitter
                 break;
             var index = fieldInits.FindIndex(f => f.Name == name);
             if (index < 0 || folded.ContainsKey(name)
-                || !IsOrderIndependent(value, ctorParams))
+                || !IsOrderIndependent(value, ctorParams, primitiveParams))
                 break;
             // 畳むと既定値 / initializer の評価が消えるので、initializer は
             // 副作用のない式のときだけ捨てる
             var init = fieldInits[index].Init;
             if (init != null && !(BuildExpr(model, init) is { } initIl
-                    && IsOrderIndependent(initIl, [])))
+                    && IsOrderIndependent(initIl, [], [])))
                 break;
             folded[name] = value;
             count++;
@@ -73,25 +74,38 @@ public partial class LuaEmitter
 
     // 副作用・field / static の読み書き・例外・this の参照を持たず、ctor の
     // parameter と定数だけから決まる式。他の initializer の副作用の前後に
-    // 評価しても結果が変わらない。整数除算 / 剰余は 0 除算 fault があるので除く
+    // 評価しても結果が変わらない。整数除算 / 剰余は 0 除算 fault があるので除く。
+    // 演算子の operand は primitiveParams (数値 / bool 型の parameter) と定数に
+    // 限る: user / --ref host 型の operator は Lua metamethod で任意のコードを走らせる
     private static bool IsOrderIndependent(IlExpr expr,
-        HashSet<string> ctorParams) => expr switch
+        HashSet<string> ctorParams, HashSet<string> primitiveParams) => expr switch
     {
         IlLit => true,
         IlVar v => ctorParams.Contains(v.Name),
-        IlParen p => IsOrderIndependent(p.E, ctorParams),
-        IlUn u => IsOrderIndependent(u.E, ctorParams),
+        IlParen p => IsOrderIndependent(p.E, ctorParams, primitiveParams),
+        IlUn u => IsOrderIndependent(u.E, primitiveParams, primitiveParams),
         IlBin { Op: IlBinOp.DivNum or IlBinOp.RemNum } => false,
-        IlBin b => IsOrderIndependent(b.L, ctorParams)
-            && IsOrderIndependent(b.R, ctorParams),
-        IlNumericConvert c => IsOrderIndependent(c.Value, ctorParams),
-        IlNullableWrap w => IsOrderIndependent(w.E, ctorParams),
-        IlStructCopy c => IsOrderIndependent(c.E, ctorParams),
+        IlBin b => IsOrderIndependent(b.L, primitiveParams, primitiveParams)
+            && IsOrderIndependent(b.R, primitiveParams, primitiveParams),
+        IlNumericConvert c => IsOrderIndependent(c.Value, ctorParams, primitiveParams),
+        IlNullableWrap w => IsOrderIndependent(w.E, ctorParams, primitiveParams),
+        IlStructCopy c => IsOrderIndependent(c.E, ctorParams, primitiveParams),
         IlTable t => t.Entries.All(e =>
             (e.Key == null || IsNonFaultingKey(e.Key))
-            && IsOrderIndependent(e.Value, ctorParams)),
+            && IsOrderIndependent(e.Value, ctorParams, primitiveParams)),
         _ => false,
     };
+
+    private static HashSet<string> PrimitiveParams(SemanticModel model,
+        ConstructorDeclarationSyntax ctor) =>
+        [.. (model.GetDeclaredSymbol(ctor) as IMethodSymbol)?.Parameters
+            .Where(p => p.Type.SpecialType is SpecialType.System_Boolean
+                or SpecialType.System_SByte or SpecialType.System_Byte
+                or SpecialType.System_Int16 or SpecialType.System_UInt16
+                or SpecialType.System_Int32 or SpecialType.System_UInt32
+                or SpecialType.System_Int64 or SpecialType.System_UInt64
+                or SpecialType.System_Single or SpecialType.System_Double)
+            .Select(p => p.Name) ?? []];
 
     // [k]=v は k が nil / NaN だとテーブル生成中に fault するので、
     // そうならないと分かる文字列・有限数値・bool リテラルだけ許す
