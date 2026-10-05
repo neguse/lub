@@ -328,4 +328,45 @@ public partial class DifferentialTests
         ], "P"));
         Assert.Contains("error CS0246", error.Message);
     }
+    private const string SameNamedInterfaces = """
+        using System;
+        public interface IValue { int Read(); }
+        namespace A { public interface IValue { int Read(); } }
+        public class C : A.IValue { public int Read() => 7; }
+        public class G : IValue { public int Read() => 3; }
+        """;
+
+    [CFact]
+    public void Namespaces_SameNamedInterfacesStayDistinct()
+    {
+        Backends.AssertParity(SameNamedInterfaces + """
+            public class P
+            {
+                public static void Main()
+                {
+                    object c = new C();
+                    object g = new G();
+                    Console.WriteLine(((A.IValue)c).Read() + ((IValue)g).Read());
+                }
+            }
+            """, "P");
+    }
+
+    [CFact]
+    public void Namespaces_CastToSameNamedGlobalInterfaceFaults()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => Backends.RunC([
+            SameNamedInterfaces + """
+            public class P
+            {
+                public static void Main()
+                {
+                    object o = new C();
+                    Console.WriteLine(((IValue)o).Read());
+                }
+            }
+            """,
+        ], "P"));
+        Assert.Contains("invalid-cast", error.Message);
+    }
 }

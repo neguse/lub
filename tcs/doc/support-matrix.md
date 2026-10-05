@@ -138,7 +138,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | Lua は常に nil 可能 |
 | タプル `(int, string)` | **-** | |
-| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型なら default (struct は zero 値)、参照型は nil (Length も 0 — TCS1003 と同じ nil 制約)。List\<T\> を推奨 |
+| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入・`List<T>.Add` の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。List\<T\> を推奨 |
 | 匿名型 `new { }` | **-** | |
 | `Span<T>` / `ReadOnlySpan<T>` | **N/A** | |
 | ポインタ型 `int*` | **N/A** | |
@@ -166,7 +166,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 
 | 機能 | 状態 | 備考 |
 |------|:----:|------|
-| `namespace N { }` (ブロック) | **Y** | Lua ではフラット化 |
+| `namespace N { }` (ブロック) | **Y** | Lua ではフラット化。型は simple 名の global。assembly 内で simple 名が重複する型だけ namespace 修飾名 (`A.Color` → `A_Color`、`Game.Gfx.Color` → `Game_Gfx_Color`) の global にする |
 | `namespace N;` (ファイルスコープ, C# 10) | **Y** | |
 | `using System;` | **Y** | Roslyn 解決 |
 | `using static` (C# 6) | **-** | |
@@ -293,8 +293,8 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | `&&` `\|\|` | **Y** | `and` `or` | |
 | `!` (論理否定) | **Y** | `not` | |
 | `-x` (単項マイナス) | **Y** | `-x` | |
-| `++x` `x++` (インクリメント) | **Y** | `x = x + 1` (文) | |
-| `--x` `x--` (デクリメント) | **Y** | `x = x - 1` (文) | |
+| `++x` `x++` (インクリメント) | **Y** | 文位置は `x = x + 1`、式位置は IIFE (前置は更新後、後置は更新前の値) | custom property / 副作用 (getter 含む) receiver は 1 回評価。右側の ++ / 代入が書き換える local を左 operand / 代入先の添字が読むときは左を temp に退避 (C# の左→右評価) |
+| `--x` `x--` (デクリメント) | **Y** | 同上 | |
 | `=` (代入) | **Y** | そのまま | |
 | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` | **Y** | 展開 `x = x op y` | bool への `&=` `\|=` `^=` は未対応 |
 | `? :` (三項) | **Y** | IIFE | falsy 安全 |
@@ -921,7 +921,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
-| namespace 解決 | **Y** | 透過 |
+| namespace 解決 | **Y** | 透過。同名型の衝突時だけ修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / simple 名 (一意なら) で引ける (`--snapshot` 時は `A_Color` も可) |
 | CLI | **Y** | `tcs a.cs b.cs [-o out.lua]`, `tcs check a.cs`, `--help`, `--version` |
 | CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
 | ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |

@@ -12,6 +12,27 @@ Tcs_Resource *tcs_host_api_current(void)
     return value;
 }
 
+/* stub の instance method は host 関数 tcs_host_<Class>_<method>(self, args...) */
+int32_t tcs_host_resource_get(Tcs_Resource *self, int32_t index)
+{
+    return self->host_value == 99 ? 100 + index : -1;
+}
+
+int32_t tcs_host_resource_peek(Tcs_Resource *self, int32_t i)
+{
+    return 100 + i;
+}
+
+void tcs_host_resource_touch(Tcs_Resource *self)
+{
+    if (self->host_value != 99) tcs_fault("foreign-touch");
+}
+
+int32_t tcs_host_baseoptions_scale(Tcs_BaseOptions *self, int32_t n)
+{
+    return self->f_version.v * n;
+}
+
 Tcs_Handle *tcs_host_api_body(int32_t n)
 {
     Tcs_Handle *value = tcs_new_Handle();

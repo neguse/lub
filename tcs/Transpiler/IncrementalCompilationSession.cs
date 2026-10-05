@@ -463,17 +463,21 @@ public sealed class IncrementalCompilationSession
         if (cls == null || cls.FirstAncestorOrSelf<ClassDeclarationSyntax>(c => c != cls) != null)
             return null;
 
-        var key = LuaEmitter.MethodKey(cls.Identifier.ValueText, method);
+        var emitter = new LuaEmitter();
+        foreach (var rt in _refTrees)
+            emitter.ReferenceTrees.Add(rt);
+        var model = comp.GetSemanticModel(tree);
+        // full emit と同じ Lua 型名 (衝突時は namespace 修飾名) で探す
+        if (model.GetDeclaredSymbol(cls) is not { } clsSymbol)
+            return null;
+        var className = emitter.TypeName(clsSymbol);
+        var key = LuaEmitter.MethodKey(className, method);
         var idx = prev.MethodRanges.FindIndex(r => r.Key == key);
         if (idx < 0)
             return null;
         var (_, start, length) = prev.MethodRanges[idx];
 
-        var emitter = new LuaEmitter();
-        foreach (var rt in _refTrees)
-            emitter.ReferenceTrees.Add(rt);
-        var model = comp.GetSemanticModel(tree);
-        var text = emitter.EmitSingleMethod(model, cls.Identifier.ValueText, method);
+        var text = emitter.EmitSingleMethod(model, className, method);
         if (emitter.Warnings.Count > 0)
             return null;
 

@@ -69,6 +69,10 @@ public partial class LuaEmitter
             {
                 // 式位置の代入 (`(i = y) >= 0`、`arr[x = 1]`): 文として代入し
                 // 代入後の左辺を値にする IIFE
+                if (IsCustomPropertyTarget(model, assignExpr.Left))
+                    return BuildPropAssignExpr(model, assignExpr);
+                if (NeedsLoweredAssign(model, assignExpr))
+                    return BuildLoweredAssign(model, assignExpr);
                 var assignStats = new List<IlStat>();
                 if (!BuildExprStatInto(model, assignExpr, null, assignStats))
                     return null;
@@ -113,7 +117,7 @@ public partial class LuaEmitter
                 {
                     var inner = BuildExpr(model, cast.Expression);
                     return inner == null
-                        ? null : new IlCast(inner, castTarget.Name);
+                        ? null : new IlCast(inner, TypeName(castTarget));
                 }
                 var value = BuildExpr(model, cast.Expression);
                 var target = model.GetTypeInfo(cast.Type).Type;
@@ -259,7 +263,7 @@ public partial class LuaEmitter
             if (operand == null) return null;
             var patternType = model.GetTypeInfo(bin.Right).Type;
             var typeRef = bin.Right is TypeSyntax typeSyntax
-                ? FormatTypeReference(typeSyntax)
+                ? FormatTypeReference(model, typeSyntax)
                 : BuildTypeRefText(model, bin.Right);
             var check = BuildTypeCheck(operand, patternType, typeRef);
             return check == null ? null : new IlParen(check);
@@ -268,7 +272,14 @@ public partial class LuaEmitter
         var left = BuildExpr(model, bin.Left);
         var right = BuildExpr(model, bin.Right);
         if (left == null || right == null) return null;
+        return WritesLocalReadBy(model, bin.Left, bin.Right)
+            ? SnapshotOperand(left, l => BuildBinaryOperands(model, bin, l, right))
+            : BuildBinaryOperands(model, bin, left, right);
+    }
 
+    private IlExpr? BuildBinaryOperands(SemanticModel model,
+        BinaryExpressionSyntax bin, IlExpr left, IlExpr right)
+    {
         // user-defined operator は結果型 / operand 型に依らず静的に選ばれた
         // overload の直呼び (int を返す `/` や string operand の `+` を組み込みの
         // 整数除算 / 連結に化けさせない)
@@ -283,7 +294,7 @@ public partial class LuaEmitter
                 { IsRecord: true } eqType
             && IsUserStruct(eqType))
         {
-            var eqCall = new IlCall($"{eqType.Name}.op_Equality",
+            var eqCall = new IlCall($"{TypeName(eqType)}.op_Equality",
                 [left, right]);
             return bin.IsKind(SyntaxKind.EqualsExpression)
                 ? eqCall
@@ -678,7 +689,7 @@ public partial class LuaEmitter
         }
 
         if (symbol is IMethodSymbol { IsStatic: true, ContainingType: not null } smg)
-            return new IlField(new IlVar(smg.ContainingType.Name), smg.Name);
+            return new IlField(new IlVar(TypeName(smg.ContainingType)), smg.Name);
 
         return null;
     }
@@ -763,9 +774,9 @@ public partial class LuaEmitter
         // ctor を通らない zero 値なので S.new のまま
         // facade 型 (TinySystem.Random) は user 型と同名でも衝突しないよう修飾
         var newName = IsTinySystemFacade(typeSymbol as INamedTypeSymbol)
-            ? $"TinySystem.{typeSymbol.Name}" : typeSymbol.Name;
+            ? $"TinySystem.{typeSymbol.Name}" : TypeName(typeSymbol);
         var ctor = IsUserStruct(typeSymbol) && args.Count > 0
-            ? (IlExpr)new IlCall($"{typeSymbol.Name}.ctor", [.. args])
+            ? (IlExpr)new IlCall($"{TypeName(typeSymbol)}.ctor", [.. args])
             : new IlNewObj(newName, [.. args]);
         return initializer != null
             ? BuildObjectInitializerExpr(model, ctor, initializer)

@@ -7,7 +7,7 @@ public class HotReloadTests
 {
     private static string Compose(string v1, string state, string v2,
         string asserts) =>
-        $"{Transpiler.Transpile([v1])}\n{state}\n" +
+        $"{Transpiler.Transpile([v1], instanceRegistry: true)}\n{state}\n" +
         $"{HotReload.EmitReloadChunk([v1], [v2])}\n{asserts}";
 
     private static void RunOk(string script) =>
