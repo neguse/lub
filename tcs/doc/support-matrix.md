@@ -447,7 +447,7 @@ C# `int` と一致する。シフトは `__tcs_shl` / `__tcs_shr` (count を 31 
 | ジェネリックメソッド | **-** | |
 | 型制約 (`where T : ...`) | **-** | |
 | 共変性/反変性 (`in`/`out`, C# 4) | **-** | |
-| 静的抽象/仮想インターフェースメンバー (C# 11) | **-** | |
+| 静的抽象/仮想インターフェースメンバー (C# 11) | **-** | interface の operator 宣言は TCS1001 `InterfaceOperatorDeclaration` (Lua は制約付き generic の演算を実装 class の metamethod に委ねるだけで overload / 継承を解決できない。tcs2c は TCS1001 で停止) |
 
 ---
 

@@ -452,4 +452,38 @@ public class OperatorOverloadTests
             """, "T.test()");
         Assert.Equal("FTTFTT", result);
     }
+
+    // interface の static abstract operator は subset 外 (TCS1001)。制約付き
+    // generic 内の `a + b` は Roslyn 上 interface の operator を指すが interface は
+    // Lua 出力を持たないので、従来どおり Lua 演算子 (実装 class の metamethod) に委ねる
+    private const string InterfaceOperatorSource = """
+        public interface IAdd<T> where T : IAdd<T> { static abstract T operator +(T a, T b); }
+        public class V : IAdd<V>
+        {
+            public int X;
+            public V(int x) { X = x; }
+            public static V operator +(V a, V b) => new V(a.X + b.X);
+        }
+        public class T
+        {
+            static U Sum<U>(U a, U b) where U : IAdd<U> => a + b;
+            public static int Test() => Sum(new V(1), new V(2)).X;
+        }
+        """;
+
+    [Fact]
+    public void InterfaceStaticAbstractOperator_IsDiagnosed()
+    {
+        var result = Transpiler.TranspileWithDiagnostics([InterfaceOperatorSource]);
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Contains(result.Warnings, w => w.Contains("TCS1001")
+            && w.Contains("InterfaceOperatorDeclaration"));
+    }
+
+    [Fact]
+    public void ConstrainedGenericOperator_UsesImplementingClassMetamethod()
+    {
+        var result = TestHelper.TranspileAndRun(InterfaceOperatorSource, "T.test()");
+        Assert.Equal("3", result);
+    }
 }

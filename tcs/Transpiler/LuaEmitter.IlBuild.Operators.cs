@@ -61,14 +61,16 @@ public partial class LuaEmitter
     // 関数を直接呼ぶ (`V.__mul_2(a, b)`)。metamethod 経由の実行時振り分けは、
     // 基底 class の operator が派生 class の値で動かず (metamethod は継承されない)、
     // overload の選択も C# の静的解決と食い違い得る (#23)。--ref 型の operator は
-    // 実装がホスト側なので従来どおり Lua 演算子 (metamethod) に委ねる
+    // 実装がホスト側なので従来どおり Lua 演算子 (metamethod) に委ねる。制約付き
+    // generic 内の interface operator (TCS1001) も Lua 出力の無い interface を
+    // 呼べないので、実装 class の metamethod に委ねる
     private IlExpr? TryBuildUserOperatorCall(SemanticModel model,
         ExpressionSyntax expr, params IlExpr[] args)
     {
         if (model.GetSymbolInfo(expr).Symbol is not IMethodSymbol
             {
                 MethodKind: MethodKind.UserDefinedOperator,
-                ContainingType: { } owner,
+                ContainingType: { TypeKind: not TypeKind.Interface } owner,
             } op
             || IsReferenceOnlyType(owner)
             || LuaNaming.OperatorName(op) is not { } name)
