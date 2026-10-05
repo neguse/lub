@@ -146,6 +146,8 @@ internal sealed partial class CEmitter
         var receiver = TypeOf(invoke.Recv);
         if (receiver.Kind == CTypeKind.Random)
             return TypeOfRandomMethod(invoke.Method, invoke.Args);
+        if (ForeignInstanceMethod(receiver, invoke.Method) is { } foreign)
+            return TypeOfForeignCall(foreign, invoke.Args);
         var fact = ResolveInvokeFact(receiver, invoke.Method);
         return ValidateMethodCall(fact, receiver, invoke.Args);
     }
@@ -157,6 +159,8 @@ internal sealed partial class CEmitter
         if (receiver.Kind == CTypeKind.Random)
             return RenderRandomMethod($"tcs_nonnull({RenderExpr(invoke.Recv)})",
                 invoke.Method, invoke.Args);
+        if (ForeignInstanceMethod(receiver, invoke.Method) is { } foreign)
+            return RenderForeignCall(foreign, invoke.Args, invoke.Recv);
         var fact = ResolveInvokeFact(receiver, invoke.Method);
         // 子孫に再宣言があれば実行時型で dispatch (il-spec §9)
         // dispatcher は chain 最上位の宣言 class が持つ (receiver が中間 class

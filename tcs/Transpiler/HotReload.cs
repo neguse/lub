@@ -15,8 +15,12 @@ namespace TinyCs;
 //     新 layout の table に組み直す (struct in struct は再帰)
 //   - migration 完了後、OnReload (Lua では on_reload) があれば instance ごとに 1 回呼ぶ
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
-// 前提: v1 chunk を実行済みの同一 VM で、返り値の chunk を 1 つの chunk として
-// 実行する。record class は IlExport 対象外のため現時点では移行されない。
+// 前提: v1 chunk は instance registry 付き (`--instance-registry` /
+// Transpile(instanceRegistry: true)) で transpile・実行済みで、返り値の chunk を
+// 同一 VM で 1 つの chunk として実行する (registry なしの v1 へ適用すると
+// reload chunk は v2 定義の前に assert で失敗する)。v2 定義も registry 付きで emit し、
+// reload 後に作られる instance を次の reload が追えるようにする。
+// record class は IlExport 対象外のため現時点では移行されない。
 // List<T> / Dictionary<K,V> 内の struct 値の再直列化は未対応 (需要待ち)。
 public static class HotReload
 {
@@ -25,7 +29,13 @@ public static class HotReload
         Dictionary<string, IlStructInfo> NewStructs,
         HashSet<string> NewEnums,
         HashSet<string> ChangedStructs,
-        LuaEmitter Emitter);
+        LuaEmitter Emitter,
+        Dictionary<string, string> TypeAliases)
+    {
+        // IL の型文字列は C# 表示名 (`A.Vec`)。Lua global 名 (`A_Vec`) へ写す
+        public string LuaName(string type) =>
+            TypeAliases.GetValueOrDefault(type, type);
+    }
 
     public static string EmitReloadChunk(string[] v1Sources, string[] v2Sources)
     {
@@ -33,7 +43,8 @@ public static class HotReload
         var newExport = IlExport.Export(v2Sources);
         // v2 chunk は同名 global を旧 identity へ戻してから method 本文が
         // 解決する前提なので、型 table を chunk-local に cache しない
-        var v2Lua = Transpiler.Transpile(v2Sources, cacheTypeLocals: false);
+        var v2Lua = Transpiler.Transpile(v2Sources, instanceRegistry: true,
+            cacheTypeLocals: false);
 
         var oldByName = oldExport.Classes.ToDictionary(c => c.Name);
         var pairs = newExport.Classes
@@ -50,7 +61,11 @@ public static class HotReload
             .ToHashSet();
         var ctx = new Context(pairs, newStructs,
             newExport.Enums.IsDefault ? [] : [.. newExport.Enums],
-            changedStructs, new LuaEmitter());
+            changedStructs, new LuaEmitter(),
+            newExport.Structs.Select(s => (s.DisplayName, s.Name))
+                .Concat(newExport.EnumTypes.Select(e => (e.DisplayName, e.Name)))
+                .Where(x => x.DisplayName != null && x.DisplayName != x.Name)
+                .ToDictionary(x => x.DisplayName!, x => x.Name));
 
         // struct / enum の型 table。instance からは参照されないが、v1 chunk は
         // 型 table を chunk-local に cache する (LuaEmitter.TypeLocals) ので、
@@ -61,6 +76,10 @@ public static class HotReload
 
         var sb = new StringBuilder();
         sb.AppendLine("-- TinyC# hot reload chunk (v2 定義 + eager migration)");
+        // registry なしの v1 では v2 prelude が空の registry を作り migration が
+        // 黙って空回りするため、v2 定義を実行する前に失敗させる
+        sb.AppendLine("assert(__tcs_instances, "
+            + "\"hot reload requires v1 built with --instance-registry\")");
 
         // v2 実行前に旧 table を捕まえる (v2 chunk は同名 global を
         // 新しい table で上書きするため)
@@ -154,8 +173,8 @@ public static class HotReload
     {
         if (!retainedSameType)
             return DefaultFor(type, ctx);
-        if (ctx.ChangedStructs.Contains(type))
-            return $"__tcs_migrate_{type}({oldExpr})";
+        if (ctx.ChangedStructs.Contains(ctx.LuaName(type)))
+            return $"__tcs_migrate_{ctx.LuaName(type)}({oldExpr})";
         return oldExpr;
     }
 
@@ -201,14 +220,14 @@ public static class HotReload
     private static void EmitStructReserialize(StringBuilder sb, string indent,
         string target, string type, Context ctx)
     {
-        if (ctx.ChangedStructs.Contains(type))
+        if (ctx.ChangedStructs.Contains(ctx.LuaName(type)))
         {
-            sb.AppendLine($"{indent}{target} = __tcs_migrate_{type}({target})");
+            sb.AppendLine($"{indent}{target} = __tcs_migrate_{ctx.LuaName(type)}({target})");
         }
         else if (type.EndsWith("[]")
-            && ctx.ChangedStructs.Contains(type[..^2]))
+            && ctx.ChangedStructs.Contains(ctx.LuaName(type[..^2])))
         {
-            var elem = type[..^2];
+            var elem = ctx.LuaName(type[..^2]);
             sb.AppendLine($"{indent}do");
             sb.AppendLine($"{indent}  local __a = {target}");
             sb.AppendLine($"{indent}  if __a ~= nil then");
@@ -288,6 +307,7 @@ public static class HotReload
     // 解決されるので新 layout で構築される)、enum は 0 (default(E))
     private static string DefaultFor(string type, Context ctx)
     {
+        type = ctx.LuaName(type);
         if (ctx.NewStructs.ContainsKey(type))
             return $"{type}.new()";
         if (ctx.NewEnums.Contains(type))

@@ -14,7 +14,7 @@ public class FuzzReloadTests
 
     // 検出網の自己検証用: reload を適用せず v1 のまま検証を走らせる
     private static string ComposeWithoutReload(FuzzReloadScenario scenario) =>
-        $"{Transpiler.Transpile([scenario.V1])}\n{scenario.StateLua}\n" +
+        $"{Transpiler.Transpile([scenario.V1], instanceRegistry: true)}\n{scenario.StateLua}\n" +
         scenario.AssertsLua;
 
     [Fact]

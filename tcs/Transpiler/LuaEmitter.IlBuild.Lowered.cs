@@ -10,23 +10,24 @@ namespace TinyCs;
 // TryLowerLvalue / EmitPropertyAssignment / EmitDeconstruction 系の写像。
 public partial class LuaEmitter
 {
-    // legacy TryLowerLvalue の写像: (setup 文列, access place)
+    // legacy TryLowerLvalue の写像: (setup 文列, access place)。force は
+    // 副作用が無くても受け手 / 添字を temp に固定する (EvalOrder 参照)
     private (List<IlStat> Setup, IlExpr Access)? BuildLoweredTarget(
-        SemanticModel model, ExpressionSyntax left)
+        SemanticModel model, ExpressionSyntax left, bool force = false)
     {
         switch (left)
         {
             case MemberAccessExpressionSyntax ma
-                when HasSideEffectSyntax(ma.Expression):
+                when force || HasLvalueSideEffect(model, ma.Expression, ma.Expression):
             {
-                var recv = BuildExpr(model, ma.Expression);
-                if (recv == null) return null;
-                return ([new IlLocal("__tcs_obj", recv)],
-                    new IlField(new IlVar("__tcs_obj"),
-                        model.GetSymbolInfo(ma).Symbol is { } lowSym
-                            ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
+                if (BuildFixedReceiver(model, ma.Expression) is not { } recv)
+                    return null;
+                return (recv.Setup, new IlField(recv.Access,
+                    model.GetSymbolInfo(ma).Symbol is { } lowSym
+                        ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
             }
-            case ElementAccessExpressionSyntax ea when HasSideEffectSyntax(ea):
+            case ElementAccessExpressionSyntax ea
+                when force || HasLvalueSideEffect(model, ea, ea.Expression):
             {
                 var recv = BuildExpr(model, ea.Expression);
                 var index = BuildExpr(model,
@@ -35,15 +36,105 @@ public partial class LuaEmitter
                 var receiverType = model.GetTypeInfo(ea.Expression).Type;
                 var typeDef = receiverType?.OriginalDefinition
                     .ToDisplayString() ?? "";
-                var adjusted = IsListType(typeDef)
-                    || receiverType is IArrayTypeSymbol
-                        ? new IlBin(IlBinOp.AddNum, index, new IlLit("1"))
-                        : index;
+                var plusOne = IsListType(typeDef)
+                    || receiverType is IArrayTypeSymbol;
                 return ([
                     new IlLocal("__tcs_obj", recv),
-                    new IlLocal("__tcs_idx", adjusted)],
+                    new IlLocal("__tcs_idx", index)],
                     new IlIndex(new IlVar("__tcs_obj"),
-                        new IlVar("__tcs_idx"), false));
+                        new IlVar("__tcs_idx"), plusOne));
+            }
+            default:
+                return null;
+        }
+    }
+
+    // lvalue の受け手 / 添字 (evaluated) の評価に副作用があるか。custom
+    // property の getter は呼び出しなので含める。値型の受け手は temp が copy
+    // になり更新が消えるため、参照型 prefix まで struct field / 配列要素で
+    // 辿れる (BuildFixedReceiver が固定できる) ときだけ getter を理由にする
+    private static bool HasLvalueSideEffect(SemanticModel model,
+        ExpressionSyntax evaluated, ExpressionSyntax receiver) =>
+        HasSideEffectSyntax(evaluated)
+        || ((model.GetTypeInfo(receiver).Type is { IsReferenceType: true }
+                || StructPlaceBase(model, receiver) != null)
+            && evaluated.DescendantNodesAndSelf().Any(n =>
+                n is IdentifierNameSyntax or MemberAccessExpressionSyntax
+                && model.GetSymbolInfo(n).Symbol is IPropertySymbol p
+                && IsCustomProperty(p)));
+
+    // 値型の place `prefix.f1.f2` / `prefix[i].f` を struct field / 配列要素で
+    // 辿った先の参照型 prefix。辿れない (local / this / 静的 field 起点の
+    // struct、値を返す呼び出し) なら null
+    private static ExpressionSyntax? StructPlaceBase(SemanticModel model,
+        ExpressionSyntax place)
+    {
+        while (true)
+        {
+            if (model.GetTypeInfo(place).Type is not { IsValueType: true })
+                return place;
+            switch (place)
+            {
+                case ParenthesizedExpressionSyntax p:
+                    place = p.Expression;
+                    break;
+                case MemberAccessExpressionSyntax ma
+                    when model.GetSymbolInfo(ma).Symbol is IFieldSymbol
+                        { IsStatic: false }:
+                    place = ma.Expression;
+                    break;
+                case ElementAccessExpressionSyntax ea
+                    when model.GetTypeInfo(ea.Expression).Type
+                        is IArrayTypeSymbol:
+                    return ea.Expression;
+                default:
+                    return null;
+            }
+        }
+    }
+
+    // 受け手を 1 回だけ評価する place に固定する。参照型はそのまま temp、
+    // 値型は参照型 prefix (と配列添字) だけを temp にして field / 要素の
+    // 経路を組み直す (struct を copy すると書き込みが元に届かない)
+    private (List<IlStat> Setup, IlExpr Access)? BuildFixedReceiver(
+        SemanticModel model, ExpressionSyntax recv)
+    {
+        if (StructPlaceBase(model, recv) is { } baseExpr && baseExpr != recv)
+        {
+            var built = BuildExpr(model, baseExpr);
+            if (built == null) return null;
+            List<IlStat> setup = [new IlLocal("__tcs_obj", built)];
+            return BuildStructPlace(model, recv, baseExpr, setup) is { } access
+                ? (setup, access) : null;
+        }
+        var whole = BuildExpr(model, recv);
+        return whole == null
+            ? null
+            : ([new IlLocal("__tcs_obj", whole)], new IlVar("__tcs_obj"));
+    }
+
+    // StructPlaceBase の経路を __tcs_obj (= baseExpr) から組み直す
+    private IlExpr? BuildStructPlace(SemanticModel model,
+        ExpressionSyntax place, ExpressionSyntax baseExpr, List<IlStat> setup)
+    {
+        if (place == baseExpr) return new IlVar("__tcs_obj");
+        switch (place)
+        {
+            case ParenthesizedExpressionSyntax p:
+                return BuildStructPlace(model, p.Expression, baseExpr, setup);
+            case MemberAccessExpressionSyntax ma:
+                return BuildStructPlace(model, ma.Expression, baseExpr, setup)
+                    is { } inner
+                    ? new IlField(inner, N(model.GetSymbolInfo(ma).Symbol!))
+                    : null;
+            case ElementAccessExpressionSyntax ea:
+            {
+                var index = BuildExpr(model,
+                    ea.ArgumentList.Arguments[0].Expression);
+                if (index == null) return null;
+                setup.Add(new IlLocal("__tcs_idx", index));
+                return new IlIndex(new IlVar("__tcs_obj"),
+                    new IlVar("__tcs_idx"), true);
             }
             default:
                 return null;
@@ -52,7 +143,7 @@ public partial class LuaEmitter
 
     // custom property の (receiver ノード, 名前, 副作用有無, static か,
     // struct 所有型名 — struct accessor は自由関数呼びになる)
-    private (IlExpr Recv, string Name, bool SideEffect, bool IsStatic,
+    private (List<IlStat> Setup, IlExpr Recv, string Name, bool IsStatic,
         string? StructOwner)?
         BuildPropTarget(SemanticModel model, ExpressionSyntax left)
     {
@@ -62,9 +153,9 @@ public partial class LuaEmitter
                 when model.GetSymbolInfo(id).Symbol is IPropertySymbol prop
                     && IsCustomProperty(prop):
                 return prop.IsStatic
-                    ? (new IlVar(TypeRef(prop.ContainingType)),
-                        N(prop), false, true, null)
-                    : (new IlVar("self"), N(prop), false, false,
+                    ? ([], new IlVar(TypeRef(prop.ContainingType)),
+                        N(prop), true, null)
+                    : ([], new IlVar("self"), N(prop), false,
                         IsUserStruct(prop.ContainingType)
                             ? TypeRef(prop.ContainingType) : null);
             case MemberAccessExpressionSyntax ma
@@ -72,15 +163,16 @@ public partial class LuaEmitter
                     && IsCustomProperty(prop):
             {
                 if (prop.IsStatic)
-                    return (new IlVar(TypeRef(prop.ContainingType)),
-                        N(prop), false, true, null);
+                    return ([], new IlVar(TypeRef(prop.ContainingType)),
+                        N(prop), true, null);
+                var owner = IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
+                    ? TypeRef(prop.ContainingType) : null;
+                if (HasLvalueSideEffect(model, ma.Expression, ma.Expression))
+                    return BuildFixedReceiver(model, ma.Expression) is { } fixedRecv
+                        ? (fixedRecv.Setup, fixedRecv.Access, N(prop), false, owner)
+                        : null;
                 var recv = BuildExpr(model, ma.Expression);
-                return recv == null
-                    ? null
-                    : (recv, N(prop),
-                        HasSideEffectSyntax(ma.Expression), false,
-                        IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
-                            ? TypeRef(prop.ContainingType) : null);
+                return recv == null ? null : ([], recv, N(prop), false, owner);
             }
             default:
                 return null;
@@ -113,10 +205,10 @@ public partial class LuaEmitter
         if (BuildPropTarget(model, assign.Left) is not { } prop) return false;
         var right = BuildExpr(model, assign.Right);
         if (right == null) return false;
-        var target = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
+        var target = prop.Recv;
 
         IlStat body;
-        var needsWrap = prop.SideEffect;
+        var needsWrap = prop.Setup.Count > 0;
         if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
             body = new IlCallStat(
@@ -160,11 +252,52 @@ public partial class LuaEmitter
             });
             return true;
         }
-        var stats = new List<IlStat>();
-        if (prop.SideEffect) stats.Add(new IlLocal("__tcs_obj", prop.Recv));
-        stats.Add(body);
+        List<IlStat> stats = [.. prop.Setup, body];
         acc.Add(new IlCallStat(new IlIife([.. stats])) { Origin = origin });
         return true;
+    }
+
+    // 式位置の custom property 代入: 受け手を 1 回だけ評価し、setter に
+    // 渡した値を式の値にする (getter を読み直さない)
+    private IlIife? BuildPropAssignExpr(SemanticModel model,
+        AssignmentExpressionSyntax assign)
+    {
+        if (BuildPropTarget(model, assign.Left) is not { } prop) return null;
+        var right = BuildExpr(model, assign.Right);
+        if (right == null) return null;
+        List<IlStat> stats = [.. prop.Setup];
+        var target = prop.Recv;
+        var value = new IlVar("__tcs_v");
+        var get = BuildPropGet(target, prop.Name, prop.IsStatic,
+            prop.StructOwner);
+        var set = new IlCallStat(BuildPropSet(target, prop.Name,
+            prop.IsStatic, value, prop.StructOwner));
+        if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
+        {
+            stats.Add(new IlLocal("__tcs_v",
+                WrapStructCopy(model, assign.Right, right)));
+            stats.Add(set);
+        }
+        else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
+        {
+            stats.Add(new IlLocal("__tcs_v", get));
+            stats.Add(new IlIf([(IsNullIl(value,
+                    model.GetTypeInfo(assign.Left).Type),
+                new IlBlock([new IlAssign(value, right), set]))], null));
+        }
+        else if (CompoundOperator(model, assign) is { } op
+            && BuildCompoundValue(model, assign, op, get,
+                new IlParen(right)) is { } applied)
+        {
+            stats.Add(new IlLocal("__tcs_v", applied));
+            stats.Add(set);
+        }
+        else
+        {
+            return null;
+        }
+        stats.Add(new IlReturn(value));
+        return new IlIife([.. stats]);
     }
 
     // legacy EmitIncrement の custom property / lowered lvalue 経路
@@ -175,15 +308,14 @@ public partial class LuaEmitter
         var op = increment ? IlBinOp.AddNum : IlBinOp.Sub;
         if (BuildPropTarget(model, operand) is { } prop)
         {
-            var target = prop.SideEffect ? new IlVar("__tcs_obj") : prop.Recv;
+            var target = prop.Recv;
             var body = new IlCallStat(BuildPropSet(target, prop.Name,
                 prop.IsStatic,
                 StepValue(model, operand, BuildPropGet(target, prop.Name,
                     prop.IsStatic, prop.StructOwner), increment),
                 prop.StructOwner));
-            if (prop.SideEffect)
-                acc.Add(new IlDo(new IlBlock([
-                    new IlLocal("__tcs_obj", prop.Recv), body]))
+            if (prop.Setup.Count > 0)
+                acc.Add(new IlDo(new IlBlock([.. prop.Setup, body]))
                     { Origin = origin });
             else
                 acc.Add(new IlCallStat(body.Call) { Origin = origin });
@@ -231,23 +363,37 @@ public partial class LuaEmitter
             ? new IlUn(IlUnOp.Not, new IlNullableHasValue(e))
             : new IlBin(IlBinOp.Eq, e, new IlLit("nil"));
 
-    // compound + lowered lvalue (statement 位置): IIFE 形の写像
-    private bool BuildLoweredCompoundInto(SemanticModel model,
+    // lowered lvalue への代入 (simple / compound)。受け手 / 添字を temp に
+    // 固定してから右辺を評価し、代入後の place を値として返す IIFE
+    private IlIife? BuildLoweredAssign(SemanticModel model,
+        AssignmentExpressionSyntax assign)
+    {
+        if (BuildLoweredTarget(model, assign.Left,
+                force: true) is not { } lowered)
+            return null;
+        var right = BuildExpr(model, assign.Right);
+        if (right == null) return null;
+        IlExpr? applied;
+        if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
+            applied = WrapStructCopy(model, assign.Right, right);
+        else
+        {
+            var op = CompoundOperator(model, assign);
+            applied = op == null ? null : BuildCompoundValue(model, assign, op,
+                lowered.Access, new IlParen(right));
+        }
+        if (applied == null) return null;
+        return new IlIife([.. lowered.Setup,
+            new IlAssign(lowered.Access, applied),
+            new IlReturn(lowered.Access)]);
+    }
+
+    private bool BuildLoweredAssignInto(SemanticModel model,
         AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
-        if (BuildLoweredTarget(model, assign.Left) is not { } lowered)
-            return false;
-        var op = CompoundOperator(model, assign);
-        var right = BuildExpr(model, assign.Right);
-        if (op == null || right == null) return false;
-        var applied = BuildCompoundValue(model, assign, op, lowered.Access,
-            new IlParen(right));
-        if (applied == null) return false;
-        acc.Add(new IlCallStat(new IlIife([.. lowered.Setup,
-                new IlAssign(lowered.Access, applied),
-                new IlReturn(lowered.Access)]))
-            { Origin = origin });
+        if (BuildLoweredAssign(model, assign) is not { } iife) return false;
+        acc.Add(new IlCallStat(iife) { Origin = origin });
         return true;
     }
 

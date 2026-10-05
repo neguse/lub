@@ -183,7 +183,7 @@ public static class TestHelper
     /// </summary>
     public static string ComposeReload(string v1Source, string stateLua,
         string v2Source, string assertsLua) =>
-        $"{LoadChunk(Transpiler.Transpile([v1Source]), "v1")}\n{stateLua}\n" +
+        $"{LoadChunk(Transpiler.Transpile([v1Source], instanceRegistry: true), "v1")}\n{stateLua}\n" +
         $"{LoadChunk(HotReload.EmitReloadChunk([v1Source], [v2Source]), "reload")}\n" +
         assertsLua;
 

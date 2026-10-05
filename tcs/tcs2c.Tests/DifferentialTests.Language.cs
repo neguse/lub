@@ -466,6 +466,29 @@ public partial class DifferentialTests
             """, "P");
     }
 
+    // 16 進 literal の桁 E は float の指数ではない: 直接 / 三項の枝 / const /
+    // 算術の中で i32 のまま
+    [CFact]
+    public void HexLiterals_DigitEIsNotExponent()
+    {
+        Backends.AssertParity("""
+            using System;
+            public class P
+            {
+                public const int Color = 0xFFE940;
+                public static int Pick(bool b) { int c = b ? 0x1E2 : 0x100; return c; }
+                public static void Main()
+                {
+                    int c = 0x1E2;
+                    int e = 0xE;
+                    float f = 1E2f;
+                    float g = 0x1E2;
+                    Console.WriteLine(c + ":" + e + ":" + Color + ":" + Pick(true) + ":" + Pick(false) + ":" + (0x1E2 & 0xFF) + ":" + (c + 1) + ":" + f + ":" + g + ":" + 1e3f + ":" + (0x1E2 / 2));
+                }
+            }
+            """, "P");
+    }
+
     // char は整数 code unit (il-spec §3): literal / s[i] / 算術 / Char.* /
     // string method の char 引数 / foreach string / 文字列化
     [CFact]
@@ -513,5 +536,66 @@ public partial class DifferentialTests
                 }
             }
             """, "P");
+    }
+
+    // 別 namespace の同名型 (#18): IL の型名は namespace 修飾名 (A_Color)、
+    // IL の型文字列 (field 型 / 引数型) は C# 表示名 (A.Color) のまま
+    [CFact]
+    public void Namespaces_SameNamedTypesStayDistinct()
+    {
+        Backends.AssertParity("""
+            using System;
+            namespace A
+            {
+                public enum Kind { X = 1, Y = 2 }
+                public struct Vec { public int X; public Vec(int x) { X = x; } }
+                public class Color { public int V = 1; public Vec Pos = new Vec(3); public Kind K = Kind.Y; }
+            }
+            namespace B
+            {
+                public enum Kind { X = 100, Y = 200 }
+                public struct Vec { public int X; public int Y; public Vec(int x) { X = x; Y = x * 2; } }
+                public class Color { public int V = 2; public Vec Pos = new Vec(4); public Kind K = Kind.Y; }
+            }
+            namespace Game.Gfx { public class Palette { public static A.Color Pick(int i) => new A.Color { V = i }; } }
+            public class P
+            {
+                static B.Color shared = new B.Color();
+                static int Sum(A.Color a, B.Color b) => a.V * 10 + b.V;
+                public static void Main()
+                {
+                    var a = new A.Color();
+                    var b = new B.Color();
+                    Console.WriteLine(Sum(a, b));
+                    Console.WriteLine(a.Pos.X + ":" + b.Pos.X + ":" + b.Pos.Y);
+                    Console.WriteLine((int)a.K + ":" + (int)b.K + ":" + (int)A.Kind.X + ":" + (int)B.Kind.X);
+                    Console.WriteLine(Game.Gfx.Palette.Pick(9).V + shared.V);
+                    var c = b.Pos;
+                    c.Y = 1;
+                    Console.WriteLine(b.Pos.Y + ":" + c.Y);
+                }
+            }
+            """, "P");
+    }
+
+    [CFact]
+    public void Ternary_SelectingClosures_ReturnLocalAndAssign()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class P
+            {
+                static Func<int> F(bool c) { return c ? () => 1 : () => 2; }
+                public static void Main()
+                {
+                    bool c = F(true)() == 1;
+                    Func<int> f = c ? () => 5 : () => 6;
+                    Func<int> g;
+                    g = !c ? () => 7 : () => 8;
+                    Console.WriteLine(F(true)() + ":" + F(false)() + ":" + f() + ":" + g());
+                }
+            }
+            """, "P");
+        Assert.Equal("1:2:5:8", output.Trim());
     }
 }

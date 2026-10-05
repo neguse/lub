@@ -57,23 +57,47 @@ public partial class LuaEmitter
         return new IlWith(src, [.. overrides]);
     }
 
+    // user-defined operator は呼び出し箇所で Roslyn が選んだ overload の static
+    // 関数を直接呼ぶ (`V.__mul_2(a, b)`)。metamethod 経由の実行時振り分けは、
+    // 基底 class の operator が派生 class の値で動かず (metamethod は継承されない)、
+    // overload の選択も C# の静的解決と食い違い得る (#23)。--ref 型の operator は
+    // 実装がホスト側なので従来どおり Lua 演算子 (metamethod) に委ねる。制約付き
+    // generic 内の interface operator (TCS1001) も Lua 出力の無い interface を
+    // 呼べないので、実装 class の metamethod に委ねる
+    private IlExpr? TryBuildUserOperatorCall(SemanticModel model,
+        ExpressionSyntax expr, params IlExpr[] args)
+    {
+        if (model.GetSymbolInfo(expr).Symbol is not IMethodSymbol
+            {
+                MethodKind: MethodKind.UserDefinedOperator,
+                ContainingType: { TypeKind: not TypeKind.Interface } owner,
+            } op
+            || IsReferenceOnlyType(owner)
+            || LuaNaming.OperatorName(op) is not { } name)
+            return null;
+        return new IlCall($"{TypeRef(owner)}.{name}", [.. args]);
+    }
+
     // legacy ResolveIdentifier の写像 (bare method group と custom property は
     // fallback、未解決 symbol も安全側で fallback)
     private IlExpr? BuildPrefixUnary(SemanticModel model,
         PrefixUnaryExpressionSyntax prefix)
     {
+        if (prefix.Kind() is SyntaxKind.PreIncrementExpression
+            or SyntaxKind.PreDecrementExpression)
+            return BuildIncrementExpr(model, prefix.Operand,
+                prefix.IsKind(SyntaxKind.PreIncrementExpression), prefix: true);
         var operand = BuildExpr(model, prefix.Operand);
         if (operand == null) return null;
+        if (prefix.IsKind(SyntaxKind.UnaryMinusExpression)
+            && TryBuildUserOperatorCall(model, prefix, operand) is { } userNeg)
+            return userNeg;
         if (IsNullableValueType(model.GetTypeInfo(prefix.Operand).Type))
             return prefix.Kind() switch
             {
                 SyntaxKind.UnaryMinusExpression => new IlLiftedUn(IlUnOp.Neg, operand),
                 SyntaxKind.LogicalNotExpression => new IlLiftedUn(IlUnOp.Not, operand),
                 SyntaxKind.BitwiseNotExpression => new IlLiftedUn(IlUnOp.BitNot, operand),
-                SyntaxKind.PreIncrementExpression => new IlLiftedBin(IlLiftedOp.Add,
-                    operand, new IlNullableWrap(new IlLit("1"), "int")),
-                SyntaxKind.PreDecrementExpression => new IlLiftedBin(IlLiftedOp.Sub,
-                    operand, new IlNullableWrap(new IlLit("1"), "int")),
                 _ => null,
             };
         // `-2147483648` (int.MinValue) は literal 2147483648 が i32 に収まらない
@@ -86,10 +110,6 @@ public partial class LuaEmitter
             SyntaxKind.UnaryMinusExpression => new IlUn(IlUnOp.Neg, operand),
             SyntaxKind.LogicalNotExpression => new IlUn(IlUnOp.Not, operand),
             SyntaxKind.BitwiseNotExpression => new IlUn(IlUnOp.BitNot, operand),
-            SyntaxKind.PreIncrementExpression =>
-                new IlParen(new IlBin(IlBinOp.AddNum, operand, new IlLit("1"))),
-            SyntaxKind.PreDecrementExpression =>
-                new IlParen(new IlBin(IlBinOp.Sub, operand, new IlLit("1"))),
             _ => null,
         };
     }
@@ -97,27 +117,51 @@ public partial class LuaEmitter
     private IlExpr? BuildPostfixUnary(SemanticModel model,
         PostfixUnaryExpressionSyntax postfix)
     {
-        var operand = BuildExpr(model, postfix.Operand);
-        if (operand == null) return null;
-        if (IsNullableValueType(model.GetTypeInfo(postfix.Operand).Type))
-            return postfix.Kind() switch
-            {
-                SyntaxKind.PostIncrementExpression => new IlLiftedBin(IlLiftedOp.Add,
-                    operand, new IlNullableWrap(new IlLit("1"), "int")),
-                SyntaxKind.PostDecrementExpression => new IlLiftedBin(IlLiftedOp.Sub,
-                    operand, new IlNullableWrap(new IlLit("1"), "int")),
-                SyntaxKind.SuppressNullableWarningExpression => operand,
-                _ => null,
-            };
-        return postfix.Kind() switch
-        {
-            SyntaxKind.PostIncrementExpression =>
-                new IlBin(IlBinOp.AddNum, operand, new IlLit("1")),
-            SyntaxKind.PostDecrementExpression =>
-                new IlBin(IlBinOp.Sub, operand, new IlLit("1")),
-            SyntaxKind.SuppressNullableWarningExpression => operand,
-            _ => null,
-        };
+        if (postfix.Kind() is SyntaxKind.PostIncrementExpression
+            or SyntaxKind.PostDecrementExpression)
+            return BuildIncrementExpr(model, postfix.Operand,
+                postfix.IsKind(SyntaxKind.PostIncrementExpression), prefix: false);
+        return postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression)
+            ? BuildExpr(model, postfix.Operand)
+            : null;
     }
 
+    // 式位置の ++ / --。文位置 (BuildIncrementInto) と同じ place 解決 (custom
+    // property は accessor 呼び、副作用 receiver / index は temp 化) で 1 回だけ
+    // 代入し、前置は更新後、後置は更新前の値を返す IIFE にする
+    private IlExpr? BuildIncrementExpr(SemanticModel model,
+        ExpressionSyntax operand, bool increment, bool prefix)
+    {
+        var stats = new List<IlStat>();
+        IlExpr read;
+        Func<IlExpr, IlStat> write;
+        if (BuildPropTarget(model, operand) is { } prop)
+        {
+            var recv = prop.Recv;
+            stats.AddRange(prop.Setup);
+            read = BuildPropGet(recv, prop.Name, prop.IsStatic, prop.StructOwner);
+            write = v => new IlCallStat(BuildPropSet(recv, prop.Name,
+                prop.IsStatic, v, prop.StructOwner));
+        }
+        else if (NeedsLoweredLvalue(model, operand))
+        {
+            if (BuildLoweredTarget(model, operand) is not { } lowered) return null;
+            stats.AddRange(lowered.Setup);
+            read = lowered.Access;
+            write = v => new IlAssign(lowered.Access, v);
+        }
+        else
+        {
+            var target = BuildExpr(model, operand);
+            if (target == null) return null;
+            read = target;
+            write = v => new IlAssign(target, v);
+        }
+        var value = new IlVar("__tcs_v");
+        stats.Add(new IlLocal("__tcs_v",
+            prefix ? StepValue(model, operand, read, increment) : read));
+        stats.Add(write(prefix ? value : StepValue(model, operand, value, increment)));
+        stats.Add(new IlReturn(value));
+        return new IlIife([.. stats]);
+    }
 }

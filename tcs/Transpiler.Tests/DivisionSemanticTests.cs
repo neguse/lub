@@ -23,6 +23,29 @@ public class DivisionSemanticTests
         Assert.Equal("2|-2|-2|2", result);
     }
 
+    // (int)f は 0 方向 truncation (#13)。Lua 出力から cast が消えると float の
+    // まま残る
+    [Fact]
+    public void FloatToIntCast_TruncatesTowardZero()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            public class T
+            {
+                public static string Test()
+                {
+                    float f = 2.7f;
+                    float g = -2.7f;
+                    double d = 9.99;
+                    int a = (int)f;
+                    int b = (int)g;
+                    int c = (int)(f * 2f) + (int)d;
+                    return $"{a}|{b}|{c}|{(int)(g / 2f)}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("2|-2|14|-1", result);
+    }
+
     [Fact]
     public void IntRemainder_TakesSignOfDividend()
     {

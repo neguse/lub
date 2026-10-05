@@ -47,21 +47,23 @@ public static class Transpiler
     public static string Transpile(string csharpSource) => Transpile([csharpSource]);
 
     public static string Transpile(string[] csharpSources,
-        bool cacheTypeLocals = true)
+        bool instanceRegistry = false, bool cacheTypeLocals = true)
     {
         var result = TranspileWithDiagnostics(csharpSources,
-            cacheTypeLocals: cacheTypeLocals);
+            instanceRegistry: instanceRegistry, cacheTypeLocals: cacheTypeLocals);
         if (!result.Success)
             throw new InvalidOperationException(
                 string.Join("\n", result.Errors));
         return result.Lua;
     }
 
+    /// <param name="instanceRegistry">hot reload 用 weak instance registry
+    /// (`__tcs_instances`) を emit する (LuaEmitter.InstanceRegistry)</param>
     public static TranspileResult TranspileWithDiagnostics(string[] csharpSources,
         string[]? filePaths = null, string[]? referenceSources = null,
         string? entryClass = null, bool checkNaming = true,
         MetadataReference[]? references = null, bool module = false,
-        bool cacheTypeLocals = true)
+        bool instanceRegistry = false, bool cacheTypeLocals = true)
     {
         var trees = csharpSources.Select((s, i) =>
             CSharpSyntaxTree.ParseText(s, path: filePaths != null && i < filePaths.Length
@@ -132,7 +134,7 @@ public static class Transpiler
         if (errors.Count > 0)
             return new TranspileResult { Errors = errors, Warnings = warnings };
 
-        var emitter = new LuaEmitter();
+        var emitter = new LuaEmitter { InstanceRegistry = instanceRegistry };
         if (cacheTypeLocals)
             emitter.TypeLocalBudget = LuaEmitter.DefaultTypeLocalBudget(trees);
         foreach (var refTree in refTrees)
@@ -202,8 +204,7 @@ public static class Transpiler
                         $"{entrySymbol.ToDisplayString()} ({entrySymbol.TypeKind})"],
                     Warnings = warnings
                 };
-            // namespace は Lua 出力で透過 (flatten) なので emitted 名は simple 名
-            lua += $"return {entrySymbol.Name}\n";
+            lua += $"return {emitter.TypeName(entrySymbol)}\n";
         }
         if (module)
         {

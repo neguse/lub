@@ -18,6 +18,11 @@ public partial class LuaEmitter
 
     private void EmitIlStat(IlStat stat)
     {
+        if (LowerStat(stat) is { } lowered)
+        {
+            foreach (var s in lowered) EmitIlStat(s);
+            return;
+        }
         if (stat.Origin != null) SetSource(stat.Origin);
         switch (stat)
         {
@@ -64,17 +69,8 @@ public partial class LuaEmitter
                 EmitIlWhile(whileStat);
                 break;
             case IlRepeat repeat:
-            {
-                var label = PushContinueLabel();
-                AppendLine("repeat");
-                _indent++;
-                EmitIlBlock(repeat.Body);
-                EmitContinueLabel(label);
-                _indent--;
-                AppendLine($"until not ({RenderIl(repeat.Cond)})");
-                PopContinueLabel();
+                EmitIlRepeat(repeat);
                 break;
-            }
             case IlNumericFor numFor:
             {
                 var label = PushContinueLabel();
@@ -379,6 +375,12 @@ public partial class LuaEmitter
         {
             var locals = closure.PatternLocals.Length > 0
                 ? $"local {string.Join(", ", closure.PatternLocals)}; " : "";
+            if (Needs(closure.ExprBody))
+            {
+                IlStat[] body = [.. closure.PatternLocals.Select(n => (IlStat)new IlLocal(n, null)),
+                    new IlReturn(closure.ExprBody)];
+                return $"function({paramList}) {RenderIlClosureBlock(new IlBlock([.. body]))} end";
+            }
             if (TryRenderListAddStat(closure.ExprBody) is { } add)
                 return $"function({paramList}) {locals}{add} end";
             return $"function({paramList}) {locals}return " +
@@ -477,8 +479,9 @@ public partial class LuaEmitter
         IlField f => IsCallFree(f.Recv),
         IlIndex ix => IsCallFree(ix.Recv) && IsCallFree(ix.Idx),
         IlLen len => IsCallFree(len.E),
-        IlBin bin => IsCallFree(bin.L) && IsCallFree(bin.R),
-        IlUn un => IsCallFree(un.E),
+        IlBin bin => IsCallFree(bin.L) && IsCallFree(bin.R)
+            && (!IsOverloadableOp(bin.Op) || (IsPrimitive(bin.L) && IsPrimitive(bin.R))),
+        IlUn un => IsCallFree(un.E) && (un.Op != IlUnOp.Neg || IsPrimitive(un.E)),
         IlParen p => IsCallFree(p.E),
         IlTernary t => IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F),
         IlStructCopy sc => IsCallFree(sc.E),
@@ -515,6 +518,26 @@ public partial class LuaEmitter
         "Math.Log" => "math.log",
         "Math.Atan2" => "math.atan",
         _ => callee,
+    };
+
+    // ユーザー定義演算子は Lua metamethod (__add 等) になり任意のコードを呼ぶ。
+    // 対象の演算子 (TinyCsComplianceFacts.TryGetOperatorMetamethod)
+    private static bool IsOverloadableOp(IlBinOp op) =>
+        op is IlBinOp.AddNum or IlBinOp.Sub or IlBinOp.Mul or IlBinOp.DivNum or IlBinOp.RemNum;
+
+    // 値がプリミティブ (class instance ではない) と IL の形から言える式。
+    // IlVar / field などは型が分からないので false (保守側)
+    private static bool IsPrimitive(IlExpr e) => e switch
+    {
+        IlLit or IlLen or IlIsType or IlIsLuaType or IlNullableHasValue
+            or IlNumericConvert => true,
+        IlParen p => IsPrimitive(p.E),
+        IlBin { Op: IlBinOp.And or IlBinOp.Or } or IlUn { Op: IlUnOp.Neg } =>
+            Children(e).All(IsPrimitive),
+        IlBin b when IsOverloadableOp(b.Op) => IsPrimitive(b.L) && IsPrimitive(b.R),
+        IlBin or IlUn => true,
+        IlTernary t => IsPrimitive(t.T) && IsPrimitive(t.F),
+        _ => false,
     };
 
     private static bool IsPureCallee(string callee) =>

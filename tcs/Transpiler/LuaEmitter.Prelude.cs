@@ -122,11 +122,12 @@ public partial class LuaEmitter
         AppendLine("  if math.type(v) == \"float\" then return __tcs_fstr(v) end");
         AppendLine("  return tostring(v)");
         AppendLine("end");
-        // hot reload (il-design §6): 生存インスタンスの weak registry。
+        // hot reload (il-design §6): 生存インスタンスの weak registry (opt-in)。
         // reload chunk と共有するため global。key = instance (weak)、
         // value = 構築時の class table (reload 後も identity 不変)
-        AppendLine("__tcs_instances = __tcs_instances or "
-            + "setmetatable({}, { __mode = \"k\" })");
+        if (InstanceRegistry)
+            AppendLine("__tcs_instances = __tcs_instances or "
+                + "setmetatable({}, { __mode = \"k\" })");
         // 型 table の chunk-local 宣言 (AppendTypeTableDecl)。名前は全型を
         // emit した後でしか確定しないので ToString が行ごと置き換える
         // (行数を変えず source map を保つ)
