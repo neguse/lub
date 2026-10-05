@@ -129,6 +129,9 @@ public class ChunkLocalTests
         Assert.DoesNotContain("tcs:type-locals", lua);
     }
 
+    // reload は v1 chunk と別 chunk で走る (TestHelper.ComposeReload)。v1 の
+    // closure は chunk-local 経由で旧 table を引き続けるので、reload 後の
+    // 型 table は class / struct / enum とも旧 identity でなければならない
     [Fact]
     public void Reload_V1CachedChunk_KeepsClassIdentityAndStatics()
     {
@@ -146,16 +149,97 @@ public class ChunkLocalTests
                 public int Move() { return Config.Speed * 2; }
             }
             """;
-        var script = $"{Transpiler.Transpile([V1])}\n" +
-            "local p = Player.new()\nlocal cls, cfg = Player, Config\nConfig.speed = 10\n" +
-            $"{HotReload.EmitReloadChunk([V1], [V2])}\n" +
+        var script = TestHelper.ComposeReload(V1,
+            "local p = Player.new()\nlocal cls, cfg = Player, Config\nConfig.speed = 10",
+            V2,
             """
             assert(Player == cls and Config == cfg, "identity")
             assert(p:move() == 20, "v1 instance sees v2 body and live static")
             Config.speed = 4
             assert(p:move() == 8, "v2 body resolves the original Config")
             print("ok")
-            """;
+            """);
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());
+    }
+
+    [Fact]
+    public void Reload_V1CachedChunk_SeesV2EnumValues()
+    {
+        const string V1 = """
+            using System;
+            public enum Kind { A, B }
+            public class Picker { public static Func<Kind> Pick = () => Kind.A; }
+            """;
+        const string V2 = """
+            using System;
+            public enum Kind { Z, A, B }
+            public class Picker
+            {
+                public static Func<Kind> Pick = () => Kind.A;
+                public static bool Same() => Pick() == Kind.A;
+            }
+            """;
+        var script = TestHelper.ComposeReload(V1, "local kind = Kind", V2,
+            """
+            assert(Kind == kind, "enum table identity")
+            assert(Kind.A == 1 and Kind.Z == 0, "v2 values")
+            assert(Picker.same(), "v1 closure reads v2 enum value")
+            print("ok")
+            """);
+        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
+    }
+
+    [Fact]
+    public void Reload_V1CachedChunk_UsesV2StructLayout()
+    {
+        const string V1 = """
+            using System;
+            public struct V { public int X; public V(int x) { X = x; } }
+            public class Maker { public static Func<V> Make = () => new V(1); }
+            """;
+        const string V2 = """
+            using System;
+            public struct V
+            {
+                public int X; public int Y;
+                public V(int x) { X = x; Y = 7; }
+            }
+            public class Maker
+            {
+                public static Func<V> Make = () => new V(1);
+                public static int Get() => Make().X * 100 + Make().Y;
+            }
+            """;
+        var script = TestHelper.ComposeReload(V1, "local v = V", V2,
+            """
+            assert(V == v, "struct table identity")
+            assert(Maker.get() == 107, "v1 closure builds the v2 layout")
+            print("ok")
+            """);
+        Assert.Equal("ok", TestHelper.RunLua(script).Trim());
+    }
+
+    // emit が素の global で呼ぶ Lua 標準 table と同名のローカルは写す
+    [Fact]
+    public void LocalsNamedLikeLuaStdGlobals_DoNotShadowEmittedCalls()
+    {
+        const string Source = """
+            using System;
+            using System.Collections.Generic;
+            public class T
+            {
+                public static string Test()
+                {
+                    int math = 3;
+                    string @string = "ab";
+                    var table = new List<int> { 1 };
+                    table.Add(2);
+                    Func<int, int> f = @string => (int)Math.Sqrt(16.0) + @string;
+                    return ((int)Math.Sqrt(16.0) + math) + ":" + @string.ToUpper()
+                        + ":" + table.Count + ":" + f(math);
+                }
+            }
+            """;
+        Assert.Equal("7:AB:2:7", TestHelper.TranspileAndRunWithRuntime(Source, "T.Test()"));
     }
 }

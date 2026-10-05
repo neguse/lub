@@ -6,9 +6,7 @@ namespace TinyCs.Tests;
 public class HotReloadTests
 {
     private static string Compose(string v1, string state, string v2,
-        string asserts) =>
-        $"{Transpiler.Transpile([v1])}\n{state}\n" +
-        $"{HotReload.EmitReloadChunk([v1], [v2])}\n{asserts}";
+        string asserts) => TestHelper.ComposeReload(v1, state, v2, asserts);
 
     private static void RunOk(string script) =>
         Assert.Equal("ok", TestHelper.RunLua(script).Trim());

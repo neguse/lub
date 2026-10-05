@@ -9,8 +9,11 @@ namespace TinyCs;
 /// parameter / foreach 変数 / pattern designation / lambda parameter) を
 /// emit 前に安全な識別子へ写す。member は LuaNaming.Member が `end_` に写すが
 /// (`self.end_`)、ローカルは Lua の裸の識別子になるため構文エラーになる。
+/// 生成コードが素の global 名で参照する table / 関数 (`math.sqrt` /
+/// `table.insert` / `List.add` ...) と同名のローカルも、その global を遮蔽する
+/// ので同じく写す。
 ///
-/// 写し方: 予約語 `x` → `x_`。写した先が同じ member body (lambda 連鎖を含む)
+/// 写し方: 予約語・遮蔽名 `x` → `x_`。写した先が同じ member body (lambda 連鎖を含む)
 /// に識別子として現れる場合は、現れない名前になるまで `_` を足す。宣言と
 /// 全参照 (closure 内も) を semantic model で同じ symbol として束ね、syntax
 /// tree の token 置換で一括して写すので、emit の各所は名前を知らなくてよい。
@@ -19,13 +22,26 @@ namespace TinyCs;
 public static class LuaLocalRenamer
 {
     public static bool NeedsRename(SyntaxTree tree) =>
-        tree.GetRoot().DescendantTokens().Any(IsKeywordIdentifier);
+        tree.GetRoot().DescendantTokens().Any(IsRenamedIdentifier);
 
-    private static bool IsKeywordIdentifier(SyntaxToken token) =>
+    private static bool IsRenamedIdentifier(SyntaxToken token) =>
         token.IsKind(SyntaxKind.IdentifierToken)
-        && LuaNaming.IsLuaKeyword(token.ValueText);
+        && (LuaNaming.IsLuaKeyword(token.ValueText)
+            || EmittedGlobals.Contains(token.ValueText)
+            || TinyCsComplianceFacts.IsRuntimeGlobalName(token.ValueText));
 
-    /// <summary>tree に予約語名のローカル束縛が無ければ null。あれば写した
+    // Lua 5.5 の標準 global (基本関数と library table)。生成コード・prelude は
+    // これらを素の名前で呼ぶ
+    private static readonly HashSet<string> EmittedGlobals = new(StringComparer.Ordinal)
+    {
+        "_ENV", "_G", "assert", "error", "getmetatable", "ipairs", "load",
+        "next", "pairs", "pcall", "print", "rawequal", "rawget", "rawlen",
+        "rawset", "require", "select", "setmetatable", "tonumber", "tostring",
+        "type", "xpcall", "coroutine", "debug", "io", "math", "os", "package",
+        "string", "table", "utf8",
+    };
+
+    /// <summary>tree に予約語・遮蔽名のローカル束縛が無ければ null。あれば写した
     /// tree を返す (path / options は保持)。</summary>
     public static SyntaxTree? Rename(SemanticModel model)
     {
@@ -37,7 +53,7 @@ public static class LuaLocalRenamer
         var takenByScope = new Dictionary<SyntaxNode, HashSet<string>>();
         var chosen = new Dictionary<(SyntaxNode Scope, string Keyword), string>();
 
-        foreach (var token in root.DescendantTokens().Where(IsKeywordIdentifier))
+        foreach (var token in root.DescendantTokens().Where(IsRenamedIdentifier))
         {
             var symbol = DeclaredLocalSymbol(model, token);
             if (symbol == null || renames.ContainsKey(symbol)) continue;
