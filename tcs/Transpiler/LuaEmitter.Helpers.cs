@@ -123,11 +123,20 @@ public partial class LuaEmitter
 
     // verbatim 型名 (@float) は raw syntax text に @ が残るため、pattern 経路の
     // 型参照は token ValueText から組み立てる。
-    private static string FormatTypeReference(TypeSyntax type) => type switch
+    // 型パターンの型参照。source 宣言の型は emit 名 (TypeName)、それ以外
+    // (--ref / metadata) は書かれた名前のまま
+    private string FormatTypeReference(SemanticModel model, TypeSyntax type) =>
+        model.GetTypeInfo(type).Type is INamedTypeSymbol
+            { DeclaringSyntaxReferences.Length: > 0 } named
+            && !IsReferenceOnlyType(named)
+            ? TypeName(named)
+            : FormatTypeSyntax(type);
+
+    private static string FormatTypeSyntax(TypeSyntax type) => type switch
     {
         IdentifierNameSyntax id => id.Identifier.ValueText,
         QualifiedNameSyntax qualified =>
-            $"{FormatTypeReference(qualified.Left)}.{FormatTypeReference(qualified.Right)}",
+            $"{FormatTypeSyntax(qualified.Left)}.{FormatTypeSyntax(qualified.Right)}",
         _ => type.ToString(),
     };
 
@@ -143,7 +152,7 @@ public partial class LuaEmitter
         return null;
     }
 
-    private static string GetDefaultValueForType(ITypeSymbol? type)
+    private string GetDefaultValueForType(ITypeSymbol? type)
     {
         // source 宣言の struct / record struct の default は zero 初期化された
         // struct 値 (C# 意味論)。nil にすると member アクセスが落ちる
@@ -155,7 +164,7 @@ public partial class LuaEmitter
                         RawKind: (int)SyntaxKind.RecordStructDeclaration
                     }))
         {
-            return $"{type.Name}.new()";
+            return $"{TypeName(type)}.new()";
         }
         // enum の default は member 値に依らず 0 (C#: default(E) == 0)
         if (type is { TypeKind: TypeKind.Enum })

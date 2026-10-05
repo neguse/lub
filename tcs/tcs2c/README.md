@@ -32,9 +32,9 @@ Lua backend (dev) で、`tcs2c.Tests` が同じ source の stdout 一致を要�
 - class: 継承 (prefix layout)、virtual dispatch (type id switch)、`base.M`、
   ctor 連鎖、`is T` / is-pattern、static field / property、auto property
   initializer、upcast、明示 downcast (`IlCast`: 実行時型が合わなければ fault)
-- user-defined operator (`+ - * / %`、単項 `-`): IL は素の `IlBin` / `IlUn`。
-  operand の静的型で overload を選び static method を直呼びする (同じ operator
-  の overload は Lua 出力と同じ `__mul_1` `__mul_2` … の別関数)。virtual と
+- user-defined operator (`+ - * / %`、単項 `-`): IL の時点で Roslyn が選んだ
+  overload の static method への `IlCall` (同じ operator の overload は Lua 出力と
+  同じ `__mul_1` `__mul_2` … の別関数)。virtual と
   同名で別シグネチャの method は override ではなく別 method として扱う
 - struct / record struct: 素の C 値型 (配列 / List / field に inline、代入 =
   値 copy)。instance method / property accessor は `Tcs_S *self` で格納場所を
@@ -202,6 +202,11 @@ strict f32 build では `-ffp-contract=off`、`-fwrapv`、
 
 - static field は引数なしの getter (`T tcs_host_api_current(void)`)、enum
   定数は整数 literal に畳む
+- 外部データ class の instance method は `tcs_host_<class>_<method>(self, args...)`
+  (受け手が null なら fault。基底 class の宣言も受け手の chain から引く)。
+  user subclass が同じシグネチャで再宣言 (override / 隠蔽) していれば、
+  実行時型で user 実装と host 関数を振り分ける (シグネチャの違う同名は飛ばして
+  祖先の実装を探す)。`base.M(...)` は振り分けず host 関数を直接呼ぶ
 - `out` parameter は pointer 渡し (`TcsString **`、`int32_t *`)。戻り値のある
   out 呼び出しと同名 overload は拒否。`out _` は呼び出し側の一時変数
 - nullable スカラ (`int?`) は `TcsOptI32` 等の **値渡し** (box しない)

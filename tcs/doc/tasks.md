@@ -75,7 +75,8 @@
       - 残: 実導線 (ファイル監視 → EmitReloadChunk → 実行中 VM へ適用) は
         実利用トラックで接続。List/Dict 内 struct 値の再直列化と record class
         の migration は需要待ち。record struct の IlExport (layout hash /
-        migration) は T246 で対応
+        migration) は T246 で対応。reload を使う build は
+        `--instance-registry` (`Transpile(instanceRegistry: true)`) が必要
 
 ---
 

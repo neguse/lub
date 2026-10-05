@@ -25,6 +25,10 @@ public partial class LuaEmitter
     // Types declared in these trees are type-check only (--ref); they have no
     // Lua definition, so `new` on them must produce a plain table.
     public HashSet<SyntaxTree> ReferenceTrees { get; } = [];
+    // hot reload (il-design §6) の weak instance registry を emit するか。
+    // 構築ごとに ephemeron table へ挿入するコストがあり、読むのは reload
+    // chunk (HotReload) だけなので opt-in (CLI `--instance-registry`)
+    public bool InstanceRegistry { get; set; }
 
     private bool IsReferenceOnlyType(ITypeSymbol? type) =>
         type != null && type.DeclaringSyntaxReferences
@@ -118,35 +122,49 @@ public partial class LuaEmitter
         EmitUnsupportedBody(model, [global.Statement]);
     }
 
+    // Lua global table を持つ runtime type (class / record / enum / struct) の
+    // 共通入口。module artifact に type を登録し、宣言行 `Name = {}` を declare
+    // 側 (DeclRanges) に記録する。ここを通らない型は registry の declare から
+    // 漏れ、module env が宣言行を undeclared global write として拒否する。
+    private EmittedTypeInfo BeginType(string name, string kind, INamedTypeSymbol? symbol)
+    {
+        var info = new EmittedTypeInfo
+        {
+            Name = name, Kind = kind, CSharpName = symbol?.ToDisplayString() ?? name,
+        };
+        EmittedTypes.Add(info);
+        _currentType = info;
+        _emittedTypeNames.Add(name);
+        var declStart = _sb.Length;
+        AppendLine($"{name} = {{}}");
+        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        return info;
+    }
+
     private void VisitClass(SemanticModel model, ClassDeclarationSyntax cls)
     {
         SetSource(cls);
-        var name = cls.Identifier.ValueText;
+        var symbol = model.GetDeclaredSymbol(cls)!;
+        var name = TypeName(symbol);
 
         var baseClass = cls.BaseList?.Types
             .Select(t => model.GetTypeInfo(t.Type).Type)
             .FirstOrDefault(t => t is { TypeKind: TypeKind.Class }
                 and not { SpecialType: SpecialType.System_Object });
 
-        var info = new EmittedTypeInfo { Name = name, Kind = "class" };
-        EmittedTypes.Add(info);
-        _currentType = info;
-
-        var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
-        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        var info = BeginType(name, "class", symbol);
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
-        _emittedTypeNames.Add(name);
         if (baseClass != null)
         {
-            info.BaseName = baseClass.Name;
+            var baseName = TypeName(baseClass);
+            info.BaseName = baseName;
             // 基底が未 emit (同一/別ファイルで後方宣言) なら link を遅延し、
             // 全型 emit 後にまとめて張る (宣言順・ファイル順に依存しない)
-            if (_emittedTypeNames.Contains(baseClass.Name))
-                AppendLine($"setmetatable({name}, {{__index = {baseClass.Name}}})");
+            if (_emittedTypeNames.Contains(baseName))
+                AppendLine($"setmetatable({name}, {{__index = {baseName}}})");
             else
-                _pendingBaseLinks.Add((name, baseClass.Name));
+                _pendingBaseLinks.Add((name, baseName));
         }
         AppendLine();
 
@@ -300,7 +318,7 @@ public partial class LuaEmitter
             var baseType = model.GetDeclaredSymbol(ctor)?.ContainingType?.BaseType;
             if (baseType != null && baseType.SpecialType != SpecialType.System_Object)
             {
-                AppendLine($"local self = {baseType.Name}.new({string.Join(", ", baseArgs)})");
+                AppendLine($"local self = {TypeName(baseType)}.new({string.Join(", ", baseArgs)})");
                 AppendLine($"setmetatable(self, {className})");
             }
             else
@@ -313,7 +331,7 @@ public partial class LuaEmitter
             // initializer なしでも C# は暗黙に base() を呼ぶ。基底の field
             // initializer / constructor body を実行してから派生へ差し替える
             // (this(...) initializer は TCS1001 済みで、ここでは base() 扱い)
-            AppendLine($"local self = {baseClass.Name}.new()");
+            AppendLine($"local self = {TypeName(baseClass)}.new()");
             AppendLine($"setmetatable(self, {className})");
         }
         else
@@ -323,9 +341,7 @@ public partial class LuaEmitter
                 fieldInits, out remainingBody);
             tableBuilt = true;
         }
-        // reload migration 用の登録。base ctor 経由でも最派生 class が勝つ
-        // (同一 key への上書き)
-        AppendLine($"__tcs_instances[self] = {className}");
+        EmitInstanceRegistration(className);
 
         if (!tableBuilt)
         {
@@ -358,6 +374,14 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
+    }
+
+    // reload migration 用の登録 (opt-in)。base ctor 経由でも最派生 class が
+    // 勝つ (同一 key への上書き)
+    private void EmitInstanceRegistration(string className)
+    {
+        if (InstanceRegistry)
+            AppendLine($"__tcs_instances[self] = {className}");
     }
 
     private void VisitCustomProperty(SemanticModel model, string className,
@@ -418,15 +442,10 @@ public partial class LuaEmitter
     private void VisitRecord(SemanticModel model, RecordDeclarationSyntax rec)
     {
         SetSource(rec);
-        var name = rec.Identifier.ValueText;
+        var symbol = model.GetDeclaredSymbol(rec)!;
+        var name = TypeName(symbol);
 
-        var info = new EmittedTypeInfo { Name = name, Kind = "record" };
-        EmittedTypes.Add(info);
-        _currentType = info;
-
-        var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
-        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        var info = BeginType(name, "record", symbol);
         AppendLine($"{name}.__index = {name}");
         info.DefinitionKeys.Add("__index");
         AppendLine();
@@ -444,7 +463,7 @@ public partial class LuaEmitter
         _indent++;
         var fields = fieldNames.Select((f, i) => $"{f} = {paramNames[i]}");
         AppendLine($"local self = setmetatable({{{string.Join(", ", fields)}}}, {name})");
-        AppendLine($"__tcs_instances[self] = {name}");
+        EmitInstanceRegistration(name);
         AppendLine("return self");
         _indent--;
         AppendLine("end");
@@ -489,12 +508,9 @@ public partial class LuaEmitter
     private void VisitEnum(SemanticModel model, EnumDeclarationSyntax enumDecl)
     {
         SetSource(enumDecl);
-        var name = enumDecl.Identifier.ValueText;
-        var info = new EmittedTypeInfo { Name = name, Kind = "enum" };
-        EmittedTypes.Add(info);
-        var declStart = _sb.Length;
-        AppendLine($"{name} = {{}}");
-        info.DeclRanges.Add((declStart, _sb.Length - declStart));
+        var symbol = model.GetDeclaredSymbol(enumDecl)!;
+        var name = TypeName(symbol);
+        var info = BeginType(name, "enum", symbol);
         int value = 0;
         foreach (var member in enumDecl.Members)
         {
@@ -510,6 +526,7 @@ public partial class LuaEmitter
             value++;
         }
         AppendLine();
+        _currentType = null;
     }
 
     // 増分 emit (IncrementalCompilationSession) が method 単位で出力を

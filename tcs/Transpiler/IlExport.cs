@@ -25,7 +25,8 @@ public sealed record IlClassInfo(
     bool IsRecord = false,
     ImmutableArray<string> Interfaces = default,
     bool IsInterface = false,
-    bool IsExternal = false);
+    bool IsExternal = false,
+    string? DisplayName = null);
 
 /// <summary>explicit constructor。構築順は base ctor → 自 class の field
 /// default/initializer → Body (Lua backend と同順)。BaseArgs は base(...)
@@ -68,13 +69,15 @@ public sealed record IlStructInfo(
     string LayoutHash,
     ImmutableArray<IlMethodInfo> Methods = default,
     IlCtorInfo? Ctor = null,
-    bool IsRecord = false);
+    bool IsRecord = false,
+    string? DisplayName = null);
 
 /// <summary>enum の定数表。member 名は Lua 出力の規則 (LuaNaming.Const) で
 /// 写した名前で、IL の IlField(IlVar(enum 名), member 名) と一致する。</summary>
 public sealed record IlEnumInfo(
     string Name,
-    ImmutableArray<(string Name, int Value)> Members);
+    ImmutableArray<(string Name, int Value)> Members,
+    string? DisplayName = null);
 
 /// <summary>結果。TopLevel は top-level 文 (エントリポイント本文相当) の IL
 /// (無ければ null、IL 未対応構文を含めば null — Diagnostics で判別)。
@@ -168,10 +171,7 @@ public static partial class IlExport
             .ToList();
 
         // enum 名。hot reload の added field default (0) 判定に使う
-        var enums = trees.SelectMany(t => t.GetCompilationUnitRoot()
-                .DescendantNodes().OfType<EnumDeclarationSyntax>())
-            .Select(e => e.Identifier.ValueText)
-            .ToList();
+        var enums = new List<string>();
         // enum 定数表 (Lua emit の VisitEnum と同じ値付け / 名前写像)
         var enumTypes = new List<IlEnumInfo>();
         foreach (var tree in trees)
@@ -192,7 +192,11 @@ public static partial class IlExport
                     members.Add((LuaNaming.Const(member.Identifier.ValueText), value));
                     value++;
                 }
-                enumTypes.Add(new IlEnumInfo(e.Identifier.ValueText, [.. members]));
+                var enumSymbol = model.GetDeclaredSymbol(e)!;
+                var enumName = emitter.TypeName(enumSymbol);
+                enums.Add(enumName);
+                enumTypes.Add(new IlEnumInfo(enumName, [.. members],
+                    enumSymbol.ToDisplayString()));
             }
         }
 
@@ -233,15 +237,16 @@ public static partial class IlExport
     {
         var symbol = model.GetDeclaredSymbol(cls);
         var baseName = symbol?.BaseType is { SpecialType: SpecialType.None } b
-            ? b.Name : null;
+            ? emitter.TypeName(b) : null;
         var fields = CollectFields(emitter, model, cls, symbol);
-        return new IlClassInfo(cls.Identifier.ValueText, baseName,
+        return new IlClassInfo(emitter.TypeName(symbol!), baseName,
             [.. fields], LayoutHash(fields, structLayouts),
             [.. CollectMethods(emitter, model, cls)],
             BuildCtor(emitter, model, cls),
             IsRecord: cls is RecordDeclarationSyntax,
             Interfaces: symbol == null ? []
-                : [.. symbol.AllInterfaces.Select(i => i.ToDisplayString())]);
+                : [.. symbol.AllInterfaces.Select(i => i.ToDisplayString())],
+            DisplayName: symbol!.ToDisplayString());
     }
 
     // struct / record struct: field (positional 込み) + instance member +
@@ -253,11 +258,12 @@ public static partial class IlExport
     {
         var symbol = model.GetDeclaredSymbol(st);
         var fields = CollectFields(emitter, model, st, symbol);
-        return new IlStructInfo(st.Identifier.ValueText, [.. fields],
+        return new IlStructInfo(emitter.TypeName(symbol!), [.. fields],
             LayoutHash(fields, structLayouts),
             [.. CollectMethods(emitter, model, st)],
             BuildCtor(emitter, model, st),
-            IsRecord: st is RecordDeclarationSyntax);
+            IsRecord: st is RecordDeclarationSyntax,
+            DisplayName: symbol!.ToDisplayString());
     }
 
     // instance / static field と auto property (backing field 相当)。
@@ -425,12 +431,11 @@ public static partial class IlExport
                     prop.ExpressionBody!.Expression, isGet: true),
                 propSymbol?.Type.ToDisplayString() ?? "?", []));
         }
-        // user-defined operator は metamethod 名の static method として収載
+        // user-defined operator は Lua 出力と同じ名前 (`__add`、overload は
+        // `__mul_1` …) の static method として収載。呼び出し箇所は IlCall
         foreach (var op in cls.Members.OfType<OperatorDeclarationSyntax>())
         {
-            if (!TinyCsComplianceFacts.TryGetOperatorMetamethod(op,
-                    out var metamethod))
-                continue;
+            if (LuaNaming.OperatorName(op) is not { } metamethod) continue;
             IlBlock? opBody = null;
             if (op.Body != null)
                 opBody = emitter.ExportStatsIl(model, op.Body.Statements);

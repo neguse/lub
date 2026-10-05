@@ -206,8 +206,10 @@ internal sealed partial class CEmitter
         }
     }
 
+    // 16 進 literal (0x...) の E は桁であって指数ではない
     private static bool IsFloatText(string text) =>
-        text.Contains('.') || text.Contains('e', StringComparison.OrdinalIgnoreCase);
+        !text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+        && (text.Contains('.') || text.Contains('e', StringComparison.OrdinalIgnoreCase));
 
     private static CType NumericJoin(CType left, CType right, string where)
     {
