@@ -170,7 +170,7 @@ public class NamespaceTypeNameTests
             namespace A { public class Color { public int V = 1; public int Extra = 11; } }
             namespace B { public class Color { public int V = 2; public int Added = 22; } }
             """;
-        var script = $"{Transpiler.Transpile([V1])}\n" +
+        var script = $"{Transpiler.Transpile([V1], instanceRegistry: true)}\n" +
             """
             local a = A_Color.new()
             local b = B_Color.new()
@@ -197,7 +197,7 @@ public class NamespaceTypeNameTests
             namespace A { public struct Vec { public int X; public int Y; } }
             public class Holder { public A.Vec Pos; }
             """;
-        var script = $"{Transpiler.Transpile([V1])}\n" +
+        var script = $"{Transpiler.Transpile([V1], instanceRegistry: true)}\n" +
             """
             local h = Holder.new()
             h.pos.x = 4

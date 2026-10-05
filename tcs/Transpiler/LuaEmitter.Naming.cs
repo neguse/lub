@@ -63,6 +63,28 @@ public partial class LuaEmitter
         return colliding;
     }
 
+    // C# の simple 名だけでなく、emit が裸で参照する namespace 修飾名も
+    // ローカル束縛と衝突させない。--ref 型の除外・名前の写像は TypeName と共通。
+    internal HashSet<string> ReservedTypeNames(IAssemblySymbol assembly)
+    {
+        var names = new HashSet<string>(assembly.TypeNames, StringComparer.Ordinal);
+        var stack = new Stack<INamespaceSymbol>();
+        stack.Push(assembly.GlobalNamespace);
+        while (stack.Count > 0)
+        {
+            foreach (var member in stack.Pop().GetMembers())
+            {
+                if (member is INamespaceSymbol child)
+                    stack.Push(child);
+                else if (member is INamedTypeSymbol type
+                    && type.DeclaringSyntaxReferences.Length > 0
+                    && !IsReferenceOnlyType(type))
+                    names.Add(TypeName(type));
+            }
+        }
+        return names;
+    }
+
     // Lua 予約語と同名のローカル束縛を写した tree / model に差し替える
     // (LuaLocalRenamer)。同じ tree を複数回 Visit する (top-level 文の 2 pass)
     // ので結果を覚える。
@@ -74,7 +96,8 @@ public partial class LuaEmitter
             SyntaxTree tree)
     {
         if (_renamedTrees.TryGetValue(tree, out var cached)) return cached;
-        var result = LuaLocalRenamer.Apply((CSharpCompilation)compilation, model, tree);
+        var result = LuaLocalRenamer.Apply((CSharpCompilation)compilation, model, tree,
+            ReservedTypeNames(compilation.Assembly));
         _renamedTrees[tree] = result;
         return result;
     }
