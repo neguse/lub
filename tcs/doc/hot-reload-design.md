@@ -130,7 +130,8 @@ live 側へ緩和する:
 1. **weak instance registry** (il-design §6、実装済み、opt-in
    `--instance-registry`) — 生存 instance を構築時 class 付きで列挙できる。
    既定の出力は registry を持たない (構築ごとの ephemeron 挿入が高コスト)。
-   hot reload を使う build だけ有効にする
+   hot reload を使う build だけ有効にする。registry なしの v1 へ適用した
+   reload chunk は v2 定義の前に assert で失敗する
 2. **two-phase migration** (§7) — 評価と適用を分離し、エラー時は一切
    mutate せずに abort できる (§11.4 transaction と両立)
 3. **conservative restart detector** (§6) — schema 経由で到達できない

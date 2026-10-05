@@ -15,8 +15,8 @@ namespace TinyCs;
 //   - reload は frame 境界で行う前提 (実行中 frame の local は移行対象外)
 // 前提: v1 chunk は instance registry 付き (`--instance-registry` /
 // Transpile(instanceRegistry: true)) で transpile・実行済みで、返り値の chunk を
-// 同一 VM で 1 つの chunk として実行する (registry なしの v1 では生存
-// instance が見えず migration されない)。v2 定義も registry 付きで emit し、
+// 同一 VM で 1 つの chunk として実行する (registry なしの v1 へ適用すると
+// reload chunk は v2 定義の前に assert で失敗する)。v2 定義も registry 付きで emit し、
 // reload 後に作られる instance を次の reload が追えるようにする。
 // record class は IlExport 対象外のため現時点では移行されない。
 // List<T> / Dictionary<K,V> 内の struct 値の再直列化は未対応 (需要待ち)。
@@ -54,6 +54,10 @@ public static class HotReload
 
         var sb = new StringBuilder();
         sb.AppendLine("-- TinyC# hot reload chunk (v2 定義 + eager migration)");
+        // registry なしの v1 では v2 prelude が空の registry を作り migration が
+        // 黙って空回りするため、v2 定義を実行する前に失敗させる
+        sb.AppendLine("assert(__tcs_instances, "
+            + "\"hot reload requires v1 built with --instance-registry\")");
 
         // v2 実行前に旧 class table を捕まえる (v2 chunk は同名 global を
         // 新しい table で上書きするため)。struct の型 table は instance から

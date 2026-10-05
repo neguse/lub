@@ -70,4 +70,41 @@ public class InstanceRegistryTests
             temp.Delete(recursive: true);
         }
     }
+    [Fact]
+    public void Cli_SnapshotWithInstanceRegistry_ReturnsError()
+    {
+        var (exitCode, _, stderr) = ConsoleCapture.Run(() => Program.Main(
+            ["app.cs", "--entry", "Player", "--snapshot", "--instance-registry"]));
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("--snapshot cannot be combined with", stderr);
+        Assert.Contains("--instance-registry", stderr);
+    }
+
+    // registry なしの v1 へ reload すると生存 instance が見えず migration が
+    // 黙って空回りするため、reload chunk は v2 定義より前に明示的に失敗する
+    [Fact]
+    public void Reload_OnV1WithoutRegistry_FailsBeforeApplyingV2()
+    {
+        const string V1 = "public class Player { public int Hp = 10; }";
+        const string V2 = """
+            public class Player
+            {
+                public int Hp = 10;
+                public int Mana = 5;
+                public int M() => Mana + 1;
+            }
+            """;
+        var script = $$"""
+            {{Transpiler.Transpile([V1])}}
+            local p = Player.new()
+            local before = Player
+            local ok, err = pcall(load({{LuaLongString(HotReload.EmitReloadChunk([V1], [V2]))}}))
+            print(not ok and Player == before and Player.m == nil
+              and err:find("--instance-registry", 1, true) ~= nil)
+            """;
+        Assert.Equal("true", TestHelper.RunLua(script).Trim());
+    }
+
+    private static string LuaLongString(string s) => $"[==[\n{s}]==]";
 }
