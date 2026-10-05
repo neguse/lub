@@ -1776,3 +1776,11 @@
 - 検証: `bash tcs2c/verify-host.sh` (foreign stub の instance method (値返し / void / 基底 class 宣言と、virtual の override・非 virtual の隠蔽・暗黙 this・subclass 側 overload・`base.Get` 呼び出し・中間 class の override の下に別シグネチャ同名を持つ Leaf) を追加。修正前は `unknown method: Resource.get` / override や隠蔽を無視して host 直呼び、修正後 pass)。IlForeignTests に export 契約テスト
 - 判断: Lua backend は foreign を持たないので IL の追加フィールドのみ。virtual な stub method の拒否ではなく dispatcher を選んだ (user class 同士の再宣言と同じ実行時型解決で、Lua の metatable 解決とも一致)。シグネチャの違う再宣言は dispatch しない (user class 同士と同じ) が、祖先探索はそこで止めず中間 class の override を拾う。明示的 `base.M(...)` (IL は `IlCall("<class>.<method>", [self, args...])`) は先頭引数を receiver として検査・分離し、dispatcher を通さず host 実装を直接呼ぶ。stub 内の overload は従来どおり拒否
 - 残課題: foreign class の property accessor (`b.Length` が field でなく property の stub) は未対応
+
+### #16: --snapshot で struct を含むと module registry の適用が失敗する ✓ (2026-10-05)
+- 原因: `VisitStruct` / `VisitRecordStruct` が module artifact に `EmittedTypeInfo` を登録していなかった (class / record / enum だけが登録)。descriptor の types に struct が無いので registry の declare が `P` を宣言せず、define chunk に残った `P = {}` が read-only module env で `write to undeclared global` になる。`_currentType` も null のまま member key (new / __copy / op_Equality / method) が記録されず、hot apply の削除 diff からも漏れていた
+- 修正: runtime type の登録 + 宣言行の DeclRanges 記録を `LuaEmitter.BeginType(name, kind)` に集約し、class / record / enum / struct / record struct の 5 visitor すべてをこれ経由にした。struct は kind `struct`、instance shape は値 member の名前 + 宣言型 (field 追加・型変更は restart 分類。Lua の default 値では `string` と `int[]` がどちらも nil で区別できないため型で比較)
+- 検証: ModuleDescriptorTests に struct / record struct の descriptor 内容 + snapshot 実行 (issue の再現コード相当で `10`)、struct method body edit の hot apply (既存の値に新 body が届く、type table identity 維持)、field 追加と同じ default 値になる field 型変更 (`string` → `int[]`) の restart 分類。issue の再現手順 (`--snapshot --entry App` → `dofile(...).run()`) は `@@tcs_commit ok:true` と `2`
+- よかったこと: 登録を 1 箇所にしたので、新しい runtime type 種別を足すときに declare 漏れが構造的に起きない
+- 判断: struct の fast path (method 単位 splice) は class 限定のまま (struct の body edit は module 全体 emit に fallback し、hot apply 自体は成立する)
+- 残課題: README の TCS1001 一覧に `struct` / `record struct` が残っている (T219b 以降は対応済みの記述漏れ、本件の範囲外)。class の instance shape も「名前 = initializer / default 値」で、initializer の無い field の同 default 型変更を区別しない (本件の範囲外)
