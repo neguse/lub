@@ -25,6 +25,10 @@ public partial class LuaEmitter
     // Types declared in these trees are type-check only (--ref); they have no
     // Lua definition, so `new` on them must produce a plain table.
     public HashSet<SyntaxTree> ReferenceTrees { get; } = [];
+    // hot reload (il-design §6) の weak instance registry を emit するか。
+    // 構築ごとに ephemeron table へ挿入するコストがあり、読むのは reload
+    // chunk (HotReload) だけなので opt-in (CLI `--instance-registry`)
+    public bool InstanceRegistry { get; set; }
 
     private bool IsReferenceOnlyType(ITypeSymbol? type) =>
         type != null && type.DeclaringSyntaxReferences
@@ -326,9 +330,7 @@ public partial class LuaEmitter
         {
             AppendLine($"local self = setmetatable({{}}, {className})");
         }
-        // reload migration 用の登録。base ctor 経由でも最派生 class が勝つ
-        // (同一 key への上書き)
-        AppendLine($"__tcs_instances[self] = {className}");
+        EmitInstanceRegistration(className);
 
         foreach (var (fieldName, init, type) in fieldInits)
         {
@@ -353,6 +355,14 @@ public partial class LuaEmitter
         _indent--;
         AppendLine("end");
         AppendLine();
+    }
+
+    // reload migration 用の登録 (opt-in)。base ctor 経由でも最派生 class が
+    // 勝つ (同一 key への上書き)
+    private void EmitInstanceRegistration(string className)
+    {
+        if (InstanceRegistry)
+            AppendLine($"__tcs_instances[self] = {className}");
     }
 
     private void VisitCustomProperty(SemanticModel model, string className,
@@ -432,7 +442,7 @@ public partial class LuaEmitter
         AppendLine($"function {name}.new({string.Join(", ", paramNames)})");
         _indent++;
         AppendLine($"local self = setmetatable({{}}, {name})");
-        AppendLine($"__tcs_instances[self] = {name}");
+        EmitInstanceRegistration(name);
         for (var i = 0; i < paramNames.Count; i++)
             AppendLine($"self.{fieldNames[i]} = {paramNames[i]}");
         AppendLine("return self");

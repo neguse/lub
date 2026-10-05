@@ -1793,3 +1793,9 @@
 - 検証: `bash run-tests.sh` (Transpiler.Tests 899 合格 / 3 skip、tcs2c.Tests 49/49、Analyzers 55/55、All tests passed)。`IncrementAsExpression_PrefixAndPostfixValues` / `EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect` / `GetterReceiverAndCustomPropertyAssignAsExpression` / `GetterThroughStructField_EvaluatedOnceAndWritesInPlace` を Lua・C 一致 + C# 期待値で確認
 - 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
 - 残課題: 値型受け手への代入で右辺が struct local 自体を差し替える形 (`s.X = (s = t).X`) は評価順未固定
+
+### instance registry (`__tcs_instances`) を opt-in に ✓ (2026-10-05)
+- 生成 Lua の構築ごとの `__tcs_instances[self] = C` と header の weak table 宣言を既定で出さず、`--instance-registry` (API は `Transpile(instanceRegistry: true)` / `LuaEmitter.InstanceRegistry`) のときだけ出す。読むのは `HotReload.EmitReloadChunk` だけで、registry 付きで transpile した v1 / v2 を前提にする (HotReload は v2 を registry 付きで emit、テストの v1 は opt-in)。registry なしの v1 へ適用した reload chunk は v2 定義の実行前に `assert` で失敗する (migration の黙った空回りを防ぐ)。`--snapshot` との併用は拒否
+- 検証: `dotnet test` Transpiler.Tests 892 passed / 3 skipped (env 無効の sweep)、Analyzers 55、tcs2c 45。新規 InstanceRegistryTests (既定で `__tcs_instances == nil`、opt-in で最派生 class を登録、CLI オプション、`--snapshot` 併用拒否、registry なし v1 への reload が v2 適用前に失敗)。deps/lua/lua (5.5.1) の micro benchmark (300 万回、best of 5): `V.new` (3 field class) 279 ns → 150 ns、`S.new` 179 → 127 ns、`S.__copy` 143 → 130 ns (struct は元から registry 対象外のため差はノイズ)
+- 判断: reload 時だけ列挙する方式 (VM の heap 走査) は標準 Lua に列挙 API がないので opt-in にした。`runtime/module_registry.lua` は host 側の空 table を作るだけで害がないため触らない
+- 残課題: module registry 経由の reload (§11) で registry を自動 opt-in にする導線は未接続
