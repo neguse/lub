@@ -1760,6 +1760,11 @@
 - 判断: master 土台 (T240–T252 を捨てる) は採らない。期待出力が Lua と割れる箇所は Lua 側 (2 backend parity の原則) に揃える。生成 C の全 static 読みに guard を入れる master 方式は hot path を汚すので、定数 initializer の class は eager のまま
 - 残課題: 1 object が 2 つの static 型で box された場合の tag は最初の型 (配列の共変性は subset 外)。interface の property / default method は未対応 (master と同じ)。Lua backend は generic / 遅延 static 初期化を持たない (C-only の verify)
 
+### fix: tcs2c が E を含む 16 進 literal を f32 と取り違える (#52) ✓ (2026-10-05)
+- `CEmitter.IsFloatText` が「`.` か `e` を含む text は float」と判定していたため、`0x1E2` / `0xFFE940` のような 16 進 literal を f32 の指数表記と見て `invalid f32 literal` で落ちる、または三項の枝で型が f32 になって `cannot assign f32 to i32` で落ちていた。`0x` 接頭の text は float 判定から除外した (IL literal の `Type` は float const にしか付かないので text 判定が残る)
+- 検証: tcs2c.Tests に `HexLiterals_DigitEIsNotExponent` (直接代入 / 三項の枝 / const / bit 演算 / float への暗黙変換 / `1E2f` と並べた 2 backend differential)。`./run-tests.sh` 全通過 (Transpiler.Tests 892/892、tcs2c.Tests 46/46、Analyzers 55/55、digest / gc / game-core / object-values / host verify、analyzer demo / nupkg)
+- 判断: Transpiler 側で IL literal に常に `Type` を付ける案は、IL 契約の変更と全 literal 経路の修正が要るので採らず、backend の text 判定を正した
+
 ### 参照型要素の `new T[n]` を TCS1003 で診断 (#20, #26) ✓ (2026-10-05)
 - 値型要素 (数値 / bool / enum / char / struct) の `new T[n]` は master で既に `__tcs_arr(n, default)` になっており Length / foreach / default は正しい。残っていた参照型要素 (`new string[3]` が `{}` で Length 0、診断なし) を、要素の default が nil になる `new T[n]` (参照型 / `T?` / 型パラメータ / `new int[n][]`)・初期化子の null 要素・`a[i] = null` の TCS1003 にした。型パラメータは制約 (`where T : struct` を含む) を問わず default が Lua で nil になるので、`new T[n]` と `default` の格納 (配列 / List / Dictionary) をどちらも対象にする。`new T[0]` は対象外。null / `default` の判定は変換前の型で行い、`int?` / `object` へ変換される `default(int)` は非 null として扱う。実装は `Shared/TinyCsComplianceFacts.CollectionNull.cs` で analyzer / `tcs check` / transpiler が共有する。support-matrix の配列行を更新
 - 検証: DiagnosticTests / TinyCsComplianceAnalyzerTests に 12 件の診断 (struct 制約付き `new T[n]`、`T` の `default` を配列初期化子・`a[i]`・`List<T>.Add` に入れる境界を含む) と非診断 (値型 / 初期化子 / jagged 初期化子 / List / `new int?[] { default(int) }` / `new object[] { default(int) }`) の同一 source を追加。conformance baseline の ArrayCreationExpressions3 / 5 (`new int[100][]`) が InRun → Diag。`dotnet test` と `bash run-tests.sh` の件数は PR 本文
