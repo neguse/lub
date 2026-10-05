@@ -59,7 +59,7 @@ assembly 参照で直接消費する。
 | IlBin(op, l, r) | 型解決済み二項演算 (§4-6)。op に DivInt/RemInt は無い — それらは IlCall("__tcs_idiv"/"__tcs_irem")。float→int cast は IlCall("__tcs_trunc") (0 方向 truncation)。float literal は `7.0` 形 (integer subtype にしない)。Shl / Shr は C# 意味論 (count & 31、Shr は算術) で、Lua は `__tcs_shl` / `__tcs_shr`、C は `tcs_shl` / `tcs_shr`。int.MinValue literal は `(-2147483647 - 1)` の式形 | l op r / \_\_tcs_shl(l, r) |
 | IlUn(op, e) | Neg / Not / BitNot | -e 等 |
 | IlParen(e) | 括弧 (評価順は §4 で規定済み — 表示用) | (e) |
-| IlTernary(c, t, f) | 条件式 | IIFE |
+| IlTernary(c, t, f) | 条件式 | Lua backend は文位置へ下ろす (temp local + if、評価順は左 operand を先に temp 束縛、短絡右辺は条件付き if、while 条件は `while true do do 前置文; if not c then break end end`、until は本体後に temp 評価)。`??` の右辺が呼び出しを含むときも同じ。前置文を置けない文脈 (IIFE 内 / field initializer 式) だけ IIFE (#25) |
 | IlCall(callee, args) | 解決済み callee 名の呼び出し。callee は "Class.Method" / intrinsic 名 (§13: print, Math.*, String.*, List.*, Dict.*, Char.*, table.*, string.format, string.byte / string.char (char ↔ 1 byte string), tostring, math.fmod, \_\_tcs_idiv, \_\_tcs_irem) | callee(args) |
 | IlDynCall(callee, args) | 式 callee の呼び出し (delegate 変数等) | callee(args) |
 | IlInvoke(recv, m, args) | インスタンスメソッド (仮想解決は実行時型 §9) | recv:m(args) |
