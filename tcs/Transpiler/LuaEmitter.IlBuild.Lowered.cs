@@ -18,7 +18,7 @@ public partial class LuaEmitter
         switch (left)
         {
             case MemberAccessExpressionSyntax ma
-                when force || HasSideEffectSyntax(ma.Expression):
+                when force || HasLvalueSideEffect(model, ma.Expression, ma.Expression):
             {
                 var recv = BuildExpr(model, ma.Expression);
                 if (recv == null) return null;
@@ -28,7 +28,7 @@ public partial class LuaEmitter
                             ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
             }
             case ElementAccessExpressionSyntax ea
-                when force || HasSideEffectSyntax(ea):
+                when force || HasLvalueSideEffect(model, ea, ea.Expression):
             {
                 var recv = BuildExpr(model, ea.Expression);
                 var index = BuildExpr(model,
@@ -49,6 +49,18 @@ public partial class LuaEmitter
                 return null;
         }
     }
+
+    // lvalue の受け手 / 添字 (evaluated) の評価に副作用があるか。custom
+    // property の getter は呼び出しなので含める。ただし値型の受け手は temp が
+    // copy になり更新が消えるため、getter だけを理由には temp 化しない
+    private static bool HasLvalueSideEffect(SemanticModel model,
+        ExpressionSyntax evaluated, ExpressionSyntax receiver) =>
+        HasSideEffectSyntax(evaluated)
+        || (model.GetTypeInfo(receiver).Type is { IsReferenceType: true }
+            && evaluated.DescendantNodesAndSelf().Any(n =>
+                n is IdentifierNameSyntax or MemberAccessExpressionSyntax
+                && model.GetSymbolInfo(n).Symbol is IPropertySymbol p
+                && IsCustomProperty(p)));
 
     // custom property の (receiver ノード, 名前, 副作用有無, static か,
     // struct 所有型名 — struct accessor は自由関数呼びになる)
@@ -78,7 +90,7 @@ public partial class LuaEmitter
                 return recv == null
                     ? null
                     : (recv, N(prop),
-                        HasSideEffectSyntax(ma.Expression), false,
+                        HasLvalueSideEffect(model, ma.Expression, ma.Expression), false,
                         IsUserStruct(model.GetTypeInfo(ma.Expression).Type)
                             ? TypeRef(prop.ContainingType) : null);
             }
@@ -165,6 +177,54 @@ public partial class LuaEmitter
         stats.Add(body);
         acc.Add(new IlCallStat(new IlIife([.. stats])) { Origin = origin });
         return true;
+    }
+
+    // 式位置の custom property 代入: 受け手を 1 回だけ評価し、setter に
+    // 渡した値を式の値にする (getter を読み直さない)
+    private IlIife? BuildPropAssignExpr(SemanticModel model,
+        AssignmentExpressionSyntax assign)
+    {
+        if (BuildPropTarget(model, assign.Left) is not { } prop) return null;
+        var right = BuildExpr(model, assign.Right);
+        if (right == null) return null;
+        var stats = new List<IlStat>();
+        var target = prop.Recv;
+        if (prop.SideEffect)
+        {
+            stats.Add(new IlLocal("__tcs_obj", prop.Recv));
+            target = new IlVar("__tcs_obj");
+        }
+        var value = new IlVar("__tcs_v");
+        var get = BuildPropGet(target, prop.Name, prop.IsStatic,
+            prop.StructOwner);
+        var set = new IlCallStat(BuildPropSet(target, prop.Name,
+            prop.IsStatic, value, prop.StructOwner));
+        if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
+        {
+            stats.Add(new IlLocal("__tcs_v",
+                WrapStructCopy(model, assign.Right, right)));
+            stats.Add(set);
+        }
+        else if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression))
+        {
+            stats.Add(new IlLocal("__tcs_v", get));
+            stats.Add(new IlIf([(IsNullIl(value,
+                    model.GetTypeInfo(assign.Left).Type),
+                new IlBlock([new IlAssign(value, right), set]))], null));
+        }
+        else if (CompoundOperator(model, assign) is { } op
+            && BuildCompoundValue(model, assign, op, get,
+                new IlParen(right)) is { } applied)
+        {
+            stats.Add(new IlLocal("__tcs_v", applied));
+            stats.Add(set);
+        }
+        else
+        {
+            return null;
+        }
+        stats.Add(new IlReturn(value));
+        return new IlIife([.. stats]);
     }
 
     // legacy EmitIncrement の custom property / lowered lvalue 経路

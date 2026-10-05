@@ -244,4 +244,65 @@ public class IncrementExpressionTests
         Assert.True(result.Success);
         Assert.Empty(result.Warnings);
     }
+
+    // getter 経由の receiver は 1 回だけ評価し、読んだ object を更新する
+    [Fact]
+    public void GetterReceiver_EvaluatedOnce()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Box { public int N; }
+            public class T
+            {
+                static int Calls;
+                static Box A = new Box { N = 10 }, B = new Box { N = 20 };
+                static Box Current { get { Calls++; return Calls == 1 ? A : B; } }
+                public static string Test()
+                {
+                    int old = Current.N++;
+                    string expr = $"{old}|{A.N}|{B.N}|{Calls}";
+                    Calls = 0; A.N = 10; B.N = 20;
+                    Current.N++;
+                    string stat = $"{A.N}|{B.N}|{Calls}";
+                    Calls = 0; A.N = 10; B.N = 20;
+                    Current.N += 5;
+                    return $"{expr} {stat} {A.N}|{B.N}|{Calls}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("10|11|20|1 11|20|1 15|20|1", result);
+    }
+
+    // 式位置の複合代入 / 代入も custom property は accessor を通し、値は
+    // 代入した値 (getter を読み直さない)
+    [Fact]
+    public void CustomPropertyAssignAsExpression_UsesAccessors()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class Box
+            {
+                int _p = 4;
+                public int Gets;
+                public int P { get { Gets++; return _p; } set { _p = value; } }
+                string? _name;
+                public string? Name { get { return _name; } set { _name = value; } }
+            }
+            public class T
+            {
+                static Box B = new Box();
+                static int Calls;
+                static Box Get() { Calls++; return B; }
+                public static string Test()
+                {
+                    int n = (Get().P += 1);
+                    int m = (B.P += 2);
+                    int s = (Get().P = 9);
+                    int gets = B.Gets;
+                    string? c1 = (Get().Name ??= "a");
+                    string? c2 = (Get().Name ??= "b");
+                    return $"{n}|{m}|{s}|{B.P}|{gets}|{Calls}|{c1}{c2}{B.Name}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("5|7|9|9|2|4|aaa", result);
+    }
 }

@@ -69,6 +69,8 @@ public partial class LuaEmitter
             {
                 // 式位置の代入 (`(i = y) >= 0`、`arr[x = 1]`): 文として代入し
                 // 代入後の左辺を値にする IIFE
+                if (IsCustomPropertyTarget(model, assignExpr.Left))
+                    return BuildPropAssignExpr(model, assignExpr);
                 if (NeedsLoweredAssign(model, assignExpr))
                     return BuildLoweredAssign(model, assignExpr);
                 var assignStats = new List<IlStat>();

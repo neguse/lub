@@ -129,4 +129,43 @@ public partial class DifferentialTests
         Assert.Equal("2,2|3,2|2|1,1.5|6,5|3|11|2|2|2,2\n2,2,3,3|10,0|20,0",
             output.ReplaceLineEndings("\n"));
     }
+
+    // getter 経由の receiver は 1 回評価、式位置の custom property 代入は
+    // accessor を通す (C# の結果を固定値で検証)
+    [CFact]
+    public void GetterReceiverAndCustomPropertyAssignAsExpression()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class Box
+            {
+                public int N;
+                int _p = 4;
+                public int P { get { return _p; } set { _p = value; } }
+                string? _name;
+                public string? Name { get { return _name; } set { _name = value; } }
+            }
+            public class P
+            {
+                static int Calls;
+                static Box A = new Box { N = 10 };
+                static Box B = new Box { N = 20 };
+                static Box Current { get { Calls++; return Calls == 1 ? A : B; } }
+                static Box Get() { return B; }
+                public static void Main()
+                {
+                    int old = Current.N++;
+                    Console.WriteLine(old + "|" + A.N + "|" + B.N + "|" + Calls);
+                    int n = (Get().P += 1);
+                    int sum = n + B.P;
+                    int s = (Get().P = 3);
+                    string? c1 = (Get().Name ??= "a");
+                    string? c2 = (Get().Name ??= "b");
+                    Console.WriteLine(sum + "|" + s + "|" + c1 + c2 + B.Name);
+                }
+            }
+            """, "P");
+        Assert.Equal("10|11|20|1\n10|3|aaa", output.ReplaceLineEndings("\n"));
+    }
 }
+

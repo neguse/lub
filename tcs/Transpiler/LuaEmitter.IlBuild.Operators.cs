@@ -119,7 +119,7 @@ public partial class LuaEmitter
             write = v => new IlCallStat(BuildPropSet(recv, prop.Name,
                 prop.IsStatic, v, prop.StructOwner));
         }
-        else if (NeedsLoweredLvalue(operand))
+        else if (NeedsLoweredLvalue(model, operand))
         {
             if (BuildLoweredTarget(model, operand) is not { } lowered) return null;
             stats.AddRange(lowered.Setup);

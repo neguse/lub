@@ -498,7 +498,7 @@ public partial class LuaEmitter
         ExpressionSyntax operand, bool increment, SyntaxNode? origin,
         List<IlStat> acc)
     {
-        if (IsCustomPropertyTarget(model, operand) || NeedsLoweredLvalue(operand))
+        if (IsCustomPropertyTarget(model, operand) || NeedsLoweredLvalue(model, operand))
             return BuildLoweredIncrementInto(model, operand, increment,
                 origin, acc);
         var target = BuildExpr(model, operand);
@@ -707,10 +707,13 @@ public partial class LuaEmitter
     };
 
     // legacy TryLowerLvalue が temp を挟む条件 (受け手/添字に副作用)
-    private static bool NeedsLoweredLvalue(ExpressionSyntax left) => left switch
+    private static bool NeedsLoweredLvalue(SemanticModel model,
+        ExpressionSyntax left) => left switch
     {
-        MemberAccessExpressionSyntax ma => HasSideEffectSyntax(ma.Expression),
-        ElementAccessExpressionSyntax ea => HasSideEffectSyntax(ea),
+        MemberAccessExpressionSyntax ma =>
+            HasLvalueSideEffect(model, ma.Expression, ma.Expression),
+        ElementAccessExpressionSyntax ea =>
+            HasLvalueSideEffect(model, ea, ea.Expression),
         _ => false,
     };
 

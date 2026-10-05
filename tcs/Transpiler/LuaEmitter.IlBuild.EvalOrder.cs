@@ -29,7 +29,7 @@ public partial class LuaEmitter
     {
         if (assign.IsKind(SyntaxKind.CoalesceAssignmentExpression)) return false;
         if (!assign.IsKind(SyntaxKind.SimpleAssignmentExpression)
-            && NeedsLoweredLvalue(assign.Left))
+            && NeedsLoweredLvalue(model, assign.Left))
             return true;
         var recv = assign.Left switch
         {
