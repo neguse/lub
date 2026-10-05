@@ -105,11 +105,9 @@ public partial class LuaEmitter
         _currentType?.DefinitionKeys.Add("new");
         AppendLine($"function {name}.new()");
         _indent++;
-        AppendLine("local self = {}");
-        foreach (var (memberName, memberType) in ValueMembers(symbol))
-            AppendLine($"self.{memberName} = " +
-                $"{GetDefaultValueForType(memberType)}");
-        AppendLine("return self");
+        var zero = ValueMembers(symbol).Select(m =>
+            $"{m.Name} = {GetDefaultValueForType(m.Type)}");
+        AppendLine($"return {{{string.Join(", ", zero)}}}");
         _indent--;
         AppendLine("end");
         AppendLine();
@@ -195,16 +193,15 @@ public partial class LuaEmitter
         _currentType?.DefinitionKeys.Add("__copy");
         AppendLine($"function {name}.__copy(s)");
         _indent++;
-        AppendLine("local c = {}");
-        foreach (var (memberName, memberType) in ValueMembers(symbol))
+        var copied = ValueMembers(symbol).Select(m =>
         {
-            var deep = IsUserStruct(memberType)
-                && memberType is not INamedTypeSymbol { IsReadOnly: true };
-            AppendLine(deep
-                ? $"c.{memberName} = {TypeName(memberType)}.__copy(s.{memberName})"
-                : $"c.{memberName} = s.{memberName}");
-        }
-        AppendLine("return c");
+            var deep = IsUserStruct(m.Type)
+                && m.Type is not INamedTypeSymbol { IsReadOnly: true };
+            return deep
+                ? $"{m.Name} = {TypeName(m.Type)}.__copy(s.{m.Name})"
+                : $"{m.Name} = s.{m.Name}";
+        });
+        AppendLine($"return {{{string.Join(", ", copied)}}}");
         _indent--;
         AppendLine("end");
         AppendLine();
