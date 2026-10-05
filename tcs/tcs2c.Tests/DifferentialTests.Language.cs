@@ -514,4 +514,25 @@ public partial class DifferentialTests
             }
             """, "P");
     }
+
+    [CFact]
+    public void Ternary_SelectingClosures_ReturnLocalAndAssign()
+    {
+        var output = Backends.AssertParity("""
+            using System;
+            public class P
+            {
+                static Func<int> F(bool c) { return c ? () => 1 : () => 2; }
+                public static void Main()
+                {
+                    bool c = F(true)() == 1;
+                    Func<int> f = c ? () => 5 : () => 6;
+                    Func<int> g;
+                    g = !c ? () => 7 : () => 8;
+                    Console.WriteLine(F(true)() + ":" + F(false)() + ":" + f() + ":" + g());
+                }
+            }
+            """, "P");
+        Assert.Equal("1:2:5:8", output.Trim());
+    }
 }

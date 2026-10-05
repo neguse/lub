@@ -445,4 +445,58 @@ public class TernaryTests
         Assert.Equal("mmxz", Run(cs, "T.test(nil, nil, false)"));
         Assert.DoesNotContain(Iife, Transpiler.Transpile(cs));
     }
+
+    [Fact]
+    public void Ternary_EvaluationOrder_LeftOperandBeforeLaterSideEffect()
+    {
+        // 三項より左の兄弟 operand は、その間にある呼び出しの副作用より先に読む
+        var cs = """
+            using System;
+            public class B { public int V; }
+            public class T
+            {
+                static B b = new B();
+                static int Set() { b.V = 100; return 0; }
+                static int Sum3(int x, int y, int z) { return x + y + z; }
+                public static int Args(bool c)
+                {
+                    b.V = 1;
+                    return Sum3(b.V, Set(), c ? 1 : 2);
+                }
+                public static int ArrayInit(bool c)
+                {
+                    b.V = 1;
+                    int[] a = new int[] { b.V, Set(), c ? 1 : 2 };
+                    return a[0];
+                }
+                public static int CapturedLocal(bool c)
+                {
+                    int loc = 1;
+                    Func<int> g = () => { loc = 50; return 0; };
+                    return Sum3(loc, g(), c ? 1 : 2);
+                }
+            }
+            """;
+        Assert.Equal("2", Run(cs, "T.args(true)"));
+        Assert.Equal("1", Run(cs, "T.array_init(true)"));
+        Assert.Equal("2", Run(cs, "T.captured_local(true)"));
+    }
+
+    [Fact]
+    public void Coalesce_TernaryDefault_NotEvaluatedWhenLeftHasValue()
+    {
+        var cs = """
+            public class N { public int F; }
+            public class T
+            {
+                public static int Test(N n)
+                {
+                    int? x = 5;
+                    int r = x ?? (n!.F > 0 ? 1 : 2);
+                    return r;
+                }
+            }
+            """;
+        Assert.Equal("5", Run(cs, "T.test(nil)"));
+    }
 }

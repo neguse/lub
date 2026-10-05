@@ -9,8 +9,9 @@ namespace TinyCs;
 //
 // 評価順 (C# は左から右) を守る規則:
 //   - 文に下ろす式 X の左にある兄弟 operand は、X の前置文より先に評価される
-//     必要がある。左 operand が副作用を持ち得る (呼び出しを含む) か、X が
-//     呼び出しを含む (左 operand が読む状態を書き換え得る) 場合は temp に束縛する
+//     必要がある。左 operand が副作用を持ち得る (呼び出しを含む) か、X までの
+//     右の兄弟のどれかが呼び出しを含む (左 operand が読む状態を書き換え得る)
+//     場合は temp に束縛する
 //   - 短絡 (&& / || / ??) の右辺は、条件付きの if 内に前置文を置く
 //   - temp は文ごとに do ... end で囲い、Lua の local 上限 (200) を踏まない
 //   - 条件が毎回評価される位置 (while) は `while true do do 前置文; if not c
@@ -139,7 +140,7 @@ public partial class LuaEmitter
                     v => new IlAssign(new IlVar(tmp), v))]))], null));
                 return new IlVar(tmp);
             }
-            case IlNullableGetOrDefault g when !IsCallFree(g.Default):
+            case IlNullableGetOrDefault g when !IsCallFree(g.Default) || Needs(g.Default):
             {
                 var tmp = NewLowerTemp();
                 pre.Add(new IlLocal(tmp, Lower(g.E, pre)));
@@ -155,7 +156,8 @@ public partial class LuaEmitter
         for (var i = 0; i <= last; i++)
         {
             var li = Lower(kids[i], pre);
-            if (i < last && !Stable(li, kids[last]))
+            // 右の兄弟 (i+1..last) のどれかが前置文へ評価を移し得るなら束縛する
+            if (i < last && !kids[(i + 1)..(last + 1)].All(k => Stable(li, k)))
             {
                 var tmp = NewLowerTemp();
                 pre.Add(new IlLocal(tmp, li));
