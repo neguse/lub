@@ -1818,6 +1818,13 @@
 - 型名と同名のローカル束縛: `static int Sum(V a, int V) { return (a + a).X; }` の `V.__add(a, a)` が int parameter の `V` を index して落ちていた (`new V(...)` → `V.new` と型内 static member 参照も従来から同じ)。LuaLocalRenamer の対象をユーザ型名 (`Assembly.TypeNames`) と同名のローカル束縛に広げ、`V` → `V_` に写す (写した先が型名と同じなら更に `_`)。emit 各所の型参照に生成 binding を足す案より、既存の tree 置換に寄せる方が網羅的
 - 残課題: `==`/`!=`/変換 operator の対応は未着手 (subset 判断が先)
 
+
+### namespace 型名と operator 静的束縛の統合修正 (#61 / #62) ✓ (2026-10-05)
+- LuaLocalRenamer の予約名に LuaEmitter.TypeName が実際に出力する namespace 修飾名を追加。通常 / 増分 Lua emit と IlExport が同じ集合を渡し、`A.V` / `B.V` の併存時に parameter `A_V` が `A_V.__add` を遮蔽しないようにした。写した先も型名および既に選んだ local 名との衝突を避ける
+- 検証: `LuaLocalRenameTests` に修飾 operator owner と同名の parameter、写した先が別の修飾型名になる場合、複数 parameter の置換名衝突、IlExport の parameter 名の回帰を追加。`git diff --check` 通過。作業環境に .NET / Lua が無いため実行テストは未実施、累積 CI で確認する
+- 判断: namespace 名を renamer 側で組み直さず既存 TypeName を使い、--ref 型の除外規則も共有する。後続 #65 の nameof 修正は変更せず、その統合後に元の綴りが保たれる回帰を追加する
+- 残課題: 累積 CI の実行確認
+
 ### instance / struct 生成を 1 つのテーブルコンストラクタにする ✓ (2026-10-05)
 - 基底なし class の `new` を `setmetatable({x = x, y = y, ...}, C)` にした (field は宣言順)。ctor 本文の先頭に連続する `this.F = E` は、E が ctor parameter と定数だけから決まる式 (他の initializer の副作用と順序を入れ替えても観測できない。整数除算 / 剰余、field / static の読み、呼び出し、`this`、Dictionary literal のリテラル以外の key (nil / NaN でテーブル生成中に fault する) を含まず、演算子の operand は数値 / bool 型の parameter と定数に限る) で、F の initializer も副作用なしのときだけコンストラクタへ畳み、F の既定値の二重代入を消す。それ以外に当たった時点で畳みを止め、残りは元の順序で emit。record class の `new`、struct の `S.new` (zero 値) / `__copy` も同形
 - 検証: `bash run-tests.sh` (csharpstandard submodule あり) Transpiler.Tests 912、Analyzers 55、tcs2c 45 すべて passed。新規 ConstructorTableTests 20 本 (initializer の副作用が上書きされても実行される / 宣言順 / 本文が畳み対象前に field を読む・`this` を渡す・virtual を呼ぶと既定値が見える / 繰り返し代入 / 0 除算 fault と initializer 副作用の順 / Dictionary literal の parameter key が nil のとき initializer 副作用の後に fault・リテラル key は畳む / user 定義・--ref host の operator が initializer の後に走る / 数値・bool の演算は畳む / 派生 class / record / struct の入れ子 copy)。`deps/lua/lua` (5.5.1) micro benchmark (300 万回、best of 5、registry 付き同士): `V.new` (3 field class) 172 → 92 ns、`S.new` 126 → 54 ns、`S.__copy` 130 → 57 ns
