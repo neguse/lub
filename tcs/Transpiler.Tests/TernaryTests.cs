@@ -499,4 +499,48 @@ public class TernaryTests
             """;
         Assert.Equal("5", Run(cs, "T.test(nil)"));
     }
+
+    [Fact]
+    public void Ternary_AssignToSelfFieldChain_ReceiverFixedBeforeCondition()
+    {
+        // self.Current.V の受け手 self.Current は条件 (Swap()) より先に評価する
+        var cs = """
+            public class Box { public int V; }
+            public class T
+            {
+                public Box Current = new Box();
+                bool Swap() { Current = new Box(); return true; }
+                public int Test()
+                {
+                    var old = Current;
+                    Current.V = Swap() ? 7 : 9;
+                    return old.V * 10 + Current.V;
+                }
+            }
+            """;
+        Assert.Equal("70", Run(cs, "T.new():test()"));
+    }
+
+    [Fact]
+    public void Ternary_UserOperatorInCondition_LeftOperandReadFirst()
+    {
+        // a + b はユーザー定義演算子 (metamethod) を呼ぶので、左の X を先に読む
+        var cs = """
+            public class C
+            {
+                public static int operator +(C a, C b) { T.X = 9; return 1; }
+            }
+            public class T
+            {
+                public static int X;
+                public static int Test()
+                {
+                    X = 1;
+                    var a = new C(); var b = new C();
+                    return X + ((a + b > 0) ? 1 : 2);
+                }
+            }
+            """;
+        Assert.Equal("2", Run(cs, "T.test()"));
+    }
 }

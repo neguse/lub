@@ -479,8 +479,9 @@ public partial class LuaEmitter
         IlField f => IsCallFree(f.Recv),
         IlIndex ix => IsCallFree(ix.Recv) && IsCallFree(ix.Idx),
         IlLen len => IsCallFree(len.E),
-        IlBin bin => IsCallFree(bin.L) && IsCallFree(bin.R),
-        IlUn un => IsCallFree(un.E),
+        IlBin bin => IsCallFree(bin.L) && IsCallFree(bin.R)
+            && (!IsOverloadableOp(bin.Op) || (IsPrimitive(bin.L) && IsPrimitive(bin.R))),
+        IlUn un => IsCallFree(un.E) && (un.Op != IlUnOp.Neg || IsPrimitive(un.E)),
         IlParen p => IsCallFree(p.E),
         IlTernary t => IsCallFree(t.Cond) && IsCallFree(t.T) && IsCallFree(t.F),
         IlStructCopy sc => IsCallFree(sc.E),
@@ -494,6 +495,26 @@ public partial class LuaEmitter
         IlTable tbl => tbl.Entries.All(
             en => (en.Key == null || IsCallFree(en.Key)) && IsCallFree(en.Value)),
         IlCall c => IsPureCallee(c.Callee) && c.Args.All(IsCallFree),
+        _ => false,
+    };
+
+    // ユーザー定義演算子は Lua metamethod (__add 等) になり任意のコードを呼ぶ。
+    // 対象の演算子 (TinyCsComplianceFacts.TryGetOperatorMetamethod)
+    private static bool IsOverloadableOp(IlBinOp op) =>
+        op is IlBinOp.AddNum or IlBinOp.Sub or IlBinOp.Mul or IlBinOp.DivNum or IlBinOp.RemNum;
+
+    // 値がプリミティブ (class instance ではない) と IL の形から言える式。
+    // IlVar / field などは型が分からないので false (保守側)
+    private static bool IsPrimitive(IlExpr e) => e switch
+    {
+        IlLit or IlLen or IlIsType or IlIsLuaType or IlNullableHasValue
+            or IlNumericConvert => true,
+        IlParen p => IsPrimitive(p.E),
+        IlBin { Op: IlBinOp.And or IlBinOp.Or } or IlUn { Op: IlUnOp.Neg } =>
+            Children(e).All(IsPrimitive),
+        IlBin b when IsOverloadableOp(b.Op) => IsPrimitive(b.L) && IsPrimitive(b.R),
+        IlBin or IlUn => true,
+        IlTernary t => IsPrimitive(t.T) && IsPrimitive(t.F),
         _ => false,
     };
 

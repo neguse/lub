@@ -289,11 +289,13 @@ public partial class LuaEmitter
 
     private List<IlStat> LowerAssign(IlAssign assign)
     {
-        // 評価が 1 回で済む target (純 local / self 起点の field 連鎖 /
-        // 値が呼び出しを含まないときの field 連鎖) は分岐へ直接代入する
+        // 受け手を先に固定しなくてよい target (純 local / self の直下 field /
+        // 値が呼び出しを含まないときの field 連鎖) は分岐へ直接代入する。
+        // self.a.b の受け手 self.a は値の評価で差し替わり得るので固定する
         if (assign.Target is IlVar
+            || assign.Target is IlField { Recv: IlVar { Name: "self" } }
             || (assign.Target is IlField && IsSimpleReceiverPath(assign.Target)
-                && (IsCallFree(assign.Value) || IsSelfRooted(assign.Target))))
+                && IsCallFree(assign.Value)))
             return Scoped(LowerInto(assign.Value,
                 v => new IlAssign(assign.Target, v)), assign);
 
@@ -320,13 +322,6 @@ public partial class LuaEmitter
         pre.Add(result);
         return Scoped(pre, assign);
     }
-
-    private static bool IsSelfRooted(IlExpr e) => e switch
-    {
-        IlVar v => v.Name == "self",
-        IlField f => IsSelfRooted(f.Recv),
-        _ => false,
-    };
 
     // until は文を置けないので、条件を本体の後 (continue label の後) で temp に
     // 評価してから `until not temp` に渡す。C# の do-while 条件は本体の local を
