@@ -47,12 +47,12 @@ internal sealed partial class CEmitter
         foreach (var target in _program.Classes.Where(c => !c.IsInterface
             && c.Name != owner && IsAncestorOrSame(owner, c.Name)))
             for (string? cur = target.Name; cur != owner; cur = _classes[cur!].BaseName)
-                if (_classes[cur!].Methods.Any(m => m.Name == name && !m.IsStatic))
+                if (_classes[cur!].Methods.Any(m => m.Name == name && !m.IsStatic)
+                    && _facts.Method(cur!, name) is var fact
+                    && fact.ReturnType == returnType
+                    && fact.Parameters.Select(p => p.Type).SequenceEqual(parameters))
                 {
-                    var fact = _facts.Method(cur!, name);
-                    if (fact.ReturnType == returnType
-                        && fact.Parameters.Select(p => p.Type).SequenceEqual(parameters))
-                        result.Add((target.Name, cur!));
+                    result.Add((target.Name, cur!));
                     break;
                 }
         return result;
@@ -136,8 +136,28 @@ internal sealed partial class CEmitter
         return _facts.MapType(method.ReturnType);
     }
 
+    // IlCall("<class>.<method>", [self, args...]) の instance method は明示的 base
+    // 呼び出し: 先頭引数が receiver で、dispatcher を通さず host 実装へ送る
+    private (IlExpr? Receiver, IReadOnlyList<IlExpr> Args) SplitForeignCall(
+        IlForeignMethod method, IReadOnlyList<IlExpr> args)
+    {
+        if (method.Receiver is not { } owner) return (null, args);
+        if (args.Count == 0) throw new Tcs2cException($"{method.Name}: missing receiver");
+        CheckAssignable(CType.Ref(owner), args[0], $"receiver of {method.Name}");
+        return (args[0], args.Skip(1).ToList());
+    }
+
+    private CType TypeOfForeignIlCall(IlForeignMethod method, IReadOnlyList<IlExpr> args) =>
+        TypeOfForeignCall(method, SplitForeignCall(method, args).Args);
+
+    private string RenderForeignIlCall(IlForeignMethod method, IReadOnlyList<IlExpr> args)
+    {
+        var (receiver, rest) = SplitForeignCall(method, args);
+        return RenderForeignCall(method, rest, receiver, dispatch: false);
+    }
+
     private string RenderForeignCall(IlForeignMethod method, IReadOnlyList<IlExpr> args,
-        IlExpr? receiver = null)
+        IlExpr? receiver = null, bool dispatch = true)
     {
         var result = TypeOfForeignCall(method, args);
         var parameters = ForeignParameters(method);
@@ -150,7 +170,7 @@ internal sealed partial class CEmitter
         }
         values.AddRange(args.Select((a, i) =>
             (parameters[i].Type, RenderCoerced(a, parameters[i].Type))));
-        var callee = receiver is not null && ForeignOverriders(method).Count > 0
+        var callee = receiver is not null && dispatch && ForeignOverriders(method).Count > 0
             ? Names.Dispatch(method.Receiver!, ShortName(method)) : HostName(method.Name);
         return RenderOrderedCall(callee, result, values);
     }
