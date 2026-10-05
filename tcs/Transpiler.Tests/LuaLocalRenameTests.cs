@@ -268,4 +268,71 @@ public class LuaLocalRenameTests
 
         Assert.Equal("25", output);
     }
+
+    private const string QualifiedOperatorSource = """
+        namespace A
+        {
+            public class V
+            {
+                public int X;
+                public V(int x) { X = x; }
+                public static V operator +(V a, V b) => new V(a.X + b.X);
+                public static int Sum(V a, int A_V) => (a + a).X + A_V;
+                public static int SumBoth(V a, V_ b, int A_V) =>
+                    (a + a).X + (b + b).X + A_V;
+                public static int SumParameters(V a, V_ b, int A_V, int A_V_) =>
+                    (a + a).X + (b + b).X + A_V * 10 + A_V_;
+            }
+            public class V_
+            {
+                public int X;
+                public V_(int x) { X = x; }
+                public static V_ operator +(V_ a, V_ b) => new V_(a.X + b.X);
+            }
+        }
+        namespace B { public class V { } public class V_ { } }
+        public class Runner
+        {
+            public static int One() => A.V.Sum(new A.V(3), 7);
+            public static int Both() => A.V.SumBoth(new A.V(3), new A.V_(5), 7);
+            public static int Parameters() =>
+                A.V.SumParameters(new A.V(3), new A.V_(5), 2, 7);
+        }
+        """;
+
+    // #61 の namespace 修飾名も #62 の operator 直呼びを遮蔽する。
+    [Fact]
+    public void ParameterNamedLikeQualifiedOperatorOwner_Runs()
+    {
+        Assert.Equal("13", TestHelper.TranspileAndRun(
+            QualifiedOperatorSource, "Runner.One()"));
+    }
+
+    // A_V を A_V_ に写すと別の型 A.V_ を遮蔽するため、更に _ を足す。
+    [Fact]
+    public void RenamedParameterDoesNotShadowAnotherQualifiedOperatorOwner()
+    {
+        Assert.Equal("23", TestHelper.TranspileAndRun(
+            QualifiedOperatorSource, "Runner.Both()"));
+    }
+
+    [Fact]
+    public void QualifiedAliasParameters_ReceiveDistinctReplacementNames()
+    {
+        Assert.Equal("43", TestHelper.TranspileAndRun(
+            QualifiedOperatorSource, "Runner.Parameters()"));
+    }
+
+    [Fact]
+    public void QualifiedOperatorOwnerNames_AreReservedInIlExport()
+    {
+        var result = IlExport.Export([QualifiedOperatorSource]);
+        Assert.Empty(result.Diagnostics);
+        var owner = result.Classes.Single(c => c.Name == "A_V");
+        var method = owner.Methods.Single(m => m.Name == "sum_both");
+        Assert.Equal("A_V__", method.Parameters[2]);
+        var parameters = owner.Methods.Single(m => m.Name == "sum_parameters");
+        Assert.Equal("A_V__", parameters.Parameters[2]);
+        Assert.Equal("A_V___", parameters.Parameters[3]);
+    }
 }

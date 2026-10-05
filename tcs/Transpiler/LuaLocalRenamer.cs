@@ -11,7 +11,7 @@ namespace TinyCs;
 /// (`self.end_`)、ローカルは Lua の裸の識別子になるため構文エラーになる。
 /// ユーザ型と同名のローカル束縛も写す。emit は型を裸の型名で参照する
 /// (`V.new(...)` / operator の `V.__add(a, b)` / 型内の static member) ので、
-/// 同名のローカルが Lua でそれを隠す。
+/// 同名のローカルが Lua でそれを隠す。namespace 衝突時の修飾名も対象。
 ///
 /// 写し方: `x` → `x_`。写した先が同じ member body (lambda 連鎖を含む)
 /// に識別子として現れる場合やユーザ型名と同じ場合は、そうでない名前になるまで
@@ -33,10 +33,11 @@ public static class LuaLocalRenamer
 
     /// <summary>tree に写す対象のローカル束縛が無ければ null。あれば写した
     /// tree を返す (path / options は保持)。</summary>
-    public static SyntaxTree? Rename(SemanticModel model)
+    public static SyntaxTree? Rename(SemanticModel model,
+        ICollection<string>? reservedTypeNames = null)
     {
         var tree = model.SyntaxTree;
-        var typeNames = model.Compilation.Assembly.TypeNames;
+        var typeNames = reservedTypeNames ?? model.Compilation.Assembly.TypeNames;
         var root = tree.GetRoot();
         var renames = new Dictionary<ISymbol, string>(
             SymbolEqualityComparer.Default);
@@ -66,6 +67,7 @@ public static class LuaLocalRenamer
                 while (taken.Contains(name) || typeNames.Contains(name))
                     name += "_";
                 chosen[key] = name;
+                taken.Add(name);
             }
             renames[symbol] = name;
         }
@@ -93,10 +95,11 @@ public static class LuaLocalRenamer
     /// (compilation, model, tree) を返す。写すものが無ければそのまま。</summary>
     public static (CSharpCompilation Compilation, SemanticModel Model,
         SyntaxTree Tree) Apply(CSharpCompilation compilation, SemanticModel model,
-        SyntaxTree tree)
+        SyntaxTree tree, ICollection<string>? reservedTypeNames = null)
     {
-        if (!NeedsRename(tree, compilation.Assembly.TypeNames)) return (compilation, model, tree);
-        var renamed = Rename(model);
+        var typeNames = reservedTypeNames ?? compilation.Assembly.TypeNames;
+        if (!NeedsRename(tree, typeNames)) return (compilation, model, tree);
+        var renamed = Rename(model, typeNames);
         if (renamed == null) return (compilation, model, tree);
         var newCompilation = compilation.ReplaceSyntaxTree(tree, renamed);
         return (newCompilation, newCompilation.GetSemanticModel(renamed), renamed);

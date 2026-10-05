@@ -1817,3 +1817,10 @@
 - 判断: `==`/`!=`/比較/変換 operator は subset 外 (TCS1001) のままなので対象外。`--ref` 型の operator は host 側実装なので従来どおり Lua 演算子に委ねる。interface の static abstract / virtual operator (C# 11、subset 外) は宣言を TCS1001 `InterfaceOperatorDeclaration` にし、制約付き generic 内の演算は Lua 出力の無い interface を呼ばず従来どおり Lua 演算子 (実装 class の metamethod) に委ねる。overload / 継承のある実装は型消去の Lua で解決できないので、黙って動く範囲を広げるより明示診断を選んだ (tcs2c は TCS1001 で停止)
 - 型名と同名のローカル束縛: `static int Sum(V a, int V) { return (a + a).X; }` の `V.__add(a, a)` が int parameter の `V` を index して落ちていた (`new V(...)` → `V.new` と型内 static member 参照も従来から同じ)。LuaLocalRenamer の対象をユーザ型名 (`Assembly.TypeNames`) と同名のローカル束縛に広げ、`V` → `V_` に写す (写した先が型名と同じなら更に `_`)。emit 各所の型参照に生成 binding を足す案より、既存の tree 置換に寄せる方が網羅的
 - 残課題: `==`/`!=`/変換 operator の対応は未着手 (subset 判断が先)
+
+
+### namespace 型名と operator 静的束縛の統合修正 (#61 / #62) ✓ (2026-10-05)
+- LuaLocalRenamer の予約名に LuaEmitter.TypeName が実際に出力する namespace 修飾名を追加。通常 / 増分 Lua emit と IlExport が同じ集合を渡し、`A.V` / `B.V` の併存時に parameter `A_V` が `A_V.__add` を遮蔽しないようにした。写した先も型名および既に選んだ local 名との衝突を避ける
+- 検証: `LuaLocalRenameTests` に修飾 operator owner と同名の parameter、写した先が別の修飾型名になる場合、複数 parameter の置換名衝突、IlExport の parameter 名の回帰を追加。`git diff --check` 通過。作業環境に .NET / Lua が無いため実行テストは未実施、累積 CI で確認する
+- 判断: namespace 名を renamer 側で組み直さず既存 TypeName を使い、--ref 型の除外規則も共有する。後続 #65 の nameof 修正は変更せず、その統合後に元の綴りが保たれる回帰を追加する
+- 残課題: 累積 CI の実行確認
