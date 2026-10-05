@@ -10,14 +10,15 @@ namespace TinyCs;
 // TryLowerLvalue / EmitPropertyAssignment / EmitDeconstruction 系の写像。
 public partial class LuaEmitter
 {
-    // legacy TryLowerLvalue の写像: (setup 文列, access place)
+    // legacy TryLowerLvalue の写像: (setup 文列, access place)。force は
+    // 副作用が無くても受け手 / 添字を temp に固定する (EvalOrder 参照)
     private (List<IlStat> Setup, IlExpr Access)? BuildLoweredTarget(
-        SemanticModel model, ExpressionSyntax left)
+        SemanticModel model, ExpressionSyntax left, bool force = false)
     {
         switch (left)
         {
             case MemberAccessExpressionSyntax ma
-                when HasSideEffectSyntax(ma.Expression):
+                when force || HasSideEffectSyntax(ma.Expression):
             {
                 var recv = BuildExpr(model, ma.Expression);
                 if (recv == null) return null;
@@ -26,7 +27,8 @@ public partial class LuaEmitter
                         model.GetSymbolInfo(ma).Symbol is { } lowSym
                             ? N(lowSym) : N(ma.Name.Identifier.ValueText)));
             }
-            case ElementAccessExpressionSyntax ea when HasSideEffectSyntax(ea):
+            case ElementAccessExpressionSyntax ea
+                when force || HasSideEffectSyntax(ea):
             {
                 var recv = BuildExpr(model, ea.Expression);
                 var index = BuildExpr(model,
@@ -229,23 +231,37 @@ public partial class LuaEmitter
             ? new IlUn(IlUnOp.Not, new IlNullableHasValue(e))
             : new IlBin(IlBinOp.Eq, e, new IlLit("nil"));
 
-    // compound + lowered lvalue (statement 位置): IIFE 形の写像
-    private bool BuildLoweredCompoundInto(SemanticModel model,
+    // lowered lvalue への代入 (simple / compound)。受け手 / 添字を temp に
+    // 固定してから右辺を評価し、代入後の place を値として返す IIFE
+    private IlIife? BuildLoweredAssign(SemanticModel model,
+        AssignmentExpressionSyntax assign)
+    {
+        if (BuildLoweredTarget(model, assign.Left,
+                force: true) is not { } lowered)
+            return null;
+        var right = BuildExpr(model, assign.Right);
+        if (right == null) return null;
+        IlExpr? applied;
+        if (assign.IsKind(SyntaxKind.SimpleAssignmentExpression))
+            applied = WrapStructCopy(model, assign.Right, right);
+        else
+        {
+            var op = CompoundOperator(model, assign);
+            applied = op == null ? null : BuildCompoundValue(model, assign, op,
+                lowered.Access, new IlParen(right));
+        }
+        if (applied == null) return null;
+        return new IlIife([.. lowered.Setup,
+            new IlAssign(lowered.Access, applied),
+            new IlReturn(lowered.Access)]);
+    }
+
+    private bool BuildLoweredAssignInto(SemanticModel model,
         AssignmentExpressionSyntax assign, SyntaxNode? origin,
         List<IlStat> acc)
     {
-        if (BuildLoweredTarget(model, assign.Left) is not { } lowered)
-            return false;
-        var op = CompoundOperator(model, assign);
-        var right = BuildExpr(model, assign.Right);
-        if (op == null || right == null) return false;
-        var applied = BuildCompoundValue(model, assign, op, lowered.Access,
-            new IlParen(right));
-        if (applied == null) return false;
-        acc.Add(new IlCallStat(new IlIife([.. lowered.Setup,
-                new IlAssign(lowered.Access, applied),
-                new IlReturn(lowered.Access)]))
-            { Origin = origin });
+        if (BuildLoweredAssign(model, assign) is not { } iife) return false;
+        acc.Add(new IlCallStat(iife) { Origin = origin });
         return true;
     }
 

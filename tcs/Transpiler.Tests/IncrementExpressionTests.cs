@@ -158,6 +158,72 @@ public class IncrementExpressionTests
         Assert.Equal("5|7|7|0|0", result);
     }
 
+    // C# は左オペランドを先に評価する。右オペランドの ++ / 代入が同じ local を
+    // 書き換えても左は書き換え前の値で、Lua の local 参照遅延に引きずられない
+    [Fact]
+    public void LocalLeftOperand_ReadBeforeRightSideEffect()
+    {
+        var result = TestHelper.TranspileAndRun("""
+            public class T
+            {
+                public static int SF = 1;
+                public static int Add(int x, int y) => x * 10 + y;
+
+                public static string Test()
+                {
+                    int i = 1;
+                    int a = i + i++;
+                    int j = 1;
+                    int b = j + ++j;
+                    int q = 1;
+                    q += q++;
+                    float fz = 0.5f;
+                    float c = fz + fz++;
+                    int r = 1;
+                    int d = r + (r = 5);
+                    int w = 1;
+                    int e = w++ + w;
+                    int z = 1;
+                    int f = Add(z, z++);
+                    int g = SF + SF++;
+                    int m = 2;
+                    int h = m * (m-- - 3) + m;
+                    return $"{a},{i}|{b},{j}|{q}|{c},{fz}|{d},{r}|{e}|{f}|{g}|{h},{m}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("2,2|3,2|2|1,1.5|6,5|3|11|2|-1,1", result);
+    }
+
+    // 添字代入は index を右辺より先に評価する (Dictionary / List / 配列)
+    [Fact]
+    public void IndexedAssignment_IndexEvaluatedBeforeRhs()
+    {
+        var result = TestHelper.TranspileAndRunWithRuntime("""
+            using System.Collections.Generic;
+
+            public class T
+            {
+                public static string Test()
+                {
+                    var d = new Dictionary<int, int>();
+                    int k = 1;
+                    d[k] = k++;
+                    var l = new List<int> { 0, 0, 0 };
+                    int n = 0;
+                    l[n] = n++ + 10;
+                    int[] a = new int[3];
+                    int m = 0;
+                    a[m] = m++ + 20;
+                    int u = 1;
+                    d[u] += u++;
+                    return $"{d.Count},{d[1]}|{l[0]},{l[1]}|{a[0]},{a[1]}|{u}";
+                }
+            }
+            """, "T.test()");
+        Assert.Equal("1,2|10,0|20,0|2", result);
+    }
+
     [Fact]
     public void ExpressionIncrement_IsNotDiagnosed()
     {

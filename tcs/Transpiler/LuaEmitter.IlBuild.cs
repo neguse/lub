@@ -441,9 +441,8 @@ public partial class LuaEmitter
                 when coalesce.IsKind(SyntaxKind.CoalesceAssignmentExpression):
                 return BuildCoalesceAssignInto(model, coalesce, origin, acc);
             case AssignmentExpressionSyntax lowered
-                when !lowered.IsKind(SyntaxKind.SimpleAssignmentExpression)
-                    && NeedsLoweredLvalue(lowered.Left):
-                return BuildLoweredCompoundInto(model, lowered, origin, acc);
+                when NeedsLoweredAssign(model, lowered):
+                return BuildLoweredAssignInto(model, lowered, origin, acc);
             case AssignmentExpressionSyntax assign:
                 return BuildAssignInto(model, assign, origin, acc);
             case InvocationExpressionSyntax invocation:
@@ -545,9 +544,9 @@ public partial class LuaEmitter
             return true;
         }
 
-        // compound。副作用のある lvalue は BuildExprStatInto が
-        // BuildLoweredCompoundInto へ振り分け済み (ここには来ない)
-        if (NeedsLoweredLvalue(assign.Left)) return false;
+        // compound。lowered lvalue は BuildExprStatInto が
+        // BuildLoweredAssignInto へ振り分け済み (ここには来ない)
+        if (NeedsLoweredAssign(model, assign)) return false;
         var op = CompoundOperator(model, assign);
         if (op == null) return false;
         var read = BuildExpr(model, assign.Left);
@@ -555,8 +554,11 @@ public partial class LuaEmitter
         if (read == null || right == null) return false;
         // `x op= a ⊕ b` は x = x op (a ⊕ b)。Lua の演算子優先順位 (xor / | /
         // shift は + より弱い) に依らず右辺を 1 項として括る
-        var applied = BuildCompoundValue(model, assign, op, read,
-            right is IlBin or IlLiftedBin or IlTernary ? new IlParen(right) : right);
+        if (right is IlBin or IlLiftedBin or IlTernary) right = new IlParen(right);
+        var applied = WritesLocalReadBy(model, assign.Left, assign.Right)
+            ? SnapshotOperand(read,
+                l => BuildCompoundValue(model, assign, op, l, right))
+            : BuildCompoundValue(model, assign, op, read, right);
         if (applied == null) return false;
         acc.Add(new IlAssign(read, applied) { Origin = origin });
         return true;

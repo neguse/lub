@@ -1763,6 +1763,7 @@
 ### 式位置の ++ / -- (IncrementAsExpression) を両 backend で対応 ✓ (2026-10-05)
 - 式位置の `++x` / `x++` / `--x` / `x--` を IL 構築で「1 回だけ代入して値を返す」IIFE に下げた (前置は更新後、後置は更新前の値)。place 解決は文位置と共通 (custom property は accessor、副作用 receiver / index は temp 化、Nullable は lifted)。TCS1001 `IncrementAsExpression` 診断は撤去
 - 副作用 index の lowered target が `+1` を IlBin に焼いて `PlusOne=false` で持っていたため C backend が「0-based のみ」と拒否していた (`data[Idx()] += 1` も同様)。index は raw のまま temp に置き `IlIndex.PlusOne` を立てる形に修正
-- 検証: `dotnet test` Transpiler.Tests 894/897 (skip 3)、tcs2c.Tests 46/46、Analyzers 55/55。`IncrementAsExpression_PrefixAndPostfixValues` (条件 / 引数 / 添字 / field / custom property / 副作用 receiver / Nullable / float) を Lua・C 一致で確認
+- operand 評価順の固定: 右側 operand / 右辺が書き換える local (代入 / ++ / -- / ref・out 引数、lambda で書かれる捕捉 local + 呼び出し) を左 operand や代入先の受け手 / 添字が読むとき、左側を temp に退避する (`i + i++`、`q += q++`、`i + (i = 5)`、`d[k] = k++`、`d[u] += u++`)。Lua は local を register のまま参照し、C は statement expression 間の順序を規定しないため、IL 構築側で直す。値型受け手 (`s.X = …`) は temp が copy になるので対象外。式位置の lowered 代入は再評価せず代入後の place を返す
+- 検証: `bash run-tests.sh` (Transpiler.Tests 899/899、tcs2c.Tests 47/47、Analyzers 55/55、All tests passed)。`IncrementAsExpression_PrefixAndPostfixValues` / `EvaluationOrder_LeftOperandAndIndexBeforeRhsSideEffect` を Lua・C 一致 + C# 期待値で確認
 - 判断: 診断で拒否し続ける案は却下 (文位置と同じ lowering で正しく書ける)
 - 残課題: なし
