@@ -138,7 +138,7 @@ TinyC# の実装判断は「C# 14 の全機能対応」ではなく、次の bas
 | Nullable 値型 (`int?`) | **Y** | `null`/値/HasValue/Value/GetValueOrDefault/`??`/`??=`/`?.` (receiver が `S?` の member / method、結果の `T?` wrap)/null 比較/lifted 演算子 (算術・bit・比較・`bool?` の三値 `&` `\|`)。IL は明示ノード (il-spec §3)、C backend は `{ has, v }`。`.Value` の値なしは fault、文字列化は空文字列 |
 | Nullable 参照型 (`string?`) | **N/A** | Lua は常に nil 可能 |
 | タプル `(int, string)` | **-** | |
-| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型なら default (struct は zero 値)、参照型は nil (Length も 0 — TCS1003 と同じ nil 制約)。List\<T\> を推奨 |
+| 配列 `int[]` | **P** | 初期化子、index、Length。`new T[n]` の要素は値型 (数値 / bool / enum / char / struct) なら default で埋める。nil が default になる要素型 (参照型 / `T?` / 型パラメータ (`where T : struct` も含む)、`new int[n][]` を含む) の `new T[n]` と、初期化子・代入・`List<T>.Add` の null / 型パラメータの `default` 要素は TCS1003 (Lua の sequence に nil 穴は持てず Length / foreach が崩れる。`new T[0]` は可)。List\<T\> を推奨 |
 | 匿名型 `new { }` | **-** | |
 | `Span<T>` / `ReadOnlySpan<T>` | **N/A** | |
 | ポインタ型 `int*` | **N/A** | |

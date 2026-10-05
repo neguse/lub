@@ -14,6 +14,8 @@ public static partial class TinyCsComplianceFacts
         SyntaxKind.ImplicitObjectCreationExpression,
         SyntaxKind.InvocationExpression,
         SyntaxKind.SimpleAssignmentExpression,
+        SyntaxKind.ArrayCreationExpression,
+        SyntaxKind.ImplicitArrayCreationExpression,
     ];
 
     // Lua 5.5 reserved words (deps/lua llex.c luaX_tokens). C# identifiers
@@ -56,6 +58,13 @@ public static partial class TinyCsComplianceFacts
                 TryGetUnsupportedCollectionInitializerNull(
                     model.GetTypeInfo(creation).Type,
                     creation.Initializer, model, out description),
+            ArrayCreationExpressionSyntax creation =>
+                TryGetUnsupportedArrayCreationNull(creation, model,
+                    out description),
+            ImplicitArrayCreationExpressionSyntax creation =>
+                TryGetUnsupportedArrayInitializerNull(
+                    model.GetTypeInfo(creation).Type, creation.Initializer,
+                    model, out description),
             InvocationExpressionSyntax invocation =>
                 TryGetUnsupportedCollectionInvocationNull(invocation, model,
                     out description),
@@ -190,8 +199,68 @@ public static partial class TinyCsComplianceFacts
             return true;
         }
 
+        if (receiverType is IArrayTypeSymbol array)
+        {
+            description = ArrayNullElementMessage(array);
+            return true;
+        }
+
         return false;
     }
+
+    // `new T[n]` は Lua で `{}` になる。値型要素は default で埋めるが、
+    // nil が default の要素型は Length / foreach が 0 のままになる
+    private static bool TryGetUnsupportedArrayCreationNull(
+        ArrayCreationExpressionSyntax creation, SemanticModel model,
+        out string description)
+    {
+        description = "";
+        var type = model.GetTypeInfo(creation).Type as IArrayTypeSymbol;
+        if (type == null || type.Rank != 1) return false;
+
+        if (creation.Initializer != null)
+        {
+            return TryGetUnsupportedArrayInitializerNull(type,
+                creation.Initializer, model, out description);
+        }
+
+        var sizes = creation.Type.RankSpecifiers[0].Sizes;
+        if (sizes.Count == 1
+            && model.GetConstantValue(sizes[0]) is { Value: 0 })
+        {
+            return false;
+        }
+
+        if (!CanDefaultToNil(type.ElementType)) return false;
+        description =
+            $"{type.ToDisplayString()} created by size cannot keep Length "
+            + "because nil elements do not exist in Lua sequence tables";
+        return true;
+    }
+
+    private static bool TryGetUnsupportedArrayInitializerNull(
+        ITypeSymbol? arrayType, InitializerExpressionSyntax? initializer,
+        SemanticModel model, out string description)
+    {
+        description = "";
+        if (initializer == null || arrayType is not IArrayTypeSymbol array)
+            return false;
+
+        if (!initializer.Expressions.Any(e => IsNilLiteralOrDefault(e, model)))
+            return false;
+
+        description = ArrayNullElementMessage(array);
+        return true;
+    }
+
+    private static string ArrayNullElementMessage(IArrayTypeSymbol array) =>
+        $"{array.ToDisplayString()} cannot store null elements "
+        + "in Lua sequence tables";
+
+    // 型パラメータの default は制約 (struct 含む) を問わず Lua で nil になる
+    // (transpiler は生成 Lua に型実引数を持たない)
+    private static bool CanDefaultToNil(ITypeSymbol? type) =>
+        CanBeNil(type) || type is ITypeParameterSymbol;
 
     private static bool IsNilReturningLambda(ExpressionSyntax expr,
         SemanticModel model)
@@ -220,8 +289,10 @@ public static partial class TinyCsComplianceFacts
             return false;
         }
 
+        // 変換前の型で判定する。`default(int)` は int? / object へ変換されても
+        // 非 null。target-typed `default` の Type は変換先の型になる
         var typeInfo = model.GetTypeInfo(expr);
-        return CanBeNil(typeInfo.ConvertedType ?? typeInfo.Type);
+        return CanDefaultToNil(typeInfo.Type ?? typeInfo.ConvertedType);
     }
 
     private static ExpressionSyntax StripNilTransparentSyntax(
