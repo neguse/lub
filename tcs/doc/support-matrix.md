@@ -920,7 +920,7 @@ LINQ はメソッドチェーン形式のみ対応。クエリ構文 (`from x in
 | 未対応 BCL API の警告 | **Y** | TCS1002 / analyzer と transpiler/check で共有。core API allowlist は完全シグネチャ単位で、member 外に加えて名前だけ一致する未実装 overload も検出する。完全修飾型qualifierはmemberとして重複診断しない |
 | collection null 保存の警告 | **Y** | TCS1003 / analyzer と transpiler で共有 |
 | 複数ファイル入力 | **Y** | 共有 Compilation でクロスファイル参照 |
-| namespace 解決 | **Y** | 透過。同名型の衝突時だけ修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / `A_Color` / simple 名 (一意なら) で引ける |
+| namespace 解決 | **Y** | 透過。同名型の衝突時だけ修飾名 (§ namespace ブロック行)。`--entry` は `A.Color` / simple 名 (一意なら) で引ける (`--snapshot` 時は `A_Color` も可) |
 | CLI | **Y** | `tcs a.cs b.cs [-o out.lua]`, `tcs check a.cs`, `--help`, `--version` |
 | CI gate | **Y** | GitHub Actions で `run-tests.sh` / sample `tcs check` / analyzer demo / analyzer pack |
 | ソースマップ | **Y** | `--sourcemap` で `.lua.map` 出力 |

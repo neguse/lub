@@ -264,5 +264,26 @@ public class NamespaceTypeNameTests
         Assert.True(result.Success, string.Join("\n", result.Errors));
         Assert.Equal(["A_Color"], session.Artifacts[0].Types.Select(t => t.Name));
         Assert.Equal(["B_Color"], session.Artifacts[1].Types.Select(t => t.Name));
+        // 既存型の Lua global 名が変わるのは hot apply できない (restart 境界)
+        Assert.True(result.RequiresRestart);
+        Assert.Contains(result.RestartReasons, r => r.Contains("type removed: Color"));
+    }
+
+    // fast path の method 差し替えも full emit と同じ Lua 型名で探す。simple 名
+    // で探すと global の Color と A.Color を取り違える
+    [Fact]
+    public void Incremental_BodyEditInQualifiedType_SplicesThatTypeOnly()
+    {
+        const string source = """
+            public class Color { public static int F() { return 1; } }
+            namespace A { public class Color { public static int F() { return 2; } } }
+            """;
+        var session = new IncrementalCompilationSession(checkNaming: false);
+        session.OpenProject([("c.cs", source)]);
+        var result = session.Update("c.cs", source.Replace("return 2;", "return 3;"));
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.True(result.FastPath);
+        var lua = session.Artifacts.Single().Lua;
+        Assert.Equal("1\t3", TestHelper.RunLua($"{lua}\nprint(Color.f(), A_Color.f())").Trim());
     }
 }
